@@ -1,0 +1,75 @@
+{
+	"name": "koishi-plugin-bilibili-notify",
+	"description": "Bilibili 动态推送、直播通知 Koishi 插件",
+	"version": "4.0.0-alpha.1",
+	"type": "module",
+	"main": "./lib/index.cjs",
+	"module": "./lib/index.mjs",
+	"types": "./lib/index.d.cts",
+	"files": [
+		"lib",
+		"dist"
+	],
+	"exports": {
+		".": {
+			"import": "./lib/index.mjs",
+			"require": "./lib/index.cjs"
+		},
+		"./package.json": "./package.json"
+	},
+	"license": "MIT",
+	"keywords": [
+		"chatbot",
+		"koishi",
+		"plugin",
+		"bilibili",
+		"bilibili-notify"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@bilibili-notify/api": "workspace:^",
+		"@bilibili-notify/internal": "workspace:^",
+		"@bilibili-notify/push": "workspace:^",
+		"@bilibili-notify/storage": "workspace:^",
+		"@bilibili-notify/subscription": "workspace:^",
+		"qrcode": "^1.5.4"
+	},
+	"devDependencies": {
+		"@koishijs/client": "^5.30.11",
+		"@koishijs/plugin-help": "^2.4.6",
+		"@koishijs/plugin-notifier": "^1.2.1",
+		"@types/qrcode": "^1.5.6",
+		"koishi-plugin-puppeteer": "^3.9.0"
+	},
+	"peerDependencies": {
+		"@koishijs/plugin-console": "^5.30.11",
+		"@koishijs/plugin-notifier": "*",
+		"koishi": "^4.18.11"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"koishi": {
+		"service": {
+			"required": [
+				"console",
+				"notifier"
+			],
+			"optional": [
+				"bilibili-notify-dynamic",
+				"bilibili-notify-live",
+				"bilibili-notify-advanced-subscription",
+				"bilibili-notify-image"
+			]
+		},
+		"description": {
+			"zh": "Bilibili 动态推送、直播通知插件"
+		}
+	},
+	"inlinedDependencies": {
+		"@koishijs/plugin-help": "2.4.6"
+	}
+}

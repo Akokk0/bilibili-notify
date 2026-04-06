@@ -1,0 +1,64 @@
+{
+	"name": "koishi-plugin-bilibili-notify-dynamic",
+	"version": "0.0.2-alpha.0",
+	"description": "Bilibili 动态推送插件（bilibili-notify 可选插件）",
+	"type": "module",
+	"main": "./lib/index.cjs",
+	"types": "./lib/index.d.cts",
+	"exports": {
+		".": {
+			"import": "./lib/index.mjs",
+			"require": "./lib/index.cjs"
+		},
+		"./package.json": "./package.json"
+	},
+	"license": "MIT",
+	"keywords": [
+		"chatbot",
+		"koishi",
+		"plugin",
+		"bilibili",
+		"bilibili-notify"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@bilibili-notify/api": "workspace:^",
+		"@bilibili-notify/internal": "workspace:^",
+		"@bilibili-notify/push": "workspace:^",
+		"cron": "^3.1.7",
+		"luxon": "^3.5.0"
+	},
+	"devDependencies": {
+		"@types/luxon": "^3.4.2",
+		"koishi-plugin-bilibili-notify": "workspace:^"
+	},
+	"peerDependencies": {
+		"koishi": "^4.18.11",
+		"koishi-plugin-bilibili-notify": "workspace:^"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"koishi": {
+		"service": {
+			"required": [
+				"bilibili-notify"
+			],
+			"optional": [
+				"bilibili-notify-image"
+			]
+		},
+		"description": {
+			"zh": "Bilibili 动态推送插件"
+		}
+	},
+	"inlinedDependencies": {
+		"@standard-schema/spec": "1.1.0",
+		"cosmokit": "1.8.1",
+		"schemastery": "3.18.0"
+	},
+	"module": "./lib/index.mjs"
+}
