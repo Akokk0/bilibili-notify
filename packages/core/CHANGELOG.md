@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.0.0-alpha.2
+
+### Patch Changes
+
+- 2a11604: Alpha
+
 ## 4.0.0-alpha.1
 
 ### Patch Changes
