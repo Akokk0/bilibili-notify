@@ -1,0 +1,12 @@
+- id: uhkaga
+  name: yakumo
+  config:
+    pipeline:
+      build:
+        - client
+      clean:
+        - tsc --clean
+- id: 7jbmaq
+  name: '@koishijs/client/lib'
+- id: d0b6ss
+  name: yakumo/run
