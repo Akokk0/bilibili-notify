@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.2-alpha.1
+
+### Patch Changes
+
+- 40ebcbc: All bump
+- Updated dependencies [40ebcbc]
+  - @bilibili-notify/storage@0.0.2-alpha.0
+
 ## 0.0.2-alpha.0
 
 ### Patch Changes

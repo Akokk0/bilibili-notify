@@ -1,5 +1,17 @@
 # Changelog
 
+## 4.0.0-alpha.5
+
+### Patch Changes
+
+- 40ebcbc: All bump
+- Updated dependencies [40ebcbc]
+  - @bilibili-notify/api@0.0.2-alpha.1
+  - @bilibili-notify/internal@0.0.2-alpha.0
+  - @bilibili-notify/push@0.0.2-alpha.0
+  - @bilibili-notify/storage@0.0.2-alpha.0
+  - @bilibili-notify/subscription@0.0.2-alpha.0
+
 ## 4.0.0-alpha.4
 
 ### Patch Changes
