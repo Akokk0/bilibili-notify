@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.3-alpha.1
+
+### Patch Changes
+
+- 921f0ad: Workspace replace
+
 ## 0.0.3-alpha.0
 
 ### Patch Changes
