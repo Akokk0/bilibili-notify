@@ -2,7 +2,7 @@ pre-commit:
   parallel: true
   commands:
     lint:
-      glob: "*.{ts,js,json}"
+      glob: "*.{ts,js,mjs,json}"
       run: npx biome check --staged --write --no-errors-on-unmatched {staged_files}
       stage_fixed: true
 
