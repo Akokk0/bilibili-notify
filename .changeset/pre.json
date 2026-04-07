@@ -14,6 +14,7 @@
     "@bilibili-notify/subscription": "0.0.1"
   },
   "changesets": [
+    "free-regions-march",
     "six-shirts-laugh"
   ]
 }
