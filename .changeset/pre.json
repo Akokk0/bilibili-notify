@@ -14,7 +14,9 @@
     "@bilibili-notify/subscription": "0.0.1"
   },
   "changesets": [
+    "five-poets-sneeze",
     "free-regions-march",
+    "humble-parents-hammer",
     "six-shirts-laugh",
     "some-hairs-train"
   ]
