@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.0.0-alpha.6
+
+### Patch Changes
+
+- eeaca8f: Fix client-side TypeScript type errors
+- 8f47115: Add console client build
+- 9414097: Remove roomid from subscription config
+
 ## 4.0.0-alpha.5
 
 ### Patch Changes

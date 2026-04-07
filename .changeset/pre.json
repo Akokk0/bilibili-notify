@@ -14,10 +14,13 @@
     "@bilibili-notify/subscription": "0.0.1"
   },
   "changesets": [
+    "client-type-fix",
+    "core-client-build",
     "five-poets-sneeze",
     "free-regions-march",
     "giant-wombats-drop",
     "humble-parents-hammer",
+    "remove-roomid",
     "six-shirts-laugh",
     "some-hairs-train"
   ]
