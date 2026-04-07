@@ -3,6 +3,9 @@
 	"version": "0.0.3-alpha.0",
 	"description": "Bilibili 通知图片渲染插件（bilibili-notify 可选插件）",
 	"type": "module",
+	"files": [
+		"lib"
+	],
 	"license": "MIT",
 	"keywords": [
 		"chatbot",

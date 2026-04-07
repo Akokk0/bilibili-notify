@@ -2,6 +2,9 @@
 	"name": "@bilibili-notify/api",
 	"version": "0.0.1",
 	"type": "module",
+	"files": [
+		"lib"
+	],
 	"main": "./lib/index.cjs",
 	"types": "./lib/index.d.cts",
 	"exports": {

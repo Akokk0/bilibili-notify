@@ -3,6 +3,9 @@
 	"version": "0.0.3-alpha.0",
 	"description": "Bilibili 直播通知插件（bilibili-notify 可选插件）",
 	"type": "module",
+	"files": [
+		"lib"
+	],
 	"main": "./lib/index.cjs",
 	"types": "./lib/index.d.cts",
 	"exports": {

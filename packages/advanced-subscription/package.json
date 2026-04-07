@@ -3,6 +3,9 @@
 	"version": "1.0.0-alpha.2",
 	"description": "Bilibili-Notify 高级订阅配置插件",
 	"type": "module",
+	"files": [
+		"lib"
+	],
 	"main": "./lib/index.cjs",
 	"types": "./lib/index.d.cts",
 	"exports": {

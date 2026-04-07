@@ -2,6 +2,9 @@
 	"name": "@bilibili-notify/internal",
 	"version": "0.0.1",
 	"type": "module",
+	"files": [
+		"lib"
+	],
 	"main": "./lib/index.cjs",
 	"module": "./lib/index.mjs",
 	"types": "./lib/index.d.cts",
