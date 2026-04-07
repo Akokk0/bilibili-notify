@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.0.0-alpha.7
+
+### Patch Changes
+
+- cc1455e: Change build tool to yakumo for console
+
 ## 4.0.0-alpha.6
 
 ### Patch Changes
