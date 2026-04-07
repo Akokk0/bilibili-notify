@@ -1,0 +1,41 @@
+{
+	"name": "@bilibili-notify/api",
+	"version": "0.0.1",
+	"type": "module",
+	"main": "./lib/index.cjs",
+	"types": "./lib/index.d.cts",
+	"exports": {
+		".": "./lib/index.cjs",
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@bilibili-notify/storage": "workspace:^",
+		"axios": "^1.9.0",
+		"axios-cookiejar-support": "^6.0.5",
+		"cacheable-lookup": "^7.0.0",
+		"cron": "^4.4.0",
+		"jsdom": "^26.1.0",
+		"luxon": "^3.7.2",
+		"md5": "^2.3.0",
+		"openai": "^4.98.0",
+		"p-retry": "^7.1.1",
+		"tough-cookie": "^6.0.0"
+	},
+	"devDependencies": {
+		"@types/jsdom": "^21.1.7",
+		"@types/luxon": "^3.7.1",
+		"@types/md5": "^2.3.6",
+		"@types/tough-cookie": "^4.0.5"
+	},
+	"peerDependencies": {
+		"koishi": "^4.18.11"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"module": "./lib/index.mjs"
+}

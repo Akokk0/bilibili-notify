@@ -1,0 +1,19 @@
+{
+	"name": "@bilibili-notify/storage",
+	"version": "0.0.1",
+	"type": "module",
+	"main": "./lib/index.cjs",
+	"module": "./lib/index.mjs",
+	"types": "./lib/index.d.cts",
+	"exports": {
+		".": "./lib/index.cjs",
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc --noEmit"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	}
+}

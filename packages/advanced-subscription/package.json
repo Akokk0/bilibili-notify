@@ -1,0 +1,48 @@
+{
+	"name": "koishi-plugin-bilibili-notify-advanced-subscription",
+	"version": "1.0.0-alpha.1",
+	"description": "Bilibili-Notify 高级订阅配置插件",
+	"type": "module",
+	"main": "./lib/index.cjs",
+	"types": "./lib/index.d.cts",
+	"exports": {
+		".": {
+			"import": "./lib/index.mjs",
+			"require": "./lib/index.cjs"
+		},
+		"./package.json": "./package.json"
+	},
+	"license": "MIT",
+	"keywords": [
+		"chatbot",
+		"koishi",
+		"plugin",
+		"bilibili",
+		"bilibili-notify"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@bilibili-notify/push": "workspace:^"
+	},
+	"peerDependencies": {
+		"koishi": "^4.18.11",
+		"koishi-plugin-bilibili-notify": "workspace:^"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"koishi": {
+		"description": {
+			"zh": "Bilibili-Notify 高级订阅配置插件"
+		}
+	},
+	"inlinedDependencies": {
+		"@standard-schema/spec": "1.1.0",
+		"cosmokit": "1.8.1",
+		"schemastery": "3.18.0"
+	},
+	"module": "./lib/index.mjs"
+}

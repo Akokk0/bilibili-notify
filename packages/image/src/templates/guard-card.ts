@@ -1,0 +1,193 @@
+import { GuardLevel } from "blive-message-listener";
+
+export type GuardCardParams = {
+	font: string;
+	captainImgUrl: string;
+	guardLevel: GuardLevel;
+	uname: string;
+	face: string;
+	isAdmin: number;
+	masterAvatarUrl: string;
+	masterName: string;
+	bgColor: [string, string];
+};
+
+const GUARD_DESC: Record<GuardLevel, (uname: string, masterName: string) => string> = {
+	[GuardLevel.None]: () => "",
+	[GuardLevel.Jianzhang]: (uname, masterName) => `"${uname}号"加入<br/>"${masterName}"大航海舰队！`,
+	[GuardLevel.Tidu]: (uname, masterName) => `"${uname}"就任<br/>"${masterName}"大航海舰队提督！`,
+	[GuardLevel.Zongdu]: (uname, masterName) => `"${uname}"上任<br/>"${masterName}"大航海舰队总督！`,
+};
+
+export function buildGuardCardHtml(p: GuardCardParams): string {
+	const desc = GUARD_DESC[p.guardLevel]?.(p.uname, p.masterName) ?? "";
+
+	return /* html */ `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>上舰通知</title>
+            <style>
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                    font-family: "${p.font}", "Microsoft YaHei", "Source Han Sans", "Noto Sans CJK", sans-serif;
+                }
+
+                html {
+                    width: 430px;
+                    height: auto;
+                }
+
+                .bg {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    width: 430px;
+                    height: 220px;
+                    background: linear-gradient(to right bottom, ${p.bgColor[0]}, ${p.bgColor[1]});
+                }
+
+                .baseplate {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    border-radius: 10px;
+                    width: 410px;
+                    height: 200px;
+                    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
+                    background-color: rgba(255, 255, 255, 0.65);
+                    backdrop-filter: blur(10px);
+                }
+
+                .info {
+                    flex: 1;
+                    height: 100%;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
+                    padding: 10px 0 10px 10px;
+                }
+
+                .user {
+                    display: flex;
+                    gap: 10px;
+                }
+
+                .avatar {
+                    height: 90px;
+                    width: 90px;
+                    border-radius: 50%;
+                    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
+                }
+
+                .avatar img {
+                    width: 100%;
+                    height: 100%;
+                    border-radius: 50%;
+                    border: 3px solid white;
+                }
+
+                .user-info {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-start;
+                    gap: 7px;
+                    margin-top: 10px;
+                }
+
+                .name-badge {
+                    display: flex;
+                    align-items: center;
+                    height: 30px;
+                    background-color: ${p.bgColor[0]};
+                    border-radius: 25px;
+                    color: white;
+                    padding: 0 10px;
+                    border: solid 2px white;
+                    overflow: hidden;
+                }
+
+                .name-badge span {
+                    max-width: 100px;
+                    white-space: nowrap;
+                    text-overflow: ellipsis;
+                    overflow: hidden;
+                    font-weight: bold;
+                    font-size: 12px;
+                }
+
+                .accompany {
+                    display: flex;
+                    gap: 5px;
+                    align-items: center;
+                    height: 25px;
+                    background-color: ${p.bgColor[0]};
+                    border-radius: 25px;
+                    border: solid 2px white;
+                    overflow: hidden;
+                }
+
+                .master-avatar {
+                    width: 25px;
+                    height: 25px;
+                    border-radius: 50%;
+                    background: url("${p.masterAvatarUrl}") no-repeat center;
+                    background-size: cover;
+                }
+
+                .accompany span {
+                    max-width: 85px;
+                    white-space: nowrap;
+                    text-overflow: ellipsis;
+                    overflow: hidden;
+                    color: white;
+                    font-size: 10px;
+                    font-weight: bold;
+                    margin-right: 5px;
+                }
+
+                .desc {
+                    margin-bottom: 10px;
+                    font-size: 16px;
+                    font-weight: bold;
+                    font-style: italic;
+                    color: #333;
+                }
+
+                .captain {
+                    width: 175px;
+                    height: 175px;
+                    background: url("${p.captainImgUrl}") no-repeat center;
+                    background-size: cover;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="bg">
+                <div class="baseplate">
+                    <div class="info">
+                        <div class="user">
+                            <div class="avatar">
+                                <img src="${p.face}" alt="用户头像">
+                            </div>
+                            <div class="user-info">
+                                <div class="name-badge">
+                                    <span>${p.uname}</span>
+                                </div>
+                                <div class="accompany">
+                                    <div class="master-avatar"></div>
+                                    <span>${p.isAdmin ? "房管" : p.masterName}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="desc">${desc}</div>
+                    </div>
+                    <div class="captain"></div>
+                </div>
+            </div>
+        </body>
+        </html>
+    `;
+}
