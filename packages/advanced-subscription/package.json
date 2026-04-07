@@ -1,6 +1,6 @@
 {
 	"name": "koishi-plugin-bilibili-notify-advanced-subscription",
-	"version": "1.0.0-alpha.2",
+	"version": "1.0.0-alpha.3",
 	"description": "Bilibili-Notify 高级订阅配置插件",
 	"type": "module",
 	"files": [
