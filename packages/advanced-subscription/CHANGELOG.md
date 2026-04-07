@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0-alpha.4
+
+### Patch Changes
+
+- 40ebcbc: All bump
+- Updated dependencies [40ebcbc]
+  - koishi-plugin-bilibili-notify@4.0.0-alpha.5
+  - @bilibili-notify/push@0.0.2-alpha.0
+
 ## 1.0.0-alpha.3
 
 ### Patch Changes

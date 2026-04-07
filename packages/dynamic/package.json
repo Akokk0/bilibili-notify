@@ -1,6 +1,6 @@
 {
 	"name": "koishi-plugin-bilibili-notify-dynamic",
-	"version": "0.0.3-alpha.2",
+	"version": "0.0.3-alpha.3",
 	"description": "Bilibili 动态推送插件（bilibili-notify 可选插件）",
 	"type": "module",
 	"files": [

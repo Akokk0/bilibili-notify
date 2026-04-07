@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.3-alpha.3
+
+### Patch Changes
+
+- 40ebcbc: All bump
+- Updated dependencies [40ebcbc]
+  - @bilibili-notify/api@0.0.2-alpha.1
+
 ## 0.0.3-alpha.2
 
 ### Patch Changes

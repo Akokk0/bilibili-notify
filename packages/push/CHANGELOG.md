@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.2-alpha.0
+
+### Patch Changes
+
+- 40ebcbc: All bump
+
 ## [0.0.1] - 2026-04-04
 
 ### Added
