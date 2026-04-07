@@ -21,5 +21,8 @@ for (const dir of readdirSync(packagesDir)) {
 	}
 
 	console.log(`Publishing ${name}@${version}`);
-	execSync(`yarn workspace ${name} npm publish --access public`, { stdio: "inherit" });
+	execSync(`yarn workspace ${name} npm publish --access public`, {
+		stdio: "inherit",
+		env: { ...process.env, YARN_NPM_AUTH_TOKEN: process.env.NPM_TOKEN },
+	});
 }
