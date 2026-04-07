@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.0.0-alpha.3
+
+### Patch Changes
+
+- 921f0ad: Workspace replace
+
 ## 4.0.0-alpha.2
 
 ### Patch Changes

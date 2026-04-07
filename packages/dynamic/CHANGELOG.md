@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.3-alpha.1
+
+### Patch Changes
+
+- 921f0ad: Workspace replace
+- Updated dependencies [921f0ad]
+  - koishi-plugin-bilibili-notify@4.0.0-alpha.3
+
 ## 0.0.3-alpha.0
 
 ### Patch Changes
