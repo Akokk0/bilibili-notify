@@ -1,7 +1,7 @@
 {
 	"name": "koishi-plugin-bilibili-notify",
 	"description": "Bilibili 动态推送、直播通知 Koishi 插件",
-	"version": "4.0.0-alpha.3",
+	"version": "4.0.0-alpha.4",
 	"type": "module",
 	"main": "./lib/index.cjs",
 	"module": "./lib/index.mjs",

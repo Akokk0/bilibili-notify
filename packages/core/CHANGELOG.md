@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.0.0-alpha.4
+
+### Patch Changes
+
+- Updated dependencies [ed0e7c9]
+  - @bilibili-notify/api@0.0.2-alpha.0
+
 ## 4.0.0-alpha.3
 
 ### Patch Changes
