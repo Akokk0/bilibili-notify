@@ -31,7 +31,7 @@ export const BilibiliNotifyConfigSchema: Schema<BilibiliNotifyConfig> = Schema.o
 	subs: Schema.array(
 		Schema.object({
 			name: Schema.string().required().description("UP昵称"),
-			uid: Schema.string().required().description("UID & roomid"),
+			uid: Schema.string().required().description("UID"),
 			dynamic: Schema.boolean().default(true).description("动态"),
 			dynamicAtAll: Schema.boolean().default(false).description("动态@全体"),
 			live: Schema.boolean().default(true).description("直播"),

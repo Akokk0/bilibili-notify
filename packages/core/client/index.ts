@@ -11,7 +11,7 @@ declare module "@koishijs/plugin-console" {
 	}
 }
 
-import Settings from "./Settings.vue";
+import Settings from "./settings.vue";
 
 export default (ctx: Context) => {
 	ctx.slot({
