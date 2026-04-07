@@ -7,7 +7,7 @@
 		"packages/*"
 	],
 	"scripts": {
-		"build": "tsdown -W",
+		"build": "tsdown -W && yarn workspace koishi-plugin-bilibili-notify run build:client",
 		"typecheck": "yarn workspaces foreach --all -p run typecheck",
 		"format": "biome format --write .",
 		"format:check": "biome format .",
