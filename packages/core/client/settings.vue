@@ -210,14 +210,16 @@ const tips = ref(false);
 
 // 监听登录状态变化
 watch(
-	() => [store["bilibili-notify"].status, store["bilibili-notify"].msg],
+	() => [store["bilibili-notify"]?.status, store["bilibili-notify"]?.msg],
 	async () => {
 		// 防止其他页面出现该内容
 		if (local.value.name !== "koishi-plugin-bilibili-notify") return;
+		const biliStore = store["bilibili-notify"];
+		if (!biliStore) return;
 		// 赋值
-		dataServer.value = store["bilibili-notify"];
+		dataServer.value = biliStore as { status: BiliLoginStatus; msg: string; data: any };
 		// 判断
-		switch (store["bilibili-notify"].status) {
+		switch (biliStore.status) {
 			case BiliLoginStatus.LOADING_LOGIN_INFO:
 				status.value = "loading";
 				return;
@@ -230,7 +232,7 @@ watch(
 					tips.value = true;
 				}, 60000);
 				// 获取数据
-				const data = store["bilibili-notify"].data as UserCardInfoData;
+				const data = biliStore.data as UserCardInfoData;
 				// 请求数据
 				const requestCORS = async () => {
 					await send("bilibili-notify/request-cors" as any, data.card.face).then(async (v) => {
