@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.3-alpha.0
+
+### Patch Changes
+
+- 2a11604: Alpha
+- Updated dependencies [2a11604]
+  - koishi-plugin-bilibili-notify@4.0.0-alpha.2
+
 ## 0.0.2-alpha.0
 
 ### Patch Changes

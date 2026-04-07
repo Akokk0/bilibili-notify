@@ -13,5 +13,7 @@
     "@bilibili-notify/storage": "0.0.1",
     "@bilibili-notify/subscription": "0.0.1"
   },
-  "changesets": []
+  "changesets": [
+    "six-shirts-laugh"
+  ]
 }
