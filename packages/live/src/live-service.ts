@@ -754,7 +754,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 				const liveStartMsg = this.applyTemplate(
 					sub.customLiveMsg.customLiveStart ??
 						this.config.customLiveMsg.customLiveStart ??
-						"-name 开播啊，当前粉丝数：-follower\n-link",
+						"-name 开播啦，当前粉丝数：-follower\n-link",
 					{
 						"-name": masterInfo.username,
 						"-time": diffTime,
@@ -833,7 +833,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 				const liveEndMsg = this.applyTemplate(
 					sub.customLiveMsg.customLiveEnd ??
 						this.config.customLiveMsg.customLiveEnd ??
-						"-name 下播啊，本次直播了 -time，粉丝变化 -follower_change",
+						"-name 下播啦，本次直播了 -time，粉丝变化 -follower_change",
 					{ "-name": masterInfo.username, "-time": diffTime, "-follower_change": followerChange },
 				);
 
