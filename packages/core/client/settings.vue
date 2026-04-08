@@ -12,12 +12,12 @@
   </k-comment>
 
   <k-comment v-if="status === 'logging_qr'" type="warning">
-    <div v-if="qrcodeImg" class="comment">
+    <div v-if="qrCodeImg" class="comment">
       <p>请使用Bilibili App扫码登录</p>
-      <img class="qrcode" :src="qrcodeImg" alt="qrcode" />
+      <img class="qrcode" :src="qrCodeImg" alt="qrcode" />
       <p>{{ dataServer.msg }}</p>
     </div>
-    <div v-if="!qrcodeImg" class="comment">
+    <div v-if="!qrCodeImg" class="comment">
       <p>二维码显示失败，请重新登录</p>
       <k-button @click="login">重新登录</k-button>
     </div>
@@ -58,16 +58,16 @@
     </div>
     <div v-else class="logged-in fade-in">
       <div class="user-bg-wrapper">
-        <img class="user-bg" :src="userBGImg" alt="user-bg" />
+        <img class="user-bg" :src="userBgImg" alt="user-bg" />
       </div>
       <div class="user-info">
         <img class="avatar" :src="avatarImg" alt="avatar" />
         <div class="name-sign">
-          <div class="udesc">
-            <span class="uname">{{ dataServer.data.card.name }}</span>
-            <img v-if="dataServer.data.card.vip.vipStatus === 1" class="uvip" :src="vipImg" alt="vip" />
+          <div class="user-desc">
+            <span class="user-name">{{ dataServer.data.card.name }}</span>
+            <img v-if="dataServer.data.card.vip.vipStatus === 1" class="user-vip" :src="vipImg" alt="vip" />
           </div>
-          <span class="usign">{{ dataServer.data.card.sign }}</span>
+          <span class="user-sign">{{ dataServer.data.card.sign }}</span>
         </div>
       </div>
       <div class="user-status">
@@ -125,6 +125,7 @@ type UserCardInfoData = {
 		description: string;
 		article: number;
 		attention: number;
+		fans: number;
 		sign: string;
 		level_info: {
 			current_level: number;
@@ -198,9 +199,9 @@ type UserCardInfoData = {
 const local: any = inject("manager.settings.local");
 
 const avatarImg = ref("");
-const userBGImg = ref("");
+const userBgImg = ref("");
 const vipImg = ref("");
-const qrcodeImg = ref("");
+const qrCodeImg = ref("");
 const dataServer = ref({} as { status: BiliLoginStatus; msg: string; data: any });
 
 const isLoaded = ref(false);
@@ -227,40 +228,26 @@ watch(
 				status.value = "not_login";
 				return;
 			case BiliLoginStatus.LOGGED_IN: {
-				// 开启定时器
+				status.value = "logged_in";
+				const data = biliStore.data as UserCardInfoData;
 				const timer = setTimeout(() => {
 					tips.value = true;
 				}, 60000);
-				// 获取数据
-				const data = biliStore.data as UserCardInfoData;
-				// 请求数据
-				const requestCORS = async () => {
-					await send("bilibili-notify/request-cors" as any, data.card.face).then(async (v) => {
-						avatarImg.value = v;
-					});
-					await send("bilibili-notify/request-cors" as any, data.space.l_img).then(async (v) => {
-						userBGImg.value = v;
-					});
-					await send(
+				try {
+					avatarImg.value = await send("bilibili-notify/request-cors" as any, data.card.face);
+					userBgImg.value = await send("bilibili-notify/request-cors" as any, data.space.l_img);
+					vipImg.value = await send(
 						"bilibili-notify/request-cors" as any,
 						data.card.vip.label.img_label_uri_hans_static,
-					).then(async (v) => {
-						vipImg.value = v;
-					});
-					// 清除定时器
-					clearTimeout(timer);
-					// 数据请求完毕，可以显示页面
+					);
 					isLoaded.value = true;
-				};
-				// 设置状态
-				status.value = "logged_in";
-				// 请求CORS图片
-				await requestCORS();
-				// 结束
+				} finally {
+					clearTimeout(timer);
+				}
 				return;
 			}
 			case BiliLoginStatus.LOGIN_QR:
-				qrcodeImg.value = dataServer.value.data;
+				qrCodeImg.value = dataServer.value.data;
 				status.value = "logging_qr";
 				return;
 			case BiliLoginStatus.LOGGING_QR:
@@ -297,21 +284,20 @@ const resetKey = () => {
 
 // biome-ignore lint/correctness/noUnusedVariables: used in Vue template
 const formatNumber = (num: number) => {
-	if (num >= 1e8) {
-		return `${(num / 1e8).toFixed(1).replace(/\.0$/, "")}亿`;
-	} else if (num >= 1e4) {
-		return `${(num / 1e4).toFixed(1).replace(/\.0$/, "")}万`;
-	} else {
-		return num.toString();
-	}
+	if (num >= 1e8) return `${(num / 1e8).toFixed(1).replace(/\.0$/, "")}亿`;
+	if (num >= 1e4) return `${(num / 1e4).toFixed(1).replace(/\.0$/, "")}万`;
+	return num.toString();
 };
 </script>
 
-<style lang="scss">
+<!-- CSS 变量需全局生效 -->
+<style>
 :root {
   --bew-theme-color: #FB7299;
 }
+</style>
 
+<style lang="scss" scoped>
 .comment {
   margin-bottom: 1rem;
 }
@@ -413,22 +399,22 @@ const formatNumber = (num: number) => {
       color: white;
       text-shadow: 3px 3px 5px rgba(0, 0, 0, 0.7);
 
-      .udesc {
+      .user-desc {
         display: flex;
         align-items: center;
         gap: 0.5rem;
 
-        .uname {
+        .user-name {
           font-weight: 700;
           font-size: 1.7rem;
         }
 
-        .uvip {
+        .user-vip {
           width: 90px;
         }
       }
 
-      .usign {
+      .user-sign {
         font-weight: 700;
         font-size: 0.7rem;
       }
@@ -450,7 +436,6 @@ const formatNumber = (num: number) => {
       align-items: center;
       gap: 2px;
     }
-
   }
 
   .logo {

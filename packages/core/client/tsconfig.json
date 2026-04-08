@@ -3,6 +3,7 @@
 		"rootDir": ".",
 		"module": "esnext",
 		"moduleResolution": "node",
+		"ignoreDeprecations": "6.0",
 		"jsx": "preserve",
 		"types": ["@koishijs/client/global"]
 	},
