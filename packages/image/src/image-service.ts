@@ -2,10 +2,11 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { GuardLevel } from "blive-message-listener";
 import { JSDOM } from "jsdom";
-import { type Context, Logger, Schema, Service } from "koishi";
+import { type Context, Logger, Service } from "koishi";
 // biome-ignore lint/correctness/noUnusedImports: <import type>
 import {} from "koishi-plugin-puppeteer";
 import { DateTime } from "luxon";
+import type { BilibiliNotifyImageConfig } from "./config";
 import { BG_COLORS, generateDynamicCardStyle, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
 import { buildDynamicCardHtml, buildDynamicContent } from "./templates/dynamic-card";
 import { buildGuardCardHtml } from "./templates/guard-card";
@@ -37,7 +38,7 @@ async function withRetry<T>(fn: () => T | Promise<T>, maxAttempts = 3, delayMs =
 	throw lastError;
 }
 
-class BilibiliNotifyImage extends Service<BilibiliNotifyImage.Config> {
+class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 	static inject = ["puppeteer"];
 
 	private readonly imageLogger: Logger;
@@ -51,7 +52,7 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImage.Config> {
 	// 串行渲染队列，避免 puppeteer 并发问题
 	private renderQueue: Promise<void> = Promise.resolve();
 
-	constructor(ctx: Context, config: BilibiliNotifyImage.Config) {
+	constructor(ctx: Context, config: BilibiliNotifyImageConfig) {
 		super(ctx, SERVICE_NAME);
 		this.config = config;
 		this.imageLogger = new Logger(SERVICE_NAME);
@@ -489,73 +490,6 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImage.Config> {
 				});
 		});
 	}
-}
-
-namespace BilibiliNotifyImage {
-	export interface Config {
-		logLevel: number;
-		removeBorder: boolean;
-		cardColorStart: string;
-		cardColorEnd: string;
-		cardBasePlateColor: string;
-		cardBasePlateBorder: string;
-		enableLargeFont: boolean;
-		font: string;
-		hideDesc: boolean;
-		followerDisplay: boolean;
-	}
-
-	export const Config: Schema<Config> = Schema.object({
-		logLevel: Schema.number()
-			.min(1)
-			.max(3)
-			.step(1)
-			.default(1)
-			.description(
-				"这里可以设置日志等级喔～3 是最详细的调试信息，1 是只显示错误信息。主人可以根据需要选择合适的等级，让女仆更好地为您服务 (๑•̀ㅂ•́)و✧",
-			),
-		removeBorder: Schema.boolean()
-			.default(false)
-			.description("要不要把卡片边框移除呢？女仆可以帮忙裁掉，让卡片看起来更干净清爽 (｀・ω・´)！"),
-		cardColorStart: Schema.string()
-			.default("#e0c3fc")
-			.description(
-				"这是推送卡片渐变背景的起始颜色～主人喜欢什么颜色，女仆就用什么颜色 (〃´-`〃)♡ 请填写十六进制颜色值哦！",
-			),
-		cardColorEnd: Schema.string()
-			.default("#8ec5fc")
-			.description(
-				"这是推送卡片渐变背景的结束颜色～和起始颜色搭配使用，打造漂亮的渐变效果 (*´∀`)~♡",
-			),
-		cardBasePlateColor: Schema.string()
-			.default("#fff")
-			.description(
-				"这是卡片底板的颜色设置～请主人随意挑选喜欢的颜色！女仆会把卡片装扮得漂漂亮亮的 (๑•̀ㅂ•́)و✧",
-			),
-		cardBasePlateBorder: Schema.string()
-			.default("5px")
-			.description(
-				"这是卡片底板的圆角边框大小～请填写 CSS 单位哦，例如 5px 或 10px。女仆会乖乖画出漂亮的圆角 (*>ω<)b",
-			),
-		enableLargeFont: Schema.boolean()
-			.default(false)
-			.description(
-				"要不要开启大字体模式呢？开了之后字会变大一点，主人看起来更方便！女仆会按照主人的需求来调整 (〃ﾉωﾉ)",
-			),
-		font: Schema.string()
-			.default("sans-serif")
-			.description(
-				"如果主人想用自己的专属字体，可以在这里填写字体名称～女仆会努力渲染成主人喜欢的样子 (〃´-`〃)♡",
-			),
-		hideDesc: Schema.boolean()
-			.default(false)
-			.description("开启后会隐藏直播间简介，让推送卡片看起来更简洁清爽！女仆会照做的 (｀・ω・´)b"),
-		followerDisplay: Schema.boolean()
-			.default(true)
-			.description(
-				"要不要在推送卡片上显示粉丝变化和累计观看人数呢？女仆觉得显示出来会更好看 (*´∀`)~♡",
-			),
-	});
 }
 
 export default BilibiliNotifyImage;
