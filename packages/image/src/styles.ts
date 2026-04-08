@@ -1,36 +1,19 @@
 import { GuardLevel } from "blive-message-listener";
 
-export const CARD_SIZES = {
-	large: {
-		avatarSize: "70px",
-		upNameFont: "27px",
-		pubTimeFont: "20px",
-		dressUpFont: "17px",
-		cardDetailsFont: "22px",
-		forwardUserinfoHeight: "35px",
-		forwardUsernameFont: "20px",
-		forwardAvatarSize: "25px",
-		videoCardHeight: "147px",
-		dynTitleFont: "20px",
-		upInfoHeight: "70px",
-		dynamicCardRight: "67px",
-		dynamicCardTop: "24px",
-	},
-	normal: {
-		avatarSize: "50px",
-		upNameFont: "20px",
-		pubTimeFont: "12px",
-		dressUpFont: "12px",
-		cardDetailsFont: "14px",
-		forwardUserinfoHeight: "30px",
-		forwardUsernameFont: "15px",
-		forwardAvatarSize: "20px",
-		videoCardHeight: "132px",
-		dynTitleFont: "20px",
-		upInfoHeight: "50px",
-		dynamicCardRight: "37px",
-		dynamicCardTop: "5px",
-	},
+const CARD_SIZES = {
+	avatarSize: "50px",
+	upNameFont: "20px",
+	pubTimeFont: "12px",
+	dressUpFont: "12px",
+	cardDetailsFont: "14px",
+	forwardUserinfoHeight: "30px",
+	forwardUsernameFont: "15px",
+	forwardAvatarSize: "20px",
+	videoCardHeight: "132px",
+	dynTitleFont: "20px",
+	upInfoHeight: "50px",
+	dynamicCardRight: "37px",
+	dynamicCardTop: "5px",
 } as const;
 
 export const BG_COLORS: Record<GuardLevel, [string, string]> = {
@@ -69,12 +52,11 @@ export function getSCLevel(battery: number): number {
 
 export function generateDynamicCardStyle(
 	font: string,
-	isLargeFont: boolean,
 	cardColorStart: string,
 	cardColorEnd: string,
 	dynamicCardColor: string,
 ): string {
-	const s = isLargeFont ? CARD_SIZES.large : CARD_SIZES.normal;
+	const s = CARD_SIZES;
 	return `
             * {
                 margin: 0;

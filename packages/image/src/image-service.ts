@@ -251,7 +251,6 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 
 		const cardStyle = generateDynamicCardStyle(
 			this.config.font,
-			this.config.enableLargeFont,
 			cardColorStart,
 			cardColorEnd,
 			decorateCardColor ?? "#FFFFFF",

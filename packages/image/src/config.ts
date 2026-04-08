@@ -4,7 +4,7 @@ export interface BilibiliNotifyImageConfig {
 	logLevel: number;
 	cardColorStart: string;
 	cardColorEnd: string;
-	enableLargeFont: boolean;
+
 	font: string;
 	hideDesc: boolean;
 	followerDisplay: boolean;
@@ -27,11 +27,6 @@ export const BilibiliNotifyImageConfig: Schema<BilibiliNotifyImageConfig> = Sche
 	cardColorEnd: Schema.string()
 		.default("#8ec5fc")
 		.description("这是推送卡片渐变背景的结束颜色～和起始颜色搭配使用，打造漂亮的渐变效果 (*´∀`)~♡"),
-	enableLargeFont: Schema.boolean()
-		.default(false)
-		.description(
-			"要不要开启大字体模式呢？开了之后字会变大一点，主人看起来更方便！女仆会按照主人的需求来调整 (〃ﾉωﾉ)",
-		),
 	font: Schema.string()
 		.default("sans-serif")
 		.description(
