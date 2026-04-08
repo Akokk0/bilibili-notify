@@ -1,3 +1,5 @@
+import { CSS_AVATAR, CSS_FROSTED_CARD, cssGradientBg, cssReset } from "../styles";
+
 export type SCCardParams = {
 	font: string;
 	senderFace: string;
@@ -24,39 +26,30 @@ export function buildSCCardHtml(p: SCCardParams): string {
         <head>
             <title>醒目留言通知</title>
             <style>
-                * {
-                    margin: 0;
-                    padding: 0;
-                    box-sizing: border-box;
-                    font-family: "${p.font}", "Microsoft YaHei", "Source Han Sans", "Noto Sans CJK", sans-serif;
-                }
+                ${cssReset(p.font)}
 
                 html {
                     width: 280px;
                     height: auto;
                 }
 
-                .bg {
+                .background {
                     display: flex;
                     justify-content: center;
                     align-items: center;
                     width: 280px;
                     height: auto;
-                    padding: 15px 0;
-                    background: linear-gradient(to right bottom, ${p.bgColor[0]}, ${p.bgColor[1]});
+                    ${cssGradientBg(p.bgColor[0], p.bgColor[1], "15px 0")}
                 }
 
-                .baseplate {
+                .card {
                     display: flex;
                     flex-direction: column;
                     align-items: center;
-                    border-radius: 10px;
                     width: 260px;
                     height: auto;
-                    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
-                    background-color: rgba(255, 255, 255, 0.65);
-                    backdrop-filter: blur(10px);
                     padding: 20px 15px;
+                    ${CSS_FROSTED_CARD}
                 }
 
                 .price-section {
@@ -105,16 +98,14 @@ export function buildSCCardHtml(p: SCCardParams): string {
                 .avatar {
                     width: 70px;
                     height: 70px;
-                    border-radius: 50%;
                     overflow: hidden;
-                    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
+                    ${CSS_AVATAR}
                 }
 
                 .avatar img {
                     width: 100%;
                     height: 100%;
                     border-radius: 50%;
-                    border: 3px solid white;
                 }
 
                 .name-badge {
@@ -181,8 +172,8 @@ export function buildSCCardHtml(p: SCCardParams): string {
             </style>
         </head>
         <body>
-            <div class="bg">
-                <div class="baseplate">
+            <div class="background">
+                <div class="card">
                     <div class="price-section">
                         <div class="price-amount">¥${p.price}</div>
                         <div class="duration-badge">

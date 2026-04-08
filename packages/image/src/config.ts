@@ -4,7 +4,6 @@ export interface BilibiliNotifyImageConfig {
 	logLevel: number;
 	cardColorStart: string;
 	cardColorEnd: string;
-
 	font: string;
 	hideDesc: boolean;
 	followerDisplay: boolean;

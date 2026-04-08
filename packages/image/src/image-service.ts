@@ -7,8 +7,12 @@ import { type Context, Logger, Service } from "koishi";
 import {} from "koishi-plugin-puppeteer";
 import { DateTime } from "luxon";
 import type { BilibiliNotifyImageConfig } from "./config";
-import { BG_COLORS, generateDynamicCardStyle, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
-import { buildDynamicCardHtml, buildDynamicContent } from "./templates/dynamic-card";
+import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
+import {
+	buildDynamicCardHtml,
+	buildDynamicContent,
+	generateDynamicCardStyle,
+} from "./templates/dynamic-card";
 import { buildGuardCardHtml } from "./templates/guard-card";
 import { buildLiveCardHtml } from "./templates/live-card";
 import { buildSCCardHtml } from "./templates/sc-card";

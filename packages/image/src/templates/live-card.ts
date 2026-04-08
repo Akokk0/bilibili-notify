@@ -1,11 +1,11 @@
+import { CSS_AVATAR, CSS_FROSTED_CARD, cssGradientBg, cssReset } from "../styles";
+
 export type LiveCardParams = {
 	font: string;
 	hideDesc: boolean;
 	followerDisplay: boolean;
-	// 颜色
 	cardColorStart: string;
 	cardColorEnd: string;
-	// 直播数据
 	// biome-ignore lint/suspicious/noExplicitAny: Bilibili 直播 API 返回类型
 	data: any;
 	username: string;
@@ -28,12 +28,7 @@ export function buildLiveCardHtml(p: LiveCardParams): string {
         <head>
             <title>直播通知</title>
             <style>
-                * {
-                    margin: 0;
-                    padding: 0;
-                    box-sizing: border-box;
-                    font-family: "${p.font}", "Microsoft YaHei", "Source Han Sans", "Noto Sans CJK", sans-serif;
-                }
+                ${cssReset(p.font)}
 
                 html {
                     width: 800px;
@@ -43,18 +38,16 @@ export function buildLiveCardHtml(p: LiveCardParams): string {
                 .background {
                     width: 100%;
                     height: auto;
-                    padding: 15px;
-                    background: linear-gradient(to right bottom, ${p.cardColorStart}, ${p.cardColorEnd});
                     overflow: hidden;
+                    ${cssGradientBg(p.cardColorStart, p.cardColorEnd)}
                 }
 
                 .card {
                     width: 100%;
                     height: auto;
-                    border-radius: 5px;
                     padding: 15px;
                     overflow: hidden;
-                    background-color: #fff;
+                    ${CSS_FROSTED_CARD}
                 }
 
                 .card img {
@@ -88,8 +81,8 @@ export function buildLiveCardHtml(p: LiveCardParams): string {
 
                 .anchor-avatar {
                     width: 50px;
-                    height: auto;
-                    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
+                    height: 50px;
+                    ${CSS_AVATAR}
                 }
 
                 .broadcast-message {
@@ -116,43 +109,43 @@ export function buildLiveCardHtml(p: LiveCardParams): string {
         </head>
         <body>
             <div class="background">
-                    <div class="card">
-                        <img src="${p.cover ? p.data.user_cover : p.data.keyframe}" alt="封面">
-                        <div class="card-body">
-                            <div class="card-header">
-                                <h1 class="card-title">${p.data.title}</h1>
-                                <div class="live-broadcast-info">
-                                    <img style="border-radius: 10px; margin-left: 10px" class="anchor-avatar"
-                                        src="${p.userface}" alt="主播头像">
-                                    <span class="broadcast-message">${p.username}${p.titleStatus}</span>
-                                </div>
+                <div class="card">
+                    <img src="${p.cover ? p.data.user_cover : p.data.keyframe}" alt="封面">
+                    <div class="card-body">
+                        <div class="card-header">
+                            <h1 class="card-title">${p.data.title}</h1>
+                            <div class="live-broadcast-info">
+                                <img style="border-radius: 10px; margin-left: 10px" class="anchor-avatar"
+                                    src="${p.userface}" alt="主播头像">
+                                <span class="broadcast-message">${p.username}${p.titleStatus}</span>
                             </div>
-                            ${p.hideDesc ? "" : `<p class="card-text">${p.data.description ? p.data.description : "这个主播很懒，什么简介都没写"}</p>`}
-                            <p class="card-link">
-                                <span>${p.liveStatus === 3 ? `本场直播点赞数：${p.likedNum}` : `人气：${p.onlineNum}`}</span>
-                                <span>分区名称：${p.data.area_name}</span>
-                            </p>
-                            <p class="card-link">
-                                <span>${p.liveTime}</span>
-                                ${
-																	p.followerDisplay
-																		? `
-                                <span>
-                                ${
-																	p.liveStatus === 1
-																		? `当前粉丝数：${p.fansNum || "暂未获取到"}`
-																		: p.liveStatus === 2
-																			? `${p.watchedNum !== "API" ? `累计观看人数：${p.watchedNum}` : ""}`
-																			: p.liveStatus === 3
-																				? `粉丝数变化：${p.fansChanged}`
-																				: ""
-																}
-                                </span>`
-																		: ""
-																}
-                            </p>
                         </div>
+                        ${p.hideDesc ? "" : `<p class="card-text">${p.data.description ? p.data.description : "这个主播很懒，什么简介都没写"}</p>`}
+                        <p class="card-link">
+                            <span>${p.liveStatus === 3 ? `本场直播点赞数：${p.likedNum}` : `人气：${p.onlineNum}`}</span>
+                            <span>分区名称：${p.data.area_name}</span>
+                        </p>
+                        <p class="card-link">
+                            <span>${p.liveTime}</span>
+                            ${
+															p.followerDisplay
+																? `
+                            <span>
+                            ${
+															p.liveStatus === 1
+																? `当前粉丝数：${p.fansNum || "暂未获取到"}`
+																: p.liveStatus === 2
+																	? `${p.watchedNum !== "API" ? `累计观看人数：${p.watchedNum}` : ""}`
+																	: p.liveStatus === 3
+																		? `粉丝数变化：${p.fansChanged}`
+																		: ""
+														}
+                            </span>`
+																: ""
+														}
+                        </p>
                     </div>
+                </div>
             </div>
         </body>
         </html>

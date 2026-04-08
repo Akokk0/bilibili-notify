@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseRichText } from "../rich-text";
+import { CSS_AVATAR, CSS_FROSTED_CARD, cssGradientBg, cssReset } from "../styles";
 import type { Dynamic } from "../types";
 
 // 动态类型常量
@@ -375,6 +376,400 @@ function buildVideoContent(archive: {
                 </div>
             </div>
         </div>
+    `;
+}
+
+export function generateDynamicCardStyle(
+	font: string,
+	colorStart: string,
+	colorEnd: string,
+	decorateColor: string,
+): string {
+	return `
+        ${cssReset(font)}
+
+        html {
+            width: 800px;
+            height: auto;
+        }
+
+        .background {
+            width: 100%;
+            height: auto;
+            overflow: hidden;
+            ${cssGradientBg(colorStart, colorEnd)}
+        }
+
+        .card {
+            width: 100%;
+            height: auto;
+            padding: 15px;
+            overflow: hidden;
+            ${CSS_FROSTED_CARD}
+        }
+
+        .card-body {
+            display: flex;
+            gap: 12px;
+        }
+
+        .anchor-avatar {
+            width: 50px;
+            height: 50px;
+            flex-shrink: 0;
+            object-fit: cover;
+            ${CSS_AVATAR}
+        }
+
+        .card-content {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .up-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .up-name {
+            font-size: 16px;
+            font-weight: bold;
+            color: #18191C;
+        }
+
+        .pub-time {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .dress-up {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            border: 1px solid ${decorateColor};
+            color: ${decorateColor};
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .dress-up img {
+            height: 20px;
+            width: auto;
+        }
+
+        .card-topic {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 13px;
+            color: #00AEEC;
+            font-weight: bold;
+        }
+
+        .card-stat {
+            display: flex;
+            gap: 16px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(0, 0, 0, 0.06);
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 13px;
+            color: #999;
+        }
+
+        /* ── 图文内容 ── */
+
+        .card-major {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .single-photo-container {
+            position: relative;
+            width: 100%;
+            max-height: 600px;
+            overflow: hidden;
+            border-radius: 6px;
+        }
+
+        .single-photo-item {
+            width: 100%;
+            height: auto;
+            display: block;
+            object-fit: cover;
+        }
+
+        .single-photo-mask {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.5));
+            display: flex;
+            align-items: flex-end;
+            padding: 8px;
+        }
+
+        .single-photo-mask-text {
+            color: white;
+            font-size: 12px;
+        }
+
+        .single-photo-mask-arrow {
+            position: absolute;
+            right: 8px;
+            bottom: 8px;
+            width: 20px;
+            height: 20px;
+        }
+
+        .photo-item {
+            width: calc(33.33% - 3px);
+            aspect-ratio: 1;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+
+        .four-photo-item {
+            width: calc(50% - 2px);
+            aspect-ratio: 1;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+
+        /* ── 视频卡片 ── */
+
+        .card-video {
+            display: flex;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .video-cover {
+            position: relative;
+            width: 160px;
+            flex-shrink: 0;
+        }
+
+        .video-cover img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .cover-mask {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.2);
+        }
+
+        .video-cover span {
+            position: absolute;
+            bottom: 4px;
+            right: 6px;
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+        }
+
+        .video-info {
+            flex: 1;
+            min-width: 0;
+            padding: 10px 10px 10px 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .video-info-header {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .video-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #18191C;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+        }
+
+        .video-introduction {
+            font-size: 12px;
+            color: #999;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+        }
+
+        .video-stat {
+            display: flex;
+            gap: 12px;
+        }
+
+        .video-stat-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 12px;
+            color: #999;
+        }
+
+        /* ── 转发卡片 ── */
+
+        .card-forward {
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        .forward-userinfo {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+
+        .forward-avatar {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .forward-username {
+            font-size: 13px;
+            font-weight: bold;
+            color: #00AEEC;
+        }
+
+        .forward-main {
+            font-size: 13px;
+            color: #444;
+        }
+
+        /* ── 预约 / 商品卡片 ── */
+
+        .card-reserve {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        .reserve-main {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .reserve-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #18191C;
+            margin-bottom: 4px;
+        }
+
+        .reserve-desc {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .reserve-info {
+            display: flex;
+            gap: 8px;
+        }
+
+        .reserve-time, .reserve-num {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .reserve-prize {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 12px;
+            color: #FF6699;
+        }
+
+        .reserve-button {
+            flex-shrink: 0;
+        }
+
+        .reserve-button-end {
+            padding: 4px 12px;
+            border-radius: 12px;
+            border: 1px solid #ccc;
+            background: #f5f5f5;
+            color: #999;
+            font-size: 12px;
+            cursor: default;
+        }
+
+        .reserve-button-ing {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 12px;
+            border-radius: 12px;
+            border: 1px solid #00AEEC;
+            background: white;
+            color: #00AEEC;
+            font-size: 12px;
+            cursor: default;
+        }
+
+        .up-recommand {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 6px;
+        }
+
+        /* ── 富文本段落 ── */
+
+        p {
+            font-size: 15px;
+            color: #18191C;
+            line-height: 1.6;
+            margin-bottom: 4px;
+            word-break: break-word;
+        }
     `;
 }
 
