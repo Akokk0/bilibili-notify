@@ -133,24 +133,17 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 		liveStatus: number,
 		colorOptions: CardColorOptions = {},
 	): Promise<Buffer> {
-		const {
-			cardColorStart = this.config.cardColorStart,
-			cardColorEnd = this.config.cardColorEnd,
-			cardBasePlateColor = this.config.cardBasePlateColor,
-			cardBasePlateBorder = this.config.cardBasePlateBorder,
-		} = colorOptions;
+		const { cardColorStart = this.config.cardColorStart, cardColorEnd = this.config.cardColorEnd } =
+			colorOptions;
 
 		const [titleStatus, liveTime, cover] = await this.getLiveStatus(data.live_time, liveStatus);
 
 		const html = buildLiveCardHtml({
 			font: this.config.font,
-			removeBorder: this.config.removeBorder,
 			hideDesc: this.config.hideDesc,
 			followerDisplay: this.config.followerDisplay,
 			cardColorStart,
 			cardColorEnd,
-			cardBasePlateColor,
-			cardBasePlateBorder,
 			data,
 			username,
 			userface,
@@ -235,12 +228,8 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 	}
 
 	async generateDynamicCard(data: Dynamic, colorOptions: CardColorOptions = {}): Promise<Buffer> {
-		const {
-			cardColorStart = this.config.cardColorStart,
-			cardColorEnd = this.config.cardColorEnd,
-			cardBasePlateColor = this.config.cardBasePlateColor,
-			cardBasePlateBorder = this.config.cardBasePlateBorder,
-		} = colorOptions;
+		const { cardColorStart = this.config.cardColorStart, cardColorEnd = this.config.cardColorEnd } =
+			colorOptions;
 
 		const moduleAuthor = data.modules.module_author;
 		const moduleStat = data.modules.module_stat;
@@ -265,14 +254,11 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 			this.config.enableLargeFont,
 			cardColorStart,
 			cardColorEnd,
-			cardBasePlateBorder,
-			cardBasePlateColor,
 			decorateCardColor ?? "#FFFFFF",
 		);
 
 		const html = buildDynamicCardHtml({
 			font: this.config.font,
-			removeBorder: this.config.removeBorder,
 			cardStyle,
 			avatarUrl: moduleAuthor.face,
 			upName: moduleAuthor.name,

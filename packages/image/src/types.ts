@@ -89,6 +89,4 @@ export type LiveData = {
 export type CardColorOptions = {
 	cardColorStart?: string;
 	cardColorEnd?: string;
-	cardBasePlateColor?: string;
-	cardBasePlateBorder?: string;
 };

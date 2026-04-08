@@ -1,13 +1,10 @@
 export type LiveCardParams = {
 	font: string;
-	removeBorder: boolean;
 	hideDesc: boolean;
 	followerDisplay: boolean;
 	// 颜色
 	cardColorStart: string;
 	cardColorEnd: string;
-	cardBasePlateColor: string;
-	cardBasePlateBorder: string;
 	// 直播数据
 	// biome-ignore lint/suspicious/noExplicitAny: Bilibili 直播 API 返回类型
 	data: any;
@@ -49,15 +46,6 @@ export function buildLiveCardHtml(p: LiveCardParams): string {
                     padding: 15px;
                     background: linear-gradient(to right bottom, ${p.cardColorStart}, ${p.cardColorEnd});
                     overflow: hidden;
-                }
-
-                .base-plate {
-                    width: 100%;
-                    height: auto;
-                    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
-                    padding: ${p.cardBasePlateBorder};
-                    border-radius: 10px;
-                    background-color: ${p.cardBasePlateColor};
                 }
 
                 .card {
@@ -128,7 +116,6 @@ export function buildLiveCardHtml(p: LiveCardParams): string {
         </head>
         <body>
             <div class="background">
-                <div ${p.removeBorder ? "" : 'class="base-plate"'}>
                     <div class="card">
                         <img src="${p.cover ? p.data.user_cover : p.data.keyframe}" alt="封面">
                         <div class="card-body">
@@ -166,7 +153,6 @@ export function buildLiveCardHtml(p: LiveCardParams): string {
                             </p>
                         </div>
                     </div>
-                </div>
             </div>
         </body>
         </html>

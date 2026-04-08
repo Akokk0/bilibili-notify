@@ -381,7 +381,6 @@ function buildVideoContent(archive: {
 /** 动态卡片外层 HTML 结构 */
 export type DynamicCardShellParams = {
 	font: string;
-	removeBorder: boolean;
 	cardStyle: string;
 	avatarUrl: string;
 	upName: string;
@@ -413,7 +412,6 @@ export function buildDynamicCardHtml(p: DynamicCardShellParams): string {
         </head>
         <body>
             <div class="background">
-                <div ${p.removeBorder ? "" : 'class="base-plate"'}>
                     <div class="card">
                         <div class="card-body">
                             <img class="anchor-avatar" src="${p.avatarUrl}" alt="主播头像">
@@ -459,7 +457,6 @@ export function buildDynamicCardHtml(p: DynamicCardShellParams): string {
                             </div>
                         </div>
                     </div>
-                </div>
             </div>
         </body>
         </html>

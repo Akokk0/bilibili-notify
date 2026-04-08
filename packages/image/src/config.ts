@@ -2,11 +2,8 @@ import { Schema } from "koishi";
 
 export interface BilibiliNotifyImageConfig {
 	logLevel: number;
-	removeBorder: boolean;
 	cardColorStart: string;
 	cardColorEnd: string;
-	cardBasePlateColor: string;
-	cardBasePlateBorder: string;
 	enableLargeFont: boolean;
 	font: string;
 	hideDesc: boolean;
@@ -22,9 +19,6 @@ export const BilibiliNotifyImageConfig: Schema<BilibiliNotifyImageConfig> = Sche
 		.description(
 			"这里可以设置日志等级喔～3 是最详细的调试信息，1 是只显示错误信息。主人可以根据需要选择合适的等级，让女仆更好地为您服务 (๑•̀ㅂ•́)و✧",
 		),
-	removeBorder: Schema.boolean()
-		.default(false)
-		.description("要不要把卡片边框移除呢？女仆可以帮忙裁掉，让卡片看起来更干净清爽 (｀・ω・´)！"),
 	cardColorStart: Schema.string()
 		.default("#e0c3fc")
 		.description(
@@ -33,16 +27,6 @@ export const BilibiliNotifyImageConfig: Schema<BilibiliNotifyImageConfig> = Sche
 	cardColorEnd: Schema.string()
 		.default("#8ec5fc")
 		.description("这是推送卡片渐变背景的结束颜色～和起始颜色搭配使用，打造漂亮的渐变效果 (*´∀`)~♡"),
-	cardBasePlateColor: Schema.string()
-		.default("#fff")
-		.description(
-			"这是卡片底板的颜色设置～请主人随意挑选喜欢的颜色！女仆会把卡片装扮得漂漂亮亮的 (๑•̀ㅂ•́)و✧",
-		),
-	cardBasePlateBorder: Schema.string()
-		.default("5px")
-		.description(
-			"这是卡片底板的圆角边框大小～请填写 CSS 单位哦，例如 5px 或 10px。女仆会乖乖画出漂亮的圆角 (*>ω<)b",
-		),
 	enableLargeFont: Schema.boolean()
 		.default(false)
 		.description(

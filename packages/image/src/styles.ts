@@ -72,8 +72,6 @@ export function generateDynamicCardStyle(
 	isLargeFont: boolean,
 	cardColorStart: string,
 	cardColorEnd: string,
-	cardBasePlateBorder: string,
-	cardBasePlateColor: string,
 	dynamicCardColor: string,
 ): string {
 	const s = isLargeFont ? CARD_SIZES.large : CARD_SIZES.normal;
@@ -96,15 +94,6 @@ export function generateDynamicCardStyle(
                 padding: 15px;
                 background: linear-gradient(to right bottom, ${cardColorStart}, ${cardColorEnd});
                 overflow: hidden;
-            }
-
-            .base-plate {
-                width: 100%;
-                height: auto;
-                box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
-                padding: ${cardBasePlateBorder};
-                border-radius: 10px;
-                background-color: ${cardBasePlateColor};
             }
 
             .card {
