@@ -39,6 +39,37 @@ function withLock(fn: () => Promise<void>): () => void {
 	};
 }
 
+/** 从动态数据中提取纯文本内容，用于 AI 点评 */
+function extractDynamicText(item: Dynamic): string {
+	const mod = item.modules.module_dynamic;
+	const parts: string[] = [];
+
+	// 正文描述
+	if (mod.desc?.text) parts.push(mod.desc.text);
+
+	// 专栏/opus 摘要
+	if (mod.major?.opus?.summary?.text) {
+		if (mod.major.opus.title) parts.push(`标题：${mod.major.opus.title}`);
+		parts.push(mod.major.opus.summary.text);
+	}
+
+	// 视频标题
+	if (mod.major?.archive?.title) parts.push(`视频标题：${mod.major.archive.title}`);
+
+	// 转发内容
+	if (item.orig) {
+		const origMod = item.orig.modules.module_dynamic;
+		const origAuthor = item.orig.modules.module_author.name;
+		const origParts: string[] = [];
+		if (origMod.desc?.text) origParts.push(origMod.desc.text);
+		if (origMod.major?.opus?.summary?.text) origParts.push(origMod.major.opus.summary.text);
+		if (origMod.major?.archive?.title) origParts.push(`视频标题：${origMod.major.archive.title}`);
+		if (origParts.length > 0) parts.push(`（转发自 ${origAuthor}：${origParts.join(" ")}）`);
+	}
+
+	return parts.join("\n").trim();
+}
+
 export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> {
 	static readonly [Service.provide] = SERVICE_NAME;
 
@@ -231,10 +262,26 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 				}
 			}
 
+			// AI comment
+			let aiComment: string | undefined;
+			if (this.api.isAIEnabled()) {
+				const dynamicText = extractDynamicText(item);
+				if (dynamicText) {
+					try {
+						aiComment = await this.api.chatWithAI(
+							`${name}发布了一条动态，内容如下：\n${dynamicText}`,
+						);
+					} catch (e) {
+						this.dynamicLogger.error(`AI 点评生成失败：${(e as Error).message}，回退到普通文字`);
+					}
+				}
+			}
+
 			// Send
+			const textPart = aiComment ?? (dUrl || undefined);
 			const msgContent = buffer
-				? [h.image(buffer, "image/jpeg"), h.text(dUrl)]
-				: [h.text(`${name}发布了一条动态${dUrl ? `：${dUrl}` : ""}`)];
+				? [h.image(buffer, "image/jpeg"), ...(textPart ? [h.text(textPart)] : [])]
+				: [h.text(aiComment ?? `${name}发布了一条动态${dUrl ? `：${dUrl}` : ""}`)];
 			await this.push.broadcastToTargets(uid, h("message", msgContent), PushType.Dynamic);
 
 			// Push extra images from draw dynamics
