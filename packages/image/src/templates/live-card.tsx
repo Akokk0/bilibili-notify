@@ -34,9 +34,9 @@ export function LiveCard(p: LiveCardProps) {
 	};
 
 	const followerText = () => {
-		if (p.liveStatus === 1) return p.fansNum ? `粉丝：${p.fansNum}` : "";
-		if (p.liveStatus === 2) return p.watchedNum !== "API" ? `观看：${p.watchedNum}` : "";
-		if (p.liveStatus === 3) return p.fansChanged ? `粉丝变化：${p.fansChanged}` : "";
+		if (p.liveStatus === 1) return p.fansNum ? `当前粉丝数：${p.fansNum}` : "";
+		if (p.liveStatus === 2) return p.watchedNum !== "API" ? `累计观看人数：${p.watchedNum}` : "";
+		if (p.liveStatus === 3) return p.fansChanged ? `粉丝数变化：${p.fansChanged}` : "";
 		return "";
 	};
 
