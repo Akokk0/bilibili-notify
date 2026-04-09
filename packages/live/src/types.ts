@@ -17,10 +17,10 @@ export interface MasterInfo {
 }
 
 export interface LiveData {
-	watchedNum?: string;
-	likedNum?: string;
-	fansNum?: string;
-	fansChanged?: string;
+	watchedNum?: string | number;
+	likedNum?: string | number;
+	fansNum?: string | number;
+	fansChanged?: string | number;
 }
 
 export interface UserInfoInLiveData {

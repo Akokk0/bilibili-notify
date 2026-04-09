@@ -1,21 +1,19 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { GuardLevel } from "blive-message-listener";
+import { GuardLevel } from "blive-message-listener";
 import { JSDOM } from "jsdom";
 import { type Context, Logger, Service } from "koishi";
 // biome-ignore lint/correctness/noUnusedImports: <import type>
 import {} from "koishi-plugin-puppeteer";
 import { DateTime } from "luxon";
 import type { BilibiliNotifyImageConfig } from "./config";
+import { renderCard } from "./render";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
-import {
-	buildDynamicCardHtml,
-	buildDynamicContent,
-	generateDynamicCardStyle,
-} from "./templates/dynamic-card";
-import { buildGuardCardHtml } from "./templates/guard-card";
-import { buildLiveCardHtml } from "./templates/live-card";
-import { buildSCCardHtml } from "./templates/sc-card";
+import { DynamicCard } from "./templates/dynamic-card";
+import { buildDynamicContent } from "./templates/dynamic-content";
+import { GuardCard } from "./templates/guard-card";
+import { LiveCard } from "./templates/live-card";
+import { SCCard } from "./templates/sc-card";
 import { buildWordCloudHtml } from "./templates/wordcloud";
 import type { CardColorOptions, Dynamic, LiveData } from "./types";
 
@@ -26,6 +24,16 @@ declare module "koishi" {
 }
 
 const SERVICE_NAME = "bilibili-notify-image";
+
+const GUARD_LEVEL_IMG: Record<GuardLevel, string> = {
+	[GuardLevel.None]: "",
+	[GuardLevel.Jianzhang]:
+		"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/captain-Bjw5Byb5.png",
+	[GuardLevel.Tidu]:
+		"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/supervisor-u43ElIjU.png",
+	[GuardLevel.Zongdu]:
+		"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/governor-DpDXKEdA.png",
+};
 
 async function withRetry<T>(fn: () => T | Promise<T>, maxAttempts = 3, delayMs = 1000): Promise<T> {
 	let lastError: unknown;
@@ -142,25 +150,42 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 
 		const [titleStatus, liveTime, cover] = await this.getLiveStatus(data.live_time, liveStatus);
 
-		const html = buildLiveCardHtml({
-			font: this.config.font,
-			hideDesc: this.config.hideDesc,
-			followerDisplay: this.config.followerDisplay,
-			cardColorStart,
-			cardColorEnd,
-			data,
-			username,
-			userface,
-			titleStatus,
-			liveTime,
-			liveStatus,
-			cover,
-			onlineNum: this.numberToStr(+(data.online ?? 0)),
-			likedNum: this.numberToStr(+(liveData.likedNum ?? "0")),
-			watchedNum: liveData.watchedNum ?? "",
-			fansNum: liveData.fansNum ?? "",
-			fansChanged: liveData.fansChanged ?? "",
-		});
+		const html = await renderCard(
+			LiveCard,
+			{
+				hideDesc: this.config.hideDesc,
+				followerDisplay: this.config.followerDisplay,
+				cardColorStart,
+				cardColorEnd,
+				data,
+				username,
+				userface,
+				titleStatus,
+				liveTime,
+				liveStatus,
+				cover,
+				onlineNum: this.numberToStr(+(data.online ?? 0)),
+				likedNum:
+					typeof liveData.likedNum === "number"
+						? this.numberToStr(liveData.likedNum)
+						: (liveData.likedNum ?? ""),
+				watchedNum:
+					typeof liveData.watchedNum === "number"
+						? this.numberToStr(liveData.watchedNum)
+						: (liveData.watchedNum ?? ""),
+				fansNum:
+					typeof liveData.fansNum === "number"
+						? this.numberToStr(liveData.fansNum)
+						: (liveData.fansNum ?? ""),
+				fansChanged: (() => {
+					if (typeof liveData.fansChanged !== "number") return liveData.fansChanged ?? "";
+					const n = liveData.fansChanged;
+					if (n > 0) return n >= 10_000 ? `+${(n / 10_000).toFixed(1)}万` : `+${n}`;
+					return n <= -10_000 ? `${(n / 10_000).toFixed(1)}万` : n.toString();
+				})(),
+			},
+			{ title: "直播通知", font: this.config.font, htmlWidth: 800 },
+		);
 
 		return withRetry(() => this.renderHtml(html)).catch((e) => {
 			throw new Error(`生成直播卡片失败！错误: ${e}`);
@@ -168,7 +193,6 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 	}
 
 	async generateGuardCard(
-		captainImgUrl: string,
 		{
 			guardLevel,
 			uname,
@@ -177,17 +201,21 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 		}: { guardLevel: GuardLevel; uname: string; face: string; isAdmin: number },
 		{ masterAvatarUrl, masterName }: { masterAvatarUrl: string; masterName: string },
 	): Promise<Buffer> {
-		const html = buildGuardCardHtml({
-			font: this.config.font,
-			captainImgUrl,
-			guardLevel,
-			uname,
-			face,
-			isAdmin,
-			masterAvatarUrl,
-			masterName,
-			bgColor: BG_COLORS[guardLevel],
-		});
+		const captainImgUrl = GUARD_LEVEL_IMG[guardLevel] ?? "";
+		const html = await renderCard(
+			GuardCard,
+			{
+				captainImgUrl,
+				guardLevel,
+				uname,
+				face,
+				isAdmin,
+				masterAvatarUrl,
+				masterName,
+				bgColor: BG_COLORS[guardLevel],
+			},
+			{ title: "上舰通知", font: this.config.font, htmlWidth: 430 },
+		);
 
 		return withRetry(() => this.renderHtml(html)).catch((e) => {
 			throw new Error(`生成上舰卡片失败！错误: ${e}`);
@@ -214,17 +242,20 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 		const bgColor = SC_COLORS[levelIndex];
 		const levelInfo = Object.values(SC_LEVELS)[levelIndex];
 
-		const html = buildSCCardHtml({
-			font: this.config.font,
-			senderFace,
-			senderName,
-			masterName,
-			masterAvatarUrl,
-			text,
-			price,
-			duration: levelInfo.duration,
-			bgColor,
-		});
+		const html = await renderCard(
+			SCCard,
+			{
+				senderFace,
+				senderName,
+				masterName,
+				masterAvatarUrl,
+				text,
+				price,
+				duration: levelInfo.duration,
+				bgColor,
+			},
+			{ title: "醒目留言通知", font: this.config.font, htmlWidth: 280 },
+		);
 
 		return withRetry(() => this.renderHtml(html)).catch((e) => {
 			throw new Error(`生成 SC 卡片失败！错误: ${e}`);
@@ -253,28 +284,26 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 			pubTime += content.pubTimeSuffix;
 		}
 
-		const cardStyle = generateDynamicCardStyle(
-			this.config.font,
-			cardColorStart,
-			cardColorEnd,
-			decorateCardColor ?? "#FFFFFF",
+		const html = await renderCard(
+			DynamicCard,
+			{
+				cardColorStart,
+				cardColorEnd,
+				decorateColor: decorateCardColor ?? "#FFFFFF",
+				avatarUrl: moduleAuthor.face,
+				upName: moduleAuthor.name,
+				upIsVip: moduleAuthor.vip.type !== 0,
+				pubTime,
+				decorateCardUrl,
+				decorateCardId: decorateCardId?.toString(),
+				topic,
+				mainContent: content.vnode,
+				forwardCount: this.numberToStr(moduleStat.forward.count),
+				commentCount: this.numberToStr(moduleStat.comment.count),
+				likeCount: this.numberToStr(moduleStat.like.count),
+			},
+			{ title: "动态通知", font: this.config.font },
 		);
-
-		const html = buildDynamicCardHtml({
-			font: this.config.font,
-			cardStyle,
-			avatarUrl: moduleAuthor.face,
-			upName: moduleAuthor.name,
-			upIsVip: moduleAuthor.vip.type !== 0,
-			pubTime,
-			decorateCardUrl,
-			decorateCardId,
-			topic,
-			mainContent: content.html,
-			forwardCount: this.numberToStr(moduleStat.forward.count),
-			commentCount: this.numberToStr(moduleStat.comment.count),
-			likeCount: this.numberToStr(moduleStat.like.count),
-		});
 
 		return withRetry(() => this.renderHtml(html)).catch((e) => {
 			throw new Error(`生成动态卡片失败！错误: ${e}`);

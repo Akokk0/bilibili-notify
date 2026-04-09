@@ -529,7 +529,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			if (!(await useMasterInfo(LiveType.LiveBroadcast)) || !masterInfo) return;
 
 			liveTime = liveRoomInfo.live_time;
-			const watched = liveData.watchedNum ?? "暂未获取到";
+			const watched = String(liveData.watchedNum ?? "暂未获取到");
 			liveData.watchedNum = watched;
 			const diffTime = await this.getTimeDifference(liveTime);
 			const roomLink = `https://live.bilibili.com/${liveRoomInfo.short_id === 0 ? liveRoomInfo.room_id : liveRoomInfo.short_id}`;
@@ -637,7 +637,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			},
 
 			onLikedChange: ({ body }) => {
-				liveData.likedNum = body.count.toString();
+				liveData.likedNum = body.count;
 			},
 
 			onGuardBuy: async ({ body }) => {
@@ -673,7 +673,6 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 					if (data.code === 0) {
 						try {
 							const buf = await imageService.generateGuardCard(
-								guardImg,
 								{
 									guardLevel: body.guard_level,
 									uname: data.data.uname,
@@ -748,7 +747,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 					masterInfo.liveOpenFollowerNum >= 10_000
 						? `${(masterInfo.liveOpenFollowerNum / 10000).toFixed(1)}万`
 						: masterInfo.liveOpenFollowerNum.toString();
-				liveData.fansNum = followerNum;
+				liveData.fansNum = masterInfo.liveOpenFollowerNum;
 
 				const roomLink = `https://live.bilibili.com/${liveRoomInfo.short_id === 0 ? liveRoomInfo.room_id : liveRoomInfo.short_id}`;
 				const liveStartMsg = this.applyTemplate(
@@ -823,18 +822,26 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 
 				liveTime = liveRoomInfo.live_time || DateTime.now().toFormat("yyyy-MM-dd HH:mm:ss");
 				const diffTime = await this.getTimeDifference(liveTime);
-				const followerChange = (() => {
-					const n = masterInfo.liveFollowerChange;
-					if (n > 0) return n >= 10_000 ? `+${(n / 10000).toFixed(1)}万` : `+${n}`;
-					return n <= -10_000 ? `${(n / 10000).toFixed(1)}万` : n.toString();
-				})();
-				liveData.fansChanged = followerChange;
+				liveData.fansChanged = masterInfo.liveFollowerChange;
+				const n = masterInfo.liveFollowerChange;
+				const followerChangeStr =
+					n > 0
+						? n >= 10_000
+							? `+${(n / 10000).toFixed(1)}万`
+							: `+${n}`
+						: n <= -10_000
+							? `${(n / 10000).toFixed(1)}万`
+							: n.toString();
 
 				const liveEndMsg = this.applyTemplate(
 					sub.customLiveMsg.customLiveEnd ??
 						this.config.customLiveMsg.customLiveEnd ??
 						"-name 下播啦，本次直播了 -time，粉丝变化 -follower_change",
-					{ "-name": masterInfo.username, "-time": diffTime, "-follower_change": followerChange },
+					{
+						"-name": masterInfo.username,
+						"-time": diffTime,
+						"-follower_change": followerChangeStr,
+					},
 				);
 
 				if (sub.liveEnd) {
@@ -896,7 +903,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 
 		if (liveRoomInfo.live_status === 1) {
 			liveTime = liveRoomInfo.live_time;
-			const watched = liveData.watchedNum ?? "暂未获取到";
+			const watched = String(liveData.watchedNum ?? "暂未获取到");
 			liveData.watchedNum = watched;
 			const diffTime = await this.getTimeDifference(liveTime);
 			const roomLink = `https://live.bilibili.com/${liveRoomInfo.short_id === 0 ? liveRoomInfo.room_id : liveRoomInfo.short_id}`;

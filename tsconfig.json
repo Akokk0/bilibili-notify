@@ -6,5 +6,6 @@
 			"koishi-plugin-bilibili-notify-*": ["./packages/*/src"],
 			"koishi-plugin-bilibili-notify": ["./packages/core/src"]
 		}
-	}
+	},
+	"exclude": ["packages/image/src/**/*.tsx"]
 }

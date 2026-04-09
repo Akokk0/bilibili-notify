@@ -80,10 +80,10 @@ export type RichTextNode = Array<{
 }>;
 
 export type LiveData = {
-	watchedNum?: string;
-	likedNum?: string;
-	fansNum?: string;
-	fansChanged?: string;
+	watchedNum?: string | number;
+	likedNum?: string | number;
+	fansNum?: string | number;
+	fansChanged?: string | number;
 };
 
 export type CardColorOptions = {
