@@ -373,6 +373,79 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		}) as Record<string, unknown>;
 	}
 
+	private async generateWordCloud(
+		sortedWords: [string, number][],
+		masterName: string,
+	): Promise<ReturnType<typeof h.image> | undefined> {
+		if (sortedWords.length < 50) {
+			this.liveLogger.debug("热词不足50个，放弃生成弹幕词云");
+			return undefined;
+		}
+		// biome-ignore lint/suspicious/noExplicitAny: optional image service
+		const imageService = (this.ctx as any)["bilibili-notify-image"];
+		if (!imageService?.generateWordCloudImg) return undefined;
+		try {
+			const buf = await imageService.generateWordCloudImg(sortedWords.slice(0, 90), masterName);
+			return h.image(buf, "image/jpeg");
+		} catch (e) {
+			this.liveLogger.error(`生成词云失败：${(e as Error).message}`);
+			return undefined;
+		}
+	}
+
+	private async generateLiveSummaryText(
+		danmakuSenderRecord: Record<string, number>,
+		sortedWords: [string, number][],
+		masterInfo: MasterInfo | undefined,
+		customLiveSummary: string,
+	): Promise<string | undefined> {
+		const senderCount = Object.keys(danmakuSenderRecord).length;
+		if (senderCount < 5) {
+			this.liveLogger.debug("发言人数不足5位，放弃生成直播总结");
+			return undefined;
+		}
+
+		const danmakuCount = Object.values(danmakuSenderRecord).reduce((sum, val) => sum + val, 0);
+		const top5Senders = Object.entries(danmakuSenderRecord)
+			.sort((a, b) => b[1] - a[1])
+			.slice(0, 5);
+
+		if (this.api.isAIEnabled()) {
+			try {
+				const top10Words = sortedWords.slice(0, 10).map(([word, count]) => `${word}(${count})`);
+				const prompt = [
+					"请生成直播总结",
+					`弹幕发言人数：${senderCount}`,
+					`粉丝牌名：${masterInfo?.medalName ?? ""}`,
+					`弹幕总数：${danmakuCount}`,
+					`热词TOP10：${top10Words.join("、")}`,
+					`弹幕排行TOP5：${top5Senders.map(([u, c]) => `${u}(${c}条)`).join("、")}`,
+				].join("，");
+				const aiResult = await this.api.chatWithAI(prompt);
+				this.liveLogger.debug("AI 直播总结生成完毕");
+				return aiResult;
+			} catch (e) {
+				this.liveLogger.error(`AI 直播总结生成失败：${(e as Error).message}，回退到模板`);
+			}
+		}
+
+		return this.applyTemplate(customLiveSummary, {
+			"-dmc": `${senderCount}`,
+			"-mdn": masterInfo?.medalName ?? "",
+			"-dca": `${danmakuCount}`,
+			"-un1": top5Senders[0][0],
+			"-dc1": `${top5Senders[0][1]}`,
+			"-un2": top5Senders[1][0],
+			"-dc2": `${top5Senders[1][1]}`,
+			"-un3": top5Senders[2][0],
+			"-dc3": `${top5Senders[2][1]}`,
+			"-un4": top5Senders[3][0],
+			"-dc4": `${top5Senders[3][1]}`,
+			"-un5": top5Senders[4][0],
+			"-dc5": `${top5Senders[4][1]}`,
+		});
+	}
+
 	private async getTimeDifference(dateString: string): Promise<string> {
 		// biome-ignore lint/suspicious/noExplicitAny: optional image service
 		const imageService = (this.ctx as any)["bilibili-notify-image"];
@@ -400,73 +473,17 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 
 		const sendDanmakuWordCloudAndLiveSummary = async (customLiveSummary: string) => {
 			this.liveLogger.debug("开始制作弹幕词云");
-			const words = Object.entries(danmakuWeightRecord);
-			const danmaker = Object.entries(danmakuSenderRecord);
+			const sortedWords = Object.entries(danmakuWeightRecord).sort((a, b) => b[1] - a[1]);
 
-			const img = await (async () => {
-				if (words.length < 50) {
-					this.liveLogger.debug("热词不足50个，放弃生成弹幕词云");
-					return undefined;
-				}
-				const top90Words = words.sort((a, b) => b[1] - a[1]).slice(0, 90);
-				// biome-ignore lint/suspicious/noExplicitAny: optional image service
-				const imageService = (this.ctx as any)["bilibili-notify-image"];
-				if (!imageService?.generateWordCloudImg) return undefined;
-				try {
-					const buf = await imageService.generateWordCloudImg(
-						top90Words,
-						masterInfo?.username ?? "",
-					);
-					return h.image(buf, "image/jpeg");
-				} catch (e) {
-					this.liveLogger.error(`生成词云失败：${(e as Error).message}`);
-					return undefined;
-				}
-			})();
-
-			const summary = await (async () => {
-				if (danmaker.length < 5) {
-					this.liveLogger.debug("发言人数不足5位，放弃生成直播总结");
-					return undefined;
-				}
-				const danmakuSenderCount = Object.keys(danmakuSenderRecord).length;
-				const danmakuCount = Object.values(danmakuSenderRecord).reduce((sum, val) => sum + val, 0);
-				const top5DanmakuSender = Object.entries(danmakuSenderRecord)
-					.sort((a, b) => b[1] - a[1])
-					.slice(0, 5);
-				if (top5DanmakuSender.length < 5) return undefined;
-
-				if (this.api.isAIEnabled()) {
-					try {
-						const top10Words = words
-							.sort((a, b) => b[1] - a[1])
-							.slice(0, 10)
-							.map(([word, count]) => `${word}(${count})`);
-						const prompt = `请生成直播总结，弹幕发言人数：${danmakuSenderCount}，粉丝牌名：${masterInfo?.medalName ?? ""}，弹幕总数：${danmakuCount}，热词TOP10：${top10Words.join("、")}，弹幕排行TOP5：${top5DanmakuSender.map(([u, c]) => `${u}(${c}条)`).join("、")}`;
-						const aiResult = await this.api.chatWithAI(prompt);
-						this.liveLogger.debug("AI 直播总结生成完毕");
-						return aiResult;
-					} catch (e) {
-						this.liveLogger.error(`AI 直播总结生成失败：${(e as Error).message}，回退到模板`);
-					}
-				}
-
-				return this.applyTemplate(customLiveSummary, {
-					"-dmc": `${danmakuSenderCount}`,
-					"-mdn": masterInfo?.medalName ?? "",
-					"-dca": `${danmakuCount}`,
-					"-un1": top5DanmakuSender[0][0],
-					"-dc1": `${top5DanmakuSender[0][1]}`,
-					"-un2": top5DanmakuSender[1][0],
-					"-dc2": `${top5DanmakuSender[1][1]}`,
-					"-un3": top5DanmakuSender[2][0],
-					"-dc3": `${top5DanmakuSender[2][1]}`,
-					"-un4": top5DanmakuSender[3][0],
-					"-dc4": `${top5DanmakuSender[3][1]}`,
-					"-un5": top5DanmakuSender[4][0],
-					"-dc5": `${top5DanmakuSender[4][1]}`,
-				});
-			})();
+			const [img, summary] = await Promise.all([
+				this.generateWordCloud(sortedWords, masterInfo?.username ?? ""),
+				this.generateLiveSummaryText(
+					danmakuSenderRecord,
+					sortedWords,
+					masterInfo,
+					customLiveSummary,
+				),
+			]);
 
 			if (this.isDisposed()) return;
 
@@ -479,12 +496,8 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 				);
 			}
 
-			for (const key of Object.keys(danmakuWeightRecord)) {
-				delete danmakuWeightRecord[key];
-			}
-			for (const key of Object.keys(danmakuSenderRecord)) {
-				delete danmakuSenderRecord[key];
-			}
+			for (const key of Object.keys(danmakuWeightRecord)) delete danmakuWeightRecord[key];
+			for (const key of Object.keys(danmakuSenderRecord)) delete danmakuSenderRecord[key];
 		};
 
 		const useLiveRoomInfo = async (liveType: LiveType): Promise<boolean> => {
