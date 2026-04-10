@@ -1,6 +1,6 @@
 {
 	"name": "koishi-plugin-bilibili-notify-live",
-	"version": "0.0.3-alpha.2",
+	"version": "0.0.3-beta.3",
 	"description": "Bilibili 直播通知插件（bilibili-notify 可选插件）",
 	"type": "module",
 	"files": [
