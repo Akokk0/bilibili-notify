@@ -1,17 +1,17 @@
 {
   "mode": "pre",
-  "tag": "alpha",
+  "tag": "beta",
   "initialVersions": {
-    "koishi-plugin-bilibili-notify-advanced-subscription": "1.0.0-alpha.1",
-    "@bilibili-notify/api": "0.0.1",
-    "koishi-plugin-bilibili-notify": "4.0.0-alpha.1",
-    "koishi-plugin-bilibili-notify-dynamic": "0.0.2",
-    "koishi-plugin-bilibili-notify-image": "0.0.2",
-    "@bilibili-notify/internal": "0.0.1",
-    "koishi-plugin-bilibili-notify-live": "0.0.2",
-    "@bilibili-notify/push": "0.0.1",
-    "@bilibili-notify/storage": "0.0.1",
-    "@bilibili-notify/subscription": "0.0.1"
+    "koishi-plugin-bilibili-notify-advanced-subscription": "1.0.0-alpha.4",
+    "@bilibili-notify/api": "0.0.2-alpha.1",
+    "koishi-plugin-bilibili-notify": "4.0.0-alpha.7",
+    "koishi-plugin-bilibili-notify-dynamic": "0.0.3-alpha.3",
+    "koishi-plugin-bilibili-notify-image": "0.0.3-alpha.3",
+    "@bilibili-notify/internal": "0.0.2-alpha.0",
+    "koishi-plugin-bilibili-notify-live": "0.0.3-alpha.2",
+    "@bilibili-notify/push": "0.0.2-alpha.0",
+    "@bilibili-notify/storage": "0.0.2-alpha.0",
+    "@bilibili-notify/subscription": "0.0.2-alpha.0"
   },
   "changesets": [
     "client-type-fix",
