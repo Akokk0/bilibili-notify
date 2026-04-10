@@ -1,26 +1,28 @@
-import { createGenerator } from "@unocss/core";
-import presetWind4 from "@unocss/preset-wind4";
 import { renderToString } from "@vue/server-renderer";
 import type { Component } from "vue";
 import { createSSRApp, h } from "vue";
 
-let unoPromise: ReturnType<typeof createGenerator> | null = null;
+// biome-ignore lint/suspicious/noExplicitAny: UnoCSS generator type from dynamic import
+let unoPromise: Promise<any> | null = null;
 
 function getUno() {
 	if (!unoPromise) {
-		unoPromise = createGenerator({
-			presets: [
-				presetWind4({
-					preflights: {
-						reset: true,
-						theme: true,
-						property: true,
-					},
+		unoPromise = Promise.all([import("@unocss/core"), import("@unocss/preset-wind4")]).then(
+			([{ createGenerator }, { default: presetWind4 }]) =>
+				createGenerator({
+					presets: [
+						presetWind4({
+							preflights: {
+								reset: true,
+								theme: true,
+								property: true,
+							},
+						}),
+					],
+					// rich-text 中动态颜色类（AT/@→蓝, TOPIC/#→粉），UnoCSS 扫描 HTML 时可能漏掉
+					safelist: ["text-[#00AEEC]", "text-[#FF6699]"],
 				}),
-			],
-			// rich-text 中动态颜色类（AT/@→蓝, TOPIC/#→粉），UnoCSS 扫描 HTML 时可能漏掉
-			safelist: ["text-[#00AEEC]", "text-[#FF6699]"],
-		});
+		);
 	}
 	return unoPromise;
 }
