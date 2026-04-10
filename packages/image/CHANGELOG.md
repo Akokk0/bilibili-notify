@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.3-beta.5
+
+### Patch Changes
+
+- 2b2a93d: fix(image): use dynamic import for ESM-only UnoCSS packages to fix CJS require error
+
 ## 0.0.3-beta.4
 
 ### Patch Changes
