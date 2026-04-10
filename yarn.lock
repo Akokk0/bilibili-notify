@@ -914,16 +914,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@emnapi/core@npm:^1.4.3":
-  version: 1.9.2
-  resolution: "@emnapi/core@npm:1.9.2"
-  dependencies:
-    "@emnapi/wasi-threads": "npm:1.2.1"
-    tslib: "npm:^2.4.0"
-  checksum: 10c0/5500393f953951bad0768fafaa9191f2d938956b20c6d6a79e5ab696a613a25ce6ad23422bc18e86e6ce8deb147619d8d0d7d413a69f84adc01a6633cc353cd9
-  languageName: node
-  linkType: hard
-
 "@emnapi/runtime@npm:1.9.1":
   version: 1.9.1
   resolution: "@emnapi/runtime@npm:1.9.1"
@@ -933,30 +923,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@emnapi/runtime@npm:^1.4.3":
-  version: 1.9.2
-  resolution: "@emnapi/runtime@npm:1.9.2"
-  dependencies:
-    tslib: "npm:^2.4.0"
-  checksum: 10c0/61c3a59e0c36784558b8d58eb02bd04815aa5fb0dbfbaf84d1b3050a78aa0cc63ea129ae806bd1e48062bfeb7fc36eb0e5431740d62f64ea51bdf426404b8caa
-  languageName: node
-  linkType: hard
-
 "@emnapi/wasi-threads@npm:1.2.0":
   version: 1.2.0
   resolution: "@emnapi/wasi-threads@npm:1.2.0"
   dependencies:
     tslib: "npm:^2.4.0"
   checksum: 10c0/1e3724b5814b06c14782fda87eee9b9aa68af01576c81ffeaefdf621ddb74386e419d5b3b1027b6a8172397729d95a92f814fc4b8d3c224376428faa07a6a01a
-  languageName: node
-  linkType: hard
-
-"@emnapi/wasi-threads@npm:1.2.1":
-  version: 1.2.1
-  resolution: "@emnapi/wasi-threads@npm:1.2.1"
-  dependencies:
-    tslib: "npm:^2.4.0"
-  checksum: 10c0/32fcfa81ab396533b2ec1f4082b1ff779a05d9c836bbbd3f4398405b0e6814c0d9503b7993130e37bc6941dbc1ded49f55e9700ae9ca4e803bab2b5bc5deb331
   languageName: node
   linkType: hard
 
@@ -1860,17 +1832,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@napi-rs/wasm-runtime@npm:^0.2.3":
-  version: 0.2.12
-  resolution: "@napi-rs/wasm-runtime@npm:0.2.12"
-  dependencies:
-    "@emnapi/core": "npm:^1.4.3"
-    "@emnapi/runtime": "npm:^1.4.3"
-    "@tybys/wasm-util": "npm:^0.10.0"
-  checksum: 10c0/6d07922c0613aab30c6a497f4df297ca7c54e5b480e00035e0209b872d5c6aab7162fc49477267556109c2c7ed1eb9c65a174e27e9b87568106a87b0a6e3ca7d
-  languageName: node
-  linkType: hard
-
 "@napi-rs/wasm-runtime@npm:^1.1.1":
   version: 1.1.2
   resolution: "@napi-rs/wasm-runtime@npm:1.1.2"
@@ -1899,157 +1860,6 @@ __metadata:
   version: 1.8.0
   resolution: "@noble/hashes@npm:1.8.0"
   checksum: 10c0/06a0b52c81a6fa7f04d67762e08b2c476a00285858150caeaaff4037356dd5e119f45b2a530f638b77a5eeca013168ec1b655db41bae3236cb2e9d511484fc77
-  languageName: node
-  linkType: hard
-
-"@node-rs/jieba-android-arm-eabi@npm:1.10.4":
-  version: 1.10.4
-  resolution: "@node-rs/jieba-android-arm-eabi@npm:1.10.4"
-  conditions: os=android & cpu=arm
-  languageName: node
-  linkType: hard
-
-"@node-rs/jieba-android-arm64@npm:1.10.4":
-  version: 1.10.4
-  resolution: "@node-rs/jieba-android-arm64@npm:1.10.4"
-  conditions: os=android & cpu=arm64
-  languageName: node
-  linkType: hard
-
-"@node-rs/jieba-darwin-arm64@npm:1.10.4":
-  version: 1.10.4
-  resolution: "@node-rs/jieba-darwin-arm64@npm:1.10.4"
-  conditions: os=darwin & cpu=arm64
-  languageName: node
-  linkType: hard
-
-"@node-rs/jieba-darwin-x64@npm:1.10.4":
-  version: 1.10.4
-  resolution: "@node-rs/jieba-darwin-x64@npm:1.10.4"
-  conditions: os=darwin & cpu=x64
-  languageName: node
-  linkType: hard
-
-"@node-rs/jieba-freebsd-x64@npm:1.10.4":
-  version: 1.10.4
-  resolution: "@node-rs/jieba-freebsd-x64@npm:1.10.4"
-  conditions: os=freebsd & cpu=x64
-  languageName: node
-  linkType: hard
-
-"@node-rs/jieba-linux-arm-gnueabihf@npm:1.10.4":
-  version: 1.10.4
-  resolution: "@node-rs/jieba-linux-arm-gnueabihf@npm:1.10.4"
-  conditions: os=linux & cpu=arm
-  languageName: node
-  linkType: hard
-
-"@node-rs/jieba-linux-arm64-gnu@npm:1.10.4":
-  version: 1.10.4
-  resolution: "@node-rs/jieba-linux-arm64-gnu@npm:1.10.4"
-  conditions: os=linux & cpu=arm64 & libc=glibc
-  languageName: node
-  linkType: hard
-
-"@node-rs/jieba-linux-arm64-musl@npm:1.10.4":
-  version: 1.10.4
-  resolution: "@node-rs/jieba-linux-arm64-musl@npm:1.10.4"
-  conditions: os=linux & cpu=arm64 & libc=musl
-  languageName: node
-  linkType: hard
-
-"@node-rs/jieba-linux-x64-gnu@npm:1.10.4":
-  version: 1.10.4
-  resolution: "@node-rs/jieba-linux-x64-gnu@npm:1.10.4"
-  conditions: os=linux & cpu=x64 & libc=glibc
-  languageName: node
-  linkType: hard
-
-"@node-rs/jieba-linux-x64-musl@npm:1.10.4":
-  version: 1.10.4
-  resolution: "@node-rs/jieba-linux-x64-musl@npm:1.10.4"
-  conditions: os=linux & cpu=x64 & libc=musl
-  languageName: node
-  linkType: hard
-
-"@node-rs/jieba-wasm32-wasi@npm:1.10.4":
-  version: 1.10.4
-  resolution: "@node-rs/jieba-wasm32-wasi@npm:1.10.4"
-  dependencies:
-    "@napi-rs/wasm-runtime": "npm:^0.2.3"
-  conditions: cpu=wasm32
-  languageName: node
-  linkType: hard
-
-"@node-rs/jieba-win32-arm64-msvc@npm:1.10.4":
-  version: 1.10.4
-  resolution: "@node-rs/jieba-win32-arm64-msvc@npm:1.10.4"
-  conditions: os=win32 & cpu=arm64
-  languageName: node
-  linkType: hard
-
-"@node-rs/jieba-win32-ia32-msvc@npm:1.10.4":
-  version: 1.10.4
-  resolution: "@node-rs/jieba-win32-ia32-msvc@npm:1.10.4"
-  conditions: os=win32 & cpu=ia32
-  languageName: node
-  linkType: hard
-
-"@node-rs/jieba-win32-x64-msvc@npm:1.10.4":
-  version: 1.10.4
-  resolution: "@node-rs/jieba-win32-x64-msvc@npm:1.10.4"
-  conditions: os=win32 & cpu=x64
-  languageName: node
-  linkType: hard
-
-"@node-rs/jieba@npm:^1.10.2":
-  version: 1.10.4
-  resolution: "@node-rs/jieba@npm:1.10.4"
-  dependencies:
-    "@node-rs/jieba-android-arm-eabi": "npm:1.10.4"
-    "@node-rs/jieba-android-arm64": "npm:1.10.4"
-    "@node-rs/jieba-darwin-arm64": "npm:1.10.4"
-    "@node-rs/jieba-darwin-x64": "npm:1.10.4"
-    "@node-rs/jieba-freebsd-x64": "npm:1.10.4"
-    "@node-rs/jieba-linux-arm-gnueabihf": "npm:1.10.4"
-    "@node-rs/jieba-linux-arm64-gnu": "npm:1.10.4"
-    "@node-rs/jieba-linux-arm64-musl": "npm:1.10.4"
-    "@node-rs/jieba-linux-x64-gnu": "npm:1.10.4"
-    "@node-rs/jieba-linux-x64-musl": "npm:1.10.4"
-    "@node-rs/jieba-wasm32-wasi": "npm:1.10.4"
-    "@node-rs/jieba-win32-arm64-msvc": "npm:1.10.4"
-    "@node-rs/jieba-win32-ia32-msvc": "npm:1.10.4"
-    "@node-rs/jieba-win32-x64-msvc": "npm:1.10.4"
-  dependenciesMeta:
-    "@node-rs/jieba-android-arm-eabi":
-      optional: true
-    "@node-rs/jieba-android-arm64":
-      optional: true
-    "@node-rs/jieba-darwin-arm64":
-      optional: true
-    "@node-rs/jieba-darwin-x64":
-      optional: true
-    "@node-rs/jieba-freebsd-x64":
-      optional: true
-    "@node-rs/jieba-linux-arm-gnueabihf":
-      optional: true
-    "@node-rs/jieba-linux-arm64-gnu":
-      optional: true
-    "@node-rs/jieba-linux-arm64-musl":
-      optional: true
-    "@node-rs/jieba-linux-x64-gnu":
-      optional: true
-    "@node-rs/jieba-linux-x64-musl":
-      optional: true
-    "@node-rs/jieba-wasm32-wasi":
-      optional: true
-    "@node-rs/jieba-win32-arm64-msvc":
-      optional: true
-    "@node-rs/jieba-win32-ia32-msvc":
-      optional: true
-    "@node-rs/jieba-win32-x64-msvc":
-      optional: true
-  checksum: 10c0/9c51e51e9c0319e1a9d658bf08adf7b2ace06e30fb248ef499fe0059fc582071e8e1d197783c1fcf084cf0d738c3828f7fd50f35735f2b1cf9d003171b8e43e2
   languageName: node
   linkType: hard
 
@@ -2919,7 +2729,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tybys/wasm-util@npm:^0.10.0, @tybys/wasm-util@npm:^0.10.1":
+"@tybys/wasm-util@npm:^0.10.1":
   version: 0.10.1
   resolution: "@tybys/wasm-util@npm:0.10.1"
   dependencies:
@@ -3443,17 +3253,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@unocss/preset-mini@npm:66.6.8":
-  version: 66.6.8
-  resolution: "@unocss/preset-mini@npm:66.6.8"
-  dependencies:
-    "@unocss/core": "npm:66.6.8"
-    "@unocss/extractor-arbitrary-variants": "npm:66.6.8"
-    "@unocss/rule-utils": "npm:66.6.8"
-  checksum: 10c0/c4c681ad3caeda92e06d494a8dc24c28a09a0f647509d1f892deba1566505656d364613e2833d9fa40820bc7b4a8c3ef9e58373a37154aa723dfb842402666c9
-  languageName: node
-  linkType: hard
-
 "@unocss/preset-tagify@npm:0.65.4":
   version: 0.65.4
   resolution: "@unocss/preset-tagify@npm:0.65.4"
@@ -3495,17 +3294,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@unocss/preset-wind3@npm:66.6.8":
-  version: 66.6.8
-  resolution: "@unocss/preset-wind3@npm:66.6.8"
-  dependencies:
-    "@unocss/core": "npm:66.6.8"
-    "@unocss/preset-mini": "npm:66.6.8"
-    "@unocss/rule-utils": "npm:66.6.8"
-  checksum: 10c0/231c17eb911e874e9fcea4aef375d19d7a26ef22883805446054f5c3a8f569c44e1f7f9ba3b5aaf6dc64bfd5641576af0b98a557e147230bc7162d5c8e70901f
-  languageName: node
-  linkType: hard
-
 "@unocss/preset-wind4@npm:^66.6.8":
   version: 66.6.8
   resolution: "@unocss/preset-wind4@npm:66.6.8"
@@ -3525,16 +3313,6 @@ __metadata:
     "@unocss/preset-mini": "npm:0.65.4"
     "@unocss/rule-utils": "npm:0.65.4"
   checksum: 10c0/4c2c47017cfe1d5c0722e32a18e951880082fbfd6181f87c21834a76397467be06776e35ce4405ca893df4790df686c533cc9ee3e0ae36d5b95628d4d214311c
-  languageName: node
-  linkType: hard
-
-"@unocss/preset-wind@npm:^66.6.8":
-  version: 66.6.8
-  resolution: "@unocss/preset-wind@npm:66.6.8"
-  dependencies:
-    "@unocss/core": "npm:66.6.8"
-    "@unocss/preset-wind3": "npm:66.6.8"
-  checksum: 10c0/4b16392ace056430228e869a4205f78384068e0e71a93928cc03799d3546983b2d6c8a9ec2da68480c1ed3d696e6b81b3fe1f99e65e3c4ff4555ca9e1ecc9e51
   languageName: node
   linkType: hard
 
@@ -6602,6 +6380,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"jieba-wasm@npm:^2.4.0":
+  version: 2.4.0
+  resolution: "jieba-wasm@npm:2.4.0"
+  checksum: 10c0/ea55d15ad2fec3b34838dffceb1b8341377facc592095c9094c065115b3a2635094724f7ced5ebb15e84d07f97960a2fa19755b2257e8040e5c61d36a0e083b3
+  languageName: node
+  linkType: hard
+
 "jiti@npm:^2.4.2, jiti@npm:^2.6.1":
   version: 2.6.1
   resolution: "jiti@npm:2.6.1"
@@ -6848,7 +6633,6 @@ __metadata:
     "@types/jsdom": "npm:^21.1.7"
     "@types/luxon": "npm:^3.4.2"
     "@unocss/core": "npm:^66.6.8"
-    "@unocss/preset-wind": "npm:^66.6.8"
     "@unocss/preset-wind4": "npm:^66.6.8"
     "@vue/server-renderer": "npm:^3.5.32"
     blive-message-listener: "npm:^0.5.3"
@@ -6868,10 +6652,10 @@ __metadata:
   dependencies:
     "@bilibili-notify/internal": "workspace:^"
     "@bilibili-notify/push": "workspace:^"
-    "@node-rs/jieba": "npm:^1.10.2"
     "@types/luxon": "npm:^3.4.2"
     "@types/protobufjs": "npm:^6.0.0"
     blive-message-listener: "npm:^0.5.3"
+    jieba-wasm: "npm:^2.4.0"
     koishi-plugin-bilibili-notify: "workspace:^"
     luxon: "npm:^3.5.0"
     protobufjs: "npm:^7.4.0"

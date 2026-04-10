@@ -8,13 +8,13 @@ import type {
 import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
 import type { BilibiliPush, SubItem, Subscriptions } from "@bilibili-notify/push";
 import { PushType } from "@bilibili-notify/push";
-import { cut as jiebaCut, load as jiebaLoad } from "@node-rs/jieba";
 import {
 	GuardLevel,
 	type MessageListener,
 	type MsgHandler,
 	startListen,
 } from "blive-message-listener";
+import { cut as jiebaCut } from "jieba-wasm";
 import { type Awaitable, type Context, h, Logger, Service } from "koishi";
 // biome-ignore lint/correctness/noUnusedImports: loads bilibili-notify Context augmentation
 import {} from "koishi-plugin-bilibili-notify";
@@ -65,11 +65,6 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		this.config = config;
 		this.liveLogger = new Logger(SERVICE_NAME);
 		this.liveLogger.level = config.logLevel;
-		try {
-			jiebaLoad();
-		} catch {
-			// jieba WASM 已在进程中初始化，热重载时忽略重复加载错误
-		}
 		this.mergeStopWords(config.wordcloudStopWords ?? "");
 	}
 
@@ -193,18 +188,20 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 	}
 
 	private closeListener(roomId: string): void {
-		if (!this.listenerRecord[roomId] || this.listenerRecord[roomId].closed) {
-			this.liveLogger.debug(`直播间 [${roomId}] 连接无需关闭`);
+		const listener = this.listenerRecord[roomId];
+		if (!listener) {
+			this.liveLogger.debug(`直播间 [${roomId}] 连接不存在，跳过关闭`);
 			return;
 		}
-		this.listenerRecord[roomId].close();
-		if (this.listenerRecord[roomId].closed) {
+		if (listener.live.closed) {
+			this.liveLogger.debug(`直播间 [${roomId}] 连接已被远端断开`);
 			delete this.listenerRecord[roomId];
-			this.liveLogger.info(`直播间 [${roomId}] 连接已关闭`);
-			this.logSideEffectState(`listener:closed room=${roomId}`);
 			return;
 		}
-		this.liveLogger.error(`直播间 [${roomId}] 连接关闭失败`);
+		listener.close();
+		delete this.listenerRecord[roomId];
+		this.liveLogger.info(`直播间 [${roomId}] 连接已关闭`);
+		this.logSideEffectState(`listener:closed room=${roomId}`);
 	}
 
 	clearListeners(): void {
