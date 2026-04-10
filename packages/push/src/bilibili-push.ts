@@ -1,6 +1,6 @@
 // biome-ignore lint/correctness/noUnusedImports: module augmentation
 import {} from "@koishijs/plugin-notifier";
-import { type Bot, type Context, h, Logger, Universal } from "koishi";
+import { type Bot, type Context, h, type Logger, Universal } from "koishi";
 import { type MasterConfig, PUSH_TYPE_LABEL, type PushArrMap, PushType } from "./types";
 
 const INITIAL_RETRY_DELAY_MS = 3000;
@@ -25,7 +25,7 @@ export class BilibiliPush {
 	constructor(ctx: Context, config: BilibiliPushConfig) {
 		this.ctx = ctx;
 		this.config = config;
-		this.logger = new Logger("bilibili-notify-push");
+		this.logger = ctx.logger("bilibili-notify-push");
 		this.logger.level = config.logLevel;
 	}
 

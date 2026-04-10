@@ -4,7 +4,7 @@ import type { CookieData } from "@bilibili-notify/storage";
 import axios, { type AxiosInstance } from "axios";
 import { CronJob } from "cron";
 import { JSDOM } from "jsdom";
-import { Logger } from "koishi";
+import type { Context, Logger } from "koishi";
 import { DateTime } from "luxon";
 import { Cookie, CookieJar } from "tough-cookie";
 import * as EP from "./endpoints";
@@ -62,12 +62,13 @@ export class BilibiliAPI {
 	private loginInfoLoaded = false;
 
 	constructor(
+		ctx: Context,
 		config: BilibiliAPIConfig,
 		onCookiesRefreshed?: (payload: CookiesRefreshedPayload) => void,
 	) {
 		this.config = config;
 		this.onCookiesRefreshed = onCookiesRefreshed;
-		this.logger = new Logger("bilibili-notify-api");
+		this.logger = ctx.logger("bilibili-notify-api");
 		this.logger.level = config.logLevel;
 		this.jar = new CookieJar();
 	}

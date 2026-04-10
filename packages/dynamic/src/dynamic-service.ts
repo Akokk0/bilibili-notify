@@ -3,7 +3,7 @@ import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
 import type { BilibiliPush, SubManager, Subscriptions } from "@bilibili-notify/push";
 import { PushType } from "@bilibili-notify/push";
 import { CronJob } from "cron";
-import { type Awaitable, type Context, h, Logger, Service } from "koishi";
+import { type Awaitable, type Context, h, type Logger, Service } from "koishi";
 // biome-ignore lint/correctness/noUnusedImports: <empty import> is needed to make sure the type augmentation works
 import {} from "koishi-plugin-bilibili-notify";
 import { DateTime } from "luxon";
@@ -73,7 +73,7 @@ function extractDynamicText(item: Dynamic): string {
 export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> {
 	static readonly [Service.provide] = SERVICE_NAME;
 
-	private readonly dynamicLogger: Logger;
+	private readonly dynamicLogger: Logger = this.ctx.logger(SERVICE_NAME);
 	private api!: BilibiliAPI;
 	private push!: BilibiliPush;
 	private dynamicJob?: CronJob;
@@ -83,7 +83,6 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 	constructor(ctx: Context, config: BilibiliNotifyDynamicConfig) {
 		super(ctx, SERVICE_NAME);
 		this.config = config;
-		this.dynamicLogger = new Logger(SERVICE_NAME);
 		this.dynamicLogger.level = config.logLevel;
 	}
 

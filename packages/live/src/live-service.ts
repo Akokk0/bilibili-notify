@@ -15,7 +15,7 @@ import {
 	startListen,
 } from "blive-message-listener";
 import { cut as jiebaCut } from "jieba-wasm";
-import { type Awaitable, type Context, h, Logger, Service } from "koishi";
+import { type Awaitable, type Context, h, type Logger, Service } from "koishi";
 // biome-ignore lint/correctness/noUnusedImports: loads bilibili-notify Context augmentation
 import {} from "koishi-plugin-bilibili-notify";
 import { DateTime } from "luxon";
@@ -51,7 +51,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 	static readonly [Service.provide] = SERVICE_NAME;
 	static readonly inject = ["bilibili-notify"];
 
-	private readonly liveLogger: Logger;
+	private readonly liveLogger: Logger = this.ctx.logger(SERVICE_NAME);
 	private api!: BilibiliAPI;
 	private push!: BilibiliPush;
 	private stopwords: Set<string> = new Set();
@@ -63,7 +63,6 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 	constructor(ctx: Context, config: BilibiliNotifyLiveConfig) {
 		super(ctx, SERVICE_NAME);
 		this.config = config;
-		this.liveLogger = new Logger(SERVICE_NAME);
 		this.liveLogger.level = config.logLevel;
 		this.mergeStopWords(config.wordcloudStopWords ?? "");
 	}

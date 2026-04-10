@@ -11,7 +11,7 @@ import { SubscriptionManager } from "@bilibili-notify/subscription";
 // biome-ignore lint/correctness/noUnusedImports: module augmentation for koishi help commands
 import {} from "@koishijs/plugin-help";
 import type { Notifier } from "@koishijs/plugin-notifier";
-import { type Awaitable, type Context, h, Logger, Service } from "koishi";
+import { type Awaitable, type Context, h, type Logger, Service } from "koishi";
 import QRCode from "qrcode";
 import { biliCommands, statusCommands, sysCommands } from "./commands";
 import type { BilibiliNotifyConfig } from "./config";
@@ -21,7 +21,7 @@ const SERVICE_NAME = "bilibili-notify";
 class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 	static readonly [Service.provide] = SERVICE_NAME;
 
-	private readonly serverLogger: Logger;
+	private readonly serverLogger: Logger = this.ctx.logger(SERVICE_NAME);
 	private readonly selfCtx: Context;
 	private api: BilibiliAPI | null = null;
 	private push: BilibiliPush | null = null;
@@ -36,7 +36,6 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		super(ctx, SERVICE_NAME);
 		this.selfCtx = ctx;
 		this.config = config;
-		this.serverLogger = new Logger(SERVICE_NAME);
 		this.serverLogger.level = config.logLevel;
 	}
 
@@ -95,6 +94,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		if (this.running) return false;
 		try {
 			this.api = new BilibiliAPI(
+				this.selfCtx,
 				{
 					logLevel: this.config.logLevel,
 					userAgent: this.config.userAgent,

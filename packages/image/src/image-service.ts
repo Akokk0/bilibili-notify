@@ -1,6 +1,6 @@
 import { GuardLevel } from "blive-message-listener";
 import { JSDOM } from "jsdom";
-import { type Context, Logger, Service } from "koishi";
+import { type Context, type Logger, Service } from "koishi";
 // biome-ignore lint/correctness/noUnusedImports: <import type>
 import {} from "koishi-plugin-puppeteer";
 import { DateTime } from "luxon";
@@ -55,7 +55,7 @@ async function withRetry<T>(fn: () => T | Promise<T>, maxAttempts = 3, delayMs =
 class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 	static inject = ["puppeteer"];
 
-	private readonly imageLogger: Logger;
+	private readonly imageLogger: Logger = this.ctx.logger(SERVICE_NAME);
 
 	// 图片 base64 缓存
 	private readonly imageCache = new Map<string, { dataUrl: string; updatedAt: number }>();
@@ -69,7 +69,6 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 	constructor(ctx: Context, config: BilibiliNotifyImageConfig) {
 		super(ctx, SERVICE_NAME);
 		this.config = config;
-		this.imageLogger = new Logger(SERVICE_NAME);
 		this.imageLogger.level = this.config.logLevel;
 	}
 
