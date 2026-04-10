@@ -1,6 +1,6 @@
 {
 	"name": "koishi-plugin-bilibili-notify-image",
-	"version": "0.0.3-beta.4",
+	"version": "0.0.3-beta.5",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Akokk0/bilibili-notify"
