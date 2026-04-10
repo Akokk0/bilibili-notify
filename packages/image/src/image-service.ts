@@ -1,5 +1,3 @@
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { GuardLevel } from "blive-message-listener";
 import { JSDOM } from "jsdom";
 import { type Context, Logger, Service } from "koishi";
@@ -465,11 +463,10 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 	}
 
 	private async doRender(html: string, waitForCondition?: string): Promise<Buffer> {
-		const htmlPath = pathToFileURL(resolve(__dirname, "page/0.html"));
+		// 先 inline 远程图片（耗时操作），再获取 page，避免 page 在空闲期间被回收
+		const inlinedHtml = await this.inlineRemoteImages(html);
 		const page = await this.ctx.puppeteer.page();
 		try {
-			const inlinedHtml = await this.inlineRemoteImages(html);
-			await page.goto(htmlPath.toString());
 			await page.setContent(inlinedHtml, { waitUntil: "load", timeout: 15_000 });
 			if (waitForCondition) {
 				await page.waitForFunction(waitForCondition, { timeout: 30_000 });
