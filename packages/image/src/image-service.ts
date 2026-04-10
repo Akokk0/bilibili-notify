@@ -494,7 +494,7 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 			await elementHandle.dispose();
 			return buffer;
 		} finally {
-			await page.close();
+			await page.close().catch(() => {}); // Chrome 已崩溃时 close() 也会抛错，忽略之
 		}
 	}
 
