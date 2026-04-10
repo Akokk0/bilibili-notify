@@ -43,7 +43,11 @@ async function withRetry<T>(fn: () => T | Promise<T>, maxAttempts = 3, delayMs =
 		} catch (error) {
 			lastError = error;
 			if (attempt < maxAttempts - 1) {
-				await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)));
+				// Chrome 进程崩溃时需等待 puppeteer 重启浏览器，延迟更长
+				const isBrowserCrash =
+					error instanceof Error && error.message.includes("Connection closed");
+				const delay = isBrowserCrash ? 6000 : delayMs * (attempt + 1);
+				await new Promise((resolve) => setTimeout(resolve, delay));
 			}
 		}
 	}
