@@ -1,6 +1,14 @@
 {
 	"name": "koishi-plugin-bilibili-notify-dynamic",
 	"version": "0.1.0-beta.4",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Akokk0/bilibili-notify"
+	},
+	"author": {
+		"name": "Akokko",
+		"email": "admin@akokko.com"
+	},
 	"description": "Bilibili 动态推送插件（bilibili-notify 可选插件）",
 	"type": "module",
 	"files": [

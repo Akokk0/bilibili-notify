@@ -1,6 +1,14 @@
 {
 	"name": "@bilibili-notify/subscription",
 	"version": "0.0.2-alpha.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Akokk0/bilibili-notify"
+	},
+	"author": {
+		"name": "Akokko",
+		"email": "admin@akokko.com"
+	},
 	"type": "module",
 	"files": [
 		"lib"

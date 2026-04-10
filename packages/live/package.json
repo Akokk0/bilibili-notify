@@ -1,6 +1,14 @@
 {
 	"name": "koishi-plugin-bilibili-notify-live",
 	"version": "0.0.3-beta.3",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Akokk0/bilibili-notify"
+	},
+	"author": {
+		"name": "Akokko",
+		"email": "admin@akokko.com"
+	},
 	"description": "Bilibili 直播通知插件（bilibili-notify 可选插件）",
 	"type": "module",
 	"files": [
