@@ -10,7 +10,6 @@ export default defineConfig({
 	deps: { onlyBundle: false },
 	tsconfig: "tsconfig.json",
 	copy: [
-		{ from: "src/page", to: "lib" },
 		{ from: "src/img", to: "lib" },
 		{ from: "src/static", to: "lib" },
 	],
