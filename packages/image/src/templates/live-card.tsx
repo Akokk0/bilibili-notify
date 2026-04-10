@@ -75,7 +75,6 @@ export function LiveCard(p: LiveCardProps) {
 				<div class="flex items-center gap-[10px] px-[16px] pt-[14px] pb-[10px]">
 					<img
 						class="w-[44px] h-[44px] rounded-full object-cover shrink-0"
-						style="border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15);"
 						src={p.userface}
 						alt="主播头像"
 					/>

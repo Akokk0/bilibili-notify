@@ -33,14 +33,14 @@ export function GuardCard(p: GuardCardProps) {
 					{/* 用户信息 */}
 					<div class="flex gap-[10px]">
 						{/* 头像 */}
-						<div class="w-[90px] h-[90px] overflow-hidden rounded-full border-[3px] border-white shadow-[0_4px_8px_0_rgba(0,0,0,0.2)] shrink-0">
+						<div class="w-[90px] h-[90px] overflow-hidden rounded-full shrink-0">
 							<img class="w-full h-full rounded-full object-cover" src={p.face} alt="用户头像" />
 						</div>
 
 						{/* 名称徽章 */}
 						<div class="flex flex-col items-start gap-[7px] mt-[10px]">
 							<div
-								class="flex items-center h-[30px] rounded-[25px] px-[10px] border-2 border-white overflow-hidden"
+								class="flex items-center h-[30px] rounded-[25px] px-[10px] overflow-hidden"
 								style={{ backgroundColor: p.bgColor[0] }}
 							>
 								<span class="max-w-[100px] truncate font-bold text-[12px] text-white">
@@ -49,7 +49,7 @@ export function GuardCard(p: GuardCardProps) {
 							</div>
 
 							<div
-								class="flex gap-[5px] items-center h-[25px] rounded-[25px] border-2 border-white overflow-hidden"
+								class="flex gap-[5px] items-center h-[25px] rounded-[25px] overflow-hidden"
 								style={{ backgroundColor: p.bgColor[0] }}
 							>
 								<div
@@ -64,7 +64,7 @@ export function GuardCard(p: GuardCardProps) {
 					</div>
 
 					{/* 描述文字 */}
-					<div class="mb-[10px] text-[16px] font-bold italic text-[#333] whitespace-pre-line">
+					<div class="mb-[10px] text-[16px] font-bold italic whitespace-pre-line" style={{ color: p.bgColor[0] }}>
 						{desc}
 					</div>
 				</div>

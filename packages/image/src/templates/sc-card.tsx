@@ -34,7 +34,7 @@ export function SCCard(p: SCCardProps) {
 						¥{p.price}
 					</div>
 					<div
-						class="inline-flex items-center gap-1 mt-[5px] px-[10px] py-1 rounded-[12px] text-white text-[12px] font-bold border-2 border-white"
+						class="inline-flex items-center gap-1 mt-[5px] px-[10px] py-1 rounded-[12px] text-white text-[12px] font-bold"
 						style={{ backgroundColor: p.bgColor[0] }}
 					>
 						<span>⏱</span>
@@ -52,7 +52,7 @@ export function SCCard(p: SCCardProps) {
 
 				{/* 头像区 */}
 				<div class="flex flex-col items-center gap-2 mb-3">
-					<div class="w-[70px] h-[70px] overflow-hidden rounded-full border-[3px] border-white shadow-[0_4px_8px_0_rgba(0,0,0,0.2)]">
+					<div class="w-[70px] h-[70px] overflow-hidden rounded-full">
 						<img
 							class="w-full h-full rounded-full object-cover"
 							src={p.senderFace}
@@ -60,7 +60,7 @@ export function SCCard(p: SCCardProps) {
 						/>
 					</div>
 					<div
-						class="px-[14px] py-[5px] rounded-[15px] text-white font-bold text-[14px] border-2 border-white"
+						class="px-[14px] py-[5px] rounded-[15px] text-white font-bold text-[14px]"
 						style={{ backgroundColor: p.bgColor[0] }}
 					>
 						{p.senderName}

@@ -100,7 +100,6 @@ export function DynamicCard(p: DynamicCardProps) {
 				<div class="flex items-center gap-[12px] px-[16px] pt-[14px] pb-[12px]">
 					<img
 						class="w-[52px] h-[52px] shrink-0 rounded-full object-cover"
-						style="border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15);"
 						src={p.avatarUrl}
 						alt="头像"
 					/>
