@@ -64,7 +64,10 @@ export function GuardCard(p: GuardCardProps) {
 					</div>
 
 					{/* 描述文字 */}
-					<div class="mb-[10px] text-[16px] font-bold italic whitespace-pre-line" style={{ color: p.bgColor[0] }}>
+					<div
+						class="mb-[10px] text-[16px] font-bold italic whitespace-pre-line"
+						style={{ color: p.bgColor[0] }}
+					>
 						{desc}
 					</div>
 				</div>
