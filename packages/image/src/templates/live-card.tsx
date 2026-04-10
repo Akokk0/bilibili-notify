@@ -24,7 +24,6 @@ export function LiveCard(p: LiveCardProps) {
 	const statusLabel = () => {
 		if (p.liveStatus === 1) return { text: "直播中", bg: "#FF6699" };
 		if (p.liveStatus === 2) return { text: "已下播", bg: "#aaa" };
-		if (p.liveStatus === 3) return { text: "下播统计", bg: "#aaa" };
 		return { text: "未开播", bg: "#aaa" };
 	};
 
@@ -64,7 +63,7 @@ export function LiveCard(p: LiveCardProps) {
 						/>
 						{/* 直播状态角标，叠在封面右上角 */}
 						<div
-							class="absolute top-[8px] right-[8px] px-[10px] py-[4px] rounded-[12px] text-white text-[12px] font-bold"
+							class="absolute top-[12px] right-[12px] px-[10px] py-[4px] rounded-[12px] text-white text-[12px] font-bold"
 							style={{ backgroundColor: status.bg }}
 						>
 							{status.text}

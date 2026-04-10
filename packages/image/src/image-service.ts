@@ -152,6 +152,12 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 
 		const [titleStatus, liveTime, cover] = await this.getLiveStatus(data.live_time, liveStatus);
 
+		// 规范化 liveStatus 用于 LiveCard 角标：
+		// live-service 传入的是 LiveType 枚举（2=LiveBroadcast, 3=StopBroadcast, 4=FirstLiveBroadcast）
+		// 指令传入的是原始 API live_status（1=正在播）
+		// 统一映射：直播中=1，已下播=2，其他=0
+		const cardBadgeStatus = liveStatus === 3 ? 2 : liveStatus >= 2 ? 1 : liveStatus;
+
 		const html = await renderCard(
 			LiveCard,
 			{
@@ -164,7 +170,7 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 				userface,
 				titleStatus,
 				liveTime,
-				liveStatus,
+				liveStatus: cardBadgeStatus,
 				cover,
 				onlineNum: this.numberToStr(+(data.online ?? 0)),
 				likedNum:
