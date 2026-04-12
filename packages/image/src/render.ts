@@ -41,7 +41,6 @@ export async function renderCard(
 
 	const baseCSS = /* css */ `
 		* { margin: 0; padding: 0; box-sizing: border-box; font-family: "${font}", "Microsoft YaHei", "Source Han Sans", "Noto Sans CJK", sans-serif; }
-		body { margin: 0; }
 		html { width: ${htmlWidth ? `${htmlWidth}px` : "fit-content"}; height: auto; }
 	`;
 
