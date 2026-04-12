@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [dev]
   pull_request:
     branches: [main]
 
@@ -27,8 +27,8 @@ jobs:
       - name: Lint (Biome)
         run: yarn biome ci .
 
-      - name: Build
-        run: yarn build
-
       - name: Typecheck
         run: yarn typecheck
+
+      - name: Build
+        run: yarn build

@@ -1,16 +1,13 @@
 name: Publish
 
 on:
-  workflow_run:
-    workflows: [CI]
+  push:
     branches: [main]
-    types: [completed]
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
-  publish:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+  ci-and-publish:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -30,6 +27,12 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --no-immutable
+
+      - name: Lint (Biome)
+        run: yarn biome ci .
+
+      - name: Typecheck
+        run: yarn typecheck
 
       - name: Build
         run: yarn build
