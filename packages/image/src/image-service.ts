@@ -191,7 +191,7 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 					return n <= -10_000 ? `${(n / 10_000).toFixed(1)}万` : n.toString();
 				})(),
 			},
-			{ title: "直播通知", font: this.config.font, htmlWidth: 800 },
+			{ title: "直播通知", font: this.config.font, htmlWidth: 600 },
 		);
 
 		return withRetry(() => this.renderHtml(html)).catch((e) => {
@@ -309,7 +309,7 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 				commentCount: this.numberToStr(moduleStat.comment.count),
 				likeCount: this.numberToStr(moduleStat.like.count),
 			},
-			{ title: "动态通知", font: this.config.font },
+			{ title: "动态通知", font: this.config.font, htmlWidth: 600 },
 		);
 
 		return withRetry(() => this.renderHtml(html)).catch((e) => {
