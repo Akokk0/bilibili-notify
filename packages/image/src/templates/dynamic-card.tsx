@@ -1,6 +1,6 @@
 /** @jsxImportSource vue */
-import { SVG_COMMENT, SVG_FORWARD, SVG_LIKE, SVG_TOPIC } from "../icons";
 import type { VNode } from "vue";
+import { SVG_COMMENT, SVG_FORWARD, SVG_LIKE, SVG_TOPIC } from "../icons";
 
 export type DynamicCardProps = {
 	cardColorStart: string;

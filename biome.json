@@ -9,7 +9,8 @@
 			"!**/dist",
 			"**/*.vue",
 			"!**/src/static",
-			"!.changeset"
+			"!.changeset",
+			"!**/interface"
 		]
 	},
 	"formatter": {
