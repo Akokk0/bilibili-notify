@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.3-beta.6
+
+### Patch Changes
+
+- 4498109: feat(image): improve dynamic/SC card rendering with SVG icons, long-image detection, goods UI redesign, and 600px width cap
+
 ## 0.0.3-beta.5
 
 ### Patch Changes
