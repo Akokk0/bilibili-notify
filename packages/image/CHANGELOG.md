@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.3-beta.7
+
+### Patch Changes
+
+- 2d08a6e: feat(image): add ADDITIONAL_TYPE_COMMON (game card) renderer; fix additional render order for AV/FORWARD types; fix FORWARD double-rendering additional; improve single image layout with 长图 badge; update reserve/goods/common button to pink rounded-rectangle style; remove arrow.png
+
+  fix(live): fix word cloud and live summary not sent when AI is disabled
+
+  refactor(core): move subList to core, unify bili list/ll output style, fix bili ll race condition
+
 ## 0.0.3-beta.6
 
 ### Patch Changes
