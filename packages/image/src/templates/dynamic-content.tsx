@@ -156,7 +156,12 @@ function buildPicsContent(pics: Array<{ height: number; url: string; width: numb
 						</div>
 					</div>
 				) : isLong ? (
-					<img class="h-auto block rounded-lg" style="max-height: 400px; width: auto;" src={pic.url} alt="" />
+					<img
+						class="h-auto block rounded-lg"
+						style="max-height: 400px; width: auto;"
+						src={pic.url}
+						alt=""
+					/>
 				) : (
 					<img class="w-full h-auto block" src={pic.url} alt="" />
 				)}
