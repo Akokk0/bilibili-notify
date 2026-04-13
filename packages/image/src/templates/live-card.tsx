@@ -63,7 +63,7 @@ export function LiveCard(p: LiveCardProps) {
 						/>
 						{/* 直播状态角标，叠在封面右上角 */}
 						<div
-							class="absolute top-[12px] right-[12px] px-[10px] py-[4px] rounded-[12px] text-white text-[12px] font-bold"
+							class="absolute top-[12px] right-[12px] inline-flex items-center px-[10px] py-[4px] rounded-[12px] text-white text-[12px] font-bold leading-none"
 							style={{ backgroundColor: status.bg }}
 						>
 							{status.text}
