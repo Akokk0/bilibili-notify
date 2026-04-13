@@ -22,6 +22,7 @@ const DYNAMIC_TYPE_LIVE_RCMD = "DYNAMIC_TYPE_LIVE_RCMD";
 const DYNAMIC_TYPE_UGC_SEASON = "DYNAMIC_TYPE_UGC_SEASON";
 const ADDITIONAL_TYPE_RESERVE = "ADDITIONAL_TYPE_RESERVE";
 const ADDITIONAL_TYPE_GOODS = "ADDITIONAL_TYPE_GOODS";
+const ADDITIONAL_TYPE_COMMON = "ADDITIONAL_TYPE_COMMON";
 
 /** buildDynamicContent 的返回值 */
 export type DynamicContent = {
@@ -44,7 +45,14 @@ export async function buildDynamicContent(
 	switch (dynamic.type) {
 		case DYNAMIC_TYPE_WORD:
 		case DYNAMIC_TYPE_DRAW: {
-			return { vnode: buildBasicContent(dynamic, false) };
+			return {
+				vnode: (
+					<>
+						{buildBasicContent(dynamic, false)}
+						{buildAdditionalContent(dynamic)}
+					</>
+				),
+			};
 		}
 
 		case DYNAMIC_TYPE_FORWARD: {
@@ -78,7 +86,15 @@ export async function buildDynamicContent(
 
 		case DYNAMIC_TYPE_AV: {
 			const selfContent = buildBasicContent(dynamic, false);
-			if (!dynamic.modules.module_dynamic?.major?.archive) return { vnode: selfContent };
+			if (!dynamic.modules.module_dynamic?.major?.archive)
+				return {
+					vnode: (
+						<>
+							{selfContent}
+							{buildAdditionalContent(dynamic)}
+						</>
+					),
+				};
 			const archive = dynamic.modules.module_dynamic.major.archive;
 			const isNewVideo = archive.badge.text === "投稿视频";
 			return {
@@ -86,6 +102,7 @@ export async function buildDynamicContent(
 					<>
 						{selfContent}
 						{buildVideoContent(archive)}
+						{buildAdditionalContent(dynamic)}
 					</>
 				),
 				forwardLabel: isNewVideo && isForward ? "投稿了视频" : undefined,
@@ -95,7 +112,12 @@ export async function buildDynamicContent(
 
 		case DYNAMIC_TYPE_ARTICLE: {
 			return {
-				vnode: buildBasicContent(dynamic, true),
+				vnode: (
+					<>
+						{buildBasicContent(dynamic, true)}
+						{buildAdditionalContent(dynamic)}
+					</>
+				),
 				forwardLabel: isForward ? "投稿了专栏" : undefined,
 				pubTimeSuffix: !isForward ? " · 投稿了专栏" : undefined,
 			};
@@ -136,7 +158,6 @@ function buildBasicContent(dynamic: Dynamic, isArticle: boolean) {
 			{mod?.major?.opus?.pics && (
 				<div class="mt-[8px]">{buildPicsContent(mod.major.opus.pics)}</div>
 			)}
-			{buildAdditionalContent(dynamic)}
 		</>
 	);
 }
@@ -151,7 +172,7 @@ function buildPicsContent(pics: Array<{ height: number; url: string; width: numb
 				{isSuperLong ? (
 					<div class="relative" style="height: 400px; overflow: hidden;">
 						<img class="w-full h-full object-cover object-top block" src={pic.url} alt="" />
-						<div class="absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-[5px] py-[2px] rounded-sm leading-none">
+						<div class="absolute bottom-2 right-2 bg-black/50 text-white text-[13px] px-[8px] py-[4px] rounded leading-none">
 							长图
 						</div>
 					</div>
@@ -231,10 +252,17 @@ function buildAdditionalContent(dynamic: Dynamic) {
 	const additional = dynamic.modules.module_dynamic.additional;
 	if (!additional) return null;
 	let content: ReturnType<typeof buildReserveAdditional> | null = null;
-	if (additional.type === ADDITIONAL_TYPE_RESERVE)
-		content = buildReserveAdditional(additional.reserve);
-	else if (additional.type === ADDITIONAL_TYPE_GOODS)
-		content = buildGoodsAdditional(additional.goods);
+	switch (additional.type) {
+		case ADDITIONAL_TYPE_RESERVE:
+			content = buildReserveAdditional(additional.reserve);
+			break;
+		case ADDITIONAL_TYPE_GOODS:
+			content = buildGoodsAdditional(additional.goods);
+			break;
+		case ADDITIONAL_TYPE_COMMON:
+			content = buildCommonAdditional(additional.common);
+			break;
+	}
 	if (!content) return null;
 	return <div class="mt-[8px]">{content}</div>;
 }
@@ -307,6 +335,47 @@ function buildGoodsAdditional(goods: any) {
 						))}
 					</div>
 				)}
+			</div>
+		</div>
+	);
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: Bilibili API 返回的通用卡片数据类型不固定
+function buildCommonAdditional(common: any) {
+	const subTypeLabel: Record<string, string> = { game: "游戏" };
+	const label = subTypeLabel[common.sub_type] ?? common.sub_type;
+	return (
+		<div>
+			<div class="flex items-center gap-1 text-[12px] text-[#999] mb-[6px]">
+				{common.head_text}
+			</div>
+			<div class="bg-black/4 rounded-lg p-[10px]">
+				<div class="flex gap-[10px] items-center">
+					<div class="w-[72px] h-[72px] shrink-0 rounded-md overflow-hidden">
+						<img class="w-full h-full object-cover" src={common.cover} alt="" />
+					</div>
+					<div class="flex-1 min-w-0">
+						<div class="text-[13px] font-bold text-[#18191C] mb-[4px]">{common.title}</div>
+						{common.desc1 && (
+							<div class="flex items-center gap-[4px] mb-[2px]">
+								{label && (
+									<span class="text-[10px] text-[#FB7299] border border-[#FB7299] px-[3px] py-[1px] rounded-sm leading-none shrink-0">
+										{label}
+									</span>
+								)}
+								<span class="text-[12px] text-[#999] truncate">{common.desc1}</span>
+							</div>
+						)}
+						{common.desc2 && (
+							<div class="text-[12px] text-[#999] truncate">{common.desc2}</div>
+						)}
+					</div>
+					{common.button?.jump_style?.text && (
+						<div class="shrink-0 px-[14px] py-[6px] rounded-[6px] bg-[#FB7299] text-white text-[12px] font-bold leading-none">
+							{common.button.jump_style.text}
+						</div>
+					)}
+				</div>
 			</div>
 		</div>
 	);
