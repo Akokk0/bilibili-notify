@@ -149,15 +149,6 @@ export class SubscriptionManager {
 		);
 	}
 
-	subShow(): string {
-		if (!this.subManager.size) return "没有订阅任何UP";
-		let table = "";
-		for (const [uid, sub] of this.subManager) {
-			table += `UID:${uid}  ${sub.dynamic ? "已订阅动态" : ""}  ${sub.live ? "已订阅直播" : ""}\n`;
-		}
-		return table.trim();
-	}
-
 	private buildPushArrMap(subs: Subscriptions): PushArrMap {
 		const map: PushArrMap = new Map();
 		const toStrings = (arr?: ChannelArr) => (arr ?? []).map((c) => `${c.platform}:${c.channelId}`);

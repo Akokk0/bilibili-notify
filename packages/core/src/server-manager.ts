@@ -44,8 +44,17 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		return this.subMgr?.subManager ?? new Map();
 	}
 
-	subShow(): string {
-		return this.subMgr?.subShow() ?? "没有订阅任何UP";
+	subList(): string {
+		const map = this.subManager;
+		if (!map.size) return "没有订阅任何UP";
+		let table = "";
+		for (const [uid, sub] of map) {
+			const flags = [sub.dynamic ? "已订阅动态" : "", sub.live ? "已订阅直播" : ""]
+				.filter(Boolean)
+				.join(" ");
+			table += `[UID:${uid}] 「${sub.uname}」 ${flags}\n`;
+		}
+		return table.trim();
 	}
 
 	protected async start(): Promise<void> {
@@ -268,7 +277,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 	private updateSubNotifier(): void {
 		if (!this.subMgr) return;
 		if (this.subNotifier) this.subNotifier.dispose();
-		const subInfo = this.subMgr.subShow();
+		const subInfo = this.subList();
 		if (subInfo === "没有订阅任何UP") {
 			this.subNotifier = this.selfCtx.notifier.create(subInfo);
 		} else {
