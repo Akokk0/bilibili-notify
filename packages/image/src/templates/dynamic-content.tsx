@@ -346,9 +346,7 @@ function buildCommonAdditional(common: any) {
 	const label = subTypeLabel[common.sub_type] ?? common.sub_type;
 	return (
 		<div>
-			<div class="flex items-center gap-1 text-[12px] text-[#999] mb-[6px]">
-				{common.head_text}
-			</div>
+			<div class="flex items-center gap-1 text-[12px] text-[#999] mb-[6px]">{common.head_text}</div>
 			<div class="bg-black/4 rounded-lg p-[10px]">
 				<div class="flex gap-[10px] items-center">
 					<div class="w-[72px] h-[72px] shrink-0 rounded-md overflow-hidden">
@@ -366,9 +364,7 @@ function buildCommonAdditional(common: any) {
 								<span class="text-[12px] text-[#999] truncate">{common.desc1}</span>
 							</div>
 						)}
-						{common.desc2 && (
-							<div class="text-[12px] text-[#999] truncate">{common.desc2}</div>
-						)}
+						{common.desc2 && <div class="text-[12px] text-[#999] truncate">{common.desc2}</div>}
 					</div>
 					{common.button?.jump_style?.text && (
 						<div class="shrink-0 px-[14px] py-[6px] rounded-[6px] bg-[#FB7299] text-white text-[12px] font-bold leading-none">
