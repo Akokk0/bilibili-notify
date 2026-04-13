@@ -1,8 +1,6 @@
 /** @jsxImportSource vue */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type { VNode } from "vue";
-import { SVG_DANMAKU, SVG_GOODS, SVG_LOTTERY, SVG_VIEW } from "../icons";
+import { SVG_BELL, SVG_DANMAKU, SVG_GOODS, SVG_LOTTERY, SVG_VIEW } from "../icons";
 import { parseRichText } from "../rich-text";
 import type { Dynamic } from "../types";
 
@@ -36,23 +34,21 @@ export type DynamicContent = {
  * 根据动态类型构建内容 VNode
  * @param dynamic 动态数据
  * @param isForward 是否作为被转发动态
- * @param dirname 调用方的 __dirname，用于定位静态资源
  */
 export async function buildDynamicContent(
 	dynamic: Dynamic,
 	isForward: boolean,
-	dirname: string,
 ): Promise<DynamicContent> {
 	const upName = dynamic.modules.module_author.name;
 
 	switch (dynamic.type) {
 		case DYNAMIC_TYPE_WORD:
 		case DYNAMIC_TYPE_DRAW: {
-			return { vnode: buildBasicContent(dynamic, false, dirname) };
+			return { vnode: buildBasicContent(dynamic, false) };
 		}
 
 		case DYNAMIC_TYPE_FORWARD: {
-			const selfContent = buildBasicContent(dynamic, false, dirname);
+			const selfContent = buildBasicContent(dynamic, false);
 			if (!dynamic.orig)
 				return {
 					vnode: (
@@ -62,7 +58,7 @@ export async function buildDynamicContent(
 						</>
 					),
 				};
-			const forwarded = await buildDynamicContent(dynamic.orig, true, dirname);
+			const forwarded = await buildDynamicContent(dynamic.orig, true);
 			const forwardedAuthor = dynamic.orig.modules.module_author;
 			return {
 				vnode: (
@@ -81,7 +77,7 @@ export async function buildDynamicContent(
 		}
 
 		case DYNAMIC_TYPE_AV: {
-			const selfContent = buildBasicContent(dynamic, false, dirname);
+			const selfContent = buildBasicContent(dynamic, false);
 			if (!dynamic.modules.module_dynamic?.major?.archive) return { vnode: selfContent };
 			const archive = dynamic.modules.module_dynamic.major.archive;
 			const isNewVideo = archive.badge.text === "投稿视频";
@@ -99,7 +95,7 @@ export async function buildDynamicContent(
 
 		case DYNAMIC_TYPE_ARTICLE: {
 			return {
-				vnode: buildBasicContent(dynamic, true, dirname),
+				vnode: buildBasicContent(dynamic, true),
 				forwardLabel: isForward ? "投稿了专栏" : undefined,
 				pubTimeSuffix: !isForward ? " · 投稿了专栏" : undefined,
 			};
@@ -130,7 +126,7 @@ export async function buildDynamicContent(
 
 // ── 私有辅助函数 ──────────────────────────────────────────────────────────────
 
-function buildBasicContent(dynamic: Dynamic, isArticle: boolean, dirname: string) {
+function buildBasicContent(dynamic: Dynamic, isArticle: boolean) {
 	const mod = dynamic.modules.module_dynamic;
 	return (
 		<>
@@ -138,20 +134,14 @@ function buildBasicContent(dynamic: Dynamic, isArticle: boolean, dirname: string
 			{mod?.major?.opus?.summary?.rich_text_nodes &&
 				parseRichText(mod.major.opus.summary.rich_text_nodes, mod.major.opus.title, isArticle)}
 			{mod?.major?.opus?.pics && (
-				<div class="mt-[8px]">{buildPicsContent(mod.major.opus.pics, dirname)}</div>
+				<div class="mt-[8px]">{buildPicsContent(mod.major.opus.pics)}</div>
 			)}
 			{buildAdditionalContent(dynamic)}
 		</>
 	);
 }
 
-function buildPicsContent(
-	pics: Array<{ height: number; url: string; width: number }>,
-	dirname: string,
-) {
-	const arrowBuf = readFileSync(resolve(dirname, "img/arrow.png"));
-	const arrowImg = `data:image/png;base64,${arrowBuf.toString("base64")}`;
-
+function buildPicsContent(pics: Array<{ height: number; url: string; width: number }>) {
 	if (pics.length === 1) {
 		const pic = pics[0];
 		const isSuperLong = pic.height > pic.width * 2;
@@ -159,15 +149,12 @@ function buildPicsContent(
 		return (
 			<div class="relative overflow-hidden rounded-lg" style="max-width: 600px;">
 				{isSuperLong ? (
-					<>
-						<div style="height: 400px; overflow: hidden;">
-							<img class="w-full h-full object-cover object-top block" src={pic.url} alt="" />
+					<div class="relative" style="height: 400px; overflow: hidden;">
+						<img class="w-full h-full object-cover object-top block" src={pic.url} alt="" />
+						<div class="absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-[5px] py-[2px] rounded-sm leading-none">
+							长图
 						</div>
-						<div class="absolute bottom-0 left-0 right-0 h-[60px] bg-gradient-to-t from-black/50 to-transparent flex items-end p-2">
-							<span class="text-white text-[12px]">点击链接浏览全部</span>
-						</div>
-						<img class="absolute right-2 bottom-2 w-5 h-5" src={arrowImg} alt="" />
-					</>
+					</div>
 				) : isLong ? (
 					<img class="h-auto block rounded-lg" style="max-height: 400px; width: auto;" src={pic.url} alt="" />
 				) : (
@@ -266,13 +253,12 @@ function buildReserveAdditional(reserve: any) {
 				)}
 			</div>
 			<div
-				class={`shrink-0 px-3 py-1 rounded-[12px] text-[12px] ${
-					isEnded
-						? "border border-[#ccc] bg-[#f5f5f5] text-[#999]"
-						: "border border-[#00AEEC] bg-white text-[#00AEEC]"
+				class={`shrink-0 inline-flex items-center gap-1 px-3 py-[6px] rounded-[6px] text-[12px] font-bold leading-none ${
+					isEnded ? "bg-[#f5f5f5] text-[#999]" : "bg-[#FB7299] text-white"
 				}`}
 			>
-				{reserve.button.uncheck.text}
+				{!isEnded && SVG_BELL}
+				<span>{reserve.button.uncheck.text}</span>
 			</div>
 		</div>
 	);
@@ -302,7 +288,7 @@ function buildGoodsAdditional(goods: any) {
 								<span class="text-[12px] text-[#999]">起</span>
 							</div>
 						</div>
-						<div class="shrink-0 px-[14px] py-[6px] rounded-[20px] bg-[#FF6699] text-white text-[12px] font-bold">
+						<div class="shrink-0 px-[14px] py-[6px] rounded-[6px] bg-[#FB7299] text-white text-[12px] font-bold leading-none">
 							{goods.items[0].jump_desc || "去看看"}
 						</div>
 					</div>

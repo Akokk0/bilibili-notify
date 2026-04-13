@@ -286,7 +286,7 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 				}
 			: { decorateCardUrl: undefined, decorateCardId: undefined, decorateCardColor: "#FFFFFF" };
 
-		const content = await buildDynamicContent(data, false, __dirname);
+		const content = await buildDynamicContent(data, false);
 		if (content.pubTimeSuffix) {
 			pubTime += content.pubTimeSuffix;
 		}

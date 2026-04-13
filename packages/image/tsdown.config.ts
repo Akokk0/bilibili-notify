@@ -9,8 +9,5 @@ export default defineConfig({
 	exports: true,
 	deps: { onlyBundle: false },
 	tsconfig: "tsconfig.json",
-	copy: [
-		{ from: "src/img", to: "lib" },
-		{ from: "src/static", to: "lib" },
-	],
+	copy: [{ from: "src/static", to: "lib" }],
 });
