@@ -483,11 +483,12 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 
 			if (this.isDisposed()) return;
 
-			const parts = [img, summary ? h.text(summary) : undefined].filter(Boolean);
-			if (parts.length > 0) {
+			const wcMsg = img;
+			const summaryMsg = summary ? h.text(summary) : undefined;
+			if (wcMsg || summaryMsg) {
 				await this.push.broadcastToTargets(
 					sub.uid,
-					h("message", parts),
+					[wcMsg, summaryMsg],
 					PushType.WordCloudAndLiveSummary,
 				);
 			}
