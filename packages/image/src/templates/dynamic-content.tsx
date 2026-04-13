@@ -1,6 +1,6 @@
 /** @jsxImportSource vue */
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import type { VNode } from "vue";
 import { SVG_DANMAKU, SVG_GOODS, SVG_LOTTERY, SVG_VIEW } from "../icons";
 import { parseRichText } from "../rich-text";
@@ -149,20 +149,29 @@ function buildPicsContent(
 	pics: Array<{ height: number; url: string; width: number }>,
 	dirname: string,
 ) {
-	const arrowImg = pathToFileURL(resolve(dirname, "img/arrow.png")).toString();
+	const arrowBuf = readFileSync(resolve(dirname, "img/arrow.png"));
+	const arrowImg = `data:image/png;base64,${arrowBuf.toString("base64")}`;
 
 	if (pics.length === 1) {
 		const pic = pics[0];
+		const isSuperLong = pic.height > pic.width * 2;
+		const isLong = !isSuperLong && pic.height > pic.width;
 		return (
 			<div class="relative overflow-hidden rounded-lg" style="max-width: 600px;">
-				<img class="w-full h-auto block" src={pic.url} alt="" />
-				{pic.height > 3000 && (
+				{isSuperLong ? (
 					<>
+						<div style="height: 400px; overflow: hidden;">
+							<img class="w-full h-full object-cover object-top block" src={pic.url} alt="" />
+						</div>
 						<div class="absolute bottom-0 left-0 right-0 h-[60px] bg-gradient-to-t from-black/50 to-transparent flex items-end p-2">
 							<span class="text-white text-[12px]">点击链接浏览全部</span>
 						</div>
 						<img class="absolute right-2 bottom-2 w-5 h-5" src={arrowImg} alt="" />
 					</>
+				) : isLong ? (
+					<img class="h-auto block rounded-lg" style="max-height: 400px; width: auto;" src={pic.url} alt="" />
+				) : (
+					<img class="w-full h-auto block" src={pic.url} alt="" />
 				)}
 			</div>
 		);
