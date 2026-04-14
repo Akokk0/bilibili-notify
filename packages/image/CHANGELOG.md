@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.3-beta.8
+
+### Patch Changes
+
+- ef5dcfe: fix(image): inline wordcloud JS scripts to fix file:// URL blocked by Chromium in Puppeteer; fix live status badge text vertical alignment
+
+  fix(live): update blive-message-listener to 0.5.4; use listener.closed directly (removed .live indirection)
+
 ## 0.0.3-beta.7
 
 ### Patch Changes
