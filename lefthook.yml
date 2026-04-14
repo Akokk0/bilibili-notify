@@ -1,9 +1,12 @@
 pre-commit:
-  parallel: true
+  parallel: false
   commands:
     lint:
       glob: "*.{ts,js,mjs,json}"
       run: npx biome check --staged --write --no-errors-on-unmatched {staged_files}
+      stage_fixed: true
+    check-fix:
+      run: yarn check:fix
       stage_fixed: true
 
 commit-msg:
