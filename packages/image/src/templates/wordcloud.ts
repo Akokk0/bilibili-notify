@@ -1,13 +1,13 @@
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 
 export function buildWordCloudHtml(
 	masterName: string,
 	words: Array<[string, number]>,
 	dirname: string,
 ): string {
-	const wordcloudJS = pathToFileURL(resolve(dirname, "static/wordcloud2.min.js"));
-	const renderFunc = pathToFileURL(resolve(dirname, "static/render.js"));
+	const wordcloudJS = readFileSync(resolve(dirname, "static/wordcloud2.min.js"), "utf-8");
+	const renderFunc = readFileSync(resolve(dirname, "static/render.js"), "utf-8");
 
 	return /* html */ `
         <!DOCTYPE html>
@@ -71,8 +71,8 @@ export function buildWordCloudHtml(
                 </div>
             </div>
 
-            <script src="${wordcloudJS}"></script>
-            <script src="${renderFunc}"></script>
+            <script>${wordcloudJS}</script>
+            <script>${renderFunc}</script>
             <script>
                 const canvas = document.getElementById('wordCloudCanvas');
                 const ctx = canvas.getContext('2d');
