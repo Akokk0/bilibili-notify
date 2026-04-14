@@ -38,7 +38,7 @@
 	"dependencies": {
 		"@bilibili-notify/internal": "workspace:^",
 		"@bilibili-notify/push": "workspace:^",
-		"blive-message-listener": "^0.5.3",
+		"blive-message-listener": "^0.5.4",
 		"jieba-wasm": "^2.4.0",
 		"koishi-plugin-bilibili-notify": "workspace:^",
 		"luxon": "^3.5.0",

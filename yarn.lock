@@ -4118,6 +4118,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"blive-message-listener@npm:^0.5.4":
+  version: 0.5.4
+  resolution: "blive-message-listener@npm:0.5.4"
+  dependencies:
+    protobufjs: "npm:^8.0.0"
+    tiny-bilibili-ws: "npm:^1.0.2"
+  checksum: 10c0/64eb916f5eeb477d5c1362810f3c9ef4b5a7d504b991b54ba265bff1240a8ac520acbb78b9fe81a721354c9a3f4a3bf42a0c26bcd07900f75b5bbc153b4b6f10
+  languageName: node
+  linkType: hard
+
 "brace-expansion@npm:^5.0.5":
   version: 5.0.5
   resolution: "brace-expansion@npm:5.0.5"
@@ -6654,7 +6664,7 @@ __metadata:
     "@bilibili-notify/push": "workspace:^"
     "@types/luxon": "npm:^3.4.2"
     "@types/protobufjs": "npm:^6.0.0"
-    blive-message-listener: "npm:^0.5.3"
+    blive-message-listener: "npm:^0.5.4"
     jieba-wasm: "npm:^2.4.0"
     koishi-plugin-bilibili-notify: "workspace:^"
     luxon: "npm:^3.5.0"

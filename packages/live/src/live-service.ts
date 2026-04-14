@@ -192,7 +192,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			this.liveLogger.debug(`直播间 [${roomId}] 连接不存在，跳过关闭`);
 			return;
 		}
-		if (listener.live.closed) {
+		if (listener.closed) {
 			this.liveLogger.debug(`直播间 [${roomId}] 连接已被远端断开`);
 			delete this.listenerRecord[roomId];
 			return;
