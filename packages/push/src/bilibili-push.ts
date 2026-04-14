@@ -101,29 +101,28 @@ export class BilibiliPush {
 		const record = this.pushArrMap.get(uid);
 		if (!record) return;
 
-		this.logger.info(`推送对象: ${uid}, 推送类型: ${PUSH_TYPE_LABEL[type]}`);
-
+		const label = `推送对象: ${uid}, 推送类型: ${PUSH_TYPE_LABEL[type]}`;
 		switch (type) {
 			case PushType.StartBroadcasting:
 				await this.pushToArr(record.liveAtAllArr, h.at("all"));
-				await this.pushToArr(record.liveArr, h("message", content));
+				await this.pushToArr(record.liveArr, h("message", content), label);
 				break;
 
 			case PushType.Live:
-				await this.pushToArr(record.liveArr, h("message", content));
+				await this.pushToArr(record.liveArr, h("message", content), label);
 				break;
 
 			case PushType.Dynamic:
 				await this.pushToArr(record.dynamicAtAllArr, h.at("all"));
-				await this.pushToArr(record.dynamicArr, h("message", content));
+				await this.pushToArr(record.dynamicArr, h("message", content), label);
 				break;
 
 			case PushType.LiveGuardBuy:
-				await this.pushToArr(record.liveGuardBuyArr, h("message", content));
+				await this.pushToArr(record.liveGuardBuyArr, h("message", content), label);
 				break;
 
 			case PushType.Superchat:
-				await this.pushToArr(record.superchatArr, h("message", content));
+				await this.pushToArr(record.superchatArr, h("message", content), label);
 				break;
 
 			case PushType.WordCloudAndLiveSummary: {
@@ -135,33 +134,35 @@ export class BilibiliPush {
 				const wcOnly = wcArr.filter((x) => !sumArr.includes(x));
 				const sumOnly = sumArr.filter((x) => !wcArr.includes(x));
 
-				if (both.length > 0) {
-					const msgs = [wcMsg, summaryMsg].filter(Boolean);
-					if (msgs.length > 0) await this.push(both, h("message", msgs));
-				}
-				if (wcMsg && wcOnly.length > 0) {
-					await this.push(wcOnly, h("message", wcMsg));
-				}
-				if (summaryMsg && sumOnly.length > 0) {
-					await this.push(sumOnly, h("message", summaryMsg));
-				}
+				// biome-ignore lint/suspicious/noExplicitAny: content items are Koishi h() elements
+				const bothMsgs = [wcMsg, summaryMsg].filter(Boolean) as any[];
+				await this.pushToArr(bothMsgs.length > 0 ? both : [], h("message", bothMsgs), label);
+				// biome-ignore lint/suspicious/noExplicitAny: content items are Koishi h() elements
+				await this.pushToArr(wcMsg ? wcOnly : [], h("message", wcMsg as any), label);
+				// biome-ignore lint/suspicious/noExplicitAny: content items are Koishi h() elements
+				await this.pushToArr(summaryMsg ? sumOnly : [], h("message", summaryMsg as any), label);
 				break;
 			}
 
 			case PushType.UserDanmakuMsg:
-				await this.pushToArr(record.specialDanmakuArr, h("message", content));
+				await this.pushToArr(record.specialDanmakuArr, h("message", content), label);
 				break;
 
 			case PushType.UserActions:
-				await this.pushToArr(record.specialUserEnterTheRoomArr, h("message", content));
+				await this.pushToArr(record.specialUserEnterTheRoomArr, h("message", content), label);
 				break;
 		}
 	}
 
 	/** 仅在数组非空时推送，减少调用方的重复判断 */
 	// biome-ignore lint/suspicious/noExplicitAny: Koishi message content
-	private async pushToArr(arr: string[] | undefined, content: any): Promise<void> {
-		if (arr?.length) await this.push(arr, content);
+	private async pushToArr(arr: string[] | undefined, content: any, label?: string): Promise<void> {
+		if (arr?.length) {
+			if (label) this.logger.info(label);
+			await this.push(arr, content);
+		} else if (label) {
+			this.logger.debug(`${label} — 目标数组为空，跳过`);
+		}
 	}
 
 	// ---- Low-level message sender ----
