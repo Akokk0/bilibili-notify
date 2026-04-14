@@ -29,7 +29,7 @@ yarn check          # lint + format check
 yarn check:fix      # lint + format auto-fix
 
 # Git hooks (Lefthook) are installed automatically on yarn install
-# Pre-commit: biome check --staged --write on *.ts, *.js, *.json
+# Pre-commit: yarn check:fix (full repo), then biome check --staged --write on *.ts, *.js, *.json
 ```
 
 No test scripts are configured in this project.
@@ -102,7 +102,7 @@ Custom events declared on the Koishi `Context`:
 
 - **tsdown** — builds each package to both ESM (`.mjs`) and CJS (`.cjs`) with declaration files
 - **Biome** — linter and formatter (tab indentation, 100-char line width). Vue files are included in lint scope
-- **Lefthook** — pre-commit hook runs `biome check --staged --write`
+- **Lefthook** — pre-commit hook runs `yarn check:fix` (full repo) then `biome check --staged --write`
 
 ### Console UI (client)
 
