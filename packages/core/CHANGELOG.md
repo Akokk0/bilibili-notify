@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.0.0-beta.10
+
+### Patch Changes
+
+- 76b1f79: feat(core): add `bili ai` test command to verify AI connectivity
+
+  fix(core): remove `.required()` from AI `baseURL` schema field to allow default value; fix union fallback to `Schema.object({})` to prevent constraint errors
+
+  refactor(push): improve push logging accuracy; only log when targets are non-empty, add debug log for empty target skip
+
+  chore: enrich debug logging across core services (api, core, subscription, dynamic, live); route withLock errors through logger instead of console.error
+
+- Updated dependencies [76b1f79]
+  - @bilibili-notify/api@0.0.2-beta.3
+  - @bilibili-notify/push@0.0.2-beta.2
+  - @bilibili-notify/subscription@0.0.2-beta.1
+
 ## 4.0.0-beta.9
 
 ### Patch Changes
