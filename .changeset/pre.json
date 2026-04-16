@@ -15,6 +15,7 @@
   },
   "changesets": [
     "additional-common-and-image-fixes",
+    "bili-ai-command-and-debug-logs",
     "client-type-fix",
     "core-client-build",
     "five-poets-sneeze",
