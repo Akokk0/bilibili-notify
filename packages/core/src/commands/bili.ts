@@ -142,6 +142,22 @@ export function biliCommands(this: BilibiliNotifyServerManager): void {
 		});
 
 	biliCom
+		.subcommand(".ai [prompt:text]", "测试 AI 功能是否正常", { hidden: true })
+		.usage("向 AI 发送一条测试消息，验证 AI 配置是否正确")
+		.example("bili ai 你好")
+		.action(async (_, prompt = "你好，请简单介绍一下你自己") => {
+			const internals = this.getInternals(BILIBILI_NOTIFY_TOKEN);
+			if (!internals) return "插件尚未就绪";
+			if (!internals.api.isAIEnabled()) return "AI 功能未启用，请在配置中开启 AI 并填写 API Key";
+			try {
+				const result = await internals.api.chatWithAI(prompt);
+				return `[AI 回复] ${result}`;
+			} catch (e) {
+				return `AI 调用失败：${(e as Error).message}`;
+			}
+		});
+
+	biliCom
 		.subcommand(".dyn <uid:string> [index:number]", "手动推送一条动态信息", { hidden: true })
 		.usage("手动推送一条动态信息，若 image 插件已启用则直接预览卡片图片")
 		.example("bili dyn 233 1 手动推送UID为233用户空间的第一条动态信息")

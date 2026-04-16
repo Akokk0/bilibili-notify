@@ -76,7 +76,6 @@ export const BilibiliNotifyConfigSchema: Schema<BilibiliNotifyConfig> = Schema.o
 					.required()
 					.description("请主人把 API Key 告诉女仆……会乖乖保护好的 (つ﹏⊂)♡"),
 				baseURL: Schema.string()
-					.required()
 					.default("https://api.siliconflow.cn/v1")
 					.description("AI 的访问地址在这里填哦～女仆会按照主人的指令去联络 AI 的 (*>ω<)b"),
 				model: Schema.string()
@@ -90,7 +89,7 @@ export const BilibiliNotifyConfigSchema: Schema<BilibiliNotifyConfig> = Schema.o
 						"这是 AI 的性格设定哟～主人可以随意决定它是什么样的角色，女仆会认真帮忙传达的 (*´艸`)",
 					),
 			}),
-			Schema.object({ enable: Schema.const(false) }),
+			Schema.object({}),
 		]),
 	]),
 
