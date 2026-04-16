@@ -92,21 +92,22 @@ export class SubscriptionManager {
 
 	async loadSubscriptions(subs: Subscriptions): Promise<void> {
 		const isReload = this.subManager.size > 0;
+		const subArray = Object.values(subs);
 		if (isReload) {
 			this.opts.logger.info("订阅配置已更新，正在重新加载...");
 		} else {
 			this.opts.logger.info("已获取订阅信息，正在加载订阅...");
 		}
+		this.opts.logger.debug(`共 ${subArray.length} 个订阅项，isReload=${isReload}`);
 
 		const pushArrMap = this.buildPushArrMap(subs);
 		this.push.pushArrMap = pushArrMap;
 		this.push.pushArrMapReady = true;
-		this.opts.logger.debug("推送频道映射已初始化");
+		this.opts.logger.debug(`推送频道映射已初始化，共 ${pushArrMap.size} 个 UID`);
 
 		const prevSubManager = this.subManager;
 		this.subManager = new Map();
 
-		const subArray = Object.values(subs);
 		for (let i = 0; i < subArray.length; i++) {
 			const sub = subArray[i];
 			this.opts.logger.debug(`加载订阅 UID：${sub.uid}`);
@@ -168,6 +169,7 @@ export class SubscriptionManager {
 	}
 
 	private async followUser(uid: string): Promise<{ code: number; message: string }> {
+		this.opts.logger.debug(`关注 UID：${uid}`);
 		try {
 			// biome-ignore lint/suspicious/noExplicitAny: API response shape
 			const res = (await this.api.follow(uid)) as any;
@@ -175,8 +177,10 @@ export class SubscriptionManager {
 			const message: string = res.message ?? "";
 			// 22001 = self, 22014 = already following → treat as OK
 			if (code === 22001 || code === 22014 || code === 0) {
+				this.opts.logger.debug(`关注 UID：${uid} 成功（code=${code}）`);
 				return { code: 0, message: "OK" };
 			}
+			this.opts.logger.debug(`关注 UID：${uid} 失败，code=${code}，${message}`);
 			return { code, message };
 		} catch (e) {
 			return { code: -1, message: String(e) };
@@ -184,6 +188,7 @@ export class SubscriptionManager {
 	}
 
 	private async resolveRoomId(sub: SubItem): Promise<boolean> {
+		this.opts.logger.debug(`查询 UID：${sub.uid} 的直播间号`);
 		try {
 			// biome-ignore lint/suspicious/noExplicitAny: API response shape
 			const info = (await this.api.getUserInfo(sub.uid)) as any;
@@ -197,6 +202,7 @@ export class SubscriptionManager {
 				return true;
 			}
 			sub.roomId = String(info.data.live_room.roomid);
+			this.opts.logger.debug(`UID：${sub.uid} 直播间号已解析：${sub.roomId}`);
 			return true;
 		} catch (e) {
 			this.opts.logger.error(`获取用户信息时出错：${e}`);

@@ -87,6 +87,7 @@ export class BilibiliAPI {
 		this.cacheable.install(https.globalAgent);
 
 		await this.initClient();
+		this.logger.debug("HTTP 客户端初始化完成");
 
 		// Daily ticket refresh at midnight
 		this.ticketJob = new CronJob("0 0 * * *", () => {
@@ -96,6 +97,7 @@ export class BilibiliAPI {
 		});
 		this.ticketJob.start();
 		await this.updateBiliTicket();
+		this.logger.debug("BiliTicket 已更新，API 初始化完成");
 	}
 
 	stop(): void {
@@ -169,6 +171,9 @@ export class BilibiliAPI {
 	/** Load cookies from CookieData (decrypted by StorageManager) */
 	async loadCookies(data: CookieData): Promise<void> {
 		const cookies = JSON.parse(data.cookiesJson) as BACookie[];
+		this.logger.debug(
+			`正在写入 ${cookies.length} 条 Cookie，refreshToken=${data.refreshToken ? "有" : "无"}`,
+		);
 
 		const biliJctCookie = cookies.find((c) => c.key === "bili_jct");
 
@@ -206,6 +211,7 @@ export class BilibiliAPI {
 		}
 
 		this.loginInfoLoaded = true;
+		this.logger.debug(`Cookie 写入完成，bili_jct=${biliJctCookie ? "存在" : "缺失"}`);
 
 		if (data.refreshToken) {
 			const csrf = biliJctCookie?.value ?? "";

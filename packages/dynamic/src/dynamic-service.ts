@@ -24,14 +24,14 @@ declare module "koishi" {
 const SERVICE_NAME = "bilibili-notify-dynamic";
 
 /** Simple async lock: if the previous run is still executing, skip. */
-function withLock(fn: () => Promise<void>): () => void {
+function withLock(fn: () => Promise<void>, onError?: (err: unknown) => void): () => void {
 	let locked = false;
 	return () => {
 		if (locked) return;
 		locked = true;
 		fn()
 			.catch((err) => {
-				console.error("[bilibili-notify-dynamic] Execution error:", err);
+				onError?.(err);
 			})
 			.finally(() => {
 				locked = false;
@@ -92,9 +92,15 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 		this.api = internals.api;
 		this.push = internals.push;
 		this.dynamicTimelineManager = new Map();
+		this.dynamicLogger.debug(
+			`动态插件启动，AI 功能：${this.api.isAIEnabled() ? "已启用" : "未启用"}`,
+		);
 		// If subscriptions were already loaded before this plugin started, start immediately
 		if (internals.subs) {
+			this.dynamicLogger.debug("订阅已就绪，立即启动动态检测");
 			this.startDynamicDetector(internals.subs);
+		} else {
+			this.dynamicLogger.debug("订阅尚未就绪，等待 subscription-changed 事件");
 		}
 		// Listen for future subscription changes from core
 		this.ctx.on("bilibili-notify/subscription-changed", (subs: Subscriptions) => {
@@ -116,6 +122,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 	startDynamicDetector(subs: Subscriptions): void {
 		// Stop existing job first
 		if (this.dynamicJob) {
+			this.dynamicLogger.debug("停止旧的动态检测任务");
 			this.dynamicJob.stop();
 			this.dynamicJob = undefined;
 		}
@@ -127,6 +134,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 				// 只为新增 UID 设置初始时间戳，保留已有 UID 的时间戳避免重推旧动态
 				if (!this.dynamicTimelineManager.has(sub.uid)) {
 					this.dynamicTimelineManager.set(sub.uid, Math.floor(DateTime.now().toSeconds()));
+					this.dynamicLogger.debug(`初始化 UID：${sub.uid} 时间戳`);
 				}
 				dynamicSubManager.set(sub.uid, sub);
 			}
@@ -135,6 +143,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 		for (const uid of this.dynamicTimelineManager.keys()) {
 			if (!dynamicSubManager.has(uid)) {
 				this.dynamicTimelineManager.delete(uid);
+				this.dynamicLogger.debug(`清理已移除 UID：${uid} 的时间戳`);
 			}
 		}
 
@@ -142,12 +151,16 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 			this.dynamicLogger.info("没有需要动态检测的订阅对象");
 			return;
 		}
+		this.dynamicLogger.debug(`动态检测 UID 列表：${[...dynamicSubManager.keys()].join(", ")}`);
 
 		this.dynamicSubManager = dynamicSubManager;
 
 		this.dynamicJob = new CronJob(
 			this.config.dynamicCron,
-			withLock(() => this.detectDynamics()),
+			withLock(
+				() => this.detectDynamics(),
+				(err) => this.dynamicLogger.error(`动态检测执行异常：${err}`),
+			),
 		);
 		this.dynamicJob.start();
 		this.dynamicLogger.info("动态检测任务已启动");
@@ -201,6 +214,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 			// Filter
 			const filterResult = filterDynamic(item, this.config.filter ?? {});
 			if (filterResult.blocked) {
+				this.dynamicLogger.debug(`动态 ID=${item.id_str} 被过滤，原因：${filterResult.reason}`);
 				if (this.config.filter?.notify) {
 					const msgs: Record<DynamicFilterReason, string> = {
 						[DynamicFilterReason.BlacklistKeyword]: `${name}发布了一条含有屏蔽关键字的动态`,
@@ -266,13 +280,17 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 			if (this.api.isAIEnabled()) {
 				const dynamicText = extractDynamicText(item);
 				if (dynamicText) {
+					this.dynamicLogger.debug(`[AI] 开始生成动态点评，文本长度=${dynamicText.length}`);
 					try {
 						aiComment = await this.api.chatWithAI(
 							`${name}发布了一条动态，内容如下：\n${dynamicText}`,
 						);
+						this.dynamicLogger.debug(`[AI] 动态点评生成完毕，长度=${aiComment?.length ?? 0}`);
 					} catch (e) {
 						this.dynamicLogger.error(`AI 点评生成失败：${(e as Error).message}，回退到普通文字`);
 					}
+				} else {
+					this.dynamicLogger.debug("[AI] 动态无可提取文本，跳过 AI 点评");
 				}
 			}
 

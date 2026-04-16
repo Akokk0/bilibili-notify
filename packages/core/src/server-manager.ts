@@ -122,7 +122,9 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			});
 
 			await this.api.start();
+			this.serverLogger.debug("BilibiliAPI 启动完成");
 			this.push.start();
+			this.serverLogger.debug("BilibiliPush 启动完成");
 
 			this.subMgr = new SubscriptionManager(this.api, this.push, {
 				logger: this.serverLogger,
@@ -136,6 +138,9 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			statusCommands.call(this);
 
 			await this.initCookies();
+			this.serverLogger.debug(
+				`Cookie 加载完成，登录状态：${this.isLoggedIn() ? "已登录" : "未登录"}`,
+			);
 
 			if (!this.isLoggedIn()) {
 				this.serverLogger.info("账号未登录，请在控制台扫码登录");
@@ -157,6 +162,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 
 	disposePlugin(): boolean {
 		if (!this.running && !this.api && !this.push) return false;
+		this.serverLogger.debug("正在清理插件资源...");
 		this.running = false;
 		this.clearLoginTimer();
 		if (this.subNotifier) {
@@ -169,6 +175,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		this.api = null;
 		this.subMgr = null;
 		this.currentSubs = null;
+		this.serverLogger.debug("插件资源清理完成");
 		return true;
 	}
 
@@ -194,6 +201,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 
 	private async initCookies(): Promise<void> {
 		if (!this.api) return;
+		this.serverLogger.debug("正在从磁盘加载 Cookie...");
 		let cookieData = null;
 		try {
 			cookieData = await this.storageMgr.cookieStore.load();
@@ -201,8 +209,10 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			this.serverLogger.warn(`读取 cookie 文件失败: ${e}`);
 		}
 		if (cookieData) {
+			this.serverLogger.debug("找到 Cookie 文件，正在写入 jar...");
 			await this.api.loadCookies(cookieData);
 		} else {
+			this.serverLogger.debug("未找到 Cookie 文件，标记为待登录状态");
 			this.api.markLoginInfoLoaded();
 		}
 	}
@@ -260,6 +270,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			this.selfCtx.emit("bilibili-notify/ready-to-receive");
 		} else {
 			if (this.config.subs?.length) {
+				this.serverLogger.debug(`从配置加载 ${this.config.subs.length} 个订阅项`);
 				const subs = SubscriptionManager.fromFlatConfig(this.config.subs);
 				if (!this.subMgr) return;
 				await this.subMgr.loadSubscriptions(subs);

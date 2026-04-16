@@ -77,9 +77,13 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		this.livePushTimerManager = new Map();
 		this.listenerRecord = {};
 
+		this.liveLogger.debug(`直播插件启动，AI 功能：${this.api.isAIEnabled() ? "已启用" : "未启用"}`);
 		// If subscriptions were already loaded before this plugin started, start immediately
 		if (internals.subs) {
+			this.liveLogger.debug("订阅已就绪，立即启动直播监听");
 			this.startLiveMonitors(internals.subs);
+		} else {
+			this.liveLogger.debug("订阅尚未就绪，等待 subscription-changed 事件");
 		}
 		this.logSideEffectState("start");
 		// Listen for future subscription changes from core
@@ -136,6 +140,12 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		this.clearPushTimers();
 		this.clearListeners();
 
+		const liveSubUids = Object.values(subs)
+			.filter((s) => s.live)
+			.map((s) => s.uid);
+		this.liveLogger.debug(
+			`启动直播监听，共 ${liveSubUids.length} 个 UID：${liveSubUids.join(", ")}`,
+		);
 		for (const sub of Object.values(subs)) {
 			if (sub.live) {
 				this.liveDetectWithListener(sub).catch((e) => {
@@ -315,6 +325,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		if (this.isDisposed()) return;
 
 		if (!buffer) {
+			this.liveLogger.debug(`[${masterInfo.username}] 无图片，降级为文字推送`);
 			const fallbackMsg = h("message", [
 				h.text(liveNotifyMsg || `直播通知 - ${masterInfo.username}`),
 			]);
@@ -418,7 +429,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 					`弹幕排行TOP5：${top5Senders.map(([u, c]) => `${u}(${c}条)`).join("、")}`,
 				].join("，");
 				const aiResult = await this.api.chatWithAI(prompt);
-				this.liveLogger.debug("AI 直播总结生成完毕");
+				this.liveLogger.debug(`AI 直播总结生成完毕，长度=${aiResult.length}`);
 				return aiResult;
 			} catch (e) {
 				this.liveLogger.error(`AI 直播总结生成失败：${(e as Error).message}，回退到模板`);
