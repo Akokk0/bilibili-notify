@@ -38,6 +38,9 @@ export interface BilibiliNotifyAIConfig {
 	enableConversation: boolean;
 	/** 多轮对话保留的最大历史轮次（每轮=一问一答） */
 	maxHistory: number;
+
+	/** 开启模型的思考模式（仅 Qwen3 等支持 enable_thinking 的模型有效） */
+	enableThinking: boolean;
 }
 
 const PersonaConfigSchema: Schema<PersonaConfig> = Schema.intersect([
@@ -121,4 +124,10 @@ export const BilibiliNotifyAIConfigSchema: Schema<BilibiliNotifyAIConfig> = Sche
 		.step(1)
 		.default(10)
 		.description("多轮对话最多保留的历史轮次数（每轮包含一问一答）"),
+
+	enableThinking: Schema.boolean()
+		.default(false)
+		.description(
+			"开启模型的思考模式（仅 Qwen3 等支持 enable_thinking 参数的模型有效，不支持的模型会自动降级）",
+		),
 });

@@ -65,6 +65,7 @@ export function getPresetDefaults(key: PersonaKey): PersonaPresetDefaults | null
  * 用户显式指定的字段优先，未指定时使用预设默认值。
  */
 const CORE_IDENTITY = `你的工作是帮用户关注 B 站 UP 主，当他们有新动态或者开播时，第一时间通知用户。这是你最重要的职责，你要认真对待每一条通知。
+回复时只用纯文本，不要使用 Markdown 格式（不用 **加粗**、# 标题、- 列表等）。
 在做好这份工作的同时，你有自己的性格和说话方式，具体如下：`;
 
 export function buildSystemPrompt(params: {
