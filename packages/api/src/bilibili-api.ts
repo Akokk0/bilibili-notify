@@ -25,14 +25,6 @@ export interface CookiesRefreshedPayload {
 	refreshToken: string;
 }
 
-export interface AiConfig {
-	enable: true;
-	apiKey: string;
-	baseURL: string;
-	model: string;
-	persona: string;
-}
-
 // Special UID: Bangumi Trip account has no live room; return a static room id
 const BANGUMI_TRIP_UID = "11783021";
 const BANGUMI_TRIP_ROOM_ID = 931774;
@@ -40,7 +32,6 @@ const BANGUMI_TRIP_ROOM_ID = 931774;
 export interface BilibiliAPIConfig {
 	logLevel: number;
 	userAgent?: string;
-	ai?: AiConfig;
 }
 
 export class BilibiliAPI {
@@ -551,31 +542,6 @@ export class BilibiliAPI {
 
 	async getCORSContent(url: string) {
 		return this.retry(async () => (await this.client.get(url)).data, "getCORSContent");
-	}
-
-	isAIEnabled(): boolean {
-		return !!this.config.ai?.enable;
-	}
-
-	async chatWithAI(content: string): Promise<string> {
-		const ai = this.config.ai;
-		if (!ai) throw new Error("AI 配置未启用");
-		if (!ai.baseURL) throw new Error("AI baseURL 未配置，请在插件设置中填写 API 地址");
-		if (!ai.apiKey) throw new Error("AI apiKey 未配置，请在插件设置中填写 API Key");
-		this.logger.debug(`[AI] 开始调用，baseURL=${ai.baseURL}, model=${ai.model}`);
-		const { default: OpenAI } = await import("openai");
-		const client = new OpenAI({ apiKey: ai.apiKey, baseURL: ai.baseURL });
-		this.logger.debug(`[AI] 发送请求，prompt="${content}"`);
-		const res = await client.chat.completions.create({
-			model: ai.model,
-			messages: [
-				{ role: "system", content: ai.persona },
-				{ role: "user", content },
-			],
-		});
-		const result = res.choices[0].message.content ?? "";
-		this.logger.debug(`[AI] 响应成功，长度=${result.length}`);
-		return result;
 	}
 
 	async v_voucherCaptcha(v_voucher: string): Promise<V_VoucherCaptchaData["data"]> {

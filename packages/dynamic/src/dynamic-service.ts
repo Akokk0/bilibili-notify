@@ -4,8 +4,8 @@ import type { BilibiliPush, SubManager, Subscriptions } from "@bilibili-notify/p
 import { PushType } from "@bilibili-notify/push";
 import { CronJob } from "cron";
 import { type Awaitable, type Context, h, type Logger, Service } from "koishi";
-// biome-ignore lint/correctness/noUnusedImports: <empty import> is needed to make sure the type augmentation works
-import {} from "koishi-plugin-bilibili-notify";
+import type {} from "koishi-plugin-bilibili-notify";
+import type {} from "koishi-plugin-bilibili-notify-ai";
 import { DateTime } from "luxon";
 import type { BilibiliNotifyDynamicConfig } from "./config";
 import { DynamicFilterReason, filterDynamic } from "./dynamic-filter";
@@ -92,9 +92,8 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 		this.api = internals.api;
 		this.push = internals.push;
 		this.dynamicTimelineManager = new Map();
-		this.dynamicLogger.debug(
-			`动态插件启动，AI 功能：${this.api.isAIEnabled() ? "已启用" : "未启用"}`,
-		);
+		const aiService = this.ctx.get("bilibili-notify-ai");
+		this.dynamicLogger.debug(`动态插件启动，AI 功能：${aiService ? "已启用" : "未启用"}`);
 		// If subscriptions were already loaded before this plugin started, start immediately
 		if (internals.subs) {
 			this.dynamicLogger.debug("订阅已就绪，立即启动动态检测");
@@ -277,13 +276,15 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 
 			// AI comment
 			let aiComment: string | undefined;
-			if (this.api.isAIEnabled()) {
+			const aiService = this.ctx.get("bilibili-notify-ai");
+			if (aiService) {
 				const dynamicText = extractDynamicText(item);
 				if (dynamicText) {
 					this.dynamicLogger.debug(`[AI] 开始生成动态点评，文本长度=${dynamicText.length}`);
 					try {
-						aiComment = await this.api.chatWithAI(
+						aiComment = await aiService.comment(
 							`${name}发布了一条动态，内容如下：\n${dynamicText}`,
+							"dynamic",
 						);
 						this.dynamicLogger.debug(`[AI] 动态点评生成完毕，长度=${aiComment?.length ?? 0}`);
 					} catch (e) {

@@ -8,7 +8,7 @@ export const name = "bilibili-notify-live";
 
 export const inject = {
 	required: ["bilibili-notify"],
-	optional: ["bilibili-notify-image"],
+	optional: ["bilibili-notify-image", "bilibili-notify-ai"],
 };
 
 export type Config = BilibiliNotifyLiveConfig;

@@ -6618,6 +6618,20 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"koishi-plugin-bilibili-notify-ai@workspace:^, koishi-plugin-bilibili-notify-ai@workspace:packages/ai":
+  version: 0.0.0-use.local
+  resolution: "koishi-plugin-bilibili-notify-ai@workspace:packages/ai"
+  dependencies:
+    "@bilibili-notify/internal": "workspace:^"
+    "@koishijs/plugin-help": "npm:^2.4.6"
+    koishi-plugin-bilibili-notify: "workspace:^"
+    openai: "npm:^4.98.0"
+  peerDependencies:
+    koishi: ^4.18.11
+    koishi-plugin-bilibili-notify: "workspace:^"
+  languageName: unknown
+  linkType: soft
+
 "koishi-plugin-bilibili-notify-dynamic@workspace:packages/dynamic":
   version: 0.0.0-use.local
   resolution: "koishi-plugin-bilibili-notify-dynamic@workspace:packages/dynamic"
@@ -6628,6 +6642,7 @@ __metadata:
     "@types/luxon": "npm:^3.4.2"
     cron: "npm:^3.1.7"
     koishi-plugin-bilibili-notify: "workspace:^"
+    koishi-plugin-bilibili-notify-ai: "workspace:^"
     luxon: "npm:^3.5.0"
   peerDependencies:
     koishi: ^4.18.11
@@ -6667,6 +6682,7 @@ __metadata:
     blive-message-listener: "npm:^0.5.4"
     jieba-wasm: "npm:^2.4.0"
     koishi-plugin-bilibili-notify: "workspace:^"
+    koishi-plugin-bilibili-notify-ai: "workspace:^"
     luxon: "npm:^3.5.0"
     protobufjs: "npm:^7.4.0"
   peerDependencies:

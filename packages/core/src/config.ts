@@ -6,13 +6,6 @@ export interface BilibiliNotifyConfig {
 	subs: FlatSubConfigItem[];
 	logLevel: number;
 	userAgent?: string;
-	ai: {
-		enable: boolean;
-		apiKey?: string;
-		baseURL?: string;
-		model?: string;
-		persona?: string;
-	};
 	master: {
 		enable: boolean;
 		platform?: string;
@@ -61,37 +54,6 @@ export const BilibiliNotifyConfigSchema: Schema<BilibiliNotifyConfig> = Schema.o
 	userAgent: Schema.string().description(
 		"这里可以设置请求头的 User-Agent 哦～如果请求出现了 -352 的奇怪错误，主人可以试着在这里换一个看看 (；>_<)",
 	),
-
-	ai: Schema.intersect([
-		Schema.object({
-			enable: Schema.boolean()
-				.default(false)
-				.description("要不要让女仆打开 AI 小脑袋呢？(〃ﾉωﾉ) 开了之后就能帮主人做更多事情啦！"),
-		}),
-		Schema.union([
-			Schema.object({
-				enable: Schema.const(true).required(),
-				apiKey: Schema.string()
-					.role("secret")
-					.required()
-					.description("请主人把 API Key 告诉女仆……会乖乖保护好的 (つ﹏⊂)♡"),
-				baseURL: Schema.string()
-					.default("https://api.siliconflow.cn/v1")
-					.description("AI 的访问地址在这里填哦～女仆会按照主人的指令去联络 AI 的 (*>ω<)b"),
-				model: Schema.string()
-					.default("gpt-3.5-turbo")
-					.description("请选择主人想用的 AI 模型～女仆会按主人的喜欢来工作的(〃´-`〃)♡"),
-				persona: Schema.string()
-					.default(
-						"你是一个风趣幽默的主播助理，你的任务是根据提供的直播数据生成一段有趣且富有创意的直播总结。请确保你的回答简洁明了，避免使用过于复杂的语言或长句子。请注意，你的回答必须与提供的数据相关，并且不能包含任何虚构的信息。如果你无法根据提供的数据生成总结，请礼貌地说明你无法完成任务。",
-					)
-					.description(
-						"这是 AI 的性格设定哟～主人可以随意决定它是什么样的角色，女仆会认真帮忙传达的 (*´艸`)",
-					),
-			}),
-			Schema.object({}),
-		]),
-	]),
 
 	master: Schema.intersect([
 		Schema.object({

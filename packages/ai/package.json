@@ -1,6 +1,6 @@
 {
-	"name": "koishi-plugin-bilibili-notify-dynamic",
-	"version": "0.1.0-beta.5",
+	"name": "koishi-plugin-bilibili-notify-ai",
+	"version": "0.0.1",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Akokk0/bilibili-notify"
@@ -9,7 +9,7 @@
 		"name": "Akokko",
 		"email": "admin@akokko.com"
 	},
-	"description": "Bilibili 动态推送插件（bilibili-notify 可选插件）",
+	"description": "Bilibili Notify AI 增强插件（bilibili-notify 可选插件）",
 	"type": "module",
 	"files": [
 		"lib"
@@ -29,23 +29,20 @@
 		"koishi",
 		"plugin",
 		"bilibili",
-		"bilibili-notify"
+		"bilibili-notify",
+		"ai"
 	],
 	"scripts": {
 		"build": "tsdown",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@bilibili-notify/api": "workspace:^",
 		"@bilibili-notify/internal": "workspace:^",
-		"@bilibili-notify/push": "workspace:^",
-		"cron": "^3.1.7",
-		"luxon": "^3.5.0"
+		"openai": "^4.98.0"
 	},
 	"devDependencies": {
-		"@types/luxon": "^3.4.2",
-		"koishi-plugin-bilibili-notify": "workspace:^",
-		"koishi-plugin-bilibili-notify-ai": "workspace:^"
+		"@koishijs/plugin-help": "^2.4.6",
+		"koishi-plugin-bilibili-notify": "workspace:^"
 	},
 	"peerDependencies": {
 		"koishi": "^4.18.11",
@@ -58,20 +55,17 @@
 		"service": {
 			"required": [
 				"bilibili-notify"
-			],
-			"optional": [
-				"bilibili-notify-image",
-				"bilibili-notify-ai"
 			]
 		},
 		"description": {
-			"zh": "Bilibili 动态推送插件"
+			"zh": "Bilibili Notify AI 增强插件"
 		}
 	},
+	"module": "./lib/index.mjs",
 	"inlinedDependencies": {
+		"@koishijs/plugin-help": "2.4.6",
 		"@standard-schema/spec": "1.1.0",
 		"cosmokit": "1.8.1",
 		"schemastery": "3.18.0"
-	},
-	"module": "./lib/index.mjs"
+	}
 }

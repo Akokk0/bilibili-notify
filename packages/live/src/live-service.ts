@@ -18,6 +18,7 @@ import { cut as jiebaCut } from "jieba-wasm";
 import { type Awaitable, type Context, h, type Logger, Service } from "koishi";
 // biome-ignore lint/correctness/noUnusedImports: loads bilibili-notify Context augmentation
 import {} from "koishi-plugin-bilibili-notify";
+import type {} from "koishi-plugin-bilibili-notify-ai";
 import { DateTime } from "luxon";
 import protobuf from "protobufjs";
 import type { BilibiliNotifyLiveConfig } from "./config";
@@ -77,7 +78,8 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		this.livePushTimerManager = new Map();
 		this.listenerRecord = {};
 
-		this.liveLogger.debug(`直播插件启动，AI 功能：${this.api.isAIEnabled() ? "已启用" : "未启用"}`);
+		const aiService = this.ctx.get("bilibili-notify-ai");
+		this.liveLogger.debug(`直播插件启动，AI 功能：${aiService ? "已启用" : "未启用"}`);
 		// If subscriptions were already loaded before this plugin started, start immediately
 		if (internals.subs) {
 			this.liveLogger.debug("订阅已就绪，立即启动直播监听");
@@ -417,7 +419,8 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			.sort((a, b) => b[1] - a[1])
 			.slice(0, 5);
 
-		if (this.api.isAIEnabled()) {
+		const aiService = this.ctx.get("bilibili-notify-ai");
+		if (aiService) {
 			try {
 				const top10Words = sortedWords.slice(0, 10).map(([word, count]) => `${word}(${count})`);
 				const prompt = [
@@ -428,7 +431,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 					`热词TOP10：${top10Words.join("、")}`,
 					`弹幕排行TOP5：${top5Senders.map(([u, c]) => `${u}(${c}条)`).join("、")}`,
 				].join("，");
-				const aiResult = await this.api.chatWithAI(prompt);
+				const aiResult = await aiService.comment(prompt, "liveSummary");
 				this.liveLogger.debug(`AI 直播总结生成完毕，长度=${aiResult.length}`);
 				return aiResult;
 			} catch (e) {

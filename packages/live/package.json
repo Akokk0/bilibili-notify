@@ -46,7 +46,8 @@
 	},
 	"devDependencies": {
 		"@types/luxon": "^3.4.2",
-		"@types/protobufjs": "^6.0.0"
+		"@types/protobufjs": "^6.0.0",
+		"koishi-plugin-bilibili-notify-ai": "workspace:^"
 	},
 	"peerDependencies": {
 		"koishi": "^4.18.11",
@@ -61,7 +62,8 @@
 				"bilibili-notify"
 			],
 			"optional": [
-				"bilibili-notify-image"
+				"bilibili-notify-image",
+				"bilibili-notify-ai"
 			]
 		},
 		"description": {

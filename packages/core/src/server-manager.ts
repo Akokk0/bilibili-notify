@@ -107,8 +107,6 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 				{
 					logLevel: this.config.logLevel,
 					userAgent: this.config.userAgent,
-					// biome-ignore lint/suspicious/noExplicitAny: schema conditional type
-					ai: this.config.ai.enable ? (this.config.ai as any) : undefined,
 				},
 				(data) => {
 					this.selfCtx.emit("bilibili-notify/cookies-refreshed", data);
