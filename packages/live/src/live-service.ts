@@ -21,6 +21,7 @@ import {} from "koishi-plugin-bilibili-notify";
 import type {} from "koishi-plugin-bilibili-notify-ai";
 import { DateTime } from "luxon";
 import protobuf from "protobufjs";
+import { liveCommands } from "./commands";
 import type { BilibiliNotifyLiveConfig } from "./config";
 import definedStopWords from "./stop-words";
 import { type LiveData, type LivePushTimerManager, LiveType, type MasterInfo } from "./types";
@@ -92,6 +93,8 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		this.ctx.on("bilibili-notify/subscription-changed", (subs: Subscriptions) => {
 			this.startLiveMonitors(subs);
 		});
+		// Register commands
+		liveCommands.call(this);
 	}
 
 	protected stop(): Awaitable<void> {

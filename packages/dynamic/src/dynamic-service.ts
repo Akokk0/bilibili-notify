@@ -7,6 +7,7 @@ import { type Awaitable, type Context, h, type Logger, Service } from "koishi";
 import type {} from "koishi-plugin-bilibili-notify";
 import type {} from "koishi-plugin-bilibili-notify-ai";
 import { DateTime } from "luxon";
+import { dynamicCommands } from "./commands";
 import type { BilibiliNotifyDynamicConfig } from "./config";
 import { DynamicFilterReason, filterDynamic } from "./dynamic-filter";
 import type { AllDynamicInfo, Dynamic, DynamicTimelineManager } from "./types";
@@ -105,6 +106,8 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 		this.ctx.on("bilibili-notify/subscription-changed", (subs: Subscriptions) => {
 			this.startDynamicDetector(subs);
 		});
+		// Register commands
+		dynamicCommands.call(this);
 	}
 
 	protected stop(): Awaitable<void> {

@@ -63,7 +63,6 @@
 	},
 	"module": "./lib/index.mjs",
 	"inlinedDependencies": {
-		"@koishijs/plugin-help": "2.4.6",
 		"@standard-schema/spec": "1.1.0",
 		"cosmokit": "1.8.1",
 		"schemastery": "3.18.0"
