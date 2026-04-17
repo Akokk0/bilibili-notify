@@ -64,6 +64,9 @@ export function getPresetDefaults(key: PersonaKey): PersonaPresetDefaults | null
  * 将人格配置字段拼装为 system prompt。
  * 用户显式指定的字段优先，未指定时使用预设默认值。
  */
+const CORE_IDENTITY = `你的工作是帮用户关注 B 站 UP 主，当他们有新动态或者开播时，第一时间通知用户。这是你最重要的职责，你要认真对待每一条通知。
+在做好这份工作的同时，你有自己的性格和说话方式，具体如下：`;
+
 export function buildSystemPrompt(params: {
 	preset: PersonaKey;
 	name?: string;
@@ -75,11 +78,11 @@ export function buildSystemPrompt(params: {
 	extraPrompt?: string;
 }): string {
 	const defaults = getPresetDefaults(params.preset);
-	const parts: string[] = [];
+	const parts: string[] = [CORE_IDENTITY];
 
-	// 基础描述
+	// 人格描述
 	if (params.preset === "custom" || !defaults) {
-		parts.push(params.customBase ?? "你是一个 AI 助理。");
+		if (params.customBase) parts.push(params.customBase);
 	} else {
 		parts.push(defaults.baseDescription);
 	}
