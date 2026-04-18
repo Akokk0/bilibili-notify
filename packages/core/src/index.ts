@@ -25,6 +25,7 @@ declare module "koishi" {
 		"bilibili-notify/subscription-changed"(subs: Subscriptions): void;
 		"bilibili-notify/ready"(api: BilibiliAPI): void;
 		"bilibili-notify/plugin-error"(source: string, message: string): void;
+		"bilibili-notify/update-config"(config: BilibiliNotifyConfig): void;
 	}
 }
 
@@ -84,6 +85,12 @@ export function apply(ctx: Context, config: BilibiliNotifyConfig): void {
 	ctx.plugin(BilibiliNotifyDataServer);
 	// Register ServerManager (lifecycle orchestrator)
 	ctx.plugin(BilibiliNotifyServerManager, config);
+	// ctx.scope here is the bilibili-notify fork tracked by the Koishi loader.
+	// Server manager emits this event to update the top-level config entry so changes persist.
+	ctx.on("bilibili-notify/update-config", (newConfig) => {
+		// biome-ignore lint/suspicious/noExplicitAny: Koishi scope.update typing
+		(ctx.scope as any).update(newConfig, false);
+	});
 	// Add console UI entry
 	ctx.console.addEntry({
 		dev: resolve(__dirname, "../client/index.ts"),

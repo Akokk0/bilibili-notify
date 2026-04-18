@@ -36,8 +36,15 @@ export function aiCommands(this: BilibiliNotifyAI): void {
 				.map((e) => e.attrs?.src as string)
 				.filter(Boolean);
 
+			const sessionCtx =
+				session?.platform && session?.channelId
+					? { platform: session.platform, channelId: session.channelId }
+					: undefined;
+
 			try {
-				return await this.chat(message, sessionId, imageUrls);
+				const result = await this.chat(message, sessionId, imageUrls, sessionCtx);
+				await session?.send(result);
+				await this.flushPendingSubActions(sessionId);
 			} catch (e) {
 				return `AI 调用失败：${(e as Error).message}`;
 			}

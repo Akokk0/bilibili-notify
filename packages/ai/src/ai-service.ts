@@ -7,7 +7,7 @@ import type OpenAI from "openai";
 import { aiCommands } from "./commands";
 import type { BilibiliNotifyAIConfig } from "./config";
 import { buildSystemPrompt } from "./persona-presets";
-import { executeTool, TOOL_DEFINITIONS } from "./tools";
+import { executeTool, type SessionContext, type SubManagement, TOOL_DEFINITIONS } from "./tools";
 
 declare module "koishi" {
 	interface Context {
@@ -39,8 +39,10 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 
 	private readonly aiLogger: Logger = this.ctx.logger(SERVICE_NAME);
 	private readonly sessions = new Map<string, SessionEntry>();
+	private readonly pendingSubActionsMap = new Map<string, Array<() => Promise<void>>>();
 	private api!: BilibiliAPI;
 	private subs: Subscriptions | null = null;
+	private subMgmt: SubManagement | null = null;
 
 	constructor(ctx: Context, config: BilibiliNotifyAIConfig) {
 		super(ctx, SERVICE_NAME);
@@ -54,6 +56,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 		if (!internals) throw new Error("无法获取 bilibili-notify 内部实例，请确认核心插件已启动");
 		this.api = internals.api;
 		this.subs = internals.subs;
+		this.subMgmt = { addSub: internals.addSub, removeSub: internals.removeSub };
 		this.ctx.on("bilibili-notify/subscription-changed", (subs) => {
 			this.subs = subs;
 		});
@@ -74,7 +77,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 	 * 获取指定场景的 system prompt。
 	 * 始终以人格配置为基础，场景补充说明叠加在其后。
 	 */
-	getSystemPrompt(scene?: AIScene, summary?: string, subs?: Subscriptions | null): string {
+	getSystemPrompt(scene?: AIScene, summary?: string): string {
 		const personaPrompt = buildSystemPrompt(this.config.persona);
 		const sceneAddition =
 			scene === "dynamic"
@@ -83,15 +86,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 					? this.config.liveSummaryPrompt
 					: "";
 
-		let base = sceneAddition ? `${personaPrompt}\n${sceneAddition}` : personaPrompt;
-
-		if (subs && Object.keys(subs).length > 0) {
-			const subList = Object.values(subs)
-				.map((s) => `${s.uname}（UID: ${s.uid}）`)
-				.join("、");
-			base += `\n\n[订阅的UP主]\n${subList}`;
-		}
-
+		const base = sceneAddition ? `${personaPrompt}\n${sceneAddition}` : personaPrompt;
 		return summary ? `${base}\n\n[之前对话摘要]\n${summary}` : base;
 	}
 
@@ -119,7 +114,12 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 	 * 历史满载时自动压缩最旧一半为摘要。
 	 * 供 bili chat 指令使用。
 	 */
-	async chat(content: string, sessionId: string, imageUrls?: string[]): Promise<string> {
+	async chat(
+		content: string,
+		sessionId: string,
+		imageUrls?: string[],
+		sessionCtx?: SessionContext,
+	): Promise<string> {
 		const now = Date.now();
 		const entry = this.sessions.get(sessionId);
 		const isExpired = !entry || now - entry.lastActiveAt >= SESSION_TTL_MS;
@@ -128,7 +128,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 
 		history.push({ role: "user", content });
 
-		const systemPrompt = this.getSystemPrompt(undefined, prevSummary, this.subs);
+		const systemPrompt = this.getSystemPrompt(undefined, prevSummary);
 		this.aiLogger.debug(
 			`[chat] sessionId=${sessionId}, 历史轮次=${Math.floor(history.length / 2)}, 新消息长度=${content.length}`,
 		);
@@ -136,12 +136,24 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 		const maxMessages = this.config.maxHistory * 2;
 		const trimmedHistory = history.slice(-maxMessages);
 
+		const pendingSubActions: Array<() => Promise<void>> = [];
+		this.pendingSubActionsMap.set(sessionId, pendingSubActions);
+
 		const result = await this.callAPI(
 			systemPrompt,
 			trimmedHistory,
 			{
 				tools: TOOL_DEFINITIONS,
-				onToolCall: (name, args) => executeTool(name, args, this.api, this.subs),
+				onToolCall: (name, args) =>
+					executeTool(
+						name,
+						args,
+						this.api,
+						this.subs,
+						sessionCtx,
+						this.subMgmt ?? undefined,
+						pendingSubActions,
+					),
 			},
 			this.config.enableVision ? imageUrls : undefined,
 		);
@@ -180,6 +192,23 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 	clearSession(sessionId: string): void {
 		this.sessions.delete(sessionId);
 		this.aiLogger.debug(`[clearSession] sessionId=${sessionId}`);
+	}
+
+	/** 执行 chat() 调用中积累的延迟订阅操作（在 AI 回复发送后调用） */
+	async flushPendingSubActions(sessionId: string): Promise<void> {
+		const actions = this.pendingSubActionsMap.get(sessionId);
+		this.pendingSubActionsMap.delete(sessionId);
+		if (!actions?.length) return;
+		this.aiLogger.debug(
+			`[flushPendingSubActions] sessionId=${sessionId}, 执行 ${actions.length} 个延迟操作`,
+		);
+		for (const action of actions) {
+			try {
+				await action();
+			} catch (e) {
+				this.aiLogger.error(`[flushPendingSubActions] 延迟操作执行失败：${(e as Error).message}`);
+			}
+		}
 	}
 
 	/** 当前活跃（未过期）会话数 */

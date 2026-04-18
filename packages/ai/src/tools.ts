@@ -89,6 +89,44 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionTool[] = [
 			},
 		},
 	},
+	{
+		type: "function",
+		function: {
+			name: "subscribe_user",
+			description:
+				"订阅指定 UP 主的动态和/或直播通知，自动推送到当前对话频道。订阅前建议先用 search_user 确认 UID。",
+			parameters: {
+				type: "object",
+				properties: {
+					uid: { type: "string", description: "UP 主的 UID" },
+					name: { type: "string", description: "UP 主的昵称（用于显示）" },
+					dynamic: { type: "boolean", description: "订阅动态通知，默认 true" },
+					dynamicAtAll: { type: "boolean", description: "动态时@全体成员，默认 false" },
+					live: { type: "boolean", description: "订阅直播通知，默认 true" },
+					liveAtAll: { type: "boolean", description: "开播时@全体成员，默认 false" },
+					liveGuardBuy: { type: "boolean", description: "订阅上舰消息，默认 false" },
+					superchat: { type: "boolean", description: "订阅 SC（醒目留言）消息，默认 false" },
+					wordcloud: { type: "boolean", description: "直播结束后生成弹幕词云，默认 true" },
+					liveSummary: { type: "boolean", description: "直播结束后生成 AI 总结，默认 true" },
+				},
+				required: ["uid", "name"],
+			},
+		},
+	},
+	{
+		type: "function",
+		function: {
+			name: "unsubscribe_user",
+			description: "取消订阅指定 UP 主，从通知列表中移除",
+			parameters: {
+				type: "object",
+				properties: {
+					uid: { type: "string", description: "要取消订阅的 UP 主 UID" },
+				},
+				required: ["uid"],
+			},
+		},
+	},
 ];
 
 // biome-ignore lint/suspicious/noExplicitAny: bilibili API response shape varies
@@ -105,11 +143,37 @@ function extractDynamicText(item: Record<string, any>): string {
 	return parts.join(" ").trim();
 }
 
+export interface SessionContext {
+	platform: string;
+	channelId: string;
+}
+
+export interface SubManagement {
+	addSub: (params: {
+		uid: string;
+		name: string;
+		platform: string;
+		target: string;
+		dynamic?: boolean;
+		dynamicAtAll?: boolean;
+		live?: boolean;
+		liveAtAll?: boolean;
+		liveGuardBuy?: boolean;
+		superchat?: boolean;
+		wordcloud?: boolean;
+		liveSummary?: boolean;
+	}) => Promise<string>;
+	removeSub: (uid: string) => Promise<string>;
+}
+
 export async function executeTool(
 	name: string,
 	args: Record<string, string>,
 	api: BilibiliAPI,
 	subs: Subscriptions | null,
+	sessionCtx?: SessionContext,
+	subMgmt?: SubManagement,
+	deferredActions?: Array<() => Promise<void>>,
 ): Promise<string> {
 	switch (name) {
 		case "list_subscriptions": {
@@ -203,6 +267,39 @@ export async function executeTool(
 						`${i + 1}. ${u.uname}（UID: ${u.mid}）粉丝: ${u.fans}, 视频数: ${u.videos}${u.usign ? `，简介: ${u.usign}` : ""}`,
 				)
 				.join("\n");
+		}
+		case "subscribe_user": {
+			if (!subMgmt || !deferredActions) return "订阅管理功能不可用";
+			if (!sessionCtx) return "无法获取当前频道信息，无法确定推送目标";
+			if (subs?.[args.uid]) return `${subs[args.uid].uname}（UID: ${args.uid}）已在订阅列表中`;
+			const { uid, name } = args;
+			const bool = (v: string | undefined, def: boolean) => (v === undefined ? def : v !== "false");
+			const { platform, channelId: target } = sessionCtx;
+			deferredActions.push(() =>
+				subMgmt
+					.addSub({
+						uid,
+						name,
+						platform,
+						target,
+						dynamic: bool(args.dynamic, true),
+						dynamicAtAll: bool(args.dynamicAtAll, false),
+						live: bool(args.live, true),
+						liveAtAll: bool(args.liveAtAll, false),
+						liveGuardBuy: bool(args.liveGuardBuy, false),
+						superchat: bool(args.superchat, false),
+						wordcloud: bool(args.wordcloud, true),
+						liveSummary: bool(args.liveSummary, true),
+					})
+					.then(() => {}),
+			);
+			return `已成功订阅 ${name}（UID: ${uid}）`;
+		}
+		case "unsubscribe_user": {
+			if (!subMgmt) return "订阅管理功能不可用";
+			// Execute immediately: removal doesn't trigger push notifications so no race condition.
+			// Returning the real result lets the AI report failures accurately.
+			return subMgmt.removeSub(args.uid);
 		}
 		default:
 			return `未知工具: ${name}`;

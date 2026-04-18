@@ -7,7 +7,7 @@ import {
 import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
 import { BilibiliPush, type Subscriptions } from "@bilibili-notify/push";
 import { StorageManager } from "@bilibili-notify/storage";
-import { SubscriptionManager } from "@bilibili-notify/subscription";
+import { type FlatSubConfigItem, SubscriptionManager } from "@bilibili-notify/subscription";
 // biome-ignore lint/correctness/noUnusedImports: module augmentation for koishi help commands
 import {} from "@koishijs/plugin-help";
 import type { Notifier } from "@koishijs/plugin-notifier";
@@ -92,11 +92,106 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 	 * 向持有 BILIBILI_NOTIFY_TOKEN 的友好插件暴露 api / push / subs 实例。
 	 * 第三方插件无法获取此令牌，因此无法访问内部实例。
 	 */
-	getInternals(
-		token: symbol,
-	): { api: BilibiliAPI; push: BilibiliPush; subs: Subscriptions | null } | null {
+	getInternals(token: symbol): {
+		api: BilibiliAPI;
+		push: BilibiliPush;
+		subs: Subscriptions | null;
+		addSub: (params: {
+			uid: string;
+			name: string;
+			platform: string;
+			target: string;
+			dynamic?: boolean;
+			dynamicAtAll?: boolean;
+			live?: boolean;
+			liveAtAll?: boolean;
+			liveGuardBuy?: boolean;
+			superchat?: boolean;
+			wordcloud?: boolean;
+			liveSummary?: boolean;
+		}) => Promise<string>;
+		removeSub: (uid: string) => Promise<string>;
+	} | null {
 		if (token !== BILIBILI_NOTIFY_TOKEN || !this.api || !this.push) return null;
-		return { api: this.api, push: this.push, subs: this.currentSubs };
+		return {
+			api: this.api,
+			push: this.push,
+			subs: this.currentSubs,
+			addSub: (p) => this.addSub(p),
+			removeSub: (uid) => this.removeSub(uid),
+		};
+	}
+
+	private async addSub(params: {
+		uid: string;
+		name: string;
+		platform: string;
+		target: string;
+		dynamic?: boolean;
+		dynamicAtAll?: boolean;
+		live?: boolean;
+		liveAtAll?: boolean;
+		liveGuardBuy?: boolean;
+		superchat?: boolean;
+		wordcloud?: boolean;
+		liveSummary?: boolean;
+	}): Promise<string> {
+		if (this.config.advancedSub) return "高级订阅模式下不支持通过 AI 管理订阅";
+		if (!this.subMgr) return "插件未就绪";
+
+		const existing = this.config.subs?.find((s) => s.uid.split(",")[0].trim() === params.uid);
+		if (existing) return `UID ${params.uid} 已在订阅列表中（昵称：${existing.name}）`;
+
+		const item: FlatSubConfigItem = {
+			name: params.name,
+			uid: params.uid,
+			dynamic: params.dynamic ?? true,
+			dynamicAtAll: params.dynamicAtAll ?? false,
+			live: params.live ?? true,
+			liveAtAll: params.liveAtAll ?? false,
+			liveGuardBuy: params.liveGuardBuy ?? false,
+			superchat: params.superchat ?? false,
+			wordcloud: params.wordcloud ?? true,
+			liveSummary: params.liveSummary ?? true,
+			platform: params.platform,
+			target: params.target,
+		};
+
+		const newSubs = [...(this.config.subs ?? []), item];
+		const newConfig = { ...this.config, subs: newSubs };
+		this.config = newConfig;
+		this.selfCtx.emit("bilibili-notify/update-config", newConfig);
+
+		const subs = SubscriptionManager.fromFlatConfig(newSubs);
+		await this.subMgr.loadSubscriptions(subs);
+		this.currentSubs = subs;
+		this.updateSubNotifier();
+		this.selfCtx.emit("bilibili-notify/subscription-changed", subs);
+
+		this.serverLogger.info(`[AI] 已添加订阅：${params.name}（UID: ${params.uid}）`);
+		return `已成功订阅 ${params.name}（UID: ${params.uid}）`;
+	}
+
+	private async removeSub(uid: string): Promise<string> {
+		if (this.config.advancedSub) return "高级订阅模式下不支持通过 AI 管理订阅";
+		if (!this.subMgr) return "插件未就绪";
+
+		const existing = this.config.subs?.find((s) => s.uid.split(",")[0].trim() === uid);
+		if (!existing) return `未找到 UID 为 ${uid} 的订阅`;
+
+		const newSubs = (this.config.subs ?? []).filter((s) => s !== existing);
+		const newConfig = { ...this.config, subs: newSubs };
+		this.config = newConfig;
+		this.selfCtx.emit("bilibili-notify/update-config", newConfig);
+
+		const subs = SubscriptionManager.fromFlatConfig(newSubs);
+		await this.subMgr.loadSubscriptions(subs);
+		this.currentSubs = subs;
+		this.updateSubNotifier();
+		this.selfCtx.emit("bilibili-notify/subscription-changed", subs);
+
+		this.serverLogger.info(`[AI] 已移除订阅：${existing.name}（UID: ${uid}）`);
+		return `已成功取消订阅 ${existing.name}（UID: ${uid}）`;
 	}
 
 	async registerPlugin(): Promise<boolean> {
