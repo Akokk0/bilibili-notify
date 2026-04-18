@@ -79,8 +79,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		this.livePushTimerManager = new Map();
 		this.listenerRecord = {};
 
-		const aiService = this.ctx.get("bilibili-notify-ai");
-		this.liveLogger.debug(`直播插件启动，AI 功能：${aiService ? "已启用" : "未启用"}`);
+		this.liveLogger.debug("直播插件启动，正在等待订阅数据...");
 		// If subscriptions were already loaded before this plugin started, start immediately
 		if (internals.subs) {
 			this.liveLogger.debug("订阅已就绪，立即启动直播监听");

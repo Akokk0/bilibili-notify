@@ -115,8 +115,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 		this.api = internals.api;
 		this.push = internals.push;
 		this.dynamicTimelineManager = new Map();
-		const aiService = this.ctx.get("bilibili-notify-ai");
-		this.dynamicLogger.debug(`动态插件启动，AI 功能：${aiService ? "已启用" : "未启用"}`);
+		this.dynamicLogger.debug("动态插件启动，正在等待订阅数据...");
 		// If subscriptions were already loaded before this plugin started, start immediately
 		if (internals.subs) {
 			this.dynamicLogger.debug("订阅已就绪，立即启动动态检测");
