@@ -14,9 +14,9 @@ export type GuardCardProps = {
 
 const GUARD_DESC: Record<GuardLevel, (uname: string, masterName: string) => string> = {
 	0: () => "",
-	1: (uname, masterName) => `"${uname}号"加入\n"${masterName}"大航海舰队！`,
+	1: (uname, masterName) => `"${uname}"上任\n"${masterName}"大航海舰队总督！`,
 	2: (uname, masterName) => `"${uname}"就任\n"${masterName}"大航海舰队提督！`,
-	3: (uname, masterName) => `"${uname}"上任\n"${masterName}"大航海舰队总督！`,
+	3: (uname, masterName) => `"${uname}号"加入\n"${masterName}"大航海舰队！`,
 };
 
 export function GuardCard(p: GuardCardProps) {
