@@ -222,22 +222,29 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 		type CreateParams = OpenAI.ChatCompletionCreateParamsNonStreaming & {
 			extra_body?: Record<string, unknown>;
 		};
-		const makeParams = (withThinking: boolean): CreateParams => ({
-			model,
-			messages: apiMessages,
-			...(toolOptions ? { tools: toolOptions.tools, tool_choice: "auto" } : {}),
-			...(withThinking ? { extra_body: { enable_thinking: true } } : {}),
-		});
+		const makeParams = (withThinking: boolean, withSearch: boolean): CreateParams => {
+			const extra_body: Record<string, unknown> = {};
+			if (withThinking) extra_body.enable_thinking = true;
+			if (withSearch) extra_body.enable_search = true;
+			return {
+				model,
+				messages: apiMessages,
+				...(toolOptions ? { tools: toolOptions.tools, tool_choice: "auto" } : {}),
+				...(Object.keys(extra_body).length > 0 ? { extra_body } : {}),
+			};
+		};
 
 		const MAX_ROUNDS = 8;
 		for (let round = 0; round < MAX_ROUNDS; round++) {
 			let res: Awaited<ReturnType<typeof client.chat.completions.create>>;
 			try {
-				res = await client.chat.completions.create(makeParams(this.config.enableThinking));
+				res = await client.chat.completions.create(
+					makeParams(this.config.enableThinking, this.config.enableSearch),
+				);
 			} catch (e) {
 				if (this.config.enableThinking) {
 					this.aiLogger.warn(`[API] thinking 模式不受支持，降级重试: ${(e as Error).message}`);
-					res = await client.chat.completions.create(makeParams(false));
+					res = await client.chat.completions.create(makeParams(false, this.config.enableSearch));
 				} else {
 					throw e;
 				}

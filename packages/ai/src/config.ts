@@ -41,6 +41,9 @@ export interface BilibiliNotifyAIConfig {
 
 	/** 开启模型的思考模式（仅 Qwen3 等支持 enable_thinking 的模型有效） */
 	enableThinking: boolean;
+
+	/** 开启模型内置的联网搜索（仅 SiliconFlow 等支持 enable_search 的提供商有效） */
+	enableSearch: boolean;
 }
 
 const PersonaConfigSchema: Schema<PersonaConfig> = Schema.intersect([
@@ -130,4 +133,8 @@ export const BilibiliNotifyAIConfigSchema: Schema<BilibiliNotifyAIConfig> = Sche
 		.description(
 			"开启模型的思考模式（仅 Qwen3 等支持 enable_thinking 参数的模型有效，不支持的模型会自动降级）",
 		),
+
+	enableSearch: Schema.boolean()
+		.default(false)
+		.description("开启模型内置的联网搜索（仅 SiliconFlow 等支持 enable_search 参数的提供商有效）"),
 });
