@@ -28,6 +28,8 @@ const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 interface SessionEntry {
 	messages: ConversationMessage[];
 	lastActiveAt: number;
+	/** 历史压缩摘要，注入到 system prompt 尾部 */
+	summary?: string;
 }
 
 export type AIScene = "dynamic" | "liveSummary";
@@ -72,7 +74,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 	 * 获取指定场景的 system prompt。
 	 * 始终以人格配置为基础，场景补充说明叠加在其后。
 	 */
-	getSystemPrompt(scene?: AIScene): string {
+	getSystemPrompt(scene?: AIScene, summary?: string): string {
 		const personaPrompt = buildSystemPrompt(this.config.persona);
 		const sceneAddition =
 			scene === "dynamic"
@@ -81,7 +83,8 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 					? this.config.liveSummaryPrompt
 					: "";
 
-		return sceneAddition ? `${personaPrompt}\n${sceneAddition}` : personaPrompt;
+		const base = sceneAddition ? `${personaPrompt}\n${sceneAddition}` : personaPrompt;
+		return summary ? `${base}\n\n[之前对话摘要]\n${summary}` : base;
 	}
 
 	/**
@@ -98,17 +101,19 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 
 	/**
 	 * 多轮对话，按 sessionId 保存历史，自动携带工具能力。
+	 * 历史满载时自动压缩最旧一半为摘要。
 	 * 供 bili chat 指令使用。
 	 */
 	async chat(content: string, sessionId: string): Promise<string> {
 		const now = Date.now();
 		const entry = this.sessions.get(sessionId);
-		const history: ConversationMessage[] =
-			entry && now - entry.lastActiveAt < SESSION_TTL_MS ? entry.messages : [];
+		const isExpired = !entry || now - entry.lastActiveAt >= SESSION_TTL_MS;
+		const history: ConversationMessage[] = isExpired ? [] : [...entry.messages];
+		const prevSummary = isExpired ? undefined : entry.summary;
 
 		history.push({ role: "user", content });
 
-		const systemPrompt = this.getSystemPrompt();
+		const systemPrompt = this.getSystemPrompt(undefined, prevSummary);
 		this.aiLogger.debug(
 			`[chat] sessionId=${sessionId}, 历史轮次=${Math.floor(history.length / 2)}, 新消息长度=${content.length}`,
 		);
@@ -123,7 +128,26 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 
 		if (this.config.enableConversation) {
 			trimmedHistory.push({ role: "assistant", content: result });
-			this.sessions.set(sessionId, { messages: trimmedHistory, lastActiveAt: now });
+
+			let newMessages = trimmedHistory;
+			let newSummary = prevSummary;
+
+			// 历史满载时压缩最旧一半
+			if (trimmedHistory.length >= maxMessages) {
+				const half = Math.floor(maxMessages / 2);
+				const toCompress = trimmedHistory.slice(0, half);
+				newMessages = trimmedHistory.slice(half);
+				newSummary = await this.compressHistory(toCompress, prevSummary);
+				this.aiLogger.debug(
+					`[chat] 历史已压缩，摘要长度=${newSummary.length}，保留消息=${newMessages.length}`,
+				);
+			}
+
+			this.sessions.set(sessionId, {
+				messages: newMessages,
+				lastActiveAt: now,
+				summary: newSummary,
+			});
 		} else {
 			this.sessions.delete(sessionId);
 		}
@@ -146,6 +170,21 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 			if (now - entry.lastActiveAt < SESSION_TTL_MS) count++;
 		}
 		return count;
+	}
+
+	/** 将一段对话消息压缩为摘要，可合并上一轮摘要 */
+	private async compressHistory(
+		messages: ConversationMessage[],
+		prevSummary?: string,
+	): Promise<string> {
+		const prevNote = prevSummary ? `（已有摘要：${prevSummary}）\n\n以下是新增对话：\n` : "";
+		const text = messages
+			.map((m) => `${m.role === "user" ? "用户" : "AI"}：${m.content}`)
+			.join("\n");
+		const prompt = `${prevNote}${text}\n\n请将以上对话提炼为简短摘要（100字以内），只输出摘要本身。`;
+		return this.callAPI("你是对话摘要助手，只输出摘要内容，不附加任何前缀或解释。", [
+			{ role: "user", content: prompt },
+		]);
 	}
 
 	private async callAPI(
