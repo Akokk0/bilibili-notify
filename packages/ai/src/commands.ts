@@ -8,11 +8,8 @@ export function aiCommands(this: BilibiliNotifyAI): void {
 		.usage("验证 AI 配置是否正确")
 		.example("bili ai 你好")
 		.action(async (_, prompt = "你好，请简单介绍一下你自己") => {
-			const ai = this.ctx.get("bilibili-notify-ai") as BilibiliNotifyAI | null;
-			if (!ai) return "AI 插件尚未就绪";
 			try {
-				const result = await ai.comment(prompt);
-				return result;
+				return await this.comment(prompt);
 			} catch (e) {
 				return `AI 调用失败：${(e as Error).message}`;
 			}
@@ -25,30 +22,17 @@ export function aiCommands(this: BilibiliNotifyAI): void {
 		.example("bili chat 最近有什么有趣的动态吗")
 		.option("clear", "-c 清除当前对话历史")
 		.action(async ({ session, options }, message) => {
-			const ai = this.ctx.get("bilibili-notify-ai") as BilibiliNotifyAI | null;
-			if (!ai) return "AI 插件尚未就绪";
-
 			const sessionId = `${session?.platform}:${session?.userId}`;
 
 			if (options?.clear) {
-				ai.clearSession(sessionId);
+				this.clearSession(sessionId);
 				return "对话历史已清除";
 			}
 
 			if (!message?.trim()) return "请输入消息内容";
 
-			if (!ai.config.enableConversation) {
-				try {
-					const result = await ai.comment(message);
-					return result;
-				} catch (e) {
-					return `AI 调用失败：${(e as Error).message}`;
-				}
-			}
-
 			try {
-				const result = await ai.chat(message, sessionId);
-				return result;
+				return await this.chat(message, sessionId);
 			} catch (e) {
 				return `AI 调用失败：${(e as Error).message}`;
 			}

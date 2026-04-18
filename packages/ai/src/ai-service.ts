@@ -23,13 +23,20 @@ interface ConversationMessage {
 	content: string;
 }
 
+const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+interface SessionEntry {
+	messages: ConversationMessage[];
+	lastActiveAt: number;
+}
+
 export type AIScene = "dynamic" | "liveSummary";
 
 export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 	static readonly [Service.provide] = SERVICE_NAME;
 
 	private readonly aiLogger: Logger = this.ctx.logger(SERVICE_NAME);
-	private readonly sessions = new Map<string, ConversationMessage[]>();
+	private readonly sessions = new Map<string, SessionEntry>();
 	private api!: BilibiliAPI;
 	private subs: Subscriptions | null = null;
 
@@ -94,7 +101,11 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 	 * 供 bili chat 指令使用。
 	 */
 	async chat(content: string, sessionId: string): Promise<string> {
-		const history = this.sessions.get(sessionId) ?? [];
+		const now = Date.now();
+		const entry = this.sessions.get(sessionId);
+		const history: ConversationMessage[] =
+			entry && now - entry.lastActiveAt < SESSION_TTL_MS ? entry.messages : [];
+
 		history.push({ role: "user", content });
 
 		const systemPrompt = this.getSystemPrompt();
@@ -110,8 +121,13 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 			onToolCall: (name, args) => executeTool(name, args, this.api, this.subs),
 		});
 
-		history.push({ role: "assistant", content: result });
-		this.sessions.set(sessionId, history.slice(-maxMessages));
+		if (this.config.enableConversation) {
+			trimmedHistory.push({ role: "assistant", content: result });
+			this.sessions.set(sessionId, { messages: trimmedHistory, lastActiveAt: now });
+		} else {
+			this.sessions.delete(sessionId);
+		}
+
 		this.aiLogger.debug(`[chat] 响应长度=${result.length}`);
 		return result;
 	}
@@ -122,9 +138,14 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 		this.aiLogger.debug(`[clearSession] sessionId=${sessionId}`);
 	}
 
-	/** 当前活跃会话数 */
+	/** 当前活跃（未过期）会话数 */
 	get sessionCount(): number {
-		return this.sessions.size;
+		const now = Date.now();
+		let count = 0;
+		for (const entry of this.sessions.values()) {
+			if (now - entry.lastActiveAt < SESSION_TTL_MS) count++;
+		}
+		return count;
 	}
 
 	private async callAPI(

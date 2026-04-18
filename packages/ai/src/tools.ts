@@ -39,6 +39,14 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionTool[] = [
 			},
 		},
 	},
+	{
+		type: "function",
+		function: {
+			name: "get_live_status",
+			description: "查询订阅的 UP 主中哪些正在直播，返回直播状态和标题",
+			parameters: { type: "object", properties: {} },
+		},
+	},
 ];
 
 // biome-ignore lint/suspicious/noExplicitAny: bilibili API response shape varies
@@ -94,6 +102,24 @@ export async function executeTool(
 			const card = res.data?.card;
 			if (!card) return "未找到用户";
 			return `名称: ${card.name}, 粉丝数: ${card.fans ?? 0}, 等级: ${card.level_info?.current_level ?? "?"}`;
+		}
+		case "get_live_status": {
+			if (!subs || Object.keys(subs).length === 0) return "当前没有订阅";
+			const liveItems = Object.values(subs).filter((s) => s.live);
+			if (!liveItems.length) return "当前订阅中没有开启直播监控的 UP 主";
+			const uids = liveItems.map((s) => s.uid);
+			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
+			const res = (await api.getLiveRoomInfoByUids(uids)) as any;
+			if (res.code !== 0) return `获取直播状态失败: ${res.message}`;
+			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
+			const rooms: Record<string, any> = res.data ?? {};
+			const lines = liveItems.map((s) => {
+				const room = rooms[s.uid];
+				const statusText = ["未开播", "直播中", "轮播中", "下播"][room?.live_status] ?? "未知";
+				const title = room?.title ? `「${room.title}」` : "";
+				return `${s.uname}：${statusText}${title}`;
+			});
+			return lines.join("\n");
 		}
 		default:
 			return `未知工具: ${name}`;
