@@ -8,6 +8,7 @@ import type {
 	Subscriptions,
 	Target,
 } from "@bilibili-notify/push";
+import type { Context, Logger } from "koishi";
 
 export interface FlatSubConfigItem {
 	name: string;
@@ -23,18 +24,6 @@ export interface FlatSubConfigItem {
 	platform: string;
 	/** Comma-separated channel IDs */
 	target: string;
-}
-
-export interface SubLogger {
-	debug(msg: string): void;
-	info(msg: string): void;
-	warn(msg: string): void;
-	error(msg: string): void;
-}
-
-export interface SubscriptionManagerOpts {
-	logger: SubLogger;
-	sleep: (ms: number) => Promise<void>;
 }
 
 export class SubscriptionManager {
@@ -82,45 +71,47 @@ export class SubscriptionManager {
 
 	private readonly api: BilibiliAPI;
 	private readonly push: BilibiliPush;
-	private readonly opts: SubscriptionManagerOpts;
+	private readonly logger: Logger;
+	private readonly ctx: Context;
 
-	constructor(api: BilibiliAPI, push: BilibiliPush, opts: SubscriptionManagerOpts) {
+	constructor(api: BilibiliAPI, push: BilibiliPush, ctx: Context) {
 		this.api = api;
 		this.push = push;
-		this.opts = opts;
+		this.ctx = ctx;
+		this.logger = ctx.logger("bilibili-notify-subscription");
 	}
 
 	async loadSubscriptions(subs: Subscriptions): Promise<void> {
 		const isReload = this.subManager.size > 0;
 		const subArray = Object.values(subs);
 		if (isReload) {
-			this.opts.logger.info("订阅配置已更新，正在重新加载...");
+			this.logger.info("[load] 订阅配置已更新，正在重新加载...");
 		} else {
-			this.opts.logger.info("已获取订阅信息，正在加载订阅...");
+			this.logger.info("[load] 已获取订阅信息，正在加载订阅...");
 		}
-		this.opts.logger.debug(`共 ${subArray.length} 个订阅项，isReload=${isReload}`);
+		this.logger.debug(`[load] 共 ${subArray.length} 个订阅项，isReload=${isReload}`);
 
 		const pushArrMap = this.buildPushArrMap(subs);
 		this.push.pushArrMap = pushArrMap;
 		this.push.pushArrMapReady = true;
-		this.opts.logger.debug(`推送频道映射已初始化，共 ${pushArrMap.size} 个 UID`);
+		this.logger.debug(`[load] 推送频道映射已初始化，共 ${pushArrMap.size} 个 UID`);
 
 		const prevSubManager = this.subManager;
 		this.subManager = new Map();
 
 		for (let i = 0; i < subArray.length; i++) {
 			const sub = subArray[i];
-			this.opts.logger.debug(`加载订阅 UID：${sub.uid}`);
+			this.logger.debug(`[load] 加载订阅 UID：${sub.uid}`);
 			const isExisting = prevSubManager.has(sub.uid);
 
 			if (!isExisting) {
 				const followResult = await this.followUser(sub.uid);
 				if (followResult.code !== 0) {
-					this.opts.logger.error(`关注 UID：${sub.uid} 失败：${followResult.message}`);
+					this.logger.error(`[follow] 关注 UID：${sub.uid} 失败：${followResult.message}`);
 					try {
 						await this.push.sendPrivateMsg(`加载订阅 UID:${sub.uid} 失败：${followResult.message}`);
 					} catch (e) {
-						this.opts.logger.error(`发送错误通知失败：${e}`);
+						this.logger.error(`[follow] 发送错误通知失败：${e}`);
 					}
 					continue;
 				}
@@ -140,13 +131,13 @@ export class SubscriptionManager {
 
 			if (!isExisting && i < subArray.length - 1) {
 				const delay = (Math.floor(Math.random() * 3) + 1) * 1000;
-				this.opts.logger.debug(`设置随机延迟：${delay / 1000} 秒`);
-				await this.opts.sleep(delay);
+				this.logger.debug(`[load] 设置随机延迟：${delay / 1000} 秒`);
+				await this.ctx.sleep(delay);
 			}
 		}
 
-		this.opts.logger.info(
-			isReload ? "订阅重新加载完成！" : "订阅加载完成！bilibili-notify 已启动！",
+		this.logger.info(
+			isReload ? "[load] 订阅重新加载完成！" : "[load] 订阅加载完成！bilibili-notify 已启动！",
 		);
 	}
 
@@ -169,7 +160,7 @@ export class SubscriptionManager {
 	}
 
 	private async followUser(uid: string): Promise<{ code: number; message: string }> {
-		this.opts.logger.debug(`关注 UID：${uid}`);
+		this.logger.debug(`[follow] 关注 UID：${uid}`);
 		try {
 			// biome-ignore lint/suspicious/noExplicitAny: API response shape
 			const res = (await this.api.follow(uid)) as any;
@@ -177,10 +168,10 @@ export class SubscriptionManager {
 			const message: string = res.message ?? "";
 			// 22001 = self, 22014 = already following → treat as OK
 			if (code === 22001 || code === 22014 || code === 0) {
-				this.opts.logger.debug(`关注 UID：${uid} 成功（code=${code}）`);
+				this.logger.debug(`[follow] 关注 UID：${uid} 成功（code=${code}）`);
 				return { code: 0, message: "OK" };
 			}
-			this.opts.logger.debug(`关注 UID：${uid} 失败，code=${code}，${message}`);
+			this.logger.debug(`[follow] 关注 UID：${uid} 失败，code=${code}，${message}`);
 			return { code, message };
 		} catch (e) {
 			return { code: -1, message: String(e) };
@@ -188,24 +179,24 @@ export class SubscriptionManager {
 	}
 
 	private async resolveRoomId(sub: SubItem): Promise<boolean> {
-		this.opts.logger.debug(`查询 UID：${sub.uid} 的直播间号`);
+		this.logger.debug(`[room] 查询 UID：${sub.uid} 的直播间号`);
 		try {
 			// biome-ignore lint/suspicious/noExplicitAny: API response shape
 			const info = (await this.api.getUserInfo(sub.uid)) as any;
 			if (info.code !== 0) {
-				this.opts.logger.warn(`获取 UID:${sub.uid} 用户信息失败：${info.message}`);
+				this.logger.warn(`[room] 获取 UID:${sub.uid} 用户信息失败：${info.message}`);
 				return false;
 			}
 			if (!info.data?.live_room) {
-				this.opts.logger.warn(`UID:${sub.uid} 用户没有开通直播间，已跳过直播订阅`);
+				this.logger.warn(`[room] UID:${sub.uid} 用户没有开通直播间，已跳过直播订阅`);
 				sub.live = false;
 				return true;
 			}
 			sub.roomId = String(info.data.live_room.roomid);
-			this.opts.logger.debug(`UID：${sub.uid} 直播间号已解析：${sub.roomId}`);
+			this.logger.debug(`[room] UID：${sub.uid} 直播间号已解析：${sub.roomId}`);
 			return true;
 		} catch (e) {
-			this.opts.logger.error(`获取用户信息时出错：${e}`);
+			this.logger.error(`[room] 获取用户信息时出错：${e}`);
 			return false;
 		}
 	}

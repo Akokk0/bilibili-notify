@@ -415,7 +415,7 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 				try {
 					img.setAttribute("src", await this.fetchImageAsDataUrl(src));
 				} catch (err) {
-					this.imageLogger.warn(`图片预取失败，保留原 URL: ${src} (${err})`);
+					this.imageLogger.warn(`[prefetch] 图片预取失败，保留原 URL: ${src} (${err})`);
 				}
 			}),
 		);
@@ -443,7 +443,7 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 				try {
 					cssUrlMap.set(url, await this.fetchImageAsDataUrl(url));
 				} catch (err) {
-					this.imageLogger.warn(`CSS 图片预取失败，保留原 URL: ${url} (${err})`);
+					this.imageLogger.warn(`[prefetch] CSS 图片预取失败，保留原 URL: ${url} (${err})`);
 				}
 			}),
 		);

@@ -63,14 +63,14 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 
 		const { preset } = this.config.persona;
 		this.aiLogger.info(
-			`AI 插件已启动，人格预设：${preset}，模型：${this.config.model}，多轮对话：${this.config.enableConversation ? "开启" : "关闭"}`,
+			`[start] 人格预设：${preset}，模型：${this.config.model}，多轮对话：${this.config.enableConversation ? "开启" : "关闭"}`,
 		);
 		this.aiLogger.debug(`[start] 系统提示词（无场景）：\n${this.getSystemPrompt()}`);
 	}
 
 	protected stop(): Awaitable<void> {
 		this.sessions.clear();
-		this.aiLogger.info("AI 插件已停止，会话历史已清除");
+		this.aiLogger.info("[stop] 会话历史已清除");
 	}
 
 	/**
@@ -191,7 +191,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 	/** 清除指定用户的对话历史 */
 	clearSession(sessionId: string): void {
 		this.sessions.delete(sessionId);
-		this.aiLogger.debug(`[clearSession] sessionId=${sessionId}`);
+		this.aiLogger.debug(`[session] 清除会话 sessionId=${sessionId}`);
 	}
 
 	/** 执行 chat() 调用中积累的延迟订阅操作（在 AI 回复发送后调用） */
@@ -199,14 +199,12 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 		const actions = this.pendingSubActionsMap.get(sessionId);
 		this.pendingSubActionsMap.delete(sessionId);
 		if (!actions?.length) return;
-		this.aiLogger.debug(
-			`[flushPendingSubActions] sessionId=${sessionId}, 执行 ${actions.length} 个延迟操作`,
-		);
+		this.aiLogger.debug(`[deferred] sessionId=${sessionId}, 执行 ${actions.length} 个延迟操作`);
 		for (const action of actions) {
 			try {
 				await action();
 			} catch (e) {
-				this.aiLogger.error(`[flushPendingSubActions] 延迟操作执行失败：${(e as Error).message}`);
+				this.aiLogger.error(`[deferred] 延迟操作执行失败：${(e as Error).message}`);
 			}
 		}
 	}
@@ -250,7 +248,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 		if (!baseURL) throw new Error("AI baseURL 未配置");
 
 		this.aiLogger.debug(
-			`[API] baseURL=${baseURL}, model=${model}, messages=${messages.length}, tools=${toolOptions ? "yes" : "no"}, images=${imageUrls?.length ?? 0}`,
+			`[api] baseURL=${baseURL}, model=${model}, messages=${messages.length}, tools=${toolOptions ? "yes" : "no"}, images=${imageUrls?.length ?? 0}`,
 		);
 		const { default: OpenAI } = await import("openai");
 		const client = new OpenAI({ apiKey, baseURL });
@@ -302,7 +300,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 				);
 			} catch (e) {
 				if (this.config.enableThinking) {
-					this.aiLogger.warn(`[API] thinking 模式不受支持，降级重试: ${(e as Error).message}`);
+					this.aiLogger.warn(`[api] thinking 模式不受支持，降级重试: ${(e as Error).message}`);
 					res = await client.chat.completions.create(makeParams(false, this.config.enableSearch));
 				} else {
 					throw e;

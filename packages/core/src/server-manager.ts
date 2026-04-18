@@ -58,18 +58,18 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 	}
 
 	protected async start(): Promise<void> {
-		this.serverLogger.info("正在启动中...");
+		this.serverLogger.info("[start] 正在启动中...");
 
-		this.storageMgr = new StorageManager(this.ctx.baseDir);
+		this.storageMgr = new StorageManager(this.ctx.baseDir, this.ctx);
 		await this.storageMgr.init();
 
 		// Persist refreshed cookies
 		this.ctx.on("bilibili-notify/cookies-refreshed", async (data) => {
 			try {
 				await this.storageMgr.cookieStore.save(data);
-				this.serverLogger.debug("Cookie 已自动刷新并保存");
+				this.serverLogger.debug("[cookie] Cookie 已自动刷新并保存");
 			} catch (e) {
-				this.serverLogger.error(`保存刷新后的 cookie 失败：${e}`);
+				this.serverLogger.error(`[cookie] 保存刷新后的 cookie 失败：${e}`);
 			}
 		});
 
@@ -80,7 +80,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		sysCommands.call(this);
 
 		if (!(await this.registerPlugin())) {
-			this.serverLogger.error("启动插件失败，请检查配置后重试");
+			this.serverLogger.error("[module] 启动模块失败，请检查配置后重试");
 		}
 	}
 
@@ -168,7 +168,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		this.updateSubNotifier();
 		this.selfCtx.emit("bilibili-notify/subscription-changed", subs);
 
-		this.serverLogger.info(`[AI] 已添加订阅：${params.name}（UID: ${params.uid}）`);
+		this.serverLogger.info(`[subscribe] 已添加订阅：${params.name}（UID: ${params.uid}）`);
 		return `已成功订阅 ${params.name}（UID: ${params.uid}）`;
 	}
 
@@ -190,7 +190,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		this.updateSubNotifier();
 		this.selfCtx.emit("bilibili-notify/subscription-changed", subs);
 
-		this.serverLogger.info(`[AI] 已移除订阅：${existing.name}（UID: ${uid}）`);
+		this.serverLogger.info(`[unsubscribe] 已移除订阅：${existing.name}（UID: ${uid}）`);
 		return `已成功取消订阅 ${existing.name}（UID: ${uid}）`;
 	}
 
@@ -215,14 +215,11 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			});
 
 			await this.api.start();
-			this.serverLogger.debug("BilibiliAPI 启动完成");
+			this.serverLogger.debug("[module] BilibiliAPI 启动完成");
 			this.push.start();
-			this.serverLogger.debug("BilibiliPush 启动完成");
+			this.serverLogger.debug("[module] BilibiliPush 启动完成");
 
-			this.subMgr = new SubscriptionManager(this.api, this.push, {
-				logger: this.serverLogger,
-				sleep: (ms: number) => this.selfCtx.sleep(ms),
-			});
+			this.subMgr = new SubscriptionManager(this.api, this.push, this.selfCtx);
 
 			this.running = true;
 
@@ -232,11 +229,11 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 
 			await this.initCookies();
 			this.serverLogger.debug(
-				`Cookie 加载完成，登录状态：${this.isLoggedIn() ? "已登录" : "未登录"}`,
+				`[cookie] Cookie 加载完成，登录状态：${this.isLoggedIn() ? "已登录" : "未登录"}`,
 			);
 
 			if (!this.isLoggedIn()) {
-				this.serverLogger.info("账号未登录，请在控制台扫码登录");
+				this.serverLogger.info("[login] 账号未登录，请在控制台扫码登录");
 				this.selfCtx.emit("bilibili-notify/login-status-report", {
 					status: BiliLoginStatus.NOT_LOGIN,
 					msg: "账号未登录，请点击「扫码登录」",
@@ -247,7 +244,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			await this.reportAccountInfo();
 			await this.loadInitialSubscriptions();
 		} catch (e) {
-			this.serverLogger.error(`注册插件失败：${e}`);
+			this.serverLogger.error(`[module] 注册模块失败：${e}`);
 			return false;
 		}
 		return true;
@@ -255,7 +252,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 
 	disposePlugin(): boolean {
 		if (!this.running && !this.api && !this.push) return false;
-		this.serverLogger.debug("正在清理插件资源...");
+		this.serverLogger.debug("[stop] 正在清理插件资源...");
 		this.running = false;
 		this.clearLoginTimer();
 		if (this.subNotifier) {
@@ -268,13 +265,13 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		this.api = null;
 		this.subMgr = null;
 		this.currentSubs = null;
-		this.serverLogger.debug("插件资源清理完成");
+		this.serverLogger.debug("[stop] 插件资源清理完成");
 		return true;
 	}
 
 	async restartPlugin(): Promise<boolean> {
 		if (!this.running) {
-			this.serverLogger.warn("插件目前没有运行，请使用 bn start 启动插件");
+			this.serverLogger.warn("[restart] 插件目前没有运行，请使用 bn start 启动插件");
 			return false;
 		}
 		this.disposePlugin();
@@ -283,7 +280,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 				this.registerPlugin()
 					.then(resolve)
 					.catch((e) => {
-						this.serverLogger.error(`重启插件失败：${e}`);
+						this.serverLogger.error(`[restart] 重启插件失败：${e}`);
 						resolve(false);
 					});
 			}, 1000);
@@ -294,18 +291,18 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 
 	private async initCookies(): Promise<void> {
 		if (!this.api) return;
-		this.serverLogger.debug("正在从磁盘加载 Cookie...");
+		this.serverLogger.debug("[cookie] 正在从磁盘加载 Cookie...");
 		let cookieData = null;
 		try {
 			cookieData = await this.storageMgr.cookieStore.load();
 		} catch (e) {
-			this.serverLogger.warn(`读取 cookie 文件失败: ${e}`);
+			this.serverLogger.warn(`[cookie] 读取 cookie 文件失败: ${e}`);
 		}
 		if (cookieData) {
-			this.serverLogger.debug("找到 Cookie 文件，正在写入 jar...");
+			this.serverLogger.debug("[cookie] 找到 Cookie 文件，正在写入 jar...");
 			await this.api.loadCookies(cookieData);
 		} else {
-			this.serverLogger.debug("未找到 Cookie 文件，标记为待登录状态");
+			this.serverLogger.debug("[cookie] 未找到 Cookie 文件，标记为待登录状态");
 			this.api.markLoginInfoLoaded();
 		}
 	}
@@ -351,7 +348,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 				data: myCardInfo.data,
 			});
 		} catch (e) {
-			this.serverLogger.warn(`获取账号信息失败: ${e}`);
+			this.serverLogger.warn(`[account] 获取账号信息失败: ${e}`);
 		}
 	}
 
@@ -359,11 +356,11 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 
 	private async loadInitialSubscriptions(): Promise<void> {
 		if (this.config.advancedSub) {
-			this.serverLogger.info("开启高级订阅，等待接收订阅配置...");
+			this.serverLogger.info("[sub] 开启高级订阅，等待接收订阅配置...");
 			this.selfCtx.emit("bilibili-notify/ready-to-receive");
 		} else {
 			if (this.config.subs?.length) {
-				this.serverLogger.debug(`从配置加载 ${this.config.subs.length} 个订阅项`);
+				this.serverLogger.debug(`[sub] 从配置加载 ${this.config.subs.length} 个订阅项`);
 				const subs = SubscriptionManager.fromFlatConfig(this.config.subs);
 				if (!this.subMgr) return;
 				await this.subMgr.loadSubscriptions(subs);
@@ -371,7 +368,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 				this.updateSubNotifier();
 				this.selfCtx.emit("bilibili-notify/subscription-changed", subs);
 			} else {
-				this.serverLogger.info("初始化完毕，但未添加任何订阅");
+				this.serverLogger.info("[sub] 初始化完毕，但未添加任何订阅");
 			}
 		}
 	}
@@ -407,12 +404,12 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		});
 
 		this.selfCtx.console.addListener("bilibili-notify/start-login", async () => {
-			this.serverLogger.info("触发登录事件");
+			this.serverLogger.info("[login] 触发登录事件");
 			await this.startLoginFlow();
 		});
 
 		this.selfCtx.console.addListener("bilibili-notify/reset-key", async () => {
-			this.serverLogger.info("触发重置密钥事件");
+			this.serverLogger.info("[login] 触发重置密钥事件");
 			try {
 				await this.storageMgr.cookieStore.resetKey();
 				this.selfCtx.emit("bilibili-notify/login-status-report", {
@@ -420,7 +417,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 					msg: "密钥已重置，cookie 已清除，请重新扫码登录",
 				});
 			} catch (e) {
-				this.serverLogger.error(`重置密钥失败：${e}`);
+				this.serverLogger.error(`[login] 重置密钥失败：${e}`);
 			}
 		});
 
@@ -433,7 +430,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		if (this.config.advancedSub) {
 			this.selfCtx.on("bilibili-notify/advanced-sub", async (subs: Subscriptions) => {
 				if (!Object.keys(subs).length) {
-					this.serverLogger.info("订阅加载完毕，但未添加任何订阅");
+					this.serverLogger.info("[sub] 订阅加载完毕，但未添加任何订阅");
 					return;
 				}
 				if (!this.subMgr) return;
@@ -455,7 +452,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		try {
 			qrContent = await this.api.getLoginQRCode();
 		} catch (e) {
-			this.serverLogger.error(`获取登录二维码失败：${e}`);
+			this.serverLogger.error(`[login] 获取登录二维码失败：${e}`);
 			return;
 		}
 
@@ -477,7 +474,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			},
 			(err: Error | null | undefined, buffer: Buffer) => {
 				if (err) {
-					this.serverLogger.error(`生成二维码失败：${err}`);
+					this.serverLogger.error(`[login] 生成二维码失败：${err}`);
 					this.selfCtx.emit("bilibili-notify/login-status-report", {
 						status: BiliLoginStatus.LOGIN_FAILED,
 						msg: "生成二维码失败",
@@ -524,7 +521,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		try {
 			loginContent = await this.api.getLoginStatus(qrcodeKey);
 		} catch (e) {
-			this.serverLogger.error(`获取登录状态失败：${e}`);
+			this.serverLogger.error(`[login] 获取登录状态失败：${e}`);
 			return;
 		}
 
@@ -559,7 +556,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 				const refreshToken = (loginContent.data.refresh_token as string) ?? "";
 				await this.storageMgr.cookieStore.save({ cookiesJson, refreshToken });
 			} catch (e) {
-				this.serverLogger.error(`保存 cookie 失败：${e}`);
+				this.serverLogger.error(`[login] 保存 cookie 失败：${e}`);
 			}
 			this.selfCtx.emit("bilibili-notify/login-status-report", {
 				status: BiliLoginStatus.LOGIN_SUCCESS,
@@ -585,13 +582,13 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		if (needDynamic && !this.selfCtx.get("bilibili-notify-dynamic")) {
 			const msg =
 				"[bilibili-notify] 警告：有订阅开启了动态通知，但动态插件（koishi-plugin-bilibili-notify-dynamic）未运行，请检查是否已安装并启用该插件。";
-			this.serverLogger.warn(msg);
+			this.serverLogger.warn(`[warn] ${msg}`);
 			await this.push.sendPrivateMsg(msg);
 		}
 		if (needLive && !this.selfCtx.get("bilibili-notify-live")) {
 			const msg =
 				"[bilibili-notify] 警告：有订阅开启了直播通知，但直播插件（koishi-plugin-bilibili-notify-live）未运行，请检查是否已安装并启用该插件。";
-			this.serverLogger.warn(msg);
+			this.serverLogger.warn(`[warn] ${msg}`);
 			await this.push.sendPrivateMsg(msg);
 		}
 	}

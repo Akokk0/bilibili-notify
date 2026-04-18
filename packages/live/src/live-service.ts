@@ -79,13 +79,13 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		this.livePushTimerManager = new Map();
 		this.listenerRecord = {};
 
-		this.liveLogger.debug("直播插件启动，正在等待订阅数据...");
+		this.liveLogger.debug("[start] 直播插件启动，正在等待订阅数据...");
 		// If subscriptions were already loaded before this plugin started, start immediately
 		if (internals.subs) {
-			this.liveLogger.debug("订阅已就绪，立即启动直播监听");
+			this.liveLogger.debug("[start] 订阅已就绪，立即启动直播监听");
 			this.startLiveMonitors(internals.subs);
 		} else {
-			this.liveLogger.debug("订阅尚未就绪，等待 subscription-changed 事件");
+			this.liveLogger.debug("[start] 订阅尚未就绪，等待 subscription-changed 事件");
 		}
 		this.logSideEffectState("start");
 		// Listen for future subscription changes from core
@@ -115,7 +115,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 	private logSideEffectState(stage: string): void {
 		if (this.liveLogger.level < 3) return;
 		this.liveLogger.debug(
-			`[live:${this.instanceId}] ${stage} listeners=${this.getListenerCount()} timers=${this.livePushTimerManager?.size ?? 0} disposed=${this.disposed}`,
+			`[conn] [live:${this.instanceId}] ${stage} listeners=${this.getListenerCount()} timers=${this.livePushTimerManager?.size ?? 0} disposed=${this.disposed}`,
 		);
 	}
 
@@ -148,12 +148,12 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			.filter((s) => s.live)
 			.map((s) => s.uid);
 		this.liveLogger.debug(
-			`启动直播监听，共 ${liveSubUids.length} 个 UID：${liveSubUids.join(", ")}`,
+			`[start] 启动直播监听，共 ${liveSubUids.length} 个 UID：${liveSubUids.join(", ")}`,
 		);
 		for (const sub of Object.values(subs)) {
 			if (sub.live) {
 				this.liveDetectWithListener(sub).catch((e) => {
-					this.liveLogger.error(`启动直播监听失败 UID=${sub.uid}：${e}`);
+					this.liveLogger.error(`[start] 启动直播监听失败 UID=${sub.uid}：${e}`);
 				});
 			}
 		}
@@ -162,7 +162,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 	private async startLiveRoomListener(roomId: string, handler: MsgHandler): Promise<void> {
 		if (this.isDisposed()) return;
 		if (this.listenerRecord[roomId]) {
-			this.liveLogger.warn(`直播间 [${roomId}] 连接已存在，跳过创建`);
+			this.liveLogger.warn(`[conn] 直播间 [${roomId}] 连接已存在，跳过创建`);
 			return;
 		}
 
@@ -172,12 +172,12 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			mySelfInfo = await this.api.getMyselfInfo();
 			if (mySelfInfo.code === 0 && mySelfInfo.data) break;
 			this.liveLogger.warn(
-				`获取个人信息失败（第 ${attempt}/3 次），直播间 [${roomId}]，code=${mySelfInfo.code}`,
+				`[conn] 获取个人信息失败（第 ${attempt}/3 次），直播间 [${roomId}]，code=${mySelfInfo.code}`,
 			);
 		}
 
 		if (!mySelfInfo || mySelfInfo.code !== 0 || !mySelfInfo.data) {
-			this.liveLogger.error(`获取个人信息连续失败，无法创建直播间 [${roomId}] 连接`);
+			this.liveLogger.error(`[conn] 获取个人信息连续失败，无法创建直播间 [${roomId}] 连接`);
 			return;
 		}
 
@@ -196,24 +196,24 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		}
 
 		this.listenerRecord[roomId] = listener;
-		this.liveLogger.info(`直播间 [${roomId}] 连接已建立`);
+		this.liveLogger.info(`[conn] 直播间 [${roomId}] 连接已建立`);
 		this.logSideEffectState(`listener:created room=${roomId}`);
 	}
 
 	private closeListener(roomId: string): void {
 		const listener = this.listenerRecord[roomId];
 		if (!listener) {
-			this.liveLogger.debug(`直播间 [${roomId}] 连接不存在，跳过关闭`);
+			this.liveLogger.debug(`[conn] 直播间 [${roomId}] 连接不存在，跳过关闭`);
 			return;
 		}
 		if (listener.closed) {
-			this.liveLogger.debug(`直播间 [${roomId}] 连接已被远端断开`);
+			this.liveLogger.debug(`[conn] 直播间 [${roomId}] 连接已被远端断开`);
 			delete this.listenerRecord[roomId];
 			return;
 		}
 		listener.close();
 		delete this.listenerRecord[roomId];
-		this.liveLogger.info(`直播间 [${roomId}] 连接已关闭`);
+		this.liveLogger.info(`[conn] 直播间 [${roomId}] 连接已关闭`);
 		this.logSideEffectState(`listener:closed room=${roomId}`);
 	}
 
@@ -237,7 +237,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 	}
 
 	private stopMonitoring(reason: string): void {
-		this.liveLogger.error(`${reason}，直播监测已停止`);
+		this.liveLogger.error(`[conn] ${reason}，直播监测已停止`);
 		this.clearListeners();
 		this.clearPushTimers();
 		this.ctx.emit("bilibili-notify/plugin-error", SERVICE_NAME, reason);
@@ -248,7 +248,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			const content = await this.api.getLiveRoomInfo(roomId);
 			return content.data;
 		} catch (e) {
-			this.liveLogger.error(`获取直播间信息失败：${(e as Error).message}`);
+			this.liveLogger.error(`[conn] 获取直播间信息失败：${(e as Error).message}`);
 			await this.push.sendPrivateMsg(`获取直播间信息失败：${(e as Error).message}，直播监测已停止`);
 			this.stopMonitoring("获取直播间信息失败");
 			return undefined;
@@ -322,14 +322,14 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 					cardStyle?.enable ? cardStyle : undefined,
 				);
 			} catch (e) {
-				this.liveLogger.error(`生成直播图片失败：${(e as Error).message}，降级为文字推送`);
+				this.liveLogger.error(`[image] 生成直播图片失败：${(e as Error).message}，降级为文字推送`);
 			}
 		}
 
 		if (this.isDisposed()) return;
 
 		if (!buffer) {
-			this.liveLogger.debug(`[${masterInfo.username}] 无图片，降级为文字推送`);
+			this.liveLogger.debug(`[push] [${masterInfo.username}] 无图片，降级为文字推送`);
 			const fallbackMsg = h("message", [
 				h.text(liveNotifyMsg || `直播通知 - ${masterInfo.username}`),
 			]);
@@ -389,7 +389,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		masterName: string,
 	): Promise<ReturnType<typeof h.image> | undefined> {
 		if (sortedWords.length < 50) {
-			this.liveLogger.debug("热词不足50个，放弃生成弹幕词云");
+			this.liveLogger.debug("[wordcloud] 热词不足50个，放弃生成弹幕词云");
 			return undefined;
 		}
 		// biome-ignore lint/suspicious/noExplicitAny: optional image service
@@ -399,7 +399,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			const buf = await imageService.generateWordCloudImg(sortedWords.slice(0, 90), masterName);
 			return h.image(buf, "image/jpeg");
 		} catch (e) {
-			this.liveLogger.error(`生成词云失败：${(e as Error).message}`);
+			this.liveLogger.error(`[wordcloud] 生成词云失败：${(e as Error).message}`);
 			return undefined;
 		}
 	}
@@ -412,7 +412,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 	): Promise<string | undefined> {
 		const senderCount = Object.keys(danmakuSenderRecord).length;
 		if (senderCount < 5) {
-			this.liveLogger.debug("发言人数不足5位，放弃生成直播总结");
+			this.liveLogger.debug("[summary] 发言人数不足5位，放弃生成直播总结");
 			return undefined;
 		}
 
@@ -434,10 +434,10 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 					`弹幕排行TOP5：${top5Senders.map(([u, c]) => `${u}(${c}条)`).join("、")}`,
 				].join("，");
 				const aiResult = await aiService.comment(prompt, "liveSummary");
-				this.liveLogger.debug(`AI 直播总结生成完毕，长度=${aiResult.length}`);
+				this.liveLogger.debug(`[summary] AI 直播总结生成完毕，长度=${aiResult.length}`);
 				return aiResult;
 			} catch (e) {
-				this.liveLogger.error(`AI 直播总结生成失败：${(e as Error).message}，回退到模板`);
+				this.liveLogger.error(`[summary] AI 直播总结生成失败：${(e as Error).message}，回退到模板`);
 			}
 		}
 
@@ -484,7 +484,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		const liveData: LiveData = { likedNum: "0" };
 
 		const sendDanmakuWordCloudAndLiveSummary = async (customLiveSummary: string) => {
-			this.liveLogger.debug("开始制作弹幕词云");
+			this.liveLogger.debug("[wordcloud] 开始制作弹幕词云");
 			const sortedWords = Object.entries(danmakuWeightRecord).sort((a, b) => b[1] - a[1]);
 
 			const [img, summary] = await Promise.all([
@@ -589,7 +589,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 				this.closeListener(sub.roomId);
 				if (this.isDisposed()) return;
 				await this.push.sendPrivateMsg(`[${sub.roomId}] 直播间连接发生错误`);
-				this.liveLogger.error(`[${sub.roomId}] 直播间连接发生错误`);
+				this.liveLogger.error(`[conn] 直播间 [${sub.roomId}] 连接发生错误`);
 			},
 
 			onIncomeDanmu: ({ body }) => {
@@ -645,7 +645,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 						);
 						return;
 					} catch (e) {
-						this.liveLogger.error(`生成SC图片失败：${(e as Error).message}`);
+						this.liveLogger.error(`[sc] 生成SC图片失败：${(e as Error).message}`);
 					}
 				}
 				// Fallback text
@@ -718,7 +718,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 							);
 							return;
 						} catch (e) {
-							this.liveLogger.error(`生成上舰图片失败：${(e as Error).message}`);
+							this.liveLogger.error(`[guard] 生成上舰图片失败：${(e as Error).message}`);
 						}
 					}
 				}
@@ -740,13 +740,13 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			onLiveStart: async () => {
 				const now = Date.now();
 				if (now - lastLiveStart < LIVE_EVENT_COOLDOWN) {
-					this.liveLogger.warn(`[${sub.roomId}] 的开播事件在冷却期内，忽略`);
+					this.liveLogger.warn(`[live] 直播间 [${sub.roomId}] 的开播事件在冷却期内，忽略`);
 					return;
 				}
 				lastLiveStart = now;
 
 				if (liveStatus) {
-					this.liveLogger.warn(`[${sub.roomId}] 已经是开播状态，忽略重复的开播事件`);
+					this.liveLogger.warn(`[live] 直播间 [${sub.roomId}] 已经是开播状态，忽略重复的开播事件`);
 					return;
 				}
 				liveStatus = true;
@@ -764,7 +764,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 				}
 
 				this.liveLogger.info(
-					`房间号：${masterInfo.roomId}，开播时的粉丝数：${masterInfo.liveOpenFollowerNum}`,
+					`[stat] 房间号：${masterInfo.roomId}，开播时的粉丝数：${masterInfo.liveOpenFollowerNum}`,
 				);
 
 				liveTime = liveRoomInfo.live_time || DateTime.now().toFormat("yyyy-MM-dd HH:mm:ss");
@@ -812,13 +812,13 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			onLiveEnd: async () => {
 				const now = Date.now();
 				if (now - lastLiveEnd < LIVE_EVENT_COOLDOWN) {
-					this.liveLogger.warn(`[${sub.roomId}] 的下播事件在冷却期内，忽略`);
+					this.liveLogger.warn(`[live] 直播间 [${sub.roomId}] 的下播事件在冷却期内，忽略`);
 					return;
 				}
 				lastLiveEnd = now;
 
 				if (!liveStatus) {
-					this.liveLogger.warn(`[${sub.roomId}] 已经是下播状态，忽略重复的下播事件`);
+					this.liveLogger.warn(`[live] 直播间 [${sub.roomId}] 已经是下播状态，忽略重复的下播事件`);
 					return;
 				}
 
@@ -843,7 +843,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 
 				liveStatus = false;
 				this.liveLogger.debug(
-					`开播时粉丝数：${masterInfo.liveOpenFollowerNum}，下播时粉丝数：${masterInfo.liveEndFollowerNum}，粉丝数变化：${masterInfo.liveFollowerChange}`,
+					`[stat] 开播时粉丝数：${masterInfo.liveOpenFollowerNum}，下播时粉丝数：${masterInfo.liveEndFollowerNum}，粉丝数变化：${masterInfo.liveFollowerChange}`,
 				);
 
 				liveTime = liveRoomInfo.live_time || DateTime.now().toFormat("yyyy-MM-dd HH:mm:ss");
@@ -925,7 +925,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			return;
 		}
 
-		this.liveLogger.debug(`当前粉丝数：${masterInfo.liveOpenFollowerNum}`);
+		this.liveLogger.debug(`[stat] 当前粉丝数：${masterInfo.liveOpenFollowerNum}`);
 
 		if (liveRoomInfo.live_status === 1) {
 			liveTime = liveRoomInfo.live_time;

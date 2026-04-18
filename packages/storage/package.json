@@ -24,6 +24,9 @@
 		"build": "tsdown",
 		"typecheck": "tsc --noEmit"
 	},
+	"peerDependencies": {
+		"koishi": "^4.18.11"
+	},
 	"engines": {
 		"node": ">=20.0.0"
 	}

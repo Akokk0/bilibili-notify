@@ -59,11 +59,11 @@ export class BilibiliPush {
 
 		const bot = this.ctx.bots.find((b) => b.platform === cfg.platform) ?? this.getBot(cfg.platform);
 		if (!bot) {
-			this.logger.warn("未找到管理员机器人实例，暂时无法推送");
+			this.logger.warn("[push] 未找到管理员机器人实例，暂时无法推送");
 			return;
 		}
 		if (bot.status !== Universal.Status.ONLINE) {
-			this.logger.warn(`${bot.platform} 机器人未在线，暂时无法推送私信`);
+			this.logger.warn(`[push] ${bot.platform} 机器人未在线，暂时无法推送私信`);
 			return;
 		}
 
@@ -75,7 +75,7 @@ export class BilibiliPush {
 	}
 
 	async sendErrorMsg(reason: string): Promise<void> {
-		this.logger.error(reason);
+		this.logger.error(`[push] ${reason}`);
 		await this.sendPrivateMsg(reason);
 	}
 
@@ -91,7 +91,7 @@ export class BilibiliPush {
 
 		if (!this.pushArrMapReady) {
 			this.logger.warn(
-				`推送对象信息尚未初始化，等待5秒后重试 (uid=${uid}, type=${PUSH_TYPE_LABEL[type]})`,
+				`[push] 推送对象信息尚未初始化，等待5秒后重试 (uid=${uid}, type=${PUSH_TYPE_LABEL[type]})`,
 			);
 			await this.sleep(5000);
 			if (this.disposed) return;
@@ -158,10 +158,10 @@ export class BilibiliPush {
 	// biome-ignore lint/suspicious/noExplicitAny: Koishi message content
 	private async pushToArr(arr: string[] | undefined, content: any, label?: string): Promise<void> {
 		if (arr?.length) {
-			if (label) this.logger.info(label);
+			if (label) this.logger.info(`[push] ${label}`);
 			await this.push(arr, content);
 		} else if (label) {
-			this.logger.debug(`${label} — 目标数组为空，跳过`);
+			this.logger.debug(`[push] ${label} — 目标数组为空，跳过`);
 		}
 	}
 
@@ -185,7 +185,7 @@ export class BilibiliPush {
 				await this.sendWithRetry(bots, channelId, content, 0, INITIAL_RETRY_DELAY_MS);
 				sent++;
 			}
-			this.logger.info(`成功推送 ${sent} 条消息到 ${platform}`);
+			this.logger.info(`[push] 成功推送 ${sent} 条消息到 ${platform}`);
 		}
 	}
 
@@ -202,17 +202,17 @@ export class BilibiliPush {
 
 		const bot = bots[botIndex];
 		if (!bot) {
-			this.logger.warn(`没有可用机器人来推送到 ${channelId}`);
+			this.logger.warn(`[push] 没有可用机器人来推送到 ${channelId}`);
 			return;
 		}
 
 		if (bot.status !== Universal.Status.ONLINE) {
 			if (delay >= MAX_RETRY_DELAY_MS) {
-				this.logger.error(`机器人未在线，已重试5次，放弃推送到 ${channelId}`);
+				this.logger.error(`[push] 机器人未在线，已重试5次，放弃推送到 ${channelId}`);
 				await this.sendPrivateMsg(`机器人未在线，放弃推送到 ${channelId}`);
 				return;
 			}
-			this.logger.warn(`机器人未在线，${delay / 1000}秒后重试`);
+			this.logger.warn(`[push] 机器人未在线，${delay / 1000}秒后重试`);
 			await this.sleep(delay);
 			return this.sendWithRetry(bots, channelId, content, botIndex, delay * 2);
 		}
@@ -226,17 +226,17 @@ export class BilibiliPush {
 
 			if (err.message === "this._request is not a function") {
 				if (delay < MAX_RETRY_DELAY_MS) {
-					this.logger.warn(`机器人 _request 不可用，${delay / 1000}秒后重试`);
+					this.logger.warn(`[push] 机器人 _request 不可用，${delay / 1000}秒后重试`);
 					await this.sleep(delay);
 					// Refresh bot reference
 					const freshBots = this.ctx.bots.filter((b) => b.platform === bot.platform);
 					return this.sendWithRetry(freshBots, channelId, content, 0, delay * 2);
 				}
-				this.logger.error(`机器人 _request 持续不可用，放弃推送到 ${channelId}`);
+				this.logger.error(`[push] 机器人 _request 持续不可用，放弃推送到 ${channelId}`);
 				return;
 			}
 
-			this.logger.error(`发送到 ${channelId} 失败: ${err.message}`);
+			this.logger.error(`[push] 发送到 ${channelId} 失败: ${err.message}`);
 			// Try next bot
 			if (botIndex + 1 < bots.length) {
 				return this.sendWithRetry(bots, channelId, content, botIndex + 1, delay);

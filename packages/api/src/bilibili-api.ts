@@ -78,17 +78,17 @@ export class BilibiliAPI {
 		this.cacheable.install(https.globalAgent);
 
 		await this.initClient();
-		this.logger.debug("HTTP 客户端初始化完成");
+		this.logger.debug("[init] HTTP 客户端初始化完成");
 
 		// Daily ticket refresh at midnight
 		this.ticketJob = new CronJob("0 0 * * *", () => {
 			this.updateBiliTicket().catch((e: Error) =>
-				this.logger.error(`更新 BiliTicket 失败: ${e.message}`),
+				this.logger.error(`[init] 更新 BiliTicket 失败: ${e.message}`),
 			);
 		});
 		this.ticketJob.start();
 		await this.updateBiliTicket();
-		this.logger.debug("BiliTicket 已更新，API 初始化完成");
+		this.logger.debug("[init] BiliTicket 已更新，API 初始化完成");
 	}
 
 	stop(): void {
@@ -142,7 +142,7 @@ export class BilibiliAPI {
 		try {
 			return JSON.stringify(this.jar.serializeSync()?.cookies ?? []);
 		} catch (e) {
-			this.logger.error(`获取 cookies 失败: ${e}`);
+			this.logger.error(`[cookie] 获取 cookies 失败: ${e}`);
 			return undefined;
 		}
 	}
@@ -163,7 +163,7 @@ export class BilibiliAPI {
 	async loadCookies(data: CookieData): Promise<void> {
 		const cookies = JSON.parse(data.cookiesJson) as BACookie[];
 		this.logger.debug(
-			`正在写入 ${cookies.length} 条 Cookie，refreshToken=${data.refreshToken ? "有" : "无"}`,
+			`[cookie] 正在写入 ${cookies.length} 条 Cookie，refreshToken=${data.refreshToken ? "有" : "无"}`,
 		);
 
 		const biliJctCookie = cookies.find((c) => c.key === "bili_jct");
@@ -202,12 +202,12 @@ export class BilibiliAPI {
 		}
 
 		this.loginInfoLoaded = true;
-		this.logger.debug(`Cookie 写入完成，bili_jct=${biliJctCookie ? "存在" : "缺失"}`);
+		this.logger.debug(`[cookie] Cookie 写入完成，bili_jct=${biliJctCookie ? "存在" : "缺失"}`);
 
 		if (data.refreshToken) {
 			const csrf = biliJctCookie?.value ?? "";
 			this.checkIfTokenNeedRefresh(data.refreshToken, csrf).catch((e: Error) =>
-				this.logger.warn(`Cookie 刷新检查失败: ${e.message}`),
+				this.logger.warn(`[cookie] Cookie 刷新检查失败: ${e.message}`),
 			);
 			this.enableRefreshCookiesInterval(data.refreshToken, csrf);
 		}
@@ -233,7 +233,7 @@ export class BilibiliAPI {
 		this.refreshCookieIntervalId = setInterval(async () => {
 			const csrf2 = this.getCSRF() ?? csrf;
 			await this.checkIfTokenNeedRefresh(refreshToken, csrf2).catch((e: Error) =>
-				this.logger.warn(`定时 Cookie 刷新失败: ${e.message}`),
+				this.logger.warn(`[cookie] 定时 Cookie 刷新失败: ${e.message}`),
 			);
 		}, 3_600_000);
 	}
@@ -357,7 +357,9 @@ export class BilibiliAPI {
 		return this.pRetry(fn, {
 			retries: 3,
 			onFailedAttempt: (err: Error & { attemptNumber: number }) => {
-				this.logger.warn(`${label}() 第 ${err.attemptNumber} 次失败: ${err.message ?? err}`);
+				this.logger.warn(
+					`[retry] ${label}() 第 ${err.attemptNumber} 次失败: ${err.message ?? err}`,
+				);
 			},
 		});
 	}
@@ -598,7 +600,7 @@ export class BilibiliAPI {
 		);
 		const result = data as ValidateCaptchaData;
 		if (result.code !== 0) {
-			this.logger.warn(`验证失败: code=${result.code}`);
+			this.logger.warn(`[captcha] 验证失败: code=${result.code}`);
 			return null;
 		}
 		// Persist grisk_id as a cookie

@@ -115,13 +115,13 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 		this.api = internals.api;
 		this.push = internals.push;
 		this.dynamicTimelineManager = new Map();
-		this.dynamicLogger.debug("动态插件启动，正在等待订阅数据...");
+		this.dynamicLogger.debug("[start] 动态插件启动，正在等待订阅数据...");
 		// If subscriptions were already loaded before this plugin started, start immediately
 		if (internals.subs) {
-			this.dynamicLogger.debug("订阅已就绪，立即启动动态检测");
+			this.dynamicLogger.debug("[start] 订阅已就绪，立即启动动态检测");
 			this.startDynamicDetector(internals.subs);
 		} else {
-			this.dynamicLogger.debug("订阅尚未就绪，等待 subscription-changed 事件");
+			this.dynamicLogger.debug("[start] 订阅尚未就绪，等待 subscription-changed 事件");
 		}
 		// Listen for future subscription changes from core
 		this.ctx.on("bilibili-notify/subscription-changed", (subs: Subscriptions) => {
@@ -134,7 +134,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 	protected stop(): Awaitable<void> {
 		if (this.dynamicJob) {
 			this.dynamicJob.stop();
-			this.dynamicLogger.info("动态检测任务已停止");
+			this.dynamicLogger.info("[stop] 动态检测任务已停止");
 		}
 	}
 
@@ -145,7 +145,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 	startDynamicDetector(subs: Subscriptions): void {
 		// Stop existing job first
 		if (this.dynamicJob) {
-			this.dynamicLogger.debug("停止旧的动态检测任务");
+			this.dynamicLogger.debug("[detector] 停止旧的动态检测任务");
 			this.dynamicJob.stop();
 			this.dynamicJob = undefined;
 		}
@@ -157,7 +157,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 				// 只为新增 UID 设置初始时间戳，保留已有 UID 的时间戳避免重推旧动态
 				if (!this.dynamicTimelineManager.has(sub.uid)) {
 					this.dynamicTimelineManager.set(sub.uid, Math.floor(DateTime.now().toSeconds()));
-					this.dynamicLogger.debug(`初始化 UID：${sub.uid} 时间戳`);
+					this.dynamicLogger.debug(`[detector] 初始化 UID：${sub.uid} 时间戳`);
 				}
 				dynamicSubManager.set(sub.uid, sub);
 			}
@@ -166,15 +166,17 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 		for (const uid of this.dynamicTimelineManager.keys()) {
 			if (!dynamicSubManager.has(uid)) {
 				this.dynamicTimelineManager.delete(uid);
-				this.dynamicLogger.debug(`清理已移除 UID：${uid} 的时间戳`);
+				this.dynamicLogger.debug(`[detector] 清理已移除 UID：${uid} 的时间戳`);
 			}
 		}
 
 		if (dynamicSubManager.size === 0) {
-			this.dynamicLogger.info("没有需要动态检测的订阅对象");
+			this.dynamicLogger.info("[detector] 没有需要动态检测的订阅对象");
 			return;
 		}
-		this.dynamicLogger.debug(`动态检测 UID 列表：${[...dynamicSubManager.keys()].join(", ")}`);
+		this.dynamicLogger.debug(
+			`[detector] 动态检测 UID 列表：${[...dynamicSubManager.keys()].join(", ")}`,
+		);
 
 		this.dynamicSubManager = dynamicSubManager;
 
@@ -182,21 +184,21 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 			this.config.dynamicCron,
 			withLock(
 				() => this.detectDynamics(),
-				(err) => this.dynamicLogger.error(`动态检测执行异常：${err}`),
+				(err) => this.dynamicLogger.error(`[detector] 动态检测执行异常：${err}`),
 			),
 		);
 		this.dynamicJob.start();
-		this.dynamicLogger.info("动态检测任务已启动");
+		this.dynamicLogger.info("[detector] 动态检测任务已启动");
 	}
 
 	private async detectDynamics(): Promise<void> {
-		this.dynamicLogger.debug("开始获取动态信息");
+		this.dynamicLogger.debug("[detector] 开始获取动态信息");
 
 		let content: AllDynamicInfo | undefined;
 		try {
 			content = (await this.api.getAllDynamic()) as AllDynamicInfo;
 		} catch (e) {
-			this.dynamicLogger.error(`获取动态失败：${e}`);
+			this.dynamicLogger.error(`[api] 获取动态失败：${e}`);
 			return;
 		}
 
@@ -207,7 +209,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 			return;
 		}
 
-		this.dynamicLogger.debug("成功获取动态信息，开始处理");
+		this.dynamicLogger.debug("[detector] 成功获取动态信息，开始处理");
 
 		const currentPushDyn: Record<string, Dynamic> = {};
 
@@ -217,7 +219,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 			const postTime = item.modules.module_author.pub_ts;
 			if (typeof postTime !== "number" || !Number.isFinite(postTime)) {
 				this.dynamicLogger.warn(
-					`跳过无效动态：pub_ts 缺失或非数字，ID=${item.id_str ?? "unknown"}`,
+					`[detector] 跳过无效动态：pub_ts 缺失或非数字，ID=${item.id_str ?? "unknown"}`,
 				);
 				continue;
 			}
@@ -229,7 +231,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 			if (timeline === undefined) continue; // not subscribed
 
 			this.dynamicLogger.debug(
-				`检查动态 UP=${name} UID=${uid} 发布时间=${DateTime.fromSeconds(postTime).toFormat("yyyy-MM-dd HH:mm:ss")}`,
+				`[detector] 检查动态 UP=${name} UID=${uid} 发布时间=${DateTime.fromSeconds(postTime).toFormat("yyyy-MM-dd HH:mm:ss")}`,
 			);
 
 			if (timeline >= postTime) continue; // already pushed
@@ -237,7 +239,9 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 			// Filter
 			const filterResult = filterDynamic(item, this.config.filter ?? {});
 			if (filterResult.blocked) {
-				this.dynamicLogger.debug(`动态 ID=${item.id_str} 被过滤，原因：${filterResult.reason}`);
+				this.dynamicLogger.debug(
+					`[filter] 动态 ID=${item.id_str} 被过滤，原因：${filterResult.reason}`,
+				);
 				if (this.config.filter?.notify) {
 					const msgs: Record<DynamicFilterReason, string> = {
 						[DynamicFilterReason.BlacklistKeyword]: `${name}发布了一条含有屏蔽关键字的动态`,
@@ -270,7 +274,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 			} catch (e) {
 				const err = e as Error;
 				if (err.message === "直播开播动态，不做处理") continue;
-				this.dynamicLogger.error(`生成动态图片失败：${err.message}，动态检测已停止`);
+				this.dynamicLogger.error(`[image] 生成动态图片失败：${err.message}，动态检测已停止`);
 				await this.push.sendErrorMsg(`生成动态图片失败：${err.message}，动态检测已停止`);
 				this.dynamicJob?.stop();
 				this.dynamicJob = undefined;
@@ -306,7 +310,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 				if (dynamicText) {
 					const imageUrls = extractDynamicImages(item);
 					this.dynamicLogger.debug(
-						`[AI] 开始生成动态点评，文本长度=${dynamicText.length}，图片数=${imageUrls.length}`,
+						`[ai] 开始生成动态点评，文本长度=${dynamicText.length}，图片数=${imageUrls.length}`,
 					);
 					try {
 						aiComment = await aiService.comment(
@@ -314,12 +318,14 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 							"dynamic",
 							imageUrls,
 						);
-						this.dynamicLogger.debug(`[AI] 动态点评生成完毕，长度=${aiComment?.length ?? 0}`);
+						this.dynamicLogger.debug(`[ai] 动态点评生成完毕，长度=${aiComment?.length ?? 0}`);
 					} catch (e) {
-						this.dynamicLogger.error(`AI 点评生成失败：${(e as Error).message}，回退到普通文字`);
+						this.dynamicLogger.error(
+							`[ai] AI 点评生成失败：${(e as Error).message}，回退到普通文字`,
+						);
 					}
 				} else {
-					this.dynamicLogger.debug("[AI] 动态无可提取文本，跳过 AI 点评");
+					this.dynamicLogger.debug("[ai] 动态无可提取文本，跳过 AI 点评");
 				}
 			}
 
@@ -354,11 +360,11 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 			const postTime = item.modules.module_author.pub_ts;
 			this.dynamicTimelineManager.set(uid, postTime);
 			this.dynamicLogger.debug(
-				`更新时间线 UID=${uid} 时间=${DateTime.fromSeconds(postTime).toFormat("yyyy-MM-dd HH:mm:ss")}`,
+				`[timeline] 更新时间线 UID=${uid} 时间=${DateTime.fromSeconds(postTime).toFormat("yyyy-MM-dd HH:mm:ss")}`,
 			);
 		}
 
-		this.dynamicLogger.debug(`本次推送 ${Object.keys(currentPushDyn).length} 条动态`);
+		this.dynamicLogger.debug(`[detector] 本次推送 ${Object.keys(currentPushDyn).length} 条动态`);
 	}
 
 	private async handleApiError(code: number, message: string): Promise<void> {
@@ -367,19 +373,19 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 		this.dynamicJob = undefined;
 		switch (code) {
 			case -101: {
-				this.dynamicLogger.error("账号未登录，动态检测已停止");
+				this.dynamicLogger.error("[api] 账号未登录，动态检测已停止");
 				await this.push.sendPrivateMsg("账号未登录，请先登录");
 				this.ctx.emit("bilibili-notify/plugin-error", SERVICE_NAME, "账号未登录");
 				break;
 			}
 			case -352: {
-				this.dynamicLogger.error("账号被风控，动态检测已停止");
+				this.dynamicLogger.error("[api] 账号被风控，动态检测已停止");
 				await this.push.sendPrivateMsg("账号被风控，请使用 `bili cap` 指令解除风控");
 				this.ctx.emit("bilibili-notify/plugin-error", SERVICE_NAME, "账号被风控");
 				break;
 			}
 			default: {
-				this.dynamicLogger.error(`获取动态信息失败，错误码：${code}，${message}`);
+				this.dynamicLogger.error(`[api] 获取动态信息失败，错误码：${code}，${message}`);
 				await this.push.sendPrivateMsg(`获取动态信息失败，错误码：${code}`);
 				this.ctx.emit(
 					"bilibili-notify/plugin-error",
