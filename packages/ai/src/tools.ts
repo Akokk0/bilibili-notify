@@ -164,11 +164,11 @@ export async function executeTool(
 			return lines.join("\n");
 		}
 		case "get_user_stats": {
-			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
-			const [upstat, navnum] = (await Promise.all([
+			// biome-ignore lint/suspicious/noExplicitAny: bilibili API responses have no declared types
+			const [upstat, navnum]: [any, any] = await Promise.all([
 				api.getUserUpstat(args.uid),
 				api.getUserNavnum(args.uid),
-			])) as any[];
+			]);
 			if (upstat.code !== 0) return `获取数据失败: ${upstat.message}`;
 			const view = upstat.data?.archive?.view ?? 0;
 			const likes = upstat.data?.likes ?? 0;
