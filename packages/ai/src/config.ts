@@ -44,6 +44,9 @@ export interface BilibiliNotifyAIConfig {
 
 	/** 开启模型内置的联网搜索（仅 SiliconFlow 等支持 enable_search 的提供商有效） */
 	enableSearch: boolean;
+
+	/** 开启多模态图片理解，动态点评及对话时将图片一并传给模型（需模型支持视觉能力） */
+	enableVision: boolean;
 }
 
 const PersonaConfigSchema: Schema<PersonaConfig> = Schema.intersect([
@@ -137,4 +140,8 @@ export const BilibiliNotifyAIConfigSchema: Schema<BilibiliNotifyAIConfig> = Sche
 	enableSearch: Schema.boolean()
 		.default(false)
 		.description("开启模型内置的联网搜索（仅 SiliconFlow 等支持 enable_search 参数的提供商有效）"),
+
+	enableVision: Schema.boolean()
+		.default(false)
+		.description("开启多模态图片理解，动态点评及对话时将图片传给模型（需模型支持视觉能力）"),
 });

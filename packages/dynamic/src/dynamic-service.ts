@@ -40,6 +40,28 @@ function withLock(fn: () => Promise<void>, onError?: (err: unknown) => void): ()
 	};
 }
 
+/** 从动态数据中提取图片 URL，用于多模态 AI 点评（最多 4 张） */
+function extractDynamicImages(item: Dynamic): string[] {
+	const mod = item.modules.module_dynamic;
+	const urls: string[] = [];
+	// 图文动态（draw，纯图片帖）
+	if (mod.major?.draw?.items) {
+		for (const img of mod.major.draw.items as Array<{ src?: string }>) {
+			if (img.src) urls.push(img.src);
+		}
+	}
+	// 专栏/opus 图片列表
+	if (mod.major?.opus?.pics) {
+		for (const pic of mod.major.opus.pics) {
+			if (pic.url) urls.push(pic.url);
+		}
+	}
+	// 视频封面（archive 有 [key: string]: any）
+	const archiveCover = mod.major?.archive?.cover as string | undefined;
+	if (archiveCover) urls.push(archiveCover);
+	return urls.slice(0, 4);
+}
+
 /** 从动态数据中提取纯文本内容，用于 AI 点评 */
 function extractDynamicText(item: Dynamic): string {
 	const mod = item.modules.module_dynamic;
@@ -283,11 +305,15 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 			if (aiService) {
 				const dynamicText = extractDynamicText(item);
 				if (dynamicText) {
-					this.dynamicLogger.debug(`[AI] 开始生成动态点评，文本长度=${dynamicText.length}`);
+					const imageUrls = extractDynamicImages(item);
+					this.dynamicLogger.debug(
+						`[AI] 开始生成动态点评，文本长度=${dynamicText.length}，图片数=${imageUrls.length}`,
+					);
 					try {
 						aiComment = await aiService.comment(
 							`${name}发布了一条动态，内容如下：\n${dynamicText}`,
 							"dynamic",
+							imageUrls,
 						);
 						this.dynamicLogger.debug(`[AI] 动态点评生成完毕，长度=${aiComment?.length ?? 0}`);
 					} catch (e) {

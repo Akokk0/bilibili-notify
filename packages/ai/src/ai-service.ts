@@ -99,10 +99,17 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 	 * 单次 AI 调用，不保存历史。
 	 * 供 dynamic/live 插件调用。
 	 */
-	async comment(content: string, scene?: AIScene): Promise<string> {
+	async comment(content: string, scene?: AIScene, imageUrls?: string[]): Promise<string> {
 		const systemPrompt = this.getSystemPrompt(scene);
-		this.aiLogger.debug(`[comment] scene=${scene ?? "default"}, 内容长度=${content.length}`);
-		const result = await this.callAPI(systemPrompt, [{ role: "user", content }]);
+		this.aiLogger.debug(
+			`[comment] scene=${scene ?? "default"}, 内容长度=${content.length}, 图片数=${imageUrls?.length ?? 0}`,
+		);
+		const result = await this.callAPI(
+			systemPrompt,
+			[{ role: "user", content }],
+			undefined,
+			this.config.enableVision ? imageUrls : undefined,
+		);
 		this.aiLogger.debug(`[comment] 响应长度=${result.length}`);
 		return result;
 	}
@@ -112,7 +119,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 	 * 历史满载时自动压缩最旧一半为摘要。
 	 * 供 bili chat 指令使用。
 	 */
-	async chat(content: string, sessionId: string): Promise<string> {
+	async chat(content: string, sessionId: string, imageUrls?: string[]): Promise<string> {
 		const now = Date.now();
 		const entry = this.sessions.get(sessionId);
 		const isExpired = !entry || now - entry.lastActiveAt >= SESSION_TTL_MS;
@@ -129,10 +136,15 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 		const maxMessages = this.config.maxHistory * 2;
 		const trimmedHistory = history.slice(-maxMessages);
 
-		const result = await this.callAPI(systemPrompt, trimmedHistory, {
-			tools: TOOL_DEFINITIONS,
-			onToolCall: (name, args) => executeTool(name, args, this.api, this.subs),
-		});
+		const result = await this.callAPI(
+			systemPrompt,
+			trimmedHistory,
+			{
+				tools: TOOL_DEFINITIONS,
+				onToolCall: (name, args) => executeTool(name, args, this.api, this.subs),
+			},
+			this.config.enableVision ? imageUrls : undefined,
+		);
 
 		if (this.config.enableConversation) {
 			trimmedHistory.push({ role: "assistant", content: result });
@@ -202,21 +214,39 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 			tools: OpenAI.ChatCompletionTool[];
 			onToolCall: (name: string, args: Record<string, string>) => Promise<string>;
 		},
+		imageUrls?: string[],
 	): Promise<string> {
 		const { apiKey, baseURL, model } = this.config;
 		if (!apiKey) throw new Error("AI apiKey 未配置");
 		if (!baseURL) throw new Error("AI baseURL 未配置");
 
 		this.aiLogger.debug(
-			`[API] baseURL=${baseURL}, model=${model}, messages=${messages.length}, tools=${toolOptions ? "yes" : "no"}`,
+			`[API] baseURL=${baseURL}, model=${model}, messages=${messages.length}, tools=${toolOptions ? "yes" : "no"}, images=${imageUrls?.length ?? 0}`,
 		);
 		const { default: OpenAI } = await import("openai");
 		const client = new OpenAI({ apiKey, baseURL });
 
 		const apiMessages: OpenAI.ChatCompletionMessageParam[] = [
 			{ role: "system", content: systemPrompt },
-			...messages,
 		];
+		for (let i = 0; i < messages.length; i++) {
+			const msg = messages[i];
+			const isLastUser = i === messages.length - 1 && msg.role === "user" && imageUrls?.length;
+			if (isLastUser && imageUrls) {
+				apiMessages.push({
+					role: "user",
+					content: [
+						{ type: "text", text: msg.content },
+						...imageUrls.map((url) => ({
+							type: "image_url" as const,
+							image_url: { url },
+						})),
+					],
+				});
+			} else {
+				apiMessages.push(msg);
+			}
+		}
 
 		/** ChatCompletionCreateParams + SiliconFlow/Qwen3 扩展字段 */
 		type CreateParams = OpenAI.ChatCompletionCreateParamsNonStreaming & {

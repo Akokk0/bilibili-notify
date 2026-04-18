@@ -31,8 +31,13 @@ export function aiCommands(this: BilibiliNotifyAI): void {
 
 			if (!message?.trim()) return "请输入消息内容";
 
+			const imageUrls = session?.elements
+				?.filter((e) => e.type === "img")
+				.map((e) => e.attrs?.src as string)
+				.filter(Boolean);
+
 			try {
-				return await this.chat(message, sessionId);
+				return await this.chat(message, sessionId, imageUrls);
 			} catch (e) {
 				return `AI 调用失败：${(e as Error).message}`;
 			}
