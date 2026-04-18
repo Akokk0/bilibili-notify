@@ -485,6 +485,34 @@ export class BilibiliAPI {
 		);
 	}
 
+	async getUserUpstat(mid: string) {
+		return this.retry(
+			async () => (await this.client.get(`${EP.GET_USER_UPSTAT}?mid=${mid}`)).data,
+			"getUserUpstat",
+		);
+	}
+
+	async getUserNavnum(mid: string) {
+		return this.retry(
+			async () => (await this.client.get(`${EP.GET_USER_NAVNUM}?mid=${mid}`)).data,
+			"getUserNavnum",
+		);
+	}
+
+	async getUserVideos(mid: string, ps = 5) {
+		return this.retry(async () => {
+			const wbi = await this.getWbi({ mid, order: "pubdate", ps });
+			return (await this.client.get(`${EP.GET_USER_VIDEOS}?${wbi}`)).data;
+		}, "getUserVideos");
+	}
+
+	async searchByType(searchType: string, keyword: string) {
+		return this.retry(async () => {
+			const wbi = await this.getWbi({ search_type: searchType, keyword });
+			return (await this.client.get(`${EP.SEARCH_BY_TYPE}?${wbi}`)).data;
+		}, "searchByType");
+	}
+
 	async getCookieInfo(refreshToken: string) {
 		return this.retry(
 			async () => (await this.client.get(`${EP.GET_COOKIES_INFO}?csrf=${refreshToken}`)).data,

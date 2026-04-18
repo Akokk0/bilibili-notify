@@ -35,3 +35,7 @@ export const COOKIE_REFRESH_CONFIRM_URL =
 	"https://passport.bilibili.com/x/passport-login/web/confirm/refresh";
 export const V_VOUCHER_CAPTCHA_URL = "https://api.bilibili.com/x/gaia-vgate/v1/register";
 export const VALIDATE_CAPTCHA_URL = "https://api.bilibili.com/x/gaia-vgate/v1/validate";
+export const GET_USER_UPSTAT = "https://api.bilibili.com/x/space/upstat";
+export const GET_USER_NAVNUM = "https://api.bilibili.com/x/space/navnum";
+export const GET_USER_VIDEOS = "https://api.bilibili.com/x/space/wbi/arc/search";
+export const SEARCH_BY_TYPE = "https://api.bilibili.com/x/web-interface/wbi/search/type";

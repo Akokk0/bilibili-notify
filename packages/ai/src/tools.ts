@@ -47,6 +47,48 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionTool[] = [
 			parameters: { type: "object", properties: {} },
 		},
 	},
+	{
+		type: "function",
+		function: {
+			name: "get_user_stats",
+			description: "获取指定 UP 主的数据概览，包括总播放量、总获赞数、视频数、动态数",
+			parameters: {
+				type: "object",
+				properties: {
+					uid: { type: "string", description: "UP 主的 UID" },
+				},
+				required: ["uid"],
+			},
+		},
+	},
+	{
+		type: "function",
+		function: {
+			name: "get_user_videos",
+			description: "获取指定 UP 主最近发布的视频列表（最多 5 条），含标题、播放量、发布时间",
+			parameters: {
+				type: "object",
+				properties: {
+					uid: { type: "string", description: "UP 主的 UID" },
+				},
+				required: ["uid"],
+			},
+		},
+	},
+	{
+		type: "function",
+		function: {
+			name: "search_user",
+			description: "按关键词搜索 B 站用户，返回匹配的 UP 主列表（含 UID、粉丝数、简介）",
+			parameters: {
+				type: "object",
+				properties: {
+					keyword: { type: "string", description: "搜索关键词，如 UP 主名字或领域" },
+				},
+				required: ["keyword"],
+			},
+		},
+	},
 ];
 
 // biome-ignore lint/suspicious/noExplicitAny: bilibili API response shape varies
@@ -120,6 +162,47 @@ export async function executeTool(
 				return `${s.uname}：${statusText}${title}`;
 			});
 			return lines.join("\n");
+		}
+		case "get_user_stats": {
+			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
+			const [upstat, navnum] = (await Promise.all([
+				api.getUserUpstat(args.uid),
+				api.getUserNavnum(args.uid),
+			])) as any[];
+			if (upstat.code !== 0) return `获取数据失败: ${upstat.message}`;
+			const view = upstat.data?.archive?.view ?? 0;
+			const likes = upstat.data?.likes ?? 0;
+			const videos = navnum.data?.video ?? "?";
+			const dynamics = navnum.data?.upos ?? "?";
+			return `总播放量: ${view}, 总获赞: ${likes}, 视频数: ${videos}, 动态数: ${dynamics}`;
+		}
+		case "get_user_videos": {
+			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
+			const res = (await api.getUserVideos(args.uid)) as any;
+			if (res.code !== 0) return `获取视频失败: ${res.message}`;
+			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
+			const vlist: any[] = res.data?.list?.vlist ?? [];
+			if (!vlist.length) return "暂无投稿视频";
+			return vlist
+				.map((v, i) => {
+					const date = new Date(v.created * 1000).toLocaleDateString("zh-CN");
+					return `${i + 1}. [${date}] ${v.title}（播放: ${v.play}）`;
+				})
+				.join("\n");
+		}
+		case "search_user": {
+			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
+			const res = (await api.searchByType("bili_user", args.keyword)) as any;
+			if (res.code !== 0) return `搜索失败: ${res.message}`;
+			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
+			const results: any[] = (res.data?.result ?? []).slice(0, 5);
+			if (!results.length) return "没有找到相关用户";
+			return results
+				.map(
+					(u, i) =>
+						`${i + 1}. ${u.uname}（UID: ${u.mid}）粉丝: ${u.fans}, 视频数: ${u.videos}${u.usign ? `，简介: ${u.usign}` : ""}`,
+				)
+				.join("\n");
 		}
 		default:
 			return `未知工具: ${name}`;
