@@ -74,7 +74,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 	 * 获取指定场景的 system prompt。
 	 * 始终以人格配置为基础，场景补充说明叠加在其后。
 	 */
-	getSystemPrompt(scene?: AIScene, summary?: string): string {
+	getSystemPrompt(scene?: AIScene, summary?: string, subs?: Subscriptions | null): string {
 		const personaPrompt = buildSystemPrompt(this.config.persona);
 		const sceneAddition =
 			scene === "dynamic"
@@ -83,7 +83,15 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 					? this.config.liveSummaryPrompt
 					: "";
 
-		const base = sceneAddition ? `${personaPrompt}\n${sceneAddition}` : personaPrompt;
+		let base = sceneAddition ? `${personaPrompt}\n${sceneAddition}` : personaPrompt;
+
+		if (subs && Object.keys(subs).length > 0) {
+			const subList = Object.values(subs)
+				.map((s) => `${s.uname}（UID: ${s.uid}）`)
+				.join("、");
+			base += `\n\n[订阅的UP主]\n${subList}`;
+		}
+
 		return summary ? `${base}\n\n[之前对话摘要]\n${summary}` : base;
 	}
 
@@ -113,7 +121,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 
 		history.push({ role: "user", content });
 
-		const systemPrompt = this.getSystemPrompt(undefined, prevSummary);
+		const systemPrompt = this.getSystemPrompt(undefined, prevSummary, this.subs);
 		this.aiLogger.debug(
 			`[chat] sessionId=${sessionId}, 历史轮次=${Math.floor(history.length / 2)}, 新消息长度=${content.length}`,
 		);
