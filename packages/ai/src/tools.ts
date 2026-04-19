@@ -127,6 +127,28 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionTool[] = [
 			},
 		},
 	},
+	{
+		type: "function",
+		function: {
+			name: "update_subscription",
+			description: "修改已订阅 UP 主的通知选项，只需传入要变更的字段，未传入的字段保持不变",
+			parameters: {
+				type: "object",
+				properties: {
+					uid: { type: "string", description: "要修改的 UP 主 UID" },
+					dynamic: { type: "boolean", description: "是否订阅动态通知" },
+					dynamicAtAll: { type: "boolean", description: "动态时是否@全体成员" },
+					live: { type: "boolean", description: "是否订阅直播通知" },
+					liveAtAll: { type: "boolean", description: "开播时是否@全体成员" },
+					liveGuardBuy: { type: "boolean", description: "是否订阅上舰消息" },
+					superchat: { type: "boolean", description: "是否订阅 SC（醒目留言）消息" },
+					wordcloud: { type: "boolean", description: "直播结束后是否生成弹幕词云" },
+					liveSummary: { type: "boolean", description: "直播结束后是否生成 AI 总结" },
+				},
+				required: ["uid"],
+			},
+		},
+	},
 ];
 
 // biome-ignore lint/suspicious/noExplicitAny: bilibili API response shape varies
@@ -164,6 +186,17 @@ export interface SubManagement {
 		liveSummary?: boolean;
 	}) => Promise<string>;
 	removeSub: (uid: string) => Promise<string>;
+	updateSub: (params: {
+		uid: string;
+		dynamic?: boolean;
+		dynamicAtAll?: boolean;
+		live?: boolean;
+		liveAtAll?: boolean;
+		liveGuardBuy?: boolean;
+		superchat?: boolean;
+		wordcloud?: boolean;
+		liveSummary?: boolean;
+	}) => Promise<string>;
 }
 
 export async function executeTool(
@@ -300,6 +333,21 @@ export async function executeTool(
 			// Execute immediately: removal doesn't trigger push notifications so no race condition.
 			// Returning the real result lets the AI report failures accurately.
 			return subMgmt.removeSub(args.uid);
+		}
+		case "update_subscription": {
+			if (!subMgmt) return "订阅管理功能不可用";
+			const bool = (v: string | undefined) => (v === undefined ? undefined : v !== "false");
+			return subMgmt.updateSub({
+				uid: args.uid,
+				dynamic: bool(args.dynamic),
+				dynamicAtAll: bool(args.dynamicAtAll),
+				live: bool(args.live),
+				liveAtAll: bool(args.liveAtAll),
+				liveGuardBuy: bool(args.liveGuardBuy),
+				superchat: bool(args.superchat),
+				wordcloud: bool(args.wordcloud),
+				liveSummary: bool(args.liveSummary),
+			});
 		}
 		default:
 			return `未知工具: ${name}`;

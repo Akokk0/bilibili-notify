@@ -56,7 +56,11 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 		if (!internals) throw new Error("无法获取 bilibili-notify 内部实例，请确认核心插件已启动");
 		this.api = internals.api;
 		this.subs = internals.subs;
-		this.subMgmt = { addSub: internals.addSub, removeSub: internals.removeSub };
+		this.subMgmt = {
+			addSub: internals.addSub,
+			removeSub: internals.removeSub,
+			updateSub: internals.updateSub,
+		};
 		this.ctx.on("bilibili-notify/subscription-changed", (subs) => {
 			this.subs = subs;
 		});

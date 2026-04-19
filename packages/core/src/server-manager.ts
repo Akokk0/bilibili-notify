@@ -111,6 +111,17 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			liveSummary?: boolean;
 		}) => Promise<string>;
 		removeSub: (uid: string) => Promise<string>;
+		updateSub: (params: {
+			uid: string;
+			dynamic?: boolean;
+			dynamicAtAll?: boolean;
+			live?: boolean;
+			liveAtAll?: boolean;
+			liveGuardBuy?: boolean;
+			superchat?: boolean;
+			wordcloud?: boolean;
+			liveSummary?: boolean;
+		}) => Promise<string>;
 	} | null {
 		if (token !== BILIBILI_NOTIFY_TOKEN || !this.api || !this.push) return null;
 		return {
@@ -119,6 +130,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			subs: this.currentSubs,
 			addSub: (p) => this.addSub(p),
 			removeSub: (uid) => this.removeSub(uid),
+			updateSub: (p) => this.updateSub(p),
 		};
 	}
 
@@ -170,6 +182,55 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 
 		this.serverLogger.info(`[subscribe] 已添加订阅：${params.name}（UID: ${params.uid}）`);
 		return `已成功订阅 ${params.name}（UID: ${params.uid}）`;
+	}
+
+	private async updateSub(params: {
+		uid: string;
+		dynamic?: boolean;
+		dynamicAtAll?: boolean;
+		live?: boolean;
+		liveAtAll?: boolean;
+		liveGuardBuy?: boolean;
+		superchat?: boolean;
+		wordcloud?: boolean;
+		liveSummary?: boolean;
+	}): Promise<string> {
+		if (this.config.advancedSub) return "高级订阅模式下不支持通过 AI 管理订阅";
+		if (!this.subMgr) return "插件未就绪";
+
+		const idx = (this.config.subs ?? []).findIndex(
+			(s) => s.uid.split(",")[0].trim() === params.uid,
+		);
+		if (idx === -1) return `未找到 UID 为 ${params.uid} 的订阅`;
+
+		const flatSubs = this.config.subs ?? [];
+		const existing = flatSubs[idx];
+		const updated: FlatSubConfigItem = {
+			...existing,
+			...(params.dynamic !== undefined && { dynamic: params.dynamic }),
+			...(params.dynamicAtAll !== undefined && { dynamicAtAll: params.dynamicAtAll }),
+			...(params.live !== undefined && { live: params.live }),
+			...(params.liveAtAll !== undefined && { liveAtAll: params.liveAtAll }),
+			...(params.liveGuardBuy !== undefined && { liveGuardBuy: params.liveGuardBuy }),
+			...(params.superchat !== undefined && { superchat: params.superchat }),
+			...(params.wordcloud !== undefined && { wordcloud: params.wordcloud }),
+			...(params.liveSummary !== undefined && { liveSummary: params.liveSummary }),
+		};
+
+		const newSubs = [...flatSubs];
+		newSubs[idx] = updated;
+		const newConfig = { ...this.config, subs: newSubs };
+		this.config = newConfig;
+		this.selfCtx.emit("bilibili-notify/update-config", newConfig);
+
+		const subs = SubscriptionManager.fromFlatConfig(newSubs);
+		await this.subMgr.loadSubscriptions(subs);
+		this.currentSubs = subs;
+		this.updateSubNotifier();
+		this.selfCtx.emit("bilibili-notify/subscription-changed", subs);
+
+		this.serverLogger.info(`[update] 已更新订阅：${existing.name}（UID: ${params.uid}）`);
+		return `已成功更新 ${existing.name}（UID: ${params.uid}）的订阅设置`;
 	}
 
 	private async removeSub(uid: string): Promise<string> {
