@@ -5,8 +5,8 @@
 "koishi-plugin-bilibili-notify-live": patch
 "@bilibili-notify/api": patch
 "@bilibili-notify/push": patch
-"@bilibili-notify/storage": minor
-"@bilibili-notify/subscription": minor
+"@bilibili-notify/storage": patch
+"@bilibili-notify/subscription": patch
 ---
 
 - feat(core): add AI-driven subscription management via `addSub`/`removeSub` internals and `bilibili-notify/update-config` event for config persistence

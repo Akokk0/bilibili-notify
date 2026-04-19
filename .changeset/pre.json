@@ -11,7 +11,8 @@
     "koishi-plugin-bilibili-notify-live": "0.0.3-alpha.2",
     "@bilibili-notify/push": "0.0.2-alpha.0",
     "@bilibili-notify/storage": "0.0.2-alpha.0",
-    "@bilibili-notify/subscription": "0.0.2-alpha.0"
+    "@bilibili-notify/subscription": "0.0.2-alpha.0",
+    "koishi-plugin-bilibili-notify-ai": "0.0.1-alpha.0"
   },
   "changesets": [
     "additional-common-and-image-fixes",
