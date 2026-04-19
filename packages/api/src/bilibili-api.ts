@@ -163,7 +163,7 @@ export class BilibiliAPI {
 	async loadCookies(data: CookieData): Promise<void> {
 		const cookies = JSON.parse(data.cookiesJson) as BACookie[];
 		this.logger.debug(
-			`[cookie] 正在写入 ${cookies.length} 条 Cookie，refreshToken=${data.refreshToken ? "有" : "无"}`,
+			`[cookie] 正在写入 ${cookies.length} 条 Cookie，refreshToken=${data.refreshToken ? "存在" : "缺失"}`,
 		);
 
 		const biliJctCookie = cookies.find((c) => c.key === "bili_jct");
