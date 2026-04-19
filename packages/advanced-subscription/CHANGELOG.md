@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0-beta.5
+
+### Patch Changes
+
+- Updated dependencies [beac16c]
+  - koishi-plugin-bilibili-notify@4.0.0-beta.11
+  - @bilibili-notify/push@0.0.2-beta.3
+
 ## 1.0.0-alpha.4
 
 ### Patch Changes

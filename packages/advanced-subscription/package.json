@@ -1,6 +1,6 @@
 {
 	"name": "koishi-plugin-bilibili-notify-advanced-subscription",
-	"version": "1.0.0-alpha.4",
+	"version": "1.0.0-beta.5",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Akokk0/bilibili-notify"
