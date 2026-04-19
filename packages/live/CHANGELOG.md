@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.0.3-beta.7
+
+### Patch Changes
+
+- beac16c: - feat(core): add AI-driven subscription management via `addSub`/`removeSub` internals and `bilibili-notify/update-config` event for config persistence
+  - fix(image): correct guard level text mapping in GuardCard (舰长/总督 description was swapped)
+  - style: unify all log messages to `[tag] 消息` format across all packages
+  - refactor(storage): `StorageManager` now accepts `ctx: Context`; logger created from ctx and passed to `KeyManager`/`CookieStore`
+  - refactor(subscription): `SubscriptionManager` now accepts `ctx: Context` directly, removing `SubLogger` interface and `SubscriptionManagerOpts`
+- Updated dependencies [beac16c]
+  - koishi-plugin-bilibili-notify@4.0.0-beta.11
+  - @bilibili-notify/push@0.0.2-beta.3
+
 ## 0.0.3-beta.6
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
 	"name": "@bilibili-notify/api",
-	"version": "0.0.2-beta.3",
+	"version": "0.0.2-beta.4",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Akokk0/bilibili-notify"

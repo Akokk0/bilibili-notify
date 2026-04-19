@@ -16,6 +16,7 @@
   },
   "changesets": [
     "additional-common-and-image-fixes",
+    "ai-subscription-log-refactor",
     "bili-ai-command-and-debug-logs",
     "client-type-fix",
     "core-client-build",
