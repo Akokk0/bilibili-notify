@@ -16,8 +16,7 @@ import {
 } from "blive-message-listener";
 import { cut as jiebaCut } from "jieba-wasm";
 import { type Awaitable, type Context, h, type Logger, Service } from "koishi";
-// biome-ignore lint/correctness/noUnusedImports: loads bilibili-notify Context augmentation
-import {} from "koishi-plugin-bilibili-notify";
+import type { SubscriptionOp } from "koishi-plugin-bilibili-notify";
 import type {} from "koishi-plugin-bilibili-notify-ai";
 import { DateTime } from "luxon";
 import protobuf from "protobufjs";
@@ -31,7 +30,7 @@ declare module "koishi" {
 		"bilibili-notify-live": BilibiliNotifyLive;
 	}
 	interface Events {
-		"bilibili-notify/subscription-changed"(subs: Subscriptions): void;
+		"bilibili-notify/subscription-changed"(ops: SubscriptionOp[]): void;
 		"bilibili-notify/plugin-error"(source: string, message: string): void;
 	}
 }
@@ -59,6 +58,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 	private stopwords: Set<string> = new Set();
 	private listenerRecord: Record<string, MessageListener> = {};
 	private livePushTimerManager: LivePushTimerManager = new Map();
+	private subRecord: Map<string, SubItem> = new Map();
 	private disposed = false;
 	private readonly instanceId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -88,9 +88,9 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			this.liveLogger.debug("[start] 订阅尚未就绪，等待 subscription-changed 事件");
 		}
 		this.logSideEffectState("start");
-		// Listen for future subscription changes from core
-		this.ctx.on("bilibili-notify/subscription-changed", (subs: Subscriptions) => {
-			this.startLiveMonitors(subs);
+		// Listen for future subscription changes from core (incremental ops)
+		this.ctx.on("bilibili-notify/subscription-changed", (ops: SubscriptionOp[]) => {
+			this.applyOps(ops);
 		});
 		// Register commands
 		liveCommands.call(this);
@@ -101,6 +101,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		this.disposed = true;
 		this.clearPushTimers();
 		this.clearListeners();
+		this.subRecord.clear();
 		this.logSideEffectState("stop:after-clear");
 	}
 
@@ -143,6 +144,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 	startLiveMonitors(subs: Subscriptions): void {
 		this.clearPushTimers();
 		this.clearListeners();
+		this.subRecord.clear();
 
 		const liveSubUids = Object.values(subs)
 			.filter((s) => s.live)
@@ -152,9 +154,62 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		);
 		for (const sub of Object.values(subs)) {
 			if (sub.live) {
-				this.liveDetectWithListener(sub).catch((e) => {
+				const mutable: SubItem = { ...sub };
+				this.subRecord.set(sub.uid, mutable);
+				this.liveDetectWithListener(mutable).catch((e) => {
 					this.liveLogger.error(`[start] 启动直播监听失败 UID=${sub.uid}：${e}`);
 				});
+			}
+		}
+	}
+
+	/** Incrementally apply subscription ops without clearing all listeners. */
+	private applyOps(ops: SubscriptionOp[]): void {
+		for (const op of ops) {
+			switch (op.type) {
+				case "add": {
+					if (!op.sub.live) break;
+					const mutable: SubItem = { ...op.sub };
+					this.subRecord.set(op.sub.uid, mutable);
+					this.liveDetectWithListener(mutable).catch((e) => {
+						this.liveLogger.error(`[ops] 启动直播监听失败 UID=${op.sub.uid}：${e}`);
+					});
+					break;
+				}
+				case "delete": {
+					const sub = this.subRecord.get(op.sub.uid);
+					if (!sub) break;
+					const timer = this.livePushTimerManager.get(sub.roomId);
+					timer?.();
+					this.livePushTimerManager.delete(sub.roomId);
+					this.closeListener(sub.roomId);
+					this.subRecord.delete(op.sub.uid);
+					break;
+				}
+				case "update": {
+					const sub = this.subRecord.get(op.next.uid);
+					if (!op.prev.live && op.next.live) {
+						// live off → on: start monitoring
+						const mutable: SubItem = { ...op.next };
+						this.subRecord.set(op.next.uid, mutable);
+						this.liveDetectWithListener(mutable).catch((e) => {
+							this.liveLogger.error(`[ops] 启动直播监听失败 UID=${op.next.uid}：${e}`);
+						});
+					} else if (op.prev.live && !op.next.live) {
+						// live on → off: stop monitoring
+						if (sub) {
+							const timer = this.livePushTimerManager.get(sub.roomId);
+							timer?.();
+							this.livePushTimerManager.delete(sub.roomId);
+							this.closeListener(sub.roomId);
+							this.subRecord.delete(op.next.uid);
+						}
+					} else if (op.prev.live && op.next.live && sub) {
+						// config-only change — mutate in-place so the listener closure sees updates
+						Object.assign(sub, op.next);
+					}
+					break;
+				}
 			}
 		}
 	}

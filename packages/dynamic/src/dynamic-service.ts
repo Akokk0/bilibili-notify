@@ -4,7 +4,7 @@ import type { BilibiliPush, SubManager, Subscriptions } from "@bilibili-notify/p
 import { PushType } from "@bilibili-notify/push";
 import { CronJob } from "cron";
 import { type Awaitable, type Context, h, type Logger, Service } from "koishi";
-import type {} from "koishi-plugin-bilibili-notify";
+import type { SubscriptionOp } from "koishi-plugin-bilibili-notify";
 import type {} from "koishi-plugin-bilibili-notify-ai";
 import { DateTime } from "luxon";
 import { dynamicCommands } from "./commands";
@@ -17,7 +17,7 @@ declare module "koishi" {
 		"bilibili-notify-dynamic": BilibiliNotifyDynamic;
 	}
 	interface Events {
-		"bilibili-notify/subscription-changed"(subs: Subscriptions): void;
+		"bilibili-notify/subscription-changed"(ops: SubscriptionOp[]): void;
 		"bilibili-notify/plugin-error"(source: string, message: string): void;
 	}
 }
@@ -123,9 +123,9 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 		} else {
 			this.dynamicLogger.debug("[start] 订阅尚未就绪，等待 subscription-changed 事件");
 		}
-		// Listen for future subscription changes from core
-		this.ctx.on("bilibili-notify/subscription-changed", (subs: Subscriptions) => {
-			this.startDynamicDetector(subs);
+		// Listen for future subscription changes from core (incremental ops)
+		this.ctx.on("bilibili-notify/subscription-changed", (ops: SubscriptionOp[]) => {
+			this.applyOps(ops);
 		});
 		// Register commands
 		dynamicCommands.call(this);
@@ -179,7 +179,59 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 		);
 
 		this.dynamicSubManager = dynamicSubManager;
+		this.startJob();
+	}
 
+	/** Incrementally apply subscription ops without restarting the cron job. */
+	private applyOps(ops: SubscriptionOp[]): void {
+		let jobNeedsReconcile = false;
+		for (const op of ops) {
+			switch (op.type) {
+				case "add": {
+					if (!op.sub.dynamic) break;
+					if (!this.dynamicTimelineManager.has(op.sub.uid)) {
+						this.dynamicTimelineManager.set(op.sub.uid, Math.floor(DateTime.now().toSeconds()));
+						this.dynamicLogger.debug(`[ops] 初始化 UID：${op.sub.uid} 时间戳`);
+					}
+					this.dynamicSubManager.set(op.sub.uid, op.sub);
+					this.dynamicLogger.debug(`[ops] 新增动态订阅 UID：${op.sub.uid}`);
+					jobNeedsReconcile = true;
+					break;
+				}
+				case "delete": {
+					if (!this.dynamicSubManager.has(op.sub.uid)) break;
+					this.dynamicSubManager.delete(op.sub.uid);
+					this.dynamicTimelineManager.delete(op.sub.uid);
+					this.dynamicLogger.debug(`[ops] 移除动态订阅 UID：${op.sub.uid}`);
+					jobNeedsReconcile = true;
+					break;
+				}
+				case "update": {
+					const { prev, next } = op;
+					if (prev.dynamic && !next.dynamic) {
+						this.dynamicSubManager.delete(next.uid);
+						this.dynamicTimelineManager.delete(next.uid);
+						this.dynamicLogger.debug(`[ops] 关闭动态订阅 UID：${next.uid}`);
+						jobNeedsReconcile = true;
+					} else if (!prev.dynamic && next.dynamic) {
+						if (!this.dynamicTimelineManager.has(next.uid)) {
+							this.dynamicTimelineManager.set(next.uid, Math.floor(DateTime.now().toSeconds()));
+						}
+						this.dynamicSubManager.set(next.uid, next);
+						this.dynamicLogger.debug(`[ops] 开启动态订阅 UID：${next.uid}`);
+						jobNeedsReconcile = true;
+					} else if (next.dynamic) {
+						// Config-only change — update sub reference in place
+						this.dynamicSubManager.set(next.uid, next);
+					}
+					break;
+				}
+			}
+		}
+		if (jobNeedsReconcile) this.reconcileJob();
+	}
+
+	private startJob(): void {
 		this.dynamicJob = new CronJob(
 			this.config.dynamicCron,
 			withLock(
@@ -189,6 +241,21 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 		);
 		this.dynamicJob.start();
 		this.dynamicLogger.info("[detector] 动态检测任务已启动");
+	}
+
+	private reconcileJob(): void {
+		if (this.dynamicSubManager.size === 0) {
+			if (this.dynamicJob?.running) {
+				this.dynamicJob.stop();
+				this.dynamicJob = undefined;
+				this.dynamicLogger.info("[detector] 订阅清空，动态检测任务已停止");
+			}
+		} else if (!this.dynamicJob?.running) {
+			this.dynamicLogger.debug(
+				`[detector] 动态检测 UID 列表：${[...this.dynamicSubManager.keys()].join(", ")}`,
+			);
+			this.startJob();
+		}
 	}
 
 	private async detectDynamics(): Promise<void> {

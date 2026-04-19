@@ -10,7 +10,9 @@ import type { Context, Schema } from "koishi";
 import { type BilibiliNotifyConfig, BilibiliNotifyConfigSchema } from "./config";
 import BilibiliNotifyDataServer from "./data-server";
 import BilibiliNotifyServerManager from "./server-manager";
+import type { SubscriptionOp } from "./types";
 
+export type { SubscriptionOp };
 export { type BilibiliNotifyConfig, BilibiliNotifyConfigSchema };
 
 declare module "koishi" {
@@ -22,7 +24,7 @@ declare module "koishi" {
 		"bilibili-notify/advanced-sub"(subs: Subscriptions): void;
 		"bilibili-notify/ready-to-receive"(): void;
 		"bilibili-notify/cookies-refreshed"(data: CookieData): void;
-		"bilibili-notify/subscription-changed"(subs: Subscriptions): void;
+		"bilibili-notify/subscription-changed"(ops: SubscriptionOp[]): void;
 		"bilibili-notify/ready"(api: BilibiliAPI): void;
 		"bilibili-notify/plugin-error"(source: string, message: string): void;
 		"bilibili-notify/update-config"(config: BilibiliNotifyConfig): void;

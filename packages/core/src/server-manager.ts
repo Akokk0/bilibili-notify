@@ -5,7 +5,7 @@ import {
 	type UserCardInfoData,
 } from "@bilibili-notify/api";
 import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
-import { BilibiliPush, type Subscriptions } from "@bilibili-notify/push";
+import { BilibiliPush, type SubItem, type Subscriptions } from "@bilibili-notify/push";
 import { StorageManager } from "@bilibili-notify/storage";
 import { type FlatSubConfigItem, SubscriptionManager } from "@bilibili-notify/subscription";
 // biome-ignore lint/correctness/noUnusedImports: module augmentation for koishi help commands
@@ -15,6 +15,7 @@ import { type Awaitable, type Context, h, type Logger, Service } from "koishi";
 import QRCode from "qrcode";
 import { biliCommands, statusCommands, sysCommands } from "./commands";
 import type { BilibiliNotifyConfig } from "./config";
+import type { SubscriptionOp } from "./types";
 
 const SERVICE_NAME = "bilibili-notify";
 
@@ -30,7 +31,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 	private subNotifier?: Notifier;
 	private running = false;
 	storageMgr!: StorageManager;
-	currentSubs: Subscriptions | null = null;
+	private currentSubs: Subscriptions | null = null;
 
 	constructor(ctx: Context, config: BilibiliNotifyConfig) {
 		super(ctx, SERVICE_NAME);
@@ -110,7 +111,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			wordcloud?: boolean;
 			liveSummary?: boolean;
 		}) => Promise<string>;
-		removeSub: (uid: string) => Promise<string>;
+		removeSub: (uid: string) => string;
 		updateSub: (params: {
 			uid: string;
 			dynamic?: boolean;
@@ -148,11 +149,12 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		wordcloud?: boolean;
 		liveSummary?: boolean;
 	}): Promise<string> {
-		if (this.config.advancedSub) return "高级订阅模式下不支持通过 AI 管理订阅";
-		if (!this.subMgr) return "插件未就绪";
+		if (this.config.advancedSub)
+			return "订阅失败：高级订阅模式下不支持通过 AI 管理订阅，操作未执行";
+		if (!this.subMgr) return "订阅失败：插件未就绪，操作未执行";
 
 		const existing = this.config.subs?.find((s) => s.uid.split(",")[0].trim() === params.uid);
-		if (existing) return `UID ${params.uid} 已在订阅列表中（昵称：${existing.name}）`;
+		if (existing) return `订阅失败：UID ${params.uid} 已在订阅列表中（昵称：${existing.name}）`;
 
 		const item: FlatSubConfigItem = {
 			name: params.name,
@@ -169,16 +171,15 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			target: params.target,
 		};
 
-		const newSubs = [...(this.config.subs ?? []), item];
-		const newConfig = { ...this.config, subs: newSubs };
+		const addedSub = await this.subMgr.addEntry(item);
+		if (!addedSub) return `订阅失败：${params.name}（UID: ${params.uid}）操作未执行，请查看日志`;
+
+		const newConfig = { ...this.config, subs: [...(this.config.subs ?? []), item] };
 		this.config = newConfig;
 		this.selfCtx.emit("bilibili-notify/update-config", newConfig);
-
-		const subs = SubscriptionManager.fromFlatConfig(newSubs);
-		await this.subMgr.loadSubscriptions(subs);
-		this.currentSubs = subs;
+		this.syncCurrentSubs();
 		this.updateSubNotifier();
-		this.selfCtx.emit("bilibili-notify/subscription-changed", subs);
+		this.selfCtx.emit("bilibili-notify/subscription-changed", [{ type: "add", sub: addedSub }]);
 
 		this.serverLogger.info(`[subscribe] 已添加订阅：${params.name}（UID: ${params.uid}）`);
 		return `已成功订阅 ${params.name}（UID: ${params.uid}）`;
@@ -195,17 +196,17 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		wordcloud?: boolean;
 		liveSummary?: boolean;
 	}): Promise<string> {
-		if (this.config.advancedSub) return "高级订阅模式下不支持通过 AI 管理订阅";
-		if (!this.subMgr) return "插件未就绪";
-
-		const idx = (this.config.subs ?? []).findIndex(
-			(s) => s.uid.split(",")[0].trim() === params.uid,
-		);
-		if (idx === -1) return `未找到 UID 为 ${params.uid} 的订阅`;
+		if (this.config.advancedSub)
+			return "更新订阅失败：高级订阅模式下不支持通过 AI 管理订阅，操作未执行";
+		if (!this.subMgr) return "更新订阅失败：插件未就绪，操作未执行";
 
 		const flatSubs = this.config.subs ?? [];
+		const idx = flatSubs.findIndex((s) => s.uid.split(",")[0].trim() === params.uid);
+		if (idx === -1) return `更新订阅失败：未找到 UID 为 ${params.uid} 的订阅，操作未执行`;
+
 		const existing = flatSubs[idx];
-		const updated: FlatSubConfigItem = {
+		const prevSub = this.subMgr.subManager.get(params.uid) ?? null;
+		const updatedItem: FlatSubConfigItem = {
 			...existing,
 			...(params.dynamic !== undefined && { dynamic: params.dynamic }),
 			...(params.dynamicAtAll !== undefined && { dynamicAtAll: params.dynamicAtAll }),
@@ -217,42 +218,84 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			...(params.liveSummary !== undefined && { liveSummary: params.liveSummary }),
 		};
 
-		const newSubs = [...flatSubs];
-		newSubs[idx] = updated;
-		const newConfig = { ...this.config, subs: newSubs };
+		const nextSub = this.subMgr.updateEntry(updatedItem);
+		if (!nextSub) return `更新订阅失败：UID ${params.uid} 不在运行中的订阅管理器内，操作未执行`;
+
+		const newFlatSubs = [...flatSubs];
+		newFlatSubs[idx] = updatedItem;
+		const newConfig = { ...this.config, subs: newFlatSubs };
 		this.config = newConfig;
 		this.selfCtx.emit("bilibili-notify/update-config", newConfig);
-
-		const subs = SubscriptionManager.fromFlatConfig(newSubs);
-		await this.subMgr.loadSubscriptions(subs);
-		this.currentSubs = subs;
+		this.syncCurrentSubs();
 		this.updateSubNotifier();
-		this.selfCtx.emit("bilibili-notify/subscription-changed", subs);
+		if (prevSub) {
+			this.selfCtx.emit("bilibili-notify/subscription-changed", [
+				{ type: "update", prev: prevSub, next: nextSub },
+			]);
+		}
 
 		this.serverLogger.info(`[update] 已更新订阅：${existing.name}（UID: ${params.uid}）`);
 		return `已成功更新 ${existing.name}（UID: ${params.uid}）的订阅设置`;
 	}
 
-	private async removeSub(uid: string): Promise<string> {
-		if (this.config.advancedSub) return "高级订阅模式下不支持通过 AI 管理订阅";
-		if (!this.subMgr) return "插件未就绪";
+	private removeSub(uid: string): string {
+		if (this.config.advancedSub)
+			return "取消订阅失败：高级订阅模式下不支持通过 AI 管理订阅，操作未执行";
+		if (!this.subMgr) return "取消订阅失败：插件未就绪，操作未执行";
 
-		const existing = this.config.subs?.find((s) => s.uid.split(",")[0].trim() === uid);
-		if (!existing) return `未找到 UID 为 ${uid} 的订阅`;
+		const flatItem = this.config.subs?.find((s) => s.uid.split(",")[0].trim() === uid);
+		if (!flatItem) return `取消订阅失败：未找到 UID 为 ${uid} 的订阅，操作未执行`;
 
-		const newSubs = (this.config.subs ?? []).filter((s) => s !== existing);
-		const newConfig = { ...this.config, subs: newSubs };
+		const removedSub = this.subMgr.removeEntry(uid);
+		if (!removedSub) return `取消订阅失败：UID ${uid} 不在运行中的订阅管理器内，操作未执行`;
+
+		const newConfig = {
+			...this.config,
+			subs: (this.config.subs ?? []).filter((s) => s !== flatItem),
+		};
 		this.config = newConfig;
 		this.selfCtx.emit("bilibili-notify/update-config", newConfig);
-
-		const subs = SubscriptionManager.fromFlatConfig(newSubs);
-		await this.subMgr.loadSubscriptions(subs);
-		this.currentSubs = subs;
+		this.syncCurrentSubs();
 		this.updateSubNotifier();
-		this.selfCtx.emit("bilibili-notify/subscription-changed", subs);
+		this.selfCtx.emit("bilibili-notify/subscription-changed", [
+			{ type: "delete", sub: removedSub },
+		]);
 
-		this.serverLogger.info(`[unsubscribe] 已移除订阅：${existing.name}（UID: ${uid}）`);
-		return `已成功取消订阅 ${existing.name}（UID: ${uid}）`;
+		this.serverLogger.info(`[unsubscribe] 已移除订阅：${removedSub.uname}（UID: ${uid}）`);
+		return `已成功取消订阅 ${removedSub.uname}（UID: ${uid}）`;
+	}
+
+	/** Rebuild currentSubs from the subManager (uid-keyed). */
+	private syncCurrentSubs(): void {
+		if (!this.subMgr?.subManager.size) {
+			this.currentSubs = null;
+			return;
+		}
+		const result: Subscriptions = {};
+		for (const [uid, sub] of this.subMgr.subManager) {
+			result[uid] = sub;
+		}
+		this.currentSubs = result;
+	}
+
+	/** Compute ops by diffing two subManager snapshots. Used for advanced-sub full reload. */
+	private diffSubManagers(
+		prev: Map<string, SubItem>,
+		next: Map<string, SubItem>,
+	): SubscriptionOp[] {
+		const ops: SubscriptionOp[] = [];
+		for (const [uid, sub] of prev) {
+			if (!next.has(uid)) ops.push({ type: "delete", sub });
+		}
+		for (const [uid, sub] of next) {
+			const prevSub = prev.get(uid);
+			if (!prevSub) {
+				ops.push({ type: "add", sub });
+			} else {
+				ops.push({ type: "update", prev: prevSub, next: sub });
+			}
+		}
+		return ops;
 	}
 
 	async registerPlugin(): Promise<boolean> {
@@ -425,9 +468,15 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 				const subs = SubscriptionManager.fromFlatConfig(this.config.subs);
 				if (!this.subMgr) return;
 				await this.subMgr.loadSubscriptions(subs);
-				this.currentSubs = subs;
+				this.syncCurrentSubs();
 				this.updateSubNotifier();
-				this.selfCtx.emit("bilibili-notify/subscription-changed", subs);
+				const ops: SubscriptionOp[] = [...this.subMgr.subManager.values()].map((sub) => ({
+					type: "add" as const,
+					sub,
+				}));
+				if (ops.length) {
+					this.selfCtx.emit("bilibili-notify/subscription-changed", ops);
+				}
 			} else {
 				this.serverLogger.info("[sub] 初始化完毕，但未添加任何订阅");
 			}
@@ -459,9 +508,11 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 
 	private registerConsoleEvents(): void {
 		// Delay the missing-plugin check so dynamic/live have time to start.
-		this.selfCtx.on("bilibili-notify/subscription-changed", async (subs) => {
+		this.selfCtx.on("bilibili-notify/subscription-changed", async (_ops) => {
 			await this.selfCtx.sleep(5000);
-			await this.warnMissingPlugins(subs);
+			if (this.currentSubs) {
+				await this.warnMissingPlugins(this.currentSubs);
+			}
 		});
 
 		this.selfCtx.console.addListener("bilibili-notify/start-login", async () => {
@@ -495,11 +546,14 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 					return;
 				}
 				if (!this.subMgr) return;
+				const prevSubManager = new Map(this.subMgr.subManager);
 				await this.subMgr.loadSubscriptions(subs);
-				this.currentSubs = subs;
+				this.syncCurrentSubs();
 				this.updateSubNotifier();
-				// Always notify dynamic/live (initial delivery or reload both need this)
-				this.selfCtx.emit("bilibili-notify/subscription-changed", subs);
+				const ops = this.diffSubManagers(prevSubManager, this.subMgr.subManager);
+				if (ops.length) {
+					this.selfCtx.emit("bilibili-notify/subscription-changed", ops);
+				}
 			});
 		}
 	}

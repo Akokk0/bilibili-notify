@@ -1,6 +1,5 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
-import type { Subscriptions } from "@bilibili-notify/push";
 import { type Awaitable, type Context, type Logger, Service } from "koishi";
 import type {} from "koishi-plugin-bilibili-notify";
 import type OpenAI from "openai";
@@ -41,8 +40,11 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 	private readonly sessions = new Map<string, SessionEntry>();
 	private readonly pendingSubActionsMap = new Map<string, Array<() => Promise<void>>>();
 	private api!: BilibiliAPI;
-	private subs: Subscriptions | null = null;
 	private subMgmt: SubManagement | null = null;
+
+	private get subs() {
+		return this.ctx["bilibili-notify"].getInternals(BILIBILI_NOTIFY_TOKEN)?.subs ?? null;
+	}
 
 	constructor(ctx: Context, config: BilibiliNotifyAIConfig) {
 		super(ctx, SERVICE_NAME);
@@ -55,15 +57,11 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 		const internals = this.ctx["bilibili-notify"].getInternals(BILIBILI_NOTIFY_TOKEN);
 		if (!internals) throw new Error("无法获取 bilibili-notify 内部实例，请确认核心插件已启动");
 		this.api = internals.api;
-		this.subs = internals.subs;
 		this.subMgmt = {
 			addSub: internals.addSub,
 			removeSub: internals.removeSub,
 			updateSub: internals.updateSub,
 		};
-		this.ctx.on("bilibili-notify/subscription-changed", (subs) => {
-			this.subs = subs;
-		});
 
 		const { preset } = this.config.persona;
 		this.aiLogger.info(
@@ -153,7 +151,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 						name,
 						args,
 						this.api,
-						this.subs,
+						this.subs, // getter — always returns current subs from core
 						sessionCtx,
 						this.subMgmt ?? undefined,
 						pendingSubActions,

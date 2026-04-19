@@ -81,6 +81,112 @@ export class SubscriptionManager {
 		this.logger = ctx.logger("bilibili-notify-subscription");
 	}
 
+	/** Add a single subscription entry. Returns the resolved SubItem, or null on failure. */
+	async addEntry(item: FlatSubConfigItem): Promise<SubItem | null> {
+		const [uid, roomId = ""] = item.uid.split(",").map((v) => v.trim());
+
+		if (this.subManager.has(uid)) {
+			this.logger.warn(`[add] UID ${uid} 已在订阅列表中，跳过`);
+			return null;
+		}
+
+		const followResult = await this.followUser(uid);
+		if (followResult.code !== 0) {
+			this.logger.error(`[add] 关注 UID：${uid} 失败：${followResult.message}`);
+			try {
+				await this.push.sendPrivateMsg(`加载订阅 UID:${uid} 失败：${followResult.message}`);
+			} catch (e) {
+				this.logger.error(`[add] 发送错误通知失败：${e}`);
+			}
+			return null;
+		}
+
+		const sub: SubItem = {
+			uid,
+			uname: item.name,
+			roomId,
+			dynamic: item.dynamic,
+			live: item.live,
+			liveEnd: true,
+			target: this.buildTarget(item),
+			customCardStyle: { enable: false },
+			customLiveMsg: { enable: false },
+			customGuardBuy: { enable: false },
+			customLiveSummary: { enable: false },
+			customSpecialDanmakuUsers: { enable: false, msgTemplate: "" },
+			customSpecialUsersEnterTheRoom: { enable: false, msgTemplate: "" },
+		};
+
+		if (sub.live && !sub.roomId) {
+			const resolved = await this.resolveRoomId(sub);
+			if (!resolved) return null;
+		}
+
+		const finalSub = this.toSubItem(sub);
+		this.subManager.set(uid, finalSub);
+		this.updatePushMapEntry(uid, finalSub);
+		this.logger.info(`[add] 已添加订阅 UID：${uid}（${item.name}）`);
+		return finalSub;
+	}
+
+	/** Remove a single subscription entry. Returns the removed SubItem, or null if not found. */
+	removeEntry(uid: string): SubItem | null {
+		const sub = this.subManager.get(uid);
+		if (!sub) return null;
+		this.subManager.delete(uid);
+		this.push.pushArrMap.delete(uid);
+		this.logger.info(`[remove] 已移除订阅 UID：${uid}（${sub.uname}）`);
+		return sub;
+	}
+
+	/** Update an existing subscription entry's config. Returns the updated SubItem, or null if not found. */
+	updateEntry(item: FlatSubConfigItem): SubItem | null {
+		const [uid] = item.uid.split(",").map((v) => v.trim());
+		const existing = this.subManager.get(uid);
+		if (!existing) return null;
+
+		const updatedTarget = this.buildTarget(item);
+		Object.assign(existing, {
+			dynamic: item.dynamic,
+			live: item.live,
+			target: updatedTarget,
+		});
+		this.updatePushMapEntry(uid, existing);
+		this.logger.info(`[update] 已更新订阅 UID：${uid}（${existing.uname}）`);
+		return existing;
+	}
+
+	private buildTarget(item: FlatSubConfigItem): Target {
+		const channels: ChannelArr = item.target
+			.split(",")
+			.map((id) => ({ platform: item.platform, channelId: id.trim() }))
+			.filter((c) => c.channelId);
+		return {
+			dynamic: item.dynamic ? channels : undefined,
+			dynamicAtAll: item.dynamicAtAll ? channels : undefined,
+			live: item.live ? channels : undefined,
+			liveAtAll: item.liveAtAll ? channels : undefined,
+			liveGuardBuy: item.liveGuardBuy ? channels : undefined,
+			superchat: item.superchat ? channels : undefined,
+			wordcloud: item.wordcloud ? channels : undefined,
+			liveSummary: item.liveSummary ? channels : undefined,
+		};
+	}
+
+	private updatePushMapEntry(uid: string, sub: SubItem): void {
+		const toStrings = (arr?: ChannelArr) => (arr ?? []).map((c) => `${c.platform}:${c.channelId}`);
+		this.push.pushArrMap.set(uid, {
+			dynamicArr: toStrings(sub.target.dynamic),
+			dynamicAtAllArr: toStrings(sub.target.dynamicAtAll),
+			liveArr: toStrings(sub.target.live),
+			liveAtAllArr: toStrings(sub.target.liveAtAll),
+			liveGuardBuyArr: toStrings(sub.target.liveGuardBuy),
+			superchatArr: toStrings(sub.target.superchat),
+			wordcloudArr: toStrings(sub.target.wordcloud),
+			liveSummaryArr: toStrings(sub.target.liveSummary),
+		});
+	}
+
 	async loadSubscriptions(subs: Subscriptions): Promise<void> {
 		const isReload = this.subManager.size > 0;
 		const subArray = Object.values(subs);

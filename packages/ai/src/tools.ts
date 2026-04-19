@@ -185,7 +185,7 @@ export interface SubManagement {
 		wordcloud?: boolean;
 		liveSummary?: boolean;
 	}) => Promise<string>;
-	removeSub: (uid: string) => Promise<string>;
+	removeSub: (uid: string) => string;
 	updateSub: (params: {
 		uid: string;
 		dynamic?: boolean;
@@ -308,25 +308,23 @@ export async function executeTool(
 			const { uid, name } = args;
 			const bool = (v: string | undefined, def: boolean) => (v === undefined ? def : v !== "false");
 			const { platform, channelId: target } = sessionCtx;
-			deferredActions.push(() =>
-				subMgmt
-					.addSub({
-						uid,
-						name,
-						platform,
-						target,
-						dynamic: bool(args.dynamic, true),
-						dynamicAtAll: bool(args.dynamicAtAll, false),
-						live: bool(args.live, true),
-						liveAtAll: bool(args.liveAtAll, false),
-						liveGuardBuy: bool(args.liveGuardBuy, false),
-						superchat: bool(args.superchat, false),
-						wordcloud: bool(args.wordcloud, true),
-						liveSummary: bool(args.liveSummary, true),
-					})
-					.then(() => {}),
-			);
-			return `已成功订阅 ${name}（UID: ${uid}）`;
+			deferredActions.push(async () => {
+				await subMgmt.addSub({
+					uid,
+					name,
+					platform,
+					target,
+					dynamic: bool(args.dynamic, true),
+					dynamicAtAll: bool(args.dynamicAtAll, false),
+					live: bool(args.live, true),
+					liveAtAll: bool(args.liveAtAll, false),
+					liveGuardBuy: bool(args.liveGuardBuy, false),
+					superchat: bool(args.superchat, false),
+					wordcloud: bool(args.wordcloud, true),
+					liveSummary: bool(args.liveSummary, true),
+				});
+			});
+			return `订阅请求已提交（UID: ${uid}，昵称: ${name}），操作将在本次回复发送后执行`;
 		}
 		case "unsubscribe_user": {
 			if (!subMgmt) return "订阅管理功能不可用";
