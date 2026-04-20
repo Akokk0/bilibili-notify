@@ -35,6 +35,7 @@ export type AIScene = "dynamic" | "liveSummary";
 
 export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 	static readonly [Service.provide] = SERVICE_NAME;
+	static readonly inject = ["bilibili-notify"];
 
 	private readonly aiLogger: Logger = this.ctx.logger(SERVICE_NAME);
 	private readonly sessions = new Map<string, SessionEntry>();

@@ -95,6 +95,7 @@ function extractDynamicText(item: Dynamic): string {
 
 export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> {
 	static readonly [Service.provide] = SERVICE_NAME;
+	static readonly inject = ["bilibili-notify"];
 
 	private readonly dynamicLogger: Logger = this.ctx.logger(SERVICE_NAME);
 	private api!: BilibiliAPI;
