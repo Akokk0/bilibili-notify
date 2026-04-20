@@ -10,9 +10,15 @@ import type { Context, Schema } from "koishi";
 import { type BilibiliNotifyConfig, BilibiliNotifyConfigSchema } from "./config";
 import BilibiliNotifyDataServer from "./data-server";
 import BilibiliNotifyServerManager from "./server-manager";
-import type { SubscriptionOp } from "./types";
+import type {
+	DynamicSubChange,
+	LiveSubChange,
+	SubChange,
+	SubscriptionOp,
+	TargetSubChange,
+} from "./types";
 
-export type { SubscriptionOp };
+export type { DynamicSubChange, LiveSubChange, SubChange, SubscriptionOp, TargetSubChange };
 export { type BilibiliNotifyConfig, BilibiliNotifyConfigSchema };
 
 declare module "koishi" {

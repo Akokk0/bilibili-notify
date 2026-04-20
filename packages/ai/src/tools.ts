@@ -151,6 +151,14 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionTool[] = [
 	},
 ];
 
+// Tool args are typed as string but OpenAI sends actual JSON booleans; handle both
+// biome-ignore lint/suspicious/noExplicitAny: tool args arrive as any JSON value
+function parseBool(v: any, def?: boolean): boolean | undefined {
+	if (v == null) return def;
+	if (typeof v === "boolean") return v;
+	return v !== "false";
+}
+
 // biome-ignore lint/suspicious/noExplicitAny: bilibili API response shape varies
 function extractDynamicText(item: Record<string, any>): string {
 	const mod = item?.modules?.module_dynamic;
@@ -306,7 +314,6 @@ export async function executeTool(
 			if (!sessionCtx) return "无法获取当前频道信息，无法确定推送目标";
 			if (subs?.[args.uid]) return `${subs[args.uid].uname}（UID: ${args.uid}）已在订阅列表中`;
 			const { uid, name } = args;
-			const bool = (v: string | undefined, def: boolean) => (v === undefined ? def : v !== "false");
 			const { platform, channelId: target } = sessionCtx;
 			deferredActions.push(async () => {
 				await subMgmt.addSub({
@@ -314,14 +321,14 @@ export async function executeTool(
 					name,
 					platform,
 					target,
-					dynamic: bool(args.dynamic, true),
-					dynamicAtAll: bool(args.dynamicAtAll, false),
-					live: bool(args.live, true),
-					liveAtAll: bool(args.liveAtAll, false),
-					liveGuardBuy: bool(args.liveGuardBuy, false),
-					superchat: bool(args.superchat, false),
-					wordcloud: bool(args.wordcloud, true),
-					liveSummary: bool(args.liveSummary, true),
+					dynamic: parseBool(args.dynamic, true),
+					dynamicAtAll: parseBool(args.dynamicAtAll, false),
+					live: parseBool(args.live, true),
+					liveAtAll: parseBool(args.liveAtAll, false),
+					liveGuardBuy: parseBool(args.liveGuardBuy, false),
+					superchat: parseBool(args.superchat, false),
+					wordcloud: parseBool(args.wordcloud, true),
+					liveSummary: parseBool(args.liveSummary, true),
 				});
 			});
 			return `订阅请求已提交（UID: ${uid}，昵称: ${name}），操作将在本次回复发送后执行`;
@@ -334,17 +341,16 @@ export async function executeTool(
 		}
 		case "update_subscription": {
 			if (!subMgmt) return "订阅管理功能不可用";
-			const bool = (v: string | undefined) => (v === undefined ? undefined : v !== "false");
 			return subMgmt.updateSub({
 				uid: args.uid,
-				dynamic: bool(args.dynamic),
-				dynamicAtAll: bool(args.dynamicAtAll),
-				live: bool(args.live),
-				liveAtAll: bool(args.liveAtAll),
-				liveGuardBuy: bool(args.liveGuardBuy),
-				superchat: bool(args.superchat),
-				wordcloud: bool(args.wordcloud),
-				liveSummary: bool(args.liveSummary),
+				dynamic: parseBool(args.dynamic),
+				dynamicAtAll: parseBool(args.dynamicAtAll),
+				live: parseBool(args.live),
+				liveAtAll: parseBool(args.liveAtAll),
+				liveGuardBuy: parseBool(args.liveGuardBuy),
+				superchat: parseBool(args.superchat),
+				wordcloud: parseBool(args.wordcloud),
+				liveSummary: parseBool(args.liveSummary),
 			});
 		}
 		default:

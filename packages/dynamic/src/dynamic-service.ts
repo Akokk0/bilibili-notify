@@ -1,6 +1,6 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
-import type { BilibiliPush, SubManager, Subscriptions } from "@bilibili-notify/push";
+import type { BilibiliPush, SubItem, SubManager, Subscriptions } from "@bilibili-notify/push";
 import { PushType } from "@bilibili-notify/push";
 import { CronJob } from "cron";
 import { type Awaitable, type Context, h, type Logger, Service } from "koishi";
@@ -183,6 +183,22 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 		this.startJob();
 	}
 
+	private startDynamicForUid(uid: string, sub: SubItem): void {
+		if (!this.dynamicTimelineManager.has(uid)) {
+			this.dynamicTimelineManager.set(uid, Math.floor(DateTime.now().toSeconds()));
+			this.dynamicLogger.debug(`[ops] 初始化 UID：${uid} 时间戳`);
+		}
+		this.dynamicSubManager.set(uid, structuredClone(sub));
+		this.dynamicLogger.debug(`[ops] 开启动态订阅 UID：${uid}`);
+	}
+
+	private stopDynamicForUid(uid: string): void {
+		if (!this.dynamicSubManager.has(uid)) return;
+		this.dynamicSubManager.delete(uid);
+		this.dynamicTimelineManager.delete(uid);
+		this.dynamicLogger.debug(`[ops] 移除动态订阅 UID：${uid}`);
+	}
+
 	/** Incrementally apply subscription ops without restarting the cron job. */
 	private applyOps(ops: SubscriptionOp[]): void {
 		let jobNeedsReconcile = false;
@@ -190,40 +206,33 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 			switch (op.type) {
 				case "add": {
 					if (!op.sub.dynamic) break;
-					if (!this.dynamicTimelineManager.has(op.sub.uid)) {
-						this.dynamicTimelineManager.set(op.sub.uid, Math.floor(DateTime.now().toSeconds()));
-						this.dynamicLogger.debug(`[ops] 初始化 UID：${op.sub.uid} 时间戳`);
-					}
-					this.dynamicSubManager.set(op.sub.uid, op.sub);
-					this.dynamicLogger.debug(`[ops] 新增动态订阅 UID：${op.sub.uid}`);
+					this.startDynamicForUid(op.sub.uid, op.sub);
 					jobNeedsReconcile = true;
 					break;
 				}
 				case "delete": {
-					if (!this.dynamicSubManager.has(op.sub.uid)) break;
-					this.dynamicSubManager.delete(op.sub.uid);
-					this.dynamicTimelineManager.delete(op.sub.uid);
-					this.dynamicLogger.debug(`[ops] 移除动态订阅 UID：${op.sub.uid}`);
+					if (!this.dynamicSubManager.has(op.uid)) break;
+					this.stopDynamicForUid(op.uid);
 					jobNeedsReconcile = true;
 					break;
 				}
 				case "update": {
-					const { prev, next } = op;
-					if (prev.dynamic && !next.dynamic) {
-						this.dynamicSubManager.delete(next.uid);
-						this.dynamicTimelineManager.delete(next.uid);
-						this.dynamicLogger.debug(`[ops] 关闭动态订阅 UID：${next.uid}`);
-						jobNeedsReconcile = true;
-					} else if (!prev.dynamic && next.dynamic) {
-						if (!this.dynamicTimelineManager.has(next.uid)) {
-							this.dynamicTimelineManager.set(next.uid, Math.floor(DateTime.now().toSeconds()));
+					for (const change of op.changes) {
+						if (change.scope !== "dynamic") continue;
+						if ("dynamic" in change) {
+							if (change.dynamic) {
+								// dynamic turned on
+								const fullSub =
+									this.ctx["bilibili-notify"].getInternals(BILIBILI_NOTIFY_TOKEN)?.subs?.[op.uid];
+								if (fullSub) this.startDynamicForUid(op.uid, fullSub);
+								jobNeedsReconcile = true;
+							} else {
+								// dynamic turned off
+								this.stopDynamicForUid(op.uid);
+								jobNeedsReconcile = true;
+							}
 						}
-						this.dynamicSubManager.set(next.uid, next);
-						this.dynamicLogger.debug(`[ops] 开启动态订阅 UID：${next.uid}`);
-						jobNeedsReconcile = true;
-					} else if (next.dynamic) {
-						// Config-only change — update sub reference in place
-						this.dynamicSubManager.set(next.uid, next);
+						// No other dynamic-scope fields need special handling in dynamic plugin
 					}
 					break;
 				}

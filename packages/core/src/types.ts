@@ -1,6 +1,27 @@
 import type { SubItem } from "@bilibili-notify/push";
 
+/** A scoped change object — each variant only carries fields relevant to its scope. */
+export type LiveSubChange = { scope: "live" } & Partial<
+	Pick<
+		SubItem,
+		| "live"
+		| "liveEnd"
+		| "uname"
+		| "roomId"
+		| "customCardStyle"
+		| "customLiveMsg"
+		| "customGuardBuy"
+		| "customLiveSummary"
+		| "customSpecialDanmakuUsers"
+		| "customSpecialUsersEnterTheRoom"
+		| "specialUsers"
+	>
+>;
+export type DynamicSubChange = { scope: "dynamic" } & Partial<Pick<SubItem, "dynamic">>;
+export type TargetSubChange = { scope: "target" } & Pick<SubItem, "target">;
+export type SubChange = LiveSubChange | DynamicSubChange | TargetSubChange;
+
 export type SubscriptionOp =
 	| { type: "add"; sub: SubItem }
-	| { type: "delete"; sub: SubItem }
-	| { type: "update"; prev: SubItem; next: SubItem };
+	| { type: "delete"; uid: string }
+	| { type: "update"; uid: string; changes: SubChange[] };

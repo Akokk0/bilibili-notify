@@ -15,9 +15,42 @@ import { type Awaitable, type Context, h, type Logger, Service } from "koishi";
 import QRCode from "qrcode";
 import { biliCommands, statusCommands, sysCommands } from "./commands";
 import type { BilibiliNotifyConfig } from "./config";
-import type { SubscriptionOp } from "./types";
+import type { SubChange, SubscriptionOp } from "./types";
 
 const SERVICE_NAME = "bilibili-notify";
+
+/** Diff two SubItem snapshots and return a typed SubChange array. */
+function diffSubItems(prev: SubItem, next: SubItem): SubChange[] {
+	const result: SubChange[] = [];
+
+	// Live-scope changes
+	const liveChange: Record<string, unknown> = { scope: "live" };
+	if (prev.live !== next.live) liveChange.live = next.live;
+	if (prev.liveEnd !== next.liveEnd) liveChange.liveEnd = next.liveEnd;
+	if (prev.uname !== next.uname) liveChange.uname = next.uname;
+	if (prev.roomId !== next.roomId) liveChange.roomId = next.roomId;
+	for (const key of [
+		"customCardStyle",
+		"customLiveMsg",
+		"customGuardBuy",
+		"customLiveSummary",
+		"customSpecialDanmakuUsers",
+		"customSpecialUsersEnterTheRoom",
+		"specialUsers",
+	] as const) {
+		if (JSON.stringify(prev[key]) !== JSON.stringify(next[key])) liveChange[key] = next[key];
+	}
+	if (Object.keys(liveChange).length > 1) result.push(liveChange as SubChange);
+
+	// Dynamic-scope changes
+	if (prev.dynamic !== next.dynamic) result.push({ scope: "dynamic", dynamic: next.dynamic });
+
+	// Target-scope changes
+	if (JSON.stringify(prev.target) !== JSON.stringify(next.target))
+		result.push({ scope: "target", target: next.target });
+
+	return result;
+}
 
 class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 	static readonly [Service.provide] = SERVICE_NAME;
@@ -205,7 +238,9 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		if (idx === -1) return `更新订阅失败：未找到 UID 为 ${params.uid} 的订阅，操作未执行`;
 
 		const existing = flatSubs[idx];
-		const prevSub = this.subMgr.subManager.get(params.uid) ?? null;
+		// Snapshot before updateEntry mutates the object in-place via Object.assign
+		const rawPrev = this.subMgr.subManager.get(params.uid);
+		const prevSub = rawPrev ? structuredClone(rawPrev) : null;
 		const updatedItem: FlatSubConfigItem = {
 			...existing,
 			...(params.dynamic !== undefined && { dynamic: params.dynamic }),
@@ -229,9 +264,12 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		this.syncCurrentSubs();
 		this.updateSubNotifier();
 		if (prevSub) {
-			this.selfCtx.emit("bilibili-notify/subscription-changed", [
-				{ type: "update", prev: prevSub, next: nextSub },
-			]);
+			const changes = diffSubItems(prevSub, nextSub);
+			if (changes.length) {
+				this.selfCtx.emit("bilibili-notify/subscription-changed", [
+					{ type: "update", uid: params.uid, changes },
+				]);
+			}
 		}
 
 		this.serverLogger.info(`[update] 已更新订阅：${existing.name}（UID: ${params.uid}）`);
@@ -257,9 +295,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		this.selfCtx.emit("bilibili-notify/update-config", newConfig);
 		this.syncCurrentSubs();
 		this.updateSubNotifier();
-		this.selfCtx.emit("bilibili-notify/subscription-changed", [
-			{ type: "delete", sub: removedSub },
-		]);
+		this.selfCtx.emit("bilibili-notify/subscription-changed", [{ type: "delete", uid }]);
 
 		this.serverLogger.info(`[unsubscribe] 已移除订阅：${removedSub.uname}（UID: ${uid}）`);
 		return `已成功取消订阅 ${removedSub.uname}（UID: ${uid}）`;
@@ -284,15 +320,16 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		next: Map<string, SubItem>,
 	): SubscriptionOp[] {
 		const ops: SubscriptionOp[] = [];
-		for (const [uid, sub] of prev) {
-			if (!next.has(uid)) ops.push({ type: "delete", sub });
+		for (const [uid] of prev) {
+			if (!next.has(uid)) ops.push({ type: "delete", uid });
 		}
 		for (const [uid, sub] of next) {
 			const prevSub = prev.get(uid);
 			if (!prevSub) {
 				ops.push({ type: "add", sub });
 			} else {
-				ops.push({ type: "update", prev: prevSub, next: sub });
+				const changes = diffSubItems(prevSub, sub);
+				if (changes.length) ops.push({ type: "update", uid, changes });
 			}
 		}
 		return ops;

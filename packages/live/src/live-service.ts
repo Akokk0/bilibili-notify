@@ -153,14 +153,26 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			`[start] 启动直播监听，共 ${liveSubUids.length} 个 UID：${liveSubUids.join(", ")}`,
 		);
 		for (const sub of Object.values(subs)) {
-			if (sub.live) {
-				const mutable: SubItem = { ...sub };
-				this.subRecord.set(sub.uid, mutable);
-				this.liveDetectWithListener(mutable).catch((e) => {
-					this.liveLogger.error(`[start] 启动直播监听失败 UID=${sub.uid}：${e}`);
-				});
-			}
+			if (sub.live) this.startLiveForUid(sub, "[start]");
 		}
+	}
+
+	private startLiveForUid(sub: SubItem, logPrefix = "[ops]"): void {
+		const mutable: SubItem = structuredClone(sub);
+		this.subRecord.set(sub.uid, mutable);
+		this.liveDetectWithListener(mutable).catch((e) => {
+			this.liveLogger.error(`${logPrefix} 启动直播监听失败 UID=${sub.uid}：${e}`);
+		});
+	}
+
+	private stopLiveForUid(uid: string): void {
+		const sub = this.subRecord.get(uid);
+		if (!sub) return;
+		const timer = this.livePushTimerManager.get(sub.roomId);
+		timer?.();
+		this.livePushTimerManager.delete(sub.roomId);
+		this.closeListener(sub.roomId);
+		this.subRecord.delete(uid);
 	}
 
 	/** Incrementally apply subscription ops without clearing all listeners. */
@@ -169,44 +181,34 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			switch (op.type) {
 				case "add": {
 					if (!op.sub.live) break;
-					const mutable: SubItem = { ...op.sub };
-					this.subRecord.set(op.sub.uid, mutable);
-					this.liveDetectWithListener(mutable).catch((e) => {
-						this.liveLogger.error(`[ops] 启动直播监听失败 UID=${op.sub.uid}：${e}`);
-					});
+					this.startLiveForUid(op.sub);
 					break;
 				}
 				case "delete": {
-					const sub = this.subRecord.get(op.sub.uid);
-					if (!sub) break;
-					const timer = this.livePushTimerManager.get(sub.roomId);
-					timer?.();
-					this.livePushTimerManager.delete(sub.roomId);
-					this.closeListener(sub.roomId);
-					this.subRecord.delete(op.sub.uid);
+					this.stopLiveForUid(op.uid);
 					break;
 				}
 				case "update": {
-					const sub = this.subRecord.get(op.next.uid);
-					if (!op.prev.live && op.next.live) {
-						// live off → on: start monitoring
-						const mutable: SubItem = { ...op.next };
-						this.subRecord.set(op.next.uid, mutable);
-						this.liveDetectWithListener(mutable).catch((e) => {
-							this.liveLogger.error(`[ops] 启动直播监听失败 UID=${op.next.uid}：${e}`);
-						});
-					} else if (op.prev.live && !op.next.live) {
-						// live on → off: stop monitoring
-						if (sub) {
-							const timer = this.livePushTimerManager.get(sub.roomId);
-							timer?.();
-							this.livePushTimerManager.delete(sub.roomId);
-							this.closeListener(sub.roomId);
-							this.subRecord.delete(op.next.uid);
+					for (const change of op.changes) {
+						if (change.scope !== "live") continue;
+						if ("live" in change) {
+							if (change.live) {
+								// live turned on — get full up-to-date sub from current subs
+								const fullSub =
+									this.ctx["bilibili-notify"].getInternals(BILIBILI_NOTIFY_TOKEN)?.subs?.[op.uid];
+								if (fullSub) this.startLiveForUid(fullSub);
+							} else {
+								// live turned off — stop monitoring
+								this.stopLiveForUid(op.uid);
+							}
+						} else {
+							// live state unchanged — apply config changes in-place
+							const sub = this.subRecord.get(op.uid);
+							if (sub) {
+								const { scope: _, ...fields } = change;
+								Object.assign(sub, fields);
+							}
 						}
-					} else if (op.prev.live && op.next.live && sub) {
-						// config-only change — mutate in-place so the listener closure sees updates
-						Object.assign(sub, op.next);
 					}
 					break;
 				}
