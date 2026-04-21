@@ -152,7 +152,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 						name,
 						args,
 						this.api,
-						this.subs, // getter — always returns current subs from core
+						() => this.subs,
 						sessionCtx,
 						this.subMgmt ?? undefined,
 						pendingSubActions,

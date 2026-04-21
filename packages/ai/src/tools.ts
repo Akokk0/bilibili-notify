@@ -94,7 +94,7 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionTool[] = [
 		function: {
 			name: "subscribe_user",
 			description:
-				"订阅指定 UP 主的动态和/或直播通知，自动推送到当前对话频道。订阅前建议先用 search_user 确认 UID。",
+				"订阅指定 UP 主的动态和/或直播通知，自动推送到当前对话频道。订阅前建议先用 search_user 确认 UID。若该 UID 已在订阅列表中，工具将返回提示而非重复添加。",
 			parameters: {
 				type: "object",
 				properties: {
@@ -211,13 +211,14 @@ export async function executeTool(
 	name: string,
 	args: Record<string, string>,
 	api: BilibiliAPI,
-	subs: Subscriptions | null,
+	getSubs: () => Subscriptions | null,
 	sessionCtx?: SessionContext,
 	subMgmt?: SubManagement,
 	deferredActions?: Array<() => Promise<void>>,
 ): Promise<string> {
 	switch (name) {
 		case "list_subscriptions": {
+			const subs = getSubs();
 			if (!subs || Object.keys(subs).length === 0) return "当前没有订阅";
 			return Object.values(subs)
 				.map(
@@ -251,6 +252,7 @@ export async function executeTool(
 			return `名称: ${card.name}, 粉丝数: ${card.fans ?? 0}, 等级: ${card.level_info?.current_level ?? "?"}`;
 		}
 		case "get_live_status": {
+			const subs = getSubs();
 			if (!subs || Object.keys(subs).length === 0) return "当前没有订阅";
 			const liveItems = Object.values(subs).filter((s) => s.live);
 			if (!liveItems.length) return "当前订阅中没有开启直播监控的 UP 主";
@@ -312,6 +314,7 @@ export async function executeTool(
 		case "subscribe_user": {
 			if (!subMgmt || !deferredActions) return "订阅管理功能不可用";
 			if (!sessionCtx) return "无法获取当前频道信息，无法确定推送目标";
+			const subs = getSubs();
 			if (subs?.[args.uid]) return `${subs[args.uid].uname}（UID: ${args.uid}）已在订阅列表中`;
 			const { uid, name } = args;
 			const { platform, channelId: target } = sessionCtx;

@@ -67,6 +67,7 @@ export function getPresetDefaults(key: PersonaKey): PersonaPresetDefaults | null
 const CORE_IDENTITY = `你的工作是帮用户关注 B 站 UP 主，当他们有新动态或者开播时，第一时间通知用户。这是你最重要的职责，你要认真对待每一条通知。
 回复时只用纯文本，不要使用 Markdown 格式（不用 **加粗**、# 标题、- 列表等）。
 【重要规则】涉及订阅、取消订阅、修改订阅、查询订阅等操作时，必须调用对应工具，工具返回结果后才能告知用户操作是否成功。严禁在未调用工具的情况下声称操作已完成，也不得编造或猜测工具的执行结果。
+所有订阅选项（如@全体成员、词云、AI 总结、上舰消息等）均为可配置参数，不存在"权限不足"的问题；用户未提及的选项按默认值处理，无需解释。
 在做好这份工作的同时，你有自己的性格和说话方式，具体如下：`;
 
 export function buildSystemPrompt(params: {
