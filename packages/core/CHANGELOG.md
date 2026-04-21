@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.0.0-beta.12
+
+### Patch Changes
+
+- 53b9f9b: Redesign SubscriptionOp with scoped SubChange array; add update_subscription AI tool and fix stale subs snapshot
+
 ## 4.0.0-beta.11
 
 ### Patch Changes

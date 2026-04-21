@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.3-beta.8
+
+### Patch Changes
+
+- 53b9f9b: Redesign SubscriptionOp with scoped SubChange array; add update_subscription AI tool and fix stale subs snapshot
+- Updated dependencies [53b9f9b]
+  - koishi-plugin-bilibili-notify@4.0.0-beta.12
+
 ## 0.0.3-beta.7
 
 ### Patch Changes
