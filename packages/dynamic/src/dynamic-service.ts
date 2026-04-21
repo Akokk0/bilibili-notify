@@ -219,20 +219,15 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 				case "update": {
 					for (const change of op.changes) {
 						if (change.scope !== "dynamic") continue;
-						if ("dynamic" in change) {
-							if (change.dynamic) {
-								// dynamic turned on
-								const fullSub =
-									this.ctx["bilibili-notify"].getInternals(BILIBILI_NOTIFY_TOKEN)?.subs?.[op.uid];
-								if (fullSub) this.startDynamicForUid(op.uid, fullSub);
-								jobNeedsReconcile = true;
-							} else {
-								// dynamic turned off
-								this.stopDynamicForUid(op.uid);
-								jobNeedsReconcile = true;
-							}
+						if (change.dynamic) {
+							const fullSub =
+								this.ctx["bilibili-notify"].getInternals(BILIBILI_NOTIFY_TOKEN)?.subs?.[op.uid];
+							if (fullSub) this.startDynamicForUid(op.uid, fullSub);
+							jobNeedsReconcile = true;
+						} else if (change.dynamic === false) {
+							this.stopDynamicForUid(op.uid);
+							jobNeedsReconcile = true;
 						}
-						// No other dynamic-scope fields need special handling in dynamic plugin
 					}
 					break;
 				}
