@@ -64,6 +64,101 @@ export function liveCommands(this: BilibiliNotifyLive): void {
 		});
 
 	this.ctx
+		.command("bili.wordcloud [uid:string]", "生成测试词云卡片", { hidden: true })
+		.usage("生成测试弹幕词云卡片，可选传入 UID 以使用真实主播信息")
+		.example("bili wordcloud 233 使用 UID 为 233 的主播信息生成测试词云")
+		.action(async ({ session }, uid) => {
+			const mockWords: Array<[string, number]> = [
+				["666", 120],
+				["主播", 98],
+				["好看", 85],
+				["牛啊", 76],
+				["哈哈哈", 70],
+				["关注", 65],
+				["来了", 60],
+				["加油", 58],
+				["冲冲冲", 55],
+				["弹幕", 50],
+				["真棒", 48],
+				["好玩", 45],
+				["帅", 42],
+				["厉害", 40],
+				["打call", 38],
+				["前排", 35],
+				["感谢", 32],
+				["直播", 30],
+				["爱了", 28],
+				["爷青回", 26],
+				["支持", 25],
+				["哇", 24],
+				["绝了", 23],
+				["yyds", 22],
+				["宝", 20],
+				["xdm", 19],
+				["太强了", 18],
+				["求关注", 17],
+				["舒服", 16],
+				["懂了", 15],
+				["裂开", 14],
+				["啊啊啊", 13],
+				["破防了", 12],
+				["好家伙", 11],
+				["顶", 10],
+				["完了", 9],
+				["原来如此", 8],
+				["草", 7],
+				["稳", 7],
+				["神", 6],
+				["妙啊", 6],
+				["哈", 5],
+				["我的天", 5],
+				["优质", 5],
+				["大佬", 4],
+				["逆天", 4],
+				["整活", 4],
+				["赞", 3],
+				["牛", 3],
+				["震撼", 3],
+				["真实", 3],
+				["没错", 2],
+				["奥里给", 2],
+				["冲", 2],
+				["笑死", 2],
+			];
+
+			let masterName = "测试主播";
+			let masterAvatarUrl: string | undefined =
+				"https://i1.hdslb.com/bfs/face/aebb2639a0d47f2ce1fec0631f412eaf53d4a0be.jpg";
+
+			if (uid) {
+				const internals = this.ctx["bilibili-notify"].getInternals(BILIBILI_NOTIFY_TOKEN);
+				if (internals) {
+					const masterInfo = await internals.api.getMasterInfo(uid);
+					if (masterInfo.code === 0) {
+						masterName = masterInfo.data.info.uname;
+						masterAvatarUrl = masterInfo.data.info.face;
+					}
+				}
+			}
+
+			const imageService = this.ctx.get("bilibili-notify-image");
+			if (imageService) {
+				try {
+					const buf = await imageService.generateWordCloudImg(
+						mockWords,
+						masterName,
+						masterAvatarUrl,
+					);
+					await session?.send(h.image(buf, "image/jpeg"));
+					return;
+				} catch (e) {
+					return `生成词云失败：${e}`;
+				}
+			}
+			return "[词云测试] image 插件未启用，无法生成词云图片";
+		});
+
+	this.ctx
 		.command("bili.live <uid:string>", "预览直播卡片", { hidden: true })
 		.usage("根据 UID 拉取真实直播间数据并预览卡片，若 image 插件未启用则显示文字信息")
 		.example("bili live 233 预览 UID 为 233 的直播间卡片")

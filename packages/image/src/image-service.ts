@@ -1,8 +1,7 @@
 import { GuardLevel } from "blive-message-listener";
 import { JSDOM } from "jsdom";
 import { type Context, type Logger, Service } from "koishi";
-// biome-ignore lint/correctness/noUnusedImports: <import type>
-import {} from "koishi-plugin-puppeteer";
+import type {} from "koishi-plugin-puppeteer";
 import { DateTime } from "luxon";
 import type { BilibiliNotifyImageConfig } from "./config";
 import { renderCard } from "./render";
@@ -146,6 +145,8 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 		liveStatus: number,
 		colorOptions: CardColorOptions = {},
 	): Promise<Buffer> {
+		const t0 = Date.now();
+		this.imageLogger.debug(`[live] 开始渲染直播卡片：${username}`);
 		const { cardColorStart = this.config.cardColorStart, cardColorEnd = this.config.cardColorEnd } =
 			colorOptions;
 
@@ -194,9 +195,14 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 			{ title: "直播通知", font: this.config.font, htmlWidth: 600 },
 		);
 
-		return withRetry(() => this.renderHtml(html)).catch((e) => {
-			throw new Error(`生成直播卡片失败！错误: ${e}`);
-		});
+		return withRetry(() => this.renderHtml(html))
+			.then((buf) => {
+				this.imageLogger.debug(`[live] 直播卡片渲染完成：${username}（${Date.now() - t0}ms）`);
+				return buf;
+			})
+			.catch((e) => {
+				throw new Error(`生成直播卡片失败！错误: ${e}`);
+			});
 	}
 
 	async generateGuardCard(
@@ -208,6 +214,9 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 		}: { guardLevel: GuardLevel; uname: string; face: string; isAdmin: number },
 		{ masterAvatarUrl, masterName }: { masterAvatarUrl: string; masterName: string },
 	): Promise<Buffer> {
+		const t0 = Date.now();
+		const guardName = ["", "总督", "提督", "舰长"][guardLevel] ?? "上舰";
+		this.imageLogger.debug(`[guard] 开始渲染上舰卡片：${uname} → ${masterName}（${guardName}）`);
 		const captainImgUrl = GUARD_LEVEL_IMG[guardLevel] ?? "";
 		const html = await renderCard(
 			GuardCard,
@@ -224,9 +233,14 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 			{ title: "上舰通知", font: this.config.font, htmlWidth: 430 },
 		);
 
-		return withRetry(() => this.renderHtml(html)).catch((e) => {
-			throw new Error(`生成上舰卡片失败！错误: ${e}`);
-		});
+		return withRetry(() => this.renderHtml(html))
+			.then((buf) => {
+				this.imageLogger.debug(`[guard] 上舰卡片渲染完成：${uname}（${Date.now() - t0}ms）`);
+				return buf;
+			})
+			.catch((e) => {
+				throw new Error(`生成上舰卡片失败！错误: ${e}`);
+			});
 	}
 
 	async generateSCCard({
@@ -244,6 +258,8 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 		price: number;
 		masterAvatarUrl?: string;
 	}): Promise<Buffer> {
+		const t0 = Date.now();
+		this.imageLogger.debug(`[sc] 开始渲染 SC 卡片：${senderName} → ${masterName}（¥${price}）`);
 		const battery = price * 10;
 		const levelIndex = getSCLevel(battery);
 		const bgColor = SC_COLORS[levelIndex];
@@ -264,18 +280,25 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 			{ title: "醒目留言通知", font: this.config.font, htmlWidth: 280 },
 		);
 
-		return withRetry(() => this.renderHtml(html)).catch((e) => {
-			throw new Error(`生成 SC 卡片失败！错误: ${e}`);
-		});
+		return withRetry(() => this.renderHtml(html))
+			.then((buf) => {
+				this.imageLogger.debug(`[sc] SC 卡片渲染完成：${senderName}（${Date.now() - t0}ms）`);
+				return buf;
+			})
+			.catch((e) => {
+				throw new Error(`生成 SC 卡片失败！错误: ${e}`);
+			});
 	}
 
 	async generateDynamicCard(data: Dynamic, colorOptions: CardColorOptions = {}): Promise<Buffer> {
+		const t0 = Date.now();
 		const { cardColorStart = this.config.cardColorStart, cardColorEnd = this.config.cardColorEnd } =
 			colorOptions;
 
 		const moduleAuthor = data.modules.module_author;
 		const moduleStat = data.modules.module_stat;
 		const topic = data.modules.module_dynamic.topic?.name ?? "";
+		this.imageLogger.debug(`[dynamic] 开始渲染动态卡片：${moduleAuthor.name}`);
 
 		let pubTime = this.unixTimestampToString(moduleAuthor.pub_ts);
 		const { decorateCardUrl, decorateCardId, decorateCardColor } = moduleAuthor.decorate
@@ -312,16 +335,44 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 			{ title: "动态通知", font: this.config.font, htmlWidth: 600 },
 		);
 
-		return withRetry(() => this.renderHtml(html)).catch((e) => {
-			throw new Error(`生成动态卡片失败！错误: ${e}`);
-		});
+		return withRetry(() => this.renderHtml(html))
+			.then((buf) => {
+				this.imageLogger.debug(
+					`[dynamic] 动态卡片渲染完成：${moduleAuthor.name}（${Date.now() - t0}ms）`,
+				);
+				return buf;
+			})
+			.catch((e) => {
+				throw new Error(`生成动态卡片失败！错误: ${e}`);
+			});
 	}
 
-	async generateWordCloudImg(words: Array<[string, number]>, masterName: string): Promise<Buffer> {
-		const html = buildWordCloudHtml(masterName, words, __dirname);
-		return withRetry(() => this.renderHtml(html, "window.wordcloudDone === true")).catch((e) => {
-			throw new Error(`生成词云图片失败！错误: ${e}`);
-		});
+	async generateWordCloudImg(
+		words: Array<[string, number]>,
+		masterName: string,
+		masterAvatarUrl?: string,
+	): Promise<Buffer> {
+		const t0 = Date.now();
+		this.imageLogger.debug(`[wordcloud] 开始渲染词云卡片：${masterName}（${words.length} 词）`);
+		const html = await buildWordCloudHtml(
+			masterName,
+			words,
+			__dirname,
+			masterAvatarUrl,
+			this.config.cardColorStart,
+			this.config.cardColorEnd,
+			this.config.font,
+		);
+		return withRetry(() => this.renderHtml(html, "window.wordcloudDone === true"))
+			.then((buf) => {
+				this.imageLogger.debug(
+					`[wordcloud] 词云卡片渲染完成：${masterName}（${Date.now() - t0}ms）`,
+				);
+				return buf;
+			})
+			.catch((e) => {
+				throw new Error(`生成词云图片失败！错误: ${e}`);
+			});
 	}
 
 	// ── 渲染管线（内部） ──────────────────────────────────────────────────────────

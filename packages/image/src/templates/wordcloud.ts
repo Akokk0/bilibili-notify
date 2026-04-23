@@ -1,106 +1,68 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { renderCard } from "../render";
+import { WordCloudCard } from "./wordcloud-card";
 
-export function buildWordCloudHtml(
+const WORD_COLORS = [
+	"#6c5ce7",
+	"#0984e3",
+	"#00b894",
+	"#fd79a8",
+	"#fdcb6e",
+	"#e17055",
+	"#74b9ff",
+	"#a29bfe",
+];
+
+export async function buildWordCloudHtml(
 	masterName: string,
 	words: Array<[string, number]>,
 	dirname: string,
-): string {
+	masterAvatarUrl?: string,
+	colorStart = "#e0c3fc",
+	colorEnd = "#8ec5fc",
+	font = "sans-serif",
+): Promise<string> {
 	const wordcloudJS = readFileSync(resolve(dirname, "static/wordcloud2.min.js"), "utf-8");
 	const renderFunc = readFileSync(resolve(dirname, "static/render.js"), "utf-8");
 
-	return /* html */ `
-        <!DOCTYPE html>
-        <html lang="zh-CN">
-        <head>
-            <meta charset="UTF-8">
-            <title>高清词云展示</title>
-            <style>
-                * {
-                    margin: 0;
-                    padding: 0;
-                    box-sizing: border-box;
-                }
+	const html = await renderCard(
+		WordCloudCard,
+		{ masterName, masterAvatarUrl, colorStart, colorEnd },
+		{ title: "弹幕词云", font, htmlWidth: 720 },
+	);
 
-                html {
-                    width: 720px;
-                    height: 520px;
-                }
+	const initScript = `
+		<script>${wordcloudJS}</script>
+		<script>${renderFunc}</script>
+		<script>
+			const canvas = document.getElementById('wordCloudCanvas');
+			const ctx = canvas.getContext('2d');
+			const style = getComputedStyle(canvas);
+			const cssWidth = parseInt(style.width);
+			const cssHeight = parseInt(style.height);
+			const ratio = window.devicePixelRatio || 1;
+			canvas.width = cssWidth * ratio;
+			canvas.height = cssHeight * ratio;
+			ctx.scale(ratio, ratio);
 
-                .wordcloud-bg {
-                    width: 720px;
-                    height: 520px;
-                    background: linear-gradient(to right, #e0eafc, #cfdef3);
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                }
+			const words = ${JSON.stringify(words)};
+			const wordColors = ${JSON.stringify(WORD_COLORS)};
 
-                .wordcloud-card {
-                    width: 700px;
-                    height: 500px;
-                    backdrop-filter: blur(10px);
-                    background: rgba(255, 255, 255, 0.25);
-                    border-radius: 20px;
-                    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-                    padding: 20px;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                }
+			window.wordcloudDone = false;
+			canvas.addEventListener('wordcloudstop', () => {
+				window.wordcloudDone = true;
+			});
 
-                h2 {
-                    margin: 0 0 10px;
-                    color: #333;
-                    font-size: 24px;
-                }
+			renderAutoFitWordCloud(canvas, words, {
+				maxFontSize: 60,
+				minFontSize: 12,
+				densityTarget: 0.3,
+				weightExponent: 0.4,
+				color: () => wordColors[Math.floor(Math.random() * wordColors.length)],
+			});
+		</script>
+	`;
 
-                canvas {
-                    width: 100%;
-                    height: 100%;
-                    display: block;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="wordcloud-bg">
-                <div class="wordcloud-card">
-                    <h2>${masterName}直播弹幕词云</h2>
-                    <canvas id="wordCloudCanvas"></canvas>
-                </div>
-            </div>
-
-            <script>${wordcloudJS}</script>
-            <script>${renderFunc}</script>
-            <script>
-                const canvas = document.getElementById('wordCloudCanvas');
-                const ctx = canvas.getContext('2d');
-
-                const style = getComputedStyle(canvas);
-                const cssWidth = parseInt(style.width);
-                const cssHeight = parseInt(style.height);
-                const ratio = window.devicePixelRatio || 1;
-
-                canvas.width = cssWidth * ratio;
-                canvas.height = cssHeight * ratio;
-                ctx.scale(ratio, ratio);
-
-                const words = ${JSON.stringify(words)};
-
-                window.wordcloudDone = false;
-                canvas.addEventListener('wordcloudstop', () => {
-                    window.wordcloudDone = true;
-                });
-
-                renderAutoFitWordCloud(canvas, words, {
-                    maxFontSize: 60,
-                    minFontSize: 12,
-                    densityTarget: 0.3,
-                    weightExponent: 0.4
-                });
-            </script>
-        </body>
-        </html>
-    `;
+	return html.replace("</body>", `${initScript}</body>`);
 }

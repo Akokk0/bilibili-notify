@@ -444,6 +444,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 	private async generateWordCloud(
 		sortedWords: [string, number][],
 		masterName: string,
+		masterAvatarUrl?: string,
 	): Promise<ReturnType<typeof h.image> | undefined> {
 		if (sortedWords.length < 50) {
 			this.liveLogger.debug("[wordcloud] 热词不足50个，放弃生成弹幕词云");
@@ -453,7 +454,11 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		const imageService = (this.ctx as any)["bilibili-notify-image"];
 		if (!imageService?.generateWordCloudImg) return undefined;
 		try {
-			const buf = await imageService.generateWordCloudImg(sortedWords.slice(0, 90), masterName);
+			const buf = await imageService.generateWordCloudImg(
+				sortedWords.slice(0, 90),
+				masterName,
+				masterAvatarUrl,
+			);
 			return h.image(buf, "image/jpeg");
 		} catch (e) {
 			this.liveLogger.error(`[wordcloud] 生成词云失败：${(e as Error).message}`);
@@ -545,7 +550,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			const sortedWords = Object.entries(danmakuWeightRecord).sort((a, b) => b[1] - a[1]);
 
 			const [img, summary] = await Promise.all([
-				this.generateWordCloud(sortedWords, masterInfo?.username ?? ""),
+				this.generateWordCloud(sortedWords, masterInfo?.username ?? "", masterInfo?.userface),
 				this.generateLiveSummaryText(
 					danmakuSenderRecord,
 					sortedWords,
