@@ -1,6 +1,6 @@
 {
 	"name": "koishi-plugin-bilibili-notify-live",
-	"version": "0.0.3-beta.8",
+	"version": "0.1.0-beta.9",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Akokk0/bilibili-notify"

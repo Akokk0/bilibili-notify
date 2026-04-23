@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-beta.10
+
+### Minor Changes
+
+- abd5015: Add SC/guard level push filters; unify wordcloud card style with other cards
+
 ## 0.0.3-beta.9
 
 ### Patch Changes
