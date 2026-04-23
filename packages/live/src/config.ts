@@ -5,6 +5,8 @@ export interface BilibiliNotifyLiveConfig {
 	wordcloudStopWords?: string;
 	pushTime: number;
 	restartPush: boolean;
+	minScPrice: number;
+	minGuardLevel: 1 | 2 | 3;
 	liveSummary: string[];
 	customGuardBuy: {
 		enable: boolean;
@@ -43,6 +45,19 @@ export const BilibiliNotifyLiveConfig: Schema<BilibiliNotifyLiveConfig> = Schema
 		.description(
 			"插件重启后，如果 UP 正在直播，要不要马上推送一次呢？女仆会第一时间报告给主人的！",
 		),
+
+	minScPrice: Schema.number()
+		.min(0)
+		.default(0)
+		.description("SC（醒目留言）最低推送金额，低于此金额的 SC 不会推送。设为 0 表示全部推送。"),
+
+	minGuardLevel: Schema.union([
+		Schema.const(3).description("舰长及以上（全部推送）"),
+		Schema.const(2).description("仅推送提督及以上"),
+		Schema.const(1).description("仅推送总督"),
+	])
+		.default(3)
+		.description("上舰消息最低推送等级，低于此等级的上舰不会推送。"),
 
 	liveSummary: Schema.array(String)
 		.default([

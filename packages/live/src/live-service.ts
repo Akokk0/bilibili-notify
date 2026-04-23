@@ -668,6 +668,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			},
 
 			onIncomeSuperChat: async ({ body }) => {
+				if (body.price < this.config.minScPrice) return;
 				this.segmentDanmaku(body.content, danmakuWeightRecord);
 				this.addUserToDanmakuMaker(body.user.uname, danmakuSenderRecord);
 				const data = await this.api.getUserInfoInLive(body.user.uid.toString(), sub.uid);
@@ -724,6 +725,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			},
 
 			onGuardBuy: async ({ body }) => {
+				if (body.guard_level > this.config.minGuardLevel) return;
 				const guardImg = GUARD_LEVEL_IMG[body.guard_level];
 				const effectiveGuardBuy = sub.customGuardBuy.enable
 					? sub.customGuardBuy
