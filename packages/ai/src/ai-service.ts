@@ -39,7 +39,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 
 	private readonly aiLogger: Logger = this.ctx.logger(SERVICE_NAME);
 	private readonly sessions = new Map<string, SessionEntry>();
-	private readonly pendingSubActionsMap = new Map<string, Array<() => Promise<void>>>();
+
 	private api!: BilibiliAPI;
 	private subMgmt: SubManagement | null = null;
 
@@ -122,7 +122,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 		sessionId: string,
 		imageUrls?: string[],
 		sessionCtx?: SessionContext,
-	): Promise<string> {
+	): Promise<{ result: string; pendingActions: Array<() => Promise<void>> }> {
 		const now = Date.now();
 		const entry = this.sessions.get(sessionId);
 		const isExpired = !entry || now - entry.lastActiveAt >= SESSION_TTL_MS;
@@ -139,8 +139,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 		const maxMessages = this.config.maxHistory * 2;
 		const trimmedHistory = history.slice(-maxMessages);
 
-		const pendingSubActions: Array<() => Promise<void>> = [];
-		this.pendingSubActionsMap.set(sessionId, pendingSubActions);
+		const pendingActions: Array<() => Promise<void>> = [];
 
 		const result = await this.callAPI(
 			systemPrompt,
@@ -155,7 +154,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 						() => this.subs,
 						sessionCtx,
 						this.subMgmt ?? undefined,
-						pendingSubActions,
+						pendingActions,
 					),
 			},
 			this.config.enableVision ? imageUrls : undefined,
@@ -188,7 +187,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 		}
 
 		this.aiLogger.debug(`[chat] 响应长度=${result.length}`);
-		return result;
+		return { result, pendingActions };
 	}
 
 	/** 清除指定用户的对话历史 */
@@ -197,13 +196,11 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 		this.aiLogger.debug(`[session] 清除会话 sessionId=${sessionId}`);
 	}
 
-	/** 执行 chat() 调用中积累的延迟订阅操作（在 AI 回复发送后调用） */
-	async flushPendingSubActions(sessionId: string): Promise<void> {
-		const actions = this.pendingSubActionsMap.get(sessionId);
-		this.pendingSubActionsMap.delete(sessionId);
-		if (!actions?.length) return;
-		this.aiLogger.debug(`[deferred] sessionId=${sessionId}, 执行 ${actions.length} 个延迟操作`);
-		for (const action of actions) {
+	/** 执行 chat() 返回的延迟订阅操作（在 AI 回复发送后调用） */
+	async flushPendingSubActions(pendingActions: Array<() => Promise<void>>): Promise<void> {
+		if (!pendingActions.length) return;
+		this.aiLogger.debug(`[deferred] 执行 ${pendingActions.length} 个延迟操作`);
+		for (const action of pendingActions) {
 			try {
 				await action();
 			} catch (e) {

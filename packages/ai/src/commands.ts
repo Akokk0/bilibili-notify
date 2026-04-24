@@ -42,9 +42,14 @@ export function aiCommands(this: BilibiliNotifyAI): void {
 					: undefined;
 
 			try {
-				const result = await this.chat(message, sessionId, imageUrls, sessionCtx);
+				const { result, pendingActions } = await this.chat(
+					message,
+					sessionId,
+					imageUrls,
+					sessionCtx,
+				);
 				await session?.send(result);
-				await this.flushPendingSubActions(sessionId);
+				await this.flushPendingSubActions(pendingActions);
 			} catch (e) {
 				return `AI 调用失败：${(e as Error).message}`;
 			}

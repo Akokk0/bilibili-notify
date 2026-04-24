@@ -337,24 +337,34 @@ export async function executeTool(
 			return `订阅请求已提交（UID: ${uid}，昵称: ${name}），操作将在本次回复发送后执行`;
 		}
 		case "unsubscribe_user": {
-			if (!subMgmt) return "订阅管理功能不可用";
-			// Execute immediately: removal doesn't trigger push notifications so no race condition.
-			// Returning the real result lets the AI report failures accurately.
-			return subMgmt.removeSub(args.uid);
+			if (!subMgmt || !deferredActions) return "订阅管理功能不可用";
+			const subs = getSubs();
+			if (!subs?.[args.uid]) return `UID: ${args.uid} 不在订阅列表中`;
+			const uidToRemove = args.uid;
+			deferredActions.push(async () => {
+				subMgmt.removeSub(uidToRemove);
+			});
+			return `取消订阅请求已提交（UID: ${uidToRemove}），操作将在本次回复发送后执行`;
 		}
 		case "update_subscription": {
-			if (!subMgmt) return "订阅管理功能不可用";
-			return subMgmt.updateSub({
-				uid: args.uid,
-				dynamic: parseBool(args.dynamic),
-				dynamicAtAll: parseBool(args.dynamicAtAll),
-				live: parseBool(args.live),
-				liveAtAll: parseBool(args.liveAtAll),
-				liveGuardBuy: parseBool(args.liveGuardBuy),
-				superchat: parseBool(args.superchat),
-				wordcloud: parseBool(args.wordcloud),
-				liveSummary: parseBool(args.liveSummary),
+			if (!subMgmt || !deferredActions) return "订阅管理功能不可用";
+			const subs = getSubs();
+			if (!subs?.[args.uid]) return `UID: ${args.uid} 不在订阅列表中，无法更新`;
+			const uidToUpdate = args.uid;
+			deferredActions.push(async () => {
+				await subMgmt.updateSub({
+					uid: uidToUpdate,
+					dynamic: parseBool(args.dynamic),
+					dynamicAtAll: parseBool(args.dynamicAtAll),
+					live: parseBool(args.live),
+					liveAtAll: parseBool(args.liveAtAll),
+					liveGuardBuy: parseBool(args.liveGuardBuy),
+					superchat: parseBool(args.superchat),
+					wordcloud: parseBool(args.wordcloud),
+					liveSummary: parseBool(args.liveSummary),
+				});
 			});
+			return `订阅更新请求已提交（UID: ${uidToUpdate}），操作将在本次回复发送后执行`;
 		}
 		default:
 			return `未知工具: ${name}`;
