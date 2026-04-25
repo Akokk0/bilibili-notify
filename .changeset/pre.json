@@ -21,6 +21,7 @@
     "client-type-fix",
     "core-client-build",
     "five-poets-sneeze",
+    "fix-ai-deferred-tools-and-image-forward-order",
     "fix-image-esm-unocss",
     "fix-logger-jieba-close",
     "fix-wordcloud-and-live-badge",

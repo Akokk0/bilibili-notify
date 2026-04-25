@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-beta.11
+
+### Patch Changes
+
+- 273aa40: Fix AI deferred write tools race condition and dynamic card forward block order
+
 ## 0.1.0-beta.10
 
 ### Minor Changes
