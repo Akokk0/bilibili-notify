@@ -72,13 +72,13 @@ export async function buildDynamicContent(
 				vnode: (
 					<>
 						{selfContent}
-						{buildAdditionalContent(dynamic)}
 						{buildForwardBlock(
 							forwardedAuthor.face,
 							forwardedAuthor.name,
 							forwarded.forwardLabel,
 							forwarded.vnode,
 						)}
+						{buildAdditionalContent(dynamic)}
 					</>
 				),
 			};
