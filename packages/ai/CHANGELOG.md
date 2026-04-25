@@ -1,5 +1,11 @@
 # koishi-plugin-bilibili-notify-ai
 
+## 0.1.0-beta.2
+
+### Patch Changes
+
+- 273aa40: Fix AI deferred write tools race condition and dynamic card forward block order
+
 ## 0.1.0-beta.1
 
 ### Minor Changes
