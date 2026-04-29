@@ -6,6 +6,18 @@ import { type MasterConfig, PUSH_TYPE_LABEL, type PushArrMap, PushType } from ".
 const INITIAL_RETRY_DELAY_MS = 3000;
 const MAX_RETRY_DELAY_MS = INITIAL_RETRY_DELAY_MS * 2 ** 5;
 const SEND_THROTTLE_MS = 500;
+const MAX_PUSH_MAP_WAIT_ATTEMPTS = 12; // 12 * 5s = 60s total
+
+/** Treat as a transient transport-layer failure that warrants refreshing the Bot reference. */
+function isTransportError(err: Error): boolean {
+	const msg = err.message ?? "";
+	return (
+		msg.includes("_request is not a function") ||
+		msg.includes("request is not a function") ||
+		msg.includes("ECONNRESET") ||
+		msg.includes("socket hang up")
+	);
+}
 
 export interface BilibiliPushConfig {
 	logLevel: number;
@@ -89,13 +101,22 @@ export class BilibiliPush {
 	): Promise<void> {
 		if (this.disposed) return;
 
-		if (!this.pushArrMapReady) {
+		// Wait for pushArrMap to be initialized, capped to avoid an infinite loop
+		// when the core plugin is misconfigured or never finishes loading subs.
+		let waitedAttempts = 0;
+		while (!this.pushArrMapReady) {
+			if (waitedAttempts >= MAX_PUSH_MAP_WAIT_ATTEMPTS) {
+				this.logger.error(
+					`[push] 推送对象信息超过 ${MAX_PUSH_MAP_WAIT_ATTEMPTS * 5}s 仍未初始化，放弃推送 (uid=${uid}, type=${PUSH_TYPE_LABEL[type]})`,
+				);
+				return;
+			}
 			this.logger.warn(
-				`[push] 推送对象信息尚未初始化，等待5秒后重试 (uid=${uid}, type=${PUSH_TYPE_LABEL[type]})`,
+				`[push] 推送对象信息尚未初始化，等待5秒后重试 (uid=${uid}, type=${PUSH_TYPE_LABEL[type]}, attempt=${waitedAttempts + 1}/${MAX_PUSH_MAP_WAIT_ATTEMPTS})`,
 			);
 			await this.sleep(5000);
 			if (this.disposed) return;
-			return this.broadcastToTargets(uid, content, type);
+			waitedAttempts++;
 		}
 
 		const record = this.pushArrMap.get(uid);
@@ -178,70 +199,93 @@ export class BilibiliPush {
 		}
 
 		for (const [platform, channelIds] of Object.entries(byPlatform)) {
-			const bots = this.ctx.bots.filter((b) => b.platform === platform);
-			let sent = 0;
+			let succeeded = 0;
+			let failed = 0;
 
 			for (const channelId of channelIds) {
-				await this.sendWithRetry(bots, channelId, content, 0, INITIAL_RETRY_DELAY_MS);
-				sent++;
+				const ok = await this.sendOnceWithRetry(platform, channelId, content);
+				if (ok) succeeded++;
+				else failed++;
 			}
-			this.logger.info(`[push] 成功推送 ${sent} 条消息到 ${platform}`);
+			if (failed === 0) {
+				this.logger.info(`[push] 成功推送 ${succeeded} 条消息到 ${platform}`);
+			} else {
+				this.logger.warn(`[push] 推送到 ${platform} 完成：成功 ${succeeded} 条，失败 ${failed} 条`);
+			}
 		}
 	}
 
-	private async sendWithRetry(
-		// biome-ignore lint/suspicious/noExplicitAny: Bot generic context compatibility
-		bots: Bot<any>[],
+	/**
+	 * 推送单条消息到指定 channel，失败时在多 bot 之间轮转 + 指数退避重试。
+	 * 返回 true 表示成功，false 表示放弃。
+	 */
+	private async sendOnceWithRetry(
+		platform: string,
 		channelId: string,
 		// biome-ignore lint/suspicious/noExplicitAny: Koishi message content
 		content: any,
-		botIndex: number,
-		delay: number,
-	): Promise<void> {
-		if (this.disposed) return;
+	): Promise<boolean> {
+		if (this.disposed) return false;
 
-		const bot = bots[botIndex];
-		if (!bot) {
-			this.logger.warn(`[push] 没有可用机器人来推送到 ${channelId}`);
-			return;
-		}
+		let delay = INITIAL_RETRY_DELAY_MS;
+		// 抽取在线 bot 时刷新引用，覆盖 bot 重连/替换的场景
+		const triedBotIds = new Set<string>();
 
-		if (bot.status !== Universal.Status.ONLINE) {
-			if (delay >= MAX_RETRY_DELAY_MS) {
-				this.logger.error(`[push] 机器人未在线，已重试5次，放弃推送到 ${channelId}`);
-				await this.sendPrivateMsg(`机器人未在线，放弃推送到 ${channelId}`);
-				return;
+		while (!this.disposed) {
+			const bots = this.ctx.bots.filter((b) => b.platform === platform);
+			if (bots.length === 0) {
+				this.logger.warn(`[push] 平台 ${platform} 当前没有可用机器人，跳过 ${channelId}`);
+				return false;
 			}
-			this.logger.warn(`[push] 机器人未在线，${delay / 1000}秒后重试`);
-			await this.sleep(delay);
-			return this.sendWithRetry(bots, channelId, content, botIndex, delay * 2);
-		}
 
-		try {
-			await bot.sendMessage(channelId, content);
-			await this.sleep(SEND_THROTTLE_MS);
-		} catch (e) {
-			if (this.disposed) return;
-			const err = e as Error;
+			// 优先选还没试过的在线 bot
+			const onlineBot = bots.find(
+				(b) => b.status === Universal.Status.ONLINE && !triedBotIds.has(b.selfId),
+			);
 
-			if (err.message === "this._request is not a function") {
-				if (delay < MAX_RETRY_DELAY_MS) {
-					this.logger.warn(`[push] 机器人 _request 不可用，${delay / 1000}秒后重试`);
-					await this.sleep(delay);
-					// Refresh bot reference
-					const freshBots = this.ctx.bots.filter((b) => b.platform === bot.platform);
-					return this.sendWithRetry(freshBots, channelId, content, 0, delay * 2);
+			if (!onlineBot) {
+				if (delay > MAX_RETRY_DELAY_MS) {
+					this.logger.error(
+						`[push] 平台 ${platform} 所有机器人均不可用（已尝试 ${triedBotIds.size} 个），放弃推送到 ${channelId}`,
+					);
+					await this.sendPrivateMsg(`机器人持续不可用，放弃推送到 ${channelId}`);
+					return false;
 				}
-				this.logger.error(`[push] 机器人 _request 持续不可用，放弃推送到 ${channelId}`);
-				return;
+				this.logger.warn(
+					`[push] 平台 ${platform} 暂无可用在线机器人，${delay / 1000}s 后重试 ${channelId}`,
+				);
+				await this.sleep(delay);
+				if (this.disposed) return false;
+				delay *= 2;
+				triedBotIds.clear(); // 等待后重新尝试所有 bot
+				continue;
 			}
 
-			this.logger.error(`[push] 发送到 ${channelId} 失败: ${err.message}`);
-			// Try next bot
-			if (botIndex + 1 < bots.length) {
-				return this.sendWithRetry(bots, channelId, content, botIndex + 1, delay);
+			triedBotIds.add(onlineBot.selfId);
+			try {
+				await onlineBot.sendMessage(channelId, content);
+				await this.sleep(SEND_THROTTLE_MS);
+				return true;
+			} catch (e) {
+				if (this.disposed) return false;
+				const err = e as Error;
+
+				if (isTransportError(err)) {
+					this.logger.warn(
+						`[push] 机器人 ${onlineBot.selfId} transport 不可用（${err.message}），换 bot 重试 ${channelId}`,
+					);
+					// 不计入 triedBotIds：重新刷新 bot 列表后再选其他在线 bot
+					triedBotIds.delete(onlineBot.selfId);
+					continue;
+				}
+
+				this.logger.error(
+					`[push] 机器人 ${onlineBot.selfId} 发送到 ${channelId} 失败: ${err.message}`,
+				);
+				// 其他错误：换下一个 bot；该 bot 已记入 triedBotIds 不再选中
 			}
 		}
+		return false;
 	}
 
 	private sleep(ms: number): Promise<void> {
