@@ -83,12 +83,18 @@ export class BilibiliAPI {
 		await this.initClient();
 		this.logger.debug("[init] HTTP 客户端初始化完成");
 
-		// Daily ticket refresh at midnight
-		this.ticketJob = new CronJob("0 0 * * *", () => {
-			this.updateBiliTicket().catch((e: Error) =>
-				this.logger.error(`[init] 更新 BiliTicket 失败: ${e.message}`),
-			);
-		});
+		// Daily ticket refresh at midnight (Beijing time, where bilibili.com lives).
+		this.ticketJob = new CronJob(
+			"0 0 * * *",
+			() => {
+				this.updateBiliTicket().catch((e: Error) =>
+					this.logger.error(`[init] 更新 BiliTicket 失败: ${e.message}`),
+				);
+			},
+			null,
+			false,
+			"Asia/Shanghai",
+		);
 		this.ticketJob.start();
 		await this.updateBiliTicket();
 		this.logger.debug("[init] BiliTicket 已更新，API 初始化完成");
@@ -583,10 +589,6 @@ export class BilibiliAPI {
 			async () => (await this.client.get(`${EP.GET_RELATION_GROUP_DETAIL}?tagid=${tagid}`)).data,
 			"getRelationGroupDetail",
 		);
-	}
-
-	async getCORSContent(url: string) {
-		return this.retry(async () => (await this.client.get(url)).data, "getCORSContent");
 	}
 
 	async v_voucherCaptcha(v_voucher: string): Promise<V_VoucherCaptchaData["data"]> {
