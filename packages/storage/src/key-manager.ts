@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Logger } from "koishi";
 
@@ -26,7 +26,17 @@ export class KeyManager {
 	async createNew(): Promise<Buffer> {
 		const key = randomBytes(32);
 		await mkdir(dirname(this.keyPath), { recursive: true });
-		await writeFile(this.keyPath, key.toString("hex"), "utf8");
+		// Atomic write: write to .tmp then rename, so an interrupted write
+		// can never leave a partial key file (which would cause the next load
+		// to silently regenerate the key and orphan all encrypted cookies).
+		const tmpPath = `${this.keyPath}.tmp`;
+		await writeFile(tmpPath, key.toString("hex"), "utf8");
+		try {
+			await rename(tmpPath, this.keyPath);
+		} catch (e) {
+			await unlink(tmpPath).catch(() => {});
+			throw e;
+		}
 		this.logger.info("[key] 新密钥已生成并写入磁盘");
 		return key;
 	}
