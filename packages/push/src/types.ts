@@ -39,10 +39,15 @@ export type PushArrMap = Map<
 	}
 >;
 
+/**
+ * Master notification config. The schema makes `platform` / `masterAccount`
+ * required only when `enable=true`, but TypeScript can't narrow that
+ * conditional shape, so they are typed as optional and validated at runtime.
+ */
 export interface MasterConfig {
 	enable: boolean;
-	platform: string;
-	masterAccount: string;
+	platform?: string;
+	masterAccount?: string;
 	masterAccountGuildId?: string;
 }
 

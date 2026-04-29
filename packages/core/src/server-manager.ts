@@ -352,8 +352,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 
 			this.push = new BilibiliPush(this.selfCtx, {
 				logLevel: this.config.logLevel,
-				// biome-ignore lint/suspicious/noExplicitAny: schema conditional type
-				master: this.config.master as any,
+				master: this.config.master,
 			});
 
 			await this.api.start();

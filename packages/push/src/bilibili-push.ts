@@ -43,7 +43,8 @@ export class BilibiliPush {
 
 	start(): void {
 		this.disposed = false;
-		if (this.config.master.enable && !this.getBot(this.config.master.platform)) {
+		const master = this.config.master;
+		if (master.enable && master.platform && !this.getBot(master.platform)) {
 			this.ctx.notifier?.create({
 				content: "未找到管理员平台机器人，无法推送运行状态，请尽快配置",
 			});
@@ -66,8 +67,12 @@ export class BilibiliPush {
 	// ---- Private message to admin ----
 
 	async sendPrivateMsg(content: string): Promise<void> {
-		const cfg = (this.config as BilibiliPushConfig).master;
+		const cfg = this.config.master;
 		if (!cfg.enable) return;
+		if (!cfg.platform || !cfg.masterAccount) {
+			this.logger.warn("[push] master 已启用但缺少 platform / masterAccount，跳过推送");
+			return;
+		}
 
 		const bot = this.ctx.bots.find((b) => b.platform === cfg.platform) ?? this.getBot(cfg.platform);
 		if (!bot) {
