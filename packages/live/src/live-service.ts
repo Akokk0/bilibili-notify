@@ -997,19 +997,24 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 
 		const userAction: MsgHandler = {
 			raw: {
-				INTERACT_WORD_V2: async (msg) => {
-					const data = await this.decodeBase64PB(
-						(msg as unknown as Record<string, Record<string, string>>).data.pb,
-					);
+				INTERACT_WORD_V2: async (msg: unknown) => {
+					const pb = (msg as { data?: { pb?: unknown } })?.data?.pb;
+					if (typeof pb !== "string") {
+						this.liveLogger.warn(
+							`[live] INTERACT_WORD_V2 缺少 data.pb 字段，跳过 (room=${sub.roomId})`,
+						);
+						return;
+					}
+					const data = await this.decodeBase64PB(pb);
+					const uid = typeof data.uid === "string" ? data.uid : String(data.uid ?? "");
+					const uname = typeof data.uname === "string" ? data.uname : "";
 					if (
 						data.msgType === "1" &&
-						sub.customSpecialUsersEnterTheRoom.specialUsersEnterTheRoom?.includes(
-							data.uid as string,
-						)
+						sub.customSpecialUsersEnterTheRoom.specialUsersEnterTheRoom?.includes(uid)
 					) {
 						const msgTemplate = this.applyTemplate(sub.customSpecialUsersEnterTheRoom.msgTemplate, {
 							"-mastername": masterInfo?.username ?? "",
-							"-uname": data.uname as string,
+							"-uname": uname,
 						});
 						const content = h("message", [h.text(msgTemplate)]);
 						this.safeBroadcast(sub.uid, content, PushType.UserActions);
