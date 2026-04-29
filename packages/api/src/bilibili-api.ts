@@ -1,5 +1,5 @@
-import http from "node:http";
-import https from "node:https";
+import { Agent as HttpAgent } from "node:http";
+import { Agent as HttpsAgent } from "node:https";
 import type { CookieData } from "@bilibili-notify/storage";
 import axios, { type AxiosInstance } from "axios";
 import { CronJob } from "cron";
@@ -45,8 +45,8 @@ export class BilibiliAPI {
 	private cacheable: any;
 	// biome-ignore lint/suspicious/noExplicitAny: ESM-only module loaded dynamically
 	private pRetry!: any;
-	// biome-ignore lint/suspicious/noExplicitAny: ESM-only module loaded dynamically
-	private AbortError!: any;
+	private httpAgent?: HttpAgent;
+	private httpsAgent?: HttpsAgent;
 	private wbiKeys: WbiKeys = { imgKey: "", subKey: "" };
 	private ticketJob!: CronJob;
 	private refreshCookieIntervalId?: ReturnType<typeof setInterval>;
@@ -71,11 +71,14 @@ export class BilibiliAPI {
 			import("p-retry"),
 		]);
 		this.pRetry = pRetryMod.default;
-		this.AbortError = pRetryMod.AbortError;
 
+		// Install DNS cache only on agents owned by this plugin to avoid mutating
+		// node:http/node:https global agents (which would affect every other module).
 		this.cacheable = new CacheableLookup();
-		this.cacheable.install(http.globalAgent);
-		this.cacheable.install(https.globalAgent);
+		this.httpAgent = new HttpAgent({ keepAlive: true });
+		this.httpsAgent = new HttpsAgent({ keepAlive: true });
+		this.cacheable.install(this.httpAgent);
+		this.cacheable.install(this.httpsAgent);
 
 		await this.initClient();
 		this.logger.debug("[init] HTTP 客户端初始化完成");
@@ -93,9 +96,13 @@ export class BilibiliAPI {
 
 	stop(): void {
 		if (this.cacheable) {
-			this.cacheable.uninstall(http.globalAgent);
-			this.cacheable.uninstall(https.globalAgent);
+			if (this.httpAgent) this.cacheable.uninstall(this.httpAgent);
+			if (this.httpsAgent) this.cacheable.uninstall(this.httpsAgent);
 		}
+		this.httpAgent?.destroy();
+		this.httpsAgent?.destroy();
+		this.httpAgent = undefined;
+		this.httpsAgent = undefined;
 		this.ticketJob?.stop();
 		if (this.refreshCookieIntervalId !== undefined) {
 			clearInterval(this.refreshCookieIntervalId);
@@ -110,6 +117,8 @@ export class BilibiliAPI {
 		this.client = wrapper(
 			axios.create({
 				jar: this.jar,
+				httpAgent: this.httpAgent,
+				httpsAgent: this.httpsAgent,
 				headers: {
 					"Content-Type": "application/json",
 					"User-Agent":
@@ -290,8 +299,14 @@ export class BilibiliAPI {
 		);
 
 		if (refreshData.code === -101) {
+			this.logger.warn(
+				"[cookie] 刷新接口返回 -101（账号未登录），已重置 HTTP 客户端，需重新扫码登录",
+			);
 			await this.initClient();
 			return;
+		}
+		if (refreshData.code !== 0) {
+			throw new Error(`Cookie 刷新失败: code=${refreshData.code}, message=${refreshData.message}`);
 		}
 
 		const newCsrf = this.getCSRF();
@@ -591,7 +606,7 @@ export class BilibiliAPI {
 		token: string,
 		validate: string,
 		seccode: string,
-	): Promise<ValidateCaptchaData["data"]> {
+	): Promise<ValidateCaptchaData["data"] | null> {
 		const csrf = this.getCSRF();
 		const { data } = await this.client.post(
 			EP.VALIDATE_CAPTCHA_URL,
