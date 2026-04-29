@@ -103,6 +103,9 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 	private dynamicJob?: CronJob;
 	private dynamicSubManager: SubManager = new Map();
 	private dynamicTimelineManager: DynamicTimelineManager = new Map();
+	/** 连续图片渲染失败计数，达到阈值时仅通知一次但不停 cron */
+	private imageFailureStreak = 0;
+	private imageFailureNotified = false;
 
 	constructor(ctx: Context, config: BilibiliNotifyDynamicConfig) {
 		super(ctx, SERVICE_NAME);
@@ -308,6 +311,14 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 
 			if (timeline >= postTime) continue; // already pushed
 
+			// Track most recent processed dynamic per UID for timeline update.
+			// Items are most-recent-first, so first hit wins. Tracking before
+			// the filter branch ensures filter-notified dynamics also advance
+			// the timeline and avoid repeated notifications on subsequent polls.
+			if (!currentPushDyn[uid]) {
+				currentPushDyn[uid] = item;
+			}
+
 			// Filter
 			const filterResult = filterDynamic(item, this.config.filter ?? {});
 			if (filterResult.blocked) {
@@ -346,16 +357,34 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 			} catch (e) {
 				const err = e as Error;
 				if (err.message === "直播开播动态，不做处理") continue;
-				this.dynamicLogger.error(`[image] 生成动态图片失败：${err.message}，动态检测已停止`);
-				await this.push.sendErrorMsg(`生成动态图片失败：${err.message}，动态检测已停止`);
-				this.dynamicJob?.stop();
-				this.dynamicJob = undefined;
-				this.ctx.emit(
-					"bilibili-notify/plugin-error",
-					SERVICE_NAME,
-					`生成动态图片失败：${err.message}`,
+				// 软降级：图片渲染失败不再永久停 cron。让流程继续走 text-only 推送，
+				// 同时只在连续失败首次通知一次管理员，避免长时间无服务又不刷屏。
+				this.imageFailureStreak++;
+				this.dynamicLogger.error(
+					`[image] 生成动态图片失败 (连续 ${this.imageFailureStreak} 次): ${err.message}`,
 				);
-				return;
+				if (!this.imageFailureNotified) {
+					this.imageFailureNotified = true;
+					await this.push.sendErrorMsg(
+						`生成动态图片失败：${err.message}，已降级为纯文字推送，请检查图片插件状态`,
+					);
+					this.ctx.emit(
+						"bilibili-notify/plugin-error",
+						SERVICE_NAME,
+						`生成动态图片失败：${err.message}`,
+					);
+				}
+				buffer = undefined;
+			}
+			// 渲染成功后重置失败追踪，恢复后续通知能力
+			if (buffer) {
+				if (this.imageFailureStreak > 0) {
+					this.dynamicLogger.info(
+						`[image] 图片渲染已恢复（之前连续失败 ${this.imageFailureStreak} 次）`,
+					);
+				}
+				this.imageFailureStreak = 0;
+				this.imageFailureNotified = false;
 			}
 
 			// Build URL suffix
@@ -419,11 +448,6 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 					);
 					await this.push.broadcastToTargets(uid, picsMsg, PushType.Dynamic);
 				}
-			}
-
-			// Track the earliest new dynamic per UID
-			if (!currentPushDyn[uid]) {
-				currentPushDyn[uid] = item;
 			}
 		}
 
