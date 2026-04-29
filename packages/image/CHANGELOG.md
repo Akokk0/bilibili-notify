@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.1.0
+
+### Minor Changes
+
+- abd5015: Add SC/guard level push filters; unify wordcloud card style with other cards
+
+### Patch Changes
+
+- 2d08a6e: feat(image): add ADDITIONAL_TYPE_COMMON (game card) renderer; fix additional render order for AV/FORWARD types; fix FORWARD double-rendering additional; improve single image layout with 长图 badge; update reserve/goods/common button to pink rounded-rectangle style; remove arrow.png
+
+  fix(live): fix word cloud and live summary not sent when AI is disabled
+
+  refactor(core): move subList to core, unify bili list/ll output style, fix bili ll race condition
+
+- beac16c: - feat(core): add AI-driven subscription management via `addSub`/`removeSub` internals and `bilibili-notify/update-config` event for config persistence
+  - fix(image): correct guard level text mapping in GuardCard (舰长/总督 description was swapped)
+  - style: unify all log messages to `[tag] 消息` format across all packages
+  - refactor(storage): `StorageManager` now accepts `ctx: Context`; logger created from ctx and passed to `KeyManager`/`CookieStore`
+  - refactor(subscription): `SubscriptionManager` now accepts `ctx: Context` directly, removing `SubLogger` interface and `SubscriptionManagerOpts`
+- 273aa40: Fix AI deferred write tools race condition and dynamic card forward block order
+- 2b2a93d: fix(image): use dynamic import for ESM-only UnoCSS packages to fix CJS require error
+- 8b6aa5a: feat(dynamic): add AI comment on dynamic push notifications
+
+  fix(live): replace @node-rs/jieba with jieba-wasm to remove Koishi unsafe flag
+
+  fix(live): fix stale closed snapshot in closeListener causing connections to never close on dispose
+
+  fix(live): correct live status badge when pushed by live service
+
+  fix(image): extend retry delay and silence errors when Puppeteer browser crashes
+
+  fix(image): inline remote images before acquiring page to prevent idle timeout
+
+  style(image): remove white borders and shadows from avatars for flat design
+
+  refactor(live): extract word cloud and live summary into private methods
+
+  refactor(logger): replace new Logger() with ctx.logger() across all services
+
+- ef5dcfe: fix(image): inline wordcloud JS scripts to fix file:// URL blocked by Chromium in Puppeteer; fix live status badge text vertical alignment
+
+  fix(live): update blive-message-listener to 0.5.4; use listener.closed directly (removed .live indirection)
+
+- 40ebcbc: All bump
+- 4498109: feat(image): improve dynamic/SC card rendering with SVG icons, long-image detection, goods UI redesign, and 600px width cap
+- 2a11604: Alpha
+- 921f0ad: Workspace replace
+- Updated dependencies [beac16c]
+- Updated dependencies [76b1f79]
+- Updated dependencies [ed0e7c9]
+- Updated dependencies [8b6aa5a]
+- Updated dependencies [40ebcbc]
+- Updated dependencies [a9b2cca]
+- Updated dependencies [00a51a3]
+  - @bilibili-notify/api@0.0.2
+
 ## 0.1.0-beta.11
 
 ### Patch Changes
