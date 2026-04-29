@@ -1,5 +1,5 @@
 {
-  "mode": "pre",
+  "mode": "exit",
   "tag": "beta",
   "initialVersions": {
     "koishi-plugin-bilibili-notify-advanced-subscription": "1.0.0-alpha.4",
