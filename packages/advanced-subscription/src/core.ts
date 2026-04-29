@@ -245,51 +245,30 @@ export const BilibiliNotifyAdvancedSubConfig: Schema<BilibiliNotifyAdvancedSubCo
 		),
 	});
 
+/** ChannelConfig flag fields that map 1:1 to Target array fields. */
+const CHANNEL_FIELDS = [
+	"dynamic",
+	"dynamicAtAll",
+	"live",
+	"liveAtAll",
+	"liveGuardBuy",
+	"superchat",
+	"wordcloud",
+	"liveSummary",
+	"specialDanmaku",
+	"specialUserEnterTheRoom",
+] as const satisfies ReadonlyArray<keyof Target & keyof ChannelConfig>;
+
 function configToSubItem(name: string, raw: SubItemRawConfig): SubItem {
 	const target = (raw.target ?? []).reduce<Target>((acc, entry) => {
 		const { platform, channelArr } = entry;
 		if (!channelArr?.length) return acc;
 		for (const ch of channelArr) {
 			const item = { platform, channelId: ch.channelId };
-			if (ch.dynamic) {
-				if (!acc.dynamic) acc.dynamic = [];
-				acc.dynamic.push(item);
-			}
-			if (ch.dynamicAtAll) {
-				if (!acc.dynamicAtAll) acc.dynamicAtAll = [];
-				acc.dynamicAtAll.push(item);
-			}
-			if (ch.live) {
-				if (!acc.live) acc.live = [];
-				acc.live.push(item);
-			}
-			if (ch.liveAtAll) {
-				if (!acc.liveAtAll) acc.liveAtAll = [];
-				acc.liveAtAll.push(item);
-			}
-			if (ch.liveGuardBuy) {
-				if (!acc.liveGuardBuy) acc.liveGuardBuy = [];
-				acc.liveGuardBuy.push(item);
-			}
-			if (ch.superchat) {
-				if (!acc.superchat) acc.superchat = [];
-				acc.superchat.push(item);
-			}
-			if (ch.wordcloud) {
-				if (!acc.wordcloud) acc.wordcloud = [];
-				acc.wordcloud.push(item);
-			}
-			if (ch.liveSummary) {
-				if (!acc.liveSummary) acc.liveSummary = [];
-				acc.liveSummary.push(item);
-			}
-			if (ch.specialDanmaku) {
-				if (!acc.specialDanmaku) acc.specialDanmaku = [];
-				acc.specialDanmaku.push(item);
-			}
-			if (ch.specialUserEnterTheRoom) {
-				if (!acc.specialUserEnterTheRoom) acc.specialUserEnterTheRoom = [];
-				acc.specialUserEnterTheRoom.push(item);
+			for (const key of CHANNEL_FIELDS) {
+				if (!ch[key]) continue;
+				if (!acc[key]) acc[key] = [];
+				acc[key]?.push(item);
 			}
 		}
 		return acc;
