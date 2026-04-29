@@ -1,6 +1,6 @@
 {
 	"name": "koishi-plugin-bilibili-notify-dynamic",
-	"version": "0.1.0-beta.7",
+	"version": "0.1.0",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Akokk0/bilibili-notify"

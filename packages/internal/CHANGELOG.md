@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.2
+
+### Patch Changes
+
+- 40ebcbc: All bump
+
 ## 0.0.2-alpha.0
 
 ### Patch Changes

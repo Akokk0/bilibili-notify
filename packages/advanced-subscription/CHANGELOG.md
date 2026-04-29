@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.0.0
+
+### Patch Changes
+
+- c6300b8: workspace replace test
+- 40ebcbc: All bump
+- 00a51a3: Code review fixes (P0/P1/P2/P3):
+
+  - core: correct WBI `wts` timestamp; restrict `request-cors` to bilibili/hdslb hosts; switch SubItem diff to `isDeepStrictEqual`; require explicit `isReload`; reject empty cookies on login success.
+  - api: drop the `cacheable-lookup` integration that was conflicting with `axios-cookiejar-support` and breaking startup; warn on cookie-refresh `-101`; correct `validateCaptcha` return type; pin ticket cron to `Asia/Shanghai`; remove unused `getCORSContent`.
+  - storage: write the master key atomically (`.tmp` + rename) so a crash mid-write can no longer orphan encrypted cookies.
+  - live: extract `handleLiveEnd` so polling fallback now also sends wordcloud/summary; always clear danmaku records regardless of `liveEnd`; close listener on post-init failure; scope `stopMonitoring` to a single room; wrap fire-and-forget broadcasts; narrow `INTERACT_WORD_V2` typing.
+  - dynamic: advance timeline on filter-blocked items so notifications are not repeated; soft-fail image render with one-shot admin notification instead of permanently stopping the cron.
+  - push: rewrite send-retry with proper online-first bot rotation, transport-error detection, and a bounded `pushArrMapReady` wait; relax `MasterConfig` shape and validate at runtime instead of casting.
+  - subscription: extract `parseChannels` / `buildTargetFromFlat` / `defaultCustomFields` / `pushArrEntryFromTarget` helpers; accept explicit `isReload` flag; format `Error` messages cleanly.
+  - advanced-subscription: collapse the 10 channel-flag if-blocks into a `CHANNEL_FIELDS` loop with a `satisfies` assertion.
+
+- 2a11604: Alpha
+- Updated dependencies [2d08a6e]
+- Updated dependencies [beac16c]
+- Updated dependencies [76b1f79]
+- Updated dependencies [eeaca8f]
+- Updated dependencies [8f47115]
+- Updated dependencies [8b6aa5a]
+- Updated dependencies [40ebcbc]
+- Updated dependencies [cc1455e]
+- Updated dependencies [00a51a3]
+- Updated dependencies [9414097]
+- Updated dependencies [2a11604]
+- Updated dependencies [921f0ad]
+- Updated dependencies [53b9f9b]
+  - koishi-plugin-bilibili-notify@4.0.0
+  - @bilibili-notify/push@0.0.2
+
 ## 1.0.0-alpha.4
 
 ### Patch Changes
