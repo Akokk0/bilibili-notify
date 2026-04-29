@@ -22,7 +22,7 @@ function getMixinKey(orig: string): string {
 
 export function encWbi(params: Record<string, string | number | object>, keys: WbiKeys): string {
 	const mixinKey = getMixinKey(keys.imgKey + keys.subKey);
-	const wts = Math.round(DateTime.now().toSeconds() / 1000);
+	const wts = Math.floor(DateTime.now().toSeconds());
 	const chrFilter = /[!'()*]/g;
 
 	const allParams: Record<string, unknown> = { ...params, wts };
