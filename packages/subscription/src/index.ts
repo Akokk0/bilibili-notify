@@ -261,7 +261,8 @@ export class SubscriptionManager {
 			this.logger.debug(`[follow] 关注 UID：${uid} 失败，code=${code}，${message}`);
 			return { code, message };
 		} catch (e) {
-			return { code: -1, message: String(e) };
+			const msg = e instanceof Error ? (e.message ?? e.toString()) : String(e);
+			return { code: -1, message: msg };
 		}
 	}
 
