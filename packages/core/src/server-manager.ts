@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import {
 	BilibiliAPI,
 	BiliLoginStatus,
@@ -38,7 +39,7 @@ function diffSubItems(prev: SubItem, next: SubItem): SubChange[] {
 		"customSpecialUsersEnterTheRoom",
 		"specialUsers",
 	] as const) {
-		if (JSON.stringify(prev[key]) !== JSON.stringify(next[key])) liveChange[key] = next[key];
+		if (!isDeepStrictEqual(prev[key], next[key])) liveChange[key] = next[key];
 	}
 	if (Object.keys(liveChange).length > 1) result.push(liveChange as SubChange);
 
@@ -46,7 +47,7 @@ function diffSubItems(prev: SubItem, next: SubItem): SubChange[] {
 	if (prev.dynamic !== next.dynamic) result.push({ scope: "dynamic", dynamic: next.dynamic });
 
 	// Target-scope changes
-	if (JSON.stringify(prev.target) !== JSON.stringify(next.target))
+	if (!isDeepStrictEqual(prev.target, next.target))
 		result.push({ scope: "target", target: next.target });
 
 	return result;
@@ -504,7 +505,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 				this.serverLogger.debug(`[sub] 从配置加载 ${this.config.subs.length} 个订阅项`);
 				const subs = SubscriptionManager.fromFlatConfig(this.config.subs);
 				if (!this.subMgr) return;
-				await this.subMgr.loadSubscriptions(subs);
+				await this.subMgr.loadSubscriptions(subs, { isReload: false });
 				this.syncCurrentSubs();
 				this.updateSubNotifier();
 				const ops: SubscriptionOp[] = [...this.subMgr.subManager.values()].map((sub) => ({
@@ -571,6 +572,24 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		});
 
 		this.selfCtx.console.addListener("bilibili-notify/request-cors", async (url: string) => {
+			let parsed: URL;
+			try {
+				parsed = new URL(url);
+			} catch {
+				throw new Error("无效的 URL");
+			}
+			if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+				throw new Error("仅支持 http/https 协议");
+			}
+			const host = parsed.hostname.toLowerCase();
+			const allowed =
+				host === "bilibili.com" ||
+				host === "hdslb.com" ||
+				host.endsWith(".bilibili.com") ||
+				host.endsWith(".hdslb.com");
+			if (!allowed) {
+				throw new Error("仅允许 bilibili.com / hdslb.com 域名");
+			}
 			const res = await fetch(url);
 			const buffer = await res.arrayBuffer();
 			return `data:image/png;base64,${Buffer.from(buffer).toString("base64")}`;
@@ -584,7 +603,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 				}
 				if (!this.subMgr) return;
 				const prevSubManager = new Map(this.subMgr.subManager);
-				await this.subMgr.loadSubscriptions(subs);
+				await this.subMgr.loadSubscriptions(subs, { isReload: prevSubManager.size > 0 });
 				this.syncCurrentSubs();
 				this.updateSubNotifier();
 				const ops = this.diffSubManagers(prevSubManager, this.subMgr.subManager);
@@ -703,8 +722,16 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		}
 		if (code === 0) {
 			this.clearLoginTimer();
+			const cookiesJson = this.api.getCookiesJson();
+			if (!cookiesJson || cookiesJson === "[]") {
+				this.serverLogger.error("[login] 登录成功但未获取到任何 cookie，放弃保存");
+				this.selfCtx.emit("bilibili-notify/login-status-report", {
+					status: BiliLoginStatus.LOGIN_FAILED,
+					msg: "登录成功但未获取到 cookie，请重试",
+				});
+				return;
+			}
 			try {
-				const cookiesJson = this.api.getCookiesJson() ?? "[]";
 				const refreshToken = (loginContent.data.refresh_token as string) ?? "";
 				await this.storageMgr.cookieStore.save({ cookiesJson, refreshToken });
 			} catch (e) {
