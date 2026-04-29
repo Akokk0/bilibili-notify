@@ -293,7 +293,21 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		this.logSideEffectState("timers:after-clear");
 	}
 
-	private stopMonitoring(reason: string): void {
+	/**
+	 * 停止直播监测。传入 roomId 时仅停止该房间，避免单个房间异常波及其他订阅。
+	 */
+	private stopMonitoring(reason: string, roomId?: string): void {
+		if (roomId) {
+			this.liveLogger.error(`[conn] [${roomId}] ${reason}，已停止该房间的监测`);
+			this.closeListener(roomId);
+			const timer = this.livePushTimerManager.get(roomId);
+			if (timer) {
+				timer();
+				this.livePushTimerManager.delete(roomId);
+			}
+			this.ctx.emit("bilibili-notify/plugin-error", SERVICE_NAME, `[${roomId}] ${reason}`);
+			return;
+		}
 		this.liveLogger.error(`[conn] ${reason}，直播监测已停止`);
 		this.clearListeners();
 		this.clearPushTimers();
@@ -306,10 +320,26 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			return content.data;
 		} catch (e) {
 			this.liveLogger.error(`[conn] 获取直播间信息失败：${(e as Error).message}`);
-			await this.push.sendPrivateMsg(`获取直播间信息失败：${(e as Error).message}，直播监测已停止`);
-			this.stopMonitoring("获取直播间信息失败");
+			await this.push.sendPrivateMsg(
+				`获取直播间 [${roomId}] 信息失败：${(e as Error).message}，已停止该房间监测`,
+			);
+			this.stopMonitoring("获取直播间信息失败", roomId);
 			return undefined;
 		}
+	}
+
+	/**
+	 * 在事件处理器中 fire-and-forget 推送的安全包装：捕获并记录错误，避免 unhandled rejection。
+	 */
+	private safeBroadcast(
+		uid: string,
+		// biome-ignore lint/suspicious/noExplicitAny: Koishi message content
+		content: any,
+		type: PushType,
+	): void {
+		this.push.broadcastToTargets(uid, content, type).catch((e) => {
+			this.liveLogger.error(`[push] 推送失败 uid=${uid} type=${type}：${(e as Error).message}`);
+		});
 	}
 
 	private async getMasterInfo(
@@ -570,9 +600,6 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 					PushType.WordCloudAndLiveSummary,
 				);
 			}
-
-			for (const key of Object.keys(danmakuWeightRecord)) delete danmakuWeightRecord[key];
-			for (const key of Object.keys(danmakuSenderRecord)) delete danmakuSenderRecord[key];
 		};
 
 		const useLiveRoomInfo = async (liveType: LiveType): Promise<boolean> => {
@@ -600,18 +627,102 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			}
 		};
 
+		const clearDanmakuRecords = (): void => {
+			for (const key of Object.keys(danmakuWeightRecord)) delete danmakuWeightRecord[key];
+			for (const key of Object.keys(danmakuSenderRecord)) delete danmakuSenderRecord[key];
+		};
+
+		const handleLiveEnd = async (source: "ws" | "polling"): Promise<void> => {
+			if (!liveStatus) {
+				this.liveLogger.warn(
+					`[live] 直播间 [${sub.roomId}] 已经是下播状态，忽略 (source=${source})`,
+				);
+				return;
+			}
+
+			if (pushAtTimeTimer) {
+				pushAtTimeTimer();
+				pushAtTimeTimer = null;
+				this.livePushTimerManager.delete(sub.roomId);
+				this.logSideEffectState(`timer:deleted room=${sub.roomId}`);
+			}
+
+			if (
+				!(await useLiveRoomInfo(LiveType.StopBroadcast)) ||
+				!(await useMasterInfo(LiveType.StopBroadcast)) ||
+				!liveRoomInfo ||
+				!masterInfo
+			) {
+				liveStatus = false;
+				clearDanmakuRecords();
+				if (this.isDisposed()) return;
+				this.stopMonitoring("获取直播间信息失败，推送直播下播卡片失败", sub.roomId);
+				return;
+			}
+
+			liveStatus = false;
+			this.liveLogger.debug(
+				`[stat] 开播时粉丝数：${masterInfo.liveOpenFollowerNum}，下播时粉丝数：${masterInfo.liveEndFollowerNum}，粉丝数变化：${masterInfo.liveFollowerChange}`,
+			);
+
+			liveTime = liveRoomInfo.live_time || DateTime.now().toFormat("yyyy-MM-dd HH:mm:ss");
+			const diffTime = await this.getTimeDifference(liveTime);
+			liveData.fansChanged = masterInfo.liveFollowerChange;
+			const n = masterInfo.liveFollowerChange;
+			const followerChangeStr =
+				n > 0
+					? n >= 10_000
+						? `+${(n / 10000).toFixed(1)}万`
+						: `+${n}`
+					: n <= -10_000
+						? `${(n / 10000).toFixed(1)}万`
+						: n.toString();
+
+			const liveEndMsg = this.applyTemplate(
+				sub.customLiveMsg.customLiveEnd ??
+					this.config.customLiveMsg.customLiveEnd ??
+					"-name 下播啦，本次直播了 -time，粉丝变化 -follower_change",
+				{
+					"-name": masterInfo.username,
+					"-time": diffTime,
+					"-follower_change": followerChangeStr,
+				},
+			);
+
+			try {
+				if (sub.liveEnd) {
+					await this.sendLiveNotifyCard({
+						liveType: LiveType.StopBroadcast,
+						liveData,
+						liveRoomInfo,
+						masterInfo,
+						cardStyle: sub.customCardStyle,
+						uid: sub.uid,
+						notifyMsg: liveEndMsg,
+					});
+					await sendDanmakuWordCloudAndLiveSummary(
+						sub.customLiveSummary.liveSummary || this.config.liveSummary.join("\n"),
+					);
+				}
+			} finally {
+				// Always clear records to free memory regardless of liveEnd flag or send errors
+				clearDanmakuRecords();
+			}
+		};
+
 		const pushAtTimeFunc = async () => {
 			if (!(await useLiveRoomInfo(LiveType.LiveBroadcast)) || !liveRoomInfo) {
-				this.stopMonitoring("获取直播间信息失败，推送直播卡片失败");
+				this.stopMonitoring("获取直播间信息失败，推送直播卡片失败", sub.roomId);
 				return;
 			}
 			if (liveRoomInfo.live_status === 0 || liveRoomInfo.live_status === 2) {
-				liveStatus = false;
-				pushAtTimeTimer?.();
-				pushAtTimeTimer = null;
-				await this.push.sendPrivateMsg(
-					"直播间已下播，可能与直播间的连接断开，请使用 `bn restart` 重启插件",
+				this.liveLogger.warn(
+					`[live] 直播间 [${sub.roomId}] 检测到已下播但未收到 onLiveEnd 事件，进入兜底处理`,
 				);
+				await this.push.sendPrivateMsg(
+					`直播间 [${sub.roomId}] 已下播但未收到 WS 下播事件，已自动触发兜底总结`,
+				);
+				await handleLiveEnd("polling");
 				return;
 			}
 			if (!(await useMasterInfo(LiveType.LiveBroadcast)) || !masterInfo) return;
@@ -668,7 +779,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 					});
 					const content = h("message", [h.text(msgTemplate)]);
 					if (this.isDisposed()) return;
-					this.push.broadcastToTargets(sub.uid, content, PushType.UserDanmakuMsg);
+					this.safeBroadcast(sub.uid, content, PushType.UserDanmakuMsg);
 				}
 			},
 
@@ -823,7 +934,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 				) {
 					liveStatus = false;
 					if (this.isDisposed()) return;
-					this.stopMonitoring("获取直播间信息失败，推送直播开播卡片失败");
+					this.stopMonitoring("获取直播间信息失败，推送直播开播卡片失败", sub.roomId);
 					return;
 				}
 
@@ -880,74 +991,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 					return;
 				}
 				lastLiveEnd = now;
-
-				if (!liveStatus) {
-					this.liveLogger.warn(`[live] 直播间 [${sub.roomId}] 已经是下播状态，忽略重复的下播事件`);
-					return;
-				}
-
-				if (pushAtTimeTimer) {
-					pushAtTimeTimer();
-					pushAtTimeTimer = null;
-					this.livePushTimerManager.delete(sub.roomId);
-					this.logSideEffectState(`timer:deleted room=${sub.roomId}`);
-				}
-
-				if (
-					!(await useLiveRoomInfo(LiveType.StopBroadcast)) ||
-					!(await useMasterInfo(LiveType.StopBroadcast)) ||
-					!liveRoomInfo ||
-					!masterInfo
-				) {
-					liveStatus = false;
-					if (this.isDisposed()) return;
-					this.stopMonitoring("获取直播间信息失败，推送直播下播卡片失败");
-					return;
-				}
-
-				liveStatus = false;
-				this.liveLogger.debug(
-					`[stat] 开播时粉丝数：${masterInfo.liveOpenFollowerNum}，下播时粉丝数：${masterInfo.liveEndFollowerNum}，粉丝数变化：${masterInfo.liveFollowerChange}`,
-				);
-
-				liveTime = liveRoomInfo.live_time || DateTime.now().toFormat("yyyy-MM-dd HH:mm:ss");
-				const diffTime = await this.getTimeDifference(liveTime);
-				liveData.fansChanged = masterInfo.liveFollowerChange;
-				const n = masterInfo.liveFollowerChange;
-				const followerChangeStr =
-					n > 0
-						? n >= 10_000
-							? `+${(n / 10000).toFixed(1)}万`
-							: `+${n}`
-						: n <= -10_000
-							? `${(n / 10000).toFixed(1)}万`
-							: n.toString();
-
-				const liveEndMsg = this.applyTemplate(
-					sub.customLiveMsg.customLiveEnd ??
-						this.config.customLiveMsg.customLiveEnd ??
-						"-name 下播啦，本次直播了 -time，粉丝变化 -follower_change",
-					{
-						"-name": masterInfo.username,
-						"-time": diffTime,
-						"-follower_change": followerChangeStr,
-					},
-				);
-
-				if (sub.liveEnd) {
-					await this.sendLiveNotifyCard({
-						liveType: LiveType.StopBroadcast,
-						liveData,
-						liveRoomInfo,
-						masterInfo,
-						cardStyle: sub.customCardStyle,
-						uid: sub.uid,
-						notifyMsg: liveEndMsg,
-					});
-					await sendDanmakuWordCloudAndLiveSummary(
-						sub.customLiveSummary.liveSummary || this.config.liveSummary.join("\n"),
-					);
-				}
+				await handleLiveEnd("ws");
 			},
 		};
 
@@ -968,7 +1012,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 							"-uname": data.uname as string,
 						});
 						const content = h("message", [h.text(msgTemplate)]);
-						this.push.broadcastToTargets(sub.uid, content, PushType.UserActions);
+						this.safeBroadcast(sub.uid, content, PushType.UserActions);
 					}
 				},
 			},
@@ -986,6 +1030,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			!masterInfo
 		) {
 			await this.push.sendPrivateMsg("获取直播间信息失败，启动直播间弹幕检测失败");
+			this.closeListener(sub.roomId);
 			return;
 		}
 
