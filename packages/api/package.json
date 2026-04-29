@@ -27,7 +27,6 @@
 		"@bilibili-notify/storage": "workspace:^",
 		"axios": "^1.9.0",
 		"axios-cookiejar-support": "^6.0.5",
-		"cacheable-lookup": "^7.0.0",
 		"cron": "^4.4.0",
 		"jsdom": "^26.1.0",
 		"luxon": "^3.7.2",

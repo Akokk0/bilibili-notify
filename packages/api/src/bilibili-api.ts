@@ -1,5 +1,3 @@
-import { Agent as HttpAgent } from "node:http";
-import { Agent as HttpsAgent } from "node:https";
 import type { CookieData } from "@bilibili-notify/storage";
 import axios, { type AxiosInstance } from "axios";
 import { CronJob } from "cron";
@@ -42,11 +40,7 @@ export class BilibiliAPI {
 	private jar: CookieJar;
 	private client!: AxiosInstance;
 	// biome-ignore lint/suspicious/noExplicitAny: ESM-only module loaded dynamically
-	private cacheable: any;
-	// biome-ignore lint/suspicious/noExplicitAny: ESM-only module loaded dynamically
 	private pRetry!: any;
-	private httpAgent?: HttpAgent;
-	private httpsAgent?: HttpsAgent;
 	private wbiKeys: WbiKeys = { imgKey: "", subKey: "" };
 	private ticketJob!: CronJob;
 	private refreshCookieIntervalId?: ReturnType<typeof setInterval>;
@@ -66,19 +60,8 @@ export class BilibiliAPI {
 
 	async start(): Promise<void> {
 		// Load ESM-only dependencies dynamically (works in both ESM and CJS output)
-		const [{ default: CacheableLookup }, pRetryMod] = await Promise.all([
-			import("cacheable-lookup"),
-			import("p-retry"),
-		]);
+		const pRetryMod = await import("p-retry");
 		this.pRetry = pRetryMod.default;
-
-		// Install DNS cache only on agents owned by this plugin to avoid mutating
-		// node:http/node:https global agents (which would affect every other module).
-		this.cacheable = new CacheableLookup();
-		this.httpAgent = new HttpAgent({ keepAlive: true });
-		this.httpsAgent = new HttpsAgent({ keepAlive: true });
-		this.cacheable.install(this.httpAgent);
-		this.cacheable.install(this.httpsAgent);
 
 		await this.initClient();
 		this.logger.debug("[init] HTTP 客户端初始化完成");
@@ -101,14 +84,6 @@ export class BilibiliAPI {
 	}
 
 	stop(): void {
-		if (this.cacheable) {
-			if (this.httpAgent) this.cacheable.uninstall(this.httpAgent);
-			if (this.httpsAgent) this.cacheable.uninstall(this.httpsAgent);
-		}
-		this.httpAgent?.destroy();
-		this.httpsAgent?.destroy();
-		this.httpAgent = undefined;
-		this.httpsAgent = undefined;
 		this.ticketJob?.stop();
 		if (this.refreshCookieIntervalId !== undefined) {
 			clearInterval(this.refreshCookieIntervalId);
@@ -123,8 +98,6 @@ export class BilibiliAPI {
 		this.client = wrapper(
 			axios.create({
 				jar: this.jar,
-				httpAgent: this.httpAgent,
-				httpsAgent: this.httpsAgent,
 				headers: {
 					"Content-Type": "application/json",
 					"User-Agent":

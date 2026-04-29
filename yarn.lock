@@ -158,7 +158,6 @@ __metadata:
     "@types/tough-cookie": "npm:^4.0.5"
     axios: "npm:^1.9.0"
     axios-cookiejar-support: "npm:^6.0.5"
-    cacheable-lookup: "npm:^7.0.0"
     cron: "npm:^4.4.0"
     jsdom: "npm:^26.1.0"
     luxon: "npm:^3.7.2"
@@ -4234,13 +4233,6 @@ __metadata:
     mime-types: "npm:^2.1.18"
     ylru: "npm:^1.2.0"
   checksum: 10c0/59b50e29e64a24bb52a16e5d35b69ad27ef14313701acc5e462b0aeebf2f09ff87fb6538eb0c0f0de4de05c8a1eecaef47f455f5b4928079e68f607f816a0843
-  languageName: node
-  linkType: hard
-
-"cacheable-lookup@npm:^7.0.0":
-  version: 7.0.0
-  resolution: "cacheable-lookup@npm:7.0.0"
-  checksum: 10c0/63a9c144c5b45cb5549251e3ea774c04d63063b29e469f7584171d059d3a88f650f47869a974e2d07de62116463d742c287a81a625e791539d987115cb081635
   languageName: node
   linkType: hard
 
