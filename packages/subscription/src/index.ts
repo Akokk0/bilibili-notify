@@ -26,30 +26,59 @@ export interface FlatSubConfigItem {
 	target: string;
 }
 
+function parseChannels(target: string, platform: string): ChannelArr {
+	return target
+		.split(",")
+		.map((id) => ({ platform, channelId: id.trim() }))
+		.filter((c) => c.channelId);
+}
+
+function buildTargetFromFlat(item: FlatSubConfigItem): Target {
+	const channels = parseChannels(item.target, item.platform);
+	return {
+		dynamic: item.dynamic ? channels : undefined,
+		dynamicAtAll: item.dynamicAtAll ? channels : undefined,
+		live: item.live ? channels : undefined,
+		liveAtAll: item.liveAtAll ? channels : undefined,
+		liveGuardBuy: item.liveGuardBuy ? channels : undefined,
+		superchat: item.superchat ? channels : undefined,
+		wordcloud: item.wordcloud ? channels : undefined,
+		liveSummary: item.liveSummary ? channels : undefined,
+	};
+}
+
+function defaultCustomFields() {
+	return {
+		customCardStyle: { enable: false as const },
+		customLiveMsg: { enable: false as const },
+		customGuardBuy: { enable: false as const },
+		customLiveSummary: { enable: false as const },
+		customSpecialDanmakuUsers: { enable: false as const, msgTemplate: "" },
+		customSpecialUsersEnterTheRoom: { enable: false as const, msgTemplate: "" },
+	};
+}
+
+function pushArrEntryFromTarget(target: Target) {
+	const toStrings = (arr?: ChannelArr) => (arr ?? []).map((c) => `${c.platform}:${c.channelId}`);
+	return {
+		dynamicArr: toStrings(target.dynamic),
+		dynamicAtAllArr: toStrings(target.dynamicAtAll),
+		liveArr: toStrings(target.live),
+		liveAtAllArr: toStrings(target.liveAtAll),
+		liveGuardBuyArr: toStrings(target.liveGuardBuy),
+		superchatArr: toStrings(target.superchat),
+		wordcloudArr: toStrings(target.wordcloud),
+		liveSummaryArr: toStrings(target.liveSummary),
+	};
+}
+
 export class SubscriptionManager {
 	subManager: SubManager = new Map();
 
 	static fromFlatConfig(subs: FlatSubConfigItem[]): Subscriptions {
 		const result: Subscriptions = {};
 		for (const s of subs) {
-			const channels: ChannelArr = s.target
-				.split(",")
-				.map((id) => ({ platform: s.platform, channelId: id.trim() }))
-				.filter((c) => c.channelId);
-
 			const [uid, roomId = ""] = s.uid.split(",").map((v) => v.trim());
-
-			const target: Target = {
-				dynamic: s.dynamic ? channels : undefined,
-				dynamicAtAll: s.dynamicAtAll ? channels : undefined,
-				live: s.live ? channels : undefined,
-				liveAtAll: s.liveAtAll ? channels : undefined,
-				liveGuardBuy: s.liveGuardBuy ? channels : undefined,
-				superchat: s.superchat ? channels : undefined,
-				wordcloud: s.wordcloud ? channels : undefined,
-				liveSummary: s.liveSummary ? channels : undefined,
-			};
-
 			result[s.name] = {
 				uid,
 				uname: s.name,
@@ -57,13 +86,8 @@ export class SubscriptionManager {
 				dynamic: s.dynamic,
 				live: s.live,
 				liveEnd: true,
-				target,
-				customCardStyle: { enable: false },
-				customLiveMsg: { enable: false },
-				customGuardBuy: { enable: false },
-				customLiveSummary: { enable: false },
-				customSpecialDanmakuUsers: { enable: false, msgTemplate: "" },
-				customSpecialUsersEnterTheRoom: { enable: false, msgTemplate: "" },
+				target: buildTargetFromFlat(s),
+				...defaultCustomFields(),
 			};
 		}
 		return result;
@@ -108,13 +132,8 @@ export class SubscriptionManager {
 			dynamic: item.dynamic,
 			live: item.live,
 			liveEnd: true,
-			target: this.buildTarget(item),
-			customCardStyle: { enable: false },
-			customLiveMsg: { enable: false },
-			customGuardBuy: { enable: false },
-			customLiveSummary: { enable: false },
-			customSpecialDanmakuUsers: { enable: false, msgTemplate: "" },
-			customSpecialUsersEnterTheRoom: { enable: false, msgTemplate: "" },
+			target: buildTargetFromFlat(item),
+			...defaultCustomFields(),
 		};
 
 		if (sub.live && !sub.roomId) {
@@ -145,50 +164,22 @@ export class SubscriptionManager {
 		const existing = this.subManager.get(uid);
 		if (!existing) return null;
 
-		const updatedTarget = this.buildTarget(item);
 		Object.assign(existing, {
 			dynamic: item.dynamic,
 			live: item.live,
-			target: updatedTarget,
+			target: buildTargetFromFlat(item),
 		});
 		this.updatePushMapEntry(uid, existing);
 		this.logger.info(`[update] 已更新订阅 UID：${uid}（${existing.uname}）`);
 		return existing;
 	}
 
-	private buildTarget(item: FlatSubConfigItem): Target {
-		const channels: ChannelArr = item.target
-			.split(",")
-			.map((id) => ({ platform: item.platform, channelId: id.trim() }))
-			.filter((c) => c.channelId);
-		return {
-			dynamic: item.dynamic ? channels : undefined,
-			dynamicAtAll: item.dynamicAtAll ? channels : undefined,
-			live: item.live ? channels : undefined,
-			liveAtAll: item.liveAtAll ? channels : undefined,
-			liveGuardBuy: item.liveGuardBuy ? channels : undefined,
-			superchat: item.superchat ? channels : undefined,
-			wordcloud: item.wordcloud ? channels : undefined,
-			liveSummary: item.liveSummary ? channels : undefined,
-		};
-	}
-
 	private updatePushMapEntry(uid: string, sub: SubItem): void {
-		const toStrings = (arr?: ChannelArr) => (arr ?? []).map((c) => `${c.platform}:${c.channelId}`);
-		this.push.pushArrMap.set(uid, {
-			dynamicArr: toStrings(sub.target.dynamic),
-			dynamicAtAllArr: toStrings(sub.target.dynamicAtAll),
-			liveArr: toStrings(sub.target.live),
-			liveAtAllArr: toStrings(sub.target.liveAtAll),
-			liveGuardBuyArr: toStrings(sub.target.liveGuardBuy),
-			superchatArr: toStrings(sub.target.superchat),
-			wordcloudArr: toStrings(sub.target.wordcloud),
-			liveSummaryArr: toStrings(sub.target.liveSummary),
-		});
+		this.push.pushArrMap.set(uid, pushArrEntryFromTarget(sub.target));
 	}
 
-	async loadSubscriptions(subs: Subscriptions): Promise<void> {
-		const isReload = this.subManager.size > 0;
+	async loadSubscriptions(subs: Subscriptions, opts: { isReload?: boolean } = {}): Promise<void> {
+		const isReload = opts.isReload ?? this.subManager.size > 0;
 		const subArray = Object.values(subs);
 		if (isReload) {
 			this.logger.info("[load] 订阅配置已更新，正在重新加载...");
@@ -249,18 +240,8 @@ export class SubscriptionManager {
 
 	private buildPushArrMap(subs: Subscriptions): PushArrMap {
 		const map: PushArrMap = new Map();
-		const toStrings = (arr?: ChannelArr) => (arr ?? []).map((c) => `${c.platform}:${c.channelId}`);
 		for (const sub of Object.values(subs)) {
-			map.set(sub.uid, {
-				dynamicArr: toStrings(sub.target.dynamic),
-				dynamicAtAllArr: toStrings(sub.target.dynamicAtAll),
-				liveArr: toStrings(sub.target.live),
-				liveAtAllArr: toStrings(sub.target.liveAtAll),
-				liveGuardBuyArr: toStrings(sub.target.liveGuardBuy),
-				superchatArr: toStrings(sub.target.superchat),
-				wordcloudArr: toStrings(sub.target.wordcloud),
-				liveSummaryArr: toStrings(sub.target.liveSummary),
-			});
+			map.set(sub.uid, pushArrEntryFromTarget(sub.target));
 		}
 		return map;
 	}
