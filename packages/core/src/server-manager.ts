@@ -20,31 +20,47 @@ import type { SubChange, SubscriptionOp } from "./types";
 
 const SERVICE_NAME = "bilibili-notify";
 
+const LIVE_MASTER_KEYS = [
+	"live",
+	"liveAtAll",
+	"liveEnd",
+	"liveGuardBuy",
+	"superchat",
+	"wordcloud",
+	"liveSummary",
+] as const satisfies ReadonlyArray<keyof SubItem>;
+
+const LIVE_CUSTOM_KEYS = [
+	"customCardStyle",
+	"customLiveMsg",
+	"customGuardBuy",
+	"customLiveSummary",
+	"customSpecialDanmakuUsers",
+	"customSpecialUsersEnterTheRoom",
+	"specialUsers",
+] as const satisfies ReadonlyArray<keyof SubItem>;
+
 /** Diff two SubItem snapshots and return a typed SubChange array. */
 function diffSubItems(prev: SubItem, next: SubItem): SubChange[] {
 	const result: SubChange[] = [];
 
 	// Live-scope changes
 	const liveChange: Record<string, unknown> = { scope: "live" };
-	if (prev.live !== next.live) liveChange.live = next.live;
-	if (prev.liveEnd !== next.liveEnd) liveChange.liveEnd = next.liveEnd;
+	for (const key of LIVE_MASTER_KEYS) {
+		if (prev[key] !== next[key]) liveChange[key] = next[key];
+	}
 	if (prev.uname !== next.uname) liveChange.uname = next.uname;
 	if (prev.roomId !== next.roomId) liveChange.roomId = next.roomId;
-	for (const key of [
-		"customCardStyle",
-		"customLiveMsg",
-		"customGuardBuy",
-		"customLiveSummary",
-		"customSpecialDanmakuUsers",
-		"customSpecialUsersEnterTheRoom",
-		"specialUsers",
-	] as const) {
+	for (const key of LIVE_CUSTOM_KEYS) {
 		if (!isDeepStrictEqual(prev[key], next[key])) liveChange[key] = next[key];
 	}
 	if (Object.keys(liveChange).length > 1) result.push(liveChange as SubChange);
 
 	// Dynamic-scope changes
-	if (prev.dynamic !== next.dynamic) result.push({ scope: "dynamic", dynamic: next.dynamic });
+	const dynamicChange: Record<string, unknown> = { scope: "dynamic" };
+	if (prev.dynamic !== next.dynamic) dynamicChange.dynamic = next.dynamic;
+	if (prev.dynamicAtAll !== next.dynamicAtAll) dynamicChange.dynamicAtAll = next.dynamicAtAll;
+	if (Object.keys(dynamicChange).length > 1) result.push(dynamicChange as SubChange);
 
 	// Target-scope changes
 	if (!isDeepStrictEqual(prev.target, next.target))
@@ -140,6 +156,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			dynamicAtAll?: boolean;
 			live?: boolean;
 			liveAtAll?: boolean;
+			liveEnd?: boolean;
 			liveGuardBuy?: boolean;
 			superchat?: boolean;
 			wordcloud?: boolean;
@@ -152,6 +169,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			dynamicAtAll?: boolean;
 			live?: boolean;
 			liveAtAll?: boolean;
+			liveEnd?: boolean;
 			liveGuardBuy?: boolean;
 			superchat?: boolean;
 			wordcloud?: boolean;
@@ -178,6 +196,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		dynamicAtAll?: boolean;
 		live?: boolean;
 		liveAtAll?: boolean;
+		liveEnd?: boolean;
 		liveGuardBuy?: boolean;
 		superchat?: boolean;
 		wordcloud?: boolean;
@@ -197,6 +216,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			dynamicAtAll: params.dynamicAtAll ?? false,
 			live: params.live ?? true,
 			liveAtAll: params.liveAtAll ?? false,
+			liveEnd: params.liveEnd ?? true,
 			liveGuardBuy: params.liveGuardBuy ?? false,
 			superchat: params.superchat ?? false,
 			wordcloud: params.wordcloud ?? true,
@@ -225,6 +245,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		dynamicAtAll?: boolean;
 		live?: boolean;
 		liveAtAll?: boolean;
+		liveEnd?: boolean;
 		liveGuardBuy?: boolean;
 		superchat?: boolean;
 		wordcloud?: boolean;
@@ -248,6 +269,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			...(params.dynamicAtAll !== undefined && { dynamicAtAll: params.dynamicAtAll }),
 			...(params.live !== undefined && { live: params.live }),
 			...(params.liveAtAll !== undefined && { liveAtAll: params.liveAtAll }),
+			...(params.liveEnd !== undefined && { liveEnd: params.liveEnd }),
 			...(params.liveGuardBuy !== undefined && { liveGuardBuy: params.liveGuardBuy }),
 			...(params.superchat !== undefined && { superchat: params.superchat }),
 			...(params.wordcloud !== undefined && { wordcloud: params.wordcloud }),

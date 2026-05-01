@@ -5,7 +5,12 @@ export type LiveSubChange = { scope: "live" } & Partial<
 	Pick<
 		SubItem,
 		| "live"
+		| "liveAtAll"
 		| "liveEnd"
+		| "liveGuardBuy"
+		| "superchat"
+		| "wordcloud"
+		| "liveSummary"
 		| "uname"
 		| "roomId"
 		| "customCardStyle"
@@ -17,7 +22,9 @@ export type LiveSubChange = { scope: "live" } & Partial<
 		| "specialUsers"
 	>
 >;
-export type DynamicSubChange = { scope: "dynamic" } & Partial<Pick<SubItem, "dynamic">>;
+export type DynamicSubChange = { scope: "dynamic" } & Partial<
+	Pick<SubItem, "dynamic" | "dynamicAtAll">
+>;
 export type TargetSubChange = { scope: "target" } & Pick<SubItem, "target">;
 export type SubChange = LiveSubChange | DynamicSubChange | TargetSubChange;
 
