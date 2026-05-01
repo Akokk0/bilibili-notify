@@ -130,32 +130,36 @@ export class BilibiliPush {
 		const label = `推送对象: ${uid}, 推送类型: ${PUSH_TYPE_LABEL[type]}`;
 		switch (type) {
 			case PushType.StartBroadcasting:
-				await this.pushToArr(record.liveAtAllArr, h.at("all"));
-				await this.pushToArr(record.liveArr, h("message", content), label);
+				await this.pushToArr(record.liveAtAll, h.at("all"));
+				await this.pushToArr(record.live, h("message", content), label);
 				break;
 
 			case PushType.Live:
-				await this.pushToArr(record.liveArr, h("message", content), label);
+				await this.pushToArr(record.live, h("message", content), label);
+				break;
+
+			case PushType.LiveEnd:
+				await this.pushToArr(record.liveEnd, h("message", content), label);
 				break;
 
 			case PushType.Dynamic:
-				await this.pushToArr(record.dynamicAtAllArr, h.at("all"));
-				await this.pushToArr(record.dynamicArr, h("message", content), label);
+				await this.pushToArr(record.dynamicAtAll, h.at("all"));
+				await this.pushToArr(record.dynamic, h("message", content), label);
 				break;
 
 			case PushType.LiveGuardBuy:
-				await this.pushToArr(record.liveGuardBuyArr, h("message", content), label);
+				await this.pushToArr(record.liveGuardBuy, h("message", content), label);
 				break;
 
 			case PushType.Superchat:
-				await this.pushToArr(record.superchatArr, h("message", content), label);
+				await this.pushToArr(record.superchat, h("message", content), label);
 				break;
 
 			case PushType.WordCloudAndLiveSummary: {
 				// content is [wordcloudMsg, liveSummaryMsg]
 				const [wcMsg, summaryMsg] = content as [unknown, unknown];
-				const wcArr = record.wordcloudArr ?? [];
-				const sumArr = record.liveSummaryArr ?? [];
+				const wcArr = record.wordcloud ?? [];
+				const sumArr = record.liveSummary ?? [];
 				const both = wcArr.filter((x) => sumArr.includes(x));
 				const wcOnly = wcArr.filter((x) => !sumArr.includes(x));
 				const sumOnly = sumArr.filter((x) => !wcArr.includes(x));
@@ -171,11 +175,11 @@ export class BilibiliPush {
 			}
 
 			case PushType.UserDanmakuMsg:
-				await this.pushToArr(record.specialDanmakuArr, h("message", content), label);
+				await this.pushToArr(record.specialDanmaku, h("message", content), label);
 				break;
 
 			case PushType.UserActions:
-				await this.pushToArr(record.specialUserEnterTheRoomArr, h("message", content), label);
+				await this.pushToArr(record.specialUserEnterTheRoom, h("message", content), label);
 				break;
 		}
 	}
