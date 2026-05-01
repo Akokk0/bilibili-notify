@@ -1,5 +1,12 @@
 # koishi-plugin-bilibili-notify-ai
 
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [28d9700]
+  - koishi-plugin-bilibili-notify@4.1.0
+
 ## 0.1.0
 
 ### Minor Changes

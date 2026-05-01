@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [28d9700]
+  - @bilibili-notify/push@1.0.0
+  - koishi-plugin-bilibili-notify@4.1.0
+
 ## 0.1.0
 
 ### Minor Changes

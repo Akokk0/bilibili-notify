@@ -1,6 +1,6 @@
 {
 	"name": "@bilibili-notify/push",
-	"version": "0.0.2",
+	"version": "1.0.0",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Akokk0/bilibili-notify"
