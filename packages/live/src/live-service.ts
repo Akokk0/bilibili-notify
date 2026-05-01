@@ -6,7 +6,13 @@ import type {
 	MySelfInfoData,
 } from "@bilibili-notify/api";
 import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
-import type { BilibiliPush, SubItem, Subscriptions } from "@bilibili-notify/push";
+import type {
+	BilibiliPush,
+	MasterFeature,
+	PushFeature,
+	SubItem,
+	Subscriptions,
+} from "@bilibili-notify/push";
 import { PushType } from "@bilibili-notify/push";
 import {
 	GuardLevel,
@@ -129,6 +135,34 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		return result.replaceAll("\\n", "\n");
 	}
 
+	/** 该订阅在给定特性上是否有至少一个 channel 订阅（仅 channel 级判断）。 */
+	private hasTargets(sub: SubItem, ...types: PushFeature[]): boolean {
+		return types.some((t) => (sub.target?.[t]?.length ?? 0) > 0);
+	}
+
+	/** sub 级总开关 + channel 级订阅同时满足时返回 true。任一关闭即不应通知。 */
+	private isSubscribed(sub: SubItem, type: MasterFeature): boolean {
+		return sub[type] && (sub.target?.[type]?.length ?? 0) > 0;
+	}
+
+	/**
+	 * 判断该订阅是否需要建立直播间 WS 连接。
+	 * 任一依赖直播间事件流的特性命中（master + target 都有效）就需要 listener。
+	 * 注意 schema 里 `live` 已经收窄为"开播通知"，所以不能再单独以 `sub.live` 为门槛。
+	 */
+	private needsLiveMonitor(sub: SubItem): boolean {
+		return (
+			this.isSubscribed(sub, "live") ||
+			this.isSubscribed(sub, "liveEnd") ||
+			this.isSubscribed(sub, "liveGuardBuy") ||
+			this.isSubscribed(sub, "superchat") ||
+			this.isSubscribed(sub, "wordcloud") ||
+			this.isSubscribed(sub, "liveSummary") ||
+			(sub.customSpecialDanmakuUsers.enable && this.hasTargets(sub, "specialDanmaku")) ||
+			(sub.customSpecialUsersEnterTheRoom.enable && this.hasTargets(sub, "specialUserEnterTheRoom"))
+		);
+	}
+
 	private mergeStopWords(stopWordsStr: string): void {
 		if (!stopWordsStr || stopWordsStr.trim() === "") {
 			this.stopwords = new Set(definedStopWords);
@@ -147,13 +181,13 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		this.subRecord.clear();
 
 		const liveSubUids = Object.values(subs)
-			.filter((s) => s.live)
+			.filter((s) => this.needsLiveMonitor(s))
 			.map((s) => s.uid);
 		this.liveLogger.debug(
 			`[start] 启动直播监听，共 ${liveSubUids.length} 个 UID：${liveSubUids.join(", ")}`,
 		);
 		for (const sub of Object.values(subs)) {
-			if (sub.live) this.startLiveForUid(sub, "[start]");
+			if (this.needsLiveMonitor(sub)) this.startLiveForUid(sub, "[start]");
 		}
 	}
 
@@ -180,7 +214,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		for (const op of ops) {
 			switch (op.type) {
 				case "add": {
-					if (!op.sub.live) break;
+					if (!this.needsLiveMonitor(op.sub)) break;
 					this.startLiveForUid(op.sub);
 					break;
 				}
@@ -189,25 +223,33 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 					break;
 				}
 				case "update": {
-					for (const change of op.changes) {
-						if (change.scope !== "live") continue;
-						if ("live" in change) {
-							if (change.live) {
-								// live turned on — get full up-to-date sub from current subs
-								const fullSub =
-									this.ctx["bilibili-notify"].getInternals(BILIBILI_NOTIFY_TOKEN)?.subs?.[op.uid];
-								if (fullSub) this.startLiveForUid(fullSub);
-							} else {
-								// live turned off — stop monitoring
-								this.stopLiveForUid(op.uid);
-							}
-						} else {
-							// live state unchanged — apply config changes in-place
-							const sub = this.subRecord.get(op.uid);
-							if (sub) {
-								const { scope: _, ...fields } = change;
-								Object.assign(sub, fields);
-							}
+					// 收集 live-scope（master + custom*）和 target-scope 变更：
+					// - live-scope：原地修改 master / 自定义模板
+					// - target-scope：必须同步到本地副本，因为 isSubscribed / hasTargets / needsLiveMonitor
+					//   全部依赖 sub.target，而 target-scope 与 live-scope 是同一个 op 里的并行变更
+					// 全部吸收完再用 needsLiveMonitor 判 start / stop / keep。
+					const liveChanges = op.changes.filter((c) => c.scope === "live");
+					const targetChanges = op.changes.filter((c) => c.scope === "target");
+					if (liveChanges.length === 0 && targetChanges.length === 0) break;
+
+					const existingSub = this.subRecord.get(op.uid);
+					if (existingSub) {
+						for (const change of liveChanges) {
+							const { scope: _, ...fields } = change;
+							Object.assign(existingSub, fields);
+						}
+						for (const change of targetChanges) {
+							existingSub.target = change.target;
+						}
+						if (!this.needsLiveMonitor(existingSub)) {
+							this.stopLiveForUid(op.uid);
+						}
+					} else {
+						// 当前未监控：从核心拿最新 sub（target / master 都已是最新）判断是否需要起 listener
+						const fullSub =
+							this.ctx["bilibili-notify"].getInternals(BILIBILI_NOTIFY_TOKEN)?.subs?.[op.uid];
+						if (fullSub && this.needsLiveMonitor(fullSub)) {
+							this.startLiveForUid(fullSub);
 						}
 					}
 					break;
@@ -415,26 +457,25 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 
 		if (this.isDisposed()) return;
 
+		const pushType =
+			liveType === LiveType.StartBroadcasting
+				? PushType.StartBroadcasting
+				: liveType === LiveType.StopBroadcast
+					? PushType.LiveEnd
+					: PushType.Live;
+
 		if (!buffer) {
 			this.liveLogger.debug(`[push] [${masterInfo.username}] 无图片，降级为文字推送`);
 			const fallbackMsg = h("message", [
 				h.text(liveNotifyMsg || `直播通知 - ${masterInfo.username}`),
 			]);
 
-			await this.push.broadcastToTargets(
-				uid,
-				fallbackMsg,
-				liveType === LiveType.StartBroadcasting ? PushType.StartBroadcasting : PushType.Live,
-			);
+			await this.push.broadcastToTargets(uid, fallbackMsg, pushType);
 			return;
 		}
 
 		const msg = h("message", [h.image(buffer, "image/jpeg"), h.text(liveNotifyMsg || "")]);
-		await this.push.broadcastToTargets(
-			uid,
-			msg,
-			liveType === LiveType.StartBroadcasting ? PushType.StartBroadcasting : PushType.Live,
-		);
+		await this.push.broadcastToTargets(uid, msg, pushType);
 	}
 
 	private segmentDanmaku(danmaku: string, danmakuWeightRecord: Record<string, number>): void {
@@ -576,17 +617,28 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		const liveData: LiveData = { likedNum: "0" };
 
 		const sendDanmakuWordCloudAndLiveSummary = async (customLiveSummary: string) => {
-			this.liveLogger.debug("[wordcloud] 开始制作弹幕词云");
+			// wordcloud 和 liveSummary 各自独立判定，可以单独打开/关闭
+			const wantWordcloud = this.isSubscribed(sub, "wordcloud");
+			const wantSummary = this.isSubscribed(sub, "liveSummary");
+			if (!wantWordcloud && !wantSummary) return;
+
+			this.liveLogger.debug(
+				`[wordcloud] 开始制作下播总结 wordcloud=${wantWordcloud} summary=${wantSummary}`,
+			);
 			const sortedWords = Object.entries(danmakuWeightRecord).sort((a, b) => b[1] - a[1]);
 
 			const [img, summary] = await Promise.all([
-				this.generateWordCloud(sortedWords, masterInfo?.username ?? "", masterInfo?.userface),
-				this.generateLiveSummaryText(
-					danmakuSenderRecord,
-					sortedWords,
-					masterInfo,
-					customLiveSummary,
-				),
+				wantWordcloud
+					? this.generateWordCloud(sortedWords, masterInfo?.username ?? "", masterInfo?.userface)
+					: Promise.resolve(undefined),
+				wantSummary
+					? this.generateLiveSummaryText(
+							danmakuSenderRecord,
+							sortedWords,
+							masterInfo,
+							customLiveSummary,
+						)
+					: Promise.resolve(undefined),
 			]);
 
 			if (this.isDisposed()) return;
@@ -690,7 +742,8 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			);
 
 			try {
-				if (sub.liveEnd) {
+				// 三个动作互相独立：下播卡片、词云、直播总结各看各的 master+target
+				if (this.isSubscribed(sub, "liveEnd")) {
 					await this.sendLiveNotifyCard({
 						liveType: LiveType.StopBroadcast,
 						liveData,
@@ -700,12 +753,12 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 						uid: sub.uid,
 						notifyMsg: liveEndMsg,
 					});
-					await sendDanmakuWordCloudAndLiveSummary(
-						sub.customLiveSummary.liveSummary || this.config.liveSummary.join("\n"),
-					);
 				}
+				await sendDanmakuWordCloudAndLiveSummary(
+					sub.customLiveSummary.liveSummary || this.config.liveSummary.join("\n"),
+				);
 			} finally {
-				// Always clear records to free memory regardless of liveEnd flag or send errors
+				// Always clear records to free memory regardless of master flags or send errors
 				clearDanmakuRecords();
 			}
 		};
@@ -766,10 +819,18 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			},
 
 			onIncomeDanmu: ({ body }) => {
-				this.segmentDanmaku(body.content, danmakuWeightRecord);
-				this.addUserToDanmakuMaker(body.user.uname, danmakuSenderRecord);
+				// 弹幕分词服务于下播时生成的 wordcloud / liveSummary。
+				// 任一开关 + 对应 channel 有订阅，才需要收集；两者都未订阅则跳过。
+				if (this.isSubscribed(sub, "wordcloud") || this.isSubscribed(sub, "liveSummary")) {
+					this.segmentDanmaku(body.content, danmakuWeightRecord);
+					this.addUserToDanmakuMaker(body.user.uname, danmakuSenderRecord);
+				}
+
+				// 特别关注弹幕：sub.customSpecialDanmakuUsers.enable 是这条特性的总开关，
+				// channel 级再看 specialDanmaku target；用户 UID 命中名单时按模板推送。
 				if (
 					sub.customSpecialDanmakuUsers.enable &&
+					this.hasTargets(sub, "specialDanmaku") &&
 					sub.customSpecialDanmakuUsers.specialDanmakuUsers?.includes(body.user.uid.toString())
 				) {
 					const msgTemplate = this.applyTemplate(sub.customSpecialDanmakuUsers.msgTemplate, {
@@ -784,9 +845,21 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			},
 
 			onIncomeSuperChat: async ({ body }) => {
+				// SC 监听双职责：1) 给 wordcloud/liveSummary 收集分词；2) 渲染并推送 SC 卡片。
+				// 先判断订阅，再做业务过滤（minScPrice）：两个目的都没有订阅时整段跳过；
+				// 只为词云收集时跳过昂贵的 API+渲染。
+				const collectsDanmaku =
+					this.isSubscribed(sub, "wordcloud") || this.isSubscribed(sub, "liveSummary");
+				const pushesSC = this.isSubscribed(sub, "superchat");
+				if (!collectsDanmaku && !pushesSC) return;
+
+				if (collectsDanmaku) {
+					this.segmentDanmaku(body.content, danmakuWeightRecord);
+					this.addUserToDanmakuMaker(body.user.uname, danmakuSenderRecord);
+				}
+				if (!pushesSC) return;
 				if (body.price < this.config.minScPrice) return;
-				this.segmentDanmaku(body.content, danmakuWeightRecord);
-				this.addUserToDanmakuMaker(body.user.uname, danmakuSenderRecord);
+
 				const data = await this.api.getUserInfoInLive(body.user.uid.toString(), sub.uid);
 				if (data.code !== 0) {
 					const content = h("message", [
@@ -841,6 +914,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			},
 
 			onGuardBuy: async ({ body }) => {
+				if (!this.isSubscribed(sub, "liveGuardBuy")) return;
 				if (body.guard_level > this.config.minGuardLevel) return;
 				const guardImg = GUARD_LEVEL_IMG[body.guard_level];
 				const effectiveGuardBuy = sub.customGuardBuy.enable
@@ -998,6 +1072,13 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		const userAction: MsgHandler = {
 			raw: {
 				INTERACT_WORD_V2: async (msg: unknown) => {
+					// 与 onIncomeDanmu 里的特别弹幕分支保持对称：master(enable) + channel target 双守卫
+					if (
+						!sub.customSpecialUsersEnterTheRoom.enable ||
+						!this.hasTargets(sub, "specialUserEnterTheRoom")
+					) {
+						return;
+					}
 					const pb = (msg as { data?: { pb?: unknown } })?.data?.pb;
 					if (typeof pb !== "string") {
 						this.liveLogger.warn(
