@@ -2,29 +2,24 @@ import type { BilibiliAPI } from "@bilibili-notify/api";
 import type {
 	BilibiliPush,
 	ChannelArr,
+	PushArrEntry,
 	PushArrMap,
 	SubItem,
+	SubItemMasters,
 	SubManager,
 	Subscriptions,
 	Target,
 } from "@bilibili-notify/push";
+import { MASTER_FEATURES, PUSH_FEATURES } from "@bilibili-notify/push";
 import type { Context, Logger } from "koishi";
 
-export interface FlatSubConfigItem {
+export type FlatSubConfigItem = SubItemMasters & {
 	name: string;
 	uid: string;
-	dynamic: boolean;
-	dynamicAtAll: boolean;
-	live: boolean;
-	liveAtAll: boolean;
-	liveGuardBuy: boolean;
-	superchat: boolean;
-	wordcloud: boolean;
-	liveSummary: boolean;
 	platform: string;
 	/** Comma-separated channel IDs */
 	target: string;
-}
+};
 
 function parseChannels(target: string, platform: string): ChannelArr {
 	return target
@@ -35,16 +30,17 @@ function parseChannels(target: string, platform: string): ChannelArr {
 
 function buildTargetFromFlat(item: FlatSubConfigItem): Target {
 	const channels = parseChannels(item.target, item.platform);
-	return {
-		dynamic: item.dynamic ? channels : undefined,
-		dynamicAtAll: item.dynamicAtAll ? channels : undefined,
-		live: item.live ? channels : undefined,
-		liveAtAll: item.liveAtAll ? channels : undefined,
-		liveGuardBuy: item.liveGuardBuy ? channels : undefined,
-		superchat: item.superchat ? channels : undefined,
-		wordcloud: item.wordcloud ? channels : undefined,
-		liveSummary: item.liveSummary ? channels : undefined,
-	};
+	const target: Target = {};
+	for (const key of MASTER_FEATURES) {
+		if (item[key]) target[key] = channels;
+	}
+	return target;
+}
+
+function pickMasters(source: SubItemMasters): SubItemMasters {
+	const out = {} as SubItemMasters;
+	for (const key of MASTER_FEATURES) out[key] = source[key];
+	return out;
 }
 
 function defaultCustomFields() {
@@ -58,18 +54,13 @@ function defaultCustomFields() {
 	};
 }
 
-function pushArrEntryFromTarget(target: Target) {
-	const toStrings = (arr?: ChannelArr) => (arr ?? []).map((c) => `${c.platform}:${c.channelId}`);
-	return {
-		dynamicArr: toStrings(target.dynamic),
-		dynamicAtAllArr: toStrings(target.dynamicAtAll),
-		liveArr: toStrings(target.live),
-		liveAtAllArr: toStrings(target.liveAtAll),
-		liveGuardBuyArr: toStrings(target.liveGuardBuy),
-		superchatArr: toStrings(target.superchat),
-		wordcloudArr: toStrings(target.wordcloud),
-		liveSummaryArr: toStrings(target.liveSummary),
-	};
+function pushArrEntryFromTarget(target: Target): PushArrEntry {
+	const out: PushArrEntry = {};
+	for (const key of PUSH_FEATURES) {
+		const arr = target[key];
+		if (arr?.length) out[key] = arr.map((c) => `${c.platform}:${c.channelId}`);
+	}
+	return out;
 }
 
 export class SubscriptionManager {
@@ -83,9 +74,7 @@ export class SubscriptionManager {
 				uid,
 				uname: s.name,
 				roomId,
-				dynamic: s.dynamic,
-				live: s.live,
-				liveEnd: true,
+				...pickMasters(s),
 				target: buildTargetFromFlat(s),
 				...defaultCustomFields(),
 			};
@@ -129,9 +118,7 @@ export class SubscriptionManager {
 			uid,
 			uname: item.name,
 			roomId,
-			dynamic: item.dynamic,
-			live: item.live,
-			liveEnd: true,
+			...pickMasters(item),
 			target: buildTargetFromFlat(item),
 			...defaultCustomFields(),
 		};
@@ -164,9 +151,7 @@ export class SubscriptionManager {
 		const existing = this.subManager.get(uid);
 		if (!existing) return null;
 
-		Object.assign(existing, {
-			dynamic: item.dynamic,
-			live: item.live,
+		Object.assign(existing, pickMasters(item), {
 			target: buildTargetFromFlat(item),
 		});
 		this.updatePushMapEntry(uid, existing);
@@ -294,9 +279,7 @@ export class SubscriptionManager {
 			uid: sub.uid,
 			uname: sub.uname,
 			roomId: sub.roomId,
-			dynamic: sub.dynamic,
-			live: sub.live,
-			liveEnd: sub.liveEnd,
+			...pickMasters(sub),
 			target: sub.target,
 			customCardStyle: sub.customCardStyle,
 			customLiveMsg: sub.customLiveMsg,

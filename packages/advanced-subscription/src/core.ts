@@ -3,38 +3,26 @@ import type {
 	CustomGuardBuy,
 	CustomLiveMsg,
 	CustomLiveSummary,
+	PushFeature,
 	SubItem,
+	SubItemMasters,
 	Subscriptions,
 	Target,
 } from "@bilibili-notify/push";
+import { MASTER_FEATURES, PUSH_FEATURES } from "@bilibili-notify/push";
 import { type Context, Schema } from "koishi";
 import type {} from "koishi-plugin-bilibili-notify";
 
-interface ChannelConfig {
-	channelId: string;
-	dynamic: boolean;
-	dynamicAtAll: boolean;
-	live: boolean;
-	liveAtAll: boolean;
-	liveGuardBuy: boolean;
-	superchat: boolean;
-	wordcloud: boolean;
-	liveSummary: boolean;
-	specialDanmaku: boolean;
-	specialUserEnterTheRoom: boolean;
-}
+type ChannelConfig = Record<PushFeature, boolean> & { channelId: string };
 
 interface TargetConfig {
 	platform: string;
 	channelArr: ChannelConfig[];
 }
 
-interface SubItemRawConfig {
+type SubItemRawConfig = SubItemMasters & {
 	uid: string;
 	roomId: string;
-	dynamic: boolean;
-	live: boolean;
-	liveEnd: boolean;
 	target: TargetConfig[];
 	customLiveSummary: { enable: boolean; liveSummary?: string[] };
 	customLiveMsg: CustomLiveMsg;
@@ -50,7 +38,7 @@ interface SubItemRawConfig {
 		specialUsersEnterTheRoom?: string[];
 		msgTemplate?: string;
 	};
-}
+};
 
 export interface BilibiliNotifyAdvancedSubConfig {
 	subs: Record<string, SubItemRawConfig>;
@@ -62,9 +50,17 @@ export const BilibiliNotifyAdvancedSubConfig: Schema<BilibiliNotifyAdvancedSubCo
 			Schema.object({
 				uid: Schema.string().required().description("要订阅的UP主的UID"),
 				roomId: Schema.string().default("").description("直播间号，留空则自动查询"),
-				dynamic: Schema.boolean().default(false).description("是否订阅动态通知"),
-				live: Schema.boolean().default(false).description("是否订阅直播开播通知"),
-				liveEnd: Schema.boolean().default(true).description("是否订阅直播下播通知"),
+				dynamic: Schema.boolean().default(true).description("是否订阅动态通知（总开关）"),
+				dynamicAtAll: Schema.boolean()
+					.default(false)
+					.description("是否在动态通知中@所有人（总开关）"),
+				live: Schema.boolean().default(true).description("是否订阅直播开播通知（总开关）"),
+				liveAtAll: Schema.boolean().default(true).description("是否在开播通知中@所有人（总开关）"),
+				liveEnd: Schema.boolean().default(true).description("是否订阅直播下播通知（总开关）"),
+				liveGuardBuy: Schema.boolean().default(false).description("是否订阅上舰通知（总开关）"),
+				superchat: Schema.boolean().default(false).description("是否订阅SC通知（总开关）"),
+				wordcloud: Schema.boolean().default(true).description("是否订阅弹幕词云（总开关）"),
+				liveSummary: Schema.boolean().default(true).description("是否订阅直播总结（总开关）"),
 
 				target: Schema.array(
 					Schema.object({
@@ -78,6 +74,7 @@ export const BilibiliNotifyAdvancedSubConfig: Schema<BilibiliNotifyAdvancedSubCo
 								dynamicAtAll: Schema.boolean().default(false).description("动态@所有人"),
 								live: Schema.boolean().default(true).description("直播通知"),
 								liveAtAll: Schema.boolean().default(true).description("开播@所有人"),
+								liveEnd: Schema.boolean().default(true).description("下播通知"),
 								liveGuardBuy: Schema.boolean().default(false).description("上舰通知"),
 								superchat: Schema.boolean().default(false).description("SC通知"),
 								wordcloud: Schema.boolean().default(true).description("弹幕词云"),
@@ -245,34 +242,32 @@ export const BilibiliNotifyAdvancedSubConfig: Schema<BilibiliNotifyAdvancedSubCo
 		),
 	});
 
-/** ChannelConfig flag fields that map 1:1 to Target array fields. */
-const CHANNEL_FIELDS = [
-	"dynamic",
-	"dynamicAtAll",
-	"live",
-	"liveAtAll",
-	"liveGuardBuy",
-	"superchat",
-	"wordcloud",
-	"liveSummary",
-	"specialDanmaku",
-	"specialUserEnterTheRoom",
-] as const satisfies ReadonlyArray<keyof Target & keyof ChannelConfig>;
+function pickRawMasters(raw: SubItemRawConfig): SubItemMasters {
+	const out = {} as SubItemMasters;
+	for (const key of MASTER_FEATURES) out[key] = raw[key] !== false;
+	return out;
+}
 
 function configToSubItem(name: string, raw: SubItemRawConfig): SubItem {
-	const target = (raw.target ?? []).reduce<Target>((acc, entry) => {
+	const target: Target = {};
+	for (const entry of raw.target ?? []) {
 		const { platform, channelArr } = entry;
-		if (!channelArr?.length) return acc;
+		if (!channelArr?.length) continue;
 		for (const ch of channelArr) {
 			const item = { platform, channelId: ch.channelId };
-			for (const key of CHANNEL_FIELDS) {
+			for (const key of PUSH_FEATURES) {
 				if (!ch[key]) continue;
-				if (!acc[key]) acc[key] = [];
-				acc[key]?.push(item);
+				if (!target[key]) target[key] = [];
+				target[key]?.push(item);
 			}
 		}
-		return acc;
-	}, {});
+	}
+
+	// sub 级总开关压制：master 关闭时抹掉对应特性的全部 channel，
+	// 即使 channel 自己开着也不发。
+	for (const key of MASTER_FEATURES) {
+		if (raw[key] === false) delete target[key];
+	}
 
 	const customLiveSummary: CustomLiveSummary = {
 		enable: !!raw.customLiveSummary?.enable,
@@ -283,9 +278,7 @@ function configToSubItem(name: string, raw: SubItemRawConfig): SubItem {
 		uid: raw.uid,
 		uname: name,
 		roomId: raw.roomId ?? "",
-		dynamic: !!raw.dynamic,
-		live: !!raw.live,
-		liveEnd: raw.liveEnd !== false,
+		...pickRawMasters(raw),
 		target,
 		customCardStyle: raw.customCardStyle ?? { enable: false },
 		customLiveMsg: raw.customLiveMsg ?? { enable: false },
