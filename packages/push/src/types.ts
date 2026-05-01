@@ -61,6 +61,21 @@ export const MASTER_FEATURES = [
 ] as const satisfies ReadonlyArray<PushFeature>;
 export type MasterFeature = (typeof MASTER_FEATURES)[number];
 
+/**
+ * MASTER_FEATURES 的子集：依赖直播间 WS 连接（消息流）的特性。
+ * 任一为 true 都意味着需要一个有效 roomId 并建立 listener。
+ * （`liveAtAll` / `dynamicAtAll` 仅是修饰符，不需要单独连接。）
+ */
+export const LIVE_ROOM_MASTERS = [
+	"live",
+	"liveEnd",
+	"liveGuardBuy",
+	"superchat",
+	"wordcloud",
+	"liveSummary",
+] as const satisfies ReadonlyArray<MasterFeature>;
+export type LiveRoomMaster = (typeof LIVE_ROOM_MASTERS)[number];
+
 export type SubItemMasters = Record<MasterFeature, boolean>;
 
 /** UID → 各特性的目标 channel 列表（已解析为 "platform:channelId"）。 */

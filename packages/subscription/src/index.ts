@@ -10,7 +10,7 @@ import type {
 	Subscriptions,
 	Target,
 } from "@bilibili-notify/push";
-import { MASTER_FEATURES, PUSH_FEATURES } from "@bilibili-notify/push";
+import { LIVE_ROOM_MASTERS, MASTER_FEATURES, PUSH_FEATURES } from "@bilibili-notify/push";
 import type { Context, Logger } from "koishi";
 
 export type FlatSubConfigItem = SubItemMasters & {
@@ -61,6 +61,19 @@ function pushArrEntryFromTarget(target: Target): PushArrEntry {
 		if (arr?.length) out[key] = arr.map((c) => `${c.platform}:${c.channelId}`);
 	}
 	return out;
+}
+
+/**
+ * 是否需要为该订阅建立直播间 WS 连接 / 解析 roomId。
+ * 任一直播间相关 master 命中、或两个 customSpecial*.enable 之一开启都需要。
+ * 与 live-service 的 needsLiveMonitor 共用同一份事实源（LIVE_ROOM_MASTERS）。
+ */
+function needsLiveRoom(sub: SubItem): boolean {
+	return (
+		LIVE_ROOM_MASTERS.some((k) => sub[k]) ||
+		sub.customSpecialDanmakuUsers.enable ||
+		sub.customSpecialUsersEnterTheRoom.enable
+	);
 }
 
 export class SubscriptionManager {
@@ -123,7 +136,7 @@ export class SubscriptionManager {
 			...defaultCustomFields(),
 		};
 
-		if (sub.live && !sub.roomId) {
+		if (needsLiveRoom(sub) && !sub.roomId) {
 			const resolved = await this.resolveRoomId(sub);
 			if (!resolved) return null;
 		}
@@ -199,7 +212,7 @@ export class SubscriptionManager {
 				}
 			}
 
-			if (sub.live && !sub.roomId) {
+			if (needsLiveRoom(sub) && !sub.roomId) {
 				const prevRoomId = prevSubManager.get(sub.uid)?.roomId;
 				if (prevRoomId) {
 					sub.roomId = prevRoomId;
@@ -261,8 +274,12 @@ export class SubscriptionManager {
 				return false;
 			}
 			if (!info.data?.live_room) {
-				this.logger.warn(`[room] UID:${sub.uid} 用户没有开通直播间，已跳过直播订阅`);
-				sub.live = false;
+				this.logger.warn(`[room] UID:${sub.uid} 用户没有开通直播间，已禁用所有直播相关订阅`);
+				// UP 没开通直播间 → 所有依赖直播间 WS 的特性都不可能生效，
+				// 一并关掉 master 和两个 customSpecial*.enable，防止 live-service 拿空 roomId 起 listener。
+				for (const key of LIVE_ROOM_MASTERS) sub[key] = false;
+				sub.customSpecialDanmakuUsers.enable = false;
+				sub.customSpecialUsersEnterTheRoom.enable = false;
 				return true;
 			}
 			sub.roomId = String(info.data.live_room.roomid);

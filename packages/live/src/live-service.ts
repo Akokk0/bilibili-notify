@@ -13,7 +13,7 @@ import type {
 	SubItem,
 	Subscriptions,
 } from "@bilibili-notify/push";
-import { PushType } from "@bilibili-notify/push";
+import { LIVE_ROOM_MASTERS, PushType } from "@bilibili-notify/push";
 import {
 	GuardLevel,
 	type MessageListener,
@@ -149,15 +149,11 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 	 * 判断该订阅是否需要建立直播间 WS 连接。
 	 * 任一依赖直播间事件流的特性命中（master + target 都有效）就需要 listener。
 	 * 注意 schema 里 `live` 已经收窄为"开播通知"，所以不能再单独以 `sub.live` 为门槛。
+	 * 与 subscription 包的 `needsLiveRoom` 共用 `LIVE_ROOM_MASTERS` 事实源。
 	 */
 	private needsLiveMonitor(sub: SubItem): boolean {
 		return (
-			this.isSubscribed(sub, "live") ||
-			this.isSubscribed(sub, "liveEnd") ||
-			this.isSubscribed(sub, "liveGuardBuy") ||
-			this.isSubscribed(sub, "superchat") ||
-			this.isSubscribed(sub, "wordcloud") ||
-			this.isSubscribed(sub, "liveSummary") ||
+			LIVE_ROOM_MASTERS.some((k) => this.isSubscribed(sub, k)) ||
 			(sub.customSpecialDanmakuUsers.enable && this.hasTargets(sub, "specialDanmaku")) ||
 			(sub.customSpecialUsersEnterTheRoom.enable && this.hasTargets(sub, "specialUserEnterTheRoom"))
 		);
@@ -260,6 +256,14 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 
 	private async startLiveRoomListener(roomId: string, handler: MsgHandler): Promise<void> {
 		if (this.isDisposed()) return;
+		// 防御：上游应保证 roomId 已解析；若仍空/非法则拒绝建连，避免 tiny-bilibili-ws 抛 NaN
+		const roomIdNum = Number.parseInt(roomId, 10);
+		if (!Number.isFinite(roomIdNum) || roomIdNum <= 0) {
+			this.liveLogger.error(
+				`[conn] roomId 非法（"${roomId}"），跳过 listener 创建。请检查订阅配置或用户是否开通直播间`,
+			);
+			return;
+		}
 		if (this.listenerRecord[roomId]) {
 			this.liveLogger.warn(`[conn] 直播间 [${roomId}] 连接已存在，跳过创建`);
 			return;
@@ -282,7 +286,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 
 		if (this.isDisposed()) return;
 
-		const listener = startListen(Number.parseInt(roomId, 10), handler, {
+		const listener = startListen(roomIdNum, handler, {
 			ws: {
 				headers: { Cookie: cookiesStr },
 				uid: mySelfInfo.data.mid,
