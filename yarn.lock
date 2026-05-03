@@ -198,6 +198,9 @@ __metadata:
 "@bilibili-notify/subscription@workspace:^, @bilibili-notify/subscription@workspace:packages/subscription":
   version: 0.0.0-use.local
   resolution: "@bilibili-notify/subscription@workspace:packages/subscription"
+  dependencies:
+    "@bilibili-notify/api": "workspace:^"
+    "@bilibili-notify/push": "workspace:^"
   peerDependencies:
     koishi: ^4.18.11
   languageName: unknown

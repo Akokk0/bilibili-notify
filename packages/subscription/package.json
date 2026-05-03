@@ -24,6 +24,10 @@
 		"build": "tsdown",
 		"typecheck": "tsc --noEmit"
 	},
+	"dependencies": {
+		"@bilibili-notify/api": "workspace:^",
+		"@bilibili-notify/push": "workspace:^"
+	},
 	"peerDependencies": {
 		"koishi": "^4.18.11"
 	},
