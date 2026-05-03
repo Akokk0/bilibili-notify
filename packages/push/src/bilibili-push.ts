@@ -19,6 +19,17 @@ function isTransportError(err: Error): boolean {
 	);
 }
 
+/**
+ * 部分 OneBot 实现（NapCat / Lagrange 等）在群消息含 `@全体` 时偶发返回非零
+ * retcode（最常见 1200）但消息已成功下发。把这类已知"报错但已发送"的情况识别
+ * 为成功，避免触发重试导致重复推送，也避免上层误报"放弃推送"。
+ */
+function isAmbiguousSuccess(platform: string, err: Error): boolean {
+	if (platform !== "onebot") return false;
+	const msg = err.message ?? "";
+	return /\bretcode:\s*1200\b/.test(msg);
+}
+
 export interface BilibiliPushConfig {
 	logLevel: number;
 	master: MasterConfig;
@@ -253,9 +264,29 @@ export class BilibiliPush {
 			);
 
 			if (!onlineBot) {
+				// 区分两种情况：
+				// 1. 当前没有任何在线 bot（断线/未登录）→ sleep + 等重连后再试
+				// 2. 在线 bot 都已尝试过且都报了非 transport 错误 → 同样的错误重试只会
+				//    重复发同一条失败请求（在 retcode-1200-已送达 这类场景下还会复制推送），
+				//    必须立即放弃。
+				const hasOnlineUntried = bots.some(
+					(b) => b.status === Universal.Status.ONLINE && !triedBotIds.has(b.selfId),
+				);
+				const hasAnyOnline = bots.some((b) => b.status === Universal.Status.ONLINE);
+
+				if (hasAnyOnline && !hasOnlineUntried) {
+					this.logger.error(
+						`[push] 平台 ${platform} 所有在线机器人均失败（已尝试 ${triedBotIds.size} 个），放弃推送到 ${channelId}`,
+					);
+					await this.sendPrivateMsg(
+						`平台 ${platform} 所有在线机器人均失败，放弃推送到 ${channelId}`,
+					);
+					return false;
+				}
+
 				if (delay > MAX_RETRY_DELAY_MS) {
 					this.logger.error(
-						`[push] 平台 ${platform} 所有机器人均不可用（已尝试 ${triedBotIds.size} 个），放弃推送到 ${channelId}`,
+						`[push] 平台 ${platform} 持续无可用机器人（已等待 ${MAX_RETRY_DELAY_MS / 1000}s+），放弃推送到 ${channelId}`,
 					);
 					await this.sendPrivateMsg(`机器人持续不可用，放弃推送到 ${channelId}`);
 					return false;
@@ -266,7 +297,7 @@ export class BilibiliPush {
 				await this.sleep(delay);
 				if (this.disposed) return false;
 				delay *= 2;
-				triedBotIds.clear(); // 等待后重新尝试所有 bot
+				triedBotIds.clear(); // 等待后 bot 可能恢复，重新尝试全部
 				continue;
 			}
 
@@ -278,6 +309,16 @@ export class BilibiliPush {
 			} catch (e) {
 				if (this.disposed) return false;
 				const err = e as Error;
+
+				if (isAmbiguousSuccess(platform, err)) {
+					// OneBot 1200 这类"报错但消息已发送"的场景：再试同一个 bot 会
+					// 再发一条副本，必须直接当成成功返回。
+					this.logger.warn(
+						`[push] 机器人 ${onlineBot.selfId} 推送到 ${channelId} 报告 ambiguous-success（${err.message}），不重试`,
+					);
+					await this.sleep(SEND_THROTTLE_MS);
+					return true;
+				}
 
 				if (isTransportError(err)) {
 					this.logger.warn(
