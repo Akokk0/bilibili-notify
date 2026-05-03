@@ -1,5 +1,5 @@
 ---
-"koishi-plugin-bilibili-notify": patch
+"@bilibili-notify/push": patch
 ---
 
 Fix duplicate pushes + spurious "放弃推送" log when OneBot reports
