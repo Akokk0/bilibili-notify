@@ -6,6 +6,7 @@ export interface BilibiliNotifyConfig {
 	subs: FlatSubConfigItem[];
 	logLevel: number;
 	userAgent?: string;
+	loginHealthCheckMinutes: number;
 	master: {
 		enable: boolean;
 		platform?: string;
@@ -55,6 +56,15 @@ export const BilibiliNotifyConfigSchema: Schema<BilibiliNotifyConfig> = Schema.o
 	userAgent: Schema.string().description(
 		"这里可以设置请求头的 User-Agent 哦～如果请求出现了 -352 的奇怪错误，主人可以试着在这里换一个看看 (；>_<)",
 	),
+
+	loginHealthCheckMinutes: Schema.number()
+		.min(5)
+		.max(180)
+		.step(1)
+		.default(30)
+		.description(
+			"登录状态周期检测的间隔（分钟）。女仆会按这个频率悄悄帮主人确认账号还在线哦～如果发现失效会立刻汇报呢 (๑•̀ㅂ•́)و✧",
+		),
 
 	master: Schema.intersect([
 		Schema.object({

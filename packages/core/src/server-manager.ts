@@ -1,10 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import {
-	BilibiliAPI,
-	BiliLoginStatus,
-	type MySelfInfoData,
-	type UserCardInfoData,
-} from "@bilibili-notify/api";
+import { BilibiliAPI, type MySelfInfoData, type UserCardInfoData } from "@bilibili-notify/api";
 import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
 import { BilibiliPush, type SubItem, type Subscriptions } from "@bilibili-notify/push";
 import { StorageManager } from "@bilibili-notify/storage";
@@ -16,6 +11,7 @@ import { type Awaitable, type Context, h, type Logger, Service } from "koishi";
 import QRCode from "qrcode";
 import { biliCommands, statusCommands, sysCommands } from "./commands";
 import type { BilibiliNotifyConfig } from "./config";
+import { LoginStatusController } from "./login-status";
 import type { SubChange, SubscriptionOp } from "./types";
 
 const SERVICE_NAME = "bilibili-notify";
@@ -82,6 +78,8 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 	private running = false;
 	storageMgr!: StorageManager;
 	private currentSubs: Subscriptions | null = null;
+	private auth!: LoginStatusController;
+	private authLostNotifiedAt = 0;
 
 	constructor(ctx: Context, config: BilibiliNotifyConfig) {
 		super(ctx, SERVICE_NAME);
@@ -113,6 +111,15 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 
 		this.storageMgr = new StorageManager(this.ctx.baseDir, this.ctx);
 		await this.storageMgr.init();
+
+		this.auth = new LoginStatusController(this.selfCtx, {
+			healthCheckMs: this.config.loginHealthCheckMinutes * 60_000,
+			logger: this.serverLogger,
+			probe: () => {
+				if (!this.api) throw new Error("api not initialized");
+				return this.api.getMyselfInfo();
+			},
+		});
 
 		// Persist refreshed cookies
 		this.ctx.on("bilibili-notify/cookies-refreshed", async (data) => {
@@ -371,6 +378,9 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 					onCookiesRefreshed: (data) => {
 						this.selfCtx.emit("bilibili-notify/cookies-refreshed", data);
 					},
+					onAuthLost: () => {
+						void this.handleAuthLost();
+					},
 				},
 			);
 
@@ -399,10 +409,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 
 			if (!this.isLoggedIn()) {
 				this.serverLogger.info("[login] 账号未登录，请在控制台扫码登录");
-				this.selfCtx.emit("bilibili-notify/login-status-report", {
-					status: BiliLoginStatus.NOT_LOGIN,
-					msg: "账号未登录，请点击「扫码登录」",
-				});
+				this.auth.reportLoggedOut("notLogin");
 				return true;
 			}
 
@@ -420,6 +427,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		this.serverLogger.debug("[stop] 正在清理插件资源...");
 		this.running = false;
 		this.clearLoginTimer();
+		this.auth?.detachHealthCheck();
 		if (this.subNotifier) {
 			this.subNotifier.dispose();
 			this.subNotifier = undefined;
@@ -494,26 +502,40 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 
 	private async reportAccountInfo(): Promise<void> {
 		if (!this.api) return;
+		let personalInfo: MySelfInfoData;
 		try {
-			const personalInfo = (await this.api.getMyselfInfo()) as MySelfInfoData;
-			if (personalInfo.code !== 0) {
-				this.selfCtx.emit("bilibili-notify/login-status-report", {
-					status: BiliLoginStatus.LOGGED_IN,
-					msg: "账号已登录，但获取个人信息失败，请检查",
-				});
-				return;
-			}
-			const myCardInfo = (await this.api.getUserCardInfo(
-				personalInfo.data.mid.toString(),
-				true,
-			)) as UserCardInfoData;
-			this.selfCtx.emit("bilibili-notify/login-status-report", {
-				status: BiliLoginStatus.LOGGED_IN,
-				msg: "已登录",
-				data: myCardInfo.data,
-			});
+			personalInfo = await this.api.getMyselfInfo();
 		} catch (e) {
-			this.serverLogger.warn(`[account] 获取账号信息失败: ${e}`);
+			this.serverLogger.warn(`[account] 获取个人信息异常: ${e}`);
+			this.auth.reportTransientFailure(e);
+			this.auth.attachHealthCheck();
+			return;
+		}
+		if (personalInfo.code !== 0) {
+			this.auth.reportLoginCheck(personalInfo.code);
+			if (personalInfo.code !== -101) this.auth.attachHealthCheck();
+			return;
+		}
+		let card: UserCardInfoData["data"] | undefined;
+		try {
+			const cardInfo = await this.api.getUserCardInfo(personalInfo.data.mid.toString(), true);
+			card = cardInfo.data;
+		} catch (e) {
+			this.serverLogger.warn(`[account] 获取用户卡片失败: ${e}`);
+		}
+		this.auth.reportLoggedIn(card);
+		this.auth.attachHealthCheck();
+	}
+
+	private async handleAuthLost(): Promise<void> {
+		this.auth.reportLoggedOut("authLost");
+		const now = Date.now();
+		if (now - this.authLostNotifiedAt < 60_000) return;
+		this.authLostNotifiedAt = now;
+		try {
+			await this.push?.sendPrivateMsg("账号登录已失效，请在控制台重新扫码登录");
+		} catch (e) {
+			this.serverLogger.warn(`[auth] 失效通知私信失败：${e}`);
 		}
 	}
 
@@ -585,10 +607,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			this.serverLogger.info("[login] 触发重置密钥事件");
 			try {
 				await this.storageMgr.cookieStore.resetKey();
-				this.selfCtx.emit("bilibili-notify/login-status-report", {
-					status: BiliLoginStatus.NOT_LOGIN,
-					msg: "密钥已重置，cookie 已清除，请重新扫码登录",
-				});
+				this.auth.reportLoggedOut("keyReset");
 			} catch (e) {
 				this.serverLogger.error(`[login] 重置密钥失败：${e}`);
 			}
@@ -651,10 +670,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		}
 
 		if (qrContent.code !== 0) {
-			this.selfCtx.emit("bilibili-notify/login-status-report", {
-				status: BiliLoginStatus.LOGIN_FAILED,
-				msg: "获取二维码失败，请重试",
-			});
+			this.auth.reportQrFailure("qrFetchFailed");
 			return;
 		}
 
@@ -669,17 +685,10 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			(err: Error | null | undefined, buffer: Buffer) => {
 				if (err) {
 					this.serverLogger.error(`[login] 生成二维码失败：${err}`);
-					this.selfCtx.emit("bilibili-notify/login-status-report", {
-						status: BiliLoginStatus.LOGIN_FAILED,
-						msg: "生成二维码失败",
-					});
+					this.auth.reportQrFailure("qrRenderFailed");
 					return;
 				}
-				this.selfCtx.emit("bilibili-notify/login-status-report", {
-					status: BiliLoginStatus.LOGIN_QR,
-					msg: "",
-					data: `data:image/png;base64,${Buffer.from(buffer).toString("base64")}`,
-				});
+				this.auth.reportQrReady(`data:image/png;base64,${Buffer.from(buffer).toString("base64")}`);
 			},
 		);
 
@@ -701,10 +710,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		this.selfCtx.setTimeout(() => {
 			if (!this.loginTimer) return;
 			this.clearLoginTimer();
-			this.selfCtx.emit("bilibili-notify/login-status-report", {
-				status: BiliLoginStatus.LOGIN_FAILED,
-				msg: "二维码已超时（3分钟），请重新登录",
-			});
+			this.auth.reportQrFailure("qrExpired");
 		}, QR_TIMEOUT_MS);
 	}
 
@@ -722,25 +728,16 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		const code: number = loginContent?.data?.code;
 
 		if (code === 86101) {
-			this.selfCtx.emit("bilibili-notify/login-status-report", {
-				status: BiliLoginStatus.LOGGING_QR,
-				msg: "尚未扫码，请扫码",
-			});
+			this.auth.reportQrPending("waitScan");
 			return;
 		}
 		if (code === 86090) {
-			this.selfCtx.emit("bilibili-notify/login-status-report", {
-				status: BiliLoginStatus.LOGGING_QR,
-				msg: "已扫码，但尚未确认，请确认",
-			});
+			this.auth.reportQrPending("waitConfirm");
 			return;
 		}
 		if (code === 86038) {
 			this.clearLoginTimer();
-			this.selfCtx.emit("bilibili-notify/login-status-report", {
-				status: BiliLoginStatus.LOGIN_FAILED,
-				msg: "二维码已失效，请重新登录",
-			});
+			this.auth.reportQrFailure("qrInvalidated");
 			return;
 		}
 		if (code === 0) {
@@ -748,10 +745,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			const cookiesJson = this.api.getCookiesJson();
 			if (!cookiesJson || cookiesJson === "[]") {
 				this.serverLogger.error("[login] 登录成功但未获取到任何 cookie，放弃保存");
-				this.selfCtx.emit("bilibili-notify/login-status-report", {
-					status: BiliLoginStatus.LOGIN_FAILED,
-					msg: "登录成功但未获取到 cookie，请重试",
-				});
+				this.auth.reportQrFailure("noCookieAfterLogin");
 				return;
 			}
 			try {
@@ -760,20 +754,14 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			} catch (e) {
 				this.serverLogger.error(`[login] 保存 cookie 失败：${e}`);
 			}
-			this.selfCtx.emit("bilibili-notify/login-status-report", {
-				status: BiliLoginStatus.LOGGED_IN,
-				msg: "登录成功，正在加载订阅...",
-			});
+			this.auth.reportLoggedIn(undefined, "loginJustSucceeded");
 			await this.reportAccountInfo();
 			await this.loadInitialSubscriptions();
 			return;
 		}
 		if (loginContent?.code !== 0) {
 			this.clearLoginTimer();
-			this.selfCtx.emit("bilibili-notify/login-status-report", {
-				status: BiliLoginStatus.LOGIN_FAILED,
-				msg: "登录失败，请重试",
-			});
+			this.auth.reportQrFailure("genericLoginFail");
 		}
 	}
 
