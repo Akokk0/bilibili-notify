@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.3
+
+### Patch Changes
+
+- Updated dependencies [7d01398]
+  - @bilibili-notify/api@0.1.0
+
 ## 1.0.2
 
 ### Patch Changes
