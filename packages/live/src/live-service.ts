@@ -38,6 +38,8 @@ declare module "koishi" {
 	interface Events {
 		"bilibili-notify/subscription-changed"(ops: SubscriptionOp[]): void;
 		"bilibili-notify/plugin-error"(source: string, message: string): void;
+		"bilibili-notify/auth-lost"(): void;
+		"bilibili-notify/auth-restored"(): void;
 	}
 }
 
@@ -97,6 +99,21 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		// Listen for future subscription changes from core (incremental ops)
 		this.ctx.on("bilibili-notify/subscription-changed", (ops: SubscriptionOp[]) => {
 			this.applyOps(ops);
+		});
+		// Tear down all listeners on auth loss; rebootstrap on auth restore.
+		this.ctx.on("bilibili-notify/auth-lost", () => {
+			if (this.isDisposed()) return;
+			this.liveLogger.info("[live] 收到 auth-lost，关闭所有直播间监听");
+			this.clearPushTimers();
+			this.clearListeners();
+			this.subRecord.clear();
+		});
+		this.ctx.on("bilibili-notify/auth-restored", () => {
+			if (this.isDisposed()) return;
+			const internals = this.ctx["bilibili-notify"].getInternals(BILIBILI_NOTIFY_TOKEN);
+			if (!internals?.subs) return;
+			this.liveLogger.info("[live] 收到 auth-restored，重建直播间监听");
+			this.startLiveMonitors(internals.subs);
 		});
 		// Register commands
 		liveCommands.call(this);
@@ -270,17 +287,31 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		}
 
 		const cookiesStr = this.api.getCookiesHeader();
-		let mySelfInfo: MySelfInfoData | undefined;
-		for (let attempt = 1; attempt <= 3; attempt++) {
+		let mySelfInfo: MySelfInfoData;
+		try {
+			// API 内部已 retry 3 次；外层不再二次重试
 			mySelfInfo = await this.api.getMyselfInfo();
-			if (mySelfInfo.code === 0 && mySelfInfo.data) break;
-			this.liveLogger.warn(
-				`[conn] 获取个人信息失败（第 ${attempt}/3 次），直播间 [${roomId}]，code=${mySelfInfo.code}`,
+		} catch (e) {
+			const message = (e as Error).message ?? String(e);
+			this.liveLogger.error(`[conn] 获取个人信息异常，房间 [${roomId}]：${message}`);
+			this.ctx.emit(
+				"bilibili-notify/plugin-error",
+				SERVICE_NAME,
+				`[${roomId}] 获取个人信息异常：${message}`,
 			);
+			return;
 		}
 
-		if (!mySelfInfo || mySelfInfo.code !== 0 || !mySelfInfo.data) {
-			this.liveLogger.error(`[conn] 获取个人信息连续失败，无法创建直播间 [${roomId}] 连接`);
+		if (mySelfInfo.code !== 0 || !mySelfInfo.data) {
+			// -101 已由 api interceptor 上报至 controller；此处仅广播插件错误供运维感知
+			this.liveLogger.error(
+				`[conn] 获取个人信息失败 code=${mySelfInfo.code}，无法创建直播间 [${roomId}] 连接`,
+			);
+			this.ctx.emit(
+				"bilibili-notify/plugin-error",
+				SERVICE_NAME,
+				`[${roomId}] 获取个人信息失败 code=${mySelfInfo.code}`,
+			);
 			return;
 		}
 

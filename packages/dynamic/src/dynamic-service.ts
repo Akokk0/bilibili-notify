@@ -19,6 +19,8 @@ declare module "koishi" {
 	interface Events {
 		"bilibili-notify/subscription-changed"(ops: SubscriptionOp[]): void;
 		"bilibili-notify/plugin-error"(source: string, message: string): void;
+		"bilibili-notify/auth-lost"(): void;
+		"bilibili-notify/auth-restored"(): void;
 	}
 }
 
@@ -130,6 +132,13 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 		// Listen for future subscription changes from core (incremental ops)
 		this.ctx.on("bilibili-notify/subscription-changed", (ops: SubscriptionOp[]) => {
 			this.applyOps(ops);
+		});
+		// On auth restored, rebootstrap detection from the latest subs snapshot.
+		this.ctx.on("bilibili-notify/auth-restored", () => {
+			const internals = this.ctx["bilibili-notify"].getInternals(BILIBILI_NOTIFY_TOKEN);
+			if (!internals?.subs) return;
+			this.dynamicLogger.info("[detector] 收到 auth-restored，重启动态检测");
+			this.startDynamicDetector(internals.subs);
 		});
 		// Register commands
 		dynamicCommands.call(this);
@@ -472,6 +481,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 				this.dynamicLogger.error("[api] 账号未登录，动态检测已停止");
 				await this.push.sendPrivateMsg("账号未登录，请先登录");
 				this.ctx.emit("bilibili-notify/plugin-error", SERVICE_NAME, "账号未登录");
+				this.ctx.emit("bilibili-notify/auth-lost");
 				break;
 			}
 			case -352: {
