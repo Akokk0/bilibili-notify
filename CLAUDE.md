@@ -49,9 +49,16 @@ No test scripts are configured in this project.
 | `packages/dynamic` | `koishi-plugin-bilibili-notify-dynamic` | Optional: dynamic post polling via cron |
 | `packages/live` | `koishi-plugin-bilibili-notify-live` | Optional: live stream monitoring via WebSocket |
 | `packages/image` | `koishi-plugin-bilibili-notify-image` | Optional: card image rendering via Puppeteer/jsdom |
+| `packages/ai` | `koishi-plugin-bilibili-notify-ai` | Optional: AI-powered summarization / commentary via OpenAI-compatible API |
 | `packages/advanced-subscription` | `koishi-plugin-bilibili-notify-advanced-subscription` | Optional: fine-grained per-UP subscription config |
 
-Internal packages (`@bilibili-notify/*`) have `"private": true` and are not published to npm — they are workspace dependencies only.
+Internal packages (`@bilibili-notify/*`) are workspace-only dependencies (consumed via `workspace:^`) and are inlined into the publishable plugins at build time.
+
+### Workspace dependency hygiene
+
+Every workspace `src/` import that resolves to a runtime value (constants, classes, functions) **must** be declared in that package's `package.json` `dependencies`. Type-only imports (`import type`) don't appear in the cjs/mjs output, so they don't need to be declared, but a regular `import` does — even when the consumer happens to also depend on the same package transitively.
+
+Concrete example (the bug fixed in `c30ef62`): `@bilibili-notify/subscription/src` imports `LIVE_ROOM_MASTERS` (runtime value) from `@bilibili-notify/push`, so `packages/subscription/package.json` declares `@bilibili-notify/api` + `@bilibili-notify/push` under `dependencies`. Before that fix, the package only ran because consumers happened to install push at a version that still exported the constant; once a consumer's range resolved to an older push, the published artifact crashed at startup with `Cannot read properties of undefined (reading 'some')`.
 
 ### Config pattern
 
@@ -84,6 +91,7 @@ BilibiliNotifyServerManager
 koishi-plugin-bilibili-notify-dynamic   → requires bilibili-notify-api, bilibili-notify-push
 koishi-plugin-bilibili-notify-live      → requires bilibili-notify-api, bilibili-notify-push; optionally bilibili-notify-image
 koishi-plugin-bilibili-notify-image     → requires puppeteer; provides bilibili-notify-image service
+koishi-plugin-bilibili-notify-ai        → requires bilibili-notify (core service); calls OpenAI-compatible API
 koishi-plugin-bilibili-notify-advanced-subscription → emits bilibili-notify/advanced-sub event
 ```
 
@@ -103,6 +111,7 @@ Custom events declared on the Koishi `Context`:
 - **tsdown** — builds each package to both ESM (`.mjs`) and CJS (`.cjs`) with declaration files
 - **Biome** — linter and formatter (tab indentation, 100-char line width). Vue files are included in lint scope
 - **Lefthook** — pre-commit hook runs `yarn check:fix` (full repo) then `biome check --staged --write`
+- **Changesets** — release tooling. `updateInternalDependencies: "patch"` only **syncs version ranges in `package.json`** for downstream consumers; it does **not** automatically include publishable downstream packages in the release. When a change in package A affects the runtime behavior of publishable package B, B must be listed explicitly in the changeset frontmatter.
 
 ### Console UI (client)
 
