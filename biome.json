@@ -10,7 +10,8 @@
 			"**/*.vue",
 			"!**/src/static",
 			"!.changeset",
-			"!**/interface"
+			"!**/.interface",
+			"!.bn-design"
 		]
 	},
 	"formatter": {
