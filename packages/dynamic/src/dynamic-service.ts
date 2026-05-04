@@ -462,10 +462,11 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 		this.dynamicJob = undefined;
 		switch (code) {
 			case -101: {
+				// auth-lost 由 api interceptor 触发的 onAuthLost 单点广播；
+				// 通知主人由 server-manager.handleAuthLost 60 秒节流统一发送。
+				// 这里只需停 cron 与上报 plugin-error 供运维诊断。
 				this.dynamicLogger.error("[api] 账号未登录，动态检测已停止");
-				await this.push.sendPrivateMsg("账号未登录，请先登录");
 				this.ctx.emit("bilibili-notify/plugin-error", SERVICE_NAME, "账号未登录");
-				this.ctx.emit("bilibili-notify/auth-lost");
 				break;
 			}
 			case -352: {

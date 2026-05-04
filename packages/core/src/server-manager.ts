@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { BilibiliAPI, type MySelfInfoData, type UserCardInfoData } from "@bilibili-notify/api";
+import { BilibiliAPI, type MySelfInfoData, type UserCardInfo } from "@bilibili-notify/api";
 import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
 import { BilibiliPush, type SubItem, type Subscriptions } from "@bilibili-notify/push";
 import { StorageManager } from "@bilibili-notify/storage";
@@ -521,7 +521,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			if (personalInfo.code !== -101) this.auth.attachHealthCheck();
 			return;
 		}
-		let card: UserCardInfoData["data"] | undefined;
+		let card: UserCardInfo | undefined;
 		try {
 			const cardInfo = await this.api.getUserCardInfo(personalInfo.data.mid.toString(), true);
 			card = cardInfo.data;

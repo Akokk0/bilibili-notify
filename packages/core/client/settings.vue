@@ -89,6 +89,7 @@
 
 <script lang="ts" setup>
 /** biome-ignore-all lint/suspicious/noExplicitAny: <any required> */
+import type { UserCardInfo } from "@bilibili-notify/api";
 import { send, store } from "@koishijs/client";
 import { inject, ref, watch } from "vue";
 
@@ -100,92 +101,6 @@ enum BiliLoginStatus {
 	LOGGED_IN = 5,
 	LOGIN_FAILED = 7,
 }
-
-type UserCardInfoData = {
-	card: {
-		mid: string;
-		approve: boolean;
-		name: string;
-		sex: string;
-		face: string;
-		DisplayRank: string;
-		regtime: number;
-		spacesta: number;
-		birthday: string;
-		place: string;
-		description: string;
-		article: number;
-		attention: number;
-		fans: number;
-		sign: string;
-		level_info: {
-			current_level: number;
-			current_min: number;
-			current_exp: number;
-			next_exp: number;
-		};
-		pendant: {
-			pid: number;
-			name: string;
-			image: string;
-			expire: number;
-		};
-		nameplate: {
-			nid: number;
-			name: string;
-			image: string;
-			image_small: string;
-			level: string;
-			condition: string;
-		};
-		Official: {
-			role: number;
-			title: string;
-			desc: string;
-			type: number;
-		};
-		official_verify: {
-			type: number;
-			desc: string;
-		};
-		vip: {
-			vipType: number;
-			dueRemark: string;
-			accessStatus: number;
-			vipStatus: number;
-			vipStatusWarn: string;
-			theme_type: number;
-			label: {
-				bg_color: string;
-				bg_style: number;
-				border_color: string;
-				img_label_uri_hans: string;
-				img_label_uri_hans_static: string;
-				img_label_uri_hant: string;
-				img_label_uri_hant_static: string;
-				label_goto: {
-					mobile: string;
-					pc_web: string;
-				};
-				label_id: number;
-				label_theme: string;
-				path: string;
-				text: string;
-				text_color: string;
-				use_img_label: boolean;
-			};
-		};
-	};
-	space: {
-		s_img: string;
-		l_img: string;
-	};
-	following: boolean;
-	archive_count: number;
-	article_count: number;
-	follower: number;
-	like_num: number;
-};
 
 const local: any = inject("manager.settings.local");
 
@@ -220,7 +135,7 @@ watch(
 				return;
 			case BiliLoginStatus.LOGGED_IN: {
 				status.value = "logged_in";
-				const data = biliStore.data as UserCardInfoData | undefined;
+				const data = biliStore.data as UserCardInfo | undefined;
 				// 登录刚成功的中转帧 data 可能尚未带 card（控制器还在拉取卡片），
 				// 留在 loading 状态等下一帧。
 				if (!data?.card) return;

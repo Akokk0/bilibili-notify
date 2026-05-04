@@ -2,7 +2,7 @@ import {
 	type BiliDataServer,
 	BiliLoginStatus,
 	type MySelfInfoData,
-	type UserCardInfoData,
+	type UserCardInfo,
 } from "@bilibili-notify/api";
 import type { Context, Logger } from "koishi";
 
@@ -49,7 +49,7 @@ export interface LoginStatusOptions {
 	probe: () => Promise<MySelfInfoData>;
 }
 
-/** 类型守卫：snapshot.data 是否长得像 UserCardInfoData["data"]。 */
+/** 类型守卫：snapshot.data 是否长得像 UserCardInfo。 */
 function looksLikeCardData(data: unknown): boolean {
 	return typeof data === "object" && data !== null && "card" in data;
 }
@@ -97,7 +97,7 @@ export class LoginStatusController {
 
 	// ---- Reporters ----
 
-	reportLoggedIn(card?: UserCardInfoData["data"], reasonKey: LoginStatusMsgKey = "loggedIn"): void {
+	reportLoggedIn(card?: UserCardInfo, reasonKey: LoginStatusMsgKey = "loggedIn"): void {
 		const wasLoggedIn = this.snapshot.status === BiliLoginStatus.LOGGED_IN;
 		// 仅当 snapshot.data 看起来是 card 形态时才作为 fallback 沿用。否则
 		// （如 LOGIN_QR 留下的 base64 字符串）就清空，避免给前端假数据。
@@ -126,7 +126,7 @@ export class LoginStatusController {
 	}
 
 	/** Dispatch on `getMyselfInfo` result code. */
-	reportLoginCheck(code: number, card?: UserCardInfoData["data"]): void {
+	reportLoginCheck(code: number, card?: UserCardInfo): void {
 		if (code === 0) {
 			this.reportLoggedIn(card);
 		} else if (code === -101) {

@@ -76,21 +76,41 @@ export interface MySelfInfoData {
 	};
 }
 
+export interface UserCard {
+	mid: string;
+	name: string;
+	face: string;
+	sign: string;
+	attention: number;
+	fans: number;
+	level_info: { current_level: number };
+	official: { role: number; title: string; type: number };
+	vip: {
+		type: number;
+		status: number;
+		vipStatus: number;
+		label: {
+			text: string;
+			img_label_uri_hans_static: string;
+		};
+	};
+}
+
+export interface UserCardSpace {
+	s_img: string;
+	l_img: string;
+}
+
+/** Body of `UserCardInfoData.data` — exported for client-side consumers. */
+export interface UserCardInfo {
+	card: UserCard;
+	space: UserCardSpace;
+	like_num: number;
+}
+
 export interface UserCardInfoData {
 	code: number;
-	data: {
-		card: {
-			mid: string;
-			name: string;
-			face: string;
-			sign: string;
-			level_info: { current_level: number };
-			official: { role: number; title: string; type: number };
-			vip: { type: number; status: number; label: { text: string } };
-			fans: number;
-		};
-		like_num: number;
-	};
+	data: UserCardInfo;
 }
 
 // ---- Live ----

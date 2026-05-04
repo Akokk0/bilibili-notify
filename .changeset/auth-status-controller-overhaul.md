@@ -35,3 +35,11 @@
   `data` fallback 传给前端，导致前端访问 `data.card.face` 抛错的小问题；
   现在仅当 `snapshot.data` 形态像 card 时才沿用，前端也加了 `data?.card`
   的安全访问。
+- 整理 `UserCardInfoData` 类型：拆出 `UserCard` / `UserCardSpace` /
+  `UserCardInfo` 子类型并补齐控制台 UI 实际使用的 `attention` /
+  `vip.vipStatus` / `vip.label.img_label_uri_hans_static` / `space.l_img`
+  字段，删除前端 settings.vue 内联的 80+ 行 workaround 类型定义。
+- 收敛 `auth-lost` 事件来源：由 api response interceptor 的
+  `onAuthLost` 回调单点广播，dynamic 在 -101 分支不再重复 emit；同时
+  删除 dynamic 自己的"账号未登录"私信，避免与 server-manager 节流私
+  信内容重复。
