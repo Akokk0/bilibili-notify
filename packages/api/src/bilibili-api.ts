@@ -23,9 +23,16 @@ export interface CookiesRefreshedPayload {
 	refreshToken: string;
 }
 
+export interface BilibiliAPICallbacks {
+	onCookiesRefreshed?: (payload: CookiesRefreshedPayload) => void;
+	/** Fired when the upstream returns code -101 (session invalid). Debounced 60s. */
+	onAuthLost?: () => void;
+}
+
 // Special UID: Bangumi Trip account has no live room; return a static room id
 const BANGUMI_TRIP_UID = "11783021";
 const BANGUMI_TRIP_ROOM_ID = 931774;
+const AUTH_LOST_DEBOUNCE_MS = 60_000;
 
 export interface BilibiliAPIConfig {
 	logLevel: number;
@@ -35,7 +42,7 @@ export interface BilibiliAPIConfig {
 export class BilibiliAPI {
 	readonly logger: Logger;
 	private readonly config: BilibiliAPIConfig;
-	private readonly onCookiesRefreshed?: (payload: CookiesRefreshedPayload) => void;
+	private readonly callbacks: BilibiliAPICallbacks;
 
 	private jar: CookieJar;
 	private client!: AxiosInstance;
@@ -45,14 +52,11 @@ export class BilibiliAPI {
 	private ticketJob!: CronJob;
 	private refreshCookieIntervalId?: ReturnType<typeof setInterval>;
 	private loginInfoLoaded = false;
+	private authLostFiredAt = 0;
 
-	constructor(
-		ctx: Context,
-		config: BilibiliAPIConfig,
-		onCookiesRefreshed?: (payload: CookiesRefreshedPayload) => void,
-	) {
+	constructor(ctx: Context, config: BilibiliAPIConfig, callbacks: BilibiliAPICallbacks = {}) {
 		this.config = config;
-		this.onCookiesRefreshed = onCookiesRefreshed;
+		this.callbacks = callbacks;
 		this.logger = ctx.logger("bilibili-notify-api");
 		this.logger.level = config.logLevel;
 		this.jar = new CookieJar();
@@ -115,6 +119,24 @@ export class BilibiliAPI {
 				},
 			}),
 		);
+		this.client.interceptors.response.use((response) => {
+			const data = response.data as { code?: unknown } | undefined;
+			if (data && typeof data.code === "number") this.maybeFireAuthLost(data.code);
+			return response;
+		});
+	}
+
+	/** Fire onAuthLost only when code === -101, with a 60s debounce to avoid burst calls. */
+	private maybeFireAuthLost(code: number): void {
+		if (code !== -101) return;
+		const now = Date.now();
+		if (now - this.authLostFiredAt < AUTH_LOST_DEBOUNCE_MS) return;
+		this.authLostFiredAt = now;
+		try {
+			this.callbacks.onAuthLost?.();
+		} catch (e) {
+			this.logger.warn(`[auth] onAuthLost 回调抛错: ${e}`);
+		}
 	}
 
 	// ---- Cookie management ----
@@ -281,6 +303,8 @@ export class BilibiliAPI {
 			this.logger.warn(
 				"[cookie] 刷新接口返回 -101（账号未登录），已重置 HTTP 客户端，需重新扫码登录",
 			);
+			this.maybeFireAuthLost(-101);
+			this.jar = new CookieJar();
 			await this.initClient();
 			return;
 		}
@@ -302,7 +326,7 @@ export class BilibiliAPI {
 		}
 
 		// 通知 core 持久化新 cookie
-		this.onCookiesRefreshed?.({
+		this.callbacks.onCookiesRefreshed?.({
 			cookiesJson: this.getCookiesJson() ?? "[]",
 			refreshToken: refreshData.data.refresh_token as string,
 		});

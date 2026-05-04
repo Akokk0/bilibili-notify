@@ -5,9 +5,7 @@ export enum BiliLoginStatus {
 	LOADING_LOGIN_INFO = 1,
 	LOGIN_QR = 2,
 	LOGGING_QR = 3,
-	LOGGING_IN = 4,
 	LOGGED_IN = 5,
-	LOGIN_SUCCESS = 6,
 	LOGIN_FAILED = 7,
 }
 

@@ -367,8 +367,10 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 					logLevel: this.config.logLevel,
 					userAgent: this.config.userAgent,
 				},
-				(data) => {
-					this.selfCtx.emit("bilibili-notify/cookies-refreshed", data);
+				{
+					onCookiesRefreshed: (data) => {
+						this.selfCtx.emit("bilibili-notify/cookies-refreshed", data);
+					},
 				},
 			);
 
@@ -759,7 +761,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 				this.serverLogger.error(`[login] 保存 cookie 失败：${e}`);
 			}
 			this.selfCtx.emit("bilibili-notify/login-status-report", {
-				status: BiliLoginStatus.LOGIN_SUCCESS,
+				status: BiliLoginStatus.LOGGED_IN,
 				msg: "登录成功，正在加载订阅...",
 			});
 			await this.reportAccountInfo();
