@@ -27,6 +27,8 @@ declare module "koishi" {
 	}
 	interface Events {
 		"bilibili-notify/login-status-report"(data: BiliDataServer): void;
+		"bilibili-notify/auth-lost"(): void;
+		"bilibili-notify/auth-restored"(): void;
 		"bilibili-notify/advanced-sub"(subs: Subscriptions): void;
 		"bilibili-notify/ready-to-receive"(): void;
 		"bilibili-notify/cookies-refreshed"(data: CookieData): void;
