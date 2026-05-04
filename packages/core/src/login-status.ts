@@ -49,6 +49,11 @@ export interface LoginStatusOptions {
 	probe: () => Promise<MySelfInfoData>;
 }
 
+/** 类型守卫：snapshot.data 是否长得像 UserCardInfoData["data"]。 */
+function looksLikeCardData(data: unknown): boolean {
+	return typeof data === "object" && data !== null && "card" in data;
+}
+
 /**
  * 集中管理登录态：所有变更都经过这里，再以 `bilibili-notify/login-status-report`
  * 推到前端。心跳定时器在登录态下定期 probe，发现失效会同时广播
@@ -60,6 +65,12 @@ export class LoginStatusController {
 		msg: MESSAGES.loading,
 	};
 	private healthTimer?: () => void;
+	/**
+	 * 标记"曾从已登录态掉线"，下一次成功登录时翻转为已登录后才发 auth-restored。
+	 * 之所以不再用"上一帧 status === NOT_LOGIN"判断：失效后用户走扫码流程，会经过
+	 * LOGIN_QR / LOGGING_QR 等中间态，直接基于上一帧会漏掉这条恢复路径。
+	 */
+	private needsRestore = false;
 
 	constructor(
 		private readonly ctx: Context,
@@ -87,13 +98,19 @@ export class LoginStatusController {
 	// ---- Reporters ----
 
 	reportLoggedIn(card?: UserCardInfoData["data"], reasonKey: LoginStatusMsgKey = "loggedIn"): void {
-		const wasNotLogin = this.snapshot.status === BiliLoginStatus.NOT_LOGIN;
+		const wasLoggedIn = this.snapshot.status === BiliLoginStatus.LOGGED_IN;
+		// 仅当 snapshot.data 看起来是 card 形态时才作为 fallback 沿用。否则
+		// （如 LOGIN_QR 留下的 base64 字符串）就清空，避免给前端假数据。
+		const fallback = looksLikeCardData(this.snapshot.data) ? this.snapshot.data : undefined;
 		this.transition({
 			status: BiliLoginStatus.LOGGED_IN,
 			msg: MESSAGES[reasonKey],
-			data: card ?? this.snapshot.data,
+			data: card ?? fallback,
 		});
-		if (wasNotLogin) this.ctx.emit("bilibili-notify/auth-restored");
+		if (!wasLoggedIn && this.needsRestore) {
+			this.needsRestore = false;
+			this.ctx.emit("bilibili-notify/auth-restored");
+		}
 	}
 
 	reportLoggedOut(reasonKey: LoginStatusMsgKey = "notLogin"): void {
@@ -102,7 +119,10 @@ export class LoginStatusController {
 			status: BiliLoginStatus.NOT_LOGIN,
 			msg: MESSAGES[reasonKey],
 		});
-		if (wasLoggedIn) this.ctx.emit("bilibili-notify/auth-lost");
+		if (wasLoggedIn) {
+			this.needsRestore = true;
+			this.ctx.emit("bilibili-notify/auth-lost");
+		}
 	}
 
 	/** Dispatch on `getMyselfInfo` result code. */

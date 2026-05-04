@@ -220,7 +220,10 @@ watch(
 				return;
 			case BiliLoginStatus.LOGGED_IN: {
 				status.value = "logged_in";
-				const data = biliStore.data as UserCardInfoData;
+				const data = biliStore.data as UserCardInfoData | undefined;
+				// 登录刚成功的中转帧 data 可能尚未带 card（控制器还在拉取卡片），
+				// 留在 loading 状态等下一帧。
+				if (!data?.card) return;
 				const timer = setTimeout(() => {
 					tips.value = true;
 				}, 60000);

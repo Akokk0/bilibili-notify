@@ -27,3 +27,11 @@
 - `BiliLoginStatus` 枚举删除 `LOGGING_IN`（从未 emit）与 `LOGIN_SUCCESS`
   （已被 `LOGGED_IN` 取代），故 api 包按 minor 级别 bump。
 - 工具函数 `withLock` 提升到 `@bilibili-notify/internal` 供后续复用。
+- 修复 `auth-restored` 在"运行中失效 → 扫码恢复"路径下不会触发的回归：
+  之前用"上一帧 status === NOT_LOGIN"作判据，但失效后用户扫码会经过
+  LOGIN_QR / LOGGING_QR 中间态，导致 dynamic / live 永远收不到恢复事件
+  无法重启监测；改用 sticky 的 `needsRestore` 标志解决。
+- 修复登录刚成功瞬间 controller 把 LOGIN_QR 留下的 base64 字符串作为
+  `data` fallback 传给前端，导致前端访问 `data.card.face` 抛错的小问题；
+  现在仅当 `snapshot.data` 形态像 card 时才沿用，前端也加了 `data?.card`
+  的安全访问。
