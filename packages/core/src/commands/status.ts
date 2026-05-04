@@ -1,9 +1,20 @@
+import { BiliLoginStatus } from "@bilibili-notify/api";
 import type BilibiliNotifyServerManager from "../server-manager";
 
 export function statusCommands(this: BilibiliNotifyServerManager): void {
 	const statusCom = this.ctx.command("status", "插件状态相关指令", {
 		permissions: ["authority:5"],
 	});
+
+	statusCom
+		.subcommand(".auth", "查看登录状态")
+		.usage("查看登录状态")
+		.example("status auth")
+		.action(() => {
+			const snap = this.getAuthSnapshot();
+			const label = BiliLoginStatus[snap.status] ?? `unknown(${snap.status})`;
+			return `登录状态：${label}\n信息：${snap.msg || "(无)"}`;
+		});
 
 	statusCom
 		.subcommand(".dyn", "查看动态监测运行状态")

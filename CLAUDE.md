@@ -41,18 +41,18 @@ No test scripts are configured in this project.
 | Package (workspace path) | Published Name | Role |
 |---|---|---|
 | `packages/core` | `koishi-plugin-bilibili-notify` | **Main plugin** — entry point, config schema, lifecycle orchestration |
-| `packages/api` | `@bilibili-notify/api` (internal) | Bilibili HTTP API client (WBI signing, cookie auth) |
-| `packages/storage` | `@bilibili-notify/storage` (internal) | Cookie/key persistence on disk |
-| `packages/push` | `@bilibili-notify/push` (internal) | Push routing — maps subscriptions to Koishi sessions |
-| `packages/subscription` | `@bilibili-notify/subscription` (internal) | Subscription manager — loads/reloads SubItem map, builds PushArrMap |
-| `packages/internal` | `@bilibili-notify/internal` (internal) | Shared constants (e.g. BILIBILI_NOTIFY_TOKEN) |
+| `packages/api` | `@bilibili-notify/api` | Bilibili HTTP API client (WBI signing, cookie auth) |
+| `packages/storage` | `@bilibili-notify/storage` | Cookie/key persistence on disk |
+| `packages/push` | `@bilibili-notify/push` | Push routing — maps subscriptions to Koishi sessions |
+| `packages/subscription` | `@bilibili-notify/subscription` | Subscription manager — loads/reloads SubItem map, builds PushArrMap |
+| `packages/internal` | `@bilibili-notify/internal` | Shared utilities (BILIBILI_NOTIFY_TOKEN, withLock, ...) |
 | `packages/dynamic` | `koishi-plugin-bilibili-notify-dynamic` | Optional: dynamic post polling via cron |
 | `packages/live` | `koishi-plugin-bilibili-notify-live` | Optional: live stream monitoring via WebSocket |
 | `packages/image` | `koishi-plugin-bilibili-notify-image` | Optional: card image rendering via Puppeteer/jsdom |
 | `packages/ai` | `koishi-plugin-bilibili-notify-ai` | Optional: AI-powered summarization / commentary via OpenAI-compatible API |
 | `packages/advanced-subscription` | `koishi-plugin-bilibili-notify-advanced-subscription` | Optional: fine-grained per-UP subscription config |
 
-Internal packages (`@bilibili-notify/*`) are workspace-only dependencies (consumed via `workspace:^`) and are inlined into the publishable plugins at build time.
+All packages publish to npm. The `@bilibili-notify/*` namespace holds shared libraries that the `koishi-plugin-bilibili-notify(-*)` plugins depend on at runtime; consumers install them transitively. Workspace-local development uses `workspace:^` ranges, which are rewritten to concrete semver ranges at publish time.
 
 ### Workspace dependency hygiene
 

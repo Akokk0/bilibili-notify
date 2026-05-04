@@ -93,6 +93,11 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		return this.subMgr?.subManager ?? new Map();
 	}
 
+	/** For commands: read the current login snapshot. */
+	getAuthSnapshot() {
+		return this.auth.current();
+	}
+
 	subList(): string {
 		const map = this.subManager;
 		if (!map.size) return "没有订阅任何UP";

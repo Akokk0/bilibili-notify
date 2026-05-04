@@ -1,5 +1,5 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
-import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
+import { BILIBILI_NOTIFY_TOKEN, withLock } from "@bilibili-notify/internal";
 import type { BilibiliPush, SubItem, SubManager, Subscriptions } from "@bilibili-notify/push";
 import { PushType } from "@bilibili-notify/push";
 import { CronJob } from "cron";
@@ -25,22 +25,6 @@ declare module "koishi" {
 }
 
 const SERVICE_NAME = "bilibili-notify-dynamic";
-
-/** Simple async lock: if the previous run is still executing, skip. */
-function withLock(fn: () => Promise<void>, onError?: (err: unknown) => void): () => void {
-	let locked = false;
-	return () => {
-		if (locked) return;
-		locked = true;
-		fn()
-			.catch((err) => {
-				onError?.(err);
-			})
-			.finally(() => {
-				locked = false;
-			});
-	};
-}
 
 /** 从动态数据中提取图片 URL，用于多模态 AI 点评（最多 4 张） */
 function extractDynamicImages(item: Dynamic): string[] {

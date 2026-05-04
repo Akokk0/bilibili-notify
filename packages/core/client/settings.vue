@@ -30,13 +30,6 @@
     </div>
   </k-comment>
 
-  <k-comment v-if="status === 'login_success'" type="success">
-    <div class="comment">
-      <p>{{ dataServer.msg }}</p>
-      <k-button @click="restart">重启插件</k-button>
-    </div>
-  </k-comment>
-
   <template v-if="status === 'logged_in'">
     <k-comment type="warning" style="margin-bottom: 1rem">
       <div class="comment">
@@ -100,14 +93,12 @@ import { send, store } from "@koishijs/client";
 import { inject, ref, watch } from "vue";
 
 enum BiliLoginStatus {
-	NOT_LOGIN,
-	LOADING_LOGIN_INFO,
-	LOGIN_QR,
-	LOGGING_QR,
-	LOGGING_IN,
-	LOGGED_IN,
-	LOGIN_SUCCESS,
-	LOGIN_FAILED,
+	NOT_LOGIN = 0,
+	LOADING_LOGIN_INFO = 1,
+	LOGIN_QR = 2,
+	LOGGING_QR = 3,
+	LOGGED_IN = 5,
+	LOGIN_FAILED = 7,
 }
 
 type UserCardInfoData = {
@@ -253,14 +244,8 @@ watch(
 			case BiliLoginStatus.LOGGING_QR:
 				status.value = "logging_qr";
 				return;
-			case BiliLoginStatus.LOGGING_IN:
-				status.value = "logging_in";
-				return;
 			case BiliLoginStatus.LOGIN_FAILED:
 				status.value = "login_failed";
-				return;
-			case BiliLoginStatus.LOGIN_SUCCESS:
-				status.value = "login_success";
 				return;
 		}
 	},
@@ -270,11 +255,6 @@ watch(
 // biome-ignore lint/correctness/noUnusedVariables: used in Vue template
 const login = () => {
 	send("bilibili-notify/start-login" as any);
-};
-
-// biome-ignore lint/correctness/noUnusedVariables: used in Vue template
-const restart = () => {
-	send("bilibili-notify/restart-plugin" as any);
 };
 
 // biome-ignore lint/correctness/noUnusedVariables: used in Vue template
