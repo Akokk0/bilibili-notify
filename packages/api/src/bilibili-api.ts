@@ -1,8 +1,13 @@
+import {
+	type Disposable,
+	type Logger,
+	retry as retryUtil,
+	type ServiceContext,
+} from "@bilibili-notify/internal";
 import type { CookieData } from "@bilibili-notify/storage";
 import axios, { type AxiosInstance } from "axios";
 import { CronJob } from "cron";
 import { JSDOM } from "jsdom";
-import type { Context, Logger } from "koishi";
 import { DateTime } from "luxon";
 import { Cookie, CookieJar } from "tough-cookie";
 import * as EP from "./endpoints";
@@ -35,38 +40,38 @@ const BANGUMI_TRIP_ROOM_ID = 931774;
 const AUTH_LOST_DEBOUNCE_MS = 60_000;
 
 export interface BilibiliAPIConfig {
-	logLevel: number;
 	userAgent?: string;
+}
+
+export interface BilibiliAPIOptions {
+	serviceCtx: ServiceContext;
+	config: BilibiliAPIConfig;
+	callbacks?: BilibiliAPICallbacks;
 }
 
 export class BilibiliAPI {
 	readonly logger: Logger;
+	private readonly serviceCtx: ServiceContext;
 	private readonly config: BilibiliAPIConfig;
 	private readonly callbacks: BilibiliAPICallbacks;
 
 	private jar: CookieJar;
 	private client!: AxiosInstance;
-	// biome-ignore lint/suspicious/noExplicitAny: ESM-only module loaded dynamically
-	private pRetry!: any;
 	private wbiKeys: WbiKeys = { imgKey: "", subKey: "" };
 	private ticketJob!: CronJob;
-	private refreshCookieIntervalId?: ReturnType<typeof setInterval>;
+	private refreshCookieTimer?: Disposable;
 	private loginInfoLoaded = false;
 	private authLostFiredAt = 0;
 
-	constructor(ctx: Context, config: BilibiliAPIConfig, callbacks: BilibiliAPICallbacks = {}) {
-		this.config = config;
-		this.callbacks = callbacks;
-		this.logger = ctx.logger("bilibili-notify-api");
-		this.logger.level = config.logLevel;
+	constructor(opts: BilibiliAPIOptions) {
+		this.serviceCtx = opts.serviceCtx;
+		this.config = opts.config;
+		this.callbacks = opts.callbacks ?? {};
+		this.logger = opts.serviceCtx.logger;
 		this.jar = new CookieJar();
 	}
 
 	async start(): Promise<void> {
-		// Load ESM-only dependencies dynamically (works in both ESM and CJS output)
-		const pRetryMod = await import("p-retry");
-		this.pRetry = pRetryMod.default;
-
 		await this.initClient();
 		this.logger.debug("[init] HTTP 客户端初始化完成");
 
@@ -89,10 +94,8 @@ export class BilibiliAPI {
 
 	stop(): void {
 		this.ticketJob?.stop();
-		if (this.refreshCookieIntervalId !== undefined) {
-			clearInterval(this.refreshCookieIntervalId);
-			this.refreshCookieIntervalId = undefined;
-		}
+		this.refreshCookieTimer?.dispose();
+		this.refreshCookieTimer = undefined;
 	}
 
 	// ---- Initialization ----
@@ -237,12 +240,10 @@ export class BilibiliAPI {
 	}
 
 	private enableRefreshCookiesInterval(refreshToken: string, csrf: string): void {
-		if (this.refreshCookieIntervalId !== undefined) {
-			clearInterval(this.refreshCookieIntervalId);
-		}
-		this.refreshCookieIntervalId = setInterval(async () => {
+		this.refreshCookieTimer?.dispose();
+		this.refreshCookieTimer = this.serviceCtx.setInterval(() => {
 			const csrf2 = this.getCSRF() ?? csrf;
-			await this.checkIfTokenNeedRefresh(refreshToken, csrf2).catch((e: Error) =>
+			this.checkIfTokenNeedRefresh(refreshToken, csrf2).catch((e: Error) =>
 				this.logger.warn(`[cookie] 定时 Cookie 刷新失败: ${e.message}`),
 			);
 		}, 3_600_000);
@@ -372,12 +373,12 @@ export class BilibiliAPI {
 	// ---- Retry helper ----
 
 	private retry<T>(fn: () => Promise<T>, label: string): Promise<T> {
-		return this.pRetry(fn, {
-			retries: 3,
-			onFailedAttempt: (err: Error & { attemptNumber: number }) => {
-				this.logger.warn(
-					`[retry] ${label}() 第 ${err.attemptNumber} 次失败: ${err.message ?? err}`,
-				);
+		return retryUtil(() => fn(), {
+			attempts: 4, // 1 initial + 3 retries
+			baseDelayMs: 200,
+			onRetry: (err, attempt) => {
+				const message = err instanceof Error ? err.message : String(err);
+				this.logger.warn(`[retry] ${label}() 第 ${attempt} 次失败: ${message}`);
 			},
 		});
 	}

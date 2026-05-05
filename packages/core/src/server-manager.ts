@@ -12,6 +12,7 @@ import QRCode from "qrcode";
 import { biliCommands, statusCommands, sysCommands } from "./commands";
 import type { BilibiliNotifyConfig } from "./config";
 import { LoginStatusController } from "./login-status";
+import { makeKoishiServiceContext } from "./runtime/service-context";
 import type { SubChange, SubscriptionOp } from "./types";
 
 const SERVICE_NAME = "bilibili-notify";
@@ -373,13 +374,14 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 	async registerPlugin(): Promise<boolean> {
 		if (this.running) return false;
 		try {
-			this.api = new BilibiliAPI(
-				this.selfCtx,
-				{
-					logLevel: this.config.logLevel,
-					userAgent: this.config.userAgent,
-				},
-				{
+			this.api = new BilibiliAPI({
+				serviceCtx: makeKoishiServiceContext(
+					this.selfCtx,
+					"bilibili-notify-api",
+					this.config.logLevel,
+				),
+				config: { userAgent: this.config.userAgent },
+				callbacks: {
 					onCookiesRefreshed: (data) => {
 						this.selfCtx.emit("bilibili-notify/cookies-refreshed", data);
 					},
@@ -387,7 +389,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 						void this.handleAuthLost();
 					},
 				},
-			);
+			});
 
 			this.push = new BilibiliPush(this.selfCtx, {
 				logLevel: this.config.logLevel,
