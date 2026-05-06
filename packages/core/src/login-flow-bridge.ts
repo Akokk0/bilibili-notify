@@ -1,4 +1,4 @@
-import type { BilibiliAPI, LoginSnapshot } from "@bilibili-notify/api";
+import type { BilibiliAPI } from "@bilibili-notify/api";
 import { LoginFlow } from "@bilibili-notify/api";
 import type { MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import type { CookieData } from "@bilibili-notify/storage";
@@ -20,16 +20,19 @@ export interface LoginFlowBridgeOptions {
  * Wraps `LoginFlow` (from @bilibili-notify/api) so the koishi adapter side stays thin.
  *
  * Responsibilities:
- * - Bridge MessageBus events (`auth-lost` / `auth-restored` / `login-status-report` /
- *   `cookies-refreshed`) to the koishi event namespace `bilibili-notify/*`.
  * - Subscribe to console events `bilibili-notify/start-login` and
  *   `bilibili-notify/reset-key`, plus the CORS proxy.
  * - Render QR PNGs via the `qrcode` npm dep (UI concern; LoginFlow takes the data URL).
+ *
+ * Note: MessageBus → koishi event bridging is automatic. KoishiMessageBus.emit("X")
+ * goes straight to ctx.emit("bilibili-notify/X"), so anything listening on the koishi
+ * side via ctx.on("bilibili-notify/...") receives LoginFlow's events without an
+ * explicit bus.on transformer here. (Adding one creates an infinite loop because the
+ * bridge handler would re-emit the same event it just received.)
  */
 export class LoginFlowBridge {
 	private readonly opts: LoginFlowBridgeOptions;
 	readonly flow: LoginFlow;
-	private readonly busDisposers: Array<{ dispose(): void }> = [];
 
 	constructor(opts: LoginFlowBridgeOptions) {
 		this.opts = opts;
@@ -42,22 +45,9 @@ export class LoginFlowBridge {
 		});
 	}
 
-	/** Wire bus → koishi events + register console listeners. Returns nothing; cleanup via stop(). */
+	/** Register console listeners. Cleanup via stop(). */
 	install(): void {
-		const { ctx, bus } = this.opts;
-
-		// Bridge MessageBus → koishi events. The koishi side already declares these in core/index.ts.
-		this.busDisposers.push(
-			bus.on("login-status-report", (snapshot) => {
-				ctx.emit("bilibili-notify/login-status-report", snapshot as LoginSnapshot);
-			}),
-			bus.on("auth-lost", () => {
-				ctx.emit("bilibili-notify/auth-lost");
-			}),
-			bus.on("auth-restored", () => {
-				ctx.emit("bilibili-notify/auth-restored");
-			}),
-		);
+		const { ctx } = this.opts;
 
 		// Console events
 		ctx.console.addListener("bilibili-notify/start-login", async () => {
@@ -101,7 +91,6 @@ export class LoginFlowBridge {
 	}
 
 	stop(): void {
-		for (const d of this.busDisposers.splice(0)) d.dispose();
 		this.flow.stop();
 	}
 
