@@ -1,5 +1,5 @@
 import { BiliLoginStatus } from "@bilibili-notify/api";
-import type BilibiliNotifyServerManager from "../server-manager";
+import type BilibiliNotifyServerManager from "../app-bootstrap";
 
 export function statusCommands(this: BilibiliNotifyServerManager): void {
 	const statusCom = this.ctx.command("status", "插件状态相关指令", {

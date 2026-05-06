@@ -7,9 +7,9 @@ import {} from "@koishijs/plugin-console";
 // biome-ignore lint/correctness/noUnusedImports: module augmentation
 import {} from "@koishijs/plugin-notifier";
 import type { Context, Schema } from "koishi";
+import BilibiliNotifyServerManager from "./app-bootstrap";
 import { type BilibiliNotifyConfig, BilibiliNotifyConfigSchema } from "./config";
 import BilibiliNotifyDataServer from "./data-server";
-import BilibiliNotifyServerManager from "./server-manager";
 import type {
 	DynamicSubChange,
 	LiveSubChange,

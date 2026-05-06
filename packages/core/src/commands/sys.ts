@@ -1,4 +1,4 @@
-import type BilibiliNotifyServerManager from "../server-manager";
+import type BilibiliNotifyServerManager from "../app-bootstrap";
 
 export function sysCommands(this: BilibiliNotifyServerManager): void {
 	const sysCom = this.ctx.command("bn", "bilibili-notify 插件运行相关指令", {
