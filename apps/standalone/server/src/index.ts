@@ -1,6 +1,7 @@
 import type { Server as HttpServer } from "node:http";
 import { type ServerType, serve } from "@hono/node-server";
 import { createApp } from "./app.js";
+import { type AuthSystem, createAuthSystem } from "./auth/index.js";
 import { loadBootstrapConfig } from "./config/loader.js";
 import { createAppRuntime } from "./runtime/bootstrap.js";
 import { createWsServer } from "./ws/server.js";
@@ -19,7 +20,22 @@ async function main(): Promise<void> {
 	// against a corrupt or unreadable state dir.
 	await runtime.configStore.load();
 
-	const app = createApp(runtime);
+	// Stage 2.4: assemble the auth stack (StorageManager → BilibiliAPI → LoginFlow). Bus
+	// emissions made by LoginFlow flow into the WS `auth` channel via stage 2.3 wiring.
+	let authSystem: AuthSystem | undefined;
+	try {
+		authSystem = await createAuthSystem({
+			serviceCtx: runtime.serviceCtx,
+			bus: runtime.bus,
+			bootstrap,
+		});
+	} catch (err) {
+		// Fatal: without StorageManager / BilibiliAPI the dashboard can't function.
+		log.error("auth system init failed", err);
+		throw err;
+	}
+
+	const app = createApp(runtime, { authSystem });
 	let server: ServerType | undefined;
 	await new Promise<void>((resolve) => {
 		server = serve(
@@ -56,6 +72,7 @@ async function main(): Promise<void> {
 		try {
 			runtime.serviceCtx.setLogHook(previousLogHook);
 			wsServer.dispose();
+			authSystem?.dispose();
 			if (server) {
 				await new Promise<void>((resolve) => {
 					server?.close(() => resolve());
