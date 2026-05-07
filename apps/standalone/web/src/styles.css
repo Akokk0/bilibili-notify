@@ -1,1 +1,99 @@
 @import "tailwindcss";
+
+/**
+ * Design tokens — sourced from .bn-design/bilibili-notify-console-ui/project/assets/colors_and_type.css.
+ * Exposed to Tailwind 4 via @theme so utilities like `bg-bn-pink` / `text-bn-blue` work directly in JSX.
+ *
+ * Source-of-truth note: the canonical brand palette also lives in
+ * packages/image/src/styles.ts (image renderer SSR). Keep those in sync.
+ */
+@theme {
+	--color-bn-pink: #fb7299;
+	--color-bn-pink-soft: #fde1ea;
+	--color-bn-blue: #00aeec;
+	--color-bn-blue-soft: #e3f4fd;
+	--color-bn-blue-light: #4ebcec;
+	--color-bn-purple: #a29bfe;
+	--color-bn-text-primary: #18191c;
+	--color-bn-text-secondary: #999999;
+	--color-bn-text-tertiary: #666666;
+
+	--font-cjk:
+		"Noto Sans SC", "Microsoft YaHei", "Source Han Sans", "Noto Sans CJK", system-ui, sans-serif;
+	--font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+
+	--radius-bn-card: 14px;
+	--radius-bn-pill: 999px;
+
+	--shadow-bn-card: 0 4px 16px rgba(0, 0, 0, 0.05);
+	--shadow-bn-elev: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+/* Page background — pink → blue → lavender gradient mirrors variation-ac's app shell */
+html,
+body,
+#root {
+	min-height: 100%;
+	font-family: var(--font-cjk);
+	color: var(--color-bn-text-primary);
+}
+
+body {
+	background: linear-gradient(135deg, #fef0f4 0%, #f0f7fd 50%, #faf2ff 100%) fixed;
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Glass surface — used by the GlassPanel / GlassHeader atoms */
+.bn-glass {
+	background: rgba(255, 255, 255, 0.78);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.bn-glass-strong {
+	background: rgba(255, 255, 255, 0.92);
+	backdrop-filter: blur(16px);
+	-webkit-backdrop-filter: blur(16px);
+	border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+/* Animations */
+@keyframes bn-pulse {
+	0%,
+	100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+	50% {
+		opacity: 0.6;
+		transform: scale(0.85);
+	}
+}
+
+@keyframes bn-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@keyframes bn-fade-in {
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.bn-anim-pulse {
+	animation: bn-pulse 1.6s ease-in-out infinite;
+}
+.bn-anim-spin {
+	animation: bn-spin 1s linear infinite;
+}
+.bn-anim-fade-in {
+	animation: bn-fade-in 0.35s ease-out both;
+}

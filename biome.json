@@ -19,6 +19,9 @@
 		"indentStyle": "tab",
 		"lineWidth": 100
 	},
+	"css": {
+		"parser": { "tailwindDirectives": true }
+	},
 	"linter": {
 		"enabled": true,
 		"rules": {
