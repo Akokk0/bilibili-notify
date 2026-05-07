@@ -2,7 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { useAuthChannel } from "./hooks/useAuthChannel";
 import { useAuthHydrate } from "./hooks/useAuthHydrate";
+import { useStateChannel } from "./hooks/useStateChannel";
 import Auth from "./pages/Auth";
+import Subs from "./pages/Subs";
+import Targets from "./pages/Targets";
 import { api } from "./services/api";
 import { useAuthStore } from "./store/auth";
 import { BiliLoginStatus } from "./types/auth";
@@ -65,6 +68,7 @@ const NAV: ReadonlyArray<readonly [string, string]> = [
 export default function App() {
 	useAuthHydrate();
 	useAuthChannel();
+	useStateChannel();
 	return (
 		<div className="min-h-screen bg-white text-gray-900">
 			<header className="flex items-center justify-between border-b border-gray-200 px-6 py-3">
@@ -96,8 +100,8 @@ export default function App() {
 							</div>
 						}
 					/>
-					<Route path="/subs" element={<Placeholder name="订阅 UP 主" />} />
-					<Route path="/targets" element={<Placeholder name="推送目标" />} />
+					<Route path="/subs" element={<Subs />} />
+					<Route path="/targets" element={<Targets />} />
 					<Route path="/rules" element={<Placeholder name="高级规则" />} />
 					<Route path="/cards" element={<Placeholder name="卡片样式" />} />
 					<Route path="/ai" element={<Placeholder name="智能女仆" />} />
