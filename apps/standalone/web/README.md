@@ -1,5 +1,28 @@
-# Bilibili-Notify Standalone Dashboard (placeholder)
+# Bilibili-Notify Standalone Dashboard
 
-The React + Vite dashboard ships in stage 3 (`/Users/akokko/.claude/plans/hashed-jingling-moth.md`). This directory is intentionally empty until then; the pnpm workspace already lists `web` so adding it later is a one-step `pnpm install`.
+React 18 + Vite + Tailwind 4 + TanStack Query + Zustand + React Router 7. Lives inside the `apps/standalone/` pnpm sub-workspace alongside `server/`. Talks to the Hono backend through `/api/*` (REST) and `/ws` (WebSocket subscriptions).
 
-For now, the server (`../server`) exposes only `/api/health`. There is no frontend to build, run, or deploy yet.
+## Quick start
+
+```bash
+# from apps/standalone
+pnpm install                 # picks up server/ + web/ together
+pnpm --filter @bilibili-notify/standalone-server dev    # backend on :8787
+pnpm --filter @bilibili-notify/standalone-web dev       # frontend on :5173
+```
+
+Vite dev server proxies `/api` and `/ws` to `127.0.0.1:8787`, so you load `http://localhost:5173` and the network panel still shows clean same-origin requests. Backend stays a separate process — restart it independently.
+
+## Layout
+
+```
+src/
+  main.tsx          ← React + Router + QueryClient bootstrap
+  App.tsx           ← top-level layout + route table (placeholder pages for now)
+  styles.css        ← @import "tailwindcss";
+  services/
+    api.ts          ← fetch wrapper for REST
+    ws.ts           ← WebSocket subscription client
+```
+
+Pages will land under `src/pages/*` as stage 3 progresses (Auth / Subs / Targets / Rules / Cards / AI / Dashboard / History).
