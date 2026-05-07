@@ -6,7 +6,9 @@ import { ShellError, ShellLoading } from "./components/shell-states";
 import { useAuthChannel } from "./hooks/useAuthChannel";
 import { useAuthHydrate } from "./hooks/useAuthHydrate";
 import { useStateChannel } from "./hooks/useStateChannel";
+import Ai from "./pages/Ai";
 import Auth from "./pages/Auth";
+import Cards from "./pages/Cards";
 import Dashboard from "./pages/Dashboard";
 import Rules from "./pages/Rules";
 import Subs from "./pages/Subs";
@@ -66,8 +68,8 @@ export default function App() {
 						<Route path="/targets" element={<Targets />} />
 						<Route path="/history" element={<Placeholder name="推送历史" />} />
 						<Route path="/rules" element={<Rules />} />
-						<Route path="/cards" element={<Placeholder name="卡片预览 · 样式" />} />
-						<Route path="/ai" element={<Placeholder name="智能女仆" />} />
+						<Route path="/cards" element={<Cards />} />
+						<Route path="/ai" element={<Ai />} />
 						<Route path="/auth" element={<Auth />} />
 					</Routes>
 				</main>
