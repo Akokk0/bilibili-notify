@@ -1,7 +1,6 @@
 /**
- * Minimal WS client. Connects to /ws on the same origin, exposes
- * subscribe/unsubscribe + an envelope listener. Auto-reconnect is intentionally
- * left to higher-level hooks so they can hydrate state on each reconnect.
+ * Reconnecting WS client for /ws. One socket per `connectWs(...)`; channels are
+ * remembered across reconnects so hooks don't have to re-subscribe.
  *
  * Server protocol (apps/standalone/server/src/ws/types.ts):
  *   client → server: { type: 'subscribe'|'unsubscribe', channels: ChannelName[] }
@@ -19,48 +18,111 @@ export interface WsEnvelope {
 	data?: unknown;
 }
 
+export type WsStatus = "connecting" | "open" | "closed";
+
 export interface WsClient {
 	subscribe(channels: ChannelName[]): void;
 	unsubscribe(channels: ChannelName[]): void;
 	on(handler: (env: WsEnvelope) => void): () => void;
+	onStatus(handler: (status: WsStatus) => void): () => void;
+	status(): WsStatus;
 	close(): void;
 }
 
-export function connectWs(
-	url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`,
-): WsClient {
-	const socket = new WebSocket(url);
+const RECONNECT_DELAY_MS = 2_000;
+
+function defaultUrl(): string {
+	return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
+}
+
+export function connectWs(url = defaultUrl()): WsClient {
 	const handlers = new Set<(env: WsEnvelope) => void>();
-	const pendingSubs: ChannelName[] = [];
+	const statusHandlers = new Set<(status: WsStatus) => void>();
+	const subscribed = new Set<ChannelName>();
 
-	socket.addEventListener("open", () => {
-		if (pendingSubs.length > 0) {
-			socket.send(JSON.stringify({ type: "subscribe", channels: pendingSubs.splice(0) }));
-		}
-	});
+	let socket: WebSocket | null = null;
+	let status: WsStatus = "connecting";
+	let closedByUser = false;
+	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-	socket.addEventListener("message", (ev) => {
-		let env: WsEnvelope;
-		try {
-			env = JSON.parse(ev.data) as WsEnvelope;
-		} catch {
-			return;
+	function setStatus(next: WsStatus): void {
+		if (status === next) return;
+		status = next;
+		for (const h of statusHandlers) h(next);
+	}
+
+	function send(payload: unknown): boolean {
+		if (socket && socket.readyState === WebSocket.OPEN) {
+			socket.send(JSON.stringify(payload));
+			return true;
 		}
-		for (const h of handlers) h(env);
-	});
+		return false;
+	}
+
+	function open(): void {
+		setStatus("connecting");
+		const s = new WebSocket(url);
+		socket = s;
+
+		s.addEventListener("open", () => {
+			setStatus("open");
+			if (subscribed.size > 0) {
+				send({ type: "subscribe", channels: [...subscribed] });
+			}
+		});
+
+		s.addEventListener("message", (ev) => {
+			let env: WsEnvelope;
+			try {
+				env = JSON.parse(ev.data) as WsEnvelope;
+			} catch {
+				return;
+			}
+			if (env.type === "ping") {
+				send({ type: "pong" });
+				return;
+			}
+			for (const h of handlers) h(env);
+		});
+
+		s.addEventListener("close", () => {
+			socket = null;
+			setStatus("closed");
+			if (!closedByUser) scheduleReconnect();
+		});
+
+		s.addEventListener("error", () => {
+			// "close" will follow; reconnect is handled there.
+		});
+	}
+
+	function scheduleReconnect(): void {
+		if (reconnectTimer || closedByUser) return;
+		reconnectTimer = setTimeout(() => {
+			reconnectTimer = null;
+			if (!closedByUser) open();
+		}, RECONNECT_DELAY_MS);
+	}
+
+	open();
 
 	return {
 		subscribe(channels) {
-			if (socket.readyState === WebSocket.OPEN) {
-				socket.send(JSON.stringify({ type: "subscribe", channels }));
-			} else {
-				pendingSubs.push(...channels);
+			const added: ChannelName[] = [];
+			for (const ch of channels) {
+				if (!subscribed.has(ch)) {
+					subscribed.add(ch);
+					added.push(ch);
+				}
 			}
+			if (added.length > 0) send({ type: "subscribe", channels: added });
 		},
 		unsubscribe(channels) {
-			if (socket.readyState === WebSocket.OPEN) {
-				socket.send(JSON.stringify({ type: "unsubscribe", channels }));
+			const removed: ChannelName[] = [];
+			for (const ch of channels) {
+				if (subscribed.delete(ch)) removed.push(ch);
 			}
+			if (removed.length > 0) send({ type: "unsubscribe", channels: removed });
 		},
 		on(handler) {
 			handlers.add(handler);
@@ -68,8 +130,23 @@ export function connectWs(
 				handlers.delete(handler);
 			};
 		},
+		onStatus(handler) {
+			statusHandlers.add(handler);
+			handler(status);
+			return () => {
+				statusHandlers.delete(handler);
+			};
+		},
+		status() {
+			return status;
+		},
 		close() {
-			socket.close();
+			closedByUser = true;
+			if (reconnectTimer) {
+				clearTimeout(reconnectTimer);
+				reconnectTimer = null;
+			}
+			if (socket) socket.close();
 		},
 	};
 }
