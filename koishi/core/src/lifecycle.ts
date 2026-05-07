@@ -1,5 +1,5 @@
-import { BilibiliAPI } from "@bilibili-notify/api";
-import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
+import { BilibiliAPI, BiliLoginStatus } from "@bilibili-notify/api";
+import { BILIBILI_NOTIFY_TOKEN, type LoginSnapshot } from "@bilibili-notify/internal";
 import { makeKoishiMessageBus, makeKoishiServiceContext } from "@bilibili-notify/koishi-runtime";
 import { BilibiliPush } from "@bilibili-notify/push";
 import type { StorageManager } from "@bilibili-notify/storage";
@@ -143,6 +143,21 @@ export async function bringUp(deps: LifecycleDeps): Promise<boolean> {
 	if (!loggedIn) {
 		deps.logger.info("[login] 账号未登录，请在控制台扫码登录");
 		loginBridge.flow.reportLoggedOut("notLogin");
+		// 冷启动未登录路径：挂一个一次性 listener，在用户首次扫码登录成功后
+		// 触发 loadInitialSubscriptions。LoginFlow 在 reportLoggedIn 时只在
+		// `needsRestore=true` 的前提下 emit `auth-restored`（用于已登录态恢复），
+		// 全新冷启动这条路径走不到，因此这里订阅 `login-status-report` 并按
+		// 状态码过滤首次 LOGGED_IN 转换。
+		let subsLoaded = false;
+		const release = bus.on("login-status-report", (snap: LoginSnapshot) => {
+			if (subsLoaded) return;
+			if (snap.status !== BiliLoginStatus.LOGGED_IN) return;
+			subsLoaded = true;
+			release.dispose();
+			void subLoader.loadInitialSubscriptions().catch((e) => {
+				deps.logger.error(`[sub] 登录后加载订阅失败：${e}`);
+			});
+		});
 		return true;
 	}
 	await loginBridge.flow.reportAccountInfo();
@@ -170,6 +185,13 @@ export interface InternalsShape {
 	api: BilibiliAPI;
 	push: BilibiliPush;
 	store: SubscriptionStore;
+	/**
+	 * Koishi-side PushTarget registry. Friendly plugins (e.g. AI tools that
+	 * create subscriptions on the user's behalf) need this to resolve a real
+	 * targetId to wire into `Subscription.routing` instead of inventing a
+	 * random UUID that points at no target.
+	 */
+	registry: TargetRegistry;
 }
 
 /** Build the internals object exposed to friendly plugins; null-guarded for the 4 prereqs. */
@@ -178,11 +200,20 @@ export function buildInternals(args: {
 	api: BilibiliAPI | null;
 	push: BilibiliPush | null;
 	store: SubscriptionStore | null;
+	registry: TargetRegistry | null;
 }): InternalsShape | null {
-	if (args.token !== BILIBILI_NOTIFY_TOKEN || !args.api || !args.push || !args.store) return null;
+	if (
+		args.token !== BILIBILI_NOTIFY_TOKEN ||
+		!args.api ||
+		!args.push ||
+		!args.store ||
+		!args.registry
+	)
+		return null;
 	return {
 		api: args.api,
 		push: args.push,
 		store: args.store,
+		registry: args.registry,
 	};
 }

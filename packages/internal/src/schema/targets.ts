@@ -20,7 +20,7 @@ export type PushTargetPlatform = z.infer<typeof PushTargetPlatformSchema>;
 export const PushTargetScopeSchema = z.enum(["group", "private", "channel"]);
 export type PushTargetScope = z.infer<typeof PushTargetScopeSchema>;
 
-const OnebotConfigSchema = z.object({
+export const OnebotConfigSchema = z.object({
 	baseUrl: z.url(),
 	accessToken: z.string().optional(),
 	groupId: z.string().optional(),
@@ -30,7 +30,7 @@ const OnebotConfigSchema = z.object({
 });
 export type OnebotConfig = z.infer<typeof OnebotConfigSchema>;
 
-const KoishiTargetConfigSchema = z.object({
+export const KoishiTargetConfigSchema = z.object({
 	/** koishi 内部 bot.platform，如 'onebot' / 'discord' / 'telegram'。与 PushTarget.platform 的 'koishi-' 前缀去掉等价。 */
 	botPlatform: z.string(),
 	/** koishi bot selfId；多 bot 同 platform 时用来挑 bot。 */
@@ -41,7 +41,7 @@ const KoishiTargetConfigSchema = z.object({
 });
 export type KoishiTargetConfig = z.infer<typeof KoishiTargetConfigSchema>;
 
-const WebhookConfigSchema = z.object({
+export const WebhookConfigSchema = z.object({
 	url: z.url(),
 	secret: z.string().optional(),
 	/** 自定义 header 例如 Authorization */
@@ -49,13 +49,19 @@ const WebhookConfigSchema = z.object({
 });
 export type WebhookConfig = z.infer<typeof WebhookConfigSchema>;
 
-const WebDashboardConfigSchema = z.object({
-	/** 可选过滤：仅推到指定 user 的会话；空则广播 */
-	dashboardUser: z.string().optional(),
-});
+export const WebDashboardConfigSchema = z
+	.object({
+		/** 可选过滤：仅推到指定 user 的会话；空则广播 */
+		dashboardUser: z.string().optional(),
+	})
+	.strict();
 export type WebDashboardConfig = z.infer<typeof WebDashboardConfigSchema>;
 
-/** 按 platform 字段分支取对应 config（运行时由 PushTarget.platform 决定）。 */
+/**
+ * 按 platform 字段分支取对应 config 的便捷 union（运行时由 PushTarget.platform 决定）。
+ * 实际 PushTarget 校验请用 `PushTargetSchema`，它按 platform 做了 discriminated union，
+ * 可避免 onebot/webhook/web-dashboard 三家 config 互相误匹配。
+ */
 export const PushTargetConfigSchema = z.union([
 	OnebotConfigSchema,
 	KoishiTargetConfigSchema,
@@ -72,13 +78,58 @@ export const PushTargetTestStatusSchema = z.object({
 });
 export type PushTargetTestStatus = z.infer<typeof PushTargetTestStatusSchema>;
 
-export const PushTargetSchema = z.object({
+/**
+ * 顶层 PushTarget schema：按 platform 字段分发 config 形态。
+ *
+ * 实现说明：
+ * - `onebot` / `webhook` / `web-dashboard` 是固定 literal，三者一起走 `z.discriminatedUnion`，
+ *   这样 zod 会基于 `platform` 直接挑分支、避免无标签 union 的"任意 config 偶然通过别家 schema"问题。
+ * - `koishi-*` 平台是动态前缀，不能作为 discriminator literal，所以单独走一个分支并用
+ *   `z.string().regex(/^koishi-/)` 校验 platform。`koishi-` 平台只有 `KoishiTargetConfig`
+ *   一种结构，不与上面三家冲突，因此即便不在 discriminatedUnion 内也不会误匹配。
+ * - 外层用 `z.union` 把两边粘起来。
+ */
+const KOISHI_PLATFORM_REGEX = /^koishi-[a-z0-9-]+$/;
+const PushTargetCommonShape = {
 	id: z.uuid(),
 	name: z.string().min(1),
-	platform: PushTargetPlatformSchema,
 	scope: PushTargetScopeSchema,
-	config: PushTargetConfigSchema,
 	enabled: z.boolean(),
 	testStatus: PushTargetTestStatusSchema.optional(),
+} as const;
+
+const OnebotPushTargetSchema = z.object({
+	...PushTargetCommonShape,
+	platform: z.literal("onebot"),
+	config: OnebotConfigSchema,
 });
+
+const WebhookPushTargetSchema = z.object({
+	...PushTargetCommonShape,
+	platform: z.literal("webhook"),
+	config: WebhookConfigSchema,
+});
+
+const WebDashboardPushTargetSchema = z.object({
+	...PushTargetCommonShape,
+	platform: z.literal("web-dashboard"),
+	config: WebDashboardConfigSchema,
+});
+
+const KoishiPushTargetSchema = z.object({
+	...PushTargetCommonShape,
+	platform: z
+		.string()
+		.regex(KOISHI_PLATFORM_REGEX, "Koishi platform must be 'koishi-<botPlatform>' (lowercase)"),
+	config: KoishiTargetConfigSchema,
+});
+
+export const PushTargetSchema = z.union([
+	z.discriminatedUnion("platform", [
+		OnebotPushTargetSchema,
+		WebhookPushTargetSchema,
+		WebDashboardPushTargetSchema,
+	]),
+	KoishiPushTargetSchema,
+]);
 export type PushTarget = z.infer<typeof PushTargetSchema>;

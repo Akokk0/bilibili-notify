@@ -32,6 +32,20 @@ export interface CreateWsServerOptions {
 	heartbeatTimeoutMs?: number;
 	/** Optional pre-built log channel. We create one if not provided. */
 	logChannel?: LogChannel;
+	/**
+	 * Optional dashboard credentials. When set the WS upgrade handshake requires
+	 * either `Authorization: Basic <b64(user:pass)>` OR a `?token=<b64(user:pass)>`
+	 * query string fallback (browser WebSocket can't set custom headers).
+	 * When unset, no auth check is performed (matches the HTTP layer's behaviour
+	 * + bootstrap-layer warn log).
+	 */
+	basicAuthCredentials?: { username: string; password: string };
+	/**
+	 * Origin whitelist. When provided + non-empty, the upgrade request's
+	 * `Origin` header must be in the list or the socket is destroyed before the
+	 * WS handshake completes. When unset/empty, the gate is disabled.
+	 */
+	allowedOrigins?: readonly string[];
 }
 
 /** Public surface returned by `createWsServer`. */
@@ -83,12 +97,82 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 	};
 
 	// ---------------- HTTP upgrade ---------------------------------------------
+	const allowedOrigins = (opts.allowedOrigins ?? []).filter((o) => o.length > 0);
+	const originGateEnabled = allowedOrigins.length > 0;
+	const creds = opts.basicAuthCredentials;
+	// Pre-compute the expected base64(user:pass) once.
+	const expectedToken = creds
+		? Buffer.from(`${creds.username}:${creds.password}`, "utf8").toString("base64")
+		: null;
+
+	const rejectUnauthorized = (socket: Duplex): void => {
+		try {
+			socket.write(
+				"HTTP/1.1 401 Unauthorized\r\n" +
+					'WWW-Authenticate: Basic realm="bilibili-notify"\r\n' +
+					"Connection: close\r\n" +
+					"Content-Length: 0\r\n" +
+					"\r\n",
+			);
+		} catch {
+			// best-effort; we destroy regardless.
+		}
+		try {
+			socket.destroy();
+		} catch {
+			// already gone
+		}
+	};
+
+	const checkAuth = (req: IncomingMessage): boolean => {
+		if (!expectedToken) return true;
+		const header = req.headers.authorization;
+		if (header && typeof header === "string") {
+			const m = /^Basic\s+(.+)$/i.exec(header.trim());
+			if (m && m[1] === expectedToken) return true;
+		}
+		// Fallback: ?token=<b64> query string. Browsers can't set custom headers
+		// on the WebSocket constructor, so the dashboard uses this path.
+		const url = req.url ?? "";
+		const q = url.indexOf("?");
+		if (q >= 0) {
+			const params = new URLSearchParams(url.slice(q + 1));
+			const token = params.get("token");
+			if (token && token === expectedToken) return true;
+		}
+		return false;
+	};
+
+	const checkOrigin = (req: IncomingMessage): boolean => {
+		if (!originGateEnabled) return true;
+		const origin = req.headers.origin;
+		if (!origin || typeof origin !== "string") return false;
+		return allowedOrigins.includes(origin);
+	};
+
 	const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
 		// We only handle our own path; anything else is rejected so that other
 		// modules (or future routes) can claim their own paths via `server.on('upgrade')`.
 		const url = req.url ?? "";
 		if (!url.startsWith(path)) {
 			// Another upgrade handler may want this; do nothing instead of destroying.
+			return;
+		}
+		// Origin gate first — if a request is not from a trusted origin we don't
+		// even tell it auth is required, just terminate.
+		if (!checkOrigin(req)) {
+			log.warn(`ws upgrade rejected: origin=${String(req.headers.origin)} not in allowedOrigins`);
+			try {
+				socket.destroy();
+			} catch {
+				// already gone
+			}
+			return;
+		}
+		// Auth gate — emit a real 401 so curl/clients see the right code.
+		if (!checkAuth(req)) {
+			log.warn("ws upgrade rejected: missing or invalid auth");
+			rejectUnauthorized(socket);
 			return;
 		}
 		wss.handleUpgrade(req, socket, head, (socket) => {

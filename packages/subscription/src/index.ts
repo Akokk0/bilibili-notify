@@ -37,8 +37,8 @@ export function diff(prev: Subscription[], next: Subscription[]): SubscriptionOp
 	const prevMap = new Map(prev.map((s) => [s.id, s]));
 	const nextMap = new Map(next.map((s) => [s.id, s]));
 
-	for (const [id] of prevMap) {
-		if (!nextMap.has(id)) ops.push({ type: "remove", id });
+	for (const [id, sub] of prevMap) {
+		if (!nextMap.has(id)) ops.push({ type: "remove", id, uid: sub.uid });
 	}
 	for (const [id, sub] of nextMap) {
 		if (!prevMap.has(id)) {
@@ -83,7 +83,7 @@ export function createSubscriptionStore(bus: MessageBus): SubscriptionStore {
 			if (idx === -1) return undefined;
 			const removed = subs[idx];
 			subs = [...subs.slice(0, idx), ...subs.slice(idx + 1)];
-			bus.emit("subscription-changed", [{ type: "remove", id }]);
+			bus.emit("subscription-changed", [{ type: "remove", id, uid: removed.uid }]);
 			return removed;
 		},
 		replaceAll(next) {

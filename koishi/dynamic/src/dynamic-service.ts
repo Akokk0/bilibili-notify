@@ -212,7 +212,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 					};
 				}
 				if (op.type === "remove") {
-					return { type: "delete" as const, uid: op.id };
+					return { type: "delete" as const, uid: op.uid };
 				}
 				// update
 				return {

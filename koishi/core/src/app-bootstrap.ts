@@ -113,6 +113,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			api: this.api,
 			push: this.push,
 			store: this.slots.store,
+			registry: this.slots.registry,
 		});
 	}
 

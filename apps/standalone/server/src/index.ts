@@ -35,7 +35,22 @@ async function main(): Promise<void> {
 		throw err;
 	}
 
-	const app = createApp(runtime, { authSystem });
+	// Warn loudly when no dashboard auth is configured — local dev is fine bare,
+	// but anything reachable beyond localhost should set BN_DASHBOARD_USER/PASS or
+	// auth.basicAuth in the YAML. We do NOT refuse to start (per plan §4.2).
+	const basicAuthCredentials = bootstrap.auth?.basicAuth;
+	if (!basicAuthCredentials) {
+		log.warn(
+			"auth not configured, dashboard exposed without auth (set auth.basicAuth.{username,password} or BN_DASHBOARD_USER/BN_DASHBOARD_PASS)",
+		);
+	}
+	if (!bootstrap.auth?.allowedOrigins || bootstrap.auth.allowedOrigins.length === 0) {
+		log.warn(
+			"auth.allowedOrigins not configured, WebSocket Origin check disabled (any browser origin may upgrade)",
+		);
+	}
+
+	const app = createApp(runtime, { authSystem, basicAuthCredentials });
 	let server: ServerType | undefined;
 	await new Promise<void>((resolve) => {
 		server = serve(
@@ -61,6 +76,8 @@ async function main(): Promise<void> {
 		bus: runtime.bus,
 		store: runtime.configStore,
 		serviceCtx: runtime.serviceCtx,
+		basicAuthCredentials,
+		allowedOrigins: bootstrap.auth?.allowedOrigins,
 	});
 	const previousLogHook = runtime.serviceCtx.setLogHook((entry) => wsServer.logChannel.push(entry));
 

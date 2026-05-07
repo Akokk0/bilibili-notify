@@ -3,6 +3,7 @@ import {
 	FEATURE_KEYS,
 	type FeatureKey,
 	makeEmptySubscription,
+	type PushTarget,
 	type Subscription,
 	type SubscriptionRouting,
 } from "@bilibili-notify/internal";
@@ -99,10 +100,15 @@ export function flatSubToSubscription(
 	return sub;
 }
 
-/** Deterministic UUID v5-like (using SHA-based approach via a simple hash). */
+/**
+ * Deterministic UUID v4-shape from a string (djb2-style hash spread across 16
+ * bytes). Must stay in lock-step with `koishi/advanced-subscription/src/convert.ts`.
+ *
+ * NB: every intermediate is forced through `>>> 0` so JS bitwise ops can't
+ * deliver a signed-negative number to `Number.prototype.toString(16)` (which
+ * would emit a leading `-` and break the UUID shape — Fix 6 collateral).
+ */
 function deterministicUuid(input: string): string {
-	// Simple deterministic id: hash the input string into a uuid-shaped string.
-	// We use a djb2 hash spread across 16 bytes.
 	let h1 = 5381;
 	let h2 = 52711;
 	let h3 = 0xdeadbeef;
@@ -114,8 +120,15 @@ function deterministicUuid(input: string): string {
 		h3 = (Math.imul(h3, 31) ^ c) >>> 0;
 		h4 = (Math.imul(h4, 29) ^ c) >>> 0;
 	}
-	const toHex = (n: number, len: number) => n.toString(16).padStart(len, "0");
-	return `${toHex(h1, 8)}-${toHex(h2 & 0xffff, 4)}-4${toHex((h3 >> 4) & 0x0fff, 3)}-${toHex(((h4 >> 4) & 0x3fff) | 0x8000, 4)}-${toHex(h1 ^ h2, 8)}${toHex(h3 ^ h4, 4)}`;
+	const toHex = (n: number, len: number) =>
+		((n >>> 0) & 0xffffffff).toString(16).padStart(len, "0").slice(-len);
+	const seg1 = toHex(h1, 8);
+	const seg2 = toHex((h2 >>> 0) & 0xffff, 4);
+	const seg3 = `4${toHex(((h3 >>> 0) >>> 4) & 0x0fff, 3)}`;
+	const seg4 = toHex((((h4 >>> 0) >>> 4) & 0x3fff) | 0x8000, 4);
+	const seg5a = toHex((h1 ^ h2) >>> 0, 8);
+	const seg5b = toHex(((h3 ^ h4) >>> 0) & 0xffff, 4);
+	return `${seg1}-${seg2}-${seg3}-${seg4}-${seg5a}${seg5b}`;
 }
 
 export interface SubscriptionLoaderOptions {
@@ -178,6 +191,14 @@ export class SubscriptionLoader {
 	/** Wire the optional advanced-sub event listener. No-op outside advanced-sub mode. */
 	registerAdvancedSubListener(): void {
 		if (!this.hooks.getConfig().advancedSub) return;
+		// `advanced-sub-targets` is emitted by the adapter before `advanced-sub`,
+		// so the registry has the PushTargets ready when the subscription routing
+		// references them. Fix 6.
+		this.ctx.on("bilibili-notify/advanced-sub-targets", (targets: PushTarget[]) => {
+			for (const t of targets) {
+				this.registry.set(t);
+			}
+		});
 		this.ctx.on("bilibili-notify/advanced-sub", async (incoming: Subscription[]) => {
 			if (!incoming.length) {
 				this.logger.info("[sub] 订阅加载完毕，但未添加任何订阅");

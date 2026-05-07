@@ -29,10 +29,14 @@ export interface ServiceContext {
 
 /**
  * 订阅变更操作。CRUD 产生的 diff 列表，随 subscription-changed 事件携带。
+ *
+ * `remove` 同时携带 `id`（dashboard 内部 uuid）与 `uid`（B 站用户 ID）。
+ * 下游引擎（DynamicEngine / LiveEngine）按 B 站 UID 索引 listener / poll target，
+ * 没有 uid 时无法正确清理已订阅 UP 的资源；保留 id 以便 store 内部按主键定位。
  */
 export type SubscriptionOp =
 	| { type: "add"; sub: Subscription }
-	| { type: "remove"; id: string }
+	| { type: "remove"; id: string; uid: string }
 	| { type: "update"; sub: Subscription };
 
 /**

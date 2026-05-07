@@ -1,4 +1,8 @@
-import type { SubscriptionOp } from "@bilibili-notify/internal";
+import type {
+	NotificationPayload,
+	PayloadSegment,
+	SubscriptionOp,
+} from "@bilibili-notify/internal";
 import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
 import { makeKoishiServiceContext } from "@bilibili-notify/koishi-runtime";
 import {
@@ -11,7 +15,7 @@ import {
 	type SubscriptionsView,
 } from "@bilibili-notify/live";
 import type { BilibiliPush } from "@bilibili-notify/push";
-import { type Awaitable, type Context, h, Service } from "koishi";
+import { type Awaitable, type Context, type Element, h, Service } from "koishi";
 // biome-ignore lint/correctness/noUnusedImports: module augmentation for ctx["bilibili-notify"]
 import type {} from "koishi-plugin-bilibili-notify";
 import { liveCommands } from "./commands";
@@ -30,6 +34,111 @@ declare module "koishi" {
 }
 
 const SERVICE_NAME = "bilibili-notify-live";
+
+/**
+ * Decode a koishi h.image / h.img element's `attrs.src` into either a Buffer + mime
+ * (when stored as a `data:<mime>;base64,<data>` URL — which is what `h.image(buffer, mime)`
+ * produces internally) or a plain URL string.
+ *
+ * Returns `{ kind: "buffer", buffer, mime }` for inlined assets,
+ * `{ kind: "url", url }` for remote URLs, or `null` if `src` is missing/unrecognised.
+ */
+function decodeImageSrc(
+	src: string | undefined,
+): { kind: "buffer"; buffer: Buffer; mime: string } | { kind: "url"; url: string } | null {
+	if (typeof src !== "string" || src.length === 0) return null;
+	const dataMatch = /^data:([^;,]+);base64,(.*)$/i.exec(src);
+	if (dataMatch) {
+		const mime = dataMatch[1] || "image/jpeg";
+		try {
+			const buffer = Buffer.from(dataMatch[2], "base64");
+			return { kind: "buffer", buffer, mime };
+		} catch {
+			return null;
+		}
+	}
+	return { kind: "url", url: src };
+}
+
+/**
+ * Flatten a single koishi h() element into one or more PayloadSegments.
+ * Recurses through `message` / fragment containers; degrades structures that
+ * can't be expressed in PayloadSegment (e.g. `at`) to text segments.
+ */
+function elementToSegments(el: Element | string | null | undefined): PayloadSegment[] {
+	if (el == null) return [];
+	if (typeof el === "string") {
+		return el.length > 0 ? [{ type: "text", text: el }] : [];
+	}
+	const type = el.type;
+	const attrs = el.attrs ?? {};
+
+	switch (type) {
+		case "text": {
+			const text = String(attrs.content ?? "");
+			return text.length > 0 ? [{ type: "text", text }] : [];
+		}
+		case "img":
+		case "image": {
+			const decoded = decodeImageSrc(attrs.src as string | undefined);
+			if (!decoded) return [];
+			if (decoded.kind === "buffer") {
+				return [{ type: "image", buffer: decoded.buffer, mime: decoded.mime }];
+			}
+			// Remote URL: PayloadSegment image requires Buffer; degrade to a link segment
+			// so downstream sinks at least surface the URL.
+			return [{ type: "link", href: decoded.url }];
+		}
+		case "at": {
+			const atType = attrs.type as string | undefined;
+			const atId = attrs.id as string | undefined;
+			const text = atType === "all" ? "@全体成员 " : atId ? `@${atId} ` : "";
+			return text.length > 0 ? [{ type: "text", text }] : [];
+		}
+		case "message":
+		case "template": // koishi Element.Fragment
+		case undefined:
+		case "": {
+			// container: flatten children
+			return el.children.flatMap((child) => elementToSegments(child));
+		}
+		default: {
+			// Unknown koishi node — fall back to its serialised form so it isn't lost.
+			const fallback = el.toString();
+			return fallback.length > 0 ? [{ type: "text", text: fallback }] : [];
+		}
+	}
+}
+
+/**
+ * Convert an arbitrary koishi h() element / fragment into a NotificationPayload.
+ * Single-segment payloads collapse to `kind: "text"` / `kind: "image"`; otherwise
+ * a `kind: "composite"` payload is returned.
+ */
+function koishiElementToPayload(content: unknown): NotificationPayload {
+	let segments: PayloadSegment[];
+	if (typeof content === "string") {
+		segments = content.length > 0 ? [{ type: "text", text: content }] : [];
+	} else if (Array.isArray(content)) {
+		segments = (content as Element[]).flatMap((el) => elementToSegments(el));
+	} else if (content && typeof content === "object" && "type" in content) {
+		segments = elementToSegments(content as Element);
+	} else {
+		segments = [{ type: "text", text: String(content ?? "") }];
+	}
+	if (segments.length === 0) {
+		return { kind: "text", text: "" };
+	}
+	if (segments.length === 1) {
+		const only = segments[0];
+		if (only.type === "text") return { kind: "text", text: only.text };
+		if (only.type === "image") {
+			return { kind: "image", image: { buffer: only.buffer, mime: only.mime } };
+		}
+		// link: keep as composite so the link segment is preserved
+	}
+	return { kind: "composite", segments };
+}
 
 /**
  * Adapt the new BilibiliPush to the PushLike interface that LiveEngine expects.
@@ -55,14 +164,11 @@ function adaptPush(push: BilibiliPush): PushLike {
 			};
 			const feature = typeToFeature[type as number] ?? "live";
 
-			// content is a koishi h() element; we convert to a text payload
-			// by calling toString() which gives the XML-like koishi serialization.
-			// For a richer translation, cast to string then wrap as text.
-			const textContent = typeof content === "string" ? content : String(content);
-			const payload: import("@bilibili-notify/internal").NotificationPayload = {
-				kind: "text",
-				text: textContent,
-			};
+			// content is a koishi h() element (or fragment / string). Translate to a
+			// platform-neutral NotificationPayload so the sink can re-render image
+			// buffers, @-mentions, and composite messages on the destination platform
+			// instead of receiving a flattened XML string.
+			const payload = koishiElementToPayload(content);
 			await push.broadcastToFeature(uid, feature, payload);
 		},
 		sendPrivateMsg(content) {
@@ -222,7 +328,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 					return { type: "add" as const, sub: storeToSubItemView(op.sub) };
 				}
 				if (op.type === "remove") {
-					return { type: "delete" as const, uid: op.id };
+					return { type: "delete" as const, uid: op.uid };
 				}
 				// update
 				return {

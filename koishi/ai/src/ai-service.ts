@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
 	type AIScene,
 	CommentaryGenerator,
@@ -8,16 +7,19 @@ import {
 	type Subscriptions,
 } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
-import {
-	BILIBILI_NOTIFY_TOKEN,
-	FEATURE_KEYS,
-	makeEmptySubscription,
-} from "@bilibili-notify/internal";
+import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
 import { makeKoishiServiceContext } from "@bilibili-notify/koishi-runtime";
 import { type Awaitable, type Context, Service } from "koishi";
 import type {} from "koishi-plugin-bilibili-notify";
 import { aiCommands } from "./commands";
 import type { BilibiliNotifyAIConfig } from "./config";
+import { buildSubManagement } from "./sub-mgmt";
+
+export {
+	buildSubManagement,
+	type SubMgmtRegistryLike,
+	type SubMgmtStoreLike,
+} from "./sub-mgmt";
 
 declare module "koishi" {
 	interface Context {
@@ -99,68 +101,11 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 		const holder = (this as unknown as { _apiHolder: { api: BilibiliAPI | null } })._apiHolder;
 		holder.api = internals.api;
 
-		const { store } = internals;
+		const { store, registry } = internals;
 
-		// Build SubManagement wrapping store for AI CRUD tools
-		const subMgmt: SubManagement = {
-			addSub: async (params) => {
-				const {
-					uid,
-					name,
-					dynamic = true,
-					dynamicAtAll = false,
-					live = true,
-					liveAtAll = false,
-					liveGuardBuy = false,
-					superchat = false,
-					wordcloud = true,
-					liveSummary = true,
-				} = params;
-				const sub = makeEmptySubscription({ id: randomUUID(), uid });
-				const targetIds: string[] = [randomUUID()]; // placeholder target id
-				const routing = Object.fromEntries(FEATURE_KEYS.map((k) => [k, [] as string[]]));
-				if (dynamic) routing.dynamic = [...targetIds];
-				if (dynamicAtAll) routing.dynamicAtAll = [...targetIds];
-				if (live) routing.live = [...targetIds];
-				if (liveAtAll) routing.liveAtAll = [...targetIds];
-				if (liveGuardBuy) routing.liveGuardBuy = [...targetIds];
-				if (superchat) routing.superchat = [...targetIds];
-				if (wordcloud) routing.wordcloud = [...targetIds];
-				if (liveSummary) routing.liveSummary = [...targetIds];
-				sub.routing = routing as typeof sub.routing;
-				store.upsert(sub);
-				return `已成功订阅 ${name}（UID: ${uid}）`;
-			},
-			removeSub: (uid) => {
-				const sub = store.findByUid(uid);
-				if (!sub) return `UID: ${uid} 不在订阅列表中`;
-				store.removeById(sub.id);
-				return `已成功取消订阅（UID: ${uid}）`;
-			},
-			updateSub: async (params) => {
-				const sub = store.findByUid(params.uid);
-				if (!sub) return `UID: ${params.uid} 不在订阅列表中`;
-				const updated = { ...sub };
-				const targetIds = Object.values(sub.routing)
-					.flat()
-					.filter((id, i, arr) => arr.indexOf(id) === i);
-				const routing = { ...sub.routing };
-				if (params.dynamic !== undefined) routing.dynamic = params.dynamic ? targetIds : [];
-				if (params.dynamicAtAll !== undefined)
-					routing.dynamicAtAll = params.dynamicAtAll ? targetIds : [];
-				if (params.live !== undefined) routing.live = params.live ? targetIds : [];
-				if (params.liveAtAll !== undefined) routing.liveAtAll = params.liveAtAll ? targetIds : [];
-				if (params.liveGuardBuy !== undefined)
-					routing.liveGuardBuy = params.liveGuardBuy ? targetIds : [];
-				if (params.superchat !== undefined) routing.superchat = params.superchat ? targetIds : [];
-				if (params.wordcloud !== undefined) routing.wordcloud = params.wordcloud ? targetIds : [];
-				if (params.liveSummary !== undefined)
-					routing.liveSummary = params.liveSummary ? targetIds : [];
-				updated.routing = routing;
-				store.upsert(updated);
-				return `已成功更新（UID: ${params.uid}）的订阅设置`;
-			},
-		};
+		// Build SubManagement wrapping store for AI CRUD tools.
+		// Resolves default targetIds from the registry (Fix 7).
+		const subMgmt: SubManagement = buildSubManagement({ store, registry });
 
 		this.engine.setSubManagement({
 			getSubs: () => {

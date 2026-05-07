@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import type { BilibiliAPI, BiliDataServer } from "@bilibili-notify/api";
-import type { Subscription, SubscriptionOp } from "@bilibili-notify/internal";
+import type { PushTarget, Subscription, SubscriptionOp } from "@bilibili-notify/internal";
 import type { CookieData } from "@bilibili-notify/storage";
 // biome-ignore lint/correctness/noUnusedImports: module augmentation
 import {} from "@koishijs/plugin-console";
@@ -24,6 +24,15 @@ declare module "koishi" {
 		"bilibili-notify/auth-lost"(): void;
 		"bilibili-notify/auth-restored"(): void;
 		"bilibili-notify/advanced-sub"(subs: Subscription[]): void;
+		/**
+		 * Emitted by the advanced-subscription adapter ahead of `advanced-sub`.
+		 * Carries the synthesized PushTarget list for every channel that any
+		 * sub references, so the koishi-side TargetRegistry can register them
+		 * before the routing payloads land. Without this the targetIds embedded
+		 * in routing point at no PushTarget and the push routing silently drops
+		 * the message (Fix 6).
+		 */
+		"bilibili-notify/advanced-sub-targets"(targets: PushTarget[]): void;
 		"bilibili-notify/ready-to-receive"(): void;
 		"bilibili-notify/cookies-refreshed"(data: CookieData): void;
 		"bilibili-notify/subscription-changed"(ops: SubscriptionOp[]): void;

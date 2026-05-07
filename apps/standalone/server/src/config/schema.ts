@@ -19,6 +19,12 @@ const BasicAuthSchema = z.object({
 const AuthSchema = z
 	.object({
 		basicAuth: BasicAuthSchema.optional(),
+		/**
+		 * Origin whitelist for WS upgrade requests. Empty/undefined disables the
+		 * Origin gate (and the WS layer logs a warning at boot). Required for any
+		 * deployment exposed beyond localhost — see plan §4.2 / Fix 4b.
+		 */
+		allowedOrigins: z.array(z.string().min(1)).optional(),
 	})
 	.optional();
 

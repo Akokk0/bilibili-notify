@@ -100,9 +100,31 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 		deps.bus.on("auth-restored", () => deps.publish(envelope("auth", "auth-restored", []))),
 	);
 	subs.push(
-		deps.bus.on("cookies-refreshed", (data) =>
-			deps.publish(envelope("auth", "cookies-refreshed", [data])),
-		),
+		deps.bus.on("cookies-refreshed", (data) => {
+			// SECURITY: the bus payload is `{ cookiesJson, refreshToken }` (see
+			// packages/api → CookiesRefreshedPayload). Forwarding it verbatim to
+			// every dashboard client would leak the full session cookie to anyone
+			// connected. We strip to a minimal "refresh happened" signal — the
+			// frontend doesn't need the cookie itself, just to know the refresh
+			// occurred so it can re-fetch auth status if desired. Plan §4.2 Fix 5.
+			const safe: { refreshedAt: string; ok?: boolean } = {
+				refreshedAt: new Date().toISOString(),
+			};
+			if (
+				data &&
+				typeof data === "object" &&
+				"ok" in data &&
+				typeof (data as { ok: unknown }).ok === "boolean"
+			) {
+				safe.ok = (data as { ok: boolean }).ok;
+			}
+			deps.publish({
+				type: "auth",
+				event: "cookies-refreshed",
+				ts: new Date().toISOString(),
+				data: safe,
+			});
+		}),
 	);
 
 	// push-events channel ---------------------------------------------------

@@ -248,10 +248,8 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@bilibili-notify/push@workspace:packages/push"
   dependencies:
-    "@koishijs/plugin-notifier": "npm:^1.2.1"
-  peerDependencies:
-    "@koishijs/plugin-notifier": "*"
-    koishi: ^4.18.11
+    "@bilibili-notify/internal": "workspace:^"
+    "@bilibili-notify/subscription": "workspace:^"
   languageName: unknown
   linkType: soft
 
@@ -267,10 +265,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@bilibili-notify/subscription@workspace:packages/subscription"
   dependencies:
-    "@bilibili-notify/api": "workspace:^"
-    "@bilibili-notify/push": "workspace:^"
-  peerDependencies:
-    koishi: ^4.18.11
+    "@bilibili-notify/internal": "workspace:^"
   languageName: unknown
   linkType: soft
 
@@ -6405,7 +6400,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "koishi-plugin-bilibili-notify-advanced-subscription@workspace:koishi/advanced-subscription"
   dependencies:
-    "@bilibili-notify/push": "workspace:^"
+    "@bilibili-notify/internal": "workspace:^"
   peerDependencies:
     koishi: ^4.18.11
     koishi-plugin-bilibili-notify: "workspace:^"

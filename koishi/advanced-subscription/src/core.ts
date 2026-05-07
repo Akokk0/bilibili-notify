@@ -9,77 +9,14 @@
  * No independent runtime path remains — this package is a config translator.
  */
 
-import {
-	FEATURE_KEYS,
-	type FeatureKey,
-	makeEmptySubscription,
-	type Subscription,
-	type SubscriptionRouting,
-} from "@bilibili-notify/internal";
 import { type Context, Schema } from "koishi";
 import type {} from "koishi-plugin-bilibili-notify";
+import { buildAdvancedSubAndTargets, type SubItemRawConfig } from "./convert";
+
+export type { BuildResult, ConversionResult } from "./convert";
+export { buildAdvancedSubAndTargets, rawConfigToSubscription } from "./convert";
 
 // ---- Schema definition (preserved for UI) ----
-
-type ChannelFeatureKey = FeatureKey;
-
-type ChannelConfig = Partial<Record<ChannelFeatureKey, boolean>> & { channelId: string };
-
-interface TargetConfig {
-	platform: string;
-	channelArr: ChannelConfig[];
-}
-
-const _MASTER_FEATURE_KEYS: readonly FeatureKey[] = [
-	"dynamic",
-	"dynamicAtAll",
-	"live",
-	"liveAtAll",
-	"liveEnd",
-	"liveGuardBuy",
-	"superchat",
-	"wordcloud",
-	"liveSummary",
-] as const;
-
-type MasterFlagMap = Partial<Record<FeatureKey, boolean>>;
-
-type SubItemRawConfig = MasterFlagMap & {
-	uid: string;
-	roomId: string;
-	target: TargetConfig[];
-	customLiveSummary: { enable: boolean; liveSummary?: string[] };
-	customLiveMsg: {
-		enable: boolean;
-		customLiveStart?: string;
-		customLive?: string;
-		customLiveEnd?: string;
-	};
-	customCardStyle: {
-		enable: boolean;
-		cardColorStart?: string;
-		cardColorEnd?: string;
-		cardBasePlateColor?: string;
-		cardBasePlateBorder?: string;
-	};
-	customGuardBuy: {
-		enable: boolean;
-		guardBuyMsg?: string;
-		captainImgUrl?: string;
-		supervisorImgUrl?: string;
-		governorImgUrl?: string;
-	};
-	customSpecialDanmakuUsers: {
-		enable: boolean;
-		specialDanmakuUsers?: string[];
-		msgTemplate?: string;
-	};
-	customSpecialUsersEnterTheRoom: {
-		enable: boolean;
-		specialUsersEnterTheRoom?: string[];
-		msgTemplate?: string;
-	};
-};
 
 export interface BilibiliNotifyAdvancedSubConfig {
 	subs: Record<string, SubItemRawConfig>;
@@ -282,163 +219,21 @@ export const BilibiliNotifyAdvancedSubConfig: Schema<BilibiliNotifyAdvancedSubCo
 	});
 
 // ---- Conversion logic ----
-
-/**
- * Deterministic UUID from a string (same algorithm as subscription-loader.ts).
- * Must stay in sync if changed.
- */
-function deterministicUuid(input: string): string {
-	let h1 = 5381;
-	let h2 = 52711;
-	let h3 = 0xdeadbeef;
-	let h4 = 0xbaddcafe;
-	for (let i = 0; i < input.length; i++) {
-		const c = input.charCodeAt(i);
-		h1 = (Math.imul(h1, 33) ^ c) >>> 0;
-		h2 = (Math.imul(h2, 37) ^ c) >>> 0;
-		h3 = (Math.imul(h3, 31) ^ c) >>> 0;
-		h4 = (Math.imul(h4, 29) ^ c) >>> 0;
-	}
-	const toHex = (n: number, len: number) => n.toString(16).padStart(len, "0");
-	return `${toHex(h1, 8)}-${toHex(h2 & 0xffff, 4)}-4${toHex((h3 >> 4) & 0x0fff, 3)}-${toHex(((h4 >> 4) & 0x3fff) | 0x8000, 4)}-${toHex(h1 ^ h2, 8)}${toHex(h3 ^ h4, 4)}`;
-}
-
-function rawConfigToSubscription(_name: string, raw: SubItemRawConfig): Subscription {
-	const uid = raw.uid;
-	const subId = deterministicUuid(`sub:${uid}`);
-	const sub = makeEmptySubscription({ id: subId, uid });
-
-	// Build routing from the per-channel config
-	const routing: SubscriptionRouting = Object.fromEntries(
-		FEATURE_KEYS.map((k) => [k, [] as string[]]),
-	) as SubscriptionRouting;
-
-	for (const entry of raw.target ?? []) {
-		const { platform, channelArr } = entry;
-		if (!channelArr?.length) continue;
-		const koishiPlatform = `koishi-${platform}`;
-
-		for (const ch of channelArr) {
-			// Synthesize a target id for this channel (deterministic by platform+channelId)
-			const targetId = deterministicUuid(`target:${koishiPlatform}:${ch.channelId}`);
-
-			for (const featureKey of FEATURE_KEYS) {
-				// Channel-level enable: check ch[featureKey]
-				const chEnabled = ch[featureKey as keyof typeof ch] as boolean | undefined;
-				if (chEnabled === false) continue;
-
-				// Master-level gating: if the master switch is explicitly false, skip
-				const masterEnabled = raw[featureKey as keyof SubItemRawConfig] as boolean | undefined;
-				if (masterEnabled === false) continue;
-
-				if (!routing[featureKey]) routing[featureKey] = [];
-				if (!routing[featureKey].includes(targetId)) {
-					routing[featureKey].push(targetId);
-				}
-			}
-		}
-	}
-
-	sub.routing = routing;
-
-	// Map custom overrides to the new overrides schema
-	const cardStyle = raw.customCardStyle;
-	if (cardStyle?.enable) {
-		sub.overrides.cardStyle = {
-			cardColorStart: cardStyle.cardColorStart,
-			cardColorEnd: cardStyle.cardColorEnd,
-			cardBasePlateColor: cardStyle.cardBasePlateColor,
-			cardBasePlateBorder: cardStyle.cardBasePlateBorder,
-		};
-	}
-
-	const liveMsg = raw.customLiveMsg;
-	if (liveMsg?.enable) {
-		sub.overrides.templates = {
-			...(sub.overrides.templates ?? {}),
-			...(liveMsg.customLiveStart !== undefined ? { liveStart: liveMsg.customLiveStart } : {}),
-			...(liveMsg.customLive !== undefined ? { liveOngoing: liveMsg.customLive } : {}),
-			...(liveMsg.customLiveEnd !== undefined ? { liveEnd: liveMsg.customLiveEnd } : {}),
-		};
-	}
-
-	const guardBuy = raw.customGuardBuy;
-	if (guardBuy?.enable) {
-		const defaultUrl = (label: string) =>
-			`https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/${label}`;
-		sub.overrides.templates = {
-			...(sub.overrides.templates ?? {}),
-			guardBuy: {
-				captain: {
-					imageUrl: guardBuy.captainImgUrl ?? defaultUrl("captain-Bjw5Byb5.png"),
-					template: guardBuy.guardBuyMsg ?? "{user} 成为了 {mastername} 的舰长！",
-				},
-				commander: {
-					imageUrl: guardBuy.supervisorImgUrl ?? defaultUrl("supervisor-u43ElIjU.png"),
-					template: guardBuy.guardBuyMsg ?? "{user} 成为了 {mastername} 的提督！",
-				},
-				governor: {
-					imageUrl: guardBuy.governorImgUrl ?? defaultUrl("governor-DpDXKEdA.png"),
-					template: guardBuy.guardBuyMsg ?? "{user} 成为了 {mastername} 的总督！",
-				},
-			},
-		};
-	}
-
-	const liveSummary = raw.customLiveSummary;
-	if (liveSummary?.enable && liveSummary.liveSummary?.length) {
-		sub.overrides.templates = {
-			...(sub.overrides.templates ?? {}),
-			liveSummary: liveSummary.liveSummary.join("\n"),
-		};
-	}
-
-	// Special users
-	if (raw.customSpecialDanmakuUsers?.enable) {
-		const users = raw.customSpecialDanmakuUsers.specialDanmakuUsers ?? [];
-		const tmpl = raw.customSpecialDanmakuUsers.msgTemplate ?? "";
-		sub.specialUsers = [
-			...sub.specialUsers,
-			...users.map((uid) => ({ uid, kinds: ["danmaku" as const], template: tmpl })),
-		];
-		if (tmpl) {
-			sub.overrides.templates = {
-				...(sub.overrides.templates ?? {}),
-				specialDanmaku: tmpl,
-			};
-		}
-	}
-
-	if (raw.customSpecialUsersEnterTheRoom?.enable) {
-		const users = raw.customSpecialUsersEnterTheRoom.specialUsersEnterTheRoom ?? [];
-		const tmpl = raw.customSpecialUsersEnterTheRoom.msgTemplate ?? "";
-		sub.specialUsers = [
-			...sub.specialUsers,
-			...users.map((uid) => ({ uid, kinds: ["enter" as const], template: tmpl })),
-		];
-		if (tmpl) {
-			sub.overrides.templates = {
-				...(sub.overrides.templates ?? {}),
-				specialUserEnter: tmpl,
-			};
-		}
-	}
-
-	return sub;
-}
+// Pure conversion functions live in `./convert` (koishi-free, unit-testable);
+// re-exported above so back-compat consumers of `core.ts` keep working.
 
 export function applyAdvancedSub(ctx: Context, config: BilibiliNotifyAdvancedSubConfig): void {
-	const buildSubs = (): Subscription[] => {
-		const subs: Subscription[] = [];
-		for (const [name, raw] of Object.entries(config.subs)) {
-			subs.push(rawConfigToSubscription(name, raw));
-		}
-		return subs;
+	const emit = () => {
+		const { subs, targets } = buildAdvancedSubAndTargets(config);
+		// Emit targets first so the registry has the entries before subscriptions
+		// reference them via routing.
+		ctx.emit("bilibili-notify/advanced-sub-targets", targets);
+		ctx.emit("bilibili-notify/advanced-sub", subs);
 	};
 
-	ctx.emit("bilibili-notify/advanced-sub", buildSubs());
+	emit();
 
 	ctx.on("bilibili-notify/ready-to-receive", () => {
-		ctx.emit("bilibili-notify/advanced-sub", buildSubs());
+		emit();
 	});
 }
