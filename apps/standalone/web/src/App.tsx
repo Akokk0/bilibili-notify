@@ -8,6 +8,7 @@ import { useAuthHydrate } from "./hooks/useAuthHydrate";
 import { useStateChannel } from "./hooks/useStateChannel";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
+import Rules from "./pages/Rules";
 import Subs from "./pages/Subs";
 import Targets from "./pages/Targets";
 import { api } from "./services/api";
@@ -64,7 +65,7 @@ export default function App() {
 						<Route path="/subs" element={<Subs />} />
 						<Route path="/targets" element={<Targets />} />
 						<Route path="/history" element={<Placeholder name="推送历史" />} />
-						<Route path="/rules" element={<Placeholder name="高级规则" />} />
+						<Route path="/rules" element={<Rules />} />
 						<Route path="/cards" element={<Placeholder name="卡片预览 · 样式" />} />
 						<Route path="/ai" element={<Placeholder name="智能女仆" />} />
 						<Route path="/auth" element={<Auth />} />

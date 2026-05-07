@@ -112,6 +112,40 @@ export const Icon = {
 		</>,
 	),
 	star: filled(<path d="m12 2 3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1 3-7Z" />),
+	heart: filled(<path d="M12 21s-8-5-8-11a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 6-8 11-8 11h-2Z" />),
+	mic: stroke(
+		<>
+			<rect x="9" y="3" width="6" height="12" rx="3" />
+			<path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+		</>,
+	),
+	list: stroke(<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" />),
+	anchor: stroke(
+		<>
+			<circle cx="12" cy="4" r="2" />
+			<path d="M12 6v15M7 11h10M5 14a7 7 0 0 0 14 0" />
+		</>,
+	),
+	sparkle: stroke(<path d="M12 2v6m0 8v6M2 12h6m8 0h6M5 5l4 4m6 6 4 4M5 19l4-4m6-6 4-4" />),
+	fire: filled(
+		<path d="M12 2c2 5 6 6 6 12a6 6 0 0 1-12 0c0-3 1-4 2-5 0 2 1 3 2 3 0-4 1-7 2-10Z" />,
+	),
+	drag: filled(
+		<>
+			<circle cx="9" cy="6" r="1.5" />
+			<circle cx="15" cy="6" r="1.5" />
+			<circle cx="9" cy="12" r="1.5" />
+			<circle cx="15" cy="12" r="1.5" />
+			<circle cx="9" cy="18" r="1.5" />
+			<circle cx="15" cy="18" r="1.5" />
+		</>,
+	),
+	link: stroke(
+		<>
+			<path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" />
+			<path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" />
+		</>,
+	),
 } as const;
 
 export type IconName = keyof typeof Icon;
