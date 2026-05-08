@@ -14,16 +14,22 @@ export interface LoadBootstrapConfigOptions {
 
 /**
  * Bootstrap config load order (per plan §4.2):
- *   defaults < ./bn.config.{yaml,json} < ENV (BN_*) < CLI args
+ *   defaults < BN_CONFIG file | ./bn.config.{yaml,json} < ENV (BN_*) < CLI args
  * Each later layer overrides earlier ones. The result is parsed by `BootstrapConfigSchema`,
  * which also fills in defaults for any missing keys.
+ *
+ * `BN_CONFIG`, when set, is treated as an absolute (or cwd-relative) path to a
+ * single config file. The file extension picks the parser (.json → JSON,
+ * everything else → YAML). When unset, the loader falls back to scanning `cwd`
+ * for `bn.config.{yaml,yml,json}` in that order. Pointing `BN_CONFIG` at a
+ * missing file is a hard error — silent fallback would mask typos.
  */
 export function loadBootstrapConfig(opts: LoadBootstrapConfigOptions = {}): BootstrapConfig {
 	const argv = opts.argv ?? process.argv.slice(2);
 	const env = opts.env ?? process.env;
 	const cwd = opts.cwd ?? process.cwd();
 
-	const fromFile = readConfigFile(cwd);
+	const fromFile = readConfigFile(cwd, env.BN_CONFIG);
 	const fromEnv = readEnv(env);
 	const fromCli = readCli(argv);
 
@@ -35,7 +41,14 @@ export function loadBootstrapConfig(opts: LoadBootstrapConfigOptions = {}): Boot
 // File layer
 // ---------------------------------------------------------------------------
 
-function readConfigFile(cwd: string): Record<string, unknown> {
+function readConfigFile(cwd: string, explicitPath: string | undefined): Record<string, unknown> {
+	if (explicitPath) {
+		const abs = resolvePath(cwd, explicitPath);
+		const raw = readFileSync(abs, "utf8");
+		const isJson = abs.toLowerCase().endsWith(".json");
+		if (isJson) return interpolateEnvDeep(JSON.parse(raw)) as Record<string, unknown>;
+		return (interpolateEnvDeep(parseYaml(raw)) as Record<string, unknown>) ?? {};
+	}
 	for (const candidate of ["bn.config.yaml", "bn.config.yml", "bn.config.json"]) {
 		const abs = resolvePath(cwd, candidate);
 		try {
