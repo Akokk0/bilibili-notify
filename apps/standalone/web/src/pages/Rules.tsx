@@ -3,11 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Avatar, Btn } from "../components/atoms";
 import { Icon } from "../components/icons";
 import { ApiError, api } from "../services/api";
-import type { Subscription } from "../types/domain";
+import type { PushTarget, Subscription } from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch } from "../types/globals";
 import { PerUpEditor } from "./rules/PerUpEditor";
 import {
 	CardStyleSection,
+	CoreAppSection,
 	FilterSection,
 	GLOBAL_SECTIONS,
 	GuardSection,
@@ -146,6 +147,10 @@ export default function Rules() {
 		queryKey: ["subscriptions"],
 		queryFn: () => api.get<Subscription[]>("/api/subs"),
 	});
+	const targetsQuery = useQuery({
+		queryKey: ["targets"],
+		queryFn: () => api.get<PushTarget[]>("/api/targets"),
+	});
 
 	const [scope, setScope] = useState<Scope>("__global");
 	const [section, setSection] = useState<SectionId>("filter");
@@ -166,10 +171,9 @@ export default function Rules() {
 		mutationFn: async (next: GlobalConfig) => {
 			setError(null);
 			try {
-				await api.patch<GlobalConfig>(
-					"/api/globals",
-					next.defaults ? { defaults: next.defaults } : next,
-				);
+				// Send the whole draft so app + master + defaults all flow back;
+				// server PATCH deep-merges so unchanged fields stay put.
+				await api.patch<GlobalConfig>("/api/globals", next);
 			} catch (err) {
 				if (err instanceof ApiError) setError(err.message);
 				else setError(String(err));
@@ -238,6 +242,13 @@ export default function Rules() {
 				<div className="space-y-4">
 					{!isGlobal && focusedSub ? (
 						<PerUpEditor sub={focusedSub} defaults={draft.defaults} />
+					) : section === "core" ? (
+						<CoreAppSection
+							app={draft.app}
+							master={draft.master}
+							targets={targetsQuery.data ?? []}
+							onPatch={patchDraft}
+						/>
 					) : section === "filter" ? (
 						<FilterSection value={draft.defaults.filters} onPatch={patchDraft} />
 					) : section === "live" ? (

@@ -17,16 +17,20 @@ import {
 } from "../../components/forms";
 import { GlassBox } from "../../components/glass-box";
 import { Icon } from "../../components/icons";
+import type { PushTarget } from "../../types/domain";
 import type {
+	AppConfig,
 	CardStyle,
 	ContentFilters,
 	GlobalConfigPatch,
 	GuardBundle,
+	MasterConfig,
 	ScheduleConfig,
 	TemplateBundle,
 } from "../../types/globals";
 
 export type SectionId =
+	| "core"
 	| "filter"
 	| "live"
 	| "summary"
@@ -44,6 +48,12 @@ export interface SectionMeta {
 }
 
 export const GLOBAL_SECTIONS: SectionMeta[] = [
+	{
+		id: "core",
+		label: "Core · 应用",
+		icon: <Icon.sparkle size={14} />,
+		desc: "抓取频率 / 日志 / Master 账号 · app + master",
+	},
 	{
 		id: "filter",
 		label: "动态过滤",
@@ -398,6 +408,130 @@ export function CardStyleSection({
 			</FieldRow>
 			<div className="mt-2 rounded border border-dashed bg-[#a29bfe14] p-2 text-[11px] text-bn-text-secondary">
 				per-UP 卡片样式覆盖 → 切换右上 scope 选择 UP 主 → 卡片样式
+			</div>
+		</GlassBox>
+	);
+}
+
+// ── 7. Core / App section ────────────────────────────────────────────────────
+
+const LOG_LEVELS: { value: AppConfig["logLevel"]; label: string }[] = [
+	{ value: "error", label: "ERROR · 仅错误" },
+	{ value: "info", label: "INFO · 推荐" },
+	{ value: "debug", label: "DEBUG · 排查" },
+];
+
+export function CoreAppSection({
+	app,
+	master,
+	targets,
+	onPatch,
+}: {
+	app: AppConfig;
+	master: MasterConfig;
+	targets: PushTarget[];
+	onPatch: (delta: GlobalConfigPatch) => void;
+}) {
+	const setApp = <K extends keyof AppConfig>(key: K, v: AppConfig[K]) => {
+		onPatch({ app: { [key]: v } as Partial<AppConfig> });
+	};
+
+	const masterTarget = master.targetId ? targets.find((t) => t.id === master.targetId) : undefined;
+	const masterStatus = !master.targetId
+		? "未配置 · 出错时不会私聊提醒"
+		: masterTarget
+			? `→ ${masterTarget.name}`
+			: "目标已删除,请重新选择";
+
+	return (
+		<GlassBox
+			title="Core · 应用"
+			subtitle="后端运行参数 + Master 主人账号 · 仅这一段在 globals.app / globals.master 下"
+			accent="#FB7299"
+			icon={<Icon.sparkle size={14} />}
+			badge="app + master"
+		>
+			<FieldRow
+				label="动态检查频率"
+				code="app.dynamicCron"
+				hint="cron 表达式 · 默认 */2 * * * * (每 2 分钟)"
+			>
+				<TInput
+					value={app.dynamicCron}
+					onChange={(v) => setApp("dynamicCron", v)}
+					mono
+					full={false}
+				/>
+			</FieldRow>
+
+			<FieldRow label="日志等级" code="app.logLevel" hint="影响 server 端 pino 输出层级">
+				<TSelect
+					value={app.logLevel}
+					onChange={(v) => setApp("logLevel", v as AppConfig["logLevel"])}
+					options={LOG_LEVELS}
+				/>
+			</FieldRow>
+
+			<FieldRow
+				label="User-Agent"
+				code="app.userAgent"
+				hint="留空使用默认;遇 -352 风控可换"
+				full
+			>
+				<TInput
+					value={app.userAgent ?? ""}
+					onChange={(v) => setApp("userAgent", v || undefined)}
+					placeholder="留空 = 默认"
+					mono
+				/>
+			</FieldRow>
+
+			<FieldRow
+				label="健康检查间隔"
+				code="app.healthCheckMinutes"
+				hint="rate-limited master 通知的节流窗口"
+			>
+				<TNum
+					value={app.healthCheckMinutes}
+					onChange={(v) => setApp("healthCheckMinutes", v)}
+					min={1}
+					max={1440}
+					suffix="min"
+				/>
+			</FieldRow>
+
+			<FieldRow
+				label="历史保留天数"
+				code="app.historyRetentionDays"
+				hint="到期的 jsonl 日志会被清理"
+			>
+				<TNum
+					value={app.historyRetentionDays}
+					onChange={(v) => setApp("historyRetentionDays", v)}
+					min={1}
+					max={365}
+					suffix="天"
+				/>
+			</FieldRow>
+
+			<div className="mt-3 rounded-lg border border-bn-pink/20 bg-gradient-to-br from-bn-pink/8 to-transparent p-3">
+				<div className="mb-1.5 flex items-center justify-between">
+					<span className="text-[12.5px] font-bold text-bn-text-primary">主人账号 · master</span>
+					<span className="text-[10.5px] text-bn-text-tertiary">
+						插件遇错误会私聊报告给这个目标
+					</span>
+				</div>
+				<FieldRow label="Master 推送目标" code="master.targetId">
+					<TSelect
+						value={master.targetId ?? ""}
+						onChange={(v) => onPatch({ master: { targetId: v || undefined } })}
+						options={[
+							{ value: "", label: "未配置" },
+							...targets.map((t) => ({ value: t.id, label: t.name })),
+						]}
+					/>
+				</FieldRow>
+				<div className="mt-1.5 text-[11px] text-bn-text-secondary">{masterStatus}</div>
 			</div>
 		</GlassBox>
 	);

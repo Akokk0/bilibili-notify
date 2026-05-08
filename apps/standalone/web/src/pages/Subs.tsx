@@ -4,8 +4,6 @@ import { Btn, Input } from "../components/atoms";
 import { Icon } from "../components/icons";
 import { ApiError, api } from "../services/api";
 import { makeEmptySubscription, type PushTarget, type Subscription } from "../types/domain";
-import type { GlobalConfig } from "../types/globals";
-import { CorePluginSection } from "./up/CorePluginSection";
 import { displayName } from "./up/helpers";
 import { UpCard } from "./up/UpCard";
 import { UpDrawer } from "./up/UpDrawer";
@@ -84,10 +82,6 @@ export default function Subs() {
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
-	const globalsQuery = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
 	});
 	const subs = subsQuery.data ?? [];
 	const targets = targetsQuery.data ?? [];
@@ -197,7 +191,6 @@ export default function Subs() {
 
 	return (
 		<div className="space-y-4">
-			<CorePluginSection globals={globalsQuery.data} targets={targets} />
 			<div className="flex flex-wrap items-center gap-2.5">
 				<Input
 					value={q}
