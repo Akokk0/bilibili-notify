@@ -7,6 +7,7 @@ import {
 	type FeatureKey,
 	type PushTarget,
 	type Subscription,
+	type SubscriptionRouting,
 } from "../../types/domain";
 import {
 	activeFeatures,
@@ -16,13 +17,13 @@ import {
 	routedTargetIds,
 } from "./helpers";
 
-const PRIMARY_FEATURES: ReadonlyArray<{ key: FeatureKey; sub: string; tone: string }> = [
-	{ key: "live", sub: "直播开播提醒", tone: "#FB7299" },
-	{ key: "liveEnd", sub: "直播下播提醒", tone: "#FB7299" },
-	{ key: "dynamic", sub: "投稿 / 转发 / 专栏", tone: "#00AEEC" },
-	{ key: "superchat", sub: "直播 SuperChat", tone: "#fdcb6e" },
-	{ key: "liveGuardBuy", sub: "舰长 / 提督 / 总督", tone: "#f2a053" },
-	{ key: "liveSummary", sub: "直播结束后生成总结", tone: "#a29bfe" },
+const FEATURE_GROUPS: ReadonlyArray<{ label: string; keys: ReadonlyArray<FeatureKey> }> = [
+	{ label: "动态", keys: ["dynamic", "dynamicAtAll"] },
+	{
+		label: "直播",
+		keys: ["live", "liveAtAll", "liveEnd", "liveGuardBuy", "superchat", "wordcloud", "liveSummary"],
+	},
+	{ label: "特别关注", keys: ["specialDanmaku", "specialUserEnter"] },
 ];
 
 export interface UpDrawerProps {
@@ -49,14 +50,14 @@ export function UpDrawer({ sub, targets, onClose, onSave, onDelete, saving }: Up
 	const color = colorFromUid(draft.uid);
 	const dirty = sub ? JSON.stringify(sub) !== JSON.stringify(draft) : false;
 
-	function toggleFeature(feature: FeatureKey, on: boolean): void {
+	function setRoute(targetId: string, feature: FeatureKey, on: boolean): void {
 		setDraft((d) => {
 			if (!d) return d;
-			// Default newly-enabled features to broadcasting through every routed target
-			// so the UP keeps receiving notifications instead of silently going dark.
-			const allRouted = routedTargetIds(d);
 			const next: typeof d.routing = { ...d.routing };
-			next[feature] = on ? allRouted : [];
+			const list = next[feature];
+			const has = list.includes(targetId);
+			if (on && !has) next[feature] = [...list, targetId];
+			else if (!on && has) next[feature] = list.filter((id) => id !== targetId);
 			return { ...d, routing: next };
 		});
 	}
@@ -183,54 +184,33 @@ export function UpDrawer({ sub, targets, onClose, onSave, onDelete, saving }: Up
 						</Row>
 					</Section>
 
-					<Section label="推送类型">
-						{PRIMARY_FEATURES.map(({ key, sub, tone }) => (
-							<Row
-								key={key}
-								label={FEATURE_LABELS[key]}
-								sub={sub}
-								icon={<span className="block h-2 w-2 rounded-sm" style={{ background: tone }} />}
-							>
-								<Toggle
-									value={draft.routing[key].length > 0}
-									onChange={(on) => toggleFeature(key, on)}
-									size="sm"
-								/>
-							</Row>
-						))}
-					</Section>
-
-					<Section label="推送目标">
+					<Section label="推送目标 × 内容">
 						<div className="space-y-2 px-3 py-2.5">
-							<div className="flex flex-wrap gap-1.5">
-								{routedIds.length === 0 ? (
-									<span className="text-[11px] text-bn-text-secondary">尚未绑定任何目标</span>
-								) : (
-									routedIds.map((id) => {
+							{routedIds.length === 0 ? (
+								<div className="rounded-md border border-dashed border-gray-200 px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
+									尚未绑定任何推送目标
+								</div>
+							) : (
+								<div className="space-y-2">
+									{routedIds.map((id) => {
 										const t = targetsByIdMap.get(id);
 										return (
-											<span
+											<PerTargetRoutingCard
 												key={id}
-												className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-[11.5px] text-bn-text-tertiary"
-											>
-												<PlatformIcon platform={t?.platform ?? "onebot"} size={12} />
-												{t?.name ?? id.slice(0, 6)}
-												<button
-													type="button"
-													onClick={() => detachTarget(id)}
-													className="text-bn-text-secondary hover:text-red-500"
-													aria-label="移除目标"
-												>
-													×
-												</button>
-											</span>
+												targetId={id}
+												targetName={t?.name ?? `已删除 ${id.slice(0, 6)}`}
+												platform={t?.platform ?? "onebot"}
+												routing={draft.routing}
+												onSetRoute={(feature, on) => setRoute(id, feature, on)}
+												onDetach={() => detachTarget(id)}
+											/>
 										);
-									})
-								)}
-							</div>
+									})}
+								</div>
+							)}
 							{unroutedTargets.length > 0 ? (
-								<div className="flex flex-wrap items-center gap-1.5">
-									<span className="text-[11px] text-bn-text-secondary">添加：</span>
+								<div className="flex flex-wrap items-center gap-1.5 pt-1">
+									<span className="text-[11px] text-bn-text-secondary">添加目标：</span>
 									{unroutedTargets.map((t) => (
 										<button
 											type="button"
@@ -287,6 +267,85 @@ export function UpDrawer({ sub, targets, onClose, onSave, onDelete, saving }: Up
 					</Btn>
 				</div>
 			</aside>
+		</div>
+	);
+}
+
+// ── Per-target routing card (target × feature matrix row) ────────────────────
+
+function PerTargetRoutingCard({
+	targetId,
+	targetName,
+	platform,
+	routing,
+	onSetRoute,
+	onDetach,
+}: {
+	targetId: string;
+	targetName: string;
+	platform: string;
+	routing: SubscriptionRouting;
+	onSetRoute: (feature: FeatureKey, on: boolean) => void;
+	onDetach: () => void;
+}) {
+	const allKeys = FEATURE_GROUPS.flatMap((g) => g.keys as readonly FeatureKey[]);
+	const activeCount = allKeys.filter((k) => routing[k].includes(targetId)).length;
+	const allOn = activeCount === allKeys.length;
+
+	function toggleAll(on: boolean): void {
+		for (const k of allKeys) {
+			const has = routing[k].includes(targetId);
+			if (on && !has) onSetRoute(k, true);
+			else if (!on && has) onSetRoute(k, false);
+		}
+	}
+
+	return (
+		<div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+			<header className="flex items-center gap-2 border-b border-gray-100 bg-[#fafafa] px-3 py-2">
+				<PlatformIcon platform={platform} size={14} />
+				<span className="min-w-0 flex-1 truncate text-[12.5px] font-bold text-bn-text-primary">
+					{targetName}
+				</span>
+				<span className="font-mono text-[10.5px] text-bn-text-tertiary">
+					{activeCount}/{allKeys.length}
+				</span>
+				<button
+					type="button"
+					onClick={() => toggleAll(!allOn)}
+					className="rounded px-1.5 py-0.5 text-[10.5px] font-bold text-bn-pink hover:bg-bn-pink/10"
+				>
+					{allOn ? "全关" : "全开"}
+				</button>
+				<button
+					type="button"
+					onClick={onDetach}
+					aria-label="移除目标"
+					className="text-[14px] leading-none text-bn-text-secondary hover:text-red-500"
+				>
+					×
+				</button>
+			</header>
+			{FEATURE_GROUPS.map((g) => (
+				<div key={g.label} className="border-b border-gray-100 px-3 py-2 last:border-b-0">
+					<div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-bn-text-tertiary">
+						{g.label}
+					</div>
+					<div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+						{g.keys.map((k) => {
+							const on = routing[k].includes(targetId);
+							return (
+								<div key={k} className="flex items-center justify-between">
+									<span className="truncate text-[11.5px] text-bn-text-primary">
+										{FEATURE_LABELS[k]}
+									</span>
+									<Toggle size="sm" value={on} onChange={(next) => onSetRoute(k, next)} />
+								</div>
+							);
+						})}
+					</div>
+				</div>
+			))}
 		</div>
 	);
 }
