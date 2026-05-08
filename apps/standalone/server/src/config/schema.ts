@@ -60,6 +60,12 @@ export const BootstrapConfigSchema = z.object({
 	 * remain valid and the migration to GCM can read it without a config-shape bump.
 	 */
 	cookieEncryptionKey: z.string().min(1).optional(),
+	/**
+	 * Absolute path to a Chromium / Chrome binary. Required for
+	 * /api/cards/preview (puppeteer-core does NOT bundle a browser). Without
+	 * it, the cards route reports 503 and the dashboard renders a config hint.
+	 */
+	chromePath: z.string().min(1).optional(),
 	auth: AuthSchema,
 	logLevel: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
 	preset: PresetSchema,

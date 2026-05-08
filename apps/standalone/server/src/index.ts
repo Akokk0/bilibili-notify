@@ -9,6 +9,7 @@ import { createWebDashboardAdapter } from "./platforms/web-dashboard.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
 import { createAppRuntime } from "./runtime/bootstrap.js";
 import { createEngines } from "./runtime/engines.js";
+import { createPuppeteerAdapter, type StandalonePuppeteer } from "./runtime/puppeteer.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
 import { createWsServer } from "./ws/server.js";
 
@@ -86,7 +87,18 @@ async function main(): Promise<void> {
 		logger: log,
 	});
 
-	const app = createApp(runtime, { authSystem, basicAuthCredentials });
+	// Lazy puppeteer-core launch — only constructed when chromePath is set.
+	// Browser process spawns on first /api/cards/preview request, not at boot.
+	let puppeteer: StandalonePuppeteer | null = null;
+	if (bootstrap.chromePath) {
+		puppeteer = createPuppeteerAdapter({ chromePath: bootstrap.chromePath, logger: log });
+	} else {
+		log.warn(
+			"chromePath 未配置，/api/cards/preview 将返回 503（设置 BN_CHROME_PATH 或 yaml chromePath 后启用）",
+		);
+	}
+
+	const app = createApp(runtime, { authSystem, basicAuthCredentials, puppeteer });
 	let server: ServerType | undefined;
 	await new Promise<void>((resolve) => {
 		server = serve(
@@ -127,6 +139,7 @@ async function main(): Promise<void> {
 			wsServer.dispose();
 			subBinding.dispose();
 			engines.dispose();
+			if (puppeteer) await puppeteer.dispose();
 			authSystem?.dispose();
 			if (server) {
 				await new Promise<void>((resolve) => {

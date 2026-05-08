@@ -14,6 +14,7 @@ export type {
 	WaitForFunctionOptions,
 } from "./puppeteer";
 export { renderCard } from "./render";
+export { LiveCard, type LiveCardProps } from "./templates/live-card";
 export type {
 	CardColorOptions,
 	Dynamic,

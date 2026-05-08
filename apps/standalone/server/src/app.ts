@@ -3,6 +3,7 @@ import { basicAuth } from "hono/basic-auth";
 import { HTTPException } from "hono/http-exception";
 import type { AuthSystem } from "./auth/index.js";
 import { createAuthRoute } from "./routes/auth.js";
+import { createCardsRoute } from "./routes/cards.js";
 import { createGlobalsRoute } from "./routes/globals.js";
 import { createHealthRoute } from "./routes/health.js";
 import { createHistoryRoute } from "./routes/history.js";
@@ -12,6 +13,7 @@ import { createSubsRoute } from "./routes/subs.js";
 import { createTargetsRoute } from "./routes/targets.js";
 import type { RouteDeps } from "./routes/types.js";
 import type { AppRuntime } from "./runtime/bootstrap.js";
+import type { StandalonePuppeteer } from "./runtime/puppeteer.js";
 
 export interface BasicAuthCredentials {
 	username: string;
@@ -29,6 +31,12 @@ export interface CreateAppOptions {
 	 * plan §4.2 Fix 4a.
 	 */
 	basicAuthCredentials?: BasicAuthCredentials;
+	/**
+	 * Optional puppeteer-core adapter for /api/cards/preview. When null (no
+	 * BN_CHROME_PATH configured) the cards route still mounts but reports 503
+	 * with an actionable hint.
+	 */
+	puppeteer?: StandalonePuppeteer | null;
 }
 
 /**
@@ -74,6 +82,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	app.route("/api/live", createLiveRoute(deps));
 	app.route("/api/history", createHistoryRoute(deps));
 	app.route("/api/push", createPushRoute(deps));
+	app.route("/api/cards", createCardsRoute({ deps, puppeteer: options.puppeteer ?? null }));
 	if (options.authSystem) {
 		app.route("/api/auth", createAuthRoute({ ...deps, authSystem: options.authSystem }));
 	}

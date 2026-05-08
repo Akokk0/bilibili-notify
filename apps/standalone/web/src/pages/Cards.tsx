@@ -3,11 +3,12 @@
  * `.bn-design/variation-ac.jsx`.
  *
  * Left column: ImageRenderingSidebar bound to GlobalConfig.defaults.cardStyle
- * via /api/globals PATCH. Right column: live card mock that re-renders on
- * every keystroke. The puppeteer-backed `/api/cards/preview` endpoint isn't
- * wired yet (plan §3 — to land alongside the image-engine integration), so
- * the right pane uses an in-DOM facsimile that mirrors the production card's
- * gradient + base-plate + content layout.
+ * via /api/globals PATCH. Right column: live card preview that calls the
+ * puppeteer-core-backed `/api/cards/preview` route — for `kind: "live"` the
+ * server runs the production LiveCard template through Vue SSR + UnoCSS +
+ * puppeteer screenshot and returns a base64 PNG. Other kinds (dyn / sc /
+ * guard) still render the in-DOM mock until their templates land in the
+ * preview route.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -42,10 +43,85 @@ const DESCS: Record<CardKind, string> = {
 	guard: "从此以后这个舰队就是我的家了 (｡•̀ᴗ-)✧",
 };
 
+interface PreviewResponse {
+	ok: boolean;
+	dataUrl?: string;
+	err?: string;
+}
+
+function LivePreviewImage({ style }: { style: CardStyle }) {
+	// debounce style edits — TColor pickers fire many onChange callbacks per second
+	const [debouncedStyle, setDebouncedStyle] = useState(style);
+	useEffect(() => {
+		const t = setTimeout(() => setDebouncedStyle(style), 500);
+		return () => clearTimeout(t);
+	}, [style]);
+
+	const query = useQuery({
+		queryKey: ["card-preview", "live", debouncedStyle],
+		queryFn: async () => {
+			const res = await api.post<PreviewResponse>("/api/cards/preview", {
+				kind: "live",
+				style: debouncedStyle,
+			});
+			if (!res.ok || !res.dataUrl) {
+				throw new ApiError(500, res, res.err ?? "preview failed");
+			}
+			return res.dataUrl;
+		},
+		retry: false,
+	});
+
+	const previewBg = `linear-gradient(135deg, ${style.cardColorStart}, ${style.cardColorEnd})`;
+	const showSkeleton = query.isPending;
+	const apiErr = query.error as ApiError | undefined;
+	const status = apiErr?.status;
+
+	return (
+		<div
+			className="relative flex min-h-[420px] items-center justify-center rounded-bn-card border border-gray-200 p-7"
+			style={{ background: previewBg }}
+		>
+			{showSkeleton ? (
+				<div className="flex w-[380px] flex-col items-center gap-3 rounded-xl bg-white/70 p-6">
+					<div className="bn-anim-spin h-8 w-8 rounded-full border-2 border-bn-pink/30 border-t-bn-pink" />
+					<div className="text-[12px] font-bold text-bn-text-secondary">puppeteer 渲染中…</div>
+				</div>
+			) : query.error ? (
+				<div className="w-[380px] rounded-xl bg-white p-4 text-[12px]">
+					<div className="mb-1 font-bold text-red-600">
+						{status === 503
+							? "puppeteer 未配置"
+							: status === 501
+								? "kind 暂未支持"
+								: "渲染失败"}
+					</div>
+					<div className="text-bn-text-secondary">
+						{apiErr?.message ?? "未知错误"}
+					</div>
+					{status === 503 ? (
+						<div className="mt-2 rounded bg-amber-50 p-2 text-[11px] text-amber-800">
+							设置 <code className="font-mono">BN_CHROME_PATH</code>{" "}
+							环境变量指向 chrome / chromium 二进制后重启服务。
+						</div>
+					) : null}
+				</div>
+			) : (
+				<img
+					src={query.data}
+					alt="卡片实时预览"
+					className="bn-anim-fade-in max-w-full rounded-xl shadow-[0_6px_20px_rgba(0,0,0,0.14)]"
+				/>
+			)}
+		</div>
+	);
+}
+
 function CardPreview({ kind, style }: { kind: CardKind; style: CardStyle }) {
+	if (kind === "live") return <LivePreviewImage style={style} />;
 	const meta = KIND_LABELS[kind];
 	const previewBg = `linear-gradient(135deg, ${style.cardColorStart}, ${style.cardColorEnd})`;
-	const showImage = kind === "live" || kind === "dyn";
+	const showImage = kind === "dyn";
 	return (
 		<div
 			className="flex min-h-[420px] items-center justify-center rounded-bn-card border border-gray-200 p-7 transition"
@@ -77,12 +153,7 @@ function CardPreview({ kind, style }: { kind: CardKind; style: CardStyle }) {
 							background: "linear-gradient(135deg, #FB7299, #ffaaa7)",
 						}}
 					>
-						{kind === "live" ? (
-							<div className="absolute left-2 top-2 rounded bg-black/50 px-2 py-0.5 text-[10.5px] font-bold text-white">
-								● LIVE · 23.4 万
-							</div>
-						) : null}
-						<span>{kind === "live" ? "直播间封面" : "动态配图"}</span>
+						<span>动态配图</span>
 					</div>
 				) : null}
 				<div className="mt-3 flex items-center gap-3.5 text-[11px] text-bn-text-tertiary">
@@ -252,7 +323,9 @@ export default function Cards() {
 				<div className="flex items-center justify-between text-[13px] text-bn-text-primary">
 					<span className="font-bold">卡片预览 · 实时反映左侧 image 配置</span>
 					<span className="text-[11px] font-normal text-bn-text-secondary">
-						puppeteer 渲染将在 image-engine 接入后启用 · 1080×可变高
+						{kind === "live"
+							? "puppeteer 真实渲染 · 600×可变高"
+							: `${kind} 模板暂用 CSS mock`}
 					</span>
 				</div>
 				<CardPreview kind={kind} style={draft} />
