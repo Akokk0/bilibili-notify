@@ -481,12 +481,7 @@ export function CoreAppSection({
 				onChange={(next) => setApp("logLevels", next)}
 			/>
 
-			<FieldRow
-				label="User-Agent"
-				code="app.userAgent"
-				hint="留空使用默认;遇 -352 风控可换"
-				full
-			>
+			<FieldRow label="User-Agent" code="app.userAgent" hint="留空使用默认;遇 -352 风控可换" full>
 				<TInput
 					value={app.userAgent ?? ""}
 					onChange={(v) => setApp("userAgent", v || undefined)}
@@ -601,11 +596,7 @@ function ModuleLogLevelsRow({
 								/>
 								{m.label}
 							</span>
-							<TSelect
-								value={current}
-								onChange={(v) => setOne(m.id, v)}
-								options={MODULE_OPTIONS}
-							/>
+							<TSelect value={current} onChange={(v) => setOne(m.id, v)} options={MODULE_OPTIONS} />
 						</div>
 					);
 				})}

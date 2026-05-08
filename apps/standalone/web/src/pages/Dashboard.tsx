@@ -301,13 +301,7 @@ function pickLogTone(level: string | undefined): { fg: string; bg: string } {
 	return LOG_LEVEL_TONE.info;
 }
 
-function PluginMatrix({
-	cells,
-	version,
-}: {
-	cells: PluginCell[];
-	version: string | undefined;
-}) {
+function PluginMatrix({ cells, version }: { cells: PluginCell[]; version: string | undefined }) {
 	return (
 		<div
 			className="grid gap-2"
@@ -318,10 +312,7 @@ function PluginMatrix({
 				const levelLabel = c.logLevel ? c.logLevel.toUpperCase() : "—";
 				const isOverride = c.logLevelSource === "module";
 				return (
-					<div
-						key={c.id}
-						className="rounded-[8px] border border-black/[0.06] bg-white px-3 py-2.5"
-					>
+					<div key={c.id} className="rounded-[8px] border border-black/[0.06] bg-white px-3 py-2.5">
 						<div className="mb-1.5 flex items-center justify-between">
 							<span className="text-[12.5px] font-bold text-bn-text-primary">{c.label}</span>
 							<span
@@ -368,7 +359,9 @@ function SystemHealthCard({
 	imageEnabled: boolean;
 	aiEnabled: boolean;
 }) {
-	const effectiveLevel = (id: PluginCell["id"]): { level: string | undefined; source: "global" | "module" } => {
+	const effectiveLevel = (
+		id: PluginCell["id"],
+	): { level: string | undefined; source: "global" | "module" } => {
 		const override = logLevels?.[id];
 		if (override) return { level: override, source: "module" };
 		return { level: logLevel, source: "global" };
