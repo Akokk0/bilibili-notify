@@ -120,29 +120,30 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		return imageRenderer;
 	}
 
-	// Cached snapshot of the logged-in B站 account, used as the "master" on
-	// SC / Guard preview cards (since those notifications are addressed TO
-	// the operator's UP). Refreshed every 5 minutes, falls back to placeholder
-	// SVGs when the account isn't logged in or the call fails.
-	const MASTER_TTL_MS = 5 * 60 * 1000;
-	let masterCache: { name: string; avatar: string; ts: number } | null = null;
-	async function getPreviewMaster(): Promise<{ name: string; avatar: string }> {
+	// Cached snapshot of the logged-in B站 account. Used as the SENDER on
+	// SC / Guard preview cards (the SC payer / new captain), not the
+	// receiver — the receiver is the subscribed UP, which on preview stays
+	// as "示例 UP 主". Refreshes every 5 minutes; returns null when the
+	// account isn't logged in or the call fails.
+	const LOGGED_IN_TTL_MS = 5 * 60 * 1000;
+	let loggedInCache: { name: string; avatar: string; ts: number } | null = null;
+	async function getLoggedInAccount(): Promise<{ name: string; avatar: string } | null> {
 		const now = Date.now();
-		if (masterCache && now - masterCache.ts < MASTER_TTL_MS) {
-			return { name: masterCache.name, avatar: masterCache.avatar };
+		if (loggedInCache && now - loggedInCache.ts < LOGGED_IN_TTL_MS) {
+			return { name: loggedInCache.name, avatar: loggedInCache.avatar };
 		}
 		if (opts.api) {
 			try {
 				const my = await opts.api.getMyselfInfo();
 				if (my?.code === 0 && my.data?.uname) {
-					masterCache = { name: my.data.uname, avatar: my.data.face, ts: now };
+					loggedInCache = { name: my.data.uname, avatar: my.data.face, ts: now };
 					return { name: my.data.uname, avatar: my.data.face };
 				}
 			} catch (err) {
 				log.debug(`[cards] getMyselfInfo failed: ${(err as Error).message}`);
 			}
 		}
-		return { name: "示例 UP 主", avatar: SVG_AVATAR_BLUE };
+		return null;
 	}
 
 	app.post("/preview", async (c) => {
@@ -171,12 +172,15 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			if (kind === "sc") {
 				const renderer = getImageRenderer(style);
 				if (!renderer) throw new Error("puppeteer 未就绪");
-				const master = await getPreviewMaster();
+				// Logged-in account becomes the SC SENDER — when the operator is
+				// imagining "if I sent this SC in someone's room, what would the
+				// notification look like?", that's themselves.
+				const me = await getLoggedInAccount();
 				const buffer = await renderer.generateSCCard({
-					senderFace: SVG_AVATAR_FAN,
-					senderName: "示例粉丝",
-					masterName: master.name,
-					masterAvatarUrl: master.avatar,
+					senderFace: me?.avatar ?? SVG_AVATAR_FAN,
+					senderName: me?.name ?? "示例粉丝",
+					masterName: "示例 UP 主",
+					masterAvatarUrl: SVG_AVATAR_BLUE,
 					text: content?.text?.trim() || "主播加油！这首要听到！示例 UP 主唱得太好了！",
 					price: content?.price ?? 30,
 				});
@@ -188,15 +192,19 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			if (kind === "guard") {
 				const renderer = getImageRenderer(style);
 				if (!renderer) throw new Error("puppeteer 未就绪");
-				const master = await getPreviewMaster();
+				// Logged-in account becomes the NEW CAPTAIN (the "sender" / actor
+				// who triggered the 上舰 event). Explicit text override still wins.
+				const me = await getLoggedInAccount();
+				const uname = content?.text?.trim() || me?.name || "示例新舰长";
+				const face = me?.avatar ?? SVG_AVATAR_PINK;
 				const buffer = await renderer.generateGuardCard(
 					{
 						guardLevel: (content?.level ?? 3) as 1 | 2 | 3,
-						uname: content?.text?.trim() || "示例新舰长",
-						face: SVG_AVATAR_PINK,
+						uname,
+						face,
 						isAdmin: 0,
 					},
-					{ masterAvatarUrl: master.avatar, masterName: master.name },
+					{ masterAvatarUrl: SVG_AVATAR_BLUE, masterName: "示例 UP 主" },
 				);
 				return c.json<PreviewResponse>({
 					ok: true,

@@ -335,7 +335,11 @@ export default function Cards() {
 									})}
 								</div>
 							</Field>
-							<Field label="新舰长称呼" code="text" hint="渲染在卡片正中的名字">
+							<Field
+								label="新舰长称呼"
+								code="text"
+								hint="留空时使用当前登录账号的名字"
+							>
 								<TArea
 									value={content.guard.text}
 									onChange={(v) => setGuard({ text: v })}
