@@ -13,7 +13,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Btn, Pill } from "../components/atoms";
-import { Field, TArea, TColor, TInput, TSelect } from "../components/forms";
+import {
+	Field,
+	LogLevelPicker,
+	type LogLevelValue,
+	TArea,
+	TColor,
+	TInput,
+} from "../components/forms";
 import { GlassBox } from "../components/glass-box";
 import { Icon } from "../components/icons";
 import { ApiError, api } from "../services/api";
@@ -143,14 +150,15 @@ function CardPreview({
 	return <PreviewImage kind={kind} style={style} content={content} />;
 }
 
+// Server-side override is `LogLevel` strings; the LogLevelPicker speaks 1|2|3
+// numeric. `null` ↔ "" (no override; fall back to app.logLevel).
 type ImageLogLevel = LogLevel | "";
-
-const LOG_LEVEL_OPTIONS: { value: ImageLogLevel; label: string }[] = [
-	{ value: "", label: "（跟随全局）" },
-	{ value: "error", label: "ERROR" },
-	{ value: "info", label: "INFO" },
-	{ value: "debug", label: "DEBUG" },
-];
+const LOG_LEVEL_TO_NUM: Record<LogLevel, LogLevelValue> = { error: 1, info: 2, debug: 3 };
+const NUM_TO_LOG_LEVEL: Record<LogLevelValue, LogLevel> = { 1: "error", 2: "info", 3: "debug" };
+const toPickerValue = (v: ImageLogLevel): LogLevelValue | null =>
+	v === "" ? null : LOG_LEVEL_TO_NUM[v];
+const fromPickerValue = (v: LogLevelValue | null): ImageLogLevel =>
+	v === null ? "" : NUM_TO_LOG_LEVEL[v];
 
 export default function Cards() {
 	const qc = useQueryClient();
@@ -313,19 +321,6 @@ export default function Cards() {
 						icon={<Icon.sparkle size={14} />}
 						badge="cardStyle"
 					>
-						<Field
-							label="启用 image 渲染"
-							code="cardStyle.enabled"
-							hint="关闭后所有卡片图回退为文本"
-						>
-							<Btn
-								size="sm"
-								variant={enabled ? "primary" : "outline"}
-								onClick={() => set("enabled", !enabled)}
-							>
-								{enabled ? "已启用" : "已停用"}
-							</Btn>
-						</Field>
 						<Field label="渐变起始" code="cardColorStart">
 							<TColor value={draft.cardColorStart} onChange={(v) => set("cardColorStart", v)} />
 						</Field>
@@ -335,12 +330,12 @@ export default function Cards() {
 						<Field
 							label="日志等级"
 							code="app.logLevels.image"
-							hint="只影响 image 模块;留「跟随全局」时与 app.logLevel 同步。改完保存后需重启服务。"
+							hint="只影响 image 模块;选「跟随全局」时与 app.logLevel 同步。改完保存后需重启服务。"
 						>
-							<TSelect
-								value={imageLogLevel}
-								onChange={(v) => setImageLogLevel(v as ImageLogLevel)}
-								options={LOG_LEVEL_OPTIONS}
+							<LogLevelPicker
+								value={toPickerValue(imageLogLevel)}
+								onChange={(v) => setImageLogLevel(fromPickerValue(v))}
+								allowInherit
 							/>
 						</Field>
 						<div className="mt-2 rounded border border-dashed bg-[#a29bfe14] p-2.5 text-[11px] text-bn-text-secondary">

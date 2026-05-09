@@ -212,19 +212,35 @@ export function TColor({ value, onChange }: TColorProps) {
 	);
 }
 
+export type LogLevelValue = 1 | 2 | 3;
+
 export interface LogLevelPickerProps {
-	value: 1 | 2 | 3;
-	onChange: (next: 1 | 2 | 3) => void;
+	/** `null` 表示「跟随全局」,仅当 `allowInherit` 时合法。 */
+	value: LogLevelValue | null;
+	onChange: (next: LogLevelValue | null) => void;
+	/** 增加首个「跟随全局」按钮,选中后回调收 null。默认 false。 */
+	allowInherit?: boolean;
 }
 
-export function LogLevelPicker({ value, onChange }: LogLevelPickerProps) {
-	const opts: { v: 1 | 2 | 3; label: string; color: string }[] = [
+export function LogLevelPicker({ value, onChange, allowInherit }: LogLevelPickerProps) {
+	const opts: { v: LogLevelValue; label: string; color: string }[] = [
 		{ v: 1, label: "错误", color: "#ef4444" },
 		{ v: 2, label: "信息", color: "#00AEEC" },
 		{ v: 3, label: "调试", color: "#a29bfe" },
 	];
 	return (
 		<div className="inline-flex gap-1 rounded-md bg-gray-100 p-[3px]">
+			{allowInherit ? (
+				<button
+					type="button"
+					onClick={() => onChange(null)}
+					className={`rounded px-3 py-1 text-[11.5px] font-semibold transition ${
+						value === null ? "bg-white text-bn-text-primary shadow-sm" : "text-bn-text-tertiary"
+					}`}
+				>
+					跟随全局
+				</button>
+			) : null}
 			{opts.map((o) => {
 				const active = value === o.v;
 				return (

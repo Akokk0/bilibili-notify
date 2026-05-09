@@ -17,23 +17,29 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Btn, Pill } from "../components/atoms";
-import { Field, LogLevelPicker, TArea, TInput, TNum, TSelect } from "../components/forms";
+import {
+	Field,
+	LogLevelPicker,
+	type LogLevelValue,
+	TArea,
+	TInput,
+	TNum,
+	TSelect,
+} from "../components/forms";
 import { GlassBox } from "../components/glass-box";
 import { Icon } from "../components/icons";
 import { ApiError, api } from "../services/api";
 import type { AIPersona, AISettings, GlobalConfig, LogLevel } from "../types/globals";
 
-// LogLevel <→ numeric 1/2/3 mapping mirrors the design's tri-state picker.
-const LOG_LEVEL_TO_NUM: Record<LogLevel, 1 | 2 | 3> = {
-	error: 1,
-	info: 2,
-	debug: 3,
-};
-const NUM_TO_LOG_LEVEL: Record<1 | 2 | 3, LogLevel> = {
-	1: "error",
-	2: "info",
-	3: "debug",
-};
+// 日志等级绑定到 `app.logLevels.ai` (per-module override),不再压全局 `app.logLevel`。
+// `null` 表示「跟随全局」(没有 override)。
+type AiLogLevel = LogLevel | "";
+const LOG_LEVEL_TO_NUM: Record<LogLevel, LogLevelValue> = { error: 1, info: 2, debug: 3 };
+const NUM_TO_LOG_LEVEL: Record<LogLevelValue, LogLevel> = { 1: "error", 2: "info", 3: "debug" };
+const toPickerValue = (v: AiLogLevel): LogLevelValue | null =>
+	v === "" ? null : LOG_LEVEL_TO_NUM[v];
+const fromPickerValue = (v: LogLevelValue | null): AiLogLevel =>
+	v === null ? "" : NUM_TO_LOG_LEVEL[v];
 
 export default function Ai() {
 	const qc = useQueryClient();
@@ -43,30 +49,40 @@ export default function Ai() {
 	});
 
 	const [draft, setDraft] = useState<AISettings | null>(null);
-	const [appLogLevel, setAppLogLevel] = useState<LogLevel>("info");
+	const [aiLogLevel, setAiLogLevel] = useState<AiLogLevel>("");
 	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
 		if (globalsQuery.data) {
 			setDraft(globalsQuery.data.defaults.ai);
-			setAppLogLevel(globalsQuery.data.app.logLevel);
+			setAiLogLevel(globalsQuery.data.app.logLevels?.ai ?? "");
 		}
 	}, [globalsQuery.data]);
 
+	const serverAiLogLevel = globalsQuery.data?.app.logLevels?.ai ?? "";
 	const dirty = useMemo(() => {
 		if (!draft || !globalsQuery.data) return false;
 		return (
 			JSON.stringify(draft) !== JSON.stringify(globalsQuery.data.defaults.ai) ||
-			appLogLevel !== globalsQuery.data.app.logLevel
+			aiLogLevel !== serverAiLogLevel
 		);
-	}, [draft, globalsQuery.data, appLogLevel]);
+	}, [draft, globalsQuery.data, aiLogLevel, serverAiLogLevel]);
 
 	const save = useMutation({
-		mutationFn: async (payload: { ai: AISettings; appLogLevel: LogLevel }) => {
+		mutationFn: async (payload: { ai: AISettings; aiLogLevel: AiLogLevel }) => {
 			setError(null);
 			try {
+				const existing = globalsQuery.data?.app.logLevels ?? {};
+				// 与 cards 同款合并:"" → 删 ai key,落到全局;具体值 → 仅 patch 该 key,
+				// 其余模块 override 不动。
+				const nextLogLevels =
+					payload.aiLogLevel === ""
+						? Object.fromEntries(Object.entries(existing).filter(([k]) => k !== "ai"))
+						: { ...existing, ai: payload.aiLogLevel };
 				await api.patch<GlobalConfig>("/api/globals", {
-					app: { logLevel: payload.appLogLevel },
+					app: {
+						logLevels: Object.keys(nextLogLevels).length === 0 ? undefined : nextLogLevels,
+					},
 					defaults: { ai: payload.ai },
 				});
 			} catch (err) {
@@ -155,7 +171,7 @@ export default function Ai() {
 							onClick={() => {
 								if (globalsQuery.data) {
 									setDraft(globalsQuery.data.defaults.ai);
-									setAppLogLevel(globalsQuery.data.app.logLevel);
+									setAiLogLevel(globalsQuery.data.app.logLevels?.ai ?? "");
 								}
 							}}
 							disabled={save.isPending}
@@ -165,7 +181,7 @@ export default function Ai() {
 						<Btn
 							variant="primary"
 							size="sm"
-							onClick={() => draft && save.mutate({ ai: draft, appLogLevel })}
+							onClick={() => draft && save.mutate({ ai: draft, aiLogLevel })}
 							disabled={save.isPending}
 						>
 							{save.isPending ? "保存中…" : "保存"}
@@ -207,10 +223,15 @@ export default function Ai() {
 					<Field label="模型 ID" code="ai.model">
 						<TInput value={draft.model} onChange={(v) => setAi("model", v)} mono full={false} />
 					</Field>
-					<Field label="日志等级" code="app.logLevel" hint="影响整体运行时日志">
+					<Field
+						label="日志等级"
+						code="app.logLevels.ai"
+						hint="只影响 ai 模块;选「跟随全局」时与 app.logLevel 同步。改完保存后需重启服务。"
+					>
 						<LogLevelPicker
-							value={LOG_LEVEL_TO_NUM[appLogLevel]}
-							onChange={(v) => setAppLogLevel(NUM_TO_LOG_LEVEL[v])}
+							value={toPickerValue(aiLogLevel)}
+							onChange={(v) => setAiLogLevel(fromPickerValue(v))}
+							allowInherit
 						/>
 					</Field>
 				</GlassBox>
