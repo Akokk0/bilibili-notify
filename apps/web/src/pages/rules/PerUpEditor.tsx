@@ -466,7 +466,8 @@ function MsgOverrideBox({
 	onChange: (next: TemplateOverride | undefined) => void;
 	baseline: GlobalDefaults["templates"];
 }) {
-	const enabled = Boolean(value?.liveStart || value?.liveOngoing || value?.liveEnd);
+	// 覆盖语义:开 = 该 UP 强制启用自定义直播消息(写入 liveMsgEnabled=true);关 = 继承全局决定。
+	const enabled = value?.liveMsgEnabled === true;
 	const cur = value ?? {};
 	function set<K extends "liveStart" | "liveOngoing" | "liveEnd">(k: K, v: string): void {
 		onChange({ ...cur, [k]: v });
@@ -474,7 +475,7 @@ function MsgOverrideBox({
 	return (
 		<GlassBox
 			title="直播消息覆盖"
-			subtitle="overrides.templates.live{Start,Ongoing,End}"
+			subtitle="开 = 该 UP 强制使用自定义文案;关 = 继承全局决定"
 			accent="#FB7299"
 			icon={<Icon.chat size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
@@ -486,12 +487,19 @@ function MsgOverrideBox({
 					if (on) {
 						onChange({
 							...cur,
-							liveStart: baseline.liveStart,
-							liveOngoing: baseline.liveOngoing,
-							liveEnd: baseline.liveEnd,
+							liveMsgEnabled: true,
+							liveStart: cur.liveStart ?? baseline.liveStart,
+							liveOngoing: cur.liveOngoing ?? baseline.liveOngoing,
+							liveEnd: cur.liveEnd ?? baseline.liveEnd,
 						});
 					} else {
-						const { liveStart: _a, liveOngoing: _b, liveEnd: _c, ...rest } = cur;
+						const {
+							liveMsgEnabled: _flag,
+							liveStart: _a,
+							liveOngoing: _b,
+							liveEnd: _c,
+							...rest
+						} = cur;
 						onChange(Object.keys(rest).length > 0 ? rest : undefined);
 					}
 				}}
@@ -537,11 +545,12 @@ function GuardOverrideBox({
 	onChange: (next: TemplateOverride | undefined) => void;
 	baseline: GlobalDefaults["templates"];
 }) {
-	const enabled = Boolean(value?.guardBuy);
+	// 覆盖语义:开 = 该 UP 强制启用自定义上舰文案/图片(guardBuy.enable=true);关 = 继承全局决定。
+	const enabled = value?.guardBuy?.enable === true;
 	const cur = value ?? {};
-	const guardOf = (role: keyof typeof baseline.guardBuy): GuardEntry =>
-		cur.guardBuy?.[role] ?? baseline.guardBuy[role];
-	function setGuard(role: keyof typeof baseline.guardBuy, entry: GuardEntry): void {
+	type GuardRole = "captain" | "commander" | "governor";
+	const guardOf = (role: GuardRole): GuardEntry => cur.guardBuy?.[role] ?? baseline.guardBuy[role];
+	function setGuard(role: GuardRole, entry: GuardEntry): void {
 		onChange({
 			...cur,
 			guardBuy: { ...(cur.guardBuy ?? baseline.guardBuy), [role]: entry },
@@ -550,7 +559,7 @@ function GuardOverrideBox({
 	return (
 		<GlassBox
 			title="上舰提示覆盖"
-			subtitle="overrides.templates.guardBuy.{captain,commander,governor}"
+			subtitle="开 = 该 UP 强制使用自定义文案/图片;关 = 继承全局(默认上舰图)"
 			accent="#f2a053"
 			icon={<Icon.anchor size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
@@ -559,9 +568,10 @@ function GuardOverrideBox({
 				label="启用 per-UP 上舰提示覆盖"
 				enabled={enabled}
 				onToggle={(on) => {
-					if (on) onChange({ ...cur, guardBuy: baseline.guardBuy });
-					else {
-						const { guardBuy: _, ...rest } = cur;
+					if (on) {
+						onChange({ ...cur, guardBuy: { ...baseline.guardBuy, enable: true } });
+					} else {
+						const { guardBuy: _g, ...rest } = cur;
 						onChange(Object.keys(rest).length > 0 ? rest : undefined);
 					}
 				}}

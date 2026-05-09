@@ -88,10 +88,14 @@ const DEFAULT_TEMPLATES = {
 	liveStart: "{name} 开播了！\n直播间标题：{title}\n直播间链接：{link}",
 	liveOngoing: "{name} 仍在直播中（已直播 {duration}）\n标题：{title}\n看过：{watched}",
 	liveEnd: "{name} 下播了，直播时长 {duration}",
+	// false = builtin 简短文案；true = 启用上面三段自定义模板
+	liveMsgEnabled: false,
 	liveSummary: "本场直播总结：\n{summary}",
 	specialDanmaku: "{mastername} 的关注用户 {uname} 发送弹幕：{msg}",
 	specialUserEnter: "{uname} 进入了 {mastername} 的直播间",
 	guardBuy: {
+		// false = 默认上舰图 + 内置文案；true = 启用三档自定义文案/图片
+		enable: false,
 		captain: { imageUrl: "", template: "{user} 成为了 {mastername} 的舰长！" },
 		commander: {
 			imageUrl: "",

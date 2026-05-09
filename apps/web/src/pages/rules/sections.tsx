@@ -5,6 +5,7 @@
  */
 
 import type { ReactNode } from "react";
+import { Toggle } from "../../components/atoms";
 import {
 	ArrayEditor,
 	Field,
@@ -340,28 +341,43 @@ export function LiveMsgSection({
 }) {
 	const setT = <K extends keyof TemplateBundle>(k: K, v: TemplateBundle[K]) =>
 		onPatch({ defaults: { templates: { [k]: v } as Partial<TemplateBundle> } });
+	const enabled = templates.liveMsgEnabled;
 	return (
 		<GlassBox
 			title="直播消息模板"
 			subtitle="开播 / 直播中 / 下播 · 变量：{name} {title} {link} {duration} {watched}"
 			accent="#FB7299"
 			icon={<Icon.chat size={14} />}
-			badge="templates"
+			badge={enabled ? "已启用" : "未启用"}
+			right={<Toggle value={enabled} onChange={(v) => setT("liveMsgEnabled", v)} />}
 		>
-			<FieldRow label="开播" code="templates.liveStart" full>
-				<TArea value={templates.liveStart} onChange={(v) => setT("liveStart", v)} rows={3} mono />
-			</FieldRow>
-			<FieldRow label="直播中" code="templates.liveOngoing" full>
-				<TArea
-					value={templates.liveOngoing}
-					onChange={(v) => setT("liveOngoing", v)}
-					rows={3}
-					mono
-				/>
-			</FieldRow>
-			<FieldRow label="下播" code="templates.liveEnd" full>
-				<TArea value={templates.liveEnd} onChange={(v) => setT("liveEnd", v)} rows={2} mono />
-			</FieldRow>
+			{enabled ? (
+				<>
+					<FieldRow label="开播" code="templates.liveStart" full>
+						<TArea
+							value={templates.liveStart}
+							onChange={(v) => setT("liveStart", v)}
+							rows={3}
+							mono
+						/>
+					</FieldRow>
+					<FieldRow label="直播中" code="templates.liveOngoing" full>
+						<TArea
+							value={templates.liveOngoing}
+							onChange={(v) => setT("liveOngoing", v)}
+							rows={3}
+							mono
+						/>
+					</FieldRow>
+					<FieldRow label="下播" code="templates.liveEnd" full>
+						<TArea value={templates.liveEnd} onChange={(v) => setT("liveEnd", v)} rows={2} mono />
+					</FieldRow>
+				</>
+			) : (
+				<div className="py-5 text-center text-[12px] text-bn-text-tertiary">
+					未启用 · 引擎将使用内置直播提示文案
+				</div>
+			)}
 		</GlassBox>
 	);
 }
@@ -379,7 +395,9 @@ export function GuardSection({
 		onPatch({
 			defaults: { templates: { guardBuy: { [role]: v } as Partial<GuardBundle> } },
 		});
-	const ROLES: { key: keyof GuardBundle; label: string; tone: string }[] = [
+	const enabled = templates.guardBuy.enable;
+	type GuardRoleKey = "captain" | "commander" | "governor";
+	const ROLES: { key: GuardRoleKey; label: string; tone: string }[] = [
 		{ key: "captain", label: "舰长", tone: "#4ebcec" },
 		{ key: "commander", label: "提督", tone: "#d8a0e6" },
 		{ key: "governor", label: "总督", tone: "#f2a053" },
@@ -387,44 +405,51 @@ export function GuardSection({
 	return (
 		<GlassBox
 			title="上舰提示"
-			subtitle="变量：{user} {mastername}"
+			subtitle="默认走 B 站官方上舰图;启用后改用自定义文案与图片 · 变量:{user} {mastername}"
 			accent="#f2a053"
 			icon={<Icon.anchor size={14} />}
-			badge="guardBuy"
+			badge={enabled ? "已启用" : "未启用"}
+			right={<Toggle value={enabled} onChange={(v) => setG("enable", v)} />}
 		>
-			{ROLES.map(({ key, label, tone }) => {
-				const entry = templates.guardBuy[key];
-				return (
-					<div
-						key={key}
-						className="mt-2.5 rounded-lg border p-3 first:mt-0"
-						style={{ background: `${tone}0a`, borderColor: `${tone}33` }}
-					>
-						<div className="mb-2 flex items-center gap-2">
-							<span className="block h-2 w-2 rounded-sm" style={{ background: tone }} />
-							<span className="text-[12.5px] font-bold text-bn-text-primary">{label}</span>
-							<code className="ml-1 rounded bg-black/5 px-1.5 py-px font-mono text-[10.5px] text-bn-text-tertiary">
-								{key}
-							</code>
+			{enabled ? (
+				ROLES.map(({ key, label, tone }) => {
+					const entry = templates.guardBuy[key];
+					return (
+						<div
+							key={key}
+							className="mt-2.5 rounded-lg border p-3 first:mt-0"
+							style={{ background: `${tone}0a`, borderColor: `${tone}33` }}
+						>
+							<div className="mb-2 flex items-center gap-2">
+								<span className="block h-2 w-2 rounded-sm" style={{ background: tone }} />
+								<span className="text-[12.5px] font-bold text-bn-text-primary">{label}</span>
+								<code className="ml-1 rounded bg-black/5 px-1.5 py-px font-mono text-[10.5px] text-bn-text-tertiary">
+									{key}
+								</code>
+							</div>
+							<FieldRow label="文案" code="template" full>
+								<TInput
+									value={entry.template}
+									onChange={(v) => setG(key, { ...entry, template: v })}
+									mono
+								/>
+							</FieldRow>
+							<FieldRow label="图片 URL" code="imageUrl" full>
+								<TInput
+									value={entry.imageUrl}
+									onChange={(v) => setG(key, { ...entry, imageUrl: v })}
+									mono
+									placeholder="https://..."
+								/>
+							</FieldRow>
 						</div>
-						<FieldRow label="文案" code="template" full>
-							<TInput
-								value={entry.template}
-								onChange={(v) => setG(key, { ...entry, template: v })}
-								mono
-							/>
-						</FieldRow>
-						<FieldRow label="图片 URL" code="imageUrl" full>
-							<TInput
-								value={entry.imageUrl}
-								onChange={(v) => setG(key, { ...entry, imageUrl: v })}
-								mono
-								placeholder="https://..."
-							/>
-						</FieldRow>
-					</div>
-				);
-			})}
+					);
+				})
+			) : (
+				<div className="py-5 text-center text-[12px] text-bn-text-tertiary">
+					未启用 · 引擎将默认推送 B 站官方上舰图(舰长 / 提督 / 总督)
+				</div>
+			)}
 		</GlassBox>
 	);
 }

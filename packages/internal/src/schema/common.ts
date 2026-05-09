@@ -82,6 +82,11 @@ export const GuardEntrySchema = z.object({
 export type GuardEntry = z.infer<typeof GuardEntrySchema>;
 
 export const GuardBundleSchema = z.object({
+	/**
+	 * 是否启用自定义上舰文案/图片。`false` 时引擎走 builtin 路径(默认上舰图 + 简单提示)。
+	 * `true` 时使用 captain/commander/governor 三档的自定义 template + imageUrl。默认 false。
+	 */
+	enable: z.boolean().default(false),
 	captain: GuardEntrySchema,
 	commander: GuardEntrySchema,
 	governor: GuardEntrySchema,
@@ -92,6 +97,11 @@ export const TemplateBundleSchema = z.object({
 	liveStart: z.string(),
 	liveOngoing: z.string(),
 	liveEnd: z.string(),
+	/**
+	 * 是否启用自定义直播消息模板(开播/直播中/下播)。`false` 时走 builtin 简短文案。
+	 * `true` 时使用 liveStart / liveOngoing / liveEnd 三段。默认 false。
+	 */
+	liveMsgEnabled: z.boolean().default(false),
 	liveSummary: z.string(),
 	specialDanmaku: z.string(),
 	specialUserEnter: z.string(),

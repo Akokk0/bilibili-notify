@@ -166,6 +166,7 @@ export interface GuardEntryShape {
 	template: string;
 }
 export interface GuardBundleShape {
+	enable: boolean;
 	captain: GuardEntryShape;
 	commander: GuardEntryShape;
 	governor: GuardEntryShape;
@@ -175,6 +176,7 @@ export interface TemplateBundleFull {
 	liveStart: string;
 	liveOngoing: string;
 	liveEnd: string;
+	liveMsgEnabled: boolean;
 	liveSummary: string;
 	specialDanmaku: string;
 	specialUserEnter: string;

@@ -234,14 +234,14 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			imageEnabled: g.defaults.cardStyle.enabled,
 			aiEnabled: g.defaults.ai.enabled,
 			customGuardBuy: {
-				enable: false,
+				enable: g.defaults.templates.guardBuy.enable,
 				guardBuyMsg: g.defaults.templates.guardBuy.captain.template,
 				captainImgUrl: g.defaults.templates.guardBuy.captain.imageUrl,
 				supervisorImgUrl: g.defaults.templates.guardBuy.commander.imageUrl,
 				governorImgUrl: g.defaults.templates.guardBuy.governor.imageUrl,
 			},
 			customLiveMsg: {
-				enable: false,
+				enable: g.defaults.templates.liveMsgEnabled,
 				customLiveStart: g.defaults.templates.liveStart,
 				customLive: g.defaults.templates.liveOngoing,
 				customLiveEnd: g.defaults.templates.liveEnd,
@@ -517,13 +517,13 @@ function buildLiveSubViewSingle(sub: Subscription, globals: GlobalConfig): LiveS
 			cardBasePlateBorder: eff.cardStyle.cardBasePlateBorder,
 		},
 		customLiveMsg: {
-			enable: true,
+			enable: eff.templates.liveMsgEnabled,
 			customLiveStart: eff.templates.liveStart,
 			customLive: eff.templates.liveOngoing,
 			customLiveEnd: eff.templates.liveEnd,
 		},
 		customGuardBuy: {
-			enable: true,
+			enable: eff.templates.guardBuy.enable,
 			guardBuyMsg: eff.templates.guardBuy.captain.template,
 			captainImgUrl: eff.templates.guardBuy.captain.imageUrl,
 			supervisorImgUrl: eff.templates.guardBuy.commander.imageUrl,

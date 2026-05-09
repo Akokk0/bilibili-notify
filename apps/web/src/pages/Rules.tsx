@@ -46,13 +46,9 @@ function isSectionCustomized(sub: Subscription, sectionId: SectionId): boolean {
 		case "summary":
 			return Boolean(sub.overrides.templates?.liveSummary);
 		case "msg":
-			return Boolean(
-				sub.overrides.templates?.liveStart ||
-					sub.overrides.templates?.liveOngoing ||
-					sub.overrides.templates?.liveEnd,
-			);
+			return sub.overrides.templates?.liveMsgEnabled === true;
 		case "guard":
-			return Boolean(sub.overrides.templates?.guardBuy);
+			return sub.overrides.templates?.guardBuy?.enable === true;
 		case "specialDanmaku":
 			return (
 				sub.specialUsers.some((u) => u.kinds.includes("danmaku")) ||

@@ -62,6 +62,8 @@ export interface GuardEntry {
 }
 
 export interface GuardBundle {
+	/** false = 默认上舰图;true = 用下方三档自定义 template + imageUrl。 */
+	enable: boolean;
 	captain: GuardEntry;
 	commander: GuardEntry;
 	governor: GuardEntry;
@@ -71,6 +73,8 @@ export interface TemplateBundle {
 	liveStart: string;
 	liveOngoing: string;
 	liveEnd: string;
+	/** false = builtin 简短文案;true = 用上面三段 liveStart/liveOngoing/liveEnd 自定义模板。 */
+	liveMsgEnabled: boolean;
 	liveSummary: string;
 	specialDanmaku: string;
 	specialUserEnter: string;

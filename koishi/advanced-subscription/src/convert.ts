@@ -185,6 +185,7 @@ export function rawConfigToSubscription(_name: string, raw: SubItemRawConfig): C
 	if (liveMsg?.enable) {
 		sub.overrides.templates = {
 			...(sub.overrides.templates ?? {}),
+			liveMsgEnabled: true,
 			...(liveMsg.customLiveStart !== undefined ? { liveStart: liveMsg.customLiveStart } : {}),
 			...(liveMsg.customLive !== undefined ? { liveOngoing: liveMsg.customLive } : {}),
 			...(liveMsg.customLiveEnd !== undefined ? { liveEnd: liveMsg.customLiveEnd } : {}),
@@ -198,6 +199,7 @@ export function rawConfigToSubscription(_name: string, raw: SubItemRawConfig): C
 		sub.overrides.templates = {
 			...(sub.overrides.templates ?? {}),
 			guardBuy: {
+				enable: true,
 				captain: {
 					imageUrl: guardBuy.captainImgUrl ?? defaultUrl("captain-Bjw5Byb5.png"),
 					template: guardBuy.guardBuyMsg ?? "{user} 成为了 {mastername} 的舰长！",
