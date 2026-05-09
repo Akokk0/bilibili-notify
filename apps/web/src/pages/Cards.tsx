@@ -122,6 +122,7 @@ function PreviewImage({
 			) : (
 				<img
 					src={query.data}
+					srcSet={`${query.data} 2x`}
 					alt="卡片实时预览"
 					className="bn-anim-fade-in max-w-full rounded-xl shadow-[0_6px_20px_rgba(0,0,0,0.14)]"
 				/>

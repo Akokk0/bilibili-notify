@@ -62,6 +62,11 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Standalon
 		async page(): Promise<PageLike> {
 			const b = await ensure();
 			const p = await b.newPage();
+			// 2x DPI so card screenshots have enough raster detail for retina /
+			// HiDPI displays. Without this, JPEGs come out at 1x and look blurry
+			// in the dashboard preview. CSS dimensions are unchanged; the
+			// frontend uses srcset="… 2x" so display size stays the same.
+			await p.setViewport({ width: 1280, height: 720, deviceScaleFactor: 2 });
 			return wrapPage(p);
 		},
 		async dispose(): Promise<void> {
