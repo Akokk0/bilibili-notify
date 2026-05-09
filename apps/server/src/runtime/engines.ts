@@ -8,7 +8,8 @@
  *   1. Bind SubscriptionStore to ConfigStore
  *   2. Build MultiplexNotificationSink (subscribers: HistoryStore via onDelivery)
  *   3. Construct BilibiliPush({ sink, store, master })
- *   4. Optionally construct CommentaryGenerator (when defaults.ai.enabled + apiKey)
+ *   4. Optionally construct CommentaryGenerator (when apiKey + baseUrl set; the
+ *      `enabled` flag is enforced at engine-config gating layer in step 5/6)
  *   5. Construct DynamicEngine + LiveEngine with PushLike adapters
  *   6. Wire subscription-changed → engine.applyOps; auth-restored → engine reseed
  *   7. Wire config-changed (globals scope) → DynamicEngine.updateConfig + LiveEngine.updateConfig
@@ -122,9 +123,12 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	push.start();
 
 	// ---------- AI (optional) ----------
+	// 构造仅依赖 apiKey / baseUrl 是否齐备 —— 与 `enabled` 解耦,后者交给引擎 config 层
+	// 的 aiEnabled flag 在每次推送前热判断。这样用户在 dashboard 把 AI 开关切关再切开
+	// 不需要重启服务,且无需在 config-changed 里 hot-swap 实例。
 	let commentary: CommentaryGenerator | null = null;
 	const aiSettings = globals().defaults.ai;
-	if (aiSettings.enabled && aiSettings.apiKey && aiSettings.baseUrl) {
+	if (aiSettings.apiKey && aiSettings.baseUrl) {
 		try {
 			commentary = new CommentaryGenerator({
 				serviceCtx: aiCtx,
@@ -180,6 +184,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			dynamicCron: globals().app.dynamicCron,
 			dynamicVideoUrlToBV: false,
 			pushImgsInDynamic: true,
+			imageEnabled: globals().defaults.cardStyle.enabled,
+			aiEnabled: globals().defaults.ai.enabled,
 			filter: {
 				enable: blockHasRules,
 				notify: false,
@@ -225,6 +231,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			minScPrice: g.defaults.filters.minScPrice,
 			minGuardLevel: g.defaults.filters.minGuardLevel,
 			liveSummaryDefault: g.defaults.templates.liveSummary,
+			imageEnabled: g.defaults.cardStyle.enabled,
+			aiEnabled: g.defaults.ai.enabled,
 			customGuardBuy: {
 				enable: false,
 				guardBuyMsg: g.defaults.templates.guardBuy.captain.template,

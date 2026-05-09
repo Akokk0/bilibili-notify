@@ -43,6 +43,16 @@ export interface LiveEngineConfig {
 	liveSummaryDefault: string;
 	customGuardBuy: ListenerManagerConfig["customGuardBuy"];
 	customLiveMsg: ListenerManagerConfig["customLiveMsg"];
+	/**
+	 * 是否启用图片卡片渲染。`false` 时直播开播 / SC / 上舰 / 弹幕词云全部走文字回退。
+	 * 缺省视为 true。Adapter 通常用 `globals.defaults.cardStyle.enabled` 填充。
+	 */
+	imageEnabled?: boolean;
+	/**
+	 * 是否启用 AI 直播总结。`false` 时跳过 commentary 调用,直接走模板回退。
+	 * 缺省视为 true。Adapter 通常用 `globals.defaults.ai.enabled` 填充。
+	 */
+	aiEnabled?: boolean;
 }
 
 export interface LiveEngineOptions {
@@ -92,10 +102,12 @@ export class LiveEngine {
 		const templateRenderer = new LiveTemplateRenderer();
 		const wordcloudGenerator = new WordcloudGenerator({
 			imageRenderer: opts.imageRenderer ?? null,
+			isImageEnabled: () => this.config.imageEnabled !== false,
 			logger: this.logger,
 		});
 		const liveSummaryRequester = new LiveSummaryRequester({
 			commentary: opts.commentary ?? null,
+			isAiEnabled: () => this.config.aiEnabled !== false,
 			templateRenderer,
 			logger: this.logger,
 		});
@@ -220,6 +232,7 @@ function toListenerConfig(c: LiveEngineConfig): ListenerManagerConfig {
 		customGuardBuy: c.customGuardBuy,
 		customLiveMsg: c.customLiveMsg,
 		liveSummaryDefault: c.liveSummaryDefault,
+		imageEnabled: c.imageEnabled,
 	};
 }
 

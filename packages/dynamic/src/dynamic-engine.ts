@@ -36,6 +36,16 @@ export interface DynamicEngineConfig {
 	pushImgsInDynamic: boolean;
 	/** 内容过滤配置（含 notify：被屏蔽时是否通知）。 */
 	filter: DynamicFilterConfig & { notify?: boolean };
+	/**
+	 * 是否启用图片卡片渲染。`false` 时跳过 puppeteer 调用,推送降级为纯文字。缺省视为 true,
+	 * 保留旧 adapter 不传该字段时的既有行为。Adapter 通常用 `globals.defaults.cardStyle.enabled` 填充。
+	 */
+	imageEnabled?: boolean;
+	/**
+	 * 是否启用 AI 动态点评。`false` 时跳过 `CommentaryGenerator.comment()` 调用,推送只用原始动态文本。
+	 * 缺省视为 true。Adapter 通常用 `globals.defaults.ai.enabled` 填充。
+	 */
+	aiEnabled?: boolean;
 }
 
 export interface DynamicEngineOptions {
@@ -392,7 +402,7 @@ export class DynamicEngine {
 			const sub = this.dynamicSubManager.get(uid);
 			let buffer: Buffer | undefined;
 			try {
-				if (this.image) {
+				if (this.image && this.config.imageEnabled !== false) {
 					// dynamic-engine 与 image-engine 的 Dynamic 类型同源同构（皆为 Bilibili
 					// 动态接口的子集，仅声明字段不同），运行时是同一对象。这里用 unknown
 					// 中转的类型断言避开两份独立 .d.ts 的结构性差异。
@@ -446,7 +456,7 @@ export class DynamicEngine {
 
 			// AI comment
 			let aiComment: string | undefined;
-			if (this.ai) {
+			if (this.ai && this.config.aiEnabled !== false) {
 				const dynamicText = extractDynamicText(item);
 				if (dynamicText) {
 					const imageUrls = extractDynamicImages(item);

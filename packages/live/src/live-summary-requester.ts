@@ -25,15 +25,23 @@ export const LIVE_SUMMARY_MIN_SENDERS = 5;
  */
 export class LiveSummaryRequester {
 	private readonly commentary: CommentaryGenerator | null;
+	private readonly isAiEnabled: () => boolean;
 	private readonly templateRenderer: LiveTemplateRenderer;
 	private readonly logger: Logger;
 
 	constructor(opts: {
 		commentary: CommentaryGenerator | null;
+		/**
+		 * AI 总开关查询。返回 false 时跳过 commentary 调用,直接走模板回退,
+		 * 与 commentary === null 行为等价。Adapter 用 `() => globals.defaults.ai.enabled` 填充,
+		 * 缺省 () => true。
+		 */
+		isAiEnabled?: () => boolean;
 		templateRenderer: LiveTemplateRenderer;
 		logger: Logger;
 	}) {
 		this.commentary = opts.commentary;
+		this.isAiEnabled = opts.isAiEnabled ?? (() => true);
 		this.templateRenderer = opts.templateRenderer;
 		this.logger = opts.logger;
 	}
@@ -56,7 +64,7 @@ export class LiveSummaryRequester {
 			.sort((a, b) => b[1] - a[1])
 			.slice(0, 5);
 
-		if (this.commentary) {
+		if (this.commentary && this.isAiEnabled()) {
 			try {
 				const top10Words = sortedWords.slice(0, 10).map(([word, count]) => `${word}(${count})`);
 				const prompt = [

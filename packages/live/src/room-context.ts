@@ -52,6 +52,11 @@ export interface ListenerManagerConfig {
 	};
 	/** Default global `liveSummary` template (joined with `\n`). */
 	liveSummaryDefault: string;
+	/**
+	 * 图片卡片渲染总开关。`false` 时 RoomContext 暴露的 imageRenderer 始终为 null,
+	 * 直播开播 / SC / 上舰 等路径自然走 `if (renderer?.generateXxx)` 落入文字回退。缺省视为 true。
+	 */
+	imageEnabled?: boolean;
 }
 
 /**
@@ -97,7 +102,12 @@ export class RoomContextBase {
 	readonly wordcloudGenerator: WordcloudGenerator;
 	readonly liveSummaryRequester: LiveSummaryRequester;
 	readonly danmakuCollector: DanmakuCollector;
-	readonly imageRenderer: ImageRenderer | null;
+	/**
+	 * 真实注入的渲染器引用,private 是因为外部应通过 `imageRenderer` getter 访问 ——
+	 * 后者会在 `config.imageEnabled === false` 时返回 null,让所有
+	 * `if (this.imageRenderer?.generateXxx)` 自然落入文字回退分支。
+	 */
+	private readonly _imageRenderer: ImageRenderer | null;
 	readonly emitPluginError: (message: string) => void;
 
 	config: ListenerManagerConfig;
@@ -120,9 +130,14 @@ export class RoomContextBase {
 		this.wordcloudGenerator = opts.wordcloudGenerator;
 		this.liveSummaryRequester = opts.liveSummaryRequester;
 		this.danmakuCollector = opts.danmakuCollector;
-		this.imageRenderer = opts.imageRenderer;
+		this._imageRenderer = opts.imageRenderer;
 		this.config = opts.config;
 		this.emitPluginError = opts.emitPluginError;
+	}
+
+	/** 受 `config.imageEnabled` 门控的渲染器视图;关闭时返回 null。 */
+	get imageRenderer(): ImageRenderer | null {
+		return this.config.imageEnabled === false ? null : this._imageRenderer;
 	}
 
 	updateConfig(config: ListenerManagerConfig): void {

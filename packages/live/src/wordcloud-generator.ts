@@ -21,10 +21,20 @@ export const WORDCLOUD_TOP_WORDS = 90;
  */
 export class WordcloudGenerator {
 	private readonly imageRenderer: ImageRenderer | null;
+	private readonly isImageEnabled: () => boolean;
 	private readonly logger: Logger;
 
-	constructor(opts: { imageRenderer: ImageRenderer | null; logger: Logger }) {
+	constructor(opts: {
+		imageRenderer: ImageRenderer | null;
+		/**
+		 * 卡片渲染总开关查询。返回 false 时直接跳过 puppeteer 调用,与缺失 imageRenderer
+		 * 等价。Adapter 通常用 `() => globals.defaults.cardStyle.enabled` 填充;缺省 () => true。
+		 */
+		isImageEnabled?: () => boolean;
+		logger: Logger;
+	}) {
 		this.imageRenderer = opts.imageRenderer;
+		this.isImageEnabled = opts.isImageEnabled ?? (() => true);
 		this.logger = opts.logger;
 	}
 
@@ -44,6 +54,10 @@ export class WordcloudGenerator {
 	): Promise<Buffer | undefined> {
 		if (sortedWords.length < WORDCLOUD_MIN_WORDS) {
 			this.logger.debug(`[wordcloud] 热词不足${WORDCLOUD_MIN_WORDS}个，放弃生成弹幕词云`);
+			return undefined;
+		}
+		if (!this.isImageEnabled()) {
+			this.logger.debug("[wordcloud] cardStyle.enabled=false,跳过词云图片生成");
 			return undefined;
 		}
 		if (!this.imageRenderer?.generateWordCloudImg) return undefined;
