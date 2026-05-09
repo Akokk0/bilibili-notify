@@ -2,3 +2,22 @@ packages:
   - "packages/*"
   - "koishi/*"
   - "apps/*"
+
+# Match the previous yarn classic-style flat hoist, so koishi's plugin loader
+# (which expects deps to live in a single hoisted node_modules tree) keeps
+# working as before. pnpm 11 reads nodeLinker from pnpm-workspace.yaml; the
+# old .npmrc (`node-linker=hoisted`) is no longer the source of truth at the
+# workspace level.
+nodeLinker: hoisted
+
+# pnpm 11 makes postinstall opt-in by default to mitigate supply-chain
+# risk. Each entry below is a transitive dep that ships a build script.
+# All five are widely-used, well-known packages whose postinstalls are
+# benign (native binary builds + git-hook installer). Re-evaluate when
+# bumping versions; CI fails install if a *new* unapproved entry appears.
+allowBuilds:
+  "@parcel/watcher": true   # native fsevents/inotify shim used by vite watcher
+  esbuild: true             # downloads matching native binary
+  lefthook: true            # repo's git hooks installer (root prepare script)
+  protobufjs: true          # generates .js from .proto at install time
+  vue-demi: true            # writes vue 2/3 shim at install time

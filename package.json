@@ -2,7 +2,7 @@
 	"name": "@root/bilibili-notify",
 	"version": "0.0.0",
 	"private": true,
-	"packageManager": "pnpm@10.33.4",
+	"packageManager": "pnpm@11.0.9",
 	"scripts": {
 		"build": "pnpm -r run build && pnpm --filter koishi-plugin-bilibili-notify run build:client",
 		"typecheck": "pnpm -r run typecheck",
