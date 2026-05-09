@@ -5,7 +5,7 @@
  * the label so users see which schema field they're editing).
  */
 
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 // ── Field ────────────────────────────────────────────────────────────────────
 
@@ -166,18 +166,48 @@ export interface TColorProps {
 	onChange: (next: string) => void;
 }
 
+const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
 export function TColor({ value, onChange }: TColorProps) {
+	const [hex, setHex] = useState(value);
+	// keep the text input in sync when the color picker (or external resets)
+	// pushes a new value down.
+	useEffect(() => {
+		setHex(value);
+	}, [value]);
+
+	const valid = HEX_RE.test(hex);
+
 	return (
 		<div className="inline-flex items-center gap-1.5">
 			<input
 				type="color"
-				value={value}
-				onChange={(e) => onChange(e.target.value)}
+				value={valid ? hex : value}
+				onChange={(e) => {
+					setHex(e.target.value);
+					onChange(e.target.value);
+				}}
 				className="h-[30px] w-9 cursor-pointer rounded-md border border-gray-200 bg-white p-0"
 			/>
-			<code className="rounded-md border border-gray-200 bg-white px-2 py-1 font-mono text-[11.5px] text-bn-text-primary">
-				{value}
-			</code>
+			<input
+				type="text"
+				value={hex}
+				onChange={(e) => {
+					const next = e.target.value;
+					setHex(next);
+					if (HEX_RE.test(next)) onChange(next);
+				}}
+				onBlur={() => {
+					if (!HEX_RE.test(hex)) setHex(value);
+				}}
+				placeholder="#rrggbb"
+				spellCheck={false}
+				className={`w-22 rounded-md border bg-white px-2 py-1 font-mono text-[11.5px] outline-none transition-colors ${
+					valid
+						? "border-gray-200 text-bn-text-primary focus:border-bn-pink"
+						: "border-red-300 text-red-600 focus:border-red-400"
+				}`}
+			/>
 		</div>
 	);
 }

@@ -45,10 +45,26 @@ const StyleSchema = z.object({
 	followerDisplay: z.boolean().optional(),
 });
 
+const ContentSchema = z
+	.object({
+		// live: real-fetch path lands in a follow-up commit; field is parsed but
+		// ignored today so the frontend can already collect roomId.
+		roomId: z.string().optional(),
+		// dyn: same — uid + offset are parsed but ignored until real fetch lands.
+		uid: z.string().optional(),
+		offset: z.number().int().positive().optional(),
+		// sc / guard: text override flows straight into the mock template props.
+		text: z.string().optional(),
+	})
+	.optional();
+
 const PreviewRequestSchema = z.object({
 	kind: z.enum(["live", "dyn", "sc", "guard"]),
 	style: StyleSchema,
+	content: ContentSchema,
 });
+
+type PreviewContent = z.infer<typeof ContentSchema>;
 
 export interface PreviewResponse {
 	ok: boolean;
@@ -68,7 +84,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!parsed.success) {
 			return c.json<PreviewResponse>({ ok: false, err: "invalid_request" }, 400);
 		}
-		const { kind, style } = parsed.data;
+		const { kind, style, content } = parsed.data;
 
 		if (!opts.puppeteer) {
 			return c.json<PreviewResponse>(
@@ -81,7 +97,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		}
 
 		try {
-			const { component, props, title, htmlWidth } = buildPreviewSpec(kind, style);
+			const { component, props, title, htmlWidth } = buildPreviewSpec(kind, style, content);
 			const html = await renderCard(component, props, {
 				title,
 				font: style.font ?? "PingFang SC, sans-serif",
@@ -110,6 +126,7 @@ interface PreviewSpec {
 function buildPreviewSpec(
 	kind: "live" | "dyn" | "sc" | "guard",
 	style: z.infer<typeof StyleSchema>,
+	content: PreviewContent,
 ): PreviewSpec {
 	if (kind === "live") {
 		return {
@@ -130,14 +147,14 @@ function buildPreviewSpec(
 	if (kind === "sc") {
 		return {
 			component: SCCard,
-			props: buildScPreviewProps(style),
+			props: buildScPreviewProps(style, content?.text),
 			title: "卡片预览 · SC",
 			htmlWidth: 430,
 		};
 	}
 	return {
 		component: GuardCard,
-		props: buildGuardPreviewProps(style),
+		props: buildGuardPreviewProps(style, content?.text),
 		title: "卡片预览 · 上舰",
 		htmlWidth: 430,
 	};
@@ -209,24 +226,24 @@ function buildDynamicPreviewProps(style: z.infer<typeof StyleSchema>): DynamicCa
 	};
 }
 
-function buildScPreviewProps(style: z.infer<typeof StyleSchema>): SCCardProps {
+function buildScPreviewProps(style: z.infer<typeof StyleSchema>, text?: string): SCCardProps {
 	return {
 		senderFace: SVG_AVATAR_FAN,
 		senderName: "示例粉丝",
 		masterName: "示例 UP 主",
 		masterAvatarUrl: SVG_AVATAR_BLUE,
-		text: "主播加油！这首要听到！示例 UP 主唱得太好了！",
+		text: text?.trim() ? text : "主播加油！这首要听到！示例 UP 主唱得太好了！",
 		price: 30,
 		duration: "2 分钟",
 		bgColor: [style.cardColorStart, style.cardColorEnd] as const,
 	};
 }
 
-function buildGuardPreviewProps(style: z.infer<typeof StyleSchema>): GuardCardProps {
+function buildGuardPreviewProps(style: z.infer<typeof StyleSchema>, text?: string): GuardCardProps {
 	return {
 		captainImgUrl: SVG_AVATAR_PINK,
 		guardLevel: 3 as GuardCardProps["guardLevel"],
-		uname: "示例新舰长",
+		uname: text?.trim() ? text : "示例新舰长",
 		face: SVG_AVATAR_PINK,
 		isAdmin: 0,
 		masterAvatarUrl: SVG_AVATAR_BLUE,

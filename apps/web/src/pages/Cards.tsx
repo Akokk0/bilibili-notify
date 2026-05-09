@@ -13,13 +13,27 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Btn } from "../components/atoms";
-import { Field, TColor } from "../components/forms";
+import { Field, TArea, TColor, TInput } from "../components/forms";
 import { GlassBox } from "../components/glass-box";
 import { Icon } from "../components/icons";
 import { ApiError, api } from "../services/api";
 import type { CardStyle, GlobalConfig } from "../types/globals";
 
 type CardKind = "live" | "dyn" | "sc" | "guard";
+
+interface PreviewContent {
+	live: { roomId: string };
+	dyn: { uid: string; offset: number };
+	sc: { text: string };
+	guard: { text: string };
+}
+
+const DEFAULT_PREVIEW_CONTENT: PreviewContent = {
+	live: { roomId: "" },
+	dyn: { uid: "", offset: 1 },
+	sc: { text: "主播加油！这首要听到！示例 UP 主唱得太好了！" },
+	guard: { text: "示例新舰长" },
+};
 
 const KIND_LABELS: Record<CardKind, { label: string; tone: string }> = {
 	live: { label: "直播开播", tone: "#FF6699" },
@@ -34,20 +48,35 @@ interface PreviewResponse {
 	err?: string;
 }
 
-function PreviewImage({ kind, style }: { kind: CardKind; style: CardStyle }) {
-	// debounce style edits — TColor pickers fire many onChange callbacks per second
+function PreviewImage({
+	kind,
+	style,
+	content,
+}: {
+	kind: CardKind;
+	style: CardStyle;
+	content: PreviewContent;
+}) {
+	// debounce style + content edits — TColor pickers and TArea fire many onChange
+	// callbacks per second; we don't want every keystroke to spawn a puppeteer launch.
 	const [debouncedStyle, setDebouncedStyle] = useState(style);
+	const [debouncedContent, setDebouncedContent] = useState(content);
 	useEffect(() => {
 		const t = setTimeout(() => setDebouncedStyle(style), 500);
 		return () => clearTimeout(t);
 	}, [style]);
+	useEffect(() => {
+		const t = setTimeout(() => setDebouncedContent(content), 500);
+		return () => clearTimeout(t);
+	}, [content]);
 
 	const query = useQuery({
-		queryKey: ["card-preview", kind, debouncedStyle],
+		queryKey: ["card-preview", kind, debouncedStyle, debouncedContent[kind]],
 		queryFn: async () => {
 			const res = await api.post<PreviewResponse>("/api/cards/preview", {
 				kind,
 				style: debouncedStyle,
+				content: debouncedContent[kind],
 			});
 			if (!res.ok || !res.dataUrl) {
 				throw new ApiError(500, res, res.err ?? "preview failed");
@@ -57,16 +86,12 @@ function PreviewImage({ kind, style }: { kind: CardKind; style: CardStyle }) {
 		retry: false,
 	});
 
-	const previewBg = `linear-gradient(135deg, ${style.cardColorStart}, ${style.cardColorEnd})`;
 	const showSkeleton = query.isPending;
 	const apiErr = query.error as ApiError | undefined;
 	const status = apiErr?.status;
 
 	return (
-		<div
-			className="relative flex min-h-105 items-center justify-center rounded-bn-card border border-gray-200 p-7"
-			style={{ background: previewBg }}
-		>
+		<div className="relative flex min-h-105 items-center justify-center rounded-bn-card border border-gray-200 p-7">
 			{showSkeleton ? (
 				<div className="flex w-95 flex-col items-center gap-3 rounded-xl bg-white/70 p-6">
 					<div className="bn-anim-spin h-8 w-8 rounded-full border-2 border-bn-pink/30 border-t-bn-pink" />
@@ -96,8 +121,16 @@ function PreviewImage({ kind, style }: { kind: CardKind; style: CardStyle }) {
 	);
 }
 
-function CardPreview({ kind, style }: { kind: CardKind; style: CardStyle }) {
-	return <PreviewImage kind={kind} style={style} />;
+function CardPreview({
+	kind,
+	style,
+	content,
+}: {
+	kind: CardKind;
+	style: CardStyle;
+	content: PreviewContent;
+}) {
+	return <PreviewImage kind={kind} style={style} content={content} />;
 }
 
 export default function Cards() {
@@ -108,7 +141,17 @@ export default function Cards() {
 	});
 	const [draft, setDraft] = useState<CardStyle | null>(null);
 	const [kind, setKind] = useState<CardKind>("live");
+	const [content, setContent] = useState<PreviewContent>(DEFAULT_PREVIEW_CONTENT);
 	const [error, setError] = useState<string | null>(null);
+
+	const setLive = (next: Partial<PreviewContent["live"]>) =>
+		setContent((c) => ({ ...c, live: { ...c.live, ...next } }));
+	const setDyn = (next: Partial<PreviewContent["dyn"]>) =>
+		setContent((c) => ({ ...c, dyn: { ...c.dyn, ...next } }));
+	const setSc = (next: Partial<PreviewContent["sc"]>) =>
+		setContent((c) => ({ ...c, sc: { ...c.sc, ...next } }));
+	const setGuard = (next: Partial<PreviewContent["guard"]>) =>
+		setContent((c) => ({ ...c, guard: { ...c.guard, ...next } }));
 
 	useEffect(() => {
 		if (globalsQuery.data) setDraft(globalsQuery.data.defaults.cardStyle);
@@ -188,18 +231,6 @@ export default function Cards() {
 					<Field label="渐变结束" code="cardColorEnd">
 						<TColor value={draft.cardColorEnd} onChange={(v) => set("cardColorEnd", v)} />
 					</Field>
-					<Field label="底板颜色" code="cardBasePlateColor">
-						<TColor
-							value={draft.cardBasePlateColor}
-							onChange={(v) => set("cardBasePlateColor", v)}
-						/>
-					</Field>
-					<Field label="底板边框" code="cardBasePlateBorder">
-						<TColor
-							value={draft.cardBasePlateBorder}
-							onChange={(v) => set("cardBasePlateBorder", v)}
-						/>
-					</Field>
 					<div className="mt-2 rounded border border-dashed bg-[#a29bfe14] p-2.5 text-[11px] text-bn-text-secondary">
 						per-UP 卡片样式覆盖 → 前往「高级规则」→ 选择 UP 主 → 卡片样式覆盖
 					</div>
@@ -244,6 +275,70 @@ export default function Cards() {
 						</Btn>
 					</div>
 				</GlassBox>
+
+				<GlassBox
+					title="预览内容"
+					subtitle={
+						kind === "live"
+							? "拉取目标直播间的真实数据"
+							: kind === "dyn"
+								? "拉取指定 UP 的某条动态"
+								: "自定义文案 · mock 头像/数值"
+					}
+					accent={KIND_LABELS[kind].tone}
+					icon={<Icon.sparkle size={14} />}
+					badge={kind}
+				>
+					{kind === "live" ? (
+						<>
+							<Field label="直播间号" code="roomId" hint="纯数字，例如 5440">
+								<TInput
+									value={content.live.roomId}
+									onChange={(v) => setLive({ roomId: v })}
+									placeholder="留空则使用示例数据"
+								/>
+							</Field>
+							<div className="rounded border border-dashed bg-amber-50/60 p-2.5 text-[11px] text-amber-800">
+								需要后端登录 B 站账号；该字段下一阶段接入真实拉取，目前仍走示例数据。
+							</div>
+						</>
+					) : kind === "dyn" ? (
+						<>
+							<Field label="UP 主 UID" code="uid" hint="目标 UP 主的 UID">
+								<TInput
+									value={content.dyn.uid}
+									onChange={(v) => setDyn({ uid: v })}
+									placeholder="留空则使用示例数据"
+								/>
+							</Field>
+							<Field label="第几条动态" code="offset" hint="1 = 最新，2 = 倒数第二条…">
+								<TInput
+									value={String(content.dyn.offset)}
+									onChange={(v) => {
+										const n = Number.parseInt(v, 10);
+										setDyn({ offset: Number.isFinite(n) && n > 0 ? n : 1 });
+									}}
+									placeholder="1"
+								/>
+							</Field>
+							<div className="rounded border border-dashed bg-amber-50/60 p-2.5 text-[11px] text-amber-800">
+								需要后端登录 B 站账号；该字段下一阶段接入真实拉取，目前仍走示例数据。
+							</div>
+						</>
+					) : kind === "sc" ? (
+						<Field label="SC 文案" code="text" hint="留言内容">
+							<TArea value={content.sc.text} onChange={(v) => setSc({ text: v })} rows={3} />
+						</Field>
+					) : (
+						<Field label="新舰长称呼" code="text" hint="渲染在卡片正中的名字">
+							<TArea
+								value={content.guard.text}
+								onChange={(v) => setGuard({ text: v })}
+								rows={2}
+							/>
+						</Field>
+					)}
+				</GlassBox>
 			</div>
 
 			{/* RIGHT: live preview */}
@@ -254,7 +349,7 @@ export default function Cards() {
 						puppeteer 真实渲染 · 渲染宽度{kind === "sc" || kind === "guard" ? " 430" : " 600"}px
 					</span>
 				</div>
-				<CardPreview kind={kind} style={draft} />
+				<CardPreview kind={kind} style={draft} content={content} />
 
 				{error ? (
 					<div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
@@ -269,12 +364,6 @@ export default function Cards() {
 					</span>
 					<span>
 						cardColorEnd: <TInputReadonly value={draft.cardColorEnd} />
-					</span>
-					<span>
-						cardBasePlateColor: <TInputReadonly value={draft.cardBasePlateColor} />
-					</span>
-					<span>
-						cardBasePlateBorder: <TInputReadonly value={draft.cardBasePlateBorder} />
 					</span>
 					<span className="italic text-bn-text-secondary">
 						per-UP 覆盖 → 高级规则 → cardStyleOverride
