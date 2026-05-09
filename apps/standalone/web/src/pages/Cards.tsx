@@ -64,16 +64,16 @@ function PreviewImage({ kind, style }: { kind: CardKind; style: CardStyle }) {
 
 	return (
 		<div
-			className="relative flex min-h-[420px] items-center justify-center rounded-bn-card border border-gray-200 p-7"
+			className="relative flex min-h-105 items-center justify-center rounded-bn-card border border-gray-200 p-7"
 			style={{ background: previewBg }}
 		>
 			{showSkeleton ? (
-				<div className="flex w-[380px] flex-col items-center gap-3 rounded-xl bg-white/70 p-6">
+				<div className="flex w-95 flex-col items-center gap-3 rounded-xl bg-white/70 p-6">
 					<div className="bn-anim-spin h-8 w-8 rounded-full border-2 border-bn-pink/30 border-t-bn-pink" />
 					<div className="text-[12px] font-bold text-bn-text-secondary">puppeteer 渲染中…</div>
 				</div>
 			) : query.error ? (
-				<div className="w-[380px] rounded-xl bg-white p-4 text-[12px]">
+				<div className="w-95 rounded-xl bg-white p-4 text-[12px]">
 					<div className="mb-1 font-bold text-red-600">
 						{status === 503 ? "puppeteer 未配置" : status === 501 ? "kind 暂未支持" : "渲染失败"}
 					</div>
