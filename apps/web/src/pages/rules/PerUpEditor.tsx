@@ -12,9 +12,9 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Avatar, Btn } from "../../components/atoms";
+import { Avatar, Btn, Toggle } from "../../components/atoms";
 import { ArrayEditor, Field, TArea, TColor, TInput, TNum, TSelect } from "../../components/forms";
-import { CollapseBlock, GlassBox } from "../../components/glass-box";
+import { GlassBox } from "../../components/glass-box";
 import { Icon } from "../../components/icons";
 import { ApiError, api } from "../../services/api";
 import type {
@@ -252,6 +252,15 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 	);
 }
 
+/**
+ * 关闭态下方一行说明文字 —— 与设计稿"未启用 · xx 将继承全局 xx 规则"一致。
+ */
+function InheritHint({ children }: { children: React.ReactNode }) {
+	return (
+		<div className="py-5 text-center text-[12px] text-bn-text-tertiary">未启用 · {children}</div>
+	);
+}
+
 /* -------- Filters --------------------------------------------------------- */
 
 function FilterOverrideBox({
@@ -273,50 +282,52 @@ function FilterOverrideBox({
 	return (
 		<GlassBox
 			title="动态过滤覆盖"
-			subtitle="overrides.filters · 关键词 / 正则 / 屏蔽开关"
+			subtitle="开 = 该 UP 使用自定义关键词 / 正则 / 屏蔽开关;关 = 继承全局过滤"
 			accent="#FB7299"
 			icon={<Icon.filter size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
+			right={
+				<Toggle value={enabled} onChange={(on) => onChange(on ? { ...baseline } : undefined)} />
+			}
 		>
-			<CollapseBlock
-				label="启用 per-UP 过滤覆盖"
-				enabled={enabled}
-				onToggle={(on) => onChange(on ? { ...baseline } : undefined)}
-				accent="#FB7299"
-			>
-				<Field label="关键词黑名单" code="blockKeywords" full>
-					<ArrayEditor value={get("blockKeywords")} onChange={(n) => set("blockKeywords", n)} />
-				</Field>
-				<Field label="正则黑名单" code="blockRegex" full>
-					<ArrayEditor value={get("blockRegex")} onChange={(n) => set("blockRegex", n)} />
-				</Field>
-				<Field label="关键词白名单" code="whitelistKeywords" full>
-					<ArrayEditor
-						value={get("whitelistKeywords")}
-						onChange={(n) => set("whitelistKeywords", n)}
-					/>
-				</Field>
-				<Field label="屏蔽转发" code="blockForward">
-					<TSelect
-						value={get("blockForward") ? "true" : "false"}
-						onChange={(v) => set("blockForward", v === "true")}
-						options={[
-							{ value: "false", label: "不屏蔽" },
-							{ value: "true", label: "屏蔽" },
-						]}
-					/>
-				</Field>
-				<Field label="屏蔽专栏" code="blockArticle">
-					<TSelect
-						value={get("blockArticle") ? "true" : "false"}
-						onChange={(v) => set("blockArticle", v === "true")}
-						options={[
-							{ value: "false", label: "不屏蔽" },
-							{ value: "true", label: "屏蔽" },
-						]}
-					/>
-				</Field>
-			</CollapseBlock>
+			{enabled ? (
+				<>
+					<Field label="关键词黑名单" code="blockKeywords" full>
+						<ArrayEditor value={get("blockKeywords")} onChange={(n) => set("blockKeywords", n)} />
+					</Field>
+					<Field label="正则黑名单" code="blockRegex" full>
+						<ArrayEditor value={get("blockRegex")} onChange={(n) => set("blockRegex", n)} />
+					</Field>
+					<Field label="关键词白名单" code="whitelistKeywords" full>
+						<ArrayEditor
+							value={get("whitelistKeywords")}
+							onChange={(n) => set("whitelistKeywords", n)}
+						/>
+					</Field>
+					<Field label="屏蔽转发" code="blockForward">
+						<TSelect
+							value={get("blockForward") ? "true" : "false"}
+							onChange={(v) => set("blockForward", v === "true")}
+							options={[
+								{ value: "false", label: "不屏蔽" },
+								{ value: "true", label: "屏蔽" },
+							]}
+						/>
+					</Field>
+					<Field label="屏蔽专栏" code="blockArticle">
+						<TSelect
+							value={get("blockArticle") ? "true" : "false"}
+							onChange={(v) => set("blockArticle", v === "true")}
+							options={[
+								{ value: "false", label: "不屏蔽" },
+								{ value: "true", label: "屏蔽" },
+							]}
+						/>
+					</Field>
+				</>
+			) : (
+				<InheritHint>该 UP 将继承全局动态过滤规则</InheritHint>
+			)}
 		</GlassBox>
 	);
 }
@@ -341,70 +352,71 @@ function LiveOverrideBox({
 	const enabled = filters !== undefined || schedule !== undefined;
 	const fCur = filters ?? {};
 	const sCur = schedule ?? {};
+	function toggle(on: boolean): void {
+		if (on) {
+			onFilters({
+				minScPrice: baselineFilters.minScPrice,
+				minGuardLevel: baselineFilters.minGuardLevel,
+			});
+			onSchedule({ ...baselineSchedule });
+		} else {
+			onFilters(undefined);
+			onSchedule(undefined);
+		}
+	}
 	return (
 		<GlassBox
 			title="直播阈值覆盖"
-			subtitle="overrides.{filters,schedule} · SC / 上舰 / 推送频率"
+			subtitle="开 = 该 UP 使用自定义 SC / 上舰 / 推送频率;关 = 继承全局直播阈值"
 			accent="#FF6699"
 			icon={<Icon.mic size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
+			right={<Toggle value={enabled} onChange={toggle} />}
 		>
-			<CollapseBlock
-				label="启用 per-UP 直播阈值覆盖"
-				enabled={enabled}
-				onToggle={(on) => {
-					if (on) {
-						onFilters({
-							minScPrice: baselineFilters.minScPrice,
-							minGuardLevel: baselineFilters.minGuardLevel,
-						});
-						onSchedule({ ...baselineSchedule });
-					} else {
-						onFilters(undefined);
-						onSchedule(undefined);
-					}
-				}}
-				accent="#FF6699"
-			>
-				<Field label="SC 最小金额" code="minScPrice">
-					<TNum
-						value={fCur.minScPrice ?? baselineFilters.minScPrice}
-						onChange={(v) => onFilters({ ...fCur, minScPrice: v })}
-						min={0}
-						suffix="元"
-					/>
-				</Field>
-				<Field label="上舰最低等级" code="minGuardLevel">
-					<TSelect
-						value={String(fCur.minGuardLevel ?? baselineFilters.minGuardLevel) as "1" | "2" | "3"}
-						onChange={(v) => onFilters({ ...fCur, minGuardLevel: Number(v) as 1 | 2 | 3 })}
-						options={[
-							{ value: "3", label: "舰长（含以上）" },
-							{ value: "2", label: "提督（含以上）" },
-							{ value: "1", label: "仅总督" },
-						]}
-					/>
-				</Field>
-				<Field label="推送时段开始" code="schedule.pushTime" hint="0 = 全天">
-					<TNum
-						value={sCur.pushTime ?? baselineSchedule.pushTime}
-						onChange={(v) => onSchedule({ ...sCur, pushTime: v })}
-						min={0}
-						max={23}
-						suffix="时"
-					/>
-				</Field>
-				<Field label="启动补推" code="schedule.restartPush">
-					<TSelect
-						value={(sCur.restartPush ?? baselineSchedule.restartPush) ? "true" : "false"}
-						onChange={(v) => onSchedule({ ...sCur, restartPush: v === "true" })}
-						options={[
-							{ value: "false", label: "关" },
-							{ value: "true", label: "开" },
-						]}
-					/>
-				</Field>
-			</CollapseBlock>
+			{enabled ? (
+				<>
+					<Field label="SC 最小金额" code="minScPrice">
+						<TNum
+							value={fCur.minScPrice ?? baselineFilters.minScPrice}
+							onChange={(v) => onFilters({ ...fCur, minScPrice: v })}
+							min={0}
+							suffix="元"
+						/>
+					</Field>
+					<Field label="上舰最低等级" code="minGuardLevel">
+						<TSelect
+							value={String(fCur.minGuardLevel ?? baselineFilters.minGuardLevel) as "1" | "2" | "3"}
+							onChange={(v) => onFilters({ ...fCur, minGuardLevel: Number(v) as 1 | 2 | 3 })}
+							options={[
+								{ value: "3", label: "舰长（含以上）" },
+								{ value: "2", label: "提督（含以上）" },
+								{ value: "1", label: "仅总督" },
+							]}
+						/>
+					</Field>
+					<Field label="推送时段开始" code="schedule.pushTime" hint="0 = 全天">
+						<TNum
+							value={sCur.pushTime ?? baselineSchedule.pushTime}
+							onChange={(v) => onSchedule({ ...sCur, pushTime: v })}
+							min={0}
+							max={23}
+							suffix="时"
+						/>
+					</Field>
+					<Field label="启动补推" code="schedule.restartPush">
+						<TSelect
+							value={(sCur.restartPush ?? baselineSchedule.restartPush) ? "true" : "false"}
+							onChange={(v) => onSchedule({ ...sCur, restartPush: v === "true" })}
+							options={[
+								{ value: "false", label: "关" },
+								{ value: "true", label: "开" },
+							]}
+						/>
+					</Field>
+				</>
+			) : (
+				<InheritHint>该 UP 将继承全局直播阈值与调度</InheritHint>
+			)}
 		</GlassBox>
 	);
 }
@@ -422,26 +434,23 @@ function SummaryOverrideBox({
 }) {
 	const enabled = Boolean(value?.liveSummary);
 	const cur = value ?? {};
+	function toggle(on: boolean): void {
+		if (on) onChange({ ...cur, liveSummary: baseline.liveSummary });
+		else {
+			const { liveSummary: _, ...rest } = cur;
+			onChange(Object.keys(rest).length > 0 ? rest : undefined);
+		}
+	}
 	return (
 		<GlassBox
 			title="直播总结覆盖"
-			subtitle="overrides.templates.liveSummary"
+			subtitle="开 = 该 UP 使用自定义直播总结模板;关 = 继承全局总结模板"
 			accent="#a29bfe"
 			icon={<Icon.list size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
+			right={<Toggle value={enabled} onChange={toggle} />}
 		>
-			<CollapseBlock
-				label="启用 per-UP 总结模板覆盖"
-				enabled={enabled}
-				onToggle={(on) => {
-					if (on) onChange({ ...cur, liveSummary: baseline.liveSummary });
-					else {
-						const { liveSummary: _, ...rest } = cur;
-						onChange(Object.keys(rest).length > 0 ? rest : undefined);
-					}
-				}}
-				accent="#a29bfe"
-			>
+			{enabled ? (
 				<Field label="总结正文" code="templates.liveSummary" full>
 					<TArea
 						value={cur.liveSummary ?? baseline.liveSummary}
@@ -450,7 +459,9 @@ function SummaryOverrideBox({
 						mono
 					/>
 				</Field>
-			</CollapseBlock>
+			) : (
+				<InheritHint>该 UP 将继承全局直播总结模板</InheritHint>
+			)}
 		</GlassBox>
 	);
 }
@@ -472,64 +483,59 @@ function MsgOverrideBox({
 	function set<K extends "liveStart" | "liveOngoing" | "liveEnd">(k: K, v: string): void {
 		onChange({ ...cur, [k]: v });
 	}
+	function toggle(on: boolean): void {
+		if (on) {
+			onChange({
+				...cur,
+				liveMsgEnabled: true,
+				liveStart: cur.liveStart ?? baseline.liveStart,
+				liveOngoing: cur.liveOngoing ?? baseline.liveOngoing,
+				liveEnd: cur.liveEnd ?? baseline.liveEnd,
+			});
+		} else {
+			const { liveMsgEnabled: _flag, liveStart: _a, liveOngoing: _b, liveEnd: _c, ...rest } = cur;
+			onChange(Object.keys(rest).length > 0 ? rest : undefined);
+		}
+	}
 	return (
 		<GlassBox
 			title="直播消息覆盖"
-			subtitle="开 = 该 UP 强制使用自定义文案;关 = 继承全局决定"
+			subtitle="开 = 该 UP 强制使用自定义开播 / 直播中 / 下播文案;关 = 继承全局决定"
 			accent="#FB7299"
 			icon={<Icon.chat size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
+			right={<Toggle value={enabled} onChange={toggle} />}
 		>
-			<CollapseBlock
-				label="启用 per-UP 直播消息覆盖"
-				enabled={enabled}
-				onToggle={(on) => {
-					if (on) {
-						onChange({
-							...cur,
-							liveMsgEnabled: true,
-							liveStart: cur.liveStart ?? baseline.liveStart,
-							liveOngoing: cur.liveOngoing ?? baseline.liveOngoing,
-							liveEnd: cur.liveEnd ?? baseline.liveEnd,
-						});
-					} else {
-						const {
-							liveMsgEnabled: _flag,
-							liveStart: _a,
-							liveOngoing: _b,
-							liveEnd: _c,
-							...rest
-						} = cur;
-						onChange(Object.keys(rest).length > 0 ? rest : undefined);
-					}
-				}}
-				accent="#FB7299"
-			>
-				<Field label="开播" code="templates.liveStart" full>
-					<TArea
-						value={cur.liveStart ?? baseline.liveStart}
-						onChange={(v) => set("liveStart", v)}
-						rows={3}
-						mono
-					/>
-				</Field>
-				<Field label="直播中" code="templates.liveOngoing" full>
-					<TArea
-						value={cur.liveOngoing ?? baseline.liveOngoing}
-						onChange={(v) => set("liveOngoing", v)}
-						rows={3}
-						mono
-					/>
-				</Field>
-				<Field label="下播" code="templates.liveEnd" full>
-					<TArea
-						value={cur.liveEnd ?? baseline.liveEnd}
-						onChange={(v) => set("liveEnd", v)}
-						rows={2}
-						mono
-					/>
-				</Field>
-			</CollapseBlock>
+			{enabled ? (
+				<>
+					<Field label="开播" code="templates.liveStart" full>
+						<TArea
+							value={cur.liveStart ?? baseline.liveStart}
+							onChange={(v) => set("liveStart", v)}
+							rows={3}
+							mono
+						/>
+					</Field>
+					<Field label="直播中" code="templates.liveOngoing" full>
+						<TArea
+							value={cur.liveOngoing ?? baseline.liveOngoing}
+							onChange={(v) => set("liveOngoing", v)}
+							rows={3}
+							mono
+						/>
+					</Field>
+					<Field label="下播" code="templates.liveEnd" full>
+						<TArea
+							value={cur.liveEnd ?? baseline.liveEnd}
+							onChange={(v) => set("liveEnd", v)}
+							rows={2}
+							mono
+						/>
+					</Field>
+				</>
+			) : (
+				<InheritHint>该 UP 将继承全局直播消息模板</InheritHint>
+			)}
 		</GlassBox>
 	);
 }
@@ -556,27 +562,24 @@ function GuardOverrideBox({
 			guardBuy: { ...(cur.guardBuy ?? baseline.guardBuy), [role]: entry },
 		});
 	}
+	function toggle(on: boolean): void {
+		if (on) {
+			onChange({ ...cur, guardBuy: { ...baseline.guardBuy, enable: true } });
+		} else {
+			const { guardBuy: _g, ...rest } = cur;
+			onChange(Object.keys(rest).length > 0 ? rest : undefined);
+		}
+	}
 	return (
 		<GlassBox
 			title="上舰提示覆盖"
-			subtitle="开 = 该 UP 强制使用自定义文案/图片;关 = 继承全局(默认上舰图)"
+			subtitle="开 = 该 UP 强制使用自定义文案 / 图片;关 = 继承全局(默认 B 站官方上舰图)"
 			accent="#f2a053"
 			icon={<Icon.anchor size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
+			right={<Toggle value={enabled} onChange={toggle} />}
 		>
-			<CollapseBlock
-				label="启用 per-UP 上舰提示覆盖"
-				enabled={enabled}
-				onToggle={(on) => {
-					if (on) {
-						onChange({ ...cur, guardBuy: { ...baseline.guardBuy, enable: true } });
-					} else {
-						const { guardBuy: _g, ...rest } = cur;
-						onChange(Object.keys(rest).length > 0 ? rest : undefined);
-					}
-				}}
-				accent="#f2a053"
-			>
+			{enabled ? (
 				<div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
 					{(["captain", "commander", "governor"] as const).map((role) => {
 						const e = guardOf(role);
@@ -605,7 +608,9 @@ function GuardOverrideBox({
 						);
 					})}
 				</div>
-			</CollapseBlock>
+			) : (
+				<InheritHint>该 UP 将继承全局上舰提示设置</InheritHint>
+			)}
 		</GlassBox>
 	);
 }
@@ -680,6 +685,24 @@ function SpecialUserBox({
 
 	const enabled = uids.length > 0 || tplOverridden;
 
+	function toggle(on: boolean): void {
+		if (on) {
+			// 启用:暂不写入 UID,仅切换显示态;用户开始增加 UID 后即"已设置"。
+			// 这里给 ArrayEditor 留一个空白条目通过 onChange 进入,但更稳妥是让 isSectionCustomized
+			// 在 Rules.tsx 里看 uids/template 即可。这里设一个占位保留模板继承。
+			if (uids.length === 0 && !tplOverridden) {
+				// 通过把 templateField 设成 baseline 来"激活"区段;用户随后可改写或新增 UID。
+				setTemplate(baselineTemplate);
+			}
+		} else {
+			// 关闭:清空本 kind 所有 UID + 移除 template 覆盖
+			setUids([]);
+			setTemplate(undefined);
+		}
+	}
+
+	const inheritLabel = kind === "danmaku" ? "特别关注弹幕规则" : "特别关注进房规则";
+
 	return (
 		<GlassBox
 			title={title}
@@ -687,38 +710,47 @@ function SpecialUserBox({
 			accent={accent}
 			icon={icon}
 			badge={enabled ? "已设置" : "未启用"}
+			right={<Toggle value={enabled} onChange={toggle} />}
 		>
-			<Field
-				label="UID 列表"
-				code="specialUsers"
-				hint={kind === "danmaku" ? "命中后该 UID 的弹幕会单独提醒" : "命中后该 UID 进房会单独提醒"}
-				full
-			>
-				<ArrayEditor value={uids} onChange={setUids} placeholder="纯数字 UID" />
-			</Field>
-			<Field
-				label="模板"
-				code={`templates.${templateField}`}
-				hint={tplOverridden ? "已覆盖全局" : "继承全局模板"}
-				full
-			>
-				<TArea
-					value={tplValue}
-					onChange={(v) => setTemplate(v)}
-					rows={2}
-					mono
-					placeholder={baselineTemplate}
-				/>
-				{tplOverridden ? (
-					<button
-						type="button"
-						onClick={() => setTemplate(undefined)}
-						className="mt-1 text-[11px] text-bn-text-tertiary underline-offset-2 hover:text-bn-pink hover:underline"
+			{enabled ? (
+				<>
+					<Field
+						label="UID 列表"
+						code="specialUsers"
+						hint={
+							kind === "danmaku" ? "命中后该 UID 的弹幕会单独提醒" : "命中后该 UID 进房会单独提醒"
+						}
+						full
 					>
-						恢复继承全局模板
-					</button>
-				) : null}
-			</Field>
+						<ArrayEditor value={uids} onChange={setUids} placeholder="纯数字 UID" />
+					</Field>
+					<Field
+						label="模板"
+						code={`templates.${templateField}`}
+						hint={tplOverridden ? "已覆盖全局" : "继承全局模板"}
+						full
+					>
+						<TArea
+							value={tplValue}
+							onChange={(v) => setTemplate(v)}
+							rows={2}
+							mono
+							placeholder={baselineTemplate}
+						/>
+						{tplOverridden ? (
+							<button
+								type="button"
+								onClick={() => setTemplate(undefined)}
+								className="mt-1 text-[11px] text-bn-text-tertiary underline-offset-2 hover:text-bn-pink hover:underline"
+							>
+								恢复继承全局模板
+							</button>
+						) : null}
+					</Field>
+				</>
+			) : (
+				<InheritHint>该 UP 将继承全局{inheritLabel}</InheritHint>
+			)}
 		</GlassBox>
 	);
 }
@@ -742,42 +774,44 @@ function CardStyleOverrideBox({
 	return (
 		<GlassBox
 			title="卡片样式覆盖"
-			subtitle="overrides.cardStyle · 渐变 / 底板"
+			subtitle="开 = 该 UP 使用自定义卡片渐变 / 底板;关 = 继承全局卡片样式"
 			accent="#FB7299"
 			icon={<Icon.sparkle size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
+			right={
+				<Toggle value={enabled} onChange={(on) => onChange(on ? { ...baseline } : undefined)} />
+			}
 		>
-			<CollapseBlock
-				label="启用 per-UP 卡片样式覆盖"
-				enabled={enabled}
-				onToggle={(on) => onChange(on ? { ...baseline } : undefined)}
-				accent="#FB7299"
-			>
-				<Field label="渐变起始" code="cardColorStart">
-					<TColor
-						value={cur.cardColorStart ?? baseline.cardColorStart}
-						onChange={(v) => set("cardColorStart", v)}
-					/>
-				</Field>
-				<Field label="渐变结束" code="cardColorEnd">
-					<TColor
-						value={cur.cardColorEnd ?? baseline.cardColorEnd}
-						onChange={(v) => set("cardColorEnd", v)}
-					/>
-				</Field>
-				<Field label="底板颜色" code="cardBasePlateColor">
-					<TColor
-						value={cur.cardBasePlateColor ?? baseline.cardBasePlateColor}
-						onChange={(v) => set("cardBasePlateColor", v)}
-					/>
-				</Field>
-				<Field label="底板边框" code="cardBasePlateBorder">
-					<TColor
-						value={cur.cardBasePlateBorder ?? baseline.cardBasePlateBorder}
-						onChange={(v) => set("cardBasePlateBorder", v)}
-					/>
-				</Field>
-			</CollapseBlock>
+			{enabled ? (
+				<>
+					<Field label="渐变起始" code="cardColorStart">
+						<TColor
+							value={cur.cardColorStart ?? baseline.cardColorStart}
+							onChange={(v) => set("cardColorStart", v)}
+						/>
+					</Field>
+					<Field label="渐变结束" code="cardColorEnd">
+						<TColor
+							value={cur.cardColorEnd ?? baseline.cardColorEnd}
+							onChange={(v) => set("cardColorEnd", v)}
+						/>
+					</Field>
+					<Field label="底板颜色" code="cardBasePlateColor">
+						<TColor
+							value={cur.cardBasePlateColor ?? baseline.cardBasePlateColor}
+							onChange={(v) => set("cardBasePlateColor", v)}
+						/>
+					</Field>
+					<Field label="底板边框" code="cardBasePlateBorder">
+						<TColor
+							value={cur.cardBasePlateBorder ?? baseline.cardBasePlateBorder}
+							onChange={(v) => set("cardBasePlateBorder", v)}
+						/>
+					</Field>
+				</>
+			) : (
+				<InheritHint>该 UP 将继承全局卡片样式</InheritHint>
+			)}
 		</GlassBox>
 	);
 }
@@ -804,68 +838,73 @@ function AiOverrideBox({
 	return (
 		<GlassBox
 			title="AI 人格塑造覆盖"
-			subtitle="overrides.ai · preset / persona / prompt / temperature"
+			subtitle="开 = 该 UP 使用自定义 preset / persona / prompt;关 = 继承全局 AI 设置"
 			accent="#6c5ce7"
 			icon={<Icon.ai size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
+			right={
+				<Toggle
+					value={enabled}
+					onChange={(on) => onChange(on ? { preset: "inherit" } : undefined)}
+				/>
+			}
 		>
-			<CollapseBlock
-				label="启用 per-UP AI 覆盖"
-				enabled={enabled}
-				onToggle={(on) => onChange(on ? { preset: "inherit" } : undefined)}
-				accent="#6c5ce7"
-			>
-				<Field label="预设" code="ai.preset" full>
-					<TSelect
-						value={cur.preset}
-						onChange={(v) => onChange({ ...cur, preset: v })}
-						options={presets}
-						full
-					/>
-				</Field>
-				{isCustom ? (
-					<>
-						<Field label="名字" code="ai.persona.name">
-							<TInput
-								value={cur.persona?.name ?? baseline.persona.name}
-								onChange={(v) =>
-									onChange({
-										...cur,
-										persona: { ...(cur.persona ?? baseline.persona), name: v },
-									})
-								}
-								full={false}
-							/>
-						</Field>
-						<Field label="动态点评 prompt" code="ai.dynamicPrompt" full>
-							<TArea
-								value={cur.dynamicPrompt ?? baseline.dynamicPrompt}
-								onChange={(v) => onChange({ ...cur, dynamicPrompt: v })}
-								rows={3}
-								mono
-							/>
-						</Field>
-						<Field label="直播总结 prompt" code="ai.liveSummaryPrompt" full>
-							<TArea
-								value={cur.liveSummaryPrompt ?? baseline.liveSummaryPrompt}
-								onChange={(v) => onChange({ ...cur, liveSummaryPrompt: v })}
-								rows={3}
-								mono
-							/>
-						</Field>
-					</>
-				) : null}
-				<Field label="temperature" code="ai.temperature" hint="0–2,越高越发散">
-					<TNum
-						value={cur.temperature ?? baseline.temperature}
-						onChange={(v) => onChange({ ...cur, temperature: v })}
-						min={0}
-						max={2}
-						step={0.1}
-						width={100}
-					/>
-				</Field>
-			</CollapseBlock>
+			{enabled ? (
+				<>
+					<Field label="预设" code="ai.preset" full>
+						<TSelect
+							value={cur.preset}
+							onChange={(v) => onChange({ ...cur, preset: v })}
+							options={presets}
+							full
+						/>
+					</Field>
+					{isCustom ? (
+						<>
+							<Field label="名字" code="ai.persona.name">
+								<TInput
+									value={cur.persona?.name ?? baseline.persona.name}
+									onChange={(v) =>
+										onChange({
+											...cur,
+											persona: { ...(cur.persona ?? baseline.persona), name: v },
+										})
+									}
+									full={false}
+								/>
+							</Field>
+							<Field label="动态点评 prompt" code="ai.dynamicPrompt" full>
+								<TArea
+									value={cur.dynamicPrompt ?? baseline.dynamicPrompt}
+									onChange={(v) => onChange({ ...cur, dynamicPrompt: v })}
+									rows={3}
+									mono
+								/>
+							</Field>
+							<Field label="直播总结 prompt" code="ai.liveSummaryPrompt" full>
+								<TArea
+									value={cur.liveSummaryPrompt ?? baseline.liveSummaryPrompt}
+									onChange={(v) => onChange({ ...cur, liveSummaryPrompt: v })}
+									rows={3}
+									mono
+								/>
+							</Field>
+						</>
+					) : null}
+					<Field label="temperature" code="ai.temperature" hint="0–2,越高越发散">
+						<TNum
+							value={cur.temperature ?? baseline.temperature}
+							onChange={(v) => onChange({ ...cur, temperature: v })}
+							min={0}
+							max={2}
+							step={0.1}
+							width={100}
+						/>
+					</Field>
+				</>
+			) : (
+				<InheritHint>该 UP 将继承全局 AI 人格塑造设置</InheritHint>
+			)}
 		</GlassBox>
 	);
 }
