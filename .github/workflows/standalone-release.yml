@@ -1,0 +1,77 @@
+name: Standalone — build + publish
+
+# Builds the standalone Hono+React docker image and pushes it to GHCR.
+# Triggered when:
+#   • code under apps/standalone/** or packages/** lands on refactor / main
+#     (the standalone end consumes packages/* via pnpm link:, so any business-core
+#     change also rebuilds the image)
+#   • a tag matching standalone-v*.*.* is pushed (release cut)
+#   • workflow_dispatch — operator-triggered rebuild
+
+on:
+  push:
+    branches:
+      - refactor
+      - main
+    paths:
+      - "apps/standalone/**"
+      - "packages/**"
+      - "yarn.lock"
+      - ".dockerignore"
+      - ".github/workflows/standalone-release.yml"
+    tags:
+      - "standalone-v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    name: Build & push image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Image name = ghcr.io/<owner>/<repo>-standalone (lowercased by metadata-action).
+      - name: Compute image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}-standalone
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./apps/standalone/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Only build linux/amd64 by default — adding arm64 doubles build
+          # time because chromium has to be installed twice. Flip to
+          # linux/amd64,linux/arm64 when there's demand.
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

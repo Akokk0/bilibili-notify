@@ -1,0 +1,39 @@
+# Build outputs — rebuilt inside the image.
+**/lib
+**/dist
+
+# All node_modules — populated by yarn/pnpm in the builder stage.
+**/node_modules
+
+# Local pnpm store + yarn caches.
+.yarn
+.pnpm-store
+
+# Repo metadata + editor noise.
+.git
+.github
+.gitignore
+.gitattributes
+.idea
+.vscode
+.DS_Store
+*.swp
+
+# Markdown / design assets / logs not needed at build time.
+**/*.md
+.bn-design
+
+# Local-only state from previous runs.
+apps/standalone/server/data
+apps/standalone/server/bn-data
+apps/standalone/server/bn.config.yaml
+apps/standalone/server/bn.config.yml
+apps/standalone/server/bn.config.json
+
+# Test snapshots / build cache.
+**/tsconfig.tsbuildinfo
+**/.eslintcache
+**/coverage
+
+# Lefthook output.
+.lefthook

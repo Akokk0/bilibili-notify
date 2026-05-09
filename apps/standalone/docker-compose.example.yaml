@@ -1,0 +1,56 @@
+# Example compose file for self-hosted bilibili-notify standalone.
+#
+#   cp docker-compose.example.yaml docker-compose.yaml
+#   cp server/bn.config.example.yaml ./bn.config.yaml      # edit dataDir / auth as needed
+#   docker compose up -d
+#
+# The image bundles the React dashboard at /app/web-dist and the Hono server
+# serves it for any non-/api/* path. Visit http://<host>:8787/ to use the UI.
+#
+# Dashboard auth: set BN_DASHBOARD_USER + BN_DASHBOARD_PASS below or under
+# `auth.basicAuth` in bn.config.yaml. Uncomment the napcat sidecar to chain
+# OneBot v11 → QQ delivery on the same docker network.
+
+services:
+  bilibili-notify:
+    image: ghcr.io/akokko/bilibili-notify-standalone:latest
+    # Or build locally from the repo root (parent of apps/standalone):
+    # build:
+    #   context: ../..
+    #   dockerfile: apps/standalone/Dockerfile
+    container_name: bilibili-notify
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      # Override anything from bn.config.yaml. ENV wins over the file (see plan §4.2).
+      BN_LOG_LEVEL: info
+      # BN_DASHBOARD_USER: admin
+      # BN_DASHBOARD_PASS: change-me
+    volumes:
+      # Persistent state — globals.json / subscriptions.json / targets.json,
+      # encrypted secrets, history jsonl. The image declares /data as a volume.
+      - ./data:/data
+      # Optional bootstrap config; mount read-only so the container can't rewrite it.
+      - ./bn.config.yaml:/app/apps/standalone/server/bn.config.yaml:ro
+    # Uncomment when running napcat as a sidecar so the server can hit it via
+    # http://napcat:3000 inside the docker network.
+    # depends_on:
+    #   - napcat
+
+  # ---------------------------------------------------------------------------
+  # Optional NapCat sidecar (OneBot v11 over HTTP). Configure it once via the
+  # NapCat web UI on first launch, then in the bilibili-notify dashboard add a
+  # PushTarget with platform=onebot, baseUrl=http://napcat:3000 .
+  # ---------------------------------------------------------------------------
+  # napcat:
+  #   image: mlikiowa/napcat-docker:latest
+  #   container_name: napcat
+  #   restart: unless-stopped
+  #   ports:
+  #     - "6099:6099"   # NapCat WebUI
+  #   volumes:
+  #     - ./napcat-config:/app/napcat/config
+  #     - ./napcat-cache:/app/.config/QQ
+  #   environment:
+  #     - ACCOUNT=your_qq_number
