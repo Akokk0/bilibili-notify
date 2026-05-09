@@ -29,15 +29,11 @@ import {
 	type Component,
 	DynamicCard,
 	type DynamicCardProps,
-	GuardCard,
-	type GuardCardProps,
 	h,
 	ImageRenderer,
 	LiveCard,
 	type LiveCardProps,
 	renderCard,
-	SCCard,
-	type SCCardProps,
 } from "@bilibili-notify/image";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -71,8 +67,14 @@ const ContentSchema = z
 		// dyn: uid + offset (1 = newest). offset defaults to 1 when only uid given.
 		uid: z.string().optional(),
 		offset: z.number().int().positive().optional(),
-		// sc / guard: text override flows straight into the mock template props.
+		// sc / guard: text override (sc body / guard new captain uname).
 		text: z.string().optional(),
+		// guard: 1 = 总督, 2 = 提督, 3 = 舰长. Drives both the captain badge
+		// image and the bgColor — gradient style fields are ignored for guard.
+		level: z.number().int().min(1).max(3).optional(),
+		// sc: amount in CNY. Drives the SC tier (= bgColor + duration). Gradient
+		// style fields are ignored for SC.
+		price: z.number().int().min(1).optional(),
 	})
 	.optional();
 
@@ -82,7 +84,6 @@ const PreviewRequestSchema = z.object({
 	content: ContentSchema,
 });
 
-type PreviewContent = z.infer<typeof ContentSchema>;
 type PreviewStyle = z.infer<typeof StyleSchema>;
 
 export interface PreviewResponse {
@@ -98,8 +99,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	const log = opts.deps.runtime.serviceCtx.logger;
 
 	// One ImageRenderer reused across requests. Lazy — only constructed when
-	// the first real-fetch path actually runs, so deployments without
-	// BN_CHROME_PATH or a logged-in account don't spin one up needlessly.
+	// the first real-fetch / sc / guard path actually runs, so deployments
+	// without BN_CHROME_PATH don't spin one up needlessly.
 	let imageRenderer: ImageRenderer | null = null;
 	function getImageRenderer(style: PreviewStyle): ImageRenderer | null {
 		if (!opts.puppeteer) return null;
@@ -117,6 +118,31 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			});
 		}
 		return imageRenderer;
+	}
+
+	// Cached snapshot of the logged-in B站 account, used as the "master" on
+	// SC / Guard preview cards (since those notifications are addressed TO
+	// the operator's UP). Refreshed every 5 minutes, falls back to placeholder
+	// SVGs when the account isn't logged in or the call fails.
+	const MASTER_TTL_MS = 5 * 60 * 1000;
+	let masterCache: { name: string; avatar: string; ts: number } | null = null;
+	async function getPreviewMaster(): Promise<{ name: string; avatar: string }> {
+		const now = Date.now();
+		if (masterCache && now - masterCache.ts < MASTER_TTL_MS) {
+			return { name: masterCache.name, avatar: masterCache.avatar };
+		}
+		if (opts.api) {
+			try {
+				const my = await opts.api.getMyselfInfo();
+				if (my?.code === 0 && my.data?.uname) {
+					masterCache = { name: my.data.uname, avatar: my.data.face, ts: now };
+					return { name: my.data.uname, avatar: my.data.face };
+				}
+			} catch (err) {
+				log.debug(`[cards] getMyselfInfo failed: ${(err as Error).message}`);
+			}
+		}
+		return { name: "示例 UP 主", avatar: SVG_AVATAR_BLUE };
 	}
 
 	app.post("/preview", async (c) => {
@@ -137,10 +163,55 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			);
 		}
 
-		// Real-fetch branches. Each returns a complete response or throws to fall
-		// through to the mock pipeline below; on user-supplied input that fails
-		// we surface the error instead of silently rendering mock data, since
-		// silently lying would defeat the point of the input.
+		// SC + Guard always go through ImageRenderer.generateSCCard /
+		// generateGuardCard, mirroring the production push path. bgColor +
+		// captain badge are derived from level/price internally — gradient
+		// style fields are ignored for these two kinds.
+		try {
+			if (kind === "sc") {
+				const renderer = getImageRenderer(style);
+				if (!renderer) throw new Error("puppeteer 未就绪");
+				const master = await getPreviewMaster();
+				const buffer = await renderer.generateSCCard({
+					senderFace: SVG_AVATAR_FAN,
+					senderName: "示例粉丝",
+					masterName: master.name,
+					masterAvatarUrl: master.avatar,
+					text: content?.text?.trim() || "主播加油！这首要听到！示例 UP 主唱得太好了！",
+					price: content?.price ?? 30,
+				});
+				return c.json<PreviewResponse>({
+					ok: true,
+					dataUrl: `data:image/jpeg;base64,${buffer.toString("base64")}`,
+				});
+			}
+			if (kind === "guard") {
+				const renderer = getImageRenderer(style);
+				if (!renderer) throw new Error("puppeteer 未就绪");
+				const master = await getPreviewMaster();
+				const buffer = await renderer.generateGuardCard(
+					{
+						guardLevel: (content?.level ?? 3) as 1 | 2 | 3,
+						uname: content?.text?.trim() || "示例新舰长",
+						face: SVG_AVATAR_PINK,
+						isAdmin: 0,
+					},
+					{ masterAvatarUrl: master.avatar, masterName: master.name },
+				);
+				return c.json<PreviewResponse>({
+					ok: true,
+					dataUrl: `data:image/jpeg;base64,${buffer.toString("base64")}`,
+				});
+			}
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			log.error(`[cards] sc/guard render failed: ${msg}`);
+			return c.json<PreviewResponse>({ ok: false, err: msg }, 500);
+		}
+
+		// Live + Dyn real-fetch branches. Surface user-input errors verbatim
+		// instead of silently rendering mock data — silently lying would
+		// defeat the point of the input.
 		try {
 			if (kind === "live" && content?.roomId?.trim()) {
 				const renderer = getImageRenderer(style);
@@ -149,7 +220,6 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				const buffer = await renderRealLive(opts.api, renderer, content.roomId.trim(), style);
 				return c.json<PreviewResponse>({
 					ok: true,
-					// ImageRenderer outputs JPEG (see doRender → screenshot type: "jpeg").
 					dataUrl: `data:image/jpeg;base64,${buffer.toString("base64")}`,
 				});
 			}
@@ -175,10 +245,14 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			return c.json<PreviewResponse>({ ok: false, err: msg }, 502);
 		}
 
-		// Mock pipeline (fall-through): empty content, or sc/guard which only
-		// supports the text override.
+		// Live + Dyn fall-through (empty content): fabricated mock data via the
+		// raw renderCard + screenshot pipeline (does NOT use ImageRenderer, so
+		// the user can iterate on cardColorStart/End without an account).
 		try {
-			const { component, props, title, htmlWidth } = buildPreviewSpec(kind, style, content);
+			const { component, props, title, htmlWidth } = buildPreviewSpec(
+				kind as "live" | "dyn",
+				style,
+			);
 			const html = await renderCard(component, props, {
 				title,
 				font: style.font ?? "PingFang SC, sans-serif",
@@ -289,11 +363,7 @@ interface PreviewSpec {
 	htmlWidth: number;
 }
 
-function buildPreviewSpec(
-	kind: "live" | "dyn" | "sc" | "guard",
-	style: PreviewStyle,
-	content: PreviewContent,
-): PreviewSpec {
+function buildPreviewSpec(kind: "live" | "dyn", style: PreviewStyle): PreviewSpec {
 	if (kind === "live") {
 		return {
 			component: LiveCard,
@@ -302,29 +372,11 @@ function buildPreviewSpec(
 			htmlWidth: 600,
 		};
 	}
-	if (kind === "dyn") {
-		return {
-			component: DynamicCard,
-			props: buildDynamicPreviewProps(style),
-			title: "卡片预览 · 动态",
-			htmlWidth: 600,
-		};
-	}
-	if (kind === "sc") {
-		return {
-			component: SCCard,
-			props: buildScPreviewProps(style, content?.text),
-			title: "卡片预览 · SC",
-			// SCCard's root is w-[280px]; matches ImageRenderer.generateSCCard.
-			// Larger htmlWidth leaks whitespace to the right of the card.
-			htmlWidth: 280,
-		};
-	}
 	return {
-		component: GuardCard,
-		props: buildGuardPreviewProps(style, content?.text),
-		title: "卡片预览 · 上舰",
-		htmlWidth: 430,
+		component: DynamicCard,
+		props: buildDynamicPreviewProps(style),
+		title: "卡片预览 · 动态",
+		htmlWidth: 600,
 	};
 }
 
@@ -391,32 +443,6 @@ function buildDynamicPreviewProps(style: PreviewStyle): DynamicCardProps {
 		forwardCount: "1.2万",
 		commentCount: "5,891",
 		likeCount: "8.7万",
-	};
-}
-
-function buildScPreviewProps(style: PreviewStyle, text?: string): SCCardProps {
-	return {
-		senderFace: SVG_AVATAR_FAN,
-		senderName: "示例粉丝",
-		masterName: "示例 UP 主",
-		masterAvatarUrl: SVG_AVATAR_BLUE,
-		text: text?.trim() ? text : "主播加油！这首要听到！示例 UP 主唱得太好了！",
-		price: 30,
-		duration: "2 分钟",
-		bgColor: [style.cardColorStart, style.cardColorEnd] as const,
-	};
-}
-
-function buildGuardPreviewProps(style: PreviewStyle, text?: string): GuardCardProps {
-	return {
-		captainImgUrl: SVG_AVATAR_PINK,
-		guardLevel: 3 as GuardCardProps["guardLevel"],
-		uname: text?.trim() ? text : "示例新舰长",
-		face: SVG_AVATAR_PINK,
-		isAdmin: 0,
-		masterAvatarUrl: SVG_AVATAR_BLUE,
-		masterName: "示例 UP 主",
-		bgColor: [style.cardColorStart, style.cardColorEnd],
 	};
 }
 

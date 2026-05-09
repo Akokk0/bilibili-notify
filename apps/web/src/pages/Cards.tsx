@@ -24,16 +24,22 @@ type CardKind = "live" | "dyn" | "sc" | "guard";
 interface PreviewContent {
 	live: { roomId: string };
 	dyn: { uid: string; offset: number };
-	sc: { text: string };
-	guard: { text: string };
+	sc: { text: string; price: number };
+	guard: { text: string; level: 1 | 2 | 3 };
 }
 
 const DEFAULT_PREVIEW_CONTENT: PreviewContent = {
 	live: { roomId: "" },
 	dyn: { uid: "", offset: 1 },
-	sc: { text: "主播加油！这首要听到！示例 UP 主唱得太好了！" },
-	guard: { text: "示例新舰长" },
+	sc: { text: "主播加油！这首要听到！示例 UP 主唱得太好了！", price: 30 },
+	guard: { text: "示例新舰长", level: 3 },
 };
+
+const GUARD_LEVELS: { v: 1 | 2 | 3; label: string; tone: string }[] = [
+	{ v: 1, label: "总督", tone: "#e84393" },
+	{ v: 2, label: "提督", tone: "#a29bfe" },
+	{ v: 3, label: "舰长", tone: "#74b9ff" },
+];
 
 const KIND_LABELS: Record<CardKind, { label: string; tone: string }> = {
 	live: { label: "直播开播", tone: "#FF6699" },
@@ -287,13 +293,59 @@ export default function Cards() {
 							</div>
 						</>
 					) : kind === "sc" ? (
-						<Field label="SC 文案" code="text" hint="留言内容">
-							<TArea value={content.sc.text} onChange={(v) => setSc({ text: v })} rows={3} />
-						</Field>
+						<>
+							<Field label="SC 文案" code="text" hint="留言内容">
+								<TArea value={content.sc.text} onChange={(v) => setSc({ text: v })} rows={3} />
+							</Field>
+							<Field label="SC 价格" code="price" hint="决定背景色与时长 (30/50/100/500/1000)">
+								<TInput
+									value={String(content.sc.price)}
+									onChange={(v) => {
+										const n = Number.parseInt(v, 10);
+										setSc({ price: Number.isFinite(n) && n > 0 ? n : 30 });
+									}}
+									placeholder="30"
+								/>
+							</Field>
+							<div className="rounded border border-dashed bg-gray-50 p-2.5 text-[11px] text-bn-text-tertiary">
+								左侧渐变色对 SC 不生效；SC 卡片背景色由价格档位自动决定。
+							</div>
+						</>
 					) : (
-						<Field label="新舰长称呼" code="text" hint="渲染在卡片正中的名字">
-							<TArea value={content.guard.text} onChange={(v) => setGuard({ text: v })} rows={2} />
-						</Field>
+						<>
+							<Field label="舰长等级" code="level" hint="决定徽章图与背景色">
+								<div className="flex flex-wrap gap-1.5">
+									{GUARD_LEVELS.map((g) => {
+										const active = content.guard.level === g.v;
+										return (
+											<button
+												type="button"
+												key={g.v}
+												onClick={() => setGuard({ level: g.v })}
+												className="rounded px-3 py-1 text-[11.5px] font-semibold transition"
+												style={
+													active
+														? { background: g.tone, color: "white" }
+														: { background: "rgba(0,0,0,0.04)", color: "#666" }
+												}
+											>
+												{g.label}
+											</button>
+										);
+									})}
+								</div>
+							</Field>
+							<Field label="新舰长称呼" code="text" hint="渲染在卡片正中的名字">
+								<TArea
+									value={content.guard.text}
+									onChange={(v) => setGuard({ text: v })}
+									rows={2}
+								/>
+							</Field>
+							<div className="rounded border border-dashed bg-gray-50 p-2.5 text-[11px] text-bn-text-tertiary">
+								左侧渐变色对上舰不生效；卡片背景色与徽章图由舰长等级自动决定。
+							</div>
+						</>
 					)}
 				</GlassBox>
 
