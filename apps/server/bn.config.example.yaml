@@ -4,7 +4,7 @@
 # Loader order: defaults < bn.config.yaml < BN_* env < CLI flags.
 # `${VAR}` 占位在 YAML 字符串值里会从 process.env 插值。
 #
-# Schema source: apps/standalone/server/src/config/schema.ts
+# Schema source: apps/server/src/config/schema.ts
 
 server:
   host: 127.0.0.1   # 仅本机;线上反代后端设 0.0.0.0

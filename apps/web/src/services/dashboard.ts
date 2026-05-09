@@ -1,7 +1,7 @@
 /**
  * Dashboard data shapes — local mirrors of the standalone server's
  * /api/live + /api/history responses. Wire-compatible with
- * apps/standalone/server/src/routes/{live,history}.ts.
+ * apps/server/src/routes/{live,history}.ts.
  */
 
 export interface LiveListenerSnapshot {

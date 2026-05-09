@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Yarn workspace monorepo for the Bilibili-Notify project. Two product forms share a single platform-neutral business core:
 
 - **Koishi sub-plugins** (under `koishi/`) — historical / current shipping form, npm-published as `koishi-plugin-bilibili-notify*`
-- **Standalone Hono + React dashboard** (under `apps/standalone/`, stage 2) — primary product form going forward
+- **Standalone Hono + React dashboard** (under `apps/`) — primary product form going forward
 
 Both ends consume the same `@bilibili-notify/*` core packages.
 
@@ -36,10 +36,10 @@ yarn check:fix      # lint + format auto-fix
 ```
 packages/   ← platform-neutral business core (@bilibili-notify/*)
 koishi/     ← Koishi thin-shell plugins (koishi-plugin-bilibili-notify*)
-apps/       ← deployable applications (standalone, created in stage 2)
+apps/       ← Hono server + React dashboard (pnpm sub-workspace)
 ```
 
-Yarn workspaces glob: `["packages/*", "koishi/*"]`. `apps/standalone/` has its own pnpm sub-workspace and is intentionally invisible to the root yarn install — see "Branch model" below for why.
+Yarn workspaces glob: `["packages/*", "koishi/*"]`. `apps/` has its own pnpm sub-workspace and is intentionally invisible to the root yarn install — see "Branch model" below for why.
 
 **Path constraint**: never put the substring `bilibili-notify` in any directory under `koishi/` — Koishi's plugin loader gets confused. The koishi main plugin lives at `koishi/core/`, not `koishi/bilibili-notify/`. The npm name `koishi-plugin-bilibili-notify` is decoupled from the directory name (set in package.json's `name`).
 
@@ -158,7 +158,7 @@ Custom events declared on `Context` (prefix `bilibili-notify/`):
 - Dev: `resolve(__dirname, "../client/index.ts")`
 - Prod: `resolve(__dirname, "../dist")`
 
-The standalone end uses a separate React + Vite dashboard under `apps/standalone/web/` (stage 2); these don't share UI code.
+The standalone end uses a separate React + Vite dashboard under `apps/web/`; these don't share UI code.
 
 ## Branch model
 
@@ -169,8 +169,8 @@ Single trunk + three coexisting top-level directories (`packages/`, `koishi/`, `
 
 Both product forms ship from `refactor` continuously:
 - Koishi side publishes to npm via `changesets` — touches `packages/*` and `koishi/*`.
-- Standalone side ships as a docker / GHCR image — touches `apps/standalone/*`. Never published to npm.
+- Standalone side ships as a docker / GHCR image — touches `apps/*`. Never published to npm.
 
-`apps/standalone/` is a separate pnpm sub-workspace and is invisible to the root yarn workspace, so its heavyweight deps (Hono, ws, Vite, etc.) do not pollute koishi-end installs. Business core packages reach it via pnpm `link:` to `../../../packages/*`.
+`apps/` is a separate pnpm sub-workspace and is invisible to the root yarn workspace, so its heavyweight deps (Hono, ws, Vite, etc.) do not pollute koishi-end installs. Business core packages reach it via pnpm `link:` to `../../packages/*`.
 
 Earlier plan iterations described splitting `koishi/` and `standalone/` into separate long-lived branches with one-way merges from `refactor`. **That model has been dropped** — single-trunk maintenance is simpler, debugging is faster (one commit fixes both ends), and the directory split + pnpm isolation already gives sufficient separation.

@@ -2,10 +2,10 @@ name: bilibili-notify — build + publish
 
 # Builds the Hono+React docker image and pushes it to GHCR.
 # Triggered when:
-#   • code under apps/standalone/** or packages/** lands on refactor / main
-#     (the standalone end consumes packages/* via pnpm link:, so any business-core
+#   • code under apps/** or packages/** lands on refactor / main
+#     (the dashboard end consumes packages/* via pnpm link:, so any business-core
 #     change also rebuilds the image)
-#   • a tag matching standalone-v*.*.* is pushed (release cut)
+#   • a tag matching image-v*.*.* is pushed (release cut)
 #   • workflow_dispatch — operator-triggered rebuild
 
 on:
@@ -14,13 +14,13 @@ on:
       - refactor
       - main
     paths:
-      - "apps/standalone/**"
+      - "apps/**"
       - "packages/**"
       - "yarn.lock"
       - ".dockerignore"
-      - ".github/workflows/standalone-release.yml"
+      - ".github/workflows/image-release.yml"
     tags:
-      - "standalone-v*.*.*"
+      - "image-v*.*.*"
   workflow_dispatch:
 
 permissions:
@@ -67,7 +67,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./apps/standalone/Dockerfile
+          file: ./apps/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

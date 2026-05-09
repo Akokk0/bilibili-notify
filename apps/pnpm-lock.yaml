@@ -11,32 +11,32 @@ importers:
   server:
     dependencies:
       '@bilibili-notify/ai':
-        specifier: link:../../../packages/ai
-        version: link:../../../packages/ai
+        specifier: link:../../packages/ai
+        version: link:../../packages/ai
       '@bilibili-notify/api':
-        specifier: link:../../../packages/api
-        version: link:../../../packages/api
+        specifier: link:../../packages/api
+        version: link:../../packages/api
       '@bilibili-notify/dynamic':
-        specifier: link:../../../packages/dynamic
-        version: link:../../../packages/dynamic
+        specifier: link:../../packages/dynamic
+        version: link:../../packages/dynamic
       '@bilibili-notify/image':
-        specifier: link:../../../packages/image
-        version: link:../../../packages/image
+        specifier: link:../../packages/image
+        version: link:../../packages/image
       '@bilibili-notify/internal':
-        specifier: link:../../../packages/internal
-        version: link:../../../packages/internal
+        specifier: link:../../packages/internal
+        version: link:../../packages/internal
       '@bilibili-notify/live':
-        specifier: link:../../../packages/live
-        version: link:../../../packages/live
+        specifier: link:../../packages/live
+        version: link:../../packages/live
       '@bilibili-notify/push':
-        specifier: link:../../../packages/push
-        version: link:../../../packages/push
+        specifier: link:../../packages/push
+        version: link:../../packages/push
       '@bilibili-notify/storage':
-        specifier: link:../../../packages/storage
-        version: link:../../../packages/storage
+        specifier: link:../../packages/storage
+        version: link:../../packages/storage
       '@bilibili-notify/subscription':
-        specifier: link:../../../packages/subscription
-        version: link:../../../packages/subscription
+        specifier: link:../../packages/subscription
+        version: link:../../packages/subscription
       '@hono/node-server':
         specifier: ^2.0.1
         version: 2.0.1(hono@4.12.18)

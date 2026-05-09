@@ -1,5 +1,5 @@
 export type { Component, VNode } from "vue";
-// Re-export vue's h so consumers (e.g. apps/standalone/server's preview route
+// Re-export vue's h so consumers (e.g. apps/server's preview route
 // that needs to construct a VNode for DynamicCardProps.mainContent) link
 // against THIS package's vue copy. Without it a second vue install in the
 // consumer's tree creates mismatched VNode / Component types — TS rejects the

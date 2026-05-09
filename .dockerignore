@@ -24,11 +24,11 @@
 .bn-design
 
 # Local-only state from previous runs.
-apps/standalone/server/data
-apps/standalone/server/bn-data
-apps/standalone/server/bn.config.yaml
-apps/standalone/server/bn.config.yml
-apps/standalone/server/bn.config.json
+apps/server/data
+apps/server/bn-data
+apps/server/bn.config.yaml
+apps/server/bn.config.yml
+apps/server/bn.config.json
 
 # Test snapshots / build cache.
 **/tsconfig.tsbuildinfo

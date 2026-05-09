@@ -1,4 +1,4 @@
-# Example compose file for self-hosted bilibili-notify standalone.
+# Example compose file for self-hosted bilibili-notify.
 #
 #   cp docker-compose.example.yaml docker-compose.yaml
 #   cp server/bn.config.example.yaml ./bn.config.yaml      # edit dataDir / auth as needed
@@ -14,10 +14,10 @@
 services:
   bilibili-notify:
     image: ghcr.io/akokko/bilibili-notify:latest
-    # Or build locally from the repo root (parent of apps/standalone):
+    # Or build locally from the repo root (parent of apps/):
     # build:
-    #   context: ../..
-    #   dockerfile: apps/standalone/Dockerfile
+    #   context: ..
+    #   dockerfile: apps/Dockerfile
     container_name: bilibili-notify
     restart: unless-stopped
     ports:
@@ -32,7 +32,7 @@ services:
       # encrypted secrets, history jsonl. The image declares /data as a volume.
       - ./data:/data
       # Optional bootstrap config; mount read-only so the container can't rewrite it.
-      - ./bn.config.yaml:/app/apps/standalone/server/bn.config.yaml:ro
+      - ./bn.config.yaml:/app/apps/server/bn.config.yaml:ro
     # Uncomment when running napcat as a sidecar so the server can hit it via
     # http://napcat:3000 inside the docker network.
     # depends_on:

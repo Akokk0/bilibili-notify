@@ -1,11 +1,11 @@
-# Bilibili-Notify Standalone
+# Bilibili-Notify Dashboard
 
-Standalone product form: Hono HTTP server + React dashboard. The Koishi sub-plugins under `koishi/` remain the historical shipping form; this directory is the primary product form going forward (per `/Users/akokko/.claude/plans/hashed-jingling-moth.md`).
+Hono HTTP server + React dashboard. The Koishi sub-plugins under `koishi/` remain the historical shipping form; this directory is the primary product form going forward (per `/Users/akokko/.claude/plans/hashed-jingling-moth.md`).
 
 ## Layout
 
 ```
-apps/standalone/
+apps/
   pnpm-workspace.yaml        # this is its OWN pnpm workspace, invisible to the root yarn workspace
   package.json               # @bilibili-notify/root (private)
   server/                    # Hono + Node 20 backend
@@ -14,12 +14,12 @@ apps/standalone/
   docker-compose.example.yaml
 ```
 
-The root yarn workspace at `../../` only owns `packages/*` and `koishi/*`. This `apps/standalone/` subtree is intentionally invisible to it; pnpm handles install / build here. Business cores from `packages/` are consumed via pnpm `link:` protocol so edits in `packages/internal/src` show up immediately.
+The root yarn workspace at `../` only owns `packages/*` and `koishi/*`. This `apps/` subtree is intentionally invisible to it; pnpm handles install / build here. Business cores from `packages/` are consumed via pnpm `link:` protocol so edits in `packages/internal/src` show up immediately.
 
 ## Quick start (dev)
 
 ```bash
-cd apps/standalone
+cd apps
 pnpm install                 # uses pnpm via corepack (packageManager pinned)
 pnpm typecheck
 pnpm dev                     # tsx watch on server/src/index.ts + vite on web/
@@ -44,8 +44,8 @@ Required keys: `server.{host,port}`, `dataDir`. `cookieEncryptionKey` falls back
 The image bundles the built React dashboard at `/app/web-dist`; the Hono server serves it for any non-`/api/*` path, so a single container is enough — no nginx needed.
 
 ```bash
-# From the repo root (build context must be the parent of apps/standalone):
-docker build -f apps/standalone/Dockerfile -t bilibili-notify:dev .
+# From the repo root (build context must be the parent of apps/):
+docker build -f apps/Dockerfile -t bilibili-notify:dev .
 
 # Or pull the prebuilt image (CI publishes from refactor + main):
 docker pull ghcr.io/<owner>/bilibili-notify:latest
@@ -54,7 +54,7 @@ docker run -d \
   --name bilibili-notify \
   -p 8787:8787 \
   -v "$(pwd)/data:/data" \
-  -v "$(pwd)/bn.config.yaml:/app/apps/standalone/server/bn.config.yaml:ro" \
+  -v "$(pwd)/bn.config.yaml:/app/apps/server/bn.config.yaml:ro" \
   -e BN_DASHBOARD_USER=admin \
   -e BN_DASHBOARD_PASS='change-me' \
   bilibili-notify:dev
@@ -101,7 +101,7 @@ The image declares `/data` as a Docker volume — bind-mount it to a host direct
 
 ## Where the Koishi end lives
 
-`../../koishi/core` (and the 5 sub-plugin packages alongside). Same business cores power both ends.
+`../koishi/core` (and the 5 sub-plugin packages alongside). Same business cores power both ends.
 
 ## Plan reference
 

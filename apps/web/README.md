@@ -1,11 +1,11 @@
-# Bilibili-Notify Standalone Dashboard
+# Bilibili-Notify Dashboard
 
-React 18 + Vite + Tailwind 4 + TanStack Query + Zustand + React Router 7. Lives inside the `apps/standalone/` pnpm sub-workspace alongside `server/`. Talks to the Hono backend through `/api/*` (REST) and `/ws` (WebSocket subscriptions).
+React 18 + Vite + Tailwind 4 + TanStack Query + Zustand + React Router 7. Lives inside the `apps/` pnpm sub-workspace alongside `server/`. Talks to the Hono backend through `/api/*` (REST) and `/ws` (WebSocket subscriptions).
 
 ## Quick start
 
 ```bash
-# from apps/standalone
+# from apps/
 pnpm install                 # picks up server/ + web/ together
 pnpm --filter @bilibili-notify/server dev    # backend on :8787
 pnpm --filter @bilibili-notify/web dev       # frontend on :5173

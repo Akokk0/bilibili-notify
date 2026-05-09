@@ -2,7 +2,7 @@
  * Reconnecting WS client for /ws. One socket per `connectWs(...)`; channels are
  * remembered across reconnects so hooks don't have to re-subscribe.
  *
- * Server protocol (apps/standalone/server/src/ws/types.ts):
+ * Server protocol (apps/server/src/ws/types.ts):
  *   client → server: { type: 'subscribe'|'unsubscribe', channels: ChannelName[] }
  *                    { type: 'ping' | 'pong' }
  *   server → client: { type: ChannelName, event: string, ts, data }
