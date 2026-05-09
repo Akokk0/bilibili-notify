@@ -229,7 +229,7 @@ export function LogLevelPicker({ value, onChange, allowInherit }: LogLevelPicker
 		{ v: 3, label: "调试", color: "#a29bfe" },
 	];
 	return (
-		<div className="inline-flex gap-1 rounded-md bg-gray-100 p-[3px]">
+		<div className="inline-flex flex-wrap gap-1 rounded-md bg-gray-100 p-[3px]">
 			{allowInherit ? (
 				<button
 					type="button"

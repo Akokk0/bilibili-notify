@@ -227,6 +227,7 @@ export default function Ai() {
 						label="日志等级"
 						code="app.logLevels.ai"
 						hint="只影响 ai 模块;选「跟随全局」时与 app.logLevel 同步。改完保存后需重启服务。"
+						full
 					>
 						<LogLevelPicker
 							value={toPickerValue(aiLogLevel)}
@@ -238,20 +239,11 @@ export default function Ai() {
 
 				<GlassBox
 					title="生成参数"
-					subtitle="temperature · 启用开关"
+					subtitle="temperature"
 					accent="#a29bfe"
 					icon={<Icon.sparkle size={14} />}
 					badge="generation"
 				>
-					<Field label="启用 AI 推送" code="ai.enabled" hint="关闭后所有动态点评 / 直播总结都跳过">
-						<Btn
-							size="sm"
-							variant={draft.enabled ? "primary" : "outline"}
-							onClick={() => setAi("enabled", !draft.enabled)}
-						>
-							{draft.enabled ? "已启用" : "已停用"}
-						</Btn>
-					</Field>
 					<Field label="temperature" code="ai.temperature" hint="0–2，越高越发散">
 						<TNum
 							value={draft.temperature}

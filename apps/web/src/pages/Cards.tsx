@@ -331,6 +331,7 @@ export default function Cards() {
 							label="日志等级"
 							code="app.logLevels.image"
 							hint="只影响 image 模块;选「跟随全局」时与 app.logLevel 同步。改完保存后需重启服务。"
+							full
 						>
 							<LogLevelPicker
 								value={toPickerValue(imageLogLevel)}
