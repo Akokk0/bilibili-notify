@@ -84,13 +84,38 @@ function inferCustomSet(sub: Subscription | null, targets: PushTarget[]): Set<st
 export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: UpDialogProps) {
 	const [draft, setDraft] = useState<Subscription | null>(sub);
 	const [customSet, setCustomSet] = useState<Set<string>>(() => inferCustomSet(sub, targets));
+	// Targets the user attached during this dialog session — kept separately
+	// from routing so a freshly-attached follow target still shows up even
+	// while the user is mid-toggling the master feature switches (which is
+	// when its routing entries can transiently be empty).
+	const [sessionAttached, setSessionAttached] = useState<Set<string>>(new Set());
+	const [showPicker, setShowPicker] = useState(false);
 
 	useEffect(() => {
 		setDraft(sub);
 		setCustomSet(inferCustomSet(sub, targets));
+		setSessionAttached(new Set());
+		setShowPicker(false);
 	}, [sub, targets]);
 
 	const targetsByIdMap = useMemo(() => makeTargetsById(targets), [targets]);
+
+	const attachedIds = useMemo(() => {
+		const ids = new Set<string>(sessionAttached);
+		if (draft) {
+			for (const k of FEATURE_KEYS) for (const id of draft.routing[k]) ids.add(id);
+		}
+		return ids;
+	}, [draft, sessionAttached]);
+
+	const attachedTargets = useMemo(
+		() => targets.filter((t) => attachedIds.has(t.id)),
+		[targets, attachedIds],
+	);
+	const unattachedTargets = useMemo(
+		() => targets.filter((t) => !attachedIds.has(t.id)),
+		[targets, attachedIds],
+	);
 
 	if (!draft) return null;
 
@@ -117,7 +142,9 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 	 * Toggle a master feature on the subscription. Writes to overrides.features
 	 * (or clears the override when the new value matches the global default to
 	 * keep the schema clean), then mirrors the change into routing for every
-	 * target that is currently in follow mode.
+	 * attached follow-mode target. Unattached targets are left alone — the
+	 * subscription should never silently start pushing to a target the user
+	 * hasn't picked.
 	 */
 	function setFeatureEnabled(k: FeatureKey, on: boolean): void {
 		setDraft((d) => {
@@ -128,7 +155,7 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 			const features = Object.keys(overrideObj).length > 0 ? overrideObj : undefined;
 
 			let routing = d.routing;
-			for (const t of targets) {
+			for (const t of attachedTargets) {
 				if (customSet.has(t.id)) continue;
 				const inRouting = routing[k].includes(t.id);
 				if (on && !inRouting) routing = { ...routing, [k]: [...routing[k], t.id] };
@@ -137,6 +164,60 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 			}
 
 			return { ...d, overrides: { ...d.overrides, features }, routing };
+		});
+	}
+
+	/**
+	 * Pull a target into the subscription's push list. Starts in follow mode,
+	 * so its routing snaps to whatever the master features currently say.
+	 * Also recorded in sessionAttached so the card stays visible if the user
+	 * subsequently turns every master feature off.
+	 */
+	function attachTarget(targetId: string): void {
+		setDraft((d) => {
+			if (!d) return d;
+			let routing = d.routing;
+			for (const k of FEATURE_KEYS) {
+				const featOn = effFeature(d, k);
+				if (featOn && !routing[k].includes(targetId)) {
+					routing = { ...routing, [k]: [...routing[k], targetId] };
+				}
+			}
+			return { ...d, routing };
+		});
+		setSessionAttached((prev) => {
+			if (prev.has(targetId)) return prev;
+			const next = new Set(prev);
+			next.add(targetId);
+			return next;
+		});
+		setShowPicker(false);
+	}
+
+	/**
+	 * Remove a target completely: clear all routing entries and any local
+	 * mode/attachment bookkeeping. The user can re-attach via the picker.
+	 */
+	function detachTarget(targetId: string): void {
+		setDraft((d) => {
+			if (!d) return d;
+			const routing = { ...d.routing };
+			for (const k of FEATURE_KEYS) {
+				routing[k] = routing[k].filter((id) => id !== targetId);
+			}
+			return { ...d, routing };
+		});
+		setCustomSet((prev) => {
+			if (!prev.has(targetId)) return prev;
+			const next = new Set(prev);
+			next.delete(targetId);
+			return next;
+		});
+		setSessionAttached((prev) => {
+			if (!prev.has(targetId)) return prev;
+			const next = new Set(prev);
+			next.delete(targetId);
+			return next;
 		});
 	}
 
@@ -150,11 +231,7 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 			const list = d.routing[k];
 			const has = list.includes(targetId);
 			const next =
-				on && !has
-					? [...list, targetId]
-					: !on && has
-						? list.filter((id) => id !== targetId)
-						: list;
+				on && !has ? [...list, targetId] : !on && has ? list.filter((id) => id !== targetId) : list;
 			return { ...d, routing: { ...d.routing, [k]: next } };
 		});
 	}
@@ -322,16 +399,66 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 						</div>
 					) : (
 						<div className="space-y-2">
-							{targets.map((t) => (
-								<TargetRoutingCard
-									key={t.id}
-									target={t}
-									isCustom={customSet.has(t.id)}
-									sub={draft}
-									onToggleMode={(toCustom) => switchTargetMode(t.id, toCustom)}
-									onToggleRoute={(k, on) => toggleRouteForTarget(t.id, k, on)}
-								/>
-							))}
+							{attachedTargets.length === 0 ? (
+								<div className="rounded-md border border-dashed border-gray-200 px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
+									该订阅尚未指定推送目标 · 点击下方「添加推送目标」选择
+								</div>
+							) : (
+								attachedTargets.map((t) => (
+									<TargetRoutingCard
+										key={t.id}
+										target={t}
+										isCustom={customSet.has(t.id)}
+										sub={draft}
+										onToggleMode={(toCustom) => switchTargetMode(t.id, toCustom)}
+										onToggleRoute={(k, on) => toggleRouteForTarget(t.id, k, on)}
+										onDetach={() => detachTarget(t.id)}
+									/>
+								))
+							)}
+
+							{/* Add-target picker */}
+							{unattachedTargets.length > 0 ? (
+								showPicker ? (
+									<div className="rounded-lg border border-gray-200 bg-white p-3">
+										<div className="mb-1.5 flex items-center justify-between">
+											<span className="text-[11.5px] font-semibold text-bn-text-primary">
+												选择要添加的推送目标
+											</span>
+											<button
+												type="button"
+												onClick={() => setShowPicker(false)}
+												className="text-[11px] text-bn-text-tertiary hover:text-bn-text-primary"
+											>
+												取消
+											</button>
+										</div>
+										<div className="flex flex-wrap gap-1.5">
+											{unattachedTargets.map((t) => (
+												<button
+													type="button"
+													key={t.id}
+													onClick={() => attachTarget(t.id)}
+													className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-gray-300 bg-white px-2.5 py-1 text-[11.5px] text-bn-text-secondary hover:border-bn-pink hover:text-bn-pink"
+												>
+													<Icon.plus size={11} />
+													<PlatformIcon platform={t.platform} size={11} />
+													<span className="max-w-[140px] truncate">{t.name}</span>
+												</button>
+											))}
+										</div>
+									</div>
+								) : (
+									<button
+										type="button"
+										onClick={() => setShowPicker(true)}
+										className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 bg-transparent px-3 py-2.5 text-[12px] text-bn-text-secondary hover:border-bn-pink hover:text-bn-pink"
+									>
+										<Icon.plus size={12} />
+										添加推送目标 · 还有 {unattachedTargets.length} 个未添加
+									</button>
+								)
+							) : null}
 						</div>
 					)}
 				</section>
@@ -454,12 +581,14 @@ function TargetRoutingCard({
 	sub,
 	onToggleMode,
 	onToggleRoute,
+	onDetach,
 }: {
 	target: PushTarget;
 	isCustom: boolean;
 	sub: Subscription;
 	onToggleMode: (toCustom: boolean) => void;
 	onToggleRoute: (k: FeatureKey, on: boolean) => void;
+	onDetach: () => void;
 }) {
 	const enabledCount = isCustom
 		? FEATURE_KEYS.filter((k) => sub.routing[k].includes(target.id)).length
@@ -484,16 +613,22 @@ function TargetRoutingCard({
 					</span>
 				) : null}
 				<Toggle value={isCustom} onChange={onToggleMode} size="sm" />
+				<button
+					type="button"
+					onClick={onDetach}
+					aria-label="移除该推送目标"
+					title="移除该推送目标"
+					className="grid h-6 w-6 place-items-center rounded-full text-bn-text-tertiary hover:bg-red-50 hover:text-red-500"
+				>
+					<Icon.close size={11} />
+				</button>
 			</div>
 
 			{/* Detail (only when custom) */}
 			{isCustom ? (
 				<div className="border-t border-gray-100 bg-[#fafafa]">
 					{FEATURE_GROUPS.map((g) => (
-						<div
-							key={g.label}
-							className="border-b border-gray-100 px-3 py-2 last:border-b-0"
-						>
+						<div key={g.label} className="border-b border-gray-100 px-3 py-2 last:border-b-0">
 							<div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-bn-text-tertiary">
 								{g.label}
 							</div>
