@@ -8,7 +8,7 @@ import { displayName } from "./up/helpers";
 import { UpCard } from "./up/UpCard";
 import { UpDialog } from "./up/UpDialog";
 
-type FilterId = "all" | "enabled" | "disabled" | "live";
+type FilterId = "all" | "enabled" | "disabled";
 
 interface FilterDef {
 	id: FilterId;
@@ -18,10 +18,12 @@ interface FilterDef {
 
 const FILTERS: ReadonlyArray<FilterDef> = [
 	{ id: "all", label: "全部", matches: () => true },
-	{ id: "live", label: "直播中", matches: (s) => s.state.liveStatus === "live" },
 	{ id: "enabled", label: "已启用", matches: (s) => s.enabled },
 	{ id: "disabled", label: "已禁用", matches: (s) => !s.enabled },
 ];
+
+/** Sentinel for "show subscriptions with no groups assigned". */
+const UNGROUPED = "__ungrouped__";
 
 interface UpProfileLookup {
 	uid: string;
@@ -29,6 +31,34 @@ interface UpProfileLookup {
 	avatar: string;
 	sign: string;
 	fans: number;
+}
+
+function GroupChip({
+	label,
+	count,
+	active,
+	onClick,
+	muted,
+}: {
+	label: string;
+	count: number;
+	active: boolean;
+	onClick: () => void;
+	muted?: boolean;
+}) {
+	const base =
+		"inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold transition";
+	const cls = active
+		? "border border-bn-pink bg-bn-pink/10 text-bn-pink"
+		: muted
+			? "border border-dashed border-gray-300 bg-white/60 text-bn-text-tertiary hover:text-bn-text-primary"
+			: "border border-gray-200 bg-white text-bn-text-secondary hover:border-bn-pink/60 hover:text-bn-text-primary";
+	return (
+		<button type="button" onClick={onClick} className={`${base} ${cls}`}>
+			<span className="max-w-[140px] truncate">{label}</span>
+			<span className="font-mono text-[10.5px] opacity-70">{count}</span>
+		</button>
+	);
 }
 
 function NewSubDialog({
@@ -189,16 +219,40 @@ export default function Subs() {
 
 	const [q, setQ] = useState("");
 	const [filterId, setFilterId] = useState<FilterId>("all");
+	const [groupFilter, setGroupFilter] = useState<string | null>(null);
 	const [selection, setSelection] = useState<Set<string>>(new Set());
 	const [drawerSubId, setDrawerSubId] = useState<string | null>(null);
 	const [showNewDialog, setShowNewDialog] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	const filterDef = FILTERS.find((f) => f.id === filterId) ?? FILTERS[0];
+
+	// Group catalog derived from current subs. Counts each unique group name
+	// across every subscription's groups[] (a sub can belong to multiple
+	// groups), plus a synthetic "ungrouped" bucket for subs with no groups.
+	const groupCounts = useMemo(() => {
+		const counts = new Map<string, number>();
+		let ungrouped = 0;
+		for (const s of subs) {
+			if (s.groups.length === 0) {
+				ungrouped++;
+			} else {
+				for (const g of s.groups) counts.set(g, (counts.get(g) ?? 0) + 1);
+			}
+		}
+		return { groups: counts, ungrouped };
+	}, [subs]);
+	const groupNames = useMemo(
+		() => [...groupCounts.groups.keys()].sort((a, b) => a.localeCompare(b, "zh-Hans-CN")),
+		[groupCounts],
+	);
+
 	const filtered = useMemo(() => {
 		const ql = q.trim().toLowerCase();
 		return subs.filter((s) => {
 			if (!filterDef.matches(s)) return false;
+			if (groupFilter === UNGROUPED && s.groups.length > 0) return false;
+			if (groupFilter && groupFilter !== UNGROUPED && !s.groups.includes(groupFilter)) return false;
 			if (!ql) return true;
 			return (
 				s.uid.includes(ql) ||
@@ -206,11 +260,10 @@ export default function Subs() {
 				(s.notes ?? "").toLowerCase().includes(ql)
 			);
 		});
-	}, [subs, filterDef, q]);
+	}, [subs, filterDef, q, groupFilter]);
 
 	const filterCounts: Record<FilterId, number> = {
 		all: subs.length,
-		live: subs.filter((s) => s.state.liveStatus === "live").length,
 		enabled: subs.filter((s) => s.enabled).length,
 		disabled: subs.filter((s) => !s.enabled).length,
 	};
@@ -357,6 +410,36 @@ export default function Subs() {
 				</Btn>
 			</div>
 
+			{groupNames.length > 0 || groupCounts.ungrouped > 0 ? (
+				<div className="flex flex-wrap items-center gap-1.5">
+					<span className="text-[11px] font-semibold text-bn-text-tertiary">分组</span>
+					<GroupChip
+						label="全部"
+						count={subs.length}
+						active={groupFilter === null}
+						onClick={() => setGroupFilter(null)}
+					/>
+					{groupNames.map((g) => (
+						<GroupChip
+							key={g}
+							label={g}
+							count={groupCounts.groups.get(g) ?? 0}
+							active={groupFilter === g}
+							onClick={() => setGroupFilter(g)}
+						/>
+					))}
+					{groupCounts.ungrouped > 0 ? (
+						<GroupChip
+							label="未分组"
+							count={groupCounts.ungrouped}
+							active={groupFilter === UNGROUPED}
+							onClick={() => setGroupFilter(UNGROUPED)}
+							muted
+						/>
+					) : null}
+				</div>
+			) : null}
+
 			{error ? (
 				<div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
 					{error}
@@ -372,10 +455,14 @@ export default function Subs() {
 			{subsQuery.data && filtered.length === 0 ? (
 				<div className="rounded-bn-card border border-dashed border-gray-300 bg-white/60 p-10 text-center">
 					<div className="mb-1 text-sm font-bold text-bn-text-primary">
-						{q.trim() || filterId !== "all" ? "没有匹配的订阅" : "还没有订阅任何 UP 主"}
+						{q.trim() || filterId !== "all" || groupFilter
+							? "没有匹配的订阅"
+							: "还没有订阅任何 UP 主"}
 					</div>
 					<div className="text-[12px] text-bn-text-secondary">
-						{q.trim() || filterId !== "all" ? "试试换个关键词或筛选条件" : "点击右上「添加」开始"}
+						{q.trim() || filterId !== "all" || groupFilter
+							? "试试换个关键词或筛选条件"
+							: "点击右上「添加」开始"}
 					</div>
 				</div>
 			) : null}
