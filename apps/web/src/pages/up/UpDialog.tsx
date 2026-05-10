@@ -316,13 +316,13 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 					>
 						<div className="text-base font-bold">{displayName(draft)}</div>
 						<div
-							className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-black/30 px-2 py-0.5 text-[11px] backdrop-blur-sm"
-							style={{ textShadow: "none" }}
+							className="mt-0.5 text-[11px] font-semibold text-bn-pink"
+							style={{ textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}
 						>
 							<span className="font-mono">UID {draft.uid}</span>
 							{draft.cachedProfile?.fans != null ? (
 								<>
-									<span className="opacity-60">·</span>
+									<span className="mx-1 opacity-70">·</span>
 									<span>
 										{draft.cachedProfile.fans >= 10_000
 											? `${(draft.cachedProfile.fans / 10_000).toFixed(1)}万`
