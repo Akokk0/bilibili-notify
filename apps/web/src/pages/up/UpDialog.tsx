@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Avatar, Btn, PlatformIcon, StatusDot, Toggle } from "../../components/atoms";
+import { Avatar, Btn, PlatformIcon, Toggle } from "../../components/atoms";
 import { ModalShell } from "../../components/dialog";
 import { Icon } from "../../components/icons";
 import {
@@ -303,18 +303,34 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 					<Icon.close size={14} />
 				</button>
 				<div className="absolute -bottom-7 left-5 flex items-end gap-3">
-					<Avatar name={displayName(draft)} color={color} size={64} ring />
-					<div className="pb-2 text-white drop-shadow-sm">
+					<Avatar
+						name={displayName(draft)}
+						color={color}
+						size={64}
+						url={draft.cachedProfile?.avatar}
+						ring
+					/>
+					<div
+						className="pb-2 text-white"
+						style={{ textShadow: "0 1px 4px rgba(0,0,0,0.45)" }}
+					>
 						<div className="text-base font-bold">{displayName(draft)}</div>
-						<div className="text-[11px] opacity-90">
-							UID {draft.uid}
-							{draft.cachedProfile?.fans != null
-								? ` · ${
-										draft.cachedProfile.fans >= 10_000
+						<div
+							className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-black/30 px-2 py-0.5 text-[11px] backdrop-blur-sm"
+							style={{ textShadow: "none" }}
+						>
+							<span className="font-mono">UID {draft.uid}</span>
+							{draft.cachedProfile?.fans != null ? (
+								<>
+									<span className="opacity-60">·</span>
+									<span>
+										{draft.cachedProfile.fans >= 10_000
 											? `${(draft.cachedProfile.fans / 10_000).toFixed(1)}万`
-											: draft.cachedProfile.fans
-									}`
-								: ""}
+											: draft.cachedProfile.fans}{" "}
+										粉丝
+									</span>
+								</>
+							) : null}
 						</div>
 					</div>
 				</div>
@@ -322,18 +338,6 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 
 			{/* Body */}
 			<div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-5 pt-10">
-				{/* Live status */}
-				<div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
-					<StatusDot kind={draft.state.liveStatus === "live" ? "living" : "off"} />
-					<span className="text-[12.5px] font-bold text-bn-text-primary">
-						{draft.state.liveStatus === "live"
-							? "正在直播"
-							: draft.state.liveStatus === "idle"
-								? "未在直播"
-								: "直播状态未知"}
-					</span>
-				</div>
-
 				{/* 基础 */}
 				<section>
 					<SectionHeader label="基础" />
@@ -343,14 +347,14 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 						</BasicRow>
 						<BasicRow label="分组" sub="多个分组以英文逗号分隔">
 							<input
-								className="w-40 rounded border border-gray-200 px-1.5 py-1 text-right text-[12px] focus:outline-none focus:ring-1 focus:ring-bn-pink"
+								className="w-40 rounded border border-gray-200 px-1.5 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-bn-pink"
 								value={draft.groups.join(",")}
 								onChange={(e) => setGroups(e.target.value)}
 							/>
 						</BasicRow>
 						<BasicRow label="备注">
 							<input
-								className="w-40 rounded border border-gray-200 px-1.5 py-1 text-right text-[12px] focus:outline-none focus:ring-1 focus:ring-bn-pink"
+								className="w-40 rounded border border-gray-200 px-1.5 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-bn-pink"
 								value={draft.notes ?? ""}
 								onChange={(e) => setNotes(e.target.value)}
 							/>

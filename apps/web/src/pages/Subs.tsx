@@ -51,7 +51,8 @@ function NewSubDialog({
 	const duplicate = valid && existingUids.has(uid);
 
 	const lookup = useMutation({
-		mutationFn: (q: string) => api.get<UpProfileLookup>(`/api/subs/lookup?uid=${encodeURIComponent(q)}`),
+		mutationFn: (q: string) =>
+			api.get<UpProfileLookup>(`/api/subs/lookup?uid=${encodeURIComponent(q)}`),
 		onSuccess: (data) => {
 			setProfile(data);
 			setLookupErr(null);

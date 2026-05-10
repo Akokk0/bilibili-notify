@@ -17,23 +17,34 @@ export interface AvatarProps {
 	size?: number;
 	ring?: boolean;
 	status?: "live" | "living" | "off";
+	/** Real avatar URL — if provided renders <img> instead of the initial-letter fallback. */
+	url?: string;
 }
 
-export function Avatar({ name, color, size = 44, ring = false, status }: AvatarProps) {
+export function Avatar({ name, color, size = 44, ring = false, status, url }: AvatarProps) {
 	const inner: CSSProperties = {
 		width: size,
 		height: size,
-		background: `linear-gradient(135deg, ${color}, ${color}dd)`,
+		background: url ? "white" : `linear-gradient(135deg, ${color}, ${color}dd)`,
 		fontSize: Math.round(size * 0.4),
 		border: ring ? "3px solid white" : "2px solid white",
 	};
 	return (
 		<div className="relative shrink-0" style={{ width: size, height: size }}>
 			<div
-				className="flex items-center justify-center rounded-full font-bold text-white shadow-bn-card"
+				className="flex items-center justify-center overflow-hidden rounded-full font-bold text-white shadow-bn-card"
 				style={inner}
 			>
-				{name?.[0] || "?"}
+				{url ? (
+					<img
+						src={url}
+						alt={name}
+						className="h-full w-full object-cover"
+						referrerPolicy="no-referrer"
+					/>
+				) : (
+					(name?.[0] ?? "?")
+				)}
 			</div>
 			{status === "live" ? (
 				<span

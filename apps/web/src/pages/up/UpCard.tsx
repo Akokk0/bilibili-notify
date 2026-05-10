@@ -97,7 +97,13 @@ export function UpCard({
 			{/* body */}
 			<div className="relative px-3.5 pb-3 pt-0">
 				<div className="-mt-5 mb-2">
-					<Avatar name={displayName(sub)} color={color} size={48} ring />
+					<Avatar
+						name={displayName(sub)}
+						color={color}
+						size={48}
+						url={sub.cachedProfile?.avatar}
+						ring
+					/>
 				</div>
 				<div className="mb-1 flex items-center justify-between">
 					<span
