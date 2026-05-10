@@ -62,6 +62,8 @@ export interface EnginesRuntime extends Disposable {
 	readonly push: BilibiliPush;
 	readonly subscriptionStore: SubscriptionStore;
 	readonly commentary: CommentaryGenerator | null;
+	/** Started BilibiliAPI; consumed by routes that need ad-hoc B-station calls (e.g. subs lookup). */
+	readonly api: BilibiliAPI;
 	/** Live listener UID list for /api/live/listening. */
 	listListeningUids(): string[];
 }
@@ -360,6 +362,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		push,
 		subscriptionStore: opts.subscriptionStore,
 		commentary,
+		api: opts.api,
 		listListeningUids: () => listListeningUids(live),
 		dispose,
 	};

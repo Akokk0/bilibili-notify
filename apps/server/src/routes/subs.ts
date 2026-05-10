@@ -21,6 +21,47 @@ export function createSubsRoute(deps: RouteDeps): Hono {
 
 	app.get("/", (c) => c.json(deps.store.getSubscriptions()));
 
+	/**
+	 * Pre-flight UID resolution for the "add UP" dialog. Hits B-station's user
+	 * card endpoint via BilibiliAPI; on success returns the four fields the
+	 * client wants to show in confirmation (and writes back into
+	 * Subscription.cachedProfile when the user clicks add).
+	 *
+	 * Errors are mapped to client-friendly statuses so the dialog can render
+	 * a helpful message instead of a generic 500: 404 means B-station said
+	 * the UID doesn't exist; 503 means we couldn't reach B-station / the
+	 * API client wasn't ready yet.
+	 */
+	app.get("/lookup", async (c) => {
+		const uid = c.req.query("uid")?.trim();
+		if (!uid || !/^\d+$/.test(uid)) {
+			return c.json({ error: "invalid_uid", message: "uid 必须是纯数字 UID" }, 400);
+		}
+		const engines = deps.runtime.engines;
+		if (!engines) {
+			return c.json({ error: "api_not_ready", message: "B 站 API 尚未就绪" }, 503);
+		}
+		try {
+			const res = await engines.api.getUserCardInfo(uid);
+			if (res.code !== 0 || !res.data?.card) {
+				const message = (res as { message?: string }).message ?? "未找到该 UP 主";
+				return c.json({ error: "not_found", code: res.code, message }, 404);
+			}
+			const card = res.data.card;
+			return c.json({
+				uid: card.mid,
+				name: card.name,
+				avatar: card.face,
+				sign: card.sign,
+				fans: card.fans,
+			});
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			log.warn(`/api/subs/lookup uid=${uid} failed: ${message}`);
+			return c.json({ error: "upstream_failed", message }, 502);
+		}
+	});
+
 	app.post("/", async (c) => {
 		let body: unknown;
 		try {

@@ -23,33 +23,133 @@ const FILTERS: ReadonlyArray<FilterDef> = [
 	{ id: "disabled", label: "已禁用", matches: (s) => !s.enabled },
 ];
 
+interface UpProfileLookup {
+	uid: string;
+	name: string;
+	avatar: string;
+	sign: string;
+	fans: number;
+}
+
 function NewSubDialog({
 	onSubmit,
 	onCancel,
 	pending,
 	error,
+	existingUids,
 }: {
-	onSubmit: (uid: string) => void;
+	onSubmit: (profile: UpProfileLookup) => void;
 	onCancel: () => void;
 	pending: boolean;
 	error: string | null;
+	existingUids: Set<string>;
 }) {
 	const [uid, setUid] = useState("");
+	const [profile, setProfile] = useState<UpProfileLookup | null>(null);
+	const [lookupErr, setLookupErr] = useState<string | null>(null);
 	const valid = /^\d+$/.test(uid);
+	const duplicate = valid && existingUids.has(uid);
+
+	const lookup = useMutation({
+		mutationFn: (q: string) => api.get<UpProfileLookup>(`/api/subs/lookup?uid=${encodeURIComponent(q)}`),
+		onSuccess: (data) => {
+			setProfile(data);
+			setLookupErr(null);
+		},
+		onError: (err) => {
+			setProfile(null);
+			if (err instanceof ApiError) {
+				if (err.status === 404) setLookupErr("未找到该 UP 主,请检查 UID 是否正确");
+				else if (err.status === 503) setLookupErr("B 站 API 尚未就绪,请等待登录完成或稍后再试");
+				else if (err.status === 502) setLookupErr(`无法访问 B 站: ${err.message}`);
+				else setLookupErr(err.message);
+			} else {
+				setLookupErr(err instanceof Error ? err.message : String(err));
+			}
+		},
+	});
+
+	function reset(): void {
+		setProfile(null);
+		setLookupErr(null);
+		lookup.reset();
+	}
+
+	function handleUidChange(next: string): void {
+		setUid(next);
+		if (profile || lookupErr) reset();
+	}
+
+	function fansLabel(n: number): string {
+		if (n >= 10_000) return `${(n / 10_000).toFixed(1)}万 粉丝`;
+		return `${n} 粉丝`;
+	}
+
 	return (
 		<div className="bn-anim-fade-in fixed inset-0 z-30 flex items-center justify-center bg-black/30 backdrop-blur-sm">
 			<div className="w-105 rounded-bn-card border border-white/60 bg-white p-5 shadow-bn-elev">
 				<div className="mb-1 text-base font-bold text-bn-text-primary">添加 UP 主</div>
 				<div className="mb-4 text-[12px] text-bn-text-secondary">
-					输入 B 站 UID，女仆就能帮主人盯着 TA 的动态啦 (๑•̀ㅂ•́)و✧
+					输入 B 站 UID,先确认 UP 主信息再加入订阅
 				</div>
-				<Input
-					full
-					value={uid}
-					onChange={setUid}
-					placeholder="纯数字 UID（例：401742377）"
-					icon={<Icon.user size={14} />}
-				/>
+				<div className="flex gap-2">
+					<Input
+						full
+						value={uid}
+						onChange={handleUidChange}
+						placeholder="纯数字 UID(例:401742377)"
+						icon={<Icon.user size={14} />}
+					/>
+					<Btn
+						variant="outline"
+						size="sm"
+						onClick={() => lookup.mutate(uid)}
+						disabled={!valid || lookup.isPending || pending}
+					>
+						{lookup.isPending ? "查询中…" : "查询"}
+					</Btn>
+				</div>
+				{duplicate ? (
+					<div className="mt-3 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
+						该 UID 已经在订阅列表中,无需重复添加
+					</div>
+				) : null}
+				{lookupErr ? (
+					<div className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+						{lookupErr}
+					</div>
+				) : null}
+				{profile ? (
+					<div className="mt-4 flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+						<img
+							src={profile.avatar}
+							alt={profile.name}
+							className="h-12 w-12 shrink-0 rounded-full bg-white object-cover"
+							referrerPolicy="no-referrer"
+						/>
+						<div className="min-w-0 flex-1">
+							<div className="flex items-center gap-2">
+								<span className="truncate text-[13px] font-bold text-bn-text-primary">
+									{profile.name}
+								</span>
+								<span className="font-mono text-[10.5px] text-bn-text-tertiary">
+									UID {profile.uid}
+								</span>
+							</div>
+							<div className="mt-0.5 text-[11px] text-bn-text-secondary">
+								{fansLabel(profile.fans)}
+							</div>
+							{profile.sign ? (
+								<div
+									className="mt-1 line-clamp-2 text-[11px] text-bn-text-tertiary"
+									title={profile.sign}
+								>
+									{profile.sign}
+								</div>
+							) : null}
+						</div>
+					</div>
+				) : null}
 				{error ? (
 					<div className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
 						{error}
@@ -62,8 +162,8 @@ function NewSubDialog({
 					<Btn
 						variant="primary"
 						size="sm"
-						onClick={() => onSubmit(uid)}
-						disabled={!valid || pending}
+						onClick={() => profile && onSubmit(profile)}
+						disabled={!profile || duplicate || pending}
 					>
 						{pending ? "添加中…" : "添加"}
 					</Btn>
@@ -179,8 +279,15 @@ export default function Subs() {
 		});
 	}
 
-	function handleNew(uid: string): void {
-		const fresh = makeEmptySubscription(uid);
+	function handleNew(profile: UpProfileLookup): void {
+		const fresh = makeEmptySubscription(profile.uid);
+		fresh.cachedProfile = {
+			name: profile.name,
+			avatar: profile.avatar,
+			sign: profile.sign,
+			fans: profile.fans,
+			lastRefreshedAt: new Date().toISOString(),
+		};
 		upsert.mutate(fresh, {
 			onSuccess: () => {
 				setShowNewDialog(false);
@@ -315,6 +422,7 @@ export default function Subs() {
 					}}
 					pending={upsert.isPending}
 					error={error}
+					existingUids={new Set(subs.map((s) => s.uid))}
 				/>
 			) : null}
 		</div>
