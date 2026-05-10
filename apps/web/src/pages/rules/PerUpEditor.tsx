@@ -843,8 +843,8 @@ function AiOverrideBox({
 	const cur: AIOverride = value ?? { preset: "inherit" };
 	const presetOptions = [
 		{ value: "inherit", label: "继承全局" },
-		{ value: "custom", label: "完全自定义" },
 		...baseline.presets.map((p) => ({ value: p.id, label: p.label })),
+		{ value: "custom", label: "完全自定义" },
 	];
 	const isCustom = cur.preset === "custom";
 	const isInherit = cur.preset === "inherit";

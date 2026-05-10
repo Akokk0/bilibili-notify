@@ -241,7 +241,7 @@ export function Picker<T extends string | number | boolean>({
 						key={String(o.value)}
 						onClick={() => onChange(o.value)}
 						className={`rounded px-3 py-1 text-[11.5px] font-semibold transition ${
-							active ? "bg-white shadow-sm" : "text-bn-text-tertiary"
+							active ? "bg-white text-bn-pink shadow-sm" : "text-bn-text-tertiary"
 						}`}
 						style={active && o.color ? { color: o.color } : undefined}
 					>

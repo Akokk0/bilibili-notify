@@ -110,8 +110,8 @@ export default function Ai() {
 	}
 
 	const presetOptions = [
-		{ value: "custom", label: "custom · 完全自定义" },
 		...draft.presets.map((p) => ({ value: p.id, label: p.label })),
+		{ value: "custom", label: "完全自定义" },
 	];
 	const presetValue = draft.presets.some((p) => p.id === draft.persona.name)
 		? draft.persona.name
