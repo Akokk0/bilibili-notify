@@ -44,8 +44,6 @@ export type SubItemRawConfig = MasterFlagMap & {
 		enable: boolean;
 		cardColorStart?: string;
 		cardColorEnd?: string;
-		cardBasePlateColor?: string;
-		cardBasePlateBorder?: string;
 	};
 	customGuardBuy: {
 		enable: boolean;
@@ -176,8 +174,6 @@ export function rawConfigToSubscription(_name: string, raw: SubItemRawConfig): C
 		sub.overrides.cardStyle = {
 			cardColorStart: cardStyle.cardColorStart,
 			cardColorEnd: cardStyle.cardColorEnd,
-			cardBasePlateColor: cardStyle.cardBasePlateColor,
-			cardBasePlateBorder: cardStyle.cardBasePlateBorder,
 		};
 	}
 

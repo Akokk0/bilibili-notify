@@ -210,8 +210,6 @@ export type TemplateOverride = Partial<TemplateBundleFull>;
 export interface CardStyleFull {
 	cardColorStart: string;
 	cardColorEnd: string;
-	cardBasePlateColor: string;
-	cardBasePlateBorder: string;
 }
 export type CardStyleOverride = Partial<CardStyleFull>;
 

@@ -157,8 +157,6 @@ export const CardStyleSchema = z.object({
 	enabled: z.boolean().default(true),
 	cardColorStart: z.string(),
 	cardColorEnd: z.string(),
-	cardBasePlateColor: z.string(),
-	cardBasePlateBorder: z.string(),
 });
 export type CardStyle = z.infer<typeof CardStyleSchema>;
 

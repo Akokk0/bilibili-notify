@@ -342,21 +342,90 @@ const SUMMARY_VARS: { code: string; desc: string }[] = [
 	{ code: "-dc1~5", desc: "弹幕数" },
 ];
 
-export function SummaryVariableHints() {
+interface VarSpec {
+	code: string;
+	desc: string;
+}
+
+const LIVE_MSG_VARS: VarSpec[] = [
+	{ code: "{name}", desc: "UP 主名字" },
+	{ code: "{title}", desc: "直播间标题" },
+	{ code: "{link}", desc: "直播间链接" },
+	{ code: "{duration}", desc: "直播时长 / 已直播时长(直播中、下播)" },
+	{ code: "{watched}", desc: "看过人数(直播中)" },
+];
+
+const GUARD_VARS: VarSpec[] = [
+	{ code: "{user}", desc: "上舰用户名" },
+	{ code: "{mastername}", desc: "UP 主名字" },
+];
+
+const SPECIAL_DANMAKU_VARS: VarSpec[] = [
+	{ code: "{mastername}", desc: "UP 主名字" },
+	{ code: "{uname}", desc: "发送弹幕的用户名" },
+	{ code: "{msg}", desc: "弹幕内容" },
+];
+
+const SPECIAL_ENTER_VARS: VarSpec[] = [
+	{ code: "{uname}", desc: "进入直播间的用户名" },
+	{ code: "{mastername}", desc: "UP 主名字" },
+];
+
+/**
+ * Single visual style for variable cheat-sheet panels above a template
+ * editor. `accent` controls the chip color; defaults to the 紫 used by
+ * the original SummaryVariableHints for backward compatibility.
+ */
+function VariableHints({
+	vars,
+	accent = "#a29bfe",
+	titleColor = "#5b4fcc",
+}: {
+	vars: ReadonlyArray<VarSpec>;
+	accent?: string;
+	titleColor?: string;
+}) {
+	const accentBorder = `${accent}66`;
+	const accentBg = `${accent}1a`;
 	return (
-		<div className="mb-2 rounded-lg border border-[#a29bfe]/40 bg-[#a29bfe]/10 px-3 py-2 text-[11.5px] leading-7 text-bn-text-secondary">
-			<span className="font-bold text-[#5b4fcc]">可用变量:</span>{" "}
-			{SUMMARY_VARS.map((v, i) => (
+		<div
+			className="mb-2 rounded-lg border px-3 py-2 text-[11.5px] leading-7 text-bn-text-secondary"
+			style={{ borderColor: accentBorder, background: accentBg }}
+		>
+			<span className="font-bold" style={{ color: titleColor }}>
+				可用变量:
+			</span>{" "}
+			{vars.map((v, i) => (
 				<span key={v.code}>
 					<code className="mx-0.5 rounded bg-white/70 px-1.5 py-px font-mono text-[11px]">
 						{v.code}
 					</code>{" "}
 					{v.desc}
-					{i < SUMMARY_VARS.length - 1 ? " · " : ""}
+					{i < vars.length - 1 ? " · " : ""}
 				</span>
 			))}
 		</div>
 	);
+}
+
+export function SummaryVariableHints() {
+	return <VariableHints vars={SUMMARY_VARS} />;
+}
+
+export function LiveMsgVariableHints() {
+	return <VariableHints vars={LIVE_MSG_VARS} accent="#FB7299" titleColor="#b8425d" />;
+}
+
+export function GuardVariableHints() {
+	return <VariableHints vars={GUARD_VARS} accent="#f2a053" titleColor="#a86120" />;
+}
+
+export function SpecialDanmakuVariableHints() {
+	return <VariableHints vars={SPECIAL_DANMAKU_VARS} accent="#fdcb6e" titleColor="#946800" />;
+}
+
+export function SpecialEnterVariableHints() {
+	return <VariableHints vars={SPECIAL_ENTER_VARS} accent="#00AEEC" titleColor="#076e94" />;
 }
 
 // ── 4. Live message templates ────────────────────────────────────────────────
@@ -374,7 +443,7 @@ export function LiveMsgSection({
 	return (
 		<GlassBox
 			title="直播消息模板"
-			subtitle="开播 / 直播中 / 下播 · 变量：{name} {title} {link} {duration} {watched}"
+			subtitle="开播 / 直播中 / 下播 三段提醒"
 			accent="#FB7299"
 			icon={<Icon.chat size={14} />}
 			badge={enabled ? "已启用" : "未启用"}
@@ -382,6 +451,7 @@ export function LiveMsgSection({
 		>
 			{enabled ? (
 				<>
+					<LiveMsgVariableHints />
 					<FieldRow label="开播" code="templates.liveStart" full>
 						<TArea
 							value={templates.liveStart}
@@ -434,14 +504,16 @@ export function GuardSection({
 	return (
 		<GlassBox
 			title="上舰提示"
-			subtitle="默认走 B 站官方上舰图;启用后改用自定义文案与图片 · 变量:{user} {mastername}"
+			subtitle="默认走 B 站官方上舰图;启用后改用自定义文案与图片"
 			accent="#f2a053"
 			icon={<Icon.anchor size={14} />}
 			badge={enabled ? "已启用" : "未启用"}
 			right={<Toggle value={enabled} onChange={(v) => setG("enable", v)} />}
 		>
 			{enabled ? (
-				ROLES.map(({ key, label, tone }) => {
+				<>
+					<GuardVariableHints />
+					{ROLES.map(({ key, label, tone }) => {
 					const entry = templates.guardBuy[key];
 					return (
 						<div
@@ -473,7 +545,8 @@ export function GuardSection({
 							</FieldRow>
 						</div>
 					);
-				})
+					})}
+				</>
 			) : (
 				<div className="py-5 text-center text-[12px] text-bn-text-tertiary">
 					未启用 · 引擎将默认推送 B 站官方上舰图(舰长 / 提督 / 总督)
@@ -507,18 +580,6 @@ export function CardStyleSection({
 			</FieldRow>
 			<FieldRow label="渐变结束" code="cardColorEnd">
 				<TColor value={cardStyle.cardColorEnd} onChange={(v) => set("cardColorEnd", v)} />
-			</FieldRow>
-			<FieldRow label="底板颜色" code="cardBasePlateColor">
-				<TColor
-					value={cardStyle.cardBasePlateColor}
-					onChange={(v) => set("cardBasePlateColor", v)}
-				/>
-			</FieldRow>
-			<FieldRow label="底板边框" code="cardBasePlateBorder">
-				<TColor
-					value={cardStyle.cardBasePlateBorder}
-					onChange={(v) => set("cardBasePlateBorder", v)}
-				/>
 			</FieldRow>
 			<div className="mt-2 rounded border border-dashed bg-[#a29bfe14] p-2 text-[11px] text-bn-text-secondary">
 				per-UP 卡片样式覆盖 → 切换右上 scope 选择 UP 主 → 卡片样式

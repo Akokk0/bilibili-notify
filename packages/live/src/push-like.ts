@@ -68,8 +68,6 @@ export interface CustomCardStyleLike {
 	enable: boolean;
 	cardColorStart?: string;
 	cardColorEnd?: string;
-	cardBasePlateColor?: string;
-	cardBasePlateBorder?: string;
 }
 
 export interface CustomLiveMsgLike {

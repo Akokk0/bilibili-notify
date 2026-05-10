@@ -130,12 +130,6 @@ export const BilibiliNotifyAdvancedSubConfig: Schema<BilibiliNotifyAdvancedSubCo
 							cardColorEnd: Schema.string()
 								.pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)
 								.description("卡片渐变结束颜色（16进制）"),
-							cardBasePlateColor: Schema.string()
-								.pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)
-								.description("底板颜色（16进制）"),
-							cardBasePlateBorder: Schema.string()
-								.pattern(/\d*\.?\d+(?:px|em|rem|%|vh|vw|vmin|vmax)/)
-								.description("底板边框宽度（需带单位）"),
 						}),
 						Schema.object({}),
 					]),

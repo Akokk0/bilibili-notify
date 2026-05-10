@@ -115,8 +115,6 @@ export interface CardStyle {
 	enabled: boolean;
 	cardColorStart: string;
 	cardColorEnd: string;
-	cardBasePlateColor: string;
-	cardBasePlateBorder: string;
 }
 
 export interface GlobalDefaults {

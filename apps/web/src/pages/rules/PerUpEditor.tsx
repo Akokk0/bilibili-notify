@@ -13,15 +13,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Avatar, Btn, Toggle } from "../../components/atoms";
-import {
-	ArrayEditor,
-	Field,
-	Picker,
-	TArea,
-	TColor,
-	TInput,
-	TNum,
-} from "../../components/forms";
+import { ArrayEditor, Field, Picker, TArea, TColor, TInput, TNum } from "../../components/forms";
 import { GlassBox } from "../../components/glass-box";
 import { Icon } from "../../components/icons";
 import { ApiError, api } from "../../services/api";
@@ -37,7 +29,14 @@ import type {
 } from "../../types/domain";
 import type { GlobalDefaults, GuardEntry, TemplateBundle } from "../../types/globals";
 import { colorFromUid, displayName } from "../up/helpers";
-import { type SectionId, SummaryVariableHints } from "./sections";
+import {
+	GuardVariableHints,
+	LiveMsgVariableHints,
+	type SectionId,
+	SpecialDanmakuVariableHints,
+	SpecialEnterVariableHints,
+	SummaryVariableHints,
+} from "./sections";
 
 /* -------------------------------------------------------------------------- */
 
@@ -528,6 +527,7 @@ function MsgOverrideBox({
 		>
 			{enabled ? (
 				<>
+					<LiveMsgVariableHints />
 					<Field label="开播" code="templates.liveStart" full>
 						<TArea
 							value={cur.liveStart ?? baseline.liveStart}
@@ -600,8 +600,10 @@ function GuardOverrideBox({
 			right={<Toggle value={enabled} onChange={toggle} />}
 		>
 			{enabled ? (
-				<div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
-					{(["captain", "commander", "governor"] as const).map((role) => {
+				<>
+					<GuardVariableHints />
+					<div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
+						{(["captain", "commander", "governor"] as const).map((role) => {
 						const e = guardOf(role);
 						const label = role === "captain" ? "舰长" : role === "commander" ? "提督" : "总督";
 						return (
@@ -626,8 +628,9 @@ function GuardOverrideBox({
 								/>
 							</div>
 						);
-					})}
-				</div>
+						})}
+					</div>
+				</>
 			) : (
 				<InheritHint>该 UP 将继承全局上舰提示设置</InheritHint>
 			)}
@@ -744,6 +747,7 @@ function SpecialUserBox({
 					>
 						<ArrayEditor value={uids} onChange={setUids} placeholder="纯数字 UID" />
 					</Field>
+					{kind === "danmaku" ? <SpecialDanmakuVariableHints /> : <SpecialEnterVariableHints />}
 					<Field
 						label="模板"
 						code={`templates.${templateField}`}
@@ -816,18 +820,6 @@ function CardStyleOverrideBox({
 							onChange={(v) => set("cardColorEnd", v)}
 						/>
 					</Field>
-					<Field label="底板颜色" code="cardBasePlateColor">
-						<TColor
-							value={cur.cardBasePlateColor ?? baseline.cardBasePlateColor}
-							onChange={(v) => set("cardBasePlateColor", v)}
-						/>
-					</Field>
-					<Field label="底板边框" code="cardBasePlateBorder">
-						<TColor
-							value={cur.cardBasePlateBorder ?? baseline.cardBasePlateBorder}
-							onChange={(v) => set("cardBasePlateBorder", v)}
-						/>
-					</Field>
 				</>
 			) : (
 				<InheritHint>该 UP 将继承全局卡片样式</InheritHint>
@@ -895,7 +887,8 @@ function AiOverrideBox({
 					{isPreset && activePreset ? (
 						<div className="rounded-lg border border-[#a29bfe]/30 bg-[#a29bfe]/8 px-3 py-2 text-[11.5px] text-bn-text-secondary">
 							已套用预设「{activePreset.label}」 · 名字 {activePreset.persona.name} · 称呼用户{" "}
-							{activePreset.persona.addressUser} · 提示词随预设。需要更细的微调请改用「完全自定义」。
+							{activePreset.persona.addressUser} ·
+							提示词随预设。需要更细的微调请改用「完全自定义」。
 						</div>
 					) : null}
 
@@ -932,10 +925,7 @@ function AiOverrideBox({
 								</Field>
 							</div>
 							<Field label="性格特点" code="ai.persona.traits" hint="逗号分隔" full>
-								<TInput
-									value={personaBase.traits}
-									onChange={(v) => setPersonaField("traits", v)}
-								/>
+								<TInput value={personaBase.traits} onChange={(v) => setPersonaField("traits", v)} />
 							</Field>
 							<Field
 								label="基础角色描述"

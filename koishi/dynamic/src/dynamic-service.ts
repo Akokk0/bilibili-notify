@@ -134,8 +134,6 @@ function storeToSubscriptionsView(store: any): SubscriptionsView {
 						enable: true,
 						cardColorStart: sub.overrides.cardStyle.cardColorStart,
 						cardColorEnd: sub.overrides.cardStyle.cardColorEnd,
-						cardBasePlateColor: sub.overrides.cardStyle.cardBasePlateColor,
-						cardBasePlateBorder: sub.overrides.cardStyle.cardBasePlateBorder,
 					}
 				: { enable: false },
 		};

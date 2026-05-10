@@ -53,8 +53,6 @@ export interface CardsRouteOptions {
 const StyleSchema = z.object({
 	cardColorStart: z.string(),
 	cardColorEnd: z.string(),
-	cardBasePlateColor: z.string().optional(),
-	cardBasePlateBorder: z.string().optional(),
 	font: z.string().optional(),
 	hideDesc: z.boolean().optional(),
 	followerDisplay: z.boolean().optional(),

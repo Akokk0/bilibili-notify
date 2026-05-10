@@ -477,8 +477,6 @@ function buildDynamicSubsView(store: SubscriptionStore, globals: GlobalConfig): 
 				enable: true,
 				cardColorStart: eff.cardStyle.cardColorStart,
 				cardColorEnd: eff.cardStyle.cardColorEnd,
-				cardBasePlateColor: eff.cardStyle.cardBasePlateColor,
-				cardBasePlateBorder: eff.cardStyle.cardBasePlateBorder,
 			},
 		};
 	}
@@ -516,8 +514,6 @@ function buildLiveSubViewSingle(sub: Subscription, globals: GlobalConfig): LiveS
 			enable: true,
 			cardColorStart: eff.cardStyle.cardColorStart,
 			cardColorEnd: eff.cardStyle.cardColorEnd,
-			cardBasePlateColor: eff.cardStyle.cardBasePlateColor,
-			cardBasePlateBorder: eff.cardStyle.cardBasePlateBorder,
 		},
 		customLiveMsg: {
 			enable: eff.templates.liveMsgEnabled,
@@ -571,8 +567,6 @@ function subscriptionOpsToDynamic(ops: SubscriptionOp[], store: SubscriptionStor
 								enable: true,
 								cardColorStart: op.sub.overrides.cardStyle.cardColorStart,
 								cardColorEnd: op.sub.overrides.cardStyle.cardColorEnd,
-								cardBasePlateColor: op.sub.overrides.cardStyle.cardBasePlateColor,
-								cardBasePlateBorder: op.sub.overrides.cardStyle.cardBasePlateBorder,
 							}
 						: { enable: false },
 				},

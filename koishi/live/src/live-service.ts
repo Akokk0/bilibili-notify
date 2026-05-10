@@ -202,8 +202,6 @@ function storeToLiveView(store: any): SubscriptionsView {
 						enable: true,
 						cardColorStart: sub.overrides.cardStyle.cardColorStart,
 						cardColorEnd: sub.overrides.cardStyle.cardColorEnd,
-						cardBasePlateColor: sub.overrides.cardStyle.cardBasePlateColor,
-						cardBasePlateBorder: sub.overrides.cardStyle.cardBasePlateBorder,
 					}
 				: { enable: false },
 			customLiveMsg: sub.overrides.templates?.liveStart
@@ -392,8 +390,6 @@ function storeToSubItemView(sub: import("@bilibili-notify/internal").Subscriptio
 					enable: true,
 					cardColorStart: sub.overrides.cardStyle.cardColorStart,
 					cardColorEnd: sub.overrides.cardStyle.cardColorEnd,
-					cardBasePlateColor: sub.overrides.cardStyle.cardBasePlateColor,
-					cardBasePlateBorder: sub.overrides.cardStyle.cardBasePlateBorder,
 				}
 			: { enable: false },
 		customLiveMsg: sub.overrides.templates?.liveStart

@@ -67,8 +67,6 @@ export interface SubItemView {
 		enable?: boolean;
 		cardColorStart?: string;
 		cardColorEnd?: string;
-		cardBasePlateColor?: string;
-		cardBasePlateBorder?: string;
 	};
 }
 
