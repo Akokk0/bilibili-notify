@@ -21,7 +21,6 @@ import {
 	TColor,
 	TInput,
 	TNum,
-	TSelect,
 } from "../../components/forms";
 import { GlassBox } from "../../components/glass-box";
 import { Icon } from "../../components/icons";
@@ -140,7 +139,13 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 					borderColor: `${color}33`,
 				}}
 			>
-				<Avatar name={displayName(sub)} color={color} size={48} ring />
+				<Avatar
+					name={displayName(sub)}
+					color={color}
+					size={48}
+					url={sub.cachedProfile?.avatar}
+					ring
+				/>
 				<div className="min-w-0 flex-1">
 					<div className="text-base font-bold text-bn-text-primary">{displayName(sub)}</div>
 					<div className="text-[12px] text-bn-text-secondary">
@@ -844,12 +849,25 @@ function AiOverrideBox({
 }) {
 	const enabled = value !== undefined;
 	const cur: AIOverride = value ?? { preset: "inherit" };
-	const presets = [
+	const presetOptions = [
 		{ value: "inherit", label: "继承全局" },
 		{ value: "custom", label: "完全自定义" },
 		...baseline.presets.map((p) => ({ value: p.id, label: p.label })),
 	];
 	const isCustom = cur.preset === "custom";
+	const isInherit = cur.preset === "inherit";
+	const isPreset = !isCustom && !isInherit;
+	const activePreset = isPreset ? baseline.presets.find((p) => p.id === cur.preset) : null;
+
+	// Full effective persona = base override → fallback baseline → blank-extras safety net
+	const personaBase = cur.persona ?? baseline.persona;
+	function setPersonaField(k: keyof typeof baseline.persona, v: string): void {
+		onChange({
+			...cur,
+			persona: { ...personaBase, [k]: v },
+		});
+	}
+
 	return (
 		<GlassBox
 			title="AI 人格塑造覆盖"
@@ -867,25 +885,80 @@ function AiOverrideBox({
 			{enabled ? (
 				<>
 					<Field label="预设" code="ai.preset" full>
-						<TSelect
+						<Picker
 							value={cur.preset}
 							onChange={(v) => onChange({ ...cur, preset: v })}
-							options={presets}
-							full
+							options={presetOptions}
 						/>
 					</Field>
+
+					{isPreset && activePreset ? (
+						<div className="rounded-lg border border-[#a29bfe]/30 bg-[#a29bfe]/8 px-3 py-2 text-[11.5px] text-bn-text-secondary">
+							已套用预设「{activePreset.label}」 · 名字 {activePreset.persona.name} · 称呼用户{" "}
+							{activePreset.persona.addressUser} · 提示词随预设。需要更细的微调请改用「完全自定义」。
+						</div>
+					) : null}
+
 					{isCustom ? (
 						<>
-							<Field label="名字" code="ai.persona.name">
+							<div className="grid grid-cols-1 gap-0 lg:grid-cols-2">
+								<Field label="名字" code="ai.persona.name">
+									<TInput
+										value={personaBase.name}
+										onChange={(v) => setPersonaField("name", v)}
+										full={false}
+									/>
+								</Field>
+								<Field label="称呼用户" code="ai.persona.addressUser">
+									<TInput
+										value={personaBase.addressUser}
+										onChange={(v) => setPersonaField("addressUser", v)}
+										full={false}
+									/>
+								</Field>
+								<Field label="自称" code="ai.persona.addressSelf">
+									<TInput
+										value={personaBase.addressSelf}
+										onChange={(v) => setPersonaField("addressSelf", v)}
+										full={false}
+									/>
+								</Field>
+								<Field label="口头禅" code="ai.persona.catchphrase">
+									<TInput
+										value={personaBase.catchphrase}
+										onChange={(v) => setPersonaField("catchphrase", v)}
+										full={false}
+									/>
+								</Field>
+							</div>
+							<Field label="性格特点" code="ai.persona.traits" hint="逗号分隔" full>
 								<TInput
-									value={cur.persona?.name ?? baseline.persona.name}
-									onChange={(v) =>
-										onChange({
-											...cur,
-											persona: { ...(cur.persona ?? baseline.persona), name: v },
-										})
-									}
-									full={false}
+									value={personaBase.traits}
+									onChange={(v) => setPersonaField("traits", v)}
+								/>
+							</Field>
+							<Field
+								label="基础角色描述"
+								code="ai.persona.baseRole"
+								hint="system prompt 起手段,定义 AI 的身份"
+								full
+							>
+								<TArea
+									value={personaBase.baseRole}
+									onChange={(v) => setPersonaField("baseRole", v)}
+									rows={2}
+								/>
+							</Field>
+							<Field
+								label="追加 system prompt"
+								code="ai.persona.extraSystemPrompt"
+								hint="附加到 system prompt 末尾,用于安全约束、避讳词、语气微调"
+								full
+							>
+								<TArea
+									value={personaBase.extraSystemPrompt}
+									onChange={(v) => setPersonaField("extraSystemPrompt", v)}
+									rows={2}
 								/>
 							</Field>
 							<Field label="动态点评 prompt" code="ai.dynamicPrompt" full>

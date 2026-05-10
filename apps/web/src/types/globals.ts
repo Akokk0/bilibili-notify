@@ -87,6 +87,8 @@ export interface AIPersona {
 	addressSelf: string;
 	traits: string;
 	catchphrase: string;
+	baseRole: string;
+	extraSystemPrompt: string;
 }
 
 export interface AIPreset {

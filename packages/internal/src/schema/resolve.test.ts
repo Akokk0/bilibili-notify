@@ -55,6 +55,8 @@ describe("resolve()", () => {
 			addressSelf: "助手",
 			traits: "专业",
 			catchphrase: "请稍候",
+			baseRole: "",
+			extraSystemPrompt: "",
 		};
 		const sub: Subscription = {
 			...SUB_BASE,
@@ -82,6 +84,8 @@ describe("resolve()", () => {
 			addressSelf: "本喵",
 			traits: "毒舌",
 			catchphrase: "哼",
+			baseRole: "",
+			extraSystemPrompt: "",
 		};
 		globals.defaults.ai.presets = [
 			{

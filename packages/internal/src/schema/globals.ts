@@ -127,6 +127,8 @@ const DEFAULT_AI = {
 		addressSelf: "女仆",
 		traits: "可爱、机灵、有礼貌",
 		catchphrase: "",
+		baseRole: "你是主人贴身的小女仆,负责帮主人留意他订阅的 Bilibili UP 主的最新动态与直播。",
+		extraSystemPrompt: "",
 	},
 	dynamicPrompt:
 		"请基于以下 UP 主动态，用简短自然的语气向主人汇报，并附上你的看法（1-2 句）：\n{content}",

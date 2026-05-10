@@ -118,6 +118,10 @@ export const AIPersonaSchema = z.object({
 	addressSelf: z.string(),
 	traits: z.string(),
 	catchphrase: z.string(),
+	/** 基础角色描述,用于 system prompt 起手段。默认空(老数据迁移友好)。 */
+	baseRole: z.string().default(""),
+	/** 追加到 system prompt 末尾的额外指令,用于微调 AI 行为(指代偏好、安全约束等)。 */
+	extraSystemPrompt: z.string().default(""),
 });
 export type AIPersona = z.infer<typeof AIPersonaSchema>;
 

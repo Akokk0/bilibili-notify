@@ -21,10 +21,10 @@ import {
 	Field,
 	LogLevelPicker,
 	type LogLevelValue,
+	Picker,
 	TArea,
 	TInput,
 	TNum,
-	TSelect,
 } from "../components/forms";
 import { GlassBox } from "../components/glass-box";
 import { Icon } from "../components/icons";
@@ -274,7 +274,7 @@ export default function Ai() {
 					}
 					full
 				>
-					<TSelect
+					<Picker
 						value={presetValue}
 						onChange={(v) => {
 							if (v === "custom") return;
@@ -330,6 +330,30 @@ export default function Ai() {
 				</div>
 				<Field label="性格特点" code="persona.traits" hint="逗号分隔" full>
 					<TInput value={draft.persona.traits} onChange={(v) => setPersona("traits", v)} />
+				</Field>
+				<Field
+					label="基础角色描述"
+					code="persona.baseRole"
+					hint="system prompt 起手段,定义 AI 身份"
+					full
+				>
+					<TArea
+						value={draft.persona.baseRole}
+						onChange={(v) => setPersona("baseRole", v)}
+						rows={2}
+					/>
+				</Field>
+				<Field
+					label="追加 system prompt"
+					code="persona.extraSystemPrompt"
+					hint="附加到 system prompt 末尾,用于安全约束、避讳词、语气微调"
+					full
+				>
+					<TArea
+						value={draft.persona.extraSystemPrompt}
+						onChange={(v) => setPersona("extraSystemPrompt", v)}
+						rows={2}
+					/>
 				</Field>
 				<Field label="动态点评 prompt" code="ai.dynamicPrompt" full>
 					<TArea

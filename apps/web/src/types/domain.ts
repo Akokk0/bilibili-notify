@@ -145,6 +145,10 @@ export interface AIPersonaShape {
 	addressSelf: string;
 	traits: string;
 	catchphrase: string;
+	/** 基础角色描述,system prompt 起手段。 */
+	baseRole: string;
+	/** 追加到 system prompt 末尾的微调内容。 */
+	extraSystemPrompt: string;
 }
 
 export interface AIOverride {
