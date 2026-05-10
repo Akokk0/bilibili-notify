@@ -304,7 +304,7 @@ export interface StatsBarDatum {
 export function StatsBar({ data, height = 80 }: { data: StatsBarDatum[]; height?: number }) {
 	const max = Math.max(1, ...data.map((d) => d.live + d.dyn + d.sc + d.guard));
 	return (
-		<div className="relative flex items-end gap-2.5 pb-[18px]" style={{ height }}>
+		<div className="relative flex items-end gap-2.5 pb-4.5" style={{ height }}>
 			{data.map((d) => {
 				const total = d.live + d.dyn + d.sc + d.guard;
 				const h = (total / max) * (height - 18);
