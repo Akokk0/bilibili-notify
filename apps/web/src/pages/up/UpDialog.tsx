@@ -315,10 +315,7 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 						style={{ textShadow: "0 1px 4px rgba(0,0,0,0.45)" }}
 					>
 						<div className="text-base font-bold">{displayName(draft)}</div>
-						<div
-							className="mt-0.5 text-[11px] font-semibold text-bn-pink"
-							style={{ textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}
-						>
+						<div className="mt-0.5 text-[11px] font-semibold text-bn-pink" style={{ textShadow: "none" }}>
 							<span className="font-mono">UID {draft.uid}</span>
 							{draft.cachedProfile?.fans != null ? (
 								<>
