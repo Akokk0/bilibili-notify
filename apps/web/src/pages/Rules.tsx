@@ -149,7 +149,12 @@ function ScopeTabs({
 							onClick={() => onChange(sub.id)}
 							className="flex items-center gap-1.5"
 						>
-							<Avatar name={displayName(sub)} color={color} size={18} />
+							<Avatar
+								name={displayName(sub)}
+								color={color}
+								size={18}
+								url={sub.cachedProfile?.avatar}
+							/>
 							<span className="max-w-[140px] truncate" title={displayName(sub)}>
 								{displayName(sub)}
 							</span>
@@ -216,7 +221,12 @@ function ScopeTabs({
 											}}
 											className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition hover:bg-[#fdf2f5]"
 										>
-											<Avatar name={displayName(sub)} color={color} size={28} />
+											<Avatar
+												name={displayName(sub)}
+												color={color}
+												size={28}
+												url={sub.cachedProfile?.avatar}
+											/>
 											<div className="min-w-0 flex-1">
 												<div className="truncate text-[12.5px] font-bold text-bn-text-primary">
 													{displayName(sub)}

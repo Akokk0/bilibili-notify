@@ -514,37 +514,37 @@ export function GuardSection({
 				<>
 					<GuardVariableHints />
 					{ROLES.map(({ key, label, tone }) => {
-					const entry = templates.guardBuy[key];
-					return (
-						<div
-							key={key}
-							className="mt-2.5 rounded-lg border p-3 first:mt-0"
-							style={{ background: `${tone}0a`, borderColor: `${tone}33` }}
-						>
-							<div className="mb-2 flex items-center gap-2">
-								<span className="block h-2 w-2 rounded-sm" style={{ background: tone }} />
-								<span className="text-[12.5px] font-bold text-bn-text-primary">{label}</span>
-								<code className="ml-1 rounded bg-black/5 px-1.5 py-px font-mono text-[10.5px] text-bn-text-tertiary">
-									{key}
-								</code>
+						const entry = templates.guardBuy[key];
+						return (
+							<div
+								key={key}
+								className="mt-2.5 rounded-lg border p-3 first:mt-0"
+								style={{ background: `${tone}0a`, borderColor: `${tone}33` }}
+							>
+								<div className="mb-2 flex items-center gap-2">
+									<span className="block h-2 w-2 rounded-sm" style={{ background: tone }} />
+									<span className="text-[12.5px] font-bold text-bn-text-primary">{label}</span>
+									<code className="ml-1 rounded bg-black/5 px-1.5 py-px font-mono text-[10.5px] text-bn-text-tertiary">
+										{key}
+									</code>
+								</div>
+								<FieldRow label="文案" code="template" full>
+									<TInput
+										value={entry.template}
+										onChange={(v) => setG(key, { ...entry, template: v })}
+										mono
+									/>
+								</FieldRow>
+								<FieldRow label="图片 URL" code="imageUrl" full>
+									<TInput
+										value={entry.imageUrl}
+										onChange={(v) => setG(key, { ...entry, imageUrl: v })}
+										mono
+										placeholder="https://..."
+									/>
+								</FieldRow>
 							</div>
-							<FieldRow label="文案" code="template" full>
-								<TInput
-									value={entry.template}
-									onChange={(v) => setG(key, { ...entry, template: v })}
-									mono
-								/>
-							</FieldRow>
-							<FieldRow label="图片 URL" code="imageUrl" full>
-								<TInput
-									value={entry.imageUrl}
-									onChange={(v) => setG(key, { ...entry, imageUrl: v })}
-									mono
-									placeholder="https://..."
-								/>
-							</FieldRow>
-						</div>
-					);
+						);
 					})}
 				</>
 			) : (

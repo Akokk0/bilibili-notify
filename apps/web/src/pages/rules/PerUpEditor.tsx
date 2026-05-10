@@ -604,30 +604,30 @@ function GuardOverrideBox({
 					<GuardVariableHints />
 					<div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
 						{(["captain", "commander", "governor"] as const).map((role) => {
-						const e = guardOf(role);
-						const label = role === "captain" ? "舰长" : role === "commander" ? "提督" : "总督";
-						return (
-							<div key={role} className="rounded-lg border border-gray-200 bg-white/70 p-2.5">
-								<div className="mb-1.5 text-[12px] font-bold text-bn-text-primary">
-									{label}{" "}
-									<code className="ml-1 rounded bg-black/5 px-1 py-px font-mono text-[10.5px] text-bn-text-tertiary">
-										{role}
-									</code>
+							const e = guardOf(role);
+							const label = role === "captain" ? "舰长" : role === "commander" ? "提督" : "总督";
+							return (
+								<div key={role} className="rounded-lg border border-gray-200 bg-white/70 p-2.5">
+									<div className="mb-1.5 text-[12px] font-bold text-bn-text-primary">
+										{label}{" "}
+										<code className="ml-1 rounded bg-black/5 px-1 py-px font-mono text-[10.5px] text-bn-text-tertiary">
+											{role}
+										</code>
+									</div>
+									<TInput
+										value={e.template}
+										onChange={(v) => setGuard(role, { ...e, template: v })}
+										mono
+									/>
+									<div className="h-1" />
+									<TInput
+										value={e.imageUrl}
+										onChange={(v) => setGuard(role, { ...e, imageUrl: v })}
+										mono
+										placeholder="image url"
+									/>
 								</div>
-								<TInput
-									value={e.template}
-									onChange={(v) => setGuard(role, { ...e, template: v })}
-									mono
-								/>
-								<div className="h-1" />
-								<TInput
-									value={e.imageUrl}
-									onChange={(v) => setGuard(role, { ...e, imageUrl: v })}
-									mono
-									placeholder="image url"
-								/>
-							</div>
-						);
+							);
 						})}
 					</div>
 				</>

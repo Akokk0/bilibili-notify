@@ -241,6 +241,29 @@ class NodeConfigStore implements ConfigStore {
 			this.globals = parsed.data;
 			this.meta.globals.exists = true;
 			this.meta.globals.lastUpdatedAt = existed ? null : new Date().toISOString();
+
+			// Backfill default AI presets for globals files written before any
+			// presets shipped (presets used to default to []). Only triggered
+			// when the user has never configured presets — once they have at
+			// least one entry we leave them alone, including subsequent
+			// edits/deletions, so the user can fully manage the list.
+			if (existed && this.globals.defaults.ai.presets.length === 0) {
+				const fresh = makeDefaultGlobalConfig();
+				if (fresh.defaults.ai.presets.length > 0) {
+					this.globals = {
+						...this.globals,
+						defaults: {
+							...this.globals.defaults,
+							ai: {
+								...this.globals.defaults.ai,
+								presets: fresh.defaults.ai.presets,
+							},
+						},
+					};
+					await atomicWriteJson(this.path("globals"), this.globals);
+					this.touch("globals");
+				}
+			}
 		}
 
 		// subscriptions
