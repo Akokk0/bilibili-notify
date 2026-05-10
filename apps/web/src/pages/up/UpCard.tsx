@@ -135,6 +135,14 @@ export function UpCard({
 						))
 					)}
 				</div>
+				{sub.notes ? (
+					<div
+						className="mb-2 truncate text-[11px] italic text-bn-text-secondary"
+						title={sub.notes}
+					>
+						{sub.notes}
+					</div>
+				) : null}
 				<div className="flex items-center justify-between text-[11px] text-bn-text-secondary">
 					<span>
 						分组：
