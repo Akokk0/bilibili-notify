@@ -53,12 +53,14 @@ describe("buildSubManagement().addSub", () => {
 
 	it("with one registered target: enabled features get that target's id, never a fresh UUID", async () => {
 		const store = makeFakeStore();
+		const adapterId = randomUUID();
 		const t: PushTarget = {
 			id: randomUUID(),
 			name: "ob:111",
-			platform: "koishi-onebot",
+			adapterId,
+			platform: "koishi-bot",
 			scope: "group",
-			config: { botPlatform: "onebot", channelId: "111" },
+			session: { channelId: "111" },
 			enabled: true,
 		};
 		const registry = makeFakeRegistry([t]);
@@ -88,20 +90,23 @@ describe("buildSubManagement().addSub", () => {
 
 	it("prefers the master (private-scope) target over a group target", async () => {
 		const store = makeFakeStore();
+		const adapterId = randomUUID();
 		const group: PushTarget = {
 			id: randomUUID(),
 			name: "ob:111",
-			platform: "koishi-onebot",
+			adapterId,
+			platform: "koishi-bot",
 			scope: "group",
-			config: { botPlatform: "onebot", channelId: "111" },
+			session: { channelId: "111" },
 			enabled: true,
 		};
 		const master: PushTarget = {
 			id: randomUUID(),
 			name: "master:onebot:42",
-			platform: "koishi-onebot",
+			adapterId,
+			platform: "koishi-bot",
 			scope: "private",
-			config: { botPlatform: "onebot", userId: "42" },
+			session: { userId: "42" },
 			enabled: true,
 		};
 		const registry = makeFakeRegistry([group, master]);

@@ -11,6 +11,7 @@ import {
 	FEATURE_KEYS,
 	type FeatureKey,
 	makeEmptySubscription,
+	type PushAdapter,
 	type PushTarget,
 	type Subscription,
 	type SubscriptionRouting,
@@ -90,8 +91,7 @@ export function deterministicUuid(input: string): string {
 		h3 = (Math.imul(h3, 31) ^ c) >>> 0;
 		h4 = (Math.imul(h4, 29) ^ c) >>> 0;
 	}
-	const toHex = (n: number, len: number) =>
-		((n >>> 0) & 0xffffffff).toString(16).padStart(len, "0").slice(-len);
+	const toHex = (n: number, len: number) => (n >>> 0).toString(16).padStart(len, "0").slice(-len);
 	const seg1 = toHex(h1, 8);
 	const seg2 = toHex((h2 >>> 0) & 0xffff, 4);
 	const seg3 = `4${toHex(((h3 >>> 0) >>> 4) & 0x0fff, 3)}`; // version 4
@@ -103,6 +103,7 @@ export function deterministicUuid(input: string): string {
 
 export interface ConversionResult {
 	sub: Subscription;
+	adapters: PushAdapter[];
 	targets: PushTarget[];
 }
 
@@ -116,36 +117,47 @@ export function rawConfigToSubscription(_name: string, raw: SubItemRawConfig): C
 		FEATURE_KEYS.map((k) => [k, [] as string[]]),
 	) as SubscriptionRouting;
 
-	// Collect synthesized targets for the channels referenced in routing.
-	// Without this the targetIds put into routing would point at no PushTarget
-	// in the registry → push routing silently drops the message.
+	// Collect synthesized adapters + targets for the channels referenced in
+	// routing. Adapter ids are deterministic by botPlatform; target ids by
+	// (adapterId, channelId). One adapter per botPlatform so a single config
+	// reload doesn't multiply NapCat / Lagrange / etc entries.
+	const adapters: PushAdapter[] = [];
 	const targets: PushTarget[] = [];
+	const seenAdapterIds = new Set<string>();
 	const seenTargetIds = new Set<string>();
 
 	for (const entry of raw.target ?? []) {
 		const { platform, channelArr } = entry;
 		if (!channelArr?.length) continue;
-		const koishiPlatform = `koishi-${platform}`;
+		const adapterId = deterministicUuid(`adapter:koishi-bot:${platform}`);
+		if (!seenAdapterIds.has(adapterId)) {
+			seenAdapterIds.add(adapterId);
+			adapters.push({
+				id: adapterId,
+				name: platform,
+				enabled: true,
+				platform: "koishi-bot",
+				config: { botPlatform: platform },
+			});
+		}
 
 		for (const ch of channelArr) {
-			// Synthesize a target id for this channel (deterministic by platform+channelId)
-			const targetId = deterministicUuid(`target:${koishiPlatform}:${ch.channelId}`);
+			// Synthesize a target id for this channel (deterministic by adapterId + channelId)
+			const targetId = deterministicUuid(`target:${adapterId}:${ch.channelId}`);
 
-			// Register a PushTarget for this channel exactly once per (platform, channelId).
+			// Register a PushTarget for this channel exactly once per (adapterId, channelId).
 			if (!seenTargetIds.has(targetId)) {
 				seenTargetIds.add(targetId);
 				targets.push({
 					id: targetId,
 					name: `${platform}:${ch.channelId}`,
-					platform: koishiPlatform,
+					adapterId,
+					platform: "koishi-bot",
 					// Channel ids in advanced-sub are conventionally group ids; the dashboard
 					// will let users override scope later. Keep it simple.
 					scope: "group",
-					config: {
-						botPlatform: platform,
-						channelId: ch.channelId,
-					},
 					enabled: true,
+					session: { channelId: ch.channelId },
 				});
 			}
 
@@ -251,28 +263,34 @@ export function rawConfigToSubscription(_name: string, raw: SubItemRawConfig): C
 		}
 	}
 
-	return { sub, targets };
+	return { sub, adapters, targets };
 }
 
 export interface BuildResult {
 	subs: Subscription[];
+	adapters: PushAdapter[];
 	targets: PushTarget[];
 }
 
 /**
  * Pure (koishi-free) translation of the rich advanced-subscription Schema into
- * `Subscription[]` + their referenced `PushTarget[]`. Exported for unit testing.
+ * `Subscription[]` + their referenced `PushAdapter[]` + `PushTarget[]`.
+ * Exported for unit testing.
  */
 export function buildAdvancedSubAndTargets(config: AdvancedSubRawConfigShape): BuildResult {
 	const subs: Subscription[] = [];
+	const adapterMap = new Map<string, PushAdapter>();
 	const targetMap = new Map<string, PushTarget>();
 	for (const [name, raw] of Object.entries(config.subs)) {
-		const { sub, targets } = rawConfigToSubscription(name, raw);
+		const { sub, adapters, targets } = rawConfigToSubscription(name, raw);
 		subs.push(sub);
-		// Dedup across subs: multiple UPs targeting the same channel share the targetId.
-		for (const t of targets) {
-			if (!targetMap.has(t.id)) targetMap.set(t.id, t);
-		}
+		// Dedup across subs: multiple UPs reusing the same adapter / channel collapse.
+		for (const a of adapters) if (!adapterMap.has(a.id)) adapterMap.set(a.id, a);
+		for (const t of targets) if (!targetMap.has(t.id)) targetMap.set(t.id, t);
 	}
-	return { subs, targets: [...targetMap.values()] };
+	return {
+		subs,
+		adapters: [...adapterMap.values()],
+		targets: [...targetMap.values()],
+	};
 }

@@ -2,8 +2,9 @@ import type {
 	DeliveryResult,
 	Logger,
 	NotificationPayload,
+	PushAdapter,
 	PushTarget,
-	WebhookConfig,
+	WebhookAdapterConfig,
 } from "@bilibili-notify/internal";
 import type { PlatformAdapter } from "./types.js";
 
@@ -27,21 +28,26 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 
 	return {
 		platforms: ["webhook"],
-		isAvailable(target: PushTarget): boolean {
-			if (target.platform !== "webhook") return false;
-			if (!target.enabled) return false;
-			const cfg = target.config as WebhookConfig;
+		isAvailable(adapter: PushAdapter, target: PushTarget): boolean {
+			if (adapter.platform !== "webhook" || target.platform !== "webhook") return false;
+			if (!adapter.enabled || !target.enabled) return false;
+			const cfg = adapter.config as WebhookAdapterConfig;
 			return typeof cfg.url === "string" && cfg.url.length > 0;
 		},
 		async send(
+			adapter: PushAdapter,
 			target: PushTarget,
 			payload: NotificationPayload,
 			pushOpts: { private?: boolean } = {},
 		): Promise<DeliveryResult> {
-			if (target.platform !== "webhook") {
-				return { ok: false, latencyMs: 0, err: `wrong platform: ${target.platform}` };
+			if (adapter.platform !== "webhook" || target.platform !== "webhook") {
+				return {
+					ok: false,
+					latencyMs: 0,
+					err: `wrong platform: adapter=${adapter.platform} target=${target.platform}`,
+				};
 			}
-			const cfg = target.config as WebhookConfig;
+			const cfg = adapter.config as WebhookAdapterConfig;
 			const t0 = Date.now();
 			const ctrl = new AbortController();
 			const timer = setTimeout(() => ctrl.abort(), timeoutMs);

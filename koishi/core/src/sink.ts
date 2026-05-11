@@ -1,8 +1,10 @@
 import type {
 	DeliveryResult,
-	KoishiTargetConfig,
+	KoishiBotAdapterConfig,
+	KoishiBotSession,
 	NotificationPayload,
 	NotificationSink,
+	PushAdapter,
 	PushTarget,
 } from "@bilibili-notify/internal";
 import type { Context } from "koishi";
@@ -11,19 +13,19 @@ import { type Bot, h, Universal } from "koishi";
 /** Factory for creating the Koishi-side NotificationSink. */
 export interface KoishiSinkOptions {
 	ctx: Context;
-	/** Function to resolve a PushTarget by id; usually store.findTargetById or a map lookup. */
+	/** Function to resolve a PushTarget by id. */
 	resolveTarget: (id: string) => PushTarget | undefined;
+	/** Function to resolve a PushAdapter by id. */
+	resolveAdapter: (id: string) => PushAdapter | undefined;
 }
 
 /**
  * Translates a platform-neutral NotificationPayload into koishi h(...) elements
  * and delivers them via bot.sendMessage / bot.sendPrivateMessage.
  *
- * Supported platform values: `koishi-<botPlatform>` (e.g. `koishi-onebot`).
- * The `koishi-` prefix is stripped and used to select the correct bot.
- *
- * PushTarget.config must be a KoishiTargetConfig:
- *   { botPlatform, selfId?, channelId?, guildId?, userId? }
+ * Only handles `koishi-bot` platform. The bound adapter carries
+ * `{ botPlatform, selfId? }` which selects a koishi `ctx.bots[*]` entry; the
+ * target's session carries the actual `{ channelId, guildId, userId }`.
  *
  * Scope mapping:
  *   - "group"   → bot.sendMessage(channelId, content, guildId?)
@@ -31,7 +33,7 @@ export interface KoishiSinkOptions {
  *   - "private" → bot.sendPrivateMessage(userId, content, guildId?)
  */
 export function createKoishiSink(opts: KoishiSinkOptions): NotificationSink {
-	const { ctx, resolveTarget } = opts;
+	const { ctx, resolveTarget, resolveAdapter } = opts;
 
 	function getBot(botPlatform: string, selfId?: string): Bot | undefined {
 		return ctx.bots.find(
@@ -76,9 +78,7 @@ export function createKoishiSink(opts: KoishiSinkOptions): NotificationSink {
 		if (!target.enabled) {
 			return { ok: false, latencyMs: 0, err: `target ${targetId} is disabled` };
 		}
-
-		// Only handle koishi-* platforms
-		if (!target.platform.startsWith("koishi-")) {
+		if (target.platform !== "koishi-bot") {
 			return {
 				ok: false,
 				latencyMs: 0,
@@ -86,15 +86,27 @@ export function createKoishiSink(opts: KoishiSinkOptions): NotificationSink {
 			};
 		}
 
-		const botPlatform = target.platform.slice("koishi-".length);
-		const cfg = target.config as KoishiTargetConfig;
-		const bot = getBot(botPlatform, cfg.selfId);
+		const adapter = resolveAdapter(target.adapterId);
+		if (!adapter || adapter.platform !== "koishi-bot") {
+			return {
+				ok: false,
+				latencyMs: 0,
+				err: `adapter ${target.adapterId} not found or wrong platform`,
+			};
+		}
+		if (!adapter.enabled) {
+			return { ok: false, latencyMs: 0, err: `adapter ${adapter.id} is disabled` };
+		}
+
+		const adapterCfg = adapter.config as KoishiBotAdapterConfig;
+		const session = target.session as KoishiBotSession;
+		const bot = getBot(adapterCfg.botPlatform, adapterCfg.selfId);
 
 		if (!bot) {
 			return {
 				ok: false,
 				latencyMs: 0,
-				err: `no bot found for platform ${botPlatform}`,
+				err: `no bot found for platform ${adapterCfg.botPlatform}`,
 			};
 		}
 
@@ -111,22 +123,22 @@ export function createKoishiSink(opts: KoishiSinkOptions): NotificationSink {
 
 		try {
 			if (isPrivate) {
-				if (!cfg.userId) {
+				if (!session.userId) {
 					return { ok: false, latencyMs: 0, err: `private target ${targetId} missing userId` };
 				}
 				await bot.sendPrivateMessage(
-					cfg.userId,
+					session.userId,
 					content as Parameters<typeof bot.sendPrivateMessage>[1],
-					cfg.guildId,
+					session.guildId,
 				);
 			} else {
-				if (!cfg.channelId) {
+				if (!session.channelId) {
 					return { ok: false, latencyMs: 0, err: `group target ${targetId} missing channelId` };
 				}
 				await bot.sendMessage(
-					cfg.channelId,
+					session.channelId,
 					content as Parameters<typeof bot.sendMessage>[1],
-					cfg.guildId,
+					session.guildId,
 				);
 			}
 			return { ok: true, latencyMs: Date.now() - t0 };
@@ -148,11 +160,11 @@ export function createKoishiSink(opts: KoishiSinkOptions): NotificationSink {
 		},
 		isAvailable(targetId) {
 			const target = resolveTarget(targetId);
-			if (!target?.enabled) return false;
-			if (!target.platform.startsWith("koishi-")) return false;
-			const botPlatform = target.platform.slice("koishi-".length);
-			const cfg = target.config as KoishiTargetConfig;
-			const bot = getBot(botPlatform, cfg.selfId);
+			if (!target?.enabled || target.platform !== "koishi-bot") return false;
+			const adapter = resolveAdapter(target.adapterId);
+			if (!adapter || adapter.platform !== "koishi-bot" || !adapter.enabled) return false;
+			const cfg = adapter.config as KoishiBotAdapterConfig;
+			const bot = getBot(cfg.botPlatform, cfg.selfId);
 			return bot?.status === Universal.Status.ONLINE;
 		},
 	};

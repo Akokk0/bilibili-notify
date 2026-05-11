@@ -3,6 +3,7 @@ import type {
 	Logger,
 	NotificationPayload,
 	NotificationSink,
+	PushAdapter,
 	PushTarget,
 } from "@bilibili-notify/internal";
 import type { ConfigStore } from "../config/store.js";
@@ -11,14 +12,10 @@ import type { PlatformAdapter } from "../platforms/types.js";
 /**
  * Standalone {@link NotificationSink} implementation.
  *
- * Resolves `targetId → PushTarget` against the live ConfigStore, looks up the
- * matching {@link PlatformAdapter} by `target.platform`, and delegates the
- * delivery. The sink itself stays generic — adding a new platform just means
- * registering another adapter.
- *
- * Adapters for `koishi-*` are intentionally absent on the standalone side;
- * the sink reports the target as unavailable so the upstream BilibiliPush
- * skips delivery and logs a warn.
+ * Resolves `targetId → PushTarget → PushAdapter` against the live ConfigStore,
+ * looks up the matching {@link PlatformAdapter} by `adapter.platform`, and
+ * delegates the delivery. The sink itself stays generic — adding a new platform
+ * just means registering another platform adapter.
  */
 export interface MultiplexSinkOptions {
 	store: ConfigStore;
@@ -45,25 +42,27 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): NotificationSin
 		}
 	}
 
-	function pickAdapter(target: PushTarget): PlatformAdapter | undefined {
-		// Direct match first (covers literal platforms).
-		const direct = adapterByPlatform.get(target.platform);
-		if (direct) return direct;
-		// Wildcard koishi-* family — never handled standalone-side.
-		return undefined;
+	function findTarget(targetId: string): PushTarget | undefined {
+		return opts.store.getTargets().find((t) => t.id === targetId);
+	}
+
+	function findAdapterFor(target: PushTarget): PushAdapter | undefined {
+		return opts.store.getAdapters().find((a) => a.id === target.adapterId);
 	}
 
 	return {
 		resolve(targetId: string): PushTarget | undefined {
-			return opts.store.getTargets().find((t) => t.id === targetId);
+			return findTarget(targetId);
 		},
 
 		isAvailable(targetId: string): boolean {
-			const target = opts.store.getTargets().find((t) => t.id === targetId);
+			const target = findTarget(targetId);
 			if (!target) return false;
-			const adapter = pickAdapter(target);
+			const adapter = findAdapterFor(target);
 			if (!adapter) return false;
-			return adapter.isAvailable(target);
+			const platformAdapter = adapterByPlatform.get(adapter.platform);
+			if (!platformAdapter) return false;
+			return platformAdapter.isAvailable(adapter, target);
 		},
 
 		send(targetId: string, payload: NotificationPayload): Promise<DeliveryResult> {
@@ -80,23 +79,35 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): NotificationSin
 		payload: NotificationPayload,
 		options: { private: boolean },
 	): Promise<DeliveryResult> {
-		const target = opts.store.getTargets().find((t) => t.id === targetId);
+		const target = findTarget(targetId);
 		if (!target) {
-			const result: DeliveryResult = { ok: false, latencyMs: 0, err: "target not found" };
-			return result;
+			return { ok: false, latencyMs: 0, err: "target not found" };
 		}
-		const adapter = pickAdapter(target);
+		const adapter = findAdapterFor(target);
 		if (!adapter) {
 			const result: DeliveryResult = {
 				ok: false,
 				latencyMs: 0,
-				err: `no adapter for platform=${target.platform}`,
+				err: `adapter not found: adapterId=${target.adapterId}`,
 			};
 			log.warn(`[sink] ${result.err} (target=${target.id})`);
 			opts.onDelivery?.(target, payload, result, options);
 			return result;
 		}
-		const result = await adapter.send(target, payload, { private: options.private });
+		const platformAdapter = adapterByPlatform.get(adapter.platform);
+		if (!platformAdapter) {
+			const result: DeliveryResult = {
+				ok: false,
+				latencyMs: 0,
+				err: `no platform adapter for ${adapter.platform}`,
+			};
+			log.warn(`[sink] ${result.err} (target=${target.id})`);
+			opts.onDelivery?.(target, payload, result, options);
+			return result;
+		}
+		const result = await platformAdapter.send(adapter, target, payload, {
+			private: options.private,
+		});
 		opts.onDelivery?.(target, payload, result, options);
 		return result;
 	}

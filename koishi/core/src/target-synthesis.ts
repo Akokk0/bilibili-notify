@@ -1,57 +1,60 @@
 import { randomUUID } from "node:crypto";
-import type { PushTarget } from "@bilibili-notify/internal";
+import type { PushAdapter, PushTarget } from "@bilibili-notify/internal";
 
 /**
- * Synthesize a PushTarget from a legacy flat-config channel entry.
- *
- * Example:
- *   platform = "koishi-onebot", channelId = "12345678"
- *   → PushTarget { id: <uuid>, name: "onebot:12345678", platform: "koishi-onebot",
- *                  scope: "group", config: { botPlatform: "onebot", channelId: "12345678" },
- *                  enabled: true }
+ * Synthesize a `koishi-bot` PushAdapter for a given `(botPlatform, selfId?)`
+ * pair. The koishi shell stores these in {@link TargetRegistry} so the
+ * standalone-side ConfigStore isn't needed.
  */
-export function synthesizeTargetsForFlatSub(koishiPlatform: string, channelId: string): PushTarget {
-	const botPlatform = koishiPlatform.startsWith("koishi-")
-		? koishiPlatform.slice("koishi-".length)
-		: koishiPlatform;
-
+export function synthesizeKoishiBotAdapter(botPlatform: string, selfId?: string): PushAdapter {
 	return {
 		id: randomUUID(),
-		name: `${botPlatform}:${channelId}`,
-		platform: koishiPlatform,
-		scope: "group",
+		name: selfId ? `${botPlatform}:${selfId}` : botPlatform,
+		enabled: true,
+		platform: "koishi-bot",
 		config: {
 			botPlatform,
-			channelId,
+			selfId,
 		},
-		enabled: true,
 	};
 }
 
 /**
- * Synthesize a PushTarget for the master account (private message).
- *
- * Example:
- *   platform = "koishi-onebot", userId = "987654321"
- *   → PushTarget { ..., scope: "private", config: { botPlatform: "onebot", userId: "987654321" } }
+ * Synthesize a `koishi-bot` PushTarget bound to `adapter` for a group channel.
+ */
+export function synthesizeTargetsForFlatSub(adapter: PushAdapter, channelId: string): PushTarget {
+	if (adapter.platform !== "koishi-bot") {
+		throw new Error(`synthesizeTargetsForFlatSub requires a koishi-bot adapter`);
+	}
+	return {
+		id: randomUUID(),
+		name: `${adapter.config.botPlatform}:${channelId}`,
+		adapterId: adapter.id,
+		platform: "koishi-bot",
+		scope: "group",
+		enabled: true,
+		session: { channelId },
+	};
+}
+
+/**
+ * Synthesize a `koishi-bot` PushTarget for the master account (private message).
  */
 export function synthesizeMasterTarget(
-	platform: string,
+	adapter: PushAdapter,
 	userId: string,
 	guildId?: string,
 ): PushTarget {
-	const koishiPlatform = platform.startsWith("koishi-") ? platform : `koishi-${platform}`;
-	const botPlatform = koishiPlatform.slice("koishi-".length);
+	if (adapter.platform !== "koishi-bot") {
+		throw new Error(`synthesizeMasterTarget requires a koishi-bot adapter`);
+	}
 	return {
 		id: randomUUID(),
-		name: `master:${botPlatform}:${userId}`,
-		platform: koishiPlatform,
+		name: `master:${adapter.config.botPlatform}:${userId}`,
+		adapterId: adapter.id,
+		platform: "koishi-bot",
 		scope: "private",
-		config: {
-			botPlatform,
-			userId,
-			guildId,
-		},
 		enabled: true,
+		session: { userId, guildId },
 	};
 }

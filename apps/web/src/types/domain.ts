@@ -59,66 +59,77 @@ export const DEFAULT_FEATURE_FLAGS: Record<FeatureKey, boolean> = {
 	specialUserEnter: false,
 };
 
-// ---- PushTarget --------------------------------------------------------
+// ---- PushAdapter (connection level) --------------------------------------
 
 export type PushTargetScope = "group" | "private" | "channel";
 
-export interface OnebotConfig {
+export interface OnebotAdapterConfig {
 	baseUrl: string;
 	accessToken?: string;
-	groupId?: string;
-	userId?: string;
 	protocolVersion?: "v11";
 }
 
-export interface WebhookConfig {
+export interface WebhookAdapterConfig {
 	url: string;
 	secret?: string;
 	headers: Record<string, string>;
 }
 
-export interface WebDashboardConfig {
-	dashboardUser?: string;
-}
+// no connection-level config (the dashboard itself is the bridge)
+export type WebDashboardAdapterConfig = Record<string, never>;
 
-export interface KoishiTargetConfig {
-	botPlatform: string;
-	selfId?: string;
-	channelId?: string;
-	guildId?: string;
-	userId?: string;
-}
-
-export interface PushTargetTestStatus {
+export interface PushAdapterTestStatus {
 	ok: boolean;
 	lastCheckedAt: string;
 	latencyMs?: number;
 	err?: string;
 }
 
+interface PushAdapterCommon {
+	id: string;
+	name: string;
+	enabled: boolean;
+	testStatus?: PushAdapterTestStatus;
+}
+
+export type PushAdapter =
+	| (PushAdapterCommon & { platform: "onebot"; config: OnebotAdapterConfig })
+	| (PushAdapterCommon & { platform: "webhook"; config: WebhookAdapterConfig })
+	| (PushAdapterCommon & { platform: "web-dashboard"; config: WebDashboardAdapterConfig });
+
+// ---- PushTarget (session level — references an adapter) ------------------
+
+export interface OnebotSession {
+	groupId?: string;
+	userId?: string;
+}
+
+// no session-level config (the webhook URL is the endpoint)
+export type WebhookSession = Record<string, never>;
+
+export interface WebDashboardSession {
+	dashboardUser?: string;
+}
+
 interface PushTargetCommon {
 	id: string;
 	name: string;
+	adapterId: string;
 	scope: PushTargetScope;
 	enabled: boolean;
-	testStatus?: PushTargetTestStatus;
 }
 
 export type PushTarget =
-	| (PushTargetCommon & { platform: "onebot"; config: OnebotConfig })
-	| (PushTargetCommon & { platform: "webhook"; config: WebhookConfig })
-	| (PushTargetCommon & { platform: "web-dashboard"; config: WebDashboardConfig })
-	| (PushTargetCommon & { platform: `koishi-${string}`; config: KoishiTargetConfig });
+	| (PushTargetCommon & { platform: "onebot"; session: OnebotSession })
+	| (PushTargetCommon & { platform: "webhook"; session: WebhookSession })
+	| (PushTargetCommon & { platform: "web-dashboard"; session: WebDashboardSession });
 
-export type PushTargetPlatform = "onebot" | "webhook" | "web-dashboard" | `koishi-${string}`;
+export type PushTargetPlatform = "onebot" | "webhook" | "web-dashboard";
 
-export const KNOWN_PLATFORMS: ReadonlyArray<{ value: string; label: string }> = [
+export const KNOWN_PLATFORMS: ReadonlyArray<{ value: PushTargetPlatform; label: string }> = [
 	{ value: "onebot", label: "OneBot v11" },
 	{ value: "webhook", label: "Webhook" },
 	{ value: "web-dashboard", label: "Web Dashboard 通知" },
-	{ value: "koishi-onebot", label: "Koishi · OneBot" },
-	{ value: "koishi-discord", label: "Koishi · Discord" },
-	{ value: "koishi-telegram", label: "Koishi · Telegram" },
 ];
 
 // ---- Subscription -----------------------------------------------------
@@ -279,13 +290,12 @@ export function makeEmptySubscription(uid: string): Subscription {
 	};
 }
 
-export function makeEmptyTarget(platform: string, name: string): PushTarget {
+export function makeEmptyAdapter(platform: PushTargetPlatform, name: string): PushAdapter {
 	const base = { id: newId(), name, enabled: true } as const;
 	if (platform === "onebot") {
 		return {
 			...base,
 			platform: "onebot",
-			scope: "group",
 			config: { baseUrl: "http://127.0.0.1:3000", protocolVersion: "v11" },
 		};
 	}
@@ -293,34 +303,28 @@ export function makeEmptyTarget(platform: string, name: string): PushTarget {
 		return {
 			...base,
 			platform: "webhook",
-			scope: "channel",
 			config: { url: "https://example.com/hook", headers: {} },
 		};
 	}
-	if (platform === "web-dashboard") {
-		return {
-			...base,
-			platform: "web-dashboard",
-			scope: "channel",
-			config: {},
-		};
-	}
-	// koishi-* — caller chose the platform suffix already
-	const koishiPlatform = (
-		platform.startsWith("koishi-") ? platform : `koishi-${platform}`
-	) as `koishi-${string}`;
-	const botPlatform = koishiPlatform.slice("koishi-".length);
 	return {
 		...base,
-		platform: koishiPlatform,
-		scope: "group",
-		config: { botPlatform },
+		platform: "web-dashboard",
+		config: {},
 	};
+}
+
+export function makeEmptyTarget(adapter: PushAdapter, name: string): PushTarget {
+	const base = { id: newId(), name, adapterId: adapter.id, enabled: true } as const;
+	if (adapter.platform === "onebot") {
+		return { ...base, platform: "onebot", scope: "group", session: {} };
+	}
+	if (adapter.platform === "webhook") {
+		return { ...base, platform: "webhook", scope: "channel", session: {} };
+	}
+	return { ...base, platform: "web-dashboard", scope: "channel", session: {} };
 }
 
 export function platformLabel(platform: string): string {
 	const known = KNOWN_PLATFORMS.find((p) => p.value === platform);
-	if (known) return known.label;
-	if (platform.startsWith("koishi-")) return `Koishi · ${platform.slice("koishi-".length)}`;
-	return platform;
+	return known?.label ?? platform;
 }

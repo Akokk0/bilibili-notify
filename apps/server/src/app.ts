@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { basicAuth } from "hono/basic-auth";
 import { HTTPException } from "hono/http-exception";
 import type { AuthSystem } from "./auth/index.js";
+import { createAdaptersRoute } from "./routes/adapters.js";
 import { createAuthRoute } from "./routes/auth.js";
 import { createCardsRoute } from "./routes/cards.js";
 import { createGlobalsRoute } from "./routes/globals.js";
@@ -100,6 +101,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	app.route("/api/health", createHealthRoute(deps));
 	app.route("/api/globals", createGlobalsRoute(deps));
 	app.route("/api/subs", createSubsRoute(deps));
+	app.route("/api/adapters", createAdaptersRoute(deps));
 	app.route("/api/targets", createTargetsRoute(deps));
 	app.route("/api/live", createLiveRoute(deps));
 	app.route("/api/history", createHistoryRoute(deps));

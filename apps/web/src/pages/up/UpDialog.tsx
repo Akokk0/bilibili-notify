@@ -489,23 +489,41 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 			</div>
 
 			{/* Footer */}
-			<div className="flex items-center gap-2 border-t border-gray-200 px-3.5 py-3">
-				<Btn
-					variant="danger"
-					size="sm"
-					icon={<Icon.trash size={12} />}
-					onClick={onDelete}
-					disabled={saving}
-				>
-					移除订阅
-				</Btn>
-				<div className="flex-1" />
-				<Btn variant="outline" size="sm" onClick={onClose} disabled={saving}>
-					取消
-				</Btn>
-				<Btn variant="primary" size="sm" onClick={() => onSave(draft)} disabled={saving || !dirty}>
-					{saving ? "保存中…" : "保存配置"}
-				</Btn>
+			<div className="flex flex-col gap-1.5 border-t border-gray-200 px-3.5 py-3">
+				{attachedTargets.length === 0 && targets.length > 0 ? (
+					<div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700">
+						⚠️ 未选中任何推送目标,保存后该订阅不会向任何地方推送消息
+					</div>
+				) : null}
+				<div className="flex items-center gap-2">
+					<Btn
+						variant="danger"
+						size="sm"
+						icon={<Icon.trash size={12} />}
+						onClick={onDelete}
+						disabled={saving}
+					>
+						移除订阅
+					</Btn>
+					<div className="flex-1" />
+					<Btn variant="outline" size="sm" onClick={onClose} disabled={saving}>
+						取消
+					</Btn>
+					<Btn
+						variant="primary"
+						size="sm"
+						onClick={() => {
+							if (!dirty) {
+								onClose();
+								return;
+							}
+							onSave(draft);
+						}}
+						disabled={saving}
+					>
+						{saving ? "保存中…" : "保存配置"}
+					</Btn>
+				</div>
 			</div>
 		</ModalShell>
 	);

@@ -2,8 +2,10 @@ import type {
 	DeliveryResult,
 	Logger,
 	NotificationPayload,
-	OnebotConfig,
+	OnebotAdapterConfig,
+	OnebotSession,
 	PayloadSegment,
+	PushAdapter,
 	PushTarget,
 } from "@bilibili-notify/internal";
 import type { PlatformAdapter } from "./types.js";
@@ -18,10 +20,12 @@ import type { PlatformAdapter } from "./types.js";
  * Compatible with NapCat (primary test target) and any other v11-compliant
  * implementation that accepts the standard payload + base64 image segment.
  *
- * Token auth: when `accessToken` is set on the target config, it's appended via
- * the `Authorization: Bearer <token>` header (NapCat default).
+ * Token auth: `accessToken` from the adapter config is appended via
+ * `Authorization: Bearer <token>` (NapCat default). The adapter is the unit
+ * of HTTP connection; multiple PushTargets can share one adapter to push to
+ * different groups/users without duplicating endpoint config.
  */
-export interface OnebotAdapterOptions {
+export interface OnebotPlatformAdapterOptions {
 	logger: Logger;
 	/** Per-request timeout (ms). Defaults to 15s. */
 	timeoutMs?: number;
@@ -42,7 +46,7 @@ interface OneBotResponse {
 	data?: unknown;
 }
 
-export function createOnebotAdapter(opts: OnebotAdapterOptions): PlatformAdapter {
+export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): PlatformAdapter {
 	const log = opts.logger;
 	const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
@@ -114,22 +118,28 @@ export function createOnebotAdapter(opts: OnebotAdapterOptions): PlatformAdapter
 	return {
 		platforms: ["onebot"],
 
-		isAvailable(target: PushTarget): boolean {
-			if (target.platform !== "onebot") return false;
-			if (!target.enabled) return false;
-			const cfg = target.config as OnebotConfig;
+		isAvailable(adapter: PushAdapter, target: PushTarget): boolean {
+			if (adapter.platform !== "onebot" || target.platform !== "onebot") return false;
+			if (!adapter.enabled || !target.enabled) return false;
+			const cfg = adapter.config as OnebotAdapterConfig;
 			return typeof cfg.baseUrl === "string" && cfg.baseUrl.length > 0;
 		},
 
 		async send(
+			adapter: PushAdapter,
 			target: PushTarget,
 			payload: NotificationPayload,
 			opts: { private?: boolean } = {},
 		): Promise<DeliveryResult> {
-			if (target.platform !== "onebot") {
-				return { ok: false, latencyMs: 0, err: `wrong platform: ${target.platform}` };
+			if (adapter.platform !== "onebot" || target.platform !== "onebot") {
+				return {
+					ok: false,
+					latencyMs: 0,
+					err: `wrong platform: adapter=${adapter.platform} target=${target.platform}`,
+				};
 			}
-			const cfg = target.config as OnebotConfig;
+			const cfg = adapter.config as OnebotAdapterConfig;
+			const session = target.session as OnebotSession;
 			const t0 = Date.now();
 			try {
 				const segments = buildSegments(payload);
@@ -141,11 +151,11 @@ export function createOnebotAdapter(opts: OnebotAdapterOptions): PlatformAdapter
 				const endpoint = isPrivate ? "/send_private_msg" : "/send_group_msg";
 				const body: Record<string, unknown> = { message: segments };
 				if (isPrivate) {
-					if (!cfg.userId) return { ok: false, latencyMs: 0, err: "private: userId missing" };
-					body.user_id = Number(cfg.userId);
+					if (!session.userId) return { ok: false, latencyMs: 0, err: "private: userId missing" };
+					body.user_id = Number(session.userId);
 				} else {
-					if (!cfg.groupId) return { ok: false, latencyMs: 0, err: "group: groupId missing" };
-					body.group_id = Number(cfg.groupId);
+					if (!session.groupId) return { ok: false, latencyMs: 0, err: "group: groupId missing" };
+					body.group_id = Number(session.groupId);
 				}
 
 				const result = await postOnebot(cfg.baseUrl, cfg.accessToken, endpoint, body);

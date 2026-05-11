@@ -1,128 +1,164 @@
 import { describe, expect, it } from "vitest";
-import { PushTargetSchema } from "./targets";
+import { PushAdapterSchema, PushTargetSchema } from "./targets";
 
-const UUID = "11111111-1111-4111-8111-111111111111";
+const UUID_A = "11111111-1111-4111-8111-111111111111";
+const UUID_B = "22222222-2222-4222-8222-222222222222";
 
-describe("PushTargetSchema (discriminated by platform)", () => {
-	it("accepts a valid onebot target", () => {
-		const r = PushTargetSchema.safeParse({
-			id: UUID,
-			name: "ob",
+describe("PushAdapterSchema (discriminated by platform)", () => {
+	it("accepts a valid onebot adapter", () => {
+		const r = PushAdapterSchema.safeParse({
+			id: UUID_A,
+			name: "napcat-main",
 			platform: "onebot",
-			scope: "group",
-			config: { baseUrl: "http://localhost:5700", groupId: "123" },
 			enabled: true,
+			config: { baseUrl: "http://localhost:5700", accessToken: "secret" },
 		});
 		expect(r.success).toBe(true);
 	});
 
-	it("rejects onebot platform paired with webhook config (would silently pass under naked z.union)", () => {
-		// `url` is required by webhook; onebot expects `baseUrl`. Under the old z.union schema
-		// this could accidentally validate against the wrong branch.
-		const r = PushTargetSchema.safeParse({
-			id: UUID,
+	it("rejects an onebot adapter with webhook config", () => {
+		const r = PushAdapterSchema.safeParse({
+			id: UUID_A,
 			name: "bad",
 			platform: "onebot",
-			scope: "group",
-			config: { url: "https://example.com/hook" },
 			enabled: true,
+			config: { url: "https://example.com/hook" },
 		});
 		expect(r.success).toBe(false);
 	});
 
-	it("rejects webhook platform paired with onebot config", () => {
-		const r = PushTargetSchema.safeParse({
-			id: UUID,
-			name: "bad",
+	it("accepts a valid webhook adapter", () => {
+		const r = PushAdapterSchema.safeParse({
+			id: UUID_A,
+			name: "wh1",
 			platform: "webhook",
-			scope: "group",
-			config: { baseUrl: "http://localhost:5700" },
 			enabled: true,
-		});
-		expect(r.success).toBe(false);
-	});
-
-	it("accepts a valid webhook target", () => {
-		const r = PushTargetSchema.safeParse({
-			id: UUID,
-			name: "wh",
-			platform: "webhook",
-			scope: "group",
 			config: { url: "https://example.com/hook" },
-			enabled: true,
 		});
 		expect(r.success).toBe(true);
 	});
 
-	it("accepts a valid web-dashboard target", () => {
-		const r = PushTargetSchema.safeParse({
-			id: UUID,
-			name: "dash",
+	it("accepts a valid web-dashboard adapter", () => {
+		const r = PushAdapterSchema.safeParse({
+			id: UUID_A,
+			name: "dashboard",
 			platform: "web-dashboard",
-			scope: "channel",
+			enabled: true,
 			config: {},
-			enabled: true,
 		});
 		expect(r.success).toBe(true);
 	});
 
-	it("rejects web-dashboard platform with onebot config", () => {
-		const r = PushTargetSchema.safeParse({
-			id: UUID,
+	it("accepts a valid koishi-bot adapter", () => {
+		const r = PushAdapterSchema.safeParse({
+			id: UUID_A,
+			name: "onebot",
+			platform: "koishi-bot",
+			enabled: true,
+			config: { botPlatform: "onebot" },
+		});
+		expect(r.success).toBe(true);
+	});
+
+	it("rejects koishi-bot adapter without botPlatform", () => {
+		const r = PushAdapterSchema.safeParse({
+			id: UUID_A,
 			name: "bad",
-			platform: "web-dashboard",
-			scope: "channel",
-			config: { baseUrl: "http://localhost:5700" },
+			platform: "koishi-bot",
 			enabled: true,
-		});
-		expect(r.success).toBe(false);
-	});
-
-	it("accepts a valid koishi-onebot target", () => {
-		const r = PushTargetSchema.safeParse({
-			id: UUID,
-			name: "onebot:111",
-			platform: "koishi-onebot",
-			scope: "group",
-			config: { botPlatform: "onebot", channelId: "111" },
-			enabled: true,
-		});
-		expect(r.success).toBe(true);
-	});
-
-	it("accepts a valid koishi-discord target", () => {
-		const r = PushTargetSchema.safeParse({
-			id: UUID,
-			name: "discord:111",
-			platform: "koishi-discord",
-			scope: "channel",
-			config: { botPlatform: "discord", channelId: "111" },
-			enabled: true,
-		});
-		expect(r.success).toBe(true);
-	});
-
-	it("rejects koishi-* target without botPlatform", () => {
-		const r = PushTargetSchema.safeParse({
-			id: UUID,
-			name: "bad",
-			platform: "koishi-onebot",
-			scope: "group",
-			config: { channelId: "111" },
-			enabled: true,
+			config: {},
 		});
 		expect(r.success).toBe(false);
 	});
 
 	it("rejects unknown platform", () => {
-		const r = PushTargetSchema.safeParse({
-			id: UUID,
+		const r = PushAdapterSchema.safeParse({
+			id: UUID_A,
 			name: "bad",
-			platform: "qq",
-			scope: "group",
-			config: { botPlatform: "qq", channelId: "111" },
+			platform: "koishi-onebot",
 			enabled: true,
+			config: { botPlatform: "onebot" },
 		});
 		expect(r.success).toBe(false);
+	});
+});
+
+describe("PushTargetSchema (discriminated by platform)", () => {
+	it("accepts an onebot target", () => {
+		const r = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "ob:111",
+			adapterId: UUID_A,
+			platform: "onebot",
+			scope: "group",
+			enabled: true,
+			session: { groupId: "111" },
+		});
+		expect(r.success).toBe(true);
+	});
+
+	it("accepts a webhook target with empty session", () => {
+		const r = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "wh:1",
+			adapterId: UUID_A,
+			platform: "webhook",
+			scope: "channel",
+			enabled: true,
+			session: {},
+		});
+		expect(r.success).toBe(true);
+	});
+
+	it("accepts a web-dashboard target with dashboardUser", () => {
+		const r = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "dash",
+			adapterId: UUID_A,
+			platform: "web-dashboard",
+			scope: "channel",
+			enabled: true,
+			session: { dashboardUser: "alice" },
+		});
+		expect(r.success).toBe(true);
+	});
+
+	it("accepts a koishi-bot target with channelId", () => {
+		const r = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "ob:111",
+			adapterId: UUID_A,
+			platform: "koishi-bot",
+			scope: "group",
+			enabled: true,
+			session: { channelId: "111" },
+		});
+		expect(r.success).toBe(true);
+	});
+
+	it("rejects onebot target missing adapterId", () => {
+		const r = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "bad",
+			platform: "onebot",
+			scope: "group",
+			enabled: true,
+			session: { groupId: "111" },
+		});
+		expect(r.success).toBe(false);
+	});
+
+	it("ignores extraneous session keys (zod is non-strict by default; only structural required keys matter)", () => {
+		// Onebot session has only optional groupId/userId; extra keys are tolerated.
+		const r = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "ok",
+			adapterId: UUID_A,
+			platform: "onebot",
+			scope: "group",
+			enabled: true,
+			session: { groupId: "1", extraneous: "ignored" },
+		});
+		expect(r.success).toBe(true);
 	});
 });

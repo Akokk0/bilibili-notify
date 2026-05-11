@@ -1,6 +1,11 @@
 import { resolve } from "node:path";
 import type { BilibiliAPI, BiliDataServer } from "@bilibili-notify/api";
-import type { PushTarget, Subscription, SubscriptionOp } from "@bilibili-notify/internal";
+import type {
+	PushAdapter,
+	PushTarget,
+	Subscription,
+	SubscriptionOp,
+} from "@bilibili-notify/internal";
 import type { CookieData } from "@bilibili-notify/storage";
 // biome-ignore lint/correctness/noUnusedImports: module augmentation
 import {} from "@koishijs/plugin-console";
@@ -33,6 +38,12 @@ declare module "koishi" {
 		 * the message (Fix 6).
 		 */
 		"bilibili-notify/advanced-sub-targets"(targets: PushTarget[]): void;
+		/**
+		 * Emitted ahead of `advanced-sub-targets`. Carries the koishi-bot
+		 * adapters that targets reference; the registry must have them before
+		 * `assertAdapterMatches`-style validation runs.
+		 */
+		"bilibili-notify/advanced-sub-adapters"(adapters: PushAdapter[]): void;
 		"bilibili-notify/ready-to-receive"(): void;
 		"bilibili-notify/cookies-refreshed"(data: CookieData): void;
 		"bilibili-notify/subscription-changed"(ops: SubscriptionOp[]): void;

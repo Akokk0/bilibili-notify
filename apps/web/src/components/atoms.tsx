@@ -263,14 +263,7 @@ export function Input({
 // ── PlatformIcon ────────────────────────────────────────────────────────────
 
 const PLATFORM_META: Record<string, { color: string; label: string; icon?: IconName }> = {
-	qq: { color: "#1C9CEA", label: "QQ", icon: "qq" },
-	qqguild: { color: "#1C9CEA", label: "QQ 频道", icon: "qq" },
-	onebot: { color: "#3b82f6", label: "OneBot" },
-	"koishi-onebot": { color: "#1C9CEA", label: "Koishi · OneBot", icon: "qq" },
-	"koishi-discord": { color: "#5865F2", label: "Koishi · Discord", icon: "discord" },
-	"koishi-telegram": { color: "#26A5E4", label: "Koishi · Telegram", icon: "telegram" },
-	discord: { color: "#5865F2", label: "Discord", icon: "discord" },
-	telegram: { color: "#26A5E4", label: "Telegram", icon: "telegram" },
+	onebot: { color: "#3b82f6", label: "OneBot", icon: "qq" },
 	webhook: { color: "#22c55e", label: "Webhook" },
 	"web-dashboard": { color: "#a29bfe", label: "Dashboard" },
 };

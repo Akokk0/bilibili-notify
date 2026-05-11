@@ -3,6 +3,7 @@ import {
 	FEATURE_KEYS,
 	type FeatureKey,
 	makeEmptySubscription,
+	type PushAdapter,
 	type PushTarget,
 	type Subscription,
 	type SubscriptionRouting,
@@ -12,7 +13,7 @@ import type { Notifier } from "@koishijs/plugin-notifier";
 import { type Context, h, type Logger } from "koishi";
 import type { BilibiliNotifyConfig } from "./config";
 import type { TargetRegistry } from "./target-registry";
-import { synthesizeTargetsForFlatSub } from "./target-synthesis";
+import { synthesizeKoishiBotAdapter, synthesizeTargetsForFlatSub } from "./target-synthesis";
 
 export interface SubscriptionLoaderHooks {
 	getConfig(): BilibiliNotifyConfig;
@@ -63,21 +64,26 @@ export function flatSubToSubscription(
 	const sub = makeEmptySubscription({ id: subId, uid });
 	sub.overrides = {};
 
-	// Synthesize targets and wire routing
+	// Synthesize adapter (one per botPlatform) + targets and wire routing.
 	const channelIds = item.target
 		.split(",")
 		.map((s) => s.trim())
 		.filter(Boolean);
-	const koishiPlatform = `koishi-${item.platform}`;
+
+	// Reuse or create a single koishi-bot adapter for this botPlatform.
+	let adapter = registry.findKoishiBotAdapter(item.platform);
+	if (!adapter) {
+		adapter = synthesizeKoishiBotAdapter(item.platform);
+		registry.setAdapter(adapter);
+	}
 
 	const targetIds: string[] = [];
 	for (const channelId of channelIds) {
-		// Reuse existing target if same platform+channelId
-		const existing = registry.findByPlatformAndChannel(koishiPlatform, channelId);
+		const existing = registry.findTargetByChannel(adapter.id, channelId);
 		if (existing) {
 			targetIds.push(existing.id);
 		} else {
-			const t = synthesizeTargetsForFlatSub(koishiPlatform, channelId);
+			const t = synthesizeTargetsForFlatSub(adapter, channelId);
 			registry.set(t);
 			targetIds.push(t.id);
 		}
@@ -120,8 +126,7 @@ function deterministicUuid(input: string): string {
 		h3 = (Math.imul(h3, 31) ^ c) >>> 0;
 		h4 = (Math.imul(h4, 29) ^ c) >>> 0;
 	}
-	const toHex = (n: number, len: number) =>
-		((n >>> 0) & 0xffffffff).toString(16).padStart(len, "0").slice(-len);
+	const toHex = (n: number, len: number) => (n >>> 0).toString(16).padStart(len, "0").slice(-len);
 	const seg1 = toHex(h1, 8);
 	const seg2 = toHex((h2 >>> 0) & 0xffff, 4);
 	const seg3 = `4${toHex(((h3 >>> 0) >>> 4) & 0x0fff, 3)}`;
@@ -191,9 +196,14 @@ export class SubscriptionLoader {
 	/** Wire the optional advanced-sub event listener. No-op outside advanced-sub mode. */
 	registerAdvancedSubListener(): void {
 		if (!this.hooks.getConfig().advancedSub) return;
-		// `advanced-sub-targets` is emitted by the adapter before `advanced-sub`,
-		// so the registry has the PushTargets ready when the subscription routing
-		// references them. Fix 6.
+		// `advanced-sub-adapters` then `advanced-sub-targets` then `advanced-sub`
+		// land in that order so the registry resolves adapter/target references
+		// before subscriptions try to use them. Fix 6 (extended).
+		this.ctx.on("bilibili-notify/advanced-sub-adapters", (adapters: PushAdapter[]) => {
+			for (const a of adapters) {
+				this.registry.setAdapter(a);
+			}
+		});
 		this.ctx.on("bilibili-notify/advanced-sub-targets", (targets: PushTarget[]) => {
 			for (const t of targets) {
 				this.registry.set(t);

@@ -11,7 +11,7 @@ import { LoginFlowBridge } from "./login-flow-bridge";
 import { createKoishiSink } from "./sink";
 import { SubscriptionLoader } from "./subscription-loader";
 import { TargetRegistry } from "./target-registry";
-import { synthesizeMasterTarget } from "./target-synthesis";
+import { synthesizeKoishiBotAdapter, synthesizeMasterTarget } from "./target-synthesis";
 
 /** Mutable runtime state on the manager that lifecycle helpers read/write. */
 export interface ManagerSlots {
@@ -56,11 +56,16 @@ export async function bringUp(deps: LifecycleDeps): Promise<boolean> {
 	const registry = new TargetRegistry();
 	const store = createSubscriptionStore(bus);
 
-	// --- Master target synthesis ---
+	// --- Master target synthesis (with its own koishi-bot adapter) ---
 	let masterTarget = null;
 	if (config.master.enable && config.master.platform && config.master.masterAccount) {
+		let masterAdapter = registry.findKoishiBotAdapter(config.master.platform);
+		if (!masterAdapter) {
+			masterAdapter = synthesizeKoishiBotAdapter(config.master.platform);
+			registry.setAdapter(masterAdapter);
+		}
 		masterTarget = synthesizeMasterTarget(
-			config.master.platform,
+			masterAdapter,
 			config.master.masterAccount,
 			config.master.masterAccountGuildId,
 		);
@@ -71,6 +76,7 @@ export async function bringUp(deps: LifecycleDeps): Promise<boolean> {
 	const sink = createKoishiSink({
 		ctx: deps.ctx,
 		resolveTarget: (id) => registry.get(id),
+		resolveAdapter: (id) => registry.getAdapter(id),
 	});
 
 	// --- BilibiliPush (new platform-neutral form) ---

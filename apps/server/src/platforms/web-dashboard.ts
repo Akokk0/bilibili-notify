@@ -2,6 +2,7 @@ import type {
 	DeliveryResult,
 	Logger,
 	NotificationPayload,
+	PushAdapter,
 	PushTarget,
 } from "@bilibili-notify/internal";
 import type { PlatformAdapter } from "./types.js";
@@ -24,16 +25,26 @@ export interface WebDashboardAdapterOptions {
 export function createWebDashboardAdapter(_opts: WebDashboardAdapterOptions): PlatformAdapter {
 	return {
 		platforms: ["web-dashboard"],
-		isAvailable(target: PushTarget): boolean {
-			return target.platform === "web-dashboard" && target.enabled;
+		isAvailable(adapter: PushAdapter, target: PushTarget): boolean {
+			return (
+				adapter.platform === "web-dashboard" &&
+				target.platform === "web-dashboard" &&
+				adapter.enabled &&
+				target.enabled
+			);
 		},
 		async send(
+			adapter: PushAdapter,
 			target: PushTarget,
 			_payload: NotificationPayload,
 			_opts?: { private?: boolean },
 		): Promise<DeliveryResult> {
-			if (target.platform !== "web-dashboard") {
-				return { ok: false, latencyMs: 0, err: `wrong platform: ${target.platform}` };
+			if (adapter.platform !== "web-dashboard" || target.platform !== "web-dashboard") {
+				return {
+					ok: false,
+					latencyMs: 0,
+					err: `wrong platform: adapter=${adapter.platform} target=${target.platform}`,
+				};
 			}
 			return { ok: true, latencyMs: 0 };
 		},

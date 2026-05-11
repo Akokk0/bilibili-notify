@@ -214,13 +214,22 @@ describe("ConfigStore", () => {
 	});
 
 	it("targets CRUD: upsert / patch / delete with proper events", async () => {
+		const adapter = {
+			id: randomUUID(),
+			name: "wh1",
+			platform: "webhook" as const,
+			enabled: true,
+			config: { url: "https://example.com/hook", headers: {} },
+		};
+		await store.upsertAdapter(adapter);
 		const target = {
 			id: randomUUID(),
 			name: "t1",
+			adapterId: adapter.id,
 			platform: "webhook" as const,
 			scope: "group" as const,
 			enabled: true,
-			config: { url: "https://example.com/hook", headers: {} },
+			session: {},
 		};
 		await store.upsertTarget(target);
 		expect(store.getTargets()).toHaveLength(1);

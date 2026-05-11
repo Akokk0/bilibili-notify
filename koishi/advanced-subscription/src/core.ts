@@ -218,9 +218,10 @@ export const BilibiliNotifyAdvancedSubConfig: Schema<BilibiliNotifyAdvancedSubCo
 
 export function applyAdvancedSub(ctx: Context, config: BilibiliNotifyAdvancedSubConfig): void {
 	const emit = () => {
-		const { subs, targets } = buildAdvancedSubAndTargets(config);
-		// Emit targets first so the registry has the entries before subscriptions
-		// reference them via routing.
+		const { subs, adapters, targets } = buildAdvancedSubAndTargets(config);
+		// Emit adapters + targets first so the registry has them before
+		// subscriptions reference them via routing.
+		ctx.emit("bilibili-notify/advanced-sub-adapters", adapters);
 		ctx.emit("bilibili-notify/advanced-sub-targets", targets);
 		ctx.emit("bilibili-notify/advanced-sub", subs);
 	};

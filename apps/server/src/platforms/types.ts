@@ -1,23 +1,31 @@
-import type { DeliveryResult, NotificationPayload, PushTarget } from "@bilibili-notify/internal";
+import type {
+	DeliveryResult,
+	NotificationPayload,
+	PushAdapter,
+	PushTarget,
+} from "@bilibili-notify/internal";
 
 /**
  * Platform adapter contract used by {@link MultiplexNotificationSink}.
  *
- * One adapter per `PushTarget.platform` family. Each adapter is constructed
- * with whatever shared deps it needs (HTTP client, WS server reference, etc.)
- * and exposes a single async `send(target, payload, opts)` method. The sink
- * dispatches by matching `target.platform`.
+ * One adapter per `PushAdapter.platform` family. Each platform adapter is
+ * constructed with shared deps (HTTP client, WS server reference, etc.) and
+ * exposes a single async `send(adapter, target, payload, opts)` method —
+ * `adapter` carries the connection params (baseUrl, token, …), `target`
+ * carries the session (groupId, dashboardUser, …). The sink dispatches by
+ * matching `adapter.platform`.
  *
  * Adapters should NOT throw — return `{ ok: false, err: "..." }` instead.
  * The router will retry on transient failures.
  */
 export interface PlatformAdapter {
-	/** Comma-separated list of platforms this adapter handles ("onebot", "webhook", "web-dashboard"). */
+	/** Platforms this adapter handles ("onebot" / "webhook" / "web-dashboard"). */
 	readonly platforms: readonly string[];
-	/** Return whether this adapter can deliver to `target` right now. */
-	isAvailable(target: PushTarget): boolean;
-	/** Deliver `payload` to `target`. `private=true` flips group → private semantics where applicable. */
+	/** Return whether this adapter can deliver to `target` (via `adapter`) right now. */
+	isAvailable(adapter: PushAdapter, target: PushTarget): boolean;
+	/** Deliver `payload` to `target` over `adapter`. `private=true` flips group → private semantics where applicable. */
 	send(
+		adapter: PushAdapter,
 		target: PushTarget,
 		payload: NotificationPayload,
 		opts?: { private?: boolean },

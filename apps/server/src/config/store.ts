@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
@@ -8,6 +8,8 @@ import {
 	GlobalConfigSchema,
 	type MessageBus,
 	makeDefaultGlobalConfig,
+	type PushAdapter,
+	PushAdapterSchema,
 	type PushTarget,
 	PushTargetSchema,
 	type ServiceContext,
@@ -59,10 +61,12 @@ export interface ConfigStore {
 	// --- reads ------------------------------------------------------------
 	getGlobals(): GlobalConfig;
 	getSubscriptions(): Subscription[];
+	getAdapters(): PushAdapter[];
 	getTargets(): PushTarget[];
 
 	getGlobalsMeta(): ConfigScopeMeta;
 	getSubscriptionsMeta(): ConfigScopeMeta;
+	getAdaptersMeta(): ConfigScopeMeta;
 	getTargetsMeta(): ConfigScopeMeta;
 
 	// --- writes -----------------------------------------------------------
@@ -71,6 +75,9 @@ export interface ConfigStore {
 	upsertSubscription(sub: Subscription): Promise<void>;
 	patchSubscription(id: string, patch: DeepPartial<Subscription>): Promise<Subscription>;
 	deleteSubscription(id: string): Promise<boolean>;
+	upsertAdapter(adapter: PushAdapter): Promise<void>;
+	patchAdapter(id: string, patch: DeepPartial<PushAdapter>): Promise<PushAdapter>;
+	deleteAdapter(id: string): Promise<boolean>;
 	upsertTarget(target: PushTarget): Promise<void>;
 	patchTarget(id: string, patch: DeepPartial<PushTarget>): Promise<PushTarget>;
 	deleteTarget(id: string): Promise<boolean>;
@@ -163,6 +170,155 @@ async function readJsonOrInit<T>(
 	}
 }
 
+async function fileExists(absPath: string): Promise<boolean> {
+	try {
+		await readFile(absPath, "utf8");
+		return true;
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+		throw err;
+	}
+}
+
+/**
+ * Splits the legacy `PushTarget` shape (config bundled connection + session)
+ * into the new (PushAdapter, PushTarget) pair. Targets with the same platform
+ * and connection params share an adapter so the user doesn't end up with N
+ * identical NapCat connection entries after migrating N groups.
+ */
+interface LegacyPushTarget {
+	id: string;
+	name: string;
+	platform: string;
+	scope: "group" | "private" | "channel";
+	enabled: boolean;
+	config: Record<string, unknown>;
+}
+
+function migrateLegacyTargets(raw: unknown[]): {
+	adapters: PushAdapter[];
+	targets: PushTarget[];
+} {
+	const adapters: PushAdapter[] = [];
+	const targets: PushTarget[] = [];
+	// connection-key → adapterId, so duplicate connections collapse.
+	const adapterIdByKey = new Map<string, string>();
+
+	for (const item of raw) {
+		const legacy = item as LegacyPushTarget;
+		if (legacy.platform === "onebot") {
+			const cfg = legacy.config as {
+				baseUrl?: string;
+				accessToken?: string;
+				groupId?: string;
+				userId?: string;
+				protocolVersion?: "v11";
+			};
+			const baseUrl = cfg.baseUrl ?? "";
+			const accessToken = cfg.accessToken ?? "";
+			const key = `onebot|${baseUrl}|${accessToken}`;
+			let adapterId = adapterIdByKey.get(key);
+			if (!adapterId) {
+				adapterId = randomUUID();
+				adapterIdByKey.set(key, adapterId);
+				adapters.push({
+					id: adapterId,
+					name: deriveAdapterName(legacy.name, baseUrl),
+					enabled: true,
+					platform: "onebot",
+					config: {
+						baseUrl,
+						accessToken: accessToken || undefined,
+						protocolVersion: cfg.protocolVersion ?? "v11",
+					},
+				});
+			}
+			targets.push({
+				id: legacy.id,
+				name: legacy.name,
+				adapterId,
+				platform: "onebot",
+				scope: legacy.scope,
+				enabled: legacy.enabled,
+				session: { groupId: cfg.groupId, userId: cfg.userId },
+			});
+		} else if (legacy.platform === "webhook") {
+			const cfg = legacy.config as {
+				url?: string;
+				secret?: string;
+				headers?: Record<string, string>;
+			};
+			const url = cfg.url ?? "";
+			const key = `webhook|${url}|${cfg.secret ?? ""}`;
+			let adapterId = adapterIdByKey.get(key);
+			if (!adapterId) {
+				adapterId = randomUUID();
+				adapterIdByKey.set(key, adapterId);
+				adapters.push({
+					id: adapterId,
+					name: deriveAdapterName(legacy.name, url),
+					enabled: true,
+					platform: "webhook",
+					config: {
+						url,
+						secret: cfg.secret || undefined,
+						headers: cfg.headers ?? {},
+					},
+				});
+			}
+			targets.push({
+				id: legacy.id,
+				name: legacy.name,
+				adapterId,
+				platform: "webhook",
+				scope: legacy.scope,
+				enabled: legacy.enabled,
+				session: {},
+			});
+		} else if (legacy.platform === "web-dashboard") {
+			const cfg = legacy.config as { dashboardUser?: string };
+			const key = "web-dashboard";
+			let adapterId = adapterIdByKey.get(key);
+			if (!adapterId) {
+				adapterId = randomUUID();
+				adapterIdByKey.set(key, adapterId);
+				adapters.push({
+					id: adapterId,
+					name: "Dashboard 通知中心",
+					enabled: true,
+					platform: "web-dashboard",
+					config: {},
+				});
+			}
+			targets.push({
+				id: legacy.id,
+				name: legacy.name,
+				adapterId,
+				platform: "web-dashboard",
+				scope: legacy.scope,
+				enabled: legacy.enabled,
+				session: { dashboardUser: cfg.dashboardUser },
+			});
+		}
+		// Unknown legacy platform — drop silently; the user will see the target
+		// disappear and can re-create it under a supported platform.
+	}
+
+	return { adapters, targets };
+}
+
+function deriveAdapterName(targetName: string, addr: string): string {
+	if (addr) {
+		try {
+			const u = new URL(addr);
+			return `${targetName} · ${u.host}`;
+		} catch {
+			/* fall through */
+		}
+	}
+	return targetName || "默认连接";
+}
+
 // ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
@@ -175,11 +331,13 @@ class NodeConfigStore implements ConfigStore {
 
 	private globals: GlobalConfig;
 	private subscriptions: Subscription[];
+	private adapters: PushAdapter[];
 	private targets: PushTarget[];
 
 	private readonly meta: Record<ConfigScope, ScopeMetaInternal> = {
 		globals: { exists: false, lastUpdatedAt: null },
 		subscriptions: { exists: false, lastUpdatedAt: null },
+		adapters: { exists: false, lastUpdatedAt: null },
 		targets: { exists: false, lastUpdatedAt: null },
 		secrets: { exists: false, lastUpdatedAt: null },
 	};
@@ -187,6 +345,7 @@ class NodeConfigStore implements ConfigStore {
 	private readonly queues: Record<ConfigScope, Queue> = {
 		globals: Promise.resolve(),
 		subscriptions: Promise.resolve(),
+		adapters: Promise.resolve(),
 		targets: Promise.resolve(),
 		secrets: Promise.resolve(),
 	};
@@ -201,6 +360,7 @@ class NodeConfigStore implements ConfigStore {
 		// Initialize with safe defaults; `load()` overwrites.
 		this.globals = makeDefaultGlobalConfig();
 		this.subscriptions = [];
+		this.adapters = [];
 		this.targets = [];
 	}
 
@@ -210,6 +370,8 @@ class NodeConfigStore implements ConfigStore {
 				return join(this.stateDir, "globals.json");
 			case "subscriptions":
 				return join(this.stateDir, "subscriptions.json");
+			case "adapters":
+				return join(this.stateDir, "adapters.json");
 			case "targets":
 				return join(this.stateDir, "targets.json");
 			case "secrets":
@@ -296,8 +458,50 @@ class NodeConfigStore implements ConfigStore {
 			this.meta.subscriptions.lastUpdatedAt = existed ? null : new Date().toISOString();
 		}
 
-		// targets
-		{
+		// adapters + targets (with one-time migration from the legacy single-file
+		// targets.json that bundled connection+session into `config`)
+		await this.loadAdaptersAndTargets();
+
+		this.loaded = true;
+		this.serviceCtx.logger.info(
+			`config-store loaded (stateDir=${this.stateDir} subs=${this.subscriptions.length} adapters=${this.adapters.length} targets=${this.targets.length})`,
+		);
+	}
+
+	/**
+	 * Loads adapters.json + targets.json. If adapters.json is missing AND the
+	 * existing targets.json is in the legacy single-blob format (config field
+	 * holding both connection and session params), runs a one-shot migration
+	 * that extracts adapters and rewrites targets to reference them.
+	 */
+	private async loadAdaptersAndTargets(): Promise<void> {
+		const adaptersExist = await fileExists(this.path("adapters"));
+
+		// New-format path: adapters.json is already present.
+		if (adaptersExist) {
+			const adaptersRaw = JSON.parse(await readFile(this.path("adapters"), "utf8"));
+			if (!Array.isArray(adaptersRaw)) {
+				throw new ConfigValidationError(
+					"adapters",
+					{ message: "adapters.json must be an array" },
+					"adapters.json on disk is not an array",
+				);
+			}
+			const adapters: PushAdapter[] = [];
+			for (const [idx, raw] of adaptersRaw.entries()) {
+				const r = PushAdapterSchema.safeParse(raw);
+				if (!r.success) {
+					throw new ConfigValidationError(
+						"adapters",
+						{ index: idx, issues: r.error.issues },
+						`adapters.json[${idx}] failed schema validation`,
+					);
+				}
+				adapters.push(r.data);
+			}
+			this.adapters = adapters;
+			this.meta.adapters.exists = true;
+
 			const { value, existed } = await readJsonOrInit<unknown[]>(
 				this.path("targets"),
 				() => [] as PushTarget[],
@@ -309,7 +513,7 @@ class NodeConfigStore implements ConfigStore {
 					"targets.json on disk is not an array",
 				);
 			}
-			const parsed: PushTarget[] = [];
+			const targets: PushTarget[] = [];
 			for (const [idx, raw] of value.entries()) {
 				const r = PushTargetSchema.safeParse(raw);
 				if (!r.success) {
@@ -319,17 +523,64 @@ class NodeConfigStore implements ConfigStore {
 						`targets.json[${idx}] failed schema validation`,
 					);
 				}
-				parsed.push(r.data);
+				targets.push(r.data);
 			}
-			this.targets = parsed;
+			this.targets = targets;
 			this.meta.targets.exists = true;
 			this.meta.targets.lastUpdatedAt = existed ? null : new Date().toISOString();
+			return;
 		}
 
-		this.loaded = true;
+		// Legacy migration path: adapters.json missing. Inspect targets.json.
+		const targetsExist = await fileExists(this.path("targets"));
+		if (!targetsExist) {
+			// Brand-new install: write empty files and continue.
+			await atomicWriteJson(this.path("adapters"), []);
+			await atomicWriteJson(this.path("targets"), []);
+			this.adapters = [];
+			this.targets = [];
+			this.meta.adapters.exists = true;
+			this.meta.adapters.lastUpdatedAt = new Date().toISOString();
+			this.meta.targets.exists = true;
+			this.meta.targets.lastUpdatedAt = new Date().toISOString();
+			return;
+		}
+
+		const targetsRaw = JSON.parse(await readFile(this.path("targets"), "utf8"));
+		if (!Array.isArray(targetsRaw)) {
+			throw new ConfigValidationError(
+				"targets",
+				{ message: "targets.json must be an array" },
+				"targets.json on disk is not an array",
+			);
+		}
+
+		// Two possibilities: (a) already-new shape but the user manually deleted
+		// adapters.json — try parsing each entry against the new schema first.
+		const tryNew = targetsRaw.every((t) => PushTargetSchema.safeParse(t).success);
+		if (tryNew && targetsRaw.length > 0) {
+			// New shape but no adapters file → bail with an explicit error so the
+			// user notices something is off rather than us silently inventing data.
+			throw new ConfigValidationError(
+				"adapters",
+				{ message: "adapters.json missing but targets.json is in new format" },
+				"adapters.json missing but targets.json already in new format; cannot rebuild adapters automatically",
+			);
+		}
+
+		// Run migration: targetsRaw is the legacy shape.
 		this.serviceCtx.logger.info(
-			`config-store loaded (stateDir=${this.stateDir} subs=${this.subscriptions.length} targets=${this.targets.length})`,
+			`config-store migrating ${targetsRaw.length} legacy push target(s) → adapter + target split`,
 		);
+		const { adapters, targets } = migrateLegacyTargets(targetsRaw);
+		await atomicWriteJson(this.path("adapters"), adapters);
+		await atomicWriteJson(this.path("targets"), targets);
+		this.adapters = adapters;
+		this.targets = targets;
+		this.meta.adapters.exists = true;
+		this.meta.adapters.lastUpdatedAt = new Date().toISOString();
+		this.meta.targets.exists = true;
+		this.meta.targets.lastUpdatedAt = new Date().toISOString();
 	}
 
 	// ---- read accessors -------------------------------------------------
@@ -346,6 +597,10 @@ class NodeConfigStore implements ConfigStore {
 		return deepClone(this.subscriptions);
 	}
 
+	getAdapters(): PushAdapter[] {
+		return deepClone(this.adapters);
+	}
+
 	getTargets(): PushTarget[] {
 		return deepClone(this.targets);
 	}
@@ -356,6 +611,10 @@ class NodeConfigStore implements ConfigStore {
 
 	getSubscriptionsMeta(): ConfigScopeMeta {
 		return { ...this.meta.subscriptions };
+	}
+
+	getAdaptersMeta(): ConfigScopeMeta {
+		return { ...this.meta.adapters };
 	}
 
 	getTargetsMeta(): ConfigScopeMeta {
@@ -448,12 +707,78 @@ class NodeConfigStore implements ConfigStore {
 		return removed;
 	}
 
+	async upsertAdapter(adapter: PushAdapter): Promise<void> {
+		await this.runScoped("adapters", async () => {
+			const parsed = PushAdapterSchema.safeParse(adapter);
+			if (!parsed.success) {
+				throw new ConfigValidationError("adapters", parsed.error.issues);
+			}
+			const next = upsertById(this.adapters, parsed.data);
+			await atomicWriteJson(this.path("adapters"), next);
+			this.adapters = next;
+			this.touch("adapters");
+		});
+		this.bus.emit("config-changed", "adapters");
+	}
+
+	async patchAdapter(id: string, patch: DeepPartial<PushAdapter>): Promise<PushAdapter> {
+		const result = await this.runScoped("adapters", async () => {
+			const idx = this.adapters.findIndex((a) => a.id === id);
+			if (idx < 0) {
+				throw new ConfigValidationError(
+					"adapters",
+					{ id, message: "adapter not found" },
+					`adapter ${id} not found`,
+				);
+			}
+			const current = this.adapters[idx] as PushAdapter;
+			const merged = deepMerge(current, { ...patch, id });
+			const parsed = PushAdapterSchema.safeParse(merged);
+			if (!parsed.success) {
+				throw new ConfigValidationError("adapters", parsed.error.issues);
+			}
+			const next = [...this.adapters];
+			next[idx] = parsed.data;
+			await atomicWriteJson(this.path("adapters"), next);
+			this.adapters = next;
+			this.touch("adapters");
+			return parsed.data;
+		});
+		this.bus.emit("config-changed", "adapters");
+		return deepClone(result);
+	}
+
+	async deleteAdapter(id: string): Promise<boolean> {
+		// Reject if any target still references this adapter — callers should
+		// detach/reassign first. Avoids silent orphan-targets in routing.
+		const referencing = this.targets.filter((t) => t.adapterId === id).map((t) => t.id);
+		if (referencing.length > 0) {
+			throw new ConfigValidationError(
+				"adapters",
+				{ id, targetIds: referencing, message: "adapter still in use" },
+				`adapter ${id} is still referenced by ${referencing.length} target(s)`,
+			);
+		}
+		const removed = await this.runScoped("adapters", async () => {
+			const idx = this.adapters.findIndex((a) => a.id === id);
+			if (idx < 0) return false;
+			const next = this.adapters.filter((_, i) => i !== idx);
+			await atomicWriteJson(this.path("adapters"), next);
+			this.adapters = next;
+			this.touch("adapters");
+			return true;
+		});
+		if (removed) this.bus.emit("config-changed", "adapters");
+		return removed;
+	}
+
 	async upsertTarget(target: PushTarget): Promise<void> {
 		await this.runScoped("targets", async () => {
 			const parsed = PushTargetSchema.safeParse(target);
 			if (!parsed.success) {
 				throw new ConfigValidationError("targets", parsed.error.issues);
 			}
+			this.assertAdapterMatches(parsed.data);
 			const next = upsertById(this.targets, parsed.data);
 			await atomicWriteJson(this.path("targets"), next);
 			this.targets = next;
@@ -478,6 +803,7 @@ class NodeConfigStore implements ConfigStore {
 			if (!parsed.success) {
 				throw new ConfigValidationError("targets", parsed.error.issues);
 			}
+			this.assertAdapterMatches(parsed.data);
 			const next = [...this.targets];
 			next[idx] = parsed.data;
 			await atomicWriteJson(this.path("targets"), next);
@@ -487,6 +813,28 @@ class NodeConfigStore implements ConfigStore {
 		});
 		this.bus.emit("config-changed", "targets");
 		return deepClone(result);
+	}
+
+	private assertAdapterMatches(target: PushTarget): void {
+		const adapter = this.adapters.find((a) => a.id === target.adapterId);
+		if (!adapter) {
+			throw new ConfigValidationError(
+				"targets",
+				{ adapterId: target.adapterId, message: "adapter not found" },
+				`target.adapterId ${target.adapterId} does not match any adapter`,
+			);
+		}
+		if (adapter.platform !== target.platform) {
+			throw new ConfigValidationError(
+				"targets",
+				{
+					adapterPlatform: adapter.platform,
+					targetPlatform: target.platform,
+					message: "platform mismatch",
+				},
+				`target.platform (${target.platform}) ≠ adapter.platform (${adapter.platform})`,
+			);
+		}
 	}
 
 	async deleteTarget(id: string): Promise<boolean> {
