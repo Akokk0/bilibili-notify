@@ -310,12 +310,12 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 						url={draft.cachedProfile?.avatar}
 						ring
 					/>
-					<div
-						className="pb-2 text-white"
-						style={{ textShadow: "0 1px 4px rgba(0,0,0,0.45)" }}
-					>
+					<div className="pb-2 text-white" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.45)" }}>
 						<div className="text-base font-bold">{displayName(draft)}</div>
-						<div className="mt-0.5 text-[11px] font-semibold text-bn-pink" style={{ textShadow: "none" }}>
+						<div
+							className="mt-0.5 text-[11px] font-semibold text-bn-pink"
+							style={{ textShadow: "none" }}
+						>
 							<span className="font-mono">UID {draft.uid}</span>
 							{draft.cachedProfile?.fans != null ? (
 								<>

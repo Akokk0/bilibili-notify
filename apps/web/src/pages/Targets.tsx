@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Btn, PlatformIcon, platformLabel, StatusDot, Toggle } from "../components/atoms";
 import { ModalShell } from "../components/dialog";
 import { Field, TInput } from "../components/forms";
@@ -73,103 +73,6 @@ function targetSessionSummary(target: PushTarget): string {
 
 // ── Adapter card ────────────────────────────────────────────────────────────
 
-interface AdapterCardProps {
-	adapter: PushAdapter;
-	targetCount: number;
-	testing: TestState | undefined;
-	onTest: () => void;
-	onEdit: () => void;
-	onDelete: () => void;
-}
-
-function AdapterCard({
-	adapter,
-	targetCount,
-	testing,
-	onTest,
-	onEdit,
-	onDelete,
-}: AdapterCardProps) {
-	const tint = tintFor(adapter.platform);
-	const borderColor =
-		testing === "fail" ? "#fecaca" : testing === "ok" ? "#bbf7d0" : "rgba(0,0,0,0.06)";
-	const lastTestLabel = adapter.testStatus
-		? adapter.testStatus.ok
-			? `上次测试 OK${
-					adapter.testStatus.latencyMs != null ? ` · ${adapter.testStatus.latencyMs}ms` : ""
-				}`
-			: `上次测试失败${adapter.testStatus.err ? ` — ${adapter.testStatus.err}` : ""}`
-		: null;
-
-	return (
-		<div
-			className="rounded-[10px] border bg-white p-3.5 transition-[border-color] duration-200"
-			style={{ borderColor }}
-		>
-			<div className="mb-2.5 flex items-center gap-2.5">
-				<div
-					className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-					style={{ background: `${tint}1a` }}
-				>
-					<PlatformIcon platform={adapter.platform} size={18} />
-				</div>
-				<div className="min-w-0 flex-1">
-					<div className="truncate text-[13px] font-bold text-bn-text-primary">
-						{adapter.name || "（未命名）"}
-					</div>
-					<div className="truncate font-mono text-[11px] text-bn-text-tertiary">
-						{adapterEndpointSummary(adapter)}
-					</div>
-				</div>
-				{testing ? <TestingDot kind={testing} /> : <StatusDot kind={adapterStatusFor(adapter)} />}
-			</div>
-
-			<div className="flex items-center justify-between text-[11.5px] text-bn-text-secondary">
-				<span className="truncate">
-					{platformLabel(adapter.platform)} · {targetCount} 个目标
-					{adapter.enabled ? null : <span className="ml-1.5 text-bn-text-tertiary">(已停用)</span>}
-				</span>
-				<div className="flex shrink-0 gap-1">
-					<Btn size="sm" variant="ghost" onClick={onTest} disabled={testing === "pending"}>
-						{testing === "pending"
-							? "测试中…"
-							: testing === "ok"
-								? "已连通"
-								: testing === "fail"
-									? "失败"
-									: "测试"}
-					</Btn>
-					<Btn size="sm" variant="ghost" onClick={onEdit}>
-						配置
-					</Btn>
-					<Btn
-						size="sm"
-						variant="ghost"
-						onClick={onDelete}
-						title="删除"
-						icon={<Icon.trash size={11} />}
-					>
-						{null}
-					</Btn>
-				</div>
-			</div>
-
-			{lastTestLabel && !testing ? (
-				<div
-					className="mt-2.5 rounded-[4px] border-l-[3px] px-2.5 py-1.5 text-[11px]"
-					style={
-						adapter.testStatus?.ok
-							? { background: "#f0fdf4", borderLeftColor: "#22c55e", color: "#166534" }
-							: { background: "#fffbeb", borderLeftColor: "#f59e0b", color: "#92400e" }
-					}
-				>
-					{lastTestLabel}
-				</div>
-			) : null}
-		</div>
-	);
-}
-
 function adapterStatusFor(a: PushAdapter): "ok" | "warn" | "err" | "off" {
 	if (!a.enabled) return "off";
 	if (!a.testStatus) return "ok";
@@ -239,23 +142,6 @@ function TargetCard({ target, adapter, onEdit, onDelete }: TargetCardProps) {
 				</div>
 			</div>
 		</div>
-	);
-}
-
-// ── Testing dot ─────────────────────────────────────────────────────────────
-
-function TestingDot({ kind }: { kind: TestState }) {
-	const tone =
-		kind === "pending"
-			? { bg: "#fdcb6e", ring: "rgba(253,203,110,0.3)" }
-			: kind === "ok"
-				? { bg: "#22c55e", ring: "rgba(34,197,94,0.2)" }
-				: { bg: "#ef4444", ring: "rgba(239,68,68,0.2)" };
-	return (
-		<span
-			className={`inline-block h-2 w-2 shrink-0 rounded-full ${kind === "pending" ? "bn-anim-pulse" : ""}`}
-			style={{ background: tone.bg, boxShadow: `0 0 0 3px ${tone.ring}` }}
-		/>
 	);
 }
 
@@ -362,9 +248,7 @@ function AdapterEditorModal({
 					<SectionBox
 						title="连接参数"
 						subtitle={
-							value.platform === "onebot"
-								? "OneBot v11 HTTP 服务接入信息"
-								: "Webhook 投递终点"
+							value.platform === "onebot" ? "OneBot v11 HTTP 服务接入信息" : "Webhook 投递终点"
 						}
 						accent={tint}
 					>
@@ -450,9 +334,7 @@ function AdapterConnectionFields({
 				<Field label="Secret" code="config.secret" hint="加在 x-bilibili-notify-secret 头">
 					<TInput
 						value={cfg.secret ?? ""}
-						onChange={(v) =>
-							onChange({ ...adapter, config: { ...cfg, secret: v || undefined } })
-						}
+						onChange={(v) => onChange({ ...adapter, config: { ...cfg, secret: v || undefined } })}
 						secret
 					/>
 				</Field>
@@ -667,9 +549,7 @@ function TargetSessionFields({
 			>
 				<TInput
 					value={s.dashboardUser ?? ""}
-					onChange={(v) =>
-						onChange({ ...target, session: { dashboardUser: v || undefined } })
-					}
+					onChange={(v) => onChange({ ...target, session: { dashboardUser: v || undefined } })}
 				/>
 			</Field>
 		);
@@ -699,9 +579,7 @@ function SectionBox({
 				<span className="text-[12px] font-bold" style={{ color: accent }}>
 					{title}
 				</span>
-				{subtitle ? (
-					<span className="text-[10.5px] text-bn-text-tertiary">{subtitle}</span>
-				) : null}
+				{subtitle ? <span className="text-[10.5px] text-bn-text-tertiary">{subtitle}</span> : null}
 			</div>
 			<div>{children}</div>
 		</div>
@@ -763,6 +641,86 @@ function DeleteModal({
 	);
 }
 
+// ── Adapter rail (left sidebar) ─────────────────────────────────────────────
+
+function AdapterRail({
+	adapters,
+	selectedId,
+	onPick,
+	onAddClick,
+	targetCountByAdapter,
+}: {
+	adapters: PushAdapter[];
+	selectedId: string | null;
+	onPick: (id: string) => void;
+	onAddClick: () => void;
+	targetCountByAdapter: Map<string, number>;
+}) {
+	return (
+		<aside className="sticky top-[120px] h-fit min-w-0">
+			<div className="mb-2 flex items-center justify-between px-1">
+				<span className="text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
+					推送适配器
+				</span>
+				<button
+					type="button"
+					onClick={onAddClick}
+					className="rounded-md border border-dashed border-gray-300 px-2 py-0.5 text-[10.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
+				>
+					+ 新建
+				</button>
+			</div>
+			{adapters.length === 0 ? (
+				<div className="rounded-[9px] border border-dashed border-gray-200 bg-white/55 px-3 py-3 text-center text-[11px] text-bn-text-tertiary">
+					尚未配置任何适配器
+				</div>
+			) : (
+				<div className="flex flex-col gap-1">
+					{adapters.map((a) => {
+						const active = selectedId === a.id;
+						const tint = tintFor(a.platform);
+						const count = targetCountByAdapter.get(a.id) ?? 0;
+						return (
+							<button
+								type="button"
+								key={a.id}
+								onClick={() => onPick(a.id)}
+								className={`flex w-full min-w-0 items-start gap-2.5 rounded-[9px] border px-3 py-2.5 text-left transition ${
+									active
+										? "border-bn-pink/35 bg-white/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+										: "border-transparent hover:bg-white/55"
+								}`}
+							>
+								<span
+									className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-[5px]"
+									style={{ background: `${tint}1f` }}
+								>
+									<PlatformIcon platform={a.platform} size={12} />
+								</span>
+								<span className="block min-w-0 flex-1">
+									<span
+										className={`flex items-center gap-1.5 text-[12.5px] font-bold ${
+											active ? "text-bn-pink" : "text-bn-text-primary"
+										}`}
+									>
+										<span className="truncate">{a.name || "（未命名）"}</span>
+										{!a.enabled ? (
+											<span className="shrink-0 text-[10px] text-bn-text-tertiary">(停用)</span>
+										) : null}
+									</span>
+									<span className="mt-0.5 block break-words text-[10.5px] leading-snug text-bn-text-tertiary">
+										{platformLabel(a.platform)} · {count} 个目标
+									</span>
+								</span>
+							</button>
+						);
+					})}
+				</div>
+			)}
+		</aside>
+	);
+}
+
 // ── Page ────────────────────────────────────────────────────────────────────
 
 interface TestResponse {
@@ -792,14 +750,13 @@ export default function Targets() {
 		value: PushTarget;
 	} | null>(null);
 	const [confirmDelete, setConfirmDelete] = useState<
-		| { kind: "adapter"; value: PushAdapter }
-		| { kind: "target"; value: PushTarget }
-		| null
+		{ kind: "adapter"; value: PushAdapter } | { kind: "target"; value: PushTarget } | null
 	>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [deleteError, setDeleteError] = useState<string | null>(null);
 	const [testing, setTesting] = useState<Record<string, TestState>>({});
 	const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+	const [selectedAdapterId, setSelectedAdapterId] = useState<string | null>(null);
 
 	const adapters = adaptersQuery.data ?? [];
 	const targets = targetsQuery.data ?? [];
@@ -808,6 +765,25 @@ export default function Targets() {
 	for (const t of targets) {
 		targetCountByAdapter.set(t.adapterId, (targetCountByAdapter.get(t.adapterId) ?? 0) + 1);
 	}
+
+	// Keep selectedAdapterId valid: default to the first adapter; reselect if
+	// the user deletes the current one.
+	useEffect(() => {
+		if (adapters.length === 0) {
+			if (selectedAdapterId !== null) setSelectedAdapterId(null);
+			return;
+		}
+		if (!selectedAdapterId || !adapters.some((a) => a.id === selectedAdapterId)) {
+			setSelectedAdapterId(adapters[0]?.id ?? null);
+		}
+	}, [adapters, selectedAdapterId]);
+
+	const selectedAdapter = selectedAdapterId
+		? adapters.find((a) => a.id === selectedAdapterId)
+		: undefined;
+	const selectedTargets = selectedAdapter
+		? targets.filter((t) => t.adapterId === selectedAdapter.id)
+		: [];
 
 	const showToast = (msg: string, ok = true): void => {
 		setToast({ msg, ok });
@@ -930,15 +906,14 @@ export default function Targets() {
 		setAdapterDraft({ mode: "edit", value: a });
 	}
 
-	function startNewTarget(): void {
+	function startNewTarget(adapter?: PushAdapter): void {
 		setError(null);
-		if (adapters.length === 0) {
+		const a = adapter ?? selectedAdapter ?? adapters[0];
+		if (!a) {
 			showToast("请先新建一个适配器", false);
 			return;
 		}
-		const firstAdapter = adapters[0];
-		if (!firstAdapter) return;
-		setTargetDraft({ mode: "add", value: makeEmptyTarget(firstAdapter, "") });
+		setTargetDraft({ mode: "add", value: makeEmptyTarget(a, "") });
 	}
 
 	function startEditTarget(t: PushTarget): void {
@@ -950,111 +925,161 @@ export default function Targets() {
 
 	return (
 		<div className="bn-anim-fade-in flex flex-col gap-4">
-			{/* --- Adapters --- */}
-			<div className="rounded-bn-card bg-white p-4 shadow-bn-card">
-				<div className="mb-3 flex items-baseline justify-between">
-					<div>
-						<div className="text-[14px] font-bold text-bn-text-primary">推送适配器</div>
-						<div className="text-[11.5px] text-bn-text-tertiary">
-							连接级配置:OneBot HTTP 接入 / Webhook URL / Dashboard 通知中心。
-						</div>
-					</div>
-					<Btn size="sm" variant="outline" onClick={startNewAdapter}>
-						+ 新建适配器
-					</Btn>
-				</div>
-				{isLoading ? (
-					<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-						<div className="h-24 animate-pulse rounded-[10px] bg-gray-100" />
-						<div className="h-24 animate-pulse rounded-[10px] bg-gray-100" />
-					</div>
-				) : adapters.length === 0 ? (
-					<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-						<AddCard
-							label="新建适配器"
-							hint="OneBot HTTP / Webhook / Dashboard"
-							onClick={startNewAdapter}
-						/>
-					</div>
-				) : (
-					<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-						{adapters.map((a) => (
-							<AdapterCard
-								key={a.id}
-								adapter={a}
-								targetCount={targetCountByAdapter.get(a.id) ?? 0}
-								testing={testing[a.id]}
-								onTest={() => testAdapter(a)}
-								onEdit={() => startEditAdapter(a)}
-								onDelete={() => {
-									setDeleteError(null);
-									setConfirmDelete({ kind: "adapter", value: a });
-								}}
-							/>
-						))}
-						<AddCard
-							label="新建适配器"
-							hint="OneBot HTTP / Webhook / Dashboard"
-							onClick={startNewAdapter}
-						/>
-					</div>
-				)}
-			</div>
+			<div className="grid gap-4 xl:grid-cols-[240px_1fr]">
+				<AdapterRail
+					adapters={adapters}
+					selectedId={selectedAdapterId}
+					onPick={setSelectedAdapterId}
+					onAddClick={startNewAdapter}
+					targetCountByAdapter={targetCountByAdapter}
+				/>
 
-			{/* --- Targets --- */}
-			<div className="rounded-bn-card bg-white p-4 shadow-bn-card">
-				<div className="mb-3 flex items-baseline justify-between">
-					<div>
-						<div className="text-[14px] font-bold text-bn-text-primary">推送目标</div>
-						<div className="text-[11.5px] text-bn-text-tertiary">
-							会话级配置:每个目标选定一个适配器 + 填写群号 / 用户 ID 等信息。
+				<div className="space-y-4">
+					{isLoading ? (
+						<div className="rounded-bn-card bg-white p-6 shadow-bn-card">
+							<div className="h-20 animate-pulse rounded-[10px] bg-gray-100" />
 						</div>
-					</div>
-					<Btn
-						size="sm"
-						variant="outline"
-						onClick={startNewTarget}
-						disabled={adapters.length === 0}
-					>
-						+ 新建推送目标
-					</Btn>
+					) : !selectedAdapter ? (
+						<div className="rounded-bn-card bg-white p-8 text-center shadow-bn-card">
+							<div className="mb-1 text-[14px] font-bold text-bn-text-primary">还没有适配器</div>
+							<div className="mb-4 text-[11.5px] text-bn-text-tertiary">
+								先在左侧新建一个适配器(OneBot HTTP / Webhook / Dashboard 通知中心),再为它配置推送目标。
+							</div>
+							<Btn variant="primary" size="sm" onClick={startNewAdapter}>
+								+ 新建适配器
+							</Btn>
+						</div>
+					) : (
+						<>
+							{/* Adapter detail header */}
+							<div className="rounded-bn-card bg-white p-4 shadow-bn-card">
+								<div className="flex items-start gap-3">
+									<div
+										className="grid h-11 w-11 shrink-0 place-items-center rounded-lg"
+										style={{ background: `${tintFor(selectedAdapter.platform)}1f` }}
+									>
+										<PlatformIcon platform={selectedAdapter.platform} size={22} />
+									</div>
+									<div className="min-w-0 flex-1">
+										<div className="flex items-center gap-2">
+											<span className="truncate text-[14.5px] font-bold text-bn-text-primary">
+												{selectedAdapter.name || "（未命名）"}
+											</span>
+											<StatusDot kind={adapterStatusFor(selectedAdapter)} />
+											{!selectedAdapter.enabled ? (
+												<span className="text-[10.5px] text-bn-text-tertiary">(已停用)</span>
+											) : null}
+										</div>
+										<div className="mt-0.5 truncate font-mono text-[11.5px] text-bn-text-tertiary">
+											{platformLabel(selectedAdapter.platform)} · {adapterEndpointSummary(selectedAdapter)}
+										</div>
+										{selectedAdapter.testStatus ? (
+											<div
+												className="mt-2 inline-block rounded-[4px] border-l-[3px] px-2 py-0.5 text-[11px]"
+												style={
+													selectedAdapter.testStatus.ok
+														? { background: "#f0fdf4", borderLeftColor: "#22c55e", color: "#166534" }
+														: { background: "#fffbeb", borderLeftColor: "#f59e0b", color: "#92400e" }
+												}
+											>
+												{selectedAdapter.testStatus.ok
+													? `上次测试 OK${
+															selectedAdapter.testStatus.latencyMs != null
+																? ` · ${selectedAdapter.testStatus.latencyMs}ms`
+																: ""
+														}`
+													: `上次测试失败${
+															selectedAdapter.testStatus.err
+																? ` — ${selectedAdapter.testStatus.err}`
+																: ""
+														}`}
+											</div>
+										) : null}
+									</div>
+									<div className="flex shrink-0 gap-1">
+										<Btn
+											size="sm"
+											variant="ghost"
+											onClick={() => testAdapter(selectedAdapter)}
+											disabled={testing[selectedAdapter.id] === "pending"}
+										>
+											{testing[selectedAdapter.id] === "pending"
+												? "测试中…"
+												: testing[selectedAdapter.id] === "ok"
+													? "已连通"
+													: testing[selectedAdapter.id] === "fail"
+														? "失败"
+														: "测试"}
+										</Btn>
+										<Btn size="sm" variant="ghost" onClick={() => startEditAdapter(selectedAdapter)}>
+											配置
+										</Btn>
+										<Btn
+											size="sm"
+											variant="ghost"
+											onClick={() => {
+												setDeleteError(null);
+												setConfirmDelete({ kind: "adapter", value: selectedAdapter });
+											}}
+											title="删除"
+											icon={<Icon.trash size={11} />}
+										>
+											{null}
+										</Btn>
+									</div>
+								</div>
+							</div>
+
+							{/* Targets bound to this adapter */}
+							<div className="rounded-bn-card bg-white p-4 shadow-bn-card">
+								<div className="mb-3 flex items-baseline justify-between">
+									<div>
+										<div className="text-[14px] font-bold text-bn-text-primary">推送目标</div>
+										<div className="text-[11.5px] text-bn-text-tertiary">
+											本适配器下的会话:群号 / 用户 ID / dashboardUser。
+										</div>
+									</div>
+									<Btn
+										size="sm"
+										variant="outline"
+										onClick={() => startNewTarget(selectedAdapter)}
+									>
+										+ 新建推送目标
+									</Btn>
+								</div>
+								{selectedTargets.length === 0 ? (
+									<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+										<AddCard
+											label="新建推送目标"
+											hint="绑定到当前适配器"
+											onClick={() => startNewTarget(selectedAdapter)}
+										/>
+									</div>
+								) : (
+									<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+										{selectedTargets.map((t) => (
+											<TargetCard
+												key={t.id}
+												target={t}
+												adapter={adaptersById.get(t.adapterId)}
+												onEdit={() => startEditTarget(t)}
+												onDelete={() => {
+													setDeleteError(null);
+													setConfirmDelete({ kind: "target", value: t });
+												}}
+											/>
+										))}
+										<AddCard
+											label="新建推送目标"
+											hint="绑定到当前适配器"
+											onClick={() => startNewTarget(selectedAdapter)}
+										/>
+									</div>
+								)}
+							</div>
+						</>
+					)}
 				</div>
-				{isLoading ? (
-					<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-						<div className="h-24 animate-pulse rounded-[10px] bg-gray-100" />
-						<div className="h-24 animate-pulse rounded-[10px] bg-gray-100" />
-					</div>
-				) : targets.length === 0 ? (
-					<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-						<AddCard
-							label={adapters.length === 0 ? "请先新建适配器" : "新建推送目标"}
-							hint="绑定到一个适配器"
-							onClick={startNewTarget}
-							disabled={adapters.length === 0}
-						/>
-					</div>
-				) : (
-					<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-						{targets.map((t) => (
-							<TargetCard
-								key={t.id}
-								target={t}
-								adapter={adaptersById.get(t.adapterId)}
-								onEdit={() => startEditTarget(t)}
-								onDelete={() => {
-									setDeleteError(null);
-									setConfirmDelete({ kind: "target", value: t });
-								}}
-							/>
-						))}
-						<AddCard
-							label="新建推送目标"
-							hint="绑定到一个适配器"
-							onClick={startNewTarget}
-							disabled={adapters.length === 0}
-						/>
-					</div>
-				)}
 			</div>
 
 			{adapterDraft ? (
