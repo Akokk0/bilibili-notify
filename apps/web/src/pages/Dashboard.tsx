@@ -86,7 +86,13 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 								style={{ background: "linear-gradient(135deg, #FB7299, #00AEEC)" }}
 							>
 								<div className="flex items-center gap-3 rounded-[10px] bg-white/95 p-2.5 backdrop-blur-sm">
-									<Avatar name={name} color={color} size={44} status="living" />
+									<Avatar
+									name={name}
+									color={color}
+									size={44}
+									status="living"
+									url={sub?.cachedProfile?.avatar}
+								/>
 									<div className="min-w-0 flex-1">
 										<div className="mb-0.5 flex items-center gap-2">
 											<span className="text-[13.5px] font-bold text-bn-text-primary">{name}</span>
@@ -519,7 +525,7 @@ export default function Dashboard() {
 			</div>
 
 			{/* live + trend */}
-			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1.3fr_1fr]">
+			<div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[1.3fr_1fr]">
 				<LiveNowPanel live={live} subs={subs} />
 				<TrendPanel entries={history} />
 			</div>
