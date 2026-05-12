@@ -200,14 +200,24 @@ describe("WS server", () => {
 		await cb.waitFor((m) => m?.type === "subscribed");
 
 		bus.emit("auth-lost");
-		bus.emit("history-recorded", "abc-123");
+		bus.emit("history-recorded", {
+			id: "abc-123",
+			ts: "2026-05-12T00:00:00.000Z",
+			source: "dynamic",
+			uid: "u1",
+			subscriptionId: "sub-1",
+			targetIds: ["t-1"],
+			result: { ok: true, per: [{ targetId: "t-1", ok: true, latencyMs: 1 }] },
+			payload: { kind: "text", text: "hi" },
+		});
 
 		const aEvt = await ca.waitFor((m) => m?.type === "auth" && m?.event === "auth-lost");
 		expect(aEvt.data).toBeNull();
 		const bEvt = await cb.waitFor(
 			(m) => m?.type === "push-events" && m?.event === "history-recorded",
 		);
-		expect(bEvt.data).toBe("abc-123");
+		expect((bEvt.data as { id: string }).id).toBe("abc-123");
+		expect((bEvt.data as { text: string }).text).toBe("hi");
 
 		// Reverse direction: ensure neither leaked.
 		expect(ca.all().some((m) => m.type === "push-events")).toBe(false);

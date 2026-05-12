@@ -3,8 +3,10 @@ import { Route, Routes } from "react-router-dom";
 import { FloatingAiBar } from "./components/floating-ai-bar";
 import { GlassHeader } from "./components/header";
 import { ShellError, ShellLoading } from "./components/shell-states";
+import { ToastShell } from "./components/toast-shell";
 import { useAuthChannel } from "./hooks/useAuthChannel";
 import { useAuthHydrate } from "./hooks/useAuthHydrate";
+import { usePushEventsChannel } from "./hooks/usePushEventsChannel";
 import { useStateChannel } from "./hooks/useStateChannel";
 import Ai from "./pages/Ai";
 import Auth from "./pages/Auth";
@@ -25,6 +27,7 @@ export default function App() {
 	useAuthHydrate();
 	useAuthChannel();
 	useStateChannel();
+	usePushEventsChannel();
 
 	// Detect when the backend is genuinely unreachable so the shell can show
 	// the design's error state instead of letting individual pages render
@@ -74,6 +77,7 @@ export default function App() {
 				</main>
 			)}
 			<FloatingAiBar />
+			<ToastShell />
 		</div>
 	);
 }

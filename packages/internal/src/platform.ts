@@ -1,3 +1,4 @@
+import type { HistoryEntry } from "./schema/history";
 import type { Subscription } from "./schema/subscriptions";
 import type { PushTarget } from "./schema/targets";
 
@@ -52,7 +53,12 @@ export interface BiliEvents {
 	"plugin-error": (source: string, message: string) => void;
 	ready: () => void;
 	"config-changed": (scope: ConfigScope) => void;
-	"history-recorded": (entryId: string) => void;
+	/**
+	 * 一条推送被 HistoryStore 写入后立刻 emit。
+	 * 载荷是完整 entry,WS push-events 直接转发给前端做 toast/通知,
+	 * 无需前端再二次 fetch detail。
+	 */
+	"history-recorded": (entry: HistoryEntry) => void;
 	"live-state-changed": (uid: string, status: "live" | "idle") => void;
 }
 

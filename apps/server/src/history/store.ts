@@ -139,7 +139,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		}
 		const line = `${JSON.stringify(parsed.data)}\n`;
 		await writeFile(dayFile(ts), line, { flag: "a", encoding: "utf8" });
-		opts.bus.emit("history-recorded", id);
+		opts.bus.emit("history-recorded", parsed.data);
 		return parsed.data;
 	}
 

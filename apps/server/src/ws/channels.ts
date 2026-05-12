@@ -128,10 +128,29 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 	);
 
 	// push-events channel ---------------------------------------------------
+	// Carry the full HistoryEntry view (id, ts, source, uid, ok, text) so the
+	// dashboard's toast can render without a second fetch. Image refs stay as
+	// `imageRef: <filename>` — clients resolve those against /api/history/img.
 	subs.push(
-		deps.bus.on("history-recorded", (entryId) =>
-			deps.publish(envelope("push-events", "history-recorded", [entryId])),
-		),
+		deps.bus.on("history-recorded", (entry) => {
+			const view = {
+				id: entry.id,
+				ts: entry.ts,
+				source: entry.source,
+				uid: entry.uid,
+				subscriptionId: entry.subscriptionId,
+				targetIds: entry.targetIds,
+				ok: entry.result.ok,
+				text: entry.payload.text,
+				imageRef: entry.payload.imageRef,
+			};
+			deps.publish({
+				type: "push-events",
+				event: "history-recorded",
+				ts: new Date().toISOString(),
+				data: view,
+			});
+		}),
 	);
 	subs.push(
 		deps.bus.on("live-state-changed", (uid, status) =>
