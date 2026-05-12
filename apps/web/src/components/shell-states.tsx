@@ -44,8 +44,8 @@ export function ShellError({ message, onRetry }: { message: string; onRetry: () 
 					<Btn variant="primary" size="sm" onClick={onRetry}>
 						重试
 					</Btn>
-					<Btn variant="outline" size="sm" onClick={() => navigate("/auth")}>
-						前往账号
+					<Btn variant="outline" size="sm" onClick={() => navigate("/system")}>
+						前往系统
 					</Btn>
 				</div>
 			</div>
@@ -109,7 +109,7 @@ export function ShellEmpty({ onAdd, pending, error }: ShellEmptyProps) {
 			) : null}
 			<div className="text-[11px] text-bn-text-secondary">
 				或者{" "}
-				<a href="/auth" className="font-semibold text-bn-pink hover:underline">
+				<a href="/system" className="font-semibold text-bn-pink hover:underline">
 					先去扫码登录
 				</a>
 			</div>

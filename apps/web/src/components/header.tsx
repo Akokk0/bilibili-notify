@@ -28,7 +28,7 @@ const NAV: ReadonlyArray<{
 	{ to: "/rules", label: "高级规则" },
 	{ to: "/cards", label: "卡片预览 · 样式" },
 	{ to: "/ai", label: "智能女仆" },
-	{ to: "/auth", label: "系统" },
+	{ to: "/system", label: "系统" },
 ];
 
 function AccountChip() {

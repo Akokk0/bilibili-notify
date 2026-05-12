@@ -36,11 +36,11 @@ const SUGGESTIONS: Record<SuggestionKey, AiSuggestion> = {
 	dashboard: {
 		msg: (
 			<>
-				主人，先去 <b>账号</b> 完成扫码登录，<b>推送目标</b> 配好通道，再来 <b>订阅</b> 添加 UP
+				主人，先去 <b>系统</b> 完成扫码登录，<b>推送目标</b> 配好通道，再来 <b>订阅</b> 添加 UP
 				主即可开始接收推送。
 			</>
 		),
-		actions: [{ label: "前往账号", primary: true, to: "/auth" }, { label: "稍后再说" }],
+		actions: [{ label: "前往系统", primary: true, to: "/system" }, { label: "稍后再说" }],
 	},
 	subscriptions: {
 		msg: (
@@ -95,7 +95,7 @@ const ROUTE_TO_KEY: Record<string, SuggestionKey> = {
 	"/rules": "rules",
 	"/cards": "preview",
 	"/ai": "ai",
-	"/auth": "dashboard",
+	"/system": "dashboard",
 };
 
 export function FloatingAiBar() {

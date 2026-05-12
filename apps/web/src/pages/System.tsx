@@ -256,7 +256,7 @@ function SystemSettingsSection({
 	);
 }
 
-export default function Auth() {
+export default function System() {
 	const snapshot = useAuthStore((s) => s.snapshot);
 	const cookiesRefreshedAt = useAuthStore((s) => s.cookiesRefreshedAt);
 	const qc = useQueryClient();

@@ -9,12 +9,12 @@ import { useAuthHydrate } from "./hooks/useAuthHydrate";
 import { usePushEventsChannel } from "./hooks/usePushEventsChannel";
 import { useStateChannel } from "./hooks/useStateChannel";
 import Ai from "./pages/Ai";
-import Auth from "./pages/Auth";
 import Cards from "./pages/Cards";
 import Dashboard from "./pages/Dashboard";
 import History from "./pages/History";
 import Rules from "./pages/Rules";
 import Subs from "./pages/Subs";
+import System from "./pages/System";
 import Targets from "./pages/Targets";
 import { api } from "./services/api";
 
@@ -72,7 +72,7 @@ export default function App() {
 						<Route path="/rules" element={<Rules />} />
 						<Route path="/cards" element={<Cards />} />
 						<Route path="/ai" element={<Ai />} />
-						<Route path="/auth" element={<Auth />} />
+						<Route path="/system" element={<System />} />
 					</Routes>
 				</main>
 			)}

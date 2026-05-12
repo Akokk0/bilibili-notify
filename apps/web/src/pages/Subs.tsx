@@ -252,7 +252,9 @@ function ProfilePreview({
 			/>
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-2">
-					<span className="truncate text-[13px] font-bold text-bn-text-primary">{profile.name}</span>
+					<span className="truncate text-[13px] font-bold text-bn-text-primary">
+						{profile.name}
+					</span>
 					<span className="font-mono text-[10.5px] text-bn-text-tertiary">UID {profile.uid}</span>
 					{subscribed ? (
 						<span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-bn-text-tertiary">
@@ -262,10 +264,7 @@ function ProfilePreview({
 				</div>
 				<div className="mt-0.5 text-[11px] text-bn-text-secondary">{fansLabel(profile.fans)}</div>
 				{profile.sign ? (
-					<div
-						className="mt-1 line-clamp-2 text-[11px] text-bn-text-tertiary"
-						title={profile.sign}
-					>
+					<div className="mt-1 line-clamp-2 text-[11px] text-bn-text-tertiary" title={profile.sign}>
 						{profile.sign}
 					</div>
 				) : null}
@@ -326,9 +325,7 @@ function SearchResultList({
 									<span className="truncate text-[12.5px] font-bold text-bn-text-primary">
 										{r.name}
 									</span>
-									<span className="font-mono text-[10.5px] text-bn-text-tertiary">
-										UID {r.uid}
-									</span>
+									<span className="font-mono text-[10.5px] text-bn-text-tertiary">UID {r.uid}</span>
 									{subscribed ? (
 										<span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-bn-text-tertiary">
 											已订阅
