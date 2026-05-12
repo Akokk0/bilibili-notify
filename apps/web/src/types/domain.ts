@@ -67,6 +67,10 @@ export interface OnebotAdapterConfig {
 	baseUrl: string;
 	accessToken?: string;
 	protocolVersion?: "v11";
+	headers: Record<string, string>;
+	timeoutMs: number;
+	retryTimes: number;
+	retryIntervalMs: number;
 }
 
 export interface WebhookAdapterConfig {
@@ -296,7 +300,14 @@ export function makeEmptyAdapter(platform: PushTargetPlatform, name: string): Pu
 		return {
 			...base,
 			platform: "onebot",
-			config: { baseUrl: "http://127.0.0.1:3000", protocolVersion: "v11" },
+			config: {
+				baseUrl: "http://127.0.0.1:3000",
+				protocolVersion: "v11",
+				headers: {},
+				timeoutMs: 15_000,
+				retryTimes: 0,
+				retryIntervalMs: 1_000,
+			},
 		};
 	}
 	if (platform === "webhook") {

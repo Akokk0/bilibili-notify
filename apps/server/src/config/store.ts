@@ -230,6 +230,10 @@ function migrateLegacyTargets(raw: unknown[]): {
 						baseUrl,
 						accessToken: accessToken || undefined,
 						protocolVersion: cfg.protocolVersion ?? "v11",
+						headers: {},
+						timeoutMs: 15_000,
+						retryTimes: 0,
+						retryIntervalMs: 1_000,
 					},
 				});
 			}

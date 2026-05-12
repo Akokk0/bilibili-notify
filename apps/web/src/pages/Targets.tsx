@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { Btn, PlatformIcon, platformLabel, StatusDot, Toggle } from "../components/atoms";
 import { ModalShell } from "../components/dialog";
-import { Field, TInput } from "../components/forms";
+import { Field, TInput, TNum } from "../components/forms";
 import { Icon } from "../components/icons";
 import { ApiError, api } from "../services/api";
 import {
@@ -35,6 +35,19 @@ const SCOPES: ReadonlyArray<{ value: PushTargetScope; label: string }> = [
 	{ value: "private", label: "私聊" },
 	{ value: "channel", label: "频道" },
 ];
+
+const ONEBOT_SCOPES: ReadonlyArray<{ value: PushTargetScope; label: string }> = [
+	{ value: "group", label: "群聊" },
+	{ value: "private", label: "私聊" },
+];
+
+function scopesFor(platform: PushTarget["platform"]): ReadonlyArray<{
+	value: PushTargetScope;
+	label: string;
+}> {
+	if (platform === "onebot") return ONEBOT_SCOPES;
+	return SCOPES;
+}
 
 type TestState = "pending" | "ok" | "fail";
 
@@ -198,7 +211,7 @@ function AdapterEditorModal({
 				{mode === "add" ? "新建适配器" : "配置适配器"}
 			</div>
 
-			<div className="-mx-1 max-h-[64vh] space-y-2.5 overflow-y-auto px-1">
+			<div className="space-y-2.5">
 				<SectionBox title="基本" subtitle="适配器代表一个连接实例,可被多个目标共享" accent={tint}>
 					<Field label="平台" code="adapter.platform" required>
 						<div className="flex flex-wrap gap-1.5">
@@ -316,6 +329,42 @@ function AdapterConnectionFields({
 						secret
 					/>
 				</Field>
+				<Field label="请求超时" code="config.timeoutMs" hint="单次 HTTP 请求总超时(毫秒)">
+					<TNum
+						value={cfg.timeoutMs}
+						onChange={(v) => onChange({ ...adapter, config: { ...cfg, timeoutMs: v } })}
+						min={1000}
+						step={1000}
+						suffix="ms"
+						width={120}
+					/>
+				</Field>
+				<Field label="重试次数" code="config.retryTimes" hint="不含首次,失败后再尝试">
+					<TNum
+						value={cfg.retryTimes}
+						onChange={(v) => onChange({ ...adapter, config: { ...cfg, retryTimes: v } })}
+						min={0}
+						max={10}
+						suffix="次"
+						width={100}
+					/>
+				</Field>
+				<Field label="重试间隔" code="config.retryIntervalMs">
+					<TNum
+						value={cfg.retryIntervalMs}
+						onChange={(v) => onChange({ ...adapter, config: { ...cfg, retryIntervalMs: v } })}
+						min={0}
+						step={500}
+						suffix="ms"
+						width={120}
+					/>
+				</Field>
+				<Field label="自定义请求头" code="config.headers" hint="例如反向代理鉴权头">
+					<HeadersEditor
+						value={cfg.headers}
+						onChange={(next) => onChange({ ...adapter, config: { ...cfg, headers: next } })}
+					/>
+				</Field>
 			</>
 		);
 	}
@@ -342,6 +391,70 @@ function AdapterConnectionFields({
 		);
 	}
 	return null;
+}
+
+function HeadersEditor({
+	value,
+	onChange,
+}: {
+	value: Record<string, string>;
+	onChange: (next: Record<string, string>) => void;
+}) {
+	const entries = Object.entries(value);
+	function update(idx: number, key: string, val: string) {
+		const next: Record<string, string> = {};
+		for (let i = 0; i < entries.length; i++) {
+			const [k, v] = entries[i];
+			if (i === idx) {
+				if (key) next[key] = val;
+			} else {
+				next[k] = v;
+			}
+		}
+		onChange(next);
+	}
+	function remove(idx: number) {
+		const next: Record<string, string> = {};
+		entries.forEach(([k, v], i) => {
+			if (i !== idx) next[k] = v;
+		});
+		onChange(next);
+	}
+	function add() {
+		const next = { ...value };
+		let i = 1;
+		let key = "X-Header";
+		while (key in next) {
+			i += 1;
+			key = `X-Header-${i}`;
+		}
+		next[key] = "";
+		onChange(next);
+	}
+	return (
+		<div className="flex flex-col gap-1.5">
+			{entries.map(([k, v], idx) => (
+				// biome-ignore lint/suspicious/noArrayIndexKey: order-stable while editing
+				<div key={idx} className="flex gap-1.5">
+					<TInput
+						value={k}
+						onChange={(nk) => update(idx, nk, v)}
+						placeholder="Header-Name"
+						mono
+					/>
+					<TInput value={v} onChange={(nv) => update(idx, k, nv)} placeholder="value" mono />
+					<Btn variant="ghost" size="sm" onClick={() => remove(idx)}>
+						删除
+					</Btn>
+				</div>
+			))}
+			<div>
+				<Btn variant="outline" size="sm" onClick={add}>
+					+ 添加请求头
+				</Btn>
+			</div>
+		</div>
+	);
 }
 
 // ── Editor: Target ──────────────────────────────────────────────────────────
@@ -376,7 +489,7 @@ function TargetEditorModal({
 				{mode === "add" ? "新建推送目标" : "配置推送目标"}
 			</div>
 
-			<div className="-mx-1 max-h-[64vh] space-y-2.5 overflow-y-auto px-1">
+			<div className="space-y-2.5">
 				<SectionBox
 					title="选择适配器"
 					subtitle="目标的平台跟随适配器,连接参数(baseUrl/accessToken)在适配器层维护"
@@ -444,13 +557,25 @@ function TargetEditorModal({
 					</Field>
 					<Field label="作用域" code="target.scope">
 						<div className="flex gap-1.5">
-							{SCOPES.map((s) => {
+							{scopesFor(value.platform).map((s) => {
 								const active = value.scope === s.value;
 								return (
 									<button
 										key={s.value}
 										type="button"
-										onClick={() => onChange({ ...value, scope: s.value })}
+										onClick={() => {
+											if (value.platform === "onebot") {
+												// OneBot group/private are mutually exclusive — drop the other field
+												const old = value.session as OnebotSession;
+												const session: OnebotSession =
+													s.value === "group"
+														? { groupId: old.groupId }
+														: { userId: old.userId };
+												onChange({ ...value, scope: s.value, session });
+											} else {
+												onChange({ ...value, scope: s.value });
+											}
+										}}
 										className="rounded-md border px-3 py-1 text-[12px] font-bold transition"
 										style={
 											active
@@ -482,7 +607,9 @@ function TargetEditorModal({
 						title="会话信息"
 						subtitle={
 							value.platform === "onebot"
-								? "群号 / 私聊 QQ 二选一,作用域决定走哪个字段"
+								? value.scope === "private"
+									? "私聊目标 QQ 号"
+									: "群聊号(QQ 群号)"
 								: "Dashboard 通知中心接收方"
 						}
 						accent={tint}
@@ -519,24 +646,27 @@ function TargetSessionFields({
 }) {
 	if (target.platform === "onebot") {
 		const s = target.session as OnebotSession;
-		return (
-			<>
-				<Field label="群号 (groupId)" code="session.groupId">
-					<TInput
-						value={s.groupId ?? ""}
-						onChange={(v) => onChange({ ...target, session: { ...s, groupId: v || undefined } })}
-						placeholder="如:123456789"
-						mono
-					/>
-				</Field>
-				<Field label="QQ 号 (userId)" code="session.userId" hint="私聊用户;与群号二选一">
+		if (target.scope === "private") {
+			return (
+				<Field label="QQ 号 (userId)" code="session.userId" required>
 					<TInput
 						value={s.userId ?? ""}
-						onChange={(v) => onChange({ ...target, session: { ...s, userId: v || undefined } })}
+						onChange={(v) => onChange({ ...target, session: { userId: v || undefined } })}
+						placeholder="如:10001"
 						mono
 					/>
 				</Field>
-			</>
+			);
+		}
+		return (
+			<Field label="群号 (groupId)" code="session.groupId" required>
+				<TInput
+					value={s.groupId ?? ""}
+					onChange={(v) => onChange({ ...target, session: { groupId: v || undefined } })}
+					placeholder="如:123456789"
+					mono
+				/>
+			</Field>
 		);
 	}
 	if (target.platform === "web-dashboard") {

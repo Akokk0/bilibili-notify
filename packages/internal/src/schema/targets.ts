@@ -28,6 +28,14 @@ export const OnebotAdapterConfigSchema = z.object({
 	accessToken: z.string().optional(),
 	/** OneBot 协议版本；首期固定 v11，留位以便后续扩展 v12。 */
 	protocolVersion: z.literal("v11").default("v11"),
+	/** 附加到每次请求的 HTTP header（例如自定义鉴权头）。 */
+	headers: z.record(z.string(), z.string()).default({}),
+	/** 单次请求总超时（毫秒），覆盖连接 + 响应。 */
+	timeoutMs: z.number().int().positive().default(15_000),
+	/** 失败时的重试次数（不含首次）。 */
+	retryTimes: z.number().int().min(0).default(0),
+	/** 两次重试之间的等待（毫秒）。 */
+	retryIntervalMs: z.number().int().min(0).default(1_000),
 });
 export type OnebotAdapterConfig = z.infer<typeof OnebotAdapterConfigSchema>;
 

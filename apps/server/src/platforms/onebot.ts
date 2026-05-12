@@ -27,11 +27,12 @@ import type { PlatformAdapter } from "./types.js";
  */
 export interface OnebotPlatformAdapterOptions {
 	logger: Logger;
-	/** Per-request timeout (ms). Defaults to 15s. */
+	/** Fallback timeout (ms) when adapter.config.timeoutMs is missing. Defaults to 15s. */
 	timeoutMs?: number;
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_RETRY_INTERVAL_MS = 1_000;
 
 interface OneBotMessageSegment {
 	type: "text" | "image" | "at";
@@ -48,7 +49,7 @@ interface OneBotResponse {
 
 export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): PlatformAdapter {
 	const log = opts.logger;
-	const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+	const fallbackTimeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
 	function buildSegments(payload: NotificationPayload): OneBotMessageSegment[] {
 		switch (payload.kind) {
@@ -83,17 +84,20 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		}
 	}
 
-	async function postOnebot(
-		baseUrl: string,
-		accessToken: string | undefined,
+	async function postOnebotOnce(
+		cfg: OnebotAdapterConfig,
 		endpoint: string,
 		body: Record<string, unknown>,
 	): Promise<OneBotResponse> {
-		const url = `${trimTrailingSlash(baseUrl)}${endpoint}`;
-		const headers: Record<string, string> = { "content-type": "application/json" };
-		if (accessToken) headers.authorization = `Bearer ${accessToken}`;
+		const url = `${trimTrailingSlash(cfg.baseUrl)}${endpoint}`;
+		const headers: Record<string, string> = {
+			"content-type": "application/json",
+			...cfg.headers,
+		};
+		if (cfg.accessToken) headers.authorization = `Bearer ${cfg.accessToken}`;
 
 		const ctrl = new AbortController();
+		const timeoutMs = cfg.timeoutMs ?? fallbackTimeoutMs;
 		const timer = setTimeout(() => ctrl.abort(), timeoutMs);
 		try {
 			const res = await fetch(url, {
@@ -113,6 +117,31 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		} finally {
 			clearTimeout(timer);
 		}
+	}
+
+	async function postOnebot(
+		cfg: OnebotAdapterConfig,
+		endpoint: string,
+		body: Record<string, unknown>,
+	): Promise<OneBotResponse> {
+		const retryTimes = cfg.retryTimes ?? 0;
+		const retryIntervalMs = cfg.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
+		let lastErr: unknown;
+		let lastResponse: OneBotResponse | undefined;
+		for (let attempt = 0; attempt <= retryTimes; attempt++) {
+			try {
+				const result = await postOnebotOnce(cfg, endpoint, body);
+				if (result.status === "ok" && result.retcode === 0) return result;
+				lastResponse = result;
+			} catch (e) {
+				lastErr = e;
+			}
+			if (attempt < retryTimes && retryIntervalMs > 0) {
+				await new Promise((r) => setTimeout(r, retryIntervalMs));
+			}
+		}
+		if (lastResponse) return lastResponse;
+		throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 	}
 
 	return {
@@ -158,7 +187,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 					body.group_id = Number(session.groupId);
 				}
 
-				const result = await postOnebot(cfg.baseUrl, cfg.accessToken, endpoint, body);
+				const result = await postOnebot(cfg, endpoint, body);
 				const latencyMs = Date.now() - t0;
 				if (result.status !== "ok" || result.retcode !== 0) {
 					const err = result.wording ?? result.message ?? `retcode=${result.retcode}`;
@@ -168,8 +197,12 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				return { ok: true, latencyMs };
 			} catch (e) {
 				const latencyMs = Date.now() - t0;
-				const err = e instanceof Error ? e.message : String(e);
-				log.warn(`[onebot] target=${target.id} send threw: ${err}`);
+				const err = describeFetchError(e);
+				log.warn(
+					`[onebot] target=${target.id} send threw: ${err} (baseUrl=${
+						(adapter.config as OnebotAdapterConfig).baseUrl
+					})`,
+				);
 				return { ok: false, latencyMs, err };
 			}
 		},
@@ -185,4 +218,18 @@ function bufferToBase64Uri(buffer: Buffer, _mime: string): string {
 
 function trimTrailingSlash(s: string): string {
 	return s.endsWith("/") ? s.slice(0, -1) : s;
+}
+
+/**
+ * Unwrap undici's wrapping `TypeError: fetch failed` to expose the real
+ * underlying cause (ECONNREFUSED / ENOTFOUND / ETIMEDOUT / ...) for logs.
+ */
+function describeFetchError(e: unknown): string {
+	if (!(e instanceof Error)) return String(e);
+	const cause = (e as Error & { cause?: unknown }).cause;
+	if (cause instanceof Error) {
+		const code = (cause as NodeJS.ErrnoException).code;
+		return code ? `${e.message}: ${code} ${cause.message}` : `${e.message}: ${cause.message}`;
+	}
+	return e.message;
 }
