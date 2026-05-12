@@ -57,6 +57,19 @@ async function main(): Promise<void> {
 		);
 	}
 
+	// Lazy puppeteer-core launch — only constructed when chromePath is set.
+	// Browser process spawns on first use (cards/preview OR engine card render),
+	// not at boot. Built before createEngines so live + dynamic can share the
+	// same ImageRenderer instance as /api/cards/preview.
+	let puppeteer: StandalonePuppeteer | null = null;
+	if (bootstrap.chromePath) {
+		puppeteer = createPuppeteerAdapter({ chromePath: bootstrap.chromePath, logger: log });
+	} else {
+		log.warn(
+			"chromePath 未配置，卡片图片渲染将退化为文字推送（设置 BN_CHROME_PATH 或 yaml chromePath 后启用）",
+		);
+	}
+
 	// Engine layer (Stage 4 P0). The order matters:
 	//   1. SubscriptionStore binding mirrors the file-backed config into an
 	//      in-memory store + emits subscription-changed on diffs.
@@ -77,6 +90,7 @@ async function main(): Promise<void> {
 		subscriptionStore: subBinding.store,
 		bus: runtime.bus,
 		adapters,
+		puppeteer,
 	});
 	runtime.attachEngines(engines);
 
@@ -86,17 +100,6 @@ async function main(): Promise<void> {
 		store: runtime.configStore,
 		logger: log,
 	});
-
-	// Lazy puppeteer-core launch — only constructed when chromePath is set.
-	// Browser process spawns on first /api/cards/preview request, not at boot.
-	let puppeteer: StandalonePuppeteer | null = null;
-	if (bootstrap.chromePath) {
-		puppeteer = createPuppeteerAdapter({ chromePath: bootstrap.chromePath, logger: log });
-	} else {
-		log.warn(
-			"chromePath 未配置，/api/cards/preview 将返回 503（设置 BN_CHROME_PATH 或 yaml chromePath 后启用）",
-		);
-	}
 
 	if (bootstrap.webDistDir) {
 		log.info(`serving dashboard static assets from ${bootstrap.webDistDir}`);

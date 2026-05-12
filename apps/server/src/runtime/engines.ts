@@ -28,6 +28,7 @@ import {
 	type SubscriptionsView as DynamicSubsView,
 	type PushSegment,
 } from "@bilibili-notify/dynamic";
+import { ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
 	Disposable,
 	FeatureKey,
@@ -84,6 +85,13 @@ export interface CreateEnginesOptions {
 	subscriptionStore: SubscriptionStore;
 	bus: import("@bilibili-notify/internal").MessageBus;
 	adapters: PlatformAdapter[];
+	/**
+	 * Optional puppeteer adapter. When provided the engines spin up a shared
+	 * {@link ImageRenderer} so live / dynamic cards render to JPEG instead of
+	 * falling back to plain text. When null (no BN_CHROME_PATH), pushes go out
+	 * as the engines' text-only fallback path.
+	 */
+	puppeteer?: PuppeteerLike | null;
 }
 
 export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
@@ -94,6 +102,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const dynamicCtx = opts.serviceCtx.forSubsystem("dynamic", initialLevels?.dynamic);
 	const liveCtx = opts.serviceCtx.forSubsystem("live", initialLevels?.live);
 	const aiCtx = opts.serviceCtx.forSubsystem("ai", initialLevels?.ai);
+	const imageCtx = opts.serviceCtx.forSubsystem("image", initialLevels?.image);
 	const globals = (): GlobalConfig => opts.configStore.getGlobals();
 
 	// ---------- Sink + push ----------
@@ -182,6 +191,29 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		}
 	}
 
+	// ---------- ImageRenderer (optional) ----------
+	// Constructed once when puppeteer is wired (BN_CHROME_PATH / chromePath set).
+	// `cardStyle.enabled` is enforced inside DynamicEngine / LiveEngine via the
+	// `imageEnabled` config field; when false the engines bypass the renderer
+	// and emit text-only payloads, so we still construct the instance to avoid
+	// hot-swapping on the user toggling the switch.
+	let imageRenderer: ImageRenderer | null = null;
+	if (opts.puppeteer) {
+		const cs = globals().defaults.cardStyle;
+		imageRenderer = new ImageRenderer({
+			serviceCtx: imageCtx,
+			puppeteer: opts.puppeteer,
+			config: {
+				cardColorStart: cs.cardColorStart,
+				cardColorEnd: cs.cardColorEnd,
+				font: "PingFang SC, sans-serif",
+				hideDesc: false,
+				followerDisplay: true,
+			},
+		});
+		imageRenderer.start();
+	}
+
 	// ---------- DynamicEngine ----------
 	const dynamicPushLike: DynamicPushLike = {
 		async broadcastDynamic(uid, segments, _kind) {
@@ -226,7 +258,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		bus: opts.bus,
 		api: opts.api,
 		push: dynamicPushLike,
-		image: undefined, // puppeteer not yet wired in standalone (plan §3 future)
+		image: imageRenderer ?? undefined,
 		ai: commentary ?? undefined,
 		config: dynamicConfig(),
 		getSubs: () => buildDynamicSubsView(opts.subscriptionStore, globals()),
@@ -283,7 +315,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		api: opts.api,
 		push: livePushLike,
 		contentBuilder: standaloneContentBuilder,
-		imageRenderer: null,
+		imageRenderer: imageRenderer ?? null,
 		commentary: commentary ?? null,
 		config: liveConfig(),
 		emitPluginError: (msg) => opts.bus.emit("plugin-error", "live-engine", msg),
@@ -423,6 +455,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			commentary?.stop();
 		} catch (e) {
 			log.warn(`[engines] commentary.stop failed: ${String(e)}`);
+		}
+		try {
+			imageRenderer?.stop();
+		} catch (e) {
+			log.warn(`[engines] image.stop failed: ${String(e)}`);
 		}
 		try {
 			push.stop();
