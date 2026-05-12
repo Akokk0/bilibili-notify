@@ -57,6 +57,17 @@ import { createMultiplexSink } from "../sink/multiplex.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
 import type { NodeServiceContext } from "./service-context.js";
 
+export interface ModuleStatus {
+	/** DynamicEngine cron is wired. Always true once the runtime boots. */
+	dynamic: boolean;
+	/** LiveEngine has at least one subscription that would open a listener. */
+	live: boolean;
+	/** ImageRenderer is wired (puppeteer available) AND `cardStyle.enabled`. */
+	image: boolean;
+	/** CommentaryGenerator is wired (apiKey + baseUrl present) AND `ai.enabled`. */
+	ai: boolean;
+}
+
 export interface EnginesRuntime extends Disposable {
 	readonly dynamic: DynamicEngine;
 	readonly live: LiveEngine;
@@ -69,6 +80,8 @@ export interface EnginesRuntime extends Disposable {
 	listListeningUids(): string[];
 	/** Out-of-band reachability probe for `/api/adapters/:id/test`. */
 	probeAdapter(adapterId: string): Promise<ProbeResult>;
+	/** Per-module readiness snapshot exposed via `/api/health`. */
+	getModuleStatus(): ModuleStatus;
 }
 
 export interface CreateEnginesOptions {
@@ -478,6 +491,34 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		api: opts.api,
 		listListeningUids: () => listListeningUids(live),
 		probeAdapter: (adapterId: string) => sink.probeAdapter(adapterId),
+		getModuleStatus: (): ModuleStatus => {
+			const g = globals();
+			// "live ready" = at least one enabled subscription has any live-related
+			// feature routed to a target. Mirrors the LIVE_ROOM_MASTER_KEYS set
+			// inside @bilibili-notify/live's `needsLiveMonitor` plus the two
+			// special-user features.
+			const liveReady = opts.subscriptionStore.list().some((sub) => {
+				if (!sub.enabled) return false;
+				const eff = resolve(sub, g.defaults);
+				const keys: FeatureKey[] = [
+					"live",
+					"liveEnd",
+					"liveGuardBuy",
+					"superchat",
+					"wordcloud",
+					"liveSummary",
+					"specialDanmaku",
+					"specialUserEnter",
+				];
+				return keys.some((k) => (eff.routing[k]?.length ?? 0) > 0);
+			});
+			return {
+				dynamic: true,
+				live: liveReady,
+				image: imageRenderer !== null && g.defaults.cardStyle.enabled,
+				ai: commentary !== null && g.defaults.ai.enabled,
+			};
+		},
 		dispose,
 	};
 }

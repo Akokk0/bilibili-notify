@@ -24,6 +24,12 @@ interface HealthSnapshot {
 	version: string;
 	uptime: number;
 	startedAt: string;
+	modules?: {
+		dynamic: boolean;
+		live: boolean;
+		image: boolean;
+		ai: boolean;
+	};
 }
 
 function formatViewers(n: number | undefined): string {
@@ -529,16 +535,10 @@ export default function Dashboard() {
 					reachable={reachable}
 					logLevel={globalsQuery.data?.app.logLevel}
 					logLevels={globalsQuery.data?.app.logLevels}
-					dynamicEnabled={loggedIn}
-					liveEnabled={loggedIn && live.length > 0}
-					imageEnabled={false}
-					aiEnabled={
-						!!(
-							globalsQuery.data?.defaults.ai.enabled &&
-							globalsQuery.data?.defaults.ai.apiKey &&
-							globalsQuery.data?.defaults.ai.baseUrl
-						)
-					}
+					dynamicEnabled={health.data?.modules?.dynamic ?? loggedIn}
+					liveEnabled={health.data?.modules?.live ?? false}
+					imageEnabled={health.data?.modules?.image ?? false}
+					aiEnabled={health.data?.modules?.ai ?? false}
 				/>
 			</div>
 		</div>

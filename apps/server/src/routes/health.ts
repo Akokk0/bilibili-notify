@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { ConfigScopeMeta } from "../config/store.js";
+import type { ModuleStatus } from "../runtime/engines.js";
 import type { RouteDeps } from "./types.js";
 
 interface HealthBody {
@@ -11,6 +12,7 @@ interface HealthBody {
 	push: string | null;
 	dynamicCron: string | null;
 	history: string | null;
+	modules: ModuleStatus;
 }
 
 interface HealthDetailsBody {
@@ -42,6 +44,10 @@ export function createHealthRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 
 	app.get("/", (c) => {
+		const engines = deps.runtime.engines;
+		const modules: ModuleStatus = engines
+			? engines.getModuleStatus()
+			: { dynamic: false, live: false, image: false, ai: false };
 		const body: HealthBody = {
 			status: "ok",
 			version: SERVER_PKG_VERSION,
@@ -51,6 +57,7 @@ export function createHealthRoute(deps: RouteDeps): Hono {
 			push: null,
 			dynamicCron: null,
 			history: null,
+			modules,
 		};
 		return c.json(body);
 	});
