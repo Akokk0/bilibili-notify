@@ -64,10 +64,11 @@ export default function History() {
 	const [filterId, setFilterId] = useState<FilterId>("all");
 	const [q, setQ] = useState("");
 
+	// Cache is kept fresh by `usePushEventsChannel` (WS push-events → setQueryData),
+	// so the page renders new entries within ~1s of delivery without polling.
 	const historyQuery = useQuery({
 		queryKey: ["history"],
 		queryFn: () => api.get<HistoryResponse>("/api/history?limit=200"),
-		refetchInterval: 30_000,
 	});
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],

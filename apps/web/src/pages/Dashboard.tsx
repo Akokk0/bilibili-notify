@@ -441,10 +441,11 @@ export default function Dashboard() {
 		queryFn: () => api.get<LiveListenerSnapshot[]>("/api/live/listening"),
 		refetchInterval: 30_000,
 	});
+	// Cache is kept fresh by `usePushEventsChannel` (WS push-events → setQueryData),
+	// so KPI / recent list / trend chart update within ~1s without polling.
 	const historyQuery = useQuery({
 		queryKey: ["history"],
 		queryFn: () => api.get<HistoryResponse>("/api/history"),
-		refetchInterval: 30_000,
 	});
 	const globalsQuery = useQuery({
 		queryKey: ["globals"],
