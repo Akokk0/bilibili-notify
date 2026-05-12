@@ -86,7 +86,7 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 								key={r.uid}
 								to="/subs"
 								className="block overflow-hidden rounded-xl p-px"
-								style={{ background: "linear-gradient(135deg, #FB7299, #00AEEC)" }}
+								style={{ background: `linear-gradient(135deg, ${color}, ${color}88)` }}
 							>
 								<div className="flex items-center gap-3 rounded-[10px] bg-white/95 p-2.5 backdrop-blur-sm">
 									<Avatar
