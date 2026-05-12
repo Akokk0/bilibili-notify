@@ -293,7 +293,15 @@ export default function System() {
 		mutationFn: async (next: GlobalConfig) => {
 			setSystemError(null);
 			try {
-				await api.patch<GlobalConfig>("/api/globals", next);
+				// Only send the scopes this tab actually edits. Posting the whole
+				// draft would make the backend enable-check see `defaults.cardStyle`
+				// and `defaults.ai` in the patch body and run the puppeteer +
+				// chat.completions probes on every save — slow and pointless when
+				// the user never touched those fields here.
+				await api.patch<GlobalConfig>("/api/globals", {
+					app: next.app,
+					master: next.master,
+				});
 			} catch (err) {
 				if (err instanceof ApiError) setSystemError(err.message);
 				else setSystemError(String(err));
