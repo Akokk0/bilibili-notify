@@ -179,3 +179,17 @@ Both product forms ship from `refactor` continuously:
 `apps/` shares the single root pnpm workspace with `packages/` and `koishi/`. apps/server consumes business cores via `workspace:*`. With `node-linker=hoisted` (root `.npmrc`), the layout matches yarn-classic's flat `node_modules` so koishi's plugin loader keeps working.
 
 Earlier plan iterations described splitting `koishi/` and `standalone/` into separate long-lived branches with one-way merges from `refactor`. **That model has been dropped** — single-trunk maintenance is simpler, debugging is faster (one commit fixes both ends), and the directory split + pnpm isolation already gives sufficient separation.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues at `Akokk0/bilibili-notify`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary (`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`). Only `wontfix` exists in the repo today; the other four need `gh label create` before first use (commands in `docs/agents/triage-labels.md`).
+
+### Domain docs
+
+Single-context repo. `CONTEXT.md` + `docs/adr/` at the repo root (created lazily by `/grill-with-docs` once terms or decisions actually get resolved). See `docs/agents/domain.md`.
