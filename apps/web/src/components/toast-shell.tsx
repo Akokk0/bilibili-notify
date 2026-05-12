@@ -16,10 +16,7 @@ import { Icon, type IconName } from "./icons";
  *
  * Mounted once at App root.
  */
-const SOURCE_META: Record<
-	PushEventSource,
-	{ icon: IconName; tint: string; label: string }
-> = {
+const SOURCE_META: Record<PushEventSource, { icon: IconName; tint: string; label: string }> = {
 	dynamic: { icon: "dyn", tint: "#00AEEC", label: "动态" },
 	live: { icon: "live", tint: "#FB7299", label: "开播" },
 	sc: { icon: "sc", tint: "#FFB454", label: "SC" },
