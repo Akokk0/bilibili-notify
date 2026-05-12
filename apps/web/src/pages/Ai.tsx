@@ -197,16 +197,14 @@ export default function Ai() {
 							会写动态点评、直播总结，支持 OpenAI 兼容的任意 base URL (｡•̀ᴗ-)✧
 						</div>
 					</div>
-					<div className="flex items-center gap-2">
-						<span className="text-[12px] text-bn-text-secondary">总开关</span>
-						<Btn
-							size="sm"
-							variant={draft.enabled ? "primary" : "outline"}
-							onClick={() => setAi("enabled", !draft.enabled)}
-						>
-							{draft.enabled ? "已启用" : "未启用"}
-						</Btn>
-					</div>
+					<Picker
+						value={draft.enabled}
+						onChange={(v) => setAi("enabled", v)}
+						options={[
+							{ value: true, label: "启用", color: "#6c5ce7" },
+							{ value: false, label: "停用", color: "#94a3b8" },
+						]}
+					/>
 				</div>
 
 				{dirty ? (

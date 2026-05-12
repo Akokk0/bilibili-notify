@@ -17,6 +17,7 @@ import {
 	Field,
 	LogLevelPicker,
 	type LogLevelValue,
+	Picker,
 	TArea,
 	TColor,
 	TInput,
@@ -267,24 +268,22 @@ export default function Cards() {
 					<div className="flex-1">
 						<div className="flex items-center gap-2 text-[15.5px] font-bold text-bn-text-primary">
 							卡片预览
-							<Pill color={enabled ? "#a29bfe" : "#94a3b8"} subtle size="sm">
-								{enabled ? "已启用" : "已停用"}
+							<Pill color="#a29bfe" subtle size="sm">
+								image
 							</Pill>
 						</div>
 						<div className="mt-1 text-xs text-bn-text-tertiary">
 							puppeteer-core 把 Vue/UnoCSS 模板渲染成 PNG;关闭后 push 流程仅发送文本回退。
 						</div>
 					</div>
-					<div className="flex items-center gap-2">
-						<span className="text-[12px] text-bn-text-secondary">总开关</span>
-						<Btn
-							size="sm"
-							variant={enabled ? "primary" : "outline"}
-							onClick={() => set("enabled", !enabled)}
-						>
-							{enabled ? "已启用" : "未启用"}
-						</Btn>
-					</div>
+					<Picker
+						value={enabled}
+						onChange={(v) => set("enabled", v)}
+						options={[
+							{ value: true, label: "启用", color: "#a29bfe" },
+							{ value: false, label: "停用", color: "#94a3b8" },
+						]}
+					/>
 				</div>
 
 				{dirty ? (
