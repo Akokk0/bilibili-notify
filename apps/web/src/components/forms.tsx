@@ -26,7 +26,7 @@ export function Field({ label, hint, code, required, full, children }: FieldProp
 			} last:border-b-0`}
 		>
 			<div className={`pt-1 ${full ? "flex-none" : "flex-none basis-50"}`}>
-				<div className="mb-0.5 flex items-center gap-1.5">
+				<div className="mb-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
 					<span className="text-[12.5px] font-semibold text-bn-text-primary">{label}</span>
 					{required ? <span className="text-[11px] text-red-500">*</span> : null}
 					{code ? (
@@ -110,7 +110,7 @@ export interface TNumProps {
 	width?: number;
 }
 
-export function TNum({ value, onChange, min, max, step = 1, suffix, width = 100 }: TNumProps) {
+export function TNum({ value, onChange, min, max, step = 1, suffix, width = 80 }: TNumProps) {
 	return (
 		<div className="inline-flex items-center gap-1.5">
 			<input
@@ -120,7 +120,7 @@ export function TNum({ value, onChange, min, max, step = 1, suffix, width = 100 
 				min={min}
 				max={max}
 				step={step}
-				className={`${INPUT_BASE} text-right font-mono`}
+				className={`${INPUT_BASE} text-left font-mono`}
 				style={{ width }}
 			/>
 			{suffix ? <span className="text-[11.5px] text-bn-text-secondary">{suffix}</span> : null}

@@ -346,7 +346,6 @@ function AdapterConnectionFields({
 						min={0}
 						max={10}
 						suffix="次"
-						width={100}
 					/>
 				</Field>
 				<Field label="重试间隔" code="config.retryIntervalMs">
