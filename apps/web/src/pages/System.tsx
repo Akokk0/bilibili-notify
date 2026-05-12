@@ -65,12 +65,6 @@ function QrCard({ data, msg }: { data: unknown; msg: string }) {
 
 // ── System settings (app + master) ──────────────────────────────────────────
 
-const LOG_LEVELS: { value: LogLevel; label: string }[] = [
-	{ value: "error", label: "ERROR · 仅错误" },
-	{ value: "info", label: "INFO · 推荐" },
-	{ value: "debug", label: "DEBUG · 排查" },
-];
-
 /**
  * Per-module log overrides shown in 系统 Tab. image / ai already have their own
  * pickers in the Cards / 智能女仆 tabs, so we keep this list to the三个 the
@@ -163,10 +157,9 @@ function SystemSettingsSection({
 			</Field>
 
 			<Field label="日志等级（全局）" code="app.logLevel" hint="未在下方按模块覆盖时的兜底">
-				<TSelect
-					value={app.logLevel}
-					onChange={(v) => setApp("logLevel", v as LogLevel)}
-					options={LOG_LEVELS}
+				<LogLevelPicker
+					value={LOG_LEVEL_NUM[app.logLevel]}
+					onChange={(v) => v != null && setApp("logLevel", NUM_TO_LOG[v])}
 				/>
 			</Field>
 
@@ -212,9 +205,9 @@ function SystemSettingsSection({
 			</Field>
 
 			<Field
-				label="健康检查间隔"
+				label="登录心跳间隔"
 				code="app.healthCheckMinutes"
-				hint="rate-limited master 通知的节流窗口"
+				hint="每 N 分钟向 B 站 getMyselfInfo 探活；失效会触发 auth-lost + master 通知"
 			>
 				<TNum
 					value={app.healthCheckMinutes}
