@@ -54,12 +54,34 @@ function relativeTimeFromNow(iso: string): string {
 	return `${Math.floor(delta / 86_400_000)}天前`;
 }
 
+// 跟后端 `LIVE_ROOM_MASTER_KEYS` 同集合 —— 只要任意一项的 routing 数组非空,
+// LiveEngine 就会为该订阅开 B 站 WS 监听;反之 sub 即使 enabled 也不会出现
+// 在「正在直播」面板里(needsLiveMonitor 返回 false)。
+const LIVE_ROUTING_KEYS = [
+	"live",
+	"liveEnd",
+	"liveGuardBuy",
+	"superchat",
+	"wordcloud",
+	"liveSummary",
+] as const;
+
+function hasAnyLiveTarget(sub: Subscription): boolean {
+	return LIVE_ROUTING_KEYS.some((k) => (sub.routing[k]?.length ?? 0) > 0);
+}
+
 function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subscription[] }) {
 	const subByUid = useMemo(() => {
 		const m = new Map<string, Subscription>();
 		for (const s of subs) m.set(s.uid, s);
 		return m;
 	}, [subs]);
+	// 用户订阅了但没给 live 类 feature 配 target 的数量 —— 这些订阅的直播状态
+	// 永远不会出现在面板里。empty state 里露出 hint 让用户知道该去哪配置。
+	const unmonitoredCount = useMemo(
+		() => subs.filter((s) => s.enabled && !hasAnyLiveTarget(s)).length,
+		[subs],
+	);
 	return (
 		<GlassPanel
 			accent="#fb7299"
@@ -78,6 +100,17 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 					<span className="text-[11px] text-bn-text-secondary/80">
 						女仆会在直播开始时第一时间推送 (｡•̀ᴗ-)✧
 					</span>
+					{unmonitoredCount > 0 ? (
+						<>
+							<br />
+							<Link
+								to="/subs"
+								className="mt-1 inline-block text-[11px] text-bn-pink underline-offset-2 hover:underline"
+							>
+								有 {unmonitoredCount} 位订阅未配置直播推送目标,他们不会被监听 →
+							</Link>
+						</>
+					) : null}
 				</div>
 			) : (
 				// auto-fit grid + max-h cap so the panel never grows beyond Trend's
