@@ -9,7 +9,11 @@ export interface LiveListenerSnapshot {
 	roomId?: string;
 	title?: string;
 	cover?: string;
-	viewers?: number;
+	/**
+	 * B 站 WATCHED_CHANGE 给出的预格式化累计观看人数(如 "1.2万")。后端只在收到该
+	 * WS 帧后才有值,刚开播前几秒可能仍是 undefined,UI 显示 "—"。
+	 */
+	viewers?: string;
 	startedAt?: string;
 	areaName?: string;
 }

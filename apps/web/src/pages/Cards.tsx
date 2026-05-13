@@ -23,7 +23,7 @@ import {
 	TInput,
 } from "../components/forms";
 import { GlassBox } from "../components/glass-box";
-import { Icon } from "../components/icons";
+import { Icon, type IconName } from "../components/icons";
 import { ApiError, api } from "../services/api";
 import type { CardStyle, GlobalConfig, LogLevel } from "../types/globals";
 
@@ -52,11 +52,11 @@ const GUARD_LEVELS: { v: 1 | 2 | 3; label: string; tone: string }[] = [
 	{ v: 3, label: "舰长", tone: "#74b9ff" },
 ];
 
-const KIND_LABELS: Record<CardKind, { label: string; tone: string }> = {
-	live: { label: "直播开播", tone: "#FF6699" },
-	dyn: { label: "动态发布", tone: "#00AEEC" },
-	sc: { label: "SC 提醒", tone: "#fdcb6e" },
-	guard: { label: "上舰提醒", tone: "#f2a053" },
+const KIND_LABELS: Record<CardKind, { label: string; tone: string; icon: IconName }> = {
+	live: { label: "直播开播", tone: "#FF6699", icon: "live" },
+	dyn: { label: "动态发布", tone: "#00AEEC", icon: "dyn" },
+	sc: { label: "SC 提醒", tone: "#fdcb6e", icon: "sc" },
+	guard: { label: "上舰提醒", tone: "#f2a053", icon: "guard" },
 };
 
 interface PreviewResponse {
@@ -243,6 +243,8 @@ export default function Cards() {
 		setImageLogLevel(globalsQuery.data.app.logLevels?.image ?? "");
 	}
 
+	const KindIcon = Icon[KIND_LABELS[kind].icon];
+
 	return (
 		<div className="bn-anim-fade-in flex flex-col gap-4">
 			{/* Hero strip — mirrors AI page (顶层开关 · 日志等级 · 保存控件) */}
@@ -263,7 +265,7 @@ export default function Cards() {
 							height: 52,
 						}}
 					>
-						<Icon.sparkle size={26} />
+						<Icon.eye size={26} />
 					</div>
 					<div className="flex-1">
 						<div className="flex items-center gap-2 text-[15.5px] font-bold text-bn-text-primary">
@@ -317,7 +319,7 @@ export default function Cards() {
 						title="卡片渲染样式"
 						subtitle="image plugin · 全局默认 · per-UP 覆盖在「高级规则」"
 						accent="#a29bfe"
-						icon={<Icon.sparkle size={14} />}
+						icon={<Icon.edit size={14} />}
 						badge="cardStyle"
 					>
 						<Field label="渐变起始" code="cardColorStart">
@@ -353,7 +355,7 @@ export default function Cards() {
 									: "自定义文案 · mock 头像/数值"
 						}
 						accent={KIND_LABELS[kind].tone}
-						icon={<Icon.sparkle size={14} />}
+						icon={<KindIcon size={14} />}
 						badge={kind}
 					>
 						{kind === "live" ? (

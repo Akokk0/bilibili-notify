@@ -71,7 +71,15 @@ export abstract class RoomSessionBase {
 		cover?: string;
 		areaName?: string;
 		startedAt?: string;
+		/**
+		 * B 站 WS `WATCHED_CHANGE` 帧给出的"累计观看人数",预格式化字符串(如 "1.2万")。
+		 * 还没收到该帧时为 undefined,前端显示 "—"。我们不存原始 num,因为 bilibili 自己
+		 * 给的 text_small 已是用户预期的中文压缩形式。
+		 */
+		viewers?: string;
 	} {
+		const w = this.liveData.watchedNum;
+		const viewers = typeof w === "number" ? String(w) : w;
 		return {
 			uid: this.sub.uid,
 			roomId: this.sub.roomId,
@@ -80,6 +88,7 @@ export abstract class RoomSessionBase {
 			cover: this.liveRoomInfo?.user_cover || this.liveRoomInfo?.keyframe || undefined,
 			areaName: this.liveRoomInfo?.area_name,
 			startedAt: this.liveRoomInfo?.live_time || undefined,
+			viewers: viewers && viewers !== "暂未获取到" ? viewers : undefined,
 		};
 	}
 

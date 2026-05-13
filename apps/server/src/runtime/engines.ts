@@ -33,6 +33,7 @@ import type {
 	Disposable,
 	FeatureKey,
 	GlobalConfig,
+	HistorySource,
 	NotificationPayload,
 	PayloadSegment,
 	PushTarget,
@@ -51,7 +52,7 @@ import {
 import { BilibiliPush } from "@bilibili-notify/push";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import type { ConfigStore } from "../config/store.js";
-import type { HistoryAppendInput, HistoryStore } from "../history/store.js";
+import type { HistoryStore } from "../history/store.js";
 import type { PlatformAdapter, ProbeResult } from "../platforms/types.js";
 import { createMultiplexSink } from "../sink/multiplex.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
@@ -77,6 +78,8 @@ export interface LiveListenerSnapshot {
 	cover?: string;
 	areaName?: string;
 	startedAt?: string;
+	/** B 站 WATCHED_CHANGE 帧给出的累计观看(预格式化字符串,如 "1.2万")。 */
+	viewers?: string;
 }
 
 export interface EnginesRuntime extends Disposable {
@@ -148,21 +151,14 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	opts.api.setUserAgent(globals().app.userAgent);
 
 	// ---------- Sink + push ----------
+	// onDelivery 只负责 target.testStatus 同步 —— sink 拿不到 uid + feature,
+	// 没法填 history 的 source / uid 字段。history 写入挂到 BilibiliPush.onSend
+	// (见下方),那里能拿到完整的发起上下文。
 	const sink = createMultiplexSink({
 		store: opts.configStore,
 		adapters: opts.adapters,
 		logger: log,
-		onDelivery: (target, payload, result, dispatchOpts) => {
-			void recordHistoryFromDelivery(
-				opts.historyStore,
-				target,
-				payload,
-				result,
-				dispatchOpts,
-			).catch((e) => log.warn(`[history] append failed: ${String(e)}`));
-			// Bring target.testStatus in sync with reality. We only write on
-			// transition (or first-time) so steady-state pushes don't thrash
-			// targets.json. Fire-and-forget; logging on failure.
+		onDelivery: (target, _payload, result) => {
 			const prev = target.testStatus;
 			if (!prev || prev.ok !== result.ok) {
 				const nextStatus = {
@@ -191,6 +187,27 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		store: opts.subscriptionStore,
 		master: masterTarget() ?? null,
 		logger: log,
+		onSend: (info) => {
+			// 私聊不走 history(语义上是给主人的运行状态通知,不是订阅推送)。
+			if (info.private) return;
+			const sub = opts.subscriptionStore.findByUid(info.uid);
+			void opts.historyStore
+				.append({
+					source: featureToHistorySource(info.feature),
+					uid: info.uid,
+					subscriptionId: sub?.id ?? info.target.id,
+					targets: [
+						{
+							targetId: info.target.id,
+							ok: info.result.ok,
+							latencyMs: info.result.latencyMs,
+							err: info.result.err,
+						},
+					],
+					payload: info.payload,
+				})
+				.catch((e) => log.warn(`[history] append failed: ${String(e)}`));
+		},
 	});
 	push.start();
 
@@ -612,37 +629,33 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 // Helpers
 // ----------------------------------------------------------------------------
 
-async function recordHistoryFromDelivery(
-	historyStore: HistoryStore,
-	target: PushTarget,
-	payload: NotificationPayload,
-	result: { ok: boolean; latencyMs: number; err?: string },
-	dispatchOpts: { private: boolean },
-): Promise<void> {
-	// History rows always have a uid + subscriptionId, but the multiplex sink
-	// doesn't carry that context; we infer "system" rows for master / private
-	// notifications. The DynamicEngine / LiveEngine paths embed those fields
-	// before reaching us, so for now we record best-effort metadata only.
-	const input: HistoryAppendInput = {
-		source: dispatchOpts.private ? "live" : "dynamic", // best-effort default
-		uid: "",
-		subscriptionId: target.id,
-		targets: [
-			{
-				targetId: target.id,
-				ok: result.ok,
-				latencyMs: result.latencyMs,
-				err: result.err,
-			},
-		],
-		payload,
-	};
-	// Schema requires UUIDs for ids; if subscriptionId isn't a uuid it would
-	// fail validation. The store catches that and logs — we don't re-throw.
-	try {
-		await historyStore.append(input);
-	} catch {
-		// drop — history is best-effort, not load-bearing for delivery.
+/**
+ * BilibiliPush 的 FeatureKey(或 master notify 走的 "private")映射到 history
+ * schema 的 7 个分类 source 值。dynamic-engine / live-engine 在 push 时只携带
+ * 一个 feature 字段,这里集中翻译,避免每个调用点散列。
+ */
+function featureToHistorySource(feature: string): HistorySource {
+	switch (feature) {
+		case "dynamic":
+		case "dynamicAtAll":
+			return "dynamic";
+		case "live":
+		case "liveAtAll":
+		case "liveEnd":
+			return "live";
+		case "liveGuardBuy":
+			return "guard";
+		case "superchat":
+			return "sc";
+		case "wordcloud":
+		case "liveSummary":
+			return "live-summary";
+		case "specialDanmaku":
+			return "special-danmaku";
+		case "specialUserEnter":
+			return "special-enter";
+		default:
+			return "dynamic";
 	}
 }
 
@@ -878,5 +891,6 @@ function listLiveRooms(live: LiveEngine): LiveListenerSnapshot[] {
 			cover: s.cover,
 			areaName: s.areaName,
 			startedAt: s.startedAt,
+			viewers: s.viewers,
 		}));
 }

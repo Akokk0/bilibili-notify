@@ -11,6 +11,20 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 const INITIAL_RETRY_DELAY_MS = 3000;
 const MAX_RETRY_DELAY_MS = INITIAL_RETRY_DELAY_MS * 2 ** 5;
 
+/**
+ * Per-send context fired after每条 `sendToTarget` 结束(成功/失败均触发)。Adapter
+ * 用它把 history 记录里的 `uid` 与 `source` 拼对 —— multiplex sink 拿不到
+ * 这两个字段(它只看 PushTarget),所以历史只能从这一层注入。
+ */
+export interface PushSendInfo {
+	uid: string;
+	feature: FeatureKey | "private";
+	target: PushTarget;
+	payload: NotificationPayload;
+	result: DeliveryResult;
+	private: boolean;
+}
+
 /** Options for constructing a BilibiliPush instance. */
 export interface BilibiliPushOptions {
 	/** Platform-neutral push sink — translates targetId → platform delivery. */
@@ -21,6 +35,12 @@ export interface BilibiliPushOptions {
 	master?: PushTarget | null;
 	/** Logger instance. */
 	logger: Logger;
+	/**
+	 * Optional hook fired after every successful or failed send. Receives the
+	 * resolved `target` plus the originating `uid` / `feature` — fields the
+	 * multiplex sink can't see. Standalone wires this to history-store append.
+	 */
+	onSend?: (info: PushSendInfo) => void;
 }
 
 /**
@@ -35,6 +55,7 @@ export class BilibiliPush {
 	private readonly store: SubscriptionStore;
 	private master: PushTarget | null;
 	private readonly logger: Logger;
+	private readonly onSend?: (info: PushSendInfo) => void;
 	private disposed = false;
 
 	constructor(opts: BilibiliPushOptions) {
@@ -42,6 +63,7 @@ export class BilibiliPush {
 		this.store = opts.store;
 		this.master = opts.master ?? null;
 		this.logger = opts.logger;
+		this.onSend = opts.onSend;
 	}
 
 	/**
@@ -92,18 +114,38 @@ export class BilibiliPush {
 		}
 
 		this.logger.info(`[push] uid=${uid} feature=${feature} → ${targetIds.length} 个目标`);
-		return this.sendBatch(targetIds, payload);
+		return this.sendBatch(targetIds, payload, { uid, feature });
 	}
 
 	/**
 	 * Send a notification to all targets in the list.
 	 * Failures are captured per-target; does not throw.
+	 * Optional `ctx` carries the originating uid/feature so adapter hooks
+	 * (history append) get the correct fields. broadcastToFeature passes ctx;
+	 * legacy callers without ctx get history rows with empty uid.
 	 */
-	async sendBatch(targetIds: string[], payload: NotificationPayload): Promise<DeliveryResult[]> {
+	async sendBatch(
+		targetIds: string[],
+		payload: NotificationPayload,
+		ctx?: { uid: string; feature: FeatureKey | "private" },
+	): Promise<DeliveryResult[]> {
 		if (this.disposed) return [];
 		const results: DeliveryResult[] = [];
 		for (const id of targetIds) {
 			const result = await this.sendToTarget(id, payload);
+			if (this.onSend && ctx) {
+				const target = this.sink.resolve(id);
+				if (target) {
+					this.onSend({
+						uid: ctx.uid,
+						feature: ctx.feature,
+						target,
+						payload,
+						result,
+						private: false,
+					});
+				}
+			}
 			results.push(result);
 		}
 		return results;

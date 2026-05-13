@@ -32,9 +32,9 @@ interface HealthSnapshot {
 	};
 }
 
-function formatViewers(n: number | undefined): string {
-	if (n == null) return "—";
-	return n >= 10_000 ? `${(n / 10_000).toFixed(1)}万` : `${n}`;
+function formatViewers(n: string | undefined): string {
+	if (!n) return "—";
+	return n;
 }
 
 function relativeTimeFromNow(iso: string): string {
@@ -267,7 +267,7 @@ function TimelinePanel({
 									className="flex flex-1 items-center gap-2.5 rounded-lg bg-white/70 px-3 py-2 text-[12.5px]"
 									style={!h.ok ? { borderLeft: "3px solid #ef4444" } : undefined}
 								>
-									<Avatar name={name} color={color} size={24} />
+									<Avatar name={name} color={color} size={24} url={sub?.cachedProfile?.avatar} />
 									<Pill color={tone} subtle size="sm">
 										{TIMELINE_LABEL[h.source] ?? h.source}
 									</Pill>
@@ -537,20 +537,20 @@ export default function Dashboard() {
 			{/* AI insight strip */}
 			<AiInsightStrip tip={aiTip} />
 
-			{/* timeline + health */}
-			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1.4fr_1fr]">
-				<TimelinePanel entries={history} subs={subs} targets={targets} />
-				<SystemHealthCard
-					health={health.data}
-					reachable={reachable}
-					logLevel={globalsQuery.data?.app.logLevel}
-					logLevels={globalsQuery.data?.app.logLevels}
-					dynamicEnabled={health.data?.modules?.dynamic ?? loggedIn}
-					liveEnabled={health.data?.modules?.live ?? false}
-					imageEnabled={health.data?.modules?.image ?? false}
-					aiEnabled={health.data?.modules?.ai ?? false}
-				/>
-			</div>
+			{/* timeline (full width) */}
+			<TimelinePanel entries={history} subs={subs} targets={targets} />
+
+			{/* system health (full width) */}
+			<SystemHealthCard
+				health={health.data}
+				reachable={reachable}
+				logLevel={globalsQuery.data?.app.logLevel}
+				logLevels={globalsQuery.data?.app.logLevels}
+				dynamicEnabled={health.data?.modules?.dynamic ?? loggedIn}
+				liveEnabled={health.data?.modules?.live ?? false}
+				imageEnabled={health.data?.modules?.image ?? false}
+				aiEnabled={health.data?.modules?.ai ?? false}
+			/>
 		</div>
 	);
 }

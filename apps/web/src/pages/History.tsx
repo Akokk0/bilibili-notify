@@ -240,7 +240,7 @@ function HistoryRow({
 			<span className="font-mono text-[11.5px] text-bn-text-tertiary">
 				{relativeTime(entry.ts)}
 			</span>
-			<Avatar name={upName} color={upColor} size={24} />
+			<Avatar name={upName} color={upColor} size={24} url={sub?.cachedProfile?.avatar} />
 			<Pill color={tone} subtle size="sm">
 				{SOURCE_LABEL[entry.source]}
 			</Pill>
