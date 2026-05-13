@@ -71,6 +71,27 @@ export interface BiliEvents {
 	 * 后的中文压缩字符串(如 "1.2万");消费方直接展示,不二次转换。
 	 */
 	"live-viewers-changed": (uid: string, viewers: string) => void;
+	/**
+	 * 一轮 FansPoller 完成后 emit。entries 携带本轮采样到的所有 enabled subs 的
+	 * 当前 fans + 三个窗口(订阅起点 / 24h / 7d)的 delta。前端 setQueryData
+	 * 全量覆盖 ["fans"] 缓存。delta 字段为 null 表示窗口内没有可用基线/样本。
+	 */
+	"fans-refreshed": (entries: FansRefreshEntry[]) => void;
+}
+
+/** Bus 上 fans-refreshed 事件 / HTTP /api/fans 返回的单条 entry。 */
+export interface FansRefreshEntry {
+	uid: string;
+	/** 本次采样到的 B 站当前 fans 数。 */
+	current: number;
+	/** 本次采样时间(ISO)。 */
+	ts: string;
+	/** delta 相对 subscribed baseline;subscribed baseline 缺失时为 null。 */
+	deltaSubscribed: number | null;
+	/** delta 相对 24h 前最近一条样本;窗口内无样本时为 null。 */
+	delta24h: number | null;
+	/** delta 相对 7d 前最近一条样本;窗口内无样本时为 null。 */
+	delta7d: number | null;
 }
 
 /** ConfigStore 在 set 后 emit 'config-changed' 时携带的范围标识。 */

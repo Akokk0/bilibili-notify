@@ -162,6 +162,11 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 			deps.publish(envelope("push-events", "live-viewers-changed", [uid, viewers])),
 		),
 	);
+	subs.push(
+		deps.bus.on("fans-refreshed", (entries) =>
+			deps.publish(envelope("push-events", "fans-refreshed", [entries])),
+		),
+	);
 
 	// log channel -----------------------------------------------------------
 	// Two sources merge here:

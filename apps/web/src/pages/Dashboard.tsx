@@ -9,6 +9,8 @@ import { useBackendReachable } from "../hooks/useBackendReachable";
 import { api } from "../services/api";
 import {
 	bucketByDay,
+	type FansEntry,
+	type FansResponse,
 	type HistoryEntryView,
 	type HistoryResponse,
 	type LiveListenerSnapshot,
@@ -300,6 +302,112 @@ function TimelinePanel({
 	);
 }
 
+// ── Fans deltas panel ─────────────────────────────────────────────────────
+
+function formatFans(n: number): string {
+	if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(2)}亿`;
+	if (n >= 10_000) return `${(n / 10_000).toFixed(1)}万`;
+	return n.toLocaleString();
+}
+
+function formatDeltaNumber(n: number): string {
+	const abs = Math.abs(n);
+	const sign = n > 0 ? "+" : "-";
+	if (abs >= 10_000) return `${sign}${(abs / 10_000).toFixed(1)}万`;
+	return `${n > 0 ? "+" : ""}${n.toLocaleString()}`;
+}
+
+function FansDeltaCol({ label, value }: { label: string; value: number | null }) {
+	const isNull = value == null;
+	const text = isNull ? "—" : value === 0 ? "±0" : formatDeltaNumber(value);
+	const color = isNull
+		? "#94a3b8"
+		: value === 0
+			? "#94a3b8"
+			: value > 0
+				? "#22c55e"
+				: "#ef4444";
+	return (
+		<div className="w-16 text-right">
+			<div className="font-mono text-[13px] font-bold" style={{ color }}>
+				{text}
+			</div>
+			<div className="font-mono text-[10px] text-bn-text-tertiary">{label}</div>
+		</div>
+	);
+}
+
+function FansPanel({ subs }: { subs: Subscription[] }) {
+	// 不轮询 — 由 usePushEventsChannel 的 `fans-refreshed` 覆盖式刷新缓存。
+	const fansQuery = useQuery({
+		queryKey: ["fans"],
+		queryFn: () => api.get<FansResponse>("/api/fans"),
+	});
+	const subByUid = useMemo(() => {
+		const m = new Map<string, Subscription>();
+		for (const s of subs) m.set(s.uid, s);
+		return m;
+	}, [subs]);
+
+	const entries: FansEntry[] = fansQuery.data?.entries ?? [];
+	const sorted = useMemo(() => {
+		// 按 |deltaSubscribed| 降序;null delta 沉底。
+		return [...entries].sort((a, b) => {
+			const ax = Math.abs(a.deltaSubscribed ?? -1);
+			const bx = Math.abs(b.deltaSubscribed ?? -1);
+			return bx - ax;
+		});
+	}, [entries]);
+
+	return (
+		<GlassPanel
+			title="粉丝数变化"
+			subtitle="自订阅起点 / 近 24h / 近 7d"
+			accent="#fb7299"
+			right={
+				<Pill color="#FB7299" size="sm">
+					● {entries.length} 位订阅
+				</Pill>
+			}
+		>
+			{entries.length === 0 ? (
+				<div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-[12.5px] text-bn-text-secondary">
+					采样中…
+					<br />
+					<span className="text-[11px] text-bn-text-secondary/80">
+						FansPoller 第一轮 cron tick 完成后会填充(约 1–2 分钟)
+					</span>
+				</div>
+			) : (
+				<div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-2">
+					{sorted.map((e) => {
+						const sub = subByUid.get(e.uid);
+						const name = sub ? displayName(sub) : `UID ${e.uid}`;
+						const color = colorFromUid(e.uid);
+						return (
+							<div
+								key={e.uid}
+								className="flex items-center gap-3 rounded-lg bg-white/70 px-3 py-2.5 text-[12.5px]"
+							>
+								<Avatar name={name} color={color} size={32} url={sub?.cachedProfile?.avatar} />
+								<div className="min-w-0 flex-1">
+									<div className="truncate font-bold text-bn-text-primary">{name}</div>
+									<div className="font-mono text-[11px] text-bn-text-tertiary">
+										{formatFans(e.current)} 粉丝
+									</div>
+								</div>
+								<FansDeltaCol label="起点" value={e.deltaSubscribed} />
+								<FansDeltaCol label="24h" value={e.delta24h} />
+								<FansDeltaCol label="7d" value={e.delta7d} />
+							</div>
+						);
+					})}
+				</div>
+			)}
+		</GlassPanel>
+	);
+}
+
 // ── Plugin matrix (mirrors .bn-design SystemHealthPanel) ──────────────────
 
 type ModuleCellId =
@@ -580,6 +688,9 @@ export default function Dashboard() {
 
 			{/* timeline (full width) */}
 			<TimelinePanel entries={history} subs={subs} targets={targets} />
+
+			{/* fans deltas (full width) */}
+			<FansPanel subs={subs} />
 
 			{/* system health (full width) */}
 			<SystemHealthCard

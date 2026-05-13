@@ -1,8 +1,10 @@
 import type { MessageBus } from "@bilibili-notify/internal";
 import type { BootstrapConfig } from "../config/schema.js";
 import { type ConfigStore, createConfigStore } from "../config/store.js";
+import { createFansStore, type FansStore } from "../fans/store.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
 import type { EnginesRuntime } from "./engines.js";
+import type { FansPollerHandle } from "./fans-poller.js";
 import { createNodeMessageBus } from "./message-bus.js";
 import { createNodeServiceContext, type NodeServiceContext } from "./service-context.js";
 
@@ -12,6 +14,7 @@ export interface AppRuntime {
 	bus: MessageBus;
 	configStore: ConfigStore;
 	historyStore: HistoryStore;
+	fansStore: FansStore;
 	/**
 	 * Engine layer: BilibiliPush + DynamicEngine + LiveEngine + Sink.
 	 *
@@ -26,6 +29,14 @@ export interface AppRuntime {
 	 */
 	engines: EnginesRuntime | null;
 	attachEngines(engines: EnginesRuntime): void;
+	/**
+	 * FansPoller handle (cron 跟 globals.app.dynamicCron 刷新每个 enabled sub 的
+	 * B 站 fans 数并 emit `fans-refreshed`)。`null` 直到 attachEngines 完成 + 启动
+	 * 完成后由 index.ts 注入;Routes 通过 `runtime.fansPoller?.getLastEntries()` 读
+	 * 最近一轮快照。
+	 */
+	fansPoller: FansPollerHandle | null;
+	attachFansPoller(poller: FansPollerHandle): void;
 	/** Tear down everything (timers, onDispose hooks). Idempotent. */
 	dispose(): Promise<void>;
 }
@@ -48,8 +59,13 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		bus,
 		logger: serviceCtx.logger,
 	});
+	const fansStore = createFansStore({
+		dataDir: bootstrap.dataDir,
+		logger: serviceCtx.logger,
+	});
 
 	let engines: EnginesRuntime | null = null;
+	let fansPoller: FansPollerHandle | null = null;
 
 	return {
 		bootstrap,
@@ -57,11 +73,18 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		bus,
 		configStore,
 		historyStore,
+		fansStore,
 		get engines() {
 			return engines;
 		},
 		attachEngines(next: EnginesRuntime) {
 			engines = next;
+		},
+		get fansPoller() {
+			return fansPoller;
+		},
+		attachFansPoller(next: FansPollerHandle) {
+			fansPoller = next;
 		},
 		dispose: () => serviceCtx.dispose(),
 	};

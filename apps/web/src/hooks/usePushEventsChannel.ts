@@ -1,6 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import type { HistoryResponse, LiveListenerSnapshot } from "../services/dashboard";
+import type {
+	FansEntry,
+	FansResponse,
+	HistoryResponse,
+	LiveListenerSnapshot,
+} from "../services/dashboard";
 import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
 import { type PushEventView, useToastStore } from "../store/notifications";
 
@@ -55,6 +60,16 @@ export function usePushEventsChannel(): void {
 					});
 					return touched ? next : old;
 				});
+				return;
+			}
+
+			// FansPoller 每轮 cron tick / 订阅删除时推「本轮 enabled subs 的完整快照」。
+			// 直接覆盖 ["fans"] 缓存 —— 被删除订阅的 uid 不在 payload 里,自然从面板撤掉。
+			// 后端已保证"本轮失败保留旧值"语义在快照里完成,前端不需要 upsert。
+			if (env.event === "fans-refreshed") {
+				const incoming = env.data as FansEntry[] | undefined;
+				if (!Array.isArray(incoming)) return;
+				qc.setQueryData<FansResponse>(["fans"], { entries: incoming });
 				return;
 			}
 

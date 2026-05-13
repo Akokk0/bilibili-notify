@@ -9,6 +9,7 @@ import { createWebDashboardAdapter } from "./platforms/web-dashboard.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
 import { createAppRuntime } from "./runtime/bootstrap.js";
 import { createEngines } from "./runtime/engines.js";
+import { startFansPoller } from "./runtime/fans-poller.js";
 import { createPuppeteerAdapter, type StandalonePuppeteer } from "./runtime/puppeteer.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
 import { createWsServer } from "./ws/server.js";
@@ -104,6 +105,19 @@ async function main(): Promise<void> {
 		store: runtime.configStore,
 		logger: log,
 	});
+
+	// 启动 FansPoller — cron 跟 globals.app.dynamicCron,每个 enabled sub
+	// 拉一次 B 站 fans 数,写时序 jsonl + emit `fans-refreshed`。
+	const fansPoller = startFansPoller({
+		bus: runtime.bus,
+		logger: log,
+		configStore: runtime.configStore,
+		subscriptionStore: subBinding.store,
+		fansStore: runtime.fansStore,
+		api: authSystem.api,
+	});
+	runtime.attachFansPoller(fansPoller);
+	runtime.serviceCtx.onDispose(() => fansPoller.dispose());
 
 	if (bootstrap.webDistDir) {
 		log.info(`serving dashboard static assets from ${bootstrap.webDistDir}`);

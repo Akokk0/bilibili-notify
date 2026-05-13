@@ -8,6 +8,7 @@ import type { AuthSystem } from "./auth/index.js";
 import { createAdaptersRoute } from "./routes/adapters.js";
 import { createAuthRoute } from "./routes/auth.js";
 import { createCardsRoute } from "./routes/cards.js";
+import { createFansRoute } from "./routes/fans.js";
 import { createGlobalsRoute } from "./routes/globals.js";
 import { createHealthRoute } from "./routes/health.js";
 import { createHistoryRoute } from "./routes/history.js";
@@ -110,6 +111,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	app.route("/api/live", createLiveRoute(deps));
 	app.route("/api/history", createHistoryRoute(deps));
 	app.route("/api/push", createPushRoute(deps));
+	app.route("/api/fans", createFansRoute(deps));
 	app.route(
 		"/api/cards",
 		createCardsRoute({

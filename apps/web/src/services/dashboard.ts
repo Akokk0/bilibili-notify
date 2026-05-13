@@ -43,6 +43,24 @@ export interface HistoryResponse {
 	cursor?: string;
 }
 
+/**
+ * Wire-compat with apps/server/src/routes/fans.ts + WS `fans-refreshed` 事件。
+ * 后端 FansPoller 每个 cron tick 输出一批 entries(本轮采到的所有 enabled subs)。
+ * Bootstrap 阶段 entries 为空,FansPanel 显示"采样中…"。
+ */
+export interface FansEntry {
+	uid: string;
+	current: number;
+	ts: string;
+	deltaSubscribed: number | null;
+	delta24h: number | null;
+	delta7d: number | null;
+}
+
+export interface FansResponse {
+	entries: FansEntry[];
+}
+
 /** Bucket history entries by ISO date (YYYY-MM-DD) and by 4 source families. */
 export interface DailyBucket {
 	d: string;

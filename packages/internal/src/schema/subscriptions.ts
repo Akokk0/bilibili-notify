@@ -76,6 +76,16 @@ export const SubscriptionOverridesSchema = z.object({
 export type SubscriptionOverrides = z.infer<typeof SubscriptionOverridesSchema>;
 
 /**
+ * fans 时序的「订阅起点」基线。FansPoller 第一次给该订阅取到 fans 值时写入,
+ * 此后永不变。24h / 7d 的 delta 由后端读取 fans jsonl 时序计算,不在 schema 中。
+ */
+export const FansBaselineSchema = z.object({
+	value: z.number().int().min(0),
+	ts: z.string(),
+});
+export type FansBaseline = z.infer<typeof FansBaselineSchema>;
+
+/**
  * 运行时状态。Dashboard 只读展示；不持久化到 koishi config，独立端持久化到 state.json。
  */
 export const SubscriptionStateSchema = z.object({
@@ -85,6 +95,7 @@ export const SubscriptionStateSchema = z.object({
 		live: z.string().optional(),
 	}),
 	liveStatus: z.enum(["idle", "live", "unknown"]),
+	fansBaseline: FansBaselineSchema.optional(),
 });
 export type SubscriptionState = z.infer<typeof SubscriptionStateSchema>;
 
