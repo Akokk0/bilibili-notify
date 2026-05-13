@@ -61,7 +61,7 @@ pnpm-workspace.yaml glob: `["packages/*", "koishi/*", "apps/*"]`. Single workspa
 | `packages/push` | `@bilibili-notify/push` | `BilibiliPush` — push routing over a `PushLike` adapter; emits `history-recorded` on each delivery. Zero koishi deps. |
 | `packages/subscription` | `@bilibili-notify/subscription` | `SubscriptionStore` — in-memory CRUD over `Subscription[]` + diff emission via `subscription-changed`. Zero koishi deps. |
 | `packages/dynamic` | `@bilibili-notify/dynamic` | `DynamicEngine` — dynamic-poll cron + filter + render dispatch. Zero koishi deps. |
-| `packages/live` | `@bilibili-notify/live` | `LiveEngine` (split into ListenerManager / DanmakuCollector / WordcloudGenerator / TemplateRenderer / LiveSummaryRequester). Zero koishi deps. |
+| `packages/live` | `@bilibili-notify/live` | `LiveEngine` (split into ListenerManager / DanmakuCollector / WordcloudGenerator / LiveTemplateRenderer / LiveSummaryRequester). Zero koishi deps. |
 | `packages/image` | `@bilibili-notify/image` | `ImageRenderer` — Vue/UnoCSS/JSDOM SSR + puppeteer wrapper via `PuppeteerLike` interface. Zero koishi deps. |
 | `packages/ai` | `@bilibili-notify/ai` | `CommentaryGenerator` — OpenAI-compatible chat / summary / commentary. Zero koishi deps. |
 
@@ -92,7 +92,7 @@ Each koishi shell separates its koishi `Schema` into its own file:
 - `koishi/core/src/config.ts` — `BilibiliNotifyConfig` interface + `BilibiliNotifyConfigSchema`
 - `koishi/live/src/config.ts` — `BilibiliNotifyLiveConfig`
 - `koishi/dynamic/src/config.ts` — `BilibiliNotifyDynamicConfig` + `BilibiliNotifyDynamicSchema`
-- `koishi/advanced-subscription/src/advanced-subscription.ts` — `BilibiliNotifyAdvancedSubConfig` + `applyAdvancedSub`
+- `koishi/advanced-subscription/src/core.ts` — `BilibiliNotifyAdvancedSubConfig` + `applyAdvancedSub`
 
 Each shell's `index.ts` re-exports as the koishi-standard `Config` / `apply`.
 
@@ -100,16 +100,23 @@ Each shell's `index.ts` re-exports as the koishi-standard `Config` / `apply`.
 
 `apply()` registers two sub-plugins:
 
-1. **`BilibiliNotifyDataServer`** — WebSocket bridge to the koishi console UI (handles QR login flow client-side)
+1. **`BilibiliNotifyDataServer`** (`data-server.ts`) — WebSocket bridge to the koishi console UI (handles QR login flow client-side)
 2. **`BilibiliNotifyServerManager`** (Service) — orchestrates startup. Internally split across:
    - `app-bootstrap.ts` — Service shell + lifecycle + `getInternals(token)`
    - `lifecycle.ts` — bringUp / tearDown / waitForServices
    - `login-flow-bridge.ts` — wraps `LoginFlow` (from `@bilibili-notify/api`); listens to console `start-login` / `reset-key`; renders QR PNG via `qrcode` dep
-   - `subscription-loader.ts` — config → `SubscriptionManager` init + `addSub` / `removeSub` / `updateSub` wrappers
+   - `subscription-loader.ts` — koishi config → `SubscriptionStore` seeding + `addSub` / `removeSub` / `updateSub` wrappers
    - `subscription-crud.ts` — pure CRUD on a snapshot
+   - `sub-diff.ts` — `SubscriptionOp[]` diff helper
    - `health-check.ts` — rate-limited master notify on auth-lost
-   - `master-notifier.ts` — `bilibili-notify/plugin-error` log
-   - `bootstrap-helpers.ts` / `sub-diff.ts` — small helpers
+   - `master-notifier.ts` — `engine-error` consumer; forwards to master DM
+   - `target-registry.ts` — in-memory `PushAdapter` + `PushTarget` registry
+   - `target-synthesis.ts` — synthesizes targets from koishi-config-sourced inputs
+   - `sink.ts` — `KoishiNotificationSink` impl (per-target routing)
+   - `config.ts` — `BilibiliNotifyConfig` interface + Schema
+   - `types.ts` — shared local types (`InternalsShape` etc.)
+   - `commands/` — `bili.ts` / `status.ts` / `sys.ts` koishi command registrations
+   - `bootstrap-helpers.ts` — small lifecycle helpers
 
 ## MessageBus ↔ koishi event semantics
 
@@ -180,7 +187,7 @@ The standalone end uses a separate React + Vite dashboard under `apps/web/`; the
 Two sub-packages share the root pnpm workspace:
 
 - `apps/server` — Hono HTTP + WS gateway. Single tsdown bundle to `apps/server/lib/index.mjs`.
-- `apps/web` — Vite + React 18 + Tailwind 4 + tanstack-query + Recharts. Served as static assets by `apps/server` in prod; `pnpm dev:web` for the Vite dev server in dev.
+- `apps/web` — Vite + React 18 + Tailwind 4 + tanstack-query + zustand + react-router-dom. Charts (StatsBar / Donut) are hand-drawn SVG, no chart library. Served as static assets by `apps/server` in prod; `pnpm dev:web` for the Vite dev server in dev.
 
 ### apps/server module map
 
@@ -201,7 +208,9 @@ src/
     master-notifier.ts  ← Forwards engine-error to master target as DM
     puppeteer.ts        ← puppeteer-core adapter for cards preview
   fans/store.ts         ← append-only jsonl time-series + findNearestBefore(uid, ts)
-  history/store.ts      ← HistoryStore — <dataDir>/history/<YYYY-MM-DD>.jsonl with uname/avatar snapshots
+  history/
+    store.ts            ← HistoryStore — <dataDir>/history/<YYYY-MM-DD>.jsonl with uname/avatar snapshots
+    retention.ts        ← daily sweep dropping files older than globals.app.historyRetentionDays
   routes/               ← REST: auth, subs, targets, adapters, globals, history, fans, live, cards, push, health
   ws/
     server.ts           ← ws upgrade + per-conn channel filter
