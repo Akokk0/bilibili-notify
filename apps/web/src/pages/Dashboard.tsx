@@ -22,6 +22,11 @@ import { colorFromUid, displayName } from "./up/helpers";
 interface HealthSnapshot {
 	status: string;
 	version: string;
+	/** 每个模块自己的 package.json#version,由 /api/health 在启动期一次读出。 */
+	moduleVersions?: Record<
+		"api" | "storage" | "subscription" | "push" | "dynamic" | "live" | "image" | "ai",
+		string
+	>;
 	uptime: number;
 	startedAt: string;
 	modules?: {
@@ -297,8 +302,18 @@ function TimelinePanel({
 
 // ── Plugin matrix (mirrors .bn-design SystemHealthPanel) ──────────────────
 
+type ModuleCellId =
+	| "api"
+	| "storage"
+	| "subscription"
+	| "push"
+	| "dynamic"
+	| "live"
+	| "image"
+	| "ai";
+
 interface PluginCell {
-	id: "core" | "dynamic" | "live" | "image" | "ai";
+	id: ModuleCellId;
 	label: string;
 	enabled: boolean;
 	sub?: string;
@@ -317,16 +332,25 @@ function pickLogTone(level: string | undefined): { fg: string; bg: string } {
 	return LOG_LEVEL_TONE.info;
 }
 
-function PluginMatrix({ cells, version }: { cells: PluginCell[]; version: string | undefined }) {
+function PluginMatrix({
+	cells,
+	moduleVersions,
+}: {
+	cells: PluginCell[];
+	moduleVersions: HealthSnapshot["moduleVersions"];
+}) {
 	return (
 		<div
 			className="grid gap-2"
-			style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}
+			// minmax(220, 1fr) 保证最窄的列也容得下 "日志 INFO* puppeteer 就绪"
+			// 这一行不折行;auto-fill + 1fr 让有空间时各列等宽撑满。
+			style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
 		>
 			{cells.map((c) => {
 				const tone = pickLogTone(c.logLevel);
 				const levelLabel = c.logLevel ? c.logLevel.toUpperCase() : "—";
 				const isOverride = c.logLevelSource === "module";
+				const ver = moduleVersions?.[c.id];
 				return (
 					<div key={c.id} className="rounded-lg border border-black/6 bg-white px-3 py-2.5">
 						<div className="mb-1.5 flex items-center justify-between">
@@ -337,9 +361,9 @@ function PluginMatrix({ cells, version }: { cells: PluginCell[]; version: string
 							/>
 						</div>
 						<div className="mb-1 font-mono text-[10.5px] text-bn-text-tertiary">
-							{version ? `v${version}` : "—"}
+							{ver ? `v${ver}` : "—"}
 						</div>
-						<div className="flex items-center gap-1.5 text-[11px] text-bn-text-secondary">
+						<div className="flex items-center gap-1.5 whitespace-nowrap text-[11px] text-bn-text-secondary">
 							日志{" "}
 							<span
 								className="rounded px-1.5 font-bold"
@@ -363,6 +387,9 @@ function SystemHealthCard({
 	reachable,
 	logLevel,
 	logLevels,
+	loggedIn,
+	subCount,
+	targetCount,
 	dynamicEnabled,
 	liveEnabled,
 	imageEnabled,
@@ -372,16 +399,24 @@ function SystemHealthCard({
 	reachable: boolean;
 	logLevel: string | undefined;
 	logLevels: ModuleLogLevels | undefined;
+	loggedIn: boolean;
+	subCount: number;
+	targetCount: number;
 	dynamicEnabled: boolean;
 	liveEnabled: boolean;
 	imageEnabled: boolean;
 	aiEnabled: boolean;
 }) {
+	// ModuleLogLevels 当前只覆盖 core/dynamic/live/image/ai;infra 四件(api/storage/
+	// subscription/push)没有 per-package override 槽位,这里直接回退到全局等级。
+	const HAS_OVERRIDE_SLOT = new Set<ModuleCellId>(["dynamic", "live", "image", "ai"]);
 	const effectiveLevel = (
-		id: PluginCell["id"],
+		id: ModuleCellId,
 	): { level: string | undefined; source: "global" | "module" } => {
-		const override = logLevels?.[id];
-		if (override) return { level: override, source: "module" };
+		if (HAS_OVERRIDE_SLOT.has(id)) {
+			const override = logLevels?.[id as "dynamic" | "live" | "image" | "ai"];
+			if (override) return { level: override, source: "module" };
+		}
 		return { level: logLevel, source: "global" };
 	};
 
@@ -389,7 +424,7 @@ function SystemHealthCard({
 	// "—" — keeping the previous "运行中 / 已就绪" copy alive while the API is
 	// dead would be lying to the user.
 	const buildCell = (
-		id: PluginCell["id"],
+		id: ModuleCellId,
 		label: string,
 		enabled: boolean,
 		sub: string,
@@ -405,8 +440,14 @@ function SystemHealthCard({
 		};
 	};
 
+	// Infra → Engine. 这 4 个 infra 包 boot 成功后 100% constructed,所以状态点跟
+	// reachable 同步;子文案改填业务计数(api 显示登录态,storage 已加载,subscription
+	// / push 分别显示订阅 / 目标数)以增加信息量。
 	const cells: PluginCell[] = [
-		buildCell("core", "核心 · core", true, health ? "运行中" : "拉取中…"),
+		buildCell("api", "接口 · api", true, loggedIn ? "已登录" : "未登录"),
+		buildCell("storage", "持久化 · storage", true, "已加载"),
+		buildCell("subscription", "订阅 · subscription", true, `${subCount} 个订阅`),
+		buildCell("push", "推送 · push", true, `${targetCount} 个目标`),
 		buildCell("dynamic", "动态 · dynamic", dynamicEnabled, dynamicEnabled ? "运行中" : "未启用"),
 		buildCell("live", "直播 · live", liveEnabled, liveEnabled ? "运行中" : "无监听"),
 		buildCell("image", "卡片 · image", imageEnabled, imageEnabled ? "puppeteer 就绪" : "未接入"),
@@ -428,7 +469,7 @@ function SystemHealthCard({
 					网络中断),以下数据可能为最后一次成功拉取的快照。
 				</div>
 			) : null}
-			<PluginMatrix cells={cells} version={health?.version} />
+			<PluginMatrix cells={cells} moduleVersions={health?.moduleVersions} />
 		</GlassBox>
 	);
 }
@@ -546,6 +587,9 @@ export default function Dashboard() {
 				reachable={reachable}
 				logLevel={globalsQuery.data?.app.logLevel}
 				logLevels={globalsQuery.data?.app.logLevels}
+				loggedIn={loggedIn}
+				subCount={subs.length}
+				targetCount={targets.length}
 				dynamicEnabled={health.data?.modules?.dynamic ?? loggedIn}
 				liveEnabled={health.data?.modules?.live ?? false}
 				imageEnabled={health.data?.modules?.image ?? false}
