@@ -97,3 +97,12 @@ body {
 .bn-anim-fade-in {
 	animation: bn-fade-in 0.35s ease-out both;
 }
+
+/* 隐藏滚动条但保留滚动行为。Dashboard 「粉丝数变化」N 多时容器内滚动,
+   不想露出滚动条破坏卡片视觉。 */
+.bn-no-scrollbar {
+	scrollbar-width: none;
+}
+.bn-no-scrollbar::-webkit-scrollbar {
+	display: none;
+}

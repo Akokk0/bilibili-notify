@@ -113,10 +113,10 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 					) : null}
 				</div>
 			) : (
-				// auto-fit grid + max-h cap so the panel never grows beyond Trend's
-				// natural height. Items that don't fit silently clip (the header pill
-				// "● N 人在播" still reports the true live count).
-				<div className="grid max-h-65 grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-2.5 overflow-hidden">
+				// auto-fit grid + max-h 上限 ≈ 3 行 chip(每 chip ~70px + 10px gap)。
+				// chip 少时高度自然撑;chip ≥4 时超出部分被 overflow-hidden 裁掉,
+				// header 的 「● N 人在播」 Pill 仍显示真实数量。
+				<div className="grid max-h-[240px] grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-2.5 overflow-hidden">
 					{live.map((r) => {
 						const sub = subByUid.get(r.uid);
 						const name = sub ? displayName(sub) : `UID ${r.uid}`;
@@ -170,7 +170,9 @@ function TrendPanel({ entries }: { entries: HistoryEntryView[] }) {
 	const total = entries.length;
 	return (
 		<GlassPanel title="本周推送趋势" subtitle="按推送类型分布" accent="#00aeec">
-			<StatsBar data={data} height={130} />
+			{/* TimelinePanel 6 条 history × 单行 ~50px + padding ≈ 320px;StatsBar 抬高
+			    到 280 让同行 TrendPanel 视觉对齐,不至于半空。 */}
+			<StatsBar data={data} height={280} />
 			<div className="mt-3.5 flex flex-wrap items-center gap-3 text-[11px] text-bn-text-tertiary">
 				{[
 					["直播", "#FB7299"],
@@ -408,7 +410,10 @@ function FansPanel({ subs }: { subs: Subscription[] }) {
 					</span>
 				</div>
 			) : (
-				<div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-2">
+				// 单列布局,max-h 上限 ≈ 3 行行卡(每行 ~62px + 8px gap);N 多时走
+				// 内滚动,bn-no-scrollbar 隐藏滚动条不破坏卡片视觉。N 少时高度自然撑,
+				// 跟同行「正在直播」由 grid row-stretch 拉到等高。
+				<div className="bn-no-scrollbar grid max-h-[240px] grid-cols-1 gap-2 overflow-y-auto">
 					{sorted.map((e) => {
 						const sub = subByUid.get(e.uid);
 						const name = sub ? displayName(sub) : `UID ${e.uid}`;
@@ -706,20 +711,20 @@ export default function Dashboard() {
 				/>
 			</div>
 
-			{/* live + trend */}
+			{/* row 2: 正在直播(宽) + 粉丝数变化(窄) */}
 			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1.3fr_1fr]">
 				<LiveNowPanel live={live} subs={subs} />
-				<TrendPanel entries={history} />
+				<FansPanel subs={subs} />
 			</div>
 
 			{/* AI insight strip */}
 			<AiInsightStrip tip={aiTip} />
 
-			{/* timeline (full width) */}
-			<TimelinePanel entries={history} subs={subs} targets={targets} />
-
-			{/* fans deltas (full width) */}
-			<FansPanel subs={subs} />
+			{/* row 4: 推送趋势(窄) + 最近推送活动(宽) —— 跟 row 2 的列比反向,视觉错位 */}
+			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1fr_1.3fr]">
+				<TrendPanel entries={history} />
+				<TimelinePanel entries={history} subs={subs} targets={targets} />
+			</div>
 
 			{/* system health (full width) */}
 			<SystemHealthCard
