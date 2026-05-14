@@ -398,11 +398,16 @@ export class DynamicEngine {
 				currentPushDyn[uid] = item;
 			}
 
-			// Filter
-			const filterResult = filterDynamic(item, this.config.filter ?? {});
+			// Filter — per-UP filter override (从 SubItemView 上拿) 优先于 engine 的全局 filter。
+			// adapter 已通过 resolve(sub, defaults).filters 完成 inherit / partial 折叠，这里
+			// 拿到的是完整 DynamicFilterConfig。空过滤器（{}）也算 override 生效，结果是「该 UP
+			// 单独关掉所有屏蔽规则」—— 与全局 filter 完全脱钩，符合用户意图。
+			const subForFilter = this.dynamicSubManager.get(uid);
+			const effFilter = subForFilter?.filter ?? this.config.filter ?? {};
+			const filterResult = filterDynamic(item, effFilter);
 			if (filterResult.blocked) {
 				this.logger.debug(`[filter] 动态 ID=${item.id_str} 被过滤，原因：${filterResult.reason}`);
-				if (this.config.filter?.notify) {
+				if (effFilter.notify) {
 					const msgs: Record<DynamicFilterReason, string> = {
 						[DynamicFilterReason.BlacklistKeyword]: `${name}发布了一条含有屏蔽关键字的动态`,
 						[DynamicFilterReason.BlacklistForward]: `${name}转发了一条动态，已屏蔽`,
@@ -474,20 +479,23 @@ export class DynamicEngine {
 				}
 			}
 
-			// AI comment
+			// AI comment — adapter 在 SubItemView 上可附 per-UP aiOverride，传给 comment()
+			// 后仅对该次调用生效；缺失时 fall through 到 CommentaryGenerator 的全局 config。
 			let aiComment: string | undefined;
 			if (this.ai && this.config.aiEnabled !== false) {
 				const dynamicText = extractDynamicText(item);
 				if (dynamicText) {
 					const imageUrls = extractDynamicImages(item);
+					const subForAi = this.dynamicSubManager.get(uid);
 					this.logger.debug(
-						`[ai] 开始生成动态点评，文本长度=${dynamicText.length}，图片数=${imageUrls.length}`,
+						`[ai] 开始生成动态点评，文本长度=${dynamicText.length}，图片数=${imageUrls.length}${subForAi?.aiOverride ? "，命中 per-UP override" : ""}`,
 					);
 					try {
 						aiComment = await this.ai.comment(
 							`${name}发布了一条动态，内容如下：\n${dynamicText}`,
 							"dynamic",
 							imageUrls,
+							subForAi?.aiOverride,
 						);
 						this.logger.debug(`[ai] 动态点评生成完毕，长度=${aiComment?.length ?? 0}`);
 					} catch (e) {

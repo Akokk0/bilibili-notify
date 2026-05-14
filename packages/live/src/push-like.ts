@@ -10,6 +10,8 @@
  * collector / template helpers — same approach as `ai-engine/src/tools.ts`.
  */
 
+import type { CommentaryCallOverride } from "@bilibili-notify/ai";
+
 /** Push category enum — value-compatible with `@bilibili-notify/push`'s `PushType`. */
 export enum LivePushType {
 	Live = 0,
@@ -131,6 +133,20 @@ export interface SubItemView {
 	customLiveSummary: CustomLiveSummaryLike;
 	customSpecialDanmakuUsers: CustomSpecialDanmakuUsersLike;
 	customSpecialUsersEnterTheRoom: CustomSpecialUsersEnterTheRoomLike;
+	/**
+	 * Per-UP 覆盖项。adapter 已通过 `resolve(sub, defaults)` 折叠 globals + overrides,
+	 * 这里只保留实际跟全局可能不同的字段;undefined 表示「按全局走」。room-session /
+	 * room-session-base / live-summary-requester 在用值前一律 `?? ctx.config.X` 回退。
+	 *
+	 * 这些字段不上 LiveScopedChange —— LiveEngine.applyOps 只把 routing 布尔合进
+	 * 活跃 sub,新阈值要等下次监听重建(用户改完订阅或服务重启)才生效。同步热重载
+	 * 的修法见审计文档 #4。
+	 */
+	minScPrice?: number;
+	minGuardLevel?: 1 | 2 | 3;
+	pushTime?: number;
+	restartPush?: boolean;
+	aiOverride?: CommentaryCallOverride;
 }
 
 export type SubscriptionsView = Record<string, SubItemView>;

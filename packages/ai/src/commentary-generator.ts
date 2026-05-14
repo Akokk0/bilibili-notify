@@ -57,6 +57,11 @@ export interface CommentaryGeneratorConfig {
 	apiKey: string;
 	baseURL: string;
 	model: string;
+	/**
+	 * chat.completions.create 的 temperature 参数（0–2）。未设置时不传该参数，
+	 * 由 OpenAI 兼容服务自身决定默认值。adapter 通常用 `globals.defaults.ai.temperature` 填充。
+	 */
+	temperature?: number;
 
 	/** 结构化人格配置 */
 	persona: PersonaConfig;
@@ -79,6 +84,22 @@ export interface CommentaryGeneratorConfig {
 
 	/** 开启多模态图片理解（需模型支持视觉能力） */
 	enableVision: boolean;
+}
+
+/**
+ * 单次 comment() 调用的运行时覆盖。dynamic / live 引擎在 per-UP 推送上下文里构造
+ * 一份只包含「与全局不同」的字段的 override，传给 comment() 后仅对该次调用生效。
+ *
+ * 未指定的字段都从 CommentaryGenerator.config 取，model/temperature 也走同一规则。
+ * persona 是「整体替换」而非字段级合并 —— adapter 在产生 override 之前已经做完
+ * preset / inherit / partial 折叠（见 `@bilibili-notify/internal#resolve`)。
+ */
+export interface CommentaryCallOverride {
+	persona?: PersonaConfig;
+	dynamicPrompt?: string;
+	liveSummaryPrompt?: string;
+	temperature?: number;
+	model?: string;
 }
 
 export interface CommentaryGeneratorOptions {
@@ -147,15 +168,15 @@ export class CommentaryGenerator {
 	/**
 	 * 获取指定场景的 system prompt。
 	 * 始终以人格配置为基础，场景补充说明叠加在其后。
+	 * `override` 用于 per-call 覆盖 persona/prompt，未指定字段回退到 this.config。
 	 */
-	getSystemPrompt(scene?: AIScene, summary?: string): string {
-		const personaPrompt = buildSystemPrompt(this.config.persona);
+	getSystemPrompt(scene?: AIScene, summary?: string, override?: CommentaryCallOverride): string {
+		const persona = override?.persona ?? this.config.persona;
+		const personaPrompt = buildSystemPrompt(persona);
+		const dynamicPrompt = override?.dynamicPrompt ?? this.config.dynamicPrompt;
+		const liveSummaryPrompt = override?.liveSummaryPrompt ?? this.config.liveSummaryPrompt;
 		const sceneAddition =
-			scene === "dynamic"
-				? this.config.dynamicPrompt
-				: scene === "liveSummary"
-					? this.config.liveSummaryPrompt
-					: "";
+			scene === "dynamic" ? dynamicPrompt : scene === "liveSummary" ? liveSummaryPrompt : "";
 
 		const base = sceneAddition ? `${personaPrompt}\n${sceneAddition}` : personaPrompt;
 		return summary ? `${base}\n\n[之前对话摘要]\n${summary}` : base;
@@ -163,18 +184,24 @@ export class CommentaryGenerator {
 
 	/**
 	 * 单次 AI 调用，不保存历史。
-	 * 供 dynamic/live 插件调用。
+	 * 供 dynamic/live 插件调用。`override` 可携带 per-UP 的 persona/prompt/model/temperature。
 	 */
-	async comment(content: string, scene?: AIScene, imageUrls?: string[]): Promise<string> {
-		const systemPrompt = this.getSystemPrompt(scene);
+	async comment(
+		content: string,
+		scene?: AIScene,
+		imageUrls?: string[],
+		override?: CommentaryCallOverride,
+	): Promise<string> {
+		const systemPrompt = this.getSystemPrompt(scene, undefined, override);
 		this.logger.debug(
-			`[comment] scene=${scene ?? "default"}, 内容长度=${content.length}, 图片数=${imageUrls?.length ?? 0}`,
+			`[comment] scene=${scene ?? "default"}, 内容长度=${content.length}, 图片数=${imageUrls?.length ?? 0}${override ? ", override=yes" : ""}`,
 		);
 		const result = await this.callAPI(
 			systemPrompt,
 			[{ role: "user", content }],
 			undefined,
 			this.config.enableVision ? imageUrls : undefined,
+			override,
 		);
 		this.logger.debug(`[comment] 响应长度=${result.length}`);
 		return result;
@@ -310,13 +337,16 @@ export class CommentaryGenerator {
 			onToolCall: (name: string, args: Record<string, string>) => Promise<string>;
 		},
 		imageUrls?: string[],
+		override?: CommentaryCallOverride,
 	): Promise<string> {
-		const { apiKey, baseURL, model } = this.config;
+		const { apiKey, baseURL } = this.config;
+		const model = override?.model ?? this.config.model;
+		const temperature = override?.temperature ?? this.config.temperature;
 		if (!apiKey) throw new Error("AI apiKey 未配置");
 		if (!baseURL) throw new Error("AI baseURL 未配置");
 
 		this.logger.debug(
-			`[api] baseURL=${baseURL}, model=${model}, messages=${messages.length}, tools=${toolOptions ? "yes" : "no"}, images=${imageUrls?.length ?? 0}`,
+			`[api] baseURL=${baseURL}, model=${model}, temperature=${temperature ?? "default"}, messages=${messages.length}, tools=${toolOptions ? "yes" : "no"}, images=${imageUrls?.length ?? 0}`,
 		);
 		const { default: OpenAI } = await import("openai");
 		const client = new OpenAI({ apiKey, baseURL });
@@ -354,6 +384,7 @@ export class CommentaryGenerator {
 			return {
 				model,
 				messages: apiMessages,
+				...(temperature !== undefined ? { temperature } : {}),
 				...(toolOptions ? { tools: toolOptions.tools, tool_choice: "auto" } : {}),
 				...(Object.keys(extra_body).length > 0 ? { extra_body } : {}),
 			};

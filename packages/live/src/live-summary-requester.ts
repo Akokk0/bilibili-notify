@@ -1,4 +1,4 @@
-import type { CommentaryGenerator } from "@bilibili-notify/ai";
+import type { CommentaryCallOverride, CommentaryGenerator } from "@bilibili-notify/ai";
 import type { Logger } from "@bilibili-notify/internal";
 import type { LiveTemplateRenderer } from "./template-renderer";
 import type { MasterInfo } from "./types";
@@ -56,8 +56,14 @@ export class LiveSummaryRequester {
 		sortedWords: Array<[string, number]>;
 		master: MasterInfo | undefined;
 		customLiveSummary: string;
+		/**
+		 * per-UP AI 覆盖。adapter 在 SubItemView.aiOverride 上注入,room-session 在调
+		 * `generate()` 时透传过来。CommentaryGenerator 内部 `?? this.config` 兜底,
+		 * 缺失字段不影响其它字段生效。
+		 */
+		aiOverride?: CommentaryCallOverride;
 	}): Promise<string | undefined> {
-		const { senderRecord, sortedWords, master, customLiveSummary } = params;
+		const { senderRecord, sortedWords, master, customLiveSummary, aiOverride } = params;
 		const senderCount = Object.keys(senderRecord).length;
 		if (senderCount < LIVE_SUMMARY_MIN_SENDERS) {
 			this.logger.debug(`[summary] 发言人数不足${LIVE_SUMMARY_MIN_SENDERS}位，放弃生成直播总结`);
@@ -80,7 +86,12 @@ export class LiveSummaryRequester {
 					`热词TOP10：${top10Words.join("、")}`,
 					`弹幕排行TOP5：${top5Senders.map(([u, c]) => `${u}(${c}条)`).join("、")}`,
 				].join("，");
-				const aiResult = await this.commentary.comment(prompt, "liveSummary");
+				const aiResult = await this.commentary.comment(
+					prompt,
+					"liveSummary",
+					undefined,
+					aiOverride,
+				);
 				this.logger.debug(`[summary] AI 直播总结生成完毕，长度=${aiResult.length}`);
 				return aiResult;
 			} catch (e) {

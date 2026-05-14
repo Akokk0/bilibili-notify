@@ -109,7 +109,9 @@ export class RoomSession extends RoomSessionBase {
 			this.ctx.danmakuCollector.recordDanmaku(this.sub.roomId, body.content, body.user.uname);
 		}
 		if (!pushesSC) return;
-		if (body.price < this.ctx.config.minScPrice) return;
+		// Per-UP minScPrice 优先;adapter 未填时回退到 ListenerManagerConfig 全局值。
+		const effMinScPrice = this.sub.minScPrice ?? this.ctx.config.minScPrice;
+		if (body.price < effMinScPrice) return;
 
 		const data = await this.ctx.api.getUserInfoInLive(body.user.uid.toString(), this.sub.uid);
 		if (data.code !== 0) {
@@ -159,7 +161,9 @@ export class RoomSession extends RoomSessionBase {
 		user: { uname: string; uid: number };
 	}): Promise<void> {
 		if (!this.ctx.isSubscribed(this.sub, "liveGuardBuy")) return;
-		if (body.guard_level > this.ctx.config.minGuardLevel) return;
+		// Per-UP minGuardLevel 优先(同 SC 阈值的语义);adapter 未填时回退到全局。
+		const effMinGuardLevel = this.sub.minGuardLevel ?? this.ctx.config.minGuardLevel;
+		if (body.guard_level > effMinGuardLevel) return;
 		const guardImg = GUARD_LEVEL_IMG[body.guard_level];
 		const effectiveGuardBuy = this.sub.customGuardBuy.enable
 			? this.sub.customGuardBuy

@@ -128,7 +128,9 @@ export abstract class RoomSessionBase {
 				roomLink,
 			});
 
-			if (this.ctx.config.restartPush) {
+			// Per-UP restartPush 优先;adapter 未填时回退到全局。
+			const effRestartPush = this.sub.restartPush ?? this.ctx.config.restartPush;
+			if (effRestartPush) {
 				await this.ctx.sendLiveNotifyCard({
 					liveType: LiveType.LiveBroadcast,
 					liveData: this.liveData,
@@ -188,10 +190,12 @@ export abstract class RoomSessionBase {
 	}
 
 	protected armPeriodicTimer(): void {
-		if (this.ctx.config.pushTime === 0 || this.pushAtTimeTimer) return;
+		// Per-UP pushTime 优先;adapter 未填时回退到全局。0 = 关闭该 UP 的 "正在直播" 复推。
+		const effPushTime = this.sub.pushTime ?? this.ctx.config.pushTime;
+		if (effPushTime === 0 || this.pushAtTimeTimer) return;
 		this.pushAtTimeTimer = this.ctx.serviceCtx.setInterval(
 			() => this.tickPushAtTime(),
-			this.ctx.config.pushTime * 1000 * 60 * 60,
+			effPushTime * 1000 * 60 * 60,
 		);
 		this.ctx.livePushTimerManager.set(this.sub.roomId, () => this.pushAtTimeTimer?.dispose());
 		this.ctx.logSideEffectState(`timer:created room=${this.sub.roomId}`);
@@ -343,6 +347,8 @@ export abstract class RoomSessionBase {
 						sortedWords: snapshot.sortedWords,
 						master: this.masterInfo,
 						customLiveSummary,
+						// per-UP persona/prompt 覆盖;adapter 未填则交由 CommentaryGenerator 用全局 config。
+						aiOverride: this.sub.aiOverride,
 					})
 				: Promise.resolve(undefined),
 		]);

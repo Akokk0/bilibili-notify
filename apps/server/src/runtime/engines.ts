@@ -18,6 +18,7 @@
  * propagates correctly.
  */
 
+import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import { CommentaryGenerator } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import {
@@ -235,6 +236,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			apiKey: a.apiKey ?? "",
 			baseURL: a.baseUrl ?? "",
 			model: a.model,
+			// `temperature` 是 CommentaryGeneratorConfig 的 optional 字段;dashboard 滑块
+			// 改值后,config-changed 路径下方 `commentary.updateConfig(buildAiConfig())` 会把
+			// 新值推到引擎,下次 chat.completions.create 即生效。
+			temperature: a.temperature,
 			persona: {
 				preset: "custom" as const,
 				name: a.persona.name,
@@ -254,6 +259,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			enableVision: false,
 		};
 	};
+
 	let commentary: CommentaryGenerator | null = null;
 	const buildCommentary = (): CommentaryGenerator | null => {
 		const a = globals().defaults.ai;
@@ -721,6 +727,54 @@ function liveTypeToFeature(type: number): FeatureKey {
 	}
 }
 
+/**
+ * 把 `EffectiveSubscription.ai` (per-UP 折叠后) 翻译成 CommentaryCallOverride。
+ * schema 用「面向用户」的 baseRole / extraSystemPrompt 字段名,而 CommentaryGenerator
+ * 的 PersonaConfig 沿用 customBase / extraPrompt 历史命名 —— 这里集中做翻译,
+ * 引擎层不感知差异。preset 强制设为 "custom":adapter 已把 inherit / preset.id 在
+ * resolve() 里折叠成具体 persona,引擎不需要再走 preset lookup 一次。
+ */
+function buildAiOverride(eff: ReturnType<typeof resolve>): CommentaryCallOverride {
+	return {
+		persona: {
+			preset: "custom" as const,
+			name: eff.ai.persona.name,
+			addressUser: eff.ai.persona.addressUser,
+			addressSelf: eff.ai.persona.addressSelf,
+			traits: eff.ai.persona.traits,
+			catchphrase: eff.ai.persona.catchphrase,
+			customBase: eff.ai.persona.baseRole,
+			extraPrompt: eff.ai.persona.extraSystemPrompt,
+		},
+		dynamicPrompt: eff.ai.dynamicPrompt,
+		liveSummaryPrompt: eff.ai.liveSummaryPrompt,
+		temperature: eff.ai.temperature,
+	};
+}
+
+/**
+ * 把 `EffectiveSubscription.filters` 翻译成 dynamic-engine 接受的 DynamicFilterConfig。
+ * 数组形态的 blockRegex/whitelistRegex 在 engine 内合并成单一 `|` 正则字符串,与全局
+ * filter 的 dynamicConfig() 构造逻辑一致。`notify` 字段固定 false —— 全局也是 false。
+ */
+function buildDynamicFilter(eff: ReturnType<typeof resolve>) {
+	const f = eff.filters;
+	const blockHasRules =
+		f.blockKeywords.length > 0 || f.blockRegex.length > 0 || f.blockForward || f.blockArticle;
+	const whitelistHasRules = f.whitelistKeywords.length > 0 || f.whitelistRegex.length > 0;
+	return {
+		enable: blockHasRules,
+		notify: false,
+		regex: f.blockRegex.join("|"),
+		keywords: f.blockKeywords,
+		forward: f.blockForward,
+		article: f.blockArticle,
+		whitelistEnable: whitelistHasRules,
+		whitelistRegex: f.whitelistRegex.join("|"),
+		whitelistKeywords: f.whitelistKeywords,
+	};
+}
+
 function buildDynamicSubsView(store: SubscriptionStore, globals: GlobalConfig): DynamicSubsView {
 	const view: DynamicSubsView = {};
 	for (const sub of store.list()) {
@@ -736,6 +790,10 @@ function buildDynamicSubsView(store: SubscriptionStore, globals: GlobalConfig): 
 				cardColorStart: eff.cardStyle.cardColorStart,
 				cardColorEnd: eff.cardStyle.cardColorEnd,
 			},
+			// 每次 cron tick getSubs() 都会重新跑这里,per-UP filter / aiOverride 改完
+			// 下一个轮询周期自动生效,不需要单独 hot-reload 路径。
+			filter: buildDynamicFilter(eff),
+			aiOverride: buildAiOverride(eff),
 		};
 	}
 	return view;
@@ -773,6 +831,14 @@ function buildLiveSubViewSingle(sub: Subscription, globals: GlobalConfig): LiveS
 			cardColorStart: eff.cardStyle.cardColorStart,
 			cardColorEnd: eff.cardStyle.cardColorEnd,
 		},
+		// Per-UP 阈值 / 调度 / AI;adapter 在每次 add 路径上灌入,room-session 在 SC /
+		// guard / restartPush / pushTime / liveSummary 调用点先取 sub 值,缺失时回退全局。
+		// 已活跃的 listener 在 LiveScopedChange 上不会带这些字段,改完要等下次重建。
+		minScPrice: eff.filters.minScPrice,
+		minGuardLevel: eff.filters.minGuardLevel,
+		pushTime: eff.schedule.pushTime,
+		restartPush: eff.schedule.restartPush,
+		aiOverride: buildAiOverride(eff),
 		customLiveMsg: eff.templates.liveMsgEnabled
 			? {
 					enable: true,

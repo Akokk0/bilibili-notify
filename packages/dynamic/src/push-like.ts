@@ -9,6 +9,9 @@
  * 业务代码中显现需求，再回填到此接口，避免接口与实现脱节。
  */
 
+import type { CommentaryCallOverride } from "@bilibili-notify/ai";
+import type { DynamicFilterConfig } from "./types";
+
 /** dynamic-engine 渲染好的图片缓冲（无 mime/扩展信息时默认 image/jpeg）。 */
 export interface PushImagePart {
 	type: "image";
@@ -58,6 +61,9 @@ export interface PushLike {
 /**
  * 平台中立的订阅条目最小视图。dynamic-engine 仅访问 `uid` 与 `customCardStyle`
  * 相关字段；adapter 提供完整 SubItem 实例时会被结构性兼容（额外字段不影响）。
+ *
+ * `filter` / `aiOverride` 为 per-UP 覆盖（可选）：adapter 折叠 `Subscription.overrides`
+ * 后填入；缺失时 engine 回退到 `DynamicEngineConfig.filter` / 全局 CommentaryGenerator 配置。
  */
 export interface SubItemView {
 	uid: string;
@@ -68,6 +74,10 @@ export interface SubItemView {
 		cardColorStart?: string;
 		cardColorEnd?: string;
 	};
+	/** Per-UP 动态过滤覆盖；undefined 时使用 engine 的全局 filter。 */
+	filter?: DynamicFilterConfig & { notify?: boolean };
+	/** Per-UP AI 覆盖；undefined 时使用 CommentaryGenerator 的全局 config。 */
+	aiOverride?: CommentaryCallOverride;
 }
 
 export type SubscriptionsView = Record<string, SubItemView>;
