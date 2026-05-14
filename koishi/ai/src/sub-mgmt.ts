@@ -44,7 +44,7 @@ export function buildSubManagement(deps: {
 				dynamic = true,
 				dynamicAtAll = false,
 				live = true,
-				liveAtAll = false,
+				liveAtAll = true,
 				liveGuardBuy = false,
 				superchat = false,
 				wordcloud = true,
@@ -67,9 +67,11 @@ export function buildSubManagement(deps: {
 				if (liveSummary) routing.liveSummary = [...targetIds];
 			}
 			sub.routing = routing as typeof sub.routing;
-			// @全体 只在父 feature 同时开启时生效("单独开 @ 无效")。
-			if (dynamic && dynamicAtAll) sub.atAll.dynamic = [...targetIds];
-			if (live && liveAtAll) sub.atAll.live = [...targetIds];
+			// AI tool 写「订阅级默认」(atAllDefaults),不动 per-target Map(留给用户在 dashboard 改)。
+			sub.atAllDefaults = {
+				dynamic: dynamic ? dynamicAtAll : false,
+				live: live ? liveAtAll : false,
+			};
 			store.upsert(sub);
 			if (targetIds.length === 0) {
 				return `已订阅 ${name}（UID: ${uid}），但当前无 PushTarget 可路由，请到 dashboard 配置推送目标后再使用`;
@@ -99,15 +101,14 @@ export function buildSubManagement(deps: {
 			if (params.liveSummary !== undefined)
 				routing.liveSummary = params.liveSummary ? targetIds : [];
 			updated.routing = routing;
-			// @全体 只在父 feature 实际启用时生效;关掉父 feature 时也连带清空对应 atAll。
-			const atAll = { dynamic: [...sub.atAll.dynamic], live: [...sub.atAll.live] };
-			if (params.dynamic === false) atAll.dynamic = [];
-			else if (params.dynamicAtAll !== undefined && (params.dynamic ?? routing.dynamic.length > 0))
-				atAll.dynamic = params.dynamicAtAll ? [...targetIds] : [];
-			if (params.live === false) atAll.live = [];
-			else if (params.liveAtAll !== undefined && (params.live ?? routing.live.length > 0))
-				atAll.live = params.liveAtAll ? [...targetIds] : [];
-			updated.atAll = atAll;
+			// AI tool 写「订阅级默认」(atAllDefaults),不动 per-target Map。
+			// 关闭父 feature 时强制把对应 default 拉回 false(打开 atAll 没意义)。
+			const atAllDefaults = { ...sub.atAllDefaults };
+			if (params.dynamic === false) atAllDefaults.dynamic = false;
+			else if (params.dynamicAtAll !== undefined) atAllDefaults.dynamic = params.dynamicAtAll;
+			if (params.live === false) atAllDefaults.live = false;
+			else if (params.liveAtAll !== undefined) atAllDefaults.live = params.liveAtAll;
+			updated.atAllDefaults = atAllDefaults;
 			store.upsert(updated);
 			return `已成功更新（UID: ${params.uid}）的订阅设置`;
 		},

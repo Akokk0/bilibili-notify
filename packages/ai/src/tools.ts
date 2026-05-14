@@ -115,12 +115,14 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionTool[] = [
 					dynamic: { type: "boolean", description: "订阅动态通知，默认 true" },
 					dynamicAtAll: {
 						type: "boolean",
-						description: "动态推送时本频道追加 @全体(仅在 dynamic=true 时生效)，默认 false",
+						description:
+							"该 UP 动态推送的「订阅级默认」是否 @全体(写到 atAllDefaults;仅 dynamic=true 时有意义)，默认 false",
 					},
 					live: { type: "boolean", description: "订阅直播通知，默认 true" },
 					liveAtAll: {
 						type: "boolean",
-						description: "开播推送时本频道追加 @全体(仅在 live=true 时生效)，默认 false",
+						description:
+							"该 UP 开播推送的「订阅级默认」是否 @全体(写到 atAllDefaults;只冲开播,不冲 SC/上舰/总结;仅 live=true 时有意义)，默认 true",
 					},
 					liveGuardBuy: { type: "boolean", description: "订阅上舰消息，默认 false" },
 					superchat: { type: "boolean", description: "订阅 SC（醒目留言）消息，默认 false" },
@@ -157,12 +159,14 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionTool[] = [
 					dynamic: { type: "boolean", description: "是否订阅动态通知" },
 					dynamicAtAll: {
 						type: "boolean",
-						description: "动态推送时本频道是否 @全体(仅在 dynamic=true 时生效)",
+						description:
+							"修改该 UP 动态推送的「订阅级默认 @全体」(写到 atAllDefaults,不动 per-target 覆写)",
 					},
 					live: { type: "boolean", description: "是否订阅直播通知" },
 					liveAtAll: {
 						type: "boolean",
-						description: "开播推送时本频道是否 @全体(仅在 live=true 时生效)",
+						description:
+							"修改该 UP 开播推送的「订阅级默认 @全体」(写到 atAllDefaults,不动 per-target 覆写;只冲开播,不冲 SC/上舰/总结)",
 					},
 					liveGuardBuy: { type: "boolean", description: "是否订阅上舰消息" },
 					superchat: { type: "boolean", description: "是否订阅 SC（醒目留言）消息" },
@@ -351,7 +355,7 @@ export async function executeTool(
 					dynamic: parseBool(args.dynamic, true),
 					dynamicAtAll: parseBool(args.dynamicAtAll, false),
 					live: parseBool(args.live, true),
-					liveAtAll: parseBool(args.liveAtAll, false),
+					liveAtAll: parseBool(args.liveAtAll, true),
 					liveGuardBuy: parseBool(args.liveGuardBuy, false),
 					superchat: parseBool(args.superchat, false),
 					wordcloud: parseBool(args.wordcloud, true),

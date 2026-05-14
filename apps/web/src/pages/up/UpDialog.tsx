@@ -42,12 +42,15 @@ const FEATURE_GROUPS: ReadonlyArray<{
 
 /**
  * 哪些 feature 支持 @全体 修饰符。dynamic → atAll.dynamic;live → atAll.live(仅开播,
- * 不冲 liveEnd/SC/上舰/词云/总结)。schema-side `atAll.X ⊆ routing.X` 由 refine 强制。
+ * 不冲 liveEnd/SC/上舰/词云/总结)。两层:订阅级默认 `atAllDefaults.X` + per-target Map
+ * 显式覆写 `atAll.X[targetId]`。`refine(keys(atAll.X) ⊆ routing.X)` 由后端强制。
  */
 const AT_ALL_FEATURES: ReadonlyArray<{ feature: FeatureKey; scope: "dynamic" | "live" }> = [
 	{ feature: "dynamic", scope: "dynamic" },
 	{ feature: "live", scope: "live" },
 ];
+
+type AtAllScope = "dynamic" | "live";
 
 export interface UpDialogProps {
 	sub: Subscription | null;
@@ -229,8 +232,8 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 	 * Toggle one feature on a single target. Only ever invoked in custom mode
 	 * (the UI does not show the per-feature toggles in follow mode).
 	 *
-	 * Side effect:关掉 dynamic/live 时,同步把该 target 从对应 atAll.X 列表里剥掉
-	 * ——schema refine 强制 atAll ⊆ routing,留着会 parse 失败。
+	 * Side effect:关掉 dynamic / live 时,同步把该 target 从对应 atAll.X Map 里删掉
+	 * ——schema refine 强制 `keys(atAll.X) ⊆ routing.X`,留着会 parse 失败。
 	 */
 	function toggleRouteForTarget(targetId: string, k: FeatureKey, on: boolean): void {
 		setDraft((d) => {
@@ -243,27 +246,44 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 			let atAll = d.atAll;
 			if (!on && (k === "dynamic" || k === "live")) {
 				const scope = k;
-				if (atAll[scope].includes(targetId)) {
-					atAll = { ...atAll, [scope]: atAll[scope].filter((id) => id !== targetId) };
+				if (targetId in atAll[scope]) {
+					const { [targetId]: _gone, ...rest } = atAll[scope];
+					atAll = { ...atAll, [scope]: rest };
 				}
 			}
 			return { ...d, routing, atAll };
 		});
 	}
 
+	/** 订阅级默认 atAll 切换(在 "订阅项 · 默认推送内容" section 里使用)。 */
+	function setAtAllDefault(scope: AtAllScope, on: boolean): void {
+		setDraft((d) =>
+			d ? { ...d, atAllDefaults: { ...d.atAllDefaults, [scope]: on } } : d,
+		);
+	}
+
 	/**
-	 * Toggle @全体 修饰符 for a single target on a feature scope (dynamic / live).
-	 * 父 feature 关闭时该子勾选 UI 上 disabled,这里也不允许设 true。
+	 * Per-target @全体 显式覆写(写 atAll.X Map)。父 feature 关闭时也不允许写。
+	 * `explicit === undefined` 表示重置回 inherit(删 Map key)。
 	 */
-	function toggleAtAllForTarget(targetId: string, scope: "dynamic" | "live", on: boolean): void {
+	function setAtAllExplicit(
+		targetId: string,
+		scope: AtAllScope,
+		explicit: boolean | undefined,
+	): void {
 		setDraft((d) => {
 			if (!d) return d;
-			if (on && !d.routing[scope].includes(targetId)) return d;
-			const list = d.atAll[scope];
-			const has = list.includes(targetId);
-			const next =
-				on && !has ? [...list, targetId] : !on && has ? list.filter((id) => id !== targetId) : list;
-			return { ...d, atAll: { ...d.atAll, [scope]: next } };
+			if (explicit !== undefined && !d.routing[scope].includes(targetId)) return d;
+			const map = d.atAll[scope];
+			if (explicit === undefined) {
+				if (!(targetId in map)) return d;
+				const { [targetId]: _gone, ...rest } = map;
+				return { ...d, atAll: { ...d.atAll, [scope]: rest } };
+			}
+			return {
+				...d,
+				atAll: { ...d.atAll, [scope]: { ...map, [targetId]: explicit } },
+			};
 		});
 	}
 
@@ -412,15 +432,28 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 									{g.label}
 								</div>
 								<div className="grid grid-cols-2 gap-x-4 gap-y-2 px-3 py-2">
-									{g.keys.map(({ key, sub: featSub }) => (
-										<FeatureToggleRow
-											key={key}
-											label={FEATURE_LABELS[key]}
-											sub={featSub}
-											value={effFeature(draft, key)}
-											onChange={(on) => setFeatureEnabled(key, on)}
-										/>
-									))}
+									{g.keys.map(({ key, sub: featSub }) => {
+										const atAllScope = AT_ALL_FEATURES.find((a) => a.feature === key)?.scope;
+										const parentOn = effFeature(draft, key);
+										return (
+											<div key={key}>
+												<FeatureToggleRow
+													label={FEATURE_LABELS[key]}
+													sub={featSub}
+													value={parentOn}
+													onChange={(on) => setFeatureEnabled(key, on)}
+												/>
+												{atAllScope ? (
+													<AtAllInlineToggle
+														value={draft.atAllDefaults[atAllScope]}
+														parentOn={parentOn}
+														scope={atAllScope}
+														onChange={(on) => setAtAllDefault(atAllScope, on)}
+													/>
+												) : null}
+											</div>
+										);
+									})}
 								</div>
 							</div>
 						))}
@@ -449,7 +482,7 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 										sub={draft}
 										onToggleMode={(toCustom) => switchTargetMode(t.id, toCustom)}
 										onToggleRoute={(k, on) => toggleRouteForTarget(t.id, k, on)}
-										onToggleAtAll={(scope, on) => toggleAtAllForTarget(t.id, scope, on)}
+										onSetAtAll={(scope, explicit) => setAtAllExplicit(t.id, scope, explicit)}
 										onDetach={() => detachTarget(t.id)}
 									/>
 								))
@@ -629,6 +662,99 @@ function FeatureToggleRow({
 	);
 }
 
+// ── @全体 sub-toggles ────────────────────────────────────────────────────────
+
+/**
+ * 订阅级默认 atAll toggle(默认 panel 用)。父 feature 关闭时 disabled。
+ * 写 `Subscription.atAllDefaults.X`,作用于所有 inherit-state 的 target。
+ */
+function AtAllInlineToggle({
+	value,
+	parentOn,
+	scope,
+	onChange,
+}: {
+	value: boolean;
+	parentOn: boolean;
+	scope: AtAllScope;
+	onChange: (on: boolean) => void;
+}) {
+	const hint =
+		scope === "live"
+			? "开播推送时附加 @全体(SC / 上舰 / 词云 / 总结 不 @)"
+			: "动态推送时附加 @全体";
+	return (
+		<div
+			className={`mt-0.5 ml-9 flex items-center gap-1.5 text-[11px] ${parentOn ? "text-bn-text-secondary" : "text-gray-300"}`}
+			title={parentOn ? hint : "需先开启父订阅项才能 @全体"}
+		>
+			<Toggle
+				value={parentOn && value}
+				onChange={(on) => parentOn && onChange(on)}
+				size="sm"
+				disabled={!parentOn}
+			/>
+			<span>+ @全体</span>
+		</div>
+	);
+}
+
+/**
+ * Per-target tristate @全体 toggle(自定义 panel 矩阵用)。
+ * - 显示值 = `explicit ?? inheritedValue`
+ * - 点 Toggle = 切到 explicit 反向值(写 atAll Map)
+ * - explicit !== undefined 时旁边出 reset 图标(⟲),点击清掉 Map key = 重置为 inherit
+ * - parentOn=false 时整行 disabled
+ */
+function AtAllPerTargetToggle({
+	scope,
+	parentOn,
+	explicit,
+	inheritedValue,
+	onSet,
+}: {
+	scope: AtAllScope;
+	parentOn: boolean;
+	explicit: boolean | undefined;
+	inheritedValue: boolean;
+	onSet: (explicit: boolean | undefined) => void;
+}) {
+	const isExplicit = explicit !== undefined;
+	const display = parentOn && (explicit ?? inheritedValue);
+	const hint = !parentOn
+		? "需先开启父订阅项才能 @全体"
+		: isExplicit
+			? `已显式设置为 ${explicit ? "ON" : "OFF"}(订阅默认为 ${inheritedValue ? "ON" : "OFF"})`
+			: scope === "live"
+				? `跟随订阅默认 · 当前 ${inheritedValue ? "ON" : "OFF"} · 仅开播 @,SC / 上舰 / 词云 / 总结 不 @`
+				: `跟随订阅默认 · 当前 ${inheritedValue ? "ON" : "OFF"}`;
+	return (
+		<div
+			className={`mt-0.5 ml-9 flex items-center gap-1.5 text-[11px] ${parentOn ? "text-bn-text-secondary" : "text-gray-300"}`}
+			title={hint}
+		>
+			<Toggle
+				value={display}
+				onChange={(on) => parentOn && onSet(on)}
+				size="sm"
+				disabled={!parentOn}
+			/>
+			<span className={isExplicit ? "font-semibold text-bn-text-primary" : ""}>+ @全体</span>
+			{isExplicit && parentOn ? (
+				<button
+					type="button"
+					onClick={() => onSet(undefined)}
+					aria-label="重置为跟随订阅默认"
+					title="重置为跟随订阅默认"
+					className="grid h-4 w-4 place-items-center rounded text-bn-text-tertiary hover:bg-gray-100 hover:text-bn-text-primary"
+				>
+					<Icon.refresh size={10} />
+				</button>
+			) : null}
+		</div>
+	);
+}
+
 // ── Target routing card (master switch + collapsed details) ──────────────────
 
 function TargetRoutingCard({
@@ -637,7 +763,7 @@ function TargetRoutingCard({
 	sub,
 	onToggleMode,
 	onToggleRoute,
-	onToggleAtAll,
+	onSetAtAll,
 	onDetach,
 }: {
 	target: PushTarget;
@@ -645,7 +771,7 @@ function TargetRoutingCard({
 	sub: Subscription;
 	onToggleMode: (toCustom: boolean) => void;
 	onToggleRoute: (k: FeatureKey, on: boolean) => void;
-	onToggleAtAll: (scope: "dynamic" | "live", on: boolean) => void;
+	onSetAtAll: (scope: AtAllScope, explicit: boolean | undefined) => void;
 	onDetach: () => void;
 }) {
 	const enabledCount = isCustom
@@ -692,10 +818,15 @@ function TargetRoutingCard({
 							</div>
 							<div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
 								{g.keys.map(({ key, sub: featSub }) => {
-									// 仅 dynamic / live 行下方挂 "+@全体" sub-checkbox(仅冲 dynamic / 开播)。
+									// 仅 dynamic / live 行下方挂 "+ @全体" 子开关(tristate:explicit / inherit)。
 									const atAllScope = AT_ALL_FEATURES.find((a) => a.feature === key)?.scope;
 									const parentOn = sub.routing[key].includes(target.id);
-									const atAllOn = atAllScope ? sub.atAll[atAllScope].includes(target.id) : false;
+									const explicit: boolean | undefined = atAllScope
+										? Object.prototype.hasOwnProperty.call(sub.atAll[atAllScope], target.id)
+											? sub.atAll[atAllScope][target.id]
+											: undefined
+										: undefined;
+									const inheritedValue = atAllScope ? sub.atAllDefaults[atAllScope] : false;
 									return (
 										<div key={key}>
 											<FeatureToggleRow
@@ -705,27 +836,13 @@ function TargetRoutingCard({
 												onChange={(on) => onToggleRoute(key, on)}
 											/>
 											{atAllScope ? (
-												<label
-													className={`mt-0.5 ml-4 flex items-center gap-1.5 text-[11px] ${parentOn ? "cursor-pointer text-bn-text-secondary" : "cursor-not-allowed text-gray-300"}`}
-													title={
-														parentOn
-															? atAllScope === "live"
-																? "仅在开播推送时附加 @全体(SC / 上舰 / 词云 / 总结 不 @)"
-																: "动态推送到该 target 时附加 @全体"
-															: "需先开启父订阅项才能 @全体"
-													}
-												>
-													<input
-														type="checkbox"
-														className="h-3 w-3 cursor-inherit"
-														checked={parentOn && atAllOn}
-														disabled={!parentOn}
-														onChange={(e) =>
-															parentOn && onToggleAtAll(atAllScope, e.target.checked)
-														}
-													/>
-													<span>+ @全体</span>
-												</label>
+												<AtAllPerTargetToggle
+													scope={atAllScope}
+													parentOn={parentOn}
+													explicit={explicit}
+													inheritedValue={inheritedValue}
+													onSet={(val) => onSetAtAll(atAllScope, val)}
+												/>
 											) : null}
 										</div>
 									);

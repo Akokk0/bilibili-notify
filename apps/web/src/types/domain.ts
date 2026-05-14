@@ -239,13 +239,24 @@ export interface SubscriptionState {
 }
 
 /**
- * @全体成员 修饰符:`dynamic` / `live` 是 target.id 列表,语义同后端 schema:
- * 在该 target 收到对应主推送时多带一个 @全体 段。**单独开 @ 无效** ——
- * 不在 routing.dynamic / routing.live 里的 id 会在后端 schema refine 被拒。
+ * @全体成员「订阅级默认」。每个 UP 主独立持有自己的默认策略,作用于 routing 里所有未在
+ * `atAll` Map 中显式覆写的 target。默认:开播 ON、动态 OFF。
+ */
+export interface SubscriptionAtAllDefaults {
+	dynamic: boolean;
+	live: boolean;
+}
+
+/**
+ * @全体成员 per-target 覆写。tristate Map:
+ * - Map 没 key → inherit(走 `atAllDefaults`)
+ * - `true` → 显式 ON;`false` → 显式 OFF
+ *
+ * 后端 schema refine 强制 `Object.keys(atAll.X) ⊆ routing.X`。
  */
 export interface SubscriptionAtAll {
-	dynamic: string[];
-	live: string[];
+	dynamic: Record<string, boolean>;
+	live: Record<string, boolean>;
 }
 
 export interface Subscription {
@@ -256,6 +267,7 @@ export interface Subscription {
 	notes?: string;
 	cachedProfile?: CachedProfile;
 	routing: SubscriptionRouting;
+	atAllDefaults: SubscriptionAtAllDefaults;
 	atAll: SubscriptionAtAll;
 	overrides: SubscriptionOverrides;
 	specialUsers: SpecialUser[];
@@ -289,7 +301,8 @@ export function makeEmptySubscription(uid: string): Subscription {
 		notes: undefined,
 		cachedProfile: undefined,
 		routing: emptyRouting(),
-		atAll: { dynamic: [], live: [] },
+		atAllDefaults: { dynamic: false, live: true },
+		atAll: { dynamic: {}, live: {} },
 		overrides: {},
 		specialUsers: [],
 		state: {

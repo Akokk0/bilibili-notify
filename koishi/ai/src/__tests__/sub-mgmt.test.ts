@@ -74,6 +74,7 @@ describe("buildSubManagement().addSub", () => {
 			dynamic: true,
 			live: true,
 			dynamicAtAll: false,
+			liveAtAll: true,
 			wordcloud: true,
 			liveSummary: false,
 		});
@@ -85,9 +86,10 @@ describe("buildSubManagement().addSub", () => {
 		expect(sub.routing.live).toEqual([t.id]);
 		expect(sub.routing.wordcloud).toEqual([t.id]);
 		expect(sub.routing.liveSummary).toEqual([]);
-		// dynamicAtAll=false → 不进 sub.atAll.dynamic
-		expect(sub.atAll.dynamic).toEqual([]);
-		expect(sub.atAll.live).toEqual([]);
+		// AI tool 写 atAllDefaults(订阅级默认),不动 per-target Map。
+		expect(sub.atAllDefaults).toEqual({ dynamic: false, live: true });
+		expect(sub.atAll.dynamic).toEqual({});
+		expect(sub.atAll.live).toEqual({});
 	});
 
 	it("prefers the master (private-scope) target over a group target", async () => {

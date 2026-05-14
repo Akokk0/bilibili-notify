@@ -108,7 +108,9 @@ export interface FlatSubConfigItem {
 	/** Comma-separated channel IDs */
 	target: string;
 	dynamic: boolean;
+	dynamicAtAll: boolean;
 	live: boolean;
+	liveAtAll: boolean;
 	liveEnd: boolean;
 	liveGuardBuy: boolean;
 	superchat: boolean;

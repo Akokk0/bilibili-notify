@@ -63,19 +63,34 @@ export const AIOverrideSchema = z.object({
 export type AIOverride = z.infer<typeof AIOverrideSchema>;
 
 /**
- * @全体 修饰符。dynamic / live 是 PushTarget.id 列表,语义:**在该 target 收到对应主推送时**
- * 额外追加 `{ type: "at-all" }` 段。约束:必须是 routing[feature] 的子集 ——「单独开 @」无效。
+ * @全体 订阅级默认。每个 UP 主独立持有自己的「默认 @全体」策略,作用于 routing 里的所有 target
+ * (除非该 target 在 `atAll` Map 中有显式 override)。
  *
- * - `atAll.dynamic ⊆ routing.dynamic`:某 target 在 atAll.dynamic 但不在 routing.dynamic 时
- *   不发任何东西(不会单独发 @)。
- * - `atAll.live ⊆ routing.live`:仅作用于 LivePushType.Live (开播),不冲 liveEnd / SC /
- *   上舰 / 词云 / AI 总结。这些子事件即便对应 target 在 atAll.live 里也不 @。
+ * 默认值约定:开播默认 ON、动态默认 OFF (开播事件比较重要更值得 @,动态高频且日常)。
+ */
+export const SubscriptionAtAllDefaultsSchema = z.object({
+	dynamic: z.boolean().default(false),
+	live: z.boolean().default(true),
+});
+export type SubscriptionAtAllDefaults = z.infer<typeof SubscriptionAtAllDefaultsSchema>;
+
+/**
+ * @全体 per-target 覆写。tristate:
+ * - Map 里没有 key → inherit(走 `atAllDefaults`)
+ * - `atAll.X[targetId] = true` → 强制 ON
+ * - `atAll.X[targetId] = false` → 强制 OFF
  *
- * SubscriptionSchema.refine() 强制子集约束;违反约束的旧数据 parse 时报错。
+ * 约束:Map 的 key 必须出现在 `routing[feature]` 列表里 ——「单独开 @」无意义。
+ *
+ * 作用范围:
+ * - `atAll.dynamic`:过了过滤器的动态都 @ (任意动态类型)
+ * - `atAll.live`:仅作用于 LivePushType.Live (开播),不冲 liveEnd / SC / 上舰 / 词云 / AI 总结
+ *
+ * SubscriptionSchema.refine() 强制 keys 子集约束;违反约束的旧数据 parse 时报错。
  */
 export const SubscriptionAtAllSchema = z.object({
-	dynamic: z.array(z.uuid()).default([]),
-	live: z.array(z.uuid()).default([]),
+	dynamic: z.record(z.uuid(), z.boolean()).default({}),
+	live: z.record(z.uuid(), z.boolean()).default({}),
 });
 export type SubscriptionAtAll = z.infer<typeof SubscriptionAtAllSchema>;
 
@@ -129,17 +144,18 @@ export const SubscriptionSchema = z
 		notes: z.string().optional(),
 		cachedProfile: CachedProfileSchema.optional(),
 		routing: SubscriptionRoutingSchema,
-		atAll: SubscriptionAtAllSchema.default({ dynamic: [], live: [] }),
+		atAllDefaults: SubscriptionAtAllDefaultsSchema.default({ dynamic: false, live: true }),
+		atAll: SubscriptionAtAllSchema.default({ dynamic: {}, live: {} }),
 		overrides: SubscriptionOverridesSchema,
 		specialUsers: z.array(SpecialUserSchema).default([]),
 		state: SubscriptionStateSchema,
 	})
-	.refine((s) => s.atAll.dynamic.every((t) => s.routing.dynamic.includes(t)), {
-		message: "atAll.dynamic must be a subset of routing.dynamic",
+	.refine((s) => Object.keys(s.atAll.dynamic).every((t) => s.routing.dynamic.includes(t)), {
+		message: "atAll.dynamic keys must be a subset of routing.dynamic",
 		path: ["atAll", "dynamic"],
 	})
-	.refine((s) => s.atAll.live.every((t) => s.routing.live.includes(t)), {
-		message: "atAll.live must be a subset of routing.live",
+	.refine((s) => Object.keys(s.atAll.live).every((t) => s.routing.live.includes(t)), {
+		message: "atAll.live keys must be a subset of routing.live",
 		path: ["atAll", "live"],
 	});
 export type Subscription = z.infer<typeof SubscriptionSchema>;
@@ -157,7 +173,8 @@ export function makeEmptySubscription(opts: { id: string; uid: string }): Subscr
 		notes: undefined,
 		cachedProfile: undefined,
 		routing: emptyRouting,
-		atAll: { dynamic: [], live: [] },
+		atAllDefaults: { dynamic: false, live: true },
+		atAll: { dynamic: {}, live: {} },
 		overrides: {},
 		specialUsers: [],
 		state: {

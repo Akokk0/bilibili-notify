@@ -6,13 +6,23 @@ function makeRaw(
 	uid: string,
 	channelId: string,
 	platform = "onebot",
-	opts: { dynamicAtAll?: boolean; liveAtAll?: boolean } = {},
+	opts: {
+		/** UP 级 @全体 默认。undefined → 走 koishi schema default(dynamic:false, live:true)。 */
+		upDynamicAtAll?: boolean;
+		upLiveAtAll?: boolean;
+		/** per-channel @全体 显式覆写。undefined → inherit。 */
+		chDynamicAtAll?: boolean;
+		chLiveAtAll?: boolean;
+	} = {},
 ) {
 	return {
 		uid,
 		roomId: "",
 		dynamic: true,
+		// koishi schema 给的 default(模拟 schema parse 后的 raw config)。
+		dynamicAtAll: opts.upDynamicAtAll ?? false,
 		live: true,
+		liveAtAll: opts.upLiveAtAll ?? true,
 		liveEnd: false,
 		liveGuardBuy: false,
 		superchat: false,
@@ -33,8 +43,9 @@ function makeRaw(
 						liveSummary: true,
 						specialDanmaku: false,
 						specialUserEnter: false,
-						dynamicAtAll: opts.dynamicAtAll ?? false,
-						liveAtAll: opts.liveAtAll ?? false,
+						// optional — undefined 表示 inherit
+						...(opts.chDynamicAtAll !== undefined ? { dynamicAtAll: opts.chDynamicAtAll } : {}),
+						...(opts.chLiveAtAll !== undefined ? { liveAtAll: opts.chLiveAtAll } : {}),
 					},
 				],
 			},
@@ -94,22 +105,42 @@ describe("buildAdvancedSubAndTargets()", () => {
 		expect(subs[1].routing.live?.[0]).toBe(targets[0].id);
 	});
 
-	it("populates sub.atAll.dynamic / sub.atAll.live from channel @全体 toggles", () => {
+	it("maps UP-level dynamicAtAll/liveAtAll to Subscription.atAllDefaults", () => {
 		const cfg: AdvancedSubRawShim = {
 			subs: {
-				"UP-1": makeRaw("11", "111", "onebot", { dynamicAtAll: true, liveAtAll: true }),
-				"UP-2": makeRaw("22", "222", "onebot", { dynamicAtAll: false, liveAtAll: false }),
+				"UP-1": makeRaw("11", "111", "onebot", { upDynamicAtAll: true, upLiveAtAll: false }),
+				"UP-2": makeRaw("22", "222", "onebot"), // 用 schema 默认 false / true
 			},
 		};
 		const { subs } = buildAdvancedSubAndTargets(cfg as unknown as AdvancedSubRawConfigShape);
-		expect(subs[0].atAll.dynamic).toHaveLength(1);
-		expect(subs[0].atAll.live).toHaveLength(1);
-		// UP-2 没勾 atAll
-		expect(subs[1].atAll.dynamic).toEqual([]);
-		expect(subs[1].atAll.live).toEqual([]);
-		// atAll 是 routing 的子集
-		expect(subs[0].routing.dynamic).toContain(subs[0].atAll.dynamic[0]);
-		expect(subs[0].routing.live).toContain(subs[0].atAll.live[0]);
+		expect(subs[0].atAllDefaults).toEqual({ dynamic: true, live: false });
+		expect(subs[1].atAllDefaults).toEqual({ dynamic: false, live: true });
+	});
+
+	it("maps per-channel @全体 toggles to Subscription.atAll Map (optional → inherit)", () => {
+		const cfg: AdvancedSubRawShim = {
+			subs: {
+				// UP-1:per-channel 显式 ON + OFF
+				"UP-1": makeRaw("11", "111", "onebot", { chDynamicAtAll: true, chLiveAtAll: false }),
+				// UP-2:per-channel 完全没填 → Map 空,走 atAllDefaults
+				"UP-2": makeRaw("22", "222"),
+			},
+		};
+		const { subs } = buildAdvancedSubAndTargets(cfg as unknown as AdvancedSubRawConfigShape);
+		// UP-1:Map 有 entry,显式覆写
+		const up1TargetId = subs[0].routing.dynamic[0];
+		expect(subs[0].atAll.dynamic[up1TargetId]).toBe(true);
+		expect(subs[0].atAll.live[up1TargetId]).toBe(false);
+		// UP-2:Map 空,inherit
+		expect(subs[1].atAll.dynamic).toEqual({});
+		expect(subs[1].atAll.live).toEqual({});
+		// Map keys 都是 routing 子集
+		for (const key of Object.keys(subs[0].atAll.dynamic)) {
+			expect(subs[0].routing.dynamic).toContain(key);
+		}
+		for (const key of Object.keys(subs[0].atAll.live)) {
+			expect(subs[0].routing.live).toContain(key);
+		}
 	});
 });
 

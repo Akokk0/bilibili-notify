@@ -22,9 +22,11 @@ import {
 type ChannelFeatureKey = FeatureKey;
 
 /**
- * `dynamicAtAll` / `liveAtAll` 不再是 FeatureKey,但 advanced-subscription Schema 仍允许
- * 用户在 channelArr 上勾选;转换器把它们映射到 Subscription.atAll.dynamic / atAll.live。
- * UP-level (`raw.dynamicAtAll` / `raw.liveAtAll`)已从 Schema 移除,不再支持。
+ * `dynamicAtAll` / `liveAtAll` 不是 FeatureKey,而是 @全体 修饰符。在 advanced-sub Schema 里
+ * 它们出现在两个地方:
+ * - UP 级 (`raw.dynamicAtAll` / `raw.liveAtAll`):订阅级默认 → `Subscription.atAllDefaults`
+ * - per-channel(`ch.dynamicAtAll` / `ch.liveAtAll`,**optional**):显式覆写 →
+ *   `Subscription.atAll.X[targetId] = bool`;`undefined` 表示该 target inherit 订阅默认
  */
 export type ChannelConfig = Partial<Record<ChannelFeatureKey, boolean>> & {
 	channelId: string;
@@ -42,6 +44,8 @@ export type MasterFlagMap = Partial<Record<FeatureKey, boolean>>;
 export type SubItemRawConfig = MasterFlagMap & {
 	uid: string;
 	roomId: string;
+	dynamicAtAll?: boolean;
+	liveAtAll?: boolean;
 	target: TargetConfig[];
 	customLiveSummary: { enable: boolean; liveSummary?: string[] };
 	customLiveMsg: {
@@ -185,18 +189,26 @@ export function rawConfigToSubscription(_name: string, raw: SubItemRawConfig): C
 				}
 			}
 
-			// @全体 修饰符:仅在该 channel 同时开启对应主 feature 时生效("单独开 @ 无效")。
-			// schema-side 用户即便误勾 dynamicAtAll=true 而 dynamic=false 也不会进入 atAll 列表。
-			if (ch.dynamicAtAll && routing.dynamic?.includes(targetId)) {
-				if (!sub.atAll.dynamic.includes(targetId)) sub.atAll.dynamic.push(targetId);
+			// @全体 per-target 覆写。Optional → undefined 表示「按订阅默认走」(不写 Map)。
+			// `refine(keys(atAll.X) ⊆ routing.X)` 强制:写 Map 前必须 routing 已包含 targetId,
+			// 否则 schema parse 会报错。
+			if (ch.dynamicAtAll !== undefined && routing.dynamic?.includes(targetId)) {
+				sub.atAll.dynamic[targetId] = ch.dynamicAtAll;
 			}
-			if (ch.liveAtAll && routing.live?.includes(targetId)) {
-				if (!sub.atAll.live.includes(targetId)) sub.atAll.live.push(targetId);
+			if (ch.liveAtAll !== undefined && routing.live?.includes(targetId)) {
+				sub.atAll.live[targetId] = ch.liveAtAll;
 			}
 		}
 	}
 
 	sub.routing = routing;
+
+	// UP 级 @全体 默认。Schema 给了 default(false / true),所以 raw.X 不会是 undefined,
+	// 但为安全起见仍走 fallback。
+	sub.atAllDefaults = {
+		dynamic: raw.dynamicAtAll ?? false,
+		live: raw.liveAtAll ?? true,
+	};
 
 	// Map custom overrides to the new overrides schema
 	const cardStyle = raw.customCardStyle;

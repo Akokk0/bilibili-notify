@@ -29,7 +29,13 @@ export const BilibiliNotifyConfigSchema: Schema<BilibiliNotifyConfig> = Schema.o
 			name: Schema.string().required().description("UP昵称"),
 			uid: Schema.string().required().description("UID"),
 			dynamic: Schema.boolean().default(true).description("动态"),
+			dynamicAtAll: Schema.boolean()
+				.default(false)
+				.description("动态推送时是否 @全体(订阅级默认;per-target 可在 dashboard 里单独覆写)"),
 			live: Schema.boolean().default(true).description("直播"),
+			liveAtAll: Schema.boolean()
+				.default(true)
+				.description("开播推送时是否 @全体(订阅级默认;只冲开播,不冲 SC/上舰/总结)"),
 			liveEnd: Schema.boolean().default(true).description("下播通知"),
 			liveGuardBuy: Schema.boolean().default(false).description("上舰消息"),
 			superchat: Schema.boolean().default(false).description("SC消息"),

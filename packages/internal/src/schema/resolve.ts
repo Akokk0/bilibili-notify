@@ -12,6 +12,7 @@ import type {
 	AIOverride,
 	Subscription,
 	SubscriptionAtAll,
+	SubscriptionAtAllDefaults,
 	SubscriptionRouting,
 } from "./subscriptions";
 
@@ -27,6 +28,7 @@ export interface EffectiveSubscription {
 	notes: string | undefined;
 	cachedProfile: Subscription["cachedProfile"];
 	routing: SubscriptionRouting;
+	atAllDefaults: SubscriptionAtAllDefaults;
 	atAll: SubscriptionAtAll;
 	specialUsers: Subscription["specialUsers"];
 	state: Subscription["state"];
@@ -101,6 +103,7 @@ export function resolve(sub: Subscription, defaults: GlobalDefaults): EffectiveS
 		notes: sub.notes,
 		cachedProfile: sub.cachedProfile,
 		routing: sub.routing,
+		atAllDefaults: sub.atAllDefaults,
 		atAll: sub.atAll,
 		specialUsers: sub.specialUsers,
 		state: sub.state,

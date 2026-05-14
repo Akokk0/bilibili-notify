@@ -116,10 +116,14 @@ export class BilibiliPush {
 	 * Broadcast a notification to all targets registered for a given uid + feature.
 	 * Returns an array of DeliveryResult (one per target).
 	 *
-	 * @全体成员 修饰:`feature === "dynamic"` 时按 `sub.atAll.dynamic` 决定哪些 target
-	 * 收到的 payload 前置 at-all 段;`feature === "live"` 同理(仅作用于开播,SC/上舰/
-	 * 词云/总结/下播 等子事件以 `liveEnd`/`superchat`/... 它们自己的 feature key 走,
-	 * 不会进入这条 atAll 分支)。子集约束已在 schema refine 强制,这里不再二次校验。
+	 * @全体成员 修饰(仅 `feature === "dynamic" | "live"` 进入):
+	 * - 订阅级默认 `sub.atAllDefaults.X` 决定 inherit-state 的 target 是否 @
+	 * - per-target tristate Map `sub.atAll.X[targetId]` 显式覆写:`true` 强 ON、`false` 强 OFF
+	 * - Map 里没有该 key → 走默认
+	 *
+	 * `feature === "live"` 仅作用于开播,SC/上舰/词云/总结/下播 等子事件以 `liveEnd`/
+	 * `superchat`/... 它们自己的 feature key 走,不会进入这条 atAll 分支。Map keys 子集
+	 * 约束已在 schema refine 强制,这里不再二次校验。
 	 */
 	async broadcastToFeature(
 		uid: string,
@@ -140,30 +144,31 @@ export class BilibiliPush {
 			return [];
 		}
 
-		const atAllSet =
-			feature === "dynamic"
-				? new Set(sub.atAll.dynamic)
-				: feature === "live"
-					? new Set(sub.atAll.live)
-					: null;
+		const atAllScope = feature === "dynamic" ? "dynamic" : feature === "live" ? "live" : null;
 
 		this.logger.info(`[push] uid=${uid} feature=${feature} → ${targetIds.length} 个目标`);
-		if (!atAllSet || atAllSet.size === 0) {
+		if (!atAllScope) {
 			return this.sendBatch(targetIds, payload, { uid, feature });
 		}
 
-		// 有 atAll target 时按 target 拆批,分别带 / 不带 at-all 前缀。
-		const atAllTargets = targetIds.filter((id) => atAllSet.has(id));
-		const plainTargets = targetIds.filter((id) => !atAllSet.has(id));
+		const defaultOn = sub.atAllDefaults[atAllScope];
+		const overrides = sub.atAll[atAllScope];
+		const atAllTargets: string[] = [];
+		const plainTargets: string[] = [];
+		for (const id of targetIds) {
+			const explicit = overrides[id];
+			const shouldAtAll = explicit ?? defaultOn;
+			(shouldAtAll ? atAllTargets : plainTargets).push(id);
+		}
+		if (atAllTargets.length === 0) {
+			return this.sendBatch(plainTargets, payload, { uid, feature });
+		}
+		if (plainTargets.length === 0) {
+			return this.sendBatch(atAllTargets, prependAtAll(payload), { uid, feature });
+		}
 		const results: DeliveryResult[] = [];
-		if (plainTargets.length > 0) {
-			results.push(...(await this.sendBatch(plainTargets, payload, { uid, feature })));
-		}
-		if (atAllTargets.length > 0) {
-			results.push(
-				...(await this.sendBatch(atAllTargets, prependAtAll(payload), { uid, feature })),
-			);
-		}
+		results.push(...(await this.sendBatch(plainTargets, payload, { uid, feature })));
+		results.push(...(await this.sendBatch(atAllTargets, prependAtAll(payload), { uid, feature })));
 		return results;
 	}
 
