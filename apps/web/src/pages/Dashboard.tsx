@@ -116,7 +116,7 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 				// auto-fit grid + max-h 上限 ≈ 3 行 chip(每 chip ~70px + 10px gap)。
 				// chip 少时高度自然撑;chip ≥4 时超出部分被 overflow-hidden 裁掉,
 				// header 的 「● N 人在播」 Pill 仍显示真实数量。
-				<div className="grid max-h-[240px] grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-2.5 overflow-hidden">
+				<div className="grid max-h-60 grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-2.5 overflow-hidden">
 					{live.map((r) => {
 						const sub = subByUid.get(r.uid);
 						const name = sub ? displayName(sub) : `UID ${r.uid}`;
@@ -413,7 +413,7 @@ function FansPanel({ subs }: { subs: Subscription[] }) {
 				// 单列布局,max-h 上限 ≈ 3 行行卡(每行 ~62px + 8px gap);N 多时走
 				// 内滚动,bn-no-scrollbar 隐藏滚动条不破坏卡片视觉。N 少时高度自然撑,
 				// 跟同行「正在直播」由 grid row-stretch 拉到等高。
-				<div className="bn-no-scrollbar grid max-h-[240px] grid-cols-1 gap-2 overflow-y-auto">
+				<div className="bn-no-scrollbar grid max-h-60 grid-cols-1 gap-2 overflow-y-auto">
 					{sorted.map((e) => {
 						const sub = subByUid.get(e.uid);
 						const name = sub ? displayName(sub) : `UID ${e.uid}`;

@@ -20,6 +20,7 @@ function hasDynamicGate(eff: EffectiveSubscription): boolean {
 	// routing.dynamic=[] 的 UP 仍纳入 cron,加 routing 后下个轮询周期立即生效。
 	return eff.features.dynamic;
 }
+
 import { makeKoishiMessageBus, makeKoishiServiceContext } from "@bilibili-notify/koishi-runtime";
 import type { BilibiliPush } from "@bilibili-notify/push";
 import { type Awaitable, type Context, h, Service } from "koishi";

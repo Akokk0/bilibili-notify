@@ -206,12 +206,12 @@ export function FilterSection({
 			</FieldRow>
 			<div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
 				<FieldRow label="屏蔽转发动态" code="blockForward">
-					<div className="flex h-[30px] items-center">
+					<div className="flex h-7.5 items-center">
 						<Toggle value={value.blockForward} onChange={(v) => set("blockForward", v)} size="sm" />
 					</div>
 				</FieldRow>
 				<FieldRow label="屏蔽专栏动态" code="blockArticle">
-					<div className="flex h-[30px] items-center">
+					<div className="flex h-7.5 items-center">
 						<Toggle value={value.blockArticle} onChange={(v) => set("blockArticle", v)} size="sm" />
 					</div>
 				</FieldRow>
@@ -290,7 +290,7 @@ export function LiveThresholdsSection({
 					/>
 				</FieldRow>
 				<FieldRow label="启动后立即推送" code="restartPush" hint="重启时若 UP 在播则立即推送一次">
-					<div className="flex h-[30px] items-center">
+					<div className="flex h-7.5 items-center">
 						<Toggle
 							value={schedule.restartPush}
 							onChange={(v) => setS("restartPush", v)}
@@ -699,7 +699,7 @@ export function CoreAppSection({
 				/>
 			</FieldRow>
 
-			<div className="mt-3 rounded-lg border border-bn-pink/20 bg-gradient-to-br from-bn-pink/8 to-transparent p-3">
+			<div className="mt-3 rounded-lg border border-bn-pink/20 bg-linear-to-br from-bn-pink/8 to-transparent p-3">
 				<div className="mb-1.5 flex items-center justify-between">
 					<span className="text-[12.5px] font-bold text-bn-text-primary">主人账号 · master</span>
 					<span className="text-[10.5px] text-bn-text-tertiary">

@@ -638,7 +638,9 @@ export default function Subs() {
 					加载失败：{String((subsQuery.error as Error).message)}
 				</div>
 			) : null}
-			{subsQuery.data && filtered.length === 0 && (q.trim() || filterId !== "all" || groupFilter) ? (
+			{subsQuery.data &&
+			filtered.length === 0 &&
+			(q.trim() || filterId !== "all" || groupFilter) ? (
 				<div className="rounded-bn-card border border-dashed border-gray-300 bg-white/60 p-10 text-center">
 					<div className="mb-1 text-sm font-bold text-bn-text-primary">没有匹配的订阅</div>
 					<div className="text-[12px] text-bn-text-secondary">试试换个关键词或筛选条件</div>
@@ -672,9 +674,7 @@ export default function Subs() {
 						className="flex min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 px-4 py-5 text-center transition hover:border-bn-pink focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink"
 					>
 						<span className="text-[28px] leading-none text-bn-text-tertiary">＋</span>
-						<span className="mt-2 text-[13px] font-semibold text-bn-text-primary">
-							添加 UP 主
-						</span>
+						<span className="mt-2 text-[13px] font-semibold text-bn-text-primary">添加 UP 主</span>
 						<span className="mt-0.5 text-[11px] text-bn-text-tertiary">UID / 名称搜索</span>
 					</button>
 				) : null}

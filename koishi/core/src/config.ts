@@ -45,13 +45,9 @@ export const BilibiliNotifyConfigSchema: Schema<BilibiliNotifyConfig> = Schema.o
 			name: Schema.string().required().description("UP昵称"),
 			uid: Schema.string().required().description("UID"),
 			dynamic: Schema.boolean().default(true).description("动态"),
-			dynamicAtAll: Schema.boolean()
-				.default(false)
-				.description("动态@全体"),
+			dynamicAtAll: Schema.boolean().default(false).description("动态@全体"),
 			live: Schema.boolean().default(true).description("直播"),
-			liveAtAll: Schema.boolean()
-				.default(true)
-				.description("开播@全体"),
+			liveAtAll: Schema.boolean().default(true).description("开播@全体"),
 			liveEnd: Schema.boolean().default(true).description("下播通知"),
 			liveGuardBuy: Schema.boolean().default(false).description("上舰消息"),
 			superchat: Schema.boolean().default(false).description("SC消息"),

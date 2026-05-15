@@ -153,8 +153,7 @@ export default function History() {
 				</div>
 				<div className="flex-1" />
 				<span className="text-[11px] text-bn-text-tertiary">
-					共 {filtered.length} 条
-					{retentionDays != null ? ` · 保留近 ${retentionDays} 天` : ""}
+					共 {filtered.length} 条{retentionDays != null ? ` · 保留近 ${retentionDays} 天` : ""}
 				</span>
 			</div>
 

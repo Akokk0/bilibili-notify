@@ -47,7 +47,12 @@ export const BilibiliNotifyAdvancedSubConfig: Schema<BilibiliNotifyAdvancedSubCo
 				quietHours: Schema.array(
 					Schema.object({
 						start: Schema.number().min(0).max(23).step(1).required().description("起始小时(0-23)"),
-						end: Schema.number().min(0).max(23).step(1).required().description("结束小时(0-23,不含)"),
+						end: Schema.number()
+							.min(0)
+							.max(23)
+							.step(1)
+							.required()
+							.description("结束小时(0-23,不含)"),
 					}),
 				)
 					.role("table")
@@ -88,7 +93,9 @@ export const BilibiliNotifyAdvancedSubConfig: Schema<BilibiliNotifyAdvancedSubCo
 					.max(24)
 					.step(1)
 					.default(0)
-					.description("「正在直播」复推间隔(小时):0 = 不复推。开播后每隔此小时数复推一次直播间状态"),
+					.description(
+						"「正在直播」复推间隔(小时):0 = 不复推。开播后每隔此小时数复推一次直播间状态",
+					),
 				restartPush: Schema.boolean()
 					.default(false)
 					.description("Koishi 重启后如果该 UP 正在直播,是否立即补推一次「开播」通知"),
