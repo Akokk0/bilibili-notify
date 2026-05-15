@@ -5,6 +5,14 @@ import type { StandalonePuppeteer } from "../runtime/puppeteer.js";
 import type { RouteDeps } from "./types.js";
 
 /**
+ * GET 返回 globals 时,把 `defaults.ai.apiKey` 替换成这个 sentinel,**永不**把真实 key
+ * 通过 REST 暴露给浏览器。PATCH 收到这个 sentinel 视为「保留原值」(用户没动这个字段)。
+ *
+ * 注意保持长度 ≠ 任何合理 apiKey 长度,避免被认成"用户改了一个奇怪的字符串"。
+ */
+const REDACTED_API_KEY = "__BN_REDACTED__";
+
+/**
  * `/api/globals` — read + patch the runtime GlobalConfig.
  *
  * - GET: returns a snapshot
@@ -25,7 +33,7 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 	const log = deps.runtime.serviceCtx.logger;
 
-	app.get("/", (c) => c.json(deps.store.getGlobals()));
+	app.get("/", (c) => c.json(redactGlobals(deps.store.getGlobals())));
 
 	app.patch("/", async (c) => {
 		let body: unknown;
@@ -47,12 +55,15 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 				400,
 			);
 		}
+		// 把 REDACTED sentinel 从 patch 里剥掉:前端 GET 拿到的是 redact 占位,如果
+		// 用户没在 UI 改 apiKey,PATCH body 会把占位原样回传 — 视为"保留原值"。
+		const patch = stripRedactedSecrets(shapeCheck.data);
 		// Enable-check pre-flight. Runs against the *merged* view so a request
 		// that only toggles `enabled=true` without restating apiKey still works
 		// (we read the still-persisted value as the effective field).
 		const enableCheck = await runEnableCheck({
 			current: deps.store.getGlobals(),
-			patch: shapeCheck.data,
+			patch,
 			puppeteer: deps.puppeteer,
 		});
 		if (!enableCheck.ok) {
@@ -62,8 +73,8 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 			);
 		}
 		try {
-			const next = await deps.store.patchGlobals(shapeCheck.data);
-			return c.json(next);
+			const next = await deps.store.patchGlobals(patch);
+			return c.json(redactGlobals(next));
 		} catch (err) {
 			if (err instanceof ConfigValidationError) {
 				return c.json({ error: "validation_failed", scope: err.scope, issues: err.issues }, 400);
@@ -257,4 +268,45 @@ function mergedFlag(current: boolean, patchValue: unknown): boolean {
 function mergedString(current: string | undefined, patchValue: unknown): string {
 	if (typeof patchValue === "string") return patchValue.trim();
 	return (current ?? "").trim();
+}
+
+// ── Secret redaction ───────────────────────────────────────────────────────
+
+/**
+ * 浅复制 globals,把所有 secret 字段(目前只有 `defaults.ai.apiKey`)替换成
+ * REDACTED 占位 — 仅当原值非空。空值保持空,让前端能区分"未配置"与"已配置"。
+ */
+function redactGlobals(
+	g: import("@bilibili-notify/internal").GlobalConfig,
+): import("@bilibili-notify/internal").GlobalConfig {
+	const apiKey = g.defaults.ai.apiKey;
+	if (!apiKey) return g;
+	return {
+		...g,
+		defaults: {
+			...g.defaults,
+			ai: { ...g.defaults.ai, apiKey: REDACTED_API_KEY },
+		},
+	};
+}
+
+/**
+ * Patch body 入口处理:用户没改 apiKey 字段时,前端会把 GET 拿到的 REDACTED 占位原样
+ * 回传 — 这里识别并删掉该字段,让 patchGlobals 不会用占位字符串覆盖真实 key。
+ */
+function stripRedactedSecrets(patch: Record<string, unknown>): Record<string, unknown> {
+	const defaults = patch.defaults;
+	if (!defaults || typeof defaults !== "object") return patch;
+	const ai = (defaults as Record<string, unknown>).ai;
+	if (!ai || typeof ai !== "object") return patch;
+	const aiObj = ai as Record<string, unknown>;
+	if (aiObj.apiKey !== REDACTED_API_KEY) return patch;
+	const { apiKey: _drop, ...aiRest } = aiObj;
+	return {
+		...patch,
+		defaults: {
+			...(defaults as Record<string, unknown>),
+			ai: aiRest,
+		},
+	};
 }

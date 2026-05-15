@@ -68,14 +68,17 @@ export function TInput({
 	full = true,
 	type = "text",
 }: TInputProps) {
+	// secret=true 时使用 <input type="password">,DOM value 不在 devtools 树展示明文,
+	// 也阻止屏幕共享/截图泄漏。
+	const effectiveType = secret ? "password" : type;
 	return (
 		<input
-			type={type}
+			type={effectiveType}
 			value={value}
 			onChange={(e) => onChange(e.target.value)}
 			placeholder={placeholder}
+			autoComplete={secret ? "new-password" : undefined}
 			className={`${INPUT_BASE} ${mono || secret ? "font-mono" : ""} ${full ? "min-w-0 w-full" : "w-auto"}`}
-			style={secret ? ({ WebkitTextSecurity: "disc" } as React.CSSProperties) : undefined}
 		/>
 	);
 }
