@@ -170,11 +170,8 @@ function NewSubDialog({
 	return (
 		<ModalShell onCancel={onCancel} width={420} bodyClassName="p-5">
 			<div className="mb-1 text-base font-bold text-bn-text-primary">添加 UP 主</div>
-			<div className="mb-3 text-[12px] text-bn-text-secondary">
-				输入纯数字走 UID 精确查询; 输入名字走搜索,点击结果直接订阅
-			</div>
-			<div className="mb-4 rounded border border-amber-200 bg-amber-50 p-2 text-[11px] leading-relaxed text-amber-700">
-				添加后立即开始监听该 UP 的动态/直播。请尽快配置推送目标——未配置期间的事件将直接丢弃,不缓存。
+			<div className="mb-4 text-[12px] text-bn-text-secondary">
+				输入纯数字走 UID 精确查询; 输入名字走搜索,选定后进入配置表单
 			</div>
 			<div className="flex gap-2">
 				<Input
@@ -229,7 +226,7 @@ function NewSubDialog({
 						onClick={() => onSubmit(profile)}
 						disabled={existingUids.has(profile.uid) || pending}
 					>
-						{pending ? "添加中…" : "添加"}
+						下一步
 					</Btn>
 				) : null}
 			</div>
@@ -408,6 +405,12 @@ export default function Subs() {
 	const [selection, setSelection] = useState<Set<string>>(new Set());
 	const [drawerSubId, setDrawerSubId] = useState<string | null>(null);
 	const [showNewDialog, setShowNewDialog] = useState(false);
+	/**
+	 * Staged 草稿:点 NewSubDialog 搜索结果后,不立即 POST,而是构造一份 Subscription
+	 * 草稿放这里,接着打开 UpDialog 让用户配 routing / features / template 等;点
+	 * 「创建订阅」才落盘。关闭/取消则丢弃,UP 不会出现在订阅列表。
+	 */
+	const [newDraft, setNewDraft] = useState<Subscription | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
 	const filterDef = FILTERS.find((f) => f.id === filterId) ?? FILTERS[0];
@@ -519,6 +522,8 @@ export default function Subs() {
 	}
 
 	function handleNew(profile: UpProfileLookup): void {
+		// 不立即 upsert——构造草稿放进 newDraft,关 NewSubDialog,打开 UpDialog(create 模式)
+		// 让用户先配 routing/features/template,点「创建订阅」才走 upsert.mutate 落盘。
 		const fresh = makeEmptySubscription(profile.uid);
 		fresh.cachedProfile = {
 			name: profile.name,
@@ -527,12 +532,8 @@ export default function Subs() {
 			fans: profile.fans,
 			lastRefreshedAt: new Date().toISOString(),
 		};
-		upsert.mutate(fresh, {
-			onSuccess: () => {
-				setShowNewDialog(false);
-				setDrawerSubId(fresh.id);
-			},
-		});
+		setNewDraft(fresh);
+		setShowNewDialog(false);
 	}
 
 	return (
@@ -679,7 +680,23 @@ export default function Subs() {
 				) : null}
 			</div>
 
-			{drawerSub ? (
+			{newDraft ? (
+				<UpDialog
+					sub={newDraft}
+					targets={targets}
+					mode="create"
+					onClose={() => setNewDraft(null)}
+					saving={upsert.isPending}
+					onSave={(next: Subscription) => {
+						upsert.mutate(next, {
+							onSuccess: () => setNewDraft(null),
+						});
+					}}
+					onDelete={() => {
+						/* 不可达 — create 模式下「移除订阅」按钮已隐藏 */
+					}}
+				/>
+			) : drawerSub ? (
 				<UpDialog
 					sub={drawerSub}
 					targets={targets}

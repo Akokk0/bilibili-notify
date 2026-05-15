@@ -55,6 +55,13 @@ type AtAllScope = "dynamic" | "live";
 export interface UpDialogProps {
 	sub: Subscription | null;
 	targets: PushTarget[];
+	/**
+	 * "edit"   — 现行行为:已有的 Subscription, 改 draft 后 onSave 触发 PATCH-like upsert。
+	 * "create" — 新建模式:sub 是父组件构造的草稿(还没落盘),onSave 触发 POST。
+	 *           按钮区:"移除订阅" 隐藏(还没创建);"保存配置" 即使 draft 未改也可点(因
+	 *           为草稿本身就是「待提交的修改」);"取消" 关闭即丢弃,不调任何 API。
+	 */
+	mode?: "create" | "edit";
 	onClose: () => void;
 	onSave: (next: Subscription) => void;
 	onDelete: () => void;
@@ -90,7 +97,15 @@ function inferCustomSet(sub: Subscription | null, targets: PushTarget[]): Set<st
 	return out;
 }
 
-export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: UpDialogProps) {
+export function UpDialog({
+	sub,
+	targets,
+	mode = "edit",
+	onClose,
+	onSave,
+	onDelete,
+	saving,
+}: UpDialogProps) {
 	const [draft, setDraft] = useState<Subscription | null>(sub);
 	const [customSet, setCustomSet] = useState<Set<string>>(() => inferCustomSet(sub, targets));
 	// Targets the user attached during this dialog session — kept separately
@@ -129,7 +144,14 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 	if (!draft) return null;
 
 	const color = colorFromUid(draft.uid);
-	const dirty = sub ? JSON.stringify(sub) !== JSON.stringify(draft) : false;
+	// create 模式下 draft 本身就是「待提交」,无论用户改没改字段都视为 dirty——保存按钮
+	// 始终可点 + 关闭时一律走丢弃确认。
+	const dirty = mode === "create" || (sub ? JSON.stringify(sub) !== JSON.stringify(draft) : false);
+
+	function requestClose(): void {
+		if (dirty && !window.confirm("丢弃未保存的修改?")) return;
+		onClose();
+	}
 
 	function setEnabled(on: boolean): void {
 		setDraft((d) => (d ? { ...d, enabled: on } : d));
@@ -333,7 +355,7 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 
 	return (
 		<ModalShell
-			onCancel={onClose}
+			onCancel={requestClose}
 			width={560}
 			bodyClassName=""
 			bodyStyle={{
@@ -350,7 +372,7 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 			>
 				<button
 					type="button"
-					onClick={onClose}
+					onClick={requestClose}
 					className="absolute right-3.5 top-3.5 grid h-7 w-7 place-items-center rounded-full bg-white/25 text-white backdrop-blur-sm"
 					title="关闭"
 				>
@@ -564,17 +586,19 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 					</div>
 				) : null}
 				<div className="flex items-center gap-2">
-					<Btn
-						variant="danger"
-						size="sm"
-						icon={<Icon.trash size={12} />}
-						onClick={onDelete}
-						disabled={saving}
-					>
-						移除订阅
-					</Btn>
+					{mode === "edit" ? (
+						<Btn
+							variant="danger"
+							size="sm"
+							icon={<Icon.trash size={12} />}
+							onClick={onDelete}
+							disabled={saving}
+						>
+							移除订阅
+						</Btn>
+					) : null}
 					<div className="flex-1" />
-					<Btn variant="outline" size="sm" onClick={onClose} disabled={saving}>
+					<Btn variant="outline" size="sm" onClick={requestClose} disabled={saving}>
 						取消
 					</Btn>
 					<Btn
@@ -589,7 +613,13 @@ export function UpDialog({ sub, targets, onClose, onSave, onDelete, saving }: Up
 						}}
 						disabled={saving}
 					>
-						{saving ? "保存中…" : "保存配置"}
+						{saving
+							? mode === "create"
+								? "创建中…"
+								: "保存中…"
+							: mode === "create"
+								? "创建订阅"
+								: "保存配置"}
 					</Btn>
 				</div>
 			</div>
