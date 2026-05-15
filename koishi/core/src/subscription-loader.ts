@@ -1,5 +1,6 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import {
+	deterministicUuid,
 	FEATURE_KEYS,
 	type FeatureKey,
 	makeEmptySubscription,
@@ -110,36 +111,6 @@ export function flatSubToSubscription(
 		live: item.liveAtAll ?? true,
 	};
 	return sub;
-}
-
-/**
- * Deterministic UUID v4-shape from a string (djb2-style hash spread across 16
- * bytes). Must stay in lock-step with `koishi/advanced-subscription/src/convert.ts`.
- *
- * NB: every intermediate is forced through `>>> 0` so JS bitwise ops can't
- * deliver a signed-negative number to `Number.prototype.toString(16)` (which
- * would emit a leading `-` and break the UUID shape — Fix 6 collateral).
- */
-function deterministicUuid(input: string): string {
-	let h1 = 5381;
-	let h2 = 52711;
-	let h3 = 0xdeadbeef;
-	let h4 = 0xbaddcafe;
-	for (let i = 0; i < input.length; i++) {
-		const c = input.charCodeAt(i);
-		h1 = (Math.imul(h1, 33) ^ c) >>> 0;
-		h2 = (Math.imul(h2, 37) ^ c) >>> 0;
-		h3 = (Math.imul(h3, 31) ^ c) >>> 0;
-		h4 = (Math.imul(h4, 29) ^ c) >>> 0;
-	}
-	const toHex = (n: number, len: number) => (n >>> 0).toString(16).padStart(len, "0").slice(-len);
-	const seg1 = toHex(h1, 8);
-	const seg2 = toHex((h2 >>> 0) & 0xffff, 4);
-	const seg3 = `4${toHex(((h3 >>> 0) >>> 4) & 0x0fff, 3)}`;
-	const seg4 = toHex((((h4 >>> 0) >>> 4) & 0x3fff) | 0x8000, 4);
-	const seg5a = toHex((h1 ^ h2) >>> 0, 8);
-	const seg5b = toHex(((h3 ^ h4) >>> 0) & 0xffff, 4);
-	return `${seg1}-${seg2}-${seg3}-${seg4}-${seg5a}${seg5b}`;
 }
 
 export interface SubscriptionLoaderOptions {

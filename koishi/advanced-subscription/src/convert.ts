@@ -8,6 +8,7 @@
  */
 
 import {
+	deterministicUuid,
 	FEATURE_KEYS,
 	type FeatureKey,
 	makeEmptySubscription,
@@ -16,6 +17,8 @@ import {
 	type Subscription,
 	type SubscriptionRouting,
 } from "@bilibili-notify/internal";
+
+export { deterministicUuid };
 
 // ---- Type shapes (kept in lock-step with core.ts schema) ----
 
@@ -109,36 +112,6 @@ export interface AdvancedSubRawConfigShape {
 }
 
 // ---- Conversion logic ----
-
-/**
- * Deterministic UUID from a string (same algorithm as subscription-loader.ts).
- * Must stay in sync if changed.
- *
- * NB: every intermediate is forced through `>>> 0` so JS bitwise ops can't
- * deliver a signed-negative number to `Number.prototype.toString(16)` (which
- * would emit a leading `-` and break the UUID shape — see Fix 6 / 8).
- */
-export function deterministicUuid(input: string): string {
-	let h1 = 5381;
-	let h2 = 52711;
-	let h3 = 0xdeadbeef;
-	let h4 = 0xbaddcafe;
-	for (let i = 0; i < input.length; i++) {
-		const c = input.charCodeAt(i);
-		h1 = (Math.imul(h1, 33) ^ c) >>> 0;
-		h2 = (Math.imul(h2, 37) ^ c) >>> 0;
-		h3 = (Math.imul(h3, 31) ^ c) >>> 0;
-		h4 = (Math.imul(h4, 29) ^ c) >>> 0;
-	}
-	const toHex = (n: number, len: number) => (n >>> 0).toString(16).padStart(len, "0").slice(-len);
-	const seg1 = toHex(h1, 8);
-	const seg2 = toHex((h2 >>> 0) & 0xffff, 4);
-	const seg3 = `4${toHex(((h3 >>> 0) >>> 4) & 0x0fff, 3)}`; // version 4
-	const seg4 = toHex((((h4 >>> 0) >>> 4) & 0x3fff) | 0x8000, 4); // RFC 4122 variant
-	const seg5a = toHex((h1 ^ h2) >>> 0, 8);
-	const seg5b = toHex(((h3 ^ h4) >>> 0) & 0xffff, 4);
-	return `${seg1}-${seg2}-${seg3}-${seg4}-${seg5a}${seg5b}`;
-}
 
 export interface ConversionResult {
 	sub: Subscription;
