@@ -1,9 +1,21 @@
 import type {
+	EffectiveSubscription,
+	FeatureKey,
+	GlobalDefaults,
 	NotificationPayload,
 	PayloadSegment,
+	Subscription,
 	SubscriptionOp,
 } from "@bilibili-notify/internal";
-import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
+import { BILIBILI_NOTIFY_TOKEN, resolve } from "@bilibili-notify/internal";
+
+/**
+ * Gate fn: feature ON 且 routing 非空才视为「订阅 + 有人收」。
+ * 对齐 standalone `apps/server/src/runtime/engines.ts` 的 `feat(k)` helper。
+ */
+function gate(eff: EffectiveSubscription, k: FeatureKey): boolean {
+	return eff.features[k] && (eff.routing[k]?.length ?? 0) > 0;
+}
 import { makeKoishiServiceContext } from "@bilibili-notify/koishi-runtime";
 import {
 	type LiveContentBuilder,
@@ -29,6 +41,8 @@ declare module "koishi" {
 		"bilibili-notify/engine-error"(source: string, message: string): void;
 		"bilibili-notify/auth-lost"(): void;
 		"bilibili-notify/auth-restored"(): void;
+		"bilibili-notify/live-state-changed"(uid: string, status: "live" | "idle"): void;
+		"bilibili-notify/live-viewers-changed"(uid: string, viewers: string): void;
 	}
 }
 
@@ -178,22 +192,23 @@ function adaptPush(push: BilibiliPush): PushLike {
 
 /** Build SubscriptionsView from SubscriptionStore for LiveEngine. */
 // biome-ignore lint/suspicious/noExplicitAny: store type from InternalsShape
-function storeToLiveView(store: any): SubscriptionsView {
+function storeToLiveView(store: any, defaults: GlobalDefaults): SubscriptionsView {
 	const view: SubscriptionsView = {};
-	for (const sub of store.list()) {
+	for (const sub of store.list() as Subscription[]) {
 		if (!sub.enabled) continue;
+		const eff = resolve(sub, defaults);
 
 		const liveView: SubItemView = {
 			uid: sub.uid,
 			uname: sub.cachedProfile?.name ?? sub.uid,
 			roomId: "", // live engine resolves roomId via API
-			dynamic: (sub.routing.dynamic?.length ?? 0) > 0,
-			live: (sub.routing.live?.length ?? 0) > 0,
-			liveEnd: (sub.routing.liveEnd?.length ?? 0) > 0,
-			liveGuardBuy: (sub.routing.liveGuardBuy?.length ?? 0) > 0,
-			superchat: (sub.routing.superchat?.length ?? 0) > 0,
-			wordcloud: (sub.routing.wordcloud?.length ?? 0) > 0,
-			liveSummary: (sub.routing.liveSummary?.length ?? 0) > 0,
+			dynamic: gate(eff, "dynamic"),
+			live: gate(eff, "live"),
+			liveEnd: gate(eff, "liveEnd"),
+			liveGuardBuy: gate(eff, "liveGuardBuy"),
+			superchat: gate(eff, "superchat"),
+			wordcloud: gate(eff, "wordcloud"),
+			liveSummary: gate(eff, "liveSummary"),
 			target: sub.routing, // routing is structurally compatible as Partial<Record<LivePushFeature, unknown[]>>
 			customCardStyle: sub.overrides.cardStyle
 				? {
@@ -308,36 +323,42 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			config: this.toEngineConfig(this.config),
 			emitEngineError: (message) =>
 				this.ctx.emit("bilibili-notify/engine-error", SERVICE_NAME, message),
+			emitLiveState: (uid, status) =>
+				this.ctx.emit("bilibili-notify/live-state-changed", uid, status),
+			emitViewers: (uid, viewers) =>
+				this.ctx.emit("bilibili-notify/live-viewers-changed", uid, viewers),
 		});
 
 		// Initialize with current subs
-		const initialView = storeToLiveView(store);
+		const initialView = storeToLiveView(store, internals.defaults);
 		if (Object.keys(initialView).length > 0) {
 			this.engine.start(initialView);
 		}
 
 		// Subscription changes → engine.applyOps
 		this.ctx.on("bilibili-notify/subscription-changed", (ops: SubscriptionOp[]) => {
+			const defaults = internals.defaults;
 			const liveOps: LiveSubscriptionOp[] = ops.map((op) => {
 				if (op.type === "add") {
-					return { type: "add" as const, sub: storeToSubItemView(op.sub) };
+					return { type: "add" as const, sub: storeToSubItemView(op.sub, defaults) };
 				}
 				if (op.type === "remove") {
 					return { type: "delete" as const, uid: op.uid };
 				}
 				// update
+				const eff = resolve(op.sub, defaults);
 				return {
 					type: "update" as const,
 					uid: op.sub.uid,
 					changes: [
 						{
 							scope: "live" as const,
-							live: (op.sub.routing.live?.length ?? 0) > 0,
-							liveEnd: (op.sub.routing.liveEnd?.length ?? 0) > 0,
-							liveGuardBuy: (op.sub.routing.liveGuardBuy?.length ?? 0) > 0,
-							superchat: (op.sub.routing.superchat?.length ?? 0) > 0,
-							wordcloud: (op.sub.routing.wordcloud?.length ?? 0) > 0,
-							liveSummary: (op.sub.routing.liveSummary?.length ?? 0) > 0,
+							live: gate(eff, "live"),
+							liveEnd: gate(eff, "liveEnd"),
+							liveGuardBuy: gate(eff, "liveGuardBuy"),
+							superchat: gate(eff, "superchat"),
+							wordcloud: gate(eff, "wordcloud"),
+							liveSummary: gate(eff, "liveSummary"),
 						},
 					],
 				};
@@ -347,7 +368,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 				if (!fresh) return undefined;
 				const sub = fresh.store.findByUid(uid);
 				if (!sub) return undefined;
-				return storeToSubItemView(sub);
+				return storeToSubItemView(sub, fresh.defaults);
 			});
 		});
 
@@ -355,7 +376,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		this.ctx.on("bilibili-notify/auth-lost", () => this.engine?.teardown());
 		this.ctx.on("bilibili-notify/auth-restored", () => {
 			const fresh = this.ctx["bilibili-notify"].getInternals(BILIBILI_NOTIFY_TOKEN);
-			if (fresh) this.engine?.rebuildFromSubs(storeToLiveView(fresh.store));
+			if (fresh) this.engine?.rebuildFromSubs(storeToLiveView(fresh.store, fresh.defaults));
 		});
 
 		liveCommands.call(this);
@@ -368,18 +389,19 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 }
 
 /** Convert a single Subscription to SubItemView. */
-function storeToSubItemView(sub: import("@bilibili-notify/internal").Subscription): SubItemView {
+function storeToSubItemView(sub: Subscription, defaults: GlobalDefaults): SubItemView {
+	const eff = resolve(sub, defaults);
 	return {
 		uid: sub.uid,
 		uname: sub.cachedProfile?.name ?? sub.uid,
 		roomId: "",
-		dynamic: (sub.routing.dynamic?.length ?? 0) > 0,
-		live: (sub.routing.live?.length ?? 0) > 0,
-		liveEnd: (sub.routing.liveEnd?.length ?? 0) > 0,
-		liveGuardBuy: (sub.routing.liveGuardBuy?.length ?? 0) > 0,
-		superchat: (sub.routing.superchat?.length ?? 0) > 0,
-		wordcloud: (sub.routing.wordcloud?.length ?? 0) > 0,
-		liveSummary: (sub.routing.liveSummary?.length ?? 0) > 0,
+		dynamic: gate(eff, "dynamic"),
+		live: gate(eff, "live"),
+		liveEnd: gate(eff, "liveEnd"),
+		liveGuardBuy: gate(eff, "liveGuardBuy"),
+		superchat: gate(eff, "superchat"),
+		wordcloud: gate(eff, "wordcloud"),
+		liveSummary: gate(eff, "liveSummary"),
 		target: sub.routing,
 		customCardStyle: sub.overrides.cardStyle
 			? {

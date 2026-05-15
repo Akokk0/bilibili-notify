@@ -1,5 +1,10 @@
 import { BilibiliAPI, BiliLoginStatus } from "@bilibili-notify/api";
-import { BILIBILI_NOTIFY_TOKEN, type LoginSnapshot } from "@bilibili-notify/internal";
+import {
+	BILIBILI_NOTIFY_TOKEN,
+	type GlobalDefaults,
+	type LoginSnapshot,
+	makeDefaultGlobalConfig,
+} from "@bilibili-notify/internal";
 import { makeKoishiMessageBus, makeKoishiServiceContext } from "@bilibili-notify/koishi-runtime";
 import { BilibiliPush } from "@bilibili-notify/push";
 import type { StorageManager } from "@bilibili-notify/storage";
@@ -90,6 +95,9 @@ export async function bringUp(deps: LifecycleDeps): Promise<boolean> {
 		store,
 		master: masterTarget,
 		logger: pushServiceCtx.logger,
+		// PR3 #4 给 koishi config 接入 defaults 段后,这里改为读 koishi config。
+		// 当前用 schema 默认值——features 全 true / quietHours 空,等价于无 gate。
+		defaults: () => KOISHI_DEFAULTS,
 	});
 
 	await api.start();
@@ -186,6 +194,16 @@ export function tearDown(deps: { logger: Logger; slots: ManagerSlots }): void {
 	deps.logger.debug("[stop] 插件资源清理完成");
 }
 
+/**
+ * Module-level GlobalDefaults snapshot for the Koishi side.
+ *
+ * PR3 #4 will replace this with a value derived from `BilibiliNotifyConfig`
+ * (once koishi config exposes a `defaults` section). Until then it stays at
+ * schema defaults — features all true, quietHours empty — which is behavior-
+ * equivalent to "no gate", matching how Koishi worked pre-PR2.
+ */
+export const KOISHI_DEFAULTS: GlobalDefaults = makeDefaultGlobalConfig().defaults;
+
 /** Shape returned by `BilibiliNotifyServerManager.getInternals(BILIBILI_NOTIFY_TOKEN)`. */
 export interface InternalsShape {
 	api: BilibiliAPI;
@@ -198,6 +216,11 @@ export interface InternalsShape {
 	 * random UUID that points at no target.
 	 */
 	registry: TargetRegistry;
+	/**
+	 * GlobalDefaults snapshot — sub-plugins (dynamic / live) use this with
+	 * `resolve(sub, defaults)` to get features-aware derived views.
+	 */
+	defaults: GlobalDefaults;
 }
 
 /** Build the internals object exposed to friendly plugins; null-guarded for the 4 prereqs. */
@@ -221,5 +244,6 @@ export function buildInternals(args: {
 		push: args.push,
 		store: args.store,
 		registry: args.registry,
+		defaults: KOISHI_DEFAULTS,
 	};
 }
