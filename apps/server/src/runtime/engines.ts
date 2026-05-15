@@ -188,6 +188,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		store: opts.subscriptionStore,
 		master: masterTarget() ?? null,
 		logger: log,
+		serviceCtx: opts.serviceCtx,
 		defaults: () => globals().defaults,
 		onSend: (info) => {
 			// 私聊不走 history(语义上是给主人的运行状态通知,不是订阅推送)。

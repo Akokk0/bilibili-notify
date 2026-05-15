@@ -1,5 +1,6 @@
 import type {
 	DeliveryResult,
+	Disposable,
 	FeatureKey,
 	GlobalDefaults,
 	Logger,
@@ -7,6 +8,7 @@ import type {
 	NotificationSink,
 	PayloadSegment,
 	PushTarget,
+	ServiceContext,
 } from "@bilibili-notify/internal";
 import { inQuietHours, resolve } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
@@ -60,6 +62,14 @@ export interface BilibiliPushOptions {
 	/** Logger instance. */
 	logger: Logger;
 	/**
+	 * 可选 ServiceContext。传入后,retry backoff 的 sleep 走 `serviceCtx.setTimeout`,
+	 * plugin/runtime dispose 时可被立即 clear,不会留 32s 空跑 timer。stop() 也会
+	 * 唤醒所有 sleeping retry 循环立即收敛。
+	 *
+	 * 不传则退化为裸 setTimeout + stop() 唤醒(过渡期兼容,仍能 dispose-safe)。
+	 */
+	serviceCtx?: ServiceContext;
+	/**
 	 * Latest `GlobalDefaults` provider — used to resolve `EffectiveSubscription`
 	 * per push so `features.X` and `schedule.quietHours` gates work against the
 	 * current globals state (not a stale snapshot).
@@ -90,7 +100,13 @@ export class BilibiliPush {
 	private readonly logger: Logger;
 	private readonly defaults?: () => GlobalDefaults;
 	private readonly onSend?: (info: PushSendInfo) => void;
+	private readonly serviceCtx?: ServiceContext;
 	private disposed = false;
+	/**
+	 * 正在 sleep 等重试的 wake 函数集合 — `stop()` 时全部触发立即返回,避免裸 setTimeout
+	 * 路径下 retry 循环卡到 32s 才退出。
+	 */
+	private readonly sleepWakers = new Set<() => void>();
 
 	constructor(opts: BilibiliPushOptions) {
 		this.sink = opts.sink;
@@ -99,6 +115,7 @@ export class BilibiliPush {
 		this.logger = opts.logger;
 		this.defaults = opts.defaults;
 		this.onSend = opts.onSend;
+		this.serviceCtx = opts.serviceCtx;
 	}
 
 	/**
@@ -123,6 +140,8 @@ export class BilibiliPush {
 
 	stop(): void {
 		this.disposed = true;
+		// 唤醒所有 sleeping retry 循环;snapshot 一份避免迭代中 Set 被 wake 删除。
+		for (const wake of [...this.sleepWakers]) wake();
 	}
 
 	/**
@@ -301,6 +320,23 @@ export class BilibiliPush {
 
 	private sleep(ms: number): Promise<void> {
 		if (this.disposed) return Promise.resolve();
-		return new Promise((resolve) => setTimeout(resolve, ms));
+		return new Promise<void>((resolveSleep) => {
+			let release: Disposable | undefined;
+			const wake = (): void => {
+				release?.dispose();
+				release = undefined;
+				this.sleepWakers.delete(wake);
+				resolveSleep();
+			};
+			this.sleepWakers.add(wake);
+			if (this.serviceCtx) {
+				release = this.serviceCtx.setTimeout(wake, ms);
+			} else {
+				// 退化路径:裸 setTimeout + stop() 主动 wake。timer 自身会再走一遍 wake
+				// 但 sleepWakers.delete 是幂等的,resolve 也是。
+				const id = setTimeout(wake, ms);
+				release = { dispose: () => clearTimeout(id) };
+			}
+		});
 	}
 }

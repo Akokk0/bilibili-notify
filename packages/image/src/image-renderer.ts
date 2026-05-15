@@ -569,12 +569,20 @@ export class ImageRenderer {
 					height: boundingBox.height,
 				},
 			});
-			const timeoutPromise = new Promise<never>((_, reject) =>
-				setTimeout(() => reject(new Error("截图超时（20s）")), 20_000),
-			);
-			const raw = await Promise.race([screenshotPromise, timeoutPromise]);
-			await elementHandle.dispose();
-			return Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+			// 显式持有 timer 句柄,Promise.race 完成后必须 clear,否则截图先到时
+			// 这个 20s timer 会挂着空跑(还绕开了 serviceCtx,plugin dispose 期间
+			// 无法回收)。改用 setTimeout 句柄 + finally clear,直接搞定。
+			let timeoutId: NodeJS.Timeout | undefined;
+			const timeoutPromise = new Promise<never>((_, reject) => {
+				timeoutId = setTimeout(() => reject(new Error("截图超时（20s）")), 20_000);
+			});
+			try {
+				const raw = await Promise.race([screenshotPromise, timeoutPromise]);
+				await elementHandle.dispose();
+				return Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+			} finally {
+				if (timeoutId !== undefined) clearTimeout(timeoutId);
+			}
 		} finally {
 			await page.close().catch(() => {}); // Chrome 已崩溃时 close() 也会抛错，忽略之
 		}

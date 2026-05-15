@@ -273,7 +273,11 @@ export class BilibiliAPI {
 			if (!info?.data?.refresh) return;
 		} catch {
 			if (attempts > 1) {
-				await new Promise((r) => setTimeout(r, 3000));
+				// serviceCtx.setTimeout 让 plugin/runtime dispose 能立即 clear,
+				// 否则裸 setTimeout 让 3s 重试链在 stop() 后还会触发一次 fetch。
+				await new Promise<void>((resolveSleep) => {
+					this.serviceCtx.setTimeout(resolveSleep, 3000);
+				});
 				return this.checkIfTokenNeedRefresh(refreshToken, csrf, attempts - 1);
 			}
 			// Fall through and attempt refresh anyway
