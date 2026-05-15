@@ -2,6 +2,7 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { Disposable, MessageBus } from "@bilibili-notify/internal";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
+import type { WsTicketStore } from "../auth/ws-ticket.js";
 import type { ConfigStore } from "../config/store.js";
 import type { NodeServiceContext } from "../runtime/service-context.js";
 import { attachChannelWiring, buildStateHydrate } from "./channels.js";
@@ -40,6 +41,12 @@ export interface CreateWsServerOptions {
 	 * + bootstrap-layer warn log).
 	 */
 	basicAuthCredentials?: { username: string; password: string };
+	/**
+	 * WS upgrade ticket store。前端 WebSocket 不能附带 Authorization 头,改用
+	 * `?ticket=<xxx>` 完成 upgrade。`POST /api/auth/ws-ticket` 签发的 ticket
+	 * 在这里通过 consume() 验证(一次性、短时)。null = basicAuth 未启用。
+	 */
+	wsTicketStore?: WsTicketStore | null;
 	/**
 	 * Origin whitelist. When provided + non-empty, the upgrade request's
 	 * `Origin` header must be in the list or the socket is destroyed before the
@@ -126,17 +133,22 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 
 	const checkAuth = (req: IncomingMessage): boolean => {
 		if (!expectedToken) return true;
+		// 1) Authorization: Basic <b64>(curl / 服务端到服务端常用)。
 		const header = req.headers.authorization;
 		if (header && typeof header === "string") {
 			const m = /^Basic\s+(.+)$/i.exec(header.trim());
 			if (m && m[1] === expectedToken) return true;
 		}
-		// Fallback: ?token=<b64> query string. Browsers can't set custom headers
-		// on the WebSocket constructor, so the dashboard uses this path.
 		const url = req.url ?? "";
 		const q = url.indexOf("?");
 		if (q >= 0) {
 			const params = new URLSearchParams(url.slice(q + 1));
+			// 2) `?ticket=<xxx>` — 浏览器走这条:`POST /api/auth/ws-ticket` 签发一次性 ticket,
+			//    消费后立刻失效。不会让真实凭证落进反代访问日志。
+			const ticket = params.get("ticket");
+			if (ticket && opts.wsTicketStore?.consume(ticket)) return true;
+			// 3) `?token=<b64>` — 历史 fallback,把真实 basic-auth 凭证拼进 URL。**会被反代
+			//    日志记下**,不推荐;仅保留给已部署的旧 curl 脚本。前端不应再使用这条。
 			const token = params.get("token");
 			if (token && token === expectedToken) return true;
 		}

@@ -25,6 +25,17 @@ export function createAuthRoute(deps: AuthRouteDeps): Hono {
 
 	app.get("/status", (c) => c.json(deps.authSystem.status()));
 
+	// 浏览器 WebSocket 无法附带 Authorization 头;basicAuth 通过的 REST 请求换
+	// 一个一次性短时 ticket,WS upgrade 用 `?ticket=<xxx>` 完成鉴权,避免把真实
+	// 凭证拼进 WS URL(会被反代日志记录)。
+	app.post("/ws-ticket", (c) => {
+		if (!deps.wsTicketStore) {
+			// basicAuth 未启用时 WS 同样不需鉴权,前端无须 ticket。
+			return c.json({ ticket: null, expiresInMs: 0 });
+		}
+		return c.json(deps.wsTicketStore.issue());
+	});
+
 	app.post("/qr", async (c) => {
 		// 409 conflict guard: a QR session is already pending.
 		const current = deps.authSystem.status();

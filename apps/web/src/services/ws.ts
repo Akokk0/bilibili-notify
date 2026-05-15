@@ -31,11 +31,30 @@ export interface WsClient {
 
 const RECONNECT_DELAY_MS = 2_000;
 
-function defaultUrl(): string {
+function defaultBaseUrl(): string {
 	return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
 }
 
-export function connectWs(url = defaultUrl()): WsClient {
+/**
+ * 拿一次性 ticket 用于 WS 鉴权。后端 basicAuth 未启用时返回 `{ ticket: null }`,
+ * 前端拼 URL 时跳过 `?ticket=`。失败时返回 null,让 open() 用裸 URL 尝试 —
+ * 服务端会回 401 触发重连退避;不至于卡住。
+ */
+async function fetchWsTicket(): Promise<string | null> {
+	try {
+		const res = await fetch("/api/auth/ws-ticket", {
+			method: "POST",
+			credentials: "include",
+		});
+		if (!res.ok) return null;
+		const body = (await res.json()) as { ticket: string | null };
+		return body.ticket ?? null;
+	} catch {
+		return null;
+	}
+}
+
+export function connectWs(baseUrl = defaultBaseUrl()): WsClient {
 	const handlers = new Set<(env: WsEnvelope) => void>();
 	const statusHandlers = new Set<(status: WsStatus) => void>();
 	const subscribed = new Set<ChannelName>();
@@ -59,8 +78,12 @@ export function connectWs(url = defaultUrl()): WsClient {
 		return false;
 	}
 
-	function open(): void {
+	async function open(): Promise<void> {
 		setStatus("connecting");
+		if (closedByUser) return;
+		const ticket = await fetchWsTicket();
+		if (closedByUser) return;
+		const url = ticket ? `${baseUrl}?ticket=${encodeURIComponent(ticket)}` : baseUrl;
 		const s = new WebSocket(url);
 		socket = s;
 
@@ -100,11 +123,11 @@ export function connectWs(url = defaultUrl()): WsClient {
 		if (reconnectTimer || closedByUser) return;
 		reconnectTimer = setTimeout(() => {
 			reconnectTimer = null;
-			if (!closedByUser) open();
+			if (!closedByUser) void open();
 		}, RECONNECT_DELAY_MS);
 	}
 
-	open();
+	void open();
 
 	return {
 		subscribe(channels) {

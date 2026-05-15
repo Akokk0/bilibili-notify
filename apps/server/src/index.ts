@@ -2,6 +2,7 @@ import type { Server as HttpServer } from "node:http";
 import { type ServerType, serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { type AuthSystem, createAuthSystem } from "./auth/index.js";
+import { createWsTicketStore } from "./auth/ws-ticket.js";
 import { loadBootstrapConfig } from "./config/loader.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { createOnebotAdapter } from "./platforms/onebot.js";
@@ -122,11 +123,16 @@ async function main(): Promise<void> {
 	if (bootstrap.webDistDir) {
 		log.info(`serving dashboard static assets from ${bootstrap.webDistDir}`);
 	}
+	// WS ticket store:仅当 basicAuth 启用时才需要。前端 WebSocket 无法附带
+	// Authorization 头,改用 `POST /api/auth/ws-ticket` 换短时 token,再用 `?ticket=`
+	// 完成 WS upgrade,避免把真实凭证拼进 URL 落进反代日志。
+	const wsTicketStore = basicAuthCredentials ? createWsTicketStore() : null;
 	const app = createApp(runtime, {
 		authSystem,
 		basicAuthCredentials,
 		puppeteer,
 		staticDir: bootstrap.webDistDir,
+		wsTicketStore,
 	});
 	let server: ServerType | undefined;
 	await new Promise<void>((resolve) => {
@@ -154,6 +160,7 @@ async function main(): Promise<void> {
 		store: runtime.configStore,
 		serviceCtx: runtime.serviceCtx,
 		basicAuthCredentials,
+		wsTicketStore,
 		allowedOrigins: bootstrap.auth?.allowedOrigins,
 	});
 	const previousLogHook = runtime.serviceCtx.setLogHook((entry) => wsServer.logChannel.push(entry));
@@ -166,6 +173,7 @@ async function main(): Promise<void> {
 		try {
 			runtime.serviceCtx.setLogHook(previousLogHook);
 			wsServer.dispose();
+			wsTicketStore?.dispose();
 			subBinding.dispose();
 			engines.dispose();
 			if (puppeteer) await puppeteer.dispose();

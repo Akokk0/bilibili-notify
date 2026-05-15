@@ -1,3 +1,4 @@
+import type { WsTicketStore } from "../auth/ws-ticket.js";
 import type { ConfigStore } from "../config/store.js";
 import type { AppRuntime } from "../runtime/bootstrap.js";
 import type { StandalonePuppeteer } from "../runtime/puppeteer.js";
@@ -15,4 +16,10 @@ export interface RouteDeps {
 	 * this presence to gate `cardStyle.enabled = true` saves.
 	 */
 	puppeteer: StandalonePuppeteer | null;
+	/**
+	 * WS upgrade 鉴权 ticket 签发器。`POST /api/auth/ws-ticket` 调 issue();
+	 * `ws/server.ts` upgrade handler 调 consume() 完成一次性鉴权。null = basicAuth
+	 * 未启用,WS 直接放行(同 REST 路径)。
+	 */
+	wsTicketStore: WsTicketStore | null;
 }

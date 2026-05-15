@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { basicAuth } from "hono/basic-auth";
 import { HTTPException } from "hono/http-exception";
 import type { AuthSystem } from "./auth/index.js";
+import type { WsTicketStore } from "./auth/ws-ticket.js";
 import { createAdaptersRoute } from "./routes/adapters.js";
 import { createAuthRoute } from "./routes/auth.js";
 import { createCardsRoute } from "./routes/cards.js";
@@ -50,6 +51,12 @@ export interface CreateAppOptions {
 	 * the dashboard separately).
 	 */
 	staticDir?: string;
+	/**
+	 * WS ticket store. Mounted on `POST /api/auth/ws-ticket` so the dashboard can
+	 * exchange basic-auth for a one-shot ticket before opening the WebSocket.
+	 * Pass null when basicAuthCredentials is omitted (no ticket needed).
+	 */
+	wsTicketStore?: WsTicketStore | null;
 }
 
 /**
@@ -69,6 +76,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 		runtime,
 		store: runtime.configStore,
 		puppeteer: options.puppeteer ?? null,
+		wsTicketStore: options.wsTicketStore ?? null,
 	};
 
 	app.onError((err, c) => {
