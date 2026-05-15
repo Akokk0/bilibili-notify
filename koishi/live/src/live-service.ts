@@ -1,3 +1,4 @@
+import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import type {
 	EffectiveSubscription,
 	FeatureKey,
@@ -17,6 +18,32 @@ import { BILIBILI_NOTIFY_TOKEN, resolve } from "@bilibili-notify/internal";
  */
 function gate(eff: EffectiveSubscription, k: FeatureKey): boolean {
 	return eff.features[k];
+}
+
+/**
+ * 把 resolve 后的 eff.ai 翻译成 LiveEngine 调 CommentaryGenerator 时的 per-call
+ * override 形态。对齐 standalone `apps/server/src/runtime/engines.ts:buildAiOverride`。
+ *
+ * 复制一份(而非抽到共享位置)是因为:CommentaryCallOverride 类型在 @bilibili-notify/ai,
+ * EffectiveSubscription 在 @bilibili-notify/internal——共享 helper 会让 internal 反过来
+ * 依赖 ai,形成循环。
+ */
+function buildAiOverride(eff: EffectiveSubscription): CommentaryCallOverride {
+	return {
+		persona: {
+			preset: "custom" as const,
+			name: eff.ai.persona.name,
+			addressUser: eff.ai.persona.addressUser,
+			addressSelf: eff.ai.persona.addressSelf,
+			traits: eff.ai.persona.traits,
+			catchphrase: eff.ai.persona.catchphrase,
+			customBase: eff.ai.persona.baseRole,
+			extraPrompt: eff.ai.persona.extraSystemPrompt,
+		},
+		dynamicPrompt: eff.ai.dynamicPrompt,
+		liveSummaryPrompt: eff.ai.liveSummaryPrompt,
+		temperature: eff.ai.temperature,
+	};
 }
 import { makeKoishiServiceContext } from "@bilibili-notify/koishi-runtime";
 import {
@@ -267,6 +294,7 @@ function storeToLiveView(store: any, defaults: GlobalDefaults): SubscriptionsVie
 			minGuardLevel: eff.filters.minGuardLevel,
 			pushTime: eff.schedule.pushTime,
 			restartPush: eff.schedule.restartPush,
+			aiOverride: buildAiOverride(eff),
 		};
 		view[sub.uid] = liveView;
 	}
@@ -461,5 +489,6 @@ function storeToSubItemView(sub: Subscription, defaults: GlobalDefaults): SubIte
 		minGuardLevel: eff.filters.minGuardLevel,
 		pushTime: eff.schedule.pushTime,
 		restartPush: eff.schedule.restartPush,
+		aiOverride: buildAiOverride(eff),
 	};
 }
