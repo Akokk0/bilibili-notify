@@ -56,7 +56,9 @@ export function createKoishiSink(opts: KoishiSinkOptions): NotificationSink {
 				const parts = payload.segments.map((seg) => {
 					if (seg.type === "text") return h.text(seg.text);
 					if (seg.type === "image") return h.image(seg.buffer, seg.mime);
-					if (seg.type === "link") return h.text(seg.href);
+					if (seg.type === "link")
+						return h.text(seg.title ? `${seg.title} ${seg.href}` : seg.href);
+					if (seg.type === "at-all") return h("at", { type: "all" });
 					return h.text("");
 				});
 				return h("message", parts);
