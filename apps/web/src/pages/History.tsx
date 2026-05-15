@@ -5,6 +5,7 @@ import { Icon } from "../components/icons";
 import { api } from "../services/api";
 import type { HistoryEntryView, HistoryResponse, HistorySource } from "../services/dashboard";
 import type { PushTarget, Subscription } from "../types/domain";
+import type { GlobalConfig } from "../types/globals";
 import { colorFromUid, displayName, relativeTime } from "./up/helpers";
 
 /**
@@ -78,6 +79,11 @@ export default function History() {
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
+	const globalsQuery = useQuery({
+		queryKey: ["globals"],
+		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+	});
+	const retentionDays = globalsQuery.data?.app.historyRetentionDays;
 
 	const subByUid = useMemo(() => {
 		const m = new Map<string, Subscription>();
@@ -147,7 +153,8 @@ export default function History() {
 				</div>
 				<div className="flex-1" />
 				<span className="text-[11px] text-bn-text-tertiary">
-					共 {filtered.length} 条 · 保留近 30 天
+					共 {filtered.length} 条
+					{retentionDays != null ? ` · 保留近 ${retentionDays} 天` : ""}
 				</span>
 			</div>
 

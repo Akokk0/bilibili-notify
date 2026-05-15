@@ -354,7 +354,7 @@ export default function System() {
 				<div className="space-y-1">
 					<h2 className="text-base font-medium">系统</h2>
 					<p className="text-xs text-gray-500">
-						账号登录 + 后端运行参数。Cookie 通过 WebSocket 实时同步;日志等级在保存后下次启动生效。
+						账号登录 + 后端运行参数。Cookie 与日志等级均在保存后实时生效。
 					</p>
 				</div>
 				<StatusPill status={status} msg={msg} />
