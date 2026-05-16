@@ -167,11 +167,14 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 
 	const resetCookies = async (): Promise<void> => {
 		await storage.cookieStore.resetKey();
+		// P0-2:不清内存 jar 则 api 仍以 stale 已认证 cookie 发请求至进程重启。
+		await api.clearCookies();
 		flowFinal.reportLoggedOut("keyReset");
 	};
 
 	const logout = async (): Promise<void> => {
 		await storage.cookieStore.clear();
+		await api.clearCookies();
 		flowFinal.reportLoggedOut("notLogin");
 	};
 

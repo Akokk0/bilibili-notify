@@ -77,6 +77,9 @@ export class LoginFlowBridge {
 			this.opts.logger.info("[login] 触发重置密钥事件");
 			try {
 				await this.opts.resetCookieKey();
+				// P0-2:与 standalone resetCookies 同款 —— 仅删盘密钥不清内存
+				// jar,api 仍以 stale 已认证 cookie 发请求至插件重载。
+				await this.opts.api.clearCookies();
 				this.flow.reportLoggedOut("keyReset");
 			} catch (e) {
 				this.opts.logger.error(`[login] 重置密钥失败：${e}`);

@@ -250,6 +250,22 @@ export class BilibiliAPI {
 		return this.loginInfoLoaded;
 	}
 
+	/**
+	 * 清空内存 cookie jar(登出 / 密钥重置)。调用方此前只删盘 cookie 而不清
+	 * 这里,导致 api 仍以 stale SESSDATA/bili_jct 发已认证请求,直到进程重启
+	 * (安全缺陷,P0-2)。重建 jar + 重绑 client(沿用 -101 路径同款做法,
+	 * 旧 client 仍持旧 jar 引用,必须 initClient 重绑),停掉刷新定时器
+	 * (登出后已无 refreshToken 可刷),标记未登录。
+	 */
+	async clearCookies(): Promise<void> {
+		this.refreshCookieTimer?.dispose();
+		this.refreshCookieTimer = undefined;
+		this.jar = new CookieJar();
+		await this.initClient();
+		this.loginInfoLoaded = false;
+		this.logger.info("[cookie] 内存 cookie jar 已清空");
+	}
+
 	private parseExpires(expires?: string): Date | "Infinity" {
 		if (!expires || expires === "Infinity") return "Infinity";
 		return DateTime.fromISO(expires).toJSDate();
