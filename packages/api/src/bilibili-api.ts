@@ -269,9 +269,10 @@ export class BilibiliAPI {
 
 	async checkIfTokenNeedRefresh(refreshToken: string, csrf: string, attempts = 3): Promise<void> {
 		try {
-			const info = await this.getCookieInfo(refreshToken);
+			// 传真实 bili_jct(优先 live jar,回退调用方传入值),不是 refreshToken。
+			const info = await this.getCookieInfo(this.getCSRF() ?? csrf);
 			if (!info?.data?.refresh) return;
-		} catch {
+		} catch (e) {
 			if (attempts > 1) {
 				// serviceCtx.setTimeout 让 plugin/runtime dispose 能立即 clear,
 				// 否则裸 setTimeout 让 3s 重试链在 stop() 后还会触发一次 fetch。
@@ -280,7 +281,12 @@ export class BilibiliAPI {
 				});
 				return this.checkIfTokenNeedRefresh(refreshToken, csrf, attempts - 1);
 			}
-			// Fall through and attempt refresh anyway
+			// 重试耗尽:**不能** fall through 去强制 refresh —— 我们此刻并不知道
+			// cookie 是否真需要刷新,一次瞬时网络抖动就触发整条 RSA/correspond/
+			// refresh/confirm 轮换(每小时一次不必要的 cookie 旋转,放大风控)。
+			// 放弃本轮,等下个 interval 再探测。
+			this.logger.warn(`[cookie] 刷新探测连续失败,跳过本轮(不强制刷新): ${(e as Error).message}`);
+			return;
 		}
 
 		// Generate correspond path via RSA-OAEP
@@ -561,9 +567,15 @@ export class BilibiliAPI {
 		}, "searchByType");
 	}
 
-	async getCookieInfo(refreshToken: string) {
+	/**
+	 * 查询"cookie 是否需要刷新"。该端点的 `csrf` 参数语义是 **bili_jct**(非
+	 * refresh_token);此前误传 refreshToken,虽然该读接口靠 SESSDATA 鉴权、
+	 * csrf 可选,传错多被服务端忽略,但与官方契约不符且一旦服务端开始校验
+	 * 该参数即会整条刷新探测失效。统一传真实 bili_jct csrf。
+	 */
+	async getCookieInfo(csrf: string) {
 		return this.retry(
-			async () => (await this.client.get(`${EP.GET_COOKIES_INFO}?csrf=${refreshToken}`)).data,
+			async () => (await this.client.get(`${EP.GET_COOKIES_INFO}?csrf=${csrf}`)).data,
 			"getCookieInfo",
 		);
 	}
