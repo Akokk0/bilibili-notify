@@ -137,6 +137,12 @@ export class RoomContextBase {
 	private disposed = false;
 	/** Cached protobuf type for INTERACT_WORD_V2 decoding (lazy-loaded). */
 	protected interactWord?: protobuf.Type;
+	/**
+	 * Set once the proto load/lookup has failed (missing/invalid
+	 * `proto/interact_word.proto`) so we degrade gracefully instead of
+	 * re-attempting + error-spamming on every INTERACT_WORD_V2 frame.
+	 */
+	protected interactWordUnavailable = false;
 	private readonly instanceId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 	constructor(opts: RoomContextOptions) {

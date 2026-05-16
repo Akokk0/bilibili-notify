@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { LiveRoomInfo, MasterInfoData, MySelfInfoData } from "@bilibili-notify/api";
 import { type MsgHandler, startListen } from "blive-message-listener";
 import { DateTime } from "luxon";
@@ -186,19 +187,53 @@ export class RoomContext extends RoomContextBase {
 		return hours > 0 ? `${hours}小时${minutes}分钟` : `${minutes}分钟`;
 	}
 
-	/** Decode a base64-encoded INTERACT_WORD_V2 protobuf payload. */
+	/**
+	 * Decode a base64-encoded INTERACT_WORD_V2 protobuf payload.
+	 *
+	 * P0-4: 此前用 `resolve(__dirname, "./proto/interact_word.proto")` —— (a) 该
+	 * .proto 文件从未随包提交、tsdown 也不拷进 lib;(b) ESM(.mjs)产物里裸
+	 * `__dirname` 为 undefined。两者叠加导致每个 INTERACT_WORD_V2 帧必抛,
+	 * "特别关注用户进房"特性在双端构建里全死。
+	 *
+	 * 现:`__dirname` 改 `import.meta.url`(与 routes/health.ts 同款,tsdown
+	 * cjs/esm 双产物都正确);proto 缺失/损坏时**优雅降级**——只在首次告警一
+	 * 次并置 `interactWordUnavailable`,后续帧直接返回 `{}`(调用方
+	 * onInteractWordV2 对空对象天然 no-op:`msgType==="1"` 为 false,零误推),
+	 * 不再每帧崩/刷屏。
+	 *
+	 * 注:让该特性真正可用仍需在 `src/proto/interact_word.proto` 放入**经核实
+	 * 的**权威 schema(`bilibili.live.xuserreward.v1.InteractWord`)并在打包时
+	 * 拷进 `lib/proto/`——字段号必须来自可信源,不可臆造,故作为独立后续任务。
+	 */
 	async decodeBase64PB(base64: string): Promise<Record<string, unknown>> {
-		const buffer = Uint8Array.from(Buffer.from(base64, "base64"));
+		if (this.interactWordUnavailable) return {};
 		if (!this.interactWord) {
-			const protoPath = resolve(__dirname, "./proto/interact_word.proto");
-			const root = await protobuf.load(protoPath);
-			this.interactWord = root.lookupType("bilibili.live.xuserreward.v1.InteractWord");
+			try {
+				const here = dirname(fileURLToPath(import.meta.url));
+				const protoPath = resolve(here, "./proto/interact_word.proto");
+				const root = await protobuf.load(protoPath);
+				this.interactWord = root.lookupType("bilibili.live.xuserreward.v1.InteractWord");
+			} catch (e) {
+				this.interactWordUnavailable = true;
+				this.logger.warn(
+					`[live] INTERACT_WORD_V2 解码不可用,"特别关注用户进房"已禁用:缺少或无法加载 proto/interact_word.proto (${(e as Error).message})`,
+				);
+				return {};
+			}
 		}
-		const message = this.interactWord.decode(buffer);
-		return this.interactWord.toObject(message, {
-			longs: String,
-			enums: String,
-			defaults: true,
-		}) as Record<string, unknown>;
+		try {
+			const buffer = Uint8Array.from(Buffer.from(base64, "base64"));
+			const message = this.interactWord.decode(buffer);
+			return this.interactWord.toObject(message, {
+				longs: String,
+				enums: String,
+				defaults: true,
+			}) as Record<string, unknown>;
+		} catch (e) {
+			this.logger.warn(
+				`[live] INTERACT_WORD_V2 protobuf 解码失败,跳过该帧: ${(e as Error).message}`,
+			);
+			return {};
+		}
 	}
 }
