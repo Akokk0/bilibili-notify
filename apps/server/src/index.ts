@@ -38,6 +38,7 @@ async function main(): Promise<void> {
 			serviceCtx: runtime.serviceCtx,
 			bus: runtime.bus,
 			bootstrap,
+			keyProvider: runtime.keyProvider,
 			// 从 globals.app.healthCheckMinutes 计算初始 ms;后续 config-changed
 			// 会通过 engines.ts 调 flow.setHealthCheckMs 热更。
 			healthCheckMs: runtime.configStore.getGlobals().app.healthCheckMinutes * 60_000,

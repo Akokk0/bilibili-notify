@@ -22,6 +22,12 @@ dataDir: ./data
 
 logLevel: info   # fatal | error | warn | info | debug | trace | silent
 
+# secrets(B 站 cookie / AI apiKey)静态加密密钥(AES-256-GCM)。
+# 设置后由该口令 scrypt 派生密钥、绝不落盘 = 真正的静态加密;
+# 不设则回退到 <dataDir>/secrets 下随机密钥文件(仅混淆),启动会打显著告警。
+# 生成一次并妥善保管(建议走环境变量):openssl rand -base64 32
+# cookieEncryptionKey: ${BN_COOKIE_KEY}
+
 # Basic Auth 与 WS Origin 白名单都可选;开发期可整段留空。
 # auth:
 #   basicAuth:

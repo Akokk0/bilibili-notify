@@ -17,6 +17,7 @@ import {
 	SubscriptionSchema,
 } from "@bilibili-notify/internal";
 import type { BootstrapConfig } from "./schema.js";
+import type { ConfigSecrets, SecretStore } from "./secret-store.js";
 
 /**
  * ConfigStore — central runtime config holder for the standalone end.
@@ -89,6 +90,14 @@ export interface CreateConfigStoreOptions {
 	serviceCtx: ServiceContext;
 	/** Where globals/subs/targets JSON files live. Defaults to `<bootstrap.dataDir>/state`. */
 	stateDir?: string;
+	/**
+	 * Encrypted bag for secret fields (currently `defaults.ai.apiKey`). When
+	 * given, the apiKey is moved out of plaintext `globals.json` into this store
+	 * (and a one-time lift migrates an existing plaintext key). When omitted the
+	 * legacy behaviour (apiKey stays in globals.json) is preserved — used by
+	 * tests and any non-secret-aware caller.
+	 */
+	secretStore?: SecretStore;
 }
 
 /** Thrown when an incoming write fails Zod validation. Routes catch and map to 400. */
@@ -151,6 +160,20 @@ async function atomicWriteJson(absPath: string, value: unknown): Promise<void> {
 	const body = `${JSON.stringify(value, null, 2)}\n`;
 	await writeFile(tmp, body, { encoding: "utf8" });
 	await rename(tmp, absPath);
+}
+
+/**
+ * Returns a deep clone of `g` with `defaults.ai.apiKey` removed — the form
+ * persisted to `globals.json` when a SecretStore owns the apiKey. The live
+ * in-memory `this.globals` keeps the real value (engines read it via
+ * getGlobals); only the on-disk copy is stripped.
+ */
+function stripApiKeyForDisk(g: GlobalConfig): GlobalConfig {
+	const clone = deepClone(g);
+	if (clone.defaults?.ai && "apiKey" in clone.defaults.ai) {
+		delete (clone.defaults.ai as { apiKey?: string }).apiKey;
+	}
+	return clone;
 }
 
 async function readJsonOrInit<T>(
@@ -333,6 +356,8 @@ class NodeConfigStore implements ConfigStore {
 	private readonly bus: MessageBus;
 	private readonly serviceCtx: ServiceContext;
 	private readonly stateDir: string;
+	private readonly secretStore?: SecretStore;
+	private secretBag: ConfigSecrets = {};
 
 	private globals: GlobalConfig;
 	private subscriptions: Subscription[];
@@ -362,6 +387,7 @@ class NodeConfigStore implements ConfigStore {
 		this.bus = opts.bus;
 		this.serviceCtx = opts.serviceCtx;
 		this.stateDir = opts.stateDir ?? join(opts.bootstrap.dataDir, "state");
+		this.secretStore = opts.secretStore;
 		// Initialize with safe defaults; `load()` overwrites.
 		this.globals = makeDefaultGlobalConfig();
 		this.subscriptions = [];
@@ -383,6 +409,42 @@ class NodeConfigStore implements ConfigStore {
 				// reserved; not implemented in stage 2.2
 				return join(this.stateDir, "secrets.json");
 		}
+	}
+
+	/** Write globals.json. When a SecretStore owns the apiKey, the on-disk copy is stripped. */
+	private async persistGlobals(g: GlobalConfig): Promise<void> {
+		await atomicWriteJson(this.path("globals"), this.secretStore ? stripApiKeyForDisk(g) : g);
+	}
+
+	/**
+	 * Move `defaults.ai.apiKey` out of plaintext globals.json into the encrypted
+	 * SecretStore, then hydrate the in-memory value back so engines/routes see
+	 * it unchanged. One-time lift: an existing plaintext key on disk is migrated
+	 * into the secret bag and scrubbed from globals.json. No-op without a
+	 * SecretStore (legacy behaviour preserved for tests / non-secret callers).
+	 */
+	private async hydrateSecrets(): Promise<void> {
+		if (!this.secretStore) return;
+		this.secretBag = await this.secretStore.load();
+		const diskKey = this.globals.defaults.ai.apiKey;
+		const hadPlaintext = typeof diskKey === "string" && diskKey.length > 0;
+		if (hadPlaintext && !this.secretBag.aiApiKey) {
+			this.secretBag = { ...this.secretBag, aiApiKey: diskKey };
+			await this.secretStore.save(this.secretBag);
+			this.serviceCtx.logger.info(
+				"[secrets] 已把明文 apiKey 从 globals.json 迁移进加密 secrets 文件",
+			);
+		}
+		// Hydrate in-memory (engines/routes keep reading defaults.ai.apiKey).
+		this.globals = {
+			...this.globals,
+			defaults: {
+				...this.globals.defaults,
+				ai: { ...this.globals.defaults.ai, apiKey: this.secretBag.aiApiKey ?? "" },
+			},
+		};
+		// Scrub disk if it ever held the plaintext.
+		if (hadPlaintext) await this.persistGlobals(this.globals);
 	}
 
 	// ---- lifecycle ------------------------------------------------------
@@ -427,10 +489,14 @@ class NodeConfigStore implements ConfigStore {
 							},
 						},
 					};
-					await atomicWriteJson(this.path("globals"), this.globals);
+					await this.persistGlobals(this.globals);
 					this.touch("globals");
 				}
 			}
+
+			// Move apiKey out of plaintext globals.json into encrypted secrets
+			// (+ one-time lift), then hydrate it back in memory.
+			await this.hydrateSecrets();
 		}
 
 		// subscriptions
@@ -628,14 +694,31 @@ class NodeConfigStore implements ConfigStore {
 
 	// ---- write surface --------------------------------------------------
 
+	/**
+	 * Persist a validated GlobalConfig. With a SecretStore the apiKey is routed
+	 * into the encrypted bag and scrubbed from the on-disk globals.json; the
+	 * in-memory copy keeps the real value so engines/routes are unaffected.
+	 */
+	private async writeGlobals(g: GlobalConfig): Promise<void> {
+		if (this.secretStore) {
+			const apiKey = g.defaults.ai.apiKey;
+			this.secretBag = {
+				...this.secretBag,
+				aiApiKey: apiKey && apiKey.length > 0 ? apiKey : undefined,
+			};
+			await this.secretStore.save(this.secretBag);
+		}
+		await this.persistGlobals(g);
+		this.globals = g;
+	}
+
 	async setGlobals(next: GlobalConfig): Promise<void> {
 		await this.runScoped("globals", async () => {
 			const parsed = GlobalConfigSchema.safeParse(next);
 			if (!parsed.success) {
 				throw new ConfigValidationError("globals", parsed.error.issues);
 			}
-			await atomicWriteJson(this.path("globals"), parsed.data);
-			this.globals = parsed.data;
+			await this.writeGlobals(parsed.data);
 			this.touch("globals");
 		});
 		this.bus.emit("config-changed", "globals");
@@ -648,8 +731,7 @@ class NodeConfigStore implements ConfigStore {
 			if (!parsed.success) {
 				throw new ConfigValidationError("globals", parsed.error.issues);
 			}
-			await atomicWriteJson(this.path("globals"), parsed.data);
-			this.globals = parsed.data;
+			await this.writeGlobals(parsed.data);
 			this.touch("globals");
 			return parsed.data;
 		});

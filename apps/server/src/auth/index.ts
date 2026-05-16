@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { BilibiliAPI, LoginFlow, type LoginSnapshot } from "@bilibili-notify/api";
 import type { Disposable, MessageBus, ServiceContext } from "@bilibili-notify/internal";
-import { type CookieData, StorageManager } from "@bilibili-notify/storage";
+import { type CookieData, type KeyProvider, StorageManager } from "@bilibili-notify/storage";
 import QRCode from "qrcode";
 import type { BootstrapConfig } from "../config/schema.js";
 
@@ -43,6 +43,12 @@ export interface CreateAuthSystemOptions {
 	bootstrap: BootstrapConfig;
 	/** Optional override for the QR poll/health check interval (ms). Tests use this. */
 	healthCheckMs?: number;
+	/**
+	 * Shared KeyProvider from AppRuntime. When given, cookie encryption uses the
+	 * same key as the config SecretStore (one BN_COOKIE_KEY, one salt). Omitted
+	 * in unit tests → StorageManager builds its own legacy key file.
+	 */
+	keyProvider?: KeyProvider;
 }
 
 /** Render a bilibili QR url into a base64 PNG data URL. Used as `LoginFlow.beginLogin`'s renderQr callback. */
@@ -64,9 +70,14 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 	const storage = new StorageManager({
 		serviceCtx: opts.serviceCtx,
 		dataDir: opts.bootstrap.dataDir,
+		// Reuse the runtime's shared provider so cookie + config secrets share
+		// one key/salt. Fallback (tests) builds its own legacy key file.
+		keyProvider: opts.keyProvider,
+		encryptionKey: opts.keyProvider ? undefined : opts.bootstrap.cookieEncryptionKey,
 		paths: {
 			keyPath: join(opts.bootstrap.dataDir, "secrets", "master.key"),
 			cookiePath: join(opts.bootstrap.dataDir, "secrets", "cookies.json"),
+			saltPath: join(opts.bootstrap.dataDir, "secrets", "kdf.salt"),
 		},
 	});
 	await storage.init();

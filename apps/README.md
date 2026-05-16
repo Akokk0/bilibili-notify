@@ -35,7 +35,21 @@ Bootstrap config order (per plan §4.2):
 3. `./bn.config.{yaml,json}` next to cwd (or `BN_CONFIG=path/to/file`)
 4. Defaults
 
-Required keys: `server.{host,port}`, `dataDir`. `cookieEncryptionKey` falls back to `BN_COOKIE_KEY`. See `server/src/config/schema.ts` for the full Zod schema. Track changes against `server/bn.config.example.yaml`; copy to `bn.config.yaml` (gitignored) and edit for your machine.
+Required keys: `server.{host,port}`, `dataDir`. See `server/src/config/schema.ts` for the full Zod schema. Track changes against `server/bn.config.example.yaml`; copy to `bn.config.yaml` (gitignored) and edit for your machine.
+
+### At-rest secret encryption (`cookieEncryptionKey` / `BN_COOKIE_KEY`)
+
+The bilibili login cookie and the AI apiKey live under `<dataDir>/secrets/` encrypted with **AES-256-GCM**. The key comes from `cookieEncryptionKey` (env fallback `BN_COOKIE_KEY`):
+
+- **Set it** (recommended for any real deployment): key is scrypt-derived from your passphrase and **never written to disk** → genuine at-rest protection. Generate once and keep it (env / secrets manager / compose):
+
+  ```bash
+  openssl rand -base64 32
+  ```
+
+- **Unset**: server still starts (zero-config dev / first `docker run`) but falls back to a random key file co-located with the ciphertext — obfuscation, not real protection. A prominent warning logs at boot; set `BN_COOKIE_KEY` to upgrade.
+
+> Upgrade note: pre-GCM cookies cannot be decrypted (no migration) — re-scan the QR once. A previously plaintext AI apiKey in `globals.json` is auto-migrated into the encrypted secrets file on first boot.
 
 ## Docker deployment
 
