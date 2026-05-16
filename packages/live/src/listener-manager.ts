@@ -173,6 +173,10 @@ export class ListenerManager {
 	disposeAll(): void {
 		this.ctx.logSideEffectState("stop:before-clear");
 		this.ctx.setDisposed(true);
+		// L3:全局 teardown 也要逐 session cancel(),否则正处于退避 sleep 的
+		// session 会留一个无法清除的延迟回调到 expiry(setDisposed 只是让它醒来
+		// 后空转返回,定时器本身没被 dispose)。与 reload 路径同款做法。
+		for (const session of this.sessionRecord.values()) session.cancel();
 		this.ctx.clearPushTimers();
 		this.ctx.clearListeners();
 		this.subRecord.clear();

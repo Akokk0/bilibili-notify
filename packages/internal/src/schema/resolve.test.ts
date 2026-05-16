@@ -113,4 +113,38 @@ describe("resolve()", () => {
 		expect(eff2.ai.persona).toEqual(globals.defaults.ai.persona);
 		expect(eff2.ai.dynamicPrompt).toBe(globals.defaults.ai.dynamicPrompt);
 	});
+
+	it("R1: 显式 override.persona 优先于具名 preset.persona(与 prompt 字段同序)", () => {
+		const globals = makeDefaultGlobalConfig();
+		const presetPersona = {
+			name: "preset名",
+			addressUser: "preset你",
+			addressSelf: "preset我",
+			traits: "preset特征",
+			catchphrase: "preset口头禅",
+			baseRole: "",
+			extraSystemPrompt: "",
+		};
+		globals.defaults.ai.presets = [
+			{ id: "tsundere", label: "傲娇", persona: presetPersona, dynamicPrompt: "P 模板" },
+		];
+		const overridePersona = {
+			name: "我的名",
+			addressUser: "我的你",
+			addressSelf: "我的我",
+			traits: "我的特征",
+			catchphrase: "我的口头禅",
+			baseRole: "",
+			extraSystemPrompt: "",
+		};
+		const sub: Subscription = {
+			...SUB_BASE,
+			overrides: { ai: { preset: "tsundere", persona: overridePersona } },
+		};
+		const eff = resolve(sub, globals.defaults);
+		// 显式 per-UP persona 必须胜过 preset 的 persona(此前被静默丢弃)。
+		expect(eff.ai.persona).toEqual(overridePersona);
+		// 未被 override 覆盖的 dynamicPrompt 仍取 preset —— 既有语义不回归。
+		expect(eff.ai.dynamicPrompt).toBe("P 模板");
+	});
 });

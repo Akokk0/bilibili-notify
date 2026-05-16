@@ -83,7 +83,10 @@ function resolveAI(globals: AISettings, override: AIOverride | undefined): Resol
 			? undefined
 			: globals.presets.find((p) => p.id === override.preset);
 
-	const persona = namedPreset?.persona ?? override.persona ?? base.persona;
+	// R1:与 dynamicPrompt / liveSummaryPrompt 同序 —— 显式 per-UP override 最高,
+	// 其次具名 preset,最后全局 base。此前 persona 反着写(namedPreset 先于
+	// override),用户选了 preset 又自定义 persona 时其自定义被静默丢弃。
+	const persona = override.persona ?? namedPreset?.persona ?? base.persona;
 	const dynamicPrompt = override.dynamicPrompt ?? namedPreset?.dynamicPrompt ?? base.dynamicPrompt;
 	const liveSummaryPrompt =
 		override.liveSummaryPrompt ?? namedPreset?.liveSummaryPrompt ?? base.liveSummaryPrompt;

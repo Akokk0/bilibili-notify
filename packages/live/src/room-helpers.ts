@@ -16,19 +16,28 @@ import { type LiveData, LiveType, type MasterInfo } from "./types";
  * chain so {@link RoomSession} sees a single `ctx.foo()` API surface.
  */
 export class RoomContext extends RoomContextBase {
-	/** Bring up the WebSocket listener for `roomId`. Returns silently on failure. */
-	async startLiveRoomListener(roomId: string, handler: MsgHandler): Promise<void> {
-		if (this.isDisposed()) return;
+	/**
+	 * Bring up the WebSocket listener for `roomId`.
+	 *
+	 * L4: returns `true` iff there is an active listener for the room *after*
+	 * this call — either freshly created OR already present (the latter lets a
+	 * reconnect that races with a backoff-window restore treat the room as
+	 * recovered). Returns `false` on every failure mode so the reconnect caller
+	 * only resets its backoff on a real success instead of the old
+	 * void-swallow that recorded "reconnected" with no listener attached.
+	 */
+	async startLiveRoomListener(roomId: string, handler: MsgHandler): Promise<boolean> {
+		if (this.isDisposed()) return false;
 		const roomIdNum = Number.parseInt(roomId, 10);
 		if (!Number.isFinite(roomIdNum) || roomIdNum <= 0) {
 			this.logger.error(
 				`[conn] roomId 非法（"${roomId}"），跳过 listener 创建。请检查订阅配置或用户是否开通直播间`,
 			);
-			return;
+			return false;
 		}
 		if (this.listenerRecord[roomId]) {
 			this.logger.warn(`[conn] 直播间 [${roomId}] 连接已存在，跳过创建`);
-			return;
+			return true;
 		}
 
 		const cookiesStr = this.api.getCookiesHeader();
@@ -39,27 +48,28 @@ export class RoomContext extends RoomContextBase {
 			const message = (e as Error).message ?? String(e);
 			this.logger.error(`[conn] 获取个人信息异常，房间 [${roomId}]：${message}`);
 			this.emitEngineError(`[${roomId}] 获取个人信息异常：${message}`);
-			return;
+			return false;
 		}
 		if (mySelfInfo.code !== 0 || !mySelfInfo.data) {
 			this.logger.error(
 				`[conn] 获取个人信息失败 code=${mySelfInfo.code}，无法创建直播间 [${roomId}] 连接`,
 			);
 			this.emitEngineError(`[${roomId}] 获取个人信息失败 code=${mySelfInfo.code}`);
-			return;
+			return false;
 		}
-		if (this.isDisposed()) return;
+		if (this.isDisposed()) return false;
 
 		const listener = startListen(roomIdNum, handler, {
 			ws: { headers: { Cookie: cookiesStr }, uid: mySelfInfo.data.mid },
 		});
 		if (this.isDisposed()) {
 			listener.close();
-			return;
+			return false;
 		}
 		this.listenerRecord[roomId] = listener;
 		this.logger.info(`[conn] 直播间 [${roomId}] 连接已建立`);
 		this.logSideEffectState(`listener:created room=${roomId}`);
+		return true;
 	}
 
 	/** Fetch live-room info; on failure, notifies admin + tears down this room. */

@@ -1,3 +1,4 @@
+import type { Disposable } from "@bilibili-notify/internal";
 import { GuardLevel, type MsgHandler } from "blive-message-listener";
 import { DateTime } from "luxon";
 import { LivePushType } from "./push-like";
@@ -38,10 +39,28 @@ export class RoomSession extends RoomSessionBase {
 	 */
 	private cancelled = false;
 	private reconnectAttempts = 0;
+	/**
+	 * L1 单飞守卫:并发 onError(WS 错误常突发多帧)若都进入重连路径,会各自
+	 * closeListener + 退避 + startLiveRoomListener,装回多个 listener。一旦一个
+	 * onError 拿到重连权,其余直接返回。
+	 */
+	private reconnecting = false;
+	/** L3:退避 sleep 的 Disposable + 唤醒句柄,cancel/teardown 时清掉,不留回调到 expiry。 */
+	private reconnectTimer?: Disposable;
+	private reconnectWake?: () => void;
 
 	/** 外层主动停止 listener 时调用,阻止 onError 触发重连。 */
 	cancel(): void {
 		this.cancelled = true;
+		this.clearReconnectSleep();
+	}
+
+	/** L3:dispose 退避定时器并唤醒重连循环,使其立刻重校 cancelled/disposed 后退出。 */
+	private clearReconnectSleep(): void {
+		this.reconnectTimer?.dispose();
+		this.reconnectTimer = undefined;
+		this.reconnectWake?.();
+		this.reconnectWake = undefined;
 	}
 
 	// ── MsgHandler factory ────────────────────────────────────────────────────
@@ -79,43 +98,75 @@ export class RoomSession extends RoomSessionBase {
 
 	private async onError(): Promise<void> {
 		if (this.cancelled || this.ctx.isDisposed()) return;
-		this.setLiveStatus(false);
-		this.cancelPeriodicTimer();
-		this.ctx.closeListener(this.sub.roomId);
-
-		// 退避重连耗尽 → 真正放弃 + 走 engine-error(adapter 转 master DM / log channel)。
-		if (this.reconnectAttempts >= RECONNECT_BACKOFF_MS.length) {
-			const attempts = RECONNECT_BACKOFF_MS.length;
-			this.reconnectAttempts = 0;
-			const msg = `直播间 [${this.sub.roomId}] 连接持续失败,重试 ${attempts} 次后放弃监听`;
-			this.ctx.logger.error(`[conn] ${msg}`);
-			this.ctx.emitEngineError(msg);
-			return;
-		}
-
-		const delay = RECONNECT_BACKOFF_MS[this.reconnectAttempts];
-		this.reconnectAttempts++;
-		this.ctx.logger.warn(
-			`[conn] 直播间 [${this.sub.roomId}] 连接错误,${delay / 1000}s 后重连(第 ${this.reconnectAttempts}/${RECONNECT_BACKOFF_MS.length} 次)`,
-		);
-		await new Promise<void>((resolveSleep) => {
-			this.ctx.serviceCtx.setTimeout(resolveSleep, delay);
-		});
-		if (this.cancelled || this.ctx.isDisposed()) return;
-
+		if (this.reconnecting) return; // L1:并发 onError,已有重连在跑,丢弃
+		this.reconnecting = true;
 		try {
-			await this.ctx.startLiveRoomListener(this.sub.roomId, this.buildHandler());
-			this.ctx.logger.info(`[conn] 直播间 [${this.sub.roomId}] 重连成功`);
-			this.reconnectAttempts = 0;
-		} catch (e) {
-			this.ctx.logger.warn(
-				`[conn] 直播间 [${this.sub.roomId}] 重连发起失败:${(e as Error).message}`,
-			);
-			// 让出栈,继续走退避链路。setTimeout(0) 防止深栈递归。
-			this.ctx.serviceCtx.setTimeout(() => {
-				void this.onError();
-			}, 0);
+			await this.reconnectLoop();
+		} finally {
+			this.reconnecting = false;
 		}
+	}
+
+	/**
+	 * 退避重连循环(单飞,由 onError 持有)。`while` 取代旧的 `setTimeout(0)`
+	 * 递归续链 —— 杜绝深栈递归 + 每步都丢弃的定时器 Disposable;每次 sleep 后
+	 * 重校 cancelled/disposed,sleep 自身可被 cancel/teardown dispose。
+	 */
+	private async reconnectLoop(): Promise<void> {
+		while (this.reconnectAttempts < RECONNECT_BACKOFF_MS.length) {
+			if (this.cancelled || this.ctx.isDisposed()) return;
+			this.setLiveStatus(false);
+			this.cancelPeriodicTimer();
+			this.ctx.closeListener(this.sub.roomId);
+
+			const delay = RECONNECT_BACKOFF_MS[this.reconnectAttempts];
+			this.reconnectAttempts++;
+			this.ctx.logger.warn(
+				`[conn] 直播间 [${this.sub.roomId}] 连接错误,${delay / 1000}s 后重连(第 ${this.reconnectAttempts}/${RECONNECT_BACKOFF_MS.length} 次)`,
+			);
+			await this.sleepReconnect(delay);
+			if (this.cancelled || this.ctx.isDisposed()) return;
+
+			// L4:startLiveRoomListener 现返回是否真有 listener(新建,或退避窗口
+			// 内已被别处恢复)。throw(blive 库内部异常等)与 false 一并视为本轮
+			// 失败,继续退避(while 续链,无递归、无丢弃定时器)。只有真成功才
+			// 复位 backoff。
+			let ok = false;
+			try {
+				ok = await this.ctx.startLiveRoomListener(this.sub.roomId, this.buildHandler());
+			} catch (e) {
+				this.ctx.logger.warn(
+					`[conn] 直播间 [${this.sub.roomId}] 重连发起异常:${(e as Error).message}`,
+				);
+			}
+			if (ok) {
+				this.ctx.logger.info(`[conn] 直播间 [${this.sub.roomId}] 重连成功`);
+				this.reconnectAttempts = 0;
+				return;
+			}
+			this.ctx.logger.warn(`[conn] 直播间 [${this.sub.roomId}] 重连未成功,继续退避`);
+		}
+		// 退避耗尽 → 真正放弃 + 走 engine-error(adapter 转 master DM / log channel)。
+		this.reconnectAttempts = 0;
+		const msg = `直播间 [${this.sub.roomId}] 连接持续失败,重试 ${RECONNECT_BACKOFF_MS.length} 次后放弃监听`;
+		this.ctx.logger.error(`[conn] ${msg}`);
+		this.ctx.emitEngineError(msg);
+	}
+
+	/**
+	 * L3:可被 {@link clearReconnectSleep} 取消的退避 sleep。dispose 时立即
+	 * resolve,让 reconnectLoop 醒来重校 cancelled/disposed 后退出 —— 不再留
+	 * 一个无法清除的延迟回调到 expiry。
+	 */
+	private sleepReconnect(ms: number): Promise<void> {
+		return new Promise<void>((resolve) => {
+			this.reconnectWake = resolve;
+			this.reconnectTimer = this.ctx.serviceCtx.setTimeout(() => {
+				this.reconnectTimer = undefined;
+				this.reconnectWake = undefined;
+				resolve();
+			}, ms);
+		});
 	}
 
 	private onIncomeDanmu(body: { content: string; user: { uname: string; uid: number } }): void {
@@ -289,11 +340,14 @@ export class RoomSession extends RoomSessionBase {
 			this.ctx.logger.warn(`[live] 直播间 [${this.sub.roomId}] 的开播事件在冷却期内，忽略`);
 			return;
 		}
-		this.lastLiveStart = now;
 		if (this.liveStatus) {
 			this.ctx.logger.warn(`[live] 直播间 [${this.sub.roomId}] 已经是开播状态，忽略重复的开播事件`);
 			return;
 		}
+		// L2:仅在真正“接受”一次开播(过冷却 + 过 liveStatus 去重)时才打冷却
+		// 戳。此前在去重前就 lastLiveStart=now,一条 >10s 的重复 START 也会刷新
+		// 窗口,导致紧随其后 10s 内的“真重启”被冷却静默吞掉。
+		this.lastLiveStart = now;
 		this.setLiveStatus(true);
 		if (
 			!(await this.useLiveRoomInfo(LiveType.StartBroadcasting)) ||
