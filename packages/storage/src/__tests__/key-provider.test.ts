@@ -9,8 +9,7 @@
  *     getKey 生成 master.key;resetKey 轮换出不同 key
  */
 
-import { readFile } from "node:fs/promises";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -48,6 +47,68 @@ describe("createKeyProvider — 选型", () => {
 	it("无 passphrase → File", () => {
 		const p = createKeyProvider({ logger: makeLogger(), ...paths() });
 		expect(p).toBeInstanceOf(FileKeyProvider);
+	});
+
+	it("回退 File 时在选择点打高可见告警(端中立,不提 BN_COOKIE_KEY)", () => {
+		const logger = makeLogger();
+		createKeyProvider({ logger, ...paths() });
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("未提供注入密钥"));
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("仅为混淆"));
+		// 端中立:不得在共享选择点出现 standalone 专属变量名。
+		const msg = (logger.warn as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
+		expect(msg).not.toContain("BN_COOKIE_KEY");
+	});
+
+	it("有 passphrase 时不打回退告警", () => {
+		const logger = makeLogger();
+		createKeyProvider({ passphrase: "pw", logger, ...paths() });
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+});
+
+describe("PassphraseKeyProvider — kdf.salt 策略 (P1)", () => {
+	async function seedSalt(content: string) {
+		const { saltPath } = paths();
+		await mkdir(join(dir, "secrets"), { recursive: true });
+		await writeFile(saltPath, content, "utf8");
+	}
+
+	it("非法 salt 内容 → warn + 重生成为精确 32 hex(消除无声重登)", async () => {
+		await seedSalt("not-a-valid-hex-salt");
+		const logger = makeLogger();
+		const p = createKeyProvider({ passphrase: "pw", logger, ...paths() });
+		const k = await p.getKey();
+		expect(k.length).toBe(32);
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("kdf.salt 格式非法"));
+		await expect(readFile(paths().saltPath, "utf8")).resolves.toMatch(/^[0-9a-f]{32}$/i);
+	});
+
+	it("过长 salt(64 hex,旧 {32,} 会误收)→ 现收紧为精确 {32},warn + 重生成", async () => {
+		await seedSalt("a".repeat(64));
+		const logger = makeLogger();
+		const p = createKeyProvider({ passphrase: "pw", logger, ...paths() });
+		await p.getKey();
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("kdf.salt 格式非法"));
+		await expect(readFile(paths().saltPath, "utf8")).resolves.toMatch(/^[0-9a-f]{32}$/i);
+	});
+
+	it("合法 32 hex salt 原样复用,不 warn 不重写", async () => {
+		const valid = "0123456789abcdef0123456789abcdef"; // 32 hex = 16 bytes
+		await seedSalt(valid);
+		const logger = makeLogger();
+		const p = createKeyProvider({ passphrase: "pw", logger, ...paths() });
+		await p.getKey();
+		expect(logger.warn).not.toHaveBeenCalled();
+		await expect(readFile(paths().saltPath, "utf8")).resolves.toBe(valid);
+	});
+
+	it("salt 文件存在但读不了(EISDIR,非 ENOENT)→ getKey 抛,不静默换 key", async () => {
+		const { saltPath } = paths();
+		await mkdir(saltPath, { recursive: true }); // 占位成目录 → readFile EISDIR
+		const logger = makeLogger();
+		const p = createKeyProvider({ passphrase: "pw", logger, ...paths() });
+		await expect(p.getKey()).rejects.toMatchObject({ code: "EISDIR" });
+		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("读取失败（非缺失）"));
 	});
 });
 

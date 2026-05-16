@@ -34,7 +34,10 @@ function makeBus(): MessageBus {
 		},
 		on(event, handler): Disposable {
 			let s = listeners.get(event);
-			if (!s) listeners.set(event, (s = new Set()));
+			if (!s) {
+				s = new Set();
+				listeners.set(event, s);
+			}
 			const w = (...a: unknown[]) => (handler as (...x: unknown[]) => void)(...a);
 			s.add(w);
 			return { dispose: () => listeners.get(event)?.delete(w) };
@@ -89,6 +92,15 @@ describe("createSecretStore", () => {
 		expect(raw).not.toContain("sk-PLAINTEXT-LEAK");
 	});
 
+	it("文件存在但读不了(EISDIR,非 ENOENT)→ load() 抛,绝不退化为 {}", async () => {
+		// 数据丢失防护:若静默返 {},随后任一 writeGlobals→save() 会用空 bag
+		// 原子覆盖,永久销毁已存 aiApiKey。
+		const encPath = join(dataDir, "secrets", "config-secrets.enc");
+		await mkdir(encPath, { recursive: true }); // 占位成目录 → readFile EISDIR
+		const s = mkSecretStore();
+		await expect(s.load()).rejects.toMatchObject({ code: "EISDIR" });
+	});
+
 	it("换 key → load 退化为 {} 且 warn", async () => {
 		const s1 = mkSecretStore();
 		await s1.save({ aiApiKey: "sk-1" });
@@ -119,7 +131,12 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		JSON.parse(await readFile(join(dataDir, "state", "globals.json"), "utf8"));
 
 	function mkStore(secretStore?: SecretStore): ConfigStore {
-		return createConfigStore({ bootstrap: bootstrap(dataDir), bus: makeBus(), serviceCtx: makeCtx(), secretStore });
+		return createConfigStore({
+			bootstrap: bootstrap(dataDir),
+			bus: makeBus(),
+			serviceCtx: makeCtx(),
+			secretStore,
+		});
 	}
 
 	it("一次性 lift:明文 apiKey 迁出,getGlobals 仍可读,globals.json 抹掉,secret 持有", async () => {

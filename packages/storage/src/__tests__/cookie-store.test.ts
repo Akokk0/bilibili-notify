@@ -8,7 +8,7 @@
  *   - resetKey:文件模式轮换 key(旧 cookie 失效);注入模式清 cookie、key 不变
  */
 
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
@@ -82,6 +82,23 @@ describe("CookieStore — legacy CBC 不迁移", () => {
 		);
 		expect(await sm.cookieStore.load()).toBeNull();
 		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("无法解密"));
+	});
+});
+
+describe("CookieStore — IO 错误策略 (P1)", () => {
+	it("文件存在但读不了(EISDIR,非 ENOENT)→ load() 抛而非伪装未登录", async () => {
+		const { sm, logger } = await mkStore();
+		await mkdir(cookiePath(), { recursive: true }); // 占位成目录 → readFile EISDIR
+		await expect(sm.cookieStore.load()).rejects.toMatchObject({ code: "EISDIR" });
+		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("读取失败（非缺失）"));
+		// 关键不变量:绝不返回 null —— 否则上层会判"未登录",后续 refresh→save()
+		// 用新 cookie 静默覆盖盘上仍有效的密文。
+	});
+
+	it("缺文件(ENOENT)仍走静默 null(首次运行不受策略收紧影响)", async () => {
+		const { sm, logger } = await mkStore();
+		expect(await sm.cookieStore.load()).toBeNull();
+		expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("首次运行"));
 	});
 });
 

@@ -67,11 +67,26 @@ export class PassphraseKeyProvider implements KeyProvider {
 	}
 
 	private async loadOrCreateSalt(): Promise<Buffer> {
+		let hex: string | null = null;
 		try {
-			const hex = (await readFile(this.saltPath, "utf8")).trim();
-			if (/^[0-9a-f]{32,}$/i.test(hex)) return Buffer.from(hex, "hex");
-		} catch {
-			// fall through to create
+			hex = (await readFile(this.saltPath, "utf8")).trim();
+		} catch (e) {
+			if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+				// 文件存在但读不了(EACCES/EIO…):绝不能静默重生成 —— 那会换 key,
+				// 把所有用注入密钥加密的 secrets 一次性变为无法解密且无声重登。
+				this.logger.error(`[key] kdf.salt 读取失败（非缺失）: ${(e as Error).message}`);
+				throw e;
+			}
+			// ENOENT → 首次运行,正常创建
+		}
+		if (hex !== null) {
+			// 精确 32 位十六进制 = 16 字节(本类只写 randomBytes(16))。放宽到
+			// {32,} 会接受被截断/拼接的 salt,静默派生出错 key → 无声重登。
+			if (/^[0-9a-f]{32}$/i.test(hex)) return Buffer.from(hex, "hex");
+			this.logger.warn(
+				"[key] kdf.salt 格式非法（非 32 位十六进制），将重新生成 —— " +
+					"既有用注入密钥加密的 secrets（B 站 cookie / AI apiKey）届时无法解密、需重新登录。",
+			);
 		}
 		const salt = randomBytes(16);
 		await mkdir(dirname(this.saltPath), { recursive: true });
@@ -100,5 +115,13 @@ export interface CreateKeyProviderOptions {
 export function createKeyProvider(opts: CreateKeyProviderOptions): KeyProvider {
 	const pass = opts.passphrase?.trim();
 	if (pass) return new PassphraseKeyProvider(pass, opts.saltPath, opts.logger);
+	// 回退选择点统一打高可见告警 —— 此前仅 standalone 的 bootstrap.ts 警示,
+	// 任何其它调用方(含 koishi 经 StorageManager)落到回退时静默无声。
+	// 文案保持端中立(不提 BN_COOKIE_KEY,那是 standalone 专属);standalone
+	// 在 bootstrap 另加可执行指引。
+	opts.logger.warn(
+		"[key] 未提供注入密钥:secrets（B 站 cookie / AI apiKey）使用本地随机密钥，" +
+			"且密钥与密文同目录 —— 仅为混淆，不构成真正的静态加密。",
+	);
 	return new FileKeyProvider(opts.keyPath, opts.logger);
 }

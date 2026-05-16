@@ -28,10 +28,7 @@ export function isGcmBlob(x: unknown): x is GcmBlob {
 	if (!x || typeof x !== "object") return false;
 	const o = x as Record<string, unknown>;
 	return (
-		o.v === 2 &&
-		typeof o.iv === "string" &&
-		typeof o.tag === "string" &&
-		typeof o.data === "string"
+		o.v === 2 && typeof o.iv === "string" && typeof o.tag === "string" && typeof o.data === "string"
 	);
 }
 
@@ -74,6 +71,11 @@ export function gcmDecrypt(key: Buffer, blob: unknown): string {
  */
 export function deriveKeyFromPassphrase(passphrase: string, salt: Buffer): Buffer {
 	if (!passphrase) throw new Error("empty passphrase");
+	// 锁死 KDF 不变量:salt 过短会显著弱化 scrypt 抗彩虹表/跨装重用的作用。
+	// 正常调用方恒传 randomBytes(16);此处兜底防上游回归静默降到弱 salt。
+	if (salt.length < 16) {
+		throw new Error(`scrypt salt must be >= 16 bytes, got ${salt.length}`);
+	}
 	return scryptSync(passphrase, salt, KEY_BYTES, {
 		N: SCRYPT_PARAMS.N,
 		r: SCRYPT_PARAMS.r,

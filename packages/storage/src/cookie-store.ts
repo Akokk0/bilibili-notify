@@ -19,6 +19,13 @@ export interface CookieData {
  * decrypt/auth failure) and returns `null`, which drives the auth layer back
  * to a fresh QR login. This is a deliberate one-time re-login, not data loss
  * the user can avoid (the legacy random key gave ~no real protection anyway).
+ *
+ * IO-error policy (P1 hardening, mirrors {@link import("../../apps/server/src/config/secret-store")}):
+ * file ABSENT (`ENOENT`) → `null` (legit first run); file PRESENT but
+ * undecryptable → `null` + warn (by-design re-login); file PRESENT but
+ * unreadable (`EACCES`/`EIO`/…) → THROW. A transient read failure must not
+ * masquerade as "logged out" and let a later refresh-save quietly overwrite
+ * the still-valid encrypted cookie on disk.
  */
 export class CookieStore {
 	private key: Buffer | null = null;
@@ -51,16 +58,20 @@ export class CookieStore {
 		let raw: string;
 		try {
 			raw = await readFile(this.cookiePath, "utf8");
-		} catch {
-			this.logger.info("[cookie] 未找到 Cookie 文件，跳过加载（首次运行）");
-			return null;
+		} catch (e) {
+			if ((e as NodeJS.ErrnoException).code === "ENOENT") {
+				this.logger.info("[cookie] 未找到 Cookie 文件，跳过加载（首次运行）");
+				return null;
+			}
+			// EACCES/EIO/EBUSY…:文件存在但读不了。不能伪装成"未登录"——
+			// 否则后续 refresh→save() 会用新 cookie 覆盖盘上仍有效的密文。
+			this.logger.error(`[cookie] Cookie 文件读取失败（非缺失）: ${(e as Error).message}`);
+			throw e;
 		}
 		try {
 			const stored = JSON.parse(raw) as StoredCookies;
 			const cookiesJson = gcmDecrypt(key, stored.cookiesJson);
-			const refreshToken = stored.refreshToken
-				? gcmDecrypt(key, stored.refreshToken)
-				: undefined;
+			const refreshToken = stored.refreshToken ? gcmDecrypt(key, stored.refreshToken) : undefined;
 			this.logger.info("[cookie] Cookie 加载成功");
 			return { cookiesJson, refreshToken };
 		} catch (e) {

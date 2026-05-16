@@ -13,9 +13,9 @@ import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
 	deriveKeyFromPassphrase,
+	type GcmBlob,
 	gcmDecrypt,
 	gcmEncrypt,
-	type GcmBlob,
 	isGcmBlob,
 } from "../secret-box";
 
@@ -45,7 +45,10 @@ describe("gcmEncrypt / gcmDecrypt", () => {
 	it("篡改 data / tag → decrypt 抛", () => {
 		const blob = gcmEncrypt(KEY, "secret");
 		const flip = (b64: string) => Buffer.from(b64, "base64");
-		const badData: GcmBlob = { ...blob, data: Buffer.concat([flip(blob.data), Buffer.from([1])]).toString("base64") };
+		const badData: GcmBlob = {
+			...blob,
+			data: Buffer.concat([flip(blob.data), Buffer.from([1])]).toString("base64"),
+		};
 		const badTag: GcmBlob = { ...blob, tag: randomBytes(16).toString("base64") };
 		expect(() => gcmDecrypt(KEY, badData)).toThrow();
 		expect(() => gcmDecrypt(KEY, badTag)).toThrow();
@@ -89,6 +92,12 @@ describe("deriveKeyFromPassphrase", () => {
 
 	it("空 passphrase 抛", () => {
 		expect(() => deriveKeyFromPassphrase("", salt)).toThrow(/empty passphrase/);
+	});
+
+	it("salt < 16 字节抛(锁死 KDF 不变量);16 字节边界放行", () => {
+		expect(() => deriveKeyFromPassphrase("pw", randomBytes(15))).toThrow(/salt must be >= 16/);
+		expect(() => deriveKeyFromPassphrase("pw", Buffer.alloc(0))).toThrow(/salt must be >= 16/);
+		expect(deriveKeyFromPassphrase("pw", randomBytes(16)).length).toBe(32);
 	});
 
 	it("派生 key 可直接用于 GCM round-trip", () => {
