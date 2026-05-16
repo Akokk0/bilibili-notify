@@ -307,9 +307,16 @@ export default function System() {
 				// and `defaults.ai` in the patch body and run the puppeteer +
 				// chat.completions probes on every save — slow and pointless when
 				// the user never touched those fields here.
+				// SY1:清空的可选字段经线发显式 `null`(后端 deepMerge 约定 null=
+				// 清除)。直接发 undefined 会被 JSON.stringify 丢键,后端当作未改 →
+				// 已配的 master.targetId / userAgent / logLevels 无法经 UI 清除。
 				await api.patch<GlobalConfig>("/api/globals", {
-					app: next.app,
-					master: next.master,
+					app: {
+						...next.app,
+						userAgent: next.app.userAgent ?? null,
+						logLevels: next.app.logLevels ?? null,
+					},
+					master: { ...next.master, targetId: next.master.targetId ?? null },
 				});
 			} catch (err) {
 				if (err instanceof ApiError) setSystemError(err.message);

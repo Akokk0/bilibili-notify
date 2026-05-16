@@ -320,6 +320,49 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		await detect(b.engine);
 		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1234);
 	});
+
+	it("DY1:同 uid 多条全部成功 → 锚点推进到最大 pub_ts", async () => {
+		const b = makeEngine();
+		// 新→旧
+		b.getAllDynamic.mockResolvedValue(
+			resp([makeItem({ uid: 1, pubTs: 200 }), makeItem({ uid: 1, pubTs: 100 })]),
+		);
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(200);
+		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(2);
+	});
+
+	it("DY1:某 uid 推送失败 → 不 abort 其它 uid,失败 uid 锚点不前移(下轮重试)", async () => {
+		const b = makeEngine();
+		b.getAllDynamic.mockResolvedValue(
+			resp([makeItem({ uid: 1, pubTs: 100 }), makeItem({ uid: 2, pubTs: 300 })]),
+		);
+		seed(b.engine, "1", 0);
+		seed(b.engine, "2", 0);
+		// uid1 推送抛错;uid2 正常。
+		b.push.broadcastDynamic.mockImplementation(async (uid: string) => {
+			if (uid === "1") throw new Error("push fail");
+		});
+
+		await expect(detect(b.engine)).resolves.toBeUndefined(); // 整轮不 abort
+
+		// uid2 仍被投递且锚点前移 —— 证明单条 reject 没掀翻整轮(修复"下轮重推")。
+		expect(priv(b.engine).dynamicTimelineManager.get("2")).toBe(300);
+		// uid1 失败 → 锚点停在 0,下轮重试,绝不静默越过(不丢动态)。
+		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(0);
+		expect(b.push.broadcastDynamic).toHaveBeenCalledWith("2", expect.anything(), expect.anything());
+	});
+
+	it("DY1:锚点单调,绝不回退(已 push 过的更新 pub_ts 不倒退)", async () => {
+		const b = makeEngine();
+		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 100 })]));
+		seed(b.engine, "1", 500); // 既有锚点已高于来项
+		await detect(b.engine);
+		// timeline(500) >= 100 → 跳过,锚点保持 500,绝不被 set 成 100。
+		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(500);
+		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
+	});
 });
 
 describe("DynamicEngine.detectDynamics — 推送形态", () => {

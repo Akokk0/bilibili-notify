@@ -27,14 +27,18 @@ export function createWsTicketStore(opts: CreateOptions = {}): WsTicketStore {
 	const tickets = new Map<string, number>(); // ticket → expiresAt epoch ms
 
 	// 周期性回收过期 ticket,避免 Map 无限增长 — 一次 sweep 复杂度 O(n) 但 n 很小。
+	// WT1:先把 Timeout 句柄存下来再 unref —— 旧写法 `setInterval(...).unref?.()`
+	// 把 unref() 的返回值(可能是 undefined / 非句柄)赋给 sweepHandle,导致
+	// dispose() 根本拿不到句柄去 clearInterval(实际旧 dispose 也没 clear),
+	// sweep 定时器永久泄漏。
 	const sweepHandle = setInterval(() => {
 		const now = Date.now();
 		for (const [t, expires] of tickets) {
 			if (expires <= now) tickets.delete(t);
 		}
-	}, ttlMs).unref?.();
+	}, ttlMs);
 	// .unref() 不阻塞 process.exit;某些 ws polyfill 没有 unref,容错处理。
-	void sweepHandle;
+	(sweepHandle as { unref?: () => void }).unref?.();
 
 	return {
 		issue() {
@@ -49,6 +53,7 @@ export function createWsTicketStore(opts: CreateOptions = {}): WsTicketStore {
 			return expires > Date.now();
 		},
 		dispose() {
+			clearInterval(sweepHandle);
 			tickets.clear();
 		},
 	};

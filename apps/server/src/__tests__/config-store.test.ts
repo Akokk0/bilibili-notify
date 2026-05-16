@@ -123,6 +123,29 @@ describe("ConfigStore", () => {
 		expect(store.getSubscriptions()).toHaveLength(0);
 	});
 
+	it("SY1: patchGlobals 收到 null 清除可选字段;undefined 仍是“不改”", async () => {
+		// targetId 规范是 z.uuid().optional(),须用结构合法的 UUID(版本/变体
+		// nibble 正确),用 crypto.randomUUID() 生成 v4。
+		const T1 = randomUUID();
+		const T2 = randomUUID();
+		await store.patchGlobals({ master: { targetId: T1 }, app: { userAgent: "UA/1" } });
+		expect(store.getGlobals().master.targetId).toBe(T1);
+		expect(store.getGlobals().app.userAgent).toBe("UA/1");
+
+		// null = 显式清除
+		await store.patchGlobals({
+			master: { targetId: null },
+			app: { userAgent: null },
+		} as never);
+		expect(store.getGlobals().master.targetId).toBeUndefined();
+		expect(store.getGlobals().app.userAgent).toBeUndefined();
+
+		// undefined / 不带该键 ≠ 清除:重配后再发不含 master 的 patch,值保留
+		await store.patchGlobals({ master: { targetId: T2 } });
+		await store.patchGlobals({ app: { dynamicCron: "*/9 * * * *" } });
+		expect(store.getGlobals().master.targetId).toBe(T2);
+	});
+
 	it("setGlobals rejects malformed input with ConfigValidationError", async () => {
 		const bad = { ...store.getGlobals(), app: { dynamicCron: 123 as unknown as string } };
 		await expect(store.setGlobals(bad as never)).rejects.toBeInstanceOf(ConfigValidationError);

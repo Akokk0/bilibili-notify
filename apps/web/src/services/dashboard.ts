@@ -47,6 +47,14 @@ export interface HistoryResponse {
 }
 
 /**
+ * HI1:history 缓存按 limit 分键的消费者集合 —— Dashboard(100,KPI/趋势)
+ * 与 History 页(200,完整列表)。三处(两页 + usePushEventsChannel 的 WS
+ * patch)共用此单一来源,避免魔数漂移导致缓存键/WS patch 不一致。
+ */
+export const HISTORY_QUERY_LIMITS = [100, 200] as const;
+export const historyQueryKey = (limit: number) => ["history", { limit }] as const;
+
+/**
  * Wire-compat with apps/server/src/routes/fans.ts + WS `fans-refreshed` 事件。
  * 后端 FansPoller 每个 cron tick 输出一批 entries(本轮采到的所有 enabled subs)。
  * Bootstrap 阶段 entries 为空,FansPanel 显示"采样中…"。

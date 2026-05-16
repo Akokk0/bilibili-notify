@@ -226,6 +226,17 @@ describe("CommentaryGenerator.comment", () => {
 		await expect(gen.comment("x")).rejects.toThrow("boom");
 		expect(oai.create).toHaveBeenCalledTimes(1);
 	});
+
+	it("AI1:网关返回空 choices → 抛明确错误(非不可读的 TypeError)", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce({ choices: [] });
+		const msg = await gen.comment("x").then(
+			() => "<resolved>",
+			(e: unknown) => (e as Error).message,
+		);
+		expect(msg).toMatch(/空 choices/);
+		expect(msg).not.toMatch(/Cannot read properties/); // 不再是不可读的 TypeError
+	});
 });
 
 // ---------------------------------------------------------------------------

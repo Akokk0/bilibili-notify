@@ -3,7 +3,12 @@ import { useMemo, useState } from "react";
 import { Avatar, Input, Pill } from "../components/atoms";
 import { Icon } from "../components/icons";
 import { api } from "../services/api";
-import type { HistoryEntryView, HistoryResponse, HistorySource } from "../services/dashboard";
+import {
+	type HistoryEntryView,
+	type HistoryResponse,
+	type HistorySource,
+	historyQueryKey,
+} from "../services/dashboard";
 import type { PushTarget, Subscription } from "../types/domain";
 import type { GlobalConfig } from "../types/globals";
 import { colorFromUid, displayName, relativeTime } from "./up/helpers";
@@ -68,7 +73,9 @@ export default function History() {
 	// Cache is kept fresh by `usePushEventsChannel` (WS push-events → setQueryData),
 	// so the page renders new entries within ~1s of delivery without polling.
 	const historyQuery = useQuery({
-		queryKey: ["history"],
+		// HI1:按 limit 区分缓存键(单一来源 historyQueryKey)。与 Dashboard 的
+		// limit:100 不再撞同一缓存(否则两份数据集随导航顺序互相覆盖,非确定)。
+		queryKey: historyQueryKey(200),
 		queryFn: () => api.get<HistoryResponse>("/api/history?limit=200"),
 	});
 	const subsQuery = useQuery({

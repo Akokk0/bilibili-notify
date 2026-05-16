@@ -317,7 +317,10 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		this.config = config;
 	}
 
-	private toEngineConfig(config: BilibiliNotifyLiveConfig): LiveEngineConfig {
+	private toEngineConfig(
+		config: BilibiliNotifyLiveConfig,
+		defaults: GlobalDefaults,
+	): LiveEngineConfig {
 		return {
 			wordcloudStopWords: config.wordcloudStopWords,
 			pushTime: config.pushTime,
@@ -327,6 +330,11 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			liveSummaryDefault: config.liveSummary.join("\n"),
 			customGuardBuy: config.customGuardBuy,
 			customLiveMsg: config.customLiveMsg,
+			// KL1:此前漏映射 → 引擎缺省视 imageEnabled/aiEnabled 为 true,koishi
+			// 用户全局关卡片/AI 后开播卡 / 词云 / AI 总结仍生成,与 standalone
+			// (engines.ts 用 defaults 填这两字段)行为分歧,违背双端功能等价。
+			imageEnabled: defaults.cardStyle.enabled,
+			aiEnabled: defaults.ai.enabled,
 		};
 	}
 
@@ -345,7 +353,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			contentBuilder: koishiContentBuilder,
 			imageRenderer: this.ctx.get("bilibili-notify-image")?.engine ?? null,
 			commentary: this.ctx.get("bilibili-notify-ai")?.engine ?? null,
-			config: this.toEngineConfig(this.config),
+			config: this.toEngineConfig(this.config, internals.defaults),
 			emitEngineError: (message) =>
 				this.ctx.emit("bilibili-notify/engine-error", SERVICE_NAME, message),
 			emitLiveState: (uid, status) =>

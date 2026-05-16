@@ -7,23 +7,24 @@
  *                            房间不在快照里 → 静默(返回 old,等下次 invalidate)
  *                            tuple shape 不对 → silent-drop
  *   - fans-refreshed       → setQueryData(["fans"]) 整体覆盖;data 非数组 → drop
- *   - history-recorded     → push toast + setQueryData(["history"]) prepend + dedup id + cap
+ *   - history-recorded     → push toast + setQueryData(historyQueryKey(100)) prepend + dedup id + cap
  *
  * `handlePushEnvelope(env, qc, push)` 完全参数化,无任何外部 React state。
  */
 
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-	FansEntry,
-	FansResponse,
-	HistoryEntryView,
-	HistoryResponse,
-	LiveListenerSnapshot,
+import {
+	type FansEntry,
+	type FansResponse,
+	type HistoryEntryView,
+	type HistoryResponse,
+	historyQueryKey,
+	type LiveListenerSnapshot,
 } from "../../services/dashboard";
 import type { WsEnvelope } from "../../services/ws";
 import type { PushEventView } from "../../store/notifications";
-import { handlePushEnvelope, HISTORY_CACHE_CAP } from "../usePushEventsChannel";
+import { HISTORY_CACHE_CAP, handlePushEnvelope } from "../usePushEventsChannel";
 
 function env(over: Partial<WsEnvelope> & { type: string }): WsEnvelope {
 	return { ts: "2026-05-16T00:00:00.000Z", ...over };
@@ -157,9 +158,7 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 
 		it("空数组:覆盖为空(表达「全部 enabled subs 已被删除」)", () => {
 			h.qc.setQueryData<FansResponse>(["fans"], {
-				entries: [
-					{ uid: "u1", current: 1, ts: "t", deltaSubscribed: 0, delta24h: 0, delta7d: 0 },
-				],
+				entries: [{ uid: "u1", current: 1, ts: "t", deltaSubscribed: 0, delta24h: 0, delta7d: 0 }],
 			});
 			handlePushEnvelope(
 				env({ type: "push-events", event: "fans-refreshed", data: [] }),
@@ -179,7 +178,10 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 				h.push,
 			);
 			expect(h.push).toHaveBeenCalledWith(view);
-			expect(h.qc.getQueryData<HistoryResponse>(["history"])).toEqual({ entries: [view] });
+			// HI1:Dashboard(100)与 History 页(200)两份 limit-scoped 缓存都被
+			// patch(且键不存在也 prime),否则拆键后任一页丢失 WS 实时更新。
+			expect(h.qc.getQueryData<HistoryResponse>(historyQueryKey(100))).toEqual({ entries: [view] });
+			expect(h.qc.getQueryData<HistoryResponse>(historyQueryKey(200))).toEqual({ entries: [view] });
 		});
 
 		it("缺 id / data:silent-drop", () => {
@@ -194,7 +196,7 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 				h.push,
 			);
 			expect(h.push).not.toHaveBeenCalled();
-			expect(h.qc.getQueryData(["history"])).toBeUndefined();
+			expect(h.qc.getQueryData(historyQueryKey(100))).toBeUndefined();
 		});
 
 		it("重复 id:dedup(保留最新一份在顶部)", () => {
@@ -216,7 +218,7 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 				h.qc,
 				h.push,
 			);
-			const cache = h.qc.getQueryData<HistoryResponse>(["history"]);
+			const cache = h.qc.getQueryData<HistoryResponse>(historyQueryKey(100));
 			expect(cache?.entries).toHaveLength(2);
 			expect(cache?.entries[0]).toEqual(v1Repeat); // 最新顶部
 			expect(cache?.entries[1]).toEqual(v2);
@@ -227,14 +229,14 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 			const seed: HistoryEntryView[] = Array.from({ length: HISTORY_CACHE_CAP }, (_, i) => ({
 				...pushView(`seed-${i}`),
 			}));
-			h.qc.setQueryData<HistoryResponse>(["history"], { entries: seed });
+			h.qc.setQueryData<HistoryResponse>(historyQueryKey(100), { entries: seed });
 			const incoming = pushView("incoming-1");
 			handlePushEnvelope(
 				env({ type: "push-events", event: "history-recorded", data: incoming }),
 				h.qc,
 				h.push,
 			);
-			const cache = h.qc.getQueryData<HistoryResponse>(["history"]);
+			const cache = h.qc.getQueryData<HistoryResponse>(historyQueryKey(100));
 			expect(cache?.entries).toHaveLength(HISTORY_CACHE_CAP);
 			expect(cache?.entries[0]).toEqual(incoming);
 			// 末尾的最老 entry 被截掉(seed-${cap-1})
@@ -243,11 +245,7 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 	});
 
 	it("不识别的 event:不 push,不动 qc", () => {
-		handlePushEnvelope(
-			env({ type: "push-events", event: "subscribed" }),
-			h.qc,
-			h.push,
-		);
+		handlePushEnvelope(env({ type: "push-events", event: "subscribed" }), h.qc, h.push);
 		expect(h.push).not.toHaveBeenCalled();
 		expect(h.invalidate).not.toHaveBeenCalled();
 	});

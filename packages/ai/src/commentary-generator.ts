@@ -411,7 +411,14 @@ export class CommentaryGenerator {
 				}
 			}
 
-			const message = res.choices[0].message;
+			// AI1:兼容网关命中内容审查 / 上游异常时会返回空 choices。直接
+			// res.choices[0].message 会抛不可读的 "Cannot read properties of
+			// undefined";给出明确可诊断的错误,让调用方 catch 后回退纯文字。
+			const choice = res.choices?.[0];
+			if (!choice) {
+				throw new Error("AI 网关返回空 choices(疑似命中内容审查或上游异常),无法生成");
+			}
+			const message = choice.message;
 			apiMessages.push(message);
 
 			if (!message.tool_calls?.length) {

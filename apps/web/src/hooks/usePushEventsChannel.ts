@@ -1,10 +1,12 @@
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import type {
-	FansEntry,
-	FansResponse,
-	HistoryResponse,
-	LiveListenerSnapshot,
+import {
+	type FansEntry,
+	type FansResponse,
+	HISTORY_QUERY_LIMITS,
+	type HistoryResponse,
+	historyQueryKey,
+	type LiveListenerSnapshot,
 } from "../services/dashboard";
 import type { WsEnvelope } from "../services/ws";
 import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
@@ -86,14 +88,19 @@ export function handlePushEnvelope(
 	const data = env.data as PushEventView | undefined;
 	if (!data || typeof data.id !== "string") return;
 	push(data);
-	qc.setQueryData<HistoryResponse>(["history"], (old) => {
+	// HI1:history 缓存现按 limit 分键 —— Dashboard ["history",{limit:100}]、
+	// History 页 ["history",{limit:200}]。显式 patch 两者(setQueryData 在键
+	// 不存在时也会 prime,setQueriesData 不会 → WS 早于页面挂载时会丢更新)。
+	const patchHistory = (old: HistoryResponse | undefined): HistoryResponse => {
 		const prev = old?.entries ?? [];
 		// Dedup by id in case the same envelope arrives twice (WS reconnect
 		// resubscribe race) — keeps the most recent copy on top.
 		const without = prev.filter((e) => e.id !== data.id);
-		const merged = [data, ...without].slice(0, HISTORY_CACHE_CAP);
-		return { entries: merged };
-	});
+		return { entries: [data, ...without].slice(0, HISTORY_CACHE_CAP) };
+	};
+	for (const limit of HISTORY_QUERY_LIMITS) {
+		qc.setQueryData<HistoryResponse>(historyQueryKey(limit), patchHistory);
+	}
 }
 
 export function usePushEventsChannel(): void {

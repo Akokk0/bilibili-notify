@@ -80,6 +80,25 @@ export class ImageRenderer {
 	private readonly CACHE_TTL_MS = 30 * 60 * 1000;
 	private readonly CACHE_MAX_SIZE = 300;
 
+	/**
+	 * IM1(SSRF):待内联的图片 URL 来自 B 站 API 的**不可信**字段(face /
+	 * cover / pics / decorate)。仅放行 B 站自有资产域 —— 任何 IP 字面量
+	 * (含 169.254.169.254 元数据 / 127.* / 10.* / 192.168.*)与外部域都不满足
+	 * 后缀匹配,天然被拒(无需 DNS 解析、无重绑定旁路)。
+	 */
+	private static readonly IMG_HOST_ALLOWLIST = [
+		"hdslb.com",
+		"biliimg.com",
+		"bilibili.com",
+		"bilivideo.com",
+		"bilivideo.cn",
+	] as const;
+	/** 1x1 透明 GIF —— 被拦截的远端图替换成它,保证最终 HTML 无任何外部引用可被 puppeteer 再抓。 */
+	private static readonly BLOCKED_IMG_PLACEHOLDER =
+		"data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+	/** IM2:单张远端图字节上限,防超大图全量入内存 + base64 膨胀驻留 cache → OOM。 */
+	private readonly MAX_REMOTE_IMG_BYTES = 8 * 1024 * 1024;
+
 	// 串行渲染队列，避免 puppeteer 并发问题
 	private renderQueue: Promise<void> = Promise.resolve();
 
@@ -410,6 +429,23 @@ export class ImageRenderer {
 		return Boolean(url && /^https?:\/\//i.test(url));
 	}
 
+	/**
+	 * IM1:SSRF 白名单闸门。仅 http(s) + B 站自有资产域后缀。任何 IP 字面量 /
+	 * 内网主机 / 外部域都不匹配 → 拒绝。被拒 URL 既不由本进程 fetch,也会在
+	 * {@link inlineRemoteImages} 里被透明占位替换,使 puppeteer 同样无从抓取。
+	 */
+	private isFetchAllowed(rawUrl: string): boolean {
+		let host: string;
+		try {
+			const u = new URL(rawUrl);
+			if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+			host = u.hostname.toLowerCase();
+		} catch {
+			return false;
+		}
+		return ImageRenderer.IMG_HOST_ALLOWLIST.some((d) => host === d || host.endsWith(`.${d}`));
+	}
+
 	private getMimeType(url: string): string {
 		const lower = url.toLowerCase();
 		if (lower.endsWith(".png")) return "image/png";
@@ -442,6 +478,12 @@ export class ImageRenderer {
 			return cached.dataUrl;
 		}
 
+		// IM1:SSRF 闸门(防御纵深 —— 调用方也已 gate,但这里才是真正发起 fetch
+		// 的点,独立守一道)。
+		if (!this.isFetchAllowed(url)) {
+			throw new Error(`SSRF blocked: non-allowlisted image host (${url})`);
+		}
+
 		const controller = new AbortController();
 		const timeout = setTimeout(() => controller.abort(), 10_000);
 
@@ -457,15 +499,48 @@ export class ImageRenderer {
 			if (!response.ok) {
 				throw new Error(`HTTP ${response.status} ${response.statusText}`);
 			}
+			// IM2:先看 Content-Length 早拒;无该头则边读边累计字节,超限即 abort
+			// 熔断 —— 不把超大图全量读进内存再判。
+			const declared = Number(response.headers.get("content-length"));
+			if (Number.isFinite(declared) && declared > this.MAX_REMOTE_IMG_BYTES) {
+				throw new Error(`image too large: declared ${declared} bytes`);
+			}
+			const buf = await this.readCapped(response, controller);
 			const contentType =
 				response.headers.get("content-type")?.split(";")[0]?.trim() || this.getMimeType(url);
-			const dataUrl = `data:${contentType};base64,${Buffer.from(await response.arrayBuffer()).toString("base64")}`;
+			const dataUrl = `data:${contentType};base64,${buf.toString("base64")}`;
 			this.imageCache.set(url, { dataUrl, updatedAt: Date.now() });
 			this.pruneImageCache();
 			return dataUrl;
 		} finally {
 			clearTimeout(timeout);
 		}
+	}
+
+	/** IM2:流式读取并在累计字节超 {@link MAX_REMOTE_IMG_BYTES} 时 abort 熔断。 */
+	private async readCapped(response: Response, controller: AbortController): Promise<Buffer> {
+		const reader = response.body?.getReader();
+		if (!reader) {
+			// 极少数无 body stream 的实现:退化为缓冲后即时校验(仍兜住 cache 不驻留超大图)。
+			const ab = await response.arrayBuffer();
+			if (ab.byteLength > this.MAX_REMOTE_IMG_BYTES) {
+				throw new Error(`image exceeds ${this.MAX_REMOTE_IMG_BYTES} bytes`);
+			}
+			return Buffer.from(ab);
+		}
+		const chunks: Uint8Array[] = [];
+		let total = 0;
+		let chunk = await reader.read();
+		while (!chunk.done) {
+			total += chunk.value.byteLength;
+			if (total > this.MAX_REMOTE_IMG_BYTES) {
+				controller.abort();
+				throw new Error(`image exceeds ${this.MAX_REMOTE_IMG_BYTES} bytes`);
+			}
+			chunks.push(chunk.value);
+			chunk = await reader.read();
+		}
+		return Buffer.concat(chunks);
 	}
 
 	/** 按批次限制并发数量，避免同时发起过多请求 */
@@ -492,6 +567,13 @@ export class ImageRenderer {
 			imgElements.map((img) => async () => {
 				const src = img.getAttribute("src");
 				if (!this.isRemoteUrl(src)) return;
+				// IM1:非白名单(IP / 内网 / 外部域)→ 换透明占位,绝不保留原
+				// URL(否则 puppeteer 渲染时会自行抓取,SSRF 仍成立)。
+				if (!this.isFetchAllowed(src)) {
+					this.logger.warn(`[prefetch] 拦截非白名单图片 URL(SSRF 防护): ${src}`);
+					img.setAttribute("src", ImageRenderer.BLOCKED_IMG_PLACEHOLDER);
+					return;
+				}
 				try {
 					img.setAttribute("src", await this.fetchImageAsDataUrl(src));
 				} catch (err) {
@@ -520,6 +602,13 @@ export class ImageRenderer {
 		const cssUrlMap = new Map<string, string>();
 		await Promise.all(
 			[...cssUrlSet].map(async (url) => {
+				// IM1:非白名单 CSS 背景图同样换透明占位(否则 puppeteer 解析
+				// 样式时会去抓 url(...),SSRF 仍成立)。
+				if (!this.isFetchAllowed(url)) {
+					this.logger.warn(`[prefetch] 拦截非白名单 CSS 图片 URL(SSRF 防护): ${url}`);
+					cssUrlMap.set(url, ImageRenderer.BLOCKED_IMG_PLACEHOLDER);
+					return;
+				}
 				try {
 					cssUrlMap.set(url, await this.fetchImageAsDataUrl(url));
 				} catch (err) {

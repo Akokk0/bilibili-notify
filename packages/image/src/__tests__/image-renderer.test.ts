@@ -56,6 +56,7 @@ function fakeResponse(opts: {
 	status?: number;
 	statusText?: string;
 	contentType?: string | null;
+	contentLength?: number | null;
 	body?: Uint8Array;
 }): Response {
 	return {
@@ -63,8 +64,15 @@ function fakeResponse(opts: {
 		status: opts.status ?? 200,
 		statusText: opts.statusText ?? "OK",
 		headers: {
-			get: (k: string) => (k.toLowerCase() === "content-type" ? (opts.contentType ?? null) : null),
+			get: (k: string) => {
+				const key = k.toLowerCase();
+				if (key === "content-type") return opts.contentType ?? null;
+				if (key === "content-length")
+					return opts.contentLength != null ? String(opts.contentLength) : null;
+				return null;
+			},
 		},
+		// 无 body stream → readCapped 走 arrayBuffer 回退路径(仍做大小校验)。
 		arrayBuffer: async () => (opts.body ?? new Uint8Array([1, 2, 3])).buffer,
 	} as unknown as Response;
 }
@@ -186,11 +194,11 @@ describe("ImageRenderer.fetchImageAsDataUrl", () => {
 		const r = makeRenderer() as AnyRenderer;
 		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
-		r.imageCache.set("http://x/a.png", { dataUrl: "data:cached", updatedAt: 1 });
-		const out = await r.fetchImageAsDataUrl("http://x/a.png");
+		r.imageCache.set("https://i0.hdslb.com/a.png", { dataUrl: "data:cached", updatedAt: 1 });
+		const out = await r.fetchImageAsDataUrl("https://i0.hdslb.com/a.png");
 		expect(out).toBe("data:cached");
 		expect(fetchMock).not.toHaveBeenCalled();
-		expect(r.imageCache.get("http://x/a.png").updatedAt).toBeGreaterThan(1);
+		expect(r.imageCache.get("https://i0.hdslb.com/a.png").updatedAt).toBeGreaterThan(1);
 	});
 
 	it("fetch 成功 → 返回 data URL 并写入缓存", async () => {
@@ -199,9 +207,9 @@ describe("ImageRenderer.fetchImageAsDataUrl", () => {
 			"fetch",
 			vi.fn(async () => fakeResponse({ contentType: "image/png", body: new Uint8Array([65]) })),
 		);
-		const out = await r.fetchImageAsDataUrl("http://x/a.png");
+		const out = await r.fetchImageAsDataUrl("https://i0.hdslb.com/a.png");
 		expect(out).toBe(`data:image/png;base64,${Buffer.from([65]).toString("base64")}`);
-		expect(r.imageCache.has("http://x/a.png")).toBe(true);
+		expect(r.imageCache.has("https://i0.hdslb.com/a.png")).toBe(true);
 	});
 
 	it("响应无 content-type → 回退到 URL 后缀的 mime", async () => {
@@ -210,7 +218,7 @@ describe("ImageRenderer.fetchImageAsDataUrl", () => {
 			"fetch",
 			vi.fn(async () => fakeResponse({ contentType: null })),
 		);
-		const out = await r.fetchImageAsDataUrl("http://x/pic.webp");
+		const out = await r.fetchImageAsDataUrl("https://i0.hdslb.com/pic.webp");
 		expect(out.startsWith("data:image/webp;base64,")).toBe(true);
 	});
 
@@ -220,7 +228,9 @@ describe("ImageRenderer.fetchImageAsDataUrl", () => {
 			"fetch",
 			vi.fn(async () => fakeResponse({ ok: false, status: 404, statusText: "Not Found" })),
 		);
-		await expect(r.fetchImageAsDataUrl("http://x/missing.png")).rejects.toThrow("HTTP 404");
+		await expect(r.fetchImageAsDataUrl("https://i0.hdslb.com/missing.png")).rejects.toThrow(
+			"HTTP 404",
+		);
 	});
 });
 
@@ -235,10 +245,11 @@ describe("ImageRenderer.inlineRemoteImages", () => {
 			"fetch",
 			vi.fn(async () => fakeResponse({ contentType: "image/png" })),
 		);
-		const html = '<html><body><img src="https://cdn/a.png"><img src="/local/b.png"></body></html>';
+		const html =
+			'<html><body><img src="https://i0.hdslb.com/a.png"><img src="/local/b.png"></body></html>';
 		const out = await r.inlineRemoteImages(html);
 		expect(out).toContain("data:image/png;base64,");
-		expect(out).not.toContain("https://cdn/a.png");
+		expect(out).not.toContain("https://i0.hdslb.com/a.png");
 		expect(out).toContain("/local/b.png"); // 相对路径保留
 	});
 
@@ -249,10 +260,10 @@ describe("ImageRenderer.inlineRemoteImages", () => {
 			vi.fn(async () => fakeResponse({ contentType: "image/png" })),
 		);
 		const html =
-			'<html><head><style>.bg{background:url("https://cdn/bg.png")}</style></head><body></body></html>';
+			'<html><head><style>.bg{background:url("https://i0.hdslb.com/bg.png")}</style></head><body></body></html>';
 		const out = await r.inlineRemoteImages(html);
 		expect(out).toContain("data:image/png;base64,");
-		expect(out).not.toContain("https://cdn/bg.png");
+		expect(out).not.toContain("https://i0.hdslb.com/bg.png");
 	});
 
 	it("单图 fetch 失败 → 保留原 URL,不抛", async () => {
@@ -263,9 +274,98 @@ describe("ImageRenderer.inlineRemoteImages", () => {
 				throw new Error("network");
 			}),
 		);
-		const html = '<html><body><img src="https://cdn/x.png"></body></html>';
+		const html = '<html><body><img src="https://i0.hdslb.com/x.png"></body></html>';
 		const out = await r.inlineRemoteImages(html);
-		expect(out).toContain("https://cdn/x.png");
+		expect(out).toContain("https://i0.hdslb.com/x.png");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// IM1 SSRF 白名单 + IM2 大小上限
+// ---------------------------------------------------------------------------
+
+describe("ImageRenderer — IM1 SSRF 白名单", () => {
+	const PLACEHOLDER = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+
+	it("fetchImageAsDataUrl:非白名单域 → 抛 SSRF,且根本不发 fetch", async () => {
+		const r = makeRenderer() as AnyRenderer;
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		await expect(r.fetchImageAsDataUrl("https://evil.example.com/a.png")).rejects.toThrow(
+			/SSRF blocked/,
+		);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("fetchImageAsDataUrl:IP 字面量(169.254.169.254 元数据)→ 抛 SSRF", async () => {
+		const r = makeRenderer() as AnyRenderer;
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		await expect(r.fetchImageAsDataUrl("http://169.254.169.254/latest/meta-data/")).rejects.toThrow(
+			/SSRF blocked/,
+		);
+		await expect(r.fetchImageAsDataUrl("http://127.0.0.1:8080/x")).rejects.toThrow(/SSRF blocked/);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("inlineRemoteImages:非白名单 <img> → 换透明占位,不保留原 URL、不发 fetch", async () => {
+		const r = makeRenderer() as AnyRenderer;
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		const html = '<html><body><img src="http://169.254.169.254/x.png"></body></html>';
+		const out = await r.inlineRemoteImages(html);
+		expect(out).not.toContain("169.254.169.254"); // 原 URL 必须消失
+		expect(out).toContain(PLACEHOLDER);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("inlineRemoteImages:非白名单 CSS url() → 换占位", async () => {
+		const r = makeRenderer() as AnyRenderer;
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		const html =
+			'<html><head><style>.b{background:url("http://10.0.0.5/p.png")}</style></head><body></body></html>';
+		const out = await r.inlineRemoteImages(html);
+		expect(out).not.toContain("10.0.0.5");
+		expect(out).toContain(PLACEHOLDER);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+});
+
+describe("ImageRenderer — IM2 远端图大小上限", () => {
+	it("Content-Length 声明超 8MB → 抛,不下载", async () => {
+		const r = makeRenderer() as AnyRenderer;
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => fakeResponse({ contentType: "image/png", contentLength: 9 * 1024 * 1024 })),
+		);
+		await expect(r.fetchImageAsDataUrl("https://i0.hdslb.com/huge.png")).rejects.toThrow(
+			/image too large/,
+		);
+	});
+
+	it("无 Content-Length 但实体字节超限(arrayBuffer 回退路径)→ 抛", async () => {
+		const r = makeRenderer() as AnyRenderer;
+		const big = new Uint8Array(9 * 1024 * 1024);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => fakeResponse({ contentType: "image/png", body: big })),
+		);
+		await expect(r.fetchImageAsDataUrl("https://i0.hdslb.com/big.png")).rejects.toThrow(
+			/exceeds .* bytes/,
+		);
+	});
+
+	it("正常小图(白名单 + 未超限)仍成功内联", async () => {
+		const r = makeRenderer() as AnyRenderer;
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				fakeResponse({ contentType: "image/png", body: new Uint8Array([1, 2, 3, 4]) }),
+			),
+		);
+		const out = await r.fetchImageAsDataUrl("https://i0.hdslb.com/ok.png");
+		expect(out.startsWith("data:image/png;base64,")).toBe(true);
 	});
 });
 

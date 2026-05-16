@@ -217,6 +217,12 @@ export interface TemplateBundleFull {
 export type TemplateOverride = Partial<TemplateBundleFull>;
 
 export interface CardStyleFull {
+	/**
+	 * TD1 同步:规范 `CardStyleSchema.enabled`(z.boolean().default(true))。
+	 * 此前镜像漏了它 → per-UP 卡片开关在 overrides.cardStyle 的 PATCH body
+	 * 里被静默丢弃(用户在 dashboard 关某 UP 卡片不生效)。
+	 */
+	enabled: boolean;
 	cardColorStart: string;
 	cardColorEnd: string;
 }

@@ -13,6 +13,7 @@ import {
 	type FansResponse,
 	type HistoryEntryView,
 	type HistoryResponse,
+	historyQueryKey,
 	type LiveListenerSnapshot,
 } from "../services/dashboard";
 import { useAuthStore } from "../store/auth";
@@ -643,8 +644,10 @@ export default function Dashboard() {
 	// Cache is kept fresh by `usePushEventsChannel` (WS push-events → setQueryData),
 	// so KPI / recent list / trend chart update within ~1s without polling.
 	const historyQuery = useQuery({
-		queryKey: ["history"],
-		queryFn: () => api.get<HistoryResponse>("/api/history"),
+		// HI1:与 History 页(limit:200)用不同 limit-scoped 键(单一来源
+		// historyQueryKey),避免共享单缓存导致数据集随导航顺序非确定。
+		queryKey: historyQueryKey(100),
+		queryFn: () => api.get<HistoryResponse>("/api/history?limit=100"),
 	});
 	const globalsQuery = useQuery({
 		queryKey: ["globals"],

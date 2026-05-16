@@ -52,4 +52,12 @@ describe("WsTicketStore — P0-4", () => {
 		expect(store.consume(b.ticket)).toBe(true);
 		store.dispose();
 	});
+
+	it("WT1:dispose() 清除 sweep 定时器(不泄漏 interval)", () => {
+		expect(vi.getTimerCount()).toBe(0);
+		const store = createWsTicketStore({ ttlMs: 30_000 });
+		expect(vi.getTimerCount()).toBe(1); // sweep interval 已挂上
+		store.dispose();
+		expect(vi.getTimerCount()).toBe(0); // 旧实现拿不到句柄 → 这里会是 1
+	});
 });

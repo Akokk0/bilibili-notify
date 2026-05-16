@@ -375,7 +375,22 @@ export class DynamicEngine {
 
 		this.logger.debug("[detector] 成功获取动态信息，开始处理");
 
-		const currentPushDyn: Record<string, Dynamic> = {};
+		// DY1:per-uid 记账 —— 成功处理(含被过滤/开播伪动态/已发)的 pub_ts 进
+		// okTs,投递抛错的进 failTs。write-back 时只把锚点单调推进到「早于本 uid
+		// 最早失败项」的最大成功 pub_ts,既不因单条 reject 整轮 abort 导致已发项
+		// 下轮重推,也绝不越过失败项静默丢动态。
+		const okTs: Record<string, number[]> = {};
+		const failTs: Record<string, number[]> = {};
+		const markOk = (u: string, ts: number) => {
+			const arr = okTs[u];
+			if (arr) arr.push(ts);
+			else okTs[u] = [ts];
+		};
+		const markFail = (u: string, ts: number) => {
+			const arr = failTs[u];
+			if (arr) arr.push(ts);
+			else failTs[u] = [ts];
+		};
 
 		for (const item of content.data.items) {
 			if (!item) continue;
@@ -400,184 +415,207 @@ export class DynamicEngine {
 
 			if (timeline >= postTime) continue; // already pushed
 
-			// Track most recent processed dynamic per UID for timeline update.
-			// Items are most-recent-first, so first hit wins. Tracking before
-			// the filter branch ensures filter-notified dynamics also advance
-			// the timeline and avoid repeated notifications on subsequent polls.
-			if (!currentPushDyn[uid]) {
-				currentPushDyn[uid] = item;
-			}
-
-			// Filter — per-UP filter override (从 SubItemView 上拿) 优先于 engine 的全局 filter。
-			// adapter 已通过 resolve(sub, defaults).filters 完成 inherit / partial 折叠，这里
-			// 拿到的是完整 DynamicFilterConfig。空过滤器（{}）也算 override 生效，结果是「该 UP
-			// 单独关掉所有屏蔽规则」—— 与全局 filter 完全脱钩，符合用户意图。
-			const subForFilter = this.dynamicSubManager.get(uid);
-			const effFilter = subForFilter?.filter ?? this.config.filter ?? {};
-			const filterResult = filterDynamic(item, effFilter, this.logger);
-			if (filterResult.blocked) {
-				this.logger.debug(`[filter] 动态 ID=${item.id_str} 被过滤，原因：${filterResult.reason}`);
-				if (effFilter.notify && this.stillSubscribed(uid)) {
-					const msgs: Record<DynamicFilterReason, string> = {
-						[DynamicFilterReason.BlacklistKeyword]: `${name}发布了一条含有屏蔽关键字的动态`,
-						[DynamicFilterReason.BlacklistForward]: `${name}转发了一条动态，已屏蔽`,
-						[DynamicFilterReason.BlacklistArticle]: `${name}投稿了一条专栏，已屏蔽`,
-						[DynamicFilterReason.WhitelistUnmatched]: `${name}发布了一条不在白名单范围内的动态，已屏蔽`,
-					};
-					await this.push.broadcastDynamic(
-						uid,
-						[{ type: "text", text: msgs[filterResult.reason as DynamicFilterReason] }],
-						"dynamic",
-					);
-				}
-				continue;
-			}
-
-			// Render card
-			const sub = this.dynamicSubManager.get(uid);
-			let buffer: Buffer | undefined;
+			// DY1:每条 qualifying item 必须恰好 markOk 或 markFail 一次。投递抛
+			// 错只标记本条 fail 并 continue,绝不让异常冒泡 abort 整轮(否则同轮
+			// 已成功发出的早项下轮重推)。
 			try {
-				if (this.image && this.config.imageEnabled !== false) {
-					// dynamic-engine 与 image-engine 的 Dynamic 类型同源同构（皆为 Bilibili
-					// 动态接口的子集，仅声明字段不同），运行时是同一对象。这里用 unknown
-					// 中转的类型断言避开两份独立 .d.ts 的结构性差异。
-					buffer = await this.image.generateDynamicCard(
-						item as unknown as Parameters<ImageRenderer["generateDynamicCard"]>[0],
-						sub?.customCardStyle?.enable ? sub.customCardStyle : undefined,
-					);
-				}
-			} catch (e) {
-				const err = e as Error;
-				if (err.message === "直播开播动态，不做处理") continue;
-				// 软降级：图片渲染失败不再永久停 cron。让流程继续走 text-only 推送，
-				// 同时只在连续失败首次通知一次管理员，避免长时间无服务又不刷屏。
-				this.imageFailureStreak++;
-				this.logger.error(
-					`[image] 生成动态图片失败 (连续 ${this.imageFailureStreak} 次): ${err.message}`,
-				);
-				if (!this.imageFailureNotified) {
-					// notify-once:此前在 await sendErrorMsg 之前就置 notified=true,
-					// 一旦该次通知 reject,notified 永远为 true 而通知从未真正送达 ——
-					// 后续失败被静默抑制。改为通知成功后才置位,失败则下轮重试通知。
-					try {
-						await this.push.sendErrorMsg(
-							`生成动态图片失败：${err.message}，已降级为纯文字推送，请检查图片插件状态`,
-						);
-						this.bus.emit("engine-error", LOG_TAG, `生成动态图片失败：${err.message}`);
-						this.imageFailureNotified = true;
-					} catch (notifyErr) {
-						this.logger.warn(
-							`[image] 失败通知发送失败,下轮将重试通知: ${(notifyErr as Error).message}`,
-						);
-					}
-				}
-				buffer = undefined;
-			}
-			// 渲染成功后重置失败追踪，恢复后续通知能力
-			if (buffer) {
-				if (this.imageFailureStreak > 0) {
-					this.logger.info(`[image] 图片渲染已恢复（之前连续失败 ${this.imageFailureStreak} 次）`);
-				}
-				this.imageFailureStreak = 0;
-				this.imageFailureNotified = false;
-			}
-
-			// Build URL suffix
-			let dUrl = "";
-			if (this.config.dynamicUrl) {
-				if (item.type === "DYNAMIC_TYPE_AV") {
-					const jumpUrl = item.modules.module_dynamic.major?.archive?.jump_url ?? "";
-					if (this.config.dynamicVideoUrlToBV) {
-						const bvMatch = jumpUrl.match(/BV[0-9A-Za-z]+/);
-						dUrl = bvMatch ? bvMatch[0] : "";
-					} else {
-						dUrl = `${name}发布了新视频：https:${jumpUrl}`;
-					}
-				} else {
-					dUrl = `${name}发布了一条动态：https://t.bilibili.com/${item.id_str}`;
-				}
-			}
-
-			// AI comment — adapter 在 SubItemView 上可附 per-UP aiOverride，传给 comment()
-			// 后仅对该次调用生效；缺失时 fall through 到 CommentaryGenerator 的全局 config。
-			let aiComment: string | undefined;
-			if (this.ai && this.config.aiEnabled !== false) {
-				const dynamicText = extractDynamicText(item);
-				if (dynamicText) {
-					const imageUrls = extractDynamicImages(item);
-					const subForAi = this.dynamicSubManager.get(uid);
-					this.logger.debug(
-						`[ai] 开始生成动态点评，文本长度=${dynamicText.length}，图片数=${imageUrls.length}${subForAi?.aiOverride ? "，命中 per-UP override" : ""}`,
-					);
-					try {
-						aiComment = await this.ai.comment(
-							`${name}发布了一条动态，内容如下：\n${dynamicText}`,
+				// Filter — per-UP filter override (从 SubItemView 上拿) 优先于 engine 的全局 filter。
+				// adapter 已通过 resolve(sub, defaults).filters 完成 inherit / partial 折叠，这里
+				// 拿到的是完整 DynamicFilterConfig。空过滤器（{}）也算 override 生效，结果是「该 UP
+				// 单独关掉所有屏蔽规则」—— 与全局 filter 完全脱钩，符合用户意图。
+				const subForFilter = this.dynamicSubManager.get(uid);
+				const effFilter = subForFilter?.filter ?? this.config.filter ?? {};
+				const filterResult = filterDynamic(item, effFilter, this.logger);
+				if (filterResult.blocked) {
+					this.logger.debug(`[filter] 动态 ID=${item.id_str} 被过滤，原因：${filterResult.reason}`);
+					if (effFilter.notify && this.stillSubscribed(uid)) {
+						const msgs: Record<DynamicFilterReason, string> = {
+							[DynamicFilterReason.BlacklistKeyword]: `${name}发布了一条含有屏蔽关键字的动态`,
+							[DynamicFilterReason.BlacklistForward]: `${name}转发了一条动态，已屏蔽`,
+							[DynamicFilterReason.BlacklistArticle]: `${name}投稿了一条专栏，已屏蔽`,
+							[DynamicFilterReason.WhitelistUnmatched]: `${name}发布了一条不在白名单范围内的动态，已屏蔽`,
+						};
+						await this.push.broadcastDynamic(
+							uid,
+							[{ type: "text", text: msgs[filterResult.reason as DynamicFilterReason] }],
 							"dynamic",
-							imageUrls,
-							subForAi?.aiOverride,
 						);
-						this.logger.debug(`[ai] 动态点评生成完毕，长度=${aiComment?.length ?? 0}`);
-					} catch (e) {
-						this.logger.error(`[ai] AI 点评生成失败：${(e as Error).message}，回退到普通文字`);
 					}
-				} else {
-					this.logger.debug("[ai] 动态无可提取文本，跳过 AI 点评");
+					// 被过滤(含 notify 已发)= 已处理,推进锚点避免下轮重判。
+					markOk(uid, postTime);
+					continue;
 				}
-			}
 
-			// 跨 image/AI 多个 await 后重校:期间 applyOps 可能已退订该 UID。
-			// 仍 dispatch 会给已退订用户推送,且下方时间线回写会“复活”其时间线。
-			if (!this.stillSubscribed(uid)) {
-				this.logger.debug(`[detector] UID=${uid} 在本轮处理中已退订，跳过推送`);
-				continue;
-			}
-
-			// Send
-			const textPart = aiComment ?? (dUrl || undefined);
-			const segments: PushSegment[] = buffer
-				? [
-						{ type: "image", buffer, mime: "image/jpeg" },
-						...(textPart ? ([{ type: "text", text: textPart }] as PushSegment[]) : []),
-					]
-				: [{ type: "text", text: aiComment ?? `${name}发布了一条动态${dUrl ? `：${dUrl}` : ""}` }];
-			await this.push.broadcastDynamic(uid, segments, "dynamic");
-
-			// Push extra images from draw dynamics
-			if (this.config.pushImgsInDynamic && item.type === "DYNAMIC_TYPE_DRAW") {
-				const pics = item.modules?.module_dynamic?.major?.opus?.pics;
-				if (pics?.length) {
-					await this.push.broadcastDynamic(
-						uid,
-						[
-							{
-								type: "image-group",
-								forward: true,
-								urls: pics.map((p) => p.url),
-							},
-						],
-						"dynamic-images",
+				// Render card
+				const sub = this.dynamicSubManager.get(uid);
+				let buffer: Buffer | undefined;
+				try {
+					if (this.image && this.config.imageEnabled !== false) {
+						// dynamic-engine 与 image-engine 的 Dynamic 类型同源同构（皆为 Bilibili
+						// 动态接口的子集，仅声明字段不同），运行时是同一对象。这里用 unknown
+						// 中转的类型断言避开两份独立 .d.ts 的结构性差异。
+						buffer = await this.image.generateDynamicCard(
+							item as unknown as Parameters<ImageRenderer["generateDynamicCard"]>[0],
+							sub?.customCardStyle?.enable ? sub.customCardStyle : undefined,
+						);
+					}
+				} catch (e) {
+					const err = e as Error;
+					if (err.message === "直播开播动态，不做处理") {
+						// 开播伪动态由 live 引擎处理,这里视为已处理,推进锚点。
+						markOk(uid, postTime);
+						continue;
+					}
+					// 软降级：图片渲染失败不再永久停 cron。让流程继续走 text-only 推送，
+					// 同时只在连续失败首次通知一次管理员，避免长时间无服务又不刷屏。
+					this.imageFailureStreak++;
+					this.logger.error(
+						`[image] 生成动态图片失败 (连续 ${this.imageFailureStreak} 次): ${err.message}`,
 					);
+					if (!this.imageFailureNotified) {
+						// notify-once:此前在 await sendErrorMsg 之前就置 notified=true,
+						// 一旦该次通知 reject,notified 永远为 true 而通知从未真正送达 ——
+						// 后续失败被静默抑制。改为通知成功后才置位,失败则下轮重试通知。
+						try {
+							await this.push.sendErrorMsg(
+								`生成动态图片失败：${err.message}，已降级为纯文字推送，请检查图片插件状态`,
+							);
+							this.bus.emit("engine-error", LOG_TAG, `生成动态图片失败：${err.message}`);
+							this.imageFailureNotified = true;
+						} catch (notifyErr) {
+							this.logger.warn(
+								`[image] 失败通知发送失败,下轮将重试通知: ${(notifyErr as Error).message}`,
+							);
+						}
+					}
+					buffer = undefined;
 				}
+				// 渲染成功后重置失败追踪，恢复后续通知能力
+				if (buffer) {
+					if (this.imageFailureStreak > 0) {
+						this.logger.info(
+							`[image] 图片渲染已恢复（之前连续失败 ${this.imageFailureStreak} 次）`,
+						);
+					}
+					this.imageFailureStreak = 0;
+					this.imageFailureNotified = false;
+				}
+
+				// Build URL suffix
+				let dUrl = "";
+				if (this.config.dynamicUrl) {
+					if (item.type === "DYNAMIC_TYPE_AV") {
+						const jumpUrl = item.modules.module_dynamic.major?.archive?.jump_url ?? "";
+						if (this.config.dynamicVideoUrlToBV) {
+							const bvMatch = jumpUrl.match(/BV[0-9A-Za-z]+/);
+							dUrl = bvMatch ? bvMatch[0] : "";
+						} else {
+							dUrl = `${name}发布了新视频：https:${jumpUrl}`;
+						}
+					} else {
+						dUrl = `${name}发布了一条动态：https://t.bilibili.com/${item.id_str}`;
+					}
+				}
+
+				// AI comment — adapter 在 SubItemView 上可附 per-UP aiOverride，传给 comment()
+				// 后仅对该次调用生效；缺失时 fall through 到 CommentaryGenerator 的全局 config。
+				let aiComment: string | undefined;
+				if (this.ai && this.config.aiEnabled !== false) {
+					const dynamicText = extractDynamicText(item);
+					if (dynamicText) {
+						const imageUrls = extractDynamicImages(item);
+						const subForAi = this.dynamicSubManager.get(uid);
+						this.logger.debug(
+							`[ai] 开始生成动态点评，文本长度=${dynamicText.length}，图片数=${imageUrls.length}${subForAi?.aiOverride ? "，命中 per-UP override" : ""}`,
+						);
+						try {
+							aiComment = await this.ai.comment(
+								`${name}发布了一条动态，内容如下：\n${dynamicText}`,
+								"dynamic",
+								imageUrls,
+								subForAi?.aiOverride,
+							);
+							this.logger.debug(`[ai] 动态点评生成完毕，长度=${aiComment?.length ?? 0}`);
+						} catch (e) {
+							this.logger.error(`[ai] AI 点评生成失败：${(e as Error).message}，回退到普通文字`);
+						}
+					} else {
+						this.logger.debug("[ai] 动态无可提取文本，跳过 AI 点评");
+					}
+				}
+
+				// 跨 image/AI 多个 await 后重校:期间 applyOps 可能已退订该 UID。
+				// 仍 dispatch 会给已退订用户推送,且下方时间线回写会“复活”其时间线。
+				if (!this.stillSubscribed(uid)) {
+					this.logger.debug(`[detector] UID=${uid} 在本轮处理中已退订，跳过推送`);
+					continue;
+				}
+
+				// Send
+				const textPart = aiComment ?? (dUrl || undefined);
+				const segments: PushSegment[] = buffer
+					? [
+							{ type: "image", buffer, mime: "image/jpeg" },
+							...(textPart ? ([{ type: "text", text: textPart }] as PushSegment[]) : []),
+						]
+					: [
+							{
+								type: "text",
+								text: aiComment ?? `${name}发布了一条动态${dUrl ? `：${dUrl}` : ""}`,
+							},
+						];
+				await this.push.broadcastDynamic(uid, segments, "dynamic");
+
+				// Push extra images from draw dynamics
+				if (this.config.pushImgsInDynamic && item.type === "DYNAMIC_TYPE_DRAW") {
+					const pics = item.modules?.module_dynamic?.major?.opus?.pics;
+					if (pics?.length) {
+						await this.push.broadcastDynamic(
+							uid,
+							[
+								{
+									type: "image-group",
+									forward: true,
+									urls: pics.map((p) => p.url),
+								},
+							],
+							"dynamic-images",
+						);
+					}
+				}
+				markOk(uid, postTime);
+			} catch (e) {
+				markFail(uid, postTime);
+				this.logger.warn(
+					`[detector] 推送失败 UID=${uid} ID=${item.id_str ?? "?"}：${(e as Error).message}`,
+				);
 			}
 		}
 
-		// Update timelines
-		for (const [uid, item] of Object.entries(currentPushDyn)) {
-			// 本轮处理中被 applyOps 退订的 UID:其时间线已被 stopDynamicForUid
-			// 删除,这里若再 set 等于“复活”一条孤儿时间线 —— 该 UID 再次订阅时
-			// 会被这条陈旧锚点长期抑制。跳过。
+		// DY1:per-uid 锚点单调推进 —— 只推进到「严格早于本 uid 最早失败项」的
+		// 最大成功 pub_ts;无失败则推进到最大成功项。max(existing,…) 绝不回退,
+		// 失败项及其后(更早)成功项下轮重试/重推,绝不静默越过失败项丢动态。
+		for (const uid of new Set([...Object.keys(okTs), ...Object.keys(failTs)])) {
+			// applyOps 本轮删过的 UID:时间线已被 stopDynamicForUid 删除,这里
+			// 再 set 等于复活孤儿锚点,跳过(A7)。
 			if (!this.stillSubscribed(uid)) {
 				this.logger.debug(`[timeline] UID=${uid} 已退订，跳过时间线回写（不复活）`);
 				continue;
 			}
-			const postTime = item.modules.module_author.pub_ts;
-			this.dynamicTimelineManager.set(uid, postTime);
+			const fails = failTs[uid] ?? [];
+			const minFail = fails.length ? Math.min(...fails) : Number.POSITIVE_INFINITY;
+			const safeOks = (okTs[uid] ?? []).filter((t) => t < minFail);
+			if (safeOks.length === 0) continue;
+			const existing = this.dynamicTimelineManager.get(uid) ?? 0;
+			const next = Math.max(existing, ...safeOks);
+			if (next <= existing) continue;
+			this.dynamicTimelineManager.set(uid, next);
 			this.logger.debug(
-				`[timeline] 更新时间线 UID=${uid} 时间=${DateTime.fromSeconds(postTime).toFormat("yyyy-MM-dd HH:mm:ss")}`,
+				`[timeline] 更新时间线 UID=${uid} 时间=${DateTime.fromSeconds(next).toFormat("yyyy-MM-dd HH:mm:ss")}`,
 			);
 		}
 
-		this.logger.debug(`[detector] 本次推送 ${Object.keys(currentPushDyn).length} 条动态`);
+		this.logger.debug(`[detector] 本次成功处理 ${Object.keys(okTs).length} 个 UP 的动态`);
 	}
 
 	private async handleApiError(code: number, message: string): Promise<void> {
