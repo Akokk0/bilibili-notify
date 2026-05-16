@@ -464,6 +464,27 @@ describe("DynamicEngine — 图片失败软降级状态机", () => {
 		expect(b.emits.filter((e) => e.event === "engine-error")).toHaveLength(1);
 	});
 
+	it("A3:首次失败的 sendErrorMsg reject → notified 不置位,下轮失败重试通知", async () => {
+		const b = makeEngine({ withImage: true });
+		b.generateDynamicCard.mockRejectedValue(new Error("chrome crash"));
+		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		seed(b.engine, "1", 0);
+
+		// 轮1:渲染失败 + 通知本身 reject。
+		b.push.sendErrorMsg.mockRejectedValueOnce(new Error("push down"));
+		await detect(b.engine);
+		expect(b.push.sendErrorMsg).toHaveBeenCalledTimes(1);
+		// 关键不变量:通知没送达 → notified 必须仍 false(旧实现在 await 前置位
+		// → reject 后永远 true,后续失败永久静默)。
+		expect(priv(b.engine).imageFailureNotified).toBe(false);
+
+		// 轮2:再失败,这次通知成功 → 因 notified 仍 false,重试并送达后才置位。
+		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 2000 })]));
+		await detect(b.engine);
+		expect(b.push.sendErrorMsg).toHaveBeenCalledTimes(2);
+		expect(priv(b.engine).imageFailureNotified).toBe(true);
+	});
+
 	it("特殊错误「直播开播动态，不做处理」→ continue,不计失败也不告警", async () => {
 		const b = makeEngine({ withImage: true });
 		b.generateDynamicCard.mockRejectedValue(new Error("直播开播动态，不做处理"));
@@ -498,6 +519,28 @@ describe("DynamicEngine — 图片失败软降级状态机", () => {
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 3000 })]));
 		await detect(b.engine);
 		expect(b.push.sendErrorMsg).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("DynamicEngine — applyOps 在 detectDynamics 跨 await 时退订(A7)", () => {
+	it("渲染 await 期间 delete 该 UID → 不推送 + 不复活时间线", async () => {
+		const b = makeEngine({ withImage: true });
+		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		seed(b.engine, "1", 0);
+		// 模拟交错:generateDynamicCard 解析前,adapter 收到 subscription-changed
+		// 调 applyOps 退订 uid 1(stopDynamicForUid 删两张表)。
+		b.generateDynamicCard.mockImplementation(async () => {
+			b.engine.applyOps([{ type: "delete", uid: "1" }]);
+			return undefined;
+		});
+
+		await detect(b.engine);
+
+		expect(priv(b.engine).dynamicSubManager.has("1")).toBe(false); // 确已退订
+		// stillSubscribed 守卫:已退订 → 不得再 broadcast。
+		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
+		// 时间线回写守卫:不得把已删 UID 的时间线“复活”成孤儿锚点。
+		expect(priv(b.engine).dynamicTimelineManager.has("1")).toBe(false);
 	});
 });
 

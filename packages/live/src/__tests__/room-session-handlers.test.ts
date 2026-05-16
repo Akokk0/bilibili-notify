@@ -302,6 +302,37 @@ describe("RoomSession.onLiveStart", () => {
 		expect(s.armPeriodicTimer).toHaveBeenCalledTimes(1);
 	});
 
+	it("A5:卡片推送 await 期间交错下播翻 idle → 不再 armPeriodicTimer", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		s.useLiveRoomInfo = vi.fn(async () => {
+			s.liveRoomInfo = {
+				live_time: "2026-01-01 00:00:00",
+				short_id: 0,
+				room_id: 12345,
+				title: "标题",
+				user_cover: "",
+			};
+			return true;
+		});
+		s.useMasterInfo = vi.fn(async () => {
+			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 100 };
+			return true;
+		});
+		s.armPeriodicTimer = vi.fn();
+		// 模拟交错:卡片渲染+推送这步 await 期间,onLiveEnd→handleLiveEnd 已把
+		// liveStatus 翻 idle。
+		m.sendLiveNotifyCard.mockImplementation(async () => {
+			s.liveStatus = false;
+		});
+
+		await s.onLiveStart();
+
+		expect(m.sendLiveNotifyCard).toHaveBeenCalledTimes(1); // 卡片在 guard 之前已发
+		// 关键不变量:完成时已非开播态 → 绝不 arm 周期定时器(否则 idle 房挂 live timer)。
+		expect(s.armPeriodicTimer).not.toHaveBeenCalled();
+	});
+
 	it("拉直播间信息失败(useLiveRoomInfo=false)→ stopMonitoring,不推卡", async () => {
 		const { ctx, m } = makeCtx();
 		const s = new RoomSession(ctx, makeSub()) as AnySession;

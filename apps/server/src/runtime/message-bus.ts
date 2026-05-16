@@ -20,7 +20,16 @@ export function createNodeMessageBus(): MessageBus {
 		},
 		on<E extends keyof BiliEvents>(event: E, handler: BiliEvents[E]) {
 			const wrapped = (...args: unknown[]) => {
-				(handler as (...a: unknown[]) => void)(...args);
+				const r = (handler as (...a: unknown[]) => unknown)(...args);
+				// BiliEvents handler 类型上是同步 (=> void)。防御兜底:若某处注册了
+				// async handler,其 reject 此前会逃逸成 unhandled rejection。该 infra
+				// 原语不持 logger,console.error 是最后一道网(不改同步抛出语义,
+				// 也不影响 koishi/runtime message-bus.test.ts 的“每监听器恰一次”契约)。
+				if (r && typeof (r as { then?: unknown }).then === "function") {
+					(r as Promise<unknown>).catch((e) => {
+						console.error(`[message-bus] async handler for "${String(event)}" rejected:`, e);
+					});
+				}
 			};
 			emitter.on(event as string, wrapped);
 			return {

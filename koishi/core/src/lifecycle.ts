@@ -59,8 +59,18 @@ export async function bringUp(deps: LifecycleDeps): Promise<boolean> {
 		serviceCtx: apiServiceCtx,
 		config: { userAgent: config.userAgent },
 		callbacks: {
-			onCookiesRefreshed: (data) => deps.ctx.emit("bilibili-notify/cookies-refreshed", data),
-			onAuthLost: () => void deps.slots.loginBridge?.flow.handleAuthLost(),
+			// block body → 显式返回 void(契合 onCookiesRefreshed 的 Promise<void>|void
+			// 类型;ctx.emit 的 boolean 返回值不再泄漏)。
+			onCookiesRefreshed: (data) => {
+				deps.ctx.emit("bilibili-notify/cookies-refreshed", data);
+			},
+			// 与 standalone A1 同款:handleAuthLost() 是 Promise,此前 void 丢弃 →
+			// reject 成 unhandled + auth-lost 迁移静默失败。改 .catch 经 logger。
+			onAuthLost: () => {
+				deps.slots.loginBridge?.flow.handleAuthLost()?.catch((e) => {
+					apiServiceCtx.logger.error(`[auth] auth-lost 处理失败: ${(e as Error).message ?? e}`);
+				});
+			},
 		},
 	});
 

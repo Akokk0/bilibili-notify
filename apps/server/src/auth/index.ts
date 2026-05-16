@@ -89,15 +89,20 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 		serviceCtx: opts.serviceCtx,
 		config: {},
 		callbacks: {
-			onCookiesRefreshed: (data) => {
-				// Forward to the bus so dashboards see the refresh, AND persist to disk.
+			// async + await:让 api 端能 await 持久化并在 reject 时响亮记日志
+			// (旧实现 fire-and-forget + 自吞,refresh 仍判成功;现由 api 调用点
+			// try/catch 统一处理,内存已刷新而盘上为旧值的状态被显式 error 标注)。
+			onCookiesRefreshed: async (data) => {
 				opts.bus.emit("cookies-refreshed", data);
-				storage.cookieStore.save(data).catch((e) => {
-					log.error(`[auth] 保存刷新后的 cookie 失败: ${e}`);
-				});
+				await storage.cookieStore.save(data);
 			},
+			// handleAuthLost() 是 Promise:此前 void 丢弃 → reject 成 unhandled
+			// 且 auth-lost 状态迁移静默失败。改 .catch 经 logger;flow 仍为
+			// undefined 时(构造期)?. 双重短路不调用 .catch。
 			onAuthLost: () => {
-				void flow?.handleAuthLost();
+				flow?.handleAuthLost()?.catch((e) => {
+					log.error(`[auth] auth-lost 处理失败: ${(e as Error).message ?? e}`);
+				});
 			},
 		},
 	});

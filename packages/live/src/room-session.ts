@@ -337,6 +337,17 @@ export class RoomSession extends RoomSessionBase {
 		});
 
 		if (this.ctx.isDisposed()) return;
+		// 跨 useLiveRoomInfo / useMasterInfo / getTimeDifference / sendLiveNotifyCard
+		// 这串长 await(卡片渲染+推送可数秒)后重校 liveStatus:期间可能已交错
+		// onLiveEnd → handleLiveEnd 把状态翻 idle 并 teardown。此刻若已非开播态,
+		// 这条 stale start 绝不能再 armPeriodicTimer,否则 idle 房间被挂上 live
+		// 周期定时器(轮询/词云/总结全部错位触发)。
+		if (!this.liveStatus) {
+			this.ctx.logger.warn(
+				`[live] 直播间 [${this.sub.roomId}] 开播流程完成时已非开播态（疑似交错下播），跳过周期任务`,
+			);
+			return;
+		}
 		this.armPeriodicTimer();
 	}
 

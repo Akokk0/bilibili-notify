@@ -29,7 +29,13 @@ export interface CookiesRefreshedPayload {
 }
 
 export interface BilibiliAPICallbacks {
-	onCookiesRefreshed?: (payload: CookiesRefreshedPayload) => void;
+	/**
+	 * Persist refreshed cookies. May be async — the refresh path `await`s it and
+	 * loudly logs a reject (in-memory jar is already updated; only disk lagged),
+	 * instead of the old `void`-typed fire-and-forget that let a persistence
+	 * failure pass as a successful refresh with an unhandled rejection.
+	 */
+	onCookiesRefreshed?: (payload: CookiesRefreshedPayload) => Promise<void> | void;
 	/** Fired when the upstream returns code -101 (session invalid). Debounced 60s. */
 	onAuthLost?: () => void;
 }
@@ -62,6 +68,17 @@ export class BilibiliAPI {
 	private refreshCookieTimer?: Disposable;
 	private loginInfoLoaded = false;
 	private authLostFiredAt = 0;
+	/**
+	 * Bumped on every event that supersedes the cookie state a refresh was
+	 * started against (loadCookies re-entry / clearCookies / -101 reset). An
+	 * in-flight `checkIfTokenNeedRefresh` captures the value at entry and aborts
+	 * before applying side effects if it changed — otherwise a slow refresh from
+	 * a previous login lands late and `onCookiesRefreshed` overwrites the new
+	 * session's cookies with stale ones.
+	 */
+	private refreshGeneration = 0;
+	/** Single-in-flight guard so the hourly timer + loadCookies don't run the RSA dance concurrently. */
+	private refreshInFlight = false;
 
 	constructor(opts: BilibiliAPIOptions) {
 		this.serviceCtx = opts.serviceCtx;
@@ -233,13 +250,33 @@ export class BilibiliAPI {
 		this.loginInfoLoaded = true;
 		this.logger.debug(`[cookie] Cookie 写入完成，bili_jct=${biliJctCookie ? "存在" : "缺失"}`);
 
+		// 重入(re-login / hot-reload):作废上一轮可能仍 in-flight 的 refresh,
+		// 否则它完成时会用旧 jar 的 cookie 覆盖刚写入的新登录态。
+		this.refreshGeneration++;
+
 		if (data.refreshToken) {
 			const csrf = biliJctCookie?.value ?? "";
-			this.checkIfTokenNeedRefresh(data.refreshToken, csrf).catch((e: Error) =>
-				this.logger.warn(`[cookie] Cookie 刷新检查失败: ${e.message}`),
-			);
+			this.triggerRefreshCheck(data.refreshToken, csrf);
 			this.enableRefreshCookiesInterval(data.refreshToken, csrf);
 		}
+	}
+
+	/**
+	 * Guarded fire-and-forget entry to {@link checkIfTokenNeedRefresh} used by
+	 * the two internal triggers (loadCookies / hourly timer). Skips if a refresh
+	 * is already running so the RSA/correspond/confirm dance never overlaps.
+	 */
+	private triggerRefreshCheck(refreshToken: string, csrf: string): void {
+		if (this.refreshInFlight) {
+			this.logger.debug("[cookie] 刷新检查已在进行,跳过本次触发");
+			return;
+		}
+		this.refreshInFlight = true;
+		this.checkIfTokenNeedRefresh(refreshToken, csrf)
+			.catch((e: Error) => this.logger.warn(`[cookie] Cookie 刷新检查失败: ${e.message}`))
+			.finally(() => {
+				this.refreshInFlight = false;
+			});
 	}
 
 	markLoginInfoLoaded(): void {
@@ -258,6 +295,8 @@ export class BilibiliAPI {
 	 * (登出后已无 refreshToken 可刷),标记未登录。
 	 */
 	async clearCookies(): Promise<void> {
+		// 作废任何 in-flight refresh —— 登出后它不得再 onCookiesRefreshed 回写。
+		this.refreshGeneration++;
 		this.refreshCookieTimer?.dispose();
 		this.refreshCookieTimer = undefined;
 		this.jar = new CookieJar();
@@ -275,15 +314,24 @@ export class BilibiliAPI {
 		this.refreshCookieTimer?.dispose();
 		this.refreshCookieTimer = this.serviceCtx.setInterval(() => {
 			const csrf2 = this.getCSRF() ?? csrf;
-			this.checkIfTokenNeedRefresh(refreshToken, csrf2).catch((e: Error) =>
-				this.logger.warn(`[cookie] 定时 Cookie 刷新失败: ${e.message}`),
-			);
+			this.triggerRefreshCheck(refreshToken, csrf2);
 		}, 3_600_000);
 	}
 
 	// ---- Cookie refresh ----
 
-	async checkIfTokenNeedRefresh(refreshToken: string, csrf: string, attempts = 3): Promise<void> {
+	async checkIfTokenNeedRefresh(
+		refreshToken: string,
+		csrf: string,
+		attempts = 3,
+		gen = this.refreshGeneration,
+	): Promise<void> {
+		// 入口 + 每次跨 await 后比对 gen:loadCookies/clearCookies/-101 任一发生
+		// 都会 bump,本轮(及其重试链)随即作废,绝不把过期结果写回。
+		if (gen !== this.refreshGeneration) {
+			this.logger.debug("[cookie] 刷新已被更新的 cookie 状态取代,跳过本轮");
+			return;
+		}
 		try {
 			// 传真实 bili_jct(优先 live jar,回退调用方传入值),不是 refreshToken。
 			const info = await this.getCookieInfo(this.getCSRF() ?? csrf);
@@ -295,7 +343,7 @@ export class BilibiliAPI {
 				await new Promise<void>((resolveSleep) => {
 					this.serviceCtx.setTimeout(resolveSleep, 3000);
 				});
-				return this.checkIfTokenNeedRefresh(refreshToken, csrf, attempts - 1);
+				return this.checkIfTokenNeedRefresh(refreshToken, csrf, attempts - 1, gen);
 			}
 			// 重试耗尽:**不能** fall through 去强制 refresh —— 我们此刻并不知道
 			// cookie 是否真需要刷新,一次瞬时网络抖动就触发整条 RSA/correspond/
@@ -342,10 +390,19 @@ export class BilibiliAPI {
 			{ headers: { "Content-Type": "application/x-www-form-urlencoded" } },
 		);
 
+		// RSA/correspond/refresh 这串网络往返期间若 cookie 状态已被替换,
+		// 后面的 jar 重置 / 持久化都基于过期前提,丢弃本轮。
+		if (gen !== this.refreshGeneration) {
+			this.logger.debug("[cookie] 刷新结果在网络往返期间被取代,丢弃");
+			return;
+		}
+
 		if (refreshData.code === -101) {
 			this.logger.warn(
 				"[cookie] 刷新接口返回 -101（账号未登录），已重置 HTTP 客户端，需重新扫码登录",
 			);
+			// session 失效 ⇒ 作废所有 in-flight refresh。
+			this.refreshGeneration++;
 			this.maybeFireAuthLost(-101);
 			this.jar = new CookieJar();
 			await this.initClient();
@@ -368,11 +425,25 @@ export class BilibiliAPI {
 			throw new Error(`Cookie 刷新确认失败: code=${acceptData.code}`);
 		}
 
-		// 通知 core 持久化新 cookie
-		this.callbacks.onCookiesRefreshed?.({
-			cookiesJson: this.getCookiesJson() ?? "[]",
-			refreshToken: refreshData.data.refresh_token as string,
-		});
+		// confirm POST 之后再校一次:此刻才会写盘,绝不能用过期 gen 的结果
+		// 覆盖一个更新的登录态。
+		if (gen !== this.refreshGeneration) {
+			this.logger.debug("[cookie] 刷新完成但已被取代,不回写持久化");
+			return;
+		}
+
+		// 通知 core 持久化新 cookie。await + try/catch:持久化失败时内存 jar
+		// 已是新 cookie、盘上仍旧值 —— 响亮记 error,不再 reject 逃逸成功判定。
+		try {
+			await this.callbacks.onCookiesRefreshed?.({
+				cookiesJson: this.getCookiesJson() ?? "[]",
+				refreshToken: refreshData.data.refresh_token as string,
+			});
+		} catch (e) {
+			this.logger.error(
+				`[cookie] onCookiesRefreshed 持久化失败(内存 cookie 已更新,盘上为旧值,下次启动将回退): ${(e as Error).message}`,
+			);
+		}
 	}
 
 	// ---- WBI signature ----

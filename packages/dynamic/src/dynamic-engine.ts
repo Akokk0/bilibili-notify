@@ -282,6 +282,16 @@ export class DynamicEngine {
 		this.logger.info(`[ops] 移除动态订阅 UID：${uid}`);
 	}
 
+	/**
+	 * UID 是否仍订阅。detectDynamics 在 image/AI/broadcast 等多个 await 处挂起,
+	 * `applyOps`(由 adapter 在 subscription-changed 时调,**不**在 withLock 内)
+	 * 可在挂起期 stopDynamicForUid 删表。每个 dispatch / 时间线回写前用它重校,
+	 * 否则会给已退订 UID 推送、并把其时间线“复活”进而长期抑制再订阅后的动态。
+	 */
+	private stillSubscribed(uid: string): boolean {
+		return this.dynamicSubManager.has(uid);
+	}
+
 	/** Incrementally apply subscription ops without restarting the cron job. */
 	applyOps(ops: SubscriptionOpView[]): void {
 		let jobNeedsReconcile = false;
@@ -407,7 +417,7 @@ export class DynamicEngine {
 			const filterResult = filterDynamic(item, effFilter, this.logger);
 			if (filterResult.blocked) {
 				this.logger.debug(`[filter] 动态 ID=${item.id_str} 被过滤，原因：${filterResult.reason}`);
-				if (effFilter.notify) {
+				if (effFilter.notify && this.stillSubscribed(uid)) {
 					const msgs: Record<DynamicFilterReason, string> = {
 						[DynamicFilterReason.BlacklistKeyword]: `${name}发布了一条含有屏蔽关键字的动态`,
 						[DynamicFilterReason.BlacklistForward]: `${name}转发了一条动态，已屏蔽`,
@@ -446,11 +456,20 @@ export class DynamicEngine {
 					`[image] 生成动态图片失败 (连续 ${this.imageFailureStreak} 次): ${err.message}`,
 				);
 				if (!this.imageFailureNotified) {
-					this.imageFailureNotified = true;
-					await this.push.sendErrorMsg(
-						`生成动态图片失败：${err.message}，已降级为纯文字推送，请检查图片插件状态`,
-					);
-					this.bus.emit("engine-error", LOG_TAG, `生成动态图片失败：${err.message}`);
+					// notify-once:此前在 await sendErrorMsg 之前就置 notified=true,
+					// 一旦该次通知 reject,notified 永远为 true 而通知从未真正送达 ——
+					// 后续失败被静默抑制。改为通知成功后才置位,失败则下轮重试通知。
+					try {
+						await this.push.sendErrorMsg(
+							`生成动态图片失败：${err.message}，已降级为纯文字推送，请检查图片插件状态`,
+						);
+						this.bus.emit("engine-error", LOG_TAG, `生成动态图片失败：${err.message}`);
+						this.imageFailureNotified = true;
+					} catch (notifyErr) {
+						this.logger.warn(
+							`[image] 失败通知发送失败,下轮将重试通知: ${(notifyErr as Error).message}`,
+						);
+					}
 				}
 				buffer = undefined;
 			}
@@ -506,6 +525,13 @@ export class DynamicEngine {
 				}
 			}
 
+			// 跨 image/AI 多个 await 后重校:期间 applyOps 可能已退订该 UID。
+			// 仍 dispatch 会给已退订用户推送,且下方时间线回写会“复活”其时间线。
+			if (!this.stillSubscribed(uid)) {
+				this.logger.debug(`[detector] UID=${uid} 在本轮处理中已退订，跳过推送`);
+				continue;
+			}
+
 			// Send
 			const textPart = aiComment ?? (dUrl || undefined);
 			const segments: PushSegment[] = buffer
@@ -537,6 +563,13 @@ export class DynamicEngine {
 
 		// Update timelines
 		for (const [uid, item] of Object.entries(currentPushDyn)) {
+			// 本轮处理中被 applyOps 退订的 UID:其时间线已被 stopDynamicForUid
+			// 删除,这里若再 set 等于“复活”一条孤儿时间线 —— 该 UID 再次订阅时
+			// 会被这条陈旧锚点长期抑制。跳过。
+			if (!this.stillSubscribed(uid)) {
+				this.logger.debug(`[timeline] UID=${uid} 已退订，跳过时间线回写（不复活）`);
+				continue;
+			}
 			const postTime = item.modules.module_author.pub_ts;
 			this.dynamicTimelineManager.set(uid, postTime);
 			this.logger.debug(
