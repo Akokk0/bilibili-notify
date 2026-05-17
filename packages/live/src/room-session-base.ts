@@ -98,7 +98,17 @@ export abstract class RoomSessionBase {
 	 * kick off the `restartPush` branch + arm the periodic timer.
 	 */
 	async bootstrap(): Promise<void> {
-		await this.ctx.startLiveRoomListener(this.sub.roomId, this.buildHandler());
+		// listener 建失败时此前丢弃返回值仍继续:下文 live_status===1 会
+		// armPeriodicTimer + setLiveStatus(true) → 房间标"直播中"、周期复推在跑,
+		// 但无 WS,永不收弹幕 / onLiveEnd。建不起来即同"获取信息失败"一并放弃。
+		const listening = await this.ctx.startLiveRoomListener(this.sub.roomId, this.buildHandler());
+		if (!listening) {
+			await this.ctx.push.sendPrivateMsg(
+				`直播间 [${this.sub.roomId}] 弹幕连接建立失败，已停止该房间监测`,
+			);
+			this.ctx.closeListener(this.sub.roomId);
+			return;
+		}
 
 		if (
 			!(await this.useLiveRoomInfo(LiveType.FirstLiveBroadcast)) ||

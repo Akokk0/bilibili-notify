@@ -26,8 +26,16 @@ export class RoomContext extends RoomContextBase {
 	 * only resets its backoff on a real success instead of the old
 	 * void-swallow that recorded "reconnected" with no listener attached.
 	 */
-	async startLiveRoomListener(roomId: string, handler: MsgHandler): Promise<boolean> {
-		if (this.isDisposed()) return false;
+	async startLiveRoomListener(
+		roomId: string,
+		handler: MsgHandler,
+		shouldAbort?: () => boolean,
+	): Promise<boolean> {
+		// ②6:per-session 取消探针。此方法只认 engine 级 isDisposed(),感知不到
+		// 单房间被 stopForUid 取消;getMyselfInfo 这段 await 期间若 session 被取消,
+		// 继续建 listener 即孤儿。每个检查点并行查 shouldAbort,已建则关闭。
+		const aborted = () => this.isDisposed() || shouldAbort?.() === true;
+		if (aborted()) return false;
 		const roomIdNum = Number.parseInt(roomId, 10);
 		if (!Number.isFinite(roomIdNum) || roomIdNum <= 0) {
 			this.logger.error(
@@ -57,12 +65,12 @@ export class RoomContext extends RoomContextBase {
 			this.emitEngineError(`[${roomId}] 获取个人信息失败 code=${mySelfInfo.code}`);
 			return false;
 		}
-		if (this.isDisposed()) return false;
+		if (aborted()) return false;
 
 		const listener = startListen(roomIdNum, handler, {
 			ws: { headers: { Cookie: cookiesStr }, uid: mySelfInfo.data.mid },
 		});
-		if (this.isDisposed()) {
+		if (aborted()) {
 			listener.close();
 			return false;
 		}

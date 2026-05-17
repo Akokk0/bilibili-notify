@@ -248,6 +248,30 @@ describe("RoomSession 退避状态机 — codex review minor-4", () => {
 	});
 });
 
+describe("RoomSession 重连 post-await 重校 — ②6", () => {
+	it("startLiveRoomListener 返回 true 但其间 cancelled 翻转 → 关闭孤儿 listener,不计成功", async () => {
+		const { ctx, mocks } = makeMockCtx();
+		const session = new RoomSession(ctx, makeSub());
+		// 模拟 startLiveRoomListener 在 await 期间与 stopForUid 交错:
+		// 它确实建好了 listener(返回 true),但返回前 session 已被取消。
+		mocks.startLiveRoomListener.mockImplementationOnce(async () => {
+			session.cancel();
+			return true;
+		});
+
+		// biome-ignore lint/suspicious/noExplicitAny: 测试 private 方法
+		void (session as any).onError();
+		await mocks.flushAll();
+
+		// 只发起一次;返回 true 后 post-await 重校命中 cancelled → 主动 closeListener
+		// 关掉孤儿(loop 顶部 1 次 + 孤儿 1 次 = 2),不 emitEngineError、不再排重连。
+		expect(mocks.startLiveRoomListener).toHaveBeenCalledTimes(1);
+		expect(mocks.closeListener).toHaveBeenCalledTimes(2);
+		expect(mocks.emitEngineError).not.toHaveBeenCalled();
+		expect(mocks.scheduled).toHaveLength(0);
+	});
+});
+
 describe("RoomSession 重连竞态 — L1/L3", () => {
 	it("L1:并发 onError 单飞 —— 只跑一轮重连(startLiveRoomListener 仅一次)", async () => {
 		const { ctx, mocks } = makeMockCtx();

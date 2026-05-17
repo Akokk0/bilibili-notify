@@ -133,11 +133,22 @@ export class RoomSession extends RoomSessionBase {
 			// 复位 backoff。
 			let ok = false;
 			try {
-				ok = await this.ctx.startLiveRoomListener(this.sub.roomId, this.buildHandler());
+				ok = await this.ctx.startLiveRoomListener(
+					this.sub.roomId,
+					this.buildHandler(),
+					() => this.cancelled,
+				);
 			} catch (e) {
 				this.ctx.logger.warn(
 					`[conn] 直播间 [${this.sub.roomId}] 重连发起异常:${(e as Error).message}`,
 				);
+			}
+			// ②6:post-await 重校。startLiveRoomListener 期间若与 stopForUid /
+			// teardown 交错(cancelled / disposed 翻转),刚建的 listener 是孤儿 ——
+			// 主动关掉再退出,绝不留永不关闭的连接(此前只判 ok 漏了这条)。
+			if (this.cancelled || this.ctx.isDisposed()) {
+				if (ok) this.ctx.closeListener(this.sub.roomId);
+				return;
 			}
 			if (ok) {
 				this.ctx.logger.info(`[conn] 直播间 [${this.sub.roomId}] 重连成功`);
