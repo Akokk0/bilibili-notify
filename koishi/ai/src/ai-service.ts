@@ -92,7 +92,6 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 			config: toEngineConfig(config),
 		});
 		(this as unknown as { _apiHolder: typeof apiHolder })._apiHolder = apiHolder;
-		aiCommands.call(this);
 	}
 
 	protected start(): Awaitable<void> {
@@ -116,6 +115,9 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 			subMgmt,
 		});
 		this.engine.start();
+		// P2:指令注册移到 start()。在 constructor 注册 → koishi 插件重载时
+		// constructor 重跑会重复注册同名指令。start/stop 成对,生命周期正确。
+		aiCommands.call(this);
 	}
 
 	protected stop(): Awaitable<void> {

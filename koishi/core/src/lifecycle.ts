@@ -215,9 +215,12 @@ export function tearDown(deps: { logger: Logger; slots: ManagerSlots }): void {
 	}
 	deps.slots.cleanups.length = 0;
 	deps.slots.loginBridge?.stop();
-	deps.slots.subLoader?.dispose();
+	// P2:subLoader.dispose() 可能 emit subscription-changed;先停 push/api 再
+	// dispose,杜绝事件落到仍在线的 push(listener 已先卸本就缓解,此处把次序
+	// 也理顺,彻底消除理论窗口)。
 	deps.slots.push?.stop();
 	deps.slots.api?.stop();
+	deps.slots.subLoader?.dispose();
 	deps.slots.push = null;
 	deps.slots.api = null;
 	deps.slots.loginBridge = null;

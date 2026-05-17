@@ -110,6 +110,19 @@ export function buildSubManagement(deps: {
 			else if (params.liveAtAll !== undefined) atAllDefaults.live = params.liveAtAll;
 			updated.atAllDefaults = atAllDefaults;
 			store.upsert(updated);
+			// P2:targetIds 为空时,开任何特性都写成 routing.X=[] —— 特性"开"
+			// 了却无推送目标,静默丢弃。回灌给 LLM/用户一条明确告警。
+			const enabledSomething = [
+				params.dynamic,
+				params.live,
+				params.liveGuardBuy,
+				params.superchat,
+				params.wordcloud,
+				params.liveSummary,
+			].some((v) => v === true);
+			if (enabledSomething && targetIds.length === 0) {
+				return `已更新（UID: ${params.uid}）的订阅设置，但该订阅当前没有任何推送目标 —— 开启的特性不会实际推送,请先为其配置推送目标。`;
+			}
 			return `已成功更新（UID: ${params.uid}）的订阅设置`;
 		},
 	};

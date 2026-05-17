@@ -333,6 +333,10 @@ export function applyAdvancedSub(ctx: Context, config: BilibiliNotifyAdvancedSub
 		ctx.emit("bilibili-notify/advanced-sub", subs);
 	};
 
+	// P2:双路投递覆盖两种加载次序 —— eager `emit()` 兜「core 已就绪」,
+	// `ready-to-receive` 兜「core 后就绪」。两路可能重复投递,但下游
+	// SubscriptionStore.upsert 已幂等(内容未变直接 return,见 subscription
+	// p2 stableStringify),重复投递为 no-op,故无需去重 / 改握手结构。
 	emit();
 
 	ctx.on("bilibili-notify/ready-to-receive", () => {

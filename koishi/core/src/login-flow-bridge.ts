@@ -107,8 +107,25 @@ export class LoginFlowBridge {
 			if (!allowed) {
 				throw new Error("仅允许 bilibili.com / hdslb.com 域名");
 			}
-			const res = await fetch(url);
+			// P2:① redirect:"error" —— 允许域上的 3xx 跳转会把请求带出白名单
+			//   (重定向式 SSRF / DNS-rebinding 旁路),CDN 图片无跨域跳转需求,直接拒。
+			// ② 响应体上限 8MB(对齐 image IM2)—— 防超大响应全量入内存 OOM;
+			//   Content-Length 可伪造,故声明值与实际字节双重设限。
+			// ③ 仅放行 image/* —— 该接口只为 QR/封面取图。
+			const MAX_BYTES = 8 * 1024 * 1024;
+			const res = await fetch(url, { redirect: "error" });
+			const ctype = res.headers.get("content-type") ?? "";
+			if (!ctype.startsWith("image/")) {
+				throw new Error(`仅允许图片资源(content-type=${ctype || "未知"})`);
+			}
+			const declared = Number(res.headers.get("content-length"));
+			if (Number.isFinite(declared) && declared > MAX_BYTES) {
+				throw new Error("远端资源超过 8MB 上限");
+			}
 			const buffer = await res.arrayBuffer();
+			if (buffer.byteLength > MAX_BYTES) {
+				throw new Error("远端资源超过 8MB 上限");
+			}
 			return `data:image/png;base64,${Buffer.from(buffer).toString("base64")}`;
 		});
 	}
