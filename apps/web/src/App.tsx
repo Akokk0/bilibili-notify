@@ -8,6 +8,7 @@ import { ToastShell } from "./components/toast-shell";
 import { useAlertChannel } from "./hooks/useAlertChannel";
 import { useAuthChannel } from "./hooks/useAuthChannel";
 import { useAuthHydrate } from "./hooks/useAuthHydrate";
+import { HEALTH_QUERY_KEY, HEALTH_QUERY_OPTIONS } from "./hooks/useBackendReachable";
 import { usePushEventsChannel } from "./hooks/usePushEventsChannel";
 import { useStateChannel } from "./hooks/useStateChannel";
 import Ai from "./pages/Ai";
@@ -39,10 +40,9 @@ export default function App() {
 	// backoff just keeps the UI in "loading" for several seconds before
 	// committing to the error banner.
 	const health = useQuery({
-		queryKey: ["health"],
+		queryKey: HEALTH_QUERY_KEY,
 		queryFn: () => api.get<HealthSnapshot>("/api/health"),
-		retry: 0,
-		refetchInterval: 5_000,
+		...HEALTH_QUERY_OPTIONS,
 	});
 
 	// Show ShellLoading only on the very first attempt (no data and no error

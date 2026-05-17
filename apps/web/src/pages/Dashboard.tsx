@@ -5,7 +5,11 @@ import { Avatar, Btn, Pill, StatsBar } from "../components/atoms";
 import { GlassPanel, GlassStatCard } from "../components/glass";
 import { GlassBox } from "../components/glass-box";
 import { Icon } from "../components/icons";
-import { useBackendReachable } from "../hooks/useBackendReachable";
+import {
+	HEALTH_QUERY_KEY,
+	HEALTH_QUERY_OPTIONS,
+	useBackendReachable,
+} from "../hooks/useBackendReachable";
 import { api } from "../services/api";
 import {
 	bucketByDay,
@@ -623,9 +627,9 @@ export default function Dashboard() {
 	const reachable = useBackendReachable();
 
 	const health = useQuery({
-		queryKey: ["health"],
+		queryKey: HEALTH_QUERY_KEY,
 		queryFn: () => api.get<HealthSnapshot>("/api/health"),
-		refetchInterval: 5_000,
+		...HEALTH_QUERY_OPTIONS,
 	});
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],

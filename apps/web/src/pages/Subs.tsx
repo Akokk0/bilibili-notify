@@ -502,15 +502,23 @@ export default function Subs() {
 		upsert.mutate({ ...s, enabled: on });
 	}
 
-	function bulkSetEnabled(on: boolean): void {
+	async function bulkSetEnabled(on: boolean): Promise<void> {
 		const ids = [...selection];
-		void Promise.allSettled(
+		// 写前 refetch:从可能陈旧的 subs 快照构造 PUT,会用旧字段 last-writer-wins
+		// 复活并发编辑的改动。先拉最新再据最新构造。
+		await qc.refetchQueries({ queryKey: ["subscriptions"] });
+		const fresh = qc.getQueryData<Subscription[]>(["subscriptions"]) ?? subs;
+		const results = await Promise.allSettled(
 			ids.map((id) => {
-				const s = subs.find((x) => x.id === id);
+				const s = fresh.find((x) => x.id === id);
 				if (!s) return Promise.resolve();
 				return api.post<Subscription[]>("/api/subs", { ...s, enabled: on });
 			}),
-		).then(() => qc.invalidateQueries({ queryKey: ["subscriptions"] }));
+		);
+		// allSettled 结果此前被丢弃 → 部分失败完全不可见。上报失败计数。
+		const failed = results.filter((r) => r.status === "rejected").length;
+		if (failed > 0) setError(`批量${on ? "启用" : "停用"}:${failed}/${ids.length} 个订阅操作失败`);
+		qc.invalidateQueries({ queryKey: ["subscriptions"] });
 	}
 
 	function bulkDelete(): void {
@@ -575,10 +583,10 @@ export default function Subs() {
 				{selection.size > 0 ? (
 					<div className="flex items-center gap-2 rounded-md bg-bn-pink/12 px-2.5 py-1 text-xs font-semibold text-bn-pink">
 						已选 {selection.size} 项
-						<Btn size="sm" variant="ghost" onClick={() => bulkSetEnabled(true)}>
+						<Btn size="sm" variant="ghost" onClick={() => void bulkSetEnabled(true)}>
 							批量启用
 						</Btn>
-						<Btn size="sm" variant="ghost" onClick={() => bulkSetEnabled(false)}>
+						<Btn size="sm" variant="ghost" onClick={() => void bulkSetEnabled(false)}>
 							批量禁用
 						</Btn>
 						<Btn size="sm" variant="danger" onClick={bulkDelete}>

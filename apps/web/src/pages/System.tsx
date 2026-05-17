@@ -348,11 +348,20 @@ export default function System() {
 	});
 	const reset = useMutation({
 		mutationFn: wrap(() => api.post<{ ok: true }>("/api/auth/cookies/reset")),
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["auth-status"] }),
+		// cookies/reset 与 logout 都终结会话:必须清 zustand auth store,否则残留
+		// 的 snapshot / cookiesRefreshedAt 让 UI 仍显示已登录账号(后端 jar 已清
+		// 的前端镜像同类缺陷)。invalidate 只刷服务端 query,不动 zustand。
+		onSuccess: () => {
+			useAuthStore.getState().clear();
+			qc.invalidateQueries({ queryKey: ["auth-status"] });
+		},
 	});
 	const logout = useMutation({
 		mutationFn: wrap(() => api.post<{ ok: true }>("/api/auth/logout")),
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["auth-status"] }),
+		onSuccess: () => {
+			useAuthStore.getState().clear();
+			qc.invalidateQueries({ queryKey: ["auth-status"] });
+		},
 	});
 
 	return (

@@ -852,17 +852,19 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	async deleteAdapter(id: string): Promise<boolean> {
-		// Reject if any target still references this adapter — callers should
-		// detach/reassign first. Avoids silent orphan-targets in routing.
-		const referencing = this.targets.filter((t) => t.adapterId === id).map((t) => t.id);
-		if (referencing.length > 0) {
-			throw new ConfigValidationError(
-				"adapters",
-				{ id, targetIds: referencing, message: "adapter still in use" },
-				`adapter ${id} is still referenced by ${referencing.length} target(s)`,
-			);
-		}
 		const removed = await this.runScoped("adapters", async () => {
+			// 引用检查必须在任务体内(执行期)对 this.targets 求值,而非 enqueue
+			// 时 —— 在 scope 外同步检查会与并行 targets 队列竞态:check 通过后、
+			// 删除执行前一个 upsertTarget 引用该 adapter 即产生孤儿 target。
+			// (互补:upsertTarget 侧 assertAdapterMatches 也校验 adapter 存在。)
+			const referencing = this.targets.filter((t) => t.adapterId === id).map((t) => t.id);
+			if (referencing.length > 0) {
+				throw new ConfigValidationError(
+					"adapters",
+					{ id, targetIds: referencing, message: "adapter still in use" },
+					`adapter ${id} is still referenced by ${referencing.length} target(s)`,
+				);
+			}
 			const idx = this.adapters.findIndex((a) => a.id === id);
 			if (idx < 0) return false;
 			const next = this.adapters.filter((_, i) => i !== idx);
