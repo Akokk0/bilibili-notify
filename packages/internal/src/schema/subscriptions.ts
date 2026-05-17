@@ -14,12 +14,23 @@ import {
  * 路由：每个特性 → PushTarget.id[]。空数组 = 该特性不推。
  * 用 record + 显式 keys 而不是 partial，便于 UI 始终展示所有特性的开关。
  */
-export const SubscriptionRoutingSchema = z.object(
+const SubscriptionRoutingObjectSchema = z.object(
 	Object.fromEntries(FEATURE_KEYS.map((k) => [k, z.array(z.uuid())])) as {
 		[K in FeatureKey]: z.ZodArray<z.ZodUUID>;
 	},
 );
-export type SubscriptionRouting = z.infer<typeof SubscriptionRoutingSchema>;
+export type SubscriptionRouting = z.infer<typeof SubscriptionRoutingObjectSchema>;
+
+/**
+ * 解析时按 feature 去重 target UUID。重复 UUID 会让同一 feature 对同一目标
+ * 重复推送 + 重复 delivery 记录。用**幂等 transform**而非 refine:既归一化
+ * 当前/历史数据,又不会让既有含重复项的持久化配置在 parse 时直接 reject。
+ */
+export const SubscriptionRoutingSchema = SubscriptionRoutingObjectSchema.transform((r) => {
+	const out = {} as SubscriptionRouting;
+	for (const k of FEATURE_KEYS) out[k] = [...new Set(r[k])];
+	return out;
+});
 
 /**
  * 缓存的 UP 主档案，用于 UI 显示。non-authoritative，启动 / 心跳时刷新。

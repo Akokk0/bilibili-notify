@@ -14,8 +14,17 @@ export type HistorySource = z.infer<typeof HistorySourceSchema>;
 export const HistoryPayloadSchema = z.object({
 	kind: z.enum(["text", "image", "composite"]),
 	text: z.string().optional(),
-	/** 图片相对引用，存放于 `<dataDir>/history/img/<imageRef>`；独立端展示时直接读 */
-	imageRef: z.string().optional(),
+	/**
+	 * 图片相对引用，存放于 `<dataDir>/history/img/<imageRef>`；独立端展示时直接读。
+	 * 写入侧恒为 `<uuid>.<ext>` / `<uuid>-<idx>.<ext>`,这里收紧为「纯 basename」
+	 * (无路径分隔符 / 无 `..`)—— 篡改或重放的 jsonl 不能让 `join(imgRoot, ref)`
+	 * 穿越出 history/img 读任意文件(读路由侧另有独立第二道防线)。
+	 */
+	imageRef: z
+		.string()
+		.regex(/^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/, "imageRef 必须是纯文件名")
+		.refine((s) => !s.includes(".."), "imageRef 不得含 ..")
+		.optional(),
 });
 export type HistoryPayload = z.infer<typeof HistoryPayloadSchema>;
 

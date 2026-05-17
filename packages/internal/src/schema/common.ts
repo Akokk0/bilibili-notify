@@ -1,4 +1,11 @@
 import { z } from "zod";
+import { checkUserRegex } from "../util/regex-safety";
+
+/** blockRegex/whitelistRegex 的单元素校验:保存期即拦非法 / 超长 / 疑似 ReDoS 正则。 */
+const UserRegexString = z.string().superRefine((src, ctx) => {
+	const r = checkUserRegex(src);
+	if (!r.ok) ctx.addIssue({ code: "custom", message: r.reason });
+});
 
 /** 全部可订阅的特性键。新增或删除会扩散到 FeatureFlags、SubscriptionRouting、Subscription.overrides。 */
 export const FeatureKeySchema = z.enum([
@@ -33,13 +40,18 @@ export type FeatureFlags = z.infer<typeof FeatureFlagsSchema>;
 export const FeatureFlagsPartialSchema = FeatureFlagsSchema.partial();
 export type FeatureFlagsPartial = z.infer<typeof FeatureFlagsPartialSchema>;
 
-/** 一个时段范围，闭合区间 [start, end)，单位：小时（0–23）。 */
+/**
+ * 一个时段范围，半开区间 `[start, end)`，单位：小时。
+ * `start` ∈ 0..23；`end` ∈ 0..24（`end=24` 表示到次日 0 点）。
+ * `{start:0, end:24}` 即「全天免打扰」——此前 `end.max(23)` 与 refine 报错文案
+ * 自相矛盾(文案说用 0..24,schema 却不收 24),全天语义根本无法表达。
+ */
 export const TimeRangeSchema = z
 	.object({
 		start: z.number().int().min(0).max(23),
-		end: z.number().int().min(0).max(23),
+		end: z.number().int().min(0).max(24),
 	})
-	.refine((r) => r.start !== r.end, "start must differ from end (use 0..24 to mean全天)");
+	.refine((r) => r.start !== r.end, "start must differ from end (use {start:0,end:24} 表示全天)");
 export type TimeRange = z.infer<typeof TimeRangeSchema>;
 
 /** B 站舰长等级语义沿用，1=总督 / 2=提督 / 3=舰长。 */
@@ -50,9 +62,9 @@ export const ContentFiltersSchema = z.object({
 	blockForward: z.boolean(),
 	blockArticle: z.boolean(),
 	blockKeywords: z.array(z.string()),
-	blockRegex: z.array(z.string()),
+	blockRegex: z.array(UserRegexString),
 	whitelistKeywords: z.array(z.string()),
-	whitelistRegex: z.array(z.string()),
+	whitelistRegex: z.array(UserRegexString),
 	minScPrice: z.number().int().min(0),
 	minGuardLevel: GuardLevelSchema,
 });
