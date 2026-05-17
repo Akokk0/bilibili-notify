@@ -170,6 +170,9 @@ export class LoginFlow {
 	/** Mark the session as logged-out for a specific reason. */
 	reportLoggedOut(reasonKey: LoginStatusMsgKey = "notLogin"): void {
 		const wasLoggedIn = this.snapshot.status === BiliLoginStatus.LOGGED_IN;
+		// P2:登出后心跳无意义(runHealthCheck 对 NOT_LOGIN 直接 return),
+		// 此前不 detach,setInterval 空转到 stop()。重新登录路径会再 attach。
+		this.detachHealthCheck();
 		this.transition({
 			status: BiliLoginStatus.NOT_LOGIN,
 			msg: MESSAGES[reasonKey],
@@ -255,12 +258,12 @@ export class LoginFlow {
 			return;
 		}
 		if (code === 86038) {
-			this.clearLoginTimer();
+			this.clearLoginTimers();
 			this.reportQrFailure("qrInvalidated");
 			return;
 		}
 		if (code === 0) {
-			this.clearLoginTimer();
+			this.clearLoginTimers();
 			const cookiesJson = this.api.getCookiesJson();
 			if (!cookiesJson || cookiesJson === "[]") {
 				this.logger.error("[login] 登录成功但未获取到任何 cookie，放弃保存");
@@ -268,7 +271,15 @@ export class LoginFlow {
 				return;
 			}
 			try {
-				const refreshToken = (loginContent.data.refresh_token as string) ?? "";
+				const refreshToken = (loginContent.data.refresh_token as string | undefined) ?? "";
+				if (!refreshToken) {
+					// P2:此前静默 `?? ""`,loadCookies 见空串跳过 refresh 链 →
+					// 会话到期前无任何刷新、过期才靠心跳 -101 兜出 auth-lost。
+					// 至少响亮告警让运维知道这次登录拿不到自动续期。
+					this.logger.warn(
+						"[login] 登录成功但响应未含 refresh_token —— cookie 自动刷新不可用,会话到期需手动重新登录",
+					);
+				}
 				await this.saveCookies({ cookiesJson, refreshToken });
 			} catch (e) {
 				this.logger.error(`[login] 保存 cookie 失败：${e}`);
@@ -278,7 +289,17 @@ export class LoginFlow {
 			return;
 		}
 		if (loginContent?.code !== 0) {
-			this.clearLoginTimer();
+			this.clearLoginTimers();
+			this.reportQrFailure("genericLoginFail");
+			return;
+		}
+		// P2:外层 code 0 但 data.code 不在已知集合(86101/86090/86038/0)。
+		// 已知态都已 return,走到这:数值 = 稳定未知鉴权态 → 快速失败(此前
+		// 静默每秒 no-op 直到 3min 过期);非数值 = data 缺失等瞬时 → 继续轮询
+		// (容忍一次抖动,3min 过期兜底)。
+		if (typeof code === "number") {
+			this.logger.warn(`[login] QR 轮询返回未知 data.code=${code},判定登录失败`);
+			this.clearLoginTimers();
 			this.reportQrFailure("genericLoginFail");
 		}
 	}
@@ -393,6 +414,16 @@ export class LoginFlow {
 	private clearLoginTimer(): void {
 		this.loginTimer?.dispose();
 		this.loginTimer = undefined;
+	}
+
+	/**
+	 * P2:轮询终态(86038 失效 / code 0 成功 / genericLoginFail)应同时清掉
+	 * 3min 过期 setTimeout。此前只 clearLoginTimer,过期定时器泄漏挂到 expiry
+	 * 才空跑一次 no-op(`if (!this.loginTimer) return`),其间持有闭包。
+	 */
+	private clearLoginTimers(): void {
+		this.clearLoginTimer();
+		this.clearLoginExpiryTimer();
 	}
 
 	private clearLoginExpiryTimer(): void {
