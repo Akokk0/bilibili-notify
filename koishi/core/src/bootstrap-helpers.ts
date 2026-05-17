@@ -49,10 +49,11 @@ export async function warnMissingPlugins(
 	subs: Subscription[],
 ): Promise<void> {
 	if (!push) return;
+	// 只看 dynamic 这一路由项 —— 此前 Object.values(routing).some(非空) 让
+	// 任一特性(含纯直播 live/wordcloud)非空即判 needDynamic,纯直播订阅会
+	// 误报"动态插件未运行"私信骚扰主人。与下方 needLive 的精确枚举对称。
 	const needDynamic = subs.some(
-		(s) =>
-			Object.values(s.routing).some((ids) => ids.length > 0) &&
-			s.overrides.features?.dynamic !== false,
+		(s) => (s.routing.dynamic ?? []).length > 0 && s.overrides.features?.dynamic !== false,
 	);
 	const needLive = subs.some((s) => {
 		const liveFeatures: Array<keyof typeof s.routing> = [
