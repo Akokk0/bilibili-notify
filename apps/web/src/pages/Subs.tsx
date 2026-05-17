@@ -523,8 +523,12 @@ export default function Subs() {
 
 	function bulkDelete(): void {
 		const ids = [...selection];
-		void Promise.allSettled(ids.map((id) => api.delete(`/api/subs/${id}`))).then(() => {
+		void Promise.allSettled(ids.map((id) => api.delete(`/api/subs/${id}`))).then((results) => {
 			qc.invalidateQueries({ queryKey: ["subscriptions"] });
+			// P2:与 bulkSetEnabled 一致,上报失败计数(此前 allSettled 结果整个
+			// 丢弃,部分删除失败完全不可见)。
+			const failed = results.filter((r) => r.status === "rejected").length;
+			if (failed > 0) setError(`批量删除:${failed}/${ids.length} 个订阅删除失败`);
 			setSelection(new Set());
 		});
 	}

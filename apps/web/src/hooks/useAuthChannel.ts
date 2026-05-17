@@ -23,9 +23,12 @@ export function handleAuthEnvelope(env: WsEnvelope): void {
 		return;
 	}
 	if (env.event === "auth-lost") {
+		// P2:保留既有 snapshot.data(用户卡片)。瞬时 lost→restored 抖动若清掉
+		// data,卡片会闪没;restored 后端通常不立刻重发完整 card,体验更差。
+		const prev = useAuthStore.getState().snapshot;
 		useAuthStore
 			.getState()
-			.setSnapshot({ status: BiliLoginStatus.NOT_LOGIN, msg: "auth-lost" });
+			.setSnapshot({ status: BiliLoginStatus.NOT_LOGIN, msg: "auth-lost", data: prev?.data });
 		return;
 	}
 }

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Btn, PlatformIcon, platformLabel, StatusDot, Toggle } from "../components/atoms";
 import { ModalShell } from "../components/dialog";
 import { Field, TInput, TNum } from "../components/forms";
@@ -949,6 +949,14 @@ export default function Targets() {
 	const [targetTesting, setTargetTesting] = useState<Record<string, TestState>>({});
 	const [confirmTest, setConfirmTest] = useState<PushTarget | null>(null);
 	const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+	// P2:toast 定时器句柄。此前裸 window.setTimeout 无 unmount 清理 →
+	// 组件卸载后仍 setToast(已卸载组件)+ 定时器泄漏。
+	const toastTimer = useRef<number | null>(null);
+	useEffect(() => {
+		return () => {
+			if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+		};
+	}, []);
 	const [selectedAdapterId, setSelectedAdapterId] = useState<string | null>(null);
 
 	const adapters = adaptersQuery.data ?? [];
@@ -980,7 +988,8 @@ export default function Targets() {
 
 	const showToast = (msg: string, ok = true): void => {
 		setToast({ msg, ok });
-		window.setTimeout(() => setToast(null), 2400);
+		if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+		toastTimer.current = window.setTimeout(() => setToast(null), 2400);
 	};
 
 	const upsertAdapter = useMutation({

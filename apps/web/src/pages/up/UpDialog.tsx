@@ -71,6 +71,21 @@ export interface UpDialogProps {
 /**
  * Read sub's effective feature flag (override or inherit-default).
  */
+/**
+ * P2:稳定序列化(递归按 key 排序、跳过 undefined)。dirty 此前用裸
+ * JSON.stringify 比较,对 key 序 / undefined 敏感 → 仅字段顺序不同即误判
+ * dirty,关闭时假阳弹"丢弃未保存?"。与 subscription 包同策略。
+ */
+function stableStr(value: unknown): string {
+	if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+	if (Array.isArray(value)) return `[${value.map(stableStr).join(",")}]`;
+	const obj = value as Record<string, unknown>;
+	const keys = Object.keys(obj)
+		.filter((k) => obj[k] !== undefined)
+		.sort();
+	return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStr(obj[k])}`).join(",")}}`;
+}
+
 function effFeature(sub: Subscription, k: FeatureKey): boolean {
 	return sub.overrides.features?.[k] ?? DEFAULT_FEATURE_FLAGS[k];
 }
@@ -146,7 +161,7 @@ export function UpDialog({
 	const color = colorFromUid(draft.uid);
 	// create 模式下 draft 本身就是「待提交」,无论用户改没改字段都视为 dirty——保存按钮
 	// 始终可点 + 关闭时一律走丢弃确认。
-	const dirty = mode === "create" || (sub ? JSON.stringify(sub) !== JSON.stringify(draft) : false);
+	const dirty = mode === "create" || (sub ? stableStr(sub) !== stableStr(draft) : false);
 
 	function requestClose(): void {
 		if (dirty && !window.confirm("丢弃未保存的修改?")) return;
