@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { getConnInfo } from "@hono/node-server/conninfo";
+import type { MiddlewareHandler } from "hono";
 
 /**
  * P2:凭证常量时间比较。`===` 短路比较泄漏前缀匹配长度(限流缓解但不消除)。
@@ -11,8 +12,6 @@ function safeEqual(a: string, b: string): boolean {
 	const hb = createHash("sha256").update(b).digest();
 	return timingSafeEqual(ha, hb);
 }
-
-import type { MiddlewareHandler } from "hono";
 
 /**
  * Basic-auth 中间件 + IP 维度的简单令牌桶。
