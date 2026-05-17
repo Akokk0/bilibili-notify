@@ -10,7 +10,7 @@
  *   - 无 secretStore(legacy)→ apiKey 仍留在 globals.json(未破坏旧路径)
  */
 
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -177,5 +177,30 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		await store.load();
 		await store.patchGlobals({ defaults: { ai: { apiKey: "sk-legacy-mode" } } });
 		expect((await diskGlobals()).defaults.ai.apiKey).toBe("sk-legacy-mode");
+	});
+
+	// 回归守护 — P2:writeGlobals 双写非原子。secretStore.save 成功但
+	// persistGlobals 抛错时,必须回滚密钥袋 + in-memory 不更新 → 两端始终一致
+	// (绝不 secret 存新 apiKey 而 globals.json/内存留旧 → 重启分叉)。
+	// 复发点:去掉 try/catch 回滚,改回 save→persist 顺序无补偿。
+	it("writeGlobals:persist 抛错 → 回滚密钥袋,两端不分叉(P2)", async () => {
+		const secret = mkSecretStore();
+		const store = mkStore(secret);
+		await store.load();
+		// 先成功落一个 apiKey:bag=sk-good,globals.json 已写。
+		await store.patchGlobals({ defaults: { ai: { apiKey: "sk-good" } } });
+		expect(await secret.load()).toEqual({ aiApiKey: "sk-good" });
+
+		// 破坏 globals.json 路径(占成目录)→ 下次 atomicWriteJson rename 必失败,
+		// 而 secretStore.save(写 secrets/config-secrets.enc,另一路径)仍成功。
+		const gp = join(dataDir, "state", "globals.json");
+		await rm(gp);
+		await mkdir(gp, { recursive: true });
+
+		await expect(store.patchGlobals({ defaults: { ai: { apiKey: "sk-EVIL" } } })).rejects.toThrow();
+
+		// 关键:bag 已回滚为 sk-good(不是 sk-EVIL);in-memory 仍 sk-good。
+		expect(await secret.load()).toEqual({ aiApiKey: "sk-good" });
+		expect(store.getGlobals().defaults.ai.apiKey).toBe("sk-good");
 	});
 });

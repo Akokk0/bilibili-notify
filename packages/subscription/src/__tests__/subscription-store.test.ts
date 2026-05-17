@@ -15,8 +15,8 @@
 import {
 	type BiliEvents,
 	type Disposable,
-	makeEmptySubscription,
 	type MessageBus,
+	makeEmptySubscription,
 	type Subscription,
 	type SubscriptionOp,
 } from "@bilibili-notify/internal";
@@ -155,5 +155,41 @@ describe("SubscriptionStore — CRUD + diff", () => {
 		expect(diff([a], [])).toEqual([{ type: "remove", id: "sub-a", uid: "u1" }]);
 		expect(diff([a], [a2])).toEqual([{ type: "update", sub: a2 }]);
 		expect(diff([a, b], [a, b])).toEqual([]);
+	});
+
+	// 回归守护 — P2:stableStringify 消伪 update op。
+	// 不变量:仅 key 插入序不同(内容等价)不得产 update op / 不得发事件;
+	// 真实内容变更仍照常。复发点:diff()/upsert 改回裸 JSON.stringify。
+	describe("stableStringify 消伪 update op (P2)", () => {
+		// 同内容但顶层 key 插入序反转 —— 裸 JSON.stringify 会判不等(伪 update),
+		// stableStringify 递归排序后相等。
+		function reorderKeys(s: Subscription): Subscription {
+			return Object.fromEntries(
+				Object.keys(s)
+					.reverse()
+					.map((k) => [k, (s as Record<string, unknown>)[k]]),
+			) as unknown as Subscription;
+		}
+
+		it("diff:仅 key 序不同 → 无伪 update op", () => {
+			const a = makeSub("u1", "sub-a");
+			expect(diff([a], [reorderKeys(a)])).toEqual([]);
+		});
+
+		it("upsert:内容等价(key 序不同)→ 不发 subscription-changed", () => {
+			const bus = makeFakeBus();
+			const store = createSubscriptionStore(bus);
+			const a = makeSub("u1");
+			store.upsert(a);
+			const before = bus.events.length;
+			store.upsert(reorderKeys(a));
+			expect(bus.events.length).toBe(before);
+		});
+
+		it("真实内容变更仍照常 update(不被误吞)", () => {
+			const a = makeSub("u1", "sub-a");
+			const a2 = { ...a, notes: "真改了" };
+			expect(diff([a], [a2])).toEqual([{ type: "update", sub: a2 }]);
+		});
 	});
 });
