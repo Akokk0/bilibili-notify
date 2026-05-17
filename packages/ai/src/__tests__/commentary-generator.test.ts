@@ -435,3 +435,43 @@ describe("CommentaryGenerator — 过期 session 清扫 (P2-F)", () => {
 		expect(intervalDisposed).toBe(true);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// P2: ②8 chat() 同会话串行化 + :384 错误脱敏
+// ---------------------------------------------------------------------------
+
+describe("CommentaryGenerator — ②8 chat 串行化 / :384 脱敏 (P2)", () => {
+	it("②8:同 sessionId 并发 chat 串行化,前一轮历史不丢", async () => {
+		const { gen } = makeGen({ maxHistory: 10 });
+		// 每次 create 在 microtask 后才 resolve,放大并发交错窗口。
+		oai.create.mockImplementation(async () => {
+			await new Promise((r) => setImmediate(r));
+			return msgResp("R");
+		});
+		// 不在两次之间 await —— 并发进入 chat()。
+		const c1 = gen.chat("M1", "S");
+		const c2 = gen.chat("M2", "S");
+		await Promise.all([c1, c2]);
+
+		// 第三轮:其 messages 必须同时含 M1 与 M2(串行化 → 无写覆盖丢历史)。
+		oai.create.mockImplementationOnce(async () => msgResp("R3"));
+		await gen.chat("M3", "S");
+		const lastMsgs = createParams(oai.create.mock.calls.length - 1).messages.map((m) => m.content);
+		expect(lastMsgs).toContain("M1");
+		expect(lastMsgs).toContain("M2");
+		expect(lastMsgs).toContain("M3");
+	});
+
+	it(":384:OpenAI 错误经 chat 外抛前已抹掉 apiKey / Bearer", async () => {
+		const { gen } = makeGen();
+		oai.create.mockRejectedValueOnce(
+			new Error("401 POST https://api.test/v1 — Authorization: Bearer sk-test-LEAKED"),
+		);
+		const msg = await gen.chat("x", "s-err").then(
+			() => "NO_THROW",
+			(e: Error) => e.message,
+		);
+		expect(msg).not.toContain("sk-test");
+		expect(msg).toContain("Bearer ***");
+	});
+});

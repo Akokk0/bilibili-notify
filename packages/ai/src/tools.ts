@@ -2,6 +2,14 @@ import type { BilibiliAPI } from "@bilibili-notify/api";
 import type OpenAI from "openai";
 
 /**
+ * P2:回灌进 LLM 上下文的 B 站文本(用户简介 / 动态正文)完全攻击者可控且
+ * 无长度上限 —— 既是 token 膨胀,也是间接 prompt 注入的放大面。截断封顶。
+ */
+function clip(s: string, max: number): string {
+	return s.length > max ? `${s.slice(0, max)}…` : s;
+}
+
+/**
  * 平台中立的订阅条目最小视图。
  * 仅包含 ai-engine 工具实际访问的字段；adapter 提供完整 SubItem 实例时会被结构性兼容。
  */
@@ -267,7 +275,7 @@ export async function executeTool(
 					const text = extractDynamicText(item);
 					const ts: number | undefined = item.modules?.module_author?.pub_ts;
 					const date = ts ? new Date(ts * 1000).toLocaleDateString("zh-CN") : "未知时间";
-					return `${i + 1}. [${date}] ${text || "（无文字内容）"}`;
+					return `${i + 1}. [${date}] ${text ? clip(text, 200) : "（无文字内容）"}`;
 				})
 				.join("\n");
 		}
@@ -292,7 +300,9 @@ export async function executeTool(
 			const rooms: Record<string, any> = res.data ?? {};
 			const lines = liveItems.map((s) => {
 				const room = rooms[s.uid];
-				const statusText = ["未开播", "直播中", "轮播中", "下播"][room?.live_status] ?? "未知";
+				// B 站 live_status 仅 0/1/2;此前数组多一个虚构 `3=下播`,
+				// 任何越界(含 undefined)统一落 "未知"。
+				const statusText = ["未开播", "直播中", "轮播中"][room?.live_status] ?? "未知";
 				const title = room?.title ? `「${room.title}」` : "";
 				return `${s.uname}：${statusText}${title}`;
 			});
@@ -338,7 +348,7 @@ export async function executeTool(
 			return results
 				.map(
 					(u, i) =>
-						`${i + 1}. ${u.uname}（UID: ${u.mid}）粉丝: ${u.fans}, 视频数: ${u.videos}${u.usign ? `，简介: ${u.usign}` : ""}`,
+						`${i + 1}. ${u.uname}（UID: ${u.mid}）粉丝: ${u.fans}, 视频数: ${u.videos}${u.usign ? `，简介: ${clip(String(u.usign), 80)}` : ""}`,
 				)
 				.join("\n");
 		}

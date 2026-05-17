@@ -266,7 +266,8 @@ describe("ImageRenderer.inlineRemoteImages", () => {
 		expect(out).not.toContain("https://i0.hdslb.com/bg.png");
 	});
 
-	it("单图 fetch 失败 → 保留原 URL,不抛", async () => {
+	// ②5:预取失败**不得保留原 URL**(否则 puppeteer 自行抓取,违背零外部引用)。
+	it("单图 fetch 失败 → 换占位、不保留原 URL,不抛", async () => {
 		const r = makeRenderer() as AnyRenderer;
 		vi.stubGlobal(
 			"fetch",
@@ -276,7 +277,18 @@ describe("ImageRenderer.inlineRemoteImages", () => {
 		);
 		const html = '<html><body><img src="https://i0.hdslb.com/x.png"></body></html>';
 		const out = await r.inlineRemoteImages(html);
-		expect(out).toContain("https://i0.hdslb.com/x.png");
+		expect(out).not.toContain("https://i0.hdslb.com/x.png");
+		expect(out).toContain("data:image/gif;base64,R0lGOD"); // BLOCKED 占位前缀
+	});
+
+	// ②5:@import / image-set 也是 SSRF 残口,非白名单必须换占位。
+	it("CSS @import / image-set 非白名单 → 换占位,不留原 URL", async () => {
+		const r = makeRenderer() as AnyRenderer;
+		const html =
+			'<html><head><style>@import "http://169.254.169.254/meta.css"; .a{background:image-set("http://10.0.0.1/x.png" 1x)}</style></head><body></body></html>';
+		const out = await r.inlineRemoteImages(html);
+		expect(out).not.toContain("169.254.169.254");
+		expect(out).not.toContain("10.0.0.1");
 	});
 });
 

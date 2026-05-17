@@ -119,6 +119,12 @@ export class CommentaryGenerator {
 	private readonly api: BilibiliAPI;
 	private config: CommentaryGeneratorConfig;
 	private readonly sessions = new Map<string, SessionEntry>();
+	/**
+	 * ②8:per-sessionId 串行链。同会话并发 chat() 若不排队,二者各读 entry、
+	 * 各 await callAPI/compressHistory,最后 sessions.set 后写覆盖前写丢历史。
+	 * 用链(排队)而非丢弃式锁 —— 第二条用户消息必须被响应,不能丢。
+	 */
+	private readonly chatChains = new Map<string, Promise<void>>();
 	/** 周期清扫 handle;`start()` arm、`stop()` dispose。 */
 	private sweepHandle?: { dispose(): void };
 
@@ -242,6 +248,29 @@ export class CommentaryGenerator {
 		imageUrls?: string[],
 		sessionCtx?: SessionContext,
 	): Promise<{ result: string; pendingActions: Array<() => Promise<void>> }> {
+		// ②8:排在同 sessionId 上一次 chat 之后再跑(读-改-写历史原子化)。
+		const prior = this.chatChains.get(sessionId) ?? Promise.resolve();
+		const task = prior
+			.catch(() => {})
+			.then(() => this.chatImpl(content, sessionId, imageUrls, sessionCtx));
+		const tail = task.then(
+			() => {},
+			() => {},
+		);
+		this.chatChains.set(sessionId, tail);
+		tail.then(() => {
+			// 空闲即回收 map 项,避免 sessionId 无界增长。
+			if (this.chatChains.get(sessionId) === tail) this.chatChains.delete(sessionId);
+		});
+		return task;
+	}
+
+	private async chatImpl(
+		content: string,
+		sessionId: string,
+		imageUrls?: string[],
+		sessionCtx?: SessionContext,
+	): Promise<{ result: string; pendingActions: Array<() => Promise<void>> }> {
 		const now = Date.now();
 		const entry = this.sessions.get(sessionId);
 		const isExpired = !entry || now - entry.lastActiveAt >= SESSION_TTL_MS;
@@ -356,6 +385,14 @@ export class CommentaryGenerator {
 		]);
 	}
 
+	/** :384 错误脱敏:抹掉 apiKey 明文与 `Bearer <token>`,再进日志 / 外抛。 */
+	private sanitizeErr(e: unknown): string {
+		let msg = e instanceof Error ? e.message : String(e);
+		const key = this.config.apiKey;
+		if (key && key.length >= 6) msg = msg.split(key).join("***");
+		return msg.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer ***");
+	}
+
 	private async callAPI(
 		systemPrompt: string,
 		messages: ConversationMessage[],
@@ -430,11 +467,18 @@ export class CommentaryGenerator {
 					makeParams(this.config.enableThinking, this.config.enableSearch),
 				);
 			} catch (e) {
+				// :384 OpenAI SDK 错误原文常含 baseURL / Authorization: Bearer
+				// <apikey> 片段;callAPI 的错误会经 engine-error / log WS 外泄到
+				// dashboard。脱敏后再 warn / 抛出。
 				if (this.config.enableThinking) {
-					this.logger.warn(`[api] thinking 模式不受支持，降级重试: ${(e as Error).message}`);
-					res = await client.chat.completions.create(makeParams(false, this.config.enableSearch));
+					this.logger.warn(`[api] thinking 模式不受支持，降级重试: ${this.sanitizeErr(e)}`);
+					try {
+						res = await client.chat.completions.create(makeParams(false, this.config.enableSearch));
+					} catch (e2) {
+						throw new Error(this.sanitizeErr(e2));
+					}
 				} else {
-					throw e;
+					throw new Error(this.sanitizeErr(e));
 				}
 			}
 
@@ -458,7 +502,13 @@ export class CommentaryGenerator {
 			for (const toolCall of message.tool_calls) {
 				let result: string;
 				try {
-					const args = JSON.parse(toolCall.function.arguments) as Record<string, string>;
+					// :461 LLM 常把 uid 输出成数字(`{"uid":12345}`)。裸 as
+					// Record<string,string> 是谎言 → 下游用 args.uid 当字符串与
+					// 订阅 key("12345")比对失配。逐值强制 String 归一。
+					const rawArgs = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
+					const args: Record<string, string> = Object.fromEntries(
+						Object.entries(rawArgs).map(([k, v]) => [k, typeof v === "string" ? v : String(v)]),
+					);
 					this.logger.debug(`[tool] 执行 ${toolCall.function.name}(${JSON.stringify(args)})`);
 					result = await toolOptions.onToolCall(toolCall.function.name, args);
 				} catch (e) {

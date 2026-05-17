@@ -577,18 +577,31 @@ export class ImageRenderer {
 				try {
 					img.setAttribute("src", await this.fetchImageAsDataUrl(src));
 				} catch (err) {
-					this.logger.warn(`[prefetch] 图片预取失败，保留原 URL: ${src} (${err})`);
+					// ②5:预取失败**不得保留原 URL** —— 否则 puppeteer 渲染时自行
+					// 抓取,违背「零外部引用」承诺(白名单内域也是外部网络)。换占位。
+					this.logger.warn(`[prefetch] 图片预取失败，替换为占位(不留外部引用): ${src} (${err})`);
+					img.setAttribute("src", ImageRenderer.BLOCKED_IMG_PLACEHOLDER);
 				}
 			}),
 		);
 
-		// 内联 CSS 中的 url("https://...")
+		// 内联 CSS 远程引用。②5:仅 url(...) 不够 —— `@import "https://…"` 与
+		// `image-set("https://…" …)` 同样能让 puppeteer 解析样式时发起外部抓取
+		// (SSRF 残口)。三类一并收集 → 占位/内联。
 		const cssUrlRegex = /url\((['"]?)(https?:\/\/[^'")]+)\1\)/gi;
+		const cssImportRegex = /@import\s+(?:url\()?['"]?(https?:\/\/[^'")\s]+)/gi;
+		const cssImageSetRegex = /image-set\(\s*['"](https?:\/\/[^'"]+)['"]/gi;
 		const cssUrlSet = new Set<string>();
 
 		const collectCssUrls = (cssText: string) => {
 			for (const m of cssText.matchAll(cssUrlRegex)) {
 				if (this.isRemoteUrl(m[2])) cssUrlSet.add(m[2]);
+			}
+			for (const m of cssText.matchAll(cssImportRegex)) {
+				if (this.isRemoteUrl(m[1])) cssUrlSet.add(m[1]);
+			}
+			for (const m of cssText.matchAll(cssImageSetRegex)) {
+				if (this.isRemoteUrl(m[1])) cssUrlSet.add(m[1]);
 			}
 		};
 
@@ -612,15 +625,22 @@ export class ImageRenderer {
 				try {
 					cssUrlMap.set(url, await this.fetchImageAsDataUrl(url));
 				} catch (err) {
-					this.logger.warn(`[prefetch] CSS 图片预取失败，保留原 URL: ${url} (${err})`);
+					// ②5:同 <img> —— 预取失败换占位,绝不留原 URL 给 puppeteer 抓。
+					this.logger.warn(
+						`[prefetch] CSS 图片预取失败，替换为占位(不留外部引用): ${url} (${err})`,
+					);
+					cssUrlMap.set(url, ImageRenderer.BLOCKED_IMG_PLACEHOLDER);
 				}
 			}),
 		);
 
 		if (cssUrlMap.size > 0) {
+			// ②5:按 URL 长度降序替换。否则若一个 URL 是另一个的前缀
+			// (`…/a` vs `…/a/b`),先替短的会把长的截断破坏。
+			const orderedEntries = [...cssUrlMap.entries()].sort(([a], [b]) => b.length - a.length);
 			const replaceCssUrls = (css: string) => {
 				let result = css;
-				for (const [url, dataUrl] of cssUrlMap.entries()) {
+				for (const [url, dataUrl] of orderedEntries) {
 					result = result.replaceAll(url, dataUrl);
 				}
 				return result;
