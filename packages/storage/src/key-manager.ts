@@ -10,17 +10,31 @@ export class KeyManager {
 	) {}
 
 	async loadOrCreate(): Promise<Buffer> {
+		let hex: string | null = null;
 		try {
-			const hex = (await readFile(this.keyPath, "utf8")).trim();
-			if (!/^[0-9a-f]{64}$/i.test(hex)) {
-				throw new Error("key file format invalid");
+			hex = (await readFile(this.keyPath, "utf8")).trim();
+		} catch (e) {
+			if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+				// 文件存在但读不了(EACCES/EIO/EBUSY…):绝不能静默重生成 —— 那会换
+				// master.key,把所有已 GCM 加密的 cookie / AI apiKey 一次性变为无法
+				// 解密(数据销毁)。与 key-provider.ts 的 salt loader 同策略。
+				this.logger.error(`[key] 主密钥读取失败（非缺失）: ${(e as Error).message}`);
+				throw e;
 			}
-			this.logger.info("[key] 主密钥加载成功");
-			return Buffer.from(hex, "hex");
-		} catch {
-			this.logger.info("[key] 未找到有效密钥，生成新密钥");
-			return this.createNew();
+			// ENOENT → 首次运行,正常创建
 		}
+		if (hex !== null) {
+			if (/^[0-9a-f]{64}$/i.test(hex)) {
+				this.logger.info("[key] 主密钥加载成功");
+				return Buffer.from(hex, "hex");
+			}
+			this.logger.warn(
+				"[key] 主密钥文件格式非法（非 64 位十六进制），将重新生成 —— " +
+					"既有用该密钥加密的 secrets（B 站 cookie / AI apiKey）届时无法解密、需重新登录。",
+			);
+		}
+		this.logger.info("[key] 未找到有效密钥，生成新密钥");
+		return this.createNew();
 	}
 
 	async createNew(): Promise<Buffer> {

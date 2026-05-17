@@ -15,6 +15,18 @@ const TYPE_VOTE = "RICH_TEXT_NODE_TYPE_VOTE";
 const TYPE_OGV_SEASON = "RICH_TEXT_NODE_TYPE_OGV_SEASON";
 const TYPE_OGV_EP = "RICH_TEXT_NODE_TYPE_OGV_EP";
 
+/**
+ * HTML 转义 —— 同时安全用于文本内容与双引号属性值上下文。
+ * 对齐 SCCard 的转义策略;`"` 一并转义以覆盖 `src="…"` 属性场景。
+ */
+function escapeHtml(s: string): string {
+	return s
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;");
+}
+
 export function parseRichText(rt: RichTextNode, title?: string, isArticle = false) {
 	if (isArticle) {
 		return parseRichTextArticle(rt, title);
@@ -122,15 +134,20 @@ export function parseRichText(rt: RichTextNode, title?: string, isArticle = fals
 	);
 }
 
-/** 专栏类型：node.text 本身包含 HTML 标签，需用 innerHTML 渲染 */
+/**
+ * 专栏类型。node.text 来自 B 站 API,可含任意 HTML(攻击者可控)。**全部文本转义**
+ * 后再喂 innerHTML —— innerHTML 仅渲染本函数自己拼的受控骨架(<h1>/<br>/<img>/<span>),
+ * 任何注入的 <script>/<iframe>/onerror/@import 均被转义为纯文本。代价:专栏内的
+ * HTML 排版退化为纯文本(安全优先;对齐 SCCard 转义策略)。
+ */
 function parseRichTextArticle(rt: RichTextNode, title?: string) {
 	const MAX_LINES = 5;
 
 	const rawHtml = rt.reduce((acc, node) => {
 		if (node.emoji) {
-			return `${acc}<img style="width:17px;height:17px;display:inline;vertical-align:middle" src="${node.emoji.icon_url}"/>`;
+			return `${acc}<img style="width:17px;height:17px;display:inline;vertical-align:middle" src="${escapeHtml(node.emoji.icon_url)}"/>`;
 		}
-		return acc + node.text;
+		return acc + escapeHtml(node.text);
 	}, "");
 
 	const lines = rawHtml.split("\n");
@@ -143,7 +160,7 @@ function parseRichTextArticle(rt: RichTextNode, title?: string) {
 		displayHtml = rawHtml.replace(/\n/g, "<br><br>");
 	}
 
-	const fullHtml = `${title ? `<h1 style="font-size:18px;font-weight:bold;margin-bottom:8px">${title}</h1>` : ""}${displayHtml}${truncated ? '<span style="color:#999">...（全文过长，已省略）</span>' : ""}`;
+	const fullHtml = `${title ? `<h1 style="font-size:18px;font-weight:bold;margin-bottom:8px">${escapeHtml(title)}</h1>` : ""}${displayHtml}${truncated ? '<span style="color:#999">...（全文过长，已省略）</span>' : ""}`;
 
 	return <div class="text-[15px] text-[#18191C] leading-[1.6] break-words" innerHTML={fullHtml} />;
 }
