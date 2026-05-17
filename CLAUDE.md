@@ -209,11 +209,16 @@ src/
   history/
     store.ts            ← HistoryStore — <dataDir>/history/<YYYY-MM-DD>.jsonl with uname/avatar snapshots
     retention.ts        ← daily sweep dropping files older than globals.app.historyRetentionDays
-  routes/               ← REST: auth, subs, targets, adapters, globals, history, fans, live, cards, push, health
+  logs/
+    store.ts            ← LogStore — buffered jsonl-by-day <dataDir>/logs/<YYYY-MM-DD>.jsonl; floor-gated (globals.app.logArchiveFloor, read live), ~1s/100-batch flush, final-flush on serviceCtx dispose
+    retention.ts        ← daily sweep dropping files older than globals.app.logRetentionDays
+    redact.ts           ← credential scrub (SESSDATA/bili_jct/refresh_token/sk-/Bearer) — single fan-out point
+    sink.ts             ← createLogSink: redact ONCE → tee to WS ring (live, all levels) + LogStore (archive, floor-gated)
+  routes/               ← REST: auth, subs, targets, adapters, globals, history, logs, fans, live, cards, push, health
   ws/
     server.ts           ← ws upgrade + per-conn channel filter
     channels.ts         ← bridges BiliEvents → 4 channels: auth / push-events / log / state
-    log-channel.ts      ← log-level filtering, ring buffer
+    log-channel.ts      ← in-memory ring buffer (WS live tail)
   sink/                 ← NotificationSink dispatch over PushTarget.id → platform adapter
   platforms/            ← OneBot v11 + Webhook + WebDashboard adapters
 ```
@@ -227,16 +232,16 @@ itself; multi-arg events serialize as a tuple.
 |---|---|---|
 | `auth` | `login-status-report` | `useAuthChannel` → QR / login state |
 | `push-events` | `history-recorded` / `live-state-changed` / `live-viewers-changed` / `fans-refreshed` | `usePushEventsChannel` → tanstack-query `setQueryData` patches |
-| `log` | `engine-error` + ring-buffered server logs | `useAlertChannel` |
+| `log` | `engine-error` + every `logger.<level>` (redacted at the single fan-out, also archived to LogStore jsonl) | `useAlertChannel` (engine-error → AlertShell) **and** `useLogChannel` (full stream → Logs tab) |
 | `state` | runtime health snapshots | `useStateChannel` |
 
 ### apps/web layout
 
 ```
 src/
-  pages/        ← Dashboard / Subs / Targets / History / Rules / Cards / Ai / System
+  pages/        ← Dashboard / Subs / Targets / History / Rules / Cards / Ai / System / Logs
   components/   ← Shared atoms (Avatar/Btn/Pill/...) + icons
-  hooks/        ← useAuthChannel / usePushEventsChannel / useAlertChannel / useStateChannel / useAuthHydrate / useBackendReachable
+  hooks/        ← useAuthChannel / usePushEventsChannel / useAlertChannel / useLogChannel / useStateChannel / useAuthHydrate / useBackendReachable
   services/     ← HTTP client (services/api.ts) + typed wrappers (services/dashboard.ts)
   store/        ← zustand for transient UI state; tanstack-query cache for server state
   styles.css    ← Tailwind 4 @theme tokens + bn-anim-* keyframes + bn-no-scrollbar
@@ -259,6 +264,18 @@ Both product forms ship from `refactor` continuously:
 `apps/` shares the single root pnpm workspace with `packages/` and `koishi/`. apps/server consumes business cores via `workspace:*`. With `nodeLinker: hoisted` set in `pnpm-workspace.yaml` (pnpm 11 reads it from there, not `.npmrc`), the layout matches yarn-classic's flat `node_modules` so koishi's plugin loader keeps working.
 
 Earlier plan iterations described splitting `koishi/` and `standalone/` into separate long-lived branches with one-way merges from `refactor`. **That model has been dropped** — single-trunk maintenance is simpler, debugging is faster (one commit fixes both ends), and the directory split + pnpm isolation already gives sufficient separation.
+
+### Docker image (standalone)
+
+`apps/Dockerfile` (multi-stage: builder runs `pnpm install` + `pnpm -r run build` over the whole monorepo → runtime is `node:20-bookworm-slim` + chromium + tini, carrying only built artifacts + prod deps).
+
+**Build context MUST be the repo root, not `apps/`** — apps/server depends on `packages/*` via the pnpm `workspace:*` protocol, so `apps/` alone can't resolve them. Manual build from the repo root:
+
+```bash
+docker build -f apps/Dockerfile -t bilibili-notify:dev .
+```
+
+`.github/workflows/image-release.yml` builds + pushes to `ghcr.io/${{ github.repository_owner }}/bilibili-notify` (dynamic owner) on push to `refactor`/`main` (paths `apps/**`/`packages/**`/lockfile), on `image-v*.*.*` tags, or via `workflow_dispatch`; `latest` only from `main`. `apps/docker-compose.example.yaml` is the deploy template (`/data` volume + optional `bn.config.yaml` + commented NapCat sidecar). Never published to npm; no changeset needed for `apps/*`-only changes.
 
 ## Agent skills
 

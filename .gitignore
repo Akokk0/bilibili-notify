@@ -20,3 +20,6 @@ tsconfig.tsbuildinfo
 
 .interface
 .bn-design
+
+# 本地审计/评审产物,不入库
+docs/review/
