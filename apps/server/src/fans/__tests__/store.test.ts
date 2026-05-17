@@ -1,19 +1,18 @@
 /**
- * 单元测试 — `createFansStore` + `listFansUids`(真实 tmpdir FS)。
+ * 单元测试 — `createFansStore`(真实 tmpdir FS)。
  *
  * 守护契约:
  *   - append:按需建 fans 目录 + 追加一行;多次 append 累积
  *   - findNearestBefore:前向扫描,返回 ts<=target 的最近一条;遇首个 ts>target 停止;
  *     坏行 / 空行 / 缺字段行跳过;目标早于所有样本 → undefined;文件缺失 → undefined(不 warn)
  *   - dropUid:删文件;缺文件时静默(不抛、不 warn)
- *   - listFansUids:仅 .jsonl 去后缀;目录不存在 → []
  */
 
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createFansStore, type FansStore, listFansUids } from "../store.js";
+import { createFansStore, type FansStore } from "../store.js";
 
 function makeLogger() {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -101,20 +100,5 @@ describe("dropUid", () => {
 	it("文件不存在时静默(不抛、不 warn)", async () => {
 		await expect(store.dropUid("ghost")).resolves.toBeUndefined();
 		expect(logger.warn).not.toHaveBeenCalled();
-	});
-});
-
-describe("listFansUids", () => {
-	it("仅 .jsonl 去后缀;非 jsonl 忽略", async () => {
-		await store.append("111", { ts: T(1), value: 1 });
-		await store.append("222", { ts: T(1), value: 2 });
-		await writeFile(join(dataDir, "fans", "notes.txt"), "x");
-		const uids = await listFansUids(dataDir);
-		expect(uids.sort()).toEqual(["111", "222"]);
-	});
-
-	it("fans 目录不存在 → []", async () => {
-		const empty = await mkdtemp(join(tmpdir(), "bn-fans-empty-"));
-		expect(await listFansUids(empty)).toEqual([]);
 	});
 });

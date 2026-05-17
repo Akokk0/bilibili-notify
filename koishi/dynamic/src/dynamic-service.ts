@@ -3,7 +3,6 @@ import {
 	type DynamicEngineConfig,
 	type PushKind,
 	type PushLike,
-	type PushSegment,
 	type SubscriptionsView,
 } from "@bilibili-notify/dynamic";
 import type {
@@ -13,17 +12,9 @@ import type {
 	SubscriptionOp,
 } from "@bilibili-notify/internal";
 import { BILIBILI_NOTIFY_TOKEN, resolve } from "@bilibili-notify/internal";
-
-function hasDynamicGate(eff: EffectiveSubscription): boolean {
-	// features.dynamic = source-side 订阅开关。routing 由推送层 BilibiliPush 在
-	// broadcast 时按 routing 空 = 无 sink 兜底,这里不 AND routing——features=true /
-	// routing.dynamic=[] 的 UP 仍纳入 cron,加 routing 后下个轮询周期立即生效。
-	return eff.features.dynamic;
-}
-
 import { makeKoishiMessageBus, makeKoishiServiceContext } from "@bilibili-notify/koishi-runtime";
 import type { BilibiliPush } from "@bilibili-notify/push";
-import { type Awaitable, type Context, h, Service } from "koishi";
+import { type Awaitable, type Context, Service } from "koishi";
 import type {} from "koishi-plugin-bilibili-notify";
 import { dynamicCommands } from "./commands";
 import type { BilibiliNotifyDynamicConfig } from "./config";
@@ -42,6 +33,13 @@ declare module "koishi" {
 
 const SERVICE_NAME = "bilibili-notify-dynamic";
 
+function hasDynamicGate(eff: EffectiveSubscription): boolean {
+	// features.dynamic = source-side 订阅开关。routing 由推送层 BilibiliPush 在
+	// broadcast 时按 routing 空 = 无 sink 兜底,这里不 AND routing——features=true /
+	// routing.dynamic=[] 的 UP 仍纳入 cron,加 routing 后下个轮询周期立即生效。
+	return eff.features.dynamic;
+}
+
 /**
  * Adapt the new BilibiliPush (platform-neutral) to the PushLike interface
  * that DynamicEngine expects. The engine sends PushSegment[] + PushKind;
@@ -49,45 +47,10 @@ const SERVICE_NAME = "bilibili-notify-dynamic";
  * push.broadcastToFeature.
  */
 function adaptPush(push: BilibiliPush): PushLike {
-	const segmentToKoishi = (seg: PushSegment) => {
-		switch (seg.type) {
-			case "text":
-				return h.text(seg.text);
-			case "image":
-				return h.image(seg.buffer, seg.mime);
-			case "image-group":
-				return h(
-					"message",
-					{ forward: seg.forward },
-					seg.urls.map((url) => h.img(url)),
-				);
-		}
-	};
-
 	return {
 		async broadcastDynamic(uid, segments, kind: PushKind) {
 			// Both "dynamic" and "dynamic-images" map to the "dynamic" feature key.
 			void kind;
-			const koishiSegments = segments.map(segmentToKoishi);
-			const isOnlyImageGroup = segments.length === 1 && segments[0].type === "image-group";
-			// Build a composite payload from koishi h() elements
-			const _koishiContent = isOnlyImageGroup ? koishiSegments[0] : h("message", koishiSegments);
-			// Wrap in NotificationPayload text (h() elements serialize to strings via toString)
-			// For koishi, we leverage that the KoishiSink's payloadToKoishi converts "text" payloads
-			// using h.text() — but for composite rich content we need a workaround.
-			// Strategy: pass the koishi h() element as a "text" payload; the KoishiSink calls
-			// h.text(payload.text) which would lose formatting. Instead, pass as composite with
-			// the koishi element embedded as a text segment — but the sink only understands
-			// the defined PayloadSegment types.
-			//
-			// The cleanest approach: use sendBatch directly with a composite payload
-			// containing the text representation, and also handle image segments.
-			// For rich koishi content, we need to bypass the generic sink and call
-			// push.broadcastToFeature, but the sink still needs to handle the koishi
-			// h() elements. Since KoishiSink uses payloadToKoishi which maps kinds,
-			// we need to pick the right kind.
-			//
-			// Resolution: build a NotificationPayload from segments.
 			let payload: import("@bilibili-notify/internal").NotificationPayload;
 			if (segments.length === 1 && segments[0].type === "text") {
 				payload = { kind: "text", text: segments[0].text };

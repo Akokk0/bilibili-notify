@@ -1,0 +1,29 @@
+{
+	"$schema": "https://unpkg.com/knip@6/schema.json",
+	"workspaces": {
+		"packages/*": {
+			"entry": ["src/**/*.test.ts", "vite.config.ts"],
+			"project": ["src/**/*.ts"]
+		},
+		"koishi/*": {
+			"entry": ["src/**/*.test.ts", "vite.config.ts"],
+			"project": ["src/**/*.ts"]
+		},
+		"koishi/core": {
+			"entry": ["client/index.ts", "src/**/*.test.ts", "vite.config.ts"],
+			"project": ["src/**/*.ts", "client/**/*.ts"]
+		},
+		"apps/server": {
+			"entry": ["src/**/*.test.ts", "vite.config.ts"],
+			"project": ["src/**/*.ts"]
+		},
+		"apps/web": {
+			"entry": ["index.html", "src/**/*.test.{ts,tsx}"],
+			"project": ["src/**/*.{ts,tsx}"]
+		},
+		".": {
+			"entry": ["scripts/*.mjs"],
+			"project": ["scripts/*.mjs"]
+		}
+	}
+}

@@ -23,7 +23,8 @@
 		"changeset": "changeset",
 		"version": "changeset version",
 		"release": "pnpm build && changeset publish",
-		"test": "vp test run"
+		"test": "vp test run",
+		"knip": "knip --files"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.10",
@@ -33,7 +34,7 @@
 		"@koishijs/plugin-console": "^5.30.11",
 		"@types/node": "^22.15.21",
 		"@voidzero-dev/vite-plus-core": "^0.1.20",
-		"koishi": "^4.18.11",
+		"knip": "^6.14.1",
 		"lefthook": "^1.11.12",
 		"typescript": "^5.8.3",
 		"vite-plus": "^0.1.20"

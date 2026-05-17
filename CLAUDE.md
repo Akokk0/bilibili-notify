@@ -106,8 +106,6 @@ Each shell's `index.ts` re-exports as the koishi-standard `Config` / `apply`.
    - `lifecycle.ts` — bringUp / tearDown / waitForServices
    - `login-flow-bridge.ts` — wraps `LoginFlow` (from `@bilibili-notify/api`); listens to console `start-login` / `reset-key`; renders QR PNG via `qrcode` dep
    - `subscription-loader.ts` — koishi config → `SubscriptionStore` seeding + `addSub` / `removeSub` / `updateSub` wrappers
-   - `subscription-crud.ts` — pure CRUD on a snapshot
-   - `sub-diff.ts` — `SubscriptionOp[]` diff helper
    - `health-check.ts` — rate-limited master notify on auth-lost
    - `master-notifier.ts` — `engine-error` consumer; forwards to master DM
    - `target-registry.ts` — in-memory `PushAdapter` + `PushTarget` registry

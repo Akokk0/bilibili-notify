@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type {
@@ -10,7 +10,6 @@ import type {
 	Logger,
 	MessageBus,
 	NotificationPayload,
-	PushTarget,
 } from "@bilibili-notify/internal";
 import { HistoryEntrySchema } from "@bilibili-notify/internal";
 
@@ -234,51 +233,4 @@ export async function listDayFiles(dataDir: string): Promise<string[]> {
 /** Internal helper used by retention.ts. */
 export async function deleteDayFile(dataDir: string, fileName: string): Promise<void> {
 	await unlink(join(dataDir, "history", fileName));
-}
-
-/** Helper exposed for diagnostic use; reads the entire jsonl, parsed. */
-export async function readAllForTesting(dataDir: string): Promise<HistoryEntry[]> {
-	const root = join(dataDir, "history");
-	const out: HistoryEntry[] = [];
-	try {
-		const files = await readdir(root);
-		for (const file of files) {
-			if (!/^\d{4}-\d{2}-\d{2}\.jsonl$/.test(file)) continue;
-			const raw = await readFile(join(root, file), "utf8");
-			for (const line of raw.split("\n")) {
-				if (!line.trim()) continue;
-				const parsed = JSON.parse(line);
-				const r = HistoryEntrySchema.safeParse(parsed);
-				if (r.success) out.push(r.data);
-			}
-		}
-	} catch {
-		// nothing
-	}
-	return out;
-}
-
-/** Convenience: build the bridge from a NotificationSink delivery to a HistoryAppendInput. */
-export function deliveryToHistoryInput(
-	source: HistorySource,
-	uid: string,
-	subscriptionId: string,
-	target: PushTarget,
-	payload: NotificationPayload,
-	result: { ok: boolean; latencyMs: number; err?: string },
-): HistoryAppendInput {
-	return {
-		source,
-		uid,
-		subscriptionId,
-		targets: [
-			{
-				targetId: target.id,
-				ok: result.ok,
-				latencyMs: result.latencyMs,
-				err: result.err,
-			},
-		],
-		payload,
-	};
 }

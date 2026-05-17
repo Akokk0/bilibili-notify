@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { appendFile, mkdir, readdir, unlink } from "node:fs/promises";
+import { appendFile, mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Logger } from "@bilibili-notify/internal";
@@ -109,18 +109,4 @@ export function createFansStore(opts: CreateFansStoreOptions): FansStore {
 			}
 		},
 	};
-}
-
-/**
- * 测试 / retention pass 可能需要列出全部 uid 文件。当前导出仅作为后续扩展点;
- * 主流程不调用。
- */
-export async function listFansUids(dataDir: string): Promise<string[]> {
-	const root = join(dataDir, "fans");
-	try {
-		const names = await readdir(root);
-		return names.filter((n) => n.endsWith(".jsonl")).map((n) => n.replace(/\.jsonl$/, ""));
-	} catch {
-		return [];
-	}
 }

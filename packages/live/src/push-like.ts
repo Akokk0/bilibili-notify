@@ -12,7 +12,7 @@
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 
-/** Push category enum — value-compatible with `@bilibili-notify/push`'s `PushType`. */
+/** Push category enum — numeric values are the historical bilibili-notify push-type codes. */
 export enum LivePushType {
 	Live = 0,
 	StartBroadcasting = 3,
