@@ -55,6 +55,19 @@ export const AppConfigSchema = z.object({
 	dynamicCron: z.string().default("*/2 * * * *"),
 	healthCheckMinutes: z.number().int().min(5).max(180).default(30),
 	historyRetentionDays: z.number().int().min(1).max(365).default(30),
+	/**
+	 * 日志归档入档下限。standalone 端把 logger.<level> 调用旁路落盘
+	 * `<dataDir>/logs/<YYYY-MM-DD>.jsonl`;级别严重度低于此下限的不写盘
+	 * (仍走 WS `log` 频道实时 tail)。复用 `LogLevelSchema`(error|info|debug);
+	 * `warn` 级条目在 floor=info 时按 rank 仍入档。Koishi 端不消费(无 LogStore)。
+	 */
+	logArchiveFloor: LogLevelSchema.default("info"),
+	/**
+	 * 日志归档保留天数。`startLogRetention` 每轮按此删除更旧的 day 文件。
+	 * 与 `historyRetentionDays` 同模式但默认更短(日志量远高于推送历史、
+	 * 长期价值低)。Koishi 端携带但不消费(standalone-only,同 historyRetentionDays)。
+	 */
+	logRetentionDays: z.number().int().min(1).max(365).default(7),
 });
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 

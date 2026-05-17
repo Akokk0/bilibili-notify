@@ -6,6 +6,8 @@ import { type AuthSystem, createAuthSystem } from "./auth/index.js";
 import { createWsTicketStore } from "./auth/ws-ticket.js";
 import { loadBootstrapConfig } from "./config/loader.js";
 import { startHistoryRetention } from "./history/retention.js";
+import { startLogRetention } from "./logs/retention.js";
+import { createLogSink } from "./logs/sink.js";
 import { createOnebotAdapter } from "./platforms/onebot.js";
 import { createWebDashboardAdapter } from "./platforms/web-dashboard.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
@@ -118,6 +120,13 @@ async function main(): Promise<void> {
 		logger: log,
 	});
 
+	// Daily retention pass for the log archive (globals.app.logRetentionDays).
+	startLogRetention({
+		serviceCtx: runtime.serviceCtx,
+		store: runtime.configStore,
+		logger: log,
+	});
+
 	// 启动 FansPoller — cron 跟 globals.app.dynamicCron,每个 enabled sub
 	// 拉一次 B 站 fans 数,写时序 jsonl + emit `fans-refreshed`。
 	const fansPoller = startFansPoller({
@@ -175,7 +184,11 @@ async function main(): Promise<void> {
 		wsTicketStore,
 		allowedOrigins: bootstrap.auth?.allowedOrigins,
 	});
-	const previousLogHook = runtime.serviceCtx.setLogHook((entry) => wsServer.logChannel.push(entry));
+	// Single fan-out point: redact ONCE, then tee to the WS ring (live tail,
+	// all levels) + the on-disk archive (floor-gated inside ingest).
+	const previousLogHook = runtime.serviceCtx.setLogHook(
+		createLogSink({ ring: wsServer.logChannel, store: runtime.logStore }),
+	);
 
 	let shuttingDown = false;
 	const shutdown = async (signal: NodeJS.Signals): Promise<void> => {

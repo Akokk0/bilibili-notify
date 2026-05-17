@@ -6,6 +6,7 @@ import { createSecretStore } from "../config/secret-store.js";
 import { type ConfigStore, createConfigStore } from "../config/store.js";
 import { createFansStore, type FansStore } from "../fans/store.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
+import { createLogStore, type LogStore } from "../logs/store.js";
 import type { EnginesRuntime } from "./engines.js";
 import type { FansPollerHandle } from "./fans-poller.js";
 import { createNodeMessageBus } from "./message-bus.js";
@@ -25,6 +26,12 @@ export interface AppRuntime {
 	configStore: ConfigStore;
 	historyStore: HistoryStore;
 	fansStore: FansStore;
+	/**
+	 * jsonl-by-day log archive. Fed (post-redaction) by the log sink installed
+	 * in index.ts; queried by the `/api/logs` route. Floor-gated live off
+	 * `globals.app.logArchiveFloor`.
+	 */
+	logStore: LogStore;
 	/**
 	 * Engine layer: BilibiliPush + DynamicEngine + LiveEngine + Sink.
 	 *
@@ -102,6 +109,14 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		dataDir: bootstrap.dataDir,
 		logger: serviceCtx.logger,
 	});
+	const logStore = createLogStore({
+		dataDir: bootstrap.dataDir,
+		serviceCtx,
+		logger: serviceCtx.logger,
+		// Read the floor live each ingest (no restart / no config-changed sub —
+		// same contract as history retention reading the live horizon).
+		getFloor: () => configStore.getGlobals().app.logArchiveFloor,
+	});
 
 	let engines: EnginesRuntime | null = null;
 	let fansPoller: FansPollerHandle | null = null;
@@ -114,6 +129,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		configStore,
 		historyStore,
 		fansStore,
+		logStore,
 		get engines() {
 			return engines;
 		},

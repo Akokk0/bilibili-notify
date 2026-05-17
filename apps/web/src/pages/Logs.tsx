@@ -1,0 +1,237 @@
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Input } from "../components/atoms";
+import { Icon } from "../components/icons";
+import { useLogChannel } from "../hooks/useLogChannel";
+import { api } from "../services/api";
+import {
+	type LogLineLevel,
+	type LogLineView,
+	type LogsResponse,
+	logsQueryKey,
+} from "../services/dashboard";
+
+/**
+ * `/logs` — 日志输出 Tab。落盘 jsonl 归档(<dataDir>/logs/<日>.jsonl)的
+ * 实时 + 历史查看。
+ *
+ * 取数(镜像 History):服务端 /api/logs 只按 day/limit 分页;level / source /
+ * 文本过滤全在本页客户端做,所以 live query key 稳定、`useLogChannel` 的 WS
+ * tail 能 setQueryData-append 不漂移。选过去某天 → 不同 key 的冻结历史视图,
+ * WS 不污染。AlertShell(engine-error 红色面板)独立并存。
+ */
+
+const LEVELS: ReadonlyArray<LogLineLevel> = ["debug", "info", "warn", "error"];
+
+const LEVEL_TONE: Record<LogLineLevel, string> = {
+	debug: "#94a3b8",
+	info: "#00AEEC",
+	warn: "#f2a053",
+	error: "#ef4444",
+};
+
+const RENDER_CAP = 800;
+
+function todayStr(): string {
+	return new Date().toISOString().slice(0, 10);
+}
+
+export default function Logs() {
+	useLogChannel();
+
+	const [day, setDay] = useState<string>(""); // "" = 实时(live key);否则某天
+	const [levels, setLevels] = useState<Set<LogLineLevel>>(new Set(LEVELS));
+	const [source, setSource] = useState<string>("");
+	const [q, setQ] = useState("");
+	const [paused, setPaused] = useState(false);
+	const [autoscroll, setAutoscroll] = useState(true);
+
+	const isLive = day === "";
+	const logsQuery = useQuery({
+		queryKey: logsQueryKey(isLive ? undefined : day),
+		queryFn: () => api.get<LogsResponse>(`/api/logs?limit=500${isLive ? "" : `&day=${day}`}`),
+		// 过去某天是冻结快照,不必刷;实时键由 useLogChannel 持续 prepend。
+		refetchInterval: false,
+	});
+
+	const liveEntries = logsQuery.data?.entries ?? [];
+
+	// 暂停:冻结视图。capture 当前 entries,暂停期间不反映新 WS 帧。
+	const frozenRef = useRef<LogLineView[]>([]);
+	if (!paused) frozenRef.current = liveEntries;
+	const sourceEntries = paused ? frozenRef.current : liveEntries;
+
+	// 源/子系统下拉项 —— 从当前数据集 distinct(含 engine-error 的 source)。
+	const sources = useMemo(() => {
+		const s = new Set<string>();
+		for (const e of sourceEntries) if (e.name) s.add(e.name);
+		return [...s].sort();
+	}, [sourceEntries]);
+
+	// 客户端过滤 + 转时序升序(终端式:新行在底部)。
+	const displayed = useMemo(() => {
+		const ql = q.trim().toLowerCase();
+		const filtered = sourceEntries.filter((e) => {
+			if (!levels.has(e.level)) return false;
+			if (source && e.name !== source) return false;
+			if (!ql) return true;
+			const hay = `${e.msg} ${e.name ?? ""} ${e.args ? JSON.stringify(e.args) : ""}`.toLowerCase();
+			return hay.includes(ql);
+		});
+		// cache 为新→旧;终端视图要旧→新,取最近 RENDER_CAP 条再反转。
+		return filtered.slice(0, RENDER_CAP).reverse();
+	}, [sourceEntries, levels, source, q]);
+
+	const bottomRef = useRef<HTMLDivElement>(null);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 仅在行数变化时滚动
+	useEffect(() => {
+		if (!paused && autoscroll) bottomRef.current?.scrollIntoView({ block: "end" });
+	}, [displayed.length, paused, autoscroll]);
+
+	function toggleLevel(l: LogLineLevel): void {
+		setLevels((prev) => {
+			const next = new Set(prev);
+			if (next.has(l)) next.delete(l);
+			else next.add(l);
+			return next;
+		});
+	}
+
+	const viewDay = isLive ? todayStr() : day;
+
+	return (
+		<div className="bn-anim-fade-in space-y-3">
+			<div className="flex flex-wrap items-center gap-2">
+				<Input
+					value={q}
+					onChange={setQ}
+					placeholder="搜索日志正文 / 源 / 参数..."
+					icon={<Icon.search size={14} />}
+				/>
+				<div className="flex gap-1">
+					{LEVELS.map((l) => {
+						const active = levels.has(l);
+						const tone = LEVEL_TONE[l];
+						return (
+							<button
+								key={l}
+								type="button"
+								onClick={() => toggleLevel(l)}
+								className="rounded-full border px-3 py-1 text-[12px] font-semibold uppercase transition"
+								style={
+									active
+										? { background: `${tone}1f`, color: tone, borderColor: `${tone}55` }
+										: { background: "transparent", color: "#999", borderColor: "#e0e0e0" }
+								}
+							>
+								{l}
+							</button>
+						);
+					})}
+				</div>
+
+				<select
+					value={source}
+					onChange={(e) => setSource(e.target.value)}
+					className="rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
+				>
+					<option value="">全部来源</option>
+					{sources.map((s) => (
+						<option key={s} value={s}>
+							{s}
+						</option>
+					))}
+				</select>
+
+				<div className="flex-1" />
+
+				<input
+					type="date"
+					value={isLive ? "" : day}
+					max={todayStr()}
+					onChange={(e) => setDay(e.target.value)}
+					className="rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
+				/>
+				{!isLive && (
+					<button
+						type="button"
+						onClick={() => setDay("")}
+						className="rounded-full border border-bn-pink/40 bg-bn-pink/10 px-3 py-1 text-[12px] font-semibold text-bn-pink"
+					>
+						回到实时
+					</button>
+				)}
+				<button
+					type="button"
+					onClick={() => setPaused((p) => !p)}
+					className="rounded-full border px-3 py-1 text-[12px] font-semibold transition"
+					style={
+						paused
+							? { background: "#f2a05320", color: "#f2a053", borderColor: "#f2a05355" }
+							: { background: "transparent", color: "#666", borderColor: "#e0e0e0" }
+					}
+				>
+					{paused ? "已暂停" : "暂停"}
+				</button>
+				<button
+					type="button"
+					onClick={() => setAutoscroll((a) => !a)}
+					className="rounded-full border px-3 py-1 text-[12px] font-semibold transition"
+					style={
+						autoscroll
+							? { background: "#00AEEC1f", color: "#00AEEC", borderColor: "#00AEEC55" }
+							: { background: "transparent", color: "#666", borderColor: "#e0e0e0" }
+					}
+				>
+					自动滚动
+				</button>
+				<a
+					href={`/api/logs/raw?day=${viewDay}`}
+					className="inline-flex items-center gap-1 rounded-full border border-black/10 px-3 py-1 text-[12px] font-semibold text-bn-text-secondary hover:text-bn-text-primary"
+				>
+					↓ {viewDay}.jsonl
+				</a>
+			</div>
+
+			<div className="flex items-center justify-between px-1 text-[11px] text-bn-text-tertiary">
+				<span>
+					{isLive ? "实时" : `归档 · ${day}`} · 显示 {displayed.length} 行
+					{paused ? " · 已冻结" : ""}
+				</span>
+				{logsQuery.isLoading ? <span>加载中…</span> : null}
+			</div>
+
+			<div className="h-[calc(100vh-260px)] overflow-auto rounded-[10px] border border-black/6 bg-[#0f1115] px-3 py-2.5 font-mono text-[12px] leading-relaxed">
+				{logsQuery.error ? (
+					<div className="text-red-400">加载失败:{String((logsQuery.error as Error).message)}</div>
+				) : displayed.length === 0 ? (
+					<div className="py-10 text-center text-[12px] text-gray-500">没有符合条件的日志</div>
+				) : (
+					// biome-ignore lint/suspicious/noArrayIndexKey: 日志行无稳定 id;append-only tail 视图,行不会原地重排,index 复用无状态副作用
+					displayed.map((e, i) => <LogRow key={`${e.ts}-${i}`} entry={e} />)
+				)}
+				<div ref={bottomRef} />
+			</div>
+		</div>
+	);
+}
+
+function LogRow({ entry }: { entry: LogLineView }) {
+	const tone = LEVEL_TONE[entry.level];
+	const time = entry.ts.slice(11, 23); // HH:MM:SS.sss
+	return (
+		<div className="flex gap-2 whitespace-pre-wrap break-all py-0.5 text-gray-300">
+			<span className="shrink-0 text-gray-500">{time}</span>
+			<span className="shrink-0 font-bold uppercase" style={{ color: tone }}>
+				{entry.level}
+			</span>
+			{entry.name ? <span className="shrink-0 text-gray-500">[{entry.name}]</span> : null}
+			<span className="min-w-0">
+				{entry.msg}
+				{entry.args && entry.args.length > 0 ? (
+					<span className="text-gray-500"> {JSON.stringify(entry.args)}</span>
+				) : null}
+			</span>
+		</div>
+	);
+}

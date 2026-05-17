@@ -184,7 +184,9 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 			type: "log",
 			event: entry.level,
 			ts: entry.ts,
-			data: { msg: entry.msg, args: entry.args },
+			// `name` carries the emitting subsystem so the Logs tab can offer a
+			// source/subsystem filter. Entry is already redacted upstream.
+			data: { msg: entry.msg, args: entry.args, name: entry.name },
 		});
 	});
 	subs.push({ dispose: unsubLog });

@@ -55,6 +55,35 @@ export const HISTORY_QUERY_LIMITS = [100, 200] as const;
 export const historyQueryKey = (limit: number) => ["history", { limit }] as const;
 
 /**
+ * Wire-compat with apps/server/src/routes/logs.ts (LogArchiveEntry) + the WS
+ * `log` channel level frames. Note 4 wire levels incl `warn` — wider than the
+ * 3-value `LogLevel` config enum (error|info|debug).
+ */
+export type LogLineLevel = "debug" | "info" | "warn" | "error";
+
+export interface LogLineView {
+	ts: string;
+	level: LogLineLevel;
+	/** Emitting subsystem (e.g. "bilibili-notify:dynamic"). Absent on engine-error rows. */
+	name?: string;
+	msg: string;
+	args?: unknown[];
+}
+
+export interface LogsResponse {
+	entries: LogLineView[];
+}
+
+/**
+ * `day` undefined = the live view (today + recent, newest-first); this is the
+ * key the WS `log` tail `setQueryData`-appends to. Picking a past day yields a
+ * DIFFERENT key so the frozen historical view isn't polluted by live frames —
+ * same per-key isolation trick as `historyQueryKey(limit)`.
+ */
+export const LOGS_LIVE_KEY = "live";
+export const logsQueryKey = (day?: string) => ["logs", { day: day ?? LOGS_LIVE_KEY }] as const;
+
+/**
  * Wire-compat with apps/server/src/routes/fans.ts + WS `fans-refreshed` 事件。
  * 后端 FansPoller 每个 cron tick 输出一批 entries(本轮采到的所有 enabled subs)。
  * Bootstrap 阶段 entries 为空,FansPanel 显示"采样中…"。

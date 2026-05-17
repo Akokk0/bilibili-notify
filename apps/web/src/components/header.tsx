@@ -29,6 +29,7 @@ const NAV: ReadonlyArray<{
 	{ to: "/cards", label: "卡片渲染 · 样式" },
 	{ to: "/ai", label: "智能女仆" },
 	{ to: "/system", label: "系统" },
+	{ to: "/logs", label: "日志" },
 ];
 
 function AccountChip() {

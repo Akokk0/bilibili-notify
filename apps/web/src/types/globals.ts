@@ -25,6 +25,10 @@ export interface AppConfig {
 	dynamicCron: string;
 	healthCheckMinutes: number;
 	historyRetentionDays: number;
+	/** 日志归档入档下限(standalone-only;低于此严重度的级别不写盘,仍走 WS 实时 tail)。 */
+	logArchiveFloor: LogLevel;
+	/** 日志归档保留天数(standalone-only;startLogRetention 按此删旧 day 文件)。 */
+	logRetentionDays: number;
 }
 
 export interface MasterConfig {

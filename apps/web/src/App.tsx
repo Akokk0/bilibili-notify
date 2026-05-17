@@ -15,6 +15,7 @@ import Ai from "./pages/Ai";
 import Cards from "./pages/Cards";
 import Dashboard from "./pages/Dashboard";
 import History from "./pages/History";
+import Logs from "./pages/Logs";
 import Rules from "./pages/Rules";
 import Subs from "./pages/Subs";
 import System from "./pages/System";
@@ -76,6 +77,7 @@ export default function App() {
 						<Route path="/cards" element={<Cards />} />
 						<Route path="/ai" element={<Ai />} />
 						<Route path="/system" element={<System />} />
+						<Route path="/logs" element={<Logs />} />
 					</Routes>
 				</main>
 			)}

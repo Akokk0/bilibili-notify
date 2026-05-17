@@ -87,35 +87,35 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 	const callPino = (fn: (...a: unknown[]) => void, msg: string, args: readonly unknown[]): void => {
 		fn(msg, ...args);
 	};
-	const fanOut = (level: LogLevel, msg: string, args: readonly unknown[]): void => {
+	const fanOut = (name: string, level: LogLevel, msg: string, args: readonly unknown[]): void => {
 		const hook = logHook;
 		if (!hook) return;
 		try {
-			hook({ level, msg, args: [...args], ts: new Date().toISOString() });
+			hook({ level, msg, args: [...args], ts: new Date().toISOString(), name });
 		} catch {
 			// Never let a misbehaving hook break the logger path. We can't log the failure
 			// without recursing through ourselves, so swallow.
 		}
 	};
-	const wrapLogger = (target: PinoLogger): Logger => ({
+	const wrapLogger = (target: PinoLogger, name: string): Logger => ({
 		info: (msg, ...args) => {
 			callPino(target.info.bind(target) as never, msg, args);
-			fanOut("info", msg, args);
+			fanOut(name, "info", msg, args);
 		},
 		warn: (msg, ...args) => {
 			callPino(target.warn.bind(target) as never, msg, args);
-			fanOut("warn", msg, args);
+			fanOut(name, "warn", msg, args);
 		},
 		error: (msg, ...args) => {
 			callPino(target.error.bind(target) as never, msg, args);
-			fanOut("error", msg, args);
+			fanOut(name, "error", msg, args);
 		},
 		debug: (msg, ...args) => {
 			callPino(target.debug.bind(target) as never, msg, args);
-			fanOut("debug", msg, args);
+			fanOut(name, "debug", msg, args);
 		},
 	});
-	const logger = wrapLogger(baseLogger);
+	const logger = wrapLogger(baseLogger, opts.name);
 
 	const intervals = new Set<NodeJS.Timeout>();
 	const timeouts = new Set<NodeJS.Timeout>();
@@ -180,7 +180,7 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 				...transportOpt,
 			});
 			return {
-				logger: wrapLogger(subPino),
+				logger: wrapLogger(subPino, `${opts.name}:${name}`),
 				setInterval: setIntervalImpl,
 				setTimeout: setTimeoutImpl,
 				onDispose: onDisposeImpl,
