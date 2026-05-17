@@ -49,6 +49,7 @@
 	},
 	"devDependencies": {
 		"@koishijs/client": "^5.30.11",
+		"@koishijs/plugin-console": "^5.30.11",
 		"@koishijs/plugin-help": "^2.4.6",
 		"@koishijs/plugin-notifier": "^1.2.1",
 		"@types/qrcode": "^1.5.6",

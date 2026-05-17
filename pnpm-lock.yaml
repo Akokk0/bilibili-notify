@@ -23,9 +23,6 @@ importers:
       '@commitlint/config-conventional':
         specifier: ^20.5.0
         version: 20.5.3
-      '@koishijs/plugin-console':
-        specifier: ^5.30.11
-        version: 5.30.11(@koishijs/client@5.30.11(@types/node@22.19.18)(lightningcss@1.32.0)(postcss@8.5.14)(rollup@4.60.3)(typescript@5.9.3))(koishi@4.18.11(@cordisjs/plugin-http@0.6.3(cordis@3.18.1))(cordis@3.18.1))
       '@types/node':
         specifier: ^22.15.21
         version: 22.19.18
@@ -212,9 +209,6 @@ importers:
       '@bilibili-notify/subscription':
         specifier: workspace:^
         version: link:../../packages/subscription
-      '@koishijs/plugin-console':
-        specifier: ^5.30.11
-        version: 5.30.11(@koishijs/client@5.30.11(@types/node@22.19.18)(lightningcss@1.32.0)(postcss@8.5.14)(rollup@4.60.3)(typescript@5.9.3))(koishi@4.18.11(@cordisjs/plugin-http@0.6.3(cordis@3.18.1))(cordis@3.18.1))
       koishi:
         specifier: ^4.18.11
         version: 4.18.11(@cordisjs/plugin-http@0.6.3(cordis@3.18.1))(cordis@3.18.1)
@@ -225,6 +219,9 @@ importers:
       '@koishijs/client':
         specifier: ^5.30.11
         version: 5.30.11(@types/node@22.19.18)(lightningcss@1.32.0)(postcss@8.5.14)(rollup@4.60.3)(typescript@5.9.3)
+      '@koishijs/plugin-console':
+        specifier: ^5.30.11
+        version: 5.30.11(@koishijs/client@5.30.11(@types/node@22.19.18)(lightningcss@1.32.0)(postcss@8.5.14)(rollup@4.60.3)(typescript@5.9.3))(koishi@4.18.11(@cordisjs/plugin-http@0.6.3(cordis@3.18.1))(cordis@3.18.1))
       '@koishijs/plugin-help':
         specifier: ^2.4.6
         version: 2.4.6(koishi@4.18.11(@cordisjs/plugin-http@0.6.3(cordis@3.18.1))(cordis@3.18.1))
