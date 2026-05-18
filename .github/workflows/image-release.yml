@@ -63,7 +63,64 @@ jobs:
             type=sha,prefix=,format=short
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      - name: Build and push
+      # Build into the runner's docker (load, NOT push) so the image can be
+      # smoke-tested before it ever reaches GHCR. Single-platform (linux/amd64)
+      # so `load: true` is valid. cache-to gha,mode=max makes the later push
+      # step a pure cache hit (no rebuild) → pushed image is byte-identical.
+      - name: Build image (load, no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./apps/Dockerfile
+          load: true
+          push: false
+          tags: bilibili-notify:smoke
+          # Only build linux/amd64 by default — adding arm64 doubles build
+          # time because chromium has to be installed twice. Flip to
+          # linux/amd64,linux/arm64 when there's demand.
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Minimal smoke: boot the real image, assert the Hono server answers
+      # /api/health with status:ok AND serves the built dashboard as HTML at /
+      # (proves BN_WEB_DIST static-serving + SPA fallback survived packaging,
+      # not just that the layers built). Any failure exits non-zero → the push
+      # step below is skipped, so a broken image never reaches GHCR.
+      - name: Smoke test (blocks push on failure)
+        run: |
+          set -euo pipefail
+          docker run -d --name bn-smoke -p 8787:8787 -e BN_DATA_DIR=/tmp/bn bilibili-notify:smoke
+          ok=
+          for _ in $(seq 1 30); do
+            if curl -fsS http://localhost:8787/api/health 2>/dev/null | jq -e '.status=="ok"' >/dev/null 2>&1; then
+              ok=1; break
+            fi
+            sleep 2
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::/api/health never returned status:ok within ~60s"
+            docker logs bn-smoke || true
+            exit 1
+          fi
+          ct=$(curl -fsS -o /tmp/root.html -w '%{content_type}' http://localhost:8787/)
+          echo "GET / -> content-type: $ct"
+          case "$ct" in
+            text/html*) ;;
+            *) echo "::error::GET / expected text/html (dashboard), got '$ct' — static serving broken in image"
+               head -c 400 /tmp/root.html || true; docker logs bn-smoke || true; exit 1 ;;
+          esac
+          grep -q '<div id="root">' /tmp/root.html \
+            || { echo "::error::GET / body is not the dashboard index.html"; head -c 400 /tmp/root.html; exit 1; }
+          echo "smoke OK — /api/health status:ok + dashboard html served on 8787"
+
+      - name: Stop smoke container
+        if: always()
+        run: docker rm -f bn-smoke >/dev/null 2>&1 || true
+
+      # Pure cache hit (cache-from gha) — no rebuild; same digest as the smoked
+      # image. Runs only if the smoke step above succeeded.
+      - name: Push image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -71,9 +128,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Only build linux/amd64 by default — adding arm64 doubles build
-          # time because chromium has to be installed twice. Flip to
-          # linux/amd64,linux/arm64 when there's demand.
           platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
