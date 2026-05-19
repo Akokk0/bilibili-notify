@@ -109,7 +109,34 @@ vi.mock("@bilibili-notify/image", () => ({
 }));
 
 // SUT must be imported AFTER the vi.mock calls register.
-const { createEngines } = await import("../engines.js");
+const { createEngines, liveTypeToFeature, liveTypeAllowsAtAll } = await import("../engines.js");
+
+// Mirror of koishi/live/src/__tests__/live-type-to-feature.test.ts — the two
+// adapter helpers MUST stay byte-consistent across ends (same business core,
+// different shells). liveTypeAllowsAtAll guards the @全体 bug fix: only
+// StartBroadcasting(3) is at-all-eligible; periodic「正在直播」(0) is NOT.
+describe("apps/server adapter live-type map (cross-end mirror)", () => {
+	it("liveTypeToFeature 完整映射表 + 未知兜底 live", () => {
+		expect(liveTypeToFeature(0)).toBe("live");
+		expect(liveTypeToFeature(3)).toBe("live");
+		expect(liveTypeToFeature(4)).toBe("liveGuardBuy");
+		expect(liveTypeToFeature(5)).toBe("wordcloud");
+		expect(liveTypeToFeature(6)).toBe("superchat");
+		expect(liveTypeToFeature(7)).toBe("specialDanmaku");
+		expect(liveTypeToFeature(8)).toBe("specialUserEnter");
+		expect(liveTypeToFeature(9)).toBe("liveEnd");
+		expect(liveTypeToFeature(10)).toBe("liveSummary");
+		expect(liveTypeToFeature(999)).toBe("live");
+	});
+
+	it("liveTypeAllowsAtAll:仅开播(3)允许,0/其它/未知一律 false", () => {
+		expect(liveTypeAllowsAtAll(3)).toBe(true);
+		expect(liveTypeAllowsAtAll(0)).toBe(false);
+		for (const t of [4, 5, 6, 7, 8, 9, 10, 999]) {
+			expect(liveTypeAllowsAtAll(t)).toBe(false);
+		}
+	});
+});
 
 function makeLogger() {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };

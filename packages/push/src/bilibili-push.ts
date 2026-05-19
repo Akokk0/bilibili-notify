@@ -14,24 +14,33 @@ import { inQuietHours, resolve } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 
 /**
- * 把 NotificationPayload 升级为 composite 并前置 `{ type: "at-all" }` 段。
- * text → composite [at-all, text],image → composite [at-all, image-as-text-caption + image],
- * composite → 复用 segments + at-all 头。caption 文本会作为额外 text 段保留。
+ * 把 NotificationPayload 升级为 composite 并插入 `{ type: "at-all" }` 段。
+ *
+ * 版式:**图片在前,@全体 紧贴文字(艾特接文字)**。at-all 落在第一个 `text`
+ * 段之前(其前面的 image 段保持领头);没有 text 段(罕见纯图)时落在末尾,
+ * 跟在图片后面。
+ * - text → `[at-all, text]`
+ * - image(+caption) → `[image, at-all, caption?]`(无 caption 则 `[image, at-all]`)
+ * - composite(直播/动态卡片 `[image, text]`)→ `[image, at-all, text]`
  */
 function prependAtAll(payload: NotificationPayload): NotificationPayload {
-	const head: PayloadSegment = { type: "at-all" };
+	const at: PayloadSegment = { type: "at-all" };
+	let segs: PayloadSegment[];
 	switch (payload.kind) {
 		case "text":
-			return { kind: "composite", segments: [head, { type: "text", text: payload.text }] };
-		case "image": {
-			const segs: PayloadSegment[] = [head];
+			segs = [{ type: "text", text: payload.text }];
+			break;
+		case "image":
+			segs = [{ type: "image", buffer: payload.image.buffer, mime: payload.image.mime }];
 			if (payload.caption) segs.push({ type: "text", text: payload.caption });
-			segs.push({ type: "image", buffer: payload.image.buffer, mime: payload.image.mime });
-			return { kind: "composite", segments: segs };
-		}
+			break;
 		case "composite":
-			return { kind: "composite", segments: [head, ...payload.segments] };
+			segs = [...payload.segments];
+			break;
 	}
+	const firstText = segs.findIndex((s) => s.type === "text");
+	segs.splice(firstText < 0 ? segs.length : firstText, 0, at);
+	return { kind: "composite", segments: segs };
 }
 
 const INITIAL_RETRY_DELAY_MS = 3000;
@@ -188,19 +197,24 @@ export class BilibiliPush {
 	 * Broadcast a notification to all targets registered for a given uid + feature.
 	 * Returns an array of DeliveryResult (one per target).
 	 *
-	 * @全体成员 修饰(仅 `feature === "dynamic" | "live"` 进入):
+	 * @全体成员 修饰(仅 `feature === "dynamic" | "live"` 且 `opts.allowAtAll !== false` 进入):
 	 * - 订阅级默认 `sub.atAllDefaults.X` 决定 inherit-state 的 target 是否 @
 	 * - per-target tristate Map `sub.atAll.X[targetId]` 显式覆写:`true` 强 ON、`false` 强 OFF
 	 * - Map 里没有该 key → 走默认
 	 *
-	 * `feature === "live"` 仅作用于开播,SC/上舰/词云/总结/下播 等子事件以 `liveEnd`/
-	 * `superchat`/... 它们自己的 feature key 走,不会进入这条 atAll 分支。Map keys 子集
-	 * 约束已在 schema refine 强制,这里不再二次校验。
+	 * `feature === "live"` 仅作用于开播。但 live adapter 把「开播」和周期「正在直播」
+	 * 复推都翻译成 `feature === "live"`(routing/总开关共用 live,模型里没有独立的
+	 * ongoing key),仅靠 feature 无法区分。调用方据 `LivePushType` 判定:非开播的
+	 * live 推送(周期 ongoing 等)必须传 `opts.allowAtAll = false` 显式抑制 @全体,
+	 * 否则会每条直播推送都 @全体(本次修复的 bug)。SC/上舰/词云/总结/下播 走它们
+	 * 自己的 feature key,本就不进 atAll 分支,传不传 allowAtAll 无影响。不传 opts
+	 * = 保持「feature 决定」的旧行为(dynamic 调用点据此不变)。
 	 */
 	async broadcastToFeature(
 		uid: string,
 		feature: FeatureKey,
 		payload: NotificationPayload,
+		opts?: { allowAtAll?: boolean },
 	): Promise<DeliveryResult[]> {
 		if (this.disposed) return [];
 
@@ -232,7 +246,16 @@ export class BilibiliPush {
 			return [];
 		}
 
-		const atAllScope = feature === "dynamic" ? "dynamic" : feature === "live" ? "live" : null;
+		// 默认(opts 不传 / allowAtAll 非显式 false)= 按 feature 决定,保持旧行为。
+		// 调用方显式传 false 时强制不 @全体(周期「正在直播」等非开播的 live 推送)。
+		const atAllScope =
+			opts?.allowAtAll === false
+				? null
+				: feature === "dynamic"
+					? "dynamic"
+					: feature === "live"
+						? "live"
+						: null;
 
 		this.logger.info(`[push] uid=${uid} feature=${feature} → ${targetIds.length} 个目标`);
 		if (!atAllScope) {

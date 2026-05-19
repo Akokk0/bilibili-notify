@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { liveTypeToFeature } from "../live-type-map";
+import { liveTypeAllowsAtAll, liveTypeToFeature } from "../live-type-map";
 
 describe("koishi/live adapter typeToFeature", () => {
 	it("LivePushType 完整映射表", () => {
@@ -24,5 +24,24 @@ describe("koishi/live adapter typeToFeature", () => {
 
 	it("未知 type 兜底为 live", () => {
 		expect(liveTypeToFeature(999)).toBe("live");
+	});
+});
+
+describe("koishi/live adapter liveTypeAllowsAtAll", () => {
+	it("仅 StartBroadcasting(=3,开播)允许 @全体", () => {
+		expect(liveTypeAllowsAtAll(3)).toBe(true);
+	});
+
+	it("周期「正在直播」(Live=0)及其它一律不允许 @全体(本次 bug 修复)", () => {
+		// 0 与 3 都映射成 feature "live",但只有 3 可 @全体。
+		expect(liveTypeToFeature(0)).toBe("live");
+		expect(liveTypeAllowsAtAll(0)).toBe(false);
+		for (const t of [4, 5, 6, 7, 8, 9, 10]) {
+			expect(liveTypeAllowsAtAll(t)).toBe(false);
+		}
+	});
+
+	it("未知 type 兜底不允许 @全体", () => {
+		expect(liveTypeAllowsAtAll(999)).toBe(false);
 	});
 });

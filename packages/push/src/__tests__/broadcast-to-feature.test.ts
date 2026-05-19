@@ -12,6 +12,7 @@
  *   - onSend 回调每个 target 触发一次,private 字段为 false
  */
 
+import { Buffer } from "node:buffer";
 import {
 	type DeliveryResult,
 	type GlobalDefaults,
@@ -184,6 +185,116 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		const byTarget = new Map(calls.map((c) => [c.targetId, c.payload]));
 		expect(byTarget.get("t1")?.kind).toBe("text"); // 没 at-all 头
 		expect(byTarget.get("t2")?.kind).toBe("composite"); // 有 at-all 头
+	});
+
+	it("opts.allowAtAll=false → 抑制 @全体,即使 feature=live 且 atAllDefaults.live=true(本次 bug 修复:周期「正在直播」)", async () => {
+		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		sub.routing.live = ["t1", "t2"];
+		sub.atAllDefaults.live = true;
+		sub.atAll.live = { t1: true }; // 即便 per-target 显式 true 也得被抑制
+		const { sink, calls } = makeSink();
+		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		push.start();
+		await push.broadcastToFeature(
+			"u1",
+			"live",
+			{ kind: "text", text: "正在直播" },
+			{ allowAtAll: false },
+		);
+		expect(calls.map((c) => c.targetId)).toEqual(["t1", "t2"]); // 仍正常路由
+		for (const c of calls) expect(c.payload.kind).toBe("text"); // 但都没 at-all 头
+	});
+
+	it("opts.allowAtAll=true(显式)或不传 → 维持按 feature 决定的旧行为(开播仍 @全体)", async () => {
+		const mk = () => {
+			const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+			sub.routing.live = ["t1"];
+			sub.atAllDefaults.live = true;
+			return sub;
+		};
+		// 显式 true
+		{
+			const { sink, calls } = makeSink();
+			const push = new BilibiliPush({ sink, store: makeStore([mk()]), logger: silentLogger });
+			push.start();
+			await push.broadcastToFeature(
+				"u1",
+				"live",
+				{ kind: "text", text: "开播" },
+				{ allowAtAll: true },
+			);
+			expect(calls[0].payload.kind).toBe("composite");
+		}
+		// opts 不传(向后兼容:dynamic 等既有调用点不受影响)
+		{
+			const { sink, calls } = makeSink();
+			const push = new BilibiliPush({ sink, store: makeStore([mk()]), logger: silentLogger });
+			push.start();
+			await push.broadcastToFeature("u1", "live", { kind: "text", text: "开播" });
+			expect(calls[0].payload.kind).toBe("composite");
+		}
+	});
+
+	it("@全体 版式:composite [image,text] → [image, at-all, text](图片在前,@全体紧贴文字)", async () => {
+		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		sub.routing.live = ["t1"];
+		sub.atAllDefaults.live = true;
+		const { sink, calls } = makeSink();
+		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		push.start();
+		await push.broadcastToFeature("u1", "live", {
+			kind: "composite",
+			segments: [
+				{ type: "image", buffer: Buffer.from([1]), mime: "image/jpeg" },
+				{ type: "text", text: "开播啦" },
+			],
+		});
+		expect(calls[0].payload.kind).toBe("composite");
+		if (calls[0].payload.kind === "composite") {
+			expect(calls[0].payload.segments.map((s) => s.type)).toEqual(["image", "at-all", "text"]);
+		}
+	});
+
+	it("@全体 版式对 dynamic 同样生效(共用 prependAtAll,动态卡片也 [image, at-all, text])", async () => {
+		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		sub.routing.dynamic = ["t1"];
+		sub.atAllDefaults.dynamic = true;
+		const { sink, calls } = makeSink();
+		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		push.start();
+		await push.broadcastToFeature("u1", "dynamic", {
+			kind: "composite",
+			segments: [
+				{ type: "image", buffer: Buffer.from([3]), mime: "image/jpeg" },
+				{ type: "text", text: "发了条动态" },
+			],
+		});
+		if (calls[0].payload.kind === "composite") {
+			expect(calls[0].payload.segments.map((s) => s.type)).toEqual(["image", "at-all", "text"]);
+		}
+	});
+
+	it("@全体 版式:image+caption → [image, at-all, caption];text-only → [at-all, text]", async () => {
+		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		sub.routing.live = ["t1"];
+		sub.atAllDefaults.live = true;
+		const { sink, calls } = makeSink();
+		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		push.start();
+		await push.broadcastToFeature("u1", "live", {
+			kind: "image",
+			image: { buffer: Buffer.from([2]), mime: "image/png" },
+			caption: "字幕",
+		});
+		if (calls[0].payload.kind === "composite") {
+			expect(calls[0].payload.segments.map((s) => s.type)).toEqual(["image", "at-all", "text"]);
+		}
+		// 纯文本无图 → @全体 仍打头紧贴文字(本就符合"艾特接文字",不变)
+		calls.length = 0;
+		await push.broadcastToFeature("u1", "live", { kind: "text", text: "无图开播" });
+		if (calls[0].payload.kind === "composite") {
+			expect(calls[0].payload.segments.map((s) => s.type)).toEqual(["at-all", "text"]);
+		}
 	});
 
 	it("非 dynamic / live 的 feature 不进入 atAll 分支(superchat 即使 atAllDefaults=true)", async () => {

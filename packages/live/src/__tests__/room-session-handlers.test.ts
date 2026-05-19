@@ -20,8 +20,9 @@ import { GuardLevel } from "blive-message-listener";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SubItemView } from "../push-like";
 import { LivePushType } from "../push-like";
-import type { RoomContext } from "../room-helpers";
+import { RoomContext } from "../room-helpers";
 import { RoomSession } from "../room-session";
+import { LiveType } from "../types";
 
 // biome-ignore lint/suspicious/noExplicitAny: 测试需访问 private/protected
 type AnySession = any;
@@ -364,5 +365,131 @@ describe("RoomSession.onLiveEnd", () => {
 		s.handleLiveEnd = vi.fn(async () => {});
 		await s.onLiveEnd();
 		expect(s.handleLiveEnd).toHaveBeenCalledWith("ws");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射
+//
+// 这是 @全体 bug 修复正确性链条上唯一被验证缺失的一环:liveTypeAllowsAtAll /
+// liveTypeToFeature 的入参是这里产出的 LivePushType,不是 LiveType。若此映射写错
+// (例如把 ongoing/StopBroadcast 也映射成 StartBroadcasting=3),adapter 侧
+// liveTypeAllowsAtAll 会误判,周期复推 / 下播又会 @全体——单测两端 adapter 表都
+// 测不出来。这里用真实 RoomContext(其余依赖 stub)锁死整张映射表。
+//
+// 关键不变量:
+//   - 仅 LiveType.StartBroadcasting(真开播)→ LivePushType.StartBroadcasting(3)
+//     (= liveTypeAllowsAtAll 唯一返回 true 的入参 → 唯一允许 @全体)
+//   - LiveType.LiveBroadcast(周期「正在直播」复推 / bootstrap「已在直播中」补推)
+//     → LivePushType.Live(0) → liveTypeAllowsAtAll(0)=false → 不 @全体
+//   - LiveType.FirstLiveBroadcast → LivePushType.Live(0)(注:实际从不传给本方法,
+//     bootstrap 补推走的是 LiveBroadcast;此处仅守护 else 分支的稳健性)
+//   - LiveType.StopBroadcast(下播)→ LivePushType.LiveEnd(9) → feature "liveEnd",
+//     压根不进 atAll 分支(且 9 !== LiveType.StopBroadcast 数值 3 的巧合不影响,
+//     因为入参契约是 LivePushType 不是 LiveType)
+// ---------------------------------------------------------------------------
+
+describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", () => {
+	function makeRoomCtx(): {
+		ctx: RoomContext;
+		broadcastToTargets: ReturnType<typeof vi.fn>;
+	} {
+		const fakeServiceCtx: ServiceContext = {
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
+			setInterval: () => ({ dispose() {} }),
+			setTimeout: () => ({ dispose() {} }),
+			onDispose: () => {},
+		};
+		const broadcastToTargets = vi.fn(async () => {});
+		const ctx = new RoomContext({
+			serviceCtx: fakeServiceCtx,
+			// 其余依赖在 sendLiveNotifyCard 路径上不触达,给最小 stub。
+			api: {} as never,
+			push: { broadcastToTargets, sendPrivateMsg: vi.fn(async () => {}) },
+			contentBuilder: {
+				text: (t: string) => ({ kind: "text", text: t }) as never,
+				image: () => ({ kind: "image" }) as never,
+				message: (segs: unknown[]) => segs as never,
+				atAll: () => ({ kind: "at-all" }) as never,
+			},
+			templateRenderer: {} as never,
+			wordcloudGenerator: {} as never,
+			liveSummaryRequester: {} as never,
+			danmakuCollector: {} as never,
+			// imageRenderer=null → 走文字降级分支(buffer undefined),依旧调
+			// push.broadcastToTargets(uid, msg, pushType),pushType 即被测的映射结果。
+			imageRenderer: null,
+			config: {
+				pushTime: 0,
+				restartPush: false,
+				minScPrice: 30,
+				minGuardLevel: 1,
+				customGuardBuy: { enable: false },
+				customLiveMsg: { enable: false },
+				liveSummaryDefault: "",
+			},
+			emitEngineError: vi.fn(),
+		});
+		return { ctx, broadcastToTargets };
+	}
+
+	const liveRoomInfo = {
+		live_time: "2026-01-01 00:00:00",
+		short_id: 0,
+		room_id: 12345,
+		title: "标题",
+		user_cover: "",
+	} as never;
+	const master = {
+		username: "主播",
+		userface: "",
+		roomId: 12345,
+		liveOpenFollowerNum: 100,
+		liveEndFollowerNum: 100,
+		liveFollowerChange: 0,
+		medalName: "",
+	};
+
+	async function pushTypeFor(liveType: LiveType): Promise<LivePushType> {
+		const { ctx, broadcastToTargets } = makeRoomCtx();
+		await ctx.sendLiveNotifyCard({
+			liveType,
+			liveData: {},
+			liveRoomInfo,
+			master,
+			cardStyle: { enable: false },
+			uid: "u1",
+			notifyMsg: "msg",
+		});
+		expect(broadcastToTargets).toHaveBeenCalledTimes(1);
+		return broadcastToTargets.mock.calls[0]?.[2] as LivePushType;
+	}
+
+	it("StartBroadcasting(真开播)→ LivePushType.StartBroadcasting(3) — 唯一 @全体-eligible", async () => {
+		expect(await pushTypeFor(LiveType.StartBroadcasting)).toBe(LivePushType.StartBroadcasting);
+		expect(LivePushType.StartBroadcasting).toBe(3); // liveTypeAllowsAtAll 唯一 true 入参
+	});
+
+	it("LiveBroadcast(周期「正在直播」复推 / bootstrap 补推)→ LivePushType.Live(0) — 不 @全体", async () => {
+		expect(await pushTypeFor(LiveType.LiveBroadcast)).toBe(LivePushType.Live);
+		expect(LivePushType.Live).toBe(0);
+	});
+
+	it("FirstLiveBroadcast → LivePushType.Live(0)(else 分支稳健性,实际不经此路径)", async () => {
+		expect(await pushTypeFor(LiveType.FirstLiveBroadcast)).toBe(LivePushType.Live);
+	});
+
+	it("StopBroadcast(下播)→ LivePushType.LiveEnd(9) — 走 liveEnd feature,不进 atAll 分支", async () => {
+		expect(await pushTypeFor(LiveType.StopBroadcast)).toBe(LivePushType.LiveEnd);
+		expect(LivePushType.LiveEnd).toBe(9);
+		// 防御 LiveType.StopBroadcast 数值(3)与 LivePushType.StartBroadcasting(3)
+		// 的巧合:这里产出的是 9,liveTypeAllowsAtAll 入参契约是 LivePushType 不是
+		// LiveType,所以下播绝不会被误判成 @全体-eligible 的开播。
+		expect(LiveType.StopBroadcast as number).toBe(3);
+		expect((LivePushType.LiveEnd as number) === 3).toBe(false);
+	});
+
+	it("NotLiveBroadcast → LivePushType.Live(0)(兜底 else,也不 @全体)", async () => {
+		expect(await pushTypeFor(LiveType.NotLiveBroadcast)).toBe(LivePushType.Live);
 	});
 });

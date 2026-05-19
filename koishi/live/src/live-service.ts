@@ -9,7 +9,7 @@ import type {
 	SubscriptionOp,
 } from "@bilibili-notify/internal";
 import { BILIBILI_NOTIFY_TOKEN, resolve } from "@bilibili-notify/internal";
-import { liveTypeToFeature } from "./live-type-map";
+import { liveTypeAllowsAtAll, liveTypeToFeature } from "./live-type-map";
 
 /**
  * Gate fn: features.X = source-side 订阅开关。routing 由推送层 BilibiliPush 在
@@ -199,7 +199,11 @@ function adaptPush(push: BilibiliPush): PushLike {
 			// buffers, @-mentions, and composite messages on the destination platform
 			// instead of receiving a flattened XML string.
 			const payload = koishiElementToPayload(content);
-			await push.broadcastToFeature(uid, feature, payload);
+			// 仅开播(StartBroadcasting)可 @全体;周期「正在直播」等也走 feature
+			// "live",必须显式抑制,否则每条直播推送都 @全体。
+			await push.broadcastToFeature(uid, feature, payload, {
+				allowAtAll: liveTypeAllowsAtAll(type as number),
+			});
 		},
 		sendPrivateMsg(content) {
 			return push.sendPrivateMsg(content);

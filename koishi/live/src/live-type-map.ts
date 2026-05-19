@@ -36,3 +36,16 @@ export function liveTypeToFeature(type: number): FeatureKey {
 			return "live";
 	}
 }
+
+/**
+ * Whether a LivePushType is @全体成员-eligible.
+ *
+ * 仅 `StartBroadcasting`(=3,开播)允许 @全体;周期「正在直播」复推(`Live`=0)
+ * 与其它都翻译成 `feature === "live"`,光看 feature 区分不出开播 vs 复推 —— push
+ * 层据本结果决定是否进 atAll 分支,否则每条直播推送都 @全体(已修 bug)。
+ * 用裸数字 3 而非 import `LivePushType` 是为保持本文件零依赖(见文件头说明);
+ * 必须与 `apps/server/src/runtime/engines.ts` 的同名函数保持一致。
+ */
+export function liveTypeAllowsAtAll(type: number): boolean {
+	return type === 3;
+}

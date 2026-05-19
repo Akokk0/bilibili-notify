@@ -379,7 +379,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			const feature = liveTypeToFeature(type as number);
 			const segments = segmentToPayload(content);
 			const payload = collapseSegments(segments);
-			await push.broadcastToFeature(uid, feature, payload);
+			// 仅开播(StartBroadcasting)可 @全体;周期「正在直播」等也翻译成 feature
+			// "live",必须显式抑制,否则每条直播推送都 @全体。
+			await push.broadcastToFeature(uid, feature, payload, {
+				allowAtAll: liveTypeAllowsAtAll(type as number),
+			});
 		},
 		sendPrivateMsg: (text) => push.sendPrivateMsg(text),
 	};
@@ -769,6 +773,17 @@ export function liveTypeToFeature(type: number): FeatureKey {
 		default:
 			return "live";
 	}
+}
+
+/**
+ * 一条 LivePushType 是否允许 @全体成员。仅 `StartBroadcasting`(=3,开播)允许;
+ * 周期「正在直播」复推(`Live`=0)及其它都翻译成 `feature === "live"`,光看
+ * feature 区分不出开播 vs 复推 —— push 层据本结果决定是否进 atAll 分支,否则
+ * 每条直播推送都 @全体(已修 bug)。必须与 `koishi/live/src/live-type-map.ts`
+ * 的同名函数保持一致(裸数字 3 = LivePushType.StartBroadcasting)。
+ */
+export function liveTypeAllowsAtAll(type: number): boolean {
+	return type === 3;
 }
 
 /**
