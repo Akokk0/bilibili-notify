@@ -75,17 +75,27 @@ interface Priv {
 }
 const priv = (e: DynamicEngineType): Priv => e as unknown as Priv;
 
-function makeServiceCtx(): { ctx: ServiceContext; disposers: Array<() => void | Promise<void>> } {
+type LogRec = { level: "info" | "warn" | "error" | "debug"; msg: string };
+
+function makeServiceCtx(): {
+	ctx: ServiceContext;
+	disposers: Array<() => void | Promise<void>>;
+	logs: LogRec[];
+} {
 	const disposers: Array<() => void | Promise<void>> = [];
+	const logs: LogRec[] = [];
+	const rec = (level: LogRec["level"]) => (msg: unknown) => {
+		logs.push({ level, msg: String(msg) });
+	};
 	const ctx: ServiceContext = {
-		logger: { info() {}, warn() {}, error() {}, debug() {} },
+		logger: { info: rec("info"), warn: rec("warn"), error: rec("error"), debug: rec("debug") },
 		setInterval: () => ({ dispose() {} }),
 		setTimeout: () => ({ dispose() {} }),
 		onDispose: (fn) => {
 			disposers.push(fn);
 		},
 	};
-	return { ctx, disposers };
+	return { ctx, disposers, logs };
 }
 
 function makeBus(): {
@@ -184,6 +194,7 @@ interface EngineBag {
 	disposers: Array<() => void | Promise<void>>;
 	generateDynamicCard: ReturnType<typeof vi.fn>;
 	comment: ReturnType<typeof vi.fn>;
+	logs: LogRec[];
 }
 
 function makeEngine(
@@ -194,7 +205,7 @@ function makeEngine(
 		subs?: SubscriptionsView | null;
 	} = {},
 ): EngineBag {
-	const { ctx } = makeServiceCtx();
+	const { ctx, logs } = makeServiceCtx();
 	const { bus, emits, trigger } = makeBus();
 	const disposers: Array<() => void | Promise<void>> = [];
 	(ctx as { onDispose: (fn: () => void) => void }).onDispose = (fn) => {
@@ -237,6 +248,7 @@ function makeEngine(
 		disposers,
 		generateDynamicCard,
 		comment,
+		logs,
 	};
 }
 
@@ -291,6 +303,62 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 				args: expect.arrayContaining(["账号被风控"]),
 			}),
 		);
+	});
+
+	it("-352 风控边沿:连续触发只告警一次,恢复后再触发重新告警(Q7)", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+		const ecCount = () =>
+			b.emits.filter(
+				(e) =>
+					e.event === "engine-error" &&
+					(e.args as unknown[]).some((a) => String(a).includes("账号被风控")),
+			).length;
+
+		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		await detect(b.engine); // 进入风控
+		await detect(b.engine); // 仍风控 → 抑制
+		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
+		expect(ecCount()).toBe(1);
+		expect(b.logs.filter((l) => l.level === "error" && l.msg.includes("账号被风控"))).toHaveLength(
+			1,
+		);
+		expect(b.logs.some((l) => l.level === "debug" && l.msg.includes("仍处于风控态"))).toBe(true);
+
+		b.getAllDynamic.mockResolvedValue(resp([])); // code 0 → 恢复
+		await detect(b.engine);
+		expect(b.logs.some((l) => l.level === "info" && l.msg.includes("风控已解除"))).toBe(true);
+
+		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		await detect(b.engine); // 再次风控 → 边沿复位后重新告警
+		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
+		expect(ecCount()).toBe(2);
+	});
+
+	it("-352 后跨 -101(auth-loss)再 -352:复位边沿,新风控必须重新告警(审计缺口回归)", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+		const riskEc = () =>
+			b.emits.filter(
+				(e) =>
+					e.event === "engine-error" &&
+					(e.args as unknown[]).some((a) => String(a).includes("账号被风控")),
+			).length;
+
+		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		await detect(b.engine); // 风控 episode #1 → 告警 1
+		expect(riskEc()).toBe(1);
+
+		b.getAllDynamic.mockResolvedValue(resp([], -101, "not login"));
+		await detect(b.engine); // auth-loss:独立 episode,复位风控边沿
+
+		b.getAllDynamic.mockResolvedValue(resp([])); // 恢复(code 0)
+		await detect(b.engine);
+
+		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		await detect(b.engine); // 风控 episode #2(跨过 -101)→ 必须重新告警
+		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
+		expect(riskEc()).toBe(2);
 	});
 });
 
@@ -715,5 +783,28 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		// 重新有订阅 → reconcile 重启(可能复用或新建 instance,断言最终处于 running)
 		const last = cronMock.instances[cronMock.instances.length - 1];
 		expect(last?.running).toBe(true);
+	});
+
+	it("applyOps:per-UID 走 debug,批次收口一条 info 汇总(Q1 不刷屏)", () => {
+		const s1: SubItemView = { uid: "1", uname: "U1", dynamic: true };
+		const s2: SubItemView = { uid: "2", uname: "U2", dynamic: true };
+		const b = makeEngine({ subs: { "1": s1, "2": s2 } });
+		b.logs.length = 0;
+		b.engine.applyOps([
+			{ type: "add", sub: s1 },
+			{ type: "add", sub: s2 },
+		]);
+		const summary = b.logs.filter(
+			(l) => l.level === "info" && l.msg.includes("动态订阅变更已应用"),
+		);
+		expect(summary).toHaveLength(1); // 两条 add 仅一条汇总 info
+		expect(summary[0]?.msg).toContain("+2 开启");
+		// per-UID 行降到 debug,不再 info 刷屏
+		expect(b.logs.some((l) => l.level === "info" && l.msg.includes("开启动态订阅 UID"))).toBe(
+			false,
+		);
+		expect(
+			b.logs.filter((l) => l.level === "debug" && l.msg.includes("开启动态订阅 UID")),
+		).toHaveLength(2);
 	});
 });

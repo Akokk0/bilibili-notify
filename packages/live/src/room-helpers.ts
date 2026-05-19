@@ -54,12 +54,12 @@ export class RoomContext extends RoomContextBase {
 			mySelfInfo = await this.api.getMyselfInfo();
 		} catch (e) {
 			const message = (e as Error).message ?? String(e);
-			this.logger.error(`[conn] 获取个人信息异常，房间 [${roomId}]：${message}`);
+			this.logger.warn(`[conn] 获取个人信息异常，房间 [${roomId}]：${message}`);
 			this.emitEngineError(`[${roomId}] 获取个人信息异常：${message}`);
 			return false;
 		}
 		if (mySelfInfo.code !== 0 || !mySelfInfo.data) {
-			this.logger.error(
+			this.logger.warn(
 				`[conn] 获取个人信息失败 code=${mySelfInfo.code}，无法创建直播间 [${roomId}] 连接`,
 			);
 			this.emitEngineError(`[${roomId}] 获取个人信息失败 code=${mySelfInfo.code}`);
@@ -86,6 +86,7 @@ export class RoomContext extends RoomContextBase {
 			const content = await this.api.getLiveRoomInfo(roomId);
 			return content.data;
 		} catch (e) {
+			// Q3 carve-out:catch 内『已停止该房间监测』—— 非自愈、需最终介入,留 error。
 			this.logger.error(`[conn] 获取直播间信息失败：${(e as Error).message}`);
 			await this.push.sendPrivateMsg(
 				`获取直播间 [${roomId}] 信息失败：${(e as Error).message}，已停止该房间监测`,

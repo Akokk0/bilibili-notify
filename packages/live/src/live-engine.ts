@@ -149,7 +149,7 @@ export class LiveEngine {
 	 * calling it again replaces the active set (used by `auth-restored`).
 	 */
 	start(subs: SubscriptionsView): void {
-		this.logger.debug("[start] 直播引擎启动，正在初始化直播监听...");
+		this.logger.info("[start] 直播引擎启动，正在初始化直播监听...");
 		this.listener.startAll(subs);
 	}
 

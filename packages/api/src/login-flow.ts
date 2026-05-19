@@ -196,7 +196,7 @@ export class LoginFlow {
 		try {
 			qrContent = await this.api.getLoginQRCode();
 		} catch (e) {
-			this.logger.error(`[login] 获取登录二维码失败：${e}`);
+			this.logger.warn(`[login] 获取登录二维码失败：${e instanceof Error ? e.message : String(e)}`);
 			return;
 		}
 		if (qrContent.code !== 0) {
@@ -208,7 +208,7 @@ export class LoginFlow {
 			const dataUrl = await renderQr(qrContent.data.url);
 			this.reportQrReady(dataUrl);
 		} catch (e) {
-			this.logger.error(`[login] 生成二维码失败：${e}`);
+			this.logger.warn(`[login] 生成二维码失败：${e instanceof Error ? e.message : String(e)}`);
 			this.reportQrFailure("qrRenderFailed");
 			return;
 		}
@@ -243,7 +243,7 @@ export class LoginFlow {
 		try {
 			loginContent = await this.api.getLoginStatus(qrcodeKey);
 		} catch (e) {
-			this.logger.error(`[login] 获取登录状态失败：${e}`);
+			this.logger.warn(`[login] 获取登录状态失败：${e instanceof Error ? e.message : String(e)}`);
 			return;
 		}
 

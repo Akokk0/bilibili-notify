@@ -152,6 +152,12 @@ export class DynamicEngine {
 	private dynamicJob?: CronJob;
 	/** 风控/瞬时错误后的一次性退避重启句柄;非 undefined 表示已排程,不叠加。 */
 	private detectorRestartTimer?: Disposable;
+	/**
+	 * -352 风控态边沿标记。进入风控只 error+DM+engine-error 一次;退避重探仍
+	 * 风控 → debug(不重复告警);成功拉取(code 0)→ info 一次并清除。避免在
+	 * 退避重试热路径反复刷 error(Q1)。
+	 */
+	private riskControlled = false;
 	private dynamicSubManager: SubManagerView = new Map();
 	private dynamicTimelineManager: DynamicTimelineManager = new Map();
 	/** 连续图片渲染失败计数，达到阈值时仅通知一次但不停 cron */
@@ -174,12 +180,13 @@ export class DynamicEngine {
 	/** 启动钩子。Adapter 在 ServiceContext 就绪、订阅可访问后调用。 */
 	start(): void {
 		this.dynamicTimelineManager = new Map();
-		this.logger.debug("[start] 动态引擎启动，正在等待订阅数据...");
 
 		// 启动期已有快照则立即开跑
 		const initial = this.getSubs();
+		this.logger.info(
+			`[start] 动态引擎启动（${initial ? "订阅已就绪，立即启动检测" : "等待订阅数据"}）`,
+		);
 		if (initial) {
-			this.logger.debug("[start] 订阅已就绪，立即启动动态检测");
 			this.startDynamicDetector(initial);
 		} else {
 			this.logger.debug("[start] 订阅尚未就绪，等待 subscription-changed 事件");
@@ -202,6 +209,10 @@ export class DynamicEngine {
 
 	/** 停止钩子。停止 cron、释放事件订阅。 */
 	stop(): void {
+		// 全停 = lifecycle 结束;下次 start 是全新 episode,风控边沿复位重新武装。
+		// (不在 startDynamicDetector 复位 —— -352 自身退避重启也走那里,复位会
+		// 破坏边沿、每退避周期重刷 error,正是 Q7 要消除的。)
+		this.riskControlled = false;
 		this.detectorRestartTimer?.dispose();
 		this.detectorRestartTimer = undefined;
 		if (this.dynamicJob) {
@@ -251,7 +262,7 @@ export class DynamicEngine {
 		this.detectorRestartTimer = undefined;
 		// Stop existing job first
 		if (this.dynamicJob) {
-			this.logger.debug("[detector] 停止旧的动态检测任务");
+			this.logger.info("[detector] 停止旧的动态检测任务");
 			this.dynamicJob.stop();
 			this.dynamicJob = undefined;
 		}
@@ -292,14 +303,14 @@ export class DynamicEngine {
 			this.logger.debug(`[ops] 初始化 UID：${uid} 时间戳`);
 		}
 		this.dynamicSubManager.set(uid, structuredClone(sub));
-		this.logger.info(`[ops] 开启动态订阅 UID：${uid}`);
+		this.logger.debug(`[ops] 开启动态订阅 UID：${uid}`);
 	}
 
 	private stopDynamicForUid(uid: string): void {
 		if (!this.dynamicSubManager.has(uid)) return;
 		this.dynamicSubManager.delete(uid);
 		this.dynamicTimelineManager.delete(uid);
-		this.logger.info(`[ops] 移除动态订阅 UID：${uid}`);
+		this.logger.debug(`[ops] 移除动态订阅 UID：${uid}`);
 	}
 
 	/**
@@ -319,17 +330,23 @@ export class DynamicEngine {
 	/** Incrementally apply subscription ops without restarting the cron job. */
 	applyOps(ops: SubscriptionOpView[]): void {
 		let jobNeedsReconcile = false;
+		// per-UID 开/移除走 debug(见 startDynamicForUid/stopDynamicForUid);本批次
+		// 收口一条 info 汇总,批量变更不再 N×info 刷屏(Q1「info 绝不循环每项」)。
+		let opened = 0;
+		let removed = 0;
 		for (const op of ops) {
 			switch (op.type) {
 				case "add": {
 					if (!op.sub.dynamic) break;
 					this.startDynamicForUid(op.sub.uid, op.sub);
+					opened++;
 					jobNeedsReconcile = true;
 					break;
 				}
 				case "delete": {
 					if (!this.dynamicSubManager.has(op.uid)) break;
 					this.stopDynamicForUid(op.uid);
+					removed++;
 					jobNeedsReconcile = true;
 					break;
 				}
@@ -338,10 +355,17 @@ export class DynamicEngine {
 						if (change.scope !== "dynamic") continue;
 						if (change.dynamic) {
 							const fullSub = this.getSubs()?.[op.uid];
-							if (fullSub) this.startDynamicForUid(op.uid, fullSub);
+							if (fullSub) {
+								this.startDynamicForUid(op.uid, fullSub);
+								opened++;
+							}
 							jobNeedsReconcile = true;
 						} else if (change.dynamic === false) {
+							// 与 delete 同护栏:UID 未在动态订阅表才跳过,避免 stopDynamicForUid
+							// no-op 时仍报 -1 移除 + 触发一次无谓 reconcileJob(审计 nit)。
+							if (!this.dynamicSubManager.has(op.uid)) continue;
 							this.stopDynamicForUid(op.uid);
+							removed++;
 							jobNeedsReconcile = true;
 						}
 					}
@@ -349,7 +373,12 @@ export class DynamicEngine {
 				}
 			}
 		}
-		if (jobNeedsReconcile) this.reconcileJob();
+		if (jobNeedsReconcile) {
+			this.logger.info(
+				`[ops] 动态订阅变更已应用：+${opened} 开启 / -${removed} 移除（当前 ${this.dynamicSubManager.size} 个动态订阅）`,
+			);
+			this.reconcileJob();
+		}
 	}
 
 	private startJob(): void {
@@ -357,7 +386,10 @@ export class DynamicEngine {
 			this.config.dynamicCron,
 			withLock(
 				() => this.detectDynamics(),
-				(err) => this.logger.error(`[detector] 动态检测执行异常：${err}`),
+				(err) =>
+					this.logger.error(
+						`[detector] 动态检测执行异常：${err instanceof Error ? err.message : String(err)}`,
+					),
 			),
 		);
 		this.dynamicJob.start();
@@ -386,7 +418,8 @@ export class DynamicEngine {
 		try {
 			content = (await this.api.getAllDynamic()) as AllDynamicInfo;
 		} catch (e) {
-			this.logger.error(`[api] 获取动态失败：${e}`);
+			// Q3:per-tick 拉取失败,cron 下一 tick 自重试、系统继续 → warn 不冒充事故。
+			this.logger.warn(`[api] 获取动态失败：${e instanceof Error ? e.message : String(e)}`);
 			return;
 		}
 
@@ -397,6 +430,10 @@ export class DynamicEngine {
 			return;
 		}
 
+		if (this.riskControlled) {
+			this.riskControlled = false;
+			this.logger.info("[api] 风控已解除，动态检测恢复正常");
+		}
 		this.logger.debug("[detector] 成功获取动态信息，开始处理");
 
 		// DY1:per-uid 记账 —— 成功处理(含被过滤/开播伪动态/已发)的 pub_ts 进
@@ -675,21 +712,32 @@ export class DynamicEngine {
 				// interceptor 单点广播,主人通知由上层 60s 节流统一发送。
 				this.logger.error("[api] 账号未登录，动态检测已停止（待 auth-restored 重启）");
 				this.bus.emit("engine-error", LOG_TAG, "账号未登录");
+				// auth-loss 是与风控不同的独立 episode,会停 cron 待 auth-restored。
+				// 清掉风控边沿:恢复后若再遇 -352 是全新 episode,必须重新告警
+				// (否则跨 auth-loss 的新风控会被陈旧 flag 静默 —— 审计发现的缺口)。
+				this.riskControlled = false;
 				break;
 			}
 			case -352: {
 				// 风控:**非永久**。`bili cap` 解除风控不会发任何事件,此前 cron
 				// 永久静默直到重启进程。退避后自动重探,解除即自愈。
-				this.logger.error("[api] 账号被风控，动态检测暂停，将退避后自动重试");
-				await this.push.sendPrivateMsg("账号被风控，请使用 `bili cap` 指令解除风控");
-				this.bus.emit("engine-error", LOG_TAG, "账号被风控");
+				// Q7 边沿:进入风控只 error+DM+engine-error 一次;退避重探仍风控 →
+				// debug(不重复刷 error / 不重复打扰 master);成功拉取 → info 清除。
+				if (!this.riskControlled) {
+					this.riskControlled = true;
+					this.logger.error("[api] 账号被风控，动态检测暂停，将退避后自动重试");
+					await this.push.sendPrivateMsg("账号被风控，请使用 `bili cap` 指令解除风控");
+					this.bus.emit("engine-error", LOG_TAG, "账号被风控");
+				} else {
+					this.logger.debug("[api] 仍处于风控态，退避后继续重探(不重复告警)");
+				}
 				this.scheduleDetectorRestart("风控");
 				break;
 			}
 			default: {
 				// 瞬时错误(-509 限流 / 瞬时 -403 / 未知码):不可永久停 cron。
-				// 退避后自动重试,瞬时抖动自愈,无需人工重启进程。
-				this.logger.error(`[api] 获取动态信息失败，错误码：${code}，${message}，将退避后自动重试`);
+				// 退避后自动重试,瞬时抖动自愈,无需人工重启进程 → Q3 warn 不冒充事故。
+				this.logger.warn(`[api] 获取动态信息失败，错误码：${code}，${message}，将退避后自动重试`);
 				await this.push.sendPrivateMsg(`获取动态信息失败，错误码：${code}`);
 				this.bus.emit("engine-error", LOG_TAG, `获取动态失败，错误码：${code}`);
 				this.scheduleDetectorRestart(`错误码 ${code}`);

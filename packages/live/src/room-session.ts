@@ -351,11 +351,13 @@ export class RoomSession extends RoomSessionBase {
 	private async onLiveStart(): Promise<void> {
 		const now = Date.now();
 		if (now - this.lastLiveStart < LIVE_EVENT_COOLDOWN) {
-			this.ctx.logger.warn(`[live] 直播间 [${this.sub.roomId}] 的开播事件在冷却期内，忽略`);
+			this.ctx.logger.debug(`[live] 直播间 [${this.sub.roomId}] 的开播事件在冷却期内，忽略`);
 			return;
 		}
 		if (this.liveStatus) {
-			this.ctx.logger.warn(`[live] 直播间 [${this.sub.roomId}] 已经是开播状态，忽略重复的开播事件`);
+			this.ctx.logger.debug(
+				`[live] 直播间 [${this.sub.roomId}] 已经是开播状态，忽略重复的开播事件`,
+			);
 			return;
 		}
 		// L2:仅在真正“接受”一次开播(过冷却 + 过 liveStatus 去重)时才打冷却
@@ -422,7 +424,7 @@ export class RoomSession extends RoomSessionBase {
 	private async onLiveEnd(): Promise<void> {
 		const now = Date.now();
 		if (now - this.lastLiveEnd < LIVE_EVENT_COOLDOWN) {
-			this.ctx.logger.warn(`[live] 直播间 [${this.sub.roomId}] 的下播事件在冷却期内，忽略`);
+			this.ctx.logger.debug(`[live] 直播间 [${this.sub.roomId}] 的下播事件在冷却期内，忽略`);
 			return;
 		}
 		this.lastLiveEnd = now;

@@ -126,7 +126,7 @@ export class BilibiliAPI {
 		);
 		this.ticketJob.start();
 		await this.updateBiliTicket();
-		this.logger.debug("[init] BiliTicket 已更新，API 初始化完成");
+		this.logger.info("[init] BiliTicket 已更新，API 初始化完成");
 	}
 
 	stop(): void {
@@ -243,7 +243,7 @@ export class BilibiliAPI {
 		try {
 			return JSON.stringify(this.jar.serializeSync()?.cookies ?? []);
 		} catch (e) {
-			this.logger.error(`[cookie] 获取 cookies 失败: ${e}`);
+			this.logger.warn(`[cookie] 获取 cookies 失败: ${e instanceof Error ? e.message : String(e)}`);
 			return undefined;
 		}
 	}
@@ -609,7 +609,7 @@ export class BilibiliAPI {
 		};
 		const data = await once();
 		if (data && typeof data === "object" && data.code === -352) {
-			this.logger.warn("[wbi] 签名请求返回 -352（WBI key 疑似轮换），刷新 wbiKeys 后重试一次");
+			this.logger.debug("[wbi] 签名请求返回 -352（WBI key 疑似轮换），刷新 wbiKeys 后重试一次");
 			this.wbiKeys = { imgKey: "", subKey: "" }; // 强制下次 getWbi 重新拉 ticket
 			const retried = await once();
 			// P2:二次仍 -352 时此前**静默返回 -352 body**,外层 this.retry 只认
@@ -923,13 +923,13 @@ export class BilibiliAPI {
 		);
 		const result = data as ValidateCaptchaData;
 		if (result.code !== 0) {
-			this.logger.warn(`[captcha] 验证失败: code=${result.code}`);
+			this.logger.debug(`[captcha] 验证失败: code=${result.code}`);
 			return null;
 		}
 		// code===0 但 data===null(B 站常见):此前仍 addCookie("...=undefined")
 		// 污染 jar。强校验 grisk_id 存在才写 cookie。
 		if (!result.data?.grisk_id) {
-			this.logger.warn("[captcha] code=0 但缺 grisk_id,不写 x-bili-gaia-vtoken cookie");
+			this.logger.debug("[captcha] code=0 但缺 grisk_id,不写 x-bili-gaia-vtoken cookie");
 			return null;
 		}
 		this.addCookie(`x-bili-gaia-vtoken=${result.data.grisk_id}`);

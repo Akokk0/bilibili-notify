@@ -97,6 +97,12 @@ export class BilibiliPush {
 	private readonly sink: NotificationSink;
 	private readonly store: SubscriptionStore;
 	private master: PushTarget | null;
+	/**
+	 * 边沿触发用:master 上次已知可达性。`undefined`=未评估;`true/false`=上次判定。
+	 * 仅在跳变时打日志(见 {@link refreshMasterReachability}),避免持续不可达时
+	 * 在 per-tick 热路径刷 error(Q1 约束)。
+	 */
+	private masterReachable?: boolean;
 	private readonly logger: Logger;
 	private readonly defaults?: () => GlobalDefaults;
 	private readonly onSend?: (info: PushSendInfo) => void;
@@ -134,16 +140,42 @@ export class BilibiliPush {
 		const prev = this.master?.id;
 		this.master = target;
 		if (prev !== target?.id) {
+			// 目标变了:重置边沿状态,新目标首次不可达应是一次全新 error。
+			this.masterReachable = undefined;
 			this.logger.info(`[push] master 目标已切换: ${prev ?? "(无)"} → ${target?.id ?? "(无)"}`);
 		}
+	}
+
+	/**
+	 * 边沿触发 master 可达性日志。available→unreachable 跳变(含首次未知→不可达)
+	 * 报一次 `error`(告警背channel已断,运维必须立刻知道);unreachable→available
+	 * 报一次 `info`;持续不可达不再刷(由调用方各自 `debug` 记录跳过)。同时满足
+	 * "运维必须立刻知道" 与 Q1 "error 不得在 per-tick/per-retry 热路径刷" 两约束。
+	 */
+	private refreshMasterReachability(): boolean {
+		if (!this.master) {
+			this.masterReachable = undefined;
+			return false;
+		}
+		const available = this.sink.isAvailable(this.master.id);
+		if (available) {
+			if (this.masterReachable === false) {
+				this.logger.info("[push] master 目标已恢复可达");
+			}
+			this.masterReachable = true;
+		} else {
+			if (this.masterReachable !== false) {
+				this.logger.error("[push] master 目标不可达，运行状态通知将无法送达——告警背channel已断");
+			}
+			this.masterReachable = false;
+		}
+		return available;
 	}
 
 	start(): void {
 		this.generation += 1;
 		this.disposed = false;
-		if (this.master && !this.sink.isAvailable(this.master.id)) {
-			this.logger.warn("[push] master 目标当前不可达，运行状态通知将无法发送");
-		}
+		if (this.master) this.refreshMasterReachability();
 	}
 
 	stop(): void {
@@ -289,7 +321,7 @@ export class BilibiliPush {
 					this.logger.error(`[push] ${msg}`);
 					return { ok: false, latencyMs: 0, err: msg };
 				}
-				this.logger.warn(`[push] target=${targetId} 暂不可达，${delay / 1000}s 后重试`);
+				this.logger.debug(`[push] target=${targetId} 暂不可达，${delay / 1000}s 后重试`);
 				await this.sleep(delay);
 				delay *= 2;
 				continue;
@@ -322,8 +354,8 @@ export class BilibiliPush {
 	 */
 	async sendToMaster(payload: NotificationPayload): Promise<DeliveryResult | null> {
 		if (this.disposed || !this.master) return null;
-		if (!this.sink.isAvailable(this.master.id)) {
-			this.logger.warn("[push] master 目标不可达，跳过私信通知");
+		if (!this.refreshMasterReachability()) {
+			this.logger.debug("[push] master 目标不可达，跳过本次私信通知");
 			return null;
 		}
 		return this.sendToTarget(this.master.id, payload, { private: true });

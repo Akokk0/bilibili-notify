@@ -127,7 +127,10 @@ export class ListenerManager {
 		const session = new RoomSession(this.ctx, mutable);
 		this.sessionRecord.set(mutable.uid, session);
 		session.bootstrap().catch((e) => {
-			this.ctx.logger.error(`${logPrefix} 启动直播监听失败 UID=${mutable.uid}：${e}`);
+			// Q3 carve-out:bootstrap 失败 → 该房间被弃用、无自动重试,留 error。
+			this.ctx.logger.error(
+				`${logPrefix} 启动直播监听失败 UID=${mutable.uid}：${e instanceof Error ? e.message : String(e)}`,
+			);
 		});
 	}
 
@@ -145,7 +148,7 @@ export class ListenerManager {
 			}
 			return String(n);
 		} catch (e) {
-			this.ctx.logger.error(`${logPrefix} UID=${uid} 解析直播间号失败：${(e as Error).message}`);
+			this.ctx.logger.warn(`${logPrefix} UID=${uid} 解析直播间号失败：${(e as Error).message}`);
 			return undefined;
 		}
 	}

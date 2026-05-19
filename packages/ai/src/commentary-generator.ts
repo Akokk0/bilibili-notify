@@ -258,10 +258,12 @@ export class CommentaryGenerator {
 			() => {},
 		);
 		this.chatChains.set(sessionId, tail);
-		tail.then(() => {
-			// 空闲即回收 map 项,避免 sessionId 无界增长。
-			if (this.chatChains.get(sessionId) === tail) this.chatChains.delete(sessionId);
-		});
+		tail
+			.then(() => {
+				// 空闲即回收 map 项,避免 sessionId 无界增长。
+				if (this.chatChains.get(sessionId) === tail) this.chatChains.delete(sessionId);
+			})
+			.catch(() => {});
 		return task;
 	}
 
