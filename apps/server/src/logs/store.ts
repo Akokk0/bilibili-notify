@@ -4,22 +4,23 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import { z } from "zod";
-import { LOG_LEVEL_RANK, LOG_LEVELS, type LogEntry, type LogLevel } from "../ws/types.js";
+import { LOG_LEVELS, type LogEntry } from "../ws/types.js";
 
 /**
  * jsonl-by-day log archive — the on-disk half of the Logs tab.
  *
  * Mirrors {@link HistoryStore}/{@link FansStore} layout: one append-only file
  * per day at `<dataDir>/logs/<YYYY-MM-DD>.jsonl`. Unlike those two, ingest is
- * BUFFERED — at a low `logArchiveFloor` (debug) entries can arrive dozens/sec
+ * BUFFERED — when a module is cranked to `debug` entries can arrive dozens/sec
  * and a per-entry `await appendFile` would serialise I/O onto the business hot
  * path. Entries accumulate in memory and flush on a ~1s timer or when the
  * batch hits {@link MAX_BATCH}; a final flush runs on serviceCtx dispose /
  * SIGINT so a graceful shutdown never drops the tail.
  *
- * Floor gating is read live each ingest via `getFloor()` (same "no restart,
- * reconcile by reading the live value" contract as history retention) — no
- * config-changed subscription needed.
+ * Level gating happens UPSTREAM in service-context.ts `fanOut`
+ * (`target.isLevelEnabled`), so every entry reaching `ingest` is already past
+ * its module's live level — the store writes whatever it is given (no floor;
+ * Tab live == archive == console, all driven by the per-module pino level).
  *
  * Entries arrive ALREADY redacted (see logs/sink.ts) — this store never sees
  * cleartext secrets and performs no scrubbing itself.
@@ -47,7 +48,7 @@ export interface LogQuery {
 }
 
 export interface LogStore {
-	/** Floor-gate + enqueue one entry. Non-blocking. */
+	/** Enqueue one entry. Non-blocking. */
 	ingest(entry: LogEntry): void;
 	/** Flush the in-memory buffer to disk now. Called by the timer + on dispose. */
 	flush(): Promise<void>;
@@ -61,8 +62,6 @@ export interface CreateLogStoreOptions {
 	dataDir: string;
 	serviceCtx: ServiceContext;
 	logger: Logger;
-	/** Live archive floor (globals.app.logArchiveFloor). Read per ingest. */
-	getFloor: () => LogLevel;
 }
 
 const DAY_FILE_RE = /^\d{4}-\d{2}-\d{2}\.jsonl$/;
@@ -128,7 +127,6 @@ export function createLogStore(opts: CreateLogStoreOptions): LogStore {
 	}
 
 	function ingest(entry: LogEntry): void {
-		if (LOG_LEVEL_RANK[entry.level] < LOG_LEVEL_RANK[opts.getFloor()]) return;
 		const archived: LogArchiveEntry = {
 			ts: entry.ts,
 			level: entry.level,

@@ -72,18 +72,6 @@ export interface LogEntry {
 	name?: string;
 }
 
-/**
- * Severity rank over the 4 wire levels. `globals.app.logArchiveFloor` reuses the
- * 3-value `LogLevelSchema` (error|info|debug); `warn` has no floor value but
- * entries can still be `warn` — rank lets a floor of `info` (1) keep `warn` (2).
- */
-export const LOG_LEVEL_RANK: Record<LogLevel, number> = {
-	debug: 0,
-	info: 1,
-	warn: 2,
-	error: 3,
-};
-
 // ---------------------------------------------------------------------------
 // Client-control schemas (Zod)
 // ---------------------------------------------------------------------------

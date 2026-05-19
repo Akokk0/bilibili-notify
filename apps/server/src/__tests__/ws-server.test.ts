@@ -284,6 +284,10 @@ describe("WS server", () => {
 		send(ws, { type: "subscribe", channels: ["log"] });
 		await c.waitFor((m) => m?.type === "subscribed");
 
+		// fanOut is now gated by the live pino level (Tab/archive == console).
+		// beforeEach builds the ctx at "fatal", so admit warn before logging or
+		// the entry is correctly suppressed and never reaches the log channel.
+		serviceCtx.setLevel("info");
 		serviceCtx.logger.warn("hello-from-test", { extra: 1 });
 		const evt = await c.waitFor((m) => m?.type === "log" && m?.event === "warn");
 		expect(dataOf(evt).msg).toBe("hello-from-test");

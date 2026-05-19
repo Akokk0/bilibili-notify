@@ -1,5 +1,6 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type {
+	CachedProfile,
 	ConfigScope,
 	Disposable,
 	FansRefreshEntry,
@@ -11,6 +12,7 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { CronJob } from "cron";
 import type { ConfigStore } from "../config/store.js";
 import type { FansStore } from "../fans/store.js";
+import type { SubRuntime, SubRuntimeStore } from "./sub-runtime-store.js";
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const TWENTY_FOUR_HOURS_MS = 24 * ONE_HOUR_MS;
@@ -19,8 +21,16 @@ const SEVEN_DAYS_MS = 7 * 24 * ONE_HOUR_MS;
 export interface FansPollerOptions {
 	bus: MessageBus;
 	logger: Logger;
+	/** Only read for `getGlobals().app.dynamicCron` (cron reconcile). NOT written. */
 	configStore: ConfigStore;
 	subscriptionStore: SubscriptionStore;
+	/**
+	 * Per-tick cachedProfile.fans / lastRefreshedAt (+ first-time fansBaseline)
+	 * persist here — NOT via configStore.patchSubscription. That decoupling is
+	 * the whole point: it stops the `config-changed:subscriptions` fan-out that
+	 * re-triggered DynamicEngine every tick (the Logs-Tab `[ops]` flooding bug).
+	 */
+	subRuntimeStore: SubRuntimeStore;
 	fansStore: FansStore;
 	api: BilibiliAPI;
 	/**
@@ -43,8 +53,9 @@ export interface FansPollerHandle extends Disposable {
  * Per-tick:遍历所有 enabled subs,逐个拉 B 站 `getUserCardInfo` 取 fans;
  *
  *   1. 追加一行样本到 FansStore(<dataDir>/fans/<uid>.jsonl);
- *   2. 第一次见该 uid → 把当前值作为 fansBaseline(订阅起点)写回 sub.state;
- *   3. 同步更新 sub.cachedProfile.fans + lastRefreshedAt;
+ *   2. 第一次见该 sub → 把当前值作为 fansBaseline(订阅起点)写进 SubRuntimeStore;
+ *   3. 同步更新 SubRuntimeStore 里该 sub 的 cachedProfile.fans + lastRefreshedAt
+ *      (不再走 configStore.patchSubscription —— 见 FansPollerOptions 注释);
  *   4. 计算 24h / 7d 窗口的 delta(从 jsonl 找近似时间点的最近样本);
  *   5. 单次轮询全部完成后 emit `fans-refreshed`(entries);
  *
@@ -57,7 +68,16 @@ export interface FansPollerHandle extends Disposable {
  * 端面板会显示 "—"。这样 auth 恢复后无需重新初始化 poller。
  */
 export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
-	const { bus, logger, configStore, subscriptionStore, fansStore, api, serviceCtx } = opts;
+	const {
+		bus,
+		logger,
+		configStore,
+		subscriptionStore,
+		subRuntimeStore,
+		fansStore,
+		api,
+		serviceCtx,
+	} = opts;
 
 	let currentCron = configStore.getGlobals().app.dynamicCron;
 	let job: CronJob | undefined;
@@ -132,31 +152,30 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				]);
 				if (disposed) return;
 
-				const baseline = sub.state.fansBaseline;
+				const prev = subRuntimeStore.get(sub.id);
+				const baseline = prev?.fansBaseline;
 				const nextBaseline = baseline ?? { value: current, ts: nowIso };
 				const deltaSubscribed = current - nextBaseline.value;
 
 				const delta24h = near24h ? current - near24h.value : null;
 				const delta7d = near7d ? current - near7d.value : null;
 
-				// 写回 sub.state.fansBaseline (首次) + cachedProfile.fans (每次)。
-				// patchSubscription 走 deep-merge + 原子写盘,跟 dashboard 其他写路径一致。
-				const patch: Record<string, unknown> = {
-					cachedProfile: {
-						...(sub.cachedProfile ?? {
-							name: res.data.card.name ?? sub.uid,
-							avatar: res.data.card.face ?? "",
-							sign: res.data.card.sign ?? "",
-						}),
-						fans: current,
-						lastRefreshedAt: nowIso,
-					},
+				// 写进 SubRuntimeStore(独立文件 + 原子写,**不发** config-changed)——
+				// fansBaseline 首次写、cachedProfile.fans/lastRefreshedAt 每次写。
+				// name/avatar/sign 沿用既有(POST 自 seed / 上一次),缺失才从 card 兜底。
+				const cachedProfile: CachedProfile = {
+					...(prev?.cachedProfile ?? {
+						name: res.data.card.name ?? sub.uid,
+						avatar: res.data.card.face ?? "",
+						sign: res.data.card.sign ?? "",
+					}),
+					fans: current,
+					lastRefreshedAt: nowIso,
 				};
-				if (!baseline) {
-					patch.state = { ...sub.state, fansBaseline: nextBaseline };
-				}
+				const runtimePatch: SubRuntime = { cachedProfile };
+				if (!baseline) runtimePatch.fansBaseline = nextBaseline;
 				try {
-					await configStore.patchSubscription(sub.id, patch);
+					await subRuntimeStore.patch(sub.id, runtimePatch);
 				} catch (err) {
 					logger.warn(`[fans-poller] persist ${sub.uid} failed: ${String(err)}`);
 				}
@@ -216,7 +235,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			try {
 				const last = await fansStore.findNearestBefore(sub.uid, futureIso);
 				if (!last) continue;
-				const baseline = sub.state.fansBaseline;
+				const baseline = subRuntimeStore.get(sub.id)?.fansBaseline;
 				const deltaSubscribed = baseline ? last.value - baseline.value : 0;
 				lastByUid.set(sub.uid, {
 					uid: sub.uid,
@@ -259,13 +278,22 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	// dashboard 立刻把该 UP 从面板上撤掉(无需等下一 cron tick)。
 	const offSubs = bus.on("subscription-changed", (ops) => {
 		let removedAny = false;
+		let hadRemove = false;
 		for (const op of ops) {
 			if (op.type !== "remove") continue;
+			hadRemove = true;
 			if (lastByUid.has(op.uid)) {
 				lastByUid.delete(op.uid);
 				removedAny = true;
 			}
 			void fansStore.dropUid(op.uid);
+		}
+		if (hadRemove) {
+			// Drop the deleted sub's SubRuntimeStore entry. subscriptionStore
+			// already reflects the post-delete set when this fires (config-changed
+			// → bridge replaceAll → subscription-changed), so a keep-set prune is
+			// precise + idempotent and avoids a dedicated delete(id) API.
+			void subRuntimeStore.prune(subscriptionStore.list().map((s) => s.id));
 		}
 		if (removedAny) {
 			bus.emit("fans-refreshed", Array.from(lastByUid.values()));

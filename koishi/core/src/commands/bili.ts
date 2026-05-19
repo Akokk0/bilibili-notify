@@ -43,7 +43,7 @@ export function biliCommands(this: BilibiliNotifyServerManager): void {
 			for (const sub of subs) {
 				const hasLive = (sub.routing.live?.length ?? 0) > 0;
 				const onLive = hasLive && liveUidSet.has(sub.uid);
-				const name = sub.cachedProfile?.name ?? sub.uid;
+				const name = sub.uid;
 				table += `[UID:${sub.uid}] 「${name}」 ${onLive ? "正在直播" : "未开播"}\n`;
 			}
 			return table || "没有订阅任何UP";

@@ -59,6 +59,7 @@ import { createMultiplexSink } from "../sink/multiplex.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
 import { MasterNotifier } from "./master-notifier.js";
 import type { NodeServiceContext } from "./service-context.js";
+import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
 export interface ModuleStatus {
 	/** DynamicEngine cron is wired. Always true once the runtime boots. */
@@ -116,6 +117,12 @@ export interface CreateEnginesOptions {
 	configStore: ConfigStore;
 	historyStore: HistoryStore;
 	subscriptionStore: SubscriptionStore;
+	/**
+	 * Display-cache source for uname/uavatar (history snapshot + engine sub
+	 * views). cachedProfile was externalized out of `Subscription`, so the
+	 * config subs from subscriptionStore no longer carry it — read it here.
+	 */
+	subRuntimeStore: SubRuntimeStore;
 	bus: import("@bilibili-notify/internal").MessageBus;
 	adapters: PlatformAdapter[];
 	/**
@@ -150,11 +157,12 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// Base logger boot reconcile. bootstrap.logLevel (BN_LOG_LEVEL / --log-level
 	// / bn.config logLevel) only governs the pre-engines early window (config
 	// load + bootstrap, before globals.json is applied). From engines-up onward
-	// globals.app.logLevel is the single authority — apply it once here so the
-	// base logger matches the subsystem ctxs above and does NOT wait for the
-	// first config-changed (dashboard save). Mirrors the change-path apply in
-	// the config-changed handler below.
-	opts.serviceCtx.setLevel(initialGlobals.app.logLevel);
+	// the base logger is the "core" module bucket — every non-engine log
+	// (push / sink / master-notifier / fans-poller / routes / config / history /
+	// ws) goes through it, so it follows `logLevels.core ?? app.logLevel` just
+	// like the subsystem ctxs follow their own keys. Apply once here so it does
+	// NOT wait for the first config-changed. Mirrors the change-path apply below.
+	opts.serviceCtx.setLevel(resolveLevel(initialGlobals, "core"));
 
 	// 启动期把 app.userAgent 推到 BilibiliAPI(auth/index.ts 构造时未填,这里补)。
 	// config-changed 路径下方也会再次调用,变更立即生效。
@@ -203,6 +211,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			// 私聊不走 history(语义上是给主人的运行状态通知,不是订阅推送)。
 			if (info.private) return;
 			const sub = opts.subscriptionStore.findByUid(info.uid);
+			const rt = sub ? opts.subRuntimeStore.get(sub.id) : undefined;
 			void opts.historyStore
 				.append({
 					source: featureToHistorySource(info.feature),
@@ -219,8 +228,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					payload: info.payload,
 					// Snapshot UP 主当时的名字 / 头像。订阅以后被删除,Dashboard 的
 					// timeline / history 仍能正确显示「当时是谁」,不退化成 UID 占位。
-					unameSnapshot: sub?.cachedProfile?.name,
-					uavatarSnapshot: sub?.cachedProfile?.avatar,
+					unameSnapshot: rt?.cachedProfile?.name,
+					uavatarSnapshot: rt?.cachedProfile?.avatar,
 				})
 				.catch((e) => log.warn(`[history] append failed: ${String(e)}`));
 		},
@@ -360,7 +369,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		image: imageRenderer ?? undefined,
 		ai: commentary ?? undefined,
 		config: dynamicConfig(),
-		getSubs: () => buildDynamicSubsView(opts.subscriptionStore, globals()),
+		getSubs: () => buildDynamicSubsView(opts.subscriptionStore, opts.subRuntimeStore, globals()),
 	});
 	dynamic.start();
 
@@ -423,7 +432,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	});
 
 	// Initialise live with current subs.
-	const initialLiveView = buildLiveSubsView(opts.subscriptionStore, globals());
+	const initialLiveView = buildLiveSubsView(
+		opts.subscriptionStore,
+		opts.subRuntimeStore,
+		globals(),
+	);
 	if (Object.keys(initialLiveView).length > 0) {
 		live.start(initialLiveView);
 	}
@@ -433,18 +446,30 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	handles.push(
 		opts.bus.on("subscription-changed", (ops) => {
-			const dynOps = subscriptionOpsToDynamic(ops, opts.subscriptionStore, globals());
+			const dynOps = subscriptionOpsToDynamic(
+				ops,
+				opts.subscriptionStore,
+				opts.subRuntimeStore,
+				globals(),
+			);
 			dynamic.applyOps(dynOps);
-			const liveOps = subscriptionOpsToLive(ops, opts.subscriptionStore, globals());
+			const liveOps = subscriptionOpsToLive(
+				ops,
+				opts.subscriptionStore,
+				opts.subRuntimeStore,
+				globals(),
+			);
 			live.applyOps(liveOps, (uid) => {
 				const sub = opts.subscriptionStore.findByUid(uid);
-				return sub ? buildLiveSubViewSingle(sub, globals()) : undefined;
+				return sub ? buildLiveSubViewSingle(sub, opts.subRuntimeStore, globals()) : undefined;
 			});
 		}),
 	);
 	handles.push(
 		opts.bus.on("auth-restored", () => {
-			live.rebuildFromSubs(buildLiveSubsView(opts.subscriptionStore, globals()));
+			live.rebuildFromSubs(
+				buildLiveSubsView(opts.subscriptionStore, opts.subRuntimeStore, globals()),
+			);
 		}),
 	);
 	handles.push(
@@ -512,7 +537,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// Push log-level changes onto the live pino instances so dashboard
 				// edits take effect without a server restart.
 				const g = globals();
-				opts.serviceCtx.setLevel(g.app.logLevel);
+				opts.serviceCtx.setLevel(resolveLevel(g, "core"));
 				dynamicCtx.setLevel(resolveLevel(g, "dynamic"));
 				liveCtx.setLevel(resolveLevel(g, "live"));
 				aiCtx.setLevel(resolveLevel(g, "ai"));
@@ -794,7 +819,11 @@ function buildDynamicFilter(eff: ReturnType<typeof resolve>) {
 	};
 }
 
-function buildDynamicSubsView(store: SubscriptionStore, globals: GlobalConfig): DynamicSubsView {
+function buildDynamicSubsView(
+	store: SubscriptionStore,
+	subRuntimeStore: SubRuntimeStore,
+	globals: GlobalConfig,
+): DynamicSubsView {
 	const view: DynamicSubsView = {};
 	for (const sub of store.list()) {
 		if (!sub.enabled) continue;
@@ -805,7 +834,7 @@ function buildDynamicSubsView(store: SubscriptionStore, globals: GlobalConfig): 
 		const hasDynamic = eff.features.dynamic;
 		view[sub.uid] = {
 			uid: sub.uid,
-			uname: sub.cachedProfile?.name ?? sub.uid,
+			uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? sub.uid,
 			dynamic: hasDynamic,
 			customCardStyle: {
 				enable: true,
@@ -821,16 +850,24 @@ function buildDynamicSubsView(store: SubscriptionStore, globals: GlobalConfig): 
 	return view;
 }
 
-function buildLiveSubsView(store: SubscriptionStore, globals: GlobalConfig): LiveSubsView {
+function buildLiveSubsView(
+	store: SubscriptionStore,
+	subRuntimeStore: SubRuntimeStore,
+	globals: GlobalConfig,
+): LiveSubsView {
 	const view: LiveSubsView = {};
 	for (const sub of store.list()) {
 		if (!sub.enabled) continue;
-		view[sub.uid] = buildLiveSubViewSingle(sub, globals);
+		view[sub.uid] = buildLiveSubViewSingle(sub, subRuntimeStore, globals);
 	}
 	return view;
 }
 
-function buildLiveSubViewSingle(sub: Subscription, globals: GlobalConfig): LiveSubView {
+function buildLiveSubViewSingle(
+	sub: Subscription,
+	subRuntimeStore: SubRuntimeStore,
+	globals: GlobalConfig,
+): LiveSubView {
 	const eff = resolve(sub, globals.defaults);
 	const danmakuUsers = sub.specialUsers.filter((u) => u.kinds.includes("danmaku"));
 	const enterUsers = sub.specialUsers.filter((u) => u.kinds.includes("enter"));
@@ -841,7 +878,7 @@ function buildLiveSubViewSingle(sub: Subscription, globals: GlobalConfig): LiveS
 	const feat = (k: keyof typeof eff.routing) => eff.features[k];
 	return {
 		uid: sub.uid,
-		uname: sub.cachedProfile?.name ?? sub.uid,
+		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? sub.uid,
 		roomId: "",
 		dynamic: feat("dynamic"),
 		live: feat("live"),
@@ -907,6 +944,7 @@ function buildLiveSubViewSingle(sub: Subscription, globals: GlobalConfig): LiveS
 function subscriptionOpsToDynamic(
 	ops: SubscriptionOp[],
 	store: SubscriptionStore,
+	subRuntimeStore: SubRuntimeStore,
 	globals: GlobalConfig,
 ): DynamicSubOp[] {
 	const out: DynamicSubOp[] = [];
@@ -920,7 +958,7 @@ function subscriptionOpsToDynamic(
 				type: "add",
 				sub: {
 					uid: op.sub.uid,
-					uname: op.sub.cachedProfile?.name ?? op.sub.uid,
+					uname: subRuntimeStore.get(op.sub.id)?.cachedProfile?.name ?? op.sub.uid,
 					dynamic: hasDyn(op.sub),
 					customCardStyle: op.sub.overrides.cardStyle
 						? {
@@ -949,12 +987,13 @@ function subscriptionOpsToDynamic(
 function subscriptionOpsToLive(
 	ops: SubscriptionOp[],
 	store: SubscriptionStore,
+	subRuntimeStore: SubRuntimeStore,
 	globals: GlobalConfig,
 ): LiveSubscriptionOp[] {
 	const out: LiveSubscriptionOp[] = [];
 	for (const op of ops) {
 		if (op.type === "add") {
-			out.push({ type: "add", sub: buildLiveSubViewSingle(op.sub, globals) });
+			out.push({ type: "add", sub: buildLiveSubViewSingle(op.sub, subRuntimeStore, globals) });
 		} else if (op.type === "remove") {
 			out.push({ type: "delete", uid: op.uid });
 		} else {
@@ -964,7 +1003,7 @@ function subscriptionOpsToLive(
 			// per-UP 阈值 / 调度 / AI override 之外,模板 / 上舰 / 特别关注 / 卡片样式
 			// 也跟着一起同步,避免活跃 listener 用旧值(本来 add 路径就走这里,update
 			// 没必要弱化语义)。pushTime 变化由 engine 在 applyOps 内单独 rearm。
-			const view = buildLiveSubViewSingle(sub, globals);
+			const view = buildLiveSubViewSingle(sub, subRuntimeStore, globals);
 			out.push({
 				type: "update",
 				uid: op.sub.uid,

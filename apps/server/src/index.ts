@@ -31,6 +31,9 @@ async function main(): Promise<void> {
 	// Seeds defaults on first boot. Failure here is fatal — we don't want to start serving HTTP
 	// against a corrupt or unreadable state dir.
 	await runtime.configStore.load();
+	// Per-sub runtime data (cachedProfile / fansBaseline). Independent file,
+	// absent / malformed → empty (non-fatal: it's a regenerable display cache).
+	await runtime.subRuntimeStore.load();
 
 	// Stage 2.4: assemble the auth stack (StorageManager → BilibiliAPI → LoginFlow). Bus
 	// emissions made by LoginFlow flow into the WS `auth` channel via stage 2.3 wiring.
@@ -95,6 +98,10 @@ async function main(): Promise<void> {
 	//   3. createEngines() builds Sink → BilibiliPush → DynamicEngine + LiveEngine
 	//      and registers serviceCtx.onDispose for graceful shutdown.
 	const subBinding = bindSubscriptionStore({ bus: runtime.bus, configStore: runtime.configStore });
+	// Boot-time orphan sweep: drop sub-runtime entries whose subscription no
+	// longer exists (deleted while the server was down). FansPoller's
+	// subscription-changed listener handles deletions made while running.
+	await runtime.subRuntimeStore.prune(subBinding.store.list().map((s) => s.id));
 	const adapters = [
 		createOnebotAdapter({ logger: log }),
 		createWebhookAdapter({ logger: log }),
@@ -107,6 +114,7 @@ async function main(): Promise<void> {
 		configStore: runtime.configStore,
 		historyStore: runtime.historyStore,
 		subscriptionStore: subBinding.store,
+		subRuntimeStore: runtime.subRuntimeStore,
 		bus: runtime.bus,
 		adapters,
 		puppeteer,
@@ -134,6 +142,7 @@ async function main(): Promise<void> {
 		logger: log,
 		configStore: runtime.configStore,
 		subscriptionStore: subBinding.store,
+		subRuntimeStore: runtime.subRuntimeStore,
 		fansStore: runtime.fansStore,
 		api: authSystem.api,
 		serviceCtx: runtime.serviceCtx,
@@ -184,8 +193,9 @@ async function main(): Promise<void> {
 		wsTicketStore,
 		allowedOrigins: bootstrap.auth?.allowedOrigins,
 	});
-	// Single fan-out point: redact ONCE, then tee to the WS ring (live tail,
-	// all levels) + the on-disk archive (floor-gated inside ingest).
+	// Single fan-out point: redact ONCE, then tee to the WS ring (live tail) +
+	// the on-disk archive. Both receive exactly what passed the upstream fanOut
+	// level gate (Tab == archive == console, per-module pino level).
 	const previousLogHook = runtime.serviceCtx.setLogHook(
 		createLogSink({ ring: wsServer.logChannel, store: runtime.logStore }),
 	);

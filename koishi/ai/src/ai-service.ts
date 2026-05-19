@@ -54,7 +54,7 @@ function storeToAiSubs(store: any): Subscriptions {
 	for (const sub of store.list()) {
 		subs[sub.uid] = {
 			uid: sub.uid,
-			uname: sub.cachedProfile?.name ?? sub.uid,
+			uname: sub.uid,
 			dynamic: (sub.routing.dynamic?.length ?? 0) > 0,
 			live: (sub.routing.live?.length ?? 0) > 0,
 		};

@@ -11,6 +11,7 @@ import type { EnginesRuntime } from "./engines.js";
 import type { FansPollerHandle } from "./fans-poller.js";
 import { createNodeMessageBus } from "./message-bus.js";
 import { createNodeServiceContext, type NodeServiceContext } from "./service-context.js";
+import { createSubRuntimeStore, type SubRuntimeStore } from "./sub-runtime-store.js";
 
 export interface AppRuntime {
 	bootstrap: BootstrapConfig;
@@ -27,9 +28,18 @@ export interface AppRuntime {
 	historyStore: HistoryStore;
 	fansStore: FansStore;
 	/**
+	 * Per-subscription runtime data (display cache + fans anchor), externalized
+	 * out of the persisted `Subscription` config so FansPoller's per-tick
+	 * `cachedProfile` writes no longer fan out as `config-changed:subscriptions`.
+	 * Loaded alongside configStore; consumed by FansPoller / engines / the
+	 * `/api/subs` join.
+	 */
+	subRuntimeStore: SubRuntimeStore;
+	/**
 	 * jsonl-by-day log archive. Fed (post-redaction) by the log sink installed
-	 * in index.ts; queried by the `/api/logs` route. Floor-gated live off
-	 * `globals.app.logArchiveFloor`.
+	 * in index.ts; queried by the `/api/logs` route. No floor — level gating is
+	 * upstream in service-context `fanOut`, so the archive equals the live Tab
+	 * equals the console, all driven by the per-module pino level.
 	 */
 	logStore: LogStore;
 	/**
@@ -109,13 +119,14 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		dataDir: bootstrap.dataDir,
 		logger: serviceCtx.logger,
 	});
+	const subRuntimeStore = createSubRuntimeStore({
+		dataDir: bootstrap.dataDir,
+		logger: serviceCtx.logger,
+	});
 	const logStore = createLogStore({
 		dataDir: bootstrap.dataDir,
 		serviceCtx,
 		logger: serviceCtx.logger,
-		// Read the floor live each ingest (no restart / no config-changed sub —
-		// same contract as history retention reading the live horizon).
-		getFloor: () => configStore.getGlobals().app.logArchiveFloor,
 	});
 
 	let engines: EnginesRuntime | null = null;
@@ -129,6 +140,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		configStore,
 		historyStore,
 		fansStore,
+		subRuntimeStore,
 		logStore,
 		get engines() {
 			return engines;

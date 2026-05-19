@@ -217,7 +217,7 @@ function storeToLiveView(store: any, defaults: GlobalDefaults): SubscriptionsVie
 
 		const liveView: SubItemView = {
 			uid: sub.uid,
-			uname: sub.cachedProfile?.name ?? sub.uid,
+			uname: sub.uid,
 			roomId: "", // live engine resolves roomId via API
 			dynamic: gate(eff, "dynamic"),
 			live: gate(eff, "live"),
@@ -426,7 +426,7 @@ function storeToSubItemView(sub: Subscription, defaults: GlobalDefaults): SubIte
 	const eff = resolve(sub, defaults);
 	return {
 		uid: sub.uid,
-		uname: sub.cachedProfile?.name ?? sub.uid,
+		uname: sub.uid,
 		roomId: "",
 		dynamic: gate(eff, "dynamic"),
 		live: gate(eff, "live"),

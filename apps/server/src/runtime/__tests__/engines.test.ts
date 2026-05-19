@@ -172,6 +172,13 @@ function setup(opts?: { globals?: GlobalConfig; puppeteer?: boolean }): Ctx {
 		configStore: configStore as unknown as ConfigStore,
 		historyStore: { append: vi.fn(async () => {}) } as any,
 		subscriptionStore: { list: () => [], findByUid: () => undefined } as any,
+		subRuntimeStore: {
+			get: () => undefined,
+			getAll: () => ({}),
+			patch: vi.fn(async () => {}),
+			prune: vi.fn(async () => {}),
+			load: vi.fn(async () => {}),
+		} as any,
 		bus,
 		adapters: [],
 		puppeteer: opts?.puppeteer ? ({} as any) : null,
@@ -226,7 +233,8 @@ describe("createEngines — boot wiring", () => {
 		expect(H.image).toHaveLength(0);
 		// 启动期把 userAgent 推到 BilibiliAPI 一次。
 		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
-		// boot 时 base logger 立即对齐 globals.app.logLevel(不等首次 dashboard 保存)。
+		// boot 时 base logger(core 桶)立即对齐 logLevels.core ?? app.logLevel
+		// (默认 globals 无 core override → "info";不等首次 dashboard 保存)。
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1);
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledWith("info");
 	});

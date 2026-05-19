@@ -87,7 +87,18 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 	const callPino = (fn: (...a: unknown[]) => void, msg: string, args: readonly unknown[]): void => {
 		fn(msg, ...args);
 	};
-	const fanOut = (name: string, level: LogLevel, msg: string, args: readonly unknown[]): void => {
+	const fanOut = (
+		target: PinoLogger,
+		name: string,
+		level: LogLevel,
+		msg: string,
+		args: readonly unknown[],
+	): void => {
+		// Gate the side-channel by the SAME live pino level that gates stdout, so
+		// the Logs Tab + on-disk archive mirror the console exactly, per module.
+		// `isLevelEnabled` re-reads the instance's `.level`, so config-changed
+		// `setLevel()` hot-reloads take effect with no restart.
+		if (!target.isLevelEnabled(level)) return;
 		const hook = logHook;
 		if (!hook) return;
 		try {
@@ -100,19 +111,19 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 	const wrapLogger = (target: PinoLogger, name: string): Logger => ({
 		info: (msg, ...args) => {
 			callPino(target.info.bind(target) as never, msg, args);
-			fanOut(name, "info", msg, args);
+			fanOut(target, name, "info", msg, args);
 		},
 		warn: (msg, ...args) => {
 			callPino(target.warn.bind(target) as never, msg, args);
-			fanOut(name, "warn", msg, args);
+			fanOut(target, name, "warn", msg, args);
 		},
 		error: (msg, ...args) => {
 			callPino(target.error.bind(target) as never, msg, args);
-			fanOut(name, "error", msg, args);
+			fanOut(target, name, "error", msg, args);
 		},
 		debug: (msg, ...args) => {
 			callPino(target.debug.bind(target) as never, msg, args);
-			fanOut(name, "debug", msg, args);
+			fanOut(target, name, "debug", msg, args);
 		},
 	});
 	const logger = wrapLogger(baseLogger, opts.name);

@@ -26,12 +26,10 @@ export interface EffectiveSubscription {
 	enabled: boolean;
 	groups: string[];
 	notes: string | undefined;
-	cachedProfile: Subscription["cachedProfile"];
 	routing: SubscriptionRouting;
 	atAllDefaults: SubscriptionAtAllDefaults;
 	atAll: SubscriptionAtAll;
 	specialUsers: Subscription["specialUsers"];
-	state: Subscription["state"];
 
 	features: FeatureFlags;
 	filters: ContentFilters;
@@ -99,7 +97,7 @@ function resolveAI(globals: AISettings, override: AIOverride | undefined): Resol
 export function resolve(sub: Subscription, defaults: GlobalDefaults): EffectiveSubscription {
 	const ov = sub.overrides;
 	// P2:merge() 在 override 缺失时直接返回 base 引用,且 {...base} 仅浅拷贝 ——
-	// routing/atAll/specialUsers/state 又是 sub 的直接引用,filters.blockKeywords
+	// routing/atAll/specialUsers 又是 sub 的直接引用,filters.blockKeywords
 	// 等嵌套数组与 defaults 共享。任一消费方就地改 EffectiveSubscription 即污染
 	// 全局默认 / 原始 sub。structuredClone 整体深隔离(schema 全为纯数据,无函数)。
 	return structuredClone<EffectiveSubscription>({
@@ -108,12 +106,10 @@ export function resolve(sub: Subscription, defaults: GlobalDefaults): EffectiveS
 		enabled: sub.enabled,
 		groups: sub.groups,
 		notes: sub.notes,
-		cachedProfile: sub.cachedProfile,
 		routing: sub.routing,
 		atAllDefaults: sub.atAllDefaults,
 		atAll: sub.atAll,
 		specialUsers: sub.specialUsers,
-		state: sub.state,
 
 		features: merge(defaults.features, ov.features),
 		filters: merge(defaults.filters, ov.filters),

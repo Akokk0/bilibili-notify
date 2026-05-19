@@ -1,7 +1,22 @@
+import type { CachedProfile, Subscription } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
 import type { RouteDeps } from "./types.js";
+
+/**
+ * DTO shape the dashboard expects: persisted config (Subscription) + the
+ * externalized runtime fields joined back in. `cachedProfile` comes from
+ * SubRuntimeStore (FansPoller-owned); `state` is a constant — its only live
+ * field (fansBaseline) is FansPoller-private and never shipped, and the rest
+ * (lastDynamicId/lastPushedAt/liveStatus) has no writer anywhere, so a fixed
+ * default satisfies apps/web's non-optional `state` type + the always-"unknown"
+ * Rules.tsx read without inventing data.
+ */
+type SubscriptionDTO = Subscription & {
+	cachedProfile?: CachedProfile;
+	state: { lastPushedAt: Record<string, never>; liveStatus: "unknown" };
+};
 
 /**
  * `/api/subs` — CRUD on the Subscription[] list.
@@ -19,7 +34,46 @@ export function createSubsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 	const log = deps.runtime.serviceCtx.logger;
 
-	app.get("/", (c) => c.json(deps.store.getSubscriptions()));
+	/** Join the externalized runtime fields back onto a config Subscription. */
+	function toDTO(sub: Subscription): SubscriptionDTO {
+		const rt = deps.runtime.subRuntimeStore.get(sub.id);
+		return {
+			...sub,
+			cachedProfile: rt?.cachedProfile,
+			state: { lastPushedAt: {}, liveStatus: "unknown" },
+		};
+	}
+
+	/**
+	 * Server-owned cachedProfile seed on create. cachedProfile is a B-station
+	 * mirror owned by the server (FansPoller), not client-supplied display data
+	 * — so on a brand-new sub we fetch it once ourselves instead of trusting /
+	 * peeling whatever the frontend POSTed (Zod strips it anyway). Best-effort:
+	 * any failure just leaves it for the first FansPoller tick (~2min). Skipped
+	 * when a cachedProfile already exists (re-POST / edit) to bound the call.
+	 */
+	async function seedCachedProfile(sub: Subscription): Promise<void> {
+		if (deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile) return;
+		const engines = deps.runtime.engines;
+		if (!engines) return;
+		try {
+			const res = await engines.api.getUserCardInfo(sub.uid);
+			if (res.code !== 0 || !res.data?.card) return;
+			const card = res.data.card;
+			const cachedProfile: CachedProfile = {
+				name: card.name ?? sub.uid,
+				avatar: card.face ?? "",
+				sign: card.sign ?? "",
+				fans: typeof card.fans === "number" && card.fans >= 0 ? card.fans : 0,
+				lastRefreshedAt: new Date().toISOString(),
+			};
+			await deps.runtime.subRuntimeStore.patch(sub.id, { cachedProfile });
+		} catch (err) {
+			log.warn(`/api/subs seed cachedProfile uid=${sub.uid} failed: ${String(err)}`);
+		}
+	}
+
+	app.get("/", (c) => c.json(deps.store.getSubscriptions().map(toDTO)));
 
 	/**
 	 * Pre-flight UID resolution for the "add UP" dialog. Hits B-station's user
@@ -123,7 +177,11 @@ export function createSubsRoute(deps: RouteDeps): Hono {
 		try {
 			// upsertSubscription validates via Zod internally
 			await deps.store.upsertSubscription(body as never);
-			return c.json(deps.store.getSubscriptions(), 200);
+			const id = (body as { id?: unknown }).id;
+			const created =
+				typeof id === "string" ? deps.store.getSubscriptions().find((s) => s.id === id) : undefined;
+			if (created) await seedCachedProfile(created);
+			return c.json(deps.store.getSubscriptions().map(toDTO), 200);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) {
 				return c.json({ error: "validation_failed", scope: err.scope, issues: err.issues }, 400);
@@ -154,7 +212,7 @@ export function createSubsRoute(deps: RouteDeps): Hono {
 		}
 		try {
 			const next = await deps.store.patchSubscription(id, shapeCheck.data);
-			return c.json(next);
+			return c.json(toDTO(next));
 		} catch (err) {
 			if (err instanceof ConfigValidationError) {
 				const status = isNotFound(err) ? 404 : 400;

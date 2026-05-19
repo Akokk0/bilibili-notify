@@ -103,7 +103,7 @@ function storeToSubscriptionsView(store: any, defaults: GlobalDefaults): Subscri
 		const eff = resolve(sub, defaults);
 		view[sub.uid] = {
 			uid: sub.uid,
-			uname: sub.cachedProfile?.name ?? sub.uid,
+			uname: sub.uid,
 			dynamic: hasDynamicGate(eff),
 			customCardStyle: sub.overrides.cardStyle
 				? {
@@ -174,7 +174,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 						type: "add" as const,
 						sub: {
 							uid: op.sub.uid,
-							uname: op.sub.cachedProfile?.name ?? op.sub.uid,
+							uname: op.sub.uid,
 							dynamic: hasDynamicGate(eff),
 							customCardStyle: op.sub.overrides.cardStyle
 								? {

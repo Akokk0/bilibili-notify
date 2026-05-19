@@ -33,7 +33,11 @@ export const SubscriptionRoutingSchema = SubscriptionRoutingObjectSchema.transfo
 });
 
 /**
- * 缓存的 UP 主档案，用于 UI 显示。non-authoritative，启动 / 心跳时刷新。
+ * 缓存的 UP 主档案，用于 UI 显示。non-authoritative。
+ *
+ * **不再内嵌于 Subscription**（高频 fans/lastRefreshedAt 写入会污染配置写路径）。
+ * 独立端持久化到 apps/server 的 SubRuntimeStore（`<dataDir>/state/sub-runtime.json`）；
+ * koishi 端不产生它。schema/type 仍导出，供 SubRuntimeStore + `/api/subs` join 复用。
  */
 export const CachedProfileSchema = z.object({
 	name: z.string(),
@@ -131,7 +135,9 @@ export const FansBaselineSchema = z.object({
 export type FansBaseline = z.infer<typeof FansBaselineSchema>;
 
 /**
- * 运行时状态。Dashboard 只读展示；不持久化到 koishi config，独立端持久化到 state.json。
+ * 运行时状态。**不再内嵌于 Subscription**——只有 fansBaseline 有真实写入方
+ * (FansPoller)，其余字段全仓零写入方。fansBaseline 现由 apps/server 的
+ * SubRuntimeStore 持久化；schema/type 保留导出仅为类型复用与向后兼容。
  */
 export const SubscriptionStateSchema = z.object({
 	lastDynamicId: z.string().optional(),
@@ -147,6 +153,10 @@ export type SubscriptionState = z.infer<typeof SubscriptionStateSchema>;
 /**
  * 单一订阅模型，统一 SubItem (基础) + AdvancedSubItem (高级) 两套。
  * id 与 uid 分离：id 是 dashboard 内部稳定标识；uid 是 B 站用户 ID。
+ *
+ * **纯配置**：展示缓存 `cachedProfile` 与运行时 `state` 已外置到 apps/server 的
+ * SubRuntimeStore（见 CachedProfileSchema / SubscriptionStateSchema 注释）。Zod
+ * 默认 strip 未知键——旧 subscriptions.json 内嵌的这两个字段 load 时自动剥离。
  */
 export const SubscriptionSchema = z
 	.object({
@@ -155,13 +165,11 @@ export const SubscriptionSchema = z
 		enabled: z.boolean(),
 		groups: z.array(z.string()).default([]),
 		notes: z.string().optional(),
-		cachedProfile: CachedProfileSchema.optional(),
 		routing: SubscriptionRoutingSchema,
 		atAllDefaults: SubscriptionAtAllDefaultsSchema.default({ dynamic: false, live: true }),
 		atAll: SubscriptionAtAllSchema.default({ dynamic: {}, live: {} }),
 		overrides: SubscriptionOverridesSchema,
 		specialUsers: z.array(SpecialUserSchema).default([]),
-		state: SubscriptionStateSchema,
 	})
 	.refine((s) => Object.keys(s.atAll.dynamic).every((t) => s.routing.dynamic.includes(t)), {
 		message: "atAll.dynamic keys must be a subset of routing.dynamic",
@@ -184,16 +192,10 @@ export function makeEmptySubscription(opts: { id: string; uid: string }): Subscr
 		enabled: true,
 		groups: [],
 		notes: undefined,
-		cachedProfile: undefined,
 		routing: emptyRouting,
 		atAllDefaults: { dynamic: false, live: true },
 		atAll: { dynamic: {}, live: {} },
 		overrides: {},
 		specialUsers: [],
-		state: {
-			lastDynamicId: undefined,
-			lastPushedAt: {},
-			liveStatus: "unknown",
-		},
 	};
 }

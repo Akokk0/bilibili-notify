@@ -222,10 +222,10 @@ src/
     store.ts            ← HistoryStore — <dataDir>/history/<YYYY-MM-DD>.jsonl with uname/avatar snapshots
     retention.ts        ← daily sweep dropping files older than globals.app.historyRetentionDays
   logs/
-    store.ts            ← LogStore — buffered jsonl-by-day <dataDir>/logs/<YYYY-MM-DD>.jsonl; floor-gated (globals.app.logArchiveFloor, read live), ~1s/100-batch flush, final-flush on serviceCtx dispose
+    store.ts            ← LogStore — buffered jsonl-by-day <dataDir>/logs/<YYYY-MM-DD>.jsonl; unconditional ingest (level gating is upstream in service-context fanOut), ~1s/100-batch flush, final-flush on serviceCtx dispose
     retention.ts        ← daily sweep dropping files older than globals.app.logRetentionDays
     redact.ts           ← credential scrub (SESSDATA/bili_jct/refresh_token/sk-/Bearer) — single fan-out point
-    sink.ts             ← createLogSink: redact ONCE → tee to WS ring (live, all levels) + LogStore (archive, floor-gated)
+    sink.ts             ← createLogSink: redact ONCE → tee to WS ring (live tail) + LogStore (archive); both get exactly what passed the upstream service-context fanOut level gate
   routes/               ← REST: auth, subs, targets, adapters, globals, history, logs, fans, live, cards, push, health
   ws/
     server.ts           ← ws upgrade + per-conn channel filter
