@@ -2,9 +2,16 @@
 #   cp docker-compose.example.yaml docker-compose.yaml
 #   docker compose up -d
 #
+# host 端布局(./data 跟 ./config 在 docker-compose.yaml 同级平铺):
+#   ./
+#   ├── data/                  # state(订阅 / 历史 / 日志 / 凭据 等持久数据)
+#   ├── config/                # 配置目录
+#   │   └── bn.config.yaml     # 首次启动后自动出现(B 模型 seed)
+#   └── docker-compose.yaml
+#
 # 配置模型(B):BN_* 环境变量仅在**首次启动**写入 ${BN_CONFIG} 指向的 yaml,
-# 此后 loader 忽略所有 env,以 yaml 为真相。改配置 → 编辑 ./data/bn.config.yaml
-# + docker compose restart。完全重置 → rm ./data/bn.config.yaml + 再启动一次。
+# 此后 loader 忽略所有 env,以 yaml 为真相。改配置 → 编辑 ./config/bn.config.yaml
+# + docker compose restart。完全重置 → rm ./config/bn.config.yaml + 再启动一次。
 # 详见 apps/server/src/config/loader.ts 顶部注释。
 
 services:
@@ -19,10 +26,11 @@ services:
     ports:
       - "8787:8787"
     environment:
-      # B 模型开关 + 持久化路径(配合下面 ./data:/data 挂载,host 端 ./data/bn.config.yaml 自动出现)
-      BN_CONFIG: /data/bn.config.yaml
+      # B 模型开关 + 持久化路径(配合下面 ./config:/config 挂载,host 端
+      # ./config/bn.config.yaml 自动出现,跟 ./data 平级)
+      BN_CONFIG: /config/bn.config.yaml
       # 以下 BN_* 都是 first-boot seed 源,**仅首次启动**写入 yaml;之后修改这里无效,
-      # 要改值请编辑 ./data/bn.config.yaml 后重启容器。
+      # 要改值请编辑 ./config/bn.config.yaml 后重启容器。
       BN_LOG_LEVEL: info
       # TZ: Asia/Shanghai          # 时区(决定日志/历史按日切文件的本地"今天",镜像默认已设)
       # BN_DASHBOARD_USER: admin
@@ -30,6 +38,7 @@ services:
       # BN_COOKIE_KEY: change-me-too   # AES-256-GCM 派生密钥
     volumes:
       - ./data:/data
+      - ./config:/config
     # depends_on:
     #   - napcat
 
