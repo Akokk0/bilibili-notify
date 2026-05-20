@@ -218,17 +218,20 @@ export default function Logs() {
 
 export function formatLocalTime(iso: string): string {
 	const d = new Date(iso);
-	if (Number.isNaN(d.getTime())) return iso.slice(11, 23); // ISO 解析失败回退切片
+	if (Number.isNaN(d.getTime())) return iso.slice(0, 23).replace("T", " "); // ISO 解析失败回退
+	const yyyy = d.getFullYear();
+	const MM = String(d.getMonth() + 1).padStart(2, "0");
+	const dd = String(d.getDate()).padStart(2, "0");
 	const hh = String(d.getHours()).padStart(2, "0");
 	const mm = String(d.getMinutes()).padStart(2, "0");
 	const ss = String(d.getSeconds()).padStart(2, "0");
 	const ms = String(d.getMilliseconds()).padStart(3, "0");
-	return `${hh}:${mm}:${ss}.${ms}`;
+	return `${yyyy}-${MM}-${dd} ${hh}:${mm}:${ss}.${ms}`;
 }
 
 function LogRow({ entry }: { entry: LogLineView }) {
 	const tone = LEVEL_TONE[entry.level];
-	const time = formatLocalTime(entry.ts); // HH:MM:SS.sss(浏览器本地时区)
+	const time = formatLocalTime(entry.ts); // yyyy-MM-dd HH:MM:SS.sss(浏览器本地时区)
 	return (
 		<div className="flex gap-2 whitespace-pre-wrap break-all py-0.5 text-gray-300">
 			<span className="shrink-0 text-gray-500">{time}</span>
