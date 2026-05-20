@@ -1,8 +1,14 @@
 # Bootstrap config for the standalone server.
 #
 # Usage: copy to `bn.config.yaml` (which is gitignored) and edit.
-# Loader order: defaults < bn.config.yaml < BN_* env < CLI flags.
-# `${VAR}` 占位在 YAML 字符串值里会从 process.env 插值。
+#
+# 加载模型(由 BN_CONFIG 切换):
+#   - 设了 BN_CONFIG(docker 部署主路径):**B 模型** — env 仅在首次启动 seed 进
+#     ${BN_CONFIG} 指定的 yaml,之后 loader 忽略所有 env,以文件为真相。
+#     改配置 = 编辑 yaml + 重启;重置 = 删 yaml + 重启。
+#   - 未设 BN_CONFIG(dev / 跑测试):**legacy 12-factor** — file < ENV < CLI 三层 merge。
+#
+# `${VAR}` 占位在 YAML 字符串值里会从 process.env 插值(两条模型下都生效)。
 #
 # Schema source: apps/server/src/config/schema.ts
 

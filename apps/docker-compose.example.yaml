@@ -2,10 +2,10 @@
 #   cp docker-compose.example.yaml docker-compose.yaml
 #   docker compose up -d
 #
-# 所有 bootstrap 配置都能通过 BN_* 环境变量配,bn.config.yaml 完全可选。
-# 如需用文件配置:先 `docker compose run --rm bilibili-notify cat /app/bn.config.example.yaml > bn.config.yaml`
-# 编辑后再取消注释下方那行 volume。**不要直接挂一个不存在的 yaml 文件路径** —
-# docker 会自动建空目录,容器读目录直接 EISDIR 挂掉,陷入 restart loop。
+# 配置模型(B):BN_* 环境变量仅在**首次启动**写入 ${BN_CONFIG} 指向的 yaml,
+# 此后 loader 忽略所有 env,以 yaml 为真相。改配置 → 编辑 ./data/bn.config.yaml
+# + docker compose restart。完全重置 → rm ./data/bn.config.yaml + 再启动一次。
+# 详见 apps/server/src/config/loader.ts 顶部注释。
 
 services:
   bilibili-notify:
@@ -19,14 +19,17 @@ services:
     ports:
       - "8787:8787"
     environment:
+      # B 模型开关 + 持久化路径(配合下面 ./data:/data 挂载,host 端 ./data/bn.config.yaml 自动出现)
+      BN_CONFIG: /data/bn.config.yaml
+      # 以下 BN_* 都是 first-boot seed 源,**仅首次启动**写入 yaml;之后修改这里无效,
+      # 要改值请编辑 ./data/bn.config.yaml 后重启容器。
       BN_LOG_LEVEL: info
       # TZ: Asia/Shanghai          # 时区(决定日志/历史按日切文件的本地"今天",镜像默认已设)
       # BN_DASHBOARD_USER: admin
-      # BN_DASHBOARD_PASS: change-me
+      # BN_DASHBOARD_PASS: change-me-on-first-boot
+      # BN_COOKIE_KEY: change-me-too   # AES-256-GCM 派生密钥
     volumes:
       - ./data:/data
-      # 仅当确实需要用 yaml 配置(而非 BN_* 环境变量)时取消注释,且确保 host 文件存在:
-      # - ./bn.config.yaml:/app/apps/server/bn.config.yaml:ro
     # depends_on:
     #   - napcat
 

@@ -75,8 +75,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         chromium fonts-noto-cjk fonts-noto-color-emoji ca-certificates tini tzdata \
     && rm -rf /var/lib/apt/lists/*
 
+# BN_CONFIG 是 B 模型开关:loader 检测到此 env 就走"first-boot seed env 进 yaml,
+# 之后 yaml 是真相,env 被忽略"逻辑(见 src/config/loader.ts)。配合用户挂载
+# `./data:/data`,yaml 自动出现在 host 端 ./data/bn.config.yaml,可直接 vim。
+# 其他 BN_* 是 first-boot 的种子源,首次启动后用户编辑 yaml 才生效。
 ENV NODE_ENV=production \
     TZ=Asia/Shanghai \
+    BN_CONFIG=/data/bn.config.yaml \
     BN_HOST=0.0.0.0 \
     BN_PORT=8787 \
     BN_DATA_DIR=/data \
