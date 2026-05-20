@@ -11,8 +11,4 @@ export default defineConfig({
 		target: "node20",
 		sourcemap: true,
 	},
-	test: {
-		environment: "node",
-		include: ["src/**/*.test.ts", "src/**/__tests__/**/*.test.ts"],
-	},
 });

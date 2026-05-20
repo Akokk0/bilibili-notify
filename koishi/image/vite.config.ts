@@ -9,6 +9,5 @@ export default defineConfig({
 		outDir: "lib",
 		exports: true,
 		deps: { onlyBundle: false },
-		tsconfig: "tsconfig.json",
 	},
 });
