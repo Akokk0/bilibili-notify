@@ -256,7 +256,7 @@ export function Picker<T extends string | number | boolean>({
 	);
 }
 
-export type LogLevelValue = 1 | 2 | 3;
+export type LogLevelValue = 1 | 2 | 3 | 4;
 
 export interface LogLevelPickerProps {
 	/** `null` 表示「跟随全局」,仅当 `allowInherit` 时合法。 */
@@ -269,8 +269,9 @@ export interface LogLevelPickerProps {
 export function LogLevelPicker({ value, onChange, allowInherit }: LogLevelPickerProps) {
 	const opts: { v: LogLevelValue; label: string; color: string }[] = [
 		{ v: 1, label: "错误", color: "#ef4444" },
-		{ v: 2, label: "信息", color: "#00AEEC" },
-		{ v: 3, label: "调试", color: "#a29bfe" },
+		{ v: 2, label: "告警", color: "#f59e0b" },
+		{ v: 3, label: "信息", color: "#00AEEC" },
+		{ v: 4, label: "调试", color: "#a29bfe" },
 	];
 	return (
 		<div className="inline-flex flex-wrap gap-1 rounded-md bg-gray-100 p-0.75">

@@ -36,6 +36,15 @@ describe("createNodeServiceContext — fanOut 按 live pino level 守卫", () =>
 		expect(levels()).toEqual(["info", "warn", "error"]); // 无 debug
 	});
 
+	it('level="warn":debug/info 被压,warn/error 放行', () => {
+		const { ctx, levels } = harness("warn");
+		ctx.logger.debug("d");
+		ctx.logger.info("i");
+		ctx.logger.warn("w");
+		ctx.logger.error("e");
+		expect(levels()).toEqual(["warn", "error"]);
+	});
+
 	it('level="error":仅 error 放行', () => {
 		const { ctx, levels } = harness("error");
 		ctx.logger.debug("d");

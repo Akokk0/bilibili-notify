@@ -34,8 +34,13 @@ import type { AIPersona, AISettings, GlobalConfig, LogLevel } from "../types/glo
 // 日志等级绑定到 `app.logLevels.ai` (per-module override),不再压全局 `app.logLevel`。
 // `null` 表示「跟随全局」(没有 override)。
 type AiLogLevel = LogLevel | "";
-const LOG_LEVEL_TO_NUM: Record<LogLevel, LogLevelValue> = { error: 1, info: 2, debug: 3 };
-const NUM_TO_LOG_LEVEL: Record<LogLevelValue, LogLevel> = { 1: "error", 2: "info", 3: "debug" };
+const LOG_LEVEL_TO_NUM: Record<LogLevel, LogLevelValue> = { error: 1, warn: 2, info: 3, debug: 4 };
+const NUM_TO_LOG_LEVEL: Record<LogLevelValue, LogLevel> = {
+	1: "error",
+	2: "warn",
+	3: "info",
+	4: "debug",
+};
 const toPickerValue = (v: AiLogLevel): LogLevelValue | null =>
 	v === "" ? null : LOG_LEVEL_TO_NUM[v];
 const fromPickerValue = (v: LogLevelValue | null): AiLogLevel =>

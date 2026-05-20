@@ -28,7 +28,7 @@ export const BootstrapConfigSchema = z.object({
 });
 export type BootstrapConfig = z.infer<typeof BootstrapConfigSchema>;
 
-export const LogLevelSchema = z.enum(["error", "info", "debug"]);
+export const LogLevelSchema = z.enum(["error", "warn", "info", "debug"]);
 export type LogLevel = z.infer<typeof LogLevelSchema>;
 
 /**

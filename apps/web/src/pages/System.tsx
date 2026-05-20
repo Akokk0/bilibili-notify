@@ -84,8 +84,8 @@ const SYSTEM_MODULES: ReadonlyArray<{
 	{ id: "live", label: "live 直播", tone: "#FF6699" },
 ];
 
-const LOG_LEVEL_NUM: Record<LogLevel, LogLevelValue> = { error: 1, info: 2, debug: 3 };
-const NUM_TO_LOG: Record<LogLevelValue, LogLevel> = { 1: "error", 2: "info", 3: "debug" };
+const LOG_LEVEL_NUM: Record<LogLevel, LogLevelValue> = { error: 1, warn: 2, info: 3, debug: 4 };
+const NUM_TO_LOG: Record<LogLevelValue, LogLevel> = { 1: "error", 2: "warn", 3: "info", 4: "debug" };
 
 function deepMerge<T>(base: T, patch: GlobalConfigPatch): T {
 	if (typeof patch !== "object" || patch === null || Array.isArray(patch)) return patch as T;

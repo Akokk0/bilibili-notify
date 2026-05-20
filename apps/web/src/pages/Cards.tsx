@@ -154,8 +154,13 @@ function CardPreview({
 // Server-side override is `LogLevel` strings; the LogLevelPicker speaks 1|2|3
 // numeric. `null` ↔ "" (no override; fall back to app.logLevel).
 type ImageLogLevel = LogLevel | "";
-const LOG_LEVEL_TO_NUM: Record<LogLevel, LogLevelValue> = { error: 1, info: 2, debug: 3 };
-const NUM_TO_LOG_LEVEL: Record<LogLevelValue, LogLevel> = { 1: "error", 2: "info", 3: "debug" };
+const LOG_LEVEL_TO_NUM: Record<LogLevel, LogLevelValue> = { error: 1, warn: 2, info: 3, debug: 4 };
+const NUM_TO_LOG_LEVEL: Record<LogLevelValue, LogLevel> = {
+	1: "error",
+	2: "warn",
+	3: "info",
+	4: "debug",
+};
 const toPickerValue = (v: ImageLogLevel): LogLevelValue | null =>
 	v === "" ? null : LOG_LEVEL_TO_NUM[v];
 const fromPickerValue = (v: LogLevelValue | null): ImageLogLevel =>

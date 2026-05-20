@@ -5,7 +5,7 @@
 
 import type { FeatureKey } from "./domain";
 
-export type LogLevel = "error" | "info" | "debug";
+export type LogLevel = "error" | "warn" | "info" | "debug";
 
 export type ModuleName = "core" | "dynamic" | "live" | "image" | "ai";
 
