@@ -50,7 +50,11 @@ COPY . .
 # shells and apps/server, which depend on them via workspace:* protocol.
 # We skip the koishi-console vue client build (`build:client`) — the
 # dashboard image does not consume the koishi UI.
-RUN pnpm install --frozen-lockfile
+#
+# `.dockerignore` 排除 .git,而 root prepare 脚本调 `lefthook install`,
+# 该命令要求在 git 工作区里跑 → 这里临时 init 一个空仓让它写完 hooks
+# 即可(builder 用完即弃,不会带进 runtime)。
+RUN git init -q . && pnpm install --frozen-lockfile
 RUN pnpm -r run build
 
 # Drop devDependencies so the final image only ships runtime deps.
