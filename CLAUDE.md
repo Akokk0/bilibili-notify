@@ -271,7 +271,7 @@ Single trunk + three coexisting top-level directories (`packages/`, `koishi/`, `
 
 Both product forms ship from `refactor` continuously:
 - Koishi side publishes to npm via `changesets` — touches `packages/*` and `koishi/*`.
-- Standalone side ships as a docker / GHCR image — touches `apps/*`. Never published to npm.
+- Standalone side ships as a docker image on Docker Hub (`akokk0/bilibili-notify`) — touches `apps/*`. Never published to npm.
 
 `apps/` shares the single root pnpm workspace with `packages/` and `koishi/`. apps/server consumes business cores via `workspace:*`. With `nodeLinker: hoisted` set in `pnpm-workspace.yaml` (pnpm 11 reads it from there, not `.npmrc`), the layout matches yarn-classic's flat `node_modules` so koishi's plugin loader keeps working.
 
@@ -287,7 +287,7 @@ Earlier plan iterations described splitting `koishi/` and `standalone/` into sep
 docker build -f apps/Dockerfile -t bilibili-notify:dev .
 ```
 
-`.github/workflows/image-release.yml` builds + pushes to `ghcr.io/${{ github.repository_owner }}/bilibili-notify` (dynamic owner) on push to `refactor`/`main` (paths `apps/**`/`packages/**`/lockfile), on `image-v*.*.*` tags, or via `workflow_dispatch`; `latest` only from `main`. `apps/docker-compose.example.yaml` is the deploy template (`/data` volume + optional `bn.config.yaml` + commented NapCat sidecar). Never published to npm; no changeset needed for `apps/*`-only changes.
+`.github/workflows/image-release.yml` pushes to `docker.io/akokk0/bilibili-notify` on `refactor`/`main` + `image-v*.*.*` tags; auth via `DOCKERHUB_TOKEN` repo secret. `apps/docker-compose.example.yaml` is the deploy template. No changeset needed for `apps/*`-only changes.
 
 ## Agent skills
 

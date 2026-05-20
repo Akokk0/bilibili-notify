@@ -1,12 +1,6 @@
 name: bilibili-notify — build + publish
 
-# Builds the Hono+React docker image and pushes it to GHCR.
-# Triggered when:
-#   • code under apps/** or packages/** lands on refactor / main
-#     (the dashboard end consumes packages/* via pnpm link:, so any business-core
-#     change also rebuilds the image)
-#   • a tag matching image-v*.*.* is pushed (release cut)
-#   • workflow_dispatch — operator-triggered rebuild
+# Required repo secret: DOCKERHUB_TOKEN
 
 on:
   push:
@@ -25,7 +19,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   build-and-push:
@@ -42,31 +35,24 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: docker.io
+          username: akokk0
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Image name = ghcr.io/<owner>/bilibili-notify (lowercased by metadata-action).
-      # github.repository_owner is used so the image stays at a stable path even
-      # if the repo is later renamed.
       - name: Compute image metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/bilibili-notify
+          images: docker.io/akokk0/bilibili-notify
           tags: |
             type=ref,event=branch
             type=ref,event=tag
             type=sha,prefix=,format=short
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      # Build into the runner's docker (load, NOT push) so the image can be
-      # smoke-tested before it ever reaches GHCR. Single-platform (linux/amd64)
-      # so `load: true` is valid. cache-to gha,mode=max makes the later push
-      # step a pure cache hit (no rebuild) → pushed image is byte-identical.
       - name: Build image (load, no push)
         uses: docker/build-push-action@v6
         with:
@@ -75,26 +61,12 @@ jobs:
           load: true
           push: false
           tags: bilibili-notify:smoke
-          # Only build linux/amd64 by default — adding arm64 doubles build
-          # time because chromium has to be installed twice. Flip to
-          # linux/amd64,linux/arm64 when there's demand.
           platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Minimal smoke: boot the real image, assert the Hono server answers
-      # /api/health with status:ok AND serves the built dashboard as HTML at /
-      # (proves BN_WEB_DIST static-serving + SPA fallback survived packaging,
-      # not just that the layers built). Any failure exits non-zero → the push
-      # step below is skipped, so a broken image never reaches GHCR.
-      #
-      # BN_ALLOW_NO_AUTH=1 is REQUIRED: the image binds BN_HOST=0.0.0.0
-      # (non-loopback) and the smoke configures no dashboard credentials, so
-      # the bare-auth policy (auth/bare-auth-policy.ts) would process.exit(1)
-      # before serving anything. This escape hatch is exactly its intended use
-      # — a CI boot that knowingly runs without auth. Do NOT instead set
-      # BN_HOST=127.0.0.1: an in-container loopback bind is unreachable through
-      # docker's `-p` port mapping, which would break the smoke a different way.
+      # BN_ALLOW_NO_AUTH=1 needed: image binds 0.0.0.0 with no credentials, so
+      # bare-auth-policy.ts would otherwise process.exit(1).
       - name: Smoke test (blocks push on failure)
         run: |
           set -euo pipefail
@@ -116,19 +88,16 @@ jobs:
           echo "GET / -> content-type: $ct"
           case "$ct" in
             text/html*) ;;
-            *) echo "::error::GET / expected text/html (dashboard), got '$ct' — static serving broken in image"
+            *) echo "::error::GET / expected text/html (dashboard), got '$ct'"
                head -c 400 /tmp/root.html || true; docker logs bn-smoke || true; exit 1 ;;
           esac
           grep -q '<div id="root">' /tmp/root.html \
             || { echo "::error::GET / body is not the dashboard index.html"; head -c 400 /tmp/root.html; exit 1; }
-          echo "smoke OK — /api/health status:ok + dashboard html served on 8787"
 
       - name: Stop smoke container
         if: always()
         run: docker rm -f bn-smoke >/dev/null 2>&1 || true
 
-      # Pure cache hit (cache-from gha) — no rebuild; same digest as the smoked
-      # image. Runs only if the smoke step above succeeded.
       - name: Push image
         uses: docker/build-push-action@v6
         with:

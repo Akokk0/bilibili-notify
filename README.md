@@ -36,11 +36,11 @@
 | | Koishi 插件 | 独立 Web Dashboard |
 |---|---|---|
 | 适合 | 已经在用 Koishi 机器人 | 不想装 Koishi、想要可视化面板 |
-| 形态 | npm 包 `koishi-plugin-bilibili-notify*` | Docker / GHCR 镜像 |
+| 形态 | npm 包 `koishi-plugin-bilibili-notify*` | Docker 镜像 |
 | 配置 | Koishi 控制台 | 自带 React 控制台(扫码、订阅、推送目标、历史) |
 | 状态 | 历史 / 现行发布形态 | 后续主推形态 |
 
-两端消费**同一套** `@bilibili-notify/*` 业务核心,功能保持等价 —— 一边能配的另一边也能配。
+两端消费同一套 `@bilibili-notify/*` 业务核心,功能等价。
 
 ## 功能
 
@@ -56,7 +56,7 @@
 
 ### Koishi 插件
 
-在 Koishi 控制台「插件市场」搜索 **bilibili-notify** 启用即可(主插件 `koishi-plugin-bilibili-notify`,直播 / AI / 图片等能力由对应子插件提供,见上方导航)。
+在 Koishi 控制台「插件市场」搜索 **bilibili-notify** 启用。子插件见上方导航。
 
 ### 独立 Dashboard(Docker)
 
@@ -66,43 +66,43 @@ docker run -d --name bilibili-notify \
   -v "$(pwd)/data:/data" \
   -e BN_DASHBOARD_USER=admin \
   -e BN_DASHBOARD_PASS='换成强随机密码' \
-  ghcr.io/akokk0/bilibili-notify:latest
+  akokk0/bilibili-notify:latest
 ```
 
-浏览器打开 `http://<host>:8787`,登录后扫码绑定 B 站账号即可。完整配置(`BN_COOKIE_KEY` 静态加密、`docker-compose` + NapCat 边车、反代 / 安全注意事项)见 **[apps/README.md](./apps/README.md)**。
+浏览器打开 `http://<host>:8787`,登录后扫码绑定 B 站账号。完整配置见 **[apps/README.md](./apps/README.md)**。
 
-> 镜像未发布到 npm,仅走 GHCR;`latest` 仅从 `main` 构建,版本化镜像由 `image-v*.*.*` tag 触发。
+> 镜像在 Docker Hub:`akokk0/bilibili-notify`。`latest` 从 `main` 构建,版本化镜像由 `image-v*.*.*` tag 触发。
 
 ## 仓库结构
 
 ```
-packages/   平台中立业务核心(@bilibili-notify/*:schema / api / push / dynamic / live / image / ai …)
+packages/   平台中立业务核心(@bilibili-notify/*)
 koishi/     Koishi 薄壳插件(koishi-plugin-bilibili-notify*)
-apps/       Hono 服务端 + React Dashboard(Docker 镜像,见 apps/README.md)
+apps/       Hono 服务端 + React Dashboard
 ```
 
-单 pnpm workspace、单 lockfile;`apps/server` 通过 `workspace:*` 消费业务核心。架构细节见各目录 README。
+单 pnpm workspace、单 lockfile;`apps/server` 通过 `workspace:*` 消费业务核心。
 
 ## 开发
 
-工具链统一走 **vp (vite-plus)**(Node + 包管理 + 任务运行三合一,内部包裹 pnpm 但**不暴露 `pnpm` shim**,直接敲 `pnpm` 会 `command not found`)。
+工具链统一走 **vp (vite-plus)**(包裹 pnpm,不暴露 `pnpm` 命令)。
 
 ```bash
-vp install                 # 安装依赖(单根 node_modules)
-vp run typecheck           # 全 workspace tsc --noEmit
-vp run build               # 拓扑序构建所有包 + koishi 控制台前端
-vp test run                # vitest 全量
-vp run dev:apps            # 并行起 apps/server(tsx watch)+ apps/web(vite)
-vp run check               # Biome lint + format 校验(:fix 自动修)
+vp install
+vp run typecheck
+vp run build
+vp test run
+vp run dev:apps            # apps/server + apps/web 并行
+vp run check               # Biome lint + format(:fix 自动修)
 ```
 
-Git hooks 由 Lefthook 在 `vp install` 时装好:pre-commit 跑 Biome、commit-msg 走 commitlint(Conventional Commits)。
+Git hooks 由 Lefthook 在 `vp install` 时装好。
 
 ## 分支与发布
 
-- **`refactor`** — 活跃开发主干,`packages/` `koishi/` `apps/` 三类改动全在此。
-- **`main`** — 旧版发布快照;`refactor → main` 合并才触发 Koishi 端 changesets npm 发版。
-- 独立端不发 npm,以 Docker 镜像形式推送到 GHCR(CI:`apps/Dockerfile`,构建上下文为仓库根)。
+- **`refactor`** — 活跃开发主干。
+- **`main`** — 旧版发布快照;`refactor → main` 合并触发 Koishi 端 changesets npm 发版。
+- 独立端推送到 Docker Hub `akokk0/bilibili-notify`。
 
 ## License
 
