@@ -35,10 +35,11 @@ jobs:
 
       # setup-vp 的 cache 命中后,有时 workspace 包的子 node_modules 链接
       # 没完整建出来(出现 `Local package.json exists, but node_modules missing`
-      # 警告 + tsc exit 2)。typecheck 前显式跑一次 install,空操作命中链接
-      # 已就位则瞬间结束,缺失则补齐 —— 比关 cache 廉价得多。
+      # 警告 + tsc exit 2)。typecheck 前显式跑一次 install,链接已就位则
+      # 瞬间结束,缺失则补齐 —— 比关 cache 廉价得多。
+      # frozen-lockfile 不显式给:CI=true 时 pnpm 11 默认就是 frozen。
       - name: Ensure workspace links
-        run: vp install --frozen-lockfile
+        run: vp install
 
       - name: Typecheck
         run: vp run typecheck
