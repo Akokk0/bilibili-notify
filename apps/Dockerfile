@@ -89,14 +89,20 @@ ENV NODE_ENV=production \
 # node_modules. We mirror that whole shape under /app.
 WORKDIR /app
 
-COPY --from=builder /repo/package.json ./package.json
-COPY --from=builder /repo/pnpm-workspace.yaml ./pnpm-workspace.yaml
+# 9 个 COPY 合到 5 个:小文件合并 + 大目录(node_modules / packages / dist)
+# 单独成层,利于 buildx layer cache 增量复用 + push 时只 push 变动层。
+COPY --from=builder \
+     /repo/package.json \
+     /repo/pnpm-workspace.yaml \
+     /repo/apps/server/bn.config.example.yaml \
+     ./
 COPY --from=builder /repo/node_modules ./node_modules
 COPY --from=builder /repo/packages ./packages
-COPY --from=builder /repo/apps/server/lib ./apps/server/lib
-COPY --from=builder /repo/apps/server/package.json ./apps/server/package.json
+COPY --from=builder \
+     /repo/apps/server/lib \
+     /repo/apps/server/package.json \
+     ./apps/server/
 COPY --from=builder /repo/apps/server/node_modules ./apps/server/node_modules
-COPY --from=builder /repo/apps/server/bn.config.example.yaml ./bn.config.example.yaml
 COPY --from=builder /repo/apps/web/dist ./web-dist
 
 WORKDIR /app/apps/server

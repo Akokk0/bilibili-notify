@@ -1,7 +1,11 @@
 # Usage:
 #   cp docker-compose.example.yaml docker-compose.yaml
-#   cp server/bn.config.example.yaml ./bn.config.yaml      # edit dataDir / auth
 #   docker compose up -d
+#
+# 所有 bootstrap 配置都能通过 BN_* 环境变量配,bn.config.yaml 完全可选。
+# 如需用文件配置:先 `docker compose run --rm bilibili-notify cat /app/bn.config.example.yaml > bn.config.yaml`
+# 编辑后再取消注释下方那行 volume。**不要直接挂一个不存在的 yaml 文件路径** —
+# docker 会自动建空目录,容器读目录直接 EISDIR 挂掉,陷入 restart loop。
 
 services:
   bilibili-notify:
@@ -21,7 +25,8 @@ services:
       # BN_DASHBOARD_PASS: change-me
     volumes:
       - ./data:/data
-      - ./bn.config.yaml:/app/apps/server/bn.config.yaml:ro
+      # 仅当确实需要用 yaml 配置(而非 BN_* 环境变量)时取消注释,且确保 host 文件存在:
+      # - ./bn.config.yaml:/app/apps/server/bn.config.yaml:ro
     # depends_on:
     #   - napcat
 
