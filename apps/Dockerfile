@@ -58,7 +58,9 @@ RUN git init -q . && pnpm install --frozen-lockfile
 RUN pnpm -r run build
 
 # Drop devDependencies so the final image only ships runtime deps.
-RUN pnpm -r prune --prod || true
+# pnpm 11 的 prune 不支持 -r;workspace 模式下逐包 prune 反而容易破坏
+# link 关系。runtime 阶段 selective COPY 只搬 lib/dist + 必需的 node_modules,
+# devDep 不会进最终镜像 —— 这里直接跳过 prune,简单可靠。
 
 # ---- runtime ----------------------------------------------------------------
 
@@ -89,7 +91,6 @@ WORKDIR /app
 
 COPY --from=builder /repo/package.json ./package.json
 COPY --from=builder /repo/pnpm-workspace.yaml ./pnpm-workspace.yaml
-COPY --from=builder /repo/.npmrc ./.npmrc
 COPY --from=builder /repo/node_modules ./node_modules
 COPY --from=builder /repo/packages ./packages
 COPY --from=builder /repo/apps/server/lib ./apps/server/lib
