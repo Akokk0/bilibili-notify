@@ -76,14 +76,14 @@ describe("findNearestBefore", () => {
 	it("坏行 / 空行 / 缺字段行被跳过", async () => {
 		await writeFile(
 			join(dataDir, "fans", "u2.jsonl"),
-			[
+			`${[
 				"{not json",
 				"",
 				JSON.stringify({ ts: T(1) }), // 缺 value
 				JSON.stringify({ value: 5 }), // 缺 ts
 				JSON.stringify({ ts: T(2), value: 200 }), // 合法
 				"   ",
-			].join("\n") + "\n",
+			].join("\n")}\n`,
 			"utf8",
 		);
 		expect(await store.findNearestBefore("u2", T(5))).toEqual({ ts: T(2), value: 200 });
