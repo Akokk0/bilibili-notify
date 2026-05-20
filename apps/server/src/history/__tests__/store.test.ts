@@ -90,7 +90,9 @@ describe("append — payload reduce + 落盘 + emit", () => {
 
 	it("mime → 扩展名映射(webp/未知→jpg)", async () => {
 		const webp = await store.append(
-			baseInput({ payload: { kind: "image", image: { buffer: Buffer.from("a"), mime: "image/webp" } } }),
+			baseInput({
+				payload: { kind: "image", image: { buffer: Buffer.from("a"), mime: "image/webp" } },
+			}),
 		);
 		expect(webp.payload.imageRef?.endsWith(".webp")).toBe(true);
 		const unknown = await store.append(

@@ -16,8 +16,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Disposable } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { listDayFiles } from "../store.js";
 import { startHistoryRetention } from "../retention.js";
+import { listDayFiles } from "../store.js";
 
 function makeLogger() {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };

@@ -9,8 +9,8 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import type { LogEntry } from "../types.js";
 import { createLogChannel } from "../log-channel.js";
+import type { LogEntry } from "../types.js";
 
 function entry(msg: string): LogEntry {
 	return { level: "info", msg, args: [], ts: `2026-05-16T00:00:00.000Z` };

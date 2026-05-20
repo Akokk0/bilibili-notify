@@ -15,10 +15,9 @@ import { describe, expect, it, vi } from "vitest";
 // 渲染 koishi console 通知。vitest 加载 koishi 会拉 @koishijs/loader,启动期失败。
 // 这里 mock 一个 minimal h fragment factory;测试不触达 updateSubNotifier 路径。
 vi.mock("koishi", () => {
-	const h = Object.assign(
-		(_type: string, ..._args: unknown[]) => ({ type: "stub" }),
-		{ Fragment: "fragment" },
-	);
+	const h = Object.assign((_type: string, ..._args: unknown[]) => ({ type: "stub" }), {
+		Fragment: "fragment",
+	});
 	return { h };
 });
 

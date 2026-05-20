@@ -57,7 +57,12 @@ describe("bindSubscriptionStore", () => {
 		const before = changes.length;
 		cs._set([sub("u1"), sub("u2")]);
 		cs._fire("subscriptions");
-		expect(b.store.list().map((s) => s.uid).sort()).toEqual(["u1", "u2"]);
+		expect(
+			b.store
+				.list()
+				.map((s) => s.uid)
+				.sort(),
+		).toEqual(["u1", "u2"]);
 		expect(changes.length).toBeGreaterThan(before);
 	});
 

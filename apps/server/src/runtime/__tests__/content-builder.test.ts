@@ -10,7 +10,11 @@
 
 import type { PayloadSegment } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vitest";
-import { type SegmentValue, segmentToPayload, standaloneContentBuilder } from "../content-builder.js";
+import {
+	type SegmentValue,
+	segmentToPayload,
+	standaloneContentBuilder,
+} from "../content-builder.js";
 
 const B = standaloneContentBuilder;
 
@@ -24,17 +28,18 @@ describe("standaloneContentBuilder — factory", () => {
 		expect(B.image("http://x/a.png")).toEqual({ kind: "image-url", url: "http://x/a.png" });
 		const buf = Buffer.from("X");
 		expect(B.image(buf)).toEqual({ kind: "image-buf", buffer: buf, mime: "image/jpeg" });
-		expect(B.image(buf, "image/png")).toEqual({ kind: "image-buf", buffer: buf, mime: "image/png" });
+		expect(B.image(buf, "image/png")).toEqual({
+			kind: "image-buf",
+			buffer: buf,
+			mime: "image/png",
+		});
 	});
 
 	it("message:过滤 null/undefined 段", () => {
 		const seg = B.message([B.text("a"), null, undefined, B.atAll()]);
 		expect(seg).toEqual({
 			kind: "message",
-			segments: [
-				{ kind: "text", text: "a" },
-				{ kind: "atAll" },
-			],
+			segments: [{ kind: "text", text: "a" }, { kind: "atAll" }],
 		});
 	});
 });
@@ -74,10 +79,7 @@ describe("segmentToPayload — 解码", () => {
 				{ kind: "text", text: "" }, // 丢弃
 				{
 					kind: "message",
-					segments: [
-						{ kind: "image-url", url: "http://i" },
-						{ kind: "atAll" },
-					],
+					segments: [{ kind: "image-url", url: "http://i" }, { kind: "atAll" }],
 				},
 			],
 		};

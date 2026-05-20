@@ -10,11 +10,7 @@
  *   - 显式逃生口 BN_ALLOW_NO_AUTH=1 → false(运维已经在反代层做了别的鉴权)
  *   - 其余(non-loopback + 无 basicAuth + 无逃生口)→ true,拒绝启动
  */
-export const LOOPBACK_HOSTS: ReadonlySet<string> = new Set([
-	"127.0.0.1",
-	"localhost",
-	"::1",
-]);
+export const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["127.0.0.1", "localhost", "::1"]);
 
 export interface BareAuthPolicyInput {
 	host: string;

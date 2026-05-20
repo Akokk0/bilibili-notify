@@ -29,7 +29,9 @@ const PAYLOAD: NotificationPayload = { kind: "text", text: "hi" };
 
 // Test fakes use a deliberately loose `platform` (e.g. "telegram") to exercise
 // the "no platform adapter" branch, so we bypass the strict union via `unknown`.
-function makeAdapter(over: { id: string; platform: string } & Record<string, unknown>): PushAdapter {
+function makeAdapter(
+	over: { id: string; platform: string } & Record<string, unknown>,
+): PushAdapter {
 	return {
 		name: `adapter-${over.id}`,
 		enabled: true,
@@ -38,9 +40,7 @@ function makeAdapter(over: { id: string; platform: string } & Record<string, unk
 	} as unknown as PushAdapter;
 }
 
-function makeTarget(
-	over: { id: string; adapterId: string } & Record<string, unknown>,
-): PushTarget {
+function makeTarget(over: { id: string; adapterId: string } & Record<string, unknown>): PushTarget {
 	return {
 		name: `target-${over.id}`,
 		platform: "webhook",

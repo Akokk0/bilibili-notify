@@ -12,10 +12,10 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConfigStore } from "../../config/store.js";
+import { createNodeMessageBus } from "../../runtime/message-bus.js";
+import { ALL_CHANNELS, attachChannelWiring, buildStateHydrate } from "../channels.js";
 import { createLogChannel } from "../log-channel.js";
 import type { ServerEventEnvelope } from "../types.js";
-import { ALL_CHANNELS, attachChannelWiring, buildStateHydrate } from "../channels.js";
-import { createNodeMessageBus } from "../../runtime/message-bus.js";
 
 const GLOBALS = { app: { logLevel: "info" } };
 const SUBS = [{ id: "s1" }];
@@ -102,7 +102,11 @@ describe("attachChannelWiring — envelope 参数 unwrap", () => {
 		h.bus.emit("live-viewers-changed", "u1", "1.2万");
 		expect(h.last().data).toEqual(["u1", "1.2万"]);
 		h.bus.emit("engine-error", "dynamic-engine", "boom");
-		expect(h.last()).toMatchObject({ type: "log", event: "engine-error", data: ["dynamic-engine", "boom"] });
+		expect(h.last()).toMatchObject({
+			type: "log",
+			event: "engine-error",
+			data: ["dynamic-engine", "boom"],
+		});
 	});
 });
 

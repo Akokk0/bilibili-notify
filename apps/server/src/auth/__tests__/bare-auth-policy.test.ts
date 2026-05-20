@@ -13,9 +13,9 @@ import { shouldRefuseBareAuth } from "../bare-auth-policy";
 
 describe("shouldRefuseBareAuth — P0-5 fail-closed policy", () => {
 	it("non-loopback + 无 basicAuth + 无逃生口 → 拒绝(true)", () => {
-		expect(
-			shouldRefuseBareAuth({ host: "0.0.0.0", hasBasicAuth: false, allowNoAuth: false }),
-		).toBe(true);
+		expect(shouldRefuseBareAuth({ host: "0.0.0.0", hasBasicAuth: false, allowNoAuth: false })).toBe(
+			true,
+		);
 		expect(
 			shouldRefuseBareAuth({ host: "10.0.0.5", hasBasicAuth: false, allowNoAuth: false }),
 		).toBe(true);
@@ -28,14 +28,14 @@ describe("shouldRefuseBareAuth — P0-5 fail-closed policy", () => {
 	});
 
 	it("BN_ALLOW_NO_AUTH=1(allowNoAuth=true)→ 放行,即使 non-loopback", () => {
-		expect(
-			shouldRefuseBareAuth({ host: "0.0.0.0", hasBasicAuth: false, allowNoAuth: true }),
-		).toBe(false);
+		expect(shouldRefuseBareAuth({ host: "0.0.0.0", hasBasicAuth: false, allowNoAuth: true })).toBe(
+			false,
+		);
 	});
 
 	it("已配置 basicAuth → 永远放行(忽略 host)", () => {
-		expect(
-			shouldRefuseBareAuth({ host: "0.0.0.0", hasBasicAuth: true, allowNoAuth: false }),
-		).toBe(false);
+		expect(shouldRefuseBareAuth({ host: "0.0.0.0", hasBasicAuth: true, allowNoAuth: false })).toBe(
+			false,
+		);
 	});
 });

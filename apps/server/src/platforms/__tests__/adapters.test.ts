@@ -156,7 +156,11 @@ describe("onebot — 失败与重试", () => {
 
 	it("HTTP 非 2xx → ok:false err=HTTP <status>", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: false, status: 500, statusText: "Internal" }));
-		const r = await createOnebotAdapter({ logger: makeLogger() }).send(obAdapter(), obTarget(), TEXT);
+		const r = await createOnebotAdapter({ logger: makeLogger() }).send(
+			obAdapter(),
+			obTarget(),
+			TEXT,
+		);
 		expect(r).toMatchObject({ ok: false, err: "HTTP 500 Internal" });
 	});
 
@@ -293,7 +297,11 @@ describe("webhook — send", () => {
 
 	it("非 2xx → ok:false err=HTTP", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: false, status: 503, statusText: "Unavailable" }));
-		const r = await createWebhookAdapter({ logger: makeLogger() }).send(whAdapter(), whTarget(), TEXT);
+		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
+			whAdapter(),
+			whTarget(),
+			TEXT,
+		);
 		expect(r).toMatchObject({ ok: false, err: "HTTP 503 Unavailable" });
 	});
 

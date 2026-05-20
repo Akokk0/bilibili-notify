@@ -19,9 +19,7 @@ describe("deterministicUuid — algorithm snapshot", () => {
 		// 而修改;只有在明确知道要做数据迁移时才允许调整。
 		expect(deterministicUuid("foo")).toBe("0b8737a3-9081-4d0f-b809-94a5a7225069");
 		expect(deterministicUuid("")).toBe("00001505-cde7-4bee-9caf-0000d8e27411");
-		expect(deterministicUuid("adapter:koishi-bot:qq")).toBe(
-			"3e7bb479-da63-4ca8-a6aa-c9056e1aa02d",
-		);
+		expect(deterministicUuid("adapter:koishi-bot:qq")).toBe("3e7bb479-da63-4ca8-a6aa-c9056e1aa02d");
 	});
 
 	it("输出形如 UUID v4(version + variant)", () => {

@@ -14,9 +14,9 @@ export {
 } from "./key-provider";
 export {
 	deriveKeyFromPassphrase,
+	type GcmBlob,
 	gcmDecrypt,
 	gcmEncrypt,
-	type GcmBlob,
 	isGcmBlob,
 } from "./secret-box";
 export type { StoredCookies } from "./types";

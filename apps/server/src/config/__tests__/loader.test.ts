@@ -142,7 +142,10 @@ describe("loadBootstrapConfig — BN_CONFIG 显式路径", () => {
 describe("loadBootstrapConfig — ${VAR} 插值", () => {
 	it("使用 process.env 替换,未定义变量原样保留", async () => {
 		setProcEnv("BN_TEST_DIR", "/from/procenv");
-		await write("bn.config.yaml", "dataDir: ${BN_TEST_DIR}\ncookieEncryptionKey: ${BN_UNDEFINED_VAR}\n");
+		await write(
+			"bn.config.yaml",
+			"dataDir: ${BN_TEST_DIR}\ncookieEncryptionKey: ${BN_UNDEFINED_VAR}\n",
+		);
 		// 注意:传入 env 不含 BN_TEST_DIR —— 插值仍命中,证明用的是 process.env。
 		const c = loadBootstrapConfig({ argv: [], env: {}, cwd });
 		expect(c.dataDir).toBe("/from/procenv");
