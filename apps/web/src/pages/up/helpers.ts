@@ -1,4 +1,5 @@
-import type { FeatureKey, PushTarget, Subscription, SubscriptionRouting } from "../../types/domain";
+import type { FeatureKey, PushTarget, Subscription } from "../../types/domain";
+import { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../../types/domain";
 
 const PALETTE = [
 	"#FF6699",
@@ -24,9 +25,14 @@ export function displayName(sub: Subscription): string {
 	return sub.cachedProfile?.name?.trim() || `UID ${sub.uid}`;
 }
 
-export function activeFeatures(routing: SubscriptionRouting): FeatureKey[] {
-	const keys = Object.keys(routing) as FeatureKey[];
-	return keys.filter((k) => routing[k].length > 0);
+/**
+ * 该订阅「实际开启」的推送特性 = `overrides.features` 覆写值,缺省继承
+ * DEFAULT_FEATURE_FLAGS。等同 UpDialog「订阅项 · 默认推送内容」里的主开关。
+ * routing(per-target 路由)是正交的另一根轴,不参与此判断 —— follow 模式加
+ * 推送目标会灌满全部 routing,据 routing 判定会让卡片恒显全部特性。
+ */
+export function subscribedFeatures(sub: Subscription): FeatureKey[] {
+	return FEATURE_KEYS.filter((k) => sub.overrides.features?.[k] ?? DEFAULT_FEATURE_FLAGS[k]);
 }
 
 export function targetsById(targets: PushTarget[]): Map<string, PushTarget> {

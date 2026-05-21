@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Avatar, Pill, Toggle } from "../../components/atoms";
 import { Icon } from "../../components/icons";
 import { FEATURE_LABELS, type Subscription } from "../../types/domain";
-import { activeFeatures, colorFromUid, displayName, relativeTime } from "./helpers";
+import { colorFromUid, displayName, relativeTime, subscribedFeatures } from "./helpers";
 
 const FEATURE_TONE: Record<string, string> = {
 	dynamic: "#00AEEC",
@@ -35,7 +35,7 @@ export function UpCard({
 }: UpCardProps) {
 	const [hover, setHover] = useState(false);
 	const color = colorFromUid(sub.uid);
-	const features = activeFeatures(sub.routing);
+	const features = subscribedFeatures(sub);
 	const fans = sub.cachedProfile?.fans;
 	const fansLabel =
 		fans == null
