@@ -1,0 +1,103 @@
+# Bilibili-Notify
+
+B 站 UP 主动态 / 直播开播推送工具的**独立端**镜像 —— 自带 Web 控制台,Docker 部署,不依赖 Koishi。
+
+监控 B 站 UP 主,有新动态或开播时推送到 QQ 等平台。控制台支持扫码登录、订阅管理、推送目标配置、推送历史与日志查看。
+
+## 支持架构
+
+`linux/amd64` · `linux/arm64`(多架构 manifest,pull 时按宿主自动选择)
+
+## 标签
+
+| Tag | 说明 |
+|---|---|
+| `alpha` | 持续构建的测试版,当前可用镜像 |
+| `latest` | 稳定版(首个稳定版发布后才有) |
+| `image-vX.Y.Z` | 固定版本 |
+| `<short-sha>` | 按 commit,不可变,用于精确 pin / 回滚 |
+
+## 快速开始
+
+推荐 docker compose。新建一个目录,放入 `docker-compose.yaml`:
+
+```yaml
+services:
+  bilibili-notify:
+    image: akokk0/bilibili-notify:alpha
+    container_name: bilibili-notify
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      BN_DASHBOARD_USER: admin
+      BN_DASHBOARD_PASS: change-me-on-first-boot
+    volumes:
+      - ./data:/data
+      - ./config:/config
+```
+
+```bash
+docker compose up -d
+```
+
+或最小 `docker run`:
+
+```bash
+docker run -d --name bilibili-notify \
+  -p 8787:8787 \
+  -v "$(pwd)/data:/data" -v "$(pwd)/config:/config" \
+  akokk0/bilibili-notify:alpha
+```
+
+启动后打开 `http://<host>:8787`,登录后扫码绑定 B 站账号。
+
+## 数据卷
+
+两个独立挂载点,都需 bind-mount 到宿主,否则数据随容器丢失:
+
+| 容器路径 | 内容 |
+|---|---|
+| `/data` | 运行时状态:订阅 / 推送目标 / 推送历史 / 日志 / 加密 secrets / 粉丝时序 |
+| `/config` | `bn.config.yaml` —— bootstrap 配置文件,首次启动自动生成 |
+
+## 配置模型
+
+镜像默认 `BN_CONFIG=/config/bn.config.yaml`:
+
+- **首次启动** —— `BN_*` 环境变量 + 默认值生成 `bn.config.yaml`。
+- **之后** —— yaml 是唯一真相,环境变量被忽略。改配置 = 编辑 `./config/bn.config.yaml` 后 `docker compose restart`。
+- **重置** —— 删除 `./config/bn.config.yaml` 重新启动。
+
+### 环境变量(仅首次启动 seed 进 yaml)
+
+| 变量 | 默认 | 用途 |
+|---|---|---|
+| `BN_DASHBOARD_USER` / `BN_DASHBOARD_PASS` | 未设 | 控制台登录凭据 |
+| `BN_COOKIE_KEY` | 未设 | secrets 加密密钥(`openssl rand -base64 32` 生成) |
+| `BN_LOG_LEVEL` | `info` | 日志级别 |
+| `TZ` | `Asia/Shanghai` | 容器时区(影响日志 / 历史按日切文件) |
+
+`BN_CONFIG` / `BN_HOST` / `BN_PORT` / `BN_DATA_DIR` / `BN_CHROME_PATH` / `BN_WEB_DIST` 由镜像固定注入,无需也不要在 compose 中重写。
+
+## 登录与安全
+
+- 未显式设凭据时,首次启动自动生成 `admin` + 随机密码,写入 `bn.config.yaml` 并打印到容器日志。**登录后请立即修改默认密码。**
+- 监听非 loopback 地址又无凭据时,服务拒绝启动;`BN_ALLOW_NO_AUTH=1` 可强制放行(自担风险)。
+- 公网 / 局域网部署务必在控制台设置 `auth.allowedOrigins`,填写控制台自身的 origin —— 它门禁 WebSocket upgrade 并兜底防 CSRF。
+- 反向代理后:登录限流以直连对端为 key,不信任 `X-Forwarded-For`,所有客户端共用一个桶 —— 必须在代理层另做鉴权 / IP 白名单。
+
+## 接入 QQ(OneBot)
+
+控制台 **推送目标** → 新建适配器,platform 选 `onebot`,连接方式三选一:
+
+- **HTTP** —— 填 bot 的 HTTP API 地址
+- **正向 WS** —— 填 bot 的 WebSocket 地址
+- **反向 WS** —— 指定一个监听端口,bot 主动连入(需在 compose `ports` 额外映射该端口)
+
+可配合 NapCat 等 OneBot v11 实现。
+
+## 链接
+
+- 源码与文档:https://github.com/Akokk0/bilibili-notify
+- 问题反馈:https://github.com/Akokk0/bilibili-notify/issues
