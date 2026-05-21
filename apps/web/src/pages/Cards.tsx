@@ -176,7 +176,8 @@ function TestPushBar({
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
 	const targets = useMemo(
-		() => (targetsQuery.data ?? []).filter((t) => t.enabled),
+		// 仅外部投递目标 —— web-dashboard 是内部通知流,测试推送对它无意义。
+		() => (targetsQuery.data ?? []).filter((t) => t.enabled && t.platform !== "web-dashboard"),
 		[targetsQuery.data],
 	);
 	const [targetId, setTargetId] = useState("");
