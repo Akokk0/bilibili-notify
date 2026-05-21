@@ -2,9 +2,10 @@
  * Cards page — image plugin card style preview. Ports `GlassPreviewTab` from
  * `.bn-design/variation-ac.jsx`.
  *
- * Left column: ImageRenderingSidebar bound to GlobalConfig.defaults.cardStyle
- * via /api/globals PATCH. Right column: card preview that calls the
- * puppeteer-core-backed `/api/cards/preview` route for ALL four kinds (live /
+ * Left column: card-style config (bound to GlobalConfig.defaults.cardStyle via
+ * /api/globals PATCH) + preview-content form + 测试推送. Right column: card
+ * preview that calls the puppeteer-core-backed `/api/cards/preview` route for
+ * ALL four kinds (live /
  * dyn / sc / guard). The server runs the matching production template
  * (LiveCard / DynamicCard / SCCard / GuardCard) through Vue SSR + UnoCSS +
  * puppeteer screenshot and returns a base64 PNG.
@@ -160,9 +161,9 @@ interface TestPushResponse {
 
 /**
  * 测试推送 —— 把当前预览卡片(草稿样式 + 类型 + 内容)渲染成图片,推给所选
- * PushTarget。所见即所推:用的是左侧此刻在调的草稿,无需先保存。
+ * PushTarget。所见即所推:用的是当前预览正在调的草稿,无需先保存。
  */
-function TestPushBar({
+function TestPushCard({
 	kind,
 	style,
 	content,
@@ -201,14 +202,19 @@ function TestPushBar({
 	});
 
 	return (
-		<div className="space-y-1.5">
-			<div className="flex items-center gap-2 rounded-md border border-black/5 bg-white/60 px-3 py-2.5">
-				<span className="shrink-0 text-[12px] font-bold text-bn-text-primary">测试推送</span>
+		<GlassBox
+			title="测试推送"
+			subtitle="把当前预览卡片(草稿样式)作为图片推送到所选目标"
+			accent="#00b894"
+			icon={<Icon.bell size={14} />}
+			badge="test-push"
+		>
+			<Field label="推送目标" code="targetId" hint="仅列启用的外部投递目标" full>
 				<select
 					value={targetId}
 					onChange={(e) => setTargetId(e.target.value)}
 					disabled={targets.length === 0}
-					className="min-w-0 flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-[12px] text-bn-text-primary disabled:opacity-50"
+					className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-2 text-[12.5px] text-bn-text-primary outline-none focus:border-bn-pink disabled:opacity-50"
 				>
 					{targets.length === 0 ? (
 						<option value="">无可用推送目标</option>
@@ -220,27 +226,26 @@ function TestPushBar({
 						))
 					)}
 				</select>
+			</Field>
+			<div className="pt-2.5">
 				<Btn
 					variant="primary"
 					size="sm"
+					full
 					onClick={() => push.mutate()}
 					disabled={push.isPending || !targetId}
 				>
 					{push.isPending ? "推送中…" : "测试推送"}
 				</Btn>
+				{push.isError ? (
+					<div className="mt-2 text-[11px] text-red-600">
+						推送失败:{(push.error as ApiError)?.message ?? "未知错误"}
+					</div>
+				) : push.isSuccess ? (
+					<div className="mt-2 text-[11px] text-emerald-600">已送达 · {push.data.latencyMs}ms</div>
+				) : null}
 			</div>
-			{push.isError ? (
-				<div className="text-[11px] text-red-600">
-					推送失败:{(push.error as ApiError)?.message ?? "未知错误"}
-				</div>
-			) : push.isSuccess ? (
-				<div className="text-[11px] text-emerald-600">已送达 · {push.data.latencyMs}ms</div>
-			) : (
-				<div className="text-[11px] text-bn-text-tertiary">
-					把当前预览卡片(草稿样式)作为图片推送到所选目标
-				</div>
-			)}
-		</div>
+		</GlassBox>
 	);
 }
 
@@ -577,6 +582,8 @@ export default function Cards() {
 							</>
 						)}
 					</GlassBox>
+
+					<TestPushCard kind={kind} style={draft} content={content[kind]} />
 				</div>
 
 				{/* RIGHT: live preview */}
@@ -602,8 +609,6 @@ export default function Cards() {
 							per-UP 覆盖 → 高级规则 → cardStyleOverride
 						</span>
 					</div>
-
-					<TestPushBar kind={kind} style={draft} content={content[kind]} />
 				</div>
 			</div>
 		</div>
