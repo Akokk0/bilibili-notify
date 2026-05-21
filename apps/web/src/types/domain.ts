@@ -282,14 +282,22 @@ export interface Subscription {
 
 // ---- Factories --------------------------------------------------------
 
+/**
+ * 生成 RFC 4122 v4 UUID。后端 schema 的 `id` / `adapterId` 都是 `z.uuid()` 严格
+ * 校验,必须返回标准 8-4-4-4-12 格式,否则创建订阅 / 适配器 / 目标的 POST 全 400。
+ *
+ * 刻意**不用** `crypto.randomUUID()` —— 它只在 **secure context**(HTTPS 或
+ * localhost)可用;独立端 docker 部署常经 `http://<内网IP>:8787` 访问 = 非 secure
+ * context,该方法直接是 `undefined`。`crypto.getRandomValues()` 不受 secure context
+ * 限制(所有现代浏览器恒有),用它手搓 v4 UUID,任何部署形态下都产出合法格式。
+ */
 export function newId(): string {
-	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-		return crypto.randomUUID();
-	}
-	// Vite dev + modern browsers always have crypto.randomUUID; this branch is
-	// only a defensive fallback for ancient runtimes.
-	const rand = () => Math.floor(Math.random() * 0xff_ff_ff_ff).toString(16);
-	return `${rand()}-${rand()}-${rand()}-${rand()}`;
+	const bytes = new Uint8Array(16);
+	crypto.getRandomValues(bytes);
+	bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+	bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10xx
+	const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0"));
+	return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10, 16).join("")}`;
 }
 
 function emptyRouting(): SubscriptionRouting {
