@@ -16,12 +16,12 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 /**
  * 把 NotificationPayload 升级为 composite 并插入 `{ type: "at-all" }` 段。
  *
- * 版式:**图片在前,@全体 紧贴文字(艾特接文字)**。at-all 落在第一个 `text`
- * 段之前(其前面的 image 段保持领头);没有 text 段(罕见纯图)时落在末尾,
- * 跟在图片后面。
- * - text → `[at-all, text]`
- * - image(+caption) → `[image, at-all, caption?]`(无 caption 则 `[image, at-all]`)
- * - composite(直播/动态卡片 `[image, text]`)→ `[image, at-all, text]`
+ * 版式:**图片在前,@全体 落在第一个 `text` 段前、其后紧跟一个空格段** —— 渲染成
+ * 「@全体成员 正文」(艾特与正文之间留一个空格)。没有 text 段(罕见纯图)时
+ * at-all 落末尾、不加空格(后面没有正文)。
+ * - text → `[at-all, " ", text]`
+ * - image+caption → `[image, at-all, " ", caption]`;image 无 caption → `[image, at-all]`
+ * - composite(直播/动态卡片 `[image, text]`)→ `[image, at-all, " ", text]`
  */
 function prependAtAll(payload: NotificationPayload): NotificationPayload {
 	const at: PayloadSegment = { type: "at-all" };
@@ -39,7 +39,13 @@ function prependAtAll(payload: NotificationPayload): NotificationPayload {
 			break;
 	}
 	const firstText = segs.findIndex((s) => s.type === "text");
-	segs.splice(firstText < 0 ? segs.length : firstText, 0, at);
+	if (firstText < 0) {
+		// 罕见纯图无 text:at-all 落末尾,后面没有正文,也就不需要空格。
+		segs.push(at);
+	} else {
+		// at-all 落第一个 text 段前,中间塞一个空格段 → 渲染成「@全体成员 正文」。
+		segs.splice(firstText, 0, at, { type: "text", text: " " });
+	}
 	return { kind: "composite", segments: segs };
 }
 

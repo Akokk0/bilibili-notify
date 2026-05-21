@@ -235,7 +235,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		}
 	});
 
-	it("@全体 版式:composite [image,text] → [image, at-all, text](图片在前,@全体紧贴文字)", async () => {
+	it("@全体 版式:composite [image,text] → [image, at-all, 空格, text](@全体后留空格)", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.live = ["t1"];
 		sub.atAllDefaults.live = true;
@@ -251,11 +251,13 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		});
 		expect(calls[0].payload.kind).toBe("composite");
 		if (calls[0].payload.kind === "composite") {
-			expect(calls[0].payload.segments.map((s) => s.type)).toEqual(["image", "at-all", "text"]);
+			const segs = calls[0].payload.segments;
+			expect(segs.map((s) => s.type)).toEqual(["image", "at-all", "text", "text"]);
+			expect(segs[2]).toEqual({ type: "text", text: " " });
 		}
 	});
 
-	it("@全体 版式对 dynamic 同样生效(共用 prependAtAll,动态卡片也 [image, at-all, text])", async () => {
+	it("@全体 版式对 dynamic 同样生效(共用 prependAtAll,[image, at-all, 空格, text])", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.dynamic = ["t1"];
 		sub.atAllDefaults.dynamic = true;
@@ -270,11 +272,13 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			],
 		});
 		if (calls[0].payload.kind === "composite") {
-			expect(calls[0].payload.segments.map((s) => s.type)).toEqual(["image", "at-all", "text"]);
+			const segs = calls[0].payload.segments;
+			expect(segs.map((s) => s.type)).toEqual(["image", "at-all", "text", "text"]);
+			expect(segs[2]).toEqual({ type: "text", text: " " });
 		}
 	});
 
-	it("@全体 版式:image+caption → [image, at-all, caption];text-only → [at-all, text]", async () => {
+	it("@全体 版式:image+caption → [image, at-all, 空格, caption];text-only → [at-all, 空格, text]", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.live = ["t1"];
 		sub.atAllDefaults.live = true;
@@ -287,13 +291,17 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			caption: "字幕",
 		});
 		if (calls[0].payload.kind === "composite") {
-			expect(calls[0].payload.segments.map((s) => s.type)).toEqual(["image", "at-all", "text"]);
+			const segs = calls[0].payload.segments;
+			expect(segs.map((s) => s.type)).toEqual(["image", "at-all", "text", "text"]);
+			expect(segs[2]).toEqual({ type: "text", text: " " });
 		}
-		// 纯文本无图 → @全体 仍打头紧贴文字(本就符合"艾特接文字",不变)
+		// 纯文本无图 → @全体 打头,后面跟空格再接正文。
 		calls.length = 0;
 		await push.broadcastToFeature("u1", "live", { kind: "text", text: "无图开播" });
 		if (calls[0].payload.kind === "composite") {
-			expect(calls[0].payload.segments.map((s) => s.type)).toEqual(["at-all", "text"]);
+			const segs = calls[0].payload.segments;
+			expect(segs.map((s) => s.type)).toEqual(["at-all", "text", "text"]);
+			expect(segs[1]).toEqual({ type: "text", text: " " });
 		}
 	});
 
