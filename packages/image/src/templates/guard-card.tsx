@@ -24,12 +24,12 @@ export function GuardCard(p: GuardCardProps) {
 
 	return (
 		<div
-			class="flex justify-center items-center w-[430px] h-[220px]"
+			class="flex justify-center items-center w-[430px] h-[220px] p-[15px]"
 			style={{ background: `linear-gradient(to right bottom, ${p.bgColor[0]}, ${p.bgColor[1]})` }}
 		>
-			<div class="flex justify-between items-center w-[410px] h-[200px] rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)] bg-white/75 backdrop-blur-[10px]">
+			<div class="flex justify-between items-center w-[400px] h-[190px] rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)] bg-white/75 backdrop-blur-[10px]">
 				{/* 左侧信息区 */}
-				<div class="flex-1 h-full flex flex-col justify-between py-[10px] pl-[10px]">
+				<div class="flex-1 h-full flex flex-col justify-between px-[16px] py-[12px]">
 					{/* 用户信息 */}
 					<div class="flex gap-[10px]">
 						{/* 头像 */}

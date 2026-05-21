@@ -22,10 +22,10 @@ export function SCCard(p: SCCardProps) {
 
 	return (
 		<div
-			class="flex justify-center items-center w-[280px] py-[15px]"
+			class="flex justify-center items-center w-[290px] p-[15px]"
 			style={{ background: `linear-gradient(to right bottom, ${p.bgColor[0]}, ${p.bgColor[1]})` }}
 		>
-			<div class="flex flex-col items-center w-[260px] px-[15px] py-5 rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)] bg-white/75 backdrop-blur-[10px]">
+			<div class="flex flex-col items-center w-[260px] px-[16px] py-5 rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)] bg-white/75 backdrop-blur-[10px]">
 				{/* 金额区 */}
 				<div class="text-center mb-[15px]">
 					<div
