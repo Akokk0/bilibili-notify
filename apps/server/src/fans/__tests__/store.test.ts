@@ -8,7 +8,7 @@
  *   - dropUid:删文件;缺文件时静默(不抛、不 warn)
  */
 
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -87,6 +87,49 @@ describe("findNearestBefore", () => {
 			"utf8",
 		);
 		expect(await store.findNearestBefore("u2", T(5))).toEqual({ ts: T(2), value: 200 });
+	});
+});
+
+describe("findEarliest", () => {
+	beforeEach(async () => {
+		// fans/ 目录由 append 内部 ensureRoot 创建;findEarliest 测试直接 writeFile
+		// 不经 append,需要手动建目录避免 ENOENT。
+		await mkdir(join(dataDir, "fans"), { recursive: true });
+	});
+
+	it("返回 jsonl 第一条有效样本(早返回,不扫整个文件)", async () => {
+		await store.append("u1", { ts: T(1), value: 100 });
+		await store.append("u1", { ts: T(2), value: 110 });
+		await store.append("u1", { ts: T(3), value: 130 });
+		expect(await store.findEarliest("u1")).toEqual({ ts: T(1), value: 100 });
+	});
+
+	it("文件不存在 → undefined 且不告警(ENOENT 属正常)", async () => {
+		expect(await store.findEarliest("never-seen")).toBeUndefined();
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("文件全是坏行 → undefined", async () => {
+		await writeFile(
+			join(dataDir, "fans", "u2.jsonl"),
+			["{not json", "", JSON.stringify({ ts: T(1) }), "   "].join("\n"),
+			"utf8",
+		);
+		expect(await store.findEarliest("u2")).toBeUndefined();
+	});
+
+	it("跳过开头的坏行,返回第一条合法样本", async () => {
+		await writeFile(
+			join(dataDir, "fans", "u3.jsonl"),
+			[
+				"{not json",
+				"",
+				JSON.stringify({ ts: T(2), value: 200 }), // 第一条合法
+				JSON.stringify({ ts: T(3), value: 300 }),
+			].join("\n"),
+			"utf8",
+		);
+		expect(await store.findEarliest("u3")).toEqual({ ts: T(2), value: 200 });
 	});
 });
 

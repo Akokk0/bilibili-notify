@@ -235,7 +235,23 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			try {
 				const last = await fansStore.findNearestBefore(sub.uid, futureIso);
 				if (!last) continue;
-				const baseline = subRuntimeStore.get(sub.id)?.fansBaseline;
+				// 自愈 baseline:jsonl 是 ground truth(append-only),而 sub-runtime.json
+				// 里的 fansBaseline 历史上被批量重写过(c4e9dcd 把 baseline 搬出 Subscription
+				// 时旧值没迁过来 → fans-poller 看 baseline 缺失就把当时值当起点写)。
+				// 启动时若发现 jsonl earliest 比 baseline 早,以 earliest 校准 baseline。
+				let baseline = subRuntimeStore.get(sub.id)?.fansBaseline;
+				const earliest = await fansStore.findEarliest(sub.uid);
+				if (earliest && baseline && earliest.ts < baseline.ts) {
+					logger.info(
+						`[fans-poller] baseline self-heal uid=${sub.uid}: ${baseline.ts}(${baseline.value}) → ${earliest.ts}(${earliest.value})`,
+					);
+					try {
+						await subRuntimeStore.patch(sub.id, { fansBaseline: earliest });
+						baseline = earliest;
+					} catch (err) {
+						logger.warn(`[fans-poller] baseline self-heal ${sub.uid} failed: ${String(err)}`);
+					}
+				}
 				const deltaSubscribed = baseline ? last.value - baseline.value : 0;
 				lastByUid.set(sub.uid, {
 					uid: sub.uid,
