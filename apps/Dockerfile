@@ -55,6 +55,16 @@ COPY . .
 # 该命令要求在 git 工作区里跑 → 这里临时 init 一个空仓让它写完 hooks
 # 即可(builder 用完即弃,不会带进 runtime)。
 RUN git init -q . && pnpm install --frozen-lockfile
+
+# 把 packages/* 的 package.json#version 推到「本次发布的目标版本」。版本号由
+# changeset 控制,只在 `changeset version` 时才 bump —— dev 分支上 changeset 尚未
+# 消费,package.json 还停在上次发布的旧版本。builder 阶段用完即弃:这里跑普通
+# `changeset version` 消费 pending changeset、把版本写成目标值(pre 模式下为
+# x.y.z-alpha.N),所有 mutation 只活在被丢弃的 builder layer,真实仓库不受影响。
+# /api/health 的「各模块版本」据此显示。无 pending changeset 时为 no-op;
+# .changeset/ 状态损坏时 fail-fast,不产出版本号错误的镜像。
+RUN pnpm exec changeset version
+
 RUN pnpm -r run build
 
 # Drop devDependencies so the final image only ships runtime deps.
@@ -112,6 +122,13 @@ COPY --from=builder /repo/apps/server/lib ./apps/server/lib
 COPY --from=builder /repo/apps/server/package.json ./apps/server/package.json
 COPY --from=builder /repo/apps/server/node_modules ./apps/server/node_modules
 COPY --from=builder /repo/apps/web/dist ./web-dist
+
+# 独立端自身版本,CI(image-release.yml)按 git ref 注入:v* tag → vX.Y.Z、
+# dev push → dev-<sha>;手动 docker build 不传则为 dev。/api/health 读它。
+# 紧贴所有 COPY 之后:APP_VERSION 每次构建都变(含 sha),置末尾只让末几个
+# 元数据层失效,不动上面昂贵的 COPY 层。
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
 
 WORKDIR /app/apps/server
 

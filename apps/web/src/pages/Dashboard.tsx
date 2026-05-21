@@ -604,7 +604,11 @@ function SystemHealthCard({
 	return (
 		<GlassBox
 			title="系统状态 · 各模块"
-			subtitle="版本 · 日志等级 · 健康检查"
+			subtitle={
+				health?.version
+					? `版本 ${health.version} · 日志等级 · 健康检查`
+					: "版本 · 日志等级 · 健康检查"
+			}
 			accent={reachable ? "#22c55e" : "#ef4444"}
 			icon={<Icon.check size={14} />}
 			badge={!reachable ? "失联" : health?.status === "ok" ? "健康" : "—"}

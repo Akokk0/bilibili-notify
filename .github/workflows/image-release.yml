@@ -57,11 +57,24 @@ jobs:
             type=ref,event=tag
             type=sha,prefix=,format=short
 
+      # 独立端自身版本号,注入镜像供 /api/health 显示。v* tag → vX.Y.Z;dev push
+      # → dev-<short-sha>。与 koishi/npm 的 changeset 版本线无关。
+      - name: Compute app version
+        id: appver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build image (load, no push)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./apps/Dockerfile
+          build-args: |
+            APP_VERSION=${{ steps.appver.outputs.value }}
           load: true
           push: false
           tags: bilibili-notify:smoke
@@ -112,6 +125,8 @@ jobs:
         with:
           context: .
           file: ./apps/Dockerfile
+          build-args: |
+            APP_VERSION=${{ steps.appver.outputs.value }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
