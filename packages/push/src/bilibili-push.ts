@@ -37,6 +37,8 @@ function prependAtAll(payload: NotificationPayload): NotificationPayload {
 		case "composite":
 			segs = [...payload.segments];
 			break;
+		case "forward-images":
+			return payload;
 	}
 	const firstText = segs.findIndex((s) => s.type === "text");
 	if (firstText < 0) {

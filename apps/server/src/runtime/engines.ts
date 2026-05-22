@@ -801,6 +801,9 @@ function pushSegmentsToPayload(segments: PushSegment[]): NotificationPayload {
 			image: { buffer: segments[0].buffer, mime: segments[0].mime },
 		};
 	}
+	if (segments.length === 1 && segments[0]?.type === "image-group" && segments[0].forward) {
+		return { kind: "forward-images", urls: segments[0].urls };
+	}
 	const mapped: PayloadSegment[] = [];
 	for (const s of segments) {
 		if (s.type === "text") mapped.push({ type: "text", text: s.text });

@@ -89,6 +89,8 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				const imageRef = await writeImage(entryId, payload.image.buffer, payload.image.mime);
 				return { kind: "image", text: payload.caption, imageRef };
 			}
+			case "forward-images":
+				return { kind: "text", text: `[图集 ${payload.urls.length} 张]` };
 			case "composite": {
 				const textParts: string[] = [];
 				let imageRef: string | undefined;

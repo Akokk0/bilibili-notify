@@ -62,6 +62,10 @@ export function createKoishiSink(opts: KoishiSinkOptions): NotificationSink {
 				});
 				return h("message", parts);
 			}
+			case "forward-images": {
+				const nodes = payload.urls.map((url) => h("message", [h.image(url)]));
+				return h("message", { forward: true }, nodes);
+			}
 		}
 	}
 

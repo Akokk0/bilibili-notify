@@ -135,7 +135,8 @@ export type PayloadSegment =
 export type NotificationPayload =
 	| { kind: "text"; text: string }
 	| { kind: "image"; image: { buffer: Buffer; mime: string }; caption?: string }
-	| { kind: "composite"; segments: PayloadSegment[] };
+	| { kind: "composite"; segments: PayloadSegment[] }
+	| { kind: "forward-images"; urls: string[] };
 
 /**
  * 推送出口接口。业务核心持有此接口，按 PushTarget.id 投递。
