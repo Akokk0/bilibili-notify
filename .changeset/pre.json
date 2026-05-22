@@ -21,5 +21,7 @@
     "@bilibili-notify/storage": "0.0.2",
     "@bilibili-notify/subscription": "1.0.3"
   },
-  "changesets": []
+  "changesets": [
+    "monorepo-refactor-release"
+  ]
 }
