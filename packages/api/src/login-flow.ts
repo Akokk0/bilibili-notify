@@ -1,5 +1,6 @@
 import type { Disposable, Logger, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import type { CookieData } from "@bilibili-notify/storage";
+import QRCode from "qrcode";
 import type { BilibiliAPI } from "./bilibili-api";
 import {
 	type BiliDataServer,
@@ -82,8 +83,19 @@ const AUTH_LOST_NOTIFY_DEBOUNCE_MS = 60_000;
  * - Periodic auth probe (`getMyselfInfo`) keyed on `healthCheckMs`.
  * - QR-code request → polling → cookie save handshake.
  *
- * Adapter-side concerns (rendering the QR image, sending master notifications) stay outside.
+ * Adapter-side concerns (sending master notifications) stay outside.
  */
+
+async function defaultRenderQr(url: string): Promise<string> {
+	const buffer = await QRCode.toBuffer(url, {
+		errorCorrectionLevel: "H",
+		type: "png",
+		margin: 1,
+		color: { dark: "#000000", light: "#FFFFFF" },
+	});
+	return `data:image/png;base64,${Buffer.from(buffer).toString("base64")}`;
+}
+
 export class LoginFlow {
 	private readonly serviceCtx: ServiceContext;
 	private readonly api: BilibiliAPI;
@@ -190,7 +202,7 @@ export class LoginFlow {
 	 * 3. Drives polling at 1Hz; on success persists cookies and probes account info.
 	 * 4. Auto-times-out after 3 minutes.
 	 */
-	async beginLogin(renderQr: (url: string) => Promise<string>): Promise<void> {
+	async beginLogin(renderQr: (url: string) => Promise<string> = defaultRenderQr): Promise<void> {
 		// biome-ignore lint/suspicious/noExplicitAny: API response shape
 		let qrContent: any;
 		try {

@@ -2,7 +2,6 @@ import { join } from "node:path";
 import { BilibiliAPI, LoginFlow, type LoginSnapshot } from "@bilibili-notify/api";
 import type { Disposable, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import { type CookieData, type KeyProvider, StorageManager } from "@bilibili-notify/storage";
-import QRCode from "qrcode";
 import type { BootstrapConfig } from "../config/schema.js";
 
 /** Default health-probe cadence — matches the koishi shell's "30 minutes" default. */
@@ -49,17 +48,6 @@ export interface CreateAuthSystemOptions {
 	 * in unit tests → StorageManager builds its own legacy key file.
 	 */
 	keyProvider?: KeyProvider;
-}
-
-/** Render a bilibili QR url into a base64 PNG data URL. Used as `LoginFlow.beginLogin`'s renderQr callback. */
-async function renderQrDataUrl(url: string): Promise<string> {
-	const buffer = await QRCode.toBuffer(url, {
-		errorCorrectionLevel: "H",
-		type: "png",
-		margin: 1,
-		color: { dark: "#000000", light: "#FFFFFF" },
-	});
-	return `data:image/png;base64,${Buffer.from(buffer).toString("base64")}`;
 }
 
 export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<AuthSystem> {
@@ -148,7 +136,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 	const flowFinal = flow;
 
 	const beginLogin = async (): Promise<void> => {
-		await flowFinal.beginLogin(renderQrDataUrl);
+		await flowFinal.beginLogin();
 	};
 
 	const refreshCookies = async (): Promise<void> => {

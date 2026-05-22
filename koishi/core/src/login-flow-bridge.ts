@@ -3,8 +3,6 @@ import { LoginFlow } from "@bilibili-notify/api";
 import type { MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import type { CookieData } from "@bilibili-notify/storage";
 import type { Context, Logger } from "koishi";
-import QRCode from "qrcode";
-
 export interface LoginFlowBridgeOptions {
 	ctx: Context;
 	bus: MessageBus;
@@ -62,7 +60,7 @@ export class LoginFlowBridge {
 			this.startLoginInFlight = true;
 			this.opts.logger.info("[login] 触发登录事件");
 			try {
-				await this.flow.beginLogin((url) => this.renderQrDataUrl(url));
+				await this.flow.beginLogin();
 			} finally {
 				this.startLoginInFlight = false;
 			}
@@ -132,24 +130,5 @@ export class LoginFlowBridge {
 
 	stop(): void {
 		this.flow.stop();
-	}
-
-	/** Render a bilibili QR url to a base64 PNG data URL. */
-	private renderQrDataUrl(url: string): Promise<string> {
-		return new Promise((resolve, reject) => {
-			QRCode.toBuffer(
-				url,
-				{
-					errorCorrectionLevel: "H",
-					type: "png",
-					margin: 1,
-					color: { dark: "#000000", light: "#FFFFFF" },
-				},
-				(err: Error | null | undefined, buffer: Buffer) => {
-					if (err) reject(err);
-					else resolve(`data:image/png;base64,${Buffer.from(buffer).toString("base64")}`);
-				},
-			);
-		});
 	}
 }
