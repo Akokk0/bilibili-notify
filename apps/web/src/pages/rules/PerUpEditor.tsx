@@ -30,13 +30,19 @@ import type {
 	AIOverride,
 	CardStyleOverride,
 	ContentFiltersOverride,
+	ImageGroupOverride,
 	OverridesShape,
 	ScheduleOverride,
 	SpecialUser,
 	Subscription,
 	TemplateOverride,
 } from "../../types/domain";
-import type { GlobalDefaults, GuardEntry, TemplateBundle } from "../../types/globals";
+import type {
+	GlobalDefaults,
+	GuardEntry,
+	ImageGroupSettings,
+	TemplateBundle,
+} from "../../types/globals";
 import { colorFromUid, displayName } from "../up/helpers";
 import {
 	GuardVariableHints,
@@ -50,7 +56,14 @@ import {
 /* -------------------------------------------------------------------------- */
 
 /** Override 切片名;Rules.tsx 用它判定 sub 是否"已定制"。 */
-export const perUpOverrideKeys = ["filters", "schedule", "templates", "cardStyle", "ai"] as const;
+export const perUpOverrideKeys = [
+	"filters",
+	"schedule",
+	"templates",
+	"cardStyle",
+	"ai",
+	"imageGroup",
+] as const;
 export type PerUpOverrideKey = (typeof perUpOverrideKeys)[number];
 
 function deepEqual(a: unknown, b: unknown): boolean {
@@ -268,6 +281,13 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 					value={draft.overrides.ai}
 					onChange={(v) => setSlice("ai", v)}
 					baseline={defaults.ai}
+				/>
+			) : null}
+			{section === "imageGroup" ? (
+				<ImageGroupOverrideBox
+					value={draft.overrides.imageGroup}
+					onChange={(v) => setSlice("imageGroup", v)}
+					baseline={defaults.imageGroup}
 				/>
 			) : null}
 		</div>
@@ -1013,6 +1033,56 @@ function AiOverrideBox({
 				</>
 			) : (
 				<InheritHint>该 UP 将继承全局 AI 人格塑造设置</InheritHint>
+			)}
+		</GlassBox>
+	);
+}
+
+/* -------- ImageGroup (enable + forward) ---------------------------------- */
+
+function ImageGroupOverrideBox({
+	value,
+	onChange,
+	baseline,
+}: {
+	value: ImageGroupOverride | undefined;
+	onChange: (next: ImageGroupOverride | undefined) => void;
+	baseline: ImageGroupSettings;
+}) {
+	const enabled = value !== undefined;
+	const cur = value ?? {};
+	const effEnable = cur.enable ?? baseline.enable;
+	const effForward = cur.forward ?? baseline.forward;
+	function set<K extends keyof ImageGroupOverride>(k: K, v: ImageGroupOverride[K]): void {
+		onChange({ ...cur, [k]: v });
+	}
+	return (
+		<GlassBox
+			title="动态图集覆盖"
+			subtitle="开 = 该 UP 使用自定义图集策略;关 = 继承全局"
+			accent="#FB7299"
+			icon={<Icon.dyn size={14} />}
+			badge={enabled ? "覆盖中" : "继承"}
+			right={
+				<Toggle
+					value={enabled}
+					onChange={(on) =>
+						onChange(on ? { enable: baseline.enable, forward: baseline.forward } : undefined)
+					}
+				/>
+			}
+		>
+			{enabled ? (
+				<>
+					<Field label="推送动态图集" code="enable">
+						<Toggle value={effEnable} onChange={(v) => set("enable", v)} />
+					</Field>
+					<Field label="图集走合并转发" code="forward" hint="单图不走合并转发">
+						<Toggle value={effForward} onChange={(v) => set("forward", v)} disabled={!effEnable} />
+					</Field>
+				</>
+			) : (
+				<InheritHint>该 UP 将继承全局动态图集策略</InheritHint>
 			)}
 		</GlassBox>
 	);

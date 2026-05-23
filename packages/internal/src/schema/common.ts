@@ -200,3 +200,23 @@ export const DEFAULT_SCHEDULE: ScheduleConfig = {
 	restartPush: false,
 	quietHours: [],
 };
+
+/**
+ * DYNAMIC_TYPE_DRAW 图集图片推送行为。`enable` 决定是否在文本/卡片之后附加一组
+ * 原图;`forward` 在 `enable=true` 时决定走「合并转发卡片」还是「普通多图」(单图
+ * 永远不走合并转发)。两个字段都可 per-UP 覆盖。`forward=true` 在 NapCat 等 OneBot
+ * 实现走长消息通道(SsoSendLongMsg),部分部署不稳。
+ */
+export const ImageGroupSettingsSchema = z.object({
+	enable: z.boolean(),
+	forward: z.boolean(),
+});
+export type ImageGroupSettings = z.infer<typeof ImageGroupSettingsSchema>;
+
+export const ImageGroupSettingsPartialSchema = ImageGroupSettingsSchema.partial();
+export type ImageGroupSettingsPartial = z.infer<typeof ImageGroupSettingsPartialSchema>;
+
+export const DEFAULT_IMAGE_GROUP: ImageGroupSettings = {
+	enable: true,
+	forward: false,
+};

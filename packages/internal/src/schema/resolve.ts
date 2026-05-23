@@ -4,6 +4,7 @@ import type {
 	CardStyle,
 	ContentFilters,
 	FeatureFlags,
+	ImageGroupSettings,
 	ScheduleConfig,
 	TemplateBundle,
 } from "./common";
@@ -37,6 +38,7 @@ export interface EffectiveSubscription {
 	templates: TemplateBundle;
 	ai: ResolvedAI;
 	cardStyle: CardStyle;
+	imageGroup: ImageGroupSettings;
 }
 
 export interface ResolvedAI {
@@ -117,6 +119,7 @@ export function resolve(sub: Subscription, defaults: GlobalDefaults): EffectiveS
 		templates: merge(defaults.templates, ov.templates),
 		ai: resolveAI(defaults.ai, ov.ai),
 		cardStyle: merge(defaults.cardStyle, ov.cardStyle),
+		imageGroup: merge(defaults.imageGroup, ov.imageGroup),
 	});
 }
 

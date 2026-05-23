@@ -48,10 +48,14 @@ function adaptPush(push: BilibiliPush): PushLike {
 					image: { buffer: segments[0].buffer, mime: segments[0].mime },
 				};
 			} else if (segments.length === 1 && segments[0].type === "image-group") {
-				// image-group: format as text with URLs (fallback)
+				// 走 NotificationSink 的 forward-images 路径 —— sink 内部按 payload.forward
+				// 决定走 koishi 合并转发(h("message", {forward:true}, nodes))还是普通
+				// 多图(h("message", urls.map(h.image)))。forward 由 dynamic engine config
+				// imageGroup.forward 控制(可 per-UP override sub.overrides.imageGroup.forward)。
 				payload = {
-					kind: "text",
-					text: segments[0].urls.join("\n"),
+					kind: "forward-images",
+					urls: segments[0].urls,
+					forward: segments[0].forward,
 				};
 			} else {
 				// composite: map all segments
@@ -98,7 +102,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 			dynamicUrl: config.dynamicUrl,
 			dynamicCron: config.dynamicCron,
 			dynamicVideoUrlToBV: config.dynamicVideoUrlToBV,
-			pushImgsInDynamic: config.pushImgsInDynamic,
+			imageGroup: config.imageGroup,
 			filter: config.filter,
 		};
 	}

@@ -7,7 +7,10 @@ export interface BilibiliNotifyDynamicConfig {
 	dynamicUrl: boolean;
 	dynamicCron: string;
 	dynamicVideoUrlToBV: boolean;
-	pushImgsInDynamic: boolean;
+	imageGroup: {
+		enable: boolean;
+		forward: boolean;
+	};
 	filter: DynamicFilterConfig & { notify?: boolean };
 }
 
@@ -33,11 +36,18 @@ export const BilibiliNotifyDynamicSchema: Schema<BilibiliNotifyDynamicConfig> = 
 	dynamicVideoUrlToBV: Schema.boolean()
 		.default(false)
 		.description("如果是视频动态，开启后会把链接换成 BV 号哦～方便主人的其他用途 (*´･ω･`)"),
-	pushImgsInDynamic: Schema.boolean()
-		.default(false)
-		.description(
-			"要不要把动态里的图片也一起推送呢？但、但是可能会触发 QQ 的风控，女仆会有点害怕 (；>_<) 请主人小心决定…",
-		),
+	imageGroup: Schema.object({
+		enable: Schema.boolean()
+			.default(false)
+			.description(
+				"要不要把动态里的图片也一起推送呢？但、但是可能会触发 QQ 的风控，女仆会有点害怕 (；>_<) 请主人小心决定…",
+			),
+		forward: Schema.boolean()
+			.default(false)
+			.description(
+				"开 = 合并转发(聊天记录卡片);关 = 多图普通消息。单图不走合并转发,仅当上面 enable 开启时生效。",
+			),
+	}).description("动态图集推送行为"),
 	filter: Schema.intersect([
 		Schema.object({
 			enable: Schema.boolean().default(false).description("要开启吗？"),

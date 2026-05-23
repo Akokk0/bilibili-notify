@@ -39,8 +39,16 @@ export interface DynamicEngineConfig {
 	dynamicCron: string;
 	/** 视频动态时是否将 URL 替换为 BV 号。 */
 	dynamicVideoUrlToBV: boolean;
-	/** 是否额外推送 DYNAMIC_TYPE_DRAW 中的图集（forward message）。 */
-	pushImgsInDynamic: boolean;
+	/**
+	 * DYNAMIC_TYPE_DRAW 图集图片推送行为。enable=false 时跳过图集广播,
+	 * 只发文本/卡片。forward=true 时走合并转发(聊天记录卡片,走 OneBot
+	 * send_group_forward_msg,部分 OneBot 实现/NapCat 长消息通道不稳);
+	 * forward=false 多图合并到一条普通 send_group_msg。单图永远不走合并转发。
+	 */
+	imageGroup: {
+		enable: boolean;
+		forward: boolean;
+	};
 	/** 内容过滤配置（含 notify：被屏蔽时是否通知）。 */
 	filter: DynamicFilterConfig & { notify?: boolean };
 	/**
@@ -643,7 +651,13 @@ export class DynamicEngine {
 				// Push extra images from draw dynamics. DYNAMIC_TYPE_DRAW 的原图在
 				// major.draw.items[].src;部分 opus 包裹的图文帖图在 major.opus.pics[].url。
 				// 此前只读 opus.pics → 纯 DRAW 帖(图在 draw.items)图组被静默丢弃。
-				if (this.config.pushImgsInDynamic && item.type === "DYNAMIC_TYPE_DRAW") {
+				//
+				// per-UP override 优先于 engine config:adapter 折叠 sub.overrides.imageGroup
+				// 后塞进 SubItemView 的 `imageGroupEnable` / `imageGroupForward`,undefined 时
+				// 继承全局 config.imageGroup.{enable,forward}。
+				const subForImgs = this.dynamicSubManager.get(uid);
+				const effEnable = subForImgs?.imageGroupEnable ?? this.config.imageGroup.enable;
+				if (effEnable && item.type === "DYNAMIC_TYPE_DRAW") {
 					const major = item.modules?.module_dynamic?.major;
 					const urls: string[] = [];
 					for (const it of (major?.draw?.items ?? []) as Array<{ src?: string }>) {
@@ -653,12 +667,15 @@ export class DynamicEngine {
 						if (pic.url) urls.push(pic.url);
 					}
 					if (urls.length) {
+						const effForward = subForImgs?.imageGroupForward ?? this.config.imageGroup.forward;
+						// 单张图永远不走合并转发(1 张图包成「聊天记录」卡片无意义)。
+						const forward = effForward && urls.length > 1;
 						await this.push.broadcastDynamic(
 							uid,
 							[
 								{
 									type: "image-group",
-									forward: true,
+									forward,
 									urls,
 								},
 							],

@@ -10,6 +10,7 @@ import {
 	FilterSection,
 	GLOBAL_SECTIONS,
 	GuardSection,
+	ImageGroupSection,
 	LiveMsgSection,
 	LiveThresholdsSection,
 	PERUP_SECTIONS,
@@ -63,6 +64,8 @@ function isSectionCustomized(sub: Subscription, sectionId: SectionId): boolean {
 			return sub.overrides.cardStyle !== undefined;
 		case "ai":
 			return sub.overrides.ai !== undefined;
+		case "imageGroup":
+			return sub.overrides.imageGroup !== undefined;
 		default:
 			return false;
 	}
@@ -395,16 +398,17 @@ export default function Rules() {
 		mutationFn: async (next: GlobalConfig) => {
 			setError(null);
 			try {
-				// Only the three sub-scopes this page actually edits — filter /
-				// live thresholds / templates. Posting the full draft would put
-				// `defaults.cardStyle` and `defaults.ai` into the body and trigger
-				// the backend enable-check (puppeteer launch + chat.completions
-				// probe) every save, even though nothing here touches those scopes.
+				// Only the scopes this page actually edits — filter / live thresholds /
+				// templates / imageGroup。Posting the full draft would put
+				// `defaults.cardStyle` and `defaults.ai` into the body and trigger the
+				// backend enable-check (puppeteer launch + chat.completions probe)
+				// every save, even though nothing here touches those scopes.
 				await api.patch<GlobalConfig>("/api/globals", {
 					defaults: {
 						filters: next.defaults.filters,
 						schedule: next.defaults.schedule,
 						templates: next.defaults.templates,
+						imageGroup: next.defaults.imageGroup,
 					},
 				});
 			} catch (err) {
@@ -546,6 +550,8 @@ export default function Rules() {
 						<PerUpEditor sub={focusedSub} defaults={draft.defaults} section={section} />
 					) : section === "filter" ? (
 						<FilterSection value={draft.defaults.filters} onPatch={patchDraft} />
+					) : section === "imageGroup" ? (
+						<ImageGroupSection value={draft.defaults.imageGroup} onPatch={patchDraft} />
 					) : section === "live" ? (
 						<LiveThresholdsSection
 							filters={draft.defaults.filters}

@@ -120,6 +120,16 @@ export interface CardStyle {
 	cardColorEnd: string;
 }
 
+/**
+ * DYNAMIC_TYPE_DRAW 图集图片推送行为。`enable` 决定是否在文本/卡片之后附加一组
+ * 原图;`forward` 在 `enable=true` 时决定走「合并转发卡片」还是「普通多图」(单图
+ * 永远不走合并转发,engine 端守卫)。两个字段都可 per-UP 覆盖。
+ */
+export interface ImageGroupSettings {
+	enable: boolean;
+	forward: boolean;
+}
+
 export interface GlobalDefaults {
 	features: FeatureFlags;
 	filters: ContentFilters;
@@ -127,6 +137,7 @@ export interface GlobalDefaults {
 	templates: TemplateBundle;
 	ai: AISettings;
 	cardStyle: CardStyle;
+	imageGroup: ImageGroupSettings;
 }
 
 export interface GlobalConfig {

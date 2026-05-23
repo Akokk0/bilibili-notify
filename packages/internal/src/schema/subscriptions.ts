@@ -6,6 +6,7 @@ import {
 	FEATURE_KEYS,
 	FeatureFlagsPartialSchema,
 	type FeatureKey,
+	ImageGroupSettingsPartialSchema,
 	ScheduleConfigPartialSchema,
 	TemplateBundlePartialSchema,
 } from "./common";
@@ -121,6 +122,7 @@ export const SubscriptionOverridesSchema = z.object({
 	templates: TemplateBundlePartialSchema.optional(),
 	ai: AIOverrideSchema.optional(),
 	cardStyle: CardStylePartialSchema.optional(),
+	imageGroup: ImageGroupSettingsPartialSchema.optional(),
 });
 export type SubscriptionOverrides = z.infer<typeof SubscriptionOverridesSchema>;
 

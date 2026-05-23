@@ -31,6 +31,10 @@ export function subToDynamicView(sub: Subscription): SubscriptionsView[string] {
 					cardColorEnd: sub.overrides.cardStyle.cardColorEnd,
 				}
 			: { enable: false },
+		// per-UP imageGroup override 直接透传 raw 值;engine 内 `?? config.imageGroup`
+		// 兜底到 BilibiliNotifyDynamicConfig.imageGroup.{enable,forward}。
+		imageGroupEnable: sub.overrides.imageGroup?.enable,
+		imageGroupForward: sub.overrides.imageGroup?.forward,
 	};
 }
 

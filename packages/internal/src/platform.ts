@@ -136,7 +136,17 @@ export type NotificationPayload =
 	| { kind: "text"; text: string }
 	| { kind: "image"; image: { buffer: Buffer; mime: string }; caption?: string }
 	| { kind: "composite"; segments: PayloadSegment[] }
-	| { kind: "forward-images"; urls: string[] };
+	/**
+	 * 图集 payload(典型来源:动态图集 / 多张大图)。`forward` 决定 adapter 用哪种
+	 * 平台原生形式投递:
+	 *   - `true` —— 走 OneBot `send_group_forward_msg` / koishi `h("message", {forward:true})`,
+	 *     渲染成「聊天记录」卡片。视觉好但走长消息通道(NapCat 的 `SsoSendLongMsg`
+	 *     trpc 在某些部署上不稳),失败时所有图都丢。
+	 *   - `false` —— 走 OneBot `send_group_msg` 多 image segment / koishi `h("message", ...)`
+	 *     普通多图。稳但 N+ 张大图会一排刷屏。
+	 * 默认值由上游 dynamic engine config(`imageGroupForward`)决定。
+	 */
+	| { kind: "forward-images"; urls: string[]; forward: boolean };
 
 /**
  * 推送出口接口。业务核心持有此接口，按 PushTarget.id 投递。

@@ -122,6 +122,6 @@ function serializePayload(payload: NotificationPayload): unknown {
 				),
 			};
 		case "forward-images":
-			return { kind: "forward-images", urls: payload.urls };
+			return { kind: "forward-images", urls: payload.urls, forward: payload.forward };
 	}
 }

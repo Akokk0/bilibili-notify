@@ -233,7 +233,7 @@ function makeEngine(
 			dynamicUrl: false,
 			dynamicCron: "*/2 * * * *",
 			dynamicVideoUrlToBV: false,
-			pushImgsInDynamic: false,
+			imageGroup: { enable: false, forward: false },
 			filter: { enable: false },
 			...over.config,
 		},
@@ -494,8 +494,8 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		expect(segments[0]?.type).toBe("text");
 	});
 
-	it("pushImgsInDynamic + DYNAMIC_TYPE_DRAW 带 pics → 追加 dynamic-images 广播", async () => {
-		const b = makeEngine({ config: { pushImgsInDynamic: true } });
+	it("imageGroup.enable + DYNAMIC_TYPE_DRAW 带 pics → 追加 dynamic-images 广播", async () => {
+		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
 		b.getAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
@@ -513,7 +513,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 	});
 
 	it("P2-A:DRAW 图在 major.draw.items[].src → 不再静默丢图组(此前只读 opus.pics)", async () => {
-		const b = makeEngine({ config: { pushImgsInDynamic: true } });
+		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
 		b.getAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
@@ -533,6 +533,141 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 			type: "image-group",
 			urls: ["http://a/x1.jpg", "http://a/x2.jpg"],
 		});
+	});
+
+	it("imageGroupForward 默认 false → image-group segment 的 forward 为 false", async () => {
+		// 默认不走合并转发,避开 NapCat SsoSendLongMsg 长消息通道。
+		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
+		b.getAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({
+					uid: 1,
+					pubTs: 1000,
+					type: "DYNAMIC_TYPE_DRAW",
+					drawPics: ["http://a/1.jpg"],
+				}),
+			]),
+		);
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		const call = b.push.broadcastDynamic.mock.calls[1];
+		expect((call?.[1]?.[0] as { forward: boolean }).forward).toBe(false);
+	});
+
+	it("imageGroupForward=true + 多张图 → image-group segment 的 forward 为 true", async () => {
+		// 主动开启 + 多张图时 segment 携带 forward:true,下游 adapter 走合并转发路径。
+		const b = makeEngine({ config: { imageGroup: { enable: true, forward: true } } });
+		b.getAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({
+					uid: 1,
+					pubTs: 1000,
+					type: "DYNAMIC_TYPE_DRAW",
+					drawPics: ["http://a/1.jpg", "http://a/2.jpg", "http://a/3.jpg"],
+				}),
+			]),
+		);
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		const call = b.push.broadcastDynamic.mock.calls[1];
+		expect((call?.[1]?.[0] as { forward: boolean }).forward).toBe(true);
+	});
+
+	it("imageGroupForward=true 但只有 1 张图 → forward 强制 false(单图合并转发无意义)", async () => {
+		// 即使主动开启 imageGroupForward,单张图也不走 forward(聊天记录卡片包 1 张图无意义)。
+		const b = makeEngine({ config: { imageGroup: { enable: true, forward: true } } });
+		b.getAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({
+					uid: 1,
+					pubTs: 1000,
+					type: "DYNAMIC_TYPE_DRAW",
+					drawPics: ["http://a/only.jpg"],
+				}),
+			]),
+		);
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		const call = b.push.broadcastDynamic.mock.calls[1];
+		expect((call?.[1]?.[0] as { forward: boolean }).forward).toBe(false);
+	});
+
+	it("per-UP imageGroupEnable=false 覆盖全局 true → 不推图集", async () => {
+		// 全局开 imageGroup.enable,但 sub 视图带 imageGroupEnable:false → 不发图集广播。
+		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
+		b.getAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({
+					uid: 1,
+					pubTs: 1000,
+					type: "DYNAMIC_TYPE_DRAW",
+					drawPics: ["http://a/1.jpg", "http://a/2.jpg"],
+				}),
+			]),
+		);
+		seed(b.engine, "1", 0, { uid: "1", uname: "UP", imageGroupEnable: false });
+		await detect(b.engine);
+		// 仅主卡片,无图集广播
+		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
+		expect(b.push.broadcastDynamic.mock.calls[0]?.[2]).toBe("dynamic");
+	});
+
+	it("per-UP imageGroupEnable=true 覆盖全局 false → 推图集", async () => {
+		// 全局关 imageGroup.enable,但 sub 视图 imageGroupEnable:true → 发图集。
+		const b = makeEngine({ config: { imageGroup: { enable: false, forward: false } } });
+		b.getAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({
+					uid: 1,
+					pubTs: 1000,
+					type: "DYNAMIC_TYPE_DRAW",
+					drawPics: ["http://a/1.jpg", "http://a/2.jpg"],
+				}),
+			]),
+		);
+		seed(b.engine, "1", 0, { uid: "1", uname: "UP", imageGroupEnable: true });
+		await detect(b.engine);
+		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(2);
+		expect(b.push.broadcastDynamic.mock.calls[1]?.[2]).toBe("dynamic-images");
+	});
+
+	it("per-UP imageGroupEnable 缺省(undefined) → 继承全局 imageGroup.enable(回归守卫 `??` 非 `||`)", async () => {
+		// 守护 dynamic-engine 用 `??` 折叠而非 `||`:undefined 走 fallback,但 false
+		// 显式 per-UP 关闭不被吃。本用例钉「缺省=继承」一向。
+		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
+		b.getAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({
+					uid: 1,
+					pubTs: 1000,
+					type: "DYNAMIC_TYPE_DRAW",
+					drawPics: ["http://a/1.jpg", "http://a/2.jpg"],
+				}),
+			]),
+		);
+		// sub view 不带 imageGroupEnable 字段 → 应当继承全局 true → 推图集
+		seed(b.engine, "1", 0, { uid: "1", uname: "UP" });
+		await detect(b.engine);
+		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(2);
+		expect(b.push.broadcastDynamic.mock.calls[1]?.[2]).toBe("dynamic-images");
+	});
+
+	it("per-UP imageGroupForward=true 覆盖全局 false → 多图走 forward", async () => {
+		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
+		b.getAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({
+					uid: 1,
+					pubTs: 1000,
+					type: "DYNAMIC_TYPE_DRAW",
+					drawPics: ["http://a/1.jpg", "http://a/2.jpg"],
+				}),
+			]),
+		);
+		seed(b.engine, "1", 0, { uid: "1", uname: "UP", imageGroupForward: true });
+		await detect(b.engine);
+		const call = b.push.broadcastDynamic.mock.calls[1];
+		expect((call?.[1]?.[0] as { forward: boolean }).forward).toBe(true);
 	});
 });
 
@@ -723,7 +858,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 				dynamicUrl: false,
 				dynamicCron: "*/2 * * * *",
 				dynamicVideoUrlToBV: false,
-				pushImgsInDynamic: false,
+				imageGroup: { enable: false, forward: false },
 				filter: { enable: false },
 			},
 			getSubs: () => snap,
@@ -747,7 +882,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 			dynamicUrl: false,
 			dynamicCron: "*/5 * * * *",
 			dynamicVideoUrlToBV: false,
-			pushImgsInDynamic: false,
+			imageGroup: { enable: false, forward: false },
 			filter: { enable: false },
 		});
 		expect(cronMock.instances[0]?.stopCount).toBe(1);
@@ -764,7 +899,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 			dynamicUrl: true, // 改了别的字段,但 cron 不变
 			dynamicCron: "*/2 * * * *",
 			dynamicVideoUrlToBV: false,
-			pushImgsInDynamic: false,
+			imageGroup: { enable: false, forward: false },
 			filter: { enable: false },
 		});
 		expect(cronMock.instances).toHaveLength(1);

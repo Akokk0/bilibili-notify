@@ -5,8 +5,10 @@ import {
 	ContentFiltersSchema,
 	DEFAULT_CONTENT_FILTERS,
 	DEFAULT_FEATURE_FLAGS,
+	DEFAULT_IMAGE_GROUP,
 	DEFAULT_SCHEDULE,
 	FeatureFlagsSchema,
+	ImageGroupSettingsSchema,
 	ScheduleConfigSchema,
 	TemplateBundleSchema,
 } from "./common";
@@ -84,6 +86,10 @@ export const GlobalDefaultsSchema = z.object({
 	templates: TemplateBundleSchema,
 	ai: AISettingsSchema,
 	cardStyle: CardStyleSchema,
+	// `.default(...)` 让缺 imageGroup 字段的老 globals.json(在加 imageGroup 子段
+	// 之前持久化的)load 时被 zod 自动补全 —— 否则 ConfigValidationError 让独立端
+	// 启动直接挂。新字段加 GlobalDefaults 时都该带 default,保留迁移友好性。
+	imageGroup: ImageGroupSettingsSchema.default(DEFAULT_IMAGE_GROUP),
 });
 export type GlobalDefaults = z.infer<typeof GlobalDefaultsSchema>;
 
@@ -232,6 +238,7 @@ export function makeDefaultGlobalConfig(): GlobalConfig {
 			templates: DEFAULT_TEMPLATES,
 			ai: DEFAULT_AI,
 			cardStyle: DEFAULT_CARD_STYLE,
+			imageGroup: DEFAULT_IMAGE_GROUP,
 		},
 	});
 }

@@ -27,6 +27,7 @@ import type {
 	ContentFilters,
 	GlobalConfigPatch,
 	GuardBundle,
+	ImageGroupSettings,
 	LogLevel,
 	MasterConfig,
 	ModuleLogLevels,
@@ -45,6 +46,7 @@ export type SectionId =
 	| "specialEnter"
 	| "cardStyle"
 	| "ai"
+	| "imageGroup"
 	| "core";
 
 export interface SectionMeta {
@@ -67,6 +69,12 @@ export const GLOBAL_SECTIONS: SectionMeta[] = [
 		label: "动态过滤",
 		icon: <Icon.filter size={14} />,
 		desc: "关键词 / 正则 / 白名单",
+	},
+	{
+		id: "imageGroup",
+		label: "动态图集",
+		icon: <Icon.dyn size={14} />,
+		desc: "是否推图 / 合并转发",
 	},
 	{
 		id: "live",
@@ -104,6 +112,12 @@ export const PERUP_SECTIONS: SectionMeta[] = [
 		label: "动态过滤",
 		icon: <Icon.filter size={14} />,
 		desc: "覆盖关键词 / 白名单",
+	},
+	{
+		id: "imageGroup",
+		label: "动态图集",
+		icon: <Icon.dyn size={14} />,
+		desc: "覆盖图集推送 / 合并转发",
 	},
 	{
 		id: "live",
@@ -232,6 +246,48 @@ export function FilterSection({
 					<ArrayEditor value={value.whitelistRegex} onChange={(n) => set("whitelistRegex", n)} />
 				</FieldRow>
 			</CollapseBlock>
+		</GlassBox>
+	);
+}
+
+// ── 1b. Dynamic image-group(全局图集推送形态)──────────────────────────────
+
+export function ImageGroupSection({
+	value,
+	onPatch,
+}: {
+	value: ImageGroupSettings;
+	onPatch: (delta: GlobalConfigPatch) => void;
+}) {
+	const set = <K extends keyof ImageGroupSettings>(key: K, v: ImageGroupSettings[K]) => {
+		onPatch({ defaults: { imageGroup: { [key]: v } as Partial<ImageGroupSettings> } });
+	};
+	return (
+		<GlassBox
+			title="动态图集"
+			subtitle="imageGroup · 图集类动态附图与推送形态"
+			accent="#FB7299"
+			icon={<Icon.dyn size={14} />}
+			badge="imageGroup"
+		>
+			<FieldRow
+				label="推送动态图集"
+				code="enable"
+				hint="图集类动态在文本后再发一组图 · 关 = 只发卡片"
+			>
+				<Toggle value={value.enable} onChange={(v) => set("enable", v)} />
+			</FieldRow>
+			<FieldRow
+				label="图集走合并转发"
+				code="forward"
+				hint="开 = 聊天记录卡片 · 关 = 多图普通消息;单图不走合并转发"
+			>
+				<Toggle
+					value={value.forward}
+					onChange={(v) => set("forward", v)}
+					disabled={!value.enable}
+				/>
+			</FieldRow>
 		</GlassBox>
 	);
 }

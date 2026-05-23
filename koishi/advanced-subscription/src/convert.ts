@@ -111,6 +111,18 @@ export type SubItemRawConfig = MasterFlagMap & {
 		specialUsersEnterTheRoom?: string[];
 		msgTemplate?: string;
 	};
+	/**
+	 * per-UP 图集推送行为(覆盖 koishi/dynamic plugin 配置的 imageGroup.{enable,forward})。
+	 * customImageGroup.enable=false → 整组不生效,继承 plugin 全局。
+	 * customImageGroup.enable=true 时 imgEnable / forward 字段写入 `Subscription.overrides.imageGroup`。
+	 * 注意字段命名:外层 `enable` 是「是否启用此 custom 模板」(meta);内层 `imgEnable` 才是
+	 * 实际「是否推图集」(behavior),避免与外层重名歧义。
+	 */
+	customImageGroup?: {
+		enable: boolean;
+		imgEnable?: boolean;
+		forward?: boolean;
+	};
 };
 
 export interface AdvancedSubRawConfigShape {
@@ -368,6 +380,17 @@ export function rawConfigToSubscription(_name: string, raw: SubItemRawConfig): C
 		if (aiCfg.liveSummaryPrompt) ai.liveSummaryPrompt = aiCfg.liveSummaryPrompt;
 		if (aiCfg.temperature !== undefined) ai.temperature = aiCfg.temperature;
 		sub.overrides.ai = ai;
+	}
+
+	// ---- per-UP imageGroup override ----
+	// customImageGroup.enable=false 整组不写,继承 plugin 全局 imageGroup.{enable,forward}。
+	// enable=true 时把内层 imgEnable / forward 写入 sub.overrides.imageGroup。
+	const igCfg = raw.customImageGroup;
+	if (igCfg?.enable) {
+		const imageGroup: NonNullable<Subscription["overrides"]["imageGroup"]> = {};
+		if (igCfg.imgEnable !== undefined) imageGroup.enable = igCfg.imgEnable;
+		if (igCfg.forward !== undefined) imageGroup.forward = igCfg.forward;
+		if (Object.keys(imageGroup).length > 0) sub.overrides.imageGroup = imageGroup;
 	}
 
 	// Special users

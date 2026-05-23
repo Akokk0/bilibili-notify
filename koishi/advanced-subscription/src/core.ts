@@ -218,6 +218,31 @@ export const BilibiliNotifyAdvancedSubConfig: Schema<BilibiliNotifyAdvancedSubCo
 					]),
 				]),
 
+				customImageGroup: Schema.intersect([
+					Schema.object({
+						enable: Schema.boolean()
+							.default(false)
+							.description(
+								"是否为该 UP 启用自定义图集行为。关 = 沿用 koishi/dynamic 插件全局;开 = 用下方字段覆盖",
+							),
+					}),
+					Schema.union([
+						Schema.object({
+							enable: Schema.const(true).required(),
+							// default 与 koishi/dynamic imageGroup.enable 对齐,避免开 enable 但
+							// 未改字段时静默压住全局。注意字段名 `imgEnable` 与外层 `enable` 区分:
+							// 外层 = 是否启用此 custom 模板;内层 = 是否推图集本身的行为。
+							imgEnable: Schema.boolean()
+								.default(true)
+								.description("是否额外推送图集图片(关 = 只发卡片)"),
+							forward: Schema.boolean()
+								.default(false)
+								.description("开 = 合并转发(聊天记录卡片);关 = 多图普通消息。单图不走合并转发"),
+						}),
+						Schema.object({}),
+					]),
+				]),
+
 				customSpecialDanmakuUsers: Schema.intersect([
 					Schema.object({
 						enable: Schema.boolean().default(false).description("是否启用特别关注弹幕用户监测"),
