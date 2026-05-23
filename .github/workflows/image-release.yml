@@ -14,9 +14,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  # write: 镜像 push 成功后给当前 commit 打 annotated tag v<version> 并推回远程,
-  # 跟 docker tag :v<version> 对齐。
-  contents: write
+  # GITHUB_TOKEN 保持最小权限:tag push + release 创建都走 secrets.RELEASE_PAT
+  # (默认 token 不能 push reachable 到 workflow file 改动的 ref —— GitHub 强制
+  # 隔离,GITHUB_TOKEN 拿不到 `workflows: write`)。
+  contents: read
 
 jobs:
   build-and-push:
@@ -26,6 +27,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # 用 PAT 替代默认 GITHUB_TOKEN,后续 Tag commit step 的 `git push origin
+          # <tag>` 才能通过 —— GitHub 默认 token 不能 push reachable 到 workflow
+          # 改动的 ref(没有 `workflows: write` scope,GITHUB_TOKEN 拿不到这权限)。
+          # checkout 时把 token 设进 .git/config 的 credential,后续 git 命令自动用。
+          token: ${{ secrets.RELEASE_PAT }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -166,7 +173,10 @@ jobs:
         env:
           VERSION: ${{ steps.ver.outputs.value }}
           PRERELEASE: ${{ steps.ver.outputs.prerelease }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 同 checkout/Tag 改用 PAT 的理由:gh release create 通过 REST API
+          # 创建 release 也需要能改 contents 的 token(GITHUB_TOKEN 仍受 workflow
+          # ref restriction 限制,即便不直接 git push)。
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
