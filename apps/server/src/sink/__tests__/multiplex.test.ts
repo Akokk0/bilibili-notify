@@ -219,7 +219,10 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 		expect(onDelivery).toHaveBeenCalledTimes(1);
 	});
 
-	it("happy:委派 platformAdapter.send,回传其 result,onDelivery 带 {private:false}", async () => {
+	it("happy:委派 platformAdapter.send(opts 留空),回传其 result,onDelivery 带 {private:false}", async () => {
+		// adapter 不传 `private: false` —— 否则 OneBot adapter 内 `?? scope` 会把
+		// scope:"private" 的 target 吃掉(回归守卫见 platforms/__tests__/adapters.test.ts)。
+		// onDelivery 仍带 `{ private: false }` 作为 metadata,与 sendPrivate 区分。
 		const target = makeTarget({ id: "t1", adapterId: "a1" });
 		const adapter = makeAdapter({ id: "a1", platform: "webhook" });
 		const pa = makePlatformAdapter(["webhook"]);
@@ -231,7 +234,7 @@ describe("createMultiplexSink — dispatch (send / sendPrivate)", () => {
 		});
 		const r = await sink.send("t1", PAYLOAD);
 		expect(r).toEqual({ ok: true, latencyMs: 12 });
-		expect(pa.send).toHaveBeenCalledWith(adapter, target, PAYLOAD, { private: false });
+		expect(pa.send).toHaveBeenCalledWith(adapter, target, PAYLOAD, {});
 		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, r, { private: false });
 	});
 

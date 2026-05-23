@@ -126,9 +126,12 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 			opts.onDelivery?.(target, payload, result, options);
 			return result;
 		}
-		const result = await platformAdapter.send(adapter, target, payload, {
-			private: options.private,
-		});
+		// 只在「强制私聊」路径传 private:true。普通 send 不该传 false ——
+		// 旧实现恒 spread `{ private: options.private }`,把 false 也送给 adapter,
+		// 与 OneBot adapter 内 `opts.private ?? scope` 的 ?? 配合就会让 scope==="private"
+		// 的 target 走错分支(已同步修 onebot.ts,这里双层防御)。
+		const sendOpts = options.private ? { private: true } : {};
+		const result = await platformAdapter.send(adapter, target, payload, sendOpts);
 		opts.onDelivery?.(target, payload, result, options);
 		return result;
 	}

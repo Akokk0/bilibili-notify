@@ -120,7 +120,11 @@ function buildSendAction(
 	const segments = buildSegments(payload);
 	if (segments.length === 0) return { err: "empty payload" };
 	const session = target.session as OnebotSession;
-	const isPrivate = opts.private ?? target.scope === "private";
+	// `opts.private` 是「强制私聊」覆盖标志,仅 `=== true` 时覆盖 target.scope。
+	// 旧写法 `opts.private ?? scope==="private"` 的坑:caller(MultiplexSink.send)
+	// 恒传 `{ private: false }`,??（nullish coalescing）不替换 false,导致
+	// scope==="private" 的 target 永远走 group 分支并返回 "group: groupId missing"。
+	const isPrivate = opts.private === true || target.scope === "private";
 	const params: Record<string, unknown> = { message: segments };
 	if (isPrivate) {
 		if (!session.userId) return { err: "private: userId missing" };

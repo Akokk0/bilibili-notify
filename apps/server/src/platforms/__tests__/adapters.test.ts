@@ -258,6 +258,19 @@ describe("onebot — send 路由", () => {
 		expect(lastBody().user_id).toBe(789);
 	});
 
+	it("opts.private=false 不应吃掉 scope:private(回归守卫)", async () => {
+		// 复发点:旧实现 `opts.private ?? scope === "private"` 用 nullish 而非 falsy,
+		// MultiplexSink.send 路径恒传 `{ private: false }`,?? 不替换 false →
+		// scope:"private" 被忽略,走 group 分支 → "group: groupId missing"。
+		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
+		const ad = createOnebotAdapter(obOpts());
+		await ad.send(obAdapter(), obTarget({ scope: "private", session: { userId: "456" } }), TEXT, {
+			private: false,
+		});
+		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_private_msg");
+		expect(lastBody().user_id).toBe(456);
+	});
+
 	it("private 缺 userId / group 缺 groupId → ok:false 且不发请求", async () => {
 		const ad = createOnebotAdapter(obOpts());
 		const p = await ad.send(obAdapter(), obTarget({ scope: "private", session: {} }), TEXT);
