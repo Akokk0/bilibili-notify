@@ -54,12 +54,12 @@ export interface ImageRendererConfig {
 	cardColorStart: string;
 	/** 卡片渐变背景结束颜色（十六进制）。 */
 	cardColorEnd: string;
-	/** CSS font-family，默认值由 adapter 提供。 */
+	/** CSS font-family，默认值由 adapter 提供(通常透传 `DEFAULT_CARD_STYLE.font`)。 */
 	font: string;
 	/** 是否隐藏直播间简介。 */
 	hideDesc: boolean;
-	/** 是否在卡片上展示粉丝变化与累计观看数。 */
-	followerDisplay: boolean;
+	/** 是否在卡片上隐藏粉丝变化与累计观看数(对齐 `hideDesc` 命名,「隐藏=true」)。 */
+	hideFollower: boolean;
 }
 
 export interface ImageRendererOptions {
@@ -212,7 +212,7 @@ export class ImageRenderer {
 			LiveCard,
 			{
 				hideDesc: this.config.hideDesc,
-				followerDisplay: this.config.followerDisplay,
+				hideFollower: this.config.hideFollower,
 				cardColorStart,
 				cardColorEnd,
 				data,

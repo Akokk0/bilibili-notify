@@ -56,9 +56,6 @@ const StyleSchema = z.object({
 	cardColorEnd: z.string(),
 	font: z.string().optional(),
 	hideDesc: z.boolean().optional(),
-	// dashboard CardStyle 用 hideFollower 对齐 hideDesc 命名;ImageRenderer 公共 API
-	// 仍是正向的 followerDisplay(显示=true,与 koishi 兼容),getImageRenderer /
-	// buildLivePreviewProps 桥接时取反。
 	hideFollower: z.boolean().optional(),
 });
 
@@ -131,7 +128,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			cardColorEnd: style.cardColorEnd,
 			font: style.font ?? "PingFang SC, sans-serif",
 			hideDesc: style.hideDesc ?? false,
-			followerDisplay: !(style.hideFollower ?? false),
+			hideFollower: style.hideFollower ?? false,
 		};
 		if (!imageRenderer) {
 			imageRenderer = new ImageRenderer({
@@ -452,7 +449,7 @@ const SVG_AVATAR_FAN =
 function buildLivePreviewProps(style: PreviewStyle): LiveCardProps {
 	return {
 		hideDesc: style.hideDesc ?? false,
-		followerDisplay: !(style.hideFollower ?? false),
+		hideFollower: style.hideFollower ?? false,
 		cardColorStart: style.cardColorStart,
 		cardColorEnd: style.cardColorEnd,
 		data: {

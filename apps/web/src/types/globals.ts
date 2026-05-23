@@ -120,7 +120,6 @@ export interface CardStyle {
 	cardColorEnd: string;
 	font: string;
 	hideDesc: boolean;
-	/** 隐藏粉丝变化 / 累计观看数(对齐 hideDesc 命名;ImageRenderer 内部用反向的 followerDisplay)。 */
 	hideFollower: boolean;
 }
 

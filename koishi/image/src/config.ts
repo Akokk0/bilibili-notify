@@ -35,14 +35,14 @@ export const BilibiliNotifyImageConfig: Schema<BilibiliNotifyImageConfig> = Sche
 		.default(DEFAULT_CARD_STYLE.cardColorEnd)
 		.description("这是推送卡片渐变背景的结束颜色～和起始颜色搭配使用，打造漂亮的渐变效果 (*´∀`)~♡"),
 	font: Schema.string()
-		.default("sans-serif")
+		.default(DEFAULT_CARD_STYLE.font)
 		.description(
 			"如果主人想用自己的专属字体，可以在这里填写字体名称～女仆会努力渲染成主人喜欢的样子 (〃´-`〃)♡",
 		),
 	hideDesc: Schema.boolean()
-		.default(false)
+		.default(DEFAULT_CARD_STYLE.hideDesc)
 		.description("开启后会隐藏直播间简介，让推送卡片看起来更简洁清爽！女仆会照做的 (｀・ω・´)b"),
 	hideFollower: Schema.boolean()
-		.default(false)
+		.default(DEFAULT_CARD_STYLE.hideFollower)
 		.description("开启后会隐藏推送卡片上的粉丝变化和累计观看人数。女仆觉得不显示也挺清爽 (*´∀`)~♡"),
 });

@@ -171,14 +171,9 @@ export const CardStyleSchema = z.object({
 	 * 缺字体不会渲染崩。`.default(...)` 让缺该字段的老 globals.json 加载时自动补全。
 	 */
 	font: z.string().default("PingFang SC, sans-serif"),
-	/** 隐藏直播卡片简介(对齐 koishi `koishi/image` plugin config 的同名字段)。 */
+	/** 隐藏直播卡片简介。 */
 	hideDesc: z.boolean().default(false),
-	/**
-	 * 隐藏卡片粉丝变化 / 累计观看数。语义对齐 `hideDesc` 命名风格(隐藏=true);
-	 * 与 koishi `koishi/image.followerDisplay`(显示=true)语义相反 ——
-	 * `apps/server/runtime/engines.ts` 桥接 ImageRenderer 时取反传 `followerDisplay`,
-	 * `packages/image` 公共 API 保持 koishi 兼容的正向命名不动。
-	 */
+	/** 隐藏卡片粉丝变化 / 累计观看数(对齐 `hideDesc` 命名风格,「隐藏=true」)。 */
 	hideFollower: z.boolean().default(false),
 });
 export type CardStyle = z.infer<typeof CardStyleSchema>;

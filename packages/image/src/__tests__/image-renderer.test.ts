@@ -44,7 +44,7 @@ function makeRenderer(config: Partial<ImageRendererConfig> = {}): ImageRenderer 
 			cardColorEnd: "#ffffff",
 			font: "sans-serif",
 			hideDesc: false,
-			followerDisplay: false,
+			hideFollower: false,
 			...config,
 		},
 	};

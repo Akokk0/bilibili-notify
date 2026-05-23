@@ -432,14 +432,16 @@ describe("createEngines — image 配色热更", () => {
 		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
 	});
 
-	it("font / hideDesc / hideFollower 改完热推 ImageRenderer;hideFollower 取反成 followerDisplay", () => {
+	it("font / hideDesc / hideFollower 改完直透 ImageRenderer 同名字段(全链路不再桥接取反)", () => {
 		const c = setup({ puppeteer: true });
 		active = c;
 		// boot 时构造的 ImageRenderer 已收到 default(PingFang / false / false)。
 		const bootConfig = H.image[0].opts.config;
-		expect(bootConfig.font).toBe("PingFang SC, sans-serif");
-		expect(bootConfig.hideDesc).toBe(false);
-		expect(bootConfig.followerDisplay).toBe(true);
+		expect(bootConfig).toMatchObject({
+			font: "PingFang SC, sans-serif",
+			hideDesc: false,
+			hideFollower: false,
+		});
 
 		patchGlobals(c, (g) => {
 			g.defaults.cardStyle.font = "Noto Sans CJK SC";
@@ -451,8 +453,7 @@ describe("createEngines — image 配色热更", () => {
 		expect(last).toMatchObject({
 			font: "Noto Sans CJK SC",
 			hideDesc: true,
-			// dashboard hideFollower=true → ImageRenderer followerDisplay=false。
-			followerDisplay: false,
+			hideFollower: true,
 		});
 	});
 });

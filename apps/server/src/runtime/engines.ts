@@ -320,9 +320,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				cardColorEnd: cs.cardColorEnd,
 				font: cs.font,
 				hideDesc: cs.hideDesc,
-				// dashboard 用 hideFollower(隐藏=true)对齐 hideDesc 语义;ImageRenderer
-				// public API 保持 koishi 兼容的正向 followerDisplay(显示=true),取反传。
-				followerDisplay: !cs.hideFollower,
+				hideFollower: cs.hideFollower,
 			},
 		});
 		imageRenderer.start();
@@ -585,7 +583,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						cardColorEnd: cs.cardColorEnd,
 						font: cs.font,
 						hideDesc: cs.hideDesc,
-						followerDisplay: !cs.hideFollower,
+						hideFollower: cs.hideFollower,
 					});
 				}
 				// dynamicConfig() 读 app.dynamicCron + defaults.{filters,cardStyle.enabled,ai.enabled}。

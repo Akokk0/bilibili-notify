@@ -4,7 +4,8 @@ import { htmlToPlain } from "../html-to-plain";
 
 export type LiveCardProps = {
 	hideDesc: boolean;
-	followerDisplay: boolean;
+	/** 隐藏粉丝变化 / 累计观看数(对齐 hideDesc 命名;隐藏=true)。 */
+	hideFollower: boolean;
 	cardColorStart: string;
 	cardColorEnd: string;
 	// biome-ignore lint/suspicious/noExplicitAny: Bilibili 直播 API 返回类型
@@ -42,7 +43,7 @@ export function LiveCard(p: LiveCardProps) {
 	};
 
 	const status = statusLabel();
-	const follower = p.followerDisplay ? followerText() : "";
+	const follower = p.hideFollower ? "" : followerText();
 	// B 站 `room_info.description` 是富文本(可能含 <p>/<br> 等标签,或 entity-encoded
 	// 形式如 `&lt;p&gt;...`);直接交给 JSX 文本插值会被 escape 成字面字符串。
 	// 简介区域只展示纯文本,这里统一剥成 plain text。
