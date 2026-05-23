@@ -141,10 +141,32 @@ function buildSendAction(
 	return { action: "send_group_msg", params };
 }
 
+/**
+ * 识别 NapCat 内部因为 QQ 掉线 / 未登录 / NT 框架卡死产生的错误模式,这些是
+ * NapCat ↔ QQNT 通信问题(不是我们 payload 的事),靠 retry / 改 payload 都
+ * 解决不了 —— 用户需要重启 / 重登 NapCat。把它们用人话标出来,避免一眼看不出
+ * 是 NapCat 端问题。
+ */
+const NAPCAT_DISCONNECT_HINTS = [
+	"NTEvent",
+	"NodeIKernelMsgService",
+	"onMsgInfoListUpdate",
+	"SsoSendLongMsg",
+	"PacketClient",
+	"not logged in",
+	"bot offline",
+];
+function isLikelyNapcatDisconnected(err: string): boolean {
+	const lower = err.toLowerCase();
+	return NAPCAT_DISCONNECT_HINTS.some((h) => lower.includes(h.toLowerCase()));
+}
+const NAPCAT_DISCONNECT_SUFFIX = "(NapCat 可能掉线 / QQ 未登录,请检查 NapCat 状态)";
+
 /** OneBot 响应判定:`status:"ok"` + `retcode:0` 为成功。 */
 function interpretResponse(r: OneBotResponse): { ok: true } | { ok: false; err: string } {
 	if (r.status === "ok" && (r.retcode ?? 0) === 0) return { ok: true };
-	const err = r.wording ?? r.message ?? r.msg ?? `retcode=${r.retcode}`;
+	const raw = r.wording ?? r.message ?? r.msg ?? `retcode=${r.retcode}`;
+	const err = isLikelyNapcatDisconnected(raw) ? `${raw} ${NAPCAT_DISCONNECT_SUFFIX}` : raw;
 	return { ok: false, err };
 }
 

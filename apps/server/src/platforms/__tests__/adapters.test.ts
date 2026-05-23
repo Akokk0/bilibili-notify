@@ -258,6 +258,36 @@ describe("onebot — send 路由", () => {
 		expect(lastBody().user_id).toBe(789);
 	});
 
+	it("NapCat 掉线特征 err → 附加可操作提示", async () => {
+		// NapCat 内部 NT 框架超时 / 长消息 trpc 失败 = NapCat ↔ QQNT 通信问题。
+		// 跟 payload 形态无关,靠 retry / 改消息都没用,需要用户重启/重登 NapCat。
+		fetchMock.mockResolvedValueOnce(
+			res({
+				ok: true,
+				json: {
+					status: "failed",
+					retcode: 1200,
+					wording:
+						"Timeout: NTEvent serviceAndMethod:NodeIKernelMsgService/sendMsg ListenerName:NodeIKernelMsgListener/onMsgInfoListUpdate EventRet: {}",
+				},
+			}),
+		);
+		const r = await createOnebotAdapter(obOpts()).send(obAdapter(), obTarget(), TEXT);
+		expect(r.ok).toBe(false);
+		expect(r.err).toContain("NTEvent");
+		expect(r.err).toContain("NapCat 可能掉线");
+	});
+
+	it("非掉线错误 → 不附加 NapCat 提示", async () => {
+		// retry 守卫:不能把 "无权限" / 普通业务错误也挂上掉线提示文案误导用户。
+		fetchMock.mockResolvedValueOnce(
+			res({ ok: true, json: { status: "failed", retcode: 1404, wording: "无权限发送消息" } }),
+		);
+		const r = await createOnebotAdapter(obOpts()).send(obAdapter(), obTarget(), TEXT);
+		expect(r.ok).toBe(false);
+		expect(r.err).toBe("无权限发送消息");
+	});
+
 	it("opts.private=false 不应吃掉 scope:private(回归守卫)", async () => {
 		// 复发点:旧实现 `opts.private ?? scope === "private"` 用 nullish 而非 falsy,
 		// MultiplexSink.send 路径恒传 `{ private: false }`,?? 不替换 false →
