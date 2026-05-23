@@ -100,7 +100,11 @@ function buildSegments(payload: NotificationPayload): OneBotMessageSegment[] {
 		case "composite":
 			return payload.segments.map(segmentToOnebot);
 		case "forward-images":
-			return [];
+			// 命名遗留:c3ee457 引入时走 send_group_forward_msg 长消息,但 NapCat 的
+			// SsoSendLongMsg 通道常超时并阻塞后续 sendMsg 队列 → liveEnd/wordcloud 等
+			// 普通推送也被连累卡 60s。改为多张 image segment 合并到一条普通 send_group_msg,
+			// 对齐 koishi onebot adapter 的默认行为(多图自然合并,不走 forward 容器)。
+			return payload.urls.map((url) => ({ type: "image", data: { file: url } }));
 	}
 }
 
@@ -113,28 +117,6 @@ function buildSendAction(
 	payload: NotificationPayload,
 	opts: { private?: boolean },
 ): { action: string; params: Record<string, unknown> } | { err: string } {
-	if (payload.kind === "forward-images") {
-		const nodes = payload.urls.map((url) => ({
-			type: "node",
-			data: {
-				name: "bilibili-notify",
-				uin: "10000",
-				content: [{ type: "image", data: { file: url } }],
-			},
-		}));
-		const session = target.session as OnebotSession;
-		const isPrivate = opts.private ?? target.scope === "private";
-		if (isPrivate) {
-			if (!session.userId) return { err: "private: userId missing" };
-			const uid = Number(session.userId);
-			if (!Number.isFinite(uid)) return { err: `private: userId 非数字 (${session.userId})` };
-			return { action: "send_private_forward_msg", params: { user_id: uid, messages: nodes } };
-		}
-		if (!session.groupId) return { err: "group: groupId missing" };
-		const gid = Number(session.groupId);
-		if (!Number.isFinite(gid)) return { err: `group: groupId 非数字 (${session.groupId})` };
-		return { action: "send_group_forward_msg", params: { group_id: gid, messages: nodes } };
-	}
 	const segments = buildSegments(payload);
 	if (segments.length === 0) return { err: "empty payload" };
 	const session = target.session as OnebotSession;

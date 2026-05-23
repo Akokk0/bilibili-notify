@@ -63,8 +63,13 @@ export function createKoishiSink(opts: KoishiSinkOptions): NotificationSink {
 				return h("message", parts);
 			}
 			case "forward-images": {
-				const nodes = payload.urls.map((url) => h("message", [h.image(url)]));
-				return h("message", { forward: true }, nodes);
+				// 命名遗留:c3ee457 包成 forward 容器,但 NapCat 的长消息通道经常超时
+				// 并阻塞后续 sendMsg。改为多 image 合并到一条普通 message,与 koishi
+				// onebot adapter 默认行为一致(多图自然合并,不走 forward 容器)。
+				return h(
+					"message",
+					payload.urls.map((url) => h.image(url)),
+				);
 			}
 		}
 	}

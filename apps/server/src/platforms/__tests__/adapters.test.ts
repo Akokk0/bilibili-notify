@@ -293,6 +293,35 @@ describe("onebot — send 路由", () => {
 			{ type: "at", data: { qq: "all" } },
 		]);
 	});
+
+	it("forward-images → send_group_msg 多 image 合并,不走 send_group_forward_msg(回归守卫)", async () => {
+		// 复发点:NapCat 的 send_group_forward_msg / SsoSendLongMsg 通道经常超时
+		// 并阻塞后续 sendMsg 队列。本回归保证 forward-images payload 永远走普通
+		// send_group_msg,对齐 koishi onebot adapter 多图自然合并行为。
+		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
+		const ad = createOnebotAdapter(obOpts());
+		await ad.send(obAdapter(), obTarget(), {
+			kind: "forward-images",
+			urls: ["https://i0.hdslb.com/1.jpg", "https://i0.hdslb.com/2.jpg"],
+		});
+		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_group_msg");
+		expect(lastBody().message).toEqual([
+			{ type: "image", data: { file: "https://i0.hdslb.com/1.jpg" } },
+			{ type: "image", data: { file: "https://i0.hdslb.com/2.jpg" } },
+		]);
+	});
+
+	it("forward-images + private scope → send_private_msg(同样不走 forward 长消息)", async () => {
+		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
+		const ad = createOnebotAdapter(obOpts());
+		await ad.send(obAdapter(), obTarget({ scope: "private", session: { userId: "999" } }), {
+			kind: "forward-images",
+			urls: ["https://x/a.jpg"],
+		});
+		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_private_msg");
+		expect(lastBody().user_id).toBe(999);
+		expect(lastBody().message).toEqual([{ type: "image", data: { file: "https://x/a.jpg" } }]);
+	});
 });
 
 describe("onebot — 失败与重试", () => {
