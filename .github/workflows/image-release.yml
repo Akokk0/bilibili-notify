@@ -156,3 +156,68 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$TAG" -m "独立端 $VERSION (image: docker.io/akokk0/bilibili-notify:$TAG)"
           git push origin "$TAG"
+
+      # git tag 存在后,创建对应 GitHub Release —— GitHub Releases 页面是用户找发
+      # 版说明的入口,docker tag 本身没 notes。release 必须挂在 tag 上,所以放在
+      # 「Tag commit」step 之后(那步已确保远程有 tag,无论是这次新打还是 rerun
+      # 已有)。 prerelease(带 `-` 的 alpha 等)mark `--prerelease`,正式 `--latest`。
+      - name: Create GitHub release
+        if: ${{ !contains(github.event.head_commit.message, '[dry-run]') }}
+        env:
+          VERSION: ${{ steps.ver.outputs.value }}
+          PRERELEASE: ${{ steps.ver.outputs.prerelease }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG="v$VERSION"
+
+          # 已有 release 跳过(workflow rerun / 同 version 重 trigger 场景)。
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists, skip"
+            exit 0
+          fi
+
+          # 上一个 v* tag —— 用来在 notes 里给 GitHub compare 链接,主人点进去看
+          # 完整 commit 列表。本地默认没拉 tags,先 fetch。
+          git fetch --tags --quiet
+          PREV_TAG=$(git tag --sort=-creatordate --list 'v*' | grep -v "^$TAG$" | head -1 || true)
+
+          # alpha 渠道镜像 tag 是 :alpha,正式是 :latest;notes 给主人两条 pull 命令。
+          if [ "$PRERELEASE" = "true" ]; then
+            CHANNEL="alpha"
+          else
+            CHANNEL="latest"
+          fi
+
+          NOTES_FILE=$(mktemp)
+          {
+            echo "## Docker 镜像"
+            echo
+            echo "不可变 tag:"
+            echo
+            echo '```bash'
+            echo "docker pull docker.io/akokk0/bilibili-notify:$TAG"
+            echo '```'
+            echo
+            echo "滚动 \`:$CHANNEL\` 渠道:"
+            echo
+            echo '```bash'
+            echo "docker pull docker.io/akokk0/bilibili-notify:$CHANNEL"
+            echo '```'
+            if [ -n "$PREV_TAG" ]; then
+              echo
+              echo "## 完整改动"
+              echo
+              echo "[\`$PREV_TAG...$TAG\`](https://github.com/$REPO/compare/$PREV_TAG...$TAG)"
+            fi
+          } > "$NOTES_FILE"
+
+          FLAGS=(--title "$TAG" --notes-file "$NOTES_FILE")
+          if [ "$PRERELEASE" = "true" ]; then
+            FLAGS+=(--prerelease --latest=false)
+          else
+            FLAGS+=(--latest)
+          fi
+
+          gh release create "$TAG" "${FLAGS[@]}"
