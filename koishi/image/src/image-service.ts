@@ -43,7 +43,9 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 				cardColorEnd: config.cardColorEnd,
 				font: config.font,
 				hideDesc: config.hideDesc,
-				followerDisplay: config.followerDisplay,
+				// koishi plugin config 用 hideFollower(隐藏=true)对齐 hideDesc 命名;
+				// ImageRenderer 公共 API 保留正向 followerDisplay,这里取反传。
+				followerDisplay: !config.hideFollower,
 			},
 		});
 	}

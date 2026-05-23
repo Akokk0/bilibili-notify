@@ -7,7 +7,14 @@ export interface BilibiliNotifyImageConfig {
 	cardColorEnd: string;
 	font: string;
 	hideDesc: boolean;
-	followerDisplay: boolean;
+	/**
+	 * BREAKING(next release):前身字段 `followerDisplay`(显示=true)重命名 + 语义反转
+	 * 为 `hideFollower`(隐藏=true),对齐 `hideDesc` 命名风格。koishi Schema 不识别
+	 * 旧字段 → 升级后旧 yaml 里 `followerDisplay: false`(想隐藏)被 schema 丢弃,
+	 * 取 `hideFollower` 默认 false(=显示),粉丝又会显示出来。受影响用户需手动
+	 * 把 yaml 里的字段名改成 `hideFollower` 并把布尔值取反。
+	 */
+	hideFollower: boolean;
 }
 
 export const BilibiliNotifyImageConfig: Schema<BilibiliNotifyImageConfig> = Schema.object({
@@ -35,9 +42,7 @@ export const BilibiliNotifyImageConfig: Schema<BilibiliNotifyImageConfig> = Sche
 	hideDesc: Schema.boolean()
 		.default(false)
 		.description("开启后会隐藏直播间简介，让推送卡片看起来更简洁清爽！女仆会照做的 (｀・ω・´)b"),
-	followerDisplay: Schema.boolean()
-		.default(true)
-		.description(
-			"要不要在推送卡片上显示粉丝变化和累计观看人数呢？女仆觉得显示出来会更好看 (*´∀`)~♡",
-		),
+	hideFollower: Schema.boolean()
+		.default(false)
+		.description("开启后会隐藏推送卡片上的粉丝变化和累计观看人数。女仆觉得不显示也挺清爽 (*´∀`)~♡"),
 });
