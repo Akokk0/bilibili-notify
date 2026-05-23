@@ -14,7 +14,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # write: 镜像 push 成功后给当前 commit 打 annotated tag v<version> 并推回远程,
+  # 跟 docker tag :v<version> 对齐。
+  contents: write
 
 jobs:
   build-and-push:
@@ -132,3 +134,25 @@ jobs:
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # 镜像 push 成功后,给当前 commit 打 annotated tag v<version> 并推回远程,
+      # 跟 docker tag :v<version> 同步存在(便于回溯「哪个 commit 出了哪个镜像」)。
+      # 远程已有该 tag(workflow rerun / 同 version 重 trigger 场景)→ 跳过,
+      # 不 force-update(老 tag 与镜像 :v<version> 都已不可变,无需覆盖)。
+      - name: Tag commit with version
+        if: ${{ !contains(github.event.head_commit.message, '[dry-run]') }}
+        env:
+          VERSION: ${{ steps.ver.outputs.value }}
+        run: |
+          set -euo pipefail
+          TAG="v$VERSION"
+          # actions/checkout 默认不 fetch tags;直接探远程,避开本地 ref 假阴。
+          if git ls-remote --tags --exit-code origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "tag $TAG already exists on remote, skip"
+            exit 0
+          fi
+          # GHA bot 身份(跟 changeset-bot 等保持一致风格)。
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "独立端 $VERSION (image: docker.io/akokk0/bilibili-notify:$TAG)"
+          git push origin "$TAG"
