@@ -65,7 +65,12 @@ RUN git init -q . && pnpm install --frozen-lockfile
 # .changeset/ 状态损坏时 fail-fast,不产出版本号错误的镜像。
 RUN pnpm exec changeset version
 
-RUN pnpm -r run build
+# 拆两阶段 + --stream:GHA buildx 默认 batched 输出,17+ 包 build 静默累积时
+# 卡死一个包就整体看不出在哪。--stream 让各包输出实时刷出;先 packages/* 再
+# koishi/* + apps/* 是因为 koishi/* 与 apps/* 都依赖 packages/*(workspace:*
+# protocol),按拓扑序分两轮更利于定位"哪个包卡了"。
+RUN pnpm -r --filter './packages/*' --stream run build
+RUN pnpm -r --filter './koishi/*' --filter './apps/*' --stream run build
 
 # Drop devDependencies so the final image only ships runtime deps.
 # pnpm 11 的 prune 不支持 -r;workspace 模式下逐包 prune 反而容易破坏
