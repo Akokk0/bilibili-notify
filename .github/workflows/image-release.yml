@@ -78,47 +78,16 @@ jobs:
       # smoke 验的是"镜像启动 + /api/health + dashboard 静态资源",amd64 验过
       # 就够;arm64 镜像本身的可用性由同一份 Dockerfile + Docker 单架构语义保
       # 证。dry-run 模式不 push,无 digest 可拉,跳过。
+      #
+      # 脚本本体在 .github/scripts/smoke-image.sh —— inline 同款逻辑提到文件:
+      # editor 给 bash 高亮、shellcheck 走得动、本地可手动跑(IMAGE_REF=... bash
+      # .github/scripts/smoke-image.sh)。容器清理脚本内 EXIT trap 包办,不再
+      # 单独 Stop step。
       - name: Smoke test (amd64 only)
         if: matrix.platform.arch == 'amd64' && !contains(github.event.head_commit.message, '[dry-run]')
-        run: |
-          set -euo pipefail
-          IMG="${{ env.IMAGE }}@${{ steps.build.outputs.digest }}"
-          docker pull "$IMG"
-          docker run -d --name bn-smoke -p 8787:8787 \
-            -e BN_DATA_DIR=/tmp/bn -e BN_ALLOW_NO_AUTH=1 "$IMG"
-          ok=
-          for _ in $(seq 1 30); do
-            if curl -fsS http://localhost:8787/api/health 2>/dev/null | jq -e '.status=="ok"' >/dev/null 2>&1; then
-              ok=1; break
-            fi
-            sleep 2
-          done
-          if [ -z "$ok" ]; then
-            echo "::error::/api/health never returned status:ok within ~60s"
-            docker logs bn-smoke || true
-            exit 1
-          fi
-          V=$(node -p "require('./apps/server/package.json').version")
-          ver=$(curl -fsS http://localhost:8787/api/health | jq -r '.version')
-          echo "GET /api/health -> version: $ver"
-          if [ "$ver" != "$V" ]; then
-            echo "::error::/api/health version '$ver' != apps/server/package.json '$V'"
-            docker logs bn-smoke || true
-            exit 1
-          fi
-          ct=$(curl -fsS -o /tmp/root.html -w '%{content_type}' http://localhost:8787/)
-          echo "GET / -> content-type: $ct"
-          case "$ct" in
-            text/html*) ;;
-            *) echo "::error::GET / expected text/html (dashboard), got '$ct'"
-               head -c 400 /tmp/root.html || true; docker logs bn-smoke || true; exit 1 ;;
-          esac
-          grep -q '<div id="root">' /tmp/root.html \
-            || { echo "::error::GET / body is not the dashboard index.html"; head -c 400 /tmp/root.html; exit 1; }
-
-      - name: Stop smoke container
-        if: matrix.platform.arch == 'amd64' && always()
-        run: docker rm -f bn-smoke >/dev/null 2>&1 || true
+        env:
+          IMAGE_REF: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+        run: bash .github/scripts/smoke-image.sh
 
       # 把 digest 写到 artifact,merge job 收回拼 manifest list。文件名 = arch,
       # merge 用 `pattern: digest-*` + `merge-multiple: true` 把两个 arch 的拉
@@ -180,16 +149,10 @@ jobs:
 
       # 独立端版本号 = apps/server/package.json#version(手动维护,唯一事实源)。
       # 含 prerelease 标识(有 `-`,如 0.1.0-alpha.0)→ alpha 渠道,否则正式。
+      # 脚本本体在 .github/scripts/read-standalone-version.sh。
       - name: Read standalone version
         id: ver
-        run: |
-          V=$(node -p "require('./apps/server/package.json').version")
-          echo "value=$V" >> "$GITHUB_OUTPUT"
-          if [[ "$V" == *-* ]]; then
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
+        run: bash .github/scripts/read-standalone-version.sh
 
       - name: Compute image metadata
         id: meta
@@ -206,49 +169,27 @@ jobs:
 
       # imagetools create 用 digest list 组合 manifest,带 metadata 的全部 tag 一并推。
       # docker meta-data action 输出的 tags 是换行分隔字符串。
+      # 脚本本体在 .github/scripts/create-manifest-list.sh。
       - name: Create + push manifest list
-        run: |
-          set -euo pipefail
-          DIGESTS=()
-          for f in /tmp/digests/*; do
-            DIGESTS+=("${IMAGE}@$(cat "$f")")
-          done
-          echo "digests:"
-          printf '  %s\n' "${DIGESTS[@]}"
-          TAGS_FLAGS=()
-          while IFS= read -r tag; do
-            [ -z "$tag" ] && continue
-            TAGS_FLAGS+=(-t "$tag")
-          done <<< "${TAGS}"
-          echo "tags:"
-          printf '  %s\n' "${TAGS_FLAGS[@]}"
-          docker buildx imagetools create "${TAGS_FLAGS[@]}" "${DIGESTS[@]}"
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
+        run: bash .github/scripts/create-manifest-list.sh
 
       # 镜像 push 成功后,给当前 commit 打 annotated tag v<version> 并推回远程,
       # 跟 docker tag :v<version> 同步存在(便于回溯「哪个 commit 出了哪个镜像」)。
       # 远程已有该 tag(workflow rerun / 同 version 重 trigger 场景)→ 跳过,
       # 不 force-update(老 tag 与镜像 :v<version> 都已不可变,无需覆盖)。
+      # 脚本本体在 .github/scripts/tag-commit-with-version.sh。
       - name: Tag commit with version
         env:
           VERSION: ${{ steps.ver.outputs.value }}
-        run: |
-          set -euo pipefail
-          TAG="v$VERSION"
-          if git ls-remote --tags --exit-code origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "tag $TAG already exists on remote, skip"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "独立端 $VERSION (image: akokk0/bilibili-notify:$TAG)"
-          git push origin "$TAG"
+        run: bash .github/scripts/tag-commit-with-version.sh
 
       # git tag 存在后,创建对应 GitHub Release —— GitHub Releases 页面是用户找发
       # 版说明的入口,docker tag 本身没 notes。release 必须挂在 tag 上,所以放在
       # 「Tag commit」step 之后(那步已确保远程有 tag,无论是这次新打还是 rerun
       # 已有)。prerelease(带 `-` 的 alpha 等)mark `--prerelease`,正式 `--latest`。
+      # 脚本本体在 .github/scripts/create-github-release.sh。
       - name: Create GitHub release
         env:
           VERSION: ${{ steps.ver.outputs.value }}
@@ -258,56 +199,4 @@ jobs:
           # ref restriction 限制,即便不直接 git push)。
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          TAG="v$VERSION"
-
-          # 已有 release 跳过(workflow rerun / 同 version 重 trigger 场景)。
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "release $TAG already exists, skip"
-            exit 0
-          fi
-
-          # 上一个 v* tag —— 用来在 notes 里给 GitHub compare 链接,主人点进去看
-          # 完整 commit 列表。本地默认没拉 tags,先 fetch。
-          git fetch --tags --quiet
-          PREV_TAG=$(git tag --sort=-creatordate --list 'v*' | grep -v "^$TAG$" | head -1 || true)
-
-          # alpha 渠道镜像 tag 是 :alpha,正式是 :latest;notes 给主人两条 pull 命令。
-          if [ "$PRERELEASE" = "true" ]; then
-            CHANNEL="alpha"
-          else
-            CHANNEL="latest"
-          fi
-
-          NOTES_FILE=$(mktemp)
-          {
-            echo "## Docker 镜像"
-            echo
-            echo "不可变 tag:"
-            echo
-            echo '```bash'
-            echo "docker pull akokk0/bilibili-notify:$TAG"
-            echo '```'
-            echo
-            echo "滚动 \`:$CHANNEL\` 渠道:"
-            echo
-            echo '```bash'
-            echo "docker pull akokk0/bilibili-notify:$CHANNEL"
-            echo '```'
-            if [ -n "$PREV_TAG" ]; then
-              echo
-              echo "## 完整改动"
-              echo
-              echo "[\`$PREV_TAG...$TAG\`](https://github.com/$REPO/compare/$PREV_TAG...$TAG)"
-            fi
-          } > "$NOTES_FILE"
-
-          FLAGS=(--title "$TAG" --notes-file "$NOTES_FILE")
-          if [ "$PRERELEASE" = "true" ]; then
-            FLAGS+=(--prerelease --latest=false)
-          else
-            FLAGS+=(--latest)
-          fi
-
-          gh release create "$TAG" "${FLAGS[@]}"
+        run: bash .github/scripts/create-github-release.sh
