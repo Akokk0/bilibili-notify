@@ -894,16 +894,28 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				};
 			}
 			const cfg = adapter.config as OnebotAdapterConfig;
-			// forward 分支需要 bot 真身的 uin/name 才能显示成"机器人发的"。其他 payload
-			// 不动 bot 身份,跳过 fetch 省一次往返。getBotIdentity 内部 lazy 缓存,首次
-			// 命中前会 await get_login_info 一轮(15s 超时由 transport cfg 控制)。
-			const botInfo =
-				payload.kind === "forward-images" && payload.forward
-					? ((await getBotIdentity(adapter)) ?? undefined)
-					: undefined;
-			const built = buildSendAction(target, payload, opts, botInfo);
+			// 先用 fallback botInfo 跑一遍 buildSendAction 做 target 校验 ——
+			// session.groupId / userId 缺失等"配错"立即 err 返回,不浪费 get_login_info
+			// 往返(可能 15s 超时)在一条注定发不出去的消息上。非 forward 路径直接复用
+			// 这次结果。
+			let built = buildSendAction(target, payload, opts);
 			if ("err" in built) return { ok: false, latencyMs: 0, err: built.err };
 			const t0 = Date.now();
+
+			// forward 分支需要 bot 真身的 uin/name 才能显示成"机器人发的"。get_login_info
+			// 往返计入 latencyMs(t0 已起表),让 history / UI 看到的延迟反映本条消息的
+			// 完整端到端开销 —— 用户视角 latency = 这条消息真发出来花了多久,bot 身份
+			// 探测是发它必经的一步。getBotIdentity 内部 lazy 缓存,大多数情况下命中走 O(1)。
+			if (payload.kind === "forward-images" && payload.forward) {
+				const botInfo = (await getBotIdentity(adapter)) ?? undefined;
+				const rebuilt = buildSendAction(target, payload, opts, botInfo);
+				// rebuilt 与首次同 target/payload/opts;target 校验已过,此处 err 分支
+				// 理论不会触达。守一手保类型收敛。
+				if ("err" in rebuilt) {
+					return { ok: false, latencyMs: Date.now() - t0, err: rebuilt.err };
+				}
+				built = rebuilt;
+			}
 
 			if (cfg.transport === "http") {
 				try {

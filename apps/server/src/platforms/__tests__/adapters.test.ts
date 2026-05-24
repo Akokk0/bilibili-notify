@@ -540,6 +540,54 @@ describe("onebot — send 路由", () => {
 		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_group_msg");
 	});
 
+	it("forward-images forward:true + misconfigured target → 立即 err,不调 get_login_info", async () => {
+		// P2-B 守护:target 缺 groupId 是配错,buildSendAction 会立即 err。
+		// 必须先做 target 校验再 await get_login_info,否则浪费 15s 超时在注定
+		// 发不出去的消息上。
+		const ad = createOnebotAdapter(obOpts());
+		// 故意把 target.session 改成空 → 触发 "group: groupId missing"。
+		const r = await ad.send(obAdapter(), obTarget({ session: {} }), {
+			kind: "forward-images",
+			urls: ["https://x/1.jpg"],
+			forward: true,
+		});
+		expect(r).toMatchObject({ ok: false, err: "group: groupId missing" });
+		expect(fetchMock).toHaveBeenCalledTimes(0); // 没调 /get_login_info
+	});
+
+	it("forward-images forward:true 的 latencyMs 包含 get_login_info 往返", async () => {
+		// P2-A 守护:bot 身份探测是发 forward 必经的一步,latencyMs 应反映本条
+		// 消息端到端开销。get_login_info mock 一个 50ms 延迟,断言 latencyMs ≥ 50。
+		fetchMock.mockImplementationOnce(
+			() =>
+				new Promise((resolve) =>
+					setTimeout(
+						() =>
+							resolve(
+								res({
+									ok: true,
+									json: {
+										status: "ok",
+										retcode: 0,
+										data: { user_id: 1, nickname: "x" },
+									},
+								}),
+							),
+						50,
+					),
+				),
+		);
+		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
+		const ad = createOnebotAdapter(obOpts());
+		const r = await ad.send(obAdapter(), obTarget(), {
+			kind: "forward-images",
+			urls: ["https://x/1.jpg"],
+			forward: true,
+		});
+		expect(r.ok).toBe(true);
+		expect(r.latencyMs).toBeGreaterThanOrEqual(45); // 留点抖动余量
+	});
+
 	it("forward-images forward:true + private scope → send_private_forward_msg + bot 真身", async () => {
 		fetchMock.mockResolvedValueOnce(
 			res({ ok: true, json: { status: "ok", retcode: 0, data: { user_id: 999, nickname: "P" } } }),
