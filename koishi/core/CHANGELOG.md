@@ -1,5 +1,60 @@
 # Changelog
 
+## 5.0.0-alpha.1
+
+### Patch Changes
+
+- bd5f19b: 二维码渲染收进 `LoginFlow` 默认实现:之前 koishi 端、独立端各自实现一遍 PNG 输出,现在 `@bilibili-notify/api` 的 `LoginFlow` 默认带渲染逻辑,两端共用同一份。koishi/core 的扫码登录路径相应简化,行为不变。
+- bd5f19b: 修上次发版以来积累的两个推送路径 bug:
+
+  - **直播卡片简介 HTML 字面字符串**(`@bilibili-notify/image`):B 站 `room_info.description` 可能含 `<p>` / `<br>` 等富文本标签或 entity-encoded 形式(`&lt;p&gt;...`),JSX 文本插值会被 escape 成字面字符串。简介区域统一剥成 plain text(新增 `html-to-plain.ts` 工具,两遍解码兜底)。
+  - **forward-images 走普通群消息**(`koishi-plugin-bilibili-notify` koishi/core sink):动态图集推送走 koishi `sendGroupForwardMsg` 时,NapCat 长消息 trpc 通道不稳常超时;改为按 `payload.forward` 二分,默认走普通 `send_group_msg` 多 image segment(稳),要合并转发卡片才显式 `h("message", { forward: true }, nodes)`(由 dashboard / koishi `imageGroup.forward` 控制)。
+
+- bd5f19b: 动态图集开关从 `AppConfig` 顶层下移到独立的 `GlobalDefaults.imageGroup` 子段,新增 per-UP 覆盖能力。
+
+  **@bilibili-notify/internal**(API 变更):
+
+  - 新增 `GlobalDefaults.imageGroup: { enable, forward }`(带 `.default` 让老 `globals.json` 加载时自动补全)。
+  - `Subscription.overrides.dynamic` rename 为 `Subscription.overrides.imageGroup`(per-UP 覆盖入口同步搬家)。
+  - `AppConfig` 删除两顶层字段(整合进 `imageGroup`)。
+  - `forward-images` payload 加 `forward: boolean` 字段(区分合并转发卡片 vs 普通多图)。
+  - 老 `globals.json` 缺 `imageGroup` 时按默认值兜底,但 `Subscription.overrides.dynamic` 旧数据需要被外部迁移工具或 dashboard 重新写一遍才会落到新字段。
+
+  **@bilibili-notify/dynamic**:`DynamicEngineConfig.imageGroup` 由扁平字段改为嵌套对象,engine 内部按 sub-level override 折叠。
+
+  **koishi-plugin-bilibili-notify** / **-dynamic** / **-advanced-subscription**:
+
+  - koishi 端 plugin schema 同步搬家,sub-view 透传 imageGroup。
+  - advanced-subscription `customDynamic` rename 为 `customImageGroup = { enable, imgEnable?, forward? }`。
+  - koishi/core/sink 的 `forward-images` 分支按 `payload.forward` 二分(`h("message", { forward: true }, nodes)` 合并转发 vs `h("message", images)` 多张图)。
+
+  主人无感升级路径:全局 `imageGroup.enable=true, forward=false` 是默认行为,与之前 alpha 一致;想关闭图集推送或开合并转发可在 dashboard / koishi 端继续配置。
+
+- bd5f19b: koishi 端 config 模型整体收敛,internal 当唯一默认源。
+
+  - `@bilibili-notify/internal` 新增 export:`DEFAULT_AI` / `DEFAULT_CARD_STYLE` / `DEFAULT_TEMPLATES` / `DEFAULT_DYNAMIC_CRON` / `DEFAULT_HEALTH_CHECK_MINUTES`。koishi 端 4 个 plugin schema 默认值全部从 internal 取,与 standalone 端默认对齐(消除「同一字段两端默认不一致」隐患)。
+  - koishi/core 废弃 `internals.defaults` 与模块级 mutable holder `koishiDefaults`;`BilibiliPush.defaults` 改为 bringUp 闭包 `config.quietHours`,reload 时新 config 自然闭包进新 getter。
+  - koishi/live / koishi/dynamic 折叠层统一为「per-UP override ?? plugin-config」两层,移除 `resolve(sub, defaults)` 的非必要使用(dynamic 只关心 `features.dynamic` 一字段,接 `resolveDynamicFeature` 直接取)。
+  - `@bilibili-notify/live` 的 `SubItemView` per-UP 字段(`minScPrice` / `minGuardLevel` / `pushTime` / `restartPush`)改 required,adapter 层一次性折算,LiveEngine / room-session 不再二次回退。直接用 `@bilibili-notify/live` 的下游(目前仅 koishi 端)需调整 SubItemView 构造点。
+
+  主人无感:这些都是内部收敛 + 默认源对齐,行为不变。
+
+- e600703: 主人通知对齐独立端:`MasterNotifier` 现在同时消费 `auth-lost` 与 `engine-error`。
+
+  行为变更:
+
+  - `engine-error` 新增主人私聊通道(per-source 60s 节流合并连串告警),warn 日志保持不变 —— 主人未配置 / push 不可达时,日志仍是可观测兜底。
+  - `auth-lost` 文案与独立端统一为"账号登录已失效，请到控制台重新扫码登录"。
+
+  内部清理:吸收 `HealthCheck` 类的 `auth-lost` 处理职责后,删除 `health-check.ts`(`LoginFlow` 内部心跳由 `packages/api` 独立维护,不受影响)。
+
+- Updated dependencies [bd5f19b]
+- Updated dependencies [bd5f19b]
+- Updated dependencies [bd5f19b]
+- Updated dependencies [bd5f19b]
+  - @bilibili-notify/api@0.2.0-alpha.1
+  - @bilibili-notify/internal@0.1.0-alpha.1
+
 ## 5.0.0-alpha.0
 
 ### Major Changes
