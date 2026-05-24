@@ -22,6 +22,13 @@
     "@bilibili-notify/subscription": "1.0.3"
   },
   "changesets": [
+    "api-loginflow-qr-render",
+    "bug-fixes-since-last-release",
+    "cardstyle-three-fields",
+    "imagegroup-subtree-and-overrides",
+    "koishi-config-convergence",
+    "koishi-image-hide-follower-rename",
+    "koishi-master-notifier-engine-error",
     "monorepo-refactor-release"
   ]
 }
