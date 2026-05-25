@@ -59,7 +59,12 @@ git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 git tag -a "$tag" -m "独立端 $VERSION (image: akokk0/bilibili-notify:$tag)"
 
-# 临时把 Authorization 头注入到这一次 git push,不落 .git/config。Bearer 格式
-# 兼容 PAT classic / fine-grained / GITHUB_TOKEN。
-git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $GITHUB_TOKEN" \
+# 临时把 Authorization 头注入到这一次 git push,不落 .git/config。
+# Basic auth 用 `x-access-token:<token>` —— actions/checkout 默认走的也是这条
+# 路径,**同时兼容 classic PAT (ghp_) / fine-grained PAT (github_pat_) /
+# GITHUB_TOKEN**。早先版本用 `Bearer <token>` 时 fine-grained PAT 会被 GitHub
+# 端拒(401),git 退到交互式 basic auth prompt,CI 无 tty 直接报「could not
+# read Username」exit 128。
+auth=$(printf '%s' "x-access-token:$GITHUB_TOKEN" | base64 -w 0)
+git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
 	push "https://github.com/$REPO.git" "$tag"

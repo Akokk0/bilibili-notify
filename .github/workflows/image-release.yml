@@ -209,19 +209,6 @@ jobs:
       # 同 commit 已有 tag → 安静跳过(workflow rerun 友好);同 version tag 但
       # 指向其他 commit → fail-fast 拒绝继续,防 Docker :v<VERSION> 漂到新 commit
       # 而 git tag/release 留旧 commit(原顺序是先 push manifest 再 git tag,
-      # 临时 debug:验证 RELEASE_PAT 是否真的注入 env(不打印 token 明文 ——
-      # 只看长度 + 空判定 + 前缀类型)。Tag commit fail 后第一次排查;查清楚
-      # 再删掉本 step。
-      - name: Debug RELEASE_PAT injection
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: |
-          echo "GITHUB_TOKEN length: ${#GITHUB_TOKEN}"
-          echo "Is empty: $([ -z "$GITHUB_TOKEN" ] && echo yes || echo no)"
-          echo "Starts with ghp_:        $([[ "$GITHUB_TOKEN" == ghp_*        ]] && echo yes || echo no)"
-          echo "Starts with github_pat_: $([[ "$GITHUB_TOKEN" == github_pat_* ]] && echo yes || echo no)"
-          echo "Starts with gho_:        $([[ "$GITHUB_TOKEN" == gho_*        ]] && echo yes || echo no)"
-
       # 这个窗口下版本号被重用时会破"镜像 tag = git tag" 不变量)。
       # 脚本本体在 .github/scripts/tag-commit-with-version.sh。
       - name: Tag commit with version
