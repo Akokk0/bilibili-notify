@@ -93,9 +93,14 @@ jobs:
           file: ./apps/Dockerfile
           platforms: linux/${{ matrix.platform.arch }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.DRY_RUN == 'true' && 'false' || 'true' }}
-          # Per-arch cache scope:amd64 / arm64 cache 独立,避免相互污染冲掉 layer
+          # Per-arch cache scope:amd64 / arm64 cache 独立,避免相互污染冲掉 layer。
+          # mode=min 只 export 最终 runtime 层,不导出 builder 中间层 —— builder 阶段
+          # 有几十个 intermediate layer,mode=max 在 arm64 runner 上把 cache 推到 GHA
+          # 时会饱和 Cache API 触发节流 hang(实测卡 30+ 分钟,跟 moby/buildkit#2804
+          # 一致)。mode=min 数据量小不卡,代价是 builder 阶段(pnpm install / build)
+          # 每次重跑,arm64 +4-5min / amd64 +3-4min;但发版频率低,可接受。
           cache-from: type=gha,scope=${{ matrix.platform.arch }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.platform.arch }}
+          cache-to: type=gha,mode=min,scope=${{ matrix.platform.arch }}
 
       # Smoke 只在 amd64 跑 —— GHA arm64 runner 也能跑自家镜像但意义不大:
       # smoke 验的是"镜像启动 + /api/health + dashboard 静态资源",amd64 验过
