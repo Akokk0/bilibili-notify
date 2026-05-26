@@ -167,13 +167,15 @@ describe("customFilters / customSchedule enable 门(分组收口 + 继承修正)
 		expect(subs[0].overrides.filters).toBeUndefined();
 	});
 
-	it("customFilters.enable=true → 数组空继承、标量显式;部分字段 partial 写入", () => {
+	it("customFilters.enable=true → 数组空继承、标量显式;部分字段 partial 写入(含 blockDraw / blockAv)", () => {
 		const { subs } = buildAdvancedSubAndTargets(
 			withGroups({
 				customFilters: {
 					enable: true,
 					blockForward: true,
 					blockArticle: false,
+					blockDraw: true,
+					blockAv: false,
 					blockKeywords: ["spam"],
 					blockRegex: [],
 					whitelistKeywords: [],
@@ -186,6 +188,8 @@ describe("customFilters / customSchedule enable 门(分组收口 + 继承修正)
 		expect(subs[0].overrides.filters).toEqual({
 			blockForward: true,
 			blockArticle: false,
+			blockDraw: true,
+			blockAv: false,
 			blockKeywords: ["spam"],
 			minScPrice: 30,
 			minGuardLevel: 2,

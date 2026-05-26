@@ -68,6 +68,12 @@ export const BilibiliNotifyDynamicSchema: Schema<BilibiliNotifyDynamicConfig> = 
 				article: Schema.boolean()
 					.default(false)
 					.description("是否屏蔽专栏动态～女仆会按照主人的喜好来处理 (๑•̀ㅂ•́)و✧"),
+				draw: Schema.boolean()
+					.default(false)
+					.description("是否屏蔽图文动态（带图的朋友圈式动态）～女仆遵命！"),
+				av: Schema.boolean()
+					.default(false)
+					.description("是否屏蔽视频投稿动态～只要把图文留下、稿件忽略也是可以的！"),
 				whitelistEnable: Schema.boolean()
 					.default(false)
 					.description("是否启用白名单过滤（仅推送匹配白名单规则的动态）"),

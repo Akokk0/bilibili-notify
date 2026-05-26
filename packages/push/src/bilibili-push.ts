@@ -14,41 +14,17 @@ import { inQuietHours, resolve } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 
 /**
- * 把 NotificationPayload 升级为 composite 并插入 `{ type: "at-all" }` 段。
+ * 「@全体单独一条消息」的 payload。atAllTargets 上的发送序列:先发这条独立
+ * @全体,再发原 payload(卡片 + 文字)—— 接收端看到的是两条独立消息,@ 提醒
+ * 在前、卡片在后,不再把 at-all 段塞进卡片消息里。
  *
- * 版式:**图片在前,@全体 落在第一个 `text` 段前、其后紧跟一个空格段** —— 渲染成
- * 「@全体成员 正文」(艾特与正文之间留一个空格)。没有 text 段(罕见纯图)时
- * at-all 落末尾、不加空格(后面没有正文)。
- * - text → `[at-all, " ", text]`
- * - image+caption → `[image, at-all, " ", caption]`;image 无 caption → `[image, at-all]`
- * - composite(直播/动态卡片 `[image, text]`)→ `[image, at-all, " ", text]`
+ * forward-images 同样适用:旧 `prependAtAll` 版本因要把 at-all 段塞进合并转发
+ * 节点内部语义不清而沉默忽略,新版本下 @全体 已经是**外层独立一条消息**,跟
+ * 合并转发节点不冲突 → 一视同仁照常先发独立 @全体 再发合并转发。
  */
-function prependAtAll(payload: NotificationPayload): NotificationPayload {
+function makeAtAllPayload(): NotificationPayload {
 	const at: PayloadSegment = { type: "at-all" };
-	let segs: PayloadSegment[];
-	switch (payload.kind) {
-		case "text":
-			segs = [{ type: "text", text: payload.text }];
-			break;
-		case "image":
-			segs = [{ type: "image", buffer: payload.image.buffer, mime: payload.image.mime }];
-			if (payload.caption) segs.push({ type: "text", text: payload.caption });
-			break;
-		case "composite":
-			segs = [...payload.segments];
-			break;
-		case "forward-images":
-			return payload;
-	}
-	const firstText = segs.findIndex((s) => s.type === "text");
-	if (firstText < 0) {
-		// 罕见纯图无 text:at-all 落末尾,后面没有正文,也就不需要空格。
-		segs.push(at);
-	} else {
-		// at-all 落第一个 text 段前,中间塞一个空格段 → 渲染成「@全体成员 正文」。
-		segs.splice(firstText, 0, at, { type: "text", text: " " });
-	}
-	return { kind: "composite", segments: segs };
+	return { kind: "composite", segments: [at] };
 }
 
 const INITIAL_RETRY_DELAY_MS = 3000;
@@ -282,12 +258,19 @@ export class BilibiliPush {
 		if (atAllTargets.length === 0) {
 			return this.sendBatch(plainTargets, payload, { uid, feature });
 		}
-		if (plainTargets.length === 0) {
-			return this.sendBatch(atAllTargets, prependAtAll(payload), { uid, feature });
-		}
+
+		// 「@全体单独一条 → 原 payload」两条顺序发,@ 提醒和卡片正文拆为两条独立
+		// 消息。sendBatch 内部 for-await 串行,跨批之间天然保序。所有 payload 类型
+		// 一视同仁,包括 forward-images(合并转发):@全体 是外层独立消息,跟合并
+		// 转发节点不冲突。
+		const atAllPayload = makeAtAllPayload();
+
 		const results: DeliveryResult[] = [];
-		results.push(...(await this.sendBatch(plainTargets, payload, { uid, feature })));
-		results.push(...(await this.sendBatch(atAllTargets, prependAtAll(payload), { uid, feature })));
+		if (plainTargets.length > 0) {
+			results.push(...(await this.sendBatch(plainTargets, payload, { uid, feature })));
+		}
+		results.push(...(await this.sendBatch(atAllTargets, atAllPayload, { uid, feature })));
+		results.push(...(await this.sendBatch(atAllTargets, payload, { uid, feature })));
 		return results;
 	}
 

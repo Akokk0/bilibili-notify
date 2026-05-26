@@ -61,6 +61,10 @@ export type GuardLevel = z.infer<typeof GuardLevelSchema>;
 export const ContentFiltersSchema = z.object({
 	blockForward: z.boolean(),
 	blockArticle: z.boolean(),
+	// blockDraw / blockAv 是后期新增字段。.default(false) 让旧 globals.json
+	// 缺该字段时 zod parse 自动补 false,避免独立端启动 safeParse 失败 throw。
+	blockDraw: z.boolean().default(false),
+	blockAv: z.boolean().default(false),
 	blockKeywords: z.array(z.string()),
 	blockRegex: z.array(UserRegexString),
 	whitelistKeywords: z.array(z.string()),
@@ -197,6 +201,8 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
 export const DEFAULT_CONTENT_FILTERS: ContentFilters = {
 	blockForward: false,
 	blockArticle: false,
+	blockDraw: false,
+	blockAv: false,
 	blockKeywords: [],
 	blockRegex: [],
 	whitelistKeywords: [],

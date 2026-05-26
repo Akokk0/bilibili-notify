@@ -116,6 +116,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	it("routing 命中两个 target → sink.send 调两次", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.live = ["t1", "t2"];
+		sub.atAllDefaults.live = false; // 排除 @全体 路径的额外 send 调用,只验证路由
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
 		push.start();
@@ -157,7 +158,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		expect(calls).toHaveLength(0);
 	});
 
-	it("atAllDefaults.dynamic=true → 调 sink 的 payload 含 at-all 段", async () => {
+	it("atAllDefaults.dynamic=true → @全体单独一条 + 原 payload 两条独立消息", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.dynamic = ["t1"];
 		sub.atAllDefaults.dynamic = true;
@@ -165,15 +166,17 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
 		push.start();
 		await push.broadcastToFeature("u1", "dynamic", { kind: "text", text: "动态" });
-		expect(calls).toHaveLength(1);
-		// prependAtAll 把 payload 升级为 composite,首段是 { type: "at-all" }
+		expect(calls).toHaveLength(2);
+		// 第 1 条:@全体 单独一条 composite,只含 at-all 段
 		expect(calls[0].payload.kind).toBe("composite");
 		if (calls[0].payload.kind === "composite") {
-			expect(calls[0].payload.segments[0]?.type).toBe("at-all");
+			expect(calls[0].payload.segments).toEqual([{ type: "at-all" }]);
 		}
+		// 第 2 条:原 payload 原样不变(卡片 + 文字保持单独消息形态)
+		expect(calls[1].payload).toEqual({ kind: "text", text: "动态" });
 	});
 
-	it("atAll tristate 覆写:per-target false 强 OFF,即使 default=true", async () => {
+	it("atAll tristate 覆写:per-target false 强 OFF + 顺序 plain → @全体 → 原 payload", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.live = ["t1", "t2"];
 		sub.atAllDefaults.live = true;
@@ -182,9 +185,17 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
 		push.start();
 		await push.broadcastToFeature("u1", "live", { kind: "text", text: "开播" });
-		const byTarget = new Map(calls.map((c) => [c.targetId, c.payload]));
-		expect(byTarget.get("t1")?.kind).toBe("text"); // 没 at-all 头
-		expect(byTarget.get("t2")?.kind).toBe("composite"); // 有 at-all 头
+		// t1 一条原 payload;t2 先收 @全体 only,再收原 payload。共 3 条。
+		expect(calls).toHaveLength(3);
+		expect(calls[0]).toMatchObject({ targetId: "t1" });
+		expect(calls[0].payload.kind).toBe("text"); // t1 plain,原 payload
+		expect(calls[1]).toMatchObject({ targetId: "t2" });
+		expect(calls[1].payload.kind).toBe("composite"); // t2 第 1 条 @全体 only
+		if (calls[1].payload.kind === "composite") {
+			expect(calls[1].payload.segments).toEqual([{ type: "at-all" }]);
+		}
+		expect(calls[2]).toMatchObject({ targetId: "t2" });
+		expect(calls[2].payload).toEqual({ kind: "text", text: "开播" }); // t2 第 2 条原 payload
 	});
 
 	it("opts.allowAtAll=false → 抑制 @全体,即使 feature=live 且 atAllDefaults.live=true(本次 bug 修复:周期「正在直播」)", async () => {
@@ -212,6 +223,15 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			sub.atAllDefaults.live = true;
 			return sub;
 		};
+		const assertAtAllThenPayload = (calls: SendCall[]) => {
+			// 单 target 走 atAll 路径 → @全体 only + 原 payload 两条
+			expect(calls).toHaveLength(2);
+			expect(calls[0].payload.kind).toBe("composite");
+			if (calls[0].payload.kind === "composite") {
+				expect(calls[0].payload.segments).toEqual([{ type: "at-all" }]);
+			}
+			expect(calls[1].payload).toEqual({ kind: "text", text: "开播" });
+		};
 		// 显式 true
 		{
 			const { sink, calls } = makeSink();
@@ -223,7 +243,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 				{ kind: "text", text: "开播" },
 				{ allowAtAll: true },
 			);
-			expect(calls[0].payload.kind).toBe("composite");
+			assertAtAllThenPayload(calls);
 		}
 		// opts 不传(向后兼容:dynamic 等既有调用点不受影响)
 		{
@@ -231,33 +251,38 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			const push = new BilibiliPush({ sink, store: makeStore([mk()]), logger: silentLogger });
 			push.start();
 			await push.broadcastToFeature("u1", "live", { kind: "text", text: "开播" });
-			expect(calls[0].payload.kind).toBe("composite");
+			assertAtAllThenPayload(calls);
 		}
 	});
 
-	it("@全体 版式:composite [image,text] → [image, at-all, 空格, text](@全体后留空格)", async () => {
+	it("@全体 单独一条 → composite [image,text] 原 payload 第二条(live)", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.live = ["t1"];
 		sub.atAllDefaults.live = true;
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
 		push.start();
-		await push.broadcastToFeature("u1", "live", {
+		const payload: NotificationPayload = {
 			kind: "composite",
 			segments: [
 				{ type: "image", buffer: Buffer.from([1]), mime: "image/jpeg" },
 				{ type: "text", text: "开播啦" },
 			],
-		});
+		};
+		await push.broadcastToFeature("u1", "live", payload);
+		expect(calls).toHaveLength(2);
+		// 第 1 条:@全体 only
 		expect(calls[0].payload.kind).toBe("composite");
 		if (calls[0].payload.kind === "composite") {
-			const segs = calls[0].payload.segments;
-			expect(segs.map((s) => s.type)).toEqual(["image", "at-all", "text", "text"]);
-			expect(segs[2]).toEqual({ type: "text", text: " " });
+			expect(calls[0].payload.segments).toEqual([{ type: "at-all" }]);
+		}
+		// 第 2 条:原 [image, text] 不改不重组
+		if (calls[1].payload.kind === "composite") {
+			expect(calls[1].payload.segments.map((s) => s.type)).toEqual(["image", "text"]);
 		}
 	});
 
-	it("@全体 版式对 dynamic 同样生效(共用 prependAtAll,[image, at-all, 空格, text])", async () => {
+	it("@全体 单独一条对 dynamic 同样生效(共用 broadcastToFeature 分支)", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.dynamic = ["t1"];
 		sub.atAllDefaults.dynamic = true;
@@ -271,14 +296,16 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 				{ type: "text", text: "发了条动态" },
 			],
 		});
+		expect(calls).toHaveLength(2);
 		if (calls[0].payload.kind === "composite") {
-			const segs = calls[0].payload.segments;
-			expect(segs.map((s) => s.type)).toEqual(["image", "at-all", "text", "text"]);
-			expect(segs[2]).toEqual({ type: "text", text: " " });
+			expect(calls[0].payload.segments).toEqual([{ type: "at-all" }]);
+		}
+		if (calls[1].payload.kind === "composite") {
+			expect(calls[1].payload.segments.map((s) => s.type)).toEqual(["image", "text"]);
 		}
 	});
 
-	it("@全体 版式:image+caption → [image, at-all, 空格, caption];text-only → [at-all, 空格, text]", async () => {
+	it("@全体 单独一条:image+caption / text-only 原 payload 都保持原样不变", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.live = ["t1"];
 		sub.atAllDefaults.live = true;
@@ -290,19 +317,47 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			image: { buffer: Buffer.from([2]), mime: "image/png" },
 			caption: "字幕",
 		});
+		expect(calls).toHaveLength(2);
+		// 第 1 条:@全体 only
 		if (calls[0].payload.kind === "composite") {
-			const segs = calls[0].payload.segments;
-			expect(segs.map((s) => s.type)).toEqual(["image", "at-all", "text", "text"]);
-			expect(segs[2]).toEqual({ type: "text", text: " " });
+			expect(calls[0].payload.segments).toEqual([{ type: "at-all" }]);
 		}
-		// 纯文本无图 → @全体 打头,后面跟空格再接正文。
+		// 第 2 条:image+caption 原样(不被升级为 composite)
+		expect(calls[1].payload.kind).toBe("image");
+		if (calls[1].payload.kind === "image") {
+			expect(calls[1].payload.caption).toBe("字幕");
+		}
+		// 纯文本无图 → 同样两条:@全体 only + text 原 payload
 		calls.length = 0;
 		await push.broadcastToFeature("u1", "live", { kind: "text", text: "无图开播" });
+		expect(calls).toHaveLength(2);
 		if (calls[0].payload.kind === "composite") {
-			const segs = calls[0].payload.segments;
-			expect(segs.map((s) => s.type)).toEqual(["at-all", "text", "text"]);
-			expect(segs[1]).toEqual({ type: "text", text: " " });
+			expect(calls[0].payload.segments).toEqual([{ type: "at-all" }]);
 		}
+		expect(calls[1].payload).toEqual({ kind: "text", text: "无图开播" });
+	});
+
+	it("forward-images + atAllTargets:同样先发独立 @全体 再发合并转发", async () => {
+		// 合并转发节点跟外层独立 @全体 不冲突,一视同仁两条发出,@ 提醒在前。
+		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		sub.routing.dynamic = ["t1"];
+		sub.atAllDefaults.dynamic = true;
+		const { sink, calls } = makeSink();
+		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		push.start();
+		await push.broadcastToFeature("u1", "dynamic", {
+			kind: "forward-images",
+			urls: ["http://x/1.jpg"],
+			forward: true,
+		});
+		expect(calls).toHaveLength(2);
+		// 第 1 条:@全体 only
+		expect(calls[0].payload.kind).toBe("composite");
+		if (calls[0].payload.kind === "composite") {
+			expect(calls[0].payload.segments).toEqual([{ type: "at-all" }]);
+		}
+		// 第 2 条:原 forward-images 原样
+		expect(calls[1].payload.kind).toBe("forward-images");
 	});
 
 	it("非 dynamic / live 的 feature 不进入 atAll 分支(superchat 即使 atAllDefaults=true)", async () => {

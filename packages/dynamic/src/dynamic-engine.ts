@@ -506,6 +506,8 @@ export class DynamicEngine {
 							[DynamicFilterReason.BlacklistKeyword]: `${name}发布了一条含有屏蔽关键字的动态`,
 							[DynamicFilterReason.BlacklistForward]: `${name}转发了一条动态，已屏蔽`,
 							[DynamicFilterReason.BlacklistArticle]: `${name}投稿了一条专栏，已屏蔽`,
+							[DynamicFilterReason.BlacklistDraw]: `${name}发布了一条图文动态，已屏蔽`,
+							[DynamicFilterReason.BlacklistAv]: `${name}投稿了一条视频，已屏蔽`,
 							[DynamicFilterReason.WhitelistUnmatched]: `${name}发布了一条不在白名单范围内的动态，已屏蔽`,
 						};
 						// P2:屏蔽提示是 best-effort。此前广播抛错冒泡到外层 catch→

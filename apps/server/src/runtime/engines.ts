@@ -342,7 +342,12 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		// regex string; join with `|` (capturing-group safe since users supply
 		// alt patterns themselves).
 		const blockHasRules =
-			f.blockKeywords.length > 0 || f.blockRegex.length > 0 || f.blockForward || f.blockArticle;
+			f.blockKeywords.length > 0 ||
+			f.blockRegex.length > 0 ||
+			f.blockForward ||
+			f.blockArticle ||
+			f.blockDraw ||
+			f.blockAv;
 		const whitelistHasRules = f.whitelistKeywords.length > 0 || f.whitelistRegex.length > 0;
 		return {
 			dynamicUrl: true,
@@ -358,6 +363,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				keywords: f.blockKeywords,
 				forward: f.blockForward,
 				article: f.blockArticle,
+				draw: f.blockDraw,
+				av: f.blockAv,
 				whitelistEnable: whitelistHasRules,
 				whitelistRegex: f.whitelistRegex.join("|"),
 				whitelistKeywords: f.whitelistKeywords,
@@ -901,7 +908,12 @@ function buildAiOverride(eff: ReturnType<typeof resolve>): CommentaryCallOverrid
 function buildDynamicFilter(eff: ReturnType<typeof resolve>) {
 	const f = eff.filters;
 	const blockHasRules =
-		f.blockKeywords.length > 0 || f.blockRegex.length > 0 || f.blockForward || f.blockArticle;
+		f.blockKeywords.length > 0 ||
+		f.blockRegex.length > 0 ||
+		f.blockForward ||
+		f.blockArticle ||
+		f.blockDraw ||
+		f.blockAv;
 	const whitelistHasRules = f.whitelistKeywords.length > 0 || f.whitelistRegex.length > 0;
 	return {
 		enable: blockHasRules,
@@ -910,6 +922,8 @@ function buildDynamicFilter(eff: ReturnType<typeof resolve>) {
 		keywords: f.blockKeywords,
 		forward: f.blockForward,
 		article: f.blockArticle,
+		draw: f.blockDraw,
+		av: f.blockAv,
 		whitelistEnable: whitelistHasRules,
 		whitelistRegex: f.whitelistRegex.join("|"),
 		whitelistKeywords: f.whitelistKeywords,

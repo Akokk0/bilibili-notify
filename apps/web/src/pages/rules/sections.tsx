@@ -229,6 +229,16 @@ export function FilterSection({
 						<Toggle value={value.blockArticle} onChange={(v) => set("blockArticle", v)} size="sm" />
 					</div>
 				</FieldRow>
+				<FieldRow label="屏蔽图文动态" code="blockDraw">
+					<div className="flex h-7.5 items-center">
+						<Toggle value={value.blockDraw} onChange={(v) => set("blockDraw", v)} size="sm" />
+					</div>
+				</FieldRow>
+				<FieldRow label="屏蔽视频动态" code="blockAv">
+					<div className="flex h-7.5 items-center">
+						<Toggle value={value.blockAv} onChange={(v) => set("blockAv", v)} size="sm" />
+					</div>
+				</FieldRow>
 			</div>
 			<CollapseBlock
 				label="启用白名单 · 仅推送命中条目"

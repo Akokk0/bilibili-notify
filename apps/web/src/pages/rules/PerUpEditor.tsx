@@ -365,6 +365,16 @@ function FilterOverrideBox({
 								/>
 							</div>
 						</Field>
+						<Field label="屏蔽图文动态" code="blockDraw">
+							<div className="flex h-[30px] items-center">
+								<Toggle value={get("blockDraw")} onChange={(v) => set("blockDraw", v)} size="sm" />
+							</div>
+						</Field>
+						<Field label="屏蔽视频动态" code="blockAv">
+							<div className="flex h-[30px] items-center">
+								<Toggle value={get("blockAv")} onChange={(v) => set("blockAv", v)} size="sm" />
+							</div>
+						</Field>
 					</div>
 				</>
 			) : (

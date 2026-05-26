@@ -12,6 +12,20 @@ on:
     paths:
       - "apps/server/package.json"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build + smoke only, skip push / tag / release"
+        type: boolean
+        default: false
+
+# 串行化 image-release —— 同 ref 上的并发 run 一律排队,避免两个 push 同时跑
+# 让 Docker tag 与 git tag 失同步(后者 push 完 manifest 后才 reserve git tag,
+# 中间窗口存在 :v<VERSION> 被另一个 run 覆盖到不同 commit 的可能)。cancel-in-
+# progress: false 因为发版有副作用(已 push 的 Docker layer / 已打的 tag)不该
+# 半途打断 —— 串行等更安全。
+concurrency:
+  group: image-release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   # GITHUB_TOKEN 保持最小权限:tag push + release 创建都走 secrets.RELEASE_PAT
@@ -21,6 +35,12 @@ permissions:
 
 env:
   IMAGE: docker.io/akokk0/bilibili-notify
+  # 统一 dry-run gate —— 两种触发方式归一化:
+  #   - push 事件:commit message 含 `[dry-run]`(运维偶尔验 build + smoke 用)
+  #   - workflow_dispatch:勾 dry_run 输入(手动 dispatch 验证用)
+  # 全 workflow 引用 ${{ env.DRY_RUN }},push / smoke / merge job 等所有 gate
+  # 走同一字符串 'true'/'false',防有的 step 漏 dispatch input 还看 commit message。
+  DRY_RUN: ${{ (github.event_name == 'push' && contains(github.event.head_commit.message, '[dry-run]')) || (github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -36,6 +56,10 @@ jobs:
   # ---------------------------------------------------------------------------
   build:
     name: Build (${{ matrix.platform.arch }})
+    # ref guard:防 workflow_dispatch 从非 dev 分支跑 publish。版本号从 checkout
+    # 的 ref 读,任意分支跑可能让 Docker :v<VERSION> 指向未经 dev 主线的 commit
+    # 污染发版谱系。
+    if: github.ref == 'refs/heads/dev'
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       fail-fast: false
@@ -60,8 +84,7 @@ jobs:
 
       # build push-by-digest:只把当前 platform 的镜像 push 到 registry,不附带
       # 任何 tag —— 拿到的 digest 由 merge job 收集后拼 manifest list 时带 tag。
-      # commit message 含 `[dry-run]` 时改 push=false(本地 build + smoke 走过,
-      # 不污染 registry);outputs 内 push 三元由 GHA expression 渲染。
+      # dry-run(${{ env.DRY_RUN }} == 'true')时 push=false 不污染 registry。
       - name: Build + push-by-digest
         id: build
         uses: docker/build-push-action@v7
@@ -69,69 +92,43 @@ jobs:
           context: .
           file: ./apps/Dockerfile
           platforms: linux/${{ matrix.platform.arch }}
-          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ contains(github.event.head_commit.message, '[dry-run]') && 'false' || 'true' }}
-          # Per-arch cache scope:amd64 / arm64 cache 独立,避免相互污染冲掉 layer
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.DRY_RUN == 'true' && 'false' || 'true' }}
+          # Per-arch cache scope:amd64 / arm64 cache 独立,避免相互污染冲掉 layer。
+          # mode=min 只 export 最终 runtime 层,不导出 builder 中间层 —— builder 阶段
+          # 有几十个 intermediate layer,mode=max 在 arm64 runner 上把 cache 推到 GHA
+          # 时会饱和 Cache API 触发节流 hang(实测卡 30+ 分钟,跟 moby/buildkit#2804
+          # 一致)。mode=min 数据量小不卡,代价是 builder 阶段(pnpm install / build)
+          # 每次重跑,arm64 +4-5min / amd64 +3-4min;但发版频率低,可接受。
           cache-from: type=gha,scope=${{ matrix.platform.arch }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.platform.arch }}
+          cache-to: type=gha,mode=min,scope=${{ matrix.platform.arch }}
 
       # Smoke 只在 amd64 跑 —— GHA arm64 runner 也能跑自家镜像但意义不大:
       # smoke 验的是"镜像启动 + /api/health + dashboard 静态资源",amd64 验过
       # 就够;arm64 镜像本身的可用性由同一份 Dockerfile + Docker 单架构语义保
       # 证。dry-run 模式不 push,无 digest 可拉,跳过。
+      #
+      # 脚本本体在 .github/scripts/smoke-image.sh —— inline 同款逻辑提到文件:
+      # editor 给 bash 高亮、shellcheck 走得动、本地可手动跑(IMAGE_REF=... bash
+      # .github/scripts/smoke-image.sh)。容器清理脚本内 EXIT trap 包办,不再
+      # 单独 Stop step。
       - name: Smoke test (amd64 only)
-        if: matrix.platform.arch == 'amd64' && !contains(github.event.head_commit.message, '[dry-run]')
-        run: |
-          set -euo pipefail
-          IMG="${{ env.IMAGE }}@${{ steps.build.outputs.digest }}"
-          docker pull "$IMG"
-          docker run -d --name bn-smoke -p 8787:8787 \
-            -e BN_DATA_DIR=/tmp/bn -e BN_ALLOW_NO_AUTH=1 "$IMG"
-          ok=
-          for _ in $(seq 1 30); do
-            if curl -fsS http://localhost:8787/api/health 2>/dev/null | jq -e '.status=="ok"' >/dev/null 2>&1; then
-              ok=1; break
-            fi
-            sleep 2
-          done
-          if [ -z "$ok" ]; then
-            echo "::error::/api/health never returned status:ok within ~60s"
-            docker logs bn-smoke || true
-            exit 1
-          fi
-          V=$(node -p "require('./apps/server/package.json').version")
-          ver=$(curl -fsS http://localhost:8787/api/health | jq -r '.version')
-          echo "GET /api/health -> version: $ver"
-          if [ "$ver" != "$V" ]; then
-            echo "::error::/api/health version '$ver' != apps/server/package.json '$V'"
-            docker logs bn-smoke || true
-            exit 1
-          fi
-          ct=$(curl -fsS -o /tmp/root.html -w '%{content_type}' http://localhost:8787/)
-          echo "GET / -> content-type: $ct"
-          case "$ct" in
-            text/html*) ;;
-            *) echo "::error::GET / expected text/html (dashboard), got '$ct'"
-               head -c 400 /tmp/root.html || true; docker logs bn-smoke || true; exit 1 ;;
-          esac
-          grep -q '<div id="root">' /tmp/root.html \
-            || { echo "::error::GET / body is not the dashboard index.html"; head -c 400 /tmp/root.html; exit 1; }
-
-      - name: Stop smoke container
-        if: matrix.platform.arch == 'amd64' && always()
-        run: docker rm -f bn-smoke >/dev/null 2>&1 || true
+        if: matrix.platform.arch == 'amd64' && env.DRY_RUN == 'false'
+        env:
+          IMAGE_REF: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+        run: bash .github/scripts/smoke-image.sh
 
       # 把 digest 写到 artifact,merge job 收回拼 manifest list。文件名 = arch,
       # merge 用 `pattern: digest-*` + `merge-multiple: true` 把两个 arch 的拉
       # 到同一个 /tmp/digests 目录。
       - name: Export digest
-        if: ${{ !contains(github.event.head_commit.message, '[dry-run]') }}
+        if: env.DRY_RUN == 'false'
         run: |
           mkdir -p /tmp/digests
           echo "${{ steps.build.outputs.digest }}" > "/tmp/digests/${{ matrix.platform.arch }}"
 
       - name: Upload digest
-        if: ${{ !contains(github.event.head_commit.message, '[dry-run]') }}
-        uses: actions/upload-artifact@v4
+        if: env.DRY_RUN == 'false'
+        uses: actions/upload-artifact@v7
         with:
           name: digest-${{ matrix.platform.arch }}
           path: /tmp/digests/${{ matrix.platform.arch }}
@@ -150,19 +147,29 @@ jobs:
     name: Merge & publish manifest
     runs-on: ubuntu-latest
     needs: [build]
-    if: ${{ !contains(github.event.head_commit.message, '[dry-run]') }}
+    # ref guard 同 build job;DRY_RUN gate 在 job-level 内联展开 —— env.* 不能
+    # 在 job.if 引用(GHA expression context 限制),只 step.if 才能读 env。
+    # 同时覆盖 push 事件(commit `[dry-run]`)与 workflow_dispatch(inputs.dry_run)。
+    if: |
+      github.ref == 'refs/heads/dev'
+      && !(
+        (github.event_name == 'push' && contains(github.event.head_commit.message, '[dry-run]'))
+        || (github.event_name == 'workflow_dispatch' && inputs.dry_run)
+      )
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          # 用 PAT 替代默认 GITHUB_TOKEN,后续 Tag commit step 的 `git push origin
-          # <tag>` 才能通过 —— GitHub 默认 token 不能 push reachable 到 workflow
-          # 改动的 ref(没有 `workflows: write` scope,GITHUB_TOKEN 拿不到这权限)。
-          token: ${{ secrets.RELEASE_PAT }}
+          # 不 persist token:checkout 默认会把 token 写入 .git/config 的
+          # `http.<host>.extraheader`,之后整个 job 内任意 step 都能从工作区 git
+          # 配置里读出 PAT —— 哪怕该 step 不需要写权限。设 false 后 token 不落盘,
+          # 真正需要 push 的 step(Tag commit)走 env GITHUB_TOKEN + git extraheader
+          # 一次性临时鉴权(见 tag-commit-with-version.sh)。
+          persist-credentials: false
 
       - name: Download digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: /tmp/digests
           pattern: digest-*
@@ -180,20 +187,14 @@ jobs:
 
       # 独立端版本号 = apps/server/package.json#version(手动维护,唯一事实源)。
       # 含 prerelease 标识(有 `-`,如 0.1.0-alpha.0)→ alpha 渠道,否则正式。
+      # 脚本本体在 .github/scripts/read-standalone-version.sh。
       - name: Read standalone version
         id: ver
-        run: |
-          V=$(node -p "require('./apps/server/package.json').version")
-          echo "value=$V" >> "$GITHUB_OUTPUT"
-          if [[ "$V" == *-* ]]; then
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
+        run: bash .github/scripts/read-standalone-version.sh
 
       - name: Compute image metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
           # 渠道按版本串判定:prerelease → :alpha,纯 semver → :latest。另打不可变
@@ -204,51 +205,36 @@ jobs:
             type=raw,value=v${{ steps.ver.outputs.value }}
             type=sha,prefix=,format=short
 
-      # imagetools create 用 digest list 组合 manifest,带 metadata 的全部 tag 一并推。
-      # docker meta-data action 输出的 tags 是换行分隔字符串。
-      - name: Create + push manifest list
-        run: |
-          set -euo pipefail
-          DIGESTS=()
-          for f in /tmp/digests/*; do
-            DIGESTS+=("${IMAGE}@$(cat "$f")")
-          done
-          echo "digests:"
-          printf '  %s\n' "${DIGESTS[@]}"
-          TAGS_FLAGS=()
-          while IFS= read -r tag; do
-            [ -z "$tag" ] && continue
-            TAGS_FLAGS+=(-t "$tag")
-          done <<< "${TAGS}"
-          echo "tags:"
-          printf '  %s\n' "${TAGS_FLAGS[@]}"
-          docker buildx imagetools create "${TAGS_FLAGS[@]}" "${DIGESTS[@]}"
-        env:
-          TAGS: ${{ steps.meta.outputs.tags }}
-
-      # 镜像 push 成功后,给当前 commit 打 annotated tag v<version> 并推回远程,
-      # 跟 docker tag :v<version> 同步存在(便于回溯「哪个 commit 出了哪个镜像」)。
-      # 远程已有该 tag(workflow rerun / 同 version 重 trigger 场景)→ 跳过,
-      # 不 force-update(老 tag 与镜像 :v<version> 都已不可变,无需覆盖)。
+      # **Tag 先于 Manifest** —— git tag 是镜像可追溯的真相之源,必须先 reserve。
+      # 同 commit 已有 tag → 安静跳过(workflow rerun 友好);同 version tag 但
+      # 指向其他 commit → fail-fast 拒绝继续,防 Docker :v<VERSION> 漂到新 commit
+      # 而 git tag/release 留旧 commit(原顺序是先 push manifest 再 git tag,
+      # 这个窗口下版本号被重用时会破"镜像 tag = git tag" 不变量)。
+      # 脚本本体在 .github/scripts/tag-commit-with-version.sh。
       - name: Tag commit with version
         env:
           VERSION: ${{ steps.ver.outputs.value }}
-        run: |
-          set -euo pipefail
-          TAG="v$VERSION"
-          if git ls-remote --tags --exit-code origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "tag $TAG already exists on remote, skip"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "独立端 $VERSION (image: akokk0/bilibili-notify:$TAG)"
-          git push origin "$TAG"
+          # PAT 显式注入到本 step env scope —— 仅 tag push 这一个命令需要写权限。
+          # 脚本内用 `git -c http.extraheader=...` 临时鉴权,token 不进 .git/config。
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+          REPO: ${{ github.repository }}
+        run: bash .github/scripts/tag-commit-with-version.sh
+
+      # imagetools create 用 digest list 组合 manifest,带 metadata 的全部 tag 一并推。
+      # docker meta-data action 输出的 tags 是换行分隔字符串。
+      # 顺序上必须在 Tag commit 之后:tag fail-fast 时不 push manifest,避免 Docker
+      # 标签出现"目标 commit 与 git tag 不一致"的不可逆漂移。
+      # 脚本本体在 .github/scripts/create-manifest-list.sh。
+      - name: Create + push manifest list
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: bash .github/scripts/create-manifest-list.sh
 
       # git tag 存在后,创建对应 GitHub Release —— GitHub Releases 页面是用户找发
       # 版说明的入口,docker tag 本身没 notes。release 必须挂在 tag 上,所以放在
       # 「Tag commit」step 之后(那步已确保远程有 tag,无论是这次新打还是 rerun
       # 已有)。prerelease(带 `-` 的 alpha 等)mark `--prerelease`,正式 `--latest`。
+      # 脚本本体在 .github/scripts/create-github-release.sh。
       - name: Create GitHub release
         env:
           VERSION: ${{ steps.ver.outputs.value }}
@@ -258,56 +244,4 @@ jobs:
           # ref restriction 限制,即便不直接 git push)。
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          TAG="v$VERSION"
-
-          # 已有 release 跳过(workflow rerun / 同 version 重 trigger 场景)。
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "release $TAG already exists, skip"
-            exit 0
-          fi
-
-          # 上一个 v* tag —— 用来在 notes 里给 GitHub compare 链接,主人点进去看
-          # 完整 commit 列表。本地默认没拉 tags,先 fetch。
-          git fetch --tags --quiet
-          PREV_TAG=$(git tag --sort=-creatordate --list 'v*' | grep -v "^$TAG$" | head -1 || true)
-
-          # alpha 渠道镜像 tag 是 :alpha,正式是 :latest;notes 给主人两条 pull 命令。
-          if [ "$PRERELEASE" = "true" ]; then
-            CHANNEL="alpha"
-          else
-            CHANNEL="latest"
-          fi
-
-          NOTES_FILE=$(mktemp)
-          {
-            echo "## Docker 镜像"
-            echo
-            echo "不可变 tag:"
-            echo
-            echo '```bash'
-            echo "docker pull akokk0/bilibili-notify:$TAG"
-            echo '```'
-            echo
-            echo "滚动 \`:$CHANNEL\` 渠道:"
-            echo
-            echo '```bash'
-            echo "docker pull akokk0/bilibili-notify:$CHANNEL"
-            echo '```'
-            if [ -n "$PREV_TAG" ]; then
-              echo
-              echo "## 完整改动"
-              echo
-              echo "[\`$PREV_TAG...$TAG\`](https://github.com/$REPO/compare/$PREV_TAG...$TAG)"
-            fi
-          } > "$NOTES_FILE"
-
-          FLAGS=(--title "$TAG" --notes-file "$NOTES_FILE")
-          if [ "$PRERELEASE" = "true" ]; then
-            FLAGS+=(--prerelease --latest=false)
-          else
-            FLAGS+=(--latest)
-          fi
-
-          gh release create "$TAG" "${FLAGS[@]}"
+        run: bash .github/scripts/create-github-release.sh

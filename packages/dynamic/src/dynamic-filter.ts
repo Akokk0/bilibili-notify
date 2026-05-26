@@ -69,6 +69,8 @@ export function filterDynamic(
 		keywords: [] as string[],
 		forward: false,
 		article: false,
+		draw: false,
+		av: false,
 		whitelistEnable: false,
 		whitelistRegex: "",
 		whitelistKeywords: [] as string[],
@@ -83,6 +85,12 @@ export function filterDynamic(
 		}
 		if (cfg.article && dynamic.type === "DYNAMIC_TYPE_ARTICLE") {
 			return { blocked: true, reason: Reason.BlacklistArticle };
+		}
+		if (cfg.draw && dynamic.type === "DYNAMIC_TYPE_DRAW") {
+			return { blocked: true, reason: Reason.BlacklistDraw };
+		}
+		if (cfg.av && dynamic.type === "DYNAMIC_TYPE_AV") {
+			return { blocked: true, reason: Reason.BlacklistAv };
 		}
 		if (safeRegexTest(cfg.regex, text, logger) || testKeywordMatched(text, cfg.keywords)) {
 			return { blocked: true, reason: Reason.BlacklistKeyword };

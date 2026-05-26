@@ -93,6 +93,10 @@ export interface DynamicFilterConfig {
 	keywords?: string[];
 	forward?: boolean;
 	article?: boolean;
+	/** DYNAMIC_TYPE_DRAW(图文动态;新版 B 站把图文挂在 major.opus 下,外层 type 仍为 DRAW)。 */
+	draw?: boolean;
+	/** DYNAMIC_TYPE_AV(视频投稿动态)。 */
+	av?: boolean;
 	whitelistEnable?: boolean;
 	whitelistRegex?: string;
 	whitelistKeywords?: string[];
@@ -102,6 +106,8 @@ export enum DynamicFilterReason {
 	BlacklistKeyword = "blacklist-keyword",
 	BlacklistForward = "blacklist-forward",
 	BlacklistArticle = "blacklist-article",
+	BlacklistDraw = "blacklist-draw",
+	BlacklistAv = "blacklist-av",
 	WhitelistUnmatched = "whitelist-unmatched",
 }
 

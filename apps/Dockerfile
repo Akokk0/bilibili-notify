@@ -28,7 +28,7 @@ FROM node:${NODE_VERSION}-bookworm-slim AS builder
 # Toolchain note — the repo standardises on vp (vite-plus); CI bootstraps it
 # via voidzero-dev/setup-vp. This Docker builder is a DELIBERATE, documented
 # exception: it uses corepack-provisioned pnpm (from package.json#packageManager,
-# currently pnpm@11.0.9), NOT vp. Why: corepack ships free in the node base
+# currently pnpm@11.3.0), NOT vp. Why: corepack ships free in the node base
 # image (zero extra layer, offline), vp has no Docker-side bootstrap action
 # like setup-vp, and corepack vs vp resolve the SAME pinned pnpm so build
 # artifacts are byte-identical. Mirrors the corepack carve-out in

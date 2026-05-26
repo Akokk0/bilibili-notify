@@ -17,6 +17,8 @@ import { SubscriptionRoutingSchema } from "./subscriptions";
 const baseFilters = {
 	blockForward: false,
 	blockArticle: false,
+	blockDraw: false,
+	blockAv: false,
 	blockKeywords: [],
 	blockRegex: [] as string[],
 	whitelistKeywords: [],

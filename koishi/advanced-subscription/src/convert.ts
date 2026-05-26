@@ -55,6 +55,8 @@ export type SubItemRawConfig = MasterFlagMap & {
 		enable: boolean;
 		blockForward?: boolean;
 		blockArticle?: boolean;
+		blockDraw?: boolean;
+		blockAv?: boolean;
 		blockKeywords?: string[];
 		blockRegex?: string[];
 		whitelistKeywords?: string[];
@@ -246,6 +248,8 @@ export function rawConfigToSubscription(_name: string, raw: SubItemRawConfig): C
 		const filterOverrides: Partial<{
 			blockForward: boolean;
 			blockArticle: boolean;
+			blockDraw: boolean;
+			blockAv: boolean;
 			blockKeywords: string[];
 			blockRegex: string[];
 			whitelistKeywords: string[];
@@ -255,6 +259,8 @@ export function rawConfigToSubscription(_name: string, raw: SubItemRawConfig): C
 		}> = {};
 		if (cf.blockForward !== undefined) filterOverrides.blockForward = cf.blockForward;
 		if (cf.blockArticle !== undefined) filterOverrides.blockArticle = cf.blockArticle;
+		if (cf.blockDraw !== undefined) filterOverrides.blockDraw = cf.blockDraw;
+		if (cf.blockAv !== undefined) filterOverrides.blockAv = cf.blockAv;
 		if (cf.blockKeywords && cf.blockKeywords.length > 0)
 			filterOverrides.blockKeywords = cf.blockKeywords;
 		if (cf.blockRegex && cf.blockRegex.length > 0) filterOverrides.blockRegex = cf.blockRegex;

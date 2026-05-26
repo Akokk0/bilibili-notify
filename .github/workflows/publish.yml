@@ -15,7 +15,7 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Installs vp + repo-pinned Node (.node-version) + runs `vp install`
       # (frozen on CI). `registry-url` makes setup-vp write ~/.npmrc with

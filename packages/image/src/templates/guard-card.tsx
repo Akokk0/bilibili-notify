@@ -29,7 +29,7 @@ export function GuardCard(p: GuardCardProps) {
 		>
 			<div class="flex justify-between items-center w-[400px] h-[190px] rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)] bg-white/75 backdrop-blur-[10px]">
 				{/* 左侧信息区 */}
-				<div class="flex-1 h-full flex flex-col justify-between px-[16px] py-[12px]">
+				<div class="flex-1 min-w-0 h-full flex flex-col justify-between px-[16px] py-[12px]">
 					{/* 用户信息 */}
 					<div class="flex gap-[10px]">
 						{/* 头像 */}

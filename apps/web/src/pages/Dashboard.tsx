@@ -604,7 +604,19 @@ function SystemHealthCard({
 	return (
 		<GlassBox
 			title="系统状态 · 各模块"
-			subtitle={`核心 ${health?.version ?? "—"} · 面板 ${__WEB_VERSION__} · 日志等级`}
+			subtitle={
+				<span className="inline-flex items-center gap-1.5">
+					<span>核心</span>
+					<span className="inline-block rounded-md bg-black/5 px-1.5 py-px text-[10.5px] font-semibold tabular-nums tracking-tight text-bn-text-primary">
+						{health?.version ?? "—"}
+					</span>
+					<span className="opacity-40">·</span>
+					<span>面板</span>
+					<span className="inline-block rounded-md bg-black/5 px-1.5 py-px text-[10.5px] font-semibold tabular-nums tracking-tight text-bn-text-primary">
+						{__WEB_VERSION__}
+					</span>
+				</span>
+			}
 			accent={reachable ? "#22c55e" : "#ef4444"}
 			icon={<Icon.check size={14} />}
 			badge={!reachable ? "失联" : health?.status === "ok" ? "健康" : "—"}

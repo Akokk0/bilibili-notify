@@ -300,6 +300,12 @@ export const BilibiliNotifyAdvancedSubConfig: Schema<BilibiliNotifyAdvancedSubCo
 								.default(false)
 								.description("是否丢弃「转发」动态(转发自其他 UP 的二级动态)"),
 							blockArticle: Schema.boolean().default(false).description("是否丢弃「专栏文章」动态"),
+							blockDraw: Schema.boolean()
+								.default(false)
+								.description(
+									"是否丢弃「图文」动态(带图的朋友圈式动态;新版 B 站走 opus 框架,外层 type 仍为 DRAW)",
+								),
+							blockAv: Schema.boolean().default(false).description("是否丢弃「视频投稿」动态"),
 							blockKeywords: Schema.array(String)
 								.default([])
 								.description("关键词黑名单:动态内容命中任一关键词(子串匹配)则丢弃,每行一条"),

@@ -45,6 +45,8 @@ export interface TimeRange {
 export interface ContentFilters {
 	blockForward: boolean;
 	blockArticle: boolean;
+	blockDraw: boolean;
+	blockAv: boolean;
 	blockKeywords: string[];
 	blockRegex: string[];
 	whitelistKeywords: string[];

@@ -327,7 +327,7 @@ export class ImageRenderer {
 				duration: levelInfo.duration,
 				bgColor,
 			},
-			{ title: "醒目留言通知", font: this.config.font, htmlWidth: 280 },
+			{ title: "醒目留言通知", font: this.config.font, htmlWidth: 290 },
 		);
 
 		return withRetry(() => this.renderHtml(html))

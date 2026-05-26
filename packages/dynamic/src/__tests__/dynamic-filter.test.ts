@@ -67,6 +67,34 @@ describe("filterDynamic — 纯函数过滤", () => {
 		expect(result.reason).toBe(DynamicFilterReason.BlacklistArticle);
 	});
 
+	it("blockDraw:DYNAMIC_TYPE_DRAW 命中阻断,article=true 不串到 DRAW", () => {
+		const dyn = makeDynamic({ type: "DYNAMIC_TYPE_DRAW" });
+		// article 开关不应该命中 DRAW(新版 opus 框架下两者外层 type 是分开的)
+		expect(filterDynamic(dyn, { enable: true, article: true }).blocked).toBe(false);
+		const result = filterDynamic(dyn, { enable: true, draw: true });
+		expect(result.blocked).toBe(true);
+		expect(result.reason).toBe(DynamicFilterReason.BlacklistDraw);
+	});
+
+	it("blockAv:DYNAMIC_TYPE_AV 命中阻断", () => {
+		const dyn = makeDynamic({ type: "DYNAMIC_TYPE_AV" });
+		const result = filterDynamic(dyn, { enable: true, av: true });
+		expect(result.blocked).toBe(true);
+		expect(result.reason).toBe(DynamicFilterReason.BlacklistAv);
+	});
+
+	it("type 开关互不串扰(draw 不命中 ARTICLE / av 不命中 DRAW、ARTICLE、FORWARD)", () => {
+		// 防止四个 type 开关代码改动时误用 || 等让逻辑串到错误 type。
+		expect(
+			filterDynamic(makeDynamic({ type: "DYNAMIC_TYPE_ARTICLE" }), { enable: true, draw: true })
+				.blocked,
+		).toBe(false);
+		const cfg = { enable: true, av: true };
+		expect(filterDynamic(makeDynamic({ type: "DYNAMIC_TYPE_ARTICLE" }), cfg).blocked).toBe(false);
+		expect(filterDynamic(makeDynamic({ type: "DYNAMIC_TYPE_DRAW" }), cfg).blocked).toBe(false);
+		expect(filterDynamic(makeDynamic({ type: "DYNAMIC_TYPE_FORWARD" }), cfg).blocked).toBe(false);
+	});
+
 	it("blockKeywords:keyword 出现在 text 中阻断", () => {
 		const dyn = makeDynamic({ text: "这是包含敏感词的动态" });
 		const result = filterDynamic(dyn, { enable: true, keywords: ["敏感词"] });
