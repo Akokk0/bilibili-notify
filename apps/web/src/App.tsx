@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Route, Routes } from "react-router-dom";
 import { AuthGate } from "./components/AuthGate";
 import { AlertShell } from "./components/alert-shell";
+import { DraftIsland } from "./components/draft-island";
 import { FloatingAiBar } from "./components/floating-ai-bar";
 import { GlassHeader } from "./components/header";
 import { ShellError, ShellLoading } from "./components/shell-states";
@@ -97,6 +98,7 @@ function AuthedApp() {
 				</main>
 			)}
 			<FloatingAiBar />
+			<DraftIsland />
 			<ToastShell />
 			<AlertShell />
 		</div>
