@@ -25,10 +25,12 @@
     "api-loginflow-qr-render",
     "bug-fixes-since-last-release",
     "cardstyle-three-fields",
+    "dependent-bumps-push-internal-image",
     "imagegroup-subtree-and-overrides",
     "koishi-config-convergence",
     "koishi-image-hide-follower-rename",
     "koishi-master-notifier-engine-error",
-    "monorepo-refactor-release"
+    "monorepo-refactor-release",
+    "push-atall-split-and-dynamic-filter-types"
   ]
 }
