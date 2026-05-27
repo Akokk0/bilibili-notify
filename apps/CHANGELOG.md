@@ -9,7 +9,17 @@
 
 ---
 
-## [0.1.0-alpha.4] — 未发布
+## [0.1.0-alpha.4] — 2026-05-27
+
+### Added
+
+- 灵动岛草稿机制:Rules / Cards / Ai / System 四页修改字段时,屏幕底部漂浮 chip
+  统一显示「页名 + 未保存字段数 + 保存」按钮,hover / click 展开后按 section 分组
+  的字段级 diff list(旧值 → 新值),点单行跳转高亮目标 Field,左下「丢弃全部更改」
+  一键回滚。chip 5 态:idle 不显示、dirty(待保存)、saving(保存中 spinner)、
+  saved(✓ 1.2s 自动消失)、error(摇晃 + 红边 pulse 需手动 dismiss)。dirty 态
+  chip 外圈 2px 粉色单弧流光环绕岛旋转 2.4s/圈。AiBar dismissed / expanded 时灵
+  动岛垂直避让(4fcd59f..af13f66)
 
 ### Fixed
 
@@ -21,11 +31,6 @@
 - 保存 AI 配置时,即便只改 persona / 温度 / 提示词也会触发连通性探活,导致按钮卡
   10s;后端 `shouldRunAiEnableCheck` 加值对比,patch 含连接字段但值跟 current 相同
   时不触发 (0395404)
-
-### Added
-
-- 灵动岛草稿机制 plan 已制定(grill-me 拍板 14 项决策);Phase A 字典化重构起步,
-  详见 `memory/draft-island-plan.md`
 
 ---
 

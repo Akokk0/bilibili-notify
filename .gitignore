@@ -24,5 +24,8 @@ tsconfig.tsbuildinfo
 # 本地审计/评审产物,不入库
 docs/review/
 
+# 群公告 txt 本地草稿,不入库
+apps/release-notes/
+
 # vp config 生成的 hook 脚手架(git hooks 实际由 lefthook 装进默认 .git/hooks)
 .vite-hooks/
