@@ -415,20 +415,15 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				supervisorImgUrl: g.defaults.templates.guardBuy.commander.imageUrl,
 				governorImgUrl: g.defaults.templates.guardBuy.governor.imageUrl,
 			},
-			// Only forward the schema templates when the user opted in via
-			// `liveMsgEnabled`. When false, leave the override empty so the engine
-			// falls back to `DEFAULT_LIVE_TEMPLATES` in template-renderer.ts (the
-			// legacy `-name / -time / -watched` shorthand that users expect by
-			// default). The schema fields use `{name}` style and are only honoured
-			// when the user explicitly turns on the custom-template switch.
-			customLiveMsg: g.defaults.templates.liveMsgEnabled
-				? {
-						enable: true,
-						customLiveStart: g.defaults.templates.liveStart,
-						customLive: g.defaults.templates.liveOngoing,
-						customLiveEnd: g.defaults.templates.liveEnd,
-					}
-				: { enable: false },
+			// 直播消息模板与动态模板一致:无开关,全局模板始终下发(默认值 ==
+			// DEFAULT_LIVE_TEMPLATES,未编辑时输出不变;编辑后即生效)。renderer 走
+			// subCustom ?? globalCustom ?? DEFAULT_LIVE_TEMPLATES,enable 仅占位、不被读。
+			customLiveMsg: {
+				enable: true,
+				customLiveStart: g.defaults.templates.liveStart,
+				customLive: g.defaults.templates.liveOngoing,
+				customLiveEnd: g.defaults.templates.liveEnd,
+			},
 		};
 	};
 
@@ -1048,14 +1043,14 @@ export function buildLiveSubViewSingle(
 		pushTime: eff.schedule.pushTime,
 		restartPush: eff.schedule.restartPush,
 		aiOverride: sub.overrides.ai ? buildAiOverride(eff) : undefined,
-		customLiveMsg: eff.templates.liveMsgEnabled
-			? {
-					enable: true,
-					customLiveStart: eff.templates.liveStart,
-					customLive: eff.templates.liveOngoing,
-					customLiveEnd: eff.templates.liveEnd,
-				}
-			: { enable: false },
+		// 无开关:始终下发 eff 模板(eff 合并 per-UP override → 全局),与 liveSummary
+		// 同模式;LiveEngine 在全局/per-UP 变更时收完整 update op 刷新,无快照陈旧问题。
+		customLiveMsg: {
+			enable: true,
+			customLiveStart: eff.templates.liveStart,
+			customLive: eff.templates.liveOngoing,
+			customLiveEnd: eff.templates.liveEnd,
+		},
 		customGuardBuy: {
 			enable: eff.templates.guardBuy.enable,
 			guardBuyMsg: eff.templates.guardBuy.captain.template,

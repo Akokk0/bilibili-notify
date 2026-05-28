@@ -109,11 +109,6 @@ export const TemplateBundleSchema = z.object({
 	liveStart: z.string(),
 	liveOngoing: z.string(),
 	liveEnd: z.string(),
-	/**
-	 * 是否启用自定义直播消息模板(开播/直播中/下播)。`false` 时走 builtin 简短文案。
-	 * `true` 时使用 liveStart / liveOngoing / liveEnd 三段。默认 false。
-	 */
-	liveMsgEnabled: z.boolean().default(false),
 	liveSummary: z.string(),
 	/**
 	 * 动态推送文本模板(非视频动态)。变量:`{name}` UP 名、`{url}` 动态链接。

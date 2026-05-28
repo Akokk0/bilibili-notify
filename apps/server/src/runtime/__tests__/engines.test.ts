@@ -284,6 +284,23 @@ describe("createEngines — boot wiring", () => {
 		expect(H.image).toHaveLength(1);
 		expect(H.image[0].start).toHaveBeenCalledTimes(1);
 	});
+
+	it("直播消息模板无开关:boot 时 live 引擎 config 始终带全局模板(回归 liveMsgEnabled 移除)", () => {
+		// 此前 liveMsgEnabled=false(默认)→ customLiveMsg 不带 customLiveStart,引擎走
+		// builtin。现无开关:全局模板始终下发,编辑即生效(默认值 == builtin,输出不变)。
+		const c = setup();
+		active = c;
+		const liveCfg = H.live[0].opts.config;
+		expect(liveCfg.customLiveMsg.customLiveStart).toBe(
+			"{name} 开播啦，当前粉丝数：{follower}\n{link}",
+		);
+		expect(liveCfg.customLiveMsg.customLive).toBe(
+			"{name} 正在直播，已播 {time}，累计观看：{watched}\n{link}",
+		);
+		expect(liveCfg.customLiveMsg.customLiveEnd).toBe(
+			"{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
+		);
+	});
 });
 
 describe("createEngines — config-changed globals 热重载", () => {

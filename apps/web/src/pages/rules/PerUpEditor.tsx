@@ -545,8 +545,11 @@ function MsgOverrideBox({
 	onChange: (next: TemplateOverride | undefined) => void;
 	baseline: GlobalDefaults["templates"];
 }) {
-	// 覆盖语义:开 = 该 UP 强制启用自定义直播消息(写入 liveMsgEnabled=true);关 = 继承全局决定。
-	const enabled = value?.liveMsgEnabled === true;
+	// 无 enable flag(与动态模板一致):有 liveStart/liveOngoing/liveEnd 任一覆盖即「覆盖中」。
+	const enabled =
+		value?.liveStart !== undefined ||
+		value?.liveOngoing !== undefined ||
+		value?.liveEnd !== undefined;
 	const cur = value ?? {};
 	function set<K extends "liveStart" | "liveOngoing" | "liveEnd">(k: K, v: string): void {
 		onChange({ ...cur, [k]: v });
@@ -555,20 +558,19 @@ function MsgOverrideBox({
 		if (on) {
 			onChange({
 				...cur,
-				liveMsgEnabled: true,
 				liveStart: cur.liveStart ?? baseline.liveStart,
 				liveOngoing: cur.liveOngoing ?? baseline.liveOngoing,
 				liveEnd: cur.liveEnd ?? baseline.liveEnd,
 			});
 		} else {
-			const { liveMsgEnabled: _flag, liveStart: _a, liveOngoing: _b, liveEnd: _c, ...rest } = cur;
+			const { liveStart: _a, liveOngoing: _b, liveEnd: _c, ...rest } = cur;
 			onChange(Object.keys(rest).length > 0 ? rest : undefined);
 		}
 	}
 	return (
 		<GlassBox
 			title="直播消息覆盖"
-			subtitle="开 = 该 UP 强制使用自定义开播 / 直播中 / 下播文案;关 = 继承全局决定"
+			subtitle="开 = 该 UP 使用自定义开播 / 直播中 / 下播文案;关 = 继承全局"
 			accent="#FB7299"
 			icon={<Icon.chat size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}

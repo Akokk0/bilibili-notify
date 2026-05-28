@@ -309,14 +309,8 @@ export const FIELD_LABELS = {
 	"templates.dynamicVideo": { label: "视频文案", section: "templates" },
 	"templates.specialDanmaku": { label: "弹幕模板", section: "templates" },
 	"templates.specialUserEnter": { label: "进房模板", section: "templates" },
-	// 以下 7 条仅 diff-path entry 用(LiveMsg / GuardSection 的 Toggle 直接挂在
-	// GlassBox.right 槽,Guard 模板嵌在小卡 JSX 里没单独 <Field> 包裹,diff 会
-	// 输出整段嵌套 path)。
-	"templates.liveMsgEnabled": {
-		label: "启用直播消息模板",
-		hint: "总开关 · 关 = 走 builtin 简短文案",
-		section: "templates",
-	},
+	// 以下几条仅 diff-path entry 用(GuardSection 的 Toggle 直接挂在 GlassBox.right
+	// 槽,Guard 模板嵌在小卡 JSX 里没单独 <Field> 包裹,diff 会输出整段嵌套 path)。
 	"templates.guardBuy.enable": {
 		label: "启用自定义上舰提示",
 		hint: "总开关 · 关 = 默认走 B 站官方上舰图",

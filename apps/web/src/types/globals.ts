@@ -78,8 +78,6 @@ export interface TemplateBundle {
 	liveStart: string;
 	liveOngoing: string;
 	liveEnd: string;
-	/** false = builtin 简短文案;true = 用上面三段 liveStart/liveOngoing/liveEnd 自定义模板。 */
-	liveMsgEnabled: boolean;
 	liveSummary: string;
 	/** 非视频动态推送文案模板。变量 {name} / {url}。 */
 	dynamic: string;

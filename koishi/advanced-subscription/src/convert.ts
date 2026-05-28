@@ -327,7 +327,6 @@ export function rawConfigToSubscription(_name: string, raw: SubItemRawConfig): C
 	if (liveMsg?.enable) {
 		sub.overrides.templates = {
 			...(sub.overrides.templates ?? {}),
-			liveMsgEnabled: true,
 			...(liveMsg.customLiveStart !== undefined ? { liveStart: liveMsg.customLiveStart } : {}),
 			...(liveMsg.customLive !== undefined ? { liveOngoing: liveMsg.customLive } : {}),
 			...(liveMsg.customLiveEnd !== undefined ? { liveEnd: liveMsg.customLiveEnd } : {}),

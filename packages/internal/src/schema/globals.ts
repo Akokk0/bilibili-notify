@@ -121,8 +121,6 @@ export const DEFAULT_TEMPLATES = {
 	liveStart: "{name} 开播啦，当前粉丝数：{follower}\n{link}",
 	liveOngoing: "{name} 正在直播，已播 {time}，累计观看：{watched}\n{link}",
 	liveEnd: "{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
-	// false = builtin 简短文案；true = 启用上面三段自定义模板
-	liveMsgEnabled: false,
 	liveSummary: `🔍【弹幕情报站】本场直播数据如下：
 🧍‍♂️ 总共 {dmc} 位{mdn}上线
 💬 共计 {dca} 条弹幕飞驰而过

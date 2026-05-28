@@ -525,44 +525,28 @@ export function LiveMsgSection({
 }) {
 	const setT = <K extends keyof TemplateBundle>(k: K, v: TemplateBundle[K]) =>
 		onPatch({ defaults: { templates: { [k]: v } as Partial<TemplateBundle> } });
-	const enabled = templates.liveMsgEnabled;
 	return (
 		<GlassBox
 			title="直播消息模板"
-			subtitle="开播 / 直播中 / 下播 三段提醒"
+			subtitle="开播 / 直播中 / 下播 三段提醒(改了直接生效)"
 			accent="#FB7299"
 			icon={<Icon.chat size={14} />}
-			badge={enabled ? "已启用" : "未启用"}
-			right={<Toggle value={enabled} onChange={(v) => setT("liveMsgEnabled", v)} />}
 		>
-			{enabled ? (
-				<>
-					<LiveMsgVariableHints />
-					<FieldRow code="templates.liveStart" full>
-						<TArea
-							value={templates.liveStart}
-							onChange={(v) => setT("liveStart", v)}
-							rows={3}
-							mono
-						/>
-					</FieldRow>
-					<FieldRow code="templates.liveOngoing" full>
-						<TArea
-							value={templates.liveOngoing}
-							onChange={(v) => setT("liveOngoing", v)}
-							rows={3}
-							mono
-						/>
-					</FieldRow>
-					<FieldRow code="templates.liveEnd" full>
-						<TArea value={templates.liveEnd} onChange={(v) => setT("liveEnd", v)} rows={2} mono />
-					</FieldRow>
-				</>
-			) : (
-				<div className="py-5 text-center text-[12px] text-bn-text-tertiary">
-					未启用 · 引擎将使用内置直播提示文案
-				</div>
-			)}
+			<LiveMsgVariableHints />
+			<FieldRow code="templates.liveStart" full>
+				<TArea value={templates.liveStart} onChange={(v) => setT("liveStart", v)} rows={3} mono />
+			</FieldRow>
+			<FieldRow code="templates.liveOngoing" full>
+				<TArea
+					value={templates.liveOngoing}
+					onChange={(v) => setT("liveOngoing", v)}
+					rows={3}
+					mono
+				/>
+			</FieldRow>
+			<FieldRow code="templates.liveEnd" full>
+				<TArea value={templates.liveEnd} onChange={(v) => setT("liveEnd", v)} rows={2} mono />
+			</FieldRow>
 		</GlassBox>
 	);
 }

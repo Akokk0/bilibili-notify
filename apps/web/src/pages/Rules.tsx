@@ -49,7 +49,11 @@ function isSectionCustomized(sub: Subscription, sectionId: SectionId): boolean {
 		case "summary":
 			return Boolean(sub.overrides.templates?.liveSummary);
 		case "msg":
-			return sub.overrides.templates?.liveMsgEnabled === true;
+			return (
+				sub.overrides.templates?.liveStart !== undefined ||
+				sub.overrides.templates?.liveOngoing !== undefined ||
+				sub.overrides.templates?.liveEnd !== undefined
+			);
 		case "dynamicMsg":
 			return (
 				sub.overrides.templates?.dynamic !== undefined ||

@@ -127,4 +127,28 @@ describe("buildLiveSubViewSingle — 不伪装全局值", () => {
 		expect(view.aiOverride).toBeDefined();
 		expect(view.customCardStyle).toEqual({ enable: false });
 	});
+
+	it("无 per-UP 模板 override → customLiveMsg 始终下发全局默认三段(无开关,对齐 liveSummary)", () => {
+		const sub = makeSub({});
+		const g = makeDefaultGlobalConfig();
+		const view = buildLiveSubViewSingle(sub, fakeRuntimeStore(), g);
+		expect(view.customLiveMsg).toEqual({
+			enable: true,
+			customLiveStart: g.defaults.templates.liveStart,
+			customLive: g.defaults.templates.liveOngoing,
+			customLiveEnd: g.defaults.templates.liveEnd,
+		});
+	});
+
+	it("设 per-UP liveStart override → customLiveStart 用 override 值,其余回退全局", () => {
+		const sub = makeSub({ templates: { liveStart: "自定义开播文案 {name}" } });
+		const g = makeDefaultGlobalConfig();
+		const view = buildLiveSubViewSingle(sub, fakeRuntimeStore(), g);
+		expect(view.customLiveMsg).toEqual({
+			enable: true,
+			customLiveStart: "自定义开播文案 {name}",
+			customLive: g.defaults.templates.liveOngoing,
+			customLiveEnd: g.defaults.templates.liveEnd,
+		});
+	});
 });
