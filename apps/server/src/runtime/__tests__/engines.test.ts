@@ -595,6 +595,22 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		expect(view.customVideoTemplate).toBe("🎬 {name} {url}");
 	});
 
+	it("禁用订阅 add:dynamic add op 仍下发但 dynamic:false(engine applyOps 的 !op.sub.dynamic 拦截)", () => {
+		// buildDynamicSubViewSingle 的 `dynamic: sub.enabled && eff.features.dynamic`
+		// 门必须对 disabled sub 产出 false —— 与旧 add 路径 hasDyn(disabled→false) 等价。
+		// engine 侧 applyOps add 分支 `if(!op.sub.dynamic) break` 据此不启动轮询。
+		const sub = makeSub("700", false);
+		const c = setup({ subs: [sub] });
+		active = c;
+		c.bus.emit("subscription-changed", [{ type: "add", sub }]);
+
+		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
+		expect(dynOps).toHaveLength(1);
+		expect(dynOps[0].type).toBe("add");
+		expect(dynOps[0].sub.uid).toBe("700");
+		expect(dynOps[0].sub.dynamic).toBe(false);
+	});
+
 	it("remove op:live 与 dynamic 均收到 delete(无视 enabled)", () => {
 		const sub = makeSub("400", true);
 		const c = setup({ subs: [sub] });
