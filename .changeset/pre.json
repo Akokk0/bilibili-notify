@@ -32,6 +32,7 @@
     "koishi-config-convergence",
     "koishi-image-hide-follower-rename",
     "koishi-master-notifier-engine-error",
+    "koishi-subscription-display-name",
     "monorepo-refactor-release",
     "push-atall-split-and-dynamic-filter-types"
   ]
