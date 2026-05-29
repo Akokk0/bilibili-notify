@@ -77,7 +77,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			.map((sub) => {
 				const hasDyn = (sub.routing.dynamic?.length ?? 0) > 0;
 				const hasLive = (sub.routing.live?.length ?? 0) > 0;
-				const name = sub.uid;
+				const name = sub.name?.trim() || sub.uid;
 				const flags = [hasDyn ? "已订阅动态" : "", hasLive ? "已订阅直播" : ""]
 					.filter(Boolean)
 					.join(" ");

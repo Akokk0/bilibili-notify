@@ -65,6 +65,8 @@ export function flatSubToSubscription(
 	// Use a deterministic id based on uid so re-loading is stable.
 	const subId = deterministicUuid(`sub:${uid}`);
 	const sub = makeEmptySubscription({ id: subId, uid });
+	const name = item.name?.trim();
+	if (name && name !== uid) sub.name = name;
 	sub.overrides = {};
 
 	// Synthesize adapter (one per botPlatform) + targets and wire routing.
@@ -141,7 +143,6 @@ export class SubscriptionLoader {
 	 * + 重复 registry.set)。
 	 */
 	private listenerReleases: Array<() => void> = [];
-
 	constructor(opts: SubscriptionLoaderOptions) {
 		this.ctx = opts.ctx;
 		this.logger = opts.logger;
@@ -205,7 +206,7 @@ export class SubscriptionLoader {
 			}),
 		);
 		this.listenerReleases.push(
-			this.ctx.on("bilibili-notify/advanced-sub", async (incoming: Subscription[]) => {
+			this.ctx.on("bilibili-notify/advanced-sub", (incoming: Subscription[]) => {
 				if (!incoming.length) {
 					this.logger.info("[sub] 订阅加载完毕，但未添加任何订阅");
 					return;

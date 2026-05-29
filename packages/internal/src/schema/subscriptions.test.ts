@@ -75,6 +75,14 @@ describe("M2: SubscriptionSchema 剥离 cachedProfile / state", () => {
 		expect(r.success).toBe(true);
 	});
 
+	it("用户手填 UP 昵称保留在 name(纯配置),makeEmpty 默认不写", () => {
+		expect(BASE.name).toBeUndefined();
+		const parsed = SubscriptionSchema.parse({ ...BASE, name: "Asaki大人" });
+		expect(parsed.name).toBe("Asaki大人");
+		const eff = resolve(parsed, makeDefaultGlobalConfig().defaults);
+		expect(eff.name).toBe("Asaki大人");
+	});
+
 	it("resolve() 输出不含 cachedProfile / state", () => {
 		const globals = makeDefaultGlobalConfig();
 		const eff = resolve(BASE as Subscription, globals.defaults) as unknown as Record<

@@ -24,6 +24,7 @@ import type {
 export interface EffectiveSubscription {
 	id: string;
 	uid: string;
+	name: string | undefined;
 	enabled: boolean;
 	groups: string[];
 	notes: string | undefined;
@@ -105,6 +106,7 @@ export function resolve(sub: Subscription, defaults: GlobalDefaults): EffectiveS
 	return structuredClone<EffectiveSubscription>({
 		id: sub.id,
 		uid: sub.uid,
+		name: sub.name,
 		enabled: sub.enabled,
 		groups: sub.groups,
 		notes: sub.notes,

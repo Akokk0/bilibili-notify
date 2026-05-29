@@ -164,6 +164,8 @@ export const SubscriptionSchema = z
 	.object({
 		id: z.uuid(),
 		uid: z.string().regex(/^\d+$/, "uid must be a numeric Bilibili UID string"),
+		/** 用户手填的 UP 昵称 / 别名。不同于 cachedProfile.name(平台实时资料缓存)。 */
+		name: z.string().optional(),
 		enabled: z.boolean(),
 		groups: z.array(z.string()).default([]),
 		notes: z.string().optional(),
@@ -191,6 +193,7 @@ export function makeEmptySubscription(opts: { id: string; uid: string }): Subscr
 	return {
 		id: opts.id,
 		uid: opts.uid,
+		name: undefined,
 		enabled: true,
 		groups: [],
 		notes: undefined,

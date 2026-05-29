@@ -144,10 +144,12 @@ export interface ConversionResult {
 	targets: PushTarget[];
 }
 
-export function rawConfigToSubscription(_name: string, raw: SubItemRawConfig): ConversionResult {
+export function rawConfigToSubscription(name: string, raw: SubItemRawConfig): ConversionResult {
 	const uid = raw.uid;
 	const subId = deterministicUuid(`sub:${uid}`);
 	const sub = makeEmptySubscription({ id: subId, uid });
+	const displayName = name.trim();
+	if (displayName && displayName !== uid) sub.name = displayName;
 
 	// Build routing from the per-channel config
 	const routing: SubscriptionRouting = Object.fromEntries(

@@ -105,6 +105,27 @@ describe("buildAdvancedSubAndTargets()", () => {
 		expect(subs[1].routing.live?.[0]).toBe(targets[0].id);
 	});
 
+	it("把配置字典 key 当 UP 昵称写入 Subscription.name,供 core 渲染", () => {
+		const cfg: AdvancedSubRawShim = {
+			subs: {
+				时之沙: makeRaw("12345", "111"),
+				小花花: makeRaw("67890", "222"),
+				"  带空格  ": makeRaw("55555", "555"),
+				// key 恰等于 uid / 纯空白 → 无意义,不写(渲染回退 uid)
+				"99999": makeRaw("99999", "333"),
+				"   ": makeRaw("77777", "777"),
+			},
+		};
+		const { subs } = buildAdvancedSubAndTargets(cfg as unknown as AdvancedSubRawConfigShape);
+		expect(Object.fromEntries(subs.map((s) => [s.uid, s.name]))).toEqual({
+			"12345": "时之沙",
+			"67890": "小花花",
+			"55555": "带空格",
+			"99999": undefined,
+			"77777": undefined,
+		});
+	});
+
 	it("maps UP-level dynamicAtAll/liveAtAll to Subscription.atAllDefaults", () => {
 		const cfg: AdvancedSubRawShim = {
 			subs: {
