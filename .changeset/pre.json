@@ -26,6 +26,7 @@
     "bug-fixes-since-last-release",
     "cardstyle-three-fields",
     "dependent-bumps-push-internal-image",
+    "dynamic-pub-ts-fallback",
     "dynamic-templates-and-key-syntax",
     "imagegroup-subtree-and-overrides",
     "koishi-ai-image-late-inject",
@@ -33,6 +34,7 @@
     "koishi-image-hide-follower-rename",
     "koishi-master-notifier-engine-error",
     "koishi-subscription-display-name",
+    "live-ws-watchdog",
     "monorepo-refactor-release",
     "push-atall-split-and-dynamic-filter-types"
   ]
