@@ -479,13 +479,7 @@ function pickLogTone(level: string | undefined): { fg: string; bg: string } {
 	return LOG_LEVEL_TONE.info;
 }
 
-function PluginMatrix({
-	cells,
-	moduleVersions,
-}: {
-	cells: PluginCell[];
-	moduleVersions: HealthSnapshot["moduleVersions"];
-}) {
+function PluginMatrix({ cells }: { cells: PluginCell[] }) {
 	return (
 		<div
 			className="grid gap-2"
@@ -497,7 +491,6 @@ function PluginMatrix({
 				const tone = pickLogTone(c.logLevel);
 				const levelLabel = c.logLevel ? c.logLevel.toUpperCase() : "—";
 				const isOverride = c.logLevelSource === "module";
-				const ver = moduleVersions?.[c.id];
 				return (
 					<div key={c.id} className="rounded-lg border border-black/6 bg-white px-3 py-2.5">
 						<div className="mb-1.5 flex items-center justify-between">
@@ -506,9 +499,6 @@ function PluginMatrix({
 								className="inline-block h-1.5 w-1.5 rounded-full"
 								style={{ background: c.enabled ? "#22c55e" : "#cbd5e1" }}
 							/>
-						</div>
-						<div className="mb-1 font-mono text-[10.5px] text-bn-text-tertiary">
-							{ver ? `v${ver}` : "—"}
 						</div>
 						<div className="flex items-center gap-1.5 whitespace-nowrap text-[11px] text-bn-text-secondary">
 							日志{" "}
@@ -628,7 +618,7 @@ function SystemHealthCard({
 					网络中断),以下数据可能为最后一次成功拉取的快照。
 				</div>
 			) : null}
-			<PluginMatrix cells={cells} moduleVersions={health?.moduleVersions} />
+			<PluginMatrix cells={cells} />
 		</GlassBox>
 	);
 }

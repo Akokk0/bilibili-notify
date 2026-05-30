@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import type { Components } from "react-markdown";
 import { Input } from "../components/atoms";
 import { Icon } from "../components/icons";
 import { useLogChannel } from "../hooks/useLogChannel";
@@ -32,6 +33,73 @@ const LEVEL_TONE: Record<LogLineLevel, string> = {
 
 const RENDER_CAP = 800;
 
+const ReactMarkdown = lazy(() => import("react-markdown"));
+
+async function loadChangelogMarkdown(): Promise<string> {
+	const mod = await import("../../../CHANGELOG.md?raw");
+	return mod.default;
+}
+
+type LogsSectionId = "logs" | "changelog";
+
+const LOG_SECTIONS: ReadonlyArray<{
+	id: LogsSectionId;
+	label: string;
+	desc: string;
+	icon: keyof typeof Icon;
+}> = [
+	{ id: "logs", label: "运行日志", desc: "实时输出与归档检索", icon: "list" },
+	{ id: "changelog", label: "更新日志", desc: "独立端版本变更记录", icon: "sparkle" },
+];
+
+const MARKDOWN_COMPONENTS: Components = {
+	h1: ({ children }) => (
+		<h1 className="mt-0 mb-4 border-b border-black/8 pb-3 text-[24px] font-extrabold tracking-tight text-bn-text-primary">
+			{children}
+		</h1>
+	),
+	h2: ({ children }) => (
+		<h2 className="mt-7 mb-3 text-[18px] font-extrabold tracking-tight text-bn-text-primary">
+			{children}
+		</h2>
+	),
+	h3: ({ children }) => (
+		<h3 className="mt-5 mb-2 text-[14px] font-bold uppercase tracking-wide text-bn-pink">
+			{children}
+		</h3>
+	),
+	p: ({ children }) => (
+		<p className="my-2 text-[13px] leading-7 text-bn-text-secondary">{children}</p>
+	),
+	ul: ({ children }) => (
+		<ul className="my-2 space-y-1.5 pl-5 text-[13px] text-bn-text-secondary">{children}</ul>
+	),
+	li: ({ children }) => <li className="list-disc leading-7 marker:text-bn-pink/70">{children}</li>,
+	code: ({ node: _node, className, children, ...props }) => (
+		<code
+			className={`rounded-md bg-black/5 px-1.5 py-0.5 font-mono text-[12px] text-bn-text-primary ${className ?? ""}`}
+			{...props}
+		>
+			{children}
+		</code>
+	),
+	pre: ({ children }) => (
+		<pre className="my-3 overflow-x-auto rounded-xl border border-black/8 bg-[#0f1115] p-3 text-[12px] leading-relaxed text-gray-200">
+			{children}
+		</pre>
+	),
+	a: ({ children, href }) => (
+		<a
+			href={href}
+			target="_blank"
+			rel="noreferrer"
+			className="font-semibold text-bn-pink underline-offset-2 hover:underline"
+		>
+			{children}
+		</a>
+	),
+};
+
 function todayStr(): string {
 	return new Date().toISOString().slice(0, 10);
 }
@@ -39,6 +107,7 @@ function todayStr(): string {
 export default function Logs() {
 	useLogChannel();
 
+	const [section, setSection] = useState<LogsSectionId>("logs");
 	const [day, setDay] = useState<string>(""); // "" = 实时(live key);否则某天
 	const [levels, setLevels] = useState<Set<LogLineLevel>>(new Set(LEVELS));
 	const [source, setSource] = useState<string>("");
@@ -99,8 +168,8 @@ export default function Logs() {
 
 	const viewDay = isLive ? todayStr() : day;
 
-	return (
-		<div className="bn-anim-fade-in space-y-3">
+	const runtimeLogs = (
+		<div className="space-y-3">
 			<div className="flex flex-wrap items-center gap-2">
 				<Input
 					value={q}
@@ -211,6 +280,120 @@ export default function Logs() {
 					displayed.map((e, i) => <LogRow key={`${e.ts}-${i}`} entry={e} />)
 				)}
 				<div ref={bottomRef} />
+			</div>
+		</div>
+	);
+
+	return (
+		<div className="bn-anim-fade-in grid gap-4 xl:grid-cols-[220px_1fr]">
+			<LogsSectionList current={section} onChange={setSection} />
+			<div className="min-w-0">{section === "logs" ? runtimeLogs : <ChangelogPanel />}</div>
+		</div>
+	);
+}
+
+function LogsSectionList({
+	current,
+	onChange,
+}: {
+	current: LogsSectionId;
+	onChange: (section: LogsSectionId) => void;
+}) {
+	return (
+		<aside className="sticky top-30 h-fit min-w-0">
+			<div className="mb-2 px-1 text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
+				日志
+			</div>
+			<div className="flex flex-col gap-1">
+				{LOG_SECTIONS.map((s) => {
+					const active = current === s.id;
+					const SectionIcon = Icon[s.icon];
+					return (
+						<button
+							key={s.id}
+							type="button"
+							onClick={() => onChange(s.id)}
+							aria-pressed={active}
+							className={`flex w-full items-center gap-2 rounded-[9px] border px-3 py-2.5 text-left transition ${
+								active
+									? "border-bn-pink/35 bg-white/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+									: "border-transparent hover:bg-white/55"
+							}`}
+						>
+							<span
+								className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${
+									active ? "bg-bn-pink/12 text-bn-pink" : "bg-black/4 text-bn-text-tertiary"
+								}`}
+							>
+								<SectionIcon size={14} />
+							</span>
+							<span className="min-w-0">
+								<span className="block text-[12.5px] font-bold text-bn-text-primary">
+									{s.label}
+								</span>
+								<span className="block truncate text-[11px] text-bn-text-tertiary">{s.desc}</span>
+							</span>
+						</button>
+					);
+				})}
+			</div>
+		</aside>
+	);
+}
+
+function ChangelogPanel() {
+	const [markdown, setMarkdown] = useState<string | null>(null);
+	const [loadError, setLoadError] = useState<string | null>(null);
+
+	useEffect(() => {
+		let cancelled = false;
+		void loadChangelogMarkdown()
+			.then((text) => {
+				if (cancelled) return;
+				setMarkdown(text);
+				setLoadError(null);
+			})
+			.catch((err: unknown) => {
+				if (cancelled) return;
+				setLoadError(err instanceof Error ? err.message : String(err));
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	return (
+		<div className="rounded-[14px] border border-black/6 bg-white/80 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)] backdrop-blur-sm">
+			<div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-black/6 pb-4">
+				<div>
+					<div className="flex items-center gap-2 text-[15px] font-extrabold text-bn-text-primary">
+						<Icon.sparkle size={16} />
+						更新日志
+					</div>
+					<p className="mt-1 text-[12px] text-bn-text-tertiary">独立端版本变更记录</p>
+				</div>
+				<span className="rounded-full border border-bn-pink/25 bg-bn-pink/8 px-3 py-1 font-mono text-[11px] font-semibold text-bn-pink">
+					apps/CHANGELOG.md
+				</span>
+			</div>
+			<div className="max-w-none">
+				{loadError ? (
+					<div className="py-8 text-center text-[12px] text-red-500">
+						更新日志加载失败: {loadError}
+					</div>
+				) : markdown == null ? (
+					<div className="py-8 text-center text-[12px] text-bn-text-tertiary">加载更新日志…</div>
+				) : (
+					<Suspense
+						fallback={
+							<div className="py-8 text-center text-[12px] text-bn-text-tertiary">
+								加载更新日志…
+							</div>
+						}
+					>
+						<ReactMarkdown components={MARKDOWN_COMPONENTS}>{markdown}</ReactMarkdown>
+					</Suspense>
+				)}
 			</div>
 		</div>
 	);

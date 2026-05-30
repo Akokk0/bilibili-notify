@@ -1240,7 +1240,7 @@ export default function Targets() {
 
 	return (
 		<div className="bn-anim-fade-in flex flex-col gap-4">
-			<div className="grid gap-4 xl:grid-cols-[240px_1fr]">
+			<div className="grid gap-4 xl:grid-cols-[220px_1fr]">
 				<AdapterRail
 					adapters={adapters}
 					selectedId={selectedAdapterId}
