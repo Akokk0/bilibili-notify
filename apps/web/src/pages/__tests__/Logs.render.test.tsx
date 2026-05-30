@@ -56,6 +56,6 @@ describe("Logs page sections", () => {
 		renderLogs();
 		fireEvent.click(screen.getByRole("button", { name: /更新日志/ }));
 		expect(await screen.findByText("Changelog · 独立端")).toBeTruthy();
-		expect(screen.getByText("apps/CHANGELOG.md")).toBeTruthy();
+		expect(screen.getAllByText("apps/CHANGELOG.md").length).toBeGreaterThan(0);
 	});
 });

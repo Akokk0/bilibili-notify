@@ -72,8 +72,8 @@ describe("startHistoryRetention", () => {
 			const files = await listDayFiles(dataDir);
 			expect(files).not.toContain("2000-01-01.jsonl");
 			expect(files).toContain(`${today}.jsonl`);
+			expect(logger.info).toHaveBeenCalled(); // 删除>0 → info 汇总
 		});
-		expect(logger.info).toHaveBeenCalled(); // 删除>0 → info 汇总
 	});
 
 	it("单文件删除失败(同名是目录)只 warn,不阻断其它旧文件删除", async () => {
