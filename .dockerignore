@@ -22,6 +22,7 @@
 # Markdown / design assets / logs not needed at build time.
 **/*.md
 !.changeset/*.md
+!apps/CHANGELOG.md
 .bn-design
 
 # Local-only state from previous runs.
