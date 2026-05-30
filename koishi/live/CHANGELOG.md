@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.0-alpha.5
+
+### Patch Changes
+
+- b81039f: 为直播间 WS 增加静默 watchdog:连接建立后持续记录 heartbeat / 消息活动,超过 180 秒无活动时自动重连,避免直播监听半开后漏掉开播事件
+- Updated dependencies [b81039f]
+  - @bilibili-notify/live@0.1.0-alpha.5
+
 ## 2.0.0-alpha.4
 
 ### Minor Changes
