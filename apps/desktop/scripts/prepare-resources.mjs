@@ -16,6 +16,7 @@ const nodeMajor = "24";
 const workspaceScope = "@bilibili-notify/";
 const maxResourceFiles = 25_000;
 const maxResourceBytes = 512 * 1024 * 1024;
+const maxWindowsResourceRelativePathChars = 180;
 
 const runtimeImportSeeds = [
 	"@bilibili-notify/api",
@@ -154,20 +155,32 @@ async function stageWorkspaceRuntimePackages(nodeModulesRoot) {
 async function stageThirdPartyRuntimePackages(nodeModulesRoot, workspacePackages) {
 	const workspacePackageSet = new Set(workspacePackages);
 	const workspaceMap = await readWorkspacePackageMap();
-	const queue = [];
+	const stagedPackageVersions = new Map();
 	const stagedTargets = new Set();
+	const processedPackages = new Set();
 	const stagedPackages = new Set();
-	const context = { nodeModulesRoot, workspacePackageSet, stagedTargets, stagedPackages };
+	const context = {
+		nodeModulesRoot,
+		workspacePackageSet,
+		stagedPackageVersions,
+		stagedTargets,
+		processedPackages,
+		stagedPackages,
+	};
 
 	const serverManifest = await readJson(join(root, "apps", "server", "package.json"));
-	enqueueManifestRuntimeDeps(queue, serverManifest);
-	for (const name of workspacePackages) {
-		const source = workspaceMap.get(name);
-		const manifest = await readJson(join(source, "package.json"));
-		enqueueManifestRuntimeDeps(queue, manifest, workspacePackageSet);
+	const serverDeps = [];
+	enqueueManifestRuntimeDeps(serverDeps, serverManifest);
+	for (const item of serverDeps) {
+		await stageThirdPartyPackage(
+			item,
+			[join(root, "apps", "server"), root],
+			nodeModulesRoot,
+			context,
+			{ deferDeps: true },
+		);
 	}
-
-	for (const item of queue) {
+	for (const item of serverDeps) {
 		await stageThirdPartyPackage(
 			item,
 			[join(root, "apps", "server"), root],
@@ -176,10 +189,26 @@ async function stageThirdPartyRuntimePackages(nodeModulesRoot, workspacePackages
 		);
 	}
 
+	for (const name of workspacePackages) {
+		const source = workspaceMap.get(name);
+		const manifest = await readJson(join(source, "package.json"));
+		const deps = [];
+		enqueueManifestRuntimeDeps(deps, manifest, workspacePackageSet);
+		const workspaceNodeModules = join(packageTargetRoot(nodeModulesRoot, name), "node_modules");
+		for (const item of deps) {
+			await stageThirdPartyPackage(item, [source, root], workspaceNodeModules, context, {
+				deferDeps: true,
+			});
+		}
+		for (const item of deps) {
+			await stageThirdPartyPackage(item, [source, root], workspaceNodeModules, context);
+		}
+	}
+
 	return Array.from(stagedPackages).sort();
 }
 
-async function stageThirdPartyPackage(item, searchRoots, targetNodeModules, context) {
+async function stageThirdPartyPackage(item, searchRoots, targetNodeModules, context, options = {}) {
 	if (!item || isWorkspacePackage(item.name) || isTypesPackage(item.name)) return;
 	let source;
 	try {
@@ -192,22 +221,36 @@ async function stageThirdPartyPackage(item, searchRoots, targetNodeModules, cont
 		throw err;
 	}
 	const manifest = await readJson(join(source, "package.json"));
-	const target = packageTargetRoot(targetNodeModules, item.name);
+	const packageName = manifest.name ?? item.name;
+	const packageVersion = manifest.version ?? "0.0.0";
+	const existingVersion = context.stagedPackageVersions.get(packageName);
+	const shouldNest = existingVersion && existingVersion !== packageVersion;
+	if (shouldNest && resolve(targetNodeModules) === resolve(context.nodeModulesRoot)) {
+		throw new Error(
+			`Desktop runtime cannot place direct duplicate ${packageName} versions: ${existingVersion} and ${packageVersion}`,
+		);
+	}
+
+	const target = packageTargetRoot(
+		shouldNest ? targetNodeModules : context.nodeModulesRoot,
+		packageName,
+	);
 	const targetKey = resolve(target);
+	const packageKey = `${targetKey}:${packageName}@${packageVersion}`;
+
 	if (!context.stagedTargets.has(targetKey)) {
 		await copyFileOrDir(source, target, { dereference: true, runtimePackage: true });
 		context.stagedTargets.add(targetKey);
-		context.stagedPackages.add(`${manifest.name}@${manifest.version ?? "0.0.0"}`);
+		context.stagedPackages.add(`${packageName}@${packageVersion}`);
 	}
+	if (!shouldNest) context.stagedPackageVersions.set(packageName, packageVersion);
+	if (options.deferDeps) return;
+	if (context.processedPackages.has(packageKey)) return;
+	context.processedPackages.add(packageKey);
 
 	const deps = [];
 	enqueueManifestRuntimeDeps(deps, manifest, context.workspacePackageSet);
 	for (const dep of deps) {
-		if (
-			await hasCompatibleTopLevelPackage(context.nodeModulesRoot, dep, [source, ...searchRoots])
-		) {
-			continue;
-		}
 		await stageThirdPartyPackage(
 			dep,
 			[source, ...searchRoots],
@@ -215,25 +258,6 @@ async function stageThirdPartyPackage(item, searchRoots, targetNodeModules, cont
 			context,
 		);
 	}
-}
-
-async function hasCompatibleTopLevelPackage(nodeModulesRoot, item, searchRoots) {
-	if (isWorkspacePackage(item.name) || isTypesPackage(item.name)) return true;
-	let source;
-	try {
-		source = await resolveInstalledPackageRoot(item.name, searchRoots);
-	} catch {
-		return item.optional;
-	}
-	const sourceManifest = await readJson(join(source, "package.json"));
-	const existingManifestPath = join(
-		nodeModulesRoot,
-		...packageNameParts(item.name),
-		"package.json",
-	);
-	if (!(await exists(existingManifestPath))) return false;
-	const existingManifest = await readJson(existingManifestPath);
-	return existingManifest.version === sourceManifest.version;
 }
 
 async function readWorkspacePackageMap() {
@@ -468,6 +492,18 @@ async function assertSlimRuntimeLayout(runtimeInfo) {
 			throw new Error(`Desktop runtime unexpectedly contains dev package ${name}`);
 		}
 	}
+	await assertWindowsResourcePathBudget(resourcesRoot);
+}
+
+async function assertWindowsResourcePathBudget(dir) {
+	const tooLong = [];
+	await walk(dir, async (path) => {
+		const rel = relative(dir, path).split("\\").join("/");
+		if (rel.length > maxWindowsResourceRelativePathChars) tooLong.push(rel);
+	});
+	if (tooLong.length > 0) {
+		throw new Error(`Desktop runtime paths are too deep for Windows NSIS:\n${tooLong.join("\n")}`);
+	}
 }
 
 async function assertResourceBudget(treeStats) {
@@ -504,7 +540,7 @@ async function assertNoDesktopForbiddenFiles(dir) {
 		}
 		if (rel.startsWith("app/apps/server/data/")) forbidden.push(rel);
 		if (rel.startsWith("app/apps/server/logs/")) forbidden.push(rel);
-		if (rel.startsWith("app/node_modules/@bilibili-notify/") && rel.includes("/src/")) {
+		if (/^app\/node_modules\/@bilibili-notify\/[^/]+\/src\//.test(rel)) {
 			forbidden.push(rel);
 		}
 		if (await mayContainSensitiveText(path)) {
