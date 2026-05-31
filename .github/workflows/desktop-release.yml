@@ -58,7 +58,11 @@ jobs:
         run: vp run build:apps
 
       - name: Build Tauri bundle
-        run: vp run -F @bilibili-notify/desktop tauri:build -- --bundles ${{ matrix.bundles }}
+        shell: bash
+        run: |
+          vp run -F @bilibili-notify/desktop prepare-resources
+          cd apps/desktop
+          vpx tauri build --bundles ${{ matrix.bundles }}
 
       - name: Collect macOS artifacts
         if: matrix.id == 'mac-arm64'
