@@ -4,6 +4,8 @@
  * is served from the same origin, so relative paths just work.
  */
 
+import { withDesktopTokenHeader } from "./desktop-token";
+
 export class ApiError extends Error {
 	constructor(
 		public readonly status: number,
@@ -31,7 +33,9 @@ export function setUnauthorizedHandler(fn: UnauthorizedHandler | null): void {
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
 	const res = await fetch(path, {
 		method,
-		headers: body !== undefined ? { "content-type": "application/json" } : undefined,
+		headers: withDesktopTokenHeader(
+			body !== undefined ? { "content-type": "application/json" } : undefined,
+		),
 		body: body !== undefined ? JSON.stringify(body) : undefined,
 		credentials: "include",
 	});

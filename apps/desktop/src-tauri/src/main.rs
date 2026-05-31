@@ -11,18 +11,19 @@ use std::{
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+#[cfg(target_os = "macos")]
+use tauri::RunEvent;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
     App, AppHandle, Manager, State, Url, WindowEvent,
 };
-#[cfg(target_os = "macos")]
-use tauri::RunEvent;
 
 const HOST: &str = "127.0.0.1";
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
 const HEALTH_INTERVAL: Duration = Duration::from_millis(350);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
+const DESKTOP_TOKEN_QUERY: &str = "desktopToken";
 
 #[derive(Default)]
 struct LauncherState {
@@ -193,7 +194,10 @@ fn setup_launcher(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             true
         }
         Err(err) => {
-            append_launcher_log(&paths.launcher_log_dir, &format!("setup tray failed: {err}"));
+            append_launcher_log(
+                &paths.launcher_log_dir,
+                &format!("setup tray failed: {err}"),
+            );
             false
         }
     };
@@ -230,7 +234,8 @@ fn setup_tray(app: &mut App) -> tauri::Result<()> {
         .show_menu_on_left_click(true);
     #[cfg(target_os = "macos")]
     {
-        if let Ok(icon) = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-logo.png")) {
+        if let Ok(icon) = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-logo.png"))
+        {
             builder = builder.icon(icon).icon_as_template(true);
         } else if let Some(icon) = app.default_window_icon().cloned() {
             builder = builder.icon(icon).icon_as_template(false);
@@ -406,6 +411,8 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
     let resources = resolve_resources(app)?;
     let port = allocate_port()?;
     let url = format!("http://{HOST}:{port}");
+    let desktop_token = generate_desktop_token()?;
+    let panel_url = panel_url_with_token(&url, &desktop_token);
     let browser = detect_browser_path();
 
     append_launcher_log(
@@ -453,6 +460,8 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
     command
         .env("BN_CONFIG_DISABLED", "1")
         .env("BN_ALLOW_NO_AUTH", "1")
+        .env("BN_DESKTOP_TOKEN", &desktop_token)
+        .env("BN_DESKTOP_ALLOWED_ORIGIN", &url)
         .env("NODE_ENV", "production");
 
     let child = command
@@ -476,7 +485,7 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
             paths.data_dir.display(),
             paths.launcher_log_dir.display()
         ));
-        inner.panel_url = Some(url.clone());
+        inner.panel_url = Some(panel_url.clone());
     }
     spawn_child_monitor(app.clone(), pid);
 
@@ -494,10 +503,10 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
         inner.status = LauncherStatus::Ready;
         inner.message = format!("Dashboard 已就绪：{url}");
         inner.detail = None;
-        inner.panel_url = Some(url.clone());
+        inner.panel_url = Some(panel_url.clone());
     }
     append_launcher_log(&paths.launcher_log_dir, &format!("sidecar ready url={url}"));
-    navigate_main_window(app, &url);
+    navigate_main_window(app, &panel_url);
     Ok(())
 }
 
@@ -609,6 +618,62 @@ fn mark_service_failed(app: &AppHandle, err: String) {
         inner.panel_url = None;
     }
     show_status_page(app);
+}
+
+fn generate_desktop_token() -> Result<String, String> {
+    let mut bytes = [0_u8; 32];
+    fill_random(&mut bytes)?;
+    Ok(hex_encode(&bytes))
+}
+
+#[cfg(unix)]
+fn fill_random(bytes: &mut [u8]) -> Result<(), String> {
+    fs::File::open("/dev/urandom")
+        .and_then(|mut file| file.read_exact(bytes))
+        .map_err(|err| format!("generate desktop token failed: {err}"))
+}
+
+#[cfg(windows)]
+fn fill_random(bytes: &mut [u8]) -> Result<(), String> {
+    const BCRYPT_USE_SYSTEM_PREFERRED_RNG: u32 = 0x00000002;
+    #[link(name = "bcrypt")]
+    extern "system" {
+        fn BCryptGenRandom(
+            h_algorithm: *mut std::ffi::c_void,
+            pb_buffer: *mut u8,
+            cb_buffer: u32,
+            dw_flags: u32,
+        ) -> i32;
+    }
+    let status = unsafe {
+        BCryptGenRandom(
+            std::ptr::null_mut(),
+            bytes.as_mut_ptr(),
+            bytes.len() as u32,
+            BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+        )
+    };
+    if status == 0 {
+        Ok(())
+    } else {
+        Err(format!(
+            "generate desktop token failed: BCryptGenRandom status={status}"
+        ))
+    }
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
+}
+
+fn panel_url_with_token(base_url: &str, token: &str) -> String {
+    format!("{base_url}/#{DESKTOP_TOKEN_QUERY}={token}")
 }
 
 fn allocate_port() -> Result<u16, String> {
@@ -918,7 +983,10 @@ fn request_quit(app: AppHandle) {
 fn toggle_dock(app: &AppHandle) {
     if let Err(err) = toggle_dock_result(app) {
         if let Ok(paths) = current_paths(app) {
-            append_launcher_log(&paths.launcher_log_dir, &format!("toggle dock failed: {err}"));
+            append_launcher_log(
+                &paths.launcher_log_dir,
+                &format!("toggle dock failed: {err}"),
+            );
         }
     }
 }

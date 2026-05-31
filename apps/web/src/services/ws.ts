@@ -9,6 +9,8 @@
  *                    { type: 'ping'|'pong'|'subscribed'|'unsubscribed'|'error', ... }
  */
 
+import { withDesktopTokenHeader, withDesktopTokenQuery } from "./desktop-token";
+
 export type ChannelName = "auth" | "push-events" | "log" | "state";
 
 export interface WsEnvelope {
@@ -47,6 +49,7 @@ async function fetchWsTicket(): Promise<string | null> {
 	try {
 		const res = await fetch("/api/auth/ws-ticket", {
 			method: "POST",
+			headers: withDesktopTokenHeader(),
 			credentials: "include",
 		});
 		if (!res.ok) return null;
@@ -55,6 +58,12 @@ async function fetchWsTicket(): Promise<string | null> {
 	} catch {
 		return null;
 	}
+}
+
+function buildWsUrl(baseUrl: string, ticket: string | null): string {
+	const url = new URL(withDesktopTokenQuery(baseUrl));
+	if (ticket) url.searchParams.set("ticket", ticket);
+	return url.toString();
 }
 
 export function connectWs(baseUrl = defaultBaseUrl()): WsClient {
@@ -101,7 +110,7 @@ export function connectWs(baseUrl = defaultBaseUrl()): WsClient {
 		try {
 			const ticket = await fetchWsTicket();
 			if (closedByUser) return;
-			const url = ticket ? `${baseUrl}?ticket=${encodeURIComponent(ticket)}` : baseUrl;
+			const url = buildWsUrl(baseUrl, ticket);
 			const s = new WebSocket(url);
 			socket = s;
 

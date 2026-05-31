@@ -84,6 +84,36 @@ describe("dashboard cookie auth", () => {
 		await runtime.dispose();
 	});
 
+	it("desktop token configured: /api/* requires the launcher token but /api/health stays probeable", async () => {
+		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		await runtime.configStore.load();
+		const app = createApp(runtime, { desktopToken: "desktop-secret" });
+
+		const health = await app.request("/api/health");
+		expect(health.status).toBe(200);
+
+		const sessionMissing = await app.request("/api/session");
+		expect(sessionMissing.status).toBe(401);
+
+		const session = await app.request("/api/session", {
+			headers: { "x-bn-desktop-token": "desktop-secret" },
+		});
+		expect(session.status).toBe(200);
+		expect(await session.json()).toEqual({ authRequired: false, authed: true });
+
+		const globalsWrong = await app.request("/api/globals", {
+			headers: { "x-bn-desktop-token": "wrong" },
+		});
+		expect(globalsWrong.status).toBe(401);
+
+		const globals = await app.request("/api/globals", {
+			headers: { "x-bn-desktop-token": "desktop-secret" },
+		});
+		expect(globals.status).toBe(200);
+
+		await runtime.dispose();
+	});
+
 	it("auth configured: /api/health is also gated by the cookie", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();

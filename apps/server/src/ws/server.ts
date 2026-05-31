@@ -2,6 +2,7 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { Disposable, MessageBus } from "@bilibili-notify/internal";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
+import { isDesktopWsTokenAllowed } from "../auth/desktop-token.js";
 import { isOriginAllowed, normalizeAllowedOrigins } from "../auth/origin.js";
 import type { WsTicketStore } from "../auth/ws-ticket.js";
 import type { ConfigStore } from "../config/store.js";
@@ -56,6 +57,8 @@ export interface CreateWsServerOptions {
 	 * WS handshake completes. When unset/empty, the gate is disabled.
 	 */
 	allowedOrigins?: readonly string[];
+	/** Desktop launcher local token gate. When set, /ws requires ?desktopToken=. */
+	desktopToken?: string;
 }
 
 /** Public surface returned by `createWsServer`. */
@@ -111,6 +114,7 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 	// of truth so HTTP and WS agree on what "allowed origin" means.
 	const allowedOrigins = normalizeAllowedOrigins(opts.allowedOrigins);
 	const authRequired = opts.authRequired ?? false;
+	const desktopToken = opts.desktopToken;
 
 	const rejectUnauthorized = (socket: Duplex): void => {
 		try {
@@ -169,6 +173,11 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 			} catch {
 				// already gone
 			}
+			return;
+		}
+		if (desktopToken && !isDesktopWsTokenAllowed(req.url, desktopToken)) {
+			log.warn("ws upgrade rejected: missing or invalid desktop token");
+			rejectUnauthorized(socket);
 			return;
 		}
 		// Auth gate — emit a real 401 so curl/clients see the right code.

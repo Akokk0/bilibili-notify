@@ -122,6 +122,11 @@ export async function startStandaloneServer(
 		const basicAuthCredentials = bootstrap.auth?.basicAuth;
 		const host = bootstrap.server.host;
 		const allowNoAuth = env.BN_ALLOW_NO_AUTH === "1";
+		const desktopToken = normalizeOptionalEnv(env.BN_DESKTOP_TOKEN);
+		const allowedOrigins = mergeAllowedOrigins(
+			bootstrap.auth?.allowedOrigins,
+			normalizeOptionalEnv(env.BN_DESKTOP_ALLOWED_ORIGIN),
+		);
 		if (!basicAuthCredentials) {
 			if (shouldRefuseBareAuth({ host, hasBasicAuth: false, allowNoAuth })) {
 				const message = `auth not configured but listening on ${host} (non-loopback). 拒绝启动以避免裸暴露。请设置 auth.basicAuth.{username,password} 或 BN_DASHBOARD_USER/BN_DASHBOARD_PASS;或者把 server.host 改为 127.0.0.1 / BN_HOST=127.0.0.1;或者用 BN_ALLOW_NO_AUTH=1 强制允许(自担风险)。`;
@@ -132,7 +137,7 @@ export async function startStandaloneServer(
 				`auth not configured, dashboard exposed without auth (host=${host}${allowNoAuth ? " allow_no_auth=1" : ""})`,
 			);
 		}
-		if (!bootstrap.auth?.allowedOrigins || bootstrap.auth.allowedOrigins.length === 0) {
+		if (allowedOrigins.length === 0 && !desktopToken) {
 			log.warn(
 				"auth.allowedOrigins not configured, WebSocket Origin check disabled (any browser origin may upgrade)",
 			);
@@ -237,7 +242,8 @@ export async function startStandaloneServer(
 			puppeteer,
 			staticDir: bootstrap.webDistDir,
 			wsTicketStore,
-			allowedOrigins: bootstrap.auth?.allowedOrigins,
+			allowedOrigins,
+			desktopToken,
 		});
 		await new Promise<void>((resolveServe) => {
 			server = serve(
@@ -266,7 +272,8 @@ export async function startStandaloneServer(
 			serviceCtx: runtime.serviceCtx,
 			authRequired: !!basicAuthCredentials,
 			wsTicketStore,
-			allowedOrigins: bootstrap.auth?.allowedOrigins,
+			allowedOrigins,
+			desktopToken,
 		});
 		// Single fan-out point: redact ONCE, then tee to the WS ring (live tail) +
 		// the on-disk archive. Both receive exactly what passed the upstream fanOut
@@ -325,6 +332,19 @@ async function closeHttpServer(
 			finish(err as Error);
 		}
 	});
+}
+
+function normalizeOptionalEnv(value: string | undefined): string | undefined {
+	return value && value.length > 0 ? value : undefined;
+}
+
+function mergeAllowedOrigins(
+	configured: readonly string[] | undefined,
+	desktopOrigin: string | undefined,
+): string[] {
+	const origins = [...(configured ?? [])];
+	if (desktopOrigin && !origins.includes(desktopOrigin)) origins.push(desktopOrigin);
+	return origins;
 }
 
 function installProcessHandlers(
