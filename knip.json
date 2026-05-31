@@ -21,6 +21,10 @@
 			"entry": ["index.html", "src/**/*.test.{ts,tsx}"],
 			"project": ["src/**/*.{ts,tsx}"]
 		},
+		"apps/desktop": {
+			"entry": ["src/index.html", "scripts/*.mjs", "src-tauri/tauri.conf.json"],
+			"project": ["scripts/*.mjs"]
+		},
 		".": {
 			"entry": ["scripts/*.mjs"],
 			"project": ["scripts/*.mjs"]

@@ -1,0 +1,42 @@
+{
+	"$schema": "https://schema.tauri.app/config/2",
+	"productName": "Bilibili Notify",
+	"version": "0.1.0-alpha.6",
+	"identifier": "moe.akokko.bilibili-notify",
+	"build": {
+		"frontendDist": "../src"
+	},
+	"app": {
+		"withGlobalTauri": true,
+		"windows": [
+			{
+				"label": "main",
+				"title": "Bilibili Notify",
+				"url": "index.html",
+				"width": 1280,
+				"height": 860,
+				"minWidth": 960,
+				"minHeight": 640,
+				"visible": true
+			}
+		],
+		"security": {
+			"csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src ipc: http://127.0.0.1:*; img-src 'self' data:; frame-src http://127.0.0.1:*"
+		}
+	},
+	"bundle": {
+		"active": true,
+		"targets": ["dmg", "app"],
+		"icon": [
+			"icons/32x32.png",
+			"icons/128x128.png",
+			"icons/128x128@2x.png",
+			"icons/icon.icns",
+			"icons/icon.ico"
+		],
+		"resources": ["resources"],
+		"macOS": {
+			"minimumSystemVersion": "12.0"
+		}
+	}
+}

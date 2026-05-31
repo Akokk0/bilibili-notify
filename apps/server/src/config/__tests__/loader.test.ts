@@ -158,11 +158,18 @@ describe("loadBootstrapConfig — B 模型:file 存在,env 被忽略", () => {
 		const cfgPath = join(cwd, "bn.config.yaml");
 		await writeFile(
 			cfgPath,
-			"server:\n  host: 127.0.0.1\n  port: 8787\ndataDir: /file/data\nlogLevel: info\n",
+			"server:\n  host: 127.0.0.1\n  port: 8787\ndataDir: /file/data\nlogLevel: info\nchromePath: /file/chrome\nwebDistDir: /file/web\n",
 			"utf8",
 		);
 		const c = loadBootstrapConfig({
-			argv: ["--port=9000", "--data-dir=/cli/data", "--log-level=debug"],
+			argv: [
+				"--port=9000",
+				"--data-dir=/cli/data",
+				"--log-level=debug",
+				"--chrome-path=/cli/chrome",
+				"--web-dist",
+				"/cli/web",
+			],
 			env: { BN_CONFIG: cfgPath },
 			cwd,
 			log: () => {},
@@ -171,6 +178,8 @@ describe("loadBootstrapConfig — B 模型:file 存在,env 被忽略", () => {
 		expect(c.server.port).toBe(9000); // CLI 覆盖 nested
 		expect(c.dataDir).toBe("/cli/data"); // CLI 覆盖顶层
 		expect(c.logLevel).toBe("debug"); // CLI 覆盖顶层
+		expect(c.chromePath).toBe("/cli/chrome");
+		expect(c.webDistDir).toBe("/cli/web");
 	});
 });
 
@@ -427,6 +436,52 @@ describe("loadBootstrapConfig — legacy:默认值", () => {
 	});
 });
 
+describe("loadBootstrapConfig — BN_CONFIG_DISABLED", () => {
+	it("禁用 bootstrap file:忽略 cwd 中的 bn.config.yaml,只合并 ENV + CLI + defaults", async () => {
+		await write(
+			"bn.config.yaml",
+			"server:\n  host: file-host\n  port: 1111\ndataDir: /file/data\n",
+		);
+		const c = loadBootstrapConfig({
+			argv: ["--port", "3333", "--web-dist", "/cli/web"],
+			env: {
+				BN_CONFIG_DISABLED: "1",
+				BN_HOST: "127.0.0.1",
+				BN_DATA_DIR: "/env/data",
+				BN_CHROME_PATH: "/env/chrome",
+			},
+			cwd,
+			log: () => {},
+		});
+		expect(c.server).toEqual({ host: "127.0.0.1", port: 3333 });
+		expect(c.dataDir).toBe("/env/data");
+		expect(c.chromePath).toBe("/env/chrome");
+		expect(c.webDistDir).toBe("/cli/web");
+	});
+
+	it("禁用 bootstrap file:不创建配置文件", async () => {
+		const cfgPath = join(cwd, "bn.config.yaml");
+		loadBootstrapConfig({
+			argv: ["--host", "127.0.0.1"],
+			env: { BN_CONFIG_DISABLED: "1", BN_CONFIG: "" },
+			cwd,
+			log: () => {},
+		});
+		await expect(readFile(cfgPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+	});
+
+	it("BN_CONFIG_DISABLED=1 与非空 BN_CONFIG 同时存在 → fail-fast", () => {
+		expect(() =>
+			loadBootstrapConfig({
+				argv: [],
+				env: { BN_CONFIG_DISABLED: "1", BN_CONFIG: join(cwd, "bn.config.yaml") },
+				cwd,
+				log: () => {},
+			}),
+		).toThrow(/BN_CONFIG_DISABLED=1/);
+	});
+});
+
 describe("loadBootstrapConfig — legacy:file 层", () => {
 	it("读取 bn.config.yaml", async () => {
 		await write("bn.config.yaml", "server:\n  host: 1.2.3.4\n  port: 9000\ndataDir: /srv/bn\n");
@@ -468,12 +523,21 @@ describe("loadBootstrapConfig — legacy:ENV 层", () => {
 	it("BN_* 映射到嵌套路径", () => {
 		const c = loadBootstrapConfig({
 			argv: [],
-			env: { BN_HOST: "h", BN_PORT: "2200", BN_DATA_DIR: "d", BN_LOG_LEVEL: "warn" },
+			env: {
+				BN_HOST: "h",
+				BN_PORT: "2200",
+				BN_DATA_DIR: "d",
+				BN_LOG_LEVEL: "warn",
+				BN_CHROME_PATH: "/env/chrome",
+				BN_WEB_DIST: "/env/web",
+			},
 			cwd,
 		});
 		expect(c.server).toEqual({ host: "h", port: 2200 });
 		expect(c.dataDir).toBe("d");
 		expect(c.logLevel).toBe("warn");
+		expect(c.chromePath).toBe("/env/chrome");
+		expect(c.webDistDir).toBe("/env/web");
 	});
 
 	it("BN_DASHBOARD_USER/PASS 必须成对才写 basicAuth", () => {
@@ -491,13 +555,24 @@ describe("loadBootstrapConfig — legacy:ENV 层", () => {
 describe("loadBootstrapConfig — legacy:CLI 层", () => {
 	it("--k=v / --k v / 裸 --flag(→true)", () => {
 		const c = loadBootstrapConfig({
-			argv: ["--log-level=debug", "--data-dir", "/cli/dir", "--cookie-key", "abc"],
+			argv: [
+				"--log-level=debug",
+				"--data-dir",
+				"/cli/dir",
+				"--cookie-key",
+				"abc",
+				"--chrome-path=/cli/chrome",
+				"--web-dist",
+				"/cli/web",
+			],
 			env: {},
 			cwd,
 		});
 		expect(c.logLevel).toBe("debug");
 		expect(c.dataDir).toBe("/cli/dir");
 		expect(c.cookieEncryptionKey).toBe("abc");
+		expect(c.chromePath).toBe("/cli/chrome");
+		expect(c.webDistDir).toBe("/cli/web");
 	});
 
 	it("仅 CLI_KEY_MAP 内的键生效,未知 --flag 被忽略", () => {

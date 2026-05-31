@@ -29,3 +29,9 @@ apps/release-notes/
 
 # vp config 生成的 hook 脚手架(git hooks 实际由 lefthook 装进默认 .git/hooks)
 .vite-hooks/
+
+# Tauri 桌面端本地构建/资源暂存
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/resources/
+apps/desktop/.tauri/

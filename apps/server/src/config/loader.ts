@@ -48,6 +48,14 @@ export function loadBootstrapConfig(opts: LoadBootstrapConfigOptions = {}): Boot
 
 	const fromCli = readCli(argv);
 
+	// 桌面壳/sidecar 路径:显式禁用 bootstrap file,避免读取或生成 bn.config.*。
+	if (env.BN_CONFIG_DISABLED === "1") {
+		if (env.BN_CONFIG) {
+			throw new Error("BN_CONFIG_DISABLED=1 cannot be used together with BN_CONFIG");
+		}
+		return loadEnvCliModel(env, fromCli);
+	}
+
 	// 显式 BN_CONFIG → B 模型
 	if (env.BN_CONFIG) {
 		const yamlPath = resolvePath(cwd, env.BN_CONFIG);
@@ -205,6 +213,14 @@ function loadLegacyModel(
 	return BootstrapConfigSchema.parse(merged);
 }
 
+function loadEnvCliModel(
+	env: NodeJS.ProcessEnv,
+	fromCli: Record<string, unknown>,
+): BootstrapConfig {
+	const fromEnv = readEnv(env);
+	return BootstrapConfigSchema.parse(deepMerge(fromEnv, fromCli));
+}
+
 function readLegacyFile(cwd: string): Record<string, unknown> {
 	for (const candidate of ["bn.config.yaml", "bn.config.yml", "bn.config.json"]) {
 		const abs = resolvePath(cwd, candidate);
@@ -273,6 +289,8 @@ const CLI_KEY_MAP: Record<string, string[]> = {
 	"data-dir": ["dataDir"],
 	"log-level": ["logLevel"],
 	"cookie-key": ["cookieEncryptionKey"],
+	"chrome-path": ["chromePath"],
+	"web-dist": ["webDistDir"],
 };
 
 function readCli(argv: readonly string[]): Record<string, unknown> {

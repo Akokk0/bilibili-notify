@@ -1,0 +1,15 @@
+{
+	"name": "@bilibili-notify/desktop",
+	"version": "0.1.0-alpha.6",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"prepare-resources": "node scripts/prepare-resources.mjs",
+		"cargo:check": "cargo check --manifest-path src-tauri/Cargo.toml --locked",
+		"dev": "vp run prepare-resources && tauri dev",
+		"tauri:build": "vp run prepare-resources && tauri build"
+	},
+	"devDependencies": {
+		"@tauri-apps/cli": "^2.11.2"
+	}
+}

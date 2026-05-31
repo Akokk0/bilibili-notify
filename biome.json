@@ -12,7 +12,10 @@
 			"!.changeset",
 			"!**/.interface",
 			"!.bn-design",
-			"!apps/**/data"
+			"!apps/**/data",
+			"!apps/desktop/src-tauri/gen",
+			"!apps/desktop/src-tauri/resources",
+			"!apps/desktop/src-tauri/target"
 		]
 	},
 	"formatter": {

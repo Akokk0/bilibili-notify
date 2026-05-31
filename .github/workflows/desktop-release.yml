@@ -1,0 +1,156 @@
+name: bilibili-notify — desktop release
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - "apps/server/package.json"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build desktop artifacts only, skip tag / GitHub Release"
+        type: boolean
+        default: false
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DRY_RUN: ${{ (github.event_name == 'push' && contains(github.event.head_commit.message, '[dry-run]')) || (github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+
+jobs:
+  build:
+    name: Build ${{ matrix.id }}
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: mac-arm64
+            runner: macos-14
+            bundles: dmg,app
+          - id: win-x64
+            runner: windows-latest
+            bundles: nsis
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Vite+ (vp) + Node + deps
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: .node-version
+          cache: true
+
+      - name: Verify macOS arm64 runner
+        if: matrix.id == 'mac-arm64'
+        run: |
+          test "$(uname -m)" = "arm64"
+
+      - name: Build apps runtime
+        run: vp run build:apps
+
+      - name: Build Tauri bundle
+        run: vp run -F @bilibili-notify/desktop tauri:build -- --bundles ${{ matrix.bundles }}
+
+      - name: Collect macOS artifacts
+        if: matrix.id == 'mac-arm64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p desktop-artifacts
+          cp apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg desktop-artifacts/bilibili-notify-macos-arm64.dmg
+          app_path=$(find apps/desktop/src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -type d -print -quit)
+          if [ -z "$app_path" ]; then
+            echo "::error::macOS .app bundle not found"
+            exit 1
+          fi
+          ditto -c -k --sequesterRsrc --keepParent "$app_path" desktop-artifacts/bilibili-notify-macos-arm64.app.zip
+
+      - name: Collect Windows artifacts
+        if: matrix.id == 'win-x64'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force desktop-artifacts | Out-Null
+          $setup = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis -Filter *.exe | Select-Object -First 1
+          if (-not $setup) {
+            Write-Error "Windows NSIS setup.exe not found"
+          }
+          Copy-Item $setup.FullName desktop-artifacts/bilibili-notify-windows-x64-setup.exe
+          $portablePaths = @("apps/desktop/src-tauri/target/release/bilibili-notify-desktop.exe")
+          if (Test-Path "apps/desktop/src-tauri/target/release/resources") {
+            $portablePaths += "apps/desktop/src-tauri/target/release/resources"
+          }
+          Compress-Archive -Path $portablePaths -DestinationPath desktop-artifacts/bilibili-notify-windows-x64.zip -Force
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.id }}
+          path: desktop-artifacts/*
+          retention-days: 14
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: |
+      github.ref == 'refs/heads/dev'
+      && !(
+        (github.event_name == 'push' && contains(github.event.head_commit.message, '[dry-run]'))
+        || (github.event_name == 'workflow_dispatch' && inputs.dry_run)
+      )
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Validate release token
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::RELEASE_PAT secret is required for desktop release publishing"
+            exit 1
+          fi
+
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: desktop-artifacts
+          pattern: desktop-*
+          merge-multiple: true
+
+      - name: Read standalone version
+        id: ver
+        run: bash .github/scripts/read-standalone-version.sh
+
+      - name: Tag commit with version
+        env:
+          VERSION: ${{ steps.ver.outputs.value }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+          REPO: ${{ github.repository }}
+        run: bash .github/scripts/tag-commit-with-version.sh
+
+      - name: Create GitHub release
+        env:
+          VERSION: ${{ steps.ver.outputs.value }}
+          PRERELEASE: ${{ steps.ver.outputs.prerelease }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          REPO: ${{ github.repository }}
+        run: bash .github/scripts/create-desktop-github-release.sh
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: gh release upload "v${{ steps.ver.outputs.value }}" desktop-artifacts/* --clobber
