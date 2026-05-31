@@ -14,8 +14,10 @@ use std::{
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    App, AppHandle, Manager, RunEvent, State, Url, WindowEvent,
+    App, AppHandle, Manager, State, Url, WindowEvent,
 };
+#[cfg(target_os = "macos")]
+use tauri::RunEvent;
 
 const HOST: &str = "127.0.0.1";
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
@@ -161,8 +163,8 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building bilibili-notify desktop");
 
+    #[cfg(target_os = "macos")]
     app.run(|app, event| {
-        #[cfg(target_os = "macos")]
         if let RunEvent::Reopen { .. } = event {
             if let Ok(paths) = current_paths(app) {
                 append_launcher_log(&paths.launcher_log_dir, "dock reopen");
@@ -170,6 +172,8 @@ fn main() {
             show_main_window(app);
         }
     });
+    #[cfg(not(target_os = "macos"))]
+    app.run(|_app, _event| {});
 }
 
 fn setup_launcher(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
@@ -741,7 +745,7 @@ fn home_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
 
 #[cfg(target_os = "windows")]
 fn windows_local_app_data_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    windows_local_app_data_root_from(env::var_os).ok_or_else(|| {
+    windows_local_app_data_root_from(|key| env::var_os(key)).ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "LOCALAPPDATA / USERPROFILE / HOMEDRIVE+HOMEPATH are not set",

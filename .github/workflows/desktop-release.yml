@@ -62,6 +62,7 @@ jobs:
         run: |
           vp run -F @bilibili-notify/desktop prepare-resources
           cd apps/desktop
+          # 不经 package script 转发 --bundles: `tauri build -- ...` 会把参数传给 cargo。
           vpx tauri build --bundles ${{ matrix.bundles }}
 
       - name: Collect macOS artifacts
