@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::{
     env,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fs::{self, OpenOptions},
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
@@ -937,7 +937,7 @@ fn open_panel_result(app: &AppHandle) -> Result<(), String> {
         .panel_url
         .clone()
         .ok_or_else(|| "Dashboard 尚未就绪。".to_string())?;
-    open_with_system(&url)
+    open_url_with_system(&url)
 }
 
 enum KnownPath {
@@ -958,31 +958,54 @@ fn open_known_path_result(app: &AppHandle, kind: KnownPath) -> Result<(), String
         KnownPath::LauncherLogs => paths.launcher_log_dir,
     };
     fs::create_dir_all(&path).map_err(|err| format!("create dir failed: {err}"))?;
-    open_with_system(&path.display().to_string())
+    open_path_with_system(&path)
 }
 
-fn open_with_system(target: &str) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    let mut command = {
-        let mut command = Command::new("open");
-        command.arg(target);
-        command
-    };
-
+fn open_url_with_system(url: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
-    let mut command = {
-        let mut command = Command::new("cmd");
-        command.args(["/C", "start", "", target]);
-        command
-    };
+    return spawn_open_command(windows_explorer_open_command(OsStr::new(url)), url);
+
+    #[cfg(target_os = "macos")]
+    return spawn_open_command(open_command(OsStr::new(url)), url);
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let mut command = {
-        let mut command = Command::new("xdg-open");
-        command.arg(target);
-        command
-    };
+    return spawn_open_command(xdg_open_command(OsStr::new(url)), url);
+}
 
+fn open_path_with_system(path: &Path) -> Result<(), String> {
+    let target = path.display().to_string();
+    #[cfg(target_os = "windows")]
+    return spawn_open_command(windows_explorer_open_command(path.as_os_str()), &target);
+
+    #[cfg(target_os = "macos")]
+    return spawn_open_command(open_command(path.as_os_str()), &target);
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    return spawn_open_command(xdg_open_command(path.as_os_str()), &target);
+}
+
+#[cfg(target_os = "macos")]
+fn open_command(target: &OsStr) -> Command {
+    let mut command = Command::new("open");
+    command.arg(target);
+    command
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn windows_explorer_open_command(target: &OsStr) -> Command {
+    let mut command = Command::new("explorer.exe");
+    command.arg(target);
+    command
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn xdg_open_command(target: &OsStr) -> Command {
+    let mut command = Command::new("xdg-open");
+    command.arg(target);
+    command
+}
+
+fn spawn_open_command(mut command: Command, target: &str) -> Result<(), String> {
     command
         .spawn()
         .map(|_| ())
@@ -1202,6 +1225,37 @@ mod tests {
     fn exit_requested_reason_separates_system_and_programmatic_exit() {
         assert_eq!(exit_requested_reason(None), "system exit");
         assert_eq!(exit_requested_reason(Some(0)), "programmatic exit code=0");
+    }
+
+    #[test]
+    fn windows_open_command_uses_explorer_without_cmd_shell() {
+        let command = windows_explorer_open_command(OsStr::new(
+            r"C:\Users\akokko\AppData\Local\bilibili-notify",
+        ));
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(command.get_program(), OsStr::new("explorer.exe"));
+        assert_eq!(args, vec![r"C:\Users\akokko\AppData\Local\bilibili-notify"]);
+    }
+
+    #[test]
+    fn windows_open_command_keeps_url_as_single_argument() {
+        let command = windows_explorer_open_command(OsStr::new(
+            "http://127.0.0.1:8787/#desktopToken=secret&keep=1",
+        ));
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(command.get_program(), OsStr::new("explorer.exe"));
+        assert_eq!(
+            args,
+            vec!["http://127.0.0.1:8787/#desktopToken=secret&keep=1"]
+        );
     }
 
     #[test]
