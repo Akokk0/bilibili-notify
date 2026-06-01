@@ -47,10 +47,40 @@ const forbiddenDevPackages = [
 	"vitest",
 ];
 
+const runtimePackageExcludedDirs = new Set([
+	".github",
+	".nyc_output",
+	".vite",
+	".vite-temp",
+	"__fixtures__",
+	"__mocks__",
+	"__tests__",
+	"benchmark",
+	"benchmarks",
+	"coverage",
+	"example",
+	"examples",
+	"fixture",
+	"fixtures",
+	"node_modules",
+	"test",
+	"tests",
+]);
+const runtimePackageExcludedFilePatterns = [
+	/\.(?:bench|benchmark|spec|test)\.[cm]?[jt]sx?$/i,
+	/\.map$/i,
+	/\.tsbuildinfo$/i,
+	/^(?:ava|babel|eslint|jest|rollup|tsup|vite|vitest|webpack)\.config\.[cm]?[jt]s$/i,
+	/^(?:biome|tsconfig)\..*json$/i,
+	/^\.(?:babelrc|editorconfig|eslintignore|eslintrc|gitignore|npmignore|prettierignore|prettierrc)(?:\..*)?$/i,
+	/^(?:package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/i,
+];
+
 const args = new Set(process.argv.slice(2));
 const skipNodeDownload = args.has("--skip-node-download");
+const isCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
-await prepare();
+if (isCli) await prepare();
 
 async function prepare() {
 	await assertBuiltArtifacts();
@@ -588,18 +618,16 @@ async function copyFileOrDir(source, target, options = {}) {
 	await cp(source, target, cpOptions);
 }
 
-function shouldCopyPath(source, path, options) {
+export function shouldCopyPath(source, path, options) {
 	const rel = relative(source, path).split("\\").join("/");
 	if (!rel) return true;
 	const name = basename(path);
 	const parts = rel.split("/");
 	if (name === ".DS_Store" || name === ".git" || name === ".cache") return false;
 	if (options.runtimePackage) {
-		if (parts.includes("node_modules")) return false;
-		if (parts.includes(".github") || parts.includes("coverage")) return false;
-		if (parts.includes("test") || parts.includes("tests") || parts.includes("__tests__"))
-			return false;
-		if (parts.includes(".vite") || parts.includes(".vite-temp")) return false;
+		if (parts[0] === "doc" || parts[0] === "docs") return false;
+		if (parts.some((part) => runtimePackageExcludedDirs.has(part))) return false;
+		if (runtimePackageExcludedFilePatterns.some((pattern) => pattern.test(name))) return false;
 	}
 	return true;
 }
