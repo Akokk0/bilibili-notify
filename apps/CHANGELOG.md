@@ -22,6 +22,10 @@
 - Docker compose / config 示例补齐 `webDistDir` 说明,部署文档强调只挂载目录并让容器首次启动自动生成配置
 - Desktop 发布链路补强:恢复 macOS 图标、保护 loopback dashboard、退出时清理 Node sidecar、Windows 打开动作避开 shell、精简 runtime staging、固定内置 Node 版本并检查产物内容
 
+### Build
+
+- Docker builder 不再执行 `changeset version`,避免独立端镜像构建在 changeset 后重装依赖阶段卡住
+
 ---
 
 ## [0.1.0-alpha.6] — 2026-05-30

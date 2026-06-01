@@ -51,8 +51,8 @@ function readPkgVersion(specifier: string): string {
 
 // 编译期/启动期读一次缓存,health 接口高频调用不该每次 IO。infra 4 个 + engine 4 个,
 // 顺序与 dashboard 卡片排序保持一致(api → storage → subscription → push → dynamic → live → image → ai)。
-// 镜像 builder 在打包前跑过 `changeset version`(见 apps/Dockerfile),故这里读到的
-// package.json#version 是本次发布的目标版本,而非 dev 上尚未 bump 的旧值。
+// Docker builder 不再执行 `changeset version`;这里读到的是镜像构建输入中的
+// workspace package.json#version,可能落后于独立端 apps/server/package.json#version。
 const MODULE_VERSIONS: ModuleVersions = {
 	api: readPkgVersion("@bilibili-notify/api/package.json"),
 	storage: readPkgVersion("@bilibili-notify/storage/package.json"),
