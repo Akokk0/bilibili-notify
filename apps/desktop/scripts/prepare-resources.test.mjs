@@ -1,12 +1,35 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { shouldCopyPath } from "./prepare-resources.mjs";
+import { resolveNodePackageFromShasums, shouldCopyPath } from "./prepare-resources.mjs";
 
 const source = "/runtime-package";
+
+const darwinArm64Target = {
+	kind: "tar.gz",
+	label: "darwin-arm64",
+	filePattern: "node-v24\\.15\\.0-darwin-arm64\\.tar\\.gz",
+	nodePath: (dir) => join(dir, "bin", "node"),
+};
 
 function shouldCopyRuntimePath(rel) {
 	return shouldCopyPath(source, join(source, rel), { runtimePackage: true });
 }
+
+describe("prepare-resources pinned Node runtime", () => {
+	it("resolves the exact pinned Node archive instead of a floating latest line", () => {
+		const sha = "a".repeat(64);
+		const result = resolveNodePackageFromShasums(
+			`${"b".repeat(64)}  node-v24.16.0-darwin-arm64.tar.gz\n${sha}  node-v24.15.0-darwin-arm64.tar.gz\n`,
+			darwinArm64Target,
+			"https://nodejs.org/dist/v24.15.0",
+		);
+
+		expect(result.version).toBe("24.15.0");
+		expect(result.sha256).toBe(sha);
+		expect(result.fileName).toBe("node-v24.15.0-darwin-arm64.tar.gz");
+		expect(result.url).toBe("https://nodejs.org/dist/v24.15.0/node-v24.15.0-darwin-arm64.tar.gz");
+	});
+});
 
 describe("prepare-resources runtime package pruning", () => {
 	it("keeps runtime entrypoints and package metadata", () => {

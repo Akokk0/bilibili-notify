@@ -12,7 +12,9 @@ const execFileAsync = promisify(execFile);
 const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const desktopRoot = join(root, "apps", "desktop");
 const resourcesRoot = join(desktopRoot, "src-tauri", "resources");
-const nodeMajor = "24";
+const nodeVersion = "24.15.0";
+const nodeMajor = nodeVersion.split(".")[0];
+const nodeVersionPattern = nodeVersion.replaceAll(".", "\\.");
 const workspaceScope = "@bilibili-notify/";
 const maxResourceFiles = 25_000;
 const maxResourceBytes = 512 * 1024 * 1024;
@@ -88,13 +90,15 @@ async function prepare() {
 	await mkdir(resourcesRoot, { recursive: true });
 
 	const runtimeInfo = await copyRuntimeTree();
-	await prepareNodeRuntime();
+	const nodeRuntime = await prepareNodeRuntime();
 	await assertSlimRuntimeLayout(runtimeInfo);
 	await assertNoDesktopForbiddenFiles(resourcesRoot);
 	await verifyPackagedServerImport();
 	const buildInfo = {
 		createdBy: "apps/desktop/scripts/prepare-resources.mjs",
+		nodeVersion,
 		nodeMajor,
+		nodeRuntime,
 		workspacePackages: runtimeInfo.workspacePackages,
 		thirdPartyPackages: runtimeInfo.thirdPartyPackages,
 	};
@@ -377,16 +381,16 @@ async function prepareNodeRuntime() {
 	if (localNode) {
 		await copyFileOrDir(localNode, nodePath, { dereference: true });
 		await chmod(nodePath, 0o755);
-		await assertNodeMajor(nodePath);
-		return;
+		const version = await assertNodeMajor(nodePath);
+		return { source: "BN_DESKTOP_NODE_PATH", version };
 	}
 	if (skipNodeDownload) {
 		await copyFileOrDir(process.execPath, nodePath, { dereference: true });
 		await chmod(nodePath, 0o755);
-		await assertNodeMajor(nodePath);
-		return;
+		const version = await assertNodeMajor(nodePath);
+		return { source: "process.execPath", version };
 	}
-	const nodeInfo = await resolveLatestNodePackage();
+	const nodeInfo = await resolvePinnedNodePackage();
 	const cacheDir = join(homedir(), ".cache", "bilibili-notify-desktop", "node");
 	await mkdir(cacheDir, { recursive: true });
 	const archivePath = join(cacheDir, nodeInfo.fileName);
@@ -403,17 +407,33 @@ async function prepareNodeRuntime() {
 	await extractNodeArchive(archivePath, extractDir, nodeInfo.kind);
 	await copyFileOrDir(nodeInfo.nodePath(extractDir), nodePath, { dereference: true });
 	await chmod(nodePath, 0o755).catch(() => {});
-	await assertNodeMajor(nodePath);
+	const version = await assertNodeMajor(nodePath);
+	if (version !== nodeVersion) throw new Error(`Expected Node ${nodeVersion}, got ${version}`);
+	return {
+		source: "nodejs.org",
+		version,
+		fileName: nodeInfo.fileName,
+		sha256: nodeInfo.sha256,
+		url: nodeInfo.url,
+	};
 }
 
-async function resolveLatestNodePackage() {
-	const base = `https://nodejs.org/dist/latest-v${nodeMajor}.x`;
+async function resolvePinnedNodePackage() {
+	const base = nodeDistBaseUrl(nodeVersion);
 	const shasums = await fetchText(`${base}/SHASUMS256.txt`);
-	const target = nodeDistTarget();
+	return resolveNodePackageFromShasums(shasums, nodeDistTarget(), base);
+}
+
+function nodeDistBaseUrl(version) {
+	return `https://nodejs.org/dist/v${version}`;
+}
+
+export function resolveNodePackageFromShasums(shasums, target, base) {
 	const match = shasums.match(new RegExp(`^([a-f0-9]{64})\\s+(${target.filePattern})$`, "m"));
-	if (!match) throw new Error(`Cannot resolve latest Node ${nodeMajor} ${target.label} package`);
+	if (!match) throw new Error(`Cannot resolve Node ${nodeVersion} ${target.label} package`);
 	return {
 		kind: target.kind,
+		version: nodeVersion,
 		sha256: match[1],
 		fileName: match[2],
 		url: `${base}/${match[2]}`,
@@ -426,7 +446,7 @@ function nodeDistTarget() {
 		return {
 			kind: "tar.gz",
 			label: "darwin-arm64",
-			filePattern: `node-v${nodeMajor}\\.[^\\s]+-darwin-arm64\\.tar\\.gz`,
+			filePattern: `node-v${nodeVersionPattern}-darwin-arm64\\.tar\\.gz`,
 			nodePath: (dir) => join(dir, "bin", "node"),
 		};
 	}
@@ -434,7 +454,7 @@ function nodeDistTarget() {
 		return {
 			kind: "zip",
 			label: "win-x64",
-			filePattern: `node-v${nodeMajor}\\.[^\\s]+-win-x64\\.zip`,
+			filePattern: `node-v${nodeVersionPattern}-win-x64\\.zip`,
 			nodePath: (dir) => join(dir, "node.exe"),
 		};
 	}
@@ -551,10 +571,12 @@ async function assertResourceBudget(treeStats) {
 
 async function assertNodeMajor(nodePath) {
 	const { stdout } = await execFileAsync(nodePath, ["--version"]);
-	const version = stdout.trim();
-	if (!version.startsWith(`v${nodeMajor}.`)) {
-		throw new Error(`Expected Node ${nodeMajor}.x, got ${version}`);
+	const rawVersion = stdout.trim();
+	const version = rawVersion.replace(/^v/, "");
+	if (!version.startsWith(`${nodeMajor}.`)) {
+		throw new Error(`Expected Node ${nodeMajor}.x, got ${rawVersion}`);
 	}
+	return version;
 }
 
 async function assertNoDesktopForbiddenFiles(dir) {
