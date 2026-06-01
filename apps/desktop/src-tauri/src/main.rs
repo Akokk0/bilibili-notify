@@ -11,12 +11,10 @@ use std::{
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-#[cfg(target_os = "macos")]
-use tauri::RunEvent;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    App, AppHandle, Manager, State, Url, WindowEvent,
+    App, AppHandle, Manager, RunEvent, State, Url, WindowEvent,
 };
 
 const HOST: &str = "127.0.0.1";
@@ -164,17 +162,32 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building bilibili-notify desktop");
 
-    #[cfg(target_os = "macos")]
-    app.run(|app, event| {
-        if let RunEvent::Reopen { .. } = event {
+    app.run(handle_run_event);
+}
+
+fn handle_run_event(app: &AppHandle, event: RunEvent) {
+    match event {
+        RunEvent::ExitRequested { code, .. } => {
+            let reason = exit_requested_reason(code);
+            prepare_for_exit(app, &reason);
+        }
+        RunEvent::Exit => prepare_for_exit(app, "event loop exit"),
+        #[cfg(target_os = "macos")]
+        RunEvent::Reopen { .. } => {
             if let Ok(paths) = current_paths(app) {
                 append_launcher_log(&paths.launcher_log_dir, "dock reopen");
             }
             show_main_window(app);
         }
-    });
-    #[cfg(not(target_os = "macos"))]
-    app.run(|_app, _event| {});
+        _ => {}
+    }
+}
+
+fn exit_requested_reason(code: Option<i32>) -> String {
+    match code {
+        Some(code) => format!("programmatic exit code={code}"),
+        None => "system exit".to_string(),
+    }
 }
 
 fn setup_launcher(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
@@ -390,7 +403,7 @@ fn start_service_async(app: AppHandle) {
     {
         let state = app.state::<LauncherState>();
         let mut inner = state.inner.lock().expect("launcher state poisoned");
-        if inner.status == LauncherStatus::Starting {
+        if inner.quitting || inner.status == LauncherStatus::Starting {
             return;
         }
         inner.status = LauncherStatus::Starting;
@@ -464,13 +477,16 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
         .env("BN_DESKTOP_ALLOWED_ORIGIN", &url)
         .env("NODE_ENV", "production");
 
-    let child = command
-        .spawn()
-        .map_err(|err| format!("spawn Node sidecar failed: {err}"))?;
-    let pid = child.id();
-    {
+    let pid = {
         let state = app.state::<LauncherState>();
         let mut inner = state.inner.lock().expect("launcher state poisoned");
+        if inner.quitting {
+            return Err("应用正在退出。".to_string());
+        }
+        let child = command
+            .spawn()
+            .map_err(|err| format!("spawn Node sidecar failed: {err}"))?;
+        let pid = child.id();
         inner.service = Some(ServiceProcess {
             child,
             pid,
@@ -486,7 +502,8 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
             paths.launcher_log_dir.display()
         ));
         inner.panel_url = Some(panel_url.clone());
-    }
+        pid
+    };
     spawn_child_monitor(app.clone(), pid);
 
     if !wait_for_health(port, READY_TIMEOUT) {
@@ -500,6 +517,9 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
     {
         let state = app.state::<LauncherState>();
         let mut inner = state.inner.lock().expect("launcher state poisoned");
+        if inner.quitting {
+            return Ok(());
+        }
         inner.status = LauncherStatus::Ready;
         inner.message = format!("Dashboard 已就绪：{url}");
         inner.detail = None;
@@ -603,19 +623,22 @@ fn terminate_child(child: &mut Child) {
 }
 
 fn mark_service_failed(app: &AppHandle, err: String) {
+    {
+        let state = app.state::<LauncherState>();
+        let mut inner = state.inner.lock().expect("launcher state poisoned");
+        if inner.quitting {
+            return;
+        }
+        inner.status = LauncherStatus::Failed;
+        inner.message = "后端服务启动失败，请重试或查看日志。".to_string();
+        inner.detail = Some(err.clone());
+        inner.panel_url = None;
+    }
     if let Ok(paths) = current_paths(app) {
         append_launcher_log(
             &paths.launcher_log_dir,
             &format!("sidecar startup failed: {err}"),
         );
-    }
-    {
-        let state = app.state::<LauncherState>();
-        let mut inner = state.inner.lock().expect("launcher state poisoned");
-        inner.status = LauncherStatus::Failed;
-        inner.message = "后端服务启动失败，请重试或查看日志。".to_string();
-        inner.detail = Some(err);
-        inner.panel_url = None;
     }
     show_status_page(app);
 }
@@ -968,16 +991,28 @@ fn open_with_system(target: &str) -> Result<(), String> {
 
 fn request_quit(app: AppHandle) {
     thread::spawn(move || {
-        {
-            let state = app.state::<LauncherState>();
-            let mut inner = state.inner.lock().expect("launcher state poisoned");
-            inner.quitting = true;
-            inner.status = LauncherStatus::Stopped;
-            inner.message = "正在退出应用。".to_string();
-        }
-        let _ = stop_existing_service(&app, "quit");
+        prepare_for_exit(&app, "quit");
         app.exit(0);
     });
+}
+
+fn prepare_for_exit(app: &AppHandle, reason: &str) {
+    {
+        let state = app.state::<LauncherState>();
+        let mut inner = state.inner.lock().expect("launcher state poisoned");
+        inner.quitting = true;
+        inner.status = LauncherStatus::Stopped;
+        inner.message = "正在退出应用。".to_string();
+        inner.detail = None;
+    }
+    if let Err(err) = stop_existing_service(app, reason) {
+        if let Ok(paths) = current_paths(app) {
+            append_launcher_log(
+                &paths.launcher_log_dir,
+                &format!("stop sidecar during exit failed: {err}"),
+            );
+        }
+    }
 }
 
 fn toggle_dock(app: &AppHandle) {
@@ -1161,6 +1196,12 @@ mod tests {
             .map(|(key, value)| ((*key).to_string(), OsString::from(value)))
             .collect();
         move |key| vars.get(key).cloned()
+    }
+
+    #[test]
+    fn exit_requested_reason_separates_system_and_programmatic_exit() {
+        assert_eq!(exit_requested_reason(None), "system exit");
+        assert_eq!(exit_requested_reason(Some(0)), "programmatic exit code=0");
     }
 
     #[test]
