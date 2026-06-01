@@ -1,3 +1,8 @@
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
+
 use serde::Serialize;
 use std::{
     env,
@@ -16,6 +21,9 @@ use tauri::{
     tray::TrayIconBuilder,
     App, AppHandle, Manager, RunEvent, State, Url, WindowEvent,
 };
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 const HOST: &str = "127.0.0.1";
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
@@ -476,6 +484,7 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
         .env("BN_DESKTOP_TOKEN", &desktop_token)
         .env("BN_DESKTOP_ALLOWED_ORIGIN", &url)
         .env("NODE_ENV", "production");
+    configure_sidecar_command(&mut command);
 
     let pid = {
         let state = app.state::<LauncherState>();
@@ -529,6 +538,15 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
     navigate_main_window(app, &panel_url);
     Ok(())
 }
+
+#[cfg(target_os = "windows")]
+fn configure_sidecar_command(command: &mut Command) {
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_sidecar_command(_command: &mut Command) {}
 
 fn spawn_child_monitor(app: AppHandle, pid: u32) {
     thread::spawn(move || loop {

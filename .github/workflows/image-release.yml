@@ -92,11 +92,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      # build push-by-digest:把当前 platform 的镜像 push 到 Docker Hub + GHCR,
-      # 不附带任何 tag —— 拿到的 digest 由 merge job 收集后拼 manifest list 时带 tag。
+      # build push-by-digest:每个 registry 单独跑一次 build-push-action。不要把
+      # Docker Hub + GHCR 写成同一个 buildx 命令的两个 output:buildx 会给两个
+      # registry 生成不同的 provenance/manifest-list digest,而 action 只暴露最后
+      # 一个 digest,导致 Docker Hub smoke / manifest merge 拿到 GHCR digest。
       # dry-run(${{ env.DRY_RUN }} == 'true')时 push=false 不污染 registry。
-      - name: Build + push-by-digest
-        id: build
+      - name: Build + push Docker Hub digest
+        id: build_dockerhub
         # 不再 pin v7.1.0:alpha.5 构建 amd64 / arm64 双双卡在本步(Build +
         # push-by-digest),非单一 arch / 版本特有 → 排除 build-push-action 版本嫌疑,
         # 回到 @v7 主标签。
@@ -107,7 +109,6 @@ jobs:
           platforms: linux/${{ matrix.platform.arch }}
           outputs: |
             type=image,name=${{ env.DOCKERHUB_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.DRY_RUN == 'true' && 'false' || 'true' }}
-            type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.DRY_RUN == 'true' && 'false' || 'true' }}
           # 彻底关闭 GHA cache:此前 mode=max 卡 arm64、改 mode=min 后 alpha.5 仍双
           # arch 卡死本步 —— 高度怀疑 GHA Cache API 导入/导出节流 hang(moby/buildkit
           # #2804 一类)。先完全去掉 cache-from/cache-to 验证。无 cache → builder 阶段
@@ -126,25 +127,46 @@ jobs:
       - name: Smoke test (amd64 only)
         if: matrix.platform.arch == 'amd64' && env.DRY_RUN == 'false'
         env:
-          IMAGE_REF: ${{ env.DOCKERHUB_IMAGE }}@${{ steps.build.outputs.digest }}
+          IMAGE_REF: ${{ env.DOCKERHUB_IMAGE }}@${{ steps.build_dockerhub.outputs.digest }}
         run: bash .github/scripts/smoke-image.sh
 
-      # 把 digest 写到 artifact,merge job 收回拼 manifest list。文件名 = arch,
-      # merge 用 `pattern: digest-*` + `merge-multiple: true` 把两个 arch 的拉
-      # 到同一个 /tmp/digests 目录。
-      - name: Export digest
+      - name: Export Docker Hub digest
         if: env.DRY_RUN == 'false'
         env:
           ARCH: ${{ matrix.platform.arch }}
-          DIGEST: ${{ steps.build.outputs.digest }}
+          DIGEST: ${{ steps.build_dockerhub.outputs.digest }}
+          DIGESTS_DIR: /tmp/digests/dockerhub
         run: bash .github/scripts/export-image-digest.sh
 
+      - name: Build + push GHCR digest
+        id: build_ghcr
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./apps/Dockerfile
+          platforms: linux/${{ matrix.platform.arch }}
+          outputs: |
+            type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.DRY_RUN == 'true' && 'false' || 'true' }}
+
+      - name: Export GHCR digest
+        if: env.DRY_RUN == 'false'
+        env:
+          ARCH: ${{ matrix.platform.arch }}
+          DIGEST: ${{ steps.build_ghcr.outputs.digest }}
+          DIGESTS_DIR: /tmp/digests/ghcr
+        run: bash .github/scripts/export-image-digest.sh
+
+      # 把 digest 写到 artifact,merge job 收回拼 manifest list。文件名 = arch,
+      # merge 用 `pattern: digest-*` + `merge-multiple: true` 把两个 registry × 两个
+      # arch 的 digest 拉到同一个 /tmp/digests 目录,再按 DIGESTS_DIR 分 registry 读取。
       - name: Upload digest
         if: env.DRY_RUN == 'false'
         uses: actions/upload-artifact@v7
         with:
           name: digest-${{ matrix.platform.arch }}
-          path: /tmp/digests/${{ matrix.platform.arch }}
+          path: |
+            /tmp/digests/dockerhub/${{ matrix.platform.arch }}
+            /tmp/digests/ghcr/${{ matrix.platform.arch }}
           retention-days: 1
           if-no-files-found: error
 
@@ -261,10 +283,12 @@ jobs:
         env:
           IMAGE: ${{ env.DOCKERHUB_IMAGE }}
           TAGS: ${{ steps.meta_dockerhub.outputs.tags }}
+          DIGESTS_DIR: /tmp/digests/dockerhub
         run: bash .github/scripts/create-manifest-list.sh
 
       - name: Create + push GHCR manifest list
         env:
           IMAGE: ${{ env.GHCR_IMAGE }}
           TAGS: ${{ steps.meta_ghcr.outputs.tags }}
+          DIGESTS_DIR: /tmp/digests/ghcr
         run: bash .github/scripts/create-manifest-list.sh
