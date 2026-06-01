@@ -5,6 +5,7 @@
 services:
   bilibili-notify:
     image: akokk0/bilibili-notify:alpha
+    # GHCR 改用:image: ghcr.io/akokk0/bilibili-notify:alpha
     # 本地构建改用:build: { context: .., dockerfile: apps/Dockerfile }
     container_name: bilibili-notify
     restart: unless-stopped

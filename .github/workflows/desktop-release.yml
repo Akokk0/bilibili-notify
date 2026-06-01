@@ -51,118 +51,34 @@ jobs:
 
       - name: Verify macOS arm64 runner
         if: matrix.id == 'mac-arm64'
-        run: |
-          test "$(uname -m)" = "arm64"
+        run: bash .github/scripts/verify-macos-arm64-runner.sh
 
       - name: Build apps runtime
         run: vp run build:apps
 
       - name: Build Tauri bundle
         shell: bash
-        run: |
-          vp run -F @bilibili-notify/desktop prepare-resources
-          cd apps/desktop
-          # 不经 package script 转发 --bundles: `tauri build -- ...` 会把参数传给 cargo。
-          vpx tauri build --bundles ${{ matrix.bundles }}
+        env:
+          TAURI_BUNDLES: ${{ matrix.bundles }}
+        run: bash .github/scripts/build-tauri-bundle.sh
 
       - name: Collect macOS artifacts
         if: matrix.id == 'mac-arm64'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p desktop-artifacts
-          cp apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg desktop-artifacts/bilibili-notify-macos-arm64.dmg
-          app_path=$(find apps/desktop/src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -type d -print -quit)
-          if [ -z "$app_path" ]; then
-            echo "::error::macOS .app bundle not found"
-            exit 1
-          fi
-          ditto -c -k --sequesterRsrc --keepParent "$app_path" desktop-artifacts/bilibili-notify-macos-arm64.app.zip
+        run: bash .github/scripts/collect-macos-desktop-artifacts.sh
 
       - name: Collect Windows artifacts
         if: matrix.id == 'win-x64'
         shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force desktop-artifacts | Out-Null
-          $setup = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis -Filter *.exe | Select-Object -First 1
-          if (-not $setup) {
-            Write-Error "Windows NSIS setup.exe not found"
-          }
-          Copy-Item $setup.FullName desktop-artifacts/bilibili-notify-windows-x64-setup.exe
-          $portableRoot = Join-Path $env:RUNNER_TEMP ("bilibili-notify-windows-portable-" + [guid]::NewGuid().ToString("N"))
-          New-Item -ItemType Directory -Force $portableRoot | Out-Null
-          Copy-Item "apps/desktop/src-tauri/target/release/bilibili-notify-desktop.exe" (Join-Path $portableRoot "bilibili-notify-desktop.exe")
-          Copy-Item "apps/desktop/src-tauri/target/release/resources" (Join-Path $portableRoot "resources") -Recurse
-          Compress-Archive -Path (Join-Path $portableRoot "*") -DestinationPath desktop-artifacts/bilibili-notify-windows-x64.zip -Force
+        run: ./.github/scripts/collect-windows-desktop-artifacts.ps1
 
       - name: Assert macOS artifact contents
         if: matrix.id == 'mac-arm64'
-        shell: bash
-        run: |
-          set -euo pipefail
-          tmp=$(mktemp -d)
-          ditto -x -k desktop-artifacts/bilibili-notify-macos-arm64.app.zip "$tmp"
-          resources_dir=$(find "$tmp" -path '*/Contents/Resources/resources' -type d -print -quit)
-          if [ -z "$resources_dir" ]; then
-            echo "::error::macOS .app resources directory not found in artifact"
-            exit 1
-          fi
-          for rel in node/bin/node app/apps/server/lib/index.mjs BUILD_INFO.json; do
-            if [ ! -e "$resources_dir/$rel" ]; then
-              echo "::error::macOS artifact missing resources/$rel"
-              exit 1
-            fi
-          done
-          if [ ! -x "$resources_dir/node/bin/node" ]; then
-            echo "::error::macOS artifact Node binary is not executable"
-            exit 1
-          fi
-          forbidden=$(find "$resources_dir" \( \
-            -name 'bn.config.yaml' -o -name 'bn.config.yml' -o -name 'bn.config.json' -o \
-            -name 'master.key' -o -name '.env*' -o -name '*.pem' -o -name '*.key' -o -name '*.enc' -o \
-            -path '*/app/apps/server/data' -o -path '*/app/apps/server/data/*' -o \
-            -path '*/app/apps/server/logs' -o -path '*/app/apps/server/logs/*' -o \
-            -path '*/app/node_modules/.pnpm' -o -path '*/app/node_modules/.pnpm/*' \
-          \) -print -quit)
-          if [ -n "$forbidden" ]; then
-            echo "::error::macOS artifact contains forbidden runtime file: $forbidden"
-            exit 1
-          fi
+        run: bash .github/scripts/assert-macos-desktop-artifact.sh
 
       - name: Assert Windows portable artifact contents
         if: matrix.id == 'win-x64'
         shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $tmp = Join-Path $env:RUNNER_TEMP ("desktop-artifact-check-" + [guid]::NewGuid().ToString("N"))
-          New-Item -ItemType Directory -Force $tmp | Out-Null
-          Expand-Archive -LiteralPath desktop-artifacts/bilibili-notify-windows-x64.zip -DestinationPath $tmp -Force
-          $resourcesDir = Join-Path $tmp "resources"
-          $required = @(
-            "bilibili-notify-desktop.exe",
-            "resources/node/bin/node.exe",
-            "resources/app/apps/server/lib/index.mjs",
-            "resources/BUILD_INFO.json"
-          )
-          foreach ($rel in $required) {
-            if (-not (Test-Path (Join-Path $tmp $rel))) {
-              Write-Error "Windows portable artifact missing $rel"
-            }
-          }
-          $forbidden = Get-ChildItem $resourcesDir -Recurse -Force | Where-Object {
-            $_.Name -in @("bn.config.yaml", "bn.config.yml", "bn.config.json", "master.key") -or
-            $_.Name -like ".env*" -or
-            $_.Extension -in @(".pem", ".key", ".enc") -or
-            $_.FullName -like "*\resources\app\apps\server\data" -or
-            $_.FullName -like "*\resources\app\apps\server\data\*" -or
-            $_.FullName -like "*\resources\app\apps\server\logs" -or
-            $_.FullName -like "*\resources\app\apps\server\logs\*" -or
-            $_.FullName -like "*\resources\app\node_modules\.pnpm" -or
-            $_.FullName -like "*\resources\app\node_modules\.pnpm\*"
-          } | Select-Object -First 1
-          if ($forbidden) {
-            Write-Error "Windows portable artifact contains forbidden runtime file: $($forbidden.FullName)"
-          }
+        run: ./.github/scripts/assert-windows-desktop-artifact.ps1
 
       - name: Upload desktop artifacts
         uses: actions/upload-artifact@v7
@@ -192,11 +108,7 @@ jobs:
       - name: Validate release token
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: |
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::error::RELEASE_PAT secret is required for desktop release publishing"
-            exit 1
-          fi
+        run: bash .github/scripts/validate-release-token.sh
 
       - name: Download desktop artifacts
         uses: actions/download-artifact@v8

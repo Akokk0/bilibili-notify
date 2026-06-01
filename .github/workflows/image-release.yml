@@ -1,6 +1,7 @@
 name: bilibili-notify — build + publish
 
 # Required repo secret: DOCKERHUB_TOKEN
+# GHCR uses the workflow GITHUB_TOKEN (packages: write).
 
 on:
   # 只有改动 apps/server/package.json 才构建 —— 手动 bump version 即「发版」。
@@ -19,21 +20,22 @@ on:
         default: false
 
 # 串行化 image-release —— 同 ref 上的并发 run 一律排队,避免两个 push 同时跑
-# 让 Docker tag 与 git tag 失同步(后者 push 完 manifest 后才 reserve git tag,
-# 中间窗口存在 :v<VERSION> 被另一个 run 覆盖到不同 commit 的可能)。cancel-in-
-# progress: false 因为发版有副作用(已 push 的 Docker layer / 已打的 tag)不该
-# 半途打断 —— 串行等更安全。
+# 让 Docker tag 与 git tag / GitHub Release 失同步。cancel-in-progress: false
+# 因为发版有副作用(已 push 的 Docker layer / manifest)不该半途打断 —— 串行
+# 等更安全。
 concurrency:
   group: image-release-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
-  # GITHUB_TOKEN 保持最小权限:本 workflow 只读取代码并推 Docker manifest;
-  # v<VERSION> tag 与 GitHub Release 由 desktop-release workflow 创建。
+  # contents 只读:本 workflow 不创建 git tag / GitHub Release。
   contents: read
+  # GHCR 发布使用 GITHUB_TOKEN,需要写 package 权限。
+  packages: write
 
 env:
-  IMAGE: docker.io/akokk0/bilibili-notify
+  DOCKERHUB_IMAGE: docker.io/akokk0/bilibili-notify
+  GHCR_IMAGE: ghcr.io/akokk0/bilibili-notify
   # 统一 dry-run gate —— 两种触发方式归一化:
   #   - push 事件:commit message 含 `[dry-run]`(运维偶尔验 build + smoke 用)
   #   - workflow_dispatch:勾 dry_run 输入(手动 dispatch 验证用)
@@ -82,8 +84,16 @@ jobs:
           username: akokk0
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # build push-by-digest:只把当前 platform 的镜像 push 到 registry,不附带
-      # 任何 tag —— 拿到的 digest 由 merge job 收集后拼 manifest list 时带 tag。
+      - name: Log in to GHCR
+        if: env.DRY_RUN == 'false'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # build push-by-digest:把当前 platform 的镜像 push 到 Docker Hub + GHCR,
+      # 不附带任何 tag —— 拿到的 digest 由 merge job 收集后拼 manifest list 时带 tag。
       # dry-run(${{ env.DRY_RUN }} == 'true')时 push=false 不污染 registry。
       - name: Build + push-by-digest
         id: build
@@ -95,7 +105,9 @@ jobs:
           context: .
           file: ./apps/Dockerfile
           platforms: linux/${{ matrix.platform.arch }}
-          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.DRY_RUN == 'true' && 'false' || 'true' }}
+          outputs: |
+            type=image,name=${{ env.DOCKERHUB_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.DRY_RUN == 'true' && 'false' || 'true' }}
+            type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.DRY_RUN == 'true' && 'false' || 'true' }}
           # 彻底关闭 GHA cache:此前 mode=max 卡 arm64、改 mode=min 后 alpha.5 仍双
           # arch 卡死本步 —— 高度怀疑 GHA Cache API 导入/导出节流 hang(moby/buildkit
           # #2804 一类)。先完全去掉 cache-from/cache-to 验证。无 cache → builder 阶段
@@ -114,7 +126,7 @@ jobs:
       - name: Smoke test (amd64 only)
         if: matrix.platform.arch == 'amd64' && env.DRY_RUN == 'false'
         env:
-          IMAGE_REF: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          IMAGE_REF: ${{ env.DOCKERHUB_IMAGE }}@${{ steps.build.outputs.digest }}
         run: bash .github/scripts/smoke-image.sh
 
       # 把 digest 写到 artifact,merge job 收回拼 manifest list。文件名 = arch,
@@ -122,9 +134,10 @@ jobs:
       # 到同一个 /tmp/digests 目录。
       - name: Export digest
         if: env.DRY_RUN == 'false'
-        run: |
-          mkdir -p /tmp/digests
-          echo "${{ steps.build.outputs.digest }}" > "/tmp/digests/${{ matrix.platform.arch }}"
+        env:
+          ARCH: ${{ matrix.platform.arch }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: bash .github/scripts/export-image-digest.sh
 
       - name: Upload digest
         if: env.DRY_RUN == 'false'
@@ -136,11 +149,11 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
-  # Merge:拼 manifest list 并推 Docker Hub
+  # Merge:拼 manifest list 并推 Docker Hub + GHCR
   #
   # build matrix 两个 arch 都成功后才跑;从 artifact 拿 digests,docker buildx
   # imagetools create 把它们组合成 manifest list(amd64 + arm64),带上完整 tag
-  # 集合(:v*, :alpha 或 :latest, :<sha>)推 Docker Hub。git tag + GitHub Release
+  # 集合(:v*, :alpha 或 :latest, :<sha>)推两个 registry。git tag + GitHub Release
   # 已迁移到 desktop-release workflow。
   # ---------------------------------------------------------------------------
   merge:
@@ -164,8 +177,7 @@ jobs:
           # 不 persist token:checkout 默认会把 token 写入 .git/config 的
           # `http.<host>.extraheader`,之后整个 job 内任意 step 都能从工作区 git
           # 配置里读出 PAT —— 哪怕该 step 不需要写权限。设 false 后 token 不落盘,
-          # 真正需要 push 的 step(Tag commit)走 env GITHUB_TOKEN + git extraheader
-          # 一次性临时鉴权(见 tag-commit-with-version.sh)。
+          # 本 job 不需要 git 写操作;GitHub Release 读取由 gh 通过 GH_TOKEN 完成。
           persist-credentials: false
 
       - name: Download digests
@@ -185,6 +197,13 @@ jobs:
           username: akokk0
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
       # 独立端版本号 = apps/server/package.json#version(手动维护,唯一事实源)。
       # 含 prerelease 标识(有 `-`,如 0.1.0-alpha.0)→ alpha 渠道,否则正式。
       # 脚本本体在 .github/scripts/read-standalone-version.sh。
@@ -192,13 +211,24 @@ jobs:
         id: ver
         run: bash .github/scripts/read-standalone-version.sh
 
-      - name: Compute image metadata
-        id: meta
+      - name: Compute Docker Hub metadata
+        id: meta_dockerhub
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.IMAGE }}
+          images: ${{ env.DOCKERHUB_IMAGE }}
           # 渠道按版本串判定:prerelease → :alpha,纯 semver → :latest。另打不可变
           # 版本 tag :vX.Y.Z[-alpha.N] 与每-commit :<short-sha>。
+          tags: |
+            type=raw,value=latest,enable=${{ steps.ver.outputs.prerelease == 'false' }}
+            type=raw,value=alpha,enable=${{ steps.ver.outputs.prerelease == 'true' }}
+            type=raw,value=v${{ steps.ver.outputs.value }}
+            type=sha,prefix=,format=short
+
+      - name: Compute GHCR metadata
+        id: meta_ghcr
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.GHCR_IMAGE }}
           tags: |
             type=raw,value=latest,enable=${{ steps.ver.outputs.prerelease == 'false' }}
             type=raw,value=alpha,enable=${{ steps.ver.outputs.prerelease == 'true' }}
@@ -227,7 +257,14 @@ jobs:
       # docker meta-data action 输出的 tags 是换行分隔字符串。GitHub Release/tag
       # 已迁移到 desktop-release;本 workflow 只负责 Docker image。
       # 脚本本体在 .github/scripts/create-manifest-list.sh。
-      - name: Create + push manifest list
+      - name: Create + push Docker Hub manifest list
         env:
-          TAGS: ${{ steps.meta.outputs.tags }}
+          IMAGE: ${{ env.DOCKERHUB_IMAGE }}
+          TAGS: ${{ steps.meta_dockerhub.outputs.tags }}
+        run: bash .github/scripts/create-manifest-list.sh
+
+      - name: Create + push GHCR manifest list
+        env:
+          IMAGE: ${{ env.GHCR_IMAGE }}
+          TAGS: ${{ steps.meta_ghcr.outputs.tags }}
         run: bash .github/scripts/create-manifest-list.sh

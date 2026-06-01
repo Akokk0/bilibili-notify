@@ -1,11 +1,26 @@
 # Changelog · 独立端
 
 `@bilibili-notify/server` + `@bilibili-notify/web` 独立端版本历史。Docker 镜像
-`akokk0/bilibili-notify` 跟随这套版本号(由 `apps/server/package.json#version`
-驱动,bump 后 push 到 `dev` 自动触发 `image-release` workflow 构建)。
+`akokk0/bilibili-notify` / `ghcr.io/akokk0/bilibili-notify` 跟随这套版本号(由
+`apps/server/package.json#version` 驱动,bump 后 push 到 `dev` 自动触发
+`image-release` workflow 构建)。
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/);本仓库 koishi
 端 `koishi-plugin-bilibili-notify*` npm 包版本独立维护,见各包 `CHANGELOG.md`。
+
+---
+
+## [0.1.0-alpha.7] — 2026-06-01
+
+### Added
+
+- Docker 镜像同步发布到 GHCR:`ghcr.io/akokk0/bilibili-notify`,tag 与 Docker Hub 保持一致
+
+### Fixed
+
+- 兼容旧版 / 手写 `bn.config.yaml` 缺少 `webDistDir` 的 Docker 配置:配置未写时先回退 `BN_WEB_DIST`,再检查镜像默认 `/app/web-dist/index.html`,避免控制台 `GET /` 返回 404
+- Docker compose / config 示例补齐 `webDistDir` 说明,部署文档强调只挂载目录并让容器首次启动自动生成配置
+- Desktop 发布链路补强:恢复 macOS 图标、保护 loopback dashboard、退出时清理 Node sidecar、Windows 打开动作避开 shell、精简 runtime staging、固定内置 Node 版本并检查产物内容
 
 ---
 
@@ -99,7 +114,7 @@
 
 ### Build
 
-- image-release workflow 5 个 inline shell step 提到 `.github/scripts/*.sh` (28b1e4e)
+- image-release workflow 5 个 inline shell step 提到脚本文件 (28b1e4e)
 - 修复 codex audit 抓出的 7 类 CI 安全 / 一致性问题(包括 RELEASE_PAT 注入路径 /
   tag commit 鉴权 / merge job 串行化等)(22dce62)
 - pnpm 11.1.3 → 11.3.0,docker / setup actions 升到最新版 (22854f5)

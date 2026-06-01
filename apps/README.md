@@ -4,7 +4,7 @@
 
 ## 部署(Docker)
 
-推荐用 compose,模板见 [`docker-compose.example.yaml`](./docker-compose.example.yaml)。复制后一条命令启动,不要手动创建 `config/bn.config.yaml`:
+推荐用 compose,模板见 [`docker-compose.example.yaml`](./docker-compose.example.yaml)。复制后一条命令启动,不要手动创建 `config/bn.config.yaml`。镜像默认走 Docker Hub,也可改用 GHCR:`ghcr.io/akokk0/bilibili-notify:alpha`。
 
 ```bash
 cp docker-compose.example.yaml docker-compose.yaml
@@ -30,6 +30,12 @@ docker run -d --name bilibili-notify \
   -p 8787:8787 \
   -v "$(pwd)/data:/data" -v "$(pwd)/config:/config" \
   akokk0/bilibili-notify:alpha
+```
+
+GHCR 镜像同 tag 发布:
+
+```bash
+docker pull ghcr.io/akokk0/bilibili-notify:alpha
 ```
 
 ## 配置
