@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -116,6 +116,60 @@ describe("standalone server lifecycle", () => {
 			}),
 		).rejects.toThrow(/auth not configured/);
 		expect(exitSpy).not.toHaveBeenCalled();
+	});
+
+	it("已有 bootstrap yaml 缺 webDistDir 时回退到 BN_WEB_DIST 托管 Dashboard", async () => {
+		const port = await findFreePort();
+		const configPath = join(dataDir, "bn.config.yaml");
+		const webDistDir = join(dataDir, "web-dist");
+		await mkdir(webDistDir, { recursive: true });
+		await writeFile(join(webDistDir, "index.html"), "<!doctype html><title>bn dashboard</title>");
+		await writeFile(
+			configPath,
+			`server:\n  host: 127.0.0.1\n  port: ${port}\ndataDir: ${JSON.stringify(dataDir)}\nlogLevel: silent\n`,
+		);
+
+		handle = await startStandaloneServer({
+			argv: [],
+			env: { BN_CONFIG: configPath, BN_WEB_DIST: webDistDir },
+			shutdownTimeoutMs: 1_000,
+		});
+
+		const root = await fetch(`${handle.url}/`, { headers: { connection: "close" } });
+		expect(root.status).toBe(200);
+		expect(root.headers.get("content-type")).toContain("text/html");
+		expect(await root.text()).toContain("bn dashboard");
+
+		const health = await fetch(`${handle.url}/api/health`, { headers: { connection: "close" } });
+		expect(health.status).toBe(200);
+		expect((await health.json()) as Record<string, unknown>).toMatchObject({ status: "ok" });
+	});
+
+	it("已有 bootstrap yaml 和 BN_WEB_DIST 都缺失时回退到默认 web-dist 目录", async () => {
+		const port = await findFreePort();
+		const configPath = join(dataDir, "bn.config.yaml");
+		const defaultWebDistDir = join(dataDir, "default-web-dist");
+		await mkdir(defaultWebDistDir, { recursive: true });
+		await writeFile(
+			join(defaultWebDistDir, "index.html"),
+			"<!doctype html><title>bn default dashboard</title>",
+		);
+		await writeFile(
+			configPath,
+			`server:\n  host: 127.0.0.1\n  port: ${port}\ndataDir: ${JSON.stringify(dataDir)}\nlogLevel: silent\n`,
+		);
+
+		handle = await startStandaloneServer({
+			argv: [],
+			env: { BN_CONFIG: configPath },
+			defaultWebDistDir,
+			shutdownTimeoutMs: 1_000,
+		});
+
+		const root = await fetch(`${handle.url}/`, { headers: { connection: "close" } });
+		expect(root.status).toBe(200);
+		expect(root.headers.get("content-type")).toContain("text/html");
+		expect(await root.text()).toContain("bn default dashboard");
 	});
 
 	it("installProcessHandlers:SIGTERM 触发 graceful close 后 exit(0),显式 close 会移除 handler", async () => {

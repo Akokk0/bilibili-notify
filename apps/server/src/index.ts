@@ -1,5 +1,7 @@
+import { constants } from "node:fs";
+import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { type ServerType, serve } from "@hono/node-server";
 import { createApp } from "./app.js";
@@ -23,6 +25,7 @@ import { createWsServer } from "./ws/server.js";
 import type { LogEntry } from "./ws/types.js";
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const DEFAULT_WEB_DIST_DIR = "/app/web-dist";
 
 export interface StandaloneServerHandle {
 	readonly host: string;
@@ -36,6 +39,7 @@ export interface StartStandaloneServerOptions {
 	env?: NodeJS.ProcessEnv;
 	installProcessHandlers?: boolean;
 	shutdownTimeoutMs?: number;
+	defaultWebDistDir?: string;
 }
 
 export async function startStandaloneServer(
@@ -214,8 +218,27 @@ export async function startStandaloneServer(
 		runtime.attachFansPoller(fansPoller);
 		runtime.serviceCtx.onDispose(() => fansPoller.dispose());
 
-		if (bootstrap.webDistDir) {
-			log.info(`serving dashboard static assets from ${bootstrap.webDistDir}`);
+		const webDist = await resolveEffectiveWebDistDir({
+			configured: bootstrap.webDistDir,
+			envValue: normalizeOptionalEnv(env.BN_WEB_DIST),
+			defaultDir: options.defaultWebDistDir ?? DEFAULT_WEB_DIST_DIR,
+		});
+		const effectiveWebDistDir = webDist.dir;
+		if (webDist.source === "env") {
+			log.warn(
+				`bootstrap config missing webDistDir, using BN_WEB_DIST=${webDist.dir}. 请把 webDistDir: ${webDist.dir} 写入 /config/bn.config.yaml,或删除旧配置让容器重新生成。`,
+			);
+		} else if (webDist.source === "default") {
+			log.warn(
+				`bootstrap config missing webDistDir and BN_WEB_DIST is empty; found ${webDist.defaultDir}/index.html, using ${webDist.defaultDir}. 请把 webDistDir: ${webDist.defaultDir} 写入 /config/bn.config.yaml,或删除旧配置让容器重新生成。`,
+			);
+		} else if (webDist.source === "disabled" && normalizeOptionalEnv(env.BN_CONFIG)) {
+			log.warn(
+				`dashboard static assets disabled: bootstrap config missing webDistDir, BN_WEB_DIST is empty, and ${webDist.defaultDir}/index.html was not found. Dashboard GET / will return 404; 请把 webDistDir 写入 /config/bn.config.yaml,或删除旧配置让容器重新生成。`,
+			);
+		}
+		if (effectiveWebDistDir) {
+			log.info(`serving dashboard static assets from ${effectiveWebDistDir}`);
 		}
 		// WS ticket store:仅当 basicAuth 启用时才需要。前端 WebSocket 无法附带
 		// Authorization 头,改用 `POST /api/auth/ws-ticket` 换短时 token,再用 `?ticket=`
@@ -240,7 +263,7 @@ export async function startStandaloneServer(
 			basicAuthCredentials,
 			sessionCodec,
 			puppeteer,
-			staticDir: bootstrap.webDistDir,
+			staticDir: effectiveWebDistDir,
 			wsTicketStore,
 			allowedOrigins,
 			desktopToken,
@@ -300,6 +323,34 @@ export async function startStandaloneServer(
 			log.error("error during startup cleanup", shutdownErr);
 		});
 		throw err;
+	}
+}
+
+type WebDistDirSource = "config" | "env" | "default" | "disabled";
+
+async function resolveEffectiveWebDistDir(options: {
+	configured: string | undefined;
+	envValue: string | undefined;
+	defaultDir: string;
+}): Promise<{ dir?: string; source: WebDistDirSource; defaultDir: string }> {
+	if (options.configured) {
+		return { dir: options.configured, source: "config", defaultDir: options.defaultDir };
+	}
+	if (options.envValue) {
+		return { dir: options.envValue, source: "env", defaultDir: options.defaultDir };
+	}
+	if (await hasReadableIndexHtml(options.defaultDir)) {
+		return { dir: options.defaultDir, source: "default", defaultDir: options.defaultDir };
+	}
+	return { source: "disabled", defaultDir: options.defaultDir };
+}
+
+async function hasReadableIndexHtml(dir: string): Promise<boolean> {
+	try {
+		await access(join(dir, "index.html"), constants.R_OK);
+		return true;
+	} catch {
+		return false;
 	}
 }
 

@@ -26,6 +26,10 @@ dataDir: ./data
 # Windows: C:/Program Files/Google/Chrome/Application/chrome.exe
 # chromePath: ${BN_CHROME_PATH}
 
+# Dashboard 静态资源目录。Docker 镜像固定为 /app/web-dist;
+# 手写 Docker 配置时必须保留,否则 http://<host>:8787/ 会返回 404。
+webDistDir: /app/web-dist
+
 logLevel: info   # fatal | error | warn | info | debug | trace | silent
 
 # secrets(B 站 cookie / AI apiKey)静态加密密钥(AES-256-GCM)。

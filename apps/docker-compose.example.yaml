@@ -1,5 +1,6 @@
 # 用法:cp docker-compose.example.yaml docker-compose.yaml && docker compose up -d
-# 配置走 B 模型:首启动后改配置请编辑 ./config/bn.config.yaml 再 docker compose restart。
+# 不要手动创建 ./config/bn.config.yaml;容器首次启动会自动生成完整配置。
+# 首启动后改配置请编辑 ./config/bn.config.yaml 再 docker compose restart。
 
 services:
   bilibili-notify:
@@ -19,7 +20,7 @@ services:
       # BN_COOKIE_KEY: ""          # secrets 加密密钥,openssl rand -base64 32
     volumes:
       - ./data:/data              # 运行时状态
-      - ./config:/config          # bn.config.yaml 所在
+      - ./config:/config          # 只挂目录;bn.config.yaml 由容器自动生成
     # depends_on: [napcat]
 
   # 可选 NapCat 边车(OneBot v11);WebUI http://<host>:6099 配 QQ 账号
