@@ -392,7 +392,7 @@ function ChangelogPanel() {
 	}, []);
 
 	return (
-		<div className="rounded-[14px] border border-black/6 bg-white/80 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)] backdrop-blur-sm">
+		<div className="rounded-bn-card border border-black/6 bg-white/80 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)] backdrop-blur-sm">
 			<div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-black/6 pb-4">
 				<div>
 					<div className="flex items-center gap-2 text-[15px] font-extrabold text-bn-text-primary">
