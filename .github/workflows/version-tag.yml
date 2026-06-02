@@ -1,0 +1,63 @@
+name: bilibili-notify — version tag
+
+on:
+  # 手动 bump apps/server/package.json#version 即准备一个独立端版本。
+  # 本 workflow 只创建/校验 v<VERSION> tag;Docker 与 Desktop release 都由 tag push 独立触发。
+  push:
+    branches:
+      - dev
+    paths:
+      - "apps/server/package.json"
+  # 手动触发始终只做 dry-run 校验;正式 tag 只能由 dev 上的版本变更触发。
+  workflow_dispatch:
+
+concurrency:
+  group: version-tag-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[dry-run]')) }}
+
+jobs:
+  tag:
+    name: Create version tag
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Read standalone version
+        id: ver
+        run: bash .github/scripts/read-standalone-version.sh
+
+      - name: Check existing version tag
+        if: env.DRY_RUN == 'true'
+        env:
+          VERSION: ${{ steps.ver.outputs.value }}
+        run: bash .github/scripts/assert-version-tag-compatible.sh
+
+      - name: Dry-run summary
+        if: env.DRY_RUN == 'true'
+        run: |
+          echo "dry-run: would create or verify v${{ steps.ver.outputs.value }} at $GITHUB_SHA"
+
+      - name: Validate release token
+        if: github.event_name == 'push' && env.DRY_RUN == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: bash .github/scripts/validate-release-token.sh
+
+      - name: Create or verify version tag
+        if: github.event_name == 'push' && env.DRY_RUN == 'false'
+        env:
+          VERSION: ${{ steps.ver.outputs.value }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+          REPO: ${{ github.repository }}
+        run: bash .github/scripts/tag-commit-with-version.sh

@@ -7,7 +7,7 @@
   - amd64 / arm64 的 push-by-digest 阶段跑过;
   - amd64 smoke 因 workflow 把 GHCR digest 当成 Docker Hub digest 拉取而失败;
   - merge job 被跳过,所以 `:alpha` / `:v0.1.0-alpha.7` 没有发布成功。
-- 先不继续发布。下一次对外发布请先 bump 到新版本(建议 `0.1.0-alpha.8`),不要复用已撤回的 `0.1.0-alpha.7`。
+- `0.1.0-alpha.7` 还没有完成正式发布;后续可继续使用这个版本号发布,不需要 bump 到 `0.1.0-alpha.8`。
 
 ## 本次待测改动
 
@@ -76,9 +76,9 @@ Get-Content (Join-Path $logDir "sidecar.stderr.log") -Tail 120
 
 ## 发布注意
 
-- 当前不要再发布 `0.1.0-alpha.7`。
+- Docker 与 Desktop 已改为共同依赖 `version-tag` workflow 生成的同名 git tag,彼此不再互相阻塞。
+- `0.1.0-alpha.7` 尚未正式发布完成,可继续使用当前 `apps/server/package.json#version`。
 - Windows 本地确认通过后,建议:
-  1. bump `apps/server/package.json` 到 `0.1.0-alpha.8`;
-  2. 更新 `apps/CHANGELOG.md`;
-  3. 先用 `[dry-run]` 提交触发 desktop/image dry-run;
-  4. dry-run 全绿后再正式发布。
+  1. 手动触发 `version-tag` 做 dry-run,确认会创建 `v0.1.0-alpha.7`;
+  2. 将包含 `apps/server/package.json#version` 变更的提交 push 到 `dev`,由 `version-tag` 创建 tag;
+  3. tag push 会分别触发 Docker 与 Desktop;二者互不依赖,哪个 workflow 失败就只重跑对应 run。
