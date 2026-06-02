@@ -63,6 +63,13 @@ jobs:
           node-version-file: .node-version
           cache: true
 
+      - name: Read standalone version
+        id: ver
+        shell: bash
+        env:
+          VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+        run: bash .github/scripts/read-standalone-version.sh
+
       - name: Install Rust lint components
         run: rustup component add rustfmt clippy
 
@@ -81,18 +88,20 @@ jobs:
       - name: Check Desktop Rust compile
         run: vp run -F @bilibili-notify/desktop cargo:check
 
+      - name: Build apps runtime
+        env:
+          BN_STANDALONE_VERSION: ${{ steps.ver.outputs.value }}
+        run: vp run build:apps
+
       - name: Sync standalone version metadata
         shell: bash
         env:
-          VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+          VERSION: ${{ steps.ver.outputs.value }}
         run: bash .github/scripts/sync-standalone-version.sh
 
       - name: Verify macOS arm64 runner
         if: matrix.id == 'mac-arm64'
         run: bash .github/scripts/verify-macos-arm64-runner.sh
-
-      - name: Build apps runtime
-        run: vp run build:apps
 
       - name: Build Tauri bundle
         shell: bash

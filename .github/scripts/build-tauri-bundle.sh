@@ -4,4 +4,6 @@ set -euo pipefail
 
 : "${TAURI_BUNDLES:?TAURI_BUNDLES env 必填,例如 dmg,app 或 nsis}"
 
-vp run -F @bilibili-notify/desktop tauri:build -- --bundles "$TAURI_BUNDLES"
+cd apps/desktop
+node scripts/prepare-resources.mjs
+node scripts/tauri-build.mjs -- --bundles "$TAURI_BUNDLES"
