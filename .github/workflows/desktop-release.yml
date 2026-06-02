@@ -63,17 +63,29 @@ jobs:
           node-version-file: .node-version
           cache: true
 
+      - name: Install Rust lint components
+        run: rustup component add rustfmt clippy
+
+      - name: Prepare Desktop Rust check
+        run: vp run -F @bilibili-notify/desktop prepare-rust-check
+
+      - name: Check Desktop Rust format
+        run: vp run -F @bilibili-notify/desktop cargo:fmt
+
+      - name: Lint Desktop Rust
+        run: vp run -F @bilibili-notify/desktop cargo:clippy
+
+      - name: Test Desktop Rust
+        run: vp run -F @bilibili-notify/desktop cargo:test
+
+      - name: Check Desktop Rust compile
+        run: vp run -F @bilibili-notify/desktop cargo:check
+
       - name: Sync standalone version metadata
         shell: bash
         env:
           VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
         run: bash .github/scripts/sync-standalone-version.sh
-
-      - name: Install Rust lint components
-        run: rustup component add rustfmt clippy
-
-      - name: Check Desktop Rust
-        run: vp run check:desktop
 
       - name: Verify macOS arm64 runner
         if: matrix.id == 'mac-arm64'
