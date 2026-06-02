@@ -5,13 +5,13 @@ import { Input } from "../components/atoms";
 import { Icon } from "../components/icons";
 import { useLogChannel } from "../hooks/useLogChannel";
 import { api } from "../services/api";
-import { withDesktopTokenHeader } from "../services/desktop-token";
 import {
 	type LogLineLevel,
 	type LogLineView,
 	type LogsResponse,
 	logsQueryKey,
 } from "../services/dashboard";
+import { withDesktopTokenHeader } from "../services/desktop-token";
 
 /**
  * `/logs` — 日志输出 Tab。落盘 jsonl 归档(<dataDir>/logs/<日>.jsonl)的
