@@ -5,7 +5,11 @@
 	"type": "module",
 	"scripts": {
 		"prepare-resources": "node scripts/prepare-resources.mjs",
+		"cargo:fmt": "cargo fmt --manifest-path src-tauri/Cargo.toml --check",
+		"cargo:clippy": "cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings",
+		"cargo:test": "cargo test --manifest-path src-tauri/Cargo.toml --locked",
 		"cargo:check": "cargo check --manifest-path src-tauri/Cargo.toml --locked",
+		"check:rust": "vp run cargo:fmt && vp run cargo:clippy && vp run cargo:test && vp run cargo:check",
 		"dev": "node scripts/prepare-resources.mjs && vpx tauri dev",
 		"tauri:build": "node scripts/prepare-resources.mjs && node scripts/tauri-build.mjs"
 	},

@@ -11,6 +11,10 @@
 
 set -euo pipefail
 
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=.github/scripts/standalone-version-lib.sh
+source "$script_dir/standalone-version-lib.sh"
+
 raw="${VERSION:-}"
 if [ -z "$raw" ] && [[ "${GITHUB_REF_NAME:-}" == v* ]]; then
 	raw="${GITHUB_REF_NAME#v}"
@@ -21,9 +25,8 @@ if [ -z "$raw" ]; then
 	echo "::error::standalone version is required: set VERSION or run on a v<VERSION> tag"
 	exit 1
 fi
-if [[ ! "$raw" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-	echo "::error::standalone version is not valid / Docker-tag-compatible SemVer: '$raw'"
-	echo "::error::allowed: X.Y.Z or X.Y.Z-prerelease, e.g. 0.1.0-alpha.7; '+build' metadata is not allowed"
+if ! is_valid_standalone_version "$raw"; then
+	print_invalid_standalone_version_error "$raw"
 	exit 1
 fi
 

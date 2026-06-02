@@ -46,10 +46,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Assert standalone tag format
         if: startsWith(github.ref, 'refs/tags/v')
         run: bash .github/scripts/assert-ref-matches-standalone-version.sh
+
+      - name: Assert release commit is on dev
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: bash .github/scripts/assert-release-ref-on-dev.sh
+
+      - name: Setup Vite+ (vp) + Node + deps
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: .node-version
+          cache: true
 
       - name: Sync standalone version metadata
         shell: bash
@@ -57,11 +69,11 @@ jobs:
           VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
         run: bash .github/scripts/sync-standalone-version.sh
 
-      - name: Setup Vite+ (vp) + Node + deps
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: .node-version
-          cache: true
+      - name: Install Rust lint components
+        run: rustup component add rustfmt clippy
+
+      - name: Check Desktop Rust
+        run: vp run check:desktop
 
       - name: Verify macOS arm64 runner
         if: matrix.id == 'mac-arm64'
@@ -113,7 +125,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Assert release commit is on dev
+        run: bash .github/scripts/assert-release-ref-on-dev.sh
 
       - name: Validate release token
         env:

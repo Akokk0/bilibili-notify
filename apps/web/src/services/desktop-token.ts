@@ -29,19 +29,22 @@ function readTokenFromLocation(): string | null {
 	if (typeof location === "undefined") return null;
 	const url = new URL(location.href);
 	const hashParams = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : url.hash);
-	const token = hashParams.get(TOKEN_PARAM) ?? url.searchParams.get(TOKEN_PARAM);
-	if (!token) return null;
-	writeTokenToSessionStorage(token);
+	const token = hashParams.get(TOKEN_PARAM);
+	const shouldClean = Boolean(token) || url.searchParams.has(TOKEN_PARAM);
 	url.searchParams.delete(TOKEN_PARAM);
 	hashParams.delete(TOKEN_PARAM);
-	const hash = hashParams.toString();
-	url.hash = hash ? hash : "";
-	const clean = `${url.pathname}${url.search}${url.hash}`;
-	try {
-		history.replaceState(history.state, "", clean);
-	} catch {
-		// Non-browser test environments may expose location without history.
+	if (shouldClean) {
+		const hash = hashParams.toString();
+		url.hash = hash ? hash : "";
+		const clean = `${url.pathname}${url.search}${url.hash}`;
+		try {
+			history.replaceState(history.state, "", clean);
+		} catch {
+			// Non-browser test environments may expose location without history.
+		}
 	}
+	if (!token) return null;
+	writeTokenToSessionStorage(token);
 	return token;
 }
 

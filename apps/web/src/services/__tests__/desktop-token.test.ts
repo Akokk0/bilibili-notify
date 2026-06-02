@@ -31,6 +31,15 @@ describe("desktop token client helpers", () => {
 		);
 	});
 
+	it("ignores desktopToken in search params but strips it before falling back to storage", async () => {
+		const browser = stubBrowser("http://127.0.0.1:8787/?desktopToken=query-token&keep=1", "saved");
+		const mod = await import("../desktop-token");
+
+		expect(mod.getDesktopToken()).toBe("saved");
+		expect(browser.setItem).not.toHaveBeenCalled();
+		expect(browser.replaceState).toHaveBeenCalledWith({ test: true }, "", "/?keep=1");
+	});
+
 	it("falls back to sessionStorage after the URL has been cleaned", async () => {
 		const browser = stubBrowser("http://127.0.0.1:8787/", "saved");
 		const mod = await import("../desktop-token");

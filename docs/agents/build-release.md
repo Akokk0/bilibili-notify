@@ -50,7 +50,17 @@
 - `.github/workflows/image-release.yml` —— Docker Hub `docker.io/akokk0/bilibili-notify` 与 GHCR `ghcr.io/akokk0/bilibili-notify`。
 - `.github/workflows/desktop-release.yml` —— macOS / Windows Desktop 产物与 GitHub Release assets。
 
-两个 workflow 都先从 tag 读取版本并运行 `sync-standalone-version.sh`;Docker 与 Desktop 依赖同一个版本 tag,但彼此不再互相等待。某个 workflow 失败时只重跑对应 workflow。
+两个 workflow 都先校验 tag commit 可从 `origin/dev` 到达,再从 tag 读取版本并运行 `sync-standalone-version.sh`;Docker 与 Desktop 依赖同一个版本 tag,但彼此不再互相等待。某个 workflow 失败时只重跑对应 workflow。
+
+### 发布前验证
+
+正式创建 tag 前先手动 dry-run:
+
+- `version-tag`: `version=<VERSION>`, `dry_run=true` —— 校验 tag 格式与现有 tag 兼容性。
+- `image-release`: `version=<VERSION>`, `dry_run=true` —— 构建但不 push Docker digest / manifest。
+- `desktop-release`: `version=<VERSION>`, `dry_run=true` —— 构建并校验 Desktop artifacts,不创建 GitHub Release。
+
+Desktop dry-run 的 CI smoke 覆盖 artifact 内容、GUI subsystem、packaged Node sidecar、`/api/health` 与 dashboard HTML。它不是完整 GUI E2E;正式 tag 前仍要在 Windows 实机确认托盘图标、无控制台窗口、NSIS 安装启动、退出后无残留 sidecar。
 
 ### Docker tag 方案
 

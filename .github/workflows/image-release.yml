@@ -67,10 +67,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Assert standalone tag format
         if: startsWith(github.ref, 'refs/tags/v')
         run: bash .github/scripts/assert-ref-matches-standalone-version.sh
+
+      - name: Assert release commit is on dev
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: bash .github/scripts/assert-release-ref-on-dev.sh
+
+      - name: Setup Vite+ (vp) + Node
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: .node-version
+          cache: true
 
       - name: Sync standalone version metadata
         env:
@@ -195,11 +207,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          fetch-depth: 0
           # 不 persist token:checkout 默认会把 token 写入 .git/config 的
           # `http.<host>.extraheader`,之后整个 job 内任意 step 都能从工作区 git
           # 配置里读出 PAT —— 哪怕该 step 不需要写权限。设 false 后 token 不落盘,
           # 本 job 不需要 git 写操作;GitHub Release 读取由 gh 通过 GH_TOKEN 完成。
           persist-credentials: false
+
+      - name: Assert release commit is on dev
+        run: bash .github/scripts/assert-release-ref-on-dev.sh
 
       - name: Download digests
         uses: actions/download-artifact@v8

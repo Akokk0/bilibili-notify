@@ -22,6 +22,17 @@ permissions:
   contents: read
 
 jobs:
+  require-dev:
+    name: Require dev ref
+    if: github.ref != 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain allowed ref
+        run: |
+          echo "::error::version-tag can only run on dev; got $GITHUB_REF"
+          echo "::error::switch the workflow ref to dev before creating or dry-running a standalone tag"
+          exit 1
+
   tag:
     name: Create version tag
     if: github.ref == 'refs/heads/dev'
@@ -31,6 +42,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Read standalone version

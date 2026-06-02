@@ -18,6 +18,34 @@ function Assert-WindowsGuiSubsystem {
     }
 }
 
+function Assert-NoForbiddenRuntimeFiles {
+    param(
+        [string]$Root,
+        [string]$Label
+    )
+
+    $forbidden = Get-ChildItem $Root -Recurse -Force | Where-Object {
+        $_.Name -in @("bn.config.yaml", "bn.config.yml", "bn.config.json", "master.key") -or
+        $_.Name -like ".env*" -or
+        $_.Extension -in @(".pem", ".key", ".enc") -or
+        $_.FullName -like "*\resources\app\apps\server\data" -or
+        $_.FullName -like "*\resources\app\apps\server\data\*" -or
+        $_.FullName -like "*\resources\app\apps\server\logs" -or
+        $_.FullName -like "*\resources\app\apps\server\logs\*" -or
+        $_.FullName -like "*\resources\app\node_modules\.pnpm" -or
+        $_.FullName -like "*\resources\app\node_modules\.pnpm\*" -or
+        $_.FullName -like "*\app\apps\server\data" -or
+        $_.FullName -like "*\app\apps\server\data\*" -or
+        $_.FullName -like "*\app\apps\server\logs" -or
+        $_.FullName -like "*\app\apps\server\logs\*" -or
+        $_.FullName -like "*\app\node_modules\.pnpm" -or
+        $_.FullName -like "*\app\node_modules\.pnpm\*"
+    } | Select-Object -First 1
+    if ($forbidden) {
+        Write-Error "$Label contains forbidden runtime file: $($forbidden.FullName)"
+    }
+}
+
 function Get-FreeTcpPort {
     $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
     $listener.Start()
@@ -108,6 +136,15 @@ foreach ($rel in $required) {
 }
 Assert-WindowsGuiSubsystem $desktopExe
 
+$setupPath = "desktop-artifacts/bilibili-notify-windows-x64-setup.exe"
+if (-not (Test-Path $setupPath)) {
+    Write-Error "Windows NSIS setup artifact missing"
+}
+$setupSize = (Get-Item $setupPath).Length
+if ($setupSize -lt 1MB) {
+    Write-Error "Windows NSIS setup artifact is unexpectedly small: $setupSize bytes"
+}
+
 $smokeDataDir = Join-Path $tmp "smoke-data"
 $stdoutPath = Join-Path $tmp "sidecar-smoke.stdout.log"
 $stderrPath = Join-Path $tmp "sidecar-smoke.stderr.log"
@@ -149,17 +186,4 @@ finally {
     Stop-SidecarSmokeProcess $sidecar
 }
 
-$forbidden = Get-ChildItem $resourcesDir -Recurse -Force | Where-Object {
-    $_.Name -in @("bn.config.yaml", "bn.config.yml", "bn.config.json", "master.key") -or
-    $_.Name -like ".env*" -or
-    $_.Extension -in @(".pem", ".key", ".enc") -or
-    $_.FullName -like "*\resources\app\apps\server\data" -or
-    $_.FullName -like "*\resources\app\apps\server\data\*" -or
-    $_.FullName -like "*\resources\app\apps\server\logs" -or
-    $_.FullName -like "*\resources\app\apps\server\logs\*" -or
-    $_.FullName -like "*\resources\app\node_modules\.pnpm" -or
-    $_.FullName -like "*\resources\app\node_modules\.pnpm\*"
-} | Select-Object -First 1
-if ($forbidden) {
-    Write-Error "Windows portable artifact contains forbidden runtime file: $($forbidden.FullName)"
-}
+Assert-NoForbiddenRuntimeFiles -Root $resourcesDir -Label "Windows portable artifact"

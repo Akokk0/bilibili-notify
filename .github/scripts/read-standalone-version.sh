@@ -18,6 +18,10 @@
 
 set -euo pipefail
 
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=.github/scripts/standalone-version-lib.sh
+source "$script_dir/standalone-version-lib.sh"
+
 raw="${VERSION:-}"
 source="VERSION"
 if [ -z "$raw" ]; then
@@ -36,13 +40,8 @@ if [ -z "$raw" ]; then
 	exit 1
 fi
 
-# SemVer + Docker tag compatibility:
-#   - allow X.Y.Z and X.Y.Z-prerelease, where prerelease identifiers use
-#     [0-9A-Za-z.-]
-#   - reject +build metadata because Docker tags cannot contain '+'.
-if [[ ! "$raw" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-	echo "::error::standalone version is not valid / Docker-tag-compatible SemVer: '$raw'"
-	echo "::error::allowed: X.Y.Z or X.Y.Z-prerelease, e.g. 0.1.0-alpha.7; '+build' metadata is not allowed"
+if ! is_valid_standalone_version "$raw"; then
+	print_invalid_standalone_version_error "$raw"
 	exit 1
 fi
 
