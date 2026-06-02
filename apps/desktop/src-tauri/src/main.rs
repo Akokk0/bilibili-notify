@@ -430,6 +430,7 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
     stop_existing_service(app, "restart")?;
     let paths = current_paths(app)?;
     let resources = resolve_resources(app)?;
+    let sidecar_data_dir = child_process_path(&paths.data_dir);
     let port = allocate_port()?;
     let url = format!("http://{HOST}:{port}");
     let desktop_token = generate_desktop_token()?;
@@ -440,7 +441,7 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
         &paths.launcher_log_dir,
         &format!(
             "starting sidecar port={port} data_dir={} web_dist={} browser={}",
-            paths.data_dir.display(),
+            sidecar_data_dir.display(),
             resources.web_dist.display(),
             browser
                 .as_ref()
@@ -468,14 +469,16 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
         .arg("--port")
         .arg(port.to_string())
         .arg("--data-dir")
-        .arg(&paths.data_dir)
+        .arg(&sidecar_data_dir)
         .arg("--web-dist")
         .arg(&resources.web_dist)
         .current_dir(&resources.server_dir)
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
     if let Some(chrome_path) = browser {
-        command.arg("--chrome-path").arg(chrome_path);
+        command
+            .arg("--chrome-path")
+            .arg(child_process_path(&chrome_path));
     }
     sanitize_bn_env(&mut command);
     command
@@ -507,7 +510,7 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
         inner.detail = Some(format!(
             "资源目录: {}\n数据目录: {}\n启动器日志: {}",
             resources.root.display(),
-            paths.data_dir.display(),
+            sidecar_data_dir.display(),
             paths.launcher_log_dir.display()
         ));
         inner.panel_url = Some(panel_url.clone());
@@ -547,6 +550,28 @@ fn configure_sidecar_command(command: &mut Command) {
 
 #[cfg(not(target_os = "windows"))]
 fn configure_sidecar_command(_command: &mut Command) {}
+
+#[cfg(target_os = "windows")]
+fn child_process_path(path: &Path) -> PathBuf {
+    strip_windows_verbatim_path(path)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn child_process_path(path: &Path) -> PathBuf {
+    path.to_path_buf()
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn strip_windows_verbatim_path(path: &Path) -> PathBuf {
+    let value = path.as_os_str().to_string_lossy();
+    if let Some(rest) = value.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    if let Some(rest) = value.strip_prefix(r"\\?\") {
+        return PathBuf::from(rest);
+    }
+    path.to_path_buf()
+}
 
 fn spawn_child_monitor(app: AppHandle, pid: u32) {
     thread::spawn(move || loop {
@@ -775,11 +800,11 @@ fn resolve_resources(app: &AppHandle) -> Result<ResourcePaths, String> {
         let web_dist = root.join("app").join("apps").join("web").join("dist");
         if node.is_file() && server_entry.is_file() && web_dist.join("index.html").is_file() {
             return Ok(ResourcePaths {
-                root,
-                node,
-                server_dir,
-                server_entry,
-                web_dist,
+                root: child_process_path(&root),
+                node: child_process_path(&node),
+                server_dir: child_process_path(&server_dir),
+                server_entry: child_process_path(&server_entry),
+                web_dist: child_process_path(&web_dist),
             });
         }
     }
@@ -1273,6 +1298,24 @@ mod tests {
         assert_eq!(
             args,
             vec!["http://127.0.0.1:8787/#desktopToken=secret&keep=1"]
+        );
+    }
+
+    #[test]
+    fn windows_verbatim_path_strips_drive_prefix_for_child_processes() {
+        assert_eq!(
+            strip_windows_verbatim_path(Path::new(
+                r"\\?\C:\Users\akokko\bilibili-notify\resources\app",
+            )),
+            PathBuf::from(r"C:\Users\akokko\bilibili-notify\resources\app")
+        );
+    }
+
+    #[test]
+    fn windows_verbatim_path_strips_unc_prefix_for_child_processes() {
+        assert_eq!(
+            strip_windows_verbatim_path(Path::new(r"\\?\UNC\server\share\resources")),
+            PathBuf::from(r"\\server\share\resources")
         );
     }
 
