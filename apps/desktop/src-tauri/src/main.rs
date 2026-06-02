@@ -241,8 +241,11 @@ fn setup_launcher(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn setup_menu(app: &mut App) -> tauri::Result<()> {
-    let menu = build_launcher_menu(app)?;
-    app.set_menu(menu)?;
+    #[cfg(not(target_os = "windows"))]
+    {
+        let menu = build_launcher_menu(app)?;
+        app.set_menu(menu)?;
+    }
     app.on_menu_event(|app, event| handle_launcher_menu_event(app, event.id().as_ref()));
     Ok(())
 }
