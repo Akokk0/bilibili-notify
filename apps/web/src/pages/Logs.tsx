@@ -5,6 +5,7 @@ import { Input } from "../components/atoms";
 import { Icon } from "../components/icons";
 import { useLogChannel } from "../hooks/useLogChannel";
 import { api } from "../services/api";
+import { withDesktopTokenHeader } from "../services/desktop-token";
 import {
 	type LogLineLevel,
 	type LogLineView,
@@ -38,6 +39,29 @@ const ReactMarkdown = lazy(() => import("react-markdown"));
 async function loadChangelogMarkdown(): Promise<string> {
 	const mod = await import("../../../CHANGELOG.md?raw");
 	return mod.default;
+}
+
+async function downloadRawLog(day: string): Promise<void> {
+	const res = await fetch(`/api/logs/raw?day=${encodeURIComponent(day)}`, {
+		headers: withDesktopTokenHeader(),
+		credentials: "include",
+	});
+	if (!res.ok) {
+		const message = await res.text().catch(() => `${res.status}`);
+		throw new Error(message || `download failed: ${res.status}`);
+	}
+	const blob = await res.blob();
+	const url = URL.createObjectURL(blob);
+	try {
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = `bilibili-notify-${day}.jsonl`;
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+	} finally {
+		URL.revokeObjectURL(url);
+	}
 }
 
 type LogsSectionId = "logs" | "changelog";
@@ -254,12 +278,17 @@ export default function Logs() {
 				>
 					自动滚动
 				</button>
-				<a
-					href={`/api/logs/raw?day=${viewDay}`}
+				<button
+					type="button"
+					onClick={() => {
+						void downloadRawLog(viewDay).catch((err) => {
+							alert(`下载失败:${String((err as Error).message ?? err)}`);
+						});
+					}}
 					className="inline-flex items-center gap-1 rounded-full border border-black/10 px-3 py-1 text-[12px] font-semibold text-bn-text-secondary hover:text-bn-text-primary"
 				>
 					↓ {viewDay}.jsonl
-				</a>
+				</button>
 			</div>
 
 			<div className="flex items-center justify-between px-1 text-[11px] text-bn-text-tertiary">
