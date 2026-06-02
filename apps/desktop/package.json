@@ -1,6 +1,6 @@
 {
 	"name": "@bilibili-notify/desktop",
-	"version": "0.1.0-alpha.6",
+	"version": "0.0.0-dev",
 	"private": true,
 	"type": "module",
 	"scripts": {

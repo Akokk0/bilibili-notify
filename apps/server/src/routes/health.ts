@@ -52,7 +52,7 @@ function readPkgVersion(specifier: string): string {
 // 编译期/启动期读一次缓存,health 接口高频调用不该每次 IO。infra 4 个 + engine 4 个,
 // 顺序与 dashboard 卡片排序保持一致(api → storage → subscription → push → dynamic → live → image → ai)。
 // Docker builder 不再执行 `changeset version`;这里读到的是镜像构建输入中的
-// workspace package.json#version,可能落后于独立端 apps/server/package.json#version。
+// workspace package.json#version,仅用于展示核心包版本,不驱动独立端发布版本。
 const MODULE_VERSIONS: ModuleVersions = {
 	api: readPkgVersion("@bilibili-notify/api/package.json"),
 	storage: readPkgVersion("@bilibili-notify/storage/package.json"),
@@ -65,10 +65,9 @@ const MODULE_VERSIONS: ModuleVersions = {
 };
 
 /**
- * 独立端自身版本,取自 apps/server/package.json#version。版本号是唯一事实源、
- * 手动维护;`apps/server` 被 changeset `ignore`,`changeset version` 不会改它,
- * 故运行时读到的就是仓库里手填的版本。镜像 tag 与 alpha/正式渠道亦据它推导
- * (见 .github/workflows/image-release.yml)。读不到则回退 "dev"。
+ * 独立端自身版本,取自构建时的 apps/server/package.json#version。源码中该值
+ * 保持开发占位;发布 workflow 会按 v<VERSION> tag 临时同步后再构建,因此镜像 /
+ * Desktop 运行时读到的版本与发布 tag 一致。读不到则回退 "dev"。
  */
 export function resolveAppVersion(pkgPath: string = join(process.cwd(), "package.json")): string {
 	try {

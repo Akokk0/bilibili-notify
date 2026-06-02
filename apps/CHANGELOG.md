@@ -1,9 +1,8 @@
 # Changelog · 独立端
 
 `@bilibili-notify/server` + `@bilibili-notify/web` 独立端版本历史。Docker 镜像
-`akokk0/bilibili-notify` / `ghcr.io/akokk0/bilibili-notify` 跟随这套版本号(由
-`apps/server/package.json#version` 驱动,bump 后 push 到 `dev` 自动触发
-`image-release` workflow 构建)。
+`akokk0/bilibili-notify` / `ghcr.io/akokk0/bilibili-notify` 跟随 `v<VERSION>`
+git tag;发布 workflow 会在构建前按 tag 临时同步 apps 版本元数据。
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/);本仓库 koishi
 端 `koishi-plugin-bilibili-notify*` npm 包版本独立维护,见各包 `CHANGELOG.md`。

@@ -4,8 +4,8 @@ name: bilibili-notify — build + publish
 # GHCR uses the workflow GITHUB_TOKEN (packages: write).
 
 on:
-  # version-tag workflow 推 v<VERSION> tag 后触发。Docker 只依赖版本 tag,
-  # 不再等待 Desktop Release / assets。
+  # 推 v<VERSION> tag 后触发。Docker 以 tag 为发布版本源,
+  # 构建前由 sync-standalone-version.sh 临时写入各处版本元数据。
   push:
     tags:
       - "v*"
@@ -15,6 +15,10 @@ on:
         description: "Build only, skip push / manifest publish"
         type: boolean
         default: true
+      version:
+        description: "Standalone version for dry-run builds, e.g. 0.1.0-alpha.7"
+        type: string
+        required: true
 
 # 串行化 image-release —— 同 ref 上的并发 run 一律排队,避免两个 push 同时跑
 # 让 Docker tag 与 git tag / GitHub Release 失同步。cancel-in-progress: false
@@ -64,9 +68,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Assert tag matches standalone version
+      - name: Assert standalone tag format
         if: startsWith(github.ref, 'refs/tags/v')
         run: bash .github/scripts/assert-ref-matches-standalone-version.sh
+
+      - name: Sync standalone version metadata
+        env:
+          VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+        run: bash .github/scripts/sync-standalone-version.sh
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -170,8 +179,8 @@ jobs:
   #
   # build matrix 两个 arch 都成功后才跑;从 artifact 拿 digests,docker buildx
   # imagetools create 把它们组合成 manifest list(amd64 + arm64),带上完整 tag
-  # 集合(:v*, :alpha 或 :latest, :<sha>)推两个 registry。git tag 由
-  # version-tag workflow 创建;GitHub Release / Desktop assets 由 desktop-release 独立处理。
+  # 集合(:v*, :alpha 或 :latest, :<sha>)推两个 registry。GitHub Release /
+  # Desktop assets 由 desktop-release 独立处理。
   # ---------------------------------------------------------------------------
   merge:
     name: Merge & publish manifest
@@ -216,7 +225,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      # 独立端版本号 = apps/server/package.json#version(手动维护,唯一事实源)。
+      # 独立端版本号来自当前 v<VERSION> tag。
       # 含 prerelease 标识(有 `-`,如 0.1.0-alpha.0)→ alpha 渠道,否则正式。
       # 脚本本体在 .github/scripts/read-standalone-version.sh。
       - name: Read standalone version
@@ -251,9 +260,8 @@ jobs:
             type=raw,value=v${{ steps.ver.outputs.value }}
             type=raw,value=${{ steps.commit.outputs.short }}
 
-      # version-tag workflow 负责创建 v<VERSION> git tag。image-release 推 Docker
-      # :v<VERSION> 前只校验同名 tag 必须已存在且指向当前 checkout commit;不再等待
-      # Desktop Release / assets,避免桌面端阻塞 Docker 镜像发布。
+      # image-release 推 Docker :v<VERSION> 前只校验同名 tag 必须已存在且指向
+      # 当前 checkout commit;不等待 Desktop Release / assets,避免桌面端阻塞 Docker 镜像发布。
       - name: Assert version tag compatibility
         env:
           VERSION: ${{ steps.ver.outputs.value }}

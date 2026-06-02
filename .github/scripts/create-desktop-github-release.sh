@@ -5,7 +5,7 @@
 # release notes 这里只列本 workflow 已经产出的桌面产物。
 #
 # 必需 env:
-#   VERSION     apps/server/package.json#version
+#   VERSION     release version without leading 'v'
 #   PRERELEASE  "true"|"false" 决定 --prerelease / --latest 标记
 #   GH_TOKEN    secrets.RELEASE_PAT
 #   REPO        github.repository(如 Akokk0/bilibili-notify),用于 compare 链接

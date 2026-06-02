@@ -8,6 +8,7 @@
   - amd64 smoke 因 workflow 把 GHCR digest 当成 Docker Hub digest 拉取而失败;
   - merge job 被跳过,所以 `:alpha` / `:v0.1.0-alpha.7` 没有发布成功。
 - `0.1.0-alpha.7` 还没有完成正式发布;后续可继续使用这个版本号发布,不需要 bump 到 `0.1.0-alpha.8`。
+- 发布模型已调整为 tag-driven:源码内独立端版本保持 `0.0.0-dev`,CI 根据 `v<VERSION>` tag 在构建前临时同步 server/web/desktop/Tauri/Cargo 版本元数据。
 
 ## 本次待测改动
 
@@ -76,9 +77,10 @@ Get-Content (Join-Path $logDir "sidecar.stderr.log") -Tail 120
 
 ## 发布注意
 
-- Docker 与 Desktop 已改为共同依赖 `version-tag` workflow 生成的同名 git tag,彼此不再互相阻塞。
-- `0.1.0-alpha.7` 尚未正式发布完成,可继续使用当前 `apps/server/package.json#version`。
+- Docker 与 Desktop 已改为共同依赖同名 git tag,彼此不再互相阻塞;版本号来自 tag,不是 `apps/server/package.json#version`。
+- 源码内独立端版本元数据保持 `0.0.0-dev`;`image-release` / `desktop-release` 会在构建前按 `v<VERSION>` tag 临时同步到 `0.1.0-alpha.7`。
+- `0.1.0-alpha.7` 尚未正式发布完成,可继续使用这个版本号。
 - Windows 本地确认通过后,建议:
-  1. 手动触发 `version-tag` 做 dry-run,确认会创建 `v0.1.0-alpha.7`;
-  2. 将包含 `apps/server/package.json#version` 变更的提交 push 到 `dev`,由 `version-tag` 创建 tag;
+  1. 手动触发 `version-tag` 做 dry-run,输入 `version=0.1.0-alpha.7`,确认会创建 `v0.1.0-alpha.7`;
+  2. 触发 `version-tag` 并设 `dry_run=false`,或本地手动创建/推送 `v0.1.0-alpha.7` tag 到当前 `dev` HEAD;
   3. tag push 会分别触发 Docker 与 Desktop;二者互不依赖,哪个 workflow 失败就只重跑对应 run。

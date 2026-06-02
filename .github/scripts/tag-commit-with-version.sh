@@ -12,7 +12,7 @@
 #     旧 commit,破坏"镜像 tag = git tag" 不变量。
 #
 # 必需 env:
-#   VERSION       apps/server/package.json#version(不带 'v' 前缀)
+#   VERSION       release version without leading 'v'
 #   GITHUB_TOKEN  RELEASE_PAT,临时鉴权 git push(checkout 用 persist-credentials:
 #                 false 不写 git config → 这里 -c http.extraheader 一次性注入)
 #   REPO          github.repository(如 Akokk0/bilibili-notify),拼 push URL

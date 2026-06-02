@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 #
-# 校验 v<VERSION> tag 与当前 commit 一致。version-tag workflow 负责创建 tag;
-# Docker 与 Desktop release 在发布前都只校验这个共同版本锚点,避免产物与 git tag
-# 失同步。
+# 校验 v<VERSION> tag 与当前 commit 一致。Docker 与 Desktop release 在发布前
+# 都只校验这个共同版本锚点,避免产物与 git tag 失同步。
 #
 # 必需 env:
-#   VERSION     apps/server/package.json#version(不带 'v' 前缀)
+#   VERSION     release version without leading 'v'
 #   GITHUB_SHA  GHA 自动注入,当前 workflow 跑的 commit SHA
 # 可选 env:
 #   EXPECTED_COMMIT_SHA      期望 tag 指向的 commit;未设时优先用当前 checkout HEAD,
@@ -58,7 +57,7 @@ while true; do
 		exit 0
 	fi
 	if [ "$SECONDS" -ge "$deadline" ]; then
-		echo "::error::tag $tag 不存在,version-tag workflow 尚未成功创建对应 tag"
+		echo "::error::tag $tag 不存在,请先创建/推送对应 v<VERSION> tag"
 		exit 1
 	fi
 	sleep 15

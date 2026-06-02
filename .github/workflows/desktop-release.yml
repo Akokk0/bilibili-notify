@@ -1,8 +1,8 @@
 name: bilibili-notify — desktop release
 
 on:
-  # version-tag workflow 推 v<VERSION> tag 后触发。Desktop 只依赖版本 tag,
-  # 不再负责创建 tag,也不阻塞 Docker image 发布。
+  # 推 v<VERSION> tag 后触发。Desktop 以 tag 为发布版本源,
+  # 构建前由 sync-standalone-version.sh 临时写入各处版本元数据。
   push:
     tags:
       - "v*"
@@ -12,6 +12,10 @@ on:
         description: "Build desktop artifacts only, skip GitHub Release"
         type: boolean
         default: true
+      version:
+        description: "Standalone version for dry-run builds, e.g. 0.1.0-alpha.7"
+        type: string
+        required: true
 
 concurrency:
   group: desktop-release-${{ github.ref }}
@@ -43,9 +47,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Assert tag matches standalone version
+      - name: Assert standalone tag format
         if: startsWith(github.ref, 'refs/tags/v')
         run: bash .github/scripts/assert-ref-matches-standalone-version.sh
+
+      - name: Sync standalone version metadata
+        shell: bash
+        env:
+          VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+        run: bash .github/scripts/sync-standalone-version.sh
 
       - name: Setup Vite+ (vp) + Node + deps
         uses: voidzero-dev/setup-vp@v1
