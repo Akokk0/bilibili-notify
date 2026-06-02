@@ -872,6 +872,7 @@ fn create_launcher_paths() -> Result<LauncherPaths, Box<dyn std::error::Error>> 
     })
 }
 
+#[cfg(not(target_os = "windows"))]
 fn home_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
     env_path("HOME")
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "HOME is not set").into())
@@ -909,6 +910,7 @@ fn windows_local_app_data_root_from(var: impl Fn(&str) -> Option<OsString>) -> O
     )
 }
 
+#[cfg(not(target_os = "windows"))]
 fn env_path(key: &str) -> Option<PathBuf> {
     non_empty_path(env::var_os(key))
 }
