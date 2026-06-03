@@ -1,7 +1,12 @@
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
+
 use serde::Serialize;
 use std::{
     env,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fs::{self, OpenOptions},
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
@@ -17,10 +22,14 @@ use tauri::{
     App, AppHandle, Manager, RunEvent, State, Url, WindowEvent,
 };
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 const HOST: &str = "127.0.0.1";
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
 const HEALTH_INTERVAL: Duration = Duration::from_millis(350);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
+const DESKTOP_TOKEN_QUERY: &str = "desktopToken";
 
 #[derive(Default)]
 struct LauncherState {
@@ -161,15 +170,32 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building bilibili-notify desktop");
 
-    app.run(|app, event| {
+    app.run(handle_run_event);
+}
+
+fn handle_run_event(app: &AppHandle, event: RunEvent) {
+    match event {
+        RunEvent::ExitRequested { code, .. } => {
+            let reason = exit_requested_reason(code);
+            prepare_for_exit(app, &reason);
+        }
+        RunEvent::Exit => prepare_for_exit(app, "event loop exit"),
         #[cfg(target_os = "macos")]
-        if let RunEvent::Reopen { .. } = event {
+        RunEvent::Reopen { .. } => {
             if let Ok(paths) = current_paths(app) {
                 append_launcher_log(&paths.launcher_log_dir, "dock reopen");
             }
             show_main_window(app);
         }
-    });
+        _ => {}
+    }
+}
+
+fn exit_requested_reason(code: Option<i32>) -> String {
+    match code {
+        Some(code) => format!("programmatic exit code={code}"),
+        None => "system exit".to_string(),
+    }
 }
 
 fn setup_launcher(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
@@ -189,7 +215,10 @@ fn setup_launcher(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             true
         }
         Err(err) => {
-            append_launcher_log(&paths.launcher_log_dir, &format!("setup tray failed: {err}"));
+            append_launcher_log(
+                &paths.launcher_log_dir,
+                &format!("setup tray failed: {err}"),
+            );
             false
         }
     };
@@ -212,8 +241,11 @@ fn setup_launcher(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn setup_menu(app: &mut App) -> tauri::Result<()> {
-    let menu = build_launcher_menu(app)?;
-    app.set_menu(menu)?;
+    #[cfg(not(target_os = "windows"))]
+    {
+        let menu = build_launcher_menu(app)?;
+        app.set_menu(menu)?;
+    }
     app.on_menu_event(|app, event| handle_launcher_menu_event(app, event.id().as_ref()));
     Ok(())
 }
@@ -226,7 +258,8 @@ fn setup_tray(app: &mut App) -> tauri::Result<()> {
         .show_menu_on_left_click(true);
     #[cfg(target_os = "macos")]
     {
-        if let Ok(icon) = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-logo.png")) {
+        if let Ok(icon) = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-logo.png"))
+        {
             builder = builder.icon(icon).icon_as_template(true);
         } else if let Some(icon) = app.default_window_icon().cloned() {
             builder = builder.icon(icon).icon_as_template(false);
@@ -381,7 +414,7 @@ fn start_service_async(app: AppHandle) {
     {
         let state = app.state::<LauncherState>();
         let mut inner = state.inner.lock().expect("launcher state poisoned");
-        if inner.status == LauncherStatus::Starting {
+        if inner.quitting || inner.status == LauncherStatus::Starting {
             return;
         }
         inner.status = LauncherStatus::Starting;
@@ -400,15 +433,18 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
     stop_existing_service(app, "restart")?;
     let paths = current_paths(app)?;
     let resources = resolve_resources(app)?;
+    let sidecar_data_dir = child_process_path(&paths.data_dir);
     let port = allocate_port()?;
     let url = format!("http://{HOST}:{port}");
+    let desktop_token = generate_desktop_token()?;
+    let panel_url = panel_url_with_token(&url, &desktop_token);
     let browser = detect_browser_path();
 
     append_launcher_log(
         &paths.launcher_log_dir,
         &format!(
             "starting sidecar port={port} data_dir={} web_dist={} browser={}",
-            paths.data_dir.display(),
+            sidecar_data_dir.display(),
             resources.web_dist.display(),
             browser
                 .as_ref()
@@ -436,28 +472,36 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
         .arg("--port")
         .arg(port.to_string())
         .arg("--data-dir")
-        .arg(&paths.data_dir)
+        .arg(&sidecar_data_dir)
         .arg("--web-dist")
         .arg(&resources.web_dist)
         .current_dir(&resources.server_dir)
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
     if let Some(chrome_path) = browser {
-        command.arg("--chrome-path").arg(chrome_path);
+        command
+            .arg("--chrome-path")
+            .arg(child_process_path(&chrome_path));
     }
     sanitize_bn_env(&mut command);
     command
         .env("BN_CONFIG_DISABLED", "1")
         .env("BN_ALLOW_NO_AUTH", "1")
+        .env("BN_DESKTOP_TOKEN", &desktop_token)
+        .env("BN_DESKTOP_ALLOWED_ORIGIN", &url)
         .env("NODE_ENV", "production");
+    configure_sidecar_command(&mut command);
 
-    let child = command
-        .spawn()
-        .map_err(|err| format!("spawn Node sidecar failed: {err}"))?;
-    let pid = child.id();
-    {
+    let pid = {
         let state = app.state::<LauncherState>();
         let mut inner = state.inner.lock().expect("launcher state poisoned");
+        if inner.quitting {
+            return Err("应用正在退出。".to_string());
+        }
+        let child = command
+            .spawn()
+            .map_err(|err| format!("spawn Node sidecar failed: {err}"))?;
+        let pid = child.id();
         inner.service = Some(ServiceProcess {
             child,
             pid,
@@ -469,11 +513,12 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
         inner.detail = Some(format!(
             "资源目录: {}\n数据目录: {}\n启动器日志: {}",
             resources.root.display(),
-            paths.data_dir.display(),
+            sidecar_data_dir.display(),
             paths.launcher_log_dir.display()
         ));
-        inner.panel_url = Some(url.clone());
-    }
+        inner.panel_url = Some(panel_url.clone());
+        pid
+    };
     spawn_child_monitor(app.clone(), pid);
 
     if !wait_for_health(port, READY_TIMEOUT) {
@@ -487,14 +532,48 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
     {
         let state = app.state::<LauncherState>();
         let mut inner = state.inner.lock().expect("launcher state poisoned");
+        if inner.quitting {
+            return Ok(());
+        }
         inner.status = LauncherStatus::Ready;
         inner.message = format!("Dashboard 已就绪：{url}");
         inner.detail = None;
-        inner.panel_url = Some(url.clone());
+        inner.panel_url = Some(panel_url.clone());
     }
     append_launcher_log(&paths.launcher_log_dir, &format!("sidecar ready url={url}"));
-    navigate_main_window(app, &url);
+    navigate_main_window(app, &panel_url);
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn configure_sidecar_command(command: &mut Command) {
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_sidecar_command(_command: &mut Command) {}
+
+#[cfg(target_os = "windows")]
+fn child_process_path(path: &Path) -> PathBuf {
+    strip_windows_verbatim_path(path)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn child_process_path(path: &Path) -> PathBuf {
+    path.to_path_buf()
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn strip_windows_verbatim_path(path: &Path) -> PathBuf {
+    let value = path.as_os_str().to_string_lossy();
+    if let Some(rest) = value.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    if let Some(rest) = value.strip_prefix(r"\\?\") {
+        return PathBuf::from(rest);
+    }
+    path.to_path_buf()
 }
 
 fn spawn_child_monitor(app: AppHandle, pid: u32) {
@@ -590,21 +669,80 @@ fn terminate_child(child: &mut Child) {
 }
 
 fn mark_service_failed(app: &AppHandle, err: String) {
+    {
+        let state = app.state::<LauncherState>();
+        let mut inner = state.inner.lock().expect("launcher state poisoned");
+        if inner.quitting {
+            return;
+        }
+        inner.status = LauncherStatus::Failed;
+        inner.message = "后端服务启动失败，请重试或查看日志。".to_string();
+        inner.detail = Some(err.clone());
+        inner.panel_url = None;
+    }
     if let Ok(paths) = current_paths(app) {
         append_launcher_log(
             &paths.launcher_log_dir,
             &format!("sidecar startup failed: {err}"),
         );
     }
-    {
-        let state = app.state::<LauncherState>();
-        let mut inner = state.inner.lock().expect("launcher state poisoned");
-        inner.status = LauncherStatus::Failed;
-        inner.message = "后端服务启动失败，请重试或查看日志。".to_string();
-        inner.detail = Some(err);
-        inner.panel_url = None;
-    }
     show_status_page(app);
+}
+
+fn generate_desktop_token() -> Result<String, String> {
+    let mut bytes = [0_u8; 32];
+    fill_random(&mut bytes)?;
+    Ok(hex_encode(&bytes))
+}
+
+#[cfg(unix)]
+fn fill_random(bytes: &mut [u8]) -> Result<(), String> {
+    fs::File::open("/dev/urandom")
+        .and_then(|mut file| file.read_exact(bytes))
+        .map_err(|err| format!("generate desktop token failed: {err}"))
+}
+
+#[cfg(windows)]
+fn fill_random(bytes: &mut [u8]) -> Result<(), String> {
+    const BCRYPT_USE_SYSTEM_PREFERRED_RNG: u32 = 0x00000002;
+    #[link(name = "bcrypt")]
+    extern "system" {
+        fn BCryptGenRandom(
+            h_algorithm: *mut std::ffi::c_void,
+            pb_buffer: *mut u8,
+            cb_buffer: u32,
+            dw_flags: u32,
+        ) -> i32;
+    }
+    let status = unsafe {
+        BCryptGenRandom(
+            std::ptr::null_mut(),
+            bytes.as_mut_ptr(),
+            bytes.len() as u32,
+            BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+        )
+    };
+    if status == 0 {
+        Ok(())
+    } else {
+        Err(format!(
+            "generate desktop token failed: BCryptGenRandom status={status}"
+        ))
+    }
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
+}
+
+fn panel_url_with_token(base_url: &str, token: &str) -> String {
+    format!("{base_url}/#{DESKTOP_TOKEN_QUERY}={token}")
 }
 
 fn allocate_port() -> Result<u16, String> {
@@ -665,11 +803,11 @@ fn resolve_resources(app: &AppHandle) -> Result<ResourcePaths, String> {
         let web_dist = root.join("app").join("apps").join("web").join("dist");
         if node.is_file() && server_entry.is_file() && web_dist.join("index.html").is_file() {
             return Ok(ResourcePaths {
-                root,
-                node,
-                server_dir,
-                server_entry,
-                web_dist,
+                root: child_process_path(&root),
+                node: child_process_path(&node),
+                server_dir: child_process_path(&server_dir),
+                server_entry: child_process_path(&server_entry),
+                web_dist: child_process_path(&web_dist),
             });
         }
     }
@@ -734,6 +872,7 @@ fn create_launcher_paths() -> Result<LauncherPaths, Box<dyn std::error::Error>> 
     })
 }
 
+#[cfg(not(target_os = "windows"))]
 fn home_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
     env_path("HOME")
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "HOME is not set").into())
@@ -741,7 +880,7 @@ fn home_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
 
 #[cfg(target_os = "windows")]
 fn windows_local_app_data_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    windows_local_app_data_root_from(env::var_os).ok_or_else(|| {
+    windows_local_app_data_root_from(|key| env::var_os(key)).ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "LOCALAPPDATA / USERPROFILE / HOMEDRIVE+HOMEPATH are not set",
@@ -771,6 +910,7 @@ fn windows_local_app_data_root_from(var: impl Fn(&str) -> Option<OsString>) -> O
     )
 }
 
+#[cfg(not(target_os = "windows"))]
 fn env_path(key: &str) -> Option<PathBuf> {
     non_empty_path(env::var_os(key))
 }
@@ -845,7 +985,7 @@ fn open_panel_result(app: &AppHandle) -> Result<(), String> {
         .panel_url
         .clone()
         .ok_or_else(|| "Dashboard 尚未就绪。".to_string())?;
-    open_with_system(&url)
+    open_url_with_system(&url)
 }
 
 enum KnownPath {
@@ -866,31 +1006,54 @@ fn open_known_path_result(app: &AppHandle, kind: KnownPath) -> Result<(), String
         KnownPath::LauncherLogs => paths.launcher_log_dir,
     };
     fs::create_dir_all(&path).map_err(|err| format!("create dir failed: {err}"))?;
-    open_with_system(&path.display().to_string())
+    open_path_with_system(&path)
 }
 
-fn open_with_system(target: &str) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    let mut command = {
-        let mut command = Command::new("open");
-        command.arg(target);
-        command
-    };
-
+fn open_url_with_system(url: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
-    let mut command = {
-        let mut command = Command::new("cmd");
-        command.args(["/C", "start", "", target]);
-        command
-    };
+    return spawn_open_command(windows_explorer_open_command(OsStr::new(url)), url);
+
+    #[cfg(target_os = "macos")]
+    return spawn_open_command(open_command(OsStr::new(url)), url);
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let mut command = {
-        let mut command = Command::new("xdg-open");
-        command.arg(target);
-        command
-    };
+    return spawn_open_command(xdg_open_command(OsStr::new(url)), url);
+}
 
+fn open_path_with_system(path: &Path) -> Result<(), String> {
+    let target = path.display().to_string();
+    #[cfg(target_os = "windows")]
+    return spawn_open_command(windows_explorer_open_command(path.as_os_str()), &target);
+
+    #[cfg(target_os = "macos")]
+    return spawn_open_command(open_command(path.as_os_str()), &target);
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    return spawn_open_command(xdg_open_command(path.as_os_str()), &target);
+}
+
+#[cfg(target_os = "macos")]
+fn open_command(target: &OsStr) -> Command {
+    let mut command = Command::new("open");
+    command.arg(target);
+    command
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn windows_explorer_open_command(target: &OsStr) -> Command {
+    let mut command = Command::new("explorer.exe");
+    command.arg(target);
+    command
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn xdg_open_command(target: &OsStr) -> Command {
+    let mut command = Command::new("xdg-open");
+    command.arg(target);
+    command
+}
+
+fn spawn_open_command(mut command: Command, target: &str) -> Result<(), String> {
     command
         .spawn()
         .map(|_| ())
@@ -899,22 +1062,37 @@ fn open_with_system(target: &str) -> Result<(), String> {
 
 fn request_quit(app: AppHandle) {
     thread::spawn(move || {
-        {
-            let state = app.state::<LauncherState>();
-            let mut inner = state.inner.lock().expect("launcher state poisoned");
-            inner.quitting = true;
-            inner.status = LauncherStatus::Stopped;
-            inner.message = "正在退出应用。".to_string();
-        }
-        let _ = stop_existing_service(&app, "quit");
+        prepare_for_exit(&app, "quit");
         app.exit(0);
     });
+}
+
+fn prepare_for_exit(app: &AppHandle, reason: &str) {
+    {
+        let state = app.state::<LauncherState>();
+        let mut inner = state.inner.lock().expect("launcher state poisoned");
+        inner.quitting = true;
+        inner.status = LauncherStatus::Stopped;
+        inner.message = "正在退出应用。".to_string();
+        inner.detail = None;
+    }
+    if let Err(err) = stop_existing_service(app, reason) {
+        if let Ok(paths) = current_paths(app) {
+            append_launcher_log(
+                &paths.launcher_log_dir,
+                &format!("stop sidecar during exit failed: {err}"),
+            );
+        }
+    }
 }
 
 fn toggle_dock(app: &AppHandle) {
     if let Err(err) = toggle_dock_result(app) {
         if let Ok(paths) = current_paths(app) {
-            append_launcher_log(&paths.launcher_log_dir, &format!("toggle dock failed: {err}"));
+            append_launcher_log(
+                &paths.launcher_log_dir,
+                &format!("toggle dock failed: {err}"),
+            );
         }
     }
 }
@@ -1089,6 +1267,61 @@ mod tests {
             .map(|(key, value)| ((*key).to_string(), OsString::from(value)))
             .collect();
         move |key| vars.get(key).cloned()
+    }
+
+    #[test]
+    fn exit_requested_reason_separates_system_and_programmatic_exit() {
+        assert_eq!(exit_requested_reason(None), "system exit");
+        assert_eq!(exit_requested_reason(Some(0)), "programmatic exit code=0");
+    }
+
+    #[test]
+    fn windows_open_command_uses_explorer_without_cmd_shell() {
+        let command = windows_explorer_open_command(OsStr::new(
+            r"C:\Users\akokko\AppData\Local\bilibili-notify",
+        ));
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(command.get_program(), OsStr::new("explorer.exe"));
+        assert_eq!(args, vec![r"C:\Users\akokko\AppData\Local\bilibili-notify"]);
+    }
+
+    #[test]
+    fn windows_open_command_keeps_url_as_single_argument() {
+        let command = windows_explorer_open_command(OsStr::new(
+            "http://127.0.0.1:8787/#desktopToken=secret&keep=1",
+        ));
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(command.get_program(), OsStr::new("explorer.exe"));
+        assert_eq!(
+            args,
+            vec!["http://127.0.0.1:8787/#desktopToken=secret&keep=1"]
+        );
+    }
+
+    #[test]
+    fn windows_verbatim_path_strips_drive_prefix_for_child_processes() {
+        assert_eq!(
+            strip_windows_verbatim_path(Path::new(
+                r"\\?\C:\Users\akokko\bilibili-notify\resources\app",
+            )),
+            PathBuf::from(r"C:\Users\akokko\bilibili-notify\resources\app")
+        );
+    }
+
+    #[test]
+    fn windows_verbatim_path_strips_unc_prefix_for_child_processes() {
+        assert_eq!(
+            strip_windows_verbatim_path(Path::new(r"\\?\UNC\server\share\resources")),
+            PathBuf::from(r"\\server\share\resources")
+        );
     }
 
     #[test]

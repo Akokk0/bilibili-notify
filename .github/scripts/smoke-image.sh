@@ -13,7 +13,7 @@
 #   - docker pull(本地已 build 时命中本地)
 #   - docker run -d 容器名 bn-smoke 暴露 :8787
 #   - 30 次 × 2s poll /api/health 直到 status:"ok"(~60s 上限)
-#   - 校验 health.version === apps/server/package.json#version
+#   - 校验 health.version === 构建时同步进 apps/server/package.json 的发布版本
 #   - 校验 GET / 返回 text/html 且 body 含 `<div id="root">`(dashboard index)
 #   - 任意检查失败 → ::error:: GHA annotation + docker logs + exit 1
 #   - EXIT trap 永远清容器,workflow 不需要单独 Stop step

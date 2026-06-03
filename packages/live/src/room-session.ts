@@ -553,7 +553,7 @@ export class RoomSession extends RoomSessionBase {
 	private async onInteractWordV2(msg: unknown): Promise<void> {
 		if (
 			!this.sub.customSpecialUsersEnterTheRoom.enable ||
-			!this.ctx.hasTargets(this.sub, "specialUserEnterTheRoom")
+			!this.ctx.hasTargets(this.sub, "specialUserEnter")
 		) {
 			return;
 		}

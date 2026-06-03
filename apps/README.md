@@ -4,7 +4,7 @@
 
 ## 部署(Docker)
 
-推荐用 compose,模板见 [`docker-compose.example.yaml`](./docker-compose.example.yaml):
+推荐用 compose,模板见 [`docker-compose.example.yaml`](./docker-compose.example.yaml)。复制后一条命令启动,不要手动创建 `config/bn.config.yaml`。镜像默认走 Docker Hub,也可改用 GHCR:`ghcr.io/akokk0/bilibili-notify:alpha`。
 
 ```bash
 cp docker-compose.example.yaml docker-compose.yaml
@@ -32,6 +32,12 @@ docker run -d --name bilibili-notify \
   akokk0/bilibili-notify:alpha
 ```
 
+GHCR 镜像同 tag 发布:
+
+```bash
+docker pull ghcr.io/akokk0/bilibili-notify:alpha
+```
+
 ## 配置
 
 镜像默认 `BN_CONFIG=/config/bn.config.yaml`,走 **B 模型**:
@@ -39,6 +45,7 @@ docker run -d --name bilibili-notify \
 - **首次启动**:`BN_*` 环境变量 + 默认值 seed 出 `bn.config.yaml`。
 - **之后**:yaml 是唯一真相,环境变量被忽略。改配置 = 编辑 `./config/bn.config.yaml` + `docker compose restart`。
 - **重置**:删 `./config/bn.config.yaml` + 重新启动。
+- **不要手写配置文件**:只挂载 `./config:/config`,让容器生成完整 yaml;如必须手写,保留 `webDistDir: /app/web-dist`。
 
 完整字段见 `server/src/config/schema.ts`,样例见 `server/bn.config.example.yaml`。开发模式(不设 `BN_CONFIG`)走 12-factor:`bn.config.{yaml,json}` < 环境变量 < CLI 三层合并,不 seed 文件。
 
@@ -57,6 +64,11 @@ docker run -d --name bilibili-notify \
 | `BN_COOKIE_KEY` | 未设 | secrets 加密密钥(首启动 seed 源) |
 
 `BN_CONFIG` / `BN_HOST` / `BN_PORT` / `BN_DATA_DIR` / `BN_CHROME_PATH` / `BN_WEB_DIST` 由镜像固定注入,compose 里不要重写。
+
+### 故障排查
+
+- `curl localhost:8787` 返回 404:检查 `./config/bn.config.yaml` 是否缺少 `webDistDir: /app/web-dist`;正常启动日志会出现 `serving dashboard static assets from /app/web-dist`。如果配置和 `BN_WEB_DIST` 都缺失,服务会再检查镜像默认 `/app/web-dist/index.html`;仍没有时日志会说明 Dashboard 静态资源已禁用。
+- 手写过 `bn.config.yaml`:建议备份后删除该文件,让容器重新生成;不要删除 `./data`。
 
 ### Volume
 

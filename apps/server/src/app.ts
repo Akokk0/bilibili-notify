@@ -4,6 +4,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { createDashboardAuth } from "./auth/dashboard-auth.js";
+import { createDesktopTokenAuth } from "./auth/desktop-token.js";
 import type { AuthSystem } from "./auth/index.js";
 import { createIpRateLimiter } from "./auth/ip-rate-limit.js";
 import type { SessionCodec } from "./auth/session.js";
@@ -77,6 +78,8 @@ export interface CreateAppOptions {
 	 * cross-site abuse). Empty/unset → no Origin enforcement.
 	 */
 	allowedOrigins?: readonly string[];
+	/** Desktop launcher local token gate. When set, /api/* requires x-bn-desktop-token. */
+	desktopToken?: string;
 }
 
 /**
@@ -122,10 +125,14 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 		return c.json({ error: "not_found" }, 404);
 	});
 
-	// Session control plane — ALWAYS mounted, unguarded. Login can't require
+	if (options.desktopToken) {
+		app.use("/api/*", createDesktopTokenAuth(options.desktopToken));
+	}
+
+	// Session control plane — mounted outside the cookie gate. Login can't require
 	// being logged in; `GET /api/session` is the SPA boot probe; logout must
-	// work with a stale cookie. The IP token-bucket (relocated brute-force
-	// surface) guards `POST /api/session/login`.
+	// work with a stale cookie. The desktop-token gate, when enabled, still
+	// wraps these local-launcher routes. The IP token-bucket guards login.
 	const loginRateLimiter = createIpRateLimiter({
 		onEvent: (event) => {
 			if (event.type === "blocked") {

@@ -1,6 +1,6 @@
 [package]
 name = "bilibili-notify-desktop"
-version = "0.1.0-alpha.6"
+version = "0.0.0-dev"
 description = "Desktop launcher for bilibili-notify"
 authors = ["Akokko"]
 edition = "2021"

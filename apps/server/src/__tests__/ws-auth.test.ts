@@ -346,6 +346,38 @@ describe("WS upgrade gate", () => {
 		wsTicketStore.dispose();
 	});
 
+	it("desktop token configured: upgrade requires ?desktopToken= and still honors Origin gate", async () => {
+		const allowedOrigin = `http://127.0.0.1:${port}`;
+		wsServer = createWsServer({
+			httpServer,
+			bus,
+			store,
+			serviceCtx,
+			heartbeatIntervalMs: 0,
+			heartbeatTimeoutMs: 0,
+			allowedOrigins: [allowedOrigin],
+			desktopToken: "desktop-secret",
+		});
+
+		const missingToken = await tryConnect(`ws://127.0.0.1:${port}/ws`, {
+			Origin: allowedOrigin,
+		});
+		expect(missingToken.outcome).toBe("rejected");
+		expect(missingToken.statusCode).toBe(401);
+
+		const badOrigin = await tryConnect(`ws://127.0.0.1:${port}/ws?desktopToken=desktop-secret`, {
+			Origin: "https://evil.example.org",
+		});
+		expect(badOrigin.outcome).toBe("rejected");
+		expect(badOrigin.statusCode).toBeUndefined();
+
+		const ok = await tryConnect(`ws://127.0.0.1:${port}/ws?desktopToken=desktop-secret`, {
+			Origin: allowedOrigin,
+		});
+		expect(ok.outcome).toBe("open");
+		ok.ws?.close();
+	});
+
 	it("no auth + no origin gate: upgrade succeeds (local dev mode)", async () => {
 		wsServer = createWsServer({
 			httpServer,

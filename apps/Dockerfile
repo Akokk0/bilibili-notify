@@ -56,23 +56,6 @@ COPY . .
 # 即可(builder 用完即弃,不会带进 runtime)。
 RUN git init -q . && pnpm install --frozen-lockfile
 
-# 把 packages/* 的 package.json#version 推到「本次发布的目标版本」。版本号由
-# changeset 控制,只在 `changeset version` 时才 bump —— dev 分支上 changeset 尚未
-# 消费,package.json 还停在上次发布的旧版本。builder 阶段用完即弃:这里跑普通
-# `changeset version` 消费 pending changeset、把版本写成目标值(pre 模式下为
-# x.y.z-alpha.N),所有 mutation 只活在被丢弃的 builder layer,真实仓库不受影响。
-# /api/health 的「各模块版本」据此显示。无 pending changeset 时为 no-op;
-# .changeset/ 状态损坏时 fail-fast,不产出版本号错误的镜像。
-#
-# changeset version 改了大量 packages/* package.json#version,workspace deps
-# (workspace:^ 协议)随之"看上去版本不匹配"。后续 `pnpm -r run build` 启动时
-# pnpm 会**隐式**触发一次 install + 重 link;这个隐式 install 在 17+ 包多变
-# 状态下能弄坏 `node_modules/.bin/` 的二进制 symlink(尤其 vp shim),后续 vp
-# pack 命令调起即 hang。这里显式跑一次 `pnpm install --no-frozen-lockfile` 把
-# install 锁定在 build 之前,行为可见可控;build 内部就无需再隐式 sync。
-RUN pnpm exec changeset version
-RUN pnpm install --no-frozen-lockfile
-
 # 拆两阶段 + --stream:GHA buildx 默认 batched 输出,17+ 包 build 静默累积时
 # 卡死一个包就整体看不出在哪。--stream 让各包输出实时刷出;先 packages/* 再
 # koishi/* + apps/* 是因为 koishi/* 与 apps/* 都依赖 packages/*(workspace:*

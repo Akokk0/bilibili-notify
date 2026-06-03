@@ -112,8 +112,18 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 	}
 
 	protected start(): Awaitable<void> {
-		const internals = this.ctx["bilibili-notify"].getInternals(BILIBILI_NOTIFY_TOKEN);
-		if (!internals) throw new Error("无法获取 bilibili-notify 内部实例，请确认核心插件已启动");
+		const core = this.ctx.get("bilibili-notify");
+		if (!core) {
+			throw new Error(
+				`${SERVICE_NAME} 无法获取 bilibili-notify 核心服务：请确认 koishi-plugin-bilibili-notify 已安装、启用并先于本插件启动。`,
+			);
+		}
+		const internals = core.getInternals(BILIBILI_NOTIFY_TOKEN);
+		if (!internals) {
+			throw new Error(
+				`${SERVICE_NAME} 已找到 bilibili-notify 核心服务，但内部实例尚未就绪或插件版本不匹配：请确认 core/dynamic/live/ai 等 BN 插件版本一致；若升级后仍报错，请卸载所有 BN 插件后重新安装。`,
+			);
+		}
 
 		const serviceCtx = makeKoishiServiceContext(this.ctx, SERVICE_NAME, this.config.logLevel);
 		const bus = makeKoishiMessageBus(this.ctx);
@@ -132,7 +142,7 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 			ai: undefined,
 			config: this.toEngineConfig(this.config),
 			getSubs: () => {
-				const fresh = this.ctx["bilibili-notify"].getInternals(BILIBILI_NOTIFY_TOKEN);
+				const fresh = this.ctx.get("bilibili-notify")?.getInternals(BILIBILI_NOTIFY_TOKEN);
 				if (!fresh) return null;
 				return storeToDynamicView(fresh.store);
 			},

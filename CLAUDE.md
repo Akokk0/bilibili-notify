@@ -49,7 +49,7 @@ apps/       Hono 服务端 + React Dashboard
 - `dev` —— 活跃开发主干,三类目录改动都落这。
 - `main` —— GitHub 默认分支;`dev → main` 合并触发 koishi npm 发版。
 
-独立端 Docker 镜像由 `apps/server/package.json` 的 `version` 驱动:改动该文件 push 到 `dev` 即构建(手动 bump version = 发版),版本含 `-alpha` 等 prerelease 标识→`:alpha`、纯 semver→`:latest`(与 koishi 的 `dev→main` 发版解耦,`main` 不触发镜像构建)。详见 `docs/agents/build-release.md`。
+独立端 Docker 镜像与 Desktop Release 由 `v<VERSION>` git tag 驱动;源码内独立端包版本保持 `0.0.0-dev`,发布 workflow 构建前按 tag 临时同步版本元数据。prerelease tag(如 `v0.1.0-alpha.7`)→Docker `:alpha`,纯 semver tag→`:latest`。`version-tag` workflow 是手动 tag helper,默认 dry-run;正式 tag 会分别触发 Docker 与 Desktop,二者互不阻塞(与 koishi 的 `dev→main` 发版解耦)。详见 `docs/agents/build-release.md`。
 
 ## 深入参考(`docs/agents/`)
 

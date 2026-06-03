@@ -1,0 +1,78 @@
+name: bilibili-notify — version tag
+
+on:
+  # 独立端版本以 git tag 为唯一发布源。这个 workflow 只是手动 tag helper:
+  # 默认 dry-run 校验,显式关闭 dry_run 时在当前 dev HEAD 创建/校验 v<VERSION> tag。
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Standalone version to tag, e.g. 0.1.0-alpha.7"
+        type: string
+        required: true
+      dry_run:
+        description: "Only validate and print the tag that would be created"
+        type: boolean
+        default: true
+
+concurrency:
+  group: version-tag-${{ github.ref }}-${{ inputs.version }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  require-dev:
+    name: Require dev ref
+    if: github.ref != 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain allowed ref
+        run: |
+          echo "::error::version-tag can only run on dev; got $GITHUB_REF"
+          echo "::error::switch the workflow ref to dev before creating or dry-running a standalone tag"
+          exit 1
+
+  tag:
+    name: Create version tag
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Read standalone version
+        id: ver
+        env:
+          VERSION: ${{ inputs.version }}
+        run: bash .github/scripts/read-standalone-version.sh
+
+      - name: Check existing version tag
+        if: inputs.dry_run
+        env:
+          VERSION: ${{ steps.ver.outputs.value }}
+        run: bash .github/scripts/assert-version-tag-compatible.sh
+
+      - name: Dry-run summary
+        if: inputs.dry_run
+        run: |
+          echo "dry-run: would create or verify v${{ steps.ver.outputs.value }} at $GITHUB_SHA"
+          echo "push that tag to trigger Docker and Desktop release workflows"
+
+      - name: Validate release token
+        if: inputs.dry_run == false
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: bash .github/scripts/validate-release-token.sh
+
+      - name: Create or verify version tag
+        if: inputs.dry_run == false
+        env:
+          VERSION: ${{ steps.ver.outputs.value }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+          REPO: ${{ github.repository }}
+        run: bash .github/scripts/tag-commit-with-version.sh

@@ -4,6 +4,8 @@
  * 401 = wrong password, handled by the dialog — not a session-expiry signal).
  */
 
+import { withDesktopTokenHeader } from "./desktop-token";
+
 export interface SessionStatus {
 	authRequired: boolean;
 	authed: boolean;
@@ -24,7 +26,10 @@ export type LoginResult =
 
 /** `GET /api/session` — always 200 in practice; treats failure as "unknown → not authed". */
 export async function fetchSessionStatus(): Promise<SessionStatus> {
-	const res = await fetch("/api/session", { credentials: "include" });
+	const res = await fetch("/api/session", {
+		headers: withDesktopTokenHeader(),
+		credentials: "include",
+	});
 	if (!res.ok) return { authRequired: true, authed: false };
 	const body = (await res.json().catch(() => null)) as Partial<SessionStatus> | null;
 	return {
@@ -60,7 +65,7 @@ export async function submitLogin(username: string, password: string): Promise<L
 	try {
 		res = await fetch("/api/session/login", {
 			method: "POST",
-			headers: { "content-type": "application/json" },
+			headers: withDesktopTokenHeader({ "content-type": "application/json" }),
 			credentials: "include",
 			body: JSON.stringify({ username, password }),
 		});
@@ -72,7 +77,11 @@ export async function submitLogin(username: string, password: string): Promise<L
 
 export async function submitLogout(): Promise<void> {
 	try {
-		await fetch("/api/session/logout", { method: "POST", credentials: "include" });
+		await fetch("/api/session/logout", {
+			method: "POST",
+			headers: withDesktopTokenHeader(),
+			credentials: "include",
+		});
 	} catch {
 		// Logout is best-effort client-side; the cookie is httpOnly so we rely
 		// on the server's clearing Set-Cookie. A network failure here still

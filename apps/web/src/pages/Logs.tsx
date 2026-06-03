@@ -11,6 +11,7 @@ import {
 	type LogsResponse,
 	logsQueryKey,
 } from "../services/dashboard";
+import { withDesktopTokenHeader } from "../services/desktop-token";
 
 /**
  * `/logs` — 日志输出 Tab。落盘 jsonl 归档(<dataDir>/logs/<日>.jsonl)的
@@ -38,6 +39,29 @@ const ReactMarkdown = lazy(() => import("react-markdown"));
 async function loadChangelogMarkdown(): Promise<string> {
 	const mod = await import("../../../CHANGELOG.md?raw");
 	return mod.default;
+}
+
+async function downloadRawLog(day: string): Promise<void> {
+	const res = await fetch(`/api/logs/raw?day=${encodeURIComponent(day)}`, {
+		headers: withDesktopTokenHeader(),
+		credentials: "include",
+	});
+	if (!res.ok) {
+		const message = await res.text().catch(() => `${res.status}`);
+		throw new Error(message || `download failed: ${res.status}`);
+	}
+	const blob = await res.blob();
+	const url = URL.createObjectURL(blob);
+	try {
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = `bilibili-notify-${day}.jsonl`;
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+	} finally {
+		URL.revokeObjectURL(url);
+	}
 }
 
 type LogsSectionId = "logs" | "changelog";
@@ -254,12 +278,17 @@ export default function Logs() {
 				>
 					自动滚动
 				</button>
-				<a
-					href={`/api/logs/raw?day=${viewDay}`}
+				<button
+					type="button"
+					onClick={() => {
+						void downloadRawLog(viewDay).catch((err) => {
+							alert(`下载失败:${String((err as Error).message ?? err)}`);
+						});
+					}}
 					className="inline-flex items-center gap-1 rounded-full border border-black/10 px-3 py-1 text-[12px] font-semibold text-bn-text-secondary hover:text-bn-text-primary"
 				>
 					↓ {viewDay}.jsonl
-				</a>
+				</button>
 			</div>
 
 			<div className="flex items-center justify-between px-1 text-[11px] text-bn-text-tertiary">
@@ -363,7 +392,7 @@ function ChangelogPanel() {
 	}, []);
 
 	return (
-		<div className="rounded-[14px] border border-black/6 bg-white/80 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)] backdrop-blur-sm">
+		<div className="rounded-bn-card border border-black/6 bg-white/80 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)] backdrop-blur-sm">
 			<div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-black/6 pb-4">
 				<div>
 					<div className="flex items-center gap-2 text-[15px] font-extrabold text-bn-text-primary">

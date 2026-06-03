@@ -12,7 +12,7 @@
 		"build:apps": "pnpm -r --filter './packages/*' run build && pnpm --filter @bilibili-notify/server --filter @bilibili-notify/web run build",
 		"dev:desktop": "pnpm -r --filter './packages/*' run build && pnpm --filter @bilibili-notify/server --filter @bilibili-notify/web run build && pnpm --filter @bilibili-notify/desktop run dev",
 		"build:desktop": "pnpm -r --filter './packages/*' run build && pnpm --filter @bilibili-notify/server --filter @bilibili-notify/web run build && pnpm --filter @bilibili-notify/desktop run tauri:build",
-		"check:desktop": "pnpm --filter @bilibili-notify/desktop run cargo:check",
+		"check:desktop": "pnpm --filter @bilibili-notify/desktop run check:rust",
 		"dev:server": "pnpm --filter @bilibili-notify/server run dev",
 		"dev:web": "pnpm --filter @bilibili-notify/web run dev",
 		"start:server": "pnpm --filter @bilibili-notify/server run start",

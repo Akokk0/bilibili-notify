@@ -1,5 +1,7 @@
+import { constants } from "node:fs";
+import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { type ServerType, serve } from "@hono/node-server";
 import { createApp } from "./app.js";
@@ -23,6 +25,7 @@ import { createWsServer } from "./ws/server.js";
 import type { LogEntry } from "./ws/types.js";
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const DEFAULT_WEB_DIST_DIR = "/app/web-dist";
 
 export interface StandaloneServerHandle {
 	readonly host: string;
@@ -36,6 +39,7 @@ export interface StartStandaloneServerOptions {
 	env?: NodeJS.ProcessEnv;
 	installProcessHandlers?: boolean;
 	shutdownTimeoutMs?: number;
+	defaultWebDistDir?: string;
 }
 
 export async function startStandaloneServer(
@@ -122,6 +126,11 @@ export async function startStandaloneServer(
 		const basicAuthCredentials = bootstrap.auth?.basicAuth;
 		const host = bootstrap.server.host;
 		const allowNoAuth = env.BN_ALLOW_NO_AUTH === "1";
+		const desktopToken = normalizeOptionalEnv(env.BN_DESKTOP_TOKEN);
+		const allowedOrigins = mergeAllowedOrigins(
+			bootstrap.auth?.allowedOrigins,
+			normalizeOptionalEnv(env.BN_DESKTOP_ALLOWED_ORIGIN),
+		);
 		if (!basicAuthCredentials) {
 			if (shouldRefuseBareAuth({ host, hasBasicAuth: false, allowNoAuth })) {
 				const message = `auth not configured but listening on ${host} (non-loopback). 拒绝启动以避免裸暴露。请设置 auth.basicAuth.{username,password} 或 BN_DASHBOARD_USER/BN_DASHBOARD_PASS;或者把 server.host 改为 127.0.0.1 / BN_HOST=127.0.0.1;或者用 BN_ALLOW_NO_AUTH=1 强制允许(自担风险)。`;
@@ -132,7 +141,7 @@ export async function startStandaloneServer(
 				`auth not configured, dashboard exposed without auth (host=${host}${allowNoAuth ? " allow_no_auth=1" : ""})`,
 			);
 		}
-		if (!bootstrap.auth?.allowedOrigins || bootstrap.auth.allowedOrigins.length === 0) {
+		if (allowedOrigins.length === 0 && !desktopToken) {
 			log.warn(
 				"auth.allowedOrigins not configured, WebSocket Origin check disabled (any browser origin may upgrade)",
 			);
@@ -209,8 +218,27 @@ export async function startStandaloneServer(
 		runtime.attachFansPoller(fansPoller);
 		runtime.serviceCtx.onDispose(() => fansPoller.dispose());
 
-		if (bootstrap.webDistDir) {
-			log.info(`serving dashboard static assets from ${bootstrap.webDistDir}`);
+		const webDist = await resolveEffectiveWebDistDir({
+			configured: bootstrap.webDistDir,
+			envValue: normalizeOptionalEnv(env.BN_WEB_DIST),
+			defaultDir: options.defaultWebDistDir ?? DEFAULT_WEB_DIST_DIR,
+		});
+		const effectiveWebDistDir = webDist.dir;
+		if (webDist.source === "env") {
+			log.warn(
+				`bootstrap config missing webDistDir, using BN_WEB_DIST=${webDist.dir}. 请把 webDistDir: ${webDist.dir} 写入 /config/bn.config.yaml,或删除旧配置让容器重新生成。`,
+			);
+		} else if (webDist.source === "default") {
+			log.warn(
+				`bootstrap config missing webDistDir and BN_WEB_DIST is empty; found ${webDist.defaultDir}/index.html, using ${webDist.defaultDir}. 请把 webDistDir: ${webDist.defaultDir} 写入 /config/bn.config.yaml,或删除旧配置让容器重新生成。`,
+			);
+		} else if (webDist.source === "disabled" && normalizeOptionalEnv(env.BN_CONFIG)) {
+			log.warn(
+				`dashboard static assets disabled: bootstrap config missing webDistDir, BN_WEB_DIST is empty, and ${webDist.defaultDir}/index.html was not found. Dashboard GET / will return 404; 请把 webDistDir 写入 /config/bn.config.yaml,或删除旧配置让容器重新生成。`,
+			);
+		}
+		if (effectiveWebDistDir) {
+			log.info(`serving dashboard static assets from ${effectiveWebDistDir}`);
 		}
 		// WS ticket store:仅当 basicAuth 启用时才需要。前端 WebSocket 无法附带
 		// Authorization 头,改用 `POST /api/auth/ws-ticket` 换短时 token,再用 `?ticket=`
@@ -235,9 +263,10 @@ export async function startStandaloneServer(
 			basicAuthCredentials,
 			sessionCodec,
 			puppeteer,
-			staticDir: bootstrap.webDistDir,
+			staticDir: effectiveWebDistDir,
 			wsTicketStore,
-			allowedOrigins: bootstrap.auth?.allowedOrigins,
+			allowedOrigins,
+			desktopToken,
 		});
 		await new Promise<void>((resolveServe) => {
 			server = serve(
@@ -266,7 +295,8 @@ export async function startStandaloneServer(
 			serviceCtx: runtime.serviceCtx,
 			authRequired: !!basicAuthCredentials,
 			wsTicketStore,
-			allowedOrigins: bootstrap.auth?.allowedOrigins,
+			allowedOrigins,
+			desktopToken,
 		});
 		// Single fan-out point: redact ONCE, then tee to the WS ring (live tail) +
 		// the on-disk archive. Both receive exactly what passed the upstream fanOut
@@ -293,6 +323,34 @@ export async function startStandaloneServer(
 			log.error("error during startup cleanup", shutdownErr);
 		});
 		throw err;
+	}
+}
+
+type WebDistDirSource = "config" | "env" | "default" | "disabled";
+
+async function resolveEffectiveWebDistDir(options: {
+	configured: string | undefined;
+	envValue: string | undefined;
+	defaultDir: string;
+}): Promise<{ dir?: string; source: WebDistDirSource; defaultDir: string }> {
+	if (options.configured) {
+		return { dir: options.configured, source: "config", defaultDir: options.defaultDir };
+	}
+	if (options.envValue) {
+		return { dir: options.envValue, source: "env", defaultDir: options.defaultDir };
+	}
+	if (await hasReadableIndexHtml(options.defaultDir)) {
+		return { dir: options.defaultDir, source: "default", defaultDir: options.defaultDir };
+	}
+	return { source: "disabled", defaultDir: options.defaultDir };
+}
+
+async function hasReadableIndexHtml(dir: string): Promise<boolean> {
+	try {
+		await access(join(dir, "index.html"), constants.R_OK);
+		return true;
+	} catch {
+		return false;
 	}
 }
 
@@ -325,6 +383,19 @@ async function closeHttpServer(
 			finish(err as Error);
 		}
 	});
+}
+
+function normalizeOptionalEnv(value: string | undefined): string | undefined {
+	return value && value.length > 0 ? value : undefined;
+}
+
+function mergeAllowedOrigins(
+	configured: readonly string[] | undefined,
+	desktopOrigin: string | undefined,
+): string[] {
+	const origins = [...(configured ?? [])];
+	if (desktopOrigin && !origins.includes(desktopOrigin)) origins.push(desktopOrigin);
+	return origins;
 }
 
 function installProcessHandlers(

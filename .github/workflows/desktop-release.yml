@@ -1,17 +1,21 @@
 name: bilibili-notify — desktop release
 
 on:
+  # 推 v<VERSION> tag 后触发。Desktop 以 tag 为发布版本源,
+  # 构建前由 sync-standalone-version.sh 临时写入各处版本元数据。
   push:
-    branches:
-      - dev
-    paths:
-      - "apps/server/package.json"
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Build desktop artifacts only, skip tag / GitHub Release"
+        description: "Build desktop artifacts only, skip GitHub Release"
         type: boolean
-        default: false
+        default: true
+      version:
+        description: "Standalone version for dry-run builds, e.g. 0.1.0-alpha.7"
+        type: string
+        required: true
 
 concurrency:
   group: desktop-release-${{ github.ref }}
@@ -21,12 +25,12 @@ permissions:
   contents: read
 
 env:
-  DRY_RUN: ${{ (github.event_name == 'push' && contains(github.event.head_commit.message, '[dry-run]')) || (github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
 
 jobs:
   build:
     name: Build ${{ matrix.id }}
-    if: github.ref == 'refs/heads/dev'
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -42,6 +46,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Assert standalone tag format
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: bash .github/scripts/assert-ref-matches-standalone-version.sh
+
+      - name: Assert release commit is on dev
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: bash .github/scripts/assert-release-ref-on-dev.sh
 
       - name: Setup Vite+ (vp) + Node + deps
         uses: voidzero-dev/setup-vp@v1
@@ -49,46 +63,69 @@ jobs:
           node-version-file: .node-version
           cache: true
 
-      - name: Verify macOS arm64 runner
-        if: matrix.id == 'mac-arm64'
-        run: |
-          test "$(uname -m)" = "arm64"
+      - name: Read standalone version
+        id: ver
+        shell: bash
+        env:
+          VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+        run: bash .github/scripts/read-standalone-version.sh
+
+      - name: Install Rust lint components
+        run: rustup component add rustfmt clippy
+
+      - name: Prepare Desktop Rust check
+        run: vp run -F @bilibili-notify/desktop prepare-rust-check
+
+      - name: Check Desktop Rust format
+        run: vp run -F @bilibili-notify/desktop cargo:fmt
+
+      - name: Lint Desktop Rust
+        run: vp run -F @bilibili-notify/desktop cargo:clippy
+
+      - name: Test Desktop Rust
+        run: vp run -F @bilibili-notify/desktop cargo:test
+
+      - name: Check Desktop Rust compile
+        run: vp run -F @bilibili-notify/desktop cargo:check
 
       - name: Build apps runtime
+        env:
+          BN_STANDALONE_VERSION: ${{ steps.ver.outputs.value }}
         run: vp run build:apps
 
+      - name: Sync standalone version metadata
+        shell: bash
+        env:
+          VERSION: ${{ steps.ver.outputs.value }}
+        run: bash .github/scripts/sync-standalone-version.sh
+
+      - name: Verify macOS arm64 runner
+        if: matrix.id == 'mac-arm64'
+        run: bash .github/scripts/verify-macos-arm64-runner.sh
+
       - name: Build Tauri bundle
-        run: vp run -F @bilibili-notify/desktop tauri:build -- --bundles ${{ matrix.bundles }}
+        shell: bash
+        env:
+          TAURI_BUNDLES: ${{ matrix.bundles }}
+        run: bash .github/scripts/build-tauri-bundle.sh
 
       - name: Collect macOS artifacts
         if: matrix.id == 'mac-arm64'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p desktop-artifacts
-          cp apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg desktop-artifacts/bilibili-notify-macos-arm64.dmg
-          app_path=$(find apps/desktop/src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -type d -print -quit)
-          if [ -z "$app_path" ]; then
-            echo "::error::macOS .app bundle not found"
-            exit 1
-          fi
-          ditto -c -k --sequesterRsrc --keepParent "$app_path" desktop-artifacts/bilibili-notify-macos-arm64.app.zip
+        run: bash .github/scripts/collect-macos-desktop-artifacts.sh
 
       - name: Collect Windows artifacts
         if: matrix.id == 'win-x64'
         shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force desktop-artifacts | Out-Null
-          $setup = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis -Filter *.exe | Select-Object -First 1
-          if (-not $setup) {
-            Write-Error "Windows NSIS setup.exe not found"
-          }
-          Copy-Item $setup.FullName desktop-artifacts/bilibili-notify-windows-x64-setup.exe
-          $portablePaths = @("apps/desktop/src-tauri/target/release/bilibili-notify-desktop.exe")
-          if (Test-Path "apps/desktop/src-tauri/target/release/resources") {
-            $portablePaths += "apps/desktop/src-tauri/target/release/resources"
-          }
-          Compress-Archive -Path $portablePaths -DestinationPath desktop-artifacts/bilibili-notify-windows-x64.zip -Force
+        run: ./.github/scripts/collect-windows-desktop-artifacts.ps1
+
+      - name: Assert macOS artifact contents
+        if: matrix.id == 'mac-arm64'
+        run: bash .github/scripts/assert-macos-desktop-artifact.sh
+
+      - name: Assert Windows portable artifact contents
+        if: matrix.id == 'win-x64'
+        shell: pwsh
+        run: ./.github/scripts/assert-windows-desktop-artifact.ps1
 
       - name: Upload desktop artifacts
         uses: actions/upload-artifact@v7
@@ -103,26 +140,22 @@ jobs:
     needs: [build]
     runs-on: ubuntu-latest
     if: |
-      github.ref == 'refs/heads/dev'
-      && !(
-        (github.event_name == 'push' && contains(github.event.head_commit.message, '[dry-run]'))
-        || (github.event_name == 'workflow_dispatch' && inputs.dry_run)
-      )
+      startsWith(github.ref, 'refs/tags/v')
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Assert release commit is on dev
+        run: bash .github/scripts/assert-release-ref-on-dev.sh
 
       - name: Validate release token
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: |
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::error::RELEASE_PAT secret is required for desktop release publishing"
-            exit 1
-          fi
+        run: bash .github/scripts/validate-release-token.sh
 
       - name: Download desktop artifacts
         uses: actions/download-artifact@v8
@@ -135,12 +168,11 @@ jobs:
         id: ver
         run: bash .github/scripts/read-standalone-version.sh
 
-      - name: Tag commit with version
+      - name: Assert version tag compatibility
         env:
           VERSION: ${{ steps.ver.outputs.value }}
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
-          REPO: ${{ github.repository }}
-        run: bash .github/scripts/tag-commit-with-version.sh
+          REQUIRE_EXISTING_TAG: "1"
+        run: bash .github/scripts/assert-version-tag-compatible.sh
 
       - name: Create GitHub release
         env:

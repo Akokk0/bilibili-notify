@@ -12,10 +12,13 @@ const execFileAsync = promisify(execFile);
 const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const desktopRoot = join(root, "apps", "desktop");
 const resourcesRoot = join(desktopRoot, "src-tauri", "resources");
-const nodeMajor = "24";
+const nodeVersion = "24.15.0";
+const nodeMajor = nodeVersion.split(".")[0];
+const nodeVersionPattern = nodeVersion.replaceAll(".", "\\.");
 const workspaceScope = "@bilibili-notify/";
 const maxResourceFiles = 25_000;
 const maxResourceBytes = 512 * 1024 * 1024;
+const maxWindowsResourceRelativePathChars = 180;
 
 const runtimeImportSeeds = [
 	"@bilibili-notify/api",
@@ -46,10 +49,40 @@ const forbiddenDevPackages = [
 	"vitest",
 ];
 
+const runtimePackageExcludedDirs = new Set([
+	".github",
+	".nyc_output",
+	".vite",
+	".vite-temp",
+	"__fixtures__",
+	"__mocks__",
+	"__tests__",
+	"benchmark",
+	"benchmarks",
+	"coverage",
+	"example",
+	"examples",
+	"fixture",
+	"fixtures",
+	"node_modules",
+	"test",
+	"tests",
+]);
+const runtimePackageExcludedFilePatterns = [
+	/\.(?:bench|benchmark|spec|test)\.[cm]?[jt]sx?$/i,
+	/\.map$/i,
+	/\.tsbuildinfo$/i,
+	/^(?:ava|babel|eslint|jest|rollup|tsup|vite|vitest|webpack)\.config\.[cm]?[jt]s$/i,
+	/^(?:biome|tsconfig)\..*json$/i,
+	/^\.(?:babelrc|editorconfig|eslintignore|eslintrc|gitignore|npmignore|prettierignore|prettierrc)(?:\..*)?$/i,
+	/^(?:package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/i,
+];
+
 const args = new Set(process.argv.slice(2));
 const skipNodeDownload = args.has("--skip-node-download");
+const isCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
-await prepare();
+if (isCli) await prepare();
 
 async function prepare() {
 	await assertBuiltArtifacts();
@@ -57,13 +90,15 @@ async function prepare() {
 	await mkdir(resourcesRoot, { recursive: true });
 
 	const runtimeInfo = await copyRuntimeTree();
-	await prepareNodeRuntime();
+	const nodeRuntime = await prepareNodeRuntime();
 	await assertSlimRuntimeLayout(runtimeInfo);
 	await assertNoDesktopForbiddenFiles(resourcesRoot);
 	await verifyPackagedServerImport();
 	const buildInfo = {
 		createdBy: "apps/desktop/scripts/prepare-resources.mjs",
+		nodeVersion,
 		nodeMajor,
+		nodeRuntime,
 		workspacePackages: runtimeInfo.workspacePackages,
 		thirdPartyPackages: runtimeInfo.thirdPartyPackages,
 	};
@@ -154,20 +189,32 @@ async function stageWorkspaceRuntimePackages(nodeModulesRoot) {
 async function stageThirdPartyRuntimePackages(nodeModulesRoot, workspacePackages) {
 	const workspacePackageSet = new Set(workspacePackages);
 	const workspaceMap = await readWorkspacePackageMap();
-	const queue = [];
+	const stagedPackageVersions = new Map();
 	const stagedTargets = new Set();
+	const processedPackages = new Set();
 	const stagedPackages = new Set();
-	const context = { nodeModulesRoot, workspacePackageSet, stagedTargets, stagedPackages };
+	const context = {
+		nodeModulesRoot,
+		workspacePackageSet,
+		stagedPackageVersions,
+		stagedTargets,
+		processedPackages,
+		stagedPackages,
+	};
 
 	const serverManifest = await readJson(join(root, "apps", "server", "package.json"));
-	enqueueManifestRuntimeDeps(queue, serverManifest);
-	for (const name of workspacePackages) {
-		const source = workspaceMap.get(name);
-		const manifest = await readJson(join(source, "package.json"));
-		enqueueManifestRuntimeDeps(queue, manifest, workspacePackageSet);
+	const serverDeps = [];
+	enqueueManifestRuntimeDeps(serverDeps, serverManifest);
+	for (const item of serverDeps) {
+		await stageThirdPartyPackage(
+			item,
+			[join(root, "apps", "server"), root],
+			nodeModulesRoot,
+			context,
+			{ deferDeps: true },
+		);
 	}
-
-	for (const item of queue) {
+	for (const item of serverDeps) {
 		await stageThirdPartyPackage(
 			item,
 			[join(root, "apps", "server"), root],
@@ -176,10 +223,26 @@ async function stageThirdPartyRuntimePackages(nodeModulesRoot, workspacePackages
 		);
 	}
 
+	for (const name of workspacePackages) {
+		const source = workspaceMap.get(name);
+		const manifest = await readJson(join(source, "package.json"));
+		const deps = [];
+		enqueueManifestRuntimeDeps(deps, manifest, workspacePackageSet);
+		const workspaceNodeModules = join(packageTargetRoot(nodeModulesRoot, name), "node_modules");
+		for (const item of deps) {
+			await stageThirdPartyPackage(item, [source, root], workspaceNodeModules, context, {
+				deferDeps: true,
+			});
+		}
+		for (const item of deps) {
+			await stageThirdPartyPackage(item, [source, root], workspaceNodeModules, context);
+		}
+	}
+
 	return Array.from(stagedPackages).sort();
 }
 
-async function stageThirdPartyPackage(item, searchRoots, targetNodeModules, context) {
+async function stageThirdPartyPackage(item, searchRoots, targetNodeModules, context, options = {}) {
 	if (!item || isWorkspacePackage(item.name) || isTypesPackage(item.name)) return;
 	let source;
 	try {
@@ -192,22 +255,36 @@ async function stageThirdPartyPackage(item, searchRoots, targetNodeModules, cont
 		throw err;
 	}
 	const manifest = await readJson(join(source, "package.json"));
-	const target = packageTargetRoot(targetNodeModules, item.name);
+	const packageName = manifest.name ?? item.name;
+	const packageVersion = manifest.version ?? "0.0.0";
+	const existingVersion = context.stagedPackageVersions.get(packageName);
+	const shouldNest = existingVersion && existingVersion !== packageVersion;
+	if (shouldNest && resolve(targetNodeModules) === resolve(context.nodeModulesRoot)) {
+		throw new Error(
+			`Desktop runtime cannot place direct duplicate ${packageName} versions: ${existingVersion} and ${packageVersion}`,
+		);
+	}
+
+	const target = packageTargetRoot(
+		shouldNest ? targetNodeModules : context.nodeModulesRoot,
+		packageName,
+	);
 	const targetKey = resolve(target);
+	const packageKey = `${targetKey}:${packageName}@${packageVersion}`;
+
 	if (!context.stagedTargets.has(targetKey)) {
 		await copyFileOrDir(source, target, { dereference: true, runtimePackage: true });
 		context.stagedTargets.add(targetKey);
-		context.stagedPackages.add(`${manifest.name}@${manifest.version ?? "0.0.0"}`);
+		context.stagedPackages.add(`${packageName}@${packageVersion}`);
 	}
+	if (!shouldNest) context.stagedPackageVersions.set(packageName, packageVersion);
+	if (options.deferDeps) return;
+	if (context.processedPackages.has(packageKey)) return;
+	context.processedPackages.add(packageKey);
 
 	const deps = [];
 	enqueueManifestRuntimeDeps(deps, manifest, context.workspacePackageSet);
 	for (const dep of deps) {
-		if (
-			await hasCompatibleTopLevelPackage(context.nodeModulesRoot, dep, [source, ...searchRoots])
-		) {
-			continue;
-		}
 		await stageThirdPartyPackage(
 			dep,
 			[source, ...searchRoots],
@@ -215,25 +292,6 @@ async function stageThirdPartyPackage(item, searchRoots, targetNodeModules, cont
 			context,
 		);
 	}
-}
-
-async function hasCompatibleTopLevelPackage(nodeModulesRoot, item, searchRoots) {
-	if (isWorkspacePackage(item.name) || isTypesPackage(item.name)) return true;
-	let source;
-	try {
-		source = await resolveInstalledPackageRoot(item.name, searchRoots);
-	} catch {
-		return item.optional;
-	}
-	const sourceManifest = await readJson(join(source, "package.json"));
-	const existingManifestPath = join(
-		nodeModulesRoot,
-		...packageNameParts(item.name),
-		"package.json",
-	);
-	if (!(await exists(existingManifestPath))) return false;
-	const existingManifest = await readJson(existingManifestPath);
-	return existingManifest.version === sourceManifest.version;
 }
 
 async function readWorkspacePackageMap() {
@@ -323,16 +381,16 @@ async function prepareNodeRuntime() {
 	if (localNode) {
 		await copyFileOrDir(localNode, nodePath, { dereference: true });
 		await chmod(nodePath, 0o755);
-		await assertNodeMajor(nodePath);
-		return;
+		const version = await assertNodeMajor(nodePath);
+		return { source: "BN_DESKTOP_NODE_PATH", version };
 	}
 	if (skipNodeDownload) {
 		await copyFileOrDir(process.execPath, nodePath, { dereference: true });
 		await chmod(nodePath, 0o755);
-		await assertNodeMajor(nodePath);
-		return;
+		const version = await assertNodeMajor(nodePath);
+		return { source: "process.execPath", version };
 	}
-	const nodeInfo = await resolveLatestNodePackage();
+	const nodeInfo = await resolvePinnedNodePackage();
 	const cacheDir = join(homedir(), ".cache", "bilibili-notify-desktop", "node");
 	await mkdir(cacheDir, { recursive: true });
 	const archivePath = join(cacheDir, nodeInfo.fileName);
@@ -349,17 +407,33 @@ async function prepareNodeRuntime() {
 	await extractNodeArchive(archivePath, extractDir, nodeInfo.kind);
 	await copyFileOrDir(nodeInfo.nodePath(extractDir), nodePath, { dereference: true });
 	await chmod(nodePath, 0o755).catch(() => {});
-	await assertNodeMajor(nodePath);
+	const version = await assertNodeMajor(nodePath);
+	if (version !== nodeVersion) throw new Error(`Expected Node ${nodeVersion}, got ${version}`);
+	return {
+		source: "nodejs.org",
+		version,
+		fileName: nodeInfo.fileName,
+		sha256: nodeInfo.sha256,
+		url: nodeInfo.url,
+	};
 }
 
-async function resolveLatestNodePackage() {
-	const base = `https://nodejs.org/dist/latest-v${nodeMajor}.x`;
+async function resolvePinnedNodePackage() {
+	const base = nodeDistBaseUrl(nodeVersion);
 	const shasums = await fetchText(`${base}/SHASUMS256.txt`);
-	const target = nodeDistTarget();
+	return resolveNodePackageFromShasums(shasums, nodeDistTarget(), base);
+}
+
+function nodeDistBaseUrl(version) {
+	return `https://nodejs.org/dist/v${version}`;
+}
+
+export function resolveNodePackageFromShasums(shasums, target, base) {
 	const match = shasums.match(new RegExp(`^([a-f0-9]{64})\\s+(${target.filePattern})$`, "m"));
-	if (!match) throw new Error(`Cannot resolve latest Node ${nodeMajor} ${target.label} package`);
+	if (!match) throw new Error(`Cannot resolve Node ${nodeVersion} ${target.label} package`);
 	return {
 		kind: target.kind,
+		version: nodeVersion,
 		sha256: match[1],
 		fileName: match[2],
 		url: `${base}/${match[2]}`,
@@ -372,7 +446,7 @@ function nodeDistTarget() {
 		return {
 			kind: "tar.gz",
 			label: "darwin-arm64",
-			filePattern: `node-v${nodeMajor}\\.[^\\s]+-darwin-arm64\\.tar\\.gz`,
+			filePattern: `node-v${nodeVersionPattern}-darwin-arm64\\.tar\\.gz`,
 			nodePath: (dir) => join(dir, "bin", "node"),
 		};
 	}
@@ -380,7 +454,7 @@ function nodeDistTarget() {
 		return {
 			kind: "zip",
 			label: "win-x64",
-			filePattern: `node-v${nodeMajor}\\.[^\\s]+-win-x64\\.zip`,
+			filePattern: `node-v${nodeVersionPattern}-win-x64\\.zip`,
 			nodePath: (dir) => join(dir, "node.exe"),
 		};
 	}
@@ -468,6 +542,18 @@ async function assertSlimRuntimeLayout(runtimeInfo) {
 			throw new Error(`Desktop runtime unexpectedly contains dev package ${name}`);
 		}
 	}
+	await assertWindowsResourcePathBudget(resourcesRoot);
+}
+
+async function assertWindowsResourcePathBudget(dir) {
+	const tooLong = [];
+	await walk(dir, async (path) => {
+		const rel = relative(dir, path).split("\\").join("/");
+		if (rel.length > maxWindowsResourceRelativePathChars) tooLong.push(rel);
+	});
+	if (tooLong.length > 0) {
+		throw new Error(`Desktop runtime paths are too deep for Windows NSIS:\n${tooLong.join("\n")}`);
+	}
 }
 
 async function assertResourceBudget(treeStats) {
@@ -485,10 +571,12 @@ async function assertResourceBudget(treeStats) {
 
 async function assertNodeMajor(nodePath) {
 	const { stdout } = await execFileAsync(nodePath, ["--version"]);
-	const version = stdout.trim();
-	if (!version.startsWith(`v${nodeMajor}.`)) {
-		throw new Error(`Expected Node ${nodeMajor}.x, got ${version}`);
+	const rawVersion = stdout.trim();
+	const version = rawVersion.replace(/^v/, "");
+	if (!version.startsWith(`${nodeMajor}.`)) {
+		throw new Error(`Expected Node ${nodeMajor}.x, got ${rawVersion}`);
 	}
+	return version;
 }
 
 async function assertNoDesktopForbiddenFiles(dir) {
@@ -504,7 +592,7 @@ async function assertNoDesktopForbiddenFiles(dir) {
 		}
 		if (rel.startsWith("app/apps/server/data/")) forbidden.push(rel);
 		if (rel.startsWith("app/apps/server/logs/")) forbidden.push(rel);
-		if (rel.startsWith("app/node_modules/@bilibili-notify/") && rel.includes("/src/")) {
+		if (/^app\/node_modules\/@bilibili-notify\/[^/]+\/src\//.test(rel)) {
 			forbidden.push(rel);
 		}
 		if (await mayContainSensitiveText(path)) {
@@ -552,18 +640,16 @@ async function copyFileOrDir(source, target, options = {}) {
 	await cp(source, target, cpOptions);
 }
 
-function shouldCopyPath(source, path, options) {
+export function shouldCopyPath(source, path, options) {
 	const rel = relative(source, path).split("\\").join("/");
 	if (!rel) return true;
 	const name = basename(path);
 	const parts = rel.split("/");
 	if (name === ".DS_Store" || name === ".git" || name === ".cache") return false;
 	if (options.runtimePackage) {
-		if (parts.includes("node_modules")) return false;
-		if (parts.includes(".github") || parts.includes("coverage")) return false;
-		if (parts.includes("test") || parts.includes("tests") || parts.includes("__tests__"))
-			return false;
-		if (parts.includes(".vite") || parts.includes(".vite-temp")) return false;
+		if (parts[0] === "doc" || parts[0] === "docs") return false;
+		if (parts.some((part) => runtimePackageExcludedDirs.has(part))) return false;
+		if (runtimePackageExcludedFilePatterns.some((pattern) => pattern.test(name))) return false;
 	}
 	return true;
 }

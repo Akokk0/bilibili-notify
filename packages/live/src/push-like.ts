@@ -40,17 +40,14 @@ export type LivePushFeature =
 	| "wordcloud"
 	| "liveSummary"
 	| "specialDanmaku"
-	| "specialUserEnterTheRoom";
+	| "specialUserEnter";
 
 /**
  * Master-level feature keys — the boolean toggles set per-UP. Subset of
- * `LivePushFeature` which omits `specialDanmaku` / `specialUserEnterTheRoom`
+ * `LivePushFeature` which omits `specialDanmaku` / `specialUserEnter`
  * (those are gated by `customSpecial*.enable` instead).
  */
-export type LiveMasterFeature = Exclude<
-	LivePushFeature,
-	"specialDanmaku" | "specialUserEnterTheRoom"
->;
+export type LiveMasterFeature = Exclude<LivePushFeature, "specialDanmaku" | "specialUserEnter">;
 
 /**
  * Subset of `LiveMasterFeature` whose subscription requires an active live-room

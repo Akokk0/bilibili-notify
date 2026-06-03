@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# 给当前 commit 打 annotated tag v<VERSION> 并推回远程。跟 docker tag :v<VERSION>
-# 同步存在,便于回溯"哪个 commit 出了哪个镜像"。
+# 给当前 commit 打 annotated tag v<VERSION> 并推回远程。Docker 与 Desktop
+# release 都由这个 tag 锚定,便于回溯"哪个 commit 出了哪个独立端版本"。
 #
 # 幂等 + 一致性守护:
 #   - 远程无该 tag → 创建并 push
@@ -12,7 +12,7 @@
 #     旧 commit,破坏"镜像 tag = git tag" 不变量。
 #
 # 必需 env:
-#   VERSION       apps/server/package.json#version(不带 'v' 前缀)
+#   VERSION       release version without leading 'v'
 #   GITHUB_TOKEN  RELEASE_PAT,临时鉴权 git push(checkout 用 persist-credentials:
 #                 false 不写 git config → 这里 -c http.extraheader 一次性注入)
 #   REPO          github.repository(如 Akokk0/bilibili-notify),拼 push URL
@@ -57,7 +57,7 @@ fi
 
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-git tag -a "$tag" -m "独立端 $VERSION (image: akokk0/bilibili-notify:$tag)"
+git tag -a "$tag" -m "独立端 $VERSION"
 
 # 临时把 Authorization 头注入到这一次 git push,不落 .git/config。
 # Basic auth 用 `x-access-token:<token>` —— actions/checkout 默认走的也是这条

@@ -17,37 +17,67 @@
 - **`dev`** —— 活跃开发主干。`packages/` `koishi/` `apps/` 三类改动都落这。
 - **`main`** —— GitHub 默认分支,旧版发布快照。`dev → main` 合并触发 koishi changesets npm 发版(`publish.yml` 监听 push to `main`)。
 
-两种产品形态发布节奏独立:koishi 端经 changesets 发 npm —— `dev → main` 合并触发(`publish.yml`);独立端发 Docker 镜像,从不发 npm —— 由 `apps/server/package.json` 的 `version` 字段驱动(见下)。`dev → main` 合并**不**触发独立端镜像构建,koishi 发版与独立端发版互不牵动。
+两种产品形态发布节奏独立:koishi 端经 changesets 发 npm —— `dev → main` 合并触发(`publish.yml`);独立端(Server + Web + Desktop)从不发 npm —— 发布版本由 git tag `v<VERSION>` 驱动,再由 tag 分别触发 Docker 镜像与 Desktop 产物。`dev → main` 合并**不**触发独立端构建,koishi 发版与独立端发版互不牵动。
 
-## Docker 镜像(独立端)
+## 独立端版本与 tag
 
-镜像仓库:Docker Hub `docker.io/akokk0/bilibili-notify`。
+### git tag = 唯一发布事实源
 
-### 版本号 = 唯一事实源
+独立端发布版本取自 git tag 名 `v<VERSION>`,例如 `v0.1.0-alpha.7`。源码中的独立端版本元数据保持开发占位 `0.0.0-dev`;发布 workflow 在构建前运行 `.github/scripts/sync-standalone-version.sh`,按 tag 或手动 dry-run 输入把以下文件临时改成发布版本:
 
-独立端版本号取自 `apps/server/package.json`(后端)与 `apps/web/package.json`(前端)的 `version` 字段,**手动维护**。两个包都是 `private`、永不发 npm,且进了 `.changeset/config.json` 的 `ignore` —— changeset 完全不碰它们,业务包改动也不会连带 bump 它们。
+- `apps/server/package.json#version` —— 后端运行时 `/api/health.version` 与 Docker 镜像内版本。
+- `apps/web/package.json#version` —— 前端概览页展示。
+- `apps/desktop/package.json#version`、`apps/desktop/src-tauri/tauri.conf.json#version`、`apps/desktop/src-tauri/Cargo.toml` / `Cargo.lock` —— Desktop/Tauri bundle 与安装器元数据。
 
-- 后端 `apps/server` 的 version 是镜像的发布版本:决定构建触发、Docker tag、alpha/正式渠道。
-- 前端 `apps/web` 的 version 仅供概览页展示,不单独触发构建。
+这些改动只发生在 CI checkout / Docker build context 里,不需要回写仓库。`apps/server`、`apps/web`、`apps/desktop` 都是 `private`、永不发 npm,且进了 `.changeset/config.json` 的 `ignore` —— changeset 完全不碰它们,业务包改动也不会连带 bump 它们。
 
-运行时 `resolveAppVersion`(`apps/server/src/routes/health.ts`)读 `apps/server/package.json#version`;`/api/health` 的 `version` 与概览页「后端 X」据此显示。
+运行时 `resolveAppVersion`(`apps/server/src/routes/health.ts`)读构建时已同步的 `apps/server/package.json#version`;`/api/health` 的 `version` 与概览页「后端 X」据此显示。Desktop workflow 中 web dist 的前端版本由 `BN_STANDALONE_VERSION` 注入,因此 apps runtime 可先于版本文件 sync 构建;Tauri/Cargo/server package 元数据仍在 bundle 前 sync。
 
-### 构建触发(`.github/workflows/image-release.yml`)
+### Tag 创建(`.github/workflows/version-tag.yml`)
 
-push 到 `dev` 且改动命中 `paths: ["apps/server/package.json"]` 才构建 —— **手动 bump `apps/server` 的 version 即「发版」**。只改代码、不动 version → 不构建,代码静待在 `dev` 上,发版节奏完全由维护者掌控。`workflow_dispatch` 可手动触发。鉴权用 `DOCKERHUB_TOKEN` repo secret;commit message 含 `[dry-run]` 时跳过 push 步骤(build + smoke test 照跑)。
+发版方式是创建并推送 `v<VERSION>` tag。可以本地手动打 tag,也可以手动触发 `version-tag` workflow 作为 tag helper:
 
-### Tag 方案
+- `workflow_dispatch` 输入 `version`。
+- `dry_run=true`(默认)只校验版本格式与现有 tag 兼容性,打印将创建的 tag。
+- `dry_run=false` 时用 `RELEASE_PAT` 在当前 `dev` HEAD 创建或校验 annotated tag `v<VERSION>`。
 
-渠道按版本串判定:version 含 prerelease 标识(有 `-`,如 `0.1.0-alpha.0`)走 alpha,纯 semver 走正式。不打 git tag。
+不再通过 bump `apps/server/package.json#version` 触发发版;该文件只是开发占位,发布时由 CI 从 tag 临时同步。
+
+### Docker 镜像与 Desktop 触发
+
+推送 `v<VERSION>` tag 后,两个 release workflow 独立触发:
+
+- `.github/workflows/image-release.yml` —— Docker Hub `docker.io/akokk0/bilibili-notify` 与 GHCR `ghcr.io/akokk0/bilibili-notify`。
+- `.github/workflows/desktop-release.yml` —— macOS / Windows Desktop 产物与 GitHub Release assets。
+
+两个 workflow 都先校验 tag commit 可从 `origin/dev` 到达,再从 tag 读取版本并运行 `sync-standalone-version.sh`;Docker 与 Desktop 依赖同一个版本 tag,但彼此不再互相等待。某个 workflow 失败时只重跑对应 workflow。
+
+### 发布前验证
+
+正式创建 tag 前先手动 dry-run:
+
+- `version-tag`: `version=<VERSION>`, `dry_run=true` —— 校验 tag 格式与现有 tag 兼容性。
+- `image-release`: `version=<VERSION>`, `dry_run=true` —— 构建但不 push Docker digest / manifest。
+- `desktop-release`: `version=<VERSION>`, `dry_run=true` —— 构建并校验 Desktop artifacts,不创建 GitHub Release。
+
+Desktop dry-run 的 CI smoke 覆盖 artifact 内容、GUI subsystem、packaged Node sidecar、`/api/health` 与 dashboard HTML。它不是完整 GUI E2E;正式 tag 前仍要在 Windows 实机确认托盘图标、无控制台窗口、NSIS 安装启动、退出后无残留 sidecar。
+
+### Docker tag 方案
+
+渠道按 tag 版本串判定:version 含 prerelease 标识(有 `-`,如 `0.1.0-alpha.0`)走 alpha,纯 semver 走正式。
 
 | Tag | 来源 |
 |---|---|
-| `:alpha` | `apps/server` version 是 prerelease(`X.Y.Z-alpha.N`)—— 滚动渠道 tag |
-| `:latest` | `apps/server` version 是纯 semver(`X.Y.Z`)—— 滚动渠道 tag |
-| `:vX.Y.Z[-alpha.N]` | 不可变版本 tag,跟 `apps/server` version 走 |
+| `:alpha` | git tag version 是 prerelease(`X.Y.Z-alpha.N`)—— 滚动渠道 tag |
+| `:latest` | git tag version 是纯 semver(`X.Y.Z`)—— 滚动渠道 tag |
+| `:vX.Y.Z[-alpha.N]` | 不可变版本 tag,跟 git tag `v<VERSION>` 走 |
 | `:<short-sha>` | 每个构建 —— 不可变,用于回滚 / 精确 pin |
 
-发 alpha:把 `apps/server/package.json` 的 version 改成 `X.Y.Z-alpha.N` 推到 `dev`。发正式版:改成纯 `X.Y.Z` 推到 `dev`。
+发 alpha:在目标 commit 上创建并推送 `vX.Y.Z-alpha.N`。发正式版:创建并推送 `vX.Y.Z`。
+
+## Docker 镜像(独立端)
+
+镜像仓库:Docker Hub `docker.io/akokk0/bilibili-notify`,GHCR `ghcr.io/akokk0/bilibili-notify`。
 
 ### Dockerfile
 

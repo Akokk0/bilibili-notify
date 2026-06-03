@@ -25,9 +25,23 @@
 !apps/CHANGELOG.md
 .bn-design
 
-# Local-only state from previous runs.
+# Local-only state and secrets from previous runs.
+.env
+.env.*
+**/.env
+**/.env.*
+**/master.key
+**/*.pem
+**/*.key
+**/*.enc
+data/**
+logs/**
 apps/server/data
+apps/server/data/**
 apps/server/bn-data
+apps/server/bn-data/**
+apps/server/logs
+apps/server/logs/**
 apps/server/bn.config.yaml
 apps/server/bn.config.yml
 apps/server/bn.config.json

@@ -62,11 +62,15 @@ interface CtxMocks {
 	generateGuardCard: ReturnType<typeof vi.fn>;
 	renderGuardBuy: ReturnType<typeof vi.fn>;
 	renderLiveStart: ReturnType<typeof vi.fn>;
+	renderSpecialUserEnter: ReturnType<typeof vi.fn>;
 	sendLiveNotifyCard: ReturnType<typeof vi.fn>;
 	stopMonitoring: ReturnType<typeof vi.fn>;
 	getTimeDifference: ReturnType<typeof vi.fn>;
 	emitLiveState: ReturnType<typeof vi.fn>;
 	isSubscribed: ReturnType<typeof vi.fn>;
+	hasTargets: ReturnType<typeof vi.fn>;
+	decodeBase64PB: ReturnType<typeof vi.fn>;
+	safeBroadcast: ReturnType<typeof vi.fn>;
 }
 
 function makeCtx(opts?: { customGuardBuyEnabled?: boolean }): { ctx: RoomContext; m: CtxMocks } {
@@ -84,11 +88,15 @@ function makeCtx(opts?: { customGuardBuyEnabled?: boolean }): { ctx: RoomContext
 		generateGuardCard: vi.fn(async () => Buffer.from("guard")),
 		renderGuardBuy: vi.fn(() => "上舰文案"),
 		renderLiveStart: vi.fn(() => "开播啦"),
+		renderSpecialUserEnter: vi.fn(() => "进房文案"),
 		sendLiveNotifyCard: vi.fn(async () => {}),
 		stopMonitoring: vi.fn(),
 		getTimeDifference: vi.fn(async () => "1小时"),
 		emitLiveState: vi.fn(),
 		isSubscribed: vi.fn(() => false),
+		hasTargets: vi.fn(() => false),
+		decodeBase64PB: vi.fn(async () => ({ uid: "42", uname: "特别用户", msgType: "1" })),
+		safeBroadcast: vi.fn(),
 	};
 	const ctx = {
 		serviceCtx: fakeServiceCtx,
@@ -113,10 +121,13 @@ function makeCtx(opts?: { customGuardBuyEnabled?: boolean }): { ctx: RoomContext
 			renderGuardBuy: m.renderGuardBuy,
 			renderLiveStart: m.renderLiveStart,
 			renderSpecialDanmaku: () => "",
+			renderSpecialUserEnter: m.renderSpecialUserEnter,
 		},
 		danmakuCollector: { recordDanmaku: m.recordDanmaku },
 		isSubscribed: m.isSubscribed,
-		hasTargets: () => false,
+		hasTargets: m.hasTargets,
+		decodeBase64PB: m.decodeBase64PB,
+		safeBroadcast: m.safeBroadcast,
 		sendLiveNotifyCard: m.sendLiveNotifyCard,
 		stopMonitoring: m.stopMonitoring,
 		getTimeDifference: m.getTimeDifference,
@@ -363,6 +374,38 @@ describe("RoomSession.onLiveEnd", () => {
 		s.handleLiveEnd = vi.fn(async () => {});
 		await s.onLiveEnd();
 		expect(s.handleLiveEnd).toHaveBeenCalledWith("ws");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// onInteractWordV2
+// ---------------------------------------------------------------------------
+
+describe("RoomSession.onInteractWordV2", () => {
+	it("特别关注进房使用 internal feature key specialUserEnter 检查目标并推送", async () => {
+		const { ctx, m } = makeCtx();
+		m.hasTargets.mockImplementation(
+			(_sub: unknown, feature: string) => feature === "specialUserEnter",
+		);
+		const s = new RoomSession(
+			ctx,
+			makeSub({
+				customSpecialUsersEnterTheRoom: {
+					enable: true,
+					specialUsersEnterTheRoom: ["42"],
+					msgTemplate: "进房模板",
+				},
+				target: { specialUserEnter: ["target-1"] },
+			}),
+		) as AnySession;
+
+		await s.onInteractWordV2({ data: { pb: "encoded" } });
+
+		expect(m.hasTargets).toHaveBeenCalledWith(expect.anything(), "specialUserEnter");
+		expect(m.decodeBase64PB).toHaveBeenCalledWith("encoded");
+		expect(m.renderSpecialUserEnter).toHaveBeenCalledTimes(1);
+		expect(m.safeBroadcast).toHaveBeenCalledTimes(1);
+		expect(m.safeBroadcast.mock.calls[0]?.[2]).toBe(LivePushType.UserActions);
 	});
 });
 

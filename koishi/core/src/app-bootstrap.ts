@@ -105,7 +105,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 
 	/**
 	 * 向持有 BILIBILI_NOTIFY_TOKEN 的友好插件暴露 api / push / store 实例。
-	 * 第三方插件无法获取此令牌，因此无法访问内部实例。
+	 * token 用于防误调；Koishi 同进程插件没有安全隔离,这里不把它当安全边界。
 	 */
 	getInternals(token: symbol): InternalsShape | null {
 		return buildInternals({

@@ -1,8 +1,23 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
-import type { Subscription } from "@bilibili-notify/internal";
+import {
+	DEFAULT_FEATURE_FLAGS,
+	type FeatureKey,
+	type Subscription,
+} from "@bilibili-notify/internal";
 import type { BilibiliPush } from "@bilibili-notify/push";
 import type { StorageManager } from "@bilibili-notify/storage";
 import type { Context, Logger } from "koishi";
+
+const LIVE_PLUGIN_FEATURES = [
+	"live",
+	"liveEnd",
+	"liveGuardBuy",
+	"superchat",
+	"wordcloud",
+	"liveSummary",
+	"specialDanmaku",
+	"specialUserEnter",
+] as const satisfies readonly FeatureKey[];
 
 /** Load cookies from disk into the API jar; mark "login info loaded" if absent. */
 export async function loadInitialCookies(
@@ -38,6 +53,14 @@ export function hasLoginCookie(api: BilibiliAPI | null): boolean {
 	}
 }
 
+function subscriptionUsesFeature(sub: Subscription, feature: FeatureKey): boolean {
+	return (
+		sub.enabled &&
+		(sub.routing[feature] ?? []).length > 0 &&
+		(sub.overrides.features?.[feature] ?? DEFAULT_FEATURE_FLAGS[feature])
+	);
+}
+
 /**
  * Warn (and notify the master) when a subscription requires the dynamic/live
  * sub-plugin but it is not currently registered on the koishi context.
@@ -49,23 +72,10 @@ export async function warnMissingPlugins(
 	subs: Subscription[],
 ): Promise<void> {
 	if (!push) return;
-	// 只看 dynamic 这一路由项 —— 此前 Object.values(routing).some(非空) 让
-	// 任一特性(含纯直播 live/wordcloud)非空即判 needDynamic,纯直播订阅会
-	// 误报"动态插件未运行"私信骚扰主人。与下方 needLive 的精确枚举对称。
-	const needDynamic = subs.some(
-		(s) => (s.routing.dynamic ?? []).length > 0 && s.overrides.features?.dynamic !== false,
+	const needDynamic = subs.some((s) => subscriptionUsesFeature(s, "dynamic"));
+	const needLive = subs.some((s) =>
+		LIVE_PLUGIN_FEATURES.some((f) => subscriptionUsesFeature(s, f)),
 	);
-	const needLive = subs.some((s) => {
-		const liveFeatures: Array<keyof typeof s.routing> = [
-			"live",
-			"liveEnd",
-			"liveGuardBuy",
-			"superchat",
-			"wordcloud",
-			"liveSummary",
-		];
-		return liveFeatures.some((f) => (s.routing[f] ?? []).length > 0);
-	});
 	if (needDynamic && !ctx.get("bilibili-notify-dynamic")) {
 		const msg =
 			"[bilibili-notify] 警告：有订阅开启了动态通知，但动态插件（koishi-plugin-bilibili-notify-dynamic）未运行，请检查是否已安装并启用该插件。";
