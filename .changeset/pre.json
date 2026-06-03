@@ -19,7 +19,8 @@
     "@bilibili-notify/live": "0.0.0",
     "@bilibili-notify/push": "1.0.2",
     "@bilibili-notify/storage": "0.0.2",
-    "@bilibili-notify/subscription": "1.0.3"
+    "@bilibili-notify/subscription": "1.0.3",
+    "@bilibili-notify/desktop": "0.0.0-dev"
   },
   "changesets": [
     "api-loginflow-qr-render",
@@ -32,6 +33,7 @@
     "koishi-ai-image-late-inject",
     "koishi-config-convergence",
     "koishi-image-hide-follower-rename",
+    "koishi-internals-token",
     "koishi-master-notifier-engine-error",
     "koishi-subscription-display-name",
     "live-ws-watchdog",
