@@ -45,3 +45,4 @@ astrbot/core/sidecar/state/
 astrbot/core/sidecar/logs/
 astrbot/core/.venv/
 astrbot/core/__pycache__/
+data/

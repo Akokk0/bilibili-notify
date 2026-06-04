@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { parseSidecarLaunchOptions } from "./index.js";
+import { parseOptionalParentPid, parseSidecarLaunchOptions } from "./index.js";
 
 describe("sidecar launch options", () => {
+	it("rejects malformed parent pids", () => {
+		expect(parseOptionalParentPid("1")).toBe(1);
+		expect(parseOptionalParentPid("12345")).toBe(12_345);
+		expect(parseOptionalParentPid("0")).toBeUndefined();
+		expect(parseOptionalParentPid("123abc")).toBeUndefined();
+		expect(parseOptionalParentPid(" 123")).toBeUndefined();
+		expect(parseOptionalParentPid("9007199254740993")).toBeUndefined();
+	});
+
 	it("parses CLI and env overrides", () => {
 		const options = parseSidecarLaunchOptions(
 			[

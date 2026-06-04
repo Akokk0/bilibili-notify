@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 import textwrap
 from pathlib import Path
@@ -308,8 +309,11 @@ async def test_start_sidecar_uses_configured_shutdown_timeout_on_startup_failure
 
     fake_process = FakeProcess()
     observed_timeouts: list[float] = []
+    observed_env: dict[str, str] | None = None
 
-    async def fake_create_subprocess_exec(*_args, **_kwargs):
+    async def fake_create_subprocess_exec(*_args, **kwargs):
+        nonlocal observed_env
+        observed_env = kwargs["env"]
         return fake_process
 
     async def fake_wait_for_ready_snapshot(config_arg, process_arg):
@@ -335,7 +339,192 @@ async def test_start_sidecar_uses_configured_shutdown_timeout_on_startup_failure
         await start_sidecar(config)
 
     assert observed_timeouts == [config.shutdown_timeout_seconds]
+    assert observed_env is not None
+    assert observed_env["BN_SIDECAR_PARENT_PID"] == str(os.getpid())
     assert fake_process.terminated is True
     assert fake_process.killed is False
     assert fake_process.wait_calls == 1
     assert not ready_file.exists()
+
+
+@pytest.mark.asyncio
+async def test_start_sidecar_preserves_startup_error_when_log_close_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entrypoint = tmp_path / "fake-sidecar.py"
+    entrypoint.write_text("print('unused')\n", encoding="utf-8")
+
+    ready_file = tmp_path / "state" / "ready.json"
+    log_file = tmp_path / "state" / "sidecar.log"
+    config = SidecarConfig(
+        plugin_root=tmp_path,
+        node_bin=sys.executable,
+        entrypoint=entrypoint,
+        ready_file=ready_file,
+        log_file=log_file,
+        host="127.0.0.1",
+        port=0,
+        startup_timeout_seconds=10.0,
+        shutdown_timeout_seconds=1.0,
+        ai_backend="own",
+        ai_provider_id="astrbot-openai",
+        version="v0.1.0",
+    )
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.returncode = None
+            self.pid = 4321
+            self.terminated = False
+            self.wait_calls = 0
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def kill(self) -> None:
+            raise AssertionError("kill should not be called")
+
+        async def wait(self) -> int:
+            self.wait_calls += 1
+            self.returncode = 0
+            return 0
+
+    class FakeLogHandle:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+            raise OSError("log close failed")
+
+    fake_process = FakeProcess()
+    fake_log_handle = FakeLogHandle()
+
+    def fake_open(*_args, **_kwargs):
+        return fake_log_handle
+
+    async def fake_create_subprocess_exec(*_args, **_kwargs):
+        return fake_process
+
+    async def fake_wait_for_ready_snapshot(config_arg, process_arg):
+        assert config_arg is config
+        assert process_arg is fake_process
+        ready_file.parent.mkdir(parents=True, exist_ok=True)
+        ready_file.write_text(json.dumps({"status": "ready"}), encoding="utf-8")
+        raise RuntimeError("startup failed")
+
+    async def fake_wait_for(awaitable, timeout):
+        assert timeout == config.shutdown_timeout_seconds
+        return await awaitable
+
+    monkeypatch.setattr("sidecar_process.open", fake_open, raising=False)
+    monkeypatch.setattr(
+        "sidecar_process.asyncio.create_subprocess_exec", fake_create_subprocess_exec
+    )
+    monkeypatch.setattr("sidecar_process.wait_for_ready_snapshot", fake_wait_for_ready_snapshot)
+    monkeypatch.setattr("sidecar_process.asyncio.wait_for", fake_wait_for)
+
+    with pytest.raises(RuntimeError, match="startup failed") as exc_info:
+        await start_sidecar(config)
+
+    assert fake_process.terminated is True
+    assert fake_process.wait_calls == 1
+    assert fake_log_handle.closed is True
+    assert not ready_file.exists()
+    notes = getattr(exc_info.value, "__notes__", [])
+    assert any(
+        "Failed to close sidecar log handle during startup cleanup" in note for note in notes
+    )
+
+
+@pytest.mark.asyncio
+async def test_start_sidecar_reports_process_cleanup_errors_without_masking_startup_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entrypoint = tmp_path / "fake-sidecar.py"
+    entrypoint.write_text("print('unused')\n", encoding="utf-8")
+
+    ready_file = tmp_path / "state" / "ready.json"
+    log_file = tmp_path / "state" / "sidecar.log"
+    config = SidecarConfig(
+        plugin_root=tmp_path,
+        node_bin=sys.executable,
+        entrypoint=entrypoint,
+        ready_file=ready_file,
+        log_file=log_file,
+        host="127.0.0.1",
+        port=0,
+        startup_timeout_seconds=10.0,
+        shutdown_timeout_seconds=1.0,
+        ai_backend="own",
+        ai_provider_id="astrbot-openai",
+        version="v0.1.0",
+    )
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.returncode = None
+            self.pid = 4321
+            self.terminated = False
+            self.wait_calls = 0
+            self.killed = False
+
+        def terminate(self) -> None:
+            self.terminated = True
+            raise ProcessLookupError("already exited")
+
+        def kill(self) -> None:
+            self.killed = True
+            self.returncode = -9
+
+        async def wait(self) -> int:
+            self.wait_calls += 1
+            self.returncode = 0
+            return 0
+
+    class FakeLogHandle:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    fake_process = FakeProcess()
+    fake_log_handle = FakeLogHandle()
+
+    def fake_open(*_args, **_kwargs):
+        return fake_log_handle
+
+    async def fake_create_subprocess_exec(*_args, **_kwargs):
+        return fake_process
+
+    async def fake_wait_for_ready_snapshot(config_arg, process_arg):
+        assert config_arg is config
+        assert process_arg is fake_process
+        ready_file.parent.mkdir(parents=True, exist_ok=True)
+        ready_file.write_text(json.dumps({"status": "ready"}), encoding="utf-8")
+        raise RuntimeError("startup failed")
+
+    async def fake_wait_for(awaitable, timeout):
+        assert timeout == config.shutdown_timeout_seconds
+        return await awaitable
+
+    monkeypatch.setattr("sidecar_process.open", fake_open, raising=False)
+    monkeypatch.setattr(
+        "sidecar_process.asyncio.create_subprocess_exec", fake_create_subprocess_exec
+    )
+    monkeypatch.setattr("sidecar_process.wait_for_ready_snapshot", fake_wait_for_ready_snapshot)
+    monkeypatch.setattr("sidecar_process.asyncio.wait_for", fake_wait_for)
+
+    with pytest.raises(RuntimeError, match="startup failed") as exc_info:
+        await start_sidecar(config)
+
+    assert fake_process.terminated is True
+    assert fake_process.wait_calls == 1
+    assert fake_process.killed is False
+    assert fake_log_handle.closed is True
+    assert not ready_file.exists()
+    notes = getattr(exc_info.value, "__notes__", [])
+    assert any("Failed to terminate sidecar during startup cleanup" in note for note in notes)

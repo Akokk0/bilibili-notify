@@ -46,4 +46,27 @@ describe("sidecar shutdown cleanup", () => {
 		await expect(runtime.close("test shutdown")).resolves.toBeUndefined();
 		expect(fixture.callOrder).toEqual(["close", "remove"]);
 	});
+
+	it("aborts startup cleanly when readiness is interrupted", async () => {
+		const controller = new AbortController();
+		let resolveListen!: (value: { host: string; port: number }) => void;
+		fixture.closeSidecarServer.mockClear();
+		fixture.writeReadyFile.mockClear();
+		fixture.removeReadyFile.mockImplementation(async () => undefined);
+		fixture.listenSidecarServer.mockImplementationOnce(
+			async () =>
+				new Promise<{ host: string; port: number }>((resolve) => {
+					resolveListen = resolve;
+				}),
+		);
+
+		const runtimePromise = startSidecar({ readyFile: "ready.json", signal: controller.signal });
+		await Promise.resolve();
+		controller.abort("SIGTERM");
+		resolveListen({ host: "127.0.0.1", port: 19_090 });
+
+		await expect(runtimePromise).rejects.toMatchObject({ name: "AbortError" });
+		expect(fixture.closeSidecarServer).toHaveBeenCalled();
+		expect(fixture.writeReadyFile).not.toHaveBeenCalled();
+	});
 });

@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { closeSidecarServer, createSidecarHttpServer, listenSidecarServer } from "./http/server.js";
+import { installParentProcessWatchdog } from "./runtime/process-watchdog.js";
 import { removeReadyFile, writeReadyFile } from "./runtime/ready-file.js";
 import {
 	type AiBackend,
@@ -17,6 +18,7 @@ export interface SidecarLaunchOptions {
 	readonly aiBackend?: AiBackend;
 	readonly aiProviderId?: string;
 	readonly version?: string;
+	readonly signal?: AbortSignal;
 }
 
 export interface RunningSidecar {
@@ -66,6 +68,10 @@ export function parseSidecarLaunchOptions(
 }
 
 export async function startSidecar(options: SidecarLaunchOptions = {}): Promise<RunningSidecar> {
+	const signal = options.signal;
+	if (signal?.aborted) {
+		throw createAbortError(signal.reason);
+	}
 	const host = options.host ?? DEFAULT_HOST;
 	const port = options.port ?? DEFAULT_PORT;
 	const version = options.version ?? DEFAULT_VERSION;
@@ -85,20 +91,6 @@ export async function startSidecar(options: SidecarLaunchOptions = {}): Promise<
 		aiProviderId,
 	});
 	const server = createSidecarHttpServer(() => snapshot);
-	if (readyFile) {
-		await removeReadyFile(readyFile);
-	}
-	const address = await listenSidecarServer(server, host, port);
-	snapshot = createSidecarSnapshot({
-		...snapshot,
-		status: "ready",
-		host: address.host,
-		port: address.port,
-		readyAt: new Date().toISOString(),
-	});
-	if (readyFile) {
-		await writeReadyFile(readyFile, snapshot);
-	}
 	const close = async (reason = "shutdown"): Promise<void> => {
 		if (stopped) return;
 		stopped = true;
@@ -125,22 +117,81 @@ export async function startSidecar(options: SidecarLaunchOptions = {}): Promise<
 		void reason;
 		if (closeError) throw closeError;
 	};
-	return {
-		host: address.host,
-		port: address.port,
-		get url() {
-			return snapshot.url;
-		},
-		readyFile,
-		snapshot: () => snapshot,
-		close,
-	};
+	try {
+		if (readyFile) {
+			await removeReadyFile(readyFile);
+		}
+		throwIfAborted(signal);
+		const address = await listenSidecarServer(server, host, port);
+		throwIfAborted(signal);
+		snapshot = createSidecarSnapshot({
+			...snapshot,
+			status: "ready",
+			host: address.host,
+			port: address.port,
+			readyAt: new Date().toISOString(),
+		});
+		if (readyFile) {
+			await writeReadyFile(readyFile, snapshot);
+		}
+		throwIfAborted(signal);
+		return {
+			host: snapshot.host,
+			port: snapshot.port,
+			get url() {
+				return snapshot.url;
+			},
+			readyFile,
+			snapshot: () => snapshot,
+			close,
+		};
+	} catch (error) {
+		try {
+			await close("startup-aborted");
+		} catch (cleanupError) {
+			console.error("[astrbot] failed to clean up sidecar after startup error:", cleanupError);
+		}
+		throw error;
+	}
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+	if (signal?.aborted) {
+		throw createAbortError(signal.reason);
+	}
+}
+
+function createAbortError(reason: unknown): Error {
+	const message = typeof reason === "string" && reason.length ? reason : "Sidecar startup aborted";
+	const error = new Error(message);
+	error.name = "AbortError";
+	return error;
 }
 
 async function main(): Promise<void> {
 	const options = parseSidecarLaunchOptions();
-	const sidecar = await startSidecar(options);
+	const startupAbortController = new AbortController();
+	let sidecar: RunningSidecar | undefined;
+	let pendingShutdownSignal: NodeJS.Signals | undefined;
+	const parentWatchdog = installParentProcessWatchdog(
+		{
+			close: async (reason) => {
+				if (!sidecar) {
+					return false;
+				}
+				await sidecar.close(reason);
+				return true;
+			},
+		},
+		parseOptionalParentPid(process.env.BN_SIDECAR_PARENT_PID),
+	);
 	const closeOnSignal = (signal: NodeJS.Signals) => {
+		parentWatchdog.stop();
+		if (!sidecar) {
+			pendingShutdownSignal = signal;
+			startupAbortController.abort(signal);
+			return;
+		}
 		void sidecar.close(signal).then(
 			() => process.exit(0),
 			(err) => {
@@ -151,11 +202,33 @@ async function main(): Promise<void> {
 	};
 	process.on("SIGINT", closeOnSignal);
 	process.on("SIGTERM", closeOnSignal);
+	try {
+		sidecar = await startSidecar({ ...options, signal: startupAbortController.signal });
+	} catch (error) {
+		parentWatchdog.stop();
+		if (pendingShutdownSignal) {
+			process.exit(0);
+		}
+		throw error;
+	}
+	if (pendingShutdownSignal) {
+		parentWatchdog.stop();
+		void sidecar.close(pendingShutdownSignal).then(
+			() => process.exit(0),
+			(err) => {
+				console.error(err);
+				process.exit(1);
+			},
+		);
+		return;
+	}
 	process.on("uncaughtException", (err) => {
+		parentWatchdog.stop();
 		console.error(err);
 		void sidecar.close("uncaughtException").finally(() => process.exit(1));
 	});
 	process.on("unhandledRejection", (err) => {
+		parentWatchdog.stop();
 		console.error(err);
 		void sidecar.close("unhandledRejection").finally(() => process.exit(1));
 	});
@@ -168,6 +241,20 @@ function parseOptionalPort(value: string | undefined, fallback: number): number 
 		throw new Error(`Invalid port: ${value}`);
 	}
 	return port;
+}
+
+export function parseOptionalParentPid(value: string | undefined): number | undefined {
+	if (!value) {
+		return undefined;
+	}
+	if (!/^[1-9]\d*$/.test(value)) {
+		return undefined;
+	}
+	const parentPid = Number(value);
+	if (!Number.isSafeInteger(parentPid) || parentPid < 1) {
+		return undefined;
+	}
+	return parentPid;
 }
 
 function isEntrypoint(metaUrl: string): boolean {

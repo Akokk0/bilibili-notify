@@ -132,6 +132,7 @@ async def start_sidecar(config: SidecarConfig) -> SidecarRuntime:
                 "BN_SIDECAR_READY_FILE": str(config.ready_file),
                 "BN_SIDECAR_AI_BACKEND": config.ai_backend,
                 "BN_SIDECAR_AI_PROVIDER_ID": config.ai_provider_id,
+                "BN_SIDECAR_PARENT_PID": str(os.getpid()),
                 "BN_SIDECAR_VERSION": config.version,
             }
         )
@@ -160,22 +161,57 @@ async def start_sidecar(config: SidecarConfig) -> SidecarRuntime:
             config=config, process=process, snapshot=snapshot, log_handle=log_handle
         )
     except BaseException as exc:  # noqa: BLE001
-        if process is not None and process.returncode is None:
-            process.terminate()
-            try:
-                await asyncio.wait_for(process.wait(), timeout=config.shutdown_timeout_seconds)
-            except TimeoutError:
-                process.kill()
-                await process.wait()
+        if process is not None:
+            await _cleanup_startup_process(
+                process,
+                config.shutdown_timeout_seconds,
+                exc,
+            )
         try:
             await remove_ready_file(config.ready_file)
         except Exception as cleanup_error:  # noqa: BLE001
             exc.add_note(
                 f"Failed to remove ready file during startup cleanup: {cleanup_error}",
             )
-        finally:
+        try:
             log_handle.close()
+        except Exception as close_error:  # noqa: BLE001
+            exc.add_note(
+                f"Failed to close sidecar log handle during startup cleanup: {close_error}",
+            )
         raise
+
+
+async def _cleanup_startup_process(
+    process: asyncio.subprocess.Process,
+    shutdown_timeout_seconds: float,
+    error: BaseException,
+) -> None:
+    if process.returncode is not None:
+        return
+    try:
+        process.terminate()
+    except BaseException as cleanup_error:  # noqa: BLE001
+        error.add_note(f"Failed to terminate sidecar during startup cleanup: {cleanup_error}")
+    if process.returncode is None:
+        try:
+            await asyncio.wait_for(process.wait(), timeout=shutdown_timeout_seconds)
+            return
+        except TimeoutError:
+            pass
+        except BaseException as cleanup_error:  # noqa: BLE001
+            error.add_note(f"Failed to wait for sidecar during startup cleanup: {cleanup_error}")
+    if process.returncode is not None:
+        return
+    try:
+        process.kill()
+    except BaseException as cleanup_error:  # noqa: BLE001
+        error.add_note(f"Failed to kill sidecar during startup cleanup: {cleanup_error}")
+        return
+    try:
+        await process.wait()
+    except BaseException as cleanup_error:  # noqa: BLE001
+        error.add_note(f"Failed to wait for killed sidecar during startup cleanup: {cleanup_error}")
 
 
 async def wait_for_ready_snapshot(
