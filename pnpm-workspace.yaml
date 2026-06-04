@@ -2,6 +2,7 @@ packages:
   - "packages/*"
   - "koishi/*"
   - "apps/*"
+  - "astrbot/*"
 
 # Vite+ alpha spike (apps/web only). Vite+ replaces vite via npm overrides
 # rather than coexisting. We scope the override to the web sub-tree only —

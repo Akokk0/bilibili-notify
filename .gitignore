@@ -35,3 +35,10 @@ apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/
 apps/desktop/src-tauri/resources/
 apps/desktop/.tauri/
+
+# AstrBot plugin runtime state in the monorepo mirror
+astrbot/core/sidecar/app/
+astrbot/core/sidecar/state/
+astrbot/core/sidecar/logs/
+astrbot/core/.venv/
+astrbot/core/__pycache__/

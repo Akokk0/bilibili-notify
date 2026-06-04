@@ -170,6 +170,12 @@ importers:
         specifier: npm:@voidzero-dev/vite-plus-core@^0.1.20
         version: '@voidzero-dev/vite-plus-core@0.1.20(@types/node@22.19.18)(esbuild@0.27.7)(jiti@2.7.0)(sass@1.99.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.9.0)'
 
+  astrbot/sidecar:
+    devDependencies:
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+
   koishi/advanced-subscription:
     dependencies:
       '@bilibili-notify/internal':

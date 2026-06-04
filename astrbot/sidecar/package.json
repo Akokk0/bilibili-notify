@@ -1,0 +1,26 @@
+{
+	"name": "@bilibili-notify/astrbot-sidecar",
+	"version": "0.0.0-dev",
+	"private": true,
+	"type": "module",
+	"main": "./dist/index.mjs",
+	"exports": {
+		".": {
+			"import": "./dist/index.mjs"
+		},
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"dev": "tsx watch --tsconfig tsconfig.json src/index.ts",
+		"start": "node dist/index.mjs",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run"
+	},
+	"devDependencies": {
+		"tsx": "^4.21.0"
+	},
+	"engines": {
+		"node": ">=24.0.0"
+	}
+}

@@ -1,0 +1,18 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2022"],
+		"rootDir": "src",
+		"outDir": "lib",
+		"declaration": false,
+		"composite": false,
+		"emitDeclarationOnly": false,
+		"allowSyntheticDefaultImports": true,
+		"resolveJsonModule": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+		"verbatimModuleSyntax": false,
+		"isolatedModules": true
+	},
+	"include": ["src"]
+}
