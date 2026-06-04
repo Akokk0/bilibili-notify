@@ -5,6 +5,7 @@ import json
 import sys
 import textwrap
 from pathlib import Path
+from typing import cast
 
 import httpx
 import pytest
@@ -204,6 +205,8 @@ async def test_sidecar_runtime_close_cleans_up_when_cancelled(
             if raise_on_log_close:
                 raise OSError("log close failed")
 
+    fake_process = FakeProcess()
+    fake_log_handle = FakeLogHandle()
     runtime = SidecarRuntime(
         config=SidecarConfig(
             plugin_root=tmp_path,
@@ -219,7 +222,7 @@ async def test_sidecar_runtime_close_cleans_up_when_cancelled(
             ai_provider_id="astrbot-openai",
             version="v0.1.0",
         ),
-        process=FakeProcess(),
+        process=cast(asyncio.subprocess.Process, fake_process),
         snapshot={
             "status": "ready",
             "version": "v0.1.0",
@@ -233,16 +236,16 @@ async def test_sidecar_runtime_close_cleans_up_when_cancelled(
             "url": "http://127.0.0.1:19090",
             "uptimeMs": 1_000,
         },
-        log_handle=FakeLogHandle(),
+        log_handle=fake_log_handle,
     )
 
     with pytest.raises(asyncio.CancelledError) as exc_info:
         await runtime.close("cancelled")
 
-    assert runtime.process.terminated is True
-    assert runtime.process.killed is True
-    assert runtime.process.wait_calls == 2
-    assert runtime.log_handle.closed is True
+    assert fake_process.terminated is True
+    assert fake_process.killed is True
+    assert fake_process.wait_calls == 2
+    assert fake_log_handle.closed is True
     assert not ready_file.exists()
     if raise_on_log_close:
         notes = getattr(exc_info.value, "__notes__", [])
@@ -306,7 +309,7 @@ async def test_start_sidecar_uses_configured_shutdown_timeout_on_startup_failure
     fake_process = FakeProcess()
     observed_timeouts: list[float] = []
 
-    async def fake_create_subprocess_exec(*args, **kwargs):
+    async def fake_create_subprocess_exec(*_args, **_kwargs):
         return fake_process
 
     async def fake_wait_for_ready_snapshot(config_arg, process_arg):

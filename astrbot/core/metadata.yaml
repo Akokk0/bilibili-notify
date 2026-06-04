@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=./metadata.schema.json
 name: astrbot_plugin_bilibili_notify
 display_name: bilibili-notify
 desc: Bilibili Notify for AstrBot via a Node sidecar.
