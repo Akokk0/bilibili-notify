@@ -52,6 +52,28 @@ function makeFlatSub(patch: Partial<FlatSubConfigItem> = {}): FlatSubConfigItem 
 	};
 }
 
+describe("flatSubToSubscription — feature overrides", () => {
+	it("普通配置显式 feature 布尔写入 overrides.features,含默认关闭的 SC/舰长", () => {
+		const registry = makeRegistry();
+		const sub = flatSubToSubscription(
+			makeFlatSub({ superchat: true, liveGuardBuy: true, liveEnd: false }),
+			// biome-ignore lint/suspicious/noExplicitAny: TargetRegistry 测试替身
+			registry as any,
+		);
+
+		expect(sub.overrides.features).toMatchObject({
+			liveEnd: false,
+			liveGuardBuy: true,
+			superchat: true,
+		});
+		expect(sub.routing.liveEnd).toEqual([]);
+		expect(sub.routing.liveGuardBuy).toHaveLength(1);
+		expect(sub.routing.superchat).toHaveLength(1);
+		expect(sub.overrides.features?.specialDanmaku).toBeUndefined();
+		expect(sub.overrides.features?.specialUserEnter).toBeUndefined();
+	});
+});
+
 describe("flatSubToSubscription — 用户手填 UP 昵称写入 Subscription.name", () => {
 	it("普通配置的 name 写入 sub.name,uid 归一化与订阅 id 保持一致", () => {
 		const registry = makeRegistry();
