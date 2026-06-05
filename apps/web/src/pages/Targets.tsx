@@ -2,13 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Btn, PlatformIcon, platformLabel, StatusDot, Toggle } from "../components/atoms";
 import { ModalShell } from "../components/dialog";
-import { Field, TInput, TNum } from "../components/forms";
+import { Field, TInput, TNum, TSelect } from "../components/forms";
 import { Icon } from "../components/icons";
 import { ApiError, api } from "../services/api";
 import {
 	KNOWN_PLATFORMS,
 	makeEmptyAdapter,
 	makeEmptyTarget,
+	maskWebhookUrl,
 	type OnebotAdapterConfig,
 	type OnebotSession,
 	type OnebotTransport,
@@ -17,6 +18,11 @@ import {
 	type PushTargetPlatform,
 	type PushTargetScope,
 	switchOnebotTransport,
+	WEBHOOK_PROVIDERS,
+	type WebhookProvider,
+	webhookProviderLabel,
+	webhookSecretHint,
+	webhookUrlPlaceholder,
 } from "../types/domain";
 
 /**
@@ -81,7 +87,11 @@ function adapterEndpointSummary(a: PushAdapter): string {
 		if (c.transport === "ws") return c.url;
 		return `反向 WS :${c.port}`;
 	}
-	if (a.platform === "webhook") return a.config.url;
+	if (a.platform === "webhook") {
+		const provider = a.config.provider ?? "generic";
+		const url = maskWebhookUrl(a.config.url);
+		return provider === "generic" ? url : `${webhookProviderLabel(provider)} · ${url}`;
+	}
 	return "Dashboard 通知中心";
 }
 
@@ -488,17 +498,30 @@ function AdapterConnectionFields({
 	}
 	if (adapter.platform === "webhook") {
 		const cfg = adapter.config;
+		const provider: WebhookProvider = cfg.provider ?? "generic";
 		return (
 			<>
+				<Field
+					label="Webhook 协议"
+					code="config.provider"
+					hint="Generic 保持旧 JSON envelope；钉钉/飞书按平台机器人协议发送文本消息"
+					required
+				>
+					<TSelect<WebhookProvider>
+						value={provider}
+						onChange={(v) => onChange({ ...adapter, config: { ...cfg, provider: v } })}
+						options={[...WEBHOOK_PROVIDERS]}
+					/>
+				</Field>
 				<Field label="URL" code="config.url" required>
 					<TInput
 						value={cfg.url}
 						onChange={(v) => onChange({ ...adapter, config: { ...cfg, url: v } })}
-						placeholder="https://hooks.example.com/bn"
+						placeholder={webhookUrlPlaceholder(provider)}
 						mono
 					/>
 				</Field>
-				<Field label="Secret" code="config.secret" hint="加在 x-bilibili-notify-secret 头">
+				<Field label="Secret" code="config.secret" hint={webhookSecretHint(provider)}>
 					<TInput
 						value={cfg.secret ?? ""}
 						onChange={(v) => onChange({ ...adapter, config: { ...cfg, secret: v || undefined } })}

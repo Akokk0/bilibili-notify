@@ -9,7 +9,14 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { newId } from "./domain";
+import {
+	makeEmptyAdapter,
+	maskWebhookUrl,
+	newId,
+	WEBHOOK_PROVIDERS,
+	webhookSecretHint,
+	webhookUrlPlaceholder,
+} from "./domain";
 
 /** RFC 4122 v4:版本位固定 `4`,variant 位固定 `[89ab]`。后端 z.uuid() 等价校验。 */
 const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -63,5 +70,41 @@ describe("newId", () => {
 		}
 		// 还原后 randomUUID 必须重新可用,确认没污染后续用例。
 		expect(typeof (crypto as { randomUUID?: unknown }).randomUUID).toBe("function");
+	});
+});
+
+describe("webhook adapter factories", () => {
+	it("makeEmptyAdapter(webhook) 默认使用 generic provider 并保留 headers", () => {
+		const adapter = makeEmptyAdapter("webhook", "团队 webhook");
+		expect(adapter.platform).toBe("webhook");
+		if (adapter.platform !== "webhook") return;
+		expect(adapter.config).toMatchObject({
+			provider: "generic",
+			url: "https://example.com/hook",
+			headers: {},
+		});
+	});
+
+	it("WEBHOOK_PROVIDERS 覆盖 generic / dingtalk / feishu", () => {
+		expect(WEBHOOK_PROVIDERS.map((p) => p.value)).toEqual(["generic", "dingtalk", "feishu"]);
+	});
+
+	it("webhook placeholder / secret hint 随 provider 切换", () => {
+		expect(webhookUrlPlaceholder("generic")).toContain("hooks.example.com");
+		expect(webhookSecretHint("generic")).toContain("x-bilibili-notify-secret");
+		expect(webhookUrlPlaceholder("dingtalk")).toContain("oapi.dingtalk.com");
+		expect(webhookSecretHint("dingtalk")).toContain("timestamp/sign");
+		expect(webhookUrlPlaceholder("feishu")).toContain("open.feishu.cn");
+		expect(webhookSecretHint("feishu")).toContain("timestamp/sign");
+	});
+
+	it("maskWebhookUrl 隐藏 query token 与 path token", () => {
+		expect(maskWebhookUrl("https://oapi.dingtalk.com/robot/send?access_token=tok123")).toBe(
+			"https://oapi.dingtalk.com/***?…",
+		);
+		expect(maskWebhookUrl("https://open.feishu.cn/open-apis/bot/v2/hook/token123")).toBe(
+			"https://open.feishu.cn/***",
+		);
+		expect(maskWebhookUrl("not a url")).toBe("已配置 webhook URL");
 	});
 });

@@ -303,6 +303,7 @@ function migrateLegacyTargets(raw: unknown[]): {
 					platform: "webhook",
 					config: {
 						url,
+						provider: "generic",
 						secret: cfg.secret || undefined,
 						headers: cfg.headers ?? {},
 					},
