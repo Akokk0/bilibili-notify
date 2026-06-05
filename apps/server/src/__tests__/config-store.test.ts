@@ -242,7 +242,7 @@ describe("ConfigStore", () => {
 			name: "wh1",
 			platform: "webhook" as const,
 			enabled: true,
-			config: { url: "https://example.com/hook", headers: {} },
+			config: { url: "https://example.com/hook", provider: "generic" as const, headers: {} },
 		};
 		await store.upsertAdapter(adapter);
 		const target = {

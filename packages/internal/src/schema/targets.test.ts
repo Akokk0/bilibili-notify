@@ -27,7 +27,7 @@ describe("PushAdapterSchema (discriminated by platform)", () => {
 		expect(r.success).toBe(false);
 	});
 
-	it("accepts a valid webhook adapter", () => {
+	it("accepts a valid webhook adapter and defaults provider to generic", () => {
 		const r = PushAdapterSchema.safeParse({
 			id: UUID_A,
 			name: "wh1",
@@ -36,6 +36,35 @@ describe("PushAdapterSchema (discriminated by platform)", () => {
 			config: { url: "https://example.com/hook" },
 		});
 		expect(r.success).toBe(true);
+		if (r.success && r.data.platform === "webhook") {
+			expect(r.data.config.provider).toBe("generic");
+			expect(r.data.config.headers).toEqual({});
+		}
+	});
+
+	it("accepts supported webhook providers", () => {
+		for (const provider of ["generic", "dingtalk", "feishu"] as const) {
+			const r = PushAdapterSchema.safeParse({
+				id: UUID_A,
+				name: `wh-${provider}`,
+				platform: "webhook",
+				enabled: true,
+				config: { provider, url: "https://example.com/hook", secret: "secret" },
+			});
+			expect(r.success, provider).toBe(true);
+			if (r.success && r.data.platform === "webhook") expect(r.data.config.provider).toBe(provider);
+		}
+	});
+
+	it("rejects unknown webhook provider", () => {
+		const r = PushAdapterSchema.safeParse({
+			id: UUID_A,
+			name: "bad-provider",
+			platform: "webhook",
+			enabled: true,
+			config: { provider: "wechat", url: "https://example.com/hook" },
+		});
+		expect(r.success).toBe(false);
 	});
 
 	it("accepts a valid web-dashboard adapter", () => {
@@ -264,6 +293,19 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			session: {},
 		});
 		expect(r.success).toBe(true);
+	});
+
+	it("rejects a webhook target with URL-like session keys", () => {
+		const r = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "wh:1",
+			adapterId: UUID_A,
+			platform: "webhook",
+			scope: "channel",
+			enabled: true,
+			session: { url: "https://example.com/hook" },
+		});
+		expect(r.success).toBe(false);
 	});
 
 	it("accepts a web-dashboard target with empty session", () => {

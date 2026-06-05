@@ -23,6 +23,7 @@ import type {
 	PushTarget as CanonPushTarget,
 	ScheduleConfig as CanonScheduleConfig,
 	TemplateBundle as CanonTemplateBundle,
+	WebhookAdapterConfig as CanonWebhookAdapterConfig,
 } from "@bilibili-notify/internal";
 import { describe, it } from "vitest";
 import type {
@@ -33,6 +34,7 @@ import type {
 	PushTarget as MirrorPushTarget,
 	ScheduleFull as MirrorSchedule,
 	TemplateBundleFull as MirrorTemplate,
+	WebhookAdapterConfig as MirrorWebhookAdapterConfig,
 } from "./domain";
 import type { AISettings as MirrorAISettings } from "./globals";
 
@@ -58,6 +60,9 @@ type _Template = Expect<CanonKeysCovered<CanonTemplateBundle, MirrorTemplate>>;
 type _AIOverride = Expect<CanonKeysCovered<CanonAIOverride, MirrorAIOverride>>;
 type _AISettings = Expect<CanonKeysCovered<CanonAISettings, MirrorAISettings>>;
 type _PushTarget = Expect<CanonKeysCovered<CanonPushTarget, MirrorPushTarget>>;
+type _WebhookAdapterConfig = Expect<
+	CanonKeysCovered<CanonWebhookAdapterConfig, MirrorWebhookAdapterConfig>
+>;
 
 // 引用一次,避免 "unused type" 噪音(类型层断言已在上面 tsc 检查时生效)。
 export type _DomainConformance = [
@@ -69,6 +74,7 @@ export type _DomainConformance = [
 	_AIOverride,
 	_AISettings,
 	_PushTarget,
+	_WebhookAdapterConfig,
 ];
 
 describe("types/domain.ts 漂移护栏 (TD1)", () => {
