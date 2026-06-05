@@ -1,7 +1,8 @@
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { closeSidecarServer, createSidecarHttpServer, listenSidecarServer } from "./http/server.js";
+import { type BusinessRuntimeHandle, createBusinessRuntime } from "./runtime/business-runtime.js";
 import { installParentProcessWatchdog } from "./runtime/process-watchdog.js";
 import { removeReadyFile, writeReadyFile } from "./runtime/ready-file.js";
 import {
@@ -15,9 +16,13 @@ export interface SidecarLaunchOptions {
 	readonly host?: string;
 	readonly port?: number;
 	readonly readyFile?: string;
+	readonly dataDir?: string;
 	readonly aiBackend?: AiBackend;
 	readonly aiProviderId?: string;
 	readonly version?: string;
+	readonly logLevel?: "debug" | "info" | "warn" | "error";
+	readonly userAgent?: string;
+	readonly cookieEncryptionKey?: string;
 	readonly signal?: AbortSignal;
 }
 
@@ -26,6 +31,7 @@ export interface RunningSidecar {
 	readonly port: number;
 	readonly url: string;
 	readonly readyFile?: string;
+	readonly runtime: BusinessRuntimeHandle;
 	readonly snapshot: () => SidecarSnapshot;
 	close(reason?: string): Promise<void>;
 }
@@ -33,20 +39,34 @@ export interface RunningSidecar {
 const DEFAULT_VERSION = "0.0.0-dev";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 0;
+const DEFAULT_DATA_DIR = "sidecar/state";
 
 export function parseSidecarLaunchOptions(
 	argv = process.argv.slice(2),
 	env = process.env,
 ): Required<Pick<SidecarLaunchOptions, "host" | "port" | "version">> &
-	Pick<SidecarLaunchOptions, "readyFile" | "aiBackend" | "aiProviderId"> {
+	Pick<
+		SidecarLaunchOptions,
+		| "readyFile"
+		| "dataDir"
+		| "aiBackend"
+		| "aiProviderId"
+		| "logLevel"
+		| "userAgent"
+		| "cookieEncryptionKey"
+	> {
 	const parsed = parseArgs({
 		args: argv,
 		options: {
 			host: { type: "string" },
 			port: { type: "string" },
 			"ready-file": { type: "string" },
+			"data-dir": { type: "string" },
 			"ai-backend": { type: "string" },
 			"ai-provider-id": { type: "string" },
+			"log-level": { type: "string" },
+			"user-agent": { type: "string" },
+			"cookie-encryption-key": { type: "string" },
 			version: { type: "string" },
 		},
 		allowPositionals: true,
@@ -54,16 +74,25 @@ export function parseSidecarLaunchOptions(
 	const host = parsed.values.host ?? env.BN_SIDECAR_HOST ?? DEFAULT_HOST;
 	const port = parseOptionalPort(parsed.values.port ?? env.BN_SIDECAR_PORT, DEFAULT_PORT);
 	const readyFile = parsed.values["ready-file"] ?? env.BN_SIDECAR_READY_FILE;
+	const dataDir = parsed.values["data-dir"] ?? env.BN_SIDECAR_DATA_DIR;
 	const aiBackend = normalizeAiBackend(parsed.values["ai-backend"] ?? env.BN_SIDECAR_AI_BACKEND);
 	const aiProviderId = parsed.values["ai-provider-id"] ?? env.BN_SIDECAR_AI_PROVIDER_ID;
+	const logLevel = parseOptionalLogLevel(parsed.values["log-level"] ?? env.BN_SIDECAR_LOG_LEVEL);
+	const userAgent = parsed.values["user-agent"] ?? env.BN_SIDECAR_USER_AGENT;
+	const cookieEncryptionKey =
+		parsed.values["cookie-encryption-key"] ?? env.BN_SIDECAR_COOKIE_ENCRYPTION_KEY;
 	const version = parsed.values.version ?? env.BN_SIDECAR_VERSION ?? DEFAULT_VERSION;
 	return {
 		host,
 		port,
 		version,
 		readyFile,
+		dataDir,
 		aiBackend,
 		aiProviderId,
+		logLevel,
+		userAgent,
+		cookieEncryptionKey,
 	};
 }
 
@@ -78,8 +107,15 @@ export async function startSidecar(options: SidecarLaunchOptions = {}): Promise<
 	const aiBackend = options.aiBackend ?? "astrbot";
 	const aiProviderId = options.aiProviderId?.length ? options.aiProviderId : undefined;
 	const readyFile = options.readyFile ? options.readyFile : undefined;
+	const dataDir = resolveDataDir(options.dataDir, readyFile);
 	let stopped = false;
 	const startedAt = new Date().toISOString();
+	const runtime = createBusinessRuntime({
+		dataDir,
+		logLevel: options.logLevel,
+		userAgent: options.userAgent,
+		cookieEncryptionKey: options.cookieEncryptionKey,
+	});
 	let snapshot = createSidecarSnapshot({
 		status: "starting",
 		version,
@@ -89,32 +125,41 @@ export async function startSidecar(options: SidecarLaunchOptions = {}): Promise<
 		startedAt,
 		aiBackend,
 		aiProviderId,
+		business: runtime.snapshot(),
 	});
-	const server = createSidecarHttpServer(() => snapshot);
+	const currentSnapshot = (): SidecarSnapshot =>
+		createSidecarSnapshot({
+			...snapshot,
+			business: runtime.snapshot(),
+		});
+	const server = createSidecarHttpServer({ getSnapshot: currentSnapshot, runtime });
 	const close = async (reason = "shutdown"): Promise<void> => {
 		if (stopped) return;
 		stopped = true;
 		snapshot = createSidecarSnapshot({
-			...snapshot,
+			...currentSnapshot(),
 			status: "stopping",
 		});
 		let closeError: unknown;
+		const serverClosePromise = closeSidecarServer(server).catch((error) => {
+			closeError ??= error;
+		});
 		try {
-			await closeSidecarServer(server);
+			await runtime.close(reason);
 		} catch (error) {
-			closeError = error;
+			closeError ??= error;
 		}
+		await serverClosePromise;
 		try {
 			await removeReadyFile(readyFile);
 		} catch (error) {
 			console.error("[astrbot] failed to remove ready file during shutdown:", error);
 		}
 		snapshot = createSidecarSnapshot({
-			...snapshot,
+			...currentSnapshot(),
 			status: "stopped",
 			readyAt: snapshot.readyAt,
 		});
-		void reason;
 		if (closeError) throw closeError;
 	};
 	try {
@@ -122,27 +167,30 @@ export async function startSidecar(options: SidecarLaunchOptions = {}): Promise<
 			await removeReadyFile(readyFile);
 		}
 		throwIfAborted(signal);
+		await awaitWithAbort(runtime.start(signal), signal);
+		throwIfAborted(signal);
 		const address = await listenSidecarServer(server, host, port);
 		throwIfAborted(signal);
 		snapshot = createSidecarSnapshot({
-			...snapshot,
+			...currentSnapshot(),
 			status: "ready",
 			host: address.host,
 			port: address.port,
 			readyAt: new Date().toISOString(),
 		});
 		if (readyFile) {
-			await writeReadyFile(readyFile, snapshot);
+			await writeReadyFile(readyFile, currentSnapshot());
 		}
 		throwIfAborted(signal);
 		return {
 			host: snapshot.host,
 			port: snapshot.port,
 			get url() {
-				return snapshot.url;
+				return currentSnapshot().url;
 			},
 			readyFile,
-			snapshot: () => snapshot,
+			runtime,
+			snapshot: currentSnapshot,
 			close,
 		};
 	} catch (error) {
@@ -158,6 +206,34 @@ export async function startSidecar(options: SidecarLaunchOptions = {}): Promise<
 function throwIfAborted(signal: AbortSignal | undefined): void {
 	if (signal?.aborted) {
 		throw createAbortError(signal.reason);
+	}
+}
+
+async function awaitWithAbort<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+	if (!signal) return promise;
+	if (signal.aborted) {
+		throw createAbortError(signal.reason);
+	}
+	let abortWon = false;
+	promise.catch((error) => {
+		if (abortWon && error instanceof Error && error.name !== "AbortError") {
+			console.warn("[astrbot] aborted startup task finished with error:", error);
+		}
+	});
+	let abortHandler: (() => void) | undefined;
+	const abortPromise = new Promise<T>((_resolve, reject) => {
+		abortHandler = () => {
+			abortWon = true;
+			reject(createAbortError(signal.reason));
+		};
+		signal.addEventListener("abort", abortHandler, { once: true });
+	});
+	try {
+		return await Promise.race([promise, abortPromise]);
+	} finally {
+		if (abortHandler) {
+			signal.removeEventListener("abort", abortHandler);
+		}
 	}
 }
 
@@ -234,6 +310,12 @@ async function main(): Promise<void> {
 	});
 }
 
+function resolveDataDir(value: string | undefined, readyFile: string | undefined): string {
+	if (value) return resolve(value);
+	if (readyFile) return dirname(resolve(readyFile));
+	return resolve(DEFAULT_DATA_DIR);
+}
+
 function parseOptionalPort(value: string | undefined, fallback: number): number {
 	if (!value) return fallback;
 	const port = Number.parseInt(value, 10);
@@ -241,6 +323,13 @@ function parseOptionalPort(value: string | undefined, fallback: number): number 
 		throw new Error(`Invalid port: ${value}`);
 	}
 	return port;
+}
+
+function parseOptionalLogLevel(value: string | undefined): SidecarLaunchOptions["logLevel"] {
+	if (value === "debug" || value === "info" || value === "warn" || value === "error") {
+		return value;
+	}
+	return undefined;
 }
 
 export function parseOptionalParentPid(value: string | undefined): number | undefined {

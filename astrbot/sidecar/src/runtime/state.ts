@@ -3,6 +3,24 @@ export type AiBackend = "astrbot" | "own" | "disabled";
 
 const AI_BACKENDS = new Set<AiBackend>(["astrbot", "own", "disabled"]);
 
+export interface SidecarBusinessSnapshot {
+	readonly started: boolean;
+	readonly authStarted: boolean;
+	readonly engines: {
+		readonly dynamic: boolean;
+		readonly live: boolean;
+	};
+	readonly subscriptions: {
+		readonly count: number;
+		readonly path: string;
+	};
+	readonly events: {
+		readonly nextId: number;
+		readonly size: number;
+	};
+	readonly login?: unknown;
+}
+
 export interface SidecarSnapshotInput {
 	readonly status: SidecarStatus;
 	readonly version: string;
@@ -13,6 +31,7 @@ export interface SidecarSnapshotInput {
 	readonly readyAt?: string;
 	readonly aiBackend: AiBackend;
 	readonly aiProviderId?: string;
+	readonly business?: SidecarBusinessSnapshot;
 }
 
 export interface SidecarSnapshot extends SidecarSnapshotInput {

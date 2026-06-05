@@ -17,6 +17,15 @@
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run"
 	},
+	"dependencies": {
+		"@bilibili-notify/api": "workspace:*",
+		"@bilibili-notify/dynamic": "workspace:*",
+		"@bilibili-notify/internal": "workspace:*",
+		"@bilibili-notify/live": "workspace:*",
+		"@bilibili-notify/push": "workspace:*",
+		"@bilibili-notify/storage": "workspace:*",
+		"@bilibili-notify/subscription": "workspace:*"
+	},
 	"devDependencies": {
 		"tsx": "^4.21.0"
 	},

@@ -14,7 +14,7 @@ describe("parent process watchdog", () => {
 
 	it("closes the sidecar when the parent process disappears", async () => {
 		let parentAlive = true;
-		const close = vi.fn(async () => undefined);
+		const close = vi.fn(async (): Promise<boolean | undefined> => undefined);
 		const exit = vi.fn();
 		installParentProcessWatchdog({ close }, 12_345, {
 			intervalMs: 1_000,
@@ -36,7 +36,7 @@ describe("parent process watchdog", () => {
 	});
 
 	it("allows pid 1 to be watched", async () => {
-		const close = vi.fn(async () => undefined);
+		const close = vi.fn(async (): Promise<boolean | undefined> => undefined);
 		const exit = vi.fn();
 		installParentProcessWatchdog({ close }, 1, {
 			intervalMs: 1_000,
@@ -54,7 +54,7 @@ describe("parent process watchdog", () => {
 
 	it("treats reparenting as parent exit even if the old pid is alive", async () => {
 		let currentParentPid = 12_345;
-		const close = vi.fn(async () => undefined);
+		const close = vi.fn(async (): Promise<boolean | undefined> => undefined);
 		const exit = vi.fn();
 		installParentProcessWatchdog({ close }, 12_345, {
 			intervalMs: 1_000,
@@ -75,7 +75,7 @@ describe("parent process watchdog", () => {
 	});
 
 	it("exits with failure when parent-exit cleanup times out", async () => {
-		const close = vi.fn(() => new Promise<void>(() => undefined));
+		const close = vi.fn(() => new Promise<boolean | undefined>(() => undefined));
 		const exit = vi.fn();
 		installParentProcessWatchdog({ close }, 12_345, {
 			intervalMs: 1_000,

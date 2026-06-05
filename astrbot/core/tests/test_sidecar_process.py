@@ -11,7 +11,13 @@ from typing import cast
 import httpx
 import pytest
 
-from sidecar_process import SidecarConfig, SidecarRuntime, build_sidecar_config, start_sidecar
+from sidecar_process import (
+    SidecarClient,
+    SidecarConfig,
+    SidecarRuntime,
+    build_sidecar_config,
+    start_sidecar,
+)
 
 
 @pytest.mark.asyncio
@@ -46,6 +52,71 @@ async def test_build_sidecar_config_uses_environment_overrides(tmp_path: Path) -
     assert config.startup_timeout_seconds == 12.5
     assert config.shutdown_timeout_seconds == 4.5
     assert config.version == "v0.1.0"
+
+
+@pytest.mark.asyncio
+async def test_sidecar_client_calls_control_plane_endpoints() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/health":
+            return httpx.Response(200, json={"status": "ready"})
+        if request.method == "GET" and request.url.path == "/api/meta":
+            return httpx.Response(200, json={"version": "v0.1.0"})
+        if request.method == "GET" and request.url.path == "/api/events":
+            assert request.url.params["after"] == "7"
+            return httpx.Response(200, json=[{"id": 8, "type": "auth-lost"}])
+        if request.method == "GET" and request.url.path == "/api/subscriptions":
+            return httpx.Response(200, json=[{"id": "sub-1", "uid": "123456"}])
+        if request.method == "POST" and request.url.path == "/api/subscriptions":
+            body = json.loads(request.content.decode("utf-8"))
+            return httpx.Response(200, json=[body])
+        if request.method == "DELETE" and request.url.path == "/api/subscriptions/sub-1":
+            return httpx.Response(204)
+        if request.method == "DELETE" and request.url.path == "/api/subscriptions/missing":
+            return httpx.Response(404, json={"error": "not_found"})
+        if request.method == "GET" and request.url.path == "/api/login/status":
+            return httpx.Response(200, json={"status": 0, "msg": "未登录"})
+        if request.method == "POST" and request.url.path == "/api/login/qr":
+            return httpx.Response(200, json={"status": 1, "data": "data:image/png;base64,QR"})
+        return httpx.Response(404, json={"error": "not_found"})
+
+    client = SidecarClient(
+        "http://127.0.0.1:19090",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert await client.get_health() == {"status": "ready"}
+    assert await client.get_meta() == {"version": "v0.1.0"}
+    assert await client.drain_events(after=7) == [{"id": 8, "type": "auth-lost"}]
+    assert await client.list_subscriptions() == [{"id": "sub-1", "uid": "123456"}]
+    assert await client.create_subscription(
+        uid="123456",
+        name="测试 UP 主",
+        dynamic=False,
+        live=True,
+    ) == [
+        {
+            "uid": "123456",
+            "name": "测试 UP 主",
+            "dynamic": False,
+            "live": True,
+        }
+    ]
+    assert await client.upsert_subscription({"uid": "654321"}) == [{"uid": "654321"}]
+    assert await client.delete_subscription("sub-1") is True
+    assert await client.delete_subscription("missing") is False
+    assert await client.get_login_status() == {"status": 0, "msg": "未登录"}
+    assert await client.begin_login() == {"status": 1, "data": "data:image/png;base64,QR"}
+
+
+@pytest.mark.asyncio
+async def test_sidecar_client_rejects_unexpected_response_shapes() -> None:
+    client = SidecarClient(
+        "http://127.0.0.1:19090",
+        transport=httpx.MockTransport(lambda _request: httpx.Response(200, json={"id": 1})),
+    )
+
+    with pytest.raises(TypeError, match="events response must be a JSON array"):
+        await client.drain_events()
 
 
 @pytest.mark.asyncio

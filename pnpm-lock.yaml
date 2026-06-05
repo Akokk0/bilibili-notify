@@ -171,6 +171,28 @@ importers:
         version: '@voidzero-dev/vite-plus-core@0.1.20(@types/node@22.19.18)(esbuild@0.27.7)(jiti@2.7.0)(sass@1.99.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.9.0)'
 
   astrbot/sidecar:
+    dependencies:
+      '@bilibili-notify/api':
+        specifier: workspace:*
+        version: link:../../packages/api
+      '@bilibili-notify/dynamic':
+        specifier: workspace:*
+        version: link:../../packages/dynamic
+      '@bilibili-notify/internal':
+        specifier: workspace:*
+        version: link:../../packages/internal
+      '@bilibili-notify/live':
+        specifier: workspace:*
+        version: link:../../packages/live
+      '@bilibili-notify/push':
+        specifier: workspace:*
+        version: link:../../packages/push
+      '@bilibili-notify/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
+      '@bilibili-notify/subscription':
+        specifier: workspace:*
+        version: link:../../packages/subscription
     devDependencies:
       tsx:
         specifier: ^4.21.0

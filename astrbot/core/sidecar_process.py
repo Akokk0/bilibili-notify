@@ -33,6 +33,98 @@ class SidecarConfig:
 
 
 @dataclass(slots=True)
+class SidecarClient:
+    base_url: str
+    timeout_seconds: float = 5.0
+    transport: httpx.AsyncBaseTransport | None = None
+
+    async def get_health(self) -> dict[str, Any]:
+        payload = await self._request_json("GET", "/api/health")
+        return _ensure_mapping(payload, "health response")
+
+    async def get_meta(self) -> dict[str, Any]:
+        payload = await self._request_json("GET", "/api/meta")
+        return _ensure_mapping(payload, "meta response")
+
+    async def drain_events(self, after: int = 0) -> list[dict[str, Any]]:
+        payload = await self._request_json("GET", "/api/events", params={"after": str(after)})
+        return _ensure_mapping_list(payload, "events response")
+
+    async def list_subscriptions(self) -> list[dict[str, Any]]:
+        payload = await self._request_json("GET", "/api/subscriptions")
+        return _ensure_mapping_list(payload, "subscriptions response")
+
+    async def upsert_subscription(self, payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+        response = await self._request_json(
+            "POST",
+            "/api/subscriptions",
+            json_body=dict(payload),
+        )
+        return _ensure_mapping_list(response, "subscriptions response")
+
+    async def create_subscription(
+        self,
+        *,
+        uid: str,
+        name: str | None = None,
+        enabled: bool | None = None,
+        dynamic: bool | None = None,
+        live: bool | None = None,
+    ) -> list[dict[str, Any]]:
+        payload: dict[str, Any] = {"uid": uid}
+        if name is not None:
+            payload["name"] = name
+        if enabled is not None:
+            payload["enabled"] = enabled
+        if dynamic is not None:
+            payload["dynamic"] = dynamic
+        if live is not None:
+            payload["live"] = live
+        return await self.upsert_subscription(payload)
+
+    async def delete_subscription(self, subscription_id: str) -> bool:
+        async with self._client() as client:
+            response = await client.delete(f"/api/subscriptions/{subscription_id}")
+        if response.status_code == 404:
+            return False
+        response.raise_for_status()
+        return response.status_code == 204
+
+    async def get_login_status(self) -> dict[str, Any]:
+        payload = await self._request_json("GET", "/api/login/status")
+        return _ensure_mapping(payload, "login status response")
+
+    async def begin_login(self) -> dict[str, Any]:
+        payload = await self._request_json("POST", "/api/login/qr")
+        return _ensure_mapping(payload, "login qr response")
+
+    async def _request_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: Any = None,
+        params: Mapping[str, str] | None = None,
+    ) -> Any:
+        request_kwargs: dict[str, Any] = {}
+        if json_body is not None:
+            request_kwargs["json"] = json_body
+        if params is not None:
+            request_kwargs["params"] = dict(params)
+        async with self._client() as client:
+            response = await client.request(method, path, **request_kwargs)
+        response.raise_for_status()
+        return response.json()
+
+    def _client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            base_url=self.base_url,
+            timeout=self.timeout_seconds,
+            transport=self.transport,
+        )
+
+
+@dataclass(slots=True)
 class SidecarRuntime:
     config: SidecarConfig
     process: asyncio.subprocess.Process
@@ -59,9 +151,55 @@ class SidecarRuntime:
     def ai_provider_id(self) -> str:
         return str(self.snapshot.get("aiProviderId", ""))
 
+    @property
+    def client(self) -> SidecarClient:
+        return SidecarClient(self.url)
+
     def describe(self) -> str:
         provider = f" / provider={self.ai_provider_id}" if self.ai_provider_id else ""
         return f"sidecar={self.url} pid={self.process.pid} ai={self.ai_backend}{provider}"
+
+    async def get_health(self) -> dict[str, Any]:
+        self.snapshot = await self.client.get_health()
+        return self.snapshot
+
+    async def get_meta(self) -> dict[str, Any]:
+        return await self.client.get_meta()
+
+    async def drain_events(self, after: int = 0) -> list[dict[str, Any]]:
+        return await self.client.drain_events(after)
+
+    async def list_subscriptions(self) -> list[dict[str, Any]]:
+        return await self.client.list_subscriptions()
+
+    async def upsert_subscription(self, payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+        return await self.client.upsert_subscription(payload)
+
+    async def create_subscription(
+        self,
+        *,
+        uid: str,
+        name: str | None = None,
+        enabled: bool | None = None,
+        dynamic: bool | None = None,
+        live: bool | None = None,
+    ) -> list[dict[str, Any]]:
+        return await self.client.create_subscription(
+            uid=uid,
+            name=name,
+            enabled=enabled,
+            dynamic=dynamic,
+            live=live,
+        )
+
+    async def delete_subscription(self, subscription_id: str) -> bool:
+        return await self.client.delete_subscription(subscription_id)
+
+    async def get_login_status(self) -> dict[str, Any]:
+        return await self.client.get_login_status()
+
+    async def begin_login(self) -> dict[str, Any]:
+        return await self.client.begin_login()
 
     async def close(self, reason: str = "shutdown") -> None:
         _ = reason
@@ -317,6 +455,23 @@ def _remove_ready_file_sync(path: Path) -> None:
         path.unlink()
     except FileNotFoundError:
         return
+
+
+def _ensure_mapping(value: Any, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise TypeError(f"{label} must be a JSON object")
+    return value
+
+
+def _ensure_mapping_list(value: Any, label: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise TypeError(f"{label} must be a JSON array")
+    result: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise TypeError(f"{label} items must be JSON objects")
+        result.append(item)
+    return result
 
 
 def _parse_int(value: str | None, fallback: int) -> int:
