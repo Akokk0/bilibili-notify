@@ -34,6 +34,7 @@
     "koishi-config-convergence",
     "koishi-image-hide-follower-rename",
     "koishi-internals-token",
+    "koishi-live-sc-guard-overrides",
     "koishi-master-notifier-engine-error",
     "koishi-subscription-display-name",
     "live-ws-watchdog",
