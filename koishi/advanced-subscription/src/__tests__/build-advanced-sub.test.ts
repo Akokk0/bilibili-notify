@@ -60,6 +60,59 @@ function makeRaw(
 }
 
 describe("buildAdvancedSubAndTargets()", () => {
+	it("显式 feature 布尔写入 overrides.features,默认关闭的 SC/舰长勾选后可启用", () => {
+		const raw = makeRaw("11", "111111");
+		raw.liveEnd = false;
+		raw.liveGuardBuy = true;
+		raw.superchat = true;
+		raw.target[0].channelArr[0].liveEnd = false;
+		raw.target[0].channelArr[0].liveGuardBuy = true;
+		raw.target[0].channelArr[0].superchat = true;
+		const cfg: AdvancedSubRawShim = { subs: { "UP-1": raw } };
+
+		const { subs, targets } = buildAdvancedSubAndTargets(
+			cfg as unknown as AdvancedSubRawConfigShape,
+		);
+		const sub = subs[0];
+		const targetId = targets[0].id;
+
+		expect(sub.overrides.features).toMatchObject({
+			liveEnd: false,
+			liveGuardBuy: true,
+			superchat: true,
+		});
+		expect(sub.routing.liveEnd).toEqual([]);
+		expect(sub.routing.liveGuardBuy).toEqual([targetId]);
+		expect(sub.routing.superchat).toEqual([targetId]);
+		expect(sub.overrides.features?.specialDanmaku).toBeUndefined();
+		expect(sub.overrides.features?.specialUserEnter).toBeUndefined();
+	});
+
+	it("channel 级 specialDanmaku/specialUserEnter 只影响 routing,不写入 UP 级 feature overrides", () => {
+		const raw = makeRaw("11", "111111");
+		raw.target[0].channelArr[0].specialDanmaku = true;
+		raw.target[0].channelArr[0].specialUserEnter = true;
+		const rawWithStrayUpSpecial = raw as ReturnType<typeof makeRaw> & {
+			specialDanmaku?: boolean;
+			specialUserEnter?: boolean;
+		};
+		// 即便旧配置/手写配置误带 UP 级 special 布尔,也不能当成 UP feature 或 master gate。
+		rawWithStrayUpSpecial.specialDanmaku = false;
+		rawWithStrayUpSpecial.specialUserEnter = false;
+		const cfg: AdvancedSubRawShim = { subs: { "UP-1": raw } };
+
+		const { subs, targets } = buildAdvancedSubAndTargets(
+			cfg as unknown as AdvancedSubRawConfigShape,
+		);
+		const sub = subs[0];
+		const targetId = targets[0].id;
+
+		expect(sub.routing.specialDanmaku).toEqual([targetId]);
+		expect(sub.routing.specialUserEnter).toEqual([targetId]);
+		expect(sub.overrides.features?.specialDanmaku).toBeUndefined();
+		expect(sub.overrides.features?.specialUserEnter).toBeUndefined();
+	});
+
 	it("emits a target for every channel referenced by routing (Fix 6)", () => {
 		const cfg: AdvancedSubRawShim = {
 			subs: {

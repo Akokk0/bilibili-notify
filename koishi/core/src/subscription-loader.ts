@@ -99,14 +99,18 @@ export function flatSubToSubscription(
 		FEATURE_KEYS.map((k) => [k, [] as string[]]),
 	) as SubscriptionRouting;
 
+	const featureOverrides: Partial<Record<FeatureKey, boolean>> = {};
 	for (const { legacy, feature } of LEGACY_FEATURE_MAP) {
-		if (item[legacy as keyof FlatSubConfigItem]) {
+		const enabled = item[legacy as keyof FlatSubConfigItem];
+		if (typeof enabled === "boolean") featureOverrides[feature] = enabled;
+		if (enabled) {
 			routing[feature] = [...targetIds];
 		}
 	}
 	// specialDanmaku / specialUserEnter get no legacy mapping (not in flat config)
 	// but keep empty arrays as initialized.
 
+	if (Object.keys(featureOverrides).length > 0) sub.overrides.features = featureOverrides;
 	sub.routing = routing;
 	sub.atAllDefaults = {
 		dynamic: item.dynamicAtAll ?? false,

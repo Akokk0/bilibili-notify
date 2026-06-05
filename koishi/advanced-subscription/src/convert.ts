@@ -23,6 +23,17 @@ export { deterministicUuid };
 // ---- Type shapes (kept in lock-step with core.ts schema) ----
 
 type ChannelFeatureKey = FeatureKey;
+type UpFeatureKey = Exclude<FeatureKey, "specialDanmaku" | "specialUserEnter">;
+
+const UP_FEATURE_KEYS: readonly UpFeatureKey[] = [
+	"dynamic",
+	"live",
+	"liveEnd",
+	"liveGuardBuy",
+	"superchat",
+	"wordcloud",
+	"liveSummary",
+] as const;
 
 /**
  * `dynamicAtAll` / `liveAtAll` 不是 FeatureKey,而是 @全体 修饰符。在 advanced-sub Schema 里
@@ -205,9 +216,13 @@ export function rawConfigToSubscription(name: string, raw: SubItemRawConfig): Co
 				const chEnabled = ch[featureKey as keyof typeof ch] as boolean | undefined;
 				if (chEnabled === false) continue;
 
-				// Master-level gating: if the master switch is explicitly false, skip
-				const masterEnabled = raw[featureKey as keyof SubItemRawConfig] as boolean | undefined;
-				if (masterEnabled === false) continue;
+				// Master-level gating only exists for UP-level feature switches. specialDanmaku /
+				// specialUserEnter are channel-level routing toggles backed by customSpecial* user
+				// lists, not UP-level features; do not let stray raw.special* booleans gate them.
+				if ((UP_FEATURE_KEYS as readonly FeatureKey[]).includes(featureKey)) {
+					const masterEnabled = raw[featureKey as keyof SubItemRawConfig] as boolean | undefined;
+					if (masterEnabled === false) continue;
+				}
 
 				if (!routing[featureKey]) routing[featureKey] = [];
 				if (!routing[featureKey].includes(targetId)) {
@@ -230,16 +245,13 @@ export function rawConfigToSubscription(name: string, raw: SubItemRawConfig): Co
 	sub.routing = routing;
 
 	// UP 级 features 总开关 → sub.overrides.features。
-	// 之前 convert.ts 只用 raw.X=false 来 gate routing 计算(routing.X 跳过该 channel),
-	// 但没写到 overrides.features——导致 resolve 后 eff.features.X 仍等于全局默认(全 true),
-	// LiveEngine `needsLiveMonitor` 仍开 WS、payload 仍 build,只是 broadcastToFeature 内
-	// routing 空兜底不发。这跟「features 决定监听」mental model 矛盾。
-	//
-	// 现在显式写 overrides.features:仅在 raw.X === false 时写(true 留空 = 继承全局
-	// 默认 = schema 默认 true)。这样 PR2 接通的 features-only 监听层在 koishi 端真生效。
+	// Koishi 配置里的 feature 是显式二态开关,必须写入 canonical overrides;
+	// 否则 internal 默认关闭的 superchat/liveGuardBuy 即使 UI 勾选 true,也会在
+	// koishi/live 的 resolveFeatures() 中继续回退为 false,导致 RoomSession 监听前短路。
 	const featureOverrides: Partial<Record<FeatureKey, boolean>> = {};
-	for (const k of FEATURE_KEYS) {
-		if (raw[k as keyof SubItemRawConfig] === false) featureOverrides[k] = false;
+	for (const k of UP_FEATURE_KEYS) {
+		const enabled = raw[k as keyof SubItemRawConfig];
+		if (typeof enabled === "boolean") featureOverrides[k] = enabled;
 	}
 	if (Object.keys(featureOverrides).length > 0) {
 		sub.overrides.features = featureOverrides;

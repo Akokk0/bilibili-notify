@@ -91,6 +91,18 @@ describe("storeToSubItemView — per-UP override ?? config 两层折算", () => 
 		expect(view.liveEnd).toBe(DEFAULT_FEATURE_FLAGS.liveEnd);
 	});
 
+	it("默认关闭的直播收入类 feature 可由 per-UP overrides.features 开启", () => {
+		expect(DEFAULT_FEATURE_FLAGS.superchat).toBe(false);
+		expect(DEFAULT_FEATURE_FLAGS.liveGuardBuy).toBe(false);
+
+		const view = storeToSubItemView(
+			makeSub({ features: { superchat: true, liveGuardBuy: true } }),
+			makeConfig(),
+		);
+		expect(view.superchat).toBe(true);
+		expect(view.liveGuardBuy).toBe(true);
+	});
+
 	it("无任何 custom override → 各 customX 块 enable:false", () => {
 		const view = storeToSubItemView(makeSub(), makeConfig());
 		expect(view.customCardStyle).toEqual({ enable: false });
