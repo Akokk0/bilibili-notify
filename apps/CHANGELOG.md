@@ -9,6 +9,24 @@ git tag;发布 workflow 会在构建前按 tag 临时同步 apps 版本元数据
 
 ---
 
+## [0.1.0-alpha.8] — 2026-06-06
+
+### Added
+
+- Webhook 推送支持钉钉 / 飞书 / 企业微信机器人 provider；Generic 模式保持旧 JSON envelope,平台机器人按文本消息协议发送,非文本通知沿用文字摘要降级 (bd8effc)
+
+### Changed
+
+- Webhook adapter 保存 URL 后自动维护默认投递目标,订阅页可直接选择,无需手动新建 PushTarget (bd8effc)
+- Webhook adapter「测试」改为真实发送测试推送,并回写 adapter / target 最近测试状态 (bd8effc)
+
+### Fixed
+
+- 禁止外部手动创建 / 修改 / 删除 Webhook 托管目标；删除 Webhook adapter 时同步清理订阅 routing / @全体引用,避免残留无效 target (bd8effc)
+- Webhook 平台业务响应解析与错误脱敏补强:解析钉钉 / 飞书 / 企业微信业务码,错误返回和日志不泄漏 webhook URL、key、secret、sign、token (bd8effc)
+
+---
+
 ## [0.1.0-alpha.7] — 2026-06-01
 
 ### Added
