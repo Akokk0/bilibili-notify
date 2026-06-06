@@ -91,8 +91,13 @@ export const OnebotAdapterConfigSchema = z.union([
 export type OnebotAdapterConfig = z.infer<typeof OnebotAdapterConfigSchema>;
 export type OnebotTransport = OnebotAdapterConfig["transport"];
 
+export const WebhookProviderSchema = z.enum(["generic", "dingtalk", "feishu", "wecom"]);
+export type WebhookProvider = z.infer<typeof WebhookProviderSchema>;
+
 export const WebhookAdapterConfigSchema = z.object({
 	url: z.url(),
+	/** 协议提供方;旧配置缺省为 generic,保持 bilibili-notify JSON envelope 兼容。 */
+	provider: WebhookProviderSchema.default("generic"),
 	secret: z.string().optional(),
 	/** 自定义 header 例如 Authorization */
 	headers: z.record(z.string(), z.string()).default({}),
@@ -201,6 +206,8 @@ const PushTargetCommonShape = {
 	adapterId: z.uuid(),
 	scope: PushTargetScopeSchema,
 	enabled: z.boolean(),
+	/** 生命周期由 adapter 管理的系统目标；用户不直接编辑 / 删除。 */
+	managedBy: z.literal("adapter").optional(),
 	/**
 	 * 最近一次显式 `/api/push/test` 或真实业务推送的结果。
 	 * 跟 PushAdapter.testStatus 互相独立 — 此处只反映会话级 (group/userId) 是否可达,
@@ -233,10 +240,20 @@ const KoishiBotPushTargetSchema = z.object({
 	session: KoishiBotSessionSchema,
 });
 
-export const PushTargetSchema = z.discriminatedUnion("platform", [
-	OnebotPushTargetSchema,
-	WebhookPushTargetSchema,
-	WebDashboardPushTargetSchema,
-	KoishiBotPushTargetSchema,
-]);
+export const PushTargetSchema = z
+	.discriminatedUnion("platform", [
+		OnebotPushTargetSchema,
+		WebhookPushTargetSchema,
+		WebDashboardPushTargetSchema,
+		KoishiBotPushTargetSchema,
+	])
+	.superRefine((target, ctx) => {
+		if (target.managedBy === "adapter" && target.platform !== "webhook") {
+			ctx.addIssue({
+				code: "custom",
+				path: ["managedBy"],
+				message: "managedBy is only supported for webhook targets",
+			});
+		}
+	});
 export type PushTarget = z.infer<typeof PushTargetSchema>;

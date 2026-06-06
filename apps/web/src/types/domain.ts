@@ -85,10 +85,63 @@ export type OnebotAdapterConfig =
 
 export type OnebotTransport = OnebotAdapterConfig["transport"];
 
+export type WebhookProvider = "generic" | "dingtalk" | "feishu" | "wecom";
+
 export interface WebhookAdapterConfig {
 	url: string;
+	provider?: WebhookProvider;
 	secret?: string;
 	headers: Record<string, string>;
+}
+
+export const WEBHOOK_PROVIDERS: ReadonlyArray<{ value: WebhookProvider; label: string }> = [
+	{ value: "generic", label: "Generic JSON" },
+	{ value: "dingtalk", label: "钉钉机器人" },
+	{ value: "feishu", label: "飞书机器人" },
+	{ value: "wecom", label: "企业微信机器人" },
+];
+
+export function webhookProviderLabel(provider: WebhookProvider | undefined): string {
+	return (
+		WEBHOOK_PROVIDERS.find((p) => p.value === (provider ?? "generic"))?.label ?? "Generic JSON"
+	);
+}
+
+export function webhookUrlPlaceholder(provider: WebhookProvider | undefined): string {
+	switch (provider ?? "generic") {
+		case "dingtalk":
+			return "https://oapi.dingtalk.com/robot/send?access_token=...";
+		case "feishu":
+			return "https://open.feishu.cn/open-apis/bot/v2/hook/...";
+		case "wecom":
+			return "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...";
+		case "generic":
+			return "https://hooks.example.com/bn";
+	}
+}
+
+export function webhookSecretHint(provider: WebhookProvider | undefined): string {
+	switch (provider ?? "generic") {
+		case "dingtalk":
+			return "钉钉加签密钥 SEC...；填写后自动追加 timestamp/sign";
+		case "feishu":
+			return "飞书签名密钥；填写后自动在消息体加入 timestamp/sign";
+		case "wecom":
+			return "企业微信群机器人通常不需要 Secret；鉴权 key 在 webhook URL 中";
+		case "generic":
+			return "Generic 模式下加在 x-bilibili-notify-secret 头";
+	}
+}
+
+export function maskWebhookUrl(url: string): string {
+	try {
+		const parsed = new URL(url);
+		const safePath = parsed.pathname === "/" ? "" : "/***";
+		const queryHint = parsed.search ? "?…" : "";
+		return `${parsed.origin}${safePath}${queryHint}`;
+	} catch {
+		return "已配置 webhook URL";
+	}
 }
 
 // no connection-level config (the dashboard itself is the bridge)
@@ -132,6 +185,7 @@ interface PushTargetCommon {
 	adapterId: string;
 	scope: PushTargetScope;
 	enabled: boolean;
+	managedBy?: "adapter";
 	testStatus?: PushAdapterTestStatus;
 }
 
@@ -382,7 +436,7 @@ export function makeEmptyAdapter(platform: PushTargetPlatform, name: string): Pu
 		return {
 			...base,
 			platform: "webhook",
-			config: { url: "https://example.com/hook", headers: {} },
+			config: { url: "https://example.com/hook", provider: "generic", headers: {} },
 		};
 	}
 	return {

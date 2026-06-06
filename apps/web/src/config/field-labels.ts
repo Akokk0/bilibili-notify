@@ -351,6 +351,11 @@ export const FIELD_LABELS = {
 	"adapter.platform": { label: "平台", section: "adapter" },
 	"adapter.name": { label: "显示名称", section: "adapter" },
 	"adapter.enabled": { label: "启用", section: "adapter" },
+	"config.provider": {
+		label: "Webhook 协议",
+		hint: "Generic 保持旧 JSON envelope；钉钉/飞书按平台机器人协议发送文本消息",
+		section: "transport",
+	},
 	"config.transport": { label: "连接方式", section: "transport" },
 	"config.baseUrl": { label: "HTTP baseUrl", section: "transport" },
 	"config.url": { label: "URL", section: "transport" },

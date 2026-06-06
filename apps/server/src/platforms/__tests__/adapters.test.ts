@@ -13,6 +13,7 @@
  * fetch 用 vi.stubGlobal mock,不打真实网络。
  */
 
+import { createHmac } from "node:crypto";
 import { once } from "node:events";
 import { type AddressInfo, createServer } from "node:net";
 import type {
@@ -66,12 +67,19 @@ async function waitFor(cond: () => boolean | Promise<boolean>, timeoutMs = 3000)
 /** 测试结束要清理的资源(fake server / bot)。afterEach 统一关。 */
 const cleanups: Array<() => void | Promise<void>> = [];
 
-function res(o: { ok: boolean; status?: number; statusText?: string; json?: unknown }) {
+function res(o: {
+	ok: boolean;
+	status?: number;
+	statusText?: string;
+	json?: unknown;
+	text?: string;
+}) {
 	return {
 		ok: o.ok,
 		status: o.status ?? (o.ok ? 200 : 500),
 		statusText: o.statusText ?? "",
 		json: async () => o.json ?? {},
+		text: async () => o.text ?? JSON.stringify(o.json ?? {}),
 	};
 }
 
@@ -1084,6 +1092,14 @@ function whTarget(over: Record<string, unknown> = {}): PushTarget {
 	} as unknown as PushTarget;
 }
 
+function dingTalkSign(secret: string, timestamp: string): string {
+	return createHmac("sha256", secret).update(`${timestamp}\n${secret}`).digest("base64");
+}
+
+function feishuSign(secret: string, timestamp: string): string {
+	return createHmac("sha256", `${timestamp}\n${secret}`).update("").digest("base64");
+}
+
 describe("webhook — send", () => {
 	it("happy:POST JSON body 含元信息 + secret/自定义 header", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true }));
@@ -1103,6 +1119,18 @@ describe("webhook — send", () => {
 			payload: { kind: "text", text: "hello" },
 		});
 		expect(typeof body.ts).toBe("string");
+	});
+
+	it("generic provider 显式配置仍保持旧 envelope 且不解析业务 body", async () => {
+		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { errcode: 310000, errmsg: "bad" } }));
+		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
+			whAdapter({ provider: "generic" }),
+			whTarget(),
+			TEXT,
+		);
+		expect(r.ok).toBe(true);
+		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://hook.local");
+		expect(lastBody()).toMatchObject({ payload: { kind: "text", text: "hello" } });
 	});
 
 	it("image/composite payload 序列化为 base64", async () => {
@@ -1134,6 +1162,195 @@ describe("webhook — send", () => {
 		});
 	});
 
+	it("dingtalk:text body + URL 签名 + 业务成功码", async () => {
+		vi.spyOn(Date, "now").mockReturnValue(1_710_000_000_123);
+		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { errcode: 0, errmsg: "ok" } }));
+		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
+			whAdapter({
+				provider: "dingtalk",
+				url: "https://oapi.dingtalk.com/robot/send?access_token=tok",
+				secret: "SECxxx",
+			}),
+			whTarget(),
+			TEXT,
+		);
+		expect(r.ok).toBe(true);
+		const url = new URL(String(fetchMock.mock.calls[0]?.[0]));
+		expect(url.searchParams.get("access_token")).toBe("tok");
+		expect(url.searchParams.get("timestamp")).toBe("1710000000123");
+		expect(url.searchParams.get("sign")).toBe(dingTalkSign("SECxxx", "1710000000123"));
+		const init = lastInit() as { headers: Record<string, string> };
+		expect(init.headers["x-bilibili-notify-secret"]).toBeUndefined();
+		expect(lastBody()).toEqual({ msgtype: "text", text: { content: "hello" } });
+	});
+
+	it("dingtalk:HTTP 200 业务失败 / 非 JSON 响应 → ok:false", async () => {
+		fetchMock.mockResolvedValueOnce(
+			res({ ok: true, json: { errcode: 310000, errmsg: "keywords not in content" } }),
+		);
+		const fail = await createWebhookAdapter({ logger: makeLogger() }).send(
+			whAdapter({ provider: "dingtalk" }),
+			whTarget(),
+			TEXT,
+		);
+		expect(fail.ok).toBe(false);
+		expect(fail.err).toContain("DingTalk errcode=310000");
+		expect(fail.err).toContain("keywords not in content");
+
+		fetchMock.mockResolvedValueOnce(res({ ok: true, text: "not json" }));
+		const invalid = await createWebhookAdapter({ logger: makeLogger() }).send(
+			whAdapter({ provider: "dingtalk" }),
+			whTarget(),
+			TEXT,
+		);
+		expect(invalid).toMatchObject({ ok: false, err: "DingTalk response is not JSON" });
+	});
+
+	it("feishu:text body + body 签名 + 业务成功码", async () => {
+		vi.spyOn(Date, "now").mockReturnValue(1_710_000_000_123);
+		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { code: 0, msg: "success" } }));
+		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
+			whAdapter({
+				provider: "feishu",
+				url: "https://open.feishu.cn/open-apis/bot/v2/hook/token",
+				secret: "sign-secret",
+			}),
+			whTarget(),
+			TEXT,
+		);
+		expect(r.ok).toBe(true);
+		expect(fetchMock.mock.calls[0]?.[0]).toBe("https://open.feishu.cn/open-apis/bot/v2/hook/token");
+		const body = lastBody();
+		expect(body).toMatchObject({
+			msg_type: "text",
+			content: { text: "hello" },
+			timestamp: "1710000000",
+		});
+		expect(body.sign).toBe(feishuSign("sign-secret", "1710000000"));
+		const init = lastInit() as { headers: Record<string, string> };
+		expect(init.headers["x-bilibili-notify-secret"]).toBeUndefined();
+	});
+
+	it("feishu:兼容 StatusCode 成功;业务失败 / 非 JSON 响应 → ok:false", async () => {
+		fetchMock.mockResolvedValueOnce(
+			res({ ok: true, json: { StatusCode: 0, StatusMessage: "success" } }),
+		);
+		const ok = await createWebhookAdapter({ logger: makeLogger() }).send(
+			whAdapter({ provider: "feishu" }),
+			whTarget(),
+			TEXT,
+		);
+		expect(ok.ok).toBe(true);
+
+		fetchMock.mockResolvedValueOnce(
+			res({ ok: true, json: { code: 19021, msg: "sign match fail" } }),
+		);
+		const fail = await createWebhookAdapter({ logger: makeLogger() }).send(
+			whAdapter({ provider: "feishu" }),
+			whTarget(),
+			TEXT,
+		);
+		expect(fail.ok).toBe(false);
+		expect(fail.err).toContain("Feishu code=19021");
+		expect(fail.err).toContain("sign match fail");
+
+		fetchMock.mockResolvedValueOnce(res({ ok: true, text: "not json" }));
+		const invalid = await createWebhookAdapter({ logger: makeLogger() }).send(
+			whAdapter({ provider: "feishu" }),
+			whTarget(),
+			TEXT,
+		);
+		expect(invalid).toMatchObject({ ok: false, err: "Feishu response is not JSON" });
+	});
+
+	it("wecom:text body + 业务成功码", async () => {
+		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { errcode: 0, errmsg: "ok" } }));
+		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
+			whAdapter({
+				provider: "wecom",
+				url: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wx-key",
+				secret: "unused-secret",
+			}),
+			whTarget(),
+			TEXT,
+		);
+		expect(r.ok).toBe(true);
+		const url = new URL(String(fetchMock.mock.calls[0]?.[0]));
+		expect(url.searchParams.get("key")).toBe("wx-key");
+		expect(url.searchParams.has("timestamp")).toBe(false);
+		expect(url.searchParams.has("sign")).toBe(false);
+		const init = lastInit() as { headers: Record<string, string> };
+		expect(init.headers["x-bilibili-notify-secret"]).toBeUndefined();
+		expect(lastBody()).toEqual({ msgtype: "text", text: { content: "hello" } });
+	});
+
+	it("wecom:HTTP 200 业务失败 / 非 JSON 响应 → ok:false", async () => {
+		fetchMock.mockResolvedValueOnce(
+			res({ ok: true, json: { errcode: 93000, errmsg: "invalid webhook key" } }),
+		);
+		const fail = await createWebhookAdapter({ logger: makeLogger() }).send(
+			whAdapter({ provider: "wecom" }),
+			whTarget(),
+			TEXT,
+		);
+		expect(fail.ok).toBe(false);
+		expect(fail.err).toContain("WeCom errcode=93000");
+		expect(fail.err).toContain("invalid webhook key");
+
+		fetchMock.mockResolvedValueOnce(res({ ok: true, text: "not json" }));
+		const invalid = await createWebhookAdapter({ logger: makeLogger() }).send(
+			whAdapter({ provider: "wecom" }),
+			whTarget(),
+			TEXT,
+		);
+		expect(invalid).toMatchObject({ ok: false, err: "WeCom response is not JSON" });
+	});
+
+	it("platform providers 将 image/composite/forward-images 降级为可读文本", async () => {
+		fetchMock.mockResolvedValue(res({ ok: true, json: { errcode: 0, errmsg: "ok" } }));
+		const ad = createWebhookAdapter({ logger: makeLogger() });
+		await ad.send(whAdapter({ provider: "dingtalk" }), whTarget(), {
+			kind: "image",
+			image: { buffer: Buffer.from("PIC"), mime: "image/png" },
+			caption: "卡片标题",
+		});
+		expect(lastBody()).toEqual({ msgtype: "text", text: { content: "卡片标题" } });
+		await ad.send(whAdapter({ provider: "dingtalk" }), whTarget(), {
+			kind: "composite",
+			segments: [
+				{ type: "text", text: "正文" },
+				{ type: "link", href: "https://example.com", title: "链接" },
+				{ type: "image", buffer: Buffer.from("Q"), mime: "image/jpeg" },
+				{ type: "at-all" },
+			],
+		});
+		expect(lastBody()).toEqual({
+			msgtype: "text",
+			text: { content: "正文\n链接 https://example.com\n[图片]\n@全体成员" },
+		});
+
+		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { code: 0, msg: "success" } }));
+		await ad.send(whAdapter({ provider: "feishu", secret: undefined }), whTarget(), {
+			kind: "forward-images",
+			urls: ["https://i0.hdslb.com/1.jpg", "https://i0.hdslb.com/2.jpg"],
+			forward: false,
+		});
+		expect(lastBody()).toEqual({
+			msg_type: "text",
+			content: { text: "图片:\nhttps://i0.hdslb.com/1.jpg\nhttps://i0.hdslb.com/2.jpg" },
+		});
+
+		await ad.send(whAdapter({ provider: "wecom", secret: undefined }), whTarget(), {
+			kind: "forward-images",
+			urls: ["https://i0.hdslb.com/3.jpg", "https://i0.hdslb.com/4.jpg"],
+			forward: false,
+		});
+		expect(lastBody()).toEqual({
+			msgtype: "text",
+			text: { content: "图片:\nhttps://i0.hdslb.com/3.jpg\nhttps://i0.hdslb.com/4.jpg" },
+		});
+	});
+
 	it("非 2xx → ok:false err=HTTP", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: false, status: 503, statusText: "Unavailable" }));
 		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
@@ -1144,12 +1361,104 @@ describe("webhook — send", () => {
 		expect(r).toMatchObject({ ok: false, err: "HTTP 503 Unavailable" });
 	});
 
+	it("非 2xx statusText 会脱敏 token/sign/secret", async () => {
+		fetchMock.mockResolvedValueOnce(
+			res({
+				ok: false,
+				status: 403,
+				statusText: "access_token=tok123&sign=sig123 secret=SECxxx",
+			}),
+		);
+		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
+			whAdapter({
+				provider: "dingtalk",
+				url: "https://oapi.dingtalk.com/robot/send?access_token=tok123",
+				secret: "SECxxx",
+			}),
+			whTarget(),
+			TEXT,
+		);
+		expect(r.ok).toBe(false);
+		expect(r.err).toContain("access_token=***");
+		expect(r.err).toContain("sign=***");
+		expect(r.err).toContain("secret=***");
+		expect(r.err).not.toContain("tok123");
+		expect(r.err).not.toContain("sig123");
+		expect(r.err).not.toContain("SECxxx");
+	});
+
 	it("fetch 抛错 → ok:false + logger.warn", async () => {
 		fetchMock.mockRejectedValueOnce(new Error("network down"));
 		const logger = makeLogger();
 		const r = await createWebhookAdapter({ logger }).send(whAdapter(), whTarget(), TEXT);
 		expect(r).toMatchObject({ ok: false, err: "network down" });
 		expect(logger.warn).toHaveBeenCalledTimes(1);
+	});
+
+	it("错误返回和日志会脱敏 webhook secret/token/sign", async () => {
+		const leaked =
+			"request failed url=https://oapi.dingtalk.com/robot/send?access_token=tok123&sign=sig123 secret=SECxxx Authorization=Bearer abcdefghijkl";
+		fetchMock.mockRejectedValueOnce(new Error(leaked));
+		const logger = makeLogger();
+		const r = await createWebhookAdapter({ logger }).send(
+			whAdapter({
+				provider: "dingtalk",
+				url: "https://oapi.dingtalk.com/robot/send?access_token=tok123",
+				secret: "SECxxx",
+			}),
+			whTarget(),
+			TEXT,
+		);
+		expect(r.ok).toBe(false);
+		expect(r.err).toContain("access_token=***");
+		expect(r.err).toContain("sign=***");
+		expect(r.err).toContain("secret=***");
+		expect(r.err).toContain("Authorization=Bearer ***");
+		expect(r.err).not.toContain("tok123");
+		expect(r.err).not.toContain("sig123");
+		expect(r.err).not.toContain("SECxxx");
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+		const logMsg = String(logger.warn.mock.calls[0]?.[0]);
+		expect(logMsg).not.toContain("tok123");
+		expect(logMsg).not.toContain("sig123");
+		expect(logMsg).not.toContain("SECxxx");
+	});
+
+	it("错误返回和日志会脱敏完整 webhook URL path token", async () => {
+		const url = "https://open.feishu.cn/open-apis/bot/v2/hook/path-token-123";
+		fetchMock.mockRejectedValueOnce(new Error(`request to ${url} failed`));
+		const logger = makeLogger();
+		const r = await createWebhookAdapter({ logger }).send(
+			whAdapter({ provider: "feishu", url }),
+			whTarget(),
+			TEXT,
+		);
+		expect(r.ok).toBe(false);
+		expect(r.err).toContain("https://open.feishu.cn/***");
+		expect(r.err).not.toContain(url);
+		expect(r.err).not.toContain("path-token-123");
+		const logMsg = String(logger.warn.mock.calls[0]?.[0]);
+		expect(logMsg).not.toContain(url);
+		expect(logMsg).not.toContain("path-token-123");
+	});
+
+	it("错误返回和日志会脱敏企业微信 webhook key", async () => {
+		const url = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wx-key-123";
+		fetchMock.mockRejectedValueOnce(new Error(`request to ${url} failed key=wx-key-123`));
+		const logger = makeLogger();
+		const r = await createWebhookAdapter({ logger }).send(
+			whAdapter({ provider: "wecom", url, secret: "unused-secret" }),
+			whTarget(),
+			TEXT,
+		);
+		expect(r.ok).toBe(false);
+		expect(r.err).toContain("key=***");
+		expect(r.err).not.toContain("wx-key-123");
+		expect(r.err).not.toContain("unused-secret");
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+		const logMsg = String(logger.warn.mock.calls[0]?.[0]);
+		expect(logMsg).not.toContain("wx-key-123");
+		expect(logMsg).not.toContain("unused-secret");
 	});
 
 	it("wrong platform → ok:false", async () => {
