@@ -184,7 +184,7 @@ function TargetCard({
 
 			{testStatus ? (
 				<div
-					className="mb-2 rounded-[4px] border-l-[3px] px-2 py-0.5 text-[10.5px]"
+					className="mb-2 rounded-sm border-l-[3px] px-2 py-0.5 text-[10.5px]"
 					style={
 						testStatus.ok
 							? { background: "#f0fdf4", borderLeftColor: "#22c55e", color: "#166534" }
@@ -259,7 +259,7 @@ function AddCard({ label, hint, onClick, disabled }: AddCardProps) {
 			type="button"
 			onClick={onClick}
 			disabled={disabled}
-			className="flex h-full min-h-[88px] flex-col items-center justify-center rounded-[10px] border border-dashed border-gray-300 bg-white px-3 py-4 text-center transition hover:border-bn-pink hover:bg-bn-pink/5 disabled:cursor-not-allowed disabled:opacity-60"
+			className="flex h-full min-h-22 flex-col items-center justify-center rounded-[10px] border border-dashed border-gray-300 bg-white px-3 py-4 text-center transition hover:border-bn-pink hover:bg-bn-pink/5 disabled:cursor-not-allowed disabled:opacity-60"
 		>
 			<span className="text-[20px] leading-none text-bn-text-tertiary">＋</span>
 			<span className="mt-1 text-[12.5px] font-semibold text-bn-text-primary">{label}</span>
@@ -913,7 +913,7 @@ function DeleteModal({
 					type="button"
 					onClick={onConfirm}
 					disabled={deleting}
-					className="inline-flex h-[30px] items-center justify-center rounded-md border border-transparent bg-red-500 px-3.5 text-[13px] font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+					className="inline-flex h-7.5 items-center justify-center rounded-md border border-transparent bg-red-500 px-3.5 text-[13px] font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{deleting ? "移除中…" : "确认移除"}
 				</button>
@@ -974,7 +974,7 @@ function AdapterRail({
 	targetCountByAdapter: Map<string, number>;
 }) {
 	return (
-		<aside className="sticky top-[120px] h-fit min-w-0">
+		<aside className="sticky top-30 h-fit min-w-0">
 			<div className="mb-2 flex items-center justify-between px-1">
 				<span className="text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
 					推送适配器
@@ -1025,7 +1025,7 @@ function AdapterRail({
 											<span className="shrink-0 text-[10px] text-bn-text-tertiary">(停用)</span>
 										) : null}
 									</span>
-									<span className="mt-0.5 block break-words text-[10.5px] leading-snug text-bn-text-tertiary">
+									<span className="mt-0.5 block wrap-break-word text-[10.5px] leading-snug text-bn-text-tertiary">
 										{platformLabel(a.platform)} ·{" "}
 										{a.platform === "webhook" ? "单向投递" : `${count} 个目标`}
 									</span>
@@ -1399,7 +1399,7 @@ export default function Targets() {
 										</div>
 										{selectedAdapterTestStatus ? (
 											<div
-												className="mt-2 inline-block rounded-[4px] border-l-[3px] px-2 py-0.5 text-[11px]"
+												className="mt-2 inline-block rounded-sm border-l-[3px] px-2 py-0.5 text-[11px]"
 												style={
 													selectedAdapterTestStatus.ok
 														? {
@@ -1629,7 +1629,7 @@ export default function Targets() {
 
 			{toast ? (
 				<div
-					className={`fixed bottom-4 right-4 z-[400] rounded-md px-4 py-2 text-[12.5px] font-semibold text-white shadow-lg ${
+					className={`fixed bottom-4 right-4 z-400 rounded-md px-4 py-2 text-[12.5px] font-semibold text-white shadow-lg ${
 						toast.ok ? "bg-emerald-600" : "bg-red-500"
 					}`}
 				>
