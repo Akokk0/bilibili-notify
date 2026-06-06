@@ -15,7 +15,7 @@ import type { PlatformAdapter, ProbeResult } from "./types.js";
  * endpoint or a supported chat-robot webhook provider.
  *
  * Generic keeps the self-contained JSON envelope (NotificationPayload + base64
- * conversion). DingTalk / Feishu use their robot text protocols and downgrade
+ * conversion). DingTalk / Feishu / WeCom use their robot text protocols and downgrade
  * non-text payloads to a readable text summary.
  */
 export interface WebhookAdapterOptions {
@@ -25,7 +25,7 @@ export interface WebhookAdapterOptions {
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
-type WebhookProvider = "generic" | "dingtalk" | "feishu";
+type WebhookProvider = "generic" | "dingtalk" | "feishu" | "wecom";
 type WebhookAdapterConfigWithProvider = WebhookAdapterConfig & { provider?: WebhookProvider };
 
 interface WebhookHttpRequest {
@@ -120,6 +120,8 @@ function buildWebhookRequest(
 			return buildDingTalkWebhookRequest(cfg, payload);
 		case "feishu":
 			return buildFeishuWebhookRequest(cfg, payload);
+		case "wecom":
+			return buildWeComWebhookRequest(cfg, payload);
 		case "generic":
 			return buildGenericWebhookRequest(cfg, target, payload, pushOpts);
 	}
@@ -185,6 +187,20 @@ function buildFeishuWebhookRequest(
 	};
 }
 
+function buildWeComWebhookRequest(
+	cfg: WebhookAdapterConfigWithProvider,
+	payload: NotificationPayload,
+): WebhookHttpRequest {
+	return {
+		url: cfg.url,
+		headers: baseHeaders(cfg),
+		body: JSON.stringify({
+			msgtype: "text",
+			text: { content: notificationPayloadToRobotText(payload) },
+		}),
+	};
+}
+
 function signDingTalkUrl(rawUrl: string, secret: string, nowMs = Date.now()): string {
 	const timestamp = String(nowMs);
 	const stringToSign = `${timestamp}\n${secret}`;
@@ -221,9 +237,14 @@ function parseBusinessResponse(
 		return `${providerLabel(provider)} response is not JSON`;
 	}
 	if (!isRecord(body)) return `${providerLabel(provider)} response is not an object`;
-	return provider === "dingtalk"
-		? parseDingTalkBusinessResult(body)
-		: parseFeishuBusinessResult(body);
+	switch (provider) {
+		case "dingtalk":
+			return parseDingTalkBusinessResult(body);
+		case "feishu":
+			return parseFeishuBusinessResult(body);
+		case "wecom":
+			return parseWeComBusinessResult(body);
+	}
 }
 
 function parseDingTalkBusinessResult(body: Record<string, unknown>): string | null {
@@ -244,6 +265,15 @@ function parseFeishuBusinessResult(body: Record<string, unknown>): string | null
 	return `Feishu response missing code${msg ? ` msg=${msg}` : ""}`;
 }
 
+function parseWeComBusinessResult(body: Record<string, unknown>): string | null {
+	const errcode = body.errcode;
+	if (isZeroCode(errcode)) return null;
+	const errmsg = stringValue(body.errmsg);
+	const code = codeLabel(errcode);
+	if (code) return `WeCom errcode=${code}${errmsg ? ` errmsg=${errmsg}` : ""}`;
+	return `WeCom response missing errcode${errmsg ? ` errmsg=${errmsg}` : ""}`;
+}
+
 function isZeroCode(value: unknown): boolean {
 	return value === 0 || value === "0";
 }
@@ -255,7 +285,14 @@ function codeLabel(value: unknown): string | null {
 }
 
 function providerLabel(provider: Exclude<WebhookProvider, "generic">): string {
-	return provider === "dingtalk" ? "DingTalk" : "Feishu";
+	switch (provider) {
+		case "dingtalk":
+			return "DingTalk";
+		case "feishu":
+			return "Feishu";
+		case "wecom":
+			return "WeCom";
+	}
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

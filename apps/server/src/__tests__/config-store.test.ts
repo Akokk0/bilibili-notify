@@ -6,9 +6,12 @@ import {
 	type BiliEvents,
 	type ConfigScope,
 	type Disposable,
+	deterministicUuid,
 	type MessageBus,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
+	type PushAdapter,
+	type PushTarget,
 	type ServiceContext,
 	type Subscription,
 } from "@bilibili-notify/internal";
@@ -72,6 +75,58 @@ function makeBootstrap(dataDir: string): BootstrapConfig {
 
 function makeSampleSubscription(uid = "12345"): Subscription {
 	return makeEmptySubscription({ id: randomUUID(), uid });
+}
+
+function makeWebhookAdapter(
+	overrides: Partial<Extract<PushAdapter, { platform: "webhook" }>> = {},
+) {
+	return {
+		id: randomUUID(),
+		name: "团队 Webhook",
+		platform: "webhook" as const,
+		enabled: true,
+		config: { url: "https://example.com/hook", provider: "generic" as const, headers: {} },
+		...overrides,
+	};
+}
+
+function makeOnebotAdapter(overrides: Partial<Extract<PushAdapter, { platform: "onebot" }>> = {}) {
+	return {
+		id: randomUUID(),
+		name: "NapCat",
+		platform: "onebot" as const,
+		enabled: true,
+		config: {
+			transport: "http" as const,
+			baseUrl: "http://127.0.0.1:3000",
+			protocolVersion: "v11" as const,
+			headers: {},
+			timeoutMs: 15_000,
+			retryTimes: 0,
+			retryIntervalMs: 1_000,
+		},
+		...overrides,
+	};
+}
+
+function makeWebhookTarget(
+	adapter: Extract<PushAdapter, { platform: "webhook" }>,
+	overrides: Partial<Extract<PushTarget, { platform: "webhook" }>> = {},
+) {
+	return {
+		id: randomUUID(),
+		name: "手动 Webhook",
+		adapterId: adapter.id,
+		platform: "webhook" as const,
+		scope: "channel" as const,
+		enabled: true,
+		session: {},
+		...overrides,
+	};
+}
+
+function managedWebhookTargetId(adapterId: string): string {
+	return deterministicUuid(`push-target:webhook-adapter:${adapterId}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -237,22 +292,16 @@ describe("ConfigStore", () => {
 	});
 
 	it("targets CRUD: upsert / patch / delete with proper events", async () => {
-		const adapter = {
-			id: randomUUID(),
-			name: "wh1",
-			platform: "webhook" as const,
-			enabled: true,
-			config: { url: "https://example.com/hook", provider: "generic" as const, headers: {} },
-		};
+		const adapter = makeOnebotAdapter();
 		await store.upsertAdapter(adapter);
 		const target = {
 			id: randomUUID(),
 			name: "t1",
 			adapterId: adapter.id,
-			platform: "webhook" as const,
+			platform: "onebot" as const,
 			scope: "group" as const,
 			enabled: true,
-			session: {},
+			session: { groupId: "10001" },
 		};
 		await store.upsertTarget(target);
 		expect(store.getTargets()).toHaveLength(1);
@@ -264,6 +313,229 @@ describe("ConfigStore", () => {
 		const removed = await store.deleteTarget(target.id);
 		expect(removed).toBe(true);
 		expect(store.getTargets()).toHaveLength(0);
+	});
+
+	it("upsertAdapter(webhook) 自动创建系统托管 target", async () => {
+		const adapter = makeWebhookAdapter();
+		await store.upsertAdapter(adapter);
+
+		const targets = store.getTargets();
+		expect(targets).toHaveLength(1);
+		expect(targets[0]).toMatchObject({
+			id: managedWebhookTargetId(adapter.id),
+			name: adapter.name,
+			adapterId: adapter.id,
+			platform: "webhook",
+			scope: "channel",
+			enabled: true,
+			managedBy: "adapter",
+			session: {},
+		});
+		const scopes = bus.events.filter(([e]) => e === "config-changed").map(([, args]) => args[0]);
+		expect(scopes).toEqual(["adapters", "targets"]);
+	});
+
+	it("load() 回填缺失的 webhook 托管 target", async () => {
+		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-managed-empty-"));
+		const state2 = join(dir2, "state");
+		await mkdir(state2, { recursive: true });
+		const adapter = makeWebhookAdapter();
+		await writeFile(join(state2, "adapters.json"), JSON.stringify([adapter]), "utf8");
+		await writeFile(join(state2, "targets.json"), JSON.stringify([]), "utf8");
+
+		const store2 = createConfigStore({
+			bootstrap: makeBootstrap(dir2),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await store2.load();
+		expect(store2.getTargets()).toEqual([
+			expect.objectContaining({
+				id: managedWebhookTargetId(adapter.id),
+				adapterId: adapter.id,
+				managedBy: "adapter",
+			}),
+		]);
+		await rm(dir2, { recursive: true, force: true });
+	});
+
+	it("load() 标记既有 webhook target 且保留 id", async () => {
+		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-managed-existing-"));
+		const state2 = join(dir2, "state");
+		await mkdir(state2, { recursive: true });
+		const adapter = makeWebhookAdapter();
+		const target = makeWebhookTarget(adapter, { id: randomUUID(), name: "旧 Webhook" });
+		const sub = makeSampleSubscription("44444");
+		sub.routing.dynamic = [target.id];
+		await writeFile(join(state2, "adapters.json"), JSON.stringify([adapter]), "utf8");
+		await writeFile(join(state2, "targets.json"), JSON.stringify([target]), "utf8");
+		await writeFile(join(state2, "subscriptions.json"), JSON.stringify([sub]), "utf8");
+
+		const store2 = createConfigStore({
+			bootstrap: makeBootstrap(dir2),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await store2.load();
+		const managed = store2.getTargets()[0];
+		expect(managed).toMatchObject({
+			id: target.id,
+			name: adapter.name,
+			adapterId: adapter.id,
+			managedBy: "adapter",
+			scope: "channel",
+		});
+		expect(store2.getSubscriptions()[0]?.routing.dynamic).toEqual([target.id]);
+		await rm(dir2, { recursive: true, force: true });
+	});
+
+	it("patchAdapter(webhook) 同步托管 target 名称与启用状态", async () => {
+		const adapter = makeWebhookAdapter();
+		await store.upsertAdapter(adapter);
+		const patched = await store.patchAdapter(adapter.id, { name: "飞书 Webhook", enabled: false });
+		expect(patched.name).toBe("飞书 Webhook");
+
+		const target = store.getTargets()[0];
+		expect(target).toMatchObject({
+			id: managedWebhookTargetId(adapter.id),
+			name: "飞书 Webhook",
+			enabled: false,
+			managedBy: "adapter",
+			session: {},
+		});
+	});
+
+	it("patchAdapter / upsertAdapter 拒绝变更既有 adapter platform", async () => {
+		const adapter = makeWebhookAdapter();
+		await store.upsertAdapter(adapter);
+		const onebot = makeOnebotAdapter({ id: adapter.id, name: adapter.name });
+
+		await expect(
+			store.patchAdapter(adapter.id, { platform: "onebot", config: onebot.config } as never),
+		).rejects.toBeInstanceOf(ConfigValidationError);
+		await expect(store.upsertAdapter(onebot)).rejects.toBeInstanceOf(ConfigValidationError);
+		expect(store.getAdapters()[0]?.platform).toBe("webhook");
+		expect(store.getTargets()).toHaveLength(1);
+	});
+
+	it("deleteAdapter(webhook) 级联删除托管 target 并清理订阅 routing / atAll", async () => {
+		const adapter = makeWebhookAdapter();
+		await store.upsertAdapter(adapter);
+		const targetId = store.getTargets()[0]?.id;
+		expect(targetId).toBeDefined();
+		const sub = makeSampleSubscription("55555");
+		sub.routing.dynamic = [targetId as string];
+		sub.routing.live = [targetId as string];
+		sub.atAll.dynamic[targetId as string] = true;
+		sub.atAll.live[targetId as string] = true;
+		await store.upsertSubscription(sub);
+		bus.events.length = 0;
+
+		await expect(store.deleteAdapter(adapter.id)).resolves.toBe(true);
+		expect(store.getAdapters()).toHaveLength(0);
+		expect(store.getTargets()).toHaveLength(0);
+		const nextSub = store.getSubscriptions()[0];
+		expect(nextSub?.routing.dynamic).toEqual([]);
+		expect(nextSub?.routing.live).toEqual([]);
+		expect(nextSub?.atAll.dynamic).toEqual({});
+		expect(nextSub?.atAll.live).toEqual({});
+		const scopes = bus.events.filter(([e]) => e === "config-changed").map(([, args]) => args[0]);
+		expect(scopes).toEqual(["adapters", "targets", "subscriptions"]);
+	});
+
+	it("deleteAdapter(onebot) 仍在被 target 引用时拒绝", async () => {
+		const adapter = makeOnebotAdapter();
+		await store.upsertAdapter(adapter);
+		await store.upsertTarget({
+			id: randomUUID(),
+			name: "群聊",
+			adapterId: adapter.id,
+			platform: "onebot",
+			scope: "group",
+			enabled: true,
+			session: { groupId: "10001" },
+		});
+
+		await expect(store.deleteAdapter(adapter.id)).rejects.toBeInstanceOf(ConfigValidationError);
+		expect(store.getAdapters()).toHaveLength(1);
+		expect(store.getTargets()).toHaveLength(1);
+	});
+
+	it("deleteTarget(managed) 拒绝直接删除托管 target", async () => {
+		const adapter = makeWebhookAdapter();
+		await store.upsertAdapter(adapter);
+		const targetId = store.getTargets()[0]?.id;
+		expect(targetId).toBeDefined();
+
+		await expect(store.deleteTarget(targetId as string)).rejects.toBeInstanceOf(
+			ConfigValidationError,
+		);
+		expect(store.getTargets()).toHaveLength(1);
+	});
+
+	it("upsertTarget(webhook) 拒绝外部手动创建 webhook target", async () => {
+		const adapter = makeWebhookAdapter();
+		await store.upsertAdapter(adapter);
+		const manual = makeWebhookTarget(adapter, { id: randomUUID(), name: "额外 Webhook" });
+
+		await expect(store.upsertTarget(manual)).rejects.toBeInstanceOf(ConfigValidationError);
+		expect(store.getTargets()).toHaveLength(1);
+	});
+
+	it("patchTarget(managed) 拒绝外部修改，recordTargetTestStatus 允许内部状态写回", async () => {
+		const adapter = makeWebhookAdapter();
+		await store.upsertAdapter(adapter);
+		const target = store.getTargets()[0];
+		expect(target).toBeDefined();
+
+		await expect(
+			store.patchTarget(target?.id as string, { name: "用户改名" }),
+		).rejects.toBeInstanceOf(ConfigValidationError);
+		await expect(
+			store.patchTarget(target?.id as string, {
+				testStatus: { ok: true, lastCheckedAt: "2026-06-06T00:00:00.000Z", latencyMs: 12 },
+			}),
+		).rejects.toBeInstanceOf(ConfigValidationError);
+		const patched = await store.recordTargetTestStatus(target?.id as string, {
+			ok: true,
+			lastCheckedAt: "2026-06-06T00:00:00.000Z",
+			latencyMs: 12,
+		});
+		expect(patched.testStatus).toMatchObject({ ok: true, latencyMs: 12 });
+	});
+
+	it("load() 合并同一 webhook adapter 下多余 targets 并把订阅引用迁到托管 id", async () => {
+		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-managed-duplicates-"));
+		const state2 = join(dir2, "state");
+		await mkdir(state2, { recursive: true });
+		const adapter = makeWebhookAdapter();
+		const primary = makeWebhookTarget(adapter, { id: randomUUID(), name: "主 Webhook" });
+		const extra = makeWebhookTarget(adapter, { id: randomUUID(), name: "多余 Webhook" });
+		const sub = makeSampleSubscription("66666");
+		sub.routing.dynamic = [extra.id, primary.id];
+		sub.routing.live = [extra.id];
+		sub.atAll.dynamic[extra.id] = true;
+		sub.atAll.live[extra.id] = false;
+		await writeFile(join(state2, "adapters.json"), JSON.stringify([adapter]), "utf8");
+		await writeFile(join(state2, "targets.json"), JSON.stringify([primary, extra]), "utf8");
+		await writeFile(join(state2, "subscriptions.json"), JSON.stringify([sub]), "utf8");
+
+		const store2 = createConfigStore({
+			bootstrap: makeBootstrap(dir2),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await store2.load();
+
+		expect(store2.getTargets()).toEqual([
+			expect.objectContaining({ id: primary.id, managedBy: "adapter", name: adapter.name }),
+		]);
+		const nextSub = store2.getSubscriptions()[0];
+		expect(nextSub?.routing.dynamic).toEqual([primary.id]);
+		expect(nextSub?.routing.live).toEqual([primary.id]);
+		expect(nextSub?.atAll.dynamic).toEqual({ [primary.id]: true });
+		expect(nextSub?.atAll.live).toEqual({ [primary.id]: false });
+		await rm(dir2, { recursive: true, force: true });
 	});
 
 	it("a fresh store re-loads existing JSON on disk", async () => {

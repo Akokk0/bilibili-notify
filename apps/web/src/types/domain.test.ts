@@ -11,6 +11,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	makeEmptyAdapter,
+	makeEmptyTarget,
 	maskWebhookUrl,
 	newId,
 	WEBHOOK_PROVIDERS,
@@ -85,8 +86,26 @@ describe("webhook adapter factories", () => {
 		});
 	});
 
-	it("WEBHOOK_PROVIDERS 覆盖 generic / dingtalk / feishu", () => {
-		expect(WEBHOOK_PROVIDERS.map((p) => p.value)).toEqual(["generic", "dingtalk", "feishu"]);
+	it("WEBHOOK_PROVIDERS 覆盖 generic / dingtalk / feishu / wecom", () => {
+		expect(WEBHOOK_PROVIDERS.map((p) => p.value)).toEqual([
+			"generic",
+			"dingtalk",
+			"feishu",
+			"wecom",
+		]);
+	});
+
+	it("makeEmptyTarget(webhook) 仍生成空 session 的合法手动目标", () => {
+		const adapter = makeEmptyAdapter("webhook", "团队 webhook");
+		const target = makeEmptyTarget(adapter, "团队 webhook");
+		expect(target).toMatchObject({
+			adapterId: adapter.id,
+			platform: "webhook",
+			scope: "channel",
+			enabled: true,
+			session: {},
+		});
+		expect(target.managedBy).toBeUndefined();
 	});
 
 	it("webhook placeholder / secret hint 随 provider 切换", () => {
@@ -96,6 +115,9 @@ describe("webhook adapter factories", () => {
 		expect(webhookSecretHint("dingtalk")).toContain("timestamp/sign");
 		expect(webhookUrlPlaceholder("feishu")).toContain("open.feishu.cn");
 		expect(webhookSecretHint("feishu")).toContain("timestamp/sign");
+		expect(webhookUrlPlaceholder("wecom")).toContain("qyapi.weixin.qq.com");
+		expect(webhookUrlPlaceholder("wecom")).toContain("key=");
+		expect(webhookSecretHint("wecom")).toContain("不需要 Secret");
 	});
 
 	it("maskWebhookUrl 隐藏 query token 与 path token", () => {
@@ -104,6 +126,9 @@ describe("webhook adapter factories", () => {
 		);
 		expect(maskWebhookUrl("https://open.feishu.cn/open-apis/bot/v2/hook/token123")).toBe(
 			"https://open.feishu.cn/***",
+		);
+		expect(maskWebhookUrl("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wx-key")).toBe(
+			"https://qyapi.weixin.qq.com/***?…",
 		);
 		expect(maskWebhookUrl("not a url")).toBe("已配置 webhook URL");
 	});

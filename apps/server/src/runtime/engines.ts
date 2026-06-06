@@ -186,7 +186,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					err: result.err,
 				};
 				void opts.configStore
-					.patchTarget(target.id, { testStatus: nextStatus })
+					.recordTargetTestStatus(target.id, nextStatus)
 					.catch((e) =>
 						log.warn(`[sink] target ${target.id} testStatus writeback failed: ${String(e)}`),
 					);

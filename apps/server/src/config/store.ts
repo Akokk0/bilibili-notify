@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import {
 	type ConfigScope,
 	type Disposable,
+	deterministicUuid,
 	type GlobalConfig,
 	GlobalConfigSchema,
 	type MessageBus,
@@ -85,6 +86,7 @@ export interface ConfigStore {
 	deleteAdapter(id: string): Promise<boolean>;
 	upsertTarget(target: PushTarget): Promise<void>;
 	patchTarget(id: string, patch: DeepPartial<PushTarget>): Promise<PushTarget>;
+	recordTargetTestStatus(id: string, status: PushTarget["testStatus"]): Promise<PushTarget>;
 	deleteTarget(id: string): Promise<boolean>;
 }
 
@@ -361,6 +363,157 @@ function deriveAdapterName(targetName: string, addr: string): string {
 		}
 	}
 	return targetName || "默认连接";
+}
+
+type WebhookAdapter = Extract<PushAdapter, { platform: "webhook" }>;
+
+function managedWebhookTargetId(adapterId: string): string {
+	return deterministicUuid(`push-target:webhook-adapter:${adapterId}`);
+}
+
+function makeManagedWebhookTarget(adapter: WebhookAdapter, existing?: PushTarget): PushTarget {
+	return {
+		id: existing?.id ?? managedWebhookTargetId(adapter.id),
+		name: adapter.name || "Webhook",
+		adapterId: adapter.id,
+		platform: "webhook",
+		scope: "channel",
+		enabled: adapter.enabled,
+		managedBy: "adapter",
+		testStatus: existing?.testStatus,
+		session: {},
+	};
+}
+
+function syncManagedWebhookTarget(
+	adapter: WebhookAdapter,
+	targets: readonly PushTarget[],
+): { next: PushTarget[]; changed: boolean; aliases: Map<string, string> } {
+	const owned = targets.filter((t) => t.platform === "webhook" && t.adapterId === adapter.id);
+	const existing = owned.find((t) => t.managedBy === "adapter") ?? owned[0];
+	const desired = makeManagedWebhookTarget(adapter, existing);
+	if (!existing) return { next: [...targets, desired], changed: true, aliases: new Map() };
+
+	const aliases = new Map<string, string>();
+	for (const target of owned) {
+		if (target.id !== desired.id) aliases.set(target.id, desired.id);
+	}
+	const next = targets
+		.filter((t) => !(t.platform === "webhook" && t.adapterId === adapter.id && t.id !== desired.id))
+		.map((t) => (t.id === desired.id ? desired : t));
+	const changed =
+		aliases.size > 0 ||
+		existing.name !== desired.name ||
+		existing.adapterId !== desired.adapterId ||
+		existing.platform !== desired.platform ||
+		existing.scope !== desired.scope ||
+		existing.enabled !== desired.enabled ||
+		existing.managedBy !== desired.managedBy ||
+		Object.keys(existing.session).length !== 0;
+	return { next, changed, aliases };
+}
+
+function syncManagedWebhookTargets(
+	adapters: readonly PushAdapter[],
+	targets: readonly PushTarget[],
+): { next: PushTarget[]; changed: boolean; aliases: Map<string, string> } {
+	let next = [...targets];
+	let changed = false;
+	const aliases = new Map<string, string>();
+	for (const adapter of adapters) {
+		if (adapter.platform !== "webhook") continue;
+		const r = syncManagedWebhookTarget(adapter, next);
+		next = r.next;
+		changed ||= r.changed;
+		for (const [from, to] of r.aliases) aliases.set(from, to);
+	}
+	return { next, changed, aliases };
+}
+
+function removeTargetIdsFromSubscriptions(
+	subscriptions: readonly Subscription[],
+	targetIds: readonly string[],
+): { next: Subscription[]; changed: boolean } {
+	if (targetIds.length === 0) return { next: [...subscriptions], changed: false };
+	const ids = new Set(targetIds);
+	let changed = false;
+	const next = subscriptions.map((sub) => {
+		let subChanged = false;
+		const routing = { ...sub.routing };
+		for (const key of Object.keys(routing) as Array<keyof Subscription["routing"]>) {
+			const before = routing[key];
+			const after = before.filter((id) => !ids.has(id));
+			if (after.length !== before.length) {
+				routing[key] = after;
+				subChanged = true;
+			}
+		}
+
+		const atAll = {
+			dynamic: { ...sub.atAll.dynamic },
+			live: { ...sub.atAll.live },
+		};
+		for (const key of Object.keys(atAll.dynamic)) {
+			if (ids.has(key)) {
+				delete atAll.dynamic[key];
+				subChanged = true;
+			}
+		}
+		for (const key of Object.keys(atAll.live)) {
+			if (ids.has(key)) {
+				delete atAll.live[key];
+				subChanged = true;
+			}
+		}
+		if (!subChanged) return sub;
+		changed = true;
+		return { ...sub, routing, atAll };
+	});
+	return { next, changed };
+}
+
+function replaceTargetIdsInSubscriptions(
+	subscriptions: readonly Subscription[],
+	aliases: ReadonlyMap<string, string>,
+): { next: Subscription[]; changed: boolean } {
+	if (aliases.size === 0) return { next: [...subscriptions], changed: false };
+	let changed = false;
+	const next = subscriptions.map((sub) => {
+		let subChanged = false;
+		const routing = { ...sub.routing };
+		for (const key of Object.keys(routing) as Array<keyof Subscription["routing"]>) {
+			const before = routing[key];
+			const seen = new Set<string>();
+			const after: string[] = [];
+			for (const id of before) {
+				const mapped = aliases.get(id) ?? id;
+				if (mapped !== id) subChanged = true;
+				if (!seen.has(mapped)) {
+					seen.add(mapped);
+					after.push(mapped);
+				}
+			}
+			if (after.length !== before.length || subChanged) routing[key] = after;
+		}
+
+		const atAll = {
+			dynamic: { ...sub.atAll.dynamic },
+			live: { ...sub.atAll.live },
+		};
+		for (const group of [atAll.dynamic, atAll.live]) {
+			for (const [from, to] of aliases) {
+				if (!(from in group)) continue;
+				const value = group[from];
+				if (!(to in group) && value !== undefined) group[to] = value;
+				delete group[from];
+				subChanged = true;
+			}
+		}
+		if (!subChanged) return sub;
+		changed = true;
+		return { ...sub, routing, atAll };
+	});
+	return { next, changed };
 }
 
 // ---------------------------------------------------------------------------
@@ -662,9 +815,20 @@ class NodeConfigStore implements ConfigStore {
 				}
 				targets.push(r.data);
 			}
-			this.targets = targets;
+			const synced = syncManagedWebhookTargets(this.adapters, targets);
+			this.targets = synced.next;
 			this.meta.targets.exists = true;
 			this.meta.targets.lastUpdatedAt = existed ? null : new Date().toISOString();
+			if (synced.changed) {
+				await atomicWriteJson(this.path("targets"), this.targets);
+				this.touch("targets");
+			}
+			const replaced = replaceTargetIdsInSubscriptions(this.subscriptions, synced.aliases);
+			if (replaced.changed) {
+				await atomicWriteJson(this.path("subscriptions"), replaced.next);
+				this.subscriptions = replaced.next;
+				this.touch("subscriptions");
+			}
 			return;
 		}
 
@@ -710,10 +874,17 @@ class NodeConfigStore implements ConfigStore {
 			`config-store migrating ${targetsRaw.length} legacy push target(s) → adapter + target split`,
 		);
 		const { adapters, targets } = migrateLegacyTargets(targetsRaw);
-		await atomicWriteJson(this.path("adapters"), adapters);
-		await atomicWriteJson(this.path("targets"), targets);
+		const synced = syncManagedWebhookTargets(adapters, targets);
+		const replaced = replaceTargetIdsInSubscriptions(this.subscriptions, synced.aliases);
 		this.adapters = adapters;
-		this.targets = targets;
+		this.targets = synced.next;
+		if (replaced.changed) this.subscriptions = replaced.next;
+		await atomicWriteJson(this.path("adapters"), adapters);
+		await atomicWriteJson(this.path("targets"), this.targets);
+		if (replaced.changed) {
+			await atomicWriteJson(this.path("subscriptions"), this.subscriptions);
+			this.touch("subscriptions");
+		}
 		this.meta.adapters.exists = true;
 		this.meta.adapters.lastUpdatedAt = new Date().toISOString();
 		this.meta.targets.exists = true;
@@ -874,17 +1045,47 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	async upsertAdapter(adapter: PushAdapter): Promise<void> {
-		await this.runScoped("adapters", async () => {
+		const saved = await this.runScoped("adapters", async () => {
 			const parsed = PushAdapterSchema.safeParse(adapter);
 			if (!parsed.success) {
 				throw new ConfigValidationError("adapters", parsed.error.issues);
+			}
+			const existing = this.adapters.find((a) => a.id === parsed.data.id);
+			if (existing && existing.platform !== parsed.data.platform) {
+				throw new ConfigValidationError(
+					"adapters",
+					{
+						id: parsed.data.id,
+						from: existing.platform,
+						to: parsed.data.platform,
+						message: "adapter platform cannot be changed",
+					},
+					`adapter ${parsed.data.id} platform cannot be changed`,
+				);
 			}
 			const next = upsertById(this.adapters, parsed.data);
 			await atomicWriteJson(this.path("adapters"), next);
 			this.adapters = next;
 			this.touch("adapters");
+			return parsed.data;
 		});
+		let targetAliases = new Map<string, string>();
+		const targetsChanged =
+			saved.platform === "webhook"
+				? await this.runScoped("targets", async () => {
+						const synced = syncManagedWebhookTarget(saved, this.targets);
+						targetAliases = synced.aliases;
+						if (!synced.changed) return false;
+						await atomicWriteJson(this.path("targets"), synced.next);
+						this.targets = synced.next;
+						this.touch("targets");
+						return true;
+					})
+				: false;
+		const subscriptionsChanged = await this.replaceSubscriptionTargetAliases(targetAliases);
 		this.bus.emit("config-changed", "adapters");
+		if (targetsChanged) this.bus.emit("config-changed", "targets");
+		if (subscriptionsChanged) this.bus.emit("config-changed", "subscriptions");
 	}
 
 	async patchAdapter(id: string, patch: DeepPartial<PushAdapter>): Promise<PushAdapter> {
@@ -903,6 +1104,18 @@ class NodeConfigStore implements ConfigStore {
 			if (!parsed.success) {
 				throw new ConfigValidationError("adapters", parsed.error.issues);
 			}
+			if (current.platform !== parsed.data.platform) {
+				throw new ConfigValidationError(
+					"adapters",
+					{
+						id,
+						from: current.platform,
+						to: parsed.data.platform,
+						message: "adapter platform cannot be changed",
+					},
+					`adapter ${id} platform cannot be changed`,
+				);
+			}
 			const next = [...this.adapters];
 			next[idx] = parsed.data;
 			await atomicWriteJson(this.path("adapters"), next);
@@ -910,34 +1123,78 @@ class NodeConfigStore implements ConfigStore {
 			this.touch("adapters");
 			return parsed.data;
 		});
+		let targetAliases = new Map<string, string>();
+		const targetsChanged =
+			result.platform === "webhook"
+				? await this.runScoped("targets", async () => {
+						const synced = syncManagedWebhookTarget(result, this.targets);
+						targetAliases = synced.aliases;
+						if (!synced.changed) return false;
+						await atomicWriteJson(this.path("targets"), synced.next);
+						this.targets = synced.next;
+						this.touch("targets");
+						return true;
+					})
+				: false;
+		const subscriptionsChanged = await this.replaceSubscriptionTargetAliases(targetAliases);
 		this.bus.emit("config-changed", "adapters");
+		if (targetsChanged) this.bus.emit("config-changed", "targets");
+		if (subscriptionsChanged) this.bus.emit("config-changed", "subscriptions");
 		return deepClone(result);
 	}
 
 	async deleteAdapter(id: string): Promise<boolean> {
-		const removed = await this.runScoped("adapters", async () => {
+		const removedAdapter = await this.runScoped("adapters", async () => {
+			const idx = this.adapters.findIndex((a) => a.id === id);
+			if (idx < 0) return undefined;
+			const adapter = this.adapters[idx] as PushAdapter;
 			// 引用检查必须在任务体内(执行期)对 this.targets 求值,而非 enqueue
 			// 时 —— 在 scope 外同步检查会与并行 targets 队列竞态:check 通过后、
 			// 删除执行前一个 upsertTarget 引用该 adapter 即产生孤儿 target。
 			// (互补:upsertTarget 侧 assertAdapterMatches 也校验 adapter 存在。)
 			const referencing = this.targets.filter((t) => t.adapterId === id).map((t) => t.id);
-			if (referencing.length > 0) {
+			if (adapter.platform !== "webhook" && referencing.length > 0) {
 				throw new ConfigValidationError(
 					"adapters",
 					{ id, targetIds: referencing, message: "adapter still in use" },
 					`adapter ${id} is still referenced by ${referencing.length} target(s)`,
 				);
 			}
-			const idx = this.adapters.findIndex((a) => a.id === id);
-			if (idx < 0) return false;
 			const next = this.adapters.filter((_, i) => i !== idx);
 			await atomicWriteJson(this.path("adapters"), next);
 			this.adapters = next;
 			this.touch("adapters");
-			return true;
+			return adapter;
 		});
-		if (removed) this.bus.emit("config-changed", "adapters");
-		return removed;
+		if (!removedAdapter) return false;
+
+		let targetsChanged = false;
+		let subscriptionsChanged = false;
+		if (removedAdapter.platform === "webhook") {
+			let removedTargetIds: string[] = [];
+			targetsChanged = await this.runScoped("targets", async () => {
+				removedTargetIds = this.targets.filter((t) => t.adapterId === id).map((t) => t.id);
+				const next = this.targets.filter((t) => t.adapterId !== id);
+				if (next.length === this.targets.length) return false;
+				await atomicWriteJson(this.path("targets"), next);
+				this.targets = next;
+				this.touch("targets");
+				return true;
+			});
+			subscriptionsChanged = await this.runScoped("subscriptions", async () => {
+				const cleaned = removeTargetIdsFromSubscriptions(this.subscriptions, removedTargetIds);
+				if (!cleaned.changed) return false;
+				await atomicWriteJson(this.path("subscriptions"), cleaned.next);
+				this.subscriptions = cleaned.next;
+				this.touch("subscriptions");
+				return true;
+			});
+		}
+
+		this.bus.emit("config-changed", "adapters");
+		if (targetsChanged) this.bus.emit("config-changed", "targets");
+		if (subscriptionsChanged) this.bus.emit("config-changed", "subscriptions");
+		return true;
 	}
 
 	async upsertTarget(target: PushTarget): Promise<void> {
@@ -947,6 +1204,13 @@ class NodeConfigStore implements ConfigStore {
 				throw new ConfigValidationError("targets", parsed.error.issues);
 			}
 			this.assertAdapterMatches(parsed.data);
+			if (parsed.data.platform === "webhook") {
+				throw new ConfigValidationError(
+					"targets",
+					{ message: "webhook target is managed by adapter" },
+					"webhook targets are created from webhook adapters automatically",
+				);
+			}
 			const next = upsertById(this.targets, parsed.data);
 			await atomicWriteJson(this.path("targets"), next);
 			this.targets = next;
@@ -966,6 +1230,17 @@ class NodeConfigStore implements ConfigStore {
 				);
 			}
 			const current = this.targets[idx] as PushTarget;
+			if (current.platform === "webhook" && current.managedBy === "adapter") {
+				throw new ConfigValidationError(
+					"targets",
+					{
+						id,
+						keys: Object.keys(patch as Record<string, unknown>),
+						message: "managed target cannot be edited directly",
+					},
+					`target ${id} is managed by adapter and cannot be edited directly`,
+				);
+			}
 			const merged = deepMerge(current, { ...patch, id });
 			const parsed = PushTargetSchema.safeParse(merged);
 			if (!parsed.success) {
@@ -978,6 +1253,27 @@ class NodeConfigStore implements ConfigStore {
 			this.targets = next;
 			this.touch("targets");
 			return parsed.data;
+		});
+		this.bus.emit("config-changed", "targets");
+		return deepClone(result);
+	}
+
+	async recordTargetTestStatus(id: string, status: PushTarget["testStatus"]): Promise<PushTarget> {
+		const result = await this.runScoped("targets", async () => {
+			const idx = this.targets.findIndex((t) => t.id === id);
+			if (idx < 0) {
+				throw new ConfigValidationError(
+					"targets",
+					{ id, message: "target not found" },
+					`target ${id} not found`,
+				);
+			}
+			const next = [...this.targets];
+			next[idx] = { ...(this.targets[idx] as PushTarget), testStatus: status };
+			await atomicWriteJson(this.path("targets"), next);
+			this.targets = next;
+			this.touch("targets");
+			return next[idx] as PushTarget;
 		});
 		this.bus.emit("config-changed", "targets");
 		return deepClone(result);
@@ -1009,6 +1305,14 @@ class NodeConfigStore implements ConfigStore {
 		const removed = await this.runScoped("targets", async () => {
 			const idx = this.targets.findIndex((t) => t.id === id);
 			if (idx < 0) return false;
+			const target = this.targets[idx] as PushTarget;
+			if (target.managedBy === "adapter") {
+				throw new ConfigValidationError(
+					"targets",
+					{ id, message: "managed target cannot be deleted directly" },
+					`target ${id} is managed by adapter and cannot be deleted directly`,
+				);
+			}
 			const next = this.targets.filter((_, i) => i !== idx);
 			await atomicWriteJson(this.path("targets"), next);
 			this.targets = next;
@@ -1020,6 +1324,19 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	// ---- internals ------------------------------------------------------
+
+	private async replaceSubscriptionTargetAliases(
+		aliases: ReadonlyMap<string, string>,
+	): Promise<boolean> {
+		return this.runScoped("subscriptions", async () => {
+			const replaced = replaceTargetIdsInSubscriptions(this.subscriptions, aliases);
+			if (!replaced.changed) return false;
+			await atomicWriteJson(this.path("subscriptions"), replaced.next);
+			this.subscriptions = replaced.next;
+			this.touch("subscriptions");
+			return true;
+		});
+	}
 
 	private touch(scope: ConfigScope): void {
 		this.meta[scope].exists = true;

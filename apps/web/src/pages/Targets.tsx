@@ -102,10 +102,19 @@ function targetSessionSummary(target: PushTarget): string {
 		return s.groupId ? `→ 群 ${s.groupId}` : "→ 未指定群号";
 	}
 	if (target.platform === "webhook") {
-		return "→ webhook 终点";
+		return target.managedBy === "adapter" ? "→ 系统托管 webhook 终点" : "→ webhook 终点";
 	}
 	// web-dashboard 是单用户 in-process 广播,session 没有 per-user 字段。
 	return "→ 广播给所有 dashboard 客户端";
+}
+
+function managedWebhookTargetForAdapter(
+	adapter: PushAdapter,
+	targets: readonly PushTarget[],
+): PushTarget | undefined {
+	if (adapter.platform !== "webhook") return undefined;
+	const owned = targets.filter((t) => t.platform === "webhook" && t.adapterId === adapter.id);
+	return owned.find((t) => t.managedBy === "adapter") ?? owned[0];
 }
 
 // ── Adapter card ────────────────────────────────────────────────────────────
@@ -131,9 +140,18 @@ interface TargetCardProps {
 	onDelete: () => void;
 	onTest: () => void;
 	testing: TestState | undefined;
+	readOnly?: boolean;
 }
 
-function TargetCard({ target, adapter, onEdit, onDelete, onTest, testing }: TargetCardProps) {
+function TargetCard({
+	target,
+	adapter,
+	onEdit,
+	onDelete,
+	onTest,
+	testing,
+	readOnly,
+}: TargetCardProps) {
 	const tint = tintFor(target.platform);
 	const adapterMissing = !adapter;
 	const status = targetStatusFor(target);
@@ -204,18 +222,22 @@ function TargetCard({ target, adapter, onEdit, onDelete, onTest, testing }: Targ
 									? "失败"
 									: "测试"}
 					</Btn>
-					<Btn size="sm" variant="ghost" onClick={onEdit}>
-						配置
-					</Btn>
-					<Btn
-						size="sm"
-						variant="ghost"
-						onClick={onDelete}
-						title="删除"
-						icon={<Icon.trash size={11} />}
-					>
-						{null}
-					</Btn>
+					{readOnly ? null : (
+						<>
+							<Btn size="sm" variant="ghost" onClick={onEdit}>
+								配置
+							</Btn>
+							<Btn
+								size="sm"
+								variant="ghost"
+								onClick={onDelete}
+								title="删除"
+								icon={<Icon.trash size={11} />}
+							>
+								{null}
+							</Btn>
+						</>
+					)}
 				</div>
 			</div>
 		</div>
@@ -504,7 +526,7 @@ function AdapterConnectionFields({
 				<Field
 					label="Webhook 协议"
 					code="config.provider"
-					hint="Generic 保持旧 JSON envelope；钉钉/飞书按平台机器人协议发送文本消息"
+					hint="Generic 保持旧 JSON envelope；钉钉/飞书/企业微信按平台机器人协议发送文本消息"
 					required
 				>
 					<TSelect<WebhookProvider>
@@ -618,7 +640,8 @@ function TargetEditorModal({
 }: TargetEditorProps) {
 	const valid = value.name.trim().length > 0 && Boolean(value.adapterId);
 	const tint = tintFor(value.platform);
-	const eligibleAdapters = adapters; // any platform-platform mismatch resolved on switch
+	// Webhook target 由 adapter 自动托管，不能从手动 target 弹窗创建 / 改挂。
+	const eligibleAdapters = adapters.filter((a) => a.platform !== "webhook");
 	return (
 		<ModalShell onCancel={onCancel} width={500}>
 			<div className="mb-3 text-[15px] font-bold text-bn-text-primary">
@@ -633,7 +656,7 @@ function TargetEditorModal({
 				>
 					{eligibleAdapters.length === 0 ? (
 						<div className="rounded-md border border-dashed border-gray-200 px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
-							尚未配置任何适配器 · 请先在上方"适配器"区新建
+							尚未配置任何可手动绑定的适配器 · Webhook 目标由系统自动托管
 						</div>
 					) : (
 						<div className="space-y-1.5">
@@ -1003,7 +1026,8 @@ function AdapterRail({
 										) : null}
 									</span>
 									<span className="mt-0.5 block break-words text-[10.5px] leading-snug text-bn-text-tertiary">
-										{platformLabel(a.platform)} · {count} 个目标
+										{platformLabel(a.platform)} ·{" "}
+										{a.platform === "webhook" ? "单向投递" : `${count} 个目标`}
 									</span>
 								</span>
 							</button>
@@ -1088,6 +1112,9 @@ export default function Targets() {
 	const selectedTargets = selectedAdapter
 		? targets.filter((t) => t.adapterId === selectedAdapter.id)
 		: [];
+	const selectedManagedWebhookTarget = selectedAdapter
+		? managedWebhookTargetForAdapter(selectedAdapter, targets)
+		: undefined;
 
 	const showToast = (msg: string, ok = true): void => {
 		setToast({ msg, ok });
@@ -1108,6 +1135,7 @@ export default function Targets() {
 		},
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["adapters"] });
+			qc.invalidateQueries({ queryKey: ["targets"] });
 			showToast(adapterDraft?.mode === "add" ? "已新建适配器" : "适配器已保存");
 			setAdapterDraft(null);
 		},
@@ -1126,6 +1154,7 @@ export default function Targets() {
 		},
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["adapters"] });
+			qc.invalidateQueries({ queryKey: ["targets"] });
 			showToast("已移除适配器");
 			setConfirmDelete(null);
 		},
@@ -1168,9 +1197,45 @@ export default function Targets() {
 	});
 
 	async function testAdapter(a: PushAdapter): Promise<void> {
-		// Connection-only probe — calls platformAdapter.probe(), no real message
-		// sent. Webhook returns ok=null (unsupported) which we surface as a
-		// targeted toast asking the user to use a target send-test instead.
+		if (a.platform === "webhook") {
+			const target = managedWebhookTargetForAdapter(a, targets);
+			if (!target) {
+				showToast("请先保存 Webhook，系统会自动创建默认投递目标", false);
+				return;
+			}
+			setTesting((p) => ({ ...p, [a.id]: "pending" }));
+			setTargetTesting((p) => ({ ...p, [target.id]: "pending" }));
+			try {
+				const res = await api.post<TestResponse>("/api/push/test", {
+					targetId: target.id,
+					kind: "text",
+				});
+				setTesting((p) => ({ ...p, [a.id]: res.ok ? "ok" : "fail" }));
+				setTargetTesting((p) => ({ ...p, [target.id]: res.ok ? "ok" : "fail" }));
+				showToast(res.ok ? `已送达 · ${res.latencyMs}ms` : `失败:${res.err ?? "未知错误"}`, res.ok);
+				qc.invalidateQueries({ queryKey: ["targets"] });
+			} catch (err) {
+				setTesting((p) => ({ ...p, [a.id]: "fail" }));
+				setTargetTesting((p) => ({ ...p, [target.id]: "fail" }));
+				const msg = err instanceof ApiError ? err.message : String(err);
+				showToast(`测试失败:${msg}`, false);
+			}
+			window.setTimeout(() => {
+				setTesting((p) => {
+					const next = { ...p };
+					delete next[a.id];
+					return next;
+				});
+				setTargetTesting((p) => {
+					const next = { ...p };
+					delete next[target.id];
+					return next;
+				});
+			}, 2000);
+			return;
+		}
+
+		// Connection-only probe — calls platformAdapter.probe(), no real message sent.
 		setTesting((p) => ({ ...p, [a.id]: "pending" }));
 		try {
 			const res = await api.post<{ ok: boolean | null; latencyMs: number; err?: string }>(
@@ -1183,7 +1248,7 @@ export default function Targets() {
 					delete next[a.id];
 					return next;
 				});
-				showToast(`该平台不支持连接探测;请用该适配器下任一目标的 "测试" 验证`, false);
+				showToast("该平台不支持连接探测", false);
 				return;
 			}
 			setTesting((p) => ({ ...p, [a.id]: res.ok ? "ok" : "fail" }));
@@ -1251,13 +1316,32 @@ export default function Targets() {
 			showToast("请先新建一个适配器", false);
 			return;
 		}
+		if (a.platform === "webhook") {
+			showToast("Webhook 目标由系统自动托管，无需手动新建", false);
+			return;
+		}
 		setTargetDraft({ mode: "add", value: makeEmptyTarget(a, "") });
 	}
 
 	function startEditTarget(t: PushTarget): void {
 		setError(null);
+		if (t.platform === "webhook" && t.managedBy === "adapter") {
+			showToast("Webhook 目标由系统自动托管，请在适配器里修改 URL", false);
+			return;
+		}
 		setTargetDraft({ mode: "edit", value: t });
 	}
+
+	const selectedAdapterStatus =
+		selectedAdapter?.platform === "webhook" && selectedManagedWebhookTarget
+			? targetStatusFor(selectedManagedWebhookTarget)
+			: selectedAdapter
+				? adapterStatusFor(selectedAdapter)
+				: "pending";
+	const selectedAdapterTestStatus =
+		selectedAdapter?.platform === "webhook"
+			? selectedManagedWebhookTarget?.testStatus
+			: selectedAdapter?.testStatus;
 
 	const isLoading = adaptersQuery.isLoading || targetsQuery.isLoading;
 
@@ -1304,7 +1388,7 @@ export default function Targets() {
 											<span className="truncate text-[14.5px] font-bold text-bn-text-primary">
 												{selectedAdapter.name || "（未命名）"}
 											</span>
-											<StatusDot kind={adapterStatusFor(selectedAdapter)} />
+											<StatusDot kind={selectedAdapterStatus} />
 											{!selectedAdapter.enabled ? (
 												<span className="text-[10.5px] text-bn-text-tertiary">(已停用)</span>
 											) : null}
@@ -1313,11 +1397,11 @@ export default function Targets() {
 											{platformLabel(selectedAdapter.platform)} ·{" "}
 											{adapterEndpointSummary(selectedAdapter)}
 										</div>
-										{selectedAdapter.testStatus ? (
+										{selectedAdapterTestStatus ? (
 											<div
 												className="mt-2 inline-block rounded-[4px] border-l-[3px] px-2 py-0.5 text-[11px]"
 												style={
-													selectedAdapter.testStatus.ok
+													selectedAdapterTestStatus.ok
 														? {
 																background: "#f0fdf4",
 																borderLeftColor: "#22c55e",
@@ -1330,15 +1414,15 @@ export default function Targets() {
 															}
 												}
 											>
-												{selectedAdapter.testStatus.ok
+												{selectedAdapterTestStatus.ok
 													? `上次测试 OK${
-															selectedAdapter.testStatus.latencyMs != null
-																? ` · ${selectedAdapter.testStatus.latencyMs}ms`
+															selectedAdapterTestStatus.latencyMs != null
+																? ` · ${selectedAdapterTestStatus.latencyMs}ms`
 																: ""
 														}`
 													: `上次测试失败${
-															selectedAdapter.testStatus.err
-																? ` — ${selectedAdapter.testStatus.err}`
+															selectedAdapterTestStatus.err
+																? ` — ${selectedAdapterTestStatus.err}`
 																: ""
 														}`}
 											</div>
@@ -1352,12 +1436,18 @@ export default function Targets() {
 											disabled={testing[selectedAdapter.id] === "pending"}
 										>
 											{testing[selectedAdapter.id] === "pending"
-												? "测试中…"
+												? selectedAdapter.platform === "webhook"
+													? "发送中…"
+													: "测试中…"
 												: testing[selectedAdapter.id] === "ok"
-													? "已连通"
+													? selectedAdapter.platform === "webhook"
+														? "已送达"
+														: "已连通"
 													: testing[selectedAdapter.id] === "fail"
 														? "失败"
-														: "测试"}
+														: selectedAdapter.platform === "webhook"
+															? "发送测试"
+															: "测试"}
 										</Btn>
 										<Btn
 											size="sm"
@@ -1386,16 +1476,49 @@ export default function Targets() {
 							<div className="rounded-bn-card bg-white p-4 shadow-bn-card">
 								<div className="mb-3 flex items-baseline justify-between">
 									<div>
-										<div className="text-[14px] font-bold text-bn-text-primary">推送目标</div>
+										<div className="text-[14px] font-bold text-bn-text-primary">
+											{selectedAdapter.platform === "webhook" ? "Webhook 投递目标" : "推送目标"}
+										</div>
 										<div className="text-[11.5px] text-bn-text-tertiary">
-											本适配器下的会话:群号 / 用户 ID 等。
+											{selectedAdapter.platform === "webhook"
+												? "Webhook 是单向投递终点，保存 URL 后系统会自动创建默认投递目标。"
+												: "本适配器下的会话:群号 / 用户 ID 等。"}
 										</div>
 									</div>
-									<Btn size="sm" variant="outline" onClick={() => startNewTarget(selectedAdapter)}>
-										+ 新建推送目标
-									</Btn>
+									{selectedAdapter.platform === "webhook" ? null : (
+										<Btn
+											size="sm"
+											variant="outline"
+											onClick={() => startNewTarget(selectedAdapter)}
+										>
+											+ 新建推送目标
+										</Btn>
+									)}
 								</div>
-								{selectedTargets.length === 0 ? (
+								{selectedAdapter.platform === "webhook" ? (
+									<div className="space-y-2.5">
+										<div className="rounded-[9px] border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-[11.5px] leading-relaxed text-emerald-800">
+											无需手动配置额外 PushTarget；订阅页会看到这个 Webhook，可直接选择并投递。
+										</div>
+										{selectedManagedWebhookTarget ? (
+											<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+												<TargetCard
+													target={selectedManagedWebhookTarget}
+													adapter={selectedAdapter}
+													onEdit={() => {}}
+													onDelete={() => {}}
+													onTest={() => testTarget(selectedManagedWebhookTarget)}
+													testing={targetTesting[selectedManagedWebhookTarget.id]}
+													readOnly
+												/>
+											</div>
+										) : (
+											<div className="rounded-[9px] border border-dashed border-gray-200 px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
+												保存 Webhook 后系统会自动创建默认投递目标。
+											</div>
+										)}
+									</div>
+								) : selectedTargets.length === 0 ? (
 									<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
 										<AddCard
 											label="新建推送目标"
@@ -1417,6 +1540,7 @@ export default function Targets() {
 												}}
 												onTest={() => testTarget(t)}
 												testing={targetTesting[t.id]}
+												readOnly={t.managedBy === "adapter"}
 											/>
 										))}
 										<AddCard
@@ -1469,7 +1593,9 @@ export default function Targets() {
 					subjectName={confirmDelete.value.name}
 					hint={
 						confirmDelete.kind === "adapter"
-							? "适配器若仍被推送目标引用,删除会失败。请先把这些目标改挂到其他适配器或先删除它们。"
+							? confirmDelete.value.platform === "webhook"
+								? "该 Webhook 的系统托管目标会一并删除，订阅路由中的引用会同步清理。"
+								: "适配器若仍被推送目标引用,删除会失败。请先把这些目标改挂到其他适配器或先删除它们。"
 							: "该目标在订阅路由中的引用将变成空引用,推送会跳过它。"
 					}
 					onCancel={() => {

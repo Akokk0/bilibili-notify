@@ -43,7 +43,7 @@ describe("PushAdapterSchema (discriminated by platform)", () => {
 	});
 
 	it("accepts supported webhook providers", () => {
-		for (const provider of ["generic", "dingtalk", "feishu"] as const) {
+		for (const provider of ["generic", "dingtalk", "feishu", "wecom"] as const) {
 			const r = PushAdapterSchema.safeParse({
 				id: UUID_A,
 				name: `wh-${provider}`,
@@ -293,6 +293,48 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			session: {},
 		});
 		expect(r.success).toBe(true);
+	});
+
+	it("accepts an adapter-managed webhook target", () => {
+		const r = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "wh:managed",
+			adapterId: UUID_A,
+			platform: "webhook",
+			scope: "channel",
+			enabled: true,
+			managedBy: "adapter",
+			session: {},
+		});
+		expect(r.success).toBe(true);
+	});
+
+	it("rejects unsupported managedBy values", () => {
+		const r = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "wh:bad-managed",
+			adapterId: UUID_A,
+			platform: "webhook",
+			scope: "channel",
+			enabled: true,
+			managedBy: "user",
+			session: {},
+		});
+		expect(r.success).toBe(false);
+	});
+
+	it("rejects managedBy on non-webhook targets", () => {
+		const r = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "onebot:managed",
+			adapterId: UUID_A,
+			platform: "onebot",
+			scope: "group",
+			enabled: true,
+			managedBy: "adapter",
+			session: { groupId: "111" },
+		});
+		expect(r.success).toBe(false);
 	});
 
 	it("rejects a webhook target with URL-like session keys", () => {

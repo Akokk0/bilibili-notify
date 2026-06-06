@@ -1263,6 +1263,49 @@ describe("webhook — send", () => {
 		expect(invalid).toMatchObject({ ok: false, err: "Feishu response is not JSON" });
 	});
 
+	it("wecom:text body + 业务成功码", async () => {
+		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { errcode: 0, errmsg: "ok" } }));
+		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
+			whAdapter({
+				provider: "wecom",
+				url: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wx-key",
+				secret: "unused-secret",
+			}),
+			whTarget(),
+			TEXT,
+		);
+		expect(r.ok).toBe(true);
+		const url = new URL(String(fetchMock.mock.calls[0]?.[0]));
+		expect(url.searchParams.get("key")).toBe("wx-key");
+		expect(url.searchParams.has("timestamp")).toBe(false);
+		expect(url.searchParams.has("sign")).toBe(false);
+		const init = lastInit() as { headers: Record<string, string> };
+		expect(init.headers["x-bilibili-notify-secret"]).toBeUndefined();
+		expect(lastBody()).toEqual({ msgtype: "text", text: { content: "hello" } });
+	});
+
+	it("wecom:HTTP 200 业务失败 / 非 JSON 响应 → ok:false", async () => {
+		fetchMock.mockResolvedValueOnce(
+			res({ ok: true, json: { errcode: 93000, errmsg: "invalid webhook key" } }),
+		);
+		const fail = await createWebhookAdapter({ logger: makeLogger() }).send(
+			whAdapter({ provider: "wecom" }),
+			whTarget(),
+			TEXT,
+		);
+		expect(fail.ok).toBe(false);
+		expect(fail.err).toContain("WeCom errcode=93000");
+		expect(fail.err).toContain("invalid webhook key");
+
+		fetchMock.mockResolvedValueOnce(res({ ok: true, text: "not json" }));
+		const invalid = await createWebhookAdapter({ logger: makeLogger() }).send(
+			whAdapter({ provider: "wecom" }),
+			whTarget(),
+			TEXT,
+		);
+		expect(invalid).toMatchObject({ ok: false, err: "WeCom response is not JSON" });
+	});
+
 	it("platform providers 将 image/composite/forward-images 降级为可读文本", async () => {
 		fetchMock.mockResolvedValue(res({ ok: true, json: { errcode: 0, errmsg: "ok" } }));
 		const ad = createWebhookAdapter({ logger: makeLogger() });
@@ -1295,6 +1338,16 @@ describe("webhook — send", () => {
 		expect(lastBody()).toEqual({
 			msg_type: "text",
 			content: { text: "图片:\nhttps://i0.hdslb.com/1.jpg\nhttps://i0.hdslb.com/2.jpg" },
+		});
+
+		await ad.send(whAdapter({ provider: "wecom", secret: undefined }), whTarget(), {
+			kind: "forward-images",
+			urls: ["https://i0.hdslb.com/3.jpg", "https://i0.hdslb.com/4.jpg"],
+			forward: false,
+		});
+		expect(lastBody()).toEqual({
+			msgtype: "text",
+			text: { content: "图片:\nhttps://i0.hdslb.com/3.jpg\nhttps://i0.hdslb.com/4.jpg" },
 		});
 	});
 
@@ -1387,6 +1440,25 @@ describe("webhook — send", () => {
 		const logMsg = String(logger.warn.mock.calls[0]?.[0]);
 		expect(logMsg).not.toContain(url);
 		expect(logMsg).not.toContain("path-token-123");
+	});
+
+	it("错误返回和日志会脱敏企业微信 webhook key", async () => {
+		const url = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wx-key-123";
+		fetchMock.mockRejectedValueOnce(new Error(`request to ${url} failed key=wx-key-123`));
+		const logger = makeLogger();
+		const r = await createWebhookAdapter({ logger }).send(
+			whAdapter({ provider: "wecom", url, secret: "unused-secret" }),
+			whTarget(),
+			TEXT,
+		);
+		expect(r.ok).toBe(false);
+		expect(r.err).toContain("key=***");
+		expect(r.err).not.toContain("wx-key-123");
+		expect(r.err).not.toContain("unused-secret");
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+		const logMsg = String(logger.warn.mock.calls[0]?.[0]);
+		expect(logMsg).not.toContain("wx-key-123");
+		expect(logMsg).not.toContain("unused-secret");
 	});
 
 	it("wrong platform → ok:false", async () => {

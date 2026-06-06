@@ -85,7 +85,7 @@ export type OnebotAdapterConfig =
 
 export type OnebotTransport = OnebotAdapterConfig["transport"];
 
-export type WebhookProvider = "generic" | "dingtalk" | "feishu";
+export type WebhookProvider = "generic" | "dingtalk" | "feishu" | "wecom";
 
 export interface WebhookAdapterConfig {
 	url: string;
@@ -98,6 +98,7 @@ export const WEBHOOK_PROVIDERS: ReadonlyArray<{ value: WebhookProvider; label: s
 	{ value: "generic", label: "Generic JSON" },
 	{ value: "dingtalk", label: "钉钉机器人" },
 	{ value: "feishu", label: "飞书机器人" },
+	{ value: "wecom", label: "企业微信机器人" },
 ];
 
 export function webhookProviderLabel(provider: WebhookProvider | undefined): string {
@@ -112,6 +113,8 @@ export function webhookUrlPlaceholder(provider: WebhookProvider | undefined): st
 			return "https://oapi.dingtalk.com/robot/send?access_token=...";
 		case "feishu":
 			return "https://open.feishu.cn/open-apis/bot/v2/hook/...";
+		case "wecom":
+			return "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...";
 		case "generic":
 			return "https://hooks.example.com/bn";
 	}
@@ -123,6 +126,8 @@ export function webhookSecretHint(provider: WebhookProvider | undefined): string
 			return "钉钉加签密钥 SEC...；填写后自动追加 timestamp/sign";
 		case "feishu":
 			return "飞书签名密钥；填写后自动在消息体加入 timestamp/sign";
+		case "wecom":
+			return "企业微信群机器人通常不需要 Secret；鉴权 key 在 webhook URL 中";
 		case "generic":
 			return "Generic 模式下加在 x-bilibili-notify-secret 头";
 	}
@@ -180,6 +185,7 @@ interface PushTargetCommon {
 	adapterId: string;
 	scope: PushTargetScope;
 	enabled: boolean;
+	managedBy?: "adapter";
 	testStatus?: PushAdapterTestStatus;
 }
 

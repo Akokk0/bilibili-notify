@@ -68,9 +68,18 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 
 	app.delete("/:id", async (c) => {
 		const id = c.req.param("id");
-		const removed = await deps.store.deleteTarget(id);
-		if (!removed) return c.json({ error: "not_found", id }, 404);
-		return c.body(null, 204);
+		try {
+			const removed = await deps.store.deleteTarget(id);
+			if (!removed) return c.json({ error: "not_found", id }, 404);
+			return c.body(null, 204);
+		} catch (err) {
+			if (err instanceof ConfigValidationError) {
+				const status = isNotFound(err) ? 404 : isManagedTarget(err) ? 409 : 400;
+				return c.json({ error: "validation_failed", scope: err.scope, issues: err.issues }, status);
+			}
+			log.error("DELETE /api/targets/:id failed", err);
+			throw err;
+		}
 	});
 
 	return app;
@@ -79,4 +88,9 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 function isNotFound(err: ConfigValidationError): boolean {
 	const issues = err.issues as { message?: string } | undefined;
 	return issues?.message === "target not found";
+}
+
+function isManagedTarget(err: ConfigValidationError): boolean {
+	const issues = err.issues as { message?: string } | undefined;
+	return issues?.message === "managed target cannot be deleted directly";
 }
