@@ -41,6 +41,7 @@ export interface SidecarEnginesRuntime extends Disposable {
 	readonly dynamic: DynamicEngine;
 	readonly live: LiveEngine;
 	start(): void;
+	updateGlobals(globals: GlobalConfig): void;
 	status(): SidecarEngineStatus;
 }
 
@@ -135,6 +136,18 @@ export function createSidecarEngines(options: CreateSidecarEnginesOptions): Side
 			if (Object.keys(liveSubs).length > 0) {
 				live.start(liveSubs);
 			}
+			updateLiveStatus();
+		},
+		updateGlobals(globals) {
+			dynamic.updateConfig(buildDynamicConfig(globals));
+			live.updateConfig(buildLiveConfig(globals));
+			if (!started) return;
+			const ops = options.subscriptions.list().map((sub) => ({ type: "update" as const, sub }));
+			dynamic.applyOps(subscriptionOpsToDynamic(ops, options.subscriptions, globals));
+			live.applyOps(subscriptionOpsToLive(ops, options.subscriptions, globals), (uid) => {
+				const sub = options.subscriptions.findByUid(uid);
+				return sub ? buildLiveSubViewSingle(sub, globals) : undefined;
+			});
 			updateLiveStatus();
 		},
 		status: () => ({ dynamic: started, live: liveStarted }),

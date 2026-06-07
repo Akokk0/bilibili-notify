@@ -5,6 +5,7 @@ import json
 import os
 import re
 import secrets
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -19,6 +20,45 @@ DEFAULT_AI_BACKEND = "astrbot"
 DEFAULT_LOG_LEVEL = "info"
 MIN_NODE_MAJOR_VERSION = 24
 PLUGIN_DATA_DIR_NAME = "plugin_data"
+PROXY_ALLOWED_COLLECTION_PATHS = {
+    "health",
+    "meta",
+    "bootstrap",
+    "globals",
+    "subscriptions",
+    "subs",
+    "subscriptions/lookup",
+    "subs/lookup",
+    "subscriptions/search",
+    "subs/search",
+    "adapters",
+    "targets",
+    "events",
+    "events/stream",
+    "login/status",
+    "auth/status",
+}
+PROXY_ALLOWED_POST_PATHS = {
+    "subscriptions",
+    "subs",
+    "targets",
+    "push/test",
+    "login/qr",
+    "auth/qr",
+    "login/logout",
+    "auth/logout",
+    "danger/reset-globals",
+    "danger/clear-subscriptions",
+    "danger/clear-targets",
+    "danger/clear-overrides",
+}
+PROXY_ALLOWED_ID_PREFIXES = {"subscriptions", "subs", "targets"}
+SENSITIVE_PATTERN = re.compile(
+    r"(Bearer\s+[A-Za-z0-9._~+\-/]+=*)|"
+    r"((?:token|secret|key|cookie|SESSDATA|bili_jct)=([^\s;&]+))|"
+    r"(https?://[^\s\"']*(?:token|secret|key|cookie)[^\s\"']*)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(slots=True)
@@ -108,6 +148,44 @@ class SidecarClient:
         payload = await self._request_json("POST", "/api/login/qr")
         return _ensure_mapping(payload, "login qr response")
 
+    async def proxy_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: Any = None,
+        params: Mapping[str, str] | None = None,
+    ) -> tuple[int, Any]:
+        api_path = build_proxy_api_path(method, path)
+        request_kwargs: dict[str, Any] = {}
+        if json_body is not None:
+            request_kwargs["json"] = json_body
+        if params is not None:
+            request_kwargs["params"] = dict(params)
+        async with self._client() as client:
+            response = await client.request(method.upper(), api_path, **request_kwargs)
+        if not response.content:
+            return response.status_code, None
+        try:
+            return response.status_code, sanitize_proxy_payload(response.json())
+        except ValueError:
+            return response.status_code, {"message": sanitize_sensitive_text(response.text)}
+
+    async def proxy_sse(
+        self,
+        path: str,
+        *,
+        params: Mapping[str, str] | None = None,
+    ) -> AsyncIterator[bytes]:
+        api_path = build_proxy_api_path("GET", path)
+        if api_path != "/api/events/stream":
+            raise ValueError("only events/stream is allowed for SSE proxy")
+        async with self._client(stream=True) as client:
+            async with client.stream("GET", api_path, params=dict(params or {})) as response:
+                response.raise_for_status()
+                async for chunk in response.aiter_bytes():
+                    yield chunk
+
     async def _request_json(
         self,
         method: str,
@@ -126,11 +204,14 @@ class SidecarClient:
         response.raise_for_status()
         return response.json()
 
-    def _client(self) -> httpx.AsyncClient:
+    def _client(self, *, stream: bool = False) -> httpx.AsyncClient:
         headers = {"authorization": f"Bearer {self.token}"} if self.token else None
+        timeout: float | httpx.Timeout = self.timeout_seconds
+        if stream:
+            timeout = httpx.Timeout(self.timeout_seconds, read=None)
         return httpx.AsyncClient(
             base_url=self.base_url,
-            timeout=self.timeout_seconds,
+            timeout=timeout,
             transport=self.transport,
             headers=headers,
         )
@@ -212,6 +293,24 @@ class SidecarRuntime:
 
     async def begin_login(self) -> dict[str, Any]:
         return await self.client.begin_login()
+
+    async def proxy_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: Any = None,
+        params: Mapping[str, str] | None = None,
+    ) -> tuple[int, Any]:
+        return await self.client.proxy_json(method, path, json_body=json_body, params=params)
+
+    def proxy_sse(
+        self,
+        path: str,
+        *,
+        params: Mapping[str, str] | None = None,
+    ) -> AsyncIterator[bytes]:
+        return self.client.proxy_sse(path, params=params)
 
     async def close(self, reason: str = "shutdown") -> None:
         _ = reason
@@ -601,6 +700,69 @@ def _remove_ready_file_sync(path: Path) -> None:
         path.unlink()
     except FileNotFoundError:
         return
+
+
+def build_proxy_api_path(method: str, path: str) -> str:
+    normalized = _normalize_proxy_path(path)
+    upper_method = method.upper()
+    if not _is_allowed_proxy_path(upper_method, normalized):
+        raise ValueError(f"proxy path is not allowed: {upper_method} {normalized}")
+    return f"/api/{normalized}"
+
+
+def sanitize_proxy_payload(value: Any) -> Any:
+    if isinstance(value, str):
+        return sanitize_sensitive_text(value)
+    if isinstance(value, list):
+        return [sanitize_proxy_payload(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): sanitize_proxy_payload(item) for key, item in value.items()}
+    return value
+
+
+def sanitize_sensitive_text(value: str) -> str:
+    return SENSITIVE_PATTERN.sub(_sensitive_replacement, value)
+
+
+def _normalize_proxy_path(path: str) -> str:
+    value = path.strip()
+    if not value or value.startswith("/") or "://" in value or "?" in value or "#" in value:
+        raise ValueError("proxy endpoint must be a relative plugin path")
+    segments = [segment for segment in value.split("/") if segment]
+    if not segments or any(segment in {".", ".."} for segment in segments):
+        raise ValueError("proxy endpoint contains an invalid path segment")
+    return "/".join(segments)
+
+
+def _is_allowed_proxy_path(method: str, path: str) -> bool:
+    if method == "GET":
+        return path in PROXY_ALLOWED_COLLECTION_PATHS
+    if method == "POST":
+        return path in PROXY_ALLOWED_POST_PATHS
+    if method == "PATCH":
+        return path == "globals" or _matches_id_path(path)
+    if method == "DELETE":
+        return _matches_id_path(path)
+    return False
+
+
+def _matches_id_path(path: str) -> bool:
+    parts = path.split("/")
+    if len(parts) != 2:
+        return False
+    prefix, item_id = parts
+    return prefix in PROXY_ALLOWED_ID_PREFIXES and bool(item_id) and item_id not in {".", ".."}
+
+
+def _sensitive_replacement(match: re.Match[str]) -> str:
+    text = match.group(0)
+    lower_text = text.lower()
+    if lower_text.startswith("bearer "):
+        return "Bearer [REDACTED]"
+    if lower_text.startswith(("http://", "https://")):
+        return "[REDACTED_URL]"
+    key = text.split("=", 1)[0]
+    return f"{key}=[REDACTED]"
 
 
 def _ensure_mapping(value: Any, label: str) -> dict[str, Any]:

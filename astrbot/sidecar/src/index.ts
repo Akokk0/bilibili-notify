@@ -344,7 +344,7 @@ function createSidecarCapabilities(tokenAuthEnabled: boolean) {
 	return {
 		tokenAuth: tokenAuthEnabled,
 		pluginPageProxy: true,
-		sse: false,
+		sse: true,
 		deliveryQueue: false,
 		aiProviderBridge: false,
 	};

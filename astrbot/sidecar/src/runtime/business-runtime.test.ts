@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ASTRBOT_ADAPTER_ID } from "./callback-sink.js";
 import { createAstrBotSubscription } from "./persistence.js";
 
 const authMock = vi.hoisted(() => {
@@ -79,6 +80,7 @@ const enginesMock = vi.hoisted(() => {
 		dynamic: {},
 		live: {},
 		start: vi.fn(),
+		updateGlobals: vi.fn(),
 		dispose: vi.fn(),
 		status: () => ({ dynamic: true, live: false }),
 	}));
@@ -180,6 +182,46 @@ describe("createBusinessRuntime", () => {
 		const options = pushMock.options[0] as { defaults: () => typeof globals.defaults };
 
 		expect(options.defaults().features.dynamic).toBe(false);
+		await runtime.close("test done");
+	});
+
+	it("keeps resource ids stable when patch bodies contain another id", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "bn-astrbot-runtime-"));
+		tempDirs.push(dataDir);
+		const runtime = createBusinessRuntime({ dataDir });
+		await runtime.configStore.load();
+		const subscription = await runtime.upsertSubscription(
+			createAstrBotSubscription({ uid: "123456", name: "测试 UP" }),
+		);
+		const target = await runtime.upsertTarget({
+			id: "22222222-2222-4222-8222-222222222222",
+			name: "默认频道",
+			adapterId: ASTRBOT_ADAPTER_ID,
+			platform: "astrbot",
+			scope: "channel",
+			enabled: true,
+			session: {
+				unified_msg_origin: "astrbot://room-1",
+				platform: "astrbot",
+				messageType: "channel",
+				sessionName: "Room 1",
+			},
+		});
+
+		expect(
+			await runtime.patchSubscription(subscription.id, { id: "other-sub", notes: "备注" }),
+		).toMatchObject({
+			id: subscription.id,
+			notes: "备注",
+		});
+		expect(
+			await runtime.patchTarget(target.id, { id: "other-target", name: "频道 2" }),
+		).toMatchObject({
+			id: target.id,
+			name: "频道 2",
+		});
+		expect(runtime.listSubscriptions()).toHaveLength(1);
+		expect(runtime.listTargets()).toHaveLength(1);
 		await runtime.close("test done");
 	});
 });

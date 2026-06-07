@@ -1,14 +1,17 @@
-import { BilibiliAPI, LoginFlow, type LoginSnapshot } from "@bilibili-notify/api";
-import type {
-	AstrBotAdapter,
-	AstrBotPushTarget,
-	NotificationPayload,
-	Subscription,
+import { BilibiliAPI, BiliLoginStatus, LoginFlow, type LoginSnapshot } from "@bilibili-notify/api";
+import {
+	type AstrBotAdapter,
+	type AstrBotPushTarget,
+	type DeliveryResult,
+	type GlobalConfig,
+	makeDefaultGlobalConfig,
+	type NotificationPayload,
+	type Subscription,
 } from "@bilibili-notify/internal";
 import { BilibiliPush } from "@bilibili-notify/push";
 import { StorageManager } from "@bilibili-notify/storage";
 import { createSubscriptionStore, type SubscriptionStore } from "@bilibili-notify/subscription";
-import { ASTRBOT_PUSH_TARGET, createCallbackSink } from "./callback-sink.js";
+import { ASTRBOT_PUSH_TARGET, ASTRBOT_TARGET_ID, createCallbackSink } from "./callback-sink.js";
 import {
 	type AstrBotConfigSnapshot,
 	type AstrBotConfigStore,
@@ -45,6 +48,40 @@ export interface BusinessRuntimeSnapshot {
 	readonly login?: LoginSnapshot;
 }
 
+export interface UserLookupResult {
+	readonly uid: string;
+	readonly name: string;
+	readonly avatar: string;
+	readonly sign: string;
+	readonly fans: number;
+}
+
+export interface UserSearchResult {
+	readonly results: UserLookupResult[];
+	readonly page: number;
+	readonly pageSize: number;
+	readonly total: number;
+}
+
+export class SidecarUpstreamError extends Error {
+	readonly statusCode: number;
+	readonly error: "api_not_ready" | "not_found" | "upstream_failed";
+	readonly upstreamCode?: number;
+
+	constructor(
+		statusCode: number,
+		error: SidecarUpstreamError["error"],
+		message: string,
+		upstreamCode?: number,
+	) {
+		super(message);
+		this.name = "SidecarUpstreamError";
+		this.statusCode = statusCode;
+		this.error = error;
+		this.upstreamCode = upstreamCode;
+	}
+}
+
 export interface BusinessRuntimeHandle {
 	readonly dataDir: string;
 	readonly serviceCtx: SidecarServiceContext;
@@ -57,13 +94,26 @@ export interface BusinessRuntimeHandle {
 	ensureAuthStarted(): Promise<LoginSnapshot>;
 	refreshLoginStatus(): Promise<LoginSnapshot>;
 	beginLogin(): Promise<LoginSnapshot>;
+	logout(): Promise<LoginSnapshot>;
+	getGlobals(): GlobalConfig;
+	setGlobals(next: GlobalConfig): Promise<GlobalConfig>;
+	resetGlobals(): Promise<GlobalConfig>;
 	listSubscriptions(): Subscription[];
 	listAdapters(): AstrBotAdapter[];
 	listTargets(): AstrBotPushTarget[];
 	upsertSubscription(input: StoredSubscriptionInput | Subscription): Promise<Subscription>;
+	patchSubscription(id: string, patch: Record<string, unknown>): Promise<Subscription>;
 	removeSubscription(id: string): Promise<Subscription | undefined>;
+	upsertTarget(target: AstrBotPushTarget): Promise<AstrBotPushTarget>;
+	patchTarget(id: string, patch: Record<string, unknown>): Promise<AstrBotPushTarget>;
+	removeTarget(id: string): Promise<AstrBotPushTarget | undefined>;
+	clearSubscriptions(): Promise<Subscription[]>;
+	clearTargets(): Promise<AstrBotPushTarget[]>;
+	clearSubscriptionOverrides(): Promise<Subscription[]>;
+	lookupUser(uid: string): Promise<UserLookupResult>;
+	searchUsers(query: string, page?: number): Promise<UserSearchResult>;
 	drainEvents(afterId?: number): SidecarEvent[];
-	pushTest(payload: NotificationPayload): Promise<void>;
+	pushTest(targetId: string, payload: NotificationPayload): Promise<DeliveryResult>;
 }
 
 export function createBusinessRuntime(options: BusinessRuntimeOptions): BusinessRuntimeHandle {
@@ -202,6 +252,33 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 		return flow.current();
 	}
 
+	async logout(): Promise<LoginSnapshot> {
+		await this.startBase();
+		await this.storage.cookieStore.clear();
+		await this.api?.clearCookies();
+		this.loginFlow?.reportLoggedOut("notLogin");
+		return (
+			this.loginFlow?.current() ?? {
+				status: BiliLoginStatus.NOT_LOGIN,
+				msg: "账号未登录，请点击「扫码登录」",
+			}
+		);
+	}
+
+	getGlobals(): GlobalConfig {
+		return this.configStore.getGlobals();
+	}
+
+	async setGlobals(next: GlobalConfig): Promise<GlobalConfig> {
+		const saved = await this.configStore.setGlobals(next);
+		this.applyGlobals(saved);
+		return saved;
+	}
+
+	async resetGlobals(): Promise<GlobalConfig> {
+		return this.setGlobals(makeDefaultGlobalConfig());
+	}
+
 	listSubscriptions(): Subscription[] {
 		return this.subscriptions.list();
 	}
@@ -221,18 +298,122 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 		return saved;
 	}
 
+	async patchSubscription(id: string, patch: Record<string, unknown>): Promise<Subscription> {
+		const current = this.subscriptions.list().find((entry) => entry.id === id);
+		if (!current) throw new Error(`subscription not found: ${id}`);
+		return this.upsertSubscription({ ...(deepMerge(current, patch) as Subscription), id });
+	}
+
 	async removeSubscription(id: string): Promise<Subscription | undefined> {
 		const removed = await this.configStore.deleteSubscription(id);
 		if (removed) this.subscriptions.removeById(id);
 		return removed;
 	}
 
+	async upsertTarget(target: AstrBotPushTarget): Promise<AstrBotPushTarget> {
+		return this.configStore.upsertTarget(target);
+	}
+
+	async patchTarget(id: string, patch: Record<string, unknown>): Promise<AstrBotPushTarget> {
+		const current = this.configStore.getTargets().find((entry) => entry.id === id);
+		if (!current) throw new Error(`target not found: ${id}`);
+		return this.upsertTarget({ ...(deepMerge(current, patch) as AstrBotPushTarget), id });
+	}
+
+	async removeTarget(id: string): Promise<AstrBotPushTarget | undefined> {
+		return this.configStore.deleteTarget(id);
+	}
+
+	async clearSubscriptions(): Promise<Subscription[]> {
+		for (const sub of this.configStore.getSubscriptions()) {
+			await this.configStore.deleteSubscription(sub.id);
+			this.subscriptions.removeById(sub.id);
+		}
+		return this.listSubscriptions();
+	}
+
+	async clearTargets(): Promise<AstrBotPushTarget[]> {
+		for (const target of this.configStore.getTargets()) {
+			await this.configStore.deleteTarget(target.id);
+		}
+		return this.listTargets();
+	}
+
+	async clearSubscriptionOverrides(): Promise<Subscription[]> {
+		for (const sub of this.subscriptions.list()) {
+			await this.upsertSubscription({
+				...sub,
+				atAll: { dynamic: {}, live: {} },
+				overrides: {},
+				specialUsers: [],
+			});
+		}
+		return this.listSubscriptions();
+	}
+
+	async lookupUser(uid: string): Promise<UserLookupResult> {
+		await this.ensureAuthStarted();
+		const api = this.requireApi();
+		const res = await api.getUserCardInfo(uid);
+		if (res.code !== 0 || !res.data?.card) {
+			throw new SidecarUpstreamError(
+				404,
+				"not_found",
+				(res as { message?: string }).message ?? "未找到该 UP 主",
+				res.code,
+			);
+		}
+		return userCardToLookupResult(res.data.card);
+	}
+
+	async searchUsers(query: string, page = 1): Promise<UserSearchResult> {
+		await this.ensureAuthStarted();
+		const api = this.requireApi();
+		const safePage = Number.isFinite(page) && page >= 1 ? Math.min(Math.floor(page), 200) : 1;
+		const res = (await api.searchByType("bili_user", query, {
+			page: safePage,
+			pageSize: 5,
+		})) as {
+			code?: number;
+			message?: string;
+			data?: { result?: unknown[]; numResults?: number } | null;
+		};
+		if (!res || res.code !== 0) {
+			throw new SidecarUpstreamError(502, "upstream_failed", res?.message ?? "搜索失败", res?.code);
+		}
+		const raw = Array.isArray(res.data?.result) ? res.data.result : [];
+		const results = raw.slice(0, 5).map(searchResultToLookupResult);
+		return {
+			results,
+			page: safePage,
+			pageSize: 5,
+			total: typeof res.data?.numResults === "number" ? res.data.numResults : results.length,
+		};
+	}
+
 	drainEvents(afterId = 0): SidecarEvent[] {
 		return this.events.drain(afterId);
 	}
 
-	async pushTest(payload: NotificationPayload): Promise<void> {
-		await this.push.sendPrivateMsg(payload.kind === "text" ? payload.text : "AstrBot sidecar test");
+	async pushTest(targetId: string, payload: NotificationPayload): Promise<DeliveryResult> {
+		const storedTarget = this.configStore.getTargets().find((target) => target.id === targetId);
+		const target =
+			storedTarget ?? (targetId === ASTRBOT_TARGET_ID ? ASTRBOT_PUSH_TARGET : undefined);
+		if (!target) return { ok: false, latencyMs: 0, err: "target not found" };
+		if (!target.enabled) return { ok: false, latencyMs: 0, err: "target disabled" };
+		const result = await this.push.sendToTarget(target.id, payload);
+		if (storedTarget) {
+			await this.configStore.upsertTarget({
+				...storedTarget,
+				testStatus: {
+					ok: result.ok,
+					lastCheckedAt: new Date().toISOString(),
+					latencyMs: result.latencyMs,
+					err: result.err,
+				},
+			});
+		}
+		return result;
 	}
 
 	private async startBase(signal?: AbortSignal): Promise<void> {
@@ -242,6 +423,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 		throwIfAborted(signal);
 		this.throwIfClosing();
 		await this.configStore.load();
+		this.applyGlobals(this.configStore.getGlobals());
 		this.subscriptions.replaceAll(this.configStore.getSubscriptions());
 		throwIfAborted(signal);
 		this.throwIfClosing();
@@ -268,9 +450,10 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 		let flow: LoginFlow | undefined;
 		try {
 			this.throwIfClosing();
+			const globals = this.configStore.getGlobals();
 			api = new BilibiliAPI({
 				serviceCtx: this.serviceCtx,
-				config: { userAgent: this.userAgent },
+				config: { userAgent: globals.app.userAgent ?? this.userAgent },
 				callbacks: {
 					onCookiesRefreshed: async (data) => {
 						await this.storage.cookieStore.save(data);
@@ -297,7 +480,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 				serviceCtx: this.serviceCtx,
 				api,
 				bus: this.bus,
-				healthCheckMs: 30 * 60_000,
+				healthCheckMs: globals.app.healthCheckMinutes * 60_000,
 				saveCookies: (data) => this.storage.cookieStore.save(data),
 			});
 			this.loginFlow = flow;
@@ -325,8 +508,22 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 		}
 	}
 
+	private applyGlobals(globals: GlobalConfig): void {
+		this.serviceCtx.setLevel(globals.app.logLevel);
+		this.api?.setUserAgent(globals.app.userAgent ?? this.userAgent);
+		this.loginFlow?.setHealthCheckMs(globals.app.healthCheckMinutes * 60_000);
+		this.engines?.updateGlobals(globals);
+	}
+
 	private throwIfClosing(): void {
 		if (this.closing) throwAbortError("business runtime closing");
+	}
+
+	private requireApi(): BilibiliAPI {
+		if (!this.api) {
+			throw new SidecarUpstreamError(503, "api_not_ready", "B 站 API 尚未就绪");
+		}
+		return this.api;
 	}
 
 	private requireLoginFlow(): LoginFlow {
@@ -337,6 +534,61 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 
 function isFullSubscription(value: StoredSubscriptionInput | Subscription): value is Subscription {
 	return "routing" in value && "overrides" in value && "atAll" in value;
+}
+
+function deepMerge(base: unknown, patch: unknown): unknown {
+	if (!isPlainRecord(base) || !isPlainRecord(patch)) return patch;
+	const out: Record<string, unknown> = { ...base };
+	for (const [key, value] of Object.entries(patch)) {
+		if (value === undefined) continue;
+		if (value === null) {
+			delete out[key];
+			continue;
+		}
+		out[key] = deepMerge(out[key], value);
+	}
+	return out;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function userCardToLookupResult(card: {
+	mid?: unknown;
+	name?: unknown;
+	face?: unknown;
+	sign?: unknown;
+	fans?: unknown;
+}): UserLookupResult {
+	return {
+		uid: String(card.mid ?? ""),
+		name: typeof card.name === "string" ? card.name : String(card.mid ?? ""),
+		avatar: typeof card.face === "string" ? card.face : "",
+		sign: typeof card.sign === "string" ? card.sign : "",
+		fans: typeof card.fans === "number" && card.fans >= 0 ? card.fans : 0,
+	};
+}
+
+function searchResultToLookupResult(entry: unknown): UserLookupResult {
+	const value = isPlainRecord(entry) ? entry : {};
+	return {
+		uid: String(value.mid ?? ""),
+		name: stripHtmlTags(String(value.uname ?? "")),
+		avatar: normaliseAvatarUrl(value.upic),
+		sign: typeof value.usign === "string" ? value.usign : "",
+		fans: typeof value.fans === "number" && value.fans >= 0 ? value.fans : 0,
+	};
+}
+
+function stripHtmlTags(value: string): string {
+	return value.replace(/<[^>]+>/g, "");
+}
+
+function normaliseAvatarUrl(raw: unknown): string {
+	if (typeof raw !== "string" || !raw) return "";
+	if (raw.startsWith("//")) return `https:${raw}`;
+	return raw;
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

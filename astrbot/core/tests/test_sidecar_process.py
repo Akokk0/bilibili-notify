@@ -15,8 +15,10 @@ from sidecar_process import (
     SidecarClient,
     SidecarConfig,
     SidecarRuntime,
+    build_proxy_api_path,
     build_sidecar_config,
     parse_node_major_version,
+    sanitize_proxy_payload,
     start_sidecar,
 )
 
@@ -102,6 +104,19 @@ async def test_sidecar_client_calls_control_plane_endpoints() -> None:
             return httpx.Response(200, json={"status": 0, "msg": "未登录"})
         if request.method == "POST" and request.url.path == "/api/login/qr":
             return httpx.Response(200, json={"status": 1, "data": "data:image/png;base64,QR"})
+        if request.method == "GET" and request.url.path == "/api/bootstrap":
+            assert "cookie" not in request.headers
+            return httpx.Response(200, json={"globals": {}, "targets": []})
+        if request.method == "PATCH" and request.url.path == "/api/globals":
+            body = json.loads(request.content.decode("utf-8"))
+            return httpx.Response(200, json=body)
+        if request.method == "POST" and request.url.path == "/api/push/test":
+            body = json.loads(request.content.decode("utf-8"))
+            return httpx.Response(200, json={"ok": True, "text": body["text"]})
+        if request.method == "DELETE" and request.url.path == "/api/targets/target-1":
+            return httpx.Response(204)
+        if request.method == "GET" and request.url.path == "/api/events/stream":
+            return httpx.Response(200, content=b"event: hydrate\ndata: {}\n\n")
         return httpx.Response(404, json={"error": "not_found"})
 
     client = SidecarClient(
@@ -132,6 +147,22 @@ async def test_sidecar_client_calls_control_plane_endpoints() -> None:
     assert await client.delete_subscription("missing") is False
     assert await client.get_login_status() == {"status": 0, "msg": "未登录"}
     assert await client.begin_login() == {"status": 1, "data": "data:image/png;base64,QR"}
+    assert await client.proxy_json("GET", "bootstrap") == (200, {"globals": {}, "targets": []})
+    assert await client.proxy_json(
+        "PATCH", "globals", json_body={"app": {"logLevel": "debug"}}
+    ) == (
+        200,
+        {"app": {"logLevel": "debug"}},
+    )
+    assert await client.proxy_json(
+        "POST",
+        "push/test",
+        json_body={"targetId": "target-1", "text": "hello"},
+    ) == (200, {"ok": True, "text": "hello"})
+    assert await client.proxy_json("DELETE", "targets/target-1") == (204, None)
+    assert b"event: hydrate" in b"".join(
+        [chunk async for chunk in client.proxy_sse("events/stream")]
+    )
 
 
 @pytest.mark.asyncio
@@ -143,6 +174,55 @@ async def test_sidecar_client_rejects_unexpected_response_shapes() -> None:
 
     with pytest.raises(TypeError, match="events response must be a JSON array"):
         await client.drain_events()
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "expected"),
+    [
+        ("GET", "globals", "/api/globals"),
+        ("PATCH", "subscriptions/sub-1", "/api/subscriptions/sub-1"),
+        ("POST", "danger/clear-targets", "/api/danger/clear-targets"),
+        ("DELETE", "targets/target-1", "/api/targets/target-1"),
+    ],
+)
+def test_build_proxy_api_path_allows_only_dashboard_whitelist(
+    method: str,
+    path: str,
+    expected: str,
+) -> None:
+    assert build_proxy_api_path(method, path) == expected
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/globals"),
+        ("GET", "../globals"),
+        ("GET", "https://example.invalid/globals"),
+        ("POST", "import"),
+        ("DELETE", "adapters/adapter-1"),
+    ],
+)
+def test_build_proxy_api_path_rejects_unsafe_or_non_whitelisted_paths(
+    method: str,
+    path: str,
+) -> None:
+    with pytest.raises(ValueError):
+        build_proxy_api_path(method, path)
+
+
+def test_sanitize_proxy_payload_redacts_sensitive_error_details() -> None:
+    assert sanitize_proxy_payload(
+        {
+            "message": "Bearer secret-token token=abc cookie=SESSDATA=oops",
+            "url": "https://example.invalid/callback?token=abc",
+            "upper_url": "HTTPS://example.invalid/callback?token=abc",
+        }
+    ) == {
+        "message": "Bearer [REDACTED] token=[REDACTED] cookie=[REDACTED]",
+        "url": "[REDACTED_URL]",
+        "upper_url": "[REDACTED_URL]",
+    }
 
 
 @pytest.mark.asyncio

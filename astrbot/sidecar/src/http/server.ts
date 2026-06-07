@@ -1,6 +1,18 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { LoginSnapshot } from "@bilibili-notify/api";
-import { type Subscription, SubscriptionSchema } from "@bilibili-notify/internal";
+import {
+	type AstrBotAdapter,
+	type AstrBotPushTarget,
+	AstrBotPushTargetSchema,
+	type DeliveryResult,
+	type GlobalConfig,
+	GlobalConfigSchema,
+	type NotificationPayload,
+	type Subscription,
+	SubscriptionSchema,
+} from "@bilibili-notify/internal";
+import { SidecarUpstreamError, type UserSearchResult } from "../runtime/business-runtime.js";
+import { AstrBotConfigValidationError } from "../runtime/config-store.js";
 import type { SidecarEvent } from "../runtime/event-queue.js";
 import { createAstrBotSubscription, type StoredSubscriptionInput } from "../runtime/persistence.js";
 import type { SidecarSnapshot } from "../runtime/state.js";
@@ -8,10 +20,32 @@ import type { SidecarSnapshot } from "../runtime/state.js";
 export interface SidecarHttpRuntime {
 	ensureAuthStarted(): Promise<LoginSnapshot>;
 	beginLogin(): Promise<LoginSnapshot>;
+	logout(): Promise<LoginSnapshot>;
+	getGlobals(): GlobalConfig;
+	setGlobals(next: GlobalConfig): Promise<GlobalConfig>;
+	resetGlobals(): Promise<GlobalConfig>;
 	listSubscriptions(): Subscription[];
+	listAdapters(): AstrBotAdapter[];
+	listTargets(): AstrBotPushTarget[];
 	upsertSubscription(input: StoredSubscriptionInput | Subscription): Promise<Subscription>;
+	patchSubscription(id: string, patch: Record<string, unknown>): Promise<Subscription>;
 	removeSubscription(id: string): Promise<Subscription | undefined>;
+	upsertTarget(target: AstrBotPushTarget): Promise<AstrBotPushTarget>;
+	patchTarget(id: string, patch: Record<string, unknown>): Promise<AstrBotPushTarget>;
+	removeTarget(id: string): Promise<AstrBotPushTarget | undefined>;
+	clearSubscriptions(): Promise<Subscription[]>;
+	clearTargets(): Promise<AstrBotPushTarget[]>;
+	clearSubscriptionOverrides(): Promise<Subscription[]>;
+	lookupUser(uid: string): Promise<{
+		readonly uid: string;
+		readonly name: string;
+		readonly avatar: string;
+		readonly sign: string;
+		readonly fans: number;
+	}>;
+	searchUsers(query: string, page?: number): Promise<UserSearchResult>;
 	drainEvents(afterId?: number): SidecarEvent[];
+	pushTest(targetId: string, payload: NotificationPayload): Promise<DeliveryResult>;
 }
 
 export type SnapshotProvider = () => SidecarSnapshot;
@@ -22,6 +56,9 @@ export interface SidecarHttpServerOptions {
 	readonly authToken?: string;
 }
 
+const REDACTED_SECRET = "__BN_REDACTED__";
+const DEFAULT_TEST_TEXT = "[bilibili-notify] AstrBot 测试推送已送达 ✓";
+
 export function createSidecarHttpServer(options: SidecarHttpServerOptions): Server {
 	return createServer(createSidecarRequestListener(options));
 }
@@ -29,7 +66,7 @@ export function createSidecarHttpServer(options: SidecarHttpServerOptions): Serv
 export function createSidecarRequestListener(options: SidecarHttpServerOptions) {
 	return (req: IncomingMessage, res: ServerResponse): void => {
 		void handleSidecarRequest(req, res, options).catch((error) => {
-			console.error("[astrbot] sidecar http request failed:", error);
+			console.error("[astrbot] sidecar http request failed:", redactError(error));
 			if (!res.writableEnded) {
 				writeJson(res, 500, {
 					error: "internal_error",
@@ -70,6 +107,7 @@ export async function closeSidecarServer(server: Server): Promise<void> {
 			if (err) reject(err);
 			else resolve();
 		});
+		server.closeAllConnections?.();
 	});
 }
 
@@ -97,8 +135,21 @@ async function handleSidecarRequest(
 		writeJson(res, 200, options.getSnapshot());
 		return;
 	}
+	if (method === "GET" && pathname === "/api/bootstrap") {
+		writeJson(res, 200, buildBootstrapPayload(options));
+		return;
+	}
 	if (method === "GET" && pathname === "/") {
 		writeText(res, 200, "bilibili-notify AstrBot sidecar");
+		return;
+	}
+	if (method === "GET" && pathname === "/api/events/stream") {
+		try {
+			const after = parseEventCursor(searchParams.get("after"));
+			await writeEventStream(req, res, options, after);
+		} catch (error) {
+			if (!res.headersSent) writeEventCursorError(res, error);
+		}
 		return;
 	}
 	if (method === "GET" && pathname === "/api/events") {
@@ -106,18 +157,210 @@ async function handleSidecarRequest(
 			const after = parseEventCursor(searchParams.get("after"));
 			writeJson(res, 200, options.runtime.drainEvents(after));
 		} catch (error) {
-			writeJson(res, 400, {
-				error: "invalid_after",
-				message: error instanceof Error ? error.message : "invalid after cursor",
-			});
+			writeEventCursorError(res, error);
 		}
 		return;
 	}
-	if (method === "GET" && pathname === "/api/subscriptions") {
+	if (method === "GET" && pathname === "/api/globals") {
+		writeJson(res, 200, redactGlobals(options.runtime.getGlobals()));
+		return;
+	}
+	if (method === "PATCH" && pathname === "/api/globals") {
+		await handlePatchGlobals(req, res, options);
+		return;
+	}
+	if (method === "POST" && pathname === "/api/danger/reset-globals") {
+		try {
+			writeJson(res, 200, redactGlobals(await options.runtime.resetGlobals()));
+		} catch (error) {
+			writeConfigMutationError(res, error, "failed to reset globals");
+		}
+		return;
+	}
+	if (method === "POST" && pathname === "/api/danger/clear-subscriptions") {
+		try {
+			writeJson(res, 200, await options.runtime.clearSubscriptions());
+		} catch (error) {
+			writeConfigMutationError(res, error, "failed to clear subscriptions");
+		}
+		return;
+	}
+	if (method === "POST" && pathname === "/api/danger/clear-targets") {
+		try {
+			writeJson(res, 200, await options.runtime.clearTargets());
+		} catch (error) {
+			writeConfigMutationError(res, error, "failed to clear targets");
+		}
+		return;
+	}
+	if (method === "POST" && pathname === "/api/danger/clear-overrides") {
+		try {
+			writeJson(res, 200, await options.runtime.clearSubscriptionOverrides());
+		} catch (error) {
+			writeConfigMutationError(res, error, "failed to clear subscription overrides");
+		}
+		return;
+	}
+
+	if (isSubscriptionsCollectionPath(pathname)) {
+		await handleSubscriptionsCollection(method, req, res, options, searchParams, pathname);
+		return;
+	}
+	const subscriptionId = matchResourceId(pathname, ["/api/subscriptions", "/api/subs"]);
+	if (subscriptionId !== null) {
+		await handleSubscriptionItem(method, req, res, options, subscriptionId);
+		return;
+	}
+	if (method === "GET" && pathname === "/api/adapters") {
+		writeJson(res, 200, options.runtime.listAdapters());
+		return;
+	}
+	const adapterId = matchResourceId(pathname, ["/api/adapters"]);
+	if (adapterId !== null) {
+		writeJson(res, 405, {
+			error: "method_not_allowed",
+			message: "AstrBot sidecar adapters are managed internally",
+			id: adapterId,
+		});
+		return;
+	}
+	if (method === "GET" && pathname === "/api/targets") {
+		writeJson(res, 200, options.runtime.listTargets());
+		return;
+	}
+	if (method === "POST" && pathname === "/api/targets") {
+		await handleCreateTarget(req, res, options);
+		return;
+	}
+	const targetId = matchResourceId(pathname, ["/api/targets"]);
+	if (targetId !== null) {
+		await handleTargetItem(method, req, res, options, targetId);
+		return;
+	}
+	if (method === "POST" && pathname === "/api/push/test") {
+		await handlePushTest(req, res, options);
+		return;
+	}
+	if (method === "GET" && (pathname === "/api/login/status" || pathname === "/api/auth/status")) {
+		try {
+			const login = await options.runtime.ensureAuthStarted();
+			writeJson(res, 200, login);
+		} catch (error) {
+			writeRuntimeError(res, error, "failed to read login status");
+		}
+		return;
+	}
+	if (method === "POST" && (pathname === "/api/login/qr" || pathname === "/api/auth/qr")) {
+		try {
+			const login = await options.runtime.beginLogin();
+			writeJson(res, 200, login);
+		} catch (error) {
+			writeRuntimeError(res, error, "failed to start login qr");
+		}
+		return;
+	}
+	if (method === "POST" && (pathname === "/api/login/logout" || pathname === "/api/auth/logout")) {
+		try {
+			const login = await options.runtime.logout();
+			writeJson(res, 200, login);
+		} catch (error) {
+			writeRuntimeError(res, error, "failed to log out");
+		}
+		return;
+	}
+
+	writeJson(res, 404, { error: "not_found" });
+}
+
+function isProtectedRoute(_method: string, pathname: string): boolean {
+	return pathname.startsWith("/api/");
+}
+
+function isAuthorizedRequest(req: IncomingMessage, authToken: string | undefined): boolean {
+	if (!authToken) return true;
+	const authorization = req.headers.authorization;
+	if (authorization === `Bearer ${authToken}`) return true;
+	const headerToken = req.headers["x-bilibili-notify-token"];
+	if (headerToken === authToken) return true;
+	return Array.isArray(headerToken) && headerToken.includes(authToken);
+}
+
+async function handlePatchGlobals(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: SidecarHttpServerOptions,
+): Promise<void> {
+	let patch: Record<string, unknown>;
+	try {
+		patch = await readJsonObjectBody(req, "PATCH body must be a JSON object");
+	} catch (error) {
+		writeRequestBodyError(res, error);
+		return;
+	}
+	const merged = deepMerge(options.runtime.getGlobals(), unredactGlobalsPatch(patch));
+	const parsed = GlobalConfigSchema.safeParse(merged);
+	if (!parsed.success) {
+		writeJson(res, 400, {
+			error: "validation_failed",
+			scope: "globals",
+			issues: parsed.error.issues,
+		});
+		return;
+	}
+	try {
+		writeJson(res, 200, redactGlobals(await options.runtime.setGlobals(parsed.data)));
+	} catch (error) {
+		writeConfigMutationError(res, error, "failed to update globals");
+	}
+}
+
+async function handleSubscriptionsCollection(
+	method: string,
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: SidecarHttpServerOptions,
+	searchParams: URLSearchParams,
+	pathname: string,
+): Promise<void> {
+	if (method === "GET" && pathname.endsWith("/lookup")) {
+		const uid = searchParams.get("uid")?.trim();
+		if (!uid || !/^\d+$/.test(uid)) {
+			writeJson(res, 400, { error: "invalid_uid", message: "uid 必须是纯数字 UID" });
+			return;
+		}
+		try {
+			writeJson(res, 200, await options.runtime.lookupUser(uid));
+		} catch (error) {
+			writeUpstreamError(res, error, "lookup failed");
+		}
+		return;
+	}
+	if (method === "GET" && pathname.endsWith("/search")) {
+		const query = searchParams.get("q")?.trim();
+		if (!query) {
+			writeJson(res, 400, { error: "invalid_query", message: "搜索关键词不能为空" });
+			return;
+		}
+		try {
+			writeJson(
+				res,
+				200,
+				await options.runtime.searchUsers(query, Number(searchParams.get("page") ?? 1)),
+			);
+		} catch (error) {
+			writeUpstreamError(res, error, "search failed");
+		}
+		return;
+	}
+	if (pathname !== "/api/subscriptions" && pathname !== "/api/subs") {
+		writeJson(res, 405, { error: "method_not_allowed" });
+		return;
+	}
+	if (method === "GET") {
 		writeJson(res, 200, options.runtime.listSubscriptions());
 		return;
 	}
-	if (method === "POST" && pathname === "/api/subscriptions") {
+	if (method === "POST") {
 		let body: unknown;
 		try {
 			body = await readJsonBody(req);
@@ -143,20 +386,46 @@ async function handleSidecarRequest(
 		} catch (error) {
 			writeJson(res, 400, {
 				error: "invalid_subscription",
-				message: error instanceof Error ? error.message : "invalid subscription payload",
+				message: sanitizeText(
+					error instanceof Error ? error.message : "invalid subscription payload",
+				),
 			});
 		}
 		return;
 	}
-	if (method === "DELETE" && pathname.startsWith("/api/subscriptions/")) {
-		const id = pathname.slice("/api/subscriptions/".length);
-		if (!id || id.includes("/")) {
-			writeJson(res, 400, {
-				error: "invalid_subscription_id",
-				message: "subscription id is required",
-			});
+	writeJson(res, 405, { error: "method_not_allowed" });
+}
+
+async function handleSubscriptionItem(
+	method: string,
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: SidecarHttpServerOptions,
+	id: string,
+): Promise<void> {
+	if (!id) {
+		writeJson(res, 400, {
+			error: "invalid_subscription_id",
+			message: "subscription id is required",
+		});
+		return;
+	}
+	if (method === "PATCH") {
+		let patch: Record<string, unknown>;
+		try {
+			patch = await readJsonObjectBody(req, "PATCH body must be a JSON object");
+		} catch (error) {
+			writeRequestBodyError(res, error);
 			return;
 		}
+		try {
+			writeJson(res, 200, await options.runtime.patchSubscription(id, patch));
+		} catch (error) {
+			writeConfigMutationError(res, error, "failed to patch subscription");
+		}
+		return;
+	}
+	if (method === "DELETE") {
 		try {
 			const removed = await options.runtime.removeSubscription(id);
 			if (!removed) {
@@ -164,57 +433,12 @@ async function handleSidecarRequest(
 				return;
 			}
 			writeNoContent(res, 204);
-			return;
 		} catch (error) {
-			console.error("[astrbot] DELETE /api/subscriptions/:id failed:", error);
-			writeJson(res, 500, {
-				error: "internal_error",
-				message: "failed to delete subscription",
-			});
-			return;
-		}
-	}
-	if (method === "GET" && pathname === "/api/login/status") {
-		try {
-			const login = await options.runtime.ensureAuthStarted();
-			writeJson(res, 200, login);
-		} catch (error) {
-			console.error("[astrbot] GET /api/login/status failed:", error);
-			writeJson(res, 500, {
-				error: "internal_error",
-				message: "failed to read login status",
-			});
+			writeConfigMutationError(res, error, "failed to delete subscription");
 		}
 		return;
 	}
-	if (method === "POST" && pathname === "/api/login/qr") {
-		try {
-			const login = await options.runtime.beginLogin();
-			writeJson(res, 200, login);
-		} catch (error) {
-			console.error("[astrbot] POST /api/login/qr failed:", error);
-			writeJson(res, 500, {
-				error: "internal_error",
-				message: "failed to start login qr",
-			});
-		}
-		return;
-	}
-
-	writeJson(res, 404, { error: "not_found" });
-}
-
-function isProtectedRoute(_method: string, pathname: string): boolean {
-	return pathname.startsWith("/api/");
-}
-
-function isAuthorizedRequest(req: IncomingMessage, authToken: string | undefined): boolean {
-	if (!authToken) return true;
-	const authorization = req.headers.authorization;
-	if (authorization === `Bearer ${authToken}`) return true;
-	const headerToken = req.headers["x-bilibili-notify-token"];
-	if (headerToken === authToken) return true;
-	return Array.isArray(headerToken) && headerToken.includes(authToken);
+	writeJson(res, 405, { error: "method_not_allowed" });
 }
 
 async function saveSubscription(
@@ -226,11 +450,108 @@ async function saveSubscription(
 		await options.runtime.upsertSubscription(subscription);
 		writeJson(res, 200, options.runtime.listSubscriptions());
 	} catch (error) {
-		console.error("[astrbot] POST /api/subscriptions failed:", error);
-		writeJson(res, 500, {
-			error: "internal_error",
-			message: "failed to save subscription",
+		writeConfigMutationError(res, error, "failed to save subscription");
+	}
+}
+
+async function handleCreateTarget(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: SidecarHttpServerOptions,
+): Promise<void> {
+	let body: unknown;
+	try {
+		body = await readJsonBody(req);
+	} catch (error) {
+		writeRequestBodyError(res, error);
+		return;
+	}
+	const parsed = AstrBotPushTargetSchema.safeParse(body);
+	if (!parsed.success) {
+		writeJson(res, 400, {
+			error: "validation_failed",
+			scope: "targets",
+			issues: parsed.error.issues,
 		});
+		return;
+	}
+	try {
+		await options.runtime.upsertTarget(parsed.data);
+		writeJson(res, 200, options.runtime.listTargets());
+	} catch (error) {
+		writeConfigMutationError(res, error, "failed to save target");
+	}
+}
+
+async function handleTargetItem(
+	method: string,
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: SidecarHttpServerOptions,
+	id: string,
+): Promise<void> {
+	if (!id) {
+		writeJson(res, 400, { error: "invalid_target_id", message: "target id is required" });
+		return;
+	}
+	if (method === "PATCH") {
+		let patch: Record<string, unknown>;
+		try {
+			patch = await readJsonObjectBody(req, "PATCH body must be a JSON object");
+		} catch (error) {
+			writeRequestBodyError(res, error);
+			return;
+		}
+		try {
+			writeJson(res, 200, await options.runtime.patchTarget(id, patch));
+		} catch (error) {
+			writeConfigMutationError(res, error, "failed to patch target");
+		}
+		return;
+	}
+	if (method === "DELETE") {
+		try {
+			const removed = await options.runtime.removeTarget(id);
+			if (!removed) {
+				writeJson(res, 404, { error: "not_found", id });
+				return;
+			}
+			writeNoContent(res, 204);
+		} catch (error) {
+			writeConfigMutationError(res, error, "failed to delete target");
+		}
+		return;
+	}
+	writeJson(res, 405, { error: "method_not_allowed" });
+}
+
+async function handlePushTest(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: SidecarHttpServerOptions,
+): Promise<void> {
+	let body: Record<string, unknown>;
+	try {
+		body = await readJsonObjectBody(req, "request body must be a JSON object");
+	} catch (error) {
+		writeRequestBodyError(res, error);
+		return;
+	}
+	const targetId = typeof body.targetId === "string" ? body.targetId : "";
+	if (!targetId) {
+		writeJson(res, 400, {
+			ok: false,
+			error: "invalid_request",
+			message: "targetId is required",
+		});
+		return;
+	}
+	const text = typeof body.text === "string" && body.text.trim() ? body.text : DEFAULT_TEST_TEXT;
+	try {
+		const result = await options.runtime.pushTest(targetId, { kind: "text", text });
+		writeJson(res, result.ok ? 200 : result.err === "target not found" ? 404 : 200, result);
+	} catch (error) {
+		writeRuntimeError(res, error, "failed to send test push");
 	}
 }
 
@@ -253,6 +574,19 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
 	} catch {
 		throw new Error("request body must be valid JSON");
 	}
+}
+
+async function readJsonObjectBody(
+	req: IncomingMessage,
+	message: string,
+): Promise<Record<string, unknown>> {
+	const body = await readJsonBody(req);
+	if (!isPlainObject(body)) {
+		const error = new Error(message);
+		error.name = "InvalidPayloadError";
+		throw error;
+	}
+	return body;
 }
 
 function parseStoredSubscriptionInput(body: unknown): StoredSubscriptionInput | null {
@@ -289,6 +623,115 @@ function getRequestUrl(req: IncomingMessage): URL {
 	return new URL(req.url ?? "/", `http://${host}`);
 }
 
+function isSubscriptionsCollectionPath(pathname: string): boolean {
+	return (
+		pathname === "/api/subscriptions" ||
+		pathname === "/api/subs" ||
+		pathname === "/api/subscriptions/lookup" ||
+		pathname === "/api/subs/lookup" ||
+		pathname === "/api/subscriptions/search" ||
+		pathname === "/api/subs/search"
+	);
+}
+
+function matchResourceId(pathname: string, bases: readonly string[]): string | null {
+	for (const base of bases) {
+		const prefix = `${base}/`;
+		if (!pathname.startsWith(prefix)) continue;
+		const raw = pathname.slice(prefix.length);
+		if (!raw || raw.includes("/")) return "";
+		try {
+			return decodeURIComponent(raw);
+		} catch {
+			return raw;
+		}
+	}
+	return null;
+}
+
+function buildBootstrapPayload(options: SidecarHttpServerOptions) {
+	return {
+		snapshot: options.getSnapshot(),
+		globals: redactGlobals(options.runtime.getGlobals()),
+		subscriptions: options.runtime.listSubscriptions(),
+		adapters: options.runtime.listAdapters(),
+		targets: options.runtime.listTargets(),
+	};
+}
+
+async function writeEventStream(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: SidecarHttpServerOptions,
+	after: number,
+): Promise<void> {
+	res.writeHead(200, {
+		"content-type": "text/event-stream; charset=utf-8",
+		"cache-control": "no-store",
+		connection: "keep-alive",
+		"x-accel-buffering": "no",
+	});
+	res.write(": connected\n\n");
+	let cursor = after;
+	const writeSse = (event: string, data: unknown): void => {
+		if (res.writableEnded) return;
+		res.write(`event: ${event}\n`);
+		res.write(`data: ${JSON.stringify(data)}\n\n`);
+	};
+	writeSse("hydrate", buildBootstrapPayload(options));
+	const flush = (): void => {
+		const events = options.runtime.drainEvents(cursor);
+		for (const event of events) {
+			cursor = Math.max(cursor, event.id);
+			writeSse(event.type, event);
+		}
+	};
+	flush();
+	const timer = setInterval(flush, 1000);
+	timer.unref?.();
+	await new Promise<void>((resolve) => {
+		let done = false;
+		const cleanup = () => {
+			if (done) return;
+			done = true;
+			clearInterval(timer);
+			resolve();
+		};
+		req.on("close", cleanup);
+		res.on("close", cleanup);
+	});
+}
+
+function redactGlobals(globals: GlobalConfig): GlobalConfig {
+	const value = structuredClone(globals);
+	if (value.defaults.ai.apiKey) {
+		value.defaults.ai.apiKey = REDACTED_SECRET;
+	}
+	return value;
+}
+
+function unredactGlobalsPatch(patch: Record<string, unknown>): Record<string, unknown> {
+	const clone = structuredClone(patch);
+	const defaults = isPlainObject(clone.defaults) ? clone.defaults : undefined;
+	const ai = defaults && isPlainObject(defaults.ai) ? defaults.ai : undefined;
+	if (ai?.apiKey === REDACTED_SECRET) delete ai.apiKey;
+	return clone;
+}
+
+function deepMerge(base: unknown, patch: unknown): unknown {
+	if (!isPlainObject(base) || !isPlainObject(patch)) return patch;
+	const out: Record<string, unknown> = { ...base };
+	for (const [key, value] of Object.entries(patch)) {
+		if (value === undefined) continue;
+		if (value === null) {
+			delete out[key];
+			continue;
+		}
+		out[key] = deepMerge(out[key], value);
+	}
+	return out;
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -301,8 +744,17 @@ function writeJson(res: ServerResponse, statusCode: number, payload: unknown): v
 	res.end(`${JSON.stringify(payload)}\n`);
 }
 
+function writeEventCursorError(res: ServerResponse, error: unknown): void {
+	writeJson(res, 400, {
+		error: "invalid_after",
+		message: sanitizeText(error instanceof Error ? error.message : "invalid after cursor"),
+	});
+}
+
 function writeRequestBodyError(res: ServerResponse, error: unknown): void {
-	const message = error instanceof Error ? error.message : "request body must be valid JSON";
+	const message = sanitizeText(
+		error instanceof Error ? error.message : "request body must be valid JSON",
+	);
 	if (message === "request body too large") {
 		writeJson(res, 413, {
 			error: "payload_too_large",
@@ -310,9 +762,61 @@ function writeRequestBodyError(res: ServerResponse, error: unknown): void {
 		});
 		return;
 	}
-	writeJson(res, 400, {
-		error: "invalid_json",
+	writeJson(res, error instanceof Error && error.name === "InvalidPayloadError" ? 400 : 400, {
+		error:
+			error instanceof Error && error.name === "InvalidPayloadError"
+				? "invalid_payload"
+				: "invalid_json",
 		message,
+	});
+}
+
+function writeConfigMutationError(
+	res: ServerResponse,
+	error: unknown,
+	fallbackMessage: string,
+): void {
+	if (error instanceof AstrBotConfigValidationError) {
+		writeJson(res, 400, {
+			error: "validation_failed",
+			scope: error.scope,
+			issues: error.issues,
+		});
+		return;
+	}
+	if (error instanceof Error && /not found/.test(error.message)) {
+		writeJson(res, 404, {
+			error: "not_found",
+			message: sanitizeText(error.message),
+		});
+		return;
+	}
+	writeRuntimeError(res, error, fallbackMessage);
+}
+
+function writeUpstreamError(res: ServerResponse, error: unknown, fallbackMessage: string): void {
+	if (error instanceof SidecarUpstreamError) {
+		writeJson(res, error.statusCode, {
+			error: error.error,
+			code: error.upstreamCode,
+			message: sanitizeText(error.message),
+		});
+		return;
+	}
+	writeRuntimeError(res, error, fallbackMessage, 502);
+}
+
+function writeRuntimeError(
+	res: ServerResponse,
+	error: unknown,
+	fallbackMessage: string,
+	statusCode = 500,
+): void {
+	console.error("[astrbot] sidecar request failed:", redactError(error));
+	writeJson(res, statusCode, {
+		error: statusCode >= 500 ? "internal_error" : "request_failed",
+		message: sanitizeText(fallbackMessage),
+		detail: sanitizeText(error instanceof Error ? error.message : String(error)),
 	});
 }
 
@@ -329,4 +833,18 @@ function writeText(res: ServerResponse, statusCode: number, text: string): void 
 		"cache-control": "no-store",
 	});
 	res.end(`${text}\n`);
+}
+
+function sanitizeText(value: string): string {
+	return value
+		.replace(/Bearer\s+[A-Za-z0-9._~+\-/]+=*/gi, "Bearer [REDACTED]")
+		.replace(/(token|secret|key|cookie|SESSDATA|bili_jct)=([^\s;&]+)/gi, "$1=[REDACTED]")
+		.replace(/(https?:\/\/[^\s"']*(?:token|secret|key|cookie)[^\s"']*)/gi, "[REDACTED_URL]");
+}
+
+function redactError(error: unknown): unknown {
+	if (error instanceof Error) {
+		return `${error.name}: ${sanitizeText(error.message)}`;
+	}
+	return sanitizeText(String(error));
 }
