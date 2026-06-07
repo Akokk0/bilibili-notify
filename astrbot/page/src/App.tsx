@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { dashboardApi, resolveApiBase } from "./api/client";
+import { dashboardApi, resolveApiBase, subscribeDashboardEvents } from "./api/client";
 import type { DashboardBootstrap } from "./api/types";
 import { Badge, Button, Card, ErrorBanner } from "./components/ui";
 import { RulesTab } from "./tabs/RulesTab";
@@ -41,6 +41,20 @@ export function App() {
 	}, [reload]);
 
 	useEffect(() => {
+		const bridgeCleanup = subscribeDashboardEvents({
+			onHydrate(next) {
+				setData(next);
+				setLoading(false);
+				setError(null);
+			},
+			onRefresh: () => void reload(),
+			onOpen: () => setSseState("open"),
+			onError: () => {
+				setSseState("fallback");
+				void reload();
+			},
+		});
+		if (bridgeCleanup) return bridgeCleanup;
 		if (typeof EventSource === "undefined") {
 			setSseState("fallback");
 			const timer = setInterval(() => void reload(), 10_000);

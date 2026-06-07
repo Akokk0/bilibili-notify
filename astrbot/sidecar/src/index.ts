@@ -1,5 +1,6 @@
+import { realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { closeSidecarServer, createSidecarHttpServer, listenSidecarServer } from "./http/server.js";
 import { type BusinessRuntimeHandle, createBusinessRuntime } from "./runtime/business-runtime.js";
@@ -369,7 +370,11 @@ export function parseOptionalParentPid(value: string | undefined): number | unde
 function isEntrypoint(metaUrl: string): boolean {
 	const entry = process.argv[1];
 	if (!entry) return false;
-	return metaUrl === pathToFileURL(resolve(entry)).href;
+	try {
+		return realpathSync(fileURLToPath(metaUrl)) === realpathSync(entry);
+	} catch {
+		return metaUrl === pathToFileURL(resolve(entry)).href;
+	}
 }
 
 if (isEntrypoint(import.meta.url)) {

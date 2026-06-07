@@ -213,8 +213,9 @@ class BilibiliNotifyPlugin(Star):
         """AstrBot Plugin Page 的白名单 API proxy。"""
         if self._runtime is None:
             return jsonify({"error": "sidecar_not_ready", "message": "sidecar 还没有启动"}), 503
-        method = request.method.upper()
+        raw_method = request.method.upper()
         params = _query_params(request.args)
+        method = _effective_proxy_method(raw_method, params)
         if method == "GET" and path == "events/stream":
             return Response(
                 self._runtime.proxy_sse(path, params=params),
@@ -496,6 +497,16 @@ def _query_params(args: Mapping[str, Any]) -> dict[str, str]:
             continue
         params[str(key)] = str(value)
     return params
+
+
+def _effective_proxy_method(raw_method: str, params: Mapping[str, str]) -> str:
+    """AstrBot 4.25.x 的 /api/plug 只接收 GET/POST，用 POST + _method 承载资源语义。"""
+    if raw_method != "POST":
+        return raw_method
+    override = str(params.get("_method") or "").upper()
+    if override in {"PATCH", "DELETE"}:
+        return override
+    return raw_method
 
 
 def _extract_event_session(event: AstrMessageEvent) -> dict[str, str] | None:

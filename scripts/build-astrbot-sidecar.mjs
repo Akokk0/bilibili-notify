@@ -1,16 +1,22 @@
 import { spawn } from "node:child_process";
-import { cp, rm } from "node:fs/promises";
+import { copyFile, cp, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+const require = createRequire(import.meta.url);
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const sourceDir = resolve(repoRoot, "astrbot/sidecar/dist");
 const targetDir = resolve(repoRoot, "astrbot/core/sidecar/app");
+const jsdomXhrSyncWorker = require.resolve("jsdom/lib/jsdom/living/xhr/xhr-sync-worker.js");
+const jiebaWasm = resolve(dirname(require.resolve("jieba-wasm/node")), "jieba_rs_wasm_bg.wasm");
 
 await runCommand("vp", ["run", "-F", "@bilibili-notify/astrbot-sidecar", "build"], repoRoot);
 await rm(targetDir, { recursive: true, force: true });
 await cp(sourceDir, targetDir, { recursive: true });
+await copyFile(jsdomXhrSyncWorker, resolve(targetDir, "xhr-sync-worker.js"));
+await copyFile(jiebaWasm, resolve(targetDir, "jieba_rs_wasm_bg.wasm"));
 
 async function runCommand(command, args, cwd) {
 	await new Promise((resolvePromise, rejectPromise) => {

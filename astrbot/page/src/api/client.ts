@@ -14,6 +14,23 @@ import type {
 export const PLUGIN_NAME = "astrbot_plugin_bilibili_notify";
 const REDACTED_SECRET = "__BN_REDACTED__";
 
+type BridgeParams = Record<string, string>;
+
+interface AstrBotPluginPageBridge {
+	apiGet(endpoint: string, params?: BridgeParams): Promise<unknown>;
+	apiPost(endpoint: string, body?: unknown): Promise<unknown>;
+	subscribeSSE?(
+		endpoint: string,
+		handlers: {
+			onOpen?: () => void;
+			onError?: () => void;
+			onMessage?: (message: { raw: string; parsed: unknown; lastEventId?: string }) => void;
+		},
+		params?: BridgeParams,
+	): Promise<string>;
+	unsubscribeSSE?(subscriptionId: string): Promise<unknown>;
+}
+
 export class ApiError extends Error {
 	constructor(
 		public readonly status: number,
@@ -31,7 +48,8 @@ export function resolveApiBase(
 	const pathname = input.locationPathname ?? globalThis.location?.pathname ?? "";
 	const scriptSrc = input.currentScriptSrc ?? currentScriptPathname();
 	const marker = `/${PLUGIN_NAME}/`;
-	if (pathname.includes(marker) || scriptSrc?.includes(marker)) return `/${PLUGIN_NAME}/api`;
+	if (pathname.includes(marker) || scriptSrc?.includes(marker))
+		return `/api/plug/${PLUGIN_NAME}/api`;
 	return "/api";
 }
 
@@ -62,10 +80,16 @@ export function redactSecretValue(value: string | undefined): string {
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-	const base = resolveApiBase();
 	const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
-	const res = await fetch(`${base}/${normalizedPath}`, {
-		method,
+	const bridge = getPluginPageBridge();
+	if (bridge) {
+		return requestViaBridge<T>(bridge, method, normalizedPath, body);
+	}
+
+	const base = resolveApiBase();
+	const tunneled = tunnelMethodForAstrBotPlugRoute(base, method, normalizedPath);
+	const res = await fetch(`${base}/${tunneled.path}`, {
+		method: tunneled.method,
 		headers: body !== undefined ? { "content-type": "application/json" } : undefined,
 		body: body !== undefined ? JSON.stringify(body) : undefined,
 		credentials: "include",
@@ -119,6 +143,104 @@ export const dashboardApi = {
 		request<DeliveryResult>("POST", "push/test", { targetId, text }),
 };
 
+export function subscribeDashboardEvents(handlers: {
+	onHydrate(data: DashboardBootstrap): void;
+	onRefresh(): void;
+	onOpen(): void;
+	onError(): void;
+}): (() => void) | undefined {
+	const bridge = getPluginPageBridge();
+	if (!bridge?.subscribeSSE) return undefined;
+	let closed = false;
+	let subscriptionId: string | undefined;
+	void bridge
+		.subscribeSSE("events/stream", {
+			onOpen: handlers.onOpen,
+			onError: handlers.onError,
+			onMessage(message) {
+				const parsed = message.parsed;
+				if (isDashboardBootstrap(parsed)) {
+					handlers.onHydrate(parsed);
+					return;
+				}
+				handlers.onRefresh();
+			},
+		})
+		.then((id) => {
+			subscriptionId = id;
+			if (closed) void bridge.unsubscribeSSE?.(id);
+		})
+		.catch(() => handlers.onError());
+	return () => {
+		closed = true;
+		if (subscriptionId) void bridge.unsubscribeSSE?.(subscriptionId);
+	};
+}
+
+async function requestViaBridge<T>(
+	bridge: AstrBotPluginPageBridge,
+	method: string,
+	path: string,
+	body?: unknown,
+): Promise<T> {
+	const upperMethod = method.toUpperCase();
+	const parsed = parseEndpoint(path);
+	if (upperMethod === "GET") {
+		return (await bridge.apiGet(parsed.endpoint, parsed.params)) as T;
+	}
+	if (upperMethod === "POST") {
+		return (await bridge.apiPost(withParams(parsed.endpoint, parsed.params), body)) as T;
+	}
+	if (upperMethod === "PATCH" || upperMethod === "DELETE") {
+		return (await bridge.apiPost(
+			withParams(parsed.endpoint, { ...parsed.params, _method: upperMethod }),
+			body,
+		)) as T;
+	}
+	throw new ApiError(405, { error: "method_not_allowed" }, `${method} ${path} is not supported`);
+}
+
+function tunnelMethodForAstrBotPlugRoute(
+	base: string,
+	method: string,
+	path: string,
+): { readonly method: string; readonly path: string } {
+	const upperMethod = method.toUpperCase();
+	if (!base.includes("/api/plug/") || (upperMethod !== "PATCH" && upperMethod !== "DELETE")) {
+		return { method, path };
+	}
+	const parsed = parseEndpoint(path);
+	return {
+		method: "POST",
+		path: withParams(parsed.endpoint, { ...parsed.params, _method: upperMethod }),
+	};
+}
+
+function getPluginPageBridge(): AstrBotPluginPageBridge | undefined {
+	const candidate = (globalThis as typeof globalThis & { AstrBotPluginPage?: unknown })
+		.AstrBotPluginPage;
+	if (!candidate || typeof candidate !== "object") return undefined;
+	const bridge = candidate as Partial<AstrBotPluginPageBridge>;
+	if (typeof bridge.apiGet === "function" && typeof bridge.apiPost === "function") {
+		return bridge as AstrBotPluginPageBridge;
+	}
+	return undefined;
+}
+
+function parseEndpoint(path: string): { readonly endpoint: string; readonly params: BridgeParams } {
+	const [endpoint, query = ""] = path.split("?", 2);
+	const params: BridgeParams = {};
+	for (const [key, value] of new URLSearchParams(query)) {
+		params[key] = value;
+	}
+	return { endpoint, params };
+}
+
+function withParams(endpoint: string, params: BridgeParams): string {
+	const query = new URLSearchParams(params).toString();
+	return query ? `${endpoint}?${query}` : endpoint;
+}
+
 function currentScriptPathname(): string | null {
 	const script = globalThis.document?.currentScript;
 	if (typeof HTMLScriptElement === "undefined" || !(script instanceof HTMLScriptElement)) {
@@ -129,6 +251,17 @@ function currentScriptPathname(): string | null {
 	} catch {
 		return null;
 	}
+}
+
+function isDashboardBootstrap(value: unknown): value is DashboardBootstrap {
+	return Boolean(
+		value &&
+			typeof value === "object" &&
+			"snapshot" in value &&
+			"globals" in value &&
+			"subscriptions" in value &&
+			"targets" in value,
+	);
 }
 
 function safeJson(value: unknown): string | undefined {

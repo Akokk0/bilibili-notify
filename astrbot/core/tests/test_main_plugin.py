@@ -189,6 +189,17 @@ def test_minimal_ops_commands_are_admin_only(monkeypatch: pytest.MonkeyPatch) ->
     assert module.BilibiliNotifyPlugin.login.permission_type == FakePermissionType.ADMIN
 
 
+def test_post_method_override_supports_astrbot_plug_route_tunnel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = import_main_with_fake_astrbot(monkeypatch)
+
+    assert module._effective_proxy_method("POST", {"_method": "PATCH"}) == "PATCH"
+    assert module._effective_proxy_method("POST", {"_method": "DELETE"}) == "DELETE"
+    assert module._effective_proxy_method("POST", {"_method": "GET"}) == "POST"
+    assert module._effective_proxy_method("GET", {"_method": "DELETE"}) == "GET"
+
+
 def import_main_with_fake_astrbot(monkeypatch: pytest.MonkeyPatch):
     logger = FakeLogger()
     api_module = types.ModuleType("astrbot.api")
