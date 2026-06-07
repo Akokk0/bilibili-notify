@@ -4,17 +4,18 @@ packages:
   - "apps/*"
   - "astrbot/*"
 
-# Vite+ alpha spike (apps/web only). Vite+ replaces vite via npm overrides
-# rather than coexisting. We scope the override to the web sub-tree only —
-# `@bilibili-notify/web>vite` matches "vite" anywhere reachable from
-# apps/web's dep graph (so @vitejs/plugin-react, @tailwindcss/vite etc. all
-# fall under it), but leaves @koishijs/client → vite ^5.4.10 alone. Without
+# Vite+ alpha spike (React frontends only). Vite+ replaces vite via npm overrides
+# rather than coexisting. We scope the override to each React frontend sub-tree —
+# `@bilibili-notify/web>vite` / `@bilibili-notify/astrbot-page>vite` match "vite"
+# anywhere reachable from those dep graphs (so @vitejs/plugin-react,
+# @tailwindcss/vite etc. all fall under it), but leaves @koishijs/client → vite ^5.4.10 alone. Without
 # the dependent prefix, the override would also rewrite the koishi console
 # UI's vite 5 to vite 8 (vp's bundled vite), which is a 3-major-version
 # jump with breaking config/plugin API. We intentionally do NOT override
 # vitest yet, since apps/server's test pipeline isn't part of this spike.
 overrides:
   "@bilibili-notify/web>vite": "npm:@voidzero-dev/vite-plus-core@^0.1.20"
+  "@bilibili-notify/astrbot-page>vite": "npm:@voidzero-dev/vite-plus-core@^0.1.20"
 
 # Match the previous yarn classic-style flat hoist, so koishi's plugin loader
 # (which expects deps to live in a single hoisted node_modules tree) keeps
