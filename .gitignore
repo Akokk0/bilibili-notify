@@ -1,4 +1,6 @@
 lib
+!astrbot/page/src/lib/
+!astrbot/page/src/lib/**
 dist
 external
 
