@@ -6,7 +6,7 @@ import { parseArgs } from "node:util";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const parsed = parseArgs({
-	args: process.argv.slice(2),
+	args: normalizeRunScriptArgs(process.argv.slice(2)),
 	options: {
 		"astrbot-root": { type: "string" },
 		force: { type: "boolean", default: false },
@@ -37,6 +37,10 @@ if (parsed.values.symlink) {
 } else {
 	await cp(sourceDir, targetDir, { recursive: true, filter: shouldCopy });
 	console.log(`copied ${sourceDir} -> ${targetDir}`);
+}
+
+function normalizeRunScriptArgs(args) {
+	return args[0] === "--" ? args.slice(1) : args;
 }
 
 function shouldCopy(path) {

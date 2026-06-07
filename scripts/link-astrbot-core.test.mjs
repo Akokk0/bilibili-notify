@@ -93,6 +93,27 @@ describe("link-astrbot-core", () => {
 		}
 	});
 
+	it("accepts the run-script -- delimiter before options", async () => {
+		const tempRoot = await mkdtemp(join(tmpdir(), "bn-link-"));
+		const astrbotRoot = join(tempRoot, "AstrBot");
+		const source = await createFixtureSource(tempRoot);
+		const target = join(astrbotRoot, "data", "plugins", "astrbot_plugin_bilibili_notify");
+		await writeFixtureFile(target, "stale.txt", "old\n");
+
+		await execFileAsync(
+			process.execPath,
+			[scriptPath, "--", "--astrbot-root", astrbotRoot, "--source", source, "--force"],
+			{
+				cwd: repoRoot,
+				env: { ...process.env },
+				timeout: 30_000,
+			},
+		);
+
+		expect(await exists(join(target, "stale.txt"))).toBe(false);
+		expect(await readFile(join(target, "main.py"), "utf8")).toContain("PLUGIN_NAME");
+	});
+
 	it("keeps symlink mode available when requested", async () => {
 		const tempRoot = await mkdtemp(join(tmpdir(), "bn-link-"));
 		const astrbotRoot = join(tempRoot, "AstrBot");
