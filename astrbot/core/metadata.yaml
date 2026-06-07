@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=./metadata.schema.json
 name: astrbot_plugin_bilibili_notify
 display_name: bilibili-notify
-desc: Bilibili Notify for AstrBot via a Node sidecar.
-short_desc: 哔哩哔哩通知插件（Node sidecar 版）
+desc: Bilibili Notify for AstrBot via a local Node sidecar and Plugin Page Dashboard.
+short_desc: 哔哩哔哩通知插件（Dashboard + Node sidecar）
 version: v0.1.0
 author: Akokko
 repo: https://github.com/Akokk0/astrbot_plugin_bilibili_notify

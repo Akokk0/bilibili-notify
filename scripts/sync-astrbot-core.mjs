@@ -31,10 +31,19 @@ function shouldSkip(path) {
 	const rel = relative(sourceDir, path).split("\\").join("/");
 	if (!rel) return false;
 	const segments = rel.split("/");
-	if (segments[0] === ".git" || segments[0] === ".venv" || segments[0] === "__pycache__") {
+	if (
+		segments[0] === ".git" ||
+		segments[0] === ".pytest_cache" ||
+		segments[0] === ".ruff_cache" ||
+		segments[0] === ".venv" ||
+		segments[0] === "__pycache__"
+	) {
 		return true;
 	}
-	if (segments[0] === "sidecar" && (segments[1] === "state" || segments[1] === "logs")) {
+	if (
+		segments[0] === "sidecar" &&
+		(segments[1] === "cache" || segments[1] === "state" || segments[1] === "logs")
+	) {
 		return true;
 	}
 	return false;
