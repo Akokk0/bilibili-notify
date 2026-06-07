@@ -12,6 +12,7 @@
 			"!.changeset",
 			"!**/.interface",
 			"!.bn-design",
+			"!data",
 			"!apps/**/data",
 			"!apps/desktop/src-tauri/gen",
 			"!apps/desktop/src-tauri/resources",

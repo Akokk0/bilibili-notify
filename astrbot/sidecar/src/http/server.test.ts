@@ -8,6 +8,9 @@ import { createSidecarSnapshot } from "../runtime/state.js";
 import type { SidecarHttpRuntime } from "./server.js";
 import { closeSidecarServer, createSidecarHttpServer, listenSidecarServer } from "./server.js";
 
+const TEST_TOKEN = "test-token";
+const AUTH_HEADERS = { authorization: `Bearer ${TEST_TOKEN}` };
+
 describe("sidecar http server", () => {
 	const servers: ReturnType<typeof createSidecarHttpServer>[] = [];
 
@@ -23,14 +26,15 @@ describe("sidecar http server", () => {
 		const server = createSidecarHttpServer({
 			getSnapshot: harness.snapshot,
 			runtime: harness.runtime,
+			authToken: TEST_TOKEN,
 		});
 		servers.push(server);
 		const address = await listenSidecarServer(server, "127.0.0.1", 0);
 		const baseUrl = `http://${address.host}:${address.port}`;
 
 		const [healthResponse, metaResponse, rootResponse] = await Promise.all([
-			fetch(`${baseUrl}/api/health`),
-			fetch(`${baseUrl}/api/meta`),
+			fetch(`${baseUrl}/api/health`, { headers: AUTH_HEADERS }),
+			fetch(`${baseUrl}/api/meta`, { headers: AUTH_HEADERS }),
 			fetch(baseUrl),
 		]);
 
@@ -57,6 +61,24 @@ describe("sidecar http server", () => {
 		expect(await rootResponse.text()).toContain("bilibili-notify AstrBot sidecar");
 	});
 
+	it("requires token for protected API routes", async () => {
+		const harness = createTestHarness();
+		const server = createSidecarHttpServer({
+			getSnapshot: harness.snapshot,
+			runtime: harness.runtime,
+			authToken: TEST_TOKEN,
+		});
+		servers.push(server);
+		const address = await listenSidecarServer(server, "127.0.0.1", 0);
+		const baseUrl = `http://${address.host}:${address.port}`;
+
+		const response = await fetch(`${baseUrl}/api/subscriptions`);
+
+		expect(response.status).toBe(401);
+		expect(await response.json()).toMatchObject({ error: "unauthorized" });
+		expect(harness.runtime.listSubscriptions).not.toHaveBeenCalled();
+	});
+
 	it("polls events and rejects malformed cursors", async () => {
 		const harness = createTestHarness();
 		harness.events.push({ type: "auth-lost" });
@@ -70,18 +92,19 @@ describe("sidecar http server", () => {
 		const server = createSidecarHttpServer({
 			getSnapshot: harness.snapshot,
 			runtime: harness.runtime,
+			authToken: TEST_TOKEN,
 		});
 		servers.push(server);
 		const address = await listenSidecarServer(server, "127.0.0.1", 0);
 		const baseUrl = `http://${address.host}:${address.port}`;
 
-		const okResponse = await fetch(`${baseUrl}/api/events?after=1`);
+		const okResponse = await fetch(`${baseUrl}/api/events?after=1`, { headers: AUTH_HEADERS });
 		expect(okResponse.status).toBe(200);
 		expect(await okResponse.json()).toEqual([
 			expect.objectContaining({ id: 2, type: "notification" }),
 		]);
 
-		const badResponse = await fetch(`${baseUrl}/api/events?after=abc`);
+		const badResponse = await fetch(`${baseUrl}/api/events?after=abc`, { headers: AUTH_HEADERS });
 		expect(badResponse.status).toBe(400);
 		expect(await badResponse.json()).toMatchObject({
 			error: "invalid_after",
@@ -93,6 +116,7 @@ describe("sidecar http server", () => {
 		const server = createSidecarHttpServer({
 			getSnapshot: harness.snapshot,
 			runtime: harness.runtime,
+			authToken: TEST_TOKEN,
 		});
 		servers.push(server);
 		const address = await listenSidecarServer(server, "127.0.0.1", 0);
@@ -100,7 +124,7 @@ describe("sidecar http server", () => {
 
 		const postResponse = await fetch(`${baseUrl}/api/subscriptions`, {
 			method: "POST",
-			headers: { "content-type": "application/json" },
+			headers: { ...AUTH_HEADERS, "content-type": "application/json" },
 			body: JSON.stringify({
 				uid: "123456",
 				name: "测试 UP 主",
@@ -123,17 +147,18 @@ describe("sidecar http server", () => {
 		});
 		expect(harness.runtime.upsertSubscription).toHaveBeenCalledTimes(1);
 
-		const listResponse = await fetch(`${baseUrl}/api/subscriptions`);
+		const listResponse = await fetch(`${baseUrl}/api/subscriptions`, { headers: AUTH_HEADERS });
 		expect(listResponse.status).toBe(200);
 		expect(await listResponse.json()).toEqual(posted);
 
 		const subscriptionId = String(posted[0]?.id ?? "");
 		const deleteResponse = await fetch(`${baseUrl}/api/subscriptions/${subscriptionId}`, {
 			method: "DELETE",
+			headers: AUTH_HEADERS,
 		});
 		expect(deleteResponse.status).toBe(204);
 
-		const emptyResponse = await fetch(`${baseUrl}/api/subscriptions`);
+		const emptyResponse = await fetch(`${baseUrl}/api/subscriptions`, { headers: AUTH_HEADERS });
 		expect(await emptyResponse.json()).toEqual([]);
 	});
 
@@ -142,12 +167,13 @@ describe("sidecar http server", () => {
 		const server = createSidecarHttpServer({
 			getSnapshot: harness.snapshot,
 			runtime: harness.runtime,
+			authToken: TEST_TOKEN,
 		});
 		servers.push(server);
 		const address = await listenSidecarServer(server, "127.0.0.1", 0);
 		const baseUrl = `http://${address.host}:${address.port}`;
 
-		const statusResponse = await fetch(`${baseUrl}/api/login/status`);
+		const statusResponse = await fetch(`${baseUrl}/api/login/status`, { headers: AUTH_HEADERS });
 		expect(statusResponse.status).toBe(200);
 		expect(await statusResponse.json()).toMatchObject({
 			status: BiliLoginStatus.NOT_LOGIN,
@@ -155,7 +181,10 @@ describe("sidecar http server", () => {
 		});
 		expect(harness.runtime.ensureAuthStarted).toHaveBeenCalledTimes(1);
 
-		const qrResponse = await fetch(`${baseUrl}/api/login/qr`, { method: "POST" });
+		const qrResponse = await fetch(`${baseUrl}/api/login/qr`, {
+			method: "POST",
+			headers: AUTH_HEADERS,
+		});
 		expect(qrResponse.status).toBe(200);
 		expect(await qrResponse.json()).toMatchObject({
 			status: BiliLoginStatus.LOGIN_QR,

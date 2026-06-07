@@ -16,47 +16,72 @@ from sidecar_process import (
     SidecarConfig,
     SidecarRuntime,
     build_sidecar_config,
+    parse_node_major_version,
     start_sidecar,
 )
 
 
 @pytest.mark.asyncio
-async def test_build_sidecar_config_uses_environment_overrides(tmp_path: Path) -> None:
+async def test_build_sidecar_config_uses_native_config_and_fixed_plugin_data_dir(
+    tmp_path: Path,
+) -> None:
+    data_root = tmp_path / "astrbot-data"
     config = build_sidecar_config(
         tmp_path,
         {
-            "BN_NODE_BIN": "uv",
-            "BN_SIDECAR_HOST": "127.0.0.1",
-            "BN_SIDECAR_PORT": "19876",
-            "BN_SIDECAR_READY_FILE": "state/ready.json",
-            "BN_SIDECAR_LOG_FILE": "state/sidecar.log",
+            "ASTRBOT_DATA_PATH": str(data_root),
+            "BN_NODE_BIN": "env-node",
+            "BN_SIDECAR_HOST": "0.0.0.0",
+            "BN_SIDECAR_PORT": "19090",
+            "BN_SIDECAR_READY_FILE": "runtime/ready.json",
+            "BN_SIDECAR_LOG_FILE": "logs/sidecar.log",
             "BN_SIDECAR_AI_BACKEND": "own",
-            "BN_SIDECAR_AI_PROVIDER_ID": "astrbot-openai",
+            "BN_SIDECAR_AI_PROVIDER_ID": "env-provider",
+            "BN_SIDECAR_LOG_LEVEL": "warn",
+            "BN_SIDECAR_TOKEN": "test-token",
             "BN_SIDECAR_STARTUP_TIMEOUT_SECONDS": "12.5",
             "BN_SIDECAR_SHUTDOWN_TIMEOUT_SECONDS": "4.5",
         },
         version="v0.1.0",
+        startup_config={
+            "nodePath": "configured-node",
+            "fixedPort": 19876,
+            "logLevel": "debug",
+            "startupTimeoutSeconds": 22.5,
+            "shutdownTimeoutSeconds": 6.5,
+            "aiProviderId": "astrbot-openai",
+        },
     )
 
-    expect_ready_file = tmp_path / "state" / "ready.json"
-    expect_log_file = tmp_path / "state" / "sidecar.log"
-    assert config.node_bin == "uv"
+    plugin_data_dir = data_root / "plugin_data" / "astrbot_plugin_bilibili_notify"
+    assert config.node_bin == "configured-node"
     assert config.host == "127.0.0.1"
     assert config.port == 19876
-    assert config.ready_file == expect_ready_file
+    assert config.ready_file == plugin_data_dir / "runtime" / "ready.json"
     assert config.ready_file.is_absolute()
-    assert config.log_file == expect_log_file
+    assert config.log_file == plugin_data_dir / "logs" / "sidecar.log"
     assert config.log_file.is_absolute()
+    assert config.data_dir == plugin_data_dir / "sidecar"
+    assert config.token == "test-token"
     assert config.ai_backend == "own"
     assert config.ai_provider_id == "astrbot-openai"
-    assert config.startup_timeout_seconds == 12.5
-    assert config.shutdown_timeout_seconds == 4.5
+    assert config.log_level == "debug"
+    assert config.startup_timeout_seconds == 22.5
+    assert config.shutdown_timeout_seconds == 6.5
     assert config.version == "v0.1.0"
+
+
+def test_parse_node_major_version() -> None:
+    assert parse_node_major_version("v24.1.0") == 24
+    assert parse_node_major_version("node v25.0.0") == 25
+    assert parse_node_major_version("Python 3.13.0") is None
+    assert parse_node_major_version("") is None
 
 
 @pytest.mark.asyncio
 async def test_sidecar_client_calls_control_plane_endpoints() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["authorization"] == "Bearer client-token"
         if request.method == "GET" and request.url.path == "/api/health":
             return httpx.Response(200, json={"status": "ready"})
         if request.method == "GET" and request.url.path == "/api/meta":
@@ -82,6 +107,7 @@ async def test_sidecar_client_calls_control_plane_endpoints() -> None:
     client = SidecarClient(
         "http://127.0.0.1:19090",
         transport=httpx.MockTransport(handler),
+        token="client-token",
     )
 
     assert await client.get_health() == {"status": "ready"}
@@ -135,11 +161,13 @@ async def test_start_sidecar_waits_for_health_and_closes_cleanly(tmp_path: Path)
 			from socketserver import TCPServer
 
 			parser = argparse.ArgumentParser()
-			parser.add_argument("--host", required=True)
 			parser.add_argument("--port", type=int, required=True)
 			parser.add_argument("--ready-file", required=True)
+			parser.add_argument("--data-dir", required=True)
 			parser.add_argument("--ai-backend", required=True)
 			parser.add_argument("--ai-provider-id", default="")
+			parser.add_argument("--log-level", default="info")
+			parser.add_argument("--token", default="")
 			parser.add_argument("--version", required=True)
 			args = parser.parse_args()
 
@@ -175,7 +203,7 @@ async def test_start_sidecar_waits_for_health_and_closes_cleanly(tmp_path: Path)
 				def log_message(self, format, *args):
 					return
 
-			with TCPServer((args.host, args.port), Handler) as server:
+			with TCPServer(("127.0.0.1", args.port), Handler) as server:
 				ready = {
 					"status": "ready",
 					"version": args.version,
@@ -210,6 +238,7 @@ async def test_start_sidecar_waits_for_health_and_closes_cleanly(tmp_path: Path)
         ai_backend="own",
         ai_provider_id="astrbot-openai",
         version="v0.1.0",
+        node_min_major=0,
     )
 
     runtime = await start_sidecar(config)
@@ -293,6 +322,7 @@ async def test_sidecar_runtime_close_cleans_up_when_cancelled(
             ai_backend="own",
             ai_provider_id="astrbot-openai",
             version="v0.1.0",
+            node_min_major=0,
         ),
         process=cast(asyncio.subprocess.Process, fake_process),
         snapshot={
@@ -356,7 +386,9 @@ async def test_start_sidecar_uses_configured_shutdown_timeout_on_startup_failure
         shutdown_timeout_seconds=7.25,
         ai_backend="own",
         ai_provider_id="astrbot-openai",
+        token="secret-token",
         version="v0.1.0",
+        node_min_major=0,
     )
 
     class FakeProcess:
@@ -380,10 +412,12 @@ async def test_start_sidecar_uses_configured_shutdown_timeout_on_startup_failure
 
     fake_process = FakeProcess()
     observed_timeouts: list[float] = []
+    observed_args: tuple[object, ...] | None = None
     observed_env: dict[str, str] | None = None
 
-    async def fake_create_subprocess_exec(*_args, **kwargs):
-        nonlocal observed_env
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        nonlocal observed_args, observed_env
+        observed_args = args
         observed_env = kwargs["env"]
         return fake_process
 
@@ -410,7 +444,10 @@ async def test_start_sidecar_uses_configured_shutdown_timeout_on_startup_failure
         await start_sidecar(config)
 
     assert observed_timeouts == [config.shutdown_timeout_seconds]
+    assert observed_args is not None
+    assert "secret-token" not in [str(arg) for arg in observed_args]
     assert observed_env is not None
+    assert observed_env["BN_SIDECAR_TOKEN"] == "secret-token"
     assert observed_env["BN_SIDECAR_PARENT_PID"] == str(os.getpid())
     assert fake_process.terminated is True
     assert fake_process.killed is False
@@ -441,6 +478,7 @@ async def test_start_sidecar_preserves_startup_error_when_log_close_fails(
         ai_backend="own",
         ai_provider_id="astrbot-openai",
         version="v0.1.0",
+        node_min_major=0,
     )
 
     class FakeProcess:
@@ -532,6 +570,7 @@ async def test_start_sidecar_reports_process_cleanup_errors_without_masking_star
         ai_backend="own",
         ai_provider_id="astrbot-openai",
         version="v0.1.0",
+        node_min_major=0,
     )
 
     class FakeProcess:

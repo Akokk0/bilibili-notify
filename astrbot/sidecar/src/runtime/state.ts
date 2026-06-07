@@ -21,16 +21,26 @@ export interface SidecarBusinessSnapshot {
 	readonly login?: unknown;
 }
 
+export interface SidecarCapabilities {
+	readonly tokenAuth: boolean;
+	readonly pluginPageProxy: boolean;
+	readonly sse: boolean;
+	readonly deliveryQueue: boolean;
+	readonly aiProviderBridge: boolean;
+}
+
 export interface SidecarSnapshotInput {
 	readonly status: SidecarStatus;
 	readonly version: string;
 	readonly pid: number;
 	readonly host: string;
 	readonly port: number;
+	readonly dataDir?: string;
 	readonly startedAt: string;
 	readonly readyAt?: string;
 	readonly aiBackend: AiBackend;
 	readonly aiProviderId?: string;
+	readonly capabilities?: SidecarCapabilities;
 	readonly business?: SidecarBusinessSnapshot;
 }
 

@@ -21,6 +21,7 @@ export interface SidecarLaunchOptions {
 	readonly aiProviderId?: string;
 	readonly version?: string;
 	readonly logLevel?: "debug" | "info" | "warn" | "error";
+	readonly authToken?: string;
 	readonly userAgent?: string;
 	readonly cookieEncryptionKey?: string;
 	readonly signal?: AbortSignal;
@@ -52,6 +53,7 @@ export function parseSidecarLaunchOptions(
 		| "aiBackend"
 		| "aiProviderId"
 		| "logLevel"
+		| "authToken"
 		| "userAgent"
 		| "cookieEncryptionKey"
 	> {
@@ -65,19 +67,21 @@ export function parseSidecarLaunchOptions(
 			"ai-backend": { type: "string" },
 			"ai-provider-id": { type: "string" },
 			"log-level": { type: "string" },
+			token: { type: "string" },
 			"user-agent": { type: "string" },
 			"cookie-encryption-key": { type: "string" },
 			version: { type: "string" },
 		},
 		allowPositionals: true,
 	});
-	const host = parsed.values.host ?? env.BN_SIDECAR_HOST ?? DEFAULT_HOST;
+	const host = DEFAULT_HOST;
 	const port = parseOptionalPort(parsed.values.port ?? env.BN_SIDECAR_PORT, DEFAULT_PORT);
 	const readyFile = parsed.values["ready-file"] ?? env.BN_SIDECAR_READY_FILE;
 	const dataDir = parsed.values["data-dir"] ?? env.BN_SIDECAR_DATA_DIR;
 	const aiBackend = normalizeAiBackend(parsed.values["ai-backend"] ?? env.BN_SIDECAR_AI_BACKEND);
 	const aiProviderId = parsed.values["ai-provider-id"] ?? env.BN_SIDECAR_AI_PROVIDER_ID;
 	const logLevel = parseOptionalLogLevel(parsed.values["log-level"] ?? env.BN_SIDECAR_LOG_LEVEL);
+	const authToken = parsed.values.token ?? env.BN_SIDECAR_TOKEN;
 	const userAgent = parsed.values["user-agent"] ?? env.BN_SIDECAR_USER_AGENT;
 	const cookieEncryptionKey =
 		parsed.values["cookie-encryption-key"] ?? env.BN_SIDECAR_COOKIE_ENCRYPTION_KEY;
@@ -91,6 +95,7 @@ export function parseSidecarLaunchOptions(
 		aiBackend,
 		aiProviderId,
 		logLevel,
+		authToken,
 		userAgent,
 		cookieEncryptionKey,
 	};
@@ -101,13 +106,14 @@ export async function startSidecar(options: SidecarLaunchOptions = {}): Promise<
 	if (signal?.aborted) {
 		throw createAbortError(signal.reason);
 	}
-	const host = options.host ?? DEFAULT_HOST;
+	const host = DEFAULT_HOST;
 	const port = options.port ?? DEFAULT_PORT;
 	const version = options.version ?? DEFAULT_VERSION;
 	const aiBackend = options.aiBackend ?? "astrbot";
 	const aiProviderId = options.aiProviderId?.length ? options.aiProviderId : undefined;
 	const readyFile = options.readyFile ? options.readyFile : undefined;
 	const dataDir = resolveDataDir(options.dataDir, readyFile);
+	const authToken = options.authToken?.trim() ? options.authToken : undefined;
 	let stopped = false;
 	const startedAt = new Date().toISOString();
 	const runtime = createBusinessRuntime({
@@ -122,9 +128,11 @@ export async function startSidecar(options: SidecarLaunchOptions = {}): Promise<
 		pid: process.pid,
 		host,
 		port,
+		dataDir,
 		startedAt,
 		aiBackend,
 		aiProviderId,
+		capabilities: createSidecarCapabilities(Boolean(authToken)),
 		business: runtime.snapshot(),
 	});
 	const currentSnapshot = (): SidecarSnapshot =>
@@ -132,7 +140,7 @@ export async function startSidecar(options: SidecarLaunchOptions = {}): Promise<
 			...snapshot,
 			business: runtime.snapshot(),
 		});
-	const server = createSidecarHttpServer({ getSnapshot: currentSnapshot, runtime });
+	const server = createSidecarHttpServer({ getSnapshot: currentSnapshot, runtime, authToken });
 	const close = async (reason = "shutdown"): Promise<void> => {
 		if (stopped) return;
 		stopped = true;
@@ -330,6 +338,16 @@ function parseOptionalLogLevel(value: string | undefined): SidecarLaunchOptions[
 		return value;
 	}
 	return undefined;
+}
+
+function createSidecarCapabilities(tokenAuthEnabled: boolean) {
+	return {
+		tokenAuth: tokenAuthEnabled,
+		pluginPageProxy: true,
+		sse: false,
+		deliveryQueue: false,
+		aiProviderBridge: false,
+	};
 }
 
 export function parseOptionalParentPid(value: string | undefined): number | undefined {

@@ -24,16 +24,23 @@ PLUGIN_VERSION = "v0.1.0"
     PLUGIN_VERSION,
 )
 class BilibiliNotifyPlugin(Star):
-    def __init__(self, context: Context):
+    def __init__(self, context: Context, config: Any | None = None):
         super().__init__(context)
         self._plugin_root = Path(__file__).resolve().parent
+        self._startup_config = config
         self._runtime: SidecarRuntime | None = None
 
     async def initialize(self):
         """启动 Node sidecar 并等待健康就绪。"""
         if self._runtime is not None:
             return
-        config = build_sidecar_config(self._plugin_root, os.environ, version=PLUGIN_VERSION)
+        config = build_sidecar_config(
+            self._plugin_root,
+            os.environ,
+            version=PLUGIN_VERSION,
+            startup_config=self._startup_config,
+            plugin_name=getattr(self, "name", "astrbot_plugin_bilibili_notify"),
+        )
         logger.info(f"[bilibili-notify] launching sidecar from {config.entrypoint}")
         self._runtime = await start_sidecar(config)
         logger.info(f"[bilibili-notify] sidecar ready: {self._runtime.describe()}")

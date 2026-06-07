@@ -57,7 +57,10 @@ type _CardStyle = Expect<CanonKeysCovered<CanonCardStyle, MirrorCardStyle>>;
 type _Template = Expect<CanonKeysCovered<CanonTemplateBundle, MirrorTemplate>>;
 type _AIOverride = Expect<CanonKeysCovered<CanonAIOverride, MirrorAIOverride>>;
 type _AISettings = Expect<CanonKeysCovered<CanonAISettings, MirrorAISettings>>;
-type _PushTarget = Expect<CanonKeysCovered<CanonPushTarget, MirrorPushTarget>>;
+// 独立端 Dashboard 只镜像自己可编辑的平台。宿主专用隐藏平台（Koishi/AstrBot）
+// 由对应宿主壳消费，不进入 apps/web 的平台工厂和普通选择器。
+type StandaloneCanonPushTarget = Exclude<CanonPushTarget, { platform: "koishi-bot" | "astrbot" }>;
+type _PushTarget = Expect<CanonKeysCovered<StandaloneCanonPushTarget, MirrorPushTarget>>;
 
 // 引用一次,避免 "unused type" 噪音(类型层断言已在上面 tsc 检查时生效)。
 export type _DomainConformance = [

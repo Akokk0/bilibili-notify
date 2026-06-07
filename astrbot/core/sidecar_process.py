@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
+import secrets
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -14,6 +16,9 @@ DEFAULT_SHUTDOWN_TIMEOUT_SECONDS = 5.0
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 0
 DEFAULT_AI_BACKEND = "astrbot"
+DEFAULT_LOG_LEVEL = "info"
+MIN_NODE_MAJOR_VERSION = 24
+PLUGIN_DATA_DIR_NAME = "plugin_data"
 
 
 @dataclass(slots=True)
@@ -23,13 +28,17 @@ class SidecarConfig:
     entrypoint: Path
     ready_file: Path
     log_file: Path
+    data_dir: Path | None = None
+    token: str = ""
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
     startup_timeout_seconds: float = DEFAULT_STARTUP_TIMEOUT_SECONDS
     shutdown_timeout_seconds: float = DEFAULT_SHUTDOWN_TIMEOUT_SECONDS
     ai_backend: str = DEFAULT_AI_BACKEND
     ai_provider_id: str = ""
+    log_level: str = DEFAULT_LOG_LEVEL
     version: str = "0.1.0"
+    node_min_major: int = MIN_NODE_MAJOR_VERSION
 
 
 @dataclass(slots=True)
@@ -37,6 +46,7 @@ class SidecarClient:
     base_url: str
     timeout_seconds: float = 5.0
     transport: httpx.AsyncBaseTransport | None = None
+    token: str = ""
 
     async def get_health(self) -> dict[str, Any]:
         payload = await self._request_json("GET", "/api/health")
@@ -117,10 +127,12 @@ class SidecarClient:
         return response.json()
 
     def _client(self) -> httpx.AsyncClient:
+        headers = {"authorization": f"Bearer {self.token}"} if self.token else None
         return httpx.AsyncClient(
             base_url=self.base_url,
             timeout=self.timeout_seconds,
             transport=self.transport,
+            headers=headers,
         )
 
 
@@ -153,7 +165,7 @@ class SidecarRuntime:
 
     @property
     def client(self) -> SidecarClient:
-        return SidecarClient(self.url)
+        return SidecarClient(self.url, token=self.config.token)
 
     def describe(self) -> str:
         provider = f" / provider={self.ai_provider_id}" if self.ai_provider_id else ""
@@ -251,11 +263,52 @@ class SidecarRuntime:
             raise log_close_error
 
 
+async def ensure_node_runtime(config: SidecarConfig) -> None:
+    """验证 Node sidecar 运行时满足首版最低版本要求。"""
+    if config.node_min_major <= 0:
+        return
+    try:
+        process = await asyncio.create_subprocess_exec(
+            config.node_bin,
+            "--version",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            f"Node executable not found: {config.node_bin}. 请安装 Node >= {config.node_min_major} 或在插件配置中设置 nodePath。",
+        ) from exc
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=5.0)
+    except TimeoutError as exc:
+        process.kill()
+        await process.wait()
+        raise RuntimeError(f"Node version check timed out: {config.node_bin}") from exc
+    output = (stdout or stderr).decode("utf-8", errors="replace").strip()
+    major = parse_node_major_version(output)
+    if process.returncode != 0 or major is None:
+        raise RuntimeError(
+            f"Unable to read Node version from {config.node_bin!r}: {output or 'empty output'}",
+        )
+    if major < config.node_min_major:
+        raise RuntimeError(
+            f"Node >= {config.node_min_major} is required, but {config.node_bin!r} reported {output}. 请升级 Node 或设置 nodePath。",
+        )
+
+
+def parse_node_major_version(output: str) -> int | None:
+    match = re.search(r"^(?:node\s+)?v(\d+)\.", output.strip())
+    if not match:
+        return None
+    return int(match.group(1))
+
+
 async def start_sidecar(config: SidecarConfig) -> SidecarRuntime:
     if not config.entrypoint.exists():
         raise FileNotFoundError(
             f"Sidecar entrypoint not found: {config.entrypoint}. 请先运行构建脚本生成 AstrBot sidecar 产物。",
         )
+    await ensure_node_runtime(config)
     config.ready_file.parent.mkdir(parents=True, exist_ok=True)
     config.log_file.parent.mkdir(parents=True, exist_ok=True)
     await remove_ready_file(config.ready_file)
@@ -263,32 +316,41 @@ async def start_sidecar(config: SidecarConfig) -> SidecarRuntime:
     process: asyncio.subprocess.Process | None = None
     try:
         env = os.environ.copy()
+        data_dir = config.data_dir or config.ready_file.parent
         env.update(
             {
-                "BN_SIDECAR_HOST": config.host,
                 "BN_SIDECAR_PORT": str(config.port),
                 "BN_SIDECAR_READY_FILE": str(config.ready_file),
+                "BN_SIDECAR_DATA_DIR": str(data_dir),
                 "BN_SIDECAR_AI_BACKEND": config.ai_backend,
                 "BN_SIDECAR_AI_PROVIDER_ID": config.ai_provider_id,
+                "BN_SIDECAR_LOG_LEVEL": config.log_level,
                 "BN_SIDECAR_PARENT_PID": str(os.getpid()),
                 "BN_SIDECAR_VERSION": config.version,
             }
         )
-        process = await asyncio.create_subprocess_exec(
+        args = [
             config.node_bin,
             str(config.entrypoint),
-            "--host",
-            config.host,
             "--port",
             str(config.port),
             "--ready-file",
             str(config.ready_file),
+            "--data-dir",
+            str(data_dir),
             "--ai-backend",
             config.ai_backend,
             "--ai-provider-id",
             config.ai_provider_id,
+            "--log-level",
+            config.log_level,
             "--version",
             config.version,
+        ]
+        if config.token:
+            env["BN_SIDECAR_TOKEN"] = config.token
+        process = await asyncio.create_subprocess_exec(
+            *args,
             cwd=str(config.plugin_root),
             env=env,
             stdout=log_handle,
@@ -365,7 +427,7 @@ async def wait_for_ready_snapshot(
             )
         try:
             snapshot = await read_ready_snapshot(config.ready_file)
-            if snapshot and await probe_health(str(snapshot["url"])):
+            if snapshot and await probe_health(str(snapshot["url"]), token=config.token):
                 return snapshot
         except FileNotFoundError:
             last_error = "ready file not found"
@@ -377,8 +439,9 @@ async def wait_for_ready_snapshot(
     )
 
 
-async def probe_health(base_url: str) -> bool:
-    async with httpx.AsyncClient(base_url=base_url, timeout=2.0) as client:
+async def probe_health(base_url: str, token: str = "") -> bool:
+    headers = {"authorization": f"Bearer {token}"} if token else None
+    async with httpx.AsyncClient(base_url=base_url, timeout=2.0, headers=headers) as client:
         response = await client.get("/api/health")
         if response.status_code != 200:
             return False
@@ -398,37 +461,120 @@ def build_sidecar_config(
     plugin_root: Path,
     env: Mapping[str, str] | None = None,
     version: str = "0.1.0",
+    startup_config: Mapping[str, Any] | None = None,
+    plugin_name: str = "astrbot_plugin_bilibili_notify",
 ) -> SidecarConfig:
     environment = dict(env or os.environ)
+    native_config = dict(startup_config or {})
     sidecar_root = plugin_root / "sidecar"
+    plugin_data_dir = resolve_plugin_data_dir(plugin_root, environment, plugin_name)
+    data_dir = plugin_data_dir / "sidecar"
+    node_bin = _config_string(native_config, "nodePath") or environment.get("BN_NODE_BIN") or "node"
+    port = _parse_config_int(
+        native_config.get("fixedPort"),
+        _parse_int(environment.get("BN_SIDECAR_PORT"), DEFAULT_PORT),
+    )
     return SidecarConfig(
         plugin_root=plugin_root,
-        node_bin=environment.get("BN_NODE_BIN") or "node",
+        node_bin=node_bin,
         entrypoint=sidecar_root / "app" / "index.mjs",
         ready_file=_resolve_config_path(
             environment.get("BN_SIDECAR_READY_FILE"),
-            base_dir=plugin_root,
-            fallback=sidecar_root / "state" / "ready.json",
+            base_dir=plugin_data_dir,
+            fallback=plugin_data_dir / "runtime" / "ready.json",
         ),
         log_file=_resolve_config_path(
             environment.get("BN_SIDECAR_LOG_FILE"),
-            base_dir=plugin_root,
-            fallback=sidecar_root / "state" / "sidecar.log",
+            base_dir=plugin_data_dir,
+            fallback=plugin_data_dir / "logs" / "sidecar.log",
         ),
-        host=environment.get("BN_SIDECAR_HOST") or DEFAULT_HOST,
-        port=_parse_int(environment.get("BN_SIDECAR_PORT"), DEFAULT_PORT),
-        startup_timeout_seconds=_parse_float(
-            environment.get("BN_SIDECAR_STARTUP_TIMEOUT_SECONDS"),
-            DEFAULT_STARTUP_TIMEOUT_SECONDS,
+        data_dir=data_dir,
+        token=environment.get("BN_SIDECAR_TOKEN") or secrets.token_urlsafe(32),
+        host=DEFAULT_HOST,
+        port=port,
+        startup_timeout_seconds=_parse_config_float(
+            native_config.get("startupTimeoutSeconds"),
+            _parse_float(
+                environment.get("BN_SIDECAR_STARTUP_TIMEOUT_SECONDS"),
+                DEFAULT_STARTUP_TIMEOUT_SECONDS,
+            ),
         ),
-        shutdown_timeout_seconds=_parse_float(
-            environment.get("BN_SIDECAR_SHUTDOWN_TIMEOUT_SECONDS"),
-            DEFAULT_SHUTDOWN_TIMEOUT_SECONDS,
+        shutdown_timeout_seconds=_parse_config_float(
+            native_config.get("shutdownTimeoutSeconds"),
+            _parse_float(
+                environment.get("BN_SIDECAR_SHUTDOWN_TIMEOUT_SECONDS"),
+                DEFAULT_SHUTDOWN_TIMEOUT_SECONDS,
+            ),
         ),
         ai_backend=environment.get("BN_SIDECAR_AI_BACKEND") or DEFAULT_AI_BACKEND,
-        ai_provider_id=environment.get("BN_SIDECAR_AI_PROVIDER_ID", ""),
+        ai_provider_id=_config_string(native_config, "aiProviderId")
+        or environment.get("BN_SIDECAR_AI_PROVIDER_ID", ""),
+        log_level=_parse_log_level(
+            _config_string(native_config, "logLevel") or environment.get("BN_SIDECAR_LOG_LEVEL"),
+            DEFAULT_LOG_LEVEL,
+        ),
         version=environment.get("BN_SIDECAR_VERSION") or version,
     )
+
+
+def resolve_plugin_data_dir(
+    plugin_root: Path,
+    env: Mapping[str, str],
+    plugin_name: str,
+) -> Path:
+    data_root_override = env.get("ASTRBOT_DATA_PATH") or env.get("BN_ASTRBOT_DATA_PATH")
+    if data_root_override:
+        data_root = Path(data_root_override)
+    else:
+        data_root = _get_astrbot_data_root(plugin_root)
+    return data_root / PLUGIN_DATA_DIR_NAME / plugin_name
+
+
+def _get_astrbot_data_root(plugin_root: Path) -> Path:
+    try:
+        from astrbot.core.utils.astrbot_path import get_astrbot_data_path
+    except Exception:  # noqa: BLE001
+        return plugin_root.parent / "data"
+    return Path(get_astrbot_data_path())
+
+
+def _config_string(config: Mapping[str, Any], key: str) -> str:
+    value = config.get(key)
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _parse_config_int(value: Any, fallback: int) -> int:
+    if value is None or value == "":
+        return fallback
+    if isinstance(value, bool):
+        return fallback
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    if parsed < 0 or parsed > 65_535:
+        return fallback
+    return parsed
+
+
+def _parse_config_float(value: Any, fallback: float) -> float:
+    if value is None or value == "":
+        return fallback
+    if isinstance(value, bool):
+        return fallback
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    return parsed if parsed > 0 else fallback
+
+
+def _parse_log_level(value: str | None, fallback: str) -> str:
+    if value in {"debug", "info", "warn", "error"}:
+        return value
+    return fallback
 
 
 def _resolve_config_path(

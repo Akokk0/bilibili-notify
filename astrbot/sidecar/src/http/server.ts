@@ -19,6 +19,7 @@ export type SnapshotProvider = () => SidecarSnapshot;
 export interface SidecarHttpServerOptions {
 	readonly getSnapshot: SnapshotProvider;
 	readonly runtime: SidecarHttpRuntime;
+	readonly authToken?: string;
 }
 
 export function createSidecarHttpServer(options: SidecarHttpServerOptions): Server {
@@ -79,6 +80,14 @@ async function handleSidecarRequest(
 ): Promise<void> {
 	const method = req.method ?? "GET";
 	const { pathname, searchParams } = getRequestUrl(req);
+
+	if (isProtectedRoute(method, pathname) && !isAuthorizedRequest(req, options.authToken)) {
+		writeJson(res, 401, {
+			error: "unauthorized",
+			message: "sidecar token is required",
+		});
+		return;
+	}
 
 	if (method === "GET" && pathname === "/api/health") {
 		writeJson(res, 200, options.getSnapshot());
@@ -193,6 +202,19 @@ async function handleSidecarRequest(
 	}
 
 	writeJson(res, 404, { error: "not_found" });
+}
+
+function isProtectedRoute(_method: string, pathname: string): boolean {
+	return pathname.startsWith("/api/");
+}
+
+function isAuthorizedRequest(req: IncomingMessage, authToken: string | undefined): boolean {
+	if (!authToken) return true;
+	const authorization = req.headers.authorization;
+	if (authorization === `Bearer ${authToken}`) return true;
+	const headerToken = req.headers["x-bilibili-notify-token"];
+	if (headerToken === authToken) return true;
+	return Array.isArray(headerToken) && headerToken.includes(authToken);
 }
 
 async function saveSubscription(
