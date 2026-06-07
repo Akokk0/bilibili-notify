@@ -7,12 +7,14 @@ import { z } from "zod";
  * - `web-dashboard`：通过独立端 WebSocket 推到 Dashboard 通知中心
  * - `koishi-bot`：仅 koishi 薄壳侧实现，通过 `ctx.bots[botPlatform]` 调 koishi bot
  *   `sendMessage`；独立端不注册该 platform adapter
+ * - `astrbot`：仅 AstrBot 插件侧实现，通过 Python 壳按 `unified_msg_origin` 投递
  */
 export const PushTargetPlatformSchema = z.union([
 	z.literal("onebot"),
 	z.literal("webhook"),
 	z.literal("web-dashboard"),
 	z.literal("koishi-bot"),
+	z.literal("astrbot"),
 ]);
 export type PushTargetPlatform = z.infer<typeof PushTargetPlatformSchema>;
 
@@ -110,6 +112,10 @@ export const KoishiBotAdapterConfigSchema = z.object({
 });
 export type KoishiBotAdapterConfig = z.infer<typeof KoishiBotAdapterConfigSchema>;
 
+// AstrBot 由宿主 Python 壳完成实际投递；连接级配置固定为空对象。
+export const AstrBotAdapterConfigSchema = z.object({}).strict();
+export type AstrBotAdapterConfig = z.infer<typeof AstrBotAdapterConfigSchema>;
+
 export const PushAdapterTestStatusSchema = z.object({
 	ok: z.boolean(),
 	lastCheckedAt: z.string(),
@@ -155,11 +161,19 @@ const KoishiBotAdapterSchema = z.object({
 	config: KoishiBotAdapterConfigSchema,
 });
 
+export const AstrBotAdapterSchema = z.object({
+	...PushAdapterCommonShape,
+	platform: z.literal("astrbot"),
+	config: AstrBotAdapterConfigSchema,
+});
+export type AstrBotAdapter = z.infer<typeof AstrBotAdapterSchema>;
+
 export const PushAdapterSchema = z.discriminatedUnion("platform", [
 	OnebotAdapterSchema,
 	WebhookAdapterSchema,
 	WebDashboardAdapterSchema,
 	KoishiBotAdapterSchema,
+	AstrBotAdapterSchema,
 ]);
 export type PushAdapter = z.infer<typeof PushAdapterSchema>;
 
@@ -194,6 +208,22 @@ export const KoishiBotSessionSchema = z
 	})
 	.strict();
 export type KoishiBotSession = z.infer<typeof KoishiBotSessionSchema>;
+
+export const AstrBotSessionSchema = z
+	.object({
+		/** AstrBot 会话稳定定位符，来自 `event.unified_msg_origin`。 */
+		unified_msg_origin: z.string().min(1),
+		/** 展示用宿主平台摘要，例如 aiocqhttp / telegram。 */
+		platform: z.string().optional(),
+		/** 展示用消息类型摘要，例如 group / private / channel。 */
+		messageType: z.string().optional(),
+		/** 展示用会话 ID 摘要；投递仍以 unified_msg_origin 为准。 */
+		sessionId: z.string().optional(),
+		/** 展示用会话名摘要。 */
+		sessionName: z.string().optional(),
+	})
+	.strict();
+export type AstrBotSession = z.infer<typeof AstrBotSessionSchema>;
 
 const PushTargetCommonShape = {
 	id: z.uuid(),
@@ -233,10 +263,18 @@ const KoishiBotPushTargetSchema = z.object({
 	session: KoishiBotSessionSchema,
 });
 
+export const AstrBotPushTargetSchema = z.object({
+	...PushTargetCommonShape,
+	platform: z.literal("astrbot"),
+	session: AstrBotSessionSchema,
+});
+export type AstrBotPushTarget = z.infer<typeof AstrBotPushTargetSchema>;
+
 export const PushTargetSchema = z.discriminatedUnion("platform", [
 	OnebotPushTargetSchema,
 	WebhookPushTargetSchema,
 	WebDashboardPushTargetSchema,
 	KoishiBotPushTargetSchema,
+	AstrBotPushTargetSchema,
 ]);
 export type PushTarget = z.infer<typeof PushTargetSchema>;

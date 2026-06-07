@@ -1,9 +1,26 @@
 import type { NotificationPayload } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vitest";
-import { ASTRBOT_TARGET_ID, createCallbackSink } from "./callback-sink.js";
+import {
+	ASTRBOT_PUSH_ADAPTER,
+	ASTRBOT_PUSH_TARGET,
+	ASTRBOT_TARGET_ID,
+	createCallbackSink,
+} from "./callback-sink.js";
 import { SidecarEventQueue } from "./event-queue.js";
 
 describe("createCallbackSink", () => {
+	it("uses the canonical astrbot adapter and target", () => {
+		expect(ASTRBOT_PUSH_ADAPTER).toMatchObject({
+			platform: "astrbot",
+			config: {},
+		});
+		expect(ASTRBOT_PUSH_TARGET).toMatchObject({
+			adapterId: ASTRBOT_PUSH_ADAPTER.id,
+			platform: "astrbot",
+			session: { unified_msg_origin: "astrbot://default" },
+		});
+	});
+
 	it("serializes payloads into queue events", async () => {
 		const events = new SidecarEventQueue();
 		const sink = createCallbackSink({ events });

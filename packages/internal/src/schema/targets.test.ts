@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { OnebotAdapterConfigSchema, PushAdapterSchema, PushTargetSchema } from "./targets";
+import {
+	AstrBotAdapterSchema,
+	AstrBotPushTargetSchema,
+	OnebotAdapterConfigSchema,
+	PushAdapterSchema,
+	PushTargetSchema,
+} from "./targets";
 
 const UUID_A = "11111111-1111-4111-8111-111111111111";
 const UUID_B = "22222222-2222-4222-8222-222222222222";
@@ -69,6 +75,30 @@ describe("PushAdapterSchema (discriminated by platform)", () => {
 			config: {},
 		});
 		expect(r.success).toBe(false);
+	});
+
+	it("accepts a valid astrbot adapter with empty config", () => {
+		const adapter = {
+			id: UUID_A,
+			name: "AstrBot",
+			platform: "astrbot",
+			enabled: true,
+			config: {},
+		};
+		expect(AstrBotAdapterSchema.safeParse(adapter).success).toBe(true);
+		expect(PushAdapterSchema.safeParse(adapter).success).toBe(true);
+	});
+
+	it("rejects astrbot adapter connection config", () => {
+		const adapter = {
+			id: UUID_A,
+			name: "bad",
+			platform: "astrbot",
+			enabled: true,
+			config: { token: "secret" },
+		};
+		expect(AstrBotAdapterSchema.safeParse(adapter).success).toBe(false);
+		expect(PushAdapterSchema.safeParse(adapter).success).toBe(false);
 	});
 
 	it("rejects unknown platform", () => {
@@ -303,6 +333,54 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			session: { channelId: "111" },
 		});
 		expect(r.success).toBe(true);
+	});
+
+	it("accepts an astrbot target with unified_msg_origin", () => {
+		const target = {
+			id: UUID_B,
+			name: "AstrBot 群聊",
+			adapterId: UUID_A,
+			platform: "astrbot",
+			scope: "group",
+			enabled: true,
+			session: {
+				unified_msg_origin: "aiocqhttp:GroupMessage:123456",
+				platform: "aiocqhttp",
+				messageType: "group",
+				sessionId: "123456",
+				sessionName: "测试群",
+			},
+		};
+		expect(AstrBotPushTargetSchema.safeParse(target).success).toBe(true);
+		expect(PushTargetSchema.safeParse(target).success).toBe(true);
+	});
+
+	it("rejects astrbot target without unified_msg_origin", () => {
+		const target = {
+			id: UUID_B,
+			name: "bad",
+			adapterId: UUID_A,
+			platform: "astrbot",
+			scope: "group",
+			enabled: true,
+			session: { platform: "aiocqhttp" },
+		};
+		expect(AstrBotPushTargetSchema.safeParse(target).success).toBe(false);
+		expect(PushTargetSchema.safeParse(target).success).toBe(false);
+	});
+
+	it("rejects astrbot target with unknown session keys", () => {
+		const target = {
+			id: UUID_B,
+			name: "bad",
+			adapterId: UUID_A,
+			platform: "astrbot",
+			scope: "group",
+			enabled: true,
+			session: { unified_msg_origin: "aiocqhttp:GroupMessage:123456", token: "secret" },
+		};
+		expect(AstrBotPushTargetSchema.safeParse(target).success).toBe(false);
+		expect(PushTargetSchema.safeParse(target).success).toBe(false);
 	});
 
 	it("rejects onebot target missing adapterId", () => {

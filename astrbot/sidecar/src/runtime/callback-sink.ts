@@ -1,30 +1,43 @@
 import type {
+	AstrBotAdapter,
+	AstrBotPushTarget,
 	DeliveryResult,
 	NotificationPayload,
 	NotificationSink,
-	PushTarget,
 } from "@bilibili-notify/internal";
 import type { SidecarEventQueue } from "./event-queue.js";
 import { serializeNotificationPayload } from "./payload.js";
 
 export const ASTRBOT_ADAPTER_ID = "11111111-1111-4111-8111-111111111112";
 export const ASTRBOT_TARGET_ID = "11111111-1111-4111-8111-111111111111";
+export const ASTRBOT_DEFAULT_UNIFIED_MSG_ORIGIN = "astrbot://default";
 
-export const ASTRBOT_PUSH_TARGET: PushTarget = {
+export const ASTRBOT_PUSH_ADAPTER: AstrBotAdapter = {
+	id: ASTRBOT_ADAPTER_ID,
+	name: "AstrBot",
+	platform: "astrbot",
+	enabled: true,
+	config: {},
+};
+
+export const ASTRBOT_PUSH_TARGET: AstrBotPushTarget = {
 	id: ASTRBOT_TARGET_ID,
 	name: "AstrBot",
 	adapterId: ASTRBOT_ADAPTER_ID,
-	platform: "koishi-bot",
+	platform: "astrbot",
 	scope: "channel",
 	enabled: true,
 	session: {
-		channelId: "astrbot",
+		unified_msg_origin: ASTRBOT_DEFAULT_UNIFIED_MSG_ORIGIN,
+		platform: "astrbot",
+		messageType: "channel",
+		sessionName: "AstrBot",
 	},
 };
 
 export interface CallbackSinkOptions {
 	readonly events: SidecarEventQueue;
-	readonly target?: PushTarget;
+	readonly target?: AstrBotPushTarget;
 }
 
 export function createCallbackSink(options: CallbackSinkOptions): NotificationSink {
