@@ -1,4 +1,4 @@
-import { makeEmptySubscription } from "@bilibili-notify/internal";
+import { makeDefaultGlobalConfig, makeEmptySubscription } from "@bilibili-notify/internal";
 import { createSubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vitest";
 import { createSidecarEngines } from "./engines.js";
@@ -75,6 +75,7 @@ describe("createSidecarEngines", () => {
 			api: {} as never,
 			push,
 			subscriptions: store,
+			getGlobals: makeDefaultGlobalConfig,
 		});
 
 		expect(dynamicMock.instances).toHaveLength(1);

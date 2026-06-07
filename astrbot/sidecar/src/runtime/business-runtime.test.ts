@@ -1,7 +1,9 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createAstrBotSubscription } from "./persistence.js";
 
 const authMock = vi.hoisted(() => {
 	const state = {
@@ -40,6 +42,7 @@ const authMock = vi.hoisted(() => {
 
 const pushMock = vi.hoisted(() => {
 	const instances: object[] = [];
+	const options: unknown[] = [];
 	class BilibiliPush {
 		start = vi.fn();
 		stop = vi.fn();
@@ -47,11 +50,12 @@ const pushMock = vi.hoisted(() => {
 		sendErrorMsg = vi.fn(async () => undefined);
 		broadcastToFeature = vi.fn(async () => []);
 
-		constructor() {
+		constructor(opts: unknown) {
 			instances.push(this);
+			options.push(opts);
 		}
 	}
-	return { BilibiliPush, instances };
+	return { BilibiliPush, instances, options };
 });
 
 const storageMock = vi.hoisted(() => {
@@ -109,7 +113,10 @@ afterEach(async () => {
 	}
 	authMock.apiInstances.length = 0;
 	authMock.flowInstances.length = 0;
+	authMock.reportStarted = undefined;
+	authMock.reportRelease = Promise.resolve();
 	pushMock.instances.length = 0;
+	pushMock.options.length = 0;
 	storageMock.instances.length = 0;
 	enginesMock.createSidecarEngines.mockClear();
 });
@@ -140,4 +147,44 @@ describe("createBusinessRuntime", () => {
 			engines: { dynamic: false, live: false },
 		});
 	});
+
+	it("loads subscriptions from the AstrBot config store before engines start", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "bn-astrbot-runtime-"));
+		tempDirs.push(dataDir);
+		const subscription = createAstrBotSubscription({ uid: "123456", name: "测试 UP" });
+		await writeJson(join(dataDir, "state", "subscriptions.json"), [subscription]);
+		const runtime = createBusinessRuntime({ dataDir });
+
+		await runtime.start();
+
+		expect(runtime.listSubscriptions()).toEqual([subscription]);
+		expect(runtime.snapshot()).toMatchObject({
+			subscriptions: { count: 1, path: join(dataDir, "state", "subscriptions.json") },
+			config: {
+				version: 1,
+				stateDir: join(dataDir, "state"),
+			},
+		});
+		expect(enginesMock.createSidecarEngines).toHaveBeenCalledTimes(1);
+		await runtime.close("test done");
+	});
+
+	it("provides current globals defaults to BilibiliPush", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "bn-astrbot-runtime-"));
+		tempDirs.push(dataDir);
+		const runtime = createBusinessRuntime({ dataDir });
+		await runtime.configStore.load();
+		const globals = makeDefaultGlobalConfig();
+		globals.defaults.features.dynamic = false;
+		await runtime.configStore.setGlobals(globals);
+		const options = pushMock.options[0] as { defaults: () => typeof globals.defaults };
+
+		expect(options.defaults().features.dynamic).toBe(false);
+		await runtime.close("test done");
+	});
 });
+
+async function writeJson(path: string, value: unknown): Promise<void> {
+	await mkdir(dirname(path), { recursive: true });
+	await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}

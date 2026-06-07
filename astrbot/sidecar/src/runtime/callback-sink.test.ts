@@ -54,6 +54,29 @@ describe("createCallbackSink", () => {
 		});
 	});
 
+	it("resolves AstrBot targets from a dynamic target provider", async () => {
+		const events = new SidecarEventQueue();
+		const target = {
+			...ASTRBOT_PUSH_TARGET,
+			id: "33333333-3333-4333-8333-333333333333",
+			name: "绑定群聊",
+			scope: "group" as const,
+			session: {
+				unified_msg_origin: "aiocqhttp:GroupMessage:123456",
+				platform: "aiocqhttp",
+				messageType: "group",
+				sessionId: "123456",
+			},
+		};
+		const sink = createCallbackSink({ events, targets: () => [target] });
+
+		const result = await sink.send(target.id, { kind: "text", text: "hello" });
+
+		expect(result.ok).toBe(true);
+		expect(sink.resolve(target.id)).toEqual(target);
+		expect(events.drain()).toEqual([expect.objectContaining({ targetId: target.id })]);
+	});
+
 	it("rejects unavailable targets without queueing an event", async () => {
 		const events = new SidecarEventQueue();
 		const sink = createCallbackSink({ events });

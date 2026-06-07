@@ -12,7 +12,6 @@ import {
 	type FeatureKey,
 	type GlobalConfig,
 	type MessageBus,
-	makeDefaultGlobalConfig,
 	type NotificationPayload,
 	type PayloadSegment,
 	resolve,
@@ -51,10 +50,11 @@ export interface CreateSidecarEnginesOptions {
 	readonly api: BilibiliAPI;
 	readonly push: BilibiliPush;
 	readonly subscriptions: SubscriptionStore;
+	readonly getGlobals: () => GlobalConfig;
 }
 
 export function createSidecarEngines(options: CreateSidecarEnginesOptions): SidecarEnginesRuntime {
-	const globals = makeDefaultGlobalConfig();
+	const initialGlobals = options.getGlobals();
 	const dynamicPushLike: DynamicPushLike = {
 		async broadcastDynamic(uid, segments) {
 			await options.push.broadcastToFeature(uid, "dynamic", pushSegmentsToPayload(segments));
@@ -77,8 +77,8 @@ export function createSidecarEngines(options: CreateSidecarEnginesOptions): Side
 		bus: options.bus,
 		api: options.api,
 		push: dynamicPushLike,
-		config: buildDynamicConfig(globals),
-		getSubs: () => buildDynamicSubsView(options.subscriptions, globals),
+		config: buildDynamicConfig(initialGlobals),
+		getSubs: () => buildDynamicSubsView(options.subscriptions, options.getGlobals()),
 	});
 	const live = new LiveEngine({
 		serviceCtx: options.serviceCtx,
@@ -87,7 +87,7 @@ export function createSidecarEngines(options: CreateSidecarEnginesOptions): Side
 		contentBuilder: sidecarContentBuilder,
 		imageRenderer: null,
 		commentary: null,
-		config: buildLiveConfig(globals),
+		config: buildLiveConfig(initialGlobals),
 		emitEngineError: (message) => options.bus.emit("engine-error", "live-engine", message),
 		emitLiveState: (uid, status) => options.bus.emit("live-state-changed", uid, status),
 		emitViewers: (uid, viewers) => options.bus.emit("live-viewers-changed", uid, viewers),
@@ -102,6 +102,7 @@ export function createSidecarEngines(options: CreateSidecarEnginesOptions): Side
 
 	handles.push(
 		options.bus.on("subscription-changed", (ops) => {
+			const globals = options.getGlobals();
 			dynamic.applyOps(subscriptionOpsToDynamic(ops, options.subscriptions, globals));
 			live.applyOps(subscriptionOpsToLive(ops, options.subscriptions, globals), (uid) => {
 				const sub = options.subscriptions.findByUid(uid);
@@ -112,7 +113,7 @@ export function createSidecarEngines(options: CreateSidecarEnginesOptions): Side
 	);
 	handles.push(
 		options.bus.on("auth-restored", () => {
-			live.rebuildFromSubs(buildLiveSubsView(options.subscriptions, globals));
+			live.rebuildFromSubs(buildLiveSubsView(options.subscriptions, options.getGlobals()));
 			updateLiveStatus();
 		}),
 	);
@@ -130,7 +131,7 @@ export function createSidecarEngines(options: CreateSidecarEnginesOptions): Side
 			if (started) return;
 			started = true;
 			dynamic.start();
-			const liveSubs = buildLiveSubsView(options.subscriptions, globals);
+			const liveSubs = buildLiveSubsView(options.subscriptions, options.getGlobals());
 			if (Object.keys(liveSubs).length > 0) {
 				live.start(liveSubs);
 			}

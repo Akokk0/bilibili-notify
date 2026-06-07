@@ -38,10 +38,15 @@ export const ASTRBOT_PUSH_TARGET: AstrBotPushTarget = {
 export interface CallbackSinkOptions {
 	readonly events: SidecarEventQueue;
 	readonly target?: AstrBotPushTarget;
+	readonly targets?: () => readonly AstrBotPushTarget[];
 }
 
 export function createCallbackSink(options: CallbackSinkOptions): NotificationSink {
-	const target = options.target ?? ASTRBOT_PUSH_TARGET;
+	const fallbackTarget = options.target ?? ASTRBOT_PUSH_TARGET;
+	const resolveTarget = (targetId: string): AstrBotPushTarget | undefined => {
+		const targets = options.targets?.() ?? [fallbackTarget];
+		return targets.find((target) => target.id === targetId);
+	};
 
 	const sendImpl = async (
 		targetId: string,
@@ -49,7 +54,8 @@ export function createCallbackSink(options: CallbackSinkOptions): NotificationSi
 		privateMessage: boolean,
 	): Promise<DeliveryResult> => {
 		const startedAt = Date.now();
-		if (targetId !== target.id || !target.enabled) {
+		const target = resolveTarget(targetId);
+		if (!target?.enabled) {
 			return {
 				ok: false,
 				latencyMs: Date.now() - startedAt,
@@ -73,7 +79,7 @@ export function createCallbackSink(options: CallbackSinkOptions): NotificationSi
 	return {
 		send: (targetId, payload) => sendImpl(targetId, payload, false),
 		sendPrivate: (targetId, payload) => sendImpl(targetId, payload, true),
-		resolve: (targetId) => (targetId === target.id ? target : undefined),
-		isAvailable: (targetId) => targetId === target.id && target.enabled,
+		resolve: (targetId) => resolveTarget(targetId),
+		isAvailable: (targetId) => Boolean(resolveTarget(targetId)?.enabled),
 	};
 }

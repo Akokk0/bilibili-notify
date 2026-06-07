@@ -1,23 +1,22 @@
-import { join } from "node:path";
 import { BilibiliAPI, LoginFlow, type LoginSnapshot } from "@bilibili-notify/api";
-import {
-	makeDefaultGlobalConfig,
-	type NotificationPayload,
-	type Subscription,
+import type {
+	AstrBotAdapter,
+	AstrBotPushTarget,
+	NotificationPayload,
+	Subscription,
 } from "@bilibili-notify/internal";
 import { BilibiliPush } from "@bilibili-notify/push";
 import { StorageManager } from "@bilibili-notify/storage";
 import { createSubscriptionStore, type SubscriptionStore } from "@bilibili-notify/subscription";
-import { createCallbackSink } from "./callback-sink.js";
+import { ASTRBOT_PUSH_TARGET, createCallbackSink } from "./callback-sink.js";
+import {
+	type AstrBotConfigSnapshot,
+	type AstrBotConfigStore,
+	createAstrBotConfigStore,
+} from "./config-store.js";
 import { createSidecarEngines, type SidecarEnginesRuntime } from "./engines.js";
 import { type EventQueueSnapshot, type SidecarEvent, SidecarEventQueue } from "./event-queue.js";
-import {
-	createAstrBotSubscription,
-	JsonSubscriptionPersistence,
-	normalizeAstrBotSubscription,
-	type StoredSubscriptionInput,
-	type SubscriptionStoreSnapshot,
-} from "./persistence.js";
+import { createAstrBotSubscription, type StoredSubscriptionInput } from "./persistence.js";
 import {
 	createSidecarMessageBus,
 	createSidecarServiceContext,
@@ -40,7 +39,8 @@ export interface BusinessRuntimeSnapshot {
 		readonly dynamic: boolean;
 		readonly live: boolean;
 	};
-	readonly subscriptions: SubscriptionStoreSnapshot;
+	readonly subscriptions: AstrBotConfigSnapshot["subscriptions"];
+	readonly config: AstrBotConfigSnapshot;
 	readonly events: EventQueueSnapshot;
 	readonly login?: LoginSnapshot;
 }
@@ -48,6 +48,7 @@ export interface BusinessRuntimeSnapshot {
 export interface BusinessRuntimeHandle {
 	readonly dataDir: string;
 	readonly serviceCtx: SidecarServiceContext;
+	readonly configStore: AstrBotConfigStore;
 	readonly subscriptions: SubscriptionStore;
 	readonly events: SidecarEventQueue;
 	start(signal?: AbortSignal): Promise<void>;
@@ -57,6 +58,8 @@ export interface BusinessRuntimeHandle {
 	refreshLoginStatus(): Promise<LoginSnapshot>;
 	beginLogin(): Promise<LoginSnapshot>;
 	listSubscriptions(): Subscription[];
+	listAdapters(): AstrBotAdapter[];
+	listTargets(): AstrBotPushTarget[];
 	upsertSubscription(input: StoredSubscriptionInput | Subscription): Promise<Subscription>;
 	removeSubscription(id: string): Promise<Subscription | undefined>;
 	drainEvents(afterId?: number): SidecarEvent[];
@@ -70,10 +73,10 @@ export function createBusinessRuntime(options: BusinessRuntimeOptions): Business
 class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 	readonly dataDir: string;
 	readonly serviceCtx: SidecarServiceContext;
+	readonly configStore: AstrBotConfigStore;
 	readonly subscriptions: SubscriptionStore;
 	readonly events: SidecarEventQueue;
 	private readonly bus = createSidecarMessageBus();
-	private readonly persistence: JsonSubscriptionPersistence;
 	private readonly push: BilibiliPush;
 	private readonly storage: StorageManager;
 	private readonly userAgent: string | undefined;
@@ -93,19 +96,25 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 			name: "astrbot-sidecar",
 			level: options.logLevel ?? "info",
 		});
+		this.configStore = createAstrBotConfigStore({ dataDir: this.dataDir, bus: this.bus });
 		this.subscriptions = createSubscriptionStore(this.bus);
-		this.persistence = new JsonSubscriptionPersistence(join(this.dataDir, "subscriptions.json"));
 		this.storage = new StorageManager({
 			serviceCtx: this.serviceCtx,
 			dataDir: this.dataDir,
 			encryptionKey: options.cookieEncryptionKey,
 		});
 		this.push = new BilibiliPush({
-			sink: createCallbackSink({ events: this.events }),
+			sink: createCallbackSink({
+				events: this.events,
+				targets: () => {
+					const targets = this.configStore.getTargets();
+					return targets.length > 0 ? targets : [ASTRBOT_PUSH_TARGET];
+				},
+			}),
 			store: this.subscriptions,
 			logger: this.serviceCtx.logger,
 			serviceCtx: this.serviceCtx,
-			defaults: () => makeDefaultGlobalConfig().defaults,
+			defaults: () => this.configStore.getGlobals().defaults,
 		});
 		this.bus.on("engine-error", (source, message) => {
 			this.events.push({ type: "engine-error", source, message });
@@ -148,11 +157,13 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 	}
 
 	snapshot(): BusinessRuntimeSnapshot {
+		const config = this.configStore.snapshot();
 		return {
 			started: this.started,
 			authStarted: Boolean(this.loginFlow),
 			engines: this.engines?.status() ?? { dynamic: false, live: false },
-			subscriptions: this.persistence.snapshot(this.subscriptions.list().length),
+			subscriptions: config.subscriptions,
+			config,
 			events: this.events.snapshot(),
 			login: this.loginFlow?.current(),
 		};
@@ -195,18 +206,24 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 		return this.subscriptions.list();
 	}
 
+	listAdapters(): AstrBotAdapter[] {
+		return this.configStore.getAdapters();
+	}
+
+	listTargets(): AstrBotPushTarget[] {
+		return this.configStore.getTargets();
+	}
+
 	async upsertSubscription(input: StoredSubscriptionInput | Subscription): Promise<Subscription> {
-		const sub = normalizeAstrBotSubscription(
-			isFullSubscription(input) ? input : createAstrBotSubscription(input),
-		);
-		this.subscriptions.upsert(sub);
-		await this.persistence.save(this.subscriptions.list());
-		return sub;
+		const sub = isFullSubscription(input) ? input : createAstrBotSubscription(input);
+		const saved = await this.configStore.upsertSubscription(sub);
+		this.subscriptions.upsert(saved);
+		return saved;
 	}
 
 	async removeSubscription(id: string): Promise<Subscription | undefined> {
-		const removed = this.subscriptions.removeById(id);
-		if (removed) await this.persistence.save(this.subscriptions.list());
+		const removed = await this.configStore.deleteSubscription(id);
+		if (removed) this.subscriptions.removeById(id);
 		return removed;
 	}
 
@@ -224,8 +241,8 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 		await this.storage.init();
 		throwIfAborted(signal);
 		this.throwIfClosing();
-		const loaded = await this.persistence.load();
-		this.subscriptions.replaceAll(loaded.map(normalizeAstrBotSubscription));
+		await this.configStore.load();
+		this.subscriptions.replaceAll(this.configStore.getSubscriptions());
 		throwIfAborted(signal);
 		this.throwIfClosing();
 		this.push.start();
@@ -240,6 +257,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 			api: this.api,
 			push: this.push,
 			subscriptions: this.subscriptions,
+			getGlobals: () => this.configStore.getGlobals(),
 		});
 		this.engines.start();
 	}
