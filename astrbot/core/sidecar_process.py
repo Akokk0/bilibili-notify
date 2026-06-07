@@ -20,6 +20,8 @@ DEFAULT_AI_BACKEND = "astrbot"
 DEFAULT_LOG_LEVEL = "info"
 MIN_NODE_MAJOR_VERSION = 24
 PLUGIN_DATA_DIR_NAME = "plugin_data"
+AT_ALL_FALLBACK_TEXT = "[全体提醒]"
+EMPTY_MESSAGE_TEXT = "[空消息]"
 PROXY_ALLOWED_COLLECTION_PATHS = {
     "health",
     "meta",
@@ -99,6 +101,28 @@ class SidecarClient:
     async def drain_events(self, after: int = 0) -> list[dict[str, Any]]:
         payload = await self._request_json("GET", "/api/events", params={"after": str(after)})
         return _ensure_mapping_list(payload, "events response")
+
+    async def claim_deliveries(self, limit: int = 5) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 50))
+        payload = await self._request_json(
+            "GET",
+            "/api/deliveries",
+            params={"limit": str(safe_limit)},
+        )
+        return _ensure_mapping_list(payload, "deliveries response")
+
+    async def ack_delivery(self, delivery_id: str) -> dict[str, Any]:
+        payload = await self._request_json("POST", f"/api/deliveries/{delivery_id}/ack")
+        return _ensure_mapping(payload, "delivery ack response")
+
+    async def nack_delivery(self, delivery_id: str, error: str | None = None) -> dict[str, Any]:
+        body = {"error": sanitize_sensitive_text(error)} if error else None
+        payload = await self._request_json(
+            "POST",
+            f"/api/deliveries/{delivery_id}/nack",
+            json_body=body,
+        )
+        return _ensure_mapping(payload, "delivery nack response")
 
     async def list_subscriptions(self) -> list[dict[str, Any]]:
         payload = await self._request_json("GET", "/api/subscriptions")
@@ -261,6 +285,15 @@ class SidecarRuntime:
 
     async def drain_events(self, after: int = 0) -> list[dict[str, Any]]:
         return await self.client.drain_events(after)
+
+    async def claim_deliveries(self, limit: int = 5) -> list[dict[str, Any]]:
+        return await self.client.claim_deliveries(limit)
+
+    async def ack_delivery(self, delivery_id: str) -> dict[str, Any]:
+        return await self.client.ack_delivery(delivery_id)
+
+    async def nack_delivery(self, delivery_id: str, error: str | None = None) -> dict[str, Any]:
+        return await self.client.nack_delivery(delivery_id, error)
 
     async def list_subscriptions(self) -> list[dict[str, Any]]:
         return await self.client.list_subscriptions()
@@ -702,6 +735,43 @@ def _remove_ready_file_sync(path: Path) -> None:
         return
 
 
+def build_astrbot_message_chain(payload: Mapping[str, Any], *, at_all_as_text: bool = False) -> Any:
+    import astrbot.api.message_components as components
+    from astrbot.api.event import MessageChain
+
+    return build_astrbot_message_chain_with(
+        payload,
+        MessageChain,
+        components,
+        at_all_as_text=at_all_as_text,
+    )
+
+
+def build_astrbot_message_chain_with(
+    payload: Mapping[str, Any],
+    message_chain_cls: Any,
+    components: Any,
+    *,
+    at_all_as_text: bool = False,
+) -> Any:
+    parts: list[Any] = []
+    _append_payload_parts(parts, payload, components, at_all_as_text=at_all_as_text)
+    if not parts:
+        _append_plain(parts, components, EMPTY_MESSAGE_TEXT)
+    return message_chain_cls(chain=parts)
+
+
+def payload_contains_at_all(payload: Mapping[str, Any]) -> bool:
+    if payload.get("kind") != "composite":
+        return False
+    segments = payload.get("segments")
+    if not isinstance(segments, list):
+        return False
+    return any(
+        isinstance(segment, dict) and segment.get("type") == "at-all" for segment in segments
+    )
+
+
 def build_proxy_api_path(method: str, path: str) -> str:
     normalized = _normalize_proxy_path(path)
     upper_method = method.upper()
@@ -722,6 +792,113 @@ def sanitize_proxy_payload(value: Any) -> Any:
 
 def sanitize_sensitive_text(value: str) -> str:
     return SENSITIVE_PATTERN.sub(_sensitive_replacement, value)
+
+
+def _append_payload_parts(
+    parts: list[Any],
+    payload: Mapping[str, Any],
+    components: Any,
+    *,
+    at_all_as_text: bool,
+) -> None:
+    kind = payload.get("kind")
+    if kind == "text":
+        _append_plain(parts, components, _string_value(payload.get("text")))
+        return
+    if kind == "image":
+        _append_image(parts, components, _image_base64(payload.get("image")))
+        caption = _string_value(payload.get("caption"))
+        if caption:
+            _append_plain(parts, components, caption)
+        return
+    if kind == "forward-images":
+        urls = payload.get("urls")
+        if isinstance(urls, list):
+            for url in urls:
+                _append_image_url(parts, components, _string_value(url))
+        return
+    if kind == "composite":
+        segments = payload.get("segments")
+        if isinstance(segments, list):
+            for segment in segments:
+                if isinstance(segment, dict):
+                    _append_segment(parts, segment, components, at_all_as_text=at_all_as_text)
+        return
+    _append_plain(parts, components, json.dumps(payload, ensure_ascii=False, default=str))
+
+
+def _append_segment(
+    parts: list[Any],
+    segment: Mapping[str, Any],
+    components: Any,
+    *,
+    at_all_as_text: bool,
+) -> None:
+    segment_type = segment.get("type")
+    if segment_type == "text":
+        _append_plain(parts, components, _string_value(segment.get("text")))
+        return
+    if segment_type == "image":
+        _append_image(parts, components, _string_value(segment.get("base64")))
+        return
+    if segment_type == "link":
+        href = _string_value(segment.get("href"))
+        title = _string_value(segment.get("title"))
+        _append_plain(parts, components, f"{title}\n{href}" if title and href else title or href)
+        return
+    if segment_type == "at-all":
+        _append_at_all(parts, components, at_all_as_text=at_all_as_text)
+        return
+    _append_plain(parts, components, json.dumps(segment, ensure_ascii=False, default=str))
+
+
+def _append_plain(parts: list[Any], components: Any, text: str) -> None:
+    if text:
+        parts.append(components.Plain(text))
+
+
+def _append_image(parts: list[Any], components: Any, base64_value: str) -> None:
+    if not base64_value:
+        _append_plain(parts, components, "[图片]")
+        return
+    image = getattr(components, "Image", None)
+    from_base64 = getattr(image, "fromBase64", None)
+    if callable(from_base64):
+        parts.append(from_base64(base64_value))
+    else:
+        _append_plain(parts, components, "[图片]")
+
+
+def _append_image_url(parts: list[Any], components: Any, url: str) -> None:
+    if not url:
+        return
+    image = getattr(components, "Image", None)
+    from_url = getattr(image, "fromURL", None)
+    if callable(from_url) and url.startswith(("http://", "https://")):
+        parts.append(from_url(url))
+    else:
+        _append_plain(parts, components, url)
+
+
+def _append_at_all(parts: list[Any], components: Any, *, at_all_as_text: bool) -> None:
+    if at_all_as_text:
+        _append_plain(parts, components, AT_ALL_FALLBACK_TEXT)
+        return
+    at_all = getattr(components, "AtAll", None)
+    if callable(at_all):
+        parts.append(at_all())
+        return
+    _append_plain(parts, components, AT_ALL_FALLBACK_TEXT)
+
+
+def _image_base64(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    return _string_value(value.get("base64"))
+
+
+def _string_value(value: Any) -> str:
+    return value if isinstance(value, str) else ""
 
 
 def _normalize_proxy_path(path: str) -> str:

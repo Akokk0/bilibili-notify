@@ -5,7 +5,7 @@ import type {
 	NotificationPayload,
 	NotificationSink,
 } from "@bilibili-notify/internal";
-import type { SidecarEventQueue } from "./event-queue.js";
+import type { SidecarDeliveryQueue, SidecarEventQueue } from "./event-queue.js";
 import { serializeNotificationPayload } from "./payload.js";
 
 export const ASTRBOT_ADAPTER_ID = "11111111-1111-4111-8111-111111111112";
@@ -37,6 +37,7 @@ export const ASTRBOT_PUSH_TARGET: AstrBotPushTarget = {
 
 export interface CallbackSinkOptions {
 	readonly events: SidecarEventQueue;
+	readonly deliveries: SidecarDeliveryQueue;
 	readonly target?: AstrBotPushTarget;
 	readonly targets?: () => readonly AstrBotPushTarget[];
 }
@@ -62,15 +63,31 @@ export function createCallbackSink(options: CallbackSinkOptions): NotificationSi
 				err: `target unavailable: ${targetId}`,
 			};
 		}
+		const serializablePayload = serializeNotificationPayload(payload);
+		let job: ReturnType<SidecarDeliveryQueue["enqueue"]>;
+		try {
+			job = options.deliveries.enqueue({
+				target,
+				private: privateMessage,
+				payload: serializablePayload,
+			});
+		} catch (error) {
+			return {
+				ok: false,
+				latencyMs: Date.now() - startedAt,
+				err: error instanceof Error ? error.message : String(error),
+			};
+		}
 		const result: DeliveryResult = {
 			ok: true,
 			latencyMs: Date.now() - startedAt,
 		};
 		options.events.push({
 			type: "notification",
+			deliveryId: job.deliveryId,
 			targetId,
 			private: privateMessage,
-			payload: serializeNotificationPayload(payload),
+			payload: serializablePayload,
 			result,
 		});
 		return result;

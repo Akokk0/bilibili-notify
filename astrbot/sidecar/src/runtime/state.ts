@@ -18,6 +18,13 @@ export interface SidecarBusinessSnapshot {
 		readonly nextId: number;
 		readonly size: number;
 	};
+	readonly deliveries?: {
+		readonly size: number;
+		readonly pending: number;
+		readonly inFlight: number;
+		readonly maxSize: number;
+		readonly maxAttempts: number;
+	};
 	readonly login?: unknown;
 }
 

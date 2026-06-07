@@ -13,7 +13,7 @@ import {
 } from "@bilibili-notify/internal";
 import { SidecarUpstreamError, type UserSearchResult } from "../runtime/business-runtime.js";
 import { AstrBotConfigValidationError } from "../runtime/config-store.js";
-import type { SidecarEvent } from "../runtime/event-queue.js";
+import type { DeliveryJob, DeliveryReceipt, SidecarEvent } from "../runtime/event-queue.js";
 import { createAstrBotSubscription, type StoredSubscriptionInput } from "../runtime/persistence.js";
 import type { SidecarSnapshot } from "../runtime/state.js";
 
@@ -45,6 +45,9 @@ export interface SidecarHttpRuntime {
 	}>;
 	searchUsers(query: string, page?: number): Promise<UserSearchResult>;
 	drainEvents(afterId?: number): SidecarEvent[];
+	claimDeliveries(limit?: number): DeliveryJob[];
+	ackDelivery(deliveryId: string): Promise<DeliveryReceipt | undefined>;
+	nackDelivery(deliveryId: string, error?: string): Promise<DeliveryReceipt | undefined>;
 	pushTest(targetId: string, payload: NotificationPayload): Promise<DeliveryResult>;
 }
 
@@ -159,6 +162,19 @@ async function handleSidecarRequest(
 		} catch (error) {
 			writeEventCursorError(res, error);
 		}
+		return;
+	}
+	if (method === "GET" && pathname === "/api/deliveries") {
+		writeJson(
+			res,
+			200,
+			options.runtime.claimDeliveries(parseDeliveryLimit(searchParams.get("limit"))),
+		);
+		return;
+	}
+	const deliveryAction = matchDeliveryAction(pathname);
+	if (deliveryAction) {
+		await handleDeliveryAction(method, req, res, options, deliveryAction);
 		return;
 	}
 	if (method === "GET" && pathname === "/api/globals") {
@@ -283,6 +299,45 @@ function isAuthorizedRequest(req: IncomingMessage, authToken: string | undefined
 	const headerToken = req.headers["x-bilibili-notify-token"];
 	if (headerToken === authToken) return true;
 	return Array.isArray(headerToken) && headerToken.includes(authToken);
+}
+
+async function handleDeliveryAction(
+	method: string,
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: SidecarHttpServerOptions,
+	input: { readonly deliveryId: string; readonly action: "ack" | "nack" },
+): Promise<void> {
+	if (method !== "POST") {
+		writeJson(res, 405, { error: "method_not_allowed" });
+		return;
+	}
+	if (!input.deliveryId) {
+		writeJson(res, 400, { error: "invalid_delivery_id", message: "delivery id is required" });
+		return;
+	}
+	let nackError: string | undefined;
+	if (input.action === "nack") {
+		try {
+			nackError = await readNackError(req);
+		} catch (error) {
+			writeRequestBodyError(res, error);
+			return;
+		}
+	}
+	try {
+		const receipt =
+			input.action === "ack"
+				? await options.runtime.ackDelivery(input.deliveryId)
+				: await options.runtime.nackDelivery(input.deliveryId, nackError);
+		if (!receipt) {
+			writeJson(res, 404, { error: "not_found", id: input.deliveryId });
+			return;
+		}
+		writeJson(res, 200, receipt);
+	} catch (error) {
+		writeRuntimeError(res, error, `failed to ${input.action} delivery`);
+	}
 }
 
 async function handlePatchGlobals(
@@ -589,6 +644,12 @@ async function readJsonObjectBody(
 	return body;
 }
 
+async function readNackError(req: IncomingMessage): Promise<string | undefined> {
+	const body = await readJsonBody(req);
+	if (!isPlainObject(body)) return undefined;
+	return typeof body.error === "string" ? sanitizeText(body.error) : undefined;
+}
+
 function parseStoredSubscriptionInput(body: unknown): StoredSubscriptionInput | null {
 	if (!isPlainObject(body) || typeof body.uid !== "string") return null;
 	if (
@@ -616,6 +677,13 @@ function parseEventCursor(value: string | null): number {
 		throw new Error(`invalid after cursor: ${value}`);
 	}
 	return after;
+}
+
+function parseDeliveryLimit(value: string | null): number {
+	if (value === null || value.trim() === "") return 10;
+	const limit = Number(value);
+	if (!Number.isSafeInteger(limit) || limit < 1) return 10;
+	return Math.min(limit, 50);
 }
 
 function getRequestUrl(req: IncomingMessage): URL {
@@ -647,6 +715,23 @@ function matchResourceId(pathname: string, bases: readonly string[]): string | n
 		}
 	}
 	return null;
+}
+
+function matchDeliveryAction(
+	pathname: string,
+): { readonly deliveryId: string; readonly action: "ack" | "nack" } | null {
+	const prefix = "/api/deliveries/";
+	if (!pathname.startsWith(prefix)) return null;
+	const parts = pathname.slice(prefix.length).split("/");
+	if (parts.length !== 2) return { deliveryId: "", action: "ack" };
+	const rawId = parts[0] ?? "";
+	const rawAction = parts[1];
+	if (rawAction !== "ack" && rawAction !== "nack") return { deliveryId: "", action: "ack" };
+	try {
+		return { deliveryId: decodeURIComponent(rawId), action: rawAction };
+	} catch {
+		return { deliveryId: rawId, action: rawAction };
+	}
 }
 
 function buildBootstrapPayload(options: SidecarHttpServerOptions) {

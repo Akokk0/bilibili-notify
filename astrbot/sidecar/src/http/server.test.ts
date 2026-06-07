@@ -12,7 +12,11 @@ import {
 	ASTRBOT_PUSH_ADAPTER,
 	ASTRBOT_TARGET_ID,
 } from "../runtime/callback-sink.js";
-import { SidecarEventQueue } from "../runtime/event-queue.js";
+import {
+	type DeliveryJob,
+	SidecarDeliveryQueue,
+	SidecarEventQueue,
+} from "../runtime/event-queue.js";
 import { createSidecarSnapshot } from "../runtime/state.js";
 import type { SidecarHttpRuntime } from "./server.js";
 import { closeSidecarServer, createSidecarHttpServer, listenSidecarServer } from "./server.js";
@@ -152,6 +156,55 @@ describe("sidecar http server", () => {
 		expect(await badResponse.json()).toMatchObject({
 			error: "invalid_after",
 		});
+	});
+
+	it("claims delivery jobs and records ack/nack receipts", async () => {
+		const harness = createTestHarness();
+		const job = harness.deliveries.enqueue({
+			target: TARGET,
+			private: false,
+			payload: { kind: "text", text: "hello" },
+		});
+		const server = createSidecarHttpServer({
+			getSnapshot: harness.snapshot,
+			runtime: harness.runtime,
+			authToken: TEST_TOKEN,
+		});
+		servers.push(server);
+		const address = await listenSidecarServer(server, "127.0.0.1", 0);
+		const baseUrl = `http://${address.host}:${address.port}`;
+
+		const claimResponse = await fetch(`${baseUrl}/api/deliveries?limit=1`, {
+			headers: AUTH_HEADERS,
+		});
+		expect(claimResponse.status).toBe(200);
+		const claimed = (await claimResponse.json()) as DeliveryJob[];
+		expect(claimed).toHaveLength(1);
+		expect(claimed[0]).toMatchObject({
+			deliveryId: job.deliveryId,
+			targetId: TARGET.id,
+			attempt: 1,
+			session: { unified_msg_origin: "aiocqhttp:GroupMessage:123456" },
+		});
+
+		const nackResponse = await fetch(`${baseUrl}/api/deliveries/${job.deliveryId}/nack`, {
+			method: "POST",
+			headers: { ...AUTH_HEADERS, "content-type": "application/json" },
+			body: JSON.stringify({ error: "send failed token=secret" }),
+		});
+		expect(nackResponse.status).toBe(200);
+		expect(await nackResponse.json()).toMatchObject({
+			deliveryId: job.deliveryId,
+			ok: false,
+			dropped: false,
+			err: "send failed token=[REDACTED]",
+		});
+
+		const missingAckResponse = await fetch(`${baseUrl}/api/deliveries/missing/ack`, {
+			method: "POST",
+			headers: AUTH_HEADERS,
+		});
+		expect(missingAckResponse.status).toBe(404);
 	});
 
 	it("patches globals and resets them through danger endpoints", async () => {
@@ -352,6 +405,7 @@ describe("sidecar http server", () => {
 
 function createTestHarness() {
 	const events = new SidecarEventQueue();
+	const deliveries = new SidecarDeliveryQueue({ events, maxAttempts: 2, baseBackoffMs: 10 });
 	let globals = makeDefaultGlobalConfig();
 	const subscriptions: Subscription[] = [];
 	const targets: AstrBotPushTarget[] = [];
@@ -457,12 +511,16 @@ function createTestHarness() {
 			total: 1,
 		})),
 		drainEvents: vi.fn((afterId = 0) => events.drain(afterId)),
+		claimDeliveries: vi.fn((limit = 10) => deliveries.claim({ limit })),
+		ackDelivery: vi.fn(async (deliveryId) => deliveries.ack(deliveryId)),
+		nackDelivery: vi.fn(async (deliveryId, error) => deliveries.nack(deliveryId, error)),
 		pushTest: vi.fn(
 			async (_targetId, _payload) => ({ ok: true, latencyMs: 1 }) satisfies DeliveryResult,
 		),
 	};
 
 	return {
+		deliveries,
 		events,
 		runtime,
 		snapshot: () =>
@@ -479,12 +537,13 @@ function createTestHarness() {
 					tokenAuth: true,
 					pluginPageProxy: true,
 					sse: true,
-					deliveryQueue: false,
+					deliveryQueue: true,
 					aiProviderBridge: false,
 				},
 				business: {
 					started: true,
 					authStarted: login.status !== BiliLoginStatus.NOT_LOGIN,
+					deliveries: deliveries.snapshot(),
 					engines: {
 						dynamic: true,
 						live: false,

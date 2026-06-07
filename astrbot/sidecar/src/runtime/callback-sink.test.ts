@@ -6,7 +6,7 @@ import {
 	ASTRBOT_TARGET_ID,
 	createCallbackSink,
 } from "./callback-sink.js";
-import { SidecarEventQueue } from "./event-queue.js";
+import { SidecarDeliveryQueue, SidecarEventQueue } from "./event-queue.js";
 
 describe("createCallbackSink", () => {
 	it("uses the canonical astrbot adapter and target", () => {
@@ -23,7 +23,8 @@ describe("createCallbackSink", () => {
 
 	it("serializes payloads into queue events", async () => {
 		const events = new SidecarEventQueue();
-		const sink = createCallbackSink({ events });
+		const deliveries = new SidecarDeliveryQueue({ events });
+		const sink = createCallbackSink({ events, deliveries });
 		const payload = {
 			kind: "composite",
 			segments: [
@@ -37,9 +38,8 @@ describe("createCallbackSink", () => {
 		const result = await sink.sendPrivate(ASTRBOT_TARGET_ID, payload);
 
 		expect(result.ok).toBe(true);
-		const [event] = events.drain();
-		expect(event).toMatchObject({
-			type: "notification",
+		const [job] = deliveries.claim();
+		expect(job).toMatchObject({
 			targetId: ASTRBOT_TARGET_ID,
 			private: true,
 			payload: {
@@ -52,10 +52,18 @@ describe("createCallbackSink", () => {
 				],
 			},
 		});
+		const notification = events.drain().find((event) => event.type === "notification");
+		expect(notification).toMatchObject({
+			type: "notification",
+			deliveryId: job?.deliveryId,
+			targetId: ASTRBOT_TARGET_ID,
+			private: true,
+		});
 	});
 
 	it("resolves AstrBot targets from a dynamic target provider", async () => {
 		const events = new SidecarEventQueue();
+		const deliveries = new SidecarDeliveryQueue({ events });
 		const target = {
 			...ASTRBOT_PUSH_TARGET,
 			id: "33333333-3333-4333-8333-333333333333",
@@ -68,18 +76,25 @@ describe("createCallbackSink", () => {
 				sessionId: "123456",
 			},
 		};
-		const sink = createCallbackSink({ events, targets: () => [target] });
+		const sink = createCallbackSink({ events, deliveries, targets: () => [target] });
 
 		const result = await sink.send(target.id, { kind: "text", text: "hello" });
 
 		expect(result.ok).toBe(true);
 		expect(sink.resolve(target.id)).toEqual(target);
-		expect(events.drain()).toEqual([expect.objectContaining({ targetId: target.id })]);
+		expect(deliveries.claim()[0]).toMatchObject({
+			targetId: target.id,
+			session: { unified_msg_origin: "aiocqhttp:GroupMessage:123456" },
+		});
+		expect(
+			events.drain().some((event) => event.type === "notification" && event.targetId === target.id),
+		).toBe(true);
 	});
 
 	it("rejects unavailable targets without queueing an event", async () => {
 		const events = new SidecarEventQueue();
-		const sink = createCallbackSink({ events });
+		const deliveries = new SidecarDeliveryQueue({ events });
+		const sink = createCallbackSink({ events, deliveries });
 
 		const result = await sink.send("missing-target", { kind: "text", text: "hello" });
 

@@ -18,7 +18,15 @@ import {
 	createAstrBotConfigStore,
 } from "./config-store.js";
 import { createSidecarEngines, type SidecarEnginesRuntime } from "./engines.js";
-import { type EventQueueSnapshot, type SidecarEvent, SidecarEventQueue } from "./event-queue.js";
+import {
+	type DeliveryJob,
+	type DeliveryQueueSnapshot,
+	type DeliveryReceipt,
+	type EventQueueSnapshot,
+	SidecarDeliveryQueue,
+	type SidecarEvent,
+	SidecarEventQueue,
+} from "./event-queue.js";
 import { createAstrBotSubscription, type StoredSubscriptionInput } from "./persistence.js";
 import {
 	createSidecarMessageBus,
@@ -33,6 +41,7 @@ export interface BusinessRuntimeOptions {
 	readonly userAgent?: string;
 	readonly cookieEncryptionKey?: string;
 	readonly events?: SidecarEventQueue;
+	readonly deliveries?: SidecarDeliveryQueue;
 }
 
 export interface BusinessRuntimeSnapshot {
@@ -45,6 +54,7 @@ export interface BusinessRuntimeSnapshot {
 	readonly subscriptions: AstrBotConfigSnapshot["subscriptions"];
 	readonly config: AstrBotConfigSnapshot;
 	readonly events: EventQueueSnapshot;
+	readonly deliveries: DeliveryQueueSnapshot;
 	readonly login?: LoginSnapshot;
 }
 
@@ -88,6 +98,7 @@ export interface BusinessRuntimeHandle {
 	readonly configStore: AstrBotConfigStore;
 	readonly subscriptions: SubscriptionStore;
 	readonly events: SidecarEventQueue;
+	readonly deliveries: SidecarDeliveryQueue;
 	start(signal?: AbortSignal): Promise<void>;
 	close(reason?: string): Promise<void>;
 	snapshot(): BusinessRuntimeSnapshot;
@@ -113,6 +124,9 @@ export interface BusinessRuntimeHandle {
 	lookupUser(uid: string): Promise<UserLookupResult>;
 	searchUsers(query: string, page?: number): Promise<UserSearchResult>;
 	drainEvents(afterId?: number): SidecarEvent[];
+	claimDeliveries(limit?: number): DeliveryJob[];
+	ackDelivery(deliveryId: string): Promise<DeliveryReceipt | undefined>;
+	nackDelivery(deliveryId: string, error?: string): Promise<DeliveryReceipt | undefined>;
 	pushTest(targetId: string, payload: NotificationPayload): Promise<DeliveryResult>;
 }
 
@@ -126,6 +140,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 	readonly configStore: AstrBotConfigStore;
 	readonly subscriptions: SubscriptionStore;
 	readonly events: SidecarEventQueue;
+	readonly deliveries: SidecarDeliveryQueue;
 	private readonly bus = createSidecarMessageBus();
 	private readonly push: BilibiliPush;
 	private readonly storage: StorageManager;
@@ -142,6 +157,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 		this.dataDir = options.dataDir;
 		this.userAgent = options.userAgent;
 		this.events = options.events ?? new SidecarEventQueue();
+		this.deliveries = options.deliveries ?? new SidecarDeliveryQueue({ events: this.events });
 		this.serviceCtx = createSidecarServiceContext({
 			name: "astrbot-sidecar",
 			level: options.logLevel ?? "info",
@@ -156,6 +172,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 		this.push = new BilibiliPush({
 			sink: createCallbackSink({
 				events: this.events,
+				deliveries: this.deliveries,
 				targets: () => {
 					const targets = this.configStore.getTargets();
 					return targets.length > 0 ? targets : [ASTRBOT_PUSH_TARGET];
@@ -215,6 +232,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 			subscriptions: config.subscriptions,
 			config,
 			events: this.events.snapshot(),
+			deliveries: this.deliveries.snapshot(),
 			login: this.loginFlow?.current(),
 		};
 	}
@@ -393,6 +411,18 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 
 	drainEvents(afterId = 0): SidecarEvent[] {
 		return this.events.drain(afterId);
+	}
+
+	claimDeliveries(limit = 10): DeliveryJob[] {
+		return this.deliveries.claim({ limit });
+	}
+
+	async ackDelivery(deliveryId: string): Promise<DeliveryReceipt | undefined> {
+		return this.deliveries.ack(deliveryId);
+	}
+
+	async nackDelivery(deliveryId: string, error?: string): Promise<DeliveryReceipt | undefined> {
+		return this.deliveries.nack(deliveryId, error);
 	}
 
 	async pushTest(targetId: string, payload: NotificationPayload): Promise<DeliveryResult> {

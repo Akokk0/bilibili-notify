@@ -14,14 +14,18 @@ from quart import Response, jsonify, request
 if __package__:
     from .sidecar_process import (
         SidecarRuntime,
+        build_astrbot_message_chain,
         build_sidecar_config,
+        payload_contains_at_all,
         sanitize_sensitive_text,
         start_sidecar,
     )
 else:
     from sidecar_process import (
         SidecarRuntime,
+        build_astrbot_message_chain,
         build_sidecar_config,
+        payload_contains_at_all,
         sanitize_sensitive_text,
         start_sidecar,
     )
@@ -42,6 +46,7 @@ class BilibiliNotifyPlugin(Star):
         self._plugin_root = Path(__file__).resolve().parent
         self._startup_config = config
         self._runtime: SidecarRuntime | None = None
+        self._delivery_pump_task: asyncio.Task[None] | None = None
         self._register_plugin_page_api(context)
 
     def _register_plugin_page_api(self, context: Context) -> None:
@@ -71,6 +76,7 @@ class BilibiliNotifyPlugin(Star):
         )
         logger.info(f"[bilibili-notify] launching sidecar from {config.entrypoint}")
         self._runtime = await start_sidecar(config)
+        self._delivery_pump_task = asyncio.create_task(self._run_delivery_pump())
         logger.info(f"[bilibili-notify] sidecar ready: {self._runtime.describe()}")
 
     @filter.command("bilibili-notify")
@@ -160,8 +166,79 @@ class BilibiliNotifyPlugin(Star):
             return "", 204
         return jsonify(payload if payload is not None else {}), status
 
+    async def _run_delivery_pump(self) -> None:
+        while True:
+            runtime = self._runtime
+            if runtime is None:
+                return
+            try:
+                jobs = await runtime.claim_deliveries(limit=5)
+                if not jobs:
+                    await asyncio.sleep(1.0)
+                    continue
+                for job in jobs:
+                    await self._handle_delivery_job(runtime, job)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    f"[bilibili-notify] delivery pump failed: {_sanitize_error(str(exc))}"
+                )
+                await asyncio.sleep(2.0)
+
+    async def _handle_delivery_job(
+        self,
+        runtime: SidecarRuntime,
+        job: Mapping[str, Any],
+    ) -> None:
+        delivery_id = str(job.get("deliveryId") or "")
+        if not delivery_id:
+            logger.warning("[bilibili-notify] received delivery job without deliveryId")
+            return
+        try:
+            await self._send_delivery_job(job)
+        except Exception as exc:  # noqa: BLE001
+            await runtime.nack_delivery(delivery_id, _sanitize_error(str(exc)))
+            return
+        await runtime.ack_delivery(delivery_id)
+
+    async def _send_delivery_job(self, job: Mapping[str, Any]) -> None:
+        session = job.get("session")
+        unified_msg_origin = ""
+        if isinstance(session, dict):
+            unified_msg_origin = str(session.get("unified_msg_origin") or "")
+        if not unified_msg_origin:
+            raise ValueError("delivery job is missing unified_msg_origin")
+        payload = job.get("payload")
+        if not isinstance(payload, dict):
+            raise ValueError("delivery job payload must be an object")
+        try:
+            chain = build_astrbot_message_chain(payload)
+            ok = await self.context.send_message(unified_msg_origin, chain)
+            if ok is False:
+                raise RuntimeError("AstrBot send_message returned false")
+        except Exception:
+            if not payload_contains_at_all(payload):
+                raise
+            fallback_chain = build_astrbot_message_chain(payload, at_all_as_text=True)
+            ok = await self.context.send_message(unified_msg_origin, fallback_chain)
+            if ok is False:
+                raise RuntimeError("AstrBot send_message returned false after at-all fallback")
+
+    async def _stop_delivery_pump(self) -> None:
+        task = self._delivery_pump_task
+        if task is None:
+            return
+        self._delivery_pump_task = None
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            return
+
     async def terminate(self):
         """关闭 sidecar。"""
+        await self._stop_delivery_pump()
         if self._runtime is None:
             return
         try:

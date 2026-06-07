@@ -12,12 +12,15 @@ import httpx
 import pytest
 
 from sidecar_process import (
+    AT_ALL_FALLBACK_TEXT,
     SidecarClient,
     SidecarConfig,
     SidecarRuntime,
+    build_astrbot_message_chain_with,
     build_proxy_api_path,
     build_sidecar_config,
     parse_node_major_version,
+    payload_contains_at_all,
     sanitize_proxy_payload,
     start_sidecar,
 )
@@ -91,6 +94,23 @@ async def test_sidecar_client_calls_control_plane_endpoints() -> None:
         if request.method == "GET" and request.url.path == "/api/events":
             assert request.url.params["after"] == "7"
             return httpx.Response(200, json=[{"id": 8, "type": "auth-lost"}])
+        if request.method == "GET" and request.url.path == "/api/deliveries":
+            assert request.url.params["limit"] == "2"
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "deliveryId": "delivery-1",
+                        "targetId": "target-1",
+                        "payload": {"kind": "text", "text": "hello"},
+                    }
+                ],
+            )
+        if request.method == "POST" and request.url.path == "/api/deliveries/delivery-1/ack":
+            return httpx.Response(200, json={"deliveryId": "delivery-1", "ok": True})
+        if request.method == "POST" and request.url.path == "/api/deliveries/delivery-1/nack":
+            body = json.loads(request.content.decode("utf-8"))
+            return httpx.Response(200, json={"deliveryId": "delivery-1", "error": body["error"]})
         if request.method == "GET" and request.url.path == "/api/subscriptions":
             return httpx.Response(200, json=[{"id": "sub-1", "uid": "123456"}])
         if request.method == "POST" and request.url.path == "/api/subscriptions":
@@ -128,6 +148,18 @@ async def test_sidecar_client_calls_control_plane_endpoints() -> None:
     assert await client.get_health() == {"status": "ready"}
     assert await client.get_meta() == {"version": "v0.1.0"}
     assert await client.drain_events(after=7) == [{"id": 8, "type": "auth-lost"}]
+    assert await client.claim_deliveries(limit=2) == [
+        {
+            "deliveryId": "delivery-1",
+            "targetId": "target-1",
+            "payload": {"kind": "text", "text": "hello"},
+        }
+    ]
+    assert await client.ack_delivery("delivery-1") == {"deliveryId": "delivery-1", "ok": True}
+    assert await client.nack_delivery("delivery-1", "failed token=abc") == {
+        "deliveryId": "delivery-1",
+        "error": "failed token=[REDACTED]",
+    }
     assert await client.list_subscriptions() == [{"id": "sub-1", "uid": "123456"}]
     assert await client.create_subscription(
         uid="123456",
@@ -223,6 +255,58 @@ def test_sanitize_proxy_payload_redacts_sensitive_error_details() -> None:
         "url": "[REDACTED_URL]",
         "upper_url": "[REDACTED_URL]",
     }
+
+
+def test_build_astrbot_message_chain_converts_rich_payload_and_at_all_fallback() -> None:
+    class FakePlain:
+        def __init__(self, text):
+            self.text = text
+
+    class FakeImage:
+        @staticmethod
+        def fromBase64(value):
+            return ("image-base64", value)
+
+        @staticmethod
+        def fromURL(value):
+            return ("image-url", value)
+
+    class FakeAtAll:
+        pass
+
+    class FakeComponents:
+        Plain = FakePlain
+        Image = FakeImage
+        AtAll = FakeAtAll
+
+    class FakeChain:
+        def __init__(self, chain):
+            self.chain = chain
+
+    payload = {
+        "kind": "composite",
+        "segments": [
+            {"type": "at-all"},
+            {"type": "text", "text": "hello"},
+            {"type": "image", "base64": "aW1hZ2U="},
+            {"type": "link", "title": "详情", "href": "https://example.invalid"},
+        ],
+    }
+
+    chain = build_astrbot_message_chain_with(payload, FakeChain, FakeComponents)
+    fallback = build_astrbot_message_chain_with(
+        payload,
+        FakeChain,
+        FakeComponents,
+        at_all_as_text=True,
+    )
+
+    assert payload_contains_at_all(payload) is True
+    assert isinstance(chain.chain[0], FakeAtAll)
+    assert chain.chain[1].text == "hello"
+    assert chain.chain[2] == ("image-base64", "aW1hZ2U=")
+    assert chain.chain[3].text == "详情\nhttps://example.invalid"
+    assert fallback.chain[0].text == AT_ALL_FALLBACK_TEXT
 
 
 @pytest.mark.asyncio
