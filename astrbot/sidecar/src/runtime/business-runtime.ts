@@ -2,6 +2,7 @@ import { BilibiliAPI, BiliLoginStatus, LoginFlow, type LoginSnapshot } from "@bi
 import {
 	type AstrBotAdapter,
 	type AstrBotPushTarget,
+	type AstrBotSession,
 	type DeliveryResult,
 	type GlobalConfig,
 	makeDefaultGlobalConfig,
@@ -15,6 +16,8 @@ import { ASTRBOT_PUSH_TARGET, ASTRBOT_TARGET_ID, createCallbackSink } from "./ca
 import {
 	type AstrBotConfigSnapshot,
 	type AstrBotConfigStore,
+	type AstrBotPairingCode,
+	type AstrBotPairingConfirmResult,
 	createAstrBotConfigStore,
 } from "./config-store.js";
 import { createSidecarEngines, type SidecarEnginesRuntime } from "./engines.js";
@@ -118,6 +121,11 @@ export interface BusinessRuntimeHandle {
 	upsertTarget(target: AstrBotPushTarget): Promise<AstrBotPushTarget>;
 	patchTarget(id: string, patch: Record<string, unknown>): Promise<AstrBotPushTarget>;
 	removeTarget(id: string): Promise<AstrBotPushTarget | undefined>;
+	createTargetPairingCode(): AstrBotPairingCode;
+	confirmTargetPairingCode(
+		code: string,
+		session: AstrBotSession,
+	): Promise<AstrBotPairingConfirmResult | undefined>;
 	clearSubscriptions(): Promise<Subscription[]>;
 	clearTargets(): Promise<AstrBotPushTarget[]>;
 	clearSubscriptionOverrides(): Promise<Subscription[]>;
@@ -340,6 +348,17 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 
 	async removeTarget(id: string): Promise<AstrBotPushTarget | undefined> {
 		return this.configStore.deleteTarget(id);
+	}
+
+	createTargetPairingCode(): AstrBotPairingCode {
+		return this.configStore.createPairingCode();
+	}
+
+	async confirmTargetPairingCode(
+		code: string,
+		session: AstrBotSession,
+	): Promise<AstrBotPairingConfirmResult | undefined> {
+		return this.configStore.confirmPairingCode(code, session);
 	}
 
 	async clearSubscriptions(): Promise<Subscription[]> {

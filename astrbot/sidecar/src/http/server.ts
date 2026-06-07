@@ -4,6 +4,8 @@ import {
 	type AstrBotAdapter,
 	type AstrBotPushTarget,
 	AstrBotPushTargetSchema,
+	type AstrBotSession,
+	AstrBotSessionSchema,
 	type DeliveryResult,
 	type GlobalConfig,
 	GlobalConfigSchema,
@@ -12,7 +14,11 @@ import {
 	SubscriptionSchema,
 } from "@bilibili-notify/internal";
 import { SidecarUpstreamError, type UserSearchResult } from "../runtime/business-runtime.js";
-import { AstrBotConfigValidationError } from "../runtime/config-store.js";
+import {
+	AstrBotConfigValidationError,
+	type AstrBotPairingCode,
+	type AstrBotPairingConfirmResult,
+} from "../runtime/config-store.js";
 import type { DeliveryJob, DeliveryReceipt, SidecarEvent } from "../runtime/event-queue.js";
 import { createAstrBotSubscription, type StoredSubscriptionInput } from "../runtime/persistence.js";
 import type { SidecarSnapshot } from "../runtime/state.js";
@@ -33,6 +39,11 @@ export interface SidecarHttpRuntime {
 	upsertTarget(target: AstrBotPushTarget): Promise<AstrBotPushTarget>;
 	patchTarget(id: string, patch: Record<string, unknown>): Promise<AstrBotPushTarget>;
 	removeTarget(id: string): Promise<AstrBotPushTarget | undefined>;
+	createTargetPairingCode(): AstrBotPairingCode;
+	confirmTargetPairingCode(
+		code: string,
+		session: AstrBotSession,
+	): Promise<AstrBotPairingConfirmResult | undefined>;
 	clearSubscriptions(): Promise<Subscription[]>;
 	clearTargets(): Promise<AstrBotPushTarget[]>;
 	clearSubscriptionOverrides(): Promise<Subscription[]>;
@@ -242,6 +253,15 @@ async function handleSidecarRequest(
 	}
 	if (method === "GET" && pathname === "/api/targets") {
 		writeJson(res, 200, options.runtime.listTargets());
+		return;
+	}
+	if (method === "POST" && pathname === "/api/targets/pairing-codes") {
+		writeJson(res, 200, options.runtime.createTargetPairingCode());
+		return;
+	}
+	const pairingConfirm = matchTargetPairingConfirm(pathname);
+	if (pairingConfirm !== null) {
+		await handleConfirmTargetPairing(method, req, res, options, pairingConfirm);
 		return;
 	}
 	if (method === "POST" && pathname === "/api/targets") {
@@ -538,6 +558,48 @@ async function handleCreateTarget(
 	}
 }
 
+async function handleConfirmTargetPairing(
+	method: string,
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: SidecarHttpServerOptions,
+	code: string,
+): Promise<void> {
+	if (method !== "POST") {
+		writeJson(res, 405, { error: "method_not_allowed" });
+		return;
+	}
+	let body: Record<string, unknown>;
+	try {
+		body = await readJsonObjectBody(req, "request body must be a JSON object");
+	} catch (error) {
+		writeRequestBodyError(res, error);
+		return;
+	}
+	const parsed = AstrBotSessionSchema.safeParse(body);
+	if (!parsed.success) {
+		writeJson(res, 400, {
+			error: "validation_failed",
+			scope: "targets",
+			issues: parsed.error.issues,
+		});
+		return;
+	}
+	try {
+		const result = await options.runtime.confirmTargetPairingCode(code, parsed.data);
+		if (!result) {
+			writeJson(res, 404, {
+				error: "pairing_code_not_found",
+				message: "pairing code is invalid or expired",
+			});
+			return;
+		}
+		writeJson(res, 200, result);
+	} catch (error) {
+		writeConfigMutationError(res, error, "failed to confirm target pairing");
+	}
+}
+
 async function handleTargetItem(
 	method: string,
 	req: IncomingMessage,
@@ -715,6 +777,19 @@ function matchResourceId(pathname: string, bases: readonly string[]): string | n
 		}
 	}
 	return null;
+}
+
+function matchTargetPairingConfirm(pathname: string): string | null {
+	const prefix = "/api/targets/pairing-codes/";
+	const suffix = "/confirm";
+	if (!pathname.startsWith(prefix) || !pathname.endsWith(suffix)) return null;
+	const rawCode = pathname.slice(prefix.length, -suffix.length);
+	if (!rawCode || rawCode.includes("/")) return "";
+	try {
+		return decodeURIComponent(rawCode);
+	} catch {
+		return rawCode;
+	}
 }
 
 function matchDeliveryAction(

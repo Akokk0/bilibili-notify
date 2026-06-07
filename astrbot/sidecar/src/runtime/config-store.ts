@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -7,6 +7,8 @@ import {
 	AstrBotAdapterSchema,
 	type AstrBotPushTarget,
 	AstrBotPushTargetSchema,
+	type AstrBotSession,
+	AstrBotSessionSchema,
 	type ConfigScope,
 	type GlobalConfig,
 	GlobalConfigSchema,
@@ -23,6 +25,9 @@ const STATE_DIR_NAME = "state";
 const META_FILE = "meta.json";
 const LEGACY_SUBSCRIPTIONS_FILE = "subscriptions.json";
 const LEGACY_SUBSCRIPTIONS_BACKUP = "backups/subscriptions.legacy.json";
+const PAIRING_CODE_TTL_MS = 10 * 60 * 1000;
+const PAIRING_CODE_LENGTH = 8;
+const PAIRING_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 export type AstrBotConfigScope = Exclude<ConfigScope, "secrets">;
 
@@ -40,6 +45,16 @@ export interface AstrBotConfigSnapshot {
 	readonly targets: AstrBotConfigScopeSnapshot & { readonly count: number };
 }
 
+export interface AstrBotPairingCode {
+	readonly code: string;
+	readonly expiresAt: string;
+}
+
+export interface AstrBotPairingConfirmResult {
+	readonly target: AstrBotPushTarget;
+	readonly created: boolean;
+}
+
 export interface AstrBotConfigStore {
 	readonly dataDir: string;
 	readonly stateDir: string;
@@ -53,6 +68,12 @@ export interface AstrBotConfigStore {
 	deleteSubscription(id: string): Promise<Subscription | undefined>;
 	upsertTarget(target: AstrBotPushTarget): Promise<AstrBotPushTarget>;
 	deleteTarget(id: string): Promise<AstrBotPushTarget | undefined>;
+	createPairingCode(now?: number): AstrBotPairingCode;
+	confirmPairingCode(
+		code: string,
+		session: AstrBotSession,
+		now?: number,
+	): Promise<AstrBotPairingConfirmResult | undefined>;
 	snapshot(): AstrBotConfigSnapshot;
 }
 
@@ -60,6 +81,10 @@ export interface CreateAstrBotConfigStoreOptions {
 	readonly dataDir: string;
 	readonly bus?: MessageBus;
 	readonly stateDir?: string;
+}
+
+interface PairingCodeEntry extends AstrBotPairingCode {
+	readonly createdAt: string;
 }
 
 export class AstrBotConfigValidationError extends Error {
@@ -82,6 +107,7 @@ class DefaultAstrBotConfigStore implements AstrBotConfigStore {
 	private subscriptions: Subscription[] = [];
 	private adapters: AstrBotAdapter[] = [ASTRBOT_PUSH_ADAPTER];
 	private targets: AstrBotPushTarget[] = [];
+	private pairingCodes: PairingCodeEntry[] = [];
 	private loaded = false;
 	private writeQueue: Promise<void> = Promise.resolve();
 
@@ -190,6 +216,48 @@ class DefaultAstrBotConfigStore implements AstrBotConfigStore {
 		});
 	}
 
+	createPairingCode(now = Date.now()): AstrBotPairingCode {
+		this.prunePairingCodes(now);
+		let code = generatePairingCode();
+		while (this.pairingCodes.some((entry) => entry.code === code)) {
+			code = generatePairingCode();
+		}
+		const entry = {
+			code,
+			createdAt: new Date(now).toISOString(),
+			expiresAt: new Date(now + PAIRING_CODE_TTL_MS).toISOString(),
+		};
+		this.pairingCodes.push(entry);
+		return { code: entry.code, expiresAt: entry.expiresAt };
+	}
+
+	async confirmPairingCode(
+		code: string,
+		session: AstrBotSession,
+		now = Date.now(),
+	): Promise<AstrBotPairingConfirmResult | undefined> {
+		const normalizedCode = normalizePairingCode(code);
+		if (!normalizedCode) return undefined;
+		const parsed = AstrBotSessionSchema.safeParse(session);
+		if (!parsed.success) {
+			throw new AstrBotConfigValidationError("targets", parsed.error.issues);
+		}
+		return this.transact(async () => {
+			this.prunePairingCodes(now);
+			const codeIndex = this.pairingCodes.findIndex((entry) => entry.code === normalizedCode);
+			if (codeIndex < 0) return undefined;
+			this.pairingCodes.splice(codeIndex, 1);
+			const existing = this.targets.find(
+				(target) => target.session.unified_msg_origin === parsed.data.unified_msg_origin,
+			);
+			const target = buildAstrBotTarget(parsed.data, existing);
+			this.targets = upsertById(this.targets, target);
+			await atomicWriteJson(this.path("targets"), this.targets);
+			this.bus?.emit("config-changed", "targets");
+			return { target: deepClone(target), created: !existing };
+		});
+	}
+
 	snapshot(): AstrBotConfigSnapshot {
 		return {
 			version: CONFIG_VERSION,
@@ -208,6 +276,10 @@ class DefaultAstrBotConfigStore implements AstrBotConfigStore {
 			() => undefined,
 		);
 		return next;
+	}
+
+	private prunePairingCodes(now: number): void {
+		this.pairingCodes = this.pairingCodes.filter((entry) => Date.parse(entry.expiresAt) > now);
 	}
 
 	private path(scope: AstrBotConfigScope | "meta"): string {
@@ -306,6 +378,50 @@ export function createAstrBotConfigStore(
 	options: CreateAstrBotConfigStoreOptions,
 ): AstrBotConfigStore {
 	return new DefaultAstrBotConfigStore(options);
+}
+
+function generatePairingCode(): string {
+	const bytes = randomBytes(PAIRING_CODE_LENGTH);
+	return Array.from(bytes, (byte) =>
+		PAIRING_CODE_ALPHABET.charAt(byte % PAIRING_CODE_ALPHABET.length),
+	).join("");
+}
+
+function normalizePairingCode(code: string): string {
+	return code.trim().replace(/[\s-]/g, "").toUpperCase();
+}
+
+function buildAstrBotTarget(
+	session: AstrBotSession,
+	existing: AstrBotPushTarget | undefined,
+): AstrBotPushTarget {
+	const target: AstrBotPushTarget = {
+		id: existing?.id ?? randomUUID(),
+		name: existing?.name ?? buildTargetName(session),
+		adapterId: ASTRBOT_ADAPTER_ID,
+		platform: "astrbot",
+		scope: inferTargetScope(session.messageType),
+		enabled: true,
+		session: deepClone(session),
+	};
+	return {
+		...target,
+		...(existing?.testStatus ? { testStatus: existing.testStatus } : {}),
+	};
+}
+
+function buildTargetName(session: AstrBotSession): string {
+	if (session.sessionName?.trim()) return session.sessionName.trim();
+	if (session.sessionId?.trim()) return `AstrBot ${session.sessionId.trim()}`;
+	if (session.platform?.trim()) return `AstrBot ${session.platform.trim()}`;
+	return "AstrBot 会话";
+}
+
+function inferTargetScope(messageType: string | undefined): AstrBotPushTarget["scope"] {
+	const value = messageType?.toLowerCase() ?? "";
+	if (value.includes("group")) return "group";
+	if (value.includes("private") || value.includes("friend")) return "private";
+	return "channel";
 }
 
 function parseSubscriptions(raw: unknown): Subscription[] {

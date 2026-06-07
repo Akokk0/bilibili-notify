@@ -108,6 +108,95 @@ describe("createAstrBotConfigStore", () => {
 		expect(changed).toEqual(["subscriptions", "subscriptions"]);
 	});
 
+	it("creates one-time pairing codes and confirms AstrBot targets", async () => {
+		const dataDir = await makeTempDir();
+		const bus = createSidecarMessageBus();
+		const changed: string[] = [];
+		bus.on("config-changed", (scope) => changed.push(scope));
+		const store = createAstrBotConfigStore({ dataDir, bus });
+		await store.load();
+
+		const pairing = store.createPairingCode(1_000);
+		const confirmed = await store.confirmPairingCode(
+			pairing.code.toLowerCase(),
+			{
+				unified_msg_origin: "aiocqhttp:GroupMessage:123456",
+				platform: "aiocqhttp",
+				messageType: "GroupMessage",
+				sessionId: "123456",
+				sessionName: "测试群聊",
+			},
+			2_000,
+		);
+
+		expect(pairing.code).toMatch(/^[A-Z2-9]{8}$/);
+		expect(pairing.expiresAt).toBe(new Date(601_000).toISOString());
+		expect(confirmed).toMatchObject({
+			created: true,
+			target: {
+				name: "测试群聊",
+				adapterId: ASTRBOT_ADAPTER_ID,
+				platform: "astrbot",
+				scope: "group",
+				enabled: true,
+				session: {
+					unified_msg_origin: "aiocqhttp:GroupMessage:123456",
+				},
+			},
+		});
+		expect(await readJson(join(dataDir, "state", "targets.json"))).toEqual([
+			expect.objectContaining({ id: confirmed?.target.id, name: "测试群聊" }),
+		]);
+		expect(await store.confirmPairingCode(pairing.code, { unified_msg_origin: "another" })).toBe(
+			undefined,
+		);
+		expect(changed).toEqual(["targets"]);
+	});
+
+	it("expires pairing codes and updates existing targets for the same session", async () => {
+		const dataDir = await makeTempDir();
+		const store = createAstrBotConfigStore({ dataDir });
+		await store.load();
+
+		const expired = store.createPairingCode(1_000);
+		expect(
+			await store.confirmPairingCode(
+				expired.code,
+				{ unified_msg_origin: "aiocqhttp:GroupMessage:expired" },
+				601_001,
+			),
+		).toBeUndefined();
+
+		const active = store.createPairingCode(2_000);
+		const first = await store.confirmPairingCode(
+			active.code,
+			{
+				unified_msg_origin: "aiocqhttp:FriendMessage:42",
+				messageType: "private",
+				sessionName: "旧名称",
+			},
+			3_000,
+		);
+		const secondCode = store.createPairingCode(4_000);
+		const second = await store.confirmPairingCode(
+			secondCode.code,
+			{
+				unified_msg_origin: "aiocqhttp:FriendMessage:42",
+				messageType: "private",
+				sessionName: "新名称",
+			},
+			5_000,
+		);
+
+		expect(first?.created).toBe(true);
+		expect(second?.created).toBe(false);
+		expect(second?.target.id).toBe(first?.target.id);
+		expect(second?.target.name).toBe("旧名称");
+		expect(second?.target.session.sessionName).toBe("新名称");
+		expect(second?.target.scope).toBe("private");
+		expect(store.getTargets()).toHaveLength(1);
+	});
+
 	it("serializes concurrent subscription writes without losing updates", async () => {
 		const dataDir = await makeTempDir();
 		const store = createAstrBotConfigStore({ dataDir });

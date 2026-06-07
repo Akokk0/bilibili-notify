@@ -79,56 +79,131 @@ class BilibiliNotifyPlugin(Star):
         self._delivery_pump_task = asyncio.create_task(self._run_delivery_pump())
         logger.info(f"[bilibili-notify] sidecar ready: {self._runtime.describe()}")
 
-    @filter.command("bilibili-notify")
-    async def status(self, event: AstrMessageEvent):
-        """查看 sidecar 当前状态。"""
-        if self._runtime is None:
-            yield event.plain_result("bilibili-notify sidecar 还没有启动")
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("bilibili-notify", alias={"bn"})
+    async def bilibili_notify(
+        self,
+        event: AstrMessageEvent,
+        action: str = "",
+        value: str = "",
+    ):
+        """最小运维命令入口。"""
+        command = action.strip().lower()
+        if command in {"", "status"}:
+            yield event.plain_result(await self._status_text())
             return
+        if command == "bind":
+            yield event.plain_result(await self._bind_text(event, value))
+            return
+        if command == "login":
+            yield event.plain_result(await self._login_text())
+            return
+        if command in {"login-status", "login_status"}:
+            yield event.plain_result(await self._login_status_text())
+            return
+        if command == "test":
+            yield event.plain_result(await self._test_text(event, value))
+            return
+        yield event.plain_result(_usage_text())
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("bilibili-notify-login-status")
+    async def login_status(self, event: AstrMessageEvent):
+        """查看 B 站登录状态。"""
+        yield event.plain_result(await self._login_status_text())
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("bilibili-notify-login")
+    async def login(self, event: AstrMessageEvent):
+        """发起 B 站二维码登录。"""
+        yield event.plain_result(await self._login_text())
+
+    async def _status_text(self) -> str:
+        if self._runtime is None:
+            return "bilibili-notify sidecar 还没有启动"
         try:
             health, subscriptions = await asyncio.gather(
                 self._runtime.get_health(),
                 self._runtime.list_subscriptions(),
             )
         except Exception as exc:  # noqa: BLE001
-            logger.warning(f"[bilibili-notify] sidecar status query failed: {exc}")
-            yield event.plain_result(f"sidecar 已就绪: {self._runtime.describe()}")
-            return
+            logger.warning(
+                f"[bilibili-notify] sidecar status query failed: {_sanitize_error(str(exc))}"
+            )
+            return f"sidecar 已就绪: {self._runtime.describe()}"
         provider = self._runtime.ai_provider_id
         provider_text = f" / provider={provider}" if provider else ""
         business_text = _format_business_snapshot(health.get("business"))
-        yield event.plain_result(
+        return (
             f"sidecar 已就绪: {self._runtime.url} | ai={self._runtime.ai_backend}{provider_text}"
-            f" | 订阅={len(subscriptions)}{business_text}",
+            f" | 订阅={len(subscriptions)}{business_text}"
         )
 
-    @filter.command("bilibili-notify-login-status")
-    async def login_status(self, event: AstrMessageEvent):
-        """查看 B 站登录状态。"""
+    async def _login_status_text(self) -> str:
         if self._runtime is None:
-            yield event.plain_result("bilibili-notify sidecar 还没有启动")
-            return
+            return "bilibili-notify sidecar 还没有启动"
         try:
             login = await self._runtime.get_login_status()
         except Exception as exc:  # noqa: BLE001
-            logger.warning(f"[bilibili-notify] login status query failed: {exc}")
-            yield event.plain_result(f"登录状态读取失败: {exc}")
-            return
-        yield event.plain_result(f"B 站登录状态: {_format_login_snapshot(login)}")
+            logger.warning(
+                f"[bilibili-notify] login status query failed: {_sanitize_error(str(exc))}"
+            )
+            return f"登录状态读取失败: {_sanitize_error(str(exc))}"
+        return f"B 站登录状态: {_format_login_snapshot(login)}"
 
-    @filter.command("bilibili-notify-login")
-    async def login(self, event: AstrMessageEvent):
-        """发起 B 站二维码登录。"""
+    async def _login_text(self) -> str:
         if self._runtime is None:
-            yield event.plain_result("bilibili-notify sidecar 还没有启动")
-            return
+            return "bilibili-notify sidecar 还没有启动"
         try:
             login = await self._runtime.begin_login()
         except Exception as exc:  # noqa: BLE001
-            logger.warning(f"[bilibili-notify] login qr request failed: {exc}")
-            yield event.plain_result(f"二维码登录启动失败: {exc}")
-            return
-        yield event.plain_result(f"B 站二维码登录: {_format_login_snapshot(login)}")
+            logger.warning(
+                f"[bilibili-notify] login qr request failed: {_sanitize_error(str(exc))}"
+            )
+            return f"二维码登录启动失败: {_sanitize_error(str(exc))}"
+        return f"B 站二维码登录: {_format_login_snapshot(login)}"
+
+    async def _bind_text(self, event: AstrMessageEvent, code: str) -> str:
+        if self._runtime is None:
+            return "bilibili-notify sidecar 还没有启动"
+        safe_code = code.strip()
+        if not safe_code:
+            return "用法: /bilibili-notify bind <配对码>"
+        session = _extract_event_session(event)
+        if session is None:
+            return "绑定失败: 无法读取当前 AstrBot 会话标识"
+        try:
+            result = await self._runtime.confirm_pairing_code(safe_code, session)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[bilibili-notify] target bind failed: {_sanitize_error(str(exc))}")
+            return f"绑定失败: {_sanitize_error(str(exc))}"
+        if result is None:
+            return "绑定失败: 配对码无效或已过期，请在 Dashboard 重新生成"
+        target = result.get("target") if isinstance(result, dict) else {}
+        target_name = target.get("name") if isinstance(target, dict) else None
+        action = "新建" if result.get("created") is True else "更新"
+        return f"推送目标绑定成功: {target_name or '当前会话'}（{action}）"
+
+    async def _test_text(self, event: AstrMessageEvent, text: str) -> str:
+        if self._runtime is None:
+            return "bilibili-notify sidecar 还没有启动"
+        session = _extract_event_session(event)
+        if session is None:
+            return "测试推送失败: 无法读取当前 AstrBot 会话标识"
+        try:
+            targets = await self._runtime.list_targets()
+            target = _find_target_for_session(targets, session["unified_msg_origin"])
+            if target is None:
+                return "当前会话尚未绑定，请先在 Dashboard 生成配对码后执行 /bilibili-notify bind <配对码>"
+            result = await self._runtime.push_test(
+                str(target.get("id") or ""), text.strip() or None
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[bilibili-notify] test push failed: {_sanitize_error(str(exc))}")
+            return f"测试推送失败: {_sanitize_error(str(exc))}"
+        if result.get("ok") is True:
+            return "测试推送已提交"
+        return f"测试推送失败: {_sanitize_error(str(result.get('err') or 'unknown error'))}"
 
     async def page_api_proxy(self, path: str):
         """AstrBot Plugin Page 的白名单 API proxy。"""
@@ -257,6 +332,96 @@ def _query_params(args: Mapping[str, Any]) -> dict[str, str]:
             continue
         params[str(key)] = str(value)
     return params
+
+
+def _extract_event_session(event: AstrMessageEvent) -> dict[str, str] | None:
+    unified_msg_origin = _event_string(event, "unified_msg_origin") or _event_call_string(
+        event,
+        "get_unified_msg_origin",
+    )
+    if not unified_msg_origin:
+        return None
+    inferred_platform, inferred_message_type, inferred_session_id = _split_unified_msg_origin(
+        unified_msg_origin
+    )
+    session: dict[str, str] = {"unified_msg_origin": unified_msg_origin}
+    platform = _first_non_empty(
+        _event_string(event, "platform"),
+        _event_call_string(event, "get_platform_name"),
+        inferred_platform,
+    )
+    message_type = _first_non_empty(
+        _event_string(event, "message_type"),
+        _event_string(event, "messageType"),
+        inferred_message_type,
+    )
+    session_id = _first_non_empty(
+        _event_string(event, "session_id"),
+        _event_string(event, "sessionId"),
+        _event_call_string(event, "get_session_id"),
+        inferred_session_id,
+    )
+    session_name = _first_non_empty(
+        _event_string(event, "session_name"),
+        _event_string(event, "sessionName"),
+        _event_call_string(event, "get_group_name"),
+        _event_call_string(event, "get_sender_name"),
+    )
+    if platform:
+        session["platform"] = platform
+    if message_type:
+        session["messageType"] = message_type
+    if session_id:
+        session["sessionId"] = session_id
+    if session_name:
+        session["sessionName"] = session_name
+    return session
+
+
+def _find_target_for_session(
+    targets: list[dict[str, Any]],
+    unified_msg_origin: str,
+) -> dict[str, Any] | None:
+    for target in targets:
+        session = target.get("session")
+        if isinstance(session, dict) and session.get("unified_msg_origin") == unified_msg_origin:
+            return target
+    return None
+
+
+def _usage_text() -> str:
+    return "用法: /bilibili-notify [status|bind <配对码>|login|login-status|test [文本]]\n别名: /bn"
+
+
+def _split_unified_msg_origin(value: str) -> tuple[str, str, str]:
+    parts = value.split(":")
+    platform = parts[0] if len(parts) >= 1 else ""
+    message_type = parts[1] if len(parts) >= 2 else ""
+    session_id = parts[2] if len(parts) >= 3 else ""
+    return platform, message_type, session_id
+
+
+def _event_string(event: AstrMessageEvent, name: str) -> str:
+    value = getattr(event, name, "")
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _event_call_string(event: AstrMessageEvent, name: str) -> str:
+    func = getattr(event, name, None)
+    if not callable(func):
+        return ""
+    try:
+        value = func()
+    except Exception:  # noqa: BLE001
+        return ""
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _first_non_empty(*values: str) -> str:
+    for value in values:
+        if value:
+            return value
+    return ""
 
 
 def _sanitize_error(value: str) -> str:

@@ -120,6 +120,32 @@ async def test_sidecar_client_calls_control_plane_endpoints() -> None:
             return httpx.Response(204)
         if request.method == "DELETE" and request.url.path == "/api/subscriptions/missing":
             return httpx.Response(404, json={"error": "not_found"})
+        if request.method == "GET" and request.url.path == "/api/targets":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": "target-1",
+                        "session": {"unified_msg_origin": "aiocqhttp:GroupMessage:123456"},
+                    }
+                ],
+            )
+        if request.method == "POST" and request.url.path == "/api/targets/pairing-codes":
+            return httpx.Response(
+                200,
+                json={"code": "ABCD1234", "expiresAt": "2026-06-03T00:10:00.000Z"},
+            )
+        if (
+            request.method == "POST"
+            and request.url.path == "/api/targets/pairing-codes/ABCD1234/confirm"
+        ):
+            body = json.loads(request.content.decode("utf-8"))
+            return httpx.Response(200, json={"target": {"session": body}, "created": True})
+        if (
+            request.method == "POST"
+            and request.url.path == "/api/targets/pairing-codes/missing/confirm"
+        ):
+            return httpx.Response(404, json={"error": "pairing_code_not_found"})
         if request.method == "GET" and request.url.path == "/api/login/status":
             return httpx.Response(200, json={"status": 0, "msg": "未登录"})
         if request.method == "POST" and request.url.path == "/api/login/qr":
@@ -177,6 +203,25 @@ async def test_sidecar_client_calls_control_plane_endpoints() -> None:
     assert await client.upsert_subscription({"uid": "654321"}) == [{"uid": "654321"}]
     assert await client.delete_subscription("sub-1") is True
     assert await client.delete_subscription("missing") is False
+    assert await client.list_targets() == [
+        {
+            "id": "target-1",
+            "session": {"unified_msg_origin": "aiocqhttp:GroupMessage:123456"},
+        }
+    ]
+    assert await client.create_pairing_code() == {
+        "code": "ABCD1234",
+        "expiresAt": "2026-06-03T00:10:00.000Z",
+    }
+    assert await client.confirm_pairing_code(
+        "ABCD1234",
+        {"unified_msg_origin": "aiocqhttp:GroupMessage:123456"},
+    ) == {
+        "target": {"session": {"unified_msg_origin": "aiocqhttp:GroupMessage:123456"}},
+        "created": True,
+    }
+    assert await client.confirm_pairing_code("missing", {"unified_msg_origin": "x"}) is None
+    assert await client.push_test("target-1", "hello") == {"ok": True, "text": "hello"}
     assert await client.get_login_status() == {"status": 0, "msg": "未登录"}
     assert await client.begin_login() == {"status": 1, "data": "data:image/png;base64,QR"}
     assert await client.proxy_json("GET", "bootstrap") == (200, {"globals": {}, "targets": []})
@@ -213,6 +258,7 @@ async def test_sidecar_client_rejects_unexpected_response_shapes() -> None:
     [
         ("GET", "globals", "/api/globals"),
         ("PATCH", "subscriptions/sub-1", "/api/subscriptions/sub-1"),
+        ("POST", "targets/pairing-codes", "/api/targets/pairing-codes"),
         ("POST", "danger/clear-targets", "/api/danger/clear-targets"),
         ("DELETE", "targets/target-1", "/api/targets/target-1"),
     ],
@@ -232,6 +278,7 @@ def test_build_proxy_api_path_allows_only_dashboard_whitelist(
         ("GET", "../globals"),
         ("GET", "https://example.invalid/globals"),
         ("POST", "import"),
+        ("POST", "targets/pairing-codes/ABCD1234/confirm"),
         ("DELETE", "adapters/adapter-1"),
     ],
 )

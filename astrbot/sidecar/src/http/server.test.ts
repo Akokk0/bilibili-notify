@@ -346,6 +346,57 @@ describe("sidecar http server", () => {
 		expect(deleteResponse.status).toBe(204);
 	});
 
+	it("creates one-time target pairing codes and confirms AstrBot sessions", async () => {
+		const harness = createTestHarness();
+		const server = createSidecarHttpServer({
+			getSnapshot: harness.snapshot,
+			runtime: harness.runtime,
+			authToken: TEST_TOKEN,
+		});
+		servers.push(server);
+		const address = await listenSidecarServer(server, "127.0.0.1", 0);
+		const baseUrl = `http://${address.host}:${address.port}`;
+
+		const codeResponse = await fetch(`${baseUrl}/api/targets/pairing-codes`, {
+			method: "POST",
+			headers: AUTH_HEADERS,
+		});
+		expect(codeResponse.status).toBe(200);
+		expect(await codeResponse.json()).toEqual({
+			code: "CODE1",
+			expiresAt: "2026-06-03T00:10:00.000Z",
+		});
+
+		const confirmResponse = await fetch(`${baseUrl}/api/targets/pairing-codes/CODE1/confirm`, {
+			method: "POST",
+			headers: { ...AUTH_HEADERS, "content-type": "application/json" },
+			body: JSON.stringify({
+				unified_msg_origin: "aiocqhttp:GroupMessage:123456",
+				platform: "aiocqhttp",
+				messageType: "group",
+				sessionId: "123456",
+				sessionName: "测试群聊",
+			}),
+		});
+		expect(confirmResponse.status).toBe(200);
+		expect(await confirmResponse.json()).toMatchObject({
+			created: true,
+			target: {
+				adapterId: ASTRBOT_ADAPTER_ID,
+				platform: "astrbot",
+				session: { unified_msg_origin: "aiocqhttp:GroupMessage:123456" },
+			},
+		});
+
+		const reusedResponse = await fetch(`${baseUrl}/api/targets/pairing-codes/CODE1/confirm`, {
+			method: "POST",
+			headers: { ...AUTH_HEADERS, "content-type": "application/json" },
+			body: JSON.stringify({ unified_msg_origin: "aiocqhttp:GroupMessage:123456" }),
+		});
+		expect(reusedResponse.status).toBe(404);
+		expect(await reusedResponse.json()).toMatchObject({ error: "pairing_code_not_found" });
+	});
+
 	it("exposes login, lookup and search control endpoints", async () => {
 		const harness = createTestHarness();
 		const server = createSidecarHttpServer({
@@ -409,6 +460,8 @@ function createTestHarness() {
 	let globals = makeDefaultGlobalConfig();
 	const subscriptions: Subscription[] = [];
 	const targets: AstrBotPushTarget[] = [];
+	const pairingCodes: Array<{ readonly code: string; readonly expiresAt: string }> = [];
+	let pairingCounter = 0;
 	let login: LoginSnapshot = {
 		status: BiliLoginStatus.NOT_LOGIN,
 		msg: "未登录",
@@ -479,6 +532,36 @@ function createTestHarness() {
 			if (idx === -1) return undefined;
 			const [removed] = targets.splice(idx, 1);
 			return removed;
+		}),
+		createTargetPairingCode: vi.fn(() => {
+			pairingCounter += 1;
+			const entry = {
+				code: `CODE${pairingCounter}`,
+				expiresAt: "2026-06-03T00:10:00.000Z",
+			};
+			pairingCodes.push(entry);
+			return entry;
+		}),
+		confirmTargetPairingCode: vi.fn(async (code, session) => {
+			const codeIndex = pairingCodes.findIndex((entry) => entry.code === code);
+			if (codeIndex === -1) return undefined;
+			pairingCodes.splice(codeIndex, 1);
+			const existing = targets.find(
+				(entry) => entry.session.unified_msg_origin === session.unified_msg_origin,
+			);
+			const target = {
+				id: existing?.id ?? "44444444-4444-4444-8444-444444444444",
+				name: existing?.name ?? String(session.sessionName ?? session.sessionId ?? "AstrBot 会话"),
+				adapterId: ASTRBOT_ADAPTER_ID,
+				platform: "astrbot" as const,
+				scope: "group" as const,
+				enabled: true,
+				session,
+			};
+			const targetIndex = targets.findIndex((entry) => entry.id === target.id);
+			if (targetIndex === -1) targets.push(target);
+			else targets[targetIndex] = target;
+			return { target, created: !existing };
 		}),
 		clearSubscriptions: vi.fn(async () => {
 			subscriptions.length = 0;

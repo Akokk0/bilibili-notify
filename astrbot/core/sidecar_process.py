@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.parse import quote
 
 import httpx
 
@@ -44,6 +45,7 @@ PROXY_ALLOWED_POST_PATHS = {
     "subscriptions",
     "subs",
     "targets",
+    "targets/pairing-codes",
     "push/test",
     "login/qr",
     "auth/qr",
@@ -163,6 +165,36 @@ class SidecarClient:
             return False
         response.raise_for_status()
         return response.status_code == 204
+
+    async def list_targets(self) -> list[dict[str, Any]]:
+        payload = await self._request_json("GET", "/api/targets")
+        return _ensure_mapping_list(payload, "targets response")
+
+    async def create_pairing_code(self) -> dict[str, Any]:
+        payload = await self._request_json("POST", "/api/targets/pairing-codes")
+        return _ensure_mapping(payload, "target pairing response")
+
+    async def confirm_pairing_code(
+        self,
+        code: str,
+        session: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        async with self._client() as client:
+            response = await client.post(
+                f"/api/targets/pairing-codes/{quote(code, safe='')}/confirm",
+                json=dict(session),
+            )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return _ensure_mapping(response.json(), "target pairing confirm response")
+
+    async def push_test(self, target_id: str, text: str | None = None) -> dict[str, Any]:
+        payload: dict[str, Any] = {"targetId": target_id}
+        if text:
+            payload["text"] = text
+        response = await self._request_json("POST", "/api/push/test", json_body=payload)
+        return _ensure_mapping(response, "push test response")
 
     async def get_login_status(self) -> dict[str, Any]:
         payload = await self._request_json("GET", "/api/login/status")
@@ -320,6 +352,22 @@ class SidecarRuntime:
 
     async def delete_subscription(self, subscription_id: str) -> bool:
         return await self.client.delete_subscription(subscription_id)
+
+    async def list_targets(self) -> list[dict[str, Any]]:
+        return await self.client.list_targets()
+
+    async def create_pairing_code(self) -> dict[str, Any]:
+        return await self.client.create_pairing_code()
+
+    async def confirm_pairing_code(
+        self,
+        code: str,
+        session: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        return await self.client.confirm_pairing_code(code, session)
+
+    async def push_test(self, target_id: str, text: str | None = None) -> dict[str, Any]:
+        return await self.client.push_test(target_id, text)
 
     async def get_login_status(self) -> dict[str, Any]:
         return await self.client.get_login_status()

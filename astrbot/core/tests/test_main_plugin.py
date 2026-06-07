@@ -62,6 +62,67 @@ async def test_delivery_job_at_all_failure_falls_back_to_text(
     assert context.sent[1][1].chain[1].text == "开播了"
 
 
+@pytest.mark.asyncio
+async def test_bind_command_confirms_current_astrbot_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = import_main_with_fake_astrbot(monkeypatch)
+    context = FakeContext()
+    runtime = FakeRuntime([])
+    plugin = module.BilibiliNotifyPlugin(context, {})
+    plugin._runtime = runtime
+    event = FakeEvent()
+
+    results = [item async for item in plugin.bilibili_notify(event, "bind", "ABCD1234")]
+
+    assert results == ["推送目标绑定成功: 测试群聊（新建）"]
+    assert runtime.confirmed_pairings == [
+        (
+            "ABCD1234",
+            {
+                "unified_msg_origin": "aiocqhttp:GroupMessage:123456",
+                "platform": "aiocqhttp",
+                "messageType": "GroupMessage",
+                "sessionId": "123456",
+                "sessionName": "测试群聊",
+            },
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_test_command_uses_bound_current_session_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = import_main_with_fake_astrbot(monkeypatch)
+    context = FakeContext()
+    runtime = FakeRuntime(
+        [],
+        targets=[
+            {
+                "id": "target-1",
+                "session": {"unified_msg_origin": "aiocqhttp:GroupMessage:123456"},
+            }
+        ],
+    )
+    plugin = module.BilibiliNotifyPlugin(context, {})
+    plugin._runtime = runtime
+    event = FakeEvent()
+
+    results = [item async for item in plugin.bilibili_notify(event, "test", "hello")]
+
+    assert results == ["测试推送已提交"]
+    assert runtime.push_tests == [("target-1", "hello")]
+
+
+def test_minimal_ops_commands_are_admin_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = import_main_with_fake_astrbot(monkeypatch)
+
+    assert module.BilibiliNotifyPlugin.bilibili_notify.permission_type == FakePermissionType.ADMIN
+    assert module.BilibiliNotifyPlugin.login_status.permission_type == FakePermissionType.ADMIN
+    assert module.BilibiliNotifyPlugin.login.permission_type == FakePermissionType.ADMIN
+
+
 def import_main_with_fake_astrbot(monkeypatch: pytest.MonkeyPatch):
     logger = FakeLogger()
     api_module = types.ModuleType("astrbot.api")
@@ -121,9 +182,22 @@ class FakeLogger:
         self.messages.append(("error", message))
 
 
+class FakePermissionType:
+    ADMIN = "admin"
+
+
 class FakeFilter:
+    PermissionType = FakePermissionType
+
     def command(self, *_args, **_kwargs):
         def decorator(func):
+            return func
+
+        return decorator
+
+    def permission_type(self, permission_type):
+        def decorator(func):
+            func.permission_type = permission_type
             return func
 
         return decorator
@@ -182,13 +256,69 @@ class FakeContext:
         return True
 
 
+class FakeEvent:
+    unified_msg_origin = "aiocqhttp:GroupMessage:123456"
+    session_name = "测试群聊"
+
+    def plain_result(self, text: str) -> str:
+        return text
+
+
 class FakeRuntime:
-    def __init__(self, jobs: list[dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        jobs: list[dict[str, Any]],
+        *,
+        targets: list[dict[str, Any]] | None = None,
+    ) -> None:
         self.jobs = jobs
+        self.targets = targets or []
         self.acks: list[str] = []
         self.nacks: list[tuple[str, str | None]] = []
+        self.confirmed_pairings: list[tuple[str, dict[str, Any]]] = []
+        self.push_tests: list[tuple[str, str | None]] = []
         self.acked = asyncio.Event()
         self.closed = False
+        self.url = "http://127.0.0.1:19090"
+        self.ai_backend = "astrbot"
+        self.ai_provider_id = ""
+
+    def describe(self) -> str:
+        return "sidecar=http://127.0.0.1:19090 pid=1234 ai=astrbot"
+
+    async def get_health(self) -> dict[str, Any]:
+        return {"business": {"events": {"size": 0}, "authStarted": False}}
+
+    async def list_subscriptions(self) -> list[dict[str, Any]]:
+        return []
+
+    async def get_login_status(self) -> dict[str, Any]:
+        return {"status": 0, "msg": "未登录"}
+
+    async def begin_login(self) -> dict[str, Any]:
+        return {"status": 1, "data": "data:image/png;base64,QR"}
+
+    async def list_targets(self) -> list[dict[str, Any]]:
+        return self.targets
+
+    async def confirm_pairing_code(
+        self,
+        code: str,
+        session: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        self.confirmed_pairings.append((code, dict(session)))
+        return {
+            "target": {
+                "id": "target-1",
+                "name": session.get("sessionName", "AstrBot 会话"),
+                "session": session,
+            },
+            "created": True,
+        }
+
+    async def push_test(self, target_id: str, text: str | None = None) -> dict[str, Any]:
+        self.push_tests.append((target_id, text))
+        return {"ok": True}
 
     async def claim_deliveries(self, limit: int = 5) -> list[dict[str, Any]]:
         _ = limit
