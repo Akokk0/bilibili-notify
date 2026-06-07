@@ -101,11 +101,21 @@ vp run check:astrbot-python
 vp run sync:astrbot-core -- --target /path/to/astrbot_plugin_bilibili_notify
 ```
 
-链接到本机 AstrBot：
+安装到本机 AstrBot：
 
 ```bash
 vp run link:astrbot-core -- --astrbot-root /path/to/AstrBot --force
 ```
+
+该命令默认复制插件文件，确保 AstrBot Plugin Page 能识别 `pages/dashboard/`。
+
+如只需要调试 Python 代码热更新，可改用符号链接模式：
+
+```bash
+vp run link:astrbot-core -- --astrbot-root /path/to/AstrBot --force --symlink
+```
+
+符号链接模式下，AstrBot 可能无法发现 Plugin Page；验证 Dashboard 时使用默认复制模式。
 
 同步会包含已构建的 `sidecar/app/` 和 `pages/dashboard/`，并排除运行态目录、日志、缓存与虚拟环境。
 
