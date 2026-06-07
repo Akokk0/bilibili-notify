@@ -111,6 +111,24 @@ async def test_sidecar_client_calls_control_plane_endpoints() -> None:
         if request.method == "POST" and request.url.path == "/api/deliveries/delivery-1/nack":
             body = json.loads(request.content.decode("utf-8"))
             return httpx.Response(200, json={"deliveryId": "delivery-1", "error": body["error"]})
+        if request.method == "GET" and request.url.path == "/api/ai/requests":
+            assert request.url.params["limit"] == "1"
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "requestId": "ai-1",
+                        "providerId": "provider-1",
+                        "prompt": "请总结动态",
+                    }
+                ],
+            )
+        if request.method == "POST" and request.url.path == "/api/ai/requests/ai-1/respond":
+            body = json.loads(request.content.decode("utf-8"))
+            return httpx.Response(200, json={"requestId": "ai-1", "text": body["text"]})
+        if request.method == "POST" and request.url.path == "/api/ai/requests/ai-1/fail":
+            body = json.loads(request.content.decode("utf-8"))
+            return httpx.Response(200, json={"requestId": "ai-1", "error": body["error"]})
         if request.method == "GET" and request.url.path == "/api/subscriptions":
             return httpx.Response(200, json=[{"id": "sub-1", "uid": "123456"}])
         if request.method == "POST" and request.url.path == "/api/subscriptions":
@@ -185,6 +203,17 @@ async def test_sidecar_client_calls_control_plane_endpoints() -> None:
     assert await client.nack_delivery("delivery-1", "failed token=abc") == {
         "deliveryId": "delivery-1",
         "error": "failed token=[REDACTED]",
+    }
+    assert await client.claim_ai_requests(limit=1) == [
+        {"requestId": "ai-1", "providerId": "provider-1", "prompt": "请总结动态"}
+    ]
+    assert await client.respond_ai_request("ai-1", "AI 总结") == {
+        "requestId": "ai-1",
+        "text": "AI 总结",
+    }
+    assert await client.fail_ai_request("ai-1", "Bearer secret-token") == {
+        "requestId": "ai-1",
+        "error": "Bearer [REDACTED]",
     }
     assert await client.list_subscriptions() == [{"id": "sub-1", "uid": "123456"}]
     assert await client.create_subscription(

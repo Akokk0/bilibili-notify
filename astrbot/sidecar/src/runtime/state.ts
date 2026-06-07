@@ -25,6 +25,12 @@ export interface SidecarBusinessSnapshot {
 		readonly maxSize: number;
 		readonly maxAttempts: number;
 	};
+	readonly ai?: {
+		readonly size: number;
+		readonly pending: number;
+		readonly inFlight: number;
+		readonly maxSize: number;
+	};
 	readonly login?: unknown;
 }
 

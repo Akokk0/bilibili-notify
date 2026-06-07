@@ -121,6 +121,8 @@ export async function startSidecar(options: SidecarLaunchOptions = {}): Promise<
 		logLevel: options.logLevel,
 		userAgent: options.userAgent,
 		cookieEncryptionKey: options.cookieEncryptionKey,
+		aiBackend,
+		aiProviderId,
 	});
 	let snapshot = createSidecarSnapshot({
 		status: "starting",
@@ -132,7 +134,7 @@ export async function startSidecar(options: SidecarLaunchOptions = {}): Promise<
 		startedAt,
 		aiBackend,
 		aiProviderId,
-		capabilities: createSidecarCapabilities(Boolean(authToken)),
+		capabilities: createSidecarCapabilities(Boolean(authToken), aiBackend === "astrbot"),
 		business: runtime.snapshot(),
 	});
 	const currentSnapshot = (): SidecarSnapshot =>
@@ -340,13 +342,13 @@ function parseOptionalLogLevel(value: string | undefined): SidecarLaunchOptions[
 	return undefined;
 }
 
-function createSidecarCapabilities(tokenAuthEnabled: boolean) {
+function createSidecarCapabilities(tokenAuthEnabled: boolean, aiProviderBridge: boolean) {
 	return {
 		tokenAuth: tokenAuthEnabled,
 		pluginPageProxy: true,
 		sse: true,
 		deliveryQueue: true,
-		aiProviderBridge: false,
+		aiProviderBridge,
 	};
 }
 

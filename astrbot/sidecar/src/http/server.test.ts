@@ -397,6 +397,53 @@ describe("sidecar http server", () => {
 		expect(await reusedResponse.json()).toMatchObject({ error: "pairing_code_not_found" });
 	});
 
+	it("claims AstrBot AI requests and records provider responses", async () => {
+		const harness = createTestHarness();
+		const server = createSidecarHttpServer({
+			getSnapshot: harness.snapshot,
+			runtime: harness.runtime,
+			authToken: TEST_TOKEN,
+		});
+		servers.push(server);
+		const address = await listenSidecarServer(server, "127.0.0.1", 0);
+		const baseUrl = `http://${address.host}:${address.port}`;
+
+		const claimResponse = await fetch(`${baseUrl}/api/ai/requests?limit=2`, {
+			headers: AUTH_HEADERS,
+		});
+		expect(claimResponse.status).toBe(200);
+		expect(await claimResponse.json()).toEqual([
+			expect.objectContaining({
+				requestId: "ai-1",
+				providerId: "provider-1",
+				systemPrompt: "你是助手",
+				prompt: "总结动态",
+				model: "gpt-4o-mini",
+			}),
+		]);
+
+		const respondResponse = await fetch(`${baseUrl}/api/ai/requests/ai-1/respond`, {
+			method: "POST",
+			headers: { ...AUTH_HEADERS, "content-type": "application/json" },
+			body: JSON.stringify({ text: "AI 总结" }),
+		});
+		expect(respondResponse.status).toBe(200);
+		expect(await respondResponse.json()).toMatchObject({ requestId: "ai-1", ok: true });
+		expect(harness.runtime.respondAiRequest).toHaveBeenCalledWith("ai-1", "AI 总结");
+
+		const failResponse = await fetch(`${baseUrl}/api/ai/requests/missing/fail`, {
+			method: "POST",
+			headers: { ...AUTH_HEADERS, "content-type": "application/json" },
+			body: JSON.stringify({ error: "Bearer secret-token" }),
+		});
+		expect(failResponse.status).toBe(200);
+		expect(await failResponse.json()).toMatchObject({
+			requestId: "missing",
+			ok: false,
+			err: "Bearer [REDACTED]",
+		});
+	});
+
 	it("exposes login, lookup and search control endpoints", async () => {
 		const harness = createTestHarness();
 		const server = createSidecarHttpServer({
@@ -460,6 +507,20 @@ function createTestHarness() {
 	let globals = makeDefaultGlobalConfig();
 	const subscriptions: Subscription[] = [];
 	const targets: AstrBotPushTarget[] = [];
+	const aiRequests = [
+		{
+			requestId: "ai-1",
+			providerId: "provider-1",
+			systemPrompt: "你是助手",
+			prompt: "总结动态",
+			model: "gpt-4o-mini",
+			temperature: 0.7,
+			imageUrls: [] as string[],
+			attempt: 0,
+			createdAt: "2026-06-03T00:00:00.000Z",
+			updatedAt: "2026-06-03T00:00:00.000Z",
+		},
+	];
 	const pairingCodes: Array<{ readonly code: string; readonly expiresAt: string }> = [];
 	let pairingCounter = 0;
 	let login: LoginSnapshot = {
@@ -597,6 +658,21 @@ function createTestHarness() {
 		claimDeliveries: vi.fn((limit = 10) => deliveries.claim({ limit })),
 		ackDelivery: vi.fn(async (deliveryId) => deliveries.ack(deliveryId)),
 		nackDelivery: vi.fn(async (deliveryId, error) => deliveries.nack(deliveryId, error)),
+		claimAiRequests: vi.fn((limit = 1) => {
+			const claimed = aiRequests.splice(0, limit);
+			return claimed.map((request) => ({ ...request, attempt: request.attempt + 1 }));
+		}),
+		respondAiRequest: vi.fn(async (requestId, _text) => ({
+			requestId,
+			ok: true,
+			ts: "2026-06-03T00:00:01.000Z",
+		})),
+		failAiRequest: vi.fn(async (requestId, error) => ({
+			requestId,
+			ok: false,
+			ts: "2026-06-03T00:00:01.000Z",
+			...(error ? { err: error } : {}),
+		})),
 		pushTest: vi.fn(
 			async (_targetId, _payload) => ({ ok: true, latencyMs: 1 }) satisfies DeliveryResult,
 		),
@@ -621,12 +697,18 @@ function createTestHarness() {
 					pluginPageProxy: true,
 					sse: true,
 					deliveryQueue: true,
-					aiProviderBridge: false,
+					aiProviderBridge: true,
 				},
 				business: {
 					started: true,
 					authStarted: login.status !== BiliLoginStatus.NOT_LOGIN,
 					deliveries: deliveries.snapshot(),
+					ai: {
+						size: aiRequests.length,
+						pending: aiRequests.length,
+						inFlight: 0,
+						maxSize: 50,
+					},
 					engines: {
 						dynamic: true,
 						live: false,

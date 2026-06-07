@@ -113,6 +113,32 @@ class SidecarClient:
         )
         return _ensure_mapping_list(payload, "deliveries response")
 
+    async def claim_ai_requests(self, limit: int = 1) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 10))
+        payload = await self._request_json(
+            "GET",
+            "/api/ai/requests",
+            params={"limit": str(safe_limit)},
+        )
+        return _ensure_mapping_list(payload, "AI requests response")
+
+    async def respond_ai_request(self, request_id: str, text: str) -> dict[str, Any]:
+        payload = await self._request_json(
+            "POST",
+            f"/api/ai/requests/{quote(request_id, safe='')}/respond",
+            json_body={"text": text},
+        )
+        return _ensure_mapping(payload, "AI request response receipt")
+
+    async def fail_ai_request(self, request_id: str, error: str | None = None) -> dict[str, Any]:
+        body = {"error": sanitize_sensitive_text(error)} if error else None
+        payload = await self._request_json(
+            "POST",
+            f"/api/ai/requests/{quote(request_id, safe='')}/fail",
+            json_body=body,
+        )
+        return _ensure_mapping(payload, "AI request failure receipt")
+
     async def ack_delivery(self, delivery_id: str) -> dict[str, Any]:
         payload = await self._request_json("POST", f"/api/deliveries/{delivery_id}/ack")
         return _ensure_mapping(payload, "delivery ack response")
@@ -320,6 +346,15 @@ class SidecarRuntime:
 
     async def claim_deliveries(self, limit: int = 5) -> list[dict[str, Any]]:
         return await self.client.claim_deliveries(limit)
+
+    async def claim_ai_requests(self, limit: int = 1) -> list[dict[str, Any]]:
+        return await self.client.claim_ai_requests(limit)
+
+    async def respond_ai_request(self, request_id: str, text: str) -> dict[str, Any]:
+        return await self.client.respond_ai_request(request_id, text)
+
+    async def fail_ai_request(self, request_id: str, error: str | None = None) -> dict[str, Any]:
+        return await self.client.fail_ai_request(request_id, error)
 
     async def ack_delivery(self, delivery_id: str) -> dict[str, Any]:
         return await self.client.ack_delivery(delivery_id)

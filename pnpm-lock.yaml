@@ -172,6 +172,9 @@ importers:
 
   astrbot/sidecar:
     dependencies:
+      '@bilibili-notify/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@bilibili-notify/api':
         specifier: workspace:*
         version: link:../../packages/api

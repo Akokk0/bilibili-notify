@@ -12,6 +12,12 @@ import {
 import { BilibiliPush } from "@bilibili-notify/push";
 import { StorageManager } from "@bilibili-notify/storage";
 import { createSubscriptionStore, type SubscriptionStore } from "@bilibili-notify/subscription";
+import {
+	AstrBotAiBridge,
+	type AstrBotAiRequest,
+	type AstrBotAiRequestQueueSnapshot,
+	type AstrBotAiRequestReceipt,
+} from "./ai-bridge.js";
 import { ASTRBOT_PUSH_TARGET, ASTRBOT_TARGET_ID, createCallbackSink } from "./callback-sink.js";
 import {
 	type AstrBotConfigSnapshot,
@@ -37,12 +43,15 @@ import {
 	type SidecarLogLevel,
 	type SidecarServiceContext,
 } from "./platform.js";
+import type { AiBackend } from "./state.js";
 
 export interface BusinessRuntimeOptions {
 	readonly dataDir: string;
 	readonly logLevel?: SidecarLogLevel;
 	readonly userAgent?: string;
 	readonly cookieEncryptionKey?: string;
+	readonly aiBackend?: AiBackend;
+	readonly aiProviderId?: string;
 	readonly events?: SidecarEventQueue;
 	readonly deliveries?: SidecarDeliveryQueue;
 }
@@ -58,6 +67,7 @@ export interface BusinessRuntimeSnapshot {
 	readonly config: AstrBotConfigSnapshot;
 	readonly events: EventQueueSnapshot;
 	readonly deliveries: DeliveryQueueSnapshot;
+	readonly ai: AstrBotAiRequestQueueSnapshot;
 	readonly login?: LoginSnapshot;
 }
 
@@ -135,6 +145,9 @@ export interface BusinessRuntimeHandle {
 	claimDeliveries(limit?: number): DeliveryJob[];
 	ackDelivery(deliveryId: string): Promise<DeliveryReceipt | undefined>;
 	nackDelivery(deliveryId: string, error?: string): Promise<DeliveryReceipt | undefined>;
+	claimAiRequests(limit?: number): AstrBotAiRequest[];
+	respondAiRequest(requestId: string, text: string): Promise<AstrBotAiRequestReceipt | undefined>;
+	failAiRequest(requestId: string, error?: string): Promise<AstrBotAiRequestReceipt | undefined>;
 	pushTest(targetId: string, payload: NotificationPayload): Promise<DeliveryResult>;
 }
 
@@ -152,6 +165,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 	private readonly bus = createSidecarMessageBus();
 	private readonly push: BilibiliPush;
 	private readonly storage: StorageManager;
+	private readonly aiBridge: AstrBotAiBridge | null;
 	private readonly userAgent: string | undefined;
 	private api: BilibiliAPI | undefined;
 	private loginFlow: LoginFlow | undefined;
@@ -171,6 +185,13 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 			level: options.logLevel ?? "info",
 		});
 		this.configStore = createAstrBotConfigStore({ dataDir: this.dataDir, bus: this.bus });
+		this.aiBridge =
+			(options.aiBackend ?? "astrbot") === "astrbot"
+				? new AstrBotAiBridge({
+						providerId: options.aiProviderId,
+						getGlobals: () => this.configStore.getGlobals(),
+					})
+				: null;
 		this.subscriptions = createSubscriptionStore(this.bus);
 		this.storage = new StorageManager({
 			serviceCtx: this.serviceCtx,
@@ -241,6 +262,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 			config,
 			events: this.events.snapshot(),
 			deliveries: this.deliveries.snapshot(),
+			ai: this.aiBridge?.queue.snapshot() ?? { size: 0, pending: 0, inFlight: 0, maxSize: 0 },
 			login: this.loginFlow?.current(),
 		};
 	}
@@ -444,6 +466,24 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 		return this.deliveries.nack(deliveryId, error);
 	}
 
+	claimAiRequests(limit = 1): AstrBotAiRequest[] {
+		return this.aiBridge?.queue.claim({ limit }) ?? [];
+	}
+
+	async respondAiRequest(
+		requestId: string,
+		text: string,
+	): Promise<AstrBotAiRequestReceipt | undefined> {
+		return this.aiBridge?.queue.respond(requestId, text);
+	}
+
+	async failAiRequest(
+		requestId: string,
+		error?: string,
+	): Promise<AstrBotAiRequestReceipt | undefined> {
+		return this.aiBridge?.queue.fail(requestId, error);
+	}
+
 	async pushTest(targetId: string, payload: NotificationPayload): Promise<DeliveryResult> {
 		const storedTarget = this.configStore.getTargets().find((target) => target.id === targetId);
 		const target =
@@ -487,6 +527,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 			bus: this.bus,
 			api: this.api,
 			push: this.push,
+			commentary: this.aiBridge,
 			subscriptions: this.subscriptions,
 			getGlobals: () => this.configStore.getGlobals(),
 		});

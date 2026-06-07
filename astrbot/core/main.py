@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Mapping
+from inspect import isawaitable
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,7 @@ class BilibiliNotifyPlugin(Star):
         self._startup_config = config
         self._runtime: SidecarRuntime | None = None
         self._delivery_pump_task: asyncio.Task[None] | None = None
+        self._ai_pump_task: asyncio.Task[None] | None = None
         self._register_plugin_page_api(context)
 
     def _register_plugin_page_api(self, context: Context) -> None:
@@ -77,6 +79,8 @@ class BilibiliNotifyPlugin(Star):
         logger.info(f"[bilibili-notify] launching sidecar from {config.entrypoint}")
         self._runtime = await start_sidecar(config)
         self._delivery_pump_task = asyncio.create_task(self._run_delivery_pump())
+        if self._runtime.ai_backend == "astrbot":
+            self._ai_pump_task = asyncio.create_task(self._run_ai_pump())
         logger.info(f"[bilibili-notify] sidecar ready: {self._runtime.describe()}")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
@@ -300,6 +304,113 @@ class BilibiliNotifyPlugin(Star):
             if ok is False:
                 raise RuntimeError("AstrBot send_message returned false after at-all fallback")
 
+    async def _run_ai_pump(self) -> None:
+        while True:
+            runtime = self._runtime
+            if runtime is None:
+                return
+            try:
+                requests = await runtime.claim_ai_requests(limit=1)
+                if not requests:
+                    await asyncio.sleep(1.0)
+                    continue
+                for request_item in requests:
+                    await self._handle_ai_request(runtime, request_item)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"[bilibili-notify] AI pump failed: {_sanitize_error(str(exc))}")
+                await asyncio.sleep(2.0)
+
+    async def _handle_ai_request(
+        self,
+        runtime: SidecarRuntime,
+        request_item: Mapping[str, Any],
+    ) -> None:
+        request_id = str(request_item.get("requestId") or "")
+        if not request_id:
+            logger.warning("[bilibili-notify] received AI request without requestId")
+            return
+        try:
+            text = await self._call_astrbot_provider(request_item)
+        except Exception as exc:  # noqa: BLE001
+            await runtime.fail_ai_request(request_id, _sanitize_error(str(exc)))
+            return
+        await runtime.respond_ai_request(request_id, text)
+
+    async def _call_astrbot_provider(self, request_item: Mapping[str, Any]) -> str:
+        prompt = _mapping_string(request_item, "prompt")
+        if not prompt:
+            raise RuntimeError("AI request is missing prompt")
+        system_prompt = _mapping_string(request_item, "systemPrompt")
+        provider_id = _mapping_string(request_item, "providerId")
+        model = _mapping_string(request_item, "model")
+        image_urls = _string_list(request_item.get("imageUrls"))
+        temperature = request_item.get("temperature")
+        kwargs: dict[str, Any] = {}
+        if model:
+            kwargs["model"] = model
+        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
+            kwargs["temperature"] = float(temperature)
+        response = await self._request_provider_completion(
+            provider_id=provider_id,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            image_urls=image_urls,
+            kwargs=kwargs,
+        )
+        text = _completion_text(response).strip()
+        if not text:
+            raise RuntimeError("AstrBot AI Provider 返回空内容")
+        return text
+
+    async def _request_provider_completion(
+        self,
+        *,
+        provider_id: str,
+        prompt: str,
+        system_prompt: str,
+        image_urls: list[str],
+        kwargs: Mapping[str, Any],
+    ) -> Any:
+        if provider_id:
+            llm_generate = getattr(self.context, "llm_generate", None)
+            if callable(llm_generate):
+                return await llm_generate(
+                    chat_provider_id=provider_id,
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    image_urls=image_urls or None,
+                    **dict(kwargs),
+                )
+            provider = await _maybe_await(_get_provider_by_id(self.context, provider_id))
+            if provider is None:
+                raise RuntimeError(f"AstrBot AI Provider 不可用: {provider_id}")
+        else:
+            provider = await _maybe_await(_get_using_provider(self.context))
+            if provider is None:
+                raise RuntimeError("AstrBot 默认 AI Provider 不可用")
+        text_chat = getattr(provider, "text_chat", None)
+        if not callable(text_chat):
+            raise RuntimeError("AstrBot AI Provider 不支持 text_chat")
+        return await text_chat(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            image_urls=image_urls or None,
+            **dict(kwargs),
+        )
+
+    async def _stop_ai_pump(self) -> None:
+        task = self._ai_pump_task
+        if task is None:
+            return
+        self._ai_pump_task = None
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            return
+
     async def _stop_delivery_pump(self) -> None:
         task = self._delivery_pump_task
         if task is None:
@@ -313,6 +424,7 @@ class BilibiliNotifyPlugin(Star):
 
     async def terminate(self):
         """关闭 sidecar。"""
+        await self._stop_ai_pump()
         await self._stop_delivery_pump()
         if self._runtime is None:
             return
@@ -322,6 +434,58 @@ class BilibiliNotifyPlugin(Star):
             logger.error(f"[bilibili-notify] sidecar shutdown failed: {exc}")
         finally:
             self._runtime = None
+
+
+async def _maybe_await(value: Any) -> Any:
+    if isawaitable(value):
+        return await value
+    return value
+
+
+def _get_provider_by_id(context: Context, provider_id: str) -> Any:
+    get_provider_by_id = getattr(context, "get_provider_by_id", None)
+    if callable(get_provider_by_id):
+        return get_provider_by_id(provider_id)
+    provider_manager = getattr(context, "provider_manager", None)
+    manager_getter = getattr(provider_manager, "get_provider_by_id", None)
+    if callable(manager_getter):
+        return manager_getter(provider_id)
+    return None
+
+
+def _get_using_provider(context: Context) -> Any:
+    get_using_provider = getattr(context, "get_using_provider", None)
+    if callable(get_using_provider):
+        return get_using_provider()
+    return None
+
+
+def _completion_text(response: Any) -> str:
+    if isinstance(response, str):
+        return response
+    text = getattr(response, "completion_text", "")
+    if isinstance(text, str):
+        return text
+    if callable(text):
+        value = text()
+        return value if isinstance(value, str) else ""
+    result_chain = getattr(response, "result_chain", None)
+    get_plain_text = getattr(result_chain, "get_plain_text", None)
+    if callable(get_plain_text):
+        value = get_plain_text()
+        return value if isinstance(value, str) else ""
+    return ""
+
+
+def _mapping_string(value: Mapping[str, Any], key: str) -> str:
+    raw = value.get(key)
+    return raw.strip() if isinstance(raw, str) else ""
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str) and item]
 
 
 def _query_params(args: Mapping[str, Any]) -> dict[str, str]:

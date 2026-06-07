@@ -1,3 +1,4 @@
+import type { AIScene, CommentaryCallOverride, CommentaryGenerator } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import {
 	DynamicEngine,
@@ -45,11 +46,21 @@ export interface SidecarEnginesRuntime extends Disposable {
 	status(): SidecarEngineStatus;
 }
 
+export interface CommentaryClient {
+	comment(
+		content: string,
+		scene?: AIScene,
+		imageUrls?: string[],
+		override?: CommentaryCallOverride,
+	): Promise<string>;
+}
+
 export interface CreateSidecarEnginesOptions {
 	readonly serviceCtx: SidecarServiceContext;
 	readonly bus: MessageBus;
 	readonly api: BilibiliAPI;
 	readonly push: BilibiliPush;
+	readonly commentary?: CommentaryClient | null;
 	readonly subscriptions: SubscriptionStore;
 	readonly getGlobals: () => GlobalConfig;
 }
@@ -63,6 +74,7 @@ export function createSidecarEngines(options: CreateSidecarEnginesOptions): Side
 		sendPrivateMsg: (text) => options.push.sendPrivateMsg(text),
 		sendErrorMsg: (text) => options.push.sendErrorMsg(text),
 	};
+	const commentary = options.commentary ?? null;
 	const livePushLike: LivePushLike = {
 		async broadcastToTargets(uid, content, type) {
 			const payload = collapseSegments(segmentToPayload(content));
@@ -78,6 +90,7 @@ export function createSidecarEngines(options: CreateSidecarEnginesOptions): Side
 		bus: options.bus,
 		api: options.api,
 		push: dynamicPushLike,
+		ai: (commentary ?? undefined) as unknown as CommentaryGenerator | undefined,
 		config: buildDynamicConfig(initialGlobals),
 		getSubs: () => buildDynamicSubsView(options.subscriptions, options.getGlobals()),
 	});
@@ -87,7 +100,7 @@ export function createSidecarEngines(options: CreateSidecarEnginesOptions): Side
 		push: livePushLike,
 		contentBuilder: sidecarContentBuilder,
 		imageRenderer: null,
-		commentary: null,
+		commentary: commentary as unknown as CommentaryGenerator | null,
 		config: buildLiveConfig(initialGlobals),
 		emitEngineError: (message) => options.bus.emit("engine-error", "live-engine", message),
 		emitLiveState: (uid, status) => options.bus.emit("live-state-changed", uid, status),
@@ -190,7 +203,7 @@ function buildDynamicConfig(globals: GlobalConfig): DynamicEngineConfig {
 		dynamicVideoUrlToBV: false,
 		imageGroup: globals.defaults.imageGroup,
 		imageEnabled: false,
-		aiEnabled: false,
+		aiEnabled: globals.defaults.ai.enabled,
 		dynamicTemplate: globals.defaults.templates.dynamic,
 		videoTemplate: globals.defaults.templates.dynamicVideo,
 		filter: {
@@ -214,7 +227,7 @@ function buildLiveConfig(globals: GlobalConfig): LiveEngineConfig {
 		pushTime: globals.defaults.schedule.pushTime,
 		liveSummaryDefault: globals.defaults.templates.liveSummary,
 		imageEnabled: false,
-		aiEnabled: false,
+		aiEnabled: globals.defaults.ai.enabled,
 		customGuardBuy: {
 			enable: globals.defaults.templates.guardBuy.enable,
 			guardBuyMsg: globals.defaults.templates.guardBuy.captain.template,
@@ -258,6 +271,7 @@ function buildDynamicSubViewSingle(
 			: { enable: false },
 		imageGroupEnable: sub.overrides.imageGroup?.enable,
 		imageGroupForward: sub.overrides.imageGroup?.forward,
+		aiOverride: buildAiOverride(effective),
 		customDynamicTemplate: sub.overrides.templates?.dynamic,
 		customVideoTemplate: sub.overrides.templates?.dynamicVideo,
 	};
@@ -332,6 +346,25 @@ function buildLiveSubViewSingle(sub: Subscription, globals: GlobalConfig): LiveS
 		minGuardLevel: effective.filters.minGuardLevel,
 		pushTime: effective.schedule.pushTime,
 		restartPush: effective.schedule.restartPush,
+		aiOverride: buildAiOverride(effective),
+	};
+}
+
+function buildAiOverride(effective: ReturnType<typeof resolve>): CommentaryCallOverride {
+	return {
+		persona: {
+			preset: "custom",
+			name: effective.ai.persona.name,
+			addressUser: effective.ai.persona.addressUser,
+			addressSelf: effective.ai.persona.addressSelf,
+			traits: effective.ai.persona.traits,
+			catchphrase: effective.ai.persona.catchphrase,
+			customBase: effective.ai.persona.baseRole,
+			extraPrompt: effective.ai.persona.extraSystemPrompt,
+		},
+		dynamicPrompt: effective.ai.dynamicPrompt,
+		liveSummaryPrompt: effective.ai.liveSummaryPrompt,
+		temperature: effective.ai.temperature,
 	};
 }
 
@@ -399,6 +432,7 @@ function subscriptionOpsToLive(
 						customLiveMsg: view.customLiveMsg,
 						customGuardBuy: view.customGuardBuy,
 						customLiveSummary: view.customLiveSummary,
+						aiOverride: view.aiOverride,
 						customSpecialDanmakuUsers: view.customSpecialDanmakuUsers,
 						customSpecialUsersEnterTheRoom: view.customSpecialUsersEnterTheRoom,
 					},

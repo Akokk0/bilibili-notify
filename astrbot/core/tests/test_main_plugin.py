@@ -63,6 +63,72 @@ async def test_delivery_job_at_all_failure_falls_back_to_text(
 
 
 @pytest.mark.asyncio
+async def test_ai_pump_calls_selected_astrbot_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = import_main_with_fake_astrbot(monkeypatch)
+    context = FakeContext()
+    runtime = FakeRuntime(
+        [],
+        ai_requests=[
+            {
+                "requestId": "ai-1",
+                "providerId": "provider-1",
+                "prompt": "请总结动态",
+                "systemPrompt": "你是总结助手",
+                "model": "gpt-4o-mini",
+                "temperature": 0.7,
+                "imageUrls": ["https://example.invalid/a.png"],
+            }
+        ],
+    )
+    plugin = module.BilibiliNotifyPlugin(context, {})
+
+    await plugin._handle_ai_request(runtime, runtime.ai_requests.pop(0))
+
+    assert context.llm_requests == [
+        {
+            "chat_provider_id": "provider-1",
+            "prompt": "请总结动态",
+            "system_prompt": "你是总结助手",
+            "image_urls": ["https://example.invalid/a.png"],
+            "model": "gpt-4o-mini",
+            "temperature": 0.7,
+        }
+    ]
+    assert runtime.ai_responses == [("ai-1", "AI 生成结果")]
+    assert runtime.ai_failures == []
+
+
+@pytest.mark.asyncio
+async def test_ai_pump_uses_default_provider_when_provider_id_is_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = import_main_with_fake_astrbot(monkeypatch)
+    context = FakeContext()
+    runtime = FakeRuntime([])
+    plugin = module.BilibiliNotifyPlugin(context, {})
+    request = {
+        "requestId": "ai-1",
+        "prompt": "请总结直播",
+        "systemPrompt": "你是总结助手",
+        "model": "gpt-4o-mini",
+    }
+
+    await plugin._handle_ai_request(runtime, request)
+
+    assert context.llm_requests == [
+        {
+            "prompt": "请总结直播",
+            "system_prompt": "你是总结助手",
+            "image_urls": None,
+            "model": "gpt-4o-mini",
+        }
+    ]
+    assert runtime.ai_responses == [("ai-1", "默认 Provider 结果")]
+
+
+@pytest.mark.asyncio
 async def test_bind_command_confirms_current_astrbot_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -244,9 +310,17 @@ class FakeContext:
         self.sent: list[tuple[str, FakeMessageChain]] = []
         self.fail_first_at_all = fail_first_at_all
         self.registered = []
+        self.llm_requests: list[dict[str, Any]] = []
 
     def register_web_api(self, *args) -> None:
         self.registered.append(args)
+
+    async def llm_generate(self, **kwargs) -> "FakeLLMResponse":
+        self.llm_requests.append(dict(kwargs))
+        return FakeLLMResponse("AI 生成结果")
+
+    def get_using_provider(self):
+        return FakeProvider(self.llm_requests)
 
     async def send_message(self, unified_msg_origin: str, chain: FakeMessageChain) -> bool:
         self.sent.append((unified_msg_origin, chain))
@@ -254,6 +328,20 @@ class FakeContext:
             self.fail_first_at_all = False
             raise RuntimeError("at-all unsupported")
         return True
+
+
+class FakeProvider:
+    def __init__(self, requests: list[dict[str, Any]]) -> None:
+        self.requests = requests
+
+    async def text_chat(self, **kwargs) -> "FakeLLMResponse":
+        self.requests.append(dict(kwargs))
+        return FakeLLMResponse("默认 Provider 结果")
+
+
+class FakeLLMResponse:
+    def __init__(self, completion_text: str) -> None:
+        self.completion_text = completion_text
 
 
 class FakeEvent:
@@ -270,11 +358,15 @@ class FakeRuntime:
         jobs: list[dict[str, Any]],
         *,
         targets: list[dict[str, Any]] | None = None,
+        ai_requests: list[dict[str, Any]] | None = None,
     ) -> None:
         self.jobs = jobs
+        self.ai_requests = ai_requests or []
         self.targets = targets or []
         self.acks: list[str] = []
         self.nacks: list[tuple[str, str | None]] = []
+        self.ai_responses: list[tuple[str, str]] = []
+        self.ai_failures: list[tuple[str, str | None]] = []
         self.confirmed_pairings: list[tuple[str, dict[str, Any]]] = []
         self.push_tests: list[tuple[str, str | None]] = []
         self.acked = asyncio.Event()
@@ -319,6 +411,21 @@ class FakeRuntime:
     async def push_test(self, target_id: str, text: str | None = None) -> dict[str, Any]:
         self.push_tests.append((target_id, text))
         return {"ok": True}
+
+    async def claim_ai_requests(self, limit: int = 1) -> list[dict[str, Any]]:
+        _ = limit
+        if self.ai_requests:
+            return [self.ai_requests.pop(0)]
+        await asyncio.sleep(0.01)
+        return []
+
+    async def respond_ai_request(self, request_id: str, text: str) -> dict[str, Any]:
+        self.ai_responses.append((request_id, text))
+        return {"requestId": request_id, "ok": True}
+
+    async def fail_ai_request(self, request_id: str, error: str | None = None) -> dict[str, Any]:
+        self.ai_failures.append((request_id, error))
+        return {"requestId": request_id, "ok": False}
 
     async def claim_deliveries(self, limit: int = 5) -> list[dict[str, Any]]:
         _ = limit

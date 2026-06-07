@@ -13,6 +13,7 @@ import {
 	type Subscription,
 	SubscriptionSchema,
 } from "@bilibili-notify/internal";
+import type { AstrBotAiRequest, AstrBotAiRequestReceipt } from "../runtime/ai-bridge.js";
 import { SidecarUpstreamError, type UserSearchResult } from "../runtime/business-runtime.js";
 import {
 	AstrBotConfigValidationError,
@@ -59,6 +60,9 @@ export interface SidecarHttpRuntime {
 	claimDeliveries(limit?: number): DeliveryJob[];
 	ackDelivery(deliveryId: string): Promise<DeliveryReceipt | undefined>;
 	nackDelivery(deliveryId: string, error?: string): Promise<DeliveryReceipt | undefined>;
+	claimAiRequests(limit?: number): AstrBotAiRequest[];
+	respondAiRequest(requestId: string, text: string): Promise<AstrBotAiRequestReceipt | undefined>;
+	failAiRequest(requestId: string, error?: string): Promise<AstrBotAiRequestReceipt | undefined>;
 	pushTest(targetId: string, payload: NotificationPayload): Promise<DeliveryResult>;
 }
 
@@ -186,6 +190,19 @@ async function handleSidecarRequest(
 	const deliveryAction = matchDeliveryAction(pathname);
 	if (deliveryAction) {
 		await handleDeliveryAction(method, req, res, options, deliveryAction);
+		return;
+	}
+	if (method === "GET" && pathname === "/api/ai/requests") {
+		writeJson(
+			res,
+			200,
+			options.runtime.claimAiRequests(parseAiRequestLimit(searchParams.get("limit"))),
+		);
+		return;
+	}
+	const aiRequestAction = matchAiRequestAction(pathname);
+	if (aiRequestAction) {
+		await handleAiRequestAction(method, req, res, options, aiRequestAction);
 		return;
 	}
 	if (method === "GET" && pathname === "/api/globals") {
@@ -358,6 +375,63 @@ async function handleDeliveryAction(
 	} catch (error) {
 		writeRuntimeError(res, error, `failed to ${input.action} delivery`);
 	}
+}
+
+async function handleAiRequestAction(
+	method: string,
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: SidecarHttpServerOptions,
+	input: { readonly requestId: string; readonly action: "respond" | "fail" },
+): Promise<void> {
+	if (method !== "POST") {
+		writeJson(res, 405, { error: "method_not_allowed" });
+		return;
+	}
+	if (!input.requestId) {
+		writeJson(res, 400, { error: "invalid_ai_request_id", message: "AI request id is required" });
+		return;
+	}
+	let receipt: AstrBotAiRequestReceipt | undefined;
+	if (input.action === "respond") {
+		let body: Record<string, unknown>;
+		try {
+			body = await readJsonObjectBody(req, "request body must be a JSON object");
+		} catch (error) {
+			writeRequestBodyError(res, error);
+			return;
+		}
+		const text = typeof body.text === "string" ? body.text : "";
+		if (!text.trim()) {
+			writeJson(res, 400, { error: "invalid_ai_response", message: "text is required" });
+			return;
+		}
+		try {
+			receipt = await options.runtime.respondAiRequest(input.requestId, text);
+		} catch (error) {
+			writeRuntimeError(res, error, "failed to respond AI request");
+			return;
+		}
+	} else {
+		let failError: string | undefined;
+		try {
+			failError = await readNackError(req);
+		} catch (error) {
+			writeRequestBodyError(res, error);
+			return;
+		}
+		try {
+			receipt = await options.runtime.failAiRequest(input.requestId, failError);
+		} catch (error) {
+			writeRuntimeError(res, error, "failed to fail AI request");
+			return;
+		}
+	}
+	if (!receipt) {
+		writeJson(res, 404, { error: "not_found", id: input.requestId });
+		return;
+	}
+	writeJson(res, 200, receipt);
 }
 
 async function handlePatchGlobals(
@@ -748,6 +822,13 @@ function parseDeliveryLimit(value: string | null): number {
 	return Math.min(limit, 50);
 }
 
+function parseAiRequestLimit(value: string | null): number {
+	if (value === null || value.trim() === "") return 1;
+	const limit = Number(value);
+	if (!Number.isSafeInteger(limit) || limit < 1) return 1;
+	return Math.min(limit, 10);
+}
+
 function getRequestUrl(req: IncomingMessage): URL {
 	const host = req.headers.host ?? "127.0.0.1";
 	return new URL(req.url ?? "/", `http://${host}`);
@@ -789,6 +870,23 @@ function matchTargetPairingConfirm(pathname: string): string | null {
 		return decodeURIComponent(rawCode);
 	} catch {
 		return rawCode;
+	}
+}
+
+function matchAiRequestAction(
+	pathname: string,
+): { readonly requestId: string; readonly action: "respond" | "fail" } | null {
+	const prefix = "/api/ai/requests/";
+	if (!pathname.startsWith(prefix)) return null;
+	const parts = pathname.slice(prefix.length).split("/");
+	if (parts.length !== 2) return { requestId: "", action: "fail" };
+	const rawId = parts[0] ?? "";
+	const rawAction = parts[1];
+	if (rawAction !== "respond" && rawAction !== "fail") return { requestId: "", action: "fail" };
+	try {
+		return { requestId: decodeURIComponent(rawId), action: rawAction };
+	} catch {
+		return { requestId: rawId, action: rawAction };
 	}
 }
 

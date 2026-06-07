@@ -103,6 +103,15 @@ export interface CommentaryCallOverride {
 	model?: string;
 }
 
+export interface CommentaryProvider {
+	comment(
+		content: string,
+		scene?: AIScene,
+		imageUrls?: string[],
+		override?: CommentaryCallOverride,
+	): Promise<string>;
+}
+
 export interface CommentaryGeneratorOptions {
 	serviceCtx: ServiceContext;
 	api: BilibiliAPI;
@@ -113,7 +122,7 @@ export interface CommentaryGeneratorOptions {
  * 平台中立的 AI 点评 / 多轮对话核心。
  * 不依赖 koishi runtime；adapter 负责配置 logger、提供 BilibiliAPI 与可选的订阅管理钩子。
  */
-export class CommentaryGenerator {
+export class CommentaryGenerator implements CommentaryProvider {
 	private readonly logger: Logger;
 	private readonly serviceCtx: ServiceContext;
 	private readonly api: BilibiliAPI;
