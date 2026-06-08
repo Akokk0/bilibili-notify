@@ -16,6 +16,7 @@ import {
 	Toggle,
 } from "../components/ui";
 import { buildGlobalsPatch, cloneConfig, isDirty, linesToList, listToLines } from "../lib/config";
+import { loginQrImageSrc, loginResponseSummary } from "../lib/login";
 
 interface SettingsTabProps {
 	readonly data: DashboardBootstrap;
@@ -36,6 +37,8 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 	}, [data.globals, data.snapshot.business?.login]);
 
 	const dirty = isDirty(data.globals, draft);
+	const qrImageSrc = loginQrImageSrc(login?.data);
+	const loginSummary = loginResponseSummary(login?.data);
 	useEffect(() => onDirty(dirty), [dirty, onDirty]);
 
 	const updateDraft = (mutator: (next: GlobalConfig) => void) => {
@@ -123,11 +126,26 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 								{login?.msg ?? "尚未获取登录状态"}
 							</span>
 						</div>
-						{login?.data ? (
+						{qrImageSrc ? (
+							<div className="mt-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+								<img
+									alt="Bilibili 登录二维码"
+									className="h-44 w-44 rounded-2xl bg-white p-2 shadow-sm ring-1 ring-black/5"
+									src={qrImageSrc}
+								/>
+								<div className="text-bn-text-secondary text-sm">
+									<div className="font-medium text-bn-text-primary">
+										使用 Bilibili 手机客户端扫码登录
+									</div>
+									<div className="mt-1">扫码后等待页面自动刷新登录状态。</div>
+								</div>
+							</div>
+						) : null}
+						{loginSummary ? (
 							<details className="mt-3 text-bn-text-secondary text-xs">
 								<summary className="cursor-pointer">查看登录响应摘要</summary>
 								<pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-white/70 p-3 font-mono">
-									{JSON.stringify(login.data, null, 2)}
+									{loginSummary}
 								</pre>
 							</details>
 						) : null}

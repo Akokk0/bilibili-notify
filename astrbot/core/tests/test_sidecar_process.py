@@ -26,6 +26,14 @@ from sidecar_process import (
 )
 
 
+class RemoteClosedSseStream(httpx.AsyncByteStream):
+    async def __aiter__(self):
+        yield b"event: hydrate\ndata: {}\n\n"
+        raise httpx.RemoteProtocolError(
+            "peer closed connection without sending complete message body"
+        )
+
+
 @pytest.mark.asyncio
 async def test_build_sidecar_config_uses_native_config_and_fixed_plugin_data_dir(
     tmp_path: Path,
@@ -269,6 +277,24 @@ async def test_sidecar_client_calls_control_plane_endpoints() -> None:
     assert b"event: hydrate" in b"".join(
         [chunk async for chunk in client.proxy_sse("events/stream")]
     )
+
+
+@pytest.mark.asyncio
+async def test_sidecar_client_proxy_sse_ignores_remote_close_during_shutdown() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/events/stream":
+            return httpx.Response(200, stream=RemoteClosedSseStream())
+        return httpx.Response(404, json={"error": "not_found"})
+
+    client = SidecarClient(
+        "http://127.0.0.1:19090",
+        transport=httpx.MockTransport(handler),
+        token="client-token",
+    )
+
+    chunks = [chunk async for chunk in client.proxy_sse("events/stream")]
+
+    assert b"event: hydrate" in b"".join(chunks)
 
 
 @pytest.mark.asyncio

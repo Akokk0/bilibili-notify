@@ -36,7 +36,11 @@ import {
 	type SidecarEvent,
 	SidecarEventQueue,
 } from "./event-queue.js";
-import { createAstrBotSubscription, type StoredSubscriptionInput } from "./persistence.js";
+import {
+	createAstrBotSubscription,
+	resolveAstrBotDefaultTargetIds,
+	type StoredSubscriptionInput,
+} from "./persistence.js";
 import {
 	createSidecarMessageBus,
 	createSidecarServiceContext,
@@ -339,8 +343,17 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 		return this.configStore.getTargets();
 	}
 
+	private defaultSubscriptionTargetIds(): string[] {
+		return resolveAstrBotDefaultTargetIds(this.configStore.getTargets());
+	}
+
 	async upsertSubscription(input: StoredSubscriptionInput | Subscription): Promise<Subscription> {
-		const sub = isFullSubscription(input) ? input : createAstrBotSubscription(input);
+		const sub = isFullSubscription(input)
+			? input
+			: createAstrBotSubscription(input, {
+					defaultTargetIds: this.defaultSubscriptionTargetIds(),
+					defaultFeatures: this.configStore.getGlobals().defaults.features,
+				});
 		const saved = await this.configStore.upsertSubscription(sub);
 		this.subscriptions.upsert(saved);
 		return saved;
@@ -349,7 +362,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 	async patchSubscription(id: string, patch: Record<string, unknown>): Promise<Subscription> {
 		const current = this.subscriptions.list().find((entry) => entry.id === id);
 		if (!current) throw new Error(`subscription not found: ${id}`);
-		return this.upsertSubscription({ ...(deepMerge(current, patch) as Subscription), id });
+		return this.upsertSubscription({ ...mergeSubscriptionPatch(current, patch), id });
 	}
 
 	async removeSubscription(id: string): Promise<Subscription | undefined> {
@@ -624,6 +637,19 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 
 function isFullSubscription(value: StoredSubscriptionInput | Subscription): value is Subscription {
 	return "routing" in value && "overrides" in value && "atAll" in value;
+}
+
+function mergeSubscriptionPatch(
+	current: Subscription,
+	patch: Record<string, unknown>,
+): Subscription {
+	const merged = deepMerge(current, patch) as Subscription;
+	if (Object.hasOwn(patch, "overrides")) {
+		merged.overrides = isPlainRecord(patch.overrides)
+			? (structuredClone(patch.overrides) as Subscription["overrides"])
+			: {};
+	}
+	return merged;
 }
 
 function deepMerge(base: unknown, patch: unknown): unknown {

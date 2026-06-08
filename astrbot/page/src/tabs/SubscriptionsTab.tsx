@@ -73,8 +73,6 @@ export function SubscriptionsTab({ data, onData, onReload }: SubscriptionsTabPro
 				uid: user.uid,
 				name: user.name,
 				enabled: true,
-				dynamic: true,
-				live: true,
 			});
 			onData({ ...data, subscriptions });
 			await onReload();

@@ -200,6 +200,54 @@ def test_post_method_override_supports_astrbot_plug_route_tunnel(
     assert module._effective_proxy_method("GET", {"_method": "DELETE"}) == "GET"
 
 
+@pytest.mark.asyncio
+async def test_page_api_proxy_tunnels_bridge_patch_and_delete_envelopes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = import_main_with_fake_astrbot(monkeypatch)
+    runtime = FakeRuntime([])
+    plugin = module.BilibiliNotifyPlugin(FakeContext(), {})
+    plugin._runtime = runtime
+
+    monkeypatch.setattr(
+        module,
+        "request",
+        FakeRequest(
+            method="POST",
+            args={},
+            body={
+                "__bn_proxy_method": "PATCH",
+                "__bn_proxy_body": {"routing": {"dynamic": ["target-1"]}},
+            },
+        ),
+    )
+    patch_payload, patch_status = await plugin.page_api_proxy("subscriptions/sub-1")
+
+    monkeypatch.setattr(
+        module,
+        "request",
+        FakeRequest(method="POST", args={}, body={"__bn_proxy_method": "DELETE"}),
+    )
+    delete_payload, delete_status = await plugin.page_api_proxy("subscriptions/sub-1")
+
+    assert patch_status == 200
+    assert patch_payload == {
+        "method": "PATCH",
+        "path": "subscriptions/sub-1",
+        "body": {"routing": {"dynamic": ["target-1"]}},
+    }
+    assert (delete_payload, delete_status) == ("", 204)
+    assert runtime.proxy_calls == [
+        (
+            "PATCH",
+            "subscriptions/sub-1",
+            {"routing": {"dynamic": ["target-1"]}},
+            {},
+        ),
+        ("DELETE", "subscriptions/sub-1", None, {}),
+    ]
+
+
 def import_main_with_fake_astrbot(monkeypatch: pytest.MonkeyPatch):
     logger = FakeLogger()
     api_module = types.ModuleType("astrbot.api")
@@ -243,6 +291,17 @@ class FakeResponse:
 
 def fake_jsonify(value):
     return value
+
+
+class FakeRequest:
+    def __init__(self, *, method: str, args: dict[str, str], body: Any) -> None:
+        self.method = method
+        self.args = args
+        self.body = body
+
+    async def get_json(self, *, silent: bool = False) -> Any:
+        _ = silent
+        return self.body
 
 
 class FakeLogger:
@@ -380,6 +439,7 @@ class FakeRuntime:
         self.ai_failures: list[tuple[str, str | None]] = []
         self.confirmed_pairings: list[tuple[str, dict[str, Any]]] = []
         self.push_tests: list[tuple[str, str | None]] = []
+        self.proxy_calls: list[tuple[str, str, Any, dict[str, Any]]] = []
         self.acked = asyncio.Event()
         self.closed = False
         self.url = "http://127.0.0.1:19090"
@@ -422,6 +482,19 @@ class FakeRuntime:
     async def push_test(self, target_id: str, text: str | None = None) -> dict[str, Any]:
         self.push_tests.append((target_id, text))
         return {"ok": True}
+
+    async def proxy_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: Any = None,
+        params: dict[str, str] | None = None,
+    ) -> tuple[int, dict[str, Any] | None]:
+        self.proxy_calls.append((method, path, json_body, dict(params or {})))
+        if method == "DELETE":
+            return 204, None
+        return 200, {"method": method, "path": path, "body": json_body}
 
     async def claim_ai_requests(self, limit: int = 1) -> list[dict[str, Any]]:
         _ = limit

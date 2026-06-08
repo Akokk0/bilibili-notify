@@ -5,7 +5,7 @@ import os
 from collections.abc import Mapping
 from inspect import isawaitable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
@@ -33,6 +33,9 @@ else:
 
 PLUGIN_NAME = "astrbot_plugin_bilibili_notify"
 PLUGIN_VERSION = "v0.1.0"
+PROXY_TUNNEL_METHOD_KEY = "__bn_proxy_method"
+PROXY_TUNNEL_BODY_KEY = "__bn_proxy_body"
+PROXY_TUNNEL_PARAMS_KEY = "__bn_proxy_params"
 
 
 @register(
@@ -215,15 +218,24 @@ class BilibiliNotifyPlugin(Star):
             return jsonify({"error": "sidecar_not_ready", "message": "sidecar 还没有启动"}), 503
         raw_method = request.method.upper()
         params = _query_params(request.args)
+        json_body: Any = None
+        if raw_method in {"POST", "PATCH"}:
+            json_body = await request.get_json(silent=True)
+        tunnel_method, tunnel_params, tunnel_body = "", {}, json_body
+        if raw_method == "POST":
+            tunnel_method, tunnel_params, tunnel_body = _bridge_proxy_tunnel(json_body)
+            if tunnel_params:
+                params.update(tunnel_params)
+            if tunnel_method:
+                json_body = tunnel_body
         method = _effective_proxy_method(raw_method, params)
+        if raw_method == "POST" and tunnel_method and method == "POST":
+            method = tunnel_method
         if method == "GET" and path == "events/stream":
             return Response(
                 self._runtime.proxy_sse(path, params=params),
                 content_type="text/event-stream; charset=utf-8",
             )
-        json_body: Any = None
-        if method in {"POST", "PATCH"}:
-            json_body = await request.get_json(silent=True)
         try:
             status, payload = await self._runtime.proxy_json(
                 method,
@@ -292,16 +304,17 @@ class BilibiliNotifyPlugin(Star):
         payload = job.get("payload")
         if not isinstance(payload, dict):
             raise ValueError("delivery job payload must be an object")
+        context: Any = self.context
         try:
             chain = build_astrbot_message_chain(payload)
-            ok = await self.context.send_message(unified_msg_origin, chain)
+            ok = await context.send_message(unified_msg_origin, chain)
             if ok is False:
                 raise RuntimeError("AstrBot send_message returned false")
         except Exception:
             if not payload_contains_at_all(payload):
                 raise
             fallback_chain = build_astrbot_message_chain(payload, at_all_as_text=True)
-            ok = await self.context.send_message(unified_msg_origin, fallback_chain)
+            ok = await context.send_message(unified_msg_origin, fallback_chain)
             if ok is False:
                 raise RuntimeError("AstrBot send_message returned false after at-all fallback")
 
@@ -377,7 +390,7 @@ class BilibiliNotifyPlugin(Star):
         if provider_id:
             llm_generate = getattr(self.context, "llm_generate", None)
             if callable(llm_generate):
-                return await llm_generate(
+                return await cast(Any, llm_generate)(
                     chat_provider_id=provider_id,
                     prompt=prompt,
                     system_prompt=system_prompt,
@@ -394,7 +407,7 @@ class BilibiliNotifyPlugin(Star):
         text_chat = getattr(provider, "text_chat", None)
         if not callable(text_chat):
             raise RuntimeError("AstrBot AI Provider 不支持 text_chat")
-        return await text_chat(
+        return await cast(Any, text_chat)(
             prompt=prompt,
             system_prompt=system_prompt,
             image_urls=image_urls or None,
@@ -443,7 +456,7 @@ async def _maybe_await(value: Any) -> Any:
     return value
 
 
-def _get_provider_by_id(context: Context, provider_id: str) -> Any:
+def _get_provider_by_id(context: Any, provider_id: str) -> Any:
     get_provider_by_id = getattr(context, "get_provider_by_id", None)
     if callable(get_provider_by_id):
         return get_provider_by_id(provider_id)
@@ -454,7 +467,7 @@ def _get_provider_by_id(context: Context, provider_id: str) -> Any:
     return None
 
 
-def _get_using_provider(context: Context) -> Any:
+def _get_using_provider(context: Any) -> Any:
     get_using_provider = getattr(context, "get_using_provider", None)
     if callable(get_using_provider):
         return get_using_provider()
@@ -496,6 +509,29 @@ def _query_params(args: Mapping[str, Any]) -> dict[str, str]:
         if value is None:
             continue
         params[str(key)] = str(value)
+    return params
+
+
+def _bridge_proxy_tunnel(json_body: Any) -> tuple[str, dict[str, str], Any]:
+    if not isinstance(json_body, dict):
+        return "", {}, json_body
+    override = str(json_body.get(PROXY_TUNNEL_METHOD_KEY) or "").upper()
+    if override not in {"PATCH", "DELETE"}:
+        return "", {}, json_body
+    params = _body_tunnel_params(json_body.get(PROXY_TUNNEL_PARAMS_KEY))
+    if override == "PATCH":
+        return override, params, json_body.get(PROXY_TUNNEL_BODY_KEY)
+    return override, params, None
+
+
+def _body_tunnel_params(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    params: dict[str, str] = {}
+    for key, item in value.items():
+        if key == "_method" or not isinstance(item, str):
+            continue
+        params[str(key)] = item
     return params
 
 

@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it } from "vitest";
-import { ASTRBOT_ADAPTER_ID, ASTRBOT_PUSH_ADAPTER, ASTRBOT_TARGET_ID } from "./callback-sink.js";
+import {
+	ASTRBOT_ADAPTER_ID,
+	ASTRBOT_PUSH_ADAPTER,
+	ASTRBOT_PUSH_TARGET,
+	ASTRBOT_TARGET_ID,
+} from "./callback-sink.js";
 import { createAstrBotConfigStore } from "./config-store.js";
 import { createAstrBotSubscription } from "./persistence.js";
 import { createSidecarMessageBus } from "./platform.js";
@@ -35,6 +40,39 @@ describe("createAstrBotConfigStore", () => {
 		expect(await readJson(join(dataDir, "state", "subscriptions.json"))).toEqual([]);
 		expect(await readJson(join(dataDir, "state", "adapters.json"))).toEqual([ASTRBOT_PUSH_ADAPTER]);
 		expect(await readJson(join(dataDir, "state", "targets.json"))).toEqual([]);
+	});
+
+	it("removes hidden fallback target state once a real AstrBot target exists", async () => {
+		const dataDir = await makeTempDir();
+		const stateDir = join(dataDir, "state");
+		const realTarget = {
+			id: "22222222-2222-4222-8222-222222222222",
+			name: "真实目标",
+			adapterId: ASTRBOT_ADAPTER_ID,
+			platform: "astrbot",
+			scope: "group",
+			enabled: true,
+			session: { unified_msg_origin: "aiocqhttp:GroupMessage:123456" },
+		};
+		const subscription = createAstrBotSubscription(
+			{ uid: "123456", name: "测试 UP" },
+			{ defaultTargetIds: [ASTRBOT_TARGET_ID, realTarget.id] },
+		);
+		await writeJson(join(stateDir, "targets.json"), [ASTRBOT_PUSH_TARGET, realTarget]);
+		await writeJson(join(stateDir, "subscriptions.json"), [subscription]);
+		const store = createAstrBotConfigStore({ dataDir });
+
+		await store.load();
+
+		expect(store.getTargets()).toEqual([realTarget]);
+		expect(store.getSubscriptions()[0]?.routing.dynamic).toEqual([realTarget.id]);
+		expect(store.getSubscriptions()[0]?.routing.live).toEqual([realTarget.id]);
+		expect(await readJson(join(stateDir, "targets.json"))).toEqual([realTarget]);
+		expect(await readJson(join(stateDir, "subscriptions.json"))).toEqual([
+			expect.objectContaining({
+				routing: expect.objectContaining({ dynamic: [realTarget.id], live: [realTarget.id] }),
+			}),
+		]);
 	});
 
 	it("migrates legacy root subscriptions while preserving the old file and writing a backup", async () => {

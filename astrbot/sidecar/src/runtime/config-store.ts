@@ -17,7 +17,7 @@ import {
 	type Subscription,
 	SubscriptionSchema,
 } from "@bilibili-notify/internal";
-import { ASTRBOT_ADAPTER_ID, ASTRBOT_PUSH_ADAPTER } from "./callback-sink.js";
+import { ASTRBOT_ADAPTER_ID, ASTRBOT_PUSH_ADAPTER, ASTRBOT_TARGET_ID } from "./callback-sink.js";
 import { normalizeAstrBotSubscription } from "./persistence.js";
 
 const CONFIG_VERSION = 1;
@@ -125,6 +125,7 @@ class DefaultAstrBotConfigStore implements AstrBotConfigStore {
 		await this.loadSubscriptions();
 		await this.loadAdapters();
 		await this.loadTargets();
+		await this.pruneHiddenFallbackRoutes();
 		this.loaded = true;
 	}
 
@@ -200,7 +201,9 @@ class DefaultAstrBotConfigStore implements AstrBotConfigStore {
 		return this.transact(async () => {
 			this.targets = upsertById(this.targets, parsed.data);
 			await atomicWriteJson(this.path("targets"), this.targets);
+			const prunedSubscriptions = await this.pruneHiddenFallbackRoutes();
 			this.bus?.emit("config-changed", "targets");
+			if (prunedSubscriptions) this.bus?.emit("config-changed", "subscriptions");
 			return deepClone(parsed.data);
 		});
 	}
@@ -253,7 +256,9 @@ class DefaultAstrBotConfigStore implements AstrBotConfigStore {
 			const target = buildAstrBotTarget(parsed.data, existing);
 			this.targets = upsertById(this.targets, target);
 			await atomicWriteJson(this.path("targets"), this.targets);
+			const prunedSubscriptions = await this.pruneHiddenFallbackRoutes();
 			this.bus?.emit("config-changed", "targets");
+			if (prunedSubscriptions) this.bus?.emit("config-changed", "subscriptions");
 			return { target: deepClone(target), created: !existing };
 		});
 	}
@@ -363,6 +368,14 @@ class DefaultAstrBotConfigStore implements AstrBotConfigStore {
 		if (!loaded.existed || !sameJson(loaded.value, this.targets)) {
 			await atomicWriteJson(this.path("targets"), this.targets);
 		}
+	}
+
+	private async pruneHiddenFallbackRoutes(): Promise<boolean> {
+		const next = removeTargetIdFromSubscriptions(this.subscriptions, ASTRBOT_TARGET_ID);
+		if (sameJson(next, this.subscriptions)) return false;
+		this.subscriptions = next;
+		await atomicWriteJson(this.path("subscriptions"), this.subscriptions);
+		return true;
 	}
 
 	private legacySubscriptionsPath(): string {
@@ -487,28 +500,62 @@ function parseAstrBotTargets(raw: unknown): AstrBotPushTarget[] {
 			"targets.json must be an array",
 		);
 	}
-	return raw.map((entry, index) => {
-		const parsed = AstrBotPushTargetSchema.safeParse(entry);
-		if (!parsed.success) {
-			throw new AstrBotConfigValidationError(
-				"targets",
-				{ index, issues: parsed.error.issues },
-				`targets.json[${index}] failed AstrBot target validation`,
-			);
+	return raw
+		.map((entry, index) => {
+			const parsed = AstrBotPushTargetSchema.safeParse(entry);
+			if (!parsed.success) {
+				throw new AstrBotConfigValidationError(
+					"targets",
+					{ index, issues: parsed.error.issues },
+					`targets.json[${index}] failed AstrBot target validation`,
+				);
+			}
+			if (parsed.data.adapterId !== ASTRBOT_ADAPTER_ID) {
+				throw new AstrBotConfigValidationError(
+					"targets",
+					{
+						index,
+						adapterId: parsed.data.adapterId,
+						message: "target must reference hidden adapter",
+					},
+					`targets.json[${index}] must reference the hidden AstrBot adapter`,
+				);
+			}
+			return parsed.data;
+		})
+		.filter((target) => target.id !== ASTRBOT_TARGET_ID);
+}
+
+function removeTargetIdFromSubscriptions(
+	subscriptions: readonly Subscription[],
+	targetId: string,
+): Subscription[] {
+	return subscriptions.map((subscription) =>
+		removeTargetIdFromSubscription(subscription, targetId),
+	);
+}
+
+function removeTargetIdFromSubscription(
+	subscription: Subscription,
+	targetId: string,
+): Subscription {
+	let changed = false;
+	const routing = deepClone(subscription.routing);
+	for (const feature of Object.keys(routing) as Array<keyof typeof routing>) {
+		const filtered = routing[feature].filter((id) => id !== targetId);
+		if (filtered.length !== routing[feature].length) {
+			routing[feature] = filtered;
+			changed = true;
 		}
-		if (parsed.data.adapterId !== ASTRBOT_ADAPTER_ID) {
-			throw new AstrBotConfigValidationError(
-				"targets",
-				{
-					index,
-					adapterId: parsed.data.adapterId,
-					message: "target must reference hidden adapter",
-				},
-				`targets.json[${index}] must reference the hidden AstrBot adapter`,
-			);
+	}
+	const atAll = deepClone(subscription.atAll);
+	for (const scope of ["dynamic", "live"] as const) {
+		if (targetId in atAll[scope]) {
+			delete atAll[scope][targetId];
+			changed = true;
 		}
-		return parsed.data;
-	});
+	}
+	return changed ? normalizeAstrBotSubscription({ ...subscription, routing, atAll }) : subscription;
 }
 
 function sanitizeAstrBotGlobals(globals: GlobalConfig): { value: GlobalConfig; changed: boolean } {

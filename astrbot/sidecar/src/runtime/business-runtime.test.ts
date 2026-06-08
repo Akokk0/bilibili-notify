@@ -185,6 +185,96 @@ describe("createBusinessRuntime", () => {
 		await runtime.close("test done");
 	});
 
+	it("uses current AstrBot targets for new minimal subscription defaults and preserves route patches", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "bn-astrbot-runtime-"));
+		tempDirs.push(dataDir);
+		const runtime = createBusinessRuntime({ dataDir });
+		await runtime.configStore.load();
+		const target = await runtime.upsertTarget({
+			id: "22222222-2222-4222-8222-222222222222",
+			name: "默认频道",
+			adapterId: ASTRBOT_ADAPTER_ID,
+			platform: "astrbot",
+			scope: "channel",
+			enabled: true,
+			session: {
+				unified_msg_origin: "astrbot://room-1",
+				platform: "astrbot",
+				messageType: "channel",
+				sessionName: "Room 1",
+			},
+		});
+
+		const subscription = await runtime.upsertSubscription({ uid: "123456", name: "测试 UP" });
+		const patched = await runtime.patchSubscription(subscription.id, {
+			routing: { ...subscription.routing, dynamic: [], live: [target.id], liveEnd: [target.id] },
+		});
+
+		expect(subscription.overrides).toEqual({});
+		expect(subscription.routing.dynamic).toEqual([target.id]);
+		expect(subscription.routing.live).toEqual([target.id]);
+		expect(subscription.routing.liveEnd).toEqual([target.id]);
+		expect(subscription.routing.wordcloud).toEqual([target.id]);
+		expect(subscription.routing.liveSummary).toEqual([target.id]);
+		expect(subscription.routing.liveGuardBuy).toEqual([]);
+		expect(patched.routing.dynamic).toEqual([]);
+		expect(patched.routing.live).toEqual([target.id]);
+		expect(runtime.listSubscriptions()[0]?.routing.dynamic).toEqual([]);
+		await runtime.close("test done");
+	});
+
+	it("uses current global feature defaults without creating subscription overrides", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "bn-astrbot-runtime-"));
+		tempDirs.push(dataDir);
+		const runtime = createBusinessRuntime({ dataDir });
+		await runtime.configStore.load();
+		const globals = makeDefaultGlobalConfig();
+		globals.defaults.features.dynamic = false;
+		globals.defaults.features.superchat = true;
+		await runtime.configStore.setGlobals(globals);
+		const target = await runtime.upsertTarget({
+			id: "22222222-2222-4222-8222-222222222222",
+			name: "默认频道",
+			adapterId: ASTRBOT_ADAPTER_ID,
+			platform: "astrbot",
+			scope: "channel",
+			enabled: true,
+			session: {
+				unified_msg_origin: "astrbot://room-1",
+				platform: "astrbot",
+				messageType: "channel",
+				sessionName: "Room 1",
+			},
+		});
+
+		const subscription = await runtime.upsertSubscription({ uid: "123456", name: "测试 UP" });
+
+		expect(subscription.overrides).toEqual({});
+		expect(subscription.routing.dynamic).toEqual([]);
+		expect(subscription.routing.superchat).toEqual([target.id]);
+		expect(subscription.routing.live).toEqual([target.id]);
+		await runtime.close("test done");
+	});
+
+	it("replaces subscription overrides so disabled sections stay disabled after save", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "bn-astrbot-runtime-"));
+		tempDirs.push(dataDir);
+		const runtime = createBusinessRuntime({ dataDir });
+		await runtime.configStore.load();
+		const subscription = await runtime.upsertSubscription({
+			uid: "123456",
+			name: "测试 UP",
+			dynamic: false,
+		});
+
+		const patched = await runtime.patchSubscription(subscription.id, { overrides: {} });
+
+		expect(subscription.overrides.features).toEqual({ dynamic: false });
+		expect(patched.overrides).toEqual({});
+		expect(runtime.listSubscriptions()[0]?.overrides).toEqual({});
+		await runtime.close("test done");
+	});
+
 	it("keeps resource ids stable when patch bodies contain another id", async () => {
 		const dataDir = await mkdtemp(join(tmpdir(), "bn-astrbot-runtime-"));
 		tempDirs.push(dataDir);

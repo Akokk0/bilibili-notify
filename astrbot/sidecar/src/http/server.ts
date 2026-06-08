@@ -21,7 +21,11 @@ import {
 	type AstrBotPairingConfirmResult,
 } from "../runtime/config-store.js";
 import type { DeliveryJob, DeliveryReceipt, SidecarEvent } from "../runtime/event-queue.js";
-import { createAstrBotSubscription, type StoredSubscriptionInput } from "../runtime/persistence.js";
+import {
+	createAstrBotSubscription,
+	resolveAstrBotDefaultTargetIds,
+	type StoredSubscriptionInput,
+} from "../runtime/persistence.js";
 import type { SidecarSnapshot } from "../runtime/state.js";
 
 export interface SidecarHttpRuntime {
@@ -531,7 +535,14 @@ async function handleSubscriptionsCollection(
 			return;
 		}
 		try {
-			await saveSubscription(res, options, createAstrBotSubscription(stored));
+			await saveSubscription(
+				res,
+				options,
+				createAstrBotSubscription(stored, {
+					defaultTargetIds: defaultSubscriptionTargetIds(options.runtime),
+					defaultFeatures: options.runtime.getGlobals().defaults.features,
+				}),
+			);
 		} catch (error) {
 			writeJson(res, 400, {
 				error: "invalid_subscription",
@@ -588,6 +599,10 @@ async function handleSubscriptionItem(
 		return;
 	}
 	writeJson(res, 405, { error: "method_not_allowed" });
+}
+
+function defaultSubscriptionTargetIds(runtime: SidecarHttpRuntime): string[] {
+	return resolveAstrBotDefaultTargetIds(runtime.listTargets());
 }
 
 async function saveSubscription(

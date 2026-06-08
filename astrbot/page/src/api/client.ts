@@ -12,7 +12,11 @@ import type {
 } from "./types";
 
 export const PLUGIN_NAME = "astrbot_plugin_bilibili_notify";
+const PLUGIN_API_ENDPOINT_PREFIX = "api";
 const REDACTED_SECRET = "__BN_REDACTED__";
+const BRIDGE_PROXY_METHOD_KEY = "__bn_proxy_method";
+const BRIDGE_PROXY_BODY_KEY = "__bn_proxy_body";
+const BRIDGE_PROXY_PARAMS_KEY = "__bn_proxy_params";
 
 type BridgeParams = Record<string, string>;
 
@@ -154,7 +158,7 @@ export function subscribeDashboardEvents(handlers: {
 	let closed = false;
 	let subscriptionId: string | undefined;
 	void bridge
-		.subscribeSSE("events/stream", {
+		.subscribeSSE(toPluginApiEndpoint("events/stream"), {
 			onOpen: handlers.onOpen,
 			onError: handlers.onError,
 			onMessage(message) {
@@ -177,6 +181,12 @@ export function subscribeDashboardEvents(handlers: {
 	};
 }
 
+function toPluginApiEndpoint(endpoint: string): string {
+	return endpoint.startsWith(`${PLUGIN_API_ENDPOINT_PREFIX}/`)
+		? endpoint
+		: `${PLUGIN_API_ENDPOINT_PREFIX}/${endpoint}`;
+}
+
 async function requestViaBridge<T>(
 	bridge: AstrBotPluginPageBridge,
 	method: string,
@@ -185,19 +195,31 @@ async function requestViaBridge<T>(
 ): Promise<T> {
 	const upperMethod = method.toUpperCase();
 	const parsed = parseEndpoint(path);
+	const endpoint = toPluginApiEndpoint(parsed.endpoint);
 	if (upperMethod === "GET") {
-		return (await bridge.apiGet(parsed.endpoint, parsed.params)) as T;
+		return (await bridge.apiGet(endpoint, parsed.params)) as T;
 	}
 	if (upperMethod === "POST") {
-		return (await bridge.apiPost(withParams(parsed.endpoint, parsed.params), body)) as T;
+		return (await bridge.apiPost(endpoint, body)) as T;
 	}
 	if (upperMethod === "PATCH" || upperMethod === "DELETE") {
 		return (await bridge.apiPost(
-			withParams(parsed.endpoint, { ...parsed.params, _method: upperMethod }),
-			body,
+			endpoint,
+			buildBridgeProxyTunnelPayload(upperMethod, body, parsed.params),
 		)) as T;
 	}
 	throw new ApiError(405, { error: "method_not_allowed" }, `${method} ${path} is not supported`);
+}
+
+function buildBridgeProxyTunnelPayload(
+	method: "PATCH" | "DELETE",
+	body: unknown,
+	params: BridgeParams,
+): Record<string, unknown> {
+	const payload: Record<string, unknown> = { [BRIDGE_PROXY_METHOD_KEY]: method };
+	if (Object.keys(params).length > 0) payload[BRIDGE_PROXY_PARAMS_KEY] = params;
+	if (method === "PATCH") payload[BRIDGE_PROXY_BODY_KEY] = body;
+	return payload;
 }
 
 function tunnelMethodForAstrBotPlugRoute(

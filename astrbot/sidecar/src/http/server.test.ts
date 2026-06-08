@@ -239,6 +239,7 @@ describe("sidecar http server", () => {
 
 	it("creates, patches, lists and deletes AstrBot subscriptions", async () => {
 		const harness = createTestHarness();
+		await harness.runtime.upsertTarget(TARGET);
 		const server = createSidecarHttpServer({
 			getSnapshot: harness.snapshot,
 			runtime: harness.runtime,
@@ -254,8 +255,6 @@ describe("sidecar http server", () => {
 			body: JSON.stringify({
 				uid: "123456",
 				name: "测试 UP 主",
-				dynamic: false,
-				live: true,
 			}),
 		});
 
@@ -265,10 +264,17 @@ describe("sidecar http server", () => {
 		expect(posted[0]).toMatchObject({
 			uid: "123456",
 			name: "测试 UP 主",
+			overrides: {},
 			routing: {
-				dynamic: [],
-				live: [ASTRBOT_TARGET_ID],
-				liveEnd: [ASTRBOT_TARGET_ID],
+				dynamic: [TARGET.id],
+				live: [TARGET.id],
+				liveEnd: [TARGET.id],
+				wordcloud: [TARGET.id],
+				liveSummary: [TARGET.id],
+				liveGuardBuy: [],
+				superchat: [],
+				specialDanmaku: [],
+				specialUserEnter: [],
 			},
 		});
 		expect(harness.runtime.upsertSubscription).toHaveBeenCalledTimes(1);

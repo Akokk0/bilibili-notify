@@ -8,26 +8,73 @@ import {
 	createAstrBotSubscription,
 	JsonSubscriptionPersistence,
 	normalizeAstrBotSubscription,
+	resolveAstrBotDefaultTargetIds,
 } from "./persistence.js";
 
 describe("AstrBot sidecar subscription persistence", () => {
-	it("creates AstrBot subscriptions with AstrBot routing", () => {
-		const subscription = createAstrBotSubscription({
-			uid: "123456",
-			name: "测试 UP 主",
-			dynamic: false,
-			live: true,
-		});
+	it("creates AstrBot subscriptions with routes for enabled default features", () => {
+		const subscription = createAstrBotSubscription(
+			{
+				uid: "123456",
+				name: "测试 UP 主",
+			},
+			{ defaultTargetIds: [ASTRBOT_TARGET_ID] },
+		);
 
 		expect(subscription.uid).toBe("123456");
 		expect(subscription.enabled).toBe(true);
-		expect(subscription.routing.dynamic).toEqual([]);
+		expect(subscription.routing.dynamic).toEqual([ASTRBOT_TARGET_ID]);
 		expect(subscription.routing.live).toEqual([ASTRBOT_TARGET_ID]);
 		expect(subscription.routing.liveEnd).toEqual([ASTRBOT_TARGET_ID]);
-		expect(subscription.overrides.features).toEqual({ dynamic: false, live: true });
+		expect(subscription.routing.wordcloud).toEqual([ASTRBOT_TARGET_ID]);
+		expect(subscription.routing.liveSummary).toEqual([ASTRBOT_TARGET_ID]);
+		expect(subscription.routing.liveGuardBuy).toEqual([]);
+		expect(subscription.routing.superchat).toEqual([]);
+		expect(subscription.routing.specialDanmaku).toEqual([]);
+		expect(subscription.routing.specialUserEnter).toEqual([]);
+		expect(subscription.overrides).toEqual({});
 	});
 
-	it("loads and saves subscriptions with AstrBot routing normalization", async () => {
+	it("keeps explicit minimal feature toggles as overrides", () => {
+		const subscription = createAstrBotSubscription(
+			{
+				uid: "123456",
+				name: "测试 UP 主",
+				dynamic: false,
+				live: false,
+			},
+			{ defaultTargetIds: [ASTRBOT_TARGET_ID] },
+		);
+
+		expect(subscription.routing.dynamic).toEqual([]);
+		expect(subscription.routing.live).toEqual([]);
+		expect(subscription.routing.liveEnd).toEqual([]);
+		expect(subscription.routing.wordcloud).toEqual([ASTRBOT_TARGET_ID]);
+		expect(subscription.routing.liveSummary).toEqual([ASTRBOT_TARGET_ID]);
+		expect(subscription.overrides.features).toEqual({
+			dynamic: false,
+			live: false,
+			liveEnd: false,
+		});
+	});
+
+	it("uses only enabled real AstrBot targets as subscription defaults", () => {
+		expect(resolveAstrBotDefaultTargetIds([])).toEqual([]);
+		expect(resolveAstrBotDefaultTargetIds([{ id: ASTRBOT_TARGET_ID, enabled: true }])).toEqual([]);
+		expect(
+			resolveAstrBotDefaultTargetIds([
+				{ id: "22222222-2222-4222-8222-222222222222", enabled: false },
+			]),
+		).toEqual([]);
+		expect(
+			resolveAstrBotDefaultTargetIds([
+				{ id: "22222222-2222-4222-8222-222222222222", enabled: false },
+				{ id: "33333333-3333-4333-8333-333333333333", enabled: true },
+			]),
+		).toEqual(["33333333-3333-4333-8333-333333333333"]);
+	});
+
+	it("loads and saves subscriptions without overwriting explicit routing", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-astrbot-sidecar-"));
 		try {
 			const filePath = join(dir, "subscriptions.json");
@@ -49,9 +96,9 @@ describe("AstrBot sidecar subscription persistence", () => {
 			expect(loaded).toMatchObject({
 				uid: "123456",
 				routing: {
-					dynamic: [ASTRBOT_TARGET_ID],
-					live: [ASTRBOT_TARGET_ID],
-					liveEnd: [ASTRBOT_TARGET_ID],
+					dynamic: ["22222222-2222-4222-8222-222222222222"],
+					live: ["33333333-3333-4333-8333-333333333333"],
+					liveEnd: ["44444444-4444-4444-8444-444444444444"],
 				},
 			});
 
@@ -59,7 +106,7 @@ describe("AstrBot sidecar subscription persistence", () => {
 			await persistence.save([normalized]);
 			const persisted = JSON.parse(await readFile(filePath, "utf8")) as Subscription[];
 			expect(persisted).toHaveLength(1);
-			expect(persisted[0]?.routing.dynamic).toEqual([ASTRBOT_TARGET_ID]);
+			expect(persisted[0]?.routing.dynamic).toEqual(["22222222-2222-4222-8222-222222222222"]);
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}

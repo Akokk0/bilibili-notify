@@ -263,10 +263,13 @@ class SidecarClient:
         if api_path != "/api/events/stream":
             raise ValueError("only events/stream is allowed for SSE proxy")
         async with self._client(stream=True) as client:
-            async with client.stream("GET", api_path, params=dict(params or {})) as response:
-                response.raise_for_status()
-                async for chunk in response.aiter_bytes():
-                    yield chunk
+            try:
+                async with client.stream("GET", api_path, params=dict(params or {})) as response:
+                    response.raise_for_status()
+                    async for chunk in response.aiter_bytes():
+                        yield chunk
+            except httpx.RemoteProtocolError:
+                return
 
     async def _request_json(
         self,

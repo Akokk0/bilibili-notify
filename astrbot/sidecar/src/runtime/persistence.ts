@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
+	DEFAULT_FEATURE_FLAGS,
 	FEATURE_KEYS,
+	type FeatureFlags,
 	makeEmptySubscription,
 	type Subscription,
 	SubscriptionSchema,
@@ -58,51 +60,80 @@ export class JsonSubscriptionPersistence {
 	}
 }
 
-export function createAstrBotSubscription(input: StoredSubscriptionInput): Subscription {
+export interface CreateAstrBotSubscriptionOptions {
+	readonly defaultTargetIds?: readonly string[];
+	readonly defaultFeatures?: FeatureFlags;
+}
+
+export function createAstrBotSubscription(
+	input: StoredSubscriptionInput,
+	options: CreateAstrBotSubscriptionOptions = {},
+): Subscription {
 	if (!/^\d+$/.test(input.uid)) {
 		throw new Error(`Invalid uid: ${input.uid}`);
 	}
 	const sub = makeEmptySubscription({ id: input.id ?? randomUUID(), uid: input.uid });
+	const features = resolveCreateFeatureFlags(
+		input,
+		options.defaultFeatures ?? DEFAULT_FEATURE_FLAGS,
+	);
 	return normalizeAstrBotSubscription({
 		...sub,
 		name: input.name,
 		enabled: input.enabled ?? true,
 		routing: buildAstrBotRouting({
-			dynamic: input.dynamic ?? true,
-			live: input.live ?? true,
+			features,
+			defaultTargetIds: options.defaultTargetIds ?? [],
 		}),
-		overrides: {
-			features: {
-				dynamic: input.dynamic ?? true,
-				live: input.live ?? true,
-			},
-		},
+		overrides: buildExplicitFeatureOverrides(input),
 	});
 }
 
 export function normalizeAstrBotSubscription(subscription: Subscription): Subscription {
-	const dynamicEnabled = subscription.overrides.features?.dynamic ?? true;
-	const liveEnabled = subscription.overrides.features?.live ?? true;
-	return SubscriptionSchema.parse({
-		...subscription,
-		routing: {
-			...subscription.routing,
-			...buildAstrBotRouting({ dynamic: dynamicEnabled, live: liveEnabled }),
-		},
-	});
+	return SubscriptionSchema.parse(subscription);
+}
+
+export function resolveAstrBotDefaultTargetIds(
+	targets: readonly { readonly id: string; readonly enabled: boolean }[],
+): string[] {
+	return targets
+		.filter((target) => target.enabled && target.id !== ASTRBOT_TARGET_ID)
+		.map((target) => target.id);
+}
+
+function resolveCreateFeatureFlags(
+	input: StoredSubscriptionInput,
+	defaults: FeatureFlags,
+): FeatureFlags {
+	const features = { ...defaults };
+	if (input.dynamic !== undefined) features.dynamic = input.dynamic;
+	if (input.live !== undefined) {
+		features.live = input.live;
+		features.liveEnd = input.live;
+	}
+	return features;
+}
+
+function buildExplicitFeatureOverrides(input: StoredSubscriptionInput): Subscription["overrides"] {
+	const features: Partial<FeatureFlags> = {};
+	if (input.dynamic !== undefined) features.dynamic = input.dynamic;
+	if (input.live !== undefined) {
+		features.live = input.live;
+		features.liveEnd = input.live;
+	}
+	return Object.keys(features).length > 0 ? { features } : {};
 }
 
 function buildAstrBotRouting(options: {
-	dynamic: boolean;
-	live: boolean;
+	features: FeatureFlags;
+	defaultTargetIds: readonly string[];
 }): Subscription["routing"] {
+	const targetIds = [...new Set(options.defaultTargetIds)];
 	const routing = Object.fromEntries(
 		FEATURE_KEYS.map((feature) => [feature, []]),
 	) as unknown as Subscription["routing"];
-	if (options.dynamic) routing.dynamic = [ASTRBOT_TARGET_ID];
-	if (options.live) {
-		routing.live = [ASTRBOT_TARGET_ID];
-		routing.liveEnd = [ASTRBOT_TARGET_ID];
+	for (const feature of FEATURE_KEYS) {
+		if (options.features[feature]) routing[feature] = targetIds;
 	}
 	return routing;
 }
