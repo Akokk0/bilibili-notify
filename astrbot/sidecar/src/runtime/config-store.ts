@@ -10,6 +10,7 @@ import {
 	type AstrBotSession,
 	AstrBotSessionSchema,
 	type ConfigScope,
+	type FeatureFlags,
 	type GlobalConfig,
 	GlobalConfigSchema,
 	type MessageBus,
@@ -199,11 +200,16 @@ class DefaultAstrBotConfigStore implements AstrBotConfigStore {
 			);
 		}
 		return this.transact(async () => {
+			const previous = this.targets.find((entry) => entry.id === parsed.data.id);
+			const activated = isTargetActivation(previous, parsed.data);
 			this.targets = upsertById(this.targets, parsed.data);
 			await atomicWriteJson(this.path("targets"), this.targets);
-			const prunedSubscriptions = await this.pruneHiddenFallbackRoutes();
+			const changedSubscriptions = await this.reconcileSubscriptionsForTarget(
+				parsed.data.id,
+				activated,
+			);
 			this.bus?.emit("config-changed", "targets");
-			if (prunedSubscriptions) this.bus?.emit("config-changed", "subscriptions");
+			if (changedSubscriptions) this.bus?.emit("config-changed", "subscriptions");
 			return deepClone(parsed.data);
 		});
 	}
@@ -254,11 +260,15 @@ class DefaultAstrBotConfigStore implements AstrBotConfigStore {
 				(target) => target.session.unified_msg_origin === parsed.data.unified_msg_origin,
 			);
 			const target = buildAstrBotTarget(parsed.data, existing);
+			const activated = isTargetActivation(existing, target);
 			this.targets = upsertById(this.targets, target);
 			await atomicWriteJson(this.path("targets"), this.targets);
-			const prunedSubscriptions = await this.pruneHiddenFallbackRoutes();
+			// 配对码绑定是 AstrBot 创建真实 target 的主路径，必须与 upsertTarget 对称走
+			// reconcile（先剔隐藏 fallback，仅在首次绑定 / 停用→启用跃迁时回填从未配置过
+			// 路由的订阅），否则"先建订阅、后 /bn bind 绑目标"的订阅 routing 仍为空、收不到推送。
+			const changedSubscriptions = await this.reconcileSubscriptionsForTarget(target.id, activated);
 			this.bus?.emit("config-changed", "targets");
-			if (prunedSubscriptions) this.bus?.emit("config-changed", "subscriptions");
+			if (changedSubscriptions) this.bus?.emit("config-changed", "subscriptions");
 			return { target: deepClone(target), created: !existing };
 		});
 	}
@@ -378,6 +388,28 @@ class DefaultAstrBotConfigStore implements AstrBotConfigStore {
 		return true;
 	}
 
+	// 绑定/启用真实推送目标时：先剔除隐藏 fallback target；再把"整体从未配置过路由"的
+	// 订阅按有效 feature 开关（订阅覆盖优先，否则全局默认）回填到该目标，解决"先建订阅、
+	// 后绑目标 → routing 永远为空 → 启用却无推送"。回填仅在 shouldBackfill（target 新建
+	// 或停用→启用跃迁，见 isTargetActivation）时进行，避免测试推送 / 重命名 / 重复保存等
+	// 无关写操作静默改写路由。prune 总会执行；只动整体空 routing 的订阅，不覆盖用户已
+	// 定制的路由；默认关闭的 feature 保持为空。
+	private async reconcileSubscriptionsForTarget(
+		targetId: string,
+		shouldBackfill: boolean,
+	): Promise<boolean> {
+		const pruned = removeTargetIdFromSubscriptions(this.subscriptions, ASTRBOT_TARGET_ID);
+		const target = this.targets.find((entry) => entry.id === targetId);
+		const next =
+			shouldBackfill && target?.enabled && targetId !== ASTRBOT_TARGET_ID
+				? backfillEmptyRoutes(pruned, targetId, this.globals.defaults.features)
+				: pruned;
+		if (sameJson(next, this.subscriptions)) return false;
+		this.subscriptions = next;
+		await atomicWriteJson(this.path("subscriptions"), this.subscriptions);
+		return true;
+	}
+
 	private legacySubscriptionsPath(): string {
 		return join(this.dataDir, LEGACY_SUBSCRIPTIONS_FILE);
 	}
@@ -404,6 +436,18 @@ function normalizePairingCode(code: string): string {
 	return code.trim().replace(/[\s-]/g, "").toUpperCase();
 }
 
+// 回填只应发生在 target "成为有效推送目标"的跃迁：首次创建为 enabled，或从 disabled
+// 切到 enabled。已 enabled 的 target 上的重命名 / testStatus 回写 / 重复保存不算跃迁、
+// 不触发回填，避免无关写操作静默改写用户订阅路由。
+function isTargetActivation(
+	previous: AstrBotPushTarget | undefined,
+	next: AstrBotPushTarget,
+): boolean {
+	if (!next.enabled) return false;
+	if (!previous) return true;
+	return !previous.enabled;
+}
+
 function buildAstrBotTarget(
 	session: AstrBotSession,
 	existing: AstrBotPushTarget | undefined,
@@ -414,7 +458,8 @@ function buildAstrBotTarget(
 		adapterId: ASTRBOT_ADAPTER_ID,
 		platform: "astrbot",
 		scope: inferTargetScope(session.messageType),
-		enabled: true,
+		// 复用已有 target 时保留其启用状态：对手动停用的会话重新 /bn bind 不应擅自重启用。
+		enabled: existing?.enabled ?? true,
 		session: deepClone(session),
 	};
 	return {
@@ -556,6 +601,36 @@ function removeTargetIdFromSubscription(
 		}
 	}
 	return changed ? normalizeAstrBotSubscription({ ...subscription, routing, atAll }) : subscription;
+}
+
+function backfillEmptyRoutes(
+	subscriptions: readonly Subscription[],
+	targetId: string,
+	defaults: FeatureFlags,
+): Subscription[] {
+	return subscriptions.map((subscription) =>
+		backfillEmptyRoutesForSubscription(subscription, targetId, defaults),
+	);
+}
+
+function backfillEmptyRoutesForSubscription(
+	subscription: Subscription,
+	targetId: string,
+	defaults: FeatureFlags,
+): Subscription {
+	const features = Object.keys(subscription.routing) as Array<keyof Subscription["routing"]>;
+	const alreadyRouted = features.some((feature) => subscription.routing[feature].length > 0);
+	if (alreadyRouted) return subscription;
+	const overrides = subscription.overrides?.features;
+	const routing = deepClone(subscription.routing);
+	let changed = false;
+	for (const feature of features) {
+		if (overrides?.[feature] ?? defaults[feature]) {
+			routing[feature] = [targetId];
+			changed = true;
+		}
+	}
+	return changed ? normalizeAstrBotSubscription({ ...subscription, routing }) : subscription;
 }
 
 function sanitizeAstrBotGlobals(globals: GlobalConfig): { value: GlobalConfig; changed: boolean } {

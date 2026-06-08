@@ -75,6 +75,233 @@ describe("createAstrBotConfigStore", () => {
 		]);
 	});
 
+	it("backfills never-routed subscriptions onto a newly added enabled target", async () => {
+		const dataDir = await makeTempDir();
+		const store = createAstrBotConfigStore({ dataDir });
+		await store.load();
+		const subscription = createAstrBotSubscription({ uid: "123456", name: "测试 UP" });
+		expect(subscription.routing.dynamic).toEqual([]);
+		expect(subscription.routing.live).toEqual([]);
+		await store.upsertSubscription(subscription);
+
+		const target = await store.upsertTarget({
+			id: "22222222-2222-4222-8222-222222222222",
+			name: "默认频道",
+			adapterId: ASTRBOT_ADAPTER_ID,
+			platform: "astrbot",
+			scope: "group",
+			enabled: true,
+			session: { unified_msg_origin: "aiocqhttp:GroupMessage:123456" },
+		});
+
+		const defaults = makeDefaultGlobalConfig().defaults.features;
+		const saved = store.getSubscriptions()[0];
+		expect(saved?.routing.dynamic).toEqual(defaults.dynamic ? [target.id] : []);
+		expect(saved?.routing.live).toEqual([target.id]);
+		expect(saved?.routing.liveEnd).toEqual([target.id]);
+		expect(saved?.routing.wordcloud).toEqual([target.id]);
+		expect(saved?.routing.liveSummary).toEqual([target.id]);
+		expect(saved?.routing.liveGuardBuy).toEqual([]);
+		expect(saved?.routing.superchat).toEqual([]);
+		expect(saved?.routing.specialDanmaku).toEqual([]);
+		const persisted = (await readJson(join(dataDir, "state", "subscriptions.json"))) as Array<{
+			routing: { live: string[] };
+		}>;
+		expect(persisted[0]?.routing.live).toEqual([target.id]);
+	});
+
+	it("leaves already-routed subscriptions untouched when another target is added", async () => {
+		const dataDir = await makeTempDir();
+		const store = createAstrBotConfigStore({ dataDir });
+		await store.load();
+		const targetA = await store.upsertTarget({
+			id: "22222222-2222-4222-8222-222222222222",
+			name: "频道 A",
+			adapterId: ASTRBOT_ADAPTER_ID,
+			platform: "astrbot",
+			scope: "group",
+			enabled: true,
+			session: { unified_msg_origin: "aiocqhttp:GroupMessage:111" },
+		});
+		await store.upsertSubscription(
+			createAstrBotSubscription(
+				{ uid: "123456", name: "测试 UP" },
+				{ defaultTargetIds: [targetA.id] },
+			),
+		);
+
+		const targetB = await store.upsertTarget({
+			id: "33333333-3333-4333-8333-333333333333",
+			name: "频道 B",
+			adapterId: ASTRBOT_ADAPTER_ID,
+			platform: "astrbot",
+			scope: "group",
+			enabled: true,
+			session: { unified_msg_origin: "aiocqhttp:GroupMessage:222" },
+		});
+
+		const saved = store.getSubscriptions()[0];
+		expect(saved?.routing.dynamic).toEqual([targetA.id]);
+		expect(saved?.routing.live).toEqual([targetA.id]);
+		expect(saved?.routing.dynamic).not.toContain(targetB.id);
+	});
+
+	it("respects per-subscription overrides and skips disabled targets when backfilling", async () => {
+		const dataDir = await makeTempDir();
+		const store = createAstrBotConfigStore({ dataDir });
+		await store.load();
+		const subscription = createAstrBotSubscription({
+			uid: "123456",
+			name: "测试 UP",
+			dynamic: false,
+		});
+		expect(subscription.overrides.features).toEqual({ dynamic: false });
+		await store.upsertSubscription(subscription);
+
+		const disabled = await store.upsertTarget({
+			id: "44444444-4444-4444-8444-444444444444",
+			name: "停用频道",
+			adapterId: ASTRBOT_ADAPTER_ID,
+			platform: "astrbot",
+			scope: "group",
+			enabled: false,
+			session: { unified_msg_origin: "aiocqhttp:GroupMessage:333" },
+		});
+		expect(store.getSubscriptions()[0]?.routing.live).toEqual([]);
+		expect(disabled.enabled).toBe(false);
+
+		const target = await store.upsertTarget({
+			id: "55555555-5555-4555-8555-555555555555",
+			name: "启用频道",
+			adapterId: ASTRBOT_ADAPTER_ID,
+			platform: "astrbot",
+			scope: "group",
+			enabled: true,
+			session: { unified_msg_origin: "aiocqhttp:GroupMessage:444" },
+		});
+
+		const saved = store.getSubscriptions()[0];
+		expect(saved?.routing.dynamic).toEqual([]);
+		expect(saved?.routing.live).toEqual([target.id]);
+		expect(saved?.routing.liveEnd).toEqual([target.id]);
+	});
+
+	it("backfills never-routed subscriptions when a target is bound via pairing code", async () => {
+		const dataDir = await makeTempDir();
+		const store = createAstrBotConfigStore({ dataDir });
+		await store.load();
+		const subscription = createAstrBotSubscription({ uid: "123456", name: "测试 UP" });
+		expect(subscription.routing.live).toEqual([]);
+		await store.upsertSubscription(subscription);
+
+		const pairing = store.createPairingCode(1_000);
+		const confirmed = await store.confirmPairingCode(
+			pairing.code,
+			{
+				unified_msg_origin: "aiocqhttp:GroupMessage:123456",
+				platform: "aiocqhttp",
+				messageType: "GroupMessage",
+				sessionId: "123456",
+				sessionName: "测试群聊",
+			},
+			2_000,
+		);
+
+		const targetId = confirmed?.target.id;
+		expect(targetId).toBeDefined();
+		const defaults = makeDefaultGlobalConfig().defaults.features;
+		const saved = store.getSubscriptions()[0];
+		expect(saved?.routing.live).toEqual([targetId]);
+		expect(saved?.routing.liveEnd).toEqual([targetId]);
+		expect(saved?.routing.wordcloud).toEqual([targetId]);
+		expect(saved?.routing.liveSummary).toEqual([targetId]);
+		expect(saved?.routing.dynamic).toEqual(defaults.dynamic ? [targetId] : []);
+		expect(saved?.routing.liveGuardBuy).toEqual([]);
+		expect(saved?.routing.superchat).toEqual([]);
+		const persisted = (await readJson(join(dataDir, "state", "subscriptions.json"))) as Array<{
+			routing: { live: string[] };
+		}>;
+		expect(persisted[0]?.routing.live).toEqual([targetId]);
+	});
+
+	it("does not backfill on incidental writes to an already-enabled target", async () => {
+		const dataDir = await makeTempDir();
+		const store = createAstrBotConfigStore({ dataDir });
+		await store.load();
+		const target = await store.upsertTarget({
+			id: "22222222-2222-4222-8222-222222222222",
+			name: "频道",
+			adapterId: ASTRBOT_ADAPTER_ID,
+			platform: "astrbot",
+			scope: "group",
+			enabled: true,
+			session: { unified_msg_origin: "aiocqhttp:GroupMessage:1" },
+		});
+		await store.upsertSubscription(createAstrBotSubscription({ uid: "123456", name: "测试 UP" }));
+		expect(store.getSubscriptions()[0]?.routing.live).toEqual([]);
+
+		// 模拟测试推送回写 / 重命名等无关写：对已启用 target 的非跃迁写不应回填路由。
+		await store.upsertTarget({ ...target, name: "频道改名" });
+
+		expect(store.getSubscriptions()[0]?.routing.live).toEqual([]);
+		const persisted = (await readJson(join(dataDir, "state", "subscriptions.json"))) as Array<{
+			routing: { live: string[] };
+		}>;
+		expect(persisted[0]?.routing.live).toEqual([]);
+	});
+
+	it("backfills when a disabled target transitions to enabled", async () => {
+		const dataDir = await makeTempDir();
+		const store = createAstrBotConfigStore({ dataDir });
+		await store.load();
+		const target = await store.upsertTarget({
+			id: "22222222-2222-4222-8222-222222222222",
+			name: "频道",
+			adapterId: ASTRBOT_ADAPTER_ID,
+			platform: "astrbot",
+			scope: "group",
+			enabled: false,
+			session: { unified_msg_origin: "aiocqhttp:GroupMessage:1" },
+		});
+		await store.upsertSubscription(createAstrBotSubscription({ uid: "123456", name: "测试 UP" }));
+		expect(store.getSubscriptions()[0]?.routing.live).toEqual([]);
+
+		await store.upsertTarget({ ...target, enabled: true });
+
+		expect(store.getSubscriptions()[0]?.routing.live).toEqual([target.id]);
+		expect(store.getSubscriptions()[0]?.routing.liveEnd).toEqual([target.id]);
+	});
+
+	it("keeps a disabled target disabled and skips backfill when re-paired", async () => {
+		const dataDir = await makeTempDir();
+		const store = createAstrBotConfigStore({ dataDir });
+		await store.load();
+		const firstCode = store.createPairingCode(1_000);
+		const first = await store.confirmPairingCode(
+			firstCode.code,
+			{ unified_msg_origin: "aiocqhttp:GroupMessage:1", sessionName: "群" },
+			2_000,
+		);
+		const targetId = first?.target.id ?? "";
+		const created = store.getTargets().find((entry) => entry.id === targetId);
+		expect(created).toBeDefined();
+		if (created) await store.upsertTarget({ ...created, enabled: false });
+		await store.upsertSubscription(createAstrBotSubscription({ uid: "123456", name: "测试 UP" }));
+		expect(store.getSubscriptions()[0]?.routing.live).toEqual([]);
+
+		const secondCode = store.createPairingCode(3_000);
+		const second = await store.confirmPairingCode(
+			secondCode.code,
+			{ unified_msg_origin: "aiocqhttp:GroupMessage:1", sessionName: "群" },
+			4_000,
+		);
+
+		expect(second?.created).toBe(false);
+		expect(second?.target.enabled).toBe(false);
+		expect(store.getTargets().find((entry) => entry.id === targetId)?.enabled).toBe(false);
+		expect(store.getSubscriptions()[0]?.routing.live).toEqual([]);
+	});
+
 	it("migrates legacy root subscriptions while preserving the old file and writing a backup", async () => {
 		const dataDir = await makeTempDir();
 		const legacy = [createAstrBotSubscription({ uid: "123456", name: "测试 UP", dynamic: false })];

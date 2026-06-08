@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -9,18 +10,25 @@ const execFileAsync = promisify(execFile);
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const scriptPath = join(repoRoot, "scripts", "build-astrbot-page.mjs");
-const targetPath = join(repoRoot, "astrbot", "core", "pages", "dashboard", "index.html");
 
 describe("build-astrbot-page", () => {
-	it("builds the dashboard page into the AstrBot plugin page directory", async () => {
-		await execFileAsync(process.execPath, [scriptPath], {
-			cwd: repoRoot,
-			env: { ...process.env, NODE_ENV: "production" },
-			timeout: 120_000,
-		});
+	it("builds the dashboard page with crossorigin stripped for the sandboxed iframe", async () => {
+		// build 到临时目录而非真实 checkin 产物路径：既避免污染工作树，又防止 emptyOutDir
+		// 清空真实目录时与并行的 sync-astrbot-core 测试撞车。
+		const outDir = await mkdtemp(join(tmpdir(), "bn-astrbot-page-"));
+		try {
+			await execFileAsync(process.execPath, [scriptPath], {
+				cwd: repoRoot,
+				env: { ...process.env, NODE_ENV: "production", BN_ASTRBOT_PAGE_OUT_DIR: outDir },
+				timeout: 120_000,
+			});
 
-		const html = await readFile(targetPath, "utf8");
-		expect(html).toContain("./assets/index-");
-		expect(html).toContain("Bilibili Notify · AstrBot");
+			const html = await readFile(join(outDir, "index.html"), "utf8");
+			expect(html).toContain("./assets/index-");
+			expect(html).toContain("Bilibili Notify · AstrBot");
+			expect(html).not.toContain("crossorigin");
+		} finally {
+			await rm(outDir, { recursive: true, force: true });
+		}
 	});
 });
