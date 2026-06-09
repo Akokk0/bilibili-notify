@@ -18,7 +18,7 @@ import {
 	type AstrBotAiRequestQueueSnapshot,
 	type AstrBotAiRequestReceipt,
 } from "./ai-bridge.js";
-import { ASTRBOT_PUSH_TARGET, ASTRBOT_TARGET_ID, createCallbackSink } from "./callback-sink.js";
+import { createCallbackSink } from "./callback-sink.js";
 import {
 	type AstrBotConfigSnapshot,
 	type AstrBotConfigStore,
@@ -175,6 +175,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 	private loginFlow: LoginFlow | undefined;
 	private engines: SidecarEnginesRuntime | undefined;
 	private started = false;
+	private startBasePromise: Promise<void> | undefined;
 	private closing = false;
 	private authStartPromise: Promise<LoginSnapshot> | undefined;
 	private closePromise: Promise<void> | undefined;
@@ -206,10 +207,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 			sink: createCallbackSink({
 				events: this.events,
 				deliveries: this.deliveries,
-				targets: () => {
-					const targets = this.configStore.getTargets();
-					return targets.length > 0 ? targets : [ASTRBOT_PUSH_TARGET];
-				},
+				targets: () => this.configStore.getTargets(),
 			}),
 			store: this.subscriptions,
 			logger: this.serviceCtx.logger,
@@ -498,39 +496,44 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 	}
 
 	async pushTest(targetId: string, payload: NotificationPayload): Promise<DeliveryResult> {
-		const storedTarget = this.configStore.getTargets().find((target) => target.id === targetId);
-		const target =
-			storedTarget ?? (targetId === ASTRBOT_TARGET_ID ? ASTRBOT_PUSH_TARGET : undefined);
+		// 只接受真实绑定的 target；隐藏 fallback target 不允许测试推送（不再特判 ASTRBOT_TARGET_ID）。
+		const target = this.configStore.getTargets().find((entry) => entry.id === targetId);
 		if (!target) return { ok: false, latencyMs: 0, err: "target not found" };
 		if (!target.enabled) return { ok: false, latencyMs: 0, err: "target disabled" };
 		const result = await this.push.sendToTarget(target.id, payload);
-		if (storedTarget) {
-			await this.configStore.upsertTarget({
-				...storedTarget,
-				testStatus: {
-					ok: result.ok,
-					lastCheckedAt: new Date().toISOString(),
-					latencyMs: result.latencyMs,
-					err: result.err,
-				},
-			});
-		}
+		await this.configStore.upsertTarget({
+			...target,
+			testStatus: {
+				ok: result.ok,
+				lastCheckedAt: new Date().toISOString(),
+				latencyMs: result.latencyMs,
+				err: result.err,
+			},
+		});
 		return result;
 	}
 
 	private async startBase(signal?: AbortSignal): Promise<void> {
 		this.throwIfClosing();
 		if (this.started) return;
-		await this.storage.init();
-		throwIfAborted(signal);
-		this.throwIfClosing();
-		await this.configStore.load();
-		this.applyGlobals(this.configStore.getGlobals());
-		this.subscriptions.replaceAll(this.configStore.getSubscriptions());
-		throwIfAborted(signal);
-		this.throwIfClosing();
-		this.push.start();
-		this.started = true;
+		// 单例化：start() 与 HTTP 触发的 ensureAuthStarted() 并发时，守卫在末尾置位会让
+		// 两者双双穿过、把 storage.init/configStore.load 跑两遍。复用同一 promise（同 authStartPromise 模式）。
+		if (this.startBasePromise) return this.startBasePromise;
+		this.startBasePromise = (async () => {
+			await this.storage.init();
+			throwIfAborted(signal);
+			this.throwIfClosing();
+			await this.configStore.load();
+			this.applyGlobals(this.configStore.getGlobals());
+			this.subscriptions.replaceAll(this.configStore.getSubscriptions());
+			throwIfAborted(signal);
+			this.throwIfClosing();
+			this.push.start();
+			this.started = true;
+		})().finally(() => {
+			this.startBasePromise = undefined;
+		});
+		return this.startBasePromise;
 	}
 
 	private startEngines(): void {
@@ -649,7 +652,23 @@ function mergeSubscriptionPatch(
 			? (structuredClone(patch.overrides) as Subscription["overrides"])
 			: {};
 	}
+	pruneAtAllToRouting(merged);
 	return merged;
+}
+
+function pruneAtAllToRouting(subscription: Subscription): void {
+	// atAll.X 的 key 必须是 routing.X 的子集（schema refine）。PATCH 收缩 routing 后，
+	// 若 atAll 残留已不再被路由的 target，会撞 refine 报 500，故同步删掉。
+	// 整体替换 atAll（而非原地改 atAll[scope]）—— patch 不含 atAll 时 deepMerge 会浅拷贝
+	// 复用 current.atAll 引用，原地改会污染 store。
+	const atAll = { dynamic: {}, live: {} } as Subscription["atAll"];
+	for (const scope of ["dynamic", "live"] as const) {
+		const routed = new Set(subscription.routing[scope]);
+		atAll[scope] = Object.fromEntries(
+			Object.entries(subscription.atAll[scope]).filter(([targetId]) => routed.has(targetId)),
+		) as Record<string, boolean>;
+	}
+	subscription.atAll = atAll;
 }
 
 function deepMerge(base: unknown, patch: unknown): unknown {

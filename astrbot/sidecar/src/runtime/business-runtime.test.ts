@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ASTRBOT_ADAPTER_ID } from "./callback-sink.js";
+import { ASTRBOT_ADAPTER_ID, ASTRBOT_TARGET_ID } from "./callback-sink.js";
 import { createAstrBotSubscription } from "./persistence.js";
 
 const authMock = vi.hoisted(() => {
@@ -47,6 +47,7 @@ const pushMock = vi.hoisted(() => {
 	class BilibiliPush {
 		start = vi.fn();
 		stop = vi.fn();
+		sendToTarget = vi.fn(async () => ({ ok: true, latencyMs: 7 }));
 		sendPrivateMsg = vi.fn(async () => undefined);
 		sendErrorMsg = vi.fn(async () => undefined);
 		broadcastToFeature = vi.fn(async () => []);
@@ -148,6 +149,20 @@ describe("createBusinessRuntime", () => {
 			authStarted: false,
 			engines: { dynamic: false, live: false },
 		});
+	});
+
+	it("coalesces concurrent startBase work through public startup", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "bn-astrbot-runtime-"));
+		tempDirs.push(dataDir);
+		const runtime = createBusinessRuntime({ dataDir });
+		const loadSpy = vi.spyOn(runtime.configStore, "load");
+
+		await Promise.all([runtime.ensureAuthStarted(), runtime.ensureAuthStarted()]);
+
+		const storage = storageMock.instances[0] as { init: ReturnType<typeof vi.fn> };
+		expect(storage.init).toHaveBeenCalledTimes(1);
+		expect(loadSpy).toHaveBeenCalledTimes(1);
+		await runtime.close("test done");
 	});
 
 	it("loads subscriptions from the AstrBot config store before engines start", async () => {
@@ -312,6 +327,106 @@ describe("createBusinessRuntime", () => {
 		});
 		expect(runtime.listSubscriptions()).toHaveLength(1);
 		expect(runtime.listTargets()).toHaveLength(1);
+		await runtime.close("test done");
+	});
+
+	it("prunes atAll entries outside patched dynamic routing without mutating the stored subscription", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "bn-astrbot-runtime-"));
+		tempDirs.push(dataDir);
+		const runtime = createBusinessRuntime({ dataDir });
+		await runtime.configStore.load();
+		const targetA = "22222222-2222-4222-8222-222222222222";
+		const targetB = "33333333-3333-4333-8333-333333333333";
+		const base = createAstrBotSubscription(
+			{ uid: "123456", name: "测试 UP" },
+			{ defaultTargetIds: [targetA, targetB] },
+		);
+		const subscription = await runtime.upsertSubscription({
+			...base,
+			routing: { ...base.routing, dynamic: [targetA, targetB] },
+			atAll: { dynamic: { [targetA]: true, [targetB]: false }, live: {} },
+		});
+		const storedBefore = runtime.listSubscriptions()[0];
+
+		const patched = await runtime.patchSubscription(subscription.id, {
+			routing: { dynamic: [targetA] },
+		});
+
+		expect(patched.routing.dynamic).toEqual([targetA]);
+		expect(patched.atAll.dynamic).toEqual({ [targetA]: true });
+		expect(runtime.listSubscriptions()[0]?.atAll.dynamic).toEqual({ [targetA]: true });
+		expect(storedBefore?.atAll.dynamic).toEqual({ [targetA]: true, [targetB]: false });
+		await runtime.close("test done");
+	});
+
+	it("rejects pushTest for the hidden AstrBot fallback target", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "bn-astrbot-runtime-"));
+		tempDirs.push(dataDir);
+		const runtime = createBusinessRuntime({ dataDir });
+		await runtime.configStore.load();
+
+		const result = await runtime.pushTest(ASTRBOT_TARGET_ID, { kind: "text", text: "hello" });
+
+		expect(result).toMatchObject({ ok: false, err: "target not found" });
+		expect(runtime.listTargets()).toEqual([]);
+		await runtime.close("test done");
+	});
+
+	it("pushTest sends to an enabled target and writes testStatus", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "bn-astrbot-runtime-"));
+		tempDirs.push(dataDir);
+		const runtime = createBusinessRuntime({ dataDir });
+		await runtime.configStore.load();
+		const target = await runtime.upsertTarget({
+			id: "22222222-2222-4222-8222-222222222222",
+			name: "默认频道",
+			adapterId: ASTRBOT_ADAPTER_ID,
+			platform: "astrbot",
+			scope: "channel",
+			enabled: true,
+			session: {
+				unified_msg_origin: "astrbot://room-1",
+				platform: "astrbot",
+				messageType: "channel",
+				sessionName: "Room 1",
+			},
+		});
+
+		const result = await runtime.pushTest(target.id, { kind: "text", text: "hello" });
+
+		expect(result).toEqual({ ok: true, latencyMs: 7 });
+		expect(runtime.listTargets()[0]).toMatchObject({
+			id: target.id,
+			testStatus: { ok: true, latencyMs: 7 },
+		});
+		expect(runtime.listTargets()[0]?.testStatus?.lastCheckedAt).toEqual(expect.any(String));
+		await runtime.close("test done");
+	});
+
+	it("pushTest rejects disabled targets", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "bn-astrbot-runtime-"));
+		tempDirs.push(dataDir);
+		const runtime = createBusinessRuntime({ dataDir });
+		await runtime.configStore.load();
+		const target = await runtime.upsertTarget({
+			id: "33333333-3333-4333-8333-333333333333",
+			name: "停用频道",
+			adapterId: ASTRBOT_ADAPTER_ID,
+			platform: "astrbot",
+			scope: "channel",
+			enabled: false,
+			session: {
+				unified_msg_origin: "astrbot://room-disabled",
+				platform: "astrbot",
+				messageType: "channel",
+				sessionName: "Disabled Room",
+			},
+		});
+
+		const result = await runtime.pushTest(target.id, { kind: "text", text: "hello" });
+
+		expect(result).toMatchObject({ ok: false, err: "target disabled" });
+		expect(runtime.listTargets()[0]?.testStatus).toBeUndefined();
 		await runtime.close("test done");
 	});
 });

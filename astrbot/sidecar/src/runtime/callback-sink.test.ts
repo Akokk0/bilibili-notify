@@ -24,7 +24,8 @@ describe("createCallbackSink", () => {
 	it("serializes payloads into queue events", async () => {
 		const events = new SidecarEventQueue();
 		const deliveries = new SidecarDeliveryQueue({ events });
-		const sink = createCallbackSink({ events, deliveries });
+		// 显式提供 target：C4 后 sink 不再隐式回退到 ASTRBOT_PUSH_TARGET，需绑定真实 target 才投递。
+		const sink = createCallbackSink({ events, deliveries, target: ASTRBOT_PUSH_TARGET });
 		const payload = {
 			kind: "composite",
 			segments: [
@@ -89,6 +90,23 @@ describe("createCallbackSink", () => {
 		expect(
 			events.drain().some((event) => event.type === "notification" && event.targetId === target.id),
 		).toBe(true);
+	});
+
+	it("does not fall back to the hidden AstrBot target without a provider", async () => {
+		const events = new SidecarEventQueue();
+		const deliveries = new SidecarDeliveryQueue({ events });
+		const sink = createCallbackSink({ events, deliveries });
+
+		const result = await sink.send(ASTRBOT_TARGET_ID, { kind: "text", text: "hello" });
+
+		expect(sink.resolve(ASTRBOT_TARGET_ID)).toBeUndefined();
+		expect(sink.isAvailable(ASTRBOT_TARGET_ID)).toBe(false);
+		expect(result).toMatchObject({
+			ok: false,
+			err: `target unavailable: ${ASTRBOT_TARGET_ID}`,
+		});
+		expect(deliveries.claim()).toEqual([]);
+		expect(events.drain()).toEqual([]);
 	});
 
 	it("rejects unavailable targets without queueing an event", async () => {

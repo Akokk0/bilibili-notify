@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	ASTRBOT_ADAPTER_ID,
 	ASTRBOT_PUSH_ADAPTER,
@@ -13,9 +13,26 @@ import { createAstrBotConfigStore } from "./config-store.js";
 import { createAstrBotSubscription } from "./persistence.js";
 import { createSidecarMessageBus } from "./platform.js";
 
+const fsMock = vi.hoisted(() => ({
+	readFileCalls: [] as unknown[][],
+}));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs/promises")>();
+	return {
+		...actual,
+		readFile: vi.fn((...args: Parameters<typeof actual.readFile>) => {
+			fsMock.readFileCalls.push(args);
+			return actual.readFile(...args);
+		}),
+	};
+});
+
 const tempDirs: string[] = [];
 
 afterEach(async () => {
+	vi.clearAllMocks();
+	fsMock.readFileCalls.length = 0;
 	while (tempDirs.length > 0) {
 		const dir = tempDirs.pop();
 		if (dir) await rm(dir, { recursive: true, force: true });
@@ -40,6 +57,27 @@ describe("createAstrBotConfigStore", () => {
 		expect(await readJson(join(dataDir, "state", "subscriptions.json"))).toEqual([]);
 		expect(await readJson(join(dataDir, "state", "adapters.json"))).toEqual([ASTRBOT_PUSH_ADAPTER]);
 		expect(await readJson(join(dataDir, "state", "targets.json"))).toEqual([]);
+	});
+
+	it("coalesces concurrent load calls into one filesystem read", async () => {
+		const dataDir = await makeTempDir();
+		const store = createAstrBotConfigStore({ dataDir });
+		const metaPath = join(dataDir, "state", "meta.json");
+
+		await Promise.all([store.load(), store.load()]);
+
+		expect(fsMock.readFileCalls.filter(([path]) => String(path) === metaPath)).toHaveLength(1);
+	});
+
+	it("skips filesystem reads after load completes", async () => {
+		const dataDir = await makeTempDir();
+		const store = createAstrBotConfigStore({ dataDir });
+		await store.load();
+		fsMock.readFileCalls.length = 0;
+
+		await store.load();
+
+		expect(fsMock.readFileCalls).toEqual([]);
 	});
 
 	it("removes hidden fallback target state once a real AstrBot target exists", async () => {

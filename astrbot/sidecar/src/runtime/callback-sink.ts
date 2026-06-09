@@ -43,9 +43,10 @@ export interface CallbackSinkOptions {
 }
 
 export function createCallbackSink(options: CallbackSinkOptions): NotificationSink {
-	const fallbackTarget = options.target ?? ASTRBOT_PUSH_TARGET;
 	const resolveTarget = (targetId: string): AstrBotPushTarget | undefined => {
-		const targets = options.targets?.() ?? [fallbackTarget];
+		// 不回退到隐藏 fallback target：真实 targets 为空时返回 undefined（不投递），
+		// 避免隐藏的 ASTRBOT_PUSH_TARGET 经默认 sink 漏出真实投递（死代码与新设计相悖）。
+		const targets = options.targets?.() ?? (options.target ? [options.target] : []);
 		return targets.find((target) => target.id === targetId);
 	};
 

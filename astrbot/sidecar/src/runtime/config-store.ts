@@ -110,6 +110,7 @@ class DefaultAstrBotConfigStore implements AstrBotConfigStore {
 	private targets: AstrBotPushTarget[] = [];
 	private pairingCodes: PairingCodeEntry[] = [];
 	private loaded = false;
+	private loadPromise: Promise<void> | undefined;
 	private writeQueue: Promise<void> = Promise.resolve();
 
 	constructor(options: CreateAstrBotConfigStoreOptions) {
@@ -120,14 +121,22 @@ class DefaultAstrBotConfigStore implements AstrBotConfigStore {
 
 	async load(): Promise<void> {
 		if (this.loaded) return;
-		await mkdir(this.stateDir, { recursive: true });
-		await this.loadMeta();
-		await this.loadGlobals();
-		await this.loadSubscriptions();
-		await this.loadAdapters();
-		await this.loadTargets();
-		await this.pruneHiddenFallbackRoutes();
-		this.loaded = true;
+		// 单例化：并发 load() 复用同一 promise，避免守卫在末尾置位时双双穿过、
+		// 把 load（含游离于 transact 之外的 prune 写）跑两遍互相竞争。
+		if (this.loadPromise) return this.loadPromise;
+		this.loadPromise = (async () => {
+			await mkdir(this.stateDir, { recursive: true });
+			await this.loadMeta();
+			await this.loadGlobals();
+			await this.loadSubscriptions();
+			await this.loadAdapters();
+			await this.loadTargets();
+			await this.pruneHiddenFallbackRoutes();
+			this.loaded = true;
+		})().finally(() => {
+			this.loadPromise = undefined;
+		});
+		return this.loadPromise;
 	}
 
 	getGlobals(): GlobalConfig {

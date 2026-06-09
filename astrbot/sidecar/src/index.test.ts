@@ -28,8 +28,6 @@ describe("sidecar launch options", () => {
 				"astrbot-openai",
 				"--log-level",
 				"debug",
-				"--token",
-				"runtime-secret",
 				"--version",
 				"v0.1.0",
 			],
@@ -54,8 +52,21 @@ describe("sidecar launch options", () => {
 			aiBackend: "own",
 			aiProviderId: "astrbot-openai",
 			logLevel: "debug",
-			authToken: "runtime-secret",
+			authToken: "env-secret",
 			version: "v0.1.0",
 		});
+	});
+
+	it("refuses to read sensitive secrets from argv", () => {
+		// token / cookie 加密 key 只能走 env；argv 传 --token 必须被 parseArgs 直接拒绝，
+		// 否则密钥会经 ps / /proc 泄漏给本机任意用户。
+		expect(() => parseSidecarLaunchOptions(["--token", "argv-secret"], {})).toThrow();
+		expect(() => parseSidecarLaunchOptions(["--cookie-encryption-key", "argv-key"], {})).toThrow();
+		const options = parseSidecarLaunchOptions([], {
+			BN_SIDECAR_TOKEN: "env-only",
+			BN_SIDECAR_COOKIE_ENCRYPTION_KEY: "env-key",
+		});
+		expect(options.authToken).toBe("env-only");
+		expect(options.cookieEncryptionKey).toBe("env-key");
 	});
 });

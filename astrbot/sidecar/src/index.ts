@@ -68,9 +68,7 @@ export function parseSidecarLaunchOptions(
 			"ai-backend": { type: "string" },
 			"ai-provider-id": { type: "string" },
 			"log-level": { type: "string" },
-			token: { type: "string" },
 			"user-agent": { type: "string" },
-			"cookie-encryption-key": { type: "string" },
 			version: { type: "string" },
 		},
 		allowPositionals: true,
@@ -82,10 +80,11 @@ export function parseSidecarLaunchOptions(
 	const aiBackend = normalizeAiBackend(parsed.values["ai-backend"] ?? env.BN_SIDECAR_AI_BACKEND);
 	const aiProviderId = parsed.values["ai-provider-id"] ?? env.BN_SIDECAR_AI_PROVIDER_ID;
 	const logLevel = parseOptionalLogLevel(parsed.values["log-level"] ?? env.BN_SIDECAR_LOG_LEVEL);
-	const authToken = parsed.values.token ?? env.BN_SIDECAR_TOKEN;
+	// 敏感项（sidecar token、cookie 加密 key）只从 env 读，绝不接受 argv —— argv 对本机
+	// 任意用户 ps / /proc 可见会泄漏密钥；官方启动器本就只用 env 传。
+	const authToken = env.BN_SIDECAR_TOKEN;
 	const userAgent = parsed.values["user-agent"] ?? env.BN_SIDECAR_USER_AGENT;
-	const cookieEncryptionKey =
-		parsed.values["cookie-encryption-key"] ?? env.BN_SIDECAR_COOKIE_ENCRYPTION_KEY;
+	const cookieEncryptionKey = env.BN_SIDECAR_COOKIE_ENCRYPTION_KEY;
 	const version = parsed.values.version ?? env.BN_SIDECAR_VERSION ?? DEFAULT_VERSION;
 	return {
 		host,
