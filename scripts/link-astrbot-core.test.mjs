@@ -98,6 +98,8 @@ describe("link-astrbot-core", () => {
 		const astrbotRoot = join(tempRoot, "AstrBot");
 		const source = await createFixtureSource(tempRoot);
 		const target = join(astrbotRoot, "data", "plugins", "astrbot_plugin_bilibili_notify");
+		// Existing plugin install: marker present + a stale file to be replaced.
+		await writeFixtureFile(target, "main.py", "OLD = True\n");
 		await writeFixtureFile(target, "stale.txt", "old\n");
 
 		await execFileAsync(
@@ -134,5 +136,83 @@ describe("link-astrbot-core", () => {
 		const stats = await lstat(target);
 		expect(stats.isSymbolicLink()).toBe(true);
 		expect(await readlink(target)).toBe(pluginSource);
+	});
+
+	it("preserves a running instance's sidecar/state and sidecar/logs on --force copy", async () => {
+		const tempRoot = await mkdtemp(join(tmpdir(), "bn-link-"));
+		const astrbotRoot = join(tempRoot, "AstrBot");
+		const source = await createFixtureSource(tempRoot);
+		const target = join(astrbotRoot, "data", "plugins", "astrbot_plugin_bilibili_notify");
+
+		// Simulate an already-running plugin install with persisted runtime state.
+		await writeFixtureFile(target, "main.py", "OLD = True\n");
+		await writeFixtureFile(target, "stale.txt", "old\n");
+		await writeFixtureFile(target, "sidecar/state/cookies.json", '{"SESSDATA":"keep-me"}\n');
+		await writeFixtureFile(target, "sidecar/logs/runtime.log", "keep this log\n");
+		await writeFixtureFile(target, "sidecar/cache/blob.bin", "keep cache\n");
+		// Stale non-runtime sidecar child that should be replaced.
+		await writeFixtureFile(target, "sidecar/old-junk/junk.txt", "delete me\n");
+
+		await execFileAsync(
+			process.execPath,
+			[scriptPath, "--astrbot-root", astrbotRoot, "--source", source, "--force"],
+			{ cwd: repoRoot, env: { ...process.env }, timeout: 30_000 },
+		);
+
+		// Runtime state survives.
+		expect(await readFile(join(target, "sidecar", "state", "cookies.json"), "utf8")).toContain(
+			"keep-me",
+		);
+		expect(await readFile(join(target, "sidecar", "logs", "runtime.log"), "utf8")).toContain(
+			"keep this log",
+		);
+		expect(await readFile(join(target, "sidecar", "cache", "blob.bin"), "utf8")).toContain(
+			"keep cache",
+		);
+		// Stale files replaced / removed; fresh source copied in.
+		expect(await exists(join(target, "stale.txt"))).toBe(false);
+		expect(await exists(join(target, "sidecar", "old-junk"))).toBe(false);
+		expect(await readFile(join(target, "main.py"), "utf8")).toContain("PLUGIN_NAME");
+		expect(await readFile(join(target, "sidecar", "app", "index.mjs"), "utf8")).toContain(
+			"sidecar",
+		);
+	});
+
+	it("refuses to delete a non-empty target that is not a bilibili-notify plugin", async () => {
+		const tempRoot = await mkdtemp(join(tmpdir(), "bn-link-"));
+		const astrbotRoot = join(tempRoot, "AstrBot");
+		const source = await createFixtureSource(tempRoot);
+		const target = join(astrbotRoot, "data", "plugins", "astrbot_plugin_bilibili_notify");
+		// Non-plugin directory: no marker file, but real user content.
+		await writeFixtureFile(target, "important.txt", "do not delete\n");
+		await writeFixtureFile(target, "nested/keep.dat", "keep\n");
+
+		await expect(
+			execFileAsync(
+				process.execPath,
+				[scriptPath, "--astrbot-root", astrbotRoot, "--source", source, "--force"],
+				{ cwd: repoRoot, env: { ...process.env }, timeout: 30_000 },
+			),
+		).rejects.toThrow(/拒绝删除|非空且不是/);
+
+		expect(await exists(join(target, "important.txt"))).toBe(true);
+		expect(await exists(join(target, "nested", "keep.dat"))).toBe(true);
+		// No source content was copied in.
+		expect(await exists(join(target, "sidecar", "app", "index.mjs"))).toBe(false);
+	});
+
+	it("performs a fresh copy install into a missing target", async () => {
+		const tempRoot = await mkdtemp(join(tmpdir(), "bn-link-"));
+		const astrbotRoot = join(tempRoot, "AstrBot");
+		const source = await createFixtureSource(tempRoot);
+		const target = join(astrbotRoot, "data", "plugins", "astrbot_plugin_bilibili_notify");
+
+		await execFileAsync(
+			process.execPath,
+			[scriptPath, "--astrbot-root", astrbotRoot, "--source", source],
+			{ cwd: repoRoot, env: { ...process.env }, timeout: 30_000 },
+		);
+
+		expect(await readFile(join(target, "main.py"), "utf8")).toContain("PLUGIN_NAME");
 	});
 });

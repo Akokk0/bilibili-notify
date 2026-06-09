@@ -1,7 +1,8 @@
-import { cp, rm } from "node:fs/promises";
+import { cp } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { assertSafeTarget, clearTargetPreservingRuntime } from "./astrbot-core-target.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -20,7 +21,8 @@ const targetDir =
 if (!targetDir) {
 	throw new Error("请传入 --target 或设置 ASTRBOT_CORE_TARGET");
 }
-await rm(targetDir, { recursive: true, force: true });
+await assertSafeTarget(targetDir);
+await clearTargetPreservingRuntime(targetDir);
 await cp(sourceDir, targetDir, {
 	recursive: true,
 	filter: (path) => !shouldSkip(path),

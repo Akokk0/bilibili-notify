@@ -1,7 +1,8 @@
-import { cp, lstat, mkdir, rm, symlink } from "node:fs/promises";
+import { cp, mkdir, symlink } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { assertSafeTarget, clearTargetPreservingRuntime, exists } from "./astrbot-core-target.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -25,16 +26,33 @@ if (!astrbotRoot) {
 const sourceDir = resolve(parsed.values.source ?? resolve(repoRoot, "astrbot/core"));
 const targetDir = resolve(astrbotRoot, "data/plugins/astrbot_plugin_bilibili_notify");
 await mkdir(dirname(targetDir), { recursive: true });
-if (await exists(targetDir)) {
-	if (!parsed.values.force) {
-		throw new Error(`目标已存在: ${targetDir}。如需覆盖，请加 --force。`);
-	}
-	await rm(targetDir, { recursive: true, force: true });
+const targetExists = await exists(targetDir);
+if (targetExists && !parsed.values.force) {
+	throw new Error(`目标已存在: ${targetDir}。如需覆盖，请加 --force。`);
 }
 if (parsed.values.symlink) {
+	// Symlink mode points the target at the source tree, so there is no
+	// target-side runtime to preserve. Still guard against wiping a non-plugin
+	// directory the user pointed us at by mistake.
+	if (targetExists) {
+		await assertSafeTarget(targetDir);
+		await clearTargetPreservingRuntime(targetDir);
+		// A symlink cannot share its inode with surviving runtime dirs, so the
+		// target path itself must be free before we create the link.
+		if (await exists(targetDir)) {
+			throw new Error(
+				`无法以 symlink 模式覆盖 ${targetDir}: 目标内仍保留运行态数据` +
+					`（sidecar/state · cache · logs）。请改用默认 copy 模式，或先手动备份并清空运行态。`,
+			);
+		}
+	}
 	await symlink(sourceDir, targetDir, process.platform === "win32" ? "junction" : "dir");
 	console.log(`linked ${targetDir} -> ${sourceDir}`);
 } else {
+	if (targetExists) {
+		await assertSafeTarget(targetDir);
+		await clearTargetPreservingRuntime(targetDir);
+	}
 	await cp(sourceDir, targetDir, { recursive: true, filter: shouldCopy });
 	console.log(`copied ${sourceDir} -> ${targetDir}`);
 }
@@ -63,18 +81,6 @@ function shouldCopy(path) {
 		return false;
 	}
 	return true;
-}
-
-async function exists(path) {
-	try {
-		await lstat(path);
-		return true;
-	} catch (error) {
-		if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-			return false;
-		}
-		throw error;
-	}
 }
 
 function resolvePositionalValue(positionals, flag) {
