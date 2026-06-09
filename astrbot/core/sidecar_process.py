@@ -57,9 +57,11 @@ PROXY_ALLOWED_POST_PATHS = {
     "danger/clear-overrides",
 }
 PROXY_ALLOWED_ID_PREFIXES = {"subscriptions", "subs", "targets"}
+SENSITIVE_KEY_CORE = r"token|secret|key|cookie|sessdata|bili_jct|dedeuserid"
 SENSITIVE_PATTERN = re.compile(
     r"(Bearer\s+[A-Za-z0-9._~+\-/]+=*)|"
-    r"((?:token|secret|key|cookie|SESSDATA|bili_jct)=([^\s;&]+))|"
+    rf"(\"\w*(?:{SENSITIVE_KEY_CORE})\w*\"\s*:\s*)\"(?:[^\"\\]|\\.)*\"|"
+    rf"((?:{SENSITIVE_KEY_CORE})=([^\s;&]+))|"
     r"(https?://[^\s\"']*(?:token|secret|key|cookie)[^\s\"']*)",
     re.IGNORECASE,
 )
@@ -1022,6 +1024,10 @@ def _sensitive_replacement(match: re.Match[str]) -> str:
     lower_text = text.lower()
     if lower_text.startswith("bearer "):
         return "Bearer [REDACTED]"
+    if text.startswith('"'):
+        # JSON field form: "key": "value" -> keep the key + separator, redact value.
+        prefix = match.group(2)
+        return f'{prefix}"[REDACTED]"'
     if lower_text.startswith(("http://", "https://")):
         return "[REDACTED_URL]"
     key = text.split("=", 1)[0]

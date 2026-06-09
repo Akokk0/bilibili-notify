@@ -19,7 +19,12 @@ import {
 } from "../runtime/event-queue.js";
 import { createSidecarSnapshot } from "../runtime/state.js";
 import type { SidecarHttpRuntime } from "./server.js";
-import { closeSidecarServer, createSidecarHttpServer, listenSidecarServer } from "./server.js";
+import {
+	closeSidecarServer,
+	createSidecarHttpServer,
+	listenSidecarServer,
+	sanitizeText,
+} from "./server.js";
 
 const TEST_TOKEN = "test-token";
 const AUTH_HEADERS = { authorization: `Bearer ${TEST_TOKEN}` };
@@ -742,3 +747,33 @@ function deepMerge(base: unknown, patch: unknown): unknown {
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+describe("sanitizeText (M4 JSON-field redaction)", () => {
+	it("redacts JSON-serialized sensitive fields, value only", () => {
+		expect(sanitizeText('{"SESSDATA":"abc123"}')).toBe('{"SESSDATA":"[REDACTED]"}');
+		expect(sanitizeText('{"token": "xyz"}')).toBe('{"token": "[REDACTED]"}');
+		expect(sanitizeText('{"cookie_encryption_key": "deadbeef"}')).toBe(
+			'{"cookie_encryption_key": "[REDACTED]"}',
+		);
+		expect(sanitizeText('{"access_token":"AT","DedeUserID":"999","bili_jct":"jjj"}')).toBe(
+			'{"access_token":"[REDACTED]","DedeUserID":"[REDACTED]","bili_jct":"[REDACTED]"}',
+		);
+		// escaped quote inside the value must be consumed, not leak the tail
+		expect(sanitizeText('{"webhook_key":"wk\\"end"}')).toBe('{"webhook_key":"[REDACTED]"}');
+	});
+
+	it("preserves non-sensitive JSON fields", () => {
+		expect(sanitizeText('{"name":"normal","uid":"123456"}')).toBe(
+			'{"name":"normal","uid":"123456"}',
+		);
+		expect(sanitizeText('{"description":"contains the word secretly hidden"}')).toBe(
+			'{"description":"contains the word secretly hidden"}',
+		);
+	});
+
+	it("does not regress key=value, Bearer, and URL redaction", () => {
+		expect(sanitizeText("Bearer secret-token")).toBe("Bearer [REDACTED]");
+		expect(sanitizeText("send failed token=abc")).toBe("send failed token=[REDACTED]");
+		expect(sanitizeText("https://example.invalid/?token=abc")).toBe("[REDACTED_URL]");
+	});
+});

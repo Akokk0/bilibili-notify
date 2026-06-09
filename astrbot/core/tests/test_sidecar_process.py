@@ -22,6 +22,7 @@ from sidecar_process import (
     parse_node_major_version,
     payload_contains_at_all,
     sanitize_proxy_payload,
+    sanitize_sensitive_text,
     start_sidecar,
 )
 
@@ -357,6 +358,41 @@ def test_sanitize_proxy_payload_redacts_sensitive_error_details() -> None:
         "url": "[REDACTED_URL]",
         "upper_url": "[REDACTED_URL]",
     }
+
+
+def test_sanitize_sensitive_text_redacts_json_field_form() -> None:
+    # JSON-serialized sensitive fields must not leak through error summaries/details.
+    assert sanitize_sensitive_text('{"SESSDATA":"abc123"}') == '{"SESSDATA":"[REDACTED]"}'
+    assert sanitize_sensitive_text('{"token": "xyz"}') == '{"token": "[REDACTED]"}'
+    assert (
+        sanitize_sensitive_text('{"cookie_encryption_key": "deadbeef"}')
+        == '{"cookie_encryption_key": "[REDACTED]"}'
+    )
+    assert (
+        sanitize_sensitive_text('{"access_token":"AT","DedeUserID":"999","bili_jct":"jjj"}')
+        == '{"access_token":"[REDACTED]","DedeUserID":"[REDACTED]","bili_jct":"[REDACTED]"}'
+    )
+    # Escaped quotes inside a sensitive value must be fully consumed, not leak the tail.
+    assert sanitize_sensitive_text('{"webhook_key":"wk\\"end"}') == '{"webhook_key":"[REDACTED]"}'
+
+
+def test_sanitize_sensitive_text_preserves_non_sensitive_json_fields() -> None:
+    # Non-sensitive fields (incl. ones whose value merely mentions a keyword) survive.
+    assert (
+        sanitize_sensitive_text('{"name":"normal","uid":"123456"}')
+        == '{"name":"normal","uid":"123456"}'
+    )
+    assert (
+        sanitize_sensitive_text('{"description":"contains the word secretly hidden"}')
+        == '{"description":"contains the word secretly hidden"}'
+    )
+
+
+def test_sanitize_sensitive_text_keeps_key_value_and_bearer_forms() -> None:
+    # JSON support must not regress the original key=value / Bearer / URL redaction.
+    assert sanitize_sensitive_text("Bearer secret-token") == "Bearer [REDACTED]"
+    assert sanitize_sensitive_text("failed token=abc") == "failed token=[REDACTED]"
+    assert sanitize_sensitive_text("https://example.invalid/?token=abc") == "[REDACTED_URL]"
 
 
 def test_build_astrbot_message_chain_converts_rich_payload_and_at_all_fallback() -> None:

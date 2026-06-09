@@ -1108,10 +1108,16 @@ function writeText(res: ServerResponse, statusCode: number, text: string): void 
 	res.end(`${text}\n`);
 }
 
-function sanitizeText(value: string): string {
+const SENSITIVE_KEY_CORE = "token|secret|key|cookie|sessdata|bili_jct|dedeuserid";
+
+export function sanitizeText(value: string): string {
 	return value
 		.replace(/Bearer\s+[A-Za-z0-9._~+\-/]+=*/gi, "Bearer [REDACTED]")
-		.replace(/(token|secret|key|cookie|SESSDATA|bili_jct)=([^\s;&]+)/gi, "$1=[REDACTED]")
+		.replace(
+			new RegExp(`("\\w*(?:${SENSITIVE_KEY_CORE})\\w*"\\s*:\\s*)"(?:[^"\\\\]|\\\\.)*"`, "gi"),
+			'$1"[REDACTED]"',
+		)
+		.replace(new RegExp(`(${SENSITIVE_KEY_CORE})=([^\\s;&]+)`, "gi"), "$1=[REDACTED]")
 		.replace(/(https?:\/\/[^\s"']*(?:token|secret|key|cookie)[^\s"']*)/gi, "[REDACTED_URL]");
 }
 
