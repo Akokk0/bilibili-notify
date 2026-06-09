@@ -26,6 +26,18 @@ export function buildGlobalsPatch(draft: GlobalConfig): Partial<GlobalConfig> {
 	};
 }
 
+/**
+ * 解析数字输入框的原始字符串值。`Number("") === 0`,直接 `Number(raw)` 会在用户清空输入框时
+ * 静默写 0,继而触发 zod min/enum 校验失败(如 healthCheckMinutes min 5、minGuardLevel 仅 1|2|3)。
+ * 此 helper 在空字符串/NaN 时回退到 fallback(通常为当前有效值),从而保留上一个合法值而非写 0。
+ * 不在此做范围 clamp —— 各字段约束不同,由调用方/Input 的 min/max 与 zod 负责。
+ */
+export function parseNumberInput(raw: string, fallback: number): number {
+	if (raw.trim() === "") return fallback;
+	const parsed = Number(raw);
+	return Number.isNaN(parsed) ? fallback : parsed;
+}
+
 export function linesToList(value: string): string[] {
 	return value
 		.split(/\r?\n|,/)
@@ -56,7 +68,23 @@ export function withRouteTarget(
 }
 
 export function cleanOverrides(overrides: SubscriptionOverrides): SubscriptionOverrides {
-	return removeEmpty(cloneConfig(overrides)) as SubscriptionOverrides;
+	const cleaned = removeEmpty(cloneConfig(overrides)) as SubscriptionOverrides;
+	if (cleaned.ai && isInheritOnlyAi(cleaned.ai)) {
+		delete cleaned.ai;
+	}
+	return cleaned;
+}
+
+/**
+ * AI override section 与其它 section 不对称:其它 section 初始化为 `{}`,被 removeEmpty 视为空;
+ * AI 初始化为 `{ preset: "inherit" }` 这一非空占位,removeEmpty 会保留它,导致"只开 AI 覆盖、不填字段、
+ * 保存"后 toggle 复活。此函数判断一个 (已 removeEmpty 过的) ai section 是否只剩继承占位、无实质覆盖值:
+ * preset 仍为 "inherit" 且 persona/dynamicPrompt/liveSummaryPrompt/temperature 均已被 removeEmpty 清掉。
+ * 一旦 preset 选成 "custom" / preset.id,或填了任意实质字段,即视为真正的覆盖,保留不动。
+ */
+function isInheritOnlyAi(ai: NonNullable<SubscriptionOverrides["ai"]>): boolean {
+	if (ai.preset !== "inherit") return false;
+	return Object.keys(ai).every((key) => key === "preset");
 }
 
 export function targetDisplayName(targetId: string, targets: readonly { id: string; name: string }[]): string {

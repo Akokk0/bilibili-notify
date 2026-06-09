@@ -15,7 +15,14 @@ import {
 	TextArea,
 	Toggle,
 } from "../components/ui";
-import { buildGlobalsPatch, cloneConfig, isDirty, linesToList, listToLines } from "../lib/config";
+import {
+	buildGlobalsPatch,
+	cloneConfig,
+	isDirty,
+	linesToList,
+	listToLines,
+	parseNumberInput,
+} from "../lib/config";
 import { loginQrImageSrc, loginResponseSummary } from "../lib/login";
 
 interface SettingsTabProps {
@@ -210,7 +217,10 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 							value={draft.app.healthCheckMinutes}
 							onChange={(event) =>
 								updateDraft((next) => {
-									next.app.healthCheckMinutes = Number(event.target.value);
+									next.app.healthCheckMinutes = parseNumberInput(
+										event.target.value,
+										next.app.healthCheckMinutes,
+									);
 								})
 							}
 						/>
@@ -223,7 +233,10 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 							value={draft.app.historyRetentionDays}
 							onChange={(event) =>
 								updateDraft((next) => {
-									next.app.historyRetentionDays = Number(event.target.value);
+									next.app.historyRetentionDays = parseNumberInput(
+										event.target.value,
+										next.app.historyRetentionDays,
+									);
 								})
 							}
 						/>
@@ -236,7 +249,10 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 							value={draft.app.logRetentionDays}
 							onChange={(event) =>
 								updateDraft((next) => {
-									next.app.logRetentionDays = Number(event.target.value);
+									next.app.logRetentionDays = parseNumberInput(
+										event.target.value,
+										next.app.logRetentionDays,
+									);
 								})
 							}
 						/>
@@ -373,7 +389,10 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 							value={draft.defaults.filters.minScPrice}
 							onChange={(event) =>
 								updateDraft((next) => {
-									next.defaults.filters.minScPrice = Number(event.target.value);
+									next.defaults.filters.minScPrice = parseNumberInput(
+										event.target.value,
+										next.defaults.filters.minScPrice,
+									);
 								})
 							}
 						/>
@@ -386,7 +405,10 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 							value={draft.defaults.filters.minGuardLevel}
 							onChange={(event) =>
 								updateDraft((next) => {
-									next.defaults.filters.minGuardLevel = Number(event.target.value) as 1 | 2 | 3;
+									next.defaults.filters.minGuardLevel = parseNumberInput(
+										event.target.value,
+										next.defaults.filters.minGuardLevel,
+									) as 1 | 2 | 3;
 								})
 							}
 						/>
@@ -399,7 +421,10 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 							value={draft.defaults.schedule.pushTime}
 							onChange={(event) =>
 								updateDraft((next) => {
-									next.defaults.schedule.pushTime = Number(event.target.value);
+									next.defaults.schedule.pushTime = parseNumberInput(
+										event.target.value,
+										next.defaults.schedule.pushTime,
+									);
 								})
 							}
 						/>
@@ -595,7 +620,10 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 							value={draft.defaults.ai.temperature}
 							onChange={(event) =>
 								updateDraft((next) => {
-									next.defaults.ai.temperature = Number(event.target.value);
+									next.defaults.ai.temperature = parseNumberInput(
+										event.target.value,
+										next.defaults.ai.temperature,
+									);
 								})
 							}
 						/>
