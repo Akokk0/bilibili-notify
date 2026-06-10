@@ -35,3 +35,6 @@ apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/
 apps/desktop/src-tauri/resources/
 apps/desktop/.tauri/
+
+# AstrBot 本地运行时数据(cmd_config / t2i_templates 等),不入库
+/data/
