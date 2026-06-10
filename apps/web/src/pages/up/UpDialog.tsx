@@ -117,6 +117,21 @@ function inferCustomSet(sub: Subscription | null, targets: PushTarget[]): Set<st
 	return out;
 }
 
+export function detachTargetFromDraft(d: Subscription, targetId: string): Subscription {
+	const routing = { ...d.routing };
+	for (const k of FEATURE_KEYS) {
+		routing[k] = routing[k].filter((id) => id !== targetId);
+	}
+	let atAll = d.atAll;
+	for (const scope of ["dynamic", "live"] as const) {
+		if (targetId in atAll[scope]) {
+			const { [targetId]: _gone, ...rest } = atAll[scope];
+			atAll = { ...atAll, [scope]: rest };
+		}
+	}
+	return { ...d, routing, atAll };
+}
+
 export function UpDialog({
 	sub,
 	targets,
@@ -251,11 +266,7 @@ export function UpDialog({
 	function detachTarget(targetId: string): void {
 		setDraft((d) => {
 			if (!d) return d;
-			const routing = { ...d.routing };
-			for (const k of FEATURE_KEYS) {
-				routing[k] = routing[k].filter((id) => id !== targetId);
-			}
-			return { ...d, routing };
+			return detachTargetFromDraft(d, targetId);
 		});
 		setCustomSet((prev) => {
 			if (!prev.has(targetId)) return prev;
@@ -374,11 +385,7 @@ export function UpDialog({
 	function removeStaleId(id: string): void {
 		setDraft((d) => {
 			if (!d) return d;
-			const routing = { ...d.routing };
-			for (const k of FEATURE_KEYS) {
-				routing[k] = routing[k].filter((rid) => rid !== id);
-			}
-			return { ...d, routing };
+			return detachTargetFromDraft(d, id);
 		});
 	}
 

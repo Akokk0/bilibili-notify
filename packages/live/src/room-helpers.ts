@@ -26,7 +26,19 @@ export class LiveRoomAccessDeniedError extends Error {
 	}
 }
 
+export function describeLiveRoomDanmuPreflightFallback(
+	info: LiveRoomDanmuInfo,
+): string | undefined {
+	const message = info.message || info.msg;
+	const messageSuffix = message ? ` message=${message}` : "";
+	// -352 是 B 站常见风控/校验拦截码。它说明这次 HTTP 预检不可信,不等价于房间
+	// 永久不可访问;旧的直接 WS 建连路径可能仍然可用,所以只能降级回退,不能硬停。
+	if (info.code === -352) return `B 站返回 code=${info.code}${messageSuffix}`;
+	return undefined;
+}
+
 export function describeLiveRoomDanmuAccessDenied(info: LiveRoomDanmuInfo): string | undefined {
+	if (describeLiveRoomDanmuPreflightFallback(info)) return undefined;
 	const message = info.message || info.msg;
 	const messageSuffix = message ? ` message=${message}` : "";
 	if (info.code !== 0) return `B 站返回 code=${info.code}${messageSuffix}`;
@@ -86,6 +98,12 @@ export class RoomContext extends RoomContextBase {
 			const message = e instanceof Error ? e.message : String(e);
 			this.logger.warn(`[conn] 获取弹幕连接信息异常，房间 [${roomId}]：${message}`);
 			return false;
+		}
+		const fallbackReason = describeLiveRoomDanmuPreflightFallback(danmuInfo);
+		if (fallbackReason) {
+			this.logger.warn(
+				`[conn] 直播间 [${roomId}] 弹幕连接预检被风控拦截：${fallbackReason}，回退到直接建连`,
+			);
 		}
 		const deniedReason = describeLiveRoomDanmuAccessDenied(danmuInfo);
 		if (deniedReason) {

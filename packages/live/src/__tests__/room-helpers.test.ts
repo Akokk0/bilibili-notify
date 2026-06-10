@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { describeLiveRoomDanmuAccessDenied } from "../room-helpers";
+import {
+	describeLiveRoomDanmuAccessDenied,
+	describeLiveRoomDanmuPreflightFallback,
+} from "../room-helpers";
 
 describe("describeLiveRoomDanmuAccessDenied", () => {
 	it("accepts a complete danmu info response", () => {
@@ -19,6 +22,16 @@ describe("describeLiveRoomDanmuAccessDenied", () => {
 				data: null,
 			}),
 		).toBe("B 站返回 code=-400 message=room is encrypted");
+	});
+
+	it("treats -352 as preflight risk-control fallback instead of hard denial", () => {
+		const info = {
+			code: -352,
+			message: "-352",
+			data: null,
+		};
+		expect(describeLiveRoomDanmuPreflightFallback(info)).toBe("B 站返回 code=-352 message=-352");
+		expect(describeLiveRoomDanmuAccessDenied(info)).toBeUndefined();
 	});
 
 	it("rejects missing token or host list", () => {
