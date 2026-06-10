@@ -3,6 +3,7 @@ import { GuardLevel, type MsgHandler } from "blive-message-listener";
 import { DateTime } from "luxon";
 import { LivePushType } from "./push-like";
 import { GUARD_LEVEL_IMG } from "./room-context";
+import { LiveRoomAccessDeniedError } from "./room-helpers";
 import { LIVE_EVENT_COOLDOWN, RoomSessionBase } from "./room-session-base";
 import { buildRoomLink } from "./template-renderer";
 import { LiveType } from "./types";
@@ -254,6 +255,14 @@ export class RoomSession extends RoomSessionBase {
 					() => this.cancelled,
 				);
 			} catch (e) {
+				if (e instanceof LiveRoomAccessDeniedError) {
+					this.reconnectAttempts = 0;
+					this.setLiveStatus(false);
+					this.cancelPeriodicTimer();
+					this.cancel();
+					this.ctx.stopMonitoring(e.message, this.sub.roomId);
+					return;
+				}
 				this.ctx.logger.warn(
 					`[conn] 直播间 [${this.sub.roomId}] 重连发起异常:${(e as Error).message}`,
 				);

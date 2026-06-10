@@ -14,6 +14,7 @@ import * as EP from "./endpoints";
 import type {
 	BACookie,
 	BiliTicket,
+	LiveRoomDanmuInfo,
 	LiveRoomInfo,
 	MasterInfoData,
 	MySelfInfoData,
@@ -733,7 +734,7 @@ export class BilibiliAPI {
 		);
 	}
 
-	async getLiveRoomInfoStreamKey(roomId: string) {
+	async getLiveRoomInfoStreamKey(roomId: string): Promise<LiveRoomDanmuInfo> {
 		return this.retry(
 			async () =>
 				(

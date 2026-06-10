@@ -3,7 +3,7 @@ import type { Disposable } from "@bilibili-notify/internal";
 import type { MsgHandler } from "blive-message-listener";
 import { DateTime } from "luxon";
 import { LivePushType, type SubItemView } from "./push-like";
-import type { RoomContext } from "./room-helpers";
+import { LiveRoomAccessDeniedError, type RoomContext } from "./room-helpers";
 import { buildRoomLink } from "./template-renderer";
 import { type LiveData, LiveType, type MasterInfo } from "./types";
 
@@ -101,7 +101,17 @@ export abstract class RoomSessionBase {
 		// listener 建失败时此前丢弃返回值仍继续:下文 live_status===1 会
 		// armPeriodicTimer + setLiveStatus(true) → 房间标"直播中"、周期复推在跑,
 		// 但无 WS,永不收弹幕 / onLiveEnd。建不起来即同"获取信息失败"一并放弃。
-		const listening = await this.ctx.startLiveRoomListener(this.sub.roomId, this.buildHandler());
+		let listening = false;
+		try {
+			listening = await this.ctx.startLiveRoomListener(this.sub.roomId, this.buildHandler());
+		} catch (e) {
+			if (e instanceof LiveRoomAccessDeniedError) {
+				this.onMonitoringStopped();
+				this.ctx.stopMonitoring(e.message, this.sub.roomId);
+				return;
+			}
+			throw e;
+		}
 		if (!listening) {
 			await this.ctx.push.sendPrivateMsg(
 				`直播间 [${this.sub.roomId}] 弹幕连接建立失败，已停止该房间监测`,

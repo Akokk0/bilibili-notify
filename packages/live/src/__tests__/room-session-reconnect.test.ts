@@ -12,7 +12,7 @@
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vitest";
 import type { SubItemView } from "../push-like";
-import type { RoomContext } from "../room-helpers";
+import { LiveRoomAccessDeniedError, type RoomContext } from "../room-helpers";
 import { RoomSession } from "../room-session";
 
 function makeSub(): SubItemView {
@@ -51,6 +51,7 @@ interface MockBag {
 	startLiveRoomListener: ReturnType<typeof vi.fn>;
 	emitEngineError: ReturnType<typeof vi.fn>;
 	emitLiveState: ReturnType<typeof vi.fn>;
+	stopMonitoring: ReturnType<typeof vi.fn>;
 	scheduled: ScheduledItem[]; // 待跑的 sleep callback + 对应 delay
 	delays: () => number[]; // 至今 schedule 过的 delay 列表(按顺序)
 	disposeCount: () => number; // setTimeout 句柄被 dispose 的次数(L3)
@@ -88,6 +89,7 @@ function makeMockCtx(opts?: { startThrows?: boolean }): { ctx: RoomContext; mock
 		}),
 		emitEngineError: vi.fn(),
 		emitLiveState: vi.fn(),
+		stopMonitoring: vi.fn(),
 		scheduled,
 		delays: () => [...delayLog],
 		disposeCount: () => disposes,
@@ -117,6 +119,7 @@ function makeMockCtx(opts?: { startThrows?: boolean }): { ctx: RoomContext; mock
 		startLiveRoomListener: mocks.startLiveRoomListener,
 		emitEngineError: mocks.emitEngineError,
 		emitLiveState: mocks.emitLiveState,
+		stopMonitoring: mocks.stopMonitoring,
 		livePushTimerManager: new Map<string, () => void>(), // cancelPeriodicTimer 需要
 		danmakuCollector: { clear: () => {}, registerRoom: () => {} },
 		push: { sendPrivateMsg: async () => {}, broadcastToTargets: async () => {} },
@@ -218,6 +221,27 @@ describe("RoomSession 退避状态机 — codex review minor-4", () => {
 		// 耗尽路径之后不应该再 schedule 新 backoff
 		const backoffOnly = mocks.delays().filter((d) => d > 0);
 		expect(backoffOnly).toHaveLength(5); // 不会多出第 6 个 backoff
+	});
+
+	it("受限房错误 → 立即停止监测,不跑满 5 档退避", async () => {
+		const { ctx, mocks } = makeMockCtx();
+		mocks.startLiveRoomListener.mockRejectedValue(
+			new LiveRoomAccessDeniedError("B 站返回 code=-400 message=room is encrypted"),
+		);
+		const session = new RoomSession(ctx, makeSub());
+
+		// biome-ignore lint/suspicious/noExplicitAny: 测试 private 方法
+		void (session as any).onError();
+		await mocks.flushAll();
+
+		expect(mocks.startLiveRoomListener).toHaveBeenCalledTimes(1);
+		expect(mocks.stopMonitoring).toHaveBeenCalledTimes(1);
+		expect(mocks.stopMonitoring.mock.calls[0]).toEqual([
+			"弹幕连接不可用：B 站返回 code=-400 message=room is encrypted，可能是加密/付费/测试房或当前账号无权限访问",
+			"r1",
+		]);
+		expect(mocks.emitEngineError).not.toHaveBeenCalled();
+		expect(mocks.delays().filter((d) => d > 0)).toEqual([1000]);
 	});
 
 	it("重连成功 → reconnectAttempts 复位,下一轮 onError 从 1000ms 重新开始", async () => {
