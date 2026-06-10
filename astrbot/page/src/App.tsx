@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { dashboardApi, resolveApiBase, subscribeDashboardEvents } from "./api/client";
 import type { DashboardBootstrap } from "./api/types";
-import { Badge, Button, Card, ErrorBanner } from "./components/ui";
+import { Badge, Button, Card, ErrorBanner, useConfirm } from "./components/ui";
 import { RulesTab } from "./tabs/RulesTab";
 import { SettingsTab } from "./tabs/SettingsTab";
 import { SubscriptionsTab } from "./tabs/SubscriptionsTab";
@@ -17,6 +17,7 @@ const TABS: Array<{ key: TabKey; label: string; description: string }> = [
 ];
 
 export function App() {
+	const requestConfirmation = useConfirm();
 	const [activeTab, setActiveTab] = useState<TabKey>("settings");
 	const [data, setData] = useState<DashboardBootstrap | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -41,7 +42,23 @@ export function App() {
 	}, [reload]);
 
 	useEffect(() => {
-		const bridgeCleanup = subscribeDashboardEvents({
+		let disposed = false;
+		let bridgeStopped = false;
+		let bridgeCleanup: (() => void) | undefined;
+		let pollingTimer: ReturnType<typeof setInterval> | undefined;
+		const stopBridge = () => {
+			if (bridgeStopped) return;
+			bridgeStopped = true;
+			bridgeCleanup?.();
+		};
+		const startPollingFallback = () => {
+			if (disposed || pollingTimer) return;
+			setSseState("fallback");
+			stopBridge();
+			void reload();
+			pollingTimer = setInterval(() => void reload(), 10_000);
+		};
+		bridgeCleanup = subscribeDashboardEvents({
 			onHydrate(next) {
 				setData(next);
 				setLoading(false);
@@ -49,16 +66,22 @@ export function App() {
 			},
 			onRefresh: () => void reload(),
 			onOpen: () => setSseState("open"),
-			onError: () => {
-				setSseState("fallback");
-				void reload();
-			},
+			onError: startPollingFallback,
 		});
-		if (bridgeCleanup) return bridgeCleanup;
+		if (bridgeCleanup) {
+			return () => {
+				disposed = true;
+				stopBridge();
+				if (pollingTimer) clearInterval(pollingTimer);
+			};
+		}
 		if (typeof EventSource === "undefined") {
 			setSseState("fallback");
 			const timer = setInterval(() => void reload(), 10_000);
-			return () => clearInterval(timer);
+			return () => {
+				disposed = true;
+				clearInterval(timer);
+			};
 		}
 		const source = new EventSource(`${resolveApiBase()}/events/stream`);
 		const hydrate = (event: MessageEvent<string>) => {
@@ -79,12 +102,14 @@ export function App() {
 		source.onopen = () => setSseState("open");
 		source.onerror = () => {
 			setSseState("fallback");
+			// Stream truncation is handled below the page layer; poll instead of reopening SSE here.
 			source.close();
 		};
 		const timer = setInterval(() => {
 			if (source.readyState === EventSource.CLOSED) void reload();
 		}, 10_000);
 		return () => {
+			disposed = true;
 			clearInterval(timer);
 			source.close();
 		};
@@ -93,8 +118,8 @@ export function App() {
 	useEffect(() => {
 		const handler = (event: BeforeUnloadEvent) => {
 			if (dirtyTabs.size === 0) return;
+			// 现代浏览器仅需 preventDefault 即可弹出未保存提示;不再设置已弃用的 returnValue。
 			event.preventDefault();
-			event.returnValue = "";
 		};
 		globalThis.addEventListener("beforeunload", handler);
 		return () => globalThis.removeEventListener("beforeunload", handler);
@@ -102,12 +127,21 @@ export function App() {
 
 	const setTabDirty = useCallback((tab: TabKey, dirty: boolean) => {
 		setDirtyTabs((prev) => {
+			// 幂等:dirty 状态未变则保持同一引用,避免子 Tab 用不稳定 onDirty 时触发渲染死循环。
+			if (dirty === prev.has(tab)) return prev;
 			const next = new Set(prev);
 			if (dirty) next.add(tab);
 			else next.delete(tab);
 			return next;
 		});
 	}, []);
+
+	// 稳定回调:避免每次渲染新建 onDirty 箭头,导致子 Tab 的 effect 反复重跑(配合幂等 setTabDirty 杜绝渲染循环)。
+	const onSettingsDirty = useCallback(
+		(dirty: boolean) => setTabDirty("settings", dirty),
+		[setTabDirty],
+	);
+	const onRulesDirty = useCallback((dirty: boolean) => setTabDirty("rules", dirty), [setTabDirty]);
 
 	const activeMeta = useMemo(
 		() => TABS.find((tab) => tab.key === activeTab) ?? TABS[0],
@@ -117,13 +151,13 @@ export function App() {
 		.map((tab) => TABS.find((item) => item.key === tab)?.label ?? tab)
 		.join("、");
 
-	const switchTab = (tab: TabKey) => {
+	const switchTab = async (tab: TabKey) => {
 		if (tab === activeTab) return;
-		if (
-			dirtyTabs.size > 0 &&
-			!globalThis.confirm(`还有未保存草稿：${dirtyLabel}。确定切换 Tab 吗？`)
-		) {
-			return;
+		if (dirtyTabs.size > 0) {
+			const canSwitch = await requestConfirmation({
+				message: `还有未保存草稿：${dirtyLabel}。确定切换 Tab 吗？`,
+			});
+			if (!canSwitch) return;
 		}
 		setActiveTab(tab);
 	};
@@ -165,7 +199,7 @@ export function App() {
 					<button
 						key={tab.key}
 						type="button"
-						onClick={() => switchTab(tab.key)}
+						onClick={() => void switchTab(tab.key)}
 						className={`rounded-2xl p-4 text-left shadow-bn-card transition ${
 							activeTab === tab.key ? "bg-bn-pink text-white" : "bn-glass hover:bg-white/90"
 						}`}
@@ -194,12 +228,7 @@ export function App() {
 				<main className="bn-anim-fade-in">
 					<h2 className="sr-only">{activeMeta.label}</h2>
 					{activeTab === "settings" ? (
-						<SettingsTab
-							data={data}
-							onData={setData}
-							onReload={reload}
-							onDirty={(dirty) => setTabDirty("settings", dirty)}
-						/>
+						<SettingsTab data={data} onData={setData} onReload={reload} onDirty={onSettingsDirty} />
 					) : null}
 					{activeTab === "subscriptions" ? (
 						<SubscriptionsTab data={data} onData={setData} onReload={reload} />
@@ -208,11 +237,7 @@ export function App() {
 						<TargetsTab data={data} onData={setData} onReload={reload} />
 					) : null}
 					{activeTab === "rules" ? (
-						<RulesTab
-							data={data}
-							onData={setData}
-							onDirty={(dirty) => setTabDirty("rules", dirty)}
-						/>
+						<RulesTab data={data} onData={setData} onDirty={onRulesDirty} />
 					) : null}
 				</main>
 			) : null}

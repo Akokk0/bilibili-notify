@@ -15,6 +15,7 @@ import {
 	Select,
 	TextArea,
 	Toggle,
+	useConfirm,
 } from "../components/ui";
 import {
 	cleanOverrides,
@@ -36,6 +37,7 @@ type OverrideSection = keyof SubscriptionOverrides;
 type TriState = "inherit" | "on" | "off";
 
 export function RulesTab({ data, onData, onDirty }: RulesTabProps) {
+	const requestConfirmation = useConfirm();
 	const [selectedId, setSelectedId] = useState(data.subscriptions[0]?.id ?? "");
 	const selected = useMemo(
 		() => data.subscriptions.find((sub) => sub.id === selectedId) ?? data.subscriptions[0],
@@ -83,9 +85,14 @@ export function RulesTab({ data, onData, onDirty }: RulesTabProps) {
 		});
 	};
 
-	const selectSubscription = (id: string) => {
+	const selectSubscription = async (id: string) => {
 		if (id === selectedId) return;
-		if (dirty && !globalThis.confirm("当前 UP 有未保存高级规则草稿。确定切换吗？")) return;
+		if (dirty) {
+			const canSwitch = await requestConfirmation({
+				message: "当前 UP 有未保存高级规则草稿。确定切换吗？",
+			});
+			if (!canSwitch) return;
+		}
 		const nextSelected = data.subscriptions.find((sub) => sub.id === id);
 		setSelectedId(id);
 		setDraft(cloneConfig(nextSelected?.overrides ?? {}));
@@ -167,7 +174,7 @@ export function RulesTab({ data, onData, onDirty }: RulesTabProps) {
 				<div className="grid gap-3 md:grid-cols-[1fr_auto]">
 					<Select
 						value={selected?.id ?? ""}
-						onChange={(event) => selectSubscription(event.target.value)}
+						onChange={(event) => void selectSubscription(event.target.value)}
 					>
 						{data.subscriptions.map((sub) => (
 							<option key={sub.id} value={sub.id}>

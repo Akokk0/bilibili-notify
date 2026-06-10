@@ -1,5 +1,62 @@
 import type { ComponentProps, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import { errorDetails } from "../api/client";
+
+export interface ConfirmOptions {
+	readonly title?: string;
+	readonly message: string;
+	readonly confirmText?: string;
+	readonly cancelText?: string;
+	readonly danger?: boolean;
+}
+
+type ConfirmRequest = (options: ConfirmOptions) => Promise<boolean>;
+
+const ConfirmContext = createContext<ConfirmRequest | null>(null);
+
+export function ConfirmProvider({ children }: { readonly children: ReactNode }) {
+	const [options, setOptions] = useState<ConfirmOptions | null>(null);
+	const resolverRef = useRef<((confirmed: boolean) => void) | null>(null);
+
+	const requestConfirmation = useCallback<ConfirmRequest>((nextOptions) => {
+		resolverRef.current?.(false);
+		return new Promise<boolean>((resolve) => {
+			resolverRef.current = resolve;
+			setOptions(nextOptions);
+		});
+	}, []);
+
+	const settle = useCallback((confirmed: boolean) => {
+		const resolve = resolverRef.current;
+		resolverRef.current = null;
+		setOptions(null);
+		resolve?.(confirmed);
+	}, []);
+
+	useEffect(() => {
+		return () => {
+			resolverRef.current?.(false);
+			resolverRef.current = null;
+		};
+	}, []);
+
+	return (
+		<ConfirmContext.Provider value={requestConfirmation}>
+			{children}
+			<ConfirmDialog
+				options={options}
+				onCancel={() => settle(false)}
+				onConfirm={() => settle(true)}
+			/>
+		</ConfirmContext.Provider>
+	);
+}
+
+export function useConfirm(): ConfirmRequest {
+	const requestConfirmation = useContext(ConfirmContext);
+	if (!requestConfirmation) throw new Error("useConfirm must be used within ConfirmProvider");
+	return requestConfirmation;
+}
 
 export function Card({
 	title,
@@ -49,6 +106,76 @@ export function Button({
 			{...props}
 			className={`inline-flex items-center justify-center rounded-bn-pill px-4 py-2 font-medium text-sm transition disabled:cursor-not-allowed disabled:opacity-70 ${toneClass} ${className}`}
 		/>
+	);
+}
+
+export function ConfirmDialog({
+	options,
+	onCancel,
+	onConfirm,
+}: {
+	readonly options: ConfirmOptions | null;
+	readonly onCancel: () => void;
+	readonly onConfirm: () => void;
+}) {
+	const titleId = useId();
+	const messageId = useId();
+	const confirmRef = useRef<HTMLButtonElement>(null);
+
+	useEffect(() => {
+		if (!options) return;
+		confirmRef.current?.focus();
+	}, [options]);
+
+	useEffect(() => {
+		if (!options) return;
+		const handler = (event: KeyboardEvent) => {
+			if (event.key === "Escape") {
+				event.preventDefault();
+				onCancel();
+				return;
+			}
+			if (event.key === "Enter") {
+				event.preventDefault();
+				onConfirm();
+			}
+		};
+		globalThis.addEventListener("keydown", handler);
+		return () => globalThis.removeEventListener("keydown", handler);
+	}, [onCancel, onConfirm, options]);
+
+	if (!options) return null;
+
+	const title = options.title ?? "确认操作";
+	const confirmText = options.confirmText ?? "确定";
+	const cancelText = options.cancelText ?? "取消";
+
+	return (
+		<div className="fixed inset-0 z-50 grid place-items-center bg-black/35 px-4 py-6">
+			<div
+				aria-describedby={messageId}
+				aria-labelledby={titleId}
+				aria-modal="true"
+				className="bn-glass-strong w-full max-w-md rounded-bn-card p-5 shadow-bn-elev"
+				role="dialog"
+			>
+				<h2 className="font-semibold text-bn-text-primary text-lg" id={titleId}>
+					{title}
+				</h2>
+				<p
+					className="mt-3 whitespace-pre-wrap text-bn-text-tertiary text-sm leading-relaxed"
+					id={messageId}
+				>
+					{options.message}
+				</p>
+				<div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+					<Button onClick={onCancel}>{cancelText}</Button>
+					<Button ref={confirmRef} tone={options.danger ? "danger" : "primary"} onClick={onConfirm}>
+						{confirmText}
+					</Button>
+				</div>
+			</div>
+		</div>
 	);
 }
 
@@ -178,16 +305,27 @@ export function ConfirmButton({
 	confirmText,
 	onConfirm,
 	children,
+	onClick,
+	tone,
 	...props
 }: ComponentProps<typeof Button> & {
 	readonly confirmText: string;
 	readonly onConfirm: () => void | Promise<void>;
 }) {
+	const requestConfirmation = useConfirm();
 	return (
 		<Button
 			{...props}
-			onClick={async () => {
-				if (globalThis.confirm(confirmText)) await onConfirm();
+			tone={tone}
+			onClick={async (event) => {
+				onClick?.(event);
+				if (event.defaultPrevented) return;
+				const confirmed = await requestConfirmation({
+					title: tone === "danger" ? "确认危险操作" : "确认操作",
+					message: confirmText,
+					danger: tone === "danger",
+				});
+				if (confirmed) await onConfirm();
 			}}
 		>
 			{children}
