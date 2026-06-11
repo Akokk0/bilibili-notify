@@ -248,6 +248,25 @@ async def test_page_api_proxy_tunnels_bridge_patch_and_delete_envelopes(
     ]
 
 
+def test_parse_sidecar_log_line_strips_prefix_and_maps_level(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = import_main_with_fake_astrbot(monkeypatch)
+    parse = module._parse_sidecar_log_line
+    base = "[2026-06-11T16:31:20.953Z] [astrbot-sidecar]"
+    # 标准行:剥掉 [ts] [name] [level] 前缀只留消息体,级别取 token
+    assert parse(f"{base} [info] [key] 主密钥加载成功", "stdout") == (
+        "info",
+        "[key] 主密钥加载成功",
+    )
+    assert parse(f"{base} [warn] careful", "stdout") == ("warn", "careful")
+    assert parse(f"{base} [error] boom", "stderr") == ("error", "boom")
+    assert parse(f"{base} [debug] trace", "stdout") == ("debug", "trace")
+    # 不匹配的行(裸 stack / console.error)原样转发,级别按流兜底
+    assert parse("raw node stack frame", "stderr") == ("error", "raw node stack frame")
+    assert parse("plain stdout line", "stdout") == ("info", "plain stdout line")
+
+
 def import_main_with_fake_astrbot(monkeypatch: pytest.MonkeyPatch):
     logger = FakeLogger()
     api_module = types.ModuleType("astrbot.api")
@@ -307,6 +326,9 @@ class FakeRequest:
 class FakeLogger:
     def __init__(self) -> None:
         self.messages: list[tuple[str, str]] = []
+
+    def debug(self, message: str) -> None:
+        self.messages.append(("debug", message))
 
     def info(self, message: str) -> None:
         self.messages.append(("info", message))

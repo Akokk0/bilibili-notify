@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from collections.abc import Mapping
 from inspect import isawaitable
 from pathlib import Path
@@ -36,6 +37,27 @@ PLUGIN_VERSION = "v0.1.0"
 PROXY_TUNNEL_METHOD_KEY = "__bn_proxy_method"
 PROXY_TUNNEL_BODY_KEY = "__bn_proxy_body"
 PROXY_TUNNEL_PARAMS_KEY = "__bn_proxy_params"
+
+# sidecar 用 `[ts] [name] [level] msg` 的 pretty 文本格式打印日志。转发进 AstrBot 时,
+# AstrBot 自己已带时间 / 级别 / 来源,故剥掉这层前缀只留消息体,避免三重时间戳冗余。
+_SIDECAR_LINE_PATTERN = re.compile(
+    r"^\[[^\]]*\] \[[^\]]*\] \[(debug|info|warn|warning|error)\] (.*)$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _parse_sidecar_log_line(line: str, stream: str) -> tuple[str, str]:
+    """解析 sidecar 日志行,返回 (level, message)。
+
+    标准 `[ts] [name] [level] msg` 行剥掉前缀只留 msg、级别取 token;裸 stack / 非
+    常规行(console.error 等)匹配不上则原样转发,级别按输出流兜底。
+    """
+    match = _SIDECAR_LINE_PATTERN.match(line)
+    if match:
+        token = match.group(1).lower()
+        level = "warn" if token == "warning" else token
+        return level, match.group(2)
+    return ("error" if stream == "stderr" else "info"), line
 
 
 @register(
@@ -80,11 +102,27 @@ class BilibiliNotifyPlugin(Star):
             plugin_name=getattr(self, "name", PLUGIN_NAME),
         )
         logger.info(f"[bilibili-notify] launching sidecar from {config.entrypoint}")
-        self._runtime = await start_sidecar(config)
+        self._runtime = await start_sidecar(config, log_forwarder=self._forward_sidecar_log)
         self._delivery_pump_task = asyncio.create_task(self._run_delivery_pump())
         if self._runtime.ai_backend == "astrbot":
             self._ai_pump_task = asyncio.create_task(self._run_ai_pump())
         logger.info(f"[bilibili-notify] sidecar ready: {self._runtime.describe()}")
+
+    def _forward_sidecar_log(self, stream: str, line: str) -> None:
+        """把 Node sidecar 子进程的 stdout/stderr 逐行转发进 AstrBot 日志,便于排查。
+
+        剥掉 sidecar 自带的 `[ts] [name] [level]` 前缀只留消息体——AstrBot 自己已带
+        时间 / 级别 / 来源,否则会三重冗余。
+        """
+        level, message = _parse_sidecar_log_line(line, stream)
+        if level == "debug":
+            logger.debug(message)
+        elif level == "warn":
+            logger.warning(message)
+        elif level == "error":
+            logger.error(message)
+        else:
+            logger.info(message)
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("bilibili-notify", alias={"bn"})

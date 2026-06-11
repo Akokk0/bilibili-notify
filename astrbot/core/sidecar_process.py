@@ -5,8 +5,8 @@ import json
 import os
 import re
 import secrets
-from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import quote
@@ -23,6 +23,10 @@ MIN_NODE_MAJOR_VERSION = 24
 PLUGIN_DATA_DIR_NAME = "plugin_data"
 AT_ALL_FALLBACK_TEXT = "[全体提醒]"
 EMPTY_MESSAGE_TEXT = "[空消息]"
+
+# sidecar 子进程日志旁路回调:签名 (stream_name, line)。stream_name ∈ {"stdout","stderr"},
+# line 已去掉行尾换行符。注入式设计让本模块保持与 AstrBot 解耦,便于独立测试。
+LogForwarder = Callable[[str, str], None]
 PROXY_ALLOWED_COLLECTION_PATHS = {
     "health",
     "meta",
@@ -310,6 +314,7 @@ class SidecarRuntime:
     process: asyncio.subprocess.Process
     snapshot: dict[str, Any]
     log_handle: Any
+    log_pumps: list[asyncio.Task[Any]] = field(default_factory=list)
 
     @property
     def host(self) -> str:
@@ -459,6 +464,7 @@ class SidecarRuntime:
                     exc.add_note(f"Failed to wait for sidecar shutdown cleanup: {wait_error}")
             raise
         finally:
+            await _drain_log_pumps(self.log_pumps, self.config.shutdown_timeout_seconds, error)
             try:
                 _remove_ready_file_sync(self.config.ready_file)
             except Exception as exc:  # noqa: BLE001
@@ -523,7 +529,11 @@ def parse_node_major_version(output: str) -> int | None:
     return int(match.group(1))
 
 
-async def start_sidecar(config: SidecarConfig) -> SidecarRuntime:
+async def start_sidecar(
+    config: SidecarConfig,
+    *,
+    log_forwarder: LogForwarder | None = None,
+) -> SidecarRuntime:
     if not config.entrypoint.exists():
         raise FileNotFoundError(
             f"Sidecar entrypoint not found: {config.entrypoint}. 请先运行构建脚本生成 AstrBot sidecar 产物。",
@@ -534,6 +544,7 @@ async def start_sidecar(config: SidecarConfig) -> SidecarRuntime:
     await remove_ready_file(config.ready_file)
     log_handle = open(config.log_file, "a", encoding="utf-8", buffering=1)
     process: asyncio.subprocess.Process | None = None
+    log_pumps: list[asyncio.Task[Any]] = []
     try:
         env = os.environ.copy()
         data_dir = config.data_dir or config.ready_file.parent
@@ -569,16 +580,34 @@ async def start_sidecar(config: SidecarConfig) -> SidecarRuntime:
         ]
         if config.token:
             env["BN_SIDECAR_TOKEN"] = config.token
+        # 有 forwarder 时改用 PIPE,由 pump 协程逐行 tee(写日志文件 + 转发);无 forwarder
+        # 时维持原行为,让 OS 直接把 stdout/stderr 写进日志文件,旧调用路径零改动。
+        stdio_target = asyncio.subprocess.PIPE if log_forwarder is not None else log_handle
         process = await asyncio.create_subprocess_exec(
             *args,
             cwd=str(config.plugin_root),
             env=env,
-            stdout=log_handle,
-            stderr=log_handle,
+            stdout=stdio_target,
+            stderr=stdio_target,
         )
+        if log_forwarder is not None:
+            # 紧跟 spawn 启动 pump,使启动期(就绪前)的日志也能转发——这正是排查
+            # 启动失败最需要看到的部分。
+            log_pumps = [
+                asyncio.create_task(
+                    _pump_stream(process.stdout, "stdout", log_handle, log_forwarder)
+                ),
+                asyncio.create_task(
+                    _pump_stream(process.stderr, "stderr", log_handle, log_forwarder)
+                ),
+            ]
         snapshot = await wait_for_ready_snapshot(config, process)
         return SidecarRuntime(
-            config=config, process=process, snapshot=snapshot, log_handle=log_handle
+            config=config,
+            process=process,
+            snapshot=snapshot,
+            log_handle=log_handle,
+            log_pumps=log_pumps,
         )
     except BaseException as exc:  # noqa: BLE001
         if process is not None:
@@ -587,6 +616,7 @@ async def start_sidecar(config: SidecarConfig) -> SidecarRuntime:
                 config.shutdown_timeout_seconds,
                 exc,
             )
+        await _drain_log_pumps(log_pumps, config.shutdown_timeout_seconds, exc)
         try:
             await remove_ready_file(config.ready_file)
         except Exception as cleanup_error:  # noqa: BLE001
@@ -600,6 +630,69 @@ async def start_sidecar(config: SidecarConfig) -> SidecarRuntime:
                 f"Failed to close sidecar log handle during startup cleanup: {close_error}",
             )
         raise
+
+
+async def _pump_stream(
+    stream: asyncio.StreamReader | None,
+    name: str,
+    log_handle: Any,
+    forwarder: LogForwarder,
+) -> None:
+    """逐行读取 sidecar 的某个输出流,tee 到日志文件并转发给 forwarder。
+
+    日志旁路绝不能影响 sidecar 生命周期:写文件 / 转发的异常都被吞掉;只有取消
+    (CancelledError)向上传播,以便收尾阶段能干净地停掉 pump。
+    """
+    if stream is None:
+        return
+    while True:
+        try:
+            raw = await stream.readline()
+        except ValueError:
+            # 单行长度越过 StreamReader 缓冲上限;缓冲已被清空,跳过这段继续读。
+            continue
+        if not raw:
+            break
+        text = raw.decode("utf-8", errors="replace")
+        try:
+            log_handle.write(text)
+        except Exception:  # noqa: BLE001
+            pass
+        line = text.rstrip("\r\n")
+        if not line:
+            continue
+        try:
+            forwarder(name, line)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+async def _drain_log_pumps(
+    pumps: list[asyncio.Task[Any]],
+    timeout: float,
+    error: BaseException | None = None,
+) -> None:
+    """停掉日志 pump:先给被 EOF 唤醒的 pump 一点时间自然收尾,超时则取消。
+
+    必须在关闭 log_handle 之前调用——pump 仍可能向其写入残余行。
+    """
+    if not pumps:
+        return
+    pending = [task for task in pumps if not task.done()]
+    if pending:
+        _done, still_pending = await asyncio.wait(pending, timeout=max(timeout, 0.1))
+        for task in still_pending:
+            task.cancel()
+        if still_pending:
+            await asyncio.gather(*still_pending, return_exceptions=True)
+    if error is not None:
+        for task in pumps:
+            if task.cancelled() or not task.done():
+                continue
+            exc = task.exception()
+            if exc is not None and not isinstance(exc, asyncio.CancelledError):
+                error.add_note(f"sidecar log pump failed during cleanup: {exc}")
+    pumps.clear()
 
 
 async def _cleanup_startup_process(

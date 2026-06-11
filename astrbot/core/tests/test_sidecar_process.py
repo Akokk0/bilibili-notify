@@ -26,6 +26,88 @@ from sidecar_process import (
     start_sidecar,
 )
 
+# 一个会先往 stdout/stderr 各打一行日志、再写 ready 文件并提供 /api/health 的假
+# sidecar。脚本由真实 Python 解释器执行,因此内部用 4 空格缩进,与本测试文件无关。
+_FAKE_SIDECAR_EMITS_LOGS = """\
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from http.server import BaseHTTPRequestHandler
+from pathlib import Path
+from socketserver import TCPServer
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--port", type=int, required=True)
+parser.add_argument("--ready-file", required=True)
+parser.add_argument("--data-dir", required=True)
+parser.add_argument("--ai-backend", required=True)
+parser.add_argument("--ai-provider-id", default="")
+parser.add_argument("--log-level", default="info")
+parser.add_argument("--token", default="")
+parser.add_argument("--version", required=True)
+args = parser.parse_args()
+
+print("[2026-06-11T00:00:00.000Z] [astrbot-sidecar] [info] hello from sidecar stdout", flush=True)
+print(
+    "[2026-06-11T00:00:00.000Z] [astrbot-sidecar] [error] boom on sidecar stderr",
+    file=sys.stderr,
+    flush=True,
+)
+
+ready_file = Path(args.ready_file)
+ready_file.parent.mkdir(parents=True, exist_ok=True)
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path != "/api/health":
+            self.send_response(404)
+            self.end_headers()
+            return
+        payload = json.dumps(
+            {
+                "status": "ready",
+                "version": args.version,
+                "pid": os.getpid(),
+                "host": self.server.server_address[0],
+                "port": self.server.server_address[1],
+                "url": f"http://{self.server.server_address[0]}:{self.server.server_address[1]}",
+                "startedAt": "2026-06-03T00:00:00.000Z",
+                "readyAt": "2026-06-03T00:00:01.000Z",
+                "aiBackend": args.ai_backend,
+                "aiProviderId": args.ai_provider_id,
+            }
+        ).encode()
+        self.send_response(200)
+        self.send_header("content-type", "application/json; charset=utf-8")
+        self.send_header("content-length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, format, *args):
+        return
+
+
+with TCPServer(("127.0.0.1", args.port), Handler) as server:
+    ready = {
+        "status": "ready",
+        "version": args.version,
+        "pid": os.getpid(),
+        "host": server.server_address[0],
+        "port": server.server_address[1],
+        "url": f"http://{server.server_address[0]}:{server.server_address[1]}",
+        "startedAt": "2026-06-03T00:00:00.000Z",
+        "readyAt": "2026-06-03T00:00:01.000Z",
+        "aiBackend": args.ai_backend,
+        "aiProviderId": args.ai_provider_id,
+    }
+    ready_file.write_text(json.dumps(ready), encoding="utf-8")
+    server.serve_forever(poll_interval=0.1)
+"""
+
 
 class RemoteClosedSseStream(httpx.AsyncByteStream):
     async def __aiter__(self):
@@ -563,6 +645,61 @@ async def test_start_sidecar_waits_for_health_and_closes_cleanly(tmp_path: Path)
 
     assert runtime.process.returncode is not None
     assert not ready_file.exists()
+
+
+@pytest.mark.asyncio
+async def test_start_sidecar_forwards_stdout_and_stderr_to_log_forwarder(
+    tmp_path: Path,
+) -> None:
+    entrypoint = tmp_path / "fake-sidecar.py"
+    entrypoint.write_text(_FAKE_SIDECAR_EMITS_LOGS, encoding="utf-8")
+
+    ready_file = tmp_path / "state" / "ready.json"
+    log_file = tmp_path / "state" / "sidecar.log"
+    config = SidecarConfig(
+        plugin_root=tmp_path,
+        node_bin=sys.executable,
+        entrypoint=entrypoint,
+        ready_file=ready_file,
+        log_file=log_file,
+        host="127.0.0.1",
+        port=0,
+        startup_timeout_seconds=10.0,
+        shutdown_timeout_seconds=3.0,
+        ai_backend="own",
+        ai_provider_id="astrbot-openai",
+        version="v0.1.0",
+        node_min_major=0,
+    )
+
+    forwarded: list[tuple[str, str]] = []
+    runtime = await start_sidecar(
+        config,
+        log_forwarder=lambda stream, line: forwarded.append((stream, line)),
+    )
+    try:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 3.0
+        while loop.time() < deadline:
+            seen = {stream for stream, _ in forwarded}
+            if {"stdout", "stderr"} <= seen:
+                break
+            await asyncio.sleep(0.05)
+
+        stdout_lines = [line for stream, line in forwarded if stream == "stdout"]
+        stderr_lines = [line for stream, line in forwarded if stream == "stderr"]
+        assert any("hello from sidecar stdout" in line for line in stdout_lines)
+        assert any("boom on sidecar stderr" in line for line in stderr_lines)
+        # 转发的行不带行尾换行符
+        assert all(not line.endswith("\n") for _, line in forwarded)
+        # 同时仍 tee 进原日志文件,保留 post-mortem 能力
+        contents = log_file.read_text(encoding="utf-8")
+        assert "hello from sidecar stdout" in contents
+        assert "boom on sidecar stderr" in contents
+    finally:
+        await runtime.close("test complete")
+
+    assert runtime.process.returncode is not None
 
 
 @pytest.mark.asyncio
