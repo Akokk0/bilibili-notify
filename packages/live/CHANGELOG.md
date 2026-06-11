@@ -1,5 +1,15 @@
 # @bilibili-notify/live
 
+## 0.1.0-alpha.7
+
+### Patch Changes
+
+- 6c56938: 修复直播弹幕连接预检每次被风控拦成 `-352` 的问题。B 站 `getDanmuInfo` 现已强制 wbi 签名，而 `getLiveRoomInfoStreamKey` 之前用未签名的裸请求，导致预检固定返回 `code=-352`、一路回退到直接建连：加密/受限房识别从未真正生效，且每个房间都会刷一条风控告警日志。改为走 `wbiGet` 自动附加 `wts` + `w_rid` 签名后，预检能拿到真实弹幕连接信息——普通房正常放行、受限房（无 token / 无弹幕服务器列表）才停止监测，`-352` 告警噪音消除。
+- 9af0e14: 修复加密 / 付费 / 测试等受限直播间导致的无限重连刷屏。建立弹幕 WS 前先用 `getLiveRoomInfoStreamKey` 预检弹幕连接信息,B 站明确拒绝(明确的非风控错误码 / 无 token / 无弹幕服务器列表)时判定为受限房,直接停止该房间监测并告警一次,不再反复从 1s 退避重连。`code=-352` 属于常见风控 / 校验拦截,只视为预检不确定并回退到原直接建连路径,避免误杀普通房间。普通房间与临时网络失败的重连 / watchdog 行为保持不变。
+- Updated dependencies [6c56938]
+- Updated dependencies [9af0e14]
+  - @bilibili-notify/api@0.2.0-alpha.3
+
 ## 0.1.0-alpha.6
 
 ### Patch Changes

@@ -33,10 +33,13 @@
     "koishi-ai-image-late-inject",
     "koishi-config-convergence",
     "koishi-image-hide-follower-rename",
+    "koishi-internals-protocol",
     "koishi-internals-token",
     "koishi-live-sc-guard-overrides",
     "koishi-master-notifier-engine-error",
     "koishi-subscription-display-name",
+    "live-preflight-wbi-sign",
+    "live-restricted-room-preflight",
     "live-ws-watchdog",
     "monorepo-refactor-release",
     "push-atall-split-and-dynamic-filter-types"

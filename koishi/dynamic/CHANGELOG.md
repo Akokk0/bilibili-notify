@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.0-alpha.7
+
+### Patch Changes
+
+- d8f7499: 为 Koishi core 与 dynamic/live/ai 子插件增加显式 internals protocol 诊断。core 现在通过 `probeInternals()` 暴露 internals 协议版本、核心包版本和未就绪原因;子插件启动时会区分 core 启动失败 / 内部实例未就绪 / token 不一致 / 协议不兼容,不再统一报“内部实例尚未就绪或插件版本不匹配”。旧的 token v1 core 若能返回 internals 仍按 v1 兼容处理。
+- Updated dependencies [d8f7499]
+- Updated dependencies [6c56938]
+- Updated dependencies [9af0e14]
+  - @bilibili-notify/koishi-runtime@0.0.1-alpha.2
+  - @bilibili-notify/api@0.2.0-alpha.3
+
 ## 2.0.0-alpha.6
 
 ### Patch Changes

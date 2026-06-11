@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.0.0-alpha.7
+
+### Patch Changes
+
+- d8f7499: 为 Koishi core 与 dynamic/live/ai 子插件增加显式 internals protocol 诊断。core 现在通过 `probeInternals()` 暴露 internals 协议版本、核心包版本和未就绪原因;子插件启动时会区分 core 启动失败 / 内部实例未就绪 / token 不一致 / 协议不兼容,不再统一报“内部实例尚未就绪或插件版本不匹配”。旧的 token v1 core 若能返回 internals 仍按 v1 兼容处理。
+- 6c56938: 修复直播弹幕连接预检每次被风控拦成 `-352` 的问题。B 站 `getDanmuInfo` 现已强制 wbi 签名，而 `getLiveRoomInfoStreamKey` 之前用未签名的裸请求，导致预检固定返回 `code=-352`、一路回退到直接建连：加密/受限房识别从未真正生效，且每个房间都会刷一条风控告警日志。改为走 `wbiGet` 自动附加 `wts` + `w_rid` 签名后，预检能拿到真实弹幕连接信息——普通房正常放行、受限房（无 token / 无弹幕服务器列表）才停止监测，`-352` 告警噪音消除。
+- 9af0e14: 修复加密 / 付费 / 测试等受限直播间导致的无限重连刷屏。建立弹幕 WS 前先用 `getLiveRoomInfoStreamKey` 预检弹幕连接信息,B 站明确拒绝(明确的非风控错误码 / 无 token / 无弹幕服务器列表)时判定为受限房,直接停止该房间监测并告警一次,不再反复从 1s 退避重连。`code=-352` 属于常见风控 / 校验拦截,只视为预检不确定并回退到原直接建连路径,避免误杀普通房间。普通房间与临时网络失败的重连 / watchdog 行为保持不变。
+- Updated dependencies [d8f7499]
+- Updated dependencies [6c56938]
+- Updated dependencies [9af0e14]
+  - @bilibili-notify/koishi-runtime@0.0.1-alpha.2
+  - @bilibili-notify/live@0.1.0-alpha.7
+
 ## 2.0.0-alpha.6
 
 ### Patch Changes
