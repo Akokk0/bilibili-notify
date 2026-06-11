@@ -11,7 +11,7 @@ import type { ServiceContext } from "@bilibili-notify/internal";
 import type { MsgHandler } from "blive-message-listener";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SubItemView } from "../push-like";
-import type { RoomContext } from "../room-helpers";
+import { LiveRoomAccessDeniedError, type RoomContext } from "../room-helpers";
 import { LIVE_WS_STALE_MS, RoomSession } from "../room-session";
 
 type WatchdogTestSession = RoomSession & {
@@ -64,6 +64,7 @@ function makeMockCtx(): {
 		getMasterInfo: ReturnType<typeof vi.fn>;
 		emitEngineError: ReturnType<typeof vi.fn>;
 		emitLiveState: ReturnType<typeof vi.fn>;
+		stopMonitoring: ReturnType<typeof vi.fn>;
 		warn: ReturnType<typeof vi.fn>;
 		lastHandler: MsgHandler | undefined;
 		intervalDisposeCount: () => number;
@@ -126,6 +127,7 @@ function makeMockCtx(): {
 		})),
 		emitEngineError: vi.fn(),
 		emitLiveState: vi.fn(),
+		stopMonitoring: vi.fn(),
 		warn,
 		get lastHandler() {
 			return lastHandler;
@@ -160,6 +162,7 @@ function makeMockCtx(): {
 		getMasterInfo: m.getMasterInfo,
 		emitEngineError: m.emitEngineError,
 		emitLiveState: m.emitLiveState,
+		stopMonitoring: m.stopMonitoring,
 		livePushTimerManager: new Map<string, () => void>(),
 		danmakuCollector: { clear: () => {}, registerRoom: () => {} },
 		push: { sendPrivateMsg: async () => {}, broadcastToTargets: async () => {} },
@@ -307,6 +310,25 @@ describe("RoomSession live WS watchdog", () => {
 		expect(m.intervals).toHaveLength(0); // info 失败时 watchdog 不启动
 	});
 
+	it("bootstrap 遇到受限房直接停止,不拉房间信息也不启动 watchdog", async () => {
+		const { ctx, m } = makeMockCtx();
+		m.startLiveRoomListener.mockRejectedValueOnce(
+			new LiveRoomAccessDeniedError("B 站返回 code=-400 message=room is encrypted"),
+		);
+		const session = new RoomSession(ctx, makeSub()) as unknown as WatchdogTestSession;
+
+		await session.bootstrap();
+
+		expect(m.getLiveRoomInfo).not.toHaveBeenCalled();
+		expect(m.stopMonitoring).toHaveBeenCalledTimes(1);
+		expect(m.stopMonitoring.mock.calls[0]).toEqual([
+			"弹幕连接不可用：B 站返回 code=-400 message=room is encrypted，可能是加密/付费/测试房或当前账号无权限访问",
+			"r1",
+		]);
+		expect(m.timeouts).toHaveLength(0);
+		expect(m.intervals).toHaveLength(0);
+	});
+
 	it("watchdog 重连耗尽后停止 watchdog,不会被同一个 stale interval 反复拉起", async () => {
 		const { ctx, m } = makeMockCtx();
 		m.startLiveRoomListener.mockRejectedValue(new Error("still down"));
@@ -322,5 +344,30 @@ describe("RoomSession live WS watchdog", () => {
 		expect(m.intervalDisposeCount()).toBe(1);
 		await m.runIntervals();
 		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(5);
+	});
+
+	it("watchdog 重连遇到受限房时停止监测,不继续退避", async () => {
+		const { ctx, m } = makeMockCtx();
+		m.startLiveRoomListener.mockRejectedValue(
+			new LiveRoomAccessDeniedError("B 站返回 code=-400 message=room is encrypted"),
+		);
+		const session = new RoomSession(ctx, makeSub()) as unknown as WatchdogTestSession;
+		session.onListenerStarted();
+		vi.setSystemTime(1_000 + LIVE_WS_STALE_MS);
+
+		await m.runIntervals();
+		expect(m.timeoutDelays()).toEqual([1000]);
+		await m.runTimeouts();
+
+		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(1);
+		expect(m.stopMonitoring).toHaveBeenCalledTimes(1);
+		expect(m.stopMonitoring.mock.calls[0]).toEqual([
+			"弹幕连接不可用：B 站返回 code=-400 message=room is encrypted，可能是加密/付费/测试房或当前账号无权限访问",
+			"r1",
+		]);
+		expect(m.intervalDisposeCount()).toBe(1);
+		expect(m.timeoutDelays()).toEqual([]);
+		await m.runIntervals();
+		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(1);
 	});
 });

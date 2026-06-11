@@ -138,6 +138,17 @@ export interface LiveRoomInfo {
 	};
 }
 
+export interface LiveRoomDanmuInfo {
+	code: number;
+	message?: string;
+	msg?: string;
+	data: {
+		token?: string;
+		host_list?: unknown[];
+		[key: string]: unknown;
+	} | null;
+}
+
 export interface MasterInfoData {
 	code: number;
 	data: {

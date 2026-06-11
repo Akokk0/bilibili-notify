@@ -9,6 +9,35 @@ git tag;发布 workflow 会在构建前按 tag 临时同步 apps 版本元数据
 
 ---
 
+## [0.1.0-alpha.9] — 2026-06-11
+
+### Fixed
+
+- 加密 / 付费 / 测试等受限直播间不再无限重连刷屏：建立弹幕 WS 前先预检弹幕连接信息，B 站明确拒绝（明确的非风控错误码 / 无 token / 无弹幕服务器列表）时判定为受限房并停止该房间监测、仅告警一次；普通房间与临时网络失败的重连 / watchdog 行为保持不变 (9af0e14, 77f26f2)
+- 直播弹幕连接预检补上 wbi 签名：B 站 `getDanmuInfo` 现已强制 wbi 签名，此前未签名的预检请求固定被风控拦成 `-352`、一路回退空转，现改为附加 `wts` + `w_rid` 签名后预检真正生效、受限房识别归位、`-352` 告警噪音消除 (6c56938)
+- `-352` 等风控 / 校验拦截只视为预检不确定并回退到直接建连，避免误杀普通房间 (77f26f2)
+- Dashboard 删除推送目标时同步清理订阅 routing / @全体引用，避免残留指向已删除目标的无效配置 (77f26f2)
+
+---
+
+## [0.1.0-alpha.8] — 2026-06-06
+
+### Added
+
+- Webhook 推送支持钉钉 / 飞书 / 企业微信机器人 provider；Generic 模式保持旧 JSON envelope,平台机器人按文本消息协议发送,非文本通知沿用文字摘要降级 (bd8effc)
+
+### Changed
+
+- Webhook adapter 保存 URL 后自动维护默认投递目标,订阅页可直接选择,无需手动新建 PushTarget (bd8effc)
+- Webhook adapter「测试」改为真实发送测试推送,并回写 adapter / target 最近测试状态 (bd8effc)
+
+### Fixed
+
+- 禁止外部手动创建 / 修改 / 删除 Webhook 托管目标；删除 Webhook adapter 时同步清理订阅 routing / @全体引用,避免残留无效 target (bd8effc)
+- Webhook 平台业务响应解析与错误脱敏补强:解析钉钉 / 飞书 / 企业微信业务码,错误返回和日志不泄漏 webhook URL、key、secret、sign、token (bd8effc)
+
+---
+
 ## [0.1.0-alpha.7] — 2026-06-01
 
 ### Added

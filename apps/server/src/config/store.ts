@@ -1319,7 +1319,17 @@ class NodeConfigStore implements ConfigStore {
 			this.touch("targets");
 			return true;
 		});
-		if (removed) this.bus.emit("config-changed", "targets");
+		if (!removed) return false;
+		const subscriptionsChanged = await this.runScoped("subscriptions", async () => {
+			const cleaned = removeTargetIdsFromSubscriptions(this.subscriptions, [id]);
+			if (!cleaned.changed) return false;
+			await atomicWriteJson(this.path("subscriptions"), cleaned.next);
+			this.subscriptions = cleaned.next;
+			this.touch("subscriptions");
+			return true;
+		});
+		this.bus.emit("config-changed", "targets");
+		if (subscriptionsChanged) this.bus.emit("config-changed", "subscriptions");
 		return removed;
 	}
 

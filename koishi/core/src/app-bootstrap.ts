@@ -8,13 +8,8 @@ import {} from "@koishijs/plugin-help";
 import { type Awaitable, type Context, type Logger, Service } from "koishi";
 import { biliCommands, statusCommands, sysCommands } from "./commands";
 import type { BilibiliNotifyConfig } from "./config";
-import {
-	bringUp,
-	buildInternals,
-	type InternalsShape,
-	type ManagerSlots,
-	tearDown,
-} from "./lifecycle";
+import { buildInternalsProbe, type InternalsShape } from "./internals-probe";
+import { bringUp, type ManagerSlots, tearDown } from "./lifecycle";
 import type { LoginFlowBridge } from "./login-flow-bridge";
 import { MasterNotifier } from "./master-notifier";
 
@@ -23,7 +18,7 @@ const SERVICE_NAME = "bilibili-notify";
 /**
  * Koishi `Service` shell. Owns the controllers (auth, subscriptions, health,
  * master-notifier) and the runtime singletons (api / push / storage). The
- * external surface (`getInternals(token)`, `subList()`, `getAuthSnapshot()`)
+ * external surface (`probeInternals(token)`, `getInternals(token)`, `subList()`, `getAuthSnapshot()`)
  * preserves what commands, data-server, and downstream sub-plugins consume.
  */
 class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
@@ -107,14 +102,19 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 	 * 向持有 BILIBILI_NOTIFY_TOKEN 的友好插件暴露 api / push / store 实例。
 	 * token 用于防误调；Koishi 同进程插件没有安全隔离,这里不把它当安全边界。
 	 */
-	getInternals(token: symbol): InternalsShape | null {
-		return buildInternals({
+	probeInternals(token: symbol): ReturnType<typeof buildInternalsProbe> {
+		return buildInternalsProbe({
 			token,
 			api: this.api,
 			push: this.push,
 			store: this.slots.store,
 			registry: this.slots.registry,
 		});
+	}
+
+	getInternals(token: symbol): InternalsShape | null {
+		const probe = this.probeInternals(token);
+		return probe.ok ? probe.internals : null;
 	}
 
 	async registerPlugin(): Promise<boolean> {

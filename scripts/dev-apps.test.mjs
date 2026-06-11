@@ -7,6 +7,7 @@ import {
 	isCleanStatus,
 	runDevApps,
 	statusToExitCode,
+	waitForHttpReachable,
 } from "./dev-apps.mjs";
 
 class FakeChild extends EventEmitter {
@@ -32,6 +33,10 @@ function createFakeSpawn() {
 	return { children, spawnProcess };
 }
 
+function runDevAppsNoWait(options) {
+	return runDevApps({ ...options, waitForBackendReady: null });
+}
+
 describe("dev-apps supervisor", () => {
 	it("直接用 vp 启动 server/web,避免 pnpm recursive Ctrl-C 被报告为失败", () => {
 		const specs = createDevProcessSpecs("/repo");
@@ -53,6 +58,36 @@ describe("dev-apps supervisor", () => {
 		expect(specs.flatMap((spec) => [spec.command, ...spec.args])).not.toContain("pnpm");
 	});
 
+	it("等待后端可连接后再启动 web,避免 Vite 首次请求打到未监听的 8787", async () => {
+		const { children, spawnProcess } = createFakeSpawn();
+		let markReady;
+		const waitForBackendReady = vi.fn(
+			() =>
+				new Promise((resolveReady) => {
+					markReady = resolveReady;
+				}),
+		);
+		const run = runDevApps({
+			spawnProcess,
+			processPlatform: "test",
+			log: () => {},
+			graceMs: 100,
+			waitForBackendReady,
+		});
+
+		expect(children).toHaveLength(1);
+		expect(waitForBackendReady).toHaveBeenCalledWith("http://127.0.0.1:8787/api/health", {
+			timeoutMs: 20_000,
+			intervalMs: 200,
+		});
+		markReady();
+		await new Promise((r) => setImmediate(r));
+
+		expect(children).toHaveLength(2);
+		process.emit("SIGINT");
+		await expect(run).resolves.toBe(0);
+	});
+
 	it("把有意停止时的 SIGINT/SIGTERM 视为干净退出", () => {
 		expect(isCleanStatus({ code: 0 }, false)).toBe(true);
 		expect(isCleanStatus({ signal: "SIGINT" }, true)).toBe(true);
@@ -69,7 +104,12 @@ describe("dev-apps supervisor", () => {
 
 	it("SIGINT 后停止两个 dev 子进程并返回 0", async () => {
 		const { children, spawnProcess } = createFakeSpawn();
-		const run = runDevApps({ spawnProcess, processPlatform: "test", log: () => {}, graceMs: 100 });
+		const run = runDevAppsNoWait({
+			spawnProcess,
+			processPlatform: "test",
+			log: () => {},
+			graceMs: 100,
+		});
 
 		expect(children).toHaveLength(2);
 		process.emit("SIGINT");
@@ -80,7 +120,12 @@ describe("dev-apps supervisor", () => {
 
 	it("子进程非 0 退出时停止另一个 dev 子进程并保留退出码", async () => {
 		const { children, spawnProcess } = createFakeSpawn();
-		const run = runDevApps({ spawnProcess, processPlatform: "test", log: () => {}, graceMs: 100 });
+		const run = runDevAppsNoWait({
+			spawnProcess,
+			processPlatform: "test",
+			log: () => {},
+			graceMs: 100,
+		});
 
 		expect(children).toHaveLength(2);
 		children[0].exitCode = 7;
@@ -88,6 +133,25 @@ describe("dev-apps supervisor", () => {
 
 		await expect(run).resolves.toBe(7);
 		expect(children[1].signals).toEqual(["SIGINT"]);
+	});
+
+	it("waitForHttpReachable 在 HTTP 可达后返回", async () => {
+		const fetchImpl = vi
+			.fn()
+			.mockRejectedValueOnce(new Error("ECONNREFUSED"))
+			.mockResolvedValueOnce({});
+		const sleep = vi.fn(async () => {});
+
+		await expect(
+			waitForHttpReachable("http://127.0.0.1:8787/api/health", {
+				fetchImpl,
+				sleep,
+				intervalMs: 1,
+				timeoutMs: 100,
+			}),
+		).resolves.toBeUndefined();
+		expect(fetchImpl).toHaveBeenCalledTimes(2);
+		expect(sleep).toHaveBeenCalledWith(1);
 	});
 
 	it("Windows 下终止整棵 dev 进程树", () => {

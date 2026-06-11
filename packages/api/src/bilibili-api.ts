@@ -14,6 +14,7 @@ import * as EP from "./endpoints";
 import type {
 	BACookie,
 	BiliTicket,
+	LiveRoomDanmuInfo,
 	LiveRoomInfo,
 	MasterInfoData,
 	MySelfInfoData,
@@ -733,14 +734,11 @@ export class BilibiliAPI {
 		);
 	}
 
-	async getLiveRoomInfoStreamKey(roomId: string) {
+	async getLiveRoomInfoStreamKey(roomId: string): Promise<LiveRoomDanmuInfo> {
+		// getDanmuInfo 现已强制 wbi 签名，裸 client.get 一律被风控拦成 -352。必须走
+		// wbiGet（自动加 wts + w_rid，并自带 -352 → 刷新 wbiKeys 重试一次的自愈）。
 		return this.retry(
-			async () =>
-				(
-					await this.client.get(
-						`${EP.GET_LIVE_ROOM_INFO_STREAM_KEY}?id=${encodeURIComponent(roomId)}`,
-					)
-				).data,
+			async () => this.wbiGet(EP.GET_LIVE_ROOM_INFO_STREAM_KEY, { id: roomId }),
 			"getLiveRoomInfoStreamKey",
 		);
 	}

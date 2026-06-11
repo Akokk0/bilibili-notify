@@ -3,8 +3,11 @@ import type {
 	PayloadSegment,
 	SubscriptionOp,
 } from "@bilibili-notify/internal";
-import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
-import { makeKoishiServiceContext } from "@bilibili-notify/koishi-runtime";
+import {
+	makeKoishiServiceContext,
+	resolveBilibiliNotifyCoreInternals,
+	tryResolveBilibiliNotifyCoreInternals,
+} from "@bilibili-notify/koishi-runtime";
 import {
 	type LiveContentBuilder,
 	LiveEngine,
@@ -219,12 +222,7 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 				`${SERVICE_NAME} 无法获取 bilibili-notify 核心服务：请确认 koishi-plugin-bilibili-notify 已安装、启用并先于本插件启动。`,
 			);
 		}
-		const internals = core.getInternals(BILIBILI_NOTIFY_TOKEN);
-		if (!internals) {
-			throw new Error(
-				`${SERVICE_NAME} 已找到 bilibili-notify 核心服务，但内部实例尚未就绪或插件版本不匹配：请确认 core/dynamic/live/ai 等 BN 插件版本一致；若升级后仍报错，请卸载所有 BN 插件后重新安装。`,
-			);
-		}
+		const internals = resolveBilibiliNotifyCoreInternals(SERVICE_NAME, core);
 
 		const serviceCtx = makeKoishiServiceContext(this.ctx, SERVICE_NAME, this.config.logLevel);
 		const pushLike = adaptPush(internals.push);
@@ -300,7 +298,12 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 				};
 			});
 			this.engine?.applyOps(liveOps, (uid) => {
-				const fresh = this.ctx.get("bilibili-notify")?.getInternals(BILIBILI_NOTIFY_TOKEN);
+				const fresh = tryResolveBilibiliNotifyCoreInternals(
+					SERVICE_NAME,
+					this.ctx.get("bilibili-notify"),
+					(msg) =>
+						this.ctx.logger(SERVICE_NAME).debug(`[internals] 运行期获取核心实例失败：${msg}`),
+				);
 				if (!fresh) return undefined;
 				const sub = fresh.store.findByUid(uid);
 				if (!sub) return undefined;
@@ -311,7 +314,11 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 		// auth-lost → engine.teardown; auth-restored → engine.rebuildFromSubs
 		this.ctx.on("bilibili-notify/auth-lost", () => this.engine?.teardown());
 		this.ctx.on("bilibili-notify/auth-restored", () => {
-			const fresh = this.ctx.get("bilibili-notify")?.getInternals(BILIBILI_NOTIFY_TOKEN);
+			const fresh = tryResolveBilibiliNotifyCoreInternals(
+				SERVICE_NAME,
+				this.ctx.get("bilibili-notify"),
+				(msg) => this.ctx.logger(SERVICE_NAME).debug(`[internals] 运行期获取核心实例失败：${msg}`),
+			);
 			if (fresh) this.engine?.rebuildFromSubs(storeToLiveView(fresh.store, config));
 		});
 

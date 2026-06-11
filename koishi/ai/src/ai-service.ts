@@ -7,8 +7,11 @@ import {
 	type Subscriptions,
 } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
-import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
-import { makeKoishiServiceContext } from "@bilibili-notify/koishi-runtime";
+import {
+	makeKoishiServiceContext,
+	resolveBilibiliNotifyCoreInternals,
+	tryResolveBilibiliNotifyCoreInternals,
+} from "@bilibili-notify/koishi-runtime";
 import { type Awaitable, type Context, Service } from "koishi";
 import type {} from "koishi-plugin-bilibili-notify";
 import { aiCommands } from "./commands";
@@ -101,12 +104,7 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 				`${SERVICE_NAME} 无法获取 bilibili-notify 核心服务：请确认 koishi-plugin-bilibili-notify 已安装、启用并先于本插件启动。`,
 			);
 		}
-		const internals = core.getInternals(BILIBILI_NOTIFY_TOKEN);
-		if (!internals) {
-			throw new Error(
-				`${SERVICE_NAME} 已找到 bilibili-notify 核心服务，但内部实例尚未就绪或插件版本不匹配：请确认 core/dynamic/live/ai 等 BN 插件版本一致；若升级后仍报错，请卸载所有 BN 插件后重新安装。`,
-			);
-		}
+		const internals = resolveBilibiliNotifyCoreInternals(SERVICE_NAME, core);
 		const holder = (this as unknown as { _apiHolder: { api: BilibiliAPI | null } })._apiHolder;
 		holder.api = internals.api;
 
@@ -118,7 +116,12 @@ export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
 
 		this.engine.setSubManagement({
 			getSubs: () => {
-				const fresh = this.ctx.get("bilibili-notify")?.getInternals(BILIBILI_NOTIFY_TOKEN);
+				const fresh = tryResolveBilibiliNotifyCoreInternals(
+					SERVICE_NAME,
+					this.ctx.get("bilibili-notify"),
+					(msg) =>
+						this.ctx.logger(SERVICE_NAME).debug(`[internals] 运行期获取核心实例失败：${msg}`),
+				);
 				if (!fresh) return null;
 				return storeToAiSubs(fresh.store);
 			},

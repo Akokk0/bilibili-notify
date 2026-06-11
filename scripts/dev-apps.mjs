@@ -5,6 +5,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 const shutdownGraceMs = 8_000;
+const backendReadyUrl = "http://127.0.0.1:8787/api/health";
+const backendReadyTimeoutMs = 20_000;
+const backendReadyIntervalMs = 200;
 
 export function createDevProcessSpecs(root = repoRoot) {
 	return [
@@ -48,6 +51,40 @@ export function buildWindowsTreeKillArgs(pid) {
 	return ["taskkill", ["/pid", String(pid), "/T", "/F"]];
 }
 
+export async function waitForHttpReachable(
+	url,
+	{
+		timeoutMs = backendReadyTimeoutMs,
+		intervalMs = backendReadyIntervalMs,
+		fetchImpl = globalThis.fetch,
+		sleep = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms)),
+	} = {},
+) {
+	if (typeof fetchImpl !== "function") throw new Error("global fetch is not available");
+	const deadline = Date.now() + timeoutMs;
+	let lastError;
+	while (Date.now() <= deadline) {
+		try {
+			const controller = new AbortController();
+			const timer = setTimeout(() => controller.abort(), Math.min(intervalMs, 1_000));
+			timer.unref?.();
+			try {
+				await fetchImpl(url, { method: "GET", signal: controller.signal });
+			} finally {
+				clearTimeout(timer);
+			}
+			return;
+		} catch (err) {
+			lastError = err;
+			if (Date.now() >= deadline) break;
+			await sleep(intervalMs);
+		}
+	}
+	const detail =
+		lastError instanceof Error ? `: ${lastError.message}` : lastError ? `: ${lastError}` : "";
+	throw new Error(`timed out waiting for ${url}${detail}`);
+}
+
 export async function runDevApps({
 	root = repoRoot,
 	spawnProcess = spawn,
@@ -55,21 +92,13 @@ export async function runDevApps({
 	processPlatform = platform,
 	log = console.error,
 	graceMs = shutdownGraceMs,
+	waitForBackendReady = waitForHttpReachable,
+	readyUrl = backendReadyUrl,
+	readyTimeoutMs = backendReadyTimeoutMs,
+	readyIntervalMs = backendReadyIntervalMs,
 } = {}) {
 	const specs = createDevProcessSpecs(root);
-	const children = specs.map((spec) => {
-		log(`[dev:apps] starting ${spec.name}: ${spec.command} ${spec.args.join(" ")}`);
-		return {
-			spec,
-			child: spawnProcess(spec.command, spec.args, {
-				cwd: spec.cwd,
-				detached: processPlatform !== "win32",
-				env: processEnv,
-				stdio: "inherit",
-			}),
-		};
-	});
-
+	const children = [];
 	let intentionalStop = false;
 	let requestedExitCode = 0;
 	let settled = 0;
@@ -113,7 +142,19 @@ export async function runDevApps({
 		process.on("SIGINT", onSigint);
 		process.on("SIGTERM", onSigterm);
 
-		for (const running of children) {
+		const startProcess = (spec) => {
+			if (intentionalStop) return undefined;
+			log(`[dev:apps] starting ${spec.name}: ${spec.command} ${spec.args.join(" ")}`);
+			const running = {
+				spec,
+				child: spawnProcess(spec.command, spec.args, {
+					cwd: spec.cwd,
+					detached: processPlatform !== "win32",
+					env: processEnv,
+					stdio: "inherit",
+				}),
+			};
+			children.push(running);
 			const settle = (status) => {
 				if (statuses.has(running.child)) return;
 				statuses.set(running.child, { ...status, spec: running.spec });
@@ -128,7 +169,31 @@ export async function runDevApps({
 			};
 			running.child.once("error", (error) => settle({ error }));
 			running.child.once("exit", (code, signal) => settle({ code, signal }));
-		}
+			return running;
+		};
+
+		void (async () => {
+			startProcess(specs[0]);
+			if (waitForBackendReady && specs.length > 1) {
+				log(`[dev:apps] waiting for backend: ${readyUrl}`);
+				try {
+					await waitForBackendReady(readyUrl, {
+						timeoutMs: readyTimeoutMs,
+						intervalMs: readyIntervalMs,
+					});
+					if (!intentionalStop) log("[dev:apps] backend ready; starting web dev server…");
+				} catch (err) {
+					if (!intentionalStop) {
+						const message = err instanceof Error ? err.message : String(err);
+						log(
+							`[dev:apps] backend not ready after ${readyTimeoutMs}ms (${message}); starting web anyway…`,
+						);
+					}
+				}
+			}
+			if (intentionalStop) return;
+			for (const spec of specs.slice(1)) startProcess(spec);
+		})();
 	});
 }
 

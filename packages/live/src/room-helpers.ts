@@ -8,6 +8,49 @@ import { LivePushType, type SubItemView } from "./push-like";
 import { RoomContextBase } from "./room-context";
 import { type LiveData, LiveType, type MasterInfo } from "./types";
 
+type LiveRoomDanmuInfo = {
+	code: number;
+	message?: string;
+	msg?: string;
+	data: {
+		token?: string;
+		host_list?: unknown[];
+		[key: string]: unknown;
+	} | null;
+};
+
+export class LiveRoomAccessDeniedError extends Error {
+	constructor(readonly reason: string) {
+		super(`弹幕连接不可用：${reason}，可能是加密/付费/测试房或当前账号无权限访问`);
+		this.name = "LiveRoomAccessDeniedError";
+	}
+}
+
+export function describeLiveRoomDanmuPreflightFallback(
+	info: LiveRoomDanmuInfo,
+): string | undefined {
+	const message = info.message || info.msg;
+	const messageSuffix = message ? ` message=${message}` : "";
+	// -352 是 B 站常见风控/校验拦截码。它说明这次 HTTP 预检不可信,不等价于房间
+	// 永久不可访问;旧的直接 WS 建连路径可能仍然可用,所以只能降级回退,不能硬停。
+	if (info.code === -352) return `B 站返回 code=${info.code}${messageSuffix}`;
+	return undefined;
+}
+
+export function describeLiveRoomDanmuAccessDenied(info: LiveRoomDanmuInfo): string | undefined {
+	if (describeLiveRoomDanmuPreflightFallback(info)) return undefined;
+	const message = info.message || info.msg;
+	const messageSuffix = message ? ` message=${message}` : "";
+	if (info.code !== 0) return `B 站返回 code=${info.code}${messageSuffix}`;
+	if (!info.data) return "B 站未返回弹幕连接信息";
+	const token = typeof info.data.token === "string" ? info.data.token.trim() : "";
+	if (!token) return "B 站未返回弹幕 token";
+	if (!Array.isArray(info.data.host_list) || info.data.host_list.length === 0) {
+		return "B 站未返回弹幕服务器列表";
+	}
+	return undefined;
+}
+
 /**
  * Extends {@link RoomContextBase} with the data-fetch / card-render /
  * time-format helpers — every call here either hits the Bilibili HTTP API or
@@ -22,9 +65,8 @@ export class RoomContext extends RoomContextBase {
 	 * L4: returns `true` iff there is an active listener for the room *after*
 	 * this call — either freshly created OR already present (the latter lets a
 	 * reconnect that races with a backoff-window restore treat the room as
-	 * recovered). Returns `false` on every failure mode so the reconnect caller
-	 * only resets its backoff on a real success instead of the old
-	 * void-swallow that recorded "reconnected" with no listener attached.
+	 * recovered). 可重试的 setup 失败返回 `false`;B 站明确拒绝弹幕连接时抛
+	 * {@link LiveRoomAccessDeniedError},让调用方停止监测,不要把受限房当瞬时抖动重连。
 	 */
 	async startLiveRoomListener(
 		roomId: string,
@@ -48,6 +90,26 @@ export class RoomContext extends RoomContextBase {
 			return true;
 		}
 		this.consumeIntentionalClose(roomId);
+
+		let danmuInfo: LiveRoomDanmuInfo;
+		try {
+			danmuInfo = await this.api.getLiveRoomInfoStreamKey(roomId);
+		} catch (e) {
+			const message = e instanceof Error ? e.message : String(e);
+			this.logger.warn(`[conn] 获取弹幕连接信息异常，房间 [${roomId}]：${message}`);
+			return false;
+		}
+		const fallbackReason = describeLiveRoomDanmuPreflightFallback(danmuInfo);
+		if (fallbackReason) {
+			this.logger.warn(
+				`[conn] 直播间 [${roomId}] 弹幕连接预检被风控拦截：${fallbackReason}，回退到直接建连`,
+			);
+		}
+		const deniedReason = describeLiveRoomDanmuAccessDenied(danmuInfo);
+		if (deniedReason) {
+			throw new LiveRoomAccessDeniedError(deniedReason);
+		}
+		if (aborted()) return false;
 
 		const cookiesStr = this.api.getCookiesHeader();
 		let mySelfInfo: MySelfInfoData;

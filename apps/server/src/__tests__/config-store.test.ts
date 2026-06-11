@@ -7,6 +7,7 @@ import {
 	type ConfigScope,
 	type Disposable,
 	deterministicUuid,
+	FEATURE_KEYS,
 	type MessageBus,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
@@ -14,6 +15,7 @@ import {
 	type PushTarget,
 	type ServiceContext,
 	type Subscription,
+	SubscriptionSchema,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BootstrapConfig } from "../config/schema.js";
@@ -313,6 +315,54 @@ describe("ConfigStore", () => {
 		const removed = await store.deleteTarget(target.id);
 		expect(removed).toBe(true);
 		expect(store.getTargets()).toHaveLength(0);
+	});
+
+	it("deleteTarget 级联清理订阅 routing / atAll 并保持 schema 自洽", async () => {
+		const adapter = makeOnebotAdapter();
+		await store.upsertAdapter(adapter);
+		const target = {
+			id: randomUUID(),
+			name: "群聊",
+			adapterId: adapter.id,
+			platform: "onebot" as const,
+			scope: "group" as const,
+			enabled: true,
+			session: { groupId: "10001" },
+		};
+		const keptTarget = {
+			id: randomUUID(),
+			name: "私聊",
+			adapterId: adapter.id,
+			platform: "onebot" as const,
+			scope: "private" as const,
+			enabled: true,
+			session: { userId: "20002" },
+		};
+		await store.upsertTarget(target);
+		await store.upsertTarget(keptTarget);
+		const sub = makeSampleSubscription("77777");
+		for (const k of FEATURE_KEYS) sub.routing[k] = [target.id, keptTarget.id];
+		sub.atAll.dynamic[target.id] = true;
+		sub.atAll.dynamic[keptTarget.id] = false;
+		sub.atAll.live[target.id] = false;
+		sub.atAll.live[keptTarget.id] = true;
+		await store.upsertSubscription(sub);
+		bus.events.length = 0;
+
+		await expect(store.deleteTarget(target.id)).resolves.toBe(true);
+
+		expect(store.getTargets().map((t) => t.id)).toEqual([keptTarget.id]);
+		const nextSub = store.getSubscriptions()[0];
+		expect(nextSub).toBeDefined();
+		for (const k of FEATURE_KEYS) {
+			expect(nextSub?.routing[k]).not.toContain(target.id);
+			expect(nextSub?.routing[k]).toContain(keptTarget.id);
+		}
+		expect(nextSub?.atAll.dynamic).toEqual({ [keptTarget.id]: false });
+		expect(nextSub?.atAll.live).toEqual({ [keptTarget.id]: true });
+		expect(SubscriptionSchema.safeParse(nextSub).success).toBe(true);
+		const scopes = bus.events.filter(([e]) => e === "config-changed").map(([, args]) => args[0]);
+		expect(scopes).toEqual(["targets", "subscriptions"]);
 	});
 
 	it("upsertAdapter(webhook) 自动创建系统托管 target", async () => {
