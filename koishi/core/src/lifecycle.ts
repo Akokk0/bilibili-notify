@@ -1,6 +1,5 @@
 import { BilibiliAPI, BiliLoginStatus } from "@bilibili-notify/api";
 import {
-	BILIBILI_NOTIFY_TOKEN,
 	DEFAULT_SCHEDULE,
 	type GlobalDefaults,
 	type LoginSnapshot,
@@ -239,42 +238,4 @@ export function tearDown(deps: { logger: Logger; slots: ManagerSlots }): void {
 	deps.slots.registry = null;
 	deps.slots.subLoader = null;
 	deps.logger.debug("[stop] 插件资源清理完成");
-}
-
-/** Shape returned by `BilibiliNotifyServerManager.getInternals(BILIBILI_NOTIFY_TOKEN)`. */
-export interface InternalsShape {
-	api: BilibiliAPI;
-	push: BilibiliPush;
-	store: SubscriptionStore;
-	/**
-	 * Koishi-side PushTarget registry. Friendly plugins (e.g. AI tools that
-	 * create subscriptions on the user's behalf) need this to resolve a real
-	 * targetId to wire into `Subscription.routing` instead of inventing a
-	 * random UUID that points at no target.
-	 */
-	registry: TargetRegistry;
-}
-
-/** Build the internals object exposed to friendly plugins; null-guarded for the 4 prereqs. */
-export function buildInternals(args: {
-	token: symbol;
-	api: BilibiliAPI | null;
-	push: BilibiliPush | null;
-	store: SubscriptionStore | null;
-	registry: TargetRegistry | null;
-}): InternalsShape | null {
-	if (
-		args.token !== BILIBILI_NOTIFY_TOKEN ||
-		!args.api ||
-		!args.push ||
-		!args.store ||
-		!args.registry
-	)
-		return null;
-	return {
-		api: args.api,
-		push: args.push,
-		store: args.store,
-		registry: args.registry,
-	};
 }
