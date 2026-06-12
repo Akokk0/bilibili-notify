@@ -445,6 +445,7 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 				<SectionGrid>
 					<TemplateField
 						label="开播模板"
+						hint="变量：{name} 主播名 · {time} 已播时长 · {follower} 当前粉丝数 · {link} 直播间链接"
 						value={draft.defaults.templates.liveStart}
 						onChange={(value) =>
 							updateDraft((next) => {
@@ -454,6 +455,7 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 					/>
 					<TemplateField
 						label="直播中复推模板"
+						hint="变量：{name} 主播名 · {time} 已播时长 · {watched} 累计观看 · {link} 直播间链接"
 						value={draft.defaults.templates.liveOngoing}
 						onChange={(value) =>
 							updateDraft((next) => {
@@ -463,6 +465,7 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 					/>
 					<TemplateField
 						label="下播模板"
+						hint="变量：{name} 主播名 · {time} 本次时长 · {follower_change} 粉丝变化"
 						value={draft.defaults.templates.liveEnd}
 						onChange={(value) =>
 							updateDraft((next) => {
@@ -472,6 +475,7 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 					/>
 					<TemplateField
 						label="弹幕总结模板"
+						hint="非 AI 时的兜底总结。变量：{dmc} 发言人数 · {dca} 弹幕总数 · {mdn} 主播粉丝牌名 · {un1}~{un5} 弹幕榜用户 · {dc1}~{dc5} 对应条数"
 						value={draft.defaults.templates.liveSummary}
 						onChange={(value) =>
 							updateDraft((next) => {
@@ -481,6 +485,7 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 					/>
 					<TemplateField
 						label="动态模板"
+						hint="变量：{name} UP 名 · {url} 动态链接（关闭动态附链接时为空）"
 						value={draft.defaults.templates.dynamic}
 						onChange={(value) =>
 							updateDraft((next) => {
@@ -490,6 +495,7 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 					/>
 					<TemplateField
 						label="视频模板"
+						hint="变量：{name} UP 名 · {url} 视频链接"
 						value={draft.defaults.templates.dynamicVideo}
 						onChange={(value) =>
 							updateDraft((next) => {
@@ -499,6 +505,7 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 					/>
 					<TemplateField
 						label="特别弹幕模板"
+						hint="变量：{mastername} 主播名 · {uname} 关注用户名 · {msg} 弹幕内容"
 						value={draft.defaults.templates.specialDanmaku}
 						onChange={(value) =>
 							updateDraft((next) => {
@@ -508,6 +515,7 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 					/>
 					<TemplateField
 						label="特别进房模板"
+						hint="变量：{uname} 关注用户名 · {mastername} 主播名"
 						value={draft.defaults.templates.specialUserEnter}
 						onChange={(value) =>
 							updateDraft((next) => {
@@ -586,7 +594,7 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 
 			<Card
 				title="AI 点评"
-				description="AI 默认关闭；启用后调用 AstrBot Provider 生成总结。模型由 AstrBot Provider 决定，人格（声线）由 AstrBot 人格系统提供——在插件配置里选 Provider 与默认人格即可，可在「订阅规则」为单个 UP 主单独指定人格。"
+				description="AI 默认关闭；启用后调用 AstrBot Provider 生成总结。模型由 AstrBot Provider 决定，人格由 AstrBot 人格系统提供——在插件配置里选 Provider 与默认人格即可，可在「订阅规则」为单个 UP 主单独指定人格。"
 			>
 				<SectionGrid>
 					<Toggle
@@ -735,13 +743,15 @@ function TemplateField({
 	label,
 	value,
 	onChange,
+	hint,
 }: {
 	readonly label: string;
 	readonly value: string;
 	readonly onChange: (value: string) => void;
+	readonly hint?: string;
 }) {
 	return (
-		<Field label={label}>
+		<Field label={label} hint={hint}>
 			<TextArea value={value} onChange={(event) => onChange(event.target.value)} />
 		</Field>
 	);

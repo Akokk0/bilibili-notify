@@ -42,7 +42,7 @@
 		"type": "string",
 		"default": "",
 		"_special": "select_persona",
-		"hint": "AI 总结使用的人格（声线/称呼）。留空时使用 AstrBot 当前默认人格；选定后由 AstrBot 提供人格，插件不再自带人格设置。可在 Dashboard 为单个 UP 主单独覆盖。"
+		"hint": "AI 总结使用的人格。留空时使用 AstrBot 当前默认人格；选定后由 AstrBot 提供人格，插件不再自带人格设置。可在 Dashboard 为单个 UP 主单独覆盖。"
 	},
 	"chromePath": {
 		"description": "Chrome / Chromium 可执行文件路径",

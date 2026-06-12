@@ -592,7 +592,7 @@ function AiOverrides({
 	return (
 		<Card
 			title="AI 覆盖"
-			description="人格（声线）由 AstrBot 提供；这里可为该 UP 主单独指定一个 AstrBot 人格，留空则继承全局默认人格。"
+			description="人格由 AstrBot 提供；这里可为该 UP 主单独指定一个 AstrBot 人格，留空则继承全局默认人格。"
 			action={
 				<Toggle
 					label="自定义"

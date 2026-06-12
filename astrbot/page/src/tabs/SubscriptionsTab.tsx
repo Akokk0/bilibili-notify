@@ -72,7 +72,6 @@ export function SubscriptionsTab({ data, onData, onReload }: SubscriptionsTabPro
 			const subscriptions = await dashboardApi.createSubscription({
 				uid: user.uid,
 				name: user.name,
-				enabled: true,
 			});
 			onData({ ...data, subscriptions });
 			await onReload();
@@ -309,7 +308,7 @@ function SubscriptionCard({
 				) : null}
 				{targets.length > 0 ? (
 					<div className="overflow-x-auto rounded-2xl bg-white/60 p-3 bn-scrollbar">
-						<table className="w-full min-w-[720px] text-left text-sm">
+						<table className="w-full min-w-180 text-left text-sm">
 							<thead className="text-bn-text-secondary">
 								<tr>
 									<th className="p-2">特性</th>

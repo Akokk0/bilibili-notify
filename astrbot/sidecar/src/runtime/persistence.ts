@@ -80,7 +80,8 @@ export function createAstrBotSubscription(
 	return normalizeAstrBotSubscription({
 		...sub,
 		name: input.name,
-		enabled: input.enabled ?? true,
+		// 新订阅默认停用,让用户在 Dashboard 主动开启;显式传入则尊重。
+		enabled: input.enabled ?? false,
 		routing: buildAstrBotRouting({
 			features,
 			defaultTargetIds: options.defaultTargetIds ?? [],

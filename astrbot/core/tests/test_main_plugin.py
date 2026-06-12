@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import sys
 import types
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -347,27 +348,42 @@ def test_parse_sidecar_log_line_strips_prefix_and_maps_level(
     assert parse("plain stdout line", "stdout") == ("info", "plain stdout line")
 
 
+def test_read_plugin_version_uses_metadata_yaml(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    module = import_main_with_fake_astrbot(monkeypatch)
+    meta = tmp_path / "metadata.yaml"
+    meta.write_text("name: x\nversion: v9.9.9-test\nauthor: a\n", encoding="utf-8")
+    assert module._read_plugin_version(meta) == "v9.9.9-test"
+    # 文件缺失 → 回退默认
+    assert module._read_plugin_version(tmp_path / "nope.yaml", default="v0.0.0") == "v0.0.0"
+    # 模块常量取自真实 metadata.yaml(单一来源,与插件版本保持一致)
+    assert module.PLUGIN_VERSION == module._read_plugin_version()
+
+
 def import_main_with_fake_astrbot(monkeypatch: pytest.MonkeyPatch):
     logger = FakeLogger()
-    api_module = types.ModuleType("astrbot.api")
+    # types.ModuleType 实例上动态挂属性是 mock 惯用法;标 Any 避开静态检查器
+    # (Pylance)对 ModuleType 未知属性的误报。运行期与 ruff 门禁均不受影响。
+    api_module: Any = types.ModuleType("astrbot.api")
     api_module.logger = logger
 
-    event_module = types.ModuleType("astrbot.api.event")
+    event_module: Any = types.ModuleType("astrbot.api.event")
     event_module.AstrMessageEvent = object
     event_module.MessageChain = FakeMessageChain
     event_module.filter = FakeFilter()
 
-    star_module = types.ModuleType("astrbot.api.star")
+    star_module: Any = types.ModuleType("astrbot.api.star")
     star_module.Context = FakeContext
     star_module.Star = FakeStar
     star_module.register = fake_register
 
-    components_module = types.ModuleType("astrbot.api.message_components")
+    components_module: Any = types.ModuleType("astrbot.api.message_components")
     components_module.Plain = FakePlain
     components_module.Image = FakeImage
     components_module.AtAll = FakeAtAll
 
-    quart_module = types.ModuleType("quart")
+    quart_module: Any = types.ModuleType("quart")
     quart_module.Response = FakeResponse
     quart_module.jsonify = fake_jsonify
     quart_module.request = object()
@@ -500,7 +516,7 @@ class FakePersonaManager:
             return None
         return {"name": persona_id, "prompt": prompt}
 
-    async def get_default_persona_v3(self, umo: Any = None):
+    async def get_default_persona_v3(self):
         return {"name": "default", "prompt": self._default_prompt}
 
 

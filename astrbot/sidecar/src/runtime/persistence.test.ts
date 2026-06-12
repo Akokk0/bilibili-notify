@@ -22,7 +22,8 @@ describe("AstrBot sidecar subscription persistence", () => {
 		);
 
 		expect(subscription.uid).toBe("123456");
-		expect(subscription.enabled).toBe(true);
+		// 新订阅默认停用,由用户在 Dashboard 主动开启(避免刚加就开始推送)。
+		expect(subscription.enabled).toBe(false);
 		expect(subscription.routing.dynamic).toEqual([ASTRBOT_TARGET_ID]);
 		expect(subscription.routing.live).toEqual([ASTRBOT_TARGET_ID]);
 		expect(subscription.routing.liveEnd).toEqual([ASTRBOT_TARGET_ID]);
@@ -33,6 +34,21 @@ describe("AstrBot sidecar subscription persistence", () => {
 		expect(subscription.routing.specialDanmaku).toEqual([]);
 		expect(subscription.routing.specialUserEnter).toEqual([]);
 		expect(subscription.overrides).toEqual({});
+	});
+
+	it("honors an explicit enabled flag (default-disabled is only a fallback)", () => {
+		expect(
+			createAstrBotSubscription(
+				{ uid: "123456", name: "测试 UP 主", enabled: true },
+				{ defaultTargetIds: [ASTRBOT_TARGET_ID] },
+			).enabled,
+		).toBe(true);
+		expect(
+			createAstrBotSubscription(
+				{ uid: "123456", name: "测试 UP 主", enabled: false },
+				{ defaultTargetIds: [ASTRBOT_TARGET_ID] },
+			).enabled,
+		).toBe(false);
 	});
 
 	it("keeps explicit minimal feature toggles as overrides", () => {

@@ -33,7 +33,20 @@ else:
     )
 
 PLUGIN_NAME = "astrbot_plugin_bilibili_notify"
-PLUGIN_VERSION = "v0.1.0"
+
+
+def _read_plugin_version(metadata_path: Path | None = None, default: str = "v0.0.0") -> str:
+    """从同目录 metadata.yaml 读 version,作为插件 + sidecar 的单一版本源,避免硬编码漂移。"""
+    path = metadata_path or (Path(__file__).resolve().parent / "metadata.yaml")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return default
+    match = re.search(r"(?m)^version:\s*(\S+)", text)
+    return match.group(1) if match else default
+
+
+PLUGIN_VERSION = _read_plugin_version()
 PROXY_TUNNEL_METHOD_KEY = "__bn_proxy_method"
 PROXY_TUNNEL_BODY_KEY = "__bn_proxy_body"
 PROXY_TUNNEL_PARAMS_KEY = "__bn_proxy_params"

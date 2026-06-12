@@ -180,16 +180,14 @@ export function App() {
 							Bilibili Notify · AstrBot
 						</h1>
 						<p className="mt-2 max-w-2xl text-bn-text-tertiary text-sm leading-relaxed">
-							通过 AstrBot Plugin Page 配置订阅、推送目标和高级规则。页面只访问 Python 白名单
-							proxy，不接触 sidecar token。
+							通过 AstrBot Plugin Page 配置订阅、推送目标和高级规则。
 						</p>
 					</div>
-					<div className="flex flex-wrap gap-2">
+					<div className="flex flex-col items-center gap-2">
 						<Button onClick={() => void reload()} disabled={loading}>
 							刷新
 						</Button>
-						<Badge>Page {__ASTRBOT_PAGE_VERSION__}</Badge>
-						{data ? <Badge>Sidecar {data.snapshot.version}</Badge> : null}
+						{data ? <Badge>{data.snapshot.version}</Badge> : null}
 					</div>
 				</div>
 			</header>
