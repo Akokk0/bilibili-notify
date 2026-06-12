@@ -24,7 +24,9 @@ describe("build-astrbot-page", () => {
 			});
 
 			const html = await readFile(join(outDir, "index.html"), "utf8");
-			expect(html).toContain("./assets/index-");
+			// 稳定资源名(无 content-hash):page vite.config 用 [name].js 因为产物 checked-in,
+			// 见 astrbot/page/vite.config.ts。此前断言 "./assets/index-"(带 hash)在 P2 改稳定名后失效。
+			expect(html).toContain("./assets/index.js");
 			expect(html).toContain("Bilibili Notify · AstrBot");
 			expect(html).not.toContain("crossorigin");
 		} finally {
