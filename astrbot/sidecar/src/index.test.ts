@@ -69,4 +69,17 @@ describe("sidecar launch options", () => {
 		expect(options.authToken).toBe("env-only");
 		expect(options.cookieEncryptionKey).toBe("env-key");
 	});
+
+	it("parses chromePath from --chrome-path flag and BN_SIDECAR_CHROME_PATH env (CLI 优先)", () => {
+		const fromCli = parseSidecarLaunchOptions(["--chrome-path", "/cli/chrome"], {
+			BN_SIDECAR_CHROME_PATH: "/env/chrome",
+		});
+		expect(fromCli.chromePath).toBe("/cli/chrome");
+
+		const fromEnv = parseSidecarLaunchOptions([], { BN_SIDECAR_CHROME_PATH: "/env/chrome" });
+		expect(fromEnv.chromePath).toBe("/env/chrome");
+
+		const unset = parseSidecarLaunchOptions([], {});
+		expect(unset.chromePath).toBeUndefined();
+	});
 });

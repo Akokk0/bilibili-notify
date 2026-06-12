@@ -25,6 +25,7 @@ export interface SidecarLaunchOptions {
 	readonly authToken?: string;
 	readonly userAgent?: string;
 	readonly cookieEncryptionKey?: string;
+	readonly chromePath?: string;
 	readonly signal?: AbortSignal;
 }
 
@@ -57,6 +58,7 @@ export function parseSidecarLaunchOptions(
 		| "authToken"
 		| "userAgent"
 		| "cookieEncryptionKey"
+		| "chromePath"
 	> {
 	const parsed = parseArgs({
 		args: argv,
@@ -69,6 +71,7 @@ export function parseSidecarLaunchOptions(
 			"ai-provider-id": { type: "string" },
 			"log-level": { type: "string" },
 			"user-agent": { type: "string" },
+			"chrome-path": { type: "string" },
 			version: { type: "string" },
 		},
 		allowPositionals: true,
@@ -85,6 +88,8 @@ export function parseSidecarLaunchOptions(
 	const authToken = env.BN_SIDECAR_TOKEN;
 	const userAgent = parsed.values["user-agent"] ?? env.BN_SIDECAR_USER_AGENT;
 	const cookieEncryptionKey = env.BN_SIDECAR_COOKIE_ENCRYPTION_KEY;
+	// chromePath 非密钥(只是本机浏览器路径),可走 argv;缺省时 sidecar 侧按 OS 探测。
+	const chromePath = parsed.values["chrome-path"] ?? env.BN_SIDECAR_CHROME_PATH;
 	const version = parsed.values.version ?? env.BN_SIDECAR_VERSION ?? DEFAULT_VERSION;
 	return {
 		host,
@@ -98,6 +103,7 @@ export function parseSidecarLaunchOptions(
 		authToken,
 		userAgent,
 		cookieEncryptionKey,
+		chromePath,
 	};
 }
 

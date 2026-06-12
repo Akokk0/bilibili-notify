@@ -213,6 +213,9 @@ importers:
       '@bilibili-notify/dynamic':
         specifier: workspace:*
         version: link:../../packages/dynamic
+      '@bilibili-notify/image':
+        specifier: workspace:*
+        version: link:../../packages/image
       '@bilibili-notify/internal':
         specifier: workspace:*
         version: link:../../packages/internal
@@ -228,6 +231,9 @@ importers:
       '@bilibili-notify/subscription':
         specifier: workspace:*
         version: link:../../packages/subscription
+      puppeteer-core:
+        specifier: ^24.16.0
+        version: 24.43.0
     devDependencies:
       tsx:
         specifier: ^4.21.0

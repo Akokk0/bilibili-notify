@@ -167,6 +167,22 @@ async def test_build_sidecar_config_uses_native_config_and_fixed_plugin_data_dir
     assert config.version == "v0.1.0"
 
 
+def test_build_sidecar_config_reads_chrome_path(tmp_path: Path) -> None:
+    # native 配置(chromePath)优先于 env。
+    cfg_native = build_sidecar_config(
+        tmp_path,
+        {"BN_SIDECAR_CHROME_PATH": "/env/chrome"},
+        startup_config={"chromePath": "/native/chrome"},
+    )
+    assert cfg_native.chrome_path == "/native/chrome"
+    # 无 native → 回落 BN_SIDECAR_CHROME_PATH。
+    cfg_env = build_sidecar_config(tmp_path, {"BN_SIDECAR_CHROME_PATH": "/env/chrome"})
+    assert cfg_env.chrome_path == "/env/chrome"
+    # 都没有 → 空串(交给 Node sidecar 侧按 OS 探测)。
+    cfg_none = build_sidecar_config(tmp_path, {})
+    assert cfg_none.chrome_path == ""
+
+
 def test_parse_node_major_version() -> None:
     assert parse_node_major_version("v24.1.0") == 24
     assert parse_node_major_version("node v25.0.0") == 25
@@ -826,6 +842,7 @@ async def test_start_sidecar_uses_configured_shutdown_timeout_on_startup_failure
         ai_backend="own",
         ai_provider_id="astrbot-openai",
         token="secret-token",
+        chrome_path="/opt/chrome",
         version="v0.1.0",
         node_min_major=0,
     )
@@ -888,6 +905,11 @@ async def test_start_sidecar_uses_configured_shutdown_timeout_on_startup_failure
     assert observed_env is not None
     assert observed_env["BN_SIDECAR_TOKEN"] == "secret-token"
     assert observed_env["BN_SIDECAR_PARENT_PID"] == str(os.getpid())
+    # chromePath 非密钥,经 env 与 argv 双通道下发(对齐其它非密钥配置)。
+    assert observed_env["BN_SIDECAR_CHROME_PATH"] == "/opt/chrome"
+    observed_arg_strs = [str(arg) for arg in observed_args]
+    assert "--chrome-path" in observed_arg_strs
+    assert "/opt/chrome" in observed_arg_strs
     assert fake_process.terminated is True
     assert fake_process.killed is False
     assert fake_process.wait_calls == 1

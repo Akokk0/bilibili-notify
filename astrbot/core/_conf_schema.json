@@ -36,5 +36,11 @@
 		"default": "",
 		"_special": "select_provider",
 		"hint": "留空时使用 AstrBot 默认 Provider。AI 总结默认关闭，具体业务开关在插件 Dashboard 中配置。"
+	},
+	"chromePath": {
+		"description": "Chrome / Chromium 可执行文件路径",
+		"type": "string",
+		"default": "",
+		"hint": "用于渲染图片卡片。留空时自动探测本机常见安装位置（macOS / Windows / Linux）；未探测到则图片卡片降级为纯文字。也可填浏览器可执行文件的绝对路径。修改后需重启 AstrBot 生效。"
 	}
 }

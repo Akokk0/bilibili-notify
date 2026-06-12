@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { BilibiliAPI, BiliLoginStatus, LoginFlow, type LoginSnapshot } from "@bilibili-notify/api";
 import {
 	type AstrBotAdapter,
@@ -47,6 +48,7 @@ import {
 	type SidecarLogLevel,
 	type SidecarServiceContext,
 } from "./platform.js";
+import { createPuppeteerAdapter, resolveChromePath, type SidecarPuppeteer } from "./puppeteer.js";
 import type { AiBackend } from "./state.js";
 
 export interface BusinessRuntimeOptions {
@@ -54,6 +56,7 @@ export interface BusinessRuntimeOptions {
 	readonly logLevel?: SidecarLogLevel;
 	readonly userAgent?: string;
 	readonly cookieEncryptionKey?: string;
+	readonly chromePath?: string;
 	readonly aiBackend?: AiBackend;
 	readonly aiProviderId?: string;
 	readonly events?: SidecarEventQueue;
@@ -171,9 +174,11 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 	private readonly storage: StorageManager;
 	private readonly aiBridge: AstrBotAiBridge | null;
 	private readonly userAgent: string | undefined;
+	private readonly chromePath: string | undefined;
 	private api: BilibiliAPI | undefined;
 	private loginFlow: LoginFlow | undefined;
 	private engines: SidecarEnginesRuntime | undefined;
+	private puppeteer: SidecarPuppeteer | undefined;
 	private started = false;
 	private startBasePromise: Promise<void> | undefined;
 	private closing = false;
@@ -183,6 +188,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 	constructor(options: BusinessRuntimeOptions) {
 		this.dataDir = options.dataDir;
 		this.userAgent = options.userAgent;
+		this.chromePath = options.chromePath;
 		this.events = options.events ?? new SidecarEventQueue();
 		this.deliveries = options.deliveries ?? new SidecarDeliveryQueue({ events: this.events });
 		this.serviceCtx = createSidecarServiceContext({
@@ -245,6 +251,11 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 			this.serviceCtx.logger.info(`business runtime closing: ${reason}`);
 			this.engines?.dispose();
 			this.engines = undefined;
+			// 显式排序:先停引擎(连带停 ImageRenderer)再关浏览器,避免渲染中途关 chromium。
+			if (this.puppeteer) {
+				await this.puppeteer.dispose();
+				this.puppeteer = undefined;
+			}
 			this.push.stop();
 			this.loginFlow?.stop();
 			this.api?.stop();
@@ -538,6 +549,21 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 
 	private startEngines(): void {
 		if (this.engines || !this.api || this.closing || this.closePromise || !this.started) return;
+		// puppeteer 顶层接管:首次起引擎时按 chromePath(配置/env) → OS 探测解析一次,命中才
+		// 构造适配器(懒启动浏览器);缺省则告警 + 降级文字。startEngines 自带单次守卫。
+		if (!this.puppeteer) {
+			const chromePath = resolveChromePath(this.chromePath, { exists: existsSync });
+			if (chromePath) {
+				this.puppeteer = createPuppeteerAdapter({
+					chromePath,
+					logger: this.serviceCtx.logger,
+				});
+			} else {
+				this.serviceCtx.logger.warn(
+					"未配置 chromePath 且未探测到本机浏览器,卡片图片渲染降级为纯文字推送(在插件配置填 chromePath 指向 Chrome / Chromium 可执行文件后重启生效)",
+				);
+			}
+		}
 		this.engines = createSidecarEngines({
 			serviceCtx: this.serviceCtx,
 			bus: this.bus,
@@ -546,6 +572,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 			commentary: this.aiBridge,
 			subscriptions: this.subscriptions,
 			getGlobals: () => this.configStore.getGlobals(),
+			puppeteer: this.puppeteer ?? null,
 		});
 		this.engines.start();
 	}

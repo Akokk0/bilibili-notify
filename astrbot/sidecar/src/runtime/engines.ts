@@ -8,6 +8,7 @@ import {
 	type SubscriptionsView as DynamicSubsView,
 	type PushSegment,
 } from "@bilibili-notify/dynamic";
+import { ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import {
 	type Disposable,
 	type FeatureKey,
@@ -63,10 +64,31 @@ export interface CreateSidecarEnginesOptions {
 	readonly commentary?: CommentaryClient | null;
 	readonly subscriptions: SubscriptionStore;
 	readonly getGlobals: () => GlobalConfig;
+	/** 卡片图片渲染用的浏览器适配器;缺省(null/undefined)→不构造 ImageRenderer,推送降级纯文字。 */
+	readonly puppeteer?: PuppeteerLike | null;
 }
 
 export function createSidecarEngines(options: CreateSidecarEnginesOptions): SidecarEnginesRuntime {
 	const initialGlobals = options.getGlobals();
+	// 图片卡片渲染器:仅在 puppeteer 适配器在位时构造(独立端同构)。缺省时 live/dynamic
+	// 引擎拿不到 renderer,卡片推送降级纯文字。卡片配色/字体热更走 lastCardStyleKey 门控。
+	let imageRenderer: ImageRenderer | null = null;
+	let lastCardStyleKey = JSON.stringify(initialGlobals.defaults.cardStyle);
+	if (options.puppeteer) {
+		const cs = initialGlobals.defaults.cardStyle;
+		imageRenderer = new ImageRenderer({
+			serviceCtx: options.serviceCtx,
+			puppeteer: options.puppeteer,
+			config: {
+				cardColorStart: cs.cardColorStart,
+				cardColorEnd: cs.cardColorEnd,
+				font: cs.font,
+				hideDesc: cs.hideDesc,
+				hideFollower: cs.hideFollower,
+			},
+		});
+		imageRenderer.start();
+	}
 	const dynamicPushLike: DynamicPushLike = {
 		async broadcastDynamic(uid, segments) {
 			await options.push.broadcastToFeature(uid, "dynamic", pushSegmentsToPayload(segments));
@@ -90,6 +112,7 @@ export function createSidecarEngines(options: CreateSidecarEnginesOptions): Side
 		bus: options.bus,
 		api: options.api,
 		push: dynamicPushLike,
+		image: imageRenderer ?? undefined,
 		ai: (commentary ?? undefined) as unknown as CommentaryGenerator | undefined,
 		config: buildDynamicConfig(initialGlobals),
 		getSubs: () => buildDynamicSubsView(options.subscriptions, options.getGlobals()),
@@ -99,7 +122,7 @@ export function createSidecarEngines(options: CreateSidecarEnginesOptions): Side
 		api: options.api,
 		push: livePushLike,
 		contentBuilder: sidecarContentBuilder,
-		imageRenderer: null,
+		imageRenderer: imageRenderer ?? null,
 		commentary: commentary as unknown as CommentaryGenerator | null,
 		config: buildLiveConfig(initialGlobals),
 		emitEngineError: (message) => options.bus.emit("engine-error", "live-engine", message),
@@ -152,6 +175,22 @@ export function createSidecarEngines(options: CreateSidecarEnginesOptions): Side
 			updateLiveStatus();
 		},
 		updateGlobals(globals) {
+			// 卡片配色/字体/显示项热更:仅当 cardStyle section 真变且 renderer 在位才下发,
+			// 避免编辑别的 section 时也刷 `[image] 配置已更新`(对齐独立端 engines.ts 门控)。
+			const cardStyleKey = JSON.stringify(globals.defaults.cardStyle);
+			if (cardStyleKey !== lastCardStyleKey) {
+				if (imageRenderer) {
+					const cs = globals.defaults.cardStyle;
+					imageRenderer.updateConfig({
+						cardColorStart: cs.cardColorStart,
+						cardColorEnd: cs.cardColorEnd,
+						font: cs.font,
+						hideDesc: cs.hideDesc,
+						hideFollower: cs.hideFollower,
+					});
+				}
+				lastCardStyleKey = cardStyleKey;
+			}
 			dynamic.updateConfig(buildDynamicConfig(globals));
 			live.updateConfig(buildLiveConfig(globals));
 			if (!started) return;
@@ -178,6 +217,11 @@ export function createSidecarEngines(options: CreateSidecarEnginesOptions): Side
 			} catch (error) {
 				options.serviceCtx.logger.warn(`[astrbot] live engine stop failed: ${String(error)}`);
 			}
+			try {
+				imageRenderer?.stop();
+			} catch (error) {
+				options.serviceCtx.logger.warn(`[astrbot] image renderer stop failed: ${String(error)}`);
+			}
 			started = false;
 			liveStarted = false;
 		},
@@ -202,7 +246,7 @@ function buildDynamicConfig(globals: GlobalConfig): DynamicEngineConfig {
 		dynamicCron: globals.app.dynamicCron,
 		dynamicVideoUrlToBV: false,
 		imageGroup: globals.defaults.imageGroup,
-		imageEnabled: false,
+		imageEnabled: globals.defaults.cardStyle.enabled,
 		aiEnabled: globals.defaults.ai.enabled,
 		dynamicTemplate: globals.defaults.templates.dynamic,
 		videoTemplate: globals.defaults.templates.dynamicVideo,
@@ -226,7 +270,7 @@ function buildLiveConfig(globals: GlobalConfig): LiveEngineConfig {
 	return {
 		pushTime: globals.defaults.schedule.pushTime,
 		liveSummaryDefault: globals.defaults.templates.liveSummary,
-		imageEnabled: false,
+		imageEnabled: globals.defaults.cardStyle.enabled,
 		aiEnabled: globals.defaults.ai.enabled,
 		customGuardBuy: {
 			enable: globals.defaults.templates.guardBuy.enable,

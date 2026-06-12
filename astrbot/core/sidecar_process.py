@@ -86,6 +86,7 @@ class SidecarConfig:
     shutdown_timeout_seconds: float = DEFAULT_SHUTDOWN_TIMEOUT_SECONDS
     ai_backend: str = DEFAULT_AI_BACKEND
     ai_provider_id: str = ""
+    chrome_path: str = ""
     log_level: str = DEFAULT_LOG_LEVEL
     version: str = "0.1.0"
     node_min_major: int = MIN_NODE_MAJOR_VERSION
@@ -580,6 +581,11 @@ async def start_sidecar(
         ]
         if config.token:
             env["BN_SIDECAR_TOKEN"] = config.token
+        # chromePath 非密钥(本机浏览器路径),经 env 与 argv 双通道下发;缺省则不注入,
+        # 由 Node sidecar 侧按 OS 探测。
+        if config.chrome_path:
+            env["BN_SIDECAR_CHROME_PATH"] = config.chrome_path
+            args.extend(["--chrome-path", config.chrome_path])
         # 有 forwarder 时改用 PIPE,由 pump 协程逐行 tee(写日志文件 + 转发);无 forwarder
         # 时维持原行为,让 OS 直接把 stdout/stderr 写进日志文件,旧调用路径零改动。
         stdio_target = asyncio.subprocess.PIPE if log_forwarder is not None else log_handle
@@ -822,6 +828,8 @@ def build_sidecar_config(
         ai_backend=environment.get("BN_SIDECAR_AI_BACKEND") or DEFAULT_AI_BACKEND,
         ai_provider_id=_config_string(native_config, "aiProviderId")
         or environment.get("BN_SIDECAR_AI_PROVIDER_ID", ""),
+        chrome_path=_config_string(native_config, "chromePath")
+        or environment.get("BN_SIDECAR_CHROME_PATH", ""),
         log_level=_parse_log_level(
             _config_string(native_config, "logLevel") or environment.get("BN_SIDECAR_LOG_LEVEL"),
             DEFAULT_LOG_LEVEL,
