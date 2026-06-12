@@ -45,6 +45,7 @@ parser.add_argument("--ready-file", required=True)
 parser.add_argument("--data-dir", required=True)
 parser.add_argument("--ai-backend", required=True)
 parser.add_argument("--ai-provider-id", default="")
+parser.add_argument("--ai-persona-id", default="")
 parser.add_argument("--log-level", default="info")
 parser.add_argument("--token", default="")
 parser.add_argument("--version", required=True)
@@ -181,6 +182,22 @@ def test_build_sidecar_config_reads_chrome_path(tmp_path: Path) -> None:
     # 都没有 → 空串(交给 Node sidecar 侧按 OS 探测)。
     cfg_none = build_sidecar_config(tmp_path, {})
     assert cfg_none.chrome_path == ""
+
+
+def test_build_sidecar_config_reads_ai_persona_id(tmp_path: Path) -> None:
+    # native 配置(aiPersonaId)优先于 env。
+    cfg_native = build_sidecar_config(
+        tmp_path,
+        {"BN_SIDECAR_AI_PERSONA_ID": "env-persona"},
+        startup_config={"aiPersonaId": "凛子"},
+    )
+    assert cfg_native.ai_persona_id == "凛子"
+    # 无 native → 回落 BN_SIDECAR_AI_PERSONA_ID。
+    cfg_env = build_sidecar_config(tmp_path, {"BN_SIDECAR_AI_PERSONA_ID": "env-persona"})
+    assert cfg_env.ai_persona_id == "env-persona"
+    # 都没有 → 空串(交给 Node 端兜到 AstrBot 当前默认人格)。
+    cfg_none = build_sidecar_config(tmp_path, {})
+    assert cfg_none.ai_persona_id == ""
 
 
 def test_parse_node_major_version() -> None:
@@ -566,6 +583,7 @@ async def test_start_sidecar_waits_for_health_and_closes_cleanly(tmp_path: Path)
 			parser.add_argument("--data-dir", required=True)
 			parser.add_argument("--ai-backend", required=True)
 			parser.add_argument("--ai-provider-id", default="")
+			parser.add_argument("--ai-persona-id", default="")
 			parser.add_argument("--log-level", default="info")
 			parser.add_argument("--token", default="")
 			parser.add_argument("--version", required=True)
@@ -841,6 +859,7 @@ async def test_start_sidecar_uses_configured_shutdown_timeout_on_startup_failure
         shutdown_timeout_seconds=7.25,
         ai_backend="own",
         ai_provider_id="astrbot-openai",
+        ai_persona_id="凛子",
         token="secret-token",
         chrome_path="/opt/chrome",
         version="v0.1.0",
@@ -907,9 +926,13 @@ async def test_start_sidecar_uses_configured_shutdown_timeout_on_startup_failure
     assert observed_env["BN_SIDECAR_PARENT_PID"] == str(os.getpid())
     # chromePath 非密钥,经 env 与 argv 双通道下发(对齐其它非密钥配置)。
     assert observed_env["BN_SIDECAR_CHROME_PATH"] == "/opt/chrome"
+    # aiPersonaId 非密钥,同样经 env 与 argv 双通道下发(对齐 aiProviderId)。
+    assert observed_env["BN_SIDECAR_AI_PERSONA_ID"] == "凛子"
     observed_arg_strs = [str(arg) for arg in observed_args]
     assert "--chrome-path" in observed_arg_strs
     assert "/opt/chrome" in observed_arg_strs
+    assert "--ai-persona-id" in observed_arg_strs
+    assert "凛子" in observed_arg_strs
     assert fake_process.terminated is True
     assert fake_process.killed is False
     assert fake_process.wait_calls == 1

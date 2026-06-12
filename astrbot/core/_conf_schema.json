@@ -37,6 +37,13 @@
 		"_special": "select_provider",
 		"hint": "留空时使用 AstrBot 默认 Provider。AI 总结默认关闭，具体业务开关在插件 Dashboard 中配置。"
 	},
+	"aiPersonaId": {
+		"description": "AstrBot AI 人格",
+		"type": "string",
+		"default": "",
+		"_special": "select_persona",
+		"hint": "AI 总结使用的人格（声线/称呼）。留空时使用 AstrBot 当前默认人格；选定后由 AstrBot 提供人格，插件不再自带人格设置。可在 Dashboard 为单个 UP 主单独覆盖。"
+	},
 	"chromePath": {
 		"description": "Chrome / Chromium 可执行文件路径",
 		"type": "string",

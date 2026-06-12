@@ -76,8 +76,6 @@ async def test_ai_pump_calls_selected_astrbot_provider(
                 "providerId": "provider-1",
                 "prompt": "请总结动态",
                 "systemPrompt": "你是总结助手",
-                "model": "gpt-4o-mini",
-                "temperature": 0.7,
                 "imageUrls": ["https://example.invalid/a.png"],
             }
         ],
@@ -86,14 +84,14 @@ async def test_ai_pump_calls_selected_astrbot_provider(
 
     await plugin._handle_ai_request(runtime, runtime.ai_requests.pop(0))
 
+    # Q4:model / temperature 交给 AstrBot provider,不再由插件透传。
+    # 无 persona_manager → system_prompt 仅为任务指令。
     assert context.llm_requests == [
         {
             "chat_provider_id": "provider-1",
             "prompt": "请总结动态",
             "system_prompt": "你是总结助手",
             "image_urls": ["https://example.invalid/a.png"],
-            "model": "gpt-4o-mini",
-            "temperature": 0.7,
         }
     ]
     assert runtime.ai_responses == [("ai-1", "AI 生成结果")]
@@ -112,7 +110,6 @@ async def test_ai_pump_uses_default_provider_when_provider_id_is_empty(
         "requestId": "ai-1",
         "prompt": "请总结直播",
         "systemPrompt": "你是总结助手",
-        "model": "gpt-4o-mini",
     }
 
     await plugin._handle_ai_request(runtime, request)
@@ -122,10 +119,93 @@ async def test_ai_pump_uses_default_provider_when_provider_id_is_empty(
             "prompt": "请总结直播",
             "system_prompt": "你是总结助手",
             "image_urls": None,
-            "model": "gpt-4o-mini",
         }
     ]
     assert runtime.ai_responses == [("ai-1", "默认 Provider 结果")]
+
+
+@pytest.mark.asyncio
+async def test_ai_pump_prepends_explicit_astrbot_persona(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = import_main_with_fake_astrbot(monkeypatch)
+    context = FakeContext(
+        persona_manager=FakePersonaManager(personas={"凛子": "你是傲娇的凛子"}),
+    )
+    runtime = FakeRuntime(
+        [],
+        ai_requests=[
+            {
+                "requestId": "ai-1",
+                "providerId": "provider-1",
+                "prompt": "请总结动态",
+                "systemPrompt": "客观总结这条动态",
+                "personaId": "凛子",
+            }
+        ],
+    )
+    plugin = module.BilibiliNotifyPlugin(context, {})
+
+    await plugin._handle_ai_request(runtime, runtime.ai_requests.pop(0))
+
+    # AstrBot 人格 prompt 注入到任务指令头部
+    assert context.llm_requests[0]["system_prompt"] == "你是傲娇的凛子\n\n客观总结这条动态"
+    assert runtime.ai_responses == [("ai-1", "AI 生成结果")]
+
+
+@pytest.mark.asyncio
+async def test_ai_pump_falls_back_to_default_persona_when_id_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = import_main_with_fake_astrbot(monkeypatch)
+    context = FakeContext(
+        persona_manager=FakePersonaManager(
+            personas={"凛子": "你是傲娇的凛子"},
+            default_prompt="你是温柔的默认人格",
+        ),
+    )
+    runtime = FakeRuntime(
+        [],
+        ai_requests=[
+            {
+                "requestId": "ai-1",
+                "prompt": "请总结直播",
+                "systemPrompt": "客观总结这场直播",
+                "personaId": "并不存在的人格",
+            }
+        ],
+    )
+    plugin = module.BilibiliNotifyPlugin(context, {})
+
+    await plugin._handle_ai_request(runtime, runtime.ai_requests.pop(0))
+
+    # 显式 id 未命中 → 回退 AstrBot 默认人格(providerId 空 → 默认 provider text_chat)
+    assert context.llm_requests[0]["system_prompt"] == "你是温柔的默认人格\n\n客观总结这场直播"
+
+
+@pytest.mark.asyncio
+async def test_page_api_proxy_lists_astrbot_personas(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = import_main_with_fake_astrbot(monkeypatch)
+    context = FakeContext(
+        persona_manager=FakePersonaManager(personas={"凛子": "p1", "小绫": "p2"}),
+    )
+    plugin = module.BilibiliNotifyPlugin(context, {})
+    # 即便 sidecar 在位,personas 也由 Python 本地查 persona_manager,绝不转发 sidecar
+    plugin._runtime = FakeRuntime([])
+    monkeypatch.setattr(module, "request", FakeRequest(method="GET", args={}, body=None))
+
+    payload, status = await plugin.page_api_proxy("personas")
+
+    assert status == 200
+    assert payload == {
+        "personas": [
+            {"id": "凛子", "label": "凛子"},
+            {"id": "小绫", "label": "小绫"},
+        ]
+    }
+    assert plugin._runtime.proxy_calls == []
 
 
 @pytest.mark.asyncio
@@ -397,12 +477,46 @@ class FakeMessageChain:
         self.chain = chain
 
 
+class FakePersonaManager:
+    """模拟 AstrBot PersonaManager 暴露给插件的最小切面。"""
+
+    def __init__(
+        self,
+        *,
+        personas: dict[str, str] | None = None,
+        default_prompt: str = "你是默认助手",
+    ) -> None:
+        self._personas = personas or {}
+        self._default_prompt = default_prompt
+        self.personas_v3 = [
+            {"name": name, "prompt": prompt} for name, prompt in self._personas.items()
+        ]
+
+    def get_persona_v3_by_id(self, persona_id: str | None):
+        if not persona_id:
+            return None
+        prompt = self._personas.get(persona_id)
+        if prompt is None:
+            return None
+        return {"name": persona_id, "prompt": prompt}
+
+    async def get_default_persona_v3(self, umo: Any = None):
+        return {"name": "default", "prompt": self._default_prompt}
+
+
 class FakeContext:
-    def __init__(self, *, fail_first_at_all: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        fail_first_at_all: bool = False,
+        persona_manager: "FakePersonaManager | None" = None,
+    ) -> None:
         self.sent: list[tuple[str, FakeMessageChain]] = []
         self.fail_first_at_all = fail_first_at_all
         self.registered = []
         self.llm_requests: list[dict[str, Any]] = []
+        if persona_manager is not None:
+            self.persona_manager = persona_manager
 
     def register_web_api(self, *args) -> None:
         self.registered.append(args)

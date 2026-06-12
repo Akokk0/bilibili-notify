@@ -586,7 +586,7 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 
 			<Card
 				title="AI 点评"
-				description="AI 默认关闭；启用后会调用 AstrBot Provider。Provider endpoint/key/model 连接配置属于 AstrBot，Dashboard 不接触 sidecar token。"
+				description="AI 默认关闭；启用后调用 AstrBot Provider 生成总结。模型由 AstrBot Provider 决定，人格（声线）由 AstrBot 人格系统提供——在插件配置里选 Provider 与默认人格即可，可在「订阅规则」为单个 UP 主单独指定人格。"
 			>
 				<SectionGrid>
 					<Toggle
@@ -598,127 +598,7 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 							})
 						}
 					/>
-					<Field
-						label="模型 hint"
-						hint="留给 AstrBot Provider 使用；Provider 不可用时业务会降级到普通模板。"
-					>
-						<Input
-							value={draft.defaults.ai.model}
-							onChange={(event) =>
-								updateDraft((next) => {
-									next.defaults.ai.model = event.target.value;
-								})
-							}
-						/>
-					</Field>
-					<Field label="temperature">
-						<Input
-							type="number"
-							min={0}
-							max={2}
-							step={0.1}
-							value={draft.defaults.ai.temperature}
-							onChange={(event) =>
-								updateDraft((next) => {
-									next.defaults.ai.temperature = parseNumberInput(
-										event.target.value,
-										next.defaults.ai.temperature,
-									);
-								})
-							}
-						/>
-					</Field>
-					<Field label="人格名称">
-						<Input
-							value={draft.defaults.ai.persona.name}
-							onChange={(event) =>
-								updateDraft((next) => {
-									next.defaults.ai.persona.name = event.target.value;
-								})
-							}
-						/>
-					</Field>
-					<Field label="称呼用户">
-						<Input
-							value={draft.defaults.ai.persona.addressUser}
-							onChange={(event) =>
-								updateDraft((next) => {
-									next.defaults.ai.persona.addressUser = event.target.value;
-								})
-							}
-						/>
-					</Field>
-					<Field label="自称">
-						<Input
-							value={draft.defaults.ai.persona.addressSelf}
-							onChange={(event) =>
-								updateDraft((next) => {
-									next.defaults.ai.persona.addressSelf = event.target.value;
-								})
-							}
-						/>
-					</Field>
-					<Field label="人格特质">
-						<Input
-							value={draft.defaults.ai.persona.traits}
-							onChange={(event) =>
-								updateDraft((next) => {
-									next.defaults.ai.persona.traits = event.target.value;
-								})
-							}
-						/>
-					</Field>
-					<Field label="口头禅">
-						<Input
-							value={draft.defaults.ai.persona.catchphrase}
-							onChange={(event) =>
-								updateDraft((next) => {
-									next.defaults.ai.persona.catchphrase = event.target.value;
-								})
-							}
-						/>
-					</Field>
-					<TemplateField
-						label="基础角色"
-						value={draft.defaults.ai.persona.baseRole}
-						onChange={(value) =>
-							updateDraft((next) => {
-								next.defaults.ai.persona.baseRole = value;
-							})
-						}
-					/>
-					<TemplateField
-						label="额外 system prompt"
-						value={draft.defaults.ai.persona.extraSystemPrompt}
-						onChange={(value) =>
-							updateDraft((next) => {
-								next.defaults.ai.persona.extraSystemPrompt = value;
-							})
-						}
-					/>
-					<TemplateField
-						label="动态 AI prompt"
-						value={draft.defaults.ai.dynamicPrompt}
-						onChange={(value) =>
-							updateDraft((next) => {
-								next.defaults.ai.dynamicPrompt = value;
-							})
-						}
-					/>
-					<TemplateField
-						label="直播总结 AI prompt"
-						value={draft.defaults.ai.liveSummaryPrompt}
-						onChange={(value) =>
-							updateDraft((next) => {
-								next.defaults.ai.liveSummaryPrompt = value;
-							})
-						}
-					/>
 				</SectionGrid>
-				<div className="mt-4 rounded-2xl bg-bn-blue-soft p-4 text-bn-text-tertiary text-sm">
-					可用预设：{draft.defaults.ai.presets.map((preset) => preset.label).join("、") || "无"}
-					。per-UP 规则可选择继承、custom 或 preset id。
-				</div>
 			</Card>
 
 			<Card title="卡片与图集">

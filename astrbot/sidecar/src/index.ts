@@ -20,6 +20,7 @@ export interface SidecarLaunchOptions {
 	readonly dataDir?: string;
 	readonly aiBackend?: AiBackend;
 	readonly aiProviderId?: string;
+	readonly aiPersonaId?: string;
 	readonly version?: string;
 	readonly logLevel?: "debug" | "info" | "warn" | "error";
 	readonly authToken?: string;
@@ -54,6 +55,7 @@ export function parseSidecarLaunchOptions(
 		| "dataDir"
 		| "aiBackend"
 		| "aiProviderId"
+		| "aiPersonaId"
 		| "logLevel"
 		| "authToken"
 		| "userAgent"
@@ -69,6 +71,7 @@ export function parseSidecarLaunchOptions(
 			"data-dir": { type: "string" },
 			"ai-backend": { type: "string" },
 			"ai-provider-id": { type: "string" },
+			"ai-persona-id": { type: "string" },
 			"log-level": { type: "string" },
 			"user-agent": { type: "string" },
 			"chrome-path": { type: "string" },
@@ -82,6 +85,7 @@ export function parseSidecarLaunchOptions(
 	const dataDir = parsed.values["data-dir"] ?? env.BN_SIDECAR_DATA_DIR;
 	const aiBackend = normalizeAiBackend(parsed.values["ai-backend"] ?? env.BN_SIDECAR_AI_BACKEND);
 	const aiProviderId = parsed.values["ai-provider-id"] ?? env.BN_SIDECAR_AI_PROVIDER_ID;
+	const aiPersonaId = parsed.values["ai-persona-id"] ?? env.BN_SIDECAR_AI_PERSONA_ID;
 	const logLevel = parseOptionalLogLevel(parsed.values["log-level"] ?? env.BN_SIDECAR_LOG_LEVEL);
 	// 敏感项（sidecar token、cookie 加密 key）只从 env 读，绝不接受 argv —— argv 对本机
 	// 任意用户 ps / /proc 可见会泄漏密钥；官方启动器本就只用 env 传。
@@ -99,6 +103,7 @@ export function parseSidecarLaunchOptions(
 		dataDir,
 		aiBackend,
 		aiProviderId,
+		aiPersonaId,
 		logLevel,
 		authToken,
 		userAgent,
@@ -117,6 +122,7 @@ export async function startSidecar(options: SidecarLaunchOptions = {}): Promise<
 	const version = options.version ?? DEFAULT_VERSION;
 	const aiBackend = options.aiBackend ?? "astrbot";
 	const aiProviderId = options.aiProviderId?.length ? options.aiProviderId : undefined;
+	const aiPersonaId = options.aiPersonaId?.length ? options.aiPersonaId : undefined;
 	const readyFile = options.readyFile ? options.readyFile : undefined;
 	const dataDir = resolveDataDir(options.dataDir, readyFile);
 	const authToken = options.authToken?.trim() ? options.authToken : undefined;
@@ -129,6 +135,7 @@ export async function startSidecar(options: SidecarLaunchOptions = {}): Promise<
 		cookieEncryptionKey: options.cookieEncryptionKey,
 		aiBackend,
 		aiProviderId,
+		aiPersonaId,
 	});
 	let snapshot = createSidecarSnapshot({
 		status: "starting",

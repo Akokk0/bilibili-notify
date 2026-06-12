@@ -59,6 +59,7 @@ export interface BusinessRuntimeOptions {
 	readonly chromePath?: string;
 	readonly aiBackend?: AiBackend;
 	readonly aiProviderId?: string;
+	readonly aiPersonaId?: string;
 	readonly events?: SidecarEventQueue;
 	readonly deliveries?: SidecarDeliveryQueue;
 }
@@ -200,7 +201,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 			(options.aiBackend ?? "astrbot") === "astrbot"
 				? new AstrBotAiBridge({
 						providerId: options.aiProviderId,
-						getGlobals: () => this.configStore.getGlobals(),
+						personaId: options.aiPersonaId,
 					})
 				: null;
 		this.subscriptions = createSubscriptionStore(this.bus);

@@ -395,21 +395,9 @@ function buildLiveSubViewSingle(sub: Subscription, globals: GlobalConfig): LiveS
 }
 
 function buildAiOverride(effective: ReturnType<typeof resolve>): CommentaryCallOverride {
-	return {
-		persona: {
-			preset: "custom",
-			name: effective.ai.persona.name,
-			addressUser: effective.ai.persona.addressUser,
-			addressSelf: effective.ai.persona.addressSelf,
-			traits: effective.ai.persona.traits,
-			catchphrase: effective.ai.persona.catchphrase,
-			customBase: effective.ai.persona.baseRole,
-			extraPrompt: effective.ai.persona.extraSystemPrompt,
-		},
-		dynamicPrompt: effective.ai.dynamicPrompt,
-		liveSummaryPrompt: effective.ai.liveSummaryPrompt,
-		temperature: effective.ai.temperature,
-	};
+	// AstrBot 端只需 per-UP 人格 id —— 人格声线、任务指令、温度都由 AstrBot 侧决定,
+	// bridge 会忽略 persona/prompt/temperature,故不再映射(留空表示继承全局 --ai-persona-id)。
+	return { personaId: effective.ai.personaId };
 }
 
 function subscriptionOpsToDynamic(

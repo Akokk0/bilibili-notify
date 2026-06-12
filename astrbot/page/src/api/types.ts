@@ -121,6 +121,12 @@ export interface PairingCodeResult {
 	readonly expiresAt: string;
 }
 
+/** AstrBot 人格选项,用于 per-UP 人格下拉(来自 GET personas 端点)。 */
+export interface PersonaOption {
+	readonly id: string;
+	readonly label: string;
+}
+
 export interface ApiIssue {
 	readonly path?: Array<string | number>;
 	readonly message?: string;

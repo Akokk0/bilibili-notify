@@ -184,6 +184,8 @@ export interface AIOverride {
 	dynamicPrompt?: string;
 	liveSummaryPrompt?: string;
 	temperature?: number;
+	/** per-UP AstrBot 人格 id —— 仅 AstrBot 宿主消费,独立端不用,但须镜像规范键。 */
+	personaId?: string;
 }
 
 export type GuardLevel = 1 | 2 | 3;

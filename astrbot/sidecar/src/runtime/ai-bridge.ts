@@ -1,38 +1,41 @@
 import { randomUUID } from "node:crypto";
-import {
-	type AIScene,
-	buildSystemPrompt,
-	type CommentaryCallOverride,
-	type PersonaConfig,
-} from "@bilibili-notify/ai";
-import type { AIPersona, GlobalConfig } from "@bilibili-notify/internal";
+import type { AIScene, CommentaryCallOverride } from "@bilibili-notify/ai";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
 const DEFAULT_LEASE_MS = 120_000;
 const DEFAULT_MAX_SIZE = 50;
 
+/**
+ * 各场景的「人格中立」任务指令。AstrBot 是 AI 机器人框架,人格(声线/称呼)由它的
+ * persona_manager 提供,Python pump 在调用 Provider 前注入。bilibili-notify 这边只描述
+ * 「做什么」,不含任何语气、称呼或自称 —— 避免与 AstrBot 人格叠加打架。
+ */
+export const SCENE_TASK_PROMPTS: Record<AIScene, string> = {
+	dynamic: "请客观、准确地总结这条 B 站动态的核心内容,可补充一两句简评,不要遗漏关键信息。",
+	liveSummary: "请客观总结这场 B 站直播的主要内容(约 150-200 字),提炼亮点与互动热点,保持信息准确。",
+};
+
 export interface AstrBotAiBridgeOptions {
 	readonly providerId?: string;
-	readonly getGlobals: () => GlobalConfig;
+	/** 全局 AstrBot 人格 id(来自 --ai-persona-id;留空表示用 AstrBot 当前默认人格)。 */
+	readonly personaId?: string;
 	readonly queue?: AstrBotAiRequestQueue;
 }
 
 export interface AstrBotAiRequestInput {
 	readonly providerId?: string;
+	readonly personaId?: string;
 	readonly systemPrompt: string;
 	readonly prompt: string;
-	readonly model: string;
-	readonly temperature?: number;
 	readonly imageUrls?: readonly string[];
 }
 
 export interface AstrBotAiRequest {
 	readonly requestId: string;
 	readonly providerId?: string;
+	readonly personaId?: string;
 	readonly systemPrompt: string;
 	readonly prompt: string;
-	readonly model: string;
-	readonly temperature?: number;
 	readonly imageUrls: readonly string[];
 	readonly attempt: number;
 	readonly createdAt: string;
@@ -65,10 +68,9 @@ type AiRequestStatus = "pending" | "in-flight";
 interface MutableAstrBotAiRequest {
 	requestId: string;
 	providerId?: string;
+	personaId?: string;
 	systemPrompt: string;
 	prompt: string;
-	model: string;
-	temperature?: number;
 	imageUrls: string[];
 	attempt: number;
 	createdAt: string;
@@ -83,8 +85,9 @@ interface MutableAstrBotAiRequest {
 /**
  * AstrBot AI bridge 的内存请求队列。
  *
- * Node sidecar 不保存 OpenAI endpoint/key/model credentials；业务引擎需要 AI 时只把
- * prompt / system prompt / model hint 放进本队列，由 Python pump 调 AstrBot Provider 后回填。
+ * Node sidecar 不保存 OpenAI endpoint/key/model credentials,也不再自带人格 —— 业务引擎需要
+ * AI 时只把 prompt / 中性任务指令 / 人格 id 放进本队列,由 Python pump 取 AstrBot 人格 +
+ * 调 AstrBot Provider 后回填。
  */
 export class AstrBotAiRequestQueue {
 	private readonly maxSize: number;
@@ -113,10 +116,9 @@ export class AstrBotAiRequestQueue {
 			this.jobs.push({
 				requestId,
 				providerId: input.providerId?.trim() || undefined,
+				personaId: input.personaId?.trim() || undefined,
 				systemPrompt: input.systemPrompt,
 				prompt: input.prompt,
-				model: input.model,
-				temperature: input.temperature,
 				imageUrls: [...(input.imageUrls ?? [])].filter(
 					(url) => typeof url === "string" && url.length > 0,
 				),
@@ -192,12 +194,12 @@ export class AstrBotAiRequestQueue {
 
 export class AstrBotAiBridge {
 	private readonly providerId: string | undefined;
-	private readonly getGlobals: () => GlobalConfig;
+	private readonly personaId: string | undefined;
 	readonly queue: AstrBotAiRequestQueue;
 
 	constructor(options: AstrBotAiBridgeOptions) {
 		this.providerId = options.providerId?.trim() || undefined;
-		this.getGlobals = options.getGlobals;
+		this.personaId = options.personaId?.trim() || undefined;
 		this.queue = options.queue ?? new AstrBotAiRequestQueue();
 	}
 
@@ -207,46 +209,26 @@ export class AstrBotAiBridge {
 		imageUrls?: string[],
 		override?: CommentaryCallOverride,
 	): Promise<string> {
-		const ai = this.getGlobals().defaults.ai;
-		const persona = override?.persona ?? toPersonaConfig(ai.persona);
-		const dynamicPrompt = override?.dynamicPrompt ?? ai.dynamicPrompt;
-		const liveSummaryPrompt = override?.liveSummaryPrompt ?? ai.liveSummaryPrompt;
-		const sceneAddition =
-			scene === "dynamic" ? dynamicPrompt : scene === "liveSummary" ? liveSummaryPrompt : "";
-		const personaPrompt = buildSystemPrompt(persona);
-		const systemPrompt = sceneAddition ? `${personaPrompt}\n${sceneAddition}` : personaPrompt;
+		// 人格不再由本端拼接 —— 只发场景任务指令,人格 id 交给 Python 解析 AstrBot persona。
+		const systemPrompt = scene ? SCENE_TASK_PROMPTS[scene] : "";
+		const personaId = override?.personaId?.trim() || this.personaId;
 		return this.queue.request({
 			providerId: this.providerId,
+			personaId,
 			systemPrompt,
 			prompt: content,
-			model: override?.model ?? ai.model,
-			temperature: override?.temperature ?? ai.temperature,
 			imageUrls,
 		});
 	}
 }
 
-function toPersonaConfig(persona: AIPersona): PersonaConfig {
-	return {
-		preset: "custom",
-		name: persona.name,
-		addressUser: persona.addressUser,
-		addressSelf: persona.addressSelf,
-		traits: persona.traits,
-		catchphrase: persona.catchphrase,
-		customBase: persona.baseRole,
-		extraPrompt: persona.extraSystemPrompt,
-	};
-}
-
-function cloneRequest(job: AstrBotAiRequest): AstrBotAiRequest {
+function cloneRequest(job: MutableAstrBotAiRequest): AstrBotAiRequest {
 	return {
 		requestId: job.requestId,
 		...(job.providerId ? { providerId: job.providerId } : {}),
+		...(job.personaId ? { personaId: job.personaId } : {}),
 		systemPrompt: job.systemPrompt,
 		prompt: job.prompt,
-		model: job.model,
-		...(job.temperature !== undefined ? { temperature: job.temperature } : {}),
 		imageUrls: [...job.imageUrls],
 		attempt: job.attempt,
 		createdAt: job.createdAt,

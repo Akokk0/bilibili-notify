@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { dashboardApi } from "../api/client";
-import type { DashboardBootstrap, SubscriptionOverrides } from "../api/types";
+import type { DashboardBootstrap, PersonaOption, SubscriptionOverrides } from "../api/types";
 import { FEATURE_KEYS, FEATURE_LABELS } from "../api/types";
 import {
 	Badge,
@@ -48,6 +48,23 @@ export function RulesTab({ data, onData, onDirty }: RulesTabProps) {
 	);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<unknown>(null);
+	// AstrBot 人格列表(来自 Python 本地端点),供 per-UP 人格下拉;取失败则留空、仅能继承全局。
+	const [personas, setPersonas] = useState<PersonaOption[]>([]);
+
+	useEffect(() => {
+		let alive = true;
+		dashboardApi.listPersonas().then(
+			(list) => {
+				if (alive) setPersonas(list);
+			},
+			() => {
+				// 取人格失败(sidecar/AstrBot 未就绪等):降级为只可继承全局,不打断规则编辑。
+			},
+		);
+		return () => {
+			alive = false;
+		};
+	}, []);
 
 	useEffect(() => {
 		const fallback = data.subscriptions[0];
@@ -222,6 +239,7 @@ export function RulesTab({ data, onData, onDirty }: RulesTabProps) {
 						globals={data.globals}
 						setSection={setSection}
 						updateDraft={updateDraft}
+						personas={personas}
 					/>
 					<CardVisualOverrides
 						draft={draft}
@@ -562,11 +580,19 @@ function ScheduleOverrides({ draft, globals, setSection, updateDraft }: SectionP
 	);
 }
 
-function AiOverrides({ draft, globals, setSection, updateDraft }: SectionProps) {
+function AiOverrides({
+	draft,
+	setSection,
+	updateDraft,
+	personas,
+}: SectionProps & { readonly personas: PersonaOption[] }) {
+	const currentPersonaId = draft.ai?.personaId ?? "";
+	// 已选人格不在当前列表(人格被改名/列表未加载)时,仍保留它作为一个选项,避免静默丢失选择。
+	const missingPersona = currentPersonaId && !personas.some((p) => p.id === currentPersonaId);
 	return (
 		<Card
 			title="AI 覆盖"
-			description="Provider 连接配置仍由 AstrBot 管理；这里仅覆盖 persona/prompt/temperature。"
+			description="人格（声线）由 AstrBot 提供；这里可为该 UP 主单独指定一个 AstrBot 人格，留空则继承全局默认人格。"
 			action={
 				<Toggle
 					label="自定义"
@@ -577,145 +603,32 @@ function AiOverrides({ draft, globals, setSection, updateDraft }: SectionProps) 
 		>
 			{draft.ai ? (
 				<SectionGrid>
-					<Field label="preset">
+					<Field label="AstrBot 人格" hint="留空＝继承全局默认人格">
 						<Select
-							value={draft.ai.preset}
+							value={currentPersonaId}
 							onChange={(event) =>
 								updateDraft((next) => {
 									next.ai ??= { preset: "inherit" };
-									next.ai.preset = event.target.value;
+									const value = event.target.value;
+									if (value) {
+										next.ai.personaId = value;
+									} else {
+										delete next.ai.personaId;
+									}
 								})
 							}
 						>
-							<option value="inherit">inherit（继承全局）</option>
-							<option value="custom">custom（使用下方字段）</option>
-							{globals.defaults.ai.presets.map((preset) => (
-								<option key={preset.id} value={preset.id}>
-									{preset.label} ({preset.id})
+							<option value="">继承全局默认人格</option>
+							{personas.map((persona) => (
+								<option key={persona.id} value={persona.id}>
+									{persona.label}
 								</option>
 							))}
+							{missingPersona ? (
+								<option value={currentPersonaId}>{currentPersonaId}（当前选择）</option>
+							) : null}
 						</Select>
 					</Field>
-					<NumberOverride
-						label="temperature"
-						value={draft.ai.temperature}
-						inherited={globals.defaults.ai.temperature}
-						min={0}
-						max={2}
-						step={0.1}
-						onChange={(value) =>
-							updateDraft((next) => {
-								next.ai ??= { preset: "inherit" };
-								setOptional(next.ai, "temperature", value);
-							})
-						}
-					/>
-					<OverrideText
-						label="人格名称"
-						value={draft.ai.persona?.name}
-						inherited={globals.defaults.ai.persona.name}
-						onChange={(value) =>
-							updateDraft((next) => {
-								next.ai ??= { preset: "custom" };
-								next.ai.persona ??= { ...globals.defaults.ai.persona };
-								setOptional(next.ai.persona, "name", value);
-							})
-						}
-					/>
-					<OverrideText
-						label="称呼用户"
-						value={draft.ai.persona?.addressUser}
-						inherited={globals.defaults.ai.persona.addressUser}
-						onChange={(value) =>
-							updateDraft((next) => {
-								next.ai ??= { preset: "custom" };
-								next.ai.persona ??= { ...globals.defaults.ai.persona };
-								setOptional(next.ai.persona, "addressUser", value);
-							})
-						}
-					/>
-					<OverrideText
-						label="自称"
-						value={draft.ai.persona?.addressSelf}
-						inherited={globals.defaults.ai.persona.addressSelf}
-						onChange={(value) =>
-							updateDraft((next) => {
-								next.ai ??= { preset: "custom" };
-								next.ai.persona ??= { ...globals.defaults.ai.persona };
-								setOptional(next.ai.persona, "addressSelf", value);
-							})
-						}
-					/>
-					<OverrideText
-						label="特质"
-						value={draft.ai.persona?.traits}
-						inherited={globals.defaults.ai.persona.traits}
-						onChange={(value) =>
-							updateDraft((next) => {
-								next.ai ??= { preset: "custom" };
-								next.ai.persona ??= { ...globals.defaults.ai.persona };
-								setOptional(next.ai.persona, "traits", value);
-							})
-						}
-					/>
-					<OverrideText
-						label="口头禅"
-						value={draft.ai.persona?.catchphrase}
-						inherited={globals.defaults.ai.persona.catchphrase}
-						onChange={(value) =>
-							updateDraft((next) => {
-								next.ai ??= { preset: "custom" };
-								next.ai.persona ??= { ...globals.defaults.ai.persona };
-								setOptional(next.ai.persona, "catchphrase", value);
-							})
-						}
-					/>
-					<OverrideText
-						label="基础角色"
-						value={draft.ai.persona?.baseRole}
-						inherited={globals.defaults.ai.persona.baseRole}
-						onChange={(value) =>
-							updateDraft((next) => {
-								next.ai ??= { preset: "custom" };
-								next.ai.persona ??= { ...globals.defaults.ai.persona };
-								setOptional(next.ai.persona, "baseRole", value);
-							})
-						}
-					/>
-					<OverrideText
-						label="额外 system prompt"
-						value={draft.ai.persona?.extraSystemPrompt}
-						inherited={globals.defaults.ai.persona.extraSystemPrompt}
-						onChange={(value) =>
-							updateDraft((next) => {
-								next.ai ??= { preset: "custom" };
-								next.ai.persona ??= { ...globals.defaults.ai.persona };
-								setOptional(next.ai.persona, "extraSystemPrompt", value);
-							})
-						}
-					/>
-					<OverrideText
-						label="动态 prompt"
-						value={draft.ai.dynamicPrompt}
-						inherited={globals.defaults.ai.dynamicPrompt}
-						onChange={(value) =>
-							updateDraft((next) => {
-								next.ai ??= { preset: "custom" };
-								setOptional(next.ai, "dynamicPrompt", value);
-							})
-						}
-					/>
-					<OverrideText
-						label="直播总结 prompt"
-						value={draft.ai.liveSummaryPrompt}
-						inherited={globals.defaults.ai.liveSummaryPrompt}
-						onChange={(value) =>
-							updateDraft((next) => {
-								next.ai ??= { preset: "custom" };
-								setOptional(next.ai, "liveSummaryPrompt", value);
-							})
-						}
-					/>
 				</SectionGrid>
 			) : (
 				<InheritedHint />

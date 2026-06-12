@@ -252,6 +252,10 @@ class BilibiliNotifyPlugin(Star):
 
     async def page_api_proxy(self, path: str):
         """AstrBot Plugin Page 的白名单 API proxy。"""
+        # personas 是 AstrBot 域数据(persona_manager),由 Python 本地服务、不转发 sidecar,
+        # 供 Dashboard per-UP 人格下拉。即便 sidecar 未就绪也可返回。
+        if request.method.upper() == "GET" and path == "personas":
+            return jsonify({"personas": self._list_personas()}), 200
         if self._runtime is None:
             return jsonify({"error": "sidecar_not_ready", "message": "sidecar 还没有启动"}), 503
         raw_method = request.method.upper()
@@ -295,6 +299,18 @@ class BilibiliNotifyPlugin(Star):
         if status == 204:
             return "", 204
         return jsonify(payload if payload is not None else {}), status
+
+    def _list_personas(self) -> list[dict[str, str]]:
+        """AstrBot 可用人格列表 [{id,label}],供 Dashboard per-UP 人格下拉(留空=继承全局)。"""
+        manager = getattr(self.context, "persona_manager", None)
+        personas = getattr(manager, "personas_v3", None)
+        result: list[dict[str, str]] = []
+        if isinstance(personas, list):
+            for persona in personas:
+                name = _persona_name(persona)
+                if name:
+                    result.append({"id": name, "label": name})
+        return result
 
     async def _run_delivery_pump(self) -> None:
         while True:
@@ -394,27 +410,50 @@ class BilibiliNotifyPlugin(Star):
         prompt = _mapping_string(request_item, "prompt")
         if not prompt:
             raise RuntimeError("AI request is missing prompt")
-        system_prompt = _mapping_string(request_item, "systemPrompt")
+        task_instruction = _mapping_string(request_item, "systemPrompt")
         provider_id = _mapping_string(request_item, "providerId")
-        model = _mapping_string(request_item, "model")
+        persona_id = _mapping_string(request_item, "personaId")
         image_urls = _string_list(request_item.get("imageUrls"))
-        temperature = request_item.get("temperature")
-        kwargs: dict[str, Any] = {}
-        if model:
-            kwargs["model"] = model
-        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
-            kwargs["temperature"] = float(temperature)
+        # 人格(声线/称呼)由 AstrBot 提供:取人格 system prompt 注入到任务指令头部。
+        persona_prompt = await self._resolve_persona_prompt(persona_id)
+        system_prompt = _compose_system_prompt(persona_prompt, task_instruction)
+        # Q4:model / temperature 交给 AstrBot Provider 自身配置,插件不再透传。
         response = await self._request_provider_completion(
             provider_id=provider_id,
             prompt=prompt,
             system_prompt=system_prompt,
             image_urls=image_urls,
-            kwargs=kwargs,
         )
         text = _completion_text(response).strip()
         if not text:
             raise RuntimeError("AstrBot AI Provider 返回空内容")
         return text
+
+    async def _resolve_persona_prompt(self, persona_id: str) -> str:
+        """取 AstrBot 人格的 system prompt。
+
+        persona_id 非空且命中 → 用之;空或显式未命中 → 回退当前默认人格;再无 → 空串(无人格)。
+        任何异常都降级为无人格,不让一次总结整体失败。
+        """
+        manager = getattr(self.context, "persona_manager", None)
+        if manager is None:
+            return ""
+        try:
+            persona: Any = None
+            if persona_id:
+                getter = getattr(manager, "get_persona_v3_by_id", None)
+                if callable(getter):
+                    persona = await _maybe_await(getter(persona_id))
+            if persona is None:
+                default_getter = getattr(manager, "get_default_persona_v3", None)
+                if callable(default_getter):
+                    persona = await _maybe_await(default_getter())
+            return _persona_prompt(persona)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"[bilibili-notify] 取 AstrBot 人格失败,降级为无人格: {_sanitize_error(str(exc))}"
+            )
+            return ""
 
     async def _request_provider_completion(
         self,
@@ -423,7 +462,6 @@ class BilibiliNotifyPlugin(Star):
         prompt: str,
         system_prompt: str,
         image_urls: list[str],
-        kwargs: Mapping[str, Any],
     ) -> Any:
         if provider_id:
             llm_generate = getattr(self.context, "llm_generate", None)
@@ -433,7 +471,6 @@ class BilibiliNotifyPlugin(Star):
                     prompt=prompt,
                     system_prompt=system_prompt,
                     image_urls=image_urls or None,
-                    **dict(kwargs),
                 )
             provider = await _maybe_await(_get_provider_by_id(self.context, provider_id))
             if provider is None:
@@ -449,7 +486,6 @@ class BilibiliNotifyPlugin(Star):
             prompt=prompt,
             system_prompt=system_prompt,
             image_urls=image_urls or None,
-            **dict(kwargs),
         )
 
     async def _stop_ai_pump(self) -> None:
@@ -486,6 +522,31 @@ class BilibiliNotifyPlugin(Star):
             logger.error(f"[bilibili-notify] sidecar shutdown failed: {exc}")
         finally:
             self._runtime = None
+
+
+def _compose_system_prompt(persona_prompt: str, task_instruction: str) -> str:
+    """AstrBot 人格 prompt 在前、场景任务指令在后;任一为空时只用另一个。"""
+    if persona_prompt and task_instruction:
+        return f"{persona_prompt}\n\n{task_instruction}"
+    return persona_prompt or task_instruction
+
+
+def _persona_prompt(persona: Any) -> str:
+    if persona is None:
+        return ""
+    if isinstance(persona, Mapping):
+        value = persona.get("prompt")
+    else:
+        value = getattr(persona, "prompt", None)
+    return str(value) if value else ""
+
+
+def _persona_name(persona: Any) -> str:
+    if isinstance(persona, Mapping):
+        value = persona.get("name")
+    else:
+        value = getattr(persona, "name", None)
+    return str(value) if value else ""
 
 
 async def _maybe_await(value: Any) -> Any:

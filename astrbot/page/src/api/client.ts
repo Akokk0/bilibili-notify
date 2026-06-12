@@ -6,6 +6,7 @@ import type {
 	GlobalConfig,
 	LoginSnapshot,
 	PairingCodeResult,
+	PersonaOption,
 	Subscription,
 	UserLookupResult,
 	UserSearchResult,
@@ -145,6 +146,9 @@ export const dashboardApi = {
 	deleteTarget: (id: string) => request<void>("DELETE", `targets/${encodeURIComponent(id)}`),
 	pushTest: (targetId: string, text: string) =>
 		request<DeliveryResult>("POST", "push/test", { targetId, text }),
+	// personas 由 Python 插件本地查 persona_manager 返回(不经 sidecar),供 per-UP 人格下拉。
+	listPersonas: () =>
+		request<{ personas: PersonaOption[] }>("GET", "personas").then((res) => res.personas),
 };
 
 export function subscribeDashboardEvents(handlers: {

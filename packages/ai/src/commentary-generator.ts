@@ -101,6 +101,11 @@ export interface CommentaryCallOverride {
 	liveSummaryPrompt?: string;
 	temperature?: number;
 	model?: string;
+	/**
+	 * per-UP 指定的 AstrBot 人格 id。仅 AstrBot bridge 消费(覆盖全局 --ai-persona-id);
+	 * 自带 OpenAI 的 CommentaryGenerator 忽略此字段。
+	 */
+	personaId?: string;
 }
 
 export interface CommentaryProvider {

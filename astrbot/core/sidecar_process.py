@@ -86,6 +86,7 @@ class SidecarConfig:
     shutdown_timeout_seconds: float = DEFAULT_SHUTDOWN_TIMEOUT_SECONDS
     ai_backend: str = DEFAULT_AI_BACKEND
     ai_provider_id: str = ""
+    ai_persona_id: str = ""
     chrome_path: str = ""
     log_level: str = DEFAULT_LOG_LEVEL
     version: str = "0.1.0"
@@ -556,6 +557,7 @@ async def start_sidecar(
                 "BN_SIDECAR_DATA_DIR": str(data_dir),
                 "BN_SIDECAR_AI_BACKEND": config.ai_backend,
                 "BN_SIDECAR_AI_PROVIDER_ID": config.ai_provider_id,
+                "BN_SIDECAR_AI_PERSONA_ID": config.ai_persona_id,
                 "BN_SIDECAR_LOG_LEVEL": config.log_level,
                 "BN_SIDECAR_PARENT_PID": str(os.getpid()),
                 "BN_SIDECAR_VERSION": config.version,
@@ -574,6 +576,8 @@ async def start_sidecar(
             config.ai_backend,
             "--ai-provider-id",
             config.ai_provider_id,
+            "--ai-persona-id",
+            config.ai_persona_id,
             "--log-level",
             config.log_level,
             "--version",
@@ -828,6 +832,8 @@ def build_sidecar_config(
         ai_backend=environment.get("BN_SIDECAR_AI_BACKEND") or DEFAULT_AI_BACKEND,
         ai_provider_id=_config_string(native_config, "aiProviderId")
         or environment.get("BN_SIDECAR_AI_PROVIDER_ID", ""),
+        ai_persona_id=_config_string(native_config, "aiPersonaId")
+        or environment.get("BN_SIDECAR_AI_PERSONA_ID", ""),
         chrome_path=_config_string(native_config, "chromePath")
         or environment.get("BN_SIDECAR_CHROME_PATH", ""),
         log_level=_parse_log_level(

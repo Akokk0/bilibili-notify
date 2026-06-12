@@ -82,4 +82,17 @@ describe("sidecar launch options", () => {
 		const unset = parseSidecarLaunchOptions([], {});
 		expect(unset.chromePath).toBeUndefined();
 	});
+
+	it("parses aiPersonaId from --ai-persona-id flag and BN_SIDECAR_AI_PERSONA_ID env (CLI 优先)", () => {
+		const fromCli = parseSidecarLaunchOptions(["--ai-persona-id", "凛子"], {
+			BN_SIDECAR_AI_PERSONA_ID: "小绫",
+		});
+		expect(fromCli.aiPersonaId).toBe("凛子");
+
+		const fromEnv = parseSidecarLaunchOptions([], { BN_SIDECAR_AI_PERSONA_ID: "小绫" });
+		expect(fromEnv.aiPersonaId).toBe("小绫");
+
+		const unset = parseSidecarLaunchOptions([], {});
+		expect(unset.aiPersonaId).toBeUndefined();
+	});
 });
