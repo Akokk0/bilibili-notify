@@ -1,0 +1,770 @@
+import { existsSync } from "node:fs";
+import { BilibiliAPI, BiliLoginStatus, LoginFlow, type LoginSnapshot } from "@bilibili-notify/api";
+import {
+	type AstrBotAdapter,
+	type AstrBotPushTarget,
+	type AstrBotSession,
+	type DeliveryResult,
+	type GlobalConfig,
+	makeDefaultGlobalConfig,
+	type NotificationPayload,
+	type Subscription,
+} from "@bilibili-notify/internal";
+import { BilibiliPush } from "@bilibili-notify/push";
+import { StorageManager } from "@bilibili-notify/storage";
+import { createSubscriptionStore, type SubscriptionStore } from "@bilibili-notify/subscription";
+import {
+	AstrBotAiBridge,
+	type AstrBotAiRequest,
+	type AstrBotAiRequestQueueSnapshot,
+	type AstrBotAiRequestReceipt,
+} from "./ai-bridge.js";
+import { createCallbackSink } from "./callback-sink.js";
+import {
+	type AstrBotConfigSnapshot,
+	type AstrBotConfigStore,
+	type AstrBotPairingCode,
+	type AstrBotPairingConfirmResult,
+	createAstrBotConfigStore,
+} from "./config-store.js";
+import { createSidecarEngines, type SidecarEnginesRuntime } from "./engines.js";
+import {
+	type DeliveryJob,
+	type DeliveryQueueSnapshot,
+	type DeliveryReceipt,
+	type EventQueueSnapshot,
+	SidecarDeliveryQueue,
+	type SidecarEvent,
+	SidecarEventQueue,
+} from "./event-queue.js";
+import {
+	createAstrBotSubscription,
+	resolveAstrBotDefaultTargetIds,
+	type StoredSubscriptionInput,
+} from "./persistence.js";
+import {
+	createSidecarMessageBus,
+	createSidecarServiceContext,
+	type SidecarLogLevel,
+	type SidecarServiceContext,
+} from "./platform.js";
+import { createPuppeteerAdapter, resolveChromePath, type SidecarPuppeteer } from "./puppeteer.js";
+import type { AiBackend } from "./state.js";
+
+export interface BusinessRuntimeOptions {
+	readonly dataDir: string;
+	readonly logLevel?: SidecarLogLevel;
+	readonly userAgent?: string;
+	readonly cookieEncryptionKey?: string;
+	readonly chromePath?: string;
+	readonly aiBackend?: AiBackend;
+	readonly aiProviderId?: string;
+	readonly aiPersonaId?: string;
+	readonly events?: SidecarEventQueue;
+	readonly deliveries?: SidecarDeliveryQueue;
+}
+
+export interface BusinessRuntimeSnapshot {
+	readonly started: boolean;
+	readonly authStarted: boolean;
+	readonly engines: {
+		readonly dynamic: boolean;
+		readonly live: boolean;
+	};
+	readonly subscriptions: AstrBotConfigSnapshot["subscriptions"];
+	readonly config: AstrBotConfigSnapshot;
+	readonly events: EventQueueSnapshot;
+	readonly deliveries: DeliveryQueueSnapshot;
+	readonly ai: AstrBotAiRequestQueueSnapshot;
+	readonly login?: LoginSnapshot;
+}
+
+export interface UserLookupResult {
+	readonly uid: string;
+	readonly name: string;
+	readonly avatar: string;
+	readonly sign: string;
+	readonly fans: number;
+}
+
+export interface UserSearchResult {
+	readonly results: UserLookupResult[];
+	readonly page: number;
+	readonly pageSize: number;
+	readonly total: number;
+}
+
+export class SidecarUpstreamError extends Error {
+	readonly statusCode: number;
+	readonly error: "api_not_ready" | "not_found" | "upstream_failed";
+	readonly upstreamCode?: number;
+
+	constructor(
+		statusCode: number,
+		error: SidecarUpstreamError["error"],
+		message: string,
+		upstreamCode?: number,
+	) {
+		super(message);
+		this.name = "SidecarUpstreamError";
+		this.statusCode = statusCode;
+		this.error = error;
+		this.upstreamCode = upstreamCode;
+	}
+}
+
+export interface BusinessRuntimeHandle {
+	readonly dataDir: string;
+	readonly serviceCtx: SidecarServiceContext;
+	readonly configStore: AstrBotConfigStore;
+	readonly subscriptions: SubscriptionStore;
+	readonly events: SidecarEventQueue;
+	readonly deliveries: SidecarDeliveryQueue;
+	start(signal?: AbortSignal): Promise<void>;
+	close(reason?: string): Promise<void>;
+	snapshot(): BusinessRuntimeSnapshot;
+	ensureAuthStarted(): Promise<LoginSnapshot>;
+	refreshLoginStatus(): Promise<LoginSnapshot>;
+	beginLogin(): Promise<LoginSnapshot>;
+	logout(): Promise<LoginSnapshot>;
+	getGlobals(): GlobalConfig;
+	setGlobals(next: GlobalConfig): Promise<GlobalConfig>;
+	resetGlobals(): Promise<GlobalConfig>;
+	listSubscriptions(): Subscription[];
+	listAdapters(): AstrBotAdapter[];
+	listTargets(): AstrBotPushTarget[];
+	upsertSubscription(input: StoredSubscriptionInput | Subscription): Promise<Subscription>;
+	patchSubscription(id: string, patch: Record<string, unknown>): Promise<Subscription>;
+	removeSubscription(id: string): Promise<Subscription | undefined>;
+	upsertTarget(target: AstrBotPushTarget): Promise<AstrBotPushTarget>;
+	patchTarget(id: string, patch: Record<string, unknown>): Promise<AstrBotPushTarget>;
+	removeTarget(id: string): Promise<AstrBotPushTarget | undefined>;
+	createTargetPairingCode(): AstrBotPairingCode;
+	confirmTargetPairingCode(
+		code: string,
+		session: AstrBotSession,
+	): Promise<AstrBotPairingConfirmResult | undefined>;
+	clearSubscriptions(): Promise<Subscription[]>;
+	clearTargets(): Promise<AstrBotPushTarget[]>;
+	clearSubscriptionOverrides(): Promise<Subscription[]>;
+	lookupUser(uid: string): Promise<UserLookupResult>;
+	searchUsers(query: string, page?: number): Promise<UserSearchResult>;
+	drainEvents(afterId?: number): SidecarEvent[];
+	claimDeliveries(limit?: number): DeliveryJob[];
+	ackDelivery(deliveryId: string): Promise<DeliveryReceipt | undefined>;
+	nackDelivery(deliveryId: string, error?: string): Promise<DeliveryReceipt | undefined>;
+	claimAiRequests(limit?: number): AstrBotAiRequest[];
+	respondAiRequest(requestId: string, text: string): Promise<AstrBotAiRequestReceipt | undefined>;
+	failAiRequest(requestId: string, error?: string): Promise<AstrBotAiRequestReceipt | undefined>;
+	pushTest(targetId: string, payload: NotificationPayload): Promise<DeliveryResult>;
+}
+
+export function createBusinessRuntime(options: BusinessRuntimeOptions): BusinessRuntimeHandle {
+	return new DefaultBusinessRuntime(options);
+}
+
+class DefaultBusinessRuntime implements BusinessRuntimeHandle {
+	readonly dataDir: string;
+	readonly serviceCtx: SidecarServiceContext;
+	readonly configStore: AstrBotConfigStore;
+	readonly subscriptions: SubscriptionStore;
+	readonly events: SidecarEventQueue;
+	readonly deliveries: SidecarDeliveryQueue;
+	private readonly bus = createSidecarMessageBus();
+	private readonly push: BilibiliPush;
+	private readonly storage: StorageManager;
+	private readonly aiBridge: AstrBotAiBridge | null;
+	private readonly userAgent: string | undefined;
+	private readonly chromePath: string | undefined;
+	private api: BilibiliAPI | undefined;
+	private loginFlow: LoginFlow | undefined;
+	private engines: SidecarEnginesRuntime | undefined;
+	private puppeteer: SidecarPuppeteer | undefined;
+	private started = false;
+	private startBasePromise: Promise<void> | undefined;
+	private closing = false;
+	private authStartPromise: Promise<LoginSnapshot> | undefined;
+	private closePromise: Promise<void> | undefined;
+
+	constructor(options: BusinessRuntimeOptions) {
+		this.dataDir = options.dataDir;
+		this.userAgent = options.userAgent;
+		this.chromePath = options.chromePath;
+		this.events = options.events ?? new SidecarEventQueue();
+		this.deliveries = options.deliveries ?? new SidecarDeliveryQueue({ events: this.events });
+		this.serviceCtx = createSidecarServiceContext({
+			name: "astrbot-sidecar",
+			level: options.logLevel ?? "info",
+		});
+		this.configStore = createAstrBotConfigStore({ dataDir: this.dataDir, bus: this.bus });
+		this.aiBridge =
+			(options.aiBackend ?? "astrbot") === "astrbot"
+				? new AstrBotAiBridge({
+						providerId: options.aiProviderId,
+						personaId: options.aiPersonaId,
+					})
+				: null;
+		this.subscriptions = createSubscriptionStore(this.bus);
+		this.storage = new StorageManager({
+			serviceCtx: this.serviceCtx,
+			dataDir: this.dataDir,
+			encryptionKey: options.cookieEncryptionKey,
+		});
+		this.push = new BilibiliPush({
+			sink: createCallbackSink({
+				events: this.events,
+				deliveries: this.deliveries,
+				targets: () => this.configStore.getTargets(),
+			}),
+			store: this.subscriptions,
+			logger: this.serviceCtx.logger,
+			serviceCtx: this.serviceCtx,
+			defaults: () => this.configStore.getGlobals().defaults,
+		});
+		this.bus.on("engine-error", (source, message) => {
+			this.events.push({ type: "engine-error", source, message });
+		});
+		this.bus.on("auth-lost", () => {
+			this.events.push({ type: "auth-lost" });
+		});
+		this.bus.on("auth-restored", () => {
+			this.events.push({ type: "auth-restored" });
+		});
+	}
+
+	async start(signal?: AbortSignal): Promise<void> {
+		await this.startBase(signal);
+		throwIfAborted(signal);
+		await this.ensureAuthStarted(signal);
+		throwIfAborted(signal);
+		if (this.closePromise) return;
+		this.startEngines();
+		this.serviceCtx.logger.info(
+			`business runtime ready: dataDir=${this.dataDir} subscriptions=${this.subscriptions.list().length}`,
+		);
+	}
+
+	async close(reason = "shutdown"): Promise<void> {
+		if (this.closePromise) return this.closePromise;
+		this.closing = true;
+		this.started = false;
+		this.closePromise = (async () => {
+			this.serviceCtx.logger.info(`business runtime closing: ${reason}`);
+			this.engines?.dispose();
+			this.engines = undefined;
+			// 显式排序:先停引擎(连带停 ImageRenderer)再关浏览器,避免渲染中途关 chromium。
+			if (this.puppeteer) {
+				await this.puppeteer.dispose();
+				this.puppeteer = undefined;
+			}
+			this.push.stop();
+			this.loginFlow?.stop();
+			this.api?.stop();
+			await this.serviceCtx.dispose();
+			this.started = false;
+		})();
+		return this.closePromise;
+	}
+
+	snapshot(): BusinessRuntimeSnapshot {
+		const config = this.configStore.snapshot();
+		return {
+			started: this.started,
+			authStarted: Boolean(this.loginFlow),
+			engines: this.engines?.status() ?? { dynamic: false, live: false },
+			subscriptions: config.subscriptions,
+			config,
+			events: this.events.snapshot(),
+			deliveries: this.deliveries.snapshot(),
+			ai: this.aiBridge?.queue.snapshot() ?? { size: 0, pending: 0, inFlight: 0, maxSize: 0 },
+			login: this.loginFlow?.current(),
+		};
+	}
+
+	async ensureAuthStarted(signal?: AbortSignal): Promise<LoginSnapshot> {
+		this.throwIfClosing();
+		await this.startBase(signal);
+		throwIfAborted(signal);
+		this.throwIfClosing();
+		if (this.loginFlow) return this.loginFlow.current();
+		if (this.authStartPromise) return this.authStartPromise;
+		this.authStartPromise = this.startAuthSystem(signal)
+			.then((snapshot) => {
+				if (this.closing || this.closePromise || !this.started) return snapshot;
+				this.startEngines();
+				return snapshot;
+			})
+			.finally(() => {
+				this.authStartPromise = undefined;
+			});
+		return this.authStartPromise;
+	}
+
+	async refreshLoginStatus(): Promise<LoginSnapshot> {
+		await this.ensureAuthStarted();
+		const flow = this.requireLoginFlow();
+		await flow.reportAccountInfo();
+		return flow.current();
+	}
+
+	async beginLogin(): Promise<LoginSnapshot> {
+		await this.ensureAuthStarted();
+		const flow = this.requireLoginFlow();
+		await flow.beginLogin();
+		return flow.current();
+	}
+
+	async logout(): Promise<LoginSnapshot> {
+		await this.startBase();
+		await this.storage.cookieStore.clear();
+		await this.api?.clearCookies();
+		this.loginFlow?.reportLoggedOut("notLogin");
+		return (
+			this.loginFlow?.current() ?? {
+				status: BiliLoginStatus.NOT_LOGIN,
+				msg: "账号未登录，请点击「扫码登录」",
+			}
+		);
+	}
+
+	getGlobals(): GlobalConfig {
+		return this.configStore.getGlobals();
+	}
+
+	async setGlobals(next: GlobalConfig): Promise<GlobalConfig> {
+		const saved = await this.configStore.setGlobals(next);
+		this.applyGlobals(saved);
+		return saved;
+	}
+
+	async resetGlobals(): Promise<GlobalConfig> {
+		return this.setGlobals(makeDefaultGlobalConfig());
+	}
+
+	listSubscriptions(): Subscription[] {
+		return this.subscriptions.list();
+	}
+
+	listAdapters(): AstrBotAdapter[] {
+		return this.configStore.getAdapters();
+	}
+
+	listTargets(): AstrBotPushTarget[] {
+		return this.configStore.getTargets();
+	}
+
+	private defaultSubscriptionTargetIds(): string[] {
+		return resolveAstrBotDefaultTargetIds(this.configStore.getTargets());
+	}
+
+	async upsertSubscription(input: StoredSubscriptionInput | Subscription): Promise<Subscription> {
+		const sub = isFullSubscription(input)
+			? input
+			: createAstrBotSubscription(input, {
+					defaultTargetIds: this.defaultSubscriptionTargetIds(),
+					defaultFeatures: this.configStore.getGlobals().defaults.features,
+				});
+		const saved = await this.configStore.upsertSubscription(sub);
+		this.subscriptions.upsert(saved);
+		return saved;
+	}
+
+	async patchSubscription(id: string, patch: Record<string, unknown>): Promise<Subscription> {
+		const current = this.subscriptions.list().find((entry) => entry.id === id);
+		if (!current) throw new Error(`subscription not found: ${id}`);
+		return this.upsertSubscription({ ...mergeSubscriptionPatch(current, patch), id });
+	}
+
+	async removeSubscription(id: string): Promise<Subscription | undefined> {
+		const removed = await this.configStore.deleteSubscription(id);
+		if (removed) this.subscriptions.removeById(id);
+		return removed;
+	}
+
+	async upsertTarget(target: AstrBotPushTarget): Promise<AstrBotPushTarget> {
+		return this.configStore.upsertTarget(target);
+	}
+
+	async patchTarget(id: string, patch: Record<string, unknown>): Promise<AstrBotPushTarget> {
+		const current = this.configStore.getTargets().find((entry) => entry.id === id);
+		if (!current) throw new Error(`target not found: ${id}`);
+		return this.upsertTarget({ ...(deepMerge(current, patch) as AstrBotPushTarget), id });
+	}
+
+	async removeTarget(id: string): Promise<AstrBotPushTarget | undefined> {
+		return this.configStore.deleteTarget(id);
+	}
+
+	createTargetPairingCode(): AstrBotPairingCode {
+		return this.configStore.createPairingCode();
+	}
+
+	async confirmTargetPairingCode(
+		code: string,
+		session: AstrBotSession,
+	): Promise<AstrBotPairingConfirmResult | undefined> {
+		return this.configStore.confirmPairingCode(code, session);
+	}
+
+	async clearSubscriptions(): Promise<Subscription[]> {
+		for (const sub of this.configStore.getSubscriptions()) {
+			await this.configStore.deleteSubscription(sub.id);
+			this.subscriptions.removeById(sub.id);
+		}
+		return this.listSubscriptions();
+	}
+
+	async clearTargets(): Promise<AstrBotPushTarget[]> {
+		for (const target of this.configStore.getTargets()) {
+			await this.configStore.deleteTarget(target.id);
+		}
+		return this.listTargets();
+	}
+
+	async clearSubscriptionOverrides(): Promise<Subscription[]> {
+		for (const sub of this.subscriptions.list()) {
+			await this.upsertSubscription({
+				...sub,
+				atAll: { dynamic: {}, live: {} },
+				overrides: {},
+				specialUsers: [],
+			});
+		}
+		return this.listSubscriptions();
+	}
+
+	async lookupUser(uid: string): Promise<UserLookupResult> {
+		await this.ensureAuthStarted();
+		const api = this.requireApi();
+		const res = await api.getUserCardInfo(uid);
+		if (res.code !== 0 || !res.data?.card) {
+			throw new SidecarUpstreamError(
+				404,
+				"not_found",
+				(res as { message?: string }).message ?? "未找到该 UP 主",
+				res.code,
+			);
+		}
+		return userCardToLookupResult(res.data.card);
+	}
+
+	async searchUsers(query: string, page = 1): Promise<UserSearchResult> {
+		await this.ensureAuthStarted();
+		const api = this.requireApi();
+		const safePage = Number.isFinite(page) && page >= 1 ? Math.min(Math.floor(page), 200) : 1;
+		const res = (await api.searchByType("bili_user", query, {
+			page: safePage,
+			pageSize: 5,
+		})) as {
+			code?: number;
+			message?: string;
+			data?: { result?: unknown[]; numResults?: number } | null;
+		};
+		if (!res || res.code !== 0) {
+			throw new SidecarUpstreamError(502, "upstream_failed", res?.message ?? "搜索失败", res?.code);
+		}
+		const raw = Array.isArray(res.data?.result) ? res.data.result : [];
+		const results = raw.slice(0, 5).map(searchResultToLookupResult);
+		return {
+			results,
+			page: safePage,
+			pageSize: 5,
+			total: typeof res.data?.numResults === "number" ? res.data.numResults : results.length,
+		};
+	}
+
+	drainEvents(afterId = 0): SidecarEvent[] {
+		return this.events.drain(afterId);
+	}
+
+	claimDeliveries(limit = 10): DeliveryJob[] {
+		return this.deliveries.claim({ limit });
+	}
+
+	async ackDelivery(deliveryId: string): Promise<DeliveryReceipt | undefined> {
+		return this.deliveries.ack(deliveryId);
+	}
+
+	async nackDelivery(deliveryId: string, error?: string): Promise<DeliveryReceipt | undefined> {
+		return this.deliveries.nack(deliveryId, error);
+	}
+
+	claimAiRequests(limit = 1): AstrBotAiRequest[] {
+		return this.aiBridge?.queue.claim({ limit }) ?? [];
+	}
+
+	async respondAiRequest(
+		requestId: string,
+		text: string,
+	): Promise<AstrBotAiRequestReceipt | undefined> {
+		return this.aiBridge?.queue.respond(requestId, text);
+	}
+
+	async failAiRequest(
+		requestId: string,
+		error?: string,
+	): Promise<AstrBotAiRequestReceipt | undefined> {
+		return this.aiBridge?.queue.fail(requestId, error);
+	}
+
+	async pushTest(targetId: string, payload: NotificationPayload): Promise<DeliveryResult> {
+		// 只接受真实绑定的 target；隐藏 fallback target 不允许测试推送（不再特判 ASTRBOT_TARGET_ID）。
+		const target = this.configStore.getTargets().find((entry) => entry.id === targetId);
+		if (!target) return { ok: false, latencyMs: 0, err: "target not found" };
+		if (!target.enabled) return { ok: false, latencyMs: 0, err: "target disabled" };
+		const result = await this.push.sendToTarget(target.id, payload);
+		await this.configStore.upsertTarget({
+			...target,
+			testStatus: {
+				ok: result.ok,
+				lastCheckedAt: new Date().toISOString(),
+				latencyMs: result.latencyMs,
+				err: result.err,
+			},
+		});
+		return result;
+	}
+
+	private async startBase(signal?: AbortSignal): Promise<void> {
+		this.throwIfClosing();
+		if (this.started) return;
+		// 单例化：start() 与 HTTP 触发的 ensureAuthStarted() 并发时，守卫在末尾置位会让
+		// 两者双双穿过、把 storage.init/configStore.load 跑两遍。复用同一 promise（同 authStartPromise 模式）。
+		if (this.startBasePromise) return this.startBasePromise;
+		this.startBasePromise = (async () => {
+			await this.storage.init();
+			throwIfAborted(signal);
+			this.throwIfClosing();
+			await this.configStore.load();
+			this.applyGlobals(this.configStore.getGlobals());
+			this.subscriptions.replaceAll(this.configStore.getSubscriptions());
+			throwIfAborted(signal);
+			this.throwIfClosing();
+			this.push.start();
+			this.started = true;
+		})().finally(() => {
+			this.startBasePromise = undefined;
+		});
+		return this.startBasePromise;
+	}
+
+	private startEngines(): void {
+		if (this.engines || !this.api || this.closing || this.closePromise || !this.started) return;
+		// puppeteer 顶层接管:首次起引擎时按 chromePath(配置/env) → OS 探测解析一次,命中才
+		// 构造适配器(懒启动浏览器);缺省则告警 + 降级文字。startEngines 自带单次守卫。
+		if (!this.puppeteer) {
+			const chromePath = resolveChromePath(this.chromePath, { exists: existsSync });
+			if (chromePath) {
+				this.puppeteer = createPuppeteerAdapter({
+					chromePath,
+					logger: this.serviceCtx.logger,
+				});
+			} else {
+				this.serviceCtx.logger.warn(
+					"未配置 chromePath 且未探测到本机浏览器,卡片图片渲染降级为纯文字推送(在插件配置填 chromePath 指向 Chrome / Chromium 可执行文件后重启生效)",
+				);
+			}
+		}
+		this.engines = createSidecarEngines({
+			serviceCtx: this.serviceCtx,
+			bus: this.bus,
+			api: this.api,
+			push: this.push,
+			commentary: this.aiBridge,
+			subscriptions: this.subscriptions,
+			getGlobals: () => this.configStore.getGlobals(),
+			puppeteer: this.puppeteer ?? null,
+		});
+		this.engines.start();
+	}
+
+	private async startAuthSystem(signal?: AbortSignal): Promise<LoginSnapshot> {
+		this.serviceCtx.logger.info("starting bilibili auth runtime");
+		let api: BilibiliAPI | undefined;
+		let flow: LoginFlow | undefined;
+		try {
+			this.throwIfClosing();
+			const globals = this.configStore.getGlobals();
+			api = new BilibiliAPI({
+				serviceCtx: this.serviceCtx,
+				config: { userAgent: globals.app.userAgent ?? this.userAgent },
+				callbacks: {
+					onCookiesRefreshed: async (data) => {
+						await this.storage.cookieStore.save(data);
+						this.bus.emit("cookies-refreshed", data);
+					},
+					onAuthLost: () => {
+						void flow?.handleAuthLost();
+					},
+				},
+			});
+			await api.start();
+			throwIfAborted(signal);
+			this.throwIfClosing();
+			this.api = api;
+			const storedCookies = await this.storage.cookieStore.load();
+			throwIfAborted(signal);
+			this.throwIfClosing();
+			if (storedCookies) {
+				await api.loadCookies(storedCookies);
+			}
+			throwIfAborted(signal);
+			this.throwIfClosing();
+			flow = new LoginFlow({
+				serviceCtx: this.serviceCtx,
+				api,
+				bus: this.bus,
+				healthCheckMs: globals.app.healthCheckMinutes * 60_000,
+				saveCookies: (data) => this.storage.cookieStore.save(data),
+			});
+			this.loginFlow = flow;
+			await flow.start();
+			throwIfAborted(signal);
+			this.throwIfClosing();
+			await flow.reportAccountInfo();
+			throwIfAborted(signal);
+			this.throwIfClosing();
+			return flow.current();
+		} catch (error) {
+			if (this.loginFlow === flow) this.loginFlow = undefined;
+			if (this.api === api) this.api = undefined;
+			try {
+				flow?.stop();
+			} catch (stopError) {
+				this.serviceCtx.logger.warn(`[astrbot] login flow cleanup failed: ${String(stopError)}`);
+			}
+			try {
+				api?.stop();
+			} catch (stopError) {
+				this.serviceCtx.logger.warn(`[astrbot] api cleanup failed: ${String(stopError)}`);
+			}
+			throw error;
+		}
+	}
+
+	private applyGlobals(globals: GlobalConfig): void {
+		this.serviceCtx.setLevel(globals.app.logLevel);
+		this.api?.setUserAgent(globals.app.userAgent ?? this.userAgent);
+		this.loginFlow?.setHealthCheckMs(globals.app.healthCheckMinutes * 60_000);
+		this.engines?.updateGlobals(globals);
+	}
+
+	private throwIfClosing(): void {
+		if (this.closing) throwAbortError("business runtime closing");
+	}
+
+	private requireApi(): BilibiliAPI {
+		if (!this.api) {
+			throw new SidecarUpstreamError(503, "api_not_ready", "B 站 API 尚未就绪");
+		}
+		return this.api;
+	}
+
+	private requireLoginFlow(): LoginFlow {
+		if (!this.loginFlow) throw new Error("login flow is not started");
+		return this.loginFlow;
+	}
+}
+
+function isFullSubscription(value: StoredSubscriptionInput | Subscription): value is Subscription {
+	return "routing" in value && "overrides" in value && "atAll" in value;
+}
+
+function mergeSubscriptionPatch(
+	current: Subscription,
+	patch: Record<string, unknown>,
+): Subscription {
+	const merged = deepMerge(current, patch) as Subscription;
+	if (Object.hasOwn(patch, "overrides")) {
+		merged.overrides = isPlainRecord(patch.overrides)
+			? (structuredClone(patch.overrides) as Subscription["overrides"])
+			: {};
+	}
+	pruneAtAllToRouting(merged);
+	return merged;
+}
+
+function pruneAtAllToRouting(subscription: Subscription): void {
+	// atAll.X 的 key 必须是 routing.X 的子集（schema refine）。PATCH 收缩 routing 后，
+	// 若 atAll 残留已不再被路由的 target，会撞 refine 报 500，故同步删掉。
+	// 整体替换 atAll（而非原地改 atAll[scope]）—— patch 不含 atAll 时 deepMerge 会浅拷贝
+	// 复用 current.atAll 引用，原地改会污染 store。
+	const atAll = { dynamic: {}, live: {} } as Subscription["atAll"];
+	for (const scope of ["dynamic", "live"] as const) {
+		const routed = new Set(subscription.routing[scope]);
+		atAll[scope] = Object.fromEntries(
+			Object.entries(subscription.atAll[scope]).filter(([targetId]) => routed.has(targetId)),
+		) as Record<string, boolean>;
+	}
+	subscription.atAll = atAll;
+}
+
+function deepMerge(base: unknown, patch: unknown): unknown {
+	if (!isPlainRecord(base) || !isPlainRecord(patch)) return patch;
+	const out: Record<string, unknown> = { ...base };
+	for (const [key, value] of Object.entries(patch)) {
+		if (value === undefined) continue;
+		if (value === null) {
+			delete out[key];
+			continue;
+		}
+		out[key] = deepMerge(out[key], value);
+	}
+	return out;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function userCardToLookupResult(card: {
+	mid?: unknown;
+	name?: unknown;
+	face?: unknown;
+	sign?: unknown;
+	fans?: unknown;
+}): UserLookupResult {
+	return {
+		uid: String(card.mid ?? ""),
+		name: typeof card.name === "string" ? card.name : String(card.mid ?? ""),
+		avatar: typeof card.face === "string" ? card.face : "",
+		sign: typeof card.sign === "string" ? card.sign : "",
+		fans: typeof card.fans === "number" && card.fans >= 0 ? card.fans : 0,
+	};
+}
+
+function searchResultToLookupResult(entry: unknown): UserLookupResult {
+	const value = isPlainRecord(entry) ? entry : {};
+	return {
+		uid: String(value.mid ?? ""),
+		name: stripHtmlTags(String(value.uname ?? "")),
+		avatar: normaliseAvatarUrl(value.upic),
+		sign: typeof value.usign === "string" ? value.usign : "",
+		fans: typeof value.fans === "number" && value.fans >= 0 ? value.fans : 0,
+	};
+}
+
+function stripHtmlTags(value: string): string {
+	return value.replace(/<[^>]+>/g, "");
+}
+
+function normaliseAvatarUrl(raw: unknown): string {
+	if (typeof raw !== "string" || !raw) return "";
+	if (raw.startsWith("//")) return `https:${raw}`;
+	return raw;
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+	if (signal?.aborted) {
+		const reason = signal.reason;
+		throwAbortError(
+			typeof reason === "string" && reason.length > 0 ? reason : "business runtime aborted",
+		);
+	}
+}
+
+function throwAbortError(message: string): never {
+	const error = new Error(message);
+	error.name = "AbortError";
+	throw error;
+}

@@ -1,4 +1,4 @@
-import type { CommentaryGenerator } from "@bilibili-notify/ai";
+import type { AIScene, CommentaryCallOverride } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import type { Disposable, Logger, MessageBus, ServiceContext } from "@bilibili-notify/internal";
@@ -15,6 +15,15 @@ import type {
 	SubscriptionsView,
 } from "./push-like";
 import type { AllDynamicInfo, Dynamic, DynamicFilterConfig, DynamicTimelineManager } from "./types";
+
+interface CommentaryClient {
+	comment(
+		content: string,
+		scene?: AIScene,
+		imageUrls?: string[],
+		override?: CommentaryCallOverride,
+	): Promise<string>;
+}
 
 const LOG_TAG = "bilibili-notify-dynamic";
 /**
@@ -154,7 +163,7 @@ export interface DynamicEngineConfig {
 	 */
 	imageEnabled?: boolean;
 	/**
-	 * 是否启用 AI 动态点评。`false` 时跳过 `CommentaryGenerator.comment()` 调用,推送只用原始动态文本。
+	 * 是否启用 AI 动态点评。`false` 时跳过 `CommentaryClient.comment()` 调用,推送只用原始动态文本。
 	 * 缺省视为 true。Adapter 通常用 `globals.defaults.ai.enabled` 填充。
 	 */
 	aiEnabled?: boolean;
@@ -168,7 +177,7 @@ export interface DynamicEngineOptions {
 	/** 可选注入：图片渲染器；缺失时降级为纯文字推送。 */
 	image?: ImageRenderer;
 	/** 可选注入：AI 点评生成器；缺失时跳过 AI 文案生成。 */
-	ai?: CommentaryGenerator;
+	ai?: CommentaryClient;
 	config: DynamicEngineConfig;
 	/**
 	 * Adapter 提供的订阅快照访问器。返回 null 表示订阅尚未就绪
@@ -249,7 +258,7 @@ export class DynamicEngine {
 	private readonly api: BilibiliAPI;
 	private readonly push: PushLike;
 	private image?: ImageRenderer;
-	private ai?: CommentaryGenerator;
+	private ai?: CommentaryClient;
 	private readonly logger: Logger;
 	private readonly getSubs: () => SubscriptionsView | null;
 
@@ -349,10 +358,10 @@ export class DynamicEngine {
 	}
 
 	/**
-	 * 热替换 CommentaryGenerator 实例。adapter 在用户运行时打开 / 关闭 / 更换 AI
+	 * 热替换 CommentaryClient 实例。adapter 在用户运行时打开 / 关闭 / 更换 AI
 	 * 配置后调用,引擎随后的动态点评会立即用新实例 (或回退到纯文字) ,无需重启 server。
 	 */
-	setAi(ai: CommentaryGenerator | undefined): void {
+	setAi(ai: CommentaryClient | undefined): void {
 		this.ai = ai;
 	}
 
@@ -720,7 +729,7 @@ export class DynamicEngine {
 				}
 
 				// AI comment — adapter 在 SubItemView 上可附 per-UP aiOverride，传给 comment()
-				// 后仅对该次调用生效；缺失时 fall through 到 CommentaryGenerator 的全局 config。
+				// 后仅对该次调用生效；缺失时 fall through 到 CommentaryClient 的全局 config。
 				let aiComment: string | undefined;
 				if (this.ai && this.config.aiEnabled !== false) {
 					const dynamicText = extractDynamicText(item);

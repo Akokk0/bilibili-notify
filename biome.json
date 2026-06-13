@@ -17,7 +17,11 @@
 			"!apps/**/data",
 			"!apps/desktop/src-tauri/gen",
 			"!apps/desktop/src-tauri/resources",
-			"!apps/desktop/src-tauri/target"
+			"!apps/desktop/src-tauri/target",
+			"!astrbot/core/sidecar/app",
+			"!astrbot/core/pages",
+			"!astrbot/core/sidecar/state",
+			"!astrbot/core/sidecar/logs"
 		]
 	},
 	"formatter": {

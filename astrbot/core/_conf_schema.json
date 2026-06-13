@@ -1,0 +1,53 @@
+{
+	"nodePath": {
+		"description": "Node 可执行文件路径",
+		"type": "string",
+		"default": "",
+		"hint": "默认使用 PATH 中的 node。首版要求 Node >= 24；仅当 AstrBot 运行环境找不到正确 Node 时填写绝对路径。"
+	},
+	"fixedPort": {
+		"description": "固定 sidecar 端口（调试用）",
+		"type": "int",
+		"default": 0,
+		"hint": "默认 0 表示随机本地端口。只监听 127.0.0.1；请仅在本地调试端口冲突时设置 1-65535。"
+	},
+	"logLevel": {
+		"description": "sidecar 日志级别",
+		"type": "string",
+		"default": "info",
+		"options": ["debug", "info", "warn", "error"],
+		"hint": "控制 Node sidecar 的日志详细程度。排障时可临时改为 debug。"
+	},
+	"startupTimeoutSeconds": {
+		"description": "sidecar 启动超时秒数",
+		"type": "float",
+		"default": 30.0,
+		"hint": "超过该时间仍未就绪会中止启动并提示查看日志。"
+	},
+	"shutdownTimeoutSeconds": {
+		"description": "sidecar 关闭超时秒数",
+		"type": "float",
+		"default": 5.0,
+		"hint": "关闭超时后会强制结束 sidecar 进程。"
+	},
+	"aiProviderId": {
+		"description": "AstrBot AI Provider",
+		"type": "string",
+		"default": "",
+		"_special": "select_provider",
+		"hint": "留空时使用 AstrBot 默认 Provider。AI 总结默认关闭，具体业务开关在插件 Dashboard 中配置。"
+	},
+	"aiPersonaId": {
+		"description": "AstrBot AI 人格",
+		"type": "string",
+		"default": "",
+		"_special": "select_persona",
+		"hint": "AI 总结使用的人格。留空时使用 AstrBot 当前默认人格；选定后由 AstrBot 提供人格，插件不再自带人格设置。可在 Dashboard 为单个 UP 主单独覆盖。"
+	},
+	"chromePath": {
+		"description": "Chrome / Chromium 可执行文件路径",
+		"type": "string",
+		"default": "",
+		"hint": "用于渲染图片卡片。留空时自动探测本机常见安装位置（macOS / Windows / Linux）；未探测到则图片卡片降级为纯文字。也可填浏览器可执行文件的绝对路径。修改后需重启 AstrBot 生效。"
+	}
+}

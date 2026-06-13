@@ -1,10 +1,10 @@
-import type { CommentaryGenerator } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import type { LiveContentBuilder } from "./content-builder";
 import { DanmakuCollector } from "./danmaku-collector";
 import { ListenerManager, type ListenerManagerConfig } from "./listener-manager";
+import type { CommentaryClient } from "./live-summary-requester";
 import { LiveSummaryRequester } from "./live-summary-requester";
 import type { LiveSubscriptionOp, PushLike, SubItemView, SubscriptionsView } from "./push-like";
 import definedStopWords from "./stop-words";
@@ -58,7 +58,7 @@ export interface LiveEngineOptions {
 	/** Optional — if absent, image-based pushes are skipped / fall back to text. */
 	imageRenderer?: ImageRenderer | null;
 	/** Optional — if absent, live summaries fall back to the configured template. */
-	commentary?: CommentaryGenerator | null;
+	commentary?: CommentaryClient | null;
 	config: LiveEngineConfig;
 	/**
 	 * Called by the engine to surface an `engine-error` to the host. Adapters
@@ -239,10 +239,10 @@ export class LiveEngine {
 	}
 
 	/**
-	 * 热替换 CommentaryGenerator 实例。adapter 在用户运行时打开 / 关闭 / 更换 AI
+	 * 热替换 CommentaryClient 实例。adapter 在用户运行时打开 / 关闭 / 更换 AI
 	 * 配置后调用,引擎随后的直播总结会立即用新实例 (或回退到模板) ,无需重启 server。
 	 */
-	setCommentary(commentary: CommentaryGenerator | null): void {
+	setCommentary(commentary: CommentaryClient | null): void {
 		this.liveSummaryRequester.setCommentary(commentary);
 	}
 

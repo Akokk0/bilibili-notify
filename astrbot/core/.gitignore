@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+*.log
+.venv/
+.pytest_cache/
+.mypy_cache/
+sidecar/state/
+sidecar/logs/
