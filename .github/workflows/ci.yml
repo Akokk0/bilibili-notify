@@ -39,3 +39,14 @@ jobs:
 
       - name: Test
         run: vpr test
+
+      # Python(astrbot/core)门禁。CI 不带 Python,装 uv 后由它自管 3.12 与依赖。
+      # check:astrbot-python = ruff check + ruff format --check + pytest。
+      - name: Setup uv (Python)
+        uses: astral-sh/setup-uv@v8
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Python gate (ruff + pytest)
+        run: vp run check:astrbot-python

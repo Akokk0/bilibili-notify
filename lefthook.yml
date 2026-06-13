@@ -4,6 +4,13 @@ pre-commit:
       glob: "*.{ts,tsx,js,jsx,mjs,css}"
       run: vpx biome check --staged --write --no-errors-on-unmatched {staged_files}
       stage_fixed: true
+    # Python(astrbot/core)的 ruff 门禁。root 限定执行目录并把 {staged_files} 相对化,
+    # 只对暂存的 .py 跑 ruff(读 astrbot/core/pyproject.toml 配置),自动修后 re-stage。
+    python:
+      root: "astrbot/core/"
+      glob: "*.py"
+      run: uv run --no-project --with ruff ruff check --fix {staged_files} && uv run --no-project --with ruff ruff format {staged_files}
+      stage_fixed: true
 
 commit-msg:
   commands:
