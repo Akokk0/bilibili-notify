@@ -7,7 +7,13 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["@bilibili-notify/server", "@bilibili-notify/web"],
+  "ignore": [
+    "@bilibili-notify/server",
+    "@bilibili-notify/web",
+    "@bilibili-notify/desktop",
+    "@bilibili-notify/astrbot-page",
+    "@bilibili-notify/astrbot-sidecar"
+  ],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true
   }
