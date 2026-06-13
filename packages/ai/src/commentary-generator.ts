@@ -101,6 +101,20 @@ export interface CommentaryCallOverride {
 	liveSummaryPrompt?: string;
 	temperature?: number;
 	model?: string;
+	/**
+	 * per-UP 指定的 AstrBot 人格 id。仅 AstrBot bridge 消费(覆盖全局 --ai-persona-id);
+	 * 自带 OpenAI 的 CommentaryGenerator 忽略此字段。
+	 */
+	personaId?: string;
+}
+
+export interface CommentaryProvider {
+	comment(
+		content: string,
+		scene?: AIScene,
+		imageUrls?: string[],
+		override?: CommentaryCallOverride,
+	): Promise<string>;
 }
 
 export interface CommentaryGeneratorOptions {
@@ -113,7 +127,7 @@ export interface CommentaryGeneratorOptions {
  * 平台中立的 AI 点评 / 多轮对话核心。
  * 不依赖 koishi runtime；adapter 负责配置 logger、提供 BilibiliAPI 与可选的订阅管理钩子。
  */
-export class CommentaryGenerator {
+export class CommentaryGenerator implements CommentaryProvider {
 	private readonly logger: Logger;
 	private readonly serviceCtx: ServiceContext;
 	private readonly api: BilibiliAPI;

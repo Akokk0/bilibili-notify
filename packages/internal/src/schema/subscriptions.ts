@@ -77,6 +77,11 @@ export const AIOverrideSchema = z.object({
 	dynamicPrompt: z.string().optional(),
 	liveSummaryPrompt: z.string().optional(),
 	temperature: z.number().min(0).max(2).optional(),
+	/**
+	 * per-UP 指定的 AstrBot 人格 id(留空继承全局 --ai-persona-id)。与 preset 无关,
+	 * 仅 AstrBot 端消费(让某个 UP 的总结用不同 AstrBot 人格);koishi/独立端忽略。
+	 */
+	personaId: z.string().optional(),
 });
 export type AIOverride = z.infer<typeof AIOverrideSchema>;
 

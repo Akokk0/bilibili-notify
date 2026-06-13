@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=./metadata.schema.json
+name: astrbot_plugin_bilibili_notify
+display_name: Bilibili Notify
+desc: 监听 B 站 UP 主动态 / 直播,渲染成卡片图片,推送到 QQ 群等渠道
+short_desc: 哔哩哔哩通知插件（Dashboard + Node sidecar）
+version: v0.1.0-alpha.0
+author: Akokko
+repo: https://github.com/Akokk0/astrbot_plugin_bilibili_notify

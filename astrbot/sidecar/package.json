@@ -1,0 +1,38 @@
+{
+	"name": "@bilibili-notify/astrbot-sidecar",
+	"version": "0.0.0-dev",
+	"private": true,
+	"type": "module",
+	"main": "./dist/index.mjs",
+	"exports": {
+		".": {
+			"import": "./dist/index.mjs"
+		},
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"dev": "tsx watch --tsconfig tsconfig.json src/index.ts",
+		"start": "node dist/index.mjs",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@bilibili-notify/ai": "workspace:*",
+		"@bilibili-notify/api": "workspace:*",
+		"@bilibili-notify/dynamic": "workspace:*",
+		"@bilibili-notify/image": "workspace:*",
+		"@bilibili-notify/internal": "workspace:*",
+		"@bilibili-notify/live": "workspace:*",
+		"@bilibili-notify/push": "workspace:*",
+		"@bilibili-notify/storage": "workspace:*",
+		"@bilibili-notify/subscription": "workspace:*",
+		"puppeteer-core": "^24.16.0"
+	},
+	"devDependencies": {
+		"tsx": "^4.21.0"
+	},
+	"engines": {
+		"node": ">=24.0.0"
+	}
+}

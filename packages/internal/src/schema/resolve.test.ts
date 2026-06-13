@@ -76,6 +76,27 @@ describe("resolve()", () => {
 		expect(eff.ai.dynamicPrompt).toBe(globals.defaults.ai.dynamicPrompt);
 	});
 
+	it("AI override personaId 直通(与 preset 无关,inherit 时也生效;AstrBot 端用,其它端忽略)", () => {
+		const globals = makeDefaultGlobalConfig();
+
+		// preset=inherit 时 personaId 仍直通(它不是 persona 字段,不受 inherit 早返回影响)
+		const subInherit: Subscription = {
+			...SUB_BASE,
+			overrides: { ai: { preset: "inherit", personaId: "凛子" } },
+		};
+		expect(resolve(subInherit, globals.defaults).ai.personaId).toBe("凛子");
+
+		// preset=custom 时也直通
+		const subCustom: Subscription = {
+			...SUB_BASE,
+			overrides: { ai: { preset: "custom", personaId: "分析师" } },
+		};
+		expect(resolve(subCustom, globals.defaults).ai.personaId).toBe("分析师");
+
+		// 不设 → undefined(继承全局,由 sidecar 兜到 --ai-persona-id)
+		expect(resolve(SUB_BASE, globals.defaults).ai.personaId).toBeUndefined();
+	});
+
 	it("AI named preset takes priority over base; missing preset falls back gracefully", () => {
 		const globals = makeDefaultGlobalConfig();
 		const presetPersona = {

@@ -51,6 +51,8 @@ export interface ResolvedAI {
 	persona: AIPersona;
 	dynamicPrompt: string;
 	liveSummaryPrompt: string;
+	/** per-UP AstrBot 人格 id 直通(AstrBot 端消费;其它端忽略)。 */
+	personaId?: string;
 }
 
 /** 浅合并：override 中存在的字段覆盖 base，undefined / 缺失则保留 base。 */
@@ -76,7 +78,10 @@ function resolveAI(globals: AISettings, override: AIOverride | undefined): Resol
 		liveSummaryPrompt: globals.liveSummaryPrompt,
 	};
 
-	if (!override || override.preset === "inherit") return base;
+	// personaId 是 per-UP 直通,与 preset 无关 —— 即便 preset=inherit 也要带出去。
+	const personaId = override?.personaId;
+
+	if (!override || override.preset === "inherit") return { ...base, personaId };
 
 	// override 形如 { preset: 'custom' | <preset.id>; persona?; dynamicPrompt?; liveSummaryPrompt?; temperature? }
 	const namedPreset =
@@ -93,7 +98,7 @@ function resolveAI(globals: AISettings, override: AIOverride | undefined): Resol
 		override.liveSummaryPrompt ?? namedPreset?.liveSummaryPrompt ?? base.liveSummaryPrompt;
 	const temperature = override.temperature ?? base.temperature;
 
-	return { ...base, persona, dynamicPrompt, liveSummaryPrompt, temperature };
+	return { ...base, persona, dynamicPrompt, liveSummaryPrompt, temperature, personaId };
 }
 
 /** 把 (Subscription, GlobalDefaults) 折叠为业务可直接消费的 EffectiveSubscription。 */

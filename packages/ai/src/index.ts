@@ -4,6 +4,7 @@ export {
 	CommentaryGenerator,
 	type CommentaryGeneratorConfig,
 	type CommentaryGeneratorOptions,
+	type CommentaryProvider,
 	type PersonaConfig,
 } from "./commentary-generator";
 export * from "./persona-presets";

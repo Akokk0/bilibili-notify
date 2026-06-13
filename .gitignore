@@ -1,4 +1,6 @@
 lib
+!astrbot/page/src/lib/
+!astrbot/page/src/lib/**
 dist
 external
 
@@ -13,6 +15,9 @@ tsconfig.tsbuildinfo
 .DS_Store
 .idea
 .vscode
+!.vscode/
+.vscode/*
+!.vscode/settings.json
 *.suo
 *.ntvs*
 *.njsproj
@@ -36,5 +41,10 @@ apps/desktop/src-tauri/gen/
 apps/desktop/src-tauri/resources/
 apps/desktop/.tauri/
 
-# AstrBot 本地运行时数据(cmd_config / t2i_templates 等),不入库
+# AstrBot 本地运行时数据(cmd_config / t2i_templates 等)与插件镜像运行态,不入库
+astrbot/core/sidecar/app/
+astrbot/core/sidecar/state/
+astrbot/core/sidecar/logs/
+astrbot/core/.venv/
+astrbot/core/__pycache__/
 /data/

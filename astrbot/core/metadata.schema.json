@@ -1,0 +1,35 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "./metadata.schema.json",
+	"title": "AstrBot plugin metadata",
+	"type": "object",
+	"required": ["name", "display_name", "desc", "version", "author", "repo"],
+	"properties": {
+		"name": {
+			"type": "string"
+		},
+		"display_name": {
+			"type": "string"
+		},
+		"desc": {
+			"type": "string"
+		},
+		"short_desc": {
+			"type": "string"
+		},
+		"version": {
+			"type": "string"
+		},
+		"author": {
+			"type": "string"
+		},
+		"repo": {
+			"type": "string",
+			"format": "uri"
+		},
+		"astrbot_version": {
+			"type": "string"
+		}
+	},
+	"additionalProperties": true
+}
