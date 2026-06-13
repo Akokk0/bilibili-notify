@@ -7,7 +7,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 // 默认产物目录是仓库内 checkin 路径；测试经 BN_ASTRBOT_PAGE_OUT_DIR 改写到临时目录，
 // 通过 vite 的 --outDir 覆盖默认 outDir，避免 emptyOutDir 清空真实产物时与
-// sync-astrbot-core 测试并行撞车。统一解析成绝对路径，vite 与本脚本 strip 用同一目标。
+// 其它并行测试撞车。统一解析成绝对路径，vite 与本脚本 strip 用同一目标。
 const outDir = process.env.BN_ASTRBOT_PAGE_OUT_DIR
 	? resolve(process.env.BN_ASTRBOT_PAGE_OUT_DIR)
 	: resolve(repoRoot, "astrbot/core/pages/dashboard");

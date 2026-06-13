@@ -20,7 +20,7 @@
 		"format:astrbot-python": "uv run --no-project --directory astrbot/core --with ruff ruff format .",
 		"test:astrbot-python": "PYTHONPATH=. uv run --no-project --directory astrbot/core --with httpx --with pytest --with pytest-asyncio pytest tests",
 		"check:astrbot-python": "uv run --no-project --directory astrbot/core --with ruff ruff check . && uv run --no-project --directory astrbot/core --with ruff ruff format --check . && PYTHONPATH=. uv run --no-project --directory astrbot/core --with httpx --with pytest --with pytest-asyncio pytest tests",
-		"sync:astrbot-core": "node scripts/sync-astrbot-core.mjs",
+		"release:astrbot-core": "node scripts/release-astrbot-core.mjs",
 		"link:astrbot-core": "node scripts/link-astrbot-core.mjs",
 		"dev:server": "pnpm --filter @bilibili-notify/server run dev",
 		"dev:web": "pnpm --filter @bilibili-notify/web run dev",

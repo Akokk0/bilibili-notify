@@ -98,11 +98,14 @@ vp run build:astrbot-page
 vp run check:astrbot-python
 ```
 
-同步到外部插件仓库：
+发布到独立插件仓（squash 单提交推送，AstrBot 插件市场可拉取）：
 
 ```bash
-vp run sync:astrbot-core -- --target /path/to/astrbot_plugin_bilibili_notify
+vp run build:astrbot          # 先构建,确保 sidecar/app 与 pages/dashboard 是最新产物
+vp run release:astrbot-core   # 把 astrbot/core(含产物)作为一个干净快照推到独立仓 main
 ```
+
+默认推送到 `astrbot_plugin_bilibili_notify` 仓的 `main`，每次叠加一个快照提交（非 force）；`-- --dry-run` 预演不推送，`-- --remote <url>` / `-- --branch <name>` 覆盖目标。
 
 安装到本机 AstrBot：
 
@@ -120,7 +123,7 @@ vp run link:astrbot-core -- --astrbot-root /path/to/AstrBot --force --symlink
 
 符号链接模式下，AstrBot 可能无法发现 Plugin Page；验证 Dashboard 时使用默认复制模式。
 
-同步会包含已构建的 `sidecar/app/` 和 `pages/dashboard/`，并排除运行态目录、日志、缓存与虚拟环境。
+发布会包含已构建的 `sidecar/app/` 和 `pages/dashboard/`，并排除运行态目录、日志、缓存、虚拟环境与 `.gitignore`。
 
 ## 注意点
 
