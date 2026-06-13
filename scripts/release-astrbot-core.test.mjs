@@ -130,9 +130,16 @@ describe("release-astrbot-core", () => {
 		]);
 		const subject = await git(["--git-dir", bare, "log", "-1", "--format=%s", "main"], tmp);
 		expect(subject).toBe("chore: publish plugin snapshot");
-		// 提交署名 == monorepo 的 git 身份(维护者本人),而非中性兜底。
+		// 署名 == 脚本会用的身份:monorepo git config,无配置(如 CI 全新环境)则回退中性默认。
+		// 测试镜像同一回退逻辑,避免在没配 user.email 的 CI 上因 `git config` 报错而失败。
 		const email = await git(["--git-dir", bare, "log", "-1", "--format=%ae", "main"], tmp);
-		expect(email).toBe(await git(["config", "user.email"], repoRoot));
+		let expectedEmail = "release@bilibili-notify.local";
+		try {
+			expectedEmail = await git(["config", "user.email"], repoRoot);
+		} catch {
+			// repoRoot 未配 git 身份 → 脚本回退默认,测试同此
+		}
+		expect(email).toBe(expectedEmail);
 	});
 
 	it("--reset force-overwrites the remote with a single root commit", async () => {
