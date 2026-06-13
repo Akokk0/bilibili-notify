@@ -175,5 +175,5 @@ vp run build:astrbot-page
 
 遇到使用问题或 bug，欢迎通过以下方式反馈：
 
-- 提交 [GitHub Issue](https://github.com/Akokk0/astrbot_plugin_bilibili_notify/issues)
+- 提交 [GitHub Issue](https://github.com/Akokk0/bilibili-notify/issues)
 - 加入 QQ 交流群 `801338523` 反馈
