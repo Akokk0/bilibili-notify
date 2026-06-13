@@ -20,10 +20,13 @@
     "@bilibili-notify/push": "1.0.2",
     "@bilibili-notify/storage": "0.0.2",
     "@bilibili-notify/subscription": "1.0.3",
-    "@bilibili-notify/desktop": "0.0.0-dev"
+    "@bilibili-notify/desktop": "0.0.0-dev",
+    "@bilibili-notify/astrbot-page": "0.0.0-dev",
+    "@bilibili-notify/astrbot-sidecar": "0.0.0-dev"
   },
   "changesets": [
     "api-loginflow-qr-render",
+    "astrbot-platform-and-commentary-provider",
     "bug-fixes-since-last-release",
     "cardstyle-three-fields",
     "dependent-bumps-push-internal-image",
