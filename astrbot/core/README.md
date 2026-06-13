@@ -4,6 +4,8 @@ AstrBot 插件形态的 bilibili-notify。插件用本机 Node 启动本地 side
 
 这不是独立端；独立端请使用 `apps/` 对应的服务与 Dashboard。
 
+> 源码托管于 monorepo [Akokk0/bilibili-notify](https://github.com/Akokk0/bilibili-notify)，本插件即其中的 `astrbot/core/`，经发布同步为独立插件仓。
+
 ## 使用
 
 ### 1. 准备 Node
@@ -24,8 +26,9 @@ AstrBot 插件形态的 bilibili-notify。插件用本机 Node 启动本地 side
 - `startupTimeoutSeconds`：sidecar 启动超时
 - `shutdownTimeoutSeconds`：sidecar 关闭超时
 - `aiProviderId`：AstrBot AI Provider；留空使用 AstrBot 默认 Provider
+- `aiPersonaId`：AI 总结使用的 AstrBot 人格；留空使用 AstrBot 当前默认人格
 
-业务配置不在 AstrBot 原生配置里编辑，请使用 Dashboard。
+业务配置不在 AstrBot 原生配置里编辑，请使用 Dashboard。AI 总结的人格由 AstrBot 人格系统提供，可在 Dashboard 高级规则里为单个 UP 主单独指定人格。
 
 ### 3. 打开 Dashboard
 
@@ -164,3 +167,10 @@ vp run build:astrbot-page
 这是 AstrBot/Loguru `enqueue=True` sink 在退出时未清理导致的上游 warning，不是 bilibili-notify 的 sidecar 泄漏。
 
 如果只在 AstrBot 退出时出现，且 sidecar 已正常关闭，可以忽略。
+
+## 问题反馈
+
+遇到使用问题或 bug，欢迎通过以下方式反馈：
+
+- 提交 [GitHub Issue](https://github.com/Akokk0/astrbot_plugin_bilibili_notify/issues)
+- 加入 QQ 交流群 `801338523` 反馈
