@@ -53,6 +53,14 @@ describe("build-astrbot-sidecar", () => {
 		expect((await readFile(join(targetDir, "jieba_rs_wasm_bg.wasm"))).byteLength).toBeGreaterThan(
 			0,
 		);
+		// 词云模板在运行时 readFileSync(resolve(__dirname, "static/*.js"))。bundle 内联了
+		// @bilibili-notify/image 后 __dirname 指向 app/,这两个静态脚本必须随 bundle 一起搬运。
+		expect(await readFile(join(targetDir, "static", "wordcloud2.min.js"), "utf8")).toContain(
+			"WordCloud",
+		);
+		expect(await readFile(join(targetDir, "static", "render.js"), "utf8")).toContain(
+			"词云渲染函数",
+		);
 	});
 
 	it("starts from a copied bundle outside the monorepo", async () => {
