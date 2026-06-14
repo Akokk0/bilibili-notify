@@ -93,6 +93,20 @@ vp run dev:apps     # apps/server + apps/web 并行
 vp run check        # Biome lint + format(:fix 自动修)
 ```
 
+### 只开发 Koishi 端(可选)
+
+只想给 Koishi 插件(`packages/` + `koishi/`)贡献、不需要 `apps/` 与 `astrbot/`,可用 sparse-checkout 只检出这两块:
+
+```bash
+git clone --filter=blob:none --sparse https://github.com/Akokk0/bilibili-notify.git
+cd bilibili-notify
+git sparse-checkout set packages koishi
+```
+
+已有完整克隆也可直接 `git sparse-checkout set packages koishi` 收起其余目录,`git sparse-checkout disable` 随时全部恢复。仍是同一个仓库,提交照常提 PR 到 `dev`,CI 跑全量门禁。
+
+此状态下不要跑全量 `vp run build` / `vp test`(`apps/`、`astrbot/` 不在工作树),改用 `vp run -F <包名> <script>` 针对单包。
+
 分支:`dev` 为活跃开发主干;`main` 为发布分支,`dev → main` 合并触发 Koishi 端 npm 发版。独立端 Docker 镜像发布到 Docker Hub `akokk0/bilibili-notify`。
 
 ## License
