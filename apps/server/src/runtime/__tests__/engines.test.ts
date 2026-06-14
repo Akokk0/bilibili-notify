@@ -57,6 +57,7 @@ vi.mock("@bilibili-notify/dynamic", () => ({
 		stop = vi.fn();
 		updateConfig = vi.fn();
 		setAi = vi.fn();
+		setImage = vi.fn();
 		applyOps = vi.fn();
 		constructor(opts: any) {
 			this.opts = opts;
@@ -72,6 +73,7 @@ vi.mock("@bilibili-notify/live", () => ({
 		stop = vi.fn();
 		updateConfig = vi.fn();
 		setCommentary = vi.fn();
+		setImageRenderer = vi.fn();
 		applyOps = vi.fn();
 		rebuildFromSubs = vi.fn();
 		teardown = vi.fn();
@@ -300,6 +302,29 @@ describe("createEngines — boot wiring", () => {
 		expect(liveCfg.customLiveMsg.customLiveEnd).toBe(
 			"{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
 		);
+	});
+});
+
+describe("createEngines — enableImageRendering 运行时热启用", () => {
+	it("启动无 puppeteer,运行时注入 → 构造 renderer + start + setImage/setImageRenderer", () => {
+		const c = setup({ puppeteer: false });
+		active = c;
+		expect(H.image).toHaveLength(0); // 启动时无 renderer
+		const enabled = c.runtime.enableImageRendering({} as any);
+		expect(enabled).toBe(true);
+		expect(H.image).toHaveLength(1);
+		expect(H.image[0].start).toHaveBeenCalledTimes(1);
+		expect(H.dynamic[0].setImage).toHaveBeenCalledWith(H.image[0]);
+		expect(H.live[0].setImageRenderer).toHaveBeenCalledWith(H.image[0]);
+	});
+
+	it("幂等:启动即 puppeteer 在位,再调 → 返回 false 且不重复构造", () => {
+		const c = setup({ puppeteer: true });
+		active = c;
+		expect(H.image).toHaveLength(1); // 启动已构造
+		const enabled = c.runtime.enableImageRendering({} as any);
+		expect(enabled).toBe(false);
+		expect(H.image).toHaveLength(1); // 没重复构造浏览器
 	});
 });
 

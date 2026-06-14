@@ -14,6 +14,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Btn, Pill, Toggle } from "../components/atoms";
+import { ChromeAutoDetect } from "../components/chrome-autodetect";
 import {
 	Field,
 	LogLevelPicker,
@@ -123,12 +124,7 @@ function PreviewImage({
 						{status === 503 ? "puppeteer 未配置" : status === 501 ? "kind 暂未支持" : "渲染失败"}
 					</div>
 					<div className="text-bn-text-secondary">{apiErr?.message ?? "未知错误"}</div>
-					{status === 503 ? (
-						<div className="mt-2 rounded bg-amber-50 p-2 text-[11px] text-amber-800">
-							设置 <code className="font-mono">BN_CHROME_PATH</code> 环境变量指向 chrome / chromium
-							二进制后重启服务。
-						</div>
-					) : null}
+					{status === 503 ? <ChromeAutoDetect onEnabled={() => query.refetch()} /> : null}
 				</div>
 			) : (
 				<img

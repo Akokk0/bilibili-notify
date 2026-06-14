@@ -98,6 +98,14 @@ export interface EnginesRuntime extends Disposable {
 	probeAdapter(adapterId: string): Promise<ProbeResult>;
 	/** Per-module readiness snapshot exposed via `/api/health`. */
 	getModuleStatus(): ModuleStatus;
+	/**
+	 * Runtime hot-enable of card image rendering. When the server booted without
+	 * a chromePath the engines run text-only; once the operator detects/sets a
+	 * Chrome binary in the dashboard, this constructs + starts a shared
+	 * ImageRenderer and wires it into the live + dynamic engines WITHOUT a
+	 * restart. Idempotent: returns false if rendering was already enabled.
+	 */
+	enableImageRendering(puppeteer: PuppeteerLike): boolean;
 }
 
 export interface CreateEnginesOptions {
@@ -304,17 +312,18 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	commentary = buildCommentary();
 
 	// ---------- ImageRenderer (optional) ----------
-	// Constructed once when puppeteer is wired (BN_CHROME_PATH / chromePath set).
-	// `cardStyle.enabled` is enforced inside DynamicEngine / LiveEngine via the
-	// `imageEnabled` config field; when false the engines bypass the renderer
-	// and emit text-only payloads, so we still construct the instance to avoid
-	// hot-swapping on the user toggling the switch.
+	// Constructed when puppeteer is wired — at boot if chromePath was set, or at
+	// runtime via enableImageRendering() when the operator auto-detects Chrome in
+	// the dashboard (no restart). `cardStyle.enabled` is enforced inside
+	// DynamicEngine / LiveEngine via the `imageEnabled` config field; when false
+	// the engines bypass the renderer and emit text-only payloads, so we keep the
+	// instance alive rather than hot-swapping on the user toggling the switch.
 	let imageRenderer: ImageRenderer | null = null;
-	if (opts.puppeteer) {
+	const buildImageRenderer = (pup: PuppeteerLike): ImageRenderer => {
 		const cs = globals().defaults.cardStyle;
-		imageRenderer = new ImageRenderer({
+		const renderer = new ImageRenderer({
 			serviceCtx: imageCtx,
-			puppeteer: opts.puppeteer,
+			puppeteer: pup,
 			config: {
 				cardColorStart: cs.cardColorStart,
 				cardColorEnd: cs.cardColorEnd,
@@ -323,7 +332,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				hideFollower: cs.hideFollower,
 			},
 		});
-		imageRenderer.start();
+		renderer.start();
+		return renderer;
+	};
+	if (opts.puppeteer) {
+		imageRenderer = buildImageRenderer(opts.puppeteer);
 	}
 
 	// ---------- DynamicEngine ----------
@@ -755,6 +768,13 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				image: imageRenderer !== null && g.defaults.cardStyle.enabled,
 				ai: commentary !== null && g.defaults.ai.enabled,
 			};
+		},
+		enableImageRendering: (pup: PuppeteerLike): boolean => {
+			if (imageRenderer) return false; // 幂等:已启用,不重复构造浏览器
+			imageRenderer = buildImageRenderer(pup);
+			dynamic.setImage(imageRenderer);
+			live.setImageRenderer(imageRenderer);
+			return true;
 		},
 		dispose,
 	};
