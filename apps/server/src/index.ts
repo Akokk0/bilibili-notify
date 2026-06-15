@@ -9,7 +9,8 @@ import { shouldRefuseBareAuth } from "./auth/bare-auth-policy.js";
 import { type AuthSystem, createAuthSystem } from "./auth/index.js";
 import { createSessionCodec } from "./auth/session.js";
 import { createWsTicketStore } from "./auth/ws-ticket.js";
-import { loadBootstrapConfig } from "./config/loader.js";
+import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
+import { persistChromePath } from "./config/persist.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
@@ -258,11 +259,21 @@ export async function startStandaloneServer(
 				})
 			: undefined;
 
+		// 运行时 chromePath 写回目标:仅 B 模型(显式 BN_CONFIG)有单一可写文件;
+		// legacy/disabled 返回 null → 热启用仍生效但不持久化(改配置走 env / 手编辑)。
+		const configPath = resolveConfigPath({ env });
 		const app = createApp(runtime, {
 			authSystem,
 			basicAuthCredentials,
 			sessionCodec,
 			puppeteer,
+			persistChromePath: configPath
+				? (chromePath: string) => persistChromePath(configPath, chromePath)
+				: undefined,
+			// 热启用成功后把新 puppeteer 接回全局引用,使进程退出时 dispose 能关掉它。
+			onPuppeteerEnabled: (next) => {
+				puppeteer = next;
+			},
 			staticDir: effectiveWebDistDir,
 			wsTicketStore,
 			allowedOrigins,

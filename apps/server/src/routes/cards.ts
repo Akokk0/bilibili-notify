@@ -38,7 +38,11 @@ import {
 import type { NotificationPayload } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
-import type { StandalonePuppeteer } from "../runtime/puppeteer.js";
+import {
+	createPuppeteerAdapter,
+	resolveChromePath,
+	type StandalonePuppeteer,
+} from "../runtime/puppeteer.js";
 import type { RouteDeps } from "./types.js";
 
 export interface CardsRouteOptions {
@@ -49,6 +53,25 @@ export interface CardsRouteOptions {
 	 * (live + dyn with content) return an actionable error.
 	 */
 	api: BilibiliAPI | null;
+	/**
+	 * 探测本机 Chrome 路径(默认 resolveChromePath 扫常见安装位置);注入便于测试。
+	 * 供 GET /detect-chrome 的「自动探测」按钮。
+	 */
+	detectChrome?: () => string | null;
+	/**
+	 * 构造 puppeteer adapter(默认 createPuppeteerAdapter,懒启动);注入便于测试。
+	 * 供 POST /enable-rendering 运行时热启用。
+	 */
+	createPuppeteer?: (chromePath: string) => StandalonePuppeteer;
+	/**
+	 * 把 chromePath 写回 bootstrap yaml 持久化。由 index.ts 接线(绑定 config 路径);
+	 * 未注入则热启用仍生效但重启不保留。
+	 */
+	persistChromePath?: (chromePath: string) => Promise<void>;
+	/**
+	 * 热启用成功后回调,通知 index.ts 更新全局 puppeteer 引用(供进程退出时 dispose)。
+	 */
+	onPuppeteerEnabled?: (puppeteer: StandalonePuppeteer) => void;
 }
 
 const StyleSchema = z.object({
@@ -83,6 +106,8 @@ const PreviewRequestSchema = z.object({
 	content: ContentSchema,
 });
 
+const EnableRenderingSchema = z.object({ chromePath: z.string().min(1) });
+
 type PreviewStyle = z.infer<typeof StyleSchema>;
 
 export interface PreviewResponse {
@@ -114,6 +139,47 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	const app = new Hono();
 	const log = opts.deps.runtime.serviceCtx.logger;
 
+	// 自动探测本机 Chrome —— dashboard「自动探测」按钮。未配 chromePath 时一键找到
+	// 本地浏览器,免手填路径;探测不到返回 { path: null }。
+	const detectChrome = opts.detectChrome ?? (() => resolveChromePath(undefined));
+	app.get("/detect-chrome", (c) => c.json({ path: detectChrome() }));
+
+	// 当前 puppeteer adapter —— 可变 holder。启动时 = currentPuppeteer(可能 null);经
+	// /enable-rendering 运行时热启用后指向新 adapter,使后续 /preview 也用上,无需重启。
+	let currentPuppeteer = opts.puppeteer;
+	const createPuppeteer =
+		opts.createPuppeteer ??
+		((chromePath: string) => createPuppeteerAdapter({ chromePath, logger: log }));
+
+	// 一键热启用卡片渲染 —— dashboard 探测到 Chrome 后调用:运行时构造 puppeteer、
+	// 注入已跑的 live/dynamic 引擎(EnginesRuntime.enableImageRendering)、写回 chromePath
+	// 持久化,全程不重启。已启用则 dispose 多余 adapter 并返回 alreadyEnabled。
+	app.post("/enable-rendering", async (c) => {
+		const body = await c.req.json().catch(() => null);
+		const parsed = EnableRenderingSchema.safeParse(body);
+		if (!parsed.success) return c.json({ ok: false, err: "chromePath 必填" }, 400);
+		const engines = opts.deps.runtime.engines;
+		if (!engines) return c.json({ ok: false, err: "engines 未就绪" }, 503);
+		const { chromePath } = parsed.data;
+		try {
+			const pup = createPuppeteer(chromePath);
+			const enabled = engines.enableImageRendering(pup);
+			if (!enabled) {
+				await pup.dispose(); // 已启用 → 刚构造的 adapter 多余,释放
+				return c.json({ ok: true, alreadyEnabled: true });
+			}
+			currentPuppeteer = pup;
+			opts.onPuppeteerEnabled?.(pup);
+			await opts.persistChromePath?.(chromePath);
+			log.info(`[cards] 卡片渲染已热启用 · chromePath=${chromePath}`);
+			return c.json({ ok: true, chromePath });
+		} catch (err) {
+			const detail = String((err as Error)?.message ?? err);
+			log.error(`[cards] enable-rendering failed: ${detail}`);
+			return c.json({ ok: false, err: detail }, 500);
+		}
+	});
+
 	// One ImageRenderer reused across requests. Lazy — only constructed when
 	// the first real-fetch / sc / guard path actually runs, so deployments
 	// without BN_CHROME_PATH don't spin one up needlessly.
@@ -122,7 +188,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 第一次 /preview 构造一个 renderer 后,后续改色就不生效(renderer 是 lazy 单例)。
 	let imageRenderer: ImageRenderer | null = null;
 	function getImageRenderer(style: PreviewStyle): ImageRenderer | null {
-		if (!opts.puppeteer) return null;
+		if (!currentPuppeteer) return null;
 		const config = {
 			cardColorStart: style.cardColorStart,
 			cardColorEnd: style.cardColorEnd,
@@ -133,7 +199,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!imageRenderer) {
 			imageRenderer = new ImageRenderer({
 				serviceCtx: opts.deps.runtime.serviceCtx,
-				puppeteer: opts.puppeteer,
+				puppeteer: currentPuppeteer,
 				config,
 			});
 		} else {
@@ -178,13 +244,13 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 
 	// 渲染一张样例卡片 → JPEG / PNG Buffer。/preview 与 /test-push 共用。失败抛 Error
 	// (消息直接面向用户)。SC / Guard 走 ImageRenderer;live / dyn 有 content 走真实
-	// 拉取,否则虚构 mock 数据。调用方须先确认 opts.puppeteer 存在。
+	// 拉取,否则虚构 mock 数据。调用方须先确认 currentPuppeteer 存在。
 	async function renderPreviewCard(
 		kind: PreviewKind,
 		style: PreviewStyle,
 		content: PreviewContent,
 	): Promise<{ buffer: Buffer; mime: string }> {
-		const puppeteer = opts.puppeteer;
+		const puppeteer = currentPuppeteer;
 		if (!puppeteer) throw new Error("puppeteer 未就绪");
 
 		if (kind === "sc") {
@@ -254,7 +320,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!parsed.success) {
 			return c.json<PreviewResponse>({ ok: false, err: "invalid_request" }, 400);
 		}
-		if (!opts.puppeteer) {
+		if (!currentPuppeteer) {
 			return c.json<PreviewResponse>(
 				{
 					ok: false,
@@ -287,7 +353,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		}
 		const { targetId, kind, style, content } = parsed.data;
 
-		if (!opts.puppeteer) {
+		if (!currentPuppeteer) {
 			return c.json<TestPushResponse>(
 				{ ok: false, latencyMs: 0, err: "puppeteer 未配置,无法渲染卡片" },
 				503,
