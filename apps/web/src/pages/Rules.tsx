@@ -5,7 +5,7 @@ import { Icon } from "../components/icons";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { api } from "../services/api";
 import type { Subscription } from "../types/domain";
-import type { GlobalConfig, GlobalConfigPatch } from "../types/globals";
+import type { GlobalConfig, GlobalConfigPatch, GlobalDefaults } from "../types/globals";
 import { PerUpEditor, type PerUpOverrideKey, perUpOverrideKeys } from "./rules/PerUpEditor";
 import {
 	DynamicMsgSection,
@@ -376,6 +376,59 @@ function deepMerge<T>(base: T, patch: GlobalConfigPatch): T {
 	return out as T;
 }
 
+// ── GlobalDraftBinder (全局 island,互斥挂载) ───────────────────────────────
+
+/**
+ * 全局 island 绑定器 —— 把 GlobalDefaults 打平成扁平 code 结构喂 useDirtyDraft:
+ * filters / imageGroup 顶层字段无前缀(字典 code 无前缀)→ 打平;schedule /
+ * templates 字典 code 带前缀 → 保 nested,walkTreeDiff 递归出 `schedule.X` /
+ * `templates.X`。
+ *
+ * 刻意抽成独立组件、仅在 isGlobal 时挂载,与 per-UP 的 PerUpEditor(自调
+ * pageKey "rules-perup" 的 useDirtyDraft)**互斥** —— 同一时刻只有一个 binder
+ * 在册,杜绝两个 useDirtyDraft 同时挂载时抢单槽 draftStore 的注册/注销 effect
+ * 时序竞态(子 register 先于父 unregister 把当前页 stomp 成 null)。
+ */
+export function GlobalDraftBinder({
+	defaults,
+	baseline,
+	onSave,
+	onDiscard,
+}: {
+	defaults: GlobalDefaults;
+	baseline: GlobalDefaults;
+	onSave: () => Promise<unknown> | unknown;
+	onDiscard: () => void;
+}): null {
+	const islandDraft = useMemo(
+		() => ({
+			...defaults.filters,
+			...defaults.imageGroup,
+			schedule: defaults.schedule,
+			templates: defaults.templates,
+		}),
+		[defaults],
+	);
+	const islandBaseline = useMemo(
+		() => ({
+			...baseline.filters,
+			...baseline.imageGroup,
+			schedule: baseline.schedule,
+			templates: baseline.templates,
+		}),
+		[baseline],
+	);
+	useDirtyDraft({
+		pageKey: "rules",
+		pageLabel: "动态过滤规则",
+		draft: islandDraft,
+		baseline: islandBaseline,
+		onSave,
+		onDiscard,
+	});
+	return null;
+}
+
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function Rules() {
@@ -480,40 +533,9 @@ export default function Rules() {
 	const focusedSub = !isGlobal ? allSubs.find((s) => s.id === scope) : undefined;
 	const sections = isGlobal ? GLOBAL_SECTIONS : PERUP_SECTIONS;
 
-	// 灵动岛 draft/baseline:仅 isGlobal 时接;per-UP 模式置 null → useDirtyDraft
-	// unregister。结构上把 filters/imageGroup 顶层字段打平(它们字典里 code 无前缀),
-	// schedule/templates 保留 nested(字典 code 是 `schedule.X` / `templates.X`)。
-	const islandDraft = useMemo(() => {
-		if (!isGlobal || draft === null) return null;
-		return {
-			...draft.defaults.filters,
-			...draft.defaults.imageGroup,
-			schedule: draft.defaults.schedule,
-			templates: draft.defaults.templates,
-		};
-	}, [isGlobal, draft]);
-	const islandBaseline = useMemo(() => {
-		if (!isGlobal || !globalsQuery.data) return null;
-		return {
-			...globalsQuery.data.defaults.filters,
-			...globalsQuery.data.defaults.imageGroup,
-			schedule: globalsQuery.data.defaults.schedule,
-			templates: globalsQuery.data.defaults.templates,
-		};
-	}, [isGlobal, globalsQuery.data]);
-
-	useDirtyDraft({
-		pageKey: "rules",
-		pageLabel: "动态过滤规则",
-		draft: islandDraft,
-		baseline: islandBaseline,
-		onSave: async () => {
-			if (draft !== null) await save.mutateAsync(draft);
-		},
-		onDiscard: () => {
-			if (globalsQuery.data) setDraft(globalsQuery.data);
-		},
-	});
+	// 灵动岛绑定改由互斥子组件承载:isGlobal → <GlobalDraftBinder>,per-UP →
+	// <PerUpEditor> 自调 useDirtyDraft。两者条件渲染互斥,见下方 JSX 与
+	// GlobalDraftBinder 注释。
 	const customizedIds: Set<SectionId> | undefined =
 		!isGlobal && focusedSub
 			? new Set(sections.map((s) => s.id).filter((id) => isSectionCustomized(focusedSub, id)))
@@ -529,6 +551,16 @@ export default function Rules() {
 
 	return (
 		<div className="bn-anim-fade-in flex flex-col gap-4">
+			{isGlobal && globalsQuery.data ? (
+				<GlobalDraftBinder
+					defaults={draft.defaults}
+					baseline={globalsQuery.data.defaults}
+					onSave={() => save.mutateAsync(draft)}
+					onDiscard={() => {
+						if (globalsQuery.data) setDraft(globalsQuery.data);
+					}}
+				/>
+			) : null}
 			<ScopeTabs
 				scope={scope}
 				onChange={handleScopeChange}

@@ -313,10 +313,15 @@ export default function Logs() {
 		</div>
 	);
 
+	// bn-anim-fade-in 的 `both` fill-mode 保留 translateY(0) 残留 transform;若它直接挂在
+	// grid 上,会把内部 sticky aside 的包含块改成本容器,窄视口单列时 aside 偏移压住内容 → 坍缩。
+	// 故 transform(fade-in) 与 grid/sticky 分层,与 Targets/Rules 一致(参 dialog.tsx 顶注)。
 	return (
-		<div className="bn-anim-fade-in grid gap-4 xl:grid-cols-[220px_1fr]">
-			<LogsSectionList current={section} onChange={setSection} />
-			<div className="min-w-0">{section === "logs" ? runtimeLogs : <ChangelogPanel />}</div>
+		<div className="bn-anim-fade-in flex flex-col gap-4">
+			<div className="grid gap-4 xl:grid-cols-[220px_1fr]">
+				<LogsSectionList current={section} onChange={setSection} />
+				<div className="min-w-0">{section === "logs" ? runtimeLogs : <ChangelogPanel />}</div>
+			</div>
 		</div>
 	);
 }

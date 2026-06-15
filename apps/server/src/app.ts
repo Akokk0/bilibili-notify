@@ -58,6 +58,17 @@ export interface CreateAppOptions {
 	 */
 	puppeteer?: StandalonePuppeteer | null;
 	/**
+	 * Persist a runtime-detected chromePath back to the bootstrap yaml so card
+	 * rendering stays enabled across restarts. Wired by index.ts (bound to the
+	 * config path); omitted in deployments without a writable config file.
+	 */
+	persistChromePath?: (chromePath: string) => Promise<void>;
+	/**
+	 * Notified after /api/cards/enable-rendering hot-enables rendering, so
+	 * index.ts can update its global puppeteer reference for graceful dispose.
+	 */
+	onPuppeteerEnabled?: (puppeteer: StandalonePuppeteer) => void;
+	/**
 	 * Optional directory containing the built React dashboard (`web/dist`). When
 	 * set, non-`/api/*` paths fall through to a static file server backed by
 	 * this directory, with `index.html` as the SPA fallback for unknown routes.
@@ -184,6 +195,8 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 			deps,
 			puppeteer: options.puppeteer ?? null,
 			api: options.authSystem?.api ?? null,
+			persistChromePath: options.persistChromePath,
+			onPuppeteerEnabled: options.onPuppeteerEnabled,
 		}),
 	);
 	if (options.authSystem) {

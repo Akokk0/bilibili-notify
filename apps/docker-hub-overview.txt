@@ -2,7 +2,7 @@
 
 B 站 UP 主动态 / 直播开播推送工具的**独立端**镜像 —— 自带 Web 控制台,Docker 部署,不依赖 Koishi。
 
-监控 B 站 UP 主,有新动态或开播时推送到 QQ 等平台。控制台支持扫码登录、订阅管理、推送目标配置、推送历史与日志查看。
+监控 B 站 UP 主,有新动态或开播时推送到 QQ(OneBot)、Webhook(钉钉 / 飞书 / 企业微信)等平台。控制台支持扫码登录、订阅管理、推送目标配置、高级规则(动态过滤 / 消息模板 / 直播阈值 / 全局与 per-UP 覆盖 / 特别关注)、卡片渲染与样式、AI 直播总结与动态点评、弹幕词云、推送历史与日志查看。
 
 ## 支持架构
 
@@ -113,3 +113,4 @@ docker pull ghcr.io/akokk0/bilibili-notify:alpha
 
 - 源码与文档:https://github.com/Akokk0/bilibili-notify
 - 问题反馈:https://github.com/Akokk0/bilibili-notify/issues
+- QQ 交流群:801338523

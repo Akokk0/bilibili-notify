@@ -12,7 +12,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Avatar, Btn, Toggle } from "../../components/atoms";
+import { Avatar, Toggle } from "../../components/atoms";
 import {
 	ArrayEditor,
 	Field,
@@ -25,7 +25,8 @@ import {
 } from "../../components/forms";
 import { GlassBox } from "../../components/glass-box";
 import { Icon } from "../../components/icons";
-import { ApiError, api } from "../../services/api";
+import { useDirtyDraft } from "../../hooks/useDirtyDraft";
+import { api } from "../../services/api";
 import type {
 	AIOverride,
 	CardStyleOverride,
@@ -44,6 +45,7 @@ import type {
 	TemplateBundle,
 } from "../../types/globals";
 import { colorFromUid, displayName } from "../up/helpers";
+import { projectPerUpIsland } from "./perup-island";
 import {
 	DynamicMsgVariableHints,
 	GuardVariableHints,
@@ -66,10 +68,6 @@ export const perUpOverrideKeys = [
 	"imageGroup",
 ] as const;
 export type PerUpOverrideKey = (typeof perUpOverrideKeys)[number];
-
-function deepEqual(a: unknown, b: unknown): boolean {
-	return JSON.stringify(a) === JSON.stringify(b);
-}
 
 interface SubPatch {
 	overrides?: Subscription["overrides"];
@@ -99,40 +97,41 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 		overrides: sub.overrides,
 		specialUsers: sub.specialUsers,
 	});
-	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
 		setDraft({ overrides: sub.overrides, specialUsers: sub.specialUsers });
 	}, [sub.overrides, sub.specialUsers]);
 
-	const dirty = useMemo(
-		() =>
-			!deepEqual(draft.overrides, sub.overrides) ||
-			!deepEqual(draft.specialUsers, sub.specialUsers),
-		[draft, sub.overrides, sub.specialUsers],
-	);
-
 	const save = useMutation({
-		mutationFn: async () => {
-			setError(null);
-			try {
-				return await patchSub(sub.id, {
-					overrides: draft.overrides,
-					specialUsers: draft.specialUsers,
-				});
-			} catch (err) {
-				if (err instanceof ApiError) setError(err.message);
-				else setError(String(err));
-				throw err;
-			}
-		},
+		mutationFn: () =>
+			patchSub(sub.id, { overrides: draft.overrides, specialUsers: draft.specialUsers }),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
 	});
 
 	function discard(): void {
 		setDraft({ overrides: sub.overrides, specialUsers: sub.specialUsers });
-		setError(null);
 	}
+
+	// per-UP 草稿接入灵动岛:draft / sub 同款投影成扁平 code 结构,walkTreeDiff 出的
+	// code 对齐 FIELD_LABELS(section 分组 / 跳转锚点),详见 perup-island.ts。保存 /
+	// 丢弃统一由灵动岛触发,不再走页内按钮;保存失败时 mutateAsync reject →
+	// useDirtyDraft 捕获并切 error 态展示在灵动岛。
+	const islandDraft = useMemo(
+		() => projectPerUpIsland(draft.overrides, draft.specialUsers),
+		[draft],
+	);
+	const islandBaseline = useMemo(
+		() => projectPerUpIsland(sub.overrides, sub.specialUsers),
+		[sub.overrides, sub.specialUsers],
+	);
+	useDirtyDraft({
+		pageKey: "rules-perup",
+		pageLabel: `${displayName(sub)} · 覆盖`,
+		draft: islandDraft,
+		baseline: islandBaseline,
+		onSave: () => save.mutateAsync(),
+		onDiscard: discard,
+	});
 
 	function setSlice<K extends keyof OverridesShape>(
 		key: K,
@@ -174,33 +173,7 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 						UID {sub.uid} · 关闭一个分组 = 恢复继承全局默认
 					</div>
 				</div>
-				<div className="flex items-center gap-2">
-					{dirty ? (
-						<>
-							<span className="text-[11.5px] font-semibold text-bn-pink">未保存</span>
-							<Btn variant="outline" size="sm" onClick={discard} disabled={save.isPending}>
-								丢弃
-							</Btn>
-							<Btn
-								variant="primary"
-								size="sm"
-								onClick={() => save.mutate()}
-								disabled={save.isPending}
-							>
-								{save.isPending ? "保存中…" : "保存"}
-							</Btn>
-						</>
-					) : (
-						<span className="text-[11.5px] text-bn-text-secondary">已与服务端同步</span>
-					)}
-				</div>
 			</div>
-
-			{error ? (
-				<div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
-					{error}
-				</div>
-			) : null}
 
 			{section === "filter" ? (
 				<FilterOverrideBox

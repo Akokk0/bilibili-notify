@@ -66,6 +66,22 @@ export function loadBootstrapConfig(opts: LoadBootstrapConfigOptions = {}): Boot
 	return loadLegacyModel(cwd, env, fromCli);
 }
 
+/**
+ * 解析当前运行时使用的 bootstrap 配置文件路径,供运行时写回(dashboard 热启用卡片
+ * 渲染后持久化 chromePath)。仅 B 模型(显式 BN_CONFIG)可写回;BN_CONFIG_DISABLED
+ * (sidecar/desktop)与 legacy 12-factor(dev,无单一目标文件)返回 null —— 这些场景
+ * 运行时持久化无意义,改配置走 env / 手编辑 yaml。
+ */
+export function resolveConfigPath(
+	opts: { env?: NodeJS.ProcessEnv; cwd?: string } = {},
+): string | null {
+	const env = opts.env ?? process.env;
+	const cwd = opts.cwd ?? process.cwd();
+	if (env.BN_CONFIG_DISABLED === "1") return null;
+	if (env.BN_CONFIG) return resolvePath(cwd, env.BN_CONFIG);
+	return null;
+}
+
 // ---------------------------------------------------------------------------
 // B 模型:BN_CONFIG 显式指定路径,env 仅首启动 seed
 // ---------------------------------------------------------------------------
