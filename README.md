@@ -109,6 +109,11 @@ git sparse-checkout set packages koishi
 
 分支:`dev` 为活跃开发主干;`main` 为发布分支,`dev → main` 合并触发 Koishi 端 npm 发版。独立端 Docker 镜像发布到 Docker Hub `akokk0/bilibili-notify`。
 
+## 问题反馈
+
+- [GitHub Issue](https://github.com/Akokk0/bilibili-notify/issues)
+- QQ 交流群 `801338523`
+
 ## License
 
 [MIT](./LICENSE)
