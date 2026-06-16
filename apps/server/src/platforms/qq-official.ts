@@ -105,6 +105,86 @@ export function createQQTokenManager(opts: QQTokenManagerOptions): QQTokenManage
 	};
 }
 
+export interface QQDiscoveredSession {
+	scope: "group" | "private";
+	/** group_openid(群)或用户 openid(C2C)。 */
+	openid: string;
+	/** 触发者用户名等展示提示 —— 群事件不带群名,只能靠它给用户辨认。 */
+	displayHint?: string;
+}
+
+/**
+ * 从入站事件捞群/C2C 的不透明 openid —— 群/C2C 寻址的唯一来源(QQ 无「列我加入的群」接口,
+ * 用户没法手填群号)。群:GROUP_AT_MESSAGE_CREATE / GROUP_ADD_ROBOT → group_openid;
+ * C2C:C2C_MESSAGE_CREATE → author.user_openid、FRIEND_ADD → openid。非相关事件返回 null。
+ */
+export function extractQQDiscoveredSession(
+	eventType: string,
+	data: Record<string, unknown>,
+): QQDiscoveredSession | null {
+	const author = data.author as
+		| { id?: string; member_openid?: string; user_openid?: string; username?: string }
+		| undefined;
+	const hint = author?.username;
+	if (eventType === "GROUP_AT_MESSAGE_CREATE" || eventType === "GROUP_ADD_ROBOT") {
+		const openid = (data.group_openid ?? data.group_id) as string | undefined;
+		if (!openid) return null;
+		return { scope: "group", openid, ...(hint ? { displayHint: hint } : {}) };
+	}
+	if (eventType === "C2C_MESSAGE_CREATE" || eventType === "FRIEND_ADD") {
+		const openid = (author?.user_openid ?? author?.member_openid ?? data.openid) as
+			| string
+			| undefined;
+		if (!openid) return null;
+		return { scope: "private", openid, ...(hint ? { displayHint: hint } : {}) };
+	}
+	return null;
+}
+
+/** 单 adapter 发现列表上限 —— 内存 ring buffer,超出丢最旧(纯便利选择器,不持久化)。 */
+const QQ_DISCOVERY_MAX_PER_ADAPTER = 50;
+
+export interface QQDiscoveredEntry extends QQDiscoveredSession {
+	/** 最近见到时间戳(caller 传入 Date.now,便于测试与排序)。 */
+	lastSeenMs: number;
+}
+
+/**
+ * per-adapter「最近活跃会话」发现表 —— 群/C2C 的 openid 只能从入站事件捞,做成内存
+ * ring buffer(不落盘)供面板选择器列出。一旦用户把某会话做成 PushTarget,openid 就存进
+ * target,发现表只是一次性选择器;重启清空靠机器人再被 @ 唤回。
+ */
+export interface QQSessionRegistry {
+	/** 记一次发现:同 scope+openid 去重(更新 lastSeen/hint 并移到最前),超容丢最旧。 */
+	record(adapterId: string, session: QQDiscoveredSession, atMs: number): void;
+	/** 列出某 adapter 最近发现的会话(最近优先)。 */
+	list(adapterId: string): QQDiscoveredEntry[];
+	/** 删除某 adapter 的全部发现(reconcile 删该 adapter 时)。 */
+	clear(adapterId: string): void;
+}
+
+export function createQQSessionRegistry(opts?: { maxPerAdapter?: number }): QQSessionRegistry {
+	const max = opts?.maxPerAdapter ?? QQ_DISCOVERY_MAX_PER_ADAPTER;
+	const byAdapter = new Map<string, QQDiscoveredEntry[]>();
+	const keyOf = (s: { scope: string; openid: string }) => `${s.scope}:${s.openid}`;
+
+	return {
+		record(adapterId, session, atMs) {
+			const prev = byAdapter.get(adapterId) ?? [];
+			const next = prev.filter((e) => keyOf(e) !== keyOf(session));
+			next.unshift({ ...session, lastSeenMs: atMs });
+			if (next.length > max) next.length = max;
+			byAdapter.set(adapterId, next);
+		},
+		list(adapterId) {
+			return [...(byAdapter.get(adapterId) ?? [])];
+		},
+		clear(adapterId) {
+			byAdapter.delete(adapterId);
+		},
+	};
+}
+
 /**
  * QQ 官方机器人(q.qq.com)推送目标 → 发消息 REST endpoint。
  * - channel(频道子频道):POST /channels/{channelId}/messages
