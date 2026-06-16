@@ -128,16 +128,15 @@ function getDynamicPostTime(author: Dynamic["modules"]["module_author"]): number
  * level externally via {@link ServiceContext}.
  */
 export interface DynamicEngineConfig {
-	/** 推送动态时是否附带 URL（QQ 官方机器人需关闭）。 */
-	dynamicUrl: boolean;
 	/** 轮询动态的 cron 表达式。 */
 	dynamicCron: string;
 	/** 视频动态时是否将 URL 替换为 BV 号。 */
 	dynamicVideoUrlToBV: boolean;
 	/**
 	 * 非视频动态的推送文本模板。变量 `{name}`(UP 名) / `{url}`(动态链接)。
-	 * `{url}` 在 `dynamicUrl=false` 时为空,引擎会顺带去掉相邻分隔符。
-	 * 缺省时回退到内建文案。Adapter 通常用 `globals.defaults.templates.dynamic` 填充。
+	 * 要不要带链接由模板里有没有 `{url}` 决定(per-UP / 全局模板可编辑);`{url}` 在
+	 * url 为空(如视频转 BV 无匹配)时,引擎会顺带去掉相邻分隔符。缺省时回退到内建文案。
+	 * Adapter 通常用 `globals.defaults.templates.dynamic` 填充。
 	 */
 	dynamicTemplate?: string;
 	/**
@@ -710,22 +709,21 @@ export class DynamicEngine {
 					this.imageFailureNotified = false;
 				}
 
-				// Build bare URL (模板的 {url} 变量,不含任何前缀文案)。
-				// dynamicUrl=false(QQ 官方机器人)时为空,renderDynamicText 会去掉分隔符。
+				// Build bare URL (模板的 {url} 变量,不含任何前缀文案)。链接恒计算 ——
+				// 要不要展示由模板里有没有 {url} 决定。视频转 BV 无匹配等 url 为空的情形,
+				// renderDynamicText 会去掉模板里 {url} 的尾随分隔符。
 				const isVideo = item.type === "DYNAMIC_TYPE_AV";
-				let url = "";
-				if (this.config.dynamicUrl) {
-					if (isVideo) {
-						const jumpUrl = item.modules.module_dynamic.major?.archive?.jump_url ?? "";
-						if (this.config.dynamicVideoUrlToBV) {
-							const bvMatch = jumpUrl.match(/BV[0-9A-Za-z]+/);
-							url = bvMatch ? bvMatch[0] : "";
-						} else {
-							url = `https:${jumpUrl}`;
-						}
+				let url: string;
+				if (isVideo) {
+					const jumpUrl = item.modules.module_dynamic.major?.archive?.jump_url ?? "";
+					if (this.config.dynamicVideoUrlToBV) {
+						const bvMatch = jumpUrl.match(/BV[0-9A-Za-z]+/);
+						url = bvMatch ? bvMatch[0] : "";
 					} else {
-						url = `https://t.bilibili.com/${item.id_str}`;
+						url = `https:${jumpUrl}`;
 					}
+				} else {
+					url = `https://t.bilibili.com/${item.id_str}`;
 				}
 
 				// AI comment — adapter 在 SubItemView 上可附 per-UP aiOverride，传给 comment()

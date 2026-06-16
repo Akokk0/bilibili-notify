@@ -242,7 +242,6 @@ function buildDynamicConfig(globals: GlobalConfig): DynamicEngineConfig {
 	const whitelistHasRules =
 		filters.whitelistKeywords.length > 0 || filters.whitelistRegex.length > 0;
 	return {
-		dynamicUrl: true,
 		dynamicCron: globals.app.dynamicCron,
 		dynamicVideoUrlToBV: false,
 		imageGroup: globals.defaults.imageGroup,

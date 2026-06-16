@@ -363,7 +363,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			f.blockAv;
 		const whitelistHasRules = f.whitelistKeywords.length > 0 || f.whitelistRegex.length > 0;
 		return {
-			dynamicUrl: true,
 			dynamicCron: globals().app.dynamicCron,
 			dynamicVideoUrlToBV: false,
 			imageGroup: globals().defaults.imageGroup,

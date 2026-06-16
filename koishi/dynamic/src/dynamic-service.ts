@@ -104,7 +104,6 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 
 	private toEngineConfig(config: BilibiliNotifyDynamicConfig): DynamicEngineConfig {
 		return {
-			dynamicUrl: config.dynamicUrl,
 			dynamicCron: config.dynamicCron,
 			dynamicVideoUrlToBV: config.dynamicVideoUrlToBV,
 			imageGroup: config.imageGroup,

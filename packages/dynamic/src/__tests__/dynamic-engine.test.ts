@@ -135,6 +135,8 @@ function makeItem(opts: {
 	drawPics?: string[];
 	/** 真 DYNAMIC_TYPE_DRAW 形态:图在 major.draw.items[].src(非 opus.pics)。 */
 	drawItems?: string[];
+	/** 视频动态(DYNAMIC_TYPE_AV)的 major.archive.jump_url;引擎按此算 {url}/BV。 */
+	videoJumpUrl?: string;
 }): Dynamic {
 	const text = opts.text ?? "";
 	return {
@@ -160,12 +162,13 @@ function makeItem(opts: {
 					rich_text_nodes: text ? [{ text, type: "RICH_TEXT_NODE_TYPE_TEXT" }] : [],
 				},
 				major:
-					opts.drawPics || opts.drawItems
+					opts.drawPics || opts.drawItems || opts.videoJumpUrl
 						? {
 								...(opts.drawPics ? { opus: { pics: opts.drawPics.map((url) => ({ url })) } } : {}),
 								...(opts.drawItems
 									? { draw: { items: opts.drawItems.map((src) => ({ src })) } }
 									: {}),
+								...(opts.videoJumpUrl ? { archive: { jump_url: opts.videoJumpUrl } } : {}),
 							}
 						: undefined,
 			},
@@ -230,7 +233,6 @@ function makeEngine(
 		image: over.withImage ? image : undefined,
 		ai: over.withAi ? ai : undefined,
 		config: {
-			dynamicUrl: false,
 			dynamicCron: "*/2 * * * *",
 			dynamicVideoUrlToBV: false,
 			imageGroup: { enable: false, forward: false },
@@ -742,12 +744,38 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 		segments.find((s) => s.type === "text")?.text;
 	const segsOf = (b: EngineBag): Seg[] => b.push.broadcastDynamic.mock.calls[0]?.[1] as Seg[];
 
-	it("无图 + 无 AI + dynamicUrl=false → 模板渲染,url 空时去掉尾随分隔符", async () => {
+	it("无图 + 无 AI → 默认模板带链接({url} 恒计算)", async () => {
 		const b = makeEngine();
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
+		expect(textOf(segsOf(b))).toBe("阿绫发布了一条动态：https://t.bilibili.com/id-1");
+	});
+
+	it("模板不含 {url} → 无链接(去链接=模板里删 {url},取代旧 dynamicUrl 开关)", async () => {
+		const b = makeEngine({ config: { dynamicTemplate: "{name}发布了一条动态" } });
+		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
 		expect(textOf(segsOf(b))).toBe("阿绫发布了一条动态");
+	});
+
+	it("视频转 BV 但 jump_url 无 BV → url 空,renderDynamicText 去掉尾随分隔符", async () => {
+		const b = makeEngine({ config: { dynamicVideoUrlToBV: true } });
+		b.getAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({
+					uid: 1,
+					pubTs: 1000,
+					name: "阿绫",
+					type: "DYNAMIC_TYPE_AV",
+					videoJumpUrl: "//www.bilibili.com/read/cv1",
+				}),
+			]),
+		);
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		expect(textOf(segsOf(b))).toBe("阿绫发布了新视频");
 	});
 
 	it("Part A:有图分支的文字段 == 无图分支的文字段(模板单源,无双前缀)", async () => {
@@ -765,30 +793,38 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 		noImg.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
 		seed(noImg.engine, "1", 0);
 		await detect(noImg.engine);
-		expect(textOf(imgSegs)).toBe("阿绫发布了一条动态");
+		expect(textOf(imgSegs)).toBe("阿绫发布了一条动态：https://t.bilibili.com/id-1");
 		expect(textOf(imgSegs)).toBe(textOf(segsOf(noImg)));
 	});
 
-	it("dynamicUrl=true 普通动态 → 单条链接(双前缀 bug 回归守护)", async () => {
-		const b = makeEngine({ config: { dynamicUrl: true } });
+	it("普通动态 → 单条链接(双前缀 bug 回归守护)", async () => {
+		const b = makeEngine();
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(textOf(segsOf(b))).toBe("阿绫发布了一条动态：https://t.bilibili.com/id-1");
 	});
 
-	it("视频动态(DYNAMIC_TYPE_AV)走 videoTemplate", async () => {
+	it("视频动态(DYNAMIC_TYPE_AV)走 videoTemplate + jump_url 链接", async () => {
 		const b = makeEngine();
 		b.getAllDynamic.mockResolvedValue(
-			resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫", type: "DYNAMIC_TYPE_AV" })]),
+			resp([
+				makeItem({
+					uid: 1,
+					pubTs: 1000,
+					name: "阿绫",
+					type: "DYNAMIC_TYPE_AV",
+					videoJumpUrl: "//www.bilibili.com/video/BV1demo",
+				}),
+			]),
 		);
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		expect(textOf(segsOf(b))).toBe("阿绫发布了新视频");
+		expect(textOf(segsOf(b))).toBe("阿绫发布了新视频：https://www.bilibili.com/video/BV1demo");
 	});
 
 	it("per-UP customDynamicTemplate 覆盖内建模板", async () => {
-		const b = makeEngine({ config: { dynamicUrl: true } });
+		const b = makeEngine();
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
 		seed(b.engine, "1", 0, {
 			uid: "1",
@@ -808,7 +844,7 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 	});
 
 	it("有 AI 点评时两分支都用点评,不走模板", async () => {
-		const b = makeEngine({ withAi: true, config: { dynamicUrl: true } });
+		const b = makeEngine({ withAi: true });
 		b.comment.mockResolvedValue("这条很有意思");
 		b.getAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫", text: "原始内容" })]),
@@ -1003,7 +1039,6 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 			api,
 			push,
 			config: {
-				dynamicUrl: false,
 				dynamicCron: "*/2 * * * *",
 				dynamicVideoUrlToBV: false,
 				imageGroup: { enable: false, forward: false },
@@ -1027,7 +1062,6 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		expect(cronMock.instances).toHaveLength(1);
 
 		b.engine.updateConfig({
-			dynamicUrl: false,
 			dynamicCron: "*/5 * * * *",
 			dynamicVideoUrlToBV: false,
 			imageGroup: { enable: false, forward: false },
@@ -1044,9 +1078,8 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		const b = makeEngine({ subs });
 		b.engine.start();
 		b.engine.updateConfig({
-			dynamicUrl: true, // 改了别的字段,但 cron 不变
 			dynamicCron: "*/2 * * * *",
-			dynamicVideoUrlToBV: false,
+			dynamicVideoUrlToBV: true, // 改了别的字段,但 cron 不变
 			imageGroup: { enable: false, forward: false },
 			filter: { enable: false },
 		});

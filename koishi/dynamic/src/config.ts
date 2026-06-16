@@ -4,7 +4,6 @@ import { Schema } from "koishi";
 
 export interface BilibiliNotifyDynamicConfig {
 	logLevel: number;
-	dynamicUrl: boolean;
 	dynamicCron: string;
 	dynamicVideoUrlToBV: boolean;
 	imageGroup: {
@@ -22,11 +21,6 @@ export const BilibiliNotifyDynamicSchema: Schema<BilibiliNotifyDynamicConfig> = 
 		.default(1)
 		.description(
 			"这里可以设置日志等级喔～3 是最详细的调试信息，1 是只显示错误信息。主人可以根据需要选择合适的等级，让女仆更好地为您服务 (๑•̀ㅂ•́)و✧",
-		),
-	dynamicUrl: Schema.boolean()
-		.default(false)
-		.description(
-			"发送动态时要不要顺便发链接呢？但如果主人用的是 QQ 官方机器人，这个开关不要开喔～不然会出事的 (；>_<)！",
 		),
 	dynamicCron: Schema.string()
 		.default(DEFAULT_DYNAMIC_CRON)
