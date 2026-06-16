@@ -1,12 +1,17 @@
 import type {
+	DeliveryResult,
 	Disposable,
 	Logger,
 	NotificationPayload,
+	PushAdapter,
+	PushTarget,
 	PushTargetScope,
+	QQOfficialAdapterConfig,
 	QQOfficialSession,
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import { type RawData, WebSocket } from "ws";
+import type { PlatformAdapter, ProbeResult } from "./types.js";
 
 /** QQ 开放平台换取 App Access Token 的端点(与沙箱/正式无关,固定走 bots.qq.com)。 */
 const QQ_TOKEN_ENDPOINT = "https://bots.qq.com/app/getAppAccessToken";
@@ -558,6 +563,54 @@ export function qqMessageEndpoint(
 	return { path: `/v2/users/${session.userOpenid}/messages` };
 }
 
+// ---------------------------------------------------------------------------
+// REST 发送原语 —— 鉴权头 / 富媒体上传路径 / A+ 投递语义判定
+// ---------------------------------------------------------------------------
+
+/** REST 鉴权头:`Authorization: QQBot {token}` + `X-Union-Appid: {appId}`。 */
+export function qqRestHeaders(token: string, appId: string): Record<string, string> {
+	return { authorization: `QQBot ${token}`, "x-union-appid": appId };
+}
+
+/** 群/C2C 富媒体上传 endpoint(两步发图第一步,拿 file_info)。 */
+export function qqFilesPath(scope: "group" | "private", openid: string): string {
+	return scope === "group" ? `/v2/groups/${openid}/files` : `/v2/users/${openid}/files`;
+}
+
+export type QQSendVerdict =
+	| { ok: true; id?: string; pendingAudit?: true; auditId?: string }
+	| { ok: false; err: string };
+
+/**
+ * 解析发送响应为 A+ 投递语义(提交即成功)。主动推送几乎总是走审核:HTTP 202 +
+ * `code 304023` + `audit_id` —— 算「已提交·审核中」(ok,后台听 MESSAGE_AUDIT 才知拒绝);
+ * 200 + id = 已发;2xx 但带非零业务 code(无 id/audit)= 失败;非 2xx = 失败。
+ */
+export function interpretQQSend(status: number, body: unknown): QQSendVerdict {
+	const b = (body ?? {}) as {
+		id?: unknown;
+		code?: unknown;
+		message?: unknown;
+		msg?: unknown;
+		data?: { message_audit?: { audit_id?: unknown } };
+		message_audit?: { audit_id?: unknown };
+	};
+	const auditId = b.data?.message_audit?.audit_id ?? b.message_audit?.audit_id;
+	if (typeof auditId === "string") return { ok: true, pendingAudit: true, auditId };
+	const code = typeof b.code === "number" ? b.code : undefined;
+	const message =
+		(typeof b.message === "string" && b.message) ||
+		(typeof b.msg === "string" && b.msg) ||
+		`HTTP ${status}`;
+	if (status >= 200 && status < 300) {
+		if (typeof b.id === "string" || typeof b.id === "number") return { ok: true, id: String(b.id) };
+		// 2xx 但带非零业务 code 且无 id/audit = QQ 以 200 包装的业务错误。
+		if (code !== undefined && code !== 0) return { ok: false, err: `code ${code}: ${message}` };
+		return { ok: true };
+	}
+	return { ok: false, err: code !== undefined ? `code ${code}: ${message}` : message };
+}
+
 /** QQ 官方富媒体类型:1=图片 2=视频 3=语音(本插件只发图)。 */
 const QQ_FILE_TYPE_IMAGE = 1;
 
@@ -645,4 +698,304 @@ export function qqPayloadToParts(payload: NotificationPayload): QQSendPart[] {
 		default:
 			return [];
 	}
+}
+
+// ---------------------------------------------------------------------------
+// PlatformAdapter 工厂 —— send 编排(上传→media)+ probe/reconcile/dispose 生命周期
+// ---------------------------------------------------------------------------
+
+/** JSON POST,返回 `{status, body}`(body 解析失败回退 {})。 */
+async function qqPostJson(
+	base: string,
+	headers: Record<string, string>,
+	path: string,
+	body: unknown,
+): Promise<{ status: number; body: unknown }> {
+	const res = await fetch(`${base}${path}`, {
+		method: "POST",
+		headers: { ...headers, "content-type": "application/json" },
+		body: JSON.stringify(body),
+	});
+	const parsed = await res.json().catch(() => ({}));
+	return { status: res.status, body: parsed };
+}
+
+/** 频道图片走 multipart `file_image`(直传 Buffer,不需公网 URL,不设 content-type 让 fetch 补 boundary)。 */
+async function qqPostChannelForm(
+	base: string,
+	headers: Record<string, string>,
+	channelId: string,
+	content: string,
+	buffer: Buffer,
+): Promise<{ status: number; body: unknown }> {
+	const form = new FormData();
+	form.append("content", content);
+	form.append("file_image", new Blob([buffer]), "image.png");
+	const res = await fetch(`${base}/channels/${channelId}/messages`, {
+		method: "POST",
+		headers,
+		body: form,
+	});
+	const parsed = await res.json().catch(() => ({}));
+	return { status: res.status, body: parsed };
+}
+
+/** 群/C2C 富媒体两步第一步:上传拿 file_info。失败返回 err。 */
+async function qqUploadMedia(
+	base: string,
+	headers: Record<string, string>,
+	scope: "group" | "private",
+	openid: string,
+	upload: QQFileUploadBody | { file_type: number; srv_send_msg: boolean; url: string },
+): Promise<{ ok: true; fileInfo: string } | { ok: false; err: string }> {
+	const { status, body } = await qqPostJson(base, headers, qqFilesPath(scope, openid), upload);
+	const fileInfo = (body as { file_info?: unknown })?.file_info;
+	if (typeof fileInfo === "string") return { ok: true, fileInfo };
+	const verdict = interpretQQSend(status, body);
+	return { ok: false, err: verdict.ok ? "上传成功但无 file_info" : verdict.err };
+}
+
+export interface QQOfficialAdapterOptions {
+	logger: Logger;
+	serviceCtx: ServiceContext;
+	/** 共享发现表 —— 网关捞到的 openid 落这,路由 qq-sessions 读它。 */
+	registry: QQSessionRegistry;
+}
+
+interface QQLive {
+	tm: QQTokenManager;
+	conn: QQGatewayConn;
+	fingerprint: string;
+}
+
+function qqAdapterFingerprint(cfg: QQOfficialAdapterConfig): string {
+	return JSON.stringify({ appId: cfg.appId, appSecret: cfg.appSecret, sandbox: cfg.sandbox });
+}
+
+/**
+ * QQ 官方机器人(q.qq.com)平台 adapter。有状态:每 adapter 一条 WS 网关长连(捞 openid
+ * 进 registry)+ 一个 token 管理器,由 reconcile 按配置指纹 start/stop/rebind,dispose 全关。
+ * send 把 NotificationPayload 译成有序片段逐条 REST 发(频道 multipart file_image;群/C2C
+ * 富媒体两步上传→media),A+ 投递语义(202 审核中算 ok)。
+ */
+export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): PlatformAdapter {
+	const { logger, serviceCtx, registry } = opts;
+	const live = new Map<string, QQLive>();
+	/** reconcile 未跑时 send 仍可独立取 token 的兜底管理器(无网关连接)。 */
+	const tokenOnly = new Map<string, QQTokenManager>();
+	let disposed = false;
+
+	function makeTokenManager(cfg: QQOfficialAdapterConfig): QQTokenManager {
+		return createQQTokenManager({
+			appId: cfg.appId,
+			clientSecret: cfg.appSecret,
+			serviceCtx,
+			logger,
+		});
+	}
+
+	function makeLive(adapter: PushAdapter): QQLive {
+		const cfg = adapter.config as QQOfficialAdapterConfig;
+		const tm = makeTokenManager(cfg);
+		const base = qqApiBase(cfg.sandbox);
+		const conn = createQQGatewayConn({
+			adapterId: adapter.id,
+			resolveGatewayUrl: async () => {
+				const token = await tm.getToken();
+				const res = await fetch(`${base}/gateway`, { headers: qqRestHeaders(token, cfg.appId) });
+				const body = (await res.json().catch(() => ({}))) as { url?: unknown };
+				if (typeof body.url !== "string") throw new Error("getGateway 响应无 url");
+				return qqGatewayUrlForHost(body.url, cfg.sandbox);
+			},
+			getToken: () => tm.getToken(),
+			onDiscovered: (s) => registry.record(adapter.id, s, Date.now()),
+			serviceCtx,
+			logger,
+		});
+		return { tm, conn, fingerprint: qqAdapterFingerprint(cfg) };
+	}
+
+	/** send 取 token:优先复用网关连接的 manager,否则起一个仅 token 的兜底。 */
+	function tokenManagerFor(adapter: PushAdapter): QQTokenManager {
+		const l = live.get(adapter.id);
+		if (l) return l.tm;
+		let tm = tokenOnly.get(adapter.id);
+		if (!tm) {
+			tm = makeTokenManager(adapter.config as QQOfficialAdapterConfig);
+			tokenOnly.set(adapter.id, tm);
+		}
+		return tm;
+	}
+
+	function disposeAll(): void {
+		if (disposed) return;
+		disposed = true;
+		for (const l of live.values()) {
+			l.conn.close();
+			l.tm.dispose();
+		}
+		live.clear();
+		for (const tm of tokenOnly.values()) tm.dispose();
+		tokenOnly.clear();
+	}
+	serviceCtx.onDispose(disposeAll);
+
+	/** 发一个片段。返回 REST `{status, body}` 或前置 `{err}`(上传失败)。 */
+	async function sendPart(
+		base: string,
+		headers: Record<string, string>,
+		scope: PushTargetScope,
+		session: QQOfficialSession,
+		messagesPath: string,
+		part: QQSendPart,
+	): Promise<{ status: number; body: unknown } | { err: string }> {
+		if (scope === "channel") {
+			const channelId = session.channelId ?? "";
+			if (part.kind === "text") {
+				return qqPostJson(base, headers, messagesPath, { content: part.text });
+			}
+			if (part.kind === "image-url") {
+				return qqPostJson(base, headers, messagesPath, { content: " ", image: part.url });
+			}
+			return qqPostChannelForm(base, headers, channelId, part.caption ?? " ", part.buffer);
+		}
+		// group / private:文本直发;图片两步上传→media。
+		const gScope = scope === "group" ? "group" : "private";
+		const openid = scope === "group" ? (session.groupOpenid ?? "") : (session.userOpenid ?? "");
+		if (part.kind === "text") {
+			return qqPostJson(base, headers, messagesPath, buildQQV2Message({ content: part.text }));
+		}
+		const upload =
+			part.kind === "image-buffer"
+				? buildQQFileUpload(part.buffer)
+				: { file_type: QQ_FILE_TYPE_IMAGE, srv_send_msg: false, url: part.url };
+		const up = await qqUploadMedia(base, headers, gScope, openid, upload);
+		if (!up.ok) return { err: up.err };
+		const content = part.kind === "image-buffer" ? part.caption : undefined;
+		return qqPostJson(
+			base,
+			headers,
+			messagesPath,
+			buildQQV2Message({ content, fileInfo: up.fileInfo }),
+		);
+	}
+
+	return {
+		platforms: ["qq-official"],
+
+		isAvailable(adapter: PushAdapter, target: PushTarget): boolean {
+			if (adapter.platform !== "qq-official" || target.platform !== "qq-official") return false;
+			if (!adapter.enabled || !target.enabled) return false;
+			const cfg = adapter.config as QQOfficialAdapterConfig;
+			return cfg.appId.length > 0 && cfg.appSecret.length > 0;
+		},
+
+		reconcile(adapters: readonly PushAdapter[]): void {
+			if (disposed) return;
+			const desired = new Map<string, PushAdapter>();
+			for (const a of adapters) {
+				if (a.platform === "qq-official" && a.enabled) desired.set(a.id, a);
+			}
+			// 删除/失效:不再期望或配置指纹变了 → 关连接、清发现表。
+			for (const [id, l] of live) {
+				const want = desired.get(id);
+				if (
+					!want ||
+					qqAdapterFingerprint(want.config as QQOfficialAdapterConfig) !== l.fingerprint
+				) {
+					l.conn.close();
+					l.tm.dispose();
+					live.delete(id);
+					registry.clear(id);
+				}
+			}
+			// 新建:期望但无 live(或刚被指纹变更删掉)。同时清掉兜底 token-only(网关接管)。
+			for (const [id, a] of desired) {
+				if (live.has(id)) continue;
+				tokenOnly.get(id)?.dispose();
+				tokenOnly.delete(id);
+				live.set(id, makeLive(a));
+			}
+		},
+
+		dispose(): void {
+			disposeAll();
+		},
+
+		async probe(adapter: PushAdapter): Promise<ProbeResult> {
+			const t0 = Date.now();
+			if (adapter.platform !== "qq-official") {
+				return { ok: false, latencyMs: 0, err: `wrong platform: ${adapter.platform}` };
+			}
+			const l = live.get(adapter.id);
+			if (!l) return { ok: false, latencyMs: Date.now() - t0, err: "网关未连接(尚未 reconcile)" };
+			return l.conn.isOnline()
+				? { ok: true, latencyMs: Date.now() - t0 }
+				: { ok: false, latencyMs: Date.now() - t0, err: l.conn.lastError ?? "网关连接中" };
+		},
+
+		async send(
+			adapter: PushAdapter,
+			target: PushTarget,
+			payload: NotificationPayload,
+			_opts: { private?: boolean } = {},
+		): Promise<DeliveryResult> {
+			if (adapter.platform !== "qq-official" || target.platform !== "qq-official") {
+				return {
+					ok: false,
+					latencyMs: 0,
+					err: `wrong platform: adapter=${adapter.platform} target=${target.platform}`,
+				};
+			}
+			const scope = target.scope;
+			const session = target.session as QQOfficialSession;
+			// 先按 scope 校验会话字段:缺 openid/channelId 立即失败,不取 token、不发注定失败的 REST。
+			const endpoint = qqMessageEndpoint(scope, session);
+			if ("err" in endpoint) return { ok: false, latencyMs: 0, err: endpoint.err };
+
+			const t0 = Date.now();
+			const cfg = adapter.config as QQOfficialAdapterConfig;
+			const base = qqApiBase(cfg.sandbox);
+			let token: string;
+			try {
+				token = await tokenManagerFor(adapter).getToken();
+			} catch (e) {
+				return {
+					ok: false,
+					latencyMs: Date.now() - t0,
+					err: `取 App Access Token 失败: ${String(e)}`,
+				};
+			}
+			const headers = qqRestHeaders(token, cfg.appId);
+
+			const parts = qqPayloadToParts(payload);
+			if (parts.length === 0)
+				return { ok: false, latencyMs: Date.now() - t0, err: "empty payload" };
+
+			// QQ 一条 media 只能带一张图,多片段逐条发;任一条失败即整体失败(已发的无法回滚)。
+			let lastErr = "";
+			for (const part of parts) {
+				try {
+					const r = await sendPart(base, headers, scope, session, endpoint.path, part);
+					if ("err" in r) {
+						lastErr = r.err;
+						break;
+					}
+					const verdict = interpretQQSend(r.status, r.body);
+					if (!verdict.ok) {
+						lastErr = verdict.err;
+						break;
+					}
+				} catch (e) {
+					lastErr = e instanceof Error ? e.message : String(e);
+					break;
+				}
+			}
+			if (lastErr) {
+				logger.warn(`[qq] target=${target.id} send failed: ${lastErr}`);
+				return { ok: false, latencyMs: Date.now() - t0, err: lastErr };
+			}
+			return { ok: true, latencyMs: Date.now() - t0 };
+		},
+	};
 }
