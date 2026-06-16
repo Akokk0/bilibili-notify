@@ -6,6 +6,7 @@ import type {
 	QQOfficialSession,
 	ServiceContext,
 } from "@bilibili-notify/internal";
+import { type RawData, WebSocket } from "ws";
 
 /** QQ 开放平台换取 App Access Token 的端点(与沙箱/正式无关,固定走 bots.qq.com)。 */
 const QQ_TOKEN_ENDPOINT = "https://bots.qq.com/app/getAppAccessToken";
@@ -37,6 +38,103 @@ export async function fetchAppAccessToken(
 		token: data.access_token,
 		expiresInSec: Number.isFinite(expiresInSec) && expiresInSec > 0 ? expiresInSec : 7200,
 	};
+}
+
+// ---------------------------------------------------------------------------
+// WS 网关协议帧(纯函数)—— 蓝本 @satorijs/adapter-qq/src/ws.ts + QQ 官方网关文档
+// ---------------------------------------------------------------------------
+
+/** QQ 网关 opcode。HELLO→IDENTIFY/RESUME→心跳(op1)+ack(op11)→DISPATCH(op0)。 */
+export const QQ_OPCODE = {
+	DISPATCH: 0,
+	HEARTBEAT: 1,
+	IDENTIFY: 2,
+	RESUME: 6,
+	RECONNECT: 7,
+	INVALID_SESSION: 9,
+	HELLO: 10,
+	HEARTBEAT_ACK: 11,
+} as const;
+
+/**
+ * push-only intents 超集 —— 只订阅推送需要的事件:
+ * GUILDS(频道增删,频道发现)| USER_MESSAGE(1<<25,群@/C2C 入站,**openid 捞取命门**)|
+ * MESSAGE_AUDIT(消息审核回执,A+ 投递语义)| PUBLIC_GUILD_MESSAGES(频道@消息)。
+ * 公私域都能设(不含私域专属的 GUILD_MESSAGES 1<<9)。
+ */
+export const QQ_PUSH_INTENTS = ((1 << 0) | (1 << 25) | (1 << 27) | (1 << 30)) >>> 0;
+
+/** 正式 / 沙箱 REST API base host。沙箱在 api 前插 `sandbox.`(对齐 koishi)。 */
+export function qqApiBase(sandbox: boolean): string {
+	return sandbox ? "https://sandbox.api.sgroup.qq.com" : "https://api.sgroup.qq.com";
+}
+
+/**
+ * `GET /gateway` 返回的 wss url 改写到沙箱 host(正式原样)。沙箱网关与正式同路径、
+ * 仅 host 不同 —— 对齐 @satorijs 的 `.replace('api.sgroup.qq.com', sandboxHost)`。
+ */
+export function qqGatewayUrlForHost(url: string, sandbox: boolean): string {
+	return sandbox ? url.replace("api.sgroup.qq.com", "sandbox.api.sgroup.qq.com") : url;
+}
+
+export interface QQFrame {
+	op: number;
+	/** DISPATCH 帧的序列号,心跳/RESUME 要回带。 */
+	s?: number;
+	/** DISPATCH 帧的事件名(READY / GROUP_AT_MESSAGE_CREATE / …)。 */
+	t?: string;
+	d?: unknown;
+}
+
+/** IDENTIFY(op2)鉴权帧。token 统一前缀 `QQBot `;shard 固定 [0,1](单分片)。 */
+export function buildQQIdentify(
+	accessToken: string,
+	intents: number = QQ_PUSH_INTENTS,
+): { op: number; d: { token: string; intents: number; shard: [number, number] } } {
+	return {
+		op: QQ_OPCODE.IDENTIFY,
+		d: { token: `QQBot ${accessToken}`, intents, shard: [0, 1] },
+	};
+}
+
+/** RESUME(op6)续连帧 —— 断线重连且会话未失效时复用 session_id + seq,免重建状态。 */
+export function buildQQResume(
+	accessToken: string,
+	sessionId: string,
+	seq: number,
+): { op: number; d: { token: string; session_id: string; seq: number } } {
+	return {
+		op: QQ_OPCODE.RESUME,
+		d: { token: `QQBot ${accessToken}`, session_id: sessionId, seq },
+	};
+}
+
+/** HEARTBEAT(op1)心跳帧。d=最近收到的 seq;尚未收到 DISPATCH 时为 null。 */
+export function buildQQHeartbeat(seq: number | null): { op: number; d: number | null } {
+	return { op: QQ_OPCODE.HEARTBEAT, d: seq };
+}
+
+/** 解析入站帧;非法 JSON 或缺 `op`(非数字)→ null,绝不抛(网关偶发噪声不应崩连接)。 */
+export function parseQQFrame(raw: string): QQFrame | null {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return null;
+	}
+	if (!parsed || typeof parsed !== "object") return null;
+	const frame = parsed as QQFrame;
+	if (typeof frame.op !== "number") return null;
+	return frame;
+}
+
+/**
+ * 关闭码是否应清空会话(下次握手强制重新 IDENTIFY 而非 RESUME)。对齐 @satorijs:
+ * code > 4000 且非 4008(限流)/4009(连接超时,可续连)→ 清。普通断开(<4000,如 1006)
+ * 可 RESUME。
+ */
+export function qqShouldResetSessionOnClose(code: number): boolean {
+	return code > 4000 && code !== 4008 && code !== 4009;
 }
 
 /** token 提前刷新缓冲(秒);对齐 koishi(快到期前 40s 换新 token)。 */
@@ -181,6 +279,256 @@ export function createQQSessionRegistry(opts?: { maxPerAdapter?: number }): QQSe
 		},
 		clear(adapterId) {
 			byAdapter.delete(adapterId);
+		},
+	};
+}
+
+// ---------------------------------------------------------------------------
+// WS 网关长连接 —— 复刻 @satorijs/adapter-qq/src/ws.ts 握手 + onebot ForwardConn 重连
+// ---------------------------------------------------------------------------
+
+const QQ_RECONNECT_BASE_MS = 1_000;
+const QQ_RECONNECT_MAX_MS = 30_000;
+/** HELLO 帧未带 heartbeat_interval 时的兜底心跳间隔(ms)。 */
+const QQ_DEFAULT_HEARTBEAT_MS = 45_000;
+
+function qqRawToString(raw: RawData): string {
+	if (typeof raw === "string") return raw;
+	if (Buffer.isBuffer(raw)) return raw.toString("utf8");
+	if (Array.isArray(raw)) return Buffer.concat(raw).toString("utf8");
+	return Buffer.from(raw as ArrayBuffer).toString("utf8");
+}
+
+export interface QQGatewayConnOptions {
+	adapterId: string;
+	/** 解析 wss 网关地址(REST GET /gateway → url,沙箱改写)。每次连接前调,便于换 host。 */
+	resolveGatewayUrl(): Promise<string>;
+	/** 取当前 App Access Token(token manager 已缓存/刷新),用于 IDENTIFY/RESUME。 */
+	getToken(): Promise<string>;
+	/** 捞到群/C2C 会话时回调 —— adapter 落进 {@link QQSessionRegistry}。 */
+	onDiscovered(session: QQDiscoveredSession): void;
+	serviceCtx: ServiceContext;
+	logger: Logger;
+	/** 订阅 intents,默认 {@link QQ_PUSH_INTENTS}。 */
+	intents?: number;
+	/** 指数退避基数(ms),默认 1000。测试注入小值加速。 */
+	reconnectBaseMs?: number;
+}
+
+export interface QQGatewayConn {
+	/** 是否已 READY/RESUMED 在线。 */
+	isOnline(): boolean;
+	/** 最近一次连接错误(probe / UI 展示用)。 */
+	readonly lastError: string | null;
+	/** 关闭长连:停心跳/重连定时器,关 socket,不再重连。幂等。 */
+	close(): void;
+}
+
+/**
+ * 每 adapter 一条 QQ 网关长连。HELLO→(首连)IDENTIFY /(重连未失效)RESUME;心跳 op1 +
+ * ack op11 僵尸检测;DISPATCH 事件经 {@link extractQQDiscoveredSession} 捞 openid 回调;
+ * 断线指数退避重连(close code 决定清会话重连 vs 续连)。push-only:入站消息只用来捞
+ * openid 与监听审核,不回消息。
+ */
+export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
+	const { adapterId, serviceCtx, logger } = opts;
+	const intents = opts.intents ?? QQ_PUSH_INTENTS;
+	const reconnectBase = opts.reconnectBaseMs ?? QQ_RECONNECT_BASE_MS;
+
+	let ws: WebSocket | null = null;
+	let heartbeatTimer: Disposable | null = null;
+	let reconnectTimer: Disposable | null = null;
+	let attempt = 0;
+	let closed = false;
+	let online = false;
+
+	let sessionId = "";
+	let lastSeq: number | null = null;
+	let acked = true;
+	const state = { lastError: null as string | null };
+
+	function clearHeartbeat(): void {
+		heartbeatTimer?.dispose();
+		heartbeatTimer = null;
+	}
+
+	function heartbeat(): void {
+		if (!ws || ws.readyState !== WebSocket.OPEN) return;
+		if (!acked) {
+			// 上一拍心跳没收到 ACK = 僵尸连接,关掉触发重连(对齐 @satorijs)。
+			logger.warn(`[qq] adapter=${adapterId} 心跳无 ACK,判定僵尸连接,关闭重连`);
+			try {
+				ws.close();
+			} catch {
+				/* ignore */
+			}
+			return;
+		}
+		try {
+			ws.send(JSON.stringify(buildQQHeartbeat(lastSeq)));
+			acked = false;
+		} catch {
+			/* close 事件会接管清理 */
+		}
+	}
+
+	async function onHello(heartbeatInterval: number): Promise<void> {
+		let token: string;
+		try {
+			token = await opts.getToken();
+		} catch (e) {
+			state.lastError = `getToken 失败: ${String(e)}`;
+			logger.warn(`[qq] adapter=${adapterId} ${state.lastError}`);
+			try {
+				ws?.close();
+			} catch {
+				/* ignore */
+			}
+			return;
+		}
+		// 有 sessionId(重连未失效)→ RESUME 续连;否则首次 IDENTIFY。
+		const frame = sessionId
+			? buildQQResume(token, sessionId, lastSeq ?? 0)
+			: buildQQIdentify(token, intents);
+		try {
+			ws?.send(JSON.stringify(frame));
+		} catch {
+			/* ignore */
+		}
+		acked = true;
+		clearHeartbeat();
+		heartbeatTimer = serviceCtx.setInterval(() => heartbeat(), heartbeatInterval);
+	}
+
+	function onDispatch(frame: QQFrame): void {
+		if (typeof frame.s === "number") lastSeq = frame.s;
+		const t = frame.t;
+		const d = (frame.d ?? {}) as Record<string, unknown>;
+		if (t === "READY") {
+			if (typeof d.session_id === "string") sessionId = d.session_id;
+			online = true;
+			logger.info(`[qq] adapter=${adapterId} 网关已就绪(READY)`);
+			return;
+		}
+		if (t === "RESUMED") {
+			online = true;
+			logger.info(`[qq] adapter=${adapterId} 网关已续连(RESUMED)`);
+			return;
+		}
+		if (t === "MESSAGE_AUDIT_REJECT") {
+			logger.warn(`[qq] adapter=${adapterId} 消息审核未通过(MESSAGE_AUDIT_REJECT)`);
+			return;
+		}
+		if (typeof t === "string") {
+			const discovered = extractQQDiscoveredSession(t, d);
+			if (discovered) opts.onDiscovered(discovered);
+		}
+	}
+
+	function onMessage(raw: RawData): void {
+		const frame = parseQQFrame(qqRawToString(raw));
+		if (!frame) return;
+		switch (frame.op) {
+			case QQ_OPCODE.HELLO: {
+				const d = (frame.d ?? {}) as { heartbeat_interval?: number };
+				void onHello(d.heartbeat_interval ?? QQ_DEFAULT_HEARTBEAT_MS);
+				break;
+			}
+			case QQ_OPCODE.HEARTBEAT_ACK:
+				acked = true;
+				break;
+			case QQ_OPCODE.INVALID_SESSION:
+				sessionId = "";
+				lastSeq = null;
+				logger.warn(`[qq] adapter=${adapterId} 会话失效(INVALID_SESSION),将重新鉴权`);
+				break;
+			case QQ_OPCODE.RECONNECT:
+				logger.warn(`[qq] adapter=${adapterId} 服务端要求重连(RECONNECT)`);
+				try {
+					ws?.close();
+				} catch {
+					/* ignore */
+				}
+				break;
+			case QQ_OPCODE.DISPATCH:
+				onDispatch(frame);
+				break;
+		}
+	}
+
+	function scheduleReconnect(): void {
+		if (closed || reconnectTimer) return;
+		const base = Math.min(reconnectBase * 2 ** attempt, QQ_RECONNECT_MAX_MS);
+		const jitter = Math.round(base * (0.8 + Math.random() * 0.4)); // ±20% 抖动
+		attempt += 1;
+		reconnectTimer = serviceCtx.setTimeout(() => {
+			reconnectTimer = null;
+			void connect();
+		}, jitter);
+	}
+
+	async function connect(): Promise<void> {
+		if (closed) return;
+		let url: string;
+		try {
+			url = await opts.resolveGatewayUrl();
+		} catch (e) {
+			state.lastError = `解析网关地址失败: ${String(e)}`;
+			scheduleReconnect();
+			return;
+		}
+		if (closed) return;
+		let socket: WebSocket;
+		try {
+			socket = new WebSocket(url);
+		} catch (e) {
+			state.lastError = e instanceof Error ? e.message : String(e);
+			scheduleReconnect();
+			return;
+		}
+		ws = socket;
+		socket.on("open", () => {
+			attempt = 0;
+			state.lastError = null;
+		});
+		socket.on("message", (raw: RawData) => onMessage(raw));
+		socket.on("error", (err: Error) => {
+			state.lastError = err.message;
+		});
+		socket.on("close", (code: number) => {
+			online = false;
+			clearHeartbeat();
+			if (ws === socket) ws = null;
+			// 4000+ 非限流/超时 → 清会话(强制重新 IDENTIFY);否则保留以便 RESUME。
+			if (qqShouldResetSessionOnClose(code)) {
+				sessionId = "";
+				lastSeq = null;
+			}
+			if (!closed) scheduleReconnect();
+		});
+	}
+
+	void connect();
+
+	return {
+		get lastError() {
+			return state.lastError;
+		},
+		isOnline() {
+			return online;
+		},
+		close() {
+			closed = true;
+			clearHeartbeat();
+			reconnectTimer?.dispose();
+			reconnectTimer = null;
+			online = false;
+			try {
+				ws?.close();
+			} catch {
+				/* ignore */
+			}
+			ws = null;
 		},
 	};
 }
