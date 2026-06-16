@@ -668,7 +668,7 @@ export function buildQQV2Message(opts: { content?: string; fileInfo?: string }):
 export type QQSendPart =
 	| { kind: "text"; text: string }
 	| { kind: "image-buffer"; buffer: Buffer; caption?: string }
-	| { kind: "image-url"; url: string };
+	| { kind: "image-url"; url: string; width?: number; height?: number };
 
 /**
  * 把平台中立 `NotificationPayload` 翻译成有序发送片段。QQ 无「合并转发」,多图一律展开成
@@ -682,8 +682,13 @@ export function qqPayloadToParts(payload: NotificationPayload): QQSendPart[] {
 		case "image":
 			return [{ kind: "image-buffer", buffer: payload.image.buffer, caption: payload.caption }];
 		case "forward-images":
-			// QQ 无合并转发 —— forward 标志忽略,每张图展开成独立片段。
-			return payload.urls.map((url) => ({ kind: "image-url" as const, url }));
+			// QQ 无合并转发 —— forward 标志忽略,每张图展开成独立片段(尺寸透传给 markdown 用)。
+			return payload.images.map((img) => ({
+				kind: "image-url" as const,
+				url: img.url,
+				width: img.width,
+				height: img.height,
+			}));
 		case "composite": {
 			const parts: QQSendPart[] = [];
 			for (const seg of payload.segments) {

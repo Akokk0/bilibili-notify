@@ -96,7 +96,7 @@ describe("qqPayloadToParts — NotificationPayload → 有序发送片段", () =
 	it("forward-images(图集 URL)→ 多个 image-url 片段(QQ 无合并转发,展开成多条)", () => {
 		const payload: NotificationPayload = {
 			kind: "forward-images",
-			urls: ["https://i0.hdslb.com/a.jpg", "https://i0.hdslb.com/b.jpg"],
+			images: [{ url: "https://i0.hdslb.com/a.jpg" }, { url: "https://i0.hdslb.com/b.jpg" }],
 			forward: true,
 		};
 		expect(qqPayloadToParts(payload)).toEqual([

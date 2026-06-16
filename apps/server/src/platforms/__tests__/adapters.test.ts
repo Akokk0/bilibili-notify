@@ -352,7 +352,7 @@ describe("onebot — send 路由", () => {
 		const ad = createOnebotAdapter(obOpts());
 		await ad.send(obAdapter(), obTarget(), {
 			kind: "forward-images",
-			urls: ["https://i0.hdslb.com/1.jpg", "https://i0.hdslb.com/2.jpg"],
+			images: [{ url: "https://i0.hdslb.com/1.jpg" }, { url: "https://i0.hdslb.com/2.jpg" }],
 			forward: false,
 		});
 		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_group_msg");
@@ -367,7 +367,7 @@ describe("onebot — send 路由", () => {
 		const ad = createOnebotAdapter(obOpts());
 		await ad.send(obAdapter(), obTarget({ scope: "private", session: { userId: "999" } }), {
 			kind: "forward-images",
-			urls: ["https://x/a.jpg"],
+			images: [{ url: "https://x/a.jpg" }],
 			forward: false,
 		});
 		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_private_msg");
@@ -395,7 +395,7 @@ describe("onebot — send 路由", () => {
 		const ad = createOnebotAdapter(obOpts());
 		await ad.send(obAdapter(), obTarget(), {
 			kind: "forward-images",
-			urls: ["https://i0.hdslb.com/1.jpg", "https://i0.hdslb.com/2.jpg"],
+			images: [{ url: "https://i0.hdslb.com/1.jpg" }, { url: "https://i0.hdslb.com/2.jpg" }],
 			forward: true,
 		});
 		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/get_login_info");
@@ -432,12 +432,12 @@ describe("onebot — send 路由", () => {
 		const adapter = obAdapter();
 		await ad.send(adapter, obTarget(), {
 			kind: "forward-images",
-			urls: ["https://x/1.jpg"],
+			images: [{ url: "https://x/1.jpg" }],
 			forward: true,
 		});
 		await ad.send(adapter, obTarget(), {
 			kind: "forward-images",
-			urls: ["https://x/2.jpg"],
+			images: [{ url: "https://x/2.jpg" }],
 			forward: true,
 		});
 		const endpoints = fetchMock.mock.calls.map((c) => c[0]);
@@ -466,12 +466,12 @@ describe("onebot — send 路由", () => {
 		const adapter = obAdapter();
 		await ad.send(adapter, obTarget(), {
 			kind: "forward-images",
-			urls: ["https://x/1.jpg"],
+			images: [{ url: "https://x/1.jpg" }],
 			forward: true,
 		});
 		await ad.send(adapter, obTarget(), {
 			kind: "forward-images",
-			urls: ["https://x/2.jpg"],
+			images: [{ url: "https://x/2.jpg" }],
 			forward: true,
 		});
 		const endpoints = fetchMock.mock.calls.map((c) => c[0]);
@@ -504,7 +504,7 @@ describe("onebot — send 路由", () => {
 		const ad = createOnebotAdapter(obOpts());
 		await ad.send(obAdapter(), obTarget(), {
 			kind: "forward-images",
-			urls: ["https://x/1.jpg"],
+			images: [{ url: "https://x/1.jpg" }],
 			forward: true,
 		});
 		const nodes = lastBody().messages as Array<{ data: { uin: string; name: string } }>;
@@ -525,7 +525,7 @@ describe("onebot — send 路由", () => {
 		const ad = createOnebotAdapter(obOpts());
 		const r = await ad.send(obAdapter(), obTarget(), {
 			kind: "forward-images",
-			urls: ["https://x/1.jpg"],
+			images: [{ url: "https://x/1.jpg" }],
 			forward: true,
 		});
 		expect(r.ok).toBe(true); // 整条推送仍发出
@@ -541,7 +541,7 @@ describe("onebot — send 路由", () => {
 		const ad = createOnebotAdapter(obOpts());
 		await ad.send(obAdapter(), obTarget(), {
 			kind: "forward-images",
-			urls: ["https://x/1.jpg", "https://x/2.jpg"],
+			images: [{ url: "https://x/1.jpg" }, { url: "https://x/2.jpg" }],
 			forward: false,
 		});
 		expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -556,7 +556,7 @@ describe("onebot — send 路由", () => {
 		// 故意把 target.session 改成空 → 触发 "group: groupId missing"。
 		const r = await ad.send(obAdapter(), obTarget({ session: {} }), {
 			kind: "forward-images",
-			urls: ["https://x/1.jpg"],
+			images: [{ url: "https://x/1.jpg" }],
 			forward: true,
 		});
 		expect(r).toMatchObject({ ok: false, err: "group: groupId missing" });
@@ -589,7 +589,7 @@ describe("onebot — send 路由", () => {
 		const ad = createOnebotAdapter(obOpts());
 		const r = await ad.send(obAdapter(), obTarget(), {
 			kind: "forward-images",
-			urls: ["https://x/1.jpg"],
+			images: [{ url: "https://x/1.jpg" }],
 			forward: true,
 		});
 		expect(r.ok).toBe(true);
@@ -606,7 +606,7 @@ describe("onebot — send 路由", () => {
 		const ad = createOnebotAdapter(obOpts());
 		await ad.send(obAdapter(), obTarget({ scope: "private", session: { userId: "888" } }), {
 			kind: "forward-images",
-			urls: ["https://x/a.jpg"],
+			images: [{ url: "https://x/a.jpg" }],
 			forward: true,
 		});
 		expect(fetchMock.mock.calls[1]?.[0]).toBe("http://nb:3000/send_private_forward_msg");
@@ -1332,7 +1332,7 @@ describe("webhook — send", () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { code: 0, msg: "success" } }));
 		await ad.send(whAdapter({ provider: "feishu", secret: undefined }), whTarget(), {
 			kind: "forward-images",
-			urls: ["https://i0.hdslb.com/1.jpg", "https://i0.hdslb.com/2.jpg"],
+			images: [{ url: "https://i0.hdslb.com/1.jpg" }, { url: "https://i0.hdslb.com/2.jpg" }],
 			forward: false,
 		});
 		expect(lastBody()).toEqual({
@@ -1342,7 +1342,7 @@ describe("webhook — send", () => {
 
 		await ad.send(whAdapter({ provider: "wecom", secret: undefined }), whTarget(), {
 			kind: "forward-images",
-			urls: ["https://i0.hdslb.com/3.jpg", "https://i0.hdslb.com/4.jpg"],
+			images: [{ url: "https://i0.hdslb.com/3.jpg" }, { url: "https://i0.hdslb.com/4.jpg" }],
 			forward: false,
 		});
 		expect(lastBody()).toEqual({

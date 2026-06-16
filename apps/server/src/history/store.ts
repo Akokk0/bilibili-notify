@@ -92,7 +92,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			case "forward-images":
 				return {
 					kind: "text",
-					text: `[图集 ${payload.urls.length} 张${payload.forward ? " · 合并转发" : ""}]`,
+					text: `[图集 ${payload.images.length} 张${payload.forward ? " · 合并转发" : ""}]`,
 				};
 			case "composite": {
 				const textParts: string[] = [];
