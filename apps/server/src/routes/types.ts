@@ -1,5 +1,6 @@
 import type { WsTicketStore } from "../auth/ws-ticket.js";
 import type { ConfigStore } from "../config/store.js";
+import type { QQSessionRegistry } from "../platforms/qq-official.js";
 import type { AppRuntime } from "../runtime/bootstrap.js";
 import type { StandalonePuppeteer } from "../runtime/puppeteer.js";
 
@@ -22,4 +23,9 @@ export interface RouteDeps {
 	 * 未启用,WS 直接放行(同 REST 路径)。
 	 */
 	wsTicketStore: WsTicketStore | null;
+	/**
+	 * QQ 官方机器人网关发现表(群/C2C openid)。`/api/qq/sessions/:id` 读它。null =
+	 * 未启用 QQ adapter(路由仍挂载,返回空列表)。
+	 */
+	qqSessionRegistry: QQSessionRegistry | null;
 }

@@ -9,6 +9,7 @@ import type { AuthSystem } from "./auth/index.js";
 import { createIpRateLimiter } from "./auth/ip-rate-limit.js";
 import type { SessionCodec } from "./auth/session.js";
 import type { WsTicketStore } from "./auth/ws-ticket.js";
+import type { QQSessionRegistry } from "./platforms/qq-official.js";
 import { createAdaptersRoute } from "./routes/adapters.js";
 import { createAuthRoute } from "./routes/auth.js";
 import { createCardsRoute } from "./routes/cards.js";
@@ -19,6 +20,7 @@ import { createHistoryRoute } from "./routes/history.js";
 import { createLiveRoute } from "./routes/live.js";
 import { createLogsRoute } from "./routes/logs.js";
 import { createPushRoute } from "./routes/push.js";
+import { createQQRoute } from "./routes/qq.js";
 import { createSessionRoute } from "./routes/session.js";
 import { createSubsRoute } from "./routes/subs.js";
 import { createTargetsRoute } from "./routes/targets.js";
@@ -91,6 +93,11 @@ export interface CreateAppOptions {
 	allowedOrigins?: readonly string[];
 	/** Desktop launcher local token gate. When set, /api/* requires x-bn-desktop-token. */
 	desktopToken?: string;
+	/**
+	 * QQ 官方机器人网关发现表(群/C2C openid)。由 index.ts 与 QQ adapter 共享同一实例;
+	 * `/api/qq/sessions/:id` 读它。省略 → 路由仍挂载但返回空列表。
+	 */
+	qqSessionRegistry?: QQSessionRegistry | null;
 }
 
 /**
@@ -111,6 +118,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 		store: runtime.configStore,
 		puppeteer: options.puppeteer ?? null,
 		wsTicketStore: options.wsTicketStore ?? null,
+		qqSessionRegistry: options.qqSessionRegistry ?? null,
 	};
 
 	app.onError((err, c) => {
@@ -189,6 +197,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	app.route("/api/logs", createLogsRoute(deps));
 	app.route("/api/push", createPushRoute(deps));
 	app.route("/api/fans", createFansRoute(deps));
+	app.route("/api/qq", createQQRoute(deps));
 	app.route(
 		"/api/cards",
 		createCardsRoute({

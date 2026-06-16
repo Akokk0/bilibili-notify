@@ -59,6 +59,9 @@ export async function startStandaloneServer(
 	let server: ServerType | undefined;
 	let wsServer: ReturnType<typeof createWsServer> | undefined;
 	let previousLogHook: ((entry: LogEntry) => void) | undefined;
+	// QQ 官方机器人网关捞到的群/C2C openid 落进这张共享发现表(不落盘),既喂 adapter
+	// 也喂 /api/qq/sessions 路由的面板选择器。一个进程一份。
+	const qqSessionRegistry = createQQSessionRegistry();
 	let processHandlerCleanup: (() => void) | undefined;
 	let shutdownPromise: Promise<void> | null = null;
 	let listeningPort = bootstrap.server.port;
@@ -172,9 +175,6 @@ export async function startStandaloneServer(
 		// longer exists (deleted while the server was down). FansPoller's
 		// subscription-changed listener handles deletions made while running.
 		await runtime.subRuntimeStore.prune(subBinding.store.list().map((s) => s.id));
-		// QQ 官方机器人:网关捞到的群/C2C openid 落进这张共享发现表(不落盘),
-		// 后续 qq-sessions 路由读它供面板「先让机器人被@一次」选择器。
-		const qqSessionRegistry = createQQSessionRegistry();
 		const adapters = [
 			createOnebotAdapter({ logger: log, serviceCtx: runtime.serviceCtx }),
 			createQQOfficialAdapter({
@@ -287,6 +287,7 @@ export async function startStandaloneServer(
 			wsTicketStore,
 			allowedOrigins,
 			desktopToken,
+			qqSessionRegistry,
 		});
 		await new Promise<void>((resolveServe) => {
 			server = serve(

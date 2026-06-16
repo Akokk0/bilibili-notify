@@ -755,6 +755,52 @@ async function qqUploadMedia(
 	return { ok: false, err: verdict.ok ? "上传成功但无 file_info" : verdict.err };
 }
 
+export interface QQGuildChannel {
+	channelId: string;
+	name: string;
+	/** QQ 子频道类型:0=文字(可发消息),其余(语音/直播/论坛…)推送用不上。 */
+	type: number;
+}
+export interface QQGuild {
+	guildId: string;
+	name: string;
+	channels: QQGuildChannel[];
+}
+
+/**
+ * REST 枚举频道(频道 scope target 选择器数据源,与群/C2C 的「只能从事件捞」不同——
+ * 频道有「列我加入的频道服务器」接口)。token → `GET /users/@me/guilds` → 逐个
+ * `GET /guilds/{id}/channels`,只保留文字子频道(type 0)。某 guild 子频道列失败则跳过
+ * 不整体崩。on-demand 一次性 token(不复用网关 manager,UI 偶发调用可接受)。
+ */
+export async function fetchQQGuildChannels(cfg: QQOfficialAdapterConfig): Promise<QQGuild[]> {
+	const { token } = await fetchAppAccessToken(cfg.appId, cfg.appSecret);
+	const base = qqApiBase(cfg.sandbox);
+	const headers = qqRestHeaders(token, cfg.appId);
+	const guildsRes = await fetch(`${base}/users/@me/guilds`, { headers });
+	if (!guildsRes.ok) throw new Error(`列频道服务器 HTTP ${guildsRes.status}`);
+	const guilds = (await guildsRes.json().catch(() => [])) as Array<{ id?: string; name?: string }>;
+	const out: QQGuild[] = [];
+	for (const g of guilds) {
+		if (!g.id) continue;
+		const chRes = await fetch(`${base}/guilds/${g.id}/channels`, { headers });
+		if (!chRes.ok) continue; // 读不了该 guild 子频道 → 跳过,不整体失败
+		const channels = (await chRes.json().catch(() => [])) as Array<{
+			id?: string;
+			name?: string;
+			type?: number;
+		}>;
+		out.push({
+			guildId: g.id,
+			name: g.name ?? g.id,
+			channels: channels
+				.filter((ch) => ch.type === 0 && typeof ch.id === "string")
+				.map((ch) => ({ channelId: ch.id as string, name: ch.name ?? "", type: 0 })),
+		});
+	}
+	return out;
+}
+
 export interface QQOfficialAdapterOptions {
 	logger: Logger;
 	serviceCtx: ServiceContext;
