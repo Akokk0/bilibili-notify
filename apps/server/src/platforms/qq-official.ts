@@ -1,8 +1,109 @@
 import type {
+	Disposable,
+	Logger,
 	NotificationPayload,
 	PushTargetScope,
 	QQOfficialSession,
+	ServiceContext,
 } from "@bilibili-notify/internal";
+
+/** QQ 开放平台换取 App Access Token 的端点(与沙箱/正式无关,固定走 bots.qq.com)。 */
+const QQ_TOKEN_ENDPOINT = "https://bots.qq.com/app/getAppAccessToken";
+
+export interface QQAccessToken {
+	token: string;
+	/** 有效期(秒),通常 7200;token 管理器据此提前刷新。 */
+	expiresInSec: number;
+}
+
+/**
+ * 调 QQ 开放平台换取 App Access Token。后续 REST(`Authorization: QQBot {token}`)
+ * 与 WS Identify 都带它。失败抛错,由 token 管理器决定重试/降级。
+ */
+export async function fetchAppAccessToken(
+	appId: string,
+	clientSecret: string,
+): Promise<QQAccessToken> {
+	const res = await fetch(QQ_TOKEN_ENDPOINT, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ appId, clientSecret }),
+	});
+	if (!res.ok) throw new Error(`getAppAccessToken HTTP ${res.status}`);
+	const data = (await res.json()) as { access_token?: string; expires_in?: number | string };
+	if (!data.access_token) throw new Error("getAppAccessToken: 响应缺 access_token");
+	const expiresInSec = Number(data.expires_in);
+	return {
+		token: data.access_token,
+		expiresInSec: Number.isFinite(expiresInSec) && expiresInSec > 0 ? expiresInSec : 7200,
+	};
+}
+
+/** token 提前刷新缓冲(秒);对齐 koishi(快到期前 40s 换新 token)。 */
+const QQ_TOKEN_REFRESH_BUFFER_SEC = 40;
+
+export interface QQTokenManager {
+	/** 取当前有效 token;未就绪则发起获取并缓存,并发共享同一 Promise。 */
+	getToken(): Promise<string>;
+	/** 关闭:停掉刷新定时器,后续 getToken 拒绝。 */
+	dispose(): void;
+}
+
+export interface QQTokenManagerOptions {
+	appId: string;
+	clientSecret: string;
+	serviceCtx: ServiceContext;
+	logger: Logger;
+	/** 提前刷新缓冲(秒),默认 40。 */
+	refreshBufferSec?: number;
+}
+
+/**
+ * App Access Token 管理器:首次 getToken 拉取并缓存,按 `expires_in - buffer` 排一个
+ * 提前刷新定时器(到点自动换新 token,长连无需重连)。失败结果不缓存 → 下次 getToken 重试。
+ * dispose 停定时器(对齐有状态 adapter 生命周期)。
+ */
+export function createQQTokenManager(opts: QQTokenManagerOptions): QQTokenManager {
+	const buffer = opts.refreshBufferSec ?? QQ_TOKEN_REFRESH_BUFFER_SEC;
+	let tokenPromise: Promise<string> | null = null;
+	let refreshTimer: Disposable | null = null;
+	let disposed = false;
+
+	async function refresh(): Promise<string> {
+		const { token, expiresInSec } = await fetchAppAccessToken(opts.appId, opts.clientSecret);
+		if (!disposed) {
+			refreshTimer?.dispose();
+			const delayMs = Math.max(expiresInSec - buffer, 1) * 1000;
+			refreshTimer = opts.serviceCtx.setTimeout(() => {
+				tokenPromise = refresh().catch((e) => {
+					opts.logger.warn(`[qq] App Access Token 刷新失败,下次发送将重试: ${String(e)}`);
+					tokenPromise = null;
+					throw e;
+				});
+			}, delayMs);
+		}
+		return token;
+	}
+
+	return {
+		getToken() {
+			if (disposed) return Promise.reject(new Error("qq token manager disposed"));
+			if (!tokenPromise) {
+				tokenPromise = refresh().catch((e) => {
+					tokenPromise = null; // 失败不缓存,允许下次重试
+					throw e;
+				});
+			}
+			return tokenPromise;
+		},
+		dispose() {
+			disposed = true;
+			refreshTimer?.dispose();
+			refreshTimer = null;
+			tokenPromise = null;
+		},
+	};
+}
 
 /**
  * QQ 官方机器人(q.qq.com)推送目标 → 发消息 REST endpoint。
