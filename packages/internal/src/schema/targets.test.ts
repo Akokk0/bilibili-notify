@@ -494,3 +494,93 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 		expect(r.success).toBe(false);
 	});
 });
+
+describe("QQOfficial adapter schema", () => {
+	it("accepts a minimal qq-official adapter and defaults sandbox/botType", () => {
+		const r = PushAdapterSchema.safeParse({
+			id: UUID_A,
+			name: "qq-bot",
+			platform: "qq-official",
+			enabled: true,
+			config: { appId: "102000000", appSecret: "secret" },
+		});
+		expect(r.success).toBe(true);
+		if (r.success && r.data.platform === "qq-official") {
+			expect(r.data.config.sandbox).toBe(false);
+			expect(r.data.config.botType).toBe("public");
+		}
+	});
+
+	it("requires appId and appSecret", () => {
+		const base = { id: UUID_A, name: "x", platform: "qq-official", enabled: true } as const;
+		expect(PushAdapterSchema.safeParse({ ...base, config: { appSecret: "s" } }).success).toBe(
+			false,
+		);
+		expect(PushAdapterSchema.safeParse({ ...base, config: { appId: "1" } }).success).toBe(false);
+	});
+
+	it("config is strict — rejects unknown key (如误填 onebot 的 baseUrl)", () => {
+		const r = PushAdapterSchema.safeParse({
+			id: UUID_A,
+			name: "qq-bot",
+			platform: "qq-official",
+			enabled: true,
+			config: { appId: "1", appSecret: "s", baseUrl: "http://x" },
+		});
+		expect(r.success).toBe(false);
+	});
+});
+
+describe("QQOfficial target schema", () => {
+	it("accepts a channel target (guildId + channelId)", () => {
+		const r = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "qq:频道",
+			adapterId: UUID_A,
+			platform: "qq-official",
+			scope: "channel",
+			enabled: true,
+			session: { guildId: "g1", channelId: "c1" },
+		});
+		expect(r.success).toBe(true);
+	});
+
+	it("accepts a group target (groupOpenid)", () => {
+		const r = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "qq:群",
+			adapterId: UUID_A,
+			platform: "qq-official",
+			scope: "group",
+			enabled: true,
+			session: { groupOpenid: "ABCDEF0123456789ABCDEF0123456789" },
+		});
+		expect(r.success).toBe(true);
+	});
+
+	it("accepts a private (C2C) target (userOpenid)", () => {
+		const r = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "qq:私聊",
+			adapterId: UUID_A,
+			platform: "qq-official",
+			scope: "private",
+			enabled: true,
+			session: { userOpenid: "0123456789ABCDEF0123456789ABCDEF" },
+		});
+		expect(r.success).toBe(true);
+	});
+
+	it("rejects unknown session keys (strict — openid 拼错保存期暴露)", () => {
+		const r = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "qq:bad",
+			adapterId: UUID_A,
+			platform: "qq-official",
+			scope: "group",
+			enabled: true,
+			session: { groupOpenId: "typo-cased-key" },
+		});
+		expect(r.success).toBe(false);
+	});
+});
