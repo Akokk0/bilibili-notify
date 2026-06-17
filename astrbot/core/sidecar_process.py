@@ -1007,10 +1007,13 @@ def _append_payload_parts(
             _append_plain(parts, components, caption)
         return
     if kind == "forward-images":
-        urls = payload.get("urls")
-        if isinstance(urls, list):
-            for url in urls:
-                _append_image_url(parts, components, _string_value(url))
+        # forward-images 的形态已从 urls:[str] 改为 images:[{url,width?,height?}](平台中立层
+        # 携带 B站原始尺寸供 QQ 原生 markdown 用)。这里只取 url —— AstrBot 不需要尺寸。
+        images = payload.get("images")
+        if isinstance(images, list):
+            for image in images:
+                if isinstance(image, dict):
+                    _append_image_url(parts, components, _string_value(image.get("url")))
         return
     if kind == "composite":
         segments = payload.get("segments")

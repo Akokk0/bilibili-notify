@@ -21,6 +21,8 @@ import type {
 	ContentFilters as CanonContentFilters,
 	FeatureKey as CanonFeatureKey,
 	PushTarget as CanonPushTarget,
+	QQOfficialAdapterConfig as CanonQQOfficialAdapterConfig,
+	QQOfficialSession as CanonQQOfficialSession,
 	ScheduleConfig as CanonScheduleConfig,
 	TemplateBundle as CanonTemplateBundle,
 	WebhookAdapterConfig as CanonWebhookAdapterConfig,
@@ -32,6 +34,8 @@ import type {
 	ContentFiltersFull as MirrorContentFilters,
 	FeatureKey as MirrorFeatureKey,
 	PushTarget as MirrorPushTarget,
+	QQOfficialAdapterConfig as MirrorQQOfficialAdapterConfig,
+	QQOfficialSession as MirrorQQOfficialSession,
 	ScheduleFull as MirrorSchedule,
 	TemplateBundleFull as MirrorTemplate,
 	WebhookAdapterConfig as MirrorWebhookAdapterConfig,
@@ -66,6 +70,11 @@ type _PushTarget = Expect<CanonKeysCovered<StandaloneCanonPushTarget, MirrorPush
 type _WebhookAdapterConfig = Expect<
 	CanonKeysCovered<CanonWebhookAdapterConfig, MirrorWebhookAdapterConfig>
 >;
+// QQ 官方机器人 adapter config / session 镜像(独立端可编辑平台,凭据 + 会话寻址)。
+type _QQOfficialAdapterConfig = Expect<
+	CanonKeysCovered<CanonQQOfficialAdapterConfig, MirrorQQOfficialAdapterConfig>
+>;
+type _QQOfficialSession = Expect<CanonKeysCovered<CanonQQOfficialSession, MirrorQQOfficialSession>>;
 
 // 引用一次,避免 "unused type" 噪音(类型层断言已在上面 tsc 检查时生效)。
 export type _DomainConformance = [
@@ -78,6 +87,8 @@ export type _DomainConformance = [
 	_AISettings,
 	_PushTarget,
 	_WebhookAdapterConfig,
+	_QQOfficialAdapterConfig,
+	_QQOfficialSession,
 ];
 
 describe("types/domain.ts 漂移护栏 (TD1)", () => {

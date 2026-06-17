@@ -58,7 +58,7 @@ function adaptPush(push: BilibiliPush): PushLike {
 				// imageGroup.forward 控制(可 per-UP override sub.overrides.imageGroup.forward)。
 				payload = {
 					kind: "forward-images",
-					urls: segments[0].urls,
+					images: segments[0].images,
 					forward: segments[0].forward,
 				};
 			} else {
@@ -72,8 +72,8 @@ function adaptPush(push: BilibiliPush): PushLike {
 						mapped.push({ type: "image" as const, buffer: seg.buffer, mime: seg.mime });
 					} else {
 						// image-group → individual links
-						for (const url of seg.urls) {
-							mapped.push({ type: "link" as const, href: url });
+						for (const img of seg.images) {
+							mapped.push({ type: "link" as const, href: img.url });
 						}
 					}
 				}

@@ -1,7 +1,13 @@
 import type { AIScene, CommentaryCallOverride } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ImageRenderer } from "@bilibili-notify/image";
-import type { Disposable, Logger, MessageBus, ServiceContext } from "@bilibili-notify/internal";
+import type {
+	Disposable,
+	ForwardImage,
+	Logger,
+	MessageBus,
+	ServiceContext,
+} from "@bilibili-notify/internal";
 import { interpolate, withLock } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
@@ -787,24 +793,30 @@ export class DynamicEngine {
 				const effEnable = subForImgs?.imageGroupEnable ?? this.config.imageGroup.enable;
 				if (effEnable && item.type === "DYNAMIC_TYPE_DRAW") {
 					const major = item.modules?.module_dynamic?.major;
-					const urls: string[] = [];
-					for (const it of (major?.draw?.items ?? []) as Array<{ src?: string }>) {
-						if (it.src) urls.push(it.src);
+					const images: ForwardImage[] = [];
+					// draw.items / opus.pics 均带 width/height(B站图集元数据)——透传给需要
+					// 原始尺寸的平台(QQ 原生 markdown 多图 `![#宽px #高px]`),其余平台只用 url。
+					for (const it of (major?.draw?.items ?? []) as Array<{
+						src?: string;
+						width?: number;
+						height?: number;
+					}>) {
+						if (it.src) images.push({ url: it.src, width: it.width, height: it.height });
 					}
 					for (const pic of major?.opus?.pics ?? []) {
-						if (pic.url) urls.push(pic.url);
+						if (pic.url) images.push({ url: pic.url, width: pic.width, height: pic.height });
 					}
-					if (urls.length) {
+					if (images.length) {
 						const effForward = subForImgs?.imageGroupForward ?? this.config.imageGroup.forward;
 						// 单张图永远不走合并转发(1 张图包成「聊天记录」卡片无意义)。
-						const forward = effForward && urls.length > 1;
+						const forward = effForward && images.length > 1;
 						await this.push.broadcastDynamic(
 							uid,
 							[
 								{
 									type: "image-group",
 									forward,
-									urls,
+									images,
 								},
 							],
 							"dynamic-images",

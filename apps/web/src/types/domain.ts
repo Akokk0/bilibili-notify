@@ -147,6 +147,21 @@ export function maskWebhookUrl(url: string): string {
 // no connection-level config (the dashboard itself is the bridge)
 export type WebDashboardAdapterConfig = Record<string, never>;
 
+/** QQ 官方机器人(q.qq.com)机器人域:公域 / 私域。决定能否发原生 markdown。 */
+export type QQOfficialBotType = "public" | "private";
+
+/**
+ * QQ 官方机器人适配器连接配置 —— 镜像 `@bilibili-notify/internal` 的
+ * `QQOfficialAdapterConfigSchema`。appId/appSecret 明文存(对齐 OneBot accessToken);
+ * sandbox 切沙箱 host;botType 私域可发原生 markdown(图集合并),公域需报备模板。
+ */
+export interface QQOfficialAdapterConfig {
+	appId: string;
+	appSecret: string;
+	sandbox: boolean;
+	botType: QQOfficialBotType;
+}
+
 export interface PushAdapterTestStatus {
 	ok: boolean;
 	lastCheckedAt: string;
@@ -163,6 +178,7 @@ interface PushAdapterCommon {
 
 export type PushAdapter =
 	| (PushAdapterCommon & { platform: "onebot"; config: OnebotAdapterConfig })
+	| (PushAdapterCommon & { platform: "qq-official"; config: QQOfficialAdapterConfig })
 	| (PushAdapterCommon & { platform: "webhook"; config: WebhookAdapterConfig })
 	| (PushAdapterCommon & { platform: "web-dashboard"; config: WebDashboardAdapterConfig });
 
@@ -171,6 +187,18 @@ export type PushAdapter =
 export interface OnebotSession {
 	groupId?: string;
 	userId?: string;
+}
+
+/**
+ * QQ 官方机器人会话寻址 —— 镜像 `QQOfficialSessionSchema`。按 target.scope 取字段:
+ * channel→guildId+channelId、group→groupOpenid、private(C2C)→userOpenid。
+ * 群/C2C 的 openid 只能从入站事件捞(经 /api/qq/sessions 选择器)。
+ */
+export interface QQOfficialSession {
+	guildId?: string;
+	channelId?: string;
+	groupOpenid?: string;
+	userOpenid?: string;
 }
 
 // no session-level config (the webhook URL is the endpoint)
@@ -191,13 +219,15 @@ interface PushTargetCommon {
 
 export type PushTarget =
 	| (PushTargetCommon & { platform: "onebot"; session: OnebotSession })
+	| (PushTargetCommon & { platform: "qq-official"; session: QQOfficialSession })
 	| (PushTargetCommon & { platform: "webhook"; session: WebhookSession })
 	| (PushTargetCommon & { platform: "web-dashboard"; session: WebDashboardSession });
 
-export type PushTargetPlatform = "onebot" | "webhook" | "web-dashboard";
+export type PushTargetPlatform = "onebot" | "qq-official" | "webhook" | "web-dashboard";
 
 export const KNOWN_PLATFORMS: ReadonlyArray<{ value: PushTargetPlatform; label: string }> = [
 	{ value: "onebot", label: "OneBot v11" },
+	{ value: "qq-official", label: "QQ 官方机器人" },
 	{ value: "webhook", label: "Webhook" },
 	{ value: "web-dashboard", label: "Web Dashboard 通知" },
 ];
@@ -434,6 +464,13 @@ export function makeEmptyAdapter(platform: PushTargetPlatform, name: string): Pu
 			},
 		};
 	}
+	if (platform === "qq-official") {
+		return {
+			...base,
+			platform: "qq-official",
+			config: { appId: "", appSecret: "", sandbox: false, botType: "public" },
+		};
+	}
 	if (platform === "webhook") {
 		return {
 			...base,
@@ -477,6 +514,9 @@ export function makeEmptyTarget(adapter: PushAdapter, name: string): PushTarget 
 	const base = { id: newId(), name, adapterId: adapter.id, enabled: true } as const;
 	if (adapter.platform === "onebot") {
 		return { ...base, platform: "onebot", scope: "group", session: {} };
+	}
+	if (adapter.platform === "qq-official") {
+		return { ...base, platform: "qq-official", scope: "group", session: {} };
 	}
 	if (adapter.platform === "webhook") {
 		return { ...base, platform: "webhook", scope: "channel", session: {} };

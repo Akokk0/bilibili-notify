@@ -133,6 +133,8 @@ function makeItem(opts: {
 	/** 同时写进 desc.text(AI 提取读这个)与 desc.rich_text_nodes(过滤匹配读这个)。 */
 	text?: string;
 	drawPics?: string[];
+	/** opus.pics 带原始尺寸(测尺寸透传:engine 应把 width/height 带进 image-group)。 */
+	drawPicsWithDims?: Array<{ url: string; width: number; height: number }>;
 	/** 真 DYNAMIC_TYPE_DRAW 形态:图在 major.draw.items[].src(非 opus.pics)。 */
 	drawItems?: string[];
 	/** 视频动态(DYNAMIC_TYPE_AV)的 major.archive.jump_url;引擎按此算 {url}/BV。 */
@@ -162,9 +164,13 @@ function makeItem(opts: {
 					rich_text_nodes: text ? [{ text, type: "RICH_TEXT_NODE_TYPE_TEXT" }] : [],
 				},
 				major:
-					opts.drawPics || opts.drawItems || opts.videoJumpUrl
+					opts.drawPics || opts.drawPicsWithDims || opts.drawItems || opts.videoJumpUrl
 						? {
-								...(opts.drawPics ? { opus: { pics: opts.drawPics.map((url) => ({ url })) } } : {}),
+								...(opts.drawPicsWithDims
+									? { opus: { pics: opts.drawPicsWithDims } }
+									: opts.drawPics
+										? { opus: { pics: opts.drawPics.map((url) => ({ url })) } }
+										: {}),
 								...(opts.drawItems
 									? { draw: { items: opts.drawItems.map((src) => ({ src })) } }
 									: {}),
@@ -598,8 +604,28 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		expect(call?.[2]).toBe("dynamic-images");
 		expect(call?.[1]?.[0]).toMatchObject({
 			type: "image-group",
-			urls: ["http://a/x1.jpg", "http://a/x2.jpg"],
+			images: [{ url: "http://a/x1.jpg" }, { url: "http://a/x2.jpg" }],
 		});
+	});
+
+	it("图集 image-group 透传 B站原始尺寸(QQ 原生 markdown 多图需 width/height)", async () => {
+		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
+		b.getAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({
+					uid: 1,
+					pubTs: 1000,
+					type: "DYNAMIC_TYPE_DRAW",
+					drawPicsWithDims: [{ url: "http://a/1.jpg", width: 800, height: 600 }],
+				}),
+			]),
+		);
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		const call = b.push.broadcastDynamic.mock.calls[1];
+		expect((call?.[1]?.[0] as { images: unknown[] }).images).toEqual([
+			{ url: "http://a/1.jpg", width: 800, height: 600 },
+		]);
 	});
 
 	it("imageGroupForward 默认 false → image-group segment 的 forward 为 false", async () => {

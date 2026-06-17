@@ -63,7 +63,7 @@ export function createKoishiSink(opts: KoishiSinkOptions): NotificationSink {
 				return h("message", parts);
 			}
 			case "forward-images": {
-				const images = payload.urls.map((url) => h.image(url));
+				const images = payload.images.map((img) => h.image(img.url));
 				// payload.forward 由 dynamic engine config 的 imageGroup.forward 决定:
 				//   true  → 合并转发(koishi onebot adapter 看到 forward:true 调
 				//           sendGroupForwardMsg → NapCat SsoSendLongMsg,部分部署不稳)
