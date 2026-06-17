@@ -32,14 +32,23 @@ export class FileKeyProvider implements KeyProvider {
 	readonly resettable = true;
 	readonly protected = false;
 	private readonly km: KeyManager;
+	private keyPromise: Promise<Buffer> | null = null;
 	constructor(keyPath: string, logger: Logger) {
 		this.km = new KeyManager(keyPath, logger);
 	}
 	getKey(): Promise<Buffer> {
-		return this.km.loadOrCreate();
+		if (this.keyPromise) return this.keyPromise;
+		return this.cache(this.km.loadOrCreate());
 	}
 	resetKey(): Promise<Buffer> {
-		return this.km.createNew();
+		return this.cache(this.km.createNew());
+	}
+	private cache(p: Promise<Buffer>): Promise<Buffer> {
+		this.keyPromise = p;
+		p.catch(() => {
+			if (this.keyPromise === p) this.keyPromise = null;
+		});
+		return p;
 	}
 }
 

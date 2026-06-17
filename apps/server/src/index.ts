@@ -94,6 +94,12 @@ export async function startStandaloneServer(
 			`starting bilibili-notify standalone server: host=${bootstrap.server.host} port=${bootstrap.server.port} dataDir=${bootstrap.dataDir} logLevel=${bootstrap.logLevel}`,
 		);
 
+		// Load the at-rest secrets key during startup, not on the first settings write.
+		// Without this eager touch, zero-auth local runs only hit the key lazily when
+		// SecretStore.save() is first needed (e.g. changing rules.restartPush), making
+		// the normal "主密钥加载成功" log look like it was caused by that setting.
+		await runtime.keyProvider.getKey();
+
 		// Load on-disk runtime config (state/globals.json, state/subscriptions.json, state/targets.json).
 		// Seeds defaults on first boot. Failure here is fatal — we don't want to start serving HTTP
 		// against a corrupt or unreadable state dir.
