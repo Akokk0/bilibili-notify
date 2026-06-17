@@ -264,6 +264,7 @@ export function Input({
 
 const PLATFORM_META: Record<string, { color: string; label: string; icon?: IconName }> = {
 	onebot: { color: "#3b82f6", label: "OneBot", icon: "qq" },
+	"qq-official": { color: "#14b8a6", label: "QQ官方", icon: "qq" },
 	webhook: { color: "#22c55e", label: "Webhook" },
 	"web-dashboard": { color: "#a29bfe", label: "Dashboard" },
 };
