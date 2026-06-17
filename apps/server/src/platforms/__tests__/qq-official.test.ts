@@ -2,7 +2,10 @@ import type { NotificationPayload } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vitest";
 import {
 	buildQQFileUpload,
+	buildQQMarkdownGallery,
+	buildQQV2MarkdownMessage,
 	buildQQV2Message,
+	QQ_MSG_TYPE,
 	qqMessageEndpoint,
 	qqPayloadToParts,
 } from "../qq-official";
@@ -129,5 +132,30 @@ describe("qqPayloadToParts — NotificationPayload → 有序发送片段", () =
 			segments: [{ type: "link", href: "https://t.bilibili.com/2" }],
 		};
 		expect(qqPayloadToParts(payload)).toEqual([{ kind: "text", text: "https://t.bilibili.com/2" }]);
+	});
+});
+
+describe("buildQQMarkdownGallery — 图集合并成一条多图 markdown(私域绕过无合并转发)", () => {
+	it("带尺寸 → `![图片 #宽px #高px](url)` 每行一图", () => {
+		const md = buildQQMarkdownGallery([
+			{ url: "https://i0.hdslb.com/a.jpg", width: 800, height: 600 },
+			{ url: "https://i0.hdslb.com/b.jpg", width: 1080, height: 1920 },
+		]);
+		expect(md).toBe(
+			"![图片 #800px #600px](https://i0.hdslb.com/a.jpg)\n" +
+				"![图片 #1080px #1920px](https://i0.hdslb.com/b.jpg)",
+		);
+	});
+
+	it("缺尺寸 → 退化为无尺寸 `![图片](url)`", () => {
+		expect(buildQQMarkdownGallery([{ url: "https://x/a.jpg" }])).toBe("![图片](https://x/a.jpg)");
+	});
+});
+
+describe("buildQQV2MarkdownMessage — 群/C2C 原生 markdown 消息体", () => {
+	it("msg_type 2(MARKDOWN)+ markdown.content,不带顶层 content", () => {
+		const body = buildQQV2MarkdownMessage("![图片](u)");
+		expect(body).toEqual({ msg_type: QQ_MSG_TYPE.MARKDOWN, markdown: { content: "![图片](u)" } });
+		expect("content" in body).toBe(false);
 	});
 });

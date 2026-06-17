@@ -181,6 +181,62 @@ describe("createQQOfficialAdapter — send 图片(群/C2C 两步上传)", () => 
 	});
 });
 
+describe("createQQOfficialAdapter — 图集 markdown 门控(按 botType)", () => {
+	const GALLERY: NotificationPayload = {
+		kind: "forward-images",
+		images: [
+			{ url: "https://i0.hdslb.com/1.jpg", width: 800, height: 600 },
+			{ url: "https://i0.hdslb.com/2.jpg", width: 1000, height: 1000 },
+		],
+		forward: true,
+	};
+
+	it("私域 group:图集合并成一条 markdown(msg_type 2),不走 /files 上传", async () => {
+		const ad = createQQOfficialAdapter(adapterOpts());
+		const r = await ad.send(
+			qqAdapter({ botType: "private" }),
+			qqTarget("group", { groupOpenid: "G1" }),
+			GALLERY,
+		);
+		expect(r.ok).toBe(true);
+		expect(callsTo("/files")).toHaveLength(0); // markdown 不上传
+		const msg = callsTo("/v2/groups/G1/messages");
+		expect(msg).toHaveLength(1); // 一条搞定
+		const body = bodyOf(msg[0] as unknown[]);
+		expect(body.msg_type).toBe(2);
+		const content = (body.markdown as { content: string }).content;
+		expect(content).toContain("![图片 #800px #600px](https://i0.hdslb.com/1.jpg)");
+		expect(content).toContain("![图片 #1000px #1000px](https://i0.hdslb.com/2.jpg)");
+	});
+
+	it("公域 group:图集走 N 条 media(每图 /files + /messages),不发 markdown", async () => {
+		const ad = createQQOfficialAdapter(adapterOpts());
+		const r = await ad.send(
+			qqAdapter({ botType: "public" }),
+			qqTarget("group", { groupOpenid: "G1" }),
+			GALLERY,
+		);
+		expect(r.ok).toBe(true);
+		expect(callsTo("/v2/groups/G1/files")).toHaveLength(2); // 两图各上传一次
+		const msgs = callsTo("/v2/groups/G1/messages");
+		expect(msgs).toHaveLength(2);
+		expect(bodyOf(msgs[0] as unknown[]).msg_type).toBe(7); // media,非 markdown
+	});
+
+	it("私域 channel:图集不走 markdown(频道用频道消息 API,markdown 仅群/C2C)", async () => {
+		const ad = createQQOfficialAdapter(adapterOpts());
+		const r = await ad.send(
+			qqAdapter({ botType: "private" }),
+			qqTarget("channel", { channelId: "C1" }),
+			GALLERY,
+		);
+		expect(r.ok).toBe(true);
+		const msgs = callsTo("/channels/C1/messages");
+		expect(msgs).toHaveLength(2); // 每图一条频道消息(image url)
+		expect(bodyOf(msgs[0] as unknown[]).markdown).toBeUndefined();
+	});
+});
+
 describe("createQQOfficialAdapter — A+ 投递语义 / 失败", () => {
 	it("202 + 审核中 → DeliveryResult ok(已提交)", async () => {
 		fetchMock.mockImplementation(async (url: string) => {

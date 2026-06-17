@@ -661,6 +661,34 @@ export function buildQQV2Message(opts: { content?: string; fileInfo?: string }):
 }
 
 /**
+ * 把图集合并成一条多图 markdown 文本(QQ 原生 markdown 图片语法
+ * `![图片 #宽px #高px](url)`,每行一图)。**这是绕过 QQ「无合并转发」的关键** ——
+ * 私域机器人可一条消息带多张图。尺寸来自 B站图集元数据;缺失则退化为无尺寸
+ * `![图片](url)`(QQ 可能按默认尺寸渲染)。依赖 QQ 能拉取图片 url(hdslb 公网可达)。
+ */
+export function buildQQMarkdownGallery(
+	images: { url: string; width?: number; height?: number }[],
+): string {
+	return images
+		.map((img) => {
+			const dim = img.width && img.height ? ` #${img.width}px #${img.height}px` : "";
+			return `![图片${dim}](${img.url})`;
+		})
+		.join("\n");
+}
+
+/**
+ * 群/C2C 原生 markdown 消息体(msg_type 2)。仅私域机器人可发原生 markdown;
+ * 公域需报备模板,不走这里。不带顶层 content(对齐 @satorijs:markdown 时 delete content)。
+ */
+export function buildQQV2MarkdownMessage(content: string): {
+	msg_type: number;
+	markdown: { content: string };
+} {
+	return { msg_type: QQ_MSG_TYPE.MARKDOWN, markdown: { content } };
+}
+
+/**
  * 一条待发送片段。QQ 官方一条 media 消息只能带一张图,故图集/composite 会展开成多片段,
  * adapter 按序逐条发(图片片段:群/C2C 先富媒体上传拿 file_info 再发 media 消息;
  * 频道走 multipart `file_image`)。
@@ -1018,6 +1046,35 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				};
 			}
 			const headers = qqRestHeaders(token, cfg.appId);
+
+			// markdown 图集门控:仅私域机器人 + 群/C2C 的图集 → 合并成一条原生 markdown
+			// 多图(绕过 QQ「无合并转发」)。公域不支持原生 markdown(需报备模板),回落 N 条
+			// media;频道有独立消息 API,也不走这里。卡片 Buffer(image kind)永远走 media。
+			if (
+				payload.kind === "forward-images" &&
+				cfg.botType === "private" &&
+				(scope === "group" || scope === "private") &&
+				payload.images.length > 0
+			) {
+				try {
+					const { status, body } = await qqPostJson(
+						base,
+						headers,
+						endpoint.path,
+						buildQQV2MarkdownMessage(buildQQMarkdownGallery(payload.images)),
+					);
+					const verdict = interpretQQSend(status, body);
+					if (!verdict.ok) {
+						logger.warn(`[qq] target=${target.id} markdown 图集发送失败: ${verdict.err}`);
+						return { ok: false, latencyMs: Date.now() - t0, err: verdict.err };
+					}
+					return { ok: true, latencyMs: Date.now() - t0 };
+				} catch (e) {
+					const err = e instanceof Error ? e.message : String(e);
+					logger.warn(`[qq] target=${target.id} markdown 图集发送异常: ${err}`);
+					return { ok: false, latencyMs: Date.now() - t0, err };
+				}
+			}
 
 			const parts = qqPayloadToParts(payload);
 			if (parts.length === 0)
