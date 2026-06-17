@@ -645,23 +645,31 @@ export function buildQQFileUpload(buffer: Buffer): QQFileUploadBody {
 /** QQ 官方 v2(群/C2C)消息类型:0=文本 2=markdown 7=富媒体。 */
 export const QQ_MSG_TYPE = { TEXT: 0, MARKDOWN: 2, MEDIA: 7 } as const;
 
+export interface QQFileMedia {
+	file_info: string;
+	file_uuid?: string;
+	ttl?: number;
+	[key: string]: unknown;
+}
+
 export interface QQV2MessageBody {
 	content: string;
 	msg_type: number;
-	media?: { file_info: string };
+	media?: QQFileMedia;
 }
 
 /**
- * 群/C2C 单条消息体。带 `fileInfo` → 富媒体消息(msg_type 7;content 作图说明,QQ 要求
+ * 群/C2C 单条消息体。带 `media` → 富媒体消息(msg_type 7;content 作图说明,QQ 要求
  * content 非空,空时占位一个空格);否则纯文本(msg_type 0)。一条 media 消息只能带一张图,
- * 多图由 adapter 拆成多条消息。
+ * 多图由 adapter 拆成多条消息。media 需透传 /files 返回的完整对象(file_uuid/file_info/ttl),
+ * 对齐 @satorijs/adapter-qq;只塞 file_info 会让部分 QQ 官方接口拒绝发送。
  */
-export function buildQQV2Message(opts: { content?: string; fileInfo?: string }): QQV2MessageBody {
-	if (opts.fileInfo) {
+export function buildQQV2Message(opts: { content?: string; media?: QQFileMedia }): QQV2MessageBody {
+	if (opts.media) {
 		return {
 			content: opts.content && opts.content.length > 0 ? opts.content : " ",
 			msg_type: QQ_MSG_TYPE.MEDIA,
-			media: { file_info: opts.fileInfo },
+			media: opts.media,
 		};
 	}
 	return { content: opts.content ?? "", msg_type: QQ_MSG_TYPE.TEXT };
@@ -703,7 +711,37 @@ export function buildQQV2MarkdownMessage(content: string): {
 export type QQSendPart =
 	| { kind: "text"; text: string }
 	| { kind: "image-buffer"; buffer: Buffer; caption?: string }
-	| { kind: "image-url"; url: string; width?: number; height?: number };
+	| { kind: "image-url"; url: string; width?: number; height?: number; caption?: string };
+
+function withCaption(part: QQSendPart, caption: string): QQSendPart {
+	if (part.kind === "text") return part;
+	const prev = part.caption?.trim();
+	const next = caption.trim();
+	if (!next) return part;
+	return { ...part, caption: prev ? `${prev}\n${next}` : next };
+}
+
+/**
+ * 对齐 @satorijs/adapter-qq 的「先图后文」:图片片段后紧跟的文本塞进同一条
+ * media 消息的 `content`,避免卡片图和通知文案被拆成两条 QQ 消息。
+ */
+function attachFollowingTextToImages(parts: QQSendPart[]): QQSendPart[] {
+	const out: QQSendPart[] = [];
+	for (let i = 0; i < parts.length; i += 1) {
+		let part = parts[i];
+		if (part?.kind === "image-buffer" || part?.kind === "image-url") {
+			const text: string[] = [];
+			while (parts[i + 1]?.kind === "text") {
+				const next = parts[i + 1];
+				if (next?.kind === "text" && next.text.trim().length > 0) text.push(next.text);
+				i += 1;
+			}
+			part = withCaption(part, text.join("\n"));
+		}
+		if (part) out.push(part);
+	}
+	return out;
+}
 
 /**
  * 把平台中立 `NotificationPayload` 翻译成有序发送片段。QQ 无「合并转发」,多图一律展开成
@@ -733,7 +771,7 @@ export function qqPayloadToParts(payload: NotificationPayload): QQSendPart[] {
 					parts.push({ kind: "text", text: seg.title ? `${seg.title} ${seg.href}` : seg.href });
 				// at-all:QQ 群 @全体需特殊权限,best-effort 跳过,不阻断推送。
 			}
-			return parts;
+			return attachFollowingTextToImages(parts);
 		}
 		default:
 			return [];
@@ -787,10 +825,11 @@ async function qqUploadMedia(
 	scope: "group" | "private",
 	openid: string,
 	upload: QQFileUploadBody | { file_type: number; srv_send_msg: boolean; url: string },
-): Promise<{ ok: true; fileInfo: string } | { ok: false; err: string }> {
+): Promise<{ ok: true; media: QQFileMedia } | { ok: false; err: string }> {
 	const { status, body } = await qqPostJson(base, headers, qqFilesPath(scope, openid), upload);
-	const fileInfo = (body as { file_info?: unknown })?.file_info;
-	if (typeof fileInfo === "string") return { ok: true, fileInfo };
+	const data = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+	const fileInfo = data.file_info;
+	if (typeof fileInfo === "string") return { ok: true, media: { ...data, file_info: fileInfo } };
 	const verdict = interpretQQSend(status, body);
 	return { ok: false, err: verdict.ok ? "上传成功但无 file_info" : verdict.err };
 }
@@ -941,7 +980,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				return qqPostJson(base, headers, messagesPath, { content: part.text });
 			}
 			if (part.kind === "image-url") {
-				return qqPostJson(base, headers, messagesPath, { content: " ", image: part.url });
+				return qqPostJson(base, headers, messagesPath, {
+					content: part.caption ?? " ",
+					image: part.url,
+				});
 			}
 			return qqPostChannelForm(base, headers, channelId, part.caption ?? " ", part.buffer);
 		}
@@ -957,13 +999,9 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				: { file_type: QQ_FILE_TYPE_IMAGE, srv_send_msg: false, url: part.url };
 		const up = await qqUploadMedia(base, headers, gScope, openid, upload);
 		if (!up.ok) return { err: up.err };
-		const content = part.kind === "image-buffer" ? part.caption : undefined;
-		return qqPostJson(
-			base,
-			headers,
-			messagesPath,
-			buildQQV2Message({ content, fileInfo: up.fileInfo }),
-		);
+		const content =
+			part.kind === "image-buffer" || part.kind === "image-url" ? part.caption : undefined;
+		return qqPostJson(base, headers, messagesPath, buildQQV2Message({ content, media: up.media }));
 	}
 
 	return {

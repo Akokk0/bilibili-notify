@@ -68,7 +68,8 @@ beforeEach(() => {
 	fetchMock = vi.fn(async (url: string) => {
 		if (url.includes("getAppAccessToken"))
 			return res(200, { access_token: "TKN", expires_in: 7200 });
-		if (url.endsWith("/files")) return res(200, { file_info: "FILEINFO" });
+		if (url.endsWith("/files"))
+			return res(200, { file_uuid: "FUUID", file_info: "FILEINFO", ttl: 3600 });
 		if (url.endsWith("/messages")) return res(200, { id: "MSG1", timestamp: "t" });
 		return res(200, {});
 	});
@@ -163,8 +164,29 @@ describe("createQQOfficialAdapter — send 图片(群/C2C 两步上传)", () => 
 		expect(msg).toHaveLength(1);
 		const msgBody = bodyOf(msg[0] as unknown[]);
 		expect(msgBody.msg_type).toBe(7);
-		expect(msgBody.media).toEqual({ file_info: "FILEINFO" });
+		expect(msgBody.media).toEqual({ file_uuid: "FUUID", file_info: "FILEINFO", ttl: 3600 });
 		expect(msgBody.content).toBe("阿绫开播了");
+	});
+
+	it("group composite 卡片图+文案:合并成一条 media 消息", async () => {
+		const ad = createQQOfficialAdapter(adapterOpts());
+		const r = await ad.send(qqAdapter(), qqTarget("group", { groupOpenid: "G1" }), {
+			kind: "composite",
+			segments: [
+				{ type: "image", buffer: Buffer.from("png-bytes"), mime: "image/png" },
+				{ type: "text", text: "阿绫开播了" },
+			],
+		});
+		expect(r.ok).toBe(true);
+		expect(callsTo("/v2/groups/G1/files")).toHaveLength(1);
+		const msg = callsTo("/v2/groups/G1/messages");
+		expect(msg).toHaveLength(1);
+		const msgBody = bodyOf(msg[0] as unknown[]);
+		expect(msgBody).toMatchObject({
+			content: "阿绫开播了",
+			msg_type: 7,
+			media: { file_uuid: "FUUID", file_info: "FILEINFO", ttl: 3600 },
+		});
 	});
 
 	it("channel 图片:multipart file_image 单条(body 是 FormData,无 content-type 头)", async () => {

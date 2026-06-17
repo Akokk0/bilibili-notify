@@ -61,16 +61,21 @@ describe("buildQQV2Message — 群/C2C 消息体", () => {
 		});
 	});
 
-	it("fileInfo + content → media 消息(msg_type 7),content 作图说明", () => {
-		expect(buildQQV2Message({ content: "看图", fileInfo: "FINFO" })).toEqual({
+	it("media + content → media 消息(msg_type 7),content 作图说明,透传完整 /files 返回", () => {
+		expect(
+			buildQQV2Message({
+				content: "看图",
+				media: { file_uuid: "FUUID", file_info: "FINFO", ttl: 3600 },
+			}),
+		).toEqual({
 			content: "看图",
 			msg_type: 7,
-			media: { file_info: "FINFO" },
+			media: { file_uuid: "FUUID", file_info: "FINFO", ttl: 3600 },
 		});
 	});
 
-	it("fileInfo 无 content → content 占位空格(QQ 要求 content 非空)", () => {
-		expect(buildQQV2Message({ fileInfo: "FINFO" })).toEqual({
+	it("media 无 content → content 占位空格(QQ 要求 content 非空)", () => {
+		expect(buildQQV2Message({ media: { file_info: "FINFO" } })).toEqual({
 			content: " ",
 			msg_type: 7,
 			media: { file_info: "FINFO" },
@@ -108,7 +113,7 @@ describe("qqPayloadToParts — NotificationPayload → 有序发送片段", () =
 		]);
 	});
 
-	it("composite → 按段映射:image→image-buffer、text/link→text、at-all 跳过", () => {
+	it("composite 的 image 后续 text/link → 合并为同一条 media content", () => {
 		const buf = Buffer.from("card");
 		const payload: NotificationPayload = {
 			kind: "composite",
@@ -120,9 +125,23 @@ describe("qqPayloadToParts — NotificationPayload → 有序发送片段", () =
 			],
 		};
 		expect(qqPayloadToParts(payload)).toEqual([
-			{ kind: "image-buffer", buffer: buf },
-			{ kind: "text", text: "标题" },
-			{ kind: "text", text: "动态 https://t.bilibili.com/1" },
+			{ kind: "image-buffer", buffer: buf, caption: "标题\n动态 https://t.bilibili.com/1" },
+		]);
+	});
+
+	it("composite 的前置 text 不并入后续图片(对齐 Koishi 先图后文)", () => {
+		const buf = Buffer.from("card");
+		const payload: NotificationPayload = {
+			kind: "composite",
+			segments: [
+				{ type: "text", text: "前置" },
+				{ type: "image", buffer: buf, mime: "image/png" },
+				{ type: "text", text: "后置" },
+			],
+		};
+		expect(qqPayloadToParts(payload)).toEqual([
+			{ kind: "text", text: "前置" },
+			{ kind: "image-buffer", buffer: buf, caption: "后置" },
 		]);
 	});
 
