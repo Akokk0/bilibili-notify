@@ -178,10 +178,14 @@ export function createQQTokenManager(opts: QQTokenManagerOptions): QQTokenManage
 			refreshTimer?.dispose();
 			const delayMs = Math.max(expiresInSec - buffer, 1) * 1000;
 			refreshTimer = opts.serviceCtx.setTimeout(() => {
-				tokenPromise = refresh().catch((e) => {
+				// 定时刷新没有 awaiter:成功时把新 token 缓存进 tokenPromise(后续 getToken 直接命中),
+				// 失败时清空让下次 getToken 重试。错误处理器不 re-throw —— 否则这条无人 await 的
+				// 拒绝 Promise 会触发 unhandledRejection(strict 模式下可崩进程)。
+				const p = refresh();
+				tokenPromise = p;
+				p.catch((e) => {
 					opts.logger.warn(`[qq] App Access Token 刷新失败,下次发送将重试: ${String(e)}`);
-					tokenPromise = null;
-					throw e;
+					if (tokenPromise === p) tokenPromise = null;
 				});
 			}, delayMs);
 		}
@@ -235,9 +239,10 @@ export function extractQQDiscoveredSession(
 		return { scope: "group", openid, ...(hint ? { displayHint: hint } : {}) };
 	}
 	if (eventType === "C2C_MESSAGE_CREATE" || eventType === "FRIEND_ADD") {
-		const openid = (author?.user_openid ?? author?.member_openid ?? data.openid) as
-			| string
-			| undefined;
+		// 只认 C2C 用户 openid(author.user_openid)/ FRIEND_ADD 顶层 openid。绝不回退
+		// author.member_openid —— 那是群成员域的身份,与 C2C 用户 openid 是两个命名空间,
+		// 拿它当 C2C 地址会发错人 / 404。
+		const openid = (author?.user_openid ?? data.openid) as string | undefined;
 		if (!openid) return null;
 		return { scope: "private", openid, ...(hint ? { displayHint: hint } : {}) };
 	}
@@ -596,13 +601,15 @@ export function interpretQQSend(status: number, body: unknown): QQSendVerdict {
 		message_audit?: { audit_id?: unknown };
 	};
 	const auditId = b.data?.message_audit?.audit_id ?? b.message_audit?.audit_id;
-	if (typeof auditId === "string") return { ok: true, pendingAudit: true, auditId };
 	const code = typeof b.code === "number" ? b.code : undefined;
 	const message =
 		(typeof b.message === "string" && b.message) ||
 		(typeof b.msg === "string" && b.msg) ||
 		`HTTP ${status}`;
 	if (status >= 200 && status < 300) {
+		// audit 判定收进 2xx 门内:主动推送的审核回执是 HTTP 202;非 2xx 错误体即便
+		// 回带 audit_id 也是失败,不能误判成「已提交·审核中」而吞掉一条发不出去的推送。
+		if (typeof auditId === "string") return { ok: true, pendingAudit: true, auditId };
 		if (typeof b.id === "string" || typeof b.id === "number") return { ok: true, id: String(b.id) };
 		// 2xx 但带非零业务 code 且无 id/audit = QQ 以 200 包装的业务错误。
 		if (code !== undefined && code !== 0) return { ok: false, err: `code ${code}: ${message}` };
@@ -988,13 +995,17 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 					registry.clear(id);
 				}
 			}
-			// 新建:期望但无 live(或刚被指纹变更删掉)。同时清掉兜底 token-only(网关接管)。
+			// 新建:期望但无 live(或刚被指纹变更删掉)。
 			for (const [id, a] of desired) {
 				if (live.has(id)) continue;
-				tokenOnly.get(id)?.dispose();
-				tokenOnly.delete(id);
 				live.set(id, makeLive(a));
 			}
+			// 全清兜底 token-only:它仅在 reconcile 跑之前给 send 取 token 用。reconcile 后,
+			// desired 适配器都有 live(自带 tm),非 desired 的会被 isAvailable 挡掉不再 send ——
+			// 故此刻所有 tokenOnly 都是 stale。逐 id 只清 desired 会漏掉「曾被 send、后被删除/
+			// 禁用」的适配器,泄漏其刷新定时器,这里整张清掉根治。
+			for (const tm of tokenOnly.values()) tm.dispose();
+			tokenOnly.clear();
 		},
 
 		dispose(): void {
