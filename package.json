@@ -44,11 +44,11 @@
 		"@commitlint/cli": "^20.5.0",
 		"@commitlint/config-conventional": "^20.5.0",
 		"@types/node": "^22.15.21",
-		"@voidzero-dev/vite-plus-core": "^0.1.22",
+		"@voidzero-dev/vite-plus-core": "0.2.1",
 		"knip": "^6.14.1",
 		"lefthook": "^1.11.12",
 		"typescript": "^5.8.3",
-		"vite-plus": "^0.1.22",
-		"vitest": "^4.1.6"
+		"vite-plus": "0.2.1",
+		"vitest": "4.1.9"
 	}
 }

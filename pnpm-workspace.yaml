@@ -14,8 +14,8 @@ packages:
 # jump with breaking config/plugin API. We intentionally do NOT override
 # vitest yet, since apps/server's test pipeline isn't part of this spike.
 overrides:
-  "@bilibili-notify/web>vite": "npm:@voidzero-dev/vite-plus-core@^0.1.20"
-  "@bilibili-notify/astrbot-page>vite": "npm:@voidzero-dev/vite-plus-core@^0.1.20"
+  "@bilibili-notify/web>vite": "npm:@voidzero-dev/vite-plus-core@0.2.1"
+  "@bilibili-notify/astrbot-page>vite": "npm:@voidzero-dev/vite-plus-core@0.2.1"
 
 # Match the previous yarn classic-style flat hoist, so koishi's plugin loader
 # (which expects deps to live in a single hoisted node_modules tree) keeps
@@ -37,14 +37,13 @@ allowBuilds:
   vue-demi: true # writes vue 2/3 shim at install time
 
 minimumReleaseAgeExclude:
-  - '@voidzero-dev/vite-plus-core@0.1.22'
-  - '@voidzero-dev/vite-plus-darwin-arm64@0.1.22'
-  - '@voidzero-dev/vite-plus-darwin-x64@0.1.22'
-  - '@voidzero-dev/vite-plus-linux-arm64-gnu@0.1.22'
-  - '@voidzero-dev/vite-plus-linux-arm64-musl@0.1.22'
-  - '@voidzero-dev/vite-plus-linux-x64-gnu@0.1.22'
-  - '@voidzero-dev/vite-plus-linux-x64-musl@0.1.22'
-  - '@voidzero-dev/vite-plus-test@0.1.22'
-  - '@voidzero-dev/vite-plus-win32-arm64-msvc@0.1.22'
-  - '@voidzero-dev/vite-plus-win32-x64-msvc@0.1.22'
-  - vite-plus@0.1.22
+  - '@voidzero-dev/vite-plus-core@0.2.1'
+  - '@voidzero-dev/vite-plus-darwin-arm64@0.2.1'
+  - '@voidzero-dev/vite-plus-darwin-x64@0.2.1'
+  - '@voidzero-dev/vite-plus-linux-arm64-gnu@0.2.1'
+  - '@voidzero-dev/vite-plus-linux-arm64-musl@0.2.1'
+  - '@voidzero-dev/vite-plus-linux-x64-gnu@0.2.1'
+  - '@voidzero-dev/vite-plus-linux-x64-musl@0.2.1'
+  - '@voidzero-dev/vite-plus-win32-arm64-msvc@0.2.1'
+  - '@voidzero-dev/vite-plus-win32-x64-msvc@0.2.1'
+  - vite-plus@0.2.1
