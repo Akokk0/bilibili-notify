@@ -51,7 +51,7 @@ function AccountChip() {
 						alt={name}
 						src={face}
 						referrerPolicy="no-referrer"
-						className="ml-2 inline-block h-5 w-5 rounded-full ring-2 ring-white"
+						className="ml-2 inline-block h-5 w-5 rounded-full"
 					/>
 				) : null}
 			</span>

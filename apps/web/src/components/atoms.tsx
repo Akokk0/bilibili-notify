@@ -25,9 +25,9 @@ export function Avatar({ name, color, size = 44, ring = false, status, url }: Av
 	const inner: CSSProperties = {
 		width: size,
 		height: size,
-		background: url ? "white" : `linear-gradient(135deg, ${color}, ${color}dd)`,
+		background: url ? "var(--color-bn-surface)" : `linear-gradient(135deg, ${color}, ${color}dd)`,
 		fontSize: Math.round(size * 0.4),
-		border: ring ? "3px solid white" : "2px solid white",
+		border: ring ? "3px solid var(--color-bn-surface)" : "2px solid var(--color-bn-surface)",
 	};
 	return (
 		<div className="relative shrink-0" style={{ width: size, height: size }}>

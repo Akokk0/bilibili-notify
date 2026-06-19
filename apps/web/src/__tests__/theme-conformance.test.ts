@@ -34,6 +34,10 @@ const BANNED = [
 	// 与 amber-500 强调色合法,不拦。
 	{ re: /\bbg-amber-(?:50|100)\b/g, hint: "改用 bg-bn-warning-soft" },
 	{ re: /\btext-amber-(?:700|800|900)\b/g, hint: "改用 text-bn-warning-text" },
+	// ring-gray 是 border-gray 的描边孪生:暗色下浅灰 ring 在深底上变白边。先前只 ban
+	// border-gray 漏了 ring 变体(订阅 UP 卡片的白描边即此)。
+	{ re: /\bring-gray-(?:100|200|300)\b/g, hint: "改用 ring-bn-border / ring-bn-pink" },
+	{ re: /\bring-white(?:\/\d+)?\b/g, hint: "改用 ring-bn-border / ring-bn-surface" },
 ];
 
 // 注:本扫描只看 className 文本,不覆盖内联 style 里的硬编码颜色(如 style={{ background: "#f5f5f5" }})

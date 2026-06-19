@@ -58,7 +58,7 @@ export function UpCard({
 			onMouseEnter={() => setHover(true)}
 			onMouseLeave={() => setHover(false)}
 			className={`group relative cursor-pointer overflow-hidden rounded-xl text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink ${
-				selected ? "ring-2 ring-bn-pink" : "ring-1 ring-gray-200"
+				selected ? "ring-2 ring-bn-pink" : "ring-1 ring-bn-border"
 			} ${hover ? "-translate-y-0.5 shadow-bn-elev" : "shadow-sm"} ${
 				sub.enabled ? "" : "opacity-70"
 			} bg-bn-surface`}
