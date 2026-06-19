@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Btn, PlatformIcon, platformLabel, StatusDot, Toggle } from "../components/atoms";
 import { ModalShell } from "../components/dialog";
-import { Field, TInput, TNum, TSelect } from "../components/forms";
+import { Field, Picker, TInput, TNum, TSelect } from "../components/forms";
 import { Icon } from "../components/icons";
 import { ApiError, api } from "../services/api";
 import {
@@ -586,7 +586,7 @@ function AdapterConnectionFields({
 					required
 					hint="私域可发原生 markdown(图集合并成一条多图);公域不支持原生 markdown(图集逐条发,需报备模板)"
 				>
-					<TSelect<QQOfficialBotType>
+					<Picker<QQOfficialBotType>
 						value={cfg.botType}
 						onChange={(v) => setCfg({ ...cfg, botType: v })}
 						options={[
