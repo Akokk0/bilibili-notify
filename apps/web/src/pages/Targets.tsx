@@ -177,7 +177,7 @@ function TargetCard({
 
 	return (
 		<div
-			className="rounded-[10px] border bg-white p-3.5 transition-[border-color] duration-200"
+			className="rounded-[10px] border bg-bn-surface p-3.5 transition-[border-color] duration-200"
 			style={{
 				borderColor: adapterMissing ? "#fca5a5" : "rgba(0,0,0,0.06)",
 			}}
@@ -205,8 +205,16 @@ function TargetCard({
 					className="mb-2 rounded-sm border-l-[3px] px-2 py-0.5 text-[10.5px]"
 					style={
 						testStatus.ok
-							? { background: "#f0fdf4", borderLeftColor: "#22c55e", color: "#166534" }
-							: { background: "#fef2f2", borderLeftColor: "#ef4444", color: "#991b1b" }
+							? {
+									background: "var(--color-bn-success-soft)",
+									borderLeftColor: "#22c55e",
+									color: "var(--color-bn-success-text)",
+								}
+							: {
+									background: "var(--color-bn-danger-soft)",
+									borderLeftColor: "#ef4444",
+									color: "var(--color-bn-danger-text)",
+								}
 					}
 				>
 					{testStatus.ok
@@ -277,7 +285,7 @@ function AddCard({ label, hint, onClick, disabled }: AddCardProps) {
 			type="button"
 			onClick={onClick}
 			disabled={disabled}
-			className="flex h-full min-h-22 flex-col items-center justify-center rounded-[10px] border border-dashed border-gray-300 bg-white px-3 py-4 text-center transition hover:border-bn-pink hover:bg-bn-pink/5 disabled:cursor-not-allowed disabled:opacity-60"
+			className="flex h-full min-h-22 flex-col items-center justify-center rounded-[10px] border border-dashed border-bn-border bg-bn-surface px-3 py-4 text-center transition hover:border-bn-pink hover:bg-bn-pink/5 disabled:cursor-not-allowed disabled:opacity-60"
 		>
 			<span className="text-[20px] leading-none text-bn-text-tertiary">＋</span>
 			<span className="mt-1 text-[12.5px] font-semibold text-bn-text-primary">{label}</span>
@@ -336,9 +344,9 @@ function AdapterEditorModal({
 														borderColor: `${pTint}55`,
 													}
 												: {
-														background: "#f5f5f5",
-														color: "#666",
-														borderColor: "#ececec",
+														background: "var(--color-bn-surface-muted)",
+														color: "var(--color-bn-text-tertiary)",
+														borderColor: "var(--color-bn-border)",
 													}
 										}
 									>
@@ -389,7 +397,7 @@ function AdapterEditorModal({
 			</div>
 
 			{error ? (
-				<div className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+				<div className="mt-3 rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
 					{error}
 				</div>
 			) : null}
@@ -431,7 +439,11 @@ function AdapterConnectionFields({
 									style={
 										active
 											? { background: "#3b82f618", color: "#3b82f6", borderColor: "#3b82f655" }
-											: { background: "#f5f5f5", color: "#666", borderColor: "#ececec" }
+											: {
+													background: "var(--color-bn-surface-muted)",
+													color: "var(--color-bn-text-tertiary)",
+													borderColor: "var(--color-bn-border)",
+												}
 									}
 								>
 									{t.label}
@@ -730,7 +742,7 @@ function TargetEditorModal({
 					accent={tint}
 				>
 					{eligibleAdapters.length === 0 ? (
-						<div className="rounded-md border border-dashed border-gray-200 px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
+						<div className="rounded-md border border-dashed border-bn-border px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
 							尚未配置任何可手动绑定的适配器 · Webhook 目标由系统自动托管
 						</div>
 					) : (
@@ -755,8 +767,8 @@ function TargetEditorModal({
 														borderColor: `${aTint}55`,
 													}
 												: {
-														background: "#fff",
-														borderColor: "#ececec",
+														background: "var(--color-bn-surface)",
+														borderColor: "var(--color-bn-border)",
 													}
 										}
 									>
@@ -817,9 +829,9 @@ function TargetEditorModal({
 														borderColor: "#FB729955",
 													}
 												: {
-														background: "#f5f5f5",
-														color: "#666",
-														borderColor: "#ececec",
+														background: "var(--color-bn-surface-muted)",
+														color: "var(--color-bn-text-tertiary)",
+														borderColor: "var(--color-bn-border)",
 													}
 										}
 									>
@@ -856,7 +868,7 @@ function TargetEditorModal({
 			</div>
 
 			{error ? (
-				<div className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+				<div className="mt-3 rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
 					{error}
 				</div>
 			) : null}
@@ -1062,7 +1074,7 @@ function QQSessionPicker({
 							key={e.openid}
 							type="button"
 							onClick={() => onPick(e.openid)}
-							className="flex items-center gap-2 rounded border border-bn-border bg-white px-2 py-1 text-left transition hover:border-bn-accent"
+							className="flex items-center gap-2 rounded border border-bn-border bg-bn-surface px-2 py-1 text-left transition hover:border-bn-accent"
 						>
 							<span className="truncate text-[11.5px] font-semibold text-bn-text-primary">
 								{e.displayHint ?? "(无名称)"}
@@ -1126,7 +1138,7 @@ function QQGuildPicker({
 											key={ch.channelId}
 											type="button"
 											onClick={() => onPick(g.guildId, ch.channelId)}
-											className="rounded border border-bn-border bg-white px-2 py-0.5 text-[11px] text-bn-text-primary transition hover:border-bn-accent"
+											className="rounded border border-bn-border bg-bn-surface px-2 py-0.5 text-[11px] text-bn-text-primary transition hover:border-bn-accent"
 										>
 											{ch.name}
 										</button>
@@ -1204,7 +1216,7 @@ function DeleteModal({
 				) : null}
 			</div>
 			{error ? (
-				<div className="mb-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+				<div className="mb-3 rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
 					{error}
 				</div>
 			) : null}
@@ -1285,13 +1297,13 @@ function AdapterRail({
 				<button
 					type="button"
 					onClick={onAddClick}
-					className="rounded-md border border-dashed border-gray-300 px-2 py-0.5 text-[10.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
+					className="rounded-md border border-dashed border-bn-border px-2 py-0.5 text-[10.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
 				>
 					+ 新建
 				</button>
 			</div>
 			{adapters.length === 0 ? (
-				<div className="rounded-[9px] border border-dashed border-gray-200 bg-white/55 px-3 py-3 text-center text-[11px] text-bn-text-tertiary">
+				<div className="rounded-[9px] border border-dashed border-bn-border bg-bn-surface/55 px-3 py-3 text-center text-[11px] text-bn-text-tertiary">
 					尚未配置任何适配器
 				</div>
 			) : (
@@ -1307,8 +1319,8 @@ function AdapterRail({
 								onClick={() => onPick(a.id)}
 								className={`flex w-full min-w-0 items-start gap-2.5 rounded-[9px] border px-3 py-2.5 text-left transition ${
 									active
-										? "border-bn-pink/35 bg-white/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
-										: "border-transparent hover:bg-white/55"
+										? "border-bn-pink/35 bg-bn-surface/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+										: "border-transparent hover:bg-bn-surface/55"
 								}`}
 							>
 								<span
@@ -1661,11 +1673,11 @@ export default function Targets() {
 
 				<div className="space-y-4">
 					{isLoading ? (
-						<div className="rounded-bn-card bg-white p-6 shadow-bn-card">
-							<div className="h-20 animate-pulse rounded-[10px] bg-gray-100" />
+						<div className="rounded-bn-card bg-bn-surface p-6 shadow-bn-card">
+							<div className="h-20 animate-pulse rounded-[10px] bg-bn-surface-muted" />
 						</div>
 					) : !selectedAdapter ? (
-						<div className="rounded-bn-card bg-white p-8 text-center shadow-bn-card">
+						<div className="rounded-bn-card bg-bn-surface p-8 text-center shadow-bn-card">
 							<div className="mb-1 text-[14px] font-bold text-bn-text-primary">还没有适配器</div>
 							<div className="mb-4 text-[11.5px] text-bn-text-tertiary">
 								先在左侧新建一个适配器(OneBot HTTP / Webhook / Dashboard
@@ -1678,7 +1690,7 @@ export default function Targets() {
 					) : (
 						<>
 							{/* Adapter detail header */}
-							<div className="rounded-bn-card bg-white p-4 shadow-bn-card">
+							<div className="rounded-bn-card bg-bn-surface p-4 shadow-bn-card">
 								<div className="flex items-start gap-3">
 									<div
 										className="grid h-11 w-11 shrink-0 place-items-center rounded-lg"
@@ -1706,14 +1718,14 @@ export default function Targets() {
 												style={
 													selectedAdapterTestStatus.ok
 														? {
-																background: "#f0fdf4",
+																background: "var(--color-bn-success-soft)",
 																borderLeftColor: "#22c55e",
-																color: "#166534",
+																color: "var(--color-bn-success-text)",
 															}
 														: {
-																background: "#fffbeb",
+																background: "var(--color-bn-warning-soft)",
 																borderLeftColor: "#f59e0b",
-																color: "#92400e",
+																color: "var(--color-bn-warning-text)",
 															}
 												}
 											>
@@ -1776,7 +1788,7 @@ export default function Targets() {
 							</div>
 
 							{/* Targets bound to this adapter */}
-							<div className="rounded-bn-card bg-white p-4 shadow-bn-card">
+							<div className="rounded-bn-card bg-bn-surface p-4 shadow-bn-card">
 								<div className="mb-3 flex items-baseline justify-between">
 									<div>
 										<div className="text-[14px] font-bold text-bn-text-primary">
@@ -1800,7 +1812,7 @@ export default function Targets() {
 								</div>
 								{selectedAdapter.platform === "webhook" ? (
 									<div className="space-y-2.5">
-										<div className="rounded-[9px] border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-[11.5px] leading-relaxed text-emerald-800">
+										<div className="rounded-[9px] border border-emerald-100 bg-bn-success-soft/70 px-3 py-2 text-[11.5px] leading-relaxed text-emerald-800">
 											无需手动配置额外 PushTarget；订阅页会看到这个 Webhook，可直接选择并投递。
 										</div>
 										{selectedManagedWebhookTarget ? (
@@ -1816,7 +1828,7 @@ export default function Targets() {
 												/>
 											</div>
 										) : (
-											<div className="rounded-[9px] border border-dashed border-gray-200 px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
+											<div className="rounded-[9px] border border-dashed border-bn-border px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
 												保存 Webhook 后系统会自动创建默认投递目标。
 											</div>
 										)}

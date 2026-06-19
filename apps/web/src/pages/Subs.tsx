@@ -52,8 +52,8 @@ function GroupChip({
 	const cls = active
 		? "border border-bn-pink bg-bn-pink/10 text-bn-pink"
 		: muted
-			? "border border-dashed border-gray-300 bg-white/60 text-bn-text-tertiary hover:text-bn-text-primary"
-			: "border border-gray-200 bg-white text-bn-text-secondary hover:border-bn-pink/60 hover:text-bn-text-primary";
+			? "border border-dashed border-bn-border bg-bn-surface/60 text-bn-text-tertiary hover:text-bn-text-primary"
+			: "border border-bn-border bg-bn-surface text-bn-text-secondary hover:border-bn-pink/60 hover:text-bn-text-primary";
 	return (
 		<button type="button" onClick={onClick} className={`${base} ${cls}`}>
 			<span className="max-w-[140px] truncate">{label}</span>
@@ -186,12 +186,12 @@ function NewSubDialog({
 				</Btn>
 			</div>
 			{duplicate ? (
-				<div className="mt-3 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
+				<div className="mt-3 rounded border border-bn-warning-border bg-bn-warning-soft p-2 text-xs text-bn-warning-text">
 					该 UID 已经在订阅列表中,无需重复添加
 				</div>
 			) : null}
 			{opErr ? (
-				<div className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+				<div className="mt-3 rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
 					{opErr}
 				</div>
 			) : null}
@@ -211,7 +211,7 @@ function NewSubDialog({
 				/>
 			) : null}
 			{error ? (
-				<div className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+				<div className="mt-3 rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
 					{error}
 				</div>
 			) : null}
@@ -242,11 +242,11 @@ function ProfilePreview({
 	subscribed: boolean;
 }) {
 	return (
-		<div className="mt-4 flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+		<div className="mt-4 flex items-center gap-3 rounded-lg border border-bn-border bg-bn-surface-muted p-3">
 			<img
 				src={profile.avatar}
 				alt={profile.name}
-				className="h-12 w-12 shrink-0 rounded-full bg-white object-cover"
+				className="h-12 w-12 shrink-0 rounded-full bg-bn-surface object-cover"
 				referrerPolicy="no-referrer"
 			/>
 			<div className="min-w-0 flex-1">
@@ -256,7 +256,7 @@ function ProfilePreview({
 					</span>
 					<span className="font-mono text-[10.5px] text-bn-text-tertiary">UID {profile.uid}</span>
 					{subscribed ? (
-						<span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-bn-text-tertiary">
+						<span className="rounded bg-bn-surface-muted px-1.5 py-0.5 text-[10px] font-semibold text-bn-text-tertiary">
 							已订阅
 						</span>
 					) : null}
@@ -294,7 +294,7 @@ function SearchResultList({
 	return (
 		<div className="mt-4 flex flex-col gap-1.5">
 			{data.results.length === 0 ? (
-				<div className="rounded border border-gray-200 bg-gray-50 p-4 text-center text-[12px] text-bn-text-tertiary">
+				<div className="rounded border border-bn-border bg-bn-surface-muted p-4 text-center text-[12px] text-bn-text-tertiary">
 					没有匹配的 UP 主
 				</div>
 			) : (
@@ -309,14 +309,14 @@ function SearchResultList({
 							disabled={disabled}
 							className={`flex items-center gap-3 rounded-lg border p-2.5 text-left transition ${
 								subscribed
-									? "cursor-not-allowed border-gray-200 bg-gray-50 opacity-60"
-									: "border-gray-200 bg-white hover:border-bn-pink/60 hover:bg-bn-pink/5"
+									? "cursor-not-allowed border-bn-border bg-bn-surface-muted opacity-60"
+									: "border-bn-border bg-bn-surface hover:border-bn-pink/60 hover:bg-bn-pink/5"
 							}`}
 						>
 							<img
 								src={r.avatar}
 								alt={r.name}
-								className="h-10 w-10 shrink-0 rounded-full bg-white object-cover"
+								className="h-10 w-10 shrink-0 rounded-full bg-bn-surface object-cover"
 								referrerPolicy="no-referrer"
 							/>
 							<div className="min-w-0 flex-1">
@@ -326,7 +326,7 @@ function SearchResultList({
 									</span>
 									<span className="font-mono text-[10.5px] text-bn-text-tertiary">UID {r.uid}</span>
 									{subscribed ? (
-										<span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-bn-text-tertiary">
+										<span className="rounded bg-bn-surface-muted px-1.5 py-0.5 text-[10px] font-semibold text-bn-text-tertiary">
 											已订阅
 										</span>
 									) : null}
@@ -557,7 +557,7 @@ export default function Subs() {
 					placeholder="搜索 UP 主名称或 UID..."
 					icon={<Icon.search size={14} />}
 				/>
-				<div className="flex gap-1 rounded-md border border-black/5 bg-white/60 p-1 backdrop-blur-sm">
+				<div className="flex gap-1 rounded-md border border-bn-border-subtle bg-bn-surface/60 p-1 backdrop-blur-sm">
 					{FILTERS.map((f) => {
 						const active = filterId === f.id;
 						return (
@@ -567,7 +567,7 @@ export default function Subs() {
 								onClick={() => setFilterId(f.id)}
 								className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-semibold transition ${
 									active
-										? "bg-white text-bn-pink shadow-sm"
+										? "bg-bn-surface text-bn-pink shadow-sm"
 										: "text-bn-text-tertiary hover:text-bn-text-primary"
 								}`}
 							>
@@ -639,21 +639,21 @@ export default function Subs() {
 			) : null}
 
 			{error ? (
-				<div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+				<div className="rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
 					{error}
 				</div>
 			) : null}
 
 			{subsQuery.isLoading ? <div className="text-sm text-bn-text-secondary">加载中…</div> : null}
 			{subsQuery.error ? (
-				<div className="rounded border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+				<div className="rounded border border-bn-danger-border bg-bn-danger-soft p-3 text-xs text-bn-danger-text">
 					加载失败：{String((subsQuery.error as Error).message)}
 				</div>
 			) : null}
 			{subsQuery.data &&
 			filtered.length === 0 &&
 			(q.trim() || filterId !== "all" || groupFilter) ? (
-				<div className="rounded-bn-card border border-dashed border-gray-300 bg-white/60 p-10 text-center">
+				<div className="rounded-bn-card border border-dashed border-bn-border bg-bn-surface/60 p-10 text-center">
 					<div className="mb-1 text-sm font-bold text-bn-text-primary">没有匹配的订阅</div>
 					<div className="text-[12px] text-bn-text-secondary">试试换个关键词或筛选条件</div>
 				</div>
@@ -683,7 +683,7 @@ export default function Subs() {
 					<button
 						type="button"
 						onClick={() => setShowNewDialog(true)}
-						className="flex min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 px-4 py-5 text-center transition hover:border-bn-pink focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink"
+						className="flex min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-bn-border px-4 py-5 text-center transition hover:border-bn-pink focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink"
 					>
 						<span className="text-[28px] leading-none text-bn-text-tertiary">＋</span>
 						<span className="mt-2 text-[13px] font-semibold text-bn-text-primary">添加 UP 主</span>

@@ -51,14 +51,14 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 
 	if (state === "enabled") {
 		return (
-			<div className="mt-2 rounded bg-emerald-50 p-2 text-[11px] font-semibold text-emerald-700">
+			<div className="mt-2 rounded border border-bn-success-border bg-bn-success-soft p-2 text-[11px] font-semibold text-bn-success-text">
 				✓ 卡片渲染已启用 · 已写回配置,重启仍生效
 			</div>
 		);
 	}
 
 	return (
-		<div className="mt-2 rounded bg-amber-50 p-2 text-[11px] text-amber-800">
+		<div className="mt-2 rounded border border-bn-warning-border bg-bn-warning-soft p-2 text-[11px] text-bn-warning-text">
 			<div className="mb-1.5">
 				设置 <code className="font-mono">BN_CHROME_PATH</code> 环境变量或 yaml{" "}
 				<code className="font-mono">chromePath</code>,或一键自动探测本机浏览器:
@@ -74,14 +74,14 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 				</button>
 				{path ? (
 					<>
-						<code className="rounded bg-black/5 px-1.5 py-0.5 font-mono text-amber-900">
+						<code className="rounded bg-bn-code-bg px-1.5 py-0.5 font-mono text-bn-warning-text">
 							{path}
 						</code>
 						<button
 							type="button"
 							onClick={enable}
 							disabled={state === "enabling"}
-							className="rounded-full border border-emerald-400/50 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700 disabled:opacity-60"
+							className="rounded-full border border-emerald-400/50 bg-bn-success-soft px-3 py-1 font-semibold text-bn-success-text disabled:opacity-60"
 						>
 							{state === "enabling" ? "启用中…" : "启用"}
 						</button>
@@ -89,11 +89,11 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 				) : null}
 			</div>
 			{notFound ? (
-				<div className="mt-1.5 text-amber-700">
+				<div className="mt-1.5 text-bn-warning-text">
 					未在常见位置找到 Chrome / Chromium,请手动设置 chromePath 指向浏览器二进制。
 				</div>
 			) : null}
-			{err ? <div className="mt-1.5 text-red-600">{err}</div> : null}
+			{err ? <div className="mt-1.5 text-bn-danger-text">{err}</div> : null}
 		</div>
 	);
 }

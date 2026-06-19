@@ -35,7 +35,7 @@ export function Field({ code, label, hint, required, full, children }: FieldProp
 	return (
 		<div
 			data-code={code}
-			className={`border-b border-dashed border-black/5 py-2.5 ${
+			className={`border-b border-dashed border-bn-border-subtle py-2.5 ${
 				full ? "flex flex-col gap-1.5" : "flex flex-row gap-3.5"
 			} last:border-b-0`}
 		>
@@ -43,7 +43,7 @@ export function Field({ code, label, hint, required, full, children }: FieldProp
 				<div className="mb-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
 					<span className="text-[12.5px] font-semibold text-bn-text-primary">{effectiveLabel}</span>
 					{required ? <span className="text-[11px] text-red-500">*</span> : null}
-					<code className="rounded bg-black/5 px-1.5 py-px font-mono text-[10.5px] text-bn-text-tertiary">
+					<code className="rounded bg-bn-code-bg px-1.5 py-px font-mono text-[10.5px] text-bn-text-tertiary">
 						{code}
 					</code>
 				</div>
@@ -59,7 +59,7 @@ export function Field({ code, label, hint, required, full, children }: FieldProp
 // ── Inputs ───────────────────────────────────────────────────────────────────
 
 const INPUT_BASE =
-	"h-[30px] rounded-md border border-gray-200 bg-white px-2.5 text-[12.5px] text-bn-text-primary outline-none focus:border-bn-pink focus:ring-1 focus:ring-bn-pink/30";
+	"h-[30px] rounded-md border border-bn-border bg-bn-field px-2.5 text-[12.5px] text-bn-text-primary outline-none focus:border-bn-pink focus:ring-1 focus:ring-bn-pink/30";
 
 export interface TInputProps {
 	value: string;
@@ -110,7 +110,7 @@ export function TArea({ value, onChange, placeholder, rows = 3, mono }: TAreaPro
 			onChange={(e) => onChange(e.target.value)}
 			placeholder={placeholder}
 			rows={rows}
-			className={`min-w-0 w-full resize-y rounded-md border border-gray-200 bg-white px-2.5 py-2 text-[12.5px] leading-relaxed text-bn-text-primary outline-none focus:border-bn-pink focus:ring-1 focus:ring-bn-pink/30 ${mono ? "font-mono" : ""}`}
+			className={`min-w-0 w-full resize-y rounded-md border border-bn-border bg-bn-field px-2.5 py-2 text-[12.5px] leading-relaxed text-bn-text-primary outline-none focus:border-bn-pink focus:ring-1 focus:ring-bn-pink/30 ${mono ? "font-mono" : ""}`}
 		/>
 	);
 }
@@ -202,7 +202,7 @@ export function TColor({ value, onChange }: TColorProps) {
 					setHex(e.target.value);
 					onChange(e.target.value);
 				}}
-				className="h-7.5 w-9 cursor-pointer rounded-md border border-gray-200 bg-white p-0"
+				className="h-7.5 w-9 cursor-pointer rounded-md border border-bn-border bg-bn-field p-0"
 			/>
 			<input
 				type="text"
@@ -217,10 +217,10 @@ export function TColor({ value, onChange }: TColorProps) {
 				}}
 				placeholder="#rrggbb"
 				spellCheck={false}
-				className={`w-22 rounded-md border bg-white px-2 py-1 font-mono text-[11.5px] outline-none transition-colors ${
+				className={`w-22 rounded-md border bg-bn-surface px-2 py-1 font-mono text-[11.5px] outline-none transition-colors ${
 					valid
-						? "border-gray-200 text-bn-text-primary focus:border-bn-pink"
-						: "border-red-300 text-red-600 focus:border-red-400"
+						? "border-bn-border text-bn-text-primary focus:border-bn-pink"
+						: "border-bn-danger-border text-bn-danger-text focus:border-bn-danger-text"
 				}`}
 			/>
 		</div>
@@ -247,7 +247,7 @@ export function Picker<T extends string | number | boolean>({
 	options,
 }: PickerProps<T>) {
 	return (
-		<div className="inline-flex flex-wrap gap-1 rounded-md bg-gray-100 p-0.75">
+		<div className="inline-flex flex-wrap gap-1 rounded-md bg-bn-surface-muted p-0.75">
 			{options.map((o) => {
 				const active = value === o.value;
 				return (
@@ -256,7 +256,7 @@ export function Picker<T extends string | number | boolean>({
 						key={String(o.value)}
 						onClick={() => onChange(o.value)}
 						className={`rounded px-3 py-1 text-[11.5px] font-semibold transition ${
-							active ? "bg-white text-bn-pink shadow-sm" : "text-bn-text-tertiary"
+							active ? "bg-bn-surface-strong text-bn-pink shadow-sm" : "text-bn-text-tertiary"
 						}`}
 						style={active && o.color ? { color: o.color } : undefined}
 					>
@@ -286,13 +286,15 @@ export function LogLevelPicker({ value, onChange, allowInherit }: LogLevelPicker
 		{ v: 4, label: "调试", color: "#a29bfe" },
 	];
 	return (
-		<div className="inline-flex flex-wrap gap-1 rounded-md bg-gray-100 p-0.75">
+		<div className="inline-flex flex-wrap gap-1 rounded-md bg-bn-surface-muted p-0.75">
 			{allowInherit ? (
 				<button
 					type="button"
 					onClick={() => onChange(null)}
 					className={`rounded px-3 py-1 text-[11.5px] font-semibold transition ${
-						value === null ? "bg-white text-bn-text-primary shadow-sm" : "text-bn-text-tertiary"
+						value === null
+							? "bg-bn-surface text-bn-text-primary shadow-sm"
+							: "text-bn-text-tertiary"
 					}`}
 				>
 					跟随全局
@@ -305,7 +307,7 @@ export function LogLevelPicker({ value, onChange, allowInherit }: LogLevelPicker
 						type="button"
 						key={o.v}
 						onClick={() => onChange(o.v)}
-						className={`rounded px-3 py-1 text-[11.5px] font-semibold transition ${active ? "bg-white shadow-sm" : "text-bn-text-tertiary"}`}
+						className={`rounded px-3 py-1 text-[11.5px] font-semibold transition ${active ? "bg-bn-surface-strong shadow-sm" : "text-bn-text-tertiary"}`}
 						style={active ? { color: o.color } : undefined}
 					>
 						L{o.v} · {o.label}
@@ -343,7 +345,7 @@ export function ArrayEditor({ value, onChange, placeholder }: ArrayEditorProps) 
 					<button
 						type="button"
 						onClick={() => onChange(value.filter((_, j) => j !== i))}
-						className="grid h-7.5 w-7.5 place-items-center rounded-md border border-gray-200 bg-white text-bn-text-secondary hover:text-red-500"
+						className="grid h-7.5 w-7.5 place-items-center rounded-md border border-bn-border bg-bn-field text-bn-text-secondary hover:text-red-500"
 						aria-label="移除"
 					>
 						×
@@ -353,7 +355,7 @@ export function ArrayEditor({ value, onChange, placeholder }: ArrayEditorProps) 
 			<button
 				type="button"
 				onClick={() => onChange([...value, ""])}
-				className="h-7.5 rounded-md border border-dashed border-gray-200 bg-white/60 text-[12px] text-bn-text-secondary hover:bg-white"
+				className="h-7.5 rounded-md border border-dashed border-bn-border bg-bn-field/60 text-[12px] text-bn-text-secondary hover:bg-bn-surface"
 			>
 				+ 添加一行{placeholder ? `（${placeholder}）` : ""}
 			</button>
@@ -422,7 +424,7 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 						<button
 							type="button"
 							onClick={() => onChange(value.filter((_, j) => j !== i))}
-							className="grid h-7.5 w-7.5 place-items-center rounded-md border border-gray-200 bg-white text-bn-text-secondary hover:text-red-500"
+							className="grid h-7.5 w-7.5 place-items-center rounded-md border border-bn-border bg-bn-field text-bn-text-secondary hover:text-red-500"
 							aria-label="移除"
 						>
 							×
@@ -433,7 +435,7 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 			<button
 				type="button"
 				onClick={() => onChange([...value, { start: 23, end: 7 }])}
-				className="h-7.5 rounded-md border border-dashed border-gray-200 bg-white/60 text-[12px] text-bn-text-secondary hover:bg-white"
+				className="h-7.5 rounded-md border border-dashed border-bn-border bg-bn-field/60 text-[12px] text-bn-text-secondary hover:bg-bn-surface"
 			>
 				+ 添加免扰时段
 			</button>

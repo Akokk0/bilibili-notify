@@ -410,13 +410,13 @@ export function UpDialog({
 		>
 			{/* Cover header */}
 			<div
-				className="relative h-[140px] px-5 pb-4 pt-4"
+				className="relative h-35 px-5 pb-4 pt-4"
 				style={{ background: `linear-gradient(135deg, ${color}, ${color}aa)` }}
 			>
 				<button
 					type="button"
 					onClick={requestClose}
-					className="absolute right-3.5 top-3.5 grid h-7 w-7 place-items-center rounded-full bg-white/25 text-white backdrop-blur-sm"
+					className="absolute right-3.5 top-3.5 grid h-7 w-7 place-items-center rounded-full bg-bn-inverse-strong text-white backdrop-blur-sm"
 					title="关闭"
 				>
 					<Icon.close size={14} />
@@ -457,20 +457,20 @@ export function UpDialog({
 				{/* 基础 */}
 				<section>
 					<SectionHeader label="基础" />
-					<div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+					<div className="overflow-hidden rounded-lg border border-bn-border bg-bn-surface">
 						<BasicRow label="启用订阅" sub="关闭后整体停止接收推送">
 							<Toggle value={draft.enabled} onChange={setEnabled} size="sm" />
 						</BasicRow>
 						<BasicRow label="分组" sub="多个分组以英文逗号分隔">
 							<input
-								className="w-40 rounded border border-gray-200 px-1.5 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-bn-pink"
+								className="w-40 rounded border border-bn-border px-1.5 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-bn-pink"
 								value={draft.groups.join(",")}
 								onChange={(e) => setGroups(e.target.value)}
 							/>
 						</BasicRow>
 						<BasicRow label="备注">
 							<input
-								className="w-40 rounded border border-gray-200 px-1.5 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-bn-pink"
+								className="w-40 rounded border border-bn-border px-1.5 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-bn-pink"
 								value={draft.notes ?? ""}
 								onChange={(e) => setNotes(e.target.value)}
 							/>
@@ -488,9 +488,9 @@ export function UpDialog({
 						{FEATURE_GROUPS.map((g) => (
 							<div
 								key={g.label}
-								className="overflow-hidden rounded-lg border border-gray-200 bg-white"
+								className="overflow-hidden rounded-lg border border-bn-border bg-bn-surface"
 							>
-								<div className="border-b border-gray-100 bg-[#fafafa] px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-bn-text-tertiary">
+								<div className="border-b border-bn-border-subtle bg-bn-surface-muted px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-bn-text-tertiary">
 									{g.label}
 								</div>
 								<div className="grid grid-cols-2 gap-x-4 gap-y-2 px-3 py-2">
@@ -526,13 +526,13 @@ export function UpDialog({
 				<section>
 					<SectionHeader label="推送目标" />
 					{targets.length === 0 ? (
-						<div className="rounded-md border border-dashed border-gray-200 px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
+						<div className="rounded-md border border-dashed border-bn-border px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
 							尚未配置任何推送目标 · 请先到「推送目标」页面创建
 						</div>
 					) : (
 						<div className="space-y-2">
 							{attachedTargets.length === 0 ? (
-								<div className="rounded-md border border-dashed border-gray-200 px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
+								<div className="rounded-md border border-dashed border-bn-border px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
 									该订阅尚未指定推送目标 · 点击下方「添加推送目标」选择
 								</div>
 							) : (
@@ -553,7 +553,7 @@ export function UpDialog({
 							{/* Add-target picker */}
 							{unattachedTargets.length > 0 ? (
 								showPicker ? (
-									<div className="rounded-lg border border-gray-200 bg-white p-3">
+									<div className="rounded-lg border border-bn-border bg-bn-surface p-3">
 										<div className="mb-1.5 flex items-center justify-between">
 											<span className="text-[11.5px] font-semibold text-bn-text-primary">
 												选择要添加的推送目标
@@ -572,11 +572,11 @@ export function UpDialog({
 													type="button"
 													key={t.id}
 													onClick={() => attachTarget(t.id)}
-													className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-gray-300 bg-white px-2.5 py-1 text-[11.5px] text-bn-text-secondary hover:border-bn-pink hover:text-bn-pink"
+													className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-bn-border bg-bn-surface px-2.5 py-1 text-[11.5px] text-bn-text-secondary hover:border-bn-pink hover:text-bn-pink"
 												>
 													<Icon.plus size={11} />
 													<PlatformIcon platform={t.platform} size={11} />
-													<span className="max-w-[140px] truncate">{t.name}</span>
+													<span className="max-w-35 truncate">{t.name}</span>
 												</button>
 											))}
 										</div>
@@ -585,7 +585,7 @@ export function UpDialog({
 									<button
 										type="button"
 										onClick={() => setShowPicker(true)}
-										className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 bg-transparent px-3 py-2.5 text-[12px] text-bn-text-secondary hover:border-bn-pink hover:text-bn-pink"
+										className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-bn-border bg-transparent px-3 py-2.5 text-[12px] text-bn-text-secondary hover:border-bn-pink hover:text-bn-pink"
 									>
 										<Icon.plus size={12} />
 										添加推送目标 · 还有 {unattachedTargets.length} 个未添加
@@ -600,8 +600,8 @@ export function UpDialog({
 				{staleIds.length > 0 ? (
 					<section>
 						<SectionHeader label="已失效的引用" />
-						<div className="rounded-md border border-dashed border-red-200 bg-red-50/50 px-3 py-2">
-							<div className="mb-1.5 text-[11px] text-red-600">
+						<div className="rounded-md border border-dashed border-bn-danger-border bg-bn-danger-soft px-3 py-2">
+							<div className="mb-1.5 text-[11px] text-bn-danger-text">
 								下列推送目标已被删除,但路由中仍有引用 · 点击移除
 							</div>
 							<div className="flex flex-wrap gap-1.5">
@@ -610,7 +610,7 @@ export function UpDialog({
 										type="button"
 										key={id}
 										onClick={() => removeStaleId(id)}
-										className="inline-flex items-center gap-1.5 rounded-full border border-red-300 bg-white px-2.5 py-1 text-[11.5px] text-red-500 hover:bg-red-50"
+										className="inline-flex items-center gap-1.5 rounded-full border border-bn-danger-border bg-bn-surface px-2.5 py-1 text-[11.5px] text-red-500 hover:bg-red-500/10"
 									>
 										{id.slice(0, 8)} ×
 									</button>
@@ -622,9 +622,9 @@ export function UpDialog({
 			</div>
 
 			{/* Footer */}
-			<div className="flex flex-col gap-1.5 border-t border-gray-200 px-3.5 py-3">
+			<div className="flex flex-col gap-1.5 border-t border-bn-border px-3.5 py-3">
 				{attachedTargets.length === 0 && targets.length > 0 ? (
-					<div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700">
+					<div className="rounded-md border border-bn-warning-border bg-bn-warning-soft px-2.5 py-1.5 text-[11px] text-bn-warning-text">
 						⚠️ 未选中任何推送目标,保存后该订阅不会向任何地方推送消息
 					</div>
 				) : null}
@@ -701,7 +701,7 @@ function BasicRow({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="flex items-center gap-3 border-b border-gray-100 px-3 py-2.5 last:border-b-0">
+		<div className="flex items-center gap-3 border-b border-bn-border-subtle px-3 py-2.5 last:border-b-0">
 			<div className="min-w-0 flex-1">
 				<div className="text-[12.5px] font-semibold text-bn-text-primary">{label}</div>
 				{sub ? <div className="mt-0.5 text-[11px] text-bn-text-secondary">{sub}</div> : null}
@@ -827,7 +827,7 @@ function AtAllPerTargetToggle({
 					onClick={() => onSet(undefined)}
 					aria-label="重置为跟随订阅默认"
 					title="重置为跟随订阅默认"
-					className="grid h-4 w-4 place-items-center rounded text-bn-text-tertiary hover:bg-gray-100 hover:text-bn-text-primary"
+					className="grid h-4 w-4 place-items-center rounded text-bn-text-tertiary hover:bg-bn-surface-muted hover:text-bn-text-primary"
 				>
 					<Icon.refresh size={10} />
 				</button>
@@ -860,7 +860,7 @@ function TargetRoutingCard({
 		: FEATURE_KEYS.filter((k) => effFeature(sub, k)).length;
 
 	return (
-		<div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+		<div className="overflow-hidden rounded-lg border border-bn-border bg-bn-surface">
 			{/* Header */}
 			<div className="flex items-center gap-2.5 px-3 py-2.5">
 				<PlatformIcon platform={target.platform} size={16} />
@@ -883,7 +883,7 @@ function TargetRoutingCard({
 					onClick={onDetach}
 					aria-label="移除该推送目标"
 					title="移除该推送目标"
-					className="grid h-6 w-6 place-items-center rounded-full text-bn-text-tertiary hover:bg-red-50 hover:text-red-500"
+					className="grid h-6 w-6 place-items-center rounded-full text-bn-text-tertiary hover:bg-red-500/10 hover:text-red-500"
 				>
 					<Icon.close size={11} />
 				</button>
@@ -891,9 +891,12 @@ function TargetRoutingCard({
 
 			{/* Detail (only when custom) */}
 			{isCustom ? (
-				<div className="border-t border-gray-100 bg-[#fafafa]">
+				<div className="border-t border-bn-border-subtle bg-bn-surface-muted">
 					{FEATURE_GROUPS.map((g) => (
-						<div key={g.label} className="border-b border-gray-100 px-3 py-2 last:border-b-0">
+						<div
+							key={g.label}
+							className="border-b border-bn-border-subtle px-3 py-2 last:border-b-0"
+						>
 							<div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-bn-text-tertiary">
 								{g.label}
 							</div>

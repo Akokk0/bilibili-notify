@@ -6,6 +6,7 @@ import { api } from "../services/api";
 import { submitLogout } from "../services/session";
 import { useAuthStore } from "../store/auth";
 import { useSessionStore } from "../store/session";
+import { type ThemePreference, useThemeStore } from "../store/theme";
 import { BiliLoginStatus } from "../types/auth";
 import type { PushTarget, Subscription } from "../types/domain";
 import { Btn } from "./atoms";
@@ -64,6 +65,79 @@ function AccountChip() {
 	);
 }
 
+const THEME_OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string; hint: string }> = [
+	{ value: "system", label: "跟随系统", hint: "自动跟随系统外观" },
+	{ value: "light", label: "浅色", hint: "固定使用亮色主题" },
+	{ value: "dark", label: "深色", hint: "固定使用暗色主题" },
+];
+
+function themeLabel(value: ThemePreference): string {
+	return THEME_OPTIONS.find((o) => o.value === value)?.label ?? "跟随系统";
+}
+
+function ThemeSwitcher() {
+	const preference = useThemeStore((s) => s.preference);
+	const resolved = useThemeStore((s) => s.resolved);
+	const setPreference = useThemeStore((s) => s.setPreference);
+	const [open, setOpen] = useState(false);
+	const containerRef = useRef<HTMLDivElement | null>(null);
+	const current = themeLabel(preference);
+
+	// 点击下拉外部时关闭(与 Rules/draft-island 的下拉一致),仅在展开时挂监听。
+	useEffect(() => {
+		if (!open) return;
+		function handleDocClick(e: MouseEvent) {
+			if (!containerRef.current) return;
+			if (!containerRef.current.contains(e.target as Node)) setOpen(false);
+		}
+		document.addEventListener("mousedown", handleDocClick);
+		return () => document.removeEventListener("mousedown", handleDocClick);
+	}, [open]);
+
+	return (
+		<div className="relative" ref={containerRef}>
+			<Btn
+				variant="outline"
+				size="sm"
+				onClick={() => setOpen((v) => !v)}
+				ariaHasPopup
+				ariaExpanded={open}
+				title={`当前外观:${current}${preference === "system" ? `(${resolved === "dark" ? "深色" : "浅色"})` : ""}`}
+			>
+				主题：{current}
+			</Btn>
+			{open ? (
+				<div className="absolute right-0 top-full z-20 mt-2 w-42 rounded-lg border border-bn-border bg-bn-surface-strong p-1.5 shadow-bn-elev">
+					{THEME_OPTIONS.map((o) => {
+						const active = o.value === preference;
+						return (
+							<button
+								type="button"
+								key={o.value}
+								aria-label={o.label}
+								onClick={() => {
+									setPreference(o.value);
+									setOpen(false);
+								}}
+								className={`block w-full rounded-md px-2.5 py-1.5 text-left text-[12px] transition ${
+									active
+										? "bg-bn-pink/12 font-bold text-bn-pink"
+										: "text-bn-text-primary hover:bg-bn-hover-muted"
+								}`}
+							>
+								<span className="block">{o.label}</span>
+								<span className="block text-[10.5px] font-normal text-bn-text-secondary">
+									{o.hint}
+								</span>
+							</button>
+						);
+					})}
+				</div>
+			) : null}
+		</div>
+	);
+}
+
 /**
  * Dashboard logout (Q6). Icon-only, rightmost in the header cluster, rendered
  * only when auth is configured AND the session is authed. Lightweight 2-step
@@ -108,7 +182,7 @@ function LogoutButton() {
 
 	return (
 		<>
-			<span className="mx-1 h-5 w-px bg-black/10" aria-hidden="true" />
+			<span className="mx-1 h-5 w-px bg-bn-border" aria-hidden="true" />
 			<Btn
 				variant="outline"
 				size="sm"
@@ -164,16 +238,17 @@ export function GlassHeader() {
 				</div>
 				<div className="flex shrink-0 items-center gap-2">
 					{reachable ? (
-						<span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11.5px] font-semibold text-emerald-700">
+						<span className="inline-flex items-center gap-1.5 rounded-full bg-bn-success-soft px-2.5 py-1 text-[11.5px] font-semibold text-bn-success-text">
 							<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
 							推送服务运行中
 						</span>
 					) : (
-						<span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/12 px-2.5 py-1 text-[11.5px] font-semibold text-red-600">
+						<span className="inline-flex items-center gap-1.5 rounded-full bg-bn-danger-soft px-2.5 py-1 text-[11.5px] font-semibold text-bn-danger-text">
 							<span className="h-1.5 w-1.5 rounded-full bg-red-500" />
 							后端失联
 						</span>
 					)}
+					<ThemeSwitcher />
 					<Btn variant="outline" size="sm" icon={<Icon.refresh size={14} />} onClick={refreshAll}>
 						刷新
 					</Btn>
@@ -205,7 +280,9 @@ export function GlassHeader() {
 								{t.countKey ? (
 									<span
 										className={`rounded-lg px-1.5 py-px text-[10px] font-bold ${
-											isActive ? "bg-bn-pink/15 text-bn-pink" : "bg-black/5 text-bn-text-secondary"
+											isActive
+												? "bg-bn-pink/15 text-bn-pink"
+												: "bg-bn-code-bg text-bn-text-secondary"
 										}`}
 									>
 										{counts[t.countKey]}

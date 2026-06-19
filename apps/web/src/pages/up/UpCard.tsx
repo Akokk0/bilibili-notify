@@ -61,7 +61,7 @@ export function UpCard({
 				selected ? "ring-2 ring-bn-pink" : "ring-1 ring-gray-200"
 			} ${hover ? "-translate-y-0.5 shadow-bn-elev" : "shadow-sm"} ${
 				sub.enabled ? "" : "opacity-70"
-			} bg-white`}
+			} bg-bn-surface`}
 		>
 			{/* cover band */}
 			<div
@@ -83,8 +83,8 @@ export function UpCard({
 							e.stopPropagation();
 							onToggleSelect();
 						}}
-						className={`flex h-[22px] w-[22px] cursor-pointer items-center justify-center rounded border-0 ${
-							selected ? "bg-bn-pink text-white" : "bg-white/90 text-bn-text-secondary"
+						className={`flex h-5.5 w-5.5 cursor-pointer items-center justify-center rounded border-0 ${
+							selected ? "bg-bn-pink text-white" : "bg-bn-surface/90 text-bn-text-secondary"
 						}`}
 					>
 						{selected ? <Icon.check size={12} /> : <span className="text-[11px]">☐</span>}
@@ -105,7 +105,7 @@ export function UpCard({
 				</div>
 				<div className="mb-1 flex items-center justify-between">
 					<span
-						className="max-w-[160px] truncate text-sm font-bold text-bn-text-primary"
+						className="max-w-40 truncate text-sm font-bold text-bn-text-primary"
 						title={displayName(sub)}
 					>
 						{displayName(sub)}

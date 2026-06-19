@@ -99,7 +99,7 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 			}
 		>
 			{live.length === 0 ? (
-				<div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-[12.5px] text-bn-text-secondary">
+				<div className="rounded-lg border border-dashed border-bn-border p-6 text-center text-[12.5px] text-bn-text-secondary">
 					当前没有订阅 UP 主在直播
 					<br />
 					<span className="text-[11px] text-bn-text-secondary/80">
@@ -133,7 +133,7 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 								className="block overflow-hidden rounded-xl p-px"
 								style={{ background: `linear-gradient(135deg, ${color}, ${color}88)` }}
 							>
-								<div className="flex items-center gap-3 rounded-[10px] bg-white/95 p-2.5 backdrop-blur-sm">
+								<div className="flex items-center gap-3 rounded-[10px] bg-bn-surface/95 p-2.5 backdrop-blur-sm">
 									<Avatar
 										name={name}
 										color={color}
@@ -276,7 +276,7 @@ function TimelinePanel({
 			}
 		>
 			{recent.length === 0 ? (
-				<div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-[12.5px] text-bn-text-secondary">
+				<div className="rounded-lg border border-dashed border-bn-border p-6 text-center text-[12.5px] text-bn-text-secondary">
 					还没有推送活动
 					<br />
 					<span className="text-[11px] text-bn-text-secondary/80">
@@ -313,7 +313,7 @@ function TimelinePanel({
 									/>
 								</div>
 								<div
-									className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg bg-white/70 px-3 py-2 text-[12.5px]"
+									className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg bg-bn-surface/70 px-3 py-2 text-[12.5px]"
 									style={!h.ok ? { borderLeft: "3px solid #ef4444" } : undefined}
 								>
 									<Avatar name={name} color={color} size={24} url={avatar} />
@@ -407,7 +407,7 @@ function FansPanel({ subs }: { subs: Subscription[] }) {
 			}
 		>
 			{entries.length === 0 ? (
-				<div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-[12.5px] text-bn-text-secondary">
+				<div className="rounded-lg border border-dashed border-bn-border p-6 text-center text-[12.5px] text-bn-text-secondary">
 					采样中…
 					<br />
 					<span className="text-[11px] text-bn-text-secondary/80">
@@ -426,7 +426,7 @@ function FansPanel({ subs }: { subs: Subscription[] }) {
 						return (
 							<div
 								key={e.uid}
-								className="flex items-center gap-3 rounded-lg bg-white/70 px-3 py-2.5 text-[12.5px]"
+								className="flex items-center gap-3 rounded-lg bg-bn-surface/70 px-3 py-2.5 text-[12.5px]"
 							>
 								<Avatar name={name} color={color} size={32} url={sub?.cachedProfile?.avatar} />
 								<div className="min-w-0 flex-1">
@@ -492,7 +492,7 @@ function PluginMatrix({ cells }: { cells: PluginCell[] }) {
 				const levelLabel = c.logLevel ? c.logLevel.toUpperCase() : "—";
 				const isOverride = c.logLevelSource === "module";
 				return (
-					<div key={c.id} className="rounded-lg border border-black/6 bg-white px-3 py-2.5">
+					<div key={c.id} className="rounded-lg border border-black/6 bg-bn-surface px-3 py-2.5">
 						<div className="mb-1.5 flex items-center justify-between">
 							<span className="text-[12.5px] font-bold text-bn-text-primary">{c.label}</span>
 							<span
@@ -597,12 +597,12 @@ function SystemHealthCard({
 			subtitle={
 				<span className="inline-flex items-center gap-1.5">
 					<span>核心</span>
-					<span className="inline-block rounded-md bg-black/5 px-1.5 py-px text-[10.5px] font-semibold tabular-nums tracking-tight text-bn-text-primary">
+					<span className="inline-block rounded-md bg-bn-code-bg px-1.5 py-px text-[10.5px] font-semibold tabular-nums tracking-tight text-bn-text-primary">
 						{health?.version ?? "—"}
 					</span>
 					<span className="opacity-40">·</span>
 					<span>面板</span>
-					<span className="inline-block rounded-md bg-black/5 px-1.5 py-px text-[10.5px] font-semibold tabular-nums tracking-tight text-bn-text-primary">
+					<span className="inline-block rounded-md bg-bn-code-bg px-1.5 py-px text-[10.5px] font-semibold tabular-nums tracking-tight text-bn-text-primary">
 						{__WEB_VERSION__}
 					</span>
 				</span>
@@ -613,7 +613,7 @@ function SystemHealthCard({
 			dense
 		>
 			{!reachable ? (
-				<div className="mb-2.5 rounded border border-red-200 bg-red-50 p-2 text-[11.5px] text-red-700">
+				<div className="mb-2.5 rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-[11.5px] text-bn-danger-text">
 					后端 API 当前不可达 (apps/server 未运行 或
 					网络中断),以下数据可能为最后一次成功拉取的快照。
 				</div>

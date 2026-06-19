@@ -293,7 +293,7 @@ function ErrorContent({ message }: { message: string | null }) {
 				type="button"
 				onClick={() => setUiState("dirty")}
 				aria-label="关闭"
-				className="grid h-5 w-5 place-items-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white"
+				className="grid h-5 w-5 place-items-center rounded-full text-white/70 transition hover:bg-bn-inverse-hover hover:text-white"
 			>
 				<Icon.close size={12} />
 			</button>
@@ -372,7 +372,7 @@ function DiffRow({ row }: { row: FieldDiff }) {
 		<button
 			type="button"
 			onClick={() => scrollToFieldByCode(row.code)}
-			className="flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition hover:bg-white/5"
+			className="flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition hover:bg-bn-inverse-muted"
 			title={`跳转到 ${row.code}`}
 		>
 			<code className="font-mono text-[10.5px] text-white/50">{row.code}</code>
@@ -413,7 +413,7 @@ function PanelFooter({ onDiscard }: { onDiscard: () => void }) {
 			<button
 				type="button"
 				onClick={onDiscard}
-				className="rounded-full px-2.5 py-1 text-[11px] text-white/60 transition hover:bg-white/10 hover:text-white"
+				className="rounded-full px-2.5 py-1 text-[11px] text-white/60 transition hover:bg-bn-inverse-hover hover:text-white"
 			>
 				丢弃全部更改
 			</button>

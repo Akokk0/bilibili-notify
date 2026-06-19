@@ -53,11 +53,15 @@ const STATUS_ACCENT: Record<BiliLoginStatusValue, string> = {
 function QrCard({ data, msg }: { data: unknown; msg: string }) {
 	const src = typeof data === "string" && data.length > 0 ? data : null;
 	return (
-		<div className="flex flex-col items-center gap-3 rounded-lg border border-black/6 bg-white/55 p-6">
+		<div className="flex flex-col items-center gap-3 rounded-lg border border-bn-border bg-bn-surface/55 p-6">
 			{src ? (
-				<img alt="登录二维码" className="h-56 w-56 rounded bg-white p-2 shadow-bn-card" src={src} />
+				<img
+					alt="登录二维码"
+					className="h-56 w-56 rounded bg-bn-surface p-2 shadow-bn-card"
+					src={src}
+				/>
 			) : (
-				<div className="flex h-56 w-56 items-center justify-center rounded bg-white text-sm text-bn-text-tertiary">
+				<div className="flex h-56 w-56 items-center justify-center rounded bg-bn-surface text-sm text-bn-text-tertiary">
 					二维码加载中…
 				</div>
 			)}
@@ -175,7 +179,7 @@ function SystemSettingsSection({
 						return (
 							<div
 								key={m.id}
-								className="flex items-center justify-between gap-2 rounded-md border border-black/5 bg-white/60 px-2.5 py-1.5"
+								className="flex items-center justify-between gap-2 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-2.5 py-1.5"
 							>
 								<span className="flex items-center gap-1.5 text-[12px] font-bold text-bn-text-primary">
 									<span
@@ -403,17 +407,17 @@ export default function System() {
 				{extraMsg ? <div className="mt-2 text-[11px] text-amber-600">{extraMsg}</div> : null}
 
 				{status === BiliLoginStatus.LOGIN_FAILED ? (
-					<div className="mt-2.5 rounded border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+					<div className="mt-2.5 rounded border border-bn-danger-border bg-bn-danger-soft p-2.5 text-xs text-bn-danger-text">
 						{msg || "登录失败，可重试。"}
 					</div>
 				) : null}
 				{actionError ? (
-					<div className="mt-2.5 rounded border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+					<div className="mt-2.5 rounded border border-bn-danger-border bg-bn-danger-soft p-2.5 text-xs text-bn-danger-text">
 						操作失败：{actionError}
 					</div>
 				) : null}
 
-				<div className="mt-3.5 flex flex-wrap gap-2 border-t border-black/5 pt-3">
+				<div className="mt-3.5 flex flex-wrap gap-2 border-t border-bn-border-subtle pt-3">
 					<Btn
 						variant="primary"
 						disabled={startQr.isPending || isQrPhase || loggedIn}
@@ -450,13 +454,13 @@ export default function System() {
 			) : globalsQuery.isLoading ? (
 				<div className="text-xs text-bn-text-tertiary">加载系统配置中…</div>
 			) : globalsQuery.error ? (
-				<div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+				<div className="rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
 					拉取 /api/globals 失败：{String((globalsQuery.error as Error).message)}
 				</div>
 			) : null}
 
-			<details className="rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
-				<summary className="cursor-pointer font-medium text-gray-700">原始登录快照</summary>
+			<details className="rounded border border-bn-border bg-bn-surface-muted p-3 text-xs text-bn-text-secondary">
+				<summary className="cursor-pointer font-medium text-bn-text-primary">原始登录快照</summary>
 				<pre className="mt-2 overflow-auto leading-relaxed">
 					{JSON.stringify(snapshot ?? { hint: "等待 /api/auth/status" }, null, 2)}
 				</pre>

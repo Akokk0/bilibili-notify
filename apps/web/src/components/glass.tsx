@@ -61,10 +61,10 @@ export function Pill({ children, color = "gray", subtle = false, className }: Pi
 	const palette: Record<NonNullable<PillProps["color"]>, [string, string]> = {
 		pink: ["bg-bn-pink/15 text-bn-pink", "bg-bn-pink text-white"],
 		blue: ["bg-bn-blue/15 text-bn-blue", "bg-bn-blue text-white"],
-		green: ["bg-emerald-100 text-emerald-700", "bg-emerald-500 text-white"],
-		amber: ["bg-amber-100 text-amber-700", "bg-amber-500 text-white"],
-		red: ["bg-red-100 text-red-700", "bg-red-500 text-white"],
-		gray: ["bg-gray-100 text-gray-700", "bg-gray-500 text-white"],
+		green: ["bg-bn-success-soft text-bn-success-text", "bg-emerald-500 text-white"],
+		amber: ["bg-amber-500/15 text-amber-500", "bg-amber-500 text-white"],
+		red: ["bg-bn-danger-soft text-bn-danger-text", "bg-red-500 text-white"],
+		gray: ["bg-bn-surface-muted text-bn-text-tertiary", "bg-bn-text-tertiary text-white"],
 	};
 	const cls = palette[color][subtle ? 0 : 1];
 	return (
@@ -100,7 +100,7 @@ export interface GlassStatCardProps {
 
 export function GlassStatCard({ label, value, suffix, color, pulse }: GlassStatCardProps) {
 	const bg: CSSProperties = {
-		background: `linear-gradient(135deg, ${color}1a, rgba(255,255,255,0.6))`,
+		background: `linear-gradient(135deg, ${color}1a, var(--bn-glass-bg))`,
 		border: `1px solid ${color}33`,
 	};
 	return (
@@ -134,7 +134,7 @@ export function ServiceStatusPill({ online, label }: ServiceStatusPillProps) {
 	return (
 		<span
 			className={`inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-xs font-semibold ${
-				online ? "bg-emerald-500/15 text-emerald-700" : "bg-red-500/15 text-red-700"
+				online ? "bg-bn-success-soft text-bn-success-text" : "bg-bn-danger-soft text-bn-danger-text"
 			}`}
 		>
 			<PulseDot color={online ? "#22c55e" : "#ef4444"} />

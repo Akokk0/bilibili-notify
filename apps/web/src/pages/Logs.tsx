@@ -101,7 +101,7 @@ const MARKDOWN_COMPONENTS: Components = {
 	li: ({ children }) => <li className="list-disc leading-7 marker:text-bn-pink/70">{children}</li>,
 	code: ({ node: _node, className, children, ...props }) => (
 		<code
-			className={`rounded-md bg-black/5 px-1.5 py-0.5 font-mono text-[12px] text-bn-text-primary ${className ?? ""}`}
+			className={`rounded-md bg-bn-code-bg px-1.5 py-0.5 font-mono text-[12px] text-bn-text-primary ${className ?? ""}`}
 			{...props}
 		>
 			{children}
@@ -214,7 +214,11 @@ export default function Logs() {
 								style={
 									active
 										? { background: `${tone}1f`, color: tone, borderColor: `${tone}55` }
-										: { background: "transparent", color: "#999", borderColor: "#e0e0e0" }
+										: {
+												background: "transparent",
+												color: "var(--color-bn-text-secondary)",
+												borderColor: "var(--color-bn-border)",
+											}
 								}
 							>
 								{l}
@@ -226,7 +230,7 @@ export default function Logs() {
 				<select
 					value={source}
 					onChange={(e) => setSource(e.target.value)}
-					className="rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
+					className="rounded-lg border border-black/10 bg-bn-surface px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
 				>
 					<option value="">全部来源</option>
 					{sources.map((s) => (
@@ -243,7 +247,7 @@ export default function Logs() {
 					value={isLive ? "" : day}
 					max={todayStr()}
 					onChange={(e) => setDay(e.target.value)}
-					className="rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
+					className="rounded-lg border border-black/10 bg-bn-surface px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
 				/>
 				{!isLive && (
 					<button
@@ -261,7 +265,11 @@ export default function Logs() {
 					style={
 						paused
 							? { background: "#f2a05320", color: "#f2a053", borderColor: "#f2a05355" }
-							: { background: "transparent", color: "#666", borderColor: "#e0e0e0" }
+							: {
+									background: "transparent",
+									color: "var(--color-bn-text-tertiary)",
+									borderColor: "var(--color-bn-border)",
+								}
 					}
 				>
 					{paused ? "已暂停" : "暂停"}
@@ -273,7 +281,11 @@ export default function Logs() {
 					style={
 						autoscroll
 							? { background: "#00AEEC1f", color: "#00AEEC", borderColor: "#00AEEC55" }
-							: { background: "transparent", color: "#666", borderColor: "#e0e0e0" }
+							: {
+									background: "transparent",
+									color: "var(--color-bn-text-tertiary)",
+									borderColor: "var(--color-bn-border)",
+								}
 					}
 				>
 					自动滚动
@@ -350,13 +362,13 @@ function LogsSectionList({
 							aria-pressed={active}
 							className={`flex w-full items-center gap-2 rounded-[9px] border px-3 py-2.5 text-left transition ${
 								active
-									? "border-bn-pink/35 bg-white/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
-									: "border-transparent hover:bg-white/55"
+									? "border-bn-pink/35 bg-bn-surface/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+									: "border-transparent hover:bg-bn-surface/55"
 							}`}
 						>
 							<span
 								className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${
-									active ? "bg-bn-pink/12 text-bn-pink" : "bg-black/4 text-bn-text-tertiary"
+									active ? "bg-bn-pink/12 text-bn-pink" : "bg-bn-hover-muted text-bn-text-tertiary"
 								}`}
 							>
 								<SectionIcon size={14} />
@@ -397,7 +409,7 @@ function ChangelogPanel() {
 	}, []);
 
 	return (
-		<div className="rounded-bn-card border border-black/6 bg-white/80 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)] backdrop-blur-sm">
+		<div className="rounded-bn-card border border-black/6 bg-bn-surface/80 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)] backdrop-blur-sm">
 			<div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-black/6 pb-4">
 				<div>
 					<div className="flex items-center gap-2 text-[15px] font-extrabold text-bn-text-primary">

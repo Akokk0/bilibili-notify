@@ -112,15 +112,15 @@ function PreviewImage({
 	const status = apiErr?.status;
 
 	return (
-		<div className="relative flex min-h-105 items-center justify-center rounded-bn-card border border-gray-200 p-7">
+		<div className="relative flex min-h-105 items-center justify-center rounded-bn-card border border-bn-border p-7">
 			{showSkeleton ? (
-				<div className="flex w-95 flex-col items-center gap-3 rounded-xl bg-white/70 p-6">
+				<div className="flex w-95 flex-col items-center gap-3 rounded-xl bg-bn-surface/70 p-6">
 					<div className="bn-anim-spin h-8 w-8 rounded-full border-2 border-bn-pink/30 border-t-bn-pink" />
 					<div className="text-[12px] font-bold text-bn-text-secondary">puppeteer 渲染中…</div>
 				</div>
 			) : query.error ? (
-				<div className="w-95 rounded-xl bg-white p-4 text-[12px]">
-					<div className="mb-1 font-bold text-red-600">
+				<div className="w-95 rounded-xl bg-bn-surface p-4 text-[12px]">
+					<div className="mb-1 font-bold text-bn-danger-text">
 						{status === 503 ? "puppeteer 未配置" : status === 501 ? "kind 暂未支持" : "渲染失败"}
 					</div>
 					<div className="text-bn-text-secondary">{apiErr?.message ?? "未知错误"}</div>
@@ -211,7 +211,7 @@ function TestPushCard({
 					value={targetId}
 					onChange={(e) => setTargetId(e.target.value)}
 					disabled={targets.length === 0}
-					className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-2 text-[12.5px] text-bn-text-primary outline-none focus:border-bn-pink disabled:opacity-50"
+					className="w-full rounded-md border border-bn-border bg-bn-surface px-2.5 py-2 text-[12.5px] text-bn-text-primary outline-none focus:border-bn-pink disabled:opacity-50"
 				>
 					{targets.length === 0 ? (
 						<option value="">无可用推送目标</option>
@@ -235,7 +235,7 @@ function TestPushCard({
 					{push.isPending ? "推送中…" : "测试推送"}
 				</Btn>
 				{push.isError ? (
-					<div className="mt-2 text-[11px] text-red-600">
+					<div className="mt-2 text-[11px] text-bn-danger-text">
 						推送失败:{(push.error as ApiError)?.message ?? "未知错误"}
 					</div>
 				) : push.isSuccess ? (
@@ -484,7 +484,7 @@ export default function Cards() {
 										placeholder="留空则使用示例数据"
 									/>
 								</Field>
-								<div className="rounded border border-dashed bg-emerald-50/60 p-2.5 text-[11px] text-emerald-800">
+								<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-emerald-800">
 									需要后端账号已登录 B
 									站；填入后将真实拉取该直播间数据并渲染。留空则继续使用示例数据。
 								</div>
@@ -508,7 +508,7 @@ export default function Cards() {
 										placeholder="1"
 									/>
 								</Field>
-								<div className="rounded border border-dashed bg-emerald-50/60 p-2.5 text-[11px] text-emerald-800">
+								<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-emerald-800">
 									需要后端账号已登录 B 站；填入后将拉取该 UP 的 space 动态列表，按 offset
 									选取并渲染。
 								</div>
@@ -528,7 +528,7 @@ export default function Cards() {
 										placeholder="30"
 									/>
 								</Field>
-								<div className="rounded border border-dashed bg-gray-50 p-2.5 text-[11px] text-bn-text-tertiary">
+								<div className="rounded border border-dashed bg-bn-surface-muted p-2.5 text-[11px] text-bn-text-tertiary">
 									左侧渐变色对 SC 不生效；SC 卡片背景色由价格档位自动决定。
 								</div>
 							</>
@@ -568,7 +568,7 @@ export default function Cards() {
 										rows={2}
 									/>
 								</Field>
-								<div className="rounded border border-dashed bg-gray-50 p-2.5 text-[11px] text-bn-text-tertiary">
+								<div className="rounded border border-dashed bg-bn-surface-muted p-2.5 text-[11px] text-bn-text-tertiary">
 									左侧渐变色对上舰不生效；卡片背景色与徽章图由舰长等级自动决定。
 								</div>
 							</>
@@ -590,7 +590,7 @@ export default function Cards() {
 					<CardPreview kind={kind} style={draft} content={content} />
 
 					{/* Effective style readout */}
-					<div className="flex flex-wrap gap-3.5 rounded-md border border-black/5 bg-white/60 px-3 py-2 font-mono text-[10.5px] text-bn-text-tertiary">
+					<div className="flex flex-wrap gap-3.5 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 font-mono text-[10.5px] text-bn-text-tertiary">
 						<span>
 							cardColorStart: <TInputReadonly value={draft.cardColorStart} />
 						</span>

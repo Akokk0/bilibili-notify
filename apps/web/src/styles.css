@@ -17,6 +17,27 @@
 	--color-bn-text-primary: #18191c;
 	--color-bn-text-secondary: #999999;
 	--color-bn-text-tertiary: #666666;
+	--color-bn-surface: #ffffff;
+	--color-bn-surface-strong: #ffffff;
+	--color-bn-surface-muted: #f8fafc;
+	--color-bn-field: #ffffff;
+	--color-bn-border: #e5e7eb;
+	--color-bn-border-subtle: #f1f5f9;
+	--color-bn-hover-muted: #f8fafc;
+	--color-bn-code-bg: rgba(0, 0, 0, 0.05);
+	--color-bn-overlay: rgba(0, 0, 0, 0.35);
+	--color-bn-inverse-muted: rgba(255, 255, 255, 0.05);
+	--color-bn-inverse-hover: rgba(255, 255, 255, 0.1);
+	--color-bn-inverse-strong: rgba(255, 255, 255, 0.25);
+	--color-bn-success-soft: #dcfce7;
+	--color-bn-success-text: #047857;
+	--color-bn-success-border: #bbf7d0;
+	--color-bn-warning-soft: #fffbeb;
+	--color-bn-warning-text: #92400e;
+	--color-bn-warning-border: #fde68a;
+	--color-bn-danger-soft: #fee2e2;
+	--color-bn-danger-text: #dc2626;
+	--color-bn-danger-border: #fecaca;
 
 	--font-cjk:
 		"Noto Sans SC", "Microsoft YaHei", "Source Han Sans", "Noto Sans CJK", system-ui, sans-serif;
@@ -29,6 +50,58 @@
 	--shadow-bn-elev: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
+:root {
+	--bn-page-bg: linear-gradient(135deg, #fef0f4 0%, #f0f7fd 50%, #faf2ff 100%);
+	--bn-glass-bg: rgba(255, 255, 255, 0.78);
+	--bn-glass-border: rgba(255, 255, 255, 0.6);
+	--bn-glass-strong-bg: rgba(255, 255, 255, 0.92);
+	--bn-glass-strong-border: rgba(0, 0, 0, 0.05);
+	/* --shadow-bn-card / --shadow-bn-elev 的浅色默认值由上方 @theme 块提供(已落到 :root),
+	   此处无需重复;暗色值在下方 [data-theme="dark"] 覆盖。 */
+}
+
+:root[data-theme="dark"] {
+	--color-bn-pink-soft: rgba(251, 114, 153, 0.18);
+	--color-bn-blue-soft: rgba(0, 174, 236, 0.16);
+	--color-bn-blue-light: #7dd3fc;
+	--color-bn-text-primary: #f8fafc;
+	--color-bn-text-secondary: #cbd5e1;
+	--color-bn-text-tertiary: #94a3b8;
+	/* 暗色 elevation 阶梯:卡片表面必须明显亮于页面背景(#0b1020~#1e1733),否则卡片与背景同色融掉。
+	   关系沿用浅色:muted(次级/凹陷) < field(输入) < surface(卡片) < strong(弹窗)。 */
+	--color-bn-surface: #1e2738;
+	--color-bn-surface-strong: #26314a;
+	--color-bn-surface-muted: #182030;
+	--color-bn-field: #161d2b;
+	--color-bn-border: rgba(148, 163, 184, 0.28);
+	--color-bn-border-subtle: rgba(148, 163, 184, 0.16);
+	--color-bn-hover-muted: rgba(255, 255, 255, 0.07);
+	--color-bn-code-bg: rgba(255, 255, 255, 0.08);
+	--color-bn-overlay: rgba(2, 6, 23, 0.62);
+	--color-bn-inverse-muted: rgba(255, 255, 255, 0.05);
+	--color-bn-inverse-hover: rgba(255, 255, 255, 0.1);
+	--color-bn-inverse-strong: rgba(255, 255, 255, 0.25);
+	--color-bn-success-soft: rgba(34, 197, 94, 0.14);
+	--color-bn-success-text: #86efac;
+	--color-bn-success-border: rgba(34, 197, 94, 0.32);
+	--color-bn-warning-soft: rgba(251, 191, 36, 0.24);
+	--color-bn-warning-text: #fde68a;
+	--color-bn-warning-border: rgba(251, 191, 36, 0.55);
+	--color-bn-danger-soft: rgba(239, 68, 68, 0.16);
+	--color-bn-danger-text: #fca5a5;
+	--color-bn-danger-border: rgba(248, 113, 113, 0.32);
+	--bn-page-bg:
+		radial-gradient(circle at 12% 12%, rgba(251, 114, 153, 0.22), transparent 28%),
+		radial-gradient(circle at 88% 4%, rgba(0, 174, 236, 0.2), transparent 26%),
+		linear-gradient(135deg, #0b1020 0%, #111827 48%, #1e1733 100%);
+	--bn-glass-bg: rgba(30, 41, 59, 0.72);
+	--bn-glass-border: rgba(255, 255, 255, 0.12);
+	--bn-glass-strong-bg: rgba(30, 41, 59, 0.85);
+	--bn-glass-strong-border: rgba(255, 255, 255, 0.14);
+	--shadow-bn-card: 0 10px 30px rgba(0, 0, 0, 0.32);
+	--shadow-bn-elev: 0 18px 50px rgba(0, 0, 0, 0.42);
+}
+
 /* Page background — pink → blue → lavender gradient mirrors variation-ac's app shell */
 html,
 body,
@@ -39,23 +112,23 @@ body,
 }
 
 body {
-	background: linear-gradient(135deg, #fef0f4 0%, #f0f7fd 50%, #faf2ff 100%) fixed;
+	background: var(--bn-page-bg) fixed;
 	-webkit-font-smoothing: antialiased;
 }
 
 /* Glass surface — used by the GlassPanel / GlassHeader atoms */
 .bn-glass {
-	background: rgba(255, 255, 255, 0.78);
+	background: var(--bn-glass-bg);
 	backdrop-filter: blur(12px);
 	-webkit-backdrop-filter: blur(12px);
-	border: 1px solid rgba(255, 255, 255, 0.6);
+	border: 1px solid var(--bn-glass-border);
 }
 
 .bn-glass-strong {
-	background: rgba(255, 255, 255, 0.92);
+	background: var(--bn-glass-strong-bg);
 	backdrop-filter: blur(16px);
 	-webkit-backdrop-filter: blur(16px);
-	border: 1px solid rgba(0, 0, 0, 0.05);
+	border: 1px solid var(--bn-glass-strong-border);
 }
 
 /* Animations */
