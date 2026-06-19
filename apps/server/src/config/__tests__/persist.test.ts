@@ -60,7 +60,18 @@ describe("resolveConfigPath", () => {
 		expect(resolveConfigPath({ env: { BN_CONFIG_DISABLED: "1" }, cwd: "/app" })).toBeNull();
 	});
 
-	it("无 BN_CONFIG(legacy) → null(运行时持久化不支持,dev 走 env/手改)", () => {
+	it("无 BN_CONFIG(legacy) + cwd 无配置文件 → null(无写回目标,走 env/手改)", () => {
 		expect(resolveConfigPath({ env: {}, cwd: "/app" })).toBeNull();
+	});
+
+	it("无 BN_CONFIG(legacy) + cwd 扫到 bn.config.yaml → 返回该文件(dev 模式也持久化)", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-resolve-"));
+		try {
+			const cfg = join(dir, "bn.config.yaml");
+			await writeFile(cfg, "dataDir: ./data\n", "utf8");
+			expect(resolveConfigPath({ env: {}, cwd: dir })).toBe(cfg);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 });
