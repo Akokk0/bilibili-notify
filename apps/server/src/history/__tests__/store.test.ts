@@ -128,6 +128,52 @@ describe("append — payload reduce + 落盘 + emit", () => {
 		expect(files).toEqual([`${entry.id}-0.jpg`]);
 	});
 
+	it("composite at-all 段 → text 写出「@全体」而非空(否则 History 落成「（无内容）」)", async () => {
+		const entry = await store.append(
+			baseInput({
+				source: "live",
+				payload: { kind: "composite", segments: [{ type: "at-all" }] },
+			}),
+		);
+		expect(entry.payload.kind).toBe("composite");
+		expect(entry.payload.text).toBe("@全体");
+	});
+
+	it("composite at-all + text 段 → 按段序拼接(@全体 前置)", async () => {
+		const entry = await store.append(
+			baseInput({
+				source: "live",
+				payload: {
+					kind: "composite",
+					segments: [{ type: "at-all" }, { type: "text", text: "开播啦" }],
+				},
+			}),
+		);
+		expect(entry.payload.text).toBe("@全体\n开播啦");
+	});
+
+	it("image 无 caption + source=live-summary(词云)→ text 给「[弹幕词云]」摘要", async () => {
+		const entry = await store.append(
+			baseInput({
+				source: "live-summary",
+				payload: { kind: "image", image: { buffer: Buffer.from("WC"), mime: "image/png" } },
+			}),
+		);
+		expect(entry.payload.kind).toBe("image");
+		expect(entry.payload.text).toBe("[弹幕词云]");
+		expect(entry.payload.imageRef).toBe(`${entry.id}.png`);
+	});
+
+	it("image 无 caption + 非 live-summary → text 仍 undefined(不误伤普通卡片图)", async () => {
+		const entry = await store.append(
+			baseInput({
+				source: "dynamic",
+				payload: { kind: "image", image: { buffer: Buffer.from("a"), mime: "image/png" } },
+			}),
+		);
+		expect(entry.payload.text).toBeUndefined();
+	});
+
 	it("result.ok = targets.every(ok);任一失败则 false", async () => {
 		const t1 = randomUUID();
 		const t2 = randomUUID();

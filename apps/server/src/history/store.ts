@@ -81,13 +81,21 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		return name;
 	}
 
-	async function reduce(payload: NotificationPayload, entryId: string): Promise<HistoryPayload> {
+	async function reduce(
+		payload: NotificationPayload,
+		entryId: string,
+		source: HistorySource,
+	): Promise<HistoryPayload> {
 		switch (payload.kind) {
 			case "text":
 				return { kind: "text", text: payload.text };
 			case "image": {
 				const imageRef = await writeImage(entryId, payload.image.buffer, payload.image.mime);
-				return { kind: "image", text: payload.caption, imageRef };
+				// 纯图推送(无 caption)在 History 列表会落成「（无内容）」。目前唯一的「无文字
+				// 纯图」推送是直播词云(feature wordcloud → source=live-summary),给个可读
+				// 摘要,与图集的 `[图集 N 张]` 同一思路。
+				const text = payload.caption || (source === "live-summary" ? "[弹幕词云]" : undefined);
+				return { kind: "image", text, imageRef };
 			}
 			case "forward-images":
 				return {
@@ -107,6 +115,10 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 						imageRef = name;
 					} else if (seg.type === "link") {
 						textParts.push(seg.title ? `${seg.title} ${seg.href}` : seg.href);
+					} else if (seg.type === "at-all") {
+						// @全体 段无文字载体,但 History 需要可读标记,否则独立的 @全体 提醒
+						// 消息会整条落成「（无内容）」。按段序前置拼接(@全体 通常单独成消息)。
+						textParts.push("@全体");
 					}
 				}
 				return {
@@ -122,7 +134,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		await ensureDirs();
 		const id = randomUUID();
 		const ts = new Date().toISOString();
-		const payload = await reduce(input.payload, id);
+		const payload = await reduce(input.payload, id, input.source);
 		const entry: HistoryEntry = {
 			id,
 			ts,
