@@ -1,5 +1,5 @@
 import type { Context } from "koishi";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { makeKoishiServiceContext } from "../service-context";
 
 interface FakeLogger {

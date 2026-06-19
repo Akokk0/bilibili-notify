@@ -6,7 +6,7 @@
  * 修复后缺位安全降级为空名 / 0 条。
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { applyTemplate, LiveTemplateRenderer } from "../template-renderer";
 
 /**

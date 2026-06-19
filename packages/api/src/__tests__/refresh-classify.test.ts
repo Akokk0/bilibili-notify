@@ -14,7 +14,7 @@
 
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import type { CookieData } from "@bilibili-notify/storage";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { BilibiliAPI, classifyRefreshCode } from "../bilibili-api";
 
 describe("classifyRefreshCode — ②4 判别式", () => {

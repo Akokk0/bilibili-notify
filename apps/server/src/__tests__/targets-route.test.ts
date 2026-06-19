@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { ConfigValidationError } from "../config/store.js";
 import { createTargetsRoute } from "../routes/targets.js";
 import type { RouteDeps } from "../routes/types.js";

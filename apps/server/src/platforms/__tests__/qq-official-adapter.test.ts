@@ -6,7 +6,7 @@ import type {
 	PushTarget,
 	ServiceContext,
 } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official";
 
 function makeLogger(): Logger {

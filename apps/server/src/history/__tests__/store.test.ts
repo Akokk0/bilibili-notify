@@ -18,7 +18,7 @@ import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HistoryEntry } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import {
 	createHistoryStore,

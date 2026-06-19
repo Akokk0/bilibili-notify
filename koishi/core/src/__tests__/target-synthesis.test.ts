@@ -8,7 +8,7 @@
  */
 
 import { deterministicUuid } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import {
 	synthesizeKoishiBotAdapter,
 	synthesizeMasterTarget,

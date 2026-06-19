@@ -6,7 +6,7 @@
  * 复发点:把 redact 移进某一路 / 漏掉某一路 / 两路各 redact 导致不一致。
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { LogChannel } from "../../ws/log-channel.js";
 import type { LogEntry } from "../../ws/types.js";
 import { createLogSink } from "../sink.js";

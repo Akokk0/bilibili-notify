@@ -9,7 +9,7 @@
  */
 
 import type { BilibiliAPI } from "@bilibili-notify/api";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { executeTool } from "../tools";
 
 function fakeApi(over: Partial<Record<"getUserUpstat" | "getUserNavnum", unknown>>): BilibiliAPI {

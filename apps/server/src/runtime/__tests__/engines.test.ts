@@ -20,7 +20,7 @@
 
 import type { GlobalConfig, Subscription } from "@bilibili-notify/internal";
 import { makeDefaultGlobalConfig, makeEmptySubscription } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { NodeServiceContext } from "../service-context.js";

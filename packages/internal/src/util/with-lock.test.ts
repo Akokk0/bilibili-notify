@@ -11,7 +11,7 @@
  *     该锁后续所有触发静默跳过 → cron tick 全死)
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { withLock } from "./with-lock";
 
 /** 一个手控 settle 的 deferred。 */

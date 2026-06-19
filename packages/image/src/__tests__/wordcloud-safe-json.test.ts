@@ -9,7 +9,7 @@
  * 复发点:有人把 safeJsonForScript 改回裸 JSON.stringify。
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { safeJsonForScript } from "../templates/wordcloud";
 
 describe("safeJsonForScript — <script> breakout 防护 (P1)", () => {

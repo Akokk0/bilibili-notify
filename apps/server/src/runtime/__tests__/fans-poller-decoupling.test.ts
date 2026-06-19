@@ -17,7 +17,7 @@
  */
 
 import type { GlobalConfig } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 // cron mock — FakeCronJob 捕获 onTick,不真正排程(同 dynamic-engine.test 套路)。
 const cronMock = vi.hoisted(() => {

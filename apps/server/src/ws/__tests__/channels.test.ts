@@ -10,7 +10,7 @@
  *   - dispose() 解绑所有 bus 订阅(之后再 emit 不再 publish)
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { ALL_CHANNELS, attachChannelWiring, buildStateHydrate } from "../channels.js";

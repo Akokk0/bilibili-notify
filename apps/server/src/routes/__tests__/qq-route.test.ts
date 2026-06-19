@@ -3,7 +3,7 @@
  * - GET /sessions/:adapterId → 读共享发现表(网关捞到的群/C2C openid),供面板选择器。
  * - GET /guilds/:adapterId   → REST 枚举频道子频道(频道 scope 选择器)。
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createQQSessionRegistry } from "../../platforms/qq-official.js";
 import { createQQRoute } from "../qq.js";
 import type { RouteDeps } from "../types.js";

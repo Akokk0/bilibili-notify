@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { installParentProcessWatchdog } from "./process-watchdog.js";
 
 describe("parent process watchdog", () => {

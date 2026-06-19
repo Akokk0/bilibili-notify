@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { FEATURE_KEYS, type FeatureKey, makeEmptySubscription } from "../../types/domain";
 import { routingAlignedToFeatures, subscribedFeatures } from "./helpers";
 

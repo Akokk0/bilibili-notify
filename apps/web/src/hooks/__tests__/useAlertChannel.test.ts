@@ -8,7 +8,7 @@
  *   - 合法帧 push 到 useAlertStore
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import type { WsEnvelope } from "../../services/ws";
 import { useAlertStore } from "../../store/alerts";
 import { handleLogEnvelope } from "../useAlertChannel";

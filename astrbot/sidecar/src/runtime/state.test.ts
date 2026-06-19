@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { buildRuntimeUrl, createSidecarSnapshot, normalizeAiBackend } from "./state.js";
 
 describe("sidecar state helpers", () => {

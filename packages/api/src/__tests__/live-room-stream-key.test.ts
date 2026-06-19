@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { BilibiliAPI } from "../bilibili-api";
 import { GET_LIVE_ROOM_INFO_STREAM_KEY } from "../endpoints";
 

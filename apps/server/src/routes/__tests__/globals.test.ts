@@ -1,5 +1,5 @@
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { shouldRunAiEnableCheck } from "../globals.js";
 
 /** 默认 globals + AI 启用 + 连接字段齐备。 */

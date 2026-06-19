@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 function stubBrowser(url: string, savedToken: string | null = null) {
 	const store = new Map<string, string>();

@@ -9,7 +9,7 @@
 
 import type { ServiceContext } from "@bilibili-notify/internal";
 import type { MsgHandler } from "blive-message-listener";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { SubItemView } from "../push-like";
 import { LiveRoomAccessDeniedError, type RoomContext } from "../room-helpers";
 import { LIVE_WS_STALE_MS, RoomSession } from "../room-session";

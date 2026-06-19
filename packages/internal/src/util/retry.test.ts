@@ -13,7 +13,7 @@
  * 用极小 baseDelayMs(0/1)保持真实定时器下的测试速度。
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { retry } from "./retry";
 
 describe("retry — 成功路径", () => {

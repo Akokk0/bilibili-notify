@@ -1,7 +1,7 @@
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import type { Disposable, Logger, ServiceContext } from "@bilibili-notify/internal";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { type WebSocket, WebSocketServer } from "ws";
 import { createQQGatewayConn, QQ_OPCODE, type QQDiscoveredSession } from "../qq-official";
 

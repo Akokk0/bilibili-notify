@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BiliLoginStatus, type LoginSnapshot } from "@bilibili-notify/api";
 import type { MessageBus } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createApp } from "../app.js";
 import type { AuthSystem } from "../auth/index.js";
 import type { BootstrapConfig } from "../config/schema.js";

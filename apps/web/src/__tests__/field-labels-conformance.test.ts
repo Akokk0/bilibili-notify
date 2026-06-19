@@ -15,7 +15,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { FIELD_LABELS } from "../config/field-labels.js";
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));

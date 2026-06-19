@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { classifyLoginResponse } from "../session";
 
 function res(status: number, headers: Record<string, string> = {}): Response {

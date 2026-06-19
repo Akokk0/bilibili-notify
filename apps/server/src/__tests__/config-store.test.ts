@@ -17,7 +17,7 @@ import {
 	type Subscription,
 	SubscriptionSchema,
 } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { BootstrapConfig } from "../config/schema.js";
 import { type ConfigStore, ConfigValidationError, createConfigStore } from "../config/store.js";
 

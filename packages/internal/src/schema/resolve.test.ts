@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { makeDefaultGlobalConfig } from "./globals";
 import { resolve } from "./resolve";
 import { makeEmptySubscription, type Subscription } from "./subscriptions";

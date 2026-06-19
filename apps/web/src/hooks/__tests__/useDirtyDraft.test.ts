@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { DraftRegistration, DraftUiState } from "../../store/draft";
 import {
 	_resetSavedLingerTimerForTest,

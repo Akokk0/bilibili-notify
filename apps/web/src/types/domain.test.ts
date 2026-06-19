@@ -8,7 +8,7 @@
  * 拒 → 添加订阅 / 适配器 / 目标全部 400。
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import {
 	KNOWN_PLATFORMS,
 	makeEmptyAdapter,

@@ -5,7 +5,7 @@
  * 翻译,否则同一份业务核心在双端会出现路由分歧。
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { liveTypeToFeature } from "../runtime/engines";
 
 describe("apps/server adapter typeToFeature", () => {

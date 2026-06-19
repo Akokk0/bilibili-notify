@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { ASTRBOT_PUSH_TARGET } from "./callback-sink.js";
 import { SidecarDeliveryQueue, SidecarEventQueue } from "./event-queue.js";
 

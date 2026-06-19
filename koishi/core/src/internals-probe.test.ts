@@ -1,5 +1,5 @@
 import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { buildInternalsProbe, CORE_INTERNALS_PROTOCOL } from "./internals-probe";
 
 type ProbeArgs = Parameters<typeof buildInternalsProbe>[0];

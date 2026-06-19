@@ -1,5 +1,5 @@
 import type { ServiceContext } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createQQTokenManager, fetchAppAccessToken } from "../qq-official";
 
 // fetch 用 vi.stubGlobal mock,不打真实网络(对齐 adapters.test.ts)。

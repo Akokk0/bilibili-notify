@@ -8,7 +8,7 @@
  * 复发点:任何人把交替重叠分支去掉、或让 schema/filter 各自再分叉一份启发式。
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { checkUserRegex, isCatastrophicRegexSource } from "./regex-safety";
 
 describe("isCatastrophicRegexSource — 两类指数构造都判危 (②2)", () => {

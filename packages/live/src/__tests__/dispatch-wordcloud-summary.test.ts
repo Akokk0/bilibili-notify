@@ -11,7 +11,7 @@
  */
 
 import type { MsgHandler } from "blive-message-listener";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { LivePushType, type SubItemView } from "../push-like";
 import type { RoomContext } from "../room-helpers";
 import { RoomSessionBase } from "../room-session-base";

@@ -9,7 +9,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../../types/domain";
 import { PerUpEditor } from "../PerUpEditor";

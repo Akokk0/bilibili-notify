@@ -13,7 +13,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ServiceContext } from "@bilibili-notify/internal";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { LogEntry } from "../../ws/types.js";
 import { createLogStore } from "../store.js";
 

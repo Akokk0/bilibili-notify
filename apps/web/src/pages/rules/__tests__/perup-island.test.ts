@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import type { OverridesShape, SpecialUser } from "../../../types/domain";
 import { sectionOf } from "../../../utils/groupDiffs";
 import { walkTreeDiff } from "../../../utils/walkTreeDiff";

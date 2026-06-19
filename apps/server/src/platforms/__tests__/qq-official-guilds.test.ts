@@ -1,5 +1,5 @@
 import type { QQOfficialAdapterConfig } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fetchQQGuildChannels } from "../qq-official";
 
 const CFG: QQOfficialAdapterConfig = {

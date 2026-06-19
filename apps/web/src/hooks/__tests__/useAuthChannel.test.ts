@@ -9,7 +9,7 @@
  *   - 不识别的 event 不动 store
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import type { WsEnvelope } from "../../services/ws";
 import { useAuthStore } from "../../store/auth";
 import { BiliLoginStatus, type LoginSnapshot } from "../../types/auth";

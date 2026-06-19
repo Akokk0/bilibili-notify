@@ -27,7 +27,7 @@ import type {
 	TemplateBundle as CanonTemplateBundle,
 	WebhookAdapterConfig as CanonWebhookAdapterConfig,
 } from "@bilibili-notify/internal";
-import { describe, it } from "vitest";
+import { describe, it } from "vite-plus/test";
 import type {
 	AIOverride as MirrorAIOverride,
 	CardStyleFull as MirrorCardStyle,

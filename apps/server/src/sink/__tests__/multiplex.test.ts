@@ -20,7 +20,7 @@ import type {
 	PushAdapter,
 	PushTarget,
 } from "@bilibili-notify/internal";
-import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
 import type { PlatformAdapter, ProbeResult } from "../../platforms/types.js";
 import { createMultiplexSink } from "../multiplex.js";

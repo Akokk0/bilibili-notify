@@ -10,7 +10,7 @@
 
 import type { ConfigScope, Subscription } from "@bilibili-notify/internal";
 import { makeEmptySubscription } from "@bilibili-notify/internal";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createNodeMessageBus } from "../message-bus.js";
 import { bindSubscriptionStore } from "../subscription-store.js";
 

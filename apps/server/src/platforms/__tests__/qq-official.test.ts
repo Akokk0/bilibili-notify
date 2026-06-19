@@ -1,5 +1,5 @@
 import type { NotificationPayload } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import {
 	buildQQFileUpload,
 	buildQQMarkdownGallery,

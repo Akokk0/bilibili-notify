@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { createQQSessionRegistry, extractQQDiscoveredSession } from "../qq-official";
 
 describe("extractQQDiscoveredSession — 从入站事件捞 group/C2C openid", () => {

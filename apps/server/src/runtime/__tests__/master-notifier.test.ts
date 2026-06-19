@@ -9,7 +9,7 @@
 
 import type { Logger } from "@bilibili-notify/internal";
 import type { BilibiliPush } from "@bilibili-notify/push";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { MasterNotifier } from "../master-notifier";
 import { createNodeMessageBus } from "../message-bus";

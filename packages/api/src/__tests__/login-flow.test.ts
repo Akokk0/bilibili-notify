@@ -1,5 +1,5 @@
 import type { Disposable, Logger, MessageBus, ServiceContext } from "@bilibili-notify/internal";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { BilibiliAPI } from "../bilibili-api";
 import { LoginFlow } from "../login-flow";
 import { BiliLoginStatus } from "../types";

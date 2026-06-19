@@ -21,7 +21,7 @@ import type { CommentaryGenerator } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import type { MessageBus, ServiceContext } from "@bilibili-notify/internal";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { DynamicEngine, type DynamicEngine as DynamicEngineType } from "../dynamic-engine";
 import type { PushLike, SubItemView, SubscriptionsView } from "../push-like";
 import type { AllDynamicInfo, Dynamic } from "../types";

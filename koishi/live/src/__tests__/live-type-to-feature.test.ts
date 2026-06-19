@@ -6,7 +6,7 @@
  * 数字的目标 FeatureKey。
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { liveTypeAllowsAtAll, liveTypeToFeature } from "../live-type-map";
 
 describe("koishi/live adapter typeToFeature", () => {

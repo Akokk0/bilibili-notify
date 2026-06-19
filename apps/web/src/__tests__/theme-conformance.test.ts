@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { THEME_STORAGE_KEY } from "../services/theme";
 
 const SRC_DIR = dirname(fileURLToPath(new URL("../placeholder", import.meta.url)));

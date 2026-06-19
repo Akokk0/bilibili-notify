@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { BILIBILI_NOTIFY_TOKEN } from "./index";
 
 describe("BILIBILI_NOTIFY_TOKEN", () => {

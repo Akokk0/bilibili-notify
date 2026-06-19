@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { normalizeThemePreference, resolveThemePreference, useThemeStore } from "../theme";
 
 function resetThemeStore(): void {

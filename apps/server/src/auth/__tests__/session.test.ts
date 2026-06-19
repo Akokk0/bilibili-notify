@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { createSessionCodec } from "../session.js";
 
 const KEY = Buffer.from("test-key-material-32-bytes-long!!", "utf8");

@@ -10,7 +10,7 @@
  *    (SubRuntimeStore + /api/subs join 复用),只是从 SubscriptionSchema 摘掉。
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { makeDefaultGlobalConfig } from "./globals";
 import { resolve } from "./resolve";
 import {

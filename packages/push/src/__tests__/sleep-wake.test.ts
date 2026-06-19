@@ -17,7 +17,7 @@ import type {
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { BilibiliPush } from "../bilibili-push";
 
 const silentLogger: Logger = {
