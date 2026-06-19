@@ -179,7 +179,7 @@ function TargetCard({
 		<div
 			className="rounded-[10px] border bg-bn-surface p-3.5 transition-[border-color] duration-200"
 			style={{
-				borderColor: adapterMissing ? "#fca5a5" : "rgba(0,0,0,0.06)",
+				borderColor: adapterMissing ? "var(--color-bn-danger-border)" : "var(--color-bn-border)",
 			}}
 		>
 			<div className="mb-2.5 flex items-center gap-2.5">

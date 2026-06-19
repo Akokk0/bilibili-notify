@@ -467,7 +467,10 @@ export default function Cards() {
 										style={
 											active
 												? { background: tone, color: "white" }
-												: { background: "rgba(0,0,0,0.04)", color: "#666" }
+												: {
+														background: "var(--color-bn-hover-muted)",
+														color: "var(--color-bn-text-tertiary)",
+													}
 										}
 									>
 										{KIND_LABELS[k].label}
@@ -547,7 +550,10 @@ export default function Cards() {
 													style={
 														active
 															? { background: g.tone, color: "white" }
-															: { background: "rgba(0,0,0,0.04)", color: "#666" }
+															: {
+																	background: "var(--color-bn-hover-muted)",
+																	color: "var(--color-bn-text-tertiary)",
+																}
 													}
 												>
 													{g.label}
