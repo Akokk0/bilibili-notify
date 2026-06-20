@@ -19,6 +19,16 @@
 
 两种产品形态发布节奏独立:koishi 端经 changesets 发 npm —— `dev → main` 合并触发(`publish.yml`);独立端(Server + Web + Desktop)从不发 npm —— 发布版本由 git tag `v<VERSION>` 驱动,再由 tag 分别触发 Docker 镜像与 Desktop 产物。`dev → main` 合并**不**触发独立端构建,koishi 发版与独立端发版互不牵动。
 
+### koishi 发版步骤(三步,第三步勿漏)
+
+changesets 是两阶段,且 **version 之后必须把 main 回流 dev**,否则 dev 的版本元数据会一直落后:
+
+1. **sync**:本地 `git checkout main && git merge --no-ff dev -m "chore: sync dev to main"`,push main → 触发 `publish.yml`。
+2. **version + publish**:changesets action 见 pending changeset → 开 / 更新 Version PR(`changeset-release/main`);核对版本后合并该 PR,再次 push main → 这次无 pending → 执行 `pnpm publish` 发 npm。
+3. **回流(易漏)**:发版完成后 `git checkout dev && git merge --ff-only origin/main && git push origin dev`,让 dev 拿到 `version packages` 写的 `package.json#version` / `CHANGELOG.md` / `.changeset/pre.json`。
+
+漏掉第 3 步,dev 的包版本与 `pre.json` 的 consumed 列表会持续落后 main。**它不会在下次 `dev → main` 时报冲突** —— 版本元数据只由 main 的 `version packages` commit 修改,dev 侧对这些文件的 delta 恒为 0,三方合并直接采纳 main 侧值,所以这种落后是静默的、容易被忽略。回流是 fast-forward(dev 始终是 main 的纯祖先 + 新代码)。
+
 ## 独立端版本与 tag
 
 ### git tag = 唯一发布事实源
