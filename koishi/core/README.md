@@ -45,6 +45,23 @@
 > [!IMPORTANT]
 > 指令需要 `authority:3` 及以上权限才能使用，可参考 [权限管理](https://koishi.chat/zh-CN/manual/usage/customize.html)
 
+## 静态加密（Cookie / apiKey）
+
+登录后的 B 站 Cookie、AI apiKey 等敏感信息会加密保存在 Koishi 数据目录下的 `bilibili-notify/` 内。密钥来源由插件配置项 `cookieEncryptionKey` 决定：
+
+- **填写**：密钥经 scrypt 从该口令派生，**本身不落盘** → 真正的 AES-256 静态加密。生成一串随机口令：
+
+  ```bash
+  openssl rand -base64 32
+  # 没有 openssl 时可用 Node：
+  node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+  ```
+
+- **留空**：回退到与密文同目录的随机密钥文件 —— 仅混淆、不构成真正的加密，启动时会打告警。
+
+> [!WARNING]
+> 口令请妥善保管，**不要随意改动或清空**：换了口令后，之前用旧密钥加密的内容将无法解密，需要重新扫码登录。
+
 ## 交流群
 
 > [!TIP]
