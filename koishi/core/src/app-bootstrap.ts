@@ -6,6 +6,7 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 // biome-ignore lint/correctness/noUnusedImports: module augmentation for koishi help commands
 import {} from "@koishijs/plugin-help";
 import { type Awaitable, type Context, type Logger, Service } from "koishi";
+import { buildStorageManagerOptions } from "./bootstrap-helpers";
 import { biliCommands, statusCommands, sysCommands } from "./commands";
 import type { BilibiliNotifyConfig } from "./config";
 import { buildInternalsProbe, type InternalsShape } from "./internals-probe";
@@ -167,10 +168,13 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 	}
 
 	private async initStorage(): Promise<void> {
-		this.storageMgr = new StorageManager({
-			serviceCtx: makeKoishiServiceContext(this.ctx, "bilibili-notify-storage"),
-			dataDir: this.ctx.baseDir,
-		});
+		this.storageMgr = new StorageManager(
+			buildStorageManagerOptions(
+				makeKoishiServiceContext(this.ctx, "bilibili-notify-storage"),
+				this.ctx.baseDir,
+				this.config,
+			),
+		);
 		await this.storageMgr.init();
 	}
 
