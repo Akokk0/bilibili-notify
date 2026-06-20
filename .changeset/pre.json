@@ -20,18 +20,23 @@
     "@bilibili-notify/push": "1.0.2",
     "@bilibili-notify/storage": "0.0.2",
     "@bilibili-notify/subscription": "1.0.3",
-    "@bilibili-notify/desktop": "0.0.0-dev"
+    "@bilibili-notify/desktop": "0.0.0-dev",
+    "@bilibili-notify/astrbot-page": "0.0.0-dev",
+    "@bilibili-notify/astrbot-sidecar": "0.0.0-dev"
   },
   "changesets": [
     "api-loginflow-qr-render",
+    "astrbot-platform-and-commentary-provider",
     "bug-fixes-since-last-release",
     "cardstyle-three-fields",
     "dependent-bumps-push-internal-image",
     "dynamic-pub-ts-fallback",
+    "dynamic-template-config-drop-dynamic-url",
     "dynamic-templates-and-key-syntax",
     "imagegroup-subtree-and-overrides",
     "koishi-ai-image-late-inject",
     "koishi-config-convergence",
+    "koishi-cookie-encryption-key",
     "koishi-image-hide-follower-rename",
     "koishi-internals-protocol",
     "koishi-internals-token",
@@ -42,6 +47,7 @@
     "live-restricted-room-preflight",
     "live-ws-watchdog",
     "monorepo-refactor-release",
-    "push-atall-split-and-dynamic-filter-types"
+    "push-atall-split-and-dynamic-filter-types",
+    "storage-key-provider-cache"
   ]
 }

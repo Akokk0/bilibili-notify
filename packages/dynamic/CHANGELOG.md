@@ -1,5 +1,27 @@
 # @bilibili-notify/dynamic
 
+## 0.1.0-alpha.6
+
+### Minor Changes
+
+- 48b1661: dynamic 插件文案模板可在控制台编辑 + 移除冗余 `dynamicUrl` 开关
+
+  - koishi/dynamic 插件 Schema 新增 `dynamicTemplate` / `videoTemplate` 两项(默认值等于内建文案,未编辑时输出不变),可在控制台直接编辑普通动态 / 视频投稿的推送文案;变量 `{name}`(UP 昵称)、`{url}`(链接)
+  - 移除 `dynamicUrl` 开关 —— 与模板 `{url}` 占位符职责重叠。要不要带链接改为只看模板里有没有 `{url}`,想去掉链接(如 QQ 官方机器人)把模板里的 `{url}` 删掉即可
+  - 引擎恒计算动态 / 视频 url;url 为空(如视频转 BV 无匹配)时仍由 renderDynamicText 去掉尾随分隔符
+
+### Patch Changes
+
+- f21436c: AstrBot 产品形态的核心包基建,均为附加式,对 Koishi 端无行为变化:
+
+  - **`@bilibili-notify/internal`**:新增 canonical `astrbot` 推送平台,以及 `AstrBotAdapter` / `AstrBotPushTarget` schema 与类型(空 adapter config、要求 `unified_msg_origin` 的 `AstrBotSessionSchema`)。该平台在 Koishi / 独立端的平台选择器中隐藏,仅 AstrBot 端使用。
+  - **`@bilibili-notify/ai`**:导出结构化 `CommentaryProvider` 接口,使 AstrBot Provider 桥能作为 commentary 能力注入,无需伪装成具体 `CommentaryGenerator`。
+  - **`@bilibili-notify/dynamic` / `@bilibili-notify/live`**:动态 / 直播引擎的 commentary 消费方放宽为结构化 `comment()` 能力(具体 `CommentaryGenerator` 仍满足该结构),供 AstrBot 桥复用。
+
+- Updated dependencies [f21436c]
+  - @bilibili-notify/internal@0.1.0-alpha.6
+  - @bilibili-notify/ai@0.0.1-alpha.2
+
 ## 0.1.0-alpha.5
 
 ### Patch Changes
