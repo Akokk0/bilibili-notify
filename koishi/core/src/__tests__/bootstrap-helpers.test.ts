@@ -8,7 +8,7 @@ import {
 import type { BilibiliPush } from "@bilibili-notify/push";
 import type { Context, Logger } from "koishi";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { warnMissingPlugins } from "../bootstrap-helpers";
+import { buildStorageManagerOptions, warnMissingPlugins } from "../bootstrap-helpers";
 
 const TARGET_ID = deterministicUuid("missing-plugin-target");
 const LIVE_FEATURE_KEYS = FEATURE_KEYS.filter((feature) => feature !== "dynamic");
@@ -40,6 +40,28 @@ function makeSub(feature: FeatureKey, opts: { enabled?: boolean; featureEnabled?
 	}
 	return sub;
 }
+
+describe("buildStorageManagerOptions", () => {
+	const serviceCtx = { logger: makeLogger() } as never;
+
+	it("把 config.cookieEncryptionKey 透传为注入加密口令(启用真加密)", () => {
+		const opts = buildStorageManagerOptions(serviceCtx, "/data", {
+			cookieEncryptionKey: "s3cret-pass",
+		});
+
+		expect(opts).toEqual({
+			serviceCtx,
+			dataDir: "/data",
+			encryptionKey: "s3cret-pass",
+		});
+	});
+
+	it("未设置口令时 encryptionKey 为 undefined(回退随机密钥)", () => {
+		const opts = buildStorageManagerOptions(serviceCtx, "/data", {});
+
+		expect(opts.encryptionKey).toBeUndefined();
+	});
+});
 
 describe("warnMissingPlugins", () => {
 	it("动态路由启用且 dynamic 插件缺失时告警", async () => {

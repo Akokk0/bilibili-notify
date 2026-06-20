@@ -5,8 +5,9 @@ import {
 	type Subscription,
 } from "@bilibili-notify/internal";
 import type { BilibiliPush } from "@bilibili-notify/push";
-import type { StorageManager } from "@bilibili-notify/storage";
+import type { StorageManager, StorageManagerOptions } from "@bilibili-notify/storage";
 import type { Context, Logger } from "koishi";
+import type { BilibiliNotifyConfig } from "./config";
 
 const LIVE_PLUGIN_FEATURES = [
 	"live",
@@ -18,6 +19,20 @@ const LIVE_PLUGIN_FEATURES = [
 	"specialDanmaku",
 	"specialUserEnter",
 ] as const satisfies readonly FeatureKey[];
+
+/**
+ * 组装 StorageManager 选项:把 koishi config 里的 cookieEncryptionKey 透传为注入
+ * 加密口令(留空 → undefined,StorageManager 内部回退到与密文同目录的随机密钥)。
+ * 抽出此处是为了用单测钉住「koishi 端确实把口令接到了 storage」——此前 initStorage
+ * 漏传该字段,koishi 端只能走弱加密(仅混淆)。
+ */
+export function buildStorageManagerOptions(
+	serviceCtx: StorageManagerOptions["serviceCtx"],
+	dataDir: string,
+	config: Pick<BilibiliNotifyConfig, "cookieEncryptionKey">,
+): StorageManagerOptions {
+	return { serviceCtx, dataDir, encryptionKey: config.cookieEncryptionKey };
+}
 
 /** Load cookies from disk into the API jar; mark "login info loaded" if absent. */
 export async function loadInitialCookies(
