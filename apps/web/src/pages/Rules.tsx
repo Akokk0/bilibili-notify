@@ -120,7 +120,7 @@ function ScopeTabs({
 	const isGlobal = scope === "__global";
 
 	return (
-		<div className="relative z-10 flex flex-wrap items-center gap-1.5 rounded-[11px] border border-bn-border-subtle bg-bn-surface/70 p-1.5 backdrop-blur-sm">
+		<div className="relative z-30 flex flex-wrap items-center gap-1.5 rounded-[11px] border border-bn-border-subtle bg-bn-surface/70 p-1.5 backdrop-blur-sm">
 			{/* 全局 */}
 			<button
 				type="button"
