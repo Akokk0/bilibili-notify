@@ -39,8 +39,7 @@ export interface SectionNavProps {
 
 const RAIL_ITEM_BASE =
 	"flex w-full min-w-0 items-start gap-2.5 rounded-[9px] border px-3 py-2.5 text-left transition";
-const RAIL_ITEM_ACTIVE =
-	"border-bn-pink/35 bg-bn-surface/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]";
+const RAIL_ITEM_ACTIVE = "border-bn-pink/35 bg-bn-surface/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]";
 const RAIL_ITEM_IDLE = "border-transparent hover:bg-bn-surface/55";
 
 const CHIP_BASE =
@@ -49,15 +48,7 @@ const CHIP_ACTIVE = "border-bn-pink/40 bg-bn-pink/10 text-bn-pink";
 const CHIP_IDLE =
 	"border-transparent text-bn-text-secondary hover:bg-bn-surface/70 hover:text-bn-text-primary";
 
-function IconBox({
-	icon,
-	tint,
-	active,
-}: {
-	icon: ReactNode;
-	tint?: string;
-	active: boolean;
-}) {
+function IconBox({ icon, tint, active }: { icon: ReactNode; tint?: string; active: boolean }) {
 	if (icon == null) return null;
 	if (tint) {
 		return (
@@ -90,12 +81,11 @@ export function SectionNav({
 	emptyState,
 }: SectionNavProps) {
 	return (
-		<>
+		// 单根 div:在页面 `grid xl:grid-cols-[220px_1fr]` 里恰好占一格
+		// (桌面=左列 col1,窄视口=顶部 row1)。竖栏/横向条二选一显示。
+		<div data-section-nav="root" className="min-w-0">
 			{/* 竖栏(桌面 xl+) */}
-			<aside
-				data-section-nav="rail"
-				className="sticky top-30 hidden h-fit min-w-0 xl:block"
-			>
+			<aside data-section-nav="rail" className="sticky top-30 hidden h-fit min-w-0 xl:block">
 				<div className="mb-2 flex items-center justify-between px-1">
 					<span className="text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
 						{heading}
@@ -180,6 +170,6 @@ export function SectionNav({
 					</button>
 				) : null}
 			</div>
-		</>
+		</div>
 	);
 }

@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { Components } from "react-markdown";
 import { Input } from "../components/atoms";
 import { Icon } from "../components/icons";
+import { SectionNav } from "../components/section-nav";
 import { useLogChannel } from "../hooks/useLogChannel";
 import { api } from "../services/api";
 import {
@@ -346,44 +347,20 @@ function LogsSectionList({
 	onChange: (section: LogsSectionId) => void;
 }) {
 	return (
-		<aside className="sticky top-30 h-fit min-w-0">
-			<div className="mb-2 px-1 text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
-				日志
-			</div>
-			<div className="flex flex-col gap-1">
-				{LOG_SECTIONS.map((s) => {
-					const active = current === s.id;
-					const SectionIcon = Icon[s.icon];
-					return (
-						<button
-							key={s.id}
-							type="button"
-							onClick={() => onChange(s.id)}
-							aria-pressed={active}
-							className={`flex w-full items-center gap-2 rounded-[9px] border px-3 py-2.5 text-left transition ${
-								active
-									? "border-bn-pink/35 bg-bn-surface/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
-									: "border-transparent hover:bg-bn-surface/55"
-							}`}
-						>
-							<span
-								className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${
-									active ? "bg-bn-pink/12 text-bn-pink" : "bg-bn-hover-muted text-bn-text-tertiary"
-								}`}
-							>
-								<SectionIcon size={14} />
-							</span>
-							<span className="min-w-0">
-								<span className="block text-[12.5px] font-bold text-bn-text-primary">
-									{s.label}
-								</span>
-								<span className="block truncate text-[11px] text-bn-text-tertiary">{s.desc}</span>
-							</span>
-						</button>
-					);
-				})}
-			</div>
-		</aside>
+		<SectionNav
+			heading="日志"
+			activeId={current}
+			onPick={(id) => onChange(id as LogsSectionId)}
+			items={LOG_SECTIONS.map((s) => {
+				const SectionIcon = Icon[s.icon];
+				return {
+					id: s.id,
+					label: s.label,
+					desc: s.desc,
+					icon: <SectionIcon size={14} />,
+				};
+			})}
+		/>
 	);
 }
 

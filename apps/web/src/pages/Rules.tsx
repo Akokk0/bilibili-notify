@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Avatar, Pill } from "../components/atoms";
 import { Icon } from "../components/icons";
+import { SectionNav } from "../components/section-nav";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { api } from "../services/api";
 import type { Subscription } from "../types/domain";
@@ -300,55 +301,23 @@ function SectionList({
 	customizedIds?: Set<SectionId>;
 }) {
 	return (
-		<aside className="sticky top-30 h-fit min-w-0">
-			<div className="mb-2 px-1 text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
-				{heading}
-			</div>
-			<div className="flex flex-col gap-1">
-				{sections.map((s) => {
-					const active = current === s.id;
-					const overridden = customizedIds?.has(s.id) ?? false;
-					return (
-						<button
-							type="button"
-							key={s.id}
-							onClick={() => onPick(s.id)}
-							className={`flex w-full min-w-0 items-start gap-2.5 rounded-[9px] border px-3 py-2.5 text-left transition ${
-								active
-									? "border-bn-pink/35 bg-bn-surface/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
-									: "border-transparent hover:bg-bn-surface/55"
-							}`}
-						>
-							<span
-								className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center ${
-									active ? "text-bn-pink" : "text-bn-text-secondary"
-								}`}
-							>
-								{s.icon}
-							</span>
-							<span className="block min-w-0 flex-1">
-								<span
-									className={`flex items-center gap-1.5 text-[12.5px] font-bold ${
-										active ? "text-bn-pink" : "text-bn-text-primary"
-									}`}
-								>
-									{s.label}
-									{overridden ? (
-										<span
-											className="inline-block h-1.5 w-1.5 rounded-full bg-bn-pink"
-											title="该 UP 主已设置该项覆盖"
-										/>
-									) : null}
-								</span>
-								<span className="mt-0.5 block wrap-break-word text-[10.5px] leading-snug text-bn-text-tertiary">
-									{s.desc}
-								</span>
-							</span>
-						</button>
-					);
-				})}
-			</div>
-		</aside>
+		<SectionNav
+			heading={heading}
+			activeId={current}
+			onPick={(id) => onPick(id as SectionId)}
+			items={sections.map((s) => ({
+				id: s.id,
+				label: s.label,
+				desc: s.desc,
+				icon: s.icon,
+				badge: customizedIds?.has(s.id) ? (
+					<span
+						className="inline-block h-1.5 w-1.5 rounded-full bg-bn-pink"
+						title="该 UP 主已设置该项覆盖"
+					/>
+				) : undefined,
+			}))}
+		/>
 	);
 }
 

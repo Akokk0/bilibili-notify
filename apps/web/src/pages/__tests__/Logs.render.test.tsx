@@ -48,19 +48,20 @@ describe("Logs page sections", () => {
 	it("defaults to runtime logs and keeps changelog content hidden", async () => {
 		renderLogs();
 		expect(await screen.findByText("没有符合条件的日志")).toBeTruthy();
-		expect(screen.getByText("运行日志")).toBeTruthy();
+		// SectionNav 双形态(竖栏 + 横向条)→ section 标签各出现两次。
+		expect(screen.getAllByText("运行日志").length).toBeGreaterThan(0);
 		expect(screen.queryByText("Changelog · 独立端")).toBeNull();
 	});
 
 	it("renders changelog only after switching sections", async () => {
 		renderLogs();
-		fireEvent.click(screen.getByRole("button", { name: /更新日志/ }));
+		fireEvent.click(screen.getAllByRole("button", { name: /更新日志/ })[0]);
 		expect(await screen.findByText("Changelog · 独立端")).toBeTruthy();
 		expect(screen.getAllByText("apps/CHANGELOG.md").length).toBeGreaterThan(0);
 	});
 
-	// 回归:bn-anim-fade-in 的残留 transform 不能挂在 grid 上,否则 sticky aside 的包含块
-	// 被改写,窄视口单列布局坍缩(aside 压住内容)。见 Logs.tsx return 处注释。
+	// 回归:bn-anim-fade-in 的残留 transform 不能挂在 grid 上,否则会改写内部 sticky
+	// 竖栏(SectionNav 的 aside)的包含块,窄视口单列布局坍缩。见 Logs.tsx return 处注释。
 	it("keeps the fade-in transform off the grid/sticky layer", () => {
 		const { container } = renderLogs();
 		const fade = container.querySelector(".bn-anim-fade-in");

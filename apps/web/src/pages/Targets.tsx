@@ -4,6 +4,7 @@ import { Btn, PlatformIcon, platformLabel, StatusDot, Toggle } from "../componen
 import { ModalShell } from "../components/dialog";
 import { Field, Picker, TInput, TNum, TSelect } from "../components/forms";
 import { Icon } from "../components/icons";
+import { SectionNav } from "../components/section-nav";
 import { ApiError, api } from "../services/api";
 import {
 	KNOWN_PLATFORMS,
@@ -1289,68 +1290,31 @@ function AdapterRail({
 	targetCountByAdapter: Map<string, number>;
 }) {
 	return (
-		<aside className="sticky top-30 h-fit min-w-0">
-			<div className="mb-2 flex items-center justify-between px-1">
-				<span className="text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
-					推送适配器
-				</span>
-				<button
-					type="button"
-					onClick={onAddClick}
-					className="rounded-md border border-dashed border-bn-border px-2 py-0.5 text-[10.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
-				>
-					+ 新建
-				</button>
-			</div>
-			{adapters.length === 0 ? (
+		<SectionNav
+			heading="推送适配器"
+			activeId={selectedId}
+			onPick={onPick}
+			onAdd={onAddClick}
+			addLabel="+ 新建"
+			emptyState={
 				<div className="rounded-[9px] border border-dashed border-bn-border bg-bn-surface/55 px-3 py-3 text-center text-[11px] text-bn-text-tertiary">
 					尚未配置任何适配器
 				</div>
-			) : (
-				<div className="flex flex-col gap-1">
-					{adapters.map((a) => {
-						const active = selectedId === a.id;
-						const tint = tintFor(a.platform);
-						const count = targetCountByAdapter.get(a.id) ?? 0;
-						return (
-							<button
-								type="button"
-								key={a.id}
-								onClick={() => onPick(a.id)}
-								className={`flex w-full min-w-0 items-start gap-2.5 rounded-[9px] border px-3 py-2.5 text-left transition ${
-									active
-										? "border-bn-pink/35 bg-bn-surface/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
-										: "border-transparent hover:bg-bn-surface/55"
-								}`}
-							>
-								<span
-									className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-[5px]"
-									style={{ background: `${tint}1f` }}
-								>
-									<PlatformIcon platform={a.platform} size={12} />
-								</span>
-								<span className="block min-w-0 flex-1">
-									<span
-										className={`flex items-center gap-1.5 text-[12.5px] font-bold ${
-											active ? "text-bn-pink" : "text-bn-text-primary"
-										}`}
-									>
-										<span className="truncate">{a.name || "（未命名）"}</span>
-										{!a.enabled ? (
-											<span className="shrink-0 text-[10px] text-bn-text-tertiary">(停用)</span>
-										) : null}
-									</span>
-									<span className="mt-0.5 block wrap-break-word text-[10.5px] leading-snug text-bn-text-tertiary">
-										{platformLabel(a.platform)} ·{" "}
-										{a.platform === "webhook" ? "单向投递" : `${count} 个目标`}
-									</span>
-								</span>
-							</button>
-						);
-					})}
-				</div>
-			)}
-		</aside>
+			}
+			items={adapters.map((a) => {
+				const count = targetCountByAdapter.get(a.id) ?? 0;
+				return {
+					id: a.id,
+					label: a.name || "（未命名）",
+					desc: `${platformLabel(a.platform)} · ${a.platform === "webhook" ? "单向投递" : `${count} 个目标`}`,
+					icon: <PlatformIcon platform={a.platform} size={12} />,
+					iconTint: tintFor(a.platform),
+					badge: !a.enabled ? (
+						<span className="shrink-0 text-[10px] text-bn-text-tertiary">(停用)</span>
+					) : undefined,
+				};
+			})}
+		/>
 	);
 }
 
