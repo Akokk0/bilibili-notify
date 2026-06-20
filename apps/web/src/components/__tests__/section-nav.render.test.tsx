@@ -71,6 +71,17 @@ describe("SectionNav", () => {
 		expect(cls).toContain("xl:hidden"); // 横向条只在 xl 以下出现
 	});
 
+	// 用户诉求:横向 Tab 用左右按钮滚动,而不是露出(丑的)原生滚动条。
+	it("hides the native scrollbar on the horizontal chip row", () => {
+		const { container } = render(
+			<SectionNav heading="日志" items={items} activeId="a" onPick={() => {}} />,
+		);
+		const bar = container.querySelector('[data-section-nav="bar"]');
+		const scroller = bar?.querySelector(".bn-no-scrollbar");
+		expect(scroller).toBeTruthy();
+		expect(scroller?.classList.contains("overflow-x-auto")).toBe(true);
+	});
+
 	it("shows desc only in the vertical rail, not in horizontal chips", () => {
 		render(<SectionNav heading="日志" items={items} activeId="a" onPick={() => {}} />);
 		// desc 仅竖栏渲染 → 全文档只出现一次

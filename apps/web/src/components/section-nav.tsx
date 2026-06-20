@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * SectionNav —— Rules / Targets / Logs 三页共用的「分区/Tab 导航」。
@@ -48,6 +48,25 @@ const CHIP_ACTIVE = "border-bn-pink/40 bg-bn-pink/10 text-bn-pink";
 const CHIP_IDLE =
 	"border-transparent text-bn-text-secondary hover:bg-bn-surface/70 hover:text-bn-text-primary";
 
+function Chevron({ dir }: { dir: "left" | "right" }) {
+	return (
+		<svg
+			viewBox="0 0 24 24"
+			width={16}
+			height={16}
+			fill="none"
+			stroke="currentColor"
+			strokeWidth={2.4}
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			aria-hidden="true"
+			focusable="false"
+		>
+			<path d={dir === "left" ? "m15 18-6-6 6-6" : "m9 18 6-6-6-6"} />
+		</svg>
+	);
+}
+
 function IconBox({ icon, tint, active }: { icon: ReactNode; tint?: string; active: boolean }) {
 	if (icon == null) return null;
 	if (tint) {
@@ -80,6 +99,41 @@ export function SectionNav({
 	addLabel = "+ 新建",
 	emptyState,
 }: SectionNavProps) {
+	// 横向条(窄视口)左右滚动:隐藏滚动条,改用两端箭头按钮,仅在该方向可滚时出现。
+	const scrollRef = useRef<HTMLDivElement>(null);
+	const [edges, setEdges] = useState({ left: false, right: false });
+
+	const recompute = useCallback(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		const left = el.scrollLeft > 1;
+		const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+		setEdges((prev) => (prev.left === left && prev.right === right ? prev : { left, right }));
+	}, []);
+
+	useEffect(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		recompute();
+		if (typeof ResizeObserver === "undefined") {
+			window.addEventListener("resize", recompute);
+			return () => window.removeEventListener("resize", recompute);
+		}
+		const ro = new ResizeObserver(recompute);
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, [recompute]);
+
+	// items 变化(数量/宽度)后重算箭头可见性。
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 需在 items 变化时重算
+	useEffect(recompute, [recompute, items]);
+
+	const scrollByDir = (dir: -1 | 1) => {
+		const el = scrollRef.current;
+		if (!el) return;
+		el.scrollBy({ left: dir * el.clientWidth * 0.75, behavior: "smooth" });
+	};
+
 	return (
 		// 单根 div:在页面 `grid xl:grid-cols-[220px_1fr]` 里恰好占一格
 		// (桌面=左列 col1,窄视口=顶部 row1)。竖栏/横向条二选一显示。
@@ -137,38 +191,73 @@ export function SectionNav({
 				)}
 			</aside>
 
-			{/* 横向条(窄视口 < xl):sticky + 背景 + z-index → 内容从其下穿过,不再覆盖 */}
+			{/* 横向条(窄视口 < xl):sticky + 背景 + z-index → 内容从其下穿过,不再覆盖。
+			    左右两端用箭头按钮滚动,隐藏原生滚动条(bn-no-scrollbar)。 */}
 			<div
 				data-section-nav="bar"
-				className="sticky top-30 z-20 flex items-center gap-1.5 overflow-x-auto rounded-[11px] border border-bn-border-subtle bg-bn-surface/70 p-1.5 backdrop-blur-sm xl:hidden"
+				className="sticky top-30 z-20 rounded-[11px] border border-bn-border-subtle bg-bn-surface/70 backdrop-blur-sm xl:hidden"
 			>
-				{items.map((item) => {
-					const active = activeId === item.id;
-					return (
-						<button
-							type="button"
-							key={item.id}
-							onClick={() => onPick(item.id)}
-							aria-current={active ? "true" : undefined}
-							className={`${CHIP_BASE} ${active ? CHIP_ACTIVE : CHIP_IDLE}`}
-						>
-							{item.icon != null ? (
-								<span className="grid h-4 w-4 shrink-0 place-items-center">{item.icon}</span>
-							) : null}
-							<span className="whitespace-nowrap">{item.label}</span>
-							{item.badge}
-						</button>
-					);
-				})}
-				{onAdd ? (
-					<button
-						type="button"
-						onClick={onAdd}
-						className="flex shrink-0 items-center gap-1 rounded-lg border border-dashed border-bn-border px-3 py-1.5 text-[12.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
+				<div className="relative flex items-center">
+					{edges.left ? (
+						<div className="absolute inset-y-0 left-0 z-10 flex items-center rounded-l-[11px] bg-gradient-to-r from-bn-surface via-bn-surface/85 to-transparent pr-6 pl-1">
+							<button
+								type="button"
+								aria-label="向左滚动"
+								onClick={() => scrollByDir(-1)}
+								className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-bn-border-subtle bg-bn-surface text-bn-text-secondary shadow-[0_2px_8px_rgba(0,0,0,0.1)] transition hover:text-bn-pink"
+							>
+								<Chevron dir="left" />
+							</button>
+						</div>
+					) : null}
+
+					<div
+						ref={scrollRef}
+						onScroll={recompute}
+						className="bn-no-scrollbar flex items-center gap-1.5 overflow-x-auto scroll-smooth p-1.5"
 					>
-						{addLabel}
-					</button>
-				) : null}
+						{items.map((item) => {
+							const active = activeId === item.id;
+							return (
+								<button
+									type="button"
+									key={item.id}
+									onClick={() => onPick(item.id)}
+									aria-current={active ? "true" : undefined}
+									className={`${CHIP_BASE} ${active ? CHIP_ACTIVE : CHIP_IDLE}`}
+								>
+									{item.icon != null ? (
+										<span className="grid h-4 w-4 shrink-0 place-items-center">{item.icon}</span>
+									) : null}
+									<span className="whitespace-nowrap">{item.label}</span>
+									{item.badge}
+								</button>
+							);
+						})}
+						{onAdd ? (
+							<button
+								type="button"
+								onClick={onAdd}
+								className="flex shrink-0 items-center gap-1 rounded-lg border border-dashed border-bn-border px-3 py-1.5 text-[12.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
+							>
+								{addLabel}
+							</button>
+						) : null}
+					</div>
+
+					{edges.right ? (
+						<div className="absolute inset-y-0 right-0 z-10 flex items-center rounded-r-[11px] bg-gradient-to-l from-bn-surface via-bn-surface/85 to-transparent pr-1 pl-6">
+							<button
+								type="button"
+								aria-label="向右滚动"
+								onClick={() => scrollByDir(1)}
+								className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-bn-border-subtle bg-bn-surface text-bn-text-secondary shadow-[0_2px_8px_rgba(0,0,0,0.1)] transition hover:text-bn-pink"
+							>
+								<Chevron dir="right" />
+							</button>
+						</div>
+					) : null}
+				</div>
 			</div>
 		</div>
 	);
