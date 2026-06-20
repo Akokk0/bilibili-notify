@@ -1,0 +1,75 @@
+name: bilibili-notify — astrbot release
+
+# AstrBot 插件发布到独立仓 Akokk0/astrbot_plugin_bilibili_notify。
+# 触发:dev 上 astrbot/core/metadata.yaml 的 version 变化 → 自动发布;或手动 dispatch 预演。
+# 版本事实源 = metadata.yaml#version。需要 repo secret RELEASE_PAT —— 对独立仓有 contents:write
+# (fine-grained PAT 需把该仓加进 repository access)。
+# 发布脚本 scripts/release-astrbot-core.mjs 经 ASTRBOT_RELEASE_REMOTE 注入带 token 的 remote,无需改脚本。
+
+on:
+  push:
+    branches: [dev]
+    paths: ["astrbot/core/metadata.yaml"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "构建并预演(不真推送到独立仓)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: astrbot-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # push(version 变化)= 正式发布;dispatch 勾 dry_run 时只构建 + 预演,不推送。
+  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2 # 需 HEAD~1 比对 metadata 版本
+          persist-credentials: false
+
+      # push 时:比对上一个 commit,version 没变就跳过(metadata 改了别的字段不发)。
+      # dispatch 时:强制 changed=true 走 dry-run 预演。
+      - name: Detect version change
+        id: ver
+        run: bash .github/scripts/astrbot-version-changed.sh
+
+      - name: Setup Vite+ (vp) + Node + deps
+        if: steps.ver.outputs.changed == 'true'
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: .node-version
+          cache: true
+
+      - name: Build astrbot artifacts
+        if: steps.ver.outputs.changed == 'true'
+        run: vp run build:astrbot
+
+      - name: Configure git author (squash commit)
+        if: steps.ver.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # 发布脚本把 astrbot/core 工作目录(含构建产物)squash push 到独立仓。
+      # dry-run 只打印将推送内容、不真推(脚本剥离 vp 转发的 `--` 后解析 --dry-run)。
+      - name: Release to plugin repo
+        if: steps.ver.outputs.changed == 'true'
+        env:
+          ASTRBOT_RELEASE_REMOTE: https://x-access-token:${{ secrets.RELEASE_PAT }}@github.com/Akokk0/astrbot_plugin_bilibili_notify.git
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            vp run release:astrbot-core -- --dry-run
+          else
+            vp run release:astrbot-core
+          fi
