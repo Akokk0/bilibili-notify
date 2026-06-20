@@ -102,3 +102,15 @@ docker build -f apps/Dockerfile -t bilibili-notify:dev .
 ```
 
 `apps/docker-compose.example.yaml` 是部署模板。`apps/*` 单独的改动不需要 changeset。
+
+## AstrBot 插件发布(独立仓)
+
+AstrBot 插件发布到独立仓 `Akokk0/astrbot_plugin_bilibili_notify`(AstrBot 插件市场按普通仓拉取)。版本事实源是 `astrbot/core/metadata.yaml#version`。发布把 `astrbot/core` **工作目录**(含 gitignored 但运行必需的构建产物 `sidecar/app` + `pages/dashboard`)作为单个 squash 提交 push 到独立仓 `main`,由 `scripts/release-astrbot-core.mjs`(`vp run release:astrbot-core`)完成 —— 不是 git tree 快照。
+
+CI:`.github/workflows/astrbot-release.yml`,**监测 `metadata.yaml#version` 变化**驱动(不打 tag):
+
+- **正式发布**:dev 上 `astrbot/core/metadata.yaml` 的 `version` 改动(bump)并 push → 自动发布。workflow 用 `astrbot-version-changed.sh` 比对 HEAD~1,`version` 没变(只改了别的字段)则跳过。
+- **预演**:`workflow_dispatch` 勾 `dry_run`(默认 true)—— 强制走、只 `vp run build:astrbot` + `release:astrbot-core --dry-run`,不推送。
+- 跨仓 push 用 secret `RELEASE_PAT`,经 `ASTRBOT_RELEASE_REMOTE=https://x-access-token:<PAT>@github.com/...` 注入,发布脚本本身不改。`RELEASE_PAT` 须对独立仓有 `contents:write`(fine-grained PAT 需把该仓加进 repository access)。
+
+AstrBot 发布与 koishi npm、独立端 Docker/Desktop **互不牵动**,各自独立触发。本地仍可直接 `vp run release:astrbot-core`(先 `vp run build:astrbot`),但 CI 路径内建 dry-run、更安全(规避脚本注释记录的"`--` 转发把 dry-run 跑成真推送"那类本地坑)。
