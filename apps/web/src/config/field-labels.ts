@@ -387,11 +387,38 @@ export const FIELD_LABELS = {
 		section: "transport",
 		secret: true,
 	},
+	// QQ 官方机器人(q.qq.com)适配器凭据
+	"config.appId": {
+		label: "AppID",
+		hint: "QQ 开放平台机器人的 AppID(明文存储)",
+		section: "transport",
+	},
+	"config.appSecret": {
+		label: "AppSecret",
+		hint: "机器人密钥;用于换取 App Access Token",
+		section: "transport",
+		secret: true,
+	},
+	"config.botType": {
+		label: "机器人域",
+		hint: "私域可发原生 markdown(图集合并);公域不支持原生 markdown(需报备模板)",
+		section: "transport",
+	},
+	"config.sandbox": {
+		label: "沙箱模式",
+		hint: "开启后走 QQ 沙箱环境,仅对沙箱内成员可见",
+		section: "transport",
+	},
 	"target.name": { label: "显示名称", section: "target" },
 	"target.scope": { label: "作用域", section: "target" },
 	"target.enabled": { label: "启用", section: "target" },
 	"session.userId": { label: "QQ 号 (userId)", section: "session" },
 	"session.groupId": { label: "群号 (groupId)", section: "session" },
+	// QQ 官方机器人会话寻址(按 scope)
+	"session.guildId": { label: "频道服务器 ID (guildId)", section: "session" },
+	"session.channelId": { label: "子频道 ID (channelId)", section: "session" },
+	"session.groupOpenid": { label: "群 openid (groupOpenid)", section: "session" },
+	"session.userOpenid": { label: "用户 openid (C2C)", section: "session" },
 } satisfies Record<string, FieldLabel>;
 
 /** 所有已知 code 的联合类型。 */

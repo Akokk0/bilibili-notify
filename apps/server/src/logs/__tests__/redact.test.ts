@@ -7,7 +7,7 @@
  * 复发点:去掉某条 REPLACER 或 scrub 只作用 msg 不作用 args。
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import type { LogEntry } from "../../ws/types.js";
 import { redactLogEntry, scrubSecrets } from "../redact.js";
 

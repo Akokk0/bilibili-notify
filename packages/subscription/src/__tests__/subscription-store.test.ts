@@ -20,7 +20,7 @@ import {
 	type Subscription,
 	type SubscriptionOp,
 } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { createSubscriptionStore, diff } from "../index";
 
 function makeFakeBus(): MessageBus & { events: Array<[keyof BiliEvents, unknown[]]> } {

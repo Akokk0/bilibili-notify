@@ -25,9 +25,9 @@ export function Avatar({ name, color, size = 44, ring = false, status, url }: Av
 	const inner: CSSProperties = {
 		width: size,
 		height: size,
-		background: url ? "white" : `linear-gradient(135deg, ${color}, ${color}dd)`,
+		background: url ? "var(--color-bn-surface)" : `linear-gradient(135deg, ${color}, ${color}dd)`,
 		fontSize: Math.round(size * 0.4),
-		border: ring ? "3px solid white" : "2px solid white",
+		border: ring ? "3px solid var(--color-bn-surface)" : "2px solid var(--color-bn-surface)",
 	};
 	return (
 		<div className="relative shrink-0" style={{ width: size, height: size }}>
@@ -76,14 +76,17 @@ export interface BtnProps {
 	disabled?: boolean;
 	type?: "button" | "submit";
 	title?: string;
+	/** 下拉/弹层触发器的无障碍标注:透传到底层 <button>。 */
+	ariaHasPopup?: boolean;
+	ariaExpanded?: boolean;
 }
 
 const VARIANT_CLS: Record<BtnVariant, string> = {
 	primary: "bg-bn-pink text-white border-transparent hover:opacity-90",
 	blue: "bg-bn-blue text-white border-transparent hover:opacity-90",
-	ghost: "bg-transparent text-bn-text-tertiary border-transparent hover:bg-black/5",
-	outline: "bg-white text-bn-text-primary border-gray-200 hover:bg-gray-50",
-	danger: "bg-transparent text-red-500 border-transparent hover:bg-red-50",
+	ghost: "bg-transparent text-bn-text-tertiary border-transparent hover:bg-bn-hover-muted",
+	outline: "bg-bn-surface text-bn-text-primary border-bn-border hover:bg-bn-surface-muted",
+	danger: "bg-transparent text-red-500 border-transparent hover:bg-red-500/10",
 };
 
 const SIZE_CLS: Record<BtnSize, string> = {
@@ -102,6 +105,8 @@ export function Btn({
 	disabled = false,
 	type = "button",
 	title,
+	ariaHasPopup,
+	ariaExpanded,
 }: BtnProps) {
 	return (
 		<button
@@ -109,6 +114,8 @@ export function Btn({
 			onClick={onClick}
 			disabled={disabled}
 			title={title}
+			aria-haspopup={ariaHasPopup}
+			aria-expanded={ariaExpanded}
 			className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${SIZE_CLS[size]} ${VARIANT_CLS[variant]} ${full ? "w-full" : "w-auto"}`}
 		>
 			{icon ? <span className="inline-flex shrink-0">{icon}</span> : null}
@@ -213,7 +220,7 @@ export function Toggle({ value, onChange, size = "md", disabled }: ToggleProps) 
 			style={trackStyle}
 		>
 			<span
-				className="absolute rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2)]"
+				className="absolute rounded-full bg-bn-surface shadow-[0_1px_3px_rgba(0,0,0,0.2)]"
 				style={dotStyle}
 			/>
 		</button>
@@ -244,7 +251,7 @@ export function Input({
 	const sz = size === "sm" ? "h-7 text-xs" : "h-8 text-[13px]";
 	return (
 		<div
-			className={`inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 ${sz} ${full ? "w-full flex-1" : "w-auto"}`}
+			className={`inline-flex items-center gap-1.5 rounded-md border border-bn-border bg-bn-field px-2.5 ${sz} ${full ? "w-full flex-1" : "w-auto"}`}
 		>
 			{icon ? (
 				<span className="inline-flex h-3.5 w-3.5 shrink-0 text-bn-text-secondary">{icon}</span>
@@ -264,6 +271,7 @@ export function Input({
 
 const PLATFORM_META: Record<string, { color: string; label: string; icon?: IconName }> = {
 	onebot: { color: "#3b82f6", label: "OneBot", icon: "qq" },
+	"qq-official": { color: "#14b8a6", label: "QQ官方", icon: "qq" },
 	webhook: { color: "#22c55e", label: "Webhook" },
 	"web-dashboard": { color: "#a29bfe", label: "Dashboard" },
 };
@@ -391,7 +399,7 @@ export function Section({ label, children }: { label: string; children: ReactNod
 			<div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-bn-text-secondary">
 				{label}
 			</div>
-			<div className="rounded-lg border border-gray-200 bg-gray-50/60">{children}</div>
+			<div className="rounded-lg border border-bn-border bg-bn-surface-muted/80">{children}</div>
 		</div>
 	);
 }
@@ -408,7 +416,7 @@ export function Row({
 	children?: ReactNode;
 }) {
 	return (
-		<div className="flex items-center gap-2.5 border-b border-gray-100 px-3 py-2.5 last:border-b-0">
+		<div className="flex items-center gap-2.5 border-b border-bn-border-subtle px-3 py-2.5 last:border-b-0">
 			{icon ? <span className="shrink-0">{icon}</span> : null}
 			<div className="min-w-0 flex-1">
 				<div className="text-[12.5px] font-semibold text-bn-text-primary">{label}</div>

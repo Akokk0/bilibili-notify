@@ -15,7 +15,7 @@
  */
 
 import type { GlobalConfig } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const cronMock = vi.hoisted(() => {
 	const instances: Array<{ cronTime: string; onTick: () => void }> = [];

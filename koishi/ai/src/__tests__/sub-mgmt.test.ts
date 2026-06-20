@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { PushTarget, Subscription } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { buildSubManagement, type SubMgmtRegistryLike, type SubMgmtStoreLike } from "../sub-mgmt";
 
 function makeFakeStore(): SubMgmtStoreLike & { upserted: Subscription[] } {

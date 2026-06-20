@@ -9,7 +9,7 @@
  * 任一失败 = WS 鉴权失效 / 凭证可重放 / 任意字符串可登录。
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createWsTicketStore } from "../ws-ticket";
 
 describe("WsTicketStore — P0-4", () => {

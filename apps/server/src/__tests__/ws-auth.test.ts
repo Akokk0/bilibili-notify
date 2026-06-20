@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MessageBus } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
 import { createWsTicketStore } from "../auth/ws-ticket.js";
 import type { BootstrapConfig } from "../config/schema.js";

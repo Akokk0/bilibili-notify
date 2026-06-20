@@ -15,7 +15,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Disposable } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { startHistoryRetention } from "../retention.js";
 import { listDayFiles } from "../store.js";
 

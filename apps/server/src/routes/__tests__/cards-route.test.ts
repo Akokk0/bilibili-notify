@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { StandalonePuppeteer } from "../../runtime/puppeteer.js";
 import { createCardsRoute } from "../cards.js";
 import type { RouteDeps } from "../types.js";

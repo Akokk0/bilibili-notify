@@ -9,7 +9,7 @@
  * 复发点:任一约束被放宽 / transform 被改回普通数组,本套立刻挂。
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { ContentFiltersSchema, TimeRangeSchema } from "./common";
 import { HistoryPayloadSchema } from "./history";
 import { SubscriptionRoutingSchema } from "./subscriptions";

@@ -1,7 +1,13 @@
 import type { AIScene, CommentaryCallOverride } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ImageRenderer } from "@bilibili-notify/image";
-import type { Disposable, Logger, MessageBus, ServiceContext } from "@bilibili-notify/internal";
+import type {
+	Disposable,
+	ForwardImage,
+	Logger,
+	MessageBus,
+	ServiceContext,
+} from "@bilibili-notify/internal";
 import { interpolate, withLock } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
@@ -128,16 +134,15 @@ function getDynamicPostTime(author: Dynamic["modules"]["module_author"]): number
  * level externally via {@link ServiceContext}.
  */
 export interface DynamicEngineConfig {
-	/** 推送动态时是否附带 URL（QQ 官方机器人需关闭）。 */
-	dynamicUrl: boolean;
 	/** 轮询动态的 cron 表达式。 */
 	dynamicCron: string;
 	/** 视频动态时是否将 URL 替换为 BV 号。 */
 	dynamicVideoUrlToBV: boolean;
 	/**
 	 * 非视频动态的推送文本模板。变量 `{name}`(UP 名) / `{url}`(动态链接)。
-	 * `{url}` 在 `dynamicUrl=false` 时为空,引擎会顺带去掉相邻分隔符。
-	 * 缺省时回退到内建文案。Adapter 通常用 `globals.defaults.templates.dynamic` 填充。
+	 * 要不要带链接由模板里有没有 `{url}` 决定(per-UP / 全局模板可编辑);`{url}` 在
+	 * url 为空(如视频转 BV 无匹配)时,引擎会顺带去掉相邻分隔符。缺省时回退到内建文案。
+	 * Adapter 通常用 `globals.defaults.templates.dynamic` 填充。
 	 */
 	dynamicTemplate?: string;
 	/**
@@ -710,22 +715,21 @@ export class DynamicEngine {
 					this.imageFailureNotified = false;
 				}
 
-				// Build bare URL (模板的 {url} 变量,不含任何前缀文案)。
-				// dynamicUrl=false(QQ 官方机器人)时为空,renderDynamicText 会去掉分隔符。
+				// Build bare URL (模板的 {url} 变量,不含任何前缀文案)。链接恒计算 ——
+				// 要不要展示由模板里有没有 {url} 决定。视频转 BV 无匹配等 url 为空的情形,
+				// renderDynamicText 会去掉模板里 {url} 的尾随分隔符。
 				const isVideo = item.type === "DYNAMIC_TYPE_AV";
-				let url = "";
-				if (this.config.dynamicUrl) {
-					if (isVideo) {
-						const jumpUrl = item.modules.module_dynamic.major?.archive?.jump_url ?? "";
-						if (this.config.dynamicVideoUrlToBV) {
-							const bvMatch = jumpUrl.match(/BV[0-9A-Za-z]+/);
-							url = bvMatch ? bvMatch[0] : "";
-						} else {
-							url = `https:${jumpUrl}`;
-						}
+				let url: string;
+				if (isVideo) {
+					const jumpUrl = item.modules.module_dynamic.major?.archive?.jump_url ?? "";
+					if (this.config.dynamicVideoUrlToBV) {
+						const bvMatch = jumpUrl.match(/BV[0-9A-Za-z]+/);
+						url = bvMatch ? bvMatch[0] : "";
 					} else {
-						url = `https://t.bilibili.com/${item.id_str}`;
+						url = `https:${jumpUrl}`;
 					}
+				} else {
+					url = `https://t.bilibili.com/${item.id_str}`;
 				}
 
 				// AI comment — adapter 在 SubItemView 上可附 per-UP aiOverride，传给 comment()
@@ -789,24 +793,30 @@ export class DynamicEngine {
 				const effEnable = subForImgs?.imageGroupEnable ?? this.config.imageGroup.enable;
 				if (effEnable && item.type === "DYNAMIC_TYPE_DRAW") {
 					const major = item.modules?.module_dynamic?.major;
-					const urls: string[] = [];
-					for (const it of (major?.draw?.items ?? []) as Array<{ src?: string }>) {
-						if (it.src) urls.push(it.src);
+					const images: ForwardImage[] = [];
+					// draw.items / opus.pics 均带 width/height(B站图集元数据)——透传给需要
+					// 原始尺寸的平台(QQ 原生 markdown 多图 `![#宽px #高px]`),其余平台只用 url。
+					for (const it of (major?.draw?.items ?? []) as Array<{
+						src?: string;
+						width?: number;
+						height?: number;
+					}>) {
+						if (it.src) images.push({ url: it.src, width: it.width, height: it.height });
 					}
 					for (const pic of major?.opus?.pics ?? []) {
-						if (pic.url) urls.push(pic.url);
+						if (pic.url) images.push({ url: pic.url, width: pic.width, height: pic.height });
 					}
-					if (urls.length) {
+					if (images.length) {
 						const effForward = subForImgs?.imageGroupForward ?? this.config.imageGroup.forward;
 						// 单张图永远不走合并转发(1 张图包成「聊天记录」卡片无意义)。
-						const forward = effForward && urls.length > 1;
+						const forward = effForward && images.length > 1;
 						await this.push.broadcastDynamic(
 							uid,
 							[
 								{
 									type: "image-group",
 									forward,
-									urls,
+									images,
 								},
 							],
 							"dynamic-images",

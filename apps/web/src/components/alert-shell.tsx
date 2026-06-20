@@ -21,12 +21,12 @@ export function AlertShell(): React.ReactElement | null {
 			aria-live="assertive"
 			className="pointer-events-none fixed right-4 top-4 z-200 flex w-96 flex-col gap-2"
 		>
-			<div className="bn-anim-fade-in pointer-events-auto flex items-center justify-between rounded-bn-card border border-red-200 bg-red-50/95 px-3 py-1.5 text-[11.5px] font-bold text-red-700 shadow-bn-elev backdrop-blur-sm">
+			<div className="bn-anim-fade-in pointer-events-auto flex items-center justify-between rounded-bn-card border border-bn-danger-border bg-bn-danger-soft px-3 py-1.5 text-[11.5px] font-bold text-bn-danger-text shadow-bn-elev backdrop-blur-sm">
 				<span>组件告警 ({items.length})</span>
 				<button
 					type="button"
 					onClick={clear}
-					className="cursor-pointer rounded px-2 py-0.5 text-[10.5px] font-semibold text-red-700 hover:bg-red-100"
+					className="cursor-pointer rounded px-2 py-0.5 text-[10.5px] font-semibold text-bn-danger-text hover:bg-red-500/10"
 				>
 					全部清除
 				</button>
@@ -44,12 +44,12 @@ function AlertCard({ item }: { item: AlertItem }) {
 	const time = formatHms(item.receivedAt);
 	return (
 		<div
-			className="bn-anim-fade-in pointer-events-auto flex gap-2.5 rounded-bn-card border bg-white p-3 shadow-bn-elev"
-			style={{ borderColor: "#fecaca", borderLeft: "3px solid #ef4444" }}
+			className="bn-anim-fade-in pointer-events-auto flex gap-2.5 rounded-bn-card border bg-bn-surface p-3 shadow-bn-elev"
+			style={{ borderColor: "var(--color-bn-danger-border)", borderLeft: "3px solid #ef4444" }}
 		>
 			<div
-				className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-red-600"
-				style={{ background: "#fee2e2" }}
+				className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-bn-danger-text"
+				style={{ background: "var(--color-bn-danger-soft)" }}
 				aria-hidden="true"
 			>
 				{/* 三角警告 inline svg；不动 Icon 集 */}
@@ -73,7 +73,7 @@ function AlertCard({ item }: { item: AlertItem }) {
 			</div>
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center justify-between gap-2">
-					<span className="text-[12.5px] font-bold text-red-700">{item.source}</span>
+					<span className="text-[12.5px] font-bold text-bn-danger-text">{item.source}</span>
 					<span className="font-mono text-[10.5px] text-bn-text-tertiary">{time}</span>
 				</div>
 				<div className="mt-1 text-[11.5px] leading-snug text-bn-text-primary">{item.message}</div>
@@ -81,7 +81,7 @@ function AlertCard({ item }: { item: AlertItem }) {
 			<button
 				type="button"
 				onClick={() => dismiss(item.id)}
-				className="h-5 w-5 shrink-0 cursor-pointer rounded text-bn-text-tertiary hover:bg-black/5 hover:text-bn-text-primary"
+				className="h-5 w-5 shrink-0 cursor-pointer rounded text-bn-text-tertiary hover:bg-bn-hover-muted hover:text-bn-text-primary"
 				aria-label="关闭"
 			>
 				<Icon.close size={11} />

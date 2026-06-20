@@ -9,6 +9,20 @@ git tag;发布 workflow 会在构建前按 tag 临时同步 apps 版本元数据
 
 ---
 
+## [0.1.0-alpha.11] — 2026-06-19
+
+### Added
+
+- 新增 QQ 官方机器人(q.qq.com)推送平台:Targets 页配置适配器(appId / appSecret / 沙箱开关 / 公私域 botType),按会话 scope 寻址(频道 guildId+channelId / 群 groupOpenid / C2C userOpenid),内置会话发现选择器(读已捞 openid 列表自动发现 + 手动枚举子频道);私域机器人图集走 markdown 图文合并,媒体内容与卡片图合并下发 (db2a48c, c352baa, d60290f)
+- Dashboard 暗色模式:支持明 / 暗主题切换,全站配色语义 token 化,卡片描边 / 头像环 / Targets / Cards 等内联硬编码色同步适配暗色 (3f6a398, 4cb1e49, 1383fc3)
+
+### Fixed
+
+- dev / 12-factor(legacy)模式下自动探测 Chrome 并一键热启用卡片渲染后,`chromePath` 现也写回 cwd 的 `bn.config.{yaml,yml,json}`,下次启动直接复用、无需重新探测(纯 env / cli 无配置文件时仍不写回)(f5e0777)
+- 历史记录列表对 @全体提醒、弹幕词云两类无正文推送不再显示「(无内容)」:@全体段落写「@全体」、词云写「[弹幕词云]」,与图集 `[图集 N 张]` 同一思路(仅作用于新写入记录)(ac619f4)
+
+---
+
 ## [0.1.0-alpha.10] — 2026-06-15
 
 ### Added

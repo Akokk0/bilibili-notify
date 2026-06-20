@@ -54,8 +54,8 @@ function ToastCard({ item }: { item: ToastItem }) {
 	const time = formatHm(item.ts);
 	return (
 		<div
-			className="bn-anim-fade-in pointer-events-auto flex gap-2.5 rounded-bn-card border border-white/60 bg-white p-3 shadow-bn-elev"
-			style={item.ok ? undefined : { borderColor: "#fecaca" }}
+			className="bn-anim-fade-in pointer-events-auto flex gap-2.5 rounded-bn-card border border-bn-border bg-bn-surface p-3 shadow-bn-elev"
+			style={item.ok ? undefined : { borderColor: "var(--color-bn-danger-border)" }}
 		>
 			<div
 				className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
@@ -85,7 +85,7 @@ function ToastCard({ item }: { item: ToastItem }) {
 			<button
 				type="button"
 				onClick={() => dismiss(item.id)}
-				className="h-5 w-5 shrink-0 cursor-pointer rounded text-bn-text-tertiary hover:bg-black/5 hover:text-bn-text-primary"
+				className="h-5 w-5 shrink-0 cursor-pointer rounded text-bn-text-tertiary hover:bg-bn-hover-muted hover:text-bn-text-primary"
 				aria-label="关闭"
 			>
 				<Icon.close size={11} />

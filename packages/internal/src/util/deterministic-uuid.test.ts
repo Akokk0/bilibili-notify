@@ -10,7 +10,7 @@
  *   - v4 形:第 3 段首字符为 "4",第 4 段首字符 ∈ {8,9,a,b}(RFC 4122 variant)
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { deterministicUuid } from "./deterministic-uuid";
 
 describe("deterministicUuid — algorithm snapshot", () => {

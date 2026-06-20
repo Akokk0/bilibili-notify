@@ -49,10 +49,11 @@ export interface AppRuntime {
 	 * up first (engines need a started BilibiliAPI), so the bootstrap split is:
 	 *
 	 *   1. createAppRuntime(bootstrap) — produces ConfigStore + HistoryStore
-	 *   2. configStore.load()
-	 *   3. createAuthSystem(...) — produces BilibiliAPI
-	 *   4. attachEngines(runtime, { api, adapters }) — fills `engines`
-	 *   5. createApp(runtime, ...) — mounts routes
+	 *   2. keyProvider.getKey() — eagerly loads/creates the at-rest secrets key
+	 *   3. configStore.load()
+	 *   4. createAuthSystem(...) — produces BilibiliAPI
+	 *   5. attachEngines(runtime, { api, adapters }) — fills `engines`
+	 *   6. createApp(runtime, ...) — mounts routes
 	 */
 	engines: EnginesRuntime | null;
 	attachEngines(engines: EnginesRuntime): void;

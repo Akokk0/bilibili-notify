@@ -43,7 +43,7 @@ export function ModalShell({
 	if (typeof document === "undefined") return null;
 	return createPortal(
 		<div
-			className="bn-anim-fade-in fixed inset-0 z-300 flex items-center justify-center bg-black/35 px-4 pb-4 pt-22 backdrop-blur-xs"
+			className="bn-anim-fade-in fixed inset-0 z-300 flex items-center justify-center bg-bn-overlay px-4 pb-4 pt-22 backdrop-blur-xs"
 			role="presentation"
 		>
 			<button
@@ -55,7 +55,7 @@ export function ModalShell({
 			<div
 				role="dialog"
 				aria-modal="true"
-				className={`relative max-h-full overflow-y-auto rounded-bn-card bg-white ${bodyClassName}`}
+				className={`relative max-h-full overflow-y-auto rounded-bn-card bg-bn-surface-strong text-bn-text-primary ${bodyClassName}`}
 				style={{
 					width,
 					boxShadow: "0 20px 60px rgba(0,0,0,0.2)",

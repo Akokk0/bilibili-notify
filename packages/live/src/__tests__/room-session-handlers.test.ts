@@ -17,7 +17,7 @@
 
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { GuardLevel } from "blive-message-listener";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { SubItemView } from "../push-like";
 import { LivePushType } from "../push-like";
 import { RoomContext } from "../room-helpers";

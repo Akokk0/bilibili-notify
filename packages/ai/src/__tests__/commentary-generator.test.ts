@@ -17,7 +17,7 @@
 
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ServiceContext } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
 
 // ---------------------------------------------------------------------------

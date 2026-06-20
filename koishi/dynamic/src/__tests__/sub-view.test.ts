@@ -15,7 +15,7 @@ import {
 	makeEmptySubscription,
 	type Subscription,
 } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { resolveDynamicFeature, storeToDynamicView, subToDynamicView } from "../sub-view";
 
 function makeSub(overrides: Subscription["overrides"] = {}): Subscription {

@@ -10,7 +10,7 @@
  * 为 null 时跳过。GET/POST/PATCH 响应都走同一 toDTO,保证前端缓存一致。
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { ConfigValidationError } from "../../config/store.js";
 import { createSubsRoute } from "../subs.js";
 import type { RouteDeps } from "../types.js";

@@ -11,7 +11,7 @@
  * 阈值 = 最低放行严重度,放行「≥ 阈值」,丢弃更轻的(含等号)。
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import type { LogEntry } from "../../ws/types.js";
 import { createNodeServiceContext } from "../service-context.js";
 

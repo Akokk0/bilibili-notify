@@ -127,6 +127,17 @@ export type PayloadSegment =
 	| { type: "at-all" };
 
 /**
+ * 图集单图 —— url + 可选原始像素尺寸。尺寸来自 B站图集元数据(opus.pics / draw.items
+ * 的 width/height),仅 QQ 官方原生 markdown 多图(`![文字 #宽px #高px](url)`)需要它来
+ * 正常渲染;OneBot / koishi / webhook 等只用 `url`,尺寸缺失不影响。
+ */
+export interface ForwardImage {
+	url: string;
+	width?: number;
+	height?: number;
+}
+
+/**
  * 平台中立的消息载荷。Adapter 翻译为各平台原生格式：
  * - Koishi: kind:text → bot.sendMessage(text)；image → h.image(buffer, mime)；composite → h('message', segments)
  * - OneBot: text/image → message segment 数组；composite → 段拼接
@@ -146,7 +157,7 @@ export type NotificationPayload =
 	 *     普通多图。稳但 N+ 张大图会一排刷屏。
 	 * 默认值由上游 dynamic engine config(`imageGroupForward`)决定。
 	 */
-	| { kind: "forward-images"; urls: string[]; forward: boolean };
+	| { kind: "forward-images"; images: ForwardImage[]; forward: boolean };
 
 /**
  * 推送出口接口。业务核心持有此接口，按 PushTarget.id 投递。

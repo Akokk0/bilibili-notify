@@ -367,7 +367,9 @@ function notificationPayloadToRobotText(payload: NotificationPayload): string {
 			return text || "[通知]";
 		}
 		case "forward-images":
-			return payload.urls.length > 0 ? `图片:\n${payload.urls.join("\n")}` : "[图片]";
+			return payload.images.length > 0
+				? `图片:\n${payload.images.map((img) => img.url).join("\n")}`
+				: "[图片]";
 	}
 }
 
@@ -407,6 +409,6 @@ function serializePayload(payload: NotificationPayload): unknown {
 				),
 			};
 		case "forward-images":
-			return { kind: "forward-images", urls: payload.urls, forward: payload.forward };
+			return { kind: "forward-images", images: payload.images, forward: payload.forward };
 	}
 }

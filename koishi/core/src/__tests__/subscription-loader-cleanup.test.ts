@@ -9,7 +9,7 @@
 
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { Logger } from "koishi";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 // subscription-loader.ts 运行时 import { h } from "koishi" 用于 updateSubNotifier
 // 渲染 koishi console 通知。vitest 加载 koishi 会拉 @koishijs/loader,启动期失败。

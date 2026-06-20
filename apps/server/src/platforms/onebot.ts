@@ -105,7 +105,7 @@ function buildSegments(payload: NotificationPayload): OneBotMessageSegment[] {
 			// 到一条普通 send_group_msg(对齐 koishi onebot adapter 多图默认行为,避开
 			// NapCat 长消息 SsoSendLongMsg 通道的潜在超时)。
 			if (payload.forward) return [];
-			return payload.urls.map((url) => ({ type: "image", data: { file: url } }));
+			return payload.images.map((img) => ({ type: "image", data: { file: img.url } }));
 	}
 }
 
@@ -144,12 +144,12 @@ function buildSendAction(
 		// node.name + node.uin 决定客户端展示的发送人头像 / 昵称。用机器人真身
 		// (botInfo)→ 收件人看到的是"机器人发的",对齐 koishi onebot adapter
 		// (它在 src/bot/message.ts 用 `bot.user.name` / `bot.userId` 当 fallback)。
-		const nodes = payload.urls.map((url) => ({
+		const nodes = payload.images.map((img) => ({
 			type: "node",
 			data: {
 				name: botInfo.name,
 				uin: botInfo.uin,
-				content: [{ type: "image", data: { file: url } }],
+				content: [{ type: "image", data: { file: img.url } }],
 			},
 		}));
 		const session = target.session as OnebotSession;

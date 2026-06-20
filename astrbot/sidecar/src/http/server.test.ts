@@ -6,7 +6,7 @@ import {
 	makeDefaultGlobalConfig,
 	type Subscription,
 } from "@bilibili-notify/internal";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	ASTRBOT_ADAPTER_ID,
 	ASTRBOT_PUSH_ADAPTER,

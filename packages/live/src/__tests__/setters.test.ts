@@ -7,7 +7,7 @@
 import type { CommentaryGenerator } from "@bilibili-notify/ai";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import type { Logger } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { WordcloudGenerator } from "../wordcloud-generator";
 
 const fakeLogger = (): Logger =>

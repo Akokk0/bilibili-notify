@@ -479,7 +479,7 @@ function VariableHints({
 			</span>{" "}
 			{vars.map((v, i) => (
 				<span key={v.code}>
-					<code className="mx-0.5 rounded bg-white/70 px-1.5 py-px font-mono text-[11px]">
+					<code className="mx-0.5 rounded bg-bn-surface/70 px-1.5 py-px font-mono text-[11px]">
 						{v.code}
 					</code>{" "}
 					{v.desc}
@@ -628,7 +628,7 @@ export function GuardSection({
 								<div className="mb-2 flex items-center gap-2">
 									<span className="block h-2 w-2 rounded-sm" style={{ background: tone }} />
 									<span className="text-[12.5px] font-bold text-bn-text-primary">{label}</span>
-									<code className="ml-1 rounded bg-black/5 px-1.5 py-px font-mono text-[10.5px] text-bn-text-tertiary">
+									<code className="ml-1 rounded bg-bn-code-bg px-1.5 py-px font-mono text-[10.5px] text-bn-text-tertiary">
 										{key}
 									</code>
 								</div>
@@ -846,7 +846,7 @@ function ModuleLogLevelsRow({
 					return (
 						<div
 							key={m.id}
-							className="flex items-center justify-between gap-2 rounded-md border border-black/5 bg-white/60 px-2.5 py-1.5"
+							className="flex items-center justify-between gap-2 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-2.5 py-1.5"
 						>
 							<span className="flex items-center gap-1.5 text-[12px] font-bold text-bn-text-primary">
 								<span

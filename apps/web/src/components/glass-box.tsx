@@ -43,7 +43,7 @@ export function GlassBox({
 			className={`bn-glass relative overflow-hidden rounded-bn-card shadow-bn-card ${className ?? ""}`}
 		>
 			<div className="pointer-events-none absolute right-0 top-0 h-40 w-40" style={accentRadial} />
-			<div className="relative flex items-center gap-3 border-b border-black/5 px-[18px] pb-3 pt-3.5">
+			<div className="relative flex items-center gap-3 border-b border-bn-border-subtle px-[18px] pb-3 pt-3.5">
 				{icon ? (
 					<div
 						className="grid h-8 w-8 place-items-center rounded-[9px] text-sm font-bold text-white"
@@ -93,7 +93,7 @@ export function CollapseBlock({
 }: CollapseBlockProps) {
 	const style: CSSProperties = enabled
 		? { background: `${accent}0a`, borderColor: `${accent}33` }
-		: { background: "rgba(0,0,0,0.02)", borderColor: "#ececec" };
+		: { background: "var(--color-bn-hover-muted)", borderColor: "var(--color-bn-border)" };
 	return (
 		<div className="mt-2.5 rounded-lg border px-3 py-2.5" style={style}>
 			<div className="flex items-center justify-between">
@@ -110,7 +110,7 @@ export function CollapseBlock({
 					aria-pressed={enabled}
 				>
 					<span
-						className="absolute top-[2px] h-3 w-3 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2)]"
+						className="absolute top-[2px] h-3 w-3 rounded-full bg-bn-surface shadow-[0_1px_3px_rgba(0,0,0,0.2)]"
 						style={{ left: enabled ? 14 : 2, transition: "left 0.18s" }}
 					/>
 				</button>

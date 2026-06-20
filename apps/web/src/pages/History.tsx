@@ -150,7 +150,11 @@ export default function History() {
 												color: f.tone,
 												borderColor: `${f.tone}55`,
 											}
-										: { background: "transparent", color: "#666", borderColor: "#e0e0e0" }
+										: {
+												background: "transparent",
+												color: "var(--color-bn-text-tertiary)",
+												borderColor: "var(--color-bn-border)",
+											}
 								}
 							>
 								{f.label}
@@ -167,7 +171,7 @@ export default function History() {
 			{historyQuery.isLoading ? (
 				<div className="text-sm text-bn-text-tertiary">加载中…</div>
 			) : historyQuery.error ? (
-				<div className="rounded border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+				<div className="rounded border border-bn-danger-border bg-bn-danger-soft p-3 text-xs text-bn-danger-text">
 					加载失败：{String((historyQuery.error as Error).message)}
 				</div>
 			) : (
@@ -187,9 +191,9 @@ function HistoryTable({
 	targetById: Map<string, PushTarget>;
 }) {
 	return (
-		<div className="overflow-hidden rounded-[10px] border border-black/6 bg-white">
+		<div className="overflow-hidden rounded-[10px] border border-bn-border-subtle bg-bn-surface">
 			<div
-				className="grid items-center gap-2.5 border-b border-black/6 bg-[#fafafb] px-4 py-2.5 text-[11px] font-bold tracking-wide text-bn-text-tertiary"
+				className="grid items-center gap-2.5 border-b border-bn-border-subtle bg-bn-surface-muted px-4 py-2.5 text-[11px] font-bold tracking-wide text-bn-text-tertiary"
 				style={{ gridTemplateColumns: HISTORY_GRID }}
 			>
 				<span>时间</span>

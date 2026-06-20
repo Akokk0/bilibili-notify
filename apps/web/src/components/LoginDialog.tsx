@@ -101,7 +101,7 @@ export function LoginDialog({ variant }: { variant: "cold" | "overlay" }) {
 				</div>
 
 				{error ? (
-					<div className="mt-3 rounded-md bg-red-500/10 px-3 py-2 text-[12px] font-medium text-red-600">
+					<div className="mt-3 rounded-md bg-bn-danger-soft px-3 py-2 text-[12px] font-medium text-bn-danger-text">
 						{lockSec > 0 ? `登录尝试过多,请 ${lockSec} 秒后再试` : error}
 					</div>
 				) : null}

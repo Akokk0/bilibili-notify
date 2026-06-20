@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Btn, PlatformIcon, platformLabel, StatusDot, Toggle } from "../components/atoms";
 import { ModalShell } from "../components/dialog";
-import { Field, TInput, TNum, TSelect } from "../components/forms";
+import { Field, Picker, TInput, TNum, TSelect } from "../components/forms";
 import { Icon } from "../components/icons";
 import { ApiError, api } from "../services/api";
 import {
@@ -17,6 +17,9 @@ import {
 	type PushTarget,
 	type PushTargetPlatform,
 	type PushTargetScope,
+	type QQOfficialAdapterConfig,
+	type QQOfficialBotType,
+	type QQOfficialSession,
 	switchOnebotTransport,
 	WEBHOOK_PROVIDERS,
 	type WebhookProvider,
@@ -68,6 +71,7 @@ type TestState = "pending" | "ok" | "fail";
 
 const PLATFORM_TINT: Record<string, string> = {
 	onebot: "#3b82f6",
+	"qq-official": "#14b8a6",
 	webhook: "#22c55e",
 	"web-dashboard": "#a29bfe",
 };
@@ -87,6 +91,12 @@ function adapterEndpointSummary(a: PushAdapter): string {
 		if (c.transport === "ws") return c.url;
 		return `反向 WS :${c.port}`;
 	}
+	if (a.platform === "qq-official") {
+		const c = a.config;
+		const domain = c.botType === "private" ? "私域" : "公域";
+		const id = c.appId || "未配置 appId";
+		return `QQ ${domain} · ${id}${c.sandbox ? " · 沙箱" : ""}`;
+	}
 	if (a.platform === "webhook") {
 		const provider = a.config.provider ?? "generic";
 		const url = maskWebhookUrl(a.config.url);
@@ -100,6 +110,14 @@ function targetSessionSummary(target: PushTarget): string {
 		const s = target.session;
 		if (target.scope === "private") return s.userId ? `→ 用户 ${s.userId}` : "→ 未指定用户";
 		return s.groupId ? `→ 群 ${s.groupId}` : "→ 未指定群号";
+	}
+	if (target.platform === "qq-official") {
+		const s = target.session;
+		if (target.scope === "channel")
+			return s.channelId ? `→ 子频道 ${s.channelId}` : "→ 未指定子频道";
+		if (target.scope === "private")
+			return s.userOpenid ? `→ C2C ${s.userOpenid}` : "→ 未指定用户 openid";
+		return s.groupOpenid ? `→ 群 ${s.groupOpenid}` : "→ 未指定群 openid";
 	}
 	if (target.platform === "webhook") {
 		return target.managedBy === "adapter" ? "→ 系统托管 webhook 终点" : "→ webhook 终点";
@@ -159,9 +177,9 @@ function TargetCard({
 
 	return (
 		<div
-			className="rounded-[10px] border bg-white p-3.5 transition-[border-color] duration-200"
+			className="rounded-[10px] border bg-bn-surface p-3.5 transition-[border-color] duration-200"
 			style={{
-				borderColor: adapterMissing ? "#fca5a5" : "rgba(0,0,0,0.06)",
+				borderColor: adapterMissing ? "var(--color-bn-danger-border)" : "var(--color-bn-border)",
 			}}
 		>
 			<div className="mb-2.5 flex items-center gap-2.5">
@@ -187,8 +205,16 @@ function TargetCard({
 					className="mb-2 rounded-sm border-l-[3px] px-2 py-0.5 text-[10.5px]"
 					style={
 						testStatus.ok
-							? { background: "#f0fdf4", borderLeftColor: "#22c55e", color: "#166534" }
-							: { background: "#fef2f2", borderLeftColor: "#ef4444", color: "#991b1b" }
+							? {
+									background: "var(--color-bn-success-soft)",
+									borderLeftColor: "#22c55e",
+									color: "var(--color-bn-success-text)",
+								}
+							: {
+									background: "var(--color-bn-danger-soft)",
+									borderLeftColor: "#ef4444",
+									color: "var(--color-bn-danger-text)",
+								}
 					}
 				>
 					{testStatus.ok
@@ -259,7 +285,7 @@ function AddCard({ label, hint, onClick, disabled }: AddCardProps) {
 			type="button"
 			onClick={onClick}
 			disabled={disabled}
-			className="flex h-full min-h-22 flex-col items-center justify-center rounded-[10px] border border-dashed border-gray-300 bg-white px-3 py-4 text-center transition hover:border-bn-pink hover:bg-bn-pink/5 disabled:cursor-not-allowed disabled:opacity-60"
+			className="flex h-full min-h-22 flex-col items-center justify-center rounded-[10px] border border-dashed border-bn-border bg-bn-surface px-3 py-4 text-center transition hover:border-bn-pink hover:bg-bn-pink/5 disabled:cursor-not-allowed disabled:opacity-60"
 		>
 			<span className="text-[20px] leading-none text-bn-text-tertiary">＋</span>
 			<span className="mt-1 text-[12.5px] font-semibold text-bn-text-primary">{label}</span>
@@ -318,9 +344,9 @@ function AdapterEditorModal({
 														borderColor: `${pTint}55`,
 													}
 												: {
-														background: "#f5f5f5",
-														color: "#666",
-														borderColor: "#ececec",
+														background: "var(--color-bn-surface-muted)",
+														color: "var(--color-bn-text-tertiary)",
+														borderColor: "var(--color-bn-border)",
 													}
 										}
 									>
@@ -346,7 +372,13 @@ function AdapterEditorModal({
 				{value.platform !== "web-dashboard" ? (
 					<SectionBox
 						title="连接参数"
-						subtitle={value.platform === "onebot" ? "OneBot v11 连接信息" : "Webhook 投递终点"}
+						subtitle={
+							value.platform === "onebot"
+								? "OneBot v11 连接信息"
+								: value.platform === "qq-official"
+									? "QQ 官方机器人凭据(q.qq.com)"
+									: "Webhook 投递终点"
+						}
 						accent={tint}
 					>
 						<AdapterConnectionFields adapter={value} onChange={onChange} />
@@ -365,7 +397,7 @@ function AdapterEditorModal({
 			</div>
 
 			{error ? (
-				<div className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+				<div className="mt-3 rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
 					{error}
 				</div>
 			) : null}
@@ -407,7 +439,11 @@ function AdapterConnectionFields({
 									style={
 										active
 											? { background: "#3b82f618", color: "#3b82f6", borderColor: "#3b82f655" }
-											: { background: "#f5f5f5", color: "#666", borderColor: "#ececec" }
+											: {
+													background: "var(--color-bn-surface-muted)",
+													color: "var(--color-bn-text-tertiary)",
+													borderColor: "var(--color-bn-border)",
+												}
 									}
 								>
 									{t.label}
@@ -515,6 +551,57 @@ function AdapterConnectionFields({
 						/>
 					</Field>
 				) : null}
+			</>
+		);
+	}
+	if (adapter.platform === "qq-official") {
+		const cfg = adapter.config;
+		const setCfg = (next: QQOfficialAdapterConfig) => onChange({ ...adapter, config: next });
+		return (
+			<>
+				<Field
+					label="AppID"
+					code="config.appId"
+					required
+					hint="QQ 开放平台机器人的 AppID(明文存储)"
+				>
+					<TInput
+						value={cfg.appId}
+						onChange={(v) => setCfg({ ...cfg, appId: v })}
+						placeholder="102xxxxxx"
+						mono
+					/>
+				</Field>
+				<Field
+					label="AppSecret"
+					code="config.appSecret"
+					required
+					hint="机器人密钥;用于换取 App Access Token"
+				>
+					<TInput value={cfg.appSecret} onChange={(v) => setCfg({ ...cfg, appSecret: v })} secret />
+				</Field>
+				<Field
+					label="机器人域"
+					code="config.botType"
+					required
+					hint="私域可发原生 markdown(图集合并成一条多图);公域不支持原生 markdown(图集逐条发,需报备模板)"
+				>
+					<Picker<QQOfficialBotType>
+						value={cfg.botType}
+						onChange={(v) => setCfg({ ...cfg, botType: v })}
+						options={[
+							{ value: "public", label: "公域" },
+							{ value: "private", label: "私域" },
+						]}
+					/>
+				</Field>
+				<Field
+					label="沙箱模式"
+					code="config.sandbox"
+					hint="开启后走 QQ 沙箱环境(sandbox.api.sgroup.qq.com),仅对沙箱内成员可见"
+				>
+					<Toggle value={cfg.sandbox} onChange={(v) => setCfg({ ...cfg, sandbox: v })} />
+				</Field>
 			</>
 		);
 	}
@@ -655,7 +742,7 @@ function TargetEditorModal({
 					accent={tint}
 				>
 					{eligibleAdapters.length === 0 ? (
-						<div className="rounded-md border border-dashed border-gray-200 px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
+						<div className="rounded-md border border-dashed border-bn-border px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
 							尚未配置任何可手动绑定的适配器 · Webhook 目标由系统自动托管
 						</div>
 					) : (
@@ -680,8 +767,8 @@ function TargetEditorModal({
 														borderColor: `${aTint}55`,
 													}
 												: {
-														background: "#fff",
-														borderColor: "#ececec",
+														background: "var(--color-bn-surface)",
+														borderColor: "var(--color-bn-border)",
 													}
 										}
 									>
@@ -742,9 +829,9 @@ function TargetEditorModal({
 														borderColor: "#FB729955",
 													}
 												: {
-														background: "#f5f5f5",
-														color: "#666",
-														borderColor: "#ececec",
+														background: "var(--color-bn-surface-muted)",
+														color: "var(--color-bn-text-tertiary)",
+														borderColor: "var(--color-bn-border)",
 													}
 										}
 									>
@@ -759,7 +846,9 @@ function TargetEditorModal({
 					</Field>
 				</SectionBox>
 
-				{value.platform === "onebot" || value.platform === "web-dashboard" ? (
+				{value.platform === "onebot" ||
+				value.platform === "qq-official" ||
+				value.platform === "web-dashboard" ? (
 					<SectionBox
 						title="会话信息"
 						subtitle={
@@ -767,7 +856,9 @@ function TargetEditorModal({
 								? value.scope === "private"
 									? "私聊目标 QQ 号"
 									: "群聊号(QQ 群号)"
-								: "Dashboard 通知中心接收方"
+								: value.platform === "qq-official"
+									? "QQ 官方机器人会话寻址(频道/群/C2C)"
+									: "Dashboard 通知中心接收方"
 						}
 						accent={tint}
 					>
@@ -777,7 +868,7 @@ function TargetEditorModal({
 			</div>
 
 			{error ? (
-				<div className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+				<div className="mt-3 rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
 					{error}
 				</div>
 			) : null}
@@ -826,6 +917,87 @@ function TargetSessionFields({
 			</Field>
 		);
 	}
+	if (target.platform === "qq-official") {
+		const s = target.session as QQOfficialSession;
+		const setSession = (patch: Partial<QQOfficialSession>) =>
+			onChange({ ...target, session: { ...s, ...patch } });
+		if (target.scope === "channel") {
+			return (
+				<>
+					<Field
+						label="频道服务器 ID (guildId)"
+						code="session.guildId"
+						hint="用下方「拉取频道」自动填入,或手填"
+					>
+						<TInput
+							value={s.guildId ?? ""}
+							onChange={(v) => setSession({ guildId: v || undefined })}
+							placeholder="guild_id"
+							mono
+						/>
+					</Field>
+					<Field label="子频道 ID (channelId)" code="session.channelId" required>
+						<TInput
+							value={s.channelId ?? ""}
+							onChange={(v) => setSession({ channelId: v || undefined })}
+							placeholder="文字子频道 channel_id"
+							mono
+						/>
+					</Field>
+					<QQGuildPicker
+						adapterId={target.adapterId}
+						onPick={(guildId, channelId) => setSession({ guildId, channelId })}
+					/>
+				</>
+			);
+		}
+		if (target.scope === "private") {
+			return (
+				<>
+					<Field
+						label="用户 openid (C2C)"
+						code="session.userOpenid"
+						required
+						hint="QQ 无「列我的好友」接口,openid 只能从机器人收到的 C2C 消息事件捞 —— 见下方发现列表"
+					>
+						<TInput
+							value={s.userOpenid ?? ""}
+							onChange={(v) => setSession({ userOpenid: v || undefined })}
+							placeholder="用户 openid"
+							mono
+						/>
+					</Field>
+					<QQSessionPicker
+						adapterId={target.adapterId}
+						scope="private"
+						onPick={(openid) => setSession({ userOpenid: openid })}
+					/>
+				</>
+			);
+		}
+		return (
+			<>
+				<Field
+					label="群 openid (groupOpenid)"
+					code="session.groupOpenid"
+					required
+					hint="QQ 无「列我的群」接口,openid 只能从机器人被 @ 的群消息事件捞 —— 见下方发现列表"
+				>
+					<TInput
+						value={s.groupOpenid ?? ""}
+						onChange={(v) => setSession({ groupOpenid: v || undefined })}
+						placeholder="群 openid"
+						mono
+					/>
+				</Field>
+				<QQSessionPicker
+					adapterId={target.adapterId}
+					scope="group"
+					onPick={(openid) => setSession({ groupOpenid: openid })}
+				/>
+			</>
+		);
+	}
 	if (target.platform === "web-dashboard") {
 		// web-dashboard 是单用户 in-process 广播,无 session 字段可配。
 		return (
@@ -836,6 +1008,149 @@ function TargetSessionFields({
 		);
 	}
 	return null;
+}
+
+// ── QQ 官方机器人选择器 ───────────────────────────────────────────────────────
+
+interface QQDiscoveredEntry {
+	scope: "group" | "private";
+	openid: string;
+	displayHint?: string;
+	lastSeenMs: number;
+}
+interface QQGuildChannelView {
+	channelId: string;
+	name: string;
+	type: number;
+}
+interface QQGuildView {
+	guildId: string;
+	name: string;
+	channels: QQGuildChannelView[];
+}
+
+/**
+ * 群/C2C 发现列表 —— 读 `/api/qq/sessions/:adapterId`(内存 ring buffer,网关从入站
+ * 事件捞的 openid)。点一条把 openid 填进会话。QQ 无「列我的群/好友」接口,这是唯一来源。
+ */
+function QQSessionPicker({
+	adapterId,
+	scope,
+	onPick,
+}: {
+	adapterId: string;
+	scope: "group" | "private";
+	onPick: (openid: string) => void;
+}) {
+	const { data, isLoading, isError, refetch, isFetching } = useQuery({
+		queryKey: ["qq-sessions", adapterId],
+		queryFn: () => api.get<QQDiscoveredEntry[]>(`/api/qq/sessions/${adapterId}`),
+		enabled: Boolean(adapterId),
+	});
+	const list = (data ?? []).filter((e) => e.scope === scope);
+	const label = scope === "group" ? "群" : "用户";
+	return (
+		<div className="mt-1.5 rounded-md border border-dashed border-bn-border px-2.5 py-2">
+			<div className="mb-1 flex items-center justify-between">
+				<span className="text-[11px] font-bold text-bn-text-secondary">发现的{label}会话</span>
+				<Btn variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching}>
+					{isFetching ? "刷新中…" : "刷新"}
+				</Btn>
+			</div>
+			{isLoading ? (
+				<div className="text-[11px] text-bn-text-tertiary">加载中…</div>
+			) : isError ? (
+				<div className="text-[11px] text-red-500">拉取失败(适配器是否已保存并连上网关?)</div>
+			) : list.length === 0 ? (
+				<div className="text-[11px] leading-relaxed text-bn-text-tertiary">
+					暂无发现的{label}会话 —— 先让机器人在目标
+					{scope === "group" ? "群里被 @ 一次" : "处收到一条 C2C 消息"}
+					,再点刷新。
+				</div>
+			) : (
+				<div className="flex flex-col gap-1">
+					{list.map((e) => (
+						<button
+							key={e.openid}
+							type="button"
+							onClick={() => onPick(e.openid)}
+							className="flex items-center gap-2 rounded border border-bn-border bg-bn-surface px-2 py-1 text-left transition hover:border-bn-accent"
+						>
+							<span className="truncate text-[11.5px] font-semibold text-bn-text-primary">
+								{e.displayHint ?? "(无名称)"}
+							</span>
+							<span className="truncate font-mono text-[10px] text-bn-text-tertiary">
+								{e.openid}
+							</span>
+						</button>
+					))}
+				</div>
+			)}
+		</div>
+	);
+}
+
+/**
+ * 频道子频道选择器 —— 手动触发 `/api/qq/guilds/:adapterId`(每次实时拉,避免每次打开
+ * 弹窗都打 QQ REST)。点子频道把 guildId+channelId 一起填进会话。
+ */
+function QQGuildPicker({
+	adapterId,
+	onPick,
+}: {
+	adapterId: string;
+	onPick: (guildId: string, channelId: string) => void;
+}) {
+	const { data, isError, refetch, isFetching, fetchStatus } = useQuery({
+		queryKey: ["qq-guilds", adapterId],
+		queryFn: () => api.get<QQGuildView[]>(`/api/qq/guilds/${adapterId}`),
+		enabled: false, // 手动触发:枚举会打 QQ REST,不在打开弹窗时自动拉
+	});
+	const guilds = data ?? [];
+	const fetched = fetchStatus === "idle" && data !== undefined;
+	return (
+		<div className="mt-1.5 rounded-md border border-dashed border-bn-border px-2.5 py-2">
+			<div className="mb-1 flex items-center justify-between">
+				<span className="text-[11px] font-bold text-bn-text-secondary">频道子频道列表</span>
+				<Btn variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching}>
+					{isFetching ? "拉取中…" : "拉取频道"}
+				</Btn>
+			</div>
+			{isError ? (
+				<div className="text-[11px] text-red-500">拉取失败(适配器是否已保存且凭据正确?)</div>
+			) : !fetched ? (
+				<div className="text-[11px] text-bn-text-tertiary">点「拉取频道」从 QQ 实时枚举。</div>
+			) : guilds.length === 0 ? (
+				<div className="text-[11px] text-bn-text-tertiary">未发现任何频道服务器。</div>
+			) : (
+				<div className="flex flex-col gap-1.5">
+					{guilds.map((g) => (
+						<div key={g.guildId}>
+							<div className="truncate text-[11px] font-semibold text-bn-text-secondary">
+								{g.name}
+							</div>
+							<div className="mt-0.5 flex flex-wrap gap-1">
+								{g.channels.length === 0 ? (
+									<span className="text-[10px] text-bn-text-tertiary">(无文字子频道)</span>
+								) : (
+									g.channels.map((ch) => (
+										<button
+											key={ch.channelId}
+											type="button"
+											onClick={() => onPick(g.guildId, ch.channelId)}
+											className="rounded border border-bn-border bg-bn-surface px-2 py-0.5 text-[11px] text-bn-text-primary transition hover:border-bn-accent"
+										>
+											{ch.name}
+										</button>
+									))
+								)}
+							</div>
+						</div>
+					))}
+				</div>
+			)}
+		</div>
+	);
 }
 
 // ── SectionBox (modal-internal) ─────────────────────────────────────────────
@@ -901,7 +1216,7 @@ function DeleteModal({
 				) : null}
 			</div>
 			{error ? (
-				<div className="mb-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+				<div className="mb-3 rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
 					{error}
 				</div>
 			) : null}
@@ -982,13 +1297,13 @@ function AdapterRail({
 				<button
 					type="button"
 					onClick={onAddClick}
-					className="rounded-md border border-dashed border-gray-300 px-2 py-0.5 text-[10.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
+					className="rounded-md border border-dashed border-bn-border px-2 py-0.5 text-[10.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
 				>
 					+ 新建
 				</button>
 			</div>
 			{adapters.length === 0 ? (
-				<div className="rounded-[9px] border border-dashed border-gray-200 bg-white/55 px-3 py-3 text-center text-[11px] text-bn-text-tertiary">
+				<div className="rounded-[9px] border border-dashed border-bn-border bg-bn-surface/55 px-3 py-3 text-center text-[11px] text-bn-text-tertiary">
 					尚未配置任何适配器
 				</div>
 			) : (
@@ -1004,8 +1319,8 @@ function AdapterRail({
 								onClick={() => onPick(a.id)}
 								className={`flex w-full min-w-0 items-start gap-2.5 rounded-[9px] border px-3 py-2.5 text-left transition ${
 									active
-										? "border-bn-pink/35 bg-white/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
-										: "border-transparent hover:bg-white/55"
+										? "border-bn-pink/35 bg-bn-surface/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+										: "border-transparent hover:bg-bn-surface/55"
 								}`}
 							>
 								<span
@@ -1358,11 +1673,11 @@ export default function Targets() {
 
 				<div className="space-y-4">
 					{isLoading ? (
-						<div className="rounded-bn-card bg-white p-6 shadow-bn-card">
-							<div className="h-20 animate-pulse rounded-[10px] bg-gray-100" />
+						<div className="rounded-bn-card bg-bn-surface p-6 shadow-bn-card">
+							<div className="h-20 animate-pulse rounded-[10px] bg-bn-surface-muted" />
 						</div>
 					) : !selectedAdapter ? (
-						<div className="rounded-bn-card bg-white p-8 text-center shadow-bn-card">
+						<div className="rounded-bn-card bg-bn-surface p-8 text-center shadow-bn-card">
 							<div className="mb-1 text-[14px] font-bold text-bn-text-primary">还没有适配器</div>
 							<div className="mb-4 text-[11.5px] text-bn-text-tertiary">
 								先在左侧新建一个适配器(OneBot HTTP / Webhook / Dashboard
@@ -1375,7 +1690,7 @@ export default function Targets() {
 					) : (
 						<>
 							{/* Adapter detail header */}
-							<div className="rounded-bn-card bg-white p-4 shadow-bn-card">
+							<div className="rounded-bn-card bg-bn-surface p-4 shadow-bn-card">
 								<div className="flex items-start gap-3">
 									<div
 										className="grid h-11 w-11 shrink-0 place-items-center rounded-lg"
@@ -1403,14 +1718,14 @@ export default function Targets() {
 												style={
 													selectedAdapterTestStatus.ok
 														? {
-																background: "#f0fdf4",
+																background: "var(--color-bn-success-soft)",
 																borderLeftColor: "#22c55e",
-																color: "#166534",
+																color: "var(--color-bn-success-text)",
 															}
 														: {
-																background: "#fffbeb",
+																background: "var(--color-bn-warning-soft)",
 																borderLeftColor: "#f59e0b",
-																color: "#92400e",
+																color: "var(--color-bn-warning-text)",
 															}
 												}
 											>
@@ -1473,7 +1788,7 @@ export default function Targets() {
 							</div>
 
 							{/* Targets bound to this adapter */}
-							<div className="rounded-bn-card bg-white p-4 shadow-bn-card">
+							<div className="rounded-bn-card bg-bn-surface p-4 shadow-bn-card">
 								<div className="mb-3 flex items-baseline justify-between">
 									<div>
 										<div className="text-[14px] font-bold text-bn-text-primary">
@@ -1497,7 +1812,7 @@ export default function Targets() {
 								</div>
 								{selectedAdapter.platform === "webhook" ? (
 									<div className="space-y-2.5">
-										<div className="rounded-[9px] border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-[11.5px] leading-relaxed text-emerald-800">
+										<div className="rounded-[9px] border border-emerald-100 bg-bn-success-soft/70 px-3 py-2 text-[11.5px] leading-relaxed text-emerald-800">
 											无需手动配置额外 PushTarget；订阅页会看到这个 Webhook，可直接选择并投递。
 										</div>
 										{selectedManagedWebhookTarget ? (
@@ -1513,7 +1828,7 @@ export default function Targets() {
 												/>
 											</div>
 										) : (
-											<div className="rounded-[9px] border border-dashed border-gray-200 px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
+											<div className="rounded-[9px] border border-dashed border-bn-border px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
 												保存 Webhook 后系统会自动创建默认投递目标。
 											</div>
 										)}

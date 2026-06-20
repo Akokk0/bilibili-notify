@@ -5,7 +5,6 @@ import {
 	type PushLike,
 } from "@bilibili-notify/dynamic";
 import type { SubscriptionOp } from "@bilibili-notify/internal";
-import { DEFAULT_TEMPLATES } from "@bilibili-notify/internal";
 import {
 	makeKoishiMessageBus,
 	makeKoishiServiceContext,
@@ -59,7 +58,7 @@ function adaptPush(push: BilibiliPush): PushLike {
 				// imageGroup.forward 控制(可 per-UP override sub.overrides.imageGroup.forward)。
 				payload = {
 					kind: "forward-images",
-					urls: segments[0].urls,
+					images: segments[0].images,
 					forward: segments[0].forward,
 				};
 			} else {
@@ -73,8 +72,8 @@ function adaptPush(push: BilibiliPush): PushLike {
 						mapped.push({ type: "image" as const, buffer: seg.buffer, mime: seg.mime });
 					} else {
 						// image-group → individual links
-						for (const url of seg.urls) {
-							mapped.push({ type: "link" as const, href: url });
+						for (const img of seg.images) {
+							mapped.push({ type: "link" as const, href: img.url });
 						}
 					}
 				}
@@ -104,15 +103,14 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 
 	private toEngineConfig(config: BilibiliNotifyDynamicConfig): DynamicEngineConfig {
 		return {
-			dynamicUrl: config.dynamicUrl,
 			dynamicCron: config.dynamicCron,
 			dynamicVideoUrlToBV: config.dynamicVideoUrlToBV,
 			imageGroup: config.imageGroup,
 			filter: config.filter,
-			// koishi 端动态文本模板全局默认走 internal 常量(koishi 不暴露全局编辑 UI);
-			// per-UP 自定义经 advanced-subscription → overrides.templates.dynamic 折进视图。
-			dynamicTemplate: DEFAULT_TEMPLATES.dynamic,
-			videoTemplate: DEFAULT_TEMPLATES.dynamicVideo,
+			// 全局动态/视频模板由 koishi/dynamic 配置暴露(Schema 带 DEFAULT_TEMPLATES 默认值);
+			// per-UP 自定义经 advanced-subscription → overrides.templates.dynamic 折进视图覆盖。
+			dynamicTemplate: config.dynamicTemplate,
+			videoTemplate: config.videoTemplate,
 		};
 	}
 

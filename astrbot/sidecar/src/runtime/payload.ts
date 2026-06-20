@@ -16,7 +16,11 @@ export type SerializableNotificationPayload =
 	| { readonly kind: "composite"; readonly segments: readonly SerializablePayloadSegment[] }
 	| {
 			readonly kind: "forward-images";
-			readonly urls: readonly string[];
+			readonly images: readonly {
+				readonly url: string;
+				readonly width?: number;
+				readonly height?: number;
+			}[];
 			readonly forward: boolean;
 	  };
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { loginQrImageSrc, loginResponseSummary } from "./login";
 
 const PNG_BASE64 =

@@ -19,7 +19,7 @@ import {
 	type Subscription,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { buildDynamicSubsView, buildLiveSubViewSingle } from "../engines";
 import type { SubRuntimeStore } from "../sub-runtime-store";
 

@@ -242,7 +242,6 @@ function buildDynamicConfig(globals: GlobalConfig): DynamicEngineConfig {
 	const whitelistHasRules =
 		filters.whitelistKeywords.length > 0 || filters.whitelistRegex.length > 0;
 	return {
-		dynamicUrl: true,
 		dynamicCron: globals.app.dynamicCron,
 		dynamicVideoUrlToBV: false,
 		imageGroup: globals.defaults.imageGroup,
@@ -488,7 +487,7 @@ function pushSegmentsToPayload(segments: PushSegment[]): NotificationPayload {
 	if (segments.length === 1 && segments[0]?.type === "image-group") {
 		return {
 			kind: "forward-images",
-			urls: segments[0].urls,
+			images: segments[0].images,
 			forward: segments[0].forward,
 		};
 	}
@@ -498,7 +497,7 @@ function pushSegmentsToPayload(segments: PushSegment[]): NotificationPayload {
 		else if (segment.type === "image") {
 			mapped.push({ type: "image", buffer: segment.buffer, mime: segment.mime });
 		} else {
-			for (const url of segment.urls) mapped.push({ type: "link", href: url });
+			for (const img of segment.images) mapped.push({ type: "link", href: img.url });
 		}
 	}
 	return mapped.length === 0 ? { kind: "text", text: "" } : { kind: "composite", segments: mapped };

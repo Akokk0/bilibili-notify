@@ -10,7 +10,7 @@
  * 断言落在返回 VNode 的 props.innerHTML(安全攸关字符串本身,非 SSR 产物)。
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { parseRichText } from "../rich-text";
 import type { RichTextNode } from "../types";
 

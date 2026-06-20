@@ -156,7 +156,7 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 			<div
 				className="bn-glass flex items-center gap-3 rounded-bn-card p-4 shadow-bn-card"
 				style={{
-					background: `linear-gradient(135deg, ${color}22, rgba(255,255,255,0.78))`,
+					background: `linear-gradient(135deg, ${color}22, var(--bn-glass-bg))`,
 					borderColor: `${color}33`,
 				}}
 			>
@@ -696,10 +696,13 @@ function GuardOverrideBox({
 							const e = guardOf(role);
 							const label = role === "captain" ? "舰长" : role === "commander" ? "提督" : "总督";
 							return (
-								<div key={role} className="rounded-lg border border-gray-200 bg-white/70 p-2.5">
+								<div
+									key={role}
+									className="rounded-lg border border-bn-border bg-bn-surface/70 p-2.5"
+								>
 									<div className="mb-1.5 text-[12px] font-bold text-bn-text-primary">
 										{label}{" "}
-										<code className="ml-1 rounded bg-black/5 px-1 py-px font-mono text-[10.5px] text-bn-text-tertiary">
+										<code className="ml-1 rounded bg-bn-code-bg px-1 py-px font-mono text-[10.5px] text-bn-text-tertiary">
 											{role}
 										</code>
 									</div>

@@ -15,6 +15,7 @@ import { startHistoryRetention } from "./history/retention.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
 import { createOnebotAdapter } from "./platforms/onebot.js";
+import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq-official.js";
 import { createWebDashboardAdapter } from "./platforms/web-dashboard.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
@@ -58,6 +59,9 @@ export async function startStandaloneServer(
 	let server: ServerType | undefined;
 	let wsServer: ReturnType<typeof createWsServer> | undefined;
 	let previousLogHook: ((entry: LogEntry) => void) | undefined;
+	// QQ 官方机器人网关捞到的群/C2C openid 落进这张共享发现表(不落盘),既喂 adapter
+	// 也喂 /api/qq/sessions 路由的面板选择器。一个进程一份。
+	const qqSessionRegistry = createQQSessionRegistry();
 	let processHandlerCleanup: (() => void) | undefined;
 	let shutdownPromise: Promise<void> | null = null;
 	let listeningPort = bootstrap.server.port;
@@ -93,6 +97,12 @@ export async function startStandaloneServer(
 		log.info(
 			`starting bilibili-notify standalone server: host=${bootstrap.server.host} port=${bootstrap.server.port} dataDir=${bootstrap.dataDir} logLevel=${bootstrap.logLevel}`,
 		);
+
+		// Load the at-rest secrets key during startup, not on the first settings write.
+		// Without this eager touch, zero-auth local runs only hit the key lazily when
+		// SecretStore.save() is first needed (e.g. changing rules.restartPush), making
+		// the normal "主密钥加载成功" log look like it was caused by that setting.
+		await runtime.keyProvider.getKey();
 
 		// Load on-disk runtime config (state/globals.json, state/subscriptions.json, state/targets.json).
 		// Seeds defaults on first boot. Failure here is fatal — we don't want to start serving HTTP
@@ -173,6 +183,11 @@ export async function startStandaloneServer(
 		await runtime.subRuntimeStore.prune(subBinding.store.list().map((s) => s.id));
 		const adapters = [
 			createOnebotAdapter({ logger: log, serviceCtx: runtime.serviceCtx }),
+			createQQOfficialAdapter({
+				logger: log,
+				serviceCtx: runtime.serviceCtx,
+				registry: qqSessionRegistry,
+			}),
 			createWebhookAdapter({ logger: log }),
 			createWebDashboardAdapter({ logger: log }),
 		];
@@ -278,6 +293,7 @@ export async function startStandaloneServer(
 			wsTicketStore,
 			allowedOrigins,
 			desktopToken,
+			qqSessionRegistry,
 		});
 		await new Promise<void>((resolveServe) => {
 			server = serve(

@@ -126,13 +126,9 @@ export function FloatingAiBar() {
 	return (
 		<div className="bn-anim-fade-in fixed bottom-4 left-5 right-5 z-30">
 			<div
-				className={`flex items-center gap-3 rounded-bn-card border shadow-bn-elev backdrop-blur-xl ${
+				className={`bn-glass-strong flex items-center gap-3 rounded-bn-card shadow-bn-elev ${
 					expanded ? "px-4 py-3.5" : "px-3.5 py-2.5"
 				}`}
-				style={{
-					background: "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(250,242,255,0.88))",
-					borderColor: "rgba(162,155,254,0.25)",
-				}}
 			>
 				<div
 					className="relative grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-white shadow-bn-card"
@@ -168,7 +164,7 @@ export function FloatingAiBar() {
 							className={`whitespace-nowrap rounded-md px-3 py-1.5 text-[11.5px] font-semibold transition ${
 								a.primary
 									? "text-white shadow-[0_2px_8px_rgba(108,92,231,0.3)]"
-									: "bg-black/5 text-bn-text-tertiary hover:bg-black/10"
+									: "bg-bn-code-bg text-bn-text-tertiary hover:bg-bn-hover-muted"
 							}`}
 							style={
 								a.primary ? { background: "linear-gradient(135deg, #a29bfe, #6c5ce7)" } : undefined
@@ -182,7 +178,7 @@ export function FloatingAiBar() {
 						onClick={() => setExpanded((v) => !v)}
 						title={expanded ? "收起" : "展开"}
 						aria-label={expanded ? "收起" : "展开"}
-						className="grid h-[26px] w-[26px] cursor-pointer place-items-center rounded text-sm text-bn-text-secondary hover:bg-black/5"
+						className="grid h-[26px] w-[26px] cursor-pointer place-items-center rounded text-sm text-bn-text-secondary hover:bg-bn-hover-muted"
 					>
 						{expanded ? "⌃" : "⌄"}
 					</button>
@@ -191,7 +187,7 @@ export function FloatingAiBar() {
 						onClick={() => setDismissed(true)}
 						title="收起为悬浮按钮"
 						aria-label="收起"
-						className="grid h-[26px] w-[26px] cursor-pointer place-items-center rounded text-base text-bn-text-secondary hover:bg-black/5"
+						className="grid h-[26px] w-[26px] cursor-pointer place-items-center rounded text-base text-bn-text-secondary hover:bg-bn-hover-muted"
 					>
 						×
 					</button>

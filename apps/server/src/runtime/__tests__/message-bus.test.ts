@@ -10,7 +10,7 @@
  */
 
 import type { BiliEvents } from "@bilibili-notify/internal";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { createNodeMessageBus } from "../message-bus";
 
 afterEach(() => {

@@ -8,8 +8,9 @@
  * 拒 → 添加订阅 / 适配器 / 目标全部 400。
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import {
+	KNOWN_PLATFORMS,
 	makeEmptyAdapter,
 	makeEmptyTarget,
 	maskWebhookUrl,
@@ -131,5 +132,35 @@ describe("webhook adapter factories", () => {
 			"https://qyapi.weixin.qq.com/***?…",
 		);
 		expect(maskWebhookUrl("not a url")).toBe("已配置 webhook URL");
+	});
+});
+
+describe("qq-official adapter factories", () => {
+	it("KNOWN_PLATFORMS 含 qq-official", () => {
+		expect(KNOWN_PLATFORMS.map((p) => p.value)).toContain("qq-official");
+	});
+
+	it("makeEmptyAdapter(qq-official) 默认 public 域 + 非沙箱 + 空凭据", () => {
+		const adapter = makeEmptyAdapter("qq-official", "QQ 官方机器人");
+		expect(adapter.platform).toBe("qq-official");
+		if (adapter.platform !== "qq-official") return;
+		expect(adapter.config).toEqual({
+			appId: "",
+			appSecret: "",
+			sandbox: false,
+			botType: "public",
+		});
+	});
+
+	it("makeEmptyTarget(qq-official) 默认 group scope + 空 session", () => {
+		const adapter = makeEmptyAdapter("qq-official", "QQ");
+		const target = makeEmptyTarget(adapter, "测试群");
+		expect(target).toMatchObject({
+			adapterId: adapter.id,
+			platform: "qq-official",
+			scope: "group",
+			enabled: true,
+			session: {},
+		});
 	});
 });

@@ -10,7 +10,7 @@
  */
 
 import type { ServiceContext } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { SubItemView } from "../push-like";
 import { LiveRoomAccessDeniedError, type RoomContext } from "../room-helpers";
 import { RoomSession } from "../room-session";

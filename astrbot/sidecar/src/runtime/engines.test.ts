@@ -5,7 +5,7 @@ import {
 	makeEmptySubscription,
 } from "@bilibili-notify/internal";
 import { createSubscriptionStore } from "@bilibili-notify/subscription";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createSidecarEngines } from "./engines.js";
 import { createSidecarMessageBus, createSidecarServiceContext } from "./platform.js";
 

@@ -21,7 +21,7 @@ import {
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { createKeyProvider } from "@bilibili-notify/storage";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { BootstrapConfig } from "../schema.js";
 import { createSecretStore, type SecretStore } from "../secret-store.js";
 import { type ConfigStore, createConfigStore } from "../store.js";

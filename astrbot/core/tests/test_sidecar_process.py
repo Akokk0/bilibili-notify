@@ -562,6 +562,41 @@ def test_build_astrbot_message_chain_converts_rich_payload_and_at_all_fallback()
     assert fallback.chain[0].text == AT_ALL_FALLBACK_TEXT
 
 
+def test_build_astrbot_message_chain_forward_images_reads_images_url() -> None:
+    # 回归守护:forward-images 形态从 urls:[str] 改成 images:[{url,width?,height?}]
+    # (平台中立层携带 B站原始尺寸供 QQ 原生 markdown)。旧代码读 payload["urls"] →
+    # 图集全部丢图;现读 images[].url。AstrBot 不需要尺寸,只取 url。
+    class FakeImage:
+        @staticmethod
+        def fromBase64(value):
+            return ("image-base64", value)
+
+        @staticmethod
+        def fromURL(value):
+            return ("image-url", value)
+
+    class FakeComponents:
+        Image = FakeImage
+
+    class FakeChain:
+        def __init__(self, chain):
+            self.chain = chain
+
+    payload = {
+        "kind": "forward-images",
+        "images": [
+            {"url": "https://i0.hdslb.com/a.jpg", "width": 800, "height": 600},
+            {"url": "https://i0.hdslb.com/b.jpg"},
+        ],
+        "forward": True,
+    }
+    chain = build_astrbot_message_chain_with(payload, FakeChain, FakeComponents)
+    assert chain.chain == [
+        ("image-url", "https://i0.hdslb.com/a.jpg"),
+        ("image-url", "https://i0.hdslb.com/b.jpg"),
+    ]
+
+
 @pytest.mark.asyncio
 async def test_start_sidecar_waits_for_health_and_closes_cleanly(tmp_path: Path) -> None:
     entrypoint = tmp_path / "fake-sidecar.py"

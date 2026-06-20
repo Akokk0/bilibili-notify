@@ -1,12 +1,13 @@
 import type { DynamicFilterConfig } from "@bilibili-notify/dynamic";
-import { DEFAULT_DYNAMIC_CRON } from "@bilibili-notify/internal";
+import { DEFAULT_DYNAMIC_CRON, DEFAULT_TEMPLATES } from "@bilibili-notify/internal";
 import { Schema } from "koishi";
 
 export interface BilibiliNotifyDynamicConfig {
 	logLevel: number;
-	dynamicUrl: boolean;
 	dynamicCron: string;
 	dynamicVideoUrlToBV: boolean;
+	dynamicTemplate: string;
+	videoTemplate: string;
 	imageGroup: {
 		enable: boolean;
 		forward: boolean;
@@ -23,11 +24,6 @@ export const BilibiliNotifyDynamicSchema: Schema<BilibiliNotifyDynamicConfig> = 
 		.description(
 			"这里可以设置日志等级喔～3 是最详细的调试信息，1 是只显示错误信息。主人可以根据需要选择合适的等级，让女仆更好地为您服务 (๑•̀ㅂ•́)و✧",
 		),
-	dynamicUrl: Schema.boolean()
-		.default(false)
-		.description(
-			"发送动态时要不要顺便发链接呢？但如果主人用的是 QQ 官方机器人，这个开关不要开喔～不然会出事的 (；>_<)！",
-		),
 	dynamicCron: Schema.string()
 		.default(DEFAULT_DYNAMIC_CRON)
 		.description(
@@ -36,6 +32,16 @@ export const BilibiliNotifyDynamicSchema: Schema<BilibiliNotifyDynamicConfig> = 
 	dynamicVideoUrlToBV: Schema.boolean()
 		.default(false)
 		.description("如果是视频动态，开启后会把链接换成 BV 号哦～方便主人的其他用途 (*´･ω･`)"),
+	dynamicTemplate: Schema.string()
+		.default(DEFAULT_TEMPLATES.dynamic)
+		.description(
+			"动态推送的文案模板～变量 {name}=UP 昵称、{url}=动态链接。想去掉链接（比如用 QQ 官方机器人）就把 {url} 删掉哦 (๑•̀ㅂ•́)و✧",
+		),
+	videoTemplate: Schema.string()
+		.default(DEFAULT_TEMPLATES.dynamicVideo)
+		.description(
+			"视频投稿的文案模板～变量 {name}=UP 昵称、{url}=视频链接（开了上面的 BV 开关则是 BV 号）。同样删掉 {url} 就不带链接。",
+		),
 	imageGroup: Schema.object({
 		enable: Schema.boolean()
 			.default(false)

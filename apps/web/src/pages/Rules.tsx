@@ -119,7 +119,7 @@ function ScopeTabs({
 	const isGlobal = scope === "__global";
 
 	return (
-		<div className="relative z-10 flex flex-wrap items-center gap-1.5 rounded-[11px] border border-black/5 bg-white/70 p-1.5 backdrop-blur-sm">
+		<div className="relative z-10 flex flex-wrap items-center gap-1.5 rounded-[11px] border border-bn-border-subtle bg-bn-surface/70 p-1.5 backdrop-blur-sm">
 			{/* 全局 */}
 			<button
 				type="button"
@@ -135,7 +135,7 @@ function ScopeTabs({
 				全局 / 全部 UP
 				<span
 					className={`ml-0.5 rounded px-1.5 py-px font-mono text-[10px] font-semibold ${
-						isGlobal ? "bg-white/25" : "bg-black/5"
+						isGlobal ? "bg-bn-inverse-strong" : "bg-bn-code-bg"
 					}`}
 				>
 					default
@@ -154,7 +154,7 @@ function ScopeTabs({
 						key={sub.id}
 						className={`flex items-center gap-1.5 rounded-lg border py-1.5 pl-3 pr-1.5 text-[12.5px] font-bold transition ${
 							active
-								? "border-bn-pink/25 bg-white text-bn-pink shadow-[0_2px_8px_rgba(0,0,0,0.08)]"
+								? "border-bn-pink/25 bg-bn-surface text-bn-pink shadow-[0_2px_8px_rgba(0,0,0,0.08)]"
 								: "border-transparent text-bn-text-tertiary hover:text-bn-text-primary"
 						}`}
 					>
@@ -188,7 +188,7 @@ function ScopeTabs({
 							className={`grid h-4.5 w-4.5 place-items-center rounded ${
 								active
 									? "text-bn-pink/80 hover:bg-bn-pink/10"
-									: "text-bn-text-tertiary/70 hover:bg-black/5"
+									: "text-bn-text-tertiary/70 hover:bg-bn-hover-muted"
 							}`}
 						>
 							<Icon.close size={11} />
@@ -213,8 +213,8 @@ function ScopeTabs({
 					添加 UP
 				</button>
 				{adding ? (
-					<div className="absolute left-0 top-[calc(100%+6px)] z-30 min-w-60 overflow-hidden rounded-[10px] border border-black/8 bg-white shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
-						<div className="border-b border-gray-100 px-3 pb-1.5 pt-2 text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
+					<div className="absolute left-0 top-[calc(100%+6px)] z-30 min-w-60 overflow-hidden rounded-[10px] border border-black/8 bg-bn-surface shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
+						<div className="border-b border-bn-border-subtle px-3 pb-1.5 pt-2 text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
 							选择要单独定制的 UP 主
 						</div>
 						{availableSubs.length === 0 ? (
@@ -233,7 +233,7 @@ function ScopeTabs({
 												onAddSub(sub.id);
 												setAdding(false);
 											}}
-											className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition hover:bg-[#fdf2f5]"
+											className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition hover:bg-bn-pink/5"
 										>
 											<Avatar
 												name={displayName(sub)}
@@ -260,7 +260,7 @@ function ScopeTabs({
 						<button
 							type="button"
 							onClick={() => setAdding(false)}
-							className="block w-full border-t border-gray-100 py-2 text-center text-[11px] text-bn-text-tertiary hover:text-bn-text-primary"
+							className="block w-full border-t border-bn-border-subtle py-2 text-center text-[11px] text-bn-text-tertiary hover:text-bn-text-primary"
 						>
 							取消
 						</button>
@@ -315,8 +315,8 @@ function SectionList({
 							onClick={() => onPick(s.id)}
 							className={`flex w-full min-w-0 items-start gap-2.5 rounded-[9px] border px-3 py-2.5 text-left transition ${
 								active
-									? "border-bn-pink/35 bg-white/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
-									: "border-transparent hover:bg-white/55"
+									? "border-bn-pink/35 bg-bn-surface/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+									: "border-transparent hover:bg-bn-surface/55"
 							}`}
 						>
 							<span

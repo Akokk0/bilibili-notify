@@ -6,7 +6,7 @@
  * 非法 limit / since 显式 400,而非静默坏行为。
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createHistoryRoute } from "../history.js";
 import type { RouteDeps } from "../types.js";
 

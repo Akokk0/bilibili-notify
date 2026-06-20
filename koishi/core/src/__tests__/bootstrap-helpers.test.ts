@@ -7,7 +7,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { BilibiliPush } from "@bilibili-notify/push";
 import type { Context, Logger } from "koishi";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { warnMissingPlugins } from "../bootstrap-helpers";
 
 const TARGET_ID = deterministicUuid("missing-plugin-target");

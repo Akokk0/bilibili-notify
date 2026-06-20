@@ -5,6 +5,12 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { shouldRefuseBareAuth } from "../auth/bare-auth-policy.js";
 import { type BootstrapConfig, BootstrapConfigSchema } from "./schema.js";
 
+/**
+ * Legacy 12-factor 模型扫描的 bootstrap 配置文件候选(按优先级)。readLegacyFile
+ * 读取、resolveConfigPath 定位写回目标,两处共用避免漂移。
+ */
+const LEGACY_CONFIG_CANDIDATES = ["bn.config.yaml", "bn.config.yml", "bn.config.json"] as const;
+
 export interface LoadBootstrapConfigOptions {
 	/** Process argv (without the leading `node` and script). Defaults to `process.argv.slice(2)`. */
 	argv?: readonly string[];
@@ -68,9 +74,12 @@ export function loadBootstrapConfig(opts: LoadBootstrapConfigOptions = {}): Boot
 
 /**
  * 解析当前运行时使用的 bootstrap 配置文件路径,供运行时写回(dashboard 热启用卡片
- * 渲染后持久化 chromePath)。仅 B 模型(显式 BN_CONFIG)可写回;BN_CONFIG_DISABLED
- * (sidecar/desktop)与 legacy 12-factor(dev,无单一目标文件)返回 null —— 这些场景
- * 运行时持久化无意义,改配置走 env / 手编辑 yaml。
+ * 渲染后持久化 chromePath)。
+ *
+ *   - B 模型(显式 BN_CONFIG)→ 该 yaml 路径。
+ *   - legacy 12-factor(无 BN_CONFIG,dev)→ cwd 扫到的 bn.config.{yaml,yml,json}
+ *     即写回目标(dev 模式热探测后也持久化);扫不到文件(纯 env/cli)→ null。
+ *   - BN_CONFIG_DISABLED(sidecar/desktop)→ null,无配置文件。
  */
 export function resolveConfigPath(
 	opts: { env?: NodeJS.ProcessEnv; cwd?: string } = {},
@@ -79,6 +88,13 @@ export function resolveConfigPath(
 	const cwd = opts.cwd ?? process.cwd();
 	if (env.BN_CONFIG_DISABLED === "1") return null;
 	if (env.BN_CONFIG) return resolvePath(cwd, env.BN_CONFIG);
+	// legacy:无显式 BN_CONFIG,但 cwd 扫到 bn.config.* 时仍当写回目标。三层 merge 里
+	// file 优先级最低,但探测流程只在用户未设 chromePath(env/cli)时触发 → 写回 file
+	// 下次启动即生效,无覆盖冲突。扫不到文件(纯 env/cli)→ null,无单一写回目标。
+	for (const candidate of LEGACY_CONFIG_CANDIDATES) {
+		const abs = resolvePath(cwd, candidate);
+		if (inspectPath(abs) === "file") return abs;
+	}
 	return null;
 }
 
@@ -238,7 +254,7 @@ function loadEnvCliModel(
 }
 
 function readLegacyFile(cwd: string): Record<string, unknown> {
-	for (const candidate of ["bn.config.yaml", "bn.config.yml", "bn.config.json"]) {
+	for (const candidate of LEGACY_CONFIG_CANDIDATES) {
 		const abs = resolvePath(cwd, candidate);
 		try {
 			return readYamlOrJson(abs);

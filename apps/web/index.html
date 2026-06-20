@@ -6,6 +6,26 @@
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<link rel="icon" type="image/png" sizes="128x128" href="/favicon.png" />
 		<title>Bilibili-Notify Dashboard</title>
+		<script>
+			// 首屏防闪烁(anti-FOUC):在 React 挂载前同步打 data-theme,避免暗色用户刷新时闪一下亮色。
+			// 必须是普通同步 <script>(非 module,否则被 defer 到 DOM 解析后)。逻辑须与
+			// src/store/theme.ts(normalize + resolve)、src/services/theme.ts
+			// (THEME_STORAGE_KEY = "bn.dashboardTheme")保持一致。
+			(() => {
+				try {
+					const saved = localStorage.getItem("bn.dashboardTheme");
+					const pref = saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
+					const dark =
+						pref === "dark" ||
+						(pref === "system" &&
+							typeof matchMedia !== "undefined" &&
+							matchMedia("(prefers-color-scheme: dark)").matches);
+					const theme = dark ? "dark" : "light";
+					document.documentElement.dataset.theme = theme;
+					document.documentElement.style.colorScheme = theme;
+				} catch {}
+			})();
+		</script>
 	</head>
 	<body>
 		<div id="root"></div>

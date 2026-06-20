@@ -8,6 +8,7 @@ import { z } from "zod";
  * - `koishi-bot`：仅 koishi 薄壳侧实现，通过 `ctx.bots[botPlatform]` 调 koishi bot
  *   `sendMessage`；独立端不注册该 platform adapter
  * - `astrbot`：仅 AstrBot 插件侧实现，通过 Python 壳按 `unified_msg_origin` 投递
+ * - `qq-official`：独立端 QQ 官方机器人(q.qq.com)WS 网关 adapter,频道/群/C2C
  */
 export const PushTargetPlatformSchema = z.union([
 	z.literal("onebot"),
@@ -15,6 +16,7 @@ export const PushTargetPlatformSchema = z.union([
 	z.literal("web-dashboard"),
 	z.literal("koishi-bot"),
 	z.literal("astrbot"),
+	z.literal("qq-official"),
 ]);
 export type PushTargetPlatform = z.infer<typeof PushTargetPlatformSchema>;
 
@@ -121,6 +123,27 @@ export type KoishiBotAdapterConfig = z.infer<typeof KoishiBotAdapterConfigSchema
 export const AstrBotAdapterConfigSchema = z.object({}).strict();
 export type AstrBotAdapterConfig = z.infer<typeof AstrBotAdapterConfigSchema>;
 
+/**
+ * QQ 官方机器人公域/私域类型。私域可发原生 markdown,公域只能发模板 markdown ——
+ * 决定 adapter 的 markdown 能力门控(私域默认开、公域默认关)。
+ */
+export const QQOfficialBotTypeSchema = z.enum(["public", "private"]);
+export type QQOfficialBotType = z.infer<typeof QQOfficialBotTypeSchema>;
+
+/**
+ * QQ 官方机器人(q.qq.com,非 OneBot/NapCat)适配器连接配置。
+ * 鉴权 appId+appSecret → getAppAccessToken;`sandbox` 切沙箱/正式环境的 wss+REST host。
+ */
+export const QQOfficialAdapterConfigSchema = z
+	.object({
+		appId: z.string().min(1),
+		appSecret: z.string().min(1),
+		sandbox: z.boolean().default(false),
+		botType: QQOfficialBotTypeSchema.default("public"),
+	})
+	.strict();
+export type QQOfficialAdapterConfig = z.infer<typeof QQOfficialAdapterConfigSchema>;
+
 export const PushAdapterTestStatusSchema = z.object({
 	ok: z.boolean(),
 	lastCheckedAt: z.string(),
@@ -173,12 +196,19 @@ export const AstrBotAdapterSchema = z.object({
 });
 export type AstrBotAdapter = z.infer<typeof AstrBotAdapterSchema>;
 
+const QQOfficialAdapterSchema = z.object({
+	...PushAdapterCommonShape,
+	platform: z.literal("qq-official"),
+	config: QQOfficialAdapterConfigSchema,
+});
+
 export const PushAdapterSchema = z.discriminatedUnion("platform", [
 	OnebotAdapterSchema,
 	WebhookAdapterSchema,
 	WebDashboardAdapterSchema,
 	KoishiBotAdapterSchema,
 	AstrBotAdapterSchema,
+	QQOfficialAdapterSchema,
 ]);
 export type PushAdapter = z.infer<typeof PushAdapterSchema>;
 
@@ -230,6 +260,22 @@ export const AstrBotSessionSchema = z
 	.strict();
 export type AstrBotSession = z.infer<typeof AstrBotSessionSchema>;
 
+/**
+ * QQ 官方机器人会话。按 target.scope 用不同字段(发送时运行期校验,缺失即拒)。
+ * - channel(频道子频道):channelId 必填,guildId 仅面板分组/排错用。
+ * - group(群):groupOpenid —— 不透明 id,只能从入站事件捞,用户不可手填群号。
+ * - private(C2C 单聊):userOpenid —— 同样从入站事件捞。
+ */
+export const QQOfficialSessionSchema = z
+	.object({
+		guildId: z.string().optional(),
+		channelId: z.string().optional(),
+		groupOpenid: z.string().optional(),
+		userOpenid: z.string().optional(),
+	})
+	.strict();
+export type QQOfficialSession = z.infer<typeof QQOfficialSessionSchema>;
+
 const PushTargetCommonShape = {
 	id: z.uuid(),
 	name: z.string().min(1),
@@ -277,6 +323,12 @@ export const AstrBotPushTargetSchema = z.object({
 });
 export type AstrBotPushTarget = z.infer<typeof AstrBotPushTargetSchema>;
 
+const QQOfficialPushTargetSchema = z.object({
+	...PushTargetCommonShape,
+	platform: z.literal("qq-official"),
+	session: QQOfficialSessionSchema,
+});
+
 export const PushTargetSchema = z
 	.discriminatedUnion("platform", [
 		OnebotPushTargetSchema,
@@ -284,6 +336,7 @@ export const PushTargetSchema = z
 		WebDashboardPushTargetSchema,
 		KoishiBotPushTargetSchema,
 		AstrBotPushTargetSchema,
+		QQOfficialPushTargetSchema,
 	])
 	.superRefine((target, ctx) => {
 		if (target.managedBy === "adapter" && target.platform !== "webhook") {

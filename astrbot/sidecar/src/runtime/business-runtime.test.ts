@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { ASTRBOT_ADAPTER_ID, ASTRBOT_TARGET_ID } from "./callback-sink.js";
 import { createAstrBotSubscription } from "./persistence.js";
 

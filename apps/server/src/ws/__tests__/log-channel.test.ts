@@ -8,7 +8,7 @@
  *   - 一个 handler 抛异常不影响其它 handler 收到该 entry
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { createLogChannel } from "../log-channel.js";
 import type { LogEntry } from "../types.js";
 

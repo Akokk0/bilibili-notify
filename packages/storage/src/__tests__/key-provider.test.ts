@@ -6,13 +6,13 @@
  *     getKey 确定、缓存;salt 文件落盘;同 salt+passphrase 跨实例一致;换 passphrase 变;
  *     resetKey 不轮换(返回原 key)
  *   - 无 passphrase → FileKeyProvider(protected=false, resettable=true);
- *     getKey 生成 master.key;resetKey 轮换出不同 key
+ *     getKey 生成 master.key 并缓存;resetKey 轮换出不同 key
  */
 
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createKeyProvider, FileKeyProvider, PassphraseKeyProvider } from "../key-provider";
 
 function makeLogger() {
@@ -145,15 +145,29 @@ describe("PassphraseKeyProvider", () => {
 });
 
 describe("FileKeyProvider", () => {
-	it("getKey 生成 master.key;resetKey 轮换出不同 key", async () => {
+	it("getKey 生成 master.key 并缓存;resetKey 轮换出不同 key", async () => {
 		const { keyPath } = paths();
 		const p = createKeyProvider({ logger: makeLogger(), keyPath, saltPath: join(dir, "x.salt") });
 		const k1 = await p.getKey();
+		const k1b = await p.getKey();
+		expect(k1b).toBe(k1); // 同实例缓存(同一 Buffer 引用),避免保存配置时重复读盘/刷日志
 		expect(k1.length).toBe(32);
 		await expect(readFile(keyPath, "utf8")).resolves.toMatch(/^[0-9a-f]{64}$/);
 		const k2 = await p.resetKey();
 		expect(k2.equals(k1)).toBe(false);
-		// 轮换后 loadOrCreate 读到的是新 key
-		expect((await p.getKey()).equals(k2)).toBe(true);
+		// 轮换后 getKey 命中缓存的新 key
+		expect(await p.getKey()).toBe(k2);
+	});
+
+	it("启动预加载后保存配置复用同一 key,不再次打印主密钥加载日志", async () => {
+		const { keyPath } = paths();
+		await mkdir(join(dir, "secrets"), { recursive: true });
+		await writeFile(keyPath, "a".repeat(64), "utf8");
+		const logger = makeLogger();
+		const p = createKeyProvider({ logger, keyPath, saltPath: join(dir, "x.salt") });
+		await p.getKey(); // standalone 启动预加载
+		await p.getKey(); // 后续 SecretStore.save / CookieStore.init 复用缓存
+		expect(logger.info).toHaveBeenCalledTimes(1);
+		expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("主密钥加载成功"));
 	});
 });

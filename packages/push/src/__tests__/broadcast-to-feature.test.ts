@@ -25,7 +25,7 @@ import {
 	type Subscription,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { BilibiliPush } from "../bilibili-push";
 
 const silentLogger: Logger = {
@@ -347,7 +347,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		push.start();
 		await push.broadcastToFeature("u1", "dynamic", {
 			kind: "forward-images",
-			urls: ["http://x/1.jpg"],
+			images: [{ url: "http://x/1.jpg" }],
 			forward: true,
 		});
 		expect(calls).toHaveLength(2);

@@ -8,7 +8,7 @@
  *   - BN_ALLOW_NO_AUTH=1 → 放行(运维已在反代做了别的鉴权)
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { shouldRefuseBareAuth } from "../bare-auth-policy";
 
 describe("shouldRefuseBareAuth — P0-5 fail-closed policy", () => {

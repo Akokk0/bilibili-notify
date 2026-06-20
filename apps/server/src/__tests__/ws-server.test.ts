@@ -12,7 +12,7 @@ import {
 	type PushTarget,
 	type Subscription,
 } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
 import type { BootstrapConfig } from "../config/schema.js";
 import { type ConfigStore, createConfigStore } from "../config/store.js";

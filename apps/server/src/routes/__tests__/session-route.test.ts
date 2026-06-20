@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { Hono } from "hono";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { createDashboardAuth } from "../../auth/dashboard-auth.js";
 import { createIpRateLimiter } from "../../auth/ip-rate-limit.js";
 import { createSessionCodec, type SessionCreds } from "../../auth/session.js";

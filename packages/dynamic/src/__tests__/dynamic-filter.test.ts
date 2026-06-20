@@ -9,7 +9,7 @@
  * 工厂。
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { filterDynamic } from "../dynamic-filter";
 import { type Dynamic, DynamicFilterReason } from "../types";
 

@@ -3,7 +3,7 @@
  * 「非法 query 显式 400 而非静默坏行为」契约)。
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createLogsRoute } from "../logs.js";
 import type { RouteDeps } from "../types.js";
 

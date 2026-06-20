@@ -6,7 +6,7 @@
  * `&lt;p&gt;xxxx&lt;/p&gt;`(取决于 input 形态)。
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { htmlToPlain } from "../html-to-plain";
 
 describe("htmlToPlain", () => {

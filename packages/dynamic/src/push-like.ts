@@ -10,6 +10,7 @@
  */
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
+import type { ForwardImage } from "@bilibili-notify/internal";
 import type { DynamicFilterConfig } from "./types";
 
 /** dynamic-engine 渲染好的图片缓冲（无 mime/扩展信息时默认 image/jpeg）。 */
@@ -29,7 +30,8 @@ export interface PushTextPart {
 export interface PushImageGroup {
 	type: "image-group";
 	forward: boolean;
-	urls: string[];
+	/** 图集单图(url + 可选 B站原始尺寸,透传给需要尺寸的平台如 QQ 原生 markdown)。 */
+	images: ForwardImage[];
 }
 
 export type PushSegment = PushImagePart | PushTextPart | PushImageGroup;

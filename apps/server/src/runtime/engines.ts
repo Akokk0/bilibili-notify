@@ -363,7 +363,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			f.blockAv;
 		const whitelistHasRules = f.whitelistKeywords.length > 0 || f.whitelistRegex.length > 0;
 		return {
-			dynamicUrl: true,
 			dynamicCron: globals().app.dynamicCron,
 			dynamicVideoUrlToBV: false,
 			imageGroup: globals().defaults.imageGroup,
@@ -830,7 +829,7 @@ function pushSegmentsToPayload(segments: PushSegment[]): NotificationPayload {
 		//   false → adapter 走多 image segment 合并到一条普通 send_group_msg
 		return {
 			kind: "forward-images",
-			urls: segments[0].urls,
+			images: segments[0].images,
 			forward: segments[0].forward,
 		};
 	}
@@ -839,7 +838,7 @@ function pushSegmentsToPayload(segments: PushSegment[]): NotificationPayload {
 		if (s.type === "text") mapped.push({ type: "text", text: s.text });
 		else if (s.type === "image") mapped.push({ type: "image", buffer: s.buffer, mime: s.mime });
 		else if (s.type === "image-group") {
-			for (const url of s.urls) mapped.push({ type: "link", href: url });
+			for (const img of s.images) mapped.push({ type: "link", href: img.url });
 		}
 	}
 	if (mapped.length === 0) return { kind: "text", text: "" };

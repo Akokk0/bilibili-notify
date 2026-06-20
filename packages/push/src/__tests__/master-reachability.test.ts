@@ -16,7 +16,7 @@ import type {
 	PushTarget,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { BilibiliPush } from "../bilibili-push";
 
 type LogRec = { level: "info" | "warn" | "error" | "debug"; msg: string };

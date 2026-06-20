@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { FEATURE_KEYS, makeEmptySubscription } from "../../types/domain";
 import { detachTargetFromDraft } from "./UpDialog";
 
