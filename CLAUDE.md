@@ -59,6 +59,6 @@ apps/       Hono 服务端 + React Dashboard
 
 ## Agent skills
 
-- **Issue tracker** —— GitHub Issues `Akokk0/bilibili-notify`,经 `gh` CLI。见 `docs/agents/issue-tracker.md`。
+- **Issue tracker** —— GitHub Issues `Akokk0/bilibili-notify`,经 `gh` CLI;外部 PR 不作为 triage 来源。见 `docs/agents/issue-tracker.md`。
 - **Triage labels** —— 词表 `needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`;目前仓库只有 `wontfix`,其余首次用前需 `gh label create`。见 `docs/agents/triage-labels.md`。
 - **Domain docs** —— 单 context 仓库,`CONTEXT.md` + `docs/adr/` 在仓库根(由 `/grill-with-docs` 按需创建)。见 `docs/agents/domain.md`。
