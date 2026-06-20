@@ -1,6 +1,6 @@
 {
 	"name": "@bilibili-notify/live",
-	"version": "0.1.0-alpha.7",
+	"version": "0.1.0-alpha.8",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Akokk0/bilibili-notify"
