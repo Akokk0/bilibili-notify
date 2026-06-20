@@ -1,0 +1,185 @@
+import type { ReactNode } from "react";
+
+/**
+ * SectionNav —— Rules / Targets / Logs 三页共用的「分区/Tab 导航」。
+ *
+ * 双形态(断点 xl=1280,与页面级 `grid xl:grid-cols-[220px_1fr]` 对齐):
+ * - xl 以上(桌面):左侧竖向 `aside` 富列表,保持各页原观感。
+ * - xl 以下(iPad 等窄视口):顶部横向可滚 chip 条。
+ *
+ * 修复要点:横向条 `sticky top-30` 的同时带「不透明背景 + backdrop-blur + z-index」,
+ * 让下方内容滚动时从其下方穿过,而不是覆盖被钉住的 Tab —— 根治窄视口下的坍缩。
+ * (旧实现是无条件 `sticky` 的竖栏,单列时被钉住又无背景/层级,被内容从下往上盖住。)
+ */
+
+export interface SectionNavItem {
+	id: string;
+	label: string;
+	/** 仅在竖栏(xl+)显示的副标题;横向 chip 省略以保持条矮。 */
+	desc?: string;
+	/** 已渲染的图标 glyph(调用方控制大小/字重)。 */
+	icon?: ReactNode;
+	/** 图标底色 tint(hex);给则把图标包进一个 tinted 圆角盒(Targets 平台色)。 */
+	iconTint?: string;
+	/** 标题旁内联角标(Rules 覆盖红点 / Targets「(停用)」)。 */
+	badge?: ReactNode;
+}
+
+export interface SectionNavProps {
+	heading: ReactNode;
+	items: SectionNavItem[];
+	activeId: string | null;
+	onPick: (id: string) => void;
+	/** 可选「新建」动作。竖栏渲染 heading 行按钮,横向渲染尾部 dashed chip。 */
+	onAdd?: () => void;
+	addLabel?: string;
+	/** items 为空时竖栏显示的占位(Targets 空态)。 */
+	emptyState?: ReactNode;
+}
+
+const RAIL_ITEM_BASE =
+	"flex w-full min-w-0 items-start gap-2.5 rounded-[9px] border px-3 py-2.5 text-left transition";
+const RAIL_ITEM_ACTIVE =
+	"border-bn-pink/35 bg-bn-surface/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]";
+const RAIL_ITEM_IDLE = "border-transparent hover:bg-bn-surface/55";
+
+const CHIP_BASE =
+	"flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-bold transition";
+const CHIP_ACTIVE = "border-bn-pink/40 bg-bn-pink/10 text-bn-pink";
+const CHIP_IDLE =
+	"border-transparent text-bn-text-secondary hover:bg-bn-surface/70 hover:text-bn-text-primary";
+
+function IconBox({
+	icon,
+	tint,
+	active,
+}: {
+	icon: ReactNode;
+	tint?: string;
+	active: boolean;
+}) {
+	if (icon == null) return null;
+	if (tint) {
+		return (
+			<span
+				className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-[5px]"
+				style={{ background: `${tint}1f` }}
+			>
+				{icon}
+			</span>
+		);
+	}
+	return (
+		<span
+			className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center ${
+				active ? "text-bn-pink" : "text-bn-text-secondary"
+			}`}
+		>
+			{icon}
+		</span>
+	);
+}
+
+export function SectionNav({
+	heading,
+	items,
+	activeId,
+	onPick,
+	onAdd,
+	addLabel = "+ 新建",
+	emptyState,
+}: SectionNavProps) {
+	return (
+		<>
+			{/* 竖栏(桌面 xl+) */}
+			<aside
+				data-section-nav="rail"
+				className="sticky top-30 hidden h-fit min-w-0 xl:block"
+			>
+				<div className="mb-2 flex items-center justify-between px-1">
+					<span className="text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
+						{heading}
+					</span>
+					{onAdd ? (
+						<button
+							type="button"
+							onClick={onAdd}
+							className="rounded-md border border-dashed border-bn-border px-2 py-0.5 text-[10.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
+						>
+							{addLabel}
+						</button>
+					) : null}
+				</div>
+				{items.length === 0 ? (
+					(emptyState ?? null)
+				) : (
+					<div className="flex flex-col gap-1">
+						{items.map((item) => {
+							const active = activeId === item.id;
+							return (
+								<button
+									type="button"
+									key={item.id}
+									onClick={() => onPick(item.id)}
+									aria-current={active ? "true" : undefined}
+									className={`${RAIL_ITEM_BASE} ${active ? RAIL_ITEM_ACTIVE : RAIL_ITEM_IDLE}`}
+								>
+									<IconBox icon={item.icon} tint={item.iconTint} active={active} />
+									<span className="block min-w-0 flex-1">
+										<span
+											className={`flex items-center gap-1.5 text-[12.5px] font-bold ${
+												active ? "text-bn-pink" : "text-bn-text-primary"
+											}`}
+										>
+											<span className="truncate">{item.label}</span>
+											{item.badge}
+										</span>
+										{item.desc ? (
+											<span className="mt-0.5 block wrap-break-word text-[10.5px] leading-snug text-bn-text-tertiary">
+												{item.desc}
+											</span>
+										) : null}
+									</span>
+								</button>
+							);
+						})}
+					</div>
+				)}
+			</aside>
+
+			{/* 横向条(窄视口 < xl):sticky + 背景 + z-index → 内容从其下穿过,不再覆盖 */}
+			<div
+				data-section-nav="bar"
+				className="sticky top-30 z-20 flex items-center gap-1.5 overflow-x-auto rounded-[11px] border border-bn-border-subtle bg-bn-surface/70 p-1.5 backdrop-blur-sm xl:hidden"
+			>
+				{items.map((item) => {
+					const active = activeId === item.id;
+					return (
+						<button
+							type="button"
+							key={item.id}
+							onClick={() => onPick(item.id)}
+							aria-current={active ? "true" : undefined}
+							className={`${CHIP_BASE} ${active ? CHIP_ACTIVE : CHIP_IDLE}`}
+						>
+							{item.icon != null ? (
+								<span className="grid h-4 w-4 shrink-0 place-items-center">{item.icon}</span>
+							) : null}
+							<span className="whitespace-nowrap">{item.label}</span>
+							{item.badge}
+						</button>
+					);
+				})}
+				{onAdd ? (
+					<button
+						type="button"
+						onClick={onAdd}
+						className="flex shrink-0 items-center gap-1 rounded-lg border border-dashed border-bn-border px-3 py-1.5 text-[12.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
+					>
+						{addLabel}
+					</button>
+				) : null}
+			</div>
+		</>
+	);
+}
