@@ -18,8 +18,16 @@ const AFDIAN_URL = "https://afdian.com/a/akokko";
 const GITHUB_URL = "https://github.com/Akokk0/bilibili-notify";
 const QQ_GROUP = "801338523";
 
-// 赞助者名单 —— 由项目维护者手动维护(顺序随意)。空数组时显示空态。
-const SPONSORS: ReadonlyArray<string> = [];
+// 赞助者名单文件 —— 由 CI(scripts/fetch-sponsors.mjs)定时从爱发电同步生成,
+// 产物在 apps/web/public/sponsors.json。缺文件(本地 / 未配 token)时前端回退空态。
+interface Sponsor {
+	name: string;
+	avatar: string;
+}
+interface SponsorsFile {
+	generatedAt: string | null;
+	sponsors: Sponsor[];
+}
 
 const ReactMarkdown = lazy(() => import("react-markdown"));
 
@@ -119,6 +127,24 @@ export default function About() {
 }
 
 function SponsorPanel() {
+	const [sponsors, setSponsors] = useState<Sponsor[]>([]);
+
+	// 名单来自 CI 同步生成的静态文件;缺文件或解析失败时静默回退空态(本地/未配 token)。
+	useEffect(() => {
+		let cancelled = false;
+		fetch("/sponsors.json")
+			.then((r) => (r.ok ? (r.json() as Promise<SponsorsFile>) : null))
+			.then((data) => {
+				if (!cancelled && data && Array.isArray(data.sponsors)) setSponsors(data.sponsors);
+			})
+			.catch(() => {
+				/* 无名单文件 → 保持空态 */
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
 	return (
 		<div className="space-y-4">
 			<div className="rounded-bn-card border border-black/6 bg-bn-surface/80 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)] backdrop-blur-sm">
@@ -153,24 +179,39 @@ function SponsorPanel() {
 					<Icon.gift size={15} />
 					赞助者名单
 				</div>
-				{SPONSORS.length === 0 ? (
+				{sponsors.length === 0 ? (
 					<p className="py-6 text-center text-[12.5px] text-bn-text-tertiary">
 						还没有人发电,期待第一位供电的主人～
 					</p>
 				) : (
 					<div className="flex flex-wrap gap-2">
-						{SPONSORS.map((name) => (
+						{sponsors.map((s) => (
 							<span
-								key={name}
-								className="rounded-full border border-bn-pink/25 bg-bn-pink/8 px-3 py-1 text-[12.5px] font-semibold text-bn-pink"
+								key={s.name}
+								className="flex items-center gap-1.5 rounded-full border border-bn-pink/25 bg-bn-pink/8 py-1 pr-3 pl-1 text-[12.5px] font-semibold text-bn-pink"
 							>
-								{name}
+								{s.avatar ? (
+									<img
+										src={s.avatar}
+										alt={s.name}
+										referrerPolicy="no-referrer"
+										className="h-5 w-5 rounded-full object-cover"
+										onError={(e) => {
+											e.currentTarget.style.display = "none";
+										}}
+									/>
+								) : (
+									<span className="grid h-5 w-5 place-items-center rounded-full bg-bn-pink/15 text-[10px]">
+										{s.name.slice(0, 1)}
+									</span>
+								)}
+								{s.name}
 							</span>
 						))}
 					</div>
 				)}
 				<p className="mt-3 text-[11px] text-bn-text-tertiary">
-					感谢每一位主人的供电 ♡ 名单由项目维护者手动更新。
+					感谢每一位主人的供电 ♡ 名单每日自动同步自爱发电。
 				</p>
 			</div>
 		</div>
