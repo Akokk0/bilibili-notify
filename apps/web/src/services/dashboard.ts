@@ -143,3 +143,31 @@ export function bucketByDay(entries: HistoryEntryView[], days = 7): DailyBucket[
 	}
 	return out;
 }
+
+/** 本地时区的 YYYY-MM-DD —— 「今日」按用户本地 0 点翻篇,而非 UTC(toISOString 的口径)。 */
+export function localDayKey(date: Date): string {
+	const y = date.getFullYear();
+	const m = String(date.getMonth() + 1).padStart(2, "0");
+	const d = String(date.getDate()).padStart(2, "0");
+	return `${y}-${m}-${d}`;
+}
+
+/**
+ * 统计「今日」(本地时区)的推送总数与失败数。entry.ts 是后端 `new Date().toISOString()`
+ * 生成的 UTC ISO,经 `new Date()` 解析回本地日再与今天比较 —— 北京凌晨 0~8 点的推送不会
+ * 被 UTC 日界甩到「昨天」。「今日失败」与「今日推送」同口径(本地日)。
+ */
+export function countToday(
+	entries: HistoryEntryView[],
+	now: Date = new Date(),
+): { pushes: number; failures: number } {
+	const todayKey = localDayKey(now);
+	let pushes = 0;
+	let failures = 0;
+	for (const e of entries) {
+		if (localDayKey(new Date(e.ts)) !== todayKey) continue;
+		pushes += 1;
+		if (!e.ok) failures += 1;
+	}
+	return { pushes, failures };
+}

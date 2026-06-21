@@ -13,6 +13,7 @@ import {
 import { api } from "../services/api";
 import {
 	bucketByDay,
+	countToday,
 	type FansEntry,
 	type FansResponse,
 	type HistoryEntryView,
@@ -666,10 +667,8 @@ export default function Dashboard() {
 	const history = historyQuery.data?.entries ?? [];
 
 	const enabledSubs = subs.filter((s) => s.enabled).length;
-	const todayPushes = history.filter(
-		(h) => h.ts.slice(0, 10) === new Date().toISOString().slice(0, 10),
-	).length;
-	const failed = history.filter((h) => !h.ok).length;
+	// 「今日」按本地时区(北京 0 点翻篇);「今日失败」与「今日推送」同口径。见 countToday。
+	const { pushes: todayPushes, failures: todayFailed } = countToday(history);
 
 	const aiTip = loggedIn ? (
 		live.length > 0 ? (
@@ -712,11 +711,11 @@ export default function Dashboard() {
 				/>
 				<GlassStatCard label="今日推送" value={todayPushes} suffix="次" color="#a29bfe" />
 				<GlassStatCard
-					label="推送失败"
-					value={failed}
+					label="今日失败"
+					value={todayFailed}
 					suffix="次"
-					color={failed > 0 ? "#ef4444" : "#22c55e"}
-					pulse={failed > 0}
+					color={todayFailed > 0 ? "#ef4444" : "#22c55e"}
+					pulse={todayFailed > 0}
 				/>
 			</div>
 
