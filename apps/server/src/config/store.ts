@@ -320,34 +320,9 @@ function migrateLegacyTargets(raw: unknown[]): {
 				enabled: legacy.enabled,
 				session: {},
 			});
-		} else if (legacy.platform === "web-dashboard") {
-			// 旧版 legacy `config.dashboardUser` 已无路由意义(WS server 单用户,无 per-user
-			// 过滤),迁移时直接丢弃,target session 留空对象。
-			const key = "web-dashboard";
-			let adapterId = adapterIdByKey.get(key);
-			if (!adapterId) {
-				adapterId = randomUUID();
-				adapterIdByKey.set(key, adapterId);
-				adapters.push({
-					id: adapterId,
-					name: "Dashboard 通知中心",
-					enabled: true,
-					platform: "web-dashboard",
-					config: {},
-				});
-			}
-			targets.push({
-				id: legacy.id,
-				name: legacy.name,
-				adapterId,
-				platform: "web-dashboard",
-				scope: legacy.scope,
-				enabled: legacy.enabled,
-				session: {},
-			});
 		}
-		// Unknown legacy platform — drop silently; the user will see the target
-		// disappear and can re-create it under a supported platform.
+		// Unknown legacy platform (incl. the removed web-dashboard) — drop silently;
+		// the user sees the target disappear and can re-create it under a supported platform.
 	}
 
 	return { adapters, targets };
@@ -779,6 +754,8 @@ class NodeConfigStore implements ConfigStore {
 			}
 			const adapters: PushAdapter[] = [];
 			for (const [idx, raw] of adaptersRaw.entries()) {
+				// 已移除的 web-dashboard 平台:静默丢弃存量条目,不参与严格校验(否则 safeParse 失败会 throw)。
+				if ((raw as { platform?: unknown })?.platform === "web-dashboard") continue;
 				const r = PushAdapterSchema.safeParse(raw);
 				if (!r.success) {
 					throw new ConfigValidationError(
@@ -805,6 +782,8 @@ class NodeConfigStore implements ConfigStore {
 			}
 			const targets: PushTarget[] = [];
 			for (const [idx, raw] of value.entries()) {
+				// 已移除的 web-dashboard 平台:静默丢弃存量目标(与 adapter 同理)。
+				if ((raw as { platform?: unknown })?.platform === "web-dashboard") continue;
 				const r = PushTargetSchema.safeParse(raw);
 				if (!r.success) {
 					throw new ConfigValidationError(

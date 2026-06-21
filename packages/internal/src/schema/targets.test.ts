@@ -73,7 +73,7 @@ describe("PushAdapterSchema (discriminated by platform)", () => {
 		expect(r.success).toBe(false);
 	});
 
-	it("accepts a valid web-dashboard adapter", () => {
+	it("rejects the removed web-dashboard adapter platform", () => {
 		const r = PushAdapterSchema.safeParse({
 			id: UUID_A,
 			name: "dashboard",
@@ -81,7 +81,7 @@ describe("PushAdapterSchema (discriminated by platform)", () => {
 			enabled: true,
 			config: {},
 		});
-		expect(r.success).toBe(true);
+		expect(r.success).toBe(false);
 	});
 
 	it("accepts a valid koishi-bot adapter", () => {
@@ -380,7 +380,7 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 		expect(r.success).toBe(false);
 	});
 
-	it("accepts a web-dashboard target with empty session", () => {
+	it("rejects the removed web-dashboard target platform", () => {
 		const r = PushTargetSchema.safeParse({
 			id: UUID_B,
 			name: "dash",
@@ -389,19 +389,6 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 			scope: "channel",
 			enabled: true,
 			session: {},
-		});
-		expect(r.success).toBe(true);
-	});
-
-	it("rejects a web-dashboard target with unknown session keys", () => {
-		const r = PushTargetSchema.safeParse({
-			id: UUID_B,
-			name: "dash",
-			adapterId: UUID_A,
-			platform: "web-dashboard",
-			scope: "channel",
-			enabled: true,
-			session: { dashboardUser: "alice" },
 		});
 		expect(r.success).toBe(false);
 	});

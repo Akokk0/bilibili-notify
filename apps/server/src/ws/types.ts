@@ -3,7 +3,7 @@ import { z } from "zod";
 /**
  * WS protocol — single endpoint at /ws, four logical channels multiplexed
  * over JSON envelopes. Stage 2.3 of the standalone end. See plan §5 (BiliEvents)
- * and §六 (WebDashboardSink) for the channel ↔ event mapping.
+ * for the channel ↔ event mapping.
  *
  * Wire format
  * ----------

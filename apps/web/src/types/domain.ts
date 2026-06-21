@@ -144,9 +144,6 @@ export function maskWebhookUrl(url: string): string {
 	}
 }
 
-// no connection-level config (the dashboard itself is the bridge)
-export type WebDashboardAdapterConfig = Record<string, never>;
-
 /** QQ 官方机器人(q.qq.com)机器人域:公域 / 私域。决定能否发原生 markdown。 */
 export type QQOfficialBotType = "public" | "private";
 
@@ -179,8 +176,7 @@ interface PushAdapterCommon {
 export type PushAdapter =
 	| (PushAdapterCommon & { platform: "onebot"; config: OnebotAdapterConfig })
 	| (PushAdapterCommon & { platform: "qq-official"; config: QQOfficialAdapterConfig })
-	| (PushAdapterCommon & { platform: "webhook"; config: WebhookAdapterConfig })
-	| (PushAdapterCommon & { platform: "web-dashboard"; config: WebDashboardAdapterConfig });
+	| (PushAdapterCommon & { platform: "webhook"; config: WebhookAdapterConfig });
 
 // ---- PushTarget (session level — references an adapter) ------------------
 
@@ -204,9 +200,6 @@ export interface QQOfficialSession {
 // no session-level config (the webhook URL is the endpoint)
 export type WebhookSession = Record<string, never>;
 
-// Web Dashboard 是单用户 in-process passthrough,无 per-user 概念,session 永远是空对象。
-export type WebDashboardSession = Record<string, never>;
-
 interface PushTargetCommon {
 	id: string;
 	name: string;
@@ -220,16 +213,14 @@ interface PushTargetCommon {
 export type PushTarget =
 	| (PushTargetCommon & { platform: "onebot"; session: OnebotSession })
 	| (PushTargetCommon & { platform: "qq-official"; session: QQOfficialSession })
-	| (PushTargetCommon & { platform: "webhook"; session: WebhookSession })
-	| (PushTargetCommon & { platform: "web-dashboard"; session: WebDashboardSession });
+	| (PushTargetCommon & { platform: "webhook"; session: WebhookSession });
 
-export type PushTargetPlatform = "onebot" | "qq-official" | "webhook" | "web-dashboard";
+export type PushTargetPlatform = "onebot" | "qq-official" | "webhook";
 
 export const KNOWN_PLATFORMS: ReadonlyArray<{ value: PushTargetPlatform; label: string }> = [
 	{ value: "onebot", label: "OneBot v11" },
 	{ value: "qq-official", label: "QQ 官方机器人" },
 	{ value: "webhook", label: "Webhook" },
-	{ value: "web-dashboard", label: "Web Dashboard 通知" },
 ];
 
 // ---- Subscription -----------------------------------------------------
@@ -471,17 +462,10 @@ export function makeEmptyAdapter(platform: PushTargetPlatform, name: string): Pu
 			config: { appId: "", appSecret: "", sandbox: false, botType: "public" },
 		};
 	}
-	if (platform === "webhook") {
-		return {
-			...base,
-			platform: "webhook",
-			config: { url: "https://example.com/hook", provider: "generic", headers: {} },
-		};
-	}
 	return {
 		...base,
-		platform: "web-dashboard",
-		config: {},
+		platform: "webhook",
+		config: { url: "https://example.com/hook", provider: "generic", headers: {} },
 	};
 }
 
@@ -518,10 +502,7 @@ export function makeEmptyTarget(adapter: PushAdapter, name: string): PushTarget 
 	if (adapter.platform === "qq-official") {
 		return { ...base, platform: "qq-official", scope: "group", session: {} };
 	}
-	if (adapter.platform === "webhook") {
-		return { ...base, platform: "webhook", scope: "channel", session: {} };
-	}
-	return { ...base, platform: "web-dashboard", scope: "channel", session: {} };
+	return { ...base, platform: "webhook", scope: "channel", session: {} };
 }
 
 export function platformLabel(platform: string): string {

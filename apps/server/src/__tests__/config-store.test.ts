@@ -409,6 +409,44 @@ describe("ConfigStore", () => {
 		await rm(dir2, { recursive: true, force: true });
 	});
 
+	it("load() 静默丢弃存量 web-dashboard adapter 与 target(平台已移除)", async () => {
+		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-drop-webdash-"));
+		const state2 = join(dir2, "state");
+		await mkdir(state2, { recursive: true });
+		const webhook = makeWebhookAdapter();
+		const webDash = {
+			id: randomUUID(),
+			name: "Dashboard 通知中心",
+			platform: "web-dashboard",
+			enabled: true,
+			config: {},
+		};
+		const webDashTarget = {
+			id: randomUUID(),
+			name: "dash",
+			adapterId: webDash.id,
+			platform: "web-dashboard",
+			scope: "channel",
+			enabled: true,
+			session: {},
+		};
+		await writeFile(join(state2, "adapters.json"), JSON.stringify([webhook, webDash]), "utf8");
+		await writeFile(join(state2, "targets.json"), JSON.stringify([webDashTarget]), "utf8");
+
+		const store2 = createConfigStore({
+			bootstrap: makeBootstrap(dir2),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await store2.load(); // 不应抛错
+		const adapters = store2.getAdapters();
+		expect(adapters).toHaveLength(1);
+		expect(adapters[0]?.platform).toBe("webhook");
+		// web-dashboard target 被丢弃;只剩 webhook 自动托管 target
+		expect(store2.getTargets().every((t) => t.platform === "webhook")).toBe(true);
+		await rm(dir2, { recursive: true, force: true });
+	});
+
 	it("load() 标记既有 webhook target 且保留 id", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-managed-existing-"));
 		const state2 = join(dir2, "state");

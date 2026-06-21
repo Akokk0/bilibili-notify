@@ -4,7 +4,6 @@ import { z } from "zod";
  * Push 目标平台。Adapter 矩阵按 platform 分发：
  * - `onebot`：独立端 OneBot v11 HTTP adapter
  * - `webhook`：任意 HTTP POST JSON
- * - `web-dashboard`：通过独立端 WebSocket 推到 Dashboard 通知中心
  * - `koishi-bot`：仅 koishi 薄壳侧实现，通过 `ctx.bots[botPlatform]` 调 koishi bot
  *   `sendMessage`；独立端不注册该 platform adapter
  * - `astrbot`：仅 AstrBot 插件侧实现，通过 Python 壳按 `unified_msg_origin` 投递
@@ -13,7 +12,6 @@ import { z } from "zod";
 export const PushTargetPlatformSchema = z.union([
 	z.literal("onebot"),
 	z.literal("webhook"),
-	z.literal("web-dashboard"),
 	z.literal("koishi-bot"),
 	z.literal("astrbot"),
 	z.literal("qq-official"),
@@ -108,9 +106,6 @@ export const WebhookAdapterConfigSchema = z.object({
 });
 export type WebhookAdapterConfig = z.infer<typeof WebhookAdapterConfigSchema>;
 
-export const WebDashboardAdapterConfigSchema = z.object({}).strict();
-export type WebDashboardAdapterConfig = z.infer<typeof WebDashboardAdapterConfigSchema>;
-
 export const KoishiBotAdapterConfigSchema = z.object({
 	/** koishi 内部 bot.platform，例如 'onebot' / 'discord' / 'telegram'。 */
 	botPlatform: z.string().min(1),
@@ -177,12 +172,6 @@ const WebhookAdapterSchema = z.object({
 	config: WebhookAdapterConfigSchema,
 });
 
-const WebDashboardAdapterSchema = z.object({
-	...PushAdapterCommonShape,
-	platform: z.literal("web-dashboard"),
-	config: WebDashboardAdapterConfigSchema,
-});
-
 const KoishiBotAdapterSchema = z.object({
 	...PushAdapterCommonShape,
 	platform: z.literal("koishi-bot"),
@@ -205,7 +194,6 @@ const QQOfficialAdapterSchema = z.object({
 export const PushAdapterSchema = z.discriminatedUnion("platform", [
 	OnebotAdapterSchema,
 	WebhookAdapterSchema,
-	WebDashboardAdapterSchema,
 	KoishiBotAdapterSchema,
 	AstrBotAdapterSchema,
 	QQOfficialAdapterSchema,
@@ -216,7 +204,7 @@ export type PushAdapter = z.infer<typeof PushAdapterSchema>;
 /* Target (session-level) — references an adapter                             */
 /* -------------------------------------------------------------------------- */
 
-// P2:.strict() —— 对齐已 strict 的 webhook / web-dashboard session。此前
+// P2:.strict() —— 对齐已 strict 的 webhook session。此前
 // non-strict 放任 `gruopId` 之类拼写错被静默忽略,target 无可投递地址却校验
 // 通过、推送悄悄丢。多收一个未知键即报错,让配置拼写错在保存期就暴露。
 export const OnebotSessionSchema = z
@@ -229,11 +217,6 @@ export type OnebotSession = z.infer<typeof OnebotSessionSchema>;
 
 export const WebhookSessionSchema = z.object({}).strict();
 export type WebhookSession = z.infer<typeof WebhookSessionSchema>;
-
-// Web Dashboard 是单用户 in-process passthrough;无 per-user 概念,不需要 session 字段。
-// 任何 web-dashboard target 都会通过 WS 广播给所有连接的 dashboard 客户端。
-export const WebDashboardSessionSchema = z.object({}).strict();
-export type WebDashboardSession = z.infer<typeof WebDashboardSessionSchema>;
 
 export const KoishiBotSessionSchema = z
 	.object({
@@ -304,12 +287,6 @@ const WebhookPushTargetSchema = z.object({
 	session: WebhookSessionSchema,
 });
 
-const WebDashboardPushTargetSchema = z.object({
-	...PushTargetCommonShape,
-	platform: z.literal("web-dashboard"),
-	session: WebDashboardSessionSchema,
-});
-
 const KoishiBotPushTargetSchema = z.object({
 	...PushTargetCommonShape,
 	platform: z.literal("koishi-bot"),
@@ -333,7 +310,6 @@ export const PushTargetSchema = z
 	.discriminatedUnion("platform", [
 		OnebotPushTargetSchema,
 		WebhookPushTargetSchema,
-		WebDashboardPushTargetSchema,
 		KoishiBotPushTargetSchema,
 		AstrBotPushTargetSchema,
 		QQOfficialPushTargetSchema,

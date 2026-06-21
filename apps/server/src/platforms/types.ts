@@ -31,7 +31,7 @@ export interface ProbeResult {
 }
 
 export interface PlatformAdapter {
-	/** Platforms this adapter handles ("onebot" / "webhook" / "web-dashboard"). */
+	/** Platforms this adapter handles ("onebot" / "webhook"). */
 	readonly platforms: readonly string[];
 	/** Return whether this adapter can deliver to `target` (via `adapter`) right now. */
 	isAvailable(adapter: PushAdapter, target: PushTarget): boolean;

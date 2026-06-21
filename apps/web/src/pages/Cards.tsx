@@ -174,8 +174,7 @@ function TestPushCard({
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
 	const targets = useMemo(
-		// 仅外部投递目标 —— web-dashboard 是内部通知流,测试推送对它无意义。
-		() => (targetsQuery.data ?? []).filter((t) => t.enabled && t.platform !== "web-dashboard"),
+		() => (targetsQuery.data ?? []).filter((t) => t.enabled),
 		[targetsQuery.data],
 	);
 	const [targetId, setTargetId] = useState("");

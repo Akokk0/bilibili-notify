@@ -16,7 +16,6 @@ import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
 import { createOnebotAdapter } from "./platforms/onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq-official.js";
-import { createWebDashboardAdapter } from "./platforms/web-dashboard.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
 import { createEngines } from "./runtime/engines.js";
@@ -189,7 +188,6 @@ export async function startStandaloneServer(
 				registry: qqSessionRegistry,
 			}),
 			createWebhookAdapter({ logger: log }),
-			createWebDashboardAdapter({ logger: log }),
 		];
 		engines = createEngines({
 			serviceCtx: runtime.serviceCtx,

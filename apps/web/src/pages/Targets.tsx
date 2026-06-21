@@ -74,7 +74,6 @@ const PLATFORM_TINT: Record<string, string> = {
 	onebot: "#3b82f6",
 	"qq-official": "#14b8a6",
 	webhook: "#22c55e",
-	"web-dashboard": "#a29bfe",
 };
 
 function tintFor(platform: string): string {
@@ -98,12 +97,9 @@ function adapterEndpointSummary(a: PushAdapter): string {
 		const id = c.appId || "未配置 appId";
 		return `QQ ${domain} · ${id}${c.sandbox ? " · 沙箱" : ""}`;
 	}
-	if (a.platform === "webhook") {
-		const provider = a.config.provider ?? "generic";
-		const url = maskWebhookUrl(a.config.url);
-		return provider === "generic" ? url : `${webhookProviderLabel(provider)} · ${url}`;
-	}
-	return "Dashboard 通知中心";
+	const provider = a.config.provider ?? "generic";
+	const url = maskWebhookUrl(a.config.url);
+	return provider === "generic" ? url : `${webhookProviderLabel(provider)} · ${url}`;
 }
 
 function targetSessionSummary(target: PushTarget): string {
@@ -120,11 +116,7 @@ function targetSessionSummary(target: PushTarget): string {
 			return s.userOpenid ? `→ C2C ${s.userOpenid}` : "→ 未指定用户 openid";
 		return s.groupOpenid ? `→ 群 ${s.groupOpenid}` : "→ 未指定群 openid";
 	}
-	if (target.platform === "webhook") {
-		return target.managedBy === "adapter" ? "→ 系统托管 webhook 终点" : "→ webhook 终点";
-	}
-	// web-dashboard 是单用户 in-process 广播,session 没有 per-user 字段。
-	return "→ 广播给所有 dashboard 客户端";
+	return target.managedBy === "adapter" ? "→ 系统托管 webhook 终点" : "→ webhook 终点";
 }
 
 function managedWebhookTargetForAdapter(
@@ -370,31 +362,19 @@ function AdapterEditorModal({
 					</Field>
 				</SectionBox>
 
-				{value.platform !== "web-dashboard" ? (
-					<SectionBox
-						title="连接参数"
-						subtitle={
-							value.platform === "onebot"
-								? "OneBot v11 连接信息"
-								: value.platform === "qq-official"
-									? "QQ 官方机器人凭据(q.qq.com)"
-									: "Webhook 投递终点"
-						}
-						accent={tint}
-					>
-						<AdapterConnectionFields adapter={value} onChange={onChange} />
-					</SectionBox>
-				) : (
-					<SectionBox
-						title="说明"
-						subtitle="Dashboard 通知中心通过本地 WebSocket 推送,无需额外连接参数"
-						accent={tint}
-					>
-						<div className="py-1 text-[12px] text-bn-text-secondary">
-							保存后即可在右侧"推送目标"区为该适配器创建会话。
-						</div>
-					</SectionBox>
-				)}
+				<SectionBox
+					title="连接参数"
+					subtitle={
+						value.platform === "onebot"
+							? "OneBot v11 连接信息"
+							: value.platform === "qq-official"
+								? "QQ 官方机器人凭据(q.qq.com)"
+								: "Webhook 投递终点"
+					}
+					accent={tint}
+				>
+					<AdapterConnectionFields adapter={value} onChange={onChange} />
+				</SectionBox>
 			</div>
 
 			{error ? (
@@ -847,9 +827,7 @@ function TargetEditorModal({
 					</Field>
 				</SectionBox>
 
-				{value.platform === "onebot" ||
-				value.platform === "qq-official" ||
-				value.platform === "web-dashboard" ? (
+				{value.platform === "onebot" || value.platform === "qq-official" ? (
 					<SectionBox
 						title="会话信息"
 						subtitle={
@@ -857,9 +835,7 @@ function TargetEditorModal({
 								? value.scope === "private"
 									? "私聊目标 QQ 号"
 									: "群聊号(QQ 群号)"
-								: value.platform === "qq-official"
-									? "QQ 官方机器人会话寻址(频道/群/C2C)"
-									: "Dashboard 通知中心接收方"
+								: "QQ 官方机器人会话寻址(频道/群/C2C)"
 						}
 						accent={tint}
 					>
@@ -997,15 +973,6 @@ function TargetSessionFields({
 					onPick={(openid) => setSession({ groupOpenid: openid })}
 				/>
 			</>
-		);
-	}
-	if (target.platform === "web-dashboard") {
-		// web-dashboard 是单用户 in-process 广播,无 session 字段可配。
-		return (
-			<div className="text-[12px] leading-relaxed text-bn-text-tertiary">
-				Web Dashboard 通知中心是单用户 in-process 通道,无需配置会话字段。所有保存的 web-dashboard
-				target 都会通过 WS push-events 频道广播给当前 dashboard。
-			</div>
 		);
 	}
 	return null;
@@ -1644,8 +1611,7 @@ export default function Targets() {
 						<div className="rounded-bn-card bg-bn-surface p-8 text-center shadow-bn-card">
 							<div className="mb-1 text-[14px] font-bold text-bn-text-primary">还没有适配器</div>
 							<div className="mb-4 text-[11.5px] text-bn-text-tertiary">
-								先在左侧新建一个适配器(OneBot HTTP / Webhook / Dashboard
-								通知中心),再为它配置推送目标。
+								先在左侧新建一个适配器(OneBot HTTP / Webhook),再为它配置推送目标。
 							</div>
 							<Btn variant="primary" size="sm" onClick={startNewAdapter}>
 								+ 新建适配器
