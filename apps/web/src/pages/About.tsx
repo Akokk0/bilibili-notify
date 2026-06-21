@@ -31,9 +31,15 @@ interface SponsorsFile {
 
 const ReactMarkdown = lazy(() => import("react-markdown"));
 
+// 模块级缓存:首次加载后复用。切回「更新日志」时 ChangelogPanel 直接以缓存初始化 markdown,
+// 不再经历 null →「加载中」矮占位 → 内容的一帧高度跳变(切换抖动的成因之一)。
+let changelogCache: string | null = null;
+
 async function loadChangelogMarkdown(): Promise<string> {
+	if (changelogCache != null) return changelogCache;
 	const mod = await import("../../../CHANGELOG.md?raw");
-	return mod.default;
+	changelogCache = mod.default;
+	return changelogCache;
 }
 
 const MARKDOWN_COMPONENTS: Components = {
@@ -284,7 +290,7 @@ function LinkRow({
 }
 
 function ChangelogPanel() {
-	const [markdown, setMarkdown] = useState<string | null>(null);
+	const [markdown, setMarkdown] = useState<string | null>(changelogCache);
 	const [loadError, setLoadError] = useState<string | null>(null);
 
 	useEffect(() => {

@@ -111,6 +111,11 @@ body,
 	color: var(--color-bn-text-primary);
 }
 
+/* 预留滚动条槽:切到内容更长的 Tab(如「更新日志」)垂直滚动条出现时,页面不再横向跳一下。 */
+html {
+	scrollbar-gutter: stable;
+}
+
 body {
 	background: var(--bn-page-bg) fixed;
 	-webkit-font-smoothing: antialiased;
