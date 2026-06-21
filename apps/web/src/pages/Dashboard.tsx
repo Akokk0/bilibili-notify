@@ -315,7 +315,9 @@ function TimelinePanel({
 								</div>
 								<div
 									className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg bg-bn-surface/70 px-3 py-2 text-[12.5px]"
-									style={!h.ok ? { borderLeft: "3px solid #ef4444" } : undefined}
+									// 失败标记用 inset 阴影而非 border-left:不占 box 宽度,内容不被挤右、与其它行对齐,
+									// 且被 rounded-lg 圆角裁成左侧细红条,比硬边框精致。
+									style={!h.ok ? { boxShadow: "inset 3px 0 0 #ef4444" } : undefined}
 								>
 									<Avatar name={name} color={color} size={24} url={avatar} />
 									<Pill color={tone} subtle size="sm">
