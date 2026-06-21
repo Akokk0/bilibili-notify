@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { useBackendReachable } from "../hooks/useBackendReachable";
 import { api } from "../services/api";
@@ -220,8 +220,28 @@ export function GlassHeader() {
 		qc.invalidateQueries({ queryKey: ["targets"] });
 	}
 
+	// 把 header 实测高度发布到 `--bn-header-h`,供页面内的 SectionNav 竖栏/横向条精确锚定
+	// 吸顶位置(= header 高 + 间隔 = 元素自然起点)→ 滚动时零「往下带」,且账号名换行 / 窄视口
+	// 按钮换行导致 header 变高时自动跟随。useLayoutEffect 在首帧 paint 前写入,避免回流闪烁。
+	const headerRef = useRef<HTMLElement>(null);
+	useLayoutEffect(() => {
+		const el = headerRef.current;
+		if (!el) return;
+		const apply = () => {
+			document.documentElement.style.setProperty("--bn-header-h", `${el.offsetHeight}px`);
+		};
+		apply();
+		if (typeof ResizeObserver === "undefined") {
+			window.addEventListener("resize", apply);
+			return () => window.removeEventListener("resize", apply);
+		}
+		const ro = new ResizeObserver(apply);
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, []);
+
 	return (
-		<header className="bn-glass-strong sticky top-0 z-10">
+		<header ref={headerRef} className="bn-glass-strong sticky top-0 z-10">
 			<div className="flex items-center justify-between gap-4 px-7 pt-4">
 				<div className="flex min-w-0 items-center gap-3">
 					<div className="flex h-13 items-center px-1">

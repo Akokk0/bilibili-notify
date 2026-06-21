@@ -155,9 +155,12 @@ body {
 		opacity: 0;
 		transform: translateY(6px);
 	}
+	/* `to` 故意不声明 transform:动画期间从 translateY(6px) 平滑插值到基础值(无位移),
+	   但因 fill-mode:both 只保留 `to` 帧显式声明的属性,动画结束后元素回归 transform:none。
+	   若写成 transform:translateY(0),残留的 transform 会把内部 position:sticky 的包含块
+	   改成本元素,使桌面竖向 SectionNav 竖栏滚动时被"往下带一点"。 */
 	to {
 		opacity: 1;
-		transform: translateY(0);
 	}
 }
 

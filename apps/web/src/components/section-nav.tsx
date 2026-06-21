@@ -42,6 +42,12 @@ const RAIL_ITEM_BASE =
 const RAIL_ITEM_ACTIVE = "border-bn-pink/35 bg-bn-surface/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]";
 const RAIL_ITEM_IDLE = "border-transparent hover:bg-bn-surface/55";
 
+// 吸顶位置 = header 实测高(`--bn-header-h`,由 GlassHeader 用 ResizeObserver 发布) + 1.5rem 间隔。
+// 该 1.5rem 与页面 `<main>` 的 pt-6 一致,故吸顶位恰好等于 Tab 在文档流中的自然起点 ——
+// sticky 从第一像素滚动即钉住,不再「先随内容往下带一段再钉住」;header 高度变化时自动跟随。
+// fallback 7.5rem 仅用于 header 尚未测量的首帧(estimate),测量落定后被实测值取代。
+const STICKY_TOP = "calc(var(--bn-header-h, 7.5rem) + 1.5rem)";
+
 const CHIP_BASE =
 	"flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-bold transition";
 const CHIP_ACTIVE = "border-bn-pink/40 bg-bn-pink/10 text-bn-pink";
@@ -135,11 +141,17 @@ export function SectionNav({
 	};
 
 	return (
-		// 单根 div:在页面 `grid xl:grid-cols-[220px_1fr]` 里恰好占一格
-		// (桌面=左列 col1,窄视口=顶部 row1)。竖栏/横向条二选一显示。
-		<div data-section-nav="root" className="min-w-0">
+		// 单根:xl 下是 block,在 `grid xl:grid-cols-[220px_1fr]` 里占左列 col1。
+		// xl 以下用 `contents`(不生成盒子),让横向条直接成为 grid 子项 —— 否则它的包含块
+		// 只有「自身高度的矮格子」,sticky 无吸附空间,长内容页一滚就被矮格子拖走。
+		// contents 后包含块变成整个 grid(与内容等高),sticky 才能真正吸顶整段滚动。
+		<div data-section-nav="root" className="contents xl:block xl:min-w-0">
 			{/* 竖栏(桌面 xl+) */}
-			<aside data-section-nav="rail" className="sticky top-30 hidden h-fit min-w-0 xl:block">
+			<aside
+				data-section-nav="rail"
+				style={{ top: STICKY_TOP }}
+				className="sticky hidden h-fit min-w-0 xl:block"
+			>
 				<div className="mb-2 flex items-center justify-between px-1">
 					<span className="text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
 						{heading}
@@ -195,11 +207,12 @@ export function SectionNav({
 			    左右两端用箭头按钮滚动,隐藏原生滚动条(bn-no-scrollbar)。 */}
 			<div
 				data-section-nav="bar"
-				className="sticky top-30 z-20 rounded-[11px] border border-bn-border-subtle bg-bn-surface/70 backdrop-blur-sm xl:hidden"
+				style={{ top: STICKY_TOP }}
+				className="sticky z-20 rounded-[11px] border border-bn-border-subtle bg-bn-surface/70 backdrop-blur-sm xl:hidden"
 			>
 				<div className="relative flex items-center">
 					{edges.left ? (
-						<div className="absolute inset-y-0 left-0 z-10 flex items-center rounded-l-[11px] bg-gradient-to-r from-bn-surface via-bn-surface/85 to-transparent pr-6 pl-1">
+						<div className="absolute inset-y-0 left-0 z-10 flex items-center rounded-l-[11px] bg-linear-to-r from-bn-surface via-bn-surface/85 to-transparent pr-6 pl-1">
 							<button
 								type="button"
 								aria-label="向左滚动"
@@ -246,7 +259,7 @@ export function SectionNav({
 					</div>
 
 					{edges.right ? (
-						<div className="absolute inset-y-0 right-0 z-10 flex items-center rounded-r-[11px] bg-gradient-to-l from-bn-surface via-bn-surface/85 to-transparent pr-1 pl-6">
+						<div className="absolute inset-y-0 right-0 z-10 flex items-center rounded-r-[11px] bg-linear-to-l from-bn-surface via-bn-surface/85 to-transparent pr-1 pl-6">
 							<button
 								type="button"
 								aria-label="向右滚动"
