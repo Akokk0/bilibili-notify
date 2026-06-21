@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import Logs from "../Logs";
 
@@ -34,7 +34,7 @@ function renderLogs() {
 	);
 }
 
-describe("Logs page sections", () => {
+describe("Logs page", () => {
 	afterEach(() => {
 		cleanup();
 		vi.restoreAllMocks();
@@ -45,30 +45,16 @@ describe("Logs page sections", () => {
 		Element.prototype.scrollIntoView = vi.fn();
 	});
 
-	it("defaults to runtime logs and keeps changelog content hidden", async () => {
+	it("renders the runtime log area with an empty state", async () => {
 		renderLogs();
 		expect(await screen.findByText("没有符合条件的日志")).toBeTruthy();
-		// SectionNav 双形态(竖栏 + 横向条)→ section 标签各出现两次。
-		expect(screen.getAllByText("运行日志").length).toBeGreaterThan(0);
-		expect(screen.queryByText("Changelog · 独立端")).toBeNull();
 	});
 
-	it("renders changelog only after switching sections", async () => {
+	// 更新日志已迁出到 `/about`,日志页回归纯运行日志(单栏,不再有 SectionNav)。
+	it("no longer hosts the changelog (moved to /about)", async () => {
 		renderLogs();
-		fireEvent.click(screen.getAllByRole("button", { name: /更新日志/ })[0]);
-		expect(await screen.findByText("Changelog · 独立端")).toBeTruthy();
-		expect(screen.getAllByText("apps/CHANGELOG.md").length).toBeGreaterThan(0);
-	});
-
-	// 回归:bn-anim-fade-in 的残留 transform 不能挂在 grid 上,否则会改写内部 sticky
-	// 竖栏(SectionNav 的 aside)的包含块,窄视口单列布局坍缩。见 Logs.tsx return 处注释。
-	it("keeps the fade-in transform off the grid/sticky layer", () => {
-		const { container } = renderLogs();
-		const fade = container.querySelector(".bn-anim-fade-in");
-		expect(fade).toBeTruthy();
-		expect(fade?.classList.contains("grid")).toBe(false);
-		const grid = fade?.querySelector(".grid");
-		expect(grid).toBeTruthy();
-		expect(grid?.querySelector("aside.sticky")).toBeTruthy();
+		await screen.findByText("没有符合条件的日志");
+		expect(screen.queryByText("apps/CHANGELOG.md")).toBeNull();
+		expect(screen.queryByText("更新日志")).toBeNull();
 	});
 });

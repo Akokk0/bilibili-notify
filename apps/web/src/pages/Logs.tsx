@@ -1,9 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import type { Components } from "react-markdown";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Input } from "../components/atoms";
 import { Icon } from "../components/icons";
-import { SectionNav } from "../components/section-nav";
 import { useLogChannel } from "../hooks/useLogChannel";
 import { api } from "../services/api";
 import {
@@ -35,13 +33,6 @@ const LEVEL_TONE: Record<LogLineLevel, string> = {
 
 const RENDER_CAP = 800;
 
-const ReactMarkdown = lazy(() => import("react-markdown"));
-
-async function loadChangelogMarkdown(): Promise<string> {
-	const mod = await import("../../../CHANGELOG.md?raw");
-	return mod.default;
-}
-
 async function downloadRawLog(day: string): Promise<void> {
 	const res = await fetch(`/api/logs/raw?day=${encodeURIComponent(day)}`, {
 		headers: withDesktopTokenHeader(),
@@ -65,66 +56,6 @@ async function downloadRawLog(day: string): Promise<void> {
 	}
 }
 
-type LogsSectionId = "logs" | "changelog";
-
-const LOG_SECTIONS: ReadonlyArray<{
-	id: LogsSectionId;
-	label: string;
-	desc: string;
-	icon: keyof typeof Icon;
-}> = [
-	{ id: "logs", label: "运行日志", desc: "实时输出与归档检索", icon: "list" },
-	{ id: "changelog", label: "更新日志", desc: "独立端版本变更记录", icon: "sparkle" },
-];
-
-const MARKDOWN_COMPONENTS: Components = {
-	h1: ({ children }) => (
-		<h1 className="mt-0 mb-4 border-b border-black/8 pb-3 text-[24px] font-extrabold tracking-tight text-bn-text-primary">
-			{children}
-		</h1>
-	),
-	h2: ({ children }) => (
-		<h2 className="mt-7 mb-3 text-[18px] font-extrabold tracking-tight text-bn-text-primary">
-			{children}
-		</h2>
-	),
-	h3: ({ children }) => (
-		<h3 className="mt-5 mb-2 text-[14px] font-bold uppercase tracking-wide text-bn-pink">
-			{children}
-		</h3>
-	),
-	p: ({ children }) => (
-		<p className="my-2 text-[13px] leading-7 text-bn-text-secondary">{children}</p>
-	),
-	ul: ({ children }) => (
-		<ul className="my-2 space-y-1.5 pl-5 text-[13px] text-bn-text-secondary">{children}</ul>
-	),
-	li: ({ children }) => <li className="list-disc leading-7 marker:text-bn-pink/70">{children}</li>,
-	code: ({ node: _node, className, children, ...props }) => (
-		<code
-			className={`rounded-md bg-bn-code-bg px-1.5 py-0.5 font-mono text-[12px] text-bn-text-primary ${className ?? ""}`}
-			{...props}
-		>
-			{children}
-		</code>
-	),
-	pre: ({ children }) => (
-		<pre className="my-3 overflow-x-auto rounded-xl border border-black/8 bg-[#0f1115] p-3 text-[12px] leading-relaxed text-gray-200">
-			{children}
-		</pre>
-	),
-	a: ({ children, href }) => (
-		<a
-			href={href}
-			target="_blank"
-			rel="noreferrer"
-			className="font-semibold text-bn-pink underline-offset-2 hover:underline"
-		>
-			{children}
-		</a>
-	),
-};
-
 function todayStr(): string {
 	return new Date().toISOString().slice(0, 10);
 }
@@ -132,7 +63,6 @@ function todayStr(): string {
 export default function Logs() {
 	useLogChannel();
 
-	const [section, setSection] = useState<LogsSectionId>("logs");
 	const [day, setDay] = useState<string>(""); // "" = 实时(live key);否则某天
 	const [levels, setLevels] = useState<Set<LogLineLevel>>(new Set(LEVELS));
 	const [source, setSource] = useState<string>("");
@@ -326,100 +256,8 @@ export default function Logs() {
 		</div>
 	);
 
-	// bn-anim-fade-in 的 `both` fill-mode 保留 translateY(0) 残留 transform;若它直接挂在
-	// grid 上,会把内部 sticky aside 的包含块改成本容器,窄视口单列时 aside 偏移压住内容 → 坍缩。
-	// 故 transform(fade-in) 与 grid/sticky 分层,与 Targets/Rules 一致(参 dialog.tsx 顶注)。
-	return (
-		<div className="bn-anim-fade-in flex flex-col gap-4">
-			<div className="grid gap-4 xl:grid-cols-[220px_1fr]">
-				<LogsSectionList current={section} onChange={setSection} />
-				<div className="min-w-0">{section === "logs" ? runtimeLogs : <ChangelogPanel />}</div>
-			</div>
-		</div>
-	);
-}
-
-function LogsSectionList({
-	current,
-	onChange,
-}: {
-	current: LogsSectionId;
-	onChange: (section: LogsSectionId) => void;
-}) {
-	return (
-		<SectionNav
-			heading="日志"
-			activeId={current}
-			onPick={(id) => onChange(id as LogsSectionId)}
-			items={LOG_SECTIONS.map((s) => {
-				const SectionIcon = Icon[s.icon];
-				return {
-					id: s.id,
-					label: s.label,
-					desc: s.desc,
-					icon: <SectionIcon size={14} />,
-				};
-			})}
-		/>
-	);
-}
-
-function ChangelogPanel() {
-	const [markdown, setMarkdown] = useState<string | null>(null);
-	const [loadError, setLoadError] = useState<string | null>(null);
-
-	useEffect(() => {
-		let cancelled = false;
-		void loadChangelogMarkdown()
-			.then((text) => {
-				if (cancelled) return;
-				setMarkdown(text);
-				setLoadError(null);
-			})
-			.catch((err: unknown) => {
-				if (cancelled) return;
-				setLoadError(err instanceof Error ? err.message : String(err));
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, []);
-
-	return (
-		<div className="rounded-bn-card border border-black/6 bg-bn-surface/80 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)] backdrop-blur-sm">
-			<div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-black/6 pb-4">
-				<div>
-					<div className="flex items-center gap-2 text-[15px] font-extrabold text-bn-text-primary">
-						<Icon.sparkle size={16} />
-						更新日志
-					</div>
-					<p className="mt-1 text-[12px] text-bn-text-tertiary">独立端版本变更记录</p>
-				</div>
-				<span className="rounded-full border border-bn-pink/25 bg-bn-pink/8 px-3 py-1 font-mono text-[11px] font-semibold text-bn-pink">
-					apps/CHANGELOG.md
-				</span>
-			</div>
-			<div className="max-w-none">
-				{loadError ? (
-					<div className="py-8 text-center text-[12px] text-red-500">
-						更新日志加载失败: {loadError}
-					</div>
-				) : markdown == null ? (
-					<div className="py-8 text-center text-[12px] text-bn-text-tertiary">加载更新日志…</div>
-				) : (
-					<Suspense
-						fallback={
-							<div className="py-8 text-center text-[12px] text-bn-text-tertiary">
-								加载更新日志…
-							</div>
-						}
-					>
-						<ReactMarkdown components={MARKDOWN_COMPONENTS}>{markdown}</ReactMarkdown>
-					</Suspense>
-				)}
-			</div>
-		</div>
-	);
+	// 日志页全宽单栏;「更新日志」已迁出到 `/about`。保留 bn-anim-fade-in 入场动画。
+	return <div className="bn-anim-fade-in">{runtimeLogs}</div>;
 }
 
 export function formatLocalTime(iso: string): string {

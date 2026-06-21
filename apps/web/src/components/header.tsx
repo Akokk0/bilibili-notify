@@ -34,6 +34,7 @@ const NAV: ReadonlyArray<{
 	{ to: "/ai", label: "智能女仆" },
 	{ to: "/system", label: "系统" },
 	{ to: "/logs", label: "日志" },
+	{ to: "/about", label: "关于" },
 ];
 
 function AccountChip() {

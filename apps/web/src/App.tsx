@@ -13,6 +13,7 @@ import { useAuthHydrate } from "./hooks/useAuthHydrate";
 import { HEALTH_QUERY_KEY, HEALTH_QUERY_OPTIONS } from "./hooks/useBackendReachable";
 import { usePushEventsChannel } from "./hooks/usePushEventsChannel";
 import { useStateChannel } from "./hooks/useStateChannel";
+import About from "./pages/About";
 import Ai from "./pages/Ai";
 import Cards from "./pages/Cards";
 import Dashboard from "./pages/Dashboard";
@@ -94,6 +95,7 @@ function AuthedApp() {
 						<Route path="/ai" element={<Ai />} />
 						<Route path="/system" element={<System />} />
 						<Route path="/logs" element={<Logs />} />
+						<Route path="/about" element={<About />} />
 					</Routes>
 				</main>
 			)}
