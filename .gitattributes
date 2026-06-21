@@ -2,6 +2,7 @@
 
 *.png -text
 *.jpg -text
+*.jpeg -text
 *.ico -text
 *.icns -text
 *.gif -text

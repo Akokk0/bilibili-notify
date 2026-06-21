@@ -114,6 +114,14 @@ git sparse-checkout set packages koishi
 - [GitHub Issue](https://github.com/Akokk0/bilibili-notify/issues)
 - QQ 交流群 `801338523`
 
+## 支持项目
+
+Bilibili Notify 是 MIT 开源、永久免费的项目。如果它帮到了你,欢迎在 [爱发电](https://afdian.com/a/akokko) 请女仆喝杯奶茶 —— 每一份心意,都会化作新功能与更少的 bug。
+
+<p align="center">
+  <img src="./docs/images/afdian.jpeg" width="220" alt="爱发电赞助二维码" />
+</p>
+
 ## License
 
 [MIT](./LICENSE)
