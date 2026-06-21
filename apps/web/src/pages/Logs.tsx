@@ -312,7 +312,7 @@ export default function Logs() {
 				{logsQuery.isLoading ? <span>加载中…</span> : null}
 			</div>
 
-			<div className="h-[calc(100vh-260px)] overflow-auto rounded-[10px] border border-black/6 bg-[#0f1115] px-3 py-2.5 font-mono text-[12px] leading-relaxed">
+			<div className="rounded-[10px] border border-black/6 bg-[#0f1115] px-3 py-2.5 font-mono text-[12px] leading-relaxed">
 				{logsQuery.error ? (
 					<div className="text-red-400">加载失败:{String((logsQuery.error as Error).message)}</div>
 				) : displayed.length === 0 ? (
