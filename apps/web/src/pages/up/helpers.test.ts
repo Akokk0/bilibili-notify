@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { FEATURE_KEYS, type FeatureKey, makeEmptySubscription } from "../../types/domain";
-import { routingAlignedToFeatures, subscribedFeatures } from "./helpers";
+import { platformSupportsAtAll, routingAlignedToFeatures, subscribedFeatures } from "./helpers";
 
 /**
  * 回归:订阅卡片的特性标签必须反映「订阅项主开关」(overrides.features,缺省继承
@@ -40,6 +40,22 @@ describe("subscribedFeatures", () => {
 			features: { live: false, liveEnd: false, wordcloud: false, liveSummary: false },
 		};
 		expect(subscribedFeatures(sub)).toEqual(["dynamic"]);
+	});
+});
+
+/**
+ * 平台对 @全体 的支持能力。QQ 官方机器人在群聊 @全体需特殊权限,后端适配器对
+ * at-all 段是 best-effort 跳过(apps/server/src/platforms/qq-official.ts),据此前端
+ * 在 @全体 开关上提示并禁用;onebot / webhook 正常支持。
+ */
+describe("platformSupportsAtAll", () => {
+	it("QQ 官方机器人不支持 @全体", () => {
+		expect(platformSupportsAtAll("qq-official")).toBe(false);
+	});
+
+	it("onebot / webhook 支持 @全体", () => {
+		expect(platformSupportsAtAll("onebot")).toBe(true);
+		expect(platformSupportsAtAll("webhook")).toBe(true);
 	});
 });
 

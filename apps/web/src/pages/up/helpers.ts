@@ -1,4 +1,10 @@
-import type { FeatureKey, PushTarget, Subscription, SubscriptionRouting } from "../../types/domain";
+import type {
+	FeatureKey,
+	PushTarget,
+	PushTargetPlatform,
+	Subscription,
+	SubscriptionRouting,
+} from "../../types/domain";
 import { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../../types/domain";
 
 const PALETTE = [
@@ -23,6 +29,15 @@ export function colorFromUid(uid: string): string {
 
 export function displayName(sub: Subscription): string {
 	return sub.cachedProfile?.name?.trim() || `UID ${sub.uid}`;
+}
+
+/**
+ * 该平台是否支持「@全体成员」。QQ 官方机器人在群聊 @全体需特殊权限,后端适配器对
+ * at-all 段是 best-effort 跳过(apps/server/src/platforms/qq-official.ts 的
+ * `qqPayloadToParts`),故前端在其 @全体 开关上提示并禁用;onebot / webhook 正常支持。
+ */
+export function platformSupportsAtAll(platform: PushTargetPlatform): boolean {
+	return platform !== "qq-official";
 }
 
 /**

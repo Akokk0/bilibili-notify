@@ -14,6 +14,7 @@ import {
 	colorFromUid,
 	displayName,
 	targetsById as makeTargetsById,
+	platformSupportsAtAll,
 	routingAlignedToFeatures,
 } from "./helpers";
 
@@ -786,51 +787,67 @@ function AtAllInlineToggle({
  * - 点 Toggle = 切到 explicit 反向值(写 atAll Map)
  * - explicit !== undefined 时旁边出 reset 图标(⟲),点击清掉 Map key = 重置为 inherit
  * - parentOn=false 时整行 disabled
+ * - unsupported(QQ 官方,平台不支持 @全体)时强制禁用、显示为关、不出 reset,并在父项
+ *   已开时补一行说明。数据(atAll Map)不动 —— 仅 UI 拦截,后端本就 best-effort 跳过。
  */
 function AtAllPerTargetToggle({
 	scope,
 	parentOn,
 	explicit,
 	inheritedValue,
+	unsupported,
 	onSet,
 }: {
 	scope: AtAllScope;
 	parentOn: boolean;
 	explicit: boolean | undefined;
 	inheritedValue: boolean;
+	unsupported: boolean;
 	onSet: (explicit: boolean | undefined) => void;
 }) {
 	const isExplicit = explicit !== undefined;
-	const display = parentOn && (explicit ?? inheritedValue);
-	const hint = !parentOn
-		? "需先开启父订阅项才能 @全体"
-		: isExplicit
-			? `已显式设置为 ${explicit ? "ON" : "OFF"}(订阅默认为 ${inheritedValue ? "ON" : "OFF"})`
-			: scope === "live"
-				? `跟随订阅默认 · 当前 ${inheritedValue ? "ON" : "OFF"} · 仅开播 @,SC / 上舰 / 词云 / 总结 不 @`
-				: `跟随订阅默认 · 当前 ${inheritedValue ? "ON" : "OFF"}`;
+	const blocked = unsupported || !parentOn;
+	const display = !unsupported && parentOn && (explicit ?? inheritedValue);
+	const hint = unsupported
+		? "QQ 官方机器人不支持 @全体,发送时会自动跳过"
+		: !parentOn
+			? "需先开启父订阅项才能 @全体"
+			: isExplicit
+				? `已显式设置为 ${explicit ? "ON" : "OFF"}(订阅默认为 ${inheritedValue ? "ON" : "OFF"})`
+				: scope === "live"
+					? `跟随订阅默认 · 当前 ${inheritedValue ? "ON" : "OFF"} · 仅开播 @,SC / 上舰 / 词云 / 总结 不 @`
+					: `跟随订阅默认 · 当前 ${inheritedValue ? "ON" : "OFF"}`;
 	return (
-		<div
-			className={`mt-0.5 ml-9 flex items-center gap-1.5 text-[11px] ${parentOn ? "text-bn-text-secondary" : "text-gray-300"}`}
-			title={hint}
-		>
-			<Toggle
-				value={display}
-				onChange={(on) => parentOn && onSet(on)}
-				size="sm"
-				disabled={!parentOn}
-			/>
-			<span className={isExplicit ? "font-semibold text-bn-text-primary" : ""}>+ @全体</span>
-			{isExplicit && parentOn ? (
-				<button
-					type="button"
-					onClick={() => onSet(undefined)}
-					aria-label="重置为跟随订阅默认"
-					title="重置为跟随订阅默认"
-					className="grid h-4 w-4 place-items-center rounded text-bn-text-tertiary hover:bg-bn-surface-muted hover:text-bn-text-primary"
-				>
-					<Icon.refresh size={10} />
-				</button>
+		<div className="mt-0.5 ml-9">
+			<div
+				className={`flex items-center gap-1.5 text-[11px] ${blocked ? "text-gray-300" : "text-bn-text-secondary"}`}
+				title={hint}
+			>
+				<Toggle
+					value={display}
+					onChange={(on) => !blocked && onSet(on)}
+					size="sm"
+					disabled={blocked}
+				/>
+				<span className={isExplicit && !unsupported ? "font-semibold text-bn-text-primary" : ""}>
+					+ @全体
+				</span>
+				{isExplicit && parentOn && !unsupported ? (
+					<button
+						type="button"
+						onClick={() => onSet(undefined)}
+						aria-label="重置为跟随订阅默认"
+						title="重置为跟随订阅默认"
+						className="grid h-4 w-4 place-items-center rounded text-bn-text-tertiary hover:bg-bn-surface-muted hover:text-bn-text-primary"
+					>
+						<Icon.refresh size={10} />
+					</button>
+				) : null}
+			</div>
+			{unsupported && parentOn ? (
+				<div className="mt-0.5 text-[10.5px] text-bn-text-tertiary">
+					QQ 官方机器人不支持 @全体,发送时会自动跳过
+				</div>
 			) : null}
 		</div>
 	);
@@ -925,6 +942,7 @@ function TargetRoutingCard({
 													parentOn={parentOn}
 													explicit={explicit}
 													inheritedValue={inheritedValue}
+													unsupported={!platformSupportsAtAll(target.platform)}
 													onSet={(val) => onSetAtAll(atAllScope, val)}
 												/>
 											) : null}
