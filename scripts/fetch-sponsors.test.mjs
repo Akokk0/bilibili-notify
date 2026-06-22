@@ -94,13 +94,9 @@ describe("fetchAllSponsors", () => {
 });
 
 describe("buildSponsorsFile", () => {
-	it("wraps sponsors with a generatedAt timestamp", () => {
-		const file = buildSponsorsFile(
-			[{ name: "Alice", avatar: "a" }],
-			new Date("2026-06-21T00:00:00Z"),
-		);
+	it("wraps sponsors with no volatile timestamp (stable output across runs)", () => {
+		const file = buildSponsorsFile([{ name: "Alice", avatar: "a" }]);
 		expect(file).toEqual({
-			generatedAt: "2026-06-21T00:00:00.000Z",
 			sponsors: [{ name: "Alice", avatar: "a" }],
 		});
 	});

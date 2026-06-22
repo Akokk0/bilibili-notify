@@ -111,9 +111,13 @@ export async function localizeSponsors(sponsors, fetchImpl = fetch) {
 	return out;
 }
 
-/** 生成 sponsors.json 内容:带 generatedAt 时间戳的赞助者数组。 */
-export function buildSponsorsFile(sponsors, now = new Date()) {
-	return { generatedAt: now.toISOString(), sponsors };
+/**
+ * 生成 sponsors.json 内容。**不写时间戳** —— 带 generatedAt 会让每次 CI 运行的产物都不同,
+ * 即使赞助者没变也触发 commit(每日空提交污染 dev)。只序列化赞助者数组,内容稳定 →
+ * sponsors.yml 的「有变更才 commit」才名副其实。
+ */
+export function buildSponsorsFile(sponsors) {
+	return { sponsors };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

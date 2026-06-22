@@ -56,7 +56,6 @@ describe("About page", () => {
 			vi.fn(async () => ({
 				ok: true,
 				json: async () => ({
-					generatedAt: "2026-06-21T00:00:00Z",
 					sponsors: [
 						{ name: "Alice", avatar: "https://cdn/a.png" },
 						{ name: "Bob", avatar: "" },

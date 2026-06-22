@@ -25,7 +25,6 @@ interface Sponsor {
 	avatar: string;
 }
 interface SponsorsFile {
-	generatedAt: string | null;
 	sponsors: Sponsor[];
 }
 
