@@ -4,11 +4,15 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * fetch-sponsors —— 半自动赞助者名单。CI(.github/workflows/sponsors.yml)定时调爱发电
- * `query-sponsor` 接口,生成 `apps/web/public/sponsors.json`(仅昵称),commit 回仓库;
- * 构建时随 web 进 dist/镜像。token 只放 CI secret,运行时/镜像零密钥。
+ * fetch-sponsors —— 半自动赞助者名单。**挂在独立端发版流程**(image-release /
+ * desktop-release)的 web build 之前由 CI 跑一次:调爱发电 `query-sponsor` 接口,
+ * 把 `apps/web/public/sponsors.json`(仅昵称 + 头像 data URI)就地生成,随后 vite build
+ * 打进 dist/镜像。**不 commit 回仓库** —— 仿 sync-standalone-version.sh,产物只活在
+ * CI 构建上下文,仓库里的 sponsors.json 保持空占位。token 只放 CI secret,运行时/镜像
+ * 零密钥。无定时任务(去掉了旧的 sponsors.yml cron + 每日空提交)。
  *
- * 需要环境变量:AFDIAN_USER_ID / AFDIAN_TOKEN(均在 afdian.com/dashboard/dev 获取)。
+ * 环境变量:AFDIAN_USER_ID / AFDIAN_TOKEN(均在 afdian.com/dashboard/dev 获取)。**未配置时
+ * 优雅跳过**(保留现有 sponsors.json、exit 0),让 dry-run / fork / 本地构建照常进行。
  * 纯函数(签名/解析/分页)导出供单测;真实拉取在 main guard 内,import 不触发。
  */
 
@@ -124,8 +128,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 	const userId = process.env.AFDIAN_USER_ID;
 	const token = process.env.AFDIAN_TOKEN;
 	if (!userId || !token) {
-		console.error("AFDIAN_USER_ID / AFDIAN_TOKEN env required");
-		process.exit(1);
+		// 未配 token(dry-run / fork / 本地)→ 不报错退出,保留现有 sponsors.json 占位,
+		// 让发版 build 照常进行(名单回退空态)。仅有 token 的正式发版才会真正刷新名单。
+		console.warn("AFDIAN_USER_ID / AFDIAN_TOKEN 未配置,跳过赞助者同步(保留现有 sponsors.json)");
+		process.exit(0);
 	}
 	const responses = await fetchAllSponsors({ userId, token });
 	const sponsors = await localizeSponsors(extractSponsors(responses));

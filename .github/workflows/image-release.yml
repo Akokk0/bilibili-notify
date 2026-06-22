@@ -89,6 +89,15 @@ jobs:
           VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
         run: bash .github/scripts/sync-standalone-version.sh
 
+      # 就地生成 apps/web/public/sponsors.json,经 Dockerfile `COPY . .` 进 builder →
+      # vite build 打进 web dist/镜像。不回写仓库(同 sync-standalone-version)。未配
+      # AFDIAN secret(如 fork)时脚本优雅跳过,镜像内名单回退空态。
+      - name: Fetch afdian sponsors
+        env:
+          AFDIAN_USER_ID: ${{ secrets.AFDIAN_USER_ID }}
+          AFDIAN_TOKEN: ${{ secrets.AFDIAN_TOKEN }}
+        run: node scripts/fetch-sponsors.mjs
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 

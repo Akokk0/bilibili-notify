@@ -88,6 +88,15 @@ jobs:
       - name: Check Desktop Rust compile
         run: vp run -F @bilibili-notify/desktop cargo:check
 
+      # 在 web build 之前就地生成 apps/web/public/sponsors.json,vite build 会把它复制进
+      # dist(随后进 Tauri bundle)。不回写仓库。未配 AFDIAN secret 时脚本优雅跳过,名单空态。
+      - name: Fetch afdian sponsors
+        shell: bash
+        env:
+          AFDIAN_USER_ID: ${{ secrets.AFDIAN_USER_ID }}
+          AFDIAN_TOKEN: ${{ secrets.AFDIAN_TOKEN }}
+        run: node scripts/fetch-sponsors.mjs
+
       - name: Build apps runtime
         env:
           BN_STANDALONE_VERSION: ${{ steps.ver.outputs.value }}
