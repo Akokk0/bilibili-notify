@@ -270,7 +270,7 @@ function LinkRow({
 	const LinkIcon = Icon[icon];
 	const body = (
 		<div className="flex items-center gap-3 rounded-[10px] border border-black/6 bg-bn-surface/60 px-3 py-2.5 transition hover:border-bn-pink/30">
-			<span className="grid h-8 w-8 shrink-0 place-items-center rounded-[8px] bg-bn-pink/10 text-bn-pink">
+			<span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-bn-pink/10 text-bn-pink">
 				<LinkIcon size={15} />
 			</span>
 			<span className="min-w-0 flex-1">
