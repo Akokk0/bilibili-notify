@@ -98,6 +98,7 @@ export async function bringUp(deps: LifecycleDeps): Promise<boolean> {
 		ctx: deps.ctx,
 		resolveTarget: (id) => registry.get(id),
 		resolveAdapter: (id) => registry.getAdapter(id),
+		logger: deps.logger,
 	});
 
 	// --- BilibiliPush (new platform-neutral form) ---

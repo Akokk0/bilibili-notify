@@ -7,8 +7,9 @@ import type {
 	PushAdapter,
 	PushTarget,
 } from "@bilibili-notify/internal";
-import type { Context } from "koishi";
+import type { Context, Logger } from "koishi";
 import { type Bot, h, Universal } from "koishi";
+import { type BotLike, botResolutionWarning, resolveKoishiBot } from "./bot-resolve";
 
 /** Factory for creating the Koishi-side NotificationSink. */
 export interface KoishiSinkOptions {
@@ -17,6 +18,8 @@ export interface KoishiSinkOptions {
 	resolveTarget: (id: string) => PushTarget | undefined;
 	/** Function to resolve a PushAdapter by id. */
 	resolveAdapter: (id: string) => PushAdapter | undefined;
+	/** Logger — used to surface actionable platform-misconfig warnings (master 选错平台等)。 */
+	logger: Logger;
 }
 
 /**
@@ -33,12 +36,37 @@ export interface KoishiSinkOptions {
  *   - "private" → bot.sendPrivateMessage(userId, content, guildId?)
  */
 export function createKoishiSink(opts: KoishiSinkOptions): NotificationSink {
-	const { ctx, resolveTarget, resolveAdapter } = opts;
+	const { ctx, resolveTarget, resolveAdapter, logger } = opts;
 
-	function getBot(botPlatform: string, selfId?: string): Bot | undefined {
-		return ctx.bots.find(
-			(b: Bot) => b.platform === botPlatform && (!selfId || selfId === "" || b.selfId === selfId),
-		) as Bot | undefined;
+	/** 同一 (reason, 配置平台, 在线平台集) 的告警只打一次,避免热路径(per-tick 可达性
+	 * 探测 / per-retry)刷屏。sink 生命周期内有效;reload 新建 sink 自然重置。 */
+	const warnedKeys = new Set<string>();
+
+	/**
+	 * 解析 target/adapter 对应的在线 koishi bot。精确匹配失败时按「唯一在线平台」
+	 * 回退(消除 master 选错平台导致的「目标不可达」),并打一条可操作告警(去重)。
+	 */
+	function resolveBot(adapterCfg: KoishiBotAdapterConfig, label: string): Bot | undefined {
+		const all = [...ctx.bots] as unknown as BotLike[];
+		const res = resolveKoishiBot(
+			all,
+			{ botPlatform: adapterCfg.botPlatform, selfId: adapterCfg.selfId },
+			Universal.Status.ONLINE,
+		);
+		const warning = botResolutionWarning(label, adapterCfg.botPlatform, res);
+		if (warning) {
+			const key = `${res.reason}:${adapterCfg.botPlatform}:${res.onlinePlatforms.join(",")}`;
+			if (!warnedKeys.has(key)) {
+				warnedKeys.add(key);
+				logger.warn(warning);
+			}
+		}
+		return res.bot as unknown as Bot | undefined;
+	}
+
+	/** 告警里用来标识 target 的人话标签:私聊目标即 master,其余用 target 名。 */
+	function labelFor(target: PushTarget): string {
+		return target.scope === "private" ? "master" : target.name;
 	}
 
 	function payloadToKoishi(payload: NotificationPayload): unknown {
@@ -113,7 +141,7 @@ export function createKoishiSink(opts: KoishiSinkOptions): NotificationSink {
 
 		const adapterCfg = adapter.config as KoishiBotAdapterConfig;
 		const session = target.session as KoishiBotSession;
-		const bot = getBot(adapterCfg.botPlatform, adapterCfg.selfId);
+		const bot = resolveBot(adapterCfg, labelFor(target));
 
 		if (!bot) {
 			return {
@@ -177,7 +205,7 @@ export function createKoishiSink(opts: KoishiSinkOptions): NotificationSink {
 			const adapter = resolveAdapter(target.adapterId);
 			if (!adapter || adapter.platform !== "koishi-bot" || !adapter.enabled) return false;
 			const cfg = adapter.config as KoishiBotAdapterConfig;
-			const bot = getBot(cfg.botPlatform, cfg.selfId);
+			const bot = resolveBot(cfg, labelFor(target));
 			return bot?.status === Universal.Status.ONLINE;
 		},
 	};

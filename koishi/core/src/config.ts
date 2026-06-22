@@ -121,18 +121,8 @@ export const BilibiliNotifyConfigSchema: Schema<BilibiliNotifyConfig> = Schema.o
 		Schema.union([
 			Schema.object({
 				enable: Schema.const(true).required(),
-				platform: Schema.union([
-					"qq",
-					"qqguild",
-					"onebot",
-					"discord",
-					"red",
-					"telegram",
-					"satori",
-					"chronocat",
-					"lark",
-				]).description(
-					"主人想让女仆在哪个平台伺候您呢？请从这里选一个吧～(〃´-`〃)♡女仆会乖乖待在主人选的地方哒！",
+				platform: Schema.string().description(
+					"主人想让女仆在哪个平台伺候您呢？请把平台名亲手填进来哒～(〃´-`〃)♡这里要填**机器人适配器的平台名**，要和女仆实际连着的机器人一致才找得到主人喔！常见的有 onebot、qq、qqguild、discord、telegram、lark…… ⚠️ 用 NapCat / Lagrange / go-cqhttp 这些 OneBot 实现的主人，请填 **onebot**（不是 qq！）填错的话女仆会迷路找不到主人哒 (つ﹏⊂)",
 				),
 				masterAccount: Schema.string()
 					.role("secret")
