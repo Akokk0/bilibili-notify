@@ -171,6 +171,18 @@ export class BilibiliPush {
 		if (this.master) this.refreshMasterReachability();
 	}
 
+	/**
+	 * 外部触发的 master 可达性复检。koishi 端在 bot 上线(`login-updated` / `login-added`)
+	 * 时调用——`refreshMasterReachability` 只在 `start()`(常早于 bot 连上)和 `sendToMaster()`
+	 * 被调,没有它,启动期那条「master 目标不可达」会一直挂着没有下文(bot 后来上线
+	 * 也无人复检)。这里让边沿状态机在 bot 真正连上后打出「已恢复可达」并复位边沿。
+	 * 无 master / 已 dispose 时 no-op。
+	 */
+	recheckMasterReachability(): void {
+		if (this.disposed || !this.master) return;
+		this.refreshMasterReachability();
+	}
+
 	stop(): void {
 		this.disposed = true;
 		// 唤醒所有 sleeping retry 循环;snapshot 一份避免迭代中 Set 被 wake 删除。

@@ -53,3 +53,27 @@ describe("target-synthesis seed-string contracts", () => {
 		expect(t.id).not.toBe(t2.id);
 	});
 });
+
+describe("target-synthesis 去除首尾空格(配置脏数据容错)", () => {
+	it("adapter platform 去空格:' onebot ' → botPlatform 'onebot',且 id 同 trim 后", () => {
+		// 用户在 master 平台框误带尾随空格 → 旧逻辑 byte 不等 bot.platform 永不可达。
+		const a = synthesizeKoishiBotAdapter(" onebot ");
+		expect((a.config as { botPlatform: string }).botPlatform).toBe("onebot");
+		expect(a.id).toBe(deterministicUuid("adapter:koishi-bot:onebot"));
+	});
+
+	it("master userId / guildId 去空格", () => {
+		const adapter = synthesizeKoishiBotAdapter("onebot");
+		const t = synthesizeMasterTarget(adapter, " 10086 ", " g1 ");
+		expect((t.session as { userId?: string; guildId?: string }).userId).toBe("10086");
+		expect((t.session as { userId?: string; guildId?: string }).guildId).toBe("g1");
+		expect(t.id).toBe(deterministicUuid(`target:master:${adapter.id}:10086:g1`));
+	});
+
+	it("flat-sub channelId 去空格", () => {
+		const adapter = synthesizeKoishiBotAdapter("onebot");
+		const t = synthesizeTargetsForFlatSub(adapter, " group-1 ");
+		expect((t.session as { channelId?: string }).channelId).toBe("group-1");
+		expect(t.id).toBe(deterministicUuid(`target:${adapter.id}:group-1`));
+	});
+});

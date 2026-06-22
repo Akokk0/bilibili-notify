@@ -111,6 +111,36 @@ describe("BilibiliPush — master 可达性边沿状态机(Q5)", () => {
 		expect(lv(logs, "info", "master 目标已恢复可达")).toHaveLength(0);
 	});
 
+	it("recheckMasterReachability:bot 上线后外部复检 → info 恢复一次,无需 sendToMaster", () => {
+		// koishi 端在 login-updated/added(bot 上线)时调用它,把启动期那条「不可达」虚警
+		// 收尾成「已恢复可达」,而不是干等下一次报错才复检。
+		const box = { up: false };
+		const { sink } = makeSink(box);
+		const { logger, logs } = makeLogger();
+		const push = new BilibiliPush({ sink, store: emptyStore, master, logger });
+
+		push.start(); // 启动时 bot 未上线 → 不可达 error 一次
+		expect(lv(logs, "error", "告警背channel已断")).toHaveLength(1);
+
+		box.up = true; // bot 上线
+		push.recheckMasterReachability();
+		expect(lv(logs, "info", "master 目标已恢复可达")).toHaveLength(1);
+
+		// 再次复检不抖动(仍可达不重复 info)
+		push.recheckMasterReachability();
+		expect(lv(logs, "info", "master 目标已恢复可达")).toHaveLength(1);
+	});
+
+	it("recheckMasterReachability:无 master 时是 no-op,不抛", () => {
+		const box = { up: true };
+		const { sink } = makeSink(box);
+		const { logger, logs } = makeLogger();
+		const push = new BilibiliPush({ sink, store: emptyStore, master: null, logger });
+		push.start();
+		expect(() => push.recheckMasterReachability()).not.toThrow();
+		expect(logs).toHaveLength(0);
+	});
+
 	it("setMaster 切目标重置边沿:新目标首次不可达是一次全新 error", async () => {
 		const box = { up: true };
 		const { sink } = makeSink(box);

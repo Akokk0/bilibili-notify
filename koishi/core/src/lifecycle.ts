@@ -178,6 +178,13 @@ export async function bringUp(deps: LifecycleDeps): Promise<boolean> {
 	});
 	deps.slots.cleanups.push(releaseSubChanged);
 
+	// bot 上线(login-added/updated)时复检 master 可达性。refreshMasterReachability 只在
+	// push.start()(常早于 onebot 适配器连上)与 sendToMaster() 触发,缺这一步则启动期那条
+	// 「master 目标不可达」虚警在 bot 后来上线后无人收尾。release 入 cleanups,tearDown 统一卸。
+	const recheckMaster = (): void => push.recheckMasterReachability();
+	deps.slots.cleanups.push(deps.ctx.on("login-added", recheckMaster));
+	deps.slots.cleanups.push(deps.ctx.on("login-updated", recheckMaster));
+
 	deps.registerCommands();
 
 	await loadInitialCookies(api, deps.storageMgr, deps.logger);

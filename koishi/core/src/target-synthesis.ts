@@ -9,6 +9,10 @@ import { deterministicUuid, type PushAdapter, type PushTarget } from "@bilibili-
  * 跨次稳定;history / 持久化引用了 adapter id 时不会变成孤儿。
  */
 export function synthesizeKoishiBotAdapter(botPlatform: string, selfId?: string): PushAdapter {
+	// 去首尾空格:平台名要 byte 级匹配 koishi bot.platform,用户配置里误带的空格会让
+	// 匹配永远失败(master「目标不可达」的隐性诱因之一)。selfId 同理。
+	botPlatform = botPlatform.trim();
+	selfId = selfId?.trim();
 	const seed = selfId
 		? `adapter:koishi-bot:${botPlatform}:${selfId}`
 		: `adapter:koishi-bot:${botPlatform}`;
@@ -33,6 +37,7 @@ export function synthesizeTargetsForFlatSub(adapter: PushAdapter, channelId: str
 	if (adapter.platform !== "koishi-bot") {
 		throw new Error(`synthesizeTargetsForFlatSub requires a koishi-bot adapter`);
 	}
+	channelId = channelId.trim();
 	return {
 		id: deterministicUuid(`target:${adapter.id}:${channelId}`),
 		name: `${adapter.config.botPlatform}:${channelId}`,
@@ -58,6 +63,8 @@ export function synthesizeMasterTarget(
 	if (adapter.platform !== "koishi-bot") {
 		throw new Error(`synthesizeMasterTarget requires a koishi-bot adapter`);
 	}
+	userId = userId.trim();
+	guildId = guildId?.trim() || undefined;
 	const seed = guildId
 		? `target:master:${adapter.id}:${userId}:${guildId}`
 		: `target:master:${adapter.id}:${userId}`;
