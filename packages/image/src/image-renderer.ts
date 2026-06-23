@@ -1,4 +1,10 @@
-import type { Disposable, Logger, ServiceContext } from "@bilibili-notify/internal";
+import type {
+	CardBlock,
+	Disposable,
+	GuardLayout,
+	Logger,
+	ServiceContext,
+} from "@bilibili-notify/internal";
 import { GuardLevel } from "blive-message-listener";
 import { JSDOM } from "jsdom";
 import { DateTime } from "luxon";
@@ -194,6 +200,8 @@ export class ImageRenderer {
 		liveData: LiveData,
 		liveStatus: number,
 		colorOptions: CardColorOptions = {},
+		/** live 版式描述符;缺省 = 默认版式(复刻现状)。 */
+		layout?: CardBlock[],
 	): Promise<Buffer> {
 		const t0 = Date.now();
 		this.logger.debug(`[live] 开始渲染直播卡片：${username}`);
@@ -241,6 +249,7 @@ export class ImageRenderer {
 					if (n > 0) return n >= 10_000 ? `+${(n / 10_000).toFixed(1)}万` : `+${n}`;
 					return n <= -10_000 ? `${(n / 10_000).toFixed(1)}万` : n.toString();
 				})(),
+				layout,
 			},
 			{ title: "直播通知", font: this.config.font, htmlWidth: 600 },
 		);
@@ -263,6 +272,8 @@ export class ImageRenderer {
 			isAdmin,
 		}: { guardLevel: GuardLevel; uname: string; face: string; isAdmin: number },
 		{ masterAvatarUrl, masterName }: { masterAvatarUrl: string; masterName: string },
+		/** guard 受限 2D 版式;缺省 = 默认版式(复刻现状)。 */
+		layout?: GuardLayout,
 	): Promise<Buffer> {
 		const t0 = Date.now();
 		const guardName = ["", "总督", "提督", "舰长"][guardLevel] ?? "上舰";
@@ -279,6 +290,7 @@ export class ImageRenderer {
 				masterAvatarUrl,
 				masterName,
 				bgColor: BG_COLORS[guardLevel],
+				layout,
 			},
 			{ title: "上舰通知", font: this.config.font, htmlWidth: 430 },
 		);
@@ -293,21 +305,25 @@ export class ImageRenderer {
 			});
 	}
 
-	async generateSCCard({
-		senderFace,
-		senderName,
-		masterName,
-		text,
-		price,
-		masterAvatarUrl,
-	}: {
-		senderFace: string;
-		senderName: string;
-		masterName: string;
-		text: string;
-		price: number;
-		masterAvatarUrl?: string;
-	}): Promise<Buffer> {
+	async generateSCCard(
+		{
+			senderFace,
+			senderName,
+			masterName,
+			text,
+			price,
+			masterAvatarUrl,
+		}: {
+			senderFace: string;
+			senderName: string;
+			masterName: string;
+			text: string;
+			price: number;
+			masterAvatarUrl?: string;
+		},
+		/** sc 版式描述符;缺省 = 默认版式(复刻现状)。 */
+		layout?: CardBlock[],
+	): Promise<Buffer> {
 		const t0 = Date.now();
 		this.logger.debug(`[sc] 开始渲染 SC 卡片：${senderName} → ${masterName}（¥${price}）`);
 		const battery = price * 10;
@@ -326,6 +342,7 @@ export class ImageRenderer {
 				price,
 				duration: levelInfo.duration,
 				bgColor,
+				layout,
 			},
 			{ title: "醒目留言通知", font: this.config.font, htmlWidth: 290 },
 		);
@@ -340,7 +357,12 @@ export class ImageRenderer {
 			});
 	}
 
-	async generateDynamicCard(data: Dynamic, colorOptions: CardColorOptions = {}): Promise<Buffer> {
+	async generateDynamicCard(
+		data: Dynamic,
+		colorOptions: CardColorOptions = {},
+		/** dynamic 版式描述符;缺省 = 默认版式(复刻现状)。 */
+		layout?: CardBlock[],
+	): Promise<Buffer> {
 		const t0 = Date.now();
 		const { cardColorStart = this.config.cardColorStart, cardColorEnd = this.config.cardColorEnd } =
 			colorOptions;
@@ -381,6 +403,7 @@ export class ImageRenderer {
 				forwardCount: this.numberToStr(moduleStat.forward.count),
 				commentCount: this.numberToStr(moduleStat.comment.count),
 				likeCount: this.numberToStr(moduleStat.like.count),
+				layout,
 			},
 			{ title: "动态通知", font: this.config.font, htmlWidth: 600 },
 		);
