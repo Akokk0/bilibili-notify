@@ -11,6 +11,7 @@
  */
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
+import type { CardLayout } from "@bilibili-notify/internal";
 
 /** Push category enum — numeric values are the historical bilibili-notify push-type codes. */
 export enum LivePushType {
@@ -154,6 +155,11 @@ export interface SubItemView {
 	 * 词云 / 总结热词上额外生效。undefined / 空 = 不额外过滤。
 	 */
 	wordcloudStopWords?: string;
+	/**
+	 * 该 UP 解析后的卡片版式描述符(块顺序 / 显隐;guard 含 badgeSide)。adapter 已折算好
+	 * (per-UP 整份覆盖 ?? 全局)。各 generate* 渲染时取对应卡片的切片;undefined = 走默认版式。
+	 */
+	cardLayout?: CardLayout;
 }
 
 export type SubscriptionsView = Record<string, SubItemView>;
@@ -188,6 +194,7 @@ export type LiveScopedChange = { scope: "live" } & Partial<
 		| "liveEndGraceMinutes"
 		| "aiOverride"
 		| "wordcloudStopWords"
+		| "cardLayout"
 	>
 >;
 

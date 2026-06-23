@@ -171,6 +171,7 @@ export abstract class RoomSessionBase {
 					liveRoomInfo: this.liveRoomInfo,
 					master: this.masterInfo,
 					cardStyle: this.sub.customCardStyle,
+					cardLayout: this.sub.cardLayout,
 					uid: this.sub.uid,
 					notifyMsg: liveMsg,
 				});
@@ -292,6 +293,7 @@ export abstract class RoomSessionBase {
 			liveRoomInfo: this.liveRoomInfo,
 			master: this.masterInfo,
 			cardStyle: this.sub.customCardStyle,
+			cardLayout: this.sub.cardLayout,
 			uid: this.sub.uid,
 			notifyMsg: liveMsg,
 		});
@@ -435,6 +437,7 @@ export abstract class RoomSessionBase {
 					liveRoomInfo: this.liveRoomInfo,
 					master: this.masterInfo,
 					cardStyle: this.sub.customCardStyle,
+					cardLayout: this.sub.cardLayout,
 					uid: this.sub.uid,
 					notifyMsg: liveEndMsg,
 				});

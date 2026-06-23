@@ -671,6 +671,7 @@ export class DynamicEngine {
 						buffer = await this.image.generateDynamicCard(
 							item as unknown as Parameters<ImageRenderer["generateDynamicCard"]>[0],
 							sub?.customCardStyle?.enable ? sub.customCardStyle : undefined,
+							sub?.dynamicLayout,
 						);
 					}
 				} catch (e) {

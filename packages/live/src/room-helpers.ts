@@ -212,10 +212,12 @@ export class RoomContext extends RoomContextBase {
 		liveRoomInfo: LiveRoomInfo["data"];
 		master: MasterInfo;
 		cardStyle: SubItemView["customCardStyle"];
+		cardLayout?: SubItemView["cardLayout"];
 		uid: string;
 		notifyMsg: string;
 	}): Promise<void> {
-		const { liveType, liveData, liveRoomInfo, master, cardStyle, uid, notifyMsg } = params;
+		const { liveType, liveData, liveRoomInfo, master, cardStyle, cardLayout, uid, notifyMsg } =
+			params;
 
 		let buffer: Buffer | undefined;
 		if (this.imageRenderer?.generateLiveCard) {
@@ -227,6 +229,7 @@ export class RoomContext extends RoomContextBase {
 					liveData,
 					liveType,
 					cardStyle?.enable ? cardStyle : undefined,
+					cardLayout?.live,
 				);
 			} catch (e) {
 				this.logger.error(`[image] 生成直播图片失败：${(e as Error).message}，降级为文字推送`);

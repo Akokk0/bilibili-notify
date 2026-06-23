@@ -372,14 +372,17 @@ export class RoomSession extends RoomSessionBase {
 		if (this.ctx.imageRenderer?.generateSCCard) {
 			try {
 				const userInfo = data.data;
-				const buf = await this.ctx.imageRenderer.generateSCCard({
-					senderFace: userInfo.face,
-					senderName: userInfo.uname,
-					masterName: this.masterInfo?.username ?? "",
-					masterAvatarUrl: this.masterInfo?.userface ?? "",
-					text: body.content,
-					price: body.price,
-				});
+				const buf = await this.ctx.imageRenderer.generateSCCard(
+					{
+						senderFace: userInfo.face,
+						senderName: userInfo.uname,
+						masterName: this.masterInfo?.username ?? "",
+						masterAvatarUrl: this.masterInfo?.userface ?? "",
+						text: body.content,
+						price: body.price,
+					},
+					this.sub.cardLayout?.sc,
+				);
 				if (this.ctx.isDisposed()) return;
 				await this.ctx.push.broadcastToTargets(
 					this.sub.uid,
@@ -451,6 +454,7 @@ export class RoomSession extends RoomSessionBase {
 							masterName: this.masterInfo?.username ?? "",
 							masterAvatarUrl: this.masterInfo?.userface ?? "",
 						},
+						this.sub.cardLayout?.guard,
 					);
 					if (this.ctx.isDisposed()) return;
 					await this.ctx.push.broadcastToTargets(
@@ -544,6 +548,7 @@ export class RoomSession extends RoomSessionBase {
 			liveRoomInfo: this.liveRoomInfo,
 			master: this.masterInfo,
 			cardStyle: this.sub.customCardStyle,
+			cardLayout: this.sub.cardLayout,
 			uid: this.sub.uid,
 			notifyMsg: liveStartMsg,
 		});

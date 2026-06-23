@@ -10,7 +10,7 @@
  */
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
-import type { ForwardImage } from "@bilibili-notify/internal";
+import type { CardBlock, ForwardImage } from "@bilibili-notify/internal";
 import type { DynamicFilterConfig } from "./types";
 
 /** dynamic-engine 渲染好的图片缓冲（无 mime/扩展信息时默认 image/jpeg）。 */
@@ -100,6 +100,11 @@ export interface SubItemView {
 	 * Adapter 折叠 `Subscription.overrides.templates.dynamicVideo` 后填入。
 	 */
 	customVideoTemplate?: string;
+	/**
+	 * Per-UP 动态卡片版式(块顺序 / 显隐)。adapter 折叠 `cardLayout.dynamic` 后填入;
+	 * undefined = 走默认版式(复刻现状)。dynamic-engine 渲染时透传给 generateDynamicCard。
+	 */
+	dynamicLayout?: CardBlock[];
 }
 
 export type SubscriptionsView = Record<string, SubItemView>;
