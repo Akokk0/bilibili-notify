@@ -45,6 +45,7 @@ import type {
 	TemplateBundle,
 } from "../../types/globals";
 import { colorFromUid, displayName } from "../up/helpers";
+import { buildOverridesPatch, type OverridesPatch } from "./overrides-patch";
 import { projectPerUpIsland } from "./perup-island";
 import {
 	DynamicMsgVariableHints,
@@ -70,7 +71,8 @@ export const perUpOverrideKeys = [
 export type PerUpOverrideKey = (typeof perUpOverrideKeys)[number];
 
 interface SubPatch {
-	overrides?: Subscription["overrides"];
+	// overrides 走清除哨兵线格式:被关闭的 slice 显式 null(见 buildOverridesPatch / store SY1)。
+	overrides?: OverridesPatch;
 	specialUsers?: SpecialUser[];
 }
 
@@ -104,7 +106,11 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 
 	const save = useMutation({
 		mutationFn: () =>
-			patchSub(sub.id, { overrides: draft.overrides, specialUsers: draft.specialUsers }),
+			patchSub(sub.id, {
+				// 关闭的覆盖 slice 需显式 null 清除,否则 deepMerge 当「不改」→ 旧值残留、diff 不归零。
+				overrides: buildOverridesPatch(draft.overrides, sub.overrides),
+				specialUsers: draft.specialUsers,
+			}),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
 	});
 

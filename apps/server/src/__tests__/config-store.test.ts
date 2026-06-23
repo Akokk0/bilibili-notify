@@ -268,6 +268,29 @@ describe("ConfigStore", () => {
 		expect(bus.events.length).toBe(beforeEvents);
 	});
 
+	it("SY1: patchSubscription 收到 overrides slice = null 时清除整段;缺键仍是“不改”", async () => {
+		// 回归:dashboard 关闭某 per-UP 覆盖框后保存不生效。前端 buildOverridesPatch 对被关闭
+		// 的 slice 下发显式 null,store 必须真正删除该 slice,否则旧值残留 → 灵动岛 diff 不归零。
+		const sub = makeSampleSubscription("99999");
+		await store.upsertSubscription(sub);
+		await store.patchSubscription(sub.id, {
+			overrides: { imageGroup: { enable: true, forward: true }, filters: { minScPrice: 30 } },
+		});
+		expect(store.getSubscriptions()[0]?.overrides.imageGroup).toEqual({
+			enable: true,
+			forward: true,
+		});
+
+		// null = 显式清除 imageGroup;同一 patch 里不带 filters 键 → filters 保留(“不改”)。
+		await store.patchSubscription(sub.id, {
+			overrides: { imageGroup: null },
+		} as never);
+		const after = store.getSubscriptions()[0];
+		expect(after?.overrides.imageGroup).toBeUndefined();
+		// filters slice 不被 null patch 波及,先前写入的 minScPrice 仍在。
+		expect(after?.overrides.filters?.minScPrice).toBe(30);
+	});
+
 	it("upsertSubscription validates: malformed sub throws, file unchanged", async () => {
 		const broken = { ...makeSampleSubscription(), uid: "not-a-uid" };
 		await expect(store.upsertSubscription(broken as never)).rejects.toBeInstanceOf(
