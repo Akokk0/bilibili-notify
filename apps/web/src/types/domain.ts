@@ -329,6 +329,10 @@ export interface CardStyleFull {
 	font: string;
 	hideDesc: boolean;
 	hideFollower: boolean;
+	/** 自定义卡片背景图资产 id;空串 = 沿用渐变。镜像 `CardStyleSchema.backgroundImage`。 */
+	backgroundImage: string;
+	/** 玻璃片透明度 0..1;可选,未设时各卡用内置基线。镜像 `CardStyleSchema.glassOpacity`。 */
+	glassOpacity?: number;
 }
 export type CardStyleOverride = Partial<CardStyleFull>;
 
