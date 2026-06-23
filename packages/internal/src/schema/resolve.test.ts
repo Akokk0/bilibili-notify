@@ -21,6 +21,24 @@ describe("resolve()", () => {
 		expect(eff.ai.persona).toEqual(globals.defaults.ai.persona);
 	});
 
+	it("inherits global wordcloudStopWords when no per-UP override", () => {
+		const globals = makeDefaultGlobalConfig();
+		globals.defaults.templates.wordcloudStopWords = "全局,词";
+		const eff = resolve(SUB_BASE, globals.defaults);
+		expect(eff.templates.wordcloudStopWords).toBe("全局,词");
+	});
+
+	it("per-UP wordcloudStopWords override replaces global", () => {
+		const globals = makeDefaultGlobalConfig();
+		globals.defaults.templates.wordcloudStopWords = "全局,词";
+		const sub: Subscription = {
+			...SUB_BASE,
+			overrides: { templates: { wordcloudStopWords: "仅本UP" } },
+		};
+		const eff = resolve(sub, globals.defaults);
+		expect(eff.templates.wordcloudStopWords).toBe("仅本UP");
+	});
+
 	it("merges partial features override on top of defaults", () => {
 		const globals = makeDefaultGlobalConfig();
 		const sub: Subscription = {

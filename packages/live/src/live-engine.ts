@@ -7,7 +7,7 @@ import { ListenerManager, type ListenerManagerConfig } from "./listener-manager"
 import type { CommentaryClient } from "./live-summary-requester";
 import { LiveSummaryRequester } from "./live-summary-requester";
 import type { LiveSubscriptionOp, PushLike, SubItemView, SubscriptionsView } from "./push-like";
-import definedStopWords from "./stop-words";
+import definedStopWords, { parseStopWords } from "./stop-words";
 import { LiveTemplateRenderer } from "./template-renderer";
 import { WordcloudGenerator } from "./wordcloud-generator";
 
@@ -293,10 +293,5 @@ function toListenerConfig(c: LiveEngineConfig): ListenerManagerConfig {
 
 /** Combine the bundled stop-words with the user's comma-separated additions. */
 function mergeStopWords(extra?: string): Set<string> {
-	if (!extra || extra.trim() === "") return new Set(definedStopWords);
-	const additions = extra
-		.split(",")
-		.map((w) => w.trim())
-		.filter((w) => w !== "");
-	return new Set([...definedStopWords, ...additions]);
+	return new Set([...definedStopWords, ...parseStopWords(extra)]);
 }

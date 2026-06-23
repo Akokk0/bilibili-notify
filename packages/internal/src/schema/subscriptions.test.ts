@@ -139,6 +139,18 @@ describe("per-UP template override 不被全局默认污染 (Codex 回归)", () 
 		expect(parsed.overrides.templates?.liveSummary).toBe("只改总结");
 		expect(parsed.overrides.templates?.dynamic).toBeUndefined();
 		expect(parsed.overrides.templates?.dynamicVideo).toBeUndefined();
+		// wordcloudStopWords 带 .default("")，partial 同样须剥默认，否则误注入空串覆盖。
+		expect(parsed.overrides.templates?.wordcloudStopWords).toBeUndefined();
+	});
+
+	it("只覆盖 templates.wordcloudStopWords → liveSummary/dynamic 仍 undefined", () => {
+		const parsed = SubscriptionSchema.parse({
+			...BASE,
+			overrides: { templates: { wordcloudStopWords: "刷屏,哈哈" } },
+		});
+		expect(parsed.overrides.templates?.wordcloudStopWords).toBe("刷屏,哈哈");
+		expect(parsed.overrides.templates?.liveSummary).toBeUndefined();
+		expect(parsed.overrides.templates?.dynamic).toBeUndefined();
 	});
 
 	it("只覆盖 templates.liveStart(直播消息)→ dynamic/dynamicVideo 仍 undefined", () => {

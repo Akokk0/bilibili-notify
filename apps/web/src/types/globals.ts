@@ -83,6 +83,8 @@ export interface TemplateBundle {
 	dynamic: string;
 	/** 视频投稿推送文案模板。变量 {name} / {url}。 */
 	dynamicVideo: string;
+	/** 弹幕词云额外停用词,英文逗号分隔,追加到内置中文停用词表后再分词。 */
+	wordcloudStopWords: string;
 	specialDanmaku: string;
 	specialUserEnter: string;
 	guardBuy: GuardBundle;

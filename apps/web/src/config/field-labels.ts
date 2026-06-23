@@ -302,6 +302,7 @@ export const FIELD_LABELS = {
 
 	// ── 消息模板 ──────────────────────────────────────────────────────────
 	"templates.liveSummary": { label: "总结正文", section: "templates" },
+	"templates.wordcloudStopWords": { label: "词云停用词", section: "templates" },
 	"templates.liveStart": { label: "开播", section: "templates" },
 	"templates.liveOngoing": { label: "直播中", section: "templates" },
 	"templates.liveEnd": { label: "下播", section: "templates" },

@@ -68,6 +68,7 @@ interface CtxOpts {
 	wantSummary: boolean;
 	wcImage?: Buffer;
 	summaryText?: string;
+	sortedWords?: Array<[string, number]>;
 }
 
 function makeCtx(opts: CtxOpts): {
@@ -86,7 +87,7 @@ function makeCtx(opts: CtxOpts): {
 		danmakuCollector: {
 			// P2(dim7):真实 snapshot().senderRecord 是 Record<string,number>,
 			// 此前 fixture 用 new Map() 与契约不符,掩盖消费方按对象遍历的潜在 bug。
-			snapshot: () => ({ sortedWords: [], senderRecord: {} }),
+			snapshot: () => ({ sortedWords: opts.sortedWords ?? [], senderRecord: {} }),
 		},
 		wordcloudGenerator: { generate: vi.fn(async () => opts.wcImage) },
 		liveSummaryRequester: { generate: vi.fn(async () => opts.summaryText) },
@@ -146,5 +147,51 @@ describe("dispatchWordCloudAndSummary — P0-1 路由拆分", () => {
 
 		expect(calls).toHaveLength(1);
 		expect(calls[0].type).toBe(LivePushType.WordCloudAndLiveSummary);
+	});
+});
+
+describe("dispatchWordCloudAndSummary — per-UP 弹幕词云停用词过滤", () => {
+	it("过滤掉 per-UP wordcloudStopWords 命中的词后再喂词云与总结", async () => {
+		const { ctx } = makeCtx({
+			wantWordcloud: true,
+			wantSummary: true,
+			wcImage: Buffer.from("img"),
+			summaryText: "总结",
+			sortedWords: [
+				["刷屏", 10],
+				["精彩", 5],
+				["哈哈", 3],
+			],
+		});
+		const sub = makeSub();
+		sub.wordcloudStopWords = "刷屏, 哈哈";
+		const session = new TestSession(ctx, sub);
+		await session.runDispatch();
+
+		const wcArg = (ctx.wordcloudGenerator.generate as ReturnType<typeof vi.fn>).mock.calls[0][0];
+		expect(wcArg).toEqual([["精彩", 5]]);
+		const sumArg = (ctx.liveSummaryRequester.generate as ReturnType<typeof vi.fn>).mock.calls[0][0]
+			.sortedWords;
+		expect(sumArg).toEqual([["精彩", 5]]);
+	});
+
+	it("无 per-UP 停用词时 sortedWords 原样透传", async () => {
+		const { ctx } = makeCtx({
+			wantWordcloud: true,
+			wantSummary: false,
+			wcImage: Buffer.from("img"),
+			sortedWords: [
+				["精彩", 5],
+				["哈哈", 3],
+			],
+		});
+		const session = new TestSession(ctx, makeSub());
+		await session.runDispatch();
+
+		const wcArg = (ctx.wordcloudGenerator.generate as ReturnType<typeof vi.fn>).mock.calls[0][0];
+		expect(wcArg).toEqual([
+			["精彩", 5],
+			["哈哈", 3],
+		]);
 	});
 });

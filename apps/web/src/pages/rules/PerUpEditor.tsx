@@ -23,7 +23,7 @@ import {
 	TInput,
 	TNum,
 } from "../../components/forms";
-import { GlassBox } from "../../components/glass-box";
+import { CollapseBlock, GlassBox } from "../../components/glass-box";
 import { Icon } from "../../components/icons";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
@@ -54,6 +54,7 @@ import {
 	type SectionId,
 	SpecialDanmakuVariableHints,
 	SpecialEnterVariableHints,
+	StopWordsHint,
 	SummaryVariableHints,
 } from "./sections";
 
@@ -465,8 +466,18 @@ function LiveOverrideBox({
 	);
 }
 
-/* -------- Summary template (overrides.templates.liveSummary) ------------- */
+/* ----- Summary section (overrides.templates.{wordcloudStopWords,liveSummary}) ----- */
 
+/**
+ * 「直播总结」per-UP 覆盖框 —— 总开关 + 总结正文二级开关。
+ *
+ * 总开关(与其它覆盖项一致)= 是否覆盖本段:关 → 两键全清、整段继承全局;开 → seed
+ * 停用词为 baseline(=当前全局值,直接显示),总结正文另由内部二级 CollapseBlock 单独
+ * 控制。停用词短、随总开关直接可见;总结正文长,折进二级开关,层级清爽。
+ *
+ * seed 用 baseline(全局值)而非空串:故「开了但没动」== 等同继承(merge 后 eff === 全局
+ * 值,无副作用);用户改谁谁生效,语义与其它模板覆盖一致(覆盖即钉住快照、不跟随全局热更)。
+ */
 function SummaryOverrideBox({
 	value,
 	onChange,
@@ -476,19 +487,30 @@ function SummaryOverrideBox({
 	onChange: (next: TemplateOverride | undefined) => void;
 	baseline: GlobalDefaults["templates"];
 }) {
-	const enabled = Boolean(value?.liveSummary);
 	const cur = value ?? {};
+	const enabled = cur.liveSummary !== undefined || cur.wordcloudStopWords !== undefined;
+	const summaryOn = cur.liveSummary !== undefined;
+
 	function toggle(on: boolean): void {
-		if (on) onChange({ ...cur, liveSummary: baseline.liveSummary });
-		else {
-			const { liveSummary: _, ...rest } = cur;
+		if (on) {
+			onChange({ ...cur, wordcloudStopWords: baseline.wordcloudStopWords });
+		} else {
+			const { wordcloudStopWords: _w, liveSummary: _l, ...rest } = cur;
 			onChange(Object.keys(rest).length > 0 ? rest : undefined);
 		}
 	}
+	function toggleSummary(on: boolean): void {
+		if (on) onChange({ ...cur, liveSummary: baseline.liveSummary });
+		else {
+			const { liveSummary: _l, ...rest } = cur;
+			onChange(Object.keys(rest).length > 0 ? rest : undefined);
+		}
+	}
+
 	return (
 		<GlassBox
 			title="直播总结覆盖"
-			subtitle="开 = 该 UP 使用自定义直播总结模板;关 = 继承全局总结模板"
+			subtitle="开 = 该 UP 自定义弹幕词云停用词;总结正文由内部二级开关控制;关 = 全部继承全局"
 			accent="#a29bfe"
 			icon={<Icon.list size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
@@ -496,18 +518,36 @@ function SummaryOverrideBox({
 		>
 			{enabled ? (
 				<>
-					<SummaryVariableHints />
-					<Field code="templates.liveSummary" full>
+					<StopWordsHint />
+					<Field code="templates.wordcloudStopWords" full>
 						<TArea
-							value={cur.liveSummary ?? baseline.liveSummary}
-							onChange={(v) => onChange({ ...cur, liveSummary: v })}
-							rows={8}
+							value={cur.wordcloudStopWords ?? baseline.wordcloudStopWords}
+							onChange={(v) => onChange({ ...cur, wordcloudStopWords: v })}
+							rows={2}
 							mono
+							placeholder="例如：哈哈,2333,前面的"
 						/>
 					</Field>
+					<div className="my-3 border-t border-bn-border-subtle" />
+					<CollapseBlock
+						label="自定义直播总结正文 · 仅本 UP"
+						enabled={summaryOn}
+						onToggle={toggleSummary}
+						accent="#a29bfe"
+					>
+						<SummaryVariableHints />
+						<Field code="templates.liveSummary" full>
+							<TArea
+								value={cur.liveSummary ?? baseline.liveSummary}
+								onChange={(v) => onChange({ ...cur, liveSummary: v })}
+								rows={8}
+								mono
+							/>
+						</Field>
+					</CollapseBlock>
 				</>
 			) : (
-				<InheritHint>该 UP 将继承全局直播总结模板</InheritHint>
+				<InheritHint>该 UP 将继承全局弹幕词云停用词与直播总结模板</InheritHint>
 			)}
 		</GlassBox>
 	);

@@ -4,6 +4,7 @@ import type { MsgHandler } from "blive-message-listener";
 import { DateTime } from "luxon";
 import { LivePushType, type SubItemView } from "./push-like";
 import { LiveRoomAccessDeniedError, type RoomContext } from "./room-helpers";
+import { parseStopWords } from "./stop-words";
 import { buildRoomLink } from "./template-renderer";
 import { type LiveData, LiveType, type MasterInfo } from "./types";
 
@@ -365,10 +366,17 @@ export abstract class RoomSessionBase {
 		);
 		const snapshot = this.ctx.danmakuCollector.snapshot(this.sub.roomId);
 
+		// per-UP 额外停用词:记词时按 bundled + 全局过滤,这里对该 UP 解析后的覆盖词再
+		// 过滤一遍 sortedWords,使 per-UP 停用词在该 UP 的词云 / 总结热词上额外生效。
+		const extra = parseStopWords(this.sub.wordcloudStopWords);
+		const sortedWords = extra.length
+			? snapshot.sortedWords.filter(([word]) => !extra.includes(word))
+			: snapshot.sortedWords;
+
 		const [img, summary] = await Promise.all([
 			wantWordcloud
 				? this.ctx.wordcloudGenerator.generate(
-						snapshot.sortedWords,
+						sortedWords,
 						this.masterInfo?.username ?? "",
 						this.masterInfo?.userface,
 					)
@@ -376,7 +384,7 @@ export abstract class RoomSessionBase {
 			wantSummary
 				? this.ctx.liveSummaryRequester.generate({
 						senderRecord: snapshot.senderRecord,
-						sortedWords: snapshot.sortedWords,
+						sortedWords,
 						master: this.masterInfo,
 						customLiveSummary,
 						// per-UP persona/prompt 覆盖;adapter 未填则交由 CommentaryGenerator 用全局 config。

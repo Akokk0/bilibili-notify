@@ -418,6 +418,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		return {
 			pushTime: g.defaults.schedule.pushTime,
 			liveSummaryDefault: g.defaults.templates.liveSummary,
+			// 全局弹幕词云额外停用词:引擎记词时 merge 到 bundled 列表(随 templatesChanged
+			// 经 live.updateConfig → setStopwords 热更)。per-UP 覆盖另经 SubItemView 在
+			// dispatch 时过滤。
+			wordcloudStopWords: g.defaults.templates.wordcloudStopWords,
 			imageEnabled: g.defaults.cardStyle.enabled,
 			aiEnabled: g.defaults.ai.enabled,
 			customGuardBuy: {
@@ -1081,6 +1085,9 @@ export function buildLiveSubViewSingle(
 			enable: true,
 			liveSummary: eff.templates.liveSummary,
 		},
+		// per-UP 解析后的弹幕词云额外停用词(eff = per-UP override ?? 全局)。room-session
+		// 在下播 dispatch 时对 sortedWords 过滤,使该 UP 的词云 / 总结热词额外生效。
+		wordcloudStopWords: eff.templates.wordcloudStopWords,
 		customSpecialDanmakuUsers:
 			danmakuUsers.length > 0
 				? {
@@ -1187,6 +1194,7 @@ function subscriptionOpsToLive(
 						pushTime: view.pushTime,
 						restartPush: view.restartPush,
 						aiOverride: view.aiOverride,
+						wordcloudStopWords: view.wordcloudStopWords,
 						customCardStyle: view.customCardStyle,
 						customLiveMsg: view.customLiveMsg,
 						customGuardBuy: view.customGuardBuy,

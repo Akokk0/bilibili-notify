@@ -39,6 +39,7 @@ export function makeDefaults(): GlobalDefaults {
 			liveSummary: "",
 			dynamic: "",
 			dynamicVideo: "",
+			wordcloudStopWords: "",
 			specialDanmaku: "",
 			specialUserEnter: "",
 			guardBuy: { enable: false, captain: guard, commander: guard, governor: guard },

@@ -133,6 +133,7 @@ export const DEFAULT_TEMPLATES = {
 你们的弹幕，我们都记录在案！🕵️‍♀️`,
 	dynamic: "{name}发布了一条动态：{url}",
 	dynamicVideo: "{name}发布了新视频：{url}",
+	wordcloudStopWords: "",
 	specialDanmaku: "{mastername} 的关注用户 {uname} 发送弹幕：{msg}",
 	specialUserEnter: "{uname} 进入了 {mastername} 的直播间",
 	guardBuy: {

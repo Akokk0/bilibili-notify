@@ -308,6 +308,7 @@ export interface TemplateBundleFull {
 	liveSummary: string;
 	dynamic: string;
 	dynamicVideo: string;
+	wordcloudStopWords: string;
 	specialDanmaku: string;
 	specialUserEnter: string;
 	guardBuy: GuardBundleShape;

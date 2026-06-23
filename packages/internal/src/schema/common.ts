@@ -119,6 +119,13 @@ export const TemplateBundleSchema = z.object({
 	dynamic: z.string().default("{name}发布了一条动态：{url}"),
 	/** 视频投稿推送文本模板。变量:`{name}` UP 名、`{url}` 视频链接 / BV。默认值须与 `DEFAULT_TEMPLATES.dynamicVideo` 一致。 */
 	dynamicVideo: z.string().default("{name}发布了新视频：{url}"),
+	/**
+	 * 弹幕词云的额外停用词,英文逗号分隔,**追加**到内置中文停用词表后再分词。
+	 * `.default("")` 让缺该字段的老 globals.json 仍能通过 schema 校验(与 dynamic /
+	 * dynamicVideo 同源的老配置兜底)。per-UP override 经 merge 替换全局值,在该 UP
+	 * 的词云生成时额外过滤(详见 packages/live room-session dispatch)。
+	 */
+	wordcloudStopWords: z.string().default(""),
 	specialDanmaku: z.string(),
 	specialUserEnter: z.string(),
 	guardBuy: GuardBundleSchema,
@@ -134,6 +141,7 @@ export type TemplateBundle = z.infer<typeof TemplateBundleSchema>;
 export const TemplateBundlePartialSchema = TemplateBundleSchema.partial().extend({
 	dynamic: z.string().optional(),
 	dynamicVideo: z.string().optional(),
+	wordcloudStopWords: z.string().optional(),
 });
 export type TemplateBundlePartial = z.infer<typeof TemplateBundlePartialSchema>;
 

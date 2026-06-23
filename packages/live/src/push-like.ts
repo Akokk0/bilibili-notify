@@ -140,6 +140,12 @@ export interface SubItemView {
 	restartPush: boolean;
 	/** undefined = 该 UP 无 per-UP AI 覆盖,直播总结走 AI 引擎自身配置。 */
 	aiOverride?: CommentaryCallOverride;
+	/**
+	 * 该 UP 解析后的弹幕词云额外停用词(英文逗号分隔)。引擎记词时已按 bundled + 全局
+	 * 过滤;此值在下播 dispatch 时对 sortedWords 再过滤一遍,使 per-UP 覆盖在该 UP 的
+	 * 词云 / 总结热词上额外生效。undefined / 空 = 不额外过滤。
+	 */
+	wordcloudStopWords?: string;
 }
 
 export type SubscriptionsView = Record<string, SubItemView>;
@@ -171,6 +177,7 @@ export type LiveScopedChange = { scope: "live" } & Partial<
 		| "pushTime"
 		| "restartPush"
 		| "aiOverride"
+		| "wordcloudStopWords"
 	>
 >;
 

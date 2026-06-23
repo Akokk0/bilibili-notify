@@ -50,7 +50,10 @@ function isSectionCustomized(sub: Subscription, sectionId: SectionId): boolean {
 		case "live":
 			return sub.overrides.filters !== undefined || sub.overrides.schedule !== undefined;
 		case "summary":
-			return Boolean(sub.overrides.templates?.liveSummary);
+			return (
+				sub.overrides.templates?.liveSummary !== undefined ||
+				sub.overrides.templates?.wordcloudStopWords !== undefined
+			);
 		case "msg":
 			return (
 				sub.overrides.templates?.liveStart !== undefined ||

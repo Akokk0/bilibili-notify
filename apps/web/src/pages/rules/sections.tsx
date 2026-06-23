@@ -91,9 +91,9 @@ export const GLOBAL_SECTIONS: SectionMeta[] = [
 	},
 	{
 		id: "summary",
-		label: "直播总结模板",
+		label: "直播总结",
 		icon: <Icon.list size={14} />,
-		desc: "弹幕变量 / 总结正文",
+		desc: "词云停用词 / 总结正文",
 	},
 	{
 		id: "msg",
@@ -142,7 +142,7 @@ export const PERUP_SECTIONS: SectionMeta[] = [
 		id: "summary",
 		label: "直播总结",
 		icon: <Icon.list size={14} />,
-		desc: "覆盖总结模板",
+		desc: "覆盖词云停用词 / 总结模板",
 	},
 	{
 		id: "msg",
@@ -390,12 +390,23 @@ export function SummarySection({
 		onPatch({ defaults: { templates: { [k]: v } as Partial<TemplateBundle> } });
 	return (
 		<GlassBox
-			title="直播总结模板"
-			subtitle="templates.liveSummary · 弹幕情报站文案"
+			title="直播总结"
+			subtitle="弹幕词云停用词 + 直播总结模板"
 			accent="#a29bfe"
 			icon={<Icon.list size={14} />}
 			badge="liveSummary"
 		>
+			<StopWordsHint />
+			<FieldRow code="templates.wordcloudStopWords" full>
+				<TArea
+					value={templates.wordcloudStopWords}
+					onChange={(v) => setT("wordcloudStopWords", v)}
+					rows={2}
+					mono
+					placeholder="例如：哈哈,2333,前面的,主播"
+				/>
+			</FieldRow>
+			<div className="my-3 border-t border-bn-border-subtle" />
 			<SummaryVariableHints />
 			<FieldRow code="templates.liveSummary" full>
 				<TArea
@@ -406,6 +417,25 @@ export function SummarySection({
 				/>
 			</FieldRow>
 		</GlassBox>
+	);
+}
+
+/**
+ * 弹幕词云停用词字段上方的说明条 —— 强调「英文逗号分隔」「追加到内置词表」「仅影响
+ * 词云,不影响弹幕计数」,与变量提示条同一视觉语言(青色调,区别于紫色变量提示)。
+ */
+export function StopWordsHint() {
+	return (
+		<div
+			className="mb-2 rounded-lg border px-3 py-2 text-[11.5px] leading-6 text-bn-text-secondary"
+			style={{ borderColor: "#00AEEC66", background: "#00AEEC1a" }}
+		>
+			<span className="font-bold" style={{ color: "#076e94" }}>
+				弹幕词云停用词:
+			</span>{" "}
+			用<b>英文逗号</b>分隔,这些词会在生成词云时被过滤掉。
+			<b>追加</b>到内置中文停用词表之上,不影响弹幕条数 / 发言人数等统计。
+		</div>
 	);
 }
 
