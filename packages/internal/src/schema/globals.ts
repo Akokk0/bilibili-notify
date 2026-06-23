@@ -247,6 +247,8 @@ export const DEFAULT_CARD_STYLE = {
 	font: "PingFang SC, sans-serif",
 	hideDesc: false,
 	hideFollower: false,
+	// 空串 = 沿用渐变背景;glassOpacity 留空 = 各卡用内置基线(见 CardStyleSchema)。
+	backgroundImage: "",
 } as const;
 
 /** 工厂：创建一份完整的默认 GlobalConfig（不含 bootstrap，供 Koishi 端用）。 */

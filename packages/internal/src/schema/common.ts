@@ -209,6 +209,17 @@ export const CardStyleSchema = z.object({
 	hideDesc: z.boolean().default(false),
 	/** 隐藏卡片粉丝变化 / 累计观看数(对齐 `hideDesc` 命名风格,「隐藏=true」)。 */
 	hideFollower: z.boolean().default(false),
+	/**
+	 * 自定义卡片背景图。空串(默认)= 沿用 `cardColorStart→cardColorEnd` 渐变。非空时
+	 * 渲染器以该图替换渐变背景;值是上传子系统的资产标识(详见设计稿,渲染期读盘内联)。
+	 * `.default("")` 让缺该字段的老 globals.json 加载时自动补全。
+	 */
+	backgroundImage: z.string().default(""),
+	/**
+	 * 玻璃片(卡片内容层)透明度,0..1。**可选**:未设(默认)时各卡沿用各自内置基线
+	 * (live/dynamic 0.82、sc/guard 0.75),保证「默认复刻现状」;设了值才统一覆盖所有卡。
+	 */
+	glassOpacity: z.number().min(0).max(1).optional(),
 });
 export type CardStyle = z.infer<typeof CardStyleSchema>;
 
