@@ -5,6 +5,7 @@ describe("DEFAULT_CARD_LAYOUT", () => {
 	it("lists live blocks in the current visual order, all visible", () => {
 		expect(DEFAULT_CARD_LAYOUT.live.map((b) => b.id)).toEqual([
 			"cover",
+			"header",
 			"title",
 			"stats",
 			"follower",

@@ -77,7 +77,7 @@ export function normalizeCardLayout(stored: CardLayout, defaults: CardLayout): C
  */
 export const DEFAULT_CARD_LAYOUT: CardLayout = {
 	version: CARD_LAYOUT_VERSION,
-	live: allVisible("cover", "title", "stats", "follower", "desc"),
+	live: allVisible("cover", "header", "title", "stats", "follower", "desc"),
 	dynamic: allVisible("header", "topic", "content", "stats"),
 	sc: allVisible("amount", "divider", "sender", "message"),
 	guard: {
