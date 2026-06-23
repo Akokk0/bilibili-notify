@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CardLayoutSchema } from "./card-layout";
 import {
 	AIPersonaSchema,
 	CardStylePartialSchema,
@@ -127,6 +128,9 @@ export const SubscriptionOverridesSchema = z.object({
 	templates: TemplateBundlePartialSchema.optional(),
 	ai: AIOverrideSchema.optional(),
 	cardStyle: CardStylePartialSchema.optional(),
+	// 卡片版式是数组型描述符,不走 partial 浅合并 —— per-UP 一旦自定义即「整份覆盖」
+	// (fork 全局版式后随便改),故用完整 CardLayoutSchema 而非 partial。
+	cardLayout: CardLayoutSchema.optional(),
 	imageGroup: ImageGroupSettingsPartialSchema.optional(),
 });
 export type SubscriptionOverrides = z.infer<typeof SubscriptionOverridesSchema>;

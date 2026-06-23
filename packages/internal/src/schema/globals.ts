@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CardLayoutSchema, DEFAULT_CARD_LAYOUT } from "./card-layout";
 import {
 	AISettingsSchema,
 	CardStyleSchema,
@@ -86,6 +87,9 @@ export const GlobalDefaultsSchema = z.object({
 	templates: TemplateBundleSchema,
 	ai: AISettingsSchema,
 	cardStyle: CardStyleSchema,
+	// `.default(DEFAULT_CARD_LAYOUT)` 让缺 cardLayout 字段的老 globals.json(在加该
+	// 字段前持久化的)load 时自动补全为默认版式,与 imageGroup 同源的迁移友好策略。
+	cardLayout: CardLayoutSchema.default(DEFAULT_CARD_LAYOUT),
 	// `.default(...)` 让缺 imageGroup 字段的老 globals.json(在加 imageGroup 子段
 	// 之前持久化的)load 时被 zod 自动补全 —— 否则 ConfigValidationError 让独立端
 	// 启动直接挂。新字段加 GlobalDefaults 时都该带 default,保留迁移友好性。

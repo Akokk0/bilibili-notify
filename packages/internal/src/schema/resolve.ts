@@ -1,3 +1,4 @@
+import { type CardLayout, normalizeCardLayout } from "./card-layout";
 import type {
 	AIPersona,
 	AISettings,
@@ -39,6 +40,7 @@ export interface EffectiveSubscription {
 	templates: TemplateBundle;
 	ai: ResolvedAI;
 	cardStyle: CardStyle;
+	cardLayout: CardLayout;
 	imageGroup: ImageGroupSettings;
 }
 
@@ -126,6 +128,11 @@ export function resolve(sub: Subscription, defaults: GlobalDefaults): EffectiveS
 		templates: merge(defaults.templates, ov.templates),
 		ai: resolveAI(defaults.ai, ov.ai),
 		cardStyle: merge(defaults.cardStyle, ov.cardStyle),
+		// 卡片版式整份覆盖:有 per-UP override 则用它(并 normalize 做向前兼容),
+		// 否则继承全局。数组型描述符不走 merge() 的浅合并。
+		cardLayout: ov.cardLayout
+			? normalizeCardLayout(ov.cardLayout, defaults.cardLayout)
+			: defaults.cardLayout,
 		imageGroup: merge(defaults.imageGroup, ov.imageGroup),
 	});
 }

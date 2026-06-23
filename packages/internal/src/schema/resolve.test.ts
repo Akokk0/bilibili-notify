@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { DEFAULT_CARD_LAYOUT } from "./card-layout";
 import { makeDefaultGlobalConfig } from "./globals";
 import { resolve } from "./resolve";
 import { makeEmptySubscription, type Subscription } from "./subscriptions";
@@ -207,6 +208,34 @@ describe("resolve()", () => {
 		expect(eff.ai.persona).toEqual(overridePersona);
 		// 未被 override 覆盖的 dynamicPrompt 仍取 preset —— 既有语义不回归。
 		expect(eff.ai.dynamicPrompt).toBe("P 模板");
+	});
+
+	it("inherits global cardLayout when no per-UP override", () => {
+		const globals = makeDefaultGlobalConfig();
+		const eff = resolve(SUB_BASE, globals.defaults);
+		expect(eff.cardLayout).toEqual(globals.defaults.cardLayout);
+	});
+
+	it("replaces cardLayout wholesale on per-UP override and normalizes it", () => {
+		const globals = makeDefaultGlobalConfig();
+		const sub: Subscription = {
+			...SUB_BASE,
+			overrides: {
+				cardLayout: {
+					...DEFAULT_CARD_LAYOUT,
+					live: [
+						{ id: "title", visible: true },
+						{ id: "cover", visible: false },
+					],
+				},
+			},
+		};
+		const eff = resolve(sub, globals.defaults);
+		// 整份覆盖:override 的 live 顺序生效
+		expect(eff.cardLayout.live.slice(0, 2).map((b) => b.id)).toEqual(["title", "cover"]);
+		expect(eff.cardLayout.live.find((b) => b.id === "cover")?.visible).toBe(false);
+		// normalize:缺失的已知块仍被追加(向前兼容)
+		expect(eff.cardLayout.live.map((b) => b.id)).toContain("stats");
 	});
 
 	// 回归守护 — P2:resolve() 必须深隔离,消费方就地改不得污染 defaults / sub。
