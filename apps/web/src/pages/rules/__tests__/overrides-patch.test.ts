@@ -36,6 +36,17 @@ describe("buildOverridesPatch", () => {
 		expect(patch.filters).toEqual({ minScPrice: 30 });
 	});
 
+	it("清空全部覆盖(draft={}):每个现存 slice 都置 null", () => {
+		// 「移除该 UP 个性化配置」走此路径 —— 发空对象不删任何键,须逐 slice null。
+		const base: OverridesShape = {
+			filters: { minScPrice: 30 },
+			imageGroup: { enable: true, forward: true },
+			templates: { liveSummary: "x" },
+		};
+		const patch = buildOverridesPatch({}, base);
+		expect(patch).toEqual({ filters: null, imageGroup: null, templates: null });
+	});
+
 	it("多 slice:一个保留、一个清除", () => {
 		const base: OverridesShape = {
 			filters: { minScPrice: 30 },

@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Avatar, Pill } from "../components/atoms";
+import { ConfirmDialog } from "../components/dialog";
 import { Icon } from "../components/icons";
 import { SectionNav } from "../components/section-nav";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { api } from "../services/api";
 import type { Subscription } from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch, GlobalDefaults } from "../types/globals";
+import { buildOverridesPatch } from "./rules/overrides-patch";
 import { PerUpEditor, type PerUpOverrideKey, perUpOverrideKeys } from "./rules/PerUpEditor";
 import {
 	DynamicMsgSection,
@@ -416,6 +418,8 @@ export default function Rules() {
 	const [draft, setDraft] = useState<GlobalConfig | null>(null);
 	// 用户主动通过「添加 UP」加进来,但还没设任何 override 的 sub.id;客户端内存,刷新即清空。
 	const [addedSubIds, setAddedSubIds] = useState<Set<string>>(new Set());
+	// 待确认移除的 per-UP(有实际覆盖项,点 tab 的 x 后先弹确认 dialog 再清空)。
+	const [pendingRemoval, setPendingRemoval] = useState<Subscription | null>(null);
 
 	useEffect(() => {
 		if (globalsQuery.data) setDraft(globalsQuery.data);
@@ -441,9 +445,14 @@ export default function Rules() {
 	});
 
 	const removeSubCustomization = useMutation({
-		mutationFn: async (id: string) => {
-			// 移除该 UP 的所有 per-UP 配置:overrides 清空 + specialUsers 清空。
-			return api.patch<Subscription>(`/api/subs/${id}`, { overrides: {}, specialUsers: [] });
+		mutationFn: async (sub: Subscription) => {
+			// 移除该 UP 的所有 per-UP 配置。注意:发 `overrides: {}` 不行 —— 空对象给 store
+			// deepMerge 遍历不到任何键 → 当「不改」→ 旧 slice 原样保留(同 SY1)。须把每个
+			// 现存 slice 显式置 null(清除哨兵),buildOverridesPatch({}, base) 正好生成。
+			return api.patch<Subscription>(`/api/subs/${sub.id}`, {
+				overrides: buildOverridesPatch({}, sub.overrides),
+				specialUsers: [],
+			});
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
 	});
@@ -479,17 +488,33 @@ export default function Rules() {
 		if (!PERUP_SECTIONS.some((s) => s.id === section)) setSection(PERUP_SECTIONS[0].id);
 	}
 
-	function handleRemoveSub(id: string): void {
-		// 临时添加(未保存任何 override)→ 仅从客户端 set 移除。
-		// 已经有 backend 覆盖项 → 调 PATCH 清空 overrides + specialUsers。
-		const sub = allSubs.find((s) => s.id === id);
-		if (sub && hasAnyCustomization(sub)) removeSubCustomization.mutate(id);
+	// 把 sub 从 tab 栏摘除(仅客户端态:addedSubIds 移除 + scope 回退全局),不动 backend。
+	function detachSub(id: string): void {
 		setAddedSubIds((set) => {
 			const next = new Set(set);
 			next.delete(id);
 			return next;
 		});
 		if (scope === id) setScope("__global");
+	}
+
+	function handleRemoveSub(id: string): void {
+		const sub = allSubs.find((s) => s.id === id);
+		// 已有 backend 覆盖项 → 销毁性操作(清空 overrides + specialUsers),先弹确认再执行。
+		if (sub && hasAnyCustomization(sub)) {
+			setPendingRemoval(sub);
+			return;
+		}
+		// 纯客户端临时添加(无任何覆盖)→ 无数据可丢,直接摘除。
+		detachSub(id);
+	}
+
+	// 确认后真正清空该 UP 的 per-UP 配置(PATCH overrides:{} + specialUsers:[])。
+	function confirmRemoveSub(): void {
+		if (!pendingRemoval) return;
+		removeSubCustomization.mutate(pendingRemoval);
+		detachSub(pendingRemoval.id);
+		setPendingRemoval(null);
 	}
 
 	function handleScopeChange(next: Scope): void {
@@ -575,6 +600,23 @@ export default function Rules() {
 					) : null}
 				</div>
 			</div>
+
+			{pendingRemoval ? (
+				<ConfirmDialog
+					title="移除该 UP 的个性化配置?"
+					message={
+						<>
+							将清空 <b className="text-bn-text-primary">{displayName(pendingRemoval)}</b>{" "}
+							的所有覆盖项与特别关注,该 UP 之后跟随全局规则。此操作不可撤销。
+						</>
+					}
+					confirmLabel="移除"
+					cancelLabel="取消"
+					danger
+					onConfirm={confirmRemoveSub}
+					onCancel={() => setPendingRemoval(null)}
+				/>
+			) : null}
 		</div>
 	);
 }
