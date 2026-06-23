@@ -35,7 +35,12 @@ import {
 	type LiveCardProps,
 	renderCard,
 } from "@bilibili-notify/image";
-import type { NotificationPayload } from "@bilibili-notify/internal";
+import {
+	type CardBlock,
+	type CardLayout,
+	CardLayoutSchema,
+	type NotificationPayload,
+} from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -104,6 +109,8 @@ const PreviewRequestSchema = z.object({
 	kind: z.enum(["live", "dyn", "sc", "guard"]),
 	style: StyleSchema,
 	content: ContentSchema,
+	/** 编辑器持有的整份版式草稿;renderPreviewCard 按 kind 取切片。缺省 = 默认版式。 */
+	layout: CardLayoutSchema.optional(),
 });
 
 const EnableRenderingSchema = z.object({ chromePath: z.string().min(1) });
@@ -124,6 +131,7 @@ const TestPushRequestSchema = z.object({
 	kind: z.enum(["live", "dyn", "sc", "guard"]),
 	style: StyleSchema,
 	content: ContentSchema,
+	layout: CardLayoutSchema.optional(),
 });
 
 /** /api/cards/test-push 响应 —— 与 push.ts 的 TestResponse 同形。 */
@@ -249,6 +257,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		kind: PreviewKind,
 		style: PreviewStyle,
 		content: PreviewContent,
+		layout?: CardLayout,
 	): Promise<{ buffer: Buffer; mime: string }> {
 		const puppeteer = currentPuppeteer;
 		if (!puppeteer) throw new Error("puppeteer 未就绪");
@@ -258,14 +267,17 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			if (!renderer) throw new Error("puppeteer 未就绪");
 			// 登录账号 = SC 发送者(「我在别人直播间发条 SC 会长啥样」)。
 			const me = await getLoggedInAccount();
-			const buffer = await renderer.generateSCCard({
-				senderFace: me?.avatar ?? SVG_AVATAR_FAN,
-				senderName: me?.name ?? "示例粉丝",
-				masterName: "示例 UP 主",
-				masterAvatarUrl: SVG_AVATAR_BLUE,
-				text: content?.text?.trim() || "主播加油！这首要听到！示例 UP 主唱得太好了！",
-				price: content?.price ?? 30,
-			});
+			const buffer = await renderer.generateSCCard(
+				{
+					senderFace: me?.avatar ?? SVG_AVATAR_FAN,
+					senderName: me?.name ?? "示例粉丝",
+					masterName: "示例 UP 主",
+					masterAvatarUrl: SVG_AVATAR_BLUE,
+					text: content?.text?.trim() || "主播加油！这首要听到！示例 UP 主唱得太好了！",
+					price: content?.price ?? 30,
+				},
+				layout?.sc,
+			);
 			return { buffer, mime: "image/jpeg" };
 		}
 		if (kind === "guard") {
@@ -278,6 +290,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			const buffer = await renderer.generateGuardCard(
 				{ guardLevel: (content?.level ?? 3) as 1 | 2 | 3, uname, face, isAdmin: 0 },
 				{ masterAvatarUrl: SVG_AVATAR_BLUE, masterName: "示例 UP 主" },
+				layout?.guard,
 			);
 			return { buffer, mime: "image/jpeg" };
 		}
@@ -286,7 +299,13 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			const renderer = getImageRenderer(style);
 			if (!renderer) throw new Error("puppeteer 未就绪");
 			if (!opts.api) throw new Error("auth system 未就绪 — 后端账号尚未登录");
-			const buffer = await renderRealLive(opts.api, renderer, content.roomId.trim(), style);
+			const buffer = await renderRealLive(
+				opts.api,
+				renderer,
+				content.roomId.trim(),
+				style,
+				layout?.live,
+			);
 			return { buffer, mime: "image/jpeg" };
 		}
 		if (kind === "dyn" && content?.uid?.trim()) {
@@ -299,12 +318,13 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				content.uid.trim(),
 				content.offset ?? 1,
 				style,
+				layout?.dynamic,
 			);
 			return { buffer, mime: "image/jpeg" };
 		}
 		// Live + Dyn 空 content:虚构 mock 数据,走 renderCard + screenshot 流水线
 		// (不经 ImageRenderer,未登录也能调色)。
-		const { component, props, title, htmlWidth } = buildPreviewSpec(kind, style);
+		const { component, props, title, htmlWidth } = buildPreviewSpec(kind, style, layout);
 		const html = await renderCard(component, props, {
 			title,
 			font: style.font ?? "PingFang SC, sans-serif",
@@ -329,9 +349,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				503,
 			);
 		}
-		const { kind, style, content } = parsed.data;
+		const { kind, style, content, layout } = parsed.data;
 		try {
-			const { buffer, mime } = await renderPreviewCard(kind, style, content);
+			const { buffer, mime } = await renderPreviewCard(kind, style, content, layout);
 			return c.json<PreviewResponse>({
 				ok: true,
 				dataUrl: `data:${mime};base64,${buffer.toString("base64")}`,
@@ -351,7 +371,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!parsed.success) {
 			return c.json<TestPushResponse>({ ok: false, latencyMs: 0, err: "invalid_request" }, 400);
 		}
-		const { targetId, kind, style, content } = parsed.data;
+		const { targetId, kind, style, content, layout } = parsed.data;
 
 		if (!currentPuppeteer) {
 			return c.json<TestPushResponse>(
@@ -373,7 +393,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 
 		let card: { buffer: Buffer; mime: string };
 		try {
-			card = await renderPreviewCard(kind, style, content);
+			card = await renderPreviewCard(kind, style, content, layout);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			log.warn(`[cards] test-push render failed (${kind}): ${msg}`);
@@ -405,6 +425,7 @@ async function renderRealLive(
 	renderer: ImageRenderer,
 	roomId: string,
 	style: PreviewStyle,
+	layout?: CardBlock[],
 ): Promise<Buffer> {
 	if (!/^\d+$/.test(roomId)) throw new Error("直播间号必须是纯数字");
 
@@ -440,6 +461,7 @@ async function renderRealLive(
 		{}, // liveData — no danmaku context in preview, watched/liked left blank
 		2,
 		{ cardColorStart: style.cardColorStart, cardColorEnd: style.cardColorEnd },
+		layout,
 	);
 }
 
@@ -449,6 +471,7 @@ async function renderRealDynamic(
 	uid: string,
 	offset: number,
 	style: PreviewStyle,
+	layout?: CardBlock[],
 ): Promise<Buffer> {
 	if (!/^\d+$/.test(uid)) throw new Error("UID 必须是纯数字");
 
@@ -468,10 +491,14 @@ async function renderRealDynamic(
 	const item = items[idx];
 	if (!item) throw new Error(`第 ${offset} 条动态为空`);
 
-	return renderer.generateDynamicCard(item, {
-		cardColorStart: style.cardColorStart,
-		cardColorEnd: style.cardColorEnd,
-	});
+	return renderer.generateDynamicCard(
+		item,
+		{
+			cardColorStart: style.cardColorStart,
+			cardColorEnd: style.cardColorEnd,
+		},
+		layout,
+	);
 }
 
 // ── Mock pipeline (fall-through path) ────────────────────────────────────────
@@ -483,18 +510,22 @@ interface PreviewSpec {
 	htmlWidth: number;
 }
 
-function buildPreviewSpec(kind: "live" | "dyn", style: PreviewStyle): PreviewSpec {
+function buildPreviewSpec(
+	kind: "live" | "dyn",
+	style: PreviewStyle,
+	layout?: CardLayout,
+): PreviewSpec {
 	if (kind === "live") {
 		return {
 			component: LiveCard,
-			props: buildLivePreviewProps(style),
+			props: { ...buildLivePreviewProps(style), layout: layout?.live },
 			title: "卡片预览 · 直播",
 			htmlWidth: 600,
 		};
 	}
 	return {
 		component: DynamicCard,
-		props: buildDynamicPreviewProps(style),
+		props: { ...buildDynamicPreviewProps(style), layout: layout?.dynamic },
 		title: "卡片预览 · 动态",
 		htmlWidth: 600,
 	};

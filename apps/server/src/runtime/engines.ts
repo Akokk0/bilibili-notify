@@ -1003,6 +1003,8 @@ export function buildDynamicSubViewSingle(
 		imageGroupForward: sub.overrides.imageGroup?.forward,
 		customDynamicTemplate: sub.overrides.templates?.dynamic,
 		customVideoTemplate: sub.overrides.templates?.dynamicVideo,
+		// per-UP 解析后的动态卡版式切片(eff = 整份覆盖 ?? 全局)。全局默认版式即复刻现状。
+		dynamicLayout: eff.cardLayout.dynamic,
 	};
 }
 
@@ -1091,6 +1093,9 @@ export function buildLiveSubViewSingle(
 		// per-UP 解析后的弹幕词云额外停用词(eff = per-UP override ?? 全局)。room-session
 		// 在下播 dispatch 时对 sortedWords 过滤,使该 UP 的词云 / 总结热词额外生效。
 		wordcloudStopWords: eff.templates.wordcloudStopWords,
+		// per-UP 解析后的卡片版式(eff = per-UP 整份覆盖 ?? 全局)。room-session 渲染
+		// live/sc/guard 时取对应切片透传给 generate*;全局默认版式即复刻现状。
+		cardLayout: eff.cardLayout,
 		customSpecialDanmakuUsers:
 			danmakuUsers.length > 0
 				? {
@@ -1206,6 +1211,7 @@ function subscriptionOpsToLive(
 						customLiveSummary: view.customLiveSummary,
 						customSpecialDanmakuUsers: view.customSpecialDanmakuUsers,
 						customSpecialUsersEnterTheRoom: view.customSpecialUsersEnterTheRoom,
+						cardLayout: view.cardLayout,
 					},
 				],
 			});

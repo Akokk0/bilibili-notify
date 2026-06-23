@@ -19,7 +19,11 @@
  */
 
 import type { GlobalConfig, Subscription } from "@bilibili-notify/internal";
-import { makeDefaultGlobalConfig, makeEmptySubscription } from "@bilibili-notify/internal";
+import {
+	DEFAULT_CARD_LAYOUT,
+	makeDefaultGlobalConfig,
+	makeEmptySubscription,
+} from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
 import { createNodeMessageBus } from "../message-bus.js";
@@ -635,6 +639,33 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		expect(view.imageGroupEnable).toBe(false);
 		expect(view.customDynamicTemplate).toBe("🔔 {name} {url}");
 		expect(view.customVideoTemplate).toBe("🎬 {name} {url}");
+	});
+
+	it("add op 携带 per-UP cardLayout(live 全量描述符 / dynamic 切片)", () => {
+		const sub = makeSub("800", true);
+		// per-UP 整份覆盖:把 live 的 cover 块关掉。
+		sub.overrides.cardLayout = {
+			...DEFAULT_CARD_LAYOUT,
+			live: DEFAULT_CARD_LAYOUT.live.map((b) => (b.id === "cover" ? { ...b, visible: false } : b)),
+		};
+		const c = setup({ subs: [sub] });
+		active = c;
+		c.bus.emit("subscription-changed", [{ type: "add", sub }]);
+
+		// live add op 带整份 cardLayout,cover 关闭被透传。
+		const liveView = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].sub;
+		expect(liveView.cardLayout.live.find((b: { id: string }) => b.id === "cover")?.visible).toBe(
+			false,
+		);
+
+		// dynamic add op 带 dynamic 切片(本例未改动,等于默认四块)。
+		const dynView = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0][0].sub;
+		expect(dynView.dynamicLayout?.map((b: { id: string }) => b.id)).toEqual([
+			"header",
+			"topic",
+			"content",
+			"stats",
+		]);
 	});
 
 	it("禁用订阅 add:dynamic add op 仍下发但 dynamic:false(engine applyOps 的 !op.sub.dynamic 拦截)", () => {
