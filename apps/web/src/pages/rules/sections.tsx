@@ -369,6 +369,29 @@ export function LiveThresholdsSection({
 						/>
 					</div>
 				</FieldRow>
+				<FieldRow
+					code="schedule.liveEndGrace"
+					hint="开启后下播先等待,期间重新开播即接续为同一场(防网络抖动 / 超管掐流误报)"
+				>
+					<div className="flex h-7.5 items-center">
+						<Toggle
+							value={schedule.liveEndGrace}
+							onChange={(v) => setS("liveEndGrace", v)}
+							size="sm"
+						/>
+					</div>
+				</FieldRow>
+				{schedule.liveEndGrace ? (
+					<FieldRow code="schedule.liveEndGraceMinutes" hint="下播到重开超过此时长才判定真下播">
+						<TNum
+							value={schedule.liveEndGraceMinutes}
+							onChange={(v) => setS("liveEndGraceMinutes", v)}
+							min={1}
+							max={10}
+							suffix="分钟"
+						/>
+					</FieldRow>
+				) : null}
 				<FieldRow code="schedule.quietHours" full>
 					<QuietHoursEditor value={schedule.quietHours} onChange={(v) => setS("quietHours", v)} />
 				</FieldRow>

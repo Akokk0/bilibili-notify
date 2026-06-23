@@ -81,6 +81,15 @@ export const ScheduleConfigSchema = z.object({
 	pushTime: z.number().int().min(0).max(24),
 	restartPush: z.boolean(),
 	quietHours: z.array(TimeRangeSchema),
+	/**
+	 * 断流接续:开启后,UP 下播不立刻通知,先等 `liveEndGraceMinutes` 分钟。期间若重新
+	 * 开播,则判定为网络抖动 / 超管掐流,接续为同一场直播(不发下播、也不重发开播,弹幕 /
+	 * 时长 / 粉丝变化全沿用第一次开播基线);等待超时仍未重开才判定真下播并推送。
+	 * `.default(false)` 兼容缺该字段的老 globals.json。
+	 */
+	liveEndGrace: z.boolean().default(false),
+	/** 断流接续等待时长(分钟,1–10,默认 2)。仅 `liveEndGrace=true` 时生效。 */
+	liveEndGraceMinutes: z.number().int().min(1).max(10).default(2),
 });
 export type ScheduleConfig = z.infer<typeof ScheduleConfigSchema>;
 
@@ -236,6 +245,8 @@ export const DEFAULT_SCHEDULE: ScheduleConfig = {
 	pushTime: 0,
 	restartPush: false,
 	quietHours: [],
+	liveEndGrace: false,
+	liveEndGraceMinutes: 2,
 };
 
 /**

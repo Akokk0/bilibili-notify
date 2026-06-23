@@ -31,7 +31,13 @@ export function makeDefaults(): GlobalDefaults {
 			minScPrice: 0,
 			minGuardLevel: 3,
 		},
-		schedule: { pushTime: 0, restartPush: false, quietHours: [] },
+		schedule: {
+			pushTime: 0,
+			restartPush: false,
+			quietHours: [],
+			liveEndGrace: false,
+			liveEndGraceMinutes: 2,
+		},
 		templates: {
 			liveStart: "",
 			liveOngoing: "",

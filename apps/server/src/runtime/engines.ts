@@ -1065,6 +1065,9 @@ export function buildLiveSubViewSingle(
 		minGuardLevel: eff.filters.minGuardLevel,
 		pushTime: eff.schedule.pushTime,
 		restartPush: eff.schedule.restartPush,
+		// 断流接续(per-UP ?? 全局,resolve 已折算):该 UP 下播是否先挂起等待重开。
+		liveEndGrace: eff.schedule.liveEndGrace,
+		liveEndGraceMinutes: eff.schedule.liveEndGraceMinutes,
 		aiOverride: sub.overrides.ai ? buildAiOverride(eff) : undefined,
 		// 无开关:始终下发 eff 模板(eff 合并 per-UP override → 全局),与 liveSummary
 		// 同模式;LiveEngine 在全局/per-UP 变更时收完整 update op 刷新,无快照陈旧问题。
@@ -1193,6 +1196,8 @@ function subscriptionOpsToLive(
 						minGuardLevel: view.minGuardLevel,
 						pushTime: view.pushTime,
 						restartPush: view.restartPush,
+						liveEndGrace: view.liveEndGrace,
+						liveEndGraceMinutes: view.liveEndGraceMinutes,
 						aiOverride: view.aiOverride,
 						wordcloudStopWords: view.wordcloudStopWords,
 						customCardStyle: view.customCardStyle,

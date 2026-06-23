@@ -289,6 +289,16 @@ export const FIELD_LABELS = {
 		hint: "重启时若 UP 在播则立即推送一次",
 		section: "schedule",
 	},
+	"schedule.liveEndGrace": {
+		label: "断流接续",
+		hint: "下播先延迟判定,期间重开即接续为同一场",
+		section: "schedule",
+	},
+	"schedule.liveEndGraceMinutes": {
+		label: "接续等待时长",
+		hint: "下播到重开超过此时长才判定真下播",
+		section: "schedule",
+	},
 	"schedule.quietHours": {
 		label: "免扰时段",
 		hint: "落在区间内的推送直接丢弃,不补推;粒度按「时」,半开区间 [start, end)",

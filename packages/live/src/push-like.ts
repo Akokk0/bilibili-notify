@@ -138,6 +138,14 @@ export interface SubItemView {
 	minGuardLevel: 1 | 2 | 3;
 	pushTime: number;
 	restartPush: boolean;
+	/**
+	 * 断流接续:true 时该 UP 下播先挂起 `liveEndGraceMinutes` 分钟,等待窗口内重新开播
+	 * 即判定网络抖动 / 超管掐流并接续为同一场(不发下播、不重发开播);超时未重开才真下播。
+	 * adapter 已折算好(per-UP ?? 全局);缺省 false。
+	 */
+	liveEndGrace?: boolean;
+	/** 断流接续等待时长(分钟,1–10);仅 `liveEndGrace=true` 生效,缺省 2。 */
+	liveEndGraceMinutes?: number;
 	/** undefined = 该 UP 无 per-UP AI 覆盖,直播总结走 AI 引擎自身配置。 */
 	aiOverride?: CommentaryCallOverride;
 	/**
@@ -176,6 +184,8 @@ export type LiveScopedChange = { scope: "live" } & Partial<
 		| "minGuardLevel"
 		| "pushTime"
 		| "restartPush"
+		| "liveEndGrace"
+		| "liveEndGraceMinutes"
 		| "aiOverride"
 		| "wordcloudStopWords"
 	>

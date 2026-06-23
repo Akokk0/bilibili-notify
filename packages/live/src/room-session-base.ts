@@ -37,6 +37,17 @@ export abstract class RoomSessionBase {
 	protected lastLiveStart = 0;
 	protected lastLiveEnd = 0;
 
+	/**
+	 * 断流接续「挂起中」的等待计时器(内存,服务重启即丢 —— 已与用户约定接受)。非 null
+	 * 即表示该房间正处于「下播待定」窗口:liveStatus 仍 true、弹幕缓冲未清、复推已暂停。
+	 */
+	protected pendingEndTimer: Disposable | null = null;
+	/**
+	 * 进入挂起那刻定格的直播时长字串。真下播卡按「最后一次下播时刻」渲染时长,不含等待
+	 * 窗口的 N 分钟(M2);接续 / 到期重开时清空。
+	 */
+	protected graceEndDiffTime: string | undefined;
+
 	constructor(ctx: RoomContext, sub: SubItemView) {
 		this.ctx = ctx;
 		this.sub = sub;
@@ -250,12 +261,13 @@ export abstract class RoomSessionBase {
 		// Fallback when the room actually closed but no onLiveEnd event arrived.
 		if (this.liveRoomInfo.live_status === 0 || this.liveRoomInfo.live_status === 2) {
 			this.ctx.logger.warn(
-				`[live] 直播间 [${this.sub.roomId}] 检测到已下播但未收到 onLiveEnd 事件，进入兜底处理`,
+				`[live] 直播间 [${this.sub.roomId}] 检测到已下播但未收到 onLiveEnd 事件，进入下播处理`,
 			);
 			await this.ctx.push.sendPrivateMsg(
-				`直播间 [${this.sub.roomId}] 已下播但未收到 WS 下播事件，已自动触发兜底总结`,
+				`直播间 [${this.sub.roomId}] 已下播但未收到 WS 下播事件，已自动进入下播处理`,
 			);
-			await this.handleLiveEnd("polling");
+			// 与 WS 下播同走 grace 闸门:开启断流接续时也先挂起等待,而非立即下播。
+			await this.triggerLiveEnd("polling");
 			return;
 		}
 		if (!(await this.useMasterInfo(LiveType.LiveBroadcast)) || !this.masterInfo) return;
@@ -285,14 +297,98 @@ export abstract class RoomSessionBase {
 		});
 	}
 
+	/** 断流接续等待时长(分钟),per-UP 缺省 2,防御性夹到 [1,10]。 */
+	protected graceMinutes(): number {
+		return Math.min(10, Math.max(1, this.sub.liveEndGraceMinutes ?? 2));
+	}
+
+	/**
+	 * 下播事件统一收口(WS `onLiveEnd` 与轮询兜底共用)。开启断流接续且当前在播时,先
+	 * 进入「挂起」等待而非立即下播;否则直接走 {@link handleLiveEnd}。已在挂起中的重复
+	 * 下播事件直接忽略(等待已在进行)。
+	 */
+	protected async triggerLiveEnd(source: "ws" | "polling"): Promise<void> {
+		if (this.pendingEndTimer) return;
+		if (this.sub.liveEndGrace && this.liveStatus) {
+			await this.enterGrace(source);
+			return;
+		}
+		await this.handleLiveEnd(source);
+	}
+
+	/**
+	 * 进入断流接续「挂起」:定格下播时刻的直播时长(M2)、暂停复推(Q3)、起内存等待计时器。
+	 * 刻意**不**翻 liveStatus(Q2 前端仍「直播中」)、**不**清弹幕缓冲(Q1 跨段),等重开接续
+	 * 或到期真下播时再决定。
+	 */
+	protected async enterGrace(source: "ws" | "polling"): Promise<void> {
+		this.graceEndDiffTime = await this.ctx.getTimeDifference(this.liveTime);
+		this.cancelPeriodicTimer();
+		const minutes = this.graceMinutes();
+		this.pendingEndTimer = this.ctx.serviceCtx.setTimeout(
+			() => void this.onGraceExpiry(),
+			minutes * 60 * 1000,
+		);
+		this.ctx.logger.info(
+			`[grace] 直播间 [${this.sub.roomId}] 下播,进入 ${minutes} 分钟断流接续等待 (source=${source})`,
+		);
+	}
+
+	/** 取消挂起等待(接续 / teardown 时调用),清掉计时器与定格时长。 */
+	protected cancelPendingEnd(): void {
+		if (!this.pendingEndTimer) return;
+		this.pendingEndTimer.dispose();
+		this.pendingEndTimer = null;
+		this.graceEndDiffTime = undefined;
+	}
+
+	/**
+	 * 等待窗口到期。到期前先跟 B站核对真实状态(兜住 WS 漏掉 `onLiveStart` 的情形):
+	 * 仍离线 → 判定真下播,走 {@link handleLiveEnd}(用定格时长);已重开 → 当接续,恢复复推。
+	 */
+	protected async onGraceExpiry(): Promise<void> {
+		this.pendingEndTimer = null;
+		if (this.ctx.isDisposed() || !this.liveStatus) {
+			this.graceEndDiffTime = undefined;
+			return;
+		}
+		const reopened = await this.isLiveAgain();
+		if (reopened) {
+			this.ctx.logger.info(
+				`[grace] 直播间 [${this.sub.roomId}] 等待到期核对发现已重新开播,接续为同一场`,
+			);
+			this.graceEndDiffTime = undefined;
+			this.armPeriodicTimer();
+			return;
+		}
+		this.ctx.logger.info(
+			`[grace] 直播间 [${this.sub.roomId}] 等待 ${this.graceMinutes()} 分钟仍未重开,判定真下播`,
+		);
+		const frozen = this.graceEndDiffTime;
+		this.graceEndDiffTime = undefined;
+		await this.handleLiveEnd("grace", frozen);
+	}
+
+	/** 到期核对:重拉房间信息,B站 `live_status===1` 即视为已重新开播。拉取失败按离线处理。 */
+	protected async isLiveAgain(): Promise<boolean> {
+		if (!(await this.useLiveRoomInfo(LiveType.StopBroadcast)) || !this.liveRoomInfo) return false;
+		return this.liveRoomInfo.live_status === 1;
+	}
+
 	/**
 	 * Live-end pipeline (shared by the WS `onLiveEnd` event and the polling
 	 * fallback in {@link tickPushAtTime}).
 	 *
 	 * Order: cancel periodic timer → refresh room/master info → push live-end
 	 * card → kick off wordcloud + summary → drain danmaku buffer.
+	 *
+	 * `precomputedDiffTime` 仅断流接续到期路径传入 —— 用进入挂起那刻定格的直播时长,
+	 * 避免把等待窗口的 N 分钟算进「已播时长」(M2)。
 	 */
-	protected async handleLiveEnd(source: "ws" | "polling"): Promise<void> {
+	protected async handleLiveEnd(
+		source: "ws" | "polling" | "grace",
+		precomputedDiffTime?: string,
+	): Promise<void> {
 		if (!this.liveStatus) {
 			this.ctx.logger.warn(
 				`[live] 直播间 [${this.sub.roomId}] 已经是下播状态，忽略 (source=${source})`,
@@ -320,7 +416,7 @@ export abstract class RoomSessionBase {
 		);
 
 		this.liveTime = this.liveRoomInfo.live_time || DateTime.now().toFormat("yyyy-MM-dd HH:mm:ss");
-		const diffTime = await this.ctx.getTimeDifference(this.liveTime);
+		const diffTime = precomputedDiffTime ?? (await this.ctx.getTimeDifference(this.liveTime));
 		this.liveData.fansChanged = this.masterInfo.liveFollowerChange;
 
 		const liveEndMsg = this.ctx.templateRenderer.renderLiveEnd({

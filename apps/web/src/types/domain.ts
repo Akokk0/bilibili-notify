@@ -287,6 +287,8 @@ export interface ScheduleFull {
 	pushTime: number;
 	restartPush: boolean;
 	quietHours: TimeRange[];
+	liveEndGrace: boolean;
+	liveEndGraceMinutes: number;
 }
 export type ScheduleOverride = Partial<ScheduleFull>;
 

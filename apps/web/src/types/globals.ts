@@ -59,6 +59,10 @@ export interface ScheduleConfig {
 	pushTime: number;
 	restartPush: boolean;
 	quietHours: TimeRange[];
+	/** 断流接续:下播先等待 N 分钟,期间重开则接续为同一场,超时未重开才判定真下播。 */
+	liveEndGrace: boolean;
+	/** 断流接续等待时长(分钟,1–10);仅 liveEndGrace=true 生效。 */
+	liveEndGraceMinutes: number;
 }
 
 export interface GuardEntry {

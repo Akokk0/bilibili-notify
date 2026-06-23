@@ -452,6 +452,26 @@ function LiveOverrideBox({
 							/>
 						</div>
 					</Field>
+					<Field code="schedule.liveEndGrace" hint="覆盖断流接续:下播先延迟判定">
+						<div className="flex h-7.5 items-center">
+							<Toggle
+								value={sCur.liveEndGrace ?? baselineSchedule.liveEndGrace}
+								onChange={(v) => onSchedule({ ...sCur, liveEndGrace: v })}
+								size="sm"
+							/>
+						</div>
+					</Field>
+					{(sCur.liveEndGrace ?? baselineSchedule.liveEndGrace) ? (
+						<Field code="schedule.liveEndGraceMinutes">
+							<TNum
+								value={sCur.liveEndGraceMinutes ?? baselineSchedule.liveEndGraceMinutes}
+								onChange={(v) => onSchedule({ ...sCur, liveEndGraceMinutes: v })}
+								min={1}
+								max={10}
+								suffix="分钟"
+							/>
+						</Field>
+					) : null}
 					<Field code="schedule.quietHours" hint="该 UP 在此区间内的推送一律丢弃(覆盖全局)" full>
 						<QuietHoursEditor
 							value={sCur.quietHours ?? baselineSchedule.quietHours}

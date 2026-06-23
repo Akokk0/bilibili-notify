@@ -39,6 +39,28 @@ describe("resolve()", () => {
 		expect(eff.templates.wordcloudStopWords).toBe("仅本UP");
 	});
 
+	it("inherits global live-end grace settings when no per-UP override", () => {
+		const globals = makeDefaultGlobalConfig();
+		globals.defaults.schedule.liveEndGrace = true;
+		globals.defaults.schedule.liveEndGraceMinutes = 5;
+		const eff = resolve(SUB_BASE, globals.defaults);
+		expect(eff.schedule.liveEndGrace).toBe(true);
+		expect(eff.schedule.liveEndGraceMinutes).toBe(5);
+	});
+
+	it("per-UP schedule override flips live-end grace independently", () => {
+		const globals = makeDefaultGlobalConfig();
+		const sub: Subscription = {
+			...SUB_BASE,
+			overrides: { schedule: { liveEndGrace: true, liveEndGraceMinutes: 3 } },
+		};
+		const eff = resolve(sub, globals.defaults);
+		expect(eff.schedule.liveEndGrace).toBe(true);
+		expect(eff.schedule.liveEndGraceMinutes).toBe(3);
+		// 未覆盖的 schedule 字段仍继承全局。
+		expect(eff.schedule.pushTime).toBe(globals.defaults.schedule.pushTime);
+	});
+
 	it("merges partial features override on top of defaults", () => {
 		const globals = makeDefaultGlobalConfig();
 		const sub: Subscription = {

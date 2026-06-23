@@ -82,6 +82,8 @@ export class RoomSession extends RoomSessionBase {
 		this.reconnecting = false;
 		this.stopLiveWsWatchdog();
 		this.clearReconnectSleep();
+		// 挂起中的断流接续等待随 teardown 一并取消,绝不在房间已停后还触发一次下播。
+		this.cancelPendingEnd();
 	}
 
 	/** L3:dispose 退避定时器并唤醒重连循环,使其立刻重校 cancelled/disposed 后退出。 */
@@ -477,6 +479,18 @@ export class RoomSession extends RoomSessionBase {
 
 	private async onLiveStart(): Promise<void> {
 		const now = Date.now();
+		// 断流接续:挂起等待期内的重新开播 = 同一场直播。取消等待、恢复复推,**不**发开播卡、
+		// **不**清弹幕缓冲、**不**动 liveTime/粉丝基线(全沿用第一次开播)。先于冷却 / liveStatus
+		// 去重判断,因为挂起期 liveStatus 仍为 true,否则会被既有「已开播,忽略」分支吞掉。
+		if (this.pendingEndTimer) {
+			const gapSec = Math.round((now - this.lastLiveEnd) / 1000);
+			this.cancelPendingEnd();
+			this.armPeriodicTimer();
+			this.ctx.logger.info(
+				`[grace] 直播间 [${this.sub.roomId}] 断流 ${gapSec}s 后重新开播,接续为同一场直播`,
+			);
+			return;
+		}
 		if (now - this.lastLiveStart < LIVE_EVENT_COOLDOWN) {
 			this.ctx.logger.debug(`[live] 直播间 [${this.sub.roomId}] 的开播事件在冷却期内，忽略`);
 			return;
@@ -556,7 +570,7 @@ export class RoomSession extends RoomSessionBase {
 			return;
 		}
 		this.lastLiveEnd = now;
-		await this.handleLiveEnd("ws");
+		await this.triggerLiveEnd("ws");
 	}
 
 	private async onInteractWordV2(msg: unknown): Promise<void> {
