@@ -410,11 +410,11 @@ export function SummarySection({
 }
 
 const SUMMARY_VARS: { code: string; desc: string }[] = [
-	{ code: "-dmc", desc: "弹幕人数" },
-	{ code: "-mdn", desc: "勋章名" },
-	{ code: "-dca", desc: "弹幕数" },
-	{ code: "-un1~5", desc: "用户名" },
-	{ code: "-dc1~5", desc: "弹幕数" },
+	{ code: "{dmc}", desc: "弹幕发言人数" },
+	{ code: "{mdn}", desc: "粉丝牌名" },
+	{ code: "{dca}", desc: "弹幕总数" },
+	{ code: "{un1..5}", desc: "弹幕排行用户名" },
+	{ code: "{dc1..5}", desc: "对应弹幕数" },
 ];
 
 interface VarSpec {
