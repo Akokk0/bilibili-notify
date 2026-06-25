@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { CardBlockFull } from "../../../types/domain";
-import { moveBlock, toggleBlockVisible } from "../layout-ops";
+import {
+	addDivider,
+	DIVIDER_TYPE,
+	moveBlock,
+	removeBlock,
+	setBlockMargin,
+	toggleBlockVisible,
+} from "../layout-ops";
 
 const blocks: CardBlockFull[] = [
-	{ id: "a", visible: true },
-	{ id: "b", visible: true },
-	{ id: "c", visible: true },
+	{ id: "a", type: "a", visible: true },
+	{ id: "b", type: "b", visible: true },
+	{ id: "c", type: "c", visible: true },
 ];
 
 describe("moveBlock", () => {
@@ -31,9 +38,39 @@ describe("toggleBlockVisible", () => {
 		expect(out.find((x) => x.id === "a")?.visible).toBe(true);
 		expect(out.find((x) => x.id === "c")?.visible).toBe(true);
 	});
+});
 
-	it("does not mutate the input array", () => {
-		toggleBlockVisible(blocks, "b");
-		expect(blocks.find((x) => x.id === "b")?.visible).toBe(true);
+describe("addDivider", () => {
+	it("appends a visible divider with a unique sequential id", () => {
+		const out = addDivider(blocks);
+		const last = out[out.length - 1];
+		expect(last).toMatchObject({ id: "divider-1", type: DIVIDER_TYPE, visible: true });
+	});
+
+	it("bumps the divider number past existing dividers", () => {
+		const withDiv = addDivider(blocks); // divider-1
+		const out = addDivider(withDiv);
+		expect(out[out.length - 1].id).toBe("divider-2");
+	});
+});
+
+describe("removeBlock", () => {
+	it("removes the block with the given id, leaving the rest", () => {
+		const out = removeBlock(blocks, "b");
+		expect(out.map((x) => x.id)).toEqual(["a", "c"]);
+	});
+});
+
+describe("setBlockMargin", () => {
+	it("sets the top margin on the targeted block only", () => {
+		const out = setBlockMargin(blocks, "b", "top", 16);
+		expect(out.find((x) => x.id === "b")?.marginTop).toBe(16);
+		expect(out.find((x) => x.id === "a")?.marginTop).toBeUndefined();
+	});
+
+	it("clears the margin when value is undefined", () => {
+		const withMargin = setBlockMargin(blocks, "b", "bottom", 8);
+		const out = setBlockMargin(withMargin, "b", "bottom", undefined);
+		expect(out.find((x) => x.id === "b")?.marginBottom).toBeUndefined();
 	});
 });

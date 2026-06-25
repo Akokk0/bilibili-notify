@@ -340,8 +340,15 @@ export type CardStyleOverride = Partial<CardStyleFull>;
 // 块顺序 = 数组位置;visible 控制显隐。guard 受限 2D:badgeSide + name/text 块。
 
 export interface CardBlockFull {
+	/** 实例唯一 id(内容块 id===type;分割线 divider-N 可多份)。 */
 	id: string;
+	/** 语义 type(内容块为语义名 / 分割线为 "divider")。 */
+	type: string;
 	visible: boolean;
+	/** 该块额外上边距(px,可选)。 */
+	marginTop?: number;
+	/** 该块额外下边距(px,可选)。 */
+	marginBottom?: number;
 }
 
 export interface GuardLayoutFull {

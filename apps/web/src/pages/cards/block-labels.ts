@@ -5,6 +5,9 @@
 
 export type LayoutKind = "live" | "dyn" | "sc" | "guard";
 
+/** 分割线块的展示名(所有卡通用)。 */
+export const DIVIDER_LABEL = "分割线";
+
 /** 编辑器 kind → CardLayout 的字段名(dyn 对应 dynamic)。 */
 export const KIND_TO_LAYOUT_KEY: Record<LayoutKind, "live" | "dynamic" | "sc" | "guard"> = {
 	live: "live",

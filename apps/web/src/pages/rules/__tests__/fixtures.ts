@@ -70,16 +70,21 @@ export function makeDefaults(): GlobalDefaults {
 		},
 		imageGroup: { enable: true, forward: false },
 		cardLayout: {
-			version: 1,
+			version: 2,
 			live: ["cover", "header", "title", "stats", "follower", "desc"].map((id) => ({
 				id,
+				type: id,
 				visible: true,
 			})),
-			dynamic: ["header", "topic", "content", "stats"].map((id) => ({ id, visible: true })),
-			sc: ["amount", "divider", "sender", "message"].map((id) => ({ id, visible: true })),
+			dynamic: ["header", "topic", "content", "stats"].map((id) => ({
+				id,
+				type: id,
+				visible: true,
+			})),
+			sc: ["amount", "sender", "message"].map((id) => ({ id, type: id, visible: true })),
 			guard: {
 				badgeSide: "right",
-				blocks: ["name", "text"].map((id) => ({ id, visible: true })),
+				blocks: ["name", "text"].map((id) => ({ id, type: id, visible: true })),
 			},
 		},
 	};
