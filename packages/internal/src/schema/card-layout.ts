@@ -5,7 +5,7 @@ import { z } from "zod";
  * 边距,并支持可插入/删除的分割线块(type=divider)。结构演进时递增,配合
  * `normalizeCardLayout` 做向前兼容迁移(按 type 对齐已知内容块)。
  */
-export const CARD_LAYOUT_VERSION = 2;
+export const CARD_LAYOUT_VERSION = 3;
 
 /** 分割线块的 type。可在版式里任意位置插入多条、可删除。 */
 export const DIVIDER_TYPE = "divider";
@@ -107,7 +107,11 @@ export const DEFAULT_CARD_LAYOUT: CardLayout = {
  * **全部分割线**的顺序、显隐、边距;丢弃未知内容块与重复内容块;缺失的已知内容块
  * 按 `defaults` 顺序追加到末尾。分割线由用户自由增删,不参与「补齐」。
  */
-function reconcileBlocks(stored: CardBlock[], defaults: CardBlock[]): CardBlock[] {
+function reconcileBlocks(
+	stored: CardBlock[],
+	defaults: CardBlock[],
+	migrateSpacing: boolean,
+): CardBlock[] {
 	const knownContentTypes = new Set(
 		defaults.filter((b) => b.type !== DIVIDER_TYPE).map((b) => b.type),
 	);
@@ -120,6 +124,15 @@ function reconcileBlocks(stored: CardBlock[], defaults: CardBlock[]): CardBlock[
 		}
 		if (!knownContentTypes.has(b.type) || seen.has(b.type)) continue;
 		seen.add(b.type);
+		// v<3 迁移:间距从内置 pt/pb 迁进 layout 之前存的内容块没有间距值,渲染会挤
+		// 在一起;从默认回填该 type 的上下间距。当前版本不回填(尊重用户显式置 0)。
+		if (migrateSpacing && b.marginTop === undefined && b.marginBottom === undefined) {
+			const def = defaults.find((d) => d.type === b.type);
+			if (def && (def.marginTop !== undefined || def.marginBottom !== undefined)) {
+				kept.push({ ...b, marginTop: def.marginTop, marginBottom: def.marginBottom });
+				continue;
+			}
+		}
 		kept.push(b);
 	}
 	const appended = defaults.filter((b) => b.type !== DIVIDER_TYPE && !seen.has(b.type));
@@ -132,14 +145,16 @@ function reconcileBlocks(stored: CardBlock[], defaults: CardBlock[]): CardBlock[
  * version 归一到 `CARD_LAYOUT_VERSION`。
  */
 export function normalizeCardLayout(stored: CardLayout, defaults: CardLayout): CardLayout {
+	// 间距迁移仅对「间距搬进 layout」之前(v<3)的存档生效,回填默认上下间距。
+	const migrateSpacing = (stored.version ?? 1) < 3;
 	return {
 		version: CARD_LAYOUT_VERSION,
-		live: reconcileBlocks(stored.live, defaults.live),
-		dynamic: reconcileBlocks(stored.dynamic, defaults.dynamic),
-		sc: reconcileBlocks(stored.sc, defaults.sc),
+		live: reconcileBlocks(stored.live, defaults.live, migrateSpacing),
+		dynamic: reconcileBlocks(stored.dynamic, defaults.dynamic, migrateSpacing),
+		sc: reconcileBlocks(stored.sc, defaults.sc, migrateSpacing),
 		guard: {
 			badgeSide: stored.guard?.badgeSide ?? defaults.guard.badgeSide,
-			blocks: reconcileBlocks(stored.guard?.blocks ?? [], defaults.guard.blocks),
+			blocks: reconcileBlocks(stored.guard?.blocks ?? [], defaults.guard.blocks, migrateSpacing),
 		},
 	};
 }

@@ -65,4 +65,26 @@ describe("normalizeCardLayout", () => {
 		const out = normalizeCardLayout({ ...DEFAULT_CARD_LAYOUT, live: stored }, DEFAULT_CARD_LAYOUT);
 		expect(out.live.find((b) => b.type === "cover")?.marginTop).toBe(12);
 	});
+
+	it("backfills spacing from defaults for pre-v3 blocks that have none", () => {
+		// 老版式(无间距值)的 header → 应从默认回填(header 默认 上14/下10)。
+		const stored = {
+			...DEFAULT_CARD_LAYOUT,
+			version: 2,
+			live: [{ id: "header", type: "header", visible: true }],
+		};
+		const out = normalizeCardLayout(stored, DEFAULT_CARD_LAYOUT);
+		const header = out.live.find((b) => b.type === "header");
+		expect(header?.marginTop).toBe(14);
+		expect(header?.marginBottom).toBe(10);
+	});
+
+	it("does not backfill spacing for current-version blocks (respects explicit 0)", () => {
+		const stored = {
+			...DEFAULT_CARD_LAYOUT,
+			live: [{ id: "header", type: "header", visible: true }], // version stays current
+		};
+		const out = normalizeCardLayout(stored, DEFAULT_CARD_LAYOUT);
+		expect(out.live.find((b) => b.type === "header")?.marginTop).toBeUndefined();
+	});
 });

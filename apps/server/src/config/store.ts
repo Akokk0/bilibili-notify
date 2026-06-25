@@ -3,12 +3,14 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
 	type ConfigScope,
+	DEFAULT_CARD_LAYOUT,
 	type Disposable,
 	deterministicUuid,
 	type GlobalConfig,
 	GlobalConfigSchema,
 	type MessageBus,
 	makeDefaultGlobalConfig,
+	normalizeCardLayout,
 	type PushAdapter,
 	PushAdapterSchema,
 	type PushTarget,
@@ -627,6 +629,16 @@ class NodeConfigStore implements ConfigStore {
 			this.globals = parsed.data;
 			this.meta.globals.exists = true;
 			this.meta.globals.lastUpdatedAt = existed ? null : new Date().toISOString();
+
+			// 迁移此前保存的卡片版式到当前块模型(例如把各块上下间距从模版回填进
+			// layout)。normalizeCardLayout 按版本门控,已是最新的版式原样通过。
+			this.globals = {
+				...this.globals,
+				defaults: {
+					...this.globals.defaults,
+					cardLayout: normalizeCardLayout(this.globals.defaults.cardLayout, DEFAULT_CARD_LAYOUT),
+				},
+			};
 
 			// Backfill default AI presets for globals files written before any
 			// presets shipped (presets used to default to []). Only triggered
