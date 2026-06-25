@@ -40,7 +40,7 @@ export function SCCard(p: SCCardProps) {
 			/>
 		),
 		amount: () => (
-			<div class="text-center mb-[15px]">
+			<div class="text-center">
 				<div
 					class="text-[36px] font-bold bg-clip-text text-transparent"
 					style={{ backgroundImage: `linear-gradient(135deg, ${p.bgColor[0]}, ${p.bgColor[1]})` }}
@@ -58,7 +58,7 @@ export function SCCard(p: SCCardProps) {
 		),
 
 		sender: () => (
-			<div class="flex flex-col items-center gap-2 mb-3">
+			<div class="flex flex-col items-center gap-2">
 				<div class="w-[70px] h-[70px] overflow-hidden rounded-full">
 					<img
 						class="w-full h-full rounded-full object-cover"

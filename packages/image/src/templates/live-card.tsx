@@ -63,7 +63,7 @@ export function LiveCard(p: LiveCardProps) {
 			<div style="height: 1px; background: rgba(0,0,0,0.06); margin: 0 16px;" />
 		),
 		cover: () => (
-			<div class="px-4 pt-3.5">
+			<div class="px-4">
 				<div class="relative w-full">
 					<img
 						class="block w-full rounded-lg"
@@ -87,7 +87,7 @@ export function LiveCard(p: LiveCardProps) {
 		),
 
 		header: () => (
-			<div class="flex items-center gap-2.5 px-4 pt-3.5 pb-2.5">
+			<div class="flex items-center gap-2.5 px-4">
 				<img class="w-11 h-11 rounded-full object-cover shrink-0" src={p.userface} alt="主播头像" />
 				<div class="flex flex-col gap-0.5 min-w-0">
 					<span class="text-[16px] font-bold leading-none" style="color: #18191C;">
@@ -101,13 +101,13 @@ export function LiveCard(p: LiveCardProps) {
 		),
 
 		title: () => (
-			<div class="px-4 pb-2.5 text-[17px] font-bold leading-snug" style="color: #18191C;">
+			<div class="px-4 text-[17px] font-bold leading-snug" style="color: #18191C;">
 				{p.data.title}
 			</div>
 		),
 
 		stats: () => (
-			<div class="px-4 pt-2.5 flex justify-between text-[13px]" style="color: #666;">
+			<div class="px-4 flex justify-between text-[13px]" style="color: #666;">
 				<span>{statsLeft()}</span>
 				<span>分区：{p.data.area_name}</span>
 			</div>
@@ -115,14 +115,14 @@ export function LiveCard(p: LiveCardProps) {
 
 		follower: () =>
 			follower ? (
-				<div class="px-4 pt-1.5 pb-2.5 text-[13px]" style="color: #666;">
+				<div class="px-4 text-[13px]" style="color: #666;">
 					{follower}
 				</div>
 			) : null,
 
 		desc: () =>
 			p.hideDesc ? null : (
-				<div class="px-4 pt-1.5 pb-2.5 text-[13px] leading-normal" style="color: #999;">
+				<div class="px-4 text-[13px] leading-normal" style="color: #999;">
 					{description || "这个主播很懒，什么简介都没写"}
 				</div>
 			),

@@ -58,20 +58,44 @@ export const CardLayoutSchema = z.object({
 });
 export type CardLayout = z.infer<typeof CardLayoutSchema>;
 
-/** 内容块:id===type,默认显示。 */
-const c = (type: string): CardBlock => ({ id: type, type, visible: true });
-/** 分割线实例:唯一 id,默认显示。 */
+/**
+ * 内容块:id===type,默认显示。`mt/mb` 是该块上 / 下间距(px),把原本写死在模版里的
+ * pt/pb 迁到这里作默认值 —— UI 直接展示、渲染直接用(0 留空,走 UI 的 `?? 0` 显示)。
+ */
+const c = (type: string, mt = 0, mb = 0): CardBlock => ({
+	id: type,
+	type,
+	visible: true,
+	...(mt ? { marginTop: mt } : {}),
+	...(mb ? { marginBottom: mb } : {}),
+});
+/** 分割线实例:唯一 id,默认显示(竖向间距由模版的 divider builder 内置出)。 */
 const div = (n: number): CardBlock => ({ id: `divider-${n}`, type: DIVIDER_TYPE, visible: true });
 
 /**
- * 默认版式,**1:1 复刻当前各卡的块顺序与分割线、全部可见**(guard 除外,按受限 2D
- * 重画)。分割线以独立块显式列出(原本烘焙在内容块里的 hairline 迁出来,现可增删)。
+ * 默认版式,**1:1 复刻当前各卡的块顺序、间距与分割线、全部可见**(guard 除外,按受限
+ * 2D 重画)。各内容块的上下间距(px)显式列出,作为 UI 默认值与渲染依据。
  */
 export const DEFAULT_CARD_LAYOUT: CardLayout = {
 	version: CARD_LAYOUT_VERSION,
-	live: [c("cover"), c("header"), c("title"), div(1), c("stats"), c("follower"), c("desc")],
-	dynamic: [c("header"), div(1), c("topic"), c("content"), div(2), c("stats")],
-	sc: [c("amount"), div(1), c("sender"), c("message")],
+	live: [
+		c("cover", 14, 0),
+		c("header", 14, 10),
+		c("title", 0, 10),
+		div(1),
+		c("stats", 10, 0),
+		c("follower", 6, 10),
+		c("desc", 6, 10),
+	],
+	dynamic: [
+		c("header", 14, 12),
+		div(1),
+		c("topic", 12, 0),
+		c("content", 12, 12),
+		div(2),
+		c("stats", 12, 12),
+	],
+	sc: [c("amount", 0, 15), div(1), c("sender", 0, 12), c("message")],
 	guard: {
 		badgeSide: "right",
 		blocks: [c("name"), c("text")],

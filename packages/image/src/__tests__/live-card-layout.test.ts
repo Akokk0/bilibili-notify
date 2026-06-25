@@ -68,13 +68,13 @@ describe("LiveCard layout", () => {
 		expect(blockOrder(html)).not.toContain("desc");
 	});
 
-	it("applies per-block top/bottom margins to the block wrapper", async () => {
+	it("renders per-block top/bottom spacing as wrapper padding", async () => {
 		const layout: CardBlock[] = DEFAULT_CARD_LAYOUT.live.map((b) =>
 			b.type === "title" ? { ...b, marginTop: 24, marginBottom: 8 } : b,
 		);
 		const html = await renderLive({ layout });
-		expect(html).toContain("margin-top:24px");
-		expect(html).toContain("margin-bottom:8px");
+		expect(html).toContain("padding-top:24px");
+		expect(html).toContain("padding-bottom:8px");
 	});
 
 	it("renders blocks in the layout's order", async () => {

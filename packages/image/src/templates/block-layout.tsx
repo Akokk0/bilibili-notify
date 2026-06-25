@@ -3,11 +3,16 @@
 import { type CardBlock, DIVIDER_TYPE } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
 
-/** 把块的上下边距折成 inline style(undefined 不写,走模版内置间距;用户值是额外叠加)。 */
-function marginStyle(b: CardBlock): Record<string, string> {
+/**
+ * 把块的上下边距折成 wrapper 的 **padding**(undefined 不写)。用 padding 而非 margin:
+ * 相邻块的 padding 相加(与原来各块写死的 pt/pb 行为一致),margin 相邻会塌缩取大值
+ * 导致间距减半。各块的上下间距已迁进 DEFAULT_CARD_LAYOUT 的 marginTop/marginBottom,
+ * 内层块只保留水平内边距,竖向间距全由这里出 —— 改 UI 的值即改渲染间距。
+ */
+function spacingStyle(b: CardBlock): Record<string, string> {
 	const s: Record<string, string> = {};
-	if (b.marginTop !== undefined) s.marginTop = `${b.marginTop}px`;
-	if (b.marginBottom !== undefined) s.marginBottom = `${b.marginBottom}px`;
+	if (b.marginTop !== undefined) s.paddingTop = `${b.marginTop}px`;
+	if (b.marginBottom !== undefined) s.paddingBottom = `${b.marginBottom}px`;
 	return s;
 }
 
@@ -43,7 +48,7 @@ export function renderBlocks(
 			lastWasDivider = false;
 		}
 		out.push(
-			<div data-block={b.type} class={wrapperClass} style={marginStyle(b)}>
+			<div data-block={b.type} class={wrapperClass} style={spacingStyle(b)}>
 				{inner}
 			</div>,
 		);

@@ -34,7 +34,7 @@ export function DynamicCard(p: DynamicCardProps) {
 			<div style="height: 1px; background: rgba(0,0,0,0.06); margin: 0 16px;" />
 		),
 		header: () => (
-			<div class="flex items-center gap-[12px] px-[16px] pt-[14px] pb-[12px]">
+			<div class="flex items-center gap-[12px] px-[16px]">
 				<img
 					class="w-[52px] h-[52px] shrink-0 rounded-full object-cover"
 					src={p.avatarUrl}
@@ -57,7 +57,7 @@ export function DynamicCard(p: DynamicCardProps) {
 		topic: () =>
 			p.topic ? (
 				<div
-					class="flex items-center gap-[5px] px-[16px] pt-[12px] text-[13px] font-bold"
+					class="flex items-center gap-[5px] px-[16px] text-[13px] font-bold"
 					style="color: #00AEEC;"
 				>
 					{SVG_TOPIC}
@@ -65,10 +65,10 @@ export function DynamicCard(p: DynamicCardProps) {
 				</div>
 			) : null,
 
-		content: () => <div class="px-[16px] py-[12px]">{p.mainContent}</div>,
+		content: () => <div class="px-[16px]">{p.mainContent}</div>,
 
 		stats: () => (
-			<div class="flex justify-around px-[16px] py-[12px]" style="color: #999;">
+			<div class="flex justify-around px-[16px]" style="color: #999;">
 				<div class="flex items-center gap-[6px] text-[13px]">
 					{SVG_FORWARD}
 					<span>{p.forwardCount}</span>
