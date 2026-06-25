@@ -224,8 +224,8 @@ describe("resolve()", () => {
 				cardLayout: {
 					...DEFAULT_CARD_LAYOUT,
 					live: [
-						{ id: "title", visible: true },
-						{ id: "cover", visible: false },
+						{ id: "title", type: "title", visible: true },
+						{ id: "cover", type: "cover", visible: false },
 					],
 				},
 			},

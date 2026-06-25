@@ -1,25 +1,43 @@
 import { z } from "zod";
 
 /**
- * 卡片版式描述符的 schema 版本。结构演进(新增 / 重命名块)时递增,配合
- * `normalizeCardLayout` 做向前兼容迁移。
+ * 卡片版式描述符的 schema 版本。v2:块从 `{id,visible}` 升级为带 `type` + 可选上下
+ * 边距,并支持可插入/删除的分割线块(type=divider)。结构演进时递增,配合
+ * `normalizeCardLayout` 做向前兼容迁移(按 type 对齐已知内容块)。
  */
-export const CARD_LAYOUT_VERSION = 1;
+export const CARD_LAYOUT_VERSION = 2;
+
+/** 分割线块的 type。可在版式里任意位置插入多条、可删除。 */
+export const DIVIDER_TYPE = "divider";
 
 /**
- * 单个卡片块。`id` 是预定义块标识(渲染器据此找对应片段),`visible` 控制显隐,
- * **顺序由数组位置决定**——拖拽排序即重排数组。用户拖不出我们没预埋的块。
+ * 单个卡片块。`type` 是语义(内容块为其语义名 / 分割线为 "divider"),渲染器据此
+ * 找片段;`id` 是实例唯一标识(内容块 id===type 各一份;分割线可多份,各有唯一 id)。
+ * `visible` 控显隐,顺序由数组位置决定。`marginTop/marginBottom` 为该块上下额外
+ * 边距(px,可选;缺省走模版内置间距)。
  */
-export const CardBlockSchema = z.object({
-	id: z.string(),
-	visible: z.boolean(),
-});
+export const CardBlockSchema = z.preprocess(
+	// v1→v2 迁移:老块 `{id,visible}` 缺 type,从 id 回填(v1 全是内容块、id===语义),
+	// 避免老 globals.json 在 v2 schema 下 parse 失败让独立端启动挂。
+	(b) => {
+		if (b && typeof b === "object" && !("type" in b) && "id" in b) {
+			return { ...(b as Record<string, unknown>), type: (b as { id: unknown }).id };
+		}
+		return b;
+	},
+	z.object({
+		id: z.string(),
+		type: z.string(),
+		visible: z.boolean(),
+		marginTop: z.number().int().optional(),
+		marginBottom: z.number().int().optional(),
+	}),
+);
 export type CardBlock = z.infer<typeof CardBlockSchema>;
 
 /**
- * 上舰卡受限 2D 版式:`badgeSide` 决定徽章(舰长大图 / 头像)整体靠左还是靠右,
- * `blocks`(姓名 / 文字)在另一侧上下排,顺序由数组位置决定。上舰卡是唯一不走
- * 纯垂直栈的卡,故单列一套结构。
+ * 上舰卡受限 2D 版式:`badgeSide` 决定徽章(舰长大图)整体靠左还是靠右,
+ * `blocks`(姓名 / 文字 / 可插分割线)在另一侧上下排,顺序由数组位置决定。
  */
 export const GuardLayoutSchema = z.object({
 	badgeSide: z.enum(["left", "right"]),
@@ -40,23 +58,54 @@ export const CardLayoutSchema = z.object({
 });
 export type CardLayout = z.infer<typeof CardLayoutSchema>;
 
-const allVisible = (...ids: string[]): CardBlock[] => ids.map((id) => ({ id, visible: true }));
+/** 内容块:id===type,默认显示。 */
+const c = (type: string): CardBlock => ({ id: type, type, visible: true });
+/** 分割线实例:唯一 id,默认显示。 */
+const div = (n: number): CardBlock => ({ id: `divider-${n}`, type: DIVIDER_TYPE, visible: true });
 
 /**
- * 把一份(可能陈旧的)块数组对齐到当前已知块集:保留已知块的顺序与显隐,丢弃未知
- * 块,缺失的已知块按 `defaults` 的顺序追加到末尾(沿用其默认显隐)。
+ * 默认版式,**1:1 复刻当前各卡的块顺序与分割线、全部可见**(guard 除外,按受限 2D
+ * 重画)。分割线以独立块显式列出(原本烘焙在内容块里的 hairline 迁出来,现可增删)。
+ */
+export const DEFAULT_CARD_LAYOUT: CardLayout = {
+	version: CARD_LAYOUT_VERSION,
+	live: [c("cover"), c("header"), c("title"), div(1), c("stats"), c("follower"), c("desc")],
+	dynamic: [c("header"), div(1), c("topic"), c("content"), div(2), c("stats")],
+	sc: [c("amount"), div(1), c("sender"), c("message")],
+	guard: {
+		badgeSide: "right",
+		blocks: [c("name"), c("text")],
+	},
+};
+
+/**
+ * 把一份(可能陈旧的)块数组对齐到当前已知内容块集(按 `type`):保留已知内容块与
+ * **全部分割线**的顺序、显隐、边距;丢弃未知内容块与重复内容块;缺失的已知内容块
+ * 按 `defaults` 顺序追加到末尾。分割线由用户自由增删,不参与「补齐」。
  */
 function reconcileBlocks(stored: CardBlock[], defaults: CardBlock[]): CardBlock[] {
-	const knownIds = new Set(defaults.map((b) => b.id));
-	const kept = stored.filter((b) => knownIds.has(b.id));
-	const keptIds = new Set(kept.map((b) => b.id));
-	const appended = defaults.filter((b) => !keptIds.has(b.id));
+	const knownContentTypes = new Set(
+		defaults.filter((b) => b.type !== DIVIDER_TYPE).map((b) => b.type),
+	);
+	const seen = new Set<string>();
+	const kept: CardBlock[] = [];
+	for (const b of stored) {
+		if (b.type === DIVIDER_TYPE) {
+			kept.push(b);
+			continue;
+		}
+		if (!knownContentTypes.has(b.type) || seen.has(b.type)) continue;
+		seen.add(b.type);
+		kept.push(b);
+	}
+	const appended = defaults.filter((b) => b.type !== DIVIDER_TYPE && !seen.has(b.type));
 	return [...kept, ...appended];
 }
 
 /**
- * 向前兼容迁移:把持久化的版式描述符对齐到当前内置块集。未知块丢弃、新块追加
- * (默认显示)、已知块保留用户的顺序与显隐。version 归一到 `CARD_LAYOUT_VERSION`。
+ * 向前兼容迁移:把持久化的版式描述符对齐到当前内置块集。未知内容块丢弃、缺失的
+ * 内置内容块追加(默认显示)、已知内容块与分割线保留用户的顺序 / 显隐 / 边距。
+ * version 归一到 `CARD_LAYOUT_VERSION`。
  */
 export function normalizeCardLayout(stored: CardLayout, defaults: CardLayout): CardLayout {
 	return {
@@ -70,18 +119,3 @@ export function normalizeCardLayout(stored: CardLayout, defaults: CardLayout): C
 		},
 	};
 }
-
-/**
- * 默认版式,**1:1 复刻当前各卡的块顺序、全部可见**——老用户升级后卡片观感不变
- * (guard 除外,它按受限 2D 重画,见设计稿)。
- */
-export const DEFAULT_CARD_LAYOUT: CardLayout = {
-	version: CARD_LAYOUT_VERSION,
-	live: allVisible("cover", "header", "title", "stats", "follower", "desc"),
-	dynamic: allVisible("header", "topic", "content", "stats"),
-	sc: allVisible("amount", "divider", "sender", "message"),
-	guard: {
-		badgeSide: "right",
-		blocks: allVisible("name", "text"),
-	},
-};
