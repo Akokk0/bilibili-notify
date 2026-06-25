@@ -43,8 +43,8 @@ describe("GuardCard layout", () => {
 		const layout: GuardLayout = {
 			badgeSide: "right",
 			blocks: [
-				{ id: "text", visible: true },
-				{ id: "name", visible: true },
+				{ id: "text", type: "text", visible: true },
+				{ id: "name", type: "name", visible: true },
 			],
 		};
 		const order = blockOrder(await renderGuard({ layout }));
@@ -55,7 +55,7 @@ describe("GuardCard layout", () => {
 		const layout: GuardLayout = {
 			badgeSide: "right",
 			blocks: DEFAULT_CARD_LAYOUT.guard.blocks.map((b) =>
-				b.id === "name" ? { ...b, visible: false } : b,
+				b.type === "name" ? { ...b, visible: false } : b,
 			),
 		};
 		expect(blockOrder(await renderGuard({ layout }))).not.toContain("name");

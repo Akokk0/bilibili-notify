@@ -1,8 +1,9 @@
 /** @jsxImportSource vue */
 
-import { type CardBlock, DEFAULT_CARD_LAYOUT } from "@bilibili-notify/internal";
+import { type CardBlock, DEFAULT_CARD_LAYOUT, DIVIDER_TYPE } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
 import { htmlToPlain } from "../html-to-plain";
+import { renderBlocks } from "./block-layout";
 
 export type LiveCardProps = {
 	hideDesc: boolean;
@@ -24,9 +25,8 @@ export type LiveCardProps = {
 	fansNum: string;
 	fansChanged: string;
 	/**
-	 * live 版式描述符(块的顺序 + 显隐)。缺省 = `DEFAULT_CARD_LAYOUT.live`,复刻现状。
-	 * 块按数组顺序渲染、`visible=false` 的跳过;某态无数据的块(如下播无人气)由块
-	 * 构建器返回 null 自动收起。
+	 * live 版式描述符(块的顺序 + 显隐 + 边距 + 分割线)。缺省 = `DEFAULT_CARD_LAYOUT.live`,
+	 * 复刻现状。块按 type 渲染、`visible=false` 跳过;某态无数据的块自动收起。
 	 */
 	layout?: CardBlock[];
 };
@@ -53,15 +53,17 @@ export function LiveCard(p: LiveCardProps) {
 	const status = statusLabel();
 	const follower = p.hideFollower ? "" : followerText();
 	// B 站 `room_info.description` 是富文本(可能含 <p>/<br> 等标签,或 entity-encoded
-	// 形式如 `&lt;p&gt;...`);直接交给 JSX 文本插值会被 escape 成字面字符串。
-	// 简介区域只展示纯文本,这里统一剥成 plain text。
+	// 形式);简介区域只展示纯文本,这里统一剥成 plain text。
 	const description = htmlToPlain(p.data.description);
 
-	// 各块构建器:返回带 `data-block` 标记的 VNode(供版式契约测试与渲染器识别),
-	// 无数据时返回 null 自动收起。块只负责自身内容,容器外壳由下方统一包裹。
-	const blocks: Record<string, () => VNode | null> = {
+	// 各块构建器(按 type):返回内层 VNode(无 data-block —— 由 renderBlocks 的 wrapper
+	// 统一加),无数据时返回 null 自动收起。divider 是可重复的分割线块。
+	const builders: Record<string, () => VNode | null> = {
+		[DIVIDER_TYPE]: () => (
+			<div style="height: 1px; background: rgba(0,0,0,0.06); margin: 0 16px;" />
+		),
 		cover: () => (
-			<div data-block="cover" class="px-4 pt-3.5">
+			<div class="px-4 pt-3.5">
 				<div class="relative w-full">
 					<img
 						class="block w-full rounded-lg"
@@ -85,7 +87,7 @@ export function LiveCard(p: LiveCardProps) {
 		),
 
 		header: () => (
-			<div data-block="header" class="flex items-center gap-2.5 px-4 pt-3.5 pb-2.5">
+			<div class="flex items-center gap-2.5 px-4 pt-3.5 pb-2.5">
 				<img class="w-11 h-11 rounded-full object-cover shrink-0" src={p.userface} alt="主播头像" />
 				<div class="flex flex-col gap-0.5 min-w-0">
 					<span class="text-[16px] font-bold leading-none" style="color: #18191C;">
@@ -99,46 +101,32 @@ export function LiveCard(p: LiveCardProps) {
 		),
 
 		title: () => (
-			<div
-				data-block="title"
-				class="px-4 pb-2.5 text-[17px] font-bold leading-snug"
-				style="color: #18191C;"
-			>
+			<div class="px-4 pb-2.5 text-[17px] font-bold leading-snug" style="color: #18191C;">
 				{p.data.title}
 			</div>
 		),
 
 		stats: () => (
-			<div data-block="stats">
-				{/* 分隔线 */}
-				<div style="height: 1px; background: rgba(0,0,0,0.06); margin: 0 16px;" />
-				<div class="px-4 pt-2.5 flex justify-between text-[13px]" style="color: #666;">
-					<span>{statsLeft()}</span>
-					<span>分区：{p.data.area_name}</span>
-				</div>
+			<div class="px-4 pt-2.5 flex justify-between text-[13px]" style="color: #666;">
+				<span>{statsLeft()}</span>
+				<span>分区：{p.data.area_name}</span>
 			</div>
 		),
 
 		follower: () =>
 			follower ? (
-				<div data-block="follower" class="px-4 pt-1.5 pb-2.5 text-[13px]" style="color: #666;">
+				<div class="px-4 pt-1.5 pb-2.5 text-[13px]" style="color: #666;">
 					{follower}
 				</div>
 			) : null,
 
 		desc: () =>
 			p.hideDesc ? null : (
-				<div
-					data-block="desc"
-					class="px-4 pt-1.5 pb-2.5 text-[13px] leading-normal"
-					style="color: #999;"
-				>
+				<div class="px-4 pt-1.5 pb-2.5 text-[13px] leading-normal" style="color: #999;">
 					{description || "这个主播很懒，什么简介都没写"}
 				</div>
 			),
 	};
-
-	const order = (p.layout ?? DEFAULT_CARD_LAYOUT.live).filter((b) => b.visible).map((b) => b.id);
 
 	return (
 		<div
@@ -151,7 +139,7 @@ export function LiveCard(p: LiveCardProps) {
 				class="overflow-hidden rounded-xl"
 				style="background: rgba(255,255,255,0.82); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 360px;"
 			>
-				{order.map((id) => blocks[id]?.())}
+				{renderBlocks(p.layout ?? DEFAULT_CARD_LAYOUT.live, builders)}
 			</div>
 		</div>
 	);

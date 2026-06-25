@@ -47,9 +47,17 @@ function blockOrder(html: string): string[] {
 }
 
 describe("LiveCard layout", () => {
-	it("renders all blocks in the default order", async () => {
+	it("renders all blocks in the default order, including the divider", async () => {
 		const html = await renderLive();
-		expect(blockOrder(html)).toEqual(["cover", "header", "title", "stats", "follower", "desc"]);
+		expect(blockOrder(html)).toEqual([
+			"cover",
+			"header",
+			"title",
+			"divider",
+			"stats",
+			"follower",
+			"desc",
+		]);
 	});
 
 	it("omits a block the layout marks invisible", async () => {
@@ -60,11 +68,20 @@ describe("LiveCard layout", () => {
 		expect(blockOrder(html)).not.toContain("desc");
 	});
 
+	it("applies per-block top/bottom margins to the block wrapper", async () => {
+		const layout: CardBlock[] = DEFAULT_CARD_LAYOUT.live.map((b) =>
+			b.type === "title" ? { ...b, marginTop: 24, marginBottom: 8 } : b,
+		);
+		const html = await renderLive({ layout });
+		expect(html).toContain("margin-top:24px");
+		expect(html).toContain("margin-bottom:8px");
+	});
+
 	it("renders blocks in the layout's order", async () => {
 		const layout: CardBlock[] = [
-			{ id: "title", visible: true },
-			{ id: "cover", visible: true },
-			...DEFAULT_CARD_LAYOUT.live.filter((b) => b.id !== "title" && b.id !== "cover"),
+			{ id: "title", type: "title", visible: true },
+			{ id: "cover", type: "cover", visible: true },
+			...DEFAULT_CARD_LAYOUT.live.filter((b) => b.type !== "title" && b.type !== "cover"),
 		];
 		const order = blockOrder(await renderLive({ layout }));
 		expect(order.indexOf("title")).toBeLessThan(order.indexOf("cover"));

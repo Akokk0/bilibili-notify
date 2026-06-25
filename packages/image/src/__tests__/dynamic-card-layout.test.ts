@@ -33,8 +33,15 @@ function blockOrder(html: string): string[] {
 }
 
 describe("DynamicCard layout", () => {
-	it("renders all blocks in the default order", async () => {
-		expect(blockOrder(await renderDyn())).toEqual(["header", "topic", "content", "stats"]);
+	it("renders all blocks in the default order, including dividers", async () => {
+		expect(blockOrder(await renderDyn())).toEqual([
+			"header",
+			"divider",
+			"topic",
+			"content",
+			"divider",
+			"stats",
+		]);
 	});
 
 	it("omits the topic block when there is no topic data", async () => {
@@ -43,15 +50,15 @@ describe("DynamicCard layout", () => {
 
 	it("omits a block the layout marks invisible", async () => {
 		const layout: CardBlock[] = DEFAULT_CARD_LAYOUT.dynamic.map((b) =>
-			b.id === "stats" ? { ...b, visible: false } : b,
+			b.type === "stats" ? { ...b, visible: false } : b,
 		);
 		expect(blockOrder(await renderDyn({ layout }))).not.toContain("stats");
 	});
 
 	it("renders blocks in the layout's order", async () => {
 		const layout: CardBlock[] = [
-			{ id: "stats", visible: true },
-			...DEFAULT_CARD_LAYOUT.dynamic.filter((b) => b.id !== "stats"),
+			{ id: "stats", type: "stats", visible: true },
+			...DEFAULT_CARD_LAYOUT.dynamic.filter((b) => b.type !== "stats"),
 		];
 		const order = blockOrder(await renderDyn({ layout }));
 		expect(order.indexOf("stats")).toBeLessThan(order.indexOf("header"));

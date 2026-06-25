@@ -1,7 +1,8 @@
 /** @jsxImportSource vue */
-import { type CardBlock, DEFAULT_CARD_LAYOUT } from "@bilibili-notify/internal";
+import { type CardBlock, DEFAULT_CARD_LAYOUT, DIVIDER_TYPE } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
 import { SVG_DURATION } from "../icons";
+import { renderBlocks } from "./block-layout";
 
 export type SCCardProps = {
 	senderFace: string;
@@ -13,8 +14,8 @@ export type SCCardProps = {
 	duration: string;
 	bgColor: readonly [string, string];
 	/**
-	 * sc 版式描述符(块的顺序 + 显隐)。缺省 = `DEFAULT_CARD_LAYOUT.sc`,复刻现状。
-	 * 块按数组顺序渲染、`visible=false` 的跳过;无留言文本时 message 块自动收起。
+	 * sc 版式描述符(块的顺序 + 显隐 + 边距 + 分割线)。缺省 = `DEFAULT_CARD_LAYOUT.sc`,
+	 * 复刻现状。块按 type 渲染;无留言文本时 message 块自动收起。
 	 */
 	layout?: CardBlock[];
 };
@@ -27,10 +28,19 @@ export function SCCard(p: SCCardProps) {
 		.replace(/>/g, "&gt;")
 		.replace(/\n/g, "<br>");
 
-	// 各块构建器:返回带 `data-block` 标记的 VNode,无数据时返回 null 自动收起。
-	const blocks: Record<string, () => VNode | null> = {
+	// 各块构建器(按 type):返回内层 VNode(无 data-block),无数据时返回 null。
+	// divider 是 sc 专属的渐变分割线(可重复)。
+	const builders: Record<string, () => VNode | null> = {
+		[DIVIDER_TYPE]: () => (
+			<div
+				class="w-full h-px my-3"
+				style={{
+					background: `linear-gradient(to right, transparent, ${p.bgColor[0]}, transparent)`,
+				}}
+			/>
+		),
 		amount: () => (
-			<div data-block="amount" class="text-center mb-[15px]">
+			<div class="text-center mb-[15px]">
 				<div
 					class="text-[36px] font-bold bg-clip-text text-transparent"
 					style={{ backgroundImage: `linear-gradient(135deg, ${p.bgColor[0]}, ${p.bgColor[1]})` }}
@@ -47,18 +57,8 @@ export function SCCard(p: SCCardProps) {
 			</div>
 		),
 
-		divider: () => (
-			<div
-				data-block="divider"
-				class="w-full h-px my-3"
-				style={{
-					background: `linear-gradient(to right, transparent, ${p.bgColor[0]}, transparent)`,
-				}}
-			/>
-		),
-
 		sender: () => (
-			<div data-block="sender" class="flex flex-col items-center gap-2 mb-3">
+			<div class="flex flex-col items-center gap-2 mb-3">
 				<div class="w-[70px] h-[70px] overflow-hidden rounded-full">
 					<img
 						class="w-full h-full rounded-full object-cover"
@@ -89,7 +89,7 @@ export function SCCard(p: SCCardProps) {
 
 		message: () =>
 			escapedText ? (
-				<div data-block="message" class="w-full text-center">
+				<div class="w-full text-center">
 					<div class="px-3 py-[10px] bg-white/50 rounded-lg">
 						<div
 							class="text-[13px] text-[#333] leading-[1.6] break-words whitespace-pre-wrap"
@@ -100,15 +100,13 @@ export function SCCard(p: SCCardProps) {
 			) : null,
 	};
 
-	const order = (p.layout ?? DEFAULT_CARD_LAYOUT.sc).filter((b) => b.visible).map((b) => b.id);
-
 	return (
 		<div
 			class="flex justify-center items-center w-[290px] p-[15px]"
 			style={{ background: `linear-gradient(to right bottom, ${p.bgColor[0]}, ${p.bgColor[1]})` }}
 		>
 			<div class="flex flex-col items-center w-[260px] px-[16px] py-5 rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)] bg-white/75 backdrop-blur-[10px]">
-				{order.map((id) => blocks[id]?.())}
+				{renderBlocks(p.layout ?? DEFAULT_CARD_LAYOUT.sc, builders, "w-full")}
 			</div>
 		</div>
 	);

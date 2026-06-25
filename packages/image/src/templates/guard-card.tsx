@@ -1,7 +1,8 @@
 /** @jsxImportSource vue */
-import { DEFAULT_CARD_LAYOUT, type GuardLayout } from "@bilibili-notify/internal";
+import { DEFAULT_CARD_LAYOUT, DIVIDER_TYPE, type GuardLayout } from "@bilibili-notify/internal";
 import type { GuardLevel } from "blive-message-listener";
 import type { VNode } from "vue";
+import { renderBlocks } from "./block-layout";
 
 export type GuardCardProps = {
 	captainImgUrl: string;
@@ -13,9 +14,8 @@ export type GuardCardProps = {
 	masterName: string;
 	bgColor: [string, string];
 	/**
-	 * guard 受限 2D 版式。`badgeSide` 决定徽章块(舰长大图)整体靠左/靠右,`blocks`
-	 * (name/text)在另一侧上下排、顺序+显隐由数组决定。缺省 = `DEFAULT_CARD_LAYOUT.guard`,
-	 * 默认徽章靠右、姓名在上文字在下,约等于复刻原版布局。
+	 * guard 受限 2D 版式。`badgeSide` 决定徽章块靠左/靠右,`blocks`(name/text/可插分割线)
+	 * 在另一侧上下排、顺序+显隐+边距由数组决定。缺省 = `DEFAULT_CARD_LAYOUT.guard`。
 	 */
 	layout?: GuardLayout;
 };
@@ -31,15 +31,16 @@ export function GuardCard(p: GuardCardProps) {
 	const desc = GUARD_DESC[p.guardLevel]?.(p.uname, p.masterName) ?? "";
 	const layout = p.layout ?? DEFAULT_CARD_LAYOUT.guard;
 
-	// 内容列的块(name/text):返回带 `data-block` 标记的 VNode,无数据时返回 null。
-	const contentBlocks: Record<string, () => VNode | null> = {
+	// 内容列块构建器(按 type):返回内层 VNode(无 data-block),无数据时返回 null。
+	const builders: Record<string, () => VNode | null> = {
+		[DIVIDER_TYPE]: () => (
+			<div class="my-[6px]" style={{ height: "1px", background: `${p.bgColor[0]}33` }} />
+		),
 		name: () => (
-			<div data-block="name" class="flex gap-[10px]">
-				{/* 头像 */}
+			<div class="flex gap-[10px]">
 				<div class="w-[90px] h-[90px] overflow-hidden rounded-full shrink-0">
 					<img class="w-full h-full rounded-full object-cover" src={p.face} alt="用户头像" />
 				</div>
-				{/* 名称徽章 */}
 				<div class="flex flex-col items-start gap-[7px] mt-[10px]">
 					<div
 						class="flex items-center h-[30px] rounded-[25px] px-[10px] overflow-hidden"
@@ -66,7 +67,6 @@ export function GuardCard(p: GuardCardProps) {
 		text: () =>
 			desc ? (
 				<div
-					data-block="text"
 					class="text-[16px] font-bold italic whitespace-pre-line"
 					style={{ color: p.bgColor[0] }}
 				>
@@ -75,10 +75,10 @@ export function GuardCard(p: GuardCardProps) {
 			) : null,
 	};
 
-	// 内容列:name/text 按 layout 顺序上下排。
+	// 内容列:name/text(可插分割线)按 layout.blocks 上下排。
 	const content = (
 		<div class="flex-1 min-w-0 h-full flex flex-col justify-between px-[16px] py-[12px]">
-			{layout.blocks.filter((b) => b.visible).map((b) => contentBlocks[b.id]?.())}
+			{renderBlocks(layout.blocks, builders)}
 		</div>
 	);
 

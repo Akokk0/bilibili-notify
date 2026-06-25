@@ -1,7 +1,8 @@
 /** @jsxImportSource vue */
-import { type CardBlock, DEFAULT_CARD_LAYOUT } from "@bilibili-notify/internal";
+import { type CardBlock, DEFAULT_CARD_LAYOUT, DIVIDER_TYPE } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
 import { SVG_COMMENT, SVG_FORWARD, SVG_LIKE, SVG_TOPIC } from "../icons";
+import { renderBlocks } from "./block-layout";
 
 export type DynamicCardProps = {
 	cardColorStart: string;
@@ -19,48 +20,43 @@ export type DynamicCardProps = {
 	commentCount: string;
 	likeCount: string;
 	/**
-	 * dynamic 版式描述符(块的顺序 + 显隐)。缺省 = `DEFAULT_CARD_LAYOUT.dynamic`,复刻现状。
-	 * 块按数组顺序渲染、`visible=false` 的跳过;无话题数据时 topic 块自动收起。
+	 * dynamic 版式描述符(块的顺序 + 显隐 + 边距 + 分割线)。缺省 = `DEFAULT_CARD_LAYOUT.dynamic`,
+	 * 复刻现状。块按 type 渲染、`visible=false` 跳过;无话题数据时 topic 块自动收起。
 	 */
 	layout?: CardBlock[];
 };
 
-const HAIRLINE = "height: 1px; background: rgba(0,0,0,0.06); margin: 0 16px;";
-
-// ── 组件 ──────────────────────────────────────────────────────────────────────
-
 export function DynamicCard(p: DynamicCardProps) {
-	// 各块构建器:返回带 `data-block` 标记的 VNode,无数据时返回 null 自动收起。
-	// header 自带下分隔线、stats 自带上分隔线 —— 默认顺序下视觉与原版一致。
-	const blocks: Record<string, () => VNode | null> = {
+	// 各块构建器(按 type):返回内层 VNode(无 data-block —— renderBlocks wrapper 统一加),
+	// 无数据时返回 null。divider 是可重复分割线块(原 header 下 / stats 上的 hairline 迁出来)。
+	const builders: Record<string, () => VNode | null> = {
+		[DIVIDER_TYPE]: () => (
+			<div style="height: 1px; background: rgba(0,0,0,0.06); margin: 0 16px;" />
+		),
 		header: () => (
-			<div data-block="header">
-				<div class="flex items-center gap-[12px] px-[16px] pt-[14px] pb-[12px]">
-					<img
-						class="w-[52px] h-[52px] shrink-0 rounded-full object-cover"
-						src={p.avatarUrl}
-						alt="头像"
-					/>
-					<div class="flex flex-col gap-[3px]">
-						<span
-							class="text-[17px] font-bold leading-none"
-							style={{ color: p.upIsVip ? "#FB7299" : "#18191C" }}
-						>
-							{p.upName}
-						</span>
-						<span class="text-[12px]" style="color: #999;">
-							{p.pubTime}
-						</span>
-					</div>
+			<div class="flex items-center gap-[12px] px-[16px] pt-[14px] pb-[12px]">
+				<img
+					class="w-[52px] h-[52px] shrink-0 rounded-full object-cover"
+					src={p.avatarUrl}
+					alt="头像"
+				/>
+				<div class="flex flex-col gap-[3px]">
+					<span
+						class="text-[17px] font-bold leading-none"
+						style={{ color: p.upIsVip ? "#FB7299" : "#18191C" }}
+					>
+						{p.upName}
+					</span>
+					<span class="text-[12px]" style="color: #999;">
+						{p.pubTime}
+					</span>
 				</div>
-				<div style={HAIRLINE} />
 			</div>
 		),
 
 		topic: () =>
 			p.topic ? (
 				<div
-					data-block="topic"
 					class="flex items-center gap-[5px] px-[16px] pt-[12px] text-[13px] font-bold"
 					style="color: #00AEEC;"
 				>
@@ -69,34 +65,25 @@ export function DynamicCard(p: DynamicCardProps) {
 				</div>
 			) : null,
 
-		content: () => (
-			<div data-block="content" class="px-[16px] py-[12px]">
-				{p.mainContent}
-			</div>
-		),
+		content: () => <div class="px-[16px] py-[12px]">{p.mainContent}</div>,
 
 		stats: () => (
-			<div data-block="stats">
-				<div style={HAIRLINE} />
-				<div class="flex justify-around px-[16px] py-[12px]" style="color: #999;">
-					<div class="flex items-center gap-[6px] text-[13px]">
-						{SVG_FORWARD}
-						<span>{p.forwardCount}</span>
-					</div>
-					<div class="flex items-center gap-[6px] text-[13px]">
-						{SVG_COMMENT}
-						<span>{p.commentCount}</span>
-					</div>
-					<div class="flex items-center gap-[6px] text-[13px]">
-						{SVG_LIKE}
-						<span>{p.likeCount}</span>
-					</div>
+			<div class="flex justify-around px-[16px] py-[12px]" style="color: #999;">
+				<div class="flex items-center gap-[6px] text-[13px]">
+					{SVG_FORWARD}
+					<span>{p.forwardCount}</span>
+				</div>
+				<div class="flex items-center gap-[6px] text-[13px]">
+					{SVG_COMMENT}
+					<span>{p.commentCount}</span>
+				</div>
+				<div class="flex items-center gap-[6px] text-[13px]">
+					{SVG_LIKE}
+					<span>{p.likeCount}</span>
 				</div>
 			</div>
 		),
 	};
-
-	const order = (p.layout ?? DEFAULT_CARD_LAYOUT.dynamic).filter((b) => b.visible).map((b) => b.id);
 
 	return (
 		<div
@@ -110,7 +97,7 @@ export function DynamicCard(p: DynamicCardProps) {
 				class="w-full overflow-hidden rounded-[12px]"
 				style="background: rgba(255,255,255,0.82); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12);"
 			>
-				{order.map((id) => blocks[id]?.())}
+				{renderBlocks(p.layout ?? DEFAULT_CARD_LAYOUT.dynamic, builders)}
 			</div>
 		</div>
 	);

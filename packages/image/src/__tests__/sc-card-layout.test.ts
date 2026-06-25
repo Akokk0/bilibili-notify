@@ -39,15 +39,15 @@ describe("SCCard layout", () => {
 
 	it("omits a block the layout marks invisible", async () => {
 		const layout: CardBlock[] = DEFAULT_CARD_LAYOUT.sc.map((b) =>
-			b.id === "divider" ? { ...b, visible: false } : b,
+			b.type === "divider" ? { ...b, visible: false } : b,
 		);
 		expect(blockOrder(await renderSc({ layout }))).not.toContain("divider");
 	});
 
 	it("renders blocks in the layout's order", async () => {
 		const layout: CardBlock[] = [
-			{ id: "sender", visible: true },
-			...DEFAULT_CARD_LAYOUT.sc.filter((b) => b.id !== "sender"),
+			{ id: "sender", type: "sender", visible: true },
+			...DEFAULT_CARD_LAYOUT.sc.filter((b) => b.type !== "sender"),
 		];
 		const order = blockOrder(await renderSc({ layout }));
 		expect(order.indexOf("sender")).toBeLessThan(order.indexOf("amount"));
