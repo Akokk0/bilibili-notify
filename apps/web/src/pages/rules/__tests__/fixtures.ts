@@ -69,5 +69,18 @@ export function makeDefaults(): GlobalDefaults {
 			backgroundImage: "",
 		},
 		imageGroup: { enable: true, forward: false },
+		cardLayout: {
+			version: 1,
+			live: ["cover", "header", "title", "stats", "follower", "desc"].map((id) => ({
+				id,
+				visible: true,
+			})),
+			dynamic: ["header", "topic", "content", "stats"].map((id) => ({ id, visible: true })),
+			sc: ["amount", "divider", "sender", "message"].map((id) => ({ id, visible: true })),
+			guard: {
+				badgeSide: "right",
+				blocks: ["name", "text"].map((id) => ({ id, visible: true })),
+			},
+		},
 	};
 }

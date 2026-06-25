@@ -3,7 +3,7 @@
  * web/ is JSON-only against the business core — this file kept in sync by hand.
  */
 
-import type { FeatureKey } from "./domain";
+import type { CardLayoutFull, FeatureKey } from "./domain";
 
 export type LogLevel = "error" | "warn" | "info" | "debug";
 
@@ -154,6 +154,7 @@ export interface GlobalDefaults {
 	templates: TemplateBundle;
 	ai: AISettings;
 	cardStyle: CardStyle;
+	cardLayout: CardLayoutFull;
 	imageGroup: ImageGroupSettings;
 }
 

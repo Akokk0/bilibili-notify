@@ -17,6 +17,7 @@
 import type {
 	AIOverride as CanonAIOverride,
 	AISettings as CanonAISettings,
+	CardLayout as CanonCardLayout,
 	CardStyle as CanonCardStyle,
 	ContentFilters as CanonContentFilters,
 	FeatureKey as CanonFeatureKey,
@@ -30,6 +31,7 @@ import type {
 import { describe, it } from "vite-plus/test";
 import type {
 	AIOverride as MirrorAIOverride,
+	CardLayoutFull as MirrorCardLayout,
 	CardStyleFull as MirrorCardStyle,
 	ContentFiltersFull as MirrorContentFilters,
 	FeatureKey as MirrorFeatureKey,
@@ -60,6 +62,7 @@ type _FeatureKeyExact = Expect<Equal<CanonFeatureKey, MirrorFeatureKey>>;
 type _Filters = Expect<CanonKeysCovered<CanonContentFilters, MirrorContentFilters>>;
 type _Schedule = Expect<CanonKeysCovered<CanonScheduleConfig, MirrorSchedule>>;
 type _CardStyle = Expect<CanonKeysCovered<CanonCardStyle, MirrorCardStyle>>;
+type _CardLayout = Expect<CanonKeysCovered<CanonCardLayout, MirrorCardLayout>>;
 type _Template = Expect<CanonKeysCovered<CanonTemplateBundle, MirrorTemplate>>;
 type _AIOverride = Expect<CanonKeysCovered<CanonAIOverride, MirrorAIOverride>>;
 type _AISettings = Expect<CanonKeysCovered<CanonAISettings, MirrorAISettings>>;
@@ -82,6 +85,7 @@ export type _DomainConformance = [
 	_Filters,
 	_Schedule,
 	_CardStyle,
+	_CardLayout,
 	_Template,
 	_AIOverride,
 	_AISettings,

@@ -336,6 +336,30 @@ export interface CardStyleFull {
 }
 export type CardStyleOverride = Partial<CardStyleFull>;
 
+// ── 卡片版式描述符(镜像 packages/internal 的 CardLayout / CardBlock / GuardLayout)──
+// 块顺序 = 数组位置;visible 控制显隐。guard 受限 2D:badgeSide + name/text 块。
+
+export interface CardBlockFull {
+	id: string;
+	visible: boolean;
+}
+
+export interface GuardLayoutFull {
+	badgeSide: "left" | "right";
+	blocks: CardBlockFull[];
+}
+
+export interface CardLayoutFull {
+	version: number;
+	live: CardBlockFull[];
+	dynamic: CardBlockFull[];
+	sc: CardBlockFull[];
+	guard: GuardLayoutFull;
+}
+
+/** per-UP 卡片版式是「整份覆盖」(fork 全局后编辑),不是 Partial。 */
+export type CardLayoutOverride = CardLayoutFull;
+
 /**
  * Per-UP 图集推送行为覆盖。空 / undefined 字段继承全局 `GlobalDefaults.imageGroup.{enable,forward}`。
  * 镜像 `packages/internal` 的 `ImageGroupSettingsPartialSchema`。
@@ -352,6 +376,7 @@ export interface OverridesShape {
 	templates?: TemplateOverride;
 	ai?: AIOverride;
 	cardStyle?: CardStyleOverride;
+	cardLayout?: CardLayoutOverride;
 	imageGroup?: ImageGroupOverride;
 }
 export type SubscriptionOverrides = OverridesShape;
