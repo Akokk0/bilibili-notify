@@ -211,6 +211,12 @@ export const FIELD_LABELS = {
 	},
 	hideDesc: { label: "隐藏直播简介", section: "cardStyle" },
 	hideFollower: { label: "隐藏粉丝数据", section: "cardStyle" },
+	// 卡片版式(灵动岛 diff 码 —— walkTreeDiff 把每张卡的块数组当叶子整体比较)。
+	"cardLayout.live": { label: "直播卡版式", section: "cardStyle" },
+	"cardLayout.dynamic": { label: "动态卡版式", section: "cardStyle" },
+	"cardLayout.sc": { label: "SC 卡版式", section: "cardStyle" },
+	"cardLayout.guard.badgeSide": { label: "上舰卡徽章位置", section: "cardStyle" },
+	"cardLayout.guard.blocks": { label: "上舰卡版式", section: "cardStyle" },
 
 	// ── 卡片预览(Cards 页样本数据,不真正写回 globals) ───────────────────
 	roomId: {

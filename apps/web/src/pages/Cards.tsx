@@ -28,8 +28,9 @@ import { GlassBox } from "../components/glass-box";
 import { Icon, type IconName } from "../components/icons";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
-import type { PushTarget } from "../types/domain";
+import type { CardLayoutFull, PushTarget } from "../types/domain";
 import type { CardStyle, GlobalConfig, LogLevel } from "../types/globals";
+import { CardLayoutEditor } from "./cards/CardLayoutEditor";
 
 type CardKind = "live" | "dyn" | "sc" | "guard";
 
@@ -73,15 +74,19 @@ function PreviewImage({
 	kind,
 	style,
 	content,
+	layout,
 }: {
 	kind: CardKind;
 	style: CardStyle;
 	content: PreviewContent;
+	layout: CardLayoutFull | null;
 }) {
-	// debounce style + content edits — TColor pickers and TArea fire many onChange
-	// callbacks per second; we don't want every keystroke to spawn a puppeteer launch.
+	// debounce style + content + layout edits — TColor pickers, TArea and the
+	// drag/toggle layout editor fire many onChange callbacks; we don't want every
+	// one to spawn a puppeteer launch.
 	const [debouncedStyle, setDebouncedStyle] = useState(style);
 	const [debouncedContent, setDebouncedContent] = useState(content);
+	const [debouncedLayout, setDebouncedLayout] = useState(layout);
 	useEffect(() => {
 		const t = setTimeout(() => setDebouncedStyle(style), 500);
 		return () => clearTimeout(t);
@@ -90,14 +95,19 @@ function PreviewImage({
 		const t = setTimeout(() => setDebouncedContent(content), 500);
 		return () => clearTimeout(t);
 	}, [content]);
+	useEffect(() => {
+		const t = setTimeout(() => setDebouncedLayout(layout), 500);
+		return () => clearTimeout(t);
+	}, [layout]);
 
 	const query = useQuery({
-		queryKey: ["card-preview", kind, debouncedStyle, debouncedContent[kind]],
+		queryKey: ["card-preview", kind, debouncedStyle, debouncedContent[kind], debouncedLayout],
 		queryFn: async () => {
 			const res = await api.post<PreviewResponse>("/api/cards/preview", {
 				kind,
 				style: debouncedStyle,
 				content: debouncedContent[kind],
+				layout: debouncedLayout ?? undefined,
 			});
 			if (!res.ok || !res.dataUrl) {
 				throw new ApiError(500, res, res.err ?? "preview failed");
@@ -142,12 +152,14 @@ function CardPreview({
 	kind,
 	style,
 	content,
+	layout,
 }: {
 	kind: CardKind;
 	style: CardStyle;
 	content: PreviewContent;
+	layout: CardLayoutFull | null;
 }) {
-	return <PreviewImage kind={kind} style={style} content={content} />;
+	return <PreviewImage kind={kind} style={style} content={content} layout={layout} />;
 }
 
 interface TestPushResponse {
@@ -164,10 +176,12 @@ function TestPushCard({
 	kind,
 	style,
 	content,
+	layout,
 }: {
 	kind: CardKind;
 	style: CardStyle;
 	content: PreviewContent[CardKind];
+	layout: CardLayoutFull | null;
 }) {
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
@@ -191,6 +205,7 @@ function TestPushCard({
 				kind,
 				style,
 				content,
+				layout: layout ?? undefined,
 			});
 			if (!res.ok) throw new ApiError(500, res, res.err ?? "推送失败");
 			return res;
@@ -267,6 +282,7 @@ export default function Cards() {
 		queryFn: () => api.get<GlobalConfig>("/api/globals"),
 	});
 	const [draft, setDraft] = useState<CardStyle | null>(null);
+	const [layoutDraft, setLayoutDraft] = useState<CardLayoutFull | null>(null);
 	const [imageLogLevel, setImageLogLevel] = useState<ImageLogLevel>("");
 	const [kind, setKind] = useState<CardKind>("live");
 	const [content, setContent] = useState<PreviewContent>(DEFAULT_PREVIEW_CONTENT);
@@ -283,12 +299,17 @@ export default function Cards() {
 	useEffect(() => {
 		if (globalsQuery.data) {
 			setDraft(globalsQuery.data.defaults.cardStyle);
+			setLayoutDraft(globalsQuery.data.defaults.cardLayout);
 			setImageLogLevel(globalsQuery.data.app.logLevels?.image ?? "");
 		}
 	}, [globalsQuery.data]);
 
 	const save = useMutation({
-		mutationFn: async (payload: { cardStyle: CardStyle; imageLogLevel: ImageLogLevel }) => {
+		mutationFn: async (payload: {
+			cardStyle: CardStyle;
+			cardLayout: CardLayoutFull;
+			imageLogLevel: ImageLogLevel;
+		}) => {
 			const existing = globalsQuery.data?.app.logLevels ?? {};
 			// "" → drop the override (fall back to global). Setting to a level
 			// → patch only that key, so other module overrides stay untouched.
@@ -300,7 +321,7 @@ export default function Cards() {
 				app: {
 					logLevels: Object.keys(nextLogLevels).length === 0 ? undefined : nextLogLevels,
 				},
-				defaults: { cardStyle: payload.cardStyle },
+				defaults: { cardStyle: payload.cardStyle, cardLayout: payload.cardLayout },
 			});
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
@@ -313,13 +334,15 @@ export default function Cards() {
 		if (draft === null) return null;
 		return {
 			...draft,
+			cardLayout: layoutDraft,
 			app: { logLevels: { image: imageLogLevel === "" ? null : imageLogLevel } },
 		};
-	}, [draft, imageLogLevel]);
+	}, [draft, layoutDraft, imageLogLevel]);
 	const islandBaseline = useMemo(() => {
 		if (!globalsQuery.data) return null;
 		return {
 			...globalsQuery.data.defaults.cardStyle,
+			cardLayout: globalsQuery.data.defaults.cardLayout,
 			app: { logLevels: { image: globalsQuery.data.app.logLevels?.image ?? null } },
 		};
 	}, [globalsQuery.data]);
@@ -330,11 +353,13 @@ export default function Cards() {
 		draft: islandDraft,
 		baseline: islandBaseline,
 		onSave: async () => {
-			if (draft !== null) await save.mutateAsync({ cardStyle: draft, imageLogLevel });
+			if (draft !== null && layoutDraft !== null)
+				await save.mutateAsync({ cardStyle: draft, cardLayout: layoutDraft, imageLogLevel });
 		},
 		onDiscard: () => {
 			if (!globalsQuery.data) return;
 			setDraft(globalsQuery.data.defaults.cardStyle);
+			setLayoutDraft(globalsQuery.data.defaults.cardLayout);
 			setImageLogLevel(globalsQuery.data.app.logLevels?.image ?? "");
 		},
 	});
@@ -580,7 +605,19 @@ export default function Cards() {
 						)}
 					</GlassBox>
 
-					<TestPushCard kind={kind} style={draft} content={content[kind]} />
+					{layoutDraft && (
+						<GlassBox
+							title="卡片版式"
+							subtitle="拖拽排序 · 开关显隐 · 改动实时反映到右侧预览"
+							accent={KIND_LABELS[kind].tone}
+							icon={<KindIcon size={14} />}
+							badge="cardLayout"
+						>
+							<CardLayoutEditor kind={kind} layout={layoutDraft} onChange={setLayoutDraft} />
+						</GlassBox>
+					)}
+
+					<TestPushCard kind={kind} style={draft} content={content[kind]} layout={layoutDraft} />
 				</div>
 
 				{/* RIGHT: live preview */}
@@ -592,7 +629,7 @@ export default function Cards() {
 							{kind === "sc" ? " 280" : kind === "guard" ? " 430" : " 600"}px
 						</span>
 					</div>
-					<CardPreview kind={kind} style={draft} content={content} />
+					<CardPreview kind={kind} style={draft} content={content} layout={layoutDraft} />
 
 					{/* Effective style readout */}
 					<div className="flex flex-wrap gap-3.5 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 font-mono text-[10.5px] text-bn-text-tertiary">
