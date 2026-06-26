@@ -4,6 +4,7 @@
  * 改完回吐整份(配合 per-UP「整份覆盖」与全局保存)。
  */
 
+import { Picker } from "../../components/forms";
 import type { CardBlockFull, CardLayoutFull } from "../../types/domain";
 import { BlockListEditor } from "./BlockListEditor";
 import { BLOCK_LABELS, KIND_TO_LAYOUT_KEY, type LayoutKind } from "./block-labels";
@@ -23,25 +24,14 @@ export function CardLayoutEditor({ kind, layout, onChange }: CardLayoutEditorPro
 			<div className="flex flex-col gap-3">
 				<div className="flex items-center gap-2.5">
 					<span className="text-[12.5px] font-medium text-bn-text-secondary">徽章（舰长大图）</span>
-					<div className="flex gap-1">
-						{(["left", "right"] as const).map((side) => {
-							const active = guard.badgeSide === side;
-							return (
-								<button
-									key={side}
-									type="button"
-									onClick={() => onChange({ ...layout, guard: { ...guard, badgeSide: side } })}
-									className={`rounded-md px-3 py-1 text-[12px] font-bold transition ${
-										active
-											? "bg-bn-accent text-white"
-											: "bg-bn-surface/60 text-bn-text-tertiary hover:text-bn-text-primary"
-									}`}
-								>
-									{side === "left" ? "靠左" : "靠右"}
-								</button>
-							);
-						})}
-					</div>
+					<Picker
+						value={guard.badgeSide}
+						onChange={(badgeSide) => onChange({ ...layout, guard: { ...guard, badgeSide } })}
+						options={[
+							{ value: "left", label: "靠左" },
+							{ value: "right", label: "靠右" },
+						]}
+					/>
 				</div>
 				<BlockListEditor
 					blocks={guard.blocks}
