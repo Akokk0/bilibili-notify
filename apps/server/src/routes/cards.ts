@@ -43,6 +43,7 @@ import {
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
+import { readCardBg, saveCardBg } from "../runtime/card-assets.js";
 import {
 	createPuppeteerAdapter,
 	resolveChromePath,
@@ -187,6 +188,32 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			log.error(`[cards] enable-rendering failed: ${detail}`);
 			return c.json({ ok: false, err: detail }, 500);
 		}
+	});
+
+	// 背景图上传 → 落盘 `<dataDir>/assets/card-bg/<id>`,返回资产 id 写进 cardStyle.backgroundImage。
+	app.post("/asset", async (c) => {
+		const body = await c.req.parseBody().catch(() => null);
+		const file = body?.file;
+		if (!(file instanceof File)) return c.json({ ok: false, err: "缺少图片文件" }, 400);
+		try {
+			const bytes = new Uint8Array(await file.arrayBuffer());
+			const id = await saveCardBg(opts.deps.store.bootstrap.dataDir, bytes, file.type);
+			return c.json({ ok: true, id });
+		} catch (err) {
+			return c.json({ ok: false, err: String((err as Error)?.message ?? err) }, 400);
+		}
+	});
+
+	// 背景图服务 —— 经 id 正则校验的定向读取(绝不 serveStatic 整个 dataDir,内有 secrets)。
+	app.get("/asset/:id", async (c) => {
+		const res = await readCardBg(opts.deps.store.bootstrap.dataDir, c.req.param("id"));
+		if (!res) return c.json({ ok: false, err: "not found" }, 404);
+		return new Response(res.bytes, {
+			headers: {
+				"Content-Type": res.mime,
+				"Cache-Control": "private, max-age=31536000, immutable",
+			},
+		});
 	});
 
 	// One ImageRenderer reused across requests. Lazy — only constructed when
