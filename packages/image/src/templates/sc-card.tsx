@@ -18,6 +18,8 @@ export type SCCardProps = {
 	 * 复刻现状。块按 type 渲染;无留言文本时 message 块自动收起。
 	 */
 	layout?: CardBlock[];
+	/** 玻璃片(内容层)透明度 0..1;缺省走 sc 基线 0.75。 */
+	glassOpacity?: number;
 };
 
 export function SCCard(p: SCCardProps) {
@@ -105,7 +107,10 @@ export function SCCard(p: SCCardProps) {
 			class="flex justify-center items-center w-[290px] p-[15px]"
 			style={{ background: `linear-gradient(to right bottom, ${p.bgColor[0]}, ${p.bgColor[1]})` }}
 		>
-			<div class="flex flex-col items-center w-[260px] px-[16px] py-5 rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)] bg-white/75 backdrop-blur-[10px]">
+			<div
+				class="flex flex-col items-center w-[260px] px-[16px] py-5 rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)] backdrop-blur-[10px]"
+				style={{ background: `rgba(255,255,255,${p.glassOpacity ?? 0.75})` }}
+			>
 				{renderBlocks(p.layout ?? DEFAULT_CARD_LAYOUT.sc, builders, "w-full")}
 			</div>
 		</div>

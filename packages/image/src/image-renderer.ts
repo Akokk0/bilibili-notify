@@ -60,6 +60,8 @@ export interface ImageRendererConfig {
 	cardColorStart: string;
 	/** 卡片渐变背景结束颜色（十六进制）。 */
 	cardColorEnd: string;
+	/** 玻璃片(内容层)透明度 0..1 的全局默认;未设时各卡走自身基线(live/dyn 0.82、sc/guard 0.75)。 */
+	glassOpacity?: number;
 	/** CSS font-family，默认值由 adapter 提供(通常透传 `DEFAULT_CARD_STYLE.font`)。 */
 	font: string;
 	/** 是否隐藏直播间简介。 */
@@ -207,6 +209,7 @@ export class ImageRenderer {
 		this.logger.debug(`[live] 开始渲染直播卡片：${username}`);
 		const { cardColorStart = this.config.cardColorStart, cardColorEnd = this.config.cardColorEnd } =
 			colorOptions;
+		const glassOpacity = colorOptions.glassOpacity ?? this.config.glassOpacity;
 
 		const [titleStatus, liveTime, cover] = await this.getLiveStatus(data.live_time, liveStatus);
 
@@ -223,6 +226,7 @@ export class ImageRenderer {
 				hideFollower: this.config.hideFollower,
 				cardColorStart,
 				cardColorEnd,
+				glassOpacity,
 				data,
 				username,
 				userface,
@@ -291,6 +295,7 @@ export class ImageRenderer {
 				masterName,
 				bgColor: BG_COLORS[guardLevel],
 				layout,
+				glassOpacity: this.config.glassOpacity,
 			},
 			{ title: "上舰通知", font: this.config.font, htmlWidth: 430 },
 		);
@@ -343,6 +348,7 @@ export class ImageRenderer {
 				duration: levelInfo.duration,
 				bgColor,
 				layout,
+				glassOpacity: this.config.glassOpacity,
 			},
 			{ title: "醒目留言通知", font: this.config.font, htmlWidth: 290 },
 		);
@@ -366,6 +372,7 @@ export class ImageRenderer {
 		const t0 = Date.now();
 		const { cardColorStart = this.config.cardColorStart, cardColorEnd = this.config.cardColorEnd } =
 			colorOptions;
+		const glassOpacity = colorOptions.glassOpacity ?? this.config.glassOpacity;
 
 		const moduleAuthor = data.modules.module_author;
 		this.logger.debug(`[dynamic] 开始渲染动态卡片：${moduleAuthor.name}`);
@@ -380,6 +387,7 @@ export class ImageRenderer {
 			{
 				cardColorStart,
 				cardColorEnd,
+				glassOpacity,
 				node,
 				layout,
 			},

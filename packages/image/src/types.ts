@@ -89,4 +89,6 @@ export type LiveData = {
 export type CardColorOptions = {
 	cardColorStart?: string;
 	cardColorEnd?: string;
+	/** 玻璃片(内容层)透明度 0..1;缺省时各卡走自身基线。 */
+	glassOpacity?: number;
 };

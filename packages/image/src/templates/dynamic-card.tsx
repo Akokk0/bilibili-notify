@@ -18,6 +18,8 @@ export type DynamicCardProps = {
 	 * 话题标签内联在正文块顶部(无独立块);内部转发的原动态用**同一套版式**递归渲染。
 	 */
 	layout?: CardBlock[];
+	/** 玻璃片(内容层)透明度 0..1;缺省走 dynamic 基线 0.82。 */
+	glassOpacity?: number;
 };
 
 /**
@@ -113,7 +115,7 @@ export function DynamicCard(p: DynamicCardProps) {
 		>
 			<div
 				class="w-full overflow-hidden rounded-[12px]"
-				style="background: rgba(255,255,255,0.82); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding-top: 14px; padding-bottom: 12px;"
+				style={`background: rgba(255,255,255,${p.glassOpacity ?? 0.82}); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding-top: 14px; padding-bottom: 12px;`}
 			>
 				{renderBlocks(layout, nodeBuilders(p.node, layout))}
 			</div>

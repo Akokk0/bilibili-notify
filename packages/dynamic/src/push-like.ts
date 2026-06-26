@@ -75,6 +75,8 @@ export interface SubItemView {
 		enable?: boolean;
 		cardColorStart?: string;
 		cardColorEnd?: string;
+		/** 玻璃片(内容层)透明度 0..1;透传给 generateDynamicCard 的 colorOptions。 */
+		glassOpacity?: number;
 	};
 	/** Per-UP 动态过滤覆盖；undefined 时使用 engine 的全局 filter。 */
 	filter?: DynamicFilterConfig & { notify?: boolean };

@@ -29,6 +29,8 @@ export type LiveCardProps = {
 	 * 复刻现状。块按 type 渲染、`visible=false` 跳过;某态无数据的块自动收起。
 	 */
 	layout?: CardBlock[];
+	/** 玻璃片(内容层)透明度 0..1;缺省走 live 基线 0.82。 */
+	glassOpacity?: number;
 };
 
 export function LiveCard(p: LiveCardProps) {
@@ -137,7 +139,7 @@ export function LiveCard(p: LiveCardProps) {
 		>
 			<div
 				class="overflow-hidden rounded-xl"
-				style="background: rgba(255,255,255,0.82); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 360px; padding-top: 14px; padding-bottom: 10px;"
+				style={`background: rgba(255,255,255,${p.glassOpacity ?? 0.82}); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 360px; padding-top: 14px; padding-bottom: 10px;`}
 			>
 				{renderBlocks(p.layout ?? DEFAULT_CARD_LAYOUT.live, builders)}
 			</div>

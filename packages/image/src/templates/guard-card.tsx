@@ -18,6 +18,8 @@ export type GuardCardProps = {
 	 * 在另一侧上下排、顺序+显隐+边距由数组决定。缺省 = `DEFAULT_CARD_LAYOUT.guard`。
 	 */
 	layout?: GuardLayout;
+	/** 玻璃片(内容层)透明度 0..1;缺省走 guard 基线 0.75。 */
+	glassOpacity?: number;
 };
 
 const GUARD_DESC: Record<GuardLevel, (uname: string, masterName: string) => string> = {
@@ -102,7 +104,10 @@ export function GuardCard(p: GuardCardProps) {
 			class="flex justify-center items-center w-[430px] h-[220px] p-[15px]"
 			style={{ background: `linear-gradient(to right bottom, ${p.bgColor[0]}, ${p.bgColor[1]})` }}
 		>
-			<div class="flex items-center w-[400px] h-[190px] rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)] bg-white/75 backdrop-blur-[10px]">
+			<div
+				class="flex items-center w-[400px] h-[190px] rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)] backdrop-blur-[10px]"
+				style={{ background: `rgba(255,255,255,${p.glassOpacity ?? 0.75})` }}
+			>
 				{layout.badgeSide === "left" ? [badge, content] : [content, badge]}
 			</div>
 		</div>

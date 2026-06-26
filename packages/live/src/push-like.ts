@@ -68,6 +68,8 @@ export interface CustomCardStyleLike {
 	enable: boolean;
 	cardColorStart?: string;
 	cardColorEnd?: string;
+	/** 玻璃片(内容层)透明度 0..1;透传给 generate* 的 colorOptions。 */
+	glassOpacity?: number;
 }
 
 export interface CustomLiveMsgLike {

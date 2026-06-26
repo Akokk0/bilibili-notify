@@ -85,6 +85,11 @@ describe("LiveCard layout", () => {
 		expect(html).not.toContain("padding-top:99px");
 	});
 
+	it("applies glassOpacity to the card surface, falling back to the baseline", async () => {
+		expect(await renderLive()).toContain("rgba(255,255,255,0.82)");
+		expect(await renderLive({ glassOpacity: 0.4 })).toContain("rgba(255,255,255,0.4)");
+	});
+
 	it("renders blocks in the layout's order", async () => {
 		const layout: CardBlock[] = [
 			{ id: "title", type: "title", visible: true },

@@ -330,6 +330,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				font: cs.font,
 				hideDesc: cs.hideDesc,
 				hideFollower: cs.hideFollower,
+				glassOpacity: cs.glassOpacity,
 			},
 		});
 		renderer.start();
@@ -604,6 +605,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						font: cs.font,
 						hideDesc: cs.hideDesc,
 						hideFollower: cs.hideFollower,
+						glassOpacity: cs.glassOpacity,
 					});
 				}
 				// dynamicConfig() 读 app.dynamicCron + defaults.{filters,cardStyle.enabled,
@@ -995,6 +997,7 @@ export function buildDynamicSubViewSingle(
 					enable: true,
 					cardColorStart: sub.overrides.cardStyle.cardColorStart,
 					cardColorEnd: sub.overrides.cardStyle.cardColorEnd,
+					glassOpacity: sub.overrides.cardStyle.glassOpacity,
 				}
 			: { enable: false },
 		filter: sub.overrides.filters ? buildDynamicFilter(eff) : undefined,
@@ -1056,6 +1059,7 @@ export function buildLiveSubViewSingle(
 					enable: true,
 					cardColorStart: sub.overrides.cardStyle.cardColorStart,
 					cardColorEnd: sub.overrides.cardStyle.cardColorEnd,
+					glassOpacity: sub.overrides.cardStyle.glassOpacity,
 				}
 			: { enable: false },
 		// Per-UP 阈值 / 调度 / AI;adapter 在 add 路径上灌入,room-session 在 SC /

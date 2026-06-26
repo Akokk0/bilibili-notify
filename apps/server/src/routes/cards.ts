@@ -85,6 +85,7 @@ const StyleSchema = z.object({
 	font: z.string().optional(),
 	hideDesc: z.boolean().optional(),
 	hideFollower: z.boolean().optional(),
+	glassOpacity: z.number().min(0).max(1).optional(),
 });
 
 const ContentSchema = z
@@ -203,6 +204,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			font: style.font ?? "PingFang SC, sans-serif",
 			hideDesc: style.hideDesc ?? false,
 			hideFollower: style.hideFollower ?? false,
+			glassOpacity: style.glassOpacity,
 		};
 		if (!imageRenderer) {
 			imageRenderer = new ImageRenderer({
@@ -549,6 +551,7 @@ function buildLivePreviewProps(style: PreviewStyle): LiveCardProps {
 		hideFollower: style.hideFollower ?? false,
 		cardColorStart: style.cardColorStart,
 		cardColorEnd: style.cardColorEnd,
+		glassOpacity: style.glassOpacity,
 		data: {
 			user_cover: SVG_COVER,
 			keyframe: "",
@@ -615,6 +618,7 @@ function buildDynamicPreviewProps(style: PreviewStyle): DynamicCardProps {
 	return {
 		cardColorStart: style.cardColorStart,
 		cardColorEnd: style.cardColorEnd,
+		glassOpacity: style.glassOpacity,
 		node: {
 			avatarUrl: SVG_AVATAR_BLUE,
 			upName: "示例 UP 主",

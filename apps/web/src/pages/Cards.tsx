@@ -451,6 +451,32 @@ export default function Cards() {
 								<Toggle value={draft.hideFollower} onChange={(v) => set("hideFollower", v)} />
 							</div>
 						</Field>
+						<Field code="glassOpacity" full>
+							<div className="flex h-7.5 items-center gap-3">
+								<Toggle
+									value={draft.glassOpacity !== undefined}
+									onChange={(on) => set("glassOpacity", on ? 0.82 : undefined)}
+								/>
+								{draft.glassOpacity !== undefined ? (
+									<>
+										<input
+											type="range"
+											min={0}
+											max={1}
+											step={0.05}
+											value={draft.glassOpacity}
+											onChange={(e) => set("glassOpacity", Number(e.target.value))}
+											className="flex-1 accent-bn-pink"
+										/>
+										<span className="w-9 text-right font-mono text-[11px] text-bn-text-secondary">
+											{draft.glassOpacity.toFixed(2)}
+										</span>
+									</>
+								) : (
+									<span className="text-[11px] text-bn-text-tertiary">默认（各卡内置基线）</span>
+								)}
+							</div>
+						</Field>
 						<Field code="app.logLevels.image" full>
 							<LogLevelPicker
 								value={toPickerValue(imageLogLevel)}
