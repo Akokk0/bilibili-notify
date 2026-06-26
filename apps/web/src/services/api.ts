@@ -56,9 +56,36 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 	return payload as T;
 }
 
+/**
+ * Multipart upload(背景图等)。不设 content-type —— 让浏览器自动带上 multipart
+ * boundary;其余(desktop token / 凭据 / 错误处理)与 `request` 一致。
+ */
+async function upload<T>(path: string, form: FormData): Promise<T> {
+	const res = await fetch(path, {
+		method: "POST",
+		headers: withDesktopTokenHeader(),
+		body: form,
+		credentials: "include",
+	});
+	let payload: unknown;
+	if (res.headers.get("content-type")?.includes("application/json")) {
+		payload = await res.json().catch(() => undefined);
+	}
+	if (!res.ok) {
+		if (res.status === 401 && !path.startsWith("/api/session")) onUnauthorized?.();
+		const msg =
+			typeof payload === "object" && payload && "err" in payload
+				? String((payload as { err: unknown }).err)
+				: `POST ${path} → ${res.status}`;
+		throw new ApiError(res.status, payload, msg);
+	}
+	return payload as T;
+}
+
 export const api = {
 	get: <T>(path: string) => request<T>("GET", path),
 	post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
 	patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
 	delete: <T>(path: string) => request<T>("DELETE", path),
+	upload: <T>(path: string, form: FormData) => upload<T>(path, form),
 };

@@ -259,6 +259,76 @@ function TestPushCard({
 	);
 }
 
+/**
+ * 背景图选择器 —— 上传 PNG/JPEG/WebP 到 `/api/cards/asset`,把返回的资产 id 存进
+ * cardStyle.backgroundImage。空 = 走渐变。缩略图经 `/api/cards/asset/:id` 取(浏览器
+ * 同源带 cookie);移除即清空字段。
+ */
+function BackgroundImagePicker({
+	value,
+	onChange,
+}: {
+	value: string;
+	onChange: (id: string) => void;
+}) {
+	const [uploading, setUploading] = useState(false);
+	const [err, setErr] = useState<string | null>(null);
+
+	const onFile = async (file: File | undefined) => {
+		if (!file) return;
+		setErr(null);
+		setUploading(true);
+		try {
+			const form = new FormData();
+			form.append("file", file);
+			const res = await api.upload<{ ok: boolean; id?: string; err?: string }>(
+				"/api/cards/asset",
+				form,
+			);
+			if (!res.ok || !res.id) throw new Error(res.err ?? "上传失败");
+			onChange(res.id);
+		} catch (e) {
+			setErr((e as Error).message);
+		} finally {
+			setUploading(false);
+		}
+	};
+
+	return (
+		<div className="flex items-center gap-2">
+			{value ? (
+				<img
+					src={`/api/cards/asset/${value}`}
+					alt="背景图"
+					className="h-9 w-14 shrink-0 rounded border border-bn-border-subtle object-cover"
+				/>
+			) : (
+				<span className="text-[11px] text-bn-text-tertiary">未设置（用渐变）</span>
+			)}
+			<label className="cursor-pointer rounded-md border border-bn-border bg-bn-surface px-2.5 py-1 text-[11.5px] font-medium text-bn-text-primary transition hover:border-bn-pink">
+				{uploading ? "上传中…" : value ? "更换" : "上传图片"}
+				<input
+					type="file"
+					accept="image/png,image/jpeg,image/webp"
+					className="hidden"
+					disabled={uploading}
+					onChange={(e) => onFile(e.target.files?.[0])}
+				/>
+			</label>
+			{value ? (
+				<button
+					type="button"
+					onClick={() => onChange("")}
+					className="text-[11px] text-bn-text-tertiary transition hover:text-bn-danger-text"
+				>
+					移除
+				</button>
+			) : null}
+			{err ? <span className="text-[11px] text-bn-danger-text">{err}</span> : null}
+		</div>
+	);
+}
+
 // Server-side override is `LogLevel` strings; the LogLevelPicker speaks 1|2|3
 // numeric. `null` ↔ "" (no override; fall back to app.logLevel).
 type ImageLogLevel = LogLevel | "";
@@ -476,6 +546,12 @@ export default function Cards() {
 									<span className="text-[11px] text-bn-text-tertiary">默认（各卡内置基线）</span>
 								)}
 							</div>
+						</Field>
+						<Field code="backgroundImage" full>
+							<BackgroundImagePicker
+								value={draft.backgroundImage}
+								onChange={(id) => set("backgroundImage", id)}
+							/>
 						</Field>
 						<Field code="app.logLevels.image" full>
 							<LogLevelPicker
