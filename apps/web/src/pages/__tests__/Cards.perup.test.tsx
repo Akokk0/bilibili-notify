@@ -1,0 +1,112 @@
+// @vitest-environment jsdom
+
+/**
+ * Cards 页 per-UP 作用域接线测试。
+ *
+ * 验证:① 全局作用域以 pageKey "cards" 注册灵动岛;② 点已定制 UP 的 tab 切到
+ * pageKey "cards-perup";③ per-UP 保存只下发卡片两片(cardStyle + cardLayout),
+ * 不碰该 sub 的其它 overrides slice。
+ */
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { useDraftStore } from "../../store/draft";
+import { makeEmptySubscription, type Subscription } from "../../types/domain";
+import type { GlobalConfig } from "../../types/globals";
+import Cards from "../Cards";
+import { makeDefaults } from "../rules/__tests__/fixtures";
+
+vi.mock("../../services/api", () => ({
+	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), upload: vi.fn() },
+	ApiError: class extends Error {},
+}));
+
+import { api } from "../../services/api";
+
+// 已定制 UP:只有 cardStyle 覆盖(无 cardLayout),并带一个无关 slice(imageGroup)
+// 用来确认 per-UP 保存不会动它。
+const CUSTOMIZED: Subscription = {
+	...makeEmptySubscription("123456"),
+	overrides: {
+		cardStyle: { cardColorStart: "#123456" },
+		imageGroup: { enable: false },
+	},
+};
+
+const GLOBALS = {
+	app: {},
+	master: {},
+	defaults: makeDefaults(),
+} as unknown as GlobalConfig;
+
+function resetStore(): void {
+	useDraftStore.setState({
+		current: null,
+		uiState: "idle",
+		errorMessage: null,
+		panelLocked: false,
+	});
+}
+
+function renderCards() {
+	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	return render(
+		<QueryClientProvider client={qc}>
+			<Cards />
+		</QueryClientProvider>,
+	);
+}
+
+beforeEach(() => {
+	resetStore();
+	Element.prototype.scrollIntoView = vi.fn();
+	vi.mocked(api.get).mockImplementation((url: string) => {
+		if (url.includes("/api/subs")) return Promise.resolve([CUSTOMIZED]);
+		if (url.includes("/api/targets")) return Promise.resolve([]);
+		return Promise.resolve(GLOBALS);
+	});
+	// 预览走 puppeteer 路由,测试里给个假数据 URL 即可。
+	vi.mocked(api.post).mockResolvedValue({ ok: true, dataUrl: "data:image/png;base64,xx" });
+	vi.mocked(api.patch).mockResolvedValue(CUSTOMIZED);
+});
+
+afterEach(() => {
+	cleanup();
+	resetStore();
+	vi.clearAllMocks();
+});
+
+describe("Cards per-UP 作用域接线", () => {
+	it("全局作用域 → 以 pageKey 'cards' 注册灵动岛", async () => {
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+	});
+
+	it("点已定制 UP 的 tab → 灵动岛切到 pageKey 'cards-perup'", async () => {
+		renderCards();
+		// 等全局先就位,确保 subs 已加载、tab 已渲染。
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+		fireEvent.click(await screen.findByText("UID 123456"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+	});
+
+	it("per-UP 保存 → 只 PATCH cardStyle + cardLayout(cardLayout 未覆盖 = null)", async () => {
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+		fireEvent.click(await screen.findByText("UID 123456"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+
+		// 经灵动岛触发保存(页内无保存按钮,统一走灵动岛 onSave)。
+		useDraftStore.getState().current?.onSave();
+
+		await waitFor(() => expect(api.patch).toHaveBeenCalled());
+		const [url, body] = vi.mocked(api.patch).mock.calls.at(-1) as [string, { overrides: unknown }];
+		expect(url).toBe(`/api/subs/${CUSTOMIZED.id}`);
+		const overrides = body.overrides as Record<string, unknown>;
+		// 只含卡片两片:cardStyle 为完整快照、cardLayout 未覆盖故 null;不带 imageGroup。
+		expect(Object.keys(overrides).sort()).toEqual(["cardLayout", "cardStyle"]);
+		expect(overrides.cardLayout).toBeNull();
+		expect((overrides.cardStyle as { cardColorStart: string }).cardColorStart).toBe("#123456");
+	});
+});
