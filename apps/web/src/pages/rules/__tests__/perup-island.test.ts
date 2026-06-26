@@ -73,14 +73,14 @@ describe("projectPerUpIsland — schedule/templates/ai 保 nested", () => {
 	});
 });
 
-describe("projectPerUpIsland — cardStyle/imageGroup 打平 + specialUsers 叶子", () => {
-	it("改 cardStyle.cardColorStart → 'cardColorStart',section=cardStyle", () => {
+describe("projectPerUpIsland — imageGroup 打平 + specialUsers 叶子", () => {
+	it("cardStyle 不再投影 —— 卡片覆盖已迁到 /cards,改它不进 Rules per-UP 灵动岛", () => {
 		const codes = diffCodes(
 			{ cardStyle: { cardColorStart: "#111111" } },
 			{ cardStyle: { cardColorStart: "#222222" } },
 		);
-		expect(codes).toContain("cardColorStart");
-		expect(sectionOf("cardColorStart")).toBe("cardStyle");
+		expect(codes).not.toContain("cardColorStart");
+		expect(codes).toEqual([]);
 	});
 
 	it("改 imageGroup.enable → 'enable',section=imageGroup", () => {

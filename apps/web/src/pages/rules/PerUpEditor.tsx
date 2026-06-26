@@ -19,7 +19,6 @@ import {
 	Picker,
 	QuietHoursEditor,
 	TArea,
-	TColor,
 	TInput,
 	TNum,
 } from "../../components/forms";
@@ -29,7 +28,6 @@ import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
 import type {
 	AIOverride,
-	CardStyleOverride,
 	ContentFiltersOverride,
 	ImageGroupOverride,
 	OverridesShape,
@@ -60,15 +58,12 @@ import {
 
 /* -------------------------------------------------------------------------- */
 
-/** Override 切片名;Rules.tsx 用它判定 sub 是否"已定制"。 */
-export const perUpOverrideKeys = [
-	"filters",
-	"schedule",
-	"templates",
-	"cardStyle",
-	"ai",
-	"imageGroup",
-] as const;
+/**
+ * Override 切片名;Rules.tsx 用它判定 sub 是否"已定制"。
+ * cardStyle / cardLayout 不在此列 —— 卡片相关覆盖已统一迁到 /cards 页编辑,
+ * 由 Cards 自管 tab 与计数,Rules 不再surface 卡片定制。
+ */
+export const perUpOverrideKeys = ["filters", "schedule", "templates", "ai", "imageGroup"] as const;
 export type PerUpOverrideKey = (typeof perUpOverrideKeys)[number];
 
 interface SubPatch {
@@ -255,13 +250,6 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 					onTemplateChange={(v) => setSlice("templates", v)}
 					baselineTemplate={defaults.templates.specialUserEnter}
 					templateField="specialUserEnter"
-				/>
-			) : null}
-			{section === "cardStyle" ? (
-				<CardStyleOverrideBox
-					value={draft.overrides.cardStyle}
-					onChange={(v) => setSlice("cardStyle", v)}
-					baseline={defaults.cardStyle}
 				/>
 			) : null}
 			{section === "ai" ? (
@@ -930,55 +918,6 @@ function SpecialUserBox({
 				</>
 			) : (
 				<InheritHint>该 UP 将继承全局{inheritLabel}</InheritHint>
-			)}
-		</GlassBox>
-	);
-}
-
-/* -------- Card style ------------------------------------------------------ */
-
-function CardStyleOverrideBox({
-	value,
-	onChange,
-	baseline,
-}: {
-	value: CardStyleOverride | undefined;
-	onChange: (next: CardStyleOverride | undefined) => void;
-	baseline: GlobalDefaults["cardStyle"];
-}) {
-	const enabled = value !== undefined;
-	const cur = value ?? {};
-	function set<K extends keyof typeof baseline>(k: K, v: (typeof baseline)[K]): void {
-		onChange({ ...cur, [k]: v });
-	}
-	return (
-		<GlassBox
-			title="卡片样式覆盖"
-			subtitle="开 = 该 UP 使用自定义卡片渐变 / 底板;关 = 继承全局卡片样式"
-			accent="#FB7299"
-			icon={<Icon.sparkle size={14} />}
-			badge={enabled ? "覆盖中" : "继承"}
-			right={
-				<Toggle value={enabled} onChange={(on) => onChange(on ? { ...baseline } : undefined)} />
-			}
-		>
-			{enabled ? (
-				<>
-					<Field code="cardColorStart">
-						<TColor
-							value={cur.cardColorStart ?? baseline.cardColorStart}
-							onChange={(v) => set("cardColorStart", v)}
-						/>
-					</Field>
-					<Field code="cardColorEnd">
-						<TColor
-							value={cur.cardColorEnd ?? baseline.cardColorEnd}
-							onChange={(v) => set("cardColorEnd", v)}
-						/>
-					</Field>
-				</>
-			) : (
-				<InheritHint>该 UP 将继承全局卡片样式</InheritHint>
 			)}
 		</GlassBox>
 	);

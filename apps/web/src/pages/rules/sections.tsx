@@ -169,12 +169,6 @@ export const PERUP_SECTIONS: SectionMeta[] = [
 		desc: "UID 进入提醒",
 	},
 	{
-		id: "cardStyle",
-		label: "卡片样式",
-		icon: <Icon.sparkle size={14} />,
-		desc: "覆盖卡片渐变 / 底板",
-	},
-	{
 		id: "ai",
 		label: "AI 人格塑造",
 		icon: <Icon.ai size={14} />,
