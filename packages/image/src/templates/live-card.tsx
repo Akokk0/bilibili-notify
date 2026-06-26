@@ -31,6 +31,8 @@ export type LiveCardProps = {
 	layout?: CardBlock[];
 	/** 玻璃片(内容层)透明度 0..1;缺省走 live 基线 0.82。 */
 	glassOpacity?: number;
+	/** 自定义背景图(已解析的 data URL / http URL);非空时替换外框渐变。 */
+	backgroundImage?: string;
 };
 
 export function LiveCard(p: LiveCardProps) {
@@ -130,13 +132,12 @@ export function LiveCard(p: LiveCardProps) {
 			),
 	};
 
+	const frameBg = p.backgroundImage
+		? `url("${p.backgroundImage}") center / cover`
+		: `linear-gradient(to right bottom, ${p.cardColorStart}, ${p.cardColorEnd})`;
+
 	return (
-		<div
-			class="h-auto p-3.75"
-			style={{
-				background: `linear-gradient(to right bottom, ${p.cardColorStart}, ${p.cardColorEnd})`,
-			}}
-		>
+		<div class="h-auto p-3.75" style={{ background: frameBg }}>
 			<div
 				class="overflow-hidden rounded-xl"
 				style={`background: rgba(255,255,255,${p.glassOpacity ?? 0.82}); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 360px; padding-top: 14px; padding-bottom: 10px;`}

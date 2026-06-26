@@ -56,6 +56,7 @@ import type { ConfigStore } from "../config/store.js";
 import type { HistoryStore } from "../history/store.js";
 import type { PlatformAdapter, ProbeResult } from "../platforms/types.js";
 import { createMultiplexSink } from "../sink/multiplex.js";
+import { readCardBgDataUrl } from "./card-assets.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
 import { MasterNotifier } from "./master-notifier.js";
 import type { NodeServiceContext } from "./service-context.js";
@@ -331,7 +332,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				hideDesc: cs.hideDesc,
 				hideFollower: cs.hideFollower,
 				glassOpacity: cs.glassOpacity,
+				backgroundImage: cs.backgroundImage,
 			},
+			resolveAsset: (id) => readCardBgDataUrl(opts.configStore.bootstrap.dataDir, id),
 		});
 		renderer.start();
 		return renderer;
@@ -606,6 +609,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						hideDesc: cs.hideDesc,
 						hideFollower: cs.hideFollower,
 						glassOpacity: cs.glassOpacity,
+						backgroundImage: cs.backgroundImage,
 					});
 				}
 				// dynamicConfig() 读 app.dynamicCron + defaults.{filters,cardStyle.enabled,
@@ -998,6 +1002,7 @@ export function buildDynamicSubViewSingle(
 					cardColorStart: sub.overrides.cardStyle.cardColorStart,
 					cardColorEnd: sub.overrides.cardStyle.cardColorEnd,
 					glassOpacity: sub.overrides.cardStyle.glassOpacity,
+					backgroundImage: sub.overrides.cardStyle.backgroundImage,
 				}
 			: { enable: false },
 		filter: sub.overrides.filters ? buildDynamicFilter(eff) : undefined,
@@ -1060,6 +1065,7 @@ export function buildLiveSubViewSingle(
 					cardColorStart: sub.overrides.cardStyle.cardColorStart,
 					cardColorEnd: sub.overrides.cardStyle.cardColorEnd,
 					glassOpacity: sub.overrides.cardStyle.glassOpacity,
+					backgroundImage: sub.overrides.cardStyle.backgroundImage,
 				}
 			: { enable: false },
 		// Per-UP 阈值 / 调度 / AI;adapter 在 add 路径上灌入,room-session 在 SC /

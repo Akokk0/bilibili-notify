@@ -20,6 +20,8 @@ export type SCCardProps = {
 	layout?: CardBlock[];
 	/** 玻璃片(内容层)透明度 0..1;缺省走 sc 基线 0.75。 */
 	glassOpacity?: number;
+	/** 自定义背景图(已解析的 data URL / http URL);非空时替换外框渐变。 */
+	backgroundImage?: string;
 };
 
 export function SCCard(p: SCCardProps) {
@@ -105,7 +107,11 @@ export function SCCard(p: SCCardProps) {
 	return (
 		<div
 			class="flex justify-center items-center w-[290px] p-[15px]"
-			style={{ background: `linear-gradient(to right bottom, ${p.bgColor[0]}, ${p.bgColor[1]})` }}
+			style={{
+				background: p.backgroundImage
+					? `url("${p.backgroundImage}") center / cover`
+					: `linear-gradient(to right bottom, ${p.bgColor[0]}, ${p.bgColor[1]})`,
+			}}
 		>
 			<div
 				class="flex flex-col items-center w-[260px] px-[16px] py-5 rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)] backdrop-blur-[10px]"

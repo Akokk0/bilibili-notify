@@ -43,7 +43,7 @@ import {
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
-import { readCardBg, saveCardBg } from "../runtime/card-assets.js";
+import { readCardBg, readCardBgDataUrl, saveCardBg } from "../runtime/card-assets.js";
 import {
 	createPuppeteerAdapter,
 	resolveChromePath,
@@ -87,6 +87,8 @@ const StyleSchema = z.object({
 	hideDesc: z.boolean().optional(),
 	hideFollower: z.boolean().optional(),
 	glassOpacity: z.number().min(0).max(1).optional(),
+	/** 背景图资产 id(空 = 渐变)。 */
+	backgroundImage: z.string().optional(),
 });
 
 const ContentSchema = z
@@ -232,12 +234,15 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			hideDesc: style.hideDesc ?? false,
 			hideFollower: style.hideFollower ?? false,
 			glassOpacity: style.glassOpacity,
+			backgroundImage: style.backgroundImage,
 		};
 		if (!imageRenderer) {
 			imageRenderer = new ImageRenderer({
 				serviceCtx: opts.deps.runtime.serviceCtx,
 				puppeteer: currentPuppeteer,
 				config,
+				// 背景图 id → data URL(读 <dataDir>/assets/card-bg);sc/guard/真实拉取走 generate* 解析。
+				resolveAsset: (id) => readCardBgDataUrl(opts.deps.store.bootstrap.dataDir, id),
 			});
 		} else {
 			imageRenderer.updateConfig(config);
@@ -352,8 +357,12 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			return { buffer, mime: "image/jpeg" };
 		}
 		// Live + Dyn 空 content:虚构 mock 数据,走 renderCard + screenshot 流水线
-		// (不经 ImageRenderer,未登录也能调色)。
-		const { component, props, title, htmlWidth } = buildPreviewSpec(kind, style, layout);
+		// (不经 ImageRenderer,未登录也能调色)。背景图在此解析成 data URL 注入。
+		const bgDataUrl = await readCardBgDataUrl(
+			opts.deps.store.bootstrap.dataDir,
+			style.backgroundImage ?? "",
+		);
+		const { component, props, title, htmlWidth } = buildPreviewSpec(kind, style, layout, bgDataUrl);
 		const html = await renderCard(component, props, {
 			title,
 			font: style.font ?? "PingFang SC, sans-serif",
@@ -543,18 +552,21 @@ function buildPreviewSpec(
 	kind: "live" | "dyn",
 	style: PreviewStyle,
 	layout?: CardLayout,
+	/** 已解析的背景图 data URL(mock SSR 路径不经 generate*,需在此注入)。 */
+	bgDataUrl?: string,
 ): PreviewSpec {
+	const backgroundImage = bgDataUrl || undefined;
 	if (kind === "live") {
 		return {
 			component: LiveCard,
-			props: { ...buildLivePreviewProps(style), layout: layout?.live },
+			props: { ...buildLivePreviewProps(style), layout: layout?.live, backgroundImage },
 			title: "卡片预览 · 直播",
 			htmlWidth: 600,
 		};
 	}
 	return {
 		component: DynamicCard,
-		props: { ...buildDynamicPreviewProps(style), layout: layout?.dynamic },
+		props: { ...buildDynamicPreviewProps(style), layout: layout?.dynamic, backgroundImage },
 		title: "卡片预览 · 动态",
 		htmlWidth: 600,
 	};

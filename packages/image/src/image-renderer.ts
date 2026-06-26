@@ -62,6 +62,8 @@ export interface ImageRendererConfig {
 	cardColorEnd: string;
 	/** 玻璃片(内容层)透明度 0..1 的全局默认;未设时各卡走自身基线(live/dyn 0.82、sc/guard 0.75)。 */
 	glassOpacity?: number;
+	/** 自定义卡片背景图资产 id(空 = 渐变);渲染期经 resolveAsset 解析成 data URL。 */
+	backgroundImage?: string;
 	/** CSS font-family，默认值由 adapter 提供(通常透传 `DEFAULT_CARD_STYLE.font`)。 */
 	font: string;
 	/** 是否隐藏直播间简介。 */
@@ -74,6 +76,11 @@ export interface ImageRendererOptions {
 	serviceCtx: ServiceContext;
 	puppeteer: PuppeteerLike;
 	config: ImageRendererConfig;
+	/**
+	 * 把卡片背景图资产 id 解析成可渲染的 data URL(服务端注入,读 `<dataDir>/assets/card-bg`)。
+	 * 未注入 = 背景图特性不可用(返回 "")。已是 data:/http URL 的值直接透传、不经此回调。
+	 */
+	resolveAsset?: (id: string) => Promise<string>;
 }
 
 export class ImageRenderer {
@@ -81,6 +88,7 @@ export class ImageRenderer {
 	private readonly serviceCtx: ServiceContext;
 	private readonly puppeteer: PuppeteerLike;
 	private config: ImageRendererConfig;
+	private readonly resolveAsset?: (id: string) => Promise<string>;
 
 	// 图片 base64 缓存
 	private readonly imageCache = new Map<string, { dataUrl: string; updatedAt: number }>();
@@ -114,6 +122,7 @@ export class ImageRenderer {
 		this.serviceCtx = opts.serviceCtx;
 		this.puppeteer = opts.puppeteer;
 		this.config = opts.config;
+		this.resolveAsset = opts.resolveAsset;
 		this.logger = opts.serviceCtx.logger;
 	}
 
@@ -151,6 +160,16 @@ export class ImageRenderer {
 		const d = new Date(timestamp * 1000);
 		const pad = (n: number) => `0${n}`.slice(-2);
 		return `${d.getFullYear()}年${pad(d.getMonth() + 1)}月${pad(d.getDate())}日 ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+	}
+
+	/**
+	 * 解析卡片背景图字段为可渲染 URL:空 → "";已是 data:/http URL → 透传(预览路由已解析);
+	 * 否则当资产 id,经注入的 resolveAsset 读盘解析成 data URL。无 resolver → ""(特性不可用)。
+	 */
+	private async resolveBg(v?: string): Promise<string> {
+		if (!v) return "";
+		if (v.startsWith("data:") || v.startsWith("http")) return v;
+		return this.resolveAsset ? await this.resolveAsset(v) : "";
 	}
 
 	async getTimeDifference(dateString: string): Promise<string> {
@@ -210,6 +229,9 @@ export class ImageRenderer {
 		const { cardColorStart = this.config.cardColorStart, cardColorEnd = this.config.cardColorEnd } =
 			colorOptions;
 		const glassOpacity = colorOptions.glassOpacity ?? this.config.glassOpacity;
+		const backgroundImage = await this.resolveBg(
+			colorOptions.backgroundImage ?? this.config.backgroundImage,
+		);
 
 		const [titleStatus, liveTime, cover] = await this.getLiveStatus(data.live_time, liveStatus);
 
@@ -227,6 +249,7 @@ export class ImageRenderer {
 				cardColorStart,
 				cardColorEnd,
 				glassOpacity,
+				backgroundImage,
 				data,
 				username,
 				userface,
@@ -283,6 +306,7 @@ export class ImageRenderer {
 		const guardName = ["", "总督", "提督", "舰长"][guardLevel] ?? "上舰";
 		this.logger.debug(`[guard] 开始渲染上舰卡片：${uname} → ${masterName}（${guardName}）`);
 		const captainImgUrl = GUARD_LEVEL_IMG[guardLevel] ?? "";
+		const backgroundImage = await this.resolveBg(this.config.backgroundImage);
 		const html = await renderCard(
 			GuardCard,
 			{
@@ -296,6 +320,7 @@ export class ImageRenderer {
 				bgColor: BG_COLORS[guardLevel],
 				layout,
 				glassOpacity: this.config.glassOpacity,
+				backgroundImage,
 			},
 			{ title: "上舰通知", font: this.config.font, htmlWidth: 430 },
 		);
@@ -335,6 +360,7 @@ export class ImageRenderer {
 		const levelIndex = getSCLevel(battery);
 		const bgColor = SC_COLORS[levelIndex];
 		const levelInfo = Object.values(SC_LEVELS)[levelIndex];
+		const backgroundImage = await this.resolveBg(this.config.backgroundImage);
 
 		const html = await renderCard(
 			SCCard,
@@ -349,6 +375,7 @@ export class ImageRenderer {
 				bgColor,
 				layout,
 				glassOpacity: this.config.glassOpacity,
+				backgroundImage,
 			},
 			{ title: "醒目留言通知", font: this.config.font, htmlWidth: 290 },
 		);
@@ -373,6 +400,9 @@ export class ImageRenderer {
 		const { cardColorStart = this.config.cardColorStart, cardColorEnd = this.config.cardColorEnd } =
 			colorOptions;
 		const glassOpacity = colorOptions.glassOpacity ?? this.config.glassOpacity;
+		const backgroundImage = await this.resolveBg(
+			colorOptions.backgroundImage ?? this.config.backgroundImage,
+		);
 
 		const moduleAuthor = data.modules.module_author;
 		this.logger.debug(`[dynamic] 开始渲染动态卡片：${moduleAuthor.name}`);
@@ -388,6 +418,7 @@ export class ImageRenderer {
 				cardColorStart,
 				cardColorEnd,
 				glassOpacity,
+				backgroundImage,
 				node,
 				layout,
 			},

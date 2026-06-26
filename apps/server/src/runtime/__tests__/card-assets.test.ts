@@ -42,7 +42,7 @@ describe("card-assets", () => {
 		expect(isValidCardBgId("../../etc/passwd")).toBe(false);
 		expect(isValidCardBgId("abc.png")).toBe(false); // not 32 hex
 		expect(isValidCardBgId("../secrets/config.enc")).toBe(false);
-		expect(isValidCardBgId("a".repeat(32) + ".gif")).toBe(false);
+		expect(isValidCardBgId(`${"a".repeat(32)}.gif`)).toBe(false);
 	});
 
 	it("readCardBg returns null for an invalid id (no disk read)", async () => {

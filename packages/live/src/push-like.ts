@@ -70,6 +70,8 @@ export interface CustomCardStyleLike {
 	cardColorEnd?: string;
 	/** 玻璃片(内容层)透明度 0..1;透传给 generate* 的 colorOptions。 */
 	glassOpacity?: number;
+	/** 背景图资产 id;透传给 generate* 的 colorOptions(renderer 经 resolveAsset 解析)。 */
+	backgroundImage?: string;
 }
 
 export interface CustomLiveMsgLike {

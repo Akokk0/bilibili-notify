@@ -20,6 +20,8 @@ export type DynamicCardProps = {
 	layout?: CardBlock[];
 	/** 玻璃片(内容层)透明度 0..1;缺省走 dynamic 基线 0.82。 */
 	glassOpacity?: number;
+	/** 自定义背景图(已解析的 data URL / http URL);非空时替换外框渐变。 */
+	backgroundImage?: string;
 };
 
 /**
@@ -105,14 +107,11 @@ function nodeBuilders(node: DynamicNode, layout: CardBlock[]): Record<string, ()
 
 export function DynamicCard(p: DynamicCardProps) {
 	const layout = p.layout ?? DEFAULT_CARD_LAYOUT.dynamic;
+	const frameBg = p.backgroundImage
+		? `url("${p.backgroundImage}") center / cover`
+		: `linear-gradient(to right bottom, ${p.cardColorStart}, ${p.cardColorEnd})`;
 	return (
-		<div
-			class="h-auto p-[15px]"
-			style={{
-				background: `linear-gradient(to right bottom, ${p.cardColorStart}, ${p.cardColorEnd})`,
-				minWidth: "380px",
-			}}
-		>
+		<div class="h-auto p-[15px]" style={{ background: frameBg, minWidth: "380px" }}>
 			<div
 				class="w-full overflow-hidden rounded-[12px]"
 				style={`background: rgba(255,255,255,${p.glassOpacity ?? 0.82}); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding-top: 14px; padding-bottom: 12px;`}

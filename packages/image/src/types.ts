@@ -91,4 +91,6 @@ export type CardColorOptions = {
 	cardColorEnd?: string;
 	/** 玻璃片(内容层)透明度 0..1;缺省时各卡走自身基线。 */
 	glassOpacity?: number;
+	/** 自定义背景图资产 id(或已解析 URL);缺省时走渐变。 */
+	backgroundImage?: string;
 };

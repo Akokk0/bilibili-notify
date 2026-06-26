@@ -20,6 +20,8 @@ export type GuardCardProps = {
 	layout?: GuardLayout;
 	/** 玻璃片(内容层)透明度 0..1;缺省走 guard 基线 0.75。 */
 	glassOpacity?: number;
+	/** 自定义背景图(已解析的 data URL / http URL);非空时替换外框渐变。 */
+	backgroundImage?: string;
 };
 
 const GUARD_DESC: Record<GuardLevel, (uname: string, masterName: string) => string> = {
@@ -102,7 +104,11 @@ export function GuardCard(p: GuardCardProps) {
 	return (
 		<div
 			class="flex justify-center items-center w-[430px] h-[220px] p-[15px]"
-			style={{ background: `linear-gradient(to right bottom, ${p.bgColor[0]}, ${p.bgColor[1]})` }}
+			style={{
+				background: p.backgroundImage
+					? `url("${p.backgroundImage}") center / cover`
+					: `linear-gradient(to right bottom, ${p.bgColor[0]}, ${p.bgColor[1]})`,
+			}}
 		>
 			<div
 				class="flex items-center w-[400px] h-[190px] rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)] backdrop-blur-[10px]"
