@@ -3,12 +3,12 @@
  * `.bn-design/variation-ac.jsx`.
  *
  * Left column: card-style config (bound to GlobalConfig.defaults.cardStyle via
- * /api/globals PATCH) + preview-content form + 测试推送. Right column: card
- * preview that calls the puppeteer-core-backed `/api/cards/preview` route for
- * ALL four kinds (live /
- * dyn / sc / guard). The server runs the matching production template
- * (LiveCard / DynamicCard / SCCard / GuardCard) through Vue SSR + UnoCSS +
- * puppeteer screenshot and returns a base64 PNG.
+ * /api/globals PATCH) + preview-content form. Right column: card preview that
+ * calls the puppeteer-core-backed `/api/cards/preview` route for ALL four kinds
+ * (live / dyn / sc / guard), followed by the 卡片版式 layout editor and 测试推送.
+ * The server runs the matching production template (LiveCard / DynamicCard /
+ * SCCard / GuardCard) through Vue SSR + UnoCSS + puppeteer screenshot and
+ * returns a base64 PNG.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -604,23 +604,9 @@ export default function Cards() {
 							</>
 						)}
 					</GlassBox>
-
-					{layoutDraft && (
-						<GlassBox
-							title="卡片版式"
-							subtitle="拖拽排序 · 开关显隐 · 改动实时反映到右侧预览"
-							accent={KIND_LABELS[kind].tone}
-							icon={<KindIcon size={14} />}
-							badge="cardLayout"
-						>
-							<CardLayoutEditor kind={kind} layout={layoutDraft} onChange={setLayoutDraft} />
-						</GlassBox>
-					)}
-
-					<TestPushCard kind={kind} style={draft} content={content[kind]} layout={layoutDraft} />
 				</div>
 
-				{/* RIGHT: live preview */}
+				{/* RIGHT: live preview + layout editor + test push */}
 				<div className="space-y-2.5">
 					<div className="flex items-center justify-between text-[13px] text-bn-text-primary">
 						<span className="font-bold">卡片预览 · 实时反映左侧 image 配置</span>
@@ -630,6 +616,20 @@ export default function Cards() {
 						</span>
 					</div>
 					<CardPreview kind={kind} style={draft} content={content} layout={layoutDraft} />
+
+					{layoutDraft && (
+						<GlassBox
+							title="卡片版式"
+							subtitle="拖拽排序 · 开关显隐 · 改动实时反映到上方预览"
+							accent={KIND_LABELS[kind].tone}
+							icon={<KindIcon size={14} />}
+							badge="cardLayout"
+						>
+							<CardLayoutEditor kind={kind} layout={layoutDraft} onChange={setLayoutDraft} />
+						</GlassBox>
+					)}
+
+					<TestPushCard kind={kind} style={draft} content={content[kind]} layout={layoutDraft} />
 
 					{/* Effective style readout */}
 					<div className="flex flex-wrap gap-3.5 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 font-mono text-[10.5px] text-bn-text-tertiary">
