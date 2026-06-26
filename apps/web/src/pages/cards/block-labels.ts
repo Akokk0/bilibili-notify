@@ -29,6 +29,7 @@ export const BLOCK_LABELS: Record<LayoutKind, Record<string, string>> = {
 		header: "头部信息",
 		topic: "话题标签",
 		content: "动态正文",
+		additional: "附加内容",
 		stats: "转发 / 评论 / 点赞",
 	},
 	sc: {

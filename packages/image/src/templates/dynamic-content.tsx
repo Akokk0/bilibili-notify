@@ -24,126 +24,146 @@ const ADDITIONAL_TYPE_RESERVE = "ADDITIONAL_TYPE_RESERVE";
 const ADDITIONAL_TYPE_GOODS = "ADDITIONAL_TYPE_GOODS";
 const ADDITIONAL_TYPE_COMMON = "ADDITIONAL_TYPE_COMMON";
 
-/** buildDynamicContent 的返回值 */
-export type DynamicContent = {
-	vnode: VNode;
-	forwardLabel?: string;
-	pubTimeSuffix?: string;
+/** 时间戳 / 数字的格式化器(由 image-renderer 注入,保持模版层纯净)。 */
+export type NodeFormatters = {
+	time: (ts: number) => string;
+	num: (n: number) => string;
 };
 
 /**
- * 根据动态类型构建内容 VNode
- * @param dynamic 动态数据
- * @param isForward 是否作为被转发动态
+ * 一条动态的「呈现态」结构树 —— 与原始 B站 API 解耦,供 DynamicCard 按版式块装配。
+ * 转发动态的内部原动态是 `forward`(同样是 DynamicNode),由卡片模版用**同一套版式**
+ * 递归渲染。`body` 只含正文 + 主媒体(无附加内容、无转发框);`additional` 是拆出来的
+ * 附加内容块(预约 / 商品 / 通用卡);`stats` 仅外层有(内部转发不展示互动数)。
  */
-export async function buildDynamicContent(
+export type DynamicNode = {
+	avatarUrl: string;
+	upName: string;
+	upIsVip: boolean;
+	pubTime: string;
+	/** 作为内部转发渲染时,附在作者名后的类型标签(如「投稿了视频」)。 */
+	headerLabel?: string;
+	topic?: string;
+	body: VNode;
+	additional?: VNode | null;
+	forward?: DynamicNode;
+	stats?: { forward: string; comment: string; like: string };
+};
+
+/**
+ * 把一条动态构建成 DynamicNode 结构树。
+ * @param dynamic 动态数据
+ * @param isForward 是否作为被转发的内部动态(影响标签位置、是否带互动数)
+ * @param fmt 时间 / 数字格式化器
+ */
+export async function buildDynamicNode(
 	dynamic: Dynamic,
 	isForward: boolean,
-): Promise<DynamicContent> {
-	const upName = dynamic.modules.module_author.name;
+	fmt: NodeFormatters,
+): Promise<DynamicNode> {
+	const author = dynamic.modules.module_author;
+	const stat = dynamic.modules.module_stat;
+	const node: DynamicNode = {
+		avatarUrl: author.face,
+		upName: author.name,
+		upIsVip: author.vip.type !== 0,
+		pubTime: fmt.time(author.pub_ts),
+		topic: dynamic.modules.module_dynamic.topic?.name || undefined,
+		body: <></>,
+		additional: buildAdditionalContent(dynamic),
+		// 内部转发不展示互动数(与原行为一致,版式上 stats 块自动收起)。
+		stats: isForward
+			? undefined
+			: {
+					forward: fmt.num(stat.forward.count),
+					comment: fmt.num(stat.comment.count),
+					like: fmt.num(stat.like.count),
+				},
+	};
+	const upName = author.name;
+
+	// 给节点贴类型标签:外层接到发布时间后,内部转发接到作者名后。
+	const label = (text: string) => {
+		if (isForward) node.headerLabel = text;
+		else node.pubTime += ` · ${text}`;
+	};
 
 	switch (dynamic.type) {
 		case DYNAMIC_TYPE_WORD:
 		case DYNAMIC_TYPE_DRAW: {
-			return {
-				vnode: (
-					<>
-						{buildBasicContent(dynamic, false)}
-						{buildAdditionalContent(dynamic)}
-					</>
-				),
-			};
+			node.body = buildBasicContent(dynamic, false);
+			return node;
 		}
 
 		case DYNAMIC_TYPE_FORWARD: {
 			const selfContent = buildBasicContent(dynamic, false);
-			if (!dynamic.orig)
-				return {
-					vnode: (
-						<>
-							{selfContent}
-							<p>{upName}转发了一条动态，但原动态已不可见</p>
-						</>
-					),
-				};
-			const forwarded = await buildDynamicContent(dynamic.orig, true);
-			const forwardedAuthor = dynamic.orig.modules.module_author;
-			return {
-				vnode: (
+			if (!dynamic.orig) {
+				node.body = (
 					<>
 						{selfContent}
-						{buildForwardBlock(
-							forwardedAuthor.face,
-							forwardedAuthor.name,
-							forwarded.forwardLabel,
-							forwarded.vnode,
-						)}
-						{buildAdditionalContent(dynamic)}
+						<p>{upName}转发了一条动态，但原动态已不可见</p>
 					</>
-				),
-			};
+				);
+				return node;
+			}
+			node.body = selfContent;
+			node.forward = await buildDynamicNode(dynamic.orig, true, fmt);
+			return node;
 		}
 
 		case DYNAMIC_TYPE_AV: {
 			const selfContent = buildBasicContent(dynamic, false);
-			if (!dynamic.modules.module_dynamic?.major?.archive)
-				return {
-					vnode: (
-						<>
-							{selfContent}
-							{buildAdditionalContent(dynamic)}
-						</>
-					),
-				};
-			const archive = dynamic.modules.module_dynamic.major.archive;
-			const isNewVideo = archive.badge.text === "投稿视频";
-			return {
-				vnode: (
-					<>
-						{selfContent}
-						{buildVideoContent(archive)}
-						{buildAdditionalContent(dynamic)}
-					</>
-				),
-				forwardLabel: isNewVideo && isForward ? "投稿了视频" : undefined,
-				pubTimeSuffix: isNewVideo && !isForward ? " · 投稿了视频" : undefined,
-			};
+			const archive = dynamic.modules.module_dynamic?.major?.archive;
+			node.body = archive ? (
+				<>
+					{selfContent}
+					{buildVideoContent(archive)}
+				</>
+			) : (
+				selfContent
+			);
+			if (archive?.badge.text === "投稿视频") label("投稿了视频");
+			return node;
 		}
 
 		case DYNAMIC_TYPE_ARTICLE: {
-			return {
-				vnode: (
-					<>
-						{buildBasicContent(dynamic, true)}
-						{buildAdditionalContent(dynamic)}
-					</>
-				),
-				forwardLabel: isForward ? "投稿了专栏" : undefined,
-				pubTimeSuffix: !isForward ? " · 投稿了专栏" : undefined,
-			};
+			node.body = buildBasicContent(dynamic, true);
+			label("投稿了专栏");
+			return node;
 		}
 
 		case DYNAMIC_TYPE_LIVE:
-			return { vnode: <p>{upName}发起了直播预约，我暂时无法渲染，请自行查看</p> };
+			node.body = <p>{upName}发起了直播预约，我暂时无法渲染，请自行查看</p>;
+			break;
 		case DYNAMIC_TYPE_MEDIALIST:
-			return { vnode: <p>{upName}分享了收藏夹，我暂时无法渲染，请自行查看</p> };
+			node.body = <p>{upName}分享了收藏夹，我暂时无法渲染，请自行查看</p>;
+			break;
 		case DYNAMIC_TYPE_PGC:
-			return { vnode: <p>{upName}发布了剧集（番剧、电影、纪录片），我暂时无法渲染，请自行查看</p> };
+			node.body = <p>{upName}发布了剧集（番剧、电影、纪录片），我暂时无法渲染，请自行查看</p>;
+			break;
 		case DYNAMIC_TYPE_MUSIC:
-			return { vnode: <p>{upName}发行了新歌，我暂时无法渲染，请自行查看</p> };
+			node.body = <p>{upName}发行了新歌，我暂时无法渲染，请自行查看</p>;
+			break;
 		case DYNAMIC_TYPE_COMMON_SQUARE:
-			return { vnode: <p>{upName}发布了装扮｜剧集｜点评｜普通分享，我暂时无法渲染，请自行查看</p> };
+			node.body = <p>{upName}发布了装扮｜剧集｜点评｜普通分享，我暂时无法渲染，请自行查看</p>;
+			break;
 		case DYNAMIC_TYPE_COURSES_SEASON:
-			return { vnode: <p>{upName}发布了新课程，我暂时无法渲染，请自行查看</p> };
+			node.body = <p>{upName}发布了新课程，我暂时无法渲染，请自行查看</p>;
+			break;
 		case DYNAMIC_TYPE_UGC_SEASON:
-			return { vnode: <p>{upName}更新了合集，我暂时无法渲染，请自行查看</p> };
+			node.body = <p>{upName}更新了合集，我暂时无法渲染，请自行查看</p>;
+			break;
 		case DYNAMIC_TYPE_NONE:
-			return { vnode: <p>{upName}发布了一条无效动态</p> };
+			node.body = <p>{upName}发布了一条无效动态</p>;
+			break;
 		case DYNAMIC_TYPE_LIVE_RCMD:
 			throw new Error("直播开播动态，不做处理");
 		default:
-			return { vnode: <p>{upName}发布了一条我无法识别的动态，请自行查看</p> };
+			node.body = <p>{upName}发布了一条我无法识别的动态，请自行查看</p>;
 	}
+	// 「无法渲染」类动态没有可拆的附加内容,清掉以免空块占位。
+	node.additional = null;
+	return node;
 }
 
 // ── 私有辅助函数 ──────────────────────────────────────────────────────────────
@@ -218,53 +238,23 @@ function buildPicsContent(pics: Array<{ height: number; url: string; width: numb
 	);
 }
 
-function buildForwardBlock(
-	avatarUrl: string,
-	username: string,
-	forwardLabel: string | undefined,
-	content: VNode,
-) {
-	const label = forwardLabel ? ` ${forwardLabel}` : "";
-	return (
-		<div
-			class="rounded-[8px] p-[10px] mt-2"
-			style="background: rgba(0,0,0,0.04); border-left: 3px solid #00AEEC;"
-		>
-			<div class="flex items-center gap-[6px] mb-[6px]">
-				<img
-					class="w-[20px] h-[20px] rounded-full object-cover shrink-0"
-					src={avatarUrl}
-					alt="avatar"
-				/>
-				<span class="text-[13px] font-bold" style="color: #00AEEC;">
-					{username}
-					{label}
-				</span>
-			</div>
-			<div class="text-[13px]" style="color: #444;">
-				{content}
-			</div>
-		</div>
-	);
-}
-
-function buildAdditionalContent(dynamic: Dynamic) {
+/**
+ * 附加内容(预约 / 商品 / 通用卡)。返回内层 VNode(无外边距 —— 间距由 additional
+ * 版式块的 marginTop/marginBottom 控制),无附加内容时返回 null(块自动收起)。
+ */
+function buildAdditionalContent(dynamic: Dynamic): VNode | null {
 	const additional = dynamic.modules.module_dynamic.additional;
 	if (!additional) return null;
-	let content: ReturnType<typeof buildReserveAdditional> | null = null;
 	switch (additional.type) {
 		case ADDITIONAL_TYPE_RESERVE:
-			content = buildReserveAdditional(additional.reserve);
-			break;
+			return buildReserveAdditional(additional.reserve);
 		case ADDITIONAL_TYPE_GOODS:
-			content = buildGoodsAdditional(additional.goods);
-			break;
+			return buildGoodsAdditional(additional.goods);
 		case ADDITIONAL_TYPE_COMMON:
-			content = buildCommonAdditional(additional.common);
-			break;
+			return buildCommonAdditional(additional.common);
+		default:
+			return null;
 	}
-	if (!content) return null;
-	return <div class="mt-[8px]">{content}</div>;
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: Bilibili API 返回的预约数据类型不固定

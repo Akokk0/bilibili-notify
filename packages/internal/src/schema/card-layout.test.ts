@@ -21,6 +21,18 @@ describe("DEFAULT_CARD_LAYOUT", () => {
 		expect(DEFAULT_CARD_LAYOUT.live.every((b) => b.visible)).toBe(true);
 	});
 
+	it("lists dynamic content blocks with additional as its own block", () => {
+		expect(DEFAULT_CARD_LAYOUT.dynamic.map((b) => b.type)).toEqual([
+			"header",
+			DIVIDER_TYPE,
+			"topic",
+			"content",
+			"additional",
+			DIVIDER_TYPE,
+			"stats",
+		]);
+	});
+
 	it("gives every block a type; content blocks use id===type", () => {
 		const content = DEFAULT_CARD_LAYOUT.live.filter((b) => b.type !== DIVIDER_TYPE);
 		expect(content.every((b) => b.id === b.type)).toBe(true);
@@ -58,6 +70,20 @@ describe("normalizeCardLayout", () => {
 		// missing known content types appended
 		expect(out.live.map((b) => b.type)).toContain("stats");
 		expect(out.live.map((b) => b.type)).toContain("follower");
+	});
+
+	it("appends the additional block to dynamic layouts saved before v4", () => {
+		const stored = {
+			...DEFAULT_CARD_LAYOUT,
+			version: 3,
+			dynamic: [
+				{ id: "header", type: "header", visible: true },
+				{ id: "content", type: "content", visible: true },
+				{ id: "stats", type: "stats", visible: true },
+			],
+		};
+		const out = normalizeCardLayout(stored, DEFAULT_CARD_LAYOUT);
+		expect(out.dynamic.map((b) => b.type)).toContain("additional");
 	});
 
 	it("preserves per-block margins on kept blocks", () => {

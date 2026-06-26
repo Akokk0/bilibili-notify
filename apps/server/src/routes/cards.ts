@@ -572,28 +572,60 @@ function buildLivePreviewProps(style: PreviewStyle): LiveCardProps {
 }
 
 function buildDynamicPreviewProps(style: PreviewStyle): DynamicCardProps {
-	const mainContent = h(
+	const body = h(
 		"div",
 		{
-			style: "font-size:14px;line-height:1.7;color:#444;padding:6px 0;white-space:pre-line;",
+			style: "font-size:14px;line-height:1.7;color:#444;white-space:pre-line;",
 		},
 		"这是一段示例动态正文。你可以在「卡片预览·样式」里看到改色后的渲染效果。\n第二行用来演示换行和留白。",
 	);
+	// 附加内容块的示例(预约样式),让用户在预览里看到 additional 块独立排版的位置。
+	const additional = h(
+		"div",
+		{ style: "background:rgba(0,0,0,0.04);border-radius:8px;padding:10px;" },
+		[
+			h(
+				"div",
+				{ style: "font-size:14px;font-weight:bold;color:#18191C;" },
+				"示例预约 · 新版本直播",
+			),
+			h(
+				"div",
+				{ style: "font-size:12px;color:#999;margin-top:4px;" },
+				"6月30日 20:00 · 1.2万人预约",
+			),
+		],
+	);
+	// 转发示例:内部原动态用同一套版式递归渲染,标签贴在内部作者名后。
+	const forward = {
+		avatarUrl: SVG_AVATAR_PINK,
+		upName: "被转发的 UP 主",
+		upIsVip: false,
+		pubTime: "2026-05-08 10:30:00",
+		headerLabel: "投稿了视频",
+		topic: undefined,
+		body: h(
+			"div",
+			{ style: "font-size:14px;line-height:1.7;color:#444;" },
+			"这是被转发的原动态正文 —— 内部也跟随同一套版式（块顺序 / 显隐 / 边距）。",
+		),
+		additional: null,
+		stats: undefined,
+	};
 	return {
 		cardColorStart: style.cardColorStart,
 		cardColorEnd: style.cardColorEnd,
-		decorateColor: "#FB7299",
-		avatarUrl: SVG_AVATAR_BLUE,
-		upName: "示例 UP 主",
-		upIsVip: true,
-		pubTime: "2026-05-09 18:24:00",
-		decorateCardUrl: undefined,
-		decorateCardId: undefined,
-		topic: "示例话题",
-		mainContent,
-		forwardCount: "1.2万",
-		commentCount: "5,891",
-		likeCount: "8.7万",
+		node: {
+			avatarUrl: SVG_AVATAR_BLUE,
+			upName: "示例 UP 主",
+			upIsVip: true,
+			pubTime: "2026-05-09 18:24:00",
+			topic: "示例话题",
+			body,
+			additional,
+			forward,
+			stats: { forward: "1.2万", comment: "5,891", like: "8.7万" },
+		},
 	};
 }
 

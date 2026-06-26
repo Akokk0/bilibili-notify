@@ -658,12 +658,15 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 			false,
 		);
 
-		// dynamic add op 带 dynamic 切片(本例未改动,等于默认四块)。
+		// dynamic add op 带 dynamic 切片(本例未改动,等于默认版式:含分割线与 additional 块)。
 		const dynView = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0][0].sub;
 		expect(dynView.dynamicLayout?.map((b: { id: string }) => b.id)).toEqual([
 			"header",
+			"divider-1",
 			"topic",
 			"content",
+			"additional",
+			"divider-2",
 			"stats",
 		]);
 	});

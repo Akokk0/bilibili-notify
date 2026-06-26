@@ -2,10 +2,11 @@ import { z } from "zod";
 
 /**
  * 卡片版式描述符的 schema 版本。v2:块从 `{id,visible}` 升级为带 `type` + 可选上下
- * 边距,并支持可插入/删除的分割线块(type=divider)。结构演进时递增,配合
- * `normalizeCardLayout` 做向前兼容迁移(按 type 对齐已知内容块)。
+ * 边距,并支持可插入/删除的分割线块(type=divider)。v4:动态卡新增 `additional`
+ * 内容块(附加内容:预约 / 商品 / 通用卡,从正文里拆出可单独排版)。结构演进时递增,
+ * 配合 `normalizeCardLayout` 做向前兼容迁移(按 type 对齐已知内容块、补齐缺失块)。
  */
-export const CARD_LAYOUT_VERSION = 3;
+export const CARD_LAYOUT_VERSION = 4;
 
 /** 分割线块的 type。可在版式里任意位置插入多条、可删除。 */
 export const DIVIDER_TYPE = "divider";
@@ -92,6 +93,7 @@ export const DEFAULT_CARD_LAYOUT: CardLayout = {
 		div(1),
 		c("topic", 12, 0),
 		c("content", 12, 12),
+		c("additional", 0, 12),
 		div(2),
 		c("stats", 12, 12),
 	],

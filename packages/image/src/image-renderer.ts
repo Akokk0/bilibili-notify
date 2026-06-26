@@ -12,7 +12,7 @@ import type { PuppeteerLike } from "./puppeteer";
 import { renderCard } from "./render";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
 import { DynamicCard } from "./templates/dynamic-card";
-import { buildDynamicContent } from "./templates/dynamic-content";
+import { buildDynamicNode } from "./templates/dynamic-content";
 import { GuardCard } from "./templates/guard-card";
 import { LiveCard } from "./templates/live-card";
 import { SCCard } from "./templates/sc-card";
@@ -368,41 +368,19 @@ export class ImageRenderer {
 			colorOptions;
 
 		const moduleAuthor = data.modules.module_author;
-		const moduleStat = data.modules.module_stat;
-		const topic = data.modules.module_dynamic.topic?.name ?? "";
 		this.logger.debug(`[dynamic] 开始渲染动态卡片：${moduleAuthor.name}`);
 
-		let pubTime = this.unixTimestampToString(moduleAuthor.pub_ts);
-		const { decorateCardUrl, decorateCardId, decorateCardColor } = moduleAuthor.decorate
-			? {
-					decorateCardUrl: moduleAuthor.decorate.card_url,
-					decorateCardId: moduleAuthor.decorate.fan.num_str,
-					decorateCardColor: moduleAuthor.decorate.fan.color,
-				}
-			: { decorateCardUrl: undefined, decorateCardId: undefined, decorateCardColor: "#FFFFFF" };
-
-		const content = await buildDynamicContent(data, false);
-		if (content.pubTimeSuffix) {
-			pubTime += content.pubTimeSuffix;
-		}
+		const node = await buildDynamicNode(data, false, {
+			time: (ts) => this.unixTimestampToString(ts),
+			num: (n) => this.numberToStr(n),
+		});
 
 		const html = await renderCard(
 			DynamicCard,
 			{
 				cardColorStart,
 				cardColorEnd,
-				decorateColor: decorateCardColor ?? "#FFFFFF",
-				avatarUrl: moduleAuthor.face,
-				upName: moduleAuthor.name,
-				upIsVip: moduleAuthor.vip.type !== 0,
-				pubTime,
-				decorateCardUrl,
-				decorateCardId: decorateCardId?.toString(),
-				topic,
-				mainContent: content.vnode,
-				forwardCount: this.numberToStr(moduleStat.forward.count),
-				commentCount: this.numberToStr(moduleStat.comment.count),
-				likeCount: this.numberToStr(moduleStat.like.count),
+				node,
 				layout,
 			},
 			{ title: "动态通知", font: this.config.font, htmlWidth: 600 },
