@@ -65,9 +65,13 @@ function nodeBuilders(node: DynamicNode, layout: CardBlock[]): Record<string, ()
 				) : null}
 				{node.body}
 				{node.forward ? (
+					// 转发 inset 是内部动态的「框架」:像外层卡片容器一样提供固定的上下内边距,
+					// 这样 renderBlocks 跳过内部首块上边距后,内容不会顶着 inset 顶部。
+					// zoom 把内部子树整体等比缩小(Chromium 原生支持、会正常重排) —— 内层走同一套
+					// 写死 px 的 builder,只有 zoom 能统一缩小头像 / 视频卡 / 文字,一眼认出是转发。
 					<div
-						class="rounded-[8px] mt-2 py-[2px]"
-						style="background: rgba(0,0,0,0.04); border-left: 3px solid #00AEEC;"
+						class="rounded-[8px] mt-2 pt-[12px] pb-[12px]"
+						style="background: rgba(0,0,0,0.04); border-left: 5px solid #00AEEC; zoom: 0.85;"
 					>
 						{renderBlocks(layout, nodeBuilders(node.forward, layout))}
 					</div>
