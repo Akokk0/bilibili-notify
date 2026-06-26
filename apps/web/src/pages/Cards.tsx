@@ -77,11 +77,15 @@ function PreviewImage({
 	style,
 	content,
 	layout,
+	fallback,
 }: {
 	kind: CardKind;
 	style: CardStyle;
-	content: PreviewContent;
+	/** 已按 kind 选好的内容载荷(全局 = 可编辑 mock;per-UP = 该 UP 真实数据 id)。 */
+	content: Record<string, unknown>;
 	layout: CardLayoutFull | null;
+	/** 真实拉取失败时是否回退示例数据(per-UP 自动模式 = true)。 */
+	fallback: boolean;
 }) {
 	// debounce style + content + layout edits — TColor pickers, TArea and the
 	// drag/toggle layout editor fire many onChange callbacks; we don't want every
@@ -103,13 +107,14 @@ function PreviewImage({
 	}, [layout]);
 
 	const query = useQuery({
-		queryKey: ["card-preview", kind, debouncedStyle, debouncedContent[kind], debouncedLayout],
+		queryKey: ["card-preview", kind, debouncedStyle, debouncedContent, debouncedLayout, fallback],
 		queryFn: async () => {
 			const res = await api.post<PreviewResponse>("/api/cards/preview", {
 				kind,
 				style: debouncedStyle,
-				content: debouncedContent[kind],
+				content: debouncedContent,
 				layout: debouncedLayout ?? undefined,
+				fallback,
 			});
 			if (!res.ok || !res.dataUrl) {
 				throw new ApiError(500, res, res.err ?? "preview failed");
@@ -155,13 +160,17 @@ function CardPreview({
 	style,
 	content,
 	layout,
+	fallback,
 }: {
 	kind: CardKind;
 	style: CardStyle;
-	content: PreviewContent;
+	content: Record<string, unknown>;
 	layout: CardLayoutFull | null;
+	fallback: boolean;
 }) {
-	return <PreviewImage kind={kind} style={style} content={content} layout={layout} />;
+	return (
+		<PreviewImage kind={kind} style={style} content={content} layout={layout} fallback={fallback} />
+	);
 }
 
 interface TestPushResponse {
@@ -179,11 +188,13 @@ function TestPushCard({
 	style,
 	content,
 	layout,
+	fallback,
 }: {
 	kind: CardKind;
 	style: CardStyle;
-	content: PreviewContent[CardKind];
+	content: Record<string, unknown>;
 	layout: CardLayoutFull | null;
+	fallback: boolean;
 }) {
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
@@ -208,6 +219,7 @@ function TestPushCard({
 				style,
 				content,
 				layout: layout ?? undefined,
+				fallback,
 			});
 			if (!res.ok) throw new ApiError(500, res, res.err ?? "推送失败");
 			return res;
@@ -441,11 +453,16 @@ function PreviewContentBox({
 	setKind,
 	content,
 	setContent,
+	realData = false,
+	realDataLabel,
 }: {
 	kind: CardKind;
 	setKind: (k: CardKind) => void;
 	content: PreviewContent;
 	setContent: React.Dispatch<React.SetStateAction<PreviewContent>>;
+	/** per-UP 作用域:仅类型选择,不提供 mock 内容编辑(用该 UP 真实数据)。 */
+	realData?: boolean;
+	realDataLabel?: string;
 }) {
 	const setLive = (next: Partial<PreviewContent["live"]>) =>
 		setContent((c) => ({ ...c, live: { ...c.live, ...next } }));
@@ -497,7 +514,14 @@ function PreviewContentBox({
 					);
 				})}
 			</div>
-			{kind === "live" ? (
+			{realData ? (
+				<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-emerald-800">
+					{kind === "live" || kind === "dyn"
+						? (realDataLabel ??
+							"使用该 UP 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。")
+						: "SC / 上舰为观众行为,无该 UP 真实数据,使用示例内容预览。"}
+				</div>
+			) : kind === "live" ? (
 				<>
 					<Field code="roomId">
 						<TInput
@@ -787,6 +811,17 @@ export default function Cards() {
 		[seededPuStyle, seededPuLayout],
 	);
 
+	// 预览内容:全局 = 可编辑 mock;per-UP = 该 UP 真实数据(live/dyn 按 uid,后端解析房间号
+	// / 拉动态),失败由 fallback 自动回退示例;sc/guard 无该 UP 真实数据,沿用固定 mock。
+	// useMemo 稳定引用 —— 否则每次 render 新建对象会不断重置 PreviewImage 的防抖定时器。
+	const previewFallback = !isGlobalScope;
+	const previewContent = useMemo<Record<string, unknown>>(() => {
+		if (isGlobalScope || !focusedSub) return content[kind];
+		if (kind === "live") return { uid: focusedSub.uid };
+		if (kind === "dyn") return { uid: focusedSub.uid, offset: 1 };
+		return content[kind];
+	}, [isGlobalScope, focusedSub, kind, content]);
+
 	useDirtyDraft({
 		pageKey: isGlobalScope ? "cards" : "cards-perup",
 		pageLabel: isGlobalScope
@@ -945,6 +980,12 @@ export default function Cards() {
 						setKind={setKind}
 						content={content}
 						setContent={setContent}
+						realData={!isGlobalScope}
+						realDataLabel={
+							focusedSub
+								? `使用 ${displayName(focusedSub)} 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。`
+								: undefined
+						}
 					/>
 				</div>
 
@@ -959,7 +1000,13 @@ export default function Cards() {
 							{kind === "sc" ? " 280" : kind === "guard" ? " 430" : " 600"}px
 						</span>
 					</div>
-					<CardPreview kind={kind} style={effStyle} content={content} layout={effLayout} />
+					<CardPreview
+						kind={kind}
+						style={effStyle}
+						content={previewContent}
+						layout={effLayout}
+						fallback={previewFallback}
+					/>
 
 					{/* Effective style readout */}
 					<div className="flex flex-wrap gap-3.5 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 font-mono text-[10.5px] text-bn-text-tertiary">
@@ -1017,7 +1064,13 @@ export default function Cards() {
 						</GlassBox>
 					)}
 
-					<TestPushCard kind={kind} style={effStyle} content={content[kind]} layout={effLayout} />
+					<TestPushCard
+						kind={kind}
+						style={effStyle}
+						content={previewContent}
+						layout={effLayout}
+						fallback={previewFallback}
+					/>
 				</div>
 			</div>
 

@@ -91,6 +91,28 @@ describe("Cards per-UP 作用域接线", () => {
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
 	});
 
+	it("切到 per-UP → 预览改用该 UP 真实数据(uid)+ fallback:true", async () => {
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+		fireEvent.click(await screen.findByText("UID 123456"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+
+		// 预览 POST 有 500ms 防抖;等防抖追上后那次「真实数据(uid)+ fallback」请求落地
+		// (默认 kind=live;中间会有 content 尚未追上的过渡请求,故须同时匹配 uid)。
+		await waitFor(
+			() => {
+				const call = vi.mocked(api.post).mock.calls.find(([url, body]) => {
+					const b = body as { fallback?: boolean; content?: { uid?: string } };
+					return (
+						url === "/api/cards/preview" && b?.fallback === true && b.content?.uid === "123456"
+					);
+				});
+				expect(call).toBeTruthy();
+			},
+			{ timeout: 2000 },
+		);
+	});
+
 	it("per-UP 保存 → 只 PATCH cardStyle + cardLayout(cardLayout 未覆盖 = null)", async () => {
 		renderCards();
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
