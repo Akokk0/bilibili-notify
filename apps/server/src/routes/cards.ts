@@ -116,6 +116,11 @@ const PreviewRequestSchema = z.object({
 	content: ContentSchema,
 	/** 编辑器持有的整份版式草稿;renderPreviewCard 按 kind 取切片。缺省 = 默认版式。 */
 	layout: CardLayoutSchema.optional(),
+	/**
+	 * 真实拉取失败时是否自动回退示例数据。per-UP 作用域自动用该 UP 真实数据预览,失败
+	 * (未开播 / 无动态 / 网络)应静默回退;全局显式输入失败则照常报错告知用户。
+	 */
+	fallback: z.boolean().optional(),
 });
 
 const EnableRenderingSchema = z.object({ chromePath: z.string().min(1) });
@@ -137,6 +142,7 @@ const TestPushRequestSchema = z.object({
 	style: StyleSchema,
 	content: ContentSchema,
 	layout: CardLayoutSchema.optional(),
+	fallback: z.boolean().optional(),
 });
 
 /** /api/cards/test-push 响应 —— 与 push.ts 的 TestResponse 同形。 */
@@ -294,6 +300,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		style: PreviewStyle,
 		content: PreviewContent,
 		layout?: CardLayout,
+		fallback = false,
 	): Promise<{ buffer: Buffer; mime: string }> {
 		const puppeteer = currentPuppeteer;
 		if (!puppeteer) throw new Error("puppeteer 未就绪");
@@ -330,35 +337,44 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			);
 			return { buffer, mime: "image/jpeg" };
 		}
-		// Live + Dyn:有 content 走真实拉取,把用户输入错误原样抛出。
-		if (kind === "live" && content?.roomId?.trim()) {
-			const renderer = getImageRenderer(style);
-			if (!renderer) throw new Error("puppeteer 未就绪");
-			if (!opts.api) throw new Error("auth system 未就绪 — 后端账号尚未登录");
-			const buffer = await renderRealLive(
-				opts.api,
-				renderer,
-				content.roomId.trim(),
-				style,
-				layout?.live,
-			);
-			return { buffer, mime: "image/jpeg" };
+		// Live + Dyn:有 roomId / uid 走真实拉取。live 优先用显式 roomId,否则按 uid 解析
+		// 房间号(per-UP 自动模式只持有 uid)。fallback=true 时真实拉取失败回退示例数据;
+		// 否则(全局显式输入)把错误原样抛出告知用户。
+		if (kind === "live" && (content?.roomId?.trim() || content?.uid?.trim())) {
+			try {
+				const renderer = getImageRenderer(style);
+				if (!renderer) throw new Error("puppeteer 未就绪");
+				if (!opts.api) throw new Error("auth system 未就绪 — 后端账号尚未登录");
+				const roomId =
+					content.roomId?.trim() ||
+					(await resolveRoomIdFromUid(opts.api, content.uid?.trim() ?? ""));
+				const buffer = await renderRealLive(opts.api, renderer, roomId, style, layout?.live);
+				return { buffer, mime: "image/jpeg" };
+			} catch (err) {
+				if (!fallback) throw err;
+				log.info(`[cards] live 真实渲染失败,回退示例数据:${(err as Error).message}`);
+			}
 		}
 		if (kind === "dyn" && content?.uid?.trim()) {
-			const renderer = getImageRenderer(style);
-			if (!renderer) throw new Error("puppeteer 未就绪");
-			if (!opts.api) throw new Error("auth system 未就绪 — 后端账号尚未登录");
-			const buffer = await renderRealDynamic(
-				opts.api,
-				renderer,
-				content.uid.trim(),
-				content.offset ?? 1,
-				style,
-				layout?.dynamic,
-			);
-			return { buffer, mime: "image/jpeg" };
+			try {
+				const renderer = getImageRenderer(style);
+				if (!renderer) throw new Error("puppeteer 未就绪");
+				if (!opts.api) throw new Error("auth system 未就绪 — 后端账号尚未登录");
+				const buffer = await renderRealDynamic(
+					opts.api,
+					renderer,
+					content.uid.trim(),
+					content.offset ?? 1,
+					style,
+					layout?.dynamic,
+				);
+				return { buffer, mime: "image/jpeg" };
+			} catch (err) {
+				if (!fallback) throw err;
+				log.info(`[cards] dyn 真实渲染失败,回退示例数据:${(err as Error).message}`);
+			}
 		}
-		// Live + Dyn 空 content:虚构 mock 数据,走 renderCard + screenshot 流水线
+		// Live + Dyn 无真实数据(或回退):虚构 mock 数据,走 renderCard + screenshot 流水线
 		// (不经 ImageRenderer,未登录也能调色)。背景图在此解析成 data URL 注入。
 		const bgDataUrl = await readCardBgDataUrl(
 			opts.deps.store.bootstrap.dataDir,
@@ -389,9 +405,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				503,
 			);
 		}
-		const { kind, style, content, layout } = parsed.data;
+		const { kind, style, content, layout, fallback } = parsed.data;
 		try {
-			const { buffer, mime } = await renderPreviewCard(kind, style, content, layout);
+			const { buffer, mime } = await renderPreviewCard(kind, style, content, layout, fallback);
 			return c.json<PreviewResponse>({
 				ok: true,
 				dataUrl: `data:${mime};base64,${buffer.toString("base64")}`,
@@ -411,7 +427,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!parsed.success) {
 			return c.json<TestPushResponse>({ ok: false, latencyMs: 0, err: "invalid_request" }, 400);
 		}
-		const { targetId, kind, style, content, layout } = parsed.data;
+		const { targetId, kind, style, content, layout, fallback } = parsed.data;
 
 		if (!currentPuppeteer) {
 			return c.json<TestPushResponse>(
@@ -433,7 +449,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 
 		let card: { buffer: Buffer; mime: string };
 		try {
-			card = await renderPreviewCard(kind, style, content, layout);
+			card = await renderPreviewCard(kind, style, content, layout, fallback);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			log.warn(`[cards] test-push render failed (${kind}): ${msg}`);
@@ -458,6 +474,22 @@ interface BilibiliEnvelope<T> {
 	message?: string;
 	msg?: string;
 	data?: T;
+}
+
+/**
+ * uid → 直播间号。走 `getUserInfo(uid).data.live_room.roomid`(与 live 引擎
+ * listener 解析房间号同一路径)。per-UP 自动预览只持有 uid,live 真实拉取前先解析。
+ * 未开通直播间 / 解析失败抛 Error。
+ */
+export async function resolveRoomIdFromUid(api: BilibiliAPI, uid: string): Promise<string> {
+	if (!/^\d+$/.test(uid)) throw new Error("UID 必须是纯数字");
+	const info = (await api.getUserInfo(uid)) as BilibiliEnvelope<{
+		live_room?: { roomid?: number };
+	}>;
+	const roomid = info?.data?.live_room?.roomid;
+	const n = Number(roomid);
+	if (!Number.isFinite(n) || n <= 0) throw new Error("该 UP 未开通直播间或无法解析房间号");
+	return String(n);
 }
 
 async function renderRealLive(
