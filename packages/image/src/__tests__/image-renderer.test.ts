@@ -382,6 +382,46 @@ describe("ImageRenderer — IM2 远端图大小上限", () => {
 });
 
 // ---------------------------------------------------------------------------
+// updateConfig — 仅在配置变化时记录(预览切卡片类型不刷日志)
+// ---------------------------------------------------------------------------
+
+describe("ImageRenderer.updateConfig", () => {
+	const BASE: ImageRendererConfig = {
+		cardColorStart: "#000000",
+		cardColorEnd: "#ffffff",
+		font: "sans-serif",
+		hideDesc: false,
+		hideFollower: false,
+	};
+
+	function makeWithSpyLogger(config: ImageRendererConfig) {
+		const info = vi.fn();
+		const ctx: ServiceContext = {
+			logger: { debug() {}, info, warn() {}, error() {} },
+			setInterval: () => ({ dispose() {} }),
+			setTimeout: () => ({ dispose() {} }),
+			onDispose: () => {},
+		};
+		const puppeteer = { page: async () => ({}) as never } as unknown as PuppeteerLike;
+		const r = new ImageRenderer({ serviceCtx: ctx, puppeteer, config });
+		return { r, info };
+	}
+
+	it("配置实际变化 → 记录一次", () => {
+		const { r, info } = makeWithSpyLogger({ ...BASE });
+		r.updateConfig({ ...BASE, cardColorStart: "#111111" });
+		expect(info).toHaveBeenCalledTimes(1);
+	});
+
+	it("相同配置重复 updateConfig → 不记录(切卡片类型时样式没变)", () => {
+		const { r, info } = makeWithSpyLogger({ ...BASE });
+		r.updateConfig({ ...BASE });
+		r.updateConfig({ ...BASE });
+		expect(info).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
 // pruneImageCache
 // ---------------------------------------------------------------------------
 

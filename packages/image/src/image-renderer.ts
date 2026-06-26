@@ -138,7 +138,20 @@ export class ImageRenderer {
 	 * 注意:已缓存的 base64 图(头像 / 封面)与配色无关,无需 invalidate。
 	 */
 	updateConfig(config: ImageRendererConfig): void {
+		const prev = this.config;
 		this.config = config;
+		// 仅在配置**实际变化**时记录 —— 预览每次渲染(尤其切卡片类型时样式没变)都会
+		// updateConfig,无脑打 info 会刷屏并让人误以为「已保存」。重复传入相同配置则静默。
+		const changed =
+			prev.cardColorStart !== config.cardColorStart ||
+			prev.cardColorEnd !== config.cardColorEnd ||
+			prev.font !== config.font ||
+			prev.hideDesc !== config.hideDesc ||
+			prev.hideFollower !== config.hideFollower ||
+			prev.glassOpacity !== config.glassOpacity ||
+			prev.glassClear !== config.glassClear ||
+			prev.backgroundImage !== config.backgroundImage;
+		if (!changed) return;
 		this.logger.info(
 			`[image] 配置已更新: cardColorStart=${config.cardColorStart}, cardColorEnd=${config.cardColorEnd}`,
 		);
