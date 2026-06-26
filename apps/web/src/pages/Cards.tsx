@@ -509,7 +509,7 @@ function PreviewContentBox({
 					{kind === "live" || kind === "dyn"
 						? (realDataLabel ??
 							"使用该 UP 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。")
-						: "SC / 上舰为观众行为,无该 UP 真实数据,使用示例内容预览。"}
+						: "SC / 上舰:接收方为该 UP(真实名字 / 头像),发送者 / 新舰长取当前登录账号;解析失败回退示例。"}
 				</div>
 			) : kind === "live" ? (
 				<>
@@ -809,7 +809,9 @@ export default function Cards() {
 		if (isGlobalScope || !focusedSub) return content[kind];
 		if (kind === "live") return { uid: focusedSub.uid };
 		if (kind === "dyn") return { uid: focusedSub.uid, offset: 1 };
-		return content[kind];
+		// sc / guard:发送者 / 新舰长由后端取当前登录账号(与全局一致);带上该 UP 的 uid,
+		// 后端据此把卡片**接收方**渲染成真实的该 UP(失败回退示例)。内容沿用固定示例。
+		return { ...content[kind], uid: focusedSub.uid };
 	}, [isGlobalScope, focusedSub, kind, content]);
 
 	useDirtyDraft({

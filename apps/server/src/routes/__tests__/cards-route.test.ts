@@ -1,4 +1,5 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
+import { ImageRenderer } from "@bilibili-notify/image";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { StandalonePuppeteer } from "../../runtime/puppeteer.js";
 import { createCardsRoute, resolveRoomIdFromUid } from "../cards.js";
@@ -220,5 +221,159 @@ describe("cards route — /preview live-by-uid fallback", () => {
 		});
 		expect(res.status).toBe(500);
 		expect(((await res.json()) as { ok: boolean }).ok).toBe(false);
+	});
+});
+
+describe("cards route — /preview sc/guard 发送者取登录账号", () => {
+	const STYLE = { cardColorStart: "#111111", cardColorEnd: "#ffffff" };
+
+	function loggedInApi(): BilibiliAPI {
+		return {
+			getMyselfInfo: vi.fn(async () => ({ code: 0, data: { mid: 999, uname: "登录名" } })),
+			getUserCardInfo: vi.fn(async () => ({
+				code: 0,
+				data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } },
+			})),
+		} as unknown as BilibiliAPI;
+	}
+
+	function postPreview(app: ReturnType<typeof createCardsRoute>, body: unknown) {
+		return app.request("/preview", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
+	}
+
+	it("sc:senderName=登录账号(fallback:true 的 per-UP 风格请求,与作用域无关)", async () => {
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateSCCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({
+			deps: makeDeps(),
+			puppeteer: makeFakePuppeteer(),
+			api: loggedInApi(),
+		});
+		const res = await postPreview(app, {
+			kind: "sc",
+			style: STYLE,
+			content: { price: 30 },
+			fallback: true,
+		});
+		expect(res.status).toBe(200);
+		const arg = spy.mock.calls[0]?.[0] as { senderName: string };
+		expect(arg.senderName).toBe("登录名");
+		spy.mockRestore();
+	});
+
+	it("guard:uname=登录账号(fallback:true 的 per-UP 风格请求)", async () => {
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateGuardCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({
+			deps: makeDeps(),
+			puppeteer: makeFakePuppeteer(),
+			api: loggedInApi(),
+		});
+		const res = await postPreview(app, {
+			kind: "guard",
+			style: STYLE,
+			content: { level: 3 },
+			fallback: true,
+		});
+		expect(res.status).toBe(200);
+		const arg = spy.mock.calls[0]?.[0] as { uname: string };
+		expect(arg.uname).toBe("登录名");
+		spy.mockRestore();
+	});
+
+	it("sc:per-UP 传 uid → 接收方按 getMasterInfo 解析真实 UP,发送者仍为登录账号", async () => {
+		const api = {
+			getMyselfInfo: vi.fn(async () => ({ code: 0, data: { mid: 999, uname: "登录名" } })),
+			getUserCardInfo: vi.fn(async () => ({
+				code: 0,
+				data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } },
+			})),
+			getMasterInfo: vi.fn(async () => ({
+				code: 0,
+				data: { info: { uname: "真实UP", face: "https://i0.hdslb.com/up.png" } },
+			})),
+		} as unknown as BilibiliAPI;
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateSCCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer(), api });
+		const res = await postPreview(app, {
+			kind: "sc",
+			style: STYLE,
+			content: { uid: "12345", price: 30 },
+			fallback: true,
+		});
+		expect(res.status).toBe(200);
+		const arg = spy.mock.calls[0]?.[0] as { senderName: string; masterName: string };
+		expect(arg.masterName).toBe("真实UP");
+		expect(arg.senderName).toBe("登录名");
+		spy.mockRestore();
+	});
+
+	it("sc:接收方 getMasterInfo 失败 + fallback → 回退示例 UP,200", async () => {
+		const api = {
+			getMyselfInfo: vi.fn(async () => ({ code: 0, data: { mid: 999, uname: "登录名" } })),
+			getUserCardInfo: vi.fn(async () => ({
+				code: 0,
+				data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } },
+			})),
+			getMasterInfo: vi.fn(async () => {
+				throw new Error("network");
+			}),
+		} as unknown as BilibiliAPI;
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateSCCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer(), api });
+		const res = await postPreview(app, {
+			kind: "sc",
+			style: STYLE,
+			content: { uid: "12345", price: 30 },
+			fallback: true,
+		});
+		expect(res.status).toBe(200);
+		const arg = spy.mock.calls[0]?.[0] as { masterName: string };
+		expect(arg.masterName).toBe("示例 UP 主");
+		spy.mockRestore();
+	});
+
+	it("登录解析瞬时失败 → 沿用上次成功快照,发送者不闪回示例(stale-while-error)", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+		// 第一次成功解析 → 缓存;第二次 getMyselfInfo 抛错(模拟瞬时失败)。
+		const getMyselfInfo = vi
+			.fn()
+			.mockResolvedValueOnce({ code: 0, data: { mid: 999, uname: "登录名" } })
+			.mockRejectedValue(new Error("network"));
+		const getUserCardInfo = vi.fn(async () => ({
+			code: 0,
+			data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } },
+		}));
+		const api = { getMyselfInfo, getUserCardInfo } as unknown as BilibiliAPI;
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateSCCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({
+			deps: makeDeps(),
+			puppeteer: makeFakePuppeteer(),
+			api,
+		});
+
+		await postPreview(app, { kind: "sc", style: STYLE, content: { price: 30 } });
+		// 跨过 5 分钟 TTL,迫使第二次重新解析 → getMyselfInfo 抛错 → 走 stale-while-error。
+		vi.setSystemTime(new Date("2026-01-01T00:06:00Z"));
+		await postPreview(app, { kind: "sc", style: STYLE, content: { price: 30 } });
+
+		const lastArg = spy.mock.calls.at(-1)?.[0] as { senderName: string };
+		expect(lastArg.senderName).toBe("登录名"); // 没有闪回「示例粉丝」
+		expect(getMyselfInfo).toHaveBeenCalledTimes(2); // 确实重试了第二次(并失败)
+		spy.mockRestore();
+		vi.useRealTimers();
 	});
 });

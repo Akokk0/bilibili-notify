@@ -277,19 +277,43 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				// in reportAccountInfo). Skipping the second call left avatars
 				// undefined and the preview fell through to the SVG placeholder.
 				const my = await opts.api.getMyselfInfo();
-				if (my?.code !== 0 || !my.data?.mid) return null;
-				const card = await opts.api.getUserCardInfo(String(my.data.mid));
-				if (card?.code === 0 && card.data?.card?.face) {
-					const name = card.data.card.name || my.data.uname;
-					const avatar = card.data.card.face;
-					loggedInCache = { name, avatar, ts: now };
-					return { name, avatar };
+				if (my?.code === 0 && my.data?.mid) {
+					const card = await opts.api.getUserCardInfo(String(my.data.mid));
+					if (card?.code === 0 && card.data?.card?.face) {
+						const name = card.data.card.name || my.data.uname;
+						const avatar = card.data.card.face;
+						loggedInCache = { name, avatar, ts: now };
+						return { name, avatar };
+					}
 				}
 			} catch (err) {
 				log.warn(`[cards] resolve logged-in account failed: ${(err as Error).message}`);
 			}
 		}
+		// 解析失败 / 未就绪:若曾成功解析过,沿用历史快照(stale-while-error),不让一次
+		// 瞬时失败把 SC / 上舰发送者闪回「示例粉丝」。仅从未成功过才回退示例。
+		if (loggedInCache) {
+			return { name: loggedInCache.name, avatar: loggedInCache.avatar };
+		}
 		return null;
+	}
+
+	// SC / 上舰卡接收方(被 SC / 被上舰的 UP)。per-UP 预览传 content.uid → 实时拉真实
+	// 名字 / 头像;全局无 uid、或解析失败且 fallback → 退回示例 UP。
+	async function resolvePreviewMaster(
+		content: PreviewContent,
+		fallback: boolean,
+	): Promise<{ name: string; face: string }> {
+		const uid = content?.uid?.trim();
+		if (uid && opts.api) {
+			try {
+				return await resolveMasterInfo(opts.api, uid);
+			} catch (err) {
+				if (!fallback) throw err;
+				log.info(`[cards] SC / 上舰接收方解析失败,回退示例:${(err as Error).message}`);
+			}
+		}
+		return { name: "示例 UP 主", face: SVG_AVATAR_BLUE };
 	}
 
 	// 渲染一张样例卡片 → JPEG / PNG Buffer。/preview 与 /test-push 共用。失败抛 Error
@@ -308,14 +332,15 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (kind === "sc") {
 			const renderer = getImageRenderer(style);
 			if (!renderer) throw new Error("puppeteer 未就绪");
-			// 登录账号 = SC 发送者(「我在别人直播间发条 SC 会长啥样」)。
+			// 登录账号 = SC 发送者(「我在别人直播间发条 SC 会长啥样」);接收方 = 该 UP。
 			const me = await getLoggedInAccount();
+			const master = await resolvePreviewMaster(content, fallback);
 			const buffer = await renderer.generateSCCard(
 				{
 					senderFace: me?.avatar ?? SVG_AVATAR_FAN,
 					senderName: me?.name ?? "示例粉丝",
-					masterName: "示例 UP 主",
-					masterAvatarUrl: SVG_AVATAR_BLUE,
+					masterName: master.name,
+					masterAvatarUrl: master.face,
 					text: content?.text?.trim() || "主播加油！这首要听到！示例 UP 主唱得太好了！",
 					price: content?.price ?? 30,
 				},
@@ -326,13 +351,14 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (kind === "guard") {
 			const renderer = getImageRenderer(style);
 			if (!renderer) throw new Error("puppeteer 未就绪");
-			// 登录账号 = 新舰长(触发上舰事件的人);显式 text 覆写仍优先。
+			// 登录账号 = 新舰长(触发上舰事件的人);显式 text 覆写仍优先。接收方 = 该 UP。
 			const me = await getLoggedInAccount();
 			const uname = content?.text?.trim() || me?.name || "示例新舰长";
 			const face = me?.avatar ?? SVG_AVATAR_PINK;
+			const master = await resolvePreviewMaster(content, fallback);
 			const buffer = await renderer.generateGuardCard(
 				{ guardLevel: (content?.level ?? 3) as 1 | 2 | 3, uname, face, isAdmin: 0 },
-				{ masterAvatarUrl: SVG_AVATAR_BLUE, masterName: "示例 UP 主" },
+				{ masterAvatarUrl: master.face, masterName: master.name },
 				layout?.guard,
 			);
 			return { buffer, mime: "image/jpeg" };
@@ -474,6 +500,25 @@ interface BilibiliEnvelope<T> {
 	message?: string;
 	msg?: string;
 	data?: T;
+}
+
+/**
+ * uid → 真实 UP 名字 + 头像。SC / 上舰预览的**接收方**(被 SC / 被上舰的 UP):
+ * per-UP 预览传该 UP 的 uid,后端实时拉真实资料,免依赖 dashboard 端可能缺失的
+ * cachedProfile。走 getMasterInfo(与 live 真实渲染同一接口),失败抛 Error。
+ */
+export async function resolveMasterInfo(
+	api: BilibiliAPI,
+	uid: string,
+): Promise<{ name: string; face: string }> {
+	if (!/^\d+$/.test(uid)) throw new Error("UID 必须是纯数字");
+	const master = (await api.getMasterInfo(uid)) as BilibiliEnvelope<{
+		info: { uname: string; face: string };
+	}>;
+	if (master.code !== 0 || !master.data?.info) {
+		throw new Error(`getMasterInfo 失败：${master.message ?? master.msg ?? `code=${master.code}`}`);
+	}
+	return { name: master.data.info.uname, face: master.data.info.face };
 }
 
 /**

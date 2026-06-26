@@ -113,6 +113,25 @@ describe("Cards per-UP 作用域接线", () => {
 		);
 	});
 
+	it("per-UP 切到 SC → 预览带该 UP 的 uid(后端据此渲染真实接收方)", async () => {
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+		fireEvent.click(await screen.findByText("UID 123456"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+		fireEvent.click(screen.getByRole("button", { name: "SC 提醒" }));
+
+		await waitFor(
+			() => {
+				const call = vi.mocked(api.post).mock.calls.find(([url, body]) => {
+					const b = body as { kind?: string; content?: { uid?: string } };
+					return url === "/api/cards/preview" && b?.kind === "sc" && b.content?.uid === "123456";
+				});
+				expect(call).toBeTruthy();
+			},
+			{ timeout: 2000 },
+		);
+	});
+
 	it("per-UP 保存 → 只 PATCH cardStyle + cardLayout(cardLayout 未覆盖 = null)", async () => {
 		renderCards();
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
