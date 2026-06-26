@@ -62,6 +62,8 @@ export interface ImageRendererConfig {
 	cardColorEnd: string;
 	/** 玻璃片(内容层)透明度 0..1 的全局默认;未设时各卡走自身基线(live/dyn 0.82、sc/guard 0.75)。 */
 	glassOpacity?: number;
+	/** 完全透明:内容层透明 + 无模糊的全局默认(优先于 glassOpacity)。 */
+	glassClear?: boolean;
 	/** 自定义卡片背景图资产 id(空 = 渐变);渲染期经 resolveAsset 解析成 data URL。 */
 	backgroundImage?: string;
 	/** CSS font-family，默认值由 adapter 提供(通常透传 `DEFAULT_CARD_STYLE.font`)。 */
@@ -229,6 +231,7 @@ export class ImageRenderer {
 		const { cardColorStart = this.config.cardColorStart, cardColorEnd = this.config.cardColorEnd } =
 			colorOptions;
 		const glassOpacity = colorOptions.glassOpacity ?? this.config.glassOpacity;
+		const glassClear = colorOptions.glassClear ?? this.config.glassClear;
 		const backgroundImage = await this.resolveBg(
 			colorOptions.backgroundImage ?? this.config.backgroundImage,
 		);
@@ -249,6 +252,7 @@ export class ImageRenderer {
 				cardColorStart,
 				cardColorEnd,
 				glassOpacity,
+				glassClear,
 				backgroundImage,
 				data,
 				username,
@@ -320,6 +324,7 @@ export class ImageRenderer {
 				bgColor: BG_COLORS[guardLevel],
 				layout,
 				glassOpacity: this.config.glassOpacity,
+				glassClear: this.config.glassClear,
 				backgroundImage,
 			},
 			{ title: "上舰通知", font: this.config.font, htmlWidth: 430 },
@@ -375,6 +380,7 @@ export class ImageRenderer {
 				bgColor,
 				layout,
 				glassOpacity: this.config.glassOpacity,
+				glassClear: this.config.glassClear,
 				backgroundImage,
 			},
 			{ title: "醒目留言通知", font: this.config.font, htmlWidth: 290 },
@@ -400,6 +406,7 @@ export class ImageRenderer {
 		const { cardColorStart = this.config.cardColorStart, cardColorEnd = this.config.cardColorEnd } =
 			colorOptions;
 		const glassOpacity = colorOptions.glassOpacity ?? this.config.glassOpacity;
+		const glassClear = colorOptions.glassClear ?? this.config.glassClear;
 		const backgroundImage = await this.resolveBg(
 			colorOptions.backgroundImage ?? this.config.backgroundImage,
 		);
@@ -418,6 +425,7 @@ export class ImageRenderer {
 				cardColorStart,
 				cardColorEnd,
 				glassOpacity,
+				glassClear,
 				backgroundImage,
 				node,
 				layout,

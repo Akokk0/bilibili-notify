@@ -218,8 +218,14 @@ export const CardStyleSchema = z.object({
 	/**
 	 * 玻璃片(卡片内容层)透明度,0..1。**可选**:未设(默认)时各卡沿用各自内置基线
 	 * (live/dynamic 0.82、sc/guard 0.75),保证「默认复刻现状」;设了值才统一覆盖所有卡。
+	 * 0 = 透明但仍带磨砂模糊;「完全透明无模糊」走 `glassClear`(与本字段二选一)。
 	 */
 	glassOpacity: z.number().min(0).max(1).optional(),
+	/**
+	 * 完全透明:内容层透明 + **去掉毛玻璃模糊**,底图完全清晰透出。与 `glassOpacity` 二选一
+	 * (UI 互斥);为 true 时优先,glassOpacity 被忽略。默认 false(复刻现状)。
+	 */
+	glassClear: z.boolean().default(false),
 });
 export type CardStyle = z.infer<typeof CardStyleSchema>;
 

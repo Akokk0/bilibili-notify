@@ -67,6 +67,7 @@ export function makeDefaults(): GlobalDefaults {
 			hideDesc: false,
 			hideFollower: false,
 			backgroundImage: "",
+			glassClear: false,
 		},
 		imageGroup: { enable: true, forward: false },
 		cardLayout: {

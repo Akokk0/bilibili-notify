@@ -20,6 +20,8 @@ export type GuardCardProps = {
 	layout?: GuardLayout;
 	/** 玻璃片(内容层)透明度 0..1;缺省走 guard 基线 0.75。 */
 	glassOpacity?: number;
+	/** 完全透明:白层透明 + 去掉毛玻璃模糊,底图完全清晰透出(优先于 glassOpacity)。 */
+	glassClear?: boolean;
 	/** 自定义背景图(已解析的 data URL / http URL);非空时替换外框渐变。 */
 	backgroundImage?: string;
 };
@@ -36,6 +38,9 @@ export function GuardCard(p: GuardCardProps) {
 	const layout = p.layout ?? DEFAULT_CARD_LAYOUT.guard;
 	// 徽章靠左 → 内容在右,整列镜像右对齐(文字右对齐、姓名行头像移到外侧右边)。
 	const badgeLeft = layout.badgeSide === "left";
+	// 完全透明:白层透明 + 无模糊;否则用透明度(0 也保留磨砂)。
+	const glass = p.glassClear ? 0 : (p.glassOpacity ?? 0.75);
+	const blur = p.glassClear ? 0 : 10;
 
 	// 内容列块构建器(按 type):返回内层 VNode(无 data-block),无数据时返回 null。
 	const builders: Record<string, () => VNode | null> = {
@@ -111,8 +116,11 @@ export function GuardCard(p: GuardCardProps) {
 			}}
 		>
 			<div
-				class="flex items-center w-[400px] h-[190px] rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)] backdrop-blur-[10px]"
-				style={{ background: `rgba(255,255,255,${p.glassOpacity ?? 0.75})` }}
+				class="flex items-center w-[400px] h-[190px] rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)]"
+				style={{
+					background: `rgba(255,255,255,${glass})`,
+					backdropFilter: `blur(${blur}px)`,
+				}}
 			>
 				{layout.badgeSide === "left" ? [badge, content] : [content, badge]}
 			</div>

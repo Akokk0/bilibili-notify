@@ -20,6 +20,8 @@ export type SCCardProps = {
 	layout?: CardBlock[];
 	/** 玻璃片(内容层)透明度 0..1;缺省走 sc 基线 0.75。 */
 	glassOpacity?: number;
+	/** 完全透明:白层透明 + 去掉毛玻璃模糊,底图完全清晰透出(优先于 glassOpacity)。 */
+	glassClear?: boolean;
 	/** 自定义背景图(已解析的 data URL / http URL);非空时替换外框渐变。 */
 	backgroundImage?: string;
 };
@@ -104,6 +106,10 @@ export function SCCard(p: SCCardProps) {
 			) : null,
 	};
 
+	// 完全透明:白层透明 + 无模糊;否则用透明度(0 也保留磨砂)。
+	const glass = p.glassClear ? 0 : (p.glassOpacity ?? 0.75);
+	const blur = p.glassClear ? 0 : 10;
+
 	return (
 		<div
 			class="flex justify-center items-center w-[290px] p-[15px]"
@@ -114,8 +120,11 @@ export function SCCard(p: SCCardProps) {
 			}}
 		>
 			<div
-				class="flex flex-col items-center w-[260px] px-[16px] py-5 rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)] backdrop-blur-[10px]"
-				style={{ background: `rgba(255,255,255,${p.glassOpacity ?? 0.75})` }}
+				class="flex flex-col items-center w-[260px] px-[16px] py-5 rounded-[10px] shadow-[0_4px_8px_0_rgba(0,0,0,0.2)]"
+				style={{
+					background: `rgba(255,255,255,${glass})`,
+					backdropFilter: `blur(${blur}px)`,
+				}}
 			>
 				{renderBlocks(p.layout ?? DEFAULT_CARD_LAYOUT.sc, builders, "w-full")}
 			</div>

@@ -90,6 +90,21 @@ describe("LiveCard layout", () => {
 		expect(await renderLive({ glassOpacity: 0.4 })).toContain("rgba(255,255,255,0.4)");
 	});
 
+	it("keeps the frosted blur for any glassOpacity, including 0", async () => {
+		expect(await renderLive({ glassOpacity: 0.4 })).toContain("blur(10px)");
+		// 透明度 0 仍保留磨砂(透明但模糊):与「完全透明」开关区分开。
+		const transparent = await renderLive({ glassOpacity: 0 });
+		expect(transparent).toContain("rgba(255,255,255,0)");
+		expect(transparent).toContain("blur(10px)");
+	});
+
+	it("glassClear makes the surface fully clear — transparent AND no blur", async () => {
+		const clear = await renderLive({ glassClear: true });
+		expect(clear).toContain("rgba(255,255,255,0)");
+		expect(clear).toContain("blur(0px)");
+		expect(clear).not.toContain("blur(10px)");
+	});
+
 	it("renders blocks in the layout's order", async () => {
 		const layout: CardBlock[] = [
 			{ id: "title", type: "title", visible: true },

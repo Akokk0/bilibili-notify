@@ -332,6 +332,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				hideDesc: cs.hideDesc,
 				hideFollower: cs.hideFollower,
 				glassOpacity: cs.glassOpacity,
+				glassClear: cs.glassClear,
 				backgroundImage: cs.backgroundImage,
 			},
 			resolveAsset: (id) => readCardBgDataUrl(opts.configStore.bootstrap.dataDir, id),
@@ -609,6 +610,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						hideDesc: cs.hideDesc,
 						hideFollower: cs.hideFollower,
 						glassOpacity: cs.glassOpacity,
+						glassClear: cs.glassClear,
 						backgroundImage: cs.backgroundImage,
 					});
 				}
@@ -1002,6 +1004,7 @@ export function buildDynamicSubViewSingle(
 					cardColorStart: sub.overrides.cardStyle.cardColorStart,
 					cardColorEnd: sub.overrides.cardStyle.cardColorEnd,
 					glassOpacity: sub.overrides.cardStyle.glassOpacity,
+					glassClear: sub.overrides.cardStyle.glassClear,
 					backgroundImage: sub.overrides.cardStyle.backgroundImage,
 				}
 			: { enable: false },
@@ -1065,6 +1068,7 @@ export function buildLiveSubViewSingle(
 					cardColorStart: sub.overrides.cardStyle.cardColorStart,
 					cardColorEnd: sub.overrides.cardStyle.cardColorEnd,
 					glassOpacity: sub.overrides.cardStyle.glassOpacity,
+					glassClear: sub.overrides.cardStyle.glassClear,
 					backgroundImage: sub.overrides.cardStyle.backgroundImage,
 				}
 			: { enable: false },

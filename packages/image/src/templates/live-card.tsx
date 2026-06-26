@@ -31,6 +31,8 @@ export type LiveCardProps = {
 	layout?: CardBlock[];
 	/** 玻璃片(内容层)透明度 0..1;缺省走 live 基线 0.82。 */
 	glassOpacity?: number;
+	/** 完全透明:白层透明 + 去掉毛玻璃模糊,底图完全清晰透出(优先于 glassOpacity)。 */
+	glassClear?: boolean;
 	/** 自定义背景图(已解析的 data URL / http URL);非空时替换外框渐变。 */
 	backgroundImage?: string;
 };
@@ -135,12 +137,15 @@ export function LiveCard(p: LiveCardProps) {
 	const frameBg = p.backgroundImage
 		? `url("${p.backgroundImage}") center / cover`
 		: `linear-gradient(to right bottom, ${p.cardColorStart}, ${p.cardColorEnd})`;
+	// 完全透明:白层透明 + 无模糊;否则用透明度(0 也保留磨砂)。
+	const glass = p.glassClear ? 0 : (p.glassOpacity ?? 0.82);
+	const blur = p.glassClear ? 0 : 10;
 
 	return (
 		<div class="h-auto p-3.75" style={{ background: frameBg }}>
 			<div
 				class="overflow-hidden rounded-xl"
-				style={`background: rgba(255,255,255,${p.glassOpacity ?? 0.82}); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 360px; padding-top: 14px; padding-bottom: 10px;`}
+				style={`background: rgba(255,255,255,${glass}); backdrop-filter: blur(${blur}px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 360px; padding-top: 14px; padding-bottom: 10px;`}
 			>
 				{renderBlocks(p.layout ?? DEFAULT_CARD_LAYOUT.live, builders)}
 			</div>

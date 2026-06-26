@@ -87,6 +87,7 @@ const StyleSchema = z.object({
 	hideDesc: z.boolean().optional(),
 	hideFollower: z.boolean().optional(),
 	glassOpacity: z.number().min(0).max(1).optional(),
+	glassClear: z.boolean().optional(),
 	/** 背景图资产 id(空 = 渐变)。 */
 	backgroundImage: z.string().optional(),
 });
@@ -234,6 +235,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			hideDesc: style.hideDesc ?? false,
 			hideFollower: style.hideFollower ?? false,
 			glassOpacity: style.glassOpacity,
+			glassClear: style.glassClear,
 			backgroundImage: style.backgroundImage,
 		};
 		if (!imageRenderer) {
@@ -591,6 +593,7 @@ function buildLivePreviewProps(style: PreviewStyle): LiveCardProps {
 		cardColorStart: style.cardColorStart,
 		cardColorEnd: style.cardColorEnd,
 		glassOpacity: style.glassOpacity,
+		glassClear: style.glassClear,
 		data: {
 			user_cover: SVG_COVER,
 			keyframe: "",
@@ -658,6 +661,7 @@ function buildDynamicPreviewProps(style: PreviewStyle): DynamicCardProps {
 		cardColorStart: style.cardColorStart,
 		cardColorEnd: style.cardColorEnd,
 		glassOpacity: style.glassOpacity,
+		glassClear: style.glassClear,
 		node: {
 			avatarUrl: SVG_AVATAR_BLUE,
 			upName: "示例 UP 主",

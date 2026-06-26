@@ -492,7 +492,7 @@ export default function Cards() {
 				</div>
 			</div>
 
-			<div className="grid gap-3.5 lg:grid-cols-[360px_1fr_360px]">
+			<div className="grid gap-3.5 lg:grid-cols-[380px_1fr_360px]">
 				{/* LEFT: image plugin config */}
 				<div className="flex flex-col gap-3">
 					<GlassBox
@@ -522,29 +522,48 @@ export default function Cards() {
 							</div>
 						</Field>
 						<Field code="glassOpacity" full>
-							<div className="flex h-7.5 items-center gap-3">
-								<Toggle
-									value={draft.glassOpacity !== undefined}
-									onChange={(on) => set("glassOpacity", on ? 0.82 : undefined)}
-								/>
-								{draft.glassOpacity !== undefined ? (
-									<>
-										<input
-											type="range"
-											min={0}
-											max={1}
-											step={0.05}
-											value={draft.glassOpacity}
-											onChange={(e) => set("glassOpacity", Number(e.target.value))}
-											className="flex-1 accent-bn-pink"
-										/>
-										<span className="w-9 text-right font-mono text-[11px] text-bn-text-secondary">
-											{draft.glassOpacity.toFixed(2)}
+							<div className="flex flex-col gap-2">
+								<div className="flex h-7.5 items-center gap-3">
+									<Toggle
+										value={draft.glassOpacity !== undefined}
+										onChange={(on) =>
+											setDraft((d) =>
+												d ? { ...d, glassOpacity: on ? 0.82 : undefined, glassClear: false } : d,
+											)
+										}
+									/>
+									{draft.glassOpacity !== undefined ? (
+										<>
+											<input
+												type="range"
+												min={0}
+												max={1}
+												step={0.05}
+												value={draft.glassOpacity}
+												onChange={(e) => set("glassOpacity", Number(e.target.value))}
+												className="flex-1 accent-bn-pink"
+											/>
+											<span className="w-9 shrink-0 text-right font-mono text-[11px] text-bn-text-secondary">
+												{draft.glassOpacity.toFixed(2)}
+											</span>
+										</>
+									) : (
+										<span className="text-[11px] text-bn-text-tertiary">
+											{draft.glassClear ? "已开启完全透明" : "默认（各卡内置基线）"}
 										</span>
-									</>
-								) : (
-									<span className="text-[11px] text-bn-text-tertiary">默认（各卡内置基线）</span>
-								)}
+									)}
+								</div>
+								{/* 子选项:完全透明(去磨砂模糊),与上方透明度二选一。 */}
+								<div className="flex items-center gap-2 text-[11px] text-bn-text-secondary">
+									<Toggle
+										size="sm"
+										value={draft.glassClear}
+										onChange={(on) =>
+											setDraft((d) => (d ? { ...d, glassClear: on, glassOpacity: undefined } : d))
+										}
+									/>
+									完全透明（去磨砂模糊）
+								</div>
 							</div>
 						</Field>
 						<Field code="backgroundImage" full>
