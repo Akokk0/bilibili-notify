@@ -44,7 +44,6 @@ describe("DynamicCard layout", () => {
 		expect(blockOrder(await renderDyn())).toEqual([
 			"header",
 			"divider",
-			"topic",
 			"content",
 			"additional",
 			"divider",
@@ -52,10 +51,15 @@ describe("DynamicCard layout", () => {
 		]);
 	});
 
-	it("omits the topic block when there is no topic data", async () => {
-		expect(blockOrder(await renderDyn({ node: makeNode({ topic: undefined }) }))).not.toContain(
-			"topic",
-		);
+	it("renders the topic inline inside content, not as its own block", async () => {
+		const html = await renderDyn();
+		expect(blockOrder(html)).not.toContain("topic");
+		expect(html).toContain("示例话题");
+	});
+
+	it("omits the topic text when there is no topic data", async () => {
+		const html = await renderDyn({ node: makeNode({ topic: undefined }) });
+		expect(html).not.toContain("示例话题");
 	});
 
 	it("omits the additional block when there is no additional content", async () => {
@@ -85,7 +89,7 @@ describe("DynamicCard layout", () => {
 			forward: makeNode({ upName: "原作者", stats: undefined }),
 		});
 		const order = blockOrder(await renderDyn({ node }));
-		// 外层各块 + 内部转发的 header/topic/content/additional(内部无 stats)都进 DOM。
+		// 外层各块 + 内部转发的 header/content/additional(内部无 stats)都进 DOM。
 		// 内部块嵌在外层 content 块内,故 header 至少出现两次(外层 + 内部)。
 		expect(order.filter((b) => b === "header").length).toBe(2);
 		expect(order.filter((b) => b === "content").length).toBe(2);
@@ -93,10 +97,10 @@ describe("DynamicCard layout", () => {
 
 	it("applies layout visibility to the forwarded inner dynamic", async () => {
 		const layout: CardBlock[] = DEFAULT_CARD_LAYOUT.dynamic.map((b) =>
-			b.type === "topic" ? { ...b, visible: false } : b,
+			b.type === "additional" ? { ...b, visible: false } : b,
 		);
+		// 外层与内部转发都有附加内容;隐藏 additional 块后两者都不应出现。
 		const node = makeNode({ forward: makeNode({ upName: "原作者", stats: undefined }) });
-		// topic 隐藏后,外层与内部转发都不应出现 topic 块。
-		expect(blockOrder(await renderDyn({ node, layout }))).not.toContain("topic");
+		expect(blockOrder(await renderDyn({ node, layout }))).not.toContain("additional");
 	});
 });

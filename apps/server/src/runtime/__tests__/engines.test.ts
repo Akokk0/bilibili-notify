@@ -663,7 +663,6 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		expect(dynView.dynamicLayout?.map((b: { id: string }) => b.id)).toEqual([
 			"header",
 			"divider-1",
-			"topic",
 			"content",
 			"additional",
 			"divider-2",

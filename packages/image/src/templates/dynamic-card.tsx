@@ -14,8 +14,8 @@ export type DynamicCardProps = {
 	node: DynamicNode;
 	/**
 	 * dynamic 版式描述符(块的顺序 + 显隐 + 边距 + 分割线)。缺省 = `DEFAULT_CARD_LAYOUT.dynamic`,
-	 * 复刻现状。块按 type 渲染、`visible=false` 跳过;无话题 / 附加内容时对应块自动收起。
-	 * 内部转发的原动态用**同一套版式**递归渲染。
+	 * 复刻现状。块按 type 渲染、`visible=false` 跳过;无附加内容时 additional 块自动收起。
+	 * 话题标签内联在正文块顶部(无独立块);内部转发的原动态用**同一套版式**递归渲染。
 	 */
 	layout?: CardBlock[];
 };
@@ -52,19 +52,17 @@ function nodeBuilders(node: DynamicNode, layout: CardBlock[]): Record<string, ()
 			</div>
 		),
 
-		topic: () =>
-			node.topic ? (
-				<div
-					class="flex items-center gap-[5px] px-[16px] text-[13px] font-bold"
-					style="color: #00AEEC;"
-				>
-					{SVG_TOPIC}
-					{node.topic}
-				</div>
-			) : null,
-
 		content: () => (
 			<div class="px-[16px]">
+				{node.topic ? (
+					<div
+						class="flex items-center gap-[5px] mb-[8px] text-[13px] font-bold"
+						style="color: #00AEEC;"
+					>
+						{SVG_TOPIC}
+						{node.topic}
+					</div>
+				) : null}
 				{node.body}
 				{node.forward ? (
 					<div

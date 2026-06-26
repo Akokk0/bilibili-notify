@@ -21,11 +21,10 @@ describe("DEFAULT_CARD_LAYOUT", () => {
 		expect(DEFAULT_CARD_LAYOUT.live.every((b) => b.visible)).toBe(true);
 	});
 
-	it("lists dynamic content blocks with additional as its own block", () => {
+	it("lists dynamic content blocks with additional as its own block, no standalone topic", () => {
 		expect(DEFAULT_CARD_LAYOUT.dynamic.map((b) => b.type)).toEqual([
 			"header",
 			DIVIDER_TYPE,
-			"topic",
 			"content",
 			"additional",
 			DIVIDER_TYPE,
@@ -70,6 +69,20 @@ describe("normalizeCardLayout", () => {
 		// missing known content types appended
 		expect(out.live.map((b) => b.type)).toContain("stats");
 		expect(out.live.map((b) => b.type)).toContain("follower");
+	});
+
+	it("drops a standalone topic block from dynamic layouts saved before v5", () => {
+		const stored = {
+			...DEFAULT_CARD_LAYOUT,
+			version: 4,
+			dynamic: [
+				{ id: "header", type: "header", visible: true },
+				{ id: "topic", type: "topic", visible: true },
+				{ id: "content", type: "content", visible: true },
+			],
+		};
+		const out = normalizeCardLayout(stored, DEFAULT_CARD_LAYOUT);
+		expect(out.dynamic.map((b) => b.type)).not.toContain("topic");
 	});
 
 	it("appends the additional block to dynamic layouts saved before v4", () => {
