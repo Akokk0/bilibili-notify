@@ -2,13 +2,12 @@
  * Cards page — image plugin card style preview. Ports `GlassPreviewTab` from
  * `.bn-design/variation-ac.jsx`.
  *
- * Left column: card-style config (bound to GlobalConfig.defaults.cardStyle via
- * /api/globals PATCH) + preview-content form. Right column: card preview that
- * calls the puppeteer-core-backed `/api/cards/preview` route for ALL four kinds
- * (live / dyn / sc / guard), followed by the 卡片版式 layout editor and 测试推送.
- * The server runs the matching production template (LiveCard / DynamicCard /
- * SCCard / GuardCard) through Vue SSR + UnoCSS + puppeteer screenshot and
- * returns a base64 PNG.
+ * Three columns. Left: card-style config (bound to GlobalConfig.defaults.cardStyle
+ * via /api/globals PATCH) + preview-content form. Middle: card preview that calls
+ * the puppeteer-core-backed `/api/cards/preview` route for ALL four kinds (live /
+ * dyn / sc / guard). Right: the 卡片版式 layout editor + 测试推送. The server runs
+ * the matching production template (LiveCard / DynamicCard / SCCard / GuardCard)
+ * through Vue SSR + UnoCSS + puppeteer screenshot and returns a base64 PNG.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -423,7 +422,7 @@ export default function Cards() {
 				</div>
 			</div>
 
-			<div className="grid gap-3.5 lg:grid-cols-[380px_1fr]">
+			<div className="grid gap-3.5 lg:grid-cols-[360px_1fr_360px]">
 				{/* LEFT: image plugin config */}
 				<div className="flex flex-col gap-3">
 					<GlassBox
@@ -606,7 +605,7 @@ export default function Cards() {
 					</GlassBox>
 				</div>
 
-				{/* RIGHT: live preview + layout editor + test push */}
+				{/* MIDDLE: live preview */}
 				<div className="space-y-2.5">
 					<div className="flex items-center justify-between text-[13px] text-bn-text-primary">
 						<span className="font-bold">卡片预览 · 实时反映左侧 image 配置</span>
@@ -616,20 +615,6 @@ export default function Cards() {
 						</span>
 					</div>
 					<CardPreview kind={kind} style={draft} content={content} layout={layoutDraft} />
-
-					{layoutDraft && (
-						<GlassBox
-							title="卡片版式"
-							subtitle="拖拽排序 · 开关显隐 · 改动实时反映到上方预览"
-							accent={KIND_LABELS[kind].tone}
-							icon={<KindIcon size={14} />}
-							badge="cardLayout"
-						>
-							<CardLayoutEditor kind={kind} layout={layoutDraft} onChange={setLayoutDraft} />
-						</GlassBox>
-					)}
-
-					<TestPushCard kind={kind} style={draft} content={content[kind]} layout={layoutDraft} />
 
 					{/* Effective style readout */}
 					<div className="flex flex-wrap gap-3.5 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 font-mono text-[10.5px] text-bn-text-tertiary">
@@ -643,6 +628,23 @@ export default function Cards() {
 							per-UP 覆盖 → 高级规则 → cardStyleOverride
 						</span>
 					</div>
+				</div>
+
+				{/* RIGHT: layout editor + test push */}
+				<div className="flex flex-col gap-3">
+					{layoutDraft && (
+						<GlassBox
+							title="卡片版式"
+							subtitle="拖拽排序 · 开关显隐 · 改动实时反映到预览"
+							accent={KIND_LABELS[kind].tone}
+							icon={<KindIcon size={14} />}
+							badge="cardLayout"
+						>
+							<CardLayoutEditor kind={kind} layout={layoutDraft} onChange={setLayoutDraft} />
+						</GlassBox>
+					)}
+
+					<TestPushCard kind={kind} style={draft} content={content[kind]} layout={layoutDraft} />
 				</div>
 			</div>
 		</div>
