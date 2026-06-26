@@ -2,18 +2,19 @@
  * Cards page — image plugin card style preview. Ports `GlassPreviewTab` from
  * `.bn-design/variation-ac.jsx`.
  *
- * Three columns. Left: card-style config (bound to GlobalConfig.defaults.cardStyle
- * via /api/globals PATCH) + preview-content form. Middle: card preview that calls
- * the puppeteer-core-backed `/api/cards/preview` route for ALL four kinds (live /
- * dyn / sc / guard). Right: the 卡片版式 layout editor + 测试推送. The server runs
- * the matching production template (LiveCard / DynamicCard / SCCard / GuardCard)
- * through Vue SSR + UnoCSS + puppeteer screenshot and returns a base64 PNG.
+ * A scope switcher (全局默认 / 各 UP) sits on top. In the global scope the three
+ * columns bind to GlobalConfig.defaults.{cardStyle,cardLayout}; in a per-UP scope
+ * they bind to that subscription's overrides.{cardStyle,cardLayout}, each gated by
+ * a 「覆盖全局」 toggle (off = inherit). Left: card-style config + preview-content
+ * form. Middle: live puppeteer preview of the EFFECTIVE style+layout for ALL four
+ * kinds. Right: the 卡片版式 layout editor + 测试推送.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Btn, Pill, Toggle } from "../components/atoms";
 import { ChromeAutoDetect } from "../components/chrome-autodetect";
+import { ConfirmDialog } from "../components/dialog";
 import {
 	Field,
 	LogLevelPicker,
@@ -25,11 +26,13 @@ import {
 } from "../components/forms";
 import { GlassBox } from "../components/glass-box";
 import { Icon, type IconName } from "../components/icons";
+import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
-import type { CardLayoutFull, PushTarget } from "../types/domain";
+import type { CardLayoutFull, PushTarget, Subscription } from "../types/domain";
 import type { CardStyle, GlobalConfig, LogLevel } from "../types/globals";
 import { CardLayoutEditor } from "./cards/CardLayoutEditor";
+import { displayName } from "./up/helpers";
 
 type CardKind = "live" | "dyn" | "sc" | "guard";
 
@@ -344,18 +347,106 @@ const toPickerValue = (v: ImageLogLevel): LogLevelValue | null =>
 const fromPickerValue = (v: LogLevelValue | null): ImageLogLevel =>
 	v === null ? "" : NUM_TO_LOG_LEVEL[v];
 
-export default function Cards() {
-	const qc = useQueryClient();
-	const globalsQuery = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
-	});
-	const [draft, setDraft] = useState<CardStyle | null>(null);
-	const [layoutDraft, setLayoutDraft] = useState<CardLayoutFull | null>(null);
-	const [imageLogLevel, setImageLogLevel] = useState<ImageLogLevel>("");
-	const [kind, setKind] = useState<CardKind>("live");
-	const [content, setContent] = useState<PreviewContent>(DEFAULT_PREVIEW_CONTENT);
+/**
+ * 卡片样式表单字段(渐变 / 字体 / 隐藏项 / 玻璃片 / 背景图)—— 全局默认与 per-UP
+ * 覆盖复用同一组控件。插件总开关 enabled 与 image 日志等级是基础设施级、全局唯一,
+ * 不在此组件内。
+ */
+function CardStyleFields({
+	style,
+	onChange,
+}: {
+	style: CardStyle;
+	onChange: (next: CardStyle) => void;
+}) {
+	const set = <K extends keyof CardStyle>(k: K, v: CardStyle[K]) => onChange({ ...style, [k]: v });
+	return (
+		<>
+			<Field code="cardColorStart">
+				<TColor value={style.cardColorStart} onChange={(v) => set("cardColorStart", v)} />
+			</Field>
+			<Field code="cardColorEnd">
+				<TColor value={style.cardColorEnd} onChange={(v) => set("cardColorEnd", v)} />
+			</Field>
+			<Field code="font" full>
+				<TInput value={style.font} onChange={(v) => set("font", v)} />
+			</Field>
+			<Field code="hideDesc">
+				<div className="flex h-7.5 items-center">
+					<Toggle value={style.hideDesc} onChange={(v) => set("hideDesc", v)} />
+				</div>
+			</Field>
+			<Field code="hideFollower">
+				<div className="flex h-7.5 items-center">
+					<Toggle value={style.hideFollower} onChange={(v) => set("hideFollower", v)} />
+				</div>
+			</Field>
+			<Field code="glassOpacity" full>
+				<div className="flex flex-col gap-2">
+					<div className="flex h-7.5 items-center gap-3">
+						<Toggle
+							value={style.glassOpacity !== undefined}
+							onChange={(on) =>
+								onChange({ ...style, glassOpacity: on ? 0.82 : undefined, glassClear: false })
+							}
+						/>
+						{style.glassOpacity !== undefined ? (
+							<>
+								<input
+									type="range"
+									min={0}
+									max={1}
+									step={0.05}
+									value={style.glassOpacity}
+									onChange={(e) => set("glassOpacity", Number(e.target.value))}
+									className="flex-1 accent-bn-pink"
+								/>
+								<span className="w-9 shrink-0 text-right font-mono text-[11px] text-bn-text-secondary">
+									{style.glassOpacity.toFixed(2)}
+								</span>
+							</>
+						) : (
+							<span className="text-[11px] text-bn-text-tertiary">
+								{style.glassClear ? "已开启完全透明" : "默认（各卡内置基线）"}
+							</span>
+						)}
+					</div>
+					{/* 子选项:完全透明(去磨砂模糊),与上方透明度二选一。 */}
+					<div className="flex items-center gap-2 text-[11px] text-bn-text-secondary">
+						<Toggle
+							size="sm"
+							value={style.glassClear}
+							onChange={(on) => onChange({ ...style, glassClear: on, glassOpacity: undefined })}
+						/>
+						完全透明（去磨砂模糊）
+					</div>
+				</div>
+			</Field>
+			<Field code="backgroundImage" full>
+				<BackgroundImagePicker
+					value={style.backgroundImage}
+					onChange={(id) => set("backgroundImage", id)}
+				/>
+			</Field>
+		</>
+	);
+}
 
+/**
+ * 「预览内容」框 —— 卡片类型切换 + 各类型的 mock/真实内容字段。与作用域无关
+ * (预览的是哪类卡片、用什么内容,跟改谁的样式独立)。
+ */
+function PreviewContentBox({
+	kind,
+	setKind,
+	content,
+	setContent,
+}: {
+	kind: CardKind;
+	setKind: (k: CardKind) => void;
+	content: PreviewContent;
+	setContent: React.Dispatch<React.SetStateAction<PreviewContent>>;
+}) {
 	const setLive = (next: Partial<PreviewContent["live"]>) =>
 		setContent((c) => ({ ...c, live: { ...c.live, ...next } }));
 	const setDyn = (next: Partial<PreviewContent["dyn"]>) =>
@@ -365,15 +456,230 @@ export default function Cards() {
 	const setGuard = (next: Partial<PreviewContent["guard"]>) =>
 		setContent((c) => ({ ...c, guard: { ...c.guard, ...next } }));
 
+	const KindIcon = Icon[KIND_LABELS[kind].icon];
+
+	return (
+		<GlassBox
+			title="预览内容"
+			subtitle={
+				kind === "live"
+					? "拉取目标直播间的真实数据"
+					: kind === "dyn"
+						? "拉取指定 UP 的某条动态"
+						: "自定义文案 · mock 头像/数值"
+			}
+			accent={KIND_LABELS[kind].tone}
+			icon={<KindIcon size={14} />}
+			badge={kind}
+		>
+			{/* 卡片类型切换 —— 决定下方表单字段 + 右侧渲染的卡片种类。 */}
+			<div className="mb-3 flex flex-wrap gap-1.5">
+				{(["live", "dyn", "sc", "guard"] as const).map((k) => {
+					const active = kind === k;
+					const tone = KIND_LABELS[k].tone;
+					return (
+						<button
+							type="button"
+							key={k}
+							onClick={() => setKind(k)}
+							className="rounded px-3 py-1 text-[11.5px] font-semibold transition"
+							style={
+								active
+									? { background: tone, color: "white" }
+									: {
+											background: "var(--color-bn-hover-muted)",
+											color: "var(--color-bn-text-tertiary)",
+										}
+							}
+						>
+							{KIND_LABELS[k].label}
+						</button>
+					);
+				})}
+			</div>
+			{kind === "live" ? (
+				<>
+					<Field code="roomId">
+						<TInput
+							value={content.live.roomId}
+							onChange={(v) => setLive({ roomId: v })}
+							placeholder="留空则使用示例数据"
+						/>
+					</Field>
+					<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-emerald-800">
+						需要后端账号已登录 B 站；填入后将真实拉取该直播间数据并渲染。留空则继续使用示例数据。
+					</div>
+				</>
+			) : kind === "dyn" ? (
+				<>
+					<Field code="uid">
+						<TInput
+							value={content.dyn.uid}
+							onChange={(v) => setDyn({ uid: v })}
+							placeholder="留空则使用示例数据"
+						/>
+					</Field>
+					<Field code="offset">
+						<TInput
+							value={String(content.dyn.offset)}
+							onChange={(v) => {
+								const n = Number.parseInt(v, 10);
+								setDyn({ offset: Number.isFinite(n) && n > 0 ? n : 1 });
+							}}
+							placeholder="1"
+						/>
+					</Field>
+					<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-emerald-800">
+						需要后端账号已登录 B 站；填入后将拉取该 UP 的 space 动态列表，按 offset 选取并渲染。
+					</div>
+				</>
+			) : kind === "sc" ? (
+				<>
+					<Field code="text">
+						<TArea value={content.sc.text} onChange={(v) => setSc({ text: v })} rows={3} />
+					</Field>
+					<Field code="price">
+						<TInput
+							value={String(content.sc.price)}
+							onChange={(v) => {
+								const n = Number.parseInt(v, 10);
+								setSc({ price: Number.isFinite(n) && n > 0 ? n : 30 });
+							}}
+							placeholder="30"
+						/>
+					</Field>
+					<div className="rounded border border-dashed bg-bn-surface-muted p-2.5 text-[11px] text-bn-text-tertiary">
+						左侧渐变色对 SC 不生效；SC 卡片背景色由价格档位自动决定。
+					</div>
+				</>
+			) : (
+				<>
+					<Field code="level">
+						<div className="flex flex-wrap gap-1.5">
+							{GUARD_LEVELS.map((g) => {
+								const active = content.guard.level === g.v;
+								return (
+									<button
+										type="button"
+										key={g.v}
+										onClick={() => setGuard({ level: g.v })}
+										className="rounded px-3 py-1 text-[11.5px] font-semibold transition"
+										style={
+											active
+												? { background: g.tone, color: "white" }
+												: {
+														background: "var(--color-bn-hover-muted)",
+														color: "var(--color-bn-text-tertiary)",
+													}
+										}
+									>
+										{g.label}
+									</button>
+								);
+							})}
+						</div>
+					</Field>
+					<Field
+						label="新舰长称呼"
+						code="text"
+						hint="留空时使用当前登录账号的名字（未登录则显示示例新舰长）"
+					>
+						<TArea
+							value={content.guard.text}
+							onChange={(v) => setGuard({ text: v })}
+							placeholder="留空使用登录账号名"
+							rows={2}
+						/>
+					</Field>
+					<div className="rounded border border-dashed bg-bn-surface-muted p-2.5 text-[11px] text-bn-text-tertiary">
+						左侧渐变色对上舰不生效；卡片背景色与徽章图由舰长等级自动决定。
+					</div>
+				</>
+			)}
+		</GlassBox>
+	);
+}
+
+/** 关闭态下方一行说明文字。 */
+function InheritNote({ children }: { children: React.ReactNode }) {
+	return (
+		<div className="py-6 text-center text-[12px] text-bn-text-tertiary">未启用 · {children}</div>
+	);
+}
+
+/** 该 sub 已覆盖的卡片切片数(0..2),供 ScopeTabs 计数徽章。 */
+function cardOverrideCount(sub: Subscription): number {
+	return (sub.overrides.cardStyle ? 1 : 0) + (sub.overrides.cardLayout ? 1 : 0);
+}
+function hasCardCustomization(sub: Subscription): boolean {
+	return sub.overrides.cardStyle !== undefined || sub.overrides.cardLayout !== undefined;
+}
+
+export default function Cards() {
+	const qc = useQueryClient();
+	const globalsQuery = useQuery({
+		queryKey: ["globals"],
+		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+	});
+	const subsQuery = useQuery({
+		queryKey: ["subscriptions"],
+		queryFn: () => api.get<Subscription[]>("/api/subs"),
+	});
+
+	const [scope, setScope] = useState<Scope>("__global");
+	// 客户端临时添加(还没设覆盖)的 sub.id;刷新即清空。
+	const [addedSubIds, setAddedSubIds] = useState<Set<string>>(new Set());
+	const [pendingRemoval, setPendingRemoval] = useState<Subscription | null>(null);
+
+	// 全局草稿
+	const [gStyle, setGStyle] = useState<CardStyle | null>(null);
+	const [gLayout, setGLayout] = useState<CardLayoutFull | null>(null);
+	const [imageLogLevel, setImageLogLevel] = useState<ImageLogLevel>("");
+
+	// per-UP 覆盖草稿(undefined = 继承全局)
+	const [puStyle, setPuStyle] = useState<CardStyle | undefined>(undefined);
+	const [puLayout, setPuLayout] = useState<CardLayoutFull | undefined>(undefined);
+
+	// 共享:预览类型 + 内容(与作用域无关)
+	const [kind, setKind] = useState<CardKind>("live");
+	const [content, setContent] = useState<PreviewContent>(DEFAULT_PREVIEW_CONTENT);
+
+	const allSubs = useMemo(() => subsQuery.data ?? [], [subsQuery.data]);
+	const isGlobalScope = scope === "__global";
+	const focusedSub = isGlobalScope ? undefined : allSubs.find((s) => s.id === scope);
+	const serverGlobalStyle = globalsQuery.data?.defaults.cardStyle;
+	const serverGlobalLayout = globalsQuery.data?.defaults.cardLayout;
+
 	useEffect(() => {
 		if (globalsQuery.data) {
-			setDraft(globalsQuery.data.defaults.cardStyle);
-			setLayoutDraft(globalsQuery.data.defaults.cardLayout);
+			setGStyle(globalsQuery.data.defaults.cardStyle);
+			setGLayout(globalsQuery.data.defaults.cardLayout);
 			setImageLogLevel(globalsQuery.data.app.logLevels?.image ?? "");
 		}
 	}, [globalsQuery.data]);
 
-	const save = useMutation({
+	// 选中 UP 的存储覆盖 → 编辑草稿。cardStyle 合并到全局之上,把历史 partial 覆盖补全
+	// 成可直接编辑的完整快照(向后保存即写整份快照)。
+	const seededPuStyle = useMemo<CardStyle | undefined>(() => {
+		if (!focusedSub?.overrides.cardStyle || !serverGlobalStyle) return undefined;
+		return { ...serverGlobalStyle, ...focusedSub.overrides.cardStyle };
+	}, [focusedSub?.overrides.cardStyle, serverGlobalStyle]);
+	const seededPuLayout = focusedSub?.overrides.cardLayout;
+
+	// 切换到不同 UP(或其服务端数据变化)→ 重新 seed 覆盖草稿。
+	useEffect(() => {
+		setPuStyle(seededPuStyle);
+		setPuLayout(seededPuLayout);
+	}, [seededPuStyle, seededPuLayout]);
+
+	// 选中的 UP 从订阅列表消失 → 回退全局。
+	useEffect(() => {
+		if (!isGlobalScope && subsQuery.data && !allSubs.some((s) => s.id === scope)) {
+			setScope("__global");
+		}
+	}, [isGlobalScope, scope, subsQuery.data, allSubs]);
+
+	const saveGlobal = useMutation({
 		mutationFn: async (payload: {
 			cardStyle: CardStyle;
 			cardLayout: CardLayoutFull;
@@ -396,18 +702,75 @@ export default function Cards() {
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
 	});
 
-	// 灵动岛 draft/baseline:把 cardStyle 顶层字段 + app.logLevels.image 合在
-	// 一个对象里,让 walkTreeDiff 输出的 code 跟 FIELD_LABELS 字典 key 对齐
-	// (cardColorStart / font / hideDesc / app.logLevels.image)。
-	const islandDraft = useMemo(() => {
-		if (draft === null) return null;
+	// per-UP 保存:只下发卡片两片(缺席键 = 不改其它 slice;null = 清除)。
+	const savePerUp = useMutation({
+		mutationFn: async (sub: Subscription) => {
+			await api.patch<Subscription>(`/api/subs/${sub.id}`, {
+				overrides: { cardStyle: puStyle ?? null, cardLayout: puLayout ?? null },
+			});
+		},
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
+	});
+
+	const removeCardCustomization = useMutation({
+		mutationFn: async (sub: Subscription) =>
+			api.patch<Subscription>(`/api/subs/${sub.id}`, {
+				overrides: { cardStyle: null, cardLayout: null },
+			}),
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
+	});
+
+	// Tab 栏:已有卡片覆盖 / 本轮客户端添加的 sub。
+	const tabSubs = useMemo(
+		() => allSubs.filter((s) => hasCardCustomization(s) || addedSubIds.has(s.id)),
+		[allSubs, addedSubIds],
+	);
+	const availableSubs = useMemo(() => {
+		const taken = new Set(tabSubs.map((s) => s.id));
+		return allSubs.filter((s) => !taken.has(s.id));
+	}, [allSubs, tabSubs]);
+
+	function handleAddSub(id: string): void {
+		setAddedSubIds((set) => {
+			const next = new Set(set);
+			next.add(id);
+			return next;
+		});
+		setScope(id);
+	}
+	function detachSub(id: string): void {
+		setAddedSubIds((set) => {
+			const next = new Set(set);
+			next.delete(id);
+			return next;
+		});
+		if (scope === id) setScope("__global");
+	}
+	function handleRemoveSub(id: string): void {
+		const sub = allSubs.find((s) => s.id === id);
+		if (sub && hasCardCustomization(sub)) {
+			setPendingRemoval(sub);
+			return;
+		}
+		detachSub(id);
+	}
+	function confirmRemoveSub(): void {
+		if (!pendingRemoval) return;
+		removeCardCustomization.mutate(pendingRemoval);
+		detachSub(pendingRemoval.id);
+		setPendingRemoval(null);
+	}
+
+	// 灵动岛:单一 hook 按作用域切换,杜绝双挂载抢单槽竞态。
+	const globalIslandDraft = useMemo(() => {
+		if (gStyle === null) return null;
 		return {
-			...draft,
-			cardLayout: layoutDraft,
+			...gStyle,
+			cardLayout: gLayout,
 			app: { logLevels: { image: imageLogLevel === "" ? null : imageLogLevel } },
 		};
-	}, [draft, layoutDraft, imageLogLevel]);
-	const islandBaseline = useMemo(() => {
+	}, [gStyle, gLayout, imageLogLevel]);
+	const globalIslandBaseline = useMemo(() => {
 		if (!globalsQuery.data) return null;
 		return {
 			...globalsQuery.data.defaults.cardStyle,
@@ -415,25 +778,44 @@ export default function Cards() {
 			app: { logLevels: { image: globalsQuery.data.app.logLevels?.image ?? null } },
 		};
 	}, [globalsQuery.data]);
+	const perUpIslandDraft = useMemo(
+		() => ({ ...(puStyle ?? {}), cardLayout: puLayout ?? null }),
+		[puStyle, puLayout],
+	);
+	const perUpIslandBaseline = useMemo(
+		() => ({ ...(seededPuStyle ?? {}), cardLayout: seededPuLayout ?? null }),
+		[seededPuStyle, seededPuLayout],
+	);
 
 	useDirtyDraft({
-		pageKey: "cards",
-		pageLabel: "卡片样式",
-		draft: islandDraft,
-		baseline: islandBaseline,
+		pageKey: isGlobalScope ? "cards" : "cards-perup",
+		pageLabel: isGlobalScope
+			? "卡片样式"
+			: `${focusedSub ? displayName(focusedSub) : ""} · 卡片覆盖`,
+		draft: isGlobalScope ? globalIslandDraft : perUpIslandDraft,
+		baseline: isGlobalScope ? globalIslandBaseline : perUpIslandBaseline,
 		onSave: async () => {
-			if (draft !== null && layoutDraft !== null)
-				await save.mutateAsync({ cardStyle: draft, cardLayout: layoutDraft, imageLogLevel });
+			if (isGlobalScope) {
+				if (gStyle !== null && gLayout !== null)
+					await saveGlobal.mutateAsync({ cardStyle: gStyle, cardLayout: gLayout, imageLogLevel });
+			} else if (focusedSub) {
+				await savePerUp.mutateAsync(focusedSub);
+			}
 		},
 		onDiscard: () => {
-			if (!globalsQuery.data) return;
-			setDraft(globalsQuery.data.defaults.cardStyle);
-			setLayoutDraft(globalsQuery.data.defaults.cardLayout);
-			setImageLogLevel(globalsQuery.data.app.logLevels?.image ?? "");
+			if (isGlobalScope) {
+				if (!globalsQuery.data) return;
+				setGStyle(globalsQuery.data.defaults.cardStyle);
+				setGLayout(globalsQuery.data.defaults.cardLayout);
+				setImageLogLevel(globalsQuery.data.app.logLevels?.image ?? "");
+			} else {
+				setPuStyle(seededPuStyle);
+				setPuLayout(seededPuLayout);
+			}
 		},
 	});
 
-	if (!draft) {
+	if (!gStyle) {
 		return (
 			<div className="bn-glass rounded-bn-card p-10 text-center text-sm text-bn-text-secondary shadow-bn-card">
 				加载卡片样式中…
@@ -441,16 +823,15 @@ export default function Cards() {
 		);
 	}
 
-	const set = <K extends keyof CardStyle>(k: K, v: CardStyle[K]) =>
-		setDraft((d) => (d ? { ...d, [k]: v } : d));
-
-	const enabled = draft.enabled;
+	// 预览 / 测试推送始终用「生效值」:per-UP 未覆盖则回落全局草稿。
+	const effStyle: CardStyle = isGlobalScope ? gStyle : (puStyle ?? gStyle);
+	const effLayout: CardLayoutFull | null = isGlobalScope ? gLayout : (puLayout ?? gLayout);
 
 	const KindIcon = Icon[KIND_LABELS[kind].icon];
 
 	return (
 		<div className="bn-anim-fade-in flex flex-col gap-4">
-			{/* Hero strip — mirrors AI page (顶层开关 · 日志等级 · 保存控件) */}
+			{/* Hero strip — 全局插件信息 + (仅全局作用域)总开关 */}
 			<div
 				className="relative rounded-bn-card border p-5"
 				style={{
@@ -481,297 +862,181 @@ export default function Cards() {
 							puppeteer-core 把 Vue/UnoCSS 模板渲染成 PNG;关闭后 push 流程仅发送文本回退。
 						</div>
 					</div>
-					<Picker
-						value={enabled}
-						onChange={(v) => set("enabled", v)}
-						options={[
-							{ value: true, label: "启用", color: "#a29bfe" },
-							{ value: false, label: "停用", color: "#94a3b8" },
-						]}
-					/>
+					{isGlobalScope ? (
+						<Picker
+							value={gStyle.enabled}
+							onChange={(v) => setGStyle((d) => (d ? { ...d, enabled: v } : d))}
+							options={[
+								{ value: true, label: "启用", color: "#a29bfe" },
+								{ value: false, label: "停用", color: "#94a3b8" },
+							]}
+						/>
+					) : (
+						<span className="rounded-md border border-bn-border-subtle bg-bn-surface/70 px-2.5 py-1 text-[11px] text-bn-text-tertiary">
+							总开关在全局作用域
+						</span>
+					)}
 				</div>
 			</div>
 
-			<div className="grid gap-3.5 lg:grid-cols-[380px_1fr_360px]">
-				{/* LEFT: image plugin config */}
-				<div className="flex flex-col gap-3">
-					<GlassBox
-						title="卡片渲染样式"
-						subtitle="image plugin · 全局默认 · per-UP 覆盖在「高级规则」"
-						accent="#a29bfe"
-						icon={<Icon.edit size={14} />}
-						badge="cardStyle"
-					>
-						<Field code="cardColorStart">
-							<TColor value={draft.cardColorStart} onChange={(v) => set("cardColorStart", v)} />
-						</Field>
-						<Field code="cardColorEnd">
-							<TColor value={draft.cardColorEnd} onChange={(v) => set("cardColorEnd", v)} />
-						</Field>
-						<Field code="font" full>
-							<TInput value={draft.font} onChange={(v) => set("font", v)} />
-						</Field>
-						<Field code="hideDesc">
-							<div className="flex h-7.5 items-center">
-								<Toggle value={draft.hideDesc} onChange={(v) => set("hideDesc", v)} />
-							</div>
-						</Field>
-						<Field code="hideFollower">
-							<div className="flex h-7.5 items-center">
-								<Toggle value={draft.hideFollower} onChange={(v) => set("hideFollower", v)} />
-							</div>
-						</Field>
-						<Field code="glassOpacity" full>
-							<div className="flex flex-col gap-2">
-								<div className="flex h-7.5 items-center gap-3">
-									<Toggle
-										value={draft.glassOpacity !== undefined}
-										onChange={(on) =>
-											setDraft((d) =>
-												d ? { ...d, glassOpacity: on ? 0.82 : undefined, glassClear: false } : d,
-											)
-										}
-									/>
-									{draft.glassOpacity !== undefined ? (
-										<>
-											<input
-												type="range"
-												min={0}
-												max={1}
-												step={0.05}
-												value={draft.glassOpacity}
-												onChange={(e) => set("glassOpacity", Number(e.target.value))}
-												className="flex-1 accent-bn-pink"
-											/>
-											<span className="w-9 shrink-0 text-right font-mono text-[11px] text-bn-text-secondary">
-												{draft.glassOpacity.toFixed(2)}
-											</span>
-										</>
-									) : (
-										<span className="text-[11px] text-bn-text-tertiary">
-											{draft.glassClear ? "已开启完全透明" : "默认（各卡内置基线）"}
-										</span>
-									)}
-								</div>
-								{/* 子选项:完全透明(去磨砂模糊),与上方透明度二选一。 */}
-								<div className="flex items-center gap-2 text-[11px] text-bn-text-secondary">
-									<Toggle
-										size="sm"
-										value={draft.glassClear}
-										onChange={(on) =>
-											setDraft((d) => (d ? { ...d, glassClear: on, glassOpacity: undefined } : d))
-										}
-									/>
-									完全透明（去磨砂模糊）
-								</div>
-							</div>
-						</Field>
-						<Field code="backgroundImage" full>
-							<BackgroundImagePicker
-								value={draft.backgroundImage}
-								onChange={(id) => set("backgroundImage", id)}
-							/>
-						</Field>
-						<Field code="app.logLevels.image" full>
-							<LogLevelPicker
-								value={toPickerValue(imageLogLevel)}
-								onChange={(v) => setImageLogLevel(fromPickerValue(v))}
-								allowInherit
-							/>
-						</Field>
-						<div className="mt-2 rounded border border-dashed bg-[#a29bfe14] p-2.5 text-[11px] text-bn-text-secondary">
-							per-UP 卡片样式覆盖 → 前往「高级规则」→ 选择 UP 主 → 卡片样式覆盖
-						</div>
-					</GlassBox>
+			{/* 作用域切换 */}
+			<ScopeTabs
+				scope={scope}
+				onChange={setScope}
+				tabSubs={tabSubs}
+				availableSubs={availableSubs}
+				onAddSub={handleAddSub}
+				onRemoveSub={handleRemoveSub}
+				overridesCountFor={cardOverrideCount}
+				globalHint="此处为全部 UP 的默认卡片样式与版式"
+				perUpHint={(sub) =>
+					sub ? (
+						<>
+							仅作用于 <b className="text-bn-pink">{sub.uid}</b>,未开启的覆盖继承全局
+						</>
+					) : null
+				}
+			/>
 
-					<GlassBox
-						title="预览内容"
-						subtitle={
-							kind === "live"
-								? "拉取目标直播间的真实数据"
-								: kind === "dyn"
-									? "拉取指定 UP 的某条动态"
-									: "自定义文案 · mock 头像/数值"
-						}
-						accent={KIND_LABELS[kind].tone}
-						icon={<KindIcon size={14} />}
-						badge={kind}
-					>
-						{/* 卡片类型切换 —— 决定下方表单字段 + 右侧渲染的卡片种类。 */}
-						<div className="mb-3 flex flex-wrap gap-1.5">
-							{(["live", "dyn", "sc", "guard"] as const).map((k) => {
-								const active = kind === k;
-								const tone = KIND_LABELS[k].tone;
-								return (
-									<button
-										type="button"
-										key={k}
-										onClick={() => setKind(k)}
-										className="rounded px-3 py-1 text-[11.5px] font-semibold transition"
-										style={
-											active
-												? { background: tone, color: "white" }
-												: {
-														background: "var(--color-bn-hover-muted)",
-														color: "var(--color-bn-text-tertiary)",
-													}
-										}
-									>
-										{KIND_LABELS[k].label}
-									</button>
-								);
-							})}
-						</div>
-						{kind === "live" ? (
-							<>
-								<Field code="roomId">
-									<TInput
-										value={content.live.roomId}
-										onChange={(v) => setLive({ roomId: v })}
-										placeholder="留空则使用示例数据"
-									/>
-								</Field>
-								<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-emerald-800">
-									需要后端账号已登录 B
-									站；填入后将真实拉取该直播间数据并渲染。留空则继续使用示例数据。
-								</div>
-							</>
-						) : kind === "dyn" ? (
-							<>
-								<Field code="uid">
-									<TInput
-										value={content.dyn.uid}
-										onChange={(v) => setDyn({ uid: v })}
-										placeholder="留空则使用示例数据"
-									/>
-								</Field>
-								<Field code="offset">
-									<TInput
-										value={String(content.dyn.offset)}
-										onChange={(v) => {
-											const n = Number.parseInt(v, 10);
-											setDyn({ offset: Number.isFinite(n) && n > 0 ? n : 1 });
-										}}
-										placeholder="1"
-									/>
-								</Field>
-								<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-emerald-800">
-									需要后端账号已登录 B 站；填入后将拉取该 UP 的 space 动态列表，按 offset
-									选取并渲染。
-								</div>
-							</>
-						) : kind === "sc" ? (
-							<>
-								<Field code="text">
-									<TArea value={content.sc.text} onChange={(v) => setSc({ text: v })} rows={3} />
-								</Field>
-								<Field code="price">
-									<TInput
-										value={String(content.sc.price)}
-										onChange={(v) => {
-											const n = Number.parseInt(v, 10);
-											setSc({ price: Number.isFinite(n) && n > 0 ? n : 30 });
-										}}
-										placeholder="30"
-									/>
-								</Field>
-								<div className="rounded border border-dashed bg-bn-surface-muted p-2.5 text-[11px] text-bn-text-tertiary">
-									左侧渐变色对 SC 不生效；SC 卡片背景色由价格档位自动决定。
-								</div>
-							</>
-						) : (
-							<>
-								<Field code="level">
-									<div className="flex flex-wrap gap-1.5">
-										{GUARD_LEVELS.map((g) => {
-											const active = content.guard.level === g.v;
-											return (
-												<button
-													type="button"
-													key={g.v}
-													onClick={() => setGuard({ level: g.v })}
-													className="rounded px-3 py-1 text-[11.5px] font-semibold transition"
-													style={
-														active
-															? { background: g.tone, color: "white" }
-															: {
-																	background: "var(--color-bn-hover-muted)",
-																	color: "var(--color-bn-text-tertiary)",
-																}
-													}
-												>
-													{g.label}
-												</button>
-											);
-										})}
-									</div>
-								</Field>
-								<Field
-									label="新舰长称呼"
-									code="text"
-									hint="留空时使用当前登录账号的名字（未登录则显示示例新舰长）"
-								>
-									<TArea
-										value={content.guard.text}
-										onChange={(v) => setGuard({ text: v })}
-										placeholder="留空使用登录账号名"
-										rows={2}
-									/>
-								</Field>
-								<div className="rounded border border-dashed bg-bn-surface-muted p-2.5 text-[11px] text-bn-text-tertiary">
-									左侧渐变色对上舰不生效；卡片背景色与徽章图由舰长等级自动决定。
-								</div>
-							</>
-						)}
-					</GlassBox>
+			<div className="grid gap-3.5 lg:grid-cols-[380px_1fr_360px]">
+				{/* LEFT: style config */}
+				<div className="flex flex-col gap-3">
+					{isGlobalScope ? (
+						<GlassBox
+							title="卡片渲染样式"
+							subtitle="image plugin · 全局默认 · 上方切 UP 可单独覆盖"
+							accent="#a29bfe"
+							icon={<Icon.edit size={14} />}
+							badge="cardStyle"
+						>
+							<CardStyleFields style={gStyle} onChange={(n) => setGStyle(n)} />
+							<Field code="app.logLevels.image" full>
+								<LogLevelPicker
+									value={toPickerValue(imageLogLevel)}
+									onChange={(v) => setImageLogLevel(fromPickerValue(v))}
+									allowInherit
+								/>
+							</Field>
+						</GlassBox>
+					) : (
+						<GlassBox
+							title="卡片样式覆盖"
+							subtitle="开 = 该 UP 用自定义渐变 / 字体 / 玻璃片 / 背景;关 = 继承全局样式"
+							accent="#a29bfe"
+							icon={<Icon.edit size={14} />}
+							badge={puStyle ? "覆盖中" : "继承"}
+							right={
+								<Toggle
+									value={puStyle !== undefined}
+									onChange={(on) => setPuStyle(on ? { ...gStyle } : undefined)}
+								/>
+							}
+						>
+							{puStyle ? (
+								<CardStyleFields style={puStyle} onChange={(n) => setPuStyle(n)} />
+							) : (
+								<InheritNote>该 UP 继承全局卡片样式</InheritNote>
+							)}
+						</GlassBox>
+					)}
+
+					<PreviewContentBox
+						kind={kind}
+						setKind={setKind}
+						content={content}
+						setContent={setContent}
+					/>
 				</div>
 
 				{/* MIDDLE: live preview */}
 				<div className="space-y-2.5">
 					<div className="flex items-center justify-between text-[13px] text-bn-text-primary">
-						<span className="font-bold">卡片预览 · 实时反映左侧 image 配置</span>
+						<span className="font-bold">
+							卡片预览 · 实时反映{isGlobalScope ? "全局" : "该 UP"}配置
+						</span>
 						<span className="text-[11px] font-normal text-bn-text-secondary">
 							puppeteer 真实渲染 · 渲染宽度
 							{kind === "sc" ? " 280" : kind === "guard" ? " 430" : " 600"}px
 						</span>
 					</div>
-					<CardPreview kind={kind} style={draft} content={content} layout={layoutDraft} />
+					<CardPreview kind={kind} style={effStyle} content={content} layout={effLayout} />
 
 					{/* Effective style readout */}
 					<div className="flex flex-wrap gap-3.5 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 font-mono text-[10.5px] text-bn-text-tertiary">
 						<span>
-							cardColorStart: <TInputReadonly value={draft.cardColorStart} />
+							cardColorStart: <b className="text-bn-text-primary">{effStyle.cardColorStart}</b>
 						</span>
 						<span>
-							cardColorEnd: <TInputReadonly value={draft.cardColorEnd} />
+							cardColorEnd: <b className="text-bn-text-primary">{effStyle.cardColorEnd}</b>
 						</span>
 						<span className="italic text-bn-text-secondary">
-							per-UP 覆盖 → 高级规则 → cardStyleOverride
+							{isGlobalScope
+								? "全局默认 · 上方切 UP 可单独覆盖"
+								: focusedSub
+									? `仅 ${displayName(focusedSub)} · 未覆盖项继承全局`
+									: ""}
 						</span>
 					</div>
 				</div>
 
 				{/* RIGHT: layout editor + test push */}
 				<div className="flex flex-col gap-3">
-					{layoutDraft && (
+					{isGlobalScope ? (
+						gLayout ? (
+							<GlassBox
+								title="卡片版式"
+								subtitle="拖拽排序 · 开关显隐 · 改动实时反映到预览"
+								accent={KIND_LABELS[kind].tone}
+								icon={<KindIcon size={14} />}
+								badge="cardLayout"
+							>
+								<CardLayoutEditor kind={kind} layout={gLayout} onChange={setGLayout} />
+							</GlassBox>
+						) : null
+					) : (
 						<GlassBox
-							title="卡片版式"
-							subtitle="拖拽排序 · 开关显隐 · 改动实时反映到预览"
+							title="卡片版式覆盖"
+							subtitle="开 = 该 UP 用自定义版式(整份复制全局后编辑);关 = 继承全局版式"
 							accent={KIND_LABELS[kind].tone}
 							icon={<KindIcon size={14} />}
-							badge="cardLayout"
+							badge={puLayout ? "覆盖中" : "继承"}
+							right={
+								<Toggle
+									value={puLayout !== undefined}
+									onChange={(on) =>
+										setPuLayout(on ? structuredClone(gLayout ?? serverGlobalLayout) : undefined)
+									}
+								/>
+							}
 						>
-							<CardLayoutEditor kind={kind} layout={layoutDraft} onChange={setLayoutDraft} />
+							{puLayout ? (
+								<CardLayoutEditor kind={kind} layout={puLayout} onChange={setPuLayout} />
+							) : (
+								<InheritNote>该 UP 继承全局卡片版式</InheritNote>
+							)}
 						</GlassBox>
 					)}
 
-					<TestPushCard kind={kind} style={draft} content={content[kind]} layout={layoutDraft} />
+					<TestPushCard kind={kind} style={effStyle} content={content[kind]} layout={effLayout} />
 				</div>
 			</div>
+
+			{pendingRemoval ? (
+				<ConfirmDialog
+					title="移除该 UP 的卡片定制?"
+					message={
+						<>
+							将清空 <b className="text-bn-text-primary">{displayName(pendingRemoval)}</b>{" "}
+							的卡片样式与版式覆盖,该 UP 之后跟随全局卡片设置。此操作不可撤销。
+						</>
+					}
+					confirmLabel="移除"
+					cancelLabel="取消"
+					danger
+					onConfirm={confirmRemoveSub}
+					onCancel={() => setPendingRemoval(null)}
+				/>
+			) : null}
 		</div>
 	);
-}
-
-function TInputReadonly({ value }: { value: string }) {
-	return <b className="text-bn-text-primary">{value}</b>;
 }
