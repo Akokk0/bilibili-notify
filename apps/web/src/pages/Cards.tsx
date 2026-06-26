@@ -87,35 +87,25 @@ function PreviewImage({
 	/** 真实拉取失败时是否回退示例数据(per-UP 自动模式 = true)。 */
 	fallback: boolean;
 }) {
-	// debounce style + content + layout edits — TColor pickers, TArea and the
-	// drag/toggle layout editor fire many onChange callbacks; we don't want every
-	// one to spawn a puppeteer launch.
-	const [debouncedStyle, setDebouncedStyle] = useState(style);
-	const [debouncedContent, setDebouncedContent] = useState(content);
-	const [debouncedLayout, setDebouncedLayout] = useState(layout);
+	// 把整份请求(kind/style/content/layout/fallback)合成一个 spec 做**单一**防抖。
+	// 关键:kind / fallback 不能直接进 queryKey 而其余走独立防抖 —— 否则切类型时
+	// kind 立刻变、content 防抖没追上,会先用「上一个类型残留的内容」白发一次请求
+	// (per-UP 下还会真去拉一次接口),一次操作打两条日志、跑两次 puppeteer。整体防抖
+	// 后一次变更只触发一次 refetch。TColor / TArea / 拖拽编辑器的高频 onChange 同样收敛。
+	const spec = useMemo(
+		() => ({ kind, style, content, layout: layout ?? undefined, fallback }),
+		[kind, style, content, layout, fallback],
+	);
+	const [debouncedSpec, setDebouncedSpec] = useState(spec);
 	useEffect(() => {
-		const t = setTimeout(() => setDebouncedStyle(style), 500);
+		const t = setTimeout(() => setDebouncedSpec(spec), 500);
 		return () => clearTimeout(t);
-	}, [style]);
-	useEffect(() => {
-		const t = setTimeout(() => setDebouncedContent(content), 500);
-		return () => clearTimeout(t);
-	}, [content]);
-	useEffect(() => {
-		const t = setTimeout(() => setDebouncedLayout(layout), 500);
-		return () => clearTimeout(t);
-	}, [layout]);
+	}, [spec]);
 
 	const query = useQuery({
-		queryKey: ["card-preview", kind, debouncedStyle, debouncedContent, debouncedLayout, fallback],
+		queryKey: ["card-preview", debouncedSpec],
 		queryFn: async () => {
-			const res = await api.post<PreviewResponse>("/api/cards/preview", {
-				kind,
-				style: debouncedStyle,
-				content: debouncedContent,
-				layout: debouncedLayout ?? undefined,
-				fallback,
-			});
+			const res = await api.post<PreviewResponse>("/api/cards/preview", debouncedSpec);
 			if (!res.ok || !res.dataUrl) {
 				throw new ApiError(500, res, res.err ?? "preview failed");
 			}
