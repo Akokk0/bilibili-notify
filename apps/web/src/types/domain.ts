@@ -345,10 +345,8 @@ export interface CardBlockFull {
 	/** 语义 type(内容块为语义名 / 分割线为 "divider")。 */
 	type: string;
 	visible: boolean;
-	/** 该块额外上边距(px,可选)。 */
+	/** 该块**上方**的额外间距(px,可选)。首块上 / 末块下边距由卡片框架固定,不经此字段。 */
 	marginTop?: number;
-	/** 该块额外下边距(px,可选)。 */
-	marginBottom?: number;
 }
 
 export interface GuardLayoutFull {

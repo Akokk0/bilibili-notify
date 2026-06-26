@@ -63,14 +63,14 @@ describe("removeBlock", () => {
 
 describe("setBlockMargin", () => {
 	it("sets the top margin on the targeted block only", () => {
-		const out = setBlockMargin(blocks, "b", "top", 16);
+		const out = setBlockMargin(blocks, "b", 16);
 		expect(out.find((x) => x.id === "b")?.marginTop).toBe(16);
 		expect(out.find((x) => x.id === "a")?.marginTop).toBeUndefined();
 	});
 
 	it("clears the margin when value is undefined", () => {
-		const withMargin = setBlockMargin(blocks, "b", "bottom", 8);
-		const out = setBlockMargin(withMargin, "b", "bottom", undefined);
-		expect(out.find((x) => x.id === "b")?.marginBottom).toBeUndefined();
+		const withMargin = setBlockMargin(blocks, "b", 8);
+		const out = setBlockMargin(withMargin, "b", undefined);
+		expect(out.find((x) => x.id === "b")?.marginTop).toBeUndefined();
 	});
 });

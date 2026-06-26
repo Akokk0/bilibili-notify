@@ -137,7 +137,7 @@ export function LiveCard(p: LiveCardProps) {
 		>
 			<div
 				class="overflow-hidden rounded-xl"
-				style="background: rgba(255,255,255,0.82); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 360px;"
+				style="background: rgba(255,255,255,0.82); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 360px; padding-top: 14px; padding-bottom: 10px;"
 			>
 				{renderBlocks(p.layout ?? DEFAULT_CARD_LAYOUT.live, builders)}
 			</div>

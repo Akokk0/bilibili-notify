@@ -109,7 +109,7 @@ export function DynamicCard(p: DynamicCardProps) {
 		>
 			<div
 				class="w-full overflow-hidden rounded-[12px]"
-				style="background: rgba(255,255,255,0.82); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12);"
+				style="background: rgba(255,255,255,0.82); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding-top: 14px; padding-bottom: 12px;"
 			>
 				{renderBlocks(layout, nodeBuilders(p.node, layout))}
 			</div>

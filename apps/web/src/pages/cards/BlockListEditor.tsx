@@ -1,6 +1,7 @@
 /**
- * 通用块列表编辑器:原生 HTML5 拖拽重排 + 每块显隐开关 + 上下边距 + 分割线增删
+ * 通用块列表编辑器:原生 HTML5 拖拽重排 + 每块显隐开关 + 上边距 + 分割线增删
  * (零额外依赖)。纯受控组件 —— 逻辑走 layout-ops(已单测),本组件只管交互与外观。
+ * 边距模型:每块只设「上方间距」;第一个块的上边距由卡片框架固定(此处锁定不可改)。
  */
 
 import { useState } from "react";
@@ -25,21 +26,28 @@ interface BlockListEditorProps {
 }
 
 /**
- * 紧凑边距输入:默认显示 0(= 不额外加边距,走模版内置间距),带 px 单位。
- * 改成 0 时回存 undefined,保持版式干净、不落多余的 `margin:0`。
+ * 紧凑上边距输入:默认显示 0(= 不额外加间距,走框架内置),带 px 单位。改成 0 时回存
+ * undefined,保持版式干净。`locked` 时(第一个块)上边距由框架固定,展示「固定」不可改。
  */
 function MarginInput({
-	label,
 	value,
 	onChange,
+	locked,
 }: {
-	label: string;
 	value: number | undefined;
 	onChange: (v: number | undefined) => void;
+	locked?: boolean;
 }) {
+	if (locked) {
+		return (
+			<span className="text-[10px] text-bn-text-tertiary" title="第一个模块的上边距由卡片框架固定">
+				上边距 固定
+			</span>
+		);
+	}
 	return (
 		<label className="flex items-center gap-0.5 text-[10px] text-bn-text-tertiary">
-			{label}
+			上边距
 			<input
 				type="number"
 				value={value ?? 0}
@@ -111,14 +119,9 @@ export function BlockListEditor({ blocks, labels, onChange }: BlockListEditorPro
 								{isDivider ? DIVIDER_LABEL : (labels[b.type] ?? b.type)}
 							</span>
 							<MarginInput
-								label="上"
 								value={b.marginTop}
-								onChange={(v) => onChange(setBlockMargin(blocks, b.id, "top", v))}
-							/>
-							<MarginInput
-								label="下"
-								value={b.marginBottom}
-								onChange={(v) => onChange(setBlockMargin(blocks, b.id, "bottom", v))}
+								locked={i === 0}
+								onChange={(v) => onChange(setBlockMargin(blocks, b.id, v))}
 							/>
 							{/* 固定宽度槽位 —— 让删除按钮与 Toggle 占同宽,上下行的边距输入对齐。 */}
 							<div className="flex w-7 shrink-0 justify-end">

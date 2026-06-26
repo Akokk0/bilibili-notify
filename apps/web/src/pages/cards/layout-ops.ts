@@ -37,13 +37,11 @@ export function removeBlock(blocks: CardBlockFull[], id: string): CardBlockFull[
 	return blocks.filter((b) => b.id !== id);
 }
 
-/** 设置指定 id 块的上 / 下边距(px);value=undefined 清除该边距。 */
+/** 设置指定 id 块的上方间距(px);value=undefined 清除(回退框架内置间距)。 */
 export function setBlockMargin(
 	blocks: CardBlockFull[],
 	id: string,
-	side: "top" | "bottom",
 	value: number | undefined,
 ): CardBlockFull[] {
-	const key = side === "top" ? "marginTop" : "marginBottom";
-	return blocks.map((b) => (b.id === id ? { ...b, [key]: value } : b));
+	return blocks.map((b) => (b.id === id ? { ...b, marginTop: value } : b));
 }

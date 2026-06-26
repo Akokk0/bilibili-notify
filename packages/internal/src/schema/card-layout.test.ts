@@ -105,17 +105,15 @@ describe("normalizeCardLayout", () => {
 		expect(out.live.find((b) => b.type === "cover")?.marginTop).toBe(12);
 	});
 
-	it("backfills spacing from defaults for pre-v3 blocks that have none", () => {
-		// 老版式(无间距值)的 header → 应从默认回填(header 默认 上14/下10)。
+	it("backfills the top margin from defaults for pre-v6 blocks that have none", () => {
+		// 老版式(无 marginTop)的 live header → 从默认回填上方间距(14)。
 		const stored = {
 			...DEFAULT_CARD_LAYOUT,
-			version: 2,
+			version: 5,
 			live: [{ id: "header", type: "header", visible: true }],
 		};
 		const out = normalizeCardLayout(stored, DEFAULT_CARD_LAYOUT);
-		const header = out.live.find((b) => b.type === "header");
-		expect(header?.marginTop).toBe(14);
-		expect(header?.marginBottom).toBe(10);
+		expect(out.live.find((b) => b.type === "header")?.marginTop).toBe(14);
 	});
 
 	it("does not backfill spacing for current-version blocks (respects explicit 0)", () => {

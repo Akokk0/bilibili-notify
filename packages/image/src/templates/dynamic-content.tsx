@@ -240,7 +240,7 @@ function buildPicsContent(pics: Array<{ height: number; url: string; width: numb
 
 /**
  * 附加内容(预约 / 商品 / 通用卡)。返回内层 VNode(无外边距 —— 间距由 additional
- * 版式块的 marginTop/marginBottom 控制),无附加内容时返回 null(块自动收起)。
+ * 版式块的 marginTop 控制),无附加内容时返回 null(块自动收起)。
  */
 function buildAdditionalContent(dynamic: Dynamic): VNode | null {
 	const additional = dynamic.modules.module_dynamic.additional;

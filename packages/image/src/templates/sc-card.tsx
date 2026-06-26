@@ -33,7 +33,7 @@ export function SCCard(p: SCCardProps) {
 	const builders: Record<string, () => VNode | null> = {
 		[DIVIDER_TYPE]: () => (
 			<div
-				class="w-full h-px my-3"
+				class="w-full h-px"
 				style={{
 					background: `linear-gradient(to right, transparent, ${p.bgColor[0]}, transparent)`,
 				}}

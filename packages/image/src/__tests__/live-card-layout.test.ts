@@ -68,13 +68,21 @@ describe("LiveCard layout", () => {
 		expect(blockOrder(html)).not.toContain("desc");
 	});
 
-	it("renders per-block top/bottom spacing as wrapper padding", async () => {
+	it("renders a non-first block's top margin as wrapper padding-top", async () => {
 		const layout: CardBlock[] = DEFAULT_CARD_LAYOUT.live.map((b) =>
-			b.type === "title" ? { ...b, marginTop: 24, marginBottom: 8 } : b,
+			b.type === "title" ? { ...b, marginTop: 24 } : b,
 		);
 		const html = await renderLive({ layout });
 		expect(html).toContain("padding-top:24px");
-		expect(html).toContain("padding-bottom:8px");
+	});
+
+	it("skips the first block's top margin (the frame fixes the top edge)", async () => {
+		// cover 是首块,即便给了 marginTop 也不应渲染成 padding-top(由容器固定)。
+		const layout: CardBlock[] = DEFAULT_CARD_LAYOUT.live.map((b) =>
+			b.type === "cover" ? { ...b, marginTop: 99 } : b,
+		);
+		const html = await renderLive({ layout });
+		expect(html).not.toContain("padding-top:99px");
 	});
 
 	it("renders blocks in the layout's order", async () => {

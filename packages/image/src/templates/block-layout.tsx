@@ -4,22 +4,19 @@ import { type CardBlock, DIVIDER_TYPE } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
 
 /**
- * 把块的上下边距折成 wrapper 的 **padding**(undefined 不写)。用 padding 而非 margin:
- * 相邻块的 padding 相加(与原来各块写死的 pt/pb 行为一致),margin 相邻会塌缩取大值
- * 导致间距减半。各块的上下间距已迁进 DEFAULT_CARD_LAYOUT 的 marginTop/marginBottom,
- * 内层块只保留水平内边距,竖向间距全由这里出 —— 改 UI 的值即改渲染间距。
+ * 把块的**上方**间距折成 wrapper 的 `paddingTop`(undefined 不写)。块间间距 = 下方块的
+ * marginTop;用 padding 而非 margin 以免相邻 margin 塌缩。首个产出块的上边距由卡片框架
+ * (容器固定内边距)统一提供,这里跳过 —— 即「第一个模块固定上边距」;末块下边距同理走容器。
  */
-function spacingStyle(b: CardBlock): Record<string, string> {
-	const s: Record<string, string> = {};
-	if (b.marginTop !== undefined) s.paddingTop = `${b.marginTop}px`;
-	if (b.marginBottom !== undefined) s.paddingBottom = `${b.marginBottom}px`;
-	return s;
+function spacingStyle(b: CardBlock, isFirst: boolean): Record<string, string> {
+	if (isFirst || b.marginTop === undefined) return {};
+	return { paddingTop: `${b.marginTop}px` };
 }
 
 /**
  * 按 layout 渲染块序列:`visible=false` 跳过;按 `type` 找 builder(divider 也是
  * 一个 builder,可重复;内容块返回 null 时自动收起)。每块套一层带 `data-block`
- * (= type,供版式契约测试与识别)+ 可选上下边距的 wrapper。
+ * (= type,供版式契约测试与识别)+ 可选上方间距(首块除外)的 wrapper。
  *
  * `wrapperClass` 给居中栈(sc)传 "w-full",保证 wrapper 撑满、内层 text-center /
  * items-center 仍居中;垂直栈(live/dynamic)与 guard 内容列留空即可。
@@ -48,7 +45,7 @@ export function renderBlocks(
 			lastWasDivider = false;
 		}
 		out.push(
-			<div data-block={b.type} class={wrapperClass} style={spacingStyle(b)}>
+			<div data-block={b.type} class={wrapperClass} style={spacingStyle(b, out.length === 0)}>
 				{inner}
 			</div>,
 		);
