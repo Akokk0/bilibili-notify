@@ -30,6 +30,8 @@ const GUARD_DESC: Record<GuardLevel, (uname: string, masterName: string) => stri
 export function GuardCard(p: GuardCardProps) {
 	const desc = GUARD_DESC[p.guardLevel]?.(p.uname, p.masterName) ?? "";
 	const layout = p.layout ?? DEFAULT_CARD_LAYOUT.guard;
+	// 徽章靠左 → 内容在右,整列镜像右对齐(文字右对齐、姓名行头像移到外侧右边)。
+	const badgeLeft = layout.badgeSide === "left";
 
 	// 内容列块构建器(按 type):返回内层 VNode(无 data-block),无数据时返回 null。
 	const builders: Record<string, () => VNode | null> = {
@@ -37,11 +39,11 @@ export function GuardCard(p: GuardCardProps) {
 			<div class="my-[6px]" style={{ height: "1px", background: `${p.bgColor[0]}33` }} />
 		),
 		name: () => (
-			<div class="flex gap-[10px]">
+			<div class={`flex gap-[10px] ${badgeLeft ? "flex-row-reverse" : ""}`}>
 				<div class="w-[90px] h-[90px] overflow-hidden rounded-full shrink-0">
 					<img class="w-full h-full rounded-full object-cover" src={p.face} alt="用户头像" />
 				</div>
-				<div class="flex flex-col items-start gap-[7px] mt-[10px]">
+				<div class={`flex flex-col gap-[7px] mt-[10px] ${badgeLeft ? "items-end" : "items-start"}`}>
 					<div
 						class="flex items-center h-[30px] rounded-[25px] px-[10px] overflow-hidden"
 						style={{ backgroundColor: p.bgColor[0] }}
@@ -75,9 +77,13 @@ export function GuardCard(p: GuardCardProps) {
 			) : null,
 	};
 
-	// 内容列:name/text(可插分割线)按 layout.blocks 上下排。
+	// 内容列:name/text(可插分割线)按 layout.blocks 上下排;badge 在左时整列右对齐。
 	const content = (
-		<div class="flex-1 min-w-0 h-full flex flex-col justify-between px-[16px] py-[12px]">
+		<div
+			class={`flex-1 min-w-0 h-full flex flex-col justify-between px-[16px] py-[12px] ${
+				badgeLeft ? "items-end text-right" : ""
+			}`}
+		>
 			{renderBlocks(layout.blocks, builders)}
 		</div>
 	);
