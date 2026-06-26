@@ -36,6 +36,7 @@ export function CardLayoutEditor({ kind, layout, onChange }: CardLayoutEditorPro
 				<BlockListEditor
 					blocks={guard.blocks}
 					labels={labels}
+					showMargin={false}
 					onChange={(blocks) => onChange({ ...layout, guard: { ...guard, blocks } })}
 				/>
 			</div>

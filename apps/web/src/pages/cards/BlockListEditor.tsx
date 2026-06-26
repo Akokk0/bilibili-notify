@@ -23,6 +23,11 @@ interface BlockListEditorProps {
 	/** 块 type → 人话名(分割线另走 DIVIDER_LABEL)。 */
 	labels: Record<string, string>;
 	onChange: (next: CardBlockFull[]) => void;
+	/**
+	 * 是否展示上边距输入。默认 true;guard 的受限 2D 布局靠 flex 撑开、边距无意义,传 false
+	 * 只留位置控制(排序 / 显隐)。
+	 */
+	showMargin?: boolean;
 }
 
 /**
@@ -62,7 +67,12 @@ function MarginInput({
 	);
 }
 
-export function BlockListEditor({ blocks, labels, onChange }: BlockListEditorProps) {
+export function BlockListEditor({
+	blocks,
+	labels,
+	onChange,
+	showMargin = true,
+}: BlockListEditorProps) {
 	const [dragIndex, setDragIndex] = useState<number | null>(null);
 	const [overIndex, setOverIndex] = useState<number | null>(null);
 
@@ -118,11 +128,13 @@ export function BlockListEditor({ blocks, labels, onChange }: BlockListEditorPro
 							>
 								{isDivider ? DIVIDER_LABEL : (labels[b.type] ?? b.type)}
 							</span>
-							<MarginInput
-								value={b.marginTop}
-								locked={i === 0}
-								onChange={(v) => onChange(setBlockMargin(blocks, b.id, v))}
-							/>
+							{showMargin && (
+								<MarginInput
+									value={b.marginTop}
+									locked={i === 0}
+									onChange={(v) => onChange(setBlockMargin(blocks, b.id, v))}
+								/>
+							)}
 							{/* 固定宽度槽位 —— 让删除按钮与 Toggle 占同宽,上下行的边距输入对齐。 */}
 							<div className="flex w-7 shrink-0 justify-end">
 								{isDivider ? (
