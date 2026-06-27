@@ -371,6 +371,48 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		expect(calls[0].payload.kind).toBe("text"); // 没 at-all 头
 	});
 
+	it("@全体 发送卡死不阻塞卡片正文:卡片照常发出、broadcastToFeature 正常返回", async () => {
+		// 回归:无管理权限的群发 @全体 会触发协议端拒绝 + adapter 重试,旧版顺序
+		// await @全体 会把卡片正文连同 broadcastToFeature 一起拖到重试结束。现在
+		// @全体 best-effort 即发不 await,卡片不再被它拖住。
+		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		sub.routing.live = ["t1"];
+		sub.atAllDefaults.live = true;
+		const calls: SendCall[] = [];
+		const isAtAll = (p: NotificationPayload) =>
+			p.kind === "composite" && p.segments.length === 1 && p.segments[0]?.type === "at-all";
+		const sink: NotificationSink = {
+			isAvailable: () => true,
+			// @全体 这条永不 resolve(模拟无权限群的重试卡死);卡片正文立即成功。
+			send: (targetId, payload) => {
+				calls.push({ targetId, payload });
+				if (isAtAll(payload)) return new Promise<DeliveryResult>(() => {});
+				return Promise.resolve({ ok: true, latencyMs: 1 } as DeliveryResult);
+			},
+			sendPrivate: async () => ({ ok: true, latencyMs: 1 }) as DeliveryResult,
+			resolve: (id) =>
+				({
+					id,
+					name: id,
+					adapterId: "a",
+					platform: "test",
+					scope: "group",
+					enabled: true,
+				}) as unknown as PushTarget,
+		};
+		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		push.start();
+		// 旧版会在此处永久挂起;现在应在卡片发出后立即返回。
+		const out = await push.broadcastToFeature("u1", "live", { kind: "text", text: "开播" });
+		// @全体 与卡片都被发起(顺序:@全体 在前),且 @全体 同步先入 sink。
+		expect(calls.map((c) => c.targetId)).toEqual(["t1", "t1"]);
+		expect(isAtAll(calls[0].payload)).toBe(true);
+		expect(calls[1].payload).toEqual({ kind: "text", text: "开播" });
+		// 返回里只含已完成的卡片结果(@全体 仍 in-flight,不计入返回值)。
+		expect(out).toHaveLength(1);
+		expect(out[0].ok).toBe(true);
+	});
+
 	it("onSend 每个 target 触发一次,private=false,target 字段填", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.dynamic = ["t1", "t2"];

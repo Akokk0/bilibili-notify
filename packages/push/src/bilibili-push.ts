@@ -271,18 +271,52 @@ export class BilibiliPush {
 			return this.sendBatch(plainTargets, payload, { uid, feature });
 		}
 
-		// 「@全体单独一条 → 原 payload」两条顺序发,@ 提醒和卡片正文拆为两条独立
-		// 消息。sendBatch 内部 for-await 串行,跨批之间天然保序。所有 payload 类型
-		// 一视同仁,包括 forward-images(合并转发):@全体 是外层独立消息,跟合并
-		// 转发节点不冲突。
-		const atAllPayload = makeAtAllPayload();
-
+		// 「@全体单独一条 → 原 payload」两条独立消息:@ 提醒在前、卡片正文在后。
+		// 关键区别:@全体 走 best-effort「即发不 await」(见 sendAtAllThenCard)——
+		// 无管理权限的群发 @全体 会被协议端拒绝并触发 adapter 重试,旧版顺序 await
+		// 它会把卡片正文连同后续订阅任务一起阻塞(@全体先出、图片隔很久才出、历史
+		// 标失败)。现在卡片不再被 @全体 的重试拖住,@全体 失败也只异步落历史。
 		const results: DeliveryResult[] = [];
 		if (plainTargets.length > 0) {
 			results.push(...(await this.sendBatch(plainTargets, payload, { uid, feature })));
 		}
-		results.push(...(await this.sendBatch(atAllTargets, atAllPayload, { uid, feature })));
-		results.push(...(await this.sendBatch(atAllTargets, payload, { uid, feature })));
+		results.push(...(await this.sendAtAllThenCard(atAllTargets, payload, { uid, feature })));
+		return results;
+	}
+
+	/**
+	 * atAllTargets 的发送序列:每个目标先「即发」一条独立 @全体(**不 await**,
+	 * best-effort),紧接着 await 卡片正文。@全体 的结果异步记入推送历史。
+	 *
+	 * 为什么不 await @全体:无管理权限的群发 @全体 会被 onebot/协议端拒绝并触发
+	 * adapter 的 retryTimes×retryIntervalMs 重试,顺序 await 会让卡片正文等满整个
+	 * 重试周期才发出,并连带阻塞 sendBatch 之后的后续订阅任务(用户报告的
+	 * 「@全体先出、图片隔很久才出、推送历史标失败」)。fire-and-forget 后 @全体
+	 * 第一时间发出、失败也只异步落历史,卡片正文与后续任务都不再被它拖住。
+	 *
+	 * 顺序保证:@全体 的 `sendToTarget` 在卡片之前**同步发起**(其内部 `sink.send`
+	 * 先于卡片被调用),故接收端仍是 @ 提醒在前、卡片在后。
+	 */
+	private async sendAtAllThenCard(
+		atAllTargets: string[],
+		payload: NotificationPayload,
+		ctx: { uid: string; feature: FeatureKey },
+	): Promise<DeliveryResult[]> {
+		if (this.disposed) return [];
+		const myGen = this.generation;
+		const atAllPayload = makeAtAllPayload();
+		const results: DeliveryResult[] = [];
+		for (const id of atAllTargets) {
+			if (this.disposed || this.generation !== myGen) break;
+			// @全体 best-effort:同步发起(先于卡片入 sink),不 await,结果异步落历史。
+			void this.sendToTarget(id, atAllPayload)
+				.then((r) => this.recordSend(id, atAllPayload, r, ctx))
+				.catch(() => {});
+			const result = await this.sendToTarget(id, payload);
+			if (this.disposed || this.generation !== myGen) break;
+			this.recordSend(id, payload, result, ctx);
+			results.push(result);
+		}
 		return results;
 	}
 
@@ -309,22 +343,34 @@ export class BilibiliPush {
 			if (this.disposed || this.generation !== myGen) break;
 			const result = await this.sendToTarget(id, payload);
 			if (this.disposed || this.generation !== myGen) break;
-			if (this.onSend && ctx) {
-				const target = this.sink.resolve(id);
-				if (target) {
-					this.onSend({
-						uid: ctx.uid,
-						feature: ctx.feature,
-						target,
-						payload,
-						result,
-						private: false,
-					});
-				}
-			}
+			if (ctx) this.recordSend(id, payload, result, ctx);
 			results.push(result);
 		}
 		return results;
+	}
+
+	/**
+	 * 把单条 send 结果交给 `onSend` hook(adapter 据此 append 推送历史)。multiplex
+	 * sink 看不到 uid/feature,只能从这一层注入;target 由 sink 反解 id 得到。
+	 * onSend 未配置或 id 反解不到 target 时静默跳过。
+	 */
+	private recordSend(
+		id: string,
+		payload: NotificationPayload,
+		result: DeliveryResult,
+		ctx: { uid: string; feature: FeatureKey | "private" },
+	): void {
+		if (!this.onSend) return;
+		const target = this.sink.resolve(id);
+		if (!target) return;
+		this.onSend({
+			uid: ctx.uid,
+			feature: ctx.feature,
+			target,
+			payload,
+			result,
+			private: false,
+		});
 	}
 
 	/**
