@@ -186,6 +186,55 @@ describe("ImageRenderer 纯映射辅助", () => {
 });
 
 // ---------------------------------------------------------------------------
+// compressBiliImageUrl — 大图走 B 站处理服务缩放压缩
+// ---------------------------------------------------------------------------
+
+describe("ImageRenderer.compressBiliImageUrl", () => {
+	it("i*.hdslb.com 的 /bfs/ 图 → 追加 @1280w_80q.webp 后缀", () => {
+		const r = makeRenderer() as AnyRenderer;
+		expect(r.compressBiliImageUrl("https://i0.hdslb.com/bfs/new_dyn/abc.jpg")).toBe(
+			"https://i0.hdslb.com/bfs/new_dyn/abc.jpg@1280w_80q.webp",
+		);
+	});
+
+	it("已有 @ 处理后缀 → 替换为统一缩放后缀", () => {
+		const r = makeRenderer() as AnyRenderer;
+		expect(r.compressBiliImageUrl("https://i2.hdslb.com/bfs/album/x.png@600w_1c.webp")).toBe(
+			"https://i2.hdslb.com/bfs/album/x.png@1280w_80q.webp",
+		);
+	});
+
+	it("保留 query 串", () => {
+		const r = makeRenderer() as AnyRenderer;
+		expect(r.compressBiliImageUrl("https://i0.hdslb.com/bfs/x.jpg?foo=bar")).toBe(
+			"https://i0.hdslb.com/bfs/x.jpg@1280w_80q.webp?foo=bar",
+		);
+	});
+
+	it("静态 s1.hdslb.com / 非 /bfs/ / 第三方域 → 原样不动", () => {
+		const r = makeRenderer() as AnyRenderer;
+		expect(r.compressBiliImageUrl("https://s1.hdslb.com/bfs/static/cap.png")).toBe(
+			"https://s1.hdslb.com/bfs/static/cap.png",
+		);
+		expect(r.compressBiliImageUrl("https://i0.hdslb.com/other/x.jpg")).toBe(
+			"https://i0.hdslb.com/other/x.jpg",
+		);
+		expect(r.compressBiliImageUrl("https://example.com/a.jpg")).toBe("https://example.com/a.jpg");
+	});
+
+	it("fetchImageAsDataUrl 用缩放后的 URL 作缓存键(命中即不发 fetch)", async () => {
+		const r = makeRenderer() as AnyRenderer;
+		const resized = "https://i0.hdslb.com/bfs/new_dyn/huge.jpg@1280w_80q.webp";
+		r.imageCache.set(resized, { dataUrl: "data:resized", updatedAt: 1 });
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		const out = await r.fetchImageAsDataUrl("https://i0.hdslb.com/bfs/new_dyn/huge.jpg");
+		expect(out).toBe("data:resized");
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
 // fetchImageAsDataUrl
 // ---------------------------------------------------------------------------
 

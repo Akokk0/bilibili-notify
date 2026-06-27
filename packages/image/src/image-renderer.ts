@@ -532,7 +532,36 @@ export class ImageRenderer {
 		}
 	}
 
-	private async fetchImageAsDataUrl(url: string): Promise<string> {
+	/** B 站图片处理服务的缩放目标宽 / 质量(webp)。动态原图常达十几 MB,超 8MB 上限会
+	 * 被丢成透明占位 → 图渲染不出来。给 i*.hdslb.com 的 /bfs/ 资源加 `@<w>w_<q>q.webp`
+	 * 后缀,让 CDN 直接返回缩放压缩版,既不触发上限,内联体积也小一个数量级。 */
+	private static readonly BILI_IMG_MAX_W = 1280;
+	private static readonly BILI_IMG_QUALITY = 80;
+
+	/**
+	 * 对 B 站图片处理服务器(i0/i1/i2…​.hdslb.com 的 /bfs/ 资源)的 URL 追加缩放 +
+	 * webp 转码后缀;已有 `@…` 处理后缀会被替换。其它 host / 非 /bfs/ 路径原样返回
+	 * (静态 s1 资源、第三方域不处理)。query 保留。
+	 */
+	private compressBiliImageUrl(url: string): string {
+		let host: string;
+		try {
+			host = new URL(url).hostname;
+		} catch {
+			return url;
+		}
+		if (!/^i\d+\.hdslb\.com$/.test(host)) return url;
+		if (!url.includes("/bfs/")) return url;
+		const [beforeQuery, query] = url.split("?", 2);
+		// B 站图 URL 无 userinfo,`@` 只可能是已有的处理后缀 → 截到它之前。
+		const cleanBase = beforeQuery.split("@")[0];
+		const suffix = `@${ImageRenderer.BILI_IMG_MAX_W}w_${ImageRenderer.BILI_IMG_QUALITY}q.webp`;
+		return query ? `${cleanBase}${suffix}?${query}` : `${cleanBase}${suffix}`;
+	}
+
+	private async fetchImageAsDataUrl(rawUrl: string): Promise<string> {
+		// 大图先经 B 站处理服务缩放压缩,避免超 MAX_REMOTE_IMG_BYTES 被熔断成占位。
+		const url = this.compressBiliImageUrl(rawUrl);
 		const cached = this.imageCache.get(url);
 		if (cached) {
 			cached.updatedAt = Date.now();
