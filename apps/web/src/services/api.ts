@@ -82,10 +82,28 @@ async function upload<T>(path: string, form: FormData): Promise<T> {
 	return payload as T;
 }
 
+/**
+ * 取二进制资源(背景图缩略图等)。复用同一套 desktop token / 凭据 —— `<img src>` 不会
+ * 带自定义 header,桌面壳 token-header 鉴权下直接 401;故由此 fetch 拿 Blob,调用方再
+ * `URL.createObjectURL` 喂给 `<img>`。token 留在 header、不进 URL。
+ */
+async function requestBlob(path: string): Promise<Blob> {
+	const res = await fetch(path, {
+		headers: withDesktopTokenHeader(),
+		credentials: "include",
+	});
+	if (!res.ok) {
+		if (res.status === 401 && !path.startsWith("/api/session")) onUnauthorized?.();
+		throw new ApiError(res.status, undefined, `GET ${path} → ${res.status}`);
+	}
+	return res.blob();
+}
+
 export const api = {
 	get: <T>(path: string) => request<T>("GET", path),
 	post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
 	patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
 	delete: <T>(path: string) => request<T>("DELETE", path),
 	upload: <T>(path: string, form: FormData) => upload<T>(path, form),
+	blob: (path: string) => requestBlob(path),
 };

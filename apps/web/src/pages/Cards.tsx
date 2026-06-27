@@ -265,9 +265,42 @@ function TestPushCard({
 }
 
 /**
+ * 拉资产二进制并转 object URL 给缩略图用。`<img src="/api/cards/asset/:id">` 直连在
+ * 桌面壳(token-header 鉴权)下会 401 —— img 标签不带自定义 header。改由 `api.blob`
+ * 带鉴权头 fetch、createObjectURL 喂 img;assetId 变化 / 卸载时 revoke 旧 URL 防泄漏。
+ * 空 id 返回 null(显示占位)。
+ */
+function useAssetObjectUrl(assetId: string): string | null {
+	const [url, setUrl] = useState<string | null>(null);
+	useEffect(() => {
+		if (!assetId) {
+			setUrl(null);
+			return;
+		}
+		let cancelled = false;
+		let objectUrl: string | null = null;
+		api
+			.blob(`/api/cards/asset/${assetId}`)
+			.then((blob) => {
+				if (cancelled) return;
+				objectUrl = URL.createObjectURL(blob);
+				setUrl(objectUrl);
+			})
+			.catch(() => {
+				if (!cancelled) setUrl(null);
+			});
+		return () => {
+			cancelled = true;
+			if (objectUrl) URL.revokeObjectURL(objectUrl);
+		};
+	}, [assetId]);
+	return url;
+}
+
+/**
  * 背景图选择器 —— 上传 PNG/JPEG/WebP 到 `/api/cards/asset`,把返回的资产 id 存进
- * cardStyle.backgroundImage。空 = 走渐变。缩略图经 `/api/cards/asset/:id` 取(浏览器
- * 同源带 cookie);移除即清空字段。
+ * cardStyle.backgroundImage。空 = 走渐变。缩略图经 `api.blob` 带鉴权头拉取(桌面壳
+ * 也能显示,见 {@link useAssetObjectUrl});移除即清空字段。
  */
 function BackgroundImagePicker({
 	value,
@@ -278,6 +311,7 @@ function BackgroundImagePicker({
 }) {
 	const [uploading, setUploading] = useState(false);
 	const [err, setErr] = useState<string | null>(null);
+	const thumbUrl = useAssetObjectUrl(value);
 
 	const onFile = async (file: File | undefined) => {
 		if (!file) return;
@@ -302,11 +336,17 @@ function BackgroundImagePicker({
 	return (
 		<div className="flex items-center gap-2">
 			{value ? (
-				<img
-					src={`/api/cards/asset/${value}`}
-					alt="背景图"
-					className="h-9 w-14 shrink-0 rounded border border-bn-border-subtle object-cover"
-				/>
+				thumbUrl ? (
+					<img
+						src={thumbUrl}
+						alt="背景图"
+						className="h-9 w-14 shrink-0 rounded border border-bn-border-subtle object-cover"
+					/>
+				) : (
+					<span className="grid h-9 w-14 shrink-0 place-items-center rounded border border-bn-border-subtle bg-bn-surface-muted text-[10px] text-bn-text-tertiary">
+						…
+					</span>
+				)
 			) : (
 				<span className="text-[11px] text-bn-text-tertiary">未设置（用渐变）</span>
 			)}
