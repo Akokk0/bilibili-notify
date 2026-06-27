@@ -64,7 +64,7 @@ export type LogLineLevel = "debug" | "info" | "warn" | "error";
 export interface LogLineView {
 	ts: string;
 	level: LogLineLevel;
-	/** Emitting subsystem (e.g. "bilibili-notify:dynamic"). Absent on engine-error rows. */
+	/** Emitting subsystem (e.g. "dynamic"). Absent on engine-error rows. */
 	name?: string;
 	msg: string;
 	args?: unknown[];

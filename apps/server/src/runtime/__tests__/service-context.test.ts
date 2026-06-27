@@ -82,7 +82,7 @@ describe("createNodeServiceContext — forSubsystem 各算各的阈值", () => {
 	it("base 与子模块共用同一 logHook 但按各自 pino 实例 level 独立 gate", () => {
 		const seen: LogEntry[] = [];
 		const ctx = createNodeServiceContext({
-			name: "bilibili-notify",
+			name: "core",
 			level: "error", // base = core 桶,只放 error
 			pretty: false,
 			onLog: (e) => seen.push(e),
@@ -92,15 +92,13 @@ describe("createNodeServiceContext — forSubsystem 各算各的阈值", () => {
 		ctx.logger.info("base-info"); // base@error → 压
 		dyn.logger.debug("dyn-debug"); // dynamic@debug → 放行
 
-		expect(seen.map((e) => [e.name, e.level, e.msg])).toEqual([
-			["bilibili-notify:dynamic", "debug", "dyn-debug"],
-		]);
+		expect(seen.map((e) => [e.name, e.level, e.msg])).toEqual([["dynamic", "debug", "dyn-debug"]]);
 	});
 
 	it("子模块 setLevel 热改独立于 base", () => {
 		const seen: LogEntry[] = [];
 		const ctx = createNodeServiceContext({
-			name: "bilibili-notify",
+			name: "core",
 			level: "error",
 			pretty: false,
 			onLog: (e) => seen.push(e),

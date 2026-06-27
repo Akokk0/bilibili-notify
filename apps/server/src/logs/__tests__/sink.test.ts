@@ -25,7 +25,7 @@ describe("createLogSink — 脱敏后再 tee", () => {
 			msg: "cookie SESSDATA=TOPSECRET refresh_token=rt_LEAK",
 			args: ["sk-DEADBEEF12345678"],
 			ts: "2026-05-17T00:00:00.000Z",
-			name: "bilibili-notify:dynamic",
+			name: "dynamic",
 		});
 
 		expect(pushed).toHaveLength(1);
@@ -38,7 +38,7 @@ describe("createLogSink — 脱敏后再 tee", () => {
 			expect(e.msg).not.toContain("rt_LEAK");
 			expect(JSON.stringify(e.args)).not.toContain("sk-DEADBEEF12345678");
 			expect(e.msg).toContain("SESSDATA=***");
-			expect(e.name).toBe("bilibili-notify:dynamic"); // name 透传不丢
+			expect(e.name).toBe("dynamic"); // name 透传不丢
 		}
 		// 两路拿到的是等价内容(同一脱敏结果)。
 		expect(p.msg).toBe(g.msg);

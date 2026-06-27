@@ -55,8 +55,9 @@ export interface NodeServiceContext extends ServiceContext {
 	/**
 	 * Spawn a child ServiceContext for a named subsystem (engine module). The
 	 * child shares timers / onDispose / WS log hook with the parent but its
-	 * `logger` writes through a fresh pino instance with `name=parent:sub` and
-	 * an independent `level`. Used by engines.ts to give each business engine
+	 * `logger` writes through a fresh pino instance whose `name` is just the bare
+	 * subsystem (e.g. `live`) and an independent `level`. Used by engines.ts to
+	 * give each business engine
 	 * (dynamic / live / image / ai) its own log pipeline so operators can crank
 	 * one to debug without flooding the others.
 	 */
@@ -186,12 +187,12 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 		},
 		forSubsystem(name: string, level: string | undefined): SubsystemContext {
 			const subPino = pino({
-				name: `${opts.name}:${name}`,
+				name,
 				level: level ?? opts.level ?? "info",
 				...transportOpt,
 			});
 			return {
-				logger: wrapLogger(subPino, `${opts.name}:${name}`),
+				logger: wrapLogger(subPino, name),
 				setInterval: setIntervalImpl,
 				setTimeout: setTimeoutImpl,
 				onDispose: onDisposeImpl,

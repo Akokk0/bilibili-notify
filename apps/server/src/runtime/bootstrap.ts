@@ -77,7 +77,7 @@ export interface AppRuntime {
  */
 export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 	const serviceCtx = createNodeServiceContext({
-		name: "bilibili-notify",
+		name: "core",
 		level: bootstrap.logLevel,
 	});
 	const bus = createNodeMessageBus();

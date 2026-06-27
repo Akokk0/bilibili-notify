@@ -64,8 +64,8 @@ export interface LogEntry {
 	args: unknown[];
 	ts: string;
 	/**
-	 * Emitting subsystem name. Base serviceCtx → `"bilibili-notify"`;
-	 * `forSubsystem("dynamic")` → `"bilibili-notify:dynamic"`. Drives the Logs
+	 * Emitting subsystem name. Base serviceCtx → `"core"`;
+	 * `forSubsystem("dynamic")` → `"dynamic"`. Drives the Logs
 	 * tab's source/subsystem filter. Optional for backward compat — entries
 	 * predating this field (or hand-built in tests) simply have no source facet.
 	 */
