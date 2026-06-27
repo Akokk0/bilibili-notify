@@ -1,8 +1,15 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
-import { isValidCardBgId, readCardBg, readCardBgDataUrl, saveCardBg } from "../card-assets";
+import {
+	cardBgDir,
+	isValidCardBgId,
+	listCardBg,
+	readCardBg,
+	readCardBgDataUrl,
+	saveCardBg,
+} from "../card-assets";
 
 let dir: string;
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]); // PNG magic
@@ -47,6 +54,29 @@ describe("card-assets", () => {
 
 	it("readCardBg returns null for an invalid id (no disk read)", async () => {
 		expect(await readCardBg(dir, "../../secrets.json")).toBeNull();
+	});
+
+	it("listCardBg returns only valid stored ids, ignoring junk files", async () => {
+		const fresh = await mkdtemp(join(tmpdir(), "card-bg-list-"));
+		try {
+			const id1 = await saveCardBg(fresh, PNG, "image/png");
+			const id2 = await saveCardBg(fresh, PNG, "image/webp");
+			// junk that must be filtered out by the id gate
+			await writeFile(join(cardBgDir(fresh), "not-an-asset.txt"), "x");
+			await writeFile(join(cardBgDir(fresh), "deadbeef.png"), "x"); // not 32-hex
+			expect(new Set(await listCardBg(fresh))).toEqual(new Set([id1, id2]));
+		} finally {
+			await rm(fresh, { recursive: true, force: true });
+		}
+	});
+
+	it("listCardBg returns [] when the dir does not exist yet", async () => {
+		const fresh = await mkdtemp(join(tmpdir(), "card-bg-empty-"));
+		try {
+			expect(await listCardBg(fresh)).toEqual([]);
+		} finally {
+			await rm(fresh, { recursive: true, force: true });
+		}
 	});
 
 	it("readCardBgDataUrl returns '' for empty/invalid/missing, data URL for valid", async () => {

@@ -6,7 +6,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 /** 单张背景图上限 5MB(前端应先压缩;这里是兜底)。 */
@@ -34,6 +34,16 @@ export function cardBgDir(dataDir: string): string {
 /** id 是否合法(防穿越的唯一闸门)。 */
 export function isValidCardBgId(id: string): boolean {
 	return ID_RE.test(id);
+}
+
+/** 列出图廊里所有合法背景图 id;目录不存在或读失败返回 []。供图廊列表路由。 */
+export async function listCardBg(dataDir: string): Promise<string[]> {
+	try {
+		const names = await readdir(cardBgDir(dataDir));
+		return names.filter(isValidCardBgId);
+	} catch {
+		return [];
+	}
 }
 
 /** 保存上传的背景图,返回资产 id(= 文件名)。非图片 mime 或超限抛错(消息面向用户)。 */

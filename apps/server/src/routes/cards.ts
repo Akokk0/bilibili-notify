@@ -43,7 +43,7 @@ import {
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
-import { readCardBg, readCardBgDataUrl, saveCardBg } from "../runtime/card-assets.js";
+import { listCardBg, readCardBg, readCardBgDataUrl, saveCardBg } from "../runtime/card-assets.js";
 import {
 	createPuppeteerAdapter,
 	resolveChromePath,
@@ -211,6 +211,12 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		} catch (err) {
 			return c.json({ ok: false, err: String((err as Error)?.message ?? err) }, 400);
 		}
+	});
+
+	// 图廊列表 —— 列出已上传的所有背景图 id,供前端图廊选择。
+	app.get("/assets", async (c) => {
+		const ids = await listCardBg(opts.deps.store.bootstrap.dataDir);
+		return c.json({ ok: true, ids });
 	});
 
 	// 背景图服务 —— 经 id 正则校验的定向读取(绝不 serveStatic 整个 dataDir,内有 secrets)。

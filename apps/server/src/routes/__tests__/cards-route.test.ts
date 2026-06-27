@@ -1,9 +1,26 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { ImageRenderer } from "@bilibili-notify/image";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { saveCardBg } from "../../runtime/card-assets.js";
 import type { StandalonePuppeteer } from "../../runtime/puppeteer.js";
 import { createCardsRoute, resolveRoomIdFromUid } from "../cards.js";
 import type { RouteDeps } from "../types.js";
+
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+function depsWithDataDir(dataDir: string): RouteDeps {
+	return {
+		runtime: {
+			serviceCtx: {
+				logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+			},
+		},
+		store: { bootstrap: { dataDir } },
+	} as unknown as RouteDeps;
+}
 
 function makeDeps(): RouteDeps {
 	return {
@@ -29,6 +46,24 @@ function makeFakePuppeteer(): StandalonePuppeteer {
 	};
 	return { page: vi.fn(async () => fakePage) } as unknown as StandalonePuppeteer;
 }
+
+describe("cards route — 图廊列表 GET /assets", () => {
+	it("返回图廊里所有已传背景图 id", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-gallery-"));
+		try {
+			const id1 = await saveCardBg(dir, PNG, "image/png");
+			const id2 = await saveCardBg(dir, PNG, "image/webp");
+			const app = createCardsRoute({ deps: depsWithDataDir(dir), puppeteer: null, api: null });
+			const res = await app.request("/assets");
+			expect(res.status).toBe(200);
+			const json = (await res.json()) as { ok: boolean; ids: string[] };
+			expect(json.ok).toBe(true);
+			expect(new Set(json.ids)).toEqual(new Set([id1, id2]));
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+});
 
 describe("cards route — detect-chrome", () => {
 	it("GET /detect-chrome 返回探测到的 Chrome 路径", async () => {
