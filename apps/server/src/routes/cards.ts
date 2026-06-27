@@ -88,8 +88,8 @@ const StyleSchema = z.object({
 	hideFollower: z.boolean().optional(),
 	glassOpacity: z.number().min(0).max(1).optional(),
 	glassClear: z.boolean().optional(),
-	/** 背景图资产 id(空 = 渐变)。 */
-	backgroundImage: z.string().optional(),
+	/** 背景图资产 id 列表(空 = 渐变;>1 = 轮换,预览端取首张)。 */
+	backgroundImages: z.array(z.string()).optional(),
 });
 
 const ContentSchema = z
@@ -248,7 +248,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			hideFollower: style.hideFollower ?? false,
 			glassOpacity: style.glassOpacity,
 			glassClear: style.glassClear,
-			backgroundImage: style.backgroundImage,
+			backgroundImage: style.backgroundImages?.[0] ?? "",
 		};
 		if (!imageRenderer) {
 			imageRenderer = new ImageRenderer({
@@ -410,7 +410,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// (不经 ImageRenderer,未登录也能调色)。背景图在此解析成 data URL 注入。
 		const bgDataUrl = await readCardBgDataUrl(
 			opts.deps.store.bootstrap.dataDir,
-			style.backgroundImage ?? "",
+			style.backgroundImages?.[0] ?? "",
 		);
 		const { component, props, title, htmlWidth } = buildPreviewSpec(kind, style, layout, bgDataUrl);
 		const html = await renderCard(component, props, {

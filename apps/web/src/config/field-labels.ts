@@ -213,7 +213,7 @@ export const FIELD_LABELS = {
 	hideFollower: { label: "隐藏粉丝数据", section: "cardStyle" },
 	glassOpacity: { label: "玻璃片透明度", section: "cardStyle" },
 	glassClear: { label: "完全透明", section: "cardStyle" },
-	backgroundImage: { label: "自定义背景图", section: "cardStyle" },
+	backgroundImages: { label: "自定义背景图", section: "cardStyle" },
 	// 卡片版式(灵动岛 diff 码 —— walkTreeDiff 把每张卡的块数组当叶子整体比较)。
 	"cardLayout.live": { label: "直播卡版式", section: "cardStyle" },
 	"cardLayout.dynamic": { label: "动态卡版式", section: "cardStyle" },

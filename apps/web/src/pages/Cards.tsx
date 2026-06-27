@@ -464,10 +464,10 @@ function CardStyleFields({
 					</div>
 				</div>
 			</Field>
-			<Field code="backgroundImage" full>
+			<Field code="backgroundImages" full>
 				<BackgroundImagePicker
-					value={style.backgroundImage}
-					onChange={(id) => set("backgroundImage", id)}
+					value={style.backgroundImages[0] ?? ""}
+					onChange={(id) => set("backgroundImages", id ? [id] : [])}
 				/>
 			</Field>
 		</>

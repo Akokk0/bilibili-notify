@@ -66,7 +66,7 @@ export function makeDefaults(): GlobalDefaults {
 			font: "",
 			hideDesc: false,
 			hideFollower: false,
-			backgroundImage: "",
+			backgroundImages: [],
 			glassClear: false,
 		},
 		imageGroup: { enable: true, forward: false },

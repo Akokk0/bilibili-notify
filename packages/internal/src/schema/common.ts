@@ -190,7 +190,7 @@ export const AISettingsSchema = z.object({
 });
 export type AISettings = z.infer<typeof AISettingsSchema>;
 
-export const CardStyleSchema = z.object({
+const CardStyleObjectSchema = z.object({
 	/**
 	 * 卡片图片渲染功能总开关。关闭后,push 流程会跳过图片生成,仅发送文本回退。
 	 * 默认 true 以兼容老数据文件;独立端的 puppeteer 适配器仍按 `bootstrap.chromePath`
@@ -210,11 +210,12 @@ export const CardStyleSchema = z.object({
 	/** 隐藏卡片粉丝变化 / 累计观看数(对齐 `hideDesc` 命名风格,「隐藏=true」)。 */
 	hideFollower: z.boolean().default(false),
 	/**
-	 * 自定义卡片背景图。空串(默认)= 沿用 `cardColorStart→cardColorEnd` 渐变。非空时
-	 * 渲染器以该图替换渐变背景;值是上传子系统的资产标识(详见设计稿,渲染期读盘内联)。
-	 * `.default("")` 让缺该字段的老 globals.json 加载时自动补全。
+	 * 自定义卡片背景图资产 id **列表**。空列表(默认)= 沿用 `cardColorStart→cardColorEnd`
+	 * 渐变;长度 1 = 固定单张;长度 >1 = 每次推送顺序轮换(游标在服务端持久)。渲染期由
+	 * 服务端从列表里挑一张解析成 data URL 内联(packages/image 仍只认单图)。旧的单值
+	 * `backgroundImage` 经下方 preprocess 自动迁移成本列表。
 	 */
-	backgroundImage: z.string().default(""),
+	backgroundImages: z.array(z.string()).default([]),
 	/**
 	 * 玻璃片(卡片内容层)透明度,0..1。**可选**:未设(默认)时各卡沿用各自内置基线
 	 * (live/dynamic 0.82、sc/guard 0.75),保证「默认复刻现状」;设了值才统一覆盖所有卡。
@@ -227,9 +228,32 @@ export const CardStyleSchema = z.object({
 	 */
 	glassClear: z.boolean().default(false),
 });
+
+/**
+ * 前向迁移:旧单值 `backgroundImage`(string)→ 新 `backgroundImages`(string[])。
+ * 仅当未显式提供 `backgroundImages` 时生效;空串迁移成空列表(渐变),非空成单元素列表。
+ * 显式的 `backgroundImages` 永远优先(旧字段被丢弃)。
+ */
+function migrateCardStyleBg(raw: unknown): unknown {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+	const o = raw as Record<string, unknown>;
+	if (!("backgroundImage" in o)) return raw;
+	const { backgroundImage, ...rest } = o;
+	if (o.backgroundImages !== undefined) return rest; // 列表已存在 → 丢弃旧字段
+	return {
+		...rest,
+		backgroundImages:
+			typeof backgroundImage === "string" && backgroundImage ? [backgroundImage] : [],
+	};
+}
+
+export const CardStyleSchema = z.preprocess(migrateCardStyleBg, CardStyleObjectSchema);
 export type CardStyle = z.infer<typeof CardStyleSchema>;
 
-export const CardStylePartialSchema = CardStyleSchema.partial();
+export const CardStylePartialSchema = z.preprocess(
+	migrateCardStyleBg,
+	CardStyleObjectSchema.partial(),
+);
 export type CardStylePartial = z.infer<typeof CardStylePartialSchema>;
 
 /** 默认全局值；resolve() 在 per-UP overrides 缺失字段时回退到这里。 */

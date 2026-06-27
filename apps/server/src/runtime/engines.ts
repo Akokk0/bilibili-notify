@@ -333,7 +333,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				hideFollower: cs.hideFollower,
 				glassOpacity: cs.glassOpacity,
 				glassClear: cs.glassClear,
-				backgroundImage: cs.backgroundImage,
+				backgroundImage: cs.backgroundImages[0] ?? "",
 			},
 			resolveAsset: (id) => readCardBgDataUrl(opts.configStore.bootstrap.dataDir, id),
 		});
@@ -611,7 +611,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						hideFollower: cs.hideFollower,
 						glassOpacity: cs.glassOpacity,
 						glassClear: cs.glassClear,
-						backgroundImage: cs.backgroundImage,
+						backgroundImage: cs.backgroundImages[0] ?? "",
 					});
 				}
 				// dynamicConfig() 读 app.dynamicCron + defaults.{filters,cardStyle.enabled,
@@ -1005,7 +1005,7 @@ export function buildDynamicSubViewSingle(
 					cardColorEnd: sub.overrides.cardStyle.cardColorEnd,
 					glassOpacity: sub.overrides.cardStyle.glassOpacity,
 					glassClear: sub.overrides.cardStyle.glassClear,
-					backgroundImage: sub.overrides.cardStyle.backgroundImage,
+					backgroundImage: sub.overrides.cardStyle.backgroundImages?.[0] ?? "",
 				}
 			: { enable: false },
 		filter: sub.overrides.filters ? buildDynamicFilter(eff) : undefined,
@@ -1069,7 +1069,7 @@ export function buildLiveSubViewSingle(
 					cardColorEnd: sub.overrides.cardStyle.cardColorEnd,
 					glassOpacity: sub.overrides.cardStyle.glassOpacity,
 					glassClear: sub.overrides.cardStyle.glassClear,
-					backgroundImage: sub.overrides.cardStyle.backgroundImage,
+					backgroundImage: sub.overrides.cardStyle.backgroundImages?.[0] ?? "",
 				}
 			: { enable: false },
 		// Per-UP 阈值 / 调度 / AI;adapter 在 add 路径上灌入,room-session 在 SC /
