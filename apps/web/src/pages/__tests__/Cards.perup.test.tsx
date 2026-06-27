@@ -118,7 +118,9 @@ describe("Cards per-UP 作用域接线", () => {
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
 		fireEvent.click(await screen.findByText("UID 123456"));
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
-		fireEvent.click(screen.getByRole("button", { name: "SC 提醒" }));
+		// 卡片类型选择在左侧 SectionNav。它响应式渲染竖栏 + 横向条两份(jsdom 不应用 CSS,
+		// 两个同名按钮都在 DOM),取第一个点击即可切到 SC。
+		fireEvent.click(screen.getAllByRole("button", { name: "SC 提醒" })[0]);
 
 		await waitFor(
 			() => {

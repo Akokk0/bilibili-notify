@@ -2,12 +2,13 @@
  * Cards page — image plugin card style preview. Ports `GlassPreviewTab` from
  * `.bn-design/variation-ac.jsx`.
  *
- * A scope switcher (全局默认 / 各 UP) sits on top. In the global scope the three
- * columns bind to GlobalConfig.defaults.{cardStyle,cardLayout}; in a per-UP scope
- * they bind to that subscription's overrides.{cardStyle,cardLayout}, each gated by
- * a 「覆盖全局」 toggle (off = inherit). Left: card-style config + preview-content
- * form. Middle: live puppeteer preview of the EFFECTIVE style+layout for ALL four
- * kinds. Right: the 卡片版式 layout editor + 测试推送.
+ * A scope switcher (全局默认 / 各 UP) sits on top. Three columns: a left card-kind
+ * rail (SectionNav) selects which card type is being edited + previewed; the
+ * middle 「选项」 column holds that kind's style (per-kind, with 应用到所有卡片),
+ * background gallery, preview-content form and 卡片版式 editor; the right column is
+ * the live puppeteer preview + 测试推送. In the global scope these bind to
+ * GlobalConfig.defaults.{cardStyle,cardStyleByKind,cardLayout}; per-UP they bind to
+ * that subscription's overrides, gated by 「覆盖全局」 toggles (off = inherit).
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -27,13 +28,24 @@ import {
 import { GlassBox } from "../components/glass-box";
 import { Icon, type IconName } from "../components/icons";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
+import { SectionNav } from "../components/section-nav";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
 import type { CardLayoutFull, PushTarget, Subscription } from "../types/domain";
 import type { CardStyle, GlobalConfig, LogLevel } from "../types/globals";
 import { CardLayoutEditor } from "./cards/CardLayoutEditor";
 import { GalleryPicker } from "./cards/GalleryPicker";
+import {
+	type CardStyleByKind,
+	resolveKindStyle,
+	type CardKind as StyleKind,
+} from "./cards/perkind";
 import { displayName } from "./up/helpers";
+
+/** 本页预览 kind("dyn")↔ 样式/版式键("dynamic")的映射。 */
+function toStyleKind(kind: CardKind): StyleKind {
+	return kind === "dyn" ? "dynamic" : kind;
+}
 
 type CardKind = "live" | "dyn" | "sc" | "guard";
 
@@ -65,6 +77,14 @@ const KIND_LABELS: Record<CardKind, { label: string; tone: string; icon: IconNam
 	dyn: { label: "动态发布", tone: "#00AEEC", icon: "dyn" },
 	sc: { label: "SC 提醒", tone: "#fdcb6e", icon: "sc" },
 	guard: { label: "上舰提醒", tone: "#f2a053", icon: "guard" },
+};
+
+/** 左侧类型导航的副标题(对齐 Rules 左栏的「label + desc」观感)。 */
+const KIND_DESC: Record<CardKind, string> = {
+	live: "开播 / 直播中 / 下播",
+	dyn: "动态 / 视频投稿",
+	sc: "醒目留言 SC",
+	guard: "舰长 / 提督 / 总督",
 };
 
 interface PreviewResponse {
@@ -171,21 +191,32 @@ interface TestPushResponse {
 }
 
 /**
- * 测试推送 —— 把当前预览卡片(草稿样式 + 类型 + 内容)渲染成图片,推给所选
- * PushTarget。所见即所推:用的是当前预览正在调的草稿,无需先保存。
+ * 预览内容 + 测试推送(合并卡)—— 上半编辑该类型的预览内容(全局可改 mock,per-UP 用真实
+ * 数据),下半把当前预览卡片(草稿样式 + 类型 + 内容)渲染成图片推给所选 PushTarget。
+ * 所见即所推:用的是当前预览正在调的草稿,无需先保存。
  */
 function TestPushCard({
 	kind,
 	style,
-	content,
+	pushContent,
 	layout,
 	fallback,
+	mockContent,
+	setMockContent,
+	realData,
+	realDataLabel,
 }: {
 	kind: CardKind;
 	style: CardStyle;
-	content: Record<string, unknown>;
+	/** 已解析的预览/推送内容载荷(全局 = mock;per-UP = 该 UP 真实数据 id)。 */
+	pushContent: Record<string, unknown>;
 	layout: CardLayoutFull | null;
 	fallback: boolean;
+	/** 可编辑的 mock 内容状态(供上半内容编辑)。 */
+	mockContent: PreviewContent;
+	setMockContent: React.Dispatch<React.SetStateAction<PreviewContent>>;
+	realData?: boolean;
+	realDataLabel?: string;
 }) {
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
@@ -208,7 +239,7 @@ function TestPushCard({
 				targetId,
 				kind,
 				style,
-				content,
+				content: pushContent,
 				layout: layout ?? undefined,
 				fallback,
 			});
@@ -219,12 +250,20 @@ function TestPushCard({
 
 	return (
 		<GlassBox
-			title="测试推送"
-			subtitle="把当前预览卡片(草稿样式)作为图片推送到所选目标"
+			title="预览内容 · 测试推送"
+			subtitle="编辑该类型预览内容,并把当前预览卡片(草稿样式)推送到所选目标"
 			accent="#00b894"
 			icon={<Icon.bell size={14} />}
 			badge="test-push"
 		>
+			<PreviewContentFields
+				kind={kind}
+				content={mockContent}
+				setContent={setMockContent}
+				realData={realData}
+				realDataLabel={realDataLabel}
+			/>
+			<div className="my-3 border-t border-bn-border-subtle" />
 			<Field code="targetId" full>
 				<select
 					value={targetId}
@@ -372,16 +411,14 @@ function CardStyleFields({
  * 「预览内容」框 —— 卡片类型切换 + 各类型的 mock/真实内容字段。与作用域无关
  * (预览的是哪类卡片、用什么内容,跟改谁的样式独立)。
  */
-function PreviewContentBox({
+function PreviewContentFields({
 	kind,
-	setKind,
 	content,
 	setContent,
 	realData = false,
 	realDataLabel,
 }: {
 	kind: CardKind;
-	setKind: (k: CardKind) => void;
 	content: PreviewContent;
 	setContent: React.Dispatch<React.SetStateAction<PreviewContent>>;
 	/** per-UP 作用域:仅类型选择,不提供 mock 内容编辑(用该 UP 真实数据)。 */
@@ -397,47 +434,9 @@ function PreviewContentBox({
 	const setGuard = (next: Partial<PreviewContent["guard"]>) =>
 		setContent((c) => ({ ...c, guard: { ...c.guard, ...next } }));
 
-	const KindIcon = Icon[KIND_LABELS[kind].icon];
-
 	return (
-		<GlassBox
-			title="预览内容"
-			subtitle={
-				kind === "live"
-					? "拉取目标直播间的真实数据"
-					: kind === "dyn"
-						? "拉取指定 UP 的某条动态"
-						: "自定义文案 · mock 头像/数值"
-			}
-			accent={KIND_LABELS[kind].tone}
-			icon={<KindIcon size={14} />}
-			badge={kind}
-		>
-			{/* 卡片类型切换 —— 决定下方表单字段 + 右侧渲染的卡片种类。 */}
-			<div className="mb-3 flex flex-wrap gap-1.5">
-				{(["live", "dyn", "sc", "guard"] as const).map((k) => {
-					const active = kind === k;
-					const tone = KIND_LABELS[k].tone;
-					return (
-						<button
-							type="button"
-							key={k}
-							onClick={() => setKind(k)}
-							className="rounded px-3 py-1 text-[11.5px] font-semibold transition"
-							style={
-								active
-									? { background: tone, color: "white" }
-									: {
-											background: "var(--color-bn-hover-muted)",
-											color: "var(--color-bn-text-tertiary)",
-										}
-							}
-						>
-							{KIND_LABELS[k].label}
-						</button>
-					);
-				})}
-			</div>
+		<>
+			{/* 卡片类型由左侧「卡片类型」导航选择;此处只显示当前类型的内容字段。 */}
 			{realData ? (
 				<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-emerald-800">
 					{kind === "live" || kind === "dyn"
@@ -544,7 +543,7 @@ function PreviewContentBox({
 					</div>
 				</>
 			)}
-		</GlassBox>
+		</>
 	);
 }
 
@@ -581,6 +580,8 @@ export default function Cards() {
 
 	// 全局草稿
 	const [gStyle, setGStyle] = useState<CardStyle | null>(null);
+	// 按卡片类型的样式覆盖(全局)。空 = 各类型跟随 gStyle 基准。
+	const [gByKind, setGByKind] = useState<CardStyleByKind>({});
 	const [gLayout, setGLayout] = useState<CardLayoutFull | null>(null);
 	const [imageLogLevel, setImageLogLevel] = useState<ImageLogLevel>("");
 
@@ -588,9 +589,16 @@ export default function Cards() {
 	const [puStyle, setPuStyle] = useState<CardStyle | undefined>(undefined);
 	const [puLayout, setPuLayout] = useState<CardLayoutFull | undefined>(undefined);
 
-	// 共享:预览类型 + 内容(与作用域无关)
-	const [kind, setKind] = useState<CardKind>("live");
+	// 左侧导航:「全局」(基准通用样式)或某卡片类型。与作用域无关。
+	const [activeTab, setActiveTab] = useState<"__global" | StyleKind>("__global");
+	// 「全局」tab 下独立选择预览/编辑哪种卡片(基准样式可在四种卡片上检视、配版式、测试推送)。
+	const [globalPreviewKind, setGlobalPreviewKind] = useState<StyleKind>("live");
 	const [content, setContent] = useState<PreviewContent>(DEFAULT_PREVIEW_CONTENT);
+
+	const isGlobalTab = activeTab === "__global";
+	// 「全局」tab → 用 globalPreviewKind 选预览类型;类型 tab → 锁定为该类型。
+	const styleKind: StyleKind = isGlobalTab ? globalPreviewKind : activeTab;
+	const kind: CardKind = styleKind === "dynamic" ? "dyn" : styleKind;
 
 	const allSubs = useMemo(() => subsQuery.data ?? [], [subsQuery.data]);
 	const isGlobalScope = scope === "__global";
@@ -601,6 +609,7 @@ export default function Cards() {
 	useEffect(() => {
 		if (globalsQuery.data) {
 			setGStyle(globalsQuery.data.defaults.cardStyle);
+			setGByKind(globalsQuery.data.defaults.cardStyleByKind ?? {});
 			setGLayout(globalsQuery.data.defaults.cardLayout);
 			setImageLogLevel(globalsQuery.data.app.logLevels?.image ?? "");
 		}
@@ -630,6 +639,7 @@ export default function Cards() {
 	const saveGlobal = useMutation({
 		mutationFn: async (payload: {
 			cardStyle: CardStyle;
+			cardStyleByKind: CardStyleByKind;
 			cardLayout: CardLayoutFull;
 			imageLogLevel: ImageLogLevel;
 		}) => {
@@ -644,7 +654,11 @@ export default function Cards() {
 				app: {
 					logLevels: Object.keys(nextLogLevels).length === 0 ? undefined : nextLogLevels,
 				},
-				defaults: { cardStyle: payload.cardStyle, cardLayout: payload.cardLayout },
+				defaults: {
+					cardStyle: payload.cardStyle,
+					cardStyleByKind: payload.cardStyleByKind,
+					cardLayout: payload.cardLayout,
+				},
 			});
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
@@ -714,14 +728,16 @@ export default function Cards() {
 		if (gStyle === null) return null;
 		return {
 			...gStyle,
+			cardStyleByKind: gByKind,
 			cardLayout: gLayout,
 			app: { logLevels: { image: imageLogLevel === "" ? null : imageLogLevel } },
 		};
-	}, [gStyle, gLayout, imageLogLevel]);
+	}, [gStyle, gByKind, gLayout, imageLogLevel]);
 	const globalIslandBaseline = useMemo(() => {
 		if (!globalsQuery.data) return null;
 		return {
 			...globalsQuery.data.defaults.cardStyle,
+			cardStyleByKind: globalsQuery.data.defaults.cardStyleByKind ?? {},
 			cardLayout: globalsQuery.data.defaults.cardLayout,
 			app: { logLevels: { image: globalsQuery.data.app.logLevels?.image ?? null } },
 		};
@@ -758,7 +774,12 @@ export default function Cards() {
 		onSave: async () => {
 			if (isGlobalScope) {
 				if (gStyle !== null && gLayout !== null)
-					await saveGlobal.mutateAsync({ cardStyle: gStyle, cardLayout: gLayout, imageLogLevel });
+					await saveGlobal.mutateAsync({
+						cardStyle: gStyle,
+						cardStyleByKind: gByKind,
+						cardLayout: gLayout,
+						imageLogLevel,
+					});
 			} else if (focusedSub) {
 				await savePerUp.mutateAsync(focusedSub);
 			}
@@ -767,6 +788,7 @@ export default function Cards() {
 			if (isGlobalScope) {
 				if (!globalsQuery.data) return;
 				setGStyle(globalsQuery.data.defaults.cardStyle);
+				setGByKind(globalsQuery.data.defaults.cardStyleByKind ?? {});
 				setGLayout(globalsQuery.data.defaults.cardLayout);
 				setImageLogLevel(globalsQuery.data.app.logLevels?.image ?? "");
 			} else {
@@ -785,7 +807,9 @@ export default function Cards() {
 	}
 
 	// 预览 / 测试推送始终用「生效值」:per-UP 未覆盖则回落全局草稿。
-	const effStyle: CardStyle = isGlobalScope ? gStyle : (puStyle ?? gStyle);
+	// 「全局」tab = 基准样式;类型 tab = 基准 + 该类型覆盖。per-UP 未覆盖则继承全局生效值。
+	const gEffStyle = isGlobalTab ? gStyle : resolveKindStyle(gStyle, gByKind, styleKind);
+	const effStyle: CardStyle = isGlobalScope ? gEffStyle : (puStyle ?? gEffStyle);
 	const effLayout: CardLayoutFull | null = isGlobalScope ? gLayout : (puLayout ?? gLayout);
 
 	const KindIcon = Icon[KIND_LABELS[kind].icon];
@@ -859,53 +883,187 @@ export default function Cards() {
 				}
 			/>
 
-			<div className="grid gap-3.5 lg:grid-cols-[380px_1fr_360px]">
+			<div className="grid gap-3.5 xl:grid-cols-[220px_380px_minmax(0,1fr)]">
+				{/* RAIL: 全局基准 + 各卡片类型 —— 选中决定编辑的样式 / 版式 + 预览的卡片种类 */}
+				<SectionNav
+					heading="卡片样式"
+					items={[
+						{
+							id: "__global",
+							label: "全局",
+							desc: "所有卡片通用样式",
+							icon: <Icon.edit size={15} />,
+						},
+						...(["live", "dyn", "sc", "guard"] as const).map((k) => {
+							const Ic = Icon[KIND_LABELS[k].icon];
+							return {
+								id: toStyleKind(k),
+								label: KIND_LABELS[k].label,
+								desc: KIND_DESC[k],
+								icon: <Ic size={15} />,
+							};
+						}),
+					]}
+					activeId={activeTab}
+					onPick={(id) => setActiveTab(id === "__global" ? "__global" : (id as StyleKind))}
+				/>
+
 				{/* LEFT: style config */}
 				<div className="flex flex-col gap-3">
-					{isGlobalScope ? (
+					{/* 「全局」tab:选预览/配置哪种卡片(基准样式可在四种卡片上检视、配版式、测试推送)。 */}
+					{isGlobalTab && (
+						<div className="flex flex-wrap items-center gap-1.5 rounded-bn-card border border-bn-border-subtle bg-bn-surface/60 p-1.5">
+							<span className="px-1 text-[11px] font-bold text-bn-text-tertiary">预览/配置</span>
+							{(["live", "dyn", "sc", "guard"] as const).map((k) => {
+								const sk = toStyleKind(k);
+								const active = globalPreviewKind === sk;
+								return (
+									<button
+										type="button"
+										key={k}
+										onClick={() => setGlobalPreviewKind(sk)}
+										className="rounded px-2.5 py-1 text-[11.5px] font-semibold transition"
+										style={
+											active
+												? { background: KIND_LABELS[k].tone, color: "white" }
+												: {
+														background: "var(--color-bn-hover-muted)",
+														color: "var(--color-bn-text-tertiary)",
+													}
+										}
+									>
+										{KIND_LABELS[k].label}
+									</button>
+								);
+							})}
+						</div>
+					)}
+					{isGlobalTab ? (
+						isGlobalScope ? (
+							// 「全局」tab:基准通用样式(所有卡片默认共用)+ 日志等级。
+							<GlassBox
+								title="卡片渲染样式 · 全局通用"
+								subtitle="image plugin · 所有卡片的基准渐变 / 字体 / 玻璃片 / 背景;各类型可在对应标签单独覆盖"
+								accent="#a29bfe"
+								icon={<Icon.edit size={14} />}
+								badge="cardStyle"
+							>
+								<CardStyleFields style={gStyle} onChange={(n) => setGStyle(n)} />
+								<Field code="app.logLevels.image" full>
+									<LogLevelPicker
+										value={toPickerValue(imageLogLevel)}
+										onChange={(v) => setImageLogLevel(fromPickerValue(v))}
+										allowInherit
+									/>
+								</Field>
+							</GlassBox>
+						) : (
+							// 「全局」tab · per-UP:该 UP 的样式覆盖(一套管该 UP 全部卡片)。
+							<GlassBox
+								title="卡片样式覆盖"
+								subtitle="开 = 该 UP 用自定义渐变 / 字体 / 玻璃片 / 背景;关 = 继承全局样式"
+								accent="#a29bfe"
+								icon={<Icon.edit size={14} />}
+								badge={puStyle ? "覆盖中" : "继承"}
+								right={
+									<Toggle
+										value={puStyle !== undefined}
+										onChange={(on) => setPuStyle(on ? { ...gStyle } : undefined)}
+									/>
+								}
+							>
+								{puStyle ? (
+									<CardStyleFields style={puStyle} onChange={(n) => setPuStyle(n)} />
+								) : (
+									<InheritNote>该 UP 继承全局卡片样式</InheritNote>
+								)}
+							</GlassBox>
+						)
+					) : isGlobalScope ? (
+						// 类型 tab · 全局作用域:该卡片单独样式开关,打开才展开覆盖。
 						<GlassBox
-							title="卡片渲染样式"
-							subtitle="image plugin · 全局默认 · 上方切 UP 可单独覆盖"
-							accent="#a29bfe"
-							icon={<Icon.edit size={14} />}
-							badge="cardStyle"
-						>
-							<CardStyleFields style={gStyle} onChange={(n) => setGStyle(n)} />
-							<Field code="app.logLevels.image" full>
-								<LogLevelPicker
-									value={toPickerValue(imageLogLevel)}
-									onChange={(v) => setImageLogLevel(fromPickerValue(v))}
-									allowInherit
-								/>
-							</Field>
-						</GlassBox>
-					) : (
-						<GlassBox
-							title="卡片样式覆盖"
-							subtitle="开 = 该 UP 用自定义渐变 / 字体 / 玻璃片 / 背景;关 = 继承全局样式"
-							accent="#a29bfe"
-							icon={<Icon.edit size={14} />}
-							badge={puStyle ? "覆盖中" : "继承"}
+							title={`${KIND_LABELS[kind].label} · 单独样式`}
+							subtitle="开 = 该卡片用自己的渐变 / 字体 / 玻璃片 / 背景;关 = 跟随「全局」"
+							accent={KIND_LABELS[kind].tone}
+							icon={<KindIcon size={14} />}
+							badge={gByKind[styleKind] ? "单独设置" : "跟随全局"}
 							right={
 								<Toggle
-									value={puStyle !== undefined}
-									onChange={(on) => setPuStyle(on ? { ...gStyle } : undefined)}
+									value={gByKind[styleKind] !== undefined}
+									onChange={(on) =>
+										setGByKind((bk) => {
+											const next = { ...bk };
+											if (on) next[styleKind] = resolveKindStyle(gStyle, bk, styleKind);
+											else delete next[styleKind];
+											return next;
+										})
+									}
 								/>
 							}
 						>
-							{puStyle ? (
-								<CardStyleFields style={puStyle} onChange={(n) => setPuStyle(n)} />
+							{gByKind[styleKind] ? (
+								<CardStyleFields
+									style={resolveKindStyle(gStyle, gByKind, styleKind)}
+									onChange={(n) => setGByKind((bk) => ({ ...bk, [styleKind]: n }))}
+								/>
 							) : (
-								<InheritNote>该 UP 继承全局卡片样式</InheritNote>
+								<InheritNote>该卡片跟随「全局」通用样式</InheritNote>
 							)}
 						</GlassBox>
+					) : (
+						// 类型 tab · per-UP:样式在「全局」标签设置,此处只配该类型版式 / 内容。
+						<div className="rounded-bn-card border border-dashed border-bn-border-subtle bg-bn-surface/40 px-3 py-2.5 text-[11.5px] text-bn-text-tertiary">
+							该 UP 的样式在左侧「全局」标签统一设置;此处可单独配置「{KIND_LABELS[kind].label}
+							」的版式与测试内容。
+						</div>
 					)}
 
-					<PreviewContentBox
+					{/* 卡片版式 —— 仅「类型」tab(全局 tab 只调全局样式,不碰具体卡片版式)。 */}
+					{!isGlobalTab &&
+						(isGlobalScope ? (
+							gLayout ? (
+								<GlassBox
+									title="卡片版式"
+									subtitle="拖拽排序 · 开关显隐 · 改动实时反映到预览"
+									accent={KIND_LABELS[kind].tone}
+									icon={<KindIcon size={14} />}
+									badge="cardLayout"
+								>
+									<CardLayoutEditor kind={kind} layout={gLayout} onChange={setGLayout} />
+								</GlassBox>
+							) : null
+						) : (
+							<GlassBox
+								title="卡片版式覆盖"
+								subtitle="开 = 该 UP 用自定义版式(整份复制全局后编辑);关 = 继承全局版式"
+								accent={KIND_LABELS[kind].tone}
+								icon={<KindIcon size={14} />}
+								badge={puLayout ? "覆盖中" : "继承"}
+								right={
+									<Toggle
+										value={puLayout !== undefined}
+										onChange={(on) =>
+											setPuLayout(on ? structuredClone(gLayout ?? serverGlobalLayout) : undefined)
+										}
+									/>
+								}
+							>
+								{puLayout ? (
+									<CardLayoutEditor kind={kind} layout={puLayout} onChange={setPuLayout} />
+								) : (
+									<InheritNote>该 UP 继承全局卡片版式</InheritNote>
+								)}
+							</GlassBox>
+						))}
+
+					<TestPushCard
 						kind={kind}
-						setKind={setKind}
-						content={content}
-						setContent={setContent}
+						style={effStyle}
+						pushContent={previewContent}
+						layout={effLayout}
+						fallback={previewFallback}
+						mockContent={content}
+						setMockContent={setContent}
 						realData={!isGlobalScope}
 						realDataLabel={
 							focusedSub
@@ -915,7 +1073,7 @@ export default function Cards() {
 					/>
 				</div>
 
-				{/* MIDDLE: live preview */}
+				{/* PREVIEW: live preview */}
 				<div className="space-y-2.5">
 					<div className="flex items-center justify-between text-[13px] text-bn-text-primary">
 						<span className="font-bold">
@@ -950,53 +1108,6 @@ export default function Cards() {
 									: ""}
 						</span>
 					</div>
-				</div>
-
-				{/* RIGHT: layout editor + test push */}
-				<div className="flex flex-col gap-3">
-					{isGlobalScope ? (
-						gLayout ? (
-							<GlassBox
-								title="卡片版式"
-								subtitle="拖拽排序 · 开关显隐 · 改动实时反映到预览"
-								accent={KIND_LABELS[kind].tone}
-								icon={<KindIcon size={14} />}
-								badge="cardLayout"
-							>
-								<CardLayoutEditor kind={kind} layout={gLayout} onChange={setGLayout} />
-							</GlassBox>
-						) : null
-					) : (
-						<GlassBox
-							title="卡片版式覆盖"
-							subtitle="开 = 该 UP 用自定义版式(整份复制全局后编辑);关 = 继承全局版式"
-							accent={KIND_LABELS[kind].tone}
-							icon={<KindIcon size={14} />}
-							badge={puLayout ? "覆盖中" : "继承"}
-							right={
-								<Toggle
-									value={puLayout !== undefined}
-									onChange={(on) =>
-										setPuLayout(on ? structuredClone(gLayout ?? serverGlobalLayout) : undefined)
-									}
-								/>
-							}
-						>
-							{puLayout ? (
-								<CardLayoutEditor kind={kind} layout={puLayout} onChange={setPuLayout} />
-							) : (
-								<InheritNote>该 UP 继承全局卡片版式</InheritNote>
-							)}
-						</GlassBox>
-					)}
-
-					<TestPushCard
-						kind={kind}
-						style={effStyle}
-						content={previewContent}
-						layout={effLayout}
-						fallback={previewFallback}
-					/>
 				</div>
 			</div>
 
