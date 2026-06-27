@@ -1,7 +1,7 @@
-import type { Disposable } from "@bilibili-notify/internal";
+import type { CardKind, Disposable } from "@bilibili-notify/internal";
 import { GuardLevel, type MsgHandler } from "blive-message-listener";
 import { DateTime } from "luxon";
-import { LivePushType } from "./push-like";
+import { type CustomCardStyleLike, LivePushType } from "./push-like";
 import { GUARD_LEVEL_IMG } from "./room-context";
 import { LiveRoomAccessDeniedError } from "./room-helpers";
 import { LIVE_EVENT_COOLDOWN, RoomSessionBase } from "./room-session-base";
@@ -341,6 +341,16 @@ export class RoomSession extends RoomSessionBase {
 		}
 	}
 
+	/**
+	 * 取某卡片类型的生效样式 colorOptions:优先该 kind 的 per-kind 覆盖,缺失回退基准
+	 * `customCardStyle`;两者都未启用(enable=false / 缺省)返回 undefined,让 generate*
+	 * 走渲染器全局 config 兜底。adapter 已把 per-kind 折算成完整样式,这里只做选取。
+	 */
+	private cardStyleFor(kind: CardKind): CustomCardStyleLike | undefined {
+		const cs = this.sub.customCardStyleByKind?.[kind] ?? this.sub.customCardStyle;
+		return cs?.enable ? cs : undefined;
+	}
+
 	private async onIncomeSuperChat(body: {
 		content: string;
 		user: { uname: string; uid: number };
@@ -381,6 +391,7 @@ export class RoomSession extends RoomSessionBase {
 						text: body.content,
 						price: body.price,
 					},
+					this.cardStyleFor("sc"),
 					this.sub.cardLayout?.sc,
 				);
 				if (this.ctx.isDisposed()) return;
@@ -454,6 +465,7 @@ export class RoomSession extends RoomSessionBase {
 							masterName: this.masterInfo?.username ?? "",
 							masterAvatarUrl: this.masterInfo?.userface ?? "",
 						},
+						this.cardStyleFor("guard"),
 						this.sub.cardLayout?.guard,
 					);
 					if (this.ctx.isDisposed()) return;

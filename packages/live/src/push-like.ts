@@ -11,7 +11,7 @@
  */
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
-import type { CardLayout } from "@bilibili-notify/internal";
+import type { CardKind, CardLayout } from "@bilibili-notify/internal";
 
 /** Push category enum — numeric values are the historical bilibili-notify push-type codes. */
 export enum LivePushType {
@@ -130,6 +130,13 @@ export interface SubItemView {
 	liveSummary: boolean;
 	target: SubItemTargetLike;
 	customCardStyle: CustomCardStyleLike;
+	/**
+	 * 按卡片类型的样式覆盖(per-kind)。adapter 已用 `resolveCardStyleForKind` 把
+	 * 「全局基准 → 全局类型 → UP 基准 → UP 类型」折算成每 kind 的**完整** colorOptions
+	 * (enable:true);各 generate* 调用点优先取本 kind 的条目,缺失则回退基准
+	 * {@link customCardStyle}。koishi 端不设此字段 → 全部回退基准,零影响。
+	 */
+	customCardStyleByKind?: Partial<Record<CardKind, CustomCardStyleLike>>;
 	customLiveMsg: CustomLiveMsgLike;
 	customGuardBuy: CustomGuardBuyLike;
 	customLiveSummary: CustomLiveSummaryLike;
@@ -187,6 +194,7 @@ export type LiveScopedChange = { scope: "live" } & Partial<
 		| "uname"
 		| "roomId"
 		| "customCardStyle"
+		| "customCardStyleByKind"
 		| "customLiveMsg"
 		| "customGuardBuy"
 		| "customLiveSummary"

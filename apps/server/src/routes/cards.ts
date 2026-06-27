@@ -395,6 +395,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					text: content?.text?.trim() || "主播加油！这首要听到！示例 UP 主唱得太好了！",
 					price: content?.price ?? 30,
 				},
+				// 预览样式已由 getImageRenderer(style) 烤进渲染器 config,故 colorOptions 留空。
+				{},
 				layout?.sc,
 			);
 			return { buffer, mime: "image/jpeg" };
@@ -410,6 +412,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			const buffer = await renderer.generateGuardCard(
 				{ guardLevel: (content?.level ?? 3) as 1 | 2 | 3, uname, face, isAdmin: 0 },
 				{ masterAvatarUrl: master.face, masterName: master.name },
+				// 预览样式已由 getImageRenderer(style) 烤进渲染器 config,故 colorOptions 留空。
+				{},
 				layout?.guard,
 			);
 			return { buffer, mime: "image/jpeg" };

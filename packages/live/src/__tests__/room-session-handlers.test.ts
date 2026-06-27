@@ -195,6 +195,52 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
 	});
+
+	it("有 per-kind sc 样式 → generateSCCard 收到 sc 专属 colorOptions(而非基准)", async () => {
+		const { ctx, m } = makeCtx();
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
+		const s = new RoomSession(
+			ctx,
+			makeSub({
+				superchat: true,
+				minScPrice: 30,
+				customCardStyle: { enable: true, backgroundImage: "base-bg" },
+				customCardStyleByKind: {
+					sc: { enable: true, backgroundImage: "sc-bg", glassOpacity: 0.5 },
+				},
+			}),
+		) as AnySession;
+		await s.onIncomeSuperChat(scBody);
+		expect(m.generateSCCard).toHaveBeenCalledTimes(1);
+		// 第二参 = colorOptions(sc 专属覆盖基准)。
+		expect(m.generateSCCard.mock.calls[0]?.[1]).toMatchObject({
+			backgroundImage: "sc-bg",
+			glassOpacity: 0.5,
+		});
+	});
+
+	it("无 per-kind sc 覆盖 → generateSCCard 回退到基准 customCardStyle", async () => {
+		const { ctx, m } = makeCtx();
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
+		const s = new RoomSession(
+			ctx,
+			makeSub({
+				superchat: true,
+				minScPrice: 30,
+				customCardStyle: { enable: true, backgroundImage: "base-bg" },
+			}),
+		) as AnySession;
+		await s.onIncomeSuperChat(scBody);
+		expect(m.generateSCCard.mock.calls[0]?.[1]).toMatchObject({ backgroundImage: "base-bg" });
+	});
+
+	it("基准与 per-kind 都未启用 → generateSCCard 第二参为 undefined(走渲染器全局兜底)", async () => {
+		const { ctx, m } = makeCtx();
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
+		const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
+		await s.onIncomeSuperChat(scBody);
+		expect(m.generateSCCard.mock.calls[0]?.[1]).toBeUndefined();
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -258,6 +304,31 @@ describe("RoomSession.onGuardBuy", () => {
 		expect(m.generateGuardCard).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
+	});
+
+	it("有 per-kind guard 样式 → generateGuardCard 收到 guard 专属 colorOptions", async () => {
+		const { ctx, m } = makeCtx();
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "liveGuardBuy");
+		m.getUserInfoInLive.mockResolvedValueOnce({
+			code: 0,
+			data: { uname: "船员", face: "f", is_admin: false },
+		});
+		const s = new RoomSession(
+			ctx,
+			makeSub({
+				liveGuardBuy: true,
+				customCardStyle: { enable: true, backgroundImage: "base-bg" },
+				customCardStyleByKind: {
+					guard: { enable: true, backgroundImage: "guard-bg", glassClear: true },
+				},
+			}),
+		) as AnySession;
+		await s.onGuardBuy(guardBody);
+		// 第三参 = colorOptions(guard 专属);第四参为版式。
+		expect(m.generateGuardCard.mock.calls[0]?.[2]).toMatchObject({
+			backgroundImage: "guard-bg",
+			glassClear: true,
+		});
 	});
 });
 

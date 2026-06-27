@@ -316,6 +316,11 @@ export class ImageRenderer {
 			isAdmin,
 		}: { guardLevel: GuardLevel; uname: string; face: string; isAdmin: number },
 		{ masterAvatarUrl, masterName }: { masterAvatarUrl: string; masterName: string },
+		/**
+		 * per-call 样式覆盖;只取 glass / backgroundImage(上舰卡 bgColor 由舰长等级决定,
+		 * 渐变色不适用)。缺省 = 走渲染器全局 config(复刻现状)。
+		 */
+		colorOptions: CardColorOptions = {},
 		/** guard 受限 2D 版式;缺省 = 默认版式(复刻现状)。 */
 		layout?: GuardLayout,
 	): Promise<Buffer> {
@@ -323,7 +328,11 @@ export class ImageRenderer {
 		const guardName = ["", "总督", "提督", "舰长"][guardLevel] ?? "上舰";
 		this.logger.debug(`[guard] 开始渲染上舰卡片：${uname} → ${masterName}（${guardName}）`);
 		const captainImgUrl = GUARD_LEVEL_IMG[guardLevel] ?? "";
-		const backgroundImage = await this.resolveBg(this.config.backgroundImage);
+		const glassOpacity = colorOptions.glassOpacity ?? this.config.glassOpacity;
+		const glassClear = colorOptions.glassClear ?? this.config.glassClear;
+		const backgroundImage = await this.resolveBg(
+			colorOptions.backgroundImage ?? this.config.backgroundImage,
+		);
 		const html = await renderCard(
 			GuardCard,
 			{
@@ -336,8 +345,8 @@ export class ImageRenderer {
 				masterName,
 				bgColor: BG_COLORS[guardLevel],
 				layout,
-				glassOpacity: this.config.glassOpacity,
-				glassClear: this.config.glassClear,
+				glassOpacity,
+				glassClear,
 				backgroundImage,
 			},
 			{ title: "上舰通知", font: this.config.font, htmlWidth: 430 },
@@ -369,6 +378,11 @@ export class ImageRenderer {
 			price: number;
 			masterAvatarUrl?: string;
 		},
+		/**
+		 * per-call 样式覆盖;只取 glass / backgroundImage(SC 卡 bgColor 由价格档位决定,
+		 * 渐变色不适用)。缺省 = 走渲染器全局 config(复刻现状)。
+		 */
+		colorOptions: CardColorOptions = {},
 		/** sc 版式描述符;缺省 = 默认版式(复刻现状)。 */
 		layout?: CardBlock[],
 	): Promise<Buffer> {
@@ -378,7 +392,11 @@ export class ImageRenderer {
 		const levelIndex = getSCLevel(battery);
 		const bgColor = SC_COLORS[levelIndex];
 		const levelInfo = Object.values(SC_LEVELS)[levelIndex];
-		const backgroundImage = await this.resolveBg(this.config.backgroundImage);
+		const glassOpacity = colorOptions.glassOpacity ?? this.config.glassOpacity;
+		const glassClear = colorOptions.glassClear ?? this.config.glassClear;
+		const backgroundImage = await this.resolveBg(
+			colorOptions.backgroundImage ?? this.config.backgroundImage,
+		);
 
 		const html = await renderCard(
 			SCCard,
@@ -392,8 +410,8 @@ export class ImageRenderer {
 				duration: levelInfo.duration,
 				bgColor,
 				layout,
-				glassOpacity: this.config.glassOpacity,
-				glassClear: this.config.glassClear,
+				glassOpacity,
+				glassClear,
 				backgroundImage,
 			},
 			{ title: "醒目留言通知", font: this.config.font, htmlWidth: 290 },
