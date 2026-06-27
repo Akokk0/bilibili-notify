@@ -256,6 +256,23 @@ export const CardStylePartialSchema = z.preprocess(
 );
 export type CardStylePartial = z.infer<typeof CardStylePartialSchema>;
 
+/** 卡片类型 —— 按类型分别配置样式 / 背景;键对齐 CardLayout 的 live/dynamic/sc/guard。 */
+export const CardKindSchema = z.enum(["live", "dynamic", "sc", "guard"]);
+export type CardKind = z.infer<typeof CardKindSchema>;
+
+/**
+ * 按卡片类型的样式覆盖:每个类型一份可选 `CardStylePartial`,叠在基准 `cardStyle` 之上
+ * (字段级 merge)。缺某类型 = 该类型跟随基准。全局默认与 per-UP 覆盖各持一份,生效优先级
+ * 由高到低:UP·类型 > UP·基准 > 全局·类型 > 全局·基准(见 `resolveCardStyleForKind`)。
+ */
+export const CardStyleByKindSchema = z.object({
+	live: CardStylePartialSchema.optional(),
+	dynamic: CardStylePartialSchema.optional(),
+	sc: CardStylePartialSchema.optional(),
+	guard: CardStylePartialSchema.optional(),
+});
+export type CardStyleByKind = z.infer<typeof CardStyleByKindSchema>;
+
 /** 默认全局值；resolve() 在 per-UP overrides 缺失字段时回退到这里。 */
 export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
 	dynamic: true,

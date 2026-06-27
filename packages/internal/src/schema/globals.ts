@@ -2,6 +2,7 @@ import { z } from "zod";
 import { CardLayoutSchema, DEFAULT_CARD_LAYOUT } from "./card-layout";
 import {
 	AISettingsSchema,
+	CardStyleByKindSchema,
 	CardStyleSchema,
 	ContentFiltersSchema,
 	DEFAULT_CONTENT_FILTERS,
@@ -87,6 +88,9 @@ export const GlobalDefaultsSchema = z.object({
 	templates: TemplateBundleSchema,
 	ai: AISettingsSchema,
 	cardStyle: CardStyleSchema,
+	// 按卡片类型的样式覆盖(渐变/字体/玻璃片/背景图);缺该字段的老 globals.json 自动补 {}
+	// (= 所有卡片跟随 cardStyle 基准,复刻现状)。生效解析见 resolveCardStyleForKind。
+	cardStyleByKind: CardStyleByKindSchema.default({}),
 	// `.default(DEFAULT_CARD_LAYOUT)` 让缺 cardLayout 字段的老 globals.json(在加该
 	// 字段前持久化的)load 时自动补全为默认版式,与 imageGroup 同源的迁移友好策略。
 	cardLayout: CardLayoutSchema.default(DEFAULT_CARD_LAYOUT),

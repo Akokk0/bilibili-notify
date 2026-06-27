@@ -2,6 +2,7 @@ import { type CardLayout, normalizeCardLayout } from "./card-layout";
 import type {
 	AIPersona,
 	AISettings,
+	CardKind,
 	CardStyle,
 	ContentFilters,
 	FeatureFlags,
@@ -15,6 +16,7 @@ import type {
 	Subscription,
 	SubscriptionAtAll,
 	SubscriptionAtAllDefaults,
+	SubscriptionOverrides,
 	SubscriptionRouting,
 } from "./subscriptions";
 
@@ -101,6 +103,22 @@ function resolveAI(globals: AISettings, override: AIOverride | undefined): Resol
 	const temperature = override.temperature ?? base.temperature;
 
 	return { ...base, persona, dynamicPrompt, liveSummaryPrompt, temperature, personaId };
+}
+
+/**
+ * 解析某卡片类型的生效样式。字段级 merge,优先级由低到高依次叠加:
+ * 全局基准 → 全局·该类型 → UP·基准 → UP·该类型。`overrides` 传 null = 全局作用域。
+ * 缺各层即跳过(merge 对 undefined 是 no-op),故老数据(无 cardStyleByKind)恒回退基准。
+ */
+export function resolveCardStyleForKind(
+	defaults: GlobalDefaults,
+	overrides: SubscriptionOverrides | null,
+	kind: CardKind,
+): CardStyle {
+	let style: CardStyle = merge(defaults.cardStyle, defaults.cardStyleByKind?.[kind]);
+	style = merge(style, overrides?.cardStyle);
+	style = merge(style, overrides?.cardStyleByKind?.[kind]);
+	return style;
 }
 
 /** 把 (Subscription, GlobalDefaults) 折叠为业务可直接消费的 EffectiveSubscription。 */
