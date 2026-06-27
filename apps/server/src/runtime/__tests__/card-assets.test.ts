@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import {
 	cardBgDir,
+	deleteCardBg,
 	isValidCardBgId,
 	listCardBg,
 	readCardBg,
@@ -74,6 +75,27 @@ describe("card-assets", () => {
 		const fresh = await mkdtemp(join(tmpdir(), "card-bg-empty-"));
 		try {
 			expect(await listCardBg(fresh)).toEqual([]);
+		} finally {
+			await rm(fresh, { recursive: true, force: true });
+		}
+	});
+
+	it("deleteCardBg removes a stored image and is idempotent", async () => {
+		const fresh = await mkdtemp(join(tmpdir(), "card-bg-del-"));
+		try {
+			const id = await saveCardBg(fresh, PNG, "image/png");
+			expect(await deleteCardBg(fresh, id)).toBe(true);
+			expect(await readCardBg(fresh, id)).toBeNull(); // gone from disk
+			expect(await deleteCardBg(fresh, id)).toBe(false); // already gone
+		} finally {
+			await rm(fresh, { recursive: true, force: true });
+		}
+	});
+
+	it("deleteCardBg refuses an invalid id without touching disk", async () => {
+		const fresh = await mkdtemp(join(tmpdir(), "card-bg-del-bad-"));
+		try {
+			expect(await deleteCardBg(fresh, "../../secrets.json")).toBe(false);
 		} finally {
 			await rm(fresh, { recursive: true, force: true });
 		}

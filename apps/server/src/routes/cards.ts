@@ -39,11 +39,20 @@ import {
 	type CardBlock,
 	type CardLayout,
 	CardLayoutSchema,
+	type GlobalConfig,
 	type NotificationPayload,
+	type Subscription,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
-import { listCardBg, readCardBg, readCardBgDataUrl, saveCardBg } from "../runtime/card-assets.js";
+import {
+	deleteCardBg,
+	isValidCardBgId,
+	listCardBg,
+	readCardBg,
+	readCardBgDataUrl,
+	saveCardBg,
+} from "../runtime/card-assets.js";
 import {
 	createPuppeteerAdapter,
 	resolveChromePath,
@@ -154,6 +163,23 @@ export interface TestPushResponse {
 
 const RENDER_TIMEOUT_MS = 20_000;
 
+/**
+ * 收集当前配置里仍引用某背景图 id 的作用域(人话标签),用于删除前拦截。全局默认 +
+ * 各 UP 覆盖的 `cardStyle.backgroundImages` 都算。返回空数组 = 没人用,可安全删盘。
+ */
+export function cardBgReferences(
+	globals: GlobalConfig,
+	subs: Subscription[],
+	id: string,
+): string[] {
+	const refs: string[] = [];
+	if (globals.defaults.cardStyle.backgroundImages.includes(id)) refs.push("全局默认");
+	for (const s of subs) {
+		if (s.overrides.cardStyle?.backgroundImages?.includes(id)) refs.push(`UP ${s.uid}`);
+	}
+	return refs;
+}
+
 export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	const app = new Hono();
 	const log = opts.deps.runtime.serviceCtx.logger;
@@ -229,6 +255,25 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				"Cache-Control": "private, max-age=31536000, immutable",
 			},
 		});
+	});
+
+	// 图廊删除 —— 仍被全局 / 某 UP 引用的图先拦截(409),避免删掉正在用的背景图。
+	app.delete("/asset/:id", async (c) => {
+		const id = c.req.param("id");
+		if (!isValidCardBgId(id)) return c.json({ ok: false, err: "无效的资产 id" }, 400);
+		const referencedBy = cardBgReferences(
+			opts.deps.store.getGlobals(),
+			opts.deps.store.getSubscriptions(),
+			id,
+		);
+		if (referencedBy.length > 0) {
+			return c.json(
+				{ ok: false, err: "该背景图仍被使用,请先在卡片设置里移除再删除", referencedBy },
+				409,
+			);
+		}
+		const removed = await deleteCardBg(opts.deps.store.bootstrap.dataDir, id);
+		return c.json({ ok: removed });
 	});
 
 	// One ImageRenderer reused across requests. Lazy — only constructed when

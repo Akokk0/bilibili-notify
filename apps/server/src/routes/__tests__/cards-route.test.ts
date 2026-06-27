@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { ImageRenderer } from "@bilibili-notify/image";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { saveCardBg } from "../../runtime/card-assets.js";
+import { listCardBg, saveCardBg } from "../../runtime/card-assets.js";
 import type { StandalonePuppeteer } from "../../runtime/puppeteer.js";
 import { createCardsRoute, resolveRoomIdFromUid } from "../cards.js";
 import type { RouteDeps } from "../types.js";
@@ -62,6 +62,95 @@ describe("cards route — 图廊列表 GET /assets", () => {
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("cards route — 图廊删除 DELETE /asset/:id", () => {
+	function depsWithStore(opts: {
+		dataDir: string;
+		globalBg?: string[];
+		subs?: Array<{ uid: string; bg?: string[] }>;
+	}): RouteDeps {
+		return {
+			runtime: {
+				serviceCtx: {
+					logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+				},
+			},
+			store: {
+				bootstrap: { dataDir: opts.dataDir },
+				getGlobals: () => ({ defaults: { cardStyle: { backgroundImages: opts.globalBg ?? [] } } }),
+				getSubscriptions: () =>
+					(opts.subs ?? []).map((s) => ({
+						uid: s.uid,
+						overrides: { cardStyle: s.bg ? { backgroundImages: s.bg } : undefined },
+					})),
+			},
+		} as unknown as RouteDeps;
+	}
+
+	it("删除未被引用的背景图 → 200,文件移除", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-del-route-"));
+		try {
+			const id = await saveCardBg(dir, PNG, "image/png");
+			const app = createCardsRoute({
+				deps: depsWithStore({ dataDir: dir }),
+				puppeteer: null,
+				api: null,
+			});
+			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
+			expect(res.status).toBe(200);
+			expect(await res.json()).toMatchObject({ ok: true });
+			expect(await listCardBg(dir)).toEqual([]);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("删除被全局引用的背景图 → 409 拦截,文件保留", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-del-ref-"));
+		try {
+			const id = await saveCardBg(dir, PNG, "image/png");
+			const app = createCardsRoute({
+				deps: depsWithStore({ dataDir: dir, globalBg: [id] }),
+				puppeteer: null,
+				api: null,
+			});
+			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
+			expect(res.status).toBe(409);
+			expect((await res.json()) as { ok: boolean }).toMatchObject({ ok: false });
+			expect(await listCardBg(dir)).toEqual([id]); // 仍在盘上
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("删除被某 UP 覆盖引用的背景图 → 409,referencedBy 指出该 UP", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-del-ref-up-"));
+		try {
+			const id = await saveCardBg(dir, PNG, "image/png");
+			const app = createCardsRoute({
+				deps: depsWithStore({ dataDir: dir, subs: [{ uid: "10086", bg: [id] }] }),
+				puppeteer: null,
+				api: null,
+			});
+			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
+			expect(res.status).toBe(409);
+			const json = (await res.json()) as { ok: boolean; referencedBy?: string[] };
+			expect(json.referencedBy?.some((s) => s.includes("10086"))).toBe(true);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("删除非法 id → 400", async () => {
+		const app = createCardsRoute({
+			deps: depsWithStore({ dataDir: "/tmp/bn-x" }),
+			puppeteer: null,
+			api: null,
+		});
+		const res = await app.request("/asset/..%2f..%2fsecrets.json", { method: "DELETE" });
+		expect(res.status).toBe(400);
 	});
 });
 

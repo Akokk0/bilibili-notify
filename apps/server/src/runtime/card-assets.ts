@@ -6,7 +6,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 /** 单张背景图上限 5MB(前端应先压缩;这里是兜底)。 */
@@ -34,6 +34,17 @@ export function cardBgDir(dataDir: string): string {
 /** id 是否合法(防穿越的唯一闸门)。 */
 export function isValidCardBgId(id: string): boolean {
 	return ID_RE.test(id);
+}
+
+/** 从图廊删除一张背景图。id 非法 / 文件不存在返回 false(幂等);删成功返回 true。 */
+export async function deleteCardBg(dataDir: string, id: string): Promise<boolean> {
+	if (!isValidCardBgId(id)) return false;
+	try {
+		await unlink(join(cardBgDir(dataDir), id));
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 /** 列出图廊里所有合法背景图 id;目录不存在或读失败返回 []。供图廊列表路由。 */
