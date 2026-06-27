@@ -19,7 +19,7 @@ use std::{
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    App, AppHandle, Manager, RunEvent, State, Url, WindowEvent,
+    App, AppHandle, Manager, RunEvent, State, Url, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
 
 #[cfg(target_os = "windows")]
@@ -208,6 +208,7 @@ fn setup_launcher(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         inner.dock_hidden = dock_hidden;
     }
     append_launcher_log(&paths.launcher_log_dir, "launcher setup");
+    setup_main_window(app)?;
     setup_menu(app)?;
     let tray_ready = match setup_tray(app) {
         Ok(()) => {
@@ -240,14 +241,215 @@ fn setup_launcher(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// 主窗口程序化建窗(不放 tauri.conf 的 windows 配)—— 为了挂 `on_navigation`。
+/// dashboard 从本机 server 加载,点外链(爱发电等)走同窗口导航,这里拦截外部
+/// http(s) 交系统浏览器并取消 webview 内导航(否则 Tauri webview 要么对
+/// `target="_blank"` 没反应,要么会把 dashboard 替换成外部站)。
+fn setup_main_window(app: &App) -> tauri::Result<()> {
+    WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+        .title("Bilibili Notify")
+        .inner_size(1280.0, 860.0)
+        .min_inner_size(960.0, 640.0)
+        .visible(true)
+        .on_navigation(handle_navigation)
+        // 关闭 webview 的 OS 级拖放接管 —— 否则 dashboard 里卡片版式的 HTML5 拖拽
+        // 重排会被系统文件拖放劫持而完全失效(用户报告的「桌面端拖不动」)。本应用
+        // 不靠 OS 文件拖放,资源上传走文件选择,关闭无副作用。
+        .disable_drag_drop_handler()
+        .build()?;
+    Ok(())
+}
+
+/// `on_navigation` 回调:返回 `true` 放行、`false` 取消本次 webview 内导航。
+/// 内部协议(tauri:// 等)与本机 dashboard/splash(127.0.0.1 / localhost)放行;
+/// 其余外部 http(s) 交系统浏览器并取消(链接在系统默认浏览器打开,dashboard 不动)。
+fn handle_navigation(url: &Url) -> bool {
+    let scheme = url.scheme();
+    if scheme != "http" && scheme != "https" {
+        return true;
+    }
+    let host = url.host_str().unwrap_or("");
+    if matches!(host, "127.0.0.1" | "localhost" | "tauri.localhost") {
+        return true;
+    }
+    let _ = open_url_with_system(url.as_str());
+    false
+}
+
 fn setup_menu(app: &mut App) -> tauri::Result<()> {
-    #[cfg(not(target_os = "windows"))]
+    // macOS:菜单统一在系统顶栏,必须给原生 App / 编辑 / 窗口菜单(否则复制粘贴、
+    // 关于、退出等系统项全无)。启动器动作收进「操作」子菜单(托盘里也有一份)。
+    #[cfg(target_os = "macos")]
+    {
+        let menu = build_macos_menu(app)?;
+        app.set_menu(menu)?;
+    }
+    // Windows:菜单会渲染成应用内顶部菜单栏(很丑),不设;动作走托盘。
+    // Linux:沿用扁平启动器菜单。
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
     {
         let menu = build_launcher_menu(app)?;
         app.set_menu(menu)?;
     }
     app.on_menu_event(|app, event| handle_launcher_menu_event(app, event.id().as_ref()));
     Ok(())
+}
+
+/// 菜单自定义文案是否用简体中文 —— 跟随系统语言:简体中文系统(zh-Hans / zh-CN /
+/// zh-SG / 裸 zh)用中文,繁体(zh-Hant / TW / HK / MO)与其余语言一律英文。系统
+/// 预定义项(复制/粘贴/退出等)由 OS 按系统语言自行本地化,这里只管自定义项,与之对齐。
+fn menu_use_zh() -> bool {
+    let locale = sys_locale::get_locale().unwrap_or_default().to_lowercase();
+    if !locale.starts_with("zh") {
+        return false;
+    }
+    // 已限定 zh-* 前缀,内部区域码判繁体即可(hant/tw/hk/mo),其余视为简体。
+    !(locale.contains("hant")
+        || locale.contains("tw")
+        || locale.contains("hk")
+        || locale.contains("mo"))
+}
+
+/// 按 `zh` 选中文/英文文案。
+fn t(zh: bool, zh_text: &'static str, en_text: &'static str) -> &'static str {
+    if zh {
+        zh_text
+    } else {
+        en_text
+    }
+}
+
+/// 启动器的 7 条自定义动作项 —— 托盘菜单与 macOS「Actions」子菜单共用,文案按
+/// 系统语言。id 与 `handle_launcher_menu_event` 的 case 一一对应。
+fn build_action_menu_items(app: &App, zh: bool) -> tauri::Result<Vec<MenuItem<tauri::Wry>>> {
+    Ok(vec![
+        MenuItem::with_id(
+            app,
+            "show_window",
+            t(zh, "显示/隐藏窗口", "Show/Hide Window"),
+            true,
+            None::<&str>,
+        )?,
+        MenuItem::with_id(
+            app,
+            "open_panel",
+            t(zh, "用浏览器打开面板", "Open Panel in Browser"),
+            true,
+            None::<&str>,
+        )?,
+        MenuItem::with_id(
+            app,
+            "restart_service",
+            t(zh, "重启服务", "Restart Service"),
+            true,
+            None::<&str>,
+        )?,
+        MenuItem::with_id(
+            app,
+            "open_data_dir",
+            t(zh, "打开数据目录", "Open Data Folder"),
+            true,
+            None::<&str>,
+        )?,
+        MenuItem::with_id(
+            app,
+            "open_server_log_dir",
+            t(zh, "打开后端日志目录", "Open Server Logs"),
+            true,
+            None::<&str>,
+        )?,
+        MenuItem::with_id(
+            app,
+            "open_launcher_log_dir",
+            t(zh, "打开启动器日志目录", "Open Launcher Logs"),
+            true,
+            None::<&str>,
+        )?,
+        MenuItem::with_id(
+            app,
+            "toggle_dock",
+            t(zh, "隐藏/显示 Dock 图标", "Hide/Show Dock Icon"),
+            true,
+            None::<&str>,
+        )?,
+    ])
+}
+
+/// macOS 原生菜单:App(关于/隐藏/退出)+ 编辑(撤销/剪切/复制/粘贴/全选)+
+/// 窗口 + 启动器「操作」子菜单。预定义项由系统直接处理,不经 `on_menu_event`。
+#[cfg(target_os = "macos")]
+fn build_macos_menu(app: &App) -> tauri::Result<Menu<tauri::Wry>> {
+    use tauri::menu::{PredefinedMenuItem, Submenu};
+
+    let zh = menu_use_zh();
+    // About 不走系统标准 About 面板,而是跳应用内「关于」页(dashboard /about),与多数
+    // 桌面软件一致。故用自定义 id 的 MenuItem,经 on_menu_event → open_about_page 处理。
+    let about = MenuItem::with_id(
+        app,
+        "show_about",
+        t(
+            zh,
+            "关于 Bilibili Notify Desktop",
+            "About Bilibili Notify Desktop",
+        ),
+        true,
+        None::<&str>,
+    )?;
+    let app_menu = Submenu::with_items(
+        app,
+        "Bilibili Notify",
+        true,
+        &[
+            &about,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, None)?,
+        ],
+    )?;
+    let edit_menu = Submenu::with_items(
+        app,
+        t(zh, "编辑", "Edit"),
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+    let window_menu = Submenu::with_items(
+        app,
+        t(zh, "窗口", "Window"),
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
+    )?;
+    let actions = build_macos_actions_submenu(app)?;
+    Menu::with_items(app, &[&app_menu, &edit_menu, &window_menu, &actions])
+}
+
+/// macOS 顶栏的「操作 / Actions」子菜单 —— 复用 `build_action_menu_items`(经
+/// `on_menu_event` 派发)。退出已由 App 菜单的原生 Quit 覆盖,这里不再重复。
+#[cfg(target_os = "macos")]
+fn build_macos_actions_submenu(app: &App) -> tauri::Result<tauri::menu::Submenu<tauri::Wry>> {
+    use tauri::menu::{IsMenuItem, Submenu};
+
+    let zh = menu_use_zh();
+    let items = build_action_menu_items(app, zh)?;
+    let refs: Vec<&dyn IsMenuItem<tauri::Wry>> = items
+        .iter()
+        .map(|i| i as &dyn IsMenuItem<tauri::Wry>)
+        .collect();
+    Submenu::with_items(app, t(zh, "操作", "Actions"), true, &refs)
 }
 
 fn setup_tray(app: &mut App) -> tauri::Result<()> {
@@ -292,49 +494,28 @@ fn setup_tray(app: &mut App) -> tauri::Result<()> {
 }
 
 fn build_launcher_menu(app: &App) -> tauri::Result<Menu<tauri::Wry>> {
-    let show = MenuItem::with_id(app, "show_window", "显示/隐藏窗口", true, None::<&str>)?;
-    let open = MenuItem::with_id(app, "open_panel", "用浏览器打开面板", true, None::<&str>)?;
-    let restart = MenuItem::with_id(app, "restart_service", "重启服务", true, None::<&str>)?;
-    let data = MenuItem::with_id(app, "open_data_dir", "打开数据目录", true, None::<&str>)?;
-    let server_logs = MenuItem::with_id(
+    use tauri::menu::IsMenuItem;
+
+    let zh = menu_use_zh();
+    let items = build_action_menu_items(app, zh)?;
+    let quit = MenuItem::with_id(
         app,
-        "open_server_log_dir",
-        "打开后端日志目录",
+        "quit_app",
+        t(zh, "退出应用", "Quit"),
         true,
-        None::<&str>,
+        Some("CmdOrCtrl+Q"),
     )?;
-    let launcher_logs = MenuItem::with_id(
-        app,
-        "open_launcher_log_dir",
-        "打开启动器日志目录",
-        true,
-        None::<&str>,
-    )?;
-    let dock = MenuItem::with_id(
-        app,
-        "toggle_dock",
-        "隐藏/显示 Dock 图标",
-        true,
-        None::<&str>,
-    )?;
-    let quit = MenuItem::with_id(app, "quit_app", "退出应用", true, Some("CmdOrCtrl+Q"))?;
-    Menu::with_items(
-        app,
-        &[
-            &show,
-            &open,
-            &restart,
-            &data,
-            &server_logs,
-            &launcher_logs,
-            &dock,
-            &quit,
-        ],
-    )
+    let mut refs: Vec<&dyn IsMenuItem<tauri::Wry>> = items
+        .iter()
+        .map(|i| i as &dyn IsMenuItem<tauri::Wry>)
+        .collect();
+    refs.push(&quit);
+    Menu::with_items(app, &refs)
 }
 
 fn handle_launcher_menu_event(app: &AppHandle, id: &str) {
     match id {
+        "show_about" => open_about_page(app),
         "show_window" => toggle_main_window(app),
         "open_panel" => open_panel(app),
         "restart_service" => start_service_async(app.clone()),
@@ -344,6 +525,22 @@ fn handle_launcher_menu_event(app: &AppHandle, id: &str) {
         "toggle_dock" => toggle_dock(app),
         "quit_app" => request_quit(app.clone()),
         _ => {}
+    }
+}
+
+/// 菜单栏「About」→ 跳应用内「关于」页(dashboard `/about`),而非系统 About 面板。
+/// 在已就绪的 panel_url 上把路径换成 `/about`、保留 `#desktopToken` 片段(鉴权照常),
+/// 导航主窗口过去。dashboard 尚未就绪时静默 no-op(此时点 About 罕见)。
+fn open_about_page(app: &AppHandle) {
+    let panel = {
+        let state = app.state::<LauncherState>();
+        let inner = state.inner.lock().expect("launcher state poisoned");
+        inner.panel_url.clone()
+    };
+    let Some(panel) = panel else { return };
+    if let Ok(mut url) = Url::parse(&panel) {
+        url.set_path("/about");
+        navigate_main_window(app, url.as_str());
     }
 }
 
