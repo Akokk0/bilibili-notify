@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import type { Components } from "react-markdown";
 import { Icon } from "../components/icons";
 import { SectionNav } from "../components/section-nav";
+import { externalLinkClick } from "../utils/externalLink";
 
 /**
  * `/about` — 关于 / 支持项目。聚合面向用户的项目元信息(非操作内容):
@@ -82,6 +83,7 @@ const MARKDOWN_COMPONENTS: Components = {
 			href={href}
 			target="_blank"
 			rel="noreferrer"
+			onClick={externalLinkClick(href)}
 			className="font-semibold text-bn-pink underline-offset-2 hover:underline"
 		>
 			{children}
@@ -171,6 +173,7 @@ function SponsorPanel() {
 						href={AFDIAN_URL}
 						target="_blank"
 						rel="noreferrer"
+						onClick={externalLinkClick(AFDIAN_URL)}
 						className="inline-flex items-center gap-2 rounded-full bg-bn-pink px-5 py-2.5 text-[13px] font-bold text-white shadow-[0_6px_18px_rgba(251,114,153,0.3)] transition hover:opacity-90"
 					>
 						<Icon.heart size={15} />
@@ -280,7 +283,13 @@ function LinkRow({
 		</div>
 	);
 	return href ? (
-		<a href={href} target="_blank" rel="noreferrer" className="block">
+		<a
+			href={href}
+			target="_blank"
+			rel="noreferrer"
+			onClick={externalLinkClick(href)}
+			className="block"
+		>
 			{body}
 		</a>
 	) : (
