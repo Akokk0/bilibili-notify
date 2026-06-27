@@ -383,6 +383,8 @@ export interface OverridesShape {
 	templates?: TemplateOverride;
 	ai?: AIOverride;
 	cardStyle?: CardStyleOverride;
+	/** 按卡片类型的样式覆盖(可选);各类型叠在该 UP 的 cardStyle 基准上。 */
+	cardStyleByKind?: Partial<Record<"live" | "dynamic" | "sc" | "guard", CardStyleOverride>>;
 	cardLayout?: CardLayoutOverride;
 	imageGroup?: ImageGroupOverride;
 }

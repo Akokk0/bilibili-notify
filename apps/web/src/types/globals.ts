@@ -139,6 +139,12 @@ export interface CardStyle {
 	glassClear: boolean;
 }
 
+/** 卡片类型 —— 按类型分别配置样式 / 背景。镜像 `internal` 的 CardKind。 */
+export type CardKind = "live" | "dynamic" | "sc" | "guard";
+
+/** 各类型对基准 cardStyle 的字段级覆盖;缺某类型 = 跟随基准。镜像 `CardStyleByKindSchema`。 */
+export type CardStyleByKind = Partial<Record<CardKind, Partial<CardStyle>>>;
+
 /**
  * DYNAMIC_TYPE_DRAW 图集图片推送行为。`enable` 决定是否在文本/卡片之后附加一组
  * 原图;`forward` 在 `enable=true` 时决定走「合并转发卡片」还是「普通多图」(单图
@@ -156,6 +162,8 @@ export interface GlobalDefaults {
 	templates: TemplateBundle;
 	ai: AISettings;
 	cardStyle: CardStyle;
+	/** 按卡片类型的样式覆盖(可选,默认 {});各类型叠在 cardStyle 基准上。 */
+	cardStyleByKind?: CardStyleByKind;
 	cardLayout: CardLayoutFull;
 	imageGroup: ImageGroupSettings;
 }
