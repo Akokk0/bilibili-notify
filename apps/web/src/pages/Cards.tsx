@@ -2,13 +2,15 @@
  * Cards page — image plugin card style preview. Ports `GlassPreviewTab` from
  * `.bn-design/variation-ac.jsx`.
  *
- * A scope switcher (全局默认 / 各 UP) sits on top. Three columns: a left card-kind
- * rail (SectionNav) selects which card type is being edited + previewed; the
- * middle 「选项」 column holds that kind's style (per-kind, with 应用到所有卡片),
- * background gallery, preview-content form and 卡片版式 editor; the right column is
- * the live puppeteer preview + 测试推送. In the global scope these bind to
- * GlobalConfig.defaults.{cardStyle,cardStyleByKind,cardLayout}; per-UP they bind to
- * that subscription's overrides, gated by 「覆盖全局」 toggles (off = inherit).
+ * A scope switcher (全局默认 / 各 UP) sits on top. Three columns: a left rail
+ * (SectionNav) = 全局 + the four card kinds. On the 全局 tab the middle column edits
+ * the base style (shared by all cards) + image log level and the right column shows
+ * a four-card 全家福 (each kind rendered with its own effective style); to tune one
+ * kind you open its tab. On a kind tab the middle column holds that kind's 单独样式
+ * override, background gallery, 卡片版式 editor and 测试推送 + preview-content form,
+ * and the right column is the single live puppeteer preview. In the global scope
+ * these bind to GlobalConfig.defaults.{cardStyle,cardStyleByKind,cardLayout}; per-UP
+ * they bind to that subscription's overrides, gated by 「覆盖全局」 toggles.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -626,13 +628,11 @@ export default function Cards() {
 
 	// 左侧导航:「全局」(基准通用样式)或某卡片类型。与作用域无关。
 	const [activeTab, setActiveTab] = useState<"__global" | StyleKind>("__global");
-	// 「全局」tab 下独立选择预览/编辑哪种卡片(基准样式可在四种卡片上检视、配版式、测试推送)。
-	const [globalPreviewKind, setGlobalPreviewKind] = useState<StyleKind>("live");
 	const [content, setContent] = useState<PreviewContent>(DEFAULT_PREVIEW_CONTENT);
 
 	const isGlobalTab = activeTab === "__global";
-	// 「全局」tab → 用 globalPreviewKind 选预览类型;类型 tab → 锁定为该类型。
-	const styleKind: StyleKind = isGlobalTab ? globalPreviewKind : activeTab;
+	// 类型 tab 锁定为该类型;全局 tab 右侧铺四张卡(无单一类型),styleKind/kind 仅占位。
+	const styleKind: StyleKind = isGlobalTab ? "live" : activeTab;
 	const kind: CardKind = styleKind === "dynamic" ? "dyn" : styleKind;
 
 	const allSubs = useMemo(() => subsQuery.data ?? [], [subsQuery.data]);
@@ -858,18 +858,32 @@ export default function Cards() {
 		);
 	}
 
-	// 预览 / 测试推送始终用「生效值」:per-UP 未覆盖则回落全局草稿。
-	// 「全局」tab = 基准样式;类型 tab = 基准 + 该类型覆盖。per-UP 未覆盖则继承全局生效值。
-	const gEffStyle = isGlobalTab ? gStyle : resolveKindStyle(gStyle, gByKind, styleKind);
-	// per-UP 基准(当前 kind):该 UP 覆盖基准 puStyle 优先,否则继承全局对应生效值。
-	// 「全局」tab → puStyle ?? gStyle;类型 tab → puStyle ?? 全局该类型生效值。
-	const puBaseStyle: CardStyle = puStyle ?? gEffStyle;
-	// 类型 tab 再叠该 UP 的按类型覆盖;「全局」tab 只用基准。
-	const puEffStyle: CardStyle =
-		!isGlobalTab && puByKind[styleKind] !== undefined
-			? { ...puBaseStyle, ...puByKind[styleKind] }
-			: puBaseStyle;
-	const effStyle: CardStyle = isGlobalScope ? gEffStyle : puEffStyle;
+	// 按 kind 求「生效样式」:全局作用域 = 全局基准 + 该类型覆盖;per-UP = 再叠该 UP 基准 /
+	// 类型覆盖(puStyle 覆盖基准时整份替换;否则继承全局该类型生效值)。
+	const effStyleFor = (sk: StyleKind): CardStyle => {
+		const gEff = resolveKindStyle(gStyle, gByKind, sk);
+		if (isGlobalScope) return gEff;
+		const base = puStyle ?? gEff;
+		return puByKind[sk] !== undefined ? { ...base, ...puByKind[sk] } : base;
+	};
+	// 按 kind 求预览内容:全局 = 可编辑 mock;per-UP = 该 UP 真实数据(live/dyn 按 uid,
+	// dyn 带「第几条」offset;sc/guard 带 uid 渲染真实接收方)。
+	const contentFor = (k: CardKind): Record<string, unknown> => {
+		if (isGlobalScope || !focusedSub) return content[k];
+		if (k === "live") return { uid: focusedSub.uid };
+		if (k === "dyn") return { uid: focusedSub.uid, offset: content.dyn.offset };
+		return { ...content[k], uid: focusedSub.uid };
+	};
+	// 全局 tab:右侧四张卡「全家福」,逐类型用各自生效样式 + 内容渲染。
+	const familyPreviews = (["live", "dyn", "sc", "guard"] as const).map((fk) => ({
+		fk,
+		style: effStyleFor(toStyleKind(fk)),
+		content: contentFor(fk),
+	}));
+
+	// 类型 tab 单卡生效值。per-UP 编辑「单独样式」用的基准 = puStyle ?? 全局该类型生效值。
+	const puBaseStyle: CardStyle = puStyle ?? resolveKindStyle(gStyle, gByKind, styleKind);
+	const effStyle: CardStyle = effStyleFor(styleKind);
 	const effLayout: CardLayoutFull | null = isGlobalScope ? gLayout : (puLayout ?? gLayout);
 
 	const KindIcon = Icon[KIND_LABELS[kind].icon];
@@ -970,34 +984,6 @@ export default function Cards() {
 
 				{/* LEFT: style config */}
 				<div className="flex flex-col gap-3">
-					{/* 「全局」tab:选预览/配置哪种卡片(基准样式可在四种卡片上检视、配版式、测试推送)。 */}
-					{isGlobalTab && (
-						<div className="flex flex-wrap items-center gap-1.5 rounded-bn-card border border-bn-border-subtle bg-bn-surface/60 p-1.5">
-							<span className="px-1 text-[11px] font-bold text-bn-text-tertiary">预览/配置</span>
-							{(["live", "dyn", "sc", "guard"] as const).map((k) => {
-								const sk = toStyleKind(k);
-								const active = globalPreviewKind === sk;
-								return (
-									<button
-										type="button"
-										key={k}
-										onClick={() => setGlobalPreviewKind(sk)}
-										className="rounded px-2.5 py-1 text-[11.5px] font-semibold transition"
-										style={
-											active
-												? { background: KIND_LABELS[k].tone, color: "white" }
-												: {
-														background: "var(--color-bn-hover-muted)",
-														color: "var(--color-bn-text-tertiary)",
-													}
-										}
-									>
-										{KIND_LABELS[k].label}
-									</button>
-								);
-							})}
-						</div>
-					)}
 					{isGlobalTab ? (
 						isGlobalScope ? (
 							// 「全局」tab:基准通用样式(所有卡片默认共用)+ 日志等级。
@@ -1142,58 +1128,109 @@ export default function Cards() {
 							</GlassBox>
 						))}
 
-					<TestPushCard
-						kind={kind}
-						style={effStyle}
-						pushContent={previewContent}
-						layout={effLayout}
-						fallback={previewFallback}
-						mockContent={content}
-						setMockContent={setContent}
-						realData={!isGlobalScope}
-						realDataLabel={
-							focusedSub
-								? `使用 ${displayName(focusedSub)} 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。`
-								: undefined
-						}
-					/>
+					{/* 测试推送 + 预览内容编辑 —— 仅「类型」tab(全局只看四卡全家福,不带测试推送)。 */}
+					{!isGlobalTab && (
+						<TestPushCard
+							kind={kind}
+							style={effStyle}
+							pushContent={previewContent}
+							layout={effLayout}
+							fallback={previewFallback}
+							mockContent={content}
+							setMockContent={setContent}
+							realData={!isGlobalScope}
+							realDataLabel={
+								focusedSub
+									? `使用 ${displayName(focusedSub)} 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。`
+									: undefined
+							}
+						/>
+					)}
 				</div>
 
-				{/* PREVIEW: live preview */}
+				{/* PREVIEW: 全局 tab = 四卡全家福;类型 tab = 单卡 */}
 				<div className="space-y-2.5">
-					<div className="flex items-center justify-between text-[13px] text-bn-text-primary">
-						<span className="font-bold">
-							卡片预览 · 实时反映{isGlobalScope ? "全局" : "该 UP"}配置
-						</span>
-						<span className="text-[11px] font-normal text-bn-text-secondary">
-							puppeteer 真实渲染 · 渲染宽度
-							{kind === "sc" ? " 280" : kind === "guard" ? " 430" : " 600"}px
-						</span>
-					</div>
-					<CardPreview
-						kind={kind}
-						style={effStyle}
-						content={previewContent}
-						layout={effLayout}
-						fallback={previewFallback}
-					/>
+					{isGlobalTab ? (
+						<>
+							<div className="flex items-center justify-between text-[13px] text-bn-text-primary">
+								<span className="font-bold">
+									卡片全家福 · 实时反映{isGlobalScope ? "全局" : "该 UP"}配置
+								</span>
+								<span className="text-[11px] font-normal text-bn-text-secondary">
+									四种卡片各自生效样式 · puppeteer 真实渲染
+								</span>
+							</div>
+							{familyPreviews.map(({ fk, style, content: fcontent }) => {
+								const FkIcon = Icon[KIND_LABELS[fk].icon];
+								// 该类型是否有「单独样式」覆盖(全局看 gByKind,per-UP 看 puByKind)→ 角标提示。
+								const overridden =
+									(isGlobalScope ? gByKind : puByKind)[toStyleKind(fk)] !== undefined;
+								return (
+									<div key={fk} className="space-y-1.5">
+										<div className="flex items-center gap-1.5 text-[12px] font-bold text-bn-text-secondary">
+											<FkIcon size={13} />
+											{KIND_LABELS[fk].label}
+											{overridden ? (
+												<Pill color={KIND_LABELS[fk].tone} subtle size="sm">
+													单独样式
+												</Pill>
+											) : null}
+										</div>
+										<CardPreview
+											kind={fk}
+											style={style}
+											content={fcontent}
+											layout={effLayout}
+											fallback={previewFallback}
+										/>
+									</div>
+								);
+							})}
+							<div className="rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 text-[11px] italic text-bn-text-secondary">
+								{isGlobalScope
+									? "全局基准应用到四种卡片;要单独调某张卡,点左侧对应类型标签。"
+									: focusedSub
+										? `${displayName(focusedSub)} 的四种卡片;未覆盖项继承全局,单独调某张卡点左侧类型标签。`
+										: ""}
+							</div>
+						</>
+					) : (
+						<>
+							<div className="flex items-center justify-between text-[13px] text-bn-text-primary">
+								<span className="font-bold">
+									卡片预览 · 实时反映{isGlobalScope ? "全局" : "该 UP"}配置
+								</span>
+								<span className="text-[11px] font-normal text-bn-text-secondary">
+									puppeteer 真实渲染 · 渲染宽度
+									{kind === "sc" ? " 280" : kind === "guard" ? " 430" : " 600"}px
+								</span>
+							</div>
+							<CardPreview
+								kind={kind}
+								style={effStyle}
+								content={previewContent}
+								layout={effLayout}
+								fallback={previewFallback}
+							/>
 
-					{/* Effective style readout */}
-					<div className="flex flex-wrap gap-3.5 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 font-mono text-[10.5px] text-bn-text-tertiary">
-						<span>
-							cardColorStart: <b className="text-bn-text-primary">{effStyle.cardColorStart}</b>
-						</span>
-						<span>
-							cardColorEnd: <b className="text-bn-text-primary">{effStyle.cardColorEnd}</b>
-						</span>
-						<span className="italic text-bn-text-secondary">
-							{isGlobalScope
-								? "全局默认 · 上方切 UP 可单独覆盖"
-								: focusedSub
-									? `仅 ${displayName(focusedSub)} · 未覆盖项继承全局`
-									: ""}
-						</span>
-					</div>
+							{/* Effective style readout */}
+							<div className="flex flex-wrap gap-3.5 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 font-mono text-[10.5px] text-bn-text-tertiary">
+								<span>
+									cardColorStart: <b className="text-bn-text-primary">{effStyle.cardColorStart}</b>
+								</span>
+								<span>
+									cardColorEnd: <b className="text-bn-text-primary">{effStyle.cardColorEnd}</b>
+								</span>
+								<span className="italic text-bn-text-secondary">
+									{isGlobalScope
+										? "全局默认 · 上方切 UP 可单独覆盖"
+										: focusedSub
+											? `仅 ${displayName(focusedSub)} · 未覆盖项继承全局`
+											: ""}
+								</span>
+							</div>
+						</>
+					)}
 				</div>
 			</div>
 

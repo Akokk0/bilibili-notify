@@ -5,7 +5,8 @@
  *
  * 验证:① 全局作用域以 pageKey "cards" 注册灵动岛;② 点已定制 UP 的 tab 切到
  * pageKey "cards-perup";③ per-UP 保存只下发卡片三片(cardStyle + cardStyleByKind
- * + cardLayout),不碰该 sub 的其它 overrides slice;④ 已有按类型覆盖往返不丢。
+ * + cardLayout),不碰该 sub 的其它 overrides slice;④ 已有按类型覆盖往返不丢;
+ * ⑤ 全局 tab 右侧铺四卡全家福(四种 kind 各发一次预览)。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -81,6 +82,25 @@ describe("Cards per-UP 作用域接线", () => {
 	it("全局作用域 → 以 pageKey 'cards' 注册灵动岛", async () => {
 		renderCards();
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+	});
+
+	it("全局 tab → 四张卡各发一次预览(全家福,取代旧的内层 kind 选择器)", async () => {
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+
+		// 全局 tab 右侧铺四张卡:live/dyn/sc/guard 各应发出一次预览请求(旧版只发当前选中一种)。
+		await waitFor(
+			() => {
+				const kinds = new Set(
+					vi
+						.mocked(api.post)
+						.mock.calls.filter(([url]) => url === "/api/cards/preview")
+						.map(([, body]) => (body as { kind?: string }).kind),
+				);
+				expect(kinds).toEqual(new Set(["live", "dyn", "sc", "guard"]));
+			},
+			{ timeout: 2000 },
+		);
 	});
 
 	it("点已定制 UP 的 tab → 灵动岛切到 pageKey 'cards-perup'", async () => {
