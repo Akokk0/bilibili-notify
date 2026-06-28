@@ -1,8 +1,8 @@
 import type { LiveRoomInfo } from "@bilibili-notify/api";
-import type { Disposable } from "@bilibili-notify/internal";
+import type { CardKind, Disposable } from "@bilibili-notify/internal";
 import type { MsgHandler } from "blive-message-listener";
 import { DateTime } from "luxon";
-import { LivePushType, type SubItemView } from "./push-like";
+import { type CustomCardStyleLike, LivePushType, type SubItemView } from "./push-like";
 import { LiveRoomAccessDeniedError, type RoomContext } from "./room-helpers";
 import { parseStopWords } from "./stop-words";
 import { buildRoomLink } from "./template-renderer";
@@ -51,6 +51,16 @@ export abstract class RoomSessionBase {
 	constructor(ctx: RoomContext, sub: SubItemView) {
 		this.ctx = ctx;
 		this.sub = sub;
+	}
+
+	/**
+	 * 取某卡片类型的生效样式:优先该 kind 的 per-kind 覆盖,缺失回退基准 `customCardStyle`。
+	 * 始终有定义(基准恒在);是否启用由调用点据 `enable` 自行判定 —— SC / guard 把未启用
+	 * 折成 undefined 让 generate* 走渲染器全局 config 兜底,live 则原样透传(room-helpers
+	 * 再据 enable 门控)。adapter 已把 per-kind 折算成完整样式,这里只做选取。
+	 */
+	protected resolvedCardStyle(kind: CardKind): CustomCardStyleLike {
+		return this.sub.customCardStyleByKind?.[kind] ?? this.sub.customCardStyle;
 	}
 
 	/** Whether the underlying B-station room is currently broadcasting. */
@@ -170,7 +180,7 @@ export abstract class RoomSessionBase {
 					liveData: this.liveData,
 					liveRoomInfo: this.liveRoomInfo,
 					master: this.masterInfo,
-					cardStyle: this.sub.customCardStyle,
+					cardStyle: this.resolvedCardStyle("live"),
 					cardLayout: this.sub.cardLayout,
 					uid: this.sub.uid,
 					notifyMsg: liveMsg,
@@ -292,7 +302,7 @@ export abstract class RoomSessionBase {
 			liveData: this.liveData,
 			liveRoomInfo: this.liveRoomInfo,
 			master: this.masterInfo,
-			cardStyle: this.sub.customCardStyle,
+			cardStyle: this.resolvedCardStyle("live"),
 			cardLayout: this.sub.cardLayout,
 			uid: this.sub.uid,
 			notifyMsg: liveMsg,
@@ -436,7 +446,7 @@ export abstract class RoomSessionBase {
 					liveData: this.liveData,
 					liveRoomInfo: this.liveRoomInfo,
 					master: this.masterInfo,
-					cardStyle: this.sub.customCardStyle,
+					cardStyle: this.resolvedCardStyle("live"),
 					cardLayout: this.sub.cardLayout,
 					uid: this.sub.uid,
 					notifyMsg: liveEndMsg,

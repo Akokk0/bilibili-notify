@@ -383,6 +383,36 @@ describe("RoomSession.onLiveStart", () => {
 		expect(s.armPeriodicTimer).toHaveBeenCalledTimes(1);
 	});
 
+	it("有 per-kind live 样式 → sendLiveNotifyCard 收到 live 专属 cardStyle(而非基准)", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(
+			ctx,
+			makeSub({
+				customCardStyle: { enable: true, backgroundImage: "base-bg" },
+				customCardStyleByKind: { live: { enable: true, backgroundImage: "live-bg" } },
+			}),
+		) as AnySession;
+		s.useLiveRoomInfo = vi.fn(async () => {
+			s.liveRoomInfo = {
+				live_time: "2026-01-01 00:00:00",
+				short_id: 0,
+				room_id: 12345,
+				title: "标题",
+				user_cover: "",
+			};
+			return true;
+		});
+		s.useMasterInfo = vi.fn(async () => {
+			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 100 };
+			return true;
+		});
+		s.armPeriodicTimer = vi.fn();
+		await s.onLiveStart();
+		expect(m.sendLiveNotifyCard.mock.calls[0]?.[0]?.cardStyle).toMatchObject({
+			backgroundImage: "live-bg",
+		});
+	});
+
 	it("A5:卡片推送 await 期间交错下播翻 idle → 不再 armPeriodicTimer", async () => {
 		const { ctx, m } = makeCtx();
 		const s = new RoomSession(ctx, makeSub()) as AnySession;

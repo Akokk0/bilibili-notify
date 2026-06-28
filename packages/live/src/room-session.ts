@@ -1,7 +1,7 @@
-import type { CardKind, Disposable } from "@bilibili-notify/internal";
+import type { Disposable } from "@bilibili-notify/internal";
 import { GuardLevel, type MsgHandler } from "blive-message-listener";
 import { DateTime } from "luxon";
-import { type CustomCardStyleLike, LivePushType } from "./push-like";
+import { LivePushType } from "./push-like";
 import { GUARD_LEVEL_IMG } from "./room-context";
 import { LiveRoomAccessDeniedError } from "./room-helpers";
 import { LIVE_EVENT_COOLDOWN, RoomSessionBase } from "./room-session-base";
@@ -341,16 +341,6 @@ export class RoomSession extends RoomSessionBase {
 		}
 	}
 
-	/**
-	 * 取某卡片类型的生效样式 colorOptions:优先该 kind 的 per-kind 覆盖,缺失回退基准
-	 * `customCardStyle`;两者都未启用(enable=false / 缺省)返回 undefined,让 generate*
-	 * 走渲染器全局 config 兜底。adapter 已把 per-kind 折算成完整样式,这里只做选取。
-	 */
-	private cardStyleFor(kind: CardKind): CustomCardStyleLike | undefined {
-		const cs = this.sub.customCardStyleByKind?.[kind] ?? this.sub.customCardStyle;
-		return cs?.enable ? cs : undefined;
-	}
-
 	private async onIncomeSuperChat(body: {
 		content: string;
 		user: { uname: string; uid: number };
@@ -382,6 +372,7 @@ export class RoomSession extends RoomSessionBase {
 		if (this.ctx.imageRenderer?.generateSCCard) {
 			try {
 				const userInfo = data.data;
+				const scStyle = this.resolvedCardStyle("sc");
 				const buf = await this.ctx.imageRenderer.generateSCCard(
 					{
 						senderFace: userInfo.face,
@@ -391,7 +382,7 @@ export class RoomSession extends RoomSessionBase {
 						text: body.content,
 						price: body.price,
 					},
-					this.cardStyleFor("sc"),
+					scStyle.enable ? scStyle : undefined,
 					this.sub.cardLayout?.sc,
 				);
 				if (this.ctx.isDisposed()) return;
@@ -454,6 +445,7 @@ export class RoomSession extends RoomSessionBase {
 			const data = await this.ctx.api.getUserInfoInLive(body.user.uid.toString(), this.sub.uid);
 			if (data.code === 0) {
 				try {
+					const guardStyle = this.resolvedCardStyle("guard");
 					const buf = await this.ctx.imageRenderer.generateGuardCard(
 						{
 							guardLevel: body.guard_level,
@@ -465,7 +457,7 @@ export class RoomSession extends RoomSessionBase {
 							masterName: this.masterInfo?.username ?? "",
 							masterAvatarUrl: this.masterInfo?.userface ?? "",
 						},
-						this.cardStyleFor("guard"),
+						guardStyle.enable ? guardStyle : undefined,
 						this.sub.cardLayout?.guard,
 					);
 					if (this.ctx.isDisposed()) return;
@@ -559,7 +551,7 @@ export class RoomSession extends RoomSessionBase {
 			liveData: this.liveData,
 			liveRoomInfo: this.liveRoomInfo,
 			master: this.masterInfo,
-			cardStyle: this.sub.customCardStyle,
+			cardStyle: this.resolvedCardStyle("live"),
 			cardLayout: this.sub.cardLayout,
 			uid: this.sub.uid,
 			notifyMsg: liveStartMsg,
