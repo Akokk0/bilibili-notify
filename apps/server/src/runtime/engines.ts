@@ -432,6 +432,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		ai: commentary ?? undefined,
 		config: dynamicConfig(),
 		getSubs: () => buildDynamicSubsView(opts.subscriptionStore, opts.subRuntimeStore, globals()),
+		pickCardBackground: cardBgRotator.pick,
 	});
 	dynamic.start();
 

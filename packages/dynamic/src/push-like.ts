@@ -81,6 +81,11 @@ export interface SubItemView {
 		glassClear?: boolean;
 		/** 背景图资产 id;透传给 generateDynamicCard 的 colorOptions。 */
 		backgroundImage?: string;
+		/**
+		 * 解析后的**完整**背景图列表(>1 张时「每次推送轮换」)。adapter 填入;engine 据它
+		 * 经注入的 pickCardBackground 选下一张覆盖 backgroundImage。缺省 / ≤1 张 = 不轮换。
+		 */
+		backgroundImages?: string[];
 	};
 	/** Per-UP 动态过滤覆盖；undefined 时使用 engine 的全局 filter。 */
 	filter?: DynamicFilterConfig & { notify?: boolean };
@@ -115,6 +120,12 @@ export interface SubItemView {
 
 export type SubscriptionsView = Record<string, SubItemView>;
 export type SubManagerView = Map<string, SubItemView>;
+
+/**
+ * 背景图轮换选择器:给定 scopeKey(`uid:dynamic`)与完整图列表,返回本次该用的背景(并在
+ * 实现内推进游标)。adapter 注入(独立端 fs 持久化游标;koishi 不注入即不轮换)。
+ */
+export type PickCardBackground = (scopeKey: string, images: string[]) => string | undefined;
 
 /**
  * Adapter 提供给 engine 的「最新订阅快照」访问器与增量操作描述。

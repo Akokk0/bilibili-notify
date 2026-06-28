@@ -72,6 +72,10 @@ interface Priv {
 	detectDynamics(): Promise<void>;
 	imageFailureStreak: number;
 	imageFailureNotified: boolean;
+	pickDynamicColorOptions(
+		uid: string,
+		style: SubItemView["customCardStyle"],
+	): SubItemView["customCardStyle"] | undefined;
 }
 const priv = (e: DynamicEngineType): Priv => e as unknown as Priv;
 
@@ -212,6 +216,7 @@ function makeEngine(
 		withImage?: boolean;
 		withAi?: boolean;
 		subs?: SubscriptionsView | null;
+		pickCardBackground?: import("../push-like").PickCardBackground;
 	} = {},
 ): EngineBag {
 	const { ctx, logs } = makeServiceCtx();
@@ -246,6 +251,7 @@ function makeEngine(
 			...over.config,
 		},
 		getSubs: () => over.subs ?? null,
+		pickCardBackground: over.pickCardBackground,
 	});
 	return {
 		engine,
@@ -1309,5 +1315,46 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 		} as unknown as AllDynamicInfo);
 		await detect(b.engine);
 		expect(generateDynamicCard).toHaveBeenCalledTimes(1);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 背景图轮换(每次推送轮换)
+// ---------------------------------------------------------------------------
+
+describe("DynamicEngine — 动态卡背景轮换", () => {
+	it("customCardStyle 多图 → pickDynamicColorOptions 经注入选择器逐张轮换", () => {
+		const cursors: Record<string, number> = {};
+		const b = makeEngine({
+			withImage: true,
+			pickCardBackground: (key, images) => {
+				const i = cursors[key] ?? 0;
+				cursors[key] = i + 1;
+				return images[i % images.length];
+			},
+		});
+		const style = { enable: true, backgroundImages: ["a", "b", "c"] };
+		const picks = [0, 1, 2, 3].map(
+			() => priv(b.engine).pickDynamicColorOptions("u1", style)?.backgroundImage,
+		);
+		expect(picks).toEqual(["a", "b", "c", "a"]);
+	});
+
+	it("单图 → 不轮换,原样沿用 backgroundImage", () => {
+		const b = makeEngine({ withImage: true, pickCardBackground: () => "ROTATED" });
+		const style = { enable: true, backgroundImage: "solo", backgroundImages: ["solo"] };
+		expect(priv(b.engine).pickDynamicColorOptions("u1", style)?.backgroundImage).toBe("solo");
+	});
+
+	it("enable=false / 缺省 → undefined(走渲染器全局兜底)", () => {
+		const b = makeEngine({ withImage: true, pickCardBackground: () => "X" });
+		expect(priv(b.engine).pickDynamicColorOptions("u1", { enable: false })).toBeUndefined();
+		expect(priv(b.engine).pickDynamicColorOptions("u1", undefined)).toBeUndefined();
+	});
+
+	it("未注入选择器(koishi)+ 多图 → 不轮换,沿用 backgroundImage", () => {
+		const b = makeEngine({ withImage: true });
+		const style = { enable: true, backgroundImage: "first", backgroundImages: ["first", "second"] };
+		expect(priv(b.engine).pickDynamicColorOptions("u1", style)?.backgroundImage).toBe("first");
 	});
 });

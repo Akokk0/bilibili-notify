@@ -18,6 +18,8 @@
  *   dispose():                stop 全引擎 + 解绑 bus(dispose 后 config-changed 不再生效)
  */
 
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { GlobalConfig, Subscription } from "@bilibili-notify/internal";
 import {
 	DEFAULT_CARD_LAYOUT,
@@ -173,8 +175,10 @@ function makeServiceCtx() {
 function makeConfigStore(initial: GlobalConfig) {
 	let g = initial;
 	return {
-		// 背景轮换游标 fs 路径取自此;不存在即 load 走 catch 返回 {},不脏不写盘,测试安全。
-		bootstrap: { dataDir: "/tmp/bn-engines-test-nonexistent" },
+		// 背景轮换游标 fs 路径取自此。指向 OS 临时目录下一个**不存在**的子目录(跨平台:
+		// Windows/macOS/Linux 都解析为各自 tmp 根):load 读不到走 catch 返回 {};测试不触发
+		// 轮换故游标不脏、dispose 不写盘(即便写,目标在 tmp 下也无害)。不含任何真实路径/密钥。
+		bootstrap: { dataDir: join(tmpdir(), "bn-engines-test-no-such-dir") },
 		getGlobals: () => g,
 		getTargets: () => [],
 		getAdapters: () => [],

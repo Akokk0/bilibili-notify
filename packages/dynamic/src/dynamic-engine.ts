@@ -13,6 +13,7 @@ import { CronJob } from "cron";
 import { DateTime } from "luxon";
 import { DynamicFilterReason, filterDynamic } from "./dynamic-filter";
 import type {
+	PickCardBackground,
 	PushLike,
 	PushSegment,
 	SubItemView,
@@ -189,6 +190,11 @@ export interface DynamicEngineOptions {
 	 * （engine 会在收到 `subscription-changed` / `auth-restored` 后再次拉取）。
 	 */
 	getSubs: () => SubscriptionsView | null;
+	/**
+	 * 可选注入：背景图轮换选择器。某 UP 的动态卡配 >1 张背景图时「每次推送轮换」;
+	 * 缺省(如 koishi)则不轮换,沿用首图。
+	 */
+	pickCardBackground?: PickCardBackground;
 }
 
 /** 从动态数据中提取图片 URL，用于多模态 AI 点评（最多 4 张） */
@@ -266,6 +272,7 @@ export class DynamicEngine {
 	private ai?: CommentaryClient;
 	private readonly logger: Logger;
 	private readonly getSubs: () => SubscriptionsView | null;
+	private readonly pickCardBackground: PickCardBackground | undefined;
 
 	private config: DynamicEngineConfig;
 	private dynamicJob?: CronJob;
@@ -293,6 +300,7 @@ export class DynamicEngine {
 		this.ai = opts.ai;
 		this.config = opts.config;
 		this.getSubs = opts.getSubs;
+		this.pickCardBackground = opts.pickCardBackground;
 		this.logger = opts.serviceCtx.logger;
 	}
 
@@ -426,6 +434,24 @@ export class DynamicEngine {
 
 		this.dynamicSubManager = dynamicSubManager;
 		this.startJob();
+	}
+
+	/**
+	 * 解析动态卡 colorOptions:enable=false → undefined(走渲染器全局兜底);该 UP 配 >1 张
+	 * 背景图且注入了选择器 → 「每次推送轮换」选下一张覆盖 backgroundImage(游标键 `uid:dynamic`);
+	 * 否则原样返回(单图 / 未注入选择器 / koishi)。每次渲染调一次 = 每推送轮换一张。
+	 */
+	private pickDynamicColorOptions(
+		uid: string,
+		style: SubItemView["customCardStyle"],
+	): SubItemView["customCardStyle"] | undefined {
+		if (!style?.enable) return undefined;
+		const images = style.backgroundImages;
+		if (images && images.length > 1 && this.pickCardBackground) {
+			const picked = this.pickCardBackground(`${uid}:dynamic`, images);
+			if (picked !== undefined) return { ...style, backgroundImage: picked };
+		}
+		return style;
 	}
 
 	private startDynamicForUid(uid: string, sub: SubItemView): void {
@@ -670,7 +696,7 @@ export class DynamicEngine {
 						// 中转的类型断言避开两份独立 .d.ts 的结构性差异。
 						buffer = await this.image.generateDynamicCard(
 							item as unknown as Parameters<ImageRenderer["generateDynamicCard"]>[0],
-							sub?.customCardStyle?.enable ? sub.customCardStyle : undefined,
+							this.pickDynamicColorOptions(uid, sub?.customCardStyle),
 							sub?.dynamicLayout,
 						);
 					}
