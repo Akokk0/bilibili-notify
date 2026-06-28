@@ -554,12 +554,25 @@ function InheritNote({ children }: { children: React.ReactNode }) {
 	);
 }
 
-/** 该 sub 已覆盖的卡片切片数(0..2),供 ScopeTabs 计数徽章。 */
+/** 该 UP 是否设了「按类型」样式覆盖(非空才算)。 */
+function hasCardStyleByKind(sub: Subscription): boolean {
+	const bk = sub.overrides.cardStyleByKind;
+	return bk !== undefined && Object.keys(bk).length > 0;
+}
+/** 该 sub 已覆盖的卡片切片数(0..3),供 ScopeTabs 计数徽章。 */
 function cardOverrideCount(sub: Subscription): number {
-	return (sub.overrides.cardStyle ? 1 : 0) + (sub.overrides.cardLayout ? 1 : 0);
+	return (
+		(sub.overrides.cardStyle ? 1 : 0) +
+		(hasCardStyleByKind(sub) ? 1 : 0) +
+		(sub.overrides.cardLayout ? 1 : 0)
+	);
 }
 function hasCardCustomization(sub: Subscription): boolean {
-	return sub.overrides.cardStyle !== undefined || sub.overrides.cardLayout !== undefined;
+	return (
+		sub.overrides.cardStyle !== undefined ||
+		hasCardStyleByKind(sub) ||
+		sub.overrides.cardLayout !== undefined
+	);
 }
 
 export default function Cards() {
@@ -587,6 +600,8 @@ export default function Cards() {
 
 	// per-UP 覆盖草稿(undefined = 继承全局)
 	const [puStyle, setPuStyle] = useState<CardStyle | undefined>(undefined);
+	// 按卡片类型的样式覆盖(per-UP)。空 = 各类型跟随该 UP 基准(puStyle ?? 全局)。
+	const [puByKind, setPuByKind] = useState<CardStyleByKind>({});
 	const [puLayout, setPuLayout] = useState<CardLayoutFull | undefined>(undefined);
 
 	// 左侧导航:「全局」(基准通用样式)或某卡片类型。与作用域无关。
@@ -622,12 +637,18 @@ export default function Cards() {
 		return { ...serverGlobalStyle, ...focusedSub.overrides.cardStyle };
 	}, [focusedSub?.overrides.cardStyle, serverGlobalStyle]);
 	const seededPuLayout = focusedSub?.overrides.cardLayout;
+	// per-UP 按类型覆盖的存储值;空对象 = 无覆盖(与 gByKind seed 一致,直接取原始 partial)。
+	const seededPuByKind = useMemo<CardStyleByKind>(
+		() => focusedSub?.overrides.cardStyleByKind ?? {},
+		[focusedSub?.overrides.cardStyleByKind],
+	);
 
 	// 切换到不同 UP(或其服务端数据变化)→ 重新 seed 覆盖草稿。
 	useEffect(() => {
 		setPuStyle(seededPuStyle);
+		setPuByKind(seededPuByKind);
 		setPuLayout(seededPuLayout);
-	}, [seededPuStyle, seededPuLayout]);
+	}, [seededPuStyle, seededPuByKind, seededPuLayout]);
 
 	// 选中的 UP 从订阅列表消失 → 回退全局。
 	useEffect(() => {
@@ -668,7 +689,12 @@ export default function Cards() {
 	const savePerUp = useMutation({
 		mutationFn: async (sub: Subscription) => {
 			await api.patch<Subscription>(`/api/subs/${sub.id}`, {
-				overrides: { cardStyle: puStyle ?? null, cardLayout: puLayout ?? null },
+				overrides: {
+					cardStyle: puStyle ?? null,
+					// 空对象 = 无按类型覆盖 → 下发 null 清除该 slice(不存空对象)。
+					cardStyleByKind: Object.keys(puByKind).length > 0 ? puByKind : null,
+					cardLayout: puLayout ?? null,
+				},
 			});
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
@@ -677,7 +703,7 @@ export default function Cards() {
 	const removeCardCustomization = useMutation({
 		mutationFn: async (sub: Subscription) =>
 			api.patch<Subscription>(`/api/subs/${sub.id}`, {
-				overrides: { cardStyle: null, cardLayout: null },
+				overrides: { cardStyle: null, cardStyleByKind: null, cardLayout: null },
 			}),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
 	});
@@ -743,12 +769,16 @@ export default function Cards() {
 		};
 	}, [globalsQuery.data]);
 	const perUpIslandDraft = useMemo(
-		() => ({ ...(puStyle ?? {}), cardLayout: puLayout ?? null }),
-		[puStyle, puLayout],
+		() => ({ ...(puStyle ?? {}), cardStyleByKind: puByKind, cardLayout: puLayout ?? null }),
+		[puStyle, puByKind, puLayout],
 	);
 	const perUpIslandBaseline = useMemo(
-		() => ({ ...(seededPuStyle ?? {}), cardLayout: seededPuLayout ?? null }),
-		[seededPuStyle, seededPuLayout],
+		() => ({
+			...(seededPuStyle ?? {}),
+			cardStyleByKind: seededPuByKind,
+			cardLayout: seededPuLayout ?? null,
+		}),
+		[seededPuStyle, seededPuByKind, seededPuLayout],
 	);
 
 	// 预览内容:全局 = 可编辑 mock;per-UP = 该 UP 真实数据(live/dyn 按 uid,后端解析房间号
@@ -793,6 +823,7 @@ export default function Cards() {
 				setImageLogLevel(globalsQuery.data.app.logLevels?.image ?? "");
 			} else {
 				setPuStyle(seededPuStyle);
+				setPuByKind(seededPuByKind);
 				setPuLayout(seededPuLayout);
 			}
 		},
@@ -809,7 +840,15 @@ export default function Cards() {
 	// 预览 / 测试推送始终用「生效值」:per-UP 未覆盖则回落全局草稿。
 	// 「全局」tab = 基准样式;类型 tab = 基准 + 该类型覆盖。per-UP 未覆盖则继承全局生效值。
 	const gEffStyle = isGlobalTab ? gStyle : resolveKindStyle(gStyle, gByKind, styleKind);
-	const effStyle: CardStyle = isGlobalScope ? gEffStyle : (puStyle ?? gEffStyle);
+	// per-UP 基准(当前 kind):该 UP 覆盖基准 puStyle 优先,否则继承全局对应生效值。
+	// 「全局」tab → puStyle ?? gStyle;类型 tab → puStyle ?? 全局该类型生效值。
+	const puBaseStyle: CardStyle = puStyle ?? gEffStyle;
+	// 类型 tab 再叠该 UP 的按类型覆盖;「全局」tab 只用基准。
+	const puEffStyle: CardStyle =
+		!isGlobalTab && puByKind[styleKind] !== undefined
+			? { ...puBaseStyle, ...puByKind[styleKind] }
+			: puBaseStyle;
+	const effStyle: CardStyle = isGlobalScope ? gEffStyle : puEffStyle;
 	const effLayout: CardLayoutFull | null = isGlobalScope ? gLayout : (puLayout ?? gLayout);
 
 	const KindIcon = Icon[KIND_LABELS[kind].icon];
@@ -1011,11 +1050,37 @@ export default function Cards() {
 							)}
 						</GlassBox>
 					) : (
-						// 类型 tab · per-UP:样式在「全局」标签设置,此处只配该类型版式 / 内容。
-						<div className="rounded-bn-card border border-dashed border-bn-border-subtle bg-bn-surface/40 px-3 py-2.5 text-[11.5px] text-bn-text-tertiary">
-							该 UP 的样式在左侧「全局」标签统一设置;此处可单独配置「{KIND_LABELS[kind].label}
-							」的版式与测试内容。
-						</div>
+						// 类型 tab · per-UP:该 UP 此卡片单独样式开关,打开才展开覆盖(叠在该 UP 基准之上)。
+						<GlassBox
+							title={`${KIND_LABELS[kind].label} · 单独样式`}
+							subtitle="开 = 该 UP 的此卡片用自己的渐变 / 字体 / 玻璃片 / 背景;关 = 跟随该 UP 基准（基准未覆盖则继承全局）"
+							accent={KIND_LABELS[kind].tone}
+							icon={<KindIcon size={14} />}
+							badge={puByKind[styleKind] ? "单独设置" : "跟随基准"}
+							right={
+								<Toggle
+									value={puByKind[styleKind] !== undefined}
+									onChange={(on) =>
+										setPuByKind((bk) => {
+											const next = { ...bk };
+											// 打开:把当前该 UP 的此类型生效样式定格成完整快照供编辑。
+											if (on) next[styleKind] = puBaseStyle;
+											else delete next[styleKind];
+											return next;
+										})
+									}
+								/>
+							}
+						>
+							{puByKind[styleKind] ? (
+								<CardStyleFields
+									style={{ ...puBaseStyle, ...puByKind[styleKind] }}
+									onChange={(n) => setPuByKind((bk) => ({ ...bk, [styleKind]: n }))}
+								/>
+							) : (
+								<InheritNote>该卡片跟随该 UP 的基准样式</InheritNote>
+							)}
+						</GlassBox>
 					)}
 
 					{/* 卡片版式 —— 仅「类型」tab(全局 tab 只调全局样式,不碰具体卡片版式)。 */}
