@@ -1242,7 +1242,7 @@ export default function Cards() {
 								subtitle="直播卡数据显示项 —— 人气·点赞 / 分区 / 粉丝数据;关掉某项即从卡片隐藏"
 								accent={KIND_LABELS.live.tone}
 								icon={<Icon.live size={14} />}
-								badge="直播数据"
+								badge="cardData"
 							>
 								<DataSectionFields style={gStyle} onChange={(n) => setGStyle(n)} />
 							</GlassBox>
