@@ -173,8 +173,9 @@ function makeDashboard(): DashboardBootstrap {
 					cardColorStart: "#000000",
 					cardColorEnd: "#ffffff",
 					font: "system-ui",
-					hideDesc: false,
-					hideFollower: false,
+					showPopularity: true,
+					showArea: true,
+					showFans: true,
 				},
 				imageGroup: {
 					enable: false,

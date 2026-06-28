@@ -501,28 +501,31 @@ describe("createEngines — image 配色热更", () => {
 		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
 	});
 
-	it("font / hideDesc / hideFollower 改完直透 ImageRenderer 同名字段(全链路不再桥接取反)", () => {
+	it("font / 数据区 show 开关改完直透 ImageRenderer 同名字段(全链路不桥接)", () => {
 		const c = setup({ puppeteer: true });
 		active = c;
-		// boot 时构造的 ImageRenderer 已收到 default(PingFang / false / false)。
+		// boot 时构造的 ImageRenderer 已收到 default(PingFang / 数据区三项全开)。
 		const bootConfig = H.image[0].opts.config;
 		expect(bootConfig).toMatchObject({
 			font: "PingFang SC, sans-serif",
-			hideDesc: false,
-			hideFollower: false,
+			showPopularity: true,
+			showArea: true,
+			showFans: true,
 		});
 
 		patchGlobals(c, (g) => {
 			g.defaults.cardStyle.font = "Noto Sans CJK SC";
-			g.defaults.cardStyle.hideDesc = true;
-			g.defaults.cardStyle.hideFollower = true;
+			g.defaults.cardStyle.showPopularity = false;
+			g.defaults.cardStyle.showArea = false;
+			g.defaults.cardStyle.showFans = false;
 		});
 		c.bus.emit("config-changed", "globals");
 		const last = H.image[0].updateConfig.mock.calls.at(-1)?.[0];
 		expect(last).toMatchObject({
 			font: "Noto Sans CJK SC",
-			hideDesc: true,
-			hideFollower: true,
+			showPopularity: false,
+			showArea: false,
+			showFans: false,
 		});
 	});
 });

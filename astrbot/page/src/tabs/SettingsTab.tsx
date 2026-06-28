@@ -621,20 +621,29 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 						}
 					/>
 					<Toggle
-						label="隐藏直播简介"
-						checked={draft.defaults.cardStyle.hideDesc}
+						label="数据区·显示人气/点赞"
+						checked={draft.defaults.cardStyle.showPopularity}
 						onChange={(checked) =>
 							updateDraft((next) => {
-								next.defaults.cardStyle.hideDesc = checked;
+								next.defaults.cardStyle.showPopularity = checked;
 							})
 						}
 					/>
 					<Toggle
-						label="隐藏粉丝/观看数"
-						checked={draft.defaults.cardStyle.hideFollower}
+						label="数据区·显示分区"
+						checked={draft.defaults.cardStyle.showArea}
 						onChange={(checked) =>
 							updateDraft((next) => {
-								next.defaults.cardStyle.hideFollower = checked;
+								next.defaults.cardStyle.showArea = checked;
+							})
+						}
+					/>
+					<Toggle
+						label="数据区·显示粉丝数据"
+						checked={draft.defaults.cardStyle.showFans}
+						onChange={(checked) =>
+							updateDraft((next) => {
+								next.defaults.cardStyle.showFans = checked;
 							})
 						}
 					/>

@@ -6,9 +6,12 @@ import { htmlToPlain } from "../html-to-plain";
 import { renderBlocks } from "./block-layout";
 
 export type LiveCardProps = {
-	hideDesc: boolean;
-	/** 隐藏粉丝变化 / 累计观看数(对齐 hideDesc 命名;隐藏=true)。 */
-	hideFollower: boolean;
+	/** 数据区:显示人气 / 点赞(直播中=人气,下播=点赞)。 */
+	showPopularity: boolean;
+	/** 数据区:显示分区。 */
+	showArea: boolean;
+	/** 数据区:显示粉丝数据(当前粉丝数 / 累计观看 / 粉丝变化,按直播态)。 */
+	showFans: boolean;
 	cardColorStart: string;
 	cardColorEnd: string;
 	// biome-ignore lint/suspicious/noExplicitAny: Bilibili 直播 API 返回类型
@@ -57,7 +60,6 @@ export function LiveCard(p: LiveCardProps) {
 	};
 
 	const status = statusLabel();
-	const follower = p.hideFollower ? "" : followerText();
 	// B 站 `room_info.description` 是富文本(可能含 <p>/<br> 等标签,或 entity-encoded
 	// 形式);简介区域只展示纯文本,这里统一剥成 plain text。
 	const description = htmlToPlain(p.data.description);
@@ -112,26 +114,31 @@ export function LiveCard(p: LiveCardProps) {
 			</div>
 		),
 
-		stats: () => (
-			<div class="px-4 flex justify-between text-[13px]" style="color: #666;">
-				<span>{statsLeft()}</span>
-				<span>分区：{p.data.area_name}</span>
+		// 数据区(原 stats + follower 合并):人气·点赞 / 分区 / 粉丝数据,各由 show* 开关控制。
+		// 三项全关或全无数据 → 返回 null,块自动收起。
+		data: () => {
+			const fans = p.showFans ? followerText() : "";
+			const hasTopRow = p.showPopularity || p.showArea;
+			if (!hasTopRow && !fans) return null;
+			return (
+				<div class="px-4 flex flex-col gap-1 text-[13px]" style="color: #666;">
+					{hasTopRow ? (
+						<div class="flex justify-between">
+							<span>{p.showPopularity ? statsLeft() : ""}</span>
+							<span>{p.showArea ? `分区：${p.data.area_name}` : ""}</span>
+						</div>
+					) : null}
+					{fans ? <div>{fans}</div> : null}
+				</div>
+			);
+		},
+
+		// 简介:显隐由版式 desc 块的 visible 控制(renderBlocks 跳过不可见块),此处只管渲染。
+		desc: () => (
+			<div class="px-4 text-[13px] leading-normal" style="color: #999;">
+				{description || "这个主播很懒，什么简介都没写"}
 			</div>
 		),
-
-		follower: () =>
-			follower ? (
-				<div class="px-4 text-[13px]" style="color: #666;">
-					{follower}
-				</div>
-			) : null,
-
-		desc: () =>
-			p.hideDesc ? null : (
-				<div class="px-4 text-[13px] leading-normal" style="color: #999;">
-					{description || "这个主播很懒，什么简介都没写"}
-				</div>
-			),
 	};
 
 	const frameBg = p.backgroundImage

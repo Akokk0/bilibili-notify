@@ -370,16 +370,6 @@ function CardStyleFields({
 			<Field code="font" full>
 				<TInput value={style.font} onChange={(v) => set("font", v)} />
 			</Field>
-			<Field code="hideDesc">
-				<div className="flex h-7.5 items-center">
-					<Toggle value={style.hideDesc} onChange={(v) => set("hideDesc", v)} />
-				</div>
-			</Field>
-			<Field code="hideFollower">
-				<div className="flex h-7.5 items-center">
-					<Toggle value={style.hideFollower} onChange={(v) => set("hideFollower", v)} />
-				</div>
-			</Field>
 			<Field code="glassOpacity" full>
 				<div className="flex flex-col gap-2">
 					<div className="flex h-7.5 items-center gap-3">
@@ -427,6 +417,33 @@ function CardStyleFields({
 					onChange={(next) => set("backgroundImages", next)}
 				/>
 			</Field>
+		</>
+	);
+}
+
+/**
+ * 直播卡「数据区」显示开关(人气·点赞 / 分区 / 粉丝数据)—— 仅直播卡用,控制数据区内部
+ * 显示哪几项。绑定基准 CardStyle 的 show* 字段(全局作用域;数据区走全局 image config)。
+ */
+function DataSectionFields({
+	style,
+	onChange,
+}: {
+	style: CardStyle;
+	onChange: (next: CardStyle) => void;
+}) {
+	const row = (code: "showPopularity" | "showArea" | "showFans") => (
+		<Field code={code} key={code}>
+			<div className="flex h-7.5 items-center">
+				<Toggle value={style[code]} onChange={(v) => onChange({ ...style, [code]: v })} />
+			</div>
+		</Field>
+	);
+	return (
+		<>
+			{row("showPopularity")}
+			{row("showArea")}
+			{row("showFans")}
 		</>
 	);
 }
@@ -1108,6 +1125,24 @@ export default function Cards() {
 								/>
 							) : (
 								<InheritNote>该卡片跟随该 UP 的基准样式</InheritNote>
+							)}
+						</GlassBox>
+					)}
+
+					{/* 数据区显示项 —— 仅「直播开播」tab(数据区是直播卡专属:人气/分区/粉丝)。
+					    全局作用域可编辑(走全局 image config);per-UP 跟随全局,显示继承提示。 */}
+					{!isGlobalTab && kind === "live" && (
+						<GlassBox
+							title="数据区"
+							subtitle="直播卡数据区显示项 —— 人气·点赞 / 分区 / 粉丝数据;关掉某项即从卡片隐藏"
+							accent={KIND_LABELS.live.tone}
+							icon={<Icon.live size={14} />}
+							badge="数据区"
+						>
+							{isGlobalScope ? (
+								<DataSectionFields style={gStyle} onChange={(n) => setGStyle(n)} />
+							) : (
+								<InheritNote>数据区显示项在「全局」统一设置,该 UP 跟随全局</InheritNote>
 							)}
 						</GlassBox>
 					)}

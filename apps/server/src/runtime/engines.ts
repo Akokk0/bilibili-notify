@@ -335,8 +335,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				cardColorStart: cs.cardColorStart,
 				cardColorEnd: cs.cardColorEnd,
 				font: cs.font,
-				hideDesc: cs.hideDesc,
-				hideFollower: cs.hideFollower,
+				showPopularity: cs.showPopularity,
+				showArea: cs.showArea,
+				showFans: cs.showFans,
 				glassOpacity: cs.glassOpacity,
 				glassClear: cs.glassClear,
 				backgroundImage: cs.backgroundImages[0] ?? "",
@@ -641,8 +642,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						cardColorStart: cs.cardColorStart,
 						cardColorEnd: cs.cardColorEnd,
 						font: cs.font,
-						hideDesc: cs.hideDesc,
-						hideFollower: cs.hideFollower,
+						showPopularity: cs.showPopularity,
+						showArea: cs.showArea,
+						showFans: cs.showFans,
 						glassOpacity: cs.glassOpacity,
 						glassClear: cs.glassClear,
 						backgroundImage: cs.backgroundImages[0] ?? "",
@@ -1011,6 +1013,9 @@ function cardStyleToColorOptions(s: {
 	glassOpacity?: number;
 	glassClear?: boolean;
 	backgroundImages?: string[];
+	showPopularity?: boolean;
+	showArea?: boolean;
+	showFans?: boolean;
 }): LiveSubView["customCardStyle"] {
 	return {
 		enable: true,
@@ -1022,6 +1027,10 @@ function cardStyleToColorOptions(s: {
 		// 完整列表透传给推送点;>1 张时「每次推送轮换」(见 RoomSession.resolvedCardStyle /
 		// DynamicEngine)。单图 / 缺省即用 backgroundImage,不轮换。
 		backgroundImages: s.backgroundImages,
+		// 直播卡数据区显示项(live 才用);经 colorOptions 透传,缺省回退渲染器全局 config。
+		showPopularity: s.showPopularity,
+		showArea: s.showArea,
+		showFans: s.showFans,
 	};
 }
 

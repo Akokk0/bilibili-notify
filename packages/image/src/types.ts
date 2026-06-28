@@ -95,4 +95,10 @@ export type CardColorOptions = {
 	glassClear?: boolean;
 	/** 自定义背景图资产 id(或已解析 URL);缺省时走渐变。 */
 	backgroundImage?: string;
+	/** 直播卡数据区:显示人气 / 点赞;缺省时回退渲染器全局 config。 */
+	showPopularity?: boolean;
+	/** 直播卡数据区:显示分区;缺省时回退渲染器全局 config。 */
+	showArea?: boolean;
+	/** 直播卡数据区:显示粉丝数据;缺省时回退渲染器全局 config。 */
+	showFans?: boolean;
 };

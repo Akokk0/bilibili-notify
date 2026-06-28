@@ -6,15 +6,15 @@ export interface BilibiliNotifyImageConfig {
 	cardColorStart: string;
 	cardColorEnd: string;
 	font: string;
-	hideDesc: boolean;
 	/**
-	 * BREAKING(next release):前身字段 `followerDisplay`(显示=true)重命名 + 语义反转
-	 * 为 `hideFollower`(隐藏=true),对齐 `hideDesc` 命名风格。koishi Schema 不识别
-	 * 旧字段 → 升级后旧 yaml 里 `followerDisplay: false`(想隐藏)被 schema 丢弃,
-	 * 取 `hideFollower` 默认 false(=显示),粉丝又会显示出来。受影响用户需手动
-	 * 把 yaml 里的字段名改成 `hideFollower` 并把布尔值取反。
+	 * 直播卡「数据区」(原人气/分区 + 粉丝信息合并块)各项显示开关,默认全开。
+	 * BREAKING(next release):移除旧的 `hideDesc`(简介显隐改由独立端版式控制,koishi 暂不可调)
+	 * 与 `hideFollower`(并入 `showFans`,语义反转为「显示=true」)。旧 yaml 的这两个字段被
+	 * koishi Schema 丢弃;原先隐藏粉丝的用户需把 `showFans` 关掉。
 	 */
-	hideFollower: boolean;
+	showPopularity: boolean;
+	showArea: boolean;
+	showFans: boolean;
 }
 
 export const BilibiliNotifyImageConfig: Schema<BilibiliNotifyImageConfig> = Schema.object({
@@ -39,10 +39,13 @@ export const BilibiliNotifyImageConfig: Schema<BilibiliNotifyImageConfig> = Sche
 		.description(
 			"如果主人想用自己的专属字体，可以在这里填写字体名称～女仆会努力渲染成主人喜欢的样子 (〃´-`〃)♡",
 		),
-	hideDesc: Schema.boolean()
-		.default(DEFAULT_CARD_STYLE.hideDesc)
-		.description("开启后会隐藏直播间简介，让推送卡片看起来更简洁清爽！女仆会照做的 (｀・ω・´)b"),
-	hideFollower: Schema.boolean()
-		.default(DEFAULT_CARD_STYLE.hideFollower)
-		.description("开启后会隐藏推送卡片上的粉丝变化和累计观看人数。女仆觉得不显示也挺清爽 (*´∀`)~♡"),
+	showPopularity: Schema.boolean()
+		.default(DEFAULT_CARD_STYLE.showPopularity)
+		.description("直播卡数据区是否显示人气 / 点赞～关掉会更简洁清爽，女仆都听主人的 (｀・ω・´)b"),
+	showArea: Schema.boolean()
+		.default(DEFAULT_CARD_STYLE.showArea)
+		.description("直播卡数据区是否显示直播分区～主人想露就露，不想露女仆就藏起来 (〃´-`〃)♡"),
+	showFans: Schema.boolean()
+		.default(DEFAULT_CARD_STYLE.showFans)
+		.description("直播卡数据区是否显示粉丝数据(当前粉丝数 / 累计观看 / 粉丝变化) (*´∀`)~♡"),
 });

@@ -6,9 +6,12 @@ import { z } from "zod";
  * 内容块(附加内容:预约 / 商品 / 通用卡,从正文里拆出可单独排版)。v5:动态卡移除独立
  * `topic` 块(话题标签无单独排版价值,内联进正文块顶部)。v6:边距收敛为单一 `marginTop`
  * (= 该块上方的间距);卡片框架统一提供固定的首块上 / 末块下边距,用户只需调块间间距。
- * 旧存档的 topic 块由 reconcile 当未知块丢弃。结构演进时递增,配合 `normalizeCardLayout`。
+ * v7:直播卡 `stats`(人气·点赞 + 分区)与 `follower`(粉丝数据)合并为单块 `data`(数据区),
+ * 内部各项显示由 cardStyle 的 show* 开关控制;旧存档的 live `stats`→`data`(保位置/显隐/边距)、
+ * `follower` 丢弃。旧存档的 topic 块由 reconcile 当未知块丢弃。结构演进时递增,配合
+ * `normalizeCardLayout`。
  */
-export const CARD_LAYOUT_VERSION = 6;
+export const CARD_LAYOUT_VERSION = 7;
 
 /** 分割线块的 type。可在版式里任意位置插入多条、可删除。 */
 export const DIVIDER_TYPE = "divider";
@@ -86,15 +89,7 @@ const div = (n: number, mt = 0): CardBlock => ({
  */
 export const DEFAULT_CARD_LAYOUT: CardLayout = {
 	version: CARD_LAYOUT_VERSION,
-	live: [
-		c("cover"),
-		c("header", 14),
-		c("title", 10),
-		div(1, 10),
-		c("stats", 10),
-		c("follower", 6),
-		c("desc", 16),
-	],
+	live: [c("cover"), c("header", 14), c("title", 10), div(1, 10), c("data", 10), c("desc", 16)],
 	dynamic: [
 		c("header"),
 		div(1, 12),
@@ -109,6 +104,26 @@ export const DEFAULT_CARD_LAYOUT: CardLayout = {
 		blocks: [c("name"), c("text")],
 	},
 };
+
+/**
+ * v7 迁移:直播卡旧 `stats` 块改名为 `data`(保留其位置 / 显隐 / 边距),旧 `follower` 块丢弃
+ * (其内容并入数据区,由 cardStyle.showFans 控制)。重复 stats 只取第一个;已是 data 则原样。
+ */
+function mergeLiveDataBlock(blocks: CardBlock[]): CardBlock[] {
+	let merged = false;
+	const out: CardBlock[] = [];
+	for (const b of blocks) {
+		if (b.type === "follower") continue;
+		if (b.type === "stats") {
+			if (merged) continue;
+			merged = true;
+			out.push({ ...b, id: "data", type: "data" });
+			continue;
+		}
+		out.push(b);
+	}
+	return out;
+}
 
 /**
  * 把一份(可能陈旧的)块数组对齐到当前已知内容块集(按 `type`):保留已知内容块与
@@ -153,11 +168,15 @@ function reconcileBlocks(
  * version 归一到 `CARD_LAYOUT_VERSION`。
  */
 export function normalizeCardLayout(stored: CardLayout, defaults: CardLayout): CardLayout {
+	const version = stored.version ?? 1;
 	// 间距迁移对单上边距模型(v6)之前的存档生效:回填缺失的上方间距。
-	const migrateSpacing = (stored.version ?? 1) < 6;
+	const migrateSpacing = version < 6;
+	// v7 起直播卡 stats+follower → data:旧存档(<7)把 live 的 stats 改名 data(保留位置 /
+	// 显隐 / 边距)、丢弃 follower,再交 reconcile 对齐;v7+ 存档已是 data,原样通过。
+	const liveBlocks = version < 7 ? mergeLiveDataBlock(stored.live) : stored.live;
 	return {
 		version: CARD_LAYOUT_VERSION,
-		live: reconcileBlocks(stored.live, defaults.live, migrateSpacing),
+		live: reconcileBlocks(liveBlocks, defaults.live, migrateSpacing),
 		dynamic: reconcileBlocks(stored.dynamic, defaults.dynamic, migrateSpacing),
 		sc: reconcileBlocks(stored.sc, defaults.sc, migrateSpacing),
 		guard: {

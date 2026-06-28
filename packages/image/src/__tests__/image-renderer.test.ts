@@ -43,8 +43,9 @@ function makeRenderer(config: Partial<ImageRendererConfig> = {}): ImageRenderer 
 			cardColorStart: "#000000",
 			cardColorEnd: "#ffffff",
 			font: "sans-serif",
-			hideDesc: false,
-			hideFollower: false,
+			showPopularity: true,
+			showArea: true,
+			showFans: true,
 			...config,
 		},
 	};
@@ -439,8 +440,9 @@ describe("ImageRenderer.updateConfig", () => {
 		cardColorStart: "#000000",
 		cardColorEnd: "#ffffff",
 		font: "sans-serif",
-		hideDesc: false,
-		hideFollower: false,
+		showPopularity: true,
+		showArea: true,
+		showFans: true,
 	};
 
 	function makeWithSpyLogger(config: ImageRendererConfig) {

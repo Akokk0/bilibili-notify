@@ -234,8 +234,8 @@ describe("resolve()", () => {
 		// 整份覆盖:override 的 live 顺序生效
 		expect(eff.cardLayout.live.slice(0, 2).map((b) => b.id)).toEqual(["title", "cover"]);
 		expect(eff.cardLayout.live.find((b) => b.id === "cover")?.visible).toBe(false);
-		// normalize:缺失的已知块仍被追加(向前兼容)
-		expect(eff.cardLayout.live.map((b) => b.id)).toContain("stats");
+		// normalize:缺失的已知块仍被追加(向前兼容;data 为合并后的数据区块)
+		expect(eff.cardLayout.live.map((b) => b.id)).toContain("data");
 	});
 
 	// 回归守护 — P2:resolve() 必须深隔离,消费方就地改不得污染 defaults / sub。

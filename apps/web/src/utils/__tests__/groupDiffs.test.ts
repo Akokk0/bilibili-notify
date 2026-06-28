@@ -67,7 +67,7 @@ describe("groupDiffsBySection", () => {
 			D("ai.apiKey"),
 			D("persona.name"),
 			D("cardColorStart"),
-			D("hideDesc"),
+			D("showFans"),
 			D("roomId"),
 			D("blockKeywords"),
 			D("templates.liveStart"),

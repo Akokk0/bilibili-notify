@@ -205,10 +205,17 @@ const CardStyleObjectSchema = z.object({
 	 * 缺字体不会渲染崩。`.default(...)` 让缺该字段的老 globals.json 加载时自动补全。
 	 */
 	font: z.string().default("PingFang SC, sans-serif"),
-	/** 隐藏直播卡片简介。 */
-	hideDesc: z.boolean().default(false),
-	/** 隐藏卡片粉丝变化 / 累计观看数(对齐 `hideDesc` 命名风格,「隐藏=true」)。 */
-	hideFollower: z.boolean().default(false),
+	/**
+	 * 直播卡「数据区」各项显示开关(仅直播卡用;其它卡类型忽略)。数据区由原 `stats`(人气·
+	 * 点赞 + 分区)与 `follower`(粉丝数据)两块合并而来,这三个开关控制其内部具体显示哪几项。
+	 * 默认全开 = 复刻现状。简介(desc)显隐已交由版式 desc 块的 visible,故移除旧 `hideDesc`。
+	 */
+	/** 数据区:显示人气 / 点赞(直播中=人气,下播=点赞)。 */
+	showPopularity: z.boolean().default(true),
+	/** 数据区:显示分区。 */
+	showArea: z.boolean().default(true),
+	/** 数据区:显示粉丝数据(直播中=当前粉丝数,下播=累计观看人数,下播态=粉丝数变化)。 */
+	showFans: z.boolean().default(true),
 	/**
 	 * 自定义卡片背景图资产 id **列表**。空列表(默认)= 沿用 `cardColorStart→cardColorEnd`
 	 * 渐变;长度 1 = 固定单张;长度 >1 = 每次推送顺序轮换(游标在服务端持久)。渲染期由
@@ -230,28 +237,35 @@ const CardStyleObjectSchema = z.object({
 });
 
 /**
- * 前向迁移:旧单值 `backgroundImage`(string)→ 新 `backgroundImages`(string[])。
- * 仅当未显式提供 `backgroundImages` 时生效;空串迁移成空列表(渐变),非空成单元素列表。
- * 显式的 `backgroundImages` 永远优先(旧字段被丢弃)。
+ * 前向迁移 CardStyle:
+ * 1. 旧单值 `backgroundImage`(string)→ 新 `backgroundImages`(string[]):仅当未显式提供
+ *    列表时生效,空串→空列表(渐变),非空→单元素列表;显式列表永远优先。
+ * 2. 旧 `hideFollower=true`(隐藏粉丝数据)→ 新 `showFans=false`:仅当未显式提供 `showFans`
+ *    时生效,保留老用户「已隐藏粉丝数据」的意图。
+ * 3. 丢弃废弃的 `hideDesc` / `hideFollower`:简介显隐改由版式 desc 块的 visible 控制,
+ *    粉丝数据并入数据区 `showFans` 开关。
  */
-function migrateCardStyleBg(raw: unknown): unknown {
+function migrateCardStyle(raw: unknown): unknown {
 	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
-	const o = raw as Record<string, unknown>;
-	if (!("backgroundImage" in o)) return raw;
-	const { backgroundImage, ...rest } = o;
-	if (o.backgroundImages !== undefined) return rest; // 列表已存在 → 丢弃旧字段
-	return {
-		...rest,
-		backgroundImages:
-			typeof backgroundImage === "string" && backgroundImage ? [backgroundImage] : [],
-	};
+	const o: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+	if ("backgroundImage" in o) {
+		const legacy = o.backgroundImage;
+		delete o.backgroundImage;
+		if (o.backgroundImages === undefined) {
+			o.backgroundImages = typeof legacy === "string" && legacy ? [legacy] : [];
+		}
+	}
+	if (o.hideFollower === true && o.showFans === undefined) o.showFans = false;
+	delete o.hideDesc;
+	delete o.hideFollower;
+	return o;
 }
 
-export const CardStyleSchema = z.preprocess(migrateCardStyleBg, CardStyleObjectSchema);
+export const CardStyleSchema = z.preprocess(migrateCardStyle, CardStyleObjectSchema);
 export type CardStyle = z.infer<typeof CardStyleSchema>;
 
 export const CardStylePartialSchema = z.preprocess(
-	migrateCardStyleBg,
+	migrateCardStyle,
 	CardStyleObjectSchema.partial(),
 );
 export type CardStylePartial = z.infer<typeof CardStylePartialSchema>;

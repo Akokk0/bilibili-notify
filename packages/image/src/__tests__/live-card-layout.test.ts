@@ -13,8 +13,9 @@ import { LiveCard } from "../templates/live-card";
 
 async function renderLive(over: Record<string, unknown> = {}): Promise<string> {
 	const props = {
-		hideDesc: false,
-		hideFollower: false,
+		showPopularity: true,
+		showArea: true,
+		showFans: true,
 		cardColorStart: "#000000",
 		cardColorEnd: "#ffffff",
 		data: {
@@ -49,15 +50,7 @@ function blockOrder(html: string): string[] {
 describe("LiveCard layout", () => {
 	it("renders all blocks in the default order, including the divider", async () => {
 		const html = await renderLive();
-		expect(blockOrder(html)).toEqual([
-			"cover",
-			"header",
-			"title",
-			"divider",
-			"stats",
-			"follower",
-			"desc",
-		]);
+		expect(blockOrder(html)).toEqual(["cover", "header", "title", "divider", "data", "desc"]);
 	});
 
 	it("omits a block the layout marks invisible", async () => {
@@ -113,5 +106,40 @@ describe("LiveCard layout", () => {
 		];
 		const order = blockOrder(await renderLive({ layout }));
 		expect(order.indexOf("title")).toBeLessThan(order.indexOf("cover"));
+	});
+});
+
+// 数据区(data 块)内部三项由 show* 开关控制 —— 这是内容契约(某项在/不在),非样式。
+describe("LiveCard data section show flags", () => {
+	it("shows popularity / area / fans by default (live status)", async () => {
+		const html = await renderLive();
+		expect(html).toContain("人气：");
+		expect(html).toContain("分区：");
+		expect(html).toContain("当前粉丝数：");
+	});
+
+	it("hides popularity when showPopularity is false", async () => {
+		const html = await renderLive({ showPopularity: false });
+		expect(html).not.toContain("人气：");
+		// 其它两项仍在
+		expect(html).toContain("分区：");
+		expect(html).toContain("当前粉丝数：");
+	});
+
+	it("hides area when showArea is false", async () => {
+		const html = await renderLive({ showArea: false });
+		expect(html).not.toContain("分区：");
+		expect(html).toContain("人气：");
+	});
+
+	it("hides fans data when showFans is false", async () => {
+		const html = await renderLive({ showFans: false });
+		expect(html).not.toContain("当前粉丝数：");
+		expect(html).toContain("人气：");
+	});
+
+	it("collapses the whole data block when all three are off", async () => {
+		const html = await renderLive({ showPopularity: false, showArea: false, showFans: false });
+		expect(blockOrder(html)).not.toContain("data");
 	});
 });

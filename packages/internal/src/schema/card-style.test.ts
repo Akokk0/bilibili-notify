@@ -45,3 +45,42 @@ describe("CardStyle background / glass knobs", () => {
 		expect(() => CardStyleSchema.parse({ ...DEFAULT_CARD_STYLE, glassOpacity: 1.5 })).toThrow();
 	});
 });
+
+describe("CardStyle data-section show flags", () => {
+	it("defaults the three data-section flags to true (replays current behavior)", () => {
+		const parsed = CardStyleSchema.parse(DEFAULT_CARD_STYLE);
+		expect(parsed.showPopularity).toBe(true);
+		expect(parsed.showArea).toBe(true);
+		expect(parsed.showFans).toBe(true);
+	});
+
+	// 旧 globals.json 形态:带废弃的 hideDesc / hideFollower,且没有新的 show* 字段。
+	const { showPopularity: _p, showArea: _a, showFans: _f, ...LEGACY_STYLE } = DEFAULT_CARD_STYLE;
+
+	it("drops the legacy hideDesc / hideFollower flags", () => {
+		const parsed = CardStyleSchema.parse({
+			...LEGACY_STYLE,
+			hideDesc: true,
+			hideFollower: false,
+		}) as Record<string, unknown>;
+		expect(parsed.hideDesc).toBeUndefined();
+		expect(parsed.hideFollower).toBeUndefined();
+	});
+
+	it("migrates legacy hideFollower=true into showFans=false (preserves hidden intent)", () => {
+		const parsed = CardStyleSchema.parse({ ...LEGACY_STYLE, hideFollower: true });
+		expect(parsed.showFans).toBe(false);
+		// 其它两项不受影响,仍走默认显示
+		expect(parsed.showPopularity).toBe(true);
+		expect(parsed.showArea).toBe(true);
+	});
+
+	it("lets an explicit showFans win over a legacy hideFollower", () => {
+		const parsed = CardStyleSchema.parse({
+			...LEGACY_STYLE,
+			hideFollower: true,
+			showFans: true,
+		});
+		expect(parsed.showFans).toBe(true);
+	});
+});

@@ -327,8 +327,10 @@ export interface CardStyleFull {
 	cardColorStart: string;
 	cardColorEnd: string;
 	font: string;
-	hideDesc: boolean;
-	hideFollower: boolean;
+	/** 直播卡数据区显示项(人气·点赞 / 分区 / 粉丝数据)。镜像 `CardStyleSchema.show*`,默认全开。 */
+	showPopularity: boolean;
+	showArea: boolean;
+	showFans: boolean;
 	/** 自定义卡片背景图资产 id 列表;空 = 渐变,>1 = 轮换。镜像 `CardStyleSchema.backgroundImages`。 */
 	backgroundImages: string[];
 	/** 玻璃片透明度 0..1;可选,未设时各卡用内置基线。镜像 `CardStyleSchema.glassOpacity`。 */

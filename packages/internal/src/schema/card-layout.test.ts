@@ -14,8 +14,7 @@ describe("DEFAULT_CARD_LAYOUT", () => {
 			"header",
 			"title",
 			DIVIDER_TYPE,
-			"stats",
-			"follower",
+			"data",
 			"desc",
 		]);
 		expect(DEFAULT_CARD_LAYOUT.live.every((b) => b.visible)).toBe(true);
@@ -66,9 +65,31 @@ describe("normalizeCardLayout", () => {
 		expect(out.live.find((b) => b.type === "ghost")).toBeUndefined();
 		// stored visibility preserved
 		expect(out.live.find((b) => b.type === "title")?.visible).toBe(false);
-		// missing known content types appended
-		expect(out.live.map((b) => b.type)).toContain("stats");
-		expect(out.live.map((b) => b.type)).toContain("follower");
+		// missing known content types appended (data is the merged stats+follower block)
+		expect(out.live.map((b) => b.type)).toContain("data");
+	});
+
+	it("merges pre-v7 live stats+follower into a single data block, keeping the stats slot", () => {
+		const stored = {
+			...DEFAULT_CARD_LAYOUT,
+			version: 6,
+			live: [
+				{ id: "cover", type: "cover", visible: true },
+				{ id: "stats", type: "stats", visible: false, marginTop: 9 },
+				{ id: "follower", type: "follower", visible: true },
+				{ id: "desc", type: "desc", visible: true },
+			],
+		};
+		const out = normalizeCardLayout(stored, DEFAULT_CARD_LAYOUT);
+		const types = out.live.map((b) => b.type);
+		// stats → data at the same slot; follower dropped; no leftover stats/follower
+		expect(types).not.toContain("stats");
+		expect(types).not.toContain("follower");
+		const data = out.live.find((b) => b.type === "data");
+		expect(data).toMatchObject({ id: "data", type: "data", visible: false, marginTop: 9 });
+		// data sits where stats was (after cover), desc still after it
+		expect(types.indexOf("data")).toBe(types.indexOf("cover") + 1);
+		expect(types.indexOf("desc")).toBeGreaterThan(types.indexOf("data"));
 	});
 
 	it("drops a standalone topic block from dynamic layouts saved before v5", () => {

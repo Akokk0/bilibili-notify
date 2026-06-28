@@ -83,8 +83,9 @@ export function createSidecarEngines(options: CreateSidecarEnginesOptions): Side
 				cardColorStart: cs.cardColorStart,
 				cardColorEnd: cs.cardColorEnd,
 				font: cs.font,
-				hideDesc: cs.hideDesc,
-				hideFollower: cs.hideFollower,
+				showPopularity: cs.showPopularity,
+				showArea: cs.showArea,
+				showFans: cs.showFans,
 			},
 		});
 		imageRenderer.start();
@@ -185,8 +186,9 @@ export function createSidecarEngines(options: CreateSidecarEnginesOptions): Side
 						cardColorStart: cs.cardColorStart,
 						cardColorEnd: cs.cardColorEnd,
 						font: cs.font,
-						hideDesc: cs.hideDesc,
-						hideFollower: cs.hideFollower,
+						showPopularity: cs.showPopularity,
+						showArea: cs.showArea,
+						showFans: cs.showFans,
 					});
 				}
 				lastCardStyleKey = cardStyleKey;

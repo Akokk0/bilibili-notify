@@ -93,8 +93,9 @@ const StyleSchema = z.object({
 	cardColorStart: z.string(),
 	cardColorEnd: z.string(),
 	font: z.string().optional(),
-	hideDesc: z.boolean().optional(),
-	hideFollower: z.boolean().optional(),
+	showPopularity: z.boolean().optional(),
+	showArea: z.boolean().optional(),
+	showFans: z.boolean().optional(),
 	glassOpacity: z.number().min(0).max(1).optional(),
 	glassClear: z.boolean().optional(),
 	/** 背景图资产 id 列表(空 = 渐变;>1 = 轮换,预览端取首张)。 */
@@ -317,8 +318,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			cardColorStart: style.cardColorStart,
 			cardColorEnd: style.cardColorEnd,
 			font: style.font ?? "PingFang SC, sans-serif",
-			hideDesc: style.hideDesc ?? false,
-			hideFollower: style.hideFollower ?? false,
+			showPopularity: style.showPopularity ?? true,
+			showArea: style.showArea ?? true,
+			showFans: style.showFans ?? true,
 			glassOpacity: style.glassOpacity,
 			glassClear: style.glassClear,
 			backgroundImage: style.backgroundImages?.[0] ?? "",
@@ -750,8 +752,9 @@ const SVG_AVATAR_FAN =
 
 function buildLivePreviewProps(style: PreviewStyle): LiveCardProps {
 	return {
-		hideDesc: style.hideDesc ?? false,
-		hideFollower: style.hideFollower ?? false,
+		showPopularity: style.showPopularity ?? true,
+		showArea: style.showArea ?? true,
+		showFans: style.showFans ?? true,
 		cardColorStart: style.cardColorStart,
 		cardColorEnd: style.cardColorEnd,
 		glassOpacity: style.glassOpacity,

@@ -7,8 +7,9 @@ const base: CardStyle = {
 	cardColorStart: "#base-start",
 	cardColorEnd: "#base-end",
 	font: "PingFang SC, sans-serif",
-	hideDesc: false,
-	hideFollower: false,
+	showPopularity: true,
+	showArea: true,
+	showFans: true,
 	backgroundImages: [],
 	glassClear: false,
 };

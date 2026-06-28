@@ -249,8 +249,10 @@ export const DEFAULT_CARD_STYLE = {
 	cardColorStart: "#e0c3fc",
 	cardColorEnd: "#8ec5fc",
 	font: "PingFang SC, sans-serif",
-	hideDesc: false,
-	hideFollower: false,
+	// 数据区三项默认全显示 = 复刻现状(简介显隐已交由版式 desc 块)。
+	showPopularity: true,
+	showArea: true,
+	showFans: true,
 	// 空列表 = 沿用渐变背景;glassOpacity 留空 = 各卡用内置基线(见 CardStyleSchema)。
 	backgroundImages: [] as string[],
 } as const;

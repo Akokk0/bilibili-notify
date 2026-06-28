@@ -704,24 +704,35 @@ function CardVisualOverrides({ draft, globals, setSection, updateDraft }: Sectio
 							}
 						/>
 						<BooleanOverride
-							label="隐藏简介"
-							value={draft.cardStyle.hideDesc}
-							inherited={globals.defaults.cardStyle.hideDesc}
+							label="数据区·显示人气/点赞"
+							value={draft.cardStyle.showPopularity}
+							inherited={globals.defaults.cardStyle.showPopularity}
 							onChange={(value) =>
 								updateDraft((next) => {
 									next.cardStyle ??= {};
-									setOptional(next.cardStyle, "hideDesc", value);
+									setOptional(next.cardStyle, "showPopularity", value);
 								})
 							}
 						/>
 						<BooleanOverride
-							label="隐藏粉丝/观看"
-							value={draft.cardStyle.hideFollower}
-							inherited={globals.defaults.cardStyle.hideFollower}
+							label="数据区·显示分区"
+							value={draft.cardStyle.showArea}
+							inherited={globals.defaults.cardStyle.showArea}
 							onChange={(value) =>
 								updateDraft((next) => {
 									next.cardStyle ??= {};
-									setOptional(next.cardStyle, "hideFollower", value);
+									setOptional(next.cardStyle, "showArea", value);
+								})
+							}
+						/>
+						<BooleanOverride
+							label="数据区·显示粉丝数据"
+							value={draft.cardStyle.showFans}
+							inherited={globals.defaults.cardStyle.showFans}
+							onChange={(value) =>
+								updateDraft((next) => {
+									next.cardStyle ??= {};
+									setOptional(next.cardStyle, "showFans", value);
 								})
 							}
 						/>

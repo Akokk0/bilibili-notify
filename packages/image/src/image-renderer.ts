@@ -68,10 +68,12 @@ export interface ImageRendererConfig {
 	backgroundImage?: string;
 	/** CSS font-family，默认值由 adapter 提供(通常透传 `DEFAULT_CARD_STYLE.font`)。 */
 	font: string;
-	/** 是否隐藏直播间简介。 */
-	hideDesc: boolean;
-	/** 是否在卡片上隐藏粉丝变化与累计观看数(对齐 `hideDesc` 命名,「隐藏=true」)。 */
-	hideFollower: boolean;
+	/** 直播卡数据区:显示人气 / 点赞(直播中=人气,下播=点赞)。 */
+	showPopularity: boolean;
+	/** 直播卡数据区:显示分区。 */
+	showArea: boolean;
+	/** 直播卡数据区:显示粉丝数据(当前粉丝数 / 累计观看 / 粉丝变化,按直播态)。 */
+	showFans: boolean;
 }
 
 export interface ImageRendererOptions {
@@ -146,8 +148,9 @@ export class ImageRenderer {
 			prev.cardColorStart !== config.cardColorStart ||
 			prev.cardColorEnd !== config.cardColorEnd ||
 			prev.font !== config.font ||
-			prev.hideDesc !== config.hideDesc ||
-			prev.hideFollower !== config.hideFollower ||
+			prev.showPopularity !== config.showPopularity ||
+			prev.showArea !== config.showArea ||
+			prev.showFans !== config.showFans ||
 			prev.glassOpacity !== config.glassOpacity ||
 			prev.glassClear !== config.glassClear ||
 			prev.backgroundImage !== config.backgroundImage;
@@ -260,8 +263,9 @@ export class ImageRenderer {
 		const html = await renderCard(
 			LiveCard,
 			{
-				hideDesc: this.config.hideDesc,
-				hideFollower: this.config.hideFollower,
+				showPopularity: colorOptions.showPopularity ?? this.config.showPopularity,
+				showArea: colorOptions.showArea ?? this.config.showArea,
+				showFans: colorOptions.showFans ?? this.config.showFans,
 				cardColorStart,
 				cardColorEnd,
 				glassOpacity,
