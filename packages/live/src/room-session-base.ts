@@ -58,9 +58,19 @@ export abstract class RoomSessionBase {
 	 * 始终有定义(基准恒在);是否启用由调用点据 `enable` 自行判定 —— SC / guard 把未启用
 	 * 折成 undefined 让 generate* 走渲染器全局 config 兜底,live 则原样透传(room-helpers
 	 * 再据 enable 门控)。adapter 已把 per-kind 折算成完整样式,这里只做选取。
+	 *
+	 * 该 kind 配了 >1 张背景图时「每次推送轮换」:经注入的 `pickBackground`(按 `uid:kind`
+	 * 独立游标)选下一张覆盖 `backgroundImage`。未注入(koishi)/ ≤1 张 → 原样返回(用首图)。
+	 * 每次调用即一次推送,故在此推进游标恰好 = 每推送一次轮换一张。
 	 */
 	protected resolvedCardStyle(kind: CardKind): CustomCardStyleLike {
-		return this.sub.customCardStyleByKind?.[kind] ?? this.sub.customCardStyle;
+		const style = this.sub.customCardStyleByKind?.[kind] ?? this.sub.customCardStyle;
+		const images = style.backgroundImages;
+		if (images && images.length > 1) {
+			const picked = this.ctx.pickBackground(`${this.sub.uid}:${kind}`, images);
+			if (picked !== undefined) return { ...style, backgroundImage: picked };
+		}
+		return style;
 	}
 
 	/** Whether the underlying B-station room is currently broadcasting. */

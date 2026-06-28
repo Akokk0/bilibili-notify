@@ -134,6 +134,8 @@ function makeCtx(opts?: { customGuardBuyEnabled?: boolean }): { ctx: RoomContext
 		emitLiveState: m.emitLiveState,
 		emitEngineError: vi.fn(),
 		emitViewers: vi.fn(),
+		// 默认不轮换(adapter 未注入语义);轮换用例自行覆写为计数选择器。
+		pickBackground: vi.fn(() => undefined),
 	} as unknown as RoomContext;
 	return { ctx, m };
 }
@@ -240,6 +242,54 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
 		await s.onIncomeSuperChat(scBody);
 		expect(m.generateSCCard.mock.calls[0]?.[1]).toBeUndefined();
+	});
+
+	it("per-kind sc 配多图 → 连续 SC 推送经 pickBackground 逐张轮换背景", async () => {
+		const { ctx, m } = makeCtx();
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
+		// 注入按 scopeKey 计数的选择器,模拟「每次推送轮换」。
+		const cursors: Record<string, number> = {};
+		// biome-ignore lint/suspicious/noExplicitAny: 覆写 mock ctx 的可选回调
+		(ctx as any).pickBackground = (key: string, images: string[]): string => {
+			const i = cursors[key] ?? 0;
+			cursors[key] = i + 1;
+			return images[i % images.length] as string;
+		};
+		const s = new RoomSession(
+			ctx,
+			makeSub({
+				superchat: true,
+				minScPrice: 30,
+				customCardStyleByKind: { sc: { enable: true, backgroundImages: ["a", "b", "c"] } },
+			}),
+		) as AnySession;
+		await s.onIncomeSuperChat(scBody);
+		await s.onIncomeSuperChat(scBody);
+		await s.onIncomeSuperChat(scBody);
+		await s.onIncomeSuperChat(scBody);
+		const bgs = m.generateSCCard.mock.calls.map(
+			(c) => (c[1] as { backgroundImage?: string } | undefined)?.backgroundImage,
+		);
+		expect(bgs).toEqual(["a", "b", "c", "a"]);
+	});
+
+	it("per-kind sc 单图 → 不调 pickBackground,沿用该单图(engines 已填 backgroundImage)", async () => {
+		const { ctx, m } = makeCtx();
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
+		const s = new RoomSession(
+			ctx,
+			makeSub({
+				superchat: true,
+				minScPrice: 30,
+				// engines 的 cardStyleToColorOptions 同时填单 backgroundImage 与列表。
+				customCardStyleByKind: {
+					sc: { enable: true, backgroundImage: "solo", backgroundImages: ["solo"] },
+				},
+			}),
+		) as AnySession;
+		await s.onIncomeSuperChat(scBody);
+		expect(ctx.pickBackground).not.toHaveBeenCalled();
+		expect(m.generateSCCard.mock.calls[0]?.[1]).toMatchObject({ backgroundImage: "solo" });
 	});
 });
 

@@ -10,6 +10,7 @@ import {
 	LIVE_ROOM_MASTER_KEYS,
 	type LiveMasterFeature,
 	type LivePushFeature,
+	type PickCardBackground,
 	type PushLike,
 	type SubItemView,
 } from "./push-like";
@@ -96,6 +97,11 @@ export interface RoomContextOptions {
 	 * 的频率已经稀疏(每个直播间最多每 2s 一次)。
 	 */
 	emitViewers?: (uid: string, viewers: string) => void;
+	/**
+	 * 背景图轮换选择器(可选)。adapter 注入则多图卡片「每次推送轮换」;缺省(如 koishi)→
+	 * 推送点回退单图。standalone 注入由 `createCardBgRotator` 支撑(fs 持久化游标)。
+	 */
+	pickCardBackground?: PickCardBackground;
 }
 
 /**
@@ -134,6 +140,7 @@ export class RoomContextBase {
 	readonly emitEngineError: (message: string) => void;
 	private readonly _emitLiveState: ((uid: string, status: "live" | "idle") => void) | undefined;
 	private readonly _emitViewers: ((uid: string, viewers: string) => void) | undefined;
+	private readonly _pickCardBackground: PickCardBackground | undefined;
 
 	config: ListenerManagerConfig;
 
@@ -168,6 +175,15 @@ export class RoomContextBase {
 		this.emitEngineError = opts.emitEngineError;
 		this._emitLiveState = opts.emitLiveState;
 		this._emitViewers = opts.emitViewers;
+		this._pickCardBackground = opts.pickCardBackground;
+	}
+
+	/**
+	 * 背景图轮换:多图时返回本次该用的背景并推进游标;adapter 未注入(koishi)或列表 ≤1 张
+	 * → 返回 undefined,调用方回退单图。安全调用方,业务点无需判空。
+	 */
+	pickBackground(scopeKey: string, images: string[]): string | undefined {
+		return this._pickCardBackground?.(scopeKey, images);
 	}
 
 	/**

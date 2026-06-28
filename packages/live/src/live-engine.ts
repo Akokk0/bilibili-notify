@@ -6,7 +6,13 @@ import { DanmakuCollector } from "./danmaku-collector";
 import { ListenerManager, type ListenerManagerConfig } from "./listener-manager";
 import type { CommentaryClient } from "./live-summary-requester";
 import { LiveSummaryRequester } from "./live-summary-requester";
-import type { LiveSubscriptionOp, PushLike, SubItemView, SubscriptionsView } from "./push-like";
+import type {
+	LiveSubscriptionOp,
+	PickCardBackground,
+	PushLike,
+	SubItemView,
+	SubscriptionsView,
+} from "./push-like";
 import definedStopWords, { parseStopWords } from "./stop-words";
 import { LiveTemplateRenderer } from "./template-renderer";
 import { WordcloudGenerator } from "./wordcloud-generator";
@@ -78,6 +84,12 @@ export interface LiveEngineOptions {
 	 * 2s at the room-session boundary.
 	 */
 	emitViewers?: (uid: string, viewers: string) => void;
+	/**
+	 * Optional — background-rotation picker. When present, a card kind with >1
+	 * configured backgrounds cycles one-per-push; absent (e.g. koishi) keeps the
+	 * first background. Threaded straight through to every RoomContext.
+	 */
+	pickCardBackground?: PickCardBackground;
 }
 
 /**
@@ -145,6 +157,7 @@ export class LiveEngine {
 			emitEngineError: opts.emitEngineError,
 			emitLiveState: opts.emitLiveState,
 			emitViewers: opts.emitViewers,
+			pickCardBackground: opts.pickCardBackground,
 		});
 	}
 

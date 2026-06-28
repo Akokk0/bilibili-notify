@@ -18,6 +18,8 @@
  * propagates correctly.
  */
 
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import { CommentaryGenerator } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
@@ -60,6 +62,7 @@ import type { HistoryStore } from "../history/store.js";
 import type { PlatformAdapter, ProbeResult } from "../platforms/types.js";
 import { createMultiplexSink } from "../sink/multiplex.js";
 import { readCardBgDataUrl } from "./card-assets.js";
+import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
 import { MasterNotifier } from "./master-notifier.js";
 import type { NodeServiceContext } from "./service-context.js";
@@ -347,6 +350,32 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		imageRenderer = buildImageRenderer(opts.puppeteer);
 	}
 
+	// ---------- 背景图轮换游标(每次推送轮换 + fs 持久化)----------
+	// 游标按 `uid:kind` 独立,落盘 `<dataDir>/card-bg-cursors.json`,重启续接不归零。
+	// pick 在推送点(room-session / DynamicEngine)同步推进;脏标记驱动定时 flush,避免每
+	// 推送写盘。注入给两端引擎;koishi 不注入即不轮换。
+	const cursorFile = join(opts.configStore.bootstrap.dataDir, "card-bg-cursors.json");
+	const loadCursors = (): Record<string, number> => {
+		try {
+			const parsed: unknown = JSON.parse(readFileSync(cursorFile, "utf8"));
+			return parsed && typeof parsed === "object" ? (parsed as Record<string, number>) : {};
+		} catch {
+			return {}; // 首次运行 / 文件缺失 / 损坏 → 从零开始
+		}
+	};
+	const cardBgRotator: CardBgRotator = createCardBgRotator(loadCursors());
+	const flushCursors = (): void => {
+		if (!cardBgRotator.isDirty()) return;
+		try {
+			writeFileSync(cursorFile, JSON.stringify(cardBgRotator.snapshot()));
+			cardBgRotator.clearDirty();
+		} catch (e) {
+			log.warn(`[engines] 背景轮换游标落盘失败: ${String(e)}`);
+		}
+	};
+	const cursorFlushTimer = setInterval(flushCursors, 30_000);
+	cursorFlushTimer.unref?.();
+
 	// ---------- DynamicEngine ----------
 	const dynamicPushLike: DynamicPushLike = {
 		async broadcastDynamic(uid, segments, _kind) {
@@ -462,6 +491,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		emitEngineError: (msg) => opts.bus.emit("engine-error", "live-engine", msg),
 		emitLiveState: (uid, status) => opts.bus.emit("live-state-changed", uid, status),
 		emitViewers: (uid, viewers) => opts.bus.emit("live-viewers-changed", uid, viewers),
+		pickCardBackground: cardBgRotator.pick,
 	});
 
 	// Initialise live with current subs.
@@ -698,6 +728,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		if (disposed) return;
 		disposed = true;
 		clearInterval(probeTimer);
+		clearInterval(cursorFlushTimer);
+		flushCursors(); // 关停前把未落盘的游标推进写一次,重启续接
+
 		for (const h of handles.splice(0)) {
 			try {
 				h.dispose();
@@ -985,6 +1018,9 @@ function cardStyleToColorOptions(s: {
 		glassOpacity: s.glassOpacity,
 		glassClear: s.glassClear,
 		backgroundImage: s.backgroundImages?.[0],
+		// 完整列表透传给推送点;>1 张时「每次推送轮换」(见 RoomSession.resolvedCardStyle /
+		// DynamicEngine)。单图 / 缺省即用 backgroundImage,不轮换。
+		backgroundImages: s.backgroundImages,
 	};
 }
 

@@ -74,7 +74,18 @@ export interface CustomCardStyleLike {
 	glassClear?: boolean;
 	/** 背景图资产 id;透传给 generate* 的 colorOptions(renderer 经 resolveAsset 解析)。 */
 	backgroundImage?: string;
+	/**
+	 * 该卡片类型解析后的**完整**背景图列表(>1 张时「每次推送轮换」)。adapter 折算 per-kind
+	 * 时填入;推送点据它选下一张覆盖 `backgroundImage`。缺省 / ≤1 张 = 不轮换,用 `backgroundImage`。
+	 */
+	backgroundImages?: string[];
 }
+
+/**
+ * 背景图轮换选择器:给定 scopeKey 与该 kind 的完整图列表,返回本次该用的背景(并在实现内
+ * 推进游标)。adapter 注入(独立端有 fs 持久化游标;koishi 不注入即不轮换)。
+ */
+export type PickCardBackground = (scopeKey: string, images: string[]) => string | undefined;
 
 export interface CustomLiveMsgLike {
 	enable: boolean;

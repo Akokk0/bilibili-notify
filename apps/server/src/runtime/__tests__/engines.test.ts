@@ -173,6 +173,8 @@ function makeServiceCtx() {
 function makeConfigStore(initial: GlobalConfig) {
 	let g = initial;
 	return {
+		// 背景轮换游标 fs 路径取自此;不存在即 load 走 catch 返回 {},不脏不写盘,测试安全。
+		bootstrap: { dataDir: "/tmp/bn-engines-test-nonexistent" },
 		getGlobals: () => g,
 		getTargets: () => [],
 		getAdapters: () => [],
