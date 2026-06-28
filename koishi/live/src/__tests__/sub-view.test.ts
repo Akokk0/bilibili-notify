@@ -29,6 +29,8 @@ function makeConfig(over: Partial<BilibiliNotifyLiveConfig> = {}): BilibiliNotif
 		liveSummary: [],
 		customGuardBuy: { enable: false },
 		customLiveMsg: { enable: false },
+		liveEndGrace: false,
+		liveEndGraceMinutes: 2,
 		...over,
 	};
 }
@@ -83,6 +85,25 @@ describe("storeToSubItemView — per-UP override ?? config 两层折算", () => 
 		);
 		expect(view.restartPush).toBe(false); // per-UP 命中
 		expect(view.pushTime).toBe(4); // config 回退
+	});
+
+	it("断流接续两开关:无 per-UP override → 回退 live config", () => {
+		const view = storeToSubItemView(
+			makeSub(),
+			makeConfig({ liveEndGrace: true, liveEndGraceMinutes: 5 }),
+		);
+		expect(view.liveEndGrace).toBe(true);
+		expect(view.liveEndGraceMinutes).toBe(5);
+	});
+
+	it("断流接续:per-UP override 命中(含 false 假值)优先于 config", () => {
+		const view = storeToSubItemView(
+			makeSub({ schedule: { liveEndGrace: false, liveEndGraceMinutes: 8 } }),
+			makeConfig({ liveEndGrace: true, liveEndGraceMinutes: 2 }),
+		);
+		// 关键回归守卫:per-UP 的 false 不能被 config 的 true 吃掉。
+		expect(view.liveEndGrace).toBe(false);
+		expect(view.liveEndGraceMinutes).toBe(8);
 	});
 
 	it("features 写进 SubItemView 的布尔开关字段", () => {

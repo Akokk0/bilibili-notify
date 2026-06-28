@@ -10,6 +10,8 @@ export interface BilibiliNotifyLiveConfig {
 	wordcloudStopWords?: string;
 	pushTime: number;
 	restartPush: boolean;
+	liveEndGrace: boolean;
+	liveEndGraceMinutes: number;
 	minScPrice: number;
 	minGuardLevel: 1 | 2 | 3;
 	liveSummary: string[];
@@ -49,6 +51,20 @@ export const BilibiliNotifyLiveConfig: Schema<BilibiliNotifyLiveConfig> = Schema
 		.default(DEFAULT_SCHEDULE.restartPush)
 		.description(
 			"插件重启后，如果 UP 正在直播，要不要马上推送一次呢？女仆会第一时间报告给主人的！",
+		),
+
+	liveEndGrace: Schema.boolean()
+		.default(DEFAULT_SCHEDULE.liveEndGrace)
+		.description(
+			"断流接续～开启后 UP 下播不会马上通知，女仆会先等一会儿；如果在等待时间内又开播了（多半是网络抖动或被超管掐了流），就当作同一场直播接续下去，不发下播也不重发开播 (｀・ω・´)b",
+		),
+	liveEndGraceMinutes: Schema.number()
+		.min(1)
+		.max(10)
+		.step(1)
+		.default(DEFAULT_SCHEDULE.liveEndGraceMinutes)
+		.description(
+			"断流接续的等待时长（分钟，1～10）～只有上面的开关打开时才生效；超过这个时间还没重新开播，女仆才判定是真的下播并通知主人 (〃´-`〃)♡",
 		),
 
 	minScPrice: Schema.number()

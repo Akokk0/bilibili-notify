@@ -117,6 +117,8 @@ export function storeToSubItemView(
 		minGuardLevel: sub.overrides.filters?.minGuardLevel ?? config.minGuardLevel,
 		pushTime: sub.overrides.schedule?.pushTime ?? config.pushTime,
 		restartPush: sub.overrides.schedule?.restartPush ?? config.restartPush,
+		liveEndGrace: sub.overrides.schedule?.liveEndGrace ?? config.liveEndGrace,
+		liveEndGraceMinutes: sub.overrides.schedule?.liveEndGraceMinutes ?? config.liveEndGraceMinutes,
 		aiOverride: buildAiOverride(sub.overrides.ai),
 	};
 }
