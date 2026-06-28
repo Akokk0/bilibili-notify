@@ -438,12 +438,32 @@ function PreviewContentFields({
 		<>
 			{/* 卡片类型由左侧「卡片类型」导航选择;此处只显示当前类型的内容字段。 */}
 			{realData ? (
-				<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-emerald-800">
-					{kind === "live" || kind === "dyn"
-						? (realDataLabel ??
-							"使用该 UP 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。")
-						: "SC / 上舰:接收方为该 UP(真实名字 / 头像),发送者 / 新舰长取当前登录账号;解析失败回退示例。"}
-				</div>
+				kind === "dyn" ? (
+					// per-UP 动态:仍用该 UP 真实动态,但可选渲染「第几条」(offset)。
+					<>
+						<Field code="offset" label="第几条动态">
+							<TInput
+								value={String(content.dyn.offset)}
+								onChange={(v) => {
+									const n = Number.parseInt(v, 10);
+									setDyn({ offset: Number.isFinite(n) && n > 0 ? n : 1 });
+								}}
+								placeholder="1"
+							/>
+						</Field>
+						<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-emerald-800">
+							{realDataLabel ??
+								"使用该 UP 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。"}
+						</div>
+					</>
+				) : (
+					<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-emerald-800">
+						{kind === "live"
+							? (realDataLabel ??
+								"使用该 UP 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。")
+							: "SC / 上舰:接收方为该 UP(真实名字 / 头像),发送者 / 新舰长取当前登录账号;解析失败回退示例。"}
+					</div>
+				)
 			) : kind === "live" ? (
 				<>
 					<Field code="roomId">
@@ -788,7 +808,8 @@ export default function Cards() {
 	const previewContent = useMemo<Record<string, unknown>>(() => {
 		if (isGlobalScope || !focusedSub) return content[kind];
 		if (kind === "live") return { uid: focusedSub.uid };
-		if (kind === "dyn") return { uid: focusedSub.uid, offset: 1 };
+		// 动态:用「第几条」选择器的 offset(默认 1),后端按 offset 从该 UP 动态列表取一条。
+		if (kind === "dyn") return { uid: focusedSub.uid, offset: content.dyn.offset };
 		// sc / guard:发送者 / 新舰长由后端取当前登录账号(与全局一致);带上该 UP 的 uid,
 		// 后端据此把卡片**接收方**渲染成真实的该 UP(失败回退示例)。内容沿用固定示例。
 		return { ...content[kind], uid: focusedSub.uid };

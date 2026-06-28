@@ -184,4 +184,39 @@ describe("Cards per-UP 作用域接线", () => {
 		expect(overrides.cardStyle).toBeNull();
 		expect(overrides.cardStyleByKind).toEqual({ sc: { cardColorStart: "#abcdef" } });
 	});
+
+	it("per-UP 动态 → 选「第几条」,offset 进预览请求", async () => {
+		const { container } = renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+		fireEvent.click(await screen.findByText("UID 123456"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+
+		// 切到动态类型(SectionNav 竖栏 + 横向条两份,取第一个)。
+		fireEvent.click(screen.getAllByRole("button", { name: "动态发布" })[0]);
+
+		// 把「第几条动态」改成 3。
+		const offsetInput = await waitFor(() => {
+			const el = container.querySelector('[data-code="offset"] input');
+			if (!el) throw new Error("offset input not rendered");
+			return el as HTMLInputElement;
+		});
+		fireEvent.change(offsetInput, { target: { value: "3" } });
+
+		// 防抖后预览 POST 用该 UP 的 uid + 所选 offset(证明不再写死 1)。
+		await waitFor(
+			() => {
+				const call = vi.mocked(api.post).mock.calls.find(([url, body]) => {
+					const b = body as { kind?: string; content?: { uid?: string; offset?: number } };
+					return (
+						url === "/api/cards/preview" &&
+						b?.kind === "dyn" &&
+						b.content?.uid === "123456" &&
+						b.content?.offset === 3
+					);
+				});
+				expect(call).toBeTruthy();
+			},
+			{ timeout: 2000 },
+		);
+	});
 });
