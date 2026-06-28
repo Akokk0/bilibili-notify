@@ -3,6 +3,8 @@
  * 「非法 query 显式 400 而非静默坏行为」契约)。
  */
 
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createLogsRoute } from "../logs.js";
 import type { RouteDeps } from "../types.js";
@@ -12,7 +14,9 @@ let query: ReturnType<typeof vi.fn>;
 function makeApp() {
 	query = vi.fn(async () => []);
 	const deps = {
-		runtime: { logStore: { query, dayFilePath: (d: string) => `/tmp/${d}.jsonl` } },
+		runtime: {
+			logStore: { query, dayFilePath: (d: string) => join(tmpdir(), `bn-logs-test-${d}.jsonl`) },
+		},
 	} as unknown as RouteDeps;
 	return createLogsRoute(deps);
 }

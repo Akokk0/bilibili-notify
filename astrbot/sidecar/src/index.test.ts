@@ -1,3 +1,5 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { parseOptionalParentPid, parseSidecarLaunchOptions } from "./index.js";
 
@@ -19,9 +21,9 @@ describe("sidecar launch options", () => {
 				"--port",
 				"27890",
 				"--ready-file",
-				"/tmp/ready.json",
+				join(tmpdir(), "ready.json"),
 				"--data-dir",
-				"/tmp/data",
+				join(tmpdir(), "data"),
 				"--ai-backend",
 				"own",
 				"--ai-provider-id",
@@ -34,8 +36,8 @@ describe("sidecar launch options", () => {
 			{
 				BN_SIDECAR_HOST: "0.0.0.0",
 				BN_SIDECAR_PORT: "19090",
-				BN_SIDECAR_READY_FILE: "/tmp/env-ready.json",
-				BN_SIDECAR_DATA_DIR: "/tmp/env-data",
+				BN_SIDECAR_READY_FILE: join(tmpdir(), "env-ready.json"),
+				BN_SIDECAR_DATA_DIR: join(tmpdir(), "env-data"),
 				BN_SIDECAR_AI_BACKEND: "astrbot",
 				BN_SIDECAR_AI_PROVIDER_ID: "env-provider",
 				BN_SIDECAR_LOG_LEVEL: "info",
@@ -47,8 +49,8 @@ describe("sidecar launch options", () => {
 		expect(options).toMatchObject({
 			host: "127.0.0.1",
 			port: 27_890,
-			readyFile: "/tmp/ready.json",
-			dataDir: "/tmp/data",
+			readyFile: join(tmpdir(), "ready.json"),
+			dataDir: join(tmpdir(), "data"),
 			aiBackend: "own",
 			aiProviderId: "astrbot-openai",
 			logLevel: "debug",

@@ -6,6 +6,8 @@
  * 非法 limit / since 显式 400,而非静默坏行为。
  */
 
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createHistoryRoute } from "../history.js";
 import type { RouteDeps } from "../types.js";
@@ -15,7 +17,7 @@ let query: ReturnType<typeof vi.fn>;
 function makeApp() {
 	query = vi.fn(async () => []);
 	const deps = {
-		runtime: { historyStore: { query, imageDir: () => "/tmp" } },
+		runtime: { historyStore: { query, imageDir: () => join(tmpdir(), "bn-history-test") } },
 	} as unknown as RouteDeps;
 	return createHistoryRoute(deps);
 }

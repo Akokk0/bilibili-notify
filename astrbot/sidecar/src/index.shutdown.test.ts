@@ -7,7 +7,7 @@ const fixture = vi.hoisted(() => {
 		started: true,
 		authStarted: true,
 		engines: { dynamic: true, live: true },
-		subscriptions: { count: 2, path: "/tmp/astrbot/subscriptions.json" },
+		subscriptions: { count: 2, path: "astrbot-data/subscriptions.json" },
 		events: { nextId: 4, size: 3 },
 		login: { status: 5, msg: "已登录" },
 	};

@@ -726,7 +726,7 @@ function createTestHarness() {
 					},
 					subscriptions: {
 						count: subscriptions.length,
-						path: "/tmp/subscriptions.json",
+						path: "astrbot-data/subscriptions.json",
 					},
 					events: events.snapshot(),
 					login,
