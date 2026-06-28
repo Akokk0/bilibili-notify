@@ -21,7 +21,7 @@ export const BLOCK_LABELS: Record<LayoutKind, Record<string, string>> = {
 		cover: "封面图",
 		header: "主播信息",
 		title: "直播标题",
-		data: "数据区",
+		data: "直播数据",
 		desc: "简介",
 	},
 	dyn: {

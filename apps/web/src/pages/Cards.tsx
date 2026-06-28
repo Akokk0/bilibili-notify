@@ -516,8 +516,8 @@ function PerUpDataSection({
 	);
 	return (
 		<GlassBox
-			title="数据区"
-			subtitle="开 = 该 UP 单独设置数据区显示项(人气·点赞 / 分区 / 粉丝数据);关 = 跟随全局 / 基准"
+			title="直播数据"
+			subtitle="开 = 该 UP 单独设置直播数据显示项(人气·点赞 / 分区 / 粉丝数据);关 = 跟随全局 / 基准"
 			accent={KIND_LABELS.live.tone}
 			icon={<Icon.live size={14} />}
 			badge={active ? "单独设置" : "跟随"}
@@ -988,7 +988,9 @@ export default function Cards() {
 	// 按 kind 求「生效样式」:全局作用域 = 全局基准 + 该类型覆盖;per-UP = 再叠该 UP 基准 /
 	// 类型覆盖(puStyle 覆盖基准时整份替换;否则继承全局该类型生效值)。
 	const effStyleFor = (sk: StyleKind): CardStyle => {
-		const gEff = resolveKindStyle(gStyle, gByKind, sk);
+		// 全局 per-kind 不贡献数据区 show 字段(数据区只认基准 gStyle);per-UP per-kind 的 show
+		// 是该 UP 的数据区覆盖,保留。
+		const gEff: CardStyle = { ...gStyle, ...omitShow(gByKind[sk]) };
 		if (isGlobalScope) return gEff;
 		const base = puStyle ?? gEff;
 		return puByKind[sk] !== undefined ? { ...base, ...puByKind[sk] } : base;
@@ -1008,8 +1010,9 @@ export default function Cards() {
 		content: contentFor(fk),
 	}));
 
-	// 类型 tab 单卡生效值。per-UP 编辑「单独样式」用的基准 = puStyle ?? 全局该类型生效值。
-	const puBaseStyle: CardStyle = puStyle ?? resolveKindStyle(gStyle, gByKind, styleKind);
+	// 类型 tab 单卡生效值。per-UP 编辑「单独样式」/「数据区」用的基准 = puStyle ?? 全局该类型生效值
+	// (全局 per-kind 的 show 字段同样剥掉,数据区继承值取自基准)。
+	const puBaseStyle: CardStyle = puStyle ?? { ...gStyle, ...omitShow(gByKind[styleKind]) };
 	const effStyle: CardStyle = effStyleFor(styleKind);
 	const effLayout: CardLayoutFull | null = isGlobalScope ? gLayout : (puLayout ?? gLayout);
 
@@ -1235,11 +1238,11 @@ export default function Cards() {
 						kind === "live" &&
 						(isGlobalScope ? (
 							<GlassBox
-								title="数据区"
-								subtitle="直播卡数据区显示项 —— 人气·点赞 / 分区 / 粉丝数据;关掉某项即从卡片隐藏"
+								title="直播数据"
+								subtitle="直播卡数据显示项 —— 人气·点赞 / 分区 / 粉丝数据;关掉某项即从卡片隐藏"
 								accent={KIND_LABELS.live.tone}
 								icon={<Icon.live size={14} />}
-								badge="数据区"
+								badge="直播数据"
 							>
 								<DataSectionFields style={gStyle} onChange={(n) => setGStyle(n)} />
 							</GlassBox>

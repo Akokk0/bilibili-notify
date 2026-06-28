@@ -1044,15 +1044,34 @@ function buildCardStyleByKind(
 	overrides: SubscriptionOverrides,
 	kinds: readonly CardKind[],
 ): LiveSubView["customCardStyleByKind"] {
+	// 数据区 show 字段是直播内容语义,全局只认基准 cardStyle(→渲染器全局 config)。解析 per-kind
+	// 时剥掉**全局 kind 层**的 show 字段,避免旧配置里残留的全局 cardStyleByKind.live.show 盖过
+	// 基准、让数据区开关失效;per-UP(overrides)层的 show 仍保留 = 该 UP 的数据区覆盖。
+	const resolveDefaults = stripGlobalKindShowFlags(defaults);
 	const out: NonNullable<LiveSubView["customCardStyleByKind"]> = {};
 	for (const kind of kinds) {
 		const hasKindOverride =
 			defaults.cardStyleByKind?.[kind] !== undefined ||
 			overrides.cardStyleByKind?.[kind] !== undefined;
 		if (!hasKindOverride) continue;
-		out[kind] = cardStyleToColorOptions(resolveCardStyleForKind(defaults, overrides, kind));
+		out[kind] = cardStyleToColorOptions(resolveCardStyleForKind(resolveDefaults, overrides, kind));
 	}
 	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** 数据区显示开关字段(直播内容,全局基准管;不应从全局 per-kind 层生效)。 */
+const DATA_SHOW_KEYS = ["showPopularity", "showArea", "showFans"] as const;
+/** 复制一份 defaults,把全局 cardStyleByKind 各项里的 show 字段去掉(基准 cardStyle 不动)。 */
+function stripGlobalKindShowFlags(defaults: GlobalDefaults): GlobalDefaults {
+	const byKind = defaults.cardStyleByKind;
+	if (!byKind) return defaults;
+	const cleaned: Record<string, Record<string, unknown>> = {};
+	for (const [k, v] of Object.entries(byKind)) {
+		const o: Record<string, unknown> = { ...(v as Record<string, unknown>) };
+		for (const sk of DATA_SHOW_KEYS) delete o[sk];
+		cleaned[k] = o;
+	}
+	return { ...defaults, cardStyleByKind: cleaned as GlobalDefaults["cardStyleByKind"] };
 }
 
 export function buildDynamicSubsView(

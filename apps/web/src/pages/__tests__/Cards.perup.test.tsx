@@ -103,6 +103,43 @@ describe("Cards per-UP 作用域接线", () => {
 		);
 	});
 
+	it("全局直播数据只认基准:残留的全局 per-kind show 不泄漏到预览", async () => {
+		// 基准关粉丝;全局 per-kind live 残留 showFans=true(旧配置/历史快照)→ 应被忽略。
+		const defaults = makeDefaults() as unknown as {
+			cardStyle: { showFans: boolean };
+			cardStyleByKind?: unknown;
+		};
+		defaults.cardStyle.showFans = false;
+		defaults.cardStyleByKind = { live: { showFans: true } };
+		const globals = { app: {}, master: {}, defaults } as unknown as GlobalConfig;
+		vi.mocked(api.get).mockImplementation((url: string) => {
+			if (url.includes("/api/subs")) return Promise.resolve([]);
+			if (url.includes("/api/targets")) return Promise.resolve([]);
+			return Promise.resolve(globals);
+		});
+
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+
+		// 全家福 live 预览取基准 showFans=false(剥掉全局 per-kind 的 show)。
+		await waitFor(
+			() => {
+				const ok = vi.mocked(api.post).mock.calls.find(([url, body]) => {
+					const b = body as { kind?: string; style?: { showFans?: boolean } };
+					return url === "/api/cards/preview" && b?.kind === "live" && b.style?.showFans === false;
+				});
+				expect(ok).toBeTruthy();
+			},
+			{ timeout: 2000 },
+		);
+		// 反向:不应有 live 预览带 showFans=true(证明 per-kind 残留没泄漏)。
+		const leaked = vi.mocked(api.post).mock.calls.find(([url, body]) => {
+			const b = body as { kind?: string; style?: { showFans?: boolean } };
+			return url === "/api/cards/preview" && b?.kind === "live" && b.style?.showFans === true;
+		});
+		expect(leaked).toBeFalsy();
+	});
+
 	it("点已定制 UP 的 tab → 灵动岛切到 pageKey 'cards-perup'", async () => {
 		renderCards();
 		// 等全局先就位,确保 subs 已加载、tab 已渲染。
