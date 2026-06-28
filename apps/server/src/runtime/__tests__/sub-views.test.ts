@@ -152,3 +152,52 @@ describe("buildLiveSubViewSingle — 不伪装全局值", () => {
 		});
 	});
 });
+
+describe("per-kind 样式解析进视图", () => {
+	it("无任何 per-kind 覆盖 → live 视图 customCardStyleByKind 为 undefined(各 kind 走基准)", () => {
+		const view = buildLiveSubViewSingle(makeSub({}), fakeRuntimeStore(), makeDefaultGlobalConfig());
+		expect(view.customCardStyleByKind).toBeUndefined();
+	});
+
+	it("全局 cardStyleByKind.sc 设背景 → 仅 sc 条目 emit 完整样式,未覆盖的 live/guard 不 emit", () => {
+		const g = makeDefaultGlobalConfig();
+		g.defaults.cardStyleByKind = { sc: { backgroundImages: ["sc-bg"] } };
+		const view = buildLiveSubViewSingle(makeSub({}), fakeRuntimeStore(), g);
+		expect(view.customCardStyleByKind?.sc).toMatchObject({
+			enable: true,
+			backgroundImage: "sc-bg",
+		});
+		expect(view.customCardStyleByKind?.live).toBeUndefined();
+		expect(view.customCardStyleByKind?.guard).toBeUndefined();
+	});
+
+	it("per-UP cardStyleByKind.guard 覆盖全局同 kind → guard 条目取 UP 值(解析优先级 UP 类型最高)", () => {
+		const g = makeDefaultGlobalConfig();
+		g.defaults.cardStyleByKind = { guard: { backgroundImages: ["global-guard"] } };
+		const view = buildLiveSubViewSingle(
+			makeSub({ cardStyleByKind: { guard: { backgroundImages: ["up-guard"] } } }),
+			fakeRuntimeStore(),
+			g,
+		);
+		expect(view.customCardStyleByKind?.guard).toMatchObject({ backgroundImage: "up-guard" });
+	});
+
+	it("全局 cardStyleByKind.dynamic 设背景 → 无 per-UP override 的 sub 的 dynamic customCardStyle 也 enable:true 带该背景", () => {
+		const g = makeDefaultGlobalConfig();
+		g.defaults.cardStyleByKind = { dynamic: { backgroundImages: ["dyn-bg"] } };
+		const view = buildDynamicSubsView(fakeStore([makeSub({})]), fakeRuntimeStore(), g);
+		expect(view["12345"]?.customCardStyle).toMatchObject({
+			enable: true,
+			backgroundImage: "dyn-bg",
+		});
+	});
+
+	it("dynamic 无 per-kind 覆盖 → 维持原行为(无 per-UP override = enable:false,不被 per-kind 改写)", () => {
+		const view = buildDynamicSubsView(
+			fakeStore([makeSub({})]),
+			fakeRuntimeStore(),
+			makeDefaultGlobalConfig(),
+		);
+		expect(view["12345"]?.customCardStyle).toEqual({ enable: false });
+	});
+});

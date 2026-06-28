@@ -31,17 +31,20 @@ import {
 } from "@bilibili-notify/dynamic";
 import { ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
+	CardKind,
 	Disposable,
 	FeatureKey,
 	GlobalConfig,
+	GlobalDefaults,
 	HistorySource,
 	NotificationPayload,
 	PayloadSegment,
 	PushTarget,
 	Subscription,
 	SubscriptionOp,
+	SubscriptionOverrides,
 } from "@bilibili-notify/internal";
-import { resolve } from "@bilibili-notify/internal";
+import { resolve, resolveCardStyleForKind } from "@bilibili-notify/internal";
 import {
 	LiveEngine,
 	type LiveEngineConfig,
@@ -960,6 +963,52 @@ function buildDynamicFilter(eff: ReturnType<typeof resolve>) {
 	};
 }
 
+/**
+ * 把一份解析后的 CardStyle(或 per-UP 覆盖切片)映射成引擎消费的 colorOptions 形状
+ * (`enable:true` + 单背景图;列表只取首张,轮换属 Stage D)。
+ *
+ * 无背景图时 `backgroundImage` 留 undefined(**不是** `""`)—— generate* 用
+ * `colorOptions.backgroundImage ?? this.config.backgroundImage` 兜底,`""` 非 nullish
+ * 会把背景抹空而非回退全局,故只设颜色/玻璃的 per-UP 覆盖必须让背景透传 undefined。
+ */
+function cardStyleToColorOptions(s: {
+	cardColorStart?: string;
+	cardColorEnd?: string;
+	glassOpacity?: number;
+	glassClear?: boolean;
+	backgroundImages?: string[];
+}): LiveSubView["customCardStyle"] {
+	return {
+		enable: true,
+		cardColorStart: s.cardColorStart,
+		cardColorEnd: s.cardColorEnd,
+		glassOpacity: s.glassOpacity,
+		glassClear: s.glassClear,
+		backgroundImage: s.backgroundImages?.[0],
+	};
+}
+
+/**
+ * 折算 SubItemView.customCardStyleByKind:为「真有 per-kind 覆盖」的 kind(全局或 UP 的
+ * cardStyleByKind 设了该 kind)emit 完整解析样式(resolveCardStyleForKind),无覆盖的 kind
+ * 省略 → 引擎走基准 customCardStyle / 渲染器全局 config 兜底(保持热更)。
+ */
+function buildCardStyleByKind(
+	defaults: GlobalDefaults,
+	overrides: SubscriptionOverrides,
+	kinds: readonly CardKind[],
+): LiveSubView["customCardStyleByKind"] {
+	const out: NonNullable<LiveSubView["customCardStyleByKind"]> = {};
+	for (const kind of kinds) {
+		const hasKindOverride =
+			defaults.cardStyleByKind?.[kind] !== undefined ||
+			overrides.cardStyleByKind?.[kind] !== undefined;
+		if (!hasKindOverride) continue;
+		out[kind] = cardStyleToColorOptions(resolveCardStyleForKind(defaults, overrides, kind));
+	}
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
 export function buildDynamicSubsView(
 	store: SubscriptionStore,
 	subRuntimeStore: SubRuntimeStore,
@@ -991,6 +1040,16 @@ export function buildDynamicSubViewSingle(
 	globals: GlobalConfig,
 ): DynamicSubsView[string] {
 	const eff = resolve(sub, globals.defaults);
+	// dynamic 卡的生效样式:有 dynamic per-kind 覆盖(全局或 UP)→ 用完整解析样式;否则维持
+	// 原行为(per-UP base 折算 ? styled : enable:false → 引擎走 this.config 全局兜底,保持热更)。
+	const hasDynamicKind =
+		globals.defaults.cardStyleByKind?.dynamic !== undefined ||
+		sub.overrides.cardStyleByKind?.dynamic !== undefined;
+	const dynamicCardStyle: DynamicSubsView[string]["customCardStyle"] = hasDynamicKind
+		? cardStyleToColorOptions(resolveCardStyleForKind(globals.defaults, sub.overrides, "dynamic"))
+		: sub.overrides.cardStyle
+			? cardStyleToColorOptions(sub.overrides.cardStyle)
+			: { enable: false };
 	return {
 		uid: sub.uid,
 		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? sub.uid,
@@ -998,16 +1057,7 @@ export function buildDynamicSubViewSingle(
 		// add 用 `if(!op.sub.dynamic) break` 拦截。buildDynamicSubsView 已 continue 跳
 		// disabled,这里 `sub.enabled &&` 对它是恒真无副作用。
 		dynamic: sub.enabled && eff.features.dynamic,
-		customCardStyle: sub.overrides.cardStyle
-			? {
-					enable: true,
-					cardColorStart: sub.overrides.cardStyle.cardColorStart,
-					cardColorEnd: sub.overrides.cardStyle.cardColorEnd,
-					glassOpacity: sub.overrides.cardStyle.glassOpacity,
-					glassClear: sub.overrides.cardStyle.glassClear,
-					backgroundImage: sub.overrides.cardStyle.backgroundImages?.[0] ?? "",
-				}
-			: { enable: false },
+		customCardStyle: dynamicCardStyle,
 		filter: sub.overrides.filters ? buildDynamicFilter(eff) : undefined,
 		aiOverride: sub.overrides.ai ? buildAiOverride(eff) : undefined,
 		imageGroupEnable: sub.overrides.imageGroup?.enable,
@@ -1063,15 +1113,16 @@ export function buildLiveSubViewSingle(
 		// / live-summary-requester 透传 aiOverride)自动传 undefined → ImageRenderer
 		// / CommentaryGenerator 走 this.config 兜底,跟全局 hot-reload 同步。
 		customCardStyle: sub.overrides.cardStyle
-			? {
-					enable: true,
-					cardColorStart: sub.overrides.cardStyle.cardColorStart,
-					cardColorEnd: sub.overrides.cardStyle.cardColorEnd,
-					glassOpacity: sub.overrides.cardStyle.glassOpacity,
-					glassClear: sub.overrides.cardStyle.glassClear,
-					backgroundImage: sub.overrides.cardStyle.backgroundImages?.[0] ?? "",
-				}
+			? cardStyleToColorOptions(sub.overrides.cardStyle)
 			: { enable: false },
+		// per-kind 样式:仅为真有 per-kind 覆盖的 kind(live / sc / guard)emit 完整解析样式;
+		// 无覆盖的 kind 省略 → room-session 的 resolvedCardStyle 回退基准 customCardStyle。
+		// dynamic 卡不经 LiveEngine(走 DynamicEngine),故这里不含 dynamic。
+		customCardStyleByKind: buildCardStyleByKind(globals.defaults, sub.overrides, [
+			"live",
+			"sc",
+			"guard",
+		]),
 		// Per-UP 阈值 / 调度 / AI;adapter 在 add 路径上灌入,room-session 在 SC /
 		// guard / restartPush / pushTime / liveSummary 调用点先取 sub 值,缺失时回退全局。
 		// 已活跃 listener 通过 LiveScopedChange 同步增量更新(`subscriptionOpsToLive`
@@ -1220,6 +1271,7 @@ function subscriptionOpsToLive(
 						aiOverride: view.aiOverride,
 						wordcloudStopWords: view.wordcloudStopWords,
 						customCardStyle: view.customCardStyle,
+						customCardStyleByKind: view.customCardStyleByKind,
 						customLiveMsg: view.customLiveMsg,
 						customGuardBuy: view.customGuardBuy,
 						customLiveSummary: view.customLiveSummary,
