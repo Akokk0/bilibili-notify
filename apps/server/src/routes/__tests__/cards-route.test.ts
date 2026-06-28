@@ -29,7 +29,9 @@ function makeDeps(): RouteDeps {
 				logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 			},
 		},
-		store: { bootstrap: { dataDir: "/tmp/bn-test-cards-route" } },
+		// 这些用例只打 /detect-chrome 与 /preview(无背景图),dataDir 从不真正落 fs。
+		// 用 OS 临时目录下的不存在子目录(跨平台:不硬编码 POSIX /tmp,无真实路径/密钥)。
+		store: { bootstrap: { dataDir: join(tmpdir(), "bn-test-cards-route-no-such-dir") } },
 	} as unknown as RouteDeps;
 }
 
