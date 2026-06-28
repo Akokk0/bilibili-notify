@@ -4,8 +4,8 @@
  * Cards 页 per-UP 作用域接线测试。
  *
  * 验证:① 全局作用域以 pageKey "cards" 注册灵动岛;② 点已定制 UP 的 tab 切到
- * pageKey "cards-perup";③ per-UP 保存只下发卡片两片(cardStyle + cardLayout),
- * 不碰该 sub 的其它 overrides slice。
+ * pageKey "cards-perup";③ per-UP 保存只下发卡片三片(cardStyle + cardStyleByKind
+ * + cardLayout),不碰该 sub 的其它 overrides slice;④ 已有按类型覆盖往返不丢。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -147,9 +147,41 @@ describe("Cards per-UP 作用域接线", () => {
 		const [url, body] = vi.mocked(api.patch).mock.calls.at(-1) as [string, { overrides: unknown }];
 		expect(url).toBe(`/api/subs/${CUSTOMIZED.id}`);
 		const overrides = body.overrides as Record<string, unknown>;
-		// 只含卡片两片:cardStyle 为完整快照、cardLayout 未覆盖故 null;不带 imageGroup。
-		expect(Object.keys(overrides).sort()).toEqual(["cardLayout", "cardStyle"]);
+		// 只含卡片三片:cardStyle 为完整快照、cardLayout 未覆盖故 null、cardStyleByKind 无
+		// 按类型覆盖故 null;不带 imageGroup(不动该 UP 其它 slice)。
+		expect(Object.keys(overrides).sort()).toEqual(["cardLayout", "cardStyle", "cardStyleByKind"]);
 		expect(overrides.cardLayout).toBeNull();
+		expect(overrides.cardStyleByKind).toBeNull();
 		expect((overrides.cardStyle as { cardColorStart: string }).cardColorStart).toBe("#123456");
+	});
+
+	it("per-UP 已有按类型覆盖 → 保存原样下发 cardStyleByKind(不丢)", async () => {
+		// 仅含 cardStyleByKind 覆盖的 UP(无基准 cardStyle)：确认它进 tab、seed 进草稿、
+		// 保存时按类型覆盖原样回传,基准 cardStyle 仍下发 null。
+		const byKindSub: Subscription = {
+			...makeEmptySubscription("654321"),
+			overrides: {
+				cardStyleByKind: { sc: { cardColorStart: "#abcdef" } },
+				imageGroup: { enable: false },
+			},
+		};
+		vi.mocked(api.get).mockImplementation((url: string) => {
+			if (url.includes("/api/subs")) return Promise.resolve([byKindSub]);
+			if (url.includes("/api/targets")) return Promise.resolve([]);
+			return Promise.resolve(GLOBALS);
+		});
+
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+		fireEvent.click(await screen.findByText("UID 654321"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+
+		useDraftStore.getState().current?.onSave();
+		await waitFor(() => expect(api.patch).toHaveBeenCalled());
+		const [url, body] = vi.mocked(api.patch).mock.calls.at(-1) as [string, { overrides: unknown }];
+		expect(url).toBe(`/api/subs/${byKindSub.id}`);
+		const overrides = body.overrides as Record<string, unknown>;
+		expect(overrides.cardStyle).toBeNull();
+		expect(overrides.cardStyleByKind).toEqual({ sc: { cardColorStart: "#abcdef" } });
 	});
 });
