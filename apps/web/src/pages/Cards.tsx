@@ -101,6 +101,7 @@ function PreviewImage({
 	content,
 	layout,
 	fallback,
+	frame = true,
 }: {
 	kind: CardKind;
 	style: CardStyle;
@@ -109,6 +110,8 @@ function PreviewImage({
 	layout: CardLayoutFull | null;
 	/** 真实拉取失败时是否回退示例数据(per-UP 自动模式 = true)。 */
 	fallback: boolean;
+	/** 带边框大容器(单卡预览)。false = 裸图缩放填满父格(全家福格子复用)。 */
+	frame?: boolean;
 }) {
 	// 把整份请求(kind/style/content/layout/fallback)合成一个 spec 做**单一**防抖。
 	// 关键:kind / fallback 不能直接进 queryKey 而其余走独立防抖 —— 否则切类型时
@@ -141,29 +144,39 @@ function PreviewImage({
 	const apiErr = query.error as ApiError | undefined;
 	const status = apiErr?.status;
 
+	const body = showSkeleton ? (
+		<div className="flex w-full max-w-95 flex-col items-center gap-3 rounded-xl bg-bn-surface/70 p-6">
+			<div className="bn-anim-spin h-8 w-8 rounded-full border-2 border-bn-pink/30 border-t-bn-pink" />
+			<div className="text-[12px] font-bold text-bn-text-secondary">puppeteer 渲染中…</div>
+		</div>
+	) : query.error ? (
+		<div className="w-full max-w-95 rounded-xl bg-bn-surface p-4 text-[12px]">
+			<div className="mb-1 font-bold text-bn-danger-text">
+				{status === 503 ? "puppeteer 未配置" : status === 501 ? "kind 暂未支持" : "渲染失败"}
+			</div>
+			<div className="text-bn-text-secondary">{apiErr?.message ?? "未知错误"}</div>
+			{status === 503 ? <ChromeAutoDetect onEnabled={() => query.refetch()} /> : null}
+		</div>
+	) : (
+		<img
+			src={query.data}
+			srcSet={`${query.data} 2x`}
+			alt="卡片实时预览"
+			className={
+				frame
+					? "bn-anim-fade-in max-w-full rounded-xl shadow-[0_6px_20px_rgba(0,0,0,0.14)]"
+					: "bn-anim-fade-in max-h-full max-w-full rounded-lg object-contain shadow-[0_4px_14px_rgba(0,0,0,0.12)]"
+			}
+		/>
+	);
+
+	// 全家福格子复用裸图模式:不套大边框,缩放填满父格(父格定高 + overflow-hidden)。
+	if (!frame) {
+		return <div className="flex h-full w-full items-center justify-center">{body}</div>;
+	}
 	return (
 		<div className="relative flex min-h-105 items-center justify-center rounded-bn-card border border-bn-border p-7">
-			{showSkeleton ? (
-				<div className="flex w-95 flex-col items-center gap-3 rounded-xl bg-bn-surface/70 p-6">
-					<div className="bn-anim-spin h-8 w-8 rounded-full border-2 border-bn-pink/30 border-t-bn-pink" />
-					<div className="text-[12px] font-bold text-bn-text-secondary">puppeteer 渲染中…</div>
-				</div>
-			) : query.error ? (
-				<div className="w-95 rounded-xl bg-bn-surface p-4 text-[12px]">
-					<div className="mb-1 font-bold text-bn-danger-text">
-						{status === 503 ? "puppeteer 未配置" : status === 501 ? "kind 暂未支持" : "渲染失败"}
-					</div>
-					<div className="text-bn-text-secondary">{apiErr?.message ?? "未知错误"}</div>
-					{status === 503 ? <ChromeAutoDetect onEnabled={() => query.refetch()} /> : null}
-				</div>
-			) : (
-				<img
-					src={query.data}
-					srcSet={`${query.data} 2x`}
-					alt="卡片实时预览"
-					className="bn-anim-fade-in max-w-full rounded-xl shadow-[0_6px_20px_rgba(0,0,0,0.14)]"
-				/>
-			)}
+			{body}
 		</div>
 	);
 }
@@ -174,15 +187,24 @@ function CardPreview({
 	content,
 	layout,
 	fallback,
+	frame,
 }: {
 	kind: CardKind;
 	style: CardStyle;
 	content: Record<string, unknown>;
 	layout: CardLayoutFull | null;
 	fallback: boolean;
+	frame?: boolean;
 }) {
 	return (
-		<PreviewImage kind={kind} style={style} content={content} layout={layout} fallback={fallback} />
+		<PreviewImage
+			kind={kind}
+			style={style}
+			content={content}
+			layout={layout}
+			fallback={fallback}
+			frame={frame}
+		/>
 	);
 }
 
@@ -1149,7 +1171,7 @@ export default function Cards() {
 				</div>
 
 				{/* PREVIEW: 全局 tab = 四卡全家福;类型 tab = 单卡 */}
-				<div className="space-y-2.5">
+				<div className="flex flex-col gap-2.5">
 					{isGlobalTab ? (
 						<>
 							<div className="flex items-center justify-between text-[13px] text-bn-text-primary">
@@ -1160,32 +1182,41 @@ export default function Cards() {
 									四种卡片各自生效样式 · puppeteer 真实渲染
 								</span>
 							</div>
-							{familyPreviews.map(({ fk, style, content: fcontent }) => {
-								const FkIcon = Icon[KIND_LABELS[fk].icon];
-								// 该类型是否有「单独样式」覆盖(全局看 gByKind,per-UP 看 puByKind)→ 角标提示。
-								const overridden =
-									(isGlobalScope ? gByKind : puByKind)[toStyleKind(fk)] !== undefined;
-								return (
-									<div key={fk} className="space-y-1.5">
-										<div className="flex items-center gap-1.5 text-[12px] font-bold text-bn-text-secondary">
-											<FkIcon size={13} />
-											{KIND_LABELS[fk].label}
-											{overridden ? (
-												<Pill color={KIND_LABELS[fk].tone} subtle size="sm">
-													单独样式
-												</Pill>
-											) : null}
-										</div>
-										<CardPreview
-											kind={fk}
-											style={style}
-											content={fcontent}
-											layout={effLayout}
-											fallback={previewFallback}
-										/>
-									</div>
-								);
-							})}
+							{/* 一个框装四张卡:2×2 四宫格。固定高度(参考选项卡片满展开时的观感取值,不跟随它),
+							    四格 grid-rows-2 等分该高度,卡片 object-contain 缩放填格。 */}
+							<div className="flex h-[720px] flex-col rounded-bn-card border border-bn-border p-4">
+								<div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-3">
+									{familyPreviews.map(({ fk, style, content: fcontent }) => {
+										const FkIcon = Icon[KIND_LABELS[fk].icon];
+										// 该类型是否有「单独样式」覆盖(全局看 gByKind,per-UP 看 puByKind)→ 角标提示。
+										const overridden =
+											(isGlobalScope ? gByKind : puByKind)[toStyleKind(fk)] !== undefined;
+										return (
+											<div key={fk} className="flex min-h-0 flex-col gap-1">
+												<div className="flex items-center gap-1 text-[11px] font-bold text-bn-text-tertiary">
+													<FkIcon size={11} />
+													{KIND_LABELS[fk].label}
+													{overridden ? (
+														<Pill color={KIND_LABELS[fk].tone} subtle size="sm">
+															单独
+														</Pill>
+													) : null}
+												</div>
+												<div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+													<CardPreview
+														kind={fk}
+														style={style}
+														content={fcontent}
+														layout={effLayout}
+														fallback={previewFallback}
+														frame={false}
+													/>
+												</div>
+											</div>
+										);
+									})}
+								</div>
+							</div>
 							<div className="rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 text-[11px] italic text-bn-text-secondary">
 								{isGlobalScope
 									? "全局基准应用到四种卡片;要单独调某张卡,点左侧对应类型标签。"
