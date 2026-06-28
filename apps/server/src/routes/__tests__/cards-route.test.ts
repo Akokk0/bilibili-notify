@@ -71,7 +71,9 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 	function depsWithStore(opts: {
 		dataDir: string;
 		globalBg?: string[];
-		subs?: Array<{ uid: string; bg?: string[] }>;
+		/** 全局某 per-kind 样式(sc)的背景列表 —— 验证删除引用检查覆盖 cardStyleByKind。 */
+		globalKindBg?: string[];
+		subs?: Array<{ uid: string; bg?: string[]; kindBg?: string[] }>;
 	}): RouteDeps {
 		return {
 			runtime: {
@@ -81,11 +83,21 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 			},
 			store: {
 				bootstrap: { dataDir: opts.dataDir },
-				getGlobals: () => ({ defaults: { cardStyle: { backgroundImages: opts.globalBg ?? [] } } }),
+				getGlobals: () => ({
+					defaults: {
+						cardStyle: { backgroundImages: opts.globalBg ?? [] },
+						cardStyleByKind: opts.globalKindBg
+							? { sc: { backgroundImages: opts.globalKindBg } }
+							: {},
+					},
+				}),
 				getSubscriptions: () =>
 					(opts.subs ?? []).map((s) => ({
 						uid: s.uid,
-						overrides: { cardStyle: s.bg ? { backgroundImages: s.bg } : undefined },
+						overrides: {
+							cardStyle: s.bg ? { backgroundImages: s.bg } : undefined,
+							cardStyleByKind: s.kindBg ? { guard: { backgroundImages: s.kindBg } } : undefined,
+						},
 					})),
 			},
 		} as unknown as RouteDeps;
@@ -145,9 +157,44 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		}
 	});
 
+	it("删除仅被全局 per-kind 样式引用的背景图 → 409(覆盖 cardStyleByKind)", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-del-kind-"));
+		try {
+			const id = await saveCardBg(dir, PNG, "image/png");
+			const app = createCardsRoute({
+				deps: depsWithStore({ dataDir: dir, globalKindBg: [id] }),
+				puppeteer: null,
+				api: null,
+			});
+			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
+			expect(res.status).toBe(409);
+			expect(await listCardBg(dir)).toEqual([id]); // 仍在盘上
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("删除仅被某 UP 的 per-kind 样式引用的背景图 → 409,referencedBy 指出该 UP", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-del-kind-up-"));
+		try {
+			const id = await saveCardBg(dir, PNG, "image/png");
+			const app = createCardsRoute({
+				deps: depsWithStore({ dataDir: dir, subs: [{ uid: "20020", kindBg: [id] }] }),
+				puppeteer: null,
+				api: null,
+			});
+			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
+			expect(res.status).toBe(409);
+			const json = (await res.json()) as { referencedBy?: string[] };
+			expect(json.referencedBy?.some((s) => s.includes("20020"))).toBe(true);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("删除非法 id → 400", async () => {
 		const app = createCardsRoute({
-			deps: depsWithStore({ dataDir: "/tmp/bn-x" }),
+			deps: depsWithStore({ dataDir: join(tmpdir(), "bn-x-no-such-dir") }),
 			puppeteer: null,
 			api: null,
 		});

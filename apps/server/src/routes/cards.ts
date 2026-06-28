@@ -164,18 +164,29 @@ export interface TestPushResponse {
 const RENDER_TIMEOUT_MS = 20_000;
 
 /**
- * 收集当前配置里仍引用某背景图 id 的作用域(人话标签),用于删除前拦截。全局默认 +
- * 各 UP 覆盖的 `cardStyle.backgroundImages` 都算。返回空数组 = 没人用,可安全删盘。
+ * 收集当前配置里仍引用某背景图 id 的作用域(人话标签),用于删除前拦截。基准
+ * `cardStyle.backgroundImages` 与**各卡片类型** `cardStyleByKind[*].backgroundImages`(per-kind)
+ * 都算,全局默认 + 各 UP 覆盖两层都扫。返回空数组 = 没人用,可安全删盘。
  */
 export function cardBgReferences(
 	globals: GlobalConfig,
 	subs: Subscription[],
 	id: string,
 ): string[] {
+	const inStyle = (style?: { backgroundImages?: string[] }): boolean =>
+		style?.backgroundImages?.includes(id) ?? false;
+	// per-kind 是各类型对基准的覆盖层;任一类型引用即算被引用。
+	const inByKind = (byKind?: Record<string, { backgroundImages?: string[] }>): boolean =>
+		byKind ? Object.values(byKind).some(inStyle) : false;
+
 	const refs: string[] = [];
-	if (globals.defaults.cardStyle.backgroundImages.includes(id)) refs.push("全局默认");
+	if (inStyle(globals.defaults.cardStyle) || inByKind(globals.defaults.cardStyleByKind)) {
+		refs.push("全局默认");
+	}
 	for (const s of subs) {
-		if (s.overrides.cardStyle?.backgroundImages?.includes(id)) refs.push(`UP ${s.uid}`);
+		if (inStyle(s.overrides.cardStyle) || inByKind(s.overrides.cardStyleByKind)) {
+			refs.push(`UP ${s.uid}`);
+		}
 	}
 	return refs;
 }
