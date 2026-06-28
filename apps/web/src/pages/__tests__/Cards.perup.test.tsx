@@ -205,6 +205,60 @@ describe("Cards per-UP 作用域接线", () => {
 		expect(overrides.cardStyleByKind).toEqual({ sc: { cardColorStart: "#abcdef" } });
 	});
 
+	it("per-UP 直播数据区覆盖 → 进生效样式 / 预览请求(showFans=false)", async () => {
+		const dataSub: Subscription = {
+			...makeEmptySubscription("777888"),
+			overrides: { cardStyleByKind: { live: { showFans: false } } },
+		};
+		vi.mocked(api.get).mockImplementation((url: string) => {
+			if (url.includes("/api/subs")) return Promise.resolve([dataSub]);
+			if (url.includes("/api/targets")) return Promise.resolve([]);
+			return Promise.resolve(GLOBALS);
+		});
+
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+		fireEvent.click(await screen.findByText("UID 777888"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+		// 切到「直播开播」类型 tab(单卡预览用 effStyle = 基准 + 该 UP live 覆盖)。
+		fireEvent.click(screen.getAllByRole("button", { name: "直播开播" })[0]);
+
+		await waitFor(
+			() => {
+				const call = vi.mocked(api.post).mock.calls.find(([url, body]) => {
+					const b = body as { kind?: string; style?: { showFans?: boolean } };
+					return url === "/api/cards/preview" && b?.kind === "live" && b.style?.showFans === false;
+				});
+				expect(call).toBeTruthy();
+			},
+			{ timeout: 2000 },
+		);
+	});
+
+	it("per-UP live 颜色 + 数据区共存于 cardStyleByKind.live,保存两者都不丢", async () => {
+		// 字段不相交(颜色 omitShow、数据区 pickShow)→ seed 同时含两类覆盖时往返保留。
+		const mixedSub: Subscription = {
+			...makeEmptySubscription("555666"),
+			overrides: { cardStyleByKind: { live: { cardColorStart: "#abc123", showFans: false } } },
+		};
+		vi.mocked(api.get).mockImplementation((url: string) => {
+			if (url.includes("/api/subs")) return Promise.resolve([mixedSub]);
+			if (url.includes("/api/targets")) return Promise.resolve([]);
+			return Promise.resolve(GLOBALS);
+		});
+
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+		fireEvent.click(await screen.findByText("UID 555666"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+
+		useDraftStore.getState().current?.onSave();
+		await waitFor(() => expect(api.patch).toHaveBeenCalled());
+		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [string, { overrides: unknown }];
+		const overrides = body.overrides as { cardStyleByKind?: { live?: Record<string, unknown> } };
+		expect(overrides.cardStyleByKind?.live).toEqual({ cardColorStart: "#abc123", showFans: false });
+	});
+
 	it("per-UP 动态 → 选「第几条」,offset 进预览请求", async () => {
 		const { container } = renderCards();
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
