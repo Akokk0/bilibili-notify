@@ -6,7 +6,7 @@ import { ImageRenderer } from "@bilibili-notify/image";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { listCardBg, saveCardBg } from "../../runtime/card-assets.js";
 import type { StandalonePuppeteer } from "../../runtime/puppeteer.js";
-import { createCardsRoute, resolveRoomIdFromUid } from "../cards.js";
+import { createCardsRoute, resolveRoomIdFromUid, testPushCaption } from "../cards.js";
 import type { RouteDeps } from "../types.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -200,6 +200,20 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		});
 		const res = await app.request("/asset/..%2f..%2fsecrets.json", { method: "DELETE" });
 		expect(res.status).toBe(400);
+	});
+});
+
+describe("cards route — testPushCaption(测试推送图说)", () => {
+	it("每种卡片类型 → 带「测试推送」前缀 + 该类型中文标签的文案", () => {
+		expect(testPushCaption("live")).toContain("开播");
+		expect(testPushCaption("dyn")).toContain("动态");
+		expect(testPushCaption("sc")).toContain("醒目留言");
+		expect(testPushCaption("guard")).toContain("上舰");
+		for (const k of ["live", "dyn", "sc", "guard"] as const) {
+			// 非空且带前缀 —— 顶替 QQ 富媒体空 content 的占位空格,接收方一眼知是测试。
+			expect(testPushCaption(k)).toContain("测试推送");
+			expect(testPushCaption(k).trim().length).toBeGreaterThan(0);
+		}
 	});
 });
 

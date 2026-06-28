@@ -163,6 +163,23 @@ export interface TestPushResponse {
 
 const RENDER_TIMEOUT_MS = 20_000;
 
+/** 测试推送图说用的卡片类型中文标签。 */
+const KIND_LABEL: Record<PreviewKind, string> = {
+	live: "开播",
+	dyn: "动态",
+	sc: "醒目留言",
+	guard: "上舰",
+};
+
+/**
+ * 测试推送图片的图说(caption)。纯图片推送在 QQ 富媒体消息里会被塞一个占位空格(QQ 要求
+ * content 非空),显示成图片下方一段空白;给测试推送配一句带类型标签的文案顶替它,接收方
+ * 一眼能认出是测试,History 列表也不再落「(无内容)」。
+ */
+export function testPushCaption(kind: PreviewKind): string {
+	return `【bilibili-notify 测试推送】${KIND_LABEL[kind]}卡片`;
+}
+
 /**
  * 收集当前配置里仍引用某背景图 id 的作用域(人话标签),用于删除前拦截。基准
  * `cardStyle.backgroundImages` 与**各卡片类型** `cardStyleByKind[*].backgroundImages`(per-kind)
@@ -551,6 +568,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		const payload: NotificationPayload = {
 			kind: "image",
 			image: { buffer: card.buffer, mime: card.mime },
+			// 配一句图说,顶替纯图片在 QQ 富媒体消息里的占位空格(否则图片下方一段空白)。
+			caption: testPushCaption(kind),
 		};
 		const result = await engines.push.sendToTarget(target.id, payload);
 		return c.json<TestPushResponse>(result);
