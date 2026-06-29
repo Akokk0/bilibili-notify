@@ -45,6 +45,20 @@ export type PushKind =
 	| /** 主体动态卡片：可能携带图片 + 文本 */ "dynamic"
 	| /** 动态附图（DYNAMIC_TYPE_DRAW 的多张原图，转发消息形式） */ "dynamic-images";
 
+/**
+ * 决定一次 `broadcastDynamic` 是否应抑制 @全体,返回值直接透传给
+ * `BilibiliPush.broadcastToFeature` 的 opts。
+ *
+ * 背景:一条 DYNAMIC_TYPE_DRAW 图文动态(开启图集推送时)会发**两次** —— 主卡片
+ * (`kind="dynamic"`)与图集附图(`kind="dynamic-images"`),两者都映射到
+ * `feature="dynamic"`。若都进 @全体 分支,接收端会被**重复艾特全体**(主卡片 @ 一次、
+ * 图集又 @ 一次)。图集是主卡片的附属物,故 `dynamic-images` 显式抑制 @全体,只让
+ * 主卡片那次 @;其余 kind 返回 undefined,维持「按 feature 决定」的旧行为。
+ */
+export function atAllOptsForDynamicKind(kind: PushKind): { allowAtAll: false } | undefined {
+	return kind === "dynamic-images" ? { allowAtAll: false } : undefined;
+}
+
 export interface PushLike {
 	/**
 	 * 向某个 UP 主对应的全部订阅频道广播一段消息。

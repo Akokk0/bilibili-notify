@@ -24,6 +24,7 @@ import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import { CommentaryGenerator } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import {
+	atAllOptsForDynamicKind,
 	DynamicEngine,
 	type DynamicEngineConfig,
 	type PushLike as DynamicPushLike,
@@ -379,9 +380,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	// ---------- DynamicEngine ----------
 	const dynamicPushLike: DynamicPushLike = {
-		async broadcastDynamic(uid, segments, _kind) {
+		async broadcastDynamic(uid, segments, kind) {
 			const payload = pushSegmentsToPayload(segments);
-			await push.broadcastToFeature(uid, "dynamic", payload);
+			// kind="dynamic-images"(图集附图)是主卡片之后的附属推送,显式抑制 @全体 ——
+			// 否则一条 DRAW 动态会在主卡片和图集各 @ 一次(用户报告的「重复艾特全体」)。
+			await push.broadcastToFeature(uid, "dynamic", payload, atAllOptsForDynamicKind(kind));
 		},
 		sendPrivateMsg: (text) => push.sendPrivateMsg(text),
 		sendErrorMsg: (text) => push.sendErrorMsg(text),

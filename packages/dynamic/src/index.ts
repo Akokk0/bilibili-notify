@@ -21,6 +21,7 @@ export type {
 	SubscriptionOpView,
 	SubscriptionsView,
 } from "./push-like";
+export { atAllOptsForDynamicKind } from "./push-like";
 export type {
 	AllDynamicInfo,
 	Dynamic,

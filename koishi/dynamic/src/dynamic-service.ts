@@ -1,9 +1,4 @@
-import {
-	DynamicEngine,
-	type DynamicEngineConfig,
-	type PushKind,
-	type PushLike,
-} from "@bilibili-notify/dynamic";
+import { DynamicEngine, type DynamicEngineConfig } from "@bilibili-notify/dynamic";
 import type { SubscriptionOp } from "@bilibili-notify/internal";
 import {
 	makeKoishiMessageBus,
@@ -11,11 +6,11 @@ import {
 	resolveBilibiliNotifyCoreInternals,
 	tryResolveBilibiliNotifyCoreInternals,
 } from "@bilibili-notify/koishi-runtime";
-import type { BilibiliPush } from "@bilibili-notify/push";
 import { type Awaitable, type Context, Service } from "koishi";
 import type {} from "koishi-plugin-bilibili-notify";
 import { dynamicCommands } from "./commands";
 import type { BilibiliNotifyDynamicConfig } from "./config";
+import { adaptPush } from "./push-adapter";
 import { resolveDynamicFeature, storeToDynamicView, subToDynamicView } from "./sub-view";
 
 declare module "koishi" {
@@ -31,64 +26,6 @@ declare module "koishi" {
 }
 
 const SERVICE_NAME = "bilibili-notify-dynamic";
-
-/**
- * Adapt the new BilibiliPush (platform-neutral) to the PushLike interface
- * that DynamicEngine expects. The engine sends PushSegment[] + PushKind;
- * this adapter translates to NotificationPayload and delegates to
- * push.broadcastToFeature.
- */
-function adaptPush(push: BilibiliPush): PushLike {
-	return {
-		async broadcastDynamic(uid, segments, kind: PushKind) {
-			// Both "dynamic" and "dynamic-images" map to the "dynamic" feature key.
-			void kind;
-			let payload: import("@bilibili-notify/internal").NotificationPayload;
-			if (segments.length === 1 && segments[0].type === "text") {
-				payload = { kind: "text", text: segments[0].text };
-			} else if (segments.length === 1 && segments[0].type === "image") {
-				payload = {
-					kind: "image",
-					image: { buffer: segments[0].buffer, mime: segments[0].mime },
-				};
-			} else if (segments.length === 1 && segments[0].type === "image-group") {
-				// 走 NotificationSink 的 forward-images 路径 —— sink 内部按 payload.forward
-				// 决定走 koishi 合并转发(h("message", {forward:true}, nodes))还是普通
-				// 多图(h("message", urls.map(h.image)))。forward 由 dynamic engine config
-				// imageGroup.forward 控制(可 per-UP override sub.overrides.imageGroup.forward)。
-				payload = {
-					kind: "forward-images",
-					images: segments[0].images,
-					forward: segments[0].forward,
-				};
-			} else {
-				// composite: map all segments
-				type PS = import("@bilibili-notify/internal").PayloadSegment;
-				const mapped: PS[] = [];
-				for (const seg of segments) {
-					if (seg.type === "text") {
-						mapped.push({ type: "text" as const, text: seg.text });
-					} else if (seg.type === "image") {
-						mapped.push({ type: "image" as const, buffer: seg.buffer, mime: seg.mime });
-					} else {
-						// image-group → individual links
-						for (const img of seg.images) {
-							mapped.push({ type: "link" as const, href: img.url });
-						}
-					}
-				}
-				payload = { kind: "composite", segments: mapped };
-			}
-			await push.broadcastToFeature(uid, "dynamic", payload);
-		},
-		sendPrivateMsg(content) {
-			return push.sendPrivateMsg(content);
-		},
-		sendErrorMsg(reason) {
-			return push.sendErrorMsg(reason);
-		},
-	};
-}
 
 export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> {
 	static readonly [Service.provide] = SERVICE_NAME;
