@@ -23,6 +23,7 @@ import type {
 import type { Logger } from "@bilibili-notify/internal";
 import type { Browser, Page } from "puppeteer-core";
 import puppeteer from "puppeteer-core";
+import { createSerialGate } from "./serial-gate.js";
 
 export interface ResolveChromePathOptions {
 	/** 路径存在性判定,默认 `fs.existsSync`;注入以便单测。 */
@@ -89,6 +90,9 @@ export interface StandalonePuppeteer extends PuppeteerLike {
 export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): StandalonePuppeteer {
 	let browser: Browser | null = null;
 	let launching: Promise<Browser> | null = null;
+	// 串行闸:所有渲染(预览 screenshotHtml + 推送 ImageRenderer)经同一浏览器,冷启动
+	// 窗口期并发截图会触发 CDP 竞态把卡片平铺成 2×2(见 serial-gate.ts)。串起来即根除。
+	const acquire = createSerialGate();
 
 	async function ensure(): Promise<Browser> {
 		if (browser?.connected) return browser;
@@ -99,6 +103,13 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Standalon
 				executablePath: opts.chromePath,
 				headless: true,
 				args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+				// 2x DPI 烤进 launch 的 defaultViewport,而非每页 setViewport —— 冷启动后多张
+				// 卡片并发渲染时,per-page setViewport(Emulation.setDeviceMetricsOverride)在
+				// 刚启动的浏览器上会与紧随的 captureScreenshot 竞态,deviceScaleFactor 尚未生效
+				// 就截图,clip 被按错误倍率放大 → 同一张卡被平铺成 2×2 并裁切(用户报告的
+				// 「全家福动态发布第一次启动就 4 连图」)。defaultViewport 在页面诞生即带 dSF=2,
+				// 无 setViewport 这一步,竞态消失。
+				defaultViewport: { width: 1280, height: 720, deviceScaleFactor: 2 },
 			});
 			browser = b;
 			launching = null;
@@ -114,14 +125,19 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Standalon
 
 	return {
 		async page(): Promise<PageLike> {
-			const b = await ensure();
-			const p = await b.newPage();
-			// 2x DPI so card screenshots have enough raster detail for retina /
-			// HiDPI displays. Without this, JPEGs come out at 1x and look blurry
-			// in the dashboard preview. CSS dimensions are unchanged; the
-			// frontend uses srcset="… 2x" so display size stays the same.
-			await p.setViewport({ width: 1280, height: 720, deviceScaleFactor: 2 });
-			return wrapPage(p);
+			// 进闸:等上一个渲染(页面 close)后才继续,保证全程并发度为 1。
+			const release = await acquire();
+			try {
+				const b = await ensure();
+				const p = await b.newPage();
+				// 2x DPI(retina / HiDPI 下截图够清晰)由 launch 的 defaultViewport 提供,
+				// 页面诞生即带 dSF=2 —— 不再 per-page setViewport。
+				return wrapPage(p, release);
+			} catch (err) {
+				// 取页失败(启动报错等):立刻放闸,否则后续渲染全卡死。
+				release();
+				throw err;
+			}
 		},
 		async dispose(): Promise<void> {
 			const b = browser;
@@ -138,7 +154,7 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Standalon
 	};
 }
 
-function wrapPage(page: Page): PageLike {
+function wrapPage(page: Page, release: () => void): PageLike {
 	return {
 		async setContent(html: string, options?: SetContentOptions) {
 			await page.setContent(html, options);
@@ -172,7 +188,12 @@ function wrapPage(page: Page): PageLike {
 			return result as unknown as Buffer | Uint8Array;
 		},
 		async close() {
-			await page.close();
+			// 先放闸再 close:即便 close 抛错(Chrome 崩溃),闸也已释放,后续渲染不被卡死。
+			try {
+				release();
+			} finally {
+				await page.close();
+			}
 		},
 	};
 }
