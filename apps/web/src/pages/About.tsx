@@ -19,7 +19,7 @@ const AFDIAN_URL = "https://afdian.com/a/akokko";
 const GITHUB_URL = "https://github.com/Akokk0/bilibili-notify";
 const QQ_GROUP = "801338523";
 
-// 赞助者名单文件 —— 由 CI(scripts/fetch-sponsors.mjs)定时从爱发电同步生成,
+// 赞助者名单文件 —— 由 CI(scripts/fetch-sponsors.mjs)在每次独立端发版构建时从爱发电同步生成,
 // 产物在 apps/web/public/sponsors.json。缺文件(本地 / 未配 token)时前端回退空态。
 interface Sponsor {
 	name: string;
@@ -219,7 +219,7 @@ function SponsorPanel() {
 					</div>
 				)}
 				<p className="mt-3 text-[11px] text-bn-text-tertiary">
-					感谢每一位主人的供电 ♡ 名单每日自动同步自爱发电。
+					感谢每一位主人的供电 ♡ 名单在每次发布新版本时同步自爱发电。
 				</p>
 			</div>
 		</div>
