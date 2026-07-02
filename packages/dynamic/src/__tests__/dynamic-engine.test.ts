@@ -46,6 +46,11 @@ const cronMock = vi.hoisted(() => {
 			public cronTime: string,
 			public onTick: () => void,
 		) {
+			// 镜像真实 `cron` 包对无法解析表达式的同步抛错(如
+			// "Field (minute) cannot be parsed"),供 startJob() 的 try/catch 回归测试用。
+			if (cronTime === "BAD CRON") {
+				throw new Error("Field (minute) cannot be parsed");
+			}
 			instances.push(this);
 		}
 		start(): void {
@@ -1131,6 +1136,19 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		// 重新有订阅 → reconcile 重启(可能复用或新建 instance,断言最终处于 running)
 		const last = cronMock.instances[cronMock.instances.length - 1];
 		expect(last?.running).toBe(true);
+	});
+
+	it("回归:dynamicCron 无法解析(new CronJob 同步抛错)不炸穿 start(),记录 error 且不建 job(此前独立端会在启动期整进程崩溃,见 sidecar.stderr.log 的 CronError)", () => {
+		const subs: SubscriptionsView = { "1": { uid: "1", uname: "UP", dynamic: true } };
+		const b = makeEngine({ subs, config: { dynamicCron: "BAD CRON" } });
+		expect(() => b.engine.start()).not.toThrow();
+		expect(cronMock.instances).toHaveLength(0);
+		expect(b.engine.isActive).toBe(false);
+		expect(
+			b.logs.some(
+				(l) => l.level === "error" && l.msg.includes("BAD CRON") && l.msg.includes("无法解析"),
+			),
+		).toBe(true);
 	});
 
 	it("applyOps:per-UID 走 debug,批次收口一条 info 汇总(Q1 不刷屏)", () => {

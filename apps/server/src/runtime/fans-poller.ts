@@ -205,8 +205,19 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		logger.debug(`[fans-poller] tick done, snapshot=${snapshot.length}`);
 	}
 
+	// dynamicCron 是 dashboard 自由文本框,没有格式校验;`new CronJob` 对无法解析的
+	// 表达式同步抛错,未捕获会让整个独立端进程在启动/reconcile 期崩溃(见
+	// dynamic-engine.ts startJob 同类修复的注释与 `.bugs/sidecar.stderr.log` 复现)。
 	function startJob(): void {
-		job = new CronJob(currentCron, tick);
+		try {
+			job = new CronJob(currentCron, tick);
+		} catch (err) {
+			logger.error(
+				`[fans-poller] cron='${currentCron}' 无法解析,fans 轮询未启动：${err instanceof Error ? err.message : String(err)}`,
+			);
+			job = undefined;
+			return;
+		}
 		job.start();
 		logger.info(`[fans-poller] scheduled with cron='${currentCron}'`);
 	}

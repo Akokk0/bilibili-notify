@@ -1,3 +1,4 @@
+import { CronTime } from "cron";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
@@ -11,6 +12,19 @@ import type { RouteDeps } from "./types.js";
  * 注意保持长度 ≠ 任何合理 apiKey 长度,避免被认成"用户改了一个奇怪的字符串"。
  */
 const REDACTED_API_KEY = "__BN_REDACTED__";
+
+/** `app.dynamicCron` 写路径校验:可解析性直接委托给 `cron` 包的 `CronTime`。 */
+const DynamicCronSchema = z.string().refine(
+	(expr) => {
+		try {
+			new CronTime(expr);
+			return true;
+		} catch {
+			return false;
+		}
+	},
+	{ message: "无效的 cron 表达式" },
+);
 
 /**
  * `/api/globals` — read + patch the runtime GlobalConfig.
@@ -58,6 +72,29 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 		// 把 REDACTED sentinel 从 patch 里剥掉:前端 GET 拿到的是 redact 占位,如果
 		// 用户没在 UI 改 apiKey,PATCH body 会把占位原样回传 — 视为"保留原值"。
 		const patch = stripRedactedSecrets(shapeCheck.data);
+		// dynamicCron 是自由文本框,GlobalConfigSchema 只校验它是 string(迁移友好,
+		// 不能对已落盘的旧值变严格 —— 否则 load() 会在下次启动时对着别人存量数据
+		// 抛 ConfigValidationError,重新炸穿独立端)。写路径在这里单独拦一道:用
+		// `cron` 包自身的 CronTime 校验可解析性,与 packages/dynamic /
+		// fans-poller.ts 实际排程时用的同一个解析器保持权威一致。此前完全没校验,
+		// 一条解析不了的表达式能被保存,下次启动 `new CronJob` 同步抛错,把整个
+		// 独立端进程崩穿(用户报告"升级后端起不来,清空数据才恢复";见 fix
+		// commit 33c56ea 加的运行期 try/catch —— 那是纵深防御的第二层,这里堵在
+		// 源头,让用户在 Dashboard 保存时就看到明确报错而不是事后进程崩溃)。
+		const cronPatch = pluck(patch, ["app", "dynamicCron"]);
+		if (typeof cronPatch === "string") {
+			const parsed = DynamicCronSchema.safeParse(cronPatch);
+			if (!parsed.success) {
+				return c.json(
+					{
+						error: "invalid_payload",
+						message: `app.dynamicCron 不是合法的 cron 表达式："${cronPatch}"`,
+						issues: parsed.error.issues,
+					},
+					400,
+				);
+			}
+		}
 		// Enable-check pre-flight. Runs against the *merged* view so a request
 		// that only toggles `enabled=true` without restating apiKey still works
 		// (we read the still-persisted value as the effective field).

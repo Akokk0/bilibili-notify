@@ -538,17 +538,34 @@ export class DynamicEngine {
 		}
 	}
 
+	/**
+	 * `dynamicCron` 是 dashboard 里的自由文本框,没有格式校验;`new CronJob` 对无法
+	 * 解析的表达式同步抛错(如 "Field (minute) cannot be parsed"),此前未捕获会
+	 * 让整个独立端进程在启动期崩溃退出,且不写 pino 日志(catch 在更外层的
+	 * `console.error` 才第一次留痕)——用户报告的"升级后后端起不来,清空数据才恢复"
+	 * 即此:坏值持久化进 globals.json 后,后续每次启动都复现同一次崩溃。捕获后
+	 * 仅跳过本次建 job(动态检测保持关闭态),不放倒整个引擎/进程。
+	 */
 	private startJob(): void {
-		this.dynamicJob = new CronJob(
-			this.config.dynamicCron,
-			withLock(
-				() => this.detectDynamics(),
-				(err) =>
-					this.logger.error(
-						`[detector] 动态检测执行异常：${err instanceof Error ? err.message : String(err)}`,
-					),
-			),
-		);
+		let job: CronJob;
+		try {
+			job = new CronJob(
+				this.config.dynamicCron,
+				withLock(
+					() => this.detectDynamics(),
+					(err) =>
+						this.logger.error(
+							`[detector] 动态检测执行异常：${err instanceof Error ? err.message : String(err)}`,
+						),
+				),
+			);
+		} catch (err) {
+			this.logger.error(
+				`[detector] dynamicCron="${this.config.dynamicCron}" 无法解析,动态检测未启动：${err instanceof Error ? err.message : String(err)}`,
+			);
+			return;
+		}
+		this.dynamicJob = job;
 		this.dynamicJob.start();
 		this.logger.info("[detector] 动态检测任务已启动");
 	}
