@@ -135,6 +135,9 @@ export const QQOfficialAdapterConfigSchema = z
 		appSecret: z.string().min(1),
 		sandbox: z.boolean().default(false),
 		botType: QQOfficialBotTypeSchema.default("public"),
+		/** 是否记录网关 RECONNECT/RESUMED 事件日志。QQ 官方网关每约 30 分钟主动要求
+		 * 重连一次,属正常协议行为;默认关闭避免刷屏,排障时可开启。 */
+		logReconnects: z.boolean().default(false),
 	})
 	.strict();
 export type QQOfficialAdapterConfig = z.infer<typeof QQOfficialAdapterConfigSchema>;

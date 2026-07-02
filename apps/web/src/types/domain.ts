@@ -157,6 +157,8 @@ export interface QQOfficialAdapterConfig {
 	appSecret: string;
 	sandbox: boolean;
 	botType: QQOfficialBotType;
+	/** 是否记录网关 RECONNECT/RESUMED 事件日志(默认关闭,该协议行为约每 30 分钟一次)。 */
+	logReconnects: boolean;
 }
 
 export interface PushAdapterTestStatus {
@@ -502,7 +504,7 @@ export function makeEmptyAdapter(platform: PushTargetPlatform, name: string): Pu
 		return {
 			...base,
 			platform: "qq-official",
-			config: { appId: "", appSecret: "", sandbox: false, botType: "public" },
+			config: { appId: "", appSecret: "", sandbox: false, botType: "public", logReconnects: false },
 		};
 	}
 	return {

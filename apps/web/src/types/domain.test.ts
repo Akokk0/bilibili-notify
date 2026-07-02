@@ -149,6 +149,7 @@ describe("qq-official adapter factories", () => {
 			appSecret: "",
 			sandbox: false,
 			botType: "public",
+			logReconnects: false,
 		});
 	});
 

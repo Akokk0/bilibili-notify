@@ -210,3 +210,53 @@ describe("createQQGatewayConn — 心跳与重连", () => {
 		expect(gw.conns.length).toBe(before); // 没有新连接
 	});
 });
+
+describe("createQQGatewayConn — RECONNECT/RESUMED 日志开关", () => {
+	// QQ 官方网关约每 30 分钟主动要求重连一次,属正常协议行为;默认(缺省
+	// shouldLogReconnects)不应刷屏打印。
+	it("缺省 shouldLogReconnects → 服务端 RECONNECT(op7)+续连 RESUMED 都不打日志", async () => {
+		const gw = await startFakeGateway();
+		const logger = makeLogger();
+		const conn = createQQGatewayConn(connOpts(gw, { logger }));
+		cleanups.push(() => conn.close());
+		await waitFor(() => lastIdentify(gw) !== undefined);
+		gw.dispatch("READY", { session_id: "SID" });
+		await waitFor(() => conn.isOnline());
+
+		gw.conns.at(-1)?.send(JSON.stringify({ op: QQ_OPCODE.RECONNECT }));
+		await waitFor(() => gw.received.some((f) => f.op === QQ_OPCODE.RESUME), 5000);
+		gw.dispatch("RESUMED", {});
+		await sleep(30);
+
+		const warned = (logger.warn as ReturnType<typeof vi.fn>).mock.calls.flat().join(" ");
+		const infoed = (logger.info as ReturnType<typeof vi.fn>).mock.calls.flat().join(" ");
+		expect(warned).not.toContain("RECONNECT");
+		expect(infoed).not.toContain("RESUMED");
+	});
+
+	it("shouldLogReconnects() 返回 true → 打印 RECONNECT 与 RESUMED", async () => {
+		const gw = await startFakeGateway();
+		const logger = makeLogger();
+		const conn = createQQGatewayConn(connOpts(gw, { logger, shouldLogReconnects: () => true }));
+		cleanups.push(() => conn.close());
+		await waitFor(() => lastIdentify(gw) !== undefined);
+		gw.dispatch("READY", { session_id: "SID" });
+		await waitFor(() => conn.isOnline());
+
+		gw.conns.at(-1)?.send(JSON.stringify({ op: QQ_OPCODE.RECONNECT }));
+		await waitFor(() => gw.received.some((f) => f.op === QQ_OPCODE.RESUME), 5000);
+		gw.dispatch("RESUMED", {});
+		await waitFor(
+			() =>
+				(logger.info as ReturnType<typeof vi.fn>).mock.calls.some((c) =>
+					String(c[0]).includes("RESUMED"),
+				),
+			5000,
+		);
+
+		const warned = (logger.warn as ReturnType<typeof vi.fn>).mock.calls.flat().join(" ");
+		const infoed = (logger.info as ReturnType<typeof vi.fn>).mock.calls.flat().join(" ");
+		expect(warned).toContain("RECONNECT");
+		expect(infoed).toContain("RESUMED");
+	});
+});

@@ -323,6 +323,10 @@ export interface QQGatewayConnOptions {
 	intents?: number;
 	/** 指数退避基数(ms),默认 1000。测试注入小值加速。 */
 	reconnectBaseMs?: number;
+	/** 是否记录 RECONNECT/RESUMED 事件日志。QQ 官方网关约每 30 分钟主动要求重连一次,
+	 * 属正常协议行为;缺省/false 时静默,避免刷屏。取活值(而非创建时定值)—— 每次
+	 * 事件发生才读,配置热更新(见 reconcile 的 logReconnectsBox 同步)无需重建连接。 */
+	shouldLogReconnects?(): boolean;
 }
 
 export interface QQGatewayConn {
@@ -422,7 +426,8 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 		}
 		if (t === "RESUMED") {
 			online = true;
-			logger.info(`[qq] adapter=${adapterId} 网关已续连(RESUMED)`);
+			if (opts.shouldLogReconnects?.())
+				logger.info(`[qq] adapter=${adapterId} 网关已续连(RESUMED)`);
 			return;
 		}
 		if (t === "MESSAGE_AUDIT_REJECT") {
@@ -453,7 +458,8 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 				logger.warn(`[qq] adapter=${adapterId} 会话失效(INVALID_SESSION),将重新鉴权`);
 				break;
 			case QQ_OPCODE.RECONNECT:
-				logger.warn(`[qq] adapter=${adapterId} 服务端要求重连(RECONNECT)`);
+				if (opts.shouldLogReconnects?.())
+					logger.warn(`[qq] adapter=${adapterId} 服务端要求重连(RECONNECT)`);
 				try {
 					ws?.close();
 				} catch {
@@ -891,6 +897,10 @@ interface QQLive {
 	tm: QQTokenManager;
 	conn: QQGatewayConn;
 	fingerprint: string;
+	/** `logReconnects` 的活值容器 —— 这个开关不影响连接本身,不该被塞进
+	 * {@link qqAdapterFingerprint}(会导致纯改日志偏好也触发断连重建)。reconcile
+	 * 每轮同步这个容器,conn 通过 `shouldLogReconnects` 读它,做到不重建连接也能热更。 */
+	logReconnectsBox: { value: boolean };
 }
 
 function qqAdapterFingerprint(cfg: QQOfficialAdapterConfig): string {
@@ -923,6 +933,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		const cfg = adapter.config as QQOfficialAdapterConfig;
 		const tm = makeTokenManager(cfg);
 		const base = qqApiBase(cfg.sandbox);
+		const logReconnectsBox = { value: cfg.logReconnects };
 		const conn = createQQGatewayConn({
 			adapterId: adapter.id,
 			resolveGatewayUrl: async () => {
@@ -936,8 +947,9 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			onDiscovered: (s) => registry.record(adapter.id, s, Date.now()),
 			serviceCtx,
 			logger,
+			shouldLogReconnects: () => logReconnectsBox.value,
 		});
-		return { tm, conn, fingerprint: qqAdapterFingerprint(cfg) };
+		return { tm, conn, fingerprint: qqAdapterFingerprint(cfg), logReconnectsBox };
 	}
 
 	/** send 取 token:优先复用网关连接的 manager,否则起一个仅 token 的兜底。 */
@@ -1038,6 +1050,12 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				if (live.has(id)) continue;
 				live.set(id, makeLive(a));
 			}
+			// logReconnects 不参与 fingerprint(纯日志偏好,不该触发断连重建)—— 每轮把
+			// 期望配置的当前值同步进已存活连接的 box,做到不重连也能热更开关。
+			for (const [id, l] of live) {
+				const want = desired.get(id);
+				if (want) l.logReconnectsBox.value = (want.config as QQOfficialAdapterConfig).logReconnects;
+			}
 			// 全清兜底 token-only:它仅在 reconcile 跑之前给 send 取 token 用。reconcile 后,
 			// desired 适配器都有 live(自带 tm),非 desired 的会被 isAvailable 挡掉不再 send ——
 			// 故此刻所有 tokenOnly 都是 stale。逐 id 只清 desired 会漏掉「曾被 send、后被删除/
@@ -1055,11 +1073,36 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			if (adapter.platform !== "qq-official") {
 				return { ok: false, latencyMs: 0, err: `wrong platform: ${adapter.platform}` };
 			}
-			const l = live.get(adapter.id);
-			if (!l) return { ok: false, latencyMs: Date.now() - t0, err: "网关未连接(尚未 reconcile)" };
-			return l.conn.isOnline()
-				? { ok: true, latencyMs: Date.now() - t0 }
-				: { ok: false, latencyMs: Date.now() - t0, err: l.conn.lastError ?? "网关连接中" };
+			// 实际推送走 REST(token + /v2/.../messages),与 WS 网关(仅用于捞 openid)彼此独立
+			// —— 探连通性应该测「REST 能不能通」,不是「WS 握手有没有跑完」。此前用
+			// `l.conn.isOnline()` 判定:①首次启动 reconcile 刚起、握手尚未完成时必然 false,
+			// 造成"报错但其实能通"的假阴性;②读缓存布尔值不含任何网络往返,延迟恒为 0ms。
+			// 命中只读的 /gateway 端点(不发消息,符合"系统不要主动测试"发消息的既有约束),
+			// 换真实的可达性 + 延迟。
+			const cfg = adapter.config as QQOfficialAdapterConfig;
+			const base = qqApiBase(cfg.sandbox);
+			let token: string;
+			try {
+				token = await tokenManagerFor(adapter).getToken();
+			} catch (e) {
+				return {
+					ok: false,
+					latencyMs: Date.now() - t0,
+					err: `取 App Access Token 失败: ${String(e)}`,
+				};
+			}
+			try {
+				const res = await fetch(`${base}/gateway`, { headers: qqRestHeaders(token, cfg.appId) });
+				return res.ok
+					? { ok: true, latencyMs: Date.now() - t0 }
+					: { ok: false, latencyMs: Date.now() - t0, err: `HTTP ${res.status}` };
+			} catch (e) {
+				return {
+					ok: false,
+					latencyMs: Date.now() - t0,
+					err: e instanceof Error ? e.message : String(e),
+				};
+			}
 		},
 
 		async send(

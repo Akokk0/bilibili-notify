@@ -7,6 +7,7 @@ const CFG: QQOfficialAdapterConfig = {
 	appSecret: "SECRET",
 	sandbox: false,
 	botType: "public",
+	logReconnects: false,
 };
 
 let fetchMock: ReturnType<typeof vi.fn>;

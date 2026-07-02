@@ -289,7 +289,31 @@ describe("createQQOfficialAdapter — A+ 投递语义 / 失败", () => {
 });
 
 describe("createQQOfficialAdapter — probe / 生命周期", () => {
-	it("未 reconcile(无网关连接)→ probe ok:false", async () => {
+	// 回归:probe 此前只读 WS 网关 isOnline() 状态 —— 首次启动 reconcile 刚起、握手还没
+	// 跑完时必然 ok:false("网关连接中"),但实际推送走的是与 WS 网关无关的 REST 通道
+	// (WS 只用来捞 openid),导致"报错但其实能通"的假阴性。改为真实探一次 REST
+	// (取 token + 命中 /gateway 只读端点),不依赖 reconcile/WS 状态、也不发消息。
+	it("未 reconcile,REST(token+/gateway)可达 → probe ok:true,且是真实网络往返而非读缓存状态", async () => {
+		const ad = createQQOfficialAdapter(adapterOpts());
+		const p = await ad.probe(qqAdapter());
+		expect(p.ok).toBe(true);
+		expect(callsTo("/gateway")).toHaveLength(1);
+	});
+
+	it("取 App Access Token 失败 → probe ok:false(带错误信息)", async () => {
+		fetchMock.mockImplementation(async () => res(401, { message: "invalid appid" }));
+		const ad = createQQOfficialAdapter(adapterOpts());
+		const p = await ad.probe(qqAdapter());
+		expect(p.ok).toBe(false);
+		expect(p.err).toBeTruthy();
+	});
+
+	it("token 换取成功但 /gateway 非 2xx → probe ok:false", async () => {
+		fetchMock.mockImplementation(async (url: string) => {
+			if (url.includes("getAppAccessToken"))
+				return res(200, { access_token: "T", expires_in: 7200 });
+			return res(500, {});
+		});
 		const ad = createQQOfficialAdapter(adapterOpts());
 		const p = await ad.probe(qqAdapter());
 		expect(p.ok).toBe(false);

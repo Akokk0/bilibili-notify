@@ -430,6 +430,11 @@ export const FIELD_LABELS = {
 		hint: "开启后走 QQ 沙箱环境,仅对沙箱内成员可见",
 		section: "transport",
 	},
+	"config.logReconnects": {
+		label: "记录重连日志",
+		hint: "QQ 官方网关约每 30 分钟主动要求重连一次,属正常协议行为;默认关闭避免刷屏,排障时可开启",
+		section: "transport",
+	},
 	"target.name": { label: "显示名称", section: "target" },
 	"target.scope": { label: "作用域", section: "target" },
 	"target.enabled": { label: "启用", section: "target" },

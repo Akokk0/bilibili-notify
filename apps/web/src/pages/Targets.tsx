@@ -583,6 +583,16 @@ function AdapterConnectionFields({
 				>
 					<Toggle value={cfg.sandbox} onChange={(v) => setCfg({ ...cfg, sandbox: v })} />
 				</Field>
+				<Field
+					label="记录重连日志"
+					code="config.logReconnects"
+					hint="QQ 官方网关约每 30 分钟主动要求重连一次,属正常协议行为;默认关闭避免刷屏,排障时可开启"
+				>
+					<Toggle
+						value={cfg.logReconnects}
+						onChange={(v) => setCfg({ ...cfg, logReconnects: v })}
+					/>
+				</Field>
 			</>
 		);
 	}
