@@ -40,7 +40,19 @@ function makeUnreachableSink(): NotificationSink {
 	};
 }
 
-const emptyStore = { list: () => [] } as unknown as SubscriptionStore;
+const emptyStore = { list: () => [], findByUid: () => undefined } as unknown as SubscriptionStore;
+
+/** Permissive fake store — `targetIds` 对每个 feature 都视为已路由,供无关 routing 复检的用例复用。 */
+function permissiveStore(uid: string, targetIds: string[]): SubscriptionStore {
+	const routing = new Proxy(
+		{},
+		{ get: () => targetIds },
+	) as unknown as import("@bilibili-notify/internal").Subscription["routing"];
+	return {
+		list: () => [],
+		findByUid: (u: string) => (u === uid ? ({ routing } as never) : undefined),
+	} as unknown as SubscriptionStore;
+}
 
 describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 	it("fake serviceCtx 永不自动 fire timer:sendToTarget 必须靠 stop() 唤醒才返回", async () => {
@@ -170,7 +182,12 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 		const onSend = vi.fn();
-		push = new BilibiliPush({ sink, store: emptyStore, logger: silentLogger, onSend });
+		push = new BilibiliPush({
+			sink,
+			store: permissiveStore("u1", ["a", "b"]),
+			logger: silentLogger,
+			onSend,
+		});
 		push.start(); // generation 1
 
 		const results = await push.sendBatch(

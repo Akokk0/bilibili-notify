@@ -309,10 +309,10 @@ export class BilibiliPush {
 		for (const id of atAllTargets) {
 			if (this.disposed || this.generation !== myGen) break;
 			// @全体 best-effort:同步发起(先于卡片入 sink),不 await,结果异步落历史。
-			void this.sendToTarget(id, atAllPayload)
+			void this.sendToTarget(id, atAllPayload, { routing: ctx })
 				.then((r) => this.recordSend(id, atAllPayload, r, ctx))
 				.catch(() => {});
-			const result = await this.sendToTarget(id, payload);
+			const result = await this.sendToTarget(id, payload, { routing: ctx });
 			if (this.disposed || this.generation !== myGen) break;
 			this.recordSend(id, payload, result, ctx);
 			results.push(result);
@@ -338,10 +338,12 @@ export class BilibiliPush {
 		// 拆发。本批属于发起时的那个 generation;lifecycle 翻转即放弃剩余目标,
 		// 且最后那条已 in-flight 的结果是生命周期 artifact,不 onSend / 不计入。
 		const myGen = this.generation;
+		const routing =
+			ctx && ctx.feature !== "private" ? { uid: ctx.uid, feature: ctx.feature } : undefined;
 		const results: DeliveryResult[] = [];
 		for (const id of targetIds) {
 			if (this.disposed || this.generation !== myGen) break;
-			const result = await this.sendToTarget(id, payload);
+			const result = await this.sendToTarget(id, payload, { routing });
 			if (this.disposed || this.generation !== myGen) break;
 			if (ctx) this.recordSend(id, payload, result, ctx);
 			results.push(result);
@@ -376,17 +378,30 @@ export class BilibiliPush {
 	/**
 	 * Send a notification to a single target.
 	 * Retries with exponential back-off if the sink indicates the target is temporarily unavailable.
+	 *
+	 * `opts.routing` re-checks (每次重试前,不只入口一次)`targetId` 是否仍在
+	 * `store.findByUid(uid).routing[feature]` 里。退避重试窗口最长可达约 190s
+	 * (3s→6s→…→96s),这期间用户完全可能编辑订阅、把这个 target 从路由里移除 ——
+	 * 若不复检,一次因目标暂时不可达(如 OneBot WS 正在重连)而进入重试的推送,
+	 * 会在用户"取消"之后、目标恢复可达时才真正发出,造成"取消了还在推"的错觉
+	 * (routing 早已改了,只是这条重试还攥着入口时那份旧 targetId 没放手)。
+	 * `sendToMaster` 等非订阅路由的调用不传 `routing`,不受影响。
 	 */
 	async sendToTarget(
 		targetId: string,
 		payload: NotificationPayload,
-		opts?: { private?: boolean },
+		opts?: { private?: boolean; routing?: { uid: string; feature: FeatureKey } },
 	): Promise<DeliveryResult> {
 		if (this.disposed) return { ok: false, latencyMs: 0, err: "disposed" };
 
 		const myGen = this.generation;
 		let delay = INITIAL_RETRY_DELAY_MS;
 		while (!this.disposed && this.generation === myGen) {
+			if (opts?.routing && !this.isStillRouted(opts.routing.uid, opts.routing.feature, targetId)) {
+				const msg = `target=${targetId} 已从 uid=${opts.routing.uid} feature=${opts.routing.feature} 的路由中移除，放弃重试中的推送`;
+				this.logger.info(`[push] ${msg}`);
+				return { ok: false, latencyMs: 0, err: msg };
+			}
 			if (!this.sink.isAvailable(targetId)) {
 				if (delay > MAX_RETRY_DELAY_MS) {
 					const msg = `target=${targetId} 持续不可达，放弃推送`;
@@ -418,6 +433,12 @@ export class BilibiliPush {
 			latencyMs: 0,
 			err: this.disposed ? "disposed" : "superseded",
 		};
+	}
+
+	/** `targetId` 当前是否仍在 uid 该 feature 的 routing 里。查不到订阅视为不再路由。 */
+	private isStillRouted(uid: string, feature: FeatureKey, targetId: string): boolean {
+		const sub = this.store.findByUid(uid);
+		return (sub?.routing[feature] ?? []).includes(targetId);
 	}
 
 	/**
