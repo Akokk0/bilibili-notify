@@ -626,6 +626,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				const filtersChanged = !eq(prev.defaults.filters, g.defaults.filters);
 				const templatesChanged = !eq(prev.defaults.templates, g.defaults.templates);
 				const featuresChanged = !eq(prev.defaults.features, g.defaults.features);
+				const layoutChanged = !eq(prev.defaults.cardLayout, g.defaults.cardLayout);
 
 				if (appChanged) {
 					// log level / User-Agent / healthCheck —— 都在 app section。
@@ -708,7 +709,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					scheduleChanged ||
 					filtersChanged ||
 					templatesChanged ||
-					featuresChanged
+					featuresChanged ||
+					layoutChanged
 				) {
 					const refreshOps = subscriptionOpsToLive(
 						opts.subscriptionStore.list().map((sub) => ({ type: "update" as const, sub })),
@@ -720,6 +722,20 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						const sub = opts.subscriptionStore.findByUid(uid);
 						return sub ? buildLiveSubViewSingle(sub, opts.subRuntimeStore, g) : undefined;
 					});
+				}
+				// DynamicEngine 的 dynamicSubManager 是 per-sub 快照(见 buildDynamicSubViewSingle),
+				// 全局默认版式变化不会自动传播 —— 借道 applyOps 的 update 分支强制刷新每个已跟踪
+				// UID 的完整 SubItemView(startDynamicForUid 内部只在 UID 首次出现时初始化时间戳,
+				// 已跟踪 UID 不会被当成新订阅重推旧动态,见 dynamic-engine.ts stillSubscribed 注释)。
+				if (layoutChanged) {
+					dynamic.applyOps(
+						subscriptionOpsToDynamic(
+							opts.subscriptionStore.list().map((sub) => ({ type: "update" as const, sub })),
+							opts.subscriptionStore,
+							opts.subRuntimeStore,
+							g,
+						),
+					);
 				}
 			}
 		}),

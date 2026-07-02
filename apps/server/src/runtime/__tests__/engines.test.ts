@@ -414,11 +414,36 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(liveOps[0]).toMatchObject({ type: "update", uid: "1" });
 	});
 
+	it("回归:只改全局 cardLayout(不碰 cardStyle/ai/schedule 等)→ live.applyOps 与 dynamic.applyOps 都收到刷新(此前 layoutChanged 未接入热更 gate,保存版式后预览生效但实际推送仍用旧版式)", () => {
+		const sub = makeEmptySubscription({ id: "sub-1", uid: "1" });
+		const c = setup({ subs: [sub] });
+		active = c;
+		H.dynamic[0].applyOps.mockClear();
+		H.live[0].applyOps.mockClear();
+		patchGlobals(c, (g) => {
+			const block = g.defaults.cardLayout.live[0];
+			expect(block).toBeDefined();
+			if (block) block.visible = false;
+		});
+		c.bus.emit("config-changed", "globals");
+
+		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
+		expect(liveOps).toHaveLength(1);
+		expect(liveOps[0]).toMatchObject({ type: "update", uid: "1" });
+		expect(liveOps[0].changes[0].cardLayout.live[0].visible).toBe(false);
+
+		expect(H.dynamic[0].applyOps).toHaveBeenCalledTimes(1);
+		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
+		expect(dynOps).toHaveLength(1);
+		expect(dynOps[0]).toMatchObject({ type: "update", uid: "1" });
+	});
+
 	it("no-op:globals 未变的 config-changed 不热推任何子系统", () => {
 		const c = setup();
 		active = c;
 		c.bus.emit("config-changed", "globals");
 		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
+		expect(H.dynamic[0].applyOps).not.toHaveBeenCalled();
 		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
 		expect(H.live[0].applyOps).not.toHaveBeenCalled();
 		// 仅 boot 推过一次。
