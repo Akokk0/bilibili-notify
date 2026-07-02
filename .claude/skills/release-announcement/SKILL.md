@@ -1,5 +1,5 @@
 ---
-name: release-notes
+name: release-announcement
 description: 写 bilibili-notify 三端(独立端/koishi/AstrBot)发布公告,按增删改组织、压到 600 字内。Use when 用户要写或更新 release notes / 更新公告 / 发版公告,或发版后整理对外更新说明。
 ---
 
