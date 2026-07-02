@@ -470,6 +470,16 @@ describe("ImageRenderer.updateConfig", () => {
 		r.updateConfig({ ...BASE });
 		expect(info).not.toHaveBeenCalled();
 	});
+
+	it("回归:只改 glassOpacity(渐变色未变)→ 日志报实际改的字段,不误报渐变色", () => {
+		const { r, info } = makeWithSpyLogger({ ...BASE });
+		r.updateConfig({ ...BASE, glassOpacity: 0.5 });
+		expect(info).toHaveBeenCalledTimes(1);
+		const [msg] = info.mock.calls[0] as [string];
+		expect(msg).toContain("glassOpacity");
+		expect(msg).not.toContain("cardColorStart");
+		expect(msg).not.toContain("cardColorEnd");
+	});
 });
 
 // ---------------------------------------------------------------------------

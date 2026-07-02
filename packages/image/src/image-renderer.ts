@@ -144,20 +144,31 @@ export class ImageRenderer {
 		this.config = config;
 		// 仅在配置**实际变化**时记录 —— 预览每次渲染(尤其切卡片类型时样式没变)都会
 		// updateConfig,无脑打 info 会刷屏并让人误以为「已保存」。重复传入相同配置则静默。
-		const changed =
-			prev.cardColorStart !== config.cardColorStart ||
-			prev.cardColorEnd !== config.cardColorEnd ||
-			prev.font !== config.font ||
-			prev.showPopularity !== config.showPopularity ||
-			prev.showArea !== config.showArea ||
-			prev.showFans !== config.showFans ||
-			prev.glassOpacity !== config.glassOpacity ||
-			prev.glassClear !== config.glassClear ||
-			prev.backgroundImage !== config.backgroundImage;
-		if (!changed) return;
-		this.logger.info(
-			`[image] 配置已更新: cardColorStart=${config.cardColorStart}, cardColorEnd=${config.cardColorEnd}`,
-		);
+		// 日志内容只列**真正变化**的字段(此前无脑打印 cardColorStart/cardColorEnd,
+		// 改玻璃片透明度这类字段时看起来像"渐变色又被打印了一遍",容易被误读成
+		// 没热更新到实际改的项)。
+		const diffs: string[] = [];
+		if (prev.cardColorStart !== config.cardColorStart) {
+			diffs.push(`cardColorStart=${config.cardColorStart}`);
+		}
+		if (prev.cardColorEnd !== config.cardColorEnd) {
+			diffs.push(`cardColorEnd=${config.cardColorEnd}`);
+		}
+		if (prev.font !== config.font) diffs.push(`font=${config.font}`);
+		if (prev.showPopularity !== config.showPopularity) {
+			diffs.push(`showPopularity=${config.showPopularity}`);
+		}
+		if (prev.showArea !== config.showArea) diffs.push(`showArea=${config.showArea}`);
+		if (prev.showFans !== config.showFans) diffs.push(`showFans=${config.showFans}`);
+		if (prev.glassOpacity !== config.glassOpacity) {
+			diffs.push(`glassOpacity=${config.glassOpacity}`);
+		}
+		if (prev.glassClear !== config.glassClear) diffs.push(`glassClear=${config.glassClear}`);
+		if (prev.backgroundImage !== config.backgroundImage) {
+			diffs.push(`backgroundImage=${config.backgroundImage ? "(set)" : "(none)"}`);
+		}
+		if (diffs.length === 0) return;
+		this.logger.info(`[image] 配置已更新: ${diffs.join(", ")}`);
 	}
 
 	stop(): void {
