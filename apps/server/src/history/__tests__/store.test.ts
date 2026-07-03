@@ -164,14 +164,19 @@ describe("append — payload reduce + 落盘 + emit", () => {
 		expect(entry.payload.imageRef).toBe(`${entry.id}.png`);
 	});
 
-	it("image 无 caption + 非 live-summary → text 仍 undefined(不误伤普通卡片图)", async () => {
-		const entry = await store.append(
-			baseInput({
-				source: "dynamic",
-				payload: { kind: "image", image: { buffer: Buffer.from("a"), mime: "image/png" } },
-			}),
-		);
-		expect(entry.payload.text).toBeUndefined();
+	it("回归:消息版式把卡片图拆成独立消息(无 caption)→ text 给「[卡片图]」摘要,不落「（无内容）」", async () => {
+		// 此前假设「无 caption 的纯图推送」只有词云一种,dynamic/live 给 undefined 不会
+		// 误伤——但消息版式支持把 card 拆成独立消息后,这个假设不成立了:card 单独成条
+		// 时天然没有 caption,text 落 undefined 会在 History 列表显示成「（无内容）」。
+		for (const source of ["dynamic", "live"] as const) {
+			const entry = await store.append(
+				baseInput({
+					source,
+					payload: { kind: "image", image: { buffer: Buffer.from("a"), mime: "image/png" } },
+				}),
+			);
+			expect(entry.payload.text).toBe("[卡片图]");
+		}
 	});
 
 	it("result.ok = targets.every(ok);任一失败则 false", async () => {

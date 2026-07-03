@@ -91,10 +91,10 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				return { kind: "text", text: payload.text };
 			case "image": {
 				const imageRef = await writeImage(entryId, payload.image.buffer, payload.image.mime);
-				// 纯图推送(无 caption)在 History 列表会落成「（无内容）」。目前唯一的「无文字
-				// 纯图」推送是直播词云(feature wordcloud → source=live-summary),给个可读
-				// 摘要,与图集的 `[图集 N 张]` 同一思路。
-				const text = payload.caption || (source === "live-summary" ? "[弹幕词云]" : undefined);
+				// 纯图推送(无 caption)在 History 列表会落成「（无内容）」。此前只有直播
+				// 词云会这样;消息版式支持把 card 拆成独立消息后,dynamic/live 的卡片图
+				// 也会天然无 caption 单独成条 —— 统一给个可读摘要,而不是只特判词云。
+				const text = payload.caption || (source === "live-summary" ? "[弹幕词云]" : "[卡片图]");
 				return { kind: "image", text, imageRef };
 			}
 			case "forward-images":
