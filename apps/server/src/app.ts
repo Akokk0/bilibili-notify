@@ -217,6 +217,19 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	// reachable so the SPA can boot, probe `GET /api/session`, and render its
 	// own login dialog. Dashboard assets are non-secret.
 	if (options.staticDir) {
+		// 缓存策略:serveStatic 默认只发 Last-Modified,浏览器按启发式缓存旧
+		// index.html/JS —— 镜像更新后 API 已是新版而面板仍从缓存跑旧 bundle。
+		// Vite 的 /assets/* 文件名含内容 hash → immutable 永久缓存;其余入口
+		// (index.html / public 文件 / SPA fallback)no-cache 每次回源确认。
+		// /api/* 命中路由后早已终结,只有落到 notFound 的才在这里排除。
+		app.use("/*", async (c, next) => {
+			await next();
+			if (c.req.path.startsWith("/api/")) return;
+			c.res.headers.set(
+				"Cache-Control",
+				c.req.path.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "no-cache",
+			);
+		});
 		app.use("/*", serveStatic({ root: options.staticDir }));
 	}
 

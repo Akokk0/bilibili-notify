@@ -1,6 +1,11 @@
 # 用法:cp docker-compose.example.yaml docker-compose.yaml && docker compose up -d
 # 不要手动创建 ./config/bn.config.yaml;容器首次启动会自动生成完整配置。
 # 首启动后改配置请编辑 ./config/bn.config.yaml 再 docker compose restart。
+#
+# 更新:docker compose pull && docker compose up -d(restart 不会换镜像,必须 up -d)。
+# pull 时提示 "Layer already exists" 是正常的层复用,不代表没更新。
+# 若走镜像加速站,:alpha/:latest 浮动 tag 的 manifest 可能被站方缓存导致
+# 短时间拉不到新版 —— 改用固定版本 tag(如 :v0.1.0-alpha.13)或直连官源即可。
 
 services:
   bilibili-notify:
