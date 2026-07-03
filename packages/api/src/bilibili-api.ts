@@ -6,6 +6,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { CookieData } from "@bilibili-notify/storage";
 import { CronJob } from "cron";
+import { generateBrowserIdentity } from "./browser-identity";
 import { BiliCookieJar } from "./cookie-jar";
 import * as EP from "./endpoints";
 import { BiliHttpClient } from "./http-client";
@@ -69,14 +70,18 @@ export interface BilibiliAPIOptions {
 	callbacks?: BilibiliAPICallbacks;
 }
 
-const DEFAULT_UA = "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0";
-
 export class BilibiliAPI {
 	readonly logger: Logger;
 	private readonly serviceCtx: ServiceContext;
 	private config: BilibiliAPIConfig;
 	private readonly callbacks: BilibiliAPICallbacks;
 
+	/**
+	 * 本实例的浏览器身份(UA + sec-ch-ua 全家,版本互相咬合)。启动时生成一次,
+	 * loadCookies/clearCookies/-101 重建 client 时**复用同一份** —— 同一 cookie
+	 * 会话在不同 UA 间跳变是机器人特征,身份漂移比版本旧更招风控。
+	 */
+	private readonly browserIdentity = generateBrowserIdentity();
 	private jar: BiliCookieJar;
 	private client!: BiliHttpClient;
 	private wbiKeys: WbiKeys = { imgKey: "", subKey: "" };
@@ -142,7 +147,7 @@ export class BilibiliAPI {
 	 * `undefined` / 空串 → 回退到内置默认 Firefox UA。
 	 */
 	setUserAgent(userAgent: string | undefined): void {
-		const ua = userAgent?.trim() ? userAgent : DEFAULT_UA;
+		const ua = userAgent?.trim() ? userAgent : this.browserIdentity.userAgent;
 		this.config = { ...this.config, userAgent };
 		if (this.client) {
 			this.client.setHeader("User-Agent", ua);
@@ -162,13 +167,15 @@ export class BilibiliAPI {
 			headers: {
 				// axios 时代由其默认值隐式外发,换 fetch 后需显式钉死(风控指纹对齐)。
 				Accept: "application/json, text/plain, */*",
-				"User-Agent": this.config.userAgent || DEFAULT_UA,
+				// UA/sec-ch-ua 来自同一份生成身份,版本互相咬合(旧默认是 Firefox UA
+				// 配 Chrome sec-ch-ua 的拼接怪);用户配置的 userAgent 仍优先。
+				"User-Agent": this.config.userAgent || this.browserIdentity.userAgent,
 				Origin: "https://www.bilibili.com",
 				Referer: "https://www.bilibili.com/",
 				priority: "u=1, i",
-				"sec-ch-ua": '"Not;A=Brand";v="99", "Google Chrome";v="139", "Chromium";v="139"',
-				"sec-ch-ua-mobile": "?0",
-				"sec-ch-ua-platform": '"Linux"',
+				"sec-ch-ua": this.browserIdentity.secChUa,
+				"sec-ch-ua-mobile": this.browserIdentity.secChUaMobile,
+				"sec-ch-ua-platform": this.browserIdentity.secChUaPlatform,
 				"sec-fetch-dest": "empty",
 				"sec-fetch-mode": "cors",
 				"sec-fetch-site": "same-site",
@@ -554,7 +561,9 @@ export class BilibiliAPI {
 		const resp = await this.client.postForm(
 			`${EP.BILI_TICKET_URL}?${params.toString()}`,
 			{},
-			{ headers: { "User-Agent": DEFAULT_UA } },
+			// 历史行为:ticket 请求固定用默认 UA(不随用户自定义 UA);现固定用
+			// 本实例生成身份的 UA,语义等价。
+			{ headers: { "User-Agent": this.browserIdentity.userAgent } },
 		);
 		return resp as BiliTicket;
 	}

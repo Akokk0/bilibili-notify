@@ -45,6 +45,14 @@ export class BiliHttpClient {
 		this.onBody = opts.onBody;
 	}
 
+	/** 读默认头(大小写不敏感;测试/诊断用)。 */
+	getHeader(name: string): string | undefined {
+		const found = Object.keys(this.defaultHeaders).find(
+			(k) => k.toLowerCase() === name.toLowerCase(),
+		);
+		return found === undefined ? undefined : this.defaultHeaders[found];
+	}
+
 	/** 热替换默认头(setUserAgent 用);已 in-flight 的请求仍走旧值。 */
 	setHeader(name: string, value: string): void {
 		// 大小写不敏感去重:同名(如 User-Agent vs user-agent)只留最新值。
