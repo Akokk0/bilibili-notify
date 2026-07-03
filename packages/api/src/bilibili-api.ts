@@ -5,12 +5,10 @@ import {
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import type { CookieData } from "@bilibili-notify/storage";
-import axios, { type AxiosInstance } from "axios";
 import { CronJob } from "cron";
-import { JSDOM } from "jsdom";
-import { DateTime } from "luxon";
-import { Cookie, CookieJar } from "tough-cookie";
+import { BiliCookieJar } from "./cookie-jar";
 import * as EP from "./endpoints";
+import { BiliHttpClient } from "./http-client";
 import type {
 	BACookie,
 	BiliTicket,
@@ -71,14 +69,16 @@ export interface BilibiliAPIOptions {
 	callbacks?: BilibiliAPICallbacks;
 }
 
+const DEFAULT_UA = "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0";
+
 export class BilibiliAPI {
 	readonly logger: Logger;
 	private readonly serviceCtx: ServiceContext;
 	private config: BilibiliAPIConfig;
 	private readonly callbacks: BilibiliAPICallbacks;
 
-	private jar: CookieJar;
-	private client!: AxiosInstance;
+	private jar: BiliCookieJar;
+	private client!: BiliHttpClient;
 	private wbiKeys: WbiKeys = { imgKey: "", subKey: "" };
 	private ticketJob!: CronJob;
 	private refreshCookieTimer?: Disposable;
@@ -106,11 +106,11 @@ export class BilibiliAPI {
 		this.config = opts.config;
 		this.callbacks = opts.callbacks ?? {};
 		this.logger = opts.serviceCtx.logger;
-		this.jar = new CookieJar();
+		this.jar = new BiliCookieJar();
 	}
 
 	async start(): Promise<void> {
-		await this.initClient();
+		this.initClient();
 		this.logger.debug("[init] HTTP 客户端初始化完成");
 
 		// Daily ticket refresh at midnight (Beijing time, where bilibili.com lives).
@@ -138,52 +138,47 @@ export class BilibiliAPI {
 
 	/**
 	 * 热替换 User-Agent。adapter 在 dashboard 编辑 `app.userAgent` 后调用,
-	 * 直接改 axios 实例的 default headers,后续请求生效;已 in-flight 的请求
-	 * 仍走旧 UA。`undefined` / 空串 → 回退到内置默认 Firefox UA。
+	 * 直接改客户端默认头,后续请求生效;已 in-flight 的请求仍走旧 UA。
+	 * `undefined` / 空串 → 回退到内置默认 Firefox UA。
 	 */
 	setUserAgent(userAgent: string | undefined): void {
-		const ua = userAgent?.trim()
-			? userAgent
-			: "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0";
+		const ua = userAgent?.trim() ? userAgent : DEFAULT_UA;
 		this.config = { ...this.config, userAgent };
 		if (this.client) {
-			this.client.defaults.headers["User-Agent"] = ua;
+			this.client.setHeader("User-Agent", ua);
 			this.logger.info(`[init] User-Agent 已更新: ${ua}`);
 		}
 	}
 
 	// ---- Initialization ----
 
-	private async initClient(): Promise<void> {
-		const { wrapper } = await import("axios-cookiejar-support");
-		this.client = wrapper(
-			axios.create({
-				jar: this.jar,
-				// 有限超时:无 timeout 时一个挂起连接(对端不回 / 半开 TCP)会让
-				// 该请求永不结束 —— 卡死整条刷新链 / API 调用且不进 retry。20s 覆盖
-				// 连接 + 响应,超时抛 ECONNABORTED 由 this.retry 正常退避重试。
-				timeout: 20_000,
-				headers: {
-					"Content-Type": "application/json",
-					"User-Agent":
-						(this.config as BilibiliAPIConfig).userAgent ||
-						"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0",
-					Origin: "https://www.bilibili.com",
-					Referer: "https://www.bilibili.com/",
-					priority: "u=1, i",
-					"sec-ch-ua": '"Not;A=Brand";v="99", "Google Chrome";v="139", "Chromium";v="139"',
-					"sec-ch-ua-mobile": "?0",
-					"sec-ch-ua-platform": '"Linux"',
-					"sec-fetch-dest": "empty",
-					"sec-fetch-mode": "cors",
-					"sec-fetch-site": "same-site",
-				},
-			}),
-		);
-		this.client.interceptors.response.use((response) => {
-			const data = response.data as { code?: unknown } | undefined;
-			if (data && typeof data.code === "number") this.maybeFireAuthLost(data.code);
-			return response;
+	private initClient(): void {
+		this.client = new BiliHttpClient({
+			jar: this.jar,
+			// 有限超时:无 timeout 时一个挂起连接(对端不回 / 半开 TCP)会让
+			// 该请求永不结束 —— 卡死整条刷新链 / API 调用且不进 retry。20s 覆盖
+			// 连接 + 响应,超时抛错由 this.retry 正常退避重试。
+			timeoutMs: 20_000,
+			headers: {
+				// axios 时代由其默认值隐式外发,换 fetch 后需显式钉死(风控指纹对齐)。
+				Accept: "application/json, text/plain, */*",
+				"User-Agent": this.config.userAgent || DEFAULT_UA,
+				Origin: "https://www.bilibili.com",
+				Referer: "https://www.bilibili.com/",
+				priority: "u=1, i",
+				"sec-ch-ua": '"Not;A=Brand";v="99", "Google Chrome";v="139", "Chromium";v="139"',
+				"sec-ch-ua-mobile": "?0",
+				"sec-ch-ua-platform": '"Linux"',
+				"sec-fetch-dest": "empty",
+				"sec-fetch-mode": "cors",
+				"sec-fetch-site": "same-site",
+				// 注:不设默认 Content-Type —— axios 对无 body 的 GET 会剥掉该头、
+				// 表单 POST 又逐请求覆盖,旧线上流量从未真正发过 application/json。
+			},
+			onBody: (body) => {
+				const data = body as { code?: unknown } | undefined;
+				if (data && typeof data.code === "number") this.maybeFireAuthLost(data.code);
+			},
 		});
 	}
 
@@ -227,14 +222,14 @@ export class BilibiliAPI {
 		this.refreshCookieTimer = undefined;
 		this.loginInfoLoaded = false;
 		this.fireAuthLost();
-		this.jar = new CookieJar();
-		await this.initClient();
+		this.jar = new BiliCookieJar();
+		this.initClient();
 	}
 
 	// ---- Cookie management ----
 
 	addCookie(cookieStr: string): void {
-		this.jar.setCookieSync(
+		this.jar.setFromSetCookie(
 			`${cookieStr}; path=/; domain=.bilibili.com`,
 			"https://www.bilibili.com",
 		);
@@ -242,7 +237,7 @@ export class BilibiliAPI {
 
 	getCookiesJson(): string | undefined {
 		try {
-			return JSON.stringify(this.jar.serializeSync()?.cookies ?? []);
+			return JSON.stringify(this.jar.serialize());
 		} catch (e) {
 			this.logger.warn(`[cookie] 获取 cookies 失败: ${e instanceof Error ? e.message : String(e)}`);
 			return undefined;
@@ -251,14 +246,17 @@ export class BilibiliAPI {
 
 	getCookiesHeader(): string {
 		try {
-			return (this.jar.serializeSync()?.cookies ?? []).map((c) => `${c.key}=${c.value}`).join("; ");
+			return this.jar
+				.serialize()
+				.map((c) => `${c.key}=${c.value}`)
+				.join("; ");
 		} catch {
 			return "";
 		}
 	}
 
 	private getCSRF(): string | undefined {
-		return this.jar.serializeSync()?.cookies.find((c) => c.key === "bili_jct")?.value;
+		return this.jar.getValue("bili_jct");
 	}
 
 	/** Load cookies from CookieData (decrypted by StorageManager) */
@@ -282,42 +280,25 @@ export class BilibiliAPI {
 
 		// 重载 / 换号:先重建 jar + 重绑 client,旧 SESSDATA/bili_jct 绝不残留
 		// 参与后续请求(否则换号后旧会话 cookie 仍被发出,与 clearCookies 同源)。
-		this.jar = new CookieJar();
-		await this.initClient();
+		this.jar = new BiliCookieJar();
+		this.initClient();
 
 		const biliJctCookie = cookies.find((c) => c.key === "bili_jct");
 
-		for (const cd of cookies) {
-			const cookie = new Cookie({
-				key: cd.key,
-				value: cd.value,
-				expires: this.parseExpires(cd.expires),
-				domain: cd.domain,
-				path: cd.path,
-				secure: cd.secure,
-				httpOnly: cd.httpOnly,
-				sameSite: cd.sameSite,
-			});
-			this.jar.setCookieSync(
-				cookie,
-				`http${cookie.secure ? "s" : ""}://${cookie.domain}${cookie.path}`,
-			);
-		}
+		this.jar.load(cookies);
 
 		// Add a dummy buvid3 cookie if bili_jct is present (required by some APIs)
 		if (biliJctCookie) {
-			const buvid3 = new Cookie({
-				key: "buvid3",
-				value: "some_non_empty_value",
-				expires: this.parseExpires(biliJctCookie.expires),
-				domain: biliJctCookie.domain,
-				path: biliJctCookie.path,
-				secure: biliJctCookie.secure,
-			});
-			this.jar.setCookieSync(
-				buvid3,
-				`http${buvid3.secure ? "s" : ""}://${buvid3.domain}${buvid3.path}`,
-			);
+			this.jar.load([
+				{
+					key: "buvid3",
+					value: "some_non_empty_value",
+					expires: biliJctCookie.expires,
+					domain: biliJctCookie.domain,
+					path: biliJctCookie.path,
+					secure: biliJctCookie.secure,
+				},
+			]);
 		}
 
 		this.loginInfoLoaded = true;
@@ -372,15 +353,10 @@ export class BilibiliAPI {
 		this.refreshGeneration++;
 		this.refreshCookieTimer?.dispose();
 		this.refreshCookieTimer = undefined;
-		this.jar = new CookieJar();
-		await this.initClient();
+		this.jar = new BiliCookieJar();
+		this.initClient();
 		this.loginInfoLoaded = false;
 		this.logger.info("[cookie] 内存 cookie jar 已清空");
-	}
-
-	private parseExpires(expires?: string): Date | "Infinity" {
-		if (!expires || expires === "Infinity") return "Infinity";
-		return DateTime.fromISO(expires).toJSDate();
 	}
 
 	private enableRefreshCookiesInterval(refreshToken: string, csrf: string): void {
@@ -450,18 +426,20 @@ export class BilibiliAPI {
 			["encrypt"],
 		);
 
-		const ts = DateTime.now().toMillis();
+		const ts = Date.now();
 		const data = new TextEncoder().encode(`refresh_${ts}`);
 		const encrypted = new Uint8Array(
 			await crypto.subtle.encrypt({ name: "RSA-OAEP" }, publicKey, data),
 		);
 		const correspondPath = encrypted.reduce((str, c) => str + c.toString(16).padStart(2, "0"), "");
 
-		const { data: html } = await this.client.get(
-			`${EP.COOKIE_REFRESH_CORRESPOND_PATH}/${correspondPath}`,
-		);
-		const { document } = new JSDOM(html).window;
-		const refreshCsrf = document.getElementById("1-name")?.textContent?.trim() || null;
+		const html = await this.client.get(`${EP.COOKIE_REFRESH_CORRESPOND_PATH}/${correspondPath}`);
+		// jsdom 时代取 getElementById("1-name").textContent;页面即
+		// `<div id="1-name">{refresh_csrf}</div>`,正则等价且免掉整棵 jsdom 依赖树。
+		const refreshCsrf =
+			typeof html === "string"
+				? (/id="1-name"[^>]*>([^<]*)</.exec(html)?.[1]?.trim() ?? null)
+				: null;
 		if (!refreshCsrf) {
 			// correspond 页面没解析出 refresh_csrf(B 站返回异常 / 结构变更):
 			// 绝不 POST 一个 null refresh_csrf(必失败且语义不明)。抛可重试错,
@@ -469,16 +447,12 @@ export class BilibiliAPI {
 			throw new Error("correspond 页面未解析到 refresh_csrf,跳过本轮刷新");
 		}
 
-		const { data: refreshData } = await this.client.post(
-			EP.COOKIE_REFRESH_URL,
-			{
-				csrf,
-				refresh_csrf: refreshCsrf,
-				source: "main_web",
-				refresh_token: refreshToken,
-			},
-			{ headers: { "Content-Type": "application/x-www-form-urlencoded" } },
-		);
+		const refreshData = (await this.client.postForm(EP.COOKIE_REFRESH_URL, {
+			csrf,
+			refresh_csrf: refreshCsrf,
+			source: "main_web",
+			refresh_token: refreshToken,
+		})) as { code: number; message: string; data: { refresh_token: string } };
 
 		// RSA/correspond/refresh 这串网络往返期间若 cookie 状态已被替换,
 		// 后面的 jar 重置 / 持久化都基于过期前提,丢弃本轮。
@@ -509,11 +483,10 @@ export class BilibiliAPI {
 		const newCsrf = this.getCSRF();
 		if (!newCsrf) throw new Error("未找到 bili_jct cookie");
 
-		const { data: acceptData } = await this.client.post(
-			EP.COOKIE_REFRESH_CONFIRM_URL,
-			{ csrf: newCsrf, refresh_token: refreshToken },
-			{ headers: { "Content-Type": "application/x-www-form-urlencoded" } },
-		);
+		const acceptData = (await this.client.postForm(EP.COOKIE_REFRESH_CONFIRM_URL, {
+			csrf: newCsrf,
+			refresh_token: refreshToken,
+		})) as { code: number };
 
 		if (acceptData.code !== 0) {
 			if (classifyRefreshCode(acceptData.code) === "risk-control") {
@@ -542,7 +515,7 @@ export class BilibiliAPI {
 		try {
 			await this.callbacks.onCookiesRefreshed?.({
 				cookiesJson: this.getCookiesJson() ?? "[]",
-				refreshToken: refreshData.data.refresh_token as string,
+				refreshToken: refreshData.data.refresh_token,
 			});
 		} catch (e) {
 			this.logger.error(
@@ -565,7 +538,7 @@ export class BilibiliAPI {
 
 	private async doUpdateBiliTicket(): Promise<void> {
 		const csrf = this.getCSRF();
-		const ticket = (await this.getBiliTicket(csrf)) as BiliTicket;
+		const ticket = await this.getBiliTicket(csrf);
 		if (ticket.code !== 0) {
 			throw new Error(`获取 BiliTicket 失败: ${ticket.message}`);
 		}
@@ -578,17 +551,12 @@ export class BilibiliAPI {
 
 	private async getBiliTicket(csrf?: string): Promise<BiliTicket> {
 		const params = buildTicketParams(csrf);
-		const resp = await this.client.post(
+		const resp = await this.client.postForm(
 			`${EP.BILI_TICKET_URL}?${params.toString()}`,
 			{},
-			{
-				headers: {
-					"Content-Type": "application/x-www-form-urlencoded",
-					"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0",
-				},
-			},
+			{ headers: { "User-Agent": DEFAULT_UA } },
 		);
-		return resp.data as BiliTicket;
+		return resp as BiliTicket;
 	}
 
 	private async getWbi(params: Record<string, string | number | object>): Promise<string> {
@@ -606,7 +574,8 @@ export class BilibiliAPI {
 	private async wbiGet(endpoint: string, params: Record<string, string | number | object>) {
 		const once = async () => {
 			const wbi = await this.getWbi(params);
-			return (await this.client.get(`${endpoint}?${wbi}`)).data;
+			// biome-ignore lint/suspicious/noExplicitAny: 保持 axios 时代的宽松返回契约,下游各自 cast 收窄
+			return (await this.client.get(`${endpoint}?${wbi}`)) as any;
 		};
 		const data = await once();
 		if (data && typeof data === "object" && data.code === -352) {
@@ -624,7 +593,7 @@ export class BilibiliAPI {
 		return data;
 	}
 
-	// ---- Retry helper ----
+	// ---- Request helpers ----
 
 	private retry<T>(fn: () => Promise<T>, label: string): Promise<T> {
 		return retryUtil(() => fn(), {
@@ -637,70 +606,70 @@ export class BilibiliAPI {
 		});
 	}
 
+	/**
+	 * GET + retry,返回响应体(等价旧 axios 的 `.data`)。默认 `any` 沿袭 axios
+	 * 时代的宽松返回契约 —— 下游(dynamic/live/login-flow)各自 cast 收窄,
+	 * 改成 unknown 会波及全部调用方签名。
+	 */
+	// biome-ignore lint/suspicious/noExplicitAny: 见上,兼容旧返回契约
+	private getJson<T = any>(url: string, label: string): Promise<T> {
+		return this.retry(async () => (await this.client.get(url)) as T, label);
+	}
+
+	/**
+	 * 表单 POST + retry(bilibili 写接口一律 x-www-form-urlencoded)。body 是
+	 * 惰性闭包:csrf(bili_jct)必须在**每次尝试时**现取 —— 与旧实现把
+	 * `getCSRF()` 写在 retry 闭包内的语义一致(刷新轮换后重试用新值)。
+	 */
+	// biome-ignore lint/suspicious/noExplicitAny: 见 getJson
+	private postFormJson<T = any>(
+		url: string,
+		body: () => Record<string, string | number | boolean | undefined>,
+		label: string,
+	): Promise<T> {
+		return this.retry(async () => (await this.client.postForm(url, body())) as T, label);
+	}
+
 	// ---- Public API methods ----
 
 	async getAllDynamic() {
-		return this.retry(
-			async () => (await this.client.get(EP.GET_ALL_DYNAMIC_LIST)).data,
-			"getAllDynamic",
-		);
+		return this.getJson(EP.GET_ALL_DYNAMIC_LIST, "getAllDynamic");
 	}
 
 	async getUserSpaceDynamic(mid: string) {
-		return this.retry(
-			async () =>
-				(
-					await this.client.get(
-						`${EP.GET_USER_SPACE_DYNAMIC_LIST}&host_mid=${encodeURIComponent(mid)}`,
-					)
-				).data,
+		return this.getJson(
+			`${EP.GET_USER_SPACE_DYNAMIC_LIST}&host_mid=${encodeURIComponent(mid)}`,
 			"getUserSpaceDynamic",
 		);
 	}
 
 	async hasNewDynamic(updateBaseline: string) {
-		return this.retry(
-			async () =>
-				(
-					await this.client.get(
-						`${EP.HAS_NEW_DYNAMIC}?update_baseline=${encodeURIComponent(updateBaseline)}`,
-					)
-				).data,
+		return this.getJson(
+			`${EP.HAS_NEW_DYNAMIC}?update_baseline=${encodeURIComponent(updateBaseline)}`,
 			"hasNewDynamic",
 		);
 	}
 
 	async getLoginQRCode() {
-		return this.retry(
-			async () => (await this.client.get(EP.GET_LOGIN_QRCODE)).data,
-			"getLoginQRCode",
-		);
+		return this.getJson(EP.GET_LOGIN_QRCODE, "getLoginQRCode");
 	}
 
 	async getLoginStatus(qrcodeKey: string) {
-		return this.retry(
-			async () =>
-				(
-					await this.client.get(
-						`${EP.GET_LOGIN_STATUS}?qrcode_key=${encodeURIComponent(qrcodeKey)}`,
-					)
-				).data,
+		return this.getJson(
+			`${EP.GET_LOGIN_STATUS}?qrcode_key=${encodeURIComponent(qrcodeKey)}`,
 			"getLoginStatus",
 		);
 	}
 
 	async getMyselfInfo(): Promise<MySelfInfoData> {
-		return this.retry(
-			async () => (await this.client.get(EP.GET_MYSELF_INFO)).data,
-			"getMyselfInfo",
-		);
+		return this.getJson(EP.GET_MYSELF_INFO, "getMyselfInfo");
 	}
 
 	async getUserCardInfo(mid: string, withPhoto = false): Promise<UserCardInfoData> {
-		return this.retry(async () => {
-			const url = `${EP.GET_USER_CARD_INFO}?mid=${encodeURIComponent(mid)}${withPhoto ? "&photo=true" : ""}`;
-			return (await this.client.get(url)).data;
-		}, "getUserCardInfo");
+		return this.getJson(
+			`${EP.GET_USER_CARD_INFO}?mid=${encodeURIComponent(mid)}${withPhoto ? "&photo=true" : ""}`,
+			"getUserCardInfo",
+		);
 	}
 
 	async getUserInfo(mid: string, griskId?: string) {
@@ -718,24 +687,18 @@ export class BilibiliAPI {
 	}
 
 	async getLiveRoomInfo(roomId: string): Promise<LiveRoomInfo> {
-		return this.retry(
-			async () =>
-				(await this.client.get(`${EP.GET_LIVE_ROOM_INFO}?room_id=${encodeURIComponent(roomId)}`))
-					.data,
+		return this.getJson(
+			`${EP.GET_LIVE_ROOM_INFO}?room_id=${encodeURIComponent(roomId)}`,
 			"getLiveRoomInfo",
 		);
 	}
 
 	async getMasterInfo(uid: string): Promise<MasterInfoData> {
-		return this.retry(
-			async () =>
-				(await this.client.get(`${EP.GET_MASTER_INFO}?uid=${encodeURIComponent(uid)}`)).data,
-			"getMasterInfo",
-		);
+		return this.getJson(`${EP.GET_MASTER_INFO}?uid=${encodeURIComponent(uid)}`, "getMasterInfo");
 	}
 
 	async getLiveRoomInfoStreamKey(roomId: string): Promise<LiveRoomDanmuInfo> {
-		// getDanmuInfo 现已强制 wbi 签名，裸 client.get 一律被风控拦成 -352。必须走
+		// getDanmuInfo 现已强制 wbi 签名，裸 GET 一律被风控拦成 -352。必须走
 		// wbiGet（自动加 wts + w_rid，并自带 -352 → 刷新 wbiKeys 重试一次的自愈）。
 		return this.retry(
 			async () => this.wbiGet(EP.GET_LIVE_ROOM_INFO_STREAM_KEY, { id: roomId }),
@@ -745,57 +708,34 @@ export class BilibiliAPI {
 
 	async getLiveRoomInfoByUids(uids: string[]) {
 		if (!uids.length) return { code: 0, data: {} };
-		return this.retry(async () => {
-			const params = uids.map((uid) => `uids[]=${encodeURIComponent(uid)}`).join("&");
-			return (await this.client.get(`${EP.GET_LIVE_ROOMS_INFO}?${params}`)).data;
-		}, "getLiveRoomInfoByUids");
+		const params = uids.map((uid) => `uids[]=${encodeURIComponent(uid)}`).join("&");
+		return this.getJson(`${EP.GET_LIVE_ROOMS_INFO}?${params}`, "getLiveRoomInfoByUids");
 	}
 
 	async getOnlineGoldRank(roomId: string, ruid: string, page = 1, pageSize = 20) {
-		return this.retry(
-			async () =>
-				(
-					await this.client.get(
-						`${EP.GET_ONLINE_GOLD_RANK}?room_id=${encodeURIComponent(roomId)}&ruid=${encodeURIComponent(ruid)}&page=${page}&page_size=${pageSize}`,
-					)
-				).data,
+		return this.getJson(
+			`${EP.GET_ONLINE_GOLD_RANK}?room_id=${encodeURIComponent(roomId)}&ruid=${encodeURIComponent(ruid)}&page=${page}&page_size=${pageSize}`,
 			"getOnlineGoldRank",
 		);
 	}
 
 	async getUserInfoInLive(uid: string, ruid: string) {
-		return this.retry(
-			async () =>
-				(
-					await this.client.get(
-						`${EP.GET_USER_INFO_IN_LIVE}?uid=${encodeURIComponent(uid)}&ruid=${encodeURIComponent(ruid)}`,
-					)
-				).data,
+		return this.getJson(
+			`${EP.GET_USER_INFO_IN_LIVE}?uid=${encodeURIComponent(uid)}&ruid=${encodeURIComponent(ruid)}`,
 			"getUserInfoInLive",
 		);
 	}
 
 	async getTheUserWhoIsLiveStreaming() {
-		return this.retry(
-			async () => (await this.client.get(EP.GET_LATEST_UPDATED_UPS)).data,
-			"getTheUserWhoIsLiveStreaming",
-		);
+		return this.getJson(EP.GET_LATEST_UPDATED_UPS, "getTheUserWhoIsLiveStreaming");
 	}
 
 	async getUserUpstat(mid: string) {
-		return this.retry(
-			async () =>
-				(await this.client.get(`${EP.GET_USER_UPSTAT}?mid=${encodeURIComponent(mid)}`)).data,
-			"getUserUpstat",
-		);
+		return this.getJson(`${EP.GET_USER_UPSTAT}?mid=${encodeURIComponent(mid)}`, "getUserUpstat");
 	}
 
 	async getUserNavnum(mid: string) {
-		return this.retry(
-			async () =>
-				(await this.client.get(`${EP.GET_USER_NAVNUM}?mid=${encodeURIComponent(mid)}`)).data,
-			"getUserNavnum",
-		);
+		return this.getJson(`${EP.GET_USER_NAVNUM}?mid=${encodeURIComponent(mid)}`, "getUserNavnum");
 	}
 
 	async getUserVideos(mid: string, ps = 5) {
@@ -825,74 +765,43 @@ export class BilibiliAPI {
 	 * 该参数即会整条刷新探测失效。统一传真实 bili_jct csrf。
 	 */
 	async getCookieInfo(csrf: string) {
-		return this.retry(
-			async () =>
-				(await this.client.get(`${EP.GET_COOKIES_INFO}?csrf=${encodeURIComponent(csrf)}`)).data,
-			"getCookieInfo",
-		);
+		return this.getJson(`${EP.GET_COOKIES_INFO}?csrf=${encodeURIComponent(csrf)}`, "getCookieInfo");
 	}
 
 	async follow(fid: string) {
-		return this.retry(async () => {
-			const csrf = this.getCSRF();
-			return (
-				await this.client.post(
-					EP.MODIFY_RELATION,
-					{ fid, act: 1, re_src: 11, csrf },
-					{ headers: { "Content-Type": "application/x-www-form-urlencoded" } },
-				)
-			).data;
-		}, "follow");
-	}
-
-	async createGroup(tag: string) {
-		return this.retry(async () => {
-			return (
-				await this.client.post(
-					EP.CREATE_GROUP,
-					{ tag, csrf: this.getCSRF() },
-					{ headers: { "Content-Type": "application/x-www-form-urlencoded" } },
-				)
-			).data;
-		}, "createGroup");
-	}
-
-	async getAllGroup() {
-		return this.retry(async () => (await this.client.get(EP.GET_ALL_GROUP)).data, "getAllGroup");
-	}
-
-	async copyUserToGroup(mid: string, groupId: string) {
-		return this.retry(async () => {
-			return (
-				await this.client.post(
-					EP.COPY_USER_TO_GROUP,
-					{ fids: mid, tagids: groupId, csrf: this.getCSRF() },
-					{ headers: { "Content-Type": "application/x-www-form-urlencoded" } },
-				)
-			).data;
-		}, "copyUserToGroup");
-	}
-
-	async getRelationGroupDetail(tagid: string) {
-		return this.retry(
-			async () => (await this.client.get(`${EP.GET_RELATION_GROUP_DETAIL}?tagid=${tagid}`)).data,
-			"getRelationGroupDetail",
+		return this.postFormJson(
+			EP.MODIFY_RELATION,
+			() => ({ fid, act: 1, re_src: 11, csrf: this.getCSRF() }),
+			"follow",
 		);
 	}
 
+	async createGroup(tag: string) {
+		return this.postFormJson(EP.CREATE_GROUP, () => ({ tag, csrf: this.getCSRF() }), "createGroup");
+	}
+
+	async getAllGroup() {
+		return this.getJson(EP.GET_ALL_GROUP, "getAllGroup");
+	}
+
+	async copyUserToGroup(mid: string, groupId: string) {
+		return this.postFormJson(
+			EP.COPY_USER_TO_GROUP,
+			() => ({ fids: mid, tagids: groupId, csrf: this.getCSRF() }),
+			"copyUserToGroup",
+		);
+	}
+
+	async getRelationGroupDetail(tagid: string) {
+		return this.getJson(`${EP.GET_RELATION_GROUP_DETAIL}?tagid=${tagid}`, "getRelationGroupDetail");
+	}
+
 	async v_voucherCaptcha(v_voucher: string): Promise<V_VoucherCaptchaData["data"]> {
-		const csrf = this.getCSRF();
 		// P2:与其余接口一致走 this.retry。**仅网络 POST 进 retry**,code≠0 是
 		// 逻辑失败(非瞬时)放在 retry 外判,避免对逻辑错误盲重试 4 次。
-		const data = await this.retry(
-			async () =>
-				(
-					await this.client.post(
-						EP.V_VOUCHER_CAPTCHA_URL,
-						{ csrf, v_voucher },
-						{ headers: { "Content-Type": "application/x-www-form-urlencoded" } },
-					)
-				).data,
+		const data = await this.postFormJson(
+			EP.V_VOUCHER_CAPTCHA_URL,
+			() => ({ csrf: this.getCSRF(), v_voucher }),
 			"v_voucherCaptcha",
 		);
 		const result = data as V_VoucherCaptchaData;
@@ -906,17 +815,10 @@ export class BilibiliAPI {
 		validate: string,
 		seccode: string,
 	): Promise<ValidateCaptchaData["data"] | null> {
-		const csrf = this.getCSRF();
 		// P2:与其余接口一致走 this.retry(仅网络 POST 进 retry;code≠0 在外判)。
-		const data = await this.retry(
-			async () =>
-				(
-					await this.client.post(
-						EP.VALIDATE_CAPTCHA_URL,
-						{ csrf, challenge, token, validate, seccode },
-						{ headers: { "Content-Type": "application/x-www-form-urlencoded" } },
-					)
-				).data,
+		const data = await this.postFormJson(
+			EP.VALIDATE_CAPTCHA_URL,
+			() => ({ csrf: this.getCSRF(), challenge, token, validate, seccode }),
 			"validateCaptcha",
 		);
 		const result = data as ValidateCaptchaData;

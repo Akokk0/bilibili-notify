@@ -446,49 +446,22 @@ importers:
       '@bilibili-notify/storage':
         specifier: workspace:^
         version: link:../storage
-      axios:
-        specifier: ^1.9.0
-        version: 1.16.0
-      axios-cookiejar-support:
-        specifier: ^5.0.5
-        version: 5.0.5(axios@1.16.0)(tough-cookie@6.0.1)(undici@6.25.0)
       cron:
         specifier: ^4.4.0
         version: 4.4.0
-      jsdom:
-        specifier: ^26.1.0
-        version: 26.1.0
-      luxon:
-        specifier: ^3.7.2
-        version: 3.7.2
       md5:
         specifier: ^2.3.0
         version: 2.3.0
-      openai:
-        specifier: ^4.98.0
-        version: 4.104.0(ws@8.20.1)(zod@3.25.76)
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
-      tough-cookie:
-        specifier: ^6.0.0
-        version: 6.0.1
     devDependencies:
-      '@types/jsdom':
-        specifier: ^21.1.7
-        version: 21.1.7
-      '@types/luxon':
-        specifier: ^3.7.1
-        version: 3.7.1
       '@types/md5':
         specifier: ^2.3.6
         version: 2.3.6
       '@types/qrcode':
         specifier: ^1.5.6
         version: 1.5.6
-      '@types/tough-cookie':
-        specifier: ^4.0.5
-        version: 4.0.5
 
   packages/dynamic:
     dependencies:
@@ -3322,16 +3295,6 @@ packages:
     resolution: {integrity: sha512-kNOjDqAh7px0XWNI+4QbzoiR/nTkHAWNud2uvnJquD1/x5a7EQZMJT0AczqK0Qn67oY/TTQ1LbUKajZpp3I9tQ==}
     engines: {node: '>=8.0.0'}
 
-  axios-cookiejar-support@5.0.5:
-    resolution: {integrity: sha512-jJG+p7JnOYxkVrYkCDKBrLqUmcpwHZTNQrEcIEKr5qe7YVTyPAD9nCsi1cO5LDmQpQApfS430czO+oceI3g/3g==}
-    engines: {node: '>=18.0.0'}
-    peerDependencies:
-      axios: '>=0.20.0'
-      tough-cookie: '>=4.0.0'
-
-  axios@1.16.0:
-    resolution: {integrity: sha512-6hp5CwvTPlN2A31g5dxnwAX0orzM7pmCRDLnZSX772mv8WDqICwFjowHuPs04Mc8deIld1+ejhtaMn5vp6b+1w==}
-
   b4a@1.8.1:
     resolution: {integrity: sha512-aiqre1Nr0B/6DgE2N5vwTc+2/oQZ4Wh1t4NznYY4E00y8LCt6NqdRv81so00oo27D8MVKTpUa/MwUUtBLXCoDw==}
     peerDependencies:
@@ -3982,15 +3945,6 @@ packages:
     resolution: {integrity: sha512-b6suED+5/3rTpUBdG1gupIl8MPFCAMA0QXwmljLhvCUKcUvdE4gWky9zpuGCcXHOsz4J9wPGNWq6OKpmIzz3hQ==}
     hasBin: true
 
-  follow-redirects@1.16.0:
-    resolution: {integrity: sha512-y5rN/uOsadFT/JfYwhxRS5R7Qce+g3zG97+JrtFZlC9klX/W5hD7iiLzScI4nZqUS7DNUdhPgw4xI8W2LuXlUw==}
-    engines: {node: '>=4.0'}
-    peerDependencies:
-      debug: '*'
-    peerDependenciesMeta:
-      debug:
-        optional: true
-
   form-data-encoder@1.7.2:
     resolution: {integrity: sha512-qfqtYan3rxrnCk1VYaA4H+Ms9xdpPqvLZa6xmMgFvhO32x7/3J/ExcTd6qpxM0vH2GdMI+poehyBZvqfMTto8A==}
 
@@ -4081,6 +4035,7 @@ packages:
   git-raw-commits@5.0.1:
     resolution: {integrity: sha512-Y+csSm2GD/PCSh6Isd/WiMjNAydu0VBiG9J7EdQsNA5P9uXvLayqjmTsNlK5Gs9IhblFZqOU0yid5Il5JPoLiQ==}
     engines: {node: '>=18'}
+    deprecated: Deprecated and no longer maintained. Use @conventional-changelog/git-client instead.
     hasBin: true
 
   glob-parent@5.1.2:
@@ -4149,16 +4104,6 @@ packages:
   http-assert@1.5.0:
     resolution: {integrity: sha512-uPpH7OKX4H25hBmU6G1jWNaqJGpTXxey+YOUizJUAgu0AjLUeC8D73hTrhvDS5D+GJN1DN1+hhc/eF/wpxtp0w==}
     engines: {node: '>= 0.8'}
-
-  http-cookie-agent@6.0.8:
-    resolution: {integrity: sha512-qnYh3yLSr2jBsTYkw11elq+T361uKAJaZ2dR4cfYZChw1dt9uL5t3zSUwehoqqVb4oldk1BpkXKm2oat8zV+oA==}
-    engines: {node: '>=18.0.0'}
-    peerDependencies:
-      tough-cookie: ^4.0.0 || ^5.0.0
-      undici: ^5.11.0 || ^6.0.0
-    peerDependenciesMeta:
-      undici:
-        optional: true
 
   http-errors@1.8.1:
     resolution: {integrity: sha512-Kpk9Sm7NmI+RHhnj6OIWDI1d6fIoFAtFt9RLaTMRlg/8w49juAStsrBgp0Dp4OdxdVbRIeKhtCUvoi/RuAhO4g==}
@@ -5133,10 +5078,6 @@ packages:
   proxy-from-env@1.1.0:
     resolution: {integrity: sha512-D+zkORCbA9f1tdWRK0RaCR3GPv50cMxcrz4X8k5LTSUD1Dkw47mKJEZQNunItRTkWwgtaUSo1RVFRIG9ZXiFYg==}
 
-  proxy-from-env@2.1.0:
-    resolution: {integrity: sha512-cJ+oHTW1VAEa8cJslgmUZrc+sjRKgAKl3Zyse6+PV38hZe/V6Z14TbCuXcan9F9ghlz4QrFr2c92TNF82UkYHA==}
-    engines: {node: '>=10'}
-
   pump@3.0.4:
     resolution: {integrity: sha512-VS7sjc6KR7e1ukRFhQSY5LM2uBWAUPiOPa/A3mkKmiMwSmRFUITt0xuj+/lesgnCv+dPIEYlkzrcyXgquIHMcA==}
 
@@ -5552,15 +5493,8 @@ packages:
   tldts-core@6.1.86:
     resolution: {integrity: sha512-Je6p7pkk+KMzMv2XXKmAE3McmolOQFdxkKw0R8EYNr7sELW46JqnNeTX8ybPiQgvg1ymCoF8LXs5fzFaZvJPTA==}
 
-  tldts-core@7.0.30:
-    resolution: {integrity: sha512-uiHN8PIB1VmWyS98eZYja4xzlYqeFZVjb4OuYlJQnZAuJhMw4PbKQOKgHKhBdJR3FE/t5mUQ1Kd80++B+qhD1Q==}
-
   tldts@6.1.86:
     resolution: {integrity: sha512-WMi/OQ2axVTf/ykqCQgXiIct+mSQDFdH2fkwhPwgEwvJ1kSzZRiinb0zF2Xb8u4+OqPChmyI6MEu4EezNJz+FQ==}
-    hasBin: true
-
-  tldts@7.0.30:
-    resolution: {integrity: sha512-ELrFxuqsDdHUwoh0XxDbxuLD3Wnz49Z57IFvTtvWy1hJdcMZjXLIuonjilCiWHlT2GbE4Wlv1wKVTzDFnXH1aw==}
     hasBin: true
 
   to-regex-range@5.0.1:
@@ -5585,10 +5519,6 @@ packages:
 
   tough-cookie@5.1.2:
     resolution: {integrity: sha512-FVDYdxtnj0G6Qm/DhNPSb8Ju59ULcup3tuJxkFb5K8Bv2pUXILbf0xZWU8PX8Ov19OXljbUyveOFwRMwkXzO+A==}
-    engines: {node: '>=16'}
-
-  tough-cookie@6.0.1:
-    resolution: {integrity: sha512-LktZQb3IeoUWB9lqR5EWTHgW/VTITCXg4D21M+lvybRVdylLrRMnqaIONLVb5mav8vM19m44HIcGq4qASeu2Qw==}
     engines: {node: '>=16'}
 
   tr46@0.0.3:
@@ -8403,22 +8333,6 @@ snapshots:
 
   atomic-sleep@1.0.0: {}
 
-  axios-cookiejar-support@5.0.5(axios@1.16.0)(tough-cookie@6.0.1)(undici@6.25.0):
-    dependencies:
-      axios: 1.16.0
-      http-cookie-agent: 6.0.8(tough-cookie@6.0.1)(undici@6.25.0)
-      tough-cookie: 6.0.1
-    transitivePeerDependencies:
-      - undici
-
-  axios@1.16.0:
-    dependencies:
-      follow-redirects: 1.16.0
-      form-data: 4.0.5
-      proxy-from-env: 2.1.0
-    transitivePeerDependencies:
-      - debug
-
   b4a@1.8.1: {}
 
   bail@2.0.2: {}
@@ -9093,8 +9007,6 @@ snapshots:
 
   flat@5.0.2: {}
 
-  follow-redirects@1.16.0: {}
-
   form-data-encoder@1.7.2: {}
 
   form-data@4.0.5:
@@ -9278,13 +9190,6 @@ snapshots:
     dependencies:
       deep-equal: 1.0.1
       http-errors: 1.8.1
-
-  http-cookie-agent@6.0.8(tough-cookie@6.0.1)(undici@6.25.0):
-    dependencies:
-      agent-base: 7.1.4
-      tough-cookie: 6.0.1
-    optionalDependencies:
-      undici: 6.25.0
 
   http-errors@1.8.1:
     dependencies:
@@ -10468,8 +10373,6 @@ snapshots:
 
   proxy-from-env@1.1.0: {}
 
-  proxy-from-env@2.1.0: {}
-
   pump@3.0.4:
     dependencies:
       end-of-stream: 1.4.5
@@ -10990,15 +10893,9 @@ snapshots:
 
   tldts-core@6.1.86: {}
 
-  tldts-core@7.0.30: {}
-
   tldts@6.1.86:
     dependencies:
       tldts-core: 6.1.86
-
-  tldts@7.0.30:
-    dependencies:
-      tldts-core: 7.0.30
 
   to-regex-range@5.0.1:
     dependencies:
@@ -11018,10 +10915,6 @@ snapshots:
   tough-cookie@5.1.2:
     dependencies:
       tldts: 6.1.86
-
-  tough-cookie@6.0.1:
-    dependencies:
-      tldts: 7.0.30
 
   tr46@0.0.3: {}
 

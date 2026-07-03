@@ -1,5 +1,4 @@
 import { createHmac } from "node:crypto";
-import { DateTime } from "luxon";
 import md5 from "md5";
 
 // Bilibili WBI signing constant table
@@ -22,7 +21,7 @@ function getMixinKey(orig: string): string {
 
 export function encWbi(params: Record<string, string | number | object>, keys: WbiKeys): string {
 	const mixinKey = getMixinKey(keys.imgKey + keys.subKey);
-	const wts = Math.floor(DateTime.now().toSeconds());
+	const wts = Math.floor(Date.now() / 1000);
 	const chrFilter = /[!'()*]/g;
 
 	const allParams: Record<string, unknown> = { ...params, wts };
@@ -53,7 +52,7 @@ export function hmacSha256(key: string, message: string): string {
  * key_id: "ec02", secret: "XgwSnGZ1p"
  */
 export function buildTicketParams(csrf?: string): URLSearchParams {
-	const ts = Math.floor(DateTime.now().toMillis() / 1000);
+	const ts = Math.floor(Date.now() / 1000);
 	const hexSign = hmacSha256("XgwSnGZ1p", `ts${ts}`);
 	return new URLSearchParams({
 		key_id: "ec02",

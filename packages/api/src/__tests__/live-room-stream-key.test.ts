@@ -16,10 +16,11 @@ function makeApi() {
 	});
 	const calls: string[] = [];
 	// 注入 mock client + 预置非空 wbiKeys（imgKey 非空 → getWbi 不触发 updateBiliTicket 联网）
+	// fetch 传输层的 client.get 直接返回响应体（无 axios 的 .data 包裹）
 	(api as unknown as { client: { get(url: string): Promise<unknown> } }).client = {
 		get: async (url: string) => {
 			calls.push(url);
-			return { data: { code: 0, data: { token: "tok", host_list: [{ host: "x" }] } } };
+			return { code: 0, data: { token: "tok", host_list: [{ host: "x" }] } };
 		},
 	};
 	(api as unknown as { wbiKeys: { imgKey: string; subKey: string } }).wbiKeys = {
