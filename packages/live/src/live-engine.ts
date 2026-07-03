@@ -1,6 +1,6 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ImageRenderer } from "@bilibili-notify/image";
-import type { Logger, ServiceContext } from "@bilibili-notify/internal";
+import type { Logger, MessageKindLayout, ServiceContext } from "@bilibili-notify/internal";
 import type { LiveContentBuilder } from "./content-builder";
 import { DanmakuCollector } from "./danmaku-collector";
 import { ListenerManager, type ListenerManagerConfig } from "./listener-manager";
@@ -54,6 +54,12 @@ export interface LiveEngineConfig {
 	 * 缺省视为 true。Adapter 通常用 `globals.defaults.ai.enabled` 填充。
 	 */
 	aiEnabled?: boolean;
+	/**
+	 * 引擎级消息版式(开播切片)。per-UP `SubItemView.messageLayout` 缺失时兜底 ——
+	 * koishi 端用 `defaultMessageKindLayout("live", { link: 开关 })` 填充;独立端
+	 * per-UP 恒有值。两级都缺 = 旧路径(链接内嵌开播模板 {link})。
+	 */
+	messageLayout?: MessageKindLayout;
 }
 
 export interface LiveEngineOptions {
@@ -301,6 +307,7 @@ function toListenerConfig(c: LiveEngineConfig): ListenerManagerConfig {
 		customLiveMsg: c.customLiveMsg,
 		liveSummaryDefault: c.liveSummaryDefault,
 		imageEnabled: c.imageEnabled,
+		messageLayout: c.messageLayout,
 	};
 }
 

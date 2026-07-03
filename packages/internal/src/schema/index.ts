@@ -2,6 +2,7 @@ export * from "./card-layout";
 export * from "./common";
 export * from "./globals";
 export * from "./history";
+export * from "./message-layout";
 export * from "./resolve";
 export * from "./subscriptions";
 export * from "./targets";

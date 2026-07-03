@@ -10,7 +10,7 @@
  */
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
-import type { CardBlock, ForwardImage } from "@bilibili-notify/internal";
+import type { CardBlock, ForwardImage, MessageKindLayout } from "@bilibili-notify/internal";
 import type { DynamicFilterConfig } from "./types";
 
 /** dynamic-engine 渲染好的图片缓冲（无 mime/扩展信息时默认 image/jpeg）。 */
@@ -66,6 +66,16 @@ export interface PushLike {
 	 * - kind="dynamic-images"：DYNAMIC_TYPE_DRAW 的图集，adapter 通常以 forward message 投递。
 	 */
 	broadcastDynamic(uid: string, segments: PushSegment[], kind: PushKind): Promise<void>;
+
+	/**
+	 * 消息版式分条:一次推送拆成多条消息的序列广播。语义要求(独立端由
+	 * BilibiliPush 的 payload 序列实现):同一 target 内按序发送;某条失败即中止
+	 * 该 target 的后续条;@全体(若启用)只跟随序列首条之前发一次。
+	 *
+	 * 可选:koishi adapter 不实现(koishi 端不填 messageLayout,引擎永远不会对它
+	 * 产出多条消息);引擎在缺失该方法时把多条消息合并回单条 broadcastDynamic 兜底。
+	 */
+	broadcastDynamicSequence?(uid: string, messages: PushSegment[][], kind: PushKind): Promise<void>;
 
 	/** 私信发送给配置的管理员账号（master）。adapter 端校验启用状态与 bot 在线性。 */
 	sendPrivateMsg(content: string): Promise<void>;
@@ -130,6 +140,13 @@ export interface SubItemView {
 	 * undefined = 走默认版式(复刻现状)。dynamic-engine 渲染时透传给 generateDynamicCard。
 	 */
 	dynamicLayout?: CardBlock[];
+	/**
+	 * Per-UP 解析后的**消息版式**动态切片(块顺序 / 显隐 / 分条符 + 分隔符)。
+	 * adapter 折叠 `eff.messageLayout.dynamic` 后填入;undefined = 旧路径(链接内嵌
+	 * 模板 `{url}`、卡片+文本合并一条,koishi 端现状)。提供该字段时引擎按版式装配
+	 * 消息:文本模板以 url='' 渲染({url} 被剥离),链接独立成部件。
+	 */
+	messageLayout?: MessageKindLayout;
 }
 
 export type SubscriptionsView = Record<string, SubItemView>;

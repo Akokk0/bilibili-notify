@@ -30,6 +30,7 @@ import type {
 	AIOverride,
 	ContentFiltersOverride,
 	ImageGroupOverride,
+	MessageLayoutOverride,
 	OverridesShape,
 	ScheduleOverride,
 	SpecialUser,
@@ -43,6 +44,7 @@ import type {
 	TemplateBundle,
 } from "../../types/globals";
 import { colorFromUid, displayName } from "../up/helpers";
+import { MessageLayoutEditor } from "./MessageLayoutEditor";
 import { buildOverridesPatch, type OverridesPatch } from "./overrides-patch";
 import { projectPerUpIsland } from "./perup-island";
 import {
@@ -63,7 +65,14 @@ import {
  * cardStyle / cardLayout 不在此列 —— 卡片相关覆盖已统一迁到 /cards 页编辑,
  * 由 Cards 自管 tab 与计数,Rules 不再surface 卡片定制。
  */
-export const perUpOverrideKeys = ["filters", "schedule", "templates", "ai", "imageGroup"] as const;
+export const perUpOverrideKeys = [
+	"filters",
+	"schedule",
+	"templates",
+	"ai",
+	"imageGroup",
+	"messageLayout",
+] as const;
 export type PerUpOverrideKey = (typeof perUpOverrideKeys)[number];
 
 interface SubPatch {
@@ -213,6 +222,13 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 					value={draft.overrides.templates}
 					onChange={(v) => setSlice("templates", v)}
 					baseline={defaults.templates}
+				/>
+			) : null}
+			{section === "messageLayout" ? (
+				<MessageLayoutOverrideBox
+					value={draft.overrides.messageLayout}
+					onChange={(v) => setSlice("messageLayout", v)}
+					baseline={defaults.messageLayout}
 				/>
 			) : null}
 			{section === "guard" ? (
@@ -698,6 +714,61 @@ function DynamicMsgOverrideBox({
 				</>
 			) : (
 				<InheritHint>该 UP 将继承全局动态消息模板</InheritHint>
+			)}
+		</GlassBox>
+	);
+}
+
+/* -------- Message layout (overrides.messageLayout, 整份覆盖) --------------- */
+
+function MessageLayoutOverrideBox({
+	value,
+	onChange,
+	baseline,
+}: {
+	value: MessageLayoutOverride | undefined;
+	onChange: (next: MessageLayoutOverride | undefined) => void;
+	baseline: GlobalDefaults["messageLayout"];
+}) {
+	const enabled = value !== undefined;
+	const cur = value ?? baseline;
+	return (
+		<GlassBox
+			title="消息版式覆盖"
+			subtitle="开 = 该 UP 使用自定义部件排列 / 分条 / 分隔符(动态 + 直播两套);关 = 继承全局"
+			accent="#9b6dff"
+			icon={<Icon.list size={14} />}
+			badge={enabled ? "覆盖中" : "继承"}
+			right={
+				<Toggle
+					value={enabled}
+					onChange={(on) => onChange(on ? structuredClone(baseline) : undefined)}
+				/>
+			}
+		>
+			{enabled ? (
+				<>
+					<div className="mb-2 text-[12.5px] font-bold text-bn-text-primary">动态消息版式</div>
+					<MessageLayoutEditor
+						value={cur.dynamic}
+						onChange={(next) => onChange({ ...cur, dynamic: next })}
+						separatorCode="messageLayout.dynamic.separator"
+						accent="#9b6dff"
+					/>
+					<div className="my-3 border-t border-bn-border-subtle" />
+					<div className="mb-2 text-[12.5px] font-bold text-bn-text-primary">直播消息版式</div>
+					<MessageLayoutEditor
+						value={cur.live}
+						onChange={(next) => onChange({ ...cur, live: next })}
+						separatorCode="messageLayout.live.separator"
+						accent="#FB7299"
+					/>
+					<div className="mt-2 text-[11px] text-bn-text-tertiary">
+						文案模板的 per-UP 覆盖在「动态消息」/「直播消息」分类;此处只覆盖结构。
+					</div>
+				</>
+			) : (
+				<InheritHint>该 UP 将继承全局消息版式(部件排列 / 分条 / 分隔符)</InheritHint>
 			)}
 		</GlassBox>
 	);

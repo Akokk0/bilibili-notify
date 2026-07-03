@@ -31,6 +31,7 @@ function makeConfig(over: Partial<BilibiliNotifyLiveConfig> = {}): BilibiliNotif
 		customLiveMsg: { enable: false },
 		liveEndGrace: false,
 		liveEndGraceMinutes: 2,
+		liveUrl: true,
 		...over,
 	};
 }

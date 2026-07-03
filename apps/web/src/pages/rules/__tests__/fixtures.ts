@@ -89,5 +89,16 @@ export function makeDefaults(): GlobalDefaults {
 				blocks: ["name", "text"].map((id) => ({ id, type: id, visible: true })),
 			},
 		},
+		messageLayout: {
+			version: 1,
+			dynamic: {
+				blocks: ["card", "text", "link"].map((id) => ({ id, type: id, visible: true })),
+				separator: "\n",
+			},
+			live: {
+				blocks: ["card", "text", "link"].map((id) => ({ id, type: id, visible: true })),
+				separator: "\n",
+			},
+		},
 	};
 }

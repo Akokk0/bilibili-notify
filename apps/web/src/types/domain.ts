@@ -371,6 +371,33 @@ export interface CardLayoutFull {
 /** per-UP 卡片版式是「整份覆盖」(fork 全局后编辑),不是 Partial。 */
 export type CardLayoutOverride = CardLayoutFull;
 
+// ── 消息版式描述符(镜像 packages/internal 的 MessageLayout / MessageBlock)──
+// 发送侧结构:每次推送由哪些消息、每条消息装哪些部件(卡片图 / 文本 / 链接),
+// 分条符(type="split")切多条。@全体不进消息版式(维持 per-target 机制)。
+
+export interface MessageBlockFull {
+	/** 实例唯一 id(内容块 id===type;分条符 split-N 可多份)。 */
+	id: string;
+	/** 语义 type(card / text / link / split)。 */
+	type: string;
+	visible: boolean;
+}
+
+export interface MessageKindLayoutFull {
+	blocks: MessageBlockFull[];
+	/** 同条消息内相邻文本类部件(文本 / 链接)的连接符,默认换行。 */
+	separator: string;
+}
+
+export interface MessageLayoutFull {
+	version: number;
+	dynamic: MessageKindLayoutFull;
+	live: MessageKindLayoutFull;
+}
+
+/** per-UP 消息版式同 cardLayout:整份覆盖,不是 Partial。 */
+export type MessageLayoutOverride = MessageLayoutFull;
+
 /**
  * Per-UP 图集推送行为覆盖。空 / undefined 字段继承全局 `GlobalDefaults.imageGroup.{enable,forward}`。
  * 镜像 `packages/internal` 的 `ImageGroupSettingsPartialSchema`。
@@ -390,6 +417,7 @@ export interface OverridesShape {
 	/** 按卡片类型的样式覆盖(可选);各类型叠在该 UP 的 cardStyle 基准上。 */
 	cardStyleByKind?: Partial<Record<"live" | "dynamic" | "sc" | "guard", CardStyleOverride>>;
 	cardLayout?: CardLayoutOverride;
+	messageLayout?: MessageLayoutOverride;
 	imageGroup?: ImageGroupOverride;
 }
 export type SubscriptionOverrides = OverridesShape;

@@ -12,6 +12,7 @@ import {
 	ScheduleConfigPartialSchema,
 	TemplateBundlePartialSchema,
 } from "./common";
+import { MessageLayoutSchema } from "./message-layout";
 
 /**
  * 路由：每个特性 → PushTarget.id[]。空数组 = 该特性不推。
@@ -134,6 +135,8 @@ export const SubscriptionOverridesSchema = z.object({
 	// 卡片版式是数组型描述符,不走 partial 浅合并 —— per-UP 一旦自定义即「整份覆盖」
 	// (fork 全局版式后随便改),故用完整 CardLayoutSchema 而非 partial。
 	cardLayout: CardLayoutSchema.optional(),
+	// 消息版式同 cardLayout:数组型描述符,per-UP 一旦自定义即整份覆盖。
+	messageLayout: MessageLayoutSchema.optional(),
 	imageGroup: ImageGroupSettingsPartialSchema.optional(),
 });
 export type SubscriptionOverrides = z.infer<typeof SubscriptionOverridesSchema>;

@@ -21,6 +21,7 @@ import type {
 	CardStyle as CanonCardStyle,
 	ContentFilters as CanonContentFilters,
 	FeatureKey as CanonFeatureKey,
+	MessageLayout as CanonMessageLayout,
 	PushTarget as CanonPushTarget,
 	QQOfficialAdapterConfig as CanonQQOfficialAdapterConfig,
 	QQOfficialSession as CanonQQOfficialSession,
@@ -35,6 +36,7 @@ import type {
 	CardStyleFull as MirrorCardStyle,
 	ContentFiltersFull as MirrorContentFilters,
 	FeatureKey as MirrorFeatureKey,
+	MessageLayoutFull as MirrorMessageLayout,
 	PushTarget as MirrorPushTarget,
 	QQOfficialAdapterConfig as MirrorQQOfficialAdapterConfig,
 	QQOfficialSession as MirrorQQOfficialSession,
@@ -63,6 +65,7 @@ type _Filters = Expect<CanonKeysCovered<CanonContentFilters, MirrorContentFilter
 type _Schedule = Expect<CanonKeysCovered<CanonScheduleConfig, MirrorSchedule>>;
 type _CardStyle = Expect<CanonKeysCovered<CanonCardStyle, MirrorCardStyle>>;
 type _CardLayout = Expect<CanonKeysCovered<CanonCardLayout, MirrorCardLayout>>;
+type _MessageLayout = Expect<CanonKeysCovered<CanonMessageLayout, MirrorMessageLayout>>;
 type _Template = Expect<CanonKeysCovered<CanonTemplateBundle, MirrorTemplate>>;
 type _AIOverride = Expect<CanonKeysCovered<CanonAIOverride, MirrorAIOverride>>;
 type _AISettings = Expect<CanonKeysCovered<CanonAISettings, MirrorAISettings>>;
@@ -86,6 +89,7 @@ export type _DomainConformance = [
 	_Schedule,
 	_CardStyle,
 	_CardLayout,
+	_MessageLayout,
 	_Template,
 	_AIOverride,
 	_AISettings,

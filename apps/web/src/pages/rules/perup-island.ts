@@ -27,6 +27,7 @@ export function projectPerUpIsland(
 		schedule: overrides.schedule,
 		templates: overrides.templates,
 		ai: overrides.ai,
+		messageLayout: overrides.messageLayout,
 		specialUsers,
 	};
 }

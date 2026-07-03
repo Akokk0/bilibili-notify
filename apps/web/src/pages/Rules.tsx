@@ -62,6 +62,8 @@ function isSectionCustomized(sub: Subscription, sectionId: SectionId): boolean {
 				sub.overrides.templates?.dynamic !== undefined ||
 				sub.overrides.templates?.dynamicVideo !== undefined
 			);
+		case "messageLayout":
+			return sub.overrides.messageLayout !== undefined;
 		case "guard":
 			return sub.overrides.templates?.guardBuy?.enable === true;
 		case "specialDanmaku":
@@ -174,6 +176,7 @@ export function GlobalDraftBinder({
 			...defaults.imageGroup,
 			schedule: defaults.schedule,
 			templates: defaults.templates,
+			messageLayout: defaults.messageLayout,
 		}),
 		[defaults],
 	);
@@ -183,6 +186,7 @@ export function GlobalDraftBinder({
 			...baseline.imageGroup,
 			schedule: baseline.schedule,
 			templates: baseline.templates,
+			messageLayout: baseline.messageLayout,
 		}),
 		[baseline],
 	);
@@ -235,6 +239,7 @@ export default function Rules() {
 					schedule: next.defaults.schedule,
 					templates: next.defaults.templates,
 					imageGroup: next.defaults.imageGroup,
+					messageLayout: next.defaults.messageLayout,
 				},
 			});
 		},
@@ -389,9 +394,17 @@ export default function Rules() {
 					) : section === "summary" ? (
 						<SummarySection templates={draft.defaults.templates} onPatch={patchDraft} />
 					) : section === "msg" ? (
-						<LiveMsgSection templates={draft.defaults.templates} onPatch={patchDraft} />
+						<LiveMsgSection
+							templates={draft.defaults.templates}
+							layout={draft.defaults.messageLayout.live}
+							onPatch={patchDraft}
+						/>
 					) : section === "dynamicMsg" ? (
-						<DynamicMsgSection templates={draft.defaults.templates} onPatch={patchDraft} />
+						<DynamicMsgSection
+							templates={draft.defaults.templates}
+							layout={draft.defaults.messageLayout.dynamic}
+							onPatch={patchDraft}
+						/>
 					) : section === "guard" ? (
 						<GuardSection templates={draft.defaults.templates} onPatch={patchDraft} />
 					) : null}

@@ -11,7 +11,7 @@
  */
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
-import type { CardKind, CardLayout } from "@bilibili-notify/internal";
+import type { CardKind, CardLayout, MessageKindLayout } from "@bilibili-notify/internal";
 
 /** Push category enum — numeric values are the historical bilibili-notify push-type codes. */
 export enum LivePushType {
@@ -190,6 +190,13 @@ export interface SubItemView {
 	 * (per-UP 整份覆盖 ?? 全局)。各 generate* 渲染时取对应卡片的切片;undefined = 走默认版式。
 	 */
 	cardLayout?: CardLayout;
+	/**
+	 * 该 UP 解析后的**消息版式**直播切片(块顺序 / 显隐 / 分条符 + 分隔符)。adapter 折叠
+	 * `eff.messageLayout.live` 后填入;undefined = 旧路径(链接内嵌各自模板 {link}、卡片+
+	 * 文本合并一条,koishi 端现状)。覆盖开播 / 直播中 / 下播三类推送;SC / 上舰不受影响
+	 * (走各自独立渲染,不经 sendLiveNotifyCard)。
+	 */
+	messageLayout?: MessageKindLayout;
 }
 
 export type SubscriptionsView = Record<string, SubItemView>;
@@ -226,6 +233,7 @@ export type LiveScopedChange = { scope: "live" } & Partial<
 		| "aiOverride"
 		| "wordcloudStopWords"
 		| "cardLayout"
+		| "messageLayout"
 	>
 >;
 
@@ -250,5 +258,12 @@ export type LiveSubscriptionOp =
  */
 export interface PushLike {
 	broadcastToTargets(uid: string, content: unknown, type: LivePushType): Promise<void>;
+	/**
+	 * 消息版式分条:一次推送拆成多条消息的序列广播(语义同 dynamic 端 PushLike 的
+	 * broadcastDynamicSequence:同 target 顺序发、某条失败中止该 target 后续条、
+	 * @全体只跟首条)。可选 —— koishi adapter 不实现(koishi 端不填 messageLayout,
+	 * 引擎不会对它产出多条);缺失时引擎把多条合并回单条 broadcastToTargets 兜底。
+	 */
+	broadcastSequenceToTargets?(uid: string, contents: unknown[], type: LivePushType): Promise<void>;
 	sendPrivateMsg(content: string): Promise<void>;
 }

@@ -3,7 +3,7 @@
  * web/ is JSON-only against the business core — this file kept in sync by hand.
  */
 
-import type { CardLayoutFull, FeatureKey } from "./domain";
+import type { CardLayoutFull, FeatureKey, MessageLayoutFull } from "./domain";
 
 export type LogLevel = "error" | "warn" | "info" | "debug";
 
@@ -167,6 +167,8 @@ export interface GlobalDefaults {
 	/** 按卡片类型的样式覆盖(可选,默认 {});各类型叠在 cardStyle 基准上。 */
 	cardStyleByKind?: CardStyleByKind;
 	cardLayout: CardLayoutFull;
+	/** 消息版式(发送侧结构):动态 / 开播两套,块序 + 分条符 + 分隔符。 */
+	messageLayout: MessageLayoutFull;
 	imageGroup: ImageGroupSettings;
 }
 

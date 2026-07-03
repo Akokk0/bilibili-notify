@@ -174,6 +174,9 @@ export abstract class RoomSessionBase {
 			this.liveData.watchedNum = watched;
 			const diffTime = await this.ctx.getTimeDifference(this.liveTime);
 			const roomLink = buildRoomLink(this.liveRoomInfo);
+			// 消息版式(per-UP ?? 引擎 config 级,两级都缺 = 旧路径)覆盖开播 / 直播中 / 下播,
+			// 与 onLiveStart 同款接线。
+			const messageLayout = this.sub.messageLayout ?? this.ctx.config.messageLayout;
 			const liveMsg = this.ctx.templateRenderer.renderLiveOngoing({
 				sub: this.sub,
 				globalCustom: this.ctx.config.customLiveMsg,
@@ -181,6 +184,7 @@ export abstract class RoomSessionBase {
 				diffTime,
 				watched,
 				roomLink,
+				omitLink: messageLayout !== undefined,
 			});
 
 			// restartPush 已由 adapter 折算好(per-UP ?? 全局)。
@@ -194,6 +198,8 @@ export abstract class RoomSessionBase {
 					cardLayout: this.sub.cardLayout,
 					uid: this.sub.uid,
 					notifyMsg: liveMsg,
+					messageLayout,
+					roomLink,
 				});
 			}
 			// P2:与 onLiveStart 同序(先 setLiveStatus 再 arm)。此前 bootstrap
@@ -298,6 +304,7 @@ export abstract class RoomSessionBase {
 		this.liveData.watchedNum = watched;
 		const diffTime = await this.ctx.getTimeDifference(this.liveTime);
 		const roomLink = buildRoomLink(this.liveRoomInfo);
+		const messageLayout = this.sub.messageLayout ?? this.ctx.config.messageLayout;
 		const liveMsg = this.ctx.templateRenderer.renderLiveOngoing({
 			sub: this.sub,
 			globalCustom: this.ctx.config.customLiveMsg,
@@ -305,6 +312,7 @@ export abstract class RoomSessionBase {
 			diffTime,
 			watched,
 			roomLink,
+			omitLink: messageLayout !== undefined,
 		});
 
 		await this.ctx.sendLiveNotifyCard({
@@ -316,6 +324,8 @@ export abstract class RoomSessionBase {
 			cardLayout: this.sub.cardLayout,
 			uid: this.sub.uid,
 			notifyMsg: liveMsg,
+			messageLayout,
+			roomLink,
 		});
 	}
 
@@ -440,6 +450,8 @@ export abstract class RoomSessionBase {
 		this.liveTime = this.liveRoomInfo.live_time || DateTime.now().toFormat("yyyy-MM-dd HH:mm:ss");
 		const diffTime = precomputedDiffTime ?? (await this.ctx.getTimeDifference(this.liveTime));
 		this.liveData.fansChanged = this.masterInfo.liveFollowerChange;
+		const roomLink = buildRoomLink(this.liveRoomInfo);
+		const messageLayout = this.sub.messageLayout ?? this.ctx.config.messageLayout;
 
 		const liveEndMsg = this.ctx.templateRenderer.renderLiveEnd({
 			sub: this.sub,
@@ -447,6 +459,8 @@ export abstract class RoomSessionBase {
 			master: this.masterInfo,
 			diffTime,
 			followerChange: this.masterInfo.liveFollowerChange,
+			roomLink,
+			omitLink: messageLayout !== undefined,
 		});
 
 		try {
@@ -460,6 +474,8 @@ export abstract class RoomSessionBase {
 					cardLayout: this.sub.cardLayout,
 					uid: this.sub.uid,
 					notifyMsg: liveEndMsg,
+					messageLayout,
+					roomLink,
 				});
 			}
 			await this.dispatchWordCloudAndSummary(

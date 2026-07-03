@@ -1,6 +1,7 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LiveRoomInfo, MasterInfoData, MySelfInfoData } from "@bilibili-notify/api";
+import { type MessageKindLayout, planMessageGroups } from "@bilibili-notify/internal";
 import { type MsgHandler, startListen } from "blive-message-listener";
 import { DateTime } from "luxon";
 import protobuf from "protobufjs";
@@ -205,6 +206,11 @@ export class RoomContext extends RoomContextBase {
 	 * Push a "live start / live ongoing / live end" notification card. Generates
 	 * an image via {@link ImageRenderer.generateLiveCard} when available; falls
 	 * back to plain text on failure.
+	 *
+	 * 消息版式(`messageLayout`)覆盖开播 / 直播中 / 下播三类(调用方按各自 liveType
+	 * 传参,未传即走旧路径不受影响):卡片 / 文本(各自模板,调用方已按 omitLink 剥掉
+	 * {link})/ 链接(roomLink)按块序装配,分条符切多条经 `broadcastSequenceToTargets`。
+	 * SC / 上舰不经此方法,始终维持现状。
 	 */
 	async sendLiveNotifyCard(params: {
 		liveType: LiveType;
@@ -215,12 +221,17 @@ export class RoomContext extends RoomContextBase {
 		cardLayout?: SubItemView["cardLayout"];
 		uid: string;
 		notifyMsg: string;
+		messageLayout?: MessageKindLayout;
+		roomLink?: string;
 	}): Promise<void> {
 		const { liveType, liveData, liveRoomInfo, master, cardStyle, cardLayout, uid, notifyMsg } =
 			params;
+		const layout = params.messageLayout;
+		// 版式里 card 块隐藏 → 连图片渲染都跳过(白渲染更亏)。
+		const wantCard = !layout || layout.blocks.some((b) => b.visible && b.type === "card");
 
 		let buffer: Buffer | undefined;
-		if (this.imageRenderer?.generateLiveCard) {
+		if (this.imageRenderer?.generateLiveCard && wantCard) {
 			try {
 				buffer = await this.imageRenderer.generateLiveCard(
 					liveRoomInfo,
@@ -244,6 +255,18 @@ export class RoomContext extends RoomContextBase {
 					? LivePushType.LiveEnd
 					: LivePushType.Live;
 
+		if (layout) {
+			await this.broadcastWithMessageLayout({
+				layout,
+				buffer,
+				notifyMsg,
+				uid,
+				pushType,
+				roomLink: params.roomLink ?? "",
+			});
+			return;
+		}
+
 		if (!buffer) {
 			this.logger.debug(`[push] [${master.username}] 无图片，降级为文字推送`);
 			const fallbackMsg = this.contentBuilder.message([
@@ -257,6 +280,64 @@ export class RoomContext extends RoomContextBase {
 			this.contentBuilder.text(notifyMsg || ""),
 		]);
 		await this.push.broadcastToTargets(uid, msg, pushType);
+	}
+
+	/**
+	 * 版式路径的装配与投递:按块序分组(分条符切组),同条内相邻文本类部件以
+	 * separator 连接;多条走 `broadcastSequenceToTargets`,adapter 未实现时合并
+	 * 回一条兜底(逐条 broadcast 会让 @全体 每条重复)。
+	 */
+	private async broadcastWithMessageLayout(args: {
+		layout: MessageKindLayout;
+		buffer: Buffer | undefined;
+		notifyMsg: string;
+		roomLink: string;
+		uid: string;
+		pushType: LivePushType;
+	}): Promise<void> {
+		const { layout, buffer, notifyMsg, roomLink, uid, pushType } = args;
+		const text = layout.blocks.some((b) => b.visible && b.type === "text") ? notifyMsg : "";
+		const present = new Set<string>();
+		if (buffer) present.add("card");
+		if (text) present.add("text");
+		if (roomLink) present.add("link");
+		const groups = planMessageGroups(layout.blocks, present);
+		const buildContent = (group: readonly string[]): unknown => {
+			const segs: unknown[] = [];
+			let texts: string[] = [];
+			const flushText = (): void => {
+				if (texts.length > 0) {
+					segs.push(this.contentBuilder.text(texts.join(layout.separator)));
+					texts = [];
+				}
+			};
+			for (const part of group) {
+				if (part === "card" && buffer) {
+					flushText();
+					segs.push(this.contentBuilder.image(buffer, "image/jpeg"));
+				} else if (part === "text") {
+					texts.push(text);
+				} else if (part === "link") {
+					texts.push(roomLink);
+				}
+			}
+			flushText();
+			return this.contentBuilder.message(segs);
+		};
+		if (groups.length === 0) {
+			this.logger.debug(`[push] uid=${uid} 消息版式所有部件隐藏/缺失,本次开播不推送`);
+			return;
+		}
+		if (groups.length === 1) {
+			await this.push.broadcastToTargets(uid, buildContent(groups[0] ?? []), pushType);
+			return;
+		}
+		if (this.push.broadcastSequenceToTargets) {
+			await this.push.broadcastSequenceToTargets(uid, groups.map(buildContent), pushType);
+			return;
+		}
+		this.logger.warn("[push] adapter 未实现 broadcastSequenceToTargets,分条已合并为单条");
+		await this.push.broadcastToTargets(uid, buildContent(groups.flat()), pushType);
 	}
 
 	/** Format `dateString` (yyyy-MM-dd HH:mm:ss UTC+8) as elapsed-time text. */

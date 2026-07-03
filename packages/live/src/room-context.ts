@@ -1,6 +1,6 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ImageRenderer } from "@bilibili-notify/image";
-import type { Logger, ServiceContext } from "@bilibili-notify/internal";
+import type { Logger, MessageKindLayout, ServiceContext } from "@bilibili-notify/internal";
 import { GuardLevel, type MessageListener } from "blive-message-listener";
 import type protobuf from "protobufjs";
 import type { LiveContentBuilder } from "./content-builder";
@@ -55,6 +55,11 @@ export interface ListenerManagerConfig {
 	 * 直播开播 / SC / 上舰 等路径自然走 `if (renderer?.generateXxx)` 落入文字回退。缺省视为 true。
 	 */
 	imageEnabled?: boolean;
+	/**
+	 * 引擎级消息版式(开播切片)。per-UP `SubItemView.messageLayout` 缺失时的兜底,
+	 * room-session 在 onLiveStart 时读取(koishi 的默认版式 + 链接开关)。
+	 */
+	messageLayout?: MessageKindLayout;
 }
 
 /**

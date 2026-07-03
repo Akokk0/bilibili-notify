@@ -11,6 +11,7 @@ import type {
 	TemplateBundle,
 } from "./common";
 import type { GlobalDefaults } from "./globals";
+import { type MessageLayout, normalizeMessageLayout } from "./message-layout";
 import type {
 	AIOverride,
 	Subscription,
@@ -43,6 +44,7 @@ export interface EffectiveSubscription {
 	ai: ResolvedAI;
 	cardStyle: CardStyle;
 	cardLayout: CardLayout;
+	messageLayout: MessageLayout;
 	imageGroup: ImageGroupSettings;
 }
 
@@ -151,6 +153,10 @@ export function resolve(sub: Subscription, defaults: GlobalDefaults): EffectiveS
 		cardLayout: ov.cardLayout
 			? normalizeCardLayout(ov.cardLayout, defaults.cardLayout)
 			: defaults.cardLayout,
+		// 消息版式同 cardLayout:per-UP 整份覆盖(带 normalize 向前兼容),否则继承全局。
+		messageLayout: ov.messageLayout
+			? normalizeMessageLayout(ov.messageLayout, defaults.messageLayout)
+			: defaults.messageLayout,
 		imageGroup: merge(defaults.imageGroup, ov.imageGroup),
 	});
 }

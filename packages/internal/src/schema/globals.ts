@@ -14,6 +14,7 @@ import {
 	ScheduleConfigSchema,
 	TemplateBundleSchema,
 } from "./common";
+import { DEFAULT_MESSAGE_LAYOUT, MessageLayoutSchema } from "./message-layout";
 
 /** 启动时注入、运行时只读的引导配置。Koishi 端为 undefined（Koishi 接管 lifecycle）。 */
 export const BootstrapConfigSchema = z.object({
@@ -94,6 +95,9 @@ export const GlobalDefaultsSchema = z.object({
 	// `.default(DEFAULT_CARD_LAYOUT)` 让缺 cardLayout 字段的老 globals.json(在加该
 	// 字段前持久化的)load 时自动补全为默认版式,与 imageGroup 同源的迁移友好策略。
 	cardLayout: CardLayoutSchema.default(DEFAULT_CARD_LAYOUT),
+	// 消息版式(发送侧结构):与 cardLayout 同款迁移友好策略,缺字段的老 globals.json
+	// load 时自动补默认(= 复刻现状:卡片+文本+链接合并一条)。
+	messageLayout: MessageLayoutSchema.default(DEFAULT_MESSAGE_LAYOUT),
 	// `.default(...)` 让缺 imageGroup 字段的老 globals.json(在加 imageGroup 子段
 	// 之前持久化的)load 时被 zod 自动补全 —— 否则 ConfigValidationError 让独立端
 	// 启动直接挂。新字段加 GlobalDefaults 时都该带 default,保留迁移友好性。
@@ -115,19 +119,23 @@ export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
  * 占位符统一 `{key}` 语法,由 `LiveTemplateRenderer.applyTemplate` / `interpolate`
  * 替换(`applyTemplate` 同时兼容 koishi 旧存档的 legacy `-key`)。变量集严格对齐
  * 渲染器实际提供的字段:
- * - 直播:`{name}` `{time}` `{follower}` `{follower_change}` `{watched}` `{link}`
+ * - 直播:`{name}` `{time}` `{follower}` `{follower_change}` `{watched}`
  * - 上舰:`{uname}` `{mname}` `{guard}`
  * - 特别关注:`{mastername}` `{uname}` `{msg}`
  * - 弹幕总结:`{dmc}` `{mdn}` `{dca}` `{un1..5}` `{dc1..5}`
- * - 动态:`{name}` `{url}`
+ * - 动态:`{name}`
+ *
+ * 链接不再是模板变量:动态 / 视频 / 开播的链接是消息版式的独立「链接」部件
+ * (显隐 / 位置由版式或 koishi 端的开关决定)。旧存档模板里残留的 `{url}` /
+ * `{link}` 在版式路径渲染时连同前导分隔符一起剥离,不会双链接。
  *
  * liveStart/liveOngoing/liveEnd 与 packages/live 的 `DEFAULT_LIVE_TEMPLATES`
  * 保持字面量一致 —— 这样「自定义关闭时实际推送的内建默认」== 「自定义打开时
  * UI 载入的默认文本」,不再出现 `{name}` 原样吐出的错配。
  */
 export const DEFAULT_TEMPLATES = {
-	liveStart: "{name} 开播啦，当前粉丝数：{follower}\n{link}",
-	liveOngoing: "{name} 正在直播，已播 {time}，累计观看：{watched}\n{link}",
+	liveStart: "{name} 开播啦，当前粉丝数：{follower}",
+	liveOngoing: "{name} 正在直播，已播 {time}，累计观看：{watched}",
 	liveEnd: "{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
 	liveSummary: `🔍【弹幕情报站】本场直播数据如下：
 🧍‍♂️ 总共 {dmc} 位{mdn}上线
@@ -139,8 +147,8 @@ export const DEFAULT_TEMPLATES = {
 🥉 {un3} - {dc3} 条精准狙击
 🎖️ 特别嘉奖：{un4} & {un5}
 你们的弹幕，我们都记录在案！🕵️‍♀️`,
-	dynamic: "{name}发布了一条动态：{url}",
-	dynamicVideo: "{name}发布了新视频：{url}",
+	dynamic: "{name}发布了一条动态",
+	dynamicVideo: "{name}发布了新视频",
 	wordcloudStopWords: "",
 	specialDanmaku: "{mastername} 的关注用户 {uname} 发送弹幕：{msg}",
 	specialUserEnter: "{uname} 进入了 {mastername} 的直播间",

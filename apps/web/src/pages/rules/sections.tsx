@@ -20,7 +20,7 @@ import {
 } from "../../components/forms";
 import { CollapseBlock, GlassBox } from "../../components/glass-box";
 import { Icon } from "../../components/icons";
-import type { PushTarget } from "../../types/domain";
+import type { MessageKindLayoutFull, PushTarget } from "../../types/domain";
 import type {
 	AppConfig,
 	CardStyle,
@@ -35,6 +35,7 @@ import type {
 	ScheduleConfig,
 	TemplateBundle,
 } from "../../types/globals";
+import { MessageLayoutEditor } from "./MessageLayoutEditor";
 
 export type SectionId =
 	| "filter"
@@ -42,6 +43,7 @@ export type SectionId =
 	| "summary"
 	| "msg"
 	| "dynamicMsg"
+	| "messageLayout"
 	| "guard"
 	| "specialDanmaku"
 	| "specialEnter"
@@ -79,9 +81,9 @@ export const GLOBAL_SECTIONS: SectionMeta[] = [
 	},
 	{
 		id: "dynamicMsg",
-		label: "动态消息模板",
+		label: "动态消息版式",
 		icon: <Icon.chat size={14} />,
-		desc: "动态 / 视频投稿文案",
+		desc: "部件排列 / 分条 / 文案",
 	},
 	{
 		id: "live",
@@ -97,9 +99,9 @@ export const GLOBAL_SECTIONS: SectionMeta[] = [
 	},
 	{
 		id: "msg",
-		label: "直播消息模板",
+		label: "直播消息版式",
 		icon: <Icon.chat size={14} />,
-		desc: "开播 / 直播中 / 下播文案",
+		desc: "部件排列 / 分条 / 三段文案",
 	},
 	{
 		id: "guard",
@@ -131,6 +133,12 @@ export const PERUP_SECTIONS: SectionMeta[] = [
 		label: "动态消息",
 		icon: <Icon.chat size={14} />,
 		desc: "覆盖动态 / 视频文案",
+	},
+	{
+		id: "messageLayout",
+		label: "消息版式",
+		icon: <Icon.list size={14} />,
+		desc: "覆盖部件排列 / 分条",
 	},
 	{
 		id: "live",
@@ -469,19 +477,34 @@ interface VarSpec {
 	desc: string;
 }
 
+/**
+ * 直播三段模板的变量表(链接不再是模板变量:开播链接由消息版式的「链接」部件
+ * 提供;直播中 / 下播不带链接)。per-UP 覆盖框合用 LIVE_MSG_VARS(三段并列)。
+ */
+const LIVE_START_VARS: VarSpec[] = [
+	{ code: "{name}", desc: "UP 主名字" },
+	{ code: "{follower}", desc: "当前粉丝数" },
+];
+const LIVE_ONGOING_VARS: VarSpec[] = [
+	{ code: "{name}", desc: "UP 主名字" },
+	{ code: "{time}", desc: "已直播时长" },
+	{ code: "{watched}", desc: "累计观看人数" },
+];
+const LIVE_END_VARS: VarSpec[] = [
+	{ code: "{name}", desc: "UP 主名字" },
+	{ code: "{time}", desc: "已直播时长" },
+	{ code: "{follower_change}", desc: "粉丝变化" },
+];
 const LIVE_MSG_VARS: VarSpec[] = [
 	{ code: "{name}", desc: "UP 主名字" },
-	{ code: "{link}", desc: "直播间链接(开播 / 直播中)" },
 	{ code: "{follower}", desc: "当前粉丝数(开播)" },
 	{ code: "{follower_change}", desc: "粉丝变化(下播)" },
-	{ code: "{time}", desc: "开播时长 / 已直播时长(直播中、下播)" },
+	{ code: "{time}", desc: "已直播时长(直播中、下播)" },
 	{ code: "{watched}", desc: "累计观看人数(直播中)" },
 ];
 
-const DYNAMIC_MSG_VARS: VarSpec[] = [
-	{ code: "{name}", desc: "UP 主名字" },
-	{ code: "{url}", desc: "动态 / 视频链接(关闭附带 URL 时为空)" },
-];
+/** 动态模板已进消息版式:链接是独立部件,{url} 不再出现在变量表(旧模板残留会被剥离)。 */
+const DYNAMIC_MSG_VARS: VarSpec[] = [{ code: "{name}", desc: "UP 主名字" }];
 
 const GUARD_VARS: VarSpec[] = [
 	{ code: "{uname}", desc: "上舰用户名" },
@@ -563,71 +586,119 @@ export function SpecialEnterVariableHints() {
 
 // ── 4. Live message templates ────────────────────────────────────────────────
 
+/** 直播文本 Picker 的三段定义:模板字段 / Field code / 变量表(开播 / 直播中 / 下播共用同一套版式)。 */
+const LIVE_TEMPLATE_TABS = [
+	{ key: "liveStart", label: "开播", code: "templates.liveStart", vars: LIVE_START_VARS },
+	{ key: "liveOngoing", label: "直播中", code: "templates.liveOngoing", vars: LIVE_ONGOING_VARS },
+	{ key: "liveEnd", label: "下播", code: "templates.liveEnd", vars: LIVE_END_VARS },
+] as const;
+
 export function LiveMsgSection({
 	templates,
+	layout,
 	onPatch,
 }: {
 	templates: TemplateBundle;
+	layout: MessageKindLayoutFull;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
 	const setT = <K extends keyof TemplateBundle>(k: K, v: TemplateBundle[K]) =>
 		onPatch({ defaults: { templates: { [k]: v } as Partial<TemplateBundle> } });
+	const [tab, setTab] = useState<(typeof LIVE_TEMPLATE_TABS)[number]["key"]>("liveStart");
+	const active = LIVE_TEMPLATE_TABS.find((t) => t.key === tab) ?? LIVE_TEMPLATE_TABS[0];
 	return (
 		<GlassBox
-			title="直播消息模板"
-			subtitle="开播 / 直播中 / 下播 三段提醒(改了直接生效)"
+			title="直播消息版式"
+			subtitle="开播 / 直播中 / 下播共用的部件排列 / 分条;文本内容按 开播 / 直播中 / 下播 切换编辑"
 			accent="#FB7299"
 			icon={<Icon.chat size={14} />}
 		>
-			<LiveMsgVariableHints />
-			<FieldRow code="templates.liveStart" full>
-				<TArea value={templates.liveStart} onChange={(v) => setT("liveStart", v)} rows={3} mono />
-			</FieldRow>
-			<FieldRow code="templates.liveOngoing" full>
-				<TArea
-					value={templates.liveOngoing}
-					onChange={(v) => setT("liveOngoing", v)}
-					rows={3}
-					mono
-				/>
-			</FieldRow>
-			<FieldRow code="templates.liveEnd" full>
-				<TArea value={templates.liveEnd} onChange={(v) => setT("liveEnd", v)} rows={2} mono />
-			</FieldRow>
+			<MessageLayoutEditor
+				value={layout}
+				onChange={(next) => onPatch({ defaults: { messageLayout: { live: next } } })}
+				separatorCode="messageLayout.live.separator"
+				accent="#FB7299"
+				textSlot={
+					<>
+						<div className="mb-2">
+							<Picker
+								value={tab}
+								onChange={(v) => setTab(v)}
+								options={LIVE_TEMPLATE_TABS.map((t) => ({ value: t.key, label: t.label }))}
+							/>
+						</div>
+						<VariableHints vars={active.vars} accent="#FB7299" titleColor="#b8425d" />
+						<FieldRow code={active.code} full>
+							<TArea
+								key={active.key}
+								value={templates[active.key]}
+								onChange={(v) => setT(active.key, v)}
+								rows={3}
+								mono
+							/>
+						</FieldRow>
+					</>
+				}
+			/>
 		</GlassBox>
 	);
 }
 
 // ── 4b. Dynamic message templates ────────────────────────────────────────────
 
+/** 动态文本 Picker 的两段定义:动态 / 视频投稿共用版式,仅模板文案不同。 */
+const DYNAMIC_TEMPLATE_TABS = [
+	{ key: "dynamic", label: "动态", code: "templates.dynamic" },
+	{ key: "dynamicVideo", label: "视频投稿", code: "templates.dynamicVideo" },
+] as const;
+
 export function DynamicMsgSection({
 	templates,
+	layout,
 	onPatch,
 }: {
 	templates: TemplateBundle;
+	layout: MessageKindLayoutFull;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
 	const setT = <K extends keyof TemplateBundle>(k: K, v: TemplateBundle[K]) =>
 		onPatch({ defaults: { templates: { [k]: v } as Partial<TemplateBundle> } });
+	const [tab, setTab] = useState<(typeof DYNAMIC_TEMPLATE_TABS)[number]["key"]>("dynamic");
+	const active = DYNAMIC_TEMPLATE_TABS.find((t) => t.key === tab) ?? DYNAMIC_TEMPLATE_TABS[0];
 	return (
 		<GlassBox
-			title="动态消息模板"
-			subtitle="动态 / 视频投稿推送文案(无 AI 点评时使用)"
+			title="动态消息版式"
+			subtitle="动态推送的部件排列 / 分条;文本内容按 动态 / 视频投稿 切换编辑"
 			accent="#9b6dff"
 			icon={<Icon.chat size={14} />}
 		>
-			<DynamicMsgVariableHints />
-			<FieldRow code="templates.dynamic" full>
-				<TArea value={templates.dynamic} onChange={(v) => setT("dynamic", v)} rows={2} mono />
-			</FieldRow>
-			<FieldRow code="templates.dynamicVideo" full>
-				<TArea
-					value={templates.dynamicVideo}
-					onChange={(v) => setT("dynamicVideo", v)}
-					rows={2}
-					mono
-				/>
-			</FieldRow>
+			<MessageLayoutEditor
+				value={layout}
+				onChange={(next) => onPatch({ defaults: { messageLayout: { dynamic: next } } })}
+				separatorCode="messageLayout.dynamic.separator"
+				accent="#9b6dff"
+				textSlot={
+					<>
+						<div className="mb-2">
+							<Picker
+								value={tab}
+								onChange={(v) => setTab(v)}
+								options={DYNAMIC_TEMPLATE_TABS.map((t) => ({ value: t.key, label: t.label }))}
+							/>
+						</div>
+						<DynamicMsgVariableHints />
+						<FieldRow code={active.code} full>
+							<TArea
+								key={active.key}
+								value={templates[active.key]}
+								onChange={(v) => setT(active.key, v)}
+								rows={2}
+								mono
+							/>
+						</FieldRow>
+					</>
+				}
+			/>
 		</GlassBox>
 	);
 }

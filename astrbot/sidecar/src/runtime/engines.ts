@@ -319,6 +319,9 @@ function buildDynamicSubViewSingle(
 		aiOverride: buildAiOverride(effective),
 		customDynamicTemplate: sub.overrides.templates?.dynamic,
 		customVideoTemplate: sub.overrides.templates?.dynamicVideo,
+		// 消息版式动态切片(eff = per-UP 整份覆盖 ?? 全局默认)。默认版式 = 卡片+文本+
+		// 链接合并一条;链接不再内嵌模板 {url},由该版式的链接部件提供。
+		messageLayout: effective.messageLayout.dynamic,
 	};
 }
 
@@ -392,6 +395,9 @@ function buildLiveSubViewSingle(sub: Subscription, globals: GlobalConfig): LiveS
 		pushTime: effective.schedule.pushTime,
 		restartPush: effective.schedule.restartPush,
 		aiOverride: buildAiOverride(effective),
+		// 消息版式开播切片(eff = per-UP 整份覆盖 ?? 全局默认)。开播链接由版式的
+		// 链接部件提供,不再内嵌开播模板 {link}。
+		messageLayout: effective.messageLayout.live,
 	};
 }
 

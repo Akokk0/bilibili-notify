@@ -203,6 +203,31 @@ describe("ConfigStore", () => {
 		expect(store.getGlobals().master.targetId).toBe(T2);
 	});
 
+	it("消息版式:patchGlobals 持久化的自定义版式在冷重启(新 ConfigStore 读同一 dataDir)后仍生效", async () => {
+		const customLive = {
+			blocks: [
+				{ id: "text", type: "text", visible: true },
+				{ id: "card", type: "card", visible: true },
+				{ id: "link", type: "link", visible: false },
+			],
+			separator: " | ",
+		};
+		await store.patchGlobals({
+			defaults: { messageLayout: { live: customLive } },
+		} as never);
+		expect(store.getGlobals().defaults.messageLayout.live).toEqual(customLive);
+
+		// 冷重启:另开一个 ConfigStore 指向同一 dataDir,模拟进程重启后的 load()。
+		const bus2 = makeFakeBus();
+		const store2 = createConfigStore({
+			bootstrap: makeBootstrap(dataDir),
+			bus: bus2,
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await store2.load();
+		expect(store2.getGlobals().defaults.messageLayout.live).toEqual(customLive);
+	});
+
 	it("setGlobals rejects malformed input with ConfigValidationError", async () => {
 		const bad = { ...store.getGlobals(), app: { dynamicCron: 123 as unknown as string } };
 		await expect(store.setGlobals(bad as never)).rejects.toBeInstanceOf(ConfigValidationError);
@@ -688,8 +713,8 @@ describe("ConfigStore", () => {
 		});
 		await expect(store2.load()).resolves.toBeUndefined();
 		const tpl = store2.getGlobals().defaults.templates;
-		expect(tpl.dynamic).toBe("{name}发布了一条动态：{url}");
-		expect(tpl.dynamicVideo).toBe("{name}发布了新视频：{url}");
+		expect(tpl.dynamic).toBe("{name}发布了一条动态");
+		expect(tpl.dynamicVideo).toBe("{name}发布了新视频");
 		await rm(dir2, { recursive: true, force: true });
 	});
 
@@ -711,6 +736,8 @@ describe("ConfigStore", () => {
 		// liveEnd 改成用户自定义 → 迁移必须保留
 		old.defaults.templates.liveEnd = "我自定义的下播文案 {name}";
 		old.defaults.templates.guardBuy.captain.template = "{user} 成为了 {mastername} 的舰长！";
+		// 消息版式引入前「链接内嵌模板」那代的动态默认 → 也要迁移成当前无链接默认
+		old.defaults.templates.dynamic = "{name}发布了一条动态：{url}";
 		await writeFile(join(state2, "globals.json"), JSON.stringify(old), "utf8");
 
 		const store2 = createConfigStore({
@@ -720,9 +747,10 @@ describe("ConfigStore", () => {
 		});
 		await store2.load();
 		const t = store2.getGlobals().defaults.templates;
-		expect(t.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}\n{link}");
-		expect(t.liveOngoing).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}\n{link}");
+		expect(t.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
+		expect(t.liveOngoing).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
 		expect(t.liveEnd).toBe("我自定义的下播文案 {name}"); // 自定义保留,不被迁移覆盖
+		expect(t.dynamic).toBe("{name}发布了一条动态"); // 带链接那代的默认 → 无链接新默认
 		expect(t.guardBuy.captain.template).toBe("{uname} 成为了 {mname} 的舰长！");
 		await rm(dir2, { recursive: true, force: true });
 	});
@@ -775,12 +803,12 @@ describe("ConfigStore", () => {
 		const t = store2.getGlobals().defaults.templates as Record<string, unknown>;
 		// ① liveMsgEnabled 被 strip
 		expect(t.liveMsgEnabled).toBeUndefined();
-		// ② dynamic/dynamicVideo 回填成当前默认
-		expect(t.dynamic).toBe("{name}发布了一条动态：{url}");
-		expect(t.dynamicVideo).toBe("{name}发布了新视频：{url}");
+		// ② dynamic/dynamicVideo 回填成当前默认(链接不再进模板)
+		expect(t.dynamic).toBe("{name}发布了一条动态");
+		expect(t.dynamicVideo).toBe("{name}发布了新视频");
 		// ③ 旧 {title}/{duration} 直播默认 + 旧 {user} 上舰默认迁移成当前默认
-		expect(t.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}\n{link}");
-		expect(t.liveOngoing).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}\n{link}");
+		expect(t.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
+		expect(t.liveOngoing).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
 		expect(t.liveEnd).toBe("{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}");
 		expect((t.guardBuy as { captain: { template: string } }).captain.template).toBe(
 			"{uname} 成为了 {mname} 的舰长！",

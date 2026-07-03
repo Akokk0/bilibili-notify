@@ -209,10 +209,14 @@ export class BilibiliPush {
 	async broadcastToFeature(
 		uid: string,
 		feature: FeatureKey,
-		payload: NotificationPayload,
+		payload: NotificationPayload | NotificationPayload[],
 		opts?: { allowAtAll?: boolean },
 	): Promise<DeliveryResult[]> {
 		if (this.disposed) return [];
+		// 消息版式分条:一次推送可以是多条 payload 的序列。单 payload(koishi 旧调用)
+		// 归一成单元素序列,后续路径统一按序列处理,行为与旧签名逐字一致。
+		const payloads = Array.isArray(payload) ? payload : [payload];
+		if (payloads.length === 0) return [];
 
 		const sub = this.store.findByUid(uid);
 		if (!sub) {
@@ -255,7 +259,7 @@ export class BilibiliPush {
 
 		this.logger.info(`[push] uid=${uid} feature=${feature} → ${targetIds.length} 个目标`);
 		if (!atAllScope) {
-			return this.sendBatch(targetIds, payload, { uid, feature });
+			return this.sendBatch(targetIds, payloads, { uid, feature });
 		}
 
 		const defaultOn = sub.atAllDefaults[atAllScope];
@@ -268,7 +272,7 @@ export class BilibiliPush {
 			(shouldAtAll ? atAllTargets : plainTargets).push(id);
 		}
 		if (atAllTargets.length === 0) {
-			return this.sendBatch(plainTargets, payload, { uid, feature });
+			return this.sendBatch(plainTargets, payloads, { uid, feature });
 		}
 
 		// 「@全体单独一条 → 原 payload」两条独立消息:@ 提醒在前、卡片正文在后。
@@ -278,9 +282,9 @@ export class BilibiliPush {
 		// 标失败)。现在卡片不再被 @全体 的重试拖住,@全体 失败也只异步落历史。
 		const results: DeliveryResult[] = [];
 		if (plainTargets.length > 0) {
-			results.push(...(await this.sendBatch(plainTargets, payload, { uid, feature })));
+			results.push(...(await this.sendBatch(plainTargets, payloads, { uid, feature })));
 		}
-		results.push(...(await this.sendAtAllThenCard(atAllTargets, payload, { uid, feature })));
+		results.push(...(await this.sendAtAllThenCard(atAllTargets, payloads, { uid, feature })));
 		return results;
 	}
 
@@ -299,23 +303,28 @@ export class BilibiliPush {
 	 */
 	private async sendAtAllThenCard(
 		atAllTargets: string[],
-		payload: NotificationPayload,
+		payloads: NotificationPayload[],
 		ctx: { uid: string; feature: FeatureKey },
 	): Promise<DeliveryResult[]> {
 		if (this.disposed) return [];
 		const myGen = this.generation;
 		const atAllPayload = makeAtAllPayload();
 		const results: DeliveryResult[] = [];
-		for (const id of atAllTargets) {
+		outer: for (const id of atAllTargets) {
 			if (this.disposed || this.generation !== myGen) break;
-			// @全体 best-effort:同步发起(先于卡片入 sink),不 await,结果异步落历史。
+			// @全体 best-effort:同步发起(先于序列首条入 sink),不 await,结果异步落历史。
 			void this.sendToTarget(id, atAllPayload, { routing: ctx })
 				.then((r) => this.recordSend(id, atAllPayload, r, ctx))
 				.catch(() => {});
-			const result = await this.sendToTarget(id, payload, { routing: ctx });
-			if (this.disposed || this.generation !== myGen) break;
-			this.recordSend(id, payload, result, ctx);
-			results.push(result);
+			for (const payload of payloads) {
+				const result = await this.sendToTarget(id, payload, { routing: ctx });
+				if (this.disposed || this.generation !== myGen) break outer;
+				this.recordSend(id, payload, result, ctx);
+				results.push(result);
+				// 序列语义:该 target 某条失败即中止其后续条(失败后大概率继续失败,
+				// 且乱序补发比缺失更糟);其他 target 不受牵连。
+				if (!result.ok) break;
+			}
 		}
 		return results;
 	}
@@ -329,10 +338,12 @@ export class BilibiliPush {
 	 */
 	async sendBatch(
 		targetIds: string[],
-		payload: NotificationPayload,
+		payload: NotificationPayload | NotificationPayload[],
 		ctx?: { uid: string; feature: FeatureKey | "private" },
 	): Promise<DeliveryResult[]> {
 		if (this.disposed) return [];
+		const payloads = Array.isArray(payload) ? payload : [payload];
+		if (payloads.length === 0) return [];
 		// ②7:per-batch generation 快照。此前 sendBatch 仅入口判 disposed,逐条
 		// 间无 generation 校验 —— stop()→start() 中途切换会让单次广播跨生命周期
 		// 拆发。本批属于发起时的那个 generation;lifecycle 翻转即放弃剩余目标,
@@ -341,12 +352,16 @@ export class BilibiliPush {
 		const routing =
 			ctx && ctx.feature !== "private" ? { uid: ctx.uid, feature: ctx.feature } : undefined;
 		const results: DeliveryResult[] = [];
-		for (const id of targetIds) {
+		outer: for (const id of targetIds) {
 			if (this.disposed || this.generation !== myGen) break;
-			const result = await this.sendToTarget(id, payload, { routing });
-			if (this.disposed || this.generation !== myGen) break;
-			if (ctx) this.recordSend(id, payload, result, ctx);
-			results.push(result);
+			for (const p of payloads) {
+				const result = await this.sendToTarget(id, p, { routing });
+				if (this.disposed || this.generation !== myGen) break outer;
+				if (ctx) this.recordSend(id, p, result, ctx);
+				results.push(result);
+				// 序列语义:该 target 某条失败即中止其后续条;其他 target 不受牵连。
+				if (!result.ok) break;
+			}
 		}
 		return results;
 	}

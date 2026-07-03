@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { DEFAULT_CARD_LAYOUT } from "./card-layout";
 import { makeDefaultGlobalConfig } from "./globals";
+import { DEFAULT_MESSAGE_LAYOUT } from "./message-layout";
 import { resolve } from "./resolve";
 import { makeEmptySubscription, type Subscription } from "./subscriptions";
 
@@ -236,6 +237,37 @@ describe("resolve()", () => {
 		expect(eff.cardLayout.live.find((b) => b.id === "cover")?.visible).toBe(false);
 		// normalize:缺失的已知块仍被追加(向前兼容;data 为合并后的数据区块)
 		expect(eff.cardLayout.live.map((b) => b.id)).toContain("data");
+	});
+
+	it("inherits global messageLayout when no per-UP override", () => {
+		const globals = makeDefaultGlobalConfig();
+		const eff = resolve(SUB_BASE, globals.defaults);
+		expect(eff.messageLayout).toEqual(globals.defaults.messageLayout);
+	});
+
+	it("replaces messageLayout wholesale on per-UP override and normalizes it", () => {
+		const globals = makeDefaultGlobalConfig();
+		const sub: Subscription = {
+			...SUB_BASE,
+			overrides: {
+				messageLayout: {
+					...DEFAULT_MESSAGE_LAYOUT,
+					dynamic: {
+						blocks: [
+							{ id: "text", type: "text", visible: true },
+							{ id: "card", type: "card", visible: false },
+						],
+						separator: " | ",
+					},
+				},
+			},
+		};
+		const eff = resolve(sub, globals.defaults);
+		// 整份覆盖:override 的 dynamic 块序与分隔符生效
+		expect(eff.messageLayout.dynamic.blocks.slice(0, 2).map((b) => b.id)).toEqual(["text", "card"]);
+		expect(eff.messageLayout.dynamic.separator).toBe(" | ");
+		// normalize:缺失的已知块(link)被追加(向前兼容)
+		expect(eff.messageLayout.dynamic.blocks.map((b) => b.id)).toContain("link");
 	});
 
 	// 回归守护 — P2:resolve() 必须深隔离,消费方就地改不得污染 defaults / sub。

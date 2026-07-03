@@ -3,6 +3,7 @@ import type {
 	PayloadSegment,
 	SubscriptionOp,
 } from "@bilibili-notify/internal";
+import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import {
 	makeKoishiServiceContext,
 	resolveBilibiliNotifyCoreInternals,
@@ -212,6 +213,9 @@ export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
 			// 把启停决策权下沉给 ctx.inject。
 			imageEnabled: true,
 			aiEnabled: true,
+			// koishi 端无版式编辑 UI:恒用默认消息版式(卡片+文本+链接合并一条),覆盖
+			// 开播/直播中/下播,仅由 liveUrl 开关决定链接部件显隐。链接不再内嵌各自模板 {link}。
+			messageLayout: defaultMessageKindLayout("live", { link: config.liveUrl }),
 		};
 	}
 

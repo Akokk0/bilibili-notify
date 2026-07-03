@@ -114,10 +114,10 @@ export const BilibiliNotifyAdvancedSubConfig: Schema<BilibiliNotifyAdvancedSubCo
 						Schema.object({
 							enable: Schema.const(true).required(),
 							customLiveStart: Schema.string().description(
-								"开播消息模板，支持变量：{name}（UP主名字）、{follower}（粉丝数）、{link}（直播间链接）",
+								"开播消息模板，支持变量：{name}（UP主名字）、{follower}（粉丝数）。链接不再写进模板，由 live 插件的「附带直播间链接」开关决定",
 							),
 							customLive: Schema.string().description(
-								"直播中消息模板，支持变量：{name}（UP主名字）、{time}（开播时长）、{watched}（观看人数）、{link}（直播间链接）",
+								"直播中消息模板，支持变量：{name}（UP主名字）、{time}（开播时长）、{watched}（观看人数）",
 							),
 							customLiveEnd: Schema.string().description(
 								"下播消息模板，支持变量：{name}（UP主名字）、{follower_change}（粉丝变化）、{time}（开播时长）",
@@ -135,10 +135,10 @@ export const BilibiliNotifyAdvancedSubConfig: Schema<BilibiliNotifyAdvancedSubCo
 						Schema.object({
 							enable: Schema.const(true).required(),
 							dynamicText: Schema.string().description(
-								"动态(非视频)推送文案模板，支持变量：{name}（UP主名字）、{url}（动态链接，未启用 URL 时为空）",
+								"动态(非视频)推送文案模板，支持变量：{name}（UP主名字）。链接不再写进模板，由 dynamic 插件的「附带链接」开关决定",
 							),
 							videoText: Schema.string().description(
-								"视频投稿推送文案模板，支持变量：{name}（UP主名字）、{url}（视频链接 / BV）",
+								"视频投稿推送文案模板，支持变量：{name}（UP主名字）。链接 / BV 同样由「附带链接」开关决定",
 							),
 						}),
 						Schema.object({}),

@@ -23,11 +23,13 @@ import { join } from "node:path";
 import type { GlobalConfig, Subscription } from "@bilibili-notify/internal";
 import {
 	DEFAULT_CARD_LAYOUT,
+	DEFAULT_MESSAGE_LAYOUT,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
+import { standaloneContentBuilder } from "../content-builder.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { NodeServiceContext } from "../service-context.js";
 
@@ -57,6 +59,9 @@ vi.mock("@bilibili-notify/push", () => ({
 }));
 
 vi.mock("@bilibili-notify/dynamic", () => ({
+	// 纯函数镜像(真实实现见 packages/dynamic/src/push-like.ts):dynamic-images 抑制 @全体。
+	atAllOptsForDynamicKind: (kind: string) =>
+		kind === "dynamic-images" ? { allowAtAll: false } : undefined,
 	DynamicEngine: class {
 		opts: any;
 		start = vi.fn();
@@ -118,7 +123,13 @@ vi.mock("@bilibili-notify/image", () => ({
 }));
 
 // SUT must be imported AFTER the vi.mock calls register.
-const { createEngines, liveTypeToFeature, liveTypeAllowsAtAll } = await import("../engines.js");
+const {
+	createEngines,
+	liveTypeToFeature,
+	liveTypeAllowsAtAll,
+	buildDynamicSubViewSingle,
+	buildLiveSubViewSingle,
+} = await import("../engines.js");
 
 // Mirror of koishi/live/src/__tests__/live-type-to-feature.test.ts — the two
 // adapter helpers MUST stay byte-consistent across ends (same business core,
@@ -303,11 +314,9 @@ describe("createEngines — boot wiring", () => {
 		const c = setup();
 		active = c;
 		const liveCfg = H.live[0].opts.config;
-		expect(liveCfg.customLiveMsg.customLiveStart).toBe(
-			"{name} 开播啦，当前粉丝数：{follower}\n{link}",
-		);
+		expect(liveCfg.customLiveMsg.customLiveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
 		expect(liveCfg.customLiveMsg.customLive).toBe(
-			"{name} 正在直播，已播 {time}，累计观看：{watched}\n{link}",
+			"{name} 正在直播，已播 {time}，累计观看：{watched}",
 		);
 		expect(liveCfg.customLiveMsg.customLiveEnd).toBe(
 			"{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
@@ -751,5 +760,122 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		sub.enabled = false;
 		c.bus.emit("subscription-changed", [{ type: "update", sub }]);
 		expect(liveOpsOf()).toEqual([{ type: "delete", uid: "500" }]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 消息版式(messageLayout)— adapter 折叠 / 序列广播映射 / 全局热更
+// ---------------------------------------------------------------------------
+
+describe("createEngines — 消息版式", () => {
+	const subRt = {
+		get: () => undefined,
+		getAll: () => ({}),
+		patch: vi.fn(async () => {}),
+		prune: vi.fn(async () => {}),
+		load: vi.fn(async () => {}),
+	} as any;
+
+	it("buildDynamicSubViewSingle / buildLiveSubViewSingle 折叠 eff.messageLayout 的对应切片", () => {
+		const g = makeDefaultGlobalConfig();
+		const sub = makeEmptySubscription({ id: "s1", uid: "1" });
+		const dyn = buildDynamicSubViewSingle(sub, subRt, g);
+		expect(dyn.messageLayout).toEqual(DEFAULT_MESSAGE_LAYOUT.dynamic);
+		const live = buildLiveSubViewSingle(sub, subRt, g);
+		expect(live.messageLayout).toEqual(DEFAULT_MESSAGE_LAYOUT.live);
+	});
+
+	it("per-UP messageLayout 覆盖折叠进两端视图(整份覆盖 + normalize)", () => {
+		const g = makeDefaultGlobalConfig();
+		const sub = makeEmptySubscription({ id: "s1", uid: "1" });
+		sub.overrides.messageLayout = {
+			...DEFAULT_MESSAGE_LAYOUT,
+			dynamic: {
+				blocks: [
+					{ id: "text", type: "text", visible: true },
+					{ id: "card", type: "card", visible: false },
+				],
+				separator: " | ",
+			},
+		};
+		const dyn = buildDynamicSubViewSingle(sub, subRt, g);
+		expect(dyn.messageLayout?.blocks.slice(0, 2).map((b: { id: string }) => b.id)).toEqual([
+			"text",
+			"card",
+		]);
+		expect(dyn.messageLayout?.separator).toBe(" | ");
+		// normalize 追加缺失的 link 块
+		expect(dyn.messageLayout?.blocks.map((b: { type: string }) => b.type)).toContain("link");
+	});
+
+	it("dynamicPushLike.broadcastDynamicSequence → BilibiliPush 收到 payload 数组", async () => {
+		const c = setup();
+		active = c;
+		const seq = H.dynamic[0].opts.push.broadcastDynamicSequence;
+		expect(seq).toBeDefined();
+		await seq(
+			"1",
+			[
+				[{ type: "image", buffer: Buffer.from("img"), mime: "image/jpeg" }],
+				[{ type: "text", text: "正文" }],
+			],
+			"dynamic",
+		);
+		expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1);
+		const [uid, feature, payloads, opts] = H.push[0].broadcastToFeature.mock.calls[0];
+		expect(uid).toBe("1");
+		expect(feature).toBe("dynamic");
+		expect(Array.isArray(payloads)).toBe(true);
+		expect(payloads).toHaveLength(2);
+		expect(payloads[0].kind).toBe("image");
+		expect(payloads[1]).toEqual({ kind: "text", text: "正文" });
+		// kind="dynamic" 不抑制 @全体(维持 feature 决定的旧行为)
+		expect(opts).toBeUndefined();
+	});
+
+	it("livePushLike.broadcastSequenceToTargets → feature 映射 + allowAtAll(开播=3)", async () => {
+		const c = setup();
+		active = c;
+		const seq = H.live[0].opts.push.broadcastSequenceToTargets;
+		expect(seq).toBeDefined();
+		const msg1 = standaloneContentBuilder.message([
+			standaloneContentBuilder.image(Buffer.from("img"), "image/jpeg"),
+		]);
+		const msg2 = standaloneContentBuilder.message([standaloneContentBuilder.text("开播文案")]);
+		await seq("1", [msg1, msg2], 3);
+		expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1);
+		const [uid, feature, payloads, opts] = H.push[0].broadcastToFeature.mock.calls[0];
+		expect(uid).toBe("1");
+		expect(feature).toBe("live");
+		expect(payloads).toHaveLength(2);
+		expect(payloads[0].kind).toBe("image");
+		expect(payloads[1]).toEqual({ kind: "text", text: "开播文案" });
+		expect(opts).toEqual({ allowAtAll: true });
+	});
+
+	it("回归镜像:只改全局 messageLayout → live.applyOps 与 dynamic.applyOps 都收到刷新", () => {
+		const sub = makeEmptySubscription({ id: "sub-1", uid: "1" });
+		const c = setup({ subs: [sub] });
+		active = c;
+		H.dynamic[0].applyOps.mockClear();
+		H.live[0].applyOps.mockClear();
+		patchGlobals(c, (g) => {
+			const block = g.defaults.messageLayout.dynamic.blocks.find((b) => b.type === "link");
+			expect(block).toBeDefined();
+			if (block) block.visible = false;
+		});
+		c.bus.emit("config-changed", "globals");
+
+		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
+		expect(liveOps).toHaveLength(1);
+		expect(liveOps[0]).toMatchObject({ type: "update", uid: "1" });
+		// live 的 update change 带上 messageLayout(live 切片)
+		expect(liveOps[0].changes[0].messageLayout).toEqual(
+			c.configStore.getGlobals().defaults.messageLayout.live,
+		);
+
+		expect(H.dynamic[0].applyOps).toHaveBeenCalledTimes(1);
+		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
+		expect(dynOps[0]).toMatchObject({ type: "update", uid: "1" });
 	});
 });

@@ -537,6 +537,10 @@ export class RoomSession extends RoomSessionBase {
 				: this.masterInfo.liveOpenFollowerNum.toString();
 		this.liveData.fansNum = this.masterInfo.liveOpenFollowerNum;
 		const roomLink = buildRoomLink(this.liveRoomInfo);
+		// 消息版式:per-UP 折叠值优先,缺失时兜底引擎 config 级(koishi 的默认版式 +
+		// 链接开关);两级都缺 = 旧路径。版式路径下链接独立成部件,开播模板按 omitLink
+		// 剥掉 {link},由 sendLiveNotifyCard 按块序装配。
+		const messageLayout = this.sub.messageLayout ?? this.ctx.config.messageLayout;
 		const liveStartMsg = this.ctx.templateRenderer.renderLiveStart({
 			sub: this.sub,
 			globalCustom: this.ctx.config.customLiveMsg,
@@ -544,6 +548,7 @@ export class RoomSession extends RoomSessionBase {
 			diffTime,
 			followerNum,
 			roomLink,
+			omitLink: messageLayout !== undefined,
 		});
 
 		await this.ctx.sendLiveNotifyCard({
@@ -555,6 +560,8 @@ export class RoomSession extends RoomSessionBase {
 			cardLayout: this.sub.cardLayout,
 			uid: this.sub.uid,
 			notifyMsg: liveStartMsg,
+			messageLayout,
+			roomLink,
 		});
 
 		if (this.ctx.isDisposed()) return;

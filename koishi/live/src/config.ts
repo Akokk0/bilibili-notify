@@ -28,6 +28,7 @@ export interface BilibiliNotifyLiveConfig {
 		customLive?: string;
 		customLiveEnd?: string;
 	};
+	liveUrl: boolean;
 }
 
 export const BilibiliNotifyLiveConfig: Schema<BilibiliNotifyLiveConfig> = Schema.object({
@@ -125,6 +126,12 @@ export const BilibiliNotifyLiveConfig: Schema<BilibiliNotifyLiveConfig> = Schema
 		]),
 	]),
 
+	liveUrl: Schema.boolean()
+		.default(true)
+		.description(
+			"开播 / 直播中 / 下播推送要不要附带直播间链接呢？链接会作为独立的一段跟在文案后面～用 QQ 官方机器人的主人请关掉,不然会被吞消息的 (＞﹏＜)",
+		),
+
 	customLiveMsg: Schema.intersect([
 		Schema.object({
 			enable: Schema.boolean()
@@ -135,19 +142,19 @@ export const BilibiliNotifyLiveConfig: Schema<BilibiliNotifyLiveConfig> = Schema
 			Schema.object({
 				enable: Schema.const(true).required(),
 				customLiveStart: Schema.string()
-					.default("{name} 开播啦，当前粉丝数：{follower}\n{link}")
+					.default(DEFAULT_TEMPLATES.liveStart)
 					.description(
-						"这是开播提示语的自定义格式～女仆会把 {name}、{follower}、{link} 都替换成真实数据送给主人 (〃´-`〃)♡，{name}代表UP昵称，{follower}代表当前粉丝数，{link}代表直播间链接（QQ官方机器人请不要使用），\\n为换行",
+						"这是开播提示语的自定义格式～{name}代表UP昵称，{follower}代表当前粉丝数，\\n为换行。链接不再写进模板哦,由上面的「附带直播间链接」开关决定 (〃´-`〃)♡",
 					),
 				customLive: Schema.string()
-					.default("{name} 正在直播，已播 {time}，累计观看：{watched}\n{link}")
+					.default(DEFAULT_TEMPLATES.liveOngoing)
 					.description(
-						"直播中提示语的自定义内容在这里～{name}、{time}、{watched} 都会由女仆乖乖替换哒！{name}代表UP昵称，{time}代表开播时长，{watched}代表累计观看人数，{link}代表直播间链接（QQ官方机器人请不要使用），\\n为换行",
+						"直播中提示语的自定义内容在这里～{name}代表UP昵称，{time}代表开播时长，{watched}代表累计观看人数，\\n为换行。链接不再写进模板哦,由上面的「附带直播间链接」开关决定 (〃´-`〃)♡",
 					),
 				customLiveEnd: Schema.string()
-					.default("{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}")
+					.default(DEFAULT_TEMPLATES.liveEnd)
 					.description(
-						"下播提示语的设定～{time}、{follower_change} 等变量女仆都会帮主人处理好 (*´∀`)，{name}代表UP昵称，{follower_change}代表本场直播粉丝数变化，{time}代表开播时长，\\n为换行",
+						"下播提示语的设定～{time}、{follower_change} 等变量女仆都会帮主人处理好 (*´∀`)，{name}代表UP昵称，{follower_change}代表本场直播粉丝数变化，{time}代表开播时长，\\n为换行。链接不再写进模板哦,由上面的「附带直播间链接」开关决定 (〃´-`〃)♡",
 					),
 			}),
 			Schema.object({}),

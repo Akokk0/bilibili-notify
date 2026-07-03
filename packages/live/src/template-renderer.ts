@@ -16,10 +16,14 @@ import type { MasterInfo } from "./types";
  * 一律走 `{key}`,二者不冲突(单遍正则,longest-first)。
  */
 
-/** Defaults applied when neither sub-level nor global config provides a template. */
+/**
+ * Defaults applied when neither sub-level nor global config provides a template.
+ * 链接不再进模板(开播链接是消息版式的独立部件);与 `@bilibili-notify/internal`
+ * 的 `DEFAULT_TEMPLATES.liveStart/.liveOngoing` 保持字面量一致。
+ */
 export const DEFAULT_LIVE_TEMPLATES = {
-	liveStart: "{name} 开播啦，当前粉丝数：{follower}\n{link}",
-	liveOngoing: "{name} 正在直播，已播 {time}，累计观看：{watched}\n{link}",
+	liveStart: "{name} 开播啦，当前粉丝数：{follower}",
+	liveOngoing: "{name} 正在直播，已播 {time}，累计观看：{watched}",
 	liveEnd: "{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
 	liveSummaryFallback: "弹幕总结",
 } as const;
@@ -97,18 +101,26 @@ export class LiveTemplateRenderer {
 		diffTime: string;
 		followerNum: string;
 		roomLink: string;
+		/**
+		 * 消息版式路径:链接独立成部件,模板里的 `{link}`(与 legacy `-link`)连同前导
+		 * 空白 / 字面 `\n` 一起剥离,避免行尾孤行或双链接。旧路径不传,现状不变。
+		 */
+		omitLink?: boolean;
 	}): string {
-		const tmpl = resolveCustomLive(
+		let tmpl = resolveCustomLive(
 			params.sub.customLiveMsg,
 			params.globalCustom,
 			"customLiveStart",
 			DEFAULT_LIVE_TEMPLATES.liveStart,
 		);
+		if (params.omitLink) {
+			tmpl = tmpl.replace(/(?:\s|\\n)*(?:\{link\}|-link)/g, "");
+		}
 		return applyTemplate(tmpl, {
 			name: params.master.username,
 			time: params.diffTime,
 			follower: params.followerNum,
-			link: params.roomLink,
+			link: params.omitLink ? "" : params.roomLink,
 		});
 	}
 
@@ -120,18 +132,23 @@ export class LiveTemplateRenderer {
 		diffTime: string;
 		watched: string;
 		roomLink: string;
+		/** 消息版式路径:同 {@link LiveTemplateRenderer.renderLiveStart} 的 omitLink。 */
+		omitLink?: boolean;
 	}): string {
-		const tmpl = resolveCustomLive(
+		let tmpl = resolveCustomLive(
 			params.sub.customLiveMsg,
 			params.globalCustom,
 			"customLive",
 			DEFAULT_LIVE_TEMPLATES.liveOngoing,
 		);
+		if (params.omitLink) {
+			tmpl = tmpl.replace(/(?:\s|\\n)*(?:\{link\}|-link)/g, "");
+		}
 		return applyTemplate(tmpl, {
 			name: params.master.username,
 			time: params.diffTime,
 			watched: params.watched,
-			link: params.roomLink,
+			link: params.omitLink ? "" : params.roomLink,
 		});
 	}
 
@@ -142,17 +159,24 @@ export class LiveTemplateRenderer {
 		master: MasterInfo;
 		diffTime: string;
 		followerChange: number;
+		roomLink: string;
+		/** 消息版式路径:同 {@link LiveTemplateRenderer.renderLiveStart} 的 omitLink。 */
+		omitLink?: boolean;
 	}): string {
-		const tmpl = resolveCustomLive(
+		let tmpl = resolveCustomLive(
 			params.sub.customLiveMsg,
 			params.globalCustom,
 			"customLiveEnd",
 			DEFAULT_LIVE_TEMPLATES.liveEnd,
 		);
+		if (params.omitLink) {
+			tmpl = tmpl.replace(/(?:\s|\\n)*(?:\{link\}|-link)/g, "");
+		}
 		return applyTemplate(tmpl, {
 			name: params.master.username,
 			time: params.diffTime,
 			follower_change: formatFollowerChange(params.followerChange),
+			link: params.omitLink ? "" : params.roomLink,
 		});
 	}
 

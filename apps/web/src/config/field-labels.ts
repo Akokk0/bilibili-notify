@@ -324,6 +324,20 @@ export const FIELD_LABELS = {
 	"templates.liveSummary": { label: "总结正文", section: "templates" },
 	"templates.wordcloudStopWords": { label: "词云停用词", section: "templates" },
 	"templates.liveStart": { label: "开播", section: "templates" },
+	// 消息版式(发送侧结构):分隔符经 Field 编辑;blocks 数组由版式编辑器整体管理,
+	// 灵动岛 diff 时按叶子 code 命中下列条目。
+	"messageLayout.dynamic.separator": {
+		label: "动态消息分隔符",
+		hint: "同条消息内相邻文本类部件的连接符;\\n 表示换行",
+		section: "templates",
+	},
+	"messageLayout.live.separator": {
+		label: "直播消息分隔符",
+		hint: "同条消息内相邻文本类部件的连接符;\\n 表示换行",
+		section: "templates",
+	},
+	"messageLayout.dynamic.blocks": { label: "动态消息部件排列", section: "templates" },
+	"messageLayout.live.blocks": { label: "直播消息部件排列", section: "templates" },
 	"templates.liveOngoing": { label: "直播中", section: "templates" },
 	"templates.liveEnd": { label: "下播", section: "templates" },
 	"templates.dynamic": { label: "动态文案", section: "templates" },

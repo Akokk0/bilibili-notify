@@ -1,5 +1,6 @@
 import { DynamicEngine, type DynamicEngineConfig } from "@bilibili-notify/dynamic";
 import type { SubscriptionOp } from "@bilibili-notify/internal";
+import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import {
 	makeKoishiMessageBus,
 	makeKoishiServiceContext,
@@ -48,6 +49,9 @@ export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> 
 			// per-UP 自定义经 advanced-subscription → overrides.templates.dynamic 折进视图覆盖。
 			dynamicTemplate: config.dynamicTemplate,
 			videoTemplate: config.videoTemplate,
+			// koishi 端无版式编辑 UI:恒用默认消息版式(卡片+文本+链接合并一条),
+			// 仅由 dynamicUrl 开关决定链接部件显隐。链接不再内嵌模板 {url}。
+			messageLayout: defaultMessageKindLayout("dynamic", { link: config.dynamicUrl }),
 		};
 	}
 

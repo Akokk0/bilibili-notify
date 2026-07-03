@@ -6,6 +6,7 @@ export interface BilibiliNotifyDynamicConfig {
 	logLevel: number;
 	dynamicCron: string;
 	dynamicVideoUrlToBV: boolean;
+	dynamicUrl: boolean;
 	dynamicTemplate: string;
 	videoTemplate: string;
 	imageGroup: {
@@ -32,15 +33,20 @@ export const BilibiliNotifyDynamicSchema: Schema<BilibiliNotifyDynamicConfig> = 
 	dynamicVideoUrlToBV: Schema.boolean()
 		.default(false)
 		.description("如果是视频动态，开启后会把链接换成 BV 号哦～方便主人的其他用途 (*´･ω･`)"),
+	dynamicUrl: Schema.boolean()
+		.default(true)
+		.description(
+			"动态推送要不要附带链接呢？链接会作为独立的一段跟在文案后面～用 QQ 官方机器人的主人请关掉,不然会被吞消息的 (＞﹏＜)",
+		),
 	dynamicTemplate: Schema.string()
 		.default(DEFAULT_TEMPLATES.dynamic)
 		.description(
-			"动态推送的文案模板～变量 {name}=UP 昵称、{url}=动态链接。想去掉链接（比如用 QQ 官方机器人）就把 {url} 删掉哦 (๑•̀ㅂ•́)و✧",
+			"动态推送的文案模板～变量 {name}=UP 昵称。链接不再写进模板哦,由上面的「附带链接」开关决定 (๑•̀ㅂ•́)و✧",
 		),
 	videoTemplate: Schema.string()
 		.default(DEFAULT_TEMPLATES.dynamicVideo)
 		.description(
-			"视频投稿的文案模板～变量 {name}=UP 昵称、{url}=视频链接（开了上面的 BV 开关则是 BV 号）。同样删掉 {url} 就不带链接。",
+			"视频投稿的文案模板～变量 {name}=UP 昵称。链接（开了上面的 BV 开关则是 BV 号）同样由「附带链接」开关决定。",
 		),
 	imageGroup: Schema.object({
 		enable: Schema.boolean()

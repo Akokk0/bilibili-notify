@@ -386,6 +386,12 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			// 否则一条 DRAW 动态会在主卡片和图集各 @ 一次(用户报告的「重复艾特全体」)。
 			await push.broadcastToFeature(uid, "dynamic", payload, atAllOptsForDynamicKind(kind));
 		},
+		async broadcastDynamicSequence(uid, messages, kind) {
+			// 消息版式分条:多条 payload 交给 BilibiliPush 的序列语义(同 target 顺序发、
+			// 某条失败中止该 target 后续条、@全体只跟首条之前)。
+			const payloads = messages.map(pushSegmentsToPayload);
+			await push.broadcastToFeature(uid, "dynamic", payloads, atAllOptsForDynamicKind(kind));
+		},
 		sendPrivateMsg: (text) => push.sendPrivateMsg(text),
 		sendErrorMsg: (text) => push.sendErrorMsg(text),
 	};
@@ -449,6 +455,14 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			// 仅开播(StartBroadcasting)可 @全体;周期「正在直播」等也翻译成 feature
 			// "live",必须显式抑制,否则每条直播推送都 @全体。
 			await push.broadcastToFeature(uid, feature, payload, {
+				allowAtAll: liveTypeAllowsAtAll(type as number),
+			});
+		},
+		async broadcastSequenceToTargets(uid, contents, type) {
+			// 消息版式分条(目前仅开播):语义同 dynamic 端 broadcastDynamicSequence。
+			const feature = liveTypeToFeature(type as number);
+			const payloads = contents.map((c) => collapseSegments(segmentToPayload(c)));
+			await push.broadcastToFeature(uid, feature, payloads, {
 				allowAtAll: liveTypeAllowsAtAll(type as number),
 			});
 		},
@@ -627,6 +641,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				const templatesChanged = !eq(prev.defaults.templates, g.defaults.templates);
 				const featuresChanged = !eq(prev.defaults.features, g.defaults.features);
 				const layoutChanged = !eq(prev.defaults.cardLayout, g.defaults.cardLayout);
+				const messageLayoutChanged = !eq(prev.defaults.messageLayout, g.defaults.messageLayout);
 
 				if (appChanged) {
 					// log level / User-Agent / healthCheck —— 都在 app section。
@@ -710,7 +725,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					filtersChanged ||
 					templatesChanged ||
 					featuresChanged ||
-					layoutChanged
+					layoutChanged ||
+					messageLayoutChanged
 				) {
 					const refreshOps = subscriptionOpsToLive(
 						opts.subscriptionStore.list().map((sub) => ({ type: "update" as const, sub })),
@@ -727,7 +743,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// 全局默认版式变化不会自动传播 —— 借道 applyOps 的 update 分支强制刷新每个已跟踪
 				// UID 的完整 SubItemView(startDynamicForUid 内部只在 UID 首次出现时初始化时间戳,
 				// 已跟踪 UID 不会被当成新订阅重推旧动态,见 dynamic-engine.ts stillSubscribed 注释)。
-				if (layoutChanged) {
+				if (layoutChanged || messageLayoutChanged) {
 					dynamic.applyOps(
 						subscriptionOpsToDynamic(
 							opts.subscriptionStore.list().map((sub) => ({ type: "update" as const, sub })),
@@ -1150,6 +1166,9 @@ export function buildDynamicSubViewSingle(
 		customVideoTemplate: sub.overrides.templates?.dynamicVideo,
 		// per-UP 解析后的动态卡版式切片(eff = 整份覆盖 ?? 全局)。全局默认版式即复刻现状。
 		dynamicLayout: eff.cardLayout.dynamic,
+		// per-UP 解析后的消息版式动态切片。独立端恒有值(默认 = 复刻现状:卡片+文本+
+		// 链接合并一条);koishi 端不填该字段,引擎走旧路径。
+		messageLayout: eff.messageLayout.dynamic,
 	};
 }
 
@@ -1245,6 +1264,9 @@ export function buildLiveSubViewSingle(
 		// per-UP 解析后的卡片版式(eff = per-UP 整份覆盖 ?? 全局)。room-session 渲染
 		// live/sc/guard 时取对应切片透传给 generate*;全局默认版式即复刻现状。
 		cardLayout: eff.cardLayout,
+		// per-UP 解析后的消息版式直播切片(覆盖开播 / 直播中 / 下播)。独立端恒有值;
+		// koishi 端不填,room-session 走旧路径。
+		messageLayout: eff.messageLayout.live,
 		customSpecialDanmakuUsers:
 			danmakuUsers.length > 0
 				? {
@@ -1362,6 +1384,7 @@ function subscriptionOpsToLive(
 						customSpecialDanmakuUsers: view.customSpecialDanmakuUsers,
 						customSpecialUsersEnterTheRoom: view.customSpecialUsersEnterTheRoom,
 						cardLayout: view.cardLayout,
+						messageLayout: view.messageLayout,
 					},
 				],
 			});

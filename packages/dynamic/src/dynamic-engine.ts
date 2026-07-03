@@ -6,9 +6,10 @@ import type {
 	ForwardImage,
 	Logger,
 	MessageBus,
+	MessageKindLayout,
 	ServiceContext,
 } from "@bilibili-notify/internal";
-import { interpolate, withLock } from "@bilibili-notify/internal";
+import { interpolate, planMessageGroups, withLock } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
 import { DynamicFilterReason, filterDynamic } from "./dynamic-filter";
@@ -45,11 +46,12 @@ const DETECTOR_RESTART_BACKOFF_MS = 5 * 60_000;
  * 动态推送文本模板的内建兜底,仅在 adapter 未填 config.dynamicTemplate /
  * videoTemplate 时使用(真实 adapter 都会从 globals.defaults.templates 填充)。
  * 与 `@bilibili-notify/internal` 的 `DEFAULT_TEMPLATES.dynamic/.dynamicVideo`
- * 保持一致。变量 `{name}`(UP 名) / `{url}`(链接,未启用 URL 时为空)。
+ * 保持一致。变量仅 `{name}`(UP 名);链接是消息版式的独立部件,不再进模板
+ * (旧存档残留的 `{url}` 由 renderDynamicText 在版式路径按 url='' 剥离)。
  */
 const DEFAULT_DYNAMIC_TEXT = {
-	dynamic: "{name}发布了一条动态：{url}",
-	video: "{name}发布了新视频：{url}",
+	dynamic: "{name}发布了一条动态",
+	video: "{name}发布了新视频",
 } as const;
 
 /**
@@ -173,6 +175,13 @@ export interface DynamicEngineConfig {
 	 * 缺省视为 true。Adapter 通常用 `globals.defaults.ai.enabled` 填充。
 	 */
 	aiEnabled?: boolean;
+	/**
+	 * 引擎级消息版式(动态切片)。per-UP `SubItemView.messageLayout` 缺失时兜底 ——
+	 * koishi 端用 `defaultMessageKindLayout("dynamic", { link: 开关 })` 填充(无版式
+	 * 编辑 UI,仅开关链接);独立端 per-UP 恒有值,不落到这里。两级都缺 = 旧路径
+	 * (链接内嵌模板 {url})。
+	 */
+	messageLayout?: MessageKindLayout;
 }
 
 export interface DynamicEngineOptions {
@@ -705,9 +714,15 @@ export class DynamicEngine {
 
 				// Render card
 				const sub = this.dynamicSubManager.get(uid);
+				// 消息版式:per-UP 折叠值优先,缺失时兜底引擎 config 级(koishi 的默认版式
+				// + 链接开关);两级都缺 = 旧路径。块隐藏的部件直接跳过其生产成本:
+				// card 不渲染图片、text 不调 AI。
+				const layout = sub?.messageLayout ?? this.config.messageLayout;
+				const wantPart = (t: string): boolean =>
+					!layout || layout.blocks.some((b) => b.visible && b.type === t);
 				let buffer: Buffer | undefined;
 				try {
-					if (this.image && this.config.imageEnabled !== false) {
+					if (this.image && this.config.imageEnabled !== false && wantPart("card")) {
 						// dynamic-engine 与 image-engine 的 Dynamic 类型同源同构（皆为 Bilibili
 						// 动态接口的子集，仅声明字段不同），运行时是同一对象。这里用 unknown
 						// 中转的类型断言避开两份独立 .d.ts 的结构性差异。
@@ -779,7 +794,7 @@ export class DynamicEngine {
 				// AI comment — adapter 在 SubItemView 上可附 per-UP aiOverride，传给 comment()
 				// 后仅对该次调用生效；缺失时 fall through 到 CommentaryClient 的全局 config。
 				let aiComment: string | undefined;
-				if (this.ai && this.config.aiEnabled !== false) {
+				if (this.ai && this.config.aiEnabled !== false && wantPart("text")) {
 					const dynamicText = extractDynamicText(item);
 					if (dynamicText) {
 						const imageUrls = extractDynamicImages(item);
@@ -817,14 +832,61 @@ export class DynamicEngine {
 					: (sub?.customDynamicTemplate ??
 						this.config.dynamicTemplate ??
 						DEFAULT_DYNAMIC_TEXT.dynamic);
-				const text = aiComment ?? renderDynamicText(tmpl, name, url);
-				const segments: PushSegment[] = buffer
-					? [
-							{ type: "image", buffer, mime: "image/jpeg" },
-							...(text ? ([{ type: "text", text }] as PushSegment[]) : []),
-						]
-					: [{ type: "text", text }];
-				await this.push.broadcastDynamic(uid, segments, "dynamic");
+				if (!layout) {
+					// 旧路径(koishi 端现状):链接经模板 {url} 内嵌在文本里,卡片+文本合并一条。
+					const text = aiComment ?? renderDynamicText(tmpl, name, url);
+					const segments: PushSegment[] = buffer
+						? [
+								{ type: "image", buffer, mime: "image/jpeg" },
+								...(text ? ([{ type: "text", text }] as PushSegment[]) : []),
+							]
+						: [{ type: "text", text }];
+					await this.push.broadcastDynamic(uid, segments, "dynamic");
+				} else {
+					// 版式路径:文本以 url='' 渲染(renderDynamicText 会把 {url} 连同前导
+					// 分隔符剥掉,旧自定义模板残留 {url} 也不会双链接),链接独立成部件,
+					// 顺序 / 显隐 / 分条全由版式决定;同条内相邻文本类部件以 separator 连接。
+					const text = wantPart("text") ? (aiComment ?? renderDynamicText(tmpl, name, "")) : "";
+					const present = new Set<string>();
+					if (buffer) present.add("card");
+					if (text) present.add("text");
+					if (url) present.add("link");
+					const groups = planMessageGroups(layout.blocks, present);
+					const messages: PushSegment[][] = groups.map((group) => {
+						const segs: PushSegment[] = [];
+						let texts: string[] = [];
+						const flushText = (): void => {
+							if (texts.length > 0) {
+								segs.push({ type: "text", text: texts.join(layout.separator) });
+								texts = [];
+							}
+						};
+						for (const part of group) {
+							if (part === "card" && buffer) {
+								flushText();
+								segs.push({ type: "image", buffer, mime: "image/jpeg" });
+							} else if (part === "text") {
+								texts.push(text);
+							} else if (part === "link") {
+								texts.push(url);
+							}
+						}
+						flushText();
+						return segs;
+					});
+					if (messages.length === 0) {
+						this.logger.debug(`[push] UID=${uid} 消息版式所有部件隐藏/缺失,本条不推送`);
+					} else if (messages.length === 1) {
+						await this.push.broadcastDynamic(uid, messages[0] as PushSegment[], "dynamic");
+					} else if (this.push.broadcastDynamicSequence) {
+						await this.push.broadcastDynamicSequence(uid, messages, "dynamic");
+					} else {
+						// 防御兜底(现实不可达:填 messageLayout 的 adapter 必实现 sequence)。
+						// 合并回一条而非逐条 broadcast —— 逐条会让 @全体 每条重复一次。
+						this.logger.warn("[push] adapter 未实现 broadcastDynamicSequence,分条已合并为单条");
+						await this.push.broadcastDynamic(uid, messages.flat(), "dynamic");
+					}
+				}
 
 				// Push extra images from draw dynamics. DYNAMIC_TYPE_DRAW 的原图在
 				// major.draw.items[].src;部分 opus 包裹的图文帖图在 major.opus.pics[].url。
