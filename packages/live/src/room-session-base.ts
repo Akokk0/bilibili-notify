@@ -59,16 +59,23 @@ export abstract class RoomSessionBase {
 	 * 折成 undefined 让 generate* 走渲染器全局 config 兜底,live 则原样透传(room-helpers
 	 * 再据 enable 门控)。adapter 已把 per-kind 折算成完整样式,这里只做选取。
 	 *
-	 * 该 kind 配了 >1 张背景图时「每次推送轮换」:经注入的 `pickBackground`(按 `uid:kind`
-	 * 独立游标)选下一张覆盖 `backgroundImage`。未注入(koishi)/ ≤1 张 → 原样返回(用首图)。
+	 * 背景图「每次推送轮换」:优先用该样式自带的 `backgroundImages`;若该 UP / kind 没有
+	 * 任何覆盖(样式自带列表为空)→ 落回引擎级 `defaultBackgroundImages`(全局默认图廊)—
+	 * 否则这些 UP 会一直渲染渲染器内部缓存的静态首图,图廊配再多张也不轮换(回归 bug)。
+	 * 列表 >1 张时经注入的 `pickBackground`(按 `uid:kind` 独立游标)选下一张并强制
+	 * `enable:true`,其余字段留空,靠调用点 `?? this.config.X` 逐字段回退渲染器全局配置。
+	 * 未注入选择器(koishi)/ 列表 ≤1 张 → 原样返回(用首图或渲染器静态兜底)。
 	 * 每次调用即一次推送,故在此推进游标恰好 = 每推送一次轮换一张。
 	 */
 	protected resolvedCardStyle(kind: CardKind): CustomCardStyleLike {
 		const style = this.sub.customCardStyleByKind?.[kind] ?? this.sub.customCardStyle;
-		const images = style.backgroundImages;
+		const images =
+			style.backgroundImages && style.backgroundImages.length > 0
+				? style.backgroundImages
+				: this.ctx.config.defaultBackgroundImages;
 		if (images && images.length > 1) {
 			const picked = this.ctx.pickBackground(`${this.sub.uid}:${kind}`, images);
-			if (picked !== undefined) return { ...style, backgroundImage: picked };
+			if (picked !== undefined) return { ...style, enable: true, backgroundImage: picked };
 		}
 		return style;
 	}

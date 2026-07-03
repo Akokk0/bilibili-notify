@@ -60,6 +60,11 @@ export interface LiveEngineConfig {
 	 * per-UP 恒有值。两级都缺 = 旧路径(链接内嵌开播模板 {link})。
 	 */
 	messageLayout?: MessageKindLayout;
+	/**
+	 * 全局默认卡片背景图廊。live/sc/guard 无 per-UP / per-kind 覆盖时的轮换兜底
+	 * 列表(见 `ListenerManagerConfig.defaultBackgroundImages`)。
+	 */
+	defaultBackgroundImages?: string[];
 }
 
 export interface LiveEngineOptions {
@@ -308,6 +313,7 @@ function toListenerConfig(c: LiveEngineConfig): ListenerManagerConfig {
 		liveSummaryDefault: c.liveSummaryDefault,
 		imageEnabled: c.imageEnabled,
 		messageLayout: c.messageLayout,
+		defaultBackgroundImages: c.defaultBackgroundImages,
 	};
 }
 

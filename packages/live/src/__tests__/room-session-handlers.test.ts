@@ -297,6 +297,27 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		expect(ctx.pickBackground).not.toHaveBeenCalled();
 		expect(m.generateSCCard.mock.calls[0]?.[1]).toMatchObject({ backgroundImage: "solo" });
 	});
+
+	it("回归:基准与 per-kind 都无覆盖,但全局默认配了多图 → 仍按 defaultBackgroundImages 轮换(而非静默回退单图)", async () => {
+		const { ctx, m } = makeCtx();
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
+		const cursors: Record<string, number> = {};
+		// biome-ignore lint/suspicious/noExplicitAny: 覆写 mock ctx 的可选回调
+		(ctx as any).pickBackground = (key: string, images: string[]): string => {
+			const i = cursors[key] ?? 0;
+			cursors[key] = i + 1;
+			return images[i % images.length] as string;
+		};
+		// biome-ignore lint/suspicious/noExplicitAny: 测试注入引擎级全局默认多图
+		(ctx as any).config.defaultBackgroundImages = ["x", "y"];
+		const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
+		await s.onIncomeSuperChat(scBody);
+		await s.onIncomeSuperChat(scBody);
+		const bgs = m.generateSCCard.mock.calls.map(
+			(c) => (c[1] as { backgroundImage?: string } | undefined)?.backgroundImage,
+		);
+		expect(bgs).toEqual(["x", "y"]);
+	});
 });
 
 // ---------------------------------------------------------------------------

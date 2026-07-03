@@ -395,6 +395,22 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(cfg.videoTemplate).toBe("🎬 {name} {url}");
 	});
 
+	it("回归:改全局 cardStyle.backgroundImages → 两端 config 都带 defaultBackgroundImages(无覆盖的 UP 靠它轮换)", () => {
+		// 此前 dynamicConfig()/liveConfig() 都没有把全局默认图廊透传给引擎,
+		// 导致无 per-UP / per-kind 背景覆盖的 UP 永远只渲染渲染器内部缓存的
+		// 静态首图,图廊配再多张也不轮换。
+		const c = setup();
+		active = c;
+		patchGlobals(c, (g) => {
+			g.defaults.cardStyle.backgroundImages = ["a", "b"];
+		});
+		c.bus.emit("config-changed", "globals");
+		const dynCfg = H.dynamic[0].updateConfig.mock.calls.at(-1)?.[0];
+		const liveCfg = H.live[0].updateConfig.mock.calls.at(-1)?.[0];
+		expect(dynCfg.defaultBackgroundImages).toEqual(["a", "b"]);
+		expect(liveCfg.defaultBackgroundImages).toEqual(["a", "b"]);
+	});
+
 	it("item 4 — 改 defaults.ai 不扇出重设 UA / level / healthCheck", () => {
 		const c = setup({ globals: aiGlobals() });
 		active = c;

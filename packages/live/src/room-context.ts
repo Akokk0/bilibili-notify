@@ -60,6 +60,12 @@ export interface ListenerManagerConfig {
 	 * room-session 在 onLiveStart 时读取(koishi 的默认版式 + 链接开关)。
 	 */
 	messageLayout?: MessageKindLayout;
+	/**
+	 * 全局默认卡片背景图廊(`defaults.cardStyle.backgroundImages`)。live/sc/guard
+	 * 均无 per-UP / per-kind 覆盖时,`resolvedCardStyle` 拿它做「每次推送轮换」的
+	 * 兜底列表 —— 否则这些 UP 会一直渲染同一张图(渲染器自身只认单图静态配置)。
+	 */
+	defaultBackgroundImages?: string[];
 }
 
 /**

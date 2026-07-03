@@ -1379,6 +1379,31 @@ describe("DynamicEngine — 动态卡背景轮换", () => {
 		const style = { enable: true, backgroundImage: "first", backgroundImages: ["first", "second"] };
 		expect(priv(b.engine).pickDynamicColorOptions("u1", style)?.backgroundImage).toBe("first");
 	});
+
+	it("回归:该 UP 无背景覆盖,但全局默认图廊配了多图 → 仍按 defaultBackgroundImages 轮换", () => {
+		const cursors: Record<string, number> = {};
+		const b = makeEngine({
+			withImage: true,
+			config: { defaultBackgroundImages: ["x", "y"] },
+			pickCardBackground: (key, images) => {
+				const i = cursors[key] ?? 0;
+				cursors[key] = i + 1;
+				return images[i % images.length];
+			},
+		});
+		const picks = [0, 1].map(
+			() => priv(b.engine).pickDynamicColorOptions("u1", { enable: false })?.backgroundImage,
+		);
+		expect(picks).toEqual(["x", "y"]);
+		// 该 UP 自带背景(哪怕只设了一张)优先于全局默认,不落到 defaultBackgroundImages。
+		expect(
+			priv(b.engine).pickDynamicColorOptions("u1", {
+				enable: true,
+				backgroundImage: "own",
+				backgroundImages: ["own"],
+			})?.backgroundImage,
+		).toBe("own");
+	});
 });
 
 // ---------------------------------------------------------------------------

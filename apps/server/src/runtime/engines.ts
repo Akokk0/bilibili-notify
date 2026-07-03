@@ -430,6 +430,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				whitelistRegex: f.whitelistRegex.join("|"),
 				whitelistKeywords: f.whitelistKeywords,
 			},
+			// 无 per-UP 背景覆盖的 UP 靠它轮换全局默认图廊(见 pickDynamicColorOptions)。
+			defaultBackgroundImages: globals().defaults.cardStyle.backgroundImages,
 		};
 	};
 
@@ -496,6 +498,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				customLive: g.defaults.templates.liveOngoing,
 				customLiveEnd: g.defaults.templates.liveEnd,
 			},
+			// 无 per-UP / per-kind 背景覆盖的 UP 靠它轮换全局默认图廊(见 resolvedCardStyle)。
+			defaultBackgroundImages: g.defaults.cardStyle.backgroundImages,
 		};
 	};
 
@@ -1036,7 +1040,8 @@ function buildDynamicFilter(eff: ReturnType<typeof resolve>) {
 
 /**
  * 把一份解析后的 CardStyle(或 per-UP 覆盖切片)映射成引擎消费的 colorOptions 形状
- * (`enable:true` + 单背景图;列表只取首张,轮换属 Stage D)。
+ * (`enable:true` + `backgroundImage` 取列表首张作为静态兜底,`backgroundImages`
+ * 透传完整列表给推送点做「每次推送轮换」——见 `resolvedCardStyle` / `pickDynamicColorOptions`)。
  *
  * 无背景图时 `backgroundImage` 留 undefined(**不是** `""`)—— generate* 用
  * `colorOptions.backgroundImage ?? this.config.backgroundImage` 兜底,`""` 非 nullish
