@@ -1,5 +1,10 @@
 export type Dynamic = {
-	basic: object;
+	/**
+	 * `is_only_fans` = 该动态是充电专属内容。未充电用户拉取时接口会把整个
+	 * `module_dynamic` 清空(desc/major/topic/additional 全 null)—— `buildDynamicNode`
+	 * 据此渲染占位提示,而非空白正文(见 dynamic-content.tsx)。
+	 */
+	basic: { is_only_fans?: boolean } & Record<string, unknown>;
 	id_str: string;
 	modules: {
 		module_author: {
@@ -11,6 +16,8 @@ export type Dynamic = {
 			face: string;
 			face_nft: boolean;
 			following: boolean;
+			/** 充电专属徽标(仅该 UP 开通充电计划的动态可能带);缺省时占位提示用固定文案兜底。 */
+			icon_badge?: { text: string; icon?: string };
 			jump_url: string;
 			label: string;
 			mid: number;

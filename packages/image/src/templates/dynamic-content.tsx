@@ -82,6 +82,14 @@ export async function buildDynamicNode(
 	};
 	const upName = author.name;
 
+	// 充电专属且未充电:接口把 module_dynamic 整体清空,不管外层 type 是什么,
+	// 落进下面任何一个分支都只会渲染出空白正文。在类型分发之前短路,渲染占位
+	// 提示而非空白——递归到内部转发(orig)时同样生效,无需额外处理。
+	if (isChargeOnlyLocked(dynamic)) {
+		node.body = buildChargeOnlyBody(author);
+		return node;
+	}
+
 	// 给节点贴类型标签:外层接到发布时间后,内部转发接到作者名后。
 	const label = (text: string) => {
 		if (isForward) node.headerLabel = text;
@@ -164,6 +172,36 @@ export async function buildDynamicNode(
 	// 「无法渲染」类动态没有可拆的附加内容,清掉以免空块占位。
 	node.additional = null;
 	return node;
+}
+
+// ── 充电专属占位 ──────────────────────────────────────────────────────────────
+
+/**
+ * 是否「充电专属且当前不可见」:`basic.is_only_fans` 为真,且 module_dynamic
+ * 被接口整体清空(desc/major/topic/additional 全缺席)。已充电用户拉到的同一条
+ * 动态 `is_only_fans` 也是 true,但内容齐全,不会命中——按内容有无判定,不按
+ * type,避免漏判某个具体的 DYNAMIC_TYPE_* 变体。
+ */
+function isChargeOnlyLocked(dynamic: Dynamic): boolean {
+	if (!dynamic.basic?.is_only_fans) return false;
+	const mod = dynamic.modules.module_dynamic;
+	return !mod?.desc && !mod?.major && !mod?.topic && !mod?.additional;
+}
+
+/** 充电专属占位正文:优先用接口带的徽标图 / 文案,缺席时用固定文案兜底。 */
+function buildChargeOnlyBody(author: Dynamic["modules"]["module_author"]) {
+	const badge = author.icon_badge;
+	return (
+		<div class="flex flex-col items-center justify-center gap-[8px] py-[20px] text-center">
+			{badge?.icon ? <img class="w-[28px] h-[28px]" src={badge.icon} alt="" /> : null}
+			<div class="text-[14px] font-bold" style="color: #FB7299;">
+				{badge?.text || "充电专属内容"}
+			</div>
+			<div class="text-[12px]" style="color: #999;">
+				为 {author.name} 充电即可查看完整内容
+			</div>
+		</div>
+	);
 }
 
 // ── 私有辅助函数 ──────────────────────────────────────────────────────────────
