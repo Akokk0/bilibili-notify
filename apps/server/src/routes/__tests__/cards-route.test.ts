@@ -416,7 +416,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 
 	function loggedInApi(): BilibiliAPI {
 		return {
-			getMyselfInfo: vi.fn(async () => ({ code: 0, data: { mid: 999, uname: "登录名" } })),
+			getMyselfInfoCached: vi.fn(async () => ({ code: 0, data: { mid: 999, uname: "登录名" } })),
 			getUserCardInfo: vi.fn(async () => ({
 				code: 0,
 				data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } },
@@ -476,7 +476,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 
 	it("sc:per-UP 传 uid → 接收方按 getMasterInfo 解析真实 UP,发送者仍为登录账号", async () => {
 		const api = {
-			getMyselfInfo: vi.fn(async () => ({ code: 0, data: { mid: 999, uname: "登录名" } })),
+			getMyselfInfoCached: vi.fn(async () => ({ code: 0, data: { mid: 999, uname: "登录名" } })),
 			getUserCardInfo: vi.fn(async () => ({
 				code: 0,
 				data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } },
@@ -505,7 +505,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 
 	it("sc:接收方 getMasterInfo 失败 + fallback → 回退示例 UP,200", async () => {
 		const api = {
-			getMyselfInfo: vi.fn(async () => ({ code: 0, data: { mid: 999, uname: "登录名" } })),
+			getMyselfInfoCached: vi.fn(async () => ({ code: 0, data: { mid: 999, uname: "登录名" } })),
 			getUserCardInfo: vi.fn(async () => ({
 				code: 0,
 				data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } },
@@ -533,8 +533,8 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 	it("登录解析瞬时失败 → 沿用上次成功快照,发送者不闪回示例(stale-while-error)", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
-		// 第一次成功解析 → 缓存;第二次 getMyselfInfo 抛错(模拟瞬时失败)。
-		const getMyselfInfo = vi
+		// 第一次成功解析 → 缓存;第二次 getMyselfInfoCached 抛错(模拟瞬时失败)。
+		const getMyselfInfoCached = vi
 			.fn()
 			.mockResolvedValueOnce({ code: 0, data: { mid: 999, uname: "登录名" } })
 			.mockRejectedValue(new Error("network"));
@@ -542,7 +542,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			code: 0,
 			data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } },
 		}));
-		const api = { getMyselfInfo, getUserCardInfo } as unknown as BilibiliAPI;
+		const api = { getMyselfInfoCached, getUserCardInfo } as unknown as BilibiliAPI;
 		const spy = vi
 			.spyOn(ImageRenderer.prototype, "generateSCCard")
 			.mockResolvedValue(Buffer.from("x"));
@@ -553,13 +553,13 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		});
 
 		await postPreview(app, { kind: "sc", style: STYLE, content: { price: 30 } });
-		// 跨过 5 分钟 TTL,迫使第二次重新解析 → getMyselfInfo 抛错 → 走 stale-while-error。
+		// 跨过 5 分钟 TTL,迫使第二次重新解析 → getMyselfInfoCached 抛错 → 走 stale-while-error。
 		vi.setSystemTime(new Date("2026-01-01T00:06:00Z"));
 		await postPreview(app, { kind: "sc", style: STYLE, content: { price: 30 } });
 
 		const lastArg = spy.mock.calls.at(-1)?.[0] as { senderName: string };
 		expect(lastArg.senderName).toBe("登录名"); // 没有闪回「示例粉丝」
-		expect(getMyselfInfo).toHaveBeenCalledTimes(2); // 确实重试了第二次(并失败)
+		expect(getMyselfInfoCached).toHaveBeenCalledTimes(2); // 确实重试了第二次(并失败)
 		spy.mockRestore();
 		vi.useRealTimers();
 	});

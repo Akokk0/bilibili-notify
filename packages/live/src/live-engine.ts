@@ -101,6 +101,11 @@ export interface LiveEngineOptions {
 	 * first background. Threaded straight through to every RoomContext.
 	 */
 	pickCardBackground?: PickCardBackground;
+	/**
+	 * Optional — uid→roomId 解析成功回调(③)。独立端据此把房号写盘,下次启动/reload
+	 * 直接读盘复用,省掉逐 UP 的 `getUserInfo` 房号解析请求。透传到每个 RoomContext。
+	 */
+	onRoomIdResolved?: (uid: string, roomId: string) => void;
 }
 
 /**
@@ -169,6 +174,7 @@ export class LiveEngine {
 			emitLiveState: opts.emitLiveState,
 			emitViewers: opts.emitViewers,
 			pickCardBackground: opts.pickCardBackground,
+			onRoomIdResolved: opts.onRoomIdResolved,
 		});
 	}
 

@@ -357,7 +357,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				// /x/web-interface/card endpoint (same two-step the LoginFlow does
 				// in reportAccountInfo). Skipping the second call left avatars
 				// undefined and the preview fell through to the SVG placeholder.
-				const my = await opts.api.getMyselfInfo();
+				// 走客户端共享的账号身份缓存(与直播建连同一份;换号/登出自动失效)。
+				const my = await opts.api.getMyselfInfoCached();
 				if (my?.code === 0 && my.data?.mid) {
 					const card = await opts.api.getUserCardInfo(String(my.data.mid));
 					if (card?.code === 0 && card.data?.card?.face) {

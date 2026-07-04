@@ -118,6 +118,18 @@ describe("SubRuntimeStore.patch — 逐键替换语义", () => {
 		await store.patch("s1", {});
 		expect(store.get("s1")).toEqual({ cachedProfile: PROFILE_A, fansBaseline: BASELINE });
 	});
+
+	it("③ roomId round-trip 落盘 + 逐键替换,不冲掉 cachedProfile/fansBaseline", async () => {
+		const store = make();
+		await store.patch("s1", { cachedProfile: PROFILE_A, fansBaseline: BASELINE });
+		await store.patch("s1", { roomId: "930987" });
+		expect(store.get("s1")).toEqual({
+			cachedProfile: PROFILE_A,
+			fansBaseline: BASELINE,
+			roomId: "930987",
+		});
+		await expect(readFileJson()).resolves.toMatchObject({ s1: { roomId: "930987" } });
+	});
 });
 
 describe("SubRuntimeStore.get / getAll — 防御性克隆", () => {

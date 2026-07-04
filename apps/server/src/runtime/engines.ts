@@ -515,6 +515,16 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		emitLiveState: (uid, status) => opts.bus.emit("live-state-changed", uid, status),
 		emitViewers: (uid, viewers) => opts.bus.emit("live-viewers-changed", uid, viewers),
 		pickCardBackground: cardBgRotator.pick,
+		// ③ 解析出房号即写盘(仅在与既有值不同时),下次启动/reload 直接读盘复用,
+		// 省掉逐 UP 的 getUserInfo 房号解析请求。
+		onRoomIdResolved: (uid, roomId) => {
+			const sub = opts.subscriptionStore.findByUid(uid);
+			if (!sub) return;
+			if (opts.subRuntimeStore.get(sub.id)?.roomId === roomId) return;
+			void opts.subRuntimeStore.patch(sub.id, { roomId }).catch((err) => {
+				log.warn(`[engines] 房号写盘失败 uid=${uid}: ${String(err)}`);
+			});
+		},
 	});
 
 	// Initialise live with current subs.
@@ -1206,7 +1216,8 @@ export function buildLiveSubViewSingle(
 	return {
 		uid: sub.uid,
 		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? sub.uid,
-		roomId: "",
+		// ③ 读盘复用已解析的房号;缺失(首见该 UP)时留空 → LiveEngine 现解析并写回。
+		roomId: subRuntimeStore.get(sub.id)?.roomId ?? "",
 		dynamic: feat("dynamic"),
 		live: feat("live"),
 		liveEnd: feat("liveEnd"),

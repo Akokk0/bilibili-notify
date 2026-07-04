@@ -201,3 +201,29 @@ describe("per-kind 样式解析进视图", () => {
 		expect(view["12345"]?.customCardStyle).toEqual({ enable: false });
 	});
 });
+
+describe("③ buildLiveSubViewSingle — roomId 读盘复用", () => {
+	const runtimeWithRoomId = (roomId?: string): SubRuntimeStore =>
+		({
+			get: () => (roomId === undefined ? undefined : { roomId }),
+			// biome-ignore lint/suspicious/noExplicitAny: 测试只用 get
+		}) as any;
+
+	it("SubRuntimeStore 有缓存房号 → 直接复用(不留空让引擎重解析)", () => {
+		const view = buildLiveSubViewSingle(
+			makeSub({}),
+			runtimeWithRoomId("930987"),
+			makeDefaultGlobalConfig(),
+		);
+		expect(view.roomId).toBe("930987");
+	});
+
+	it("无缓存房号 → 留空,交由 LiveEngine 现解析并写回", () => {
+		const view = buildLiveSubViewSingle(
+			makeSub({}),
+			runtimeWithRoomId(),
+			makeDefaultGlobalConfig(),
+		);
+		expect(view.roomId).toBe("");
+	});
+});

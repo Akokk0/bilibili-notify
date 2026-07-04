@@ -113,6 +113,12 @@ export interface RoomContextOptions {
 	 * 推送点回退单图。standalone 注入由 `createCardBgRotator` 支撑(fs 持久化游标)。
 	 */
 	pickCardBackground?: PickCardBackground;
+	/**
+	 * uid → roomId 解析成功后的回调(③)。adapter(独立端)据此把房号写盘,下次启动/
+	 * reload 直接读盘复用,省掉每次逐 UP 的 `getUserInfo` 房号解析请求。可选;koishi
+	 * 不注入 → 行为不变(每次仍解析)。
+	 */
+	onRoomIdResolved?: (uid: string, roomId: string) => void;
 }
 
 /**
@@ -152,6 +158,8 @@ export class RoomContextBase {
 	private readonly _emitLiveState: ((uid: string, status: "live" | "idle") => void) | undefined;
 	private readonly _emitViewers: ((uid: string, viewers: string) => void) | undefined;
 	private readonly _pickCardBackground: PickCardBackground | undefined;
+	/** ③ uid → roomId 解析成功回调(独立端写盘复用;koishi 缺省)。 */
+	readonly onRoomIdResolved: ((uid: string, roomId: string) => void) | undefined;
 
 	config: ListenerManagerConfig;
 
@@ -187,6 +195,7 @@ export class RoomContextBase {
 		this._emitLiveState = opts.emitLiveState;
 		this._emitViewers = opts.emitViewers;
 		this._pickCardBackground = opts.pickCardBackground;
+		this.onRoomIdResolved = opts.onRoomIdResolved;
 	}
 
 	/**

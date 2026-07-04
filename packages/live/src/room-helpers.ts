@@ -115,7 +115,9 @@ export class RoomContext extends RoomContextBase {
 		const cookiesStr = this.api.getCookiesHeader();
 		let mySelfInfo: MySelfInfoData;
 		try {
-			mySelfInfo = await this.api.getMyselfInfo();
+			// ④ 走客户端共享的账号身份缓存(短 TTL + 在途合流):多房间同时重连时
+			// 「自己的信息」只落一次请求;换号/登出由 BilibiliAPI 精准 invalidate。
+			mySelfInfo = await this.api.getMyselfInfoCached();
 		} catch (e) {
 			const message = (e as Error).message ?? String(e);
 			this.logger.warn(`[conn] 获取个人信息异常，房间 [${roomId}]：${message}`);
