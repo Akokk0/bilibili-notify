@@ -59,6 +59,12 @@ function makeApi(fans: number) {
 				card: { mid: SUB.uid, name: "测试UP", face: "f.png", sign: "s", fans },
 			},
 		})),
+		// 稳态(已有 cachedProfile)走轻量 relation/stat;follower 即 fans。
+		getRelationStat: vi.fn(async (_uid: string) => ({
+			code: 0,
+			data: { mid: Number(SUB.uid), following: 0, whisper: 0, black: 0, follower: fans },
+		})),
+		getUserCardsBatch: vi.fn(async () => ({ code: 0, data: {} })),
 	};
 }
 
@@ -150,7 +156,7 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 		expect(subChangedSpy).not.toHaveBeenCalled();
 	});
 
-	it("已有 fansBaseline 时:tick 只写 cachedProfile,不重写 baseline,仍不碰 configStore", async () => {
+	it("已有 cachedProfile 时:走 relation/stat 取 follower,只写 cachedProfile,不重写 baseline,不碰 configStore/card", async () => {
 		const bus = createNodeMessageBus();
 		const patchSubscription = vi.fn(async () => SUB);
 		const rtPatch = vi.fn(async () => {});
@@ -193,6 +199,9 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 		});
 
 		expect(patchSubscription).not.toHaveBeenCalled();
+		// 稳态用 relation/stat,不再打 card。
+		expect(api.getRelationStat).toHaveBeenCalledWith(SUB.uid);
+		expect(api.getUserCardInfo).not.toHaveBeenCalled();
 		const [, payload] = rtPatch.mock.calls[0] as unknown as [
 			string,
 			{ cachedProfile?: Record<string, unknown>; fansBaseline?: unknown },

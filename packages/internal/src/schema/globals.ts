@@ -56,6 +56,13 @@ export type ModuleLogLevels = z.infer<typeof ModuleLogLevelsSchema>;
 /** Koishi/standalone 共享的 dynamic 轮询 cron 默认值。对齐 `AppConfigSchema.dynamicCron`。 */
 export const DEFAULT_DYNAMIC_CRON = "*/2 * * * *";
 
+/**
+ * 粉丝数轮询 cron 默认值(独立端 FansPoller)。粉丝曲线要不了动态那样的 2min
+ * 精度,独立成一档更慢的节奏 —— 每 UP 一个请求,拉长间隔直接降低风控面。
+ * 对齐 `AppConfigSchema.fansCron`;koishi 端携带但不消费(standalone-only)。
+ */
+export const DEFAULT_FANS_CRON = "*/10 * * * *";
+
 /** 登录健康检查间隔(分钟)默认值。对齐 `AppConfigSchema.healthCheckMinutes`。 */
 export const DEFAULT_HEALTH_CHECK_MINUTES = 30;
 
@@ -64,6 +71,8 @@ export const AppConfigSchema = z.object({
 	logLevels: ModuleLogLevelsSchema,
 	userAgent: z.string().optional(),
 	dynamicCron: z.string().default(DEFAULT_DYNAMIC_CRON),
+	/** 粉丝数轮询 cron(独立端 FansPoller);从 dynamicCron 解耦,默认更慢降风控。 */
+	fansCron: z.string().default(DEFAULT_FANS_CRON),
 	healthCheckMinutes: z.number().int().min(5).max(180).default(DEFAULT_HEALTH_CHECK_MINUTES),
 	historyRetentionDays: z.number().int().min(1).max(365).default(30),
 	/**

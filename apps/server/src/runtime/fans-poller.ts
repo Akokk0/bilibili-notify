@@ -18,10 +18,21 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 const TWENTY_FOUR_HOURS_MS = 24 * ONE_HOUR_MS;
 const SEVEN_DAYS_MS = 7 * 24 * ONE_HOUR_MS;
 
+/**
+ * 命中即判定为风控/限流的响应码。-352 风控、-403 越权风控、-412 请求被拦、
+ * -799 请求过于频繁。与 packages/api `classifyRefreshCode` 的口径同源、再补上
+ * 限流码 —— fans 轮询逐 UP 请求,量最大,熔断口径要更宽。
+ */
+const RISK_CONTROL_CODES = new Set([-352, -403, -412, -799]);
+/** 命中风控后退避多久再让下一 tick 真正跑(对齐 dynamic 引擎 5min 退避)。 */
+const FANS_RISK_BACKOFF_MS = 5 * 60_000;
+/** 冷刷 name/avatar 的批量端点单次上限(B 站 user/cards 契约:≤50)。 */
+const CARDS_BATCH_SIZE = 50;
+
 export interface FansPollerOptions {
 	bus: MessageBus;
 	logger: Logger;
-	/** Only read for `getGlobals().app.dynamicCron` (cron reconcile). NOT written. */
+	/** Only read for `getGlobals().app.fansCron` (cron reconcile). NOT written. */
 	configStore: ConfigStore;
 	subscriptionStore: SubscriptionStore;
 	/**
@@ -79,10 +90,13 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		serviceCtx,
 	} = opts;
 
-	let currentCron = configStore.getGlobals().app.dynamicCron;
+	let currentCron = configStore.getGlobals().app.fansCron;
 	let job: CronJob | undefined;
 	let running = false;
 	let disposed = false;
+	// ② 风控退避:命中风控码后设成 Date.now()+FANS_RISK_BACKOFF_MS,窗口内的 tick
+	// 直接跳过(不再逐 UP 敲一遍放大风控)。0 = 无退避。
+	let riskBackoffUntil = 0;
 	// uid → 最近一次成功采样。replace,不累加。每轮跑完整体替换为新一批,但
 	// 跳过本轮没采到的 uid(保留上一轮的值,避免间歇性失败导致 dashboard 数字闪烁)。
 	const lastByUid = new Map<string, FansRefreshEntry>();
@@ -101,8 +115,22 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			});
 	}
 
+	function enterRiskBackoff(code: number): void {
+		riskBackoffUntil = Date.now() + FANS_RISK_BACKOFF_MS;
+		logger.warn(
+			`[fans-poller] 命中风控/限流 code=${code},中止本轮 sweep,退避 ${
+				FANS_RISK_BACKOFF_MS / 1000
+			}s 后重试(不继续刷剩余 UP,避免放大风控)`,
+		);
+	}
+
 	async function runTick(): Promise<void> {
 		if (disposed) return;
+		// ② 风控退避窗口内:整轮跳过,不发任何请求。
+		if (Date.now() < riskBackoffUntil) {
+			logger.debug("[fans-poller] 风控退避中,跳过本轮 tick");
+			return;
+		}
 		const subs = subscriptionStore.list().filter((s) => s.enabled);
 		// Sweep:lastByUid 只保留当前 enabled subs;被删除 / 禁用的 uid 同步 dropUid
 		// 清掉时序文件。这样下游 emit 出去的快照不会再含失效 uid,前端覆盖式 setQueryData
@@ -130,17 +158,45 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			// 返回后会继续 append/patch/emit 出残留副作用。
 			if (disposed) return;
 			try {
-				const res = await api.getUserCardInfo(sub.uid);
-				if (disposed) return;
-				if (res.code !== 0 || !res.data?.card) {
-					logger.warn(
-						`[fans-poller] uid=${sub.uid} upstream code=${res.code} msg=${
-							(res as { message?: string }).message ?? "?"
-						}`,
-					);
-					continue;
+				const prev = subRuntimeStore.get(sub.id);
+				// ⑥ 稳态用轻量的 relation/stat 取 follower;仅在 cachedProfile 尚未 seed
+				// (首见该 UP)时回退 card —— card 一次带回 fans + name/avatar/sign 供 seed。
+				let current: number | undefined;
+				let seedCard: { name?: string; face?: string; sign?: string } | undefined;
+				if (prev?.cachedProfile) {
+					const stat = await api.getRelationStat(sub.uid);
+					if (disposed) return;
+					if (RISK_CONTROL_CODES.has(stat.code)) {
+						enterRiskBackoff(stat.code); // ② 中止 sweep
+						break;
+					}
+					if (stat.code !== 0 || !stat.data) {
+						logger.warn(`[fans-poller] uid=${sub.uid} relation/stat code=${stat.code}`);
+						continue;
+					}
+					current = stat.data.follower;
+				} else {
+					const res = await api.getUserCardInfo(sub.uid);
+					if (disposed) return;
+					if (RISK_CONTROL_CODES.has(res.code)) {
+						enterRiskBackoff(res.code); // ② 中止 sweep
+						break;
+					}
+					if (res.code !== 0 || !res.data?.card) {
+						logger.warn(
+							`[fans-poller] uid=${sub.uid} upstream code=${res.code} msg=${
+								(res as { message?: string }).message ?? "?"
+							}`,
+						);
+						continue;
+					}
+					current = res.data.card.fans;
+					seedCard = {
+						name: res.data.card.name,
+						face: res.data.card.face,
+						sign: res.data.card.sign,
+					};
 				}
-				const current = res.data.card.fans;
 				if (typeof current !== "number" || current < 0) continue;
 
 				await fansStore.append(sub.uid, { ts: nowIso, value: current });
@@ -152,7 +208,6 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				]);
 				if (disposed) return;
 
-				const prev = subRuntimeStore.get(sub.id);
 				const baseline = prev?.fansBaseline;
 				const nextBaseline = baseline ?? { value: current, ts: nowIso };
 				const deltaSubscribed = current - nextBaseline.value;
@@ -162,12 +217,13 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 
 				// 写进 SubRuntimeStore(独立文件 + 原子写,**不发** config-changed)——
 				// fansBaseline 首次写、cachedProfile.fans/lastRefreshedAt 每次写。
-				// name/avatar/sign 沿用既有(POST 自 seed / 上一次),缺失才从 card 兜底。
+				// name/avatar/sign 沿用既有(POST 自 seed / 上一次),缺失才从 card(首见时
+				// 的 seedCard)兜底。稳态走 relation/stat 时 seedCard 为空,直接用既有 profile。
 				const cachedProfile: CachedProfile = {
 					...(prev?.cachedProfile ?? {
-						name: res.data.card.name ?? sub.uid,
-						avatar: res.data.card.face ?? "",
-						sign: res.data.card.sign ?? "",
+						name: seedCard?.name ?? sub.uid,
+						avatar: seedCard?.face ?? "",
+						sign: seedCard?.sign ?? "",
 					}),
 					fans: current,
 					lastRefreshedAt: nowIso,
@@ -223,7 +279,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	}
 
 	function reconcileCron(): void {
-		const next = configStore.getGlobals().app.dynamicCron;
+		const next = configStore.getGlobals().app.fansCron;
 		if (next === currentCron) return;
 		logger.info(`[fans-poller] cron changed: '${currentCron}' → '${next}'`);
 		job?.stop();
@@ -282,16 +338,62 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		}
 	}
 
+	/**
+	 * ⑥ name/avatar 批量冷刷:启动时用批量 user/cards(≤50 一发)把已 seed 的
+	 * cachedProfile 的昵称/头像刷新一遍,替代「每 tick 逐 UP 拉整张 card」里那份
+	 * 从未在稳态被消费的 name/avatar。只更 name/avatar,fans/sign/lastRefreshedAt
+	 * 保持不动(fans 由 tick 负责)。命中风控即退避、停止后续分片。
+	 */
+	async function refreshProfilesBatch(): Promise<void> {
+		if (disposed) return;
+		const targets = subscriptionStore
+			.list()
+			.filter((s) => s.enabled && subRuntimeStore.get(s.id)?.cachedProfile);
+		for (let i = 0; i < targets.length; i += CARDS_BATCH_SIZE) {
+			if (disposed) return;
+			const chunk = targets.slice(i, i + CARDS_BATCH_SIZE);
+			try {
+				const res = await api.getUserCardsBatch(chunk.map((s) => s.uid));
+				if (disposed) return;
+				if (RISK_CONTROL_CODES.has(res.code)) {
+					enterRiskBackoff(res.code);
+					return;
+				}
+				if (res.code !== 0 || !res.data) continue;
+				const data = res.data;
+				for (const sub of chunk) {
+					const brief = data[sub.uid];
+					const prevProfile = subRuntimeStore.get(sub.id)?.cachedProfile;
+					if (!brief || !prevProfile) continue;
+					const name = brief.name || prevProfile.name;
+					const avatar = brief.face || prevProfile.avatar;
+					if (name === prevProfile.name && avatar === prevProfile.avatar) continue;
+					try {
+						await subRuntimeStore.patch(sub.id, {
+							cachedProfile: { ...prevProfile, name, avatar },
+						});
+					} catch (err) {
+						logger.warn(`[fans-poller] 冷刷 profile ${sub.uid} 持久化失败: ${String(err)}`);
+					}
+				}
+			} catch (err) {
+				logger.warn(`[fans-poller] 批量刷 profile 失败: ${String(err)}`);
+			}
+		}
+	}
+
 	startJob();
 	// 先从磁盘恢复历史 entries 给首屏用,然后延后 3s 才发首轮 tick — 给 auth /
 	// LoginFlow 起来的窗口期,降低"第一次 tick 撞 auth 未就绪 → 每个 sub 打一行
-	// warn + 首屏全 —"的概率。
+	// warn + 首屏全 —"的概率。3s 门后先批量冷刷一次 name/avatar,再开轮询。
 	void (async () => {
 		await restoreFromDisk();
 		if (disposed) return;
 		await new Promise<void>((resolveFirstTick) => {
 			serviceCtx.setTimeout(resolveFirstTick, 3000);
 		});
+		if (disposed) return;
+		await refreshProfilesBatch();
 		if (disposed) return;
 		tick();
 	})();
