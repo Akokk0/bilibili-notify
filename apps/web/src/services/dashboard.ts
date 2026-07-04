@@ -121,53 +121,55 @@ const FAMILY: Record<HistorySource, keyof Omit<DailyBucket, "d">> = {
 };
 
 /**
- * Group entries into the last `days` daily buckets (inclusive of today).
- * Empty days still appear so the bar chart x-axis is stable.
+ * Wire-compat with `GET /api/history/daily`(apps/server/src/routes/history.ts)。
+ * 服务端按日文件全量计数,payload 恒定 days 个桶 —— 此前趋势图用 limit=100 的
+ * listing 结果在前端分桶,高推送量实例的 7 天窗口被截断,左侧柱子永远为空。
  */
-export function bucketByDay(entries: HistoryEntryView[], days = 7): DailyBucket[] {
-	const out: DailyBucket[] = [];
-	const today = new Date();
-	for (let i = days - 1; i >= 0; i--) {
-		const d = new Date(today);
-		d.setDate(today.getDate() - i);
-		const iso = d.toISOString().slice(0, 10);
-		out.push({ d: iso.slice(5).replace("-", "/"), live: 0, dyn: 0, sc: 0, guard: 0 });
-	}
-	const idxOf = new Map(out.map((b, i) => [b.d, i]));
-	for (const e of entries) {
-		const iso = e.ts.slice(0, 10).slice(5).replace("-", "/");
-		const idx = idxOf.get(iso);
-		if (idx == null) continue;
-		const bucket = out[idx];
-		bucket[FAMILY[e.source]] += 1;
-	}
-	return out;
+export interface DailyHistoryCountView {
+	/** YYYY-MM-DD,按客户端时区口径(tzOffset 随请求传给后端)。 */
+	d: string;
+	counts: Record<HistorySource, number>;
+	total: number;
+	failures: number;
 }
 
-/** 本地时区的 YYYY-MM-DD —— 「今日」按用户本地 0 点翻篇,而非 UTC(toISOString 的口径)。 */
+export interface HistoryDailyResponse {
+	days: DailyHistoryCountView[];
+}
+
+export const HISTORY_DAILY_DAYS = 7;
+/** 单一来源:Dashboard 的 useQuery 与 usePushEventsChannel 的 WS patch 共用此键。 */
+export const HISTORY_DAILY_QUERY_KEY = ["history-daily", { days: HISTORY_DAILY_DAYS }] as const;
+
+/** tzOffset 用 JS getTimezoneOffset() 口径(UTC+8 → -480),日界跟随客户端本地时区。 */
+export function historyDailyPath(): string {
+	return `/api/history/daily?days=${HISTORY_DAILY_DAYS}&tzOffset=${new Date().getTimezoneOffset()}`;
+}
+
+/** 把按日计数折叠成柱状图的 4 源族桶,标签 YYYY-MM-DD → MM/DD。 */
+export function foldDailyBuckets(days: DailyHistoryCountView[]): DailyBucket[] {
+	return days.map((day) => {
+		const bucket: DailyBucket = {
+			d: day.d.slice(5).replace("-", "/"),
+			live: 0,
+			dyn: 0,
+			sc: 0,
+			guard: 0,
+		};
+		for (const [source, n] of Object.entries(day.counts) as [HistorySource, number][]) {
+			bucket[FAMILY[source]] += n;
+		}
+		return bucket;
+	});
+}
+
+/**
+ * 本地时区的 YYYY-MM-DD —— 「今日」按用户本地 0 点翻篇,而非 UTC(toISOString 的口径)。
+ * 与 historyDailyPath 传给后端的 tzOffset 同一口径,WS patch 据此定位 entry 所属的日桶。
+ */
 export function localDayKey(date: Date): string {
 	const y = date.getFullYear();
 	const m = String(date.getMonth() + 1).padStart(2, "0");
 	const d = String(date.getDate()).padStart(2, "0");
 	return `${y}-${m}-${d}`;
-}
-
-/**
- * 统计「今日」(本地时区)的推送总数与失败数。entry.ts 是后端 `new Date().toISOString()`
- * 生成的 UTC ISO,经 `new Date()` 解析回本地日再与今天比较 —— 北京凌晨 0~8 点的推送不会
- * 被 UTC 日界甩到「昨天」。「今日失败」与「今日推送」同口径(本地日)。
- */
-export function countToday(
-	entries: HistoryEntryView[],
-	now: Date = new Date(),
-): { pushes: number; failures: number } {
-	const todayKey = localDayKey(now);
-	let pushes = 0;
-	let failures = 0;
-	for (const e of entries) {
-		if (localDayKey(new Date(e.ts)) !== todayKey) continue;
-		pushes += 1;
-		if (!e.ok) failures += 1;
-	}
-	return { pushes, failures };
 }

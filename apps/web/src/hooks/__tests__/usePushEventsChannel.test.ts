@@ -15,12 +15,16 @@
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
+	type DailyHistoryCountView,
 	type FansEntry,
 	type FansResponse,
+	HISTORY_DAILY_QUERY_KEY,
+	type HistoryDailyResponse,
 	type HistoryEntryView,
 	type HistoryResponse,
 	historyQueryKey,
 	type LiveListenerSnapshot,
+	localDayKey,
 } from "../../services/dashboard";
 import type { WsEnvelope } from "../../services/ws";
 import type { PushEventView } from "../../store/notifications";
@@ -236,6 +240,65 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 			expect(cache?.entries[0]).toEqual(incoming);
 			// 末尾的最老 entry 被截掉(seed-${cap-1})
 			expect(cache?.entries.at(-1)).toEqual(seed[HISTORY_CACHE_CAP - 2]);
+		});
+	});
+
+	describe("history-recorded → 按日聚合缓存(趋势图/今日 KPI)", () => {
+		const zeroCounts = (): DailyHistoryCountView["counts"] => ({
+			dynamic: 0,
+			live: 0,
+			sc: 0,
+			guard: 0,
+			"special-danmaku": 0,
+			"special-enter": 0,
+			"live-summary": 0,
+		});
+		const dayOf = (view: PushEventView) => localDayKey(new Date(view.ts));
+
+		it("entry 所属本地日在缓存窗口里:source/total/failures 就地 +1,零 HTTP", () => {
+			const view = { ...pushView("h1"), ok: false };
+			const today = dayOf(view);
+			h.qc.setQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY, {
+				days: [
+					{ d: "1999-12-31", counts: zeroCounts(), total: 0, failures: 0 },
+					{ d: today, counts: { ...zeroCounts(), dynamic: 2 }, total: 3, failures: 1 },
+				],
+			});
+			handlePushEnvelope(
+				env({ type: "push-events", event: "history-recorded", data: view }),
+				h.qc,
+				h.push,
+			);
+			const cache = h.qc.getQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY);
+			expect(cache?.days[1]).toMatchObject({ total: 4, failures: 2 });
+			expect(cache?.days[1]?.counts.dynamic).toBe(3);
+			expect(cache?.days[0]).toMatchObject({ total: 0 }); // 其他日不动
+			expect(h.invalidate).not.toHaveBeenCalled();
+		});
+
+		it("本地日不在窗口(跨零点):不改缓存,invalidate 整键重拉", () => {
+			const stale: HistoryDailyResponse = {
+				days: [{ d: "1999-12-31", counts: zeroCounts(), total: 0, failures: 0 }],
+			};
+			h.qc.setQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY, stale);
+			handlePushEnvelope(
+				env({ type: "push-events", event: "history-recorded", data: pushView("h1") }),
+				h.qc,
+				h.push,
+			);
+			expect(h.qc.getQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY)).toBe(stale);
+			expect(h.invalidate).toHaveBeenCalledTimes(1);
+			expect(h.invalidate.mock.calls[0][0]).toEqual({ queryKey: HISTORY_DAILY_QUERY_KEY });
+		});
+
+		it("缓存不存在(Dashboard 未拉过):不 prime,不 invalidate", () => {
+			handlePushEnvelope(
+				env({ type: "push-events", event: "history-recorded", data: pushView("h1") }),
+				h.qc,
+				h.push,
+			);
+			expect(h.qc.getQueryData(HISTORY_DAILY_QUERY_KEY)).toBeUndefined();
+			expect(h.invalidate).not.toHaveBeenCalled();
 		});
 	});
 

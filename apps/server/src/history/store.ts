@@ -48,10 +48,45 @@ export interface HistoryQuery {
 	uid?: string;
 }
 
+export interface DailyAggregateOptions {
+	/** 窗口天数(含今天),调用方负责 clamp。 */
+	days: number;
+	/**
+	 * 客户端时区偏移,JS `Date.prototype.getTimezoneOffset()` 口径
+	 * (分钟,UTC+8 → -480)。缺省 0 = UTC 日界。
+	 */
+	tzOffsetMin?: number;
+	/** 注入时钟,测试用。 */
+	now?: Date;
+}
+
+export interface DailyHistoryCount {
+	/** 按 tzOffsetMin 口径的本地日 YYYY-MM-DD。 */
+	d: string;
+	counts: Record<HistorySource, number>;
+	total: number;
+	failures: number;
+}
+
 export interface HistoryStore {
 	append(input: HistoryAppendInput): Promise<HistoryEntry>;
 	query(opts: HistoryQuery): Promise<HistoryEntry[]>;
+	aggregateDaily(opts: DailyAggregateOptions): Promise<DailyHistoryCount[]>;
 	imageDir(): string;
+}
+
+const ALL_SOURCES = [
+	"dynamic",
+	"live",
+	"sc",
+	"guard",
+	"special-danmaku",
+	"special-enter",
+	"live-summary",
+] as const satisfies readonly HistorySource[];
+
+function zeroCounts(): Record<HistorySource, number> {
+	return Object.fromEntries(ALL_SOURCES.map((s) => [s, 0])) as Record<HistorySource, number>;
 }
 
 export interface CreateHistoryStoreOptions {
@@ -200,6 +235,54 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		return out;
 	}
 
+	async function aggregateDaily(opts: DailyAggregateOptions): Promise<DailyHistoryCount[]> {
+		await ensureDirs();
+		const tz = opts.tzOffsetMin ?? 0;
+		const nowMs = (opts.now ?? new Date()).getTime();
+
+		// 「本地日」= UTC 时刻平移 tz 偏移后的 UTC 日期。日文件名是 UTC 日,与本地日
+		// 错位(北京凌晨 0~8 点在前一个 UTC 日文件里),所以归属必须按 entry.ts 逐条算,
+		// 不能按文件名。
+		const localKey = (utcMs: number) => new Date(utcMs - tz * 60_000).toISOString().slice(0, 10);
+
+		// 窗口日序列在「墙钟毫秒」空间里做减法 —— 固定偏移下无 DST,天长恒为 24h。
+		const todayWallMs = Date.parse(`${localKey(nowMs)}T00:00:00Z`);
+		const out: DailyHistoryCount[] = [];
+		const byDay = new Map<string, DailyHistoryCount>();
+		for (let i = opts.days - 1; i >= 0; i--) {
+			const d = new Date(todayWallMs - i * 86_400_000).toISOString().slice(0, 10);
+			const bucket: DailyHistoryCount = { d, counts: zeroCounts(), total: 0, failures: 0 };
+			out.push(bucket);
+			byDay.set(d, bucket);
+		}
+
+		// 窗口首日 0 点的真实 UTC 时刻所在的 UTC 日 —— 比它更早的日文件不可能含窗口内
+		// entry,直接跳过不读。窗口后侧不裁(顶多多读今天之后的空文件,不存在)。
+		const windowStartUtcMs = todayWallMs - (opts.days - 1) * 86_400_000 + tz * 60_000;
+		const firstFileDate = new Date(windowStartUtcMs).toISOString().slice(0, 10);
+
+		let files: string[];
+		try {
+			files = (await readdir(root)).filter(
+				(f) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(f) && f.slice(0, 10) >= firstFileDate,
+			);
+		} catch {
+			return out;
+		}
+		for (const file of files) {
+			for (const entry of await readJsonl(join(root, file))) {
+				const ms = Date.parse(entry.ts);
+				if (!Number.isFinite(ms)) continue;
+				const bucket = byDay.get(localKey(ms));
+				if (!bucket) continue;
+				bucket.counts[entry.source] += 1;
+				bucket.total += 1;
+				if (!entry.result.ok) bucket.failures += 1;
+			}
+		}
+		return out;
+	}
+
 	async function readJsonl(path: string): Promise<HistoryEntry[]> {
 		const out: HistoryEntry[] = [];
 		try {
@@ -224,6 +307,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	return {
 		append,
 		query,
+		aggregateDaily,
 		imageDir: () => imgRoot,
 	};
 }

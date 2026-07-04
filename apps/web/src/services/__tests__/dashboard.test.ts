@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { countToday, type HistoryEntryView, localDayKey } from "../dashboard";
-
-function entry(ts: string, ok: boolean): HistoryEntryView {
-	return { id: ts, ts, source: "dynamic", uid: "1", subscriptionId: "s", targetIds: [], ok };
-}
+import { type DailyHistoryCountView, foldDailyBuckets, localDayKey } from "../dashboard";
 
 describe("localDayKey", () => {
 	it("formats a date as zero-padded local YYYY-MM-DD", () => {
@@ -13,25 +9,42 @@ describe("localDayKey", () => {
 	});
 });
 
-describe("countToday", () => {
-	const now = new Date(2026, 5, 21, 12, 0, 0); // 本地 2026-06-21 中午
-	// 用本地构造器再转 UTC ISO,模拟后端 new Date().toISOString();往返后仍落在预期本地日,
-	// 故测试与 CI 时区无关。todayAt(1)= 本地今天凌晨,在 UTC+8 下 UTC 是昨天 —— 旧 UTC 口径
-	// 会漏算,新本地口径应计入。
-	const todayAt = (h: number) => new Date(2026, 5, 21, h, 0, 0).toISOString();
-	const yesterdayAt = (h: number) => new Date(2026, 5, 20, h, 0, 0).toISOString();
-
-	it("counts pushes and failures within the local day, not the UTC day", () => {
-		const entries = [
-			entry(todayAt(1), true), // 本地今天凌晨 → 仍应计入今日
-			entry(todayAt(23), false), // 本地今天深夜失败
-			entry(yesterdayAt(12), true), // 昨天 → 不计入
-			entry(yesterdayAt(23), false), // 昨天失败 → 不计入
-		];
-		expect(countToday(entries, now)).toEqual({ pushes: 2, failures: 1 });
+describe("foldDailyBuckets", () => {
+	const day = (
+		d: string,
+		counts: Partial<DailyHistoryCountView["counts"]>,
+	): DailyHistoryCountView => ({
+		d,
+		counts: {
+			dynamic: 0,
+			live: 0,
+			sc: 0,
+			guard: 0,
+			"special-danmaku": 0,
+			"special-enter": 0,
+			"live-summary": 0,
+			...counts,
+		},
+		total: Object.values(counts).reduce((a, b) => a + (b ?? 0), 0),
+		failures: 0,
 	});
 
-	it("returns zeros when nothing is from today", () => {
-		expect(countToday([entry(yesterdayAt(10), false)], now)).toEqual({ pushes: 0, failures: 0 });
+	it("按 4 源族折叠(live 族含 summary/special),标签取 MM/DD", () => {
+		const out = foldDailyBuckets([
+			day("2026-07-01", {
+				live: 1,
+				"live-summary": 2,
+				"special-enter": 1,
+				"special-danmaku": 1,
+				dynamic: 3,
+				sc: 1,
+				guard: 2,
+			}),
+			day("2026-07-02", {}),
+		]);
+		expect(out).toEqual([
+			{ d: "07/01", live: 5, dyn: 3, sc: 1, guard: 2 },
+			{ d: "07/02", live: 0, dyn: 0, sc: 0, guard: 0 },
+		]);
 	});
 });

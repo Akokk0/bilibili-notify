@@ -7,6 +7,7 @@ import type { RouteDeps } from "./types.js";
 
 /**
  * `GET /api/history`             — recent push events (most-recent-first)
+ * `GET /api/history/daily`       — per-day counts over a trailing window
  * `GET /api/history/img/:name`   — static fileserver for entry-attached images
  *
  * Query parameters for the listing endpoint:
@@ -14,6 +15,11 @@ import type { RouteDeps } from "./types.js";
  *   - since:  ISO ts     (only entries strictly after this)
  *   - source: history kind ('dynamic' | 'live' | …)
  *   - uid:    bilibili UID
+ *
+ * Query parameters for the daily endpoint:
+ *   - days:     int (default 7, clamped [1,90]) — trailing window incl. today
+ *   - tzOffset: int minutes, JS getTimezoneOffset() convention (UTC+8 → -480),
+ *               clamped [-840,840] — day boundaries follow the CLIENT's zone
  */
 
 export interface HistoryEntryView {
@@ -92,6 +98,32 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 			uavatarSnapshot: e.uavatarSnapshot,
 		}));
 		return c.json<HistoryResponse>({ entries: view });
+	});
+
+	// 按日聚合 —— 本周推送趋势 / 今日 KPI 的数据源。listing 端点的 limit 上限
+	// (500)会把高推送量实例的 7 天窗口截断,趋势图左侧空柱;这里在服务端全量
+	// 数完再回,payload 恒定为 days 个桶,与推送量无关。
+	app.get("/daily", async (c) => {
+		const daysRaw = c.req.query("days");
+		let days = 7;
+		if (daysRaw !== undefined) {
+			const n = Number(daysRaw);
+			if (!Number.isFinite(n)) {
+				return c.json({ error: "invalid_query", message: `invalid days: ${daysRaw}` }, 400);
+			}
+			days = Math.max(1, Math.min(90, Math.trunc(n)));
+		}
+		const tzRaw = c.req.query("tzOffset");
+		let tzOffsetMin = 0;
+		if (tzRaw !== undefined) {
+			const n = Number(tzRaw);
+			if (!Number.isFinite(n)) {
+				return c.json({ error: "invalid_query", message: `invalid tzOffset: ${tzRaw}` }, 400);
+			}
+			tzOffsetMin = Math.max(-840, Math.min(840, Math.trunc(n)));
+		}
+		const dailyCounts = await deps.runtime.historyStore.aggregateDaily({ days, tzOffsetMin });
+		return c.json({ days: dailyCounts });
 	});
 
 	// Image attachments. We resolve under the history image dir; reject any

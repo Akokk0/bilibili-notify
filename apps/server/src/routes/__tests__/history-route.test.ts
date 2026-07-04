@@ -13,11 +13,15 @@ import { createHistoryRoute } from "../history.js";
 import type { RouteDeps } from "../types.js";
 
 let query: ReturnType<typeof vi.fn>;
+let aggregateDaily: ReturnType<typeof vi.fn>;
 
 function makeApp() {
 	query = vi.fn(async () => []);
+	aggregateDaily = vi.fn(async () => []);
 	const deps = {
-		runtime: { historyStore: { query, imageDir: () => join(tmpdir(), "bn-history-test") } },
+		runtime: {
+			historyStore: { query, aggregateDaily, imageDir: () => join(tmpdir(), "bn-history-test") },
+		},
 	} as unknown as RouteDeps;
 	return createHistoryRoute(deps);
 }
@@ -62,5 +66,40 @@ describe("history route — limit/since 校验 (P2-J)", () => {
 		const res = await makeApp().request("/");
 		expect(res.status).toBe(200);
 		expect(query.mock.calls[0]?.[0]).toMatchObject({ limit: 100 });
+	});
+});
+
+describe("history /daily — 按日聚合(本周推送趋势数据源)", () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("透传 clamp 后的 days/tzOffset,响应 { days }", async () => {
+		const app = makeApp();
+		const res = await app.request("/daily?days=7&tzOffset=-480");
+		expect(res.status).toBe(200);
+		expect(aggregateDaily).toHaveBeenCalledTimes(1);
+		expect(aggregateDaily.mock.calls[0]?.[0]).toMatchObject({ days: 7, tzOffsetMin: -480 });
+		expect(await res.json()).toEqual({ days: [] });
+	});
+
+	it("无参数 → 默认 days=7, tzOffsetMin=0", async () => {
+		await makeApp().request("/daily");
+		expect(aggregateDaily.mock.calls[0]?.[0]).toMatchObject({ days: 7, tzOffsetMin: 0 });
+	});
+
+	it("days/tzOffset 越界 → clamp 到 [1,90] / [-840,840]", async () => {
+		const app = makeApp();
+		await app.request("/daily?days=9999&tzOffset=99999");
+		expect(aggregateDaily.mock.calls[0]?.[0]).toMatchObject({ days: 90, tzOffsetMin: 840 });
+		await app.request("/daily?days=0&tzOffset=-99999");
+		expect(aggregateDaily.mock.calls[1]?.[0]).toMatchObject({ days: 1, tzOffsetMin: -840 });
+	});
+
+	it("days / tzOffset 非数字 → 400,不调用 aggregateDaily", async () => {
+		const app = makeApp();
+		expect((await app.request("/daily?days=abc")).status).toBe(400);
+		expect((await app.request("/daily?tzOffset=abc")).status).toBe(400);
+		expect(aggregateDaily).not.toHaveBeenCalled();
 	});
 });

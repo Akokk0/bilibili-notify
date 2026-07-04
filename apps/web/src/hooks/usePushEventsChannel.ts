@@ -1,12 +1,16 @@
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import {
+	type DailyHistoryCountView,
 	type FansEntry,
 	type FansResponse,
+	HISTORY_DAILY_QUERY_KEY,
 	HISTORY_QUERY_LIMITS,
+	type HistoryDailyResponse,
 	type HistoryResponse,
 	historyQueryKey,
 	type LiveListenerSnapshot,
+	localDayKey,
 } from "../services/dashboard";
 import type { WsEnvelope } from "../services/ws";
 import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
@@ -36,6 +40,7 @@ export const HISTORY_CACHE_CAP = 200;
  *   - `live-viewers-changed`      → setQueryData patch 该房间的 viewers(不存在则 silent)
  *   - `fans-refreshed`            → setQueryData 整体覆盖 ["fans"]
  *   - `history-recorded`          → push 进 toast + prepend 到 ["history"] 并 dedup 截尾
+ *                                    + ["history-daily"] 今日桶就地 +1(跨零点则 invalidate)
  *
  * 提取成 export 纯函数,测试注入 `qc = new QueryClient()` + spy push 即可覆盖。
  */
@@ -101,6 +106,30 @@ export function handlePushEnvelope(
 	for (const limit of HISTORY_QUERY_LIMITS) {
 		qc.setQueryData<HistoryResponse>(historyQueryKey(limit), patchHistory);
 	}
+
+	// 按日聚合缓存(本周推送趋势 + 今日 KPI):今天的桶就地 +1,零额外 HTTP。
+	// entry 所属本地日不在缓存窗口(客户端跨零点后窗口未前滚)→ invalidate 整键
+	// 重拉,窗口顺带翻篇。缓存不存在(Dashboard 从未拉过)则不 prime —— 挂载时的
+	// 首次 fetch 天然包含本条,凭空造一个窗口反而是假数据。
+	let dayMissed = false;
+	qc.setQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY, (old) => {
+		if (!old) return old;
+		const key = localDayKey(new Date(data.ts));
+		const idx = old.days.findIndex((x) => x.d === key);
+		if (idx < 0) {
+			dayMissed = true;
+			return old;
+		}
+		const day = old.days[idx] as DailyHistoryCountView;
+		const next: DailyHistoryCountView = {
+			...day,
+			counts: { ...day.counts, [data.source]: (day.counts[data.source] ?? 0) + 1 },
+			total: day.total + 1,
+			failures: day.failures + (data.ok ? 0 : 1),
+		};
+		return { days: old.days.map((x, i) => (i === idx ? next : x)) };
+	});
+	if (dayMissed) qc.invalidateQueries({ queryKey: HISTORY_DAILY_QUERY_KEY });
 }
 
 export function usePushEventsChannel(): void {

@@ -278,6 +278,69 @@ describe("query — 排序 / 过滤 / 容错", () => {
 	});
 });
 
+describe("aggregateDaily — 按客户端时区口径的按日聚合", () => {
+	// 复用 query describe 的手写日文件套路:一次真实 append 拿 schema 合法样板,
+	// clone 出受控 ts/source/result 的 fixture。真实 append 落在「真·今天」的日文件,
+	// 但注入的 now 固定在 2026-05-12,窗口外 → 不污染计数(顺带覆盖「窗口外丢弃」)。
+	function clone(base: HistoryEntry, over: Partial<HistoryEntry>): HistoryEntry {
+		return { ...base, ...over, id: over.id ?? randomUUID() };
+	}
+	async function writeDay(date: string, entries: HistoryEntry[]) {
+		await mkdir(join(dataDir, "history"), { recursive: true });
+		const lines = entries.map((e) => JSON.stringify(e));
+		await writeFile(join(dataDir, "history", `${date}.jsonl`), `${lines.join("\n")}\n`, "utf8");
+	}
+	// UTC+8(北京)的 getTimezoneOffset() 口径
+	const TZ_CN = -480;
+	const now = new Date("2026-05-12T12:00:00.000Z"); // 北京 05-12 20:00
+
+	it("零填充窗口 + 跨 UTC 日界归属 + 失败计数", async () => {
+		const base = await store.append(baseInput());
+		// A/B 同属北京 05-10:A 在 UTC 05-09 的日文件里(05-09T20:00Z = 北京 05-10 04:00)
+		// —— UTC 日文件与本地日错位,必须跨文件归属才数得对。C 在窗口前一天,丢弃。
+		await writeDay("2026-05-09", [
+			clone(base, { ts: "2026-05-09T20:00:00.000Z" }),
+			clone(base, { ts: "2026-05-09T10:00:00.000Z" }), // 北京 05-09 → 窗口外
+		]);
+		await writeDay("2026-05-10", [clone(base, { ts: "2026-05-10T10:00:00.000Z" })]);
+		await writeDay("2026-05-12", [
+			clone(base, {
+				ts: "2026-05-12T03:00:00.000Z",
+				source: "live",
+				result: { ...base.result, ok: false },
+			}),
+		]);
+
+		const days = await store.aggregateDaily({ days: 3, tzOffsetMin: TZ_CN, now });
+		expect(days.map((d) => d.d)).toEqual(["2026-05-10", "2026-05-11", "2026-05-12"]);
+		expect(days[0]).toMatchObject({ total: 2, failures: 0 });
+		expect(days[0]?.counts.dynamic).toBe(2);
+		expect(days[1]).toMatchObject({ total: 0, failures: 0 }); // 空日仍出现(零填充)
+		expect(days[2]).toMatchObject({ total: 1, failures: 1 });
+		expect(days[2]?.counts.live).toBe(1);
+		expect(days[2]?.counts.dynamic).toBe(0); // counts 全源零填充
+	});
+
+	it("回归:单日超过 query 的 500 条上限也全量计数(趋势图不再被截断)", async () => {
+		const base = await store.append(baseInput());
+		await writeDay(
+			"2026-05-11",
+			Array.from({ length: 505 }, () => clone(base, { ts: "2026-05-11T10:00:00.000Z" })),
+		);
+		const days = await store.aggregateDaily({ days: 3, tzOffsetMin: TZ_CN, now });
+		expect(days[1]?.d).toBe("2026-05-11");
+		expect(days[1]?.total).toBe(505);
+	});
+
+	it("无任何日文件:返回零填充窗口(默认 tzOffset=0,UTC 口径)", async () => {
+		const days = await store.aggregateDaily({ days: 7, now });
+		expect(days).toHaveLength(7);
+		expect(days.every((d) => d.total === 0 && d.failures === 0)).toBe(true);
+		expect(days[6]?.d).toBe("2026-05-12");
+		expect(days[0]?.d).toBe("2026-05-06");
+	});
+});
+
 describe("listDayFiles / deleteDayFile", () => {
 	async function ensureHistoryDir() {
 		await mkdir(join(dataDir, "history"), { recursive: true });

@@ -12,14 +12,19 @@ import {
 } from "../hooks/useBackendReachable";
 import { api } from "../services/api";
 import {
-	bucketByDay,
-	countToday,
+	type DailyHistoryCountView,
 	type FansEntry,
 	type FansResponse,
+	foldDailyBuckets,
+	HISTORY_DAILY_DAYS,
+	HISTORY_DAILY_QUERY_KEY,
+	type HistoryDailyResponse,
 	type HistoryEntryView,
 	type HistoryResponse,
+	historyDailyPath,
 	historyQueryKey,
 	type LiveListenerSnapshot,
+	localDayKey,
 } from "../services/dashboard";
 import { useAuthStore } from "../store/auth";
 import { BiliLoginStatus } from "../types/auth";
@@ -171,9 +176,19 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 	);
 }
 
-function TrendPanel({ entries }: { entries: HistoryEntryView[] }) {
-	const data = useMemo(() => bucketByDay(entries, 7), [entries]);
-	const total = entries.length;
+function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
+	// 服务端已按日全量聚合(/api/history/daily),这里只做 4 源族折叠 —— 不再受
+	// listing limit 截断影响,左侧柱子有多老的数据都数得到。
+	// 加载期给零柱占位,保住日期轴不跳。
+	const data = useMemo(() => {
+		if (daily.length > 0) return foldDailyBuckets(daily);
+		return Array.from({ length: HISTORY_DAILY_DAYS }, (_, i) => {
+			const d = new Date();
+			d.setDate(d.getDate() - (HISTORY_DAILY_DAYS - 1 - i));
+			return { d: localDayKey(d).slice(5).replace("-", "/"), live: 0, dyn: 0, sc: 0, guard: 0 };
+		});
+	}, [daily]);
+	const total = daily.reduce((sum, day) => sum + day.total, 0);
 	return (
 		<GlassPanel title="本周推送趋势" subtitle="按推送类型分布" accent="#00aeec">
 			{/* TimelinePanel 6 条 history × 单行 ~50px + padding ≈ 320px;StatsBar 抬高
@@ -655,8 +670,15 @@ export default function Dashboard() {
 	const historyQuery = useQuery({
 		// HI1:与 History 页(limit:200)用不同 limit-scoped 键(单一来源
 		// historyQueryKey),避免共享单缓存导致数据集随导航顺序非确定。
+		// 只喂「最近推送活动」时间线;趋势图与今日 KPI 走下面的按日聚合。
 		queryKey: historyQueryKey(100),
 		queryFn: () => api.get<HistoryResponse>("/api/history?limit=100"),
+	});
+	const dailyQuery = useQuery({
+		// 本周推送趋势 + 今日 KPI 的数据源:服务端按日全量计数(客户端时区口径),
+		// WS history-recorded 经 usePushEventsChannel 就地 +1 保实时。
+		queryKey: HISTORY_DAILY_QUERY_KEY,
+		queryFn: () => api.get<HistoryDailyResponse>(historyDailyPath()),
 	});
 	const globalsQuery = useQuery({
 		queryKey: ["globals"],
@@ -669,8 +691,12 @@ export default function Dashboard() {
 	const history = historyQuery.data?.entries ?? [];
 
 	const enabledSubs = subs.filter((s) => s.enabled).length;
-	// 「今日」按本地时区(北京 0 点翻篇);「今日失败」与「今日推送」同口径。见 countToday。
-	const { pushes: todayPushes, failures: todayFailed } = countToday(history);
+	// 「今日」= 按日聚合窗口的最后一个桶(客户端时区口径,后端聚合)。此前用
+	// limit=100 的 listing 在前端数,单日推送超 100 条就会低估。
+	const daily = dailyQuery.data?.days ?? [];
+	const today = daily.at(-1);
+	const todayPushes = today?.total ?? 0;
+	const todayFailed = today?.failures ?? 0;
 
 	const aiTip = loggedIn ? (
 		live.length > 0 ? (
@@ -732,7 +758,7 @@ export default function Dashboard() {
 
 			{/* row 4: 推送趋势(窄) + 最近推送活动(宽) —— 跟 row 2 的列比反向,视觉错位 */}
 			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1fr_1.3fr]">
-				<TrendPanel entries={history} />
+				<TrendPanel daily={daily} />
 				<TimelinePanel entries={history} subs={subs} targets={targets} />
 			</div>
 
