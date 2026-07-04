@@ -119,6 +119,39 @@ export interface UserCardInfoData {
 	data: UserCardInfo;
 }
 
+/**
+ * `x/relation/stat` —— 关系状态数。粉丝计数轮询的轻量数据源(只回数字,不含
+ * name/face/sign 等主页卡字段)。`data` 可能为 null(风控/错误码)。
+ */
+export interface RelationStatData {
+	code: number;
+	message?: string;
+	data: {
+		mid: number;
+		following: number;
+		whisper: number;
+		black: number;
+		follower: number;
+	} | null;
+}
+
+/** 批量 `user/cards` 单个成员的精简信息(冷刷 name/avatar 用)。 */
+export interface UserCardBrief {
+	mid: string;
+	name: string;
+	face: string;
+}
+
+/**
+ * `x/polymer/pc-electron/v1/user/cards` —— 多用户详细信息。`data` 以 mid 字符串
+ * 为键。单次最多 50 个 uid(超限返回 code=40143)。`data` 可能为 null。
+ */
+export interface UserCardsBatchData {
+	code: number;
+	message?: string;
+	data: Record<string, UserCardBrief> | null;
+}
+
 // ---- Live ----
 
 export interface LiveRoomInfo {
