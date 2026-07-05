@@ -1,5 +1,6 @@
 import type { Disposable, Logger, ServiceContext } from "@bilibili-notify/internal";
-import { type Logger as PinoLogger, pino } from "pino";
+import { type DestinationStream, type Logger as PinoLogger, pino } from "pino";
+import prettyFactory from "pino-pretty";
 import type { LogEntry, LogLevel } from "../ws/types.js";
 
 export interface NodeServiceContextOptions {
@@ -16,6 +17,11 @@ export interface NodeServiceContextOptions {
 	 * to build the WS server, but the WS server provides the hook).
 	 */
 	onLog?: (entry: LogEntry) => void;
+	/**
+	 * 日志落点,默认 stdout(fd 1)。pretty 模式下作为 pino-pretty 的 destination,
+	 * 非 pretty 直接作为 pino 的目标 stream。测试用它捕获输出;生产不传。
+	 */
+	destination?: DestinationStream;
 }
 
 /**
@@ -66,19 +72,27 @@ export interface NodeServiceContext extends ServiceContext {
 
 export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeServiceContext {
 	const pretty = opts.pretty ?? Boolean(process.stdout.isTTY);
-	const transportOpt = pretty
-		? {
-				transport: {
-					target: "pino-pretty" as const,
-					options: { colorize: true, translateTime: "SYS:HH:MM:ss.l" },
-				},
-			}
-		: {};
-	const baseLogger = pino({
-		name: opts.name,
-		level: opts.level ?? "info",
-		...transportOpt,
-	});
+	// pretty 走**进程内**pino-pretty 同步 stream,而非 pino transport:transport 的
+	// worker 线程在运行时按模块路径解析 "pino-pretty",单文件 bundle 后该路径不存在,
+	// `docker run -t`(TTY→pretty)会直接崩。sync stream 是 pino 官方对 bundler 场景
+	// 的推荐形态,顺带免掉 base + 每个 forSubsystem 子系统各一条 worker 线程。
+	// 每个 pino 实例配自己的 stream(镜像旧 transport 逐实例语义);未注入 destination
+	// 时 pino-pretty 落 fd 1、非 pretty 走 pino 默认 stdout,生产行为不变。
+	const makeDest = (): DestinationStream | undefined =>
+		pretty
+			? prettyFactory({
+					colorize: true,
+					translateTime: "SYS:HH:MM:ss.l",
+					destination: opts.destination ?? 1,
+				})
+			: opts.destination;
+	const baseLogger = pino(
+		{
+			name: opts.name,
+			level: opts.level ?? "info",
+		},
+		makeDest(),
+	);
 
 	let logHook: ((entry: LogEntry) => void) | undefined = opts.onLog;
 
@@ -186,11 +200,13 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 			baseLogger.level = level;
 		},
 		forSubsystem(name: string, level: string | undefined): SubsystemContext {
-			const subPino = pino({
-				name,
-				level: level ?? opts.level ?? "info",
-				...transportOpt,
-			});
+			const subPino = pino(
+				{
+					name,
+					level: level ?? opts.level ?? "info",
+				},
+				makeDest(),
+			);
 			return {
 				logger: wrapLogger(subPino, name),
 				setInterval: setIntervalImpl,

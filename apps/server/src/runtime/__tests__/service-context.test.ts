@@ -11,6 +11,7 @@
  * 阈值 = 最低放行严重度,放行「≥ 阈值」,丢弃更轻的(含等号)。
  */
 
+import { Writable } from "node:stream";
 import { describe, expect, it } from "vite-plus/test";
 import type { LogEntry } from "../../ws/types.js";
 import { createNodeServiceContext } from "../service-context.js";
@@ -110,5 +111,74 @@ describe("createNodeServiceContext — forSubsystem 各算各的阈值", () => {
 		dyn.logger.debug("d2"); // 放行
 		ctx.logger.debug("base-d"); // base 仍 error → 压
 		expect(seen.map((e) => e.msg)).toEqual(["d2"]);
+	});
+});
+
+/**
+ * pretty 模式的 bundler-safe 契约:格式化必须发生在**进程内**(pino-pretty 以同步
+ * stream 接入),不能走 pino transport 的 worker 线程 —— worker 在运行时按模块路径
+ * 解析 "pino-pretty",单文件 bundle 后该路径不存在,`docker run -t` 直接崩。
+ * `destination` seam 让测试能捕获输出验证格式化确实在进程内完成。
+ */
+describe("createNodeServiceContext — pretty 进程内格式化(bundler-safe)", () => {
+	// 不 strip ANSI:色码只**包裹**子串,不会插进 "hello-pretty" / "INFO" 内部,
+	// toContain 不受影响;JSON.parse 断言走 pretty:false 路径(无色码)。
+	const captureSink = () => {
+		const chunks: string[] = [];
+		const sink = new Writable({
+			write(chunk, _enc, cb) {
+				chunks.push(String(chunk));
+				cb();
+			},
+		});
+		return { sink, text: () => chunks.join("") };
+	};
+	// pino-pretty 的 pipe 可能跨一个 tick 交付,断言前让出事件循环。
+	const flushed = () => new Promise((r) => setTimeout(r, 20));
+
+	it("pretty:true + destination:输出是格式化行(含消息与 INFO),而非 JSON", async () => {
+		const { sink, text } = captureSink();
+		const ctx = createNodeServiceContext({
+			name: "svc",
+			level: "info",
+			pretty: true,
+			destination: sink,
+		});
+		ctx.logger.info("hello-pretty");
+		await flushed();
+		expect(text()).toContain("hello-pretty");
+		expect(text()).toContain("INFO");
+		expect(text().trimStart().startsWith("{")).toBe(false); // 非原始 JSON
+	});
+
+	it("pretty:false + destination:输出原始 JSON 行(生产日志形态不变)", async () => {
+		const { sink, text } = captureSink();
+		const ctx = createNodeServiceContext({
+			name: "svc",
+			level: "info",
+			pretty: false,
+			destination: sink,
+		});
+		ctx.logger.info("hello-json");
+		await flushed();
+		const line = text().trim().split("\n")[0] ?? "";
+		const parsed = JSON.parse(line) as { msg?: string; name?: string };
+		expect(parsed.msg).toBe("hello-json");
+		expect(parsed.name).toBe("svc");
+	});
+
+	it("forSubsystem 继承 destination,pretty 格式化同样进程内完成", async () => {
+		const { sink, text } = captureSink();
+		const ctx = createNodeServiceContext({
+			name: "core",
+			level: "info",
+			pretty: true,
+			destination: sink,
+		});
+		const dyn = ctx.forSubsystem("dynamic", "debug");
+		dyn.logger.debug("dyn-pretty");
+		await flushed();
+		expect(text()).toContain("dyn-pretty");
+		expect(text()).toContain("DEBUG");
 	});
 });
