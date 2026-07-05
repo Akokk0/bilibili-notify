@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { cp, mkdtemp, readdir, readFile, realpath, rm } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -59,10 +59,10 @@ describe("assemble-server-bundle", () => {
 	});
 
 	it("装到 monorepo 外也能起:boot + /api/health 200 + 模块版本非 0.0.0", async () => {
-		// realpath:macOS tmpdir 是 /var → /private/var 的 symlink;node 对 ESM 主入口
-		// 做 realpath,而 argv[1] 保留 symlink 路径,index.ts 的 isEntrypoint 守卫会
-		// 判假 → 静默退出 0。生产路径(Docker /app)无 symlink,不受影响。
-		const tempRoot = await mkdtemp(join(await realpath(tmpdir()), "bn-server-bundle-"));
+		// 故意不 realpath:macOS tmpdir 是 /var → /private/var 的 symlink,正好在真实
+		// boot 里回归验证 isEntrypoint 的 realpath 对齐(runtime/entrypoint.ts)——
+		// 修复前 argv[1](symlink)与 import.meta.url(realpath)不等,静默退出 0。
+		const tempRoot = await mkdtemp(join(tmpdir(), "bn-server-bundle-"));
 		const appDir = join(tempRoot, "app");
 		await cp(distDir, appDir, { recursive: true });
 		const port = 18900 + (process.pid % 500);

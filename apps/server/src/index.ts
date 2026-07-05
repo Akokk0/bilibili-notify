@@ -1,8 +1,7 @@
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { join } from "node:path";
 import { type ServerType, serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { shouldRefuseBareAuth } from "./auth/bare-auth-policy.js";
@@ -19,6 +18,7 @@ import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq
 import { createWebhookAdapter } from "./platforms/webhook.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
 import { createEngines } from "./runtime/engines.js";
+import { isEntrypoint } from "./runtime/entrypoint.js";
 import { startFansPoller } from "./runtime/fans-poller.js";
 import { createPuppeteerAdapter, type StandalonePuppeteer } from "./runtime/puppeteer.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
@@ -459,12 +459,6 @@ function installProcessHandlers(
 		process.off("uncaughtException", onUncaughtException);
 		process.off("unhandledRejection", onUnhandledRejection);
 	};
-}
-
-function isEntrypoint(metaUrl: string): boolean {
-	const entry = process.argv[1];
-	if (!entry) return false;
-	return metaUrl === pathToFileURL(resolve(entry)).href;
 }
 
 if (isEntrypoint(import.meta.url)) {
