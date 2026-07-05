@@ -13,10 +13,16 @@
 # or via compose (apps/docker-compose.example.yaml).
 #
 # Plan deviates from the original "distroless runtime" idea — puppeteer-core
-# requires a Chromium binary, which distroless does not ship. node:24-bookworm-slim
-# + apt chromium is the smallest realistic base.
+# requires a Chromium binary, which distroless does not ship.
 
 ARG NODE_VERSION=24
+
+# runtime 底座:预装 chromium + CJK/emoji 字体 + tini 的自建 base(见
+# apps/base.Dockerfile)。这 ~300MB 冻结在 base 里,digest 只随 base 显式重建
+# (base-image.yml,不可变 tag b1/b2/…)而变 —— 用户拉一次、之后每次升级只下
+# app bundle 小层。刷新 base 后在这里 bump 默认 tag。
+# ⚠️ 时序:新 tag 必须先经 base-image.yml 推上 registry,本镜像才构建得动。
+ARG BN_BASE_IMAGE=docker.io/akokk0/bilibili-notify-base:b1
 
 # ---- builder ----------------------------------------------------------------
 
@@ -70,16 +76,10 @@ RUN pnpm --filter '@bilibili-notify/server' run build:bundle \
 
 # ---- runtime ----------------------------------------------------------------
 
-FROM node:${NODE_VERSION}-bookworm-slim AS runtime
-
-# chromium  — puppeteer-core (cards preview); ~300 MB after install.
-# fonts-noto-cjk + fonts-noto-color-emoji — render Chinese + emoji in screenshots.
-# tini — PID 1 signal forwarding so SIGINT/SIGTERM reach Node.
-# ca-certificates — HTTPS to bilibili.com / openai-compatible endpoints.
-# tzdata — TZ env var resolution (default Asia/Shanghai;运行时可 -e TZ= 覆盖).
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        chromium fonts-noto-cjk fonts-noto-color-emoji ca-certificates tini tzdata \
-    && rm -rf /var/lib/apt/lists/*
+# chromium / 字体 / tini / ca-certificates / tzdata 全部来自 base(apps/base.Dockerfile),
+# 这里不再跑 apt —— 主镜像每次发版重建 apt 层会产生新 digest,用户被迫重拉 300MB;
+# base 化后该层跨版本稳定。
+FROM ${BN_BASE_IMAGE} AS runtime
 
 # BN_CONFIG 是 B 模型开关:loader 检测到此 env 就走"first-boot seed env 进 yaml,
 # 之后 yaml 是真相,env 被忽略"逻辑(见 src/config/loader.ts)。配置目录跟 state

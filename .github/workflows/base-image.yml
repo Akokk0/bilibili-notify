@@ -1,0 +1,107 @@
+name: bilibili-notify — chromium base image
+
+# 构建 apps/base.Dockerfile(node + chromium + 字体 + tini)并推
+# Docker Hub + GHCR 的 *-base 仓库。手动触发是唯一入口 —— base 只在显式重建时
+# 改变 digest,用户对 chromium 层「拉一次、之后 Already exists」。
+#
+# 使用流程:
+#   1. workflow_dispatch 填 tag(不可变递增:b1, b2, …)→ 推 :b<N> + :latest。
+#   2. bump apps/Dockerfile 的 `ARG BN_BASE_IMAGE` 默认值到新 tag,随下次发版生效。
+# ⚠️ 时序:首个 base tag(b1)必须先推上去,image-release(含 dry-run)的
+# runtime FROM 才拉得到。
+#
+# Required repo secret: DOCKERHUB_TOKEN(同 image-release)。GHCR 用 GITHUB_TOKEN。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Immutable base tag, e.g. b1 (also pushes :latest)"
+        type: string
+        required: true
+      dry_run:
+        description: "Build only, skip push"
+        type: boolean
+        default: false
+
+concurrency:
+  group: base-image
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  DOCKERHUB_IMAGE: docker.io/akokk0/bilibili-notify-base
+  GHCR_IMAGE: ghcr.io/akokk0/bilibili-notify-base
+
+jobs:
+  build:
+    name: Build & push (amd64 + arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate tag format
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! printf '%s' "$TAG" | grep -Eq '^b[0-9]+$'; then
+            echo "::error::tag 必须形如 b1 / b2(不可变递增),得到: $TAG"
+            exit 1
+          fi
+
+      # base 只有一层 apt 安装、无编译,QEMU 模拟 arm64 跑 dpkg 慢但可接受
+      # (分钟级、且本 workflow 极少跑),不值得复制 image-release 的
+      # 双原生 runner + digest merge 机制。
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # 不可变 tag 不允许覆盖 —— 已存在同名 tag 时直接失败,换下一个编号。
+      # imagetools inspect 对公共仓库无需登录;镜像 / tag 不存在时非零退出。
+      - name: Refuse overwriting an existing immutable tag
+        if: ${{ !inputs.dry_run }}
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:${TAG}" >/dev/null 2>&1; then
+            echo "::error::${DOCKERHUB_IMAGE}:${TAG} 已存在,不可变 tag 不允许覆盖"
+            exit 1
+          fi
+
+      - name: Log in to Docker Hub
+        if: ${{ !inputs.dry_run }}
+        uses: docker/login-action@v4
+        with:
+          registry: docker.io
+          username: akokk0
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GHCR
+        if: ${{ !inputs.dry_run }}
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # 单次 build 同时打两个 registry 的 tag:这里直接推 tag(非 push-by-digest),
+      # 不消费 action 的 digest 输出,image-release 里"双 registry 输出 digest 混淆"
+      # 的坑不适用。
+      - name: Build + push base image
+        uses: docker/build-push-action@v7
+        with:
+          context: apps
+          file: apps/base.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ !inputs.dry_run }}
+          tags: |
+            ${{ env.DOCKERHUB_IMAGE }}:${{ inputs.tag }}
+            ${{ env.DOCKERHUB_IMAGE }}:latest
+            ${{ env.GHCR_IMAGE }}:${{ inputs.tag }}
+            ${{ env.GHCR_IMAGE }}:latest
