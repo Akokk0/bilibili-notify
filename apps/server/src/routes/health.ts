@@ -1,6 +1,16 @@
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { join } from "node:path";
+// 各核心包版本走**静态 JSON import**(而非 createRequire 运行时解析):bundler 构建期
+// 把 version 内联进产物,单文件 bundle 旁没有 node_modules 也能显示真实版本;dev(tsx)/
+// 测试(vitest)/外置 lib 构建下,import attributes 由 node / vite 原生支持,行为一致。
+import aiPkg from "@bilibili-notify/ai/package.json" with { type: "json" };
+import apiPkg from "@bilibili-notify/api/package.json" with { type: "json" };
+import dynamicPkg from "@bilibili-notify/dynamic/package.json" with { type: "json" };
+import imagePkg from "@bilibili-notify/image/package.json" with { type: "json" };
+import livePkg from "@bilibili-notify/live/package.json" with { type: "json" };
+import pushPkg from "@bilibili-notify/push/package.json" with { type: "json" };
+import storagePkg from "@bilibili-notify/storage/package.json" with { type: "json" };
+import subscriptionPkg from "@bilibili-notify/subscription/package.json" with { type: "json" };
 import { Hono } from "hono";
 import type { ConfigScopeMeta } from "../config/store.js";
 import type { ModuleStatus } from "../runtime/engines.js";
@@ -40,28 +50,19 @@ interface HealthDetailsBody {
 	};
 }
 
-const require_ = createRequire(import.meta.url);
-function readPkgVersion(specifier: string): string {
-	try {
-		return (require_(specifier) as { version?: string }).version ?? "0.0.0";
-	} catch {
-		return "0.0.0";
-	}
-}
-
-// 编译期/启动期读一次缓存,health 接口高频调用不该每次 IO。infra 4 个 + engine 4 个,
-// 顺序与 dashboard 卡片排序保持一致(api → storage → subscription → push → dynamic → live → image → ai)。
-// Docker builder 不再执行 `changeset version`;这里读到的是镜像构建输入中的
+// infra 4 个 + engine 4 个,顺序与 dashboard 卡片排序保持一致
+// (api → storage → subscription → push → dynamic → live → image → ai)。
+// Docker builder 不再执行 `changeset version`;这里读到的是构建输入中的
 // workspace package.json#version,仅用于展示核心包版本,不驱动独立端发布版本。
-const MODULE_VERSIONS: ModuleVersions = {
-	api: readPkgVersion("@bilibili-notify/api/package.json"),
-	storage: readPkgVersion("@bilibili-notify/storage/package.json"),
-	subscription: readPkgVersion("@bilibili-notify/subscription/package.json"),
-	push: readPkgVersion("@bilibili-notify/push/package.json"),
-	dynamic: readPkgVersion("@bilibili-notify/dynamic/package.json"),
-	live: readPkgVersion("@bilibili-notify/live/package.json"),
-	image: readPkgVersion("@bilibili-notify/image/package.json"),
-	ai: readPkgVersion("@bilibili-notify/ai/package.json"),
+export const MODULE_VERSIONS: ModuleVersions = {
+	api: apiPkg.version,
+	storage: storagePkg.version,
+	subscription: subscriptionPkg.version,
+	push: pushPkg.version,
+	dynamic: dynamicPkg.version,
+	live: livePkg.version,
+	image: imagePkg.version,
+	ai: aiPkg.version,
 };
 
 /**
