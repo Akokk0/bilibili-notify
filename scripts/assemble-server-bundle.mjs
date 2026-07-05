@@ -1,0 +1,37 @@
+import { copyFile, cp } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// 把独立端 server 单文件 bundle(apps/server/dist,由 `build:bundle` 产出)补齐为
+// 可独立运行的目录:bundle 内联了全部 JS 依赖,但**运行时按路径读取**的资产不进
+// bundle,必须搬到产物旁边(与 build-astrbot-sidecar.mjs 同源的三件 + server 特有
+// 两件)。本脚本只做纯复制、不 spawn 任何构建命令 —— Docker builder 里没有全局 vp,
+// 构建由调用方负责(本地 `vp run -F @bilibili-notify/server build:bundle`,Docker 里
+// `pnpm --filter @bilibili-notify/server run build:bundle`,vp 从根 devDependency 的
+// node_modules/.bin 解析)。
+//
+// - xhr-sync-worker.js:jsdom 同步 XHR worker,运行时按文件路径加载。
+// - jieba_rs_wasm_bg.wasm:jieba-wasm 的 wasm 本体,readFileSync(__dirname) 加载,
+//   bundle 后 __dirname 指向 dist/。
+// - static/*:词云模板,image 包运行时 readFileSync(resolve(__dirname, "static/*.js"))。
+//   用 monorepo 源路径(始终存在、与 lib/static 内容一致),原因同 sidecar 脚本。
+// - bn.config.example.yaml:first-boot 配置样例,镜像内与 bundle 平级。
+// - package.json:resolveAppVersion 读 process.cwd()/package.json 展示独立端版本
+//   (发布 workflow 按 tag 临时同步 version 后再构建)。
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(scriptDir, "..");
+const distDir = resolve(repoRoot, "apps/server/dist");
+const require = createRequire(import.meta.url);
+const jsdomXhrSyncWorker = require.resolve("jsdom/lib/jsdom/living/xhr/xhr-sync-worker.js");
+const jiebaWasm = resolve(dirname(require.resolve("jieba-wasm/node")), "jieba_rs_wasm_bg.wasm");
+const imageStaticDir = resolve(repoRoot, "packages/image/src/static");
+
+await cp(imageStaticDir, resolve(distDir, "static"), { recursive: true });
+await copyFile(jsdomXhrSyncWorker, resolve(distDir, "xhr-sync-worker.js"));
+await copyFile(jiebaWasm, resolve(distDir, "jieba_rs_wasm_bg.wasm"));
+await copyFile(
+	resolve(repoRoot, "apps/server/bn.config.example.yaml"),
+	resolve(distDir, "bn.config.example.yaml"),
+);
+await copyFile(resolve(repoRoot, "apps/server/package.json"), resolve(distDir, "package.json"));
