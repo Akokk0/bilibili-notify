@@ -45,28 +45,28 @@ WORKDIR /repo
 # node_modules / lib / dist / .git so the build context stays small.
 COPY . .
 
-# Single pnpm workspace covers packages/*, koishi/*, apps/*. Install once;
-# pnpm -r builds in topological order so packages/* land before koishi
-# shells and apps/server, which depend on them via workspace:* protocol.
-# We skip the koishi-console vue client build (`build:client`) — the
-# dashboard image does not consume the koishi UI.
+# Single pnpm workspace covers packages/*, koishi/*, apps/*. Install once.
 #
 # `.dockerignore` 排除 .git,而 root prepare 脚本调 `lefthook install`,
 # 该命令要求在 git 工作区里跑 → 这里临时 init 一个空仓让它写完 hooks
 # 即可(builder 用完即弃,不会带进 runtime)。
 RUN git init -q . && pnpm install --frozen-lockfile
 
-# 拆两阶段 + --stream:GHA buildx 默认 batched 输出,17+ 包 build 静默累积时
-# 卡死一个包就整体看不出在哪。--stream 让各包输出实时刷出;先 packages/* 再
-# koishi/* + apps/* 是因为 koishi/* 与 apps/* 都依赖 packages/*(workspace:*
-# protocol),按拓扑序分两轮更利于定位"哪个包卡了"。
+# 只构建镜像真正消费的三块(旧版 `pnpm -r` 全 workspace 扫一遍,koishi/* 的产物
+# 从未进过 runtime 镜像,纯浪费 CI 时间):
+#   1. packages/*  —— server bundle 的内联输入(vp pack 经各包 exports 解析 lib/)。
+#   2. apps/web    —— dashboard 静态资源。
+#   3. apps/server build:bundle + 装配 —— 自包含单文件 bundle(全部依赖内联),
+#      assemble-server-bundle.mjs 把运行时按路径读取的资产(jieba wasm / jsdom
+#      xhr worker / 词云 static)+ bn.config.example.yaml + package.json 搬进 dist/。
+# --stream:GHA buildx 默认 batched 输出,多包 build 静默累积时卡死一个包就整体
+# 看不出在哪,--stream 让各包输出实时刷出。
+# script 里的 `vp` 从根 devDependency(vite-plus)的 node_modules/.bin 解析,
+# builder 无需全局 vp。
 RUN pnpm -r --filter './packages/*' --stream run build
-RUN pnpm -r --filter './koishi/*' --filter './apps/*' --stream run build
-
-# Drop devDependencies so the final image only ships runtime deps.
-# pnpm 11 的 prune 不支持 -r;workspace 模式下逐包 prune 反而容易破坏
-# link 关系。runtime 阶段 selective COPY 只搬 lib/dist + 必需的 node_modules,
-# devDep 不会进最终镜像 —— 这里直接跳过 prune,简单可靠。
+RUN pnpm --filter '@bilibili-notify/web' run build
+RUN pnpm --filter '@bilibili-notify/server' run build:bundle \
+    && node scripts/assemble-server-bundle.mjs
 
 # ---- runtime ----------------------------------------------------------------
 
@@ -95,33 +95,16 @@ ENV NODE_ENV=production \
     BN_CHROME_PATH=/usr/bin/chromium \
     BN_WEB_DIST=/app/web-dist
 
-# Preserve relative paths so pnpm `workspace:*` symlinks resolve in the
-# runtime image. With node-linker=hoisted, most third-party deps land in
-# /repo/node_modules; workspace deps live as symlinks under each consumer's
-# node_modules. We mirror that whole shape under /app.
+# server 是自包含单文件 bundle(全部 JS 依赖内联,scripts/assemble-server-bundle.mjs
+# 已把 wasm / worker / static 资产与 package.json 装配进 dist/),镜像里**没有
+# node_modules**。旧版整搬 hoisted workspace store(804MB,含构建工具与别端依赖),
+# bundle 后 app 载荷 ~15MB —— 用户每次升级只重拉这一小层。
+# WORKDIR=/app:resolveAppVersion 读 process.cwd()/package.json(见
+# src/routes/health.ts),装配好的 package.json 就在 bundle 旁边。
 WORKDIR /app
-
-# 小文件合并(全是文件,multi-source COPY 到 ./ 时各自落到对应名);大目录单独
-# 成层,利于 buildx layer cache 增量复用 + push 时只 push 变动层。
-#
-# 注意:multi-source COPY **目录** 时,复制的是目录的**内容**(不保留源目录名作为
-# 子目录),所以 lib 不能跟 server/package.json 一起合 — 必须单独 COPY 才保留
-# /app/apps/server/lib/ 这一层(CMD `node lib/index.mjs` 依赖这个路径)。
-COPY --from=builder \
-     /repo/package.json \
-     /repo/pnpm-workspace.yaml \
-     /repo/apps/server/bn.config.example.yaml \
-     ./
-COPY --from=builder /repo/node_modules ./node_modules
-COPY --from=builder /repo/packages ./packages
-COPY --from=builder /repo/apps/server/lib ./apps/server/lib
-# apps/server/package.json —— 既供 node 解析 workspace 包,也供运行时
-# resolveAppVersion 读取独立端版本号(见 src/routes/health.ts)。
-COPY --from=builder /repo/apps/server/package.json ./apps/server/package.json
-COPY --from=builder /repo/apps/server/node_modules ./apps/server/node_modules
+COPY --from=builder /repo/apps/server/dist ./
+# web dashboard 静态资源独立成层(BN_WEB_DIST=/app/web-dist,绝对路径)。
 COPY --from=builder /repo/apps/web/dist ./web-dist
-
-WORKDIR /app/apps/server
 
 # Persistent volumes — /data 是 state(订阅 / 历史 / 日志 / 凭据 等),/config 是
 # bootstrap yaml(B 模型 first-boot seed 在这写)。两个 root 级 mount point 平级。
@@ -132,4 +115,4 @@ EXPOSE 8787
 # tini ensures Node sees SIGTERM / SIGINT and shuts down cleanly (graceful path
 # in src/index.ts disposes engines, ws, puppeteer, http server in order).
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["node", "lib/index.mjs"]
+CMD ["node", "index.mjs"]
