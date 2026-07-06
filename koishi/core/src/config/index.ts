@@ -1,16 +1,19 @@
 import { Schema } from "koishi";
 import { type AccountConfig, AccountConfigSchema } from "./account";
 import { type PushConfig, PushConfigSchema } from "./push";
+import { type RenderConfig, RenderConfigSchema } from "./render";
 import { type SubscriptionsConfig, SubscriptionsConfigSchema } from "./subscriptions";
 
 export type { AccountConfig } from "./account";
 export type { MasterConfig, PushConfig, QuietHourRange } from "./push";
+export type { RenderConfig } from "./render";
 export type { FlatSubConfigItem, SubscriptionsConfig } from "./subscriptions";
 
 export interface BilibiliNotifyConfig {
 	account: AccountConfig;
 	push: PushConfig;
 	subscriptions: SubscriptionsConfig;
+	render: RenderConfig;
 	/**
 	 * 高级订阅总开关。TODO(切片 8):吸收 advanced-subscription 卫星包后并入
 	 * advancedSub 域(连同 advancedSub.subs 字典),此字段届时删除。
@@ -22,6 +25,7 @@ export const BilibiliNotifyConfigSchema: Schema<BilibiliNotifyConfig> = Schema.o
 	account: AccountConfigSchema,
 	push: PushConfigSchema,
 	subscriptions: SubscriptionsConfigSchema,
+	render: RenderConfigSchema,
 	advancedSub: Schema.boolean()
 		.default(false)
 		.description(

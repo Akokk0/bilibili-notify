@@ -45,8 +45,7 @@
 	},
 	"devDependencies": {
 		"koishi-plugin-bilibili-notify": "workspace:^",
-		"koishi-plugin-bilibili-notify-ai": "workspace:^",
-		"koishi-plugin-bilibili-notify-image": "workspace:^"
+		"koishi-plugin-bilibili-notify-ai": "workspace:^"
 	},
 	"peerDependencies": {
 		"koishi": "^4.18.11",

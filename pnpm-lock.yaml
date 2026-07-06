@@ -290,6 +290,9 @@ importers:
       '@bilibili-notify/api':
         specifier: workspace:^
         version: link:../../packages/api
+      '@bilibili-notify/image':
+        specifier: workspace:^
+        version: link:../../packages/image
       '@bilibili-notify/internal':
         specifier: workspace:^
         version: link:../../packages/internal
@@ -361,27 +364,6 @@ importers:
       koishi-plugin-bilibili-notify-ai:
         specifier: workspace:^
         version: link:../ai
-      koishi-plugin-bilibili-notify-image:
-        specifier: workspace:^
-        version: link:../image
-
-  koishi/image:
-    dependencies:
-      '@bilibili-notify/image':
-        specifier: workspace:^
-        version: link:../../packages/image
-      '@bilibili-notify/internal':
-        specifier: workspace:^
-        version: link:../../packages/internal
-      '@bilibili-notify/koishi-runtime':
-        specifier: workspace:^
-        version: link:../runtime
-      koishi:
-        specifier: ^4.18.11
-        version: 4.18.11(@cordisjs/plugin-http@0.6.3(cordis@3.18.1))(cordis@3.18.1)
-      koishi-plugin-puppeteer:
-        specifier: '*'
-        version: 3.9.0(koishi@4.18.11(@cordisjs/plugin-http@0.6.3(cordis@3.18.1))(cordis@3.18.1))
 
   koishi/live:
     dependencies:
@@ -413,9 +395,6 @@ importers:
       koishi-plugin-bilibili-notify-ai:
         specifier: workspace:^
         version: link:../ai
-      koishi-plugin-bilibili-notify-image:
-        specifier: workspace:^
-        version: link:../image
 
   koishi/runtime:
     dependencies:

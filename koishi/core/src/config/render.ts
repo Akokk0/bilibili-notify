@@ -1,7 +1,8 @@
 import { DEFAULT_CARD_STYLE } from "@bilibili-notify/internal";
 import { Schema } from "koishi";
 
-export interface BilibiliNotifyImageConfig {
+export interface RenderConfig {
+	enabled: boolean;
 	logLevel: number;
 	cardColorStart: string;
 	cardColorEnd: string;
@@ -17,7 +18,13 @@ export interface BilibiliNotifyImageConfig {
 	showFans: boolean;
 }
 
-export const BilibiliNotifyImageConfig: Schema<BilibiliNotifyImageConfig> = Schema.object({
+export const RenderConfigSchema: Schema<RenderConfig> = Schema.object({
+	enabled: Schema.boolean()
+		.default(false)
+		.description(
+			"要不要让女仆把推送渲染成好看的图片卡片呢？需要额外装一个 koishi-plugin-puppeteer 才能真正出图哦～没装的话女仆会乖乖降级发纯文字，不会卡住其它功能的 (๑•̀ㅂ•́)و✧",
+		),
+
 	logLevel: Schema.number()
 		.min(1)
 		.max(3)
@@ -26,6 +33,7 @@ export const BilibiliNotifyImageConfig: Schema<BilibiliNotifyImageConfig> = Sche
 		.description(
 			"这里可以设置日志等级喔～3 是最详细的调试信息，1 是只显示错误信息。主人可以根据需要选择合适的等级，让女仆更好地为您服务 (๑•̀ㅂ•́)و✧",
 		),
+
 	cardColorStart: Schema.string()
 		.default(DEFAULT_CARD_STYLE.cardColorStart)
 		.description(
@@ -48,4 +56,4 @@ export const BilibiliNotifyImageConfig: Schema<BilibiliNotifyImageConfig> = Sche
 	showFans: Schema.boolean()
 		.default(DEFAULT_CARD_STYLE.showFans)
 		.description("直播卡数据区是否显示粉丝数据(当前粉丝数 / 累计观看 / 粉丝变化) (*´∀`)~♡"),
-});
+}).description("图片渲染 · 卡片样式");

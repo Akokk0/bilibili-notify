@@ -14,6 +14,7 @@ import {} from "@koishijs/plugin-notifier";
 import type { Context, Schema } from "koishi";
 import BilibiliNotifyDataServer from "./bridges/data-server";
 import { type BilibiliNotifyConfig, BilibiliNotifyConfigSchema } from "./config";
+import BilibiliNotifyImage from "./render/service";
 import BilibiliNotifyServerManager from "./runtime/bootstrap";
 import type { SubscriptionOp as LegacySubscriptionOp } from "./types";
 
@@ -109,6 +110,11 @@ export function apply(ctx: Context, config: BilibiliNotifyConfig): void {
 	ctx.plugin(BilibiliNotifyDataServer);
 	// Register ServerManager (lifecycle orchestrator)
 	ctx.plugin(BilibiliNotifyServerManager, config);
+	// Register image rendering (puppeteer is an optional inject; missing it
+	// degrades to plain text, see render/service.ts).
+	if (config.render.enabled) {
+		ctx.plugin(BilibiliNotifyImage, config.render);
+	}
 	// ctx.scope here is the bilibili-notify fork tracked by the Koishi loader.
 	// Server manager emits this event to update the top-level config entry so changes persist.
 	ctx.on("bilibili-notify/update-config", (newConfig) => {

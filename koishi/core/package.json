@@ -40,6 +40,7 @@
 	},
 	"dependencies": {
 		"@bilibili-notify/api": "workspace:^",
+		"@bilibili-notify/image": "workspace:^",
 		"@bilibili-notify/internal": "workspace:^",
 		"@bilibili-notify/koishi-runtime": "workspace:^",
 		"@bilibili-notify/push": "workspace:^",
@@ -57,7 +58,13 @@
 	"peerDependencies": {
 		"@koishijs/plugin-console": "^5.30.11",
 		"@koishijs/plugin-notifier": "*",
-		"koishi": "^4.18.11"
+		"koishi": "^4.18.11",
+		"koishi-plugin-puppeteer": "*"
+	},
+	"peerDependenciesMeta": {
+		"koishi-plugin-puppeteer": {
+			"optional": true
+		}
 	},
 	"engines": {
 		"node": ">=20.0.0"
@@ -72,6 +79,9 @@
 				"bilibili-notify-dynamic",
 				"bilibili-notify-live",
 				"bilibili-notify-advanced-subscription",
+				"puppeteer"
+			],
+			"provides": [
 				"bilibili-notify-image"
 			]
 		},

@@ -1,8 +1,9 @@
-import { ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
+import { ImageRenderer } from "@bilibili-notify/image";
 import { makeKoishiServiceContext } from "@bilibili-notify/koishi-runtime";
 import { type Context, Service } from "koishi";
 import type {} from "koishi-plugin-puppeteer";
-import type { BilibiliNotifyImageConfig } from "./config";
+import type { RenderConfig } from "../config/render";
+import { adaptPuppeteer } from "./puppeteer-adapter";
 
 declare module "koishi" {
 	interface Context {
@@ -12,26 +13,13 @@ declare module "koishi" {
 
 const SERVICE_NAME = "bilibili-notify-image";
 
-/**
- * koishi-plugin-puppeteer 的 `ctx.puppeteer.page()` 返回的 Page 与 image-engine
- * 的 PuppeteerLike.PageLike 结构等价（setContent / waitForFunction / $ /
- * screenshot / close 全部存在且签名相容）。这里只做一次类型擦除。
- */
-function adaptPuppeteer(ctx: Context): PuppeteerLike {
-	return {
-		async page() {
-			const page = await ctx.puppeteer.page();
-			return page as unknown as Awaited<ReturnType<PuppeteerLike["page"]>>;
-		},
-	};
-}
-
-class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
-	static inject = ["puppeteer"];
+class BilibiliNotifyImage extends Service<RenderConfig> {
+	static readonly [Service.provide] = SERVICE_NAME;
+	static inject = { puppeteer: { required: false } };
 
 	readonly engine: ImageRenderer;
 
-	constructor(ctx: Context, config: BilibiliNotifyImageConfig) {
+	constructor(ctx: Context, config: RenderConfig) {
 		super(ctx, SERVICE_NAME);
 		this.config = config;
 		const serviceCtx = makeKoishiServiceContext(ctx, SERVICE_NAME, config.logLevel);
@@ -51,6 +39,13 @@ class BilibiliNotifyImage extends Service<BilibiliNotifyImageConfig> {
 
 	protected start() {
 		this.engine.start();
+		if (!this.ctx.puppeteer) {
+			this.ctx.emit(
+				"bilibili-notify/engine-error",
+				"render",
+				"未检测到 koishi-plugin-puppeteer，图片渲染已降级为纯文本",
+			);
+		}
 	}
 
 	protected stop() {
