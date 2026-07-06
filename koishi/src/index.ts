@@ -48,6 +48,7 @@ declare module "@koishijs/plugin-console" {
 
 export const inject = {
 	required: ["notifier", "console"],
+	optional: ["puppeteer"],
 };
 export const name = "bilibili-notify";
 
