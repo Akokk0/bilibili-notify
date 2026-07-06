@@ -6,7 +6,7 @@ Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考�
 
 单 pnpm workspace monorepo。一套平台中立业务核心,两种产品形态:
 
-- **Koishi 子插件**(`koishi/`)—— npm 发布 `koishi-plugin-bilibili-notify*`
+- **Koishi 插件**(`koishi/`)—— npm 发布单一包 `koishi-plugin-bilibili-notify`
 - **独立 Hono + React Dashboard**(`apps/`)—— 后续主推形态,发 Docker 镜像
 
 两端消费同一套 `@bilibili-notify/*` 核心包。
@@ -32,7 +32,7 @@ vp run -F <pkg> build  # 构建单个包
 
 ```
 packages/   平台中立业务核心(@bilibili-notify/*)
-koishi/     Koishi 薄壳插件(koishi-plugin-bilibili-notify*)
+koishi/     Koishi 插件(koishi-plugin-bilibili-notify)
 apps/       Hono 服务端 + React Dashboard
 ```
 

@@ -10,18 +10,29 @@
 
 - 扫码登录 B 站，登录凭证本地加密存储
 - 在插件配置中填写订阅列表，支持动态和直播订阅
-- 提供控制台 UI 管理登录状态
-
-> [!NOTE]
-> 动态推送需安装 `koishi-plugin-bilibili-notify-dynamic`
->
-> 直播推送需安装 `koishi-plugin-bilibili-notify-live`
->
-> 如需更灵活的订阅配置，请安装 `koishi-plugin-bilibili-notify-advanced-subscription`
+- 动态推送、直播推送、图片渲染、AI 点评、高级订阅全部内置，装这一个包就够了
 
 ## 安装
 
-在 Koishi 插件市场中搜索 `bilibili-notify` 并安装。
+在 Koishi 插件市场中搜索 `bilibili-notify` 并安装。**不再需要**额外安装 `koishi-plugin-bilibili-notify-dynamic` / `-live` / `-ai` / `-image` / `-advanced-subscription` —— 这五个包自 6.0.0 起停止更新，功能已全部并入本包。
+
+> [!IMPORTANT]
+> 从旧版（多插件版本，`koishi-plugin-bilibili-notify` < 6.0.0）升级的用户：请先卸载上述五个子插件，只保留并升级本包，再按下方「配置结构」重新填写一遍配置。旧插件各自的配置字段不会自动迁移。
+
+## 配置结构
+
+控制台配置项按功能域分组：
+
+| 域 | 对应功能 |
+|---|---|
+| `account` | B 站账号：User-Agent、日志级别、登录健康检查间隔、cookie 加密口令 |
+| `push` | 推送目标：主人账号 / 平台、安静时段 |
+| `subscriptions` | 基础订阅列表（UP 主 + 推送目标） |
+| `render` | 图片渲染开关与卡片样式（需要 `koishi-plugin-puppeteer`，未安装时自动降级为纯文本） |
+| `ai` | AI 点评/对话开关与模型配置 |
+| `dynamic` | 动态推送的模板、过滤、图集等设置（恒开，核心能力） |
+| `live` | 直播推送的词云、总结、卡片文案等设置（恒开，核心能力） |
+| `advancedSub` | 高级订阅开关：按 UP 主粒度精细配置，替代 `subscriptions` 的扁平列表 |
 
 ## 使用方法
 
@@ -40,7 +51,10 @@
 | `bili list` | 查看当前订阅列表 |
 | `bili ll` | 查看订阅 UP 主的直播状态 |
 | `bili dyn <uid> [index]` | 手动推送指定 UP 主的动态 |
-| `sys start/stop/restart` | 插件启动 / 停止 / 重启 |
+| `bili ai [prompt]` | 向 AI 发一条测试消息（需开启 `ai.enabled`） |
+| `bili chat [message]` | 与 AI 多轮对话，`-c` 清除会话历史（需开启 `ai.enabled`） |
+| `status auth/dyn/live/sm` | 查看登录状态 / 动态监测 / 直播监测 / 订阅管理对象 |
+| `bn start/stop/restart` | 插件启动 / 停止 / 重启 |
 
 > [!IMPORTANT]
 > 指令需要 `authority:3` 及以上权限才能使用，可参考 [权限管理](https://koishi.chat/zh-CN/manual/usage/customize.html)
