@@ -2,6 +2,7 @@ import { Schema } from "koishi";
 import { type AccountConfig, AccountConfigSchema } from "./account";
 import { type AIConfig, AIConfigSchema } from "./ai";
 import { type DynamicConfig, DynamicConfigSchema } from "./dynamic";
+import { type LiveConfig, LiveConfigSchema } from "./live";
 import { type PushConfig, PushConfigSchema } from "./push";
 import { type RenderConfig, RenderConfigSchema } from "./render";
 import { type SubscriptionsConfig, SubscriptionsConfigSchema } from "./subscriptions";
@@ -9,6 +10,7 @@ import { type SubscriptionsConfig, SubscriptionsConfigSchema } from "./subscript
 export type { AccountConfig } from "./account";
 export type { AIConfig, PersonaConfig } from "./ai";
 export type { DynamicConfig } from "./dynamic";
+export type { LiveConfig } from "./live";
 export type { MasterConfig, PushConfig, QuietHourRange } from "./push";
 export type { RenderConfig } from "./render";
 export type { FlatSubConfigItem, SubscriptionsConfig } from "./subscriptions";
@@ -20,6 +22,7 @@ export interface BilibiliNotifyConfig {
 	render: RenderConfig;
 	ai: AIConfig;
 	dynamic: DynamicConfig;
+	live: LiveConfig;
 	/**
 	 * 高级订阅总开关。TODO(切片 8):吸收 advanced-subscription 卫星包后并入
 	 * advancedSub 域(连同 advancedSub.subs 字典),此字段届时删除。
@@ -34,6 +37,7 @@ export const BilibiliNotifyConfigSchema: Schema<BilibiliNotifyConfig> = Schema.o
 	render: RenderConfigSchema,
 	ai: AIConfigSchema,
 	dynamic: DynamicConfigSchema,
+	live: LiveConfigSchema,
 	advancedSub: Schema.boolean()
 		.default(false)
 		.description(

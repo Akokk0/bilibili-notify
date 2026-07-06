@@ -45,6 +45,7 @@
 		"@bilibili-notify/image": "workspace:^",
 		"@bilibili-notify/internal": "workspace:^",
 		"@bilibili-notify/koishi-runtime": "workspace:^",
+		"@bilibili-notify/live": "workspace:^",
 		"@bilibili-notify/push": "workspace:^",
 		"@bilibili-notify/storage": "workspace:^",
 		"@bilibili-notify/subscription": "workspace:^"
@@ -78,14 +79,14 @@
 				"notifier"
 			],
 			"optional": [
-				"bilibili-notify-live",
 				"bilibili-notify-advanced-subscription",
 				"puppeteer"
 			],
 			"provides": [
 				"bilibili-notify-image",
 				"bilibili-notify-ai",
-				"bilibili-notify-dynamic"
+				"bilibili-notify-dynamic",
+				"bilibili-notify-live"
 			]
 		},
 		"description": {

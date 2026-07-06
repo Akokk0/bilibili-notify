@@ -16,10 +16,10 @@ import {
 	type Subscription,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import type { BilibiliNotifyLiveConfig } from "../config";
+import type { LiveConfig } from "../../config/live";
 import { buildAiOverride, resolveFeatures, storeToLiveView, storeToSubItemView } from "../sub-view";
 
-function makeConfig(over: Partial<BilibiliNotifyLiveConfig> = {}): BilibiliNotifyLiveConfig {
+function makeConfig(over: Partial<LiveConfig> = {}): LiveConfig {
 	return {
 		logLevel: 1,
 		pushTime: 4,

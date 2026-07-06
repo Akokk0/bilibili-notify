@@ -1,7 +1,7 @@
 import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
 import type {} from "@koishijs/plugin-help";
 import { h } from "koishi";
-import type { BilibiliNotifyLive } from "./live-service";
+import type { BilibiliNotifyLive } from "../live/service";
 
 export function liveCommands(this: BilibiliNotifyLive): void {
 	this.ctx

@@ -18,9 +18,8 @@ import {
 } from "@bilibili-notify/live";
 import type { BilibiliPush } from "@bilibili-notify/push";
 import { type Awaitable, type Context, type Element, h, Service } from "koishi";
-import type {} from "koishi-plugin-bilibili-notify";
-import { liveCommands } from "./commands";
-import type { BilibiliNotifyLiveConfig } from "./config";
+import { liveCommands } from "../commands/live";
+import type { LiveConfig } from "../config/live";
 import { liveTypeAllowsAtAll, liveTypeToFeature } from "./live-type-map";
 import { resolveFeatures, storeToLiveView, storeToSubItemView } from "./sub-view";
 
@@ -189,18 +188,18 @@ const koishiContentBuilder: LiveContentBuilder = {
 	},
 };
 
-export class BilibiliNotifyLive extends Service<BilibiliNotifyLiveConfig> {
+export class BilibiliNotifyLive extends Service<LiveConfig> {
 	static readonly [Service.provide] = SERVICE_NAME;
 	static readonly inject = ["bilibili-notify"];
 
 	private engine?: LiveEngine;
 
-	constructor(ctx: Context, config: BilibiliNotifyLiveConfig) {
+	constructor(ctx: Context, config: LiveConfig) {
 		super(ctx, SERVICE_NAME);
 		this.config = config;
 	}
 
-	private toEngineConfig(config: BilibiliNotifyLiveConfig): LiveEngineConfig {
+	private toEngineConfig(config: LiveConfig): LiveEngineConfig {
 		return {
 			wordcloudStopWords: config.wordcloudStopWords,
 			pushTime: config.pushTime,

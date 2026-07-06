@@ -5,7 +5,7 @@ import {
 	type Subscription,
 } from "@bilibili-notify/internal";
 import type { SubItemView, SubscriptionsView } from "@bilibili-notify/live";
-import type { BilibiliNotifyLiveConfig } from "./config";
+import type { LiveConfig } from "../config/live";
 
 /**
  * features:静态默认 ?? per-UP override。koishi 端没有「全局 features 配置」——
@@ -51,10 +51,7 @@ export function buildAiOverride(
  * ?? per-UP;阈值 / 调度走 per-UP override ?? live 插件 config —— 两层,无第三层。
  * 引擎 / 监听层直接读 `SubItemView.X`,不再二次回退。
  */
-export function storeToSubItemView(
-	sub: Subscription,
-	config: BilibiliNotifyLiveConfig,
-): SubItemView {
+export function storeToSubItemView(sub: Subscription, config: LiveConfig): SubItemView {
 	const features = resolveFeatures(sub);
 	return {
 		uid: sub.uid,
@@ -126,7 +123,7 @@ export function storeToSubItemView(
 /** 把整个 SubscriptionStore 折算成 LiveEngine 启动用的 SubscriptionsView。 */
 export function storeToLiveView(
 	store: { list(): Subscription[] },
-	config: BilibiliNotifyLiveConfig,
+	config: LiveConfig,
 ): SubscriptionsView {
 	const view: SubscriptionsView = {};
 	for (const sub of store.list()) {

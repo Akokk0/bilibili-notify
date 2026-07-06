@@ -5,7 +5,7 @@ import {
 } from "@bilibili-notify/internal";
 import { Schema } from "koishi";
 
-export interface BilibiliNotifyLiveConfig {
+export interface LiveConfig {
 	logLevel: number;
 	wordcloudStopWords?: string;
 	pushTime: number;
@@ -31,7 +31,7 @@ export interface BilibiliNotifyLiveConfig {
 	liveUrl: boolean;
 }
 
-export const BilibiliNotifyLiveConfig: Schema<BilibiliNotifyLiveConfig> = Schema.object({
+export const LiveConfigSchema: Schema<LiveConfig> = Schema.object({
 	logLevel: Schema.number()
 		.min(1)
 		.max(3)
@@ -160,4 +160,4 @@ export const BilibiliNotifyLiveConfig: Schema<BilibiliNotifyLiveConfig> = Schema
 			Schema.object({}),
 		]),
 	]),
-});
+}).description("直播推送");
