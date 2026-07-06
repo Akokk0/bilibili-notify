@@ -2,9 +2,6 @@
 "@bilibili-notify/internal": minor
 "@bilibili-notify/live": minor
 "@bilibili-notify/dynamic": minor
-"koishi-plugin-bilibili-notify-dynamic": minor
-"koishi-plugin-bilibili-notify-live": minor
-"koishi-plugin-bilibili-notify-advanced-subscription": minor
 ---
 
 动态推送文本模板可自定义 + 全部消息模板占位符统一 `{name}` 风格

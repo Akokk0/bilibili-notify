@@ -2,9 +2,6 @@
 "@bilibili-notify/internal": patch
 "@bilibili-notify/live": patch
 "koishi-plugin-bilibili-notify": patch
-"koishi-plugin-bilibili-notify-dynamic": patch
-"koishi-plugin-bilibili-notify-live": patch
-"koishi-plugin-bilibili-notify-ai": patch
 ---
 
 koishi 端 config 模型整体收敛,internal 当唯一默认源。

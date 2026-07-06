@@ -2,8 +2,6 @@
 "@bilibili-notify/internal": patch
 "@bilibili-notify/dynamic": patch
 "koishi-plugin-bilibili-notify": patch
-"koishi-plugin-bilibili-notify-dynamic": patch
-"koishi-plugin-bilibili-notify-advanced-subscription": patch
 ---
 
 动态图集开关从 `AppConfig` 顶层下移到独立的 `GlobalDefaults.imageGroup` 子段,新增 per-UP 覆盖能力。

@@ -6,15 +6,9 @@
 "@bilibili-notify/image": patch
 "@bilibili-notify/dynamic": patch
 "@bilibili-notify/live": patch
-"@bilibili-notify/koishi-runtime": patch
 "@bilibili-notify/subscription": major
 "@bilibili-notify/push": major
 "koishi-plugin-bilibili-notify": major
-"koishi-plugin-bilibili-notify-advanced-subscription": major
-"koishi-plugin-bilibili-notify-live": major
-"koishi-plugin-bilibili-notify-dynamic": major
-"koishi-plugin-bilibili-notify-ai": major
-"koishi-plugin-bilibili-notify-image": major
 ---
 
 monorepo 拆分后首次集中发版,清算自仓库重构(`93acb62`)以来的累积改动。业务核心独立成平台中立的 `@bilibili-notify/*` 包,Koishi 插件成为消费这套核心的薄壳;同一套核心另外支撑 Hono + React 独立端(独立端发 Docker 镜像,不在本次 npm 发布范围)。
@@ -27,7 +21,6 @@ monorepo 拆分后首次集中发版,清算自仓库重构(`93acb62`)以来的�
 - **`@bilibili-notify/image`** —— 平台中立的通知卡片渲染核心(动态 / 直播 / 上舰 / SC / 词云)。
 - **`@bilibili-notify/dynamic`** —— 平台中立的动态轮询 / 过滤 / 渲染核心。
 - **`@bilibili-notify/live`** —— 平台中立的直播监听 / 弹幕收集 / 词云 / AI 总结核心。
-- **`@bilibili-notify/koishi-runtime`** —— Koishi 侧运行时适配层(日志 / 配置 / 服务桥接)。
 
 ### 破坏性变更
 

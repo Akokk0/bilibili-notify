@@ -1,8 +1,6 @@
 ---
 "@bilibili-notify/dynamic": patch
 "@bilibili-notify/live": patch
-"koishi-plugin-bilibili-notify-dynamic": patch
-"koishi-plugin-bilibili-notify-live": patch
 ---
 
 修 koishi 端 AI 总结 / 图片渲染在 sibling service 时序不利时静默失效的潜伏 bug。
