@@ -1,5 +1,4 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
-import { makeKoishiServiceContext } from "@bilibili-notify/koishi-runtime";
 import type { BilibiliPush } from "@bilibili-notify/push";
 import { StorageManager } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
@@ -7,20 +6,30 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import {} from "@koishijs/plugin-help";
 import { type Awaitable, type Context, type Logger, Service } from "koishi";
 import type { LoginFlowBridge } from "../bridges/login-flow-bridge";
-import { biliCommands, statusCommands, sysCommands } from "../commands";
+import {
+	aiCommands,
+	biliCommands,
+	dynamicCommands,
+	liveCommands,
+	statusCommands,
+	sysCommands,
+} from "../commands";
 import type { BilibiliNotifyConfig } from "../config";
 import { buildStorageManagerOptions } from "./bootstrap-helpers";
-import { buildInternalsProbe, type InternalsShape } from "./internals-probe";
+import type { Engines } from "./engines";
 import { bringUp, type ManagerSlots, tearDown } from "./lifecycle";
 import { MasterNotifier } from "./master-notifier";
+import { makeKoishiServiceContext } from "./service-context";
 
 const SERVICE_NAME = "bilibili-notify";
 
 /**
- * Koishi `Service` shell. Owns the controllers (auth, subscriptions, health,
- * master-notifier) and the runtime singletons (api / push / storage). The
- * external surface (`probeInternals(token)`, `getInternals(token)`, `subList()`, `getAuthSnapshot()`)
- * preserves what commands, data-server, and downstream sub-plugins consume.
+ * Koishi `Service` shell。拥有 controllers(auth、订阅、健康检查、master-notifier)
+ * 与运行时单例(api / push / storage / engines)。render/ai/dynamic/live 四个引擎
+ * 不再是独立 Service,而是 `slots.engines` 里与 api/push 同生命周期的普通类实例
+ * (见 runtime/engines.ts)。commands 全部在 `start()` 里注册一次(不随 bringUp/
+ * tearDown 重复),经 `this.slots.engines` 动态读取"当前"引擎,避免 `bn restart`
+ * 导致 command action 重复挂载(切片9)。
  */
 class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 	static readonly [Service.provide] = SERVICE_NAME;
@@ -34,6 +43,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		store: null,
 		registry: null,
 		subLoader: null,
+		engines: null,
 		cleanups: [],
 	};
 	private running = false;
@@ -47,10 +57,10 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		this.serverLogger.level = config.account.logLevel;
 	}
 
-	private get api(): BilibiliAPI | null {
+	get api(): BilibiliAPI | null {
 		return this.slots.api;
 	}
-	private get push(): BilibiliPush | null {
+	get push(): BilibiliPush | null {
 		return this.slots.push;
 	}
 	private get loginBridge(): LoginFlowBridge | null {
@@ -59,6 +69,10 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 
 	get store(): SubscriptionStore | null {
 		return this.slots.store;
+	}
+
+	get engines(): Engines | null {
+		return this.slots.engines;
 	}
 
 	getAuthSnapshot() {
@@ -88,7 +102,14 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		await this.initStorage();
 		this.initControllers();
 		this.wireCookiePersistence();
+		// 全部 command 只注册一次(不随 bringUp/tearDown 重复),内部经 this.slots.*
+		// 动态读取"当前"引擎/api/push,`bn restart` 之间引擎实例更替对 command 透明。
 		sysCommands.call(this);
+		biliCommands.call(this);
+		statusCommands.call(this);
+		aiCommands.call(this);
+		dynamicCommands.call(this);
+		liveCommands.call(this);
 		if (!(await this.registerPlugin())) {
 			this.serverLogger.error("[module] 启动模块失败，请检查配置后重试");
 		}
@@ -99,25 +120,6 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		this.masterNotifier?.dispose();
 	}
 
-	/**
-	 * 向持有 BILIBILI_NOTIFY_TOKEN 的友好插件暴露 api / push / store 实例。
-	 * token 用于防误调；Koishi 同进程插件没有安全隔离,这里不把它当安全边界。
-	 */
-	probeInternals(token: symbol): ReturnType<typeof buildInternalsProbe> {
-		return buildInternalsProbe({
-			token,
-			api: this.api,
-			push: this.push,
-			store: this.slots.store,
-			registry: this.slots.registry,
-		});
-	}
-
-	getInternals(token: symbol): InternalsShape | null {
-		const probe = this.probeInternals(token);
-		return probe.ok ? probe.internals : null;
-	}
-
 	async registerPlugin(): Promise<boolean> {
 		if (this.running) return false;
 		try {
@@ -126,10 +128,6 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 				logger: this.serverLogger,
 				getConfig: () => this.config,
 				storageMgr: this.storageMgr,
-				registerCommands: () => {
-					biliCommands.call(this);
-					statusCommands.call(this);
-				},
 				slots: this.slots,
 				subList: () => this.subList(),
 			});

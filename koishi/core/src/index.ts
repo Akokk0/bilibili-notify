@@ -7,12 +7,8 @@ import {} from "@koishijs/plugin-console";
 // biome-ignore lint/correctness/noUnusedImports: module augmentation
 import {} from "@koishijs/plugin-notifier";
 import type { Context, Schema } from "koishi";
-import { BilibiliNotifyAI } from "./ai/service";
 import BilibiliNotifyDataServer from "./bridges/data-server";
 import { type BilibiliNotifyConfig, BilibiliNotifyConfigSchema } from "./config";
-import { BilibiliNotifyDynamic } from "./dynamic/service";
-import { BilibiliNotifyLive } from "./live/service";
-import BilibiliNotifyImage from "./render/service";
 import BilibiliNotifyServerManager from "./runtime/bootstrap";
 import type { SubscriptionOp as LegacySubscriptionOp } from "./types";
 
@@ -88,22 +84,10 @@ export const usage = /* html */ `
 export function apply(ctx: Context, config: BilibiliNotifyConfig): void {
 	// Register DataServer (console WebSocket for login status)
 	ctx.plugin(BilibiliNotifyDataServer);
-	// Register ServerManager (lifecycle orchestrator)
+	// Register ServerManager (lifecycle orchestrator). render/ai/dynamic/live
+	// are constructed inside its bringUp()/tearDown() lifecycle (runtime/engines.ts),
+	// not as independent ctx.plugin() registrations — see runtime/bootstrap.ts.
 	ctx.plugin(BilibiliNotifyServerManager, config);
-	// Register image rendering (puppeteer is an optional inject; missing it
-	// degrades to plain text, see render/service.ts).
-	if (config.render.enabled) {
-		ctx.plugin(BilibiliNotifyImage, config.render);
-	}
-	// Register AI commentary/chat (requires bilibili-notify's own internals,
-	// see ai/service.ts).
-	if (config.ai.enabled) {
-		ctx.plugin(BilibiliNotifyAI, config.ai);
-	}
-	// Register dynamic push and live push (always on, unlike render/ai —
-	// dynamic/live push are core capabilities, not optional add-ons).
-	ctx.plugin(BilibiliNotifyDynamic, config.dynamic);
-	ctx.plugin(BilibiliNotifyLive, config.live);
 	// ctx.scope here is the bilibili-notify fork tracked by the Koishi loader.
 	// Server manager emits this event to update the top-level config entry so changes persist.
 	ctx.on("bilibili-notify/update-config", (newConfig) => {

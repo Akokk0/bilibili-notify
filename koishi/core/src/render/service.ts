@@ -1,27 +1,22 @@
 import { ImageRenderer } from "@bilibili-notify/image";
-import { makeKoishiServiceContext } from "@bilibili-notify/koishi-runtime";
-import { type Context, Service } from "koishi";
+import type { Context } from "koishi";
 import type {} from "koishi-plugin-puppeteer";
 import type { RenderConfig } from "../config/render";
+import { makeKoishiServiceContext } from "../runtime/service-context";
 import { adaptPuppeteer } from "./puppeteer-adapter";
-
-declare module "koishi" {
-	interface Context {
-		"bilibili-notify-image": BilibiliNotifyImage;
-	}
-}
 
 const SERVICE_NAME = "bilibili-notify-image";
 
-class BilibiliNotifyImage extends Service<RenderConfig> {
-	static readonly [Service.provide] = SERVICE_NAME;
-	static inject = { puppeteer: { required: false } };
-
+/**
+ * 图片渲染引擎。普通类(非 koishi Service)——由 runtime/engines.ts 在 bringUp() 内
+ * 直接构造/析构,生命周期与 api/push 等核心运行时对象一致(见切片9)。
+ */
+class BilibiliNotifyImage {
+	private readonly ctx: Context;
 	readonly engine: ImageRenderer;
 
 	constructor(ctx: Context, config: RenderConfig) {
-		super(ctx, SERVICE_NAME);
-		this.config = config;
+		this.ctx = ctx;
 		const serviceCtx = makeKoishiServiceContext(ctx, SERVICE_NAME, config.logLevel);
 		this.engine = new ImageRenderer({
 			serviceCtx,
@@ -37,7 +32,7 @@ class BilibiliNotifyImage extends Service<RenderConfig> {
 		});
 	}
 
-	protected start() {
+	start(): void {
 		this.engine.start();
 		if (!this.ctx.puppeteer) {
 			this.ctx.emit(
@@ -48,7 +43,7 @@ class BilibiliNotifyImage extends Service<RenderConfig> {
 		}
 	}
 
-	protected stop() {
+	stop(): void {
 		this.engine.stop();
 	}
 

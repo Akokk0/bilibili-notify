@@ -1,22 +1,18 @@
+import type { CommentaryGenerator } from "@bilibili-notify/ai";
+import type { BilibiliAPI } from "@bilibili-notify/api";
 import { DynamicEngine, type DynamicEngineConfig } from "@bilibili-notify/dynamic";
+import type { ImageRenderer } from "@bilibili-notify/image";
 import type { SubscriptionOp } from "@bilibili-notify/internal";
 import { defaultMessageKindLayout } from "@bilibili-notify/internal";
-import {
-	makeKoishiMessageBus,
-	makeKoishiServiceContext,
-	resolveBilibiliNotifyCoreInternals,
-	tryResolveBilibiliNotifyCoreInternals,
-} from "@bilibili-notify/koishi-runtime";
-import { type Awaitable, type Context, Service } from "koishi";
-import { dynamicCommands } from "../commands/dynamic";
+import type { BilibiliPush } from "@bilibili-notify/push";
+import type { SubscriptionStore } from "@bilibili-notify/subscription";
+import type { Context } from "koishi";
 import type { DynamicConfig } from "../config/dynamic";
+import { makeKoishiMessageBus, makeKoishiServiceContext } from "../runtime/service-context";
 import { adaptPush } from "./push-adapter";
 import { resolveDynamicFeature, storeToDynamicView, subToDynamicView } from "./sub-view";
 
 declare module "koishi" {
-	interface Context {
-		"bilibili-notify-dynamic": BilibiliNotifyDynamic;
-	}
 	interface Events {
 		"bilibili-notify/subscription-changed"(ops: SubscriptionOp[]): void;
 		"bilibili-notify/engine-error"(source: string, message: string): void;
@@ -27,14 +23,28 @@ declare module "koishi" {
 
 const SERVICE_NAME = "bilibili-notify-dynamic";
 
-export class BilibiliNotifyDynamic extends Service<DynamicConfig> {
-	static readonly [Service.provide] = SERVICE_NAME;
-	static readonly inject = ["bilibili-notify"];
+export interface BilibiliNotifyDynamicDeps {
+	api: BilibiliAPI;
+	push: BilibiliPush;
+	store: SubscriptionStore;
+	image?: ImageRenderer;
+	ai?: CommentaryGenerator;
+}
 
+/**
+ * 动态推送引擎。普通类(非 koishi Service)——由 runtime/engines.ts 在 bringUp() 内
+ * 直接构造/析构,依赖(api/push/store/image?/ai?)通过 start() 参数一次性传入。
+ * render/ai 在同一轮 bringUp() 里先于 dynamic 构造完成,故直接持有引用即可,不再需要
+ * ctx.inject 的后置晚注入(见切片9)。
+ */
+export class BilibiliNotifyDynamic {
+	private readonly ctx: Context;
+	private readonly config: DynamicConfig;
 	private engine?: DynamicEngine;
+	private releaseSubChanged?: () => void;
 
 	constructor(ctx: Context, config: DynamicConfig) {
-		super(ctx, SERVICE_NAME);
+		this.ctx = ctx;
 		this.config = config;
 	}
 
@@ -54,81 +64,51 @@ export class BilibiliNotifyDynamic extends Service<DynamicConfig> {
 		};
 	}
 
-	protected start(): Awaitable<void> {
-		const core = this.ctx.get("bilibili-notify");
-		if (!core) {
-			throw new Error(
-				`${SERVICE_NAME} 无法获取 bilibili-notify 核心服务：请确认 koishi-plugin-bilibili-notify 已安装、启用并先于本插件启动。`,
-			);
-		}
-		const internals = resolveBilibiliNotifyCoreInternals(SERVICE_NAME, core);
-
+	start(deps: BilibiliNotifyDynamicDeps): void {
 		const serviceCtx = makeKoishiServiceContext(this.ctx, SERVICE_NAME, this.config.logLevel);
 		const bus = makeKoishiMessageBus(this.ctx);
-		const pushLike = adaptPush(internals.push);
+		const pushLike = adaptPush(deps.push);
 
-		// image / ai 不在 constructor 传入 —— 由下方 ctx.inject 在依赖服务 ready 时
-		// 后置注入。Service 类级 inject 仅含 "bilibili-notify",bilibili-notify-ai /
-		// -image 是 optional,启动时不等待。若在 constructor 一次性赋值,ai 服务比
-		// dynamic 晚 ready 的情况下 engine.ai 永远 undefined,推送时 silent skip。
 		this.engine = new DynamicEngine({
 			serviceCtx,
 			bus,
-			api: internals.api,
+			api: deps.api,
 			push: pushLike,
-			image: undefined,
-			ai: undefined,
+			image: deps.image,
+			ai: deps.ai,
 			config: this.toEngineConfig(this.config),
-			getSubs: () => {
-				const fresh = tryResolveBilibiliNotifyCoreInternals(
-					SERVICE_NAME,
-					this.ctx.get("bilibili-notify"),
-					(msg) =>
-						this.ctx.logger(SERVICE_NAME).debug(`[internals] 运行期获取核心实例失败：${msg}`),
-				);
-				if (!fresh) return null;
-				return storeToDynamicView(fresh.store);
-			},
+			getSubs: () => storeToDynamicView(deps.store),
 		});
 
 		this.engine.start();
 
-		// 后置注入:ctx.inject 在 deps ready 时跑 callback、deps 任一脱离时 dispose
-		// fork,deps 再次都齐时再次跑 callback。fork 跟随 this.ctx 销毁(service stop
-		// 时整体回收),无需手动 dispose。
-		this.ctx.inject(["bilibili-notify-ai"], (subCtx) => {
-			this.engine?.setAi(subCtx.get("bilibili-notify-ai")?.engine);
-			subCtx.on("dispose", () => this.engine?.setAi(undefined));
-		});
-		this.ctx.inject(["bilibili-notify-image"], (subCtx) => {
-			this.engine?.setImage(subCtx.get("bilibili-notify-image")?.engine);
-			subCtx.on("dispose", () => this.engine?.setImage(undefined));
-		});
-
 		// koishi 端订阅事件 → engine.applyOps
-		this.ctx.on("bilibili-notify/subscription-changed", (ops: SubscriptionOp[]) => {
-			// Translate new SubscriptionOp[] to the SubscriptionOpView format DynamicEngine expects
-			const opViews = ops.map((op) => {
-				if (op.type === "add") {
-					return { type: "add" as const, sub: subToDynamicView(op.sub) };
-				}
-				if (op.type === "remove") {
-					return { type: "delete" as const, uid: op.uid };
-				}
-				// update —— 仅推 features.dynamic 一字段(per-UP override ?? 静态默认)
-				return {
-					type: "update" as const,
-					uid: op.sub.uid,
-					changes: [{ scope: "dynamic" as const, dynamic: resolveDynamicFeature(op.sub) }],
-				};
-			});
-			this.engine?.applyOps(opViews);
-		});
-
-		dynamicCommands.call(this);
+		this.releaseSubChanged = this.ctx.on(
+			"bilibili-notify/subscription-changed",
+			(ops: SubscriptionOp[]) => {
+				// Translate new SubscriptionOp[] to the SubscriptionOpView format DynamicEngine expects
+				const opViews = ops.map((op) => {
+					if (op.type === "add") {
+						return { type: "add" as const, sub: subToDynamicView(op.sub) };
+					}
+					if (op.type === "remove") {
+						return { type: "delete" as const, uid: op.uid };
+					}
+					// update —— 仅推 features.dynamic 一字段(per-UP override ?? 静态默认)
+					return {
+						type: "update" as const,
+						uid: op.sub.uid,
+						changes: [{ scope: "dynamic" as const, dynamic: resolveDynamicFeature(op.sub) }],
+					};
+				});
+				this.engine?.applyOps(opViews);
+			},
+		);
 	}
 
-	protected stop(): Awaitable<void> {
+	stop(): void {
+		this.releaseSubChanged?.();
+		this.releaseSubChanged = undefined;
 		this.engine?.stop();
 		this.engine = undefined;
 	}

@@ -1,9 +1,8 @@
-import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
 import type {} from "@koishijs/plugin-help";
 import { h } from "koishi";
-import type { BilibiliNotifyLive } from "../live/service";
+import type BilibiliNotifyServerManager from "../runtime/bootstrap";
 
-export function liveCommands(this: BilibiliNotifyLive): void {
+export function liveCommands(this: BilibiliNotifyServerManager): void {
 	this.ctx
 		.command("bili.sc [price:number]", "生成测试 SC 卡片", { hidden: true })
 		.usage("生成测试 SC 卡片预览")
@@ -18,7 +17,7 @@ export function liveCommands(this: BilibiliNotifyLive): void {
 				text: "这是一条测试醒目留言！\n感谢主播的精彩直播 (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧",
 				price,
 			};
-			const imageService = this.ctx.get("bilibili-notify-image");
+			const imageService = this.engines?.render;
 			if (imageService) {
 				try {
 					const buf = await imageService.generateSCCard(mockData);
@@ -38,7 +37,7 @@ export function liveCommands(this: BilibiliNotifyLive): void {
 		.action(async ({ session }, level = 3) => {
 			const guardLevel = ([1, 2, 3].includes(level) ? level : 3) as 1 | 2 | 3;
 			const guardName = { 1: "舰长", 2: "提督", 3: "总督" }[guardLevel];
-			const imageService = this.ctx.get("bilibili-notify-image");
+			const imageService = this.engines?.render;
 			if (imageService) {
 				try {
 					const buf = await imageService.generateGuardCard(
@@ -130,18 +129,15 @@ export function liveCommands(this: BilibiliNotifyLive): void {
 			let masterAvatarUrl: string | undefined =
 				"https://i1.hdslb.com/bfs/face/aebb2639a0d47f2ce1fec0631f412eaf53d4a0be.jpg";
 
-			if (uid) {
-				const internals = this.ctx["bilibili-notify"].getInternals(BILIBILI_NOTIFY_TOKEN);
-				if (internals) {
-					const masterInfo = await internals.api.getMasterInfo(uid);
-					if (masterInfo.code === 0) {
-						masterName = masterInfo.data.info.uname;
-						masterAvatarUrl = masterInfo.data.info.face;
-					}
+			if (uid && this.api) {
+				const masterInfo = await this.api.getMasterInfo(uid);
+				if (masterInfo.code === 0) {
+					masterName = masterInfo.data.info.uname;
+					masterAvatarUrl = masterInfo.data.info.face;
 				}
 			}
 
-			const imageService = this.ctx.get("bilibili-notify-image");
+			const imageService = this.engines?.render;
 			if (imageService) {
 				try {
 					const buf = await imageService.generateWordCloudImg(
@@ -164,15 +160,14 @@ export function liveCommands(this: BilibiliNotifyLive): void {
 		.example("bili live 233 预览 UID 为 233 的直播间卡片")
 		.action(async ({ session }, uid) => {
 			if (!uid) return "请提供 UID";
-			const internals = this.ctx["bilibili-notify"].getInternals(BILIBILI_NOTIFY_TOKEN);
-			if (!internals) return "插件尚未就绪";
-			const masterInfo = await internals.api.getMasterInfo(uid);
+			if (!this.api) return "插件尚未就绪";
+			const masterInfo = await this.api.getMasterInfo(uid);
 			if (masterInfo.code !== 0) return `获取主播信息失败：${masterInfo.code}`;
 			const { info, room_id, follower_num } = masterInfo.data;
-			const roomInfo = await internals.api.getLiveRoomInfo(String(room_id));
+			const roomInfo = await this.api.getLiveRoomInfo(String(room_id));
 			if (roomInfo.code !== 0) return `获取直播间信息失败：${roomInfo.code}`;
 			const { live_status, live_time, title, area_name } = roomInfo.data;
-			const imageService = this.ctx.get("bilibili-notify-image");
+			const imageService = this.engines?.render;
 			if (imageService) {
 				try {
 					const buf = await imageService.generateLiveCard(

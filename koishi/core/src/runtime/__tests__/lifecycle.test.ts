@@ -1,14 +1,15 @@
 /**
- * 刻画测试:钉住 bringUp()/tearDown() 今天的槽位生命周期契约,作为切片9"接口面收尾"
- * 深度重构(render/ai/dynamic/live 从 Service 改造成普通类、构造挪进 bringUp() 内部)
- * 的安全网 —— 重构必须保持这几条不变量成立:
+ * 刻画测试:钉住 bringUp()/tearDown() 的槽位生命周期契约 —— 切片9深度重构(render/
+ * ai/dynamic/live 从 Service 改造成普通类、构造挪进 bringUp() 内部)的安全网。
  *
- * 1. bringUp() 一次性造好 api/push/loginBridge/store/registry/subLoader 并填入 slots。
- * 2. tearDown() 按顺序释放 cleanups、停掉各 slot、最终把 slots 全部清空为 null。
- * 3. `bn restart`(tearDown 再 bringUp)之后,新一轮的实例与旧一轮**不是同一个引用**——
- *    这是即将扩展到 render/ai/dynamic/live 四个引擎的核心契约(重构前这四个由独立
- *    ctx.plugin() 注册,restart 并不会重建它们;重构后它们与 api/push 同生命周期,
- *    必须同样在每轮 bringUp/tearDown 间保持"新鲜")。
+ * 1. bringUp() 一次性造好 api/push/loginBridge/store/registry/subLoader/engines
+ *    并填入 slots。
+ * 2. tearDown() 按顺序释放 cleanups、析构 engines、停掉各 slot、最终把 slots 全部
+ *    清空为 null。
+ * 3. `bn restart`(tearDown 再 bringUp)之后,新一轮的实例(含 engines)与旧一轮
+ *    **不是同一个引用**—— 这正是本次重构要修的潜伏 bug:重构前 render/ai/dynamic/
+ *    live 由独立 ctx.plugin() 注册,restart 并不会重建它们;重构后它们与 api/push
+ *    同生命周期,必须同样在每轮 bringUp/tearDown 间保持"新鲜"。
  * 4. cleanups 数组在 tearDown 后归零,不会跨重启累积 listener。
  */
 
@@ -22,6 +23,7 @@ const loginBridgeInstances: Array<Record<string, unknown>> = [];
 const subLoaderInstances: Array<Record<string, unknown>> = [];
 const registryInstances: Array<Record<string, unknown>> = [];
 const storeInstances: Array<Record<string, unknown>> = [];
+const enginesBuilt: Array<Record<string, unknown>> = [];
 
 vi.mock("@bilibili-notify/api", () => {
 	class BilibiliAPI {
@@ -60,7 +62,7 @@ vi.mock("@bilibili-notify/subscription", () => ({
 	}),
 }));
 
-vi.mock("@bilibili-notify/koishi-runtime", () => ({
+vi.mock("../service-context", () => ({
 	makeKoishiMessageBus: vi.fn(() => ({ on: vi.fn(), emit: vi.fn() })),
 	makeKoishiServiceContext: vi.fn(() => ({
 		logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -68,6 +70,18 @@ vi.mock("@bilibili-notify/koishi-runtime", () => ({
 		setTimeout: vi.fn(),
 		onDispose: vi.fn(),
 	})),
+}));
+
+// render/ai/dynamic/live 引擎的真实构造(DynamicEngine/LiveEngine 等)不是本测试
+// 关心的行为 —— 只钉住"bringUp 造一份、tearDown 析构一份、restart 换新一份"这个
+// 生命周期契约,engines 本身的构造细节由各自的单测覆盖。
+vi.mock("../engines", () => ({
+	buildEngines: vi.fn(() => {
+		const engines = { render: null, ai: null, dynamic: {}, live: {}, stop: vi.fn() };
+		enginesBuilt.push(engines);
+		return engines;
+	}),
+	disposeEngines: vi.fn(),
 }));
 
 vi.mock("../../bridges/login-flow-bridge", () => {
@@ -125,6 +139,7 @@ vi.mock("../../push/target-synthesis", () => ({
 }));
 
 const { bringUp, tearDown } = await import("../lifecycle");
+const { disposeEngines } = await import("../engines");
 
 function makeFakeCtx() {
 	const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
@@ -180,7 +195,21 @@ function makeLogger(): Logger {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as unknown as Logger;
 }
 
-describe("bringUp/tearDown — 槽位生命周期契约(切片9重构前基线)", () => {
+// biome-ignore lint/suspicious/noExplicitAny: ManagerSlots 测试替身
+function makeSlots(): any {
+	return {
+		api: null,
+		push: null,
+		loginBridge: null,
+		store: null,
+		registry: null,
+		subLoader: null,
+		engines: null,
+		cleanups: [],
+	};
+}
+
+describe("bringUp/tearDown — 槽位生命周期契约(切片9重构基线)", () => {
 	beforeEach(() => {
 		apiInstances.length = 0;
 		pushInstances.length = 0;
@@ -188,31 +217,22 @@ describe("bringUp/tearDown — 槽位生命周期契约(切片9重构前基线)"
 		subLoaderInstances.length = 0;
 		registryInstances.length = 0;
 		storeInstances.length = 0;
+		enginesBuilt.length = 0;
 	});
 
 	afterEach(() => {
 		vi.clearAllMocks();
 	});
 
-	it("bringUp() 一次性把 api/push/loginBridge/store/registry/subLoader 填进 slots", async () => {
+	it("bringUp() 一次性把 api/push/loginBridge/store/registry/subLoader/engines 填进 slots", async () => {
 		const ctx = makeFakeCtx();
-		// biome-ignore lint/suspicious/noExplicitAny: ManagerSlots 测试替身
-		const slots: any = {
-			api: null,
-			push: null,
-			loginBridge: null,
-			store: null,
-			registry: null,
-			subLoader: null,
-			cleanups: [],
-		};
+		const slots = makeSlots();
 
 		const ok = await bringUp({
 			ctx,
 			logger: makeLogger(),
 			getConfig: makeConfig,
 			storageMgr: makeStorageMgr(),
-			registerCommands: vi.fn(),
 			slots,
 			subList: () => "没有订阅任何UP",
 		});
@@ -224,26 +244,17 @@ describe("bringUp/tearDown — 槽位生命周期契约(切片9重构前基线)"
 		expect(slots.store).toBe(storeInstances[0]);
 		expect(slots.registry).toBe(registryInstances[0]);
 		expect(slots.subLoader).toBe(subLoaderInstances[0]);
+		expect(slots.engines).toBe(enginesBuilt[0]);
 	});
 
-	it("tearDown() 释放全部 cleanups、停掉各 slot、把 slots 清空为 null", async () => {
+	it("tearDown() 释放全部 cleanups、析构 engines、停掉各 slot、把 slots 清空为 null", async () => {
 		const ctx = makeFakeCtx();
-		// biome-ignore lint/suspicious/noExplicitAny: ManagerSlots 测试替身
-		const slots: any = {
-			api: null,
-			push: null,
-			loginBridge: null,
-			store: null,
-			registry: null,
-			subLoader: null,
-			cleanups: [],
-		};
+		const slots = makeSlots();
 		await bringUp({
 			ctx,
 			logger: makeLogger(),
 			getConfig: makeConfig,
 			storageMgr: makeStorageMgr(),
-			registerCommands: vi.fn(),
 			slots,
 			subList: () => "没有订阅任何UP",
 		});
@@ -252,10 +263,12 @@ describe("bringUp/tearDown — 槽位生命周期契约(切片9重构前基线)"
 		const push = slots.push;
 		const loginBridge = slots.loginBridge;
 		const subLoader = slots.subLoader;
+		const engines = slots.engines;
 		expect(slots.cleanups.length).toBeGreaterThan(0);
 
 		tearDown({ logger: makeLogger(), slots });
 
+		expect(disposeEngines).toHaveBeenCalledWith(engines);
 		expect(push.stop).toHaveBeenCalledTimes(1);
 		expect(api.stop).toHaveBeenCalledTimes(1);
 		expect(loginBridge.stop).toHaveBeenCalledTimes(1);
@@ -266,27 +279,18 @@ describe("bringUp/tearDown — 槽位生命周期契约(切片9重构前基线)"
 		expect(slots.store).toBeNull();
 		expect(slots.registry).toBeNull();
 		expect(slots.subLoader).toBeNull();
+		expect(slots.engines).toBeNull();
 		expect(slots.cleanups).toHaveLength(0);
 	});
 
-	it("`bn restart`(tearDown 再 bringUp)产出全新实例,不复用旧一轮的引用", async () => {
+	it("`bn restart`(tearDown 再 bringUp)产出全新实例(含 engines),不复用旧一轮的引用", async () => {
 		const ctx = makeFakeCtx();
-		// biome-ignore lint/suspicious/noExplicitAny: ManagerSlots 测试替身
-		const slots: any = {
-			api: null,
-			push: null,
-			loginBridge: null,
-			store: null,
-			registry: null,
-			subLoader: null,
-			cleanups: [],
-		};
+		const slots = makeSlots();
 		const deps = {
 			ctx,
 			logger: makeLogger(),
 			getConfig: makeConfig,
 			storageMgr: makeStorageMgr(),
-			registerCommands: vi.fn(),
 			slots,
 			subList: () => "没有订阅任何UP",
 		};
@@ -295,6 +299,7 @@ describe("bringUp/tearDown — 槽位生命周期契约(切片9重构前基线)"
 		const firstApi = slots.api;
 		const firstPush = slots.push;
 		const firstRegistry = slots.registry;
+		const firstEngines = slots.engines;
 
 		tearDown({ logger: makeLogger(), slots });
 		await bringUp(deps);
@@ -303,28 +308,21 @@ describe("bringUp/tearDown — 槽位生命周期契约(切片9重构前基线)"
 		expect(slots.api).not.toBe(firstApi);
 		expect(slots.push).not.toBe(firstPush);
 		expect(slots.registry).not.toBe(firstRegistry);
+		expect(slots.engines).not.toBeNull();
+		expect(slots.engines).not.toBe(firstEngines);
 		expect(apiInstances).toHaveLength(2);
 		expect(pushInstances).toHaveLength(2);
+		expect(enginesBuilt).toHaveLength(2);
 	});
 
 	it("cleanups 不跨重启累积:两轮 bringUp/tearDown 后计数与单轮一致", async () => {
 		const ctx = makeFakeCtx();
-		// biome-ignore lint/suspicious/noExplicitAny: ManagerSlots 测试替身
-		const slots: any = {
-			api: null,
-			push: null,
-			loginBridge: null,
-			store: null,
-			registry: null,
-			subLoader: null,
-			cleanups: [],
-		};
+		const slots = makeSlots();
 		const deps = {
 			ctx,
 			logger: makeLogger(),
 			getConfig: makeConfig,
 			storageMgr: makeStorageMgr(),
-			registerCommands: vi.fn(),
 			slots,
 			subList: () => "没有订阅任何UP",
 		};

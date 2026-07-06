@@ -1,14 +1,12 @@
+import type { CommentaryGenerator } from "@bilibili-notify/ai";
+import type { BilibiliAPI } from "@bilibili-notify/api";
+import type { ImageRenderer } from "@bilibili-notify/image";
 import type {
 	NotificationPayload,
 	PayloadSegment,
 	SubscriptionOp,
 } from "@bilibili-notify/internal";
 import { defaultMessageKindLayout } from "@bilibili-notify/internal";
-import {
-	makeKoishiServiceContext,
-	resolveBilibiliNotifyCoreInternals,
-	tryResolveBilibiliNotifyCoreInternals,
-} from "@bilibili-notify/koishi-runtime";
 import {
 	type LiveContentBuilder,
 	LiveEngine,
@@ -17,16 +15,14 @@ import {
 	type PushLike,
 } from "@bilibili-notify/live";
 import type { BilibiliPush } from "@bilibili-notify/push";
-import { type Awaitable, type Context, type Element, h, Service } from "koishi";
-import { liveCommands } from "../commands/live";
+import type { SubscriptionStore } from "@bilibili-notify/subscription";
+import { type Context, type Element, h } from "koishi";
 import type { LiveConfig } from "../config/live";
+import { makeKoishiServiceContext } from "../runtime/service-context";
 import { liveTypeAllowsAtAll, liveTypeToFeature } from "./live-type-map";
 import { resolveFeatures, storeToLiveView, storeToSubItemView } from "./sub-view";
 
 declare module "koishi" {
-	interface Context {
-		"bilibili-notify-live": BilibiliNotifyLive;
-	}
 	interface Events {
 		"bilibili-notify/subscription-changed"(ops: SubscriptionOp[]): void;
 		"bilibili-notify/engine-error"(source: string, message: string): void;
@@ -38,6 +34,14 @@ declare module "koishi" {
 }
 
 const SERVICE_NAME = "bilibili-notify-live";
+
+export interface BilibiliNotifyLiveDeps {
+	api: BilibiliAPI;
+	push: BilibiliPush;
+	store: SubscriptionStore;
+	image?: ImageRenderer;
+	ai?: CommentaryGenerator;
+}
 
 /**
  * Decode a koishi h.image / h.img element's `attrs.src` into either a Buffer + mime
@@ -188,14 +192,21 @@ const koishiContentBuilder: LiveContentBuilder = {
 	},
 };
 
-export class BilibiliNotifyLive extends Service<LiveConfig> {
-	static readonly [Service.provide] = SERVICE_NAME;
-	static readonly inject = ["bilibili-notify"];
-
+/**
+ * 直播推送引擎。普通类(非 koishi Service)——由 runtime/engines.ts 在 bringUp() 内
+ * 直接构造/析构,依赖(api/push/store/image?/ai?)通过 start() 参数一次性传入,不再
+ * 需要 ctx.inject 后置晚注入或跨 Service 边界的"fresh"重取(见切片9)。
+ */
+export class BilibiliNotifyLive {
+	private readonly ctx: Context;
+	private readonly config: LiveConfig;
 	private engine?: LiveEngine;
+	private releaseSubChanged?: () => void;
+	private releaseAuthLost?: () => void;
+	private releaseAuthRestored?: () => void;
 
 	constructor(ctx: Context, config: LiveConfig) {
-		super(ctx, SERVICE_NAME);
+		this.ctx = ctx;
 		this.config = config;
 	}
 
@@ -218,34 +229,19 @@ export class BilibiliNotifyLive extends Service<LiveConfig> {
 		};
 	}
 
-	protected start(): Awaitable<void> {
-		const core = this.ctx.get("bilibili-notify");
-		if (!core) {
-			throw new Error(
-				`${SERVICE_NAME} 无法获取 bilibili-notify 核心服务：请确认 koishi-plugin-bilibili-notify 已安装、启用并先于本插件启动。`,
-			);
-		}
-		const internals = resolveBilibiliNotifyCoreInternals(SERVICE_NAME, core);
-
+	start(deps: BilibiliNotifyLiveDeps): void {
 		const serviceCtx = makeKoishiServiceContext(this.ctx, SERVICE_NAME, this.config.logLevel);
-		const pushLike = adaptPush(internals.push);
-		const { store } = internals;
-		// koishi 不做运行时配置热更 —— 配置变更走插件 reload(重跑 start)。所以
-		// 这里把 config 一次性捕获,resolve「config + per-UP」即两层折叠。
+		const pushLike = adaptPush(deps.push);
+		const { store } = deps;
 		const config = this.config;
 
-		// imageRenderer / commentary 不在 constructor 一次性塞 —— 由下方 ctx.inject
-		// 在依赖服务 ready 时通过 setImageRenderer / setCommentary 后置注入,避免
-		// koishi-plugin-bilibili-notify-ai / -image 晚于 -live 启动时 engine 内
-		// 引用永远空,推送 silent skip(类级 inject 只列必需的 "bilibili-notify",
-		// ai / image 是 optional 不等待)。
 		this.engine = new LiveEngine({
 			serviceCtx,
-			api: internals.api,
+			api: deps.api,
 			push: pushLike,
 			contentBuilder: koishiContentBuilder,
-			imageRenderer: null,
-			commentary: null,
+			imageRenderer: deps.image ?? null,
+			commentary: deps.ai ?? null,
 			config: this.toEngineConfig(config),
 			emitEngineError: (message) =>
 				this.ctx.emit("bilibili-notify/engine-error", SERVICE_NAME, message),
@@ -255,18 +251,6 @@ export class BilibiliNotifyLive extends Service<LiveConfig> {
 				this.ctx.emit("bilibili-notify/live-viewers-changed", uid, viewers),
 		});
 
-		// 后置注入:ctx.inject 在 ai / image 服务 ready 时跑 callback、脱离时 dispose
-		// fork、再次 ready 时再次执行;fork 跟随 this.ctx 销毁(service stop 时整体
-		// 回收),无需手动 dispose。
-		this.ctx.inject(["bilibili-notify-ai"], (subCtx) => {
-			this.engine?.setCommentary(subCtx.get("bilibili-notify-ai")?.engine ?? null);
-			subCtx.on("dispose", () => this.engine?.setCommentary(null));
-		});
-		this.ctx.inject(["bilibili-notify-image"], (subCtx) => {
-			this.engine?.setImageRenderer(subCtx.get("bilibili-notify-image")?.engine ?? null);
-			subCtx.on("dispose", () => this.engine?.setImageRenderer(null));
-		});
-
 		// Initialize with current subs
 		const initialView = storeToLiveView(store, config);
 		if (Object.keys(initialView).length > 0) {
@@ -274,61 +258,56 @@ export class BilibiliNotifyLive extends Service<LiveConfig> {
 		}
 
 		// Subscription changes → engine.applyOps
-		this.ctx.on("bilibili-notify/subscription-changed", (ops: SubscriptionOp[]) => {
-			const liveOps: LiveSubscriptionOp[] = ops.map((op) => {
-				if (op.type === "add") {
-					return { type: "add" as const, sub: storeToSubItemView(op.sub, config) };
-				}
-				if (op.type === "remove") {
-					return { type: "delete" as const, uid: op.uid };
-				}
-				// update —— 只增量推 feature 开关(features 静态默认 ?? per-UP)。
-				const features = resolveFeatures(op.sub);
-				return {
-					type: "update" as const,
-					uid: op.sub.uid,
-					changes: [
-						{
-							scope: "live" as const,
-							live: features.live,
-							liveEnd: features.liveEnd,
-							liveGuardBuy: features.liveGuardBuy,
-							superchat: features.superchat,
-							wordcloud: features.wordcloud,
-							liveSummary: features.liveSummary,
-						},
-					],
-				};
-			});
-			this.engine?.applyOps(liveOps, (uid) => {
-				const fresh = tryResolveBilibiliNotifyCoreInternals(
-					SERVICE_NAME,
-					this.ctx.get("bilibili-notify"),
-					(msg) =>
-						this.ctx.logger(SERVICE_NAME).debug(`[internals] 运行期获取核心实例失败：${msg}`),
-				);
-				if (!fresh) return undefined;
-				const sub = fresh.store.findByUid(uid);
-				if (!sub) return undefined;
-				return storeToSubItemView(sub, config);
-			});
-		});
+		this.releaseSubChanged = this.ctx.on(
+			"bilibili-notify/subscription-changed",
+			(ops: SubscriptionOp[]) => {
+				const liveOps: LiveSubscriptionOp[] = ops.map((op) => {
+					if (op.type === "add") {
+						return { type: "add" as const, sub: storeToSubItemView(op.sub, config) };
+					}
+					if (op.type === "remove") {
+						return { type: "delete" as const, uid: op.uid };
+					}
+					// update —— 只增量推 feature 开关(features 静态默认 ?? per-UP)。
+					const features = resolveFeatures(op.sub);
+					return {
+						type: "update" as const,
+						uid: op.sub.uid,
+						changes: [
+							{
+								scope: "live" as const,
+								live: features.live,
+								liveEnd: features.liveEnd,
+								liveGuardBuy: features.liveGuardBuy,
+								superchat: features.superchat,
+								wordcloud: features.wordcloud,
+								liveSummary: features.liveSummary,
+							},
+						],
+					};
+				});
+				this.engine?.applyOps(liveOps, (uid) => {
+					const sub = store.findByUid(uid);
+					if (!sub) return undefined;
+					return storeToSubItemView(sub, config);
+				});
+			},
+		);
 
 		// auth-lost → engine.teardown; auth-restored → engine.rebuildFromSubs
-		this.ctx.on("bilibili-notify/auth-lost", () => this.engine?.teardown());
-		this.ctx.on("bilibili-notify/auth-restored", () => {
-			const fresh = tryResolveBilibiliNotifyCoreInternals(
-				SERVICE_NAME,
-				this.ctx.get("bilibili-notify"),
-				(msg) => this.ctx.logger(SERVICE_NAME).debug(`[internals] 运行期获取核心实例失败：${msg}`),
-			);
-			if (fresh) this.engine?.rebuildFromSubs(storeToLiveView(fresh.store, config));
+		this.releaseAuthLost = this.ctx.on("bilibili-notify/auth-lost", () => this.engine?.teardown());
+		this.releaseAuthRestored = this.ctx.on("bilibili-notify/auth-restored", () => {
+			this.engine?.rebuildFromSubs(storeToLiveView(store, config));
 		});
-
-		liveCommands.call(this);
 	}
 
-	protected stop(): Awaitable<void> {
+	stop(): void {
+		this.releaseSubChanged?.();
+		this.releaseAuthLost?.();
+		this.releaseAuthRestored?.();
+		this.releaseSubChanged = undefined;
+		this.releaseAuthLost = undefined;
+		this.releaseAuthRestored = undefined;
 		this.engine?.stop();
 		this.engine = undefined;
 	}

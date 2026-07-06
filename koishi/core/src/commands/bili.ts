@@ -1,4 +1,3 @@
-import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
 import type BilibiliNotifyServerManager from "../runtime/bootstrap";
 
 export function biliCommands(this: BilibiliNotifyServerManager): void {
@@ -17,9 +16,8 @@ export function biliCommands(this: BilibiliNotifyServerManager): void {
 		.usage("向管理员账号发送一条测试消息")
 		.example("bili private")
 		.action(async ({ session }) => {
-			const internals = this.getInternals(BILIBILI_NOTIFY_TOKEN);
-			if (!internals) return "插件尚未就绪";
-			await internals.push.sendPrivateMsg("测试消息");
+			if (!this.push) return "插件尚未就绪";
+			await this.push.sendPrivateMsg("测试消息");
 			await session?.send(
 				"已发送测试消息。如果未收到，可能是机器人不支持发送私聊消息或配置信息有误",
 			);
@@ -30,11 +28,10 @@ export function biliCommands(this: BilibiliNotifyServerManager): void {
 		.usage("展示当前正在直播的订阅对象")
 		.example("bili ll")
 		.action(async () => {
-			const internals = this.getInternals(BILIBILI_NOTIFY_TOKEN);
-			if (!internals) return "插件尚未就绪";
-			const subs = internals.store.list();
+			if (!this.api || !this.store) return "插件尚未就绪";
+			const subs = this.store.list();
 			// biome-ignore lint/suspicious/noExplicitAny: API response shape
-			const result = (await internals.api.getTheUserWhoIsLiveStreaming()) as any;
+			const result = (await this.api.getTheUserWhoIsLiveStreaming()) as any;
 			const liveUsers = result?.data?.live_users?.items ?? [];
 			// biome-ignore lint/suspicious/noExplicitAny: API response shape
 			const liveUidSet = new Set(liveUsers.map((u: any) => String(u.mid)));

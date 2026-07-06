@@ -7,14 +7,11 @@ import {
 	type Subscriptions,
 } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
-import {
-	makeKoishiServiceContext,
-	resolveBilibiliNotifyCoreInternals,
-	tryResolveBilibiliNotifyCoreInternals,
-} from "@bilibili-notify/koishi-runtime";
-import { type Awaitable, type Context, Service } from "koishi";
-import { aiCommands } from "../commands/ai";
+import type { SubscriptionStore } from "@bilibili-notify/subscription";
+import type { Context } from "koishi";
 import type { AIConfig } from "../config/ai";
+import type { TargetRegistry } from "../push/target-registry";
+import { makeKoishiServiceContext } from "../runtime/service-context";
 import { buildSubManagement } from "./sub-mgmt";
 
 export {
@@ -23,13 +20,13 @@ export {
 	type SubMgmtStoreLike,
 } from "./sub-mgmt";
 
-declare module "koishi" {
-	interface Context {
-		"bilibili-notify-ai": BilibiliNotifyAI;
-	}
-}
-
 const SERVICE_NAME = "bilibili-notify-ai";
+
+export interface BilibiliNotifyAIDeps {
+	api: BilibiliAPI;
+	store: SubscriptionStore;
+	registry: TargetRegistry;
+}
 
 export type { AIScene };
 
@@ -68,75 +65,36 @@ function storeToAiSubs(store: any): Subscriptions {
 	return subs;
 }
 
-export class BilibiliNotifyAI extends Service<AIConfig> {
-	static readonly [Service.provide] = SERVICE_NAME;
-	static readonly inject = ["bilibili-notify"];
-
+/**
+ * AI 评论/对话引擎。普通类(非 koishi Service)——由 runtime/engines.ts 在 bringUp()
+ * 内直接构造/析构,api/store/registry 通过构造函数一次性传入(与 core 运行时同生命
+ * 周期,不再需要跨 Service 边界的探针协议或运行期"fresh"重取,见切片9)。
+ */
+export class BilibiliNotifyAI {
 	readonly engine: CommentaryGenerator;
 
-	constructor(ctx: Context, config: AIConfig) {
-		super(ctx, SERVICE_NAME);
-		this.config = config;
+	constructor(ctx: Context, config: AIConfig, deps: BilibiliNotifyAIDeps) {
 		const serviceCtx = makeKoishiServiceContext(ctx, SERVICE_NAME, config.logLevel ?? 1);
-		// Lazy api proxy: resolved in start()
-		const apiHolder: { api: BilibiliAPI | null } = { api: null };
-		const apiProxy = new Proxy({} as BilibiliAPI, {
-			get(_, prop) {
-				if (!apiHolder.api) {
-					throw new Error("BilibiliAPI 尚未就绪，请确认 bilibili-notify 核心插件已启动");
-				}
-				const value = (apiHolder.api as unknown as Record<PropertyKey, unknown>)[prop];
-				if (typeof value === "function") {
-					return (value as (...args: unknown[]) => unknown).bind(apiHolder.api);
-				}
-				return value;
-			},
-		});
 		this.engine = new CommentaryGenerator({
 			serviceCtx,
-			api: apiProxy,
+			api: deps.api,
 			config: toEngineConfig(config),
 		});
-		(this as unknown as { _apiHolder: typeof apiHolder })._apiHolder = apiHolder;
-	}
-
-	protected start(): Awaitable<void> {
-		const core = this.ctx.get("bilibili-notify");
-		if (!core) {
-			throw new Error(
-				`${SERVICE_NAME} 无法获取 bilibili-notify 核心服务：请确认 koishi-plugin-bilibili-notify 已安装、启用并先于本插件启动。`,
-			);
-		}
-		const internals = resolveBilibiliNotifyCoreInternals(SERVICE_NAME, core);
-		const holder = (this as unknown as { _apiHolder: { api: BilibiliAPI | null } })._apiHolder;
-		holder.api = internals.api;
-
-		const { store, registry } = internals;
-
-		// Build SubManagement wrapping store for AI CRUD tools.
-		// Resolves default targetIds from the registry (Fix 7).
-		const subMgmt: SubManagement = buildSubManagement({ store, registry });
-
+		const subMgmt: SubManagement = buildSubManagement({
+			store: deps.store,
+			registry: deps.registry,
+		});
 		this.engine.setSubManagement({
-			getSubs: () => {
-				const fresh = tryResolveBilibiliNotifyCoreInternals(
-					SERVICE_NAME,
-					this.ctx.get("bilibili-notify"),
-					(msg) =>
-						this.ctx.logger(SERVICE_NAME).debug(`[internals] 运行期获取核心实例失败：${msg}`),
-				);
-				if (!fresh) return null;
-				return storeToAiSubs(fresh.store);
-			},
+			getSubs: () => storeToAiSubs(deps.store),
 			subMgmt,
 		});
-		this.engine.start();
-		// P2:指令注册移到 start()。在 constructor 注册 → koishi 插件重载时
-		// constructor 重跑会重复注册同名指令。start/stop 成对,生命周期正确。
-		aiCommands.call(this);
 	}
 
-	protected stop(): Awaitable<void> {
+	start(): void {
+		this.engine.start();
+	}
+
+	stop(): void {
 		this.engine.stop();
 	}
 

@@ -21,9 +21,8 @@ export function statusCommands(this: BilibiliNotifyServerManager): void {
 		.usage("查看动态监测运行状态")
 		.example("status dyn")
 		.action(() => {
-			const dynService = this.ctx.get("bilibili-notify-dynamic");
-			if (dynService) return "动态监测正在运行";
-			return "动态插件未运行（请检查是否已安装并启用 koishi-plugin-bilibili-notify-dynamic）";
+			if (this.engines?.dynamic) return "动态监测正在运行";
+			return "动态监测尚未启动（请检查插件是否已启动，bn start / bn restart）";
 		});
 
 	statusCom
@@ -31,9 +30,8 @@ export function statusCommands(this: BilibiliNotifyServerManager): void {
 		.usage("查看直播监测运行状态")
 		.example("status live")
 		.action(() => {
-			const liveService = this.ctx.get("bilibili-notify-live");
-			if (liveService) return "直播监测正在运行";
-			return "直播插件未运行（请检查是否已安装并启用 koishi-plugin-bilibili-notify-live）";
+			if (this.engines?.live) return "直播监测正在运行";
+			return "直播监测尚未启动（请检查插件是否已启动，bn start / bn restart）";
 		});
 
 	statusCom

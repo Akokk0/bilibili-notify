@@ -5,7 +5,6 @@ import {
 	type LoginSnapshot,
 	makeDefaultGlobalConfig,
 } from "@bilibili-notify/internal";
-import { makeKoishiMessageBus, makeKoishiServiceContext } from "@bilibili-notify/koishi-runtime";
 import { BilibiliPush } from "@bilibili-notify/push";
 import type { StorageManager } from "@bilibili-notify/storage";
 import { createSubscriptionStore, type SubscriptionStore } from "@bilibili-notify/subscription";
@@ -16,7 +15,9 @@ import { createKoishiSink } from "../push/sink";
 import { TargetRegistry } from "../push/target-registry";
 import { synthesizeKoishiBotAdapter, synthesizeMasterTarget } from "../push/target-synthesis";
 import { SubscriptionLoader } from "../subscriptions/subscription-loader";
-import { hasLoginCookie, loadInitialCookies, warnMissingPlugins } from "./bootstrap-helpers";
+import { hasLoginCookie, loadInitialCookies } from "./bootstrap-helpers";
+import { buildEngines, disposeEngines, type Engines } from "./engines";
+import { makeKoishiMessageBus, makeKoishiServiceContext } from "./service-context";
 
 /** Mutable runtime state on the manager that lifecycle helpers read/write. */
 export interface ManagerSlots {
@@ -26,6 +27,8 @@ export interface ManagerSlots {
 	store: SubscriptionStore | null;
 	registry: TargetRegistry | null;
 	subLoader: SubscriptionLoader | null;
+	/** render/ai/dynamic/live 引擎,与 api/push 同生命周期(切片9)。 */
+	engines: Engines | null;
 	/**
 	 * Listener release 数组。bringUp 内通过 `deps.ctx.on(...)` 注册的事件 handler
 	 * 必须把返回的 release 函数 push 到这里;tearDown 时统一调用,避免 `bn restart`
@@ -39,8 +42,6 @@ export interface LifecycleDeps {
 	logger: Logger;
 	getConfig(): BilibiliNotifyConfig;
 	storageMgr: StorageManager;
-	/** Run after api/push are up — caller registers koishi commands here. */
-	registerCommands(): void;
 	slots: ManagerSlots;
 	subList(): string;
 }
@@ -177,12 +178,10 @@ export async function bringUp(deps: LifecycleDeps): Promise<boolean> {
 	deps.slots.registry = registry;
 	deps.slots.subLoader = subLoader;
 
-	const releaseSubChanged = deps.ctx.on("bilibili-notify/subscription-changed", async () => {
-		await deps.ctx.sleep(5000);
-		const subs = store.list();
-		await warnMissingPlugins(deps.ctx, push, deps.logger, subs);
-	});
-	deps.slots.cleanups.push(releaseSubChanged);
+	// render/ai/dynamic/live 引擎与 api/push/store/registry 同生命周期,在此一次性
+	// 构造(见 runtime/engines.ts)。构造顺序 render → ai → dynamic → live,后两者
+	// 直接持有前两者的 engine 引用,不再需要 ctx.inject 后置晚注入(切片9)。
+	deps.slots.engines = buildEngines(deps.ctx, config, { api, push, store, registry });
 
 	// bot 上线(login-added/updated)时复检 master 可达性。refreshMasterReachability 只在
 	// push.start()(常早于 onebot 适配器连上)与 sendToMaster() 触发,缺这一步则启动期那条
@@ -190,8 +189,6 @@ export async function bringUp(deps: LifecycleDeps): Promise<boolean> {
 	const recheckMaster = (): void => push.recheckMasterReachability();
 	deps.slots.cleanups.push(deps.ctx.on("login-added", recheckMaster));
 	deps.slots.cleanups.push(deps.ctx.on("login-updated", recheckMaster));
-
-	deps.registerCommands();
 
 	await loadInitialCookies(api, deps.storageMgr, deps.logger);
 	const loggedIn = hasLoginCookie(api);
@@ -238,6 +235,10 @@ export function tearDown(deps: { logger: Logger; slots: ManagerSlots }): void {
 		}
 	}
 	deps.slots.cleanups.length = 0;
+	// render/ai/dynamic/live 是 api/push 的消费方,先于两者析构(逆序对应 buildEngines
+	// 的 render→ai→dynamic→live 构造顺序:live→dynamic→ai→render)。
+	if (deps.slots.engines) disposeEngines(deps.slots.engines);
+	deps.slots.engines = null;
 	deps.slots.loginBridge?.stop();
 	// P2:subLoader.dispose() 可能 emit subscription-changed;先停 push/api 再
 	// dispose,杜绝事件落到仍在线的 push(listener 已先卸本就缓解,此处把次序

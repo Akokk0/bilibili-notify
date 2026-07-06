@@ -265,9 +265,6 @@ importers:
       '@bilibili-notify/internal':
         specifier: workspace:^
         version: link:../../packages/internal
-      '@bilibili-notify/koishi-runtime':
-        specifier: workspace:^
-        version: link:../runtime
       '@bilibili-notify/live':
         specifier: workspace:^
         version: link:../../packages/live
@@ -302,15 +299,6 @@ importers:
       yakumo:
         specifier: ^1.0.0
         version: 1.0.0(cordis@3.18.1)
-
-  koishi/runtime:
-    dependencies:
-      '@bilibili-notify/internal':
-        specifier: workspace:^
-        version: link:../../packages/internal
-      koishi:
-        specifier: ^4.18.11
-        version: 4.18.11(@cordisjs/plugin-http@0.6.3(cordis@3.18.1))(cordis@3.18.1)
 
   packages/ai:
     dependencies:

@@ -1,15 +1,16 @@
 import type {} from "@koishijs/plugin-help";
-import type { BilibiliNotifyAI } from "../ai/service";
+import type BilibiliNotifyServerManager from "../runtime/bootstrap";
 
-export function aiCommands(this: BilibiliNotifyAI): void {
+export function aiCommands(this: BilibiliNotifyServerManager): void {
 	// bili ai — 单次测试指令
 	this.ctx
 		.command("bili.ai [prompt:text]", "向 AI 发送一条测试消息", { hidden: true })
 		.usage("验证 AI 配置是否正确")
 		.example("bili ai 你好")
 		.action(async (_, prompt = "你好，请简单介绍一下你自己") => {
+			if (!this.engines?.ai) return "AI 功能未启用（请在配置中开启 ai.enabled）";
 			try {
-				return await this.comment(prompt);
+				return await this.engines.ai.comment(prompt);
 			} catch (e) {
 				return `AI 调用失败：${(e as Error).message}`;
 			}
@@ -22,10 +23,12 @@ export function aiCommands(this: BilibiliNotifyAI): void {
 		.example("bili chat 最近有什么有趣的动态吗")
 		.option("clear", "-c 清除当前对话历史")
 		.action(async ({ session, options }, message) => {
+			const ai = this.engines?.ai;
+			if (!ai) return "AI 功能未启用（请在配置中开启 ai.enabled）";
 			const sessionId = `${session?.platform}:${session?.userId}`;
 
 			if (options?.clear) {
-				this.clearSession(sessionId);
+				ai.clearSession(sessionId);
 				return "对话历史已清除";
 			}
 
@@ -42,14 +45,9 @@ export function aiCommands(this: BilibiliNotifyAI): void {
 					: undefined;
 
 			try {
-				const { result, pendingActions } = await this.chat(
-					message,
-					sessionId,
-					imageUrls,
-					sessionCtx,
-				);
+				const { result, pendingActions } = await ai.chat(message, sessionId, imageUrls, sessionCtx);
 				await session?.send(result);
-				await this.flushPendingSubActions(pendingActions);
+				await ai.flushPendingSubActions(pendingActions);
 			} catch (e) {
 				return `AI 调用失败：${(e as Error).message}`;
 			}

@@ -1,24 +1,7 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
-import {
-	DEFAULT_FEATURE_FLAGS,
-	type FeatureKey,
-	type Subscription,
-} from "@bilibili-notify/internal";
-import type { BilibiliPush } from "@bilibili-notify/push";
 import type { StorageManager, StorageManagerOptions } from "@bilibili-notify/storage";
-import type { Context, Logger } from "koishi";
+import type { Logger } from "koishi";
 import type { BilibiliNotifyConfig } from "../config";
-
-const LIVE_PLUGIN_FEATURES = [
-	"live",
-	"liveEnd",
-	"liveGuardBuy",
-	"superchat",
-	"wordcloud",
-	"liveSummary",
-	"specialDanmaku",
-	"specialUserEnter",
-] as const satisfies readonly FeatureKey[];
 
 /**
  * 组装 StorageManager 选项:把 koishi config 里的 cookieEncryptionKey 透传为注入
@@ -65,42 +48,5 @@ export function hasLoginCookie(api: BilibiliAPI | null): boolean {
 		return cookies.some((c) => c.key === "bili_jct");
 	} catch {
 		return false;
-	}
-}
-
-function subscriptionUsesFeature(sub: Subscription, feature: FeatureKey): boolean {
-	return (
-		sub.enabled &&
-		(sub.routing[feature] ?? []).length > 0 &&
-		(sub.overrides.features?.[feature] ?? DEFAULT_FEATURE_FLAGS[feature])
-	);
-}
-
-/**
- * Warn (and notify the master) when a subscription requires the dynamic/live
- * sub-plugin but it is not currently registered on the koishi context.
- */
-export async function warnMissingPlugins(
-	ctx: Context,
-	push: BilibiliPush | null,
-	logger: Logger,
-	subs: Subscription[],
-): Promise<void> {
-	if (!push) return;
-	const needDynamic = subs.some((s) => subscriptionUsesFeature(s, "dynamic"));
-	const needLive = subs.some((s) =>
-		LIVE_PLUGIN_FEATURES.some((f) => subscriptionUsesFeature(s, f)),
-	);
-	if (needDynamic && !ctx.get("bilibili-notify-dynamic")) {
-		const msg =
-			"[bilibili-notify] 警告：有订阅开启了动态通知，但动态插件（koishi-plugin-bilibili-notify-dynamic）未运行，请检查是否已安装并启用该插件。";
-		logger.warn(`[warn] ${msg}`);
-		await push.sendPrivateMsg(msg);
-	}
-	if (needLive && !ctx.get("bilibili-notify-live")) {
-		const msg =
-			"[bilibili-notify] 警告：有订阅开启了直播通知，但直播插件（koishi-plugin-bilibili-notify-live）未运行，请检查是否已安装并启用该插件。";
-		logger.warn(`[warn] ${msg}`);
-		await push.sendPrivateMsg(msg);
 	}
 }
