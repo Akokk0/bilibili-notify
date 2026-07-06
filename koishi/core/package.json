@@ -79,7 +79,6 @@
 				"notifier"
 			],
 			"optional": [
-				"bilibili-notify-advanced-subscription",
 				"puppeteer"
 			],
 			"provides": [

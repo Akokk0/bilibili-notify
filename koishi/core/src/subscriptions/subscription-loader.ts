@@ -4,8 +4,6 @@ import {
 	FEATURE_KEYS,
 	type FeatureKey,
 	makeEmptySubscription,
-	type PushAdapter,
-	type PushTarget,
 	type Subscription,
 	type SubscriptionRouting,
 } from "@bilibili-notify/internal";
@@ -15,6 +13,7 @@ import { type Context, h, type Logger } from "koishi";
 import type { BilibiliNotifyConfig } from "../config";
 import type { TargetRegistry } from "../push/target-registry";
 import { synthesizeKoishiBotAdapter, synthesizeTargetsForFlatSub } from "../push/target-synthesis";
+import { buildAdvancedSubAndTargets } from "./advanced";
 
 export interface SubscriptionLoaderHooks {
 	getConfig(): BilibiliNotifyConfig;
@@ -129,9 +128,10 @@ export interface SubscriptionLoaderOptions {
 }
 
 /**
- * Owns the koishi-side runtime subscription state.
- * Translates config.subscriptions.list (FlatSubConfigItem[]) into Subscription[] + PushTarget[],
- * seeds the SubscriptionStore, and handles advanced-sub events.
+ * Owns the koishi-side runtime subscription state. Translates whichever mode
+ * is enabled — `config.subscriptions.list` (FlatSubConfigItem[]) or
+ * `config.advancedSub.subs` (the rich per-UP dict) — into Subscription[] +
+ * PushTarget[], and seeds the SubscriptionStore.
  */
 export class SubscriptionLoader {
 	private readonly ctx: Context;
@@ -141,12 +141,6 @@ export class SubscriptionLoader {
 	private readonly registry: TargetRegistry;
 	private readonly api: BilibiliAPI;
 	private subNotifier?: Notifier;
-	/**
-	 * advanced-sub 三个 ctx.on listener 的 release。`bn restart` 调 dispose 时统一
-	 * 清掉,避免下一次 bringUp 重新注册时 listener 累积(重复 store.replaceAll
-	 * + 重复 registry.set)。
-	 */
-	private listenerReleases: Array<() => void> = [];
 	constructor(opts: SubscriptionLoaderOptions) {
 		this.ctx = opts.ctx;
 		this.logger = opts.logger;
@@ -157,14 +151,6 @@ export class SubscriptionLoader {
 	}
 
 	dispose(): void {
-		for (const release of this.listenerReleases) {
-			try {
-				release();
-			} catch (e) {
-				this.logger.warn(`[sub] cleanup 释放失败:${(e as Error).message}`);
-			}
-		}
-		this.listenerReleases = [];
 		this.subNotifier?.dispose();
 		this.subNotifier = undefined;
 		this.store.replaceAll([]);
@@ -174,9 +160,18 @@ export class SubscriptionLoader {
 	/** Initial load after a successful login. */
 	async loadInitialSubscriptions(): Promise<void> {
 		const config = this.hooks.getConfig();
-		if (config.advancedSub) {
-			this.logger.info("[sub] 开启高级订阅，等待接收订阅配置...");
-			this.ctx.emit("bilibili-notify/ready-to-receive");
+		if (config.advancedSub.enabled) {
+			// Adapters + targets registered first so routing (which references
+			// their ids) resolves once subs land in the store.
+			const { subs, adapters, targets } = buildAdvancedSubAndTargets(config.advancedSub);
+			for (const a of adapters) this.registry.setAdapter(a);
+			for (const t of targets) this.registry.set(t);
+			if (!subs.length) {
+				this.logger.info("[sub] 高级订阅已加载，但未添加任何订阅");
+				return;
+			}
+			this.store.replaceAll(subs);
+			this.updateSubNotifier();
 			return;
 		}
 		if (!config.subscriptions.list?.length) {
@@ -187,39 +182,6 @@ export class SubscriptionLoader {
 		const subs = await this.translateFlatSubs(config.subscriptions.list);
 		this.store.replaceAll(subs);
 		this.updateSubNotifier();
-	}
-
-	/** Wire the optional advanced-sub event listener. No-op outside advanced-sub mode. */
-	registerAdvancedSubListener(): void {
-		if (!this.hooks.getConfig().advancedSub) return;
-		// `advanced-sub-adapters` then `advanced-sub-targets` then `advanced-sub`
-		// land in that order so the registry resolves adapter/target references
-		// before subscriptions try to use them. Fix 6 (extended).
-		this.listenerReleases.push(
-			this.ctx.on("bilibili-notify/advanced-sub-adapters", (adapters: PushAdapter[]) => {
-				for (const a of adapters) {
-					this.registry.setAdapter(a);
-				}
-			}),
-		);
-		this.listenerReleases.push(
-			this.ctx.on("bilibili-notify/advanced-sub-targets", (targets: PushTarget[]) => {
-				for (const t of targets) {
-					this.registry.set(t);
-				}
-			}),
-		);
-		this.listenerReleases.push(
-			this.ctx.on("bilibili-notify/advanced-sub", (incoming: Subscription[]) => {
-				if (!incoming.length) {
-					this.logger.info("[sub] 订阅加载完毕，但未添加任何订阅");
-					return;
-				}
-				// incoming are already Subscription[] (translated by advanced-sub adapter)
-				this.store.replaceAll(incoming);
-				this.updateSubNotifier();
-			}),
-		);
 	}
 
 	/** Translate a flat config array into Subscription[], registering PushTargets. */

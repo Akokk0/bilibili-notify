@@ -177,8 +177,6 @@ export async function bringUp(deps: LifecycleDeps): Promise<boolean> {
 	deps.slots.registry = registry;
 	deps.slots.subLoader = subLoader;
 
-	subLoader.registerAdvancedSubListener();
-
 	const releaseSubChanged = deps.ctx.on("bilibili-notify/subscription-changed", async () => {
 		await deps.ctx.sleep(5000);
 		const subs = store.list();

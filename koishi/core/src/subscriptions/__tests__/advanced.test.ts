@@ -1,6 +1,6 @@
 import { PushTargetSchema } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { type AdvancedSubRawConfigShape, buildAdvancedSubAndTargets } from "../convert";
+import { type AdvancedSubRawConfigShape, buildAdvancedSubAndTargets } from "../advanced";
 
 function makeRaw(
 	uid: string,

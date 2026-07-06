@@ -1,11 +1,6 @@
 import { resolve } from "node:path";
 import type { BilibiliAPI, BiliDataServer } from "@bilibili-notify/api";
-import type {
-	PushAdapter,
-	PushTarget,
-	Subscription,
-	SubscriptionOp,
-} from "@bilibili-notify/internal";
+import type { SubscriptionOp } from "@bilibili-notify/internal";
 import type { CookieData } from "@bilibili-notify/storage";
 // biome-ignore lint/correctness/noUnusedImports: module augmentation
 import {} from "@koishijs/plugin-console";
@@ -32,23 +27,6 @@ declare module "koishi" {
 		"bilibili-notify/login-status-report"(data: BiliDataServer): void;
 		"bilibili-notify/auth-lost"(): void;
 		"bilibili-notify/auth-restored"(): void;
-		"bilibili-notify/advanced-sub"(subs: Subscription[]): void;
-		/**
-		 * Emitted by the advanced-subscription adapter ahead of `advanced-sub`.
-		 * Carries the synthesized PushTarget list for every channel that any
-		 * sub references, so the koishi-side TargetRegistry can register them
-		 * before the routing payloads land. Without this the targetIds embedded
-		 * in routing point at no PushTarget and the push routing silently drops
-		 * the message (Fix 6).
-		 */
-		"bilibili-notify/advanced-sub-targets"(targets: PushTarget[]): void;
-		/**
-		 * Emitted ahead of `advanced-sub-targets`. Carries the koishi-bot
-		 * adapters that targets reference; the registry must have them before
-		 * `assertAdapterMatches`-style validation runs.
-		 */
-		"bilibili-notify/advanced-sub-adapters"(adapters: PushAdapter[]): void;
-		"bilibili-notify/ready-to-receive"(): void;
 		"bilibili-notify/cookies-refreshed"(data: CookieData): void;
 		"bilibili-notify/subscription-changed"(ops: SubscriptionOp[]): void;
 		"bilibili-notify/ready"(api: BilibiliAPI): void;
@@ -100,7 +78,7 @@ export const usage = /* html */ `
 
 主人～注意事项要仔细看呀 (>_<)♡
 - 如果主人使用的是 onebot 机器人，平台名请填写 onebot，而不是 qq 哦～
-- 如果需要更灵活的订阅配置，请安装 bilibili-notify-advanced-subscription 插件
+- 如果需要更灵活的订阅配置，打开「高级订阅」开关就可以啦，不用再装别的插件哦～
 
 乖乖遵守这些规则，女仆才能顺利帮主人工作呢 (*>ω<)b
 
