@@ -51,12 +51,16 @@ export interface LifecycleDeps {
  */
 export async function bringUp(deps: LifecycleDeps): Promise<boolean> {
 	const config = deps.getConfig();
-	const apiServiceCtx = makeKoishiServiceContext(deps.ctx, "bilibili-notify-api", config.logLevel);
+	const apiServiceCtx = makeKoishiServiceContext(
+		deps.ctx,
+		"bilibili-notify-api",
+		config.account.logLevel,
+	);
 	const bus = makeKoishiMessageBus(deps.ctx);
 
 	const api = new BilibiliAPI({
 		serviceCtx: apiServiceCtx,
-		config: { userAgent: config.userAgent },
+		config: { userAgent: config.account.userAgent },
 		callbacks: {
 			// block body → 显式返回 void(契合 onCookiesRefreshed 的 Promise<void>|void
 			// 类型;ctx.emit 的 boolean 返回值不再泄漏)。
@@ -79,16 +83,20 @@ export async function bringUp(deps: LifecycleDeps): Promise<boolean> {
 
 	// --- Master target synthesis (with its own koishi-bot adapter) ---
 	let masterTarget = null;
-	if (config.master.enable && config.master.platform && config.master.masterAccount) {
-		let masterAdapter = registry.findKoishiBotAdapter(config.master.platform);
+	if (
+		config.push.master.enable &&
+		config.push.master.platform &&
+		config.push.master.masterAccount
+	) {
+		let masterAdapter = registry.findKoishiBotAdapter(config.push.master.platform);
 		if (!masterAdapter) {
-			masterAdapter = synthesizeKoishiBotAdapter(config.master.platform);
+			masterAdapter = synthesizeKoishiBotAdapter(config.push.master.platform);
 			registry.setAdapter(masterAdapter);
 		}
 		masterTarget = synthesizeMasterTarget(
 			masterAdapter,
-			config.master.masterAccount,
-			config.master.masterAccountGuildId,
+			config.push.master.masterAccount,
+			config.push.master.masterAccountGuildId,
 		);
 		registry.set(masterTarget);
 	}
@@ -105,9 +113,9 @@ export async function bringUp(deps: LifecycleDeps): Promise<boolean> {
 	const pushServiceCtx = makeKoishiServiceContext(
 		deps.ctx,
 		"bilibili-notify-push",
-		config.logLevel,
+		config.account.logLevel,
 	);
-	// koishi 端只把 core.config.quietHours 注入 schedule;其余字段(features /
+	// koishi 端只把 core.config.push.quietHours 注入 schedule;其余字段(features /
 	// filters / templates / ai / cardStyle)由 makeDefaultGlobalConfig 兜底,sub
 	// 折叠在各子插件 sub-view 里就地完成(per-UP override ?? plugin config)。
 	// koishi 不做运行时配置热更,bringUp 一次性算好 defaults 出热路径(否则
@@ -117,7 +125,7 @@ export async function bringUp(deps: LifecycleDeps): Promise<boolean> {
 		...makeDefaultGlobalConfig().defaults,
 		schedule: {
 			...DEFAULT_SCHEDULE,
-			quietHours: config.quietHours ?? [],
+			quietHours: config.push.quietHours ?? [],
 		},
 	};
 	const push = new BilibiliPush({
@@ -140,7 +148,7 @@ export async function bringUp(deps: LifecycleDeps): Promise<boolean> {
 		serviceCtx: apiServiceCtx,
 		api,
 		logger: deps.logger,
-		healthCheckMs: config.loginHealthCheckMinutes * 60_000,
+		healthCheckMs: config.account.loginHealthCheckMinutes * 60_000,
 		saveCookies: (data) => deps.storageMgr.cookieStore.save(data),
 		resetCookieKey: () => deps.storageMgr.cookieStore.resetKey(),
 	});

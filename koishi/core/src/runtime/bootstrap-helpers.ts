@@ -29,7 +29,7 @@ const LIVE_PLUGIN_FEATURES = [
 export function buildStorageManagerOptions(
 	serviceCtx: StorageManagerOptions["serviceCtx"],
 	dataDir: string,
-	config: Pick<BilibiliNotifyConfig, "cookieEncryptionKey">,
+	config: Pick<BilibiliNotifyConfig["account"], "cookieEncryptionKey">,
 ): StorageManagerOptions {
 	return { serviceCtx, dataDir, encryptionKey: config.cookieEncryptionKey };
 }

@@ -44,7 +44,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 		super(ctx, SERVICE_NAME);
 		this.selfCtx = ctx;
 		this.config = config;
-		this.serverLogger.level = config.logLevel;
+		this.serverLogger.level = config.account.logLevel;
 	}
 
 	private get api(): BilibiliAPI | null {
@@ -172,7 +172,7 @@ class BilibiliNotifyServerManager extends Service<BilibiliNotifyConfig> {
 			buildStorageManagerOptions(
 				makeKoishiServiceContext(this.ctx, "bilibili-notify-storage"),
 				this.ctx.baseDir,
-				this.config,
+				this.config.account,
 			),
 		);
 		await this.storageMgr.init();

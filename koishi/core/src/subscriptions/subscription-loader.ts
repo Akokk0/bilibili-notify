@@ -130,7 +130,7 @@ export interface SubscriptionLoaderOptions {
 
 /**
  * Owns the koishi-side runtime subscription state.
- * Translates config.subs (FlatSubConfigItem[]) into Subscription[] + PushTarget[],
+ * Translates config.subscriptions.list (FlatSubConfigItem[]) into Subscription[] + PushTarget[],
  * seeds the SubscriptionStore, and handles advanced-sub events.
  */
 export class SubscriptionLoader {
@@ -179,12 +179,12 @@ export class SubscriptionLoader {
 			this.ctx.emit("bilibili-notify/ready-to-receive");
 			return;
 		}
-		if (!config.subs?.length) {
+		if (!config.subscriptions.list?.length) {
 			this.logger.info("[sub] 初始化完毕，但未添加任何订阅");
 			return;
 		}
-		this.logger.debug(`[sub] 从配置加载 ${config.subs.length} 个订阅项`);
-		const subs = await this.translateFlatSubs(config.subs);
+		this.logger.debug(`[sub] 从配置加载 ${config.subscriptions.list.length} 个订阅项`);
+		const subs = await this.translateFlatSubs(config.subscriptions.list);
 		this.store.replaceAll(subs);
 		this.updateSubNotifier();
 	}
