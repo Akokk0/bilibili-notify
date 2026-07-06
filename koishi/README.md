@@ -28,11 +28,11 @@
 | `account` | B 站账号：User-Agent、日志级别、登录健康检查间隔、cookie 加密口令 |
 | `push` | 推送目标：主人账号 / 平台、安静时段 |
 | `subscriptions` | 基础订阅列表（UP 主 + 推送目标） |
+| `advancedSub` | 高级订阅开关：按 UP 主粒度精细配置，替代 `subscriptions` 的扁平列表 |
 | `render` | 图片渲染开关与卡片样式（需要 `koishi-plugin-puppeteer`，未安装时自动降级为纯文本） |
 | `ai` | AI 点评/对话开关与模型配置 |
 | `dynamic` | 动态推送的模板、过滤、图集等设置（恒开，核心能力） |
 | `live` | 直播推送的词云、总结、卡片文案等设置（恒开，核心能力） |
-| `advancedSub` | 高级订阅开关：按 UP 主粒度精细配置，替代 `subscriptions` 的扁平列表 |
 
 ## 使用方法
 

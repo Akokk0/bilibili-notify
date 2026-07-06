@@ -21,20 +21,20 @@ export interface BilibiliNotifyConfig {
 	account: AccountConfig;
 	push: PushConfig;
 	subscriptions: SubscriptionsConfig;
+	advancedSub: AdvancedSubConfig;
 	render: RenderConfig;
 	ai: AIConfig;
 	dynamic: DynamicConfig;
 	live: LiveConfig;
-	advancedSub: AdvancedSubConfig;
 }
 
 export const BilibiliNotifyConfigSchema: Schema<BilibiliNotifyConfig> = Schema.object({
 	account: AccountConfigSchema,
 	push: PushConfigSchema,
 	subscriptions: SubscriptionsConfigSchema,
+	advancedSub: AdvancedSubConfigSchema,
 	render: RenderConfigSchema,
 	ai: AIConfigSchema,
 	dynamic: DynamicConfigSchema,
 	live: LiveConfigSchema,
-	advancedSub: AdvancedSubConfigSchema,
 });

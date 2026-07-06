@@ -47,11 +47,11 @@ apps/       Hono 服务端 + React Dashboard(pnpm 子 workspace)
 - `config/account.ts` —— User-Agent、日志级别、登录健康检查间隔、cookie 加密口令
 - `config/push.ts` —— 主人账号/平台、安静时段(`MasterConfig` / `QuietHourRange`)
 - `config/subscriptions.ts` —— 扁平订阅列表(`FlatSubConfigItem[]`)
+- `config/advanced-sub.ts` —— 高级订阅开关 + per-UP 精细配置(`SubItemRawConfig`),与 `subscriptions` 二选一,故排在其后
 - `config/render.ts` —— 图片渲染开关 + 卡片样式
 - `config/ai.ts` —— AI 点评/对话开关 + 模型配置(`PersonaConfig`)
 - `config/dynamic.ts` —— 动态推送设置(核心能力,无 `enabled` 开关,恒开)
 - `config/live.ts` —— 直播推送设置(核心能力,无 `enabled` 开关,恒开)
-- `config/advanced-sub.ts` —— 高级订阅开关 + per-UP 精细配置(`SubItemRawConfig`)
 
 除 `render`/`ai`/`advancedSub` 外都不带 `enabled` 字段 —— `account`/`push`/`subscriptions` 是插件核心必需项,`dynamic`/`live` 是恒开的核心能力(见下方生命周期)。`render`/`ai`/`advancedSub` 域内的"仅当 enabled 才必需"字段用 `Schema.intersect([Schema.object({enabled}), Schema.union([...])])` 模式表达 —— TS 类型上这些字段是可选的(不是判别式联合),与 `push.ts` 里 `MasterConfig` 的既有写法一致。
 
