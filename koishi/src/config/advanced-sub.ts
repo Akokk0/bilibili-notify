@@ -14,60 +14,74 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 		),
 	subs: Schema.dict(
 		Schema.object({
-			uid: Schema.string().required().description("要订阅的UP主的UID"),
-			roomId: Schema.string().default("").description("直播间号，留空则自动查询"),
-			dynamic: Schema.boolean().default(true).description("是否订阅动态通知"),
+			uid: Schema.string()
+				.required()
+				.description("要订阅的 UP 主的 UID，一定要填对哦，不然女仆会找错人的 (；>_<)"),
+			roomId: Schema.string().default("").description("直播间号～留空的话女仆会自动帮主人查询哒"),
+			dynamic: Schema.boolean().default(true).description("要不要订阅动态通知呢？"),
 			dynamicAtAll: Schema.boolean()
 				.default(false)
-				.description("动态推送时是否 @全体(订阅级默认;频道行里可单独覆写)"),
-			live: Schema.boolean().default(true).description("是否订阅直播开播通知"),
+				.description(
+					"动态推送时要不要 @全体呢？（这是订阅级默认值；下面的频道行里可以单独覆写哦）",
+				),
+			live: Schema.boolean().default(true).description("要不要订阅开播通知呢？"),
 			liveAtAll: Schema.boolean()
 				.default(true)
 				.description(
-					"开播推送时是否 @全体(订阅级默认;只冲开播,不冲 SC/上舰/总结;频道行里可单独覆写)",
+					"开播推送时要不要 @全体呢？（订阅级默认值；只影响开播通知，不冲 SC / 上舰 / 总结；频道行里可以单独覆写）",
 				),
-			liveEnd: Schema.boolean().default(true).description("是否订阅直播下播通知"),
-			liveGuardBuy: Schema.boolean().default(false).description("是否订阅上舰通知"),
-			superchat: Schema.boolean().default(false).description("是否订阅SC通知"),
-			wordcloud: Schema.boolean().default(true).description("是否订阅弹幕词云"),
-			liveSummary: Schema.boolean().default(true).description("是否订阅直播总结"),
+			liveEnd: Schema.boolean().default(true).description("要不要订阅下播通知呢？"),
+			liveGuardBuy: Schema.boolean().default(false).description("要不要订阅上舰通知呢？"),
+			superchat: Schema.boolean().default(false).description("要不要订阅 SC 通知呢？"),
+			wordcloud: Schema.boolean().default(true).description("要不要订阅弹幕词云呢？"),
+			liveSummary: Schema.boolean().default(true).description("要不要订阅直播总结呢？"),
 
 			target: Schema.array(
 				Schema.object({
 					platform: Schema.string()
 						.required()
-						.description("消息推送平台（如 onebot、qq、discord）"),
+						.description(
+							"消息推送平台，比如 onebot、qq、discord 这些～要和机器人适配器一致才找得到哦",
+						),
 					channelArr: Schema.array(
 						Schema.object({
-							channelId: Schema.string().required().description("频道或群组号"),
-							dynamic: Schema.boolean().default(true).description("动态通知"),
+							channelId: Schema.string()
+								.required()
+								.description("频道号或群组号，填错的话女仆会送错地方的 (；>_<)"),
+							dynamic: Schema.boolean().default(true).description("动态通知要不要开呢？"),
 							dynamicAtAll: Schema.boolean().description(
-								"动态 @全体 覆写(可选;不填 = 跟订阅级默认;填 = 仅此频道按此值)",
+								"动态 @全体 的覆写～不填就跟订阅级默认走，填了就只对这个频道生效",
 							),
-							live: Schema.boolean().default(true).description("直播通知"),
+							live: Schema.boolean().default(true).description("直播开播通知要不要开呢？"),
 							liveAtAll: Schema.boolean().description(
-								"开播 @全体 覆写(可选;不填 = 跟订阅级默认;只作用于开播,不冲 SC/上舰/总结)",
+								"开播 @全体 的覆写～不填就跟订阅级默认走，只影响开播，不冲 SC / 上舰 / 总结",
 							),
-							liveEnd: Schema.boolean().default(true).description("下播通知"),
-							liveGuardBuy: Schema.boolean().default(false).description("上舰通知"),
-							superchat: Schema.boolean().default(false).description("SC通知"),
-							wordcloud: Schema.boolean().default(true).description("弹幕词云"),
-							liveSummary: Schema.boolean().default(true).description("直播总结"),
-							specialDanmaku: Schema.boolean().default(true).description("特别关注弹幕"),
-							specialUserEnter: Schema.boolean().default(true).description("特别关注进入直播间"),
+							liveEnd: Schema.boolean().default(true).description("下播通知要不要开呢？"),
+							liveGuardBuy: Schema.boolean().default(false).description("上舰通知要不要开呢？"),
+							superchat: Schema.boolean().default(false).description("SC 通知要不要开呢？"),
+							wordcloud: Schema.boolean().default(true).description("弹幕词云要不要生成呢？"),
+							liveSummary: Schema.boolean().default(true).description("直播总结要不要生成呢？"),
+							specialDanmaku: Schema.boolean()
+								.default(true)
+								.description("特别关注用户的弹幕提醒要不要开呢？"),
+							specialUserEnter: Schema.boolean()
+								.default(true)
+								.description("特别关注用户进房提醒要不要开呢？"),
 						}),
 					)
 						.role("table")
 						.required()
 						.description(
-							"推送目标配置。注意:channelArr 留空期间该 UP 已经在监听动态/直播,但事件会直接丢弃不缓存——请尽快配置至少一个频道",
+							"推送目标配置～要提醒主人一下:channelArr 留空期间该 UP 其实已经在被监听动态/直播了，只是事件会被女仆直接丢掉、不会缓存——所以请尽快配置至少一个频道哦 (；>_<)",
 						),
 				}),
-			).description("推送平台和频道/群组列表"),
+			).description("推送平台和频道/群组列表，女仆会照着这份名单一个个送过去哒～"),
 
 			customLiveSummary: Schema.intersect([
 				Schema.object({
-					enable: Schema.boolean().default(false).description("是否启用自定义直播总结"),
+					enable: Schema.boolean()
+						.default(false)
+						.description("要不要为这个 UP 启用专属的自定义直播总结呢？"),
 				}),
 				Schema.union([
 					Schema.object({
@@ -87,7 +101,7 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 							])
 							.role("table")
 							.description(
-								"直播总结模板，支持变量：{dmc}（弹幕发言人数）、{mdn}（勋章名）、{dca}（弹幕总数）、{un1}~{un5}（弹幕排行用户）、{dc1}~{dc5}（弹幕排行数量）",
+								"直播总结模板，女仆会照着这份写好的稿子念给主人听～支持变量：{dmc}（弹幕发言人数）、{mdn}（勋章名）、{dca}（弹幕总数）、{un1}~{un5}（弹幕排行用户）、{dc1}~{dc5}（弹幕排行数量）",
 							),
 					}),
 					Schema.object({}),
@@ -96,13 +110,15 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 
 			customLiveMsg: Schema.intersect([
 				Schema.object({
-					enable: Schema.boolean().default(false).description("是否启用自定义直播消息"),
+					enable: Schema.boolean()
+						.default(false)
+						.description("要不要为这个 UP 启用专属的自定义直播消息呢？"),
 				}),
 				Schema.union([
 					Schema.object({
 						enable: Schema.const(true).required(),
 						customLiveStart: Schema.string().description(
-							"开播消息模板，支持变量：{name}（UP主名字）、{follower}（粉丝数）。链接不再写进模板，由 live 域的「附带直播间链接」开关决定",
+							"开播消息模板，支持变量：{name}（UP主名字）、{follower}（粉丝数）。链接不用写进模板哦，由 live 域的「附带直播间链接」开关统一决定～",
 						),
 						customLive: Schema.string().description(
 							"直播中消息模板，支持变量：{name}（UP主名字）、{time}（开播时长）、{watched}（观看人数）",
@@ -117,16 +133,18 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 
 			customDynamicMsg: Schema.intersect([
 				Schema.object({
-					enable: Schema.boolean().default(false).description("是否启用自定义动态推送文案"),
+					enable: Schema.boolean()
+						.default(false)
+						.description("要不要为这个 UP 启用专属的自定义动态文案呢？"),
 				}),
 				Schema.union([
 					Schema.object({
 						enable: Schema.const(true).required(),
 						dynamicText: Schema.string().description(
-							"动态(非视频)推送文案模板，支持变量：{name}（UP主名字）。链接不再写进模板，由 dynamic 域的「附带链接」开关决定",
+							"动态(非视频)推送文案模板，支持变量：{name}（UP主名字）。链接不用写进模板哦，由 dynamic 域的「附带链接」开关统一决定～",
 						),
 						videoText: Schema.string().description(
-							"视频投稿推送文案模板，支持变量：{name}（UP主名字）。链接 / BV 同样由「附带链接」开关决定",
+							"视频投稿推送文案模板，支持变量：{name}（UP主名字）。链接 / BV 同样由「附带链接」开关决定哒",
 						),
 					}),
 					Schema.object({}),
@@ -135,17 +153,19 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 
 			customCardStyle: Schema.intersect([
 				Schema.object({
-					enable: Schema.boolean().default(false).description("是否启用自定义卡片样式"),
+					enable: Schema.boolean()
+						.default(false)
+						.description("要不要为这个 UP 启用专属的卡片配色呢？"),
 				}),
 				Schema.union([
 					Schema.object({
 						enable: Schema.const(true).required(),
 						cardColorStart: Schema.string()
 							.pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)
-							.description("卡片渐变起始颜色（16进制）"),
+							.description("卡片渐变的起始颜色，请填十六进制色值哦～"),
 						cardColorEnd: Schema.string()
 							.pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)
-							.description("卡片渐变结束颜色（16进制）"),
+							.description("卡片渐变的结束颜色，和起始颜色搭配出漂亮渐变～"),
 					}),
 					Schema.object({}),
 				]),
@@ -153,7 +173,9 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 
 			customGuardBuy: Schema.intersect([
 				Schema.object({
-					enable: Schema.boolean().default(false).description("是否启用自定义上舰消息"),
+					enable: Schema.boolean()
+						.default(false)
+						.description("要不要为这个 UP 启用专属的上舰消息呢？"),
 				}),
 				Schema.union([
 					Schema.object({
@@ -167,17 +189,17 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 							.default(
 								"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/captain-Bjw5Byb5.png",
 							)
-							.description("舰长图片链接"),
+							.description("舰长的图片链接，女仆会贴在推送里让消息更好看～"),
 						supervisorImgUrl: Schema.string()
 							.default(
 								"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/supervisor-u43ElIjU.png",
 							)
-							.description("提督图片链接"),
+							.description("提督的图片链接，女仆会贴在推送里让消息更好看～"),
 						governorImgUrl: Schema.string()
 							.default(
 								"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/governor-DpDXKEdA.png",
 							)
-							.description("总督图片链接"),
+							.description("总督的图片链接，女仆会贴在推送里让消息更好看～"),
 					}),
 					Schema.object({}),
 				]),
@@ -188,37 +210,41 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 					enable: Schema.boolean()
 						.default(false)
 						.description(
-							"是否为该 UP 启用 AI 自定义。关 = 沿用全局 GlobalDefaults.ai;开 = 用下方所有字段(留空字符串 = 沿用全局对应字段)",
+							"要不要为这个 UP 单独定制 AI 人格呢？关 = 沿用全局 GlobalDefaults.ai；开 = 用下方所有字段（留空字符串 = 沿用全局对应字段）",
 						),
 				}),
 				Schema.union([
 					Schema.object({
 						enable: Schema.const(true).required(),
-						personaName: Schema.string().default("小绫").description("AI 角色名字"),
-						addressUser: Schema.string().default("主人").description("AI 对用户的称呼"),
-						addressSelf: Schema.string().default("小绫").description("AI 对自己的称呼"),
+						personaName: Schema.string()
+							.default("小绫")
+							.description("AI 的角色名字，主人喜欢叫什么就叫什么～"),
+						addressUser: Schema.string().default("主人").description("AI 要怎么称呼主人呢？"),
+						addressSelf: Schema.string().default("小绫").description("AI 要怎么称呼自己呢？"),
 						personaTraits: Schema.string()
 							.default("温柔、体贴、说话轻声细语")
-							.description("性格特征(逗号分隔多个特征,如「温柔、毒舌、爱用反问」)"),
-						catchphrase: Schema.string().default("").description("口头禅(可空)"),
+							.description("性格特征，逗号分隔多个特征就好，比如「温柔、毒舌、爱用反问」～"),
+						catchphrase: Schema.string().default("").description("口头禅，可以留空不填哦"),
 						baseRole: Schema.string()
 							.default("")
-							.description("基础角色描述,用于 system prompt 起手段(留空 = 用全局默认)"),
+							.description("基础角色描述，用于 system prompt 起手段～留空的话就沿用全局默认"),
 						extraSystemPrompt: Schema.string()
 							.default("")
-							.description("追加到 system prompt 末尾的额外指令(留空 = 用全局默认)"),
+							.description("追加到 system prompt 末尾的额外指令～留空的话就沿用全局默认"),
 						dynamicPrompt: Schema.string()
 							.default("")
-							.description("动态点评的 prompt(留空 = 沿用全局 GlobalDefaults.ai.dynamicPrompt)"),
+							.description(
+								"动态点评专属的 prompt～留空的话就沿用全局 GlobalDefaults.ai.dynamicPrompt",
+							),
 						liveSummaryPrompt: Schema.string()
 							.default("")
-							.description("直播总结的 prompt(留空 = 沿用全局)"),
+							.description("直播总结专属的 prompt～留空的话就沿用全局默认"),
 						temperature: Schema.number()
 							.min(0)
 							.max(2)
 							.step(0.1)
 							.default(0.7)
-							.description("AI temperature (0-2),越高越随机,默认 0.7"),
+							.description("AI temperature（0～2），数值越高越随机，默认 0.7 哦"),
 					}),
 					Schema.object({}),
 				]),
@@ -229,7 +255,7 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 					enable: Schema.boolean()
 						.default(false)
 						.description(
-							"是否为该 UP 启用自定义图集行为。关 = 沿用 dynamic 域全局;开 = 用下方字段覆盖",
+							"要不要为这个 UP 启用专属的图集推送行为呢？关 = 沿用 dynamic 域全局；开 = 用下方字段覆盖",
 						),
 				}),
 				Schema.union([
@@ -240,10 +266,10 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 						// 外层 = 是否启用此 custom 模板;内层 = 是否推图集本身的行为。
 						imgEnable: Schema.boolean()
 							.default(true)
-							.description("是否额外推送图集图片(关 = 只发卡片)"),
+							.description("要不要额外推送图集图片呢？（关 = 只发卡片）"),
 						forward: Schema.boolean()
 							.default(false)
-							.description("开 = 合并转发(聊天记录卡片);关 = 多图普通消息。单图不走合并转发"),
+							.description("开 = 合并转发（聊天记录卡片）；关 = 多图普通消息。单图不走合并转发哦"),
 					}),
 					Schema.object({}),
 				]),
@@ -251,14 +277,14 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 
 			customSpecialDanmakuUsers: Schema.intersect([
 				Schema.object({
-					enable: Schema.boolean().default(false).description("是否启用特别关注弹幕用户监测"),
+					enable: Schema.boolean().default(false).description("要不要开启特别关注弹幕用户监测呢？"),
 				}),
 				Schema.union([
 					Schema.object({
 						enable: Schema.const(true).required(),
 						specialDanmakuUsers: Schema.array(String)
 							.role("table")
-							.description("特别关注弹幕用户列表（请填写UID），每个UID单独一行"),
+							.description("特别关注的弹幕用户列表（请填写 UID），每个 UID 单独一行～"),
 						msgTemplate: Schema.string()
 							.default("【-mastername的直播间】⭐ 特别关注弹幕 -uname: -msg")
 							.description(
@@ -271,14 +297,16 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 
 			customSpecialUsersEnterTheRoom: Schema.intersect([
 				Schema.object({
-					enable: Schema.boolean().default(false).description("是否启用特别关注用户进入直播间监测"),
+					enable: Schema.boolean()
+						.default(false)
+						.description("要不要开启特别关注用户进入直播间监测呢？"),
 				}),
 				Schema.union([
 					Schema.object({
 						enable: Schema.const(true).required(),
 						specialUsersEnterTheRoom: Schema.array(String)
 							.role("table")
-							.description("特别关注进入直播间用户列表（请填写UID），每个UID单独一行"),
+							.description("特别关注的进入直播间用户列表（请填写 UID），每个 UID 单独一行～"),
 						msgTemplate: Schema.string()
 							.default("【-mastername的直播间】🌟 特别关注用户 -uname 进入了直播间")
 							.description(
@@ -294,7 +322,7 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 					enable: Schema.boolean()
 						.default(false)
 						.description(
-							"是否为该 UP 启用自定义内容过滤。关 = 完全继承全局 GlobalDefaults.filters;开 = 用下方字段(数组留空 = 该项仍继承全局,标量为显式值)",
+							"要不要为这个 UP 单独定制内容过滤呢？关 = 完全继承全局 GlobalDefaults.filters；开 = 用下方字段（数组留空 = 该项仍继承全局，标量为显式值）",
 						),
 				}),
 				Schema.union([
@@ -302,35 +330,45 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 						enable: Schema.const(true).required(),
 						blockForward: Schema.boolean()
 							.default(false)
-							.description("是否丢弃「转发」动态(转发自其他 UP 的二级动态)"),
-						blockArticle: Schema.boolean().default(false).description("是否丢弃「专栏文章」动态"),
+							.description("要不要丢弃「转发」动态呢？（转发自其他 UP 的二级动态）"),
+						blockArticle: Schema.boolean()
+							.default(false)
+							.description("要不要丢弃「专栏文章」动态呢？"),
 						blockDraw: Schema.boolean()
 							.default(false)
 							.description(
-								"是否丢弃「图文」动态(带图的朋友圈式动态;新版 B 站走 opus 框架,外层 type 仍为 DRAW)",
+								"要不要丢弃「图文」动态呢？（带图的朋友圈式动态；新版 B 站走 opus 框架，外层 type 仍为 DRAW）",
 							),
-						blockAv: Schema.boolean().default(false).description("是否丢弃「视频投稿」动态"),
+						blockAv: Schema.boolean().default(false).description("要不要丢弃「视频投稿」动态呢？"),
 						blockKeywords: Schema.array(String)
 							.default([])
-							.description("关键词黑名单:动态内容命中任一关键词(子串匹配)则丢弃,每行一条"),
+							.description(
+								"关键词黑名单～动态内容命中任一关键词（子串匹配）就会被女仆丢掉，每行一条哦",
+							),
 						blockRegex: Schema.array(String)
 							.default([])
-							.description("正则黑名单:动态内容匹配任一正则则丢弃。无效正则会被忽略并打 warn"),
+							.description(
+								"正则黑名单～动态内容匹配任一正则就会被丢掉。无效正则会被忽略并打 warn，不用担心",
+							),
 						whitelistKeywords: Schema.array(String)
 							.default([])
-							.description("关键词白名单:非空时只有命中任一关键词的动态才放行(black 优先于 white)"),
+							.description(
+								"关键词白名单～非空时只有命中任一关键词的动态才会被放行（黑名单优先于白名单）",
+							),
 						whitelistRegex: Schema.array(String)
 							.default([])
-							.description("正则白名单:同关键词白名单,但走正则匹配"),
+							.description("正则白名单～和关键词白名单一样的规则，只是走正则匹配"),
 						minScPrice: Schema.number()
 							.min(0)
 							.step(1)
 							.default(0)
-							.description("SC 最低价格(元):低于此值的 SC 不推。0 = 全部推"),
+							.description(
+								"SC 最低价格（元）～低于这个数字的 SC 女仆就不推啦，设成 0 就是全部都推",
+							),
 						minGuardLevel: Schema.union([1, 2, 3])
 							.default(3)
 							.description(
-								"舰长最低等级:3=舰长 / 2=提督 / 1=总督。低于此等级的上舰不推(数值越低越严)",
+								"舰长最低等级：3=舰长 / 2=提督 / 1=总督。低于这个等级的上舰不推（数值越低越严格哦）",
 							),
 					}),
 					Schema.object({}),
@@ -342,7 +380,7 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 					enable: Schema.boolean()
 						.default(false)
 						.description(
-							"是否为该 UP 启用自定义调度。关 = 完全继承全局 GlobalDefaults.schedule(含全局 quietHours);开 = 用下方字段",
+							"要不要为这个 UP 启用专属调度呢？关 = 完全继承全局 GlobalDefaults.schedule（含全局 quietHours）；开 = 用下方字段",
 						),
 				}),
 				Schema.union([
@@ -355,19 +393,19 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 									.max(23)
 									.step(1)
 									.required()
-									.description("起始小时(0-23)"),
+									.description("起始小时（0～23）"),
 								end: Schema.number()
 									.min(0)
 									.max(23)
 									.step(1)
 									.required()
-									.description("结束小时(0-23,不含)"),
+									.description("结束小时（0～23，不含）"),
 							}),
 						)
 							.role("table")
 							.default([])
 							.description(
-								"per-UP 免打扰时段:落进任一区间的推送直接丢弃。粒度按「时」,半开区间 [start, end);end<start 视为跨午夜。留空 = 继承全局 quietHours。",
+								"per-UP 免打扰时段～落进任一区间的推送女仆会直接丢掉。粒度按「时」，半开区间 [start, end)；end<start 视为跨午夜。留空的话就继承全局 quietHours 咯",
 							),
 						pushTime: Schema.number()
 							.min(0)
@@ -375,11 +413,13 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 							.step(1)
 							.default(0)
 							.description(
-								"「正在直播」复推间隔(小时):0 = 不复推。开播后每隔此小时数复推一次直播间状态",
+								"「正在直播」复推间隔（小时）：0 = 不复推。开播后每隔这么多小时，女仆就复推一次直播间状态",
 							),
 						restartPush: Schema.boolean()
 							.default(false)
-							.description("Koishi 重启后如果该 UP 正在直播,是否立即补推一次「开播」通知"),
+							.description(
+								"Koishi 重启后如果这个 UP 正在直播，要不要让女仆立即补推一次「开播」通知呢？",
+							),
 					}),
 					Schema.object({}),
 				]),

@@ -62,7 +62,9 @@ export const DynamicConfigSchema: Schema<DynamicConfig> = Schema.object({
 	}).description("动态图集推送行为"),
 	filter: Schema.intersect([
 		Schema.object({
-			enable: Schema.boolean().default(false).description("要开启吗？"),
+			enable: Schema.boolean()
+				.default(false)
+				.description("要不要让女仆开启这个屏蔽功能呢？(σ・ω・)σ"),
 		}).description("这里是动态屏蔽设置～如果有不想看到的内容，女仆可以帮主人过滤掉 (＞﹏＜)！"),
 		Schema.union([
 			Schema.object({
@@ -88,10 +90,14 @@ export const DynamicConfigSchema: Schema<DynamicConfig> = Schema.object({
 					.description("是否屏蔽视频投稿动态～只要把图文留下、稿件忽略也是可以的！"),
 				whitelistEnable: Schema.boolean()
 					.default(false)
-					.description("是否启用白名单过滤（仅推送匹配白名单规则的动态）"),
-				whitelistRegex: Schema.string().description("白名单正则表达式，命中时允许推送该动态"),
+					.description(
+						"要不要开启白名单模式呢？开启后就只有匹配白名单规则的动态才会被推送啦 (｀・ω・´)b",
+					),
+				whitelistRegex: Schema.string().description(
+					"白名单正则表达式～只要命中，女仆就会乖乖放行这条动态哒",
+				),
 				whitelistKeywords: Schema.array(String).description(
-					"白名单关键词，命中任意关键词时允许推送该动态",
+					"白名单关键词～只要命中其中任意一个，女仆就会放行这条动态 (๑•̀ㅂ•́)و✧",
 				),
 			}),
 			Schema.object({}),

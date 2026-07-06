@@ -10,15 +10,15 @@ export interface SubscriptionsConfig {
 export const SubscriptionsConfigSchema: Schema<SubscriptionsConfig> = Schema.object({
 	list: Schema.array(
 		Schema.object({
-			name: Schema.string().required().description("UP昵称"),
+			name: Schema.string().required().description("UP 昵称"),
 			uid: Schema.string().required().description("UID"),
-			dynamic: Schema.boolean().default(true).description("动态"),
-			dynamicAtAll: Schema.boolean().default(false).description("动态@全体"),
-			live: Schema.boolean().default(true).description("直播"),
-			liveAtAll: Schema.boolean().default(true).description("开播@全体"),
+			dynamic: Schema.boolean().default(true).description("动态推送"),
+			dynamicAtAll: Schema.boolean().default(false).description("动态 @全体"),
+			live: Schema.boolean().default(true).description("开播通知"),
+			liveAtAll: Schema.boolean().default(true).description("开播 @全体"),
 			liveEnd: Schema.boolean().default(true).description("下播通知"),
 			liveGuardBuy: Schema.boolean().default(false).description("上舰消息"),
-			superchat: Schema.boolean().default(false).description("SC消息"),
+			superchat: Schema.boolean().default(false).description("SC 消息"),
 			wordcloud: Schema.boolean().default(true).description("弹幕词云"),
 			liveSummary: Schema.boolean().default(true).description("直播总结"),
 			platform: Schema.string().required().description("平台名"),

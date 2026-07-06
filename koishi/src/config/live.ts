@@ -71,15 +71,17 @@ export const LiveConfigSchema: Schema<LiveConfig> = Schema.object({
 	minScPrice: Schema.number()
 		.min(0)
 		.default(DEFAULT_CONTENT_FILTERS.minScPrice)
-		.description("SC（醒目留言）最低推送金额，低于此金额的 SC 不会推送。设为 0 表示全部推送。"),
+		.description(
+			"SC（醒目留言）最低推送金额，低于这个数字的 SC 女仆就悄悄不推送啦～设成 0 就是全部都告诉主人 (｀・ω・´)b",
+		),
 
 	minGuardLevel: Schema.union([
-		Schema.const(3).description("舰长及以上（全部推送）"),
-		Schema.const(2).description("仅推送提督及以上"),
-		Schema.const(1).description("仅推送总督"),
+		Schema.const(3).description("舰长及以上（全部都推送给主人）"),
+		Schema.const(2).description("只推送提督及以上哦"),
+		Schema.const(1).description("只有总督才会推送呢"),
 	])
 		.default(DEFAULT_CONTENT_FILTERS.minGuardLevel)
-		.description("上舰消息最低推送等级，低于此等级的上舰不会推送。"),
+		.description("上舰消息最低推送等级，低于这个等级的上舰女仆就不推送啦～"),
 
 	liveSummary: Schema.array(String)
 		.default(DEFAULT_TEMPLATES.liveSummary.split("\n"))
