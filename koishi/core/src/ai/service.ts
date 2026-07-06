@@ -13,9 +13,8 @@ import {
 	tryResolveBilibiliNotifyCoreInternals,
 } from "@bilibili-notify/koishi-runtime";
 import { type Awaitable, type Context, Service } from "koishi";
-import type {} from "koishi-plugin-bilibili-notify";
-import { aiCommands } from "./commands";
-import type { BilibiliNotifyAIConfig } from "./config";
+import { aiCommands } from "../commands/ai";
+import type { AIConfig } from "../config/ai";
 import { buildSubManagement } from "./sub-mgmt";
 
 export {
@@ -34,19 +33,23 @@ const SERVICE_NAME = "bilibili-notify-ai";
 
 export type { AIScene };
 
-function toEngineConfig(config: BilibiliNotifyAIConfig): CommentaryGeneratorConfig {
+/**
+ * 只在 `config.ai.enabled === true` 时才会构造(见 index.ts 的注册门控),这时
+ * Schema.union 的 enabled 分支已经把以下字段全部校验并填好默认值,断言安全。
+ */
+function toEngineConfig(config: AIConfig): CommentaryGeneratorConfig {
 	return {
-		apiKey: config.apiKey,
-		baseURL: config.baseURL,
-		model: config.model,
-		persona: config.persona,
-		dynamicPrompt: config.dynamicPrompt,
-		liveSummaryPrompt: config.liveSummaryPrompt,
-		enableConversation: config.enableConversation,
-		maxHistory: config.maxHistory,
-		enableThinking: config.enableThinking,
-		enableSearch: config.enableSearch,
-		enableVision: config.enableVision,
+		apiKey: config.apiKey ?? "",
+		baseURL: config.baseURL ?? "",
+		model: config.model ?? "",
+		persona: config.persona as CommentaryGeneratorConfig["persona"],
+		dynamicPrompt: config.dynamicPrompt ?? "",
+		liveSummaryPrompt: config.liveSummaryPrompt ?? "",
+		enableConversation: config.enableConversation ?? true,
+		maxHistory: config.maxHistory ?? 10,
+		enableThinking: config.enableThinking ?? false,
+		enableSearch: config.enableSearch ?? false,
+		enableVision: config.enableVision ?? false,
 	};
 }
 
@@ -65,16 +68,16 @@ function storeToAiSubs(store: any): Subscriptions {
 	return subs;
 }
 
-export class BilibiliNotifyAI extends Service<BilibiliNotifyAIConfig> {
+export class BilibiliNotifyAI extends Service<AIConfig> {
 	static readonly [Service.provide] = SERVICE_NAME;
 	static readonly inject = ["bilibili-notify"];
 
 	readonly engine: CommentaryGenerator;
 
-	constructor(ctx: Context, config: BilibiliNotifyAIConfig) {
+	constructor(ctx: Context, config: AIConfig) {
 		super(ctx, SERVICE_NAME);
 		this.config = config;
-		const serviceCtx = makeKoishiServiceContext(ctx, SERVICE_NAME, config.logLevel);
+		const serviceCtx = makeKoishiServiceContext(ctx, SERVICE_NAME, config.logLevel ?? 1);
 		// Lazy api proxy: resolved in start()
 		const apiHolder: { api: BilibiliAPI | null } = { api: null };
 		const apiProxy = new Proxy({} as BilibiliAPI, {

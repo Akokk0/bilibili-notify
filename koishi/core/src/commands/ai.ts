@@ -1,5 +1,5 @@
 import type {} from "@koishijs/plugin-help";
-import type { BilibiliNotifyAI } from "./ai-service";
+import type { BilibiliNotifyAI } from "../ai/service";
 
 export function aiCommands(this: BilibiliNotifyAI): void {
 	// bili ai — 单次测试指令

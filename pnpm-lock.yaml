@@ -260,33 +260,11 @@ importers:
         specifier: workspace:^
         version: link:../core
 
-  koishi/ai:
+  koishi/core:
     dependencies:
       '@bilibili-notify/ai':
         specifier: workspace:^
         version: link:../../packages/ai
-      '@bilibili-notify/api':
-        specifier: workspace:^
-        version: link:../../packages/api
-      '@bilibili-notify/internal':
-        specifier: workspace:^
-        version: link:../../packages/internal
-      '@bilibili-notify/koishi-runtime':
-        specifier: workspace:^
-        version: link:../runtime
-      koishi:
-        specifier: ^4.18.11
-        version: 4.18.11(@cordisjs/plugin-http@0.6.3(cordis@3.18.1))(cordis@3.18.1)
-    devDependencies:
-      '@koishijs/plugin-help':
-        specifier: ^2.4.6
-        version: 2.4.6(koishi@4.18.11(@cordisjs/plugin-http@0.6.3(cordis@3.18.1))(cordis@3.18.1))
-      koishi-plugin-bilibili-notify:
-        specifier: workspace:^
-        version: link:../core
-
-  koishi/core:
-    dependencies:
       '@bilibili-notify/api':
         specifier: workspace:^
         version: link:../../packages/api
@@ -361,9 +339,6 @@ importers:
       koishi-plugin-bilibili-notify:
         specifier: workspace:^
         version: link:../core
-      koishi-plugin-bilibili-notify-ai:
-        specifier: workspace:^
-        version: link:../ai
 
   koishi/live:
     dependencies:
@@ -392,9 +367,6 @@ importers:
       koishi-plugin-bilibili-notify:
         specifier: workspace:^
         version: link:../core
-      koishi-plugin-bilibili-notify-ai:
-        specifier: workspace:^
-        version: link:../ai
 
   koishi/runtime:
     dependencies:

@@ -21,33 +21,40 @@ export interface PersonaConfig {
 	extraPrompt?: string;
 }
 
-export interface BilibiliNotifyAIConfig {
-	logLevel: number;
-	apiKey: string;
-	baseURL: string;
-	model: string;
+/**
+ * `apiKey`/`baseURL`/... 等字段只在 `enabled: true` 分支下由 Schema.union 强制填好,
+ * 因此全部标为可选 —— 与 push.ts 里 `MasterConfig` 的 `platform?`/`masterAccount?`
+ * 同一约定(条件必填字段在 TS interface 里统一放宽为 optional,真正的必填校验交给
+ * Schema.union,不强行搭一套判别式联合类型)。
+ */
+export interface AIConfig {
+	enabled: boolean;
+	logLevel?: number;
+	apiKey?: string;
+	baseURL?: string;
+	model?: string;
 
 	/** 结构化人格配置 */
-	persona: PersonaConfig;
+	persona?: PersonaConfig;
 
 	/** 动态点评时追加到人格提示词之后的场景说明 */
-	dynamicPrompt: string;
+	dynamicPrompt?: string;
 	/** 直播总结时追加到人格提示词之后的场景说明 */
-	liveSummaryPrompt: string;
+	liveSummaryPrompt?: string;
 
 	/** 开启后，bili chat 指令将记忆对话历史 */
-	enableConversation: boolean;
+	enableConversation?: boolean;
 	/** 多轮对话保留的最大历史轮次（每轮=一问一答） */
-	maxHistory: number;
+	maxHistory?: number;
 
 	/** 开启模型的思考模式（仅 Qwen3 等支持 enable_thinking 的模型有效） */
-	enableThinking: boolean;
+	enableThinking?: boolean;
 
 	/** 开启模型内置的联网搜索（仅 SiliconFlow 等支持 enable_search 的提供商有效） */
-	enableSearch: boolean;
+	enableSearch?: boolean;
 
 	/** 开启多模态图片理解，动态点评及对话时将图片一并传给模型（需模型支持视觉能力） */
-	enableVision: boolean;
+	enableVision?: boolean;
 }
 
 const PersonaConfigSchema: Schema<PersonaConfig> = Schema.intersect([
@@ -90,57 +97,73 @@ const PersonaConfigSchema: Schema<PersonaConfig> = Schema.intersect([
 	]),
 ]);
 
-export const BilibiliNotifyAIConfigSchema: Schema<BilibiliNotifyAIConfig> = Schema.object({
-	logLevel: Schema.number()
-		.min(1)
-		.max(3)
-		.step(1)
-		.default(1)
-		.description("日志等级：1=仅错误，2=信息，3=调试详情"),
+export const AIConfigSchema: Schema<AIConfig> = Schema.intersect([
+	Schema.object({
+		enabled: Schema.boolean()
+			.default(false)
+			.description(
+				"要不要让女仆帮忙生成 AI 点评 / 直播总结呢？开启前记得先把下面的 API Key 填好哦～需要 OpenAI 兼容接口 (๑•̀ㅂ•́)و✧",
+			),
+	}).description("AI 点评 / 总结"),
+	Schema.union([
+		Schema.object({
+			enabled: Schema.const(true).required(),
 
-	apiKey: Schema.string()
-		.role("secret")
-		.required()
-		.description("OpenAI 兼容 API 的访问密钥（API Key）"),
+			logLevel: Schema.number()
+				.min(1)
+				.max(3)
+				.step(1)
+				.default(1)
+				.description("日志等级：1=仅错误，2=信息，3=调试详情"),
 
-	baseURL: Schema.string()
-		.default("https://api.siliconflow.cn/v1")
-		.description("API 地址，支持任何 OpenAI 兼容接口"),
+			apiKey: Schema.string()
+				.role("secret")
+				.required()
+				.description("OpenAI 兼容 API 的访问密钥（API Key）"),
 
-	model: Schema.string().default("Qwen/Qwen3-8B").description("使用的模型名称"),
+			baseURL: Schema.string()
+				.default("https://api.siliconflow.cn/v1")
+				.description("API 地址，支持任何 OpenAI 兼容接口"),
 
-	persona: PersonaConfigSchema,
+			model: Schema.string().default("Qwen/Qwen3-8B").description("使用的模型名称"),
 
-	dynamicPrompt: Schema.string()
-		.default(DEFAULT_AI.dynamicPrompt)
-		.description("点评动态时追加在人格提示词之后的场景说明"),
+			persona: PersonaConfigSchema,
 
-	liveSummaryPrompt: Schema.string()
-		.default(DEFAULT_AI.liveSummaryPrompt)
-		.description("生成直播总结时追加在人格提示词之后的场景说明"),
+			dynamicPrompt: Schema.string()
+				.default(DEFAULT_AI.dynamicPrompt)
+				.description("点评动态时追加在人格提示词之后的场景说明"),
 
-	enableConversation: Schema.boolean()
-		.default(true)
-		.description("开启后，bili chat 指令将记忆对话历史，实现多轮连续对话"),
+			liveSummaryPrompt: Schema.string()
+				.default(DEFAULT_AI.liveSummaryPrompt)
+				.description("生成直播总结时追加在人格提示词之后的场景说明"),
 
-	maxHistory: Schema.number()
-		.min(1)
-		.max(50)
-		.step(1)
-		.default(10)
-		.description("多轮对话最多保留的历史轮次数（每轮包含一问一答）"),
+			enableConversation: Schema.boolean()
+				.default(true)
+				.description("开启后，bili chat 指令将记忆对话历史，实现多轮连续对话"),
 
-	enableThinking: Schema.boolean()
-		.default(false)
-		.description(
-			"开启模型的思考模式（仅 Qwen3 等支持 enable_thinking 参数的模型有效，不支持的模型会自动降级）",
-		),
+			maxHistory: Schema.number()
+				.min(1)
+				.max(50)
+				.step(1)
+				.default(10)
+				.description("多轮对话最多保留的历史轮次数（每轮包含一问一答）"),
 
-	enableSearch: Schema.boolean()
-		.default(false)
-		.description("开启模型内置的联网搜索（仅 SiliconFlow 等支持 enable_search 参数的提供商有效）"),
+			enableThinking: Schema.boolean()
+				.default(false)
+				.description(
+					"开启模型的思考模式（仅 Qwen3 等支持 enable_thinking 参数的模型有效，不支持的模型会自动降级）",
+				),
 
-	enableVision: Schema.boolean()
-		.default(false)
-		.description("开启多模态图片理解，动态点评及对话时将图片传给模型（需模型支持视觉能力）"),
-});
+			enableSearch: Schema.boolean()
+				.default(false)
+				.description(
+					"开启模型内置的联网搜索（仅 SiliconFlow 等支持 enable_search 参数的提供商有效）",
+				),
+
+			enableVision: Schema.boolean()
+				.default(false)
+				.description("开启多模态图片理解，动态点评及对话时将图片传给模型（需模型支持视觉能力）"),
+		}),
+		Schema.object({}),
+	]),
+]);

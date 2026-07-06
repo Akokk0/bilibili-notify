@@ -12,6 +12,7 @@ import {} from "@koishijs/plugin-console";
 // biome-ignore lint/correctness/noUnusedImports: module augmentation
 import {} from "@koishijs/plugin-notifier";
 import type { Context, Schema } from "koishi";
+import { BilibiliNotifyAI } from "./ai/service";
 import BilibiliNotifyDataServer from "./bridges/data-server";
 import { type BilibiliNotifyConfig, BilibiliNotifyConfigSchema } from "./config";
 import BilibiliNotifyImage from "./render/service";
@@ -114,6 +115,11 @@ export function apply(ctx: Context, config: BilibiliNotifyConfig): void {
 	// degrades to plain text, see render/service.ts).
 	if (config.render.enabled) {
 		ctx.plugin(BilibiliNotifyImage, config.render);
+	}
+	// Register AI commentary/chat (requires bilibili-notify's own internals,
+	// see ai/service.ts).
+	if (config.ai.enabled) {
+		ctx.plugin(BilibiliNotifyAI, config.ai);
 	}
 	// ctx.scope here is the bilibili-notify fork tracked by the Koishi loader.
 	// Server manager emits this event to update the top-level config entry so changes persist.
