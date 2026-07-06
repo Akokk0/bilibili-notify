@@ -41,6 +41,7 @@
 	"dependencies": {
 		"@bilibili-notify/ai": "workspace:^",
 		"@bilibili-notify/api": "workspace:^",
+		"@bilibili-notify/dynamic": "workspace:^",
 		"@bilibili-notify/image": "workspace:^",
 		"@bilibili-notify/internal": "workspace:^",
 		"@bilibili-notify/koishi-runtime": "workspace:^",
@@ -77,14 +78,14 @@
 				"notifier"
 			],
 			"optional": [
-				"bilibili-notify-dynamic",
 				"bilibili-notify-live",
 				"bilibili-notify-advanced-subscription",
 				"puppeteer"
 			],
 			"provides": [
 				"bilibili-notify-image",
-				"bilibili-notify-ai"
+				"bilibili-notify-ai",
+				"bilibili-notify-dynamic"
 			]
 		},
 		"description": {

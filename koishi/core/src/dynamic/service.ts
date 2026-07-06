@@ -8,9 +8,8 @@ import {
 	tryResolveBilibiliNotifyCoreInternals,
 } from "@bilibili-notify/koishi-runtime";
 import { type Awaitable, type Context, Service } from "koishi";
-import type {} from "koishi-plugin-bilibili-notify";
-import { dynamicCommands } from "./commands";
-import type { BilibiliNotifyDynamicConfig } from "./config";
+import { dynamicCommands } from "../commands/dynamic";
+import type { DynamicConfig } from "../config/dynamic";
 import { adaptPush } from "./push-adapter";
 import { resolveDynamicFeature, storeToDynamicView, subToDynamicView } from "./sub-view";
 
@@ -28,18 +27,18 @@ declare module "koishi" {
 
 const SERVICE_NAME = "bilibili-notify-dynamic";
 
-export class BilibiliNotifyDynamic extends Service<BilibiliNotifyDynamicConfig> {
+export class BilibiliNotifyDynamic extends Service<DynamicConfig> {
 	static readonly [Service.provide] = SERVICE_NAME;
 	static readonly inject = ["bilibili-notify"];
 
 	private engine?: DynamicEngine;
 
-	constructor(ctx: Context, config: BilibiliNotifyDynamicConfig) {
+	constructor(ctx: Context, config: DynamicConfig) {
 		super(ctx, SERVICE_NAME);
 		this.config = config;
 	}
 
-	private toEngineConfig(config: BilibiliNotifyDynamicConfig): DynamicEngineConfig {
+	private toEngineConfig(config: DynamicConfig): DynamicEngineConfig {
 		return {
 			dynamicCron: config.dynamicCron,
 			dynamicVideoUrlToBV: config.dynamicVideoUrlToBV,

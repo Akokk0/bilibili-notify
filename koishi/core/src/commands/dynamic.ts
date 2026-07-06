@@ -1,7 +1,7 @@
 import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
 import type {} from "@koishijs/plugin-help";
 import { h } from "koishi";
-import type { BilibiliNotifyDynamic } from "./dynamic-service";
+import type { BilibiliNotifyDynamic } from "../dynamic/service";
 
 export function dynamicCommands(this: BilibiliNotifyDynamic): void {
 	this.ctx

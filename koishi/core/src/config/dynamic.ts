@@ -2,7 +2,7 @@ import type { DynamicFilterConfig } from "@bilibili-notify/dynamic";
 import { DEFAULT_DYNAMIC_CRON, DEFAULT_TEMPLATES } from "@bilibili-notify/internal";
 import { Schema } from "koishi";
 
-export interface BilibiliNotifyDynamicConfig {
+export interface DynamicConfig {
 	logLevel: number;
 	dynamicCron: string;
 	dynamicVideoUrlToBV: boolean;
@@ -16,7 +16,7 @@ export interface BilibiliNotifyDynamicConfig {
 	filter: DynamicFilterConfig & { notify?: boolean };
 }
 
-export const BilibiliNotifyDynamicSchema: Schema<BilibiliNotifyDynamicConfig> = Schema.object({
+export const DynamicConfigSchema: Schema<DynamicConfig> = Schema.object({
 	logLevel: Schema.number()
 		.min(1)
 		.max(3)
@@ -97,4 +97,4 @@ export const BilibiliNotifyDynamicSchema: Schema<BilibiliNotifyDynamicConfig> = 
 			Schema.object({}),
 		]),
 	]),
-});
+}).description("动态推送");

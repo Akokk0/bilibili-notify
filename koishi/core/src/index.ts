@@ -15,6 +15,7 @@ import type { Context, Schema } from "koishi";
 import { BilibiliNotifyAI } from "./ai/service";
 import BilibiliNotifyDataServer from "./bridges/data-server";
 import { type BilibiliNotifyConfig, BilibiliNotifyConfigSchema } from "./config";
+import { BilibiliNotifyDynamic } from "./dynamic/service";
 import BilibiliNotifyImage from "./render/service";
 import BilibiliNotifyServerManager from "./runtime/bootstrap";
 import type { SubscriptionOp as LegacySubscriptionOp } from "./types";
@@ -72,7 +73,7 @@ declare module "@koishijs/plugin-console" {
 
 export const inject = {
 	required: ["notifier", "console"],
-	optional: ["bilibili-notify-dynamic", "bilibili-notify-live"],
+	optional: ["bilibili-notify-live"],
 };
 export const name = "bilibili-notify";
 
@@ -121,6 +122,9 @@ export function apply(ctx: Context, config: BilibiliNotifyConfig): void {
 	if (config.ai.enabled) {
 		ctx.plugin(BilibiliNotifyAI, config.ai);
 	}
+	// Register dynamic push (always on, unlike render/ai — dynamic push is a
+	// core capability, not an optional add-on).
+	ctx.plugin(BilibiliNotifyDynamic, config.dynamic);
 	// ctx.scope here is the bilibili-notify fork tracked by the Koishi loader.
 	// Server manager emits this event to update the top-level config entry so changes persist.
 	ctx.on("bilibili-notify/update-config", (newConfig) => {
