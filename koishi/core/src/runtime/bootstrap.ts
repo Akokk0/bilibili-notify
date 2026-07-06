@@ -6,12 +6,12 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 // biome-ignore lint/correctness/noUnusedImports: module augmentation for koishi help commands
 import {} from "@koishijs/plugin-help";
 import { type Awaitable, type Context, type Logger, Service } from "koishi";
+import type { LoginFlowBridge } from "../bridges/login-flow-bridge";
+import { biliCommands, statusCommands, sysCommands } from "../commands";
+import type { BilibiliNotifyConfig } from "../config";
 import { buildStorageManagerOptions } from "./bootstrap-helpers";
-import { biliCommands, statusCommands, sysCommands } from "./commands";
-import type { BilibiliNotifyConfig } from "./config";
 import { buildInternalsProbe, type InternalsShape } from "./internals-probe";
 import { bringUp, type ManagerSlots, tearDown } from "./lifecycle";
-import type { LoginFlowBridge } from "./login-flow-bridge";
 import { MasterNotifier } from "./master-notifier";
 
 const SERVICE_NAME = "bilibili-notify";

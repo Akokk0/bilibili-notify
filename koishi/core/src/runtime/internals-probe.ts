@@ -8,7 +8,7 @@ import {
 } from "@bilibili-notify/koishi-runtime";
 import type { BilibiliPush } from "@bilibili-notify/push";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
-import type { TargetRegistry } from "./target-registry";
+import type { TargetRegistry } from "../push/target-registry";
 
 // 该文件刻意只 import type 重型运行时(api / push / store / registry),唯一的运行时
 // 值 import 是纯 Symbol 的 BILIBILI_NOTIFY_TOKEN —— 这样 internals-probe.test.ts
@@ -19,7 +19,7 @@ const require_ = createRequire(import.meta.url);
 
 function readCoreVersion(): string {
 	try {
-		return (require_("../package.json") as { version?: string }).version ?? "0.0.0";
+		return (require_("../../package.json") as { version?: string }).version ?? "0.0.0";
 	} catch {
 		return "0.0.0";
 	}

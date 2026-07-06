@@ -7,7 +7,7 @@ import {
 import type { BilibiliPush } from "@bilibili-notify/push";
 import type { StorageManager, StorageManagerOptions } from "@bilibili-notify/storage";
 import type { Context, Logger } from "koishi";
-import type { BilibiliNotifyConfig } from "./config";
+import type { BilibiliNotifyConfig } from "../config";
 
 const LIVE_PLUGIN_FEATURES = [
 	"live",

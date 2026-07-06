@@ -1,5 +1,5 @@
 import { BILIBILI_NOTIFY_TOKEN } from "@bilibili-notify/internal";
-import type BilibiliNotifyServerManager from "../app-bootstrap";
+import type BilibiliNotifyServerManager from "../runtime/bootstrap";
 
 export function biliCommands(this: BilibiliNotifyServerManager): void {
 	const biliCom = this.ctx.command("bili", "bilibili-notify 插件相关指令", {

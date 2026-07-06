@@ -12,9 +12,9 @@ import {
 import type { FlatSubConfigItem, SubscriptionStore } from "@bilibili-notify/subscription";
 import type { Notifier } from "@koishijs/plugin-notifier";
 import { type Context, h, type Logger } from "koishi";
-import type { BilibiliNotifyConfig } from "./config";
-import type { TargetRegistry } from "./target-registry";
-import { synthesizeKoishiBotAdapter, synthesizeTargetsForFlatSub } from "./target-synthesis";
+import type { BilibiliNotifyConfig } from "../config";
+import type { TargetRegistry } from "../push/target-registry";
+import { synthesizeKoishiBotAdapter, synthesizeTargetsForFlatSub } from "../push/target-synthesis";
 
 export interface SubscriptionLoaderHooks {
 	getConfig(): BilibiliNotifyConfig;

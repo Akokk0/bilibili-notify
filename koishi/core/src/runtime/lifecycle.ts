@@ -10,13 +10,13 @@ import { BilibiliPush } from "@bilibili-notify/push";
 import type { StorageManager } from "@bilibili-notify/storage";
 import { createSubscriptionStore, type SubscriptionStore } from "@bilibili-notify/subscription";
 import type { Context, Logger } from "koishi";
+import { LoginFlowBridge } from "../bridges/login-flow-bridge";
+import type { BilibiliNotifyConfig } from "../config";
+import { createKoishiSink } from "../push/sink";
+import { TargetRegistry } from "../push/target-registry";
+import { synthesizeKoishiBotAdapter, synthesizeMasterTarget } from "../push/target-synthesis";
+import { SubscriptionLoader } from "../subscriptions/subscription-loader";
 import { hasLoginCookie, loadInitialCookies, warnMissingPlugins } from "./bootstrap-helpers";
-import type { BilibiliNotifyConfig } from "./config";
-import { LoginFlowBridge } from "./login-flow-bridge";
-import { createKoishiSink } from "./sink";
-import { SubscriptionLoader } from "./subscription-loader";
-import { TargetRegistry } from "./target-registry";
-import { synthesizeKoishiBotAdapter, synthesizeMasterTarget } from "./target-synthesis";
 
 /** Mutable runtime state on the manager that lifecycle helpers read/write. */
 export interface ManagerSlots {

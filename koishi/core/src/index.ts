@@ -12,9 +12,9 @@ import {} from "@koishijs/plugin-console";
 // biome-ignore lint/correctness/noUnusedImports: module augmentation
 import {} from "@koishijs/plugin-notifier";
 import type { Context, Schema } from "koishi";
-import BilibiliNotifyServerManager from "./app-bootstrap";
+import BilibiliNotifyDataServer from "./bridges/data-server";
 import { type BilibiliNotifyConfig, BilibiliNotifyConfigSchema } from "./config";
-import BilibiliNotifyDataServer from "./data-server";
+import BilibiliNotifyServerManager from "./runtime/bootstrap";
 import type { SubscriptionOp as LegacySubscriptionOp } from "./types";
 
 export type { LegacySubscriptionOp, SubscriptionOp };
