@@ -30,9 +30,9 @@ apps/       Hono 服务端 + React Dashboard(pnpm 子 workspace)
 
 ### Koishi 薄壳(`koishi/`)
 
-单一包,`koishi/core` → npm 名 `koishi-plugin-bilibili-notify`。此前拆成 core + dynamic/live/image/ai/advanced-subscription 六个包,已合并(见下方「内部模块划分」)—— 旧的五个卫星包不再更新。
+单一包,`koishi/` → npm 名 `koishi-plugin-bilibili-notify`。此前拆成 core + dynamic/live/image/ai/advanced-subscription 六个包(各自一个子目录),已合并成这一个包并展平掉 `core/` 那层子目录 —— 旧的五个卫星包不再更新。
 
-`koishi/core/src/runtime/service-context.ts` 提供 `makeKoishiServiceContext` + `makeKoishiMessageBus` 适配器(把 koishi `Context` 包成业务核心消费的 `ServiceContext` / `MessageBus`),只在包内部使用,不再对外发布(原 `@bilibili-notify/koishi-runtime` 包已删除)。
+`koishi/src/runtime/service-context.ts` 提供 `makeKoishiServiceContext` + `makeKoishiMessageBus` 适配器(把 koishi `Context` 包成业务核心消费的 `ServiceContext` / `MessageBus`),只在包内部使用,不再对外发布(原 `@bilibili-notify/koishi-runtime` 包已删除)。
 
 ## 工作区依赖卫生
 
@@ -42,7 +42,7 @@ apps/       Hono 服务端 + React Dashboard(pnpm 子 workspace)
 
 ## Koishi 配置模式
 
-`koishi/core/src/config/` 按功能域拆成一个域一个文件,每个域各自的 Schema + TS 接口;`config/index.ts` 汇总成 `BilibiliNotifyConfigSchema` / `BilibiliNotifyConfig`,`index.ts` 再 re-export 成 koishi 标准的 `Config` / `apply`:
+`koishi/src/config/` 按功能域拆成一个域一个文件,每个域各自的 Schema + TS 接口;`config/index.ts` 汇总成 `BilibiliNotifyConfigSchema` / `BilibiliNotifyConfig`,`index.ts` 再 re-export 成 koishi 标准的 `Config` / `apply`:
 
 - `config/account.ts` —— User-Agent、日志级别、登录健康检查间隔、cookie 加密口令
 - `config/push.ts` —— 主人账号/平台、安静时段(`MasterConfig` / `QuietHourRange`)
@@ -55,7 +55,7 @@ apps/       Hono 服务端 + React Dashboard(pnpm 子 workspace)
 
 除 `render`/`ai`/`advancedSub` 外都不带 `enabled` 字段 —— `account`/`push`/`subscriptions` 是插件核心必需项,`dynamic`/`live` 是恒开的核心能力(见下方生命周期)。`render`/`ai`/`advancedSub` 域内的"仅当 enabled 才必需"字段用 `Schema.intersect([Schema.object({enabled}), Schema.union([...])])` 模式表达 —— TS 类型上这些字段是可选的(不是判别式联合),与 `push.ts` 里 `MasterConfig` 的既有写法一致。
 
-## Koishi 插件生命周期(`koishi/core`)
+## Koishi 插件生命周期(`koishi/`)
 
 `apply()` 注册两个顶层插件:
 
@@ -84,7 +84,7 @@ render/ai/dynamic/live 不再是独立 koishi Service —— 它们是 `ManagerS
 BilibiliAPI        (@bilibili-notify/api;由 ServerManager 直接持有,commands 经 this.api 访问)
 BilibiliPush       (@bilibili-notify/push;喂一个 PushLike 适配器)
 SubscriptionStore  (@bilibili-notify/subscription;Subscription[] 的内存权威)
-TargetRegistry     (koishi/core 内部;PushAdapter/PushTarget 注册表)
+TargetRegistry     (koishi/ 内部;PushAdapter/PushTarget 注册表)
 
 runtime/engines.ts 按顺序构造(render → ai → dynamic → live),后两者直接拿前两者的 engine 引用:
 
@@ -96,7 +96,7 @@ live   (恒造)                        → LiveEngine({ api, push, store, conten
 
 ## Koishi 控制台 UI
 
-`koishi/core/client/` 是 koishi 控制台前端(Vue)。加载:dev `resolve(__dirname, "../client/index.ts")`,prod `resolve(__dirname, "../dist")`。独立端用的是 `apps/web/` 下另一套 React + Vite Dashboard,两者不共享 UI 代码。
+`koishi/client/` 是 koishi 控制台前端(Vue)。加载:dev `resolve(__dirname, "../client/index.ts")`,prod `resolve(__dirname, "../dist")`。独立端用的是 `apps/web/` 下另一套 React + Vite Dashboard,两者不共享 UI 代码。
 
 ## 独立端模块图(`apps/`)
 

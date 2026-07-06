@@ -22,12 +22,12 @@
 
 ## MessageBus ↔ koishi 语义
 
-`koishi/core/src/runtime/service-context.ts` 提供(单包内部实现,不对外发布):
+`koishi/src/runtime/service-context.ts` 提供(单包内部实现,不对外发布):
 
 - `makeKoishiServiceContext(ctx, name, logLevel?)` —— 把 `Context` 包成 `ServiceContext`(logger / setInterval / setTimeout / onDispose)
 - `makeKoishiMessageBus(ctx)` —— 把 `Context` 包成 `MessageBus`:`bus.emit("X", p)` ≡ `ctx.emit("bilibili-notify/X", p)`;`bus.on("X", h)` ≡ `ctx.on("bilibili-notify/X", h)`
 
-**关键约束:bus 与 ctx 是同一条事件通道的两个视图。** 绝不要写 `bus.on(X) → ctx.emit(bilibili-notify/X)` 或 `ctx.on(bilibili-notify/X) → bus.emit(X)` 这种转发器 —— 会自喂死循环、爆栈。经 `ctx.on("bilibili-notify/...")` 监听的代码已经免费收到核心的 `bus.emit`。回归测试:`koishi/core/src/runtime/__tests__/message-bus.test.ts`。
+**关键约束:bus 与 ctx 是同一条事件通道的两个视图。** 绝不要写 `bus.on(X) → ctx.emit(bilibili-notify/X)` 或 `ctx.on(bilibili-notify/X) → bus.emit(X)` 这种转发器 —— 会自喂死循环、爆栈。经 `ctx.on("bilibili-notify/...")` 监听的代码已经免费收到核心的 `bus.emit`。回归测试:`koishi/src/runtime/__tests__/message-bus.test.ts`。
 
 ## 独立端 WS channel 契约
 

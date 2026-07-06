@@ -2,7 +2,7 @@
  * 端到端:独立端 `MasterNotifier` 把 bus `auth-lost` / `engine-error` 翻译成主人私聊
  * (`push.sendPrivateMsg`),并按 per-source 60s 节流合并。
  *
- * 与 koishi 端 `koishi/core/src/__tests__/master-notifier.test.ts` 行为对称 ——
+ * 与 koishi 端 `koishi/src/runtime/__tests__/master-notifier.test.ts` 行为对称 ——
  * 同事件 → 同私聊路径 + 同节流粒度。此前 `engines.test.ts` 只覆盖了 auth-lost →
  * live.teardown 的事件级转译,从未断言私聊真的发出。
  */

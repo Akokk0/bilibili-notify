@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <a href="./koishi/core/README.md">Koishi 插件文档</a>
+  <a href="./koishi/README.md">Koishi 插件文档</a>
   &nbsp;|&nbsp;
   <a href="./apps/README.md">独立 Dashboard 部署文档</a>
 </p>
