@@ -45,28 +45,18 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 						),
 					channelArr: Schema.array(
 						Schema.object({
-							channelId: Schema.string()
-								.required()
-								.description("频道号或群组号，填错的话女仆会送错地方的 (；>_<)"),
-							dynamic: Schema.boolean().default(true).description("动态通知要不要开呢？"),
-							dynamicAtAll: Schema.boolean().description(
-								"动态 @全体 的覆写～不填就跟订阅级默认走，填了就只对这个频道生效",
-							),
-							live: Schema.boolean().default(true).description("直播开播通知要不要开呢？"),
-							liveAtAll: Schema.boolean().description(
-								"开播 @全体 的覆写～不填就跟订阅级默认走，只影响开播，不冲 SC / 上舰 / 总结",
-							),
-							liveEnd: Schema.boolean().default(true).description("下播通知要不要开呢？"),
-							liveGuardBuy: Schema.boolean().default(false).description("上舰通知要不要开呢？"),
-							superchat: Schema.boolean().default(false).description("SC 通知要不要开呢？"),
-							wordcloud: Schema.boolean().default(true).description("弹幕词云要不要生成呢？"),
-							liveSummary: Schema.boolean().default(true).description("直播总结要不要生成呢？"),
-							specialDanmaku: Schema.boolean()
-								.default(true)
-								.description("特别关注用户的弹幕提醒要不要开呢？"),
-							specialUserEnter: Schema.boolean()
-								.default(true)
-								.description("特别关注用户进房提醒要不要开呢？"),
+							channelId: Schema.string().required().description("频道号/群组号"),
+							dynamic: Schema.boolean().default(true).description("动态推送"),
+							dynamicAtAll: Schema.boolean().description("动态 @全体（覆写订阅默认）"),
+							live: Schema.boolean().default(true).description("开播通知"),
+							liveAtAll: Schema.boolean().description("开播 @全体（覆写订阅默认）"),
+							liveEnd: Schema.boolean().default(true).description("下播通知"),
+							liveGuardBuy: Schema.boolean().default(false).description("上舰消息"),
+							superchat: Schema.boolean().default(false).description("SC 消息"),
+							wordcloud: Schema.boolean().default(true).description("弹幕词云"),
+							liveSummary: Schema.boolean().default(true).description("直播总结"),
+							specialDanmaku: Schema.boolean().default(true).description("特别关注弹幕提醒"),
+							specialUserEnter: Schema.boolean().default(true).description("特别关注进房提醒"),
 						}),
 					)
 						.role("table")
