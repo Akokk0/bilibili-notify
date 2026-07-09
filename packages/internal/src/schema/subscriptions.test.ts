@@ -171,3 +171,47 @@ describe("per-UP template override 不被全局默认污染 (Codex 回归)", () 
 		expect(parsed.overrides.templates?.dynamicVideo).toBeUndefined();
 	});
 });
+
+// 回归:overrides.filters 被「动态过滤」与「直播阈值」两个 section 分域共写。
+// ContentFiltersSchema 的 blockDraw/blockAv 带 .default(false),`.partial()` 不剥内层
+// default → per-UP 只覆盖直播阈值(minScPrice/minGuardLevel)时会被注入 blockDraw:false/
+// blockAv:false。这俩属「动态过滤」域,前端据「字段 !== undefined」误判该 UP 已覆盖动态过滤
+// → 一开直播阈值就连带点亮动态过滤(toggle + 侧栏小点)。override schema 已剥默认,此处锁住。
+describe("per-UP filters/schedule override 不被全局默认污染", () => {
+	it("只覆盖直播阈值域(minScPrice/minGuardLevel)→ blockDraw/blockAv 仍 undefined", () => {
+		const parsed = SubscriptionSchema.parse({
+			...BASE,
+			overrides: { filters: { minScPrice: 50, minGuardLevel: 2 } },
+		});
+		const f = parsed.overrides.filters;
+		expect(f?.minScPrice).toBe(50);
+		expect(f?.minGuardLevel).toBe(2);
+		expect(f?.blockDraw).toBeUndefined();
+		expect(f?.blockAv).toBeUndefined();
+		expect(f?.blockKeywords).toBeUndefined();
+		expect(Object.keys(f ?? {}).sort()).toEqual(["minGuardLevel", "minScPrice"]);
+	});
+
+	it("只覆盖过滤域(blockKeywords)→ minScPrice/minGuardLevel 仍 undefined", () => {
+		const parsed = SubscriptionSchema.parse({
+			...BASE,
+			overrides: { filters: { blockKeywords: ["广告"] } },
+		});
+		const f = parsed.overrides.filters;
+		expect(f?.blockKeywords).toEqual(["广告"]);
+		expect(f?.minScPrice).toBeUndefined();
+		expect(f?.minGuardLevel).toBeUndefined();
+	});
+
+	it("只覆盖 schedule.pushTime → liveEndGrace/liveEndGraceMinutes 仍 undefined", () => {
+		const parsed = SubscriptionSchema.parse({
+			...BASE,
+			overrides: { schedule: { pushTime: 3 } },
+		});
+		const s = parsed.overrides.schedule;
+		expect(s?.pushTime).toBe(3);
+		expect(s?.liveEndGrace).toBeUndefined();
+		expect(s?.liveEndGraceMinutes).toBeUndefined();
+		expect(Object.keys(s ?? {})).toEqual(["pushTime"]);
+	});
+});

@@ -9,6 +9,7 @@ import type { Subscription } from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch, GlobalDefaults } from "../types/globals";
 import { buildOverridesPatch } from "./rules/overrides-patch";
 import { PerUpEditor, type PerUpOverrideKey, perUpOverrideKeys } from "./rules/PerUpEditor";
+import { isSectionCustomized } from "./rules/section-scope";
 import {
 	DynamicMsgSection,
 	FilterSection,
@@ -39,51 +40,8 @@ function hasAnyCustomization(sub: Subscription): boolean {
 	return overrideKeysOf(sub).size > 0 || sub.specialUsers.length > 0;
 }
 
-/** per-UP 子分类是否当前 sub 已设置覆盖 → 侧栏小红点。 */
-function isSectionCustomized(sub: Subscription, sectionId: SectionId): boolean {
-	switch (sectionId) {
-		case "filter":
-			return sub.overrides.filters !== undefined;
-		case "live":
-			return sub.overrides.filters !== undefined || sub.overrides.schedule !== undefined;
-		case "summary":
-			return (
-				sub.overrides.templates?.liveSummary !== undefined ||
-				sub.overrides.templates?.wordcloudStopWords !== undefined
-			);
-		case "msg":
-			return (
-				sub.overrides.templates?.liveStart !== undefined ||
-				sub.overrides.templates?.liveOngoing !== undefined ||
-				sub.overrides.templates?.liveEnd !== undefined
-			);
-		case "dynamicMsg":
-			return (
-				sub.overrides.templates?.dynamic !== undefined ||
-				sub.overrides.templates?.dynamicVideo !== undefined
-			);
-		case "messageLayout":
-			return sub.overrides.messageLayout !== undefined;
-		case "guard":
-			return sub.overrides.templates?.guardBuy?.enable === true;
-		case "specialDanmaku":
-			return (
-				sub.specialUsers.some((u) => u.kinds.includes("danmaku")) ||
-				Boolean(sub.overrides.templates?.specialDanmaku)
-			);
-		case "specialEnter":
-			return (
-				sub.specialUsers.some((u) => u.kinds.includes("enter")) ||
-				Boolean(sub.overrides.templates?.specialUserEnter)
-			);
-		case "ai":
-			return sub.overrides.ai !== undefined;
-		case "imageGroup":
-			return sub.overrides.imageGroup !== undefined;
-		default:
-			return false;
-	}
-}
+// isSectionCustomized 已抽到 ./rules/section-scope(与 PerUpEditor 的 toggle 判定共用
+// 同一份字段分域常量,避免 filter/live 共享 overrides.filters 切片时口径不一致)。
 
 // ── Sidebar (规则分类) ─────────────────────────────────────────────────────
 

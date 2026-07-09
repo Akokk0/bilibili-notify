@@ -48,6 +48,11 @@ import { MessageLayoutEditor } from "./MessageLayoutEditor";
 import { buildOverridesPatch, type OverridesPatch } from "./overrides-patch";
 import { projectPerUpIsland } from "./perup-island";
 import {
+	FILTER_CONTENT_KEYS,
+	hasFilterContentOverride,
+	hasLiveThresholdOverride,
+} from "./section-scope";
+import {
 	DynamicMsgVariableHints,
 	GuardVariableHints,
 	LiveMsgVariableHints,
@@ -306,12 +311,31 @@ function FilterOverrideBox({
 	onChange: (next: ContentFiltersOverride | undefined) => void;
 	baseline: GlobalDefaults["filters"];
 }) {
-	const enabled = value !== undefined;
+	const enabled = hasFilterContentOverride(value);
 	const cur = value ?? {};
 	const get = <K extends keyof typeof baseline>(k: K) =>
 		(cur[k] ?? baseline[k]) as (typeof baseline)[K];
 	function set<K extends keyof typeof baseline>(k: K, v: (typeof baseline)[K]): void {
 		onChange({ ...cur, [k]: v });
+	}
+	function toggle(on: boolean): void {
+		if (on) {
+			onChange({
+				...cur,
+				blockKeywords: baseline.blockKeywords,
+				blockRegex: baseline.blockRegex,
+				whitelistKeywords: baseline.whitelistKeywords,
+				whitelistRegex: baseline.whitelistRegex,
+				blockForward: baseline.blockForward,
+				blockArticle: baseline.blockArticle,
+				blockDraw: baseline.blockDraw,
+				blockAv: baseline.blockAv,
+			});
+		} else {
+			const next = { ...cur };
+			for (const k of FILTER_CONTENT_KEYS) delete next[k];
+			onChange(Object.keys(next).length > 0 ? next : undefined);
+		}
 	}
 	return (
 		<GlassBox
@@ -320,9 +344,7 @@ function FilterOverrideBox({
 			accent="#FB7299"
 			icon={<Icon.filter size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
-			right={
-				<Toggle value={enabled} onChange={(on) => onChange(on ? { ...baseline } : undefined)} />
-			}
+			right={<Toggle value={enabled} onChange={toggle} />}
 		>
 			{enabled ? (
 				<>
@@ -393,18 +415,21 @@ function LiveOverrideBox({
 	baselineFilters: GlobalDefaults["filters"];
 	baselineSchedule: GlobalDefaults["schedule"];
 }) {
-	const enabled = filters !== undefined || schedule !== undefined;
+	const enabled = hasLiveThresholdOverride({ filters, schedule });
 	const fCur = filters ?? {};
 	const sCur = schedule ?? {};
 	function toggle(on: boolean): void {
 		if (on) {
 			onFilters({
+				...fCur,
 				minScPrice: baselineFilters.minScPrice,
 				minGuardLevel: baselineFilters.minGuardLevel,
 			});
 			onSchedule({ ...baselineSchedule });
 		} else {
-			onFilters(undefined);
+			// 只清阈值域两个字段,保留可能由 FilterOverrideBox 写入的过滤域字段。
+			const { minScPrice: _s, minGuardLevel: _g, ...rest } = fCur;
+			onFilters(Object.keys(rest).length > 0 ? rest : undefined);
 			onSchedule(undefined);
 		}
 	}

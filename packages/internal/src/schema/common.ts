@@ -74,7 +74,16 @@ export const ContentFiltersSchema = z.object({
 });
 export type ContentFilters = z.infer<typeof ContentFiltersSchema>;
 
-export const ContentFiltersPartialSchema = ContentFiltersSchema.partial();
+// `.partial()` 只把字段变可选,**不剥离 `.default()`**(与 TemplateBundlePartialSchema 同源问题):
+// per-UP 只覆盖直播阈值域(minScPrice/minGuardLevel)时,parse 会把带 default 的 blockDraw/blockAv
+// 注入成 false,而这俩是「动态过滤」域字段 → 前端据「字段 !== undefined」误判该 UP 已覆盖动态过滤
+// (isSectionCustomized / FilterOverrideBox 的 toggle),表现为「一开直播阈值就连带点亮动态过滤」。
+// override 维度的 blockDraw/blockAv 必须是「无默认的纯可选」,与全局 ContentFiltersSchema(带
+// .default 供 globals.json 缺字段回填)分开。
+export const ContentFiltersPartialSchema = ContentFiltersSchema.partial().extend({
+	blockDraw: z.boolean().optional(),
+	blockAv: z.boolean().optional(),
+});
 export type ContentFiltersPartial = z.infer<typeof ContentFiltersPartialSchema>;
 
 export const ScheduleConfigSchema = z.object({
@@ -93,7 +102,14 @@ export const ScheduleConfigSchema = z.object({
 });
 export type ScheduleConfig = z.infer<typeof ScheduleConfigSchema>;
 
-export const ScheduleConfigPartialSchema = ScheduleConfigSchema.partial();
+// 同 ContentFiltersPartialSchema:`.partial()` 不剥 `.default()`,per-UP 只覆盖 pushTime 等
+// 字段时会被注入 liveEndGrace:false / liveEndGraceMinutes:2。schedule 整段归「直播阈值」section
+// 独占,注入默认值虽不跨 section 污染,但会让 override 落盘多出用户没设的字段、并在 resolve merge
+// 时强制盖掉全局对应值。override 维度须为无默认纯可选,与全局 ScheduleConfigSchema 分开。
+export const ScheduleConfigPartialSchema = ScheduleConfigSchema.partial().extend({
+	liveEndGrace: z.boolean().optional(),
+	liveEndGraceMinutes: z.number().int().min(1).max(10).optional(),
+});
 export type ScheduleConfigPartial = z.infer<typeof ScheduleConfigPartialSchema>;
 
 export const GuardEntrySchema = z.object({

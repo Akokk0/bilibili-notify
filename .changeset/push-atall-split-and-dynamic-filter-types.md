@@ -3,8 +3,6 @@
 "@bilibili-notify/dynamic": patch
 "@bilibili-notify/internal": patch
 "@bilibili-notify/image": patch
-"koishi-plugin-bilibili-notify-dynamic": patch
-"koishi-plugin-bilibili-notify-advanced-subscription": patch
 ---
 
 推送 / 动态过滤 / 卡片渲染三块独立改动:

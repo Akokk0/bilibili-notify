@@ -22,7 +22,7 @@ function sameSubscription(a: Subscription, b: Subscription): boolean {
 
 /**
  * In-memory subscription collection with diff + emit.
- * Persistence is the caller's concern: koishi/core seeds from koishi config,
+ * Persistence is the caller's concern: koishi seeds from koishi config,
  * standalone seeds from ConfigStore. Both call replaceAll() on load.
  */
 export interface SubscriptionStore {
@@ -121,7 +121,7 @@ export type { Subscription, SubscriptionOp };
 
 /**
  * Legacy flat config item shape used by the koishi basic sub configuration UI.
- * Preserved here so koishi/core/src/config.ts can reference it without touching push.
+ * Preserved here so koishi/src/config/subscriptions.ts can reference it without touching push.
  */
 export interface FlatSubConfigItem {
 	name: string;

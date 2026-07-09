@@ -1,6 +1,5 @@
 ---
 "@bilibili-notify/dynamic": minor
-"koishi-plugin-bilibili-notify-dynamic": minor
 ---
 
 dynamic 插件文案模板可在控制台编辑 + 移除冗余 `dynamicUrl` 开关

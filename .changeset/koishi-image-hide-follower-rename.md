@@ -1,5 +1,4 @@
 ---
-"koishi-plugin-bilibili-notify-image": patch
 "@bilibili-notify/image": patch
 ---
 

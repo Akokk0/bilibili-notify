@@ -1,9 +1,5 @@
 ---
 "koishi-plugin-bilibili-notify": patch
-"koishi-plugin-bilibili-notify-ai": patch
-"koishi-plugin-bilibili-notify-image": patch
-"koishi-plugin-bilibili-notify-live": patch
-"@bilibili-notify/koishi-runtime": patch
 "@bilibili-notify/ai": patch
 "@bilibili-notify/api": patch
 "@bilibili-notify/live": patch

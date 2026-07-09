@@ -18,13 +18,7 @@
 </p>
 
 <p align="center">
-  子插件:
-  <a href="./koishi/core/README.md">核心</a> ·
-  <a href="./koishi/live/README.md">直播</a> ·
-  <a href="./koishi/dynamic/README.md">动态</a> ·
-  <a href="./koishi/image/README.md">图片渲染</a> ·
-  <a href="./koishi/ai/README.md">AI</a> ·
-  <a href="./koishi/advanced-subscription/README.md">高级订阅</a>
+  <a href="./koishi/README.md">Koishi 插件文档</a>
   &nbsp;|&nbsp;
   <a href="./apps/README.md">独立 Dashboard 部署文档</a>
 </p>
@@ -55,7 +49,7 @@
 
 ### Koishi 插件
 
-在 Koishi 控制台「插件市场」搜索 **bilibili-notify** 启用。子插件见上方导航。
+在 Koishi 控制台「插件市场」搜索 **bilibili-notify** 启用,单包即含全部功能。详见上方 Koishi 插件文档。
 
 ### 独立 Dashboard(Docker)
 

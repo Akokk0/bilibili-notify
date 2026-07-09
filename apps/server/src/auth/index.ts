@@ -9,7 +9,7 @@ const DEFAULT_HEALTH_CHECK_MS = 30 * 60 * 1000;
 
 /**
  * Standalone auth subsystem. Mirrors the koishi side's
- * `koishi/core/src/lifecycle.ts#bringUp` boot order, minus the koishi adapter.
+ * `koishi/src/runtime/lifecycle.ts#bringUp` boot order, minus the koishi adapter.
  *
  * Construction order (must remain stable for cookie-load → api.start → flow.reportAccountInfo):
  *   1. StorageManager (with `paths` under <dataDir>/secrets/) → init() loads-or-creates master.key
@@ -109,7 +109,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 	});
 	await flow.start();
 
-	// 5. Load existing cookies into the api jar (mirrors koishi/core/src/bootstrap-helpers.ts#loadInitialCookies).
+	// 5. Load existing cookies into the api jar (mirrors koishi/src/runtime/bootstrap-helpers.ts#loadInitialCookies).
 	let cookieData: CookieData | null = null;
 	try {
 		cookieData = await storage.cookieStore.load();
@@ -191,7 +191,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 	};
 }
 
-/** Mirror of `koishi/core/src/bootstrap-helpers.ts#hasLoginCookie`. */
+/** Mirror of `koishi/src/runtime/bootstrap-helpers.ts#hasLoginCookie`. */
 function hasLoginCookie(api: BilibiliAPI): boolean {
 	const cookiesJson = api.getCookiesJson();
 	if (!cookiesJson || cookiesJson === "[]") return false;

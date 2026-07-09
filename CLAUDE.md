@@ -6,7 +6,7 @@ Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考�
 
 单 pnpm workspace monorepo。一套平台中立业务核心,两种产品形态:
 
-- **Koishi 子插件**(`koishi/`)—— npm 发布 `koishi-plugin-bilibili-notify*`
+- **Koishi 插件**(`koishi/`)—— npm 发布单一包 `koishi-plugin-bilibili-notify`
 - **独立 Hono + React Dashboard**(`apps/`)—— 后续主推形态,发 Docker 镜像
 
 两端消费同一套 `@bilibili-notify/*` 核心包。
@@ -32,7 +32,7 @@ vp run -F <pkg> build  # 构建单个包
 
 ```
 packages/   平台中立业务核心(@bilibili-notify/*)
-koishi/     Koishi 薄壳插件(koishi-plugin-bilibili-notify*)
+koishi/     Koishi 插件(koishi-plugin-bilibili-notify)
 apps/       Hono 服务端 + React Dashboard
 ```
 
@@ -40,7 +40,7 @@ apps/       Hono 服务端 + React Dashboard
 
 ## 硬约束(违反即 bug)
 
-- **路径**:`koishi/` 下任何目录名都**不能含 `bilibili-notify` 子串** —— Koishi 插件加载器会混乱。主插件在 `koishi/core/`,不是 `koishi/bilibili-notify/`;npm 名与目录名解耦(在 `package.json#name` 设)。
+- **路径**:`koishi/` 本身就是插件包根目录(已展平,不再有 `koishi/core/` 那层子目录)。若未来在 `koishi/` 下新增其他 koishi 包,目录名**不能含 `bilibili-notify` 子串** —— Koishi 插件加载器会混乱;npm 名与目录名解耦(在 `package.json#name` 设)。
 - **依赖卫生**:`src/` 里解析到运行时值(常量 / 类 / 函数)的 import,必须声明进该包 `package.json` 的 `dependencies`;`import type` 不用。
 - **MessageBus**:bus 与 koishi `ctx` 是同一事件通道的两个视图,绝不写 bus↔ctx 转发器 —— 会自喂死循环爆栈。详见 `docs/agents/events.md`。
 
