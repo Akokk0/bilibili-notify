@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.1.0-alpha.7
+
+### Minor Changes
+
+- ce8823b: 卡片版式 v2 + 每类型独立样式 + 背景图廊与轮换
+
+  补发独立端 alpha.14~16 已验证、但此前从未随 koishi 侧 changeset 发布的整套卡片渲染升级(实现早已合入,只是缺 changeset,koishi 用户此前一直依赖发布于该批改动之前的旧版 `@bilibili-notify/image` / `live` / `dynamic` / `internal`):
+
+  - 卡片版式描述式模型 v2:块的顺序、显隐、块间距、插入分割线可视化编辑;开播 / 动态 / SC / 上舰四种卡片改为按块类型渲染,旧版保存的版式自动迁移补齐每块间距
+  - 每卡片类型可各自设置独立样式(渐变色、背景图、玻璃片透明度),未覆盖的类型继承全局基准;per-UP 亦可覆盖
+  - 背景图列表模型 + 每次推送轮换下一张(开播 / 动态 / SC / 上舰各自独立游标)
+  - 玻璃片透明度调节,以及与之互斥的「完全透明」开关
+  - 直播卡「数据区」统一开关取代原先零散的隐藏标志
+  - 充电专属动态(未充电时接口不返回正文)渲染为专门占位提示,不再是空白卡片
+  - 动态卡版式细化:话题标签并入正文块顶部、附加内容独立成块、转发的内部原动态跟随同一套版式
+
+- ce8823b: 断流接续 + 弹幕词云停用词
+
+  补发独立端 alpha.13 已验证、但此前从未随 koishi 侧 changeset 发布的两项功能(实现早已合入,只是缺 changeset):
+
+  - 断流接续:直播阈值新增「断流接续」开关 + 等待时长(1–10 分钟,默认 2)。开启后 UP 下播先延迟判定,等待窗口内重新开播即接续为同一场直播(弹幕 / 时长 / 词云沿用首次开播基线),用于吸收网络抖动 / 超管掐流导致的瞬时断流误报
+  - 弹幕词云停用词:直播总结分类下新增停用词设置(英文逗号分隔,追加到内置中文停用词表后再分词);全局与 per-UP 覆盖均可配置
+
+- ce8823b: 消息版式自定义
+
+  补发独立端 alpha.16 已验证、但此前从未随 koishi 侧 changeset 发布的消息版式功能(实现早已合入,只是缺 changeset):
+
+  动态与直播(开播 / 直播中 / 下播)推送的消息结构现可拆分 / 重排为多条消息 —— 卡片图 / 文本 / 链接三个部件可排序、显隐,插入分条符把一次推送拆成多条消息,同条内相邻文本部件的连接符可自定义;全局与 per-UP 均可配置。
+
+- 4953c18: 移除未使用的 web-dashboard 推送平台
+
+  从 `PushTargetPlatformSchema` / `PushAdapterSchema` / `PushTargetSchema` 删除 `web-dashboard` 平台及其 adapter config / session schema 与对应类型导出。独立端不再注册该 adapter。存量配置里的 web-dashboard 条目在加载时静默丢弃(双层兼容:`migrateLegacyTargets` 不再合成该平台 target + `NodeConfigStore` 在 `safeParse` 前过滤),不影响其它推送目标。
+
+### Patch Changes
+
+- cbf80bf: 修复 per-UP(高级订阅频道)过滤 / 调度覆盖被全局默认值污染的问题
+
+  `overrides.filters` / `overrides.schedule` 的 partial 校验 schema 此前直接对带 `.default()` 的完整 schema 调用 `.partial()`,而 Zod 的 `.partial()` 不会剥离内层 `.default()`——频道只自定义了直播阈值(`minScPrice`/`minGuardLevel`)或调度(如 `pushTime`)时,解析结果仍会被静默注入 `blockDraw: false` / `blockAv: false` / `liveEndGrace: false` 等未填字段的默认值。当全局默认恰好为 `true` 时,这条注入的 `false` 会覆盖全局值,导致该频道的过滤 / 断流接续实际生效值与配置界面显示的不一致,且没有任何提示。现 partial schema 改为显式声明无默认的可选字段,未填字段保持 `undefined`、纯继承全局默认。
+
 ## 0.1.0-alpha.6
 
 ### Patch Changes

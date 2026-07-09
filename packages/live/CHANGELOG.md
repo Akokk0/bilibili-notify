@@ -1,5 +1,55 @@
 # @bilibili-notify/live
 
+## 0.1.0-alpha.9
+
+### Minor Changes
+
+- ce8823b: 卡片版式 v2 + 每类型独立样式 + 背景图廊与轮换
+
+  补发独立端 alpha.14~16 已验证、但此前从未随 koishi 侧 changeset 发布的整套卡片渲染升级(实现早已合入,只是缺 changeset,koishi 用户此前一直依赖发布于该批改动之前的旧版 `@bilibili-notify/image` / `live` / `dynamic` / `internal`):
+
+  - 卡片版式描述式模型 v2:块的顺序、显隐、块间距、插入分割线可视化编辑;开播 / 动态 / SC / 上舰四种卡片改为按块类型渲染,旧版保存的版式自动迁移补齐每块间距
+  - 每卡片类型可各自设置独立样式(渐变色、背景图、玻璃片透明度),未覆盖的类型继承全局基准;per-UP 亦可覆盖
+  - 背景图列表模型 + 每次推送轮换下一张(开播 / 动态 / SC / 上舰各自独立游标)
+  - 玻璃片透明度调节,以及与之互斥的「完全透明」开关
+  - 直播卡「数据区」统一开关取代原先零散的隐藏标志
+  - 充电专属动态(未充电时接口不返回正文)渲染为专门占位提示,不再是空白卡片
+  - 动态卡版式细化:话题标签并入正文块顶部、附加内容独立成块、转发的内部原动态跟随同一套版式
+
+- ce8823b: 断流接续 + 弹幕词云停用词
+
+  补发独立端 alpha.13 已验证、但此前从未随 koishi 侧 changeset 发布的两项功能(实现早已合入,只是缺 changeset):
+
+  - 断流接续:直播阈值新增「断流接续」开关 + 等待时长(1–10 分钟,默认 2)。开启后 UP 下播先延迟判定,等待窗口内重新开播即接续为同一场直播(弹幕 / 时长 / 词云沿用首次开播基线),用于吸收网络抖动 / 超管掐流导致的瞬时断流误报
+  - 弹幕词云停用词:直播总结分类下新增停用词设置(英文逗号分隔,追加到内置中文停用词表后再分词);全局与 per-UP 覆盖均可配置
+
+- ce8823b: 消息版式自定义
+
+  补发独立端 alpha.16 已验证、但此前从未随 koishi 侧 changeset 发布的消息版式功能(实现早已合入,只是缺 changeset):
+
+  动态与直播(开播 / 直播中 / 下播)推送的消息结构现可拆分 / 重排为多条消息 —— 卡片图 / 文本 / 链接三个部件可排序、显隐,插入分条符把一次推送拆成多条消息,同条内相邻文本部件的连接符可自定义;全局与 per-UP 均可配置。
+
+### Patch Changes
+
+- ce8823b: 一批渲染与推送稳定性修复
+
+  补发独立端 alpha.14~17 已验证、但此前从未随 koishi 侧 changeset 发布的一批修复(实现早已合入,只是缺 changeset):
+
+  - 开启「推送动态图集」时,一条图文动态的主卡片与图集附图会各 @ 一次全体成员;现图集附图不再重复 @,仅主卡片 @
+  - 超大 B 站 CDN 图片在内联前先压缩,避免渲染超时 / 内存膨胀
+  - 直播间号解析结果与登录账号信息改为缓存复用,减少重复请求
+
+- Updated dependencies [ce8823b]
+- Updated dependencies [ce8823b]
+- Updated dependencies [ce8823b]
+- Updated dependencies [ce8823b]
+- Updated dependencies [ce8823b]
+- Updated dependencies [cbf80bf]
+- Updated dependencies [4953c18]
+  - @bilibili-notify/api@0.2.0-alpha.4
+  - @bilibili-notify/internal@0.1.0-alpha.7
+  - @bilibili-notify/image@0.1.0-alpha.3
+
 ## 0.1.0-alpha.8
 
 ### Patch Changes
