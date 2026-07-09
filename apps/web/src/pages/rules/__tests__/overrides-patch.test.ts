@@ -57,4 +57,36 @@ describe("buildOverridesPatch", () => {
 		expect(patch.filters).toEqual({ minScPrice: 50 });
 		expect(patch.imageGroup).toBeNull();
 	});
+
+	/**
+	 * 回归:同一个 slice 被两个 section 分域共写(filters = 动态过滤域字段 +
+	 * 直播阈值域字段)。只清掉自己域内的字段、slice 本身仍非空时,旧写法把
+	 * draft.filters 整个原样下发 —— 被删的字段"不提"而非显式 null,服务端
+	 * deepMerge 当"不改"→旧值残留,关闭的开关保存后又"复活"。
+	 */
+	it("slice 内单个字段被删、其余字段仍在 → 该字段回填 null,其余字段原样保留", () => {
+		const base: OverridesShape = {
+			filters: { blockKeywords: ["广告"], minScPrice: 30 },
+		};
+		const draft: OverridesShape = {
+			filters: { minScPrice: 30 }, // blockKeywords 被关闭过滤域覆盖后删除
+		};
+		const patch = buildOverridesPatch(draft, base);
+		expect(patch.filters).toEqual({ blockKeywords: null, minScPrice: 30 });
+	});
+
+	it("嵌套对象内单个字段被删(templates.guardBuy 与 templates.liveStart 共享 templates)", () => {
+		const guard = { imageUrl: "", template: "" };
+		const base: OverridesShape = {
+			templates: {
+				liveStart: "开播啦",
+				guardBuy: { enable: true, captain: guard, commander: guard, governor: guard },
+			},
+		};
+		const draft: OverridesShape = {
+			templates: { liveStart: "开播啦" }, // guardBuy 覆盖被关闭
+		};
+		const patch = buildOverridesPatch(draft, base);
+		expect(patch.templates).toEqual({ liveStart: "开播啦", guardBuy: null });
+	});
 });
