@@ -1,5 +1,92 @@
 # Changelog
 
+## 5.0.0-alpha.8
+
+### Major Changes
+
+- 640324f: koishi 端五个独立插件(core / dynamic / live / ai / advanced-subscription)合并为单一 `koishi-plugin-bilibili-notify` 包。旧五包不再更新,请卸载后仅安装本包。
+
+  **破坏性变更**:
+
+  - **不再需要单独安装** `koishi-plugin-bilibili-notify-dynamic` / `-live` / `-ai` / `-advanced-subscription` —— 动态推送、直播推送现在是核心能力,随主插件启用即开,不再需要单独装子插件;AI 点评与高级订阅改为主插件 Schema 里的开关(`ai.enabled` / `advancedSub.enabled`),开了就用,不再需要单独装子插件。
+  - **配置结构重新按功能域组织**,分成 `account` / `push` / `subscriptions` / `render` / `ai` / `dynamic` / `live` / `advancedSub` 八个子段。原先分散在五个插件各自 config 里的同名字段(如 `logLevel`、`cardColorStart`)现在各自归属到对应功能域,升级后需要按新结构重新配置一遍(控制台可视化编辑,不是纯 yaml 手改)。
+  - **对外 API 全部内化**:原本供 dynamic/live/ai 子插件跨包访问核心 api/push/store 的 `probeInternals()` / `getInternals()` / `BILIBILI_NOTIFY_TOKEN` 探针协议整体删除 —— 单包内部直接持有引用,不再需要跨包边界的访问令牌机制。若有第三方插件依赖这套探针 API,需要改造。
+  - **`bn restart` 现在会完整重建动态/直播/AI/渲染引擎**:此前这四个引擎是独立的 koishi Service,`bn restart` 只重启核心 api/push,不会刷新它们内部持有的 api/push 引用(潜伏 bug,重启后个别推送路径可能用到旧引用);现在四者与核心 api/push/store 同一生命周期,`bn restart` 会一起重建,更彻底也更符合直觉。
+
+  **迁移建议**:先卸载 `koishi-plugin-bilibili-notify-dynamic` / `-live` / `-ai` / `-advanced-subscription`,只保留（并升级）`koishi-plugin-bilibili-notify`,再对照控制台里新的分域配置项重新填写一遍。
+
+### Patch Changes
+
+- ce8823b: 网络传输层从 axios 切换到基于 fetch 的实现
+
+  补发独立端 alpha.17 已实测通过、但此前从未随 koishi 侧 changeset 发布的传输层重写(实现早已合入,只是缺 changeset,koishi 用户此前一直依赖发布于该批改动之前的旧版 `@bilibili-notify/api`,未受益于这批降风控优化):
+
+  - 自带一个轻量 cookie jar(持久化格式与旧版兼容,升级不掉登录),逐跳捕获 Set-Cookie
+  - 为每个实例生成前后一致的浏览器指纹(User-Agent 与 sec-ch-ua 版本互相咬合),减少指纹错配招致的风控
+  - WBI 签名请求持续被风控时不再快速重试放大;粉丝数改用更轻量的关系接口拉取;直播间号解析结果与登录账号信息缓存复用不再重复请求
+  - 移除 axios / axios-cookiejar-support / tough-cookie / jsdom / luxon 依赖
+
+- ce8823b: 卡片版式 v2 + 每类型独立样式 + 背景图廊与轮换
+
+  补发独立端 alpha.14~16 已验证、但此前从未随 koishi 侧 changeset 发布的整套卡片渲染升级(实现早已合入,只是缺 changeset,koishi 用户此前一直依赖发布于该批改动之前的旧版 `@bilibili-notify/image` / `live` / `dynamic` / `internal`):
+
+  - 卡片版式描述式模型 v2:块的顺序、显隐、块间距、插入分割线可视化编辑;开播 / 动态 / SC / 上舰四种卡片改为按块类型渲染,旧版保存的版式自动迁移补齐每块间距
+  - 每卡片类型可各自设置独立样式(渐变色、背景图、玻璃片透明度),未覆盖的类型继承全局基准;per-UP 亦可覆盖
+  - 背景图列表模型 + 每次推送轮换下一张(开播 / 动态 / SC / 上舰各自独立游标)
+  - 玻璃片透明度调节,以及与之互斥的「完全透明」开关
+  - 直播卡「数据区」统一开关取代原先零散的隐藏标志
+  - 充电专属动态(未充电时接口不返回正文)渲染为专门占位提示,不再是空白卡片
+  - 动态卡版式细化:话题标签并入正文块顶部、附加内容独立成块、转发的内部原动态跟随同一套版式
+
+- ce8823b: 断流接续 + 弹幕词云停用词
+
+  补发独立端 alpha.13 已验证、但此前从未随 koishi 侧 changeset 发布的两项功能(实现早已合入,只是缺 changeset):
+
+  - 断流接续:直播阈值新增「断流接续」开关 + 等待时长(1–10 分钟,默认 2)。开启后 UP 下播先延迟判定,等待窗口内重新开播即接续为同一场直播(弹幕 / 时长 / 词云沿用首次开播基线),用于吸收网络抖动 / 超管掐流导致的瞬时断流误报
+  - 弹幕词云停用词:直播总结分类下新增停用词设置(英文逗号分隔,追加到内置中文停用词表后再分词);全局与 per-UP 覆盖均可配置
+
+- ce8823b: 消息版式自定义
+
+  补发独立端 alpha.16 已验证、但此前从未随 koishi 侧 changeset 发布的消息版式功能(实现早已合入,只是缺 changeset):
+
+  动态与直播(开播 / 直播中 / 下播)推送的消息结构现可拆分 / 重排为多条消息 —— 卡片图 / 文本 / 链接三个部件可排序、显隐,插入分条符把一次推送拆成多条消息,同条内相邻文本部件的连接符可自定义;全局与 per-UP 均可配置。
+
+- ce8823b: 一批渲染与推送稳定性修复
+
+  补发独立端 alpha.14~17 已验证、但此前从未随 koishi 侧 changeset 发布的一批修复(实现早已合入,只是缺 changeset):
+
+  - 开启「推送动态图集」时,一条图文动态的主卡片与图集附图会各 @ 一次全体成员;现图集附图不再重复 @,仅主卡片 @
+  - 超大 B 站 CDN 图片在内联前先压缩,避免渲染超时 / 内存膨胀
+  - 直播间号解析结果与登录账号信息改为缓存复用,减少重复请求
+
+- 4953c18: 修复 master 私聊「目标不可达」的根因
+
+  master 的推送平台与实际机器人 `bot.platform` 是两个配置源,用户常在 master 里选了 `qq`,实际跑的却是 onebot(NapCat / Lagrange / go-cqhttp 在 koishi 里平台名是 `onebot`)→ 精确匹配找不到 bot → 群能发、私聊主人却永远「不可达」。
+
+  - **容错解析**:精确匹配(平台 + selfId)失败、且当前只有唯一在线平台时,回退用该在线 bot 投递,并打一条去重的可操作告警指出该把平台改成哪个;在线平台有多个则不瞎猜。
+  - **平台字段放宽**:master `platform` 从固定下拉改为自由文本输入(文案提示 OneBot 实现应填 `onebot` 而非 `qq`)。旧配置值仍兼容。
+  - **空格容错**:平台名 / selfId / channelId / userId / guildId 统一 `trim`,消除误带空格导致的静默匹配失败。
+  - **启动期虚警收尾**(`@bilibili-notify/push`):新增 `recheckMasterReachability()`,在 bot 上线(`login-added` / `login-updated`)时复检 master 可达性,让启动早于 bot 连上时残留的「不可达」状态在 bot 连上后自动转为「已恢复」。
+
+- cbf80bf: 修复 per-UP(高级订阅频道)过滤 / 调度覆盖被全局默认值污染的问题
+
+  `overrides.filters` / `overrides.schedule` 的 partial 校验 schema 此前直接对带 `.default()` 的完整 schema 调用 `.partial()`,而 Zod 的 `.partial()` 不会剥离内层 `.default()`——频道只自定义了直播阈值(`minScPrice`/`minGuardLevel`)或调度(如 `pushTime`)时,解析结果仍会被静默注入 `blockDraw: false` / `blockAv: false` / `liveEndGrace: false` 等未填字段的默认值。当全局默认恰好为 `true` 时,这条注入的 `false` 会覆盖全局值,导致该频道的过滤 / 断流接续实际生效值与配置界面显示的不一致,且没有任何提示。现 partial schema 改为显式声明无默认的可选字段,未填字段保持 `undefined`、纯继承全局默认。
+
+- Updated dependencies [ce8823b]
+- Updated dependencies [ce8823b]
+- Updated dependencies [ce8823b]
+- Updated dependencies [ce8823b]
+- Updated dependencies [ce8823b]
+- Updated dependencies [4953c18]
+- Updated dependencies [cbf80bf]
+- Updated dependencies [4953c18]
+  - @bilibili-notify/api@0.2.0-alpha.4
+  - @bilibili-notify/internal@0.1.0-alpha.7
+  - @bilibili-notify/image@0.1.0-alpha.3
+  - @bilibili-notify/live@0.1.0-alpha.9
+  - @bilibili-notify/dynamic@0.1.0-alpha.7
+  - @bilibili-notify/push@2.0.0-alpha.2
+
 ## 5.0.0-alpha.7
 
 ### Minor Changes
