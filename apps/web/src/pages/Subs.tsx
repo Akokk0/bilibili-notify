@@ -60,7 +60,7 @@ function GroupChip({
 			: "border border-bn-border bg-bn-surface text-bn-text-secondary hover:border-bn-pink/60 hover:text-bn-text-primary";
 	return (
 		<button type="button" onClick={onClick} className={`${base} ${cls}`}>
-			<span className="max-w-[140px] truncate">{label}</span>
+			<span className="max-w-35 truncate">{label}</span>
 			<span className="font-mono text-[10.5px] opacity-70">{count}</span>
 		</button>
 	);
@@ -557,6 +557,8 @@ export default function Subs() {
 		const failed = results.filter((r) => r.status === "rejected").length;
 		if (failed > 0) setError(`批量${on ? "启用" : "停用"}:${failed}/${ids.length} 个订阅操作失败`);
 		qc.invalidateQueries({ queryKey: ["subscriptions"] });
+		// 操作完成后清空勾选,与批量删除一致 —— 保留勾选不符合直觉。
+		setSelection(new Set());
 	}
 
 	/** 统一执行删除(单个 / 批量),由确认框确认后触发。 */
@@ -734,7 +736,7 @@ export default function Subs() {
 					<button
 						type="button"
 						onClick={() => setShowNewDialog(true)}
-						className="flex min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-bn-border px-4 py-5 text-center transition hover:border-bn-pink focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink"
+						className="flex min-h-55 flex-col items-center justify-center rounded-xl border border-dashed border-bn-border px-4 py-5 text-center transition hover:border-bn-pink focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink"
 					>
 						<span className="text-[28px] leading-none text-bn-text-tertiary">＋</span>
 						<span className="mt-2 text-[13px] font-semibold text-bn-text-primary">添加 UP 主</span>

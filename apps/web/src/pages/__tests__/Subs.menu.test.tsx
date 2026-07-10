@@ -161,4 +161,17 @@ describe("Subs 快捷菜单", () => {
 
 		await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/subs/${SUB_A.id}`));
 	});
+
+	it("批量禁用后 → 自动清空勾选(批量栏消失)", async () => {
+		(api.post as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+		renderSubs();
+		await screen.findByText("UP甲");
+		fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
+		fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
+		expect(screen.getByText(/已选 2 项/)).toBeTruthy();
+
+		fireEvent.click(screen.getByText("批量禁用"));
+
+		await waitFor(() => expect(screen.queryByText(/已选/)).toBeNull());
+	});
 });
