@@ -68,31 +68,39 @@ export function buildBackup(input: BuildBackupInput): BackupEnvelope {
 }
 
 /**
- * Parse a backup document — the import trust boundary. Throws on anything that
- * is not a well-formed, this-build-understands-it backup envelope:
+ * Validate an already-parsed backup object — the import trust boundary. Throws
+ * on anything that is not a well-formed, this-build-understands-it envelope:
  *   - wrong/absent `format` marker → not our file
  *   - unknown `kind`
  *   - `schemaVersion` newer than {@link BACKUP_SCHEMA_VERSION} → refuse (a newer
  *     export may carry fields/semantics this build cannot safely apply; never
  *     silently down-migrate). Older versions are accepted and would run through
  *     a forward migration once one exists (v1 is the floor, so none yet).
+ *
+ * Use this on the JSON body of an import request (already parsed by the HTTP
+ * layer); {@link parseBackup} is the string convenience wrapper.
  */
-export function parseBackup(json: string): BackupEnvelope {
-	const raw = JSON.parse(json) as Partial<BackupEnvelope>;
-	if (raw.format !== BACKUP_FORMAT) {
+export function validateBackup(raw: unknown): BackupEnvelope {
+	const o = (raw ?? {}) as Partial<BackupEnvelope>;
+	if (o.format !== BACKUP_FORMAT) {
 		throw new Error("not a bilibili-notify backup file");
 	}
-	if (raw.kind !== "full" && raw.kind !== "sanitized") {
-		throw new Error(`unknown backup kind: ${String(raw.kind)}`);
+	if (o.kind !== "full" && o.kind !== "sanitized") {
+		throw new Error(`unknown backup kind: ${String(o.kind)}`);
 	}
-	if (typeof raw.schemaVersion !== "number") {
+	if (typeof o.schemaVersion !== "number") {
 		throw new Error("backup is missing schemaVersion");
 	}
-	if (raw.schemaVersion > BACKUP_SCHEMA_VERSION) {
+	if (o.schemaVersion > BACKUP_SCHEMA_VERSION) {
 		throw new Error(
-			`backup schemaVersion ${raw.schemaVersion} is newer than this build supports ` +
+			`backup schemaVersion ${o.schemaVersion} is newer than this build supports ` +
 				`(max ${BACKUP_SCHEMA_VERSION}); please update bilibili-notify before restoring`,
 		);
 	}
-	return raw as BackupEnvelope;
+	return o as BackupEnvelope;
+}
+
+/** Parse a backup document from JSON text, then {@link validateBackup} it. */
+export function parseBackup(json: string): BackupEnvelope {
+	return validateBackup(JSON.parse(json));
 }

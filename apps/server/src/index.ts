@@ -8,6 +8,7 @@ import { shouldRefuseBareAuth } from "./auth/bare-auth-policy.js";
 import { type AuthSystem, createAuthSystem } from "./auth/index.js";
 import { createSessionCodec } from "./auth/session.js";
 import { createWsTicketStore } from "./auth/ws-ticket.js";
+import { createBackupService } from "./backup/service.js";
 import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
 import { persistChromePath } from "./config/persist.js";
 import { startHistoryRetention } from "./history/retention.js";
@@ -275,8 +276,17 @@ export async function startStandaloneServer(
 		// 运行时 chromePath 写回目标:仅 B 模型(显式 BN_CONFIG)有单一可写文件;
 		// legacy/disabled 返回 null → 热启用仍生效但不持久化(改配置走 env / 手编辑)。
 		const configPath = resolveConfigPath({ env });
+		const backupService = authSystem
+			? createBackupService({
+					configStore: runtime.configStore,
+					cookieStore: authSystem.storage.cookieStore,
+					onCookiesRestored: () => authSystem?.reloadCookiesFromStore(),
+				})
+			: undefined;
+
 		const app = createApp(runtime, {
 			authSystem,
+			backupService,
 			basicAuthCredentials,
 			sessionCodec,
 			puppeteer,

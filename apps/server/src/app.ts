@@ -9,9 +9,11 @@ import type { AuthSystem } from "./auth/index.js";
 import { createIpRateLimiter } from "./auth/ip-rate-limit.js";
 import type { SessionCodec } from "./auth/session.js";
 import type { WsTicketStore } from "./auth/ws-ticket.js";
+import type { BackupService } from "./backup/service.js";
 import type { QQSessionRegistry } from "./platforms/qq-official.js";
 import { createAdaptersRoute } from "./routes/adapters.js";
 import { createAuthRoute } from "./routes/auth.js";
+import { createBackupRoute } from "./routes/backup.js";
 import { createCardsRoute } from "./routes/cards.js";
 import { createFansRoute } from "./routes/fans.js";
 import { createGlobalsRoute } from "./routes/globals.js";
@@ -36,6 +38,8 @@ export interface BasicAuthCredentials {
 export interface CreateAppOptions {
 	/** Optional auth subsystem; when present /api/auth/* is mounted. */
 	authSystem?: AuthSystem;
+	/** Optional backup/restore service; when present /api/backup/* is mounted. */
+	backupService?: BackupService;
 	/**
 	 * Configured dashboard credentials. When provided, every request under
 	 * `/api/*` (including `/api/health`, excluding `/api/session/*`) requires a
@@ -210,6 +214,13 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	);
 	if (options.authSystem) {
 		app.route("/api/auth", createAuthRoute({ ...deps, authSystem: options.authSystem }));
+	}
+
+	// Backup/restore. Built in index.ts (needs the cookie store + a live re-login
+	// hook from the auth system) and injected, so app.ts stays decoupled from
+	// auth internals and the route only mounts when a service is provided.
+	if (options.backupService) {
+		app.route("/api/backup", createBackupRoute({ service: options.backupService }));
 	}
 
 	// Static dashboard. Mounted last so /api/* always wins routing. The cookie

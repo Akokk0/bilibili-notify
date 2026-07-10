@@ -30,6 +30,12 @@ export interface AuthSystem extends Disposable {
 	refreshCookies(): Promise<void>;
 	/** Wipe secrets (cookies + master.key); caller must initiate a fresh login. */
 	resetCookies(): Promise<void>;
+	/**
+	 * Re-load cookies from disk into the live api jar and re-probe account info.
+	 * Called after a backup restore writes new cookies, to live-swap the login
+	 * without a process restart.
+	 */
+	reloadCookiesFromStore(): Promise<void>;
 	/** Mark the session logged-out client-side. */
 	logout(): Promise<void>;
 	/** Current snapshot — proxy to `flow.current()`. */
@@ -109,31 +115,36 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 	});
 	await flow.start();
 
-	// 5. Load existing cookies into the api jar (mirrors koishi/src/runtime/bootstrap-helpers.ts#loadInitialCookies).
-	let cookieData: CookieData | null = null;
-	try {
-		cookieData = await storage.cookieStore.load();
-	} catch (e) {
-		log.warn(`[auth] 读取 cookie 文件失败: ${e}`);
-	}
-	if (cookieData) {
-		log.debug("[auth] 找到 Cookie 文件，正在写入 jar...");
-		await api.loadCookies(cookieData);
-	} else {
-		log.debug("[auth] 未找到 Cookie 文件，标记为待登录状态");
-		api.markLoginInfoLoaded();
-	}
-
-	// 6. Probe account info. If no bili_jct cookie, report NOT_LOGIN.
-	const loggedIn = hasLoginCookie(api);
-	if (loggedIn) {
-		await flow.reportAccountInfo();
-	} else {
-		log.info("[auth] 账号未登录，等待扫码登录");
-		flow.reportLoggedOut("notLogin");
-	}
-
 	const flowFinal = flow;
+
+	// Load cookies from disk into the live api jar, then probe account info.
+	// Extracted (steps 5-6) so a backup restore can re-run the exact boot
+	// sequence and live-swap the login without a process restart. Mirrors
+	// koishi/src/runtime/bootstrap-helpers.ts#loadInitialCookies.
+	const reloadCookiesFromStore = async (): Promise<void> => {
+		let cookieData: CookieData | null = null;
+		try {
+			cookieData = await storage.cookieStore.load();
+		} catch (e) {
+			log.warn(`[auth] 读取 cookie 文件失败: ${e}`);
+		}
+		if (cookieData) {
+			log.debug("[auth] 找到 Cookie 文件，正在写入 jar...");
+			await api.loadCookies(cookieData);
+		} else {
+			log.debug("[auth] 未找到 Cookie 文件，标记为待登录状态");
+			api.markLoginInfoLoaded();
+		}
+		if (hasLoginCookie(api)) {
+			await flowFinal.reportAccountInfo();
+		} else {
+			log.info("[auth] 账号未登录，等待扫码登录");
+			flowFinal.reportLoggedOut("notLogin");
+		}
+	};
+
+	// 5-6. Initial cookie load + account probe at boot.
+	await reloadCookiesFromStore();
 
 	const beginLogin = async (): Promise<void> => {
 		await flowFinal.beginLogin();
@@ -185,6 +196,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 		beginLogin,
 		refreshCookies,
 		resetCookies,
+		reloadCookiesFromStore,
 		logout,
 		status,
 		dispose,
