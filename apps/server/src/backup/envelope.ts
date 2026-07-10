@@ -4,6 +4,7 @@ import type {
 	PushTarget,
 	Subscription,
 } from "@bilibili-notify/internal";
+import type { EncryptedSecrets } from "./crypto.js";
 
 /**
  * Backup envelope — the single-file, self-describing container for the
@@ -42,23 +43,28 @@ export interface BackupEnvelope {
 	/** ISO-8601 timestamp, supplied by the caller (keeps builders pure/testable). */
 	createdAt: string;
 	sections: BackupSections;
+	/** PIN-encrypted credential block. Present only in `kind:"full"` backups. */
+	secrets?: EncryptedSecrets;
 }
 
 export interface BuildBackupInput {
 	kind: BackupKind;
 	createdAt: string;
 	sections: BackupSections;
+	secrets?: EncryptedSecrets;
 }
 
 /** Assemble a backup envelope from already-prepared sections. Pure. */
 export function buildBackup(input: BuildBackupInput): BackupEnvelope {
-	return {
+	const env: BackupEnvelope = {
 		format: BACKUP_FORMAT,
 		schemaVersion: BACKUP_SCHEMA_VERSION,
 		kind: input.kind,
 		createdAt: input.createdAt,
 		sections: input.sections,
 	};
+	if (input.secrets) env.secrets = input.secrets;
+	return env;
 }
 
 /**
