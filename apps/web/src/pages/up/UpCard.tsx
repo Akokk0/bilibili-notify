@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Avatar, Pill, Toggle } from "../../components/atoms";
 import { Icon } from "../../components/icons";
+import { useLongPress } from "../../hooks/useLongPress";
 import { FEATURE_LABELS, type Subscription } from "../../types/domain";
 import { colorFromUid, displayName, relativeTime, subscribedFeatures } from "./helpers";
 
@@ -23,6 +24,8 @@ export interface UpCardProps {
 	onToggleSelect: () => void;
 	onToggleEnabled: (next: boolean) => void;
 	togglePending: boolean;
+	/** 右键 / 长按请求在给定坐标弹出快捷菜单。 */
+	onRequestMenu: (pos: { x: number; y: number }) => void;
 }
 
 export function UpCard({
@@ -32,8 +35,10 @@ export function UpCard({
 	onToggleSelect,
 	onToggleEnabled,
 	togglePending,
+	onRequestMenu,
 }: UpCardProps) {
 	const [hover, setHover] = useState(false);
+	const longPress = useLongPress({ onLongPress: onRequestMenu });
 	const color = colorFromUid(sub.uid);
 	const features = subscribedFeatures(sub);
 	const fans = sub.cachedProfile?.fans;
@@ -49,6 +54,14 @@ export function UpCard({
 			role="button"
 			tabIndex={0}
 			onClick={onClick}
+			onClickCapture={longPress.onClickCapture}
+			onPointerDown={longPress.onPointerDown}
+			onPointerMove={longPress.onPointerMove}
+			onPointerUp={longPress.onPointerUp}
+			onContextMenu={(e) => {
+				e.preventDefault();
+				onRequestMenu({ x: e.clientX, y: e.clientY });
+			}}
 			onKeyDown={(e) => {
 				if (e.key === "Enter" || e.key === " ") {
 					e.preventDefault();

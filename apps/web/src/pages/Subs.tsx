@@ -1,12 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Btn, Input } from "../components/atoms";
-import { ModalShell } from "../components/dialog";
+import { ConfirmDialog, ModalShell } from "../components/dialog";
 import { Icon } from "../components/icons";
 import { ApiError, api } from "../services/api";
 import { makeEmptySubscription, type PushTarget, type Subscription } from "../types/domain";
+import { copyToClipboard } from "../utils/clipboard";
+import { GroupEditDialog } from "./up/GroupEditDialog";
 import { displayName } from "./up/helpers";
+import { computeMenuPosition } from "./up/menu-position";
 import { UpCard } from "./up/UpCard";
+import { UpCardMenu } from "./up/UpCardMenu";
 import { UpDialog } from "./up/UpDialog";
 
 type FilterId = "all" | "enabled" | "disabled";
@@ -404,6 +408,20 @@ export default function Subs() {
 	const [groupFilter, setGroupFilter] = useState<string | null>(null);
 	const [selection, setSelection] = useState<Set<string>>(new Set());
 	const [drawerSubId, setDrawerSubId] = useState<string | null>(null);
+	/** 右键 / 长按打开的快捷菜单:目标订阅 + 触发点坐标。 */
+	const [menuAt, setMenuAt] = useState<{ subId: string; x: number; y: number } | null>(null);
+	/** 待二次确认的删除(单个来自右键 / 抽屉,多个来自批量)。 */
+	const [pendingDelete, setPendingDelete] = useState<{ ids: string[] } | null>(null);
+	/** 正在编辑所属分组的订阅。 */
+	const [groupEditId, setGroupEditId] = useState<string | null>(null);
+	/** 复制 UID 后的轻量提示,自动消失。 */
+	const [copyMsg, setCopyMsg] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (!copyMsg) return;
+		const t = window.setTimeout(() => setCopyMsg(null), 2000);
+		return () => window.clearTimeout(t);
+	}, [copyMsg]);
 	const [showNewDialog, setShowNewDialog] = useState(false);
 	/**
 	 * Staged 草稿:点 NewSubDialog 搜索结果后,不立即 POST,而是构造一份 Subscription
@@ -457,6 +475,19 @@ export default function Subs() {
 	};
 
 	const drawerSub = drawerSubId ? (subs.find((s) => s.id === drawerSubId) ?? null) : null;
+	const menuSub = menuAt ? (subs.find((s) => s.id === menuAt.subId) ?? null) : null;
+	const groupSub = groupEditId ? (subs.find((s) => s.id === groupEditId) ?? null) : null;
+	const menuPos =
+		menuAt && menuSub
+			? computeMenuPosition({
+					anchorX: menuAt.x,
+					anchorY: menuAt.y,
+					menuW: 176,
+					menuH: 210,
+					viewportW: window.innerWidth,
+					viewportH: window.innerHeight,
+				})
+			: null;
 
 	const upsert = useMutation({
 		mutationFn: async (s: Subscription) => {
@@ -473,20 +504,27 @@ export default function Subs() {
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
 	});
 
-	const del = useMutation({
-		mutationFn: async (id: string) => {
-			await api.delete(`/api/subs/${id}`);
-			return id;
+	/**
+	 * 单字段局部更新走 PATCH /:id(后端 deepMerge,数组整体替换),乐观改本地缓存,
+	 * 失败回滚。右键菜单的「启用 / 禁用」「编辑分组」都走它 —— 比整对象 POST 更轻,
+	 * 也不会 last-writer-wins 覆盖并发编辑的其它字段。
+	 */
+	const patchSub = useMutation({
+		mutationFn: ({ id, patch }: { id: string; patch: Partial<Subscription> }) =>
+			api.patch<Subscription>(`/api/subs/${id}`, patch),
+		onMutate: async ({ id, patch }) => {
+			await qc.cancelQueries({ queryKey: ["subscriptions"] });
+			const prev = qc.getQueryData<Subscription[]>(["subscriptions"]);
+			qc.setQueryData<Subscription[]>(["subscriptions"], (old) =>
+				(old ?? []).map((s) => (s.id === id ? { ...s, ...patch } : s)),
+			);
+			return { prev };
 		},
-		onSuccess: (id) => {
-			qc.invalidateQueries({ queryKey: ["subscriptions"] });
-			setSelection((sel) => {
-				const next = new Set(sel);
-				next.delete(id);
-				return next;
-			});
-			if (drawerSubId === id) setDrawerSubId(null);
+		onError: (_err, _vars, ctx) => {
+			if (ctx?.prev) qc.setQueryData(["subscriptions"], ctx.prev);
+			setError("操作失败,请稍后重试");
 		},
+		onSettled: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
 	});
 
 	function toggleSelect(id: string): void {
@@ -521,16 +559,24 @@ export default function Subs() {
 		qc.invalidateQueries({ queryKey: ["subscriptions"] });
 	}
 
-	function bulkDelete(): void {
-		const ids = [...selection];
-		void Promise.allSettled(ids.map((id) => api.delete(`/api/subs/${id}`))).then((results) => {
-			qc.invalidateQueries({ queryKey: ["subscriptions"] });
-			// P2:与 bulkSetEnabled 一致,上报失败计数(此前 allSettled 结果整个
-			// 丢弃,部分删除失败完全不可见)。
-			const failed = results.filter((r) => r.status === "rejected").length;
-			if (failed > 0) setError(`批量删除:${failed}/${ids.length} 个订阅删除失败`);
-			setSelection(new Set());
-		});
+	/** 统一执行删除(单个 / 批量),由确认框确认后触发。 */
+	function confirmDelete(): void {
+		const target = pendingDelete;
+		if (!target) return;
+		void Promise.allSettled(target.ids.map((id) => api.delete(`/api/subs/${id}`))).then(
+			(results) => {
+				qc.invalidateQueries({ queryKey: ["subscriptions"] });
+				const failed = results.filter((r) => r.status === "rejected").length;
+				if (failed > 0) setError(`删除:${failed}/${target.ids.length} 个订阅失败`);
+				setSelection((sel) => {
+					const next = new Set(sel);
+					for (const id of target.ids) next.delete(id);
+					return next;
+				});
+				if (drawerSubId && target.ids.includes(drawerSubId)) setDrawerSubId(null);
+			},
+		);
+		setPendingDelete(null);
 	}
 
 	function handleNew(profile: UpProfileLookup): void {
@@ -593,7 +639,11 @@ export default function Subs() {
 						<Btn size="sm" variant="ghost" onClick={() => void bulkSetEnabled(false)}>
 							批量禁用
 						</Btn>
-						<Btn size="sm" variant="danger" onClick={bulkDelete}>
+						<Btn
+							size="sm"
+							variant="danger"
+							onClick={() => setPendingDelete({ ids: [...selection] })}
+						>
 							批量删除
 						</Btn>
 					</div>
@@ -672,6 +722,7 @@ export default function Subs() {
 						onClick={() => setDrawerSubId(s.id)}
 						onToggleSelect={() => toggleSelect(s.id)}
 						onToggleEnabled={(on) => toggleEnabled(s, on)}
+						onRequestMenu={(pos) => setMenuAt({ subId: s.id, x: pos.x, y: pos.y })}
 					/>
 				))}
 				{/* 在 grid 末尾追加「+ 添加 UP 主」预选卡。仅在没有任何搜索 / 过滤时
@@ -713,15 +764,13 @@ export default function Subs() {
 					sub={drawerSub}
 					targets={targets}
 					onClose={() => setDrawerSubId(null)}
-					saving={upsert.isPending || del.isPending}
+					saving={upsert.isPending}
 					onSave={(next: Subscription) => {
 						upsert.mutate(next, {
 							onSuccess: () => setDrawerSubId(null),
 						});
 					}}
-					onDelete={() => {
-						del.mutate(drawerSub.id);
-					}}
+					onDelete={() => setPendingDelete({ ids: [drawerSub.id] })}
 				/>
 			) : null}
 
@@ -736,6 +785,60 @@ export default function Subs() {
 					error={error}
 					existingUids={new Set(subs.map((s) => s.uid))}
 				/>
+			) : null}
+
+			{menuSub && menuPos ? (
+				<UpCardMenu
+					enabled={menuSub.enabled}
+					x={menuPos.x}
+					y={menuPos.y}
+					onClose={() => setMenuAt(null)}
+					onEdit={() => setDrawerSubId(menuSub.id)}
+					onToggleEnabled={() =>
+						patchSub.mutate({ id: menuSub.id, patch: { enabled: !menuSub.enabled } })
+					}
+					onCopyUid={() => {
+						void copyToClipboard(menuSub.uid).then((ok) =>
+							setCopyMsg(ok ? "已复制 UID" : "复制失败,请手动复制"),
+						);
+					}}
+					onAddToGroup={() => setGroupEditId(menuSub.id)}
+					onDelete={() => setPendingDelete({ ids: [menuSub.id] })}
+				/>
+			) : null}
+
+			{groupSub ? (
+				<GroupEditDialog
+					allGroups={groupNames}
+					current={groupSub.groups}
+					saving={patchSub.isPending}
+					onConfirm={(next) => {
+						patchSub.mutate({ id: groupSub.id, patch: { groups: next } });
+						setGroupEditId(null);
+					}}
+					onCancel={() => setGroupEditId(null)}
+				/>
+			) : null}
+
+			{pendingDelete ? (
+				<ConfirmDialog
+					title={
+						pendingDelete.ids.length > 1
+							? `删除选中的 ${pendingDelete.ids.length} 个订阅?`
+							: "删除该订阅?"
+					}
+					message="删除后该订阅的所有推送配置将一并移除,且不可恢复。"
+					confirmLabel="确认删除"
+					danger
+					onConfirm={confirmDelete}
+					onCancel={() => setPendingDelete(null)}
+				/>
+			) : null}
+
+			{copyMsg ? (
+				<div className="fixed bottom-5 left-1/2 z-80 -translate-x-1/2 rounded-md bg-bn-surface-strong px-3 py-1.5 text-[12px] font-medium text-bn-text-primary shadow-bn-elev">
+					{copyMsg}
+				</div>
 			) : null}
 		</div>
 	);
