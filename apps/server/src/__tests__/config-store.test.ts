@@ -203,6 +203,16 @@ describe("ConfigStore", () => {
 		expect(store.getGlobals().master.targetId).toBe(T2);
 	});
 
+	it("SY1: null 清除深至嵌套标量 —— 关掉玻璃片透明度真的能存下去", async () => {
+		await store.patchGlobals({ defaults: { cardStyle: { glassOpacity: 0.82 } } });
+		expect(store.getGlobals().defaults.cardStyle.glassOpacity).toBe(0.82);
+
+		// 面板把「关掉」表达成 glassOpacity: null(见 web services/api.ts SY1 —— 线上
+		// 发 undefined 会被 JSON.stringify 丢键,deepMerge 当「不改」→ 存不掉)。
+		await store.patchGlobals({ defaults: { cardStyle: { glassOpacity: null } } } as never);
+		expect(store.getGlobals().defaults.cardStyle.glassOpacity).toBeUndefined();
+	});
+
 	it("消息版式:patchGlobals 持久化的自定义版式在冷重启(新 ConfigStore 读同一 dataDir)后仍生效", async () => {
 		const customLive = {
 			blocks: [

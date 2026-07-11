@@ -99,10 +99,41 @@ async function requestBlob(path: string): Promise<Blob> {
 	return res.blob();
 }
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+	if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+	const proto = Object.getPrototypeOf(v);
+	return proto === Object.prototype || proto === null;
+}
+
+/**
+ * SY1 —— PATCH 线格式:把 `undefined` 改写成 `null`(服务端的清除哨兵)。
+ *
+ * `JSON.stringify` 会把值为 `undefined` 的键整个丢掉,于是「清空一个可选字段」
+ * 在 PATCH body 里根本表达不出来:键消失 → 服务端 deepMerge(config/store.ts)
+ * 读作「本字段不改」→ 旧值原样留下 → 页面保存后依然是脏的。服务端约定显式
+ * `null` = 清除该键,所以在唯一的出口把 `undefined` 翻译过去。
+ *
+ * 「不改这个字段」的表达方式仍然是**不写这个键**,而不是写 `undefined` —— 两者
+ * 在 JSON 里本就不可区分,这里只是把前端唯一能表达的那个意图(清空)落到线上。
+ * POST 不做此转换:那是创建语义,`undefined` 表示「没有这个字段」,转成 null 会
+ * 被后端 schema 拒。
+ */
+function nullifyUndefined(value: unknown): unknown {
+	if (value === undefined) return null;
+	if (Array.isArray(value)) return value.map(nullifyUndefined);
+	if (isPlainObject(value)) {
+		const out: Record<string, unknown> = {};
+		for (const [k, v] of Object.entries(value)) out[k] = nullifyUndefined(v);
+		return out;
+	}
+	return value;
+}
+
 export const api = {
 	get: <T>(path: string) => request<T>("GET", path),
 	post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
-	patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
+	patch: <T>(path: string, body?: unknown) =>
+		request<T>("PATCH", path, body === undefined ? undefined : nullifyUndefined(body)),
 	delete: <T>(path: string) => request<T>("DELETE", path),
 	upload: <T>(path: string, form: FormData) => upload<T>(path, form),
 	blob: (path: string) => requestBlob(path),
