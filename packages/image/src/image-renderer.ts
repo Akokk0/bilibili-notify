@@ -48,6 +48,11 @@ async function withRetry<T>(fn: () => T | Promise<T>, maxAttempts = 3, delayMs =
 	throw lastError;
 }
 
+/** 可选配置项的日志值:未设置 = 回到各卡内置基线,打成「(默认)」而非裸 `undefined`。 */
+function fmtOptional(v: number | boolean | undefined): string {
+	return v === undefined ? "(默认)" : String(v);
+}
+
 /**
  * Runtime configuration for {@link ImageRenderer}. Mirrors the platform-neutral
  * subset of the original koishi `BilibiliNotifyImageConfig` schema; the koishi
@@ -160,10 +165,13 @@ export class ImageRenderer {
 		}
 		if (prev.showArea !== config.showArea) diffs.push(`showArea=${config.showArea}`);
 		if (prev.showFans !== config.showFans) diffs.push(`showFans=${config.showFans}`);
+		// 可选字段被清空 = 回到「各卡内置基线」,打成 (默认);裸 `undefined` 读不出这层含义。
 		if (prev.glassOpacity !== config.glassOpacity) {
-			diffs.push(`glassOpacity=${config.glassOpacity}`);
+			diffs.push(`glassOpacity=${fmtOptional(config.glassOpacity)}`);
 		}
-		if (prev.glassClear !== config.glassClear) diffs.push(`glassClear=${config.glassClear}`);
+		if (prev.glassClear !== config.glassClear) {
+			diffs.push(`glassClear=${fmtOptional(config.glassClear)}`);
+		}
 		if (prev.backgroundImage !== config.backgroundImage) {
 			diffs.push(`backgroundImage=${config.backgroundImage ? "(set)" : "(none)"}`);
 		}

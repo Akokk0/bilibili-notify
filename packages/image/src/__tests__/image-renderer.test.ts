@@ -516,3 +516,64 @@ describe("ImageRenderer.pruneImageCache", () => {
 		expect(r.imageCache.has("u301")).toBe(true);
 	});
 });
+
+/**
+ * updateConfig 的热更日志:可选字段被清除时(玻璃片透明度关掉 → undefined),
+ * 不能把裸 `undefined` 插进日志 —— 主人看到的是「glassOpacity=undefined」,读不出
+ * 「回到各卡内置基线」这个真实含义。backgroundImage 早就打成 (set)/(none),这两个
+ * 可选字段照做。
+ */
+function makeLoggingRenderer(
+	infos: string[],
+	config: Partial<ImageRendererConfig> = {},
+): ImageRenderer {
+	const r = makeRenderer(config) as AnyRenderer;
+	r.logger = {
+		debug() {},
+		info: (m: string) => infos.push(m),
+		warn() {},
+		error() {},
+	};
+	return r as ImageRenderer;
+}
+
+const BASE_CONFIG: ImageRendererConfig = {
+	cardColorStart: "#000000",
+	cardColorEnd: "#ffffff",
+	font: "sans-serif",
+	showPopularity: true,
+	showArea: true,
+	showFans: true,
+};
+
+describe("ImageRenderer.updateConfig 热更日志", () => {
+	it("清除玻璃片透明度打印「默认」而不是裸 undefined", () => {
+		const infos: string[] = [];
+		const r = makeLoggingRenderer(infos, { glassOpacity: 0.82 });
+
+		r.updateConfig({ ...BASE_CONFIG, glassOpacity: undefined });
+
+		expect(infos).toHaveLength(1);
+		expect(infos[0]).toContain("glassOpacity=(默认)");
+		expect(infos[0]).not.toContain("undefined");
+	});
+
+	it("清除完全透明开关同样不打印裸 undefined", () => {
+		const infos: string[] = [];
+		const r = makeLoggingRenderer(infos, { glassClear: true });
+
+		r.updateConfig({ ...BASE_CONFIG, glassClear: undefined });
+
+		expect(infos[0]).toContain("glassClear=(默认)");
+		expect(infos[0]).not.toContain("undefined");
+	});
+
+	it("设了值仍然照常打印实际值", () => {
+		const infos: string[] = [];
+		const r = makeLoggingRenderer(infos, {});
+
+		r.updateConfig({ ...BASE_CONFIG, glassOpacity: 0.5 });
+
+		expect(infos[0]).toContain("glassOpacity=0.5");
+	});
+});
