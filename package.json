@@ -32,15 +32,12 @@
 		"check": "biome check .",
 		"check:fix": "biome check --write .",
 		"prepare": "lefthook install",
-		"changeset": "changeset",
-		"version": "changeset version",
-		"release": "pnpm build && node scripts/publish.mjs",
+		"release": "vp run build && node scripts/publish.mjs",
 		"test": "vp test",
 		"knip": "knip --files"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.10",
-		"@changesets/cli": "^2.30.0",
 		"@commitlint/cli": "^20.5.0",
 		"@commitlint/config-conventional": "^20.5.0",
 		"@types/node": "^22.15.21",

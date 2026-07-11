@@ -8,26 +8,34 @@
 - **Biome** —— linter + formatter(tab 缩进,100 列);Vue 文件在 lint 范围内
 - **Lefthook** —— `vp install` 时经 prepare 钩子自动装。pre-commit 对暂存的 `*.ts/.js/.mjs/.json` 跑 `biome check --staged --write`;commit-msg 跑 commitlint(强制 conventional-commits)
 - **Vitest** —— 单测(`vp test`)
-- **Changesets** —— 发版工具。`updateInternalDependencies: "patch"` 只**同步下游消费者 `package.json` 里的版本范围**,不会自动把可发布的下游包纳入发布。当包 A 的改动影响到可发布包 B 的运行时行为,B 必须显式列进 changeset frontmatter
+- **发版** —— 无版本编排工具(changesets 已弃用)。registry 上只有 `koishi-plugin-bilibili-notify` 一个包,版本号手改 `koishi/package.json`,`scripts/publish.mjs` 从版本号推导 dist-tag 并做幂等发布
 
 ## 分支模型
 
 单主干 + 三个并存顶层目录(`packages/` / `koishi/` / `apps/`),不按产品形态分叉。
 
 - **`dev`** —— 活跃开发主干。`packages/` `koishi/` `apps/` 三类改动都落这。
-- **`main`** —— GitHub 默认分支,旧版发布快照。`dev → main` 合并触发 koishi changesets npm 发版(`publish.yml` 监听 push to `main`)。
+- **`main`** —— GitHub 默认分支,旧版发布快照。`dev → main` 合并触发 koishi npm 发版(`publish.yml` 监听 push to `main`)。
 
-两种产品形态发布节奏独立:koishi 端经 changesets 发 npm —— `dev → main` 合并触发(`publish.yml`);独立端(Server + Web + Desktop)从不发 npm —— 发布版本由 git tag `v<VERSION>` 驱动,再由 tag 分别触发 Docker 镜像与 Desktop 产物。`dev → main` 合并**不**触发独立端构建,koishi 发版与独立端发版互不牵动。
+两种产品形态发布节奏独立:koishi 端发 npm —— `dev → main` 合并触发(`publish.yml`);独立端(Server + Web + Desktop)从不发 npm —— 发布版本由 git tag `v<VERSION>` 驱动,再由 tag 分别触发 Docker 镜像与 Desktop 产物。`dev → main` 合并**不**触发独立端构建,koishi 发版与独立端发版互不牵动。
 
-### koishi 发版步骤(三步,第三步勿漏)
+### koishi 发版步骤
 
-changesets 是两阶段,且 **version 之后必须把 main 回流 dev**,否则 dev 的版本元数据会一直落后:
+koishi 插件是**自包含单文件产物**:九个 `@bilibili-notify/*` 内部包全部被内联进 `koishi/lib/index.cjs`(`koishi/vite.config.ts` 的 `deps.alwaysBundle`),因此它们已 `private`、不再发 npm。registry 上只剩插件这一个包 —— **没有版本联动要算,所以不需要 changesets**。
 
-1. **sync**:本地 `git checkout main && git merge --no-ff dev -m "chore: sync dev to main"`,push main → 触发 `publish.yml`。
-2. **version + publish**:changesets action 见 pending changeset → 开 / 更新 Version PR(`changeset-release/main`);核对版本后合并该 PR,再次 push main → 这次无 pending → 执行 `pnpm publish` 发 npm。
-3. **回流(易漏)**:发版完成后 `git checkout dev && git merge --ff-only origin/main && git push origin dev`,让 dev 拿到 `version packages` 写的 `package.json#version` / `CHANGELOG.md` / `.changeset/pre.json`。
+1. **改版本**:编辑 `koishi/package.json#version`,手写 `koishi/CHANGELOG.md`,提交到 dev。
+2. **发版**:`git checkout main && git merge --no-ff dev` 并 push main → `publish.yml` 跑门禁后执行 `node scripts/publish.mjs`。
+3. **回流**:`git checkout dev && git merge --ff-only origin/main && git push origin dev`。
 
-漏掉第 3 步,dev 的包版本与 `pre.json` 的 consumed 列表会持续落后 main。**它不会在下次 `dev → main` 时报冲突** —— 版本元数据只由 main 的 `version packages` commit 修改,dev 侧对这些文件的 delta 恒为 0,三方合并直接采纳 main 侧值,所以这种落后是静默的、容易被忽略。回流是 fast-forward(dev 始终是 main 的纯祖先 + 新代码)。
+`scripts/publish.mjs` 接住了 changesets 原本兜的两件事:
+
+- **dist-tag 从版本号推导** —— `5.0.0-alpha.9` → npm tag `alpha`;`5.0.0` → `latest`。与独立端 `v<VERSION>` tag 同一套心智。
+- **幂等** —— 发布前查 registry,版本已存在就安静跳过。push main 不一定意味着版本变了(合并 bug 修复也会 push),跳过而非报错才不会把 CI 染红。
+
+产物构成与体积:插件把内部包**和它们的第三方依赖**(vue / openai / protobufjs / 两个大版本的 cron …)一并内联,tree-shaking 后 `index.cjs` ≈ 4.4MB。两个例外:
+
+- **jieba-wasm** —— 只内联 JS 胶水。它的 npm 包里有四份等大的 wasm(deno / nodejs / web / bundler,共 16MB),external 的话用户全得下载。胶水运行时用 `path.join(__dirname, "jieba_rs_wasm_bg.wasm")` 读二进制,CJS 产物里 `__dirname` 正好是 `lib/` —— 所以 `scripts/copy-jieba-wasm.mjs` 在 pack 后把 nodejs 那一份(3.8MB)拷进去。**这也是只发 CJS 的原因之一**:ESM 里 `__dirname` 是 undefined,会直接 TypeError。
+- **jsdom** —— 保持 external(留在 `dependencies`)。它运行时 `require.resolve("./xhr-sync-worker.js")` 去磁盘上找兄弟文件、还会 fork 子进程,内联后一 require 插件就 MODULE_NOT_FOUND。
 
 ## 独立端版本与 tag
 
@@ -39,7 +47,7 @@ changesets 是两阶段,且 **version 之后必须把 main 回流 dev**,否则 d
 - `apps/web/package.json#version` —— 前端概览页展示。
 - `apps/desktop/package.json#version`、`apps/desktop/src-tauri/tauri.conf.json#version`、`apps/desktop/src-tauri/Cargo.toml` / `Cargo.lock` —— Desktop/Tauri bundle 与安装器元数据。
 
-这些改动只发生在 CI checkout / Docker build context 里,不需要回写仓库。`apps/server`、`apps/web`、`apps/desktop` 都是 `private`、永不发 npm,且进了 `.changeset/config.json` 的 `ignore` —— changeset 完全不碰它们,业务包改动也不会连带 bump 它们。
+这些改动只发生在 CI checkout / Docker build context 里,不需要回写仓库。`apps/server`、`apps/web`、`apps/desktop` 都是 `private`、永不发 npm。
 
 运行时 `resolveAppVersion`(`apps/server/src/routes/health.ts`)读构建时已同步的 `apps/server/package.json#version`;`/api/health` 的 `version` 与概览页「后端 X」据此显示。Desktop workflow 中 web dist 的前端版本由 `BN_STANDALONE_VERSION` 注入,因此 apps runtime 可先于版本文件 sync 构建;Tauri/Cargo/server package 元数据仍在 bundle 前 sync。
 
@@ -103,7 +111,7 @@ builder 故意用 **corepack 提供的 pnpm,不是 vp** —— 这是对「全�
 docker build -f apps/Dockerfile -t bilibili-notify:dev .
 ```
 
-`apps/docker-compose.example.yaml` 是部署模板。`apps/*` 单独的改动不需要 changeset。
+`apps/docker-compose.example.yaml` 是部署模板。
 
 ## AstrBot 插件发布(独立仓)
 

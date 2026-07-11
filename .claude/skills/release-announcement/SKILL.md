@@ -9,7 +9,7 @@ bilibili-notify **三端**(独立端 / koishi / AstrBot)合并成**一份**公�
 
 ## 步骤
 
-1. **收集素材** —— 三端本次更新:独立端读 `apps/CHANGELOG.md`、AstrBot 读 `astrbot/CHANGELOG.md` 的最新版本段;koishi 读本次发版消费的 changeset(`vp exec changeset status --since=origin/main` 看新增,配 `.changeset/*.md` 取描述)。完成:三端的本次变更项都已列出。
+1. **收集素材** —— 三端本次更新:独立端读 `apps/CHANGELOG.md`、AstrBot 读 `astrbot/CHANGELOG.md` 的最新版本段;koishi 读 `koishi/CHANGELOG.md` 的最新版本段(手写维护,changesets 已弃用)。完成:三端的本次变更项都已列出。
 2. **归类成稿** —— 按下方骨架与规则写成 `release-notes/<版本>.txt`。完成:每条都归入某一增删改类、端归属正确。
 3. **压字数** —— `wc -m release-notes/<版本>.txt`,字符数 **≤ 600**。超了就砍括号补充 / 命令 / 警告细节,不砍条目。完成:`wc -m` ≤ 600。
 

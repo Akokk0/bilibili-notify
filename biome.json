@@ -9,7 +9,6 @@
 			"!**/dist",
 			"**/*.vue",
 			"!**/src/static",
-			"!.changeset",
 			"!**/.interface",
 			"!.bn-design",
 			"!.claude",

@@ -21,7 +21,6 @@
 
 # Markdown / design assets / logs not needed at build time.
 **/*.md
-!.changeset/*.md
 !apps/CHANGELOG.md
 .bn-design
 
