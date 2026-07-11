@@ -23,6 +23,7 @@ import type {
 	LogLevel,
 	ModuleLogLevels,
 } from "../types/globals";
+import { BackupSection } from "./backup/BackupSection";
 
 const STATUS_LABELS: Record<BiliLoginStatusValue, string> = {
 	[BiliLoginStatus.NOT_LOGIN]: "未登录",
@@ -458,6 +459,8 @@ export default function System() {
 					拉取 /api/globals 失败：{String((globalsQuery.error as Error).message)}
 				</div>
 			) : null}
+
+			<BackupSection />
 
 			<details className="rounded border border-bn-border bg-bn-surface-muted p-3 text-xs text-bn-text-secondary">
 				<summary className="cursor-pointer font-medium text-bn-text-primary">原始登录快照</summary>

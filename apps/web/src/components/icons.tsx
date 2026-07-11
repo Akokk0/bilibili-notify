@@ -72,6 +72,12 @@ export const Icon = {
 	),
 	guard: filled(<path d="M12 1 3 5v7c0 5 4 9 9 11 5-2 9-6 9-11V5l-9-4Z" />),
 	check: stroke(<path d="m5 12 5 5L20 7" />, 3),
+	download: stroke(
+		<>
+			<path d="M12 3v11m0 0 4-4m-4 4-4-4" />
+			<path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+		</>,
+	),
 	edit: stroke(<path d="M14 4l6 6L9 21H3v-6L14 4Z" />),
 	trash: stroke(
 		<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m1 0v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V6" />,
