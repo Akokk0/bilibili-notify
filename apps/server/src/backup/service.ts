@@ -75,8 +75,15 @@ export interface ImportOptions {
 	envelope: BackupEnvelope;
 	pin?: string;
 	mode: ImportMode;
+	/**
+	 * Compute the plan and report it, but write nothing. Lets the dashboard show
+	 * "覆盖会删除 N 项，确认？" with real numbers — and surfaces a wrong PIN before
+	 * a single config write has happened.
+	 */
+	dryRun?: boolean;
 }
 
+/** What an import did — or, under `dryRun`, what it *would* do. */
 export interface ImportResult {
 	subscriptions: { upserted: number; deleted: number };
 	adapters: { upserted: number; deleted: number };
@@ -148,25 +155,30 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		const plan = planImport(current, sections, opts.mode);
 
 		let globalsApplied = false;
-		if (plan.setGlobals) {
-			await deps.configStore.setGlobals(plan.setGlobals);
-			globalsApplied = true;
-		}
-		for (const s of plan.subscriptions.upsert) await deps.configStore.upsertSubscription(s);
-		for (const id of plan.subscriptions.delete) await deps.configStore.deleteSubscription(id);
-		for (const a of plan.adapters.upsert) await deps.configStore.upsertAdapter(a);
-		for (const id of plan.adapters.delete) await deps.configStore.deleteAdapter(id);
-		for (const t of plan.targets.upsert) await deps.configStore.upsertTarget(t);
-		for (const id of plan.targets.delete) await deps.configStore.deleteTarget(id);
-
 		let cookiesRestored = false;
-		if (cookies?.cookiesJson) {
-			await deps.cookieStore.save({
-				cookiesJson: cookies.cookiesJson,
-				refreshToken: cookies.refreshToken,
-			});
-			await deps.onCookiesRestored?.();
-			cookiesRestored = true;
+		if (!opts.dryRun) {
+			if (plan.setGlobals) {
+				await deps.configStore.setGlobals(plan.setGlobals);
+				globalsApplied = true;
+			}
+			for (const s of plan.subscriptions.upsert) await deps.configStore.upsertSubscription(s);
+			for (const id of plan.subscriptions.delete) await deps.configStore.deleteSubscription(id);
+			for (const a of plan.adapters.upsert) await deps.configStore.upsertAdapter(a);
+			for (const id of plan.adapters.delete) await deps.configStore.deleteAdapter(id);
+			for (const t of plan.targets.upsert) await deps.configStore.upsertTarget(t);
+			for (const id of plan.targets.delete) await deps.configStore.deleteTarget(id);
+
+			if (cookies?.cookiesJson) {
+				await deps.cookieStore.save({
+					cookiesJson: cookies.cookiesJson,
+					refreshToken: cookies.refreshToken,
+				});
+				await deps.onCookiesRestored?.();
+				cookiesRestored = true;
+			}
+		} else {
+			globalsApplied = Boolean(plan.setGlobals);
+			cookiesRestored = Boolean(cookies?.cookiesJson);
 		}
 
 		return {

@@ -86,9 +86,9 @@ describe("BackupSection", () => {
 		);
 	});
 
-	it("imports a backup and reports what landed", async () => {
+	it("imports a merge backup straight through (nothing gets deleted, so no confirmation)", async () => {
 		post.mockResolvedValue({
-			subscriptions: { upserted: 3, deleted: 1 },
+			subscriptions: { upserted: 3, deleted: 0 },
 			adapters: { upserted: 0, deleted: 0 },
 			targets: { upserted: 2, deleted: 0 },
 			globalsApplied: true,
@@ -104,10 +104,75 @@ describe("BackupSection", () => {
 		await waitFor(() =>
 			expect(post).toHaveBeenCalledWith(
 				"/api/backup/import",
-				expect.objectContaining({ mode: "merge" }),
+				expect.objectContaining({ mode: "merge", dryRun: false }),
 			),
 		);
 		expect(await screen.findByText(/订阅 3 项/)).toBeTruthy();
+	});
+
+	/**
+	 * 覆盖会真删东西且不可撤销。落地前先向后端要一份 dryRun 计划,拿真实数字弹确认;
+	 * 主人不点头,一个字节都不许写。
+	 */
+	it("confirms an overwrite that deletes things, and applies it only after 确认", async () => {
+		const plan = {
+			subscriptions: { upserted: 2, deleted: 1 },
+			adapters: { upserted: 0, deleted: 0 },
+			targets: { upserted: 0, deleted: 2 },
+			globalsApplied: true,
+			cookiesRestored: true,
+		};
+		post.mockResolvedValue(plan);
+		renderSection();
+
+		fireEvent.click(screen.getByText("导入备份"));
+		pickFile("full");
+		fireEvent.change(await screen.findByPlaceholderText(/输入 4 位/), {
+			target: { value: "1234" },
+		});
+		fireEvent.click(screen.getByText("导入"));
+
+		// 计划先行:只发了 dryRun,还没落地。
+		expect(await screen.findByText(/订阅 1 项/)).toBeTruthy();
+		expect(await screen.findByText(/推送目标 2 项/)).toBeTruthy();
+		expect(post).toHaveBeenCalledTimes(1);
+		expect(post).toHaveBeenCalledWith(
+			"/api/backup/import",
+			expect.objectContaining({ mode: "overwrite", dryRun: true }),
+		);
+
+		fireEvent.click(screen.getByText("确认覆盖"));
+
+		await waitFor(() =>
+			expect(post).toHaveBeenCalledWith(
+				"/api/backup/import",
+				expect.objectContaining({ mode: "overwrite", dryRun: false }),
+			),
+		);
+		expect(await screen.findByText(/导入完成/)).toBeTruthy();
+	});
+
+	it("cancels a confirmed overwrite: nothing is written", async () => {
+		post.mockResolvedValue({
+			subscriptions: { upserted: 0, deleted: 3 },
+			adapters: { upserted: 0, deleted: 0 },
+			targets: { upserted: 0, deleted: 0 },
+			globalsApplied: false,
+			cookiesRestored: false,
+		});
+		renderSection();
+
+		fireEvent.click(screen.getByText("导入备份"));
+		pickFile("full");
+		fireEvent.change(await screen.findByPlaceholderText(/输入 4 位/), {
+			target: { value: "1234" },
+		});
+		fireEvent.click(screen.getByText("导入"));
+
+		fireEvent.click(await screen.findByText("再想想"));
+
+		expect(post).toHaveBeenCalledTimes(1);
+		expect(screen.queryByText(/导入完成/)).toBeNull();
 	});
 
 	it("surfaces a rejected import (wrong PIN) instead of failing silently", async () => {

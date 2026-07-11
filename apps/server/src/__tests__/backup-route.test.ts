@@ -85,6 +85,20 @@ describe("backup route", () => {
 		expect(service.importBackup).toHaveBeenCalledWith(expect.objectContaining({ mode: "merge" }));
 	});
 
+	it("POST /import forwards dryRun so the dashboard can preview the plan", async () => {
+		const service = fakeService();
+		const app = createBackupRoute({ service });
+
+		const res = await post(app, "/import", {
+			backup: envelope("sanitized"),
+			mode: "overwrite",
+			dryRun: true,
+		});
+
+		expect(res.status).toBe(200);
+		expect(service.importBackup).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true }));
+	});
+
 	it("POST /import rejects a non-backup document with 400 (never reaches the service)", async () => {
 		const service = fakeService();
 		const app = createBackupRoute({ service });

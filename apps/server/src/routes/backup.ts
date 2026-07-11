@@ -44,7 +44,7 @@ export function createBackupRoute(opts: { service: BackupService }): Hono {
 	});
 
 	app.post("/import", async (c) => {
-		let body: { backup?: unknown; pin?: string; mode?: unknown };
+		let body: { backup?: unknown; pin?: string; mode?: unknown; dryRun?: unknown };
 		try {
 			body = await c.req.json();
 		} catch {
@@ -68,6 +68,7 @@ export function createBackupRoute(opts: { service: BackupService }): Hono {
 				envelope,
 				pin: body.pin,
 				mode: mode as ImportMode,
+				dryRun: body.dryRun === true,
 			});
 			return c.json(result);
 		} catch (err) {

@@ -159,6 +159,36 @@ describe("BackupService", () => {
 		expect(store.deleteSubscription).not.toHaveBeenCalled();
 	});
 
+	it("a dry-run import reports the same plan but writes nothing", async () => {
+		const store = makeFakeStore({ subscriptions: [sub("1"), sub("2")] });
+		const cookieStore = makeCookieStore(null);
+		const onCookiesRestored = vi.fn(async () => {});
+		const svc = createBackupService({ configStore: store, cookieStore, onCookiesRestored });
+
+		const source = makeFakeStore({ subscriptions: [sub("2"), sub("3")] });
+		const srcSvc = createBackupService({
+			configStore: source,
+			cookieStore: makeCookieStore({ cookiesJson: "CJ" }),
+			now: () => "t",
+		});
+		const env = await srcSvc.exportBackup({ kind: "full", pin: "1234" });
+
+		const planned = await svc.importBackup({
+			envelope: env,
+			pin: "1234",
+			mode: "overwrite",
+			dryRun: true,
+		});
+
+		expect(planned.subscriptions).toEqual({ upserted: 2, deleted: 1 });
+		expect(planned.cookiesRestored).toBe(true);
+		expect(store.upsertSubscription).not.toHaveBeenCalled();
+		expect(store.deleteSubscription).not.toHaveBeenCalled();
+		expect(store.setGlobals).not.toHaveBeenCalled();
+		expect(cookieStore.save).not.toHaveBeenCalled();
+		expect(onCookiesRestored).not.toHaveBeenCalled();
+	});
+
 	it("importing a full backup with the wrong PIN throws", async () => {
 		const source = makeFakeStore({ subscriptions: [sub("1")] });
 		const srcSvc = createBackupService({

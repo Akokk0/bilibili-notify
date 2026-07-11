@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Btn } from "../../components/atoms";
+import { ConfirmDialog } from "../../components/dialog";
 import { GlassBox } from "../../components/glass-box";
 import { Icon } from "../../components/icons";
 import { ApiError, api } from "../../services/api";
@@ -23,6 +24,13 @@ interface ImportResult {
 	cookiesRestored: boolean;
 }
 
+/** What the dashboard sends to `/api/backup/import`. */
+interface ImportRequest {
+	backup: unknown;
+	mode: "overwrite" | "merge";
+	pin?: string;
+}
+
 function summarize(r: ImportResult): string {
 	const scope = (label: string, s: { upserted: number; deleted: number }) =>
 		s.upserted || s.deleted
@@ -40,6 +48,17 @@ function summarize(r: ImportResult): string {
 		: "导入完成：备份内容与当前一致，无改动";
 }
 
+/** The scopes a plan would delete, e.g. ["订阅 1 项", "推送目标 2 项"]. */
+function deletions(r: ImportResult): string[] {
+	return [
+		["订阅", r.subscriptions.deleted] as const,
+		["推送目标", r.targets.deleted] as const,
+		["推送适配器", r.adapters.deleted] as const,
+	]
+		.filter(([, n]) => n > 0)
+		.map(([label, n]) => `${label} ${n} 项`);
+}
+
 /**
  * 系统页「备份与恢复」一节。导出把后端组装好的信封直接落成本地文件;导入把选中的
  * 文件原样回传给后端(客户端只做格式嗅探,真正的校验/解密在服务端),落地后 invalidate
@@ -51,6 +70,8 @@ export function BackupSection() {
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
+	/** A planned import waiting for the user to confirm its deletions. */
+	const [pending, setPending] = useState<{ req: ImportRequest; plan: ImportResult } | null>(null);
 
 	function fail(err: unknown): void {
 		setError(err instanceof ApiError ? err.message : String(err));
@@ -81,21 +102,42 @@ export function BackupSection() {
 		}
 	}
 
-	async function doImport(opts: {
-		backup: unknown;
-		mode: "overwrite" | "merge";
-		pin?: string;
-	}): Promise<void> {
+	/**
+	 * 导入分两拍。第一拍 dryRun:后端算出计划但不写,顺带在写任何东西之前把 PIN 错
+	 * 暴露出来。计划里若有删除(只可能是覆盖模式),必须先拿真实数字向主人确认 ——
+	 * 删除不可撤销。没有删除就直接落地,不拿多余的弹框烦主人。
+	 */
+	async function doImport(req: ImportRequest): Promise<void> {
 		setBusy(true);
 		setError(null);
 		setNotice(null);
 		try {
-			const result = await api.post<ImportResult>("/api/backup/import", opts);
+			const plan = await api.post<ImportResult>("/api/backup/import", { ...req, dryRun: true });
+			if (deletions(plan).length > 0) {
+				setPending({ req, plan });
+				return;
+			}
+			await apply(req);
+		} catch (err) {
+			fail(err);
+		} finally {
+			setBusy(false);
+		}
+	}
+
+	/** Second beat: actually write. */
+	async function apply(req: ImportRequest): Promise<void> {
+		setBusy(true);
+		setError(null);
+		try {
+			const result = await api.post<ImportResult>("/api/backup/import", { ...req, dryRun: false });
+			setPending(null);
 			setDialog(null);
 			setNotice(summarize(result));
 			await qc.invalidateQueries();
 		} catch (err) {
 			fail(err);
+			setPending(null);
 		} finally {
 			setBusy(false);
 		}
@@ -149,6 +191,23 @@ export function BackupSection() {
 					busy={busy}
 					onCancel={() => setDialog(null)}
 					onImport={(opts) => void doImport(opts)}
+				/>
+			) : null}
+			{pending ? (
+				<ConfirmDialog
+					danger
+					title="覆盖导入会删除现有配置"
+					message={
+						<>
+							这份备份里没有的东西会被删掉：
+							<span className="font-bold text-bn-danger">{deletions(pending.plan).join("、")}</span>
+							。删除不可撤销，确定要继续吗？
+						</>
+					}
+					confirmLabel="确认覆盖"
+					cancelLabel="再想想"
+					onConfirm={() => void apply(pending.req)}
+					onCancel={() => setPending(null)}
 				/>
 			) : null}
 		</GlassBox>
