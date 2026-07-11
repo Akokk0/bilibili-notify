@@ -6,7 +6,7 @@ import { BackupImportDialog } from "./BackupImportDialog";
 import { BACKUP_FORMAT } from "./backup-file";
 
 /**
- * 导入弹框:选文件 → 客户端识别档位;完整档要 4 位 PIN、默认覆盖;脱敏档默认合并、无 PIN;
+ * 导入弹框:选文件 → 客户端识别档位;完整档要 6 位 PIN、默认覆盖;脱敏档默认合并、无 PIN;
  * 非备份文件报错且不放行导入。
  */
 afterEach(cleanup);
@@ -38,11 +38,11 @@ describe("BackupImportDialog", () => {
 		expect(await screen.findByText(/完整备份/)).toBeTruthy();
 		expect((screen.getByText("导入") as HTMLButtonElement).disabled).toBe(true);
 
-		fireEvent.change(screen.getByPlaceholderText(/4 位/), { target: { value: "1234" } });
+		fireEvent.change(screen.getByPlaceholderText(/6 位/), { target: { value: "123456" } });
 		fireEvent.click(screen.getByText("导入"));
 
 		expect(onImport).toHaveBeenCalledWith(
-			expect.objectContaining({ mode: "overwrite", pin: "1234" }),
+			expect.objectContaining({ mode: "overwrite", pin: "123456" }),
 		);
 	});
 

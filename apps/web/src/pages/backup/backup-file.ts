@@ -41,9 +41,9 @@ export function backupFilename(kind: BackupKind, createdAt: string): string {
 	return `bilibili-notify-${kind}-${date}.${ext}`;
 }
 
-/** The backup PIN is exactly four digits (a bank-card-style convenience lock). */
+/** The backup PIN is exactly six digits (a Windows Hello / macOS-style device PIN). */
 export function isValidPin(pin: string): boolean {
-	return /^\d{4}$/.test(pin);
+	return /^\d{6}$/.test(pin);
 }
 
 /**

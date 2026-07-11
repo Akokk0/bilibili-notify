@@ -69,13 +69,13 @@ describe("BackupSection", () => {
 		renderSection();
 
 		fireEvent.click(screen.getByText("导出备份"));
-		fireEvent.change(screen.getByPlaceholderText(/设置 4 位/), { target: { value: "1234" } });
+		fireEvent.change(screen.getByPlaceholderText(/设置 6 位/), { target: { value: "123456" } });
 		fireEvent.click(screen.getByText("导出"));
 
 		await waitFor(() =>
 			expect(post).toHaveBeenCalledWith(
 				"/api/backup/export",
-				expect.objectContaining({ kind: "full", pin: "1234" }),
+				expect.objectContaining({ kind: "full", pin: "123456" }),
 			),
 		);
 		await waitFor(() =>
@@ -127,8 +127,8 @@ describe("BackupSection", () => {
 
 		fireEvent.click(screen.getByText("导入备份"));
 		pickFile("full");
-		fireEvent.change(await screen.findByPlaceholderText(/输入 4 位/), {
-			target: { value: "1234" },
+		fireEvent.change(await screen.findByPlaceholderText(/输入 6 位/), {
+			target: { value: "123456" },
 		});
 		fireEvent.click(screen.getByText("导入"));
 
@@ -164,8 +164,8 @@ describe("BackupSection", () => {
 
 		fireEvent.click(screen.getByText("导入备份"));
 		pickFile("full");
-		fireEvent.change(await screen.findByPlaceholderText(/输入 4 位/), {
-			target: { value: "1234" },
+		fireEvent.change(await screen.findByPlaceholderText(/输入 6 位/), {
+			target: { value: "123456" },
 		});
 		fireEvent.click(screen.getByText("导入"));
 
@@ -181,8 +181,8 @@ describe("BackupSection", () => {
 
 		fireEvent.click(screen.getByText("导入备份"));
 		pickFile("full");
-		fireEvent.change(await screen.findByPlaceholderText(/输入 4 位/), {
-			target: { value: "9999" },
+		fireEvent.change(await screen.findByPlaceholderText(/输入 6 位/), {
+			target: { value: "999999" },
 		});
 		fireEvent.click(screen.getByText("导入"));
 

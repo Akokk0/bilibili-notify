@@ -81,11 +81,11 @@ describe("BackupService", () => {
 		const cookieStore = makeCookieStore({ cookiesJson: "CJ", refreshToken: "RT" });
 		const svc = createBackupService({ configStore: store, cookieStore, now: () => "t0" });
 
-		const env = await svc.exportBackup({ kind: "full", pin: "1234" });
+		const env = await svc.exportBackup({ kind: "full", pin: "123456" });
 
 		expect(env.kind).toBe("full");
 		expect(env.createdAt).toBe("t0");
-		const opened = openFullBackup(env, "1234");
+		const opened = openFullBackup(env, "123456");
 		expect(opened.cookies).toEqual({ cookiesJson: "CJ", refreshToken: "RT" });
 		expect(opened.sections.adapters?.[0]?.config).toMatchObject({ accessToken: "tok-1" });
 	});
@@ -127,9 +127,9 @@ describe("BackupService", () => {
 			cookieStore: makeCookieStore({ cookiesJson: "CJ2", refreshToken: "RT2" }),
 			now: () => "t",
 		});
-		const env = await srcSvc.exportBackup({ kind: "full", pin: "1234" });
+		const env = await srcSvc.exportBackup({ kind: "full", pin: "123456" });
 
-		await svc.importBackup({ envelope: env, pin: "1234", mode: "overwrite" });
+		await svc.importBackup({ envelope: env, pin: "123456", mode: "overwrite" });
 
 		expect(
 			(store.upsertSubscription as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0].id).sort(),
@@ -171,11 +171,11 @@ describe("BackupService", () => {
 			cookieStore: makeCookieStore({ cookiesJson: "CJ" }),
 			now: () => "t",
 		});
-		const env = await srcSvc.exportBackup({ kind: "full", pin: "1234" });
+		const env = await srcSvc.exportBackup({ kind: "full", pin: "123456" });
 
 		const planned = await svc.importBackup({
 			envelope: env,
-			pin: "1234",
+			pin: "123456",
 			mode: "overwrite",
 			dryRun: true,
 		});
@@ -196,7 +196,7 @@ describe("BackupService", () => {
 			cookieStore: makeCookieStore({ cookiesJson: "CJ" }),
 			now: () => "t",
 		});
-		const env = await srcSvc.exportBackup({ kind: "full", pin: "1234" });
+		const env = await srcSvc.exportBackup({ kind: "full", pin: "123456" });
 
 		const store = makeFakeStore();
 		const svc = createBackupService({

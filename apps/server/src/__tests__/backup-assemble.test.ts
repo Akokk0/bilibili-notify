@@ -40,7 +40,7 @@ describe("full backup assemble/open", () => {
 				adapters: [onebot("a1", "tok-SECRET")],
 				cookies: { cookiesJson: '{"SESSDATA":"cookie-SECRET"}', refreshToken: "rt-SECRET" },
 			},
-			"1234",
+			"123456",
 			"2026-07-10T00:00:00.000Z",
 		);
 
@@ -59,18 +59,18 @@ describe("full backup assemble/open", () => {
 				adapters: [onebot("a1", "tok-1")],
 				cookies: { cookiesJson: "CJ", refreshToken: "RT" },
 			},
-			"1234",
+			"123456",
 			"t",
 		);
 
-		const { sections, cookies } = openFullBackup(env, "1234");
+		const { sections, cookies } = openFullBackup(env, "123456");
 		expect(sections.globals?.defaults.ai.apiKey).toBe("sk-1");
 		expect(sections.adapters?.[0]?.config).toMatchObject({ accessToken: "tok-1" });
 		expect(cookies).toEqual({ cookiesJson: "CJ", refreshToken: "RT" });
 	});
 
 	it("open with the wrong PIN throws", () => {
-		const env = assembleFullBackup({ globals: globalsWithApiKey("sk-1") }, "1234", "t");
+		const env = assembleFullBackup({ globals: globalsWithApiKey("sk-1") }, "123456", "t");
 		expect(() => openFullBackup(env, "0000")).toThrow();
 	});
 });

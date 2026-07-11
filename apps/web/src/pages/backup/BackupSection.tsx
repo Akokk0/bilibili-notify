@@ -153,7 +153,7 @@ export function BackupSection() {
 		>
 			<div className="text-[12px] leading-relaxed text-bn-text-secondary">
 				<span className="font-semibold text-bn-text-primary">完整备份</span>
-				：含机密（B 站 Cookie、AI Key、适配器凭据），用 4 位 PIN 加密，用于换机 / 灾备还原。
+				：含机密（B 站 Cookie、AI Key、适配器凭据），用 6 位 PIN 加密，用于换机 / 灾备还原。
 				<br />
 				<span className="font-semibold text-bn-text-primary">脱敏导出</span>
 				：机密位置留空，纯明文 JSON，可存档、可分享给别人抄配置。

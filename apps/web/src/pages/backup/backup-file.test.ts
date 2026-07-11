@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { BACKUP_FORMAT, backupFilename, isValidPin, looksLikeBackup } from "./backup-file";
 
 /**
- * 备份下载文件名 + 4 位 PIN 校验的纯逻辑。完整档用 .bnbackup(含加密机密),脱敏档用
+ * 备份下载文件名 + 6 位 PIN 校验的纯逻辑。完整档用 .bnbackup(含加密机密),脱敏档用
  * .json(纯明文、可读可 diff);文件名带日期便于主人区分多份备份。
  */
 describe("backupFilename", () => {
@@ -24,15 +24,16 @@ describe("backupFilename", () => {
 });
 
 describe("isValidPin", () => {
-	it("accepts exactly four digits", () => {
-		expect(isValidPin("1234")).toBe(true);
-		expect(isValidPin("0000")).toBe(true);
+	it("accepts exactly six digits", () => {
+		expect(isValidPin("123456")).toBe(true);
+		expect(isValidPin("000000")).toBe(true);
 	});
 
-	it("rejects anything that is not four digits", () => {
-		expect(isValidPin("123")).toBe(false);
+	it("rejects anything that is not six digits", () => {
+		expect(isValidPin("1234")).toBe(false);
 		expect(isValidPin("12345")).toBe(false);
-		expect(isValidPin("12a4")).toBe(false);
+		expect(isValidPin("1234567")).toBe(false);
+		expect(isValidPin("12a456")).toBe(false);
 		expect(isValidPin("")).toBe(false);
 	});
 });
