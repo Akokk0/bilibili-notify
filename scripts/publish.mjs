@@ -1,4 +1,4 @@
-// koishi 插件的 npm 发布入口。CI(push main)与本地 `vp run release` 共用。
+// koishi 插件的 npm 发布入口。CI(push dev 且版本号变动)与本地 `vp run release` 共用。
 //
 // changesets 已弃用。它当初的价值是替九个互相依赖的内部包算版本号联动 —— 而那些
 // 包现在全部 private、被内联进插件产物,registry 上只剩 `koishi-plugin-bilibili-notify`
@@ -11,9 +11,11 @@
 //    有 -alpha 就自动改。以前从 .changeset/pre.json 读,现在直接**从版本号推导**
 //    (5.0.0-alpha.9 → alpha;5.0.0 → latest),与独立端 v<VERSION> tag 同一套心智。
 //
-// 2. **幂等**。publish 挂在 push main 上,而 main 会因为任何合并而动 —— 版本号没变
-//    时必须安静跳过,否则 npm 的「版本已存在」会把 CI 染红。changesets 是靠 version
-//    PR 保证这点的,现在改成发布前问一次 registry。
+// 2. **幂等**。发布挂在 push dev 上,由 `scripts/koishi-version-changed.mjs` 判定
+//    「版本号变了」才启动。但那只是省 CI 的快速门,不是安全闸 —— workflow 被**重跑**时
+//    `github.event.before` 还是老的,它会再判一次 changed。所以这里发布前问一次
+//    registry:版本已存在就安静跳过,不让 npm 的「版本已存在」把 CI 染红。
+//    changesets 当初是靠 version PR 保证这点的。
 //
 // 用 npm 而不是 pnpm:插件的 dependencies 里已经没有任何 `workspace:*`(内部包全被
 // 内联了),而协议改写正是当初非用 pnpm 不可的唯一理由。npm 由 vp 的 Node 自带,CI

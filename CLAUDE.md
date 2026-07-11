@@ -47,10 +47,12 @@ apps/       Hono 服务端 + React Dashboard
 
 ## 分支
 
-- `dev` —— 活跃开发主干,三类目录改动都落这。
-- `main` —— GitHub 默认分支;`dev → main` 合并触发 koishi npm 发版。
+- `dev` —— 活跃开发主干,三类目录改动都落这;**koishi npm 发版也从这里触发**。
+- `main` —— GitHub 默认分支,发布快照。不再触发任何发版。
 
-独立端 Docker 镜像与 Desktop Release 由 `v<VERSION>` git tag 驱动;源码内独立端包版本保持 `0.0.0-dev`,发布 workflow 构建前按 tag 临时同步版本元数据。prerelease tag(如 `v0.1.0-alpha.7`)→Docker `:alpha`,纯 semver tag→`:latest`。`version-tag` workflow 是手动 tag helper,默认 dry-run;正式 tag 会分别触发 Docker 与 Desktop,二者互不阻塞(与 koishi 的 `dev→main` 发版解耦)。详见 `docs/agents/build-release.md`。
+**koishi 发版 = 改 `koishi/package.json` 的 `version` 并 push dev。**`publish.yml` 只认 version 字段变动(`scripts/koishi-version-changed.mjs`)——「`koishi/package.json` 变了」不算数,那个文件会被 `vp pack` 自动回写 `inlinedDependencies` / `exports`,每次构建都可能刷新。所以在 dev 上改 version 就是不可逆的发版动作,别顺手改。
+
+独立端 Docker 镜像与 Desktop Release 由 `v<VERSION>` git tag 驱动;源码内独立端包版本保持 `0.0.0-dev`,发布 workflow 构建前按 tag 临时同步版本元数据。prerelease tag(如 `v0.1.0-alpha.7`)→Docker `:alpha`,纯 semver tag→`:latest`。`version-tag` workflow 是手动 tag helper,默认 dry-run;正式 tag 会分别触发 Docker 与 Desktop,二者互不阻塞(与 koishi 发版解耦)。详见 `docs/agents/build-release.md`。
 
 ## 深入参考(`docs/agents/`)
 

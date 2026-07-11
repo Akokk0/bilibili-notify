@@ -7,8 +7,9 @@ import { buildPublishArgs, isAlreadyPublished, resolveDistTag } from "./publish.
  * 方案同一套心智:prerelease → 用它的 id 作 tag(5.0.0-alpha.9 → alpha),纯 semver
  * → latest。
  *
- * 幂等同样关键:publish 挂在 push main 上,而 main 会因为任何合并而动。版本号没变
- * 就必须安静跳过,不能让 npm 的「版本已存在」把 CI 染红。
+ * 幂等同样关键:发布挂在 push dev 上,由 `koishi-version-changed.mjs` 判「版本号变了」
+ * 才启动 —— 但那只是省 CI 的快速门,workflow 被**重跑**时它会再判一次 changed。所以
+ * 发布前还得问一次 registry,版本已存在就安静跳过,不能让 npm 的「版本已存在」把 CI 染红。
  */
 describe("resolveDistTag", () => {
 	it("prerelease 版本用它自己的 id 作 dist-tag", () => {

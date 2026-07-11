@@ -14,23 +14,30 @@
 
 单主干 + 三个并存顶层目录(`packages/` / `koishi/` / `apps/`),不按产品形态分叉。
 
-- **`dev`** —— 活跃开发主干。`packages/` `koishi/` `apps/` 三类改动都落这。
-- **`main`** —— GitHub 默认分支,旧版发布快照。`dev → main` 合并触发 koishi npm 发版(`publish.yml` 监听 push to `main`)。
+- **`dev`** —— 活跃开发主干。`packages/` `koishi/` `apps/` 三类改动都落这。**koishi npm 发版也从这里触发。**
+- **`main`** —— GitHub 默认分支,发布快照。不再触发任何发版。
 
-两种产品形态发布节奏独立:koishi 端发 npm —— `dev → main` 合并触发(`publish.yml`);独立端(Server + Web + Desktop)从不发 npm —— 发布版本由 git tag `v<VERSION>` 驱动,再由 tag 分别触发 Docker 镜像与 Desktop 产物。`dev → main` 合并**不**触发独立端构建,koishi 发版与独立端发版互不牵动。
+两种产品形态发布节奏独立:koishi 端发 npm —— push dev 且 `koishi/package.json#version` 变动时触发(`publish.yml`);独立端(Server + Web + Desktop)从不发 npm —— 发布版本由 git tag `v<VERSION>` 驱动,再由 tag 分别触发 Docker 镜像与 Desktop 产物。二者互不牵动。
 
 ### koishi 发版步骤
 
 koishi 插件是**自包含单文件产物**:九个 `@bilibili-notify/*` 内部包全部被内联进 `koishi/lib/index.cjs`(`koishi/vite.config.ts` 的 `deps.alwaysBundle`),因此它们已 `private`、不再发 npm。registry 上只剩插件这一个包 —— **没有版本联动要算,所以不需要 changesets**。
 
-1. **改版本**:编辑 `koishi/package.json#version`,手写 `koishi/CHANGELOG.md`,提交到 dev。
-2. **发版**:`git checkout main && git merge --no-ff dev` 并 push main → `publish.yml` 跑门禁后执行 `node scripts/publish.mjs`。
-3. **回流**:`git checkout dev && git merge --ff-only origin/main && git push origin dev`。
+**发版 = 改 `koishi/package.json#version` 并 push dev。** 没有别的闸门,改完推上去就发出去了。
 
-`scripts/publish.mjs` 接住了 changesets 原本兜的两件事:
+1. **改版本**:编辑 `koishi/package.json#version`,手写 `koishi/CHANGELOG.md`。
+2. **发版**:提交并 push dev → `publish.yml` 跑门禁后执行 `node scripts/publish.mjs`。
 
-- **dist-tag 从版本号推导** —— `5.0.0-alpha.9` → npm tag `alpha`;`5.0.0` → `latest`。与独立端 `v<VERSION>` tag 同一套心智。
-- **幂等** —— 发布前查 registry,版本已存在就安静跳过。push main 不一定意味着版本变了(合并 bug 修复也会 push),跳过而非报错才不会把 CI 染红。
+### 为什么发版闸门只认 version 字段
+
+`publish.yml` 的 `paths` 过滤只是粗筛,真正判定发不发的是 `scripts/koishi-version-changed.mjs` —— 它比对 push 前后 `koishi/package.json` 的 **`version` 字段本身**。
+
+不能拿「`koishi/package.json` 变了」当信号:`vp pack` 开了 `exports: true`,会自动回写这个文件的 `inlinedDependencies` / `exports`,**每次构建都可能刷新它**。以文件变动为准 = 每次构建发一版。
+
+两道闸各管一件事,别混:
+
+- **`koishi-version-changed.mjs`(快速门)** —— 版本号没动就别启动整条 CI(lint + build + typecheck + test 是分钟级的)。它**不是**安全闸:workflow 被重跑时 `github.event.before` 还是老的,它会再判一次 changed。所以它拿不准时(空 sha / 首次 push)一律放行。
+- **`scripts/publish.mjs`(安全闸)** —— 发布前查 registry,版本已存在就安静跳过。这才是防重复发布的那一道。它同时接住了 changesets 原本兜的 **dist-tag 推导**:`5.0.0-alpha.9` → npm tag `alpha`;`5.0.0` → `latest`,与独立端 `v<VERSION>` tag 同一套心智。
 
 产物构成与体积:插件把内部包**和它们的第三方依赖**(vue / openai / protobufjs / 两个大版本的 cron …)一并内联,tree-shaking 后 `index.cjs` ≈ 4.4MB。两个例外:
 

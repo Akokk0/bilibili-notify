@@ -2,12 +2,38 @@ name: Publish
 
 on:
   push:
-    branches: [main]
+    branches: [dev]
+    # 粗筛:version 只可能写在这个文件里。但**文件变了 ≠ 要发版** —— `vp pack`
+    # (exports: true)会自动回写它的 `inlinedDependencies` / `exports`,每次构建都可能
+    # 刷新。真正的判定在 detect job,只认 version 字段本身。
+    paths:
+      - "koishi/package.json"
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
-  ci-and-publish:
+  # 快速门:版本号没动就别启动整条 CI(lint + build + typecheck + test 是分钟级的)。
+  # 这**不是**安全闸 —— workflow 被重跑时 github.event.before 还是老的,这里照样判
+  # changed。兜底的是 publish 步骤里 scripts/publish.mjs 的 registry 幂等。
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.gate.outputs.changed }}
+      version: ${{ steps.gate.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # 要 `git show` 到 push 之前的那个 commit,浅克隆里没有它。
+          fetch-depth: 0
+
+      # 脚本只用 node 内置 API,runner 自带的 node 就够 —— 这一步不装 vp,省几十秒。
+      - name: Gate on koishi version change
+        id: gate
+        run: node scripts/koishi-version-changed.mjs "${{ github.event.before }}"
+
+  publish:
+    needs: detect
+    if: needs.detect.outputs.changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -42,7 +68,8 @@ jobs:
 
       # 发 koishi 插件。scripts/publish.mjs 从 koishi/package.json 的 version 推导
       # dist-tag(5.0.0-alpha.9 → alpha;5.0.0 → latest),并在发布前问一次 registry:
-      # 版本已存在就安静跳过 —— push main 不一定意味着版本变了。
+      # 版本已存在就安静跳过。detect 已经挡掉了「版本没变」,这一层挡的是**同一次 push
+      # 的 workflow 被重跑** —— 那时 before 还是老的,detect 会再次判 changed。
       #
       # 这里不再需要 changesets/action,也不再需要 corepack:registry 上只剩这一个包
       # 要发(内部包已 private + 被内联),且它的 dependencies 里没有 `workspace:*`,
