@@ -6,10 +6,10 @@ Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考�
 
 单 pnpm workspace monorepo。一套平台中立业务核心,两种产品形态:
 
-- **Koishi 插件**(`koishi/`)—— npm 发布单一包 `koishi-plugin-bilibili-notify`
+- **Koishi 插件**(`koishi/`)—— npm 发布单一包 `koishi-plugin-bilibili-notify`(**自包含 CJS bundle**,`@bilibili-notify/*` 全部内联)
 - **独立 Hono + React Dashboard**(`apps/`)—— 后续主推形态,发 Docker 镜像
 
-两端消费同一套 `@bilibili-notify/*` 核心包。
+两端消费同一套 `@bilibili-notify/*` 核心包。核心包**全部 `private`、不发 npm** —— koishi 端靠内联、独立端与 AstrBot 靠 `workspace:*`,registry 上只有 koishi 插件一个包(所以也不需要 changesets)。
 
 ## 工具链与命令
 
@@ -43,6 +43,7 @@ apps/       Hono 服务端 + React Dashboard
 - **路径**:`koishi/` 本身就是插件包根目录(已展平,不再有 `koishi/core/` 那层子目录)。若未来在 `koishi/` 下新增其他 koishi 包,目录名**不能含 `bilibili-notify` 子串** —— Koishi 插件加载器会混乱;npm 名与目录名解耦(在 `package.json#name` 设)。
 - **依赖卫生**:`src/` 里解析到运行时值(常量 / 类 / 函数)的 import,必须声明进该包 `package.json` 的 `dependencies`;`import type` 不用。
 - **MessageBus**:bus 与 koishi `ctx` 是同一事件通道的两个视图,绝不写 bus↔ctx 转发器 —— 会自喂死循环爆栈。详见 `docs/agents/events.md`。
+- **koishi 是 bundle**:给 `packages/*` 加**新第三方依赖**时,凡是运行时用 `__dirname` / `require.resolve` 去磁盘上读**自己包内文件**的(jieba-wasm 读 `.wasm`、jsdom 读 `xhr-sync-worker.js`),内联进 bundle 后**必炸**,且**构建全绿、只在运行期炸**。要么随包拷资源(见 `scripts/copy-jieba-wasm.mjs`),要么在 `koishi/vite.config.ts` 的 `neverBundle` 里外置 + 写进 `koishi/package.json#dependencies`。加完新依赖后务必 `node -e "require('./koishi/lib/index.cjs')"` 验一次能加载。
 
 ## 分支
 
