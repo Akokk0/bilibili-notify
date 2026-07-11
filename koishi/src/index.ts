@@ -6,9 +6,10 @@ import type { CookieData } from "@bilibili-notify/storage";
 import {} from "@koishijs/plugin-console";
 // biome-ignore lint/correctness/noUnusedImports: module augmentation
 import {} from "@koishijs/plugin-notifier";
-import type { Context, Schema } from "koishi";
+import { type Context, h, type Schema } from "koishi";
 import BilibiliNotifyDataServer from "./bridges/data-server";
 import { type BilibiliNotifyConfig, BilibiliNotifyConfigSchema } from "./config";
+import { installSinglePluginNotice } from "./notices/single-plugin-merge";
 import BilibiliNotifyServerManager from "./runtime/bootstrap";
 import type { SubscriptionOp as LegacySubscriptionOp } from "./types";
 
@@ -83,6 +84,8 @@ export const usage = /* html */ `
 `;
 
 export function apply(ctx: Context, config: BilibiliNotifyConfig): void {
+	// v5 单插件合并告知:旧的四个子插件要卸载、配置要重填。迁移期过后删掉这一行即可。
+	installSinglePluginNotice(ctx, h);
 	// Register DataServer (console WebSocket for login status)
 	ctx.plugin(BilibiliNotifyDataServer);
 	// Register ServerManager (lifecycle orchestrator). render/ai/dynamic/live
