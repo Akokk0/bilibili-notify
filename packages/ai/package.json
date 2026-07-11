@@ -1,5 +1,6 @@
 {
 	"name": "@bilibili-notify/ai",
+	"private": true,
 	"version": "0.0.1-alpha.2",
 	"repository": {
 		"type": "git",

@@ -1,5 +1,6 @@
 {
 	"name": "@bilibili-notify/live",
+	"private": true,
 	"version": "0.1.0-alpha.9",
 	"repository": {
 		"type": "git",
