@@ -107,7 +107,7 @@ koishi 插件是**自包含单文件产物**:九个 `@bilibili-notify/*` 内部�
 - `image-release`: `version=<VERSION>`, `dry_run=true` —— 构建但不 push Docker digest / manifest。
 - `desktop-release`: `version=<VERSION>`, `dry_run=true` —— 构建并校验 Desktop artifacts,不创建 GitHub Release。
 
-Desktop dry-run 的 CI smoke 覆盖 artifact 内容、GUI subsystem、packaged Node sidecar、`/api/health` 与 dashboard HTML。它不是完整 GUI E2E;正式 tag 前仍要在 Windows 实机确认托盘图标、无控制台窗口、NSIS 安装启动、退出后无残留 sidecar。
+Desktop dry-run 的 CI smoke 覆盖 artifact 内容、GUI subsystem、packaged Node sidecar、`/api/health` 与 dashboard HTML。它**不是**完整 GUI E2E —— 托盘图标、无控制台窗口、NSIS 安装启动、退出后无残留 sidecar 这些只有 Windows 实机能看。**别每次发版都拿这个去提示用户**(他知道),要提也只在真动了 Desktop 壳 / 托盘 / sidecar 生命周期时提一次。
 
 ### Docker tag 方案
 
