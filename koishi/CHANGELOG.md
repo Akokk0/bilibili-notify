@@ -1,4 +1,31 @@
-# Changelog
+# Changelog · koishi
+
+npm 包 `koishi-plugin-bilibili-notify` 的版本历史。
+
+格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),与独立端
+`apps/CHANGELOG.md` 同一套风格。**5.0.0-alpha.9 之前**的条目由 changesets 自动生成
+(`### Major/Minor/Patch Changes`,hash 写在条目开头),changesets 已弃用,旧条目原样保留、
+不再回改。独立端(Docker / Desktop)版本独立维护,见 `apps/CHANGELOG.md`。
+
+---
+
+## [5.0.0-alpha.9] — 2026-07-11
+
+插件改为**自包含单文件**,装下来小了一大圈;控制台补上一条 v5 六合一的迁移提示。使用方式与配置结构均无变化,升级即可。
+
+### Added
+
+- 控制台新增一条**迁移提示**,讲清 v5 的六合一变更 —— 动态推送 / 直播推送 / 卡片渲染现在都是本插件的核心能力(启用即开);AI 点评与高级订阅改为配置里的开关(`ai.enabled` / `advancedSub.enabled`);**请卸载 `-dynamic` / `-live` / `-ai` / `-image` / `-advanced-subscription` 这五个旧子插件**(它们依赖的内部接口已在 v5 移除,留着也无法工作);配置已按功能域重组为八段,升级后请对照控制台重新填写一遍 (7b542f5)
+
+  📌 **更正 alpha.8 的说明**:上一版写的是「五个插件(core / dynamic / live / ai / advanced-subscription)合并」,**漏掉了 `-image`**。实际是**六个**插件合并为一个,要卸载的旧子插件有**五个**,`koishi-plugin-bilibili-notify-image` 也在其中 —— 它同样已经无法工作,请一并卸载。
+
+### Changed
+
+- 插件现在是**自包含单文件产物**:九个内部 `@bilibili-notify/*` 包全部内联进去,安装时不再连带下载它们。你的 `node_modules` 里这一套从约 74MB 降到约 15MB,功能没有任何变化 (a3cd8f1)
+- 从产物里移出 vue 的**运行时模板编译器** —— 卡片模板在构建期就已经编译成渲染函数了,那个编译器一行都用不上。产物再瘦约 1MB (d615b00)
+- 内部 `@bilibili-notify/*` 包**不再发布到 npm**(它们已内联进插件产物)。普通使用者不受影响;⚠️ 若你有第三方代码直接 `import` 这些内部包,需要改造 (d50ae38)
+
+---
 
 ## 5.0.0-alpha.8
 
