@@ -31,8 +31,17 @@ jobs:
         id: gate
         run: node scripts/koishi-version-changed.mjs "${{ github.event.before }}"
 
-  publish:
+  # 门禁(gate.yml 是唯一定义)。红了 publish 就不会跑 —— 发出去的东西一定过了门禁。
+  gate:
     needs: detect
+    if: needs.detect.outputs.changed == 'true'
+    # 本 workflow 没有顶层 permissions,别让被调用方去赌默认值 —— gate 只需要 checkout。
+    permissions:
+      contents: read
+    uses: ./.github/workflows/gate.yml
+
+  publish:
+    needs: [detect, gate]
     if: needs.detect.outputs.changed == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -54,17 +63,12 @@ jobs:
           cache: true
           registry-url: "https://registry.npmjs.org"
 
-      - name: Lint (Biome)
-        run: vp exec biome ci .
-
-      - name: Build
+      # **别删这一步**,它不是 gate 里那个 build 的重复:npm 打包的是 `koishi/lib/`
+      # (gitignored,只在构建时生成),而 gate 跑在**另一个 runner** 上,产物带不过来。
+      # 没有这一步,发出去的就是个空壳包。gate 里的 build 是门禁(编译得过),
+      # 这里的 build 是产物。
+      - name: Build (produces koishi/lib for npm)
         run: vp run build
-
-      - name: Typecheck
-        run: vp run typecheck
-
-      - name: Test
-        run: vp test
 
       # 发 koishi 插件。scripts/publish.mjs 从 koishi/package.json 的 version 推导
       # dist-tag(5.0.0-alpha.9 → alpha;5.0.0 → latest),并在发布前问一次 registry:

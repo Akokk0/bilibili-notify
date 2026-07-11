@@ -7,47 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  ci:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v6
-
-      # Installs Vite+ (vp) globally, the repo-pinned Node from .node-version
-      # (24.15.0), and runs `vp install`. On GitHub Actions CI=true → the
-      # underlying pnpm install is frozen-lockfile automatically (= old
-      # `pnpm install --frozen-lockfile`). `cache: true` keys off pnpm-lock.yaml.
-      - name: Setup Vite+ (vp) + Node + deps
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: .node-version
-          cache: true
-
-      - name: Lint (Biome)
-        run: vp exec biome ci .
-
-      # `vpr <script>` 是 vp 的 shim 简写,等价 `vp run <script>`,从 root
-      # package.json scripts 入口走。build 内部 `pnpm -r run build + koishi
-      # console client`;vp 把内嵌 pnpm 注入子进程 PATH 让 legacy script body
-      # 继续 work。这是双端 build(packages + koishi shells + apps/server vp
-      # pack + apps/web Vite)。typecheck 与 test 同模式。
-      - name: Build (double-end)
-        run: vpr build
-
-      - name: Typecheck
-        run: vpr typecheck
-
-      - name: Test
-        run: vpr test
-
-      # Python(astrbot/core)门禁。CI 不带 Python,装 uv 后由它自管 3.12 与依赖。
-      # check:astrbot-python = ruff check + ruff format --check + pytest。
-      # setup-uv 不维护 major 浮动 tag(无 @v8),须 pin 具体版本。
-      - name: Setup uv (Python)
-        uses: astral-sh/setup-uv@v8.2.0
-        with:
-          enable-cache: true
-          python-version: "3.12"
-
-      - name: Python gate (ruff + pytest)
-        run: vp run check:astrbot-python
+  # 门禁本体(Biome + build + typecheck + test)在 gate.yml —— 四条发布路径共用同一份
+  # 定义,见那里的注释。
+  gate:
+    uses: ./.github/workflows/gate.yml

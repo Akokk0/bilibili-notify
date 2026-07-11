@@ -10,6 +10,28 @@
 - **Vitest** —— 单测(`vp test`)
 - **发版** —— 无版本编排工具(changesets 已弃用)。registry 上只有 `koishi-plugin-bilibili-notify` 一个包,版本号手改 `koishi/package.json`,`scripts/publish.mjs` 从版本号推导 dist-tag 并做幂等发布
 
+## 门禁(`gate.yml`)—— 唯一定义,四条路径共用
+
+`.github/workflows/gate.yml`(`on: workflow_call`)是**发版门禁**的唯一定义:Biome → build → typecheck → test。四条 workflow 全部 `uses: ./.github/workflows/gate.yml`:
+
+| workflow | 结构 |
+| --- | --- |
+| `ci.yml` | `gate` |
+| `publish.yml`(koishi npm) | `detect` → `gate` → `publish` |
+| `image-release.yml`(Docker) | `gate` → `build`(matrix) → `merge` |
+| `desktop-release.yml`(Desktop) | `gate` → `build`(matrix) → `release` |
+
+**CI 不跑 astrbot 的 Python 门禁**(2026-07-11 拍板去掉)。三条发布路径的产物里都没有一行 Python;astrbot 走 `astrbot-release.yml` 那条独立的 squash-push 路线,不经过 `gate`。
+
+Python 检查改为**只在发版时手动跑** —— `release-astrbot` skill 的步骤里有 `vp run check:astrbot-python`(ruff check + `format --check` + pytest)那一步。⚠️ 代价是**日常 push 不再拦 Python 的错**,要到发 astrbot 那一刻才暴露。
+
+**每条发布路径都过门禁,门禁不绿就不发。** 抽成 reusable workflow 是因为门禁是「这份代码能不能发出去」的判据 —— 四份各自维护的副本迟早会飘,而飘的方式一定是某条发布路径悄悄少了一项检查,且发布 workflow 还是全绿的。加新检查只改 `gate.yml` 一处。
+
+两个**别踩**的点:
+
+- **`publish.yml` 的 `publish` job 里那个 `vp run build` 不是重复。** npm 打包的是 `koishi/lib/`(gitignored,只在构建时生成),而 gate 跑在**另一个 runner** 上,产物带不过来。删掉它就会发出一个空壳包。gate 里的 build 是门禁(编译得过),publish 里的 build 是产物。
+- **`assert-release-ref-on-dev.sh` 不是门禁。** 它只断言 tag 指向的 commit 在 `origin/dev` 上 —— 防的是「拿旁支 commit 发版」,不保证那个 commit 是绿的。dev 上一个测试红的 commit 照样能打 tag。堵这个口子的是 `gate`。
+
 ## 分支模型
 
 单主干 + 三个并存顶层目录(`packages/` / `koishi/` / `apps/`),不按产品形态分叉。

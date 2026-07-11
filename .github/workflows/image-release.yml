@@ -42,6 +42,18 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
+  # 发版门禁。`assert-release-ref-on-dev.sh` 只保证 tag 指向的 commit 在 dev 上 ——
+  # 那防的是「拿旁支 commit 发版」,不是「这份代码是绿的」。dev 上一个测试红的 commit
+  # 照样能打 tag 推出镜像。这一关堵的就是那个口子。
+  #
+  # 门禁定义在 gate.yml(唯一一份,四条路径共用)。它先绿,下面的 matrix 才开始跑 ——
+  # 多架构 Docker 构建是十几分钟的事,让它跑在没过门禁的代码上纯属浪费。
+  # ---------------------------------------------------------------------------
+  gate:
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
+    uses: ./.github/workflows/gate.yml
+
+  # ---------------------------------------------------------------------------
   # 拆 amd64 / arm64 到各自原生 runner —— 避免 GHA x86 runner 用 QEMU emulated
   # arm64 跑 vp pack / vite 等 native binary 时慢 10-20 倍(实测 emulated arm64
   # build 跑过 1.5h+ 仍未完)。GitHub 2024 上线公共 ARM runner(ubuntu-24.04-arm),
@@ -54,6 +66,8 @@ jobs:
   # ---------------------------------------------------------------------------
   build:
     name: Build (${{ matrix.platform.arch }})
+    # 门禁不绿就不构建,更不推镜像。
+    needs: [gate]
     # ref guard:正式发布只接受 v* tag;手动 dispatch 只允许 dev dry-run。
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
     runs-on: ${{ matrix.platform.runner }}

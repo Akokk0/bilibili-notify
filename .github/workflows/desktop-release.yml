@@ -28,8 +28,19 @@ env:
   DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
 
 jobs:
+  # 发版门禁。下面的 matrix 里已经有 Rust 那一套(fmt / clippy / test / check),但
+  # **JS 侧一行没跑** —— Desktop 装的是 apps/server + apps/web 的产物,它们的 lint /
+  # typecheck / test 一次都没验过就打进安装包了。gate.yml 是门禁的唯一定义,补的就是这块。
+  #
+  # 放前置 job 而不是塞进 matrix:三个平台各跑一遍同一份 JS 门禁毫无意义。
+  gate:
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
+    uses: ./.github/workflows/gate.yml
+
   build:
     name: Build ${{ matrix.id }}
+    # 门禁不绿就不构建,更不出安装包。
+    needs: [gate]
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
     runs-on: ${{ matrix.runner }}
     strategy:
