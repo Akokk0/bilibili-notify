@@ -83,7 +83,6 @@
 		}
 	},
 	"inlinedDependencies": {
-		"@babel/parser": "7.29.3",
 		"@jridgewell/sourcemap-codec": "1.5.5",
 		"@koishijs/plugin-help": "2.4.6",
 		"@protobufjs/aspromise": "1.1.2",
@@ -100,9 +99,6 @@
 		"@unocss/extractor-arbitrary-variants": "66.6.8",
 		"@unocss/preset-wind4": "66.6.8",
 		"@unocss/rule-utils": "66.6.8",
-		"@vue/compiler-core": "3.5.34",
-		"@vue/compiler-dom": "3.5.34",
-		"@vue/compiler-ssr": "3.5.34",
 		"@vue/reactivity": "3.5.34",
 		"@vue/runtime-core": "3.5.34",
 		"@vue/runtime-dom": "3.5.34",
@@ -119,8 +115,6 @@
 		"crypt": "0.0.2",
 		"csstype": "3.2.3",
 		"dijkstrajs": "1.0.3",
-		"entities": "7.0.1",
-		"estree-walker": "2.0.2",
 		"event-target-shim": "5.0.1",
 		"eventemitter3": "5.0.4",
 		"form-data-encoder": "1.7.2",
@@ -144,7 +138,6 @@
 			"8.0.0"
 		],
 		"qrcode": "1.5.4",
-		"source-map-js": "1.2.1",
 		"tiny-bilibili-ws": "1.0.2",
 		"tr46": "0.0.3",
 		"vue": "3.5.34",
