@@ -9,19 +9,12 @@ import { BackupExportDialog } from "./BackupExportDialog";
 import { BackupImportDialog } from "./BackupImportDialog";
 import { type BackupKind, type BackupSectionSelection, backupFilename } from "./backup-file";
 import { downloadJson } from "./download";
+import { type ImportResult, summarizeImport } from "./summary";
 
 /** The envelope as the client handles it — opaque except for the download filename. */
 interface ExportedEnvelope {
 	kind: BackupKind;
 	createdAt?: string;
-}
-
-interface ImportResult {
-	subscriptions: { upserted: number; deleted: number };
-	adapters: { upserted: number; deleted: number };
-	targets: { upserted: number; deleted: number };
-	globalsApplied: boolean;
-	cookiesRestored: boolean;
 }
 
 /** What the dashboard sends to `/api/backup/import`. */
@@ -31,21 +24,9 @@ interface ImportRequest {
 	pin?: string;
 }
 
-function summarize(r: ImportResult): string {
-	const scope = (label: string, s: { upserted: number; deleted: number }) =>
-		s.upserted || s.deleted
-			? `${label} ${s.upserted} 项${s.deleted ? `、删除 ${s.deleted} 项` : ""}`
-			: null;
-	const parts = [
-		scope("订阅", r.subscriptions),
-		scope("推送目标", r.targets),
-		scope("适配器", r.adapters),
-		r.globalsApplied ? "全局设置已应用" : null,
-		r.cookiesRestored ? "B 站登录已恢复" : null,
-	].filter(Boolean);
-	return parts.length > 0
-		? `导入完成：${parts.join(" · ")}`
-		: "导入完成：备份内容与当前一致，无改动";
+/** 信封自报的档次。脱敏档要在回执里多交代一句「凭据是空的」——见 summarizeImport。 */
+function kindOf(backup: unknown): BackupKind {
+	return (backup as { kind?: unknown } | null)?.kind === "sanitized" ? "sanitized" : "full";
 }
 
 /** The scopes a plan would delete, e.g. ["订阅 1 项", "推送目标 2 项"]. */
@@ -133,7 +114,7 @@ export function BackupSection() {
 			const result = await api.post<ImportResult>("/api/backup/import", { ...req, dryRun: false });
 			setPending(null);
 			setDialog(null);
-			setNotice(summarize(result));
+			setNotice(summarizeImport(result, kindOf(req.backup)));
 			await qc.invalidateQueries();
 		} catch (err) {
 			fail(err);

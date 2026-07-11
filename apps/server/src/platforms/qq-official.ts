@@ -908,6 +908,15 @@ function qqAdapterFingerprint(cfg: QQOfficialAdapterConfig): string {
 }
 
 /**
+ * 凭据齐不齐 —— 存储期允许空 appSecret(见 `QQOfficialAdapterConfigSchema`:脱敏备份
+ * 恢复回来就是空的),所以「能不能真的连上去」得由运行期自己判断。建连(reconcile)
+ * 与投递(isAvailable)两条路都走这一个谓词,不会一边挡一边放。
+ */
+function isConnectable(cfg: QQOfficialAdapterConfig): boolean {
+	return cfg.appId.length > 0 && cfg.appSecret.length > 0;
+}
+
+/**
  * QQ 官方机器人(q.qq.com)平台 adapter。有状态:每 adapter 一条 WS 网关长连(捞 openid
  * 进 registry)+ 一个 token 管理器,由 reconcile 按配置指纹 start/stop/rebind,dispose 全关。
  * send 把 NotificationPayload 译成有序片段逐条 REST 发(频道 multipart file_image;群/C2C
@@ -1022,15 +1031,19 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		isAvailable(adapter: PushAdapter, target: PushTarget): boolean {
 			if (adapter.platform !== "qq-official" || target.platform !== "qq-official") return false;
 			if (!adapter.enabled || !target.enabled) return false;
-			const cfg = adapter.config as QQOfficialAdapterConfig;
-			return cfg.appId.length > 0 && cfg.appSecret.length > 0;
+			return isConnectable(adapter.config as QQOfficialAdapterConfig);
 		},
 
 		reconcile(adapters: readonly PushAdapter[]): void {
 			if (disposed) return;
 			const desired = new Map<string, PushAdapter>();
 			for (const a of adapters) {
-				if (a.platform === "qq-official" && a.enabled) desired.set(a.id, a);
+				if (a.platform !== "qq-official" || !a.enabled) continue;
+				// 空密钥不建连。脱敏备份恢复回来的 adapter 就是这样(appSecret 被抹成空串),
+				// 它仍然 enabled —— 拉起来只会拿空密钥反复撞网关。等用户把密钥填回来,
+				// config 一变 reconcile 自然会把它接上。
+				if (!isConnectable(a.config as QQOfficialAdapterConfig)) continue;
+				desired.set(a.id, a);
 			}
 			// 删除/失效:不再期望或配置指纹变了 → 关连接、清发现表。
 			for (const [id, l] of live) {

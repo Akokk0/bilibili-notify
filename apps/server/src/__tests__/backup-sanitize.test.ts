@@ -1,3 +1,4 @@
+import { type PushAdapter, PushAdapterSchema } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { redactSecretKeys, SECRET_KEYS } from "../backup/sanitize.js";
 
@@ -59,5 +60,72 @@ describe("redactSecretKeys", () => {
 		expect(SECRET_KEYS).toContain("apiKey");
 		expect(SECRET_KEYS).toContain("accessToken");
 		expect(SECRET_KEYS).toContain("appSecret");
+	});
+});
+
+/**
+ * 脱敏档能被**恢复**,靠的是一条不变式:抹掉机密后的对象仍然通过 schema。
+ * sanitize.ts 的注释一直这么宣称 —— 但从没有测试拿真 schema 校验过,于是
+ * `appSecret: z.string().min(1)` 悄悄把它证伪了:qq-official 的脱敏备份一导入就
+ * `ConfigValidationError(scope=adapters)`,整个脱敏档对该平台用户直接报废。
+ *
+ * 所以这里逐平台钉死不变式。往后任何平台再给机密字段加非空约束,红在这里,
+ * 而不是红在用户的恢复按钮上。
+ */
+describe("脱敏后的 adapter 仍能通过 PushAdapterSchema", () => {
+	const base = { name: "n", enabled: true } as const;
+	const adapters: Array<[string, PushAdapter]> = [
+		[
+			"onebot",
+			{
+				...base,
+				id: "00000000-0000-4000-8000-000000000001",
+				platform: "onebot",
+				config: { transport: "http", baseUrl: "http://127.0.0.1:5700", accessToken: "tok" },
+			} as PushAdapter,
+		],
+		[
+			"webhook",
+			{
+				...base,
+				id: "00000000-0000-4000-8000-000000000002",
+				platform: "webhook",
+				config: { url: "https://example.com/hook", provider: "generic", secret: "wh" },
+			} as PushAdapter,
+		],
+		[
+			"koishi-bot",
+			{
+				...base,
+				id: "00000000-0000-4000-8000-000000000003",
+				platform: "koishi-bot",
+				config: { botPlatform: "onebot" },
+			} as PushAdapter,
+		],
+		[
+			"astrbot",
+			{
+				...base,
+				id: "00000000-0000-4000-8000-000000000004",
+				platform: "astrbot",
+				config: {},
+			} as PushAdapter,
+		],
+		[
+			"qq-official",
+			{
+				...base,
+				id: "00000000-0000-4000-8000-000000000005",
+				platform: "qq-official",
+				config: { appId: "102000000", appSecret: "app-secret" },
+			} as PushAdapter,
+		],
+	];
+
+	it.each(adapters)("%s", (_platform, adapter) => {
+		const parsed = PushAdapterSchema.safeParse(redactSecretKeys(adapter));
+
+		// 失败时把 zod 的 issue 打出来,别只看到一句 "expected true"。
+		expect(parsed.success ? [] : parsed.error.issues).toEqual([]);
 	});
 });

@@ -325,3 +325,36 @@ describe("createQQOfficialAdapter — probe / 生命周期", () => {
 		expect(() => ad.dispose?.()).not.toThrow();
 	});
 });
+
+/**
+ * 空密钥的 adapter 现在**存得下**了(脱敏备份恢复回来就是这个样子:appSecret 被抹成
+ * 空串)。于是 reconcile 必须自己挡住它 —— 否则一个 enabled 但没密钥的 adapter 会被
+ * 拉起连接,拿着空 appSecret 反复去换 token、撞 QQ 网关,只换回一串鉴权失败。
+ *
+ * isAvailable 早就在挡(送不出去),但那只管**发消息**;建连是另一条路,之前只看 enabled。
+ */
+describe("createQQOfficialAdapter — reconcile 拒绝空密钥", () => {
+	const tokenCalls = () =>
+		fetchMock.mock.calls.filter((c) => String(c[0]).includes("getAppAccessToken"));
+
+	it("appSecret 为空的 enabled adapter 不建连、不换 token", async () => {
+		const ad = createQQOfficialAdapter(adapterOpts());
+
+		ad.reconcile?.([qqAdapter({ appSecret: "" })]);
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(tokenCalls()).toHaveLength(0);
+		ad.dispose?.();
+	});
+
+	// 对照组:同样的等待窗口里,密钥正常的 adapter 确实会去换 token —— 证明上面的 0 次
+	// 是被挡住了,而不是「还没来得及发」。
+	it("appSecret 正常的 enabled adapter 照常建连", async () => {
+		const ad = createQQOfficialAdapter(adapterOpts());
+
+		ad.reconcile?.([qqAdapter()]);
+		await vi.waitFor(() => expect(tokenCalls().length).toBeGreaterThan(0));
+
+		ad.dispose?.();
+	});
+});

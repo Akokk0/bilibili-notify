@@ -132,7 +132,16 @@ export type QQOfficialBotType = z.infer<typeof QQOfficialBotTypeSchema>;
 export const QQOfficialAdapterConfigSchema = z
 	.object({
 		appId: z.string().min(1),
-		appSecret: z.string().min(1),
+		/**
+		 * 空串 = 尚未配置密钥,**合法可存**(与 onebot 的 `accessToken`、webhook 的
+		 * `secret` 建模一致)。这里曾经是 `.min(1)`,结果脱敏备份把 appSecret 抹成空串
+		 * 后就再也存不回去 —— 恢复直接 ConfigValidationError(scope=adapters)。
+		 *
+		 * 「要有真密钥才能连」是**连接期**的约束,不是**存储期**的:见
+		 * `platforms/qq-official.ts` 的 isAvailable / reconcile,两处都拒绝空密钥的
+		 * adapter,不会拿空密钥去撞 QQ 网关。
+		 */
+		appSecret: z.string(),
 		sandbox: z.boolean().default(false),
 		botType: QQOfficialBotTypeSchema.default("public"),
 		/** 是否记录网关 RECONNECT/RESUMED 事件日志。QQ 官方网关每约 30 分钟主动要求
