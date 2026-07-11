@@ -332,6 +332,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				config,
 				// 背景图 id → data URL(读 <dataDir>/assets/card-bg);sc/guard/真实拉取走 generate* 解析。
 				resolveAsset: (id) => readCardBgDataUrl(opts.deps.store.bootstrap.dataDir, id),
+				// 预览:每来一次请求就热更一次样式,打 info 会刷屏且像"已保存"。真正生效的
+				// INFO 由推送渲染器(runtime/engines.ts)在 config-changed 后打。
+				quietConfigUpdates: true,
 			});
 		} else {
 			imageRenderer.updateConfig(config);

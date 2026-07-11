@@ -26,7 +26,10 @@ import type { PuppeteerLike } from "../puppeteer";
 // biome-ignore lint/suspicious/noExplicitAny: 测试需访问 private 方法/字段
 type AnyRenderer = any;
 
-function makeRenderer(config: Partial<ImageRendererConfig> = {}): ImageRenderer {
+function makeRenderer(
+	config: Partial<ImageRendererConfig> = {},
+	extra: Partial<ImageRendererOptions> = {},
+): ImageRenderer {
 	const ctx: ServiceContext = {
 		logger: { debug() {}, info() {}, warn() {}, error() {} },
 		setInterval: () => ({ dispose() {} }),
@@ -48,6 +51,7 @@ function makeRenderer(config: Partial<ImageRendererConfig> = {}): ImageRenderer 
 			showFans: true,
 			...config,
 		},
+		...extra,
 	};
 	return new ImageRenderer(opts);
 }
@@ -575,5 +579,39 @@ describe("ImageRenderer.updateConfig 热更日志", () => {
 		r.updateConfig({ ...BASE_CONFIG, glassOpacity: 0.5 });
 
 		expect(infos[0]).toContain("glassOpacity=0.5");
+	});
+});
+
+/**
+ * 预览渲染器(routes/cards.ts)每收到一次预览请求就 updateConfig 一遍 —— 主人在
+ * Cards 页拖一格滑块就是一条 INFO「配置已更新」,既刷屏又像是"已经保存了",而真正
+ * 落盘生效的那条(推送渲染器热重载)反倒淹在里面。预览实例把这条日志降到 debug:
+ * 排障时仍拿得到,平时不冒充保存。
+ */
+describe("ImageRenderer.updateConfig 预览实例静默", () => {
+	it("quietConfigUpdates 时热更日志走 debug、不打 info", () => {
+		const infos: string[] = [];
+		const debugs: string[] = [];
+		const r = makeRenderer({ glassOpacity: 0.82 }, { quietConfigUpdates: true }) as AnyRenderer;
+		r.logger = {
+			debug: (m: string) => debugs.push(m),
+			info: (m: string) => infos.push(m),
+			warn() {},
+			error() {},
+		};
+
+		(r as ImageRenderer).updateConfig({ ...BASE_CONFIG, glassOpacity: 0.4 });
+
+		expect(infos).toHaveLength(0);
+		expect(debugs[0]).toContain("glassOpacity=0.4");
+	});
+
+	it("默认(推送渲染器)仍然打 info —— 那才是真的生效了", () => {
+		const infos: string[] = [];
+		const r = makeLoggingRenderer(infos, { glassOpacity: 0.82 });
+
+		r.updateConfig({ ...BASE_CONFIG, glassOpacity: 0.4 });
+
+		expect(infos[0]).toContain("glassOpacity=0.4");
 	});
 });

@@ -90,6 +90,13 @@ export interface ImageRendererOptions {
 	 * 未注入 = 背景图特性不可用(返回 "")。已是 data:/http URL 的值直接透传、不经此回调。
 	 */
 	resolveAsset?: (id: string) => Promise<string>;
+	/**
+	 * 热更日志降级到 debug。**预览渲染器**(dashboard 每来一次预览请求就
+	 * updateConfig 一遍)必须开:主人在 Cards 页拖一格滑块就是一条 INFO「配置已
+	 * 更新」,既刷屏,又和真正落盘生效的那条(推送渲染器热重载)长得一模一样,读起来
+	 * 像"已经保存了"。降到 debug 后排障仍拿得到,平时不冒充保存。
+	 */
+	quietConfigUpdates?: boolean;
 }
 
 export class ImageRenderer {
@@ -98,6 +105,7 @@ export class ImageRenderer {
 	private readonly puppeteer: PuppeteerLike;
 	private config: ImageRendererConfig;
 	private readonly resolveAsset?: (id: string) => Promise<string>;
+	private readonly quietConfigUpdates: boolean;
 
 	// 图片 base64 缓存
 	private readonly imageCache = new Map<string, { dataUrl: string; updatedAt: number }>();
@@ -132,6 +140,7 @@ export class ImageRenderer {
 		this.puppeteer = opts.puppeteer;
 		this.config = opts.config;
 		this.resolveAsset = opts.resolveAsset;
+		this.quietConfigUpdates = opts.quietConfigUpdates ?? false;
 		this.logger = opts.serviceCtx.logger;
 	}
 
@@ -176,7 +185,9 @@ export class ImageRenderer {
 			diffs.push(`backgroundImage=${config.backgroundImage ? "(set)" : "(none)"}`);
 		}
 		if (diffs.length === 0) return;
-		this.logger.info(`[image] 配置已更新: ${diffs.join(", ")}`);
+		const line = `[image] 配置已更新: ${diffs.join(", ")}`;
+		if (this.quietConfigUpdates) this.logger.debug(line);
+		else this.logger.info(line);
 	}
 
 	stop(): void {
