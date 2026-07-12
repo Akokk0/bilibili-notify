@@ -11,7 +11,7 @@ import type { RouteDeps } from "./types.js";
  *
  * 注意保持长度 ≠ 任何合理 apiKey 长度,避免被认成"用户改了一个奇怪的字符串"。
  */
-const REDACTED_API_KEY = "__BN_REDACTED__";
+export const REDACTED_API_KEY = "__BN_REDACTED__";
 
 /** `app.dynamicCron` 写路径校验:可解析性直接委托给 `cron` 包的 `CronTime`。 */
 const DynamicCronSchema = z.string().refine(

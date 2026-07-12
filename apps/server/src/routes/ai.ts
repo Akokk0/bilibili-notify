@@ -2,6 +2,7 @@ import { CommentaryGenerator } from "@bilibili-notify/ai";
 import { AISettingsSchema, type NotificationPayload } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
+import { REDACTED_API_KEY } from "./globals.js";
 import type { RouteDeps } from "./types.js";
 
 /**
@@ -54,7 +55,10 @@ export function createAiRoute(deps: RouteDeps): Hono {
 		const generator = new CommentaryGenerator({
 			serviceCtx: deps.runtime.serviceCtx,
 			api: engines.api,
-			config: toGeneratorConfig(ai),
+			config: toGeneratorConfig({
+				...ai,
+				apiKey: resolveDraftApiKey(ai.apiKey, deps.store.getGlobals().defaults.ai.apiKey),
+			}),
 		});
 
 		let reply: string;
@@ -72,6 +76,21 @@ export function createAiRoute(deps: RouteDeps): Hono {
 	});
 
 	return app;
+}
+
+/**
+ * 草稿里的 apiKey → 真正拿去调 OpenAI 的那把 key。
+ *
+ * 前端 GET /api/globals 拿到的 apiKey 是 REDACTED 占位(真 key 从不出后端)。用户只要
+ * 没动过那一栏,草稿回传的就是占位串本身 —— 原样拿去当 key 必然 401。占位 = 「没改」,
+ * 回落到已存的真 key;否则用草稿里的新值(这样还没保存就能先试一把)。
+ *
+ * 与 `globals.ts` 的 `stripRedactedSecrets` 同一约定,共用同一个哨兵常量 —— 这个
+ * magic string 只能有一个定义处。
+ */
+export function resolveDraftApiKey(draft: string | undefined, stored: string | undefined): string {
+	if (draft === REDACTED_API_KEY) return stored ?? "";
+	return draft ?? "";
 }
 
 /**

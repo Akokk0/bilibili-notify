@@ -12,6 +12,7 @@ import type { GlobalConfig } from "@bilibili-notify/internal";
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createAiRoute } from "../ai.js";
+import { REDACTED_API_KEY } from "../globals.js";
 import type { RouteDeps } from "../types.js";
 
 const TARGET_ID = "11111111-1111-4111-8111-111111111111";
@@ -134,6 +135,36 @@ describe("POST /api/ai/test-push", () => {
 		const cfg = H.instances[0]?.config as { model: string; persona: { name: string } };
 		expect(cfg.model).toBe("draft-only-model");
 		expect(cfg.persona.name).toBe("恶魔兔");
+	});
+
+	// 前端 GET /api/globals 拿到的 apiKey 是 REDACTED 占位。用户只要没动过那一栏,
+	// 草稿里带回来的就是占位串本身 —— 直接拿它当 key 去调 OpenAI 必然 401。
+	it("草稿的 apiKey 是脱敏占位 → 回落到已存的真 key", async () => {
+		const { deps } = makeDeps(); // store 里存着 sk-stored
+		const app = createAiRoute(deps);
+
+		await post(app, {
+			targetId: TARGET_ID,
+			message: "在吗?",
+			ai: draftAi({ apiKey: REDACTED_API_KEY }),
+		});
+
+		const cfg = H.instances[0]?.config as { apiKey: string };
+		expect(cfg.apiKey).toBe("sk-stored");
+	});
+
+	it("草稿的 apiKey 是新填的 → 用新的(还没保存也能先试)", async () => {
+		const { deps } = makeDeps();
+		const app = createAiRoute(deps);
+
+		await post(app, {
+			targetId: TARGET_ID,
+			message: "在吗?",
+			ai: draftAi({ apiKey: "sk-brand-new" }),
+		});
+
+		const cfg = H.instances[0]?.config as { apiKey: string };
+		expect(cfg.apiKey).toBe("sk-brand-new");
 	});
 
 	it("目标不存在 → 404,不问 AI 也不推送", async () => {
