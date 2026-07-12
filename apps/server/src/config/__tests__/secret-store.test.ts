@@ -162,6 +162,30 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		expect(store2.getGlobals().defaults.ai.apiKey).toBe("sk-new");
 	});
 
+	it("注水后键序仍是 zod 规范形态 — 只改无关字段不该让 defaults.ai 被误判成变了", async () => {
+		// 回归守护。stripApiKeyForDisk 在盘上是 `delete` 掉 apiKey 的,load() 读回时
+		// 这个键不存在 → hydrateSecrets 的 spread 把它当**新键追加到对象末尾**,键序
+		// 就偏离了 zod parse 的声明顺序。而 engines.ts 的 config-changed diff 用
+		// JSON.stringify 逐 section 比较(键序敏感),于是重启后第一次改**任何** globals
+		// 字段(哪怕只是 dynamicCron),defaults.ai 都会被误判成「变了」→ 白白热重载一次
+		// AI 实例 + 刷两条日志。只有「配了 AI + 启用加密 + 重启后首次变更」三者同时满足
+		// 才触发,极难撞见,所以钉在这里。
+		const secret = mkSecretStore();
+		const store = mkStore(secret);
+		await store.load();
+		await store.patchGlobals({ defaults: { ai: { apiKey: "sk-x" } } });
+
+		// 重启:apiKey 已从盘上剥离,这一次是靠 secretBag 注水回内存的。
+		const store2 = mkStore(mkSecretStore());
+		await store2.load();
+
+		const prev = store2.getGlobals(); // engines 的 initialGlobals / prevGlobals 初值
+		await store2.patchGlobals({ app: { dynamicCron: "*/9 * * * *" } });
+		const next = store2.getGlobals();
+
+		expect(JSON.stringify(next.defaults.ai)).toBe(JSON.stringify(prev.defaults.ai));
+	});
+
 	it("清空 apiKey → bag 清除", async () => {
 		const secret = mkSecretStore();
 		const store = mkStore(secret);

@@ -348,7 +348,7 @@ describe("createEngines — enableImageRendering 运行时热启用", () => {
 });
 
 describe("createEngines — config-changed globals 热重载", () => {
-	it("改 app 字段:热推 level/UA/health + dynamic,不碰 live.updateConfig", () => {
+	it("改 app 字段:热推 health + dynamic,不碰 live.updateConfig", () => {
 		const c = setup();
 		active = c;
 		patchGlobals(c, (g) => {
@@ -358,13 +358,89 @@ describe("createEngines — config-changed globals 热重载", () => {
 		c.bus.emit("config-changed", "globals");
 
 		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1);
-		// boot 1 次 + 此次 1 次 = 2。
-		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(2);
-		expect(c.api.setUserAgent).toHaveBeenCalledTimes(2);
 		expect(c.loginFlow.setHealthCheckMs).toHaveBeenCalledWith(45 * 60_000);
 		expect(H.push[0].setMaster).toHaveBeenCalledTimes(1);
 		// app 变更不在 liveConfig() 的输入内 → live.updateConfig 不应触发(item 4:不扇出)。
 		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
+		// UA / 日志等级这次都没动 → 不该被顺手重设(boot 那 1 次之外不再有)。
+		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
+		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1);
+	});
+
+	// `app` 曾是一道粗门:只要 section 里任一字段变,门内 setLevel×5 + setUserAgent +
+	// setHealthCheckMs 就无差别全做一遍。于是改个 cron 会顺手重设 UA(刷一条 info)、
+	// 并把登录健康检查的 setInterval **销毁重建**(相位被白白打乱)。下面三条按字段钉死。
+	it("只改 dynamicCron:不重设 UA、不重排健康检查、不动日志等级", () => {
+		const c = setup();
+		active = c;
+		patchGlobals(c, (g) => {
+			// 必须与默认值不同 —— DEFAULT_DYNAMIC_CRON 现在就是 "30 */2 * * * *"。
+			g.app.dynamicCron = "*/9 * * * *";
+		});
+		c.bus.emit("config-changed", "globals");
+
+		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1); // cron 本身要生效
+		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1); // 仅 boot(engines.ts:185)
+		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1); // 仅 boot(engines.ts:181)
+		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled(); // boot 不调,这次也不该调
+	});
+
+	it("改 defaults.imageGroup:热推进 dynamic(此前整个漏在门外,改了要重启才生效)", () => {
+		// dynamicConfig() 明明读 `defaults.imageGroup`,但 config-changed 的 diff 列表里
+		// 从来没有 imageGroupChanged —— 于是改「图片合并转发」时所有 *Changed 全 false,
+		// dynamic.updateConfig 根本不调,配置静静躺在 store 里直到下次重启。这是漏更新,
+		// 比多更新严重得多(用户以为保存生效了,其实没有)。
+		const c = setup();
+		active = c;
+		patchGlobals(c, (g) => {
+			g.defaults.imageGroup.enable = !g.defaults.imageGroup.enable;
+		});
+		c.bus.emit("config-changed", "globals");
+
+		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1);
+		const cfg = H.dynamic[0].updateConfig.mock.calls.at(-1)?.[0];
+		expect(cfg.imageGroup).toEqual(c.configStore.getGlobals().defaults.imageGroup);
+	});
+
+	it("只改 userAgent:重设 UA,不重排健康检查", () => {
+		const c = setup();
+		active = c;
+		patchGlobals(c, (g) => {
+			g.app.userAgent = "Mozilla/5.0 (custom)";
+		});
+		c.bus.emit("config-changed", "globals");
+
+		expect(c.api.setUserAgent).toHaveBeenCalledTimes(2);
+		expect(c.api.setUserAgent).toHaveBeenLastCalledWith("Mozilla/5.0 (custom)");
+		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
+	});
+
+	it("只改 logLevel:热推 5 个子系统的 setLevel,不重设 UA", () => {
+		const c = setup();
+		active = c;
+		patchGlobals(c, (g) => {
+			g.app.logLevel = "debug";
+		});
+		c.bus.emit("config-changed", "globals");
+
+		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(2);
+		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
+	});
+
+	it("配了 AI 时,只改 dynamicCron 不该热重载 commentary", () => {
+		// 现有 setup() 不配 AI → commentary 为 null → 永远走不进 `else if (commentary)`
+		// 分支,所以「改 app 扇出到 ai」这条路此前无人守。主人的实例配了 AI 才暴露。
+		const c = setup({ globals: aiGlobals() });
+		active = c;
+		expect(H.ai).toHaveLength(1); // boot 时已构造
+		H.ai[0].updateConfig.mockClear();
+
+		patchGlobals(c, (g) => {
+			g.app.dynamicCron = "30 */2 * * * *";
+		});
+		c.bus.emit("config-changed", "globals");
+
+		expect(H.ai[0].updateConfig).not.toHaveBeenCalled();
 	});
 
 	it("新 dynamicCron 透传进 DynamicEngineConfig", () => {

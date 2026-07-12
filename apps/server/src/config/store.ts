@@ -597,13 +597,23 @@ class NodeConfigStore implements ConfigStore {
 			);
 		}
 		// Hydrate in-memory (engines/routes keep reading defaults.ai.apiKey).
-		this.globals = {
+		//
+		// 末尾必须重新过一遍 schema —— 不是为了校验,是为了**把键序归位**。
+		// `stripApiKeyForDisk` 在盘上是 `delete` 掉 apiKey 的,所以 load() 读回的对象里
+		// 压根没有这个键;下面的 spread 于是把它当**新键追加到对象末尾**,键序就偏离了
+		// zod parse 的声明顺序。而 `engines.ts` 的 config-changed diff 是拿
+		// `JSON.stringify` 逐 section 比相等的(键序敏感),它依赖「globals 永远是 zod
+		// parse 的规范形态」这一不变式 —— 不归位的话,重启后第一次改**任何** globals
+		// 字段(哪怕只是 dynamicCron),`defaults.ai` 都会被误判成「变了」,白白热重载一次
+		// AI 实例并刷两条日志。走 legacy 明文路径时键还在原位,spread 只覆盖值,所以这个
+		// 坑只在「配了 AI + 启用加密 + 重启后首次变更」三者同时满足时才现形。
+		this.globals = GlobalConfigSchema.parse({
 			...this.globals,
 			defaults: {
 				...this.globals.defaults,
 				ai: { ...this.globals.defaults.ai, apiKey: this.secretBag.aiApiKey ?? "" },
 			},
-		};
+		});
 		// Scrub disk if it ever held the plaintext.
 		if (hadPlaintext) await this.persistGlobals(this.globals);
 	}

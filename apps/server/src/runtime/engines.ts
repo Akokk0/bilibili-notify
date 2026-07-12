@@ -644,11 +644,18 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				const g = globals();
 				const prev = prevGlobals;
 				prevGlobals = g;
-				// config 对象来自 Zod parse、键序稳定 → JSON 序列化即可作相等判断。
 				// 只热更本次真正改了的 section,避免编辑一个模块扇出到其它模块。
+				//
+				// `eq` 用 JSON.stringify 比较,**键序敏感** —— 它依赖「globals 永远是 zod
+				// parse 的规范形态」这一不变式。该不变式由 ConfigStore 保证:写路径的
+				// `parsed.data` 天然规范,而 `hydrateSecrets()` 往内存里注水 apiKey 后会
+				// 重新 parse 一次把键序归位(它曾经不这么做,导致重启后第一次改**任何**字段
+				// 都把 defaults.ai 误判成变了 → 白白热重载 AI)。往 globals 里塞键的新代码
+				// 必须维持这个不变式,否则这里会静默产生假阳性。
 				const eq = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
-				const appChanged = !eq(prev.app, g.app);
+				const cronChanged = prev.app.dynamicCron !== g.app.dynamicCron;
 				const aiChanged = !eq(prev.defaults.ai, g.defaults.ai);
+				const imageGroupChanged = !eq(prev.defaults.imageGroup, g.defaults.imageGroup);
 				const cardStyleChanged = !eq(prev.defaults.cardStyle, g.defaults.cardStyle);
 				const scheduleChanged = !eq(prev.defaults.schedule, g.defaults.schedule);
 				const filtersChanged = !eq(prev.defaults.filters, g.defaults.filters);
@@ -657,15 +664,22 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				const layoutChanged = !eq(prev.defaults.cardLayout, g.defaults.cardLayout);
 				const messageLayoutChanged = !eq(prev.defaults.messageLayout, g.defaults.messageLayout);
 
-				if (appChanged) {
-					// log level / User-Agent / healthCheck —— 都在 app section。
+				// `app` 是一个 section,但里面装着三件互不相干的事(日志等级 / User-Agent /
+				// 健康检查间隔)。以整个 section 为门会让它们互相牵连 —— 改个 dynamicCron
+				// 就顺手重设 UA(刷一条 info 日志)、还把登录健康检查的 setInterval 销毁重建
+				// (相位白白打乱)。所以这里按字段各开各的门。
+				if (!eq(prev.app.logLevel, g.app.logLevel) || !eq(prev.app.logLevels, g.app.logLevels)) {
 					opts.serviceCtx.setLevel(resolveLevel(g, "core"));
 					dynamicCtx.setLevel(resolveLevel(g, "dynamic"));
 					liveCtx.setLevel(resolveLevel(g, "live"));
 					aiCtx.setLevel(resolveLevel(g, "ai"));
 					imageCtx.setLevel(resolveLevel(g, "image"));
+				}
+				if (prev.app.userAgent !== g.app.userAgent) {
 					opts.api.setUserAgent(g.app.userAgent);
-					// healthCheckMinutes → LoginFlow:dispose 旧 setInterval + 按新间隔重 arm。
+				}
+				if (prev.app.healthCheckMinutes !== g.app.healthCheckMinutes) {
+					// healthCheck → LoginFlow:dispose 旧 setInterval + 按新间隔重 arm。
 					opts.loginFlow.setHealthCheckMs(g.app.healthCheckMinutes * 60_000);
 				}
 				// ImageRenderer 配色 / 字体 / 显示项热更(仅在已构造时有意义)。
@@ -683,10 +697,20 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						backgroundImage: cs.backgroundImages[0] ?? "",
 					});
 				}
-				// dynamicConfig() 读 app.dynamicCron + defaults.{filters,cardStyle.enabled,
-				// ai.enabled,templates.dynamic/dynamicVideo}。改全局动态文本模板也要热更,
-				// 否则无 per-UP 覆盖的订阅会一直用旧模板直到下次别的 section 变更/重启。
-				if (appChanged || filtersChanged || cardStyleChanged || aiChanged || templatesChanged) {
+				// dynamicConfig() 的完整输入集:app.dynamicCron + defaults.{filters,
+				// imageGroup,cardStyle.enabled/backgroundImages,ai.enabled,
+				// templates.dynamic/dynamicVideo}。这道门必须**逐项覆盖**该集合 ——
+				// 少一项就是漏热更(用户以为保存生效了,其实要重启;`imageGroup` 就曾经
+				// 整个漏在门外),多一项则是无谓扇出(此前用整个 `appChanged` 当门,
+				// 改 healthCheckMinutes 也会给 DynamicEngine 白换一次 config)。
+				if (
+					cronChanged ||
+					filtersChanged ||
+					imageGroupChanged ||
+					cardStyleChanged ||
+					aiChanged ||
+					templatesChanged
+				) {
 					dynamic.updateConfig(dynamicConfig());
 				}
 				// liveConfig() 读 defaults.{schedule,filters,templates,cardStyle.enabled,ai.enabled}。
