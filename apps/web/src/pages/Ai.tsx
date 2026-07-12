@@ -147,14 +147,26 @@ export default function Ai() {
 				payload.aiLogLevel === ""
 					? Object.fromEntries(Object.entries(existing).filter(([k]) => k !== "ai"))
 					: { ...existing, ai: payload.aiLogLevel };
-			await api.patch<GlobalConfig>("/api/globals", {
+			return await api.patch<GlobalConfig>("/api/globals", {
 				app: {
 					logLevels: Object.keys(nextLogLevels).length === 0 ? undefined : nextLogLevels,
 				},
 				defaults: { ai: payload.ai },
 			});
 		},
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
+		// 用 PATCH 的**响应**(后端返回的正是 redact 后的新 globals)把 draft 拉回已保存态。
+		//
+		// 不能指望 refetch 来做这件事:apiKey 出后端永远是 REDACTED 占位,所以**只改
+		// apiKey** 时,重新拉回的 globals 与拉取前**深度完全相等** —— React Query 的
+		// structural sharing 会复用同一个对象引用,hydrate 的 useEffect([globalsQuery.data])
+		// 因此不触发,draft 里就一直留着用户输入的明文 key。明文 draft 与占位 baseline
+		// 永不相等 → 灵动岛**永久 dirty**,反复点保存也消不掉,看起来就是「保存不了」。
+		// (顺手改了 model / 人格反而正常 —— 那些字段不脱敏,数据变了引用就变了。)
+		onSuccess: (next) => {
+			setDraft(next.defaults.ai);
+			setAiLogLevel(next.app.logLevels?.ai ?? "");
+			qc.invalidateQueries({ queryKey: ["globals"] });
+		},
 	});
 
 	const islandDraft = useMemo(
