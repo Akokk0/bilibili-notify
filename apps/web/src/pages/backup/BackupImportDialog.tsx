@@ -63,7 +63,7 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 			</label>
 
 			{error ? (
-				<div className="mb-3 rounded-lg border border-bn-danger/50 bg-bn-danger/10 px-3 py-2 text-[12px] text-bn-danger">
+				<div className="mb-3 rounded-lg border border-bn-danger-border bg-bn-danger-soft px-3 py-2 text-[12px] text-bn-danger-text">
 					{error}
 				</div>
 			) : null}

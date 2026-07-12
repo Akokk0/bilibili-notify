@@ -121,7 +121,7 @@ function SortableRow({
 			style={style}
 			className={`relative flex items-center gap-2 rounded-lg border px-2.5 py-2 ${
 				isDragging
-					? "z-10 border-bn-accent/60 bg-bn-surface opacity-90 shadow-lg"
+					? "z-10 border-bn-pink/60 bg-bn-surface opacity-90 shadow-lg"
 					: "border-bn-border-subtle bg-bn-surface/60"
 			}`}
 		>
@@ -217,7 +217,7 @@ export function BlockListEditor({
 			<button
 				type="button"
 				onClick={() => onChange(addDivider(blocks))}
-				className="flex items-center justify-center gap-1 rounded-lg border border-dashed border-bn-border-subtle py-1.5 text-[12px] font-medium text-bn-text-tertiary transition hover:border-bn-accent/60 hover:text-bn-text-primary"
+				className="flex items-center justify-center gap-1 rounded-lg border border-dashed border-bn-border-subtle py-1.5 text-[12px] font-medium text-bn-text-tertiary transition hover:border-bn-pink/60 hover:text-bn-text-primary"
 			>
 				<Icon.plus size={13} />
 				添加分割线

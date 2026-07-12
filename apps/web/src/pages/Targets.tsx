@@ -1052,7 +1052,7 @@ function QQSessionPicker({
 							key={e.openid}
 							type="button"
 							onClick={() => onPick(e.openid)}
-							className="flex items-center gap-2 rounded border border-bn-border bg-bn-surface px-2 py-1 text-left transition hover:border-bn-accent"
+							className="flex items-center gap-2 rounded border border-bn-border bg-bn-surface px-2 py-1 text-left transition hover:border-bn-pink"
 						>
 							<span className="truncate text-[11.5px] font-semibold text-bn-text-primary">
 								{e.displayHint ?? "(无名称)"}
@@ -1116,7 +1116,7 @@ function QQGuildPicker({
 											key={ch.channelId}
 											type="button"
 											onClick={() => onPick(g.guildId, ch.channelId)}
-											className="rounded border border-bn-border bg-bn-surface px-2 py-0.5 text-[11px] text-bn-text-primary transition hover:border-bn-accent"
+											className="rounded border border-bn-border bg-bn-surface px-2 py-0.5 text-[11px] text-bn-text-primary transition hover:border-bn-pink"
 										>
 											{ch.name}
 										</button>

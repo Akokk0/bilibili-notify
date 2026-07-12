@@ -181,7 +181,9 @@ export function BackupSection() {
 					message={
 						<>
 							这份备份里没有的东西会被删掉：
-							<span className="font-bold text-bn-danger">{deletions(pending.plan).join("、")}</span>
+							<span className="font-bold text-bn-danger-text">
+								{deletions(pending.plan).join("、")}
+							</span>
 							。删除不可撤销，确定要继续吗？
 						</>
 					}
