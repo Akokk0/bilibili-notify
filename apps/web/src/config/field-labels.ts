@@ -138,6 +138,16 @@ export const FIELD_LABELS = {
 		hint: "0–2,越高越发散",
 		section: "ai",
 	},
+	"ai.test.target": {
+		label: "推到哪里",
+		hint: "从已配置的推送目标里挑一个",
+		section: "ai",
+	},
+	"ai.test.message": {
+		label: "想问点什么",
+		hint: "一句话或一个问题 · 最多 500 字",
+		section: "ai",
+	},
 	"ai.preset": { label: "预设", section: "ai" },
 	// AI / Cards hero strip 的「启用」总开关 Toggle 没包 <Field>(Picker 直挂在
 	// GlassBox right 槽),walkTreeDiff 输出 `enabled` 顶层路径。label 取通用

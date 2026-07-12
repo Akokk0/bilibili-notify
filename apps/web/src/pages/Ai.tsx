@@ -31,6 +31,7 @@ import { Icon } from "../components/icons";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { api } from "../services/api";
 import type { AIPersona, AISettings, GlobalConfig, LogLevel } from "../types/globals";
+import { AiTestPanel } from "./ai/TestPanel";
 
 // 日志等级绑定到 `app.logLevels.ai` (per-module override),不再压全局 `app.logLevel`。
 // `null` 表示「跟随全局」(没有 override)。
@@ -438,6 +439,9 @@ export default function Ai() {
 					/>
 				</Field>
 			</GlassBox>
+
+			{/* 试一句 —— 排在人格塑造之后:调完人格,当场就能问她一句看看效果。 */}
+			<AiTestPanel draft={draft} />
 		</div>
 	);
 }
