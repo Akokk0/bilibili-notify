@@ -4,18 +4,41 @@ packages:
   - "apps/*"
   - "astrbot/*"
 
-# Vite+ alpha spike (React frontends only). Vite+ replaces vite via npm overrides
-# rather than coexisting. We scope the override to each React frontend sub-tree —
-# `@bilibili-notify/web>vite` / `@bilibili-notify/astrbot-page>vite` match "vite"
-# anywhere reachable from those dep graphs (so @vitejs/plugin-react,
-# @tailwindcss/vite etc. all fall under it), but leaves @koishijs/client → vite ^5.4.10 alone. Without
-# the dependent prefix, the override would also rewrite the koishi console
-# UI's vite 5 to vite 8 (vp's bundled vite), which is a 3-major-version
-# jump with breaking config/plugin API. We intentionally do NOT override
-# vitest yet, since apps/server's test pipeline isn't part of this spike.
+# Vite+ replaces vite via npm overrides rather than coexisting, and we scope the
+# override to each React frontend sub-tree — `@bilibili-notify/web>vite` /
+# `@bilibili-notify/astrbot-page>vite` match "vite" anywhere reachable from those
+# dep graphs (so @vitejs/plugin-react, @tailwindcss/vite etc. all fall under it),
+# but leave @koishijs/client → vite ^5.4.10 alone. Without the dependent prefix,
+# the override would also rewrite the koishi console UI's vite 5 to vite 8 (vp's
+# bundled vite), which is a 3-major-version jump with breaking config/plugin API.
+#
+# vitest is deliberately NOT overridden: it needs a real vite ^6/^7/^8, and root
+# declares `vitest` directly so pnpm nests it one. See vite.config.ts — dropping
+# that root declaration only breaks on a clean install, so it is easy to "verify"
+# as safe and still take CI down.
+#
+# Bumping vite-plus? Three things move in lockstep, and missing any one of them
+# silently leaves half the toolchain on the old version:
+#   1. root `vite-plus` + `@voidzero-dev/vite-plus-core` devDeps
+#   2. the two overrides below (else the React frontends keep the old core)
+#   3. root `vitest` — vite-plus pins vitest EXACTLY (0.2.4 -> 4.1.10). Drift here
+#      installs a second vitest copy; @vitest/spy then has two identities and
+#      mocks stop matching, which surfaces as absurd test failures, not as a
+#      version error.
+#
+# There used to be a fourth: a `minimumReleaseAgeExclude` list, carried forward
+# and version-bumped at each upgrade. It is gone because it was doing nothing.
+# pnpm 11's release-age floor defaults to 1440 min = 1 DAY, so any release we
+# adopt a day or more after publication clears it unaided (verified: install is
+# clean with no exclusions at all). The list only ever mattered for same-day
+# adoption, which is how it got added in the first place. If you ever must take a
+# vite-plus release on its release day, re-add it then — and note it needs BOTH
+# `vite-plus@<v>` and every `@voidzero-dev/vite-plus-<platform>@<v>` binary, since
+# those are published in the same minute. Otherwise: just wait 24h, which is the
+# entire point of the policy.
 overrides:
-  "@bilibili-notify/web>vite": "npm:@voidzero-dev/vite-plus-core@0.2.1"
-  "@bilibili-notify/astrbot-page>vite": "npm:@voidzero-dev/vite-plus-core@0.2.1"
+  "@bilibili-notify/web>vite": "npm:@voidzero-dev/vite-plus-core@0.2.4"
+  "@bilibili-notify/astrbot-page>vite": "npm:@voidzero-dev/vite-plus-core@0.2.4"
 
 # Match the previous yarn classic-style flat hoist, so koishi's plugin loader
 # (which expects deps to live in a single hoisted node_modules tree) keeps
@@ -35,15 +58,3 @@ allowBuilds:
   lefthook: true # repo's git hooks installer (root prepare script)
   protobufjs: true # generates .js from .proto at install time
   vue-demi: true # writes vue 2/3 shim at install time
-
-minimumReleaseAgeExclude:
-  - '@voidzero-dev/vite-plus-core@0.2.1'
-  - '@voidzero-dev/vite-plus-darwin-arm64@0.2.1'
-  - '@voidzero-dev/vite-plus-darwin-x64@0.2.1'
-  - '@voidzero-dev/vite-plus-linux-arm64-gnu@0.2.1'
-  - '@voidzero-dev/vite-plus-linux-arm64-musl@0.2.1'
-  - '@voidzero-dev/vite-plus-linux-x64-gnu@0.2.1'
-  - '@voidzero-dev/vite-plus-linux-x64-musl@0.2.1'
-  - '@voidzero-dev/vite-plus-win32-arm64-msvc@0.2.1'
-  - '@voidzero-dev/vite-plus-win32-x64-msvc@0.2.1'
-  - vite-plus@0.2.1
