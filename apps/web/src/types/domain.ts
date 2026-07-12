@@ -462,6 +462,16 @@ export interface Subscription {
 	overrides: SubscriptionOverrides;
 	specialUsers: SpecialUser[];
 	state: SubscriptionState;
+	/**
+	 * 是否已在 B 站关注该 UP。服务端 join 进 DTO(SubRuntimeStore 拥有)。
+	 *
+	 * **这决定订阅能不能工作**:动态走 `feed/all`(关注流),没关注就一条动态都收不到。
+	 * `undefined` = 服务端还没检查过(老数据 / 当时未登录),**不等于**「未关注」——
+	 * 别拿它去吓用户。
+	 */
+	followed?: boolean;
+	/** `followed === false` 时的原因(风控 / 被拉黑 / 断网…)。 */
+	followError?: string;
 }
 
 // ---- Factories --------------------------------------------------------

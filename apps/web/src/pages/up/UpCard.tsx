@@ -135,6 +135,18 @@ export function UpCard({
 					<span>·</span>
 					<span>{fansLabel}</span>
 				</div>
+				{/*
+				 * 未关注 = 收不到动态。动态走 feed/all(关注流),没关注该 UP 就一条都拿不到 ——
+				 * 这条订阅看着正常,实际是哑的。所以是**故障**不是提示:显眼、常驻,而不是创建
+				 * 时一闪而过的 toast。followed===undefined(服务端没检查过 / 老数据)不显示,
+				 * 那不等于「未关注」,别凭空吓人。
+				 */}
+				{sub.followed === false ? (
+					<div className="mb-2.5 rounded-md border border-bn-danger-border bg-bn-danger-soft px-2 py-1.5 text-[10.5px] leading-snug text-bn-danger-text">
+						⚠ 未关注该 UP —— 收不到动态
+						{sub.followError ? <span className="opacity-80">（{sub.followError}）</span> : null}
+					</div>
+				) : null}
 				<div className="mb-2.5 flex flex-wrap gap-1">
 					{features.length === 0 ? (
 						<span className="text-[10px] text-bn-text-secondary">未配置任何推送特性</span>
