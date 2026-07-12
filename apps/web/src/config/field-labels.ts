@@ -67,7 +67,7 @@ export const FIELD_LABELS = {
 	// ── 通用 / 全局(app.*) ────────────────────────────────────────────────
 	"app.dynamicCron": {
 		label: "动态检查频率",
-		hint: "cron 表达式 · 默认 */2 * * * * (每 2 分钟)",
+		hint: "cron 表达式 · 默认 30 */2 * * * * (每 2 分钟的第 30 秒,错开整分高峰)",
 		section: "general",
 	},
 	"app.logLevel": {

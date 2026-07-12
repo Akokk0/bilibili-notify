@@ -53,8 +53,18 @@ export const ModuleLogLevelsSchema = z
 	.optional();
 export type ModuleLogLevels = z.infer<typeof ModuleLogLevelsSchema>;
 
-/** Koishi/standalone 共享的 dynamic 轮询 cron 默认值。对齐 `AppConfigSchema.dynamicCron`。 */
-export const DEFAULT_DYNAMIC_CRON = "*/2 * * * *";
+/**
+ * Koishi/standalone 共享的 dynamic 轮询 cron 默认值。对齐 `AppConfigSchema.dynamicCron`。
+ *
+ * **六字段**(秒 分 时 日 月 周),秒位是 `30` —— 每 2 分钟的第 30 秒拉,而不是整分。
+ * 整分是全网默认节拍:一堆客户端(以及本项目此前的所有实例)都卡在 `:00` 同时打
+ * B 站接口,人为堆出一个流量尖峰。错开半分钟不改变频率、不多花一个请求,只是把
+ * 自己从那个尖峰里挪出来,降低撞上限流(-509)的面。
+ *
+ * 秒字段是 `cron` 包的可选首字段(3.x 起支持,已实测),标准五字段表达式仍然合法 ——
+ * 用户在 dashboard/koishi 配置里填五字段照常工作,这里只是默认值换了形态。
+ */
+export const DEFAULT_DYNAMIC_CRON = "30 */2 * * * *";
 
 /**
  * 粉丝数轮询 cron 默认值(独立端 FansPoller)。粉丝曲线要不了动态那样的 2min
