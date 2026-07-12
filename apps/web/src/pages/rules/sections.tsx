@@ -16,22 +16,16 @@ import {
 	TColor,
 	TInput,
 	TNum,
-	TSelect,
 } from "../../components/forms";
 import { CollapseBlock, GlassBox } from "../../components/glass-box";
 import { Icon } from "../../components/icons";
-import type { MessageKindLayoutFull, PushTarget } from "../../types/domain";
+import type { MessageKindLayoutFull } from "../../types/domain";
 import type {
-	AppConfig,
 	CardStyle,
 	ContentFilters,
 	GlobalConfigPatch,
 	GuardBundle,
 	ImageGroupSettings,
-	LogLevel,
-	MasterConfig,
-	ModuleLogLevels,
-	ModuleName,
 	ScheduleConfig,
 	TemplateBundle,
 } from "../../types/globals";
@@ -807,178 +801,5 @@ export function CardStyleSection({
 				per-UP 卡片样式覆盖 → 切换右上 scope 选择 UP 主 → 卡片样式
 			</div>
 		</GlassBox>
-	);
-}
-
-// ── 7. Core / App section ────────────────────────────────────────────────────
-
-const LOG_LEVELS: { value: AppConfig["logLevel"]; label: string }[] = [
-	{ value: "error", label: "ERROR · 仅错误" },
-	{ value: "info", label: "INFO · 推荐" },
-	{ value: "debug", label: "DEBUG · 排查" },
-];
-
-export function CoreAppSection({
-	app,
-	master,
-	targets,
-	onPatch,
-}: {
-	app: AppConfig;
-	master: MasterConfig;
-	targets: PushTarget[];
-	onPatch: (delta: GlobalConfigPatch) => void;
-}) {
-	const setApp = <K extends keyof AppConfig>(key: K, v: AppConfig[K]) => {
-		onPatch({ app: { [key]: v } as Partial<AppConfig> });
-	};
-
-	const masterTarget = master.targetId ? targets.find((t) => t.id === master.targetId) : undefined;
-	const masterStatus = !master.targetId
-		? "未配置 · 出错时不会私聊提醒"
-		: masterTarget
-			? `→ ${masterTarget.name}`
-			: "目标已删除,请重新选择";
-
-	return (
-		<GlassBox
-			title="Core · 应用"
-			subtitle="后端运行参数 + Master 主人账号 · 仅这一段在 globals.app / globals.master 下"
-			accent="#FB7299"
-			icon={<Icon.sparkle size={14} />}
-			badge="app + master"
-		>
-			<FieldRow code="app.dynamicCron">
-				<TInput
-					value={app.dynamicCron}
-					onChange={(v) => setApp("dynamicCron", v)}
-					mono
-					full={false}
-				/>
-			</FieldRow>
-
-			<FieldRow code="app.logLevel">
-				<TSelect
-					value={app.logLevel}
-					onChange={(v) => setApp("logLevel", v as AppConfig["logLevel"])}
-					options={LOG_LEVELS}
-				/>
-			</FieldRow>
-
-			<ModuleLogLevelsRow
-				levels={app.logLevels}
-				fallback={app.logLevel}
-				onChange={(next) => setApp("logLevels", next)}
-			/>
-
-			<FieldRow code="app.userAgent" full>
-				<TInput
-					value={app.userAgent ?? ""}
-					onChange={(v) => setApp("userAgent", v || undefined)}
-					placeholder="留空 = 默认"
-					mono
-				/>
-			</FieldRow>
-
-			<FieldRow code="app.healthCheckMinutes">
-				<TNum
-					value={app.healthCheckMinutes}
-					onChange={(v) => setApp("healthCheckMinutes", v)}
-					min={1}
-					max={1440}
-					suffix="min"
-				/>
-			</FieldRow>
-
-			<FieldRow code="app.historyRetentionDays">
-				<TNum
-					value={app.historyRetentionDays}
-					onChange={(v) => setApp("historyRetentionDays", v)}
-					min={1}
-					max={365}
-					suffix="天"
-				/>
-			</FieldRow>
-
-			<div className="mt-3 rounded-lg border border-bn-pink/20 bg-linear-to-br from-bn-pink/8 to-transparent p-3">
-				<div className="mb-1.5 flex items-center justify-between">
-					<span className="text-[12.5px] font-bold text-bn-text-primary">主人账号 · master</span>
-					<span className="text-[10.5px] text-bn-text-tertiary">
-						插件遇错误会私聊报告给这个目标
-					</span>
-				</div>
-				<FieldRow code="master.targetId">
-					<TSelect
-						value={master.targetId ?? ""}
-						onChange={(v) => onPatch({ master: { targetId: v || undefined } })}
-						options={[
-							{ value: "", label: "未配置" },
-							...targets.map((t) => ({ value: t.id, label: t.name })),
-						]}
-					/>
-				</FieldRow>
-				<div className="mt-1.5 text-[11px] text-bn-text-secondary">{masterStatus}</div>
-			</div>
-		</GlassBox>
-	);
-}
-
-// ── ModuleLogLevelsRow — per-engine log level overrides under Core ───────────
-
-const MODULES: ReadonlyArray<{ id: ModuleName; label: string; tone: string }> = [
-	{ id: "core", label: "core 核心", tone: "#FB7299" },
-	{ id: "dynamic", label: "dynamic 动态", tone: "#00AEEC" },
-	{ id: "live", label: "live 直播", tone: "#FF6699" },
-	{ id: "image", label: "image 卡片", tone: "#a29bfe" },
-	{ id: "ai", label: "ai 智能", tone: "#fdcb6e" },
-];
-
-const MODULE_OPTIONS: { value: string; label: string }[] = [
-	{ value: "", label: "（跟随全局）" },
-	{ value: "error", label: "ERROR" },
-	{ value: "info", label: "INFO" },
-	{ value: "debug", label: "DEBUG" },
-];
-
-function ModuleLogLevelsRow({
-	levels,
-	fallback,
-	onChange,
-}: {
-	levels: ModuleLogLevels | undefined;
-	fallback: LogLevel;
-	onChange: (next: ModuleLogLevels | undefined) => void;
-}) {
-	function setOne(id: ModuleName, value: string): void {
-		const current = levels ?? {};
-		const next: ModuleLogLevels = { ...current };
-		if (!value) delete next[id];
-		else next[id] = value as LogLevel;
-		onChange(Object.keys(next).length === 0 ? undefined : next);
-	}
-	return (
-		<FieldRow code="app.logLevels" full>
-			<div className="grid w-full grid-cols-1 gap-1.5 sm:grid-cols-2">
-				{MODULES.map((m) => {
-					const current = levels?.[m.id] ?? "";
-					return (
-						<div
-							key={m.id}
-							className="flex items-center justify-between gap-2 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-2.5 py-1.5"
-						>
-							<span className="flex items-center gap-1.5 text-[12px] font-bold text-bn-text-primary">
-								<span
-									className="inline-block h-1.5 w-1.5 rounded-full"
-									style={{ background: m.tone }}
-								/>
-								{m.label}
-							</span>
-							<TSelect value={current} onChange={(v) => setOne(m.id, v)} options={MODULE_OPTIONS} />
-						</div>
-					);
-				})}
-			</div>
-			<input type="hidden" value={fallback} readOnly />
-		</FieldRow>
 	);
 }
