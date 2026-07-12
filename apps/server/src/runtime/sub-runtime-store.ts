@@ -37,6 +37,18 @@ export interface SubRuntime {
 	 * 启动/reload 直接读盘复用,省掉每次对每个 UP 的 `getUserInfo` 房号解析请求(③)。
 	 */
 	roomId?: string;
+	/**
+	 * 是否已在 B 站关注该 UP。
+	 *
+	 * **这是订阅能否工作的前提,不是装饰性元数据**:动态走 `feed/all`(关注流),没关注
+	 * 就一条动态都收不到。所以它得能被前端看见 —— 订阅卡片上持续显示「未关注」,而不是
+	 * 创建时一闪而过的 toast。
+	 *
+	 * `undefined` = 还没检查过(老数据 / 当时未登录),不等于「未关注」。
+	 */
+	followed?: boolean;
+	/** `followed === false` 时的原因(风控 / 被拉黑 / 断网…),给用户看的。 */
+	followError?: string;
 }
 
 export interface SubRuntimeStore {

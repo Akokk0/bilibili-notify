@@ -1,3 +1,4 @@
+import { ensureFollowed } from "@bilibili-notify/api";
 import type { CachedProfile, Subscription } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -16,6 +17,10 @@ import type { RouteDeps } from "./types.js";
 type SubscriptionDTO = Subscription & {
 	cachedProfile?: CachedProfile;
 	state: { lastPushedAt: Record<string, never>; liveStatus: "unknown" };
+	/** 是否已在 B 站关注该 UP。undefined = 未检查过。没关注 → 收不到动态。 */
+	followed?: boolean;
+	/** followed=false 时的原因,直接展示给用户。 */
+	followError?: string;
 };
 
 /**
@@ -41,7 +46,32 @@ export function createSubsRoute(deps: RouteDeps): Hono {
 			...sub,
 			cachedProfile: rt?.cachedProfile,
 			state: { lastPushedAt: {}, liveStatus: "unknown" },
+			followed: rt?.followed,
+			followError: rt?.followError,
 		};
+	}
+
+	/**
+	 * 关注该 UP,并把结果记进 SubRuntimeStore。
+	 *
+	 * 动态走 `feed/all`(关注流)—— 没关注就一条动态都收不到,所以这不是可选的润色,
+	 * 是订阅能否工作的前提。**失败不阻断创建**(主人拍板):订阅记录照留,但把「未关注」
+	 * 如实写进 runtime 状态,前端在订阅卡片上持续显示,而不是弹一个转瞬即逝的 toast。
+	 * 启动时的 follow-sync 会再试一次,所以未登录 / 临时风控都能自愈。
+	 */
+	async function followUp(sub: Subscription): Promise<void> {
+		const engines = deps.runtime.engines;
+		if (!engines) return; // 启动中 / 未登录 —— 交给启动时的 follow-sync 兜底。
+		const outcome = await ensureFollowed(engines.api, sub.uid);
+		if (!outcome.ok) {
+			log.warn(
+				`[sub] 关注 UID ${sub.uid} 失败(code=${outcome.code}): ${outcome.message} —— 该订阅收不到动态`,
+			);
+		}
+		await deps.runtime.subRuntimeStore.patch(sub.id, {
+			followed: outcome.ok,
+			followError: outcome.ok ? undefined : outcome.message || `code=${outcome.code}`,
+		});
 	}
 
 	/**
@@ -184,7 +214,12 @@ export function createSubsRoute(deps: RouteDeps): Hono {
 			const id = (body as { id?: unknown }).id;
 			const created =
 				typeof id === "string" ? deps.store.getSubscriptions().find((s) => s.id === id) : undefined;
-			if (created) await seedCachedProfile(created);
+			if (created) {
+				// 关注必须在响应前完成 —— 否则返回的 DTO 里 followed 还是 undefined,
+				// 前端拿不到「这条订阅收不收得到动态」这个关键状态。
+				await followUp(created);
+				await seedCachedProfile(created);
+			}
 			return c.json(deps.store.getSubscriptions().map(toDTO), 200);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) {

@@ -43,12 +43,15 @@ interface Harness {
 	rtGet: ReturnType<typeof vi.fn>;
 	rtPatch: ReturnType<typeof vi.fn>;
 	getUserCardInfo: ReturnType<typeof vi.fn>;
+	follow: ReturnType<typeof vi.fn>;
 }
 
 function makeHarness(opts?: {
 	subs?: unknown[];
 	rtRecord?: Record<string, unknown>;
 	engines?: "ok" | "null" | "throw" | "code-fail";
+	/** follow() 的结果:ok=已关注成功;already=22014 已关注过;fail=业务码失败;throw=网络炸。 */
+	follow?: "ok" | "already" | "fail" | "throw";
 }): Harness {
 	const subs = opts?.subs ?? [SUB];
 	const rtRecord = opts?.rtRecord ?? {};
@@ -77,7 +80,15 @@ function makeHarness(opts?: {
 		};
 	});
 
-	const engines = enginesMode === "null" ? null : { api: { getUserCardInfo } };
+	const followMode = opts?.follow ?? "ok";
+	const follow = vi.fn(async (_fid: string) => {
+		if (followMode === "throw") throw new Error("network down");
+		if (followMode === "already") return { code: 22014, message: "已关注" };
+		if (followMode === "fail") return { code: 22003, message: "对方已将你拉黑" };
+		return { code: 0, message: "0" };
+	});
+
+	const engines = enginesMode === "null" ? null : { api: { getUserCardInfo, follow } };
 
 	const deps = {
 		store: { getSubscriptions, upsertSubscription, patchSubscription },
@@ -96,6 +107,7 @@ function makeHarness(opts?: {
 		rtGet,
 		rtPatch,
 		getUserCardInfo,
+		follow,
 	};
 }
 
@@ -145,6 +157,19 @@ describe("/api/subs GET — runtime 字段 join", () => {
 	});
 });
 
+/**
+ * SubRuntimeStore.patch 里**属于 seed 的**那些调用。
+ *
+ * POST 现在会写两类 runtime 状态:关注结果(followed/followError)与 cachedProfile。
+ * 下面这组用例只关心后者,所以按内容筛,而不是数 patch 被调了几次 —— 数次数会让它们
+ * 跟「POST 还顺手做了什么」耦死,以后再加一类 runtime 写入又得全改一遍。
+ */
+function seedCalls(h: Harness) {
+	return h.rtPatch.mock.calls.filter(
+		([, patch]) => typeof patch === "object" && patch !== null && "cachedProfile" in patch,
+	);
+}
+
 describe("/api/subs POST — 创建后服务端自 seed cachedProfile", () => {
 	beforeEach(() => vi.restoreAllMocks());
 
@@ -158,8 +183,9 @@ describe("/api/subs POST — 创建后服务端自 seed cachedProfile", () => {
 		expect(res.status).toBe(200);
 		expect(h.upsertSubscription).toHaveBeenCalledTimes(1);
 		expect(h.getUserCardInfo).toHaveBeenCalledWith(SUB.uid);
-		expect(h.rtPatch).toHaveBeenCalledTimes(1);
-		const [id, patch] = h.rtPatch.mock.calls[0] as [string, { cachedProfile: typeof PROFILE }];
+		const seeds = seedCalls(h);
+		expect(seeds).toHaveLength(1);
+		const [id, patch] = seeds[0] as [string, { cachedProfile: typeof PROFILE }];
 		expect(id).toBe(SUB.id);
 		expect(patch.cachedProfile).toMatchObject({
 			name: PROFILE.name,
@@ -185,7 +211,7 @@ describe("/api/subs POST — 创建后服务端自 seed cachedProfile", () => {
 		});
 		expect(res.status).toBe(200);
 		expect(h.getUserCardInfo).not.toHaveBeenCalled();
-		expect(h.rtPatch).not.toHaveBeenCalled();
+		expect(seedCalls(h)).toHaveLength(0);
 	});
 
 	it("engines 为 null → 跳过 seed,不致命(200)", async () => {
@@ -196,7 +222,7 @@ describe("/api/subs POST — 创建后服务端自 seed cachedProfile", () => {
 			body: JSON.stringify(SUB),
 		});
 		expect(res.status).toBe(200);
-		expect(h.rtPatch).not.toHaveBeenCalled();
+		expect(seedCalls(h)).toHaveLength(0);
 	});
 
 	it("getUserCardInfo 抛错 → best-effort,POST 仍 200", async () => {
@@ -207,7 +233,7 @@ describe("/api/subs POST — 创建后服务端自 seed cachedProfile", () => {
 			body: JSON.stringify(SUB),
 		});
 		expect(res.status).toBe(200);
-		expect(h.rtPatch).not.toHaveBeenCalled();
+		expect(seedCalls(h)).toHaveLength(0);
 	});
 
 	it("getUserCardInfo 返回 code!=0 → 不 patch,POST 仍 200", async () => {
@@ -218,7 +244,7 @@ describe("/api/subs POST — 创建后服务端自 seed cachedProfile", () => {
 			body: JSON.stringify(SUB),
 		});
 		expect(res.status).toBe(200);
-		expect(h.rtPatch).not.toHaveBeenCalled();
+		expect(seedCalls(h)).toHaveLength(0);
 	});
 
 	it("无效 JSON body → 400,不 upsert", async () => {
@@ -263,5 +289,74 @@ describe("/api/subs PATCH — 响应同样 join", () => {
 			body: JSON.stringify({ enabled: false }),
 		});
 		expect(res.status).toBe(404);
+	});
+});
+
+/**
+ * POST 自动关注该 UP。
+ *
+ * 动态是从 `feed/all`(**关注流**)拉的 —— 只会返回你已关注的人的动态。所以订阅一个
+ * UP 却不去关注他,等于订阅了个寂寞:配置里有这条记录,动态流里永远没有他,一条都推
+ * 不出来。koishi 端一直在 subscription-loader 里 follow,独立端**从来没做过**。
+ */
+describe("/api/subs POST — 自动关注该 UP", () => {
+	beforeEach(() => vi.restoreAllMocks());
+
+	async function post(h: Harness, body: unknown = SUB) {
+		return h.app.request("/", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+		});
+	}
+
+	it("新增订阅 → 去 B 站关注该 UP(否则 feed/all 里根本没有他的动态)", async () => {
+		const h = makeHarness();
+		const res = await post(h);
+
+		expect(res.status).toBe(200);
+		expect(h.follow).toHaveBeenCalledWith(SUB.uid);
+	});
+
+	it("已经关注过(22014) → 视为成功,不当失败报", async () => {
+		const h = makeHarness({ follow: "already" });
+		const res = await post(h);
+
+		expect(res.status).toBe(200);
+		expect(h.rtPatch).toHaveBeenCalledWith(SUB.id, expect.objectContaining({ followed: true }));
+	});
+
+	it("关注失败 → 订阅照建,但把「未关注」如实记下(别让用户以为好了)", async () => {
+		const h = makeHarness({ follow: "fail" });
+		const res = await post(h);
+
+		// 主人拍板:仍创建。订阅记录不能凭空消失。
+		expect(res.status).toBe(200);
+		expect(h.upsertSubscription).toHaveBeenCalledTimes(1);
+
+		// 状态落进 SubRuntimeStore → DTO 带给前端 → 订阅卡片能持续显示「未关注」,
+		// 而不是一闪而过的 toast。这条订阅现在是收不到动态的,用户有权一直看见。
+		expect(h.rtPatch).toHaveBeenCalledWith(
+			SUB.id,
+			expect.objectContaining({ followed: false, followError: expect.stringContaining("拉黑") }),
+		);
+	});
+
+	it("关注请求直接抛(断网)→ 同样不阻断创建", async () => {
+		const h = makeHarness({ follow: "throw" });
+		const res = await post(h);
+
+		expect(res.status).toBe(200);
+		expect(h.upsertSubscription).toHaveBeenCalledTimes(1);
+		expect(h.rtPatch).toHaveBeenCalledWith(SUB.id, expect.objectContaining({ followed: false }));
+	});
+
+	it("engines 未就绪(未登录/启动中)→ 不炸,订阅照建,不写关注状态", async () => {
+		const h = makeHarness({ engines: "null" });
+		const res = await post(h);
+
+		expect(res.status).toBe(200);
+		expect(h.upsertSubscription).toHaveBeenCalledTimes(1);
+		expect(h.follow).not.toHaveBeenCalled();
 	});
 });
