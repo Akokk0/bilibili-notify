@@ -152,6 +152,25 @@ export interface UserCardsBatchData {
 	data: Record<string, UserCardBrief> | null;
 }
 
+/**
+ * 与某个用户的关系。`attribute`:0=未关注 / 2=已关注 / 6=互相关注 / 128=已拉黑。
+ * (悄悄关注的 1 早已废弃。)
+ */
+export interface UserRelation {
+	mid?: number;
+	attribute?: number;
+}
+
+/** `x/relation/relations` 的响应,`data` 以 mid 字符串为键。 */
+export interface RelationsBatchData {
+	code: number;
+	message?: string;
+	data: Record<string, UserRelation> | null;
+}
+
+/** `attribute` 里代表「已经关注了」的取值:2=已关注、6=互粉。 */
+export const FOLLOWED_ATTRIBUTES: ReadonlySet<number> = new Set([2, 6]);
+
 // ---- Live ----
 
 export interface LiveRoomInfo {

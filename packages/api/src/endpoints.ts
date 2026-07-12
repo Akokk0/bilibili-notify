@@ -21,6 +21,11 @@ export const GET_ONLINE_GOLD_RANK =
 	"https://api.live.bilibili.com/xlive/general-interface/v1/rank/getOnlineGoldRank";
 export const GET_USER_INFO_IN_LIVE = "https://api.live.bilibili.com/xlive/app-ucenter/v2/card/user";
 export const MODIFY_RELATION = "https://api.bilibili.com/x/relation/modify";
+/**
+ * 批量查询与多个用户的关系,`fids` 逗号分隔。用来在启动时一次问清「哪些订阅还没关注」,
+ * 免得对每个订阅都盲发一次 follow(写接口的风控比读严得多)。
+ */
+export const GET_RELATIONS = "https://api.bilibili.com/x/relation/relations";
 export const CREATE_GROUP = "https://api.bilibili.com/x/relation/tag/create";
 export const MODIFY_GROUP_MEMBER = "https://api.bilibili.com/x/relation/tags/addUsers";
 export const GET_ALL_GROUP = "https://api.bilibili.com/x/relation/tags";

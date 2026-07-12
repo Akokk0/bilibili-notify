@@ -19,6 +19,7 @@ import type {
 	MasterInfoData,
 	MySelfInfoData,
 	RelationStatData,
+	RelationsBatchData,
 	UserCardInfoData,
 	UserCardsBatchData,
 	V_VoucherCaptchaData,
@@ -866,6 +867,21 @@ export class BilibiliAPI {
 			() => ({ fid, act: 1, re_src: 11, csrf: this.getCSRF() }),
 			"follow",
 		);
+	}
+
+	/**
+	 * 批量查询与多个 UP 的关系(已关注 / 未关注 / 被拉黑)。
+	 *
+	 * 用途:启动时一次问清「哪些订阅还没关注」,只对缺的补 follow —— 而不是对每个订阅
+	 * 都盲发一次写请求。`relation/modify` 是写接口,风控比读严得多,订阅一多就很容易撞。
+	 *
+	 * 调用方必须把它当**优化**而非正确性依赖:失败 / 结构不符时要能降级成直接 follow
+	 * (follow 本身幂等,22014=已关注)。
+	 */
+	async getRelations(fids: string[]): Promise<RelationsBatchData> {
+		if (!fids.length) return { code: 0, data: {} };
+		const list = fids.map((f) => encodeURIComponent(f)).join(",");
+		return this.getJson(`${EP.GET_RELATIONS}?fids=${list}`, "getRelations");
 	}
 
 	async createGroup(tag: string) {
