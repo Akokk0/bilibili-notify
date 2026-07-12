@@ -65,6 +65,7 @@ import { createMultiplexSink } from "../sink/multiplex.js";
 import { readCardBgDataUrl } from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
+import { syncFollows } from "./follow-sync.js";
 import { MasterNotifier } from "./master-notifier.js";
 import type { NodeServiceContext } from "./service-context.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
@@ -448,6 +449,27 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	});
 	dynamic.start();
 
+	/**
+	 * 确保所有订阅的 UP 都已在 B 站被关注 —— 动态走 `feed/all`(关注流),没关注就一条
+	 * 都收不到。独立端此前**从不** follow(只有 koishi 端做),所以存量订阅全是收不到
+	 * 动态的哑订阅。见 `follow-sync.ts`。
+	 *
+	 * best-effort:失败不阻断引擎启动,状态会落进 SubRuntimeStore 让前端显示「未关注」,
+	 * 下次 auth-restored 再试。
+	 */
+	const runFollowSync = (reason: string): void => {
+		void syncFollows({
+			api: opts.api,
+			subs: () => opts.subscriptionStore.list(),
+			rt: opts.subRuntimeStore,
+			logger: log,
+		}).catch((e: unknown) => {
+			log.warn(`[follow] 关注同步(${reason})失败: ${e instanceof Error ? e.message : String(e)}`);
+		});
+	};
+	// 启动时补一遍(未登录则整批失败,交给下面的 auth-restored 重试)。
+	runFollowSync("boot");
+
 	// ---------- LiveEngine ----------
 	const livePushLike: LivePushLike = {
 		async broadcastToTargets(uid, content, type) {
@@ -566,6 +588,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			live.rebuildFromSubs(
 				buildLiveSubsView(opts.subscriptionStore, opts.subRuntimeStore, globals()),
 			);
+			// 登录恢复 → 之前因未登录而关注失败的订阅在这里自愈。
+			runFollowSync("auth-restored");
 		}),
 	);
 	handles.push(
