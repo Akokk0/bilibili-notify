@@ -12,6 +12,7 @@ import type { WsTicketStore } from "./auth/ws-ticket.js";
 import type { BackupService } from "./backup/service.js";
 import type { QQSessionRegistry } from "./platforms/qq-official.js";
 import { createAdaptersRoute } from "./routes/adapters.js";
+import { createAiRoute } from "./routes/ai.js";
 import { createAuthRoute } from "./routes/auth.js";
 import { createBackupRoute } from "./routes/backup.js";
 import { createCardsRoute } from "./routes/cards.js";
@@ -200,6 +201,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	app.route("/api/history", createHistoryRoute(deps));
 	app.route("/api/logs", createLogsRoute(deps));
 	app.route("/api/push", createPushRoute(deps));
+	app.route("/api/ai", createAiRoute(deps));
 	app.route("/api/fans", createFansRoute(deps));
 	app.route("/api/qq", createQQRoute(deps));
 	app.route(
