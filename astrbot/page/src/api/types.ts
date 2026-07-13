@@ -10,6 +10,8 @@ import type {
 	SubscriptionRouting,
 } from "@bilibili-notify/internal";
 
+// 值级单一来源:internal 的零依赖子路径(不含 zod,bundle 零增量)。
+export { FEATURE_KEYS } from "@bilibili-notify/internal/constants";
 export type {
 	AstrBotPushTarget,
 	DeliveryResult,
@@ -21,18 +23,6 @@ export type {
 	SubscriptionOverrides,
 	SubscriptionRouting,
 };
-
-export const FEATURE_KEYS: FeatureKey[] = [
-	"dynamic",
-	"live",
-	"liveEnd",
-	"liveGuardBuy",
-	"superchat",
-	"wordcloud",
-	"liveSummary",
-	"specialDanmaku",
-	"specialUserEnter",
-];
 
 export const FEATURE_LABELS: Record<FeatureKey, string> = {
 	dynamic: "动态",
@@ -46,52 +36,17 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
 	specialUserEnter: "特别进房",
 };
 
-export interface SidecarBusinessSnapshot {
-	readonly started: boolean;
-	readonly authStarted: boolean;
-	readonly engines: { readonly dynamic: boolean; readonly live: boolean };
-	readonly subscriptions: { readonly count: number; readonly path: string };
-	readonly events: { readonly nextId: number; readonly size: number };
-	readonly deliveries?: {
-		readonly size: number;
-		readonly pending: number;
-		readonly inFlight: number;
-		readonly maxSize: number;
-		readonly maxAttempts: number;
-	};
-	readonly ai?: {
-		readonly size: number;
-		readonly pending: number;
-		readonly inFlight: number;
-		readonly maxSize: number;
-	};
-	readonly login?: LoginSnapshot;
-}
+// Sidecar 快照的单一来源在 sidecar 包自身(经 types-only 的 /state 子路径,
+// 只供 `import type`;运行时 import 会解析失败,这正是设计意图)。此前这里是
+// 手抄镜像,连 login 的精确类型都只有镜像有 —— 现已把 LoginSnapshot 收紧进
+// sidecar 本体,镜像随之退役。
+import type { SidecarSnapshot } from "@bilibili-notify/astrbot-sidecar/state";
 
-export interface SidecarCapabilities {
-	readonly tokenAuth: boolean;
-	readonly pluginPageProxy: boolean;
-	readonly sse: boolean;
-	readonly deliveryQueue: boolean;
-	readonly aiProviderBridge: boolean;
-}
-
-export interface SidecarSnapshot {
-	readonly status: "starting" | "ready" | "stopping" | "stopped";
-	readonly version: string;
-	readonly pid: number;
-	readonly host: string;
-	readonly port: number;
-	readonly dataDir?: string;
-	readonly startedAt: string;
-	readonly readyAt?: string;
-	readonly aiBackend: "astrbot" | "own" | "disabled";
-	readonly aiProviderId?: string;
-	readonly capabilities?: SidecarCapabilities;
-	readonly business?: SidecarBusinessSnapshot;
-	readonly url: string;
-	readonly uptimeMs: number;
-}
+export type {
+	SidecarBusinessSnapshot,
+	SidecarCapabilities,
+} from "@bilibili-notify/astrbot-sidecar/state";
+export type { SidecarSnapshot };
 
 export interface DashboardBootstrap {
 	readonly snapshot: SidecarSnapshot;

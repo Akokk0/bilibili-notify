@@ -1,3 +1,5 @@
+import type { LoginSnapshot } from "@bilibili-notify/internal";
+
 export type SidecarStatus = "starting" | "ready" | "stopping" | "stopped";
 export type AiBackend = "astrbot" | "own" | "disabled";
 
@@ -31,7 +33,7 @@ export interface SidecarBusinessSnapshot {
 		readonly inFlight: number;
 		readonly maxSize: number;
 	};
-	readonly login?: unknown;
+	readonly login?: LoginSnapshot;
 }
 
 export interface SidecarCapabilities {
