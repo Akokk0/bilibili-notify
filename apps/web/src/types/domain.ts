@@ -1,28 +1,98 @@
 /**
- * Local mirror of the JSON shapes the standalone server expects on
- * /api/subs and /api/targets. The schemas of record live in
- * `packages/internal/src/schema/{subscriptions,targets}.ts`; this file
- * stays in sync by hand because the web app is a JSON-only consumer.
+ * 独立端 Dashboard 的域类型门面(原「手维护镜像」,已退役)。
  *
- * Anything new added to the canonical schemas needs to appear here too,
- * otherwise PATCH bodies will silently drop fields.
+ * 类型的单一来源:域模型在 `@bilibili-notify/internal`(全部 `import type`,
+ * 编译后擦除,web 产物不含核心代码);wire DTO 在 `@bilibili-notify/contract`。
+ * 值级常量(FEATURE_KEYS / DEFAULT_FEATURE_FLAGS)从 internal 的零依赖子路径
+ * `@bilibili-notify/internal/constants` 运行时导入 —— 该模块不含 zod,bundle
+ * 零增量。本文件自留的只剩 UI 文案、工厂函数与表单辅助。
+ *
+ * 旧镜像时代的 `*Full` / `*Override` 命名以别名保留,消费者无需改动:
+ * `XxxFull` = internal 的全量类型,`XxxOverride` = internal 的 `XxxPartial`
+ * (cardLayout / messageLayout 例外:per-UP 是「整份覆盖」,Override = 全量)。
  */
 
-// ---- Features ----------------------------------------------------------
+import type { SubscriptionDTO } from "@bilibili-notify/contract";
+import type {
+	PushAdapter as CanonPushAdapter,
+	PushTarget as CanonPushTarget,
+	PushTargetPlatform as CanonPushTargetPlatform,
+	OnebotAdapterConfig,
+	OnebotTransport,
+	WebhookProvider,
+} from "@bilibili-notify/internal";
+import {
+	DEFAULT_FEATURE_FLAGS,
+	FEATURE_KEYS,
+	type FeatureKey,
+} from "@bilibili-notify/internal/constants";
 
-export const FEATURE_KEYS = [
-	"dynamic",
-	"live",
-	"liveEnd",
-	"liveGuardBuy",
-	"superchat",
-	"wordcloud",
-	"liveSummary",
-	"specialDanmaku",
-	"specialUserEnter",
-] as const;
+export type { FeatureKey };
+export { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS };
 
-export type FeatureKey = (typeof FEATURE_KEYS)[number];
+/**
+ * Dashboard 消费的订阅一直是 wire DTO 形状(internal Subscription + 服务端
+ * join 回来的 cachedProfile / state / followed),沿用旧名 Subscription。
+ */
+export type Subscription = SubscriptionDTO;
+
+export type {
+	AIOverride,
+	AIPersona as AIPersonaShape,
+	CachedProfile,
+	CardBlock as CardBlockFull,
+	// per-UP 卡片版式是「整份覆盖」(fork 全局后编辑),不是 Partial。
+	CardLayout as CardLayoutFull,
+	CardLayout as CardLayoutOverride,
+	CardStyle as CardStyleFull,
+	CardStylePartial as CardStyleOverride,
+	ContentFilters as ContentFiltersFull,
+	ContentFiltersPartial as ContentFiltersOverride,
+	GuardBundle as GuardBundleShape,
+	GuardEntry as GuardEntryShape,
+	GuardLayout as GuardLayoutFull,
+	GuardLevel,
+	ImageGroupSettingsPartial as ImageGroupOverride,
+	MessageBlock as MessageBlockFull,
+	MessageKindLayout as MessageKindLayoutFull,
+	// per-UP 消息版式同 cardLayout:整份覆盖,不是 Partial。
+	MessageLayout as MessageLayoutFull,
+	MessageLayout as MessageLayoutOverride,
+	OnebotAdapterConfig,
+	OnebotSession,
+	OnebotTransport,
+	PushAdapterTestStatus,
+	PushTargetScope,
+	QQOfficialAdapterConfig,
+	QQOfficialBotType,
+	QQOfficialSession,
+	ScheduleConfig as ScheduleFull,
+	ScheduleConfigPartial as ScheduleOverride,
+	SpecialUser,
+	SubscriptionAtAll,
+	SubscriptionAtAllDefaults,
+	SubscriptionOverrides,
+	SubscriptionOverrides as OverridesShape,
+	SubscriptionRouting,
+	SubscriptionState,
+	TemplateBundle as TemplateBundleFull,
+	TemplateBundlePartial as TemplateOverride,
+	TimeRange,
+	WebhookAdapterConfig,
+	WebhookProvider,
+	WebhookSession,
+} from "@bilibili-notify/internal";
+
+/**
+ * Dashboard 只编辑独立端可用平台;宿主专用隐藏平台(Koishi / AstrBot)由对应
+ * 宿主壳消费,不进入 apps/web 的平台工厂和普通选择器。
+ */
+type HostOnlyPlatform = "koishi-bot" | "astrbot";
+export type PushAdapter = Exclude<CanonPushAdapter, { platform: HostOnlyPlatform }>;
+export type PushTarget = Exclude<CanonPushTarget, { platform: HostOnlyPlatform }>;
+export type PushTargetPlatform = Exclude<CanonPushTargetPlatform, HostOnlyPlatform>;
+
+// ---- UI 文案 -----------------------------------------------------------
 
 export const FEATURE_LABELS: Record<FeatureKey, string> = {
 	dynamic: "动态",
@@ -35,64 +105,6 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
 	specialDanmaku: "特别弹幕",
 	specialUserEnter: "特别用户进房",
 };
-
-/**
- * Mirror of DEFAULT_FEATURE_FLAGS from packages/internal/src/schema/common.ts.
- * Used by the UP dialog as the inherit-fallback when a subscription's
- * overrides.features[k] is unset. Keep in sync with the server side.
- */
-export const DEFAULT_FEATURE_FLAGS: Record<FeatureKey, boolean> = {
-	dynamic: true,
-	live: true,
-	liveEnd: true,
-	liveGuardBuy: false,
-	superchat: false,
-	wordcloud: true,
-	liveSummary: true,
-	specialDanmaku: false,
-	specialUserEnter: false,
-};
-
-// ---- PushAdapter (connection level) --------------------------------------
-
-export type PushTargetScope = "group" | "private" | "channel";
-
-/** OneBot 三种连接方式(transport)共用的连接字段。 */
-interface OnebotAdapterConfigCommon {
-	accessToken?: string;
-	protocolVersion?: "v11";
-	timeoutMs: number;
-	retryTimes: number;
-	retryIntervalMs: number;
-}
-
-/**
- * OneBot 适配器连接配置 —— 按 `transport` 区分 HTTP / 正向 WS / 反向 WS。
- * 镜像 `@bilibili-notify/internal` 的 `OnebotAdapterConfigSchema`(union)。
- */
-export type OnebotAdapterConfig =
-	| (OnebotAdapterConfigCommon & {
-			transport: "http";
-			baseUrl: string;
-			headers: Record<string, string>;
-	  })
-	| (OnebotAdapterConfigCommon & {
-			transport: "ws";
-			url: string;
-			headers: Record<string, string>;
-	  })
-	| (OnebotAdapterConfigCommon & { transport: "ws-reverse"; port: number });
-
-export type OnebotTransport = OnebotAdapterConfig["transport"];
-
-export type WebhookProvider = "generic" | "dingtalk" | "feishu" | "wecom";
-
-export interface WebhookAdapterConfig {
-	url: string;
-	provider?: WebhookProvider;
-	secret?: string;
-	headers: Record<string, string>;
-}
 
 export const WEBHOOK_PROVIDERS: ReadonlyArray<{ value: WebhookProvider; label: string }> = [
 	{ value: "generic", label: "Generic JSON" },
@@ -144,334 +156,15 @@ export function maskWebhookUrl(url: string): string {
 	}
 }
 
-/** QQ 官方机器人(q.qq.com)机器人域:公域 / 私域。决定能否发原生 markdown。 */
-export type QQOfficialBotType = "public" | "private";
-
-/**
- * QQ 官方机器人适配器连接配置 —— 镜像 `@bilibili-notify/internal` 的
- * `QQOfficialAdapterConfigSchema`。appId/appSecret 明文存(对齐 OneBot accessToken);
- * sandbox 切沙箱 host;botType 私域可发原生 markdown(图集合并),公域需报备模板。
- */
-export interface QQOfficialAdapterConfig {
-	appId: string;
-	appSecret: string;
-	sandbox: boolean;
-	botType: QQOfficialBotType;
-	/** 是否记录网关 RECONNECT/RESUMED 事件日志(默认关闭,该协议行为约每 30 分钟一次)。 */
-	logReconnects: boolean;
-}
-
-export interface PushAdapterTestStatus {
-	ok: boolean;
-	lastCheckedAt: string;
-	latencyMs?: number;
-	err?: string;
-}
-
-interface PushAdapterCommon {
-	id: string;
-	name: string;
-	enabled: boolean;
-	testStatus?: PushAdapterTestStatus;
-}
-
-export type PushAdapter =
-	| (PushAdapterCommon & { platform: "onebot"; config: OnebotAdapterConfig })
-	| (PushAdapterCommon & { platform: "qq-official"; config: QQOfficialAdapterConfig })
-	| (PushAdapterCommon & { platform: "webhook"; config: WebhookAdapterConfig });
-
-// ---- PushTarget (session level — references an adapter) ------------------
-
-export interface OnebotSession {
-	groupId?: string;
-	userId?: string;
-}
-
-/**
- * QQ 官方机器人会话寻址 —— 镜像 `QQOfficialSessionSchema`。按 target.scope 取字段:
- * channel→guildId+channelId、group→groupOpenid、private(C2C)→userOpenid。
- * 群/C2C 的 openid 只能从入站事件捞(经 /api/qq/sessions 选择器)。
- */
-export interface QQOfficialSession {
-	guildId?: string;
-	channelId?: string;
-	groupOpenid?: string;
-	userOpenid?: string;
-}
-
-// no session-level config (the webhook URL is the endpoint)
-export type WebhookSession = Record<string, never>;
-
-interface PushTargetCommon {
-	id: string;
-	name: string;
-	adapterId: string;
-	scope: PushTargetScope;
-	enabled: boolean;
-	managedBy?: "adapter";
-	testStatus?: PushAdapterTestStatus;
-}
-
-export type PushTarget =
-	| (PushTargetCommon & { platform: "onebot"; session: OnebotSession })
-	| (PushTargetCommon & { platform: "qq-official"; session: QQOfficialSession })
-	| (PushTargetCommon & { platform: "webhook"; session: WebhookSession });
-
-export type PushTargetPlatform = "onebot" | "qq-official" | "webhook";
-
 export const KNOWN_PLATFORMS: ReadonlyArray<{ value: PushTargetPlatform; label: string }> = [
 	{ value: "onebot", label: "OneBot v11" },
 	{ value: "qq-official", label: "QQ 官方机器人" },
 	{ value: "webhook", label: "Webhook" },
 ];
 
-// ---- Subscription -----------------------------------------------------
-
-export type SubscriptionRouting = Record<FeatureKey, string[]>;
-
-export interface CachedProfile {
-	name: string;
-	avatar: string;
-	sign: string;
-	fans: number;
-	lastRefreshedAt: string;
-}
-
-export interface SpecialUser {
-	uid: string;
-	kinds: ("enter" | "danmaku")[];
-	template?: string;
-}
-
-export interface AIPersonaShape {
-	name: string;
-	addressUser: string;
-	addressSelf: string;
-	traits: string;
-	catchphrase: string;
-	/** 基础角色描述,system prompt 起手段。 */
-	baseRole: string;
-	/** 追加到 system prompt 末尾的微调内容。 */
-	extraSystemPrompt: string;
-}
-
-export interface AIOverride {
-	preset: string;
-	persona?: AIPersonaShape;
-	dynamicPrompt?: string;
-	liveSummaryPrompt?: string;
-	temperature?: number;
-	/** per-UP AstrBot 人格 id —— 仅 AstrBot 宿主消费,独立端不用,但须镜像规范键。 */
-	personaId?: string;
-}
-
-export type GuardLevel = 1 | 2 | 3;
-export interface TimeRange {
-	start: number;
-	end: number;
-}
-
-export interface ContentFiltersFull {
-	blockForward: boolean;
-	blockArticle: boolean;
-	blockDraw: boolean;
-	blockAv: boolean;
-	blockKeywords: string[];
-	blockRegex: string[];
-	whitelistKeywords: string[];
-	whitelistRegex: string[];
-	minScPrice: number;
-	minGuardLevel: GuardLevel;
-}
-export type ContentFiltersOverride = Partial<ContentFiltersFull>;
-
-export interface ScheduleFull {
-	pushTime: number;
-	restartPush: boolean;
-	quietHours: TimeRange[];
-	liveEndGrace: boolean;
-	liveEndGraceMinutes: number;
-}
-export type ScheduleOverride = Partial<ScheduleFull>;
-
-export interface GuardEntryShape {
-	imageUrl: string;
-	template: string;
-}
-export interface GuardBundleShape {
-	enable: boolean;
-	captain: GuardEntryShape;
-	commander: GuardEntryShape;
-	governor: GuardEntryShape;
-}
-
-export interface TemplateBundleFull {
-	liveStart: string;
-	liveOngoing: string;
-	liveEnd: string;
-	liveSummary: string;
-	dynamic: string;
-	dynamicVideo: string;
-	wordcloudStopWords: string;
-	specialDanmaku: string;
-	specialUserEnter: string;
-	guardBuy: GuardBundleShape;
-}
-export type TemplateOverride = Partial<TemplateBundleFull>;
-
-export interface CardStyleFull {
-	/**
-	 * TD1 同步:规范 `CardStyleSchema.enabled`(z.boolean().default(true))。
-	 * 此前镜像漏了它 → per-UP 卡片开关在 overrides.cardStyle 的 PATCH body
-	 * 里被静默丢弃(用户在 dashboard 关某 UP 卡片不生效)。
-	 */
-	enabled: boolean;
-	cardColorStart: string;
-	cardColorEnd: string;
-	font: string;
-	/** 直播卡数据区显示项(人气·点赞 / 分区 / 粉丝数据)。镜像 `CardStyleSchema.show*`,默认全开。 */
-	showPopularity: boolean;
-	showArea: boolean;
-	showFans: boolean;
-	/** 自定义卡片背景图资产 id 列表;空 = 渐变,>1 = 轮换。镜像 `CardStyleSchema.backgroundImages`。 */
-	backgroundImages: string[];
-	/** 玻璃片透明度 0..1;可选,未设时各卡用内置基线。镜像 `CardStyleSchema.glassOpacity`。 */
-	glassOpacity?: number;
-	/** 完全透明:内容层透明 + 无模糊(与 glassOpacity 二选一)。镜像 `CardStyleSchema.glassClear`。 */
-	glassClear: boolean;
-}
-export type CardStyleOverride = Partial<CardStyleFull>;
-
-// ── 卡片版式描述符(镜像 packages/internal 的 CardLayout / CardBlock / GuardLayout)──
-// 块顺序 = 数组位置;visible 控制显隐。guard 受限 2D:badgeSide + name/text 块。
-
-export interface CardBlockFull {
-	/** 实例唯一 id(内容块 id===type;分割线 divider-N 可多份)。 */
-	id: string;
-	/** 语义 type(内容块为语义名 / 分割线为 "divider")。 */
-	type: string;
-	visible: boolean;
-	/** 该块**上方**的额外间距(px,可选)。首块上 / 末块下边距由卡片框架固定,不经此字段。 */
-	marginTop?: number;
-}
-
-export interface GuardLayoutFull {
-	badgeSide: "left" | "right";
-	blocks: CardBlockFull[];
-}
-
-export interface CardLayoutFull {
-	version: number;
-	live: CardBlockFull[];
-	dynamic: CardBlockFull[];
-	sc: CardBlockFull[];
-	guard: GuardLayoutFull;
-}
-
-/** per-UP 卡片版式是「整份覆盖」(fork 全局后编辑),不是 Partial。 */
-export type CardLayoutOverride = CardLayoutFull;
-
-// ── 消息版式描述符(镜像 packages/internal 的 MessageLayout / MessageBlock)──
-// 发送侧结构:每次推送由哪些消息、每条消息装哪些部件(卡片图 / 文本 / 链接),
-// 分条符(type="split")切多条。@全体不进消息版式(维持 per-target 机制)。
-
-export interface MessageBlockFull {
-	/** 实例唯一 id(内容块 id===type;分条符 split-N 可多份)。 */
-	id: string;
-	/** 语义 type(card / text / link / split)。 */
-	type: string;
-	visible: boolean;
-}
-
-export interface MessageKindLayoutFull {
-	blocks: MessageBlockFull[];
-	/** 同条消息内相邻文本类部件(文本 / 链接)的连接符,默认换行。 */
-	separator: string;
-}
-
-export interface MessageLayoutFull {
-	version: number;
-	dynamic: MessageKindLayoutFull;
-	live: MessageKindLayoutFull;
-}
-
-/** per-UP 消息版式同 cardLayout:整份覆盖,不是 Partial。 */
-export type MessageLayoutOverride = MessageLayoutFull;
-
-/**
- * Per-UP 图集推送行为覆盖。空 / undefined 字段继承全局 `GlobalDefaults.imageGroup.{enable,forward}`。
- * 镜像 `packages/internal` 的 `ImageGroupSettingsPartialSchema`。
- */
-export interface ImageGroupOverride {
-	enable?: boolean;
-	forward?: boolean;
-}
-
-export interface OverridesShape {
-	features?: Partial<Record<FeatureKey, boolean>>;
-	filters?: ContentFiltersOverride;
-	schedule?: ScheduleOverride;
-	templates?: TemplateOverride;
-	ai?: AIOverride;
-	cardStyle?: CardStyleOverride;
-	/** 按卡片类型的样式覆盖(可选);各类型叠在该 UP 的 cardStyle 基准上。 */
-	cardStyleByKind?: Partial<Record<"live" | "dynamic" | "sc" | "guard", CardStyleOverride>>;
-	cardLayout?: CardLayoutOverride;
-	messageLayout?: MessageLayoutOverride;
-	imageGroup?: ImageGroupOverride;
-}
-export type SubscriptionOverrides = OverridesShape;
-
-export interface SubscriptionState {
-	lastDynamicId?: string;
-	lastPushedAt: { dynamic?: string; live?: string };
-	liveStatus: "idle" | "live" | "unknown";
-}
-
-/**
- * @全体成员「订阅级默认」。每个 UP 主独立持有自己的默认策略,作用于 routing 里所有未在
- * `atAll` Map 中显式覆写的 target。默认:开播 ON、动态 OFF。
- */
-export interface SubscriptionAtAllDefaults {
-	dynamic: boolean;
-	live: boolean;
-}
-
-/**
- * @全体成员 per-target 覆写。tristate Map:
- * - Map 没 key → inherit(走 `atAllDefaults`)
- * - `true` → 显式 ON;`false` → 显式 OFF
- *
- * 后端 schema refine 强制 `Object.keys(atAll.X) ⊆ routing.X`。
- */
-export interface SubscriptionAtAll {
-	dynamic: Record<string, boolean>;
-	live: Record<string, boolean>;
-}
-
-export interface Subscription {
-	id: string;
-	uid: string;
-	enabled: boolean;
-	groups: string[];
-	notes?: string;
-	cachedProfile?: CachedProfile;
-	routing: SubscriptionRouting;
-	atAllDefaults: SubscriptionAtAllDefaults;
-	atAll: SubscriptionAtAll;
-	overrides: SubscriptionOverrides;
-	specialUsers: SpecialUser[];
-	state: SubscriptionState;
-	/**
-	 * 是否已在 B 站关注该 UP。服务端 join 进 DTO(SubRuntimeStore 拥有)。
-	 *
-	 * **这决定订阅能不能工作**:动态走 `feed/all`(关注流),没关注就一条动态都收不到。
-	 * `undefined` = 服务端还没检查过(老数据 / 当时未登录),**不等于**「未关注」——
-	 * 别拿它去吓用户。
-	 */
-	followed?: boolean;
-	/** `followed === false` 时的原因(风控 / 被拉黑 / 断网…)。 */
-	followError?: string;
+export function platformLabel(platform: string): string {
+	const known = KNOWN_PLATFORMS.find((p) => p.value === platform);
+	return known?.label ?? platform;
 }
 
 // ---- Factories --------------------------------------------------------
@@ -494,10 +187,10 @@ export function newId(): string {
 	return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10, 16).join("")}`;
 }
 
-function emptyRouting(): SubscriptionRouting {
-	const out: Partial<SubscriptionRouting> = {};
+function emptyRouting(): Subscription["routing"] {
+	const out: Partial<Subscription["routing"]> = {};
 	for (const k of FEATURE_KEYS) out[k] = [];
-	return out as SubscriptionRouting;
+	return out as Subscription["routing"];
 }
 
 export function makeEmptySubscription(uid: string): Subscription {
@@ -552,6 +245,12 @@ export function makeEmptyAdapter(platform: PushTargetPlatform, name: string): Pu
 	};
 }
 
+/** OneBot 三种连接方式(transport)共用的连接字段。 */
+type OnebotAdapterConfigCommon = Pick<
+	OnebotAdapterConfig,
+	"accessToken" | "protocolVersion" | "timeoutMs" | "retryTimes" | "retryIntervalMs"
+>;
+
 /**
  * 切换 OneBot 适配器的连接方式 —— 整体替换 config(branch schema 是 strict,不能
  * 留上一个 transport 的残字段),保留 accessToken / 超时 / 重试等共用字段。切到
@@ -586,9 +285,4 @@ export function makeEmptyTarget(adapter: PushAdapter, name: string): PushTarget 
 		return { ...base, platform: "qq-official", scope: "group", session: {} };
 	}
 	return { ...base, platform: "webhook", scope: "channel", session: {} };
-}
-
-export function platformLabel(platform: string): string {
-	const known = KNOWN_PLATFORMS.find((p) => p.value === platform);
-	return known?.label ?? platform;
 }

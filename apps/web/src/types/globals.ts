@@ -1,182 +1,39 @@
 /**
- * Local mirror of GlobalConfig from packages/internal/src/schema/globals.ts.
- * web/ is JSON-only against the business core — this file kept in sync by hand.
+ * GlobalConfig 域类型门面(原「手维护镜像」,已退役)—— 单一来源在
+ * `@bilibili-notify/internal`,这里只做 `import type` re-export(编译后全擦除,
+ * web 运行时仍是纯 JSON 消费者)。本文件自留的只剩 UI 侧派生别名与 PATCH 工具类型。
  */
 
-import type { CardLayoutFull, FeatureKey, MessageLayoutFull } from "./domain";
+import type { AISettings, GlobalConfig, ModuleLogLevels } from "@bilibili-notify/internal";
 
-export type LogLevel = "error" | "warn" | "info" | "debug";
+export type {
+	AIPersona,
+	AISettings,
+	AppConfig,
+	CardKind,
+	CardStyle,
+	CardStyleByKind,
+	ContentFilters,
+	FeatureFlags,
+	GlobalConfig,
+	GlobalDefaults,
+	GuardBundle,
+	GuardEntry,
+	GuardLevel,
+	ImageGroupSettings,
+	LogLevel,
+	MasterConfig,
+	ModuleLogLevels,
+	ScheduleConfig,
+	TemplateBundle,
+	TimeRange,
+} from "@bilibili-notify/internal";
 
-export type ModuleName = "core" | "dynamic" | "live" | "image" | "ai";
+/** 引擎模块名(= ModuleLogLevels 的键集;internal 未单独导出该联合)。 */
+export type ModuleName = keyof NonNullable<ModuleLogLevels>;
 
-export type ModuleLogLevels = Partial<Record<ModuleName, LogLevel>>;
-
-export interface AppConfig {
-	logLevel: LogLevel;
-	/**
-	 * Per-module level overrides — missing key falls back to `logLevel`. On the
-	 * standalone end maps to engine modules (core / dynamic / live / image / ai);
-	 * on Koishi端 maps to the same-named sub-plugins. Standalone runtime hot-pushes
-	 * the new level onto each module's pino instance on config-changed, so edits
-	 * take effect immediately without a server restart.
-	 */
-	logLevels?: ModuleLogLevels;
-	userAgent?: string;
-	dynamicCron: string;
-	healthCheckMinutes: number;
-	historyRetentionDays: number;
-	/** 日志归档保留天数(standalone-only;startLogRetention 按此删旧 day 文件)。 */
-	logRetentionDays: number;
-}
-
-export interface MasterConfig {
-	targetId?: string;
-}
-
-export type FeatureFlags = Record<FeatureKey, boolean>;
-
-export type GuardLevel = 1 | 2 | 3;
-
-export interface TimeRange {
-	start: number;
-	end: number;
-}
-
-export interface ContentFilters {
-	blockForward: boolean;
-	blockArticle: boolean;
-	blockDraw: boolean;
-	blockAv: boolean;
-	blockKeywords: string[];
-	blockRegex: string[];
-	whitelistKeywords: string[];
-	whitelistRegex: string[];
-	minScPrice: number;
-	minGuardLevel: GuardLevel;
-}
-
-export interface ScheduleConfig {
-	pushTime: number;
-	restartPush: boolean;
-	quietHours: TimeRange[];
-	/** 断流接续:下播先等待 N 分钟,期间重开则接续为同一场,超时未重开才判定真下播。 */
-	liveEndGrace: boolean;
-	/** 断流接续等待时长(分钟,1–10);仅 liveEndGrace=true 生效。 */
-	liveEndGraceMinutes: number;
-}
-
-export interface GuardEntry {
-	imageUrl: string;
-	template: string;
-}
-
-export interface GuardBundle {
-	/** false = 默认上舰图;true = 用下方三档自定义 template + imageUrl。 */
-	enable: boolean;
-	captain: GuardEntry;
-	commander: GuardEntry;
-	governor: GuardEntry;
-}
-
-export interface TemplateBundle {
-	liveStart: string;
-	liveOngoing: string;
-	liveEnd: string;
-	liveSummary: string;
-	/** 非视频动态推送文案模板。变量 {name} / {url}。 */
-	dynamic: string;
-	/** 视频投稿推送文案模板。变量 {name} / {url}。 */
-	dynamicVideo: string;
-	/** 弹幕词云额外停用词,英文逗号分隔,追加到内置中文停用词表后再分词。 */
-	wordcloudStopWords: string;
-	specialDanmaku: string;
-	specialUserEnter: string;
-	guardBuy: GuardBundle;
-}
-
-export interface AIPersona {
-	name: string;
-	addressUser: string;
-	addressSelf: string;
-	traits: string;
-	catchphrase: string;
-	baseRole: string;
-	extraSystemPrompt: string;
-}
-
-export interface AIPreset {
-	id: string;
-	label: string;
-	persona: AIPersona;
-	dynamicPrompt?: string;
-	liveSummaryPrompt?: string;
-}
-
-export interface AISettings {
-	enabled: boolean;
-	baseUrl?: string;
-	apiKey?: string;
-	model: string;
-	temperature: number;
-	persona: AIPersona;
-	dynamicPrompt: string;
-	liveSummaryPrompt: string;
-	presets: AIPreset[];
-}
-
-export interface CardStyle {
-	enabled: boolean;
-	cardColorStart: string;
-	cardColorEnd: string;
-	font: string;
-	/** 直播卡数据区显示项(人气·点赞 / 分区 / 粉丝数据)。镜像 `CardStyleSchema.show*`,默认全开。 */
-	showPopularity: boolean;
-	showArea: boolean;
-	showFans: boolean;
-	/** 自定义卡片背景图资产 id 列表;空 = 渐变,>1 = 轮换。镜像 `CardStyleSchema.backgroundImages`。 */
-	backgroundImages: string[];
-	/** 玻璃片透明度 0..1;可选,未设时各卡用内置基线。镜像 `CardStyleSchema.glassOpacity`。 */
-	glassOpacity?: number;
-	/** 完全透明:内容层透明 + 无模糊(与 glassOpacity 二选一)。镜像 `CardStyleSchema.glassClear`。 */
-	glassClear: boolean;
-}
-
-/** 卡片类型 —— 按类型分别配置样式 / 背景。镜像 `internal` 的 CardKind。 */
-export type CardKind = "live" | "dynamic" | "sc" | "guard";
-
-/** 各类型对基准 cardStyle 的字段级覆盖;缺某类型 = 跟随基准。镜像 `CardStyleByKindSchema`。 */
-export type CardStyleByKind = Partial<Record<CardKind, Partial<CardStyle>>>;
-
-/**
- * DYNAMIC_TYPE_DRAW 图集图片推送行为。`enable` 决定是否在文本/卡片之后附加一组
- * 原图;`forward` 在 `enable=true` 时决定走「合并转发卡片」还是「普通多图」(单图
- * 永远不走合并转发,engine 端守卫)。两个字段都可 per-UP 覆盖。
- */
-export interface ImageGroupSettings {
-	enable: boolean;
-	forward: boolean;
-}
-
-export interface GlobalDefaults {
-	features: FeatureFlags;
-	filters: ContentFilters;
-	schedule: ScheduleConfig;
-	templates: TemplateBundle;
-	ai: AISettings;
-	cardStyle: CardStyle;
-	/** 按卡片类型的样式覆盖(可选,默认 {});各类型叠在 cardStyle 基准上。 */
-	cardStyleByKind?: CardStyleByKind;
-	cardLayout: CardLayoutFull;
-	/** 消息版式(发送侧结构):动态 / 开播两套,块序 + 分条符 + 分隔符。 */
-	messageLayout: MessageLayoutFull;
-	imageGroup: ImageGroupSettings;
-}
-
-export interface GlobalConfig {
-	app: AppConfig;
-	master: MasterConfig;
-	defaults: GlobalDefaults;
-}
+/** AI preset 单项(internal 里内联在 AISettings.presets,未单独导出)。 */
+export type AIPreset = AISettings["presets"][number];
 
 /** Patch payload for /api/globals — deeply partial; server merges + revalidates. */
 type DeepPartial<T> = T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;

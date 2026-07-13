@@ -100,7 +100,11 @@ live   (恒造)                        → LiveEngine({ api, push, store, conten
 
 ## 独立端模块图(`apps/`)
 
-两个子包共用根 pnpm workspace:`apps/server`(Hono HTTP + WS,单 tsdown bundle 到 `apps/server/lib/index.mjs`)、`apps/web`(Vite + React 19 + Tailwind 4 + tanstack-query + zustand + react-router-dom;图表是手绘 SVG,无图表库;prod 由 `apps/server` 当静态资源服务)。
+三个子包共用根 pnpm workspace:`apps/server`(Hono HTTP + WS,单 tsdown bundle 到 `apps/server/lib/index.mjs`)、`apps/web`(Vite + React 19 + Tailwind 4 + tanstack-query + zustand + react-router-dom;图表是手绘 SVG,无图表库;prod 由 `apps/server` 当静态资源服务)、`apps/contract`(`@bilibili-notify/contract`,独立端 REST/WS wire 契约)。
+
+### `apps/contract`
+
+独立端两端共同消费的 **wire 契约**:REST 响应 DTO(SubscriptionDTO / history / fans / logs / live)+ WS channel 注册表与 envelope。只放纯类型与纯常量、零运行时依赖 —— web 端 `import type` 零成本,server 端可 import 值(CHANNELS / LOG_LEVELS);zod 校验 schema 是服务端职责,留在 apps/server,用契约类型注解防漂移。注意它在 `apps/` 下、不在 `./packages/*` glob 内 —— 根脚本的 packages 预构建过滤器要显式带上 `--filter '@bilibili-notify/contract'`(dev / build:apps / dev:desktop / build:desktop 已配)。
 
 ### `apps/server`
 
@@ -134,9 +138,11 @@ src/
   pages/        Dashboard / Subs / Targets / History / Rules / Cards / Ai / System / Logs
   components/   共享原子组件 + 图标
   hooks/        useAuthChannel / usePushEventsChannel / useAlertChannel / useLogChannel / useStateChannel / ...
-  services/     HTTP client(api.ts)+ 类型化封装(dashboard.ts)
+  services/     HTTP client(api.ts)+ 类型化封装(dashboard.ts,wire 类型 re-export 自 @bilibili-notify/contract)
   store/        zustand 管瞬态 UI 状态;tanstack-query 缓存管服务端状态
-  types/domain.ts  @bilibili-notify/internal schema 的手维护镜像(纯 JSON 消费者,运行时不 import 核心)
+  types/domain.ts  域类型门面:类型 `import type` 自 internal/contract(编译期擦除),值级常量走
+                   `@bilibili-notify/internal/constants` 零依赖子路径(不含 zod,bundle 零增量);
+                   本地只剩 UI 文案 / 工厂函数。手维护镜像与 conformance 护栏测试已随之退役。
 ```
 
 页面级状态归 tanstack-query;WS push 帧经 `setQueryData` 打补丁,实时更新无需额外 HTTP 往返。

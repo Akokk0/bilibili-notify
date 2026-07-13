@@ -124,6 +124,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@bilibili-notify/internal':
+        specifier: workspace:*
+        version: link:../../packages/internal
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -155,12 +158,12 @@ importers:
         specifier: ^5.0.0
         version: 5.0.13(@types/react@19.2.14)(react@19.2.6)
     devDependencies:
+      '@bilibili-notify/api':
+        specifier: workspace:*
+        version: link:../../packages/api
       '@bilibili-notify/contract':
         specifier: workspace:*
         version: link:../contract
-      '@bilibili-notify/internal':
-        specifier: workspace:*
-        version: link:../../packages/internal
       '@tailwindcss/vite':
         specifier: ^4.0.0
         version: 4.3.0(@voidzero-dev/vite-plus-core@0.2.4(@types/node@22.19.18)(esbuild@0.27.7)(jiti@2.7.0)(sass@1.99.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.9.0))
