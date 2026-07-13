@@ -18,7 +18,14 @@
 	"main": "./lib/index.cjs",
 	"types": "./lib/index.d.cts",
 	"exports": {
-		".": "./lib/index.cjs",
+		".": {
+			"import": "./lib/index.mjs",
+			"require": "./lib/index.cjs"
+		},
+		"./constants": {
+			"import": "./lib/constants.mjs",
+			"require": "./lib/constants.cjs"
+		},
 		"./package.json": "./package.json"
 	},
 	"scripts": {
@@ -31,5 +38,6 @@
 	},
 	"engines": {
 		"node": ">=20.0.0"
-	}
+	},
+	"module": "./lib/index.mjs"
 }

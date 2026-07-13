@@ -1,5 +1,11 @@
 import { z } from "zod";
+import { FEATURE_KEYS } from "../constants";
 import { checkUserRegex } from "../util/regex-safety";
+
+export type { FeatureKey } from "../constants";
+// 值与类型的单一来源在 ../constants(零依赖,供前端经 /constants 子路径运行时消费);
+// 这里重导出维持根入口的既有 API 面,后端消费者无感。
+export { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../constants";
 
 /** blockRegex/whitelistRegex 的单元素校验:保存期即拦非法 / 超长 / 疑似 ReDoS 正则。 */
 const UserRegexString = z.string().superRefine((src, ctx) => {
@@ -7,21 +13,8 @@ const UserRegexString = z.string().superRefine((src, ctx) => {
 	if (!r.ok) ctx.addIssue({ code: "custom", message: r.reason });
 });
 
-/** 全部可订阅的特性键。新增或删除会扩散到 FeatureFlags、SubscriptionRouting、Subscription.overrides。 */
-export const FeatureKeySchema = z.enum([
-	"dynamic",
-	"live",
-	"liveEnd",
-	"liveGuardBuy",
-	"superchat",
-	"wordcloud",
-	"liveSummary",
-	"specialDanmaku",
-	"specialUserEnter",
-]);
-export type FeatureKey = z.infer<typeof FeatureKeySchema>;
-
-export const FEATURE_KEYS = FeatureKeySchema.options;
+/** 全部可订阅的特性键(键列表本体在 ../constants)。 */
+export const FeatureKeySchema = z.enum(FEATURE_KEYS);
 
 /** 每个特性的开关；使用 record 而非 z.record(boolean) 是为了让 inherit-merge 时类型保留键名。 */
 export const FeatureFlagsSchema = z.object({
@@ -302,19 +295,6 @@ export const CardStyleByKindSchema = z.object({
 	guard: CardStylePartialSchema.optional(),
 });
 export type CardStyleByKind = z.infer<typeof CardStyleByKindSchema>;
-
-/** 默认全局值；resolve() 在 per-UP overrides 缺失字段时回退到这里。 */
-export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
-	dynamic: true,
-	live: true,
-	liveEnd: true,
-	liveGuardBuy: false,
-	superchat: false,
-	wordcloud: true,
-	liveSummary: true,
-	specialDanmaku: false,
-	specialUserEnter: false,
-};
 
 export const DEFAULT_CONTENT_FILTERS: ContentFilters = {
 	blockForward: false,
