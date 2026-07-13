@@ -2,7 +2,6 @@ import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import type { Logger, MessageKindLayout, ServiceContext } from "@bilibili-notify/internal";
 import { GuardLevel, type MessageListener } from "blive-message-listener";
-import type protobuf from "protobufjs";
 import type { LiveContentBuilder } from "./content-builder";
 import type { DanmakuCollector } from "./danmaku-collector";
 import type { LiveSummaryRequester } from "./live-summary-requester";
@@ -169,14 +168,6 @@ export class RoomContextBase {
 	private disposed = false;
 	/** stopMonitoring 主动关闭 listener 时置位;RoomSession.onClose 消费后不做自愈重连。 */
 	private readonly intentionalCloseRooms = new Set<string>();
-	/** Cached protobuf type for INTERACT_WORD_V2 decoding (lazy-loaded). */
-	protected interactWord?: protobuf.Type;
-	/**
-	 * Set once the proto load/lookup has failed (missing/invalid
-	 * `proto/interact_word.proto`) so we degrade gracefully instead of
-	 * re-attempting + error-spamming on every INTERACT_WORD_V2 frame.
-	 */
-	protected interactWordUnavailable = false;
 	private readonly instanceId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 	constructor(opts: RoomContextOptions) {

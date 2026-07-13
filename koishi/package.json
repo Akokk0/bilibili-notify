@@ -85,16 +85,6 @@
 	"inlinedDependencies": {
 		"@jridgewell/sourcemap-codec": "1.5.5",
 		"@koishijs/plugin-help": "2.4.6",
-		"@protobufjs/aspromise": "1.1.2",
-		"@protobufjs/base64": "1.1.2",
-		"@protobufjs/codegen": "2.0.5",
-		"@protobufjs/eventemitter": "1.1.0",
-		"@protobufjs/fetch": "1.1.0",
-		"@protobufjs/float": "1.0.2",
-		"@protobufjs/inquire": "1.1.1",
-		"@protobufjs/path": "1.1.2",
-		"@protobufjs/pool": "1.1.0",
-		"@protobufjs/utf8": "1.1.1",
 		"@unocss/core": "66.6.8",
 		"@unocss/extractor-arbitrary-variants": "66.6.8",
 		"@unocss/preset-wind4": "66.6.8",
@@ -133,10 +123,7 @@
 		"node-fetch": "2.7.0",
 		"openai": "4.104.0",
 		"pngjs": "5.0.0",
-		"protobufjs": [
-			"7.5.7",
-			"8.0.0"
-		],
+		"protobufjs": "8.0.3",
 		"qrcode": "1.5.4",
 		"tiny-bilibili-ws": "1.0.2",
 		"tr46": "0.0.3",

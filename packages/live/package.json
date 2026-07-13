@@ -38,12 +38,10 @@
 		"@bilibili-notify/internal": "workspace:^",
 		"blive-message-listener": "^0.5.4",
 		"jieba-wasm": "^2.4.0",
-		"luxon": "^3.5.0",
-		"protobufjs": "^7.4.0"
+		"luxon": "^3.5.0"
 	},
 	"devDependencies": {
-		"@types/luxon": "^3.4.2",
-		"@types/protobufjs": "^6.0.0"
+		"@types/luxon": "^3.4.2"
 	},
 	"engines": {
 		"node": ">=20.0.0"

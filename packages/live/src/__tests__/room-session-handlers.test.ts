@@ -71,7 +71,6 @@ interface CtxMocks {
 	emitLiveState: ReturnType<typeof vi.fn>;
 	isSubscribed: ReturnType<typeof vi.fn>;
 	hasTargets: ReturnType<typeof vi.fn>;
-	decodeBase64PB: ReturnType<typeof vi.fn>;
 	safeBroadcast: ReturnType<typeof vi.fn>;
 }
 
@@ -99,7 +98,6 @@ function makeCtx(opts?: { customGuardBuyEnabled?: boolean }): { ctx: RoomContext
 		emitLiveState: vi.fn(),
 		isSubscribed: vi.fn(() => false),
 		hasTargets: vi.fn(() => false),
-		decodeBase64PB: vi.fn(async () => ({ uid: "42", uname: "特别用户", msgType: "1" })),
 		safeBroadcast: vi.fn(),
 	};
 	const ctx = {
@@ -132,7 +130,6 @@ function makeCtx(opts?: { customGuardBuyEnabled?: boolean }): { ctx: RoomContext
 		danmakuCollector: { recordDanmaku: m.recordDanmaku, clear: vi.fn(), registerRoom: vi.fn() },
 		isSubscribed: m.isSubscribed,
 		hasTargets: m.hasTargets,
-		decodeBase64PB: m.decodeBase64PB,
 		safeBroadcast: m.safeBroadcast,
 		sendLiveNotifyCard: m.sendLiveNotifyCard,
 		stopMonitoring: m.stopMonitoring,
@@ -753,34 +750,120 @@ describe("RoomSession.handleLiveEnd — 消息版式", () => {
 });
 
 // ---------------------------------------------------------------------------
-// onInteractWordV2
+// onUserAction —— 特别关注用户进房
+//
+// 数据源是 blive 的 onUserAction(action: enter/follow/share/like),不再是
+// INTERACT_WORD_V2 原始帧 + protobuf 解码:后者依赖一份仓库里从未存在的
+// .proto schema,`protobuf.load` 必然抛错降级,该特性实际上从来没生效过。
 // ---------------------------------------------------------------------------
 
-describe("RoomSession.onInteractWordV2", () => {
-	it("特别关注进房使用 internal feature key specialUserEnter 检查目标并推送", async () => {
+function makeSpecialUserSub() {
+	return makeSub({
+		customSpecialUsersEnterTheRoom: {
+			enable: true,
+			specialUsersEnterTheRoom: ["42"],
+			msgTemplate: "进房模板",
+		},
+		target: { specialUserEnter: ["target-1"] },
+	});
+}
+
+/**
+ * blive 把 **四个**上游事件全部汇流进同一个 `onUserAction` 回调:
+ * `INTERACT_WORD_V2` / `INTERACT_WORD`(v1) / `ENTRY_EFFECT` / `LIKE_INFO_V3_CLICK`。
+ * 其中前三个都会产出 `action: "enter"`(ENTRY_EFFECT 是舰长进场特效,parser 里硬编码
+ * 成 "enter"),所以只看 `action` 会让一个舰长身份的特别关注用户进一次房被推两次。
+ * `type` 是唯一能把它们区分开的字段——测试必须建模它,否则这个 bug 测不出来。
+ */
+function enterMsg(uid: number, uname = "特别用户", type = "INTERACT_WORD_V2") {
+	return {
+		type,
+		body: { user: { uid, uname }, action: "enter" as const, timestamp: 1_700_000_000_000 },
+	};
+}
+
+describe("RoomSession.onUserAction", () => {
+	it("特别关注用户进房 → 用 internal feature key specialUserEnter 检查目标并推送", async () => {
 		const { ctx, m } = makeCtx();
 		m.hasTargets.mockImplementation(
 			(_sub: unknown, feature: string) => feature === "specialUserEnter",
 		);
-		const s = new RoomSession(
-			ctx,
-			makeSub({
-				customSpecialUsersEnterTheRoom: {
-					enable: true,
-					specialUsersEnterTheRoom: ["42"],
-					msgTemplate: "进房模板",
-				},
-				target: { specialUserEnter: ["target-1"] },
-			}),
-		) as AnySession;
+		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
 
-		await s.onInteractWordV2({ data: { pb: "encoded" } });
+		await s.onUserAction(enterMsg(42));
 
 		expect(m.hasTargets).toHaveBeenCalledWith(expect.anything(), "specialUserEnter");
-		expect(m.decodeBase64PB).toHaveBeenCalledWith("encoded");
 		expect(m.renderSpecialUserEnter).toHaveBeenCalledTimes(1);
+		expect(m.renderSpecialUserEnter.mock.calls[0]?.[0]?.uname).toBe("特别用户");
 		expect(m.safeBroadcast).toHaveBeenCalledTimes(1);
 		expect(m.safeBroadcast.mock.calls[0]?.[2]).toBe(LivePushType.UserActions);
+	});
+
+	it("uid 是数字 → 与字符串白名单比对时不因类型不符而漏推", async () => {
+		const { ctx, m } = makeCtx();
+		m.hasTargets.mockReturnValue(true);
+		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
+
+		await s.onUserAction(enterMsg(42));
+
+		expect(m.safeBroadcast).toHaveBeenCalledTimes(1);
+	});
+
+	it("非进房动作(关注 / 点赞 / 分享)→ 不推送", async () => {
+		const { ctx, m } = makeCtx();
+		m.hasTargets.mockReturnValue(true);
+		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
+
+		for (const action of ["follow", "like", "share", "unknown"] as const) {
+			const msg = enterMsg(42);
+			await s.onUserAction({ ...msg, body: { ...msg.body, action } });
+		}
+
+		expect(m.safeBroadcast).not.toHaveBeenCalled();
+	});
+
+	it("舰长进场特效(ENTRY_EFFECT)→ 不推送,避免与 INTERACT_WORD_V2 对同一次进房重复推", async () => {
+		const { ctx, m } = makeCtx();
+		m.hasTargets.mockReturnValue(true);
+		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
+
+		// 同一个舰长进一次房,B 站会同时下发 INTERACT_WORD_V2 与 ENTRY_EFFECT,
+		// 两帧都被 blive 解析成 action: "enter" 塞进 onUserAction。
+		await s.onUserAction(enterMsg(42));
+		await s.onUserAction(enterMsg(42, "", "ENTRY_EFFECT"));
+
+		expect(m.safeBroadcast).toHaveBeenCalledTimes(1);
+	});
+
+	it("旧版进房帧(INTERACT_WORD v1)→ 不推送", async () => {
+		const { ctx, m } = makeCtx();
+		m.hasTargets.mockReturnValue(true);
+		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
+
+		await s.onUserAction(enterMsg(42, "特别用户", "INTERACT_WORD"));
+
+		expect(m.safeBroadcast).not.toHaveBeenCalled();
+	});
+
+	it("非特别关注的用户进房 → 不推送", async () => {
+		const { ctx, m } = makeCtx();
+		m.hasTargets.mockReturnValue(true);
+		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
+
+		await s.onUserAction(enterMsg(999, "路人"));
+
+		expect(m.safeBroadcast).not.toHaveBeenCalled();
+	});
+
+	it("没有 specialUserEnter 推送目标 → 不渲染也不推送", async () => {
+		const { ctx, m } = makeCtx();
+		m.hasTargets.mockReturnValue(false);
+		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
+
+		await s.onUserAction(enterMsg(42));
+
+		expect(m.renderSpecialUserEnter).not.toHaveBeenCalled();
+		expect(m.safeBroadcast).not.toHaveBeenCalled();
 	});
 });
 

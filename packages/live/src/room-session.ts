@@ -1,5 +1,10 @@
 import type { Disposable } from "@bilibili-notify/internal";
-import { GuardLevel, type MsgHandler } from "blive-message-listener";
+import {
+	GuardLevel,
+	type Message,
+	type MsgHandler,
+	type UserActionMsg,
+} from "blive-message-listener";
 import { DateTime } from "luxon";
 import { LivePushType } from "./push-like";
 import { GUARD_LEVEL_IMG } from "./room-context";
@@ -14,7 +19,7 @@ import { LiveType } from "./types";
  * Extends {@link RoomSessionBase} (state + lifecycle + transitions) with the
  * {@link MsgHandler} factory and the per-event handlers (`onLiveStart`,
  * `onIncomeDanmu`, `onIncomeSuperChat`, `onGuardBuy`, `onLiveEnd`, `onError`,
- * `onWatchedChange`, `onLikedChange`, plus the `INTERACT_WORD_V2` raw branch).
+ * `onWatchedChange`, `onLikedChange`, `onUserAction`).
  *
  * Each handler reads / mutates the protected state defined on the base.
  * `bootstrap()` (defined on the base) opens the WS connection and arms the
@@ -196,11 +201,9 @@ export class RoomSession extends RoomSessionBase {
 		if (!this.sub.customSpecialUsersEnterTheRoom.enable) return base;
 		return {
 			...base,
-			raw: {
-				INTERACT_WORD_V2: (msg: unknown) => {
-					this.markLiveWsActivity("interact");
-					return this.onInteractWordV2(msg);
-				},
+			onUserAction: (msg) => {
+				this.markLiveWsActivity("interact");
+				return this.onUserAction(msg);
 			},
 		};
 	}
@@ -589,37 +592,44 @@ export class RoomSession extends RoomSessionBase {
 		await this.triggerLiveEnd("ws");
 	}
 
-	private async onInteractWordV2(msg: unknown): Promise<void> {
+	/**
+	 * 特别关注用户进房。
+	 *
+	 * blive 的 `onUserAction` 已解析好 `enter / follow / share / like`,不必再自己
+	 * 订阅原始帧、用 protobuf 解 `data.pb`。旧路径依赖一份仓库里从未存在的 .proto
+	 * schema,`protobuf.load` 必然抛错走降级,该特性实际上从来没生效过。
+	 *
+	 * 但 `onUserAction` 是**四个上游事件的汇流口**:`INTERACT_WORD_V2` /
+	 * `INTERACT_WORD`(v1)/ `ENTRY_EFFECT` / `LIKE_INFO_V3_CLICK`。前三个都会产出
+	 * `action: "enter"` —— 尤其 `ENTRY_EFFECT`(舰长进场特效)在 blive 的 parser 里
+	 * 是**硬编码**成 "enter" 的。只看 `action` 的话,一个舰长身份的特别关注用户进一次
+	 * 房会被推两次(且 ENTRY_EFFECT 的 uname 是从 `copy_writing` 正则抠的,抠不到就是
+	 * 空串)。所以必须用 `type` 锁死到 `INTERACT_WORD_V2` —— 这也正是旧代码原本监听的
+	 * 那一帧。
+	 *
+	 * `body.user.uid` 是 number,而白名单存的是 string,比对前必须转。
+	 */
+	private async onUserAction(msg: Message<UserActionMsg>): Promise<void> {
+		if (msg.type !== "INTERACT_WORD_V2") return;
+		const body = msg.body;
 		if (
 			!this.sub.customSpecialUsersEnterTheRoom.enable ||
 			!this.ctx.hasTargets(this.sub, "specialUserEnter")
 		) {
 			return;
 		}
-		const pb = (msg as { data?: { pb?: unknown } })?.data?.pb;
-		if (typeof pb !== "string") {
-			this.ctx.logger.warn(
-				`[live] INTERACT_WORD_V2 缺少 data.pb 字段，跳过 (room=${this.sub.roomId})`,
-			);
-			return;
-		}
-		const data = await this.ctx.decodeBase64PB(pb);
-		const uid = typeof data.uid === "string" ? data.uid : String(data.uid ?? "");
-		const uname = typeof data.uname === "string" ? data.uname : "";
-		if (
-			data.msgType === "1" &&
-			this.sub.customSpecialUsersEnterTheRoom.specialUsersEnterTheRoom?.includes(uid)
-		) {
-			const text = this.ctx.templateRenderer.renderSpecialUserEnter({
-				template: this.sub.customSpecialUsersEnterTheRoom.msgTemplate,
-				uname,
-				master: this.masterInfo,
-			});
-			this.ctx.safeBroadcast(
-				this.sub.uid,
-				this.ctx.contentBuilder.message([this.ctx.contentBuilder.text(text)]),
-				LivePushType.UserActions,
-			);
-		}
+		if (body.action !== "enter") return;
+		const uid = String(body.user.uid);
+		if (!this.sub.customSpecialUsersEnterTheRoom.specialUsersEnterTheRoom?.includes(uid)) return;
+		const text = this.ctx.templateRenderer.renderSpecialUserEnter({
+			template: this.sub.customSpecialUsersEnterTheRoom.msgTemplate,
+			uname: body.user.uname,
+			master: this.masterInfo,
+		});
+		this.ctx.safeBroadcast(
+			this.sub.uid,
+			this.ctx.contentBuilder.message([this.ctx.contentBuilder.text(text)]),
+			LivePushType.UserActions,
+		);
 	}
 }

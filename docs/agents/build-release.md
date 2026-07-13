@@ -61,7 +61,7 @@ koishi 插件是**自包含单文件产物**:九个 `@bilibili-notify/*` 内部�
 - **`koishi-version-changed.mjs`(快速门)** —— 版本号没动就别启动整条 CI(lint + build + typecheck + test 是分钟级的)。它**不是**安全闸:workflow 被重跑时 `github.event.before` 还是老的,它会再判一次 changed。所以它拿不准时(空 sha / 首次 push)一律放行。
 - **`scripts/publish.mjs`(安全闸)** —— 发布前查 registry,版本已存在就安静跳过。这才是防重复发布的那一道。它同时接住了 changesets 原本兜的 **dist-tag 推导**:`5.0.0-alpha.9` → npm tag `alpha`;`5.0.0` → `latest`,与独立端 `v<VERSION>` tag 同一套心智。
 
-产物构成与体积:插件把内部包**和它们的第三方依赖**(vue / openai / protobufjs / 两个大版本的 cron …)一并内联,tree-shaking 后 `index.cjs` ≈ 4.4MB。两个例外:
+产物构成与体积:插件把内部包**和它们的第三方依赖**(vue / openai / 两个大版本的 cron …)一并内联,tree-shaking 后 `index.cjs` ≈ 2.5MB。两个例外:
 
 - **jieba-wasm** —— 只内联 JS 胶水。它的 npm 包里有四份等大的 wasm(deno / nodejs / web / bundler,共 16MB),external 的话用户全得下载。胶水运行时用 `path.join(__dirname, "jieba_rs_wasm_bg.wasm")` 读二进制,CJS 产物里 `__dirname` 正好是 `lib/` —— 所以 `scripts/copy-jieba-wasm.mjs` 在 pack 后把 nodejs 那一份(3.8MB)拷进去。**这也是只发 CJS 的原因之一**:ESM 里 `__dirname` 是 undefined,会直接 TypeError。
 - **jsdom** —— 保持 external(留在 `dependencies`)。它运行时 `require.resolve("./xhr-sync-worker.js")` 去磁盘上找兄弟文件、还会 fork 子进程,内联后一 require 插件就 MODULE_NOT_FOUND。
