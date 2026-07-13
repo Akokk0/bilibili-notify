@@ -1,4 +1,4 @@
-import type { FansRefreshEntry } from "@bilibili-notify/internal";
+import type { FansResponse } from "@bilibili-notify/contract";
 import { Hono } from "hono";
 import type { RouteDeps } from "./types.js";
 
@@ -10,9 +10,6 @@ import type { RouteDeps } from "./types.js";
  * Bootstrap 阶段(FansPoller 尚未挂上)返回空数组 + 503 体内提示,前端面板
  * 显示"采样中…"。第一轮 tick 完成后切换到 200 + entries。
  */
-export interface FansResponse {
-	entries: FansRefreshEntry[];
-}
 
 export function createFansRoute(deps: RouteDeps): Hono {
 	const app = new Hono();

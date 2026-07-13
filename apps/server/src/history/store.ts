@@ -3,6 +3,7 @@ import { createReadStream } from "node:fs";
 import { mkdir, readdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import type { DailyHistoryCount } from "@bilibili-notify/contract";
 import type {
 	HistoryEntry,
 	HistoryPayload,
@@ -60,13 +61,7 @@ export interface DailyAggregateOptions {
 	now?: Date;
 }
 
-export interface DailyHistoryCount {
-	/** 按 tzOffsetMin 口径的本地日 YYYY-MM-DD。 */
-	d: string;
-	counts: Record<HistorySource, number>;
-	total: number;
-	failures: number;
-}
+// DailyHistoryCount 的类型本体在 @bilibili-notify/contract(web 同源消费)。
 
 export interface HistoryStore {
 	append(input: HistoryAppendInput): Promise<HistoryEntry>;

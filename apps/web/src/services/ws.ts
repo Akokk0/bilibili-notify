@@ -2,17 +2,20 @@
  * Reconnecting WS client for /ws. One socket per `connectWs(...)`; channels are
  * remembered across reconnects so hooks don't have to re-subscribe.
  *
- * Server protocol (apps/server/src/ws/types.ts):
- *   client → server: { type: 'subscribe'|'unsubscribe', channels: ChannelName[] }
- *                    { type: 'ping' | 'pong' }
- *   server → client: { type: ChannelName, event: string, ts, data }
- *                    { type: 'ping'|'pong'|'subscribed'|'unsubscribed'|'error', ... }
+ * Wire 契约(channel 名 / envelope)见 `@bilibili-notify/contract` 的 ws 部分;
+ * 服务端的控制帧校验在 apps/server/src/ws/types.ts。
  */
 
+import type { ChannelName } from "@bilibili-notify/contract";
 import { withDesktopTokenHeader, withDesktopTokenQuery } from "./desktop-token";
 
-export type ChannelName = "auth" | "push-events" | "log" | "state";
+export type { ChannelName };
 
+/**
+ * 收帧的**防御性宽松视图**:hook 层只关心 type/event/data,且不信任服务端
+ * 一定发合法帧(`type: string` 而非 ChannelName 联合)。严格 wire 形状是
+ * contract 的 `ServerEnvelope`。
+ */
 export interface WsEnvelope {
 	type: string;
 	event?: string;

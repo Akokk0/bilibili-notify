@@ -2,6 +2,7 @@ import { createReadStream } from "node:fs";
 import { appendFile, mkdir, readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import type { LogArchiveEntry } from "@bilibili-notify/contract";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import { z } from "zod";
 import { LOG_LEVELS, type LogEntry } from "../ws/types.js";
@@ -30,15 +31,19 @@ export const LOG_FLUSH_INTERVAL_MS = 1_000;
 export const MAX_BATCH = 100;
 const QUERY_CAP = 500;
 
-/** Archived line shape. `args` kept as opaque JSON (already redacted). */
-export const LogArchiveEntrySchema = z.object({
+/**
+ * Archived line shape. `args` kept as opaque JSON (already redacted).
+ * 类型本体在 `@bilibili-notify/contract`(web 同源消费);`z.ZodType` 注解把本
+ * schema 的 parse 输出钉死在契约类型上,两边漂移会在编译期报错。
+ */
+export const LogArchiveEntrySchema: z.ZodType<LogArchiveEntry> = z.object({
 	ts: z.string(),
 	level: z.enum(LOG_LEVELS),
 	name: z.string().optional(),
 	msg: z.string(),
 	args: z.array(z.unknown()).optional(),
 });
-export type LogArchiveEntry = z.infer<typeof LogArchiveEntrySchema>;
+export type { LogArchiveEntry };
 
 export interface LogQuery {
 	/** Restrict to a single `YYYY-MM-DD` day file (date picker). Omit = recent days, newest-first. */

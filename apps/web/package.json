@@ -22,6 +22,7 @@
 		"zustand": "^5.0.0"
 	},
 	"devDependencies": {
+		"@bilibili-notify/contract": "workspace:*",
 		"@bilibili-notify/internal": "workspace:*",
 		"@tailwindcss/vite": "^4.0.0",
 		"@testing-library/dom": "^10.4.1",

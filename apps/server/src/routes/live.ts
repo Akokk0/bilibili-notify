@@ -1,5 +1,5 @@
+import type { LiveListenerSnapshot } from "@bilibili-notify/contract";
 import { Hono } from "hono";
-import type { LiveListenerSnapshot } from "../runtime/engines.js";
 import type { RouteDeps } from "./types.js";
 
 /**
@@ -11,7 +11,6 @@ import type { RouteDeps } from "./types.js";
  * attached yet (early boot, before authSystem is up) the route returns `[]`
  * so the panel renders empty state cleanly.
  */
-export type { LiveListenerSnapshot };
 
 export function createLiveRoute(deps: RouteDeps): Hono {
 	const app = new Hono();

@@ -43,6 +43,12 @@ importers:
         specifier: 4.1.10
         version: 4.1.10(@types/node@22.19.18)(@vitest/browser-preview@4.1.10)(jsdom@26.1.0)(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.32.0)(sass@1.99.0)(tsx@4.21.0)(yaml@2.9.0))
 
+  apps/contract:
+    devDependencies:
+      '@bilibili-notify/internal':
+        specifier: workspace:*
+        version: link:../../packages/internal
+
   apps/desktop:
     devDependencies:
       '@tauri-apps/cli':
@@ -57,6 +63,9 @@ importers:
       '@bilibili-notify/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@bilibili-notify/contract':
+        specifier: workspace:*
+        version: link:../contract
       '@bilibili-notify/dynamic':
         specifier: workspace:*
         version: link:../../packages/dynamic
@@ -146,6 +155,9 @@ importers:
         specifier: ^5.0.0
         version: 5.0.13(@types/react@19.2.14)(react@19.2.6)
     devDependencies:
+      '@bilibili-notify/contract':
+        specifier: workspace:*
+        version: link:../contract
       '@bilibili-notify/internal':
         specifier: workspace:*
         version: link:../../packages/internal

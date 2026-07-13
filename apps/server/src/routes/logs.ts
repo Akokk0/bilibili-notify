@@ -1,7 +1,7 @@
 import { createReadStream, statSync } from "node:fs";
+import type { LogsResponse } from "@bilibili-notify/contract";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
-import type { LogArchiveEntry } from "../logs/store.js";
 import type { RouteDeps } from "./types.js";
 
 /**
@@ -16,10 +16,6 @@ import type { RouteDeps } from "./types.js";
  *   - limit: int   (default 200, capped 500)
  *   - day:   YYYY-MM-DD  (restrict to that day file; omit = recent days)
  */
-
-export interface LogsResponse {
-	entries: LogArchiveEntry[];
-}
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 

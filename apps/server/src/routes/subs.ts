@@ -1,27 +1,16 @@
 import { ensureFollowed } from "@bilibili-notify/api";
+import type { SubscriptionDTO } from "@bilibili-notify/contract";
 import type { CachedProfile, Subscription } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
 import type { RouteDeps } from "./types.js";
 
-/**
- * DTO shape the dashboard expects: persisted config (Subscription) + the
- * externalized runtime fields joined back in. `cachedProfile` comes from
- * SubRuntimeStore (FansPoller-owned); `state` is a constant — its only live
- * field (fansBaseline) is FansPoller-private and never shipped, and the rest
- * (lastDynamicId/lastPushedAt/liveStatus) has no writer anywhere, so a fixed
- * default satisfies apps/web's non-optional `state` type + the always-"unknown"
- * Rules.tsx read without inventing data.
- */
-type SubscriptionDTO = Subscription & {
-	cachedProfile?: CachedProfile;
-	state: { lastPushedAt: Record<string, never>; liveStatus: "unknown" };
-	/** 是否已在 B 站关注该 UP。undefined = 未检查过。没关注 → 收不到动态。 */
-	followed?: boolean;
-	/** followed=false 时的原因,直接展示给用户。 */
-	followError?: string;
-};
+// DTO 形状在 @bilibili-notify/contract(web 同源消费):持久化 Subscription +
+// SubRuntimeStore join 回来的外置运行时字段。`state` 发常量 —— 唯一活字段
+// (fansBaseline)是 FansPoller 私有、永不上线,其余(lastDynamicId/lastPushedAt/
+// liveStatus)无任何写入方,固定默认值即可满足 web 的非可选 `state` 与恒
+// "unknown" 的 Rules.tsx 读取,不算编造数据。
 
 /**
  * `/api/subs` — CRUD on the Subscription[] list.

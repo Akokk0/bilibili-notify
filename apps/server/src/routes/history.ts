@@ -1,5 +1,10 @@
 import { createReadStream, statSync } from "node:fs";
 import { join } from "node:path";
+import type {
+	HistoryDailyResponse,
+	HistoryEntryView,
+	HistoryResponse,
+} from "@bilibili-notify/contract";
 import type { HistorySource } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
@@ -21,25 +26,6 @@ import type { RouteDeps } from "./types.js";
  *   - tzOffset: int minutes, JS getTimezoneOffset() convention (UTC+8 → -480),
  *               clamped [-840,840] — day boundaries follow the CLIENT's zone
  */
-
-export interface HistoryEntryView {
-	id: string;
-	ts: string;
-	source: HistorySource;
-	uid: string;
-	subscriptionId: string;
-	targetIds: string[];
-	ok: boolean;
-	text?: string;
-	imageRef?: string;
-	/** 写入时 snapshot 的 UP 主名称 / 头像;老 entry 无此字段。 */
-	unameSnapshot?: string;
-	uavatarSnapshot?: string;
-}
-
-export interface HistoryResponse {
-	entries: HistoryEntryView[];
-}
 
 const VALID_SOURCES: ReadonlySet<HistorySource> = new Set([
 	"dynamic",
@@ -123,7 +109,7 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 			tzOffsetMin = Math.max(-840, Math.min(840, Math.trunc(n)));
 		}
 		const dailyCounts = await deps.runtime.historyStore.aggregateDaily({ days, tzOffsetMin });
-		return c.json({ days: dailyCounts });
+		return c.json<HistoryDailyResponse>({ days: dailyCounts });
 	});
 
 	// Image attachments. We resolve under the history image dir; reject any

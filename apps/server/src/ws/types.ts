@@ -1,3 +1,4 @@
+import { CHANNELS } from "@bilibili-notify/contract";
 import { z } from "zod";
 
 /**
@@ -5,29 +6,22 @@ import { z } from "zod";
  * over JSON envelopes. Stage 2.3 of the standalone end. See plan §5 (BiliEvents)
  * for the channel ↔ event mapping.
  *
- * Wire format
- * ----------
- * Client → Server (control messages):
- *   { type: 'subscribe',   channels: ['auth', 'state', ...] }
- *   { type: 'unsubscribe', channels: [...] }
- *   { type: 'ping' }
- *   { type: 'pong' }                              (response to server ping)
- *
- * Server → Client:
- *   { type: 'subscribed',   channels: [...] }     (ACK after subscribe)
- *   { type: 'unsubscribed', channels: [...] }
- *   { type: 'pong', ts }                          (response to client ping)
- *   { type: 'ping' }                              (heartbeat)
- *   { type: 'error', message, issues? }           (bad control msg)
- *   { type: <channel>, event, ts, data }          (server-pushed event)
+ * Wire 形状(channel 名 / envelope / LogEntry)的单一来源是
+ * `@bilibili-notify/contract`(web 端同源消费);这里保留服务端职责的部分:
+ * 客户端控制帧的 zod 校验 schema 与心跳/背压参数,并把契约类型重导出给
+ * server 内部的既有 import 路径。
  */
 
-// ---------------------------------------------------------------------------
-// Channel registry
-// ---------------------------------------------------------------------------
-
-export const CHANNELS = ["auth", "push-events", "log", "state"] as const;
-export type ChannelName = (typeof CHANNELS)[number];
+export {
+	CHANNELS,
+	type ChannelName,
+	LOG_LEVELS,
+	type LogEntry,
+	type LogLevel,
+	type ServerControlEnvelope,
+	type ServerEnvelope,
+	type ServerEventEnvelope,
+} from "@bilibili-notify/contract";
 
 export const ChannelNameSchema = z.enum(CHANNELS);
 
@@ -49,28 +43,6 @@ export const MAX_CONTROL_MESSAGE_BYTES = 1024 * 1024; // 1 MiB
 
 /** Per-client send-buffer threshold before we start dropping messages for that client. */
 export const SEND_BACKPRESSURE_THRESHOLD_BYTES = 4 * 1024 * 1024; // 4 MiB
-
-// ---------------------------------------------------------------------------
-// Log channel payload
-// ---------------------------------------------------------------------------
-
-export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
-export type LogLevel = (typeof LOG_LEVELS)[number];
-
-/** Plain-data log entry forwarded onto the `log` WS channel. */
-export interface LogEntry {
-	level: LogLevel;
-	msg: string;
-	args: unknown[];
-	ts: string;
-	/**
-	 * Emitting subsystem name. Base serviceCtx → `"core"`;
-	 * `forSubsystem("dynamic")` → `"dynamic"`. Drives the Logs
-	 * tab's source/subsystem filter. Optional for backward compat — entries
-	 * predating this field (or hand-built in tests) simply have no source facet.
-	 */
-	name?: string;
-}
 
 // ---------------------------------------------------------------------------
 // Client-control schemas (Zod)
@@ -102,25 +74,3 @@ export const ClientControlSchema = z.discriminatedUnion("type", [
 ]);
 
 export type ClientControl = z.infer<typeof ClientControlSchema>;
-
-// ---------------------------------------------------------------------------
-// Server envelope types
-// ---------------------------------------------------------------------------
-
-/** Envelope used for every server-pushed channel event. */
-export interface ServerEventEnvelope<TData = unknown> {
-	type: ChannelName;
-	event: string;
-	ts: string;
-	data: TData;
-}
-
-export interface ServerControlEnvelope {
-	type: "subscribed" | "unsubscribed" | "ping" | "pong" | "error";
-	channels?: ChannelName[];
-	message?: string;
-	issues?: unknown;
-	ts?: string;
-}
-
-export type ServerEnvelope = ServerEventEnvelope | ServerControlEnvelope;

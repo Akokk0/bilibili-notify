@@ -23,6 +23,7 @@ import { join } from "node:path";
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import { CommentaryGenerator } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
+import type { LiveListenerSnapshot } from "@bilibili-notify/contract";
 import {
 	atAllOptsForDynamicKind,
 	DynamicEngine,
@@ -81,17 +82,9 @@ export interface ModuleStatus {
 	ai: boolean;
 }
 
-export interface LiveListenerSnapshot {
-	uid: string;
-	roomId: string;
-	isLive: boolean;
-	title?: string;
-	cover?: string;
-	areaName?: string;
-	startedAt?: string;
-	/** B 站 WATCHED_CHANGE 帧给出的累计观看(预格式化字符串,如 "1.2万")。 */
-	viewers?: string;
-}
+// LiveListenerSnapshot 的 wire 形状在 @bilibili-notify/contract(web 同源消费);
+// 重导出维持包内既有 import 路径。
+export type { LiveListenerSnapshot };
 
 export interface EnginesRuntime extends Disposable {
 	readonly dynamic: DynamicEngine;
