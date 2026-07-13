@@ -88,6 +88,61 @@ export interface FansResponse {
 	entries: FansRefreshEntry[];
 }
 
+// ---- 测试推送类端点(/api/push /api/cards /api/ai) --------------------------
+
+/** `POST /api/push/:targetId/test` 响应;cards/test-push 与它同形。 */
+export interface TestResponse {
+	ok: boolean;
+	latencyMs: number;
+	err?: string;
+}
+
+/** `POST /api/cards/test-push` 响应 —— 与 push 的 TestResponse 同形。 */
+export interface TestPushResponse {
+	ok: boolean;
+	latencyMs: number;
+	err?: string;
+}
+
+/** `POST /api/ai/test-push` 响应 —— TestPushResponse 多一个 `reply` 供页面回显。 */
+export interface AiTestPushResponse {
+	ok: boolean;
+	latencyMs: number;
+	reply?: string;
+	err?: string;
+}
+
+/** `POST /api/cards/preview` 响应。 */
+export interface PreviewResponse {
+	ok: boolean;
+	dataUrl?: string;
+	err?: string;
+}
+
+// ---- /api/qq ----------------------------------------------------------------
+
+/** `GET /api/qq/sessions/:adapterId` 单条 —— 网关入站事件捞到的群/C2C 会话。 */
+export interface QQDiscoveredEntry {
+	scope: "group" | "private";
+	/** group_openid(群)或用户 openid(C2C)。 */
+	openid: string;
+	/** 触发者用户名等展示提示 —— 群事件不带群名,只能靠它给用户辨认。 */
+	displayHint?: string;
+	/** 最近见到时间戳(ms)。 */
+	lastSeenMs: number;
+}
+
+// ---- /api/backup ------------------------------------------------------------
+
+/** What an import did — or, under `dryRun`, what it *would* do. */
+export interface ImportResult {
+	subscriptions: { upserted: number; deleted: number };
+	adapters: { upserted: number; deleted: number };
+	targets: { upserted: number; deleted: number };
+	globalsApplied: boolean;
+	cookiesRestored: boolean;
+}
+
 // ---- /api/live -------------------------------------------------------------
 
 /** `GET /api/live/listening` 的单房间条目,由 LiveEngine 的 per-session 快照投影。 */

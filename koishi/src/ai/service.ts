@@ -14,12 +14,6 @@ import type { TargetRegistry } from "../push/target-registry";
 import { makeKoishiServiceContext } from "../runtime/service-context";
 import { buildSubManagement } from "./sub-mgmt";
 
-export {
-	buildSubManagement,
-	type SubMgmtRegistryLike,
-	type SubMgmtStoreLike,
-} from "./sub-mgmt";
-
 const SERVICE_NAME = "bilibili-notify-ai";
 
 export interface BilibiliNotifyAIDeps {

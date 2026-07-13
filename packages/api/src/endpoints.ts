@@ -27,7 +27,6 @@ export const MODIFY_RELATION = "https://api.bilibili.com/x/relation/modify";
  */
 export const GET_RELATIONS = "https://api.bilibili.com/x/relation/relations";
 export const CREATE_GROUP = "https://api.bilibili.com/x/relation/tag/create";
-export const MODIFY_GROUP_MEMBER = "https://api.bilibili.com/x/relation/tags/addUsers";
 export const GET_ALL_GROUP = "https://api.bilibili.com/x/relation/tags";
 export const COPY_USER_TO_GROUP = "https://api.bilibili.com/x/relation/tags/copyUsers";
 export const GET_RELATION_GROUP_DETAIL = "https://api.bilibili.com/x/relation/tag";

@@ -73,16 +73,3 @@ export function onWsEvent(handler: (env: WsEnvelope) => void): () => void {
 		eventHandlers.delete(handler);
 	};
 }
-
-export function onWsStatus(handler: (status: WsStatus) => void): () => void {
-	statusHandlers.add(handler);
-	handler(client ? client.status() : lastStatus);
-	ensure();
-	return () => {
-		statusHandlers.delete(handler);
-	};
-}
-
-export function getWsStatus(): WsStatus {
-	return client ? client.status() : lastStatus;
-}

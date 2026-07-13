@@ -346,50 +346,6 @@ export function StatsBar({ data, height = 80 }: { data: StatsBarDatum[]; height?
 	);
 }
 
-// ── Donut ──────────────────────────────────────────────────────────────────
-
-export interface DonutProps {
-	value: number;
-	size?: number;
-	color?: string;
-	track?: string;
-	stroke?: number;
-	label?: ReactNode;
-}
-
-export function Donut({
-	value,
-	size = 64,
-	color = "#FB7299",
-	track = "#f0f0f0",
-	stroke = 8,
-	label,
-}: DonutProps) {
-	const r = (size - stroke) / 2;
-	const c = 2 * Math.PI * r;
-	return (
-		<div className="relative shrink-0" style={{ width: size, height: size }}>
-			<svg width={size} height={size} aria-hidden="true" focusable="false">
-				<circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={stroke} />
-				<circle
-					cx={size / 2}
-					cy={size / 2}
-					r={r}
-					fill="none"
-					stroke={color}
-					strokeWidth={stroke}
-					strokeDasharray={`${c * value} ${c}`}
-					strokeLinecap="round"
-					transform={`rotate(-90 ${size / 2} ${size / 2})`}
-				/>
-			</svg>
-			<div className="absolute inset-0 flex flex-col items-center justify-center text-[11px] font-bold leading-tight text-bn-text-primary">
-				{label ?? `${Math.round(value * 100)}%`}
-			</div>
-		</div>
-	);
-}
-
 // ── Section / Row (used by drawer + dashboard panels) ─────────────────────
 
 export function Section({ label, children }: { label: string; children: ReactNode }) {

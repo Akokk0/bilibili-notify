@@ -7,7 +7,7 @@
  */
 
 /** scope 取下一张背景:空列表→undefined,单图→该图(不推进),多图→顺序轮换并推进游标。 */
-export type PickCardBackground = (scopeKey: string, images: string[]) => string | undefined;
+type PickCardBackground = (scopeKey: string, images: string[]) => string | undefined;
 
 export interface CardBgRotator {
 	pick: PickCardBackground;

@@ -1,12 +1,12 @@
 import { Schema } from "koishi";
 
 /** 免打扰时段:落进任一区间内的推送直接丢弃,粒度按「时」,半开区间 [start, end)。 */
-export interface QuietHourRange {
+interface QuietHourRange {
 	start: number;
 	end: number;
 }
 
-export interface MasterConfig {
+interface MasterConfig {
 	enable: boolean;
 	platform?: string;
 	masterAccount?: string;

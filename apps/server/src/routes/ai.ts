@@ -1,4 +1,5 @@
 import { CommentaryGenerator } from "@bilibili-notify/ai";
+import type { AiTestPushResponse } from "@bilibili-notify/contract";
 import { AISettingsSchema, type NotificationPayload } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -19,13 +20,7 @@ const TestPushRequestSchema = z.object({
 	ai: AISettingsSchema,
 });
 
-/** 与 `/api/cards/test-push` 的 TestPushResponse 同形,多一个 `reply` 供页面回显。 */
-export interface AiTestPushResponse {
-	ok: boolean;
-	latencyMs: number;
-	reply?: string;
-	err?: string;
-}
+// AiTestPushResponse 在 @bilibili-notify/contract(web 同源消费)。
 
 export function createAiRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
@@ -88,7 +83,7 @@ export function createAiRoute(deps: RouteDeps): Hono {
  * 与 `globals.ts` 的 `stripRedactedSecrets` 同一约定,共用同一个哨兵常量 —— 这个
  * magic string 只能有一个定义处。
  */
-export function resolveDraftApiKey(draft: string | undefined, stored: string | undefined): string {
+function resolveDraftApiKey(draft: string | undefined, stored: string | undefined): string {
 	if (draft === REDACTED_API_KEY) return stored ?? "";
 	return draft ?? "";
 }

@@ -42,14 +42,14 @@ export interface HistoryAppendInput {
 	uavatarSnapshot?: string;
 }
 
-export interface HistoryQuery {
+interface HistoryQuery {
 	limit?: number;
 	since?: string;
 	source?: HistorySource;
 	uid?: string;
 }
 
-export interface DailyAggregateOptions {
+interface DailyAggregateOptions {
 	/** 窗口天数(含今天),调用方负责 clamp。 */
 	days: number;
 	/**

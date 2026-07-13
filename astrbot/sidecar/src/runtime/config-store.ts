@@ -32,7 +32,7 @@ const PAIRING_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 export type AstrBotConfigScope = Exclude<ConfigScope, "secrets">;
 
-export interface AstrBotConfigScopeSnapshot {
+interface AstrBotConfigScopeSnapshot {
 	readonly count?: number;
 	readonly path: string;
 }

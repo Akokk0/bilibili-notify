@@ -31,7 +31,7 @@ import type { RouteDeps } from "./routes/types.js";
 import type { AppRuntime } from "./runtime/bootstrap.js";
 import type { StandalonePuppeteer } from "./runtime/puppeteer.js";
 
-export interface BasicAuthCredentials {
+interface BasicAuthCredentials {
 	username: string;
 	password: string;
 }

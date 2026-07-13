@@ -70,7 +70,7 @@ export interface SidecarHttpRuntime {
 	pushTest(targetId: string, payload: NotificationPayload): Promise<DeliveryResult>;
 }
 
-export type SnapshotProvider = () => SidecarSnapshot;
+type SnapshotProvider = () => SidecarSnapshot;
 
 export interface SidecarHttpServerOptions {
 	readonly getSnapshot: SnapshotProvider;
@@ -85,7 +85,7 @@ export function createSidecarHttpServer(options: SidecarHttpServerOptions): Serv
 	return createServer(createSidecarRequestListener(options));
 }
 
-export function createSidecarRequestListener(options: SidecarHttpServerOptions) {
+function createSidecarRequestListener(options: SidecarHttpServerOptions) {
 	return (req: IncomingMessage, res: ServerResponse): void => {
 		void handleSidecarRequest(req, res, options).catch((error) => {
 			console.error("[astrbot] sidecar http request failed:", redactError(error));

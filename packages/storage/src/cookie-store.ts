@@ -20,7 +20,7 @@ export interface CookieData {
  * to a fresh QR login. This is a deliberate one-time re-login, not data loss
  * the user can avoid (the legacy random key gave ~no real protection anyway).
  *
- * IO-error policy (P1 hardening, mirrors {@link import("../../apps/server/src/config/secret-store")}):
+ * IO-error policy (P1 hardening, mirrors apps/server's config/secret-store):
  * file ABSENT (`ENOENT`) → `null` (legit first run); file PRESENT but
  * undecryptable → `null` + warn (by-design re-login); file PRESENT but
  * unreadable (`EACCES`/`EIO`/…) → THROW. A transient read failure must not

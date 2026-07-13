@@ -1,3 +1,4 @@
+import type { QQDiscoveredEntry, TestResponse } from "@bilibili-notify/contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Btn, PlatformIcon, platformLabel, StatusDot, Toggle } from "../components/atoms";
@@ -990,12 +991,6 @@ function TargetSessionFields({
 
 // ── QQ 官方机器人选择器 ───────────────────────────────────────────────────────
 
-interface QQDiscoveredEntry {
-	scope: "group" | "private";
-	openid: string;
-	displayHint?: string;
-	lastSeenMs: number;
-}
 interface QQGuildChannelView {
 	channelId: string;
 	name: string;
@@ -1296,12 +1291,6 @@ function AdapterRail({
 }
 
 // ── Page ────────────────────────────────────────────────────────────────────
-
-interface TestResponse {
-	ok: boolean;
-	latencyMs: number;
-	err?: string;
-}
 
 export default function Targets() {
 	const qc = useQueryClient();

@@ -50,7 +50,7 @@ import type { ConfigSecrets, SecretStore } from "./secret-store.js";
  * Recursive partial. We use this for `patchGlobals` so callers can send a
  * deeply-nested subset of GlobalConfig and we merge it onto the current state.
  */
-export type DeepPartial<T> =
+type DeepPartial<T> =
 	T extends Array<infer _U> ? T : T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;
 
 /** Per-scope metadata exposed via `/api/health/details`. */

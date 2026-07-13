@@ -1,6 +1,6 @@
 import { useCallback, useRef } from "react";
 
-export interface LongPressPoint {
+interface LongPressPoint {
 	x: number;
 	y: number;
 }

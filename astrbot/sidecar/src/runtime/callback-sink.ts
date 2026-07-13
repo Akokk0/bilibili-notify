@@ -10,7 +10,7 @@ import { serializeNotificationPayload } from "./payload.js";
 
 export const ASTRBOT_ADAPTER_ID = "11111111-1111-4111-8111-111111111112";
 export const ASTRBOT_TARGET_ID = "11111111-1111-4111-8111-111111111111";
-export const ASTRBOT_DEFAULT_UNIFIED_MSG_ORIGIN = "astrbot://default";
+const ASTRBOT_DEFAULT_UNIFIED_MSG_ORIGIN = "astrbot://default";
 
 export const ASTRBOT_PUSH_ADAPTER: AstrBotAdapter = {
 	id: ASTRBOT_ADAPTER_ID,

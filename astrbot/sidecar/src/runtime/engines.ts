@@ -34,7 +34,7 @@ import type { BilibiliPush } from "@bilibili-notify/push";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import type { SidecarServiceContext } from "./platform.js";
 
-export interface SidecarEngineStatus {
+interface SidecarEngineStatus {
 	readonly dynamic: boolean;
 	readonly live: boolean;
 }
@@ -47,7 +47,7 @@ export interface SidecarEnginesRuntime extends Disposable {
 	status(): SidecarEngineStatus;
 }
 
-export interface CommentaryClient {
+interface CommentaryClient {
 	comment(
 		content: string,
 		scene?: AIScene,

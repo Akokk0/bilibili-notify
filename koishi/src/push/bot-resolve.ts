@@ -21,7 +21,7 @@ export interface BotLike {
 	status: number;
 }
 
-export type ResolveReason = "exact" | "fallback" | "ambiguous" | "none";
+type ResolveReason = "exact" | "fallback" | "ambiguous" | "none";
 
 export interface BotResolution<T extends BotLike = BotLike> {
 	/** 解析到的 bot;ambiguous / none 时为 undefined。 */

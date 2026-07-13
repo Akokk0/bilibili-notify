@@ -9,7 +9,7 @@ import type {
 
 export type SidecarLogLevel = "debug" | "info" | "warn" | "error";
 
-export interface SidecarLogEntry {
+interface SidecarLogEntry {
 	readonly level: SidecarLogLevel;
 	readonly name: string;
 	readonly msg: string;

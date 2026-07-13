@@ -143,7 +143,7 @@ export function TNum({ value, onChange, min, max, step = 1, suffix, width = 80 }
 	);
 }
 
-export interface TSelectOption<T extends string = string> {
+interface TSelectOption<T extends string = string> {
 	value: T;
 	label: string;
 }
@@ -229,7 +229,7 @@ export function TColor({ value, onChange }: TColorProps) {
 
 // ── Picker — generic button-group, prefer over TSelect when options ≤ ~5 ─────
 
-export interface PickerOption<T> {
+interface PickerOption<T> {
 	value: T;
 	label: ReactNode;
 	color?: string;
@@ -441,21 +441,4 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 			</button>
 		</div>
 	);
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Immutably set a dot-path on an object (mirrors the design's setNested helper). */
-export function setNested<T>(obj: T, path: string, value: unknown): T {
-	const keys = path.split(".");
-	const next = (Array.isArray(obj) ? [...obj] : { ...(obj as object) }) as T;
-	let cur = next as Record<string, unknown>;
-	for (let i = 0; i < keys.length - 1; i++) {
-		const k = keys[i];
-		const child = cur[k];
-		cur[k] = (Array.isArray(child) ? [...child] : { ...(child as object) }) as unknown;
-		cur = cur[k] as Record<string, unknown>;
-	}
-	cur[keys[keys.length - 1]] = value;
-	return next;
 }

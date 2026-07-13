@@ -8,8 +8,6 @@ import type { CardKind, CardStyle, CardStyleByKind } from "../../types/globals";
 
 export type { CardKind, CardStyleByKind };
 
-export const CARD_KINDS: readonly CardKind[] = ["live", "dynamic", "sc", "guard"];
-
 /** 某类型的生效样式 = 基准 merge 该类型覆盖(字段级,覆盖层未定义的字段继承基准)。 */
 export function resolveKindStyle(
 	base: CardStyle,

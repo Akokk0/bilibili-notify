@@ -27,7 +27,7 @@ import { LOG_LEVELS, type LogEntry } from "../ws/types.js";
  * cleartext secrets and performs no scrubbing itself.
  */
 
-export const LOG_FLUSH_INTERVAL_MS = 1_000;
+const LOG_FLUSH_INTERVAL_MS = 1_000;
 export const MAX_BATCH = 100;
 const QUERY_CAP = 500;
 
@@ -36,16 +36,15 @@ const QUERY_CAP = 500;
  * 类型本体在 `@bilibili-notify/contract`(web 同源消费);`z.ZodType` 注解把本
  * schema 的 parse 输出钉死在契约类型上,两边漂移会在编译期报错。
  */
-export const LogArchiveEntrySchema: z.ZodType<LogArchiveEntry> = z.object({
+const LogArchiveEntrySchema: z.ZodType<LogArchiveEntry> = z.object({
 	ts: z.string(),
 	level: z.enum(LOG_LEVELS),
 	name: z.string().optional(),
 	msg: z.string(),
 	args: z.array(z.unknown()).optional(),
 });
-export type { LogArchiveEntry };
 
-export interface LogQuery {
+interface LogQuery {
 	/** Restrict to a single `YYYY-MM-DD` day file (date picker). Omit = recent days, newest-first. */
 	day?: string;
 	/** Max rows, capped at 500 (mirrors history). */

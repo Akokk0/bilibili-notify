@@ -25,6 +25,7 @@
  */
 
 import type { BilibiliAPI } from "@bilibili-notify/api";
+import type { PreviewResponse, TestPushResponse } from "@bilibili-notify/contract";
 import {
 	type Component,
 	DynamicCard,
@@ -137,11 +138,7 @@ const EnableRenderingSchema = z.object({ chromePath: z.string().min(1) });
 
 type PreviewStyle = z.infer<typeof StyleSchema>;
 
-export interface PreviewResponse {
-	ok: boolean;
-	dataUrl?: string;
-	err?: string;
-}
+// PreviewResponse / TestPushResponse 在 @bilibili-notify/contract(web 同源消费)。
 
 type PreviewKind = z.infer<typeof PreviewRequestSchema>["kind"];
 type PreviewContent = z.infer<typeof ContentSchema>;
@@ -154,13 +151,6 @@ const TestPushRequestSchema = z.object({
 	layout: CardLayoutSchema.optional(),
 	fallback: z.boolean().optional(),
 });
-
-/** /api/cards/test-push 响应 —— 与 push.ts 的 TestResponse 同形。 */
-export interface TestPushResponse {
-	ok: boolean;
-	latencyMs: number;
-	err?: string;
-}
 
 const RENDER_TIMEOUT_MS = 20_000;
 
@@ -186,11 +176,7 @@ export function testPushCaption(kind: PreviewKind): string {
  * `cardStyle.backgroundImages` 与**各卡片类型** `cardStyleByKind[*].backgroundImages`(per-kind)
  * 都算,全局默认 + 各 UP 覆盖两层都扫。返回空数组 = 没人用,可安全删盘。
  */
-export function cardBgReferences(
-	globals: GlobalConfig,
-	subs: Subscription[],
-	id: string,
-): string[] {
+function cardBgReferences(globals: GlobalConfig, subs: Subscription[], id: string): string[] {
 	const inStyle = (style?: { backgroundImages?: string[] }): boolean =>
 		style?.backgroundImages?.includes(id) ?? false;
 	// per-kind 是各类型对基准的覆盖层;任一类型引用即算被引用。
@@ -598,7 +584,7 @@ interface BilibiliEnvelope<T> {
  * per-UP 预览传该 UP 的 uid,后端实时拉真实资料,免依赖 dashboard 端可能缺失的
  * cachedProfile。走 getMasterInfo(与 live 真实渲染同一接口),失败抛 Error。
  */
-export async function resolveMasterInfo(
+async function resolveMasterInfo(
 	api: BilibiliAPI,
 	uid: string,
 ): Promise<{ name: string; face: string }> {

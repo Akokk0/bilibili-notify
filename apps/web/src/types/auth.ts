@@ -24,7 +24,3 @@ export interface LoginSnapshot {
 	msg: string;
 	data?: unknown;
 }
-
-export function isLoggedIn(snap: LoginSnapshot | null | undefined): boolean {
-	return snap?.status === BiliLoginStatus.LOGGED_IN;
-}

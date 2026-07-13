@@ -1,8 +1,8 @@
 import type { MiddlewareHandler } from "hono";
 import { safeEqual } from "./safe-equal.js";
 
-export const DESKTOP_TOKEN_HEADER = "x-bn-desktop-token";
-export const DESKTOP_TOKEN_QUERY = "desktopToken";
+const DESKTOP_TOKEN_HEADER = "x-bn-desktop-token";
+const DESKTOP_TOKEN_QUERY = "desktopToken";
 
 export function createDesktopTokenAuth(expectedToken: string): MiddlewareHandler {
 	return async (c, next) => {

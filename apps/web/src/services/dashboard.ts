@@ -38,7 +38,7 @@ export const historyQueryKey = (limit: number) => ["history", { limit }] as cons
  * DIFFERENT key so the frozen historical view isn't polluted by live frames —
  * same per-key isolation trick as `historyQueryKey(limit)`.
  */
-export const LOGS_LIVE_KEY = "live";
+const LOGS_LIVE_KEY = "live";
 export const logsQueryKey = (day?: string) => ["logs", { day: day ?? LOGS_LIVE_KEY }] as const;
 
 /** Bucket history entries by ISO date (YYYY-MM-DD) and by 4 source families. */

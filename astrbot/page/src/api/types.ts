@@ -18,7 +18,6 @@ export type {
 	FeatureKey,
 	GlobalConfig,
 	LoginSnapshot,
-	PushAdapter,
 	Subscription,
 	SubscriptionOverrides,
 	SubscriptionRouting,
@@ -41,12 +40,6 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
 // 手抄镜像,连 login 的精确类型都只有镜像有 —— 现已把 LoginSnapshot 收紧进
 // sidecar 本体,镜像随之退役。
 import type { SidecarSnapshot } from "@bilibili-notify/astrbot-sidecar/state";
-
-export type {
-	SidecarBusinessSnapshot,
-	SidecarCapabilities,
-} from "@bilibili-notify/astrbot-sidecar/state";
-export type { SidecarSnapshot };
 
 export interface DashboardBootstrap {
 	readonly snapshot: SidecarSnapshot;
@@ -82,7 +75,7 @@ export interface PersonaOption {
 	readonly label: string;
 }
 
-export interface ApiIssue {
+interface ApiIssue {
 	readonly path?: Array<string | number>;
 	readonly message?: string;
 }

@@ -7,7 +7,6 @@ import type {
 } from "../api/types";
 import { FEATURE_KEYS } from "../api/types";
 
-export type DirtyState = "clean" | "dirty" | "saving";
 
 export function cloneConfig<T>(value: T): T {
 	if (typeof structuredClone === "function") return structuredClone(value);
@@ -87,7 +86,7 @@ function isInheritOnlyAi(ai: NonNullable<SubscriptionOverrides["ai"]>): boolean 
 	return Object.keys(ai).every((key) => key === "preset");
 }
 
-export function targetDisplayName(targetId: string, targets: readonly { id: string; name: string }[]): string {
+function targetDisplayName(targetId: string, targets: readonly { id: string; name: string }[]): string {
 	return targets.find((target) => target.id === targetId)?.name ?? targetId.slice(0, 8);
 }
 

@@ -17,7 +17,7 @@ import type { Logger } from "@bilibili-notify/internal";
  * 35 万行总量,5MB 量级 — 几年内不会成为磁盘问题。后续若发现热点可加
  * `retention` pass 截尾 8d。
  */
-export interface FansSample {
+interface FansSample {
 	ts: string;
 	value: number;
 }

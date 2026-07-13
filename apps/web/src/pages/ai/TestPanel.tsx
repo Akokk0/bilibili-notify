@@ -8,6 +8,7 @@
  * 草稿原样送后端;apiKey 若还是 REDACTED 占位,后端会回落到已存的真 key。
  */
 
+import type { AiTestPushResponse as TestPushResponse } from "@bilibili-notify/contract";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Btn } from "../../components/atoms";
@@ -17,14 +18,6 @@ import { Icon } from "../../components/icons";
 import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";
 import type { AISettings } from "../../types/globals";
-
-/** 后端 `AiTestPushResponse` 的镜像。 */
-interface TestPushResponse {
-	ok: boolean;
-	latencyMs: number;
-	reply?: string;
-	err?: string;
-}
 
 const MAX_MESSAGE = 500;
 

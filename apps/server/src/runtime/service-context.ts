@@ -38,7 +38,7 @@ export interface NodeServiceContextOptions {
  * WS layer to feed `logger.<level>(...)` calls onto the `log` channel without the
  * core `Logger` interface having to know anything about WebSockets.
  */
-export interface SubsystemContext extends ServiceContext {
+interface SubsystemContext extends ServiceContext {
 	/**
 	 * Mutate the subsystem's pino level at runtime. Pino exposes `.level`
 	 * as a writeable property; this just forwards. Used by engines.ts when

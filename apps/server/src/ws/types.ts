@@ -18,12 +18,11 @@ export {
 	LOG_LEVELS,
 	type LogEntry,
 	type LogLevel,
-	type ServerControlEnvelope,
 	type ServerEnvelope,
 	type ServerEventEnvelope,
 } from "@bilibili-notify/contract";
 
-export const ChannelNameSchema = z.enum(CHANNELS);
+const ChannelNameSchema = z.enum(CHANNELS);
 
 // ---------------------------------------------------------------------------
 // Heartbeat / size constants — overridable per server for fast tests
@@ -48,21 +47,21 @@ export const SEND_BACKPRESSURE_THRESHOLD_BYTES = 4 * 1024 * 1024; // 4 MiB
 // Client-control schemas (Zod)
 // ---------------------------------------------------------------------------
 
-export const SubscribeMsgSchema = z.object({
+const SubscribeMsgSchema = z.object({
 	type: z.literal("subscribe"),
 	channels: z.array(ChannelNameSchema).min(1),
 });
 
-export const UnsubscribeMsgSchema = z.object({
+const UnsubscribeMsgSchema = z.object({
 	type: z.literal("unsubscribe"),
 	channels: z.array(ChannelNameSchema).min(1),
 });
 
-export const PingMsgSchema = z.object({
+const PingMsgSchema = z.object({
 	type: z.literal("ping"),
 });
 
-export const PongMsgSchema = z.object({
+const PongMsgSchema = z.object({
 	type: z.literal("pong"),
 });
 

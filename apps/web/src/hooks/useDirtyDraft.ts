@@ -105,7 +105,7 @@ export interface SaveFlowHandle {
 }
 
 /** zustand store → SaveFlowHandle。生产路径调它,测试路径可手造 handle。 */
-export function draftStoreHandle(): SaveFlowHandle {
+function draftStoreHandle(): SaveFlowHandle {
 	return {
 		setUiState: (next, msg) => useDraftStore.getState().setUiState(next, msg),
 		getState: () => {

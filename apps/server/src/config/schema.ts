@@ -80,4 +80,3 @@ export const BootstrapConfigSchema = z.object({
 });
 
 export type BootstrapConfig = z.infer<typeof BootstrapConfigSchema>;
-export type PresetPushTarget = z.infer<typeof PresetPushTargetSchema>;

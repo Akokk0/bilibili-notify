@@ -22,7 +22,7 @@ export interface SelfInfoCache {
 	invalidate(): void;
 }
 
-export const DEFAULT_SELF_INFO_TTL_MS = 60_000;
+const DEFAULT_SELF_INFO_TTL_MS = 60_000;
 
 export function createSelfInfoCache(
 	api: { getMyselfInfo(): Promise<MySelfInfoData> },

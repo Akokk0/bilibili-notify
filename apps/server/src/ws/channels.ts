@@ -12,7 +12,7 @@ import { CHANNELS, type ChannelName, type LogEntry, type ServerEventEnvelope } f
  * cheap regardless of dashboard population.
  */
 
-export type ChannelPublisher = (envelope: ServerEventEnvelope) => void;
+type ChannelPublisher = (envelope: ServerEventEnvelope) => void;
 
 export interface ChannelWiringDeps {
 	bus: MessageBus;

@@ -12,9 +12,8 @@ import type {
 	UserSearchResult,
 } from "./types";
 
-export const PLUGIN_NAME = "astrbot_plugin_bilibili_notify";
+const PLUGIN_NAME = "astrbot_plugin_bilibili_notify";
 const PLUGIN_API_ENDPOINT_PREFIX = "api";
-const REDACTED_SECRET = "__BN_REDACTED__";
 const BRIDGE_PROXY_METHOD_KEY = "__bn_proxy_method";
 const BRIDGE_PROXY_BODY_KEY = "__bn_proxy_body";
 const BRIDGE_PROXY_PARAMS_KEY = "__bn_proxy_params";
@@ -78,10 +77,6 @@ export function errorDetails(error: unknown): {
 	}
 	if (error instanceof Error) return { summary: error.message };
 	return { summary: String(error) };
-}
-
-export function redactSecretValue(value: string | undefined): string {
-	return value && value.length > 0 ? REDACTED_SECRET : "";
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {

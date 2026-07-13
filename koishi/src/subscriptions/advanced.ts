@@ -18,8 +18,6 @@ import {
 	type SubscriptionRouting,
 } from "@bilibili-notify/internal";
 
-export { deterministicUuid };
-
 // ---- Type shapes (kept in lock-step with core.ts schema) ----
 
 type ChannelFeatureKey = FeatureKey;
@@ -42,18 +40,18 @@ const UP_FEATURE_KEYS: readonly UpFeatureKey[] = [
  * - per-channel(`ch.dynamicAtAll` / `ch.liveAtAll`,**optional**):显式覆写 →
  *   `Subscription.atAll.X[targetId] = bool`;`undefined` 表示该 target inherit 订阅默认
  */
-export type ChannelConfig = Partial<Record<ChannelFeatureKey, boolean>> & {
+type ChannelConfig = Partial<Record<ChannelFeatureKey, boolean>> & {
 	channelId: string;
 	dynamicAtAll?: boolean;
 	liveAtAll?: boolean;
 };
 
-export interface TargetConfig {
+interface TargetConfig {
 	platform: string;
 	channelArr: ChannelConfig[];
 }
 
-export type MasterFlagMap = Partial<Record<FeatureKey, boolean>>;
+type MasterFlagMap = Partial<Record<FeatureKey, boolean>>;
 
 export type SubItemRawConfig = MasterFlagMap & {
 	uid: string;
@@ -149,13 +147,13 @@ export interface AdvancedSubRawConfigShape {
 
 // ---- Conversion logic ----
 
-export interface ConversionResult {
+interface ConversionResult {
 	sub: Subscription;
 	adapters: PushAdapter[];
 	targets: PushTarget[];
 }
 
-export function rawConfigToSubscription(name: string, raw: SubItemRawConfig): ConversionResult {
+function rawConfigToSubscription(name: string, raw: SubItemRawConfig): ConversionResult {
 	const uid = raw.uid;
 	const subId = deterministicUuid(`sub:${uid}`);
 	const sub = makeEmptySubscription({ id: subId, uid });

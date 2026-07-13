@@ -1,3 +1,4 @@
+import type { TestResponse } from "@bilibili-notify/contract";
 import type { NotificationPayload } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -18,11 +19,7 @@ const TestRequestSchema = z.object({
 	text: z.string().optional(),
 });
 
-export interface TestResponse {
-	ok: boolean;
-	latencyMs: number;
-	err?: string;
-}
+// TestResponse 在 @bilibili-notify/contract(web 同源消费)。
 
 const KIND_TEXTS: Record<z.infer<typeof TestKindSchema>, string> = {
 	live: "[测试推送 · 直播开播] 老番茄 开播了！标题：测试直播",

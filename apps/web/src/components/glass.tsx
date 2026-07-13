@@ -50,38 +50,12 @@ export function GlassPanel({
 	);
 }
 
-export interface PillProps {
-	children: ReactNode;
-	color?: "pink" | "blue" | "green" | "amber" | "red" | "gray";
-	subtle?: boolean;
-	className?: string;
-}
-
-export function Pill({ children, color = "gray", subtle = false, className }: PillProps) {
-	const palette: Record<NonNullable<PillProps["color"]>, [string, string]> = {
-		pink: ["bg-bn-pink/15 text-bn-pink", "bg-bn-pink text-white"],
-		blue: ["bg-bn-blue/15 text-bn-blue", "bg-bn-blue text-white"],
-		green: ["bg-bn-success-soft text-bn-success-text", "bg-emerald-500 text-white"],
-		amber: ["bg-amber-500/15 text-amber-500", "bg-amber-500 text-white"],
-		red: ["bg-bn-danger-soft text-bn-danger-text", "bg-red-500 text-white"],
-		gray: ["bg-bn-surface-muted text-bn-text-tertiary", "bg-bn-text-tertiary text-white"],
-	};
-	const cls = palette[color][subtle ? 0 : 1];
-	return (
-		<span
-			className={`inline-flex items-center gap-1.5 rounded-bn-pill px-2 py-0.5 text-xs font-semibold ${cls} ${className ?? ""}`}
-		>
-			{children}
-		</span>
-	);
-}
-
-export interface PulseDotProps {
+interface PulseDotProps {
 	color?: string;
 	className?: string;
 }
 
-export function PulseDot({ color = "currentColor", className }: PulseDotProps) {
+function PulseDot({ color = "currentColor", className }: PulseDotProps) {
 	return (
 		<span
 			className={`bn-anim-pulse inline-block h-1.5 w-1.5 rounded-full ${className ?? ""}`}
@@ -122,23 +96,5 @@ export function GlassStatCard({ label, value, suffix, color, pulse }: GlassStatC
 				{suffix ? <span className="text-xs text-bn-text-secondary">{suffix}</span> : null}
 			</div>
 		</div>
-	);
-}
-
-export interface ServiceStatusPillProps {
-	online: boolean;
-	label: string;
-}
-
-export function ServiceStatusPill({ online, label }: ServiceStatusPillProps) {
-	return (
-		<span
-			className={`inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-xs font-semibold ${
-				online ? "bg-bn-success-soft text-bn-success-text" : "bg-bn-danger-soft text-bn-danger-text"
-			}`}
-		>
-			<PulseDot color={online ? "#22c55e" : "#ef4444"} />
-			{label}
-		</span>
 	);
 }

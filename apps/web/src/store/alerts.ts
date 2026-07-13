@@ -29,7 +29,7 @@ interface AlertState {
 	clear(): void;
 }
 
-export const MAX_ITEMS = 20;
+const MAX_ITEMS = 20;
 
 let nextId = 1;
 

@@ -32,7 +32,7 @@ const VIEWERS_EMIT_THROTTLE_MS = 2000;
 const RECONNECT_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000] as const;
 
 /** B 站 live WS 静默自愈:每分钟检查一次,3 分钟无 heartbeat/消息即主动重连。 */
-export const LIVE_WS_WATCHDOG_INTERVAL_MS = 60_000;
+const LIVE_WS_WATCHDOG_INTERVAL_MS = 60_000;
 export const LIVE_WS_STALE_MS = 180_000;
 
 type ReconnectReason = "error" | "close" | "watchdog";

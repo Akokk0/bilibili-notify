@@ -64,7 +64,7 @@ export interface BusinessRuntimeOptions {
 	readonly deliveries?: SidecarDeliveryQueue;
 }
 
-export interface BusinessRuntimeSnapshot {
+interface BusinessRuntimeSnapshot {
 	readonly started: boolean;
 	readonly authStarted: boolean;
 	readonly engines: {
@@ -79,7 +79,7 @@ export interface BusinessRuntimeSnapshot {
 	readonly login?: LoginSnapshot;
 }
 
-export interface UserLookupResult {
+interface UserLookupResult {
 	readonly uid: string;
 	readonly name: string;
 	readonly avatar: string;

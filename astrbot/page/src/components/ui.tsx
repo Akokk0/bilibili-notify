@@ -109,7 +109,7 @@ export function Button({
 	);
 }
 
-export function ConfirmDialog({
+function ConfirmDialog({
 	options,
 	onCancel,
 	onConfirm,

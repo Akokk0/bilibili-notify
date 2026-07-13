@@ -1,3 +1,4 @@
+import type { QQDiscoveredEntry } from "@bilibili-notify/contract";
 import type {
 	DeliveryResult,
 	Disposable,
@@ -252,10 +253,7 @@ export function extractQQDiscoveredSession(
 /** 单 adapter 发现列表上限 —— 内存 ring buffer,超出丢最旧(纯便利选择器,不持久化)。 */
 const QQ_DISCOVERY_MAX_PER_ADAPTER = 50;
 
-export interface QQDiscoveredEntry extends QQDiscoveredSession {
-	/** 最近见到时间戳(caller 传入 Date.now,便于测试与排序)。 */
-	lastSeenMs: number;
-}
+// QQDiscoveredEntry(= QQDiscoveredSession + lastSeenMs)在 @bilibili-notify/contract(web 同源消费)。
 
 /**
  * per-adapter「最近活跃会话」发现表 —— 群/C2C 的 openid 只能从入站事件捞,做成内存
@@ -840,7 +838,7 @@ async function qqUploadMedia(
 	return { ok: false, err: verdict.ok ? "上传成功但无 file_info" : verdict.err };
 }
 
-export interface QQGuildChannel {
+interface QQGuildChannel {
 	channelId: string;
 	name: string;
 	/** QQ 子频道类型:0=文字(可发消息),其余(语音/直播/论坛…)推送用不上。 */

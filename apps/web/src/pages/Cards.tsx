@@ -13,6 +13,7 @@
  * they bind to that subscription's overrides, gated by 「覆盖全局」 toggles.
  */
 
+import type { PreviewResponse, TestPushResponse } from "@bilibili-notify/contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Btn, Pill, Toggle } from "../components/atoms";
@@ -114,12 +115,6 @@ const KIND_DESC: Record<CardKind, string> = {
 	sc: "醒目留言 SC",
 	guard: "舰长 / 提督 / 总督",
 };
-
-interface PreviewResponse {
-	ok: boolean;
-	dataUrl?: string;
-	err?: string;
-}
 
 function PreviewImage({
 	kind,
@@ -232,12 +227,6 @@ function CardPreview({
 			frame={frame}
 		/>
 	);
-}
-
-interface TestPushResponse {
-	ok: boolean;
-	latencyMs: number;
-	err?: string;
 }
 
 /**

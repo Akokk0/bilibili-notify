@@ -1,13 +1,8 @@
+import type { ImportResult } from "@bilibili-notify/contract";
 import type { BackupKind } from "./backup-file";
 
-/** 一次导入实际写了什么(dryRun 下是「将会写什么」)。与后端 ImportResult 同形。 */
-export interface ImportResult {
-	subscriptions: { upserted: number; deleted: number };
-	adapters: { upserted: number; deleted: number };
-	targets: { upserted: number; deleted: number };
-	globalsApplied: boolean;
-	cookiesRestored: boolean;
-}
+// ImportResult 的单一来源在 @bilibili-notify/contract(server 同源消费)。
+export type { ImportResult };
 
 /** 这次导入碰到的段里,有没有「凭据被抹空」的东西。 */
 function blankedCredentials(r: ImportResult): string[] {

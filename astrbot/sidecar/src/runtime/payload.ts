@@ -1,6 +1,6 @@
 import type { NotificationPayload, PayloadSegment } from "@bilibili-notify/internal";
 
-export type SerializablePayloadSegment =
+type SerializablePayloadSegment =
 	| { readonly type: "text"; readonly text: string }
 	| { readonly type: "image"; readonly mime: string; readonly base64: string }
 	| { readonly type: "link"; readonly href: string; readonly title?: string }

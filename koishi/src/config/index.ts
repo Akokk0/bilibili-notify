@@ -8,15 +8,6 @@ import { type PushConfig, PushConfigSchema } from "./push";
 import { type RenderConfig, RenderConfigSchema } from "./render";
 import { type SubscriptionsConfig, SubscriptionsConfigSchema } from "./subscriptions";
 
-export type { AccountConfig } from "./account";
-export type { AdvancedSubConfig } from "./advanced-sub";
-export type { AIConfig, PersonaConfig } from "./ai";
-export type { DynamicConfig } from "./dynamic";
-export type { LiveConfig } from "./live";
-export type { MasterConfig, PushConfig, QuietHourRange } from "./push";
-export type { RenderConfig } from "./render";
-export type { FlatSubConfigItem, SubscriptionsConfig } from "./subscriptions";
-
 export interface BilibiliNotifyConfig {
 	account: AccountConfig;
 	push: PushConfig;

@@ -2,7 +2,7 @@ import type { PersonaKey } from "@bilibili-notify/ai";
 import { DEFAULT_AI } from "@bilibili-notify/internal";
 import { Schema } from "koishi";
 
-export interface PersonaConfig {
+interface PersonaConfig {
 	/** 基础人格预设 */
 	preset: PersonaKey;
 	/** AI 名字，留空则跟随预设默认值 */

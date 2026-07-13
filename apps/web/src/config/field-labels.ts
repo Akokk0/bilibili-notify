@@ -472,7 +472,6 @@ export const FIELD_LABELS = {
 } satisfies Record<string, FieldLabel>;
 
 /** 所有已知 code 的联合类型。 */
-export type FieldCode = keyof typeof FIELD_LABELS;
 
 /**
  * 在字典里 lookup;命中则返回 entry,否则返回 `null` 并在开发环境 warn。Field

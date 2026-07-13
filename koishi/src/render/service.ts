@@ -112,4 +112,3 @@ class BilibiliNotifyImage {
 }
 
 export default BilibiliNotifyImage;
-export { BilibiliNotifyImage };

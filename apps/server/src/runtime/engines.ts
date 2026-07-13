@@ -82,10 +82,6 @@ export interface ModuleStatus {
 	ai: boolean;
 }
 
-// LiveListenerSnapshot 的 wire 形状在 @bilibili-notify/contract(web 同源消费);
-// 重导出维持包内既有 import 路径。
-export type { LiveListenerSnapshot };
-
 export interface EnginesRuntime extends Disposable {
 	readonly dynamic: DynamicEngine;
 	readonly live: LiveEngine;

@@ -13,7 +13,6 @@ import {
 	Picker,
 	QuietHoursEditor,
 	TArea,
-	TColor,
 	TInput,
 	TNum,
 } from "../../components/forms";
@@ -21,7 +20,6 @@ import { CollapseBlock, GlassBox } from "../../components/glass-box";
 import { Icon } from "../../components/icons";
 import type { MessageKindLayoutFull } from "../../types/domain";
 import type {
-	CardStyle,
 	ContentFilters,
 	GlobalConfigPatch,
 	GuardBundle,
@@ -768,38 +766,6 @@ export function GuardSection({
 					未启用 · 引擎将默认推送 B 站官方上舰图(舰长 / 提督 / 总督)
 				</div>
 			)}
-		</GlassBox>
-	);
-}
-
-// ── 6. Card style (also rendered on /cards but reused here for parity) ──────
-
-export function CardStyleSection({
-	cardStyle,
-	onPatch,
-}: {
-	cardStyle: CardStyle;
-	onPatch: (delta: GlobalConfigPatch) => void;
-}) {
-	const set = <K extends keyof CardStyle>(k: K, v: CardStyle[K]) =>
-		onPatch({ defaults: { cardStyle: { [k]: v } as Partial<CardStyle> } });
-	return (
-		<GlassBox
-			title="卡片样式"
-			subtitle="image 渲染卡片的渐变 / 底板"
-			accent="#a29bfe"
-			icon={<Icon.sparkle size={14} />}
-			badge="cardStyle"
-		>
-			<FieldRow code="cardColorStart">
-				<TColor value={cardStyle.cardColorStart} onChange={(v) => set("cardColorStart", v)} />
-			</FieldRow>
-			<FieldRow code="cardColorEnd">
-				<TColor value={cardStyle.cardColorEnd} onChange={(v) => set("cardColorEnd", v)} />
-			</FieldRow>
-			<div className="mt-2 rounded border border-dashed bg-[#a29bfe14] p-2 text-[11px] text-bn-text-secondary">
-				per-UP 卡片样式覆盖 → 切换右上 scope 选择 UP 主 → 卡片样式
-			</div>
 		</GlassBox>
 	);
 }

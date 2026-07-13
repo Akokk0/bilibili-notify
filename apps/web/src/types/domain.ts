@@ -38,49 +38,28 @@ export type Subscription = SubscriptionDTO;
 
 export type {
 	AIOverride,
-	AIPersona as AIPersonaShape,
-	CachedProfile,
 	CardBlock as CardBlockFull,
 	// per-UP 卡片版式是「整份覆盖」(fork 全局后编辑),不是 Partial。
 	CardLayout as CardLayoutFull,
-	CardLayout as CardLayoutOverride,
-	CardStyle as CardStyleFull,
-	CardStylePartial as CardStyleOverride,
-	ContentFilters as ContentFiltersFull,
 	ContentFiltersPartial as ContentFiltersOverride,
-	GuardBundle as GuardBundleShape,
-	GuardEntry as GuardEntryShape,
-	GuardLayout as GuardLayoutFull,
-	GuardLevel,
 	ImageGroupSettingsPartial as ImageGroupOverride,
 	MessageBlock as MessageBlockFull,
 	MessageKindLayout as MessageKindLayoutFull,
 	// per-UP 消息版式同 cardLayout:整份覆盖,不是 Partial。
-	MessageLayout as MessageLayoutFull,
 	MessageLayout as MessageLayoutOverride,
 	OnebotAdapterConfig,
 	OnebotSession,
 	OnebotTransport,
-	PushAdapterTestStatus,
 	PushTargetScope,
 	QQOfficialAdapterConfig,
 	QQOfficialBotType,
 	QQOfficialSession,
-	ScheduleConfig as ScheduleFull,
 	ScheduleConfigPartial as ScheduleOverride,
 	SpecialUser,
-	SubscriptionAtAll,
-	SubscriptionAtAllDefaults,
-	SubscriptionOverrides,
 	SubscriptionOverrides as OverridesShape,
 	SubscriptionRouting,
-	SubscriptionState,
-	TemplateBundle as TemplateBundleFull,
 	TemplateBundlePartial as TemplateOverride,
-	TimeRange,
-	WebhookAdapterConfig,
 	WebhookProvider,
-	WebhookSession,
 } from "@bilibili-notify/internal";
 
 /**
@@ -161,11 +140,6 @@ export const KNOWN_PLATFORMS: ReadonlyArray<{ value: PushTargetPlatform; label: 
 	{ value: "qq-official", label: "QQ 官方机器人" },
 	{ value: "webhook", label: "Webhook" },
 ];
-
-export function platformLabel(platform: string): string {
-	const known = KNOWN_PLATFORMS.find((p) => p.value === platform);
-	return known?.label ?? platform;
-}
 
 // ---- Factories --------------------------------------------------------
 

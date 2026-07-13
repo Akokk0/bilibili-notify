@@ -43,7 +43,7 @@ export function encWbi(params: Record<string, string | number | object>, keys: W
 	return `${query}&w_rid=${wbiSign}`;
 }
 
-export function hmacSha256(key: string, message: string): string {
+function hmacSha256(key: string, message: string): string {
 	return createHmac("sha256", key).update(message).digest("hex");
 }
 

@@ -36,7 +36,7 @@ export interface ImportSections {
 	targets?: PushTarget[];
 }
 
-export interface ScopePlan<T> {
+interface ScopePlan<T> {
 	upsert: T[];
 	delete: string[];
 }

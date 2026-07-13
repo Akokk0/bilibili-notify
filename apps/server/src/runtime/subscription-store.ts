@@ -1,4 +1,4 @@
-import type { Disposable, MessageBus, Subscription } from "@bilibili-notify/internal";
+import type { Disposable, MessageBus } from "@bilibili-notify/internal";
 import { createSubscriptionStore, type SubscriptionStore } from "@bilibili-notify/subscription";
 import type { ConfigStore } from "../config/store.js";
 
@@ -40,6 +40,3 @@ export function bindSubscriptionStore(
 		dispose: () => sub.dispose(),
 	};
 }
-
-/** Re-export so callers can type their own params without an extra import. */
-export type { Subscription, SubscriptionStore };

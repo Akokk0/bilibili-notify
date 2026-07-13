@@ -1,3 +1,4 @@
+import type { ImportResult } from "@bilibili-notify/contract";
 import type {
 	GlobalConfig,
 	PushAdapter,
@@ -42,7 +43,7 @@ export interface BackupStore {
 	deleteTarget(id: string): Promise<boolean>;
 }
 
-export interface BackupCookieStore {
+interface BackupCookieStore {
 	load(): Promise<{ cookiesJson: string; refreshToken?: string } | null>;
 	save(data: { cookiesJson: string; refreshToken?: string }): Promise<void>;
 }
@@ -64,14 +65,14 @@ export interface BackupServiceDeps {
 	now?: () => string;
 }
 
-export interface ExportOptions {
+interface ExportOptions {
 	kind: BackupKind;
 	sections?: SectionSelection;
 	pin?: string;
 	createdAt?: string;
 }
 
-export interface ImportOptions {
+interface ImportOptions {
 	envelope: BackupEnvelope;
 	pin?: string;
 	mode: ImportMode;
@@ -83,14 +84,7 @@ export interface ImportOptions {
 	dryRun?: boolean;
 }
 
-/** What an import did — or, under `dryRun`, what it *would* do. */
-export interface ImportResult {
-	subscriptions: { upserted: number; deleted: number };
-	adapters: { upserted: number; deleted: number };
-	targets: { upserted: number; deleted: number };
-	globalsApplied: boolean;
-	cookiesRestored: boolean;
-}
+// ImportResult 在 @bilibili-notify/contract(web 同源消费)。
 
 export interface BackupService {
 	exportBackup(opts: ExportOptions): Promise<BackupEnvelope>;

@@ -310,7 +310,7 @@ const HIGHLIGHT_DURATION_MS = 1000;
  * 滚动到目标 Field(`<Field code="X">` → `[data-code="X"]` 锚点)并加 1s 高亮
  * ring。仅命中当前路由下的第一个匹配(每页 code 不重复)。
  */
-export function scrollToFieldByCode(code: string): void {
+function scrollToFieldByCode(code: string): void {
 	if (typeof document === "undefined") return;
 	const escaped = code.replace(/"/g, '\\"');
 	const node = document.querySelector<HTMLElement>(`[data-code="${escaped}"]`);

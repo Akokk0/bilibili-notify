@@ -44,7 +44,7 @@ interface ToastState {
 	clear(): void;
 }
 
-export const MAX_VISIBLE = 5;
+const MAX_VISIBLE = 5;
 export const AUTO_DISMISS_MS = 5_000;
 
 export const useToastStore = create<ToastState>((set) => ({

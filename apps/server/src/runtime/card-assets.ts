@@ -10,7 +10,7 @@ import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 /** 单张背景图上限 5MB(前端应先压缩;这里是兜底)。 */
-export const MAX_CARD_BG_BYTES = 5 * 1024 * 1024;
+const MAX_CARD_BG_BYTES = 5 * 1024 * 1024;
 
 const MIME_TO_EXT: Record<string, string> = {
 	"image/png": "png",

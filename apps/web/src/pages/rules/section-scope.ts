@@ -26,7 +26,7 @@ export const FILTER_CONTENT_KEYS = [
 ] as const satisfies readonly (keyof ContentFiltersOverride)[];
 
 /** ContentFilters 里属于「直播阈值」域的字段(schedule 另算,不在 filters 切片里)。 */
-export const LIVE_FILTER_KEYS = [
+const LIVE_FILTER_KEYS = [
 	"minScPrice",
 	"minGuardLevel",
 ] as const satisfies readonly (keyof ContentFiltersOverride)[];
