@@ -1076,6 +1076,30 @@ describe("DynamicEngine — applyOps 在 detectDynamics 跨 await 时退订(A7)"
 // C. 生命周期(cron mock)
 // ---------------------------------------------------------------------------
 
+describe("DynamicEngine — reconcileJob 尊重风控退避", () => {
+	it("-352 退避窗口内 applyOps → 不提前重启 cron(退避不被击穿)", async () => {
+		const before = cronMock.instances.length;
+		const b = makeEngine({ subs: { "1": { uid: "1", uname: "UP", dynamic: true } } });
+		b.engine.start(); // cron 实例 #1
+		const afterStart = cronMock.instances.length;
+		expect(afterStart).toBe(before + 1);
+
+		// 进入 -352 风控:handleApiError 停 job(dynamicJob=undefined)并排一次性退避重启
+		// (detectorRestartTimer 置位;fake setTimeout 不触发,故退避一直挂着)。
+		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		await detect(b.engine);
+
+		// 退避窗口内 adapter 收到订阅变更 → applyOps → reconcileJob。subManager 仍非空,
+		// dynamicJob 又是 undefined —— 若只看 dynamicJob?.running 会立即 startJob,提前去戳
+		// 仍在风控的端点,击穿退避。修复后应识别 detectorRestartTimer 待执行而跳过。
+		b.engine.applyOps([
+			{ type: "add", sub: { uid: "2", uname: "UP2", dynamic: true } as SubItemView },
+		]);
+
+		expect(cronMock.instances.length).toBe(afterStart); // 没有新建 cron
+	});
+});
+
 describe("DynamicEngine — 生命周期 / cron 重启", () => {
 	it("start() 有订阅快照 → 建并启动 cron;stop() → 停止", () => {
 		const subs: SubscriptionsView = { "1": { uid: "1", uname: "UP", dynamic: true } };

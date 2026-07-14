@@ -599,7 +599,11 @@ export class DynamicEngine {
 				this.dynamicJob = undefined;
 				this.logger.info("[detector] 订阅清空，动态检测任务已停止");
 			}
-		} else if (!this.dynamicJob?.running) {
+		} else if (!this.dynamicJob?.running && !this.detectorRestartTimer) {
+			// detectorRestartTimer 非空 = 正处于 -352/瞬时错误的退避窗口:job 被 handleApiError
+			// 主动停了、等退避到点再重启。此刻别因 applyOps 就 startJob —— 那会提前去戳仍在
+			// 风控的端点,击穿退避(退避的全部意义就是不放大风控)。到点后 scheduleDetectorRestart
+			// 的回调会用最新快照重启,订阅变更不会丢。
 			this.logger.debug(
 				`[detector] 动态检测 UID 列表：${[...this.dynamicSubManager.keys()].join(", ")}`,
 			);
