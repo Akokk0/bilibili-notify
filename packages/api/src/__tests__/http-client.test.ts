@@ -68,7 +68,7 @@ beforeEach(async () => {
 			} else if (req.url === "/html") {
 				res.setHeader("Content-Type", "text/html");
 				res.end('<html><div id="1-name">refresh_csrf_value</div></html>');
-			} else if (req.url === "/status-412") {
+			} else if (req.url?.split("?")[0] === "/status-412") {
 				res.statusCode = 412;
 				res.setHeader("Content-Type", "text/html");
 				res.end("risk banned");
@@ -177,6 +177,24 @@ describe("BiliHttpClient — 请求/响应语义", () => {
 	it("非 2xx 抛错(等价 axios validateStatus,412 风控页进 retry 路径)", async () => {
 		const client = makeClient();
 		await expect(client.get(`${baseURL}/status-412`)).rejects.toThrow(/412/);
+	});
+
+	it("错误消息不泄漏 URL query 里的凭据(bili_jct / qrcode_key)", async () => {
+		const client = makeClient();
+		// getCookieInfo 等接口把 csrf=bili_jct 拼进 query;非 2xx 时这个 Error 会经
+		// onRetry warn + 上层 catch 落日志。错误消息必须只保留路径,绝不带 query。
+		const err = await client
+			.get(`${baseURL}/status-412?csrf=SECRET_JCT_TOKEN&qrcode_key=SECRET_QR`)
+			.then(
+				() => null,
+				(e: Error) => e,
+			);
+		expect(err).toBeInstanceOf(Error);
+		expect(err?.message).toMatch(/412/); // 仍能看出失败状态
+		expect(err?.message).toContain("/status-412"); // 仍能看出失败端点
+		expect(err?.message).not.toContain("SECRET_JCT_TOKEN");
+		expect(err?.message).not.toContain("SECRET_QR");
+		expect(err?.message).not.toContain("csrf=");
 	});
 
 	it("默认头随请求外发,setHeader 热替换 UA,单次请求头可覆盖", async () => {

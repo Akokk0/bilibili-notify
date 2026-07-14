@@ -116,7 +116,7 @@ export class BiliHttpClient {
 				// body 已不消费,显式取消避免连接占用。
 				await res.body?.cancel();
 				if (hop >= MAX_REDIRECTS) {
-					throw new Error(`重定向超过 ${MAX_REDIRECTS} 跳: ${url}`);
+					throw new Error(`重定向超过 ${MAX_REDIRECTS} 跳: ${urlForLog(url)}`);
 				}
 				currentUrl = new URL(location, currentUrl);
 				// 303(以及历史行为下 301/302 的 POST)降级为 GET 且不重发 body;
@@ -136,7 +136,7 @@ export class BiliHttpClient {
 			if (!res.ok) {
 				// 等价 axios validateStatus 默认:非 2xx 一律异常,进外层 retry。
 				throw new Error(
-					`Request failed with status code ${res.status}: ${currentMethod} ${currentUrl}`,
+					`Request failed with status code ${res.status}: ${currentMethod} ${urlForLog(currentUrl)}`,
 				);
 			}
 			const parsed = tryParseJson(text);
@@ -148,6 +148,24 @@ export class BiliHttpClient {
 
 function isRedirect(status: number): boolean {
 	return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
+
+/**
+ * 用于错误消息/日志的 URL —— **只保留 origin+pathname,剥掉 query**。
+ *
+ * bilibili 多个接口把凭据塞进 query(getCookieInfo 的 `csrf=<bili_jct>`、登录轮询的
+ * `qrcode_key` 等)。而非 2xx / 重定向超限的 Error 会经外层 retry 的 onRetry(warn)
+ * 与调用方 catch 落进日志 —— 原样带 query 等于把加密存储的 bili_jct 明文写进日志,
+ * 用户报 bug 贴日志时泄漏。路径本身足够定位失败端点,query 值对排障无用。
+ */
+function urlForLog(u: string | URL): string {
+	try {
+		const parsed = typeof u === "string" ? new URL(u) : u;
+		return `${parsed.origin}${parsed.pathname}`;
+	} catch {
+		// 相对/不可解析:退回按 `?` 截断,至少不带 query。
+		return String(u).split("?")[0] ?? String(u);
+	}
 }
 
 /** 兼容读取全部 Set-Cookie 行(getSetCookie 需 Node ≥18.14.1;留兜底)。 */
