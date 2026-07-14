@@ -273,9 +273,25 @@ function migrateCardStyle(raw: unknown): unknown {
 export const CardStyleSchema = z.preprocess(migrateCardStyle, CardStyleObjectSchema);
 export type CardStyle = z.infer<typeof CardStyleSchema>;
 
+// `.partial()` 只把字段变可选,**不剥离内层 `.default()`**(与 ContentFilters /
+// ScheduleConfig / TemplateBundle 三个 PartialSchema 同源问题):CardStyleObjectSchema
+// 有 7 个带 default 的字段,per-UP 只覆盖一个字段(如 cardColorStart)时,partial 会把
+// enabled:true / font / showPopularity / showArea / showFans / backgroundImages:[] /
+// glassClear:false 一并注入。resolve() 的 merge(defaults.cardStyle, ov.cardStyle) 视其
+// 为「已覆盖」而盖掉全局自定义值 —— 最严重:全局 enabled=false(关图片渲染)被注入的
+// true 悄悄翻开。故这 7 个在 override 维度必须是「无默认的纯可选」,与全局
+// CardStyleObjectSchema(带 .default 供 globals.json 缺字段回填)分开。
 export const CardStylePartialSchema = z.preprocess(
 	migrateCardStyle,
-	CardStyleObjectSchema.partial(),
+	CardStyleObjectSchema.partial().extend({
+		enabled: z.boolean().optional(),
+		font: z.string().optional(),
+		showPopularity: z.boolean().optional(),
+		showArea: z.boolean().optional(),
+		showFans: z.boolean().optional(),
+		backgroundImages: z.array(z.string()).optional(),
+		glassClear: z.boolean().optional(),
+	}),
 );
 export type CardStylePartial = z.infer<typeof CardStylePartialSchema>;
 
