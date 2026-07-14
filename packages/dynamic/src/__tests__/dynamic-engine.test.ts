@@ -598,6 +598,32 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		expect(b.push.broadcastDynamic.mock.calls[1]?.[2]).toBe("dynamic-images");
 	});
 
+	it("图组发送失败 → 主卡已发出,锚点仍推进(不因附属图组失败而重发主卡 + 重复 @全体)", async () => {
+		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
+		b.getAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({
+					uid: 1,
+					pubTs: 1000,
+					type: "DYNAMIC_TYPE_DRAW",
+					drawItems: ["http://a/x1.jpg", "http://a/x2.jpg"],
+				}),
+			]),
+		);
+		seed(b.engine, "1", 0);
+		// 主卡(第 1 次,kind='dynamic')成功;图组(第 2 次,kind='dynamic-images')失败。
+		// 图组走 forward/NapCat 长消息通道,现实里会 reject(config 注释点名其不稳定)。
+		b.push.broadcastDynamic.mockImplementation(
+			async (_uid: string, _segs: unknown, kind: string) => {
+				if (kind === "dynamic-images") throw new Error("图组通道抖动");
+			},
+		);
+		await detect(b.engine);
+		// 主卡已成功送达 → 锚点必须推进到 pub_ts,否则下轮整条重判、主卡以 kind='dynamic'
+		// 重发,而 dynamic 不抑制 @全体 → 每 tick 重复 @全体,直到动态滚出 feed。
+		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1000);
+	});
+
 	it("P2-A:DRAW 图在 major.draw.items[].src → 不再静默丢图组(此前只读 opus.pics)", async () => {
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
 		b.getAllDynamic.mockResolvedValue(

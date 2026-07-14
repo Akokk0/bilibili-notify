@@ -929,17 +929,28 @@ export class DynamicEngine {
 						const effForward = subForImgs?.imageGroupForward ?? this.config.imageGroup.forward;
 						// 单张图永远不走合并转发(1 张图包成「聊天记录」卡片无意义)。
 						const forward = effForward && images.length > 1;
-						await this.push.broadcastDynamic(
-							uid,
-							[
-								{
-									type: "image-group",
-									forward,
-									images,
-								},
-							],
-							"dynamic-images",
-						);
+						// 图组是主卡的**附属物**,主卡此时已成功发出。它走 forward/NapCat 长消息
+						// 通道(config 注释点名其不稳定),reject 很现实。绝不能让它冒泡到外层
+						// catch → markFail:那会让锚点不前移,下轮整条重判、主卡以 kind='dynamic'
+						// 重发,而 dynamic 不抑制 @全体 → 每 tick 重复 @全体,直到动态滚出 feed。
+						// 与上方屏蔽提示推送(711-721)同源处置:发不出就算了,绝不因此重试。
+						try {
+							await this.push.broadcastDynamic(
+								uid,
+								[
+									{
+										type: "image-group",
+										forward,
+										images,
+									},
+								],
+								"dynamic-images",
+							);
+						} catch (e) {
+							this.logger.warn(
+								`[push] UID=${uid} 图组发送失败(忽略,不重试以免重发主卡): ${(e as Error).message}`,
+							);
+						}
 					}
 				}
 				markOk(uid, postTime);
