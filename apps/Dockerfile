@@ -60,7 +60,9 @@ RUN git init -q . && pnpm install --frozen-lockfile
 
 # 只构建镜像真正消费的三块(旧版 `pnpm -r` 全 workspace 扫一遍,koishi/* 的产物
 # 从未进过 runtime 镜像,纯浪费 CI 时间):
-#   1. packages/*  —— server bundle 的内联输入(vp pack 经各包 exports 解析 lib/)。
+#   1. packages/* + apps/contract —— server/web 的内联输入(vp pack 经各包 exports
+#      解析 lib/)。contract 是独立端专属的 wire 契约包,放在 apps/ 而非 packages/,
+#      故必须显式点名 —— 漏了它 web / server 的构建会 TS2307 解析不到 @bilibili-notify/contract。
 #   2. apps/web    —— dashboard 静态资源。
 #   3. apps/server build:bundle + 装配 —— 自包含单文件 bundle(全部依赖内联),
 #      assemble-server-bundle.mjs 把运行时按路径读取的资产(jieba wasm / jsdom
@@ -69,7 +71,7 @@ RUN git init -q . && pnpm install --frozen-lockfile
 # 看不出在哪,--stream 让各包输出实时刷出。
 # script 里的 `vp` 从根 devDependency(vite-plus)的 node_modules/.bin 解析,
 # builder 无需全局 vp。
-RUN pnpm -r --filter './packages/*' --stream run build
+RUN pnpm -r --filter './packages/*' --filter '@bilibili-notify/contract' --stream run build
 RUN pnpm --filter '@bilibili-notify/web' run build
 RUN pnpm --filter '@bilibili-notify/server' run build:bundle \
     && node scripts/assemble-server-bundle.mjs

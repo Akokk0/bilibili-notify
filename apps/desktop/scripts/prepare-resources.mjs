@@ -171,7 +171,8 @@ async function stageWorkspaceRuntimePackages(nodeModulesRoot) {
 		const name = queue.shift();
 		if (!name || selected.has(name)) continue;
 		const source = workspaceMap.get(name);
-		if (!source) throw new Error(`Workspace dependency ${name} is not under packages/*`);
+		if (!source)
+			throw new Error(`Workspace dependency ${name} not found under packages/* or apps/*`);
 		const manifest = await readJson(join(source, "package.json"));
 		selected.set(name, { source, manifest });
 		for (const dep of dependencyNames(manifest).filter(isWorkspacePackage)) queue.push(dep);
@@ -295,13 +296,17 @@ async function stageThirdPartyPackage(item, searchRoots, targetNodeModules, cont
 }
 
 async function readWorkspacePackageMap() {
-	const packagesDir = join(root, "packages");
 	const result = new Map();
-	for (const entry of await readdir(packagesDir, { withFileTypes: true })) {
-		if (!entry.isDirectory()) continue;
-		const dir = join(packagesDir, entry.name);
-		const manifest = await readJson(join(dir, "package.json"));
-		if (manifest.name?.startsWith(workspaceScope)) result.set(manifest.name, dir);
+	// `@bilibili-notify/*` 的 workspace 包分布在两处:平台中立核心在 packages/*,
+	// 独立端专属的 wire 契约(@bilibili-notify/contract)在 apps/*。两处都扫,否则
+	// server 依赖树里的 contract 会解析不到而抛「not under packages/*」。
+	for (const baseDir of [join(root, "packages"), join(root, "apps")]) {
+		for (const entry of await readdir(baseDir, { withFileTypes: true })) {
+			if (!entry.isDirectory()) continue;
+			const dir = join(baseDir, entry.name);
+			const manifest = await readJson(join(dir, "package.json")).catch(() => null);
+			if (manifest?.name?.startsWith(workspaceScope)) result.set(manifest.name, dir);
+		}
 	}
 	return result;
 }
