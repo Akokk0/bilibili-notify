@@ -58,12 +58,9 @@ type LiveWsActivityReason =
 
 export class RoomSession extends RoomSessionBase {
 	private lastViewersEmitMs = 0;
-	/**
-	 * 当前 RoomSession 是否已被外层(stopForUid / disposeAll / liveEnd 主动关闭)取消。
-	 * 一旦设为 true,onError 跳过重连。listener-manager.stopForUid 在 closeListener
-	 * 之前调用 cancel() 设置。
-	 */
-	private cancelled = false;
+	// cancelled 提升到 RoomSessionBase(protected)—— armPeriodicTimer 的 teardown 守卫
+	// 需要在基类可见。语义不变:stopForUid / disposeAll / liveEnd 主动关闭时经 cancel() 置位,
+	// onError 据此跳过重连。
 	private reconnectAttempts = 0;
 	/**
 	 * L1 单飞守卫:并发 onError(WS 错误常突发多帧)若都进入重连路径,会各自

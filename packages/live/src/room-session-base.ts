@@ -38,6 +38,13 @@ export abstract class RoomSessionBase {
 	protected lastLiveEnd = 0;
 
 	/**
+	 * 外层主动停止(cancel())后置 true。除了挡新重连(子类的 onError/watchdog 守卫),
+	 * 也让 armPeriodicTimer 变 no-op —— teardown 抢在 in-flight onLiveStart/bootstrap
+	 * 的 arm 之前 cancel() 时,不能再挂上孤儿周期 timer。
+	 */
+	protected cancelled = false;
+
+	/**
 	 * 断流接续「挂起中」的等待计时器(内存,服务重启即丢 —— 已与用户约定接受)。非 null
 	 * 即表示该房间正处于「下播待定」窗口:liveStatus 仍 true、弹幕缓冲未清、复推已暂停。
 	 */
@@ -266,6 +273,10 @@ export abstract class RoomSessionBase {
 	}
 
 	protected armPeriodicTimer(): void {
+		// teardown 交错守卫:session 已 cancel() 或 ctx 已 disposed 时绝不 arm ——
+		// 否则 in-flight onLiveStart/bootstrap 恢复后会挂上一个孤儿 setInterval,
+		// session 已从 sessionRecord 删除,interval 却永远 tick(见 timer-guard 测试)。
+		if (this.cancelled || this.ctx.isDisposed()) return;
 		// pushTime 已由 adapter 折算好(per-UP ?? 全局)。0 = 关闭该 UP 的「正在直播」复推。
 		const pushTime = this.sub.pushTime;
 		if (pushTime === 0 || this.pushAtTimeTimer) return;
