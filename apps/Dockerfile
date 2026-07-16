@@ -9,8 +9,15 @@
 #   file: ./apps/Dockerfile
 #
 # Manual build from the repo root:
-#   docker build -f apps/Dockerfile -t bilibili-notify:dev .
+#   docker build -f apps/Dockerfile -t bilibili-notify:dev .            # full(内置 chromium)
+#   docker build -f apps/Dockerfile --target runtime-slim \
+#       -t bilibili-notify:dev-slim .                                   # slim(无 chromium)
 # or via compose (apps/docker-compose.example.yaml).
+#
+# 两个发布 target:
+#   runtime      —— 默认(文件最后一个 stage)。chromium 内置,开箱即用。
+#   runtime-slim —— 无 chromium/字体,体积小得多;卡片渲染需配 BN_CHROME_ENDPOINT
+#                   指向远程浏览器(browserless 伴随容器等),不配则退化为文字推送。
 #
 # Plan deviates from the original "distroless runtime" idea — puppeteer-core
 # requires a Chromium binary, which distroless does not ship.
@@ -76,6 +83,45 @@ RUN pnpm --filter '@bilibili-notify/web' run build
 RUN pnpm --filter '@bilibili-notify/server' run build:bundle \
     && node scripts/assemble-server-bundle.mjs
 
+# ---- runtime-slim -----------------------------------------------------------
+
+# 无 chromium 的精简变体(发布 tag 带 -slim 后缀)。直接基于 node:slim + 一层小 apt
+# (tini/tzdata/ca-certificates,~5MB —— 不值得为它单独维护一个 slim base 镜像;
+# full 变体避开 per-release apt 层是因为那层带 chromium+字体有 ~300MB)。
+# 卡片渲染由 BN_CHROME_ENDPOINT 指向的远程浏览器承担;未配置则文字推送照常工作。
+# ⚠️ 此 stage 必须排在 runtime 之前 —— 默认 build target = 文件最后一个 stage,
+# 不带 --target 的 docker build 应继续得到 full 镜像。
+FROM node:${NODE_VERSION}-bookworm-slim AS runtime-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        tini tzdata ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# 与 runtime 的 ENV 相比:无 BN_CHROME_PATH(镜像内没有浏览器)。
+# NODE_OPTIONS 堆上限:V8 默认按宿主机内存推导 old-space 上限(动辄数 GB),
+# 没内存压力就不勤 GC,RSS 长期浮高。384MB 逼 GC 勤快回收(实测稳态 heapUsed
+# 远低于此,Buffer/WASM 等堆外内存不受此限)。用户可在 compose 的 environment
+# 里设同名变量覆盖。
+ENV NODE_ENV=production \
+    TZ=Asia/Shanghai \
+    NODE_OPTIONS=--max-old-space-size=384 \
+    BN_CONFIG=/config/bn.config.yaml \
+    BN_HOST=0.0.0.0 \
+    BN_PORT=8787 \
+    BN_DATA_DIR=/data \
+    BN_WEB_DIST=/app/web-dist
+
+WORKDIR /app
+COPY --from=builder /repo/apps/server/dist ./
+COPY --from=builder /repo/apps/web/dist ./web-dist
+
+VOLUME ["/data", "/config"]
+
+EXPOSE 8787
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["node", "index.mjs"]
+
 # ---- runtime ----------------------------------------------------------------
 
 # chromium / 字体 / tini / ca-certificates / tzdata 全部来自 base(apps/base.Dockerfile),
@@ -88,8 +134,12 @@ FROM ${BN_BASE_IMAGE} AS runtime
 # 目录都是 root 级 VOLUME,在镜像外彼此平级(用户挂 ./data:/data + ./config:/config),
 # yaml 自动出现在 host 端 ./config/bn.config.yaml,可直接 vim。其他 BN_* 是 first-boot
 # 的种子源,首次启动后用户编辑 yaml 才生效。
+# NODE_OPTIONS 堆上限:V8 默认按宿主机内存推导 old-space 上限(动辄数 GB),没内存
+# 压力就不勤 GC,RSS 长期浮高。384MB 逼 GC 勤快回收(实测稳态 heapUsed 远低于此,
+# Buffer/WASM 等堆外内存与 chromium 进程不受此限)。compose environment 可覆盖。
 ENV NODE_ENV=production \
     TZ=Asia/Shanghai \
+    NODE_OPTIONS=--max-old-space-size=384 \
     BN_CONFIG=/config/bn.config.yaml \
     BN_HOST=0.0.0.0 \
     BN_PORT=8787 \
