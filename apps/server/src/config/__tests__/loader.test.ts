@@ -482,6 +482,59 @@ describe("loadBootstrapConfig — BN_CONFIG_DISABLED", () => {
 	});
 });
 
+describe("loadBootstrapConfig — chromeEndpoint / chromeIdleSeconds", () => {
+	it("ENV:BN_CHROME_ENDPOINT 与 BN_CHROME_IDLE_SECONDS(字符串→数字)", () => {
+		const c = loadBootstrapConfig({
+			argv: [],
+			env: {
+				BN_CONFIG_DISABLED: "1",
+				BN_CHROME_ENDPOINT: "ws://browserless:3000",
+				BN_CHROME_IDLE_SECONDS: "120",
+			},
+			cwd,
+			log: () => {},
+		});
+		expect(c.chromeEndpoint).toBe("ws://browserless:3000");
+		expect(c.chromeIdleSeconds).toBe(120);
+	});
+
+	it("CLI:--chrome-endpoint 与 --chrome-idle-seconds 覆盖 ENV", () => {
+		const c = loadBootstrapConfig({
+			argv: ["--chrome-endpoint", "http://chrome:9222", "--chrome-idle-seconds=0"],
+			env: {
+				BN_CONFIG_DISABLED: "1",
+				BN_CHROME_ENDPOINT: "ws://env-wins-not:3000",
+				BN_CHROME_IDLE_SECONDS: "120",
+			},
+			cwd,
+			log: () => {},
+		});
+		expect(c.chromeEndpoint).toBe("http://chrome:9222");
+		expect(c.chromeIdleSeconds).toBe(0);
+	});
+
+	it("yaml file:chromeEndpoint / chromeIdleSeconds 字段", async () => {
+		await write(
+			"bn.config.yaml",
+			"chromeEndpoint: ws://file-browser:3000\nchromeIdleSeconds: 600\n",
+		);
+		const c = loadBootstrapConfig({ argv: [], env: {}, cwd, log: () => {} });
+		expect(c.chromeEndpoint).toBe("ws://file-browser:3000");
+		expect(c.chromeIdleSeconds).toBe(600);
+	});
+
+	it("两者都未配置时保持 undefined(不注默认值,index.ts 才知道要不要建 adapter)", () => {
+		const c = loadBootstrapConfig({
+			argv: [],
+			env: { BN_CONFIG_DISABLED: "1" },
+			cwd,
+			log: () => {},
+		});
+		expect(c.chromeEndpoint).toBeUndefined();
+		expect(c.chromeIdleSeconds).toBeUndefined();
+	});
+});
+
 describe("loadBootstrapConfig — legacy:file 层", () => {
 	it("读取 bn.config.yaml", async () => {
 		await write("bn.config.yaml", "server:\n  host: 1.2.3.4\n  port: 9000\ndataDir: /srv/bn\n");

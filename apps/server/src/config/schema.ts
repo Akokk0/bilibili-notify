@@ -62,10 +62,26 @@ export const BootstrapConfigSchema = z.object({
 	cookieEncryptionKey: z.string().min(1).optional(),
 	/**
 	 * Absolute path to a Chromium / Chrome binary. Required for
-	 * /api/cards/preview (puppeteer-core does NOT bundle a browser). Without
-	 * it, the cards route reports 503 and the dashboard renders a config hint.
+	 * /api/cards/preview (puppeteer-core does NOT bundle a browser) unless
+	 * `chromeEndpoint` points at a remote one. Without either, the cards route
+	 * reports 503 and the dashboard renders a config hint.
 	 */
 	chromePath: z.string().min(1).optional(),
+	/**
+	 * Remote browser endpoint (env `BN_CHROME_ENDPOINT`). `ws://…` connects
+	 * straight to a DevTools websocket (browserless etc.); `http://…` is a
+	 * `--remote-debugging-port` HTTP endpoint puppeteer resolves itself.
+	 * Wins over `chromePath`. This is how the chromium-less `-slim` Docker
+	 * image gets card rendering — point it at a companion browser container.
+	 */
+	chromeEndpoint: z.string().min(1).optional(),
+	/**
+	 * Seconds of render inactivity before the browser is auto-closed
+	 * (local launch) or disconnected (remote endpoint) to free memory; the
+	 * next render lazily restarts it. `0` = keep it alive forever. Unset =
+	 * adapter default (300s).
+	 */
+	chromeIdleSeconds: z.coerce.number().int().min(0).optional(),
 	/**
 	 * Directory holding the built React dashboard (`web/dist`). When set, the
 	 * Hono app mounts a static file server for non-`/api/*` paths and falls

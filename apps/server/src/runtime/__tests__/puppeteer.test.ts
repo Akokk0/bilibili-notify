@@ -1,6 +1,11 @@
 import type { Logger } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createPuppeteerAdapter, resolveChromePath } from "../puppeteer";
+import {
+	type BrowserConnectOptions,
+	type BrowserLaunchOptions,
+	createPuppeteerAdapter,
+	resolveChromePath,
+} from "../puppeteer";
 
 describe("resolveChromePath", () => {
 	it("returns the explicit path as-is when provided (operator's choice wins)", () => {
@@ -85,12 +90,12 @@ function makeFakeLauncher() {
 	const browsers: FakeBrowser[] = [];
 	return {
 		browsers,
-		launch: vi.fn(async () => {
+		launch: vi.fn(async (_options: BrowserLaunchOptions) => {
 			const b = makeFakeBrowser();
 			browsers.push(b);
 			return b;
 		}),
-		connect: vi.fn(async () => {
+		connect: vi.fn(async (_options: BrowserConnectOptions) => {
 			const b = makeFakeBrowser();
 			browsers.push(b);
 			return b;
@@ -174,5 +179,90 @@ describe("createPuppeteerAdapter idle auto-close", () => {
 		expect(launcher.browsers[0]?.close).toHaveBeenCalledTimes(1);
 		await vi.advanceTimersByTimeAsync(60_000);
 		expect(launcher.browsers[0]?.close).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("createPuppeteerAdapter remote endpoint", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("connects to a ws:// endpoint (browserWSEndpoint) instead of launching", async () => {
+		const launcher = makeFakeLauncher();
+		const adapter = createPuppeteerAdapter({
+			chromeEndpoint: "ws://browserless:3000",
+			logger: makeLogger(),
+			launcher,
+			idleTimeoutMs: 0,
+		});
+		await adapter.page();
+		expect(launcher.launch).not.toHaveBeenCalled();
+		expect(launcher.connect).toHaveBeenCalledTimes(1);
+		expect(launcher.connect.mock.calls[0]?.[0]).toMatchObject({
+			browserWSEndpoint: "ws://browserless:3000",
+		});
+	});
+
+	it("connects to an http:// endpoint via browserURL (vanilla chromium devtools)", async () => {
+		const launcher = makeFakeLauncher();
+		const adapter = createPuppeteerAdapter({
+			chromeEndpoint: "http://chrome:9222",
+			logger: makeLogger(),
+			launcher,
+			idleTimeoutMs: 0,
+		});
+		await adapter.page();
+		expect(launcher.connect.mock.calls[0]?.[0]).toMatchObject({
+			browserURL: "http://chrome:9222",
+		});
+	});
+
+	it("prefers the remote endpoint over chromePath when both are configured", async () => {
+		const launcher = makeFakeLauncher();
+		const adapter = createPuppeteerAdapter({
+			chromePath: "/fake/chrome",
+			chromeEndpoint: "ws://browserless:3000",
+			logger: makeLogger(),
+			launcher,
+			idleTimeoutMs: 0,
+		});
+		await adapter.page();
+		expect(launcher.launch).not.toHaveBeenCalled();
+		expect(launcher.connect).toHaveBeenCalledTimes(1);
+	});
+
+	it("idle timeout disconnects (never closes) a remote browser, then reconnects on demand", async () => {
+		const launcher = makeFakeLauncher();
+		const adapter = createPuppeteerAdapter({
+			chromeEndpoint: "ws://browserless:3000",
+			logger: makeLogger(),
+			launcher,
+			idleTimeoutMs: 5_000,
+		});
+		const page = await adapter.page();
+		await page.close();
+		await vi.advanceTimersByTimeAsync(5_000);
+		// 远程浏览器是共享资源:只断自己的连接,绝不 close 杀掉它。
+		expect(launcher.browsers[0]?.disconnect).toHaveBeenCalledTimes(1);
+		expect(launcher.browsers[0]?.close).not.toHaveBeenCalled();
+		await adapter.page();
+		expect(launcher.connect).toHaveBeenCalledTimes(2);
+	});
+
+	it("dispose disconnects a remote browser instead of closing it", async () => {
+		const launcher = makeFakeLauncher();
+		const adapter = createPuppeteerAdapter({
+			chromeEndpoint: "ws://browserless:3000",
+			logger: makeLogger(),
+			launcher,
+			idleTimeoutMs: 0,
+		});
+		await adapter.page();
+		await adapter.dispose();
+		expect(launcher.browsers[0]?.disconnect).toHaveBeenCalledTimes(1);
+		expect(launcher.browsers[0]?.close).not.toHaveBeenCalled();
 	});
 });

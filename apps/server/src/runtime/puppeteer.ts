@@ -105,26 +105,44 @@ export interface BrowserLaunchOptions {
 	defaultViewport: { width: number; height: number; deviceScaleFactor: number };
 }
 
+export interface BrowserConnectOptions {
+	/** browserless 等直接暴露的 DevTools WS 端点(`ws://…`)。 */
+	browserWSEndpoint?: string;
+	/** 原生 chromium `--remote-debugging-port` 的 HTTP 端点(`http://…`),puppeteer 自己去换 WS 地址。 */
+	browserURL?: string;
+	defaultViewport: { width: number; height: number; deviceScaleFactor: number };
+}
+
 /** puppeteer-core 门面。生产用默认实现;单测注入假 launcher 测生命周期。 */
 export interface BrowserLauncher {
 	launch(options: BrowserLaunchOptions): Promise<BrowserHandle>;
+	connect(options: BrowserConnectOptions): Promise<BrowserHandle>;
 }
 
 const defaultLauncher: BrowserLauncher = {
 	// 真 Browser/Page 结构性满足 BrowserHandle/PageHandle,但 puppeteer 的重载签名
 	// (screenshot 的 base64 重载等)让 TS 无法自动收窄 —— 在这唯一边界断言一次。
 	launch: (options) => puppeteer.launch(options) as unknown as Promise<BrowserHandle>,
+	connect: (options) => puppeteer.connect(options) as unknown as Promise<BrowserHandle>,
 };
 
 /** 空闲多久后自动关浏览器的默认值(5 分钟)。 */
 export const DEFAULT_CHROME_IDLE_MS = 300_000;
 
 export interface PuppeteerAdapterOptions {
-	chromePath: string;
+	/** 本地浏览器二进制路径。`chromeEndpoint` 未设时必填。 */
+	chromePath?: string;
+	/**
+	 * 远程浏览器端点,设了就走 `puppeteer.connect` 而非本地 launch(优先于
+	 * `chromePath`)。`ws://…` 直连 DevTools WS(browserless 等);`http://…` 为
+	 * `--remote-debugging-port` 的 HTTP 端点,由 puppeteer 换取 WS 地址。
+	 */
+	chromeEndpoint?: string;
 	logger: Logger;
 	/**
 	 * 最后一次渲染结束后多久自动关掉浏览器(下次渲染懒重启),省常驻内存。
-	 * `0` = 永不自动关(旧行为)。缺省 {@link DEFAULT_CHROME_IDLE_MS}。
+	 * 远程模式下到点只 disconnect 不 close。`0` = 永不自动关(旧行为)。
+	 * 缺省 {@link DEFAULT_CHROME_IDLE_MS}。
 	 */
 	idleTimeoutMs?: number;
 	/** 注入 puppeteer-core 门面(单测用);缺省真 puppeteer-core。 */
@@ -165,6 +183,21 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Standalon
 		idleTimer.unref?.();
 	}
 
+	// 远程模式:浏览器是别人的(共享的 browserless / headless-shell 容器),
+	// 收尾只断自己的连接,绝不 close 把它杀掉。
+	const remote = Boolean(opts.chromeEndpoint);
+
+	async function shutdownBrowser(b: BrowserHandle, reason: string): Promise<void> {
+		try {
+			if (remote) await b.disconnect();
+			else await b.close();
+		} catch (e) {
+			opts.logger.warn(
+				`[puppeteer] ${reason} ${remote ? "disconnect" : "close"} failed: ${String(e)}`,
+			);
+		}
+	}
+
 	async function closeIdleBrowser(): Promise<void> {
 		// 防御:计时器与新渲染竞态时(page() 尚未走到 cancelIdleTimer)有活跃页就不动,
 		// 该页 close 时会重新 arm。
@@ -173,13 +206,11 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Standalon
 		browser = null;
 		if (!b) return;
 		opts.logger.info(
-			`[puppeteer] 空闲 ${Math.round(idleTimeoutMs / 1000)}s,关闭 chromium 释放内存(下次渲染自动重启)`,
+			`[puppeteer] 空闲 ${Math.round(idleTimeoutMs / 1000)}s,${
+				remote ? "断开远程浏览器连接" : "关闭 chromium 释放内存"
+			}(下次渲染自动${remote ? "重连" : "重启"})`,
 		);
-		try {
-			await b.close();
-		} catch (e) {
-			opts.logger.warn(`[puppeteer] idle close failed: ${String(e)}`);
-		}
+		await shutdownBrowser(b, "idle");
 	}
 
 	/** 一页渲染结束:活跃数减一,归零则起空闲计时。 */
@@ -192,19 +223,35 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Standalon
 		if (browser?.connected) return browser;
 		if (launching) return launching;
 		launching = (async () => {
-			opts.logger.info(`[puppeteer] 启动 chromium · executablePath=${opts.chromePath}`);
-			const b = await launcher.launch({
-				executablePath: opts.chromePath,
-				headless: true,
-				args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-				// 2x DPI 烤进 launch 的 defaultViewport,而非每页 setViewport —— 冷启动后多张
-				// 卡片并发渲染时,per-page setViewport(Emulation.setDeviceMetricsOverride)在
-				// 刚启动的浏览器上会与紧随的 captureScreenshot 竞态,deviceScaleFactor 尚未生效
-				// 就截图,clip 被按错误倍率放大 → 同一张卡被平铺成 2×2 并裁切(用户报告的
-				// 「全家福动态发布第一次启动就 4 连图」)。defaultViewport 在页面诞生即带 dSF=2,
-				// 无 setViewport 这一步,竞态消失。
-				defaultViewport: { width: 1280, height: 720, deviceScaleFactor: 2 },
-			});
+			// 2x DPI 烤进 launch/connect 的 defaultViewport,而非每页 setViewport —— 冷启动
+			// 后多张卡片并发渲染时,per-page setViewport(Emulation.setDeviceMetricsOverride)
+			// 在刚启动的浏览器上会与紧随的 captureScreenshot 竞态,deviceScaleFactor 尚未生效
+			// 就截图,clip 被按错误倍率放大 → 同一张卡被平铺成 2×2 并裁切(用户报告的
+			// 「全家福动态发布第一次启动就 4 连图」)。defaultViewport 在页面诞生即带 dSF=2,
+			// 无 setViewport 这一步,竞态消失。
+			const defaultViewport = { width: 1280, height: 720, deviceScaleFactor: 2 };
+			let b: BrowserHandle;
+			if (opts.chromeEndpoint) {
+				const endpoint = opts.chromeEndpoint;
+				opts.logger.info(`[puppeteer] 连接远程浏览器 · ${endpoint}`);
+				b = await launcher.connect(
+					endpoint.startsWith("http")
+						? { browserURL: endpoint, defaultViewport }
+						: { browserWSEndpoint: endpoint, defaultViewport },
+				);
+			} else if (opts.chromePath) {
+				opts.logger.info(`[puppeteer] 启动 chromium · executablePath=${opts.chromePath}`);
+				b = await launcher.launch({
+					executablePath: opts.chromePath,
+					headless: true,
+					args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+					defaultViewport,
+				});
+			} else {
+				throw new Error(
+					"puppeteer adapter misconfigured: neither chromeEndpoint nor chromePath set",
+				);
+			}
 			browser = b;
 			launching = null;
 			return b;
@@ -242,13 +289,7 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Standalon
 			const b = browser;
 			browser = null;
 			launching = null;
-			if (b) {
-				try {
-					await b.close();
-				} catch (e) {
-					opts.logger.warn(`[puppeteer] close failed: ${String(e)}`);
-				}
-			}
+			if (b) await shutdownBrowser(b, "dispose");
 		},
 	};
 }

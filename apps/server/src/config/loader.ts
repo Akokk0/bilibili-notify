@@ -302,6 +302,8 @@ function readEnv(env: NodeJS.ProcessEnv): Record<string, unknown> {
 	if (env.BN_DATA_DIR) out.dataDir = env.BN_DATA_DIR;
 	if (env.BN_COOKIE_KEY) out.cookieEncryptionKey = env.BN_COOKIE_KEY;
 	if (env.BN_CHROME_PATH) out.chromePath = env.BN_CHROME_PATH;
+	if (env.BN_CHROME_ENDPOINT) out.chromeEndpoint = env.BN_CHROME_ENDPOINT;
+	if (env.BN_CHROME_IDLE_SECONDS) out.chromeIdleSeconds = env.BN_CHROME_IDLE_SECONDS;
 	if (env.BN_WEB_DIST) out.webDistDir = env.BN_WEB_DIST;
 	if (env.BN_LOG_LEVEL) out.logLevel = env.BN_LOG_LEVEL;
 	if (env.BN_DASHBOARD_USER && env.BN_DASHBOARD_PASS) {
@@ -322,6 +324,8 @@ const CLI_KEY_MAP: Record<string, string[]> = {
 	"log-level": ["logLevel"],
 	"cookie-key": ["cookieEncryptionKey"],
 	"chrome-path": ["chromePath"],
+	"chrome-endpoint": ["chromeEndpoint"],
+	"chrome-idle-seconds": ["chromeIdleSeconds"],
 	"web-dist": ["webDistDir"],
 };
 

@@ -76,6 +76,11 @@ export interface CreateAppOptions {
 	 */
 	onPuppeteerEnabled?: (puppeteer: StandalonePuppeteer) => void;
 	/**
+	 * Idle auto-close budget (ms) for adapters built by the hot-enable path,
+	 * mirroring bootstrap.chromeIdleSeconds. Unset = adapter default.
+	 */
+	chromeIdleTimeoutMs?: number;
+	/**
 	 * Optional directory containing the built React dashboard (`web/dist`). When
 	 * set, non-`/api/*` paths fall through to a static file server backed by
 	 * this directory, with `index.html` as the SPA fallback for unknown routes.
@@ -212,6 +217,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 			api: options.authSystem?.api ?? null,
 			persistChromePath: options.persistChromePath,
 			onPuppeteerEnabled: options.onPuppeteerEnabled,
+			chromeIdleTimeoutMs: options.chromeIdleTimeoutMs,
 		}),
 	);
 	if (options.authSystem) {

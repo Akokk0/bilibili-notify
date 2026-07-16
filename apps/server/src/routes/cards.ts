@@ -80,6 +80,11 @@ export interface CardsRouteOptions {
 	 */
 	createPuppeteer?: (chromePath: string) => StandalonePuppeteer;
 	/**
+	 * 热启用路径新建 adapter 时沿用 bootstrap 的空闲关闭配置(chromeIdleSeconds),
+	 * 与启动时构造的 adapter 行为一致;未设走 adapter 默认。
+	 */
+	chromeIdleTimeoutMs?: number;
+	/**
 	 * 把 chromePath 写回 bootstrap yaml 持久化。由 index.ts 接线(绑定 config 路径);
 	 * 未注入则热启用仍生效但重启不保留。
 	 */
@@ -209,7 +214,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	let currentPuppeteer = opts.puppeteer;
 	const createPuppeteer =
 		opts.createPuppeteer ??
-		((chromePath: string) => createPuppeteerAdapter({ chromePath, logger: log }));
+		((chromePath: string) =>
+			createPuppeteerAdapter({ chromePath, idleTimeoutMs: opts.chromeIdleTimeoutMs, logger: log }));
 
 	// 一键热启用卡片渲染 —— dashboard 探测到 Chrome 后调用:运行时构造 puppeteer、
 	// 注入已跑的 live/dynamic 引擎(EnginesRuntime.enableImageRendering)、写回 chromePath
@@ -501,7 +507,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			return c.json<PreviewResponse>(
 				{
 					ok: false,
-					err: "puppeteer 未配置 — 设置 BN_CHROME_PATH 环境变量或 yaml chromePath 字段指向本地 Chromium",
+					err: "puppeteer 未配置 — 设置 BN_CHROME_PATH（本地 Chromium 路径）或 BN_CHROME_ENDPOINT（远程浏览器端点），或 yaml 的 chromePath / chromeEndpoint 字段",
 				},
 				503,
 			);

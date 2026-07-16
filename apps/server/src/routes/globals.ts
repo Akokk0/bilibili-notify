@@ -213,7 +213,7 @@ async function checkCardEnable(puppeteer: StandalonePuppeteer | null): Promise<E
 			ok: false,
 			scope: "cardStyle",
 			message:
-				"chromePath 未配置，无法启用卡片渲染。请在服务端 yaml 或 BN_CHROME_PATH 环境变量中配置 Chromium / Chrome 路径后重启。",
+				"chromePath / chromeEndpoint 均未配置，无法启用卡片渲染。请在服务端 yaml 或环境变量（BN_CHROME_PATH 本地浏览器路径 / BN_CHROME_ENDPOINT 远程浏览器端点）中配置后重启。",
 		};
 	}
 	try {
@@ -229,7 +229,7 @@ async function checkCardEnable(puppeteer: StandalonePuppeteer | null): Promise<E
 		return {
 			ok: false,
 			scope: "cardStyle",
-			message: `puppeteer 启动失败：${detail}。请确认 chromePath 指向可执行的 Chromium / Chrome 二进制。`,
+			message: `puppeteer 启动失败：${detail}。请确认 chromePath 指向可执行的 Chromium / Chrome 二进制，或 chromeEndpoint 指向可达的远程浏览器。`,
 		};
 	}
 }

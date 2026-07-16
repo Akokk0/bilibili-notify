@@ -158,15 +158,22 @@ export async function startStandaloneServer(
 			);
 		}
 
-		// Lazy puppeteer-core launch — only constructed when chromePath is set.
-		// Browser process spawns on first use (cards/preview OR engine card render),
-		// not at boot. Built before createEngines so live + dynamic can share the
-		// same ImageRenderer instance as /api/cards/preview.
-		if (bootstrap.chromePath) {
-			puppeteer = createPuppeteerAdapter({ chromePath: bootstrap.chromePath, logger: log });
+		// Lazy puppeteer-core launch — only constructed when chromePath or a remote
+		// chromeEndpoint is set. Browser spawns/connects on first use (cards/preview
+		// OR engine card render), not at boot. Built before createEngines so live +
+		// dynamic can share the same ImageRenderer instance as /api/cards/preview.
+		const chromeIdleTimeoutMs =
+			bootstrap.chromeIdleSeconds === undefined ? undefined : bootstrap.chromeIdleSeconds * 1000;
+		if (bootstrap.chromeEndpoint || bootstrap.chromePath) {
+			puppeteer = createPuppeteerAdapter({
+				chromePath: bootstrap.chromePath,
+				chromeEndpoint: bootstrap.chromeEndpoint,
+				idleTimeoutMs: chromeIdleTimeoutMs,
+				logger: log,
+			});
 		} else {
 			log.warn(
-				"chromePath 未配置，卡片图片渲染将退化为文字推送（设置 BN_CHROME_PATH 或 yaml chromePath 后启用）",
+				"chromePath / chromeEndpoint 均未配置，卡片图片渲染将退化为文字推送（设置 BN_CHROME_PATH、BN_CHROME_ENDPOINT 或 yaml 对应字段后启用）",
 			);
 		}
 
@@ -297,6 +304,7 @@ export async function startStandaloneServer(
 			onPuppeteerEnabled: (next) => {
 				puppeteer = next;
 			},
+			chromeIdleTimeoutMs,
 			staticDir: effectiveWebDistDir,
 			wsTicketStore,
 			allowedOrigins,
