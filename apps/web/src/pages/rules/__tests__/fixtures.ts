@@ -69,6 +69,7 @@ export function makeDefaults(): GlobalDefaults {
 			showArea: true,
 			showFans: true,
 			backgroundImages: [],
+			liveCoverImages: [],
 			glassClear: false,
 		},
 		imageGroup: { enable: true, forward: false },

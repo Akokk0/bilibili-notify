@@ -73,7 +73,9 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		globalBg?: string[];
 		/** 全局某 per-kind 样式(sc)的背景列表 —— 验证删除引用检查覆盖 cardStyleByKind。 */
 		globalKindBg?: string[];
-		subs?: Array<{ uid: string; bg?: string[]; kindBg?: string[] }>;
+		/** 全局直播封面列表(liveCoverImages)—— 验证删除引用检查覆盖封面引用。 */
+		globalCover?: string[];
+		subs?: Array<{ uid: string; bg?: string[]; kindBg?: string[]; cover?: string[] }>;
 	}): RouteDeps {
 		return {
 			runtime: {
@@ -85,7 +87,10 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 				bootstrap: { dataDir: opts.dataDir },
 				getGlobals: () => ({
 					defaults: {
-						cardStyle: { backgroundImages: opts.globalBg ?? [] },
+						cardStyle: {
+							backgroundImages: opts.globalBg ?? [],
+							liveCoverImages: opts.globalCover ?? [],
+						},
 						cardStyleByKind: opts.globalKindBg
 							? { sc: { backgroundImages: opts.globalKindBg } }
 							: {},
@@ -95,7 +100,8 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 					(opts.subs ?? []).map((s) => ({
 						uid: s.uid,
 						overrides: {
-							cardStyle: s.bg ? { backgroundImages: s.bg } : undefined,
+							cardStyle:
+								s.bg || s.cover ? { backgroundImages: s.bg, liveCoverImages: s.cover } : undefined,
 							cardStyleByKind: s.kindBg ? { guard: { backgroundImages: s.kindBg } } : undefined,
 						},
 					})),
@@ -116,6 +122,41 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 			expect(res.status).toBe(200);
 			expect(await res.json()).toMatchObject({ ok: true });
 			expect(await listCardBg(dir)).toEqual([]);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("删除仅被全局 liveCoverImages(直播封面)引用的图 → 409 拦截", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-del-cover-"));
+		try {
+			const id = await saveCardBg(dir, PNG, "image/png");
+			const app = createCardsRoute({
+				deps: depsWithStore({ dataDir: dir, globalCover: [id] }),
+				puppeteer: null,
+				api: null,
+			});
+			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
+			expect(res.status).toBe(409);
+			expect(await listCardBg(dir)).toEqual([id]); // 仍在盘上
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("删除被某 UP liveCoverImages 引用的图 → 409,referencedBy 指出该 UP", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-del-cover-up-"));
+		try {
+			const id = await saveCardBg(dir, PNG, "image/png");
+			const app = createCardsRoute({
+				deps: depsWithStore({ dataDir: dir, subs: [{ uid: "30303", cover: [id] }] }),
+				puppeteer: null,
+				api: null,
+			});
+			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
+			expect(res.status).toBe(409);
+			const json = (await res.json()) as { referencedBy?: string[] };
+			expect(json.referencedBy?.some((s) => s.includes("30303"))).toBe(true);
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
@@ -587,6 +628,39 @@ describe("cards route — /preview live-by-uid fallback", () => {
 		});
 		expect(res.status).toBe(500);
 		expect(((await res.json()) as { ok: boolean }).ok).toBe(false);
+	});
+
+	it("mock live 预览:style.liveCoverImages 首张解析成 data URL 注入封面", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-preview-cover-"));
+		try {
+			const id = await saveCardBg(dir, PNG, "image/png");
+			// 捕获 setContent HTML 的假 puppeteer。
+			const captured = { html: "" };
+			const page = {
+				setContent: vi.fn(async (html: string) => {
+					captured.html = html;
+				}),
+				waitForFunction: vi.fn(async () => undefined),
+				$: vi.fn(async () => ({
+					boundingBox: async () => ({ x: 0, y: 0, width: 600, height: 400 }),
+					dispose: async () => {},
+				})),
+				screenshot: vi.fn(async () => Buffer.from("png")),
+				close: vi.fn(async () => {}),
+			};
+			const puppeteer = { page: async () => page } as unknown as StandalonePuppeteer;
+			const app = createCardsRoute({ deps: depsWithDataDir(dir), puppeteer, api: null });
+			const res = await postPreview(app, {
+				kind: "live",
+				style: { ...STYLE, liveCoverImages: [id] },
+			});
+			expect(res.status).toBe(200);
+			// 封面被自定义图(data:image/png)替换,示例 SVG 封面不再出现。
+			expect(captured.html).toContain("data:image/png;base64,");
+			expect(captured.html).not.toContain("%3ECover%3C");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 });
 

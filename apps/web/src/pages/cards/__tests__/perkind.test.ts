@@ -11,6 +11,7 @@ const base: CardStyle = {
 	showArea: true,
 	showFans: true,
 	backgroundImages: [],
+	liveCoverImages: [],
 	glassClear: false,
 };
 

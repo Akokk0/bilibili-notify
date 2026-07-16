@@ -112,6 +112,8 @@ const StyleSchema = z.object({
 	glassClear: z.boolean().optional(),
 	/** 背景图资产 id 列表(空 = 渐变;>1 = 轮换,预览端取首张)。 */
 	backgroundImages: z.array(z.string()).optional(),
+	/** 直播封面资产 id 列表(空 = B 站封面;>1 = 轮换,预览端取首张)。仅 live 卡。 */
+	liveCoverImages: z.array(z.string()).optional(),
 });
 
 const ContentSchema = z
@@ -195,11 +197,14 @@ export function testPushCaption(kind: PreviewKind): string {
  * 都算,全局默认 + 各 UP 覆盖两层都扫。返回空数组 = 没人用,可安全删盘。
  */
 function cardBgReferences(globals: GlobalConfig, subs: Subscription[], id: string): string[] {
-	const inStyle = (style?: { backgroundImages?: string[] }): boolean =>
-		style?.backgroundImages?.includes(id) ?? false;
+	// 背景图与直播封面共用同一图廊 —— 两类引用都算(删掉被封面引用的图同样会坏渲染)。
+	const inStyle = (style?: { backgroundImages?: string[]; liveCoverImages?: string[] }): boolean =>
+		(style?.backgroundImages?.includes(id) ?? false) ||
+		(style?.liveCoverImages?.includes(id) ?? false);
 	// per-kind 是各类型对基准的覆盖层;任一类型引用即算被引用。
-	const inByKind = (byKind?: Record<string, { backgroundImages?: string[] }>): boolean =>
-		byKind ? Object.values(byKind).some(inStyle) : false;
+	const inByKind = (
+		byKind?: Record<string, { backgroundImages?: string[]; liveCoverImages?: string[] }>,
+	): boolean => (byKind ? Object.values(byKind).some(inStyle) : false);
 
 	const refs: string[] = [];
 	if (inStyle(globals.defaults.cardStyle) || inByKind(globals.defaults.cardStyleByKind)) {
@@ -555,12 +560,25 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			}
 		}
 		// Live + Dyn 无真实数据(或回退):虚构 mock 数据,走 renderCard + screenshot 流水线
-		// (不经 ImageRenderer,未登录也能调色)。背景图在此解析成 data URL 注入。
+		// (不经 ImageRenderer,未登录也能调色)。背景图/直播封面在此解析成 data URL 注入。
 		const bgDataUrl = await readCardBgDataUrl(
 			opts.deps.store.bootstrap.dataDir,
 			style.backgroundImages?.[0] ?? "",
 		);
-		const { component, props, title, htmlWidth } = buildPreviewSpec(kind, style, layout, bgDataUrl);
+		const coverDataUrl =
+			kind === "live"
+				? await readCardBgDataUrl(
+						opts.deps.store.bootstrap.dataDir,
+						style.liveCoverImages?.[0] ?? "",
+					)
+				: "";
+		const { component, props, title, htmlWidth } = buildPreviewSpec(
+			kind,
+			style,
+			layout,
+			bgDataUrl,
+			coverDataUrl,
+		);
 		const html = await renderCard(component, props, {
 			title,
 			font: style.font ?? "PingFang SC, sans-serif",
@@ -733,7 +751,12 @@ async function renderRealLive(
 		master.data.info.face,
 		{}, // liveData — no danmaku context in preview, watched/liked left blank
 		2,
-		{ cardColorStart: style.cardColorStart, cardColorEnd: style.cardColorEnd },
+		{
+			cardColorStart: style.cardColorStart,
+			cardColorEnd: style.cardColorEnd,
+			// 自定义直播封面:预览取首张,资产 id 由 renderer 的 resolveAsset 解析。
+			liveCoverImage: style.liveCoverImages?.[0],
+		},
 		layout,
 	);
 }
@@ -789,12 +812,19 @@ function buildPreviewSpec(
 	layout?: CardLayout,
 	/** 已解析的背景图 data URL(mock SSR 路径不经 generate*,需在此注入)。 */
 	bgDataUrl?: string,
+	/** 已解析的直播封面 data URL(仅 live 卡消费,语义同上)。 */
+	coverDataUrl?: string,
 ): PreviewSpec {
 	const backgroundImage = bgDataUrl || undefined;
 	if (kind === "live") {
 		return {
 			component: LiveCard,
-			props: { ...buildLivePreviewProps(style), layout: layout?.live, backgroundImage },
+			props: {
+				...buildLivePreviewProps(style),
+				layout: layout?.live,
+				backgroundImage,
+				coverOverride: coverDataUrl || undefined,
+			},
 			title: "卡片预览 · 直播",
 			htmlWidth: 600,
 		};

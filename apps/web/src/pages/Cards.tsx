@@ -43,6 +43,19 @@ import {
 	resolveKindStyle,
 	type CardKind as StyleKind,
 } from "./cards/perkind";
+import {
+	colorOnly,
+	hasColorOverride,
+	hasCoverOverride,
+	hasShowOverride,
+	isEmptyObj,
+	omitCover,
+	omitShow,
+	pickCover,
+	pickShow,
+	type ShowKey,
+	type StylePartial,
+} from "./cards/style-partition";
 import { displayName } from "./up/helpers";
 
 /** 本页预览 kind("dyn")↔ 样式/版式键("dynamic")的映射。 */
@@ -50,31 +63,8 @@ function toStyleKind(kind: CardKind): StyleKind {
 	return kind === "dyn" ? "dynamic" : kind;
 }
 
-/**
- * 数据区显示开关字段(直播卡专属)。它们与 per-kind「单独样式」(颜色/玻璃/背景/字体)同住
- * `cardStyleByKind.live` 这一个 partial,但**字段不相交**:颜色卡只写非 show 字段(omitShow),
- * 数据卡只写 show 字段(pickShow),两者各自的开关互不覆盖。
- */
-const SHOW_KEYS = ["showPopularity", "showArea", "showFans"] as const;
-type ShowKey = (typeof SHOW_KEYS)[number];
-type StylePartial = Partial<CardStyle>;
-/** 取覆盖里的 show 字段子集(数据区)。 */
-function pickShow(p: StylePartial | undefined): StylePartial {
-	const o: StylePartial = {};
-	if (p) for (const k of SHOW_KEYS) if (p[k] !== undefined) o[k] = p[k];
-	return o;
-}
-/** 去掉 show 字段,只留颜色/玻璃/背景/字体等(per-kind 颜色覆盖)。 */
-function omitShow(p: StylePartial | undefined): StylePartial {
-	const o: StylePartial = { ...(p ?? {}) };
-	for (const k of SHOW_KEYS) delete o[k];
-	return o;
-}
-const hasShowOverride = (p: StylePartial | undefined): boolean =>
-	SHOW_KEYS.some((k) => p?.[k] !== undefined);
-const hasColorOverride = (p: StylePartial | undefined): boolean =>
-	!!p && Object.keys(p).some((k) => !SHOW_KEYS.includes(k as ShowKey));
-const isEmptyObj = (p: object): boolean => Object.keys(p).length === 0;
+// per-kind partial 的字段族分区(颜色 / 数据区 show / 直播封面,三族互不相交、各有独立
+// 开关)—— 拣取与剔除工具在 ./cards/style-partition,含各族语义说明。
 
 type CardKind = "live" | "dyn" | "sc" | "guard";
 
@@ -366,7 +356,7 @@ const fromPickerValue = (v: LogLevelValue | null): ImageLogLevel =>
  * 覆盖复用同一组控件。插件总开关 enabled 与 image 日志等级是基础设施级、全局唯一,
  * 不在此组件内。
  */
-function CardStyleFields({
+export function CardStyleFields({
 	style,
 	onChange,
 }: {
@@ -460,6 +450,59 @@ function DataSectionFields({
 			{row("showArea")}
 			{row("showFans")}
 		</>
+	);
+}
+
+/**
+ * per-UP 直播封面:对该 UP 单独选封面图(替换 B 站房间封面/关键帧)。封面字段存进
+ * `cardStyleByKind.live` 的 partial —— 与颜色覆盖 / 数据区 show **字段不相交**,三套
+ * 开关互不覆盖(pickCover/omitCover)。未覆盖时跟随全局封面(基准层不持有封面)。
+ */
+export function PerUpCoverSection({
+	base,
+	value,
+	onChange,
+}: {
+	/** 继承值来源:全局基准的封面列表。 */
+	base: string[];
+	/** `cardStyleByKind.live` 的当前 partial(可能同时含颜色/数据区覆盖)。 */
+	value: StylePartial | undefined;
+	/** 写回 `cardStyleByKind.live`(undefined = 删除该 kind)。 */
+	onChange: (next: StylePartial | undefined) => void;
+}) {
+	const active = hasCoverOverride(value);
+	const toggleOverride = (on: boolean) => {
+		if (on) {
+			onChange({ ...(value ?? {}), liveCoverImages: [...base] });
+		} else {
+			const rest = omitCover(value);
+			onChange(isEmptyObj(rest) ? undefined : rest);
+		}
+	};
+	return (
+		<GlassBox
+			title="直播封面"
+			subtitle="开 = 该 UP 单独选封面图(替换 B 站房间封面/关键帧,多张每次推送轮换);关 = 跟随全局"
+			accent={KIND_LABELS.live.tone}
+			icon={<Icon.live size={14} />}
+			badge={active ? "单独设置" : "跟随"}
+			right={<Toggle value={active} onChange={toggleOverride} />}
+		>
+			{active ? (
+				<Field code="liveCoverImages" full>
+					<GalleryPicker
+						value={value?.liveCoverImages ?? []}
+						onChange={(next) => onChange({ ...(value ?? {}), liveCoverImages: next })}
+					/>
+				</Field>
+			) : (
+				<InheritNote>
+					{base.length > 0
+						? `跟随全局封面(${base.length} 张)`
+						: "跟随全局(未设置,使用 B 站房间封面)"}
+				</InheritNote>
+			)}
+		</GlassBox>
 	);
 }
 
@@ -826,7 +869,9 @@ export default function Cards() {
 		mutationFn: async (sub: Subscription) => {
 			await api.patch<Subscription>(`/api/subs/${sub.id}`, {
 				overrides: {
-					cardStyle: puStyle ?? null,
+					// 基准覆盖剥掉封面键再落盘:基准是「打开时的 gStyle 快照」,若携带封面会把
+					// 全局封面冻结/清空(封面的 per-UP 归宿只有 cardStyleByKind.live)。
+					cardStyle: puStyle ? omitCover(puStyle) : null,
 					// 空对象 = 无按类型覆盖 → 下发 null 清除该 slice(不存空对象)。
 					cardStyleByKind: Object.keys(puByKind).length > 0 ? puByKind : null,
 					cardLayout: puLayout ?? null,
@@ -977,11 +1022,12 @@ export default function Cards() {
 	// 按 kind 求「生效样式」:全局作用域 = 全局基准 + 该类型覆盖;per-UP = 再叠该 UP 基准 /
 	// 类型覆盖(puStyle 覆盖基准时整份替换;否则继承全局该类型生效值)。
 	const effStyleFor = (sk: StyleKind): CardStyle => {
-		// 全局 per-kind 不贡献数据区 show 字段(数据区只认基准 gStyle);per-UP per-kind 的 show
-		// 是该 UP 的数据区覆盖,保留。
-		const gEff: CardStyle = { ...gStyle, ...omitShow(gByKind[sk]) };
+		// 全局 per-kind 只贡献颜色族(show 只认基准 gStyle;封面只认基准/per-UP kind 层);
+		// per-UP per-kind 的 show / 封面是该 UP 的独立覆盖,整份 spread 保留。
+		const gEff: CardStyle = { ...gStyle, ...colorOnly(gByKind[sk]) };
 		if (isGlobalScope) return gEff;
-		const base = puStyle ?? gEff;
+		// 基准层不持有封面(savePerUp 剥离,不落盘):封面继承链 = per-UP kind 层 > 全局基准。
+		const base = puStyle ? { ...puStyle, liveCoverImages: gStyle.liveCoverImages } : gEff;
 		return puByKind[sk] !== undefined ? { ...base, ...puByKind[sk] } : base;
 	};
 	// 按 kind 求预览内容:全局 = 可编辑 mock;per-UP = 该 UP 真实数据(live/dyn 按 uid,
@@ -1001,7 +1047,9 @@ export default function Cards() {
 
 	// 类型 tab 单卡生效值。per-UP 编辑「单独样式」/「数据区」用的基准 = puStyle ?? 全局该类型生效值
 	// (全局 per-kind 的 show 字段同样剥掉,数据区继承值取自基准)。
-	const puBaseStyle: CardStyle = puStyle ?? { ...gStyle, ...omitShow(gByKind[styleKind]) };
+	const puBaseStyle: CardStyle = puStyle
+		? { ...puStyle, liveCoverImages: gStyle.liveCoverImages }
+		: { ...gStyle, ...colorOnly(gByKind[styleKind]) };
 	const effStyle: CardStyle = effStyleFor(styleKind);
 	const effLayout: CardLayoutFull | null = isGlobalScope ? gLayout : (puLayout ?? gLayout);
 
@@ -1158,8 +1206,8 @@ export default function Cards() {
 									onChange={(on) =>
 										setGByKind((bk) => {
 											const next = { ...bk };
-											// 颜色覆盖不含 show 字段(数据区由 gStyle 基准统一管),omitShow 防携带。
-											if (on) next[styleKind] = omitShow(resolveKindStyle(gStyle, bk, styleKind));
+											// 颜色覆盖只含颜色族(show 归 gStyle 基准、封面归独立区块),colorOnly 防携带。
+											if (on) next[styleKind] = colorOnly(resolveKindStyle(gStyle, bk, styleKind));
 											else delete next[styleKind];
 											return next;
 										})
@@ -1170,7 +1218,7 @@ export default function Cards() {
 							{gByKind[styleKind] ? (
 								<CardStyleFields
 									style={resolveKindStyle(gStyle, gByKind, styleKind)}
-									onChange={(n) => setGByKind((bk) => ({ ...bk, [styleKind]: omitShow(n) }))}
+									onChange={(n) => setGByKind((bk) => ({ ...bk, [styleKind]: colorOnly(n) }))}
 								/>
 							) : (
 								<InheritNote>该卡片跟随「全局」通用样式</InheritNote>
@@ -1190,14 +1238,18 @@ export default function Cards() {
 									onChange={(on) =>
 										setPuByKind((bk) => {
 											const next = { ...bk };
-											// 颜色覆盖与数据区(show)同住该 kind 的 partial 但字段不相交:打开取颜色快照
-											// (omitShow)并保留已有数据区覆盖(pickShow);关闭只去颜色、留数据区。
+											// 颜色/数据区(show)/封面三族同住该 kind 的 partial 但字段不相交:
+											// 打开取颜色快照(colorOnly)并保留已有 show 与封面覆盖;关闭只去颜色、留两族。
 											if (on) {
-												next[styleKind] = { ...omitShow(puBaseStyle), ...pickShow(bk[styleKind]) };
+												next[styleKind] = {
+													...colorOnly(puBaseStyle),
+													...pickShow(bk[styleKind]),
+													...pickCover(bk[styleKind]),
+												};
 											} else {
-												const show = pickShow(bk[styleKind]);
-												if (isEmptyObj(show)) delete next[styleKind];
-												else next[styleKind] = show;
+												const keep = { ...pickShow(bk[styleKind]), ...pickCover(bk[styleKind]) };
+												if (isEmptyObj(keep)) delete next[styleKind];
+												else next[styleKind] = keep;
 											}
 											return next;
 										})
@@ -1211,7 +1263,11 @@ export default function Cards() {
 									onChange={(n) =>
 										setPuByKind((bk) => ({
 											...bk,
-											[styleKind]: { ...omitShow(n), ...pickShow(bk[styleKind]) },
+											[styleKind]: {
+												...colorOnly(n),
+												...pickShow(bk[styleKind]),
+												...pickCover(bk[styleKind]),
+											},
 										}))
 									}
 								/>
@@ -1238,6 +1294,41 @@ export default function Cards() {
 						) : (
 							<PerUpDataSection
 								base={puBaseStyle}
+								value={puByKind.live}
+								onChange={(next) =>
+									setPuByKind((bk) => {
+										const nb = { ...bk };
+										if (next) nb.live = next;
+										else delete nb.live;
+										return nb;
+									})
+								}
+							/>
+						))}
+
+					{/* 直播封面 —— 仅「直播开播」tab。全局作用域改 gStyle 基准(engines 的全局默认
+					    封面即读它);per-UP 单独覆盖走 cardStyleByKind.live 的 liveCoverImages 单字段,
+					    与「单独样式」(颜色)/「直播数据」(show)互不牵动。 */}
+					{!isGlobalTab &&
+						kind === "live" &&
+						(isGlobalScope ? (
+							<GlassBox
+								title="直播封面"
+								subtitle="选图替换推送卡的直播间封面(B 站封面/关键帧);多张每次推送轮换;清空恢复 B 站封面"
+								accent={KIND_LABELS.live.tone}
+								icon={<Icon.live size={14} />}
+								badge="liveCover"
+							>
+								<Field code="liveCoverImages" full>
+									<GalleryPicker
+										value={gStyle.liveCoverImages}
+										onChange={(next) => setGStyle({ ...gStyle, liveCoverImages: next })}
+									/>
+								</Field>
+							</GlassBox>
+						) : (
+							<PerUpCoverSection
+								base={gStyle.liveCoverImages}
 								value={puByKind.live}
 								onChange={(next) =>
 									setPuByKind((bk) => {
