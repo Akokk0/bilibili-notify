@@ -143,3 +143,19 @@ describe("LiveCard data section show flags", () => {
 		expect(blockOrder(html)).not.toContain("data");
 	});
 });
+
+// 自定义封面覆盖 —— 提供 coverOverride(已解析 URL)时封面用它,不再取 API 封面/关键帧。
+describe("LiveCard custom cover override", () => {
+	it("coverOverride 提供时封面 img 用它,user_cover/keyframe 都不出现", async () => {
+		const html = await renderLive({ coverOverride: "data:image/png;base64,CUSTOM-COVER" });
+		expect(html).toContain("data:image/png;base64,CUSTOM-COVER");
+		expect(html).not.toContain("cover.jpg");
+		expect(html).not.toContain("keyframe.jpg");
+	});
+
+	it("未提供 coverOverride → 维持现状(cover=true 用 user_cover)", async () => {
+		const html = await renderLive();
+		expect(html).toContain("cover.jpg");
+		expect(html).not.toContain("keyframe.jpg");
+	});
+});

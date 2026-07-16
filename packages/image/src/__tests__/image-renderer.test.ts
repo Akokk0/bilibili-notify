@@ -615,3 +615,71 @@ describe("ImageRenderer.updateConfig 预览实例静默", () => {
 		expect(infos[0]).toContain("glassOpacity=0.4");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// generateLiveCard 自定义封面(liveCoverImage 经 resolveAsset 解析进模板)
+// ---------------------------------------------------------------------------
+
+describe("generateLiveCard 自定义封面", () => {
+	function makeCapturingPuppeteer() {
+		const captured = { html: "" };
+		const page = {
+			setContent: async (html: string) => {
+				captured.html = html;
+			},
+			waitForFunction: async () => undefined,
+			$: async () => ({
+				boundingBox: async () => ({ x: 0, y: 0, width: 600, height: 400 }),
+				dispose: async () => {},
+			}),
+			screenshot: async () => Buffer.from("fake-jpeg"),
+			close: async () => {},
+		};
+		return { captured, puppeteer: { page: async () => page } as unknown as PuppeteerLike };
+	}
+
+	const liveApiData = {
+		title: "标题",
+		area_name: "分区",
+		user_cover: "data:image/png;base64,API-COVER",
+		keyframe: "data:image/png;base64,API-KEYFRAME",
+		description: "",
+		online: 1,
+		live_time: "2026-01-01 00:00:00",
+	};
+
+	it("colorOptions.liveCoverImage(资产 id)→ resolveAsset 解析成 data URL 进封面", async () => {
+		const { captured, puppeteer } = makeCapturingPuppeteer();
+		const renderer = makeRenderer(
+			{},
+			{
+				puppeteer,
+				resolveAsset: async (id: string) => `data:image/png;base64,ASSET-${id}`,
+			},
+		);
+		await renderer.generateLiveCard(
+			liveApiData,
+			"示例UP",
+			"data:image/png;base64,FACE",
+			{ likedNum: 0, watchedNum: "1", fansNum: 1, fansChanged: "" } as never,
+			1,
+			{ liveCoverImage: "cover-asset-1" },
+		);
+		expect(captured.html).toContain("data:image/png;base64,ASSET-cover-asset-1");
+		expect(captured.html).not.toContain("API-COVER");
+	});
+
+	it("未配置 liveCoverImage → 封面维持 API 来源", async () => {
+		const { captured, puppeteer } = makeCapturingPuppeteer();
+		const renderer = makeRenderer({}, { puppeteer });
+		await renderer.generateLiveCard(
+			liveApiData,
+			"示例UP",
+			"data:image/png;base64,FACE",
+			{ likedNum: 0, watchedNum: "1", fansNum: 1, fansChanged: "" } as never,
+			1,
+			{},
+		);
+		expect(captured.html).toContain("API-COVER");
+	});
+});

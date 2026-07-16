@@ -22,6 +22,8 @@ export type LiveCardProps = {
 	liveTime: string;
 	liveStatus: number;
 	cover: boolean;
+	/** 自定义封面(已解析 URL);有值时优先于 user_cover / keyframe。 */
+	coverOverride?: string;
 	onlineNum: string;
 	likedNum: string;
 	watchedNum: string;
@@ -75,7 +77,7 @@ export function LiveCard(p: LiveCardProps) {
 				<div class="relative w-full">
 					<img
 						class="block w-full rounded-lg"
-						src={p.cover ? p.data.user_cover : p.data.keyframe}
+						src={p.coverOverride || (p.cover ? p.data.user_cover : p.data.keyframe)}
 						alt="封面"
 					/>
 					{/* 直播状态角标，叠在封面右上角 */}

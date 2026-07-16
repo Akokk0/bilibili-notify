@@ -281,6 +281,9 @@ export class ImageRenderer {
 		const backgroundImage = await this.resolveBg(
 			colorOptions.backgroundImage ?? this.config.backgroundImage,
 		);
+		// 自定义直播封面(独立端专属):资产 id 经 resolveAsset 解析;无 resolver(koishi)
+		// 解析为 "" → 模板回退 API 封面/关键帧,特性自动无感。
+		const coverOverride = await this.resolveBg(colorOptions.liveCoverImage);
 
 		const [titleStatus, liveTime, cover] = await this.getLiveStatus(data.live_time, liveStatus);
 
@@ -308,6 +311,7 @@ export class ImageRenderer {
 				liveTime,
 				liveStatus: cardBadgeStatus,
 				cover,
+				coverOverride: coverOverride || undefined,
 				onlineNum: this.numberToStr(+(data.online ?? 0)),
 				likedNum:
 					typeof liveData.likedNum === "number"

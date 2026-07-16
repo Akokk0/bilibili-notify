@@ -102,6 +102,8 @@ export type CardColorOptions = {
 	glassClear?: boolean;
 	/** 自定义背景图资产 id(或已解析 URL);缺省时走渐变。 */
 	backgroundImage?: string;
+	/** 直播卡自定义封面资产 id(或已解析 URL);缺省时用 B 站房间封面/关键帧。仅 live 卡消费。 */
+	liveCoverImage?: string;
 	/** 直播卡数据区:显示人气 / 点赞;缺省时回退渲染器全局 config。 */
 	showPopularity?: boolean;
 	/** 直播卡数据区:显示分区;缺省时回退渲染器全局 config。 */
