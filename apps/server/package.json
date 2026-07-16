@@ -5,7 +5,7 @@
 	"type": "module",
 	"main": "./lib/index.mjs",
 	"scripts": {
-		"dev": "tsx watch --tsconfig tsconfig.dev.json src/index.ts",
+		"dev": "node ../../scripts/wait-workspace-libs.mjs && tsx watch --tsconfig tsconfig.dev.json src/index.ts",
 		"build": "vp pack",
 		"build:bundle": "BN_SERVER_BUNDLE=1 vp pack",
 		"typecheck": "tsc --noEmit",
