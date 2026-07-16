@@ -21,7 +21,6 @@ import type {
 	WaitForFunctionOptions,
 } from "@bilibili-notify/image";
 import type { Logger } from "@bilibili-notify/internal";
-import type { Browser, Page } from "puppeteer-core";
 import puppeteer from "puppeteer-core";
 import { createSerialGate } from "./serial-gate.js";
 
@@ -78,9 +77,58 @@ export function resolveChromePath(
 	return null;
 }
 
+/** wrapPage 实际消费的页面最小面 —— 真 puppeteer Page 结构性满足,单测注入假实现。 */
+export interface PageHandle {
+	setContent(html: string, options?: SetContentOptions): Promise<void>;
+	waitForFunction(
+		// biome-ignore lint/suspicious/noExplicitAny: mirrors puppeteer's waitForFunction overload
+		fn: string | ((...args: any[]) => unknown),
+		options?: WaitForFunctionOptions,
+	): Promise<unknown>;
+	$(selector: string): Promise<ElementHandleLike | null>;
+	screenshot(options?: ScreenshotOptions): Promise<Buffer | Uint8Array>;
+	close(): Promise<void>;
+}
+
+/** adapter 消费的浏览器最小面 —— close 杀本地进程,disconnect 只断远端连接。 */
+export interface BrowserHandle {
+	readonly connected: boolean;
+	newPage(): Promise<PageHandle>;
+	close(): Promise<void>;
+	disconnect(): void | Promise<void>;
+}
+
+export interface BrowserLaunchOptions {
+	executablePath: string;
+	headless: boolean;
+	args: string[];
+	defaultViewport: { width: number; height: number; deviceScaleFactor: number };
+}
+
+/** puppeteer-core 门面。生产用默认实现;单测注入假 launcher 测生命周期。 */
+export interface BrowserLauncher {
+	launch(options: BrowserLaunchOptions): Promise<BrowserHandle>;
+}
+
+const defaultLauncher: BrowserLauncher = {
+	// 真 Browser/Page 结构性满足 BrowserHandle/PageHandle,但 puppeteer 的重载签名
+	// (screenshot 的 base64 重载等)让 TS 无法自动收窄 —— 在这唯一边界断言一次。
+	launch: (options) => puppeteer.launch(options) as unknown as Promise<BrowserHandle>,
+};
+
+/** 空闲多久后自动关浏览器的默认值(5 分钟)。 */
+export const DEFAULT_CHROME_IDLE_MS = 300_000;
+
 export interface PuppeteerAdapterOptions {
 	chromePath: string;
 	logger: Logger;
+	/**
+	 * 最后一次渲染结束后多久自动关掉浏览器(下次渲染懒重启),省常驻内存。
+	 * `0` = 永不自动关(旧行为)。缺省 {@link DEFAULT_CHROME_IDLE_MS}。
+	 */
+	idleTimeoutMs?: number;
+	/** 注入 puppeteer-core 门面(单测用);缺省真 puppeteer-core。 */
+	launcher?: BrowserLauncher;
 }
 
 export interface StandalonePuppeteer extends PuppeteerLike {
@@ -88,18 +136,64 @@ export interface StandalonePuppeteer extends PuppeteerLike {
 }
 
 export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): StandalonePuppeteer {
-	let browser: Browser | null = null;
-	let launching: Promise<Browser> | null = null;
+	const launcher = opts.launcher ?? defaultLauncher;
+	const idleTimeoutMs = opts.idleTimeoutMs ?? DEFAULT_CHROME_IDLE_MS;
+	let browser: BrowserHandle | null = null;
+	let launching: Promise<BrowserHandle> | null = null;
+	// 在渲染中的页面数。归零才允许空闲计时器把浏览器关掉。
+	let activePages = 0;
+	let idleTimer: NodeJS.Timeout | null = null;
 	// 串行闸:所有渲染(预览 screenshotHtml + 推送 ImageRenderer)经同一浏览器,冷启动
 	// 窗口期并发截图会触发 CDP 竞态把卡片平铺成 2×2(见 serial-gate.ts)。串起来即根除。
 	const acquire = createSerialGate();
 
-	async function ensure(): Promise<Browser> {
+	function cancelIdleTimer(): void {
+		if (idleTimer) {
+			clearTimeout(idleTimer);
+			idleTimer = null;
+		}
+	}
+
+	function armIdleTimer(): void {
+		if (idleTimeoutMs <= 0) return;
+		cancelIdleTimer();
+		idleTimer = setTimeout(() => {
+			idleTimer = null;
+			void closeIdleBrowser();
+		}, idleTimeoutMs);
+		// 计时器不该拖住进程退出(dispose 也会清它,unref 只是兜底)。
+		idleTimer.unref?.();
+	}
+
+	async function closeIdleBrowser(): Promise<void> {
+		// 防御:计时器与新渲染竞态时(page() 尚未走到 cancelIdleTimer)有活跃页就不动,
+		// 该页 close 时会重新 arm。
+		if (activePages > 0) return;
+		const b = browser;
+		browser = null;
+		if (!b) return;
+		opts.logger.info(
+			`[puppeteer] 空闲 ${Math.round(idleTimeoutMs / 1000)}s,关闭 chromium 释放内存(下次渲染自动重启)`,
+		);
+		try {
+			await b.close();
+		} catch (e) {
+			opts.logger.warn(`[puppeteer] idle close failed: ${String(e)}`);
+		}
+	}
+
+	/** 一页渲染结束:活跃数减一,归零则起空闲计时。 */
+	function onPageClosed(): void {
+		activePages -= 1;
+		if (activePages === 0) armIdleTimer();
+	}
+
+	async function ensure(): Promise<BrowserHandle> {
 		if (browser?.connected) return browser;
 		if (launching) return launching;
 		launching = (async () => {
 			opts.logger.info(`[puppeteer] 启动 chromium · executablePath=${opts.chromePath}`);
-			const b = await puppeteer.launch({
+			const b = await launcher.launch({
 				executablePath: opts.chromePath,
 				headless: true,
 				args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
@@ -127,19 +221,24 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Standalon
 		async page(): Promise<PageLike> {
 			// 进闸:等上一个渲染(页面 close)后才继续,保证全程并发度为 1。
 			const release = await acquire();
+			cancelIdleTimer();
 			try {
 				const b = await ensure();
 				const p = await b.newPage();
+				activePages += 1;
 				// 2x DPI(retina / HiDPI 下截图够清晰)由 launch 的 defaultViewport 提供,
 				// 页面诞生即带 dSF=2 —— 不再 per-page setViewport。
-				return wrapPage(p, release);
+				return wrapPage(p, release, onPageClosed);
 			} catch (err) {
-				// 取页失败(启动报错等):立刻放闸,否则后续渲染全卡死。
+				// 取页失败(启动报错等):立刻放闸,否则后续渲染全卡死。失败也算一次
+				// 活动结束 —— 没有活跃页就重新起空闲计时,别让半残浏览器常驻。
 				release();
+				if (activePages === 0) armIdleTimer();
 				throw err;
 			}
 		},
 		async dispose(): Promise<void> {
+			cancelIdleTimer();
 			const b = browser;
 			browser = null;
 			launching = null;
@@ -154,7 +253,8 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Standalon
 	};
 }
 
-function wrapPage(page: Page, release: () => void): PageLike {
+function wrapPage(page: PageHandle, release: () => void, onClosed: () => void): PageLike {
+	let closed = false;
 	return {
 		async setContent(html: string, options?: SetContentOptions) {
 			await page.setContent(html, options);
@@ -164,8 +264,7 @@ function wrapPage(page: Page, release: () => void): PageLike {
 			fn: string | ((...args: any[]) => unknown),
 			options?: WaitForFunctionOptions,
 		) {
-			// biome-ignore lint/suspicious/noExplicitAny: puppeteer-core's overload typing
-			return page.waitForFunction(fn as any, options);
+			return page.waitForFunction(fn, options);
 		},
 		async $(selector: string): Promise<ElementHandleLike | null> {
 			const el = await page.$(selector);
@@ -180,19 +279,21 @@ function wrapPage(page: Page, release: () => void): PageLike {
 			};
 		},
 		async screenshot(options?: ScreenshotOptions): Promise<Buffer | Uint8Array> {
-			// puppeteer-core's screenshot has overloads (Uint8Array | string when
-			// encoding: "base64"). Our PageLike contract doesn't carry an encoding
-			// field so we always end up on the binary overload — cast through
-			// unknown to bridge the union.
-			const result = await page.screenshot(options as never);
-			return result as unknown as Buffer | Uint8Array;
+			return page.screenshot(options);
 		},
 		async close() {
+			// 幂等:重复 close 不重复放闸/减计数,防活跃页计数被扣穿。
+			if (closed) return;
+			closed = true;
 			// 先放闸再 close:即便 close 抛错(Chrome 崩溃),闸也已释放,后续渲染不被卡死。
 			try {
 				release();
 			} finally {
-				await page.close();
+				try {
+					await page.close();
+				} finally {
+					onClosed();
+				}
 			}
 		},
 	};

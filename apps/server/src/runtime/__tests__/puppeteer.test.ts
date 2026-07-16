@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vite-plus/test";
-import { resolveChromePath } from "../puppeteer";
+import type { Logger } from "@bilibili-notify/internal";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { createPuppeteerAdapter, resolveChromePath } from "../puppeteer";
 
 describe("resolveChromePath", () => {
 	it("returns the explicit path as-is when provided (operator's choice wins)", () => {
@@ -44,5 +45,134 @@ describe("resolveChromePath", () => {
 			exists: () => true,
 		});
 		expect(result).toBeNull();
+	});
+});
+
+function makeLogger(): Logger {
+	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+}
+
+function makeFakePage() {
+	return {
+		setContent: vi.fn(async () => {}),
+		waitForFunction: vi.fn(async () => undefined),
+		$: vi.fn(async () => null),
+		screenshot: vi.fn(async () => Buffer.alloc(0)),
+		close: vi.fn(async () => {}),
+	};
+}
+
+function makeFakeBrowser() {
+	let connected = true;
+	return {
+		get connected() {
+			return connected;
+		},
+		newPage: vi.fn(async () => makeFakePage()),
+		close: vi.fn(async () => {
+			connected = false;
+		}),
+		disconnect: vi.fn(async () => {
+			connected = false;
+		}),
+	};
+}
+
+type FakeBrowser = ReturnType<typeof makeFakeBrowser>;
+
+/** 注入用假 launcher:记录每次 launch/connect 产出的 browser 以便断言。 */
+function makeFakeLauncher() {
+	const browsers: FakeBrowser[] = [];
+	return {
+		browsers,
+		launch: vi.fn(async () => {
+			const b = makeFakeBrowser();
+			browsers.push(b);
+			return b;
+		}),
+		connect: vi.fn(async () => {
+			const b = makeFakeBrowser();
+			browsers.push(b);
+			return b;
+		}),
+	};
+}
+
+describe("createPuppeteerAdapter idle auto-close", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("closes the launched browser after the idle timeout elapses", async () => {
+		const launcher = makeFakeLauncher();
+		const adapter = createPuppeteerAdapter({
+			chromePath: "/fake/chrome",
+			logger: makeLogger(),
+			launcher,
+			idleTimeoutMs: 5_000,
+		});
+		const page = await adapter.page();
+		await page.close();
+		// 刚渲染完:计时器在跑,浏览器还活着。
+		expect(launcher.browsers[0]?.close).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(launcher.browsers[0]?.close).toHaveBeenCalledTimes(1);
+	});
+
+	it("cancels the pending close when a new render starts, then relaunches after a real close", async () => {
+		const launcher = makeFakeLauncher();
+		const adapter = createPuppeteerAdapter({
+			chromePath: "/fake/chrome",
+			logger: makeLogger(),
+			launcher,
+			idleTimeoutMs: 5_000,
+		});
+		const page1 = await adapter.page();
+		await page1.close();
+		await vi.advanceTimersByTimeAsync(4_000);
+		// 超时前来了新渲染 → 取消关闭。
+		const page2 = await adapter.page();
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(launcher.browsers[0]?.close).not.toHaveBeenCalled();
+		expect(launcher.launch).toHaveBeenCalledTimes(1); // 仍是同一个浏览器
+		// 渲染结束后空闲计时重新开始 → 到点关闭 → 下次渲染重新 launch。
+		await page2.close();
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(launcher.browsers[0]?.close).toHaveBeenCalledTimes(1);
+		await adapter.page();
+		expect(launcher.launch).toHaveBeenCalledTimes(2);
+	});
+
+	it("never auto-closes when idleTimeoutMs is 0", async () => {
+		const launcher = makeFakeLauncher();
+		const adapter = createPuppeteerAdapter({
+			chromePath: "/fake/chrome",
+			logger: makeLogger(),
+			launcher,
+			idleTimeoutMs: 0,
+		});
+		const page = await adapter.page();
+		await page.close();
+		await vi.advanceTimersByTimeAsync(3_600_000);
+		expect(launcher.browsers[0]?.close).not.toHaveBeenCalled();
+	});
+
+	it("dispose clears the pending idle timer (no double close)", async () => {
+		const launcher = makeFakeLauncher();
+		const adapter = createPuppeteerAdapter({
+			chromePath: "/fake/chrome",
+			logger: makeLogger(),
+			launcher,
+			idleTimeoutMs: 5_000,
+		});
+		const page = await adapter.page();
+		await page.close();
+		await adapter.dispose();
+		expect(launcher.browsers[0]?.close).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(launcher.browsers[0]?.close).toHaveBeenCalledTimes(1);
 	});
 });
