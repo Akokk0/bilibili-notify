@@ -53,4 +53,37 @@ describe("ChromeAutoDetect", () => {
 		expect(await screen.findByText(/未.*找到|手动/)).toBeTruthy();
 		expect(screen.queryByRole("button", { name: /启用/ })).toBeNull();
 	});
+
+	it("渲染远程端点输入框,空值时连接按钮禁用", () => {
+		render(<ChromeAutoDetect onEnabled={() => {}} />);
+		expect(screen.getByPlaceholderText(/ws:\/\//)).toBeTruthy();
+		const btn = screen.getByRole("button", { name: /连接远程浏览器/ }) as HTMLButtonElement;
+		expect(btn.disabled).toBe(true);
+	});
+
+	it("填远程端点 + 点连接 → POST enable-rendering { chromeEndpoint } + 回调 onEnabled", async () => {
+		postMock.mockResolvedValue({ ok: true, chromeEndpoint: "ws://browser:3000" });
+		const onEnabled = vi.fn();
+		render(<ChromeAutoDetect onEnabled={onEnabled} />);
+		fireEvent.change(screen.getByPlaceholderText(/ws:\/\//), {
+			target: { value: "ws://browser:3000" },
+		});
+		fireEvent.click(screen.getByRole("button", { name: /连接远程浏览器/ }));
+		await waitFor(() => expect(onEnabled).toHaveBeenCalledTimes(1));
+		expect(postMock).toHaveBeenCalledWith("/api/cards/enable-rendering", {
+			chromeEndpoint: "ws://browser:3000",
+		});
+	});
+
+	it("远程端点连接失败 → 显示后端错误,不回调 onEnabled", async () => {
+		postMock.mockRejectedValue(new Error("远程浏览器连接失败：connect ECONNREFUSED browser:3000"));
+		const onEnabled = vi.fn();
+		render(<ChromeAutoDetect onEnabled={onEnabled} />);
+		fireEvent.change(screen.getByPlaceholderText(/ws:\/\//), {
+			target: { value: "ws://bad:3000" },
+		});
+		fireEvent.click(screen.getByRole("button", { name: /连接远程浏览器/ }));
+		expect(await screen.findByText(/ECONNREFUSED/)).toBeTruthy();
+		expect(onEnabled).not.toHaveBeenCalled();
+	});
 });

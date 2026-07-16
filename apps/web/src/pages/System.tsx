@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Avatar, Btn } from "../components/atoms";
+import { BrowserSourceSettings } from "../components/browser-source-settings";
 import {
 	Field,
 	LogLevelPicker,
@@ -459,6 +460,8 @@ export default function System() {
 					拉取 /api/globals 失败：{String((globalsQuery.error as Error).message)}
 				</div>
 			) : null}
+
+			<BrowserSourceSettings />
 
 			<BackupSection />
 
