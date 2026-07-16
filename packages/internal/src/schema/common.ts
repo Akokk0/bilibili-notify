@@ -233,6 +233,12 @@ const CardStyleObjectSchema = z.object({
 	 */
 	backgroundImages: z.array(z.string()).default([]),
 	/**
+	 * 直播卡自定义封面图资产 id **列表**(独立端专属,复用卡片背景同一图廊)。空列表
+	 * (默认)= 沿用 B 站房间封面 / 关键帧;长度 1 = 固定单张;长度 >1 = 每次推送顺序
+	 * 轮换(游标与背景图同一 rotator,key 维度独立)。仅对 live 卡有意义,其余卡忽略。
+	 */
+	liveCoverImages: z.array(z.string()).default([]),
+	/**
 	 * 玻璃片(卡片内容层)透明度,0..1。**可选**:未设(默认)时各卡沿用各自内置基线
 	 * (live/dynamic 0.82、sc/guard 0.75),保证「默认复刻现状」;设了值才统一覆盖所有卡。
 	 * 0 = 透明但仍带磨砂模糊;「完全透明无模糊」走 `glassClear`(与本字段二选一)。
@@ -275,9 +281,9 @@ export type CardStyle = z.infer<typeof CardStyleSchema>;
 
 // `.partial()` 只把字段变可选,**不剥离内层 `.default()`**(与 ContentFilters /
 // ScheduleConfig / TemplateBundle 三个 PartialSchema 同源问题):CardStyleObjectSchema
-// 有 7 个带 default 的字段,per-UP 只覆盖一个字段(如 cardColorStart)时,partial 会把
+// 有 8 个带 default 的字段,per-UP 只覆盖一个字段(如 cardColorStart)时,partial 会把
 // enabled:true / font / showPopularity / showArea / showFans / backgroundImages:[] /
-// glassClear:false 一并注入。resolve() 的 merge(defaults.cardStyle, ov.cardStyle) 视其
+// liveCoverImages:[] / glassClear:false 一并注入。resolve() 的 merge(defaults.cardStyle, ov.cardStyle) 视其
 // 为「已覆盖」而盖掉全局自定义值 —— 最严重:全局 enabled=false(关图片渲染)被注入的
 // true 悄悄翻开。故这 7 个在 override 维度必须是「无默认的纯可选」,与全局
 // CardStyleObjectSchema(带 .default 供 globals.json 缺字段回填)分开。
@@ -290,6 +296,7 @@ export const CardStylePartialSchema = z.preprocess(
 		showArea: z.boolean().optional(),
 		showFans: z.boolean().optional(),
 		backgroundImages: z.array(z.string()).optional(),
+		liveCoverImages: z.array(z.string()).optional(),
 		glassClear: z.boolean().optional(),
 	}),
 );

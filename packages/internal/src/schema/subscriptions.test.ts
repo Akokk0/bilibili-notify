@@ -11,6 +11,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
+import { CardStyleSchema } from "./common";
 import { makeDefaultGlobalConfig } from "./globals";
 import { resolve } from "./resolve";
 import {
@@ -245,6 +246,30 @@ describe("per-UP cardStyle override 不被全局默认污染", () => {
 			overrides: { cardStyle: { backgroundImage: "bg.png" } as Record<string, unknown> },
 		});
 		expect(parsed.overrides.cardStyle?.backgroundImages).toEqual(["bg.png"]);
+	});
+
+	it("liveCoverImages:全局带默认空列表,per-UP 单字段覆盖不注入", () => {
+		// 全局 CardStyleSchema:缺省回填 []。
+		const global = CardStyleSchema.parse({ cardColorStart: "#111111", cardColorEnd: "#222222" });
+		expect(global.liveCoverImages).toEqual([]);
+		// per-UP partial:只覆盖颜色 → liveCoverImages 不被 default 注入(防 .partial() 雷)。
+		const parsed = SubscriptionSchema.parse({
+			...BASE,
+			overrides: { cardStyle: { cardColorStart: "#ff0000" } },
+		});
+		expect(parsed.overrides.cardStyle?.liveCoverImages).toBeUndefined();
+	});
+
+	it("liveCoverImages:per-UP 覆盖颜色时,resolve 后全局封面列表仍生效", () => {
+		const defaults = makeDefaultGlobalConfig().defaults;
+		defaults.cardStyle.liveCoverImages = ["cover-a", "cover-b"];
+		const sub = SubscriptionSchema.parse({
+			...BASE,
+			overrides: { cardStyle: { cardColorStart: "#ff0000" } },
+		});
+		const eff = resolve(sub, defaults);
+		expect(eff.cardStyle.cardColorStart).toBe("#ff0000");
+		expect(eff.cardStyle.liveCoverImages).toEqual(["cover-a", "cover-b"]);
 	});
 
 	it("只覆盖 schedule.pushTime → liveEndGrace/liveEndGraceMinutes 仍 undefined", () => {
