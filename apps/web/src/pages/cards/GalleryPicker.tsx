@@ -72,9 +72,21 @@ function Thumb({
 export function GalleryPicker({
 	value,
 	onChange,
+	onAssetDeleted,
+	emptyHint,
+	singleHint,
 }: {
 	value: string[];
 	onChange: (next: string[]) => void;
+	/**
+	 * 删盘成功后的回调(在本 picker 自身 onChange 剔除之外)。Cards 页借它清扫页面上
+	 * 其他仍引用该 id 的样式状态 —— 否则那些字段带着悬空 id 落盘成幽灵引用。
+	 */
+	onAssetDeleted?: (id: string) => void;
+	/** 空选时的底部文案(缺省背景语义「未选择(用渐变背景)」;封面上下文应传封面语义)。 */
+	emptyHint?: string;
+	/** 单张选中时的底部文案(缺省「单张固定背景」)。 */
+	singleHint?: string;
 }) {
 	const qc = useQueryClient();
 	const [uploading, setUploading] = useState(false);
@@ -111,6 +123,8 @@ export function GalleryPicker({
 		try {
 			await api.delete(`/api/cards/asset/${id}`);
 			onChange(removeFromGallery(value, id));
+			// 通知页面清扫其他仍引用该 id 的样式状态(必须在删盘成功后、409 拦截不触发)。
+			onAssetDeleted?.(id);
 			await qc.invalidateQueries({ queryKey: ["card-assets"] });
 		} catch (e) {
 			if (e instanceof ApiError && e.status === 409) {
@@ -121,6 +135,11 @@ export function GalleryPicker({
 			}
 		}
 	};
+
+	// 选中但已不在图廊里的 id(文件被删的悬空引用)。渲染成可见的「已失效」占位块 ——
+	// 隐形会让它悄悄占住轮换位(角标/张数对不上、渲染回退渐变),且没有任何入口能取消选中。
+	// 图廊列表未加载完(data 缺省)时不判失效,避免加载闪烁误标。
+	const ghosts = gallery.data ? value.filter((id) => !ids.includes(id)) : [];
 
 	return (
 		<div className="flex flex-col gap-2">
@@ -137,6 +156,28 @@ export function GalleryPicker({
 						/>
 					);
 				})}
+				{ghosts.map((id) => (
+					<div
+						key={id}
+						data-testid="gallery-ghost"
+						title="引用的图片文件已被删除,点 × 从选择中移除"
+						className="relative grid aspect-[16/10] w-24 shrink-0 place-items-center overflow-hidden rounded-lg border border-dashed border-bn-danger-text/50 bg-bn-surface-muted"
+					>
+						<span className="absolute left-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-bn-danger-text px-1 text-[9px] font-bold text-white">
+							{value.indexOf(id) + 1}
+						</span>
+						<span className="text-[10px] text-bn-danger-text">已失效</span>
+						<button
+							type="button"
+							title="移除失效引用"
+							aria-label="移除失效引用"
+							onClick={() => onChange(removeFromGallery(value, id))}
+							className="absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-full bg-black/55 text-white transition hover:bg-bn-danger-text"
+						>
+							<Icon.close size={10} />
+						</button>
+					</div>
+				))}
 				<label className="grid aspect-[16/10] w-24 shrink-0 cursor-pointer place-items-center rounded-lg border border-dashed border-bn-border text-[11px] text-bn-text-tertiary transition hover:border-bn-pink hover:text-bn-pink">
 					{uploading ? (
 						"上传中…"
@@ -158,9 +199,9 @@ export function GalleryPicker({
 			<div className="flex items-center justify-between text-[11px]">
 				<span className="text-bn-text-tertiary">
 					{value.length === 0
-						? "未选择(用渐变背景)"
+						? (emptyHint ?? "未选择(用渐变背景)")
 						: value.length === 1
-							? "单张固定背景"
+							? (singleHint ?? "单张固定背景")
 							: `${value.length} 张 · 每次推送顺序轮换`}
 				</span>
 				{err ? <span className="text-right text-bn-danger-text">{err}</span> : null}

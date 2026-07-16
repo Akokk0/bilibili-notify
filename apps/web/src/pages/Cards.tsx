@@ -38,6 +38,7 @@ import type { CardLayoutFull, PushTarget, Subscription } from "../types/domain";
 import type { CardStyle, GlobalConfig, LogLevel } from "../types/globals";
 import { CardLayoutEditor } from "./cards/CardLayoutEditor";
 import { GalleryPicker } from "./cards/GalleryPicker";
+import { removeAssetFromByKind, removeAssetFromStyle } from "./cards/gallery-ops";
 import {
 	type CardStyleByKind,
 	resolveKindStyle,
@@ -359,9 +360,12 @@ const fromPickerValue = (v: LogLevelValue | null): ImageLogLevel =>
 export function CardStyleFields({
 	style,
 	onChange,
+	onAssetDeleted,
 }: {
 	style: CardStyle;
 	onChange: (next: CardStyle) => void;
+	/** 背景图删盘回调,透传给 GalleryPicker(Cards 页借它清扫其他样式草稿)。 */
+	onAssetDeleted?: (id: string) => void;
 }) {
 	const set = <K extends keyof CardStyle>(k: K, v: CardStyle[K]) => onChange({ ...style, [k]: v });
 	return (
@@ -420,6 +424,7 @@ export function CardStyleFields({
 				<GalleryPicker
 					value={style.backgroundImages}
 					onChange={(next) => set("backgroundImages", next)}
+					onAssetDeleted={onAssetDeleted}
 				/>
 			</Field>
 		</>
@@ -462,6 +467,7 @@ export function PerUpCoverSection({
 	base,
 	value,
 	onChange,
+	onAssetDeleted,
 }: {
 	/** 继承值来源:全局基准的封面列表。 */
 	base: string[];
@@ -469,6 +475,8 @@ export function PerUpCoverSection({
 	value: StylePartial | undefined;
 	/** 写回 `cardStyleByKind.live`(undefined = 删除该 kind)。 */
 	onChange: (next: StylePartial | undefined) => void;
+	/** 封面图删盘回调,透传给 GalleryPicker(Cards 页借它清扫其他样式草稿)。 */
+	onAssetDeleted?: (id: string) => void;
 }) {
 	const active = hasCoverOverride(value);
 	const toggleOverride = (on: boolean) => {
@@ -493,6 +501,9 @@ export function PerUpCoverSection({
 					<GalleryPicker
 						value={value?.liveCoverImages ?? []}
 						onChange={(next) => onChange({ ...(value ?? {}), liveCoverImages: next })}
+						onAssetDeleted={onAssetDeleted}
+						emptyHint="未选择(用 B 站直播间原始封面)"
+						singleHint="单张固定封面"
 					/>
 				</Field>
 			) : (
@@ -784,6 +795,17 @@ export default function Cards() {
 	// 按卡片类型的样式覆盖(per-UP)。空 = 各类型跟随该 UP 基准(puStyle ?? 全局)。
 	const [puByKind, setPuByKind] = useState<CardStyleByKind>({});
 	const [puLayout, setPuLayout] = useState<CardLayoutFull | undefined>(undefined);
+
+	// 图廊删盘后清扫页面上所有仍引用该 id 的样式草稿(全局基准 / 全局 per-kind / per-UP
+	// 基准 / per-UP per-kind 的背景图 + 直播封面)。picker 自身的 onChange 只清它绑定的
+	// 那一个字段;其余草稿若攥着这个 id 不放,下次保存就落盘成悬空引用(幽灵占轮换位)。
+	// 服务端 409 只拦「已保存配置」里的引用,未保存草稿只能靠这里。
+	const sweepDeletedAsset = (id: string) => {
+		setGStyle((s) => (s ? removeAssetFromStyle(s, id) : s));
+		setGByKind((bk) => removeAssetFromByKind(bk, id));
+		setPuStyle((s) => (s ? removeAssetFromStyle(s, id) : s));
+		setPuByKind((bk) => removeAssetFromByKind(bk, id));
+	};
 
 	// 左侧导航:「全局」(基准通用样式)或某卡片类型。与作用域无关。
 	const [activeTab, setActiveTab] = useState<"__global" | StyleKind>("__global");
@@ -1161,7 +1183,11 @@ export default function Cards() {
 								icon={<Icon.edit size={14} />}
 								badge="cardStyle"
 							>
-								<CardStyleFields style={gStyle} onChange={(n) => setGStyle(n)} />
+								<CardStyleFields
+									style={gStyle}
+									onChange={(n) => setGStyle(n)}
+									onAssetDeleted={sweepDeletedAsset}
+								/>
 								<Field code="app.logLevels.image" full>
 									<LogLevelPicker
 										value={toPickerValue(imageLogLevel)}
@@ -1186,7 +1212,11 @@ export default function Cards() {
 								}
 							>
 								{puStyle ? (
-									<CardStyleFields style={puStyle} onChange={(n) => setPuStyle(n)} />
+									<CardStyleFields
+										style={puStyle}
+										onChange={(n) => setPuStyle(n)}
+										onAssetDeleted={sweepDeletedAsset}
+									/>
 								) : (
 									<InheritNote>该 UP 继承全局卡片样式</InheritNote>
 								)}
@@ -1219,6 +1249,7 @@ export default function Cards() {
 								<CardStyleFields
 									style={resolveKindStyle(gStyle, gByKind, styleKind)}
 									onChange={(n) => setGByKind((bk) => ({ ...bk, [styleKind]: colorOnly(n) }))}
+									onAssetDeleted={sweepDeletedAsset}
 								/>
 							) : (
 								<InheritNote>该卡片跟随「全局」通用样式</InheritNote>
@@ -1270,6 +1301,7 @@ export default function Cards() {
 											},
 										}))
 									}
+									onAssetDeleted={sweepDeletedAsset}
 								/>
 							) : (
 								<InheritNote>该卡片跟随该 UP 的基准样式</InheritNote>
@@ -1323,6 +1355,9 @@ export default function Cards() {
 									<GalleryPicker
 										value={gStyle.liveCoverImages}
 										onChange={(next) => setGStyle({ ...gStyle, liveCoverImages: next })}
+										onAssetDeleted={sweepDeletedAsset}
+										emptyHint="未选择(用 B 站直播间原始封面)"
+										singleHint="单张固定封面"
 									/>
 								</Field>
 							</GlassBox>
@@ -1338,6 +1373,7 @@ export default function Cards() {
 										return nb;
 									})
 								}
+								onAssetDeleted={sweepDeletedAsset}
 							/>
 						))}
 

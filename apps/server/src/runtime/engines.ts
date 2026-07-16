@@ -63,7 +63,7 @@ import type { ConfigStore } from "../config/store.js";
 import type { HistoryStore } from "../history/store.js";
 import type { PlatformAdapter, ProbeResult } from "../platforms/types.js";
 import { createMultiplexSink } from "../sink/multiplex.js";
-import { readCardBgDataUrl } from "./card-assets.js";
+import { makeExistingCardBgPicker, readCardBgDataUrl } from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
 import { syncFollows } from "./follow-sync.js";
@@ -374,6 +374,12 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	};
 	const cursorFlushTimer = setInterval(flushCursors, 30_000);
 	cursorFlushTimer.unref?.();
+	// 轮换前过滤盘上已不存在的资产(配置里的悬空引用):死条目不占游标位、不会渲染成
+	// 渐变 / 原封面;全悬空返回 undefined → 推送点静态兜底。背景与直播封面同一选择器。
+	const pickExistingCardBg = makeExistingCardBgPicker(
+		opts.configStore.bootstrap.dataDir,
+		cardBgRotator.pick,
+	);
 
 	// ---------- DynamicEngine ----------
 	const dynamicPushLike: DynamicPushLike = {
@@ -441,7 +447,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		ai: commentary ?? undefined,
 		config: dynamicConfig(),
 		getSubs: () => buildDynamicSubsView(opts.subscriptionStore, opts.subRuntimeStore, globals()),
-		pickCardBackground: cardBgRotator.pick,
+		pickCardBackground: pickExistingCardBg,
 	});
 	dynamic.start();
 
@@ -534,7 +540,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		emitEngineError: (msg) => opts.bus.emit("engine-error", "live-engine", msg),
 		emitLiveState: (uid, status) => opts.bus.emit("live-state-changed", uid, status),
 		emitViewers: (uid, viewers) => opts.bus.emit("live-viewers-changed", uid, viewers),
-		pickCardBackground: cardBgRotator.pick,
+		pickCardBackground: pickExistingCardBg,
 		// ③ 解析出房号即写盘(仅在与既有值不同时),下次启动/reload 直接读盘复用,
 		// 省掉逐 UP 的 getUserInfo 房号解析请求。
 		onRoomIdResolved: (uid, roomId) => {

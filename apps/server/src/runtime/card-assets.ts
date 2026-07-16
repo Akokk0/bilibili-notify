@@ -6,7 +6,8 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { access, mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 /** 单张背景图上限 5MB(前端应先压缩;这里是兜底)。 */
@@ -94,4 +95,42 @@ export async function readCardBgDataUrl(dataDir: string, id: string): Promise<st
 	const res = await readCardBg(dataDir, id);
 	if (!res) return "";
 	return `data:${res.mime};base64,${res.bytes.toString("base64")}`;
+}
+
+/**
+ * 取列表里第一张盘上真实存在的图的 id;全悬空 / 空列表返回 ""。
+ * 配置里的 id 可能指向已删盘的文件(历史悬空引用、卷丢失)——直接取 `[0]` 会解析失败
+ * 静默回退渐变 / 原封面,预览与静态兜底取图一律经此跳过死条目。
+ */
+export async function firstExistingCardBg(
+	dataDir: string,
+	ids: string[] | undefined,
+): Promise<string> {
+	for (const id of ids ?? []) {
+		if (!isValidCardBgId(id)) continue;
+		try {
+			await access(join(cardBgDir(dataDir), id));
+			return id;
+		} catch {
+			// 文件不存在 → 试下一张
+		}
+	}
+	return "";
+}
+
+/**
+ * 包一层推送轮换选择器:选图前过滤掉盘上已不存在的资产 id,轮换永远只在真实存在的图里转
+ * (悬空条目不占游标位、不会渲染成空背景)。过滤后为空返回 undefined → 调用点静态兜底。
+ * 同步(existsSync)是因为 pick 在推送点同步推进游标;资产量级小,开销可忽略。
+ */
+export function makeExistingCardBgPicker(
+	dataDir: string,
+	pick: (scopeKey: string, images: string[]) => string | undefined,
+): (scopeKey: string, images: string[]) => string | undefined {
+	return (scopeKey, images) => {
+		const existing = images.filter(
+			(id) => isValidCardBgId(id) && existsSync(join(cardBgDir(dataDir), id)),
+		);
+		return existing.length > 0 ? pick(scopeKey, existing) : undefined;
+	};
 }

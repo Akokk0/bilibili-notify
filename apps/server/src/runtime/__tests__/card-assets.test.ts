@@ -1,12 +1,14 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import {
 	cardBgDir,
 	deleteCardBg,
+	firstExistingCardBg,
 	isValidCardBgId,
 	listCardBg,
+	makeExistingCardBgPicker,
 	readCardBg,
 	readCardBgDataUrl,
 	saveCardBg,
@@ -107,5 +109,48 @@ describe("card-assets", () => {
 		expect(await readCardBgDataUrl(dir, `${"f".repeat(32)}.png`)).toBe(""); // valid id, missing file
 		const id = await saveCardBg(dir, PNG, "image/png");
 		expect(await readCardBgDataUrl(dir, id)).toMatch(/^data:image\/png;base64,/);
+	});
+
+	// ---------- 悬空引用防御:配置里的 id 可能指向已删盘的文件 ----------
+
+	it("firstExistingCardBg 跳过悬空 id,返回第一张盘上存在的图", async () => {
+		const fresh = await mkdtemp(join(tmpdir(), "card-bg-first-"));
+		try {
+			const real = await saveCardBg(fresh, PNG, "image/png");
+			const ghost = `${"a".repeat(32)}.png`; // 合法格式但文件不存在
+			expect(await firstExistingCardBg(fresh, [ghost, real])).toBe(real);
+			expect(await firstExistingCardBg(fresh, [real, ghost])).toBe(real);
+		} finally {
+			await rm(fresh, { recursive: true, force: true });
+		}
+	});
+
+	it("firstExistingCardBg:全部悬空 / 空列表 / undefined → ''", async () => {
+		const fresh = await mkdtemp(join(tmpdir(), "card-bg-first-none-"));
+		try {
+			expect(await firstExistingCardBg(fresh, [`${"a".repeat(32)}.png`])).toBe("");
+			expect(await firstExistingCardBg(fresh, [])).toBe("");
+			expect(await firstExistingCardBg(fresh, undefined)).toBe("");
+			expect(await firstExistingCardBg(fresh, ["../../etc/passwd"])).toBe(""); // 非法 id 不碰盘
+		} finally {
+			await rm(fresh, { recursive: true, force: true });
+		}
+	});
+
+	it("makeExistingCardBgPicker 过滤悬空 id 后才交给轮换器;全悬空不推游标直接 undefined", async () => {
+		const fresh = await mkdtemp(join(tmpdir(), "card-bg-picker-"));
+		try {
+			const real = await saveCardBg(fresh, PNG, "image/png");
+			const ghost = `${"b".repeat(32)}.png`;
+			const inner = vi.fn((_scope: string, images: string[]) => images[0]);
+			const pick = makeExistingCardBgPicker(fresh, inner);
+			expect(pick("uid:live", [ghost, real])).toBe(real);
+			expect(inner).toHaveBeenCalledWith("uid:live", [real]);
+			inner.mockClear();
+			expect(pick("uid:live", [ghost])).toBeUndefined();
+			expect(inner).not.toHaveBeenCalled();
+		} finally {
+			await rm(fresh, { recursive: true, force: true });
+		}
 	});
 });

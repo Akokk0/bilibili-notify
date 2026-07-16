@@ -630,6 +630,70 @@ describe("cards route — /preview live-by-uid fallback", () => {
 		expect(((await res.json()) as { ok: boolean }).ok).toBe(false);
 	});
 
+	it("mock 预览:backgroundImages 首张悬空(文件已删)→ 跳过,用第一张盘上存在的图", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-preview-ghost-bg-"));
+		try {
+			const real = await saveCardBg(dir, PNG, "image/png");
+			const ghost = `${"a".repeat(32)}.png`; // 合法格式但文件不存在(悬空引用)
+			const captured = { html: "" };
+			const page = {
+				setContent: vi.fn(async (html: string) => {
+					captured.html = html;
+				}),
+				waitForFunction: vi.fn(async () => undefined),
+				$: vi.fn(async () => ({
+					boundingBox: async () => ({ x: 0, y: 0, width: 600, height: 400 }),
+					dispose: async () => {},
+				})),
+				screenshot: vi.fn(async () => Buffer.from("png")),
+				close: vi.fn(async () => {}),
+			};
+			const puppeteer = { page: async () => page } as unknown as StandalonePuppeteer;
+			const app = createCardsRoute({ deps: depsWithDataDir(dir), puppeteer, api: null });
+			const res = await postPreview(app, {
+				kind: "live",
+				style: { ...STYLE, backgroundImages: [ghost, real] },
+			});
+			expect(res.status).toBe(200);
+			// 悬空首张被跳过,第二张成功内联成 data URL;老行为是取 [0] 解析失败静默回退渐变。
+			expect(captured.html).toContain("data:image/png;base64,");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("mock live 预览:liveCoverImages 首张悬空 → 跳过,封面用第一张存在的图", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-preview-ghost-cover-"));
+		try {
+			const real = await saveCardBg(dir, PNG, "image/png");
+			const ghost = `${"b".repeat(32)}.png`;
+			const captured = { html: "" };
+			const page = {
+				setContent: vi.fn(async (html: string) => {
+					captured.html = html;
+				}),
+				waitForFunction: vi.fn(async () => undefined),
+				$: vi.fn(async () => ({
+					boundingBox: async () => ({ x: 0, y: 0, width: 600, height: 400 }),
+					dispose: async () => {},
+				})),
+				screenshot: vi.fn(async () => Buffer.from("png")),
+				close: vi.fn(async () => {}),
+			};
+			const puppeteer = { page: async () => page } as unknown as StandalonePuppeteer;
+			const app = createCardsRoute({ deps: depsWithDataDir(dir), puppeteer, api: null });
+			const res = await postPreview(app, {
+				kind: "live",
+				style: { ...STYLE, liveCoverImages: [ghost, real] },
+			});
+			expect(res.status).toBe(200);
+			expect(captured.html).toContain("data:image/png;base64,");
+			expect(captured.html).not.toContain("%3ECover%3C");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("mock live 预览:style.liveCoverImages 首张解析成 data URL 注入封面", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-preview-cover-"));
 		try {

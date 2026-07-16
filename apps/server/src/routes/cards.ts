@@ -49,6 +49,7 @@ import { z } from "zod";
 import type { ChromeSource } from "../config/persist.js";
 import {
 	deleteCardBg,
+	firstExistingCardBg,
 	isValidCardBgId,
 	listCardBg,
 	readCardBg,
@@ -382,7 +383,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 每次请求都 updateConfig 一遍传入的 style — 否则用户在 Cards 页改完颜色后
 	// 第一次 /preview 构造一个 renderer 后,后续改色就不生效(renderer 是 lazy 单例)。
 	let imageRenderer: ImageRenderer | null = null;
-	function getImageRenderer(style: PreviewStyle): ImageRenderer | null {
+	async function getImageRenderer(style: PreviewStyle): Promise<ImageRenderer | null> {
 		if (!currentPuppeteer) return null;
 		const config = {
 			cardColorStart: style.cardColorStart,
@@ -393,7 +394,11 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			showFans: style.showFans ?? true,
 			glassOpacity: style.glassOpacity,
 			glassClear: style.glassClear,
-			backgroundImage: style.backgroundImages?.[0] ?? "",
+			// 跳过悬空引用(文件已删的 id),取第一张盘上存在的图 —— 否则解析失败静默回退渐变。
+			backgroundImage: await firstExistingCardBg(
+				opts.deps.store.bootstrap.dataDir,
+				style.backgroundImages,
+			),
 		};
 		if (!imageRenderer) {
 			imageRenderer = new ImageRenderer({
@@ -485,7 +490,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!puppeteer) throw new Error("puppeteer 未就绪");
 
 		if (kind === "sc") {
-			const renderer = getImageRenderer(style);
+			const renderer = await getImageRenderer(style);
 			if (!renderer) throw new Error("puppeteer 未就绪");
 			// 登录账号 = SC 发送者(「我在别人直播间发条 SC 会长啥样」);接收方 = 该 UP。
 			const me = await getLoggedInAccount();
@@ -506,7 +511,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			return { buffer, mime: "image/jpeg" };
 		}
 		if (kind === "guard") {
-			const renderer = getImageRenderer(style);
+			const renderer = await getImageRenderer(style);
 			if (!renderer) throw new Error("puppeteer 未就绪");
 			// 登录账号 = 新舰长(触发上舰事件的人);显式 text 覆写仍优先。接收方 = 该 UP。
 			const me = await getLoggedInAccount();
@@ -527,7 +532,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// 否则(全局显式输入)把错误原样抛出告知用户。
 		if (kind === "live" && (content?.roomId?.trim() || content?.uid?.trim())) {
 			try {
-				const renderer = getImageRenderer(style);
+				const renderer = await getImageRenderer(style);
 				if (!renderer) throw new Error("puppeteer 未就绪");
 				if (!opts.api) throw new Error("auth system 未就绪 — 后端账号尚未登录");
 				const roomId =
@@ -542,7 +547,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		}
 		if (kind === "dyn" && content?.uid?.trim()) {
 			try {
-				const renderer = getImageRenderer(style);
+				const renderer = await getImageRenderer(style);
 				if (!renderer) throw new Error("puppeteer 未就绪");
 				if (!opts.api) throw new Error("auth system 未就绪 — 后端账号尚未登录");
 				const buffer = await renderRealDynamic(
@@ -560,16 +565,18 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			}
 		}
 		// Live + Dyn 无真实数据(或回退):虚构 mock 数据,走 renderCard + screenshot 流水线
-		// (不经 ImageRenderer,未登录也能调色)。背景图/直播封面在此解析成 data URL 注入。
+		// (不经 ImageRenderer,未登录也能调色)。背景图/直播封面在此解析成 data URL 注入;
+		// 取「第一张盘上存在的图」,跳过悬空引用。
+		const dataDir = opts.deps.store.bootstrap.dataDir;
 		const bgDataUrl = await readCardBgDataUrl(
-			opts.deps.store.bootstrap.dataDir,
-			style.backgroundImages?.[0] ?? "",
+			dataDir,
+			await firstExistingCardBg(dataDir, style.backgroundImages),
 		);
 		const coverDataUrl =
 			kind === "live"
 				? await readCardBgDataUrl(
-						opts.deps.store.bootstrap.dataDir,
-						style.liveCoverImages?.[0] ?? "",
+						dataDir,
+						await firstExistingCardBg(dataDir, style.liveCoverImages),
 					)
 				: "";
 		const { component, props, title, htmlWidth } = buildPreviewSpec(
