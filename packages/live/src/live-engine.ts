@@ -65,6 +65,8 @@ export interface LiveEngineConfig {
 	 * 列表(见 `ListenerManagerConfig.defaultBackgroundImages`)。
 	 */
 	defaultBackgroundImages?: string[];
+	/** 全局默认直播封面列表(独立端专属),语义同上,仅 live 卡消费。 */
+	defaultLiveCoverImages?: string[];
 }
 
 export interface LiveEngineOptions {
@@ -320,6 +322,7 @@ function toListenerConfig(c: LiveEngineConfig): ListenerManagerConfig {
 		imageEnabled: c.imageEnabled,
 		messageLayout: c.messageLayout,
 		defaultBackgroundImages: c.defaultBackgroundImages,
+		defaultLiveCoverImages: c.defaultLiveCoverImages,
 	};
 }
 

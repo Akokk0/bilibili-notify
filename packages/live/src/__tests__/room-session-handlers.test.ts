@@ -988,3 +988,73 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 		expect(await pushTypeFor(LiveType.NotLiveBroadcast)).toBe(LivePushType.Live);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// resolvedCardStyle — live 卡自定义封面轮换(liveCoverImages)
+// ---------------------------------------------------------------------------
+
+describe("resolvedCardStyle live 封面轮换", () => {
+	function countingPicker() {
+		const cursors: Record<string, number> = {};
+		const keys: string[] = [];
+		const pick = (key: string, images: string[]): string => {
+			keys.push(key);
+			const i = cursors[key] ?? 0;
+			cursors[key] = i + 1;
+			return images[i % images.length] as string;
+		};
+		return { pick, keys };
+	}
+
+	it("多张封面 → 每次解析逐张轮换,游标 key 为 uid:live-cover", () => {
+		const { ctx } = makeCtx();
+		const { pick, keys } = countingPicker();
+		// biome-ignore lint/suspicious/noExplicitAny: 覆写 mock ctx 的可选回调
+		(ctx as any).pickBackground = pick;
+		const s = new RoomSession(
+			ctx,
+			makeSub({ customCardStyle: { enable: true, liveCoverImages: ["c1", "c2"] } }),
+		) as AnySession;
+		expect(s.resolvedCardStyle("live").liveCoverImage).toBe("c1");
+		expect(s.resolvedCardStyle("live").liveCoverImage).toBe("c2");
+		expect(s.resolvedCardStyle("live").liveCoverImage).toBe("c1");
+		expect(keys).toEqual(["u1:live-cover", "u1:live-cover", "u1:live-cover"]);
+	});
+
+	it("单张封面 → 不调选择器,沿用 engines 预填的 liveCoverImage", () => {
+		const { ctx } = makeCtx();
+		const s = new RoomSession(
+			ctx,
+			makeSub({
+				customCardStyle: { enable: true, liveCoverImage: "solo", liveCoverImages: ["solo"] },
+			}),
+		) as AnySession;
+		expect(s.resolvedCardStyle("live").liveCoverImage).toBe("solo");
+		expect(ctx.pickBackground).not.toHaveBeenCalled();
+	});
+
+	it("无覆盖但引擎级全局默认配了多张 → 按 defaultLiveCoverImages 轮换", () => {
+		const { ctx } = makeCtx();
+		const { pick } = countingPicker();
+		// biome-ignore lint/suspicious/noExplicitAny: 覆写 mock ctx 的可选回调
+		(ctx as any).pickBackground = pick;
+		// biome-ignore lint/suspicious/noExplicitAny: 测试注入引擎级全局默认
+		(ctx as any).config.defaultLiveCoverImages = ["x", "y"];
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		expect(s.resolvedCardStyle("live").liveCoverImage).toBe("x");
+		expect(s.resolvedCardStyle("live").liveCoverImage).toBe("y");
+	});
+
+	it("非 live kind 不做封面轮换(sc 解析不产生 liveCoverImage)", () => {
+		const { ctx } = makeCtx();
+		const { pick, keys } = countingPicker();
+		// biome-ignore lint/suspicious/noExplicitAny: 覆写 mock ctx 的可选回调
+		(ctx as any).pickBackground = pick;
+		const s = new RoomSession(
+			ctx,
+			makeSub({ customCardStyle: { enable: true, liveCoverImages: ["c1", "c2"] } }),
+		) as AnySession;
+		expect(s.resolvedCardStyle("sc").liveCoverImage).toBeUndefined();
+		expect(keys).toEqual([]);
+	});
+});

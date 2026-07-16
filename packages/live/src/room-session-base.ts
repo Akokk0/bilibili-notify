@@ -76,15 +76,29 @@ export abstract class RoomSessionBase {
 	 */
 	protected resolvedCardStyle(kind: CardKind): CustomCardStyleLike {
 		const style = this.sub.customCardStyleByKind?.[kind] ?? this.sub.customCardStyle;
+		let out = style;
 		const images =
 			style.backgroundImages && style.backgroundImages.length > 0
 				? style.backgroundImages
 				: this.ctx.config.defaultBackgroundImages;
 		if (images && images.length > 1) {
 			const picked = this.ctx.pickBackground(`${this.sub.uid}:${kind}`, images);
-			if (picked !== undefined) return { ...style, enable: true, backgroundImage: picked };
+			if (picked !== undefined) out = { ...out, enable: true, backgroundImage: picked };
 		}
-		return style;
+		// 直播封面轮换(独立端专属,仅 live 卡有封面):同一 rotator,key 维度独立
+		// (`uid:live-cover` vs 背景的 `uid:kind`),互不干扰。语义与背景完全同构:
+		// 样式自带列表优先,否则落回引擎级全局默认;>1 张才轮换,单张由 adapter 预填。
+		if (kind === "live") {
+			const covers =
+				style.liveCoverImages && style.liveCoverImages.length > 0
+					? style.liveCoverImages
+					: this.ctx.config.defaultLiveCoverImages;
+			if (covers && covers.length > 1) {
+				const picked = this.ctx.pickBackground(`${this.sub.uid}:live-cover`, covers);
+				if (picked !== undefined) out = { ...out, enable: true, liveCoverImage: picked };
+			}
+		}
+		return out;
 	}
 
 	/** Whether the underlying B-station room is currently broadcasting. */

@@ -79,6 +79,13 @@ export interface CustomCardStyleLike {
 	 * 时填入;推送点据它选下一张覆盖 `backgroundImage`。缺省 / ≤1 张 = 不轮换,用 `backgroundImage`。
 	 */
 	backgroundImages?: string[];
+	/** 直播卡自定义封面资产 id(独立端专属);透传给 generateLiveCard 的 colorOptions。 */
+	liveCoverImage?: string;
+	/**
+	 * 直播卡自定义封面的**完整**列表(>1 张时「每次推送轮换」,与背景图同一 rotator、
+	 * key 维度独立)。adapter 填入;推送点选下一张覆盖 `liveCoverImage`。
+	 */
+	liveCoverImages?: string[];
 	/** 直播卡数据区:显示人气 / 点赞;透传给 generateLiveCard 的 colorOptions(缺省回退全局)。 */
 	showPopularity?: boolean;
 	/** 直播卡数据区:显示分区;透传给 generateLiveCard 的 colorOptions(缺省回退全局)。 */

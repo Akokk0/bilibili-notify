@@ -65,6 +65,11 @@ export interface ListenerManagerConfig {
 	 * 兜底列表 —— 否则这些 UP 会一直渲染同一张图(渲染器自身只认单图静态配置)。
 	 */
 	defaultBackgroundImages?: string[];
+	/**
+	 * 全局默认直播封面列表(`defaults.cardStyle.liveCoverImages`,独立端专属)。
+	 * 该 UP 无覆盖时 `resolvedCardStyle("live")` 拿它做封面轮换兜底,语义同上。
+	 */
+	defaultLiveCoverImages?: string[];
 }
 
 /**

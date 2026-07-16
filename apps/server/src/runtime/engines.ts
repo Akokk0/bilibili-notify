@@ -518,6 +518,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			},
 			// 无 per-UP / per-kind 背景覆盖的 UP 靠它轮换全局默认图廊(见 resolvedCardStyle)。
 			defaultBackgroundImages: g.defaults.cardStyle.backgroundImages,
+			// 无覆盖的 UP 靠它轮换全局默认直播封面(独立端专属,见 resolvedCardStyle)。
+			defaultLiveCoverImages: g.defaults.cardStyle.liveCoverImages,
 		};
 	};
 
@@ -1115,6 +1117,7 @@ function cardStyleToColorOptions(s: {
 	glassOpacity?: number;
 	glassClear?: boolean;
 	backgroundImages?: string[];
+	liveCoverImages?: string[];
 	showPopularity?: boolean;
 	showArea?: boolean;
 	showFans?: boolean;
@@ -1129,6 +1132,9 @@ function cardStyleToColorOptions(s: {
 		// 完整列表透传给推送点;>1 张时「每次推送轮换」(见 RoomSession.resolvedCardStyle /
 		// DynamicEngine)。单图 / 缺省即用 backgroundImage,不轮换。
 		backgroundImages: s.backgroundImages,
+		// 直播封面同款语义(独立端专属,仅 live 卡消费)。
+		liveCoverImage: s.liveCoverImages?.[0],
+		liveCoverImages: s.liveCoverImages,
 		// 直播卡数据区显示项(live 才用);经 colorOptions 透传,缺省回退渲染器全局 config。
 		showPopularity: s.showPopularity,
 		showArea: s.showArea,
