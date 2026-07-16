@@ -119,6 +119,31 @@ export interface PreviewResponse {
 	err?: string;
 }
 
+/** 卡片渲染的浏览器来源(二选一;都在时 endpoint 生效)。 */
+export interface ChromeSourceDTO {
+	chromePath?: string;
+	chromeEndpoint?: string;
+}
+
+/** `GET /api/cards/render-source` 响应 —— System 页「卡片渲染浏览器」区的数据源。 */
+export interface RenderSourceResponse {
+	/** 渲染器当前是否可用(有 adapter 在位)。 */
+	enabled: boolean;
+	/** 在用来源;未启用时 null。 */
+	source: ChromeSourceDTO | null;
+	/** false = 无可写 bootstrap 配置(legacy/desktop),切换生效但重启不保留。 */
+	persistable: boolean;
+}
+
+/** `POST /api/cards/enable-rendering` 响应。 */
+export interface EnableRenderingResponse {
+	ok: boolean;
+	alreadyEnabled?: boolean;
+	chromePath?: string;
+	chromeEndpoint?: string;
+	err?: string;
+}
+
 // ---- /api/qq ----------------------------------------------------------------
 
 /** `GET /api/qq/sessions/:adapterId` 单条 —— 网关入站事件捞到的群/C2C 会话。 */

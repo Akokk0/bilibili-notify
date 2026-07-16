@@ -244,13 +244,16 @@ describe("cards route — detect-chrome", () => {
 });
 
 describe("cards route — enable-rendering", () => {
-	function depsWithEngines(enableImageRendering: ReturnType<typeof vi.fn>): RouteDeps {
+	function depsWithEngines(
+		enableImageRendering: ReturnType<typeof vi.fn>,
+		swapImageRendering: ReturnType<typeof vi.fn> = vi.fn(),
+	): RouteDeps {
 		return {
 			runtime: {
 				serviceCtx: {
 					logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 				},
-				engines: { enableImageRendering },
+				engines: { enableImageRendering, swapImageRendering },
 			},
 		} as unknown as RouteDeps;
 	}
@@ -259,14 +262,14 @@ describe("cards route — enable-rendering", () => {
 		const fakePup = { dispose: vi.fn(async () => {}) } as unknown as StandalonePuppeteer;
 		const createPuppeteer = vi.fn(() => fakePup);
 		const enableImageRendering = vi.fn(() => true);
-		const persistChromePath = vi.fn(async () => {});
+		const persistChromeSource = vi.fn(async () => {});
 		const onPuppeteerEnabled = vi.fn();
 		const app = createCardsRoute({
 			deps: depsWithEngines(enableImageRendering),
 			puppeteer: null,
 			api: null,
 			createPuppeteer,
-			persistChromePath,
+			persistChromeSource,
 			onPuppeteerEnabled,
 		});
 		const res = await app.request("/enable-rendering", {
@@ -276,22 +279,198 @@ describe("cards route — enable-rendering", () => {
 		});
 		expect(res.status).toBe(200);
 		expect(await res.json()).toMatchObject({ ok: true });
-		expect(createPuppeteer).toHaveBeenCalledWith("/usr/bin/google-chrome");
+		expect(createPuppeteer).toHaveBeenCalledWith({ chromePath: "/usr/bin/google-chrome" });
 		expect(enableImageRendering).toHaveBeenCalledWith(fakePup);
-		expect(persistChromePath).toHaveBeenCalledWith("/usr/bin/google-chrome");
+		expect(persistChromeSource).toHaveBeenCalledWith({ chromePath: "/usr/bin/google-chrome" });
 		expect(onPuppeteerEnabled).toHaveBeenCalledWith(fakePup);
+	});
+
+	it("POST /enable-rendering with chromeEndpoint: 先探测连通,再热启用 + 写回", async () => {
+		const probePage = { close: vi.fn(async () => {}) };
+		const fakePup = {
+			page: vi.fn(async () => probePage),
+			dispose: vi.fn(async () => {}),
+		} as unknown as StandalonePuppeteer;
+		const createPuppeteer = vi.fn(() => fakePup);
+		const enableImageRendering = vi.fn(() => true);
+		const persistChromeSource = vi.fn(async () => {});
+		const onPuppeteerEnabled = vi.fn();
+		const app = createCardsRoute({
+			deps: depsWithEngines(enableImageRendering),
+			puppeteer: null,
+			api: null,
+			createPuppeteer,
+			persistChromeSource,
+			onPuppeteerEnabled,
+		});
+		const res = await app.request("/enable-rendering", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ chromeEndpoint: "ws://browser:3000" }),
+		});
+		expect(res.status).toBe(200);
+		expect(await res.json()).toMatchObject({ ok: true, chromeEndpoint: "ws://browser:3000" });
+		expect(createPuppeteer).toHaveBeenCalledWith({ chromeEndpoint: "ws://browser:3000" });
+		// 远程端点没有 detect-chrome 那样的预验,必须真开一页确认连得上才算启用成功。
+		expect(fakePup.page).toHaveBeenCalledTimes(1);
+		expect(probePage.close).toHaveBeenCalledTimes(1);
+		expect(enableImageRendering).toHaveBeenCalledWith(fakePup);
+		expect(persistChromeSource).toHaveBeenCalledWith({ chromeEndpoint: "ws://browser:3000" });
+		expect(onPuppeteerEnabled).toHaveBeenCalledWith(fakePup);
+	});
+
+	it("chromeEndpoint 探测失败 → 502,dispose,不启用不写回", async () => {
+		const fakePup = {
+			page: vi.fn(async () => {
+				throw new Error("connect ECONNREFUSED browser:3000");
+			}),
+			dispose: vi.fn(async () => {}),
+		} as unknown as StandalonePuppeteer;
+		const createPuppeteer = vi.fn(() => fakePup);
+		const enableImageRendering = vi.fn(() => true);
+		const persistChromeSource = vi.fn(async () => {});
+		const app = createCardsRoute({
+			deps: depsWithEngines(enableImageRendering),
+			puppeteer: null,
+			api: null,
+			createPuppeteer,
+			persistChromeSource,
+		});
+		const res = await app.request("/enable-rendering", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ chromeEndpoint: "ws://browser:3000" }),
+		});
+		expect(res.status).toBe(502);
+		const body = (await res.json()) as { ok: boolean; err?: string };
+		expect(body.ok).toBe(false);
+		expect(body.err).toMatch(/ECONNREFUSED/);
+		expect(enableImageRendering).not.toHaveBeenCalled();
+		expect(persistChromeSource).not.toHaveBeenCalled();
+		expect(fakePup.dispose).toHaveBeenCalled();
+	});
+
+	it("已启用后换来源(本地→远程):探测新 adapter → swap → dispose 旧 → 写回", async () => {
+		const oldPup = { dispose: vi.fn(async () => {}) } as unknown as StandalonePuppeteer;
+		const probePage = { close: vi.fn(async () => {}) };
+		const newPup = {
+			page: vi.fn(async () => probePage),
+			dispose: vi.fn(async () => {}),
+		} as unknown as StandalonePuppeteer;
+		const createPuppeteer = vi.fn(() => newPup);
+		const enableImageRendering = vi.fn(() => false);
+		const swapImageRendering = vi.fn();
+		const persistChromeSource = vi.fn(async () => {});
+		const onPuppeteerEnabled = vi.fn();
+		const app = createCardsRoute({
+			deps: depsWithEngines(enableImageRendering, swapImageRendering),
+			puppeteer: oldPup,
+			initialChromeSource: { chromePath: "/usr/bin/chromium" },
+			api: null,
+			createPuppeteer,
+			persistChromeSource,
+			onPuppeteerEnabled,
+		});
+		const res = await app.request("/enable-rendering", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ chromeEndpoint: "ws://browser:3000" }),
+		});
+		expect(res.status).toBe(200);
+		expect(await res.json()).toMatchObject({ ok: true, chromeEndpoint: "ws://browser:3000" });
+		// 替换在用的渲染器前必须先验新浏览器可用,别把好配置换成坏的。
+		expect(newPup.page).toHaveBeenCalledTimes(1);
+		expect(swapImageRendering).toHaveBeenCalledWith(newPup);
+		expect(enableImageRendering).not.toHaveBeenCalled();
+		expect(oldPup.dispose).toHaveBeenCalledTimes(1);
+		expect(persistChromeSource).toHaveBeenCalledWith({ chromeEndpoint: "ws://browser:3000" });
+		expect(onPuppeteerEnabled).toHaveBeenCalledWith(newPup);
+		// GET /render-source 反映切换后的来源。
+		const status = await app.request("/render-source");
+		expect(await status.json()).toEqual({
+			enabled: true,
+			source: { chromeEndpoint: "ws://browser:3000" },
+			persistable: true,
+		});
+	});
+
+	it("已启用后换本地路径:同样先探测(launch 一次)再 swap", async () => {
+		const oldPup = { dispose: vi.fn(async () => {}) } as unknown as StandalonePuppeteer;
+		const probePage = { close: vi.fn(async () => {}) };
+		const newPup = {
+			page: vi.fn(async () => probePage),
+			dispose: vi.fn(async () => {}),
+		} as unknown as StandalonePuppeteer;
+		const swapImageRendering = vi.fn();
+		const app = createCardsRoute({
+			deps: depsWithEngines(
+				vi.fn(() => false),
+				swapImageRendering,
+			),
+			puppeteer: oldPup,
+			initialChromeSource: { chromePath: "/old/chrome" },
+			api: null,
+			createPuppeteer: vi.fn(() => newPup),
+			persistChromeSource: vi.fn(async () => {}),
+		});
+		const res = await app.request("/enable-rendering", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ chromePath: "/new/chrome" }),
+		});
+		expect(res.status).toBe(200);
+		expect(newPup.page).toHaveBeenCalledTimes(1);
+		expect(swapImageRendering).toHaveBeenCalledWith(newPup);
+		expect(oldPup.dispose).toHaveBeenCalledTimes(1);
+	});
+
+	it("已启用后提交相同来源 → alreadyEnabled,不构造新 adapter 不写回", async () => {
+		const oldPup = { dispose: vi.fn(async () => {}) } as unknown as StandalonePuppeteer;
+		const createPuppeteer = vi.fn();
+		const persistChromeSource = vi.fn(async () => {});
+		const app = createCardsRoute({
+			deps: depsWithEngines(
+				vi.fn(() => false),
+				vi.fn(),
+			),
+			puppeteer: oldPup,
+			initialChromeSource: { chromePath: "/usr/bin/chromium" },
+			api: null,
+			createPuppeteer,
+			persistChromeSource,
+		});
+		const res = await app.request("/enable-rendering", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ chromePath: "/usr/bin/chromium" }),
+		});
+		expect(res.status).toBe(200);
+		expect(await res.json()).toMatchObject({ ok: true, alreadyEnabled: true });
+		expect(createPuppeteer).not.toHaveBeenCalled();
+		expect(persistChromeSource).not.toHaveBeenCalled();
+		expect(oldPup.dispose).not.toHaveBeenCalled();
+	});
+
+	it("GET /render-source:未启用时 enabled=false source=null;persistable 跟注入走", async () => {
+		const app = createCardsRoute({
+			deps: depsWithEngines(vi.fn()),
+			puppeteer: null,
+			api: null,
+		});
+		const res = await app.request("/render-source");
+		expect(await res.json()).toEqual({ enabled: false, source: null, persistable: false });
 	});
 
 	it("已启用:enableImageRendering 返回 false → dispose 多余 adapter,不写回", async () => {
 		const fakePup = { dispose: vi.fn(async () => {}) } as unknown as StandalonePuppeteer;
 		const createPuppeteer = vi.fn(() => fakePup);
-		const persistChromePath = vi.fn(async () => {});
+		const persistChromeSource = vi.fn(async () => {});
 		const app = createCardsRoute({
 			deps: depsWithEngines(vi.fn(() => false)),
 			puppeteer: null,
 			api: null,
 			createPuppeteer,
-			persistChromePath,
+			persistChromeSource,
 		});
 		const res = await app.request("/enable-rendering", {
 			method: "POST",
@@ -301,10 +480,10 @@ describe("cards route — enable-rendering", () => {
 		expect(res.status).toBe(200);
 		expect(await res.json()).toMatchObject({ ok: true, alreadyEnabled: true });
 		expect(fakePup.dispose).toHaveBeenCalled();
-		expect(persistChromePath).not.toHaveBeenCalled();
+		expect(persistChromeSource).not.toHaveBeenCalled();
 	});
 
-	it("body 缺 chromePath → 400,不构造 puppeteer", async () => {
+	it("body 缺 chromePath 与 chromeEndpoint → 400,不构造 puppeteer", async () => {
 		const createPuppeteer = vi.fn();
 		const app = createCardsRoute({
 			deps: depsWithEngines(vi.fn()),

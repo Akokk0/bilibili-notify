@@ -345,6 +345,27 @@ describe("createEngines — enableImageRendering 运行时热启用", () => {
 		expect(enabled).toBe(false);
 		expect(H.image).toHaveLength(1); // 没重复构造浏览器
 	});
+
+	it("swapImageRendering:已启用时热切换 → 重建 renderer 并重新注入两个引擎", () => {
+		const c = setup({ puppeteer: true });
+		active = c;
+		expect(H.image).toHaveLength(1);
+		c.runtime.swapImageRendering({} as any);
+		expect(H.image).toHaveLength(2); // 新 renderer
+		expect(H.image[1].start).toHaveBeenCalledTimes(1);
+		expect(H.dynamic[0].setImage).toHaveBeenLastCalledWith(H.image[1]);
+		expect(H.live[0].setImageRenderer).toHaveBeenLastCalledWith(H.image[1]);
+	});
+
+	it("swapImageRendering:未启用时等同首次启用(注入而非空转)", () => {
+		const c = setup({ puppeteer: false });
+		active = c;
+		expect(H.image).toHaveLength(0);
+		c.runtime.swapImageRendering({} as any);
+		expect(H.image).toHaveLength(1);
+		expect(H.dynamic[0].setImage).toHaveBeenLastCalledWith(H.image[0]);
+		expect(H.live[0].setImageRenderer).toHaveBeenLastCalledWith(H.image[0]);
+	});
 });
 
 describe("createEngines — config-changed globals 热重载", () => {

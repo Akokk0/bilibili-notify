@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { parse as parseYaml } from "yaml";
 import { resolveConfigPath } from "../loader";
-import { persistChromePath } from "../persist";
+import { persistChromeSource } from "../persist";
 
-describe("persistChromePath", () => {
+describe("persistChromeSource", () => {
 	let dir: string;
 	let cfg: string;
 	beforeEach(async () => {
@@ -20,16 +20,24 @@ describe("persistChromePath", () => {
 
 	it("writes chromePath into an existing config, preserving other fields", async () => {
 		await writeFile(cfg, "dataDir: ./data\nlogLevel: info\n", "utf8");
-		await persistChromePath(cfg, "/usr/bin/google-chrome");
+		await persistChromeSource(cfg, { chromePath: "/usr/bin/google-chrome" });
 		const parsed = parseYaml(await readFile(cfg, "utf8"));
 		expect(parsed.chromePath).toBe("/usr/bin/google-chrome");
 		expect(parsed.dataDir).toBe("./data");
 		expect(parsed.logLevel).toBe("info");
 	});
 
+	it("writes chromeEndpoint without touching an existing chromePath", async () => {
+		await writeFile(cfg, "chromePath: /usr/bin/chromium\ndataDir: ./data\n", "utf8");
+		await persistChromeSource(cfg, { chromeEndpoint: "ws://browser:3000" });
+		const parsed = parseYaml(await readFile(cfg, "utf8"));
+		expect(parsed.chromeEndpoint).toBe("ws://browser:3000");
+		expect(parsed.chromePath).toBe("/usr/bin/chromium");
+	});
+
 	it("preserves comments in the original config (Document API, not re-stringify)", async () => {
 		await writeFile(cfg, "# 卡片渲染需要本地 Chrome\ndataDir: ./data\n", "utf8");
-		await persistChromePath(cfg, "/usr/bin/google-chrome");
+		await persistChromeSource(cfg, { chromePath: "/usr/bin/google-chrome" });
 		const raw = await readFile(cfg, "utf8");
 		expect(raw).toContain("# 卡片渲染需要本地 Chrome");
 		expect(raw).toContain("chromePath: /usr/bin/google-chrome");
@@ -37,7 +45,7 @@ describe("persistChromePath", () => {
 
 	it("overwrites an existing chromePath", async () => {
 		await writeFile(cfg, "chromePath: /old/chrome\ndataDir: ./data\n", "utf8");
-		await persistChromePath(cfg, "/new/chrome");
+		await persistChromeSource(cfg, { chromePath: "/new/chrome" });
 		const parsed = parseYaml(await readFile(cfg, "utf8"));
 		expect(parsed.chromePath).toBe("/new/chrome");
 	});

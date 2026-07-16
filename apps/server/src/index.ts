@@ -10,7 +10,7 @@ import { createSessionCodec } from "./auth/session.js";
 import { createWsTicketStore } from "./auth/ws-ticket.js";
 import { createBackupService } from "./backup/service.js";
 import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
-import { persistChromePath } from "./config/persist.js";
+import { type ChromeSource, persistChromeSource } from "./config/persist.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
@@ -164,7 +164,13 @@ export async function startStandaloneServer(
 		// dynamic can share the same ImageRenderer instance as /api/cards/preview.
 		const chromeIdleTimeoutMs =
 			bootstrap.chromeIdleSeconds === undefined ? undefined : bootstrap.chromeIdleSeconds * 1000;
-		if (bootstrap.chromeEndpoint || bootstrap.chromePath) {
+		// 启动实际生效的来源(endpoint 赢过 path),供 /render-source 展示与同源幂等判断。
+		const chromeSource: ChromeSource | undefined = bootstrap.chromeEndpoint
+			? { chromeEndpoint: bootstrap.chromeEndpoint }
+			: bootstrap.chromePath
+				? { chromePath: bootstrap.chromePath }
+				: undefined;
+		if (chromeSource) {
 			puppeteer = createPuppeteerAdapter({
 				chromePath: bootstrap.chromePath,
 				chromeEndpoint: bootstrap.chromeEndpoint,
@@ -297,14 +303,15 @@ export async function startStandaloneServer(
 			basicAuthCredentials,
 			sessionCodec,
 			puppeteer,
-			persistChromePath: configPath
-				? (chromePath: string) => persistChromePath(configPath, chromePath)
+			persistChromeSource: configPath
+				? (source: ChromeSource) => persistChromeSource(configPath, source)
 				: undefined,
 			// 热启用成功后把新 puppeteer 接回全局引用,使进程退出时 dispose 能关掉它。
 			onPuppeteerEnabled: (next) => {
 				puppeteer = next;
 			},
 			chromeIdleTimeoutMs,
+			chromeSource,
 			staticDir: effectiveWebDistDir,
 			wsTicketStore,
 			allowedOrigins,

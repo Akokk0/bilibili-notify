@@ -104,6 +104,13 @@ export interface EnginesRuntime extends Disposable {
 	 * restart. Idempotent: returns false if rendering was already enabled.
 	 */
 	enableImageRendering(puppeteer: PuppeteerLike): boolean;
+	/**
+	 * Hot-swap the browser behind card rendering (dashboard changed chromePath /
+	 * chromeEndpoint). Rebuilds the ImageRenderer on the new adapter and rewires
+	 * both engines; also usable as a first enable. Disposing the previous
+	 * adapter is the caller's job — engines never own the adapter lifecycle.
+	 */
+	swapImageRendering(puppeteer: PuppeteerLike): void;
 }
 
 export interface CreateEnginesOptions {
@@ -911,6 +918,14 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			dynamic.setImage(imageRenderer);
 			live.setImageRenderer(imageRenderer);
 			return true;
+		},
+		// 热切换浏览器来源(dashboard 改 chromePath / chromeEndpoint):无条件重建
+		// renderer 并重新注入两个引擎。旧 adapter 的 dispose 由调用方(cards 路由)
+		// 负责 —— 引擎层不持有 adapter,只消费 renderer。
+		swapImageRendering: (pup: PuppeteerLike): void => {
+			imageRenderer = buildImageRenderer(pup);
+			dynamic.setImage(imageRenderer);
+			live.setImageRenderer(imageRenderer);
 		},
 		dispose,
 	};

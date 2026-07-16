@@ -46,6 +46,7 @@ import {
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
+import type { ChromeSource } from "../config/persist.js";
 import {
 	deleteCardBg,
 	isValidCardBgId,
@@ -65,6 +66,11 @@ export interface CardsRouteOptions {
 	deps: RouteDeps;
 	puppeteer: StandalonePuppeteer | null;
 	/**
+	 * 启动时实际生效的浏览器来源(bootstrap 里 endpoint 赢过 path 的那一个),
+	 * 供 GET /render-source 展示与同源幂等判断;未启用时缺省。
+	 */
+	initialChromeSource?: ChromeSource;
+	/**
 	 * BilibiliAPI from authSystem. When null, real-data fetch paths
 	 * (live + dyn with content) return an actionable error.
 	 */
@@ -76,19 +82,19 @@ export interface CardsRouteOptions {
 	detectChrome?: () => string | null;
 	/**
 	 * 构造 puppeteer adapter(默认 createPuppeteerAdapter,懒启动);注入便于测试。
-	 * 供 POST /enable-rendering 运行时热启用。
+	 * 供 POST /enable-rendering 运行时热启用,source 为本地路径或远程端点。
 	 */
-	createPuppeteer?: (chromePath: string) => StandalonePuppeteer;
+	createPuppeteer?: (source: ChromeSource) => StandalonePuppeteer;
 	/**
 	 * 热启用路径新建 adapter 时沿用 bootstrap 的空闲关闭配置(chromeIdleSeconds),
 	 * 与启动时构造的 adapter 行为一致;未设走 adapter 默认。
 	 */
 	chromeIdleTimeoutMs?: number;
 	/**
-	 * 把 chromePath 写回 bootstrap yaml 持久化。由 index.ts 接线(绑定 config 路径);
+	 * 把浏览器来源写回 bootstrap yaml 持久化。由 index.ts 接线(绑定 config 路径);
 	 * 未注入则热启用仍生效但重启不保留。
 	 */
-	persistChromePath?: (chromePath: string) => Promise<void>;
+	persistChromeSource?: (source: ChromeSource) => Promise<void>;
 	/**
 	 * 热启用成功后回调,通知 index.ts 更新全局 puppeteer 引用(供进程退出时 dispose)。
 	 */
@@ -139,7 +145,14 @@ const PreviewRequestSchema = z.object({
 	fallback: z.boolean().optional(),
 });
 
-const EnableRenderingSchema = z.object({ chromePath: z.string().min(1) });
+const EnableRenderingSchema = z
+	.object({
+		chromePath: z.string().min(1).optional(),
+		chromeEndpoint: z.string().min(1).optional(),
+	})
+	.refine((d) => d.chromePath || d.chromeEndpoint, {
+		message: "chromePath 或 chromeEndpoint 至少填一项",
+	});
 
 type PreviewStyle = z.infer<typeof StyleSchema>;
 
@@ -210,35 +223,95 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	app.get("/detect-chrome", (c) => c.json({ path: detectChrome() }));
 
 	// 当前 puppeteer adapter —— 可变 holder。启动时 = currentPuppeteer(可能 null);经
-	// /enable-rendering 运行时热启用后指向新 adapter,使后续 /preview 也用上,无需重启。
+	// /enable-rendering 运行时热启用/热切换后指向新 adapter,使后续 /preview 也用上,
+	// 无需重启。currentSource 与之同步,供 /render-source 展示与同源幂等判断。
 	let currentPuppeteer = opts.puppeteer;
+	let currentSource: ChromeSource | null = opts.initialChromeSource ?? null;
+
+	const sourceEquals = (a: ChromeSource | null, b: ChromeSource): boolean =>
+		!!a && a.chromePath === b.chromePath && a.chromeEndpoint === b.chromeEndpoint;
+
+	// 当前渲染浏览器来源 —— System 页「卡片渲染浏览器」区的数据源。persistable=false
+	// 表示无可写 bootstrap 配置(legacy / desktop),切换仍生效但重启不保留。
+	app.get("/render-source", (c) =>
+		c.json({
+			enabled: currentPuppeteer !== null,
+			source: currentSource,
+			persistable: Boolean(opts.persistChromeSource),
+		}),
+	);
 	const createPuppeteer =
 		opts.createPuppeteer ??
-		((chromePath: string) =>
-			createPuppeteerAdapter({ chromePath, idleTimeoutMs: opts.chromeIdleTimeoutMs, logger: log }));
+		((source: ChromeSource) =>
+			createPuppeteerAdapter({
+				chromePath: source.chromePath,
+				chromeEndpoint: source.chromeEndpoint,
+				idleTimeoutMs: opts.chromeIdleTimeoutMs,
+				logger: log,
+			}));
 
-	// 一键热启用卡片渲染 —— dashboard 探测到 Chrome 后调用:运行时构造 puppeteer、
-	// 注入已跑的 live/dynamic 引擎(EnginesRuntime.enableImageRendering)、写回 chromePath
-	// 持久化,全程不重启。已启用则 dispose 多余 adapter 并返回 alreadyEnabled。
+	// 一键热启用/热切换卡片渲染 —— dashboard 探测到本地 Chrome、或填入远程端点后
+	// 调用:运行时构造 puppeteer、注入已跑的 live/dynamic 引擎、写回浏览器来源持久化,
+	// 全程不重启。已启用时:同源 → alreadyEnabled 幂等;异源 → 先探测新浏览器,通了
+	// 才 swap 并 dispose 旧 adapter(别把能用的配置换成坏的)。
 	app.post("/enable-rendering", async (c) => {
 		const body = await c.req.json().catch(() => null);
 		const parsed = EnableRenderingSchema.safeParse(body);
-		if (!parsed.success) return c.json({ ok: false, err: "chromePath 必填" }, 400);
+		if (!parsed.success) {
+			return c.json({ ok: false, err: "chromePath 或 chromeEndpoint 至少填一项" }, 400);
+		}
 		const engines = opts.deps.runtime.engines;
 		if (!engines) return c.json({ ok: false, err: "engines 未就绪" }, 503);
-		const { chromePath } = parsed.data;
+		const source = parsed.data;
+		// 热切换 = 路由已握有在用 adapter;同源直接幂等返回,连 adapter 都不构造。
+		const replacing = currentPuppeteer !== null;
+		if (replacing && sourceEquals(currentSource, source)) {
+			return c.json({ ok: true, alreadyEnabled: true });
+		}
 		try {
-			const pup = createPuppeteer(chromePath);
-			const enabled = engines.enableImageRendering(pup);
-			if (!enabled) {
-				await pup.dispose(); // 已启用 → 刚构造的 adapter 多余,释放
-				return c.json({ ok: true, alreadyEnabled: true });
+			const pup = createPuppeteer(source);
+			// 连通性探测:远程端点没有 detect-chrome 那样的存在性预验,连不上只会在
+			// 之后首次渲染才暴露;热切换则无论来源都要先验 —— 失败就不动现有渲染器。
+			if (source.chromeEndpoint || replacing) {
+				try {
+					const probe = await pup.page();
+					await probe.close();
+				} catch (err) {
+					await pup.dispose();
+					const detail = err instanceof Error ? err.message : String(err);
+					log.warn(`[cards] 浏览器探测失败 · ${JSON.stringify(source)}: ${detail}`);
+					return c.json({ ok: false, err: `浏览器连接失败：${detail}` }, 502);
+				}
 			}
+			if (replacing) {
+				engines.swapImageRendering(pup);
+			} else {
+				const enabled = engines.enableImageRendering(pup);
+				if (!enabled) {
+					// 引擎侧已有渲染器但路由不知情(理论不该发生的接线错位):保持旧行为,
+					// 释放多余 adapter。
+					await pup.dispose();
+					return c.json({ ok: true, alreadyEnabled: true });
+				}
+			}
+			const old = currentPuppeteer;
 			currentPuppeteer = pup;
+			currentSource = source;
 			opts.onPuppeteerEnabled?.(pup);
-			await opts.persistChromePath?.(chromePath);
-			log.info(`[cards] 卡片渲染已热启用 · chromePath=${chromePath}`);
-			return c.json({ ok: true, chromePath });
+			if (old) {
+				// 旧浏览器关掉(本地)/断开(远程)。若旧 adapter 恰有渲染在飞,那一张会
+				// 失败一次 —— 切换是人工低频操作,可接受。
+				await old.dispose();
+			}
+			await opts.persistChromeSource?.(source);
+			log.info(
+				`[cards] 卡片渲染已${replacing ? "热切换" : "热启用"} · ${
+					source.chromeEndpoint
+						? `chromeEndpoint=${source.chromeEndpoint}`
+						: `chromePath=${source.chromePath}`
+				}`,
+			);
+			return c.json({ ok: true, ...source });
 		} catch (err) {
 			const detail = String((err as Error)?.message ?? err);
 			log.error(`[cards] enable-rendering failed: ${detail}`);

@@ -10,6 +10,7 @@ import { createIpRateLimiter } from "./auth/ip-rate-limit.js";
 import type { SessionCodec } from "./auth/session.js";
 import type { WsTicketStore } from "./auth/ws-ticket.js";
 import type { BackupService } from "./backup/service.js";
+import type { ChromeSource } from "./config/persist.js";
 import type { QQSessionRegistry } from "./platforms/qq-official.js";
 import { createAdaptersRoute } from "./routes/adapters.js";
 import { createAiRoute } from "./routes/ai.js";
@@ -65,11 +66,12 @@ export interface CreateAppOptions {
 	 */
 	puppeteer?: StandalonePuppeteer | null;
 	/**
-	 * Persist a runtime-detected chromePath back to the bootstrap yaml so card
-	 * rendering stays enabled across restarts. Wired by index.ts (bound to the
-	 * config path); omitted in deployments without a writable config file.
+	 * Persist the runtime-selected browser source (chromePath / chromeEndpoint)
+	 * back to the bootstrap yaml so card rendering stays enabled across
+	 * restarts. Wired by index.ts (bound to the config path); omitted in
+	 * deployments without a writable config file.
 	 */
-	persistChromePath?: (chromePath: string) => Promise<void>;
+	persistChromeSource?: (source: ChromeSource) => Promise<void>;
 	/**
 	 * Notified after /api/cards/enable-rendering hot-enables rendering, so
 	 * index.ts can update its global puppeteer reference for graceful dispose.
@@ -80,6 +82,11 @@ export interface CreateAppOptions {
 	 * mirroring bootstrap.chromeIdleSeconds. Unset = adapter default.
 	 */
 	chromeIdleTimeoutMs?: number;
+	/**
+	 * Browser source that was actually used to build `puppeteer` at boot
+	 * (endpoint wins over path). Feeds GET /api/cards/render-source.
+	 */
+	chromeSource?: ChromeSource;
 	/**
 	 * Optional directory containing the built React dashboard (`web/dist`). When
 	 * set, non-`/api/*` paths fall through to a static file server backed by
@@ -215,9 +222,10 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 			deps,
 			puppeteer: options.puppeteer ?? null,
 			api: options.authSystem?.api ?? null,
-			persistChromePath: options.persistChromePath,
+			persistChromeSource: options.persistChromeSource,
 			onPuppeteerEnabled: options.onPuppeteerEnabled,
 			chromeIdleTimeoutMs: options.chromeIdleTimeoutMs,
+			initialChromeSource: options.chromeSource,
 		}),
 	);
 	if (options.authSystem) {
