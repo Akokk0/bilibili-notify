@@ -9,11 +9,11 @@
 
 services:
   bilibili-notify:
-    image: akokk0/bilibili-notify:alpha
-    # GHCR 改用:image: ghcr.io/akokk0/bilibili-notify:alpha
+    image: akokk0/bilibili-notify:latest
+    # GHCR 改用:image: ghcr.io/akokk0/bilibili-notify:latest
     # 本地构建改用:build: { context: .., dockerfile: apps/Dockerfile }
     #
-    # 省内存方案:-slim 变体(如 :alpha-slim / :slim)不内置 chromium,体积与内存
+    # 省内存方案:-slim 变体(如 :slim)不内置 chromium,体积与内存
     # 都小得多;卡片渲染改由下方 browser 伴随容器承担 —— 换 slim 镜像后解开
     # BN_CHROME_ENDPOINT 与 browser 服务的注释即可。不配远程浏览器也能跑,
     # 只是卡片图片渲染退化为文字推送。

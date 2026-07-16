@@ -4,7 +4,7 @@
 
 ## 部署(Docker)
 
-推荐用 compose,模板见 [`docker-compose.example.yaml`](./docker-compose.example.yaml)。复制后一条命令启动,不要手动创建 `config/bn.config.yaml`。镜像默认走 Docker Hub,也可改用 GHCR:`ghcr.io/akokk0/bilibili-notify:alpha`。
+推荐用 compose,模板见 [`docker-compose.example.yaml`](./docker-compose.example.yaml)。复制后一条命令启动,不要手动创建 `config/bn.config.yaml`。镜像默认走 Docker Hub,也可改用 GHCR:`ghcr.io/akokk0/bilibili-notify:latest`。
 
 ```bash
 cp docker-compose.example.yaml docker-compose.yaml
@@ -29,14 +29,34 @@ docker compose up -d
 docker run -d --name bilibili-notify \
   -p 8787:8787 \
   -v "$(pwd)/data:/data" -v "$(pwd)/config:/config" \
-  akokk0/bilibili-notify:alpha
+  akokk0/bilibili-notify:latest
 ```
 
 GHCR 镜像同 tag 发布:
 
 ```bash
-docker pull ghcr.io/akokk0/bilibili-notify:alpha
+docker pull ghcr.io/akokk0/bilibili-notify:latest
 ```
+
+### 镜像变体:full 与 -slim
+
+| 变体 | tag | 内容 |
+|---|---|---|
+| full(默认) | `:latest` / `:alpha` / `:vX.Y.Z` | 内置 chromium + CJK 字体,开箱即用 |
+| slim | `:slim` / `:alpha-slim` / `:vX.Y.Z-slim` | 无 chromium,体积与内存占用小得多 |
+
+slim 变体的卡片图片渲染改由 `BN_CHROME_ENDPOINT` 指向的**远程浏览器**承担
+(`ws://…` 直连 browserless 等 DevTools WS;`http://…` 为 chromium
+`--remote-debugging-port` 端点)。不配远程浏览器 slim 也能正常运行,只是卡片渲染
+退化为文字推送。browserless 伴随容器写法见 `docker-compose.example.yaml` 注释段。
+
+另有两个省内存开关(两种变体都适用):
+
+- 渲染空闲 `chromeIdleSeconds`(默认 300)秒后自动关闭 / 断开浏览器,下次渲染懒重启;`0` = 常驻。
+- Node 堆上限默认 `NODE_OPTIONS=--max-old-space-size=384`,在 compose `environment` 设同名变量可覆盖。
+
+浏览器来源(本地路径 / 远程端点)也可在 **dashboard 系统页**查看与热切换:先探测新浏览器
+连通,通了才替换并写回配置,无需重启;坏候选不会顶掉在用的配置。
 
 ## 配置
 
@@ -56,7 +76,10 @@ docker pull ghcr.io/akokk0/bilibili-notify:alpha
 | `BN_CONFIG` | `/config/bn.config.yaml` | bootstrap 配置文件路径 |
 | `BN_HOST` / `BN_PORT` | `0.0.0.0` / `8787` | 监听地址 / 端口 |
 | `BN_DATA_DIR` | `/data` | 运行时状态目录 |
-| `BN_CHROME_PATH` | `/usr/bin/chromium` | puppeteer-core 浏览器 |
+| `BN_CHROME_PATH` | `/usr/bin/chromium`(slim 变体未设) | puppeteer-core 浏览器 |
+| `BN_CHROME_ENDPOINT` | 未设 | 远程浏览器端点(`ws://…` / `http://…`),优先于 `BN_CHROME_PATH`;slim 变体的卡片渲染靠它 |
+| `BN_CHROME_IDLE_SECONDS` | 未设(=300) | 渲染空闲多久后关闭 / 断开浏览器省内存;`0` = 常驻 |
+| `NODE_OPTIONS` | `--max-old-space-size=384` | V8 堆上限,压住 RSS 浮高;compose 可覆盖 |
 | `BN_WEB_DIST` | `/app/web-dist` | 控制台静态资源 |
 | `TZ` | `Asia/Shanghai` | 容器时区(影响日志 / 历史按日切文件) |
 | `BN_LOG_LEVEL` | `info` | 日志级别;引擎启动后被 dashboard 配置接管 |

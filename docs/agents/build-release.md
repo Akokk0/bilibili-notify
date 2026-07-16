@@ -120,6 +120,11 @@ Desktop dry-run 的 CI smoke 覆盖 artifact 内容、GUI subsystem、packaged N
 | `:vX.Y.Z[-alpha.N]` | 不可变版本 tag,跟 git tag `v<VERSION>` 走 |
 | `:<short-sha>` | 每个构建 —— 不可变,用于回滚 / 精确 pin |
 
+每个发布同时产出 **`-slim` 变体**(Dockerfile `--target runtime-slim`,无 chromium,
+卡片渲染走 `BN_CHROME_ENDPOINT` 远程浏览器):上表四类 tag 各有对应的 slim 形态
+`:slim` / `:alpha-slim` / `:vX.Y.Z[-alpha.N]-slim` / `:<short-sha>-slim`,由同一个
+image-release run 在相同 build job 里顺带构建(同 buildx 实例复用 builder 层)。
+
 发 alpha:在目标 commit 上创建并推送 `vX.Y.Z-alpha.N`。发正式版:创建并推送 `vX.Y.Z`。
 
 ## Docker 镜像(独立端)

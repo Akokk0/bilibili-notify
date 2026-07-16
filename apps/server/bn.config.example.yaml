@@ -19,12 +19,21 @@ server:
 # 状态文件落点：globals.json / subscriptions.json / targets.json / secrets/ / history/
 dataDir: ./data
 
-# 卡片实时预览需要本地 Chrome / Chromium。
-# 不配则 /api/cards/preview 返回 503,前端 /cards 页会渲染配置提示。
+# 卡片实时预览需要本地 Chrome / Chromium(或下方 chromeEndpoint 远程浏览器)。
+# 都不配则 /api/cards/preview 返回 503,前端 /cards 页会渲染配置提示。
 # macOS:   /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 # Linux:   /usr/bin/google-chrome  或  /usr/bin/chromium
 # Windows: C:/Program Files/Google/Chrome/Application/chrome.exe
 # chromePath: ${BN_CHROME_PATH}
+
+# 远程浏览器端点,设了就不用 chromePath(优先级更高)。-slim 镜像用这个。
+# ws://…  = DevTools WS 直连(browserless 等);http://… = chromium
+# --remote-debugging-port 的 HTTP 端点。
+# chromeEndpoint: ws://browser:3000?token=xxx
+
+# 渲染空闲多少秒后自动关闭(本地)/断开(远程)浏览器省内存,下次渲染懒重启。
+# 0 = 常驻不关。默认 300。
+# chromeIdleSeconds: 300
 
 # Dashboard 静态资源目录。Docker 镜像固定为 /app/web-dist;
 # 手写 Docker 配置时必须保留,否则 http://<host>:8787/ 会返回 404。
