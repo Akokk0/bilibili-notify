@@ -27,12 +27,25 @@ describe("persistChromeSource", () => {
 		expect(parsed.logLevel).toBe("info");
 	});
 
-	it("writes chromeEndpoint without touching an existing chromePath", async () => {
+	it("writes chromeEndpoint and clears an existing chromePath (source is the full new state)", async () => {
+		// chromePath / chromeEndpoint 互斥:boot-time 选择逻辑固定 chromeEndpoint 优先,
+		// 若切到 chromeEndpoint 后留着旧 chromePath,重启会读到两者都在、行为却仍正确
+		// (endpoint 赢)—— 但反过来切回 chromePath 时若不清 chromeEndpoint,重启就会
+		// 悄悄退回旧的远程端点,与用户刚做的切换相反。source 代表切换后的完整新状态,
+		// 未传的字段一律清空,两个方向都不留歧义。
 		await writeFile(cfg, "chromePath: /usr/bin/chromium\ndataDir: ./data\n", "utf8");
 		await persistChromeSource(cfg, { chromeEndpoint: "ws://browser:3000" });
 		const parsed = parseYaml(await readFile(cfg, "utf8"));
 		expect(parsed.chromeEndpoint).toBe("ws://browser:3000");
+		expect(parsed.chromePath).toBeUndefined();
+	});
+
+	it("writes chromePath and clears an existing chromeEndpoint", async () => {
+		await writeFile(cfg, "chromeEndpoint: ws://old-browser:3000\ndataDir: ./data\n", "utf8");
+		await persistChromeSource(cfg, { chromePath: "/usr/bin/chromium" });
+		const parsed = parseYaml(await readFile(cfg, "utf8"));
 		expect(parsed.chromePath).toBe("/usr/bin/chromium");
+		expect(parsed.chromeEndpoint).toBeUndefined();
 	});
 
 	it("preserves comments in the original config (Document API, not re-stringify)", async () => {

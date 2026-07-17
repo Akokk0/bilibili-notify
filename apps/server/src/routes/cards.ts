@@ -304,12 +304,24 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			currentPuppeteer = pup;
 			currentSource = source;
 			opts.onPuppeteerEnabled?.(pup);
+			// 持久化先于销毁旧浏览器:写盘失败时旧浏览器留着不 dispose,不会出现
+			// "报切换失败,但其实新浏览器已经在用、旧的已经没了"的错觉(旧根因:persist
+			// 曾排在 dispose 之后 —— 写盘失败时旧浏览器已被销毁,响应却仍是 500)。
+			try {
+				await opts.persistChromeSource?.(source);
+			} catch (err) {
+				const detail = err instanceof Error ? err.message : String(err);
+				log.error(`[cards] 浏览器来源持久化失败(切换已生效,旧浏览器未销毁) · ${detail}`);
+				return c.json(
+					{ ok: false, err: `切换已生效,但配置写入失败(重启会退回旧来源)：${detail}` },
+					500,
+				);
+			}
 			if (old) {
 				// 旧浏览器关掉(本地)/断开(远程)。若旧 adapter 恰有渲染在飞,那一张会
 				// 失败一次 —— 切换是人工低频操作,可接受。
 				await old.dispose();
 			}
-			await opts.persistChromeSource?.(source);
 			log.info(
 				`[cards] 卡片渲染已${replacing ? "热切换" : "热启用"} · ${
 					source.chromeEndpoint
@@ -383,6 +395,10 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 每次请求都 updateConfig 一遍传入的 style — 否则用户在 Cards 页改完颜色后
 	// 第一次 /preview 构造一个 renderer 后,后续改色就不生效(renderer 是 lazy 单例)。
 	let imageRenderer: ImageRenderer | null = null;
+	// 缓存绑定的 adapter 快照 —— 热切换(/enable-rendering)会把 currentPuppeteer 换成
+	// 新 adapter 并 dispose 旧的,若不比对直接复用,imageRenderer 会一直攥着已销毁的
+	// 旧 adapter(ImageRenderer.puppeteer 是 readonly,updateConfig 换不了它)。
+	let imageRendererPuppeteer: StandalonePuppeteer | null = null;
 	async function getImageRenderer(style: PreviewStyle): Promise<ImageRenderer | null> {
 		if (!currentPuppeteer) return null;
 		const config = {
@@ -400,7 +416,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				style.backgroundImages,
 			),
 		};
-		if (!imageRenderer) {
+		if (!imageRenderer || imageRendererPuppeteer !== currentPuppeteer) {
 			imageRenderer = new ImageRenderer({
 				serviceCtx: opts.deps.runtime.serviceCtx,
 				puppeteer: currentPuppeteer,
@@ -411,6 +427,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				// INFO 由推送渲染器(runtime/engines.ts)在 config-changed 后打。
 				quietConfigUpdates: true,
 			});
+			imageRendererPuppeteer = currentPuppeteer;
 		} else {
 			imageRenderer.updateConfig(config);
 		}

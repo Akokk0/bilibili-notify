@@ -931,9 +931,13 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		// renderer 并重新注入两个引擎。旧 adapter 的 dispose 由调用方(cards 路由)
 		// 负责 —— 引擎层不持有 adapter,只消费 renderer。
 		swapImageRendering: (pup: PuppeteerLike): void => {
+			// 旧 renderer 必须先 stop() —— buildImageRenderer 里的 start() 挂了个 5 分钟
+			// 一次的缓存清理定时器,只换引用不 stop 就会永久泄漏(每热切换一次多漏一个)。
+			const old = imageRenderer;
 			imageRenderer = buildImageRenderer(pup);
 			dynamic.setImage(imageRenderer);
 			live.setImageRenderer(imageRenderer);
+			old?.stop();
 		},
 		dispose,
 	};

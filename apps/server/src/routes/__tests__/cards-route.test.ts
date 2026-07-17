@@ -492,6 +492,46 @@ describe("cards route — enable-rendering", () => {
 		expect(oldPup.dispose).not.toHaveBeenCalled();
 	});
 
+	it("热切换持久化写盘失败:不 dispose 旧浏览器,如实报「已生效但写盘失败」", async () => {
+		// 顺序契约:swap 已生效之后才 persist,写盘失败时旧浏览器故意不销毁 —— 不能
+		// 出现"报切换失败,但其实新浏览器已经在用、旧的已经没了"的错觉(旧根因)。
+		const oldPup = { dispose: vi.fn(async () => {}) } as unknown as StandalonePuppeteer;
+		const probePage = { close: vi.fn(async () => {}) };
+		const newPup = {
+			page: vi.fn(async () => probePage),
+			dispose: vi.fn(async () => {}),
+		} as unknown as StandalonePuppeteer;
+		const swapImageRendering = vi.fn();
+		const persistChromeSource = vi.fn(async () => {
+			throw new Error("EACCES: permission denied");
+		});
+		const app = createCardsRoute({
+			deps: depsWithEngines(
+				vi.fn(() => false),
+				swapImageRendering,
+			),
+			puppeteer: oldPup,
+			initialChromeSource: { chromePath: "/usr/bin/chromium" },
+			api: null,
+			createPuppeteer: vi.fn(() => newPup),
+			persistChromeSource,
+		});
+		const res = await app.request("/enable-rendering", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ chromeEndpoint: "ws://browser:3000" }),
+		});
+		expect(res.status).toBe(500);
+		const body = (await res.json()) as { ok: boolean; err?: string };
+		expect(body.ok).toBe(false);
+		expect(body.err).toMatch(/已生效/);
+		expect(body.err).toContain("EACCES");
+		// 切换本身(swap)已经生效——不是"报失败就当作啥都没变"。
+		expect(swapImageRendering).toHaveBeenCalledWith(newPup);
+		// 但旧浏览器刻意不销毁,留作"重启会退回它"的可用状态。
+		expect(oldPup.dispose).not.toHaveBeenCalled();
+	});
+
 	it("GET /render-source:未启用时 enabled=false source=null;persistable 跟注入走", async () => {
 		const app = createCardsRoute({
 			deps: depsWithEngines(vi.fn()),
@@ -557,6 +597,99 @@ describe("cards route — enable-rendering", () => {
 			body: JSON.stringify({ chromePath: "/x" }),
 		});
 		expect(res.status).toBe(503);
+	});
+});
+
+describe("cards route — 热切换后预览渲染器随之失效重建", () => {
+	const STYLE = { cardColorStart: "#111111", cardColorEnd: "#ffffff" };
+
+	function depsWithEnginesAndDataDir(swapImageRendering: ReturnType<typeof vi.fn>): RouteDeps {
+		return {
+			runtime: {
+				serviceCtx: {
+					logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+				},
+				engines: { enableImageRendering: vi.fn(() => false), swapImageRendering },
+			},
+			store: { bootstrap: { dataDir: join(tmpdir(), "bn-test-hotswap-no-such-dir") } },
+		} as unknown as RouteDeps;
+	}
+
+	/** 假 puppeteer:page() 每次都返回新页面对象,screenshot() 吐带标记的字节。 */
+	function makeMarkedPuppeteer(marker: string): StandalonePuppeteer & { pageCalls: number } {
+		const state = { pageCalls: 0 };
+		const puppeteer = {
+			page: vi.fn(async () => {
+				state.pageCalls++;
+				return {
+					setContent: vi.fn(async () => {}),
+					waitForFunction: vi.fn(async () => undefined),
+					$: vi.fn(async () => ({
+						boundingBox: async () => ({ x: 0, y: 0, width: 600, height: 400 }),
+						dispose: async () => {},
+					})),
+					screenshot: vi.fn(async () => Buffer.from(marker)),
+					close: vi.fn(async () => {}),
+				};
+			}),
+			dispose: vi.fn(async () => {}),
+		} as unknown as StandalonePuppeteer;
+		Object.defineProperty(puppeteer, "pageCalls", { get: () => state.pageCalls });
+		return puppeteer as StandalonePuppeteer & { pageCalls: number };
+	}
+
+	it("热切换(/enable-rendering)后,下一次 /preview 用新 adapter 渲染,不再打到已销毁的旧 adapter", async () => {
+		const pupA = makeMarkedPuppeteer("A");
+		const pupB = makeMarkedPuppeteer("B");
+		// pupB 的假页面对象自带 close(),/enable-rendering 里 replacing 分支的连通性
+		// 探测(page().close())与之后预览渲染复用同一份 fake page,探测调用也计入
+		// pupB.page 调用次数,属预期。
+		const swapImageRendering = vi.fn();
+		const deps = depsWithEnginesAndDataDir(swapImageRendering);
+		const app = createCardsRoute({
+			deps,
+			puppeteer: pupA,
+			initialChromeSource: { chromePath: "/old/chrome" },
+			api: null,
+			createPuppeteer: vi.fn(() => pupB as unknown as StandalonePuppeteer),
+			persistChromeSource: vi.fn(async () => {}),
+		});
+
+		// 第一次预览:绑定 pupA 的渲染器被构造并缓存。
+		const first = await app.request("/preview", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ kind: "sc", style: STYLE, content: { price: 30 } }),
+		});
+		expect(first.status).toBe(200);
+		expect(pupA.page).toHaveBeenCalledTimes(1);
+
+		// 热切换到 pupB —— 引擎侧的 swapImageRendering 只管推送渲染,不管路由自己缓存
+		// 的预览 renderer;pupA 在这之后被 dispose,若预览渲染器缓存不失效就会打到
+		// 一个已销毁的 adapter 上。
+		const swap = await app.request("/enable-rendering", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ chromePath: "/new/chrome" }),
+		});
+		expect(swap.status).toBe(200);
+		expect(swapImageRendering).toHaveBeenCalledWith(pupB);
+		expect(pupA.dispose).toHaveBeenCalledTimes(1);
+
+		// 第二次预览:必须用新 adapter(pupB)重新渲染,而不是复用绑定 pupA 的缓存实例。
+		const pupBPageCallsBeforeSecondPreview = (pupB.page as ReturnType<typeof vi.fn>).mock.calls
+			.length;
+		const second = await app.request("/preview", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ kind: "sc", style: STYLE, content: { price: 30 } }),
+		});
+		expect(second.status).toBe(200);
+		expect((pupB.page as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(
+			pupBPageCallsBeforeSecondPreview,
+		);
+		// pupA 没再被第二次预览调用(还是只有第一次那一次)。
+		expect(pupA.page).toHaveBeenCalledTimes(1);
 	});
 });
 
