@@ -1,0 +1,71 @@
+name: Build + push image digest
+description: >-
+  Build and push one image variant (full or -slim target) for one arch to
+  one registry, push-by-digest, optionally smoke-test it, then export the
+  digest for the merge job to assemble into a manifest list. Extracted so
+  the full and -slim variants (Docker Hub + GHCR) in image-release.yml share
+  one definition instead of four copy-pasted step groups that could drift.
+
+inputs:
+  image:
+    description: Fully-qualified image name (e.g. docker.io/akokk0/bilibili-notify)
+    required: true
+  target:
+    description: Optional Dockerfile build target (e.g. runtime-slim); empty = default (full) stage
+    required: false
+    default: ""
+  arch:
+    description: Platform arch (amd64 / arm64) — becomes the linux/<arch> buildx platform
+    required: true
+  dry_run:
+    description: "'true' skips push / smoke test / digest export (build only)"
+    required: true
+  digests_dir:
+    description: Directory export-image-digest.sh writes the arch-named digest file into
+    required: true
+  smoke_test:
+    description: "'true' runs smoke-image.sh against this digest (amd64 only, non-dry-run)"
+    required: false
+    default: "false"
+
+outputs:
+  digest:
+    description: The pushed image digest
+    value: ${{ steps.build.outputs.digest }}
+
+runs:
+  using: composite
+  steps:
+    # build-push-by-digest:每个 registry 单独跑一次 build-push-action(不要把多个
+    # registry 写成同一次 buildx 调用的两个 output——buildx 会给每个 registry 生成不同
+    # 的 provenance/manifest-list digest,而 action 只暴露最后一个 digest)。dry-run 时
+    # push=false 不污染 registry。同一 job 内多次调用本 action 复用同一个 buildx 实例,
+    # builder 阶段的层缓存在 variant 之间(full → slim)全量复用。
+    - name: Build + push digest
+      id: build
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: ./apps/Dockerfile
+        target: ${{ inputs.target }}
+        platforms: linux/${{ inputs.arch }}
+        outputs: |
+          type=image,name=${{ inputs.image }},push-by-digest=true,name-canonical=true,push=${{ inputs.dry_run == 'true' && 'false' || 'true' }}
+
+    # 只在 amd64 跑:smoke 验的是"镜像启动 + /api/health + dashboard 静态资源",单一
+    # 架构验过就够;另一 arch 的可用性由同一份 Dockerfile + Docker 单架构语义保证。
+    - name: Smoke test (amd64 only)
+      if: inputs.smoke_test == 'true' && inputs.arch == 'amd64' && inputs.dry_run == 'false'
+      shell: bash
+      env:
+        IMAGE_REF: ${{ inputs.image }}@${{ steps.build.outputs.digest }}
+      run: bash .github/scripts/smoke-image.sh
+
+    - name: Export digest
+      if: inputs.dry_run == 'false'
+      shell: bash
+      env:
+        ARCH: ${{ inputs.arch }}
+        DIGEST: ${{ steps.build.outputs.digest }}
+        DIGESTS_DIR: ${{ inputs.digests_dir }}
+      run: bash .github/scripts/export-image-digest.sh

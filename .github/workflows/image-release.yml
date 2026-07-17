@@ -131,118 +131,55 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      # build push-by-digest:每个 registry 单独跑一次 build-push-action。不要把
-      # Docker Hub + GHCR 写成同一个 buildx 命令的两个 output:buildx 会给两个
+      # 每 registry × variant(full / -slim,--target runtime-slim 即无 chromium,
+      # 卡片渲染配 BN_CHROME_ENDPOINT 走远程浏览器)单独 push-by-digest 一次 ——
+      # 不要把多个 registry 写成同一次 buildx 调用的两个 output:buildx 会给两个
       # registry 生成不同的 provenance/manifest-list digest,而 action 只暴露最后
-      # 一个 digest,导致 Docker Hub smoke / manifest merge 拿到 GHCR digest。
-      # dry-run(${{ env.DRY_RUN }} == 'true')时 push=false 不污染 registry。
+      # 一个 digest,导致 smoke / manifest merge 拿到错的 digest。四次调用共享同一
+      # buildx 实例,builder 阶段的层缓存在 registry/variant 之间全量复用 —— 只有
+      # runtime-slim 这一个 stage 是增量构建,成本 ~几十秒。dry-run 时 push=false
+      # 不污染 registry。步骤本体见 .github/actions/build-push-image-digest ——
+      # 四份原本近乎逐字复制的 step group 收进一份定义,以后改重试/超时/新 registry
+      # 只用改一处。
       - name: Build + push Docker Hub digest
         id: build_dockerhub
-        # 不再 pin v7.1.0:alpha.5 构建 amd64 / arm64 双双卡在本步(Build +
-        # push-by-digest),非单一 arch / 版本特有 → 排除 build-push-action 版本嫌疑,
-        # 回到 @v7 主标签。
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-push-image-digest
         with:
-          context: .
-          file: ./apps/Dockerfile
-          platforms: linux/${{ matrix.platform.arch }}
-          outputs: |
-            type=image,name=${{ env.DOCKERHUB_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.DRY_RUN == 'true' && 'false' || 'true' }}
-          # 彻底关闭 GHA cache:此前 mode=max 卡 arm64、改 mode=min 后 alpha.5 仍双
-          # arch 卡死本步 —— 高度怀疑 GHA Cache API 导入/导出节流 hang(moby/buildkit
-          # #2804 一类)。先完全去掉 cache-from/cache-to 验证。无 cache → builder 阶段
-          # (pnpm install / build)每次全量重跑,arm64 +4-5min / amd64 +3-4min,发版
-          # 频率低可接受。若确认缓存是元凶,再按 arch scope 谨慎恢复(或换 type=registry)。
+          image: ${{ env.DOCKERHUB_IMAGE }}
+          arch: ${{ matrix.platform.arch }}
+          dry_run: ${{ env.DRY_RUN }}
+          digests_dir: /tmp/digests/dockerhub
+          smoke_test: "true"
 
-      # Smoke 只在 amd64 跑 —— GHA arm64 runner 也能跑自家镜像但意义不大:
-      # smoke 验的是"镜像启动 + /api/health + dashboard 静态资源",amd64 验过
-      # 就够;arm64 镜像本身的可用性由同一份 Dockerfile + Docker 单架构语义保
-      # 证。dry-run 模式不 push,无 digest 可拉,跳过。
-      #
-      # 脚本本体在 .github/scripts/smoke-image.sh —— inline 同款逻辑提到文件:
-      # editor 给 bash 高亮、shellcheck 走得动、本地可手动跑(IMAGE_REF=... bash
-      # .github/scripts/smoke-image.sh)。容器清理脚本内 EXIT trap 包办,不再
-      # 单独 Stop step。
-      - name: Smoke test (amd64 only)
-        if: matrix.platform.arch == 'amd64' && env.DRY_RUN == 'false'
-        env:
-          IMAGE_REF: ${{ env.DOCKERHUB_IMAGE }}@${{ steps.build_dockerhub.outputs.digest }}
-        run: bash .github/scripts/smoke-image.sh
-
-      - name: Export Docker Hub digest
-        if: env.DRY_RUN == 'false'
-        env:
-          ARCH: ${{ matrix.platform.arch }}
-          DIGEST: ${{ steps.build_dockerhub.outputs.digest }}
-          DIGESTS_DIR: /tmp/digests/dockerhub
-        run: bash .github/scripts/export-image-digest.sh
-
-      # slim 变体(--target runtime-slim,无 chromium;卡片渲染配 BN_CHROME_ENDPOINT
-      # 走远程浏览器)。与上一步同一 buildx 实例,builder 阶段的层全量复用 —— 只多
-      # 构建 runtime-slim 这一个 stage,增量成本 ~几十秒,无需恢复 GHA cache。
       - name: Build + push Docker Hub slim digest
         id: build_dockerhub_slim
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-push-image-digest
         with:
-          context: .
-          file: ./apps/Dockerfile
+          image: ${{ env.DOCKERHUB_IMAGE }}
           target: runtime-slim
-          platforms: linux/${{ matrix.platform.arch }}
-          outputs: |
-            type=image,name=${{ env.DOCKERHUB_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.DRY_RUN == 'true' && 'false' || 'true' }}
-
-      # slim smoke:server 无浏览器也必须正常启动(health ok + dashboard 可达),
-      # 卡片渲染缺失只降级不致死 —— 这正是 slim 镜像的交付前提。
-      - name: Smoke test slim (amd64 only)
-        if: matrix.platform.arch == 'amd64' && env.DRY_RUN == 'false'
-        env:
-          IMAGE_REF: ${{ env.DOCKERHUB_IMAGE }}@${{ steps.build_dockerhub_slim.outputs.digest }}
-        run: bash .github/scripts/smoke-image.sh
-
-      - name: Export Docker Hub slim digest
-        if: env.DRY_RUN == 'false'
-        env:
-          ARCH: ${{ matrix.platform.arch }}
-          DIGEST: ${{ steps.build_dockerhub_slim.outputs.digest }}
-          DIGESTS_DIR: /tmp/digests/dockerhub-slim
-        run: bash .github/scripts/export-image-digest.sh
+          arch: ${{ matrix.platform.arch }}
+          dry_run: ${{ env.DRY_RUN }}
+          digests_dir: /tmp/digests/dockerhub-slim
+          smoke_test: "true"
 
       - name: Build + push GHCR digest
         id: build_ghcr
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-push-image-digest
         with:
-          context: .
-          file: ./apps/Dockerfile
-          platforms: linux/${{ matrix.platform.arch }}
-          outputs: |
-            type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.DRY_RUN == 'true' && 'false' || 'true' }}
-
-      - name: Export GHCR digest
-        if: env.DRY_RUN == 'false'
-        env:
-          ARCH: ${{ matrix.platform.arch }}
-          DIGEST: ${{ steps.build_ghcr.outputs.digest }}
-          DIGESTS_DIR: /tmp/digests/ghcr
-        run: bash .github/scripts/export-image-digest.sh
+          image: ${{ env.GHCR_IMAGE }}
+          arch: ${{ matrix.platform.arch }}
+          dry_run: ${{ env.DRY_RUN }}
+          digests_dir: /tmp/digests/ghcr
 
       - name: Build + push GHCR slim digest
         id: build_ghcr_slim
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-push-image-digest
         with:
-          context: .
-          file: ./apps/Dockerfile
+          image: ${{ env.GHCR_IMAGE }}
           target: runtime-slim
-          platforms: linux/${{ matrix.platform.arch }}
-          outputs: |
-            type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.DRY_RUN == 'true' && 'false' || 'true' }}
-
-      - name: Export GHCR slim digest
-        if: env.DRY_RUN == 'false'
-        env:
-          ARCH: ${{ matrix.platform.arch }}
-          DIGEST: ${{ steps.build_ghcr_slim.outputs.digest }}
-          DIGESTS_DIR: /tmp/digests/ghcr-slim
-        run: bash .github/scripts/export-image-digest.sh
+          arch: ${{ matrix.platform.arch }}
+          dry_run: ${{ env.DRY_RUN }}
+          digests_dir: /tmp/digests/ghcr-slim
 
       # 把 digest 写到 artifact,merge job 收回拼 manifest list。文件名 = arch,
       # merge 用 `pattern: digest-*` + `merge-multiple: true` 把两个 registry × 两个
@@ -326,53 +263,6 @@ jobs:
         id: commit
         run: echo "short=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Compute Docker Hub metadata
-        id: meta_dockerhub
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.DOCKERHUB_IMAGE }}
-          # 渠道按版本串判定:prerelease → :alpha,纯 semver → :latest。另打不可变
-          # 版本 tag :vX.Y.Z[-alpha.N] 与每-commit :<short-sha>。
-          tags: |
-            type=raw,value=latest,enable=${{ steps.ver.outputs.prerelease == 'false' }}
-            type=raw,value=alpha,enable=${{ steps.ver.outputs.prerelease == 'true' }}
-            type=raw,value=v${{ steps.ver.outputs.value }}
-            type=raw,value=${{ steps.commit.outputs.short }}
-
-      - name: Compute GHCR metadata
-        id: meta_ghcr
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.GHCR_IMAGE }}
-          tags: |
-            type=raw,value=latest,enable=${{ steps.ver.outputs.prerelease == 'false' }}
-            type=raw,value=alpha,enable=${{ steps.ver.outputs.prerelease == 'true' }}
-            type=raw,value=v${{ steps.ver.outputs.value }}
-            type=raw,value=${{ steps.commit.outputs.short }}
-
-      # slim 变体 tag 集:渠道浮动 tag :slim / :alpha-slim + 不可变 :v*-slim / :<sha>-slim。
-      - name: Compute Docker Hub slim metadata
-        id: meta_dockerhub_slim
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.DOCKERHUB_IMAGE }}
-          tags: |
-            type=raw,value=slim,enable=${{ steps.ver.outputs.prerelease == 'false' }}
-            type=raw,value=alpha-slim,enable=${{ steps.ver.outputs.prerelease == 'true' }}
-            type=raw,value=v${{ steps.ver.outputs.value }}-slim
-            type=raw,value=${{ steps.commit.outputs.short }}-slim
-
-      - name: Compute GHCR slim metadata
-        id: meta_ghcr_slim
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.GHCR_IMAGE }}
-          tags: |
-            type=raw,value=slim,enable=${{ steps.ver.outputs.prerelease == 'false' }}
-            type=raw,value=alpha-slim,enable=${{ steps.ver.outputs.prerelease == 'true' }}
-            type=raw,value=v${{ steps.ver.outputs.value }}-slim
-            type=raw,value=${{ steps.commit.outputs.short }}-slim
-
       # image-release 推 Docker :v<VERSION> 前只校验同名 tag 必须已存在且指向
       # 当前 checkout commit;不等待 Desktop Release / assets,避免桌面端阻塞 Docker 镜像发布。
       - name: Assert version tag compatibility
@@ -381,33 +271,49 @@ jobs:
           REQUIRE_EXISTING_TAG: "1"
         run: bash .github/scripts/assert-version-tag-compatible.sh
 
-      # imagetools create 用 digest list 组合 manifest,带 metadata 的全部 tag 一并推。
-      # docker metadata-action 输出的 tags 是换行分隔字符串;本 workflow 只负责 Docker image。
-      # 脚本本体在 .github/scripts/create-manifest-list.sh。
+      # 每 registry × variant(full / -slim)算一遍 tag 元数据、拼一次 manifest list 推出去。
+      # 步骤本体见 .github/actions/create-manifest-for-variant —— 四份原本近乎逐字复制的
+      # metadata+manifest step 对收进一份定义,以后改 tag 规则只用改一处。channel_tag 是
+      # 非 prerelease 时的浮动 tag(不是后缀:full 用 "latest",slim 变体是 "slim" 这个
+      # 独立的名字);variant_suffix 应用在 alpha / 版本 / commit 三个 tag 上。
       - name: Create + push Docker Hub manifest list
-        env:
-          IMAGE: ${{ env.DOCKERHUB_IMAGE }}
-          TAGS: ${{ steps.meta_dockerhub.outputs.tags }}
-          DIGESTS_DIR: /tmp/digests/dockerhub
-        run: bash .github/scripts/create-manifest-list.sh
+        uses: ./.github/actions/create-manifest-for-variant
+        with:
+          image: ${{ env.DOCKERHUB_IMAGE }}
+          channel_tag: latest
+          digests_dir: /tmp/digests/dockerhub
+          version: ${{ steps.ver.outputs.value }}
+          prerelease: ${{ steps.ver.outputs.prerelease }}
+          commit_short: ${{ steps.commit.outputs.short }}
 
       - name: Create + push GHCR manifest list
-        env:
-          IMAGE: ${{ env.GHCR_IMAGE }}
-          TAGS: ${{ steps.meta_ghcr.outputs.tags }}
-          DIGESTS_DIR: /tmp/digests/ghcr
-        run: bash .github/scripts/create-manifest-list.sh
+        uses: ./.github/actions/create-manifest-for-variant
+        with:
+          image: ${{ env.GHCR_IMAGE }}
+          channel_tag: latest
+          digests_dir: /tmp/digests/ghcr
+          version: ${{ steps.ver.outputs.value }}
+          prerelease: ${{ steps.ver.outputs.prerelease }}
+          commit_short: ${{ steps.commit.outputs.short }}
 
       - name: Create + push Docker Hub slim manifest list
-        env:
-          IMAGE: ${{ env.DOCKERHUB_IMAGE }}
-          TAGS: ${{ steps.meta_dockerhub_slim.outputs.tags }}
-          DIGESTS_DIR: /tmp/digests/dockerhub-slim
-        run: bash .github/scripts/create-manifest-list.sh
+        uses: ./.github/actions/create-manifest-for-variant
+        with:
+          image: ${{ env.DOCKERHUB_IMAGE }}
+          channel_tag: slim
+          variant_suffix: -slim
+          digests_dir: /tmp/digests/dockerhub-slim
+          version: ${{ steps.ver.outputs.value }}
+          prerelease: ${{ steps.ver.outputs.prerelease }}
+          commit_short: ${{ steps.commit.outputs.short }}
 
       - name: Create + push GHCR slim manifest list
-        env:
-          IMAGE: ${{ env.GHCR_IMAGE }}
-          TAGS: ${{ steps.meta_ghcr_slim.outputs.tags }}
-          DIGESTS_DIR: /tmp/digests/ghcr-slim
-        run: bash .github/scripts/create-manifest-list.sh
+        uses: ./.github/actions/create-manifest-for-variant
+        with:
+          image: ${{ env.GHCR_IMAGE }}
+          channel_tag: slim
+          variant_suffix: -slim
+          digests_dir: /tmp/digests/ghcr-slim
+          version: ${{ steps.ver.outputs.value }}
+          prerelease: ${{ steps.ver.outputs.prerelease }}
+          commit_short: ${{ steps.commit.outputs.short }}

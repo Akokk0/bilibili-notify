@@ -1,0 +1,58 @@
+name: Create + push manifest list for one image variant
+description: >-
+  Compute tag metadata (docker/metadata-action) and push a manifest list for
+  one (registry, variant) pair. Extracted so the full and -slim variants
+  (Docker Hub + GHCR) in image-release.yml share one definition instead of
+  four copy-pasted metadata+manifest step pairs that could drift.
+
+inputs:
+  image:
+    description: Fully-qualified image name (e.g. docker.io/akokk0/bilibili-notify)
+    required: true
+  channel_tag:
+    description: >-
+      Floating tag for a non-prerelease build (e.g. "latest" for the full
+      image, "slim" for the -slim variant — NOT a suffix, the base name itself
+      differs between variants).
+    required: true
+  variant_suffix:
+    description: "'' for the full image, '-slim' for the chromium-less variant. Applied to the alpha / version / commit tags."
+    required: false
+    default: ""
+  digests_dir:
+    description: Directory create-manifest-list.sh reads per-arch digest files from
+    required: true
+  version:
+    description: Standalone version (without leading v), from read-standalone-version.sh
+    required: true
+  prerelease:
+    description: "'true' / 'false', from read-standalone-version.sh"
+    required: true
+  commit_short:
+    description: Short commit SHA (12 chars)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # 渠道按版本串判定:prerelease → alpha(-slim),纯 semver → latest/slim。另打不可变
+    # 版本 tag v<VERSION>[-slim] 与每-commit <sha>[-slim]。
+    - name: Compute metadata
+      id: meta
+      uses: docker/metadata-action@v6
+      with:
+        images: ${{ inputs.image }}
+        tags: |
+          type=raw,value=${{ inputs.channel_tag }},enable=${{ inputs.prerelease == 'false' }}
+          type=raw,value=alpha${{ inputs.variant_suffix }},enable=${{ inputs.prerelease == 'true' }}
+          type=raw,value=v${{ inputs.version }}${{ inputs.variant_suffix }}
+          type=raw,value=${{ inputs.commit_short }}${{ inputs.variant_suffix }}
+
+    # imagetools create 用 digest list 组合 manifest,带 metadata 的全部 tag 一并推。
+    - name: Create + push manifest list
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        TAGS: ${{ steps.meta.outputs.tags }}
+        DIGESTS_DIR: ${{ inputs.digests_dir }}
+      run: bash .github/scripts/create-manifest-list.sh
