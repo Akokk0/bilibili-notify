@@ -157,7 +157,14 @@ interface FakeBotServer {
 }
 
 /** 假 OneBot WS 服务端(给正向 WS 测试连)。默认收到 action 帧就按 echo 回成功。 */
-async function startFakeBotServer(opts?: { autoReply?: boolean }): Promise<FakeBotServer> {
+async function startFakeBotServer(opts?: {
+	autoReply?: boolean;
+	/** 自定义应答:收到 action 帧时被调,用 reply 回帧(可延迟;连接已关则丢弃)。 */
+	onFrame?: (
+		frame: Record<string, unknown>,
+		reply: (body: Record<string, unknown>) => void,
+	) => void;
+}): Promise<FakeBotServer> {
 	const wss = new WebSocketServer({ port: 0 });
 	await once(wss, "listening");
 	const received: Array<Record<string, unknown>> = [];
@@ -167,6 +174,12 @@ async function startFakeBotServer(opts?: { autoReply?: boolean }): Promise<FakeB
 		ws.on("message", (raw) => {
 			const frame = JSON.parse(raw.toString()) as Record<string, unknown>;
 			received.push(frame);
+			if (opts?.onFrame) {
+				opts.onFrame(frame, (body) => {
+					if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(body));
+				});
+				return;
+			}
 			if (opts?.autoReply === false) return;
 			ws.send(JSON.stringify({ status: "ok", retcode: 0, echo: frame.echo }));
 		});
@@ -659,6 +672,141 @@ describe("onebot — 失败与重试", () => {
 		const r = await ad.send(obAdapter(), obTarget({ platform: "webhook" }), TEXT);
 		expect(r.ok).toBe(false);
 		expect(r.err).toMatch(/wrong platform/);
+	});
+});
+
+describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
+	// 背景:send_* 动作非幂等。响应超时/连接中断 ≠ 消息没发出去 —— NapCat 收到
+	// action 后即使我们判超时它仍会继续处理并把消息发进群。此时盲重试 = 群里收到
+	// retryTimes+1 份(用户实测:9 图合并转发超时重试,重复推送)。契约:
+	//   - 「结果未知」类失败(超时/断连)立即放弃重试,err 注明结果未知
+	//   - bot 明确报失败(响应 status=failed)→ 消息确定没发出去,重试语义保留
+	//   - 合并转发(send_*_forward_msg)对 NapCat 是重活,超时下限放宽(可注入)
+
+	it("WS 响应超时:retryTimes>0 也只发一帧,err 注明结果未知", async () => {
+		const bot = await startFakeBotServer({ autoReply: false });
+		const ad = createOnebotAdapter(obOpts());
+		const adapter = obWsAdapter(bot.port, { timeoutMs: 120, retryTimes: 3, retryIntervalMs: 0 });
+		ad.reconcile?.([adapter]);
+		await waitFor(() => bot.connections.length > 0);
+		await sleep(40);
+		const r = await ad.send(adapter, obTarget(), TEXT);
+		expect(r.ok).toBe(false);
+		expect(r.err).toMatch(/超时/);
+		expect(r.err).toMatch(/结果未知/);
+		expect(bot.received.filter((f) => f.action === "send_group_msg")).toHaveLength(1);
+		ad.dispose?.();
+	});
+
+	it("WS bot 明确报失败:仍按 retryTimes 重试(重试语义保留)", async () => {
+		const bot = await startFakeBotServer({
+			onFrame: (frame, reply) =>
+				reply({ status: "failed", retcode: 100, wording: "风控", echo: frame.echo }),
+		});
+		const ad = createOnebotAdapter(obOpts());
+		const adapter = obWsAdapter(bot.port, { timeoutMs: 500, retryTimes: 2, retryIntervalMs: 0 });
+		ad.reconcile?.([adapter]);
+		await waitFor(() => bot.connections.length > 0);
+		await sleep(40);
+		const r = await ad.send(adapter, obTarget(), TEXT);
+		expect(r.ok).toBe(false);
+		expect(r.err).toContain("风控");
+		expect(bot.received.filter((f) => f.action === "send_group_msg")).toHaveLength(3);
+		ad.dispose?.();
+	});
+
+	it("WS 等响应期间连接断开:不重试(帧已发出,结果未知)", async () => {
+		const bot = await startFakeBotServer({ autoReply: false });
+		const ad = createOnebotAdapter(obOpts());
+		const adapter = obWsAdapter(bot.port, { timeoutMs: 2000, retryTimes: 3, retryIntervalMs: 0 });
+		ad.reconcile?.([adapter]);
+		await waitFor(() => bot.connections.length > 0);
+		await sleep(40);
+		const pending = ad.send(adapter, obTarget(), TEXT);
+		await waitFor(() => bot.received.some((f) => f.action === "send_group_msg"));
+		bot.connections[0]?.terminate();
+		const r = await pending;
+		expect(r.ok).toBe(false);
+		expect(r.err).toMatch(/断开/);
+		expect(bot.received.filter((f) => f.action === "send_group_msg")).toHaveLength(1);
+		ad.dispose?.();
+	});
+
+	it("WS 合并转发:超时下限放宽,慢响应也能等到成功", async () => {
+		const bot = await startFakeBotServer({
+			onFrame: (frame, reply) => {
+				if (frame.action === "get_login_info") {
+					reply({
+						status: "ok",
+						retcode: 0,
+						data: { user_id: 1, nickname: "bot" },
+						echo: frame.echo,
+					});
+					return;
+				}
+				// 模拟 NapCat 组装多图 forward 的慢响应:超过 cfg.timeoutMs,但在放宽后的下限内
+				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200);
+			},
+		});
+		const ad = createOnebotAdapter({ ...obOpts(), forwardMinTimeoutMs: 1000 });
+		const adapter = obWsAdapter(bot.port, { timeoutMs: 60, retryTimes: 0 });
+		ad.reconcile?.([adapter]);
+		await waitFor(() => bot.connections.length > 0);
+		await sleep(40);
+		const r = await ad.send(adapter, obTarget(), {
+			kind: "forward-images",
+			images: [{ url: "https://x/1.jpg" }, { url: "https://x/2.jpg" }],
+			forward: true,
+		});
+		expect(r.ok).toBe(true);
+		expect(bot.received.filter((f) => f.action === "send_group_forward_msg")).toHaveLength(1);
+		ad.dispose?.();
+	});
+
+	it("HTTP 请求超时(Abort):不重试,err 注明结果未知", async () => {
+		fetchMock.mockRejectedValue(
+			Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
+		);
+		const r = await createOnebotAdapter(obOpts()).send(
+			obAdapter({ timeoutMs: 50, retryTimes: 2, retryIntervalMs: 0 }),
+			obTarget(),
+			TEXT,
+		);
+		expect(r.ok).toBe(false);
+		expect(r.err).toMatch(/超时/);
+		expect(r.err).toMatch(/结果未知/);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("HTTP 合并转发:超时下限放宽(fetch 尊重 signal 时慢响应仍成功)", async () => {
+		fetchMock.mockImplementation(
+			(_url: string, init: RequestInit) =>
+				new Promise((resolve, reject) => {
+					const t = setTimeout(
+						() =>
+							resolve(
+								res({
+									ok: true,
+									json: { status: "ok", retcode: 0, data: { user_id: 1, nickname: "b" } },
+								}),
+							),
+						150,
+					);
+					(init.signal as AbortSignal).addEventListener("abort", () => {
+						clearTimeout(t);
+						reject(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }));
+					});
+				}),
+		);
+		const ad = createOnebotAdapter({ ...obOpts(), forwardMinTimeoutMs: 1000 });
+		// get_login_info 用 cfg.timeoutMs(50ms)会先超时 → fallback 身份;forward 本体
+		// 在放宽后的 1000ms 下限内等到 150ms 的慢成功。
+		const r = await ad.send(obAdapter({ timeoutMs: 50, retryTimes: 0 }), obTarget(), {
+			kind: "forward-images",
+			images: [{ url: "https://x/1.jpg" }, { url: "https://x/2.jpg" }],
+			forward: true,
+		});
+		expect(r.ok).toBe(true);
 	});
 });
 

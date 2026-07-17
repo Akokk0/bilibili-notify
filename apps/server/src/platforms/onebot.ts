@@ -36,12 +36,39 @@ export interface OnebotPlatformAdapterOptions {
 	serviceCtx: ServiceContext;
 	/** Fallback timeout (ms) when adapter.config.timeoutMs is missing. Defaults to 15s. */
 	timeoutMs?: number;
+	/**
+	 * 合并转发动作(send_*_forward_msg)的超时下限(ms),默认 60s。NapCat 组装多图
+	 * forward 要逐张下载再上传,常规 15s 几乎必超 —— 单独放宽,让慢成功等得到真响应,
+	 * 推送历史不再谎报失败。取 `max(cfg.timeoutMs, 此值)`。测试注入用。
+	 */
+	forwardMinTimeoutMs?: number;
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_RETRY_INTERVAL_MS = 1_000;
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
+const DEFAULT_FORWARD_MIN_TIMEOUT_MS = 60_000;
+
+/**
+ * 「结果未知」类发送失败:action 帧 / HTTP 请求**已经发出去之后**才失败(响应超时、
+ * 连接中断)。这不等于消息没发出去 —— NapCat 收到 action 后即使我们这边判超时,它
+ * 仍会继续处理并把消息发进群(9 图合并转发常要 20~60s,远超常规 15s 超时)。
+ *
+ * send_* 动作非幂等:对这类失败盲重试,每次重试都是又一条完整消息,群里会收到
+ * retryTimes+1 份(用户实测的「图集重复推送」)。发送路径见到本错误必须立即放弃
+ * 重试、如实报失败;只有「确定没发出去」(无连接 / 发送即抛错 / bot 明确报失败)
+ * 才允许走重试。
+ */
+class IndeterminateActionError extends Error {}
+
+/** 附在「结果未知」失败的 err 上,提示用户群里可能已收到、且为何不再重试。 */
+const INDETERMINATE_NOTE = "(动作已发出、结果未知,为免重复送达不再重试)";
+
+/** 合并转发动作 —— NapCat 要逐张下载图片再上传组装,处理时长远超普通消息。 */
+function isForwardAction(action: string): boolean {
+	return action === "send_group_forward_msg" || action === "send_private_forward_msg";
+}
 
 type OnebotHttpConfig = Extract<OnebotAdapterConfig, { transport: "http" }>;
 type OnebotWsConfig = Extract<OnebotAdapterConfig, { transport: "ws" }>;
@@ -243,14 +270,13 @@ async function postOnebotOnce(
 	cfg: OnebotHttpConfig,
 	endpoint: string,
 	body: Record<string, unknown>,
-	fallbackTimeoutMs: number,
+	timeoutMs: number,
 ): Promise<OneBotResponse> {
 	const url = `${trimTrailingSlash(cfg.baseUrl)}${endpoint}`;
 	const headers: Record<string, string> = { "content-type": "application/json", ...cfg.headers };
 	if (cfg.accessToken) headers.authorization = `Bearer ${cfg.accessToken}`;
 
 	const ctrl = new AbortController();
-	const timeoutMs = cfg.timeoutMs ?? fallbackTimeoutMs;
 	const timer = setTimeout(() => ctrl.abort(), timeoutMs);
 	try {
 		const res = await fetch(url, {
@@ -267,6 +293,12 @@ async function postOnebotOnce(
 			};
 		}
 		return (await res.json()) as OneBotResponse;
+	} catch (e) {
+		// 我们自己的超时 abort:请求已发出、结果未知 —— 与 WS 响应超时同等对待。
+		if ((e as Error | undefined)?.name === "AbortError") {
+			throw new IndeterminateActionError(`HTTP 请求超时 (${timeoutMs}ms)`);
+		}
+		throw e;
 	} finally {
 		clearTimeout(timer);
 	}
@@ -277,17 +309,26 @@ async function postOnebot(
 	endpoint: string,
 	body: Record<string, unknown>,
 	fallbackTimeoutMs: number,
+	opts?: {
+		/** 超时下限(合并转发动作放宽用),取 max(cfg.timeoutMs, minTimeoutMs)。 */
+		minTimeoutMs?: number;
+		/** 非幂等动作(send_*):「结果未知」失败不得盲重试,见 IndeterminateActionError。 */
+		nonIdempotent?: boolean;
+	},
 ): Promise<OneBotResponse> {
 	const retryTimes = cfg.retryTimes ?? 0;
 	const retryIntervalMs = cfg.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
+	const timeoutMs = Math.max(cfg.timeoutMs ?? fallbackTimeoutMs, opts?.minTimeoutMs ?? 0);
 	let lastErr: unknown;
 	let lastResponse: OneBotResponse | undefined;
 	for (let attempt = 0; attempt <= retryTimes; attempt++) {
 		try {
-			const result = await postOnebotOnce(cfg, endpoint, body, fallbackTimeoutMs);
+			const result = await postOnebotOnce(cfg, endpoint, body, timeoutMs);
 			if (result.status === "ok" && result.retcode === 0) return result;
 			lastResponse = result;
 		} catch (e) {
+			// 超时 = 结果未知,消息可能已送达 —— 非幂等动作重发即重复,立即向上抛。
+			if (opts?.nonIdempotent && e instanceof IndeterminateActionError) throw e;
 			lastErr = e;
 		}
 		if (attempt < retryTimes && retryIntervalMs > 0) {
@@ -338,7 +379,8 @@ class WsChannel {
 		return new Promise<OneBotResponse>((resolve, reject) => {
 			const timer = this.serviceCtx.setTimeout(() => {
 				this.pending.delete(echo);
-				reject(new Error(`ws action ${action} 响应超时 (${timeoutMs}ms)`));
+				// 帧已发出、只是没等到响应 → 结果未知(bot 可能仍在处理并最终发出消息)。
+				reject(new IndeterminateActionError(`ws action ${action} 响应超时 (${timeoutMs}ms)`));
 			}, timeoutMs);
 			this.pending.set(echo, { resolve, reject, timer });
 			try {
@@ -368,11 +410,17 @@ class WsChannel {
 		p.resolve(frame);
 	}
 
-	/** 连接断开 / dispose:未决请求全部 reject,避免一直挂到超时。 */
+	/**
+	 * 连接断开 / dispose:未决请求全部 reject,避免一直挂到超时。
+	 * 未决 = 帧已写入 socket、还没等到响应 → 一律按「结果未知」处置
+	 * (统一包成 IndeterminateActionError,发送路径见之不重试)。
+	 */
 	rejectAll(err: Error): void {
 		for (const p of this.pending.values()) {
 			p.timer.dispose();
-			p.reject(err);
+			p.reject(
+				err instanceof IndeterminateActionError ? err : new IndeterminateActionError(err.message),
+			);
 		}
 		this.pending.clear();
 	}
@@ -585,6 +633,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	const log = opts.logger;
 	const serviceCtx = opts.serviceCtx;
 	const fallbackTimeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+	const forwardMinTimeoutMs = opts.forwardMinTimeoutMs ?? DEFAULT_FORWARD_MIN_TIMEOUT_MS;
 
 	const forwardConns = new Map<string, ForwardConn>();
 	const reverseListeners = new Map<string, ReverseListener>();
@@ -697,7 +746,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		targetId: string,
 		t0: number,
 	): Promise<DeliveryResult> {
-		const timeoutMs = cfg.timeoutMs ?? fallbackTimeoutMs;
+		const baseTimeoutMs = cfg.timeoutMs ?? fallbackTimeoutMs;
+		const timeoutMs = isForwardAction(action)
+			? Math.max(baseTimeoutMs, forwardMinTimeoutMs)
+			: baseTimeoutMs;
 		const retryTimes = cfg.retryTimes ?? 0;
 		const retryIntervalMs = cfg.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
 		let lastErr = "ws send failed";
@@ -715,6 +767,13 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 					lastErr = verdict.err;
 				} catch (e) {
 					lastErr = e instanceof Error ? e.message : String(e);
+					// 结果未知(超时/连接中断):帧已发出,bot 可能已把消息发进群。send_*
+					// 非幂等 —— 盲重试 = 群里收到 retryTimes+1 份(用户实测的图集重复
+					// 推送)。立即放弃,如实报失败并注明可能已送达。
+					if (e instanceof IndeterminateActionError) {
+						lastErr += INDETERMINATE_NOTE;
+						break;
+					}
 				}
 			}
 			if (attempt < retryTimes && retryIntervalMs > 0) {
@@ -808,7 +867,12 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 
 			if (cfg.transport === "http") {
 				try {
-					const result = await postOnebotOnce(cfg, "/get_status", {}, fallbackTimeoutMs);
+					const result = await postOnebotOnce(
+						cfg,
+						"/get_status",
+						{},
+						cfg.timeoutMs ?? fallbackTimeoutMs,
+					);
 					const verdict = interpretResponse(result);
 					return verdict.ok
 						? { ok: true, latencyMs: Date.now() - t0 }
@@ -919,7 +983,16 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 
 			if (cfg.transport === "http") {
 				try {
-					const result = await postOnebot(cfg, `/${built.action}`, built.params, fallbackTimeoutMs);
+					const result = await postOnebot(
+						cfg,
+						`/${built.action}`,
+						built.params,
+						fallbackTimeoutMs,
+						{
+							nonIdempotent: true,
+							minTimeoutMs: isForwardAction(built.action) ? forwardMinTimeoutMs : undefined,
+						},
+					);
 					const verdict = interpretResponse(result);
 					if (!verdict.ok) {
 						log.warn(`[onebot] target=${target.id} send failed: ${verdict.err}`);
@@ -927,7 +1000,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 					}
 					return { ok: true, latencyMs: Date.now() - t0 };
 				} catch (e) {
-					const err = describeFetchError(e);
+					const err =
+						e instanceof IndeterminateActionError
+							? e.message + INDETERMINATE_NOTE
+							: describeFetchError(e);
 					log.warn(`[onebot] target=${target.id} send threw: ${err} (baseUrl=${cfg.baseUrl})`);
 					return { ok: false, latencyMs: Date.now() - t0, err };
 				}
