@@ -592,17 +592,17 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// (不经 ImageRenderer,未登录也能调色)。背景图/直播封面在此解析成 data URL 注入;
 		// 取「第一张盘上存在的图」,跳过悬空引用。
 		const dataDir = opts.deps.store.bootstrap.dataDir;
-		const bgDataUrl = await readCardBgDataUrl(
-			dataDir,
-			await firstExistingCardBg(dataDir, style.backgroundImages),
-		);
-		const coverDataUrl =
+		// 背景图与直播封面互不依赖(各自独立的资产解析),并发发起省一次串行 I/O 往返。
+		const [bgDataUrl, coverDataUrl] = await Promise.all([
+			firstExistingCardBg(dataDir, style.backgroundImages).then((id) =>
+				readCardBgDataUrl(dataDir, id),
+			),
 			kind === "live"
-				? await readCardBgDataUrl(
-						dataDir,
-						await firstExistingCardBg(dataDir, style.liveCoverImages),
+				? firstExistingCardBg(dataDir, style.liveCoverImages).then((id) =>
+						readCardBgDataUrl(dataDir, id),
 					)
-				: "";
+				: Promise.resolve(""),
+		]);
 		const { component, props, title, htmlWidth } = buildPreviewSpec(
 			kind,
 			style,
