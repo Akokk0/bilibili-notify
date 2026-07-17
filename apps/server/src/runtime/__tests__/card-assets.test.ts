@@ -153,4 +153,23 @@ describe("card-assets", () => {
 			await rm(fresh, { recursive: true, force: true });
 		}
 	});
+
+	it("makeExistingCardBgPicker 稳态命中内存缓存,不再逐张同步碰盘(TTL 窗口内对盘上变化短暂不敏感)", async () => {
+		const fresh = await mkdtemp(join(tmpdir(), "card-bg-picker-cache-"));
+		try {
+			const real = await saveCardBg(fresh, PNG, "image/png");
+			const inner = vi.fn((_scope: string, images: string[]) => images[0]);
+			const pick = makeExistingCardBgPicker(fresh, inner);
+			// 首次调用是冷启动(缓存未就绪),同步 existsSync 兜底直接给出正确结果,
+			// 同时后台触发一次 readdir 建缓存。
+			expect(pick("uid:live", [real])).toBe(real);
+			await new Promise((r) => setTimeout(r, 30)); // 等后台 readdir 落地
+			// 缓存建好后,绕过 deleteCardBg 直接删盘(不经过缓存刷新路径)——若 picker
+			// 走的是 Set 缓存而非每次同步 existsSync,TTL 窗口内仍应判定「存在」。
+			await rm(join(cardBgDir(fresh), real));
+			expect(pick("uid:live", [real])).toBe(real);
+		} finally {
+			await rm(fresh, { recursive: true, force: true });
+		}
+	});
 });

@@ -118,19 +118,44 @@ export async function firstExistingCardBg(
 	return "";
 }
 
+/** existsSync 缓存的存活期 —— 权衡"删图后多久轮换才会跳过它"与"推送热路径少碰几次盘"。 */
+const EXISTING_IDS_TTL_MS = 5_000;
+
 /**
  * 包一层推送轮换选择器:选图前过滤掉盘上已不存在的资产 id,轮换永远只在真实存在的图里转
  * (悬空条目不占游标位、不会渲染成空背景)。过滤后为空返回 undefined → 调用点静态兜底。
- * 同步(existsSync)是因为 pick 在推送点同步推进游标;资产量级小,开销可忽略。
+ *
+ * pick 在推送点同步推进游标,过滤必须同步完成。稳态下靠一份短 TTL 的 id 集合缓存
+ * (后台异步 readdir 刷新)做 Set.has() 判断,不再对轮换列表逐张 existsSync ——
+ * 高频推送 / 慢速存储(网络卷等)下避免每次推送都拿同步 stat 卡一下事件循环。
+ * 仅缓存冷启动(尚未有过一次成功 readdir)时退化到同步 existsSync 兜底,保正确性。
  */
 export function makeExistingCardBgPicker(
 	dataDir: string,
 	pick: (scopeKey: string, images: string[]) => string | undefined,
 ): (scopeKey: string, images: string[]) => string | undefined {
+	let cachedIds: Set<string> | null = null;
+	let cachedAt = 0;
+	let refreshing: Promise<void> | null = null;
+	const refresh = (): void => {
+		if (refreshing) return;
+		refreshing = readdir(cardBgDir(dataDir))
+			.then((names) => {
+				cachedIds = new Set(names.filter(isValidCardBgId));
+				cachedAt = Date.now();
+			})
+			.catch(() => {
+				// 目录不存在等 → 保留旧缓存(或仍为 null),下次调用到期再试。
+			})
+			.finally(() => {
+				refreshing = null;
+			});
+	};
 	return (scopeKey, images) => {
-		const existing = images.filter(
-			(id) => isValidCardBgId(id) && existsSync(join(cardBgDir(dataDir), id)),
-		);
+		if (cachedIds === null || Date.now() - cachedAt > EXISTING_IDS_TTL_MS) refresh();
+		const exists = (id: string): boolean =>
+			cachedIds !== null ? cachedIds.has(id) : existsSync(join(cardBgDir(dataDir), id));
+		const existing = images.filter((id) => isValidCardBgId(id) && exists(id));
 		return existing.length > 0 ? pick(scopeKey, existing) : undefined;
 	};
 }
