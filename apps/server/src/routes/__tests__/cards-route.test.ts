@@ -859,6 +859,47 @@ describe("cards route — /preview live-by-uid fallback", () => {
 			await rm(dir, { recursive: true, force: true });
 		}
 	});
+
+	it("live 真实数据预览(有 roomId,走 renderRealLive):liveCoverImages 首张悬空 → 跳过,不再传幽灵 id 给 renderer", async () => {
+		// renderRealLive 曾漏加 firstExistingCardBg 守卫,直接把 liveCoverImages[0] 透传 ——
+		// 幽灵 id 解析失败会静默回退 B 站原始封面,即便第二张图有效。这里用真实数据分支
+		// (content.roomId 命中,不落 mock 兜底)验证 colorOptions.liveCoverImage 拿到的是
+		// 第一张盘上存在的图,不是幽灵 id。
+		const dir = await mkdtemp(join(tmpdir(), "bn-preview-real-ghost-cover-"));
+		try {
+			const real = await saveCardBg(dir, PNG, "image/png");
+			const ghost = `${"c".repeat(32)}.png`;
+			const api = {
+				getLiveRoomInfo: vi.fn(async () => ({
+					code: 0,
+					data: { uid: 12345, live_status: 1 },
+				})),
+				getMasterInfo: vi.fn(async () => ({
+					code: 0,
+					data: { info: { uname: "真实UP", face: "https://i0.hdslb.com/up.png" } },
+				})),
+			} as unknown as BilibiliAPI;
+			const spy = vi
+				.spyOn(ImageRenderer.prototype, "generateLiveCard")
+				.mockResolvedValue(Buffer.from("x"));
+			const app = createCardsRoute({
+				deps: depsWithDataDir(dir),
+				puppeteer: makeFakePuppeteer(),
+				api,
+			});
+			const res = await postPreview(app, {
+				kind: "live",
+				style: { ...STYLE, liveCoverImages: [ghost, real] },
+				content: { roomId: "778899" },
+			});
+			expect(res.status).toBe(200);
+			const colorOptions = spy.mock.calls[0]?.[5] as { liveCoverImage?: string };
+			expect(colorOptions.liveCoverImage).toBe(real);
+			spy.mockRestore();
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
 });
 
 describe("cards route — /preview sc/guard 发送者取登录账号", () => {

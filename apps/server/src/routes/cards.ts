@@ -555,7 +555,14 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				const roomId =
 					content.roomId?.trim() ||
 					(await resolveRoomIdFromUid(opts.api, content.uid?.trim() ?? ""));
-				const buffer = await renderRealLive(opts.api, renderer, roomId, style, layout?.live);
+				const buffer = await renderRealLive(
+					opts.api,
+					renderer,
+					roomId,
+					style,
+					opts.deps.store.bootstrap.dataDir,
+					layout?.live,
+				);
 				return { buffer, mime: "image/jpeg" };
 			} catch (err) {
 				if (!fallback) throw err;
@@ -740,6 +747,7 @@ async function renderRealLive(
 	renderer: ImageRenderer,
 	roomId: string,
 	style: PreviewStyle,
+	dataDir: string,
 	layout?: CardBlock[],
 ): Promise<Buffer> {
 	if (!/^\d+$/.test(roomId)) throw new Error("直播间号必须是纯数字");
@@ -778,8 +786,10 @@ async function renderRealLive(
 		{
 			cardColorStart: style.cardColorStart,
 			cardColorEnd: style.cardColorEnd,
-			// 自定义直播封面:预览取首张,资产 id 由 renderer 的 resolveAsset 解析。
-			liveCoverImage: style.liveCoverImages?.[0],
+			// 自定义直播封面:跳过悬空引用(文件已删的 id),取第一张盘上存在的图 ——
+			// 与 mock 预览 / 生产推送同一条守卫,否则第一张是幽灵 id 时会静默回退
+			// B 站原始封面,即便后面还有张有效图。
+			liveCoverImage: await firstExistingCardBg(dataDir, style.liveCoverImages),
 		},
 		layout,
 	);
