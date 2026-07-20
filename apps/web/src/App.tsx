@@ -20,6 +20,7 @@ import Dashboard from "./pages/Dashboard";
 import History from "./pages/History";
 import Logs from "./pages/Logs";
 import Rules from "./pages/Rules";
+import Stats from "./pages/Stats";
 import Subs from "./pages/Subs";
 import System from "./pages/System";
 import Targets from "./pages/Targets";
@@ -90,6 +91,7 @@ function AuthedApp() {
 						<Route path="/subs" element={<Subs />} />
 						<Route path="/targets" element={<Targets />} />
 						<Route path="/history" element={<History />} />
+						<Route path="/stats" element={<Stats />} />
 						<Route path="/rules" element={<Rules />} />
 						<Route path="/cards" element={<Cards />} />
 						<Route path="/ai" element={<Ai />} />

@@ -11,7 +11,14 @@ export interface GlassPanelProps {
 	title?: ReactNode;
 	subtitle?: ReactNode;
 	right?: ReactNode;
+	/**
+	 * 主题色。**必须是十六进制字面量**(如 `#FB7299`)—— 下面要拼 alpha 后缀
+	 * 构造渐变,传 `var(--color-bn-*)` 会拼出 `var(...)1f` 这种非法值,整条
+	 * background 声明会被浏览器静默丢弃。
+	 */
 	accent?: string;
+	/** 标题左侧的图标,会被放进一枚 accent 渐变圆角方块里。 */
+	icon?: ReactNode;
 	children: ReactNode;
 	className?: string;
 }
@@ -21,6 +28,7 @@ export function GlassPanel({
 	subtitle,
 	right,
 	accent,
+	icon,
 	children,
 	className,
 }: GlassPanelProps) {
@@ -28,15 +36,29 @@ export function GlassPanel({
 		? { background: `radial-gradient(circle at top right, ${accent}1f, transparent 70%)` }
 		: undefined;
 	return (
+		// flex-col + 下面 body 的 flex-1:让面板正文吃满卡片高度。栅格里的卡片会被
+		// 拉到与最高的兄弟等高,若正文只按内容高度排,矮内容(如热力图)下方就留一大片空白。
+		// 有了它,正文里的 `h-full` 才真正生效。
 		<div
-			className={`bn-glass relative overflow-hidden rounded-bn-card p-4 shadow-bn-card ${className ?? ""}`}
+			className={`bn-glass relative flex flex-col overflow-hidden rounded-bn-card p-4 shadow-bn-card ${className ?? ""}`}
 		>
 			{accent ? (
 				<div className="pointer-events-none absolute right-0 top-0 h-24 w-24" style={accentStyle} />
 			) : null}
 			{title || subtitle || right ? (
-				<div className="relative mb-3 flex items-center justify-between">
-					<div>
+				<div className="relative mb-3 flex items-center gap-2.5">
+					{icon && accent ? (
+						<div
+							className="flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-bn-card text-white"
+							style={{
+								background: `linear-gradient(135deg, ${accent}, ${accent}cc)`,
+								boxShadow: `0 4px 12px ${accent}55`,
+							}}
+						>
+							{icon}
+						</div>
+					) : null}
+					<div className="min-w-0 flex-1">
 						{title ? <div className="text-sm font-bold text-bn-text-primary">{title}</div> : null}
 						{subtitle ? (
 							<div className="mt-0.5 text-xs text-bn-text-secondary">{subtitle}</div>
@@ -45,7 +67,7 @@ export function GlassPanel({
 					{right}
 				</div>
 			) : null}
-			<div className="relative">{children}</div>
+			<div className="relative min-h-0 flex-1">{children}</div>
 		</div>
 	);
 }
@@ -68,11 +90,17 @@ export interface GlassStatCardProps {
 	label: string;
 	value: ReactNode;
 	suffix?: ReactNode;
+	/**
+	 * 主题色。**必须是十六进制字面量** —— 同 {@link GlassPanelProps.accent},
+	 * 这里要拼 `${color}1a` / `${color}33` 造底色与描边。
+	 */
 	color: string;
 	pulse?: boolean;
+	/** 卡片底部的补充行(如涨跌幅 + 迷你走势),留给调用方自由组合。 */
+	footer?: ReactNode;
 }
 
-export function GlassStatCard({ label, value, suffix, color, pulse }: GlassStatCardProps) {
+export function GlassStatCard({ label, value, suffix, color, pulse, footer }: GlassStatCardProps) {
 	const bg: CSSProperties = {
 		background: `linear-gradient(135deg, ${color}1a, var(--bn-glass-bg))`,
 		border: `1px solid ${color}33`,
@@ -95,6 +123,7 @@ export function GlassStatCard({ label, value, suffix, color, pulse }: GlassStatC
 				</span>
 				{suffix ? <span className="text-xs text-bn-text-secondary">{suffix}</span> : null}
 			</div>
+			{footer ? <div className="mt-2 flex items-center gap-1.5">{footer}</div> : null}
 		</div>
 	);
 }

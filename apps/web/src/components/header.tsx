@@ -29,6 +29,7 @@ const NAV: ReadonlyArray<{
 	{ to: "/subs", label: "订阅 UP 主", countKey: "subs" },
 	{ to: "/targets", label: "推送目标", countKey: "targets" },
 	{ to: "/history", label: "推送历史" },
+	{ to: "/stats", label: "数据统计" },
 	{ to: "/rules", label: "高级规则" },
 	{ to: "/cards", label: "卡片渲染 · 样式" },
 	{ to: "/ai", label: "智能女仆" },

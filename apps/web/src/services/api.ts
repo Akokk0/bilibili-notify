@@ -30,6 +30,26 @@ export function setUnauthorizedHandler(fn: UnauthorizedHandler | null): void {
 	onUnauthorized = fn;
 }
 
+/**
+ * 从错误响应体里挑出给人看的那句话。
+ *
+ * 服务端有**两种**错误体形状:`{err}`(锐评 / 推送测试 / 卡片测试…)与
+ * `{message}`(backup…)。两边都要认 —— 只认一种的话,另一种会被降级成
+ * 「POST /api/… → 400」这种线格式噪音,用户看不到「智能女仆尚未启用」这类真正
+ * 可操作的原因,只能来问「这功能是不是没写」。
+ */
+function errorMessage(payload: unknown, what: string, status: number): string {
+	if (typeof payload === "object" && payload !== null) {
+		for (const key of ["err", "message"] as const) {
+			if (key in payload) {
+				const v = (payload as Record<string, unknown>)[key];
+				if (typeof v === "string" && v.trim()) return v;
+			}
+		}
+	}
+	return `${what} → ${status}`;
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
 	const res = await fetch(path, {
 		method,
@@ -47,11 +67,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 		if (res.status === 401 && !path.startsWith("/api/session")) {
 			onUnauthorized?.();
 		}
-		const msg =
-			typeof payload === "object" && payload && "message" in payload
-				? String((payload as { message: unknown }).message)
-				: `${method} ${path} → ${res.status}`;
-		throw new ApiError(res.status, payload, msg);
+		throw new ApiError(res.status, payload, errorMessage(payload, `${method} ${path}`, res.status));
 	}
 	return payload as T;
 }
@@ -73,11 +89,7 @@ async function upload<T>(path: string, form: FormData): Promise<T> {
 	}
 	if (!res.ok) {
 		if (res.status === 401 && !path.startsWith("/api/session")) onUnauthorized?.();
-		const msg =
-			typeof payload === "object" && payload && "err" in payload
-				? String((payload as { err: unknown }).err)
-				: `POST ${path} → ${res.status}`;
-		throw new ApiError(res.status, payload, msg);
+		throw new ApiError(res.status, payload, errorMessage(payload, `POST ${path}`, res.status));
 	}
 	return payload as T;
 }

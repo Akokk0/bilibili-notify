@@ -64,3 +64,42 @@ describe("api.patch wire format", () => {
 		expect(sentBody()).toEqual({ kind: "dynamic" });
 	});
 });
+
+/**
+ * 错误信息的取字段。
+ *
+ * 服务端有**两种**错误体形状:`{err}`(锐评 / 推送测试 …)和 `{message}`
+ * (backup …)。`request` 原来只认 `message`,于是所有 `{err}` 类失败都被降级成
+ * 「POST /api/… → 400」这种线格式噪音 —— 用户看到的不是「智能女仆尚未启用」,
+ * 而是一个毫无指向的状态码,只能来问「功能是不是没写」。
+ */
+describe("api 错误信息", () => {
+	const fail = (status: number, body: unknown) =>
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify(body), {
+						status,
+						headers: { "content-type": "application/json" },
+					}),
+			),
+		);
+
+	it("读得出 {err} 形状的原因", async () => {
+		fail(400, { ok: false, err: "智能女仆尚未启用" });
+		await expect(api.post("/api/stats/roast/1", {})).rejects.toThrow("智能女仆尚未启用");
+	});
+
+	it("读得出 {message} 形状的原因", async () => {
+		fail(400, { error: "pin_required", message: "a full backup requires a PIN" });
+		await expect(api.post("/api/backup/export", {})).rejects.toThrow(
+			"a full backup requires a PIN",
+		);
+	});
+
+	it("两个字段都没有时退回线格式,至少带上状态码", async () => {
+		fail(500, { nope: 1 });
+		await expect(api.post("/api/whatever", {})).rejects.toThrow("500");
+	});
+});
