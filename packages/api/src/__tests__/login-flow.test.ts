@@ -167,8 +167,8 @@ describe("LoginFlow.reportAccountInfo()", () => {
 		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
 	});
 
-	it("auth-restored only fires after a prior LOGGED_IN → NOT_LOGIN cycle (needsRestore)", async () => {
-		// Cold start → LOGGED_IN. No auth-restored expected.
+	it("auth-restored fires once per NOT_LOGIN → LOGGED_IN recovery, never on a clean start", async () => {
+		// Cold start straight to LOGGED_IN — nothing was ever parked, so no auth-restored.
 		h.api.getMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		h.api.getUserCardInfo.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
 		await h.flow.reportAccountInfo();
@@ -353,5 +353,24 @@ describe("LoginFlow.stop()", () => {
 		h.flow.stop();
 		expect(h.scFake.intervals[0].handle.disposed).toBe(true);
 		expect(h.scFake.timeouts[0].handle.disposed).toBe(true);
+	});
+});
+
+describe("LoginFlow — 冷启动即登录过期,重新登录后必须放行 auth-restored", () => {
+	it("启动时 cookie 已失效 → 重新登录后仍发 auth-restored(下游引擎靠它复活)", async () => {
+		const h = makeFlow();
+		// 冷启动探测:cookie 过期。此时快照还是 LOADING_LOGIN_INFO,不是 LOGGED_IN。
+		h.api.getMyselfInfo.mockResolvedValueOnce({ code: -101, data: { mid: 0 } });
+		await h.flow.reportAccountInfo();
+		expect(h.flow.current().status).toBe(BiliLoginStatus.NOT_LOGIN);
+
+		// 主人扫码重新登录成功。
+		h.api.getMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.getUserCardInfo.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		await h.flow.reportAccountInfo();
+
+		// 动态引擎在自己撞上 -101 时就已经停了 cron,并明写「待 auth-restored 重启」。
+		// 它是否收到这条事件,与登录流当初有没有发过 auth-lost 无关。
+		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(1);
 	});
 });

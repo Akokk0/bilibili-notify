@@ -112,9 +112,20 @@ export class LoginFlow {
 	private loginTimer?: Disposable;
 	private loginExpiryTimer?: Disposable;
 	/**
-	 * Marks "we were once logged in but transitioned out". On the next successful login the flag
-	 * is flipped and `auth-restored` fires. Avoids relying on the previous frame's status, which
-	 * would miss the path NOT_LOGIN → LOGIN_QR → LOGGING_QR → LOGGED_IN.
+	 * Marks "we are unauthenticated, so something downstream may be parked waiting". On the next
+	 * successful login the flag is flipped and `auth-restored` fires. Avoids relying on the
+	 * previous frame's status, which would miss the path NOT_LOGIN → LOGIN_QR → LOGGING_QR →
+	 * LOGGED_IN.
+	 *
+	 * Deliberately NOT gated on having been LOGGED_IN first. Engines park themselves the moment
+	 * they hit -101 on their own — the dynamic detector stops its cron and waits for
+	 * `auth-restored` — and that happens on a cold start with stale cookies, where this flow goes
+	 * LOADING_LOGIN_INFO → NOT_LOGIN without ever emitting `auth-lost`. Gating the flag on a prior
+	 * LOGGED_IN left those engines parked forever after the user re-scanned the QR.
+	 *
+	 * The cost is one redundant `auth-restored` after a first-ever login. Every consumer reseeds
+	 * from the current subscription set (restart detection / rebuildFromSubs / follow-sync), so a
+	 * spurious one is wasted work, never corruption.
 	 */
 	private needsRestore = false;
 
@@ -189,8 +200,13 @@ export class LoginFlow {
 			status: BiliLoginStatus.NOT_LOGIN,
 			msg: MESSAGES[reasonKey],
 		});
+		// 进了 NOT_LOGIN 就要记账,与之前是不是 LOGGED_IN 无关 —— 冷启动时 cookie
+		// 已过期的话这里是 LOADING_LOGIN_INFO → NOT_LOGIN,而引擎照样会自己撞上
+		// -101 并停下等 auth-restored。
+		this.needsRestore = true;
+		// auth-lost 仍只在真的丢掉一个好会话时发:它的消费方是 teardown,
+		// 拆一个从没建起来的引擎没有意义。
 		if (wasLoggedIn) {
-			this.needsRestore = true;
 			this.bus.emit("auth-lost");
 		}
 	}
