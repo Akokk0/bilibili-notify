@@ -26,6 +26,7 @@ import { createLogsRoute } from "./routes/logs.js";
 import { createPushRoute } from "./routes/push.js";
 import { createQQRoute } from "./routes/qq.js";
 import { createSessionRoute } from "./routes/session.js";
+import { createStatsRoute } from "./routes/stats.js";
 import { createSubsRoute } from "./routes/subs.js";
 import { createTargetsRoute } from "./routes/targets.js";
 import type { RouteDeps } from "./routes/types.js";
@@ -215,6 +216,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	app.route("/api/push", createPushRoute(deps));
 	app.route("/api/ai", createAiRoute(deps));
 	app.route("/api/fans", createFansRoute(deps));
+	app.route("/api/stats", createStatsRoute(deps));
 	app.route("/api/qq", createQQRoute(deps));
 	app.route(
 		"/api/cards",

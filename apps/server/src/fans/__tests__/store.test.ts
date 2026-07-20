@@ -145,3 +145,42 @@ describe("dropUid", () => {
 		expect(logger.warn).not.toHaveBeenCalled();
 	});
 });
+
+describe("listSamplesSince", () => {
+	it("返回 ts >= since 的全部样本,按时间升序", async () => {
+		await store.append("u1", { ts: T(1), value: 100 });
+		await store.append("u1", { ts: T(3), value: 120 });
+		await store.append("u1", { ts: T(5), value: 150 });
+		expect(await store.listSamplesSince("u1", T(3))).toEqual([
+			{ ts: T(3), value: 120 },
+			{ ts: T(5), value: 150 },
+		]);
+	});
+
+	it("since 早于所有样本 → 全量返回", async () => {
+		await store.append("u1", { ts: T(2), value: 10 });
+		await store.append("u1", { ts: T(4), value: 20 });
+		expect(await store.listSamplesSince("u1", T(0))).toHaveLength(2);
+	});
+
+	it("坏行 / 空行 / 缺字段行跳过", async () => {
+		await mkdir(join(dataDir, "fans"), { recursive: true });
+		await writeFile(
+			join(dataDir, "fans", "u2.jsonl"),
+			[
+				"{not json",
+				"",
+				JSON.stringify({ ts: T(1) }),
+				JSON.stringify({ value: 5 }),
+				JSON.stringify({ ts: T(2), value: 200 }),
+			].join("\n"),
+			"utf8",
+		);
+		expect(await store.listSamplesSince("u2", T(0))).toEqual([{ ts: T(2), value: 200 }]);
+	});
+
+	it("文件缺失 → 空数组,不 warn", async () => {
+		expect(await store.listSamplesSince("ghost", T(0))).toEqual([]);
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+});

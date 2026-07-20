@@ -272,6 +272,41 @@ afterEach(() => {
 	}
 });
 
+// ---------------------------------------------------------------------------
+// adapter 接线 —— 「真实开播时刻」这条链路唯一没人守的一段
+//
+// packages/live 侧钉住了 RoomSession **发出** startedAt,recorder 侧钉住了它**消费**
+// startedAt,live-midstream-start 还把 recorder→store→aggregate 三层串起来测了。
+// 唯独把两头缝上的这一行没有任何测试:它是 adapter 里的一句 lambda,少写第三个参数
+// 依然类型正确(签名上 startedAt 是可选的)、构建全绿、2483 条测试全过,而整个特性
+// 静默退回「我们发现的时刻」—— 统计侧按 startedAt 认场次,同一场随即被记成两条。
+// ---------------------------------------------------------------------------
+
+describe("createEngines — live-state-changed 接线", () => {
+	it("startedAt 一路转发到 bus,不在 adapter 这层被吃掉", () => {
+		const c = setup();
+		active = c;
+		const seen: unknown[][] = [];
+		c.bus.on("live-state-changed", (uid, status, startedAt) => {
+			seen.push([uid, status, startedAt]);
+		});
+		// 直接调 adapter 交给引擎的那个回调 —— 被测的就是这句 lambda 本身。
+		H.live[0].opts.emitLiveState("u1", "live", "2026-05-16T12:00:00.000Z");
+		expect(seen).toEqual([["u1", "live", "2026-05-16T12:00:00.000Z"]]);
+	});
+
+	it("下播不带 startedAt —— 它只在开播时有意义", () => {
+		const c = setup();
+		active = c;
+		const seen: unknown[][] = [];
+		c.bus.on("live-state-changed", (uid, status, startedAt) => {
+			seen.push([uid, status, startedAt]);
+		});
+		H.live[0].opts.emitLiveState("u1", "idle", undefined);
+		expect(seen).toEqual([["u1", "idle", undefined]]);
+	});
+});
+
 describe("createEngines — boot wiring", () => {
 	it("默认 globals:push/dynamic 拉起,AI 与 image 不构造", () => {
 		const c = setup();

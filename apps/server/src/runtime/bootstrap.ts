@@ -7,6 +7,8 @@ import { type ConfigStore, createConfigStore } from "../config/store.js";
 import { createFansStore, type FansStore } from "../fans/store.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
 import { createLogStore, type LogStore } from "../logs/store.js";
+import { createStatsRecorder } from "../stats/recorder.js";
+import { createStatsStore, type StatsStore } from "../stats/store.js";
 import type { EnginesRuntime } from "./engines.js";
 import type { FansPollerHandle } from "./fans-poller.js";
 import { createNodeMessageBus } from "./message-bus.js";
@@ -27,6 +29,11 @@ export interface AppRuntime {
 	configStore: ConfigStore;
 	historyStore: HistoryStore;
 	fansStore: FansStore;
+	/**
+	 * 「UP 产出」时序(动态事件 + 直播场次),数据统计 Tab 的数据源。写侧是
+	 * StatsRecorder(订阅总线,随 runtime 一起起停),读侧是 `/api/stats`。
+	 */
+	statsStore: StatsStore;
 	/**
 	 * Per-subscription runtime data (display cache + fans anchor), externalized
 	 * out of the persisted `Subscription` config so FansPoller's per-tick
@@ -120,6 +127,23 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		dataDir: bootstrap.dataDir,
 		logger: serviceCtx.logger,
 	});
+	const statsStore = createStatsStore({
+		dataDir: bootstrap.dataDir,
+		logger: serviceCtx.logger,
+	});
+	// Recorder 只订阅总线、不碰引擎,所以在这里就能起 —— 不必等 attachEngines。
+	// 早起一点反而更稳:引擎一开始 emit 就有人接着,不会漏掉启动瞬间的事件。
+	const statsRecorder = createStatsRecorder({
+		bus,
+		store: statsStore,
+		logger: serviceCtx.logger,
+	});
+	serviceCtx.onDispose(async () => {
+		// 先给在播的场次补下播帧,再解绑 —— 顺序反了就没人记得谁还在播。
+		// dispose() 会 await 这个钩子,所以写盘赶得及在进程退出前完成。
+		await statsRecorder.closeOpenSessions();
+		statsRecorder.dispose();
+	});
 	const subRuntimeStore = createSubRuntimeStore({
 		dataDir: bootstrap.dataDir,
 		logger: serviceCtx.logger,
@@ -141,6 +165,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		configStore,
 		historyStore,
 		fansStore,
+		statsStore,
 		subRuntimeStore,
 		logStore,
 		get engines() {

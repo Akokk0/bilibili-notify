@@ -17,7 +17,7 @@ import type { Logger } from "@bilibili-notify/internal";
  * 35 万行总量,5MB 量级 — 几年内不会成为磁盘问题。后续若发现热点可加
  * `retention` pass 截尾 8d。
  */
-interface FansSample {
+export interface FansSample {
 	ts: string;
 	value: number;
 }
@@ -36,6 +36,15 @@ export interface FansStore {
 	 * 文件不存在 / 全空 / 全乱码 → undefined。
 	 */
 	findEarliest(uid: string): Promise<FansSample | undefined>;
+	/**
+	 * 读回 ts >= sinceIso 的全部样本(jsonl 单调追加,所以天然时间升序)。
+	 * 数据统计页的粉丝曲线 / 每日净增靠它取原始点,再在 aggregate 层按日归并。
+	 *
+	 * 与 `findNearestBefore` 的「扫到就停」不同,这里必然读完 since 之后的全部
+	 * 内容。30 天 × 2min ≈ 2 万行、~1MB 量级,一次请求内可接受;调用方应把
+	 * 窗口限制在 UI 真正要展示的天数,不要拿它当全量导出用。
+	 */
+	listSamplesSince(uid: string, sinceIso: string): Promise<FansSample[]>;
 	/** 删除该 uid 的全部历史(订阅被移除时调用,避免遗留垃圾)。 */
 	dropUid(uid: string): Promise<void>;
 }
@@ -130,6 +139,33 @@ export function createFansStore(opts: CreateFansStoreOptions): FansStore {
 				}
 			}
 			return undefined;
+		},
+
+		async listSamplesSince(uid, sinceIso) {
+			await ensureRoot();
+			const file = fileFor(uid);
+			const out: FansSample[] = [];
+			try {
+				const stream = createReadStream(file, { encoding: "utf-8" });
+				const reader = createInterface({ input: stream });
+				for await (const raw of reader) {
+					const line = raw.trim();
+					if (!line) continue;
+					try {
+						const parsed = JSON.parse(line) as FansSample;
+						if (typeof parsed.ts !== "string" || typeof parsed.value !== "number") continue;
+						if (parsed.ts >= sinceIso) out.push({ ts: parsed.ts, value: parsed.value });
+					} catch {
+						/* skip malformed line */
+					}
+				}
+			} catch (err) {
+				// 文件不存在 = 该 uid 还没有任何样本,正常情况,不打日志。
+				if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+					opts.logger.warn(`[fans-store] read ${uid} failed: ${String(err)}`);
+				}
+			}
+			return out;
 		},
 
 		async dropUid(uid) {

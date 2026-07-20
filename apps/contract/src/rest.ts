@@ -82,6 +82,122 @@ export interface LogsResponse {
 	entries: LogArchiveEntry[];
 }
 
+// ---- /api/stats ------------------------------------------------------------
+
+/**
+ * 数据统计页的单个 UP 行。
+ *
+ * **`null` 一律表示「没有记录」,不是 0**:统计数据都是上线后才开始采集的,
+ * 分不清「那天没涨粉」和「那天服务没跑」会让图表撒谎。前端对 null 的处理是
+ * 不渲染,而不是补 0。
+ */
+export interface UpStatsRow {
+	uid: string;
+	/** 最近一次采样到的粉丝数;从未采到为 null。 */
+	fans: number | null;
+	/**
+	 * 近 1 / 7 个本地日的净增 —— **口径固定,不随请求的 days 变**。
+	 * 窗口比该口径还短时为 null(窗口里根本没有那么多天可加)。
+	 */
+	net1d: number | null;
+	net7d: number | null;
+	/**
+	 * **整个请求窗口**的净增合计。UI 上标「近 N 日净增」的就是它。
+	 *
+	 * 曾经叫 `net30d` 并且恒取末 30 天,于是选「近90日」时标签写着 90 天、
+	 * 数字却只加了 30 天。名字改掉是为了让这种错对不上号。
+	 */
+	netWindow: number | null;
+	/** 每日净增序列,长度等于请求的 days,末位是今天。 */
+	series: Array<number | null>;
+	/**
+	 * 每日活动次数(动态 + 投稿 + 开播),长度同 `series`,热力图用。
+	 * `null` = 那天没有任何采样记录,与「当天没活动」的 0 区分。
+	 */
+	activity: Array<number | null>;
+	/**
+	 * 以下计数一律与 `activity` 同口径:窗口内**完全没有采集覆盖**时为 `null`,
+	 * 而不是 0。
+	 *
+	 * 0 的意思是「我们在记,这段时间他确实什么都没发」;`null` 的意思是「我们
+	 * 那阵子根本没在记」。曾经这几项恒为 number,于是老库升级后点开近 90 日,
+	 * 一位实际投了 40 个稿的 UP 会显示「投稿 0 个」—— 而同一行的热力图正诚实地
+	 * 画着一片「无记录」空格,两个数在同一屏里互相打脸。AI 锐评那边也一样:
+	 * prompt 里「标注为无记录的字段不要据此判定该 UP 偷懒」对这几项从来没生效过。
+	 */
+	/** 窗口内的视频投稿数(来自动态流的 DYNAMIC_TYPE_AV)。 */
+	archives: number | null;
+	/** 窗口内的普通动态数(已剔除开播伪动态)。 */
+	dynamics: number | null;
+	/** 窗口内的开播场次(含仍在进行的那场)。 */
+	liveSessions: number | null;
+	/** 已闭合场次的总时长(小时)。 */
+	liveHours: number | null;
+	/**
+	 * `liveSessions` 中**时长已知**的场次数 —— 求场均时长时用它当分母。
+	 *
+	 * 硬杀进程会留下没有下播帧的场次:它确实发生过,但时长无从得知。拿
+	 * `liveSessions` 当分母会把这种场次当成「0 小时」,平白稀释场均值。
+	 */
+	liveTimedSessions: number | null;
+	/** 各场峰值观看的最大值 / 平均值;从未采到为 null。 */
+	peakViewers: number | null;
+	avgPeakViewers: number | null;
+	/** 最近一次可见活动(发动态或开播)的时间;窗口内没有则 null。 */
+	lastActivityAt: string | null;
+	/** 当前是否在直播。 */
+	live: boolean;
+}
+
+/** AI 锐评的结构化结果。所有 UP 引用都是 uid,前端据此 join 名称与头像。 */
+export interface StatsRoastResult {
+	pigeon: { uid: string; reason: string };
+	diligent: { uid: string; reason: string };
+	roast: Array<{ uid: string; comment: string }>;
+	/** 综合勤奋度 0-100。 */
+	scores: Array<{ uid: string; score: number }>;
+	/** 可直接推送到群里的周报文本。 */
+	pushText: string;
+}
+
+/** `POST /api/stats/roast` 响应。`ok:false` 时只有 `err` 有意义。 */
+export interface StatsRoastResponse {
+	ok: boolean;
+	err?: string;
+	result?: StatsRoastResult;
+}
+
+/**
+ * 单 UP 锐评的结果 —— `POST /api/stats/roast/:uid`。
+ *
+ * 与榜单式的 {@link StatsRoastResult} 是**两种形状**,不要试图合并:榜单讲的是
+ * 「谁比谁强」,单人讲的是「他自己这段时间干了什么」,前者离开对照组就不成立。
+ */
+export interface StatsSoloRoastResult {
+	uid: string;
+	/** 一句话总评。 */
+	verdict: string;
+	/** 综合勤奋度 0-100。 */
+	score: number;
+	/** 分维度点评(涨粉 / 投稿 / 直播…),标题由模型自拟。 */
+	highlights: Array<{ label: string; comment: string }>;
+	/** 可直接推送到群里的短评。 */
+	pushText: string;
+}
+
+/** `POST /api/stats/roast/:uid` 响应。 */
+export interface StatsSoloRoastResponse {
+	ok: boolean;
+	err?: string;
+	result?: StatsSoloRoastResult;
+}
+
+export interface StatsOverviewResponse {
+	/** 实际使用的窗口天数(服务端会 clamp)。 */
+	days: number;
+	rows: UpStatsRow[];
+}
+
 // ---- /api/fans -------------------------------------------------------------
 
 export interface FansResponse {

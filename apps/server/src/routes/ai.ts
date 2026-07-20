@@ -83,7 +83,7 @@ export function createAiRoute(deps: RouteDeps): Hono {
  * 与 `globals.ts` 的 `stripRedactedSecrets` 同一约定,共用同一个哨兵常量 —— 这个
  * magic string 只能有一个定义处。
  */
-function resolveDraftApiKey(draft: string | undefined, stored: string | undefined): string {
+export function resolveDraftApiKey(draft: string | undefined, stored: string | undefined): string {
 	if (draft === REDACTED_API_KEY) return stored ?? "";
 	return draft ?? "";
 }
@@ -95,7 +95,7 @@ function resolveDraftApiKey(draft: string | undefined, stored: string | undefine
  * `extraSystemPrompt`,引擎的 PersonaConfig 用历史命名 `customBase` / `extraPrompt`。
  * preset 固定 `custom` —— 页面上的人格字段就是最终人格,不再二次套内置模板。
  */
-function toGeneratorConfig(ai: z.infer<typeof AISettingsSchema>) {
+export function toGeneratorConfig(ai: z.infer<typeof AISettingsSchema>) {
 	return {
 		apiKey: ai.apiKey ?? "",
 		baseURL: ai.baseUrl ?? "",
