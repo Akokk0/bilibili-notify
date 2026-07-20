@@ -1662,3 +1662,55 @@ describe("DynamicEngine — config 级 messageLayout(koishi 端默认版式 + �
 		expect(segments[0]?.text).toBe("UP发布了一条动态");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// H. dynamic-detected —— 数据统计的动态/投稿数据源
+// ---------------------------------------------------------------------------
+
+describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
+	const detected = (b: EngineBag) => b.emits.filter((e) => e.event === "dynamic-detected");
+
+	it("新动态过闸 → emit 一次,携带 uid / id / 原始 type / ISO 发布时间", async () => {
+		const b = makeEngine();
+		b.getAllDynamic.mockResolvedValue(
+			resp([makeItem({ uid: 1, pubTs: 1000, type: "DYNAMIC_TYPE_AV" })]),
+		);
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		expect(detected(b)).toHaveLength(1);
+		expect(detected(b)[0]?.args[0]).toEqual({
+			uid: "1",
+			id: "id-1",
+			type: "DYNAMIC_TYPE_AV",
+			ts: new Date(1000 * 1000).toISOString(),
+		});
+	});
+
+	it("timeline >= pub_ts(已处理过)→ 不重复 emit,避免统计重复计数", async () => {
+		const b = makeEngine();
+		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		seed(b.engine, "1", 1000);
+		await detect(b.engine);
+		expect(detected(b)).toHaveLength(0);
+	});
+
+	it("未订阅 uid → 不 emit", async () => {
+		const b = makeEngine();
+		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 99, pubTs: 1000 })]));
+		await detect(b.engine);
+		expect(detected(b)).toHaveLength(0);
+	});
+
+	it("被过滤器屏蔽 → 仍然 emit —— 统计的是 UP 的产出,不是推送次数", async () => {
+		const b = makeEngine({
+			config: { filter: { enable: true, keywords: ["禁词"], notify: false } },
+		});
+		b.getAllDynamic.mockResolvedValue(
+			resp([makeItem({ uid: 1, pubTs: 1000, text: "含禁词的动态" })]),
+		);
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
+		expect(detected(b)).toHaveLength(1);
+	});
+});

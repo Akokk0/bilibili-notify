@@ -683,6 +683,19 @@ export class DynamicEngine {
 
 			if (timeline >= postTime) continue; // already pushed
 
+			// 统计埋点:越过闸门 == 这条动态首次被看到。刻意放在 filter / per-UP
+			// 开关 / 投递之前 —— 统计口径是「UP 发了多少」,被屏蔽或推送失败的
+			// 动态同样算 UP 的产出。
+			//
+			// 注意**不是 exactly-once**:下面投递抛错会走 markFail、锚点不前移,
+			// 下一轮重判会把同一条再 emit 一次。消费方必须按 id 幂等。
+			this.bus.emit("dynamic-detected", {
+				uid,
+				id: item.id_str,
+				type: item.type,
+				ts: new Date(postTime * 1000).toISOString(),
+			});
+
 			// P2:捕获本轮处理起点的 sub 对象引用,跨 await 后用它做身份校验,
 			// 区分「仍是同一订阅」与「同 uid 被 delete+re-add 成另一个」。
 			const subAtCapture = this.dynamicSubManager.get(uid);

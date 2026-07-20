@@ -15,6 +15,7 @@
 | `config-changed` | 独立端 `ConfigStore` 写入后发出;scope ∈ `globals\|subscriptions\|targets\|adapters\|secrets`。引擎据此 reconcile cron / 刷新状态 / 重建连接 |
 | `engine-error` | 引擎或子系统的运行时错误 `(source, message)`。`master-notifier`(koishi→master 私聊)+ `log` WS channel(独立端→AlertShell)消费 |
 | `history-recorded` | `BilibiliPush` 每次投递后发出的完整 `HistoryEntry`;独立端转到 `push-events` WS channel |
+| `dynamic-detected` | `DynamicEngine` 每条动态首次越过 per-uid 时间线闸门时发出 `DynamicDetectedEvent{uid,id,type,ts}`。刻意放在**过滤器 / per-UP 开关 / 投递之前** —— 口径是「UP 发了多少」,被屏蔽或推送失败的动态照样算产出(「我们推了多少」看 `history-recorded`,两者不可混用)。`type` 是 B 站原始类型串,事件层不做语义归类,归类策略集中在 stats 聚合层一处。**bus 上不是严格 exactly-once**:投递失败走 `markFail`、时间线锚点不前移,下轮重判会把同一条再发一次。现有消费方 `StatsRecorder` 靠 `StatsStore.appendDynamic` 的 `id` 幂等挡掉,新消费方同样需要按 `id` 去重 |
 | `live-state-changed` | `LiveEngine` 的开/关播切换 `(uid, "live"\|"idle")` |
 | `live-viewers-changed` | `room-session` 每 uid 2s 节流的 `WATCHED_CHANGE` 帧 `(uid, viewers)` |
 | `fans-refreshed` | 独立端 `FansPoller` 每个 tick 的完整 `FansRefreshEntry[]` 快照 |

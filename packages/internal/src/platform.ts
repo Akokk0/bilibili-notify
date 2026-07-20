@@ -77,6 +77,33 @@ export interface BiliEvents {
 	 * 全量覆盖 ["fans"] 缓存。delta 字段为 null 表示窗口内没有可用基线/样本。
 	 */
 	"fans-refreshed": (entries: FansRefreshEntry[]) => void;
+	/**
+	 * 一条此前未见过的动态首次越过 per-uid 时间线闸门时 emit。
+	 *
+	 * **载荷是 UP 的产出记录,不是推送记录**:被过滤器屏蔽、被 per-UP 开关关掉、
+	 * 投递失败的动态一律照常 emit。数据统计要回答的是「这位 UP 发了多少」,
+	 * 「我们推了多少」看 `history-recorded`,两者口径不可混用。
+	 *
+	 * **不是 exactly-once**:投递失败走 `markFail`,时间线锚点不前移,下一轮
+	 * 重判会把同一条再 emit 一次。消费方必须按 `id` 幂等 —— `StatsRecorder`
+	 * 靠 `StatsStore.appendDynamic` 的 id 去重挡掉,新消费方别忘了这一层。
+	 */
+	"dynamic-detected": (event: DynamicDetectedEvent) => void;
+}
+
+/** Bus 上 dynamic-detected 事件的载荷。 */
+export interface DynamicDetectedEvent {
+	uid: string;
+	/** B 站动态 id_str;消费方据此去重。 */
+	id: string;
+	/**
+	 * B 站原始动态类型字符串(DYNAMIC_TYPE_AV / _DRAW / _WORD / _LIVE_RCMD …)。
+	 * 事件层**不做语义归类** —— 哪些算投稿、哪些算普通动态、哪些是开播伪动态
+	 * 要剔除,策略集中在 stats 聚合层一处,免得多个消费方各自跑偏。
+	 */
+	type: string;
+	/** 动态发布时间(ISO)。 */
+	ts: string;
 }
 
 /** Bus 上 fans-refreshed 事件 / HTTP /api/fans 返回的单条 entry。 */
