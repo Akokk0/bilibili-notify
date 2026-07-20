@@ -1058,3 +1058,167 @@ describe("resolvedCardStyle live 封面轮换", () => {
 		expect(keys).toEqual([]);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// bootstrap —— 服务器在 UP 已开播时启动
+//
+// 回归:统计侧的「直播时长」按 `now − startedAt` 现算,而 startedAt 全靠这条
+// 事件带出来。bootstrap 里 setLiveStatus(true) 必须排在 useLiveRoomInfo 之后,
+// 否则 liveRoomInfo 还是空的,事件退回「我们发现的时刻」—— 已经播掉的那几个
+// 小时被整段吞掉,而构建与类型检查全绿,只有线上数字不对。
+// ---------------------------------------------------------------------------
+
+describe("RoomSession.bootstrap — 已在播时启动", () => {
+	/** 让 bootstrap 能走到 live_status 判定那一步。 */
+	function primeBootstrap(s: AnySession, ctx: RoomContext, liveTime: unknown): void {
+		(ctx as unknown as Record<string, unknown>).startLiveRoomListener = vi.fn(async () => true);
+		(ctx as unknown as Record<string, unknown>).closeListener = vi.fn();
+		s.buildHandler = vi.fn(() => ({}));
+		s.useLiveRoomInfo = vi.fn(async () => {
+			s.liveRoomInfo = {
+				live_time: liveTime,
+				live_status: 1,
+				short_id: 0,
+				room_id: 12345,
+				title: "标题",
+				user_cover: "",
+			};
+			return true;
+		});
+		s.useMasterInfo = vi.fn(async () => {
+			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 1 };
+			return true;
+		});
+	}
+
+	it("带出 B 站的真实开播时刻,而不是我们发现的时刻", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		// live_time 恒为北京时间字符串,换算后应是当日 12:00Z。
+		primeBootstrap(s, ctx, "2026-05-16 20:00:00");
+		await s.bootstrap();
+		expect(m.emitLiveState).toHaveBeenCalledWith("u1", "live", "2026-05-16T12:00:00.000Z");
+	});
+
+	it("按 UTC+8 解析 —— 服务器时区不影响换算结果", async () => {
+		// 这一条单独立着是因为踩过:交给消费方 Date.parse 会当本地时间读,
+		// 非北京时区的宿主上平白差 8 小时,而北京时区的开发机上测不出来。
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		primeBootstrap(s, ctx, "2026-01-01 00:00:00");
+		await s.bootstrap();
+		expect(m.emitLiveState).toHaveBeenCalledWith("u1", "live", "2025-12-31T16:00:00.000Z");
+	});
+
+	it("live_time 缺失 / 解析不出 → 不带 startedAt,由消费方回退,不伪造时刻", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		primeBootstrap(s, ctx, "不是时间");
+		await s.bootstrap();
+		expect(m.emitLiveState).toHaveBeenCalledWith("u1", "live", undefined);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// onLiveStart —— 第二场直播不能继承上一场的开播时刻
+//
+// 回归:`useLiveRoomInfo` 的非 Start 分支**刻意冻结** `live_time`(下播卡要靠它
+// 算已播时长),而下播走的正是那条分支 —— 于是第一场结束后 `live_time` 永久停在
+// 第一场的开播时刻。onLiveStart 里 setLiveStatus(true) 排在刷新之前,读到的就是
+// 这个陈旧值:第二场带着昨天的时间落盘,统计侧按 `startedAt` 认场次,两场合并成
+// 一场几十小时的直播。
+//
+// 上面 bootstrap 那组测试守的是同一个不变式,但只覆盖了 bootstrap 路径;WS 路径
+// 的顺序恰好是反的,所以全绿也照样错。
+// ---------------------------------------------------------------------------
+
+describe("RoomSession.onLiveStart — 第二场直播的开播时刻", () => {
+	/** 造出「第一场已结束、liveRoomInfo 里还留着它的 live_time」这个现场。 */
+	function primeSecondSession(s: AnySession, nextLiveTime: string): void {
+		s.liveRoomInfo = {
+			live_time: "2026-05-16 20:00:00", // 上一场,已经过去了
+			live_status: 0,
+			short_id: 0,
+			room_id: 12345,
+			title: "标题",
+			user_cover: "",
+		};
+		s.liveStatus = false;
+		s.lastLiveStart = 0; // 早已过冷却
+		s.armPeriodicTimer = vi.fn();
+		s.useLiveRoomInfo = vi.fn(async () => {
+			s.liveRoomInfo = {
+				live_time: nextLiveTime,
+				live_status: 1,
+				short_id: 0,
+				room_id: 12345,
+				title: "标题",
+				user_cover: "",
+			};
+			return true;
+		});
+		s.useMasterInfo = vi.fn(async () => {
+			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 1 };
+			return true;
+		});
+	}
+
+	it("绝不把上一场的开播时刻当成这一场的", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		primeSecondSession(s, "2026-05-17 20:00:00");
+		await s.onLiveStart();
+		const startedAt = m.emitLiveState.mock.calls.find((c) => c[1] === "live")?.[2];
+		expect(startedAt).not.toBe("2026-05-16T12:00:00.000Z");
+	});
+
+	it("带出本场的真实开播时刻 —— 与 bootstrap / 重连核对用同一把尺子", async () => {
+		// **场次身份就是这个字符串**。统计侧按 startedAt 认场次(store 精确相等匹配),
+		// 而同一场会被观测到不止一次:WS 首帧、断线重连后的核对、重启后的 bootstrap。
+		// 后两条走 useLiveRoomInfo 拿 B 站的 live_time,所以首帧也必须用同一把尺子 ——
+		// 用「我们发现的时刻」的话两个 ts 差着几秒,byStart 认不出,同一场被记成两条
+		// 且时间区间重叠:场次数、总时长、场均、热力图、场均峰值全部虚高,而且错误
+		// 写进 append-only 文件后事后无法修。
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		primeSecondSession(s, "2026-05-17 20:00:00");
+		await s.onLiveStart();
+		expect(m.emitLiveState).toHaveBeenCalledWith("u1", "live", "2026-05-17T12:00:00.000Z");
+	});
+
+	it("live_time 解析不出 → 不带 startedAt,由消费方回退,不伪造时刻", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		primeSecondSession(s, "不是时间");
+		await s.onLiveStart();
+		expect(m.emitLiveState).toHaveBeenCalledWith("u1", "live", undefined);
+	});
+
+	it("准备期间直播就结束了 —— 不翻成在播,免得永远卡在「直播中」", async () => {
+		// 为了带出真实 live_time,setLiveStatus(true) 必须排在刷新之后,于是整段 await
+		// 期间 liveStatus 都是 false。而重连成功后新 WS 已经在派发事件了,这时到达的
+		// END 会撞上 handleLiveEnd 的 `!liveStatus` 守卫被**静默丢弃**(grace 也拦不住:
+		// 它同样要求 liveStatus 为真)。若 await 结束后仍无条件翻成在播,这一场就再也
+		// 等不到第二条 END —— 面板恒显「直播中」,统计侧按 now−startedAt 计时长,
+		// 每天自增 24 小时且无上限,而默认 pushTime=0 连轮询兜底都没有。
+		const { ctx } = makeCtx();
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		primeSecondSession(s, "2026-05-17 20:00:00");
+		let release!: () => void;
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const refresh = s.useLiveRoomInfo;
+		// 只闸开播那次刷新。连下播那条一起闸住的话,handleLiveEnd 也会停在这里,
+		// 而我们正 await 着它 —— 测试自己把自己锁死。
+		s.useLiveRoomInfo = vi.fn(async (t: unknown) => {
+			if (t === LiveType.StartBroadcasting) await gate;
+			return refresh(t);
+		});
+		const starting = s.onLiveStart();
+		await s.onLiveEnd(); // 准备期间 UP 真下播
+		release();
+		await starting;
+		expect(s.liveStatus).toBe(false);
+	});
+});

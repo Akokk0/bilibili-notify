@@ -64,7 +64,22 @@ export interface BiliEvents {
 	 * 无需前端再二次 fetch detail。
 	 */
 	"history-recorded": (entry: HistoryEntry) => void;
-	"live-state-changed": (uid: string, status: "live" | "idle") => void;
+	/**
+	 * 直播状态翻转。
+	 *
+	 * `at` 是**这次状态翻转的真实发生时刻**(ISO),两个方向语义不同,都可能缺失:
+	 *
+	 *   · `status === "live"` → B 站给出的真实开播时刻。消费方务必区分它与「我们
+	 *     发现开播的时刻」—— 服务器在 UP 已开播时启动,两者能差出好几个小时,拿
+	 *     后者当开播时间会把这段直播时长整段吞掉。**它同时是这一场的身份**:统计侧
+	 *     按它认场次,同一场被重连核对 / 重启 bootstrap 再观测到时必须给出同一个值。
+	 *   · `status === "idle"` → 真实下播时刻。走断流接续(grace)时,真实下播在进入
+	 *     挂起那刻就定格了,而事件要等 N 分钟窗口到期才发得出来;不带它的话消费方
+	 *     只能用「收到事件的此刻」,每场直播平白多算一整个 grace 窗口。
+	 *
+	 * 缺失时(接口没返回 / 解析失败 / 非 grace 路径)消费方回退到「收到事件的此刻」。
+	 */
+	"live-state-changed": (uid: string, status: "live" | "idle", at?: string) => void;
 	/**
 	 * 直播间累计观看人数变化(B 站 WS `WATCHED_CHANGE` 帧 → live engine 节流后转发)。
 	 * Engine 端按 per-UID 2s throttle,所以高频帧不会打爆 bus。viewers 是 B 站预格式化

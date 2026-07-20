@@ -45,6 +45,20 @@ export abstract class RoomSessionBase {
 	protected cancelled = false;
 
 	/**
+	 * 「正在把状态翻成在播」的窗口。开播准备(刷房间信息 / 主播信息)与重连成功后的
+	 * 状态核对都要 await 网络,这两段期间 `liveStatus` 仍是 false。
+	 *
+	 * 它存在的唯一理由是:那两段期间 WS **已经在派发事件**了。此刻到达的下播事件会
+	 * 撞上 {@link handleLiveEnd} 的 `!liveStatus` 守卫被静默丢弃(grace 也拦不住 ——
+	 * 它同样要求 liveStatus 为真),而我们随后又无条件把状态翻成在播:这一场从此再
+	 * 也等不到第二条 END。面板恒显「直播中」,统计侧按 now−startedAt 计时长,每天
+	 * 自增 24 小时且无上限,而默认 `pushTime=0` 连轮询兜底都没有。
+	 */
+	protected transitioningToLive = false;
+	/** 上述窗口内到达过下播事件。翻状态前必须查它;查完即清。 */
+	protected endArrivedWhileTransitioning = false;
+
+	/**
 	 * 断流接续「挂起中」的等待计时器(内存,服务重启即丢 —— 已与用户约定接受)。非 null
 	 * 即表示该房间正处于「下播待定」窗口:liveStatus 仍 true、弹幕缓冲未清、复推已暂停。
 	 */
@@ -54,6 +68,15 @@ export abstract class RoomSessionBase {
 	 * 窗口的 N 分钟(M2);接续 / 到期重开时清空。
 	 */
 	protected graceEndDiffTime: string | undefined;
+	/**
+	 * 进入挂起那刻的**真实下播时刻**(ISO)。与 {@link graceEndDiffTime} 同生共死 ——
+	 * 一个是给下播卡看的时长文案,一个是给统计侧落盘用的时刻。
+	 *
+	 * 没有它的话,统计侧只能拿「到期时刻」当下播时间,于是每场直播都平白多出
+	 * 1–10 分钟(整个 grace 窗口),而下播卡上写的是定格时长 —— 同一场直播,
+	 * 卡片和统计页两个数对不上。
+	 */
+	protected graceEndAt: string | undefined;
 
 	constructor(ctx: RoomContext, sub: SubItemView) {
 		this.ctx = ctx;
@@ -111,10 +134,29 @@ export abstract class RoomSessionBase {
 	 * 推送 `live-state-changed` 事件,前端的"正在直播"面板靠它实时收敛。
 	 * 直接赋值 `this.liveStatus = ...` 会绕过这里,**不要这样做**。
 	 */
-	protected setLiveStatus(next: boolean): void {
+	protected setLiveStatus(next: boolean, endedAt?: string): void {
 		if (this.liveStatus === next) return;
 		this.liveStatus = next;
-		this.ctx.emitLiveState(this.sub.uid, next ? "live" : "idle");
+		// 开播时把 B 站的真实 `live_time` 一并带出去。它是 "yyyy-MM-dd HH:mm:ss"
+		// 且**恒为北京时间**,在这里就换算成 ISO —— 交给消费方自己解析的话,
+		// 非北京时区的服务器上 `Date.parse` 会当成本地时间,平白差出 8 小时。
+		//
+		// 下播侧带的是 `endedAt`:走断流接续时,真实下播时刻在进入挂起那一刻就定格了,
+		// 而事件要等 N 分钟窗口到期才发得出来。不带的话消费方只能用「收到事件的时刻」,
+		// 每场直播平白多算一整个 grace 窗口,与下播卡上的时长对不上。
+		this.ctx.emitLiveState(
+			this.sub.uid,
+			next ? "live" : "idle",
+			next ? this.liveStartIso() : endedAt,
+		);
+	}
+
+	/** `live_time`(北京时间字符串)→ ISO;缺失或解析不出时返回 undefined。 */
+	private liveStartIso(): string | undefined {
+		const raw = this.liveRoomInfo?.live_time;
+		if (!raw) return undefined;
+		const dt = DateTime.fromFormat(raw, "yyyy-MM-dd HH:mm:ss", { zone: "UTC+8" });
+		return dt.isValid ? (dt.toUTC().toISO() ?? undefined) : undefined;
 	}
 
 	/**
@@ -387,6 +429,8 @@ export abstract class RoomSessionBase {
 	 */
 	protected async enterGrace(source: "ws" | "polling"): Promise<void> {
 		this.graceEndDiffTime = await this.ctx.getTimeDifference(this.liveTime);
+		// 现在就是真实下播时刻;等到期再取就混进了整个等待窗口。
+		this.graceEndAt = new Date().toISOString();
 		this.cancelPeriodicTimer();
 		const minutes = this.graceMinutes();
 		this.pendingEndTimer = this.ctx.serviceCtx.setTimeout(
@@ -404,6 +448,7 @@ export abstract class RoomSessionBase {
 		this.pendingEndTimer.dispose();
 		this.pendingEndTimer = null;
 		this.graceEndDiffTime = undefined;
+		this.graceEndAt = undefined;
 	}
 
 	/**
@@ -414,6 +459,7 @@ export abstract class RoomSessionBase {
 		this.pendingEndTimer = null;
 		if (this.ctx.isDisposed() || !this.liveStatus) {
 			this.graceEndDiffTime = undefined;
+			this.graceEndAt = undefined;
 			return;
 		}
 		const reopened = await this.isLiveAgain();
@@ -422,6 +468,7 @@ export abstract class RoomSessionBase {
 				`[grace] 直播间 [${this.sub.roomId}] 等待到期核对发现已重新开播,接续为同一场`,
 			);
 			this.graceEndDiffTime = undefined;
+			this.graceEndAt = undefined;
 			this.armPeriodicTimer();
 			return;
 		}
@@ -454,12 +501,19 @@ export abstract class RoomSessionBase {
 		precomputedDiffTime?: string,
 	): Promise<void> {
 		if (!this.liveStatus) {
+			// 正处在「翻成在播」的 await 窗口里 —— 这条 END 是真的,不能当重复事件丢掉。
+			// 记下来,由那边在翻状态前自行收口。
+			if (this.transitioningToLive) this.endArrivedWhileTransitioning = true;
 			this.ctx.logger.warn(
 				`[live] 直播间 [${this.sub.roomId}] 已经是下播状态，忽略 (source=${source})`,
 			);
 			return;
 		}
 		this.cancelPeriodicTimer();
+		// 定格时刻取完即清,与 `graceEndDiffTime` 同一套生命周期。非 grace 路径为
+		// undefined,消费方按「收到事件的此刻」处理 —— WS 下播事件本就是即时的。
+		const endedAt = this.graceEndAt;
+		this.graceEndAt = undefined;
 
 		if (
 			!(await this.useLiveRoomInfo(LiveType.StopBroadcast)) ||
@@ -467,14 +521,14 @@ export abstract class RoomSessionBase {
 			!this.liveRoomInfo ||
 			!this.masterInfo
 		) {
-			this.setLiveStatus(false);
+			this.setLiveStatus(false, endedAt);
 			this.ctx.danmakuCollector.clear(this.sub.roomId);
 			if (this.ctx.isDisposed()) return;
 			this.onMonitoringStopped();
 			this.ctx.stopMonitoring("获取直播间信息失败，推送直播下播卡片失败", this.sub.roomId);
 			return;
 		}
-		this.setLiveStatus(false);
+		this.setLiveStatus(false, endedAt);
 		this.ctx.logger.debug(
 			`[stat] 开播时粉丝数：${this.masterInfo.liveOpenFollowerNum}，下播时粉丝数：${this.masterInfo.liveEndFollowerNum}，粉丝数变化：${this.masterInfo.liveFollowerChange}`,
 		);

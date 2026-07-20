@@ -228,9 +228,13 @@ export class RoomSession extends RoomSessionBase {
 	 * 重校 cancelled/disposed,sleep 自身可被 cancel/teardown dispose。
 	 */
 	private async reconnectLoop(reason: ReconnectReason, detail?: string): Promise<void> {
+		// 「是**我们**把在播状态翻下去的」—— 只有这种情况才需要在重连成功后核对回来。
+		// 判「当前不在播」是不够的:本来就没在播的房间会被拖去做一次没意义的网络核对。
+		let weTurnedLiveOff = false;
 		while (this.reconnectAttempts < RECONNECT_BACKOFF_MS.length) {
 			if (this.cancelled || this.ctx.isDisposed()) return;
 			if (reason === "error") {
+				if (this.liveStatus) weTurnedLiveOff = true;
 				this.setLiveStatus(false);
 				this.cancelPeriodicTimer();
 			}
@@ -280,6 +284,39 @@ export class RoomSession extends RoomSessionBase {
 				this.onListenerStarted();
 				this.ctx.logger.info(`[conn] 直播间 [${this.sub.roomId}] 重连成功`);
 				this.reconnectAttempts = 0;
+				// 上面 `reason === "error"` 的分支把状态翻成了下播并停了周期复推。
+				// 那是保守处置(连接断了,我们确实不知道房间还在不在播),但**必须
+				// 在重连成功后核对回来** —— 否则几小时后真正的下播事件会撞上
+				// `handleLiveEnd` 的 `!this.liveStatus` 守卫被丢弃,这一场永远等不到
+				// end:面板停在断连那一刻,统计侧的时长也在那里截断。
+				//
+				// 核对走 `isLiveAgain()`(重拉房间信息看 `live_status`),它经由
+				// `useLiveRoomInfo` 的非 Start 分支保留 `live_time` —— 与开播时带出去的
+				// 是同一个字符串,统计侧据此认出这是同一场,把先前那帧 end 覆盖掉,
+				// 时长自动补回完整值。
+				//
+				// 这段 await 是个真实的抢占窗口:上面 `onListenerStarted()` 已经跑过,
+				// 新 WS 正在派发事件,而 `liveStatus` 此刻是 false。期间若真下播,那条 END
+				// 会被 `handleLiveEnd` 的守卫丢弃 —— 再无条件翻回在播就永远卡住了,
+				// 所以翻之前必须查 `endArrivedWhileTransitioning`。
+				if (weTurnedLiveOff) {
+					this.transitioningToLive = true;
+					this.endArrivedWhileTransitioning = false;
+					const stillLive = await this.isLiveAgain();
+					this.transitioningToLive = false;
+					// post-await 重校:核对期间可能已被 stopForUid / teardown 掐掉。
+					if (this.cancelled || this.ctx.isDisposed()) return;
+					const endedMeanwhile = this.endArrivedWhileTransitioning;
+					this.endArrivedWhileTransitioning = false;
+					if (stillLive && !endedMeanwhile) {
+						this.setLiveStatus(true);
+						this.armPeriodicTimer();
+					} else if (endedMeanwhile) {
+						this.ctx.logger.info(
+							`[conn] 直播间 [${this.sub.roomId}] 重连核对期间已收到下播事件，保持下播状态`,
+						);
+					}
+				}
 				return;
 			}
 			this.ctx.logger.warn(`[conn] 直播间 [${this.sub.roomId}] 重连未成功,继续退避`);
@@ -289,6 +326,12 @@ export class RoomSession extends RoomSessionBase {
 		const msg = `直播间 [${this.sub.roomId}] ${this.describeReconnectReason(reason, detail)}后连接持续失败,重试 ${RECONNECT_BACKOFF_MS.length} 次后放弃监听`;
 		this.ctx.logger.error(`[conn] ${msg}`);
 		this.ctx.emitEngineError(msg);
+		// 无条件收口在播状态。上面翻 idle 只发生在 reason === "error" 那条路径上,
+		// watchdog / close 全程没碰过它;而 `cancel()` 只管取消,不翻状态。走到这里
+		// WS 已彻底关闭、再不会有任何事件,留着 true 就是个永远「在播」的僵尸:
+		// listLiveRooms 一直把它报成在播,统计侧按 now−startedAt 让时长无界增长。
+		// 已经是 idle 时这行是 no-op(setLiveStatus 自带同值守卫),不会多发事件。
+		this.setLiveStatus(false);
 		this.cancel();
 	}
 
@@ -503,9 +546,12 @@ export class RoomSession extends RoomSessionBase {
 			this.ctx.logger.debug(`[live] 直播间 [${this.sub.roomId}] 的开播事件在冷却期内，忽略`);
 			return;
 		}
-		if (this.liveStatus) {
+		// `transitioningToLive` 一并挡在这里:翻状态挪到刷新之后以后,`liveStatus` 在
+		// 整段准备期都还是 false,不能再独自兼任同步去重闸门。冷却窗口(10s)通常也够,
+		// 但网络慢到 await 超过冷却时就漏了,这道闸门与它是叠加关系。
+		if (this.liveStatus || this.transitioningToLive) {
 			this.ctx.logger.debug(
-				`[live] 直播间 [${this.sub.roomId}] 已经是开播状态，忽略重复的开播事件`,
+				`[live] 直播间 [${this.sub.roomId}] 已经是开播状态或正在开播准备中，忽略重复的开播事件`,
 			);
 			return;
 		}
@@ -513,19 +559,45 @@ export class RoomSession extends RoomSessionBase {
 		// 戳。此前在去重前就 lastLiveStart=now,一条 >10s 的重复 START 也会刷新
 		// 窗口,导致紧随其后 10s 内的“真重启”被冷却静默吞掉。
 		this.lastLiveStart = now;
-		this.setLiveStatus(true);
-		if (
-			!(await this.useLiveRoomInfo(LiveType.StartBroadcasting)) ||
-			!(await this.useMasterInfo(LiveType.StartBroadcasting)) ||
-			!this.liveRoomInfo ||
-			!this.masterInfo
-		) {
-			this.setLiveStatus(false);
+		// 先把房间信息刷成**本场**的,再翻状态 —— 这个顺序不能反。
+		//
+		// `setLiveStatus(true)` 会把 `liveRoomInfo.live_time` 换算成 `startedAt` 带出去,
+		// 而那个字符串**就是这一场的身份**:统计侧按它认场次(精确相等匹配),同一场还会
+		// 被断线重连后的核对、重启后的 bootstrap 再观测到,那两条路径读的都是 B 站的
+		// `live_time`。所以这里必须用同一把尺子。
+		//
+		// 抢在刷新之前翻状态会读到上一场的陈旧值(非 Start 分支刻意冻结 `live_time`,
+		// 好让下播卡算已播时长),带出去就是隔天的时刻。曾经为此改成「先清空再翻」,
+		// 结果 `startedAt` 变成 undefined、消费方回退到「我们发现的时刻」,与另两条
+		// 路径差着几秒 —— 同一场被记成两条区间重叠的记录,场次数与总时长直接膨胀,
+		// 而且错误写进 append-only 文件后事后无法修。两害相权,统一用 B 站的尺子。
+		//
+		// 代价是整段 await 期间 `liveStatus` 仍是 false,不能再兼任同步去重闸门:
+		// 重复 START 由上面的 `transitioningToLive` 挡,期间到达的 END 由它记账、下面收口。
+		this.transitioningToLive = true;
+		this.endArrivedWhileTransitioning = false;
+		const refreshed =
+			(await this.useLiveRoomInfo(LiveType.StartBroadcasting)) &&
+			(await this.useMasterInfo(LiveType.StartBroadcasting));
+		this.transitioningToLive = false;
+		// 这三个条件分开写而不是并进一个布尔量:TS 的控制流收窄认字段判空,
+		// 收进变量后下面 `this.liveRoomInfo!` 就到处都要非空断言了。
+		if (!refreshed || !this.liveRoomInfo || !this.masterInfo) {
 			if (this.ctx.isDisposed()) return;
 			this.onMonitoringStopped();
 			this.ctx.stopMonitoring("获取直播间信息失败，推送直播开播卡片失败", this.sub.roomId);
 			return;
 		}
+		if (this.endArrivedWhileTransitioning) {
+			// 准备期间这一场就结束了。翻成在播的话,那条已被守卫丢弃的 END 不会再来
+			// 第二次,房间从此永远卡在「直播中」。开播卡也不推 —— 人都已经下播了。
+			this.endArrivedWhileTransitioning = false;
+			this.ctx.logger.info(
+				`[live] 直播间 [${this.sub.roomId}] 开播准备期间已收到下播事件，放弃本次开播推送`,
+			);
+			return;
+		}
+		this.setLiveStatus(true);
 		this.ctx.logger.info(
 			`[stat] 房间号：${this.masterInfo.roomId}，开播时的粉丝数：${this.masterInfo.liveOpenFollowerNum}`,
 		);

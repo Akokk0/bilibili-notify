@@ -538,7 +538,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		commentary: commentary ?? null,
 		config: liveConfig(),
 		emitEngineError: (msg) => opts.bus.emit("engine-error", "live-engine", msg),
-		emitLiveState: (uid, status) => opts.bus.emit("live-state-changed", uid, status),
+		emitLiveState: (uid, status, startedAt) =>
+			opts.bus.emit("live-state-changed", uid, status, startedAt),
 		emitViewers: (uid, viewers) => opts.bus.emit("live-viewers-changed", uid, viewers),
 		pickCardBackground: pickExistingCardBg,
 		// ③ 解析出房号即写盘(仅在与既有值不同时),下次启动/reload 直接读盘复用,

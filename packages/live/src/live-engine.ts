@@ -90,7 +90,7 @@ export interface LiveEngineOptions {
 	 * runs without state broadcasts (koishi shell may opt out if it has nothing
 	 * subscribing).
 	 */
-	emitLiveState?: (uid: string, status: "live" | "idle") => void;
+	emitLiveState?: (uid: string, status: "live" | "idle", startedAt?: string) => void;
 	/**
 	 * Optional — adapter pipe for per-UID watched-count updates. Adapter forwards
 	 * to `bus.emit("live-viewers-changed", uid, viewers)`. Throttled per-UID to

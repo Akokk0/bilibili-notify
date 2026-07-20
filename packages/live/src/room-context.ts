@@ -102,7 +102,7 @@ export interface RoomContextOptions {
 	 *   - koishi:     `(uid, status) => ctx.emit("bilibili-notify/live-state-changed", uid, status)`
 	 * 可选;缺省时不推送 —— 仅在 dashboard 走 WS 实时刷新"正在直播"面板时有意义。
 	 */
-	emitLiveState?: (uid: string, status: "live" | "idle") => void;
+	emitLiveState?: (uid: string, status: "live" | "idle", startedAt?: string) => void;
 	/**
 	 * 推送 per-UID 累计观看人数变化(B 站 `WATCHED_CHANGE` 帧节流后转发)。Adapter
 	 * 实现与 emitLiveState 同型:
@@ -159,7 +159,9 @@ export class RoomContextBase {
 	 */
 	private readonly _getImageRenderer: () => ImageRenderer | null;
 	readonly emitEngineError: (message: string) => void;
-	private readonly _emitLiveState: ((uid: string, status: "live" | "idle") => void) | undefined;
+	private readonly _emitLiveState:
+		| ((uid: string, status: "live" | "idle", startedAt?: string) => void)
+		| undefined;
 	private readonly _emitViewers: ((uid: string, viewers: string) => void) | undefined;
 	private readonly _pickCardBackground: PickCardBackground | undefined;
 	/** ③ uid → roomId 解析成功回调(独立端写盘复用;koishi 缺省)。 */
@@ -205,8 +207,8 @@ export class RoomContextBase {
 	/**
 	 * 安全调用方:adapter 未注入时静默 no-op,业务代码无需在调用点判空。
 	 */
-	emitLiveState(uid: string, status: "live" | "idle"): void {
-		this._emitLiveState?.(uid, status);
+	emitLiveState(uid: string, status: "live" | "idle", startedAt?: string): void {
+		this._emitLiveState?.(uid, status, startedAt);
 	}
 
 	/**

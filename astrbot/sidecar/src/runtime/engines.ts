@@ -127,7 +127,8 @@ export function createSidecarEngines(options: CreateSidecarEnginesOptions): Side
 		commentary: commentary as unknown as CommentaryGenerator | null,
 		config: buildLiveConfig(initialGlobals),
 		emitEngineError: (message) => options.bus.emit("engine-error", "live-engine", message),
-		emitLiveState: (uid, status) => options.bus.emit("live-state-changed", uid, status),
+		emitLiveState: (uid, status, startedAt) =>
+			options.bus.emit("live-state-changed", uid, status, startedAt),
 		emitViewers: (uid, viewers) => options.bus.emit("live-viewers-changed", uid, viewers),
 	});
 	const handles: Disposable[] = [];

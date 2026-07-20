@@ -105,6 +105,39 @@ describe("RoomSession 断流接续 — grace 关", () => {
 	});
 });
 
+describe("RoomSession 断流接续 — 下播时刻定格", () => {
+	it("进入挂起时就定格真实下播时刻,不等到期再取", async () => {
+		// 统计侧拿这个时刻落 end 帧。若等到期再取,每场直播都平白多出整个 grace
+		// 窗口(默认 2 分钟、最长 10 分钟),而下播卡上写的是定格时长 —— 同一场
+		// 直播,卡片与统计页两个数对不上。
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-01-01T13:00:00.000Z"));
+		try {
+			const { ctx } = makeCtx();
+			const s = liveSession(ctx, makeSub({ liveEndGrace: true, liveEndGraceMinutes: 2 }));
+			await s.onLiveEnd();
+			expect(s.graceEndAt).toBe("2026-01-01T13:00:00.000Z");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("接续为同一场时清掉定格时刻 —— 别让它漏到下一次下播", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-01-01T13:00:00.000Z"));
+		try {
+			const { ctx } = makeCtx();
+			const s = liveSession(ctx, makeSub({ liveEndGrace: true, liveEndGraceMinutes: 2 }));
+			await s.onLiveEnd();
+			expect(s.graceEndAt).toBeDefined();
+			s.cancelPendingEnd();
+			expect(s.graceEndAt).toBeUndefined();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
 describe("RoomSession 断流接续 — grace 开", () => {
 	it("onLiveEnd 挂起:不下播 / 不清缓冲 / 不翻 idle / 暂停复推 / 起计时器", async () => {
 		const { ctx, captured, clear, emitLiveState } = makeCtx();

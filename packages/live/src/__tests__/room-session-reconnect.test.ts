@@ -223,6 +223,26 @@ describe("RoomSession 退避状态机 — codex review minor-4", () => {
 		expect(backoffOnly).toHaveLength(5); // 不会多出第 6 个 backoff
 	});
 
+	it("退避耗尽彻底放弃 → 收口成下播,不留一个永远「在播」的僵尸", async () => {
+		// `liveStatus` 的「翻下去」原本只挂在 reason === "error" 一条路径上,而 watchdog
+		// / close 全程不碰它;退避耗尽处也只 emitEngineError + cancel(),cancel() 不翻
+		// 状态、也不摘 session。于是 WS 已彻底关闭、再不会有任何事件,listLiveRooms 却
+		// 永远把这位 UP 报成在播 —— 统计侧这一场 current 且引擎报 isLive 为真,直播
+		// 时长按 now−startedAt 无界增长,直到窗口滑走或进程重启。
+		const { ctx, mocks } = makeMockCtx({ startThrows: true });
+		const session = new RoomSession(ctx, makeSub());
+		// biome-ignore lint/suspicious/noExplicitAny: 测试 private/protected 成员
+		const s = session as any;
+		s.liveStatus = true; // 正在直播时网络中断,watchdog 发起重连
+
+		void s.reconnect("watchdog");
+		await mocks.flushAll();
+
+		expect(mocks.emitEngineError).toHaveBeenCalledTimes(1);
+		expect(s.liveStatus).toBe(false);
+		expect(mocks.emitLiveState).toHaveBeenLastCalledWith("u1", "idle", undefined);
+	});
+
 	it("受限房错误 → 立即停止监测,不跑满 5 档退避", async () => {
 		const { ctx, mocks } = makeMockCtx();
 		mocks.startLiveRoomListener.mockRejectedValue(
@@ -340,5 +360,113 @@ describe("RoomSession 重连竞态 — L1/L3", () => {
 		expect(mocks.disposeCount()).toBe(1); // 退避定时器被 dispose,不留回调到 expiry
 		expect(mocks.startLiveRoomListener).not.toHaveBeenCalled();
 		expect(mocks.emitEngineError).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 重连成功后恢复直播状态
+//
+// 回归:`reason === "error"` 的分支会 setLiveStatus(false) + 停周期复推,而重连
+// 成功的分支只调 onListenerStarted() —— 从不核对房间实际状态、也从不翻回 live。
+// 于是几小时后真正的下播事件撞上 handleLiveEnd 的 `!this.liveStatus` 守卫被丢弃,
+// 这一场永远等不到 end:面板停在断连那一刻,统计侧的直播时长按断连时刻截断,
+// 后面几个小时凭空消失。
+// ---------------------------------------------------------------------------
+
+describe("RoomSession 重连成功后的直播状态", () => {
+	/** 把 session 摆成「正在直播时 WS 报错」的现场。 */
+	// biome-ignore lint/suspicious/noExplicitAny: 测试 private/protected 成员
+	function primeLiveThenError(session: RoomSession, liveStatusAfter: number): any {
+		// biome-ignore lint/suspicious/noExplicitAny: 测试 private/protected 成员
+		const s = session as any;
+		s.liveStatus = true;
+		s.armPeriodicTimer = vi.fn();
+		s.useLiveRoomInfo = vi.fn(async () => {
+			s.liveRoomInfo = {
+				live_time: "2026-05-16 20:00:00",
+				live_status: liveStatusAfter,
+				short_id: 0,
+				room_id: 12345,
+				title: "标题",
+				user_cover: "",
+			};
+			return true;
+		});
+		return s;
+	}
+
+	it("重连成功且房间仍在播 → 翻回 live,并重新武装周期复推", async () => {
+		const { ctx, mocks } = makeMockCtx();
+		const session = new RoomSession(ctx, makeSub());
+		const s = primeLiveThenError(session, 1);
+
+		const p = s.onError();
+		await new Promise((r) => setImmediate(r));
+		await mocks.runScheduled();
+		await p;
+
+		expect(mocks.startLiveRoomListener).toHaveBeenCalledTimes(1);
+		expect(s.liveStatus).toBe(true);
+		expect(s.armPeriodicTimer).toHaveBeenCalled();
+	});
+
+	it("恢复时带的开播时刻仍是本场的 —— 统计侧据此认出是同一场,不新开一场", async () => {
+		const { ctx, mocks } = makeMockCtx();
+		const session = new RoomSession(ctx, makeSub());
+		const s = primeLiveThenError(session, 1);
+
+		const p = s.onError();
+		await new Promise((r) => setImmediate(r));
+		await mocks.runScheduled();
+		await p;
+
+		expect(mocks.emitLiveState).toHaveBeenLastCalledWith("u1", "live", "2026-05-16T12:00:00.000Z");
+	});
+
+	it("核对期间直播真的结束了 → 不把状态翻回在播", async () => {
+		// 这个抢占窗口是真实存在的:`onListenerStarted()` 排在核对之前,新 WS 已经开始
+		// 派发事件,而此刻 `liveStatus` 是 false —— 到达的 END 撞上 handleLiveEnd 的
+		// `!liveStatus` 守卫被丢弃。若核对再拿着 await 之前的快照把状态翻回在播,这一场
+		// 就永远等不到第二条 END:面板恒显「直播中」,统计侧按 now−startedAt 计时长,
+		// 每天自增 24 小时且无上限,而默认 pushTime=0 连轮询兜底都没有。
+		const { ctx, mocks } = makeMockCtx();
+		const session = new RoomSession(ctx, makeSub());
+		const s = primeLiveThenError(session, 1);
+		let release!: () => void;
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const refresh = s.useLiveRoomInfo;
+		// 此刻 liveStatus 已是 false,handleLiveEnd 会在守卫处直接返回、不会走到这里,
+		// 所以整条闸住也不会像开播那侧那样把自己锁死。
+		s.useLiveRoomInfo = vi.fn(async (t: unknown) => {
+			await gate;
+			return refresh(t);
+		});
+
+		const p = s.onError();
+		await new Promise((r) => setImmediate(r));
+		const scheduled = mocks.runScheduled();
+		for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+		await s.onLiveEnd(); // 核对期间 UP 真下播
+		release();
+		await scheduled;
+		await p;
+
+		expect(s.liveStatus).toBe(false);
+	});
+
+	it("重连成功但房间已经下播 → 保持 idle,不伪造一次开播", async () => {
+		const { ctx, mocks } = makeMockCtx();
+		const session = new RoomSession(ctx, makeSub());
+		const s = primeLiveThenError(session, 0);
+
+		const p = s.onError();
+		await new Promise((r) => setImmediate(r));
+		await mocks.runScheduled();
+		await p;
+
+		expect(s.liveStatus).toBe(false);
+		expect(s.armPeriodicTimer).not.toHaveBeenCalled();
 	});
 });
