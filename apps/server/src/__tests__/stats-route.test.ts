@@ -85,6 +85,22 @@ describe("GET /api/stats/overview — null 语义", () => {
 		expect(row?.netWindow).toBeNull();
 	});
 
+	it("动态比开播更晚时取动态 —— 缺这个方向,整段三元换成 `lastLive ?? lastDynamic` 也全绿", async () => {
+		// 原有四条用例:两者皆空 / 开播更晚 / 只有动态 / 只有开播 —— 唯独没有
+		// 「两者都有且动态更晚」。今天刚发动态、上次开播在三天前的 UP,退化实现会
+		// 把 lastActivityAt 读成三天前,正好误判进鸽子榜,而那正是这个字段的唯一用途。
+		const body = await get(
+			makeDeps({
+				subs: [{ uid: "1" }],
+				dynamics: {
+					"1": [{ id: "d", type: "DYNAMIC_TYPE_AV", ts: new Date(NOW - 3600_000).toISOString() }],
+				},
+				sessions: { "1": [{ startedAt: new Date(NOW - 3 * DAY).toISOString() }] },
+			}),
+		);
+		expect(body.rows[0]?.lastActivityAt).toBe(new Date(NOW - 3600_000).toISOString());
+	});
+
 	it("没有任何活动 → lastActivityAt 为 null(鸽子榜要的信号)", async () => {
 		const body = await get(makeDeps({ subs: [{ uid: "1" }] }));
 		expect(body.rows[0]?.lastActivityAt).toBeNull();

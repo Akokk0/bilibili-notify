@@ -148,6 +148,17 @@ describe("dayAxis", () => {
 		);
 	});
 
+	it("相邻两格恰好差一天", () => {
+		// 上面那条「末位是今天」把实现的时区换算公式原样抄了一遍(重言式),实现错了
+		// 它跟着错;「递增无重复」也拦不住步长变大。而步长一旦不是一天,热力图与
+		// 服务端 dailyFansSeries 的分桶就对不上,整条轴指向错误的日期。
+		const axis = dayAxis(5, new Date("2026-05-16T12:00:00.000Z"));
+		for (let i = 1; i < axis.length; i++) {
+			const gap = Date.parse(`${axis[i]}T00:00:00Z`) - Date.parse(`${axis[i - 1]}T00:00:00Z`);
+			expect(gap).toBe(86_400_000);
+		}
+	});
+
 	it("按天严格递增,无重复", () => {
 		const axis = dayAxis(10, new Date("2026-05-16T12:00:00.000Z"));
 		expect(new Set(axis).size).toBe(10);

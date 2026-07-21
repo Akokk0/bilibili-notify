@@ -11,6 +11,7 @@ import {
 	countDynamics,
 	dailyActivityCounts,
 	dailyFansSeries,
+	localDayKey,
 	summarizeLiveSessions,
 } from "../aggregate.js";
 
@@ -239,7 +240,54 @@ describe("summarizeLiveSessions", () => {
 	});
 });
 
+describe("坏时间戳守卫 —— 一行脏数据不能掀翻整个接口", () => {
+	// fans jsonl 只校验 `typeof parsed.ts === "string"`,不校验可解析性,所以坏 ts
+	// 确实到得了这里。守卫被拆掉的话 `new Date(NaN).toISOString()` 抛 RangeError,
+	// /api/stats/overview 整个 500 —— 而这两处此前从没有测试让守卫取到 true。
+	it("localDayKey 解析不出时返回 null,不抛", () => {
+		expect(localDayKey("不是时间")).toBeNull();
+		expect(localDayKey("")).toBeNull();
+	});
+
+	it("dailyFansSeries 跳过坏采样,其余照常出数", () => {
+		const got = dailyFansSeries(
+			[
+				{ ts: CN(15, 10), value: 100 },
+				{ ts: "坏行", value: 999 },
+				{ ts: CN(16, 10), value: 150 },
+			],
+			{ days: 2, tzOffsetMin: -480, now: new Date(Date.parse(CN(16, 12))) },
+		);
+		expect(got.map((p) => p.value)).toEqual([100, 150]);
+		expect(got[1]?.net).toBe(50);
+	});
+
+	it("dailyActivityCounts 跳过坏事件,不整段崩掉", () => {
+		const counts = dailyActivityCounts(
+			[
+				{ id: "a", type: "DYNAMIC_TYPE_AV", ts: "坏行" },
+				{ id: "b", type: "DYNAMIC_TYPE_AV", ts: CN(16, 10) },
+			],
+			[],
+			{ days: 2, tzOffsetMin: -480, now: new Date(Date.parse(CN(16, 12))) },
+		);
+		expect(counts).toEqual([0, 1]);
+	});
+});
+
 describe("dailyActivityCounts — 逐日活动次数(热力图数据源)", () => {
+	it("通宵直播只在**开播**那天记一次活动,不摊到第二天", () => {
+		// 源码注释写着「按开播那天记一次」,但全仓没有一场跨零点的 session,
+		// 把 bump(s.startedAt) 换成 bump(s.endedAt ?? s.startedAt) 照样全绿。
+		const counts = dailyActivityCounts(
+			[],
+			[{ startedAt: CN(16, 23), endedAt: CN(17, 2) }], // 23:00 开播,次日 02:00 下播
+			{ days: 3, tzOffsetMin: -480, now: new Date(Date.parse(CN(17, 12))) },
+		);
+		// 轴是 [15日, 16日, 17日];这一场只该记在 16 日那格。
+		expect(counts).toEqual([0, 1, 0]);
+	});
+
 	const now = new Date(CN(16, 23));
 	const opts = { days: 3, tzOffsetMin: TZ_CN, now };
 

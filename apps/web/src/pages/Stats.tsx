@@ -31,6 +31,7 @@ import {
 	TrendChart,
 } from "./stats/charts";
 import { buildStatColumns, type StatColumnId } from "./stats/columns";
+import { buildCsv } from "./stats/csv";
 import { RoastCard } from "./stats/RoastCard";
 import { buildRadarAxes } from "./stats/radar";
 import { SoloRoastCard } from "./stats/SoloRoastCard";
@@ -100,47 +101,15 @@ interface UpMeta {
 	sub?: SubscriptionDTO;
 }
 
-/** 把当前对比表导出成 CSV。`null` 写成空单元格,不写 0 —— 同页面上的口径。 */
+/**
+ * 把当前对比表导出成 CSV。
+ *
+ * 列定义在 `stats/csv.ts` —— 表头与取值同源、有测试守着。这里只剩下载那几行:
+ * 拼 BOM(否则 Excel 打开中文列名是乱码)、造 Blob、点一下虚拟链接。
+ */
 function exportCsv(rows: UpStatsRow[], meta: Map<string, UpMeta>, days: number): void {
-	const head = [
-		"UP 主",
-		"UID",
-		"粉丝数",
-		"近7日粉丝",
-		`近${days}日粉丝`,
-		"投稿",
-		"直播场次",
-		"直播时长(h)",
-		"动态",
-		"峰值观看",
-		"最后活动",
-	];
-	// 无记录在 CSV 里写空单元格,而不是 0 —— 导出的表要能直接拿去算,
-	// 一个假的 0 会污染下游的平均值。
-	const cell = (v: number | null, fmt: (n: number) => string = String) =>
-		v === null ? "" : fmt(v);
-	const body = rows.map((r) =>
-		[
-			meta.get(r.uid)?.name ?? `UID ${r.uid}`,
-			r.uid,
-			cell(r.fans),
-			cell(r.net7d),
-			cell(r.netWindow),
-			cell(r.archives),
-			cell(r.liveSessions),
-			cell(r.liveHours, (n) => n.toFixed(1)),
-			cell(r.dynamics),
-			cell(r.peakViewers),
-			r.lastActivityAt ?? "",
-		]
-			// 昵称里出现逗号 / 引号会撕裂列,按 RFC4180 转义。
-			.map((x) => (/[",\n]/.test(x) ? `"${x.replaceAll('"', '""')}"` : x))
-			.join(","),
-	);
-	// BOM 开头,否则 Excel 打开中文列名是乱码。
-	const blob = new Blob([`\ufeff${[head.join(","), ...body].join("\n")}`], {
-		type: "text/csv;charset=utf-8",
-	});
+	const csv = buildCsv(rows, days, (uid) => meta.get(uid)?.name ?? `UID ${uid}`);
+	const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
 	const url = URL.createObjectURL(blob);
 	const a = document.createElement("a");
 	a.href = url;

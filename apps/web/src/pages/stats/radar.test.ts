@@ -125,6 +125,41 @@ describe("buildRadarAxes", () => {
 		expect(axis?.value).toBe(1);
 	});
 
+	it("六根轴各取各的字段 —— 哨兵值逐轴对位", () => {
+		// 曾经只断言了「涨粉势头」与「粉丝规模」两根,其余四根仅被 toHaveLength(6)
+		// 数了个数:把「投稿量」的 pick 换成 r.dynamics 照样全绿。这里给每个字段一个
+		// 互不相同的哨兵值,任何一轴接错线都会在 display 上露馅。
+		const a = row({
+			uid: "1",
+			fans: 1000,
+			netWindow: 11,
+			archives: 22,
+			dynamics: 33,
+			liveSessions: 44,
+			liveHours: 55,
+		});
+		const b = row({ uid: "2", fans: 2000 });
+		const byLabel = Object.fromEntries(
+			(buildRadarAxes(a, [a, b]) ?? []).map((x) => [x.label, x.display]),
+		);
+		expect(byLabel.投稿量).toBe("22 个");
+		expect(byLabel.动态量).toBe("33 条");
+		expect(byLabel.开播场次).toBe("44 场");
+		expect(byLabel.直播时长).toBe("55h");
+	});
+
+	it("某维度无记录 → 该轴 value 为 null,不拿 0 顶格", () => {
+		// 无采集覆盖时这几项是 null。归一化成 0 会把「不知道」画成「垫底」,
+		// 那根轴看着就是这位 UP 在这个维度上最差 —— 而事实是我们没在记。
+		const a = row({ uid: "1", archives: null, liveHours: null });
+		const b = row({ uid: "2", archives: 10, liveHours: 10 });
+		const byLabel = Object.fromEntries(
+			(buildRadarAxes(a, [a, b]) ?? []).map((x) => [x.label, x.value]),
+		);
+		expect(byLabel.投稿量).toBeNull();
+		expect(byLabel.直播时长).toBeNull();
+	});
+
 	it("只订阅 1 位 UP 时不出图 —— 六根轴全会是满格,零信息量", () => {
 		const only = row({ uid: "1" });
 		expect(buildRadarAxes(only, [only])).toBeNull();

@@ -68,4 +68,19 @@ describe("buildStatColumns", () => {
 		expect(buildStatColumns(7, PALETTE, FMT)[1]?.label).toBe("近7日粉丝");
 		expect(buildStatColumns(90, PALETTE, FMT)[1]?.label).toBe("近90日粉丝");
 	});
+
+	it("每一列的 label 都被钉住 —— 原来只查了下标 1 那一列", () => {
+		// 用户看到的是 label↔数值的对应,而 label 这一侧此前对 6/7 列毫无约束:
+		// 把「投稿」改成「动态」不会有任何测试变红,而表里两列就都叫「动态」了。
+		expect(
+			buildStatColumns(
+				30,
+				{ blue: "#00aeec", pink: "#fb7299", purple: "#a29bfe" },
+				{
+					hours: (v: number) => String(v),
+					num: (v: number | null) => (v === null ? "—" : String(v)),
+				},
+			).map((c) => c.label),
+		).toEqual(["近7日粉丝", "近30日粉丝", "投稿", "直播场次", "直播时长", "动态", "峰值观看"]);
+	});
 });
