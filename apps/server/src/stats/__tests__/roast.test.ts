@@ -154,8 +154,46 @@ describe("buildRoastPrompt", () => {
 		expect(p).toContain("不要据此判定该 UP 偷懒");
 	});
 
-	it("明确要求用下标而不是名字回指", () => {
+	it("要求 JSON 的 i 字段用下标回指,而不是写名字", () => {
 		expect(buildRoastPrompt(UPS, 30)).toContain("不要写名字");
+	});
+
+	it("**单独**叮嘱 pushText 要写名字 —— 那段是给群友看的,他们看不到下标表", () => {
+		// 曾经只有一句笼统的「所有对 UP 的引用一律使用下标」,模型照单全收,把它
+		// 也套到了 pushText 上,推出去的周报长这样:
+		//   「鸽王i=0,30天零投稿零直播却涨粉;劳模i=5直播3场独撑排面。」
+		// 群里没人知道 i=0 是谁。下标纪律只对 JSON 结构字段成立,必须分开讲。
+		const p = buildRoastPrompt(UPS, 30);
+		expect(p).toContain("名称");
+		expect(p).toMatch(/pushText[^\n]*/);
+		expect(p).toContain("不要出现下标");
+	});
+});
+
+describe("parseRoastReply — pushText 里的下标回指必须换回名字", () => {
+	const withPush = (pushText: string) =>
+		parseRoastReply(JSON.stringify({ ...good, pushText }), UPS);
+
+	it("`i=0` 换成对应 UP 的名称", () => {
+		expect(withPush("本周鸽王i=1,劳模i=0")?.pushText).toBe("本周鸽王机智的党妹,劳模老番茄");
+	});
+
+	it("等号两侧的空格、以及省略等号的写法一并认", () => {
+		expect(withPush("i = 0 与 i1 与 i 1")?.pushText).toBe("老番茄 与 机智的党妹 与 机智的党妹");
+	});
+
+	it("越界下标原样保留 —— 换成任何真名都是往无辜的 UP 头上安话", () => {
+		// 留着 i=99 至少一眼看得出是模型在胡说;替换掉就成了一句读起来天衣无缝的诬告。
+		expect(withPush("鸽王是i=99")?.pushText).toBe("鸽王是i=99");
+	});
+
+	it("不碰名字里本来就带的字母数字", () => {
+		// 替换只在 `i` 前是词边界时发生,`Ai2` 这种名字中间的 i 不受影响。
+		expect(withPush("Ai2 今天很努力")?.pushText).toBe("Ai2 今天很努力");
+	});
+
+	it("模型老实写了名字时原样透传", () => {
+		expect(withPush("老番茄本周更新最勤 🎉")?.pushText).toBe("老番茄本周更新最勤 🎉");
 	});
 });
 
