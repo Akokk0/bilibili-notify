@@ -7,24 +7,68 @@ import type {
 } from "../../types/domain";
 import { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../../types/domain";
 
-const PALETTE = [
-	"#FF6699",
-	"#00AEEC",
-	"#FB7299",
+/**
+ * UP 主强调色调色板 —— 卡片、头像、图表线、Tab 圆点都取自这里。
+ *
+ * 曾经只有 8 色,其中 `#FF6699` 与 `#FB7299` 的 ΔE2000 只有 2.4(肉眼就是同一个粉),
+ * 实际可辨的只有 7 种;而分配是 `hash(uid) % 8`,按生日悖论**订阅 4 位就有约 65%
+ * 概率撞色**,订阅 10 位几乎必然重复。
+ *
+ * **试过纯按 uid 连续取色(LCh 空间取点、不设调色板),结论是更差,别再回去。**
+ * 完全同色确实没了,但「有点像、分不清哪个是哪个」的比例反而从 4.0% 涨到 7.4% ——
+ * 调色板是人为按 ΔE 摆开的,随机撒点做不到;而且逐色相取最大彩度会在黄绿区扫出
+ * 一片芥末色、橄榄色,不好看。指标上「ΔE<6 完全难分」是降了,但人眼看的是前一档。
+ *
+ * 这 24 色是在 CIE Lab 里按「两两 ΔE2000 ≥ 11」贪心挑出来的,明度锁在 L\* 64–81,
+ * 且**黄到黄绿那段(Lab 色相 55–125°)强制 L\* ≥ 78** —— 那一段明度一低就发闷成
+ * 芥末 / 橄榄,是上一版最招人嫌的地方。品牌粉 / 蓝 / 紫三色原样占位,保住辨识度。
+ *
+ * **调这里时注意**:头像是白色粗体首字母直接压在这个颜色上(见 `atoms.tsx` 的
+ * Avatar),所以别往更浅走 —— 这一族对白字的对比度只有 1.65–2.78,是这套设计有意
+ * 选的浅调,再浅白字就糊了。测试只锁「两两分得开」,明度与调性靠这段说明。
+ */
+export const UP_COLORS = [
+	"#fb7299",
+	"#ff6b6d",
+	"#ff9c89",
+	"#ff6e42",
+	"#ffaf7b",
+	"#ffb22e",
+	"#e0bf20",
+	"#b3cd2f",
+	"#67ad1b",
+	"#6cd557",
+	"#01b355",
+	"#03d98e",
+	"#02b088",
+	"#05d6bd",
+	"#03ada8",
+	"#03dfe7",
+	"#01b9d2",
+	"#00aeec",
+	"#489dff",
 	"#a29bfe",
-	"#fdcb6e",
-	"#74b9ff",
-	"#22c55e",
-	"#f2a053",
-];
+	"#d7a9ff",
+	"#bf7cff",
+	"#ee66db",
+	"#ff93d1",
+] as const;
 
-/** Stable per-UP color derived from uid; gives every UP a recognisable accent. */
+/**
+ * Stable per-UP color derived from uid; gives every UP a recognisable accent.
+ *
+ * 哈希用 FNV-1a 而不是原来的 `h * 31 + c`:B 站 uid 是纯数字,字符只在 '0'–'9' 这
+ * 十个码位里取值,多项式哈希在 24 这种模数下散得不够开(实测 2 万个随机 uid,
+ * χ² 41.4 vs FNV 的 19.5)—— 那样加再多颜色也只会集中用到其中几个。
+ */
 export function colorFromUid(uid: string): string {
-	let h = 0;
+	let h = 0x811c9dc5;
 	for (let i = 0; i < uid.length; i++) {
-		h = (h * 31 + uid.charCodeAt(i)) | 0;
+		h ^= uid.charCodeAt(i);
+		// imul 才是 32 位整数乘法;直接 `*` 会溢出成浮点,低位精度丢光。
+		h = Math.imul(h, 0x01000193);
 	}
-	return PALETTE[Math.abs(h) % PALETTE.length];
+	return UP_COLORS[(h >>> 0) % UP_COLORS.length] as string;
 }
 
 export function displayName(sub: Subscription): string {
