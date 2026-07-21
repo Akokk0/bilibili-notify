@@ -86,6 +86,13 @@ export class RoomSession extends RoomSessionBase {
 		this.clearReconnectSleep();
 		// 挂起中的断流接续等待随 teardown 一并取消,绝不在房间已停后还触发一次下播。
 		this.cancelPendingEnd();
+		// 周期复推定时器同理。外部 teardown(stopForUid / disposeAll / startAll)本就会
+		// 经 livePushTimerManager 统一清,但**自发**放弃监听那条路径只调 cancel(),留下的
+		// timer 会一直 tick:每次 tick 看到已下播就发一条私聊,再调 triggerLiveEnd,而
+		// handleLiveEnd 在 `!liveStatus` 守卫处就返回、走不到解除定时器那行 —— 同一条
+		// 私聊每小时重复一次,直到进程重启。cancel() 语义是「这个 session 到此为止」,
+		// 留任何定时器都不对。
+		this.cancelPeriodicTimer();
 	}
 
 	/** L3:dispose 退避定时器并唤醒重连循环,使其立刻重校 cancelled/disposed 后退出。 */
@@ -300,14 +307,13 @@ export class RoomSession extends RoomSessionBase {
 				// 会被 `handleLiveEnd` 的守卫丢弃 —— 再无条件翻回在播就永远卡住了,
 				// 所以翻之前必须查 `endArrivedWhileTransitioning`。
 				if (weTurnedLiveOff) {
-					this.transitioningToLive = true;
-					this.endArrivedWhileTransitioning = false;
+					// 这条路径正在替这个房间裁决在播状态,并发的 LIVE 帧交给 isLiveAgain()
+					// 的结果统一收口即可,不必再走一遍开播流水线多推一张开播卡。
+					this.beginLiveTransition(true);
 					const stillLive = await this.isLiveAgain();
-					this.transitioningToLive = false;
+					const endedMeanwhile = this.finishLiveTransition();
 					// post-await 重校:核对期间可能已被 stopForUid / teardown 掐掉。
 					if (this.cancelled || this.ctx.isDisposed()) return;
-					const endedMeanwhile = this.endArrivedWhileTransitioning;
-					this.endArrivedWhileTransitioning = false;
 					if (stillLive && !endedMeanwhile) {
 						this.setLiveStatus(true);
 						this.armPeriodicTimer();
@@ -326,12 +332,29 @@ export class RoomSession extends RoomSessionBase {
 		const msg = `直播间 [${this.sub.roomId}] ${this.describeReconnectReason(reason, detail)}后连接持续失败,重试 ${RECONNECT_BACKOFF_MS.length} 次后放弃监听`;
 		this.ctx.logger.error(`[conn] ${msg}`);
 		this.ctx.emitEngineError(msg);
-		// 无条件收口在播状态。上面翻 idle 只发生在 reason === "error" 那条路径上,
-		// watchdog / close 全程没碰过它;而 `cancel()` 只管取消,不翻状态。走到这里
-		// WS 已彻底关闭、再不会有任何事件,留着 true 就是个永远「在播」的僵尸:
-		// listLiveRooms 一直把它报成在播,统计侧按 now−startedAt 让时长无界增长。
-		// 已经是 idle 时这行是 no-op(setLiveStatus 自带同值守卫),不会多发事件。
-		this.setLiveStatus(false);
+		// 收口在播状态。上面翻 idle 只发生在 reason === "error" 那条路径上,watchdog /
+		// close 全程没碰过它;而 `cancel()` 只管取消,不翻状态。走到这里 WS 已彻底关闭、
+		// 再不会有任何事件,留着 true 就是个永远「在播」的僵尸:listLiveRooms 一直把它
+		// 报成在播,统计侧按 now−startedAt 让时长无界增长。
+		if (this.liveStatus) {
+			// 但**不能只是**把状态翻下去:那样这一场对用户就是凭空消失 —— 没有下播卡、
+			// 没有词云 / 直播总结,弹幕缓冲还留着漏进下一场。死掉的只是 WS,HTTP 照样通,
+			// 整条下播流水线都跑得起来,所以正经走完它。
+			//
+			// 但这里是「一切都已经失败」的收尾路径,它自己绝不能再炸:reconnect 多由
+			// `void this.reconnect(...)`(watchdog)发起,抛出去就是个没人接的 rejection,
+			// 而且状态就停在 true —— 恰好回到我们要消灭的那个僵尸。兜住,至少把状态收口。
+			try {
+				await this.handleLiveEnd("giveup");
+			} catch (e) {
+				this.ctx.logger.warn(
+					`[conn] 直播间 [${this.sub.roomId}] 放弃监听时的下播处理失败:${(e as Error).message}`,
+				);
+				this.setLiveStatus(false);
+			}
+		} else {
+			this.setLiveStatus(false);
+		}
 		this.cancel();
 	}
 
@@ -546,10 +569,13 @@ export class RoomSession extends RoomSessionBase {
 			this.ctx.logger.debug(`[live] 直播间 [${this.sub.roomId}] 的开播事件在冷却期内，忽略`);
 			return;
 		}
-		// `transitioningToLive` 一并挡在这里:翻状态挪到刷新之后以后,`liveStatus` 在
-		// 整段准备期都还是 false,不能再独自兼任同步去重闸门。冷却窗口(10s)通常也够,
-		// 但网络慢到 await 超过冷却时就漏了,这道闸门与它是叠加关系。
-		if (this.liveStatus || this.transitioningToLive) {
+		// `startingUp` 一并挡在这里:翻状态挪到刷新之后以后,`liveStatus` 在整段准备期
+		// 都还是 false,不能再独自兼任同步去重闸门。冷却窗口(10s)通常也够,但网络慢到
+		// await 超过冷却时就漏了,这道闸门与它是叠加关系。
+		//
+		// 注意用的是 `startingUp` 而不是 `transitioningToLive` —— 后者 bootstrap 也会开,
+		// 拿它去重会把 bootstrap 期间的真开播事件一并吞掉(见 startingUp 的说明)。
+		if (this.liveStatus || this.startingUp) {
 			this.ctx.logger.debug(
 				`[live] 直播间 [${this.sub.roomId}] 已经是开播状态或正在开播准备中，忽略重复的开播事件`,
 			);
@@ -573,13 +599,13 @@ export class RoomSession extends RoomSessionBase {
 		// 而且错误写进 append-only 文件后事后无法修。两害相权,统一用 B 站的尺子。
 		//
 		// 代价是整段 await 期间 `liveStatus` 仍是 false,不能再兼任同步去重闸门:
-		// 重复 START 由上面的 `transitioningToLive` 挡,期间到达的 END 由它记账、下面收口。
-		this.transitioningToLive = true;
-		this.endArrivedWhileTransitioning = false;
+		// 重复 START 由上面的 `startingUp` 挡,期间到达的 END 由它记账、下面收口。
+		this.beginLiveTransition(true);
 		const refreshed =
 			(await this.useLiveRoomInfo(LiveType.StartBroadcasting)) &&
 			(await this.useMasterInfo(LiveType.StartBroadcasting));
-		this.transitioningToLive = false;
+		// 先关窗口再判失败:否则刷新失败那条路径会把标志漏给下一次事件。
+		const endedMeanwhile = this.finishLiveTransition();
 		// 这三个条件分开写而不是并进一个布尔量:TS 的控制流收窄认字段判空,
 		// 收进变量后下面 `this.liveRoomInfo!` 就到处都要非空断言了。
 		if (!refreshed || !this.liveRoomInfo || !this.masterInfo) {
@@ -588,10 +614,10 @@ export class RoomSession extends RoomSessionBase {
 			this.ctx.stopMonitoring("获取直播间信息失败，推送直播开播卡片失败", this.sub.roomId);
 			return;
 		}
-		if (this.endArrivedWhileTransitioning) {
+		if (endedMeanwhile) {
 			// 准备期间这一场就结束了。翻成在播的话,那条已被守卫丢弃的 END 不会再来
 			// 第二次,房间从此永远卡在「直播中」。开播卡也不推 —— 人都已经下播了。
-			this.endArrivedWhileTransitioning = false;
+			// 弹幕缓冲已由 finishLiveTransition 排空。
 			this.ctx.logger.info(
 				`[live] 直播间 [${this.sub.roomId}] 开播准备期间已收到下播事件，放弃本次开播推送`,
 			);
@@ -654,6 +680,11 @@ export class RoomSession extends RoomSessionBase {
 	private async onLiveEnd(): Promise<void> {
 		const now = Date.now();
 		if (now - this.lastLiveEnd < LIVE_EVENT_COOLDOWN) {
+			// 冷却是用来吞掉 B 站对**同一次**转换重复派发的帧的。但正处在「翻成在播」窗口时,
+			// 这条 END 讲的是新的一场(直播抖动:END → 3s 后 LIVE → 8s 后又 END,第二条就落在
+			// 上一条的冷却里),而这里在 triggerLiveEnd 之前就 return —— 记账代码在
+			// handleLiveEnd 里,这条路径根本走不到。所以记账必须提到冷却之前。
+			this.noteEndDuringTransition();
 			this.ctx.logger.debug(`[live] 直播间 [${this.sub.roomId}] 的下播事件在冷却期内，忽略`);
 			return;
 		}

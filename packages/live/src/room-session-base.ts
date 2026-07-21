@@ -45,18 +45,34 @@ export abstract class RoomSessionBase {
 	protected cancelled = false;
 
 	/**
-	 * 「正在把状态翻成在播」的窗口。开播准备(刷房间信息 / 主播信息)与重连成功后的
-	 * 状态核对都要 await 网络,这两段期间 `liveStatus` 仍是 false。
+	 * 「正在把状态翻成在播」的窗口。开播准备(刷房间信息 / 主播信息)、冷启动 bootstrap、
+	 * 重连成功后的状态核对都要 await 网络,这几段期间 `liveStatus` 仍是 false。
 	 *
-	 * 它存在的唯一理由是:那两段期间 WS **已经在派发事件**了。此刻到达的下播事件会
+	 * 它存在的唯一理由是:那几段期间 WS **已经在派发事件**了。此刻到达的下播事件会
 	 * 撞上 {@link handleLiveEnd} 的 `!liveStatus` 守卫被静默丢弃(grace 也拦不住 ——
 	 * 它同样要求 liveStatus 为真),而我们随后又无条件把状态翻成在播:这一场从此再
 	 * 也等不到第二条 END。面板恒显「直播中」,统计侧按 now−startedAt 计时长,每天
 	 * 自增 24 小时且无上限,而默认 `pushTime=0` 连轮询兜底都没有。
+	 *
+	 * 别直接读写这两个字段 —— 一律经 {@link beginLiveTransition} /
+	 * {@link finishLiveTransition} / {@link noteEndDuringTransition}。手写这套记账
+	 * 时漏过整整三条通道(bootstrap、END 冷却、放弃监听),每条都是永久卡「直播中」。
 	 */
 	protected transitioningToLive = false;
 	/** 上述窗口内到达过下播事件。翻状态前必须查它;查完即清。 */
 	protected endArrivedWhileTransitioning = false;
+	/**
+	 * `onLiveStart` 的**重入**守卫 —— 与 {@link transitioningToLive} 刻意分开。
+	 *
+	 * 两者一度是同一个字段,于是「记账 END」和「去重 LIVE」被绑死。把 bootstrap 也
+	 * 纳入记账窗口后这个耦合立刻要命:bootstrap 拉到的 `live_status` 是 0、而 UP 恰好
+	 * 在这几秒内开播时,那条 LIVE 会被去重吞掉,而 bootstrap 又不会翻成在播 —— 房间
+	 * 永久卡在「未直播」,和它要修的「永久卡在直播中」正好是一对。
+	 *
+	 * 去重只该防 `onLiveStart` 自己被并发的重复 LIVE 帧重入;bootstrap 不处理开播事件,
+	 * 就不该替它拦。
+	 */
+	protected startingUp = false;
 
 	/**
 	 * 断流接续「挂起中」的等待计时器(内存,服务重启即丢 —— 已与用户约定接受)。非 null
@@ -151,6 +167,49 @@ export abstract class RoomSessionBase {
 		);
 	}
 
+	/**
+	 * 进入「翻成在播」窗口。与 {@link finishLiveTransition} 成对使用,中间那段 await
+	 * 期间到达的下播事件会被记账,而不是撞上守卫后静默消失。
+	 *
+	 * `dedupeStart` 仅由真正在处理开播事件的通道传 true(见 {@link startingUp}):
+	 * 它额外把并发的重复 LIVE 帧挡掉。bootstrap 传 false —— 它不处理开播事件,拦下来
+	 * 就没人接了。
+	 */
+	protected beginLiveTransition(dedupeStart = false): void {
+		this.transitioningToLive = true;
+		this.endArrivedWhileTransitioning = false;
+		this.startingUp = dedupeStart;
+	}
+
+	/**
+	 * 离开「翻成在播」窗口,并裁决这一场是不是已经结束了。
+	 *
+	 * 返回 true = 期间收到过下播事件,**绝不能**再翻成在播:那条 END 已被丢弃、B 站
+	 * 不会再发第二次,翻过去房间就永久停在「直播中」。这一场也从没跑过下播流水线,
+	 * 所以弹幕缓冲在这里排空 —— 否则这几秒的弹幕会被折进**下一场**的词云 / 直播总结,
+	 * 观众看到一堆本场根本没人发过的弹幕。
+	 *
+	 * 可重复调用(第二次恒返回 false),好让调用方在 finally 里兜底而不必担心重复排空。
+	 */
+	protected finishLiveTransition(): boolean {
+		this.transitioningToLive = false;
+		this.startingUp = false;
+		if (!this.endArrivedWhileTransitioning) return false;
+		this.endArrivedWhileTransitioning = false;
+		this.ctx.danmakuCollector.clear(this.sub.roomId);
+		this.ctx.danmakuCollector.registerRoom(this.sub.roomId);
+		return true;
+	}
+
+	/**
+	 * 记下「窗口期内到达过下播事件」。下播事件**每一个**会被提前丢弃的入口都要调它:
+	 * {@link handleLiveEnd} 的 `!liveStatus` 守卫是一个,`onLiveEnd` 的 10s 冷却是另一个
+	 * —— 后者在 `triggerLiveEnd` 之前就 return,曾经整条路径都记不上账。
+	 */
+	protected noteEndDuringTransition(): void {
+		if (this.transitioningToLive) this.endArrivedWhileTransitioning = true;
+	}
+
 	/** `live_time`(北京时间字符串)→ ISO;缺失或解析不出时返回 undefined。 */
 	private liveStartIso(): string | undefined {
 		const raw = this.liveRoomInfo?.live_time;
@@ -223,6 +282,20 @@ export abstract class RoomSessionBase {
 			return;
 		}
 
+		// WS 从上面这行起就在派发事件了,而 `liveStatus` 要等本方法末尾才翻 —— 中间隔着
+		// 刷房间/主播信息、算已播时长、渲染并推送「正在直播」卡片,可达数秒。这是全仓
+		// 最长的一段「翻成在播」窗口,期间到达的 END 同样必须记账。
+		this.beginLiveTransition();
+		try {
+			await this.bootstrapRoomState();
+		} finally {
+			// 兜底:上面每条提前 return 的路径也要把窗口关掉,不能让标志漏到下一次事件。
+			this.finishLiveTransition();
+		}
+	}
+
+	/** {@link bootstrap} 装好 listener 之后的部分,整段跑在「翻成在播」窗口里。 */
+	private async bootstrapRoomState(): Promise<void> {
 		if (
 			!(await this.useLiveRoomInfo(LiveType.FirstLiveBroadcast)) ||
 			!(await this.useMasterInfo(LiveType.FirstLiveBroadcast)) ||
@@ -271,6 +344,14 @@ export abstract class RoomSessionBase {
 					messageLayout,
 					roomLink,
 				});
+			}
+			// 卡片推送也在窗口内,所以裁决放在最后一刻:这几秒里 UP 停播的话,翻成
+			// 在播就再没有第二条 END 能把它翻回来了。
+			if (this.finishLiveTransition()) {
+				this.ctx.logger.info(
+					`[live] 直播间 [${this.sub.roomId}] 启动期间已收到下播事件，不按在播处理`,
+				);
+				return;
 			}
 			// P2:与 onLiveStart 同序(先 setLiveStatus 再 arm)。此前 bootstrap
 			// 反着写,当前无害但语义不一致 —— 统一为「先翻状态再 arm 周期复推」。
@@ -497,13 +578,13 @@ export abstract class RoomSessionBase {
 	 * 避免把等待窗口的 N 分钟算进「已播时长」(M2)。
 	 */
 	protected async handleLiveEnd(
-		source: "ws" | "polling" | "grace",
+		source: "ws" | "polling" | "grace" | "giveup",
 		precomputedDiffTime?: string,
 	): Promise<void> {
 		if (!this.liveStatus) {
 			// 正处在「翻成在播」的 await 窗口里 —— 这条 END 是真的,不能当重复事件丢掉。
 			// 记下来,由那边在翻状态前自行收口。
-			if (this.transitioningToLive) this.endArrivedWhileTransitioning = true;
+			this.noteEndDuringTransition();
 			this.ctx.logger.warn(
 				`[live] 直播间 [${this.sub.roomId}] 已经是下播状态，忽略 (source=${source})`,
 			);
