@@ -76,15 +76,21 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 	/** 当前仍在播的 UID。关服时据此补下播帧;正常下播会把它摘掉。 */
 	const openLive = new Set<string>();
 	/**
-	 * per-UID 本场已经用过的 `startedAt` —— **场次身份的最后一道闸**。
+	 * per-UID 本场已经用过的 `startedAt` —— 只在 **live_time 用不了** 时兜底。
 	 *
 	 * 正常情况下引擎给的是 B 站 live_time,同一场无论被观测多少次都是同一个值。
 	 * 但 live_time 缺失 / 解析不出时两侧都回退到「此刻」,而同一场会被重连核对、
 	 * 重启 bootstrap 反复观测到 —— 两个「此刻」差着几秒,store 按 startedAt 精确
 	 * 认场次,这一场就裂成两条区间重叠的记录,场次数与总时长一起虚高。
 	 *
-	 * 记住第一次用的值,这一场结束(或该 UP 被退订)前一律复用。只在进程内有效:
-	 * 重启后本就走 bootstrap 重新观测,那时 live_time 通常已经拿得到了。
+	 * **它排在 live_time 之后,不是之前。** 曾经反过来写(先查闩再解析),于是闩
+	 * 一旦过期就会把新一场按到旧一场的身份上:auth-lost 走 `LiveEngine.teardown()`
+	 * → `disposeAll()`,逐个 cancel 但**不发 idle**(只有 stopForUid 才发),闩就留
+	 * 在了原地;隔天重新登录后 bootstrap 带着新的 live_time 发 live,却被闩改写回
+	 * 昨天那个身份 —— 两场各约 3 小时被并成一场 27 小时,还是写进 append-only 文件,
+	 * 事后无法修。live_time 拿得到时它**就是**这一场的身份,没有第二个说法。
+	 *
+	 * 只在进程内有效;`auth-lost` 时一并清掉(那之后没人在观测,记着的都不作数)。
 	 */
 	const openStart = new Map<string, string>();
 	const handles: Disposable[] = [];
@@ -129,9 +135,9 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 			if (status === "live") {
 				peaks.delete(uid);
 				openLive.add(uid);
-				// 本场已经落过盘就沿用原值,别让回退到「此刻」的那条路径每观测一次
-				// 就换一个身份。
-				const startIso = openStart.get(uid) ?? liveStartIso(startedAt, at) ?? ts;
+				// live_time 可用即以它为准;只有它用不了时才沿用本场记住的值,免得
+				// 回退到「此刻」的那条路径每观测一次就换一个身份(顺序见 openStart)。
+				const startIso = liveStartIso(startedAt, at) ?? openStart.get(uid) ?? ts;
 				openStart.set(uid, startIso);
 				opts.store.openLiveSession(uid, startIso).catch(swallow(`openLiveSession ${uid}`));
 				return;
@@ -147,6 +153,21 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 			opts.store
 				.closeLiveSession(uid, liveStartIso(startedAt, at) ?? ts, peak?.raw)
 				.catch(swallow(`closeLiveSession ${uid}`));
+		}),
+	);
+
+	handles.push(
+		// cookie 失效 → LiveEngine.teardown() 把所有 listener 拆掉,但**不发 idle**
+		// (disposeAll 只 cancel,发 idle 的只有 stopForUid)。从这一刻起没有任何人在
+		// 观测直播,在飞的场次身份 / 峰值都不再作数 —— 留着的话,重新登录后(可能隔了
+		// 几天)开的新一场会被按到旧身份上,两场并成一场超长直播。
+		//
+		// 不在这里补 end 帧:真实下播时刻我们无从得知,补一个假的比留空更糟。留空时
+		// aggregate 侧 `current && isLive` 均为假,这一场不计入时长,不会无界增长。
+		opts.bus.on("auth-lost", () => {
+			openStart.clear();
+			openLive.clear();
+			peaks.clear();
 		}),
 	);
 

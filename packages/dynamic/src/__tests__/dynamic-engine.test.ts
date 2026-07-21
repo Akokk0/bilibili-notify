@@ -1701,6 +1701,53 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 		expect(detected(b)).toHaveLength(0);
 	});
 
+	/**
+	 * 订阅还在、但这位 UP 的动态推送被关了。
+	 *
+	 * 刻意**走 startDynamicDetector 建表**而不是直接塞锚点 —— 病灶就在建表这一步:
+	 * 锚点表只登记 `sub.dynamic` 为真的 UP。手塞锚点的话测试会空过。
+	 * 另配一个开着开关的 UP,否则订阅表为空、检测任务根本不起。
+	 */
+	const seedStatsOnly = (b: EngineBag, uid: string): void => {
+		b.engine.startDynamicDetector({
+			[uid]: { uid, uname: "UP", dynamic: false },
+			other: { uid: "other", uname: "别人", dynamic: true },
+		} as never);
+	};
+	/** 建表之后才发布 —— 锚点初值是「此刻」,拿旧时间戳的动态一律算已看过。 */
+	const laterThanSeed = () => Math.floor(Date.now() / 1000) + 60;
+
+	it("per-UP 动态推送关掉 → 仍然 emit,只是不推送", async () => {
+		// 契约(platform.ts)明写:「被过滤器屏蔽、被 per-UP 开关关掉、投递失败的动态
+		// 一律照常 emit」。此前锚点表只登记推送开着的 UP,关掉开关的在 `timeline ===
+		// undefined` 处就 continue 了 —— 而 overview 仍会为这位 UP 出一行,且粉丝轮询
+		// 让 hasCoverage 为真,于是投稿/动态给出的是**笃定的 0** 而不是「无记录」。
+		// 一位窗口内投了 40 个视频的 UP 在表里显示 0,AI 锐评还据此给他加冕鸽王。
+		const b = makeEngine();
+		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: laterThanSeed() })]));
+		seedStatsOnly(b, "1");
+		await detect(b.engine);
+		expect(detected(b)).toHaveLength(1);
+		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
+	});
+
+	it("推送关掉的 UP 锚点照常推进 —— 否则每轮把同一条重新 emit 一遍", async () => {
+		const b = makeEngine();
+		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: laterThanSeed() })]));
+		seedStatsOnly(b, "1");
+		await detect(b.engine);
+		await detect(b.engine);
+		expect(detected(b)).toHaveLength(1);
+	});
+
+	it("真退订则连锚点一起清掉,不留孤儿抑制再订阅后的动态", async () => {
+		const b = makeEngine();
+		seedStatsOnly(b, "1");
+		expect(priv(b.engine).dynamicTimelineManager.has("1")).toBe(true);
+		b.engine.applyOps([{ type: "delete", uid: "1" }]);
+		expect(priv(b.engine).dynamicTimelineManager.has("1")).toBe(false);
+	});
+
 	it("被过滤器屏蔽 → 仍然 emit —— 统计的是 UP 的产出,不是推送次数", async () => {
 		const b = makeEngine({
 			config: { filter: { enable: true, keywords: ["禁词"], notify: false } },

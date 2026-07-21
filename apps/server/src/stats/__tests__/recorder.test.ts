@@ -205,6 +205,43 @@ describe("StatsRecorder — 场次身份在一场之内保持不变", () => {
 		expect(second?.[1]).toBe("2026-05-16T15:00:00.000Z");
 	});
 
+	it("B 站给了真实 live_time 就以它为准,不被记住的旧身份盖住", async () => {
+		// 闩只是为了兜住「live_time 用不了、两侧都回退到此刻」那条路径。live_time
+		// 拿得到时它**就是**这一场的身份,再去查闩反而会把新一场按到旧一场头上。
+		//
+		// 触发链:周一开播 → cookie 失效 → auth-lost → LiveEngine.teardown() →
+		// disposeAll() 逐个 cancel,**不发 idle**(只有 stopForUid 才发)→ 闩留在原地。
+		// 周二重新扫码 → auth-restored → rebuildFromSubs → bootstrap 观测到在播,
+		// 带着周二的 live_time 发 live。查闩的话落盘的是周一那个身份,store 认成
+		// 「同一场又被观测到」,周二的下播帧于是配到周一的开播上 —— 两场约 3 小时
+		// 被并成一场 27 小时,而且写进的是 append-only 文件,事后改不了。
+		const { trigger, store } = setup();
+		trigger("live-state-changed", "1", "live", "2026-05-16T09:00:00.000Z");
+		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
+
+		clock = "2026-05-17T12:00:00.000Z"; // 隔天,期间经历 auth-lost / auth-restored
+		trigger("live-state-changed", "1", "live", "2026-05-17T11:00:00.000Z");
+		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalledTimes(2));
+
+		expect(store.openLiveSession.mock.calls[1]?.[1]).toBe("2026-05-17T11:00:00.000Z");
+	});
+
+	it("auth-lost 清掉在飞的场次身份 —— 监听已经全停,记着的都不再作数", async () => {
+		// live_time 也拿不到的退化情形:光靠「以 live_time 为准」救不回来,因为两次
+		// 都得回退到「此刻」。auth-lost 是明确的「从现在起没人在观测了」信号,在这里
+		// 把在飞状态清干净,下一场才认得出是新的一场。
+		const { trigger, store } = setup();
+		trigger("live-state-changed", "1", "live", "不是时间");
+		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
+
+		trigger("auth-lost");
+		clock = "2026-05-17T12:00:00.000Z";
+		trigger("live-state-changed", "1", "live", "还是不是时间");
+		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalledTimes(2));
+
+		expect(store.openLiveSession.mock.calls[1]?.[1]).toBe("2026-05-17T12:00:00.000Z");
+	});
+
 	it("退订会清掉记住的身份,不残留到重新订阅之后", async () => {
 		const { trigger, store } = setup();
 		trigger("live-state-changed", "1", "live", "不是时间");

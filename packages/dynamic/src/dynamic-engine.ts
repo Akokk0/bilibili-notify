@@ -421,21 +421,24 @@ export class DynamicEngine {
 			this.dynamicJob = undefined;
 		}
 
-		// Build sub manager with only dynamic-enabled subs
+		// 两张表的口径**刻意不同**:
+		//   dynamicTimelineManager —— 「已观测」锚点,覆盖**每一个订阅**
+		//   dynamicSubManager      —— 推送订阅表,只收动态推送开着的
+		// 统计口径是「UP 发了多少」,per-UP 开关只决定推不推(见 platform.ts 的
+		// dynamic-detected 契约)。两者曾是同一张表,于是关掉开关的 UP 在检测循环里
+		// `timeline === undefined` 就被 continue 掉,统计侧给出笃定的 0。
 		const dynamicSubManager: SubManagerView = new Map();
 		for (const sub of Object.values(subs)) {
-			if (sub.dynamic) {
-				// 只为新增 UID 设置初始时间戳，保留已有 UID 的时间戳避免重推旧动态
-				if (!this.dynamicTimelineManager.has(sub.uid)) {
-					this.dynamicTimelineManager.set(sub.uid, Math.floor(DateTime.now().toSeconds()));
-					this.logger.debug(`[detector] 初始化 UID：${sub.uid} 时间戳`);
-				}
-				dynamicSubManager.set(sub.uid, sub);
+			// 只为新增 UID 设置初始时间戳，保留已有 UID 的时间戳避免重推旧动态
+			if (!this.dynamicTimelineManager.has(sub.uid)) {
+				this.dynamicTimelineManager.set(sub.uid, Math.floor(DateTime.now().toSeconds()));
+				this.logger.debug(`[detector] 初始化 UID：${sub.uid} 时间戳`);
 			}
+			if (sub.dynamic) dynamicSubManager.set(sub.uid, sub);
 		}
-		// 清理已移除 UID 的时间戳记录
+		// 清理已**退订** UID 的时间戳记录 —— 判据是「还在不在订阅里」,不是「推送开没开」。
 		for (const uid of this.dynamicTimelineManager.keys()) {
-			if (!dynamicSubManager.has(uid)) {
+			if (!subs[uid]) {
 				this.dynamicTimelineManager.delete(uid);
 				this.logger.debug(`[detector] 清理已移除 UID：${uid} 的时间戳`);
 			}
@@ -476,19 +479,26 @@ export class DynamicEngine {
 		return style?.enable ? style : undefined;
 	}
 
+	/** 建「已观测」锚点(缺则以此刻为起点)。每一个订阅都要有,与推送开关无关。 */
+	private ensureTimelineAnchor(uid: string): void {
+		if (this.dynamicTimelineManager.has(uid)) return;
+		this.dynamicTimelineManager.set(uid, Math.floor(DateTime.now().toSeconds()));
+		this.logger.debug(`[ops] 初始化 UID：${uid} 时间戳`);
+	}
+
 	private startDynamicForUid(uid: string, sub: SubItemView): void {
-		if (!this.dynamicTimelineManager.has(uid)) {
-			this.dynamicTimelineManager.set(uid, Math.floor(DateTime.now().toSeconds()));
-			this.logger.debug(`[ops] 初始化 UID：${uid} 时间戳`);
-		}
+		this.ensureTimelineAnchor(uid);
 		this.dynamicSubManager.set(uid, structuredClone(sub));
 		this.logger.debug(`[ops] 开启动态订阅 UID：${uid}`);
 	}
 
+	/**
+	 * 退出**推送**订阅。刻意不动锚点 —— 它现在覆盖全部订阅,这位 UP 只是关了动态
+	 * 推送,统计还要继续记。真退订时由调用方(applyOps 的 delete 分支)删锚点。
+	 */
 	private stopDynamicForUid(uid: string): void {
 		if (!this.dynamicSubManager.has(uid)) return;
 		this.dynamicSubManager.delete(uid);
-		this.dynamicTimelineManager.delete(uid);
 		this.logger.debug(`[ops] 移除动态订阅 UID：${uid}`);
 	}
 
@@ -516,6 +526,8 @@ export class DynamicEngine {
 		for (const op of ops) {
 			switch (op.type) {
 				case "add": {
+					// 锚点覆盖全部订阅(统计口径),推送订阅表只收开着开关的。
+					this.ensureTimelineAnchor(op.sub.uid);
 					if (!op.sub.dynamic) break;
 					this.startDynamicForUid(op.sub.uid, op.sub);
 					opened++;
@@ -523,6 +535,9 @@ export class DynamicEngine {
 					break;
 				}
 				case "delete": {
+					// 真退订:锚点无论推送开关开没开都要清。漏掉的话会留下一个没人再清的
+					// 孤儿,重新订阅时把它当「已看到这个时刻为止」,长期抑制该 UP 的动态。
+					this.dynamicTimelineManager.delete(op.uid);
 					if (!this.dynamicSubManager.has(op.uid)) break;
 					this.stopDynamicForUid(op.uid);
 					removed++;
@@ -695,6 +710,14 @@ export class DynamicEngine {
 				type: item.type,
 				ts: new Date(postTime * 1000).toISOString(),
 			});
+
+			// 这位 UP 关了动态推送:统计已经记上,推送就到此为止。锚点仍要推进 ——
+			// 不推进的话每一轮都会把同一条重新 emit 一遍(store 按 id 去重兜得住,
+			// 但每次都要整份重读 jsonl,白烧盘)。
+			if (!this.dynamicSubManager.has(uid)) {
+				markOk(uid, postTime);
+				continue;
+			}
 
 			// P2:捕获本轮处理起点的 sub 对象引用,跨 await 后用它做身份校验,
 			// 区分「仍是同一订阅」与「同 uid 被 delete+re-add 成另一个」。
@@ -983,9 +1006,10 @@ export class DynamicEngine {
 		// 最大成功 pub_ts;无失败则推进到最大成功项。max(existing,…) 绝不回退,
 		// 失败项及其后(更早)成功项下轮重试/重推,绝不静默越过失败项丢动态。
 		for (const uid of new Set([...Object.keys(okTs), ...Object.keys(failTs)])) {
-			// applyOps 本轮删过的 UID:时间线已被 stopDynamicForUid 删除,这里
-			// 再 set 等于复活孤儿锚点,跳过(A7)。
-			if (!this.stillSubscribed(uid)) {
+			// applyOps 本轮退订过的 UID:锚点已被 delete 分支清掉,这里再 set 等于
+			// 复活孤儿锚点,跳过(A7)。判据用锚点本身而不是推送订阅表 —— 后者不含
+			// 「关了动态推送但仍订阅」的 UP,拿它判会让这些 UP 的锚点永不推进。
+			if (!this.dynamicTimelineManager.has(uid)) {
 				this.logger.debug(`[timeline] UID=${uid} 已退订，跳过时间线回写（不复活）`);
 				continue;
 			}
