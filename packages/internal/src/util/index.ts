@@ -3,4 +3,5 @@ export * from "./interpolate";
 export * from "./quiet-hours";
 export * from "./regex-safety";
 export * from "./retry";
+export * from "./up-color";
 export * from "./with-lock";
