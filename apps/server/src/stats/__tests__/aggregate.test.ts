@@ -13,6 +13,7 @@ import {
 	dailyFansSeries,
 	localDayKey,
 	summarizeLiveSessions,
+	windowSinceIso,
 } from "../aggregate.js";
 
 /** UTC+8 的 getTimezoneOffset() 口径。 */
@@ -462,5 +463,59 @@ describe("summarizeLiveSessions — 观看数字符串的解析", () => {
 		const got = summarizeLiveSessions(withPeak("???"));
 		expect(got.peakViewers).toBeNull();
 		expect(got.avgPeakViewers).toBeNull();
+	});
+});
+
+describe("windowSinceIso — 窗口起点对齐本地日边界", () => {
+	// 页面上每条序列都按本地日分桶,而窗口合计数(投稿/动态/场次/时长)是拿这个
+	// 起点直接去筛原始记录的。两把尺子不一致,合计数就会多吃进热力图和净增柱状图
+	// 从未展示过的那小半天。
+	it("起点落在窗口首日的本地 00:00,而不是此刻往前推 N×24 小时", () => {
+		// UTC+8 的客户端在本地 2026-07-21 10:00(= 02:00Z)打开近 30 日。
+		const now = new Date("2026-07-21T02:00:00.000Z");
+		expect(windowSinceIso(30, TZ_CN, now)).toBe("2026-06-21T16:00:00.000Z"); // 本地 06-22 00:00
+	});
+
+	it("与前端日轴的首日严格同一天 —— 这就是「同一把尺子」的定义", () => {
+		const now = new Date("2026-07-21T02:00:00.000Z");
+		const since = windowSinceIso(30, TZ_CN, now);
+		const firstAxisDay = localDayKey(
+			new Date(now.getTime() - 29 * 86_400_000).toISOString(),
+			TZ_CN,
+		);
+		expect(localDayKey(since, TZ_CN)).toBe(firstAxisDay);
+	});
+
+	it("UTC 客户端(tz=0)退化成整日边界", () => {
+		const now = new Date("2026-07-21T10:30:00.000Z");
+		expect(windowSinceIso(7, 0, now)).toBe("2026-07-15T00:00:00.000Z");
+	});
+
+	it("近 1 日 = 今天本地 00:00 起,不是过去 24 小时", () => {
+		const now = new Date("2026-07-21T02:00:00.000Z");
+		expect(windowSinceIso(1, TZ_CN, now)).toBe("2026-07-20T16:00:00.000Z");
+	});
+});
+
+describe("summarizeLiveSessions — 跨窗口起始的在播场次", () => {
+	const NOW = new Date("2026-07-21T02:00:00.000Z");
+	/** 30 小时前开播、此刻仍在播的挂机直播。 */
+	const marathon = [{ startedAt: "2026-07-19T20:00:00.000Z", current: true }];
+
+	it("时长只算窗口内那一段,不把窗口之前的小时数一起报出来", () => {
+		// 近 1 日:窗口起点是本地 07-21 00:00(= 07-20T16:00Z),到此刻 10 小时。
+		const since = windowSinceIso(1, TZ_CN, NOW);
+		const got = summarizeLiveSessions(marathon, {
+			now: NOW,
+			isLive: true,
+			sinceMs: Date.parse(since),
+		});
+		expect(got.hours).toBeCloseTo(10, 5);
+		expect(got.sessions).toBe(1);
+	});
+
+	it("不给 sinceMs 时照旧算整场 —— 既有调用方语义不变", () => {
+		const got = summarizeLiveSessions(marathon, { now: NOW, isLive: true });
+		expect(got.hours).toBeCloseTo(30, 5);
 	});
 });

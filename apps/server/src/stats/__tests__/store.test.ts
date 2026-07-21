@@ -103,6 +103,21 @@ describe("StatsStore — 直播场次", () => {
 		expect(got).toEqual([{ startedAt: T(1), current: true }]);
 	});
 
+	it("跨窗口起始但仍在播的那场留得住 —— 它正是徽章指的那一场", async () => {
+		// 30 小时的挂机直播,用户选「近 1 日」。单按 startedAt 滤会把它整场滤掉,
+		// 而 hasCoverage 仍为真 → 同一行里「直播中」徽章亮着、旁边写「场次 0 /
+		// 时长 0.0h」,AI 锐评也被告知这位 UP 一场没播。窗口之前的那段时长由
+		// aggregate 的 sinceMs 夹掉,不会记到本窗口头上。
+		await store.openLiveSession("1", T(1));
+		expect(await store.listLiveSessions("1", T(5))).toEqual([{ startedAt: T(1), current: true }]);
+	});
+
+	it("跨窗口起始且**已闭合**的那场照旧滤掉 —— 只有在播的才破例", async () => {
+		await store.openLiveSession("1", T(1));
+		await store.closeLiveSession("1", T(2));
+		expect(await store.listLiveSessions("1", T(5))).toEqual([]);
+	});
+
 	it("连续两个 start → 前一场留作未闭合,不吞掉", async () => {
 		await store.openLiveSession("1", T(1));
 		await store.openLiveSession("1", T(5));

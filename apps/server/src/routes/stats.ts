@@ -12,6 +12,7 @@ import {
 	dailyFansSeries,
 	localDayKey,
 	summarizeLiveSessions,
+	windowSinceIso,
 } from "../stats/aggregate.js";
 import {
 	buildRoastPrompt,
@@ -110,7 +111,11 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 			return c.json<StatsOverviewResponse>(hit.payload);
 		}
 
-		const since = new Date(Date.now() - days * 86_400_000).toISOString();
+		// 窗口起点对齐**本地日边界**,与页面上按本地日分桶的每一条序列同一把尺子
+		// (详见 windowSinceIso)。用滚动的 N×24 小时会让合计数多吃进日轴从未画过的
+		// 那小半天,KPI 与紧挨着它的热力图对不上。
+		const since = windowSinceIso(days, tzOffsetMin);
+		const sinceMs = Date.parse(since);
 		// 活动采集的起始日:早于它的日子没有活动数据可言,热力图必须显示成
 		// 「无记录」而不是「活跃度 0」。详见 StatsStore.recordingSince 的说明。
 		const recordingSinceDay = localDayKey(
@@ -184,7 +189,7 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 				activity.some((v) => v !== null) || events.length > 0 || sessions.length > 0;
 			const counts = countDynamics(events);
 			// 在播状态来自引擎(唯一权威),用来区分「这场正在播」与「end 帧丢了」。
-			const live = summarizeLiveSessions(sessions, { isLive: liveUids.has(sub.uid) });
+			const live = summarizeLiveSessions(sessions, { isLive: liveUids.has(sub.uid), sinceMs });
 
 			// 最后活动 = 最近一条动态 与 最近一次开播 里更晚的那个。两者都没有
 			// 就是 null —— 这正是设计稿「鸽子榜」要的信号,不能拿窗口起点顶替。

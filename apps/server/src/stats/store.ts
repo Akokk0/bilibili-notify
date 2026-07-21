@@ -269,7 +269,12 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 			// 拿引擎的 isLive 拍板 —— 曾经这里卡着 `!open.endedAt`,于是「直播中重启」
 			// 这条最常见的路径上时长被永久冻结在关服那一刻。
 			if (open) open.current = true;
-			return sessions.filter((s) => s.startedAt >= sinceIso);
+			// `current` 那一场无论起于何时都要留下 —— 它就是「此刻可能正在播」的那场,
+			// 前端同一行正亮着直播中徽章。单按 startedAt 滤的话,跨窗口起始的挂机直播
+			// 会整场消失,而 hasCoverage 仍为真,于是「直播场次 0 / 直播时长 0.0h」与
+			// 徽章在同一行里互相打脸,AI 锐评也被告知这位 UP 一场没播。
+			// 窗口之前的那段时长由 aggregate 的 sinceMs 夹掉,不会记到本窗口头上。
+			return sessions.filter((s) => s.current === true || s.startedAt >= sinceIso);
 		},
 
 		recordingSince: readSince,

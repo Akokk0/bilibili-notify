@@ -40,6 +40,27 @@ export function localDayKey(iso: string, tzOffsetMin = 0): string | null {
 	return new Date(ms - tzOffsetMin * 60_000).toISOString().slice(0, 10);
 }
 
+/**
+ * 窗口起点 —— **窗口首日的本地 00:00**,不是「此刻往前推 N×24 小时」。
+ *
+ * 页面上每条序列都按本地日分桶(`dailyFansSeries` / `dailyActivityCounts`),而窗口
+ * 合计数(投稿 / 动态 / 场次 / 时长)是拿这个起点直接去筛原始记录的。两把尺子不一致
+ * 的话,合计数会多吃进热力图与净增柱状图从未展示过的那小半天:UTC+8 的客户端在本地
+ * 10:00 打开近 30 日,滚动起点落在 06-21 15:00,而日轴从 06-22 起 —— 06-21 傍晚投的
+ * 那个视频让 KPI 写着「投稿 8 个」,同一块面板的热力图只算得出 7。时区偏移越大漏得
+ * 越多,极端情况整整多进一天。
+ *
+ * 与前端 `dayAxis(days)` 的首日严格同一天,那正是「同一把尺子」的定义。
+ */
+export function windowSinceIso(days: number, tzOffsetMin: number, now = new Date()): string {
+	const firstDayMs = now.getTime() - (days - 1) * 86_400_000;
+	const firstDay = localDayKey(new Date(firstDayMs).toISOString(), tzOffsetMin);
+	// localDayKey 只在时间戳不可解析时返回 null,这里的输入恒合法;真出岔子就退回
+	// 旧的滚动口径,总比抛出去让整个 overview 挂掉强。
+	if (!firstDay) return new Date(now.getTime() - days * 86_400_000).toISOString();
+	return new Date(Date.parse(`${firstDay}T00:00:00.000Z`) + tzOffsetMin * 60_000).toISOString();
+}
+
 export interface DynamicCounts {
 	archives: number;
 	dynamics: number;
@@ -198,7 +219,7 @@ function parseViewers(raw: string): number {
 
 export function summarizeLiveSessions(
 	sessions: readonly LiveSessionRecord[],
-	opts: { now?: Date; isLive?: boolean } = {},
+	opts: { now?: Date; isLive?: boolean; sinceMs?: number } = {},
 ): LiveSummary {
 	const nowMs = (opts.now ?? new Date()).getTime();
 	let hours = 0;
@@ -229,7 +250,12 @@ export function summarizeLiveSessions(
 		if (s.endedAt || inProgress) {
 			// 进行中优先于盘上那帧 end:它是被截断的,不是真的下播时刻。
 			const endMs = inProgress ? nowMs : Date.parse(s.endedAt as string);
-			const ms = endMs - Date.parse(s.startedAt);
+			// 起点夹到窗口内。`listLiveSessions` 会放行**跨窗口起始且仍在播**的那一场
+			// (否则 30 小时的挂机直播在「近 1 日」里整场消失,而同一行还亮着直播中
+			// 徽章),但它窗口之前的那段小时数不该记到这个窗口头上。其余场次的
+			// startedAt 本就 ≥ 窗口起点,这里是 no-op。
+			const startMs = Math.max(Date.parse(s.startedAt), opts.sinceMs ?? Number.NEGATIVE_INFINITY);
+			const ms = endMs - startMs;
 			// 只有真的算出一个可用时长,这一场才既进 `hours` 也进分母。
 			//
 			// 二者必须同进同退:曾经 `timedSessions++` 提在这个判断之外,于是
