@@ -1,7 +1,9 @@
 import type { StatsSoloRoastResponse, StatsSoloRoastResult } from "@bilibili-notify/contract";
 import { useMutation } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Avatar } from "../../components/atoms";
 import { api } from "../../services/api";
+import { localTzOffset } from "../../services/stats";
 import { ROAST_PURPLE, RoastShell, roastError } from "./RoastShell";
 
 /**
@@ -24,8 +26,20 @@ export function SoloRoastCard({
 	days: number;
 }) {
 	const roast = useMutation<StatsSoloRoastResponse>({
-		mutationFn: () => api.post<StatsSoloRoastResponse>(`/api/stats/roast/${uid}?days=${days}`, {}),
+		// tz 同 RoastCard:漏了服务端就按 UTC 重算 overview,模型看到的不是屏幕上那份数。
+		mutationFn: () =>
+			api.post<StatsSoloRoastResponse>(
+				`/api/stats/roast/${uid}?days=${days}&tz=${localTzOffset()}`,
+				{},
+			),
 	});
+
+	// 换时间范围要清掉上一份结论:组件的 key 只含 uid,切 days 不会重挂载,
+	// 30 日的评分会原样留在写着「近7日」的卡里。
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 就是要在 days 变化时清掉
+	useEffect(() => {
+		roast.reset();
+	}, [days]);
 
 	const result: StatsSoloRoastResult | undefined = roast.data?.ok ? roast.data.result : undefined;
 

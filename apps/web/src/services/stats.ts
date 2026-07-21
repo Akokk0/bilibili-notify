@@ -116,36 +116,28 @@ export function computeTotals(res: StatsOverviewResponse): StatsTotals {
 }
 
 /**
- * 由「当前粉丝数 + 每日净增」反推累计粉丝曲线。
+ * 累计粉丝曲线 —— 直接用服务端给的每日末值,只把末位换成更新的快照。
  *
- * 服务端不直接给累计序列:它已经给了当前值和每日净增,反推是无损的,再传一份
- * 只是把同样的信息在网线上抄两遍。遇到 `null`(那天没记录)就无法继续回溯,
- * 更早的点一律置 null —— 硬猜会画出一条看着很真、其实是编的曲线。
+ * 曾经这里由「当前粉丝数 + 每日净增」**反推**,理由写着「反推是无损的,再传一份
+ * 只是把同样的信息在网线上抄两遍」。那个前提是错的:
+ *
+ *   · 服务端的 net 口径是「当日末值 − **前一个有数据的日**的末值」,而窗口内第一个
+ *     有数据的日没有基线,net 恒为 null。反推靠 net 判断「哪天有数据」,于是恰好把
+ *     它当成没数据跳过 —— 明明由后一天减得出来,曲线却白白晚起一天;
+ *   · 今天还没采到样本时(轮询在风控退避中,或页面刚过本地零点打开),末位 net 为
+ *     null,回溯第一轮就断,整条 30 天曲线塌成孤零零一个圆点。
+ *
+ * 两处都不是能靠调回溯启发式补上的 —— 索引信息在只传 net 的那一刻就丢了。
+ * 服务端现在照常把 `cumulative` 一并给出。
  */
 export function cumulativeFans(
 	current: number | null,
-	series: ReadonlyArray<number | null>,
+	cumulative: ReadonlyArray<number | null>,
 ): Array<number | null> {
-	const out: Array<number | null> = new Array(series.length).fill(null);
-	if (current === null || series.length === 0) return out;
-	out[series.length - 1] = current;
-	// 逐步跳到「上一个有数据的日」,而不是逐格往前退一天。
-	//
-	// 服务端的 net 口径是「当日末值 − **前一个有数据的日**的末值」(见 aggregate.ts
-	// 的 priorValue),断档时那不是前一天。曾经无条件 `out[i] = out[i+1] − series[i+1]`,
-	// 于是差值被记到没记录的那天上、真正有值的那天反被 break 置 null —— 恰好画反,
-	// 断档越长错得越远。
-	let i = series.length - 1;
-	while (i >= 0) {
-		const cur = out[i];
-		const delta = series[i];
-		if (cur === null || delta === null || delta === undefined) break;
-		let prevDay = i - 1;
-		while (prevDay >= 0 && series[prevDay] === null) prevDay--;
-		if (prevDay < 0) break;
-		out[prevDay] = cur - delta;
-		i = prevDay;
-	}
+	const out = [...cumulative];
+	// 末位优先用 poller 的最新快照:它比当日最后一条采样更新,而这条线的右端点
+	// 正是 KPI 上那个「当前粉丝数」,两者对不上会很显眼。
+	if (current !== null && out.length > 0) out[out.length - 1] = current;
 	return out;
 }
 
@@ -174,6 +166,22 @@ export function coveredDayCount(activity: ReadonlyArray<number | null> | undefin
 	let n = 0;
 	for (const v of activity) if (v !== null) n++;
 	return n;
+}
+
+/**
+ * 有采集覆盖的那些天的活动总数 —— 「日均活动」的**分子**,与 {@link coveredDayCount}
+ * 这个分母同一把尺子。
+ *
+ * 拿窗口合计数当分子是不对的:那个数没有被覆盖遮罩过。单订阅的 UP 被禁用再启用会让
+ * fans jsonl 被 `dropUid` 物理删掉,覆盖天数塌成 1 天,而统计 jsonl 里三个月的 60 次
+ * 活动原封不动 —— 卡片于是写着「60.0 次 / 天 · 已记录1日」,紧挨着一张 90 格空了
+ * 89 格的热力图。
+ */
+export function coveredActivityTotal(activity: ReadonlyArray<number | null> | undefined): number {
+	if (!activity) return 0;
+	let sum = 0;
+	for (const v of activity) if (v !== null) sum += v;
+	return sum;
 }
 
 /**

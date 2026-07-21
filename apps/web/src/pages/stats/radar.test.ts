@@ -18,6 +18,7 @@ function row(over: Partial<UpStatsRow> = {}): UpStatsRow {
 		net7d: 100,
 		netWindow: 100,
 		series: [],
+		cumulative: [],
 		activity: [],
 		archives: 2,
 		dynamics: 5,

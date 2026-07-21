@@ -2,8 +2,8 @@ import { useLayoutEffect, useRef, useState } from "react";
 import {
 	compactSeries,
 	extent,
+	formatAxisWan,
 	formatSignedWan,
-	formatWan,
 	heatAxisLabels,
 	heatCellStyle,
 	niceTicks,
@@ -167,6 +167,7 @@ export function TrendChart({
 		min,
 		max,
 		ticks: tickVals,
+		step,
 	} = niceTicks(ext.min, ext.max, {
 		includeZero: !absolute,
 		// 粉丝数与净增都是人数,刻度不该出现 0.5。
@@ -176,7 +177,9 @@ export function TrendChart({
 	const n = series[0]?.data.length ?? 0;
 	const X = (i: number) => pad.l + (n > 1 ? (i / (n - 1)) * iw : iw / 2);
 	const Y = (v: number) => pad.t + ih - ((v - min) / (max - min)) * ih;
-	const fmt = absolute ? formatWan : formatSignedWan;
+	// 刻度标签的小数位数按**步长**定,不按数值大小定 —— 否则 227 万粉的曲线会画出
+	// 三条标着「227万」的网格线(见 formatAxisWan)。
+	const fmt = (v: number) => (absolute ? formatAxisWan(v, step) : formatSignedWan(v));
 	const baseY = absolute ? pad.t + ih : Y(0);
 
 	return (

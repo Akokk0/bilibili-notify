@@ -92,6 +92,32 @@ function sumTail(series: Array<number | null>, n: number): number | null {
 	return seen ? sum : null;
 }
 
+/**
+ * 两处锐评共用的取数:内部代理一次自己的 `/overview`。
+ *
+ * **必须先看状态码再 `.json()`。** `/overview` 一旦抛错(某个 store 方法在 try 之外
+ * reject),Hono 默认的 onError 回的是纯文本 `Internal Server Error`,对它调 `.json()`
+ * 会 reject 出 `SyntaxError: Unexpected token 'I'`;那个异常逃出 handler 后变成一个
+ * 没有 body 的裸 500,前端只能显示一行生硬的 `POST /api/stats/roast → 500`。
+ * 这条路由里其他每一个错误分支都精心返回了可读的 `err`,这里不能例外。
+ */
+async function fetchOverview(
+	app: Hono,
+	days: number,
+	tz: number,
+): Promise<StatsOverviewResponse | null> {
+	const res = await app.request(`/overview?days=${days}&tz=${tz}`);
+	if (!res.ok) return null;
+	try {
+		return (await res.json()) as StatsOverviewResponse;
+	} catch {
+		return null;
+	}
+}
+
+/** 取数失败时给用户的话。两处锐评同一套措辞。 */
+const OVERVIEW_FAILED = "统计数据读取失败,请稍后重试";
+
 export function createStatsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 	const cache = new Map<string, CacheEntry>();
@@ -100,11 +126,26 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 		const days = clampDays(c.req.query("days"));
 		const tzOffsetMin = parseTz(c.req.query("tz"));
 		const subs = deps.store.getSubscriptions();
-		// 订阅集合是输出的一部分,所以也必须进 key。只有 `days:tz` 的话:退订后
-		// recorder 已经 `dropUid` 物理删掉了那位 UP 的 jsonl,前端却还能从缓存里
-		// 读到他一整行(数据背后的文件已不存在);刚加的订阅同理要等满 TTL 才出现。
-		// 不排序 —— rows 的顺序就跟着 subs 走,顺序变了输出也变。
-		const key = `${days}:${tzOffsetMin}:${subs.map((s) => s.uid).join(",")}`;
+		// 这两份是**内存快照**,不经 jsonl —— 也就是说它们跟 TTL 没有半点关系,
+		// 必须自己进 key(见下方 key 的说明)。放在缓存查询之前取。
+		const liveUids = new Set(
+			(deps.runtime.engines?.listLiveRooms() ?? []).filter((r) => r.isLive).map((r) => r.uid),
+		);
+		const fansByUid = new Map(
+			(deps.runtime.fansPoller?.getLastEntries() ?? []).map((e) => [e.uid, e]),
+		);
+		// key 必须覆盖**响应里所有会变的输入**,否则缓存就在替页面撒谎。
+		//
+		// 订阅集合:退订后 recorder 已经 `dropUid` 物理删掉了那位 UP 的 jsonl,前端
+		// 却还能从缓存里读到他一整行(数据背后的文件已不存在);刚加的订阅同理要等
+		// 满 TTL 才出现。不排序 —— rows 的顺序就跟着 subs 走,顺序变了输出也变。
+		//
+		// 在播状态 / 粉丝快照:两者都被原样嵌进响应,却都不来自被 TTL 兜住的 jsonl。
+		// 漏掉在播状态的话,UP 一开播,统计页最长 30 秒仍报 live:false,而同一屏的
+		// 「正在直播」面板走 WS 实时喂、早就亮了 —— 两块面板互相打脸,点刷新也没用。
+		const liveKey = [...liveUids].sort().join(",");
+		const fansKey = subs.map((s) => fansByUid.get(s.uid)?.current ?? "").join(",");
+		const key = `${days}:${tzOffsetMin}:${subs.map((s) => s.uid).join(",")}|${liveKey}|${fansKey}`;
 
 		const hit = cache.get(key);
 		if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
@@ -121,12 +162,6 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 		const recordingSinceDay = localDayKey(
 			await deps.runtime.statsStore.recordingSince(),
 			tzOffsetMin,
-		);
-		const liveUids = new Set(
-			(deps.runtime.engines?.listLiveRooms() ?? []).filter((r) => r.isLive).map((r) => r.uid),
-		);
-		const fansByUid = new Map(
-			(deps.runtime.fansPoller?.getLastEntries() ?? []).map((e) => [e.uid, e]),
 		);
 
 		// 先把每位 UP 的原始序列取回来。热力图的遮罩要用到**跨 UP** 的全局事实,
@@ -217,6 +252,7 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 				net7d: days >= 7 ? sumTail(series, 7) : null,
 				netWindow: sumTail(series, days),
 				series,
+				cumulative: daily.map((p) => p.value),
 				activity,
 				// 与 `activity` 同一把尺子:窗口内一天都没覆盖到时,这些计数不是 0
 				// 而是「不知道」。0 会被读成「这位 UP 什么都没发」,而热力图同一行
@@ -264,9 +300,10 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 		}
 
 		const days = clampDays(c.req.query("days"));
-		const overview = (await (
-			await app.request(`/overview?days=${days}&tz=${parseTz(c.req.query("tz"))}`)
-		).json()) as StatsOverviewResponse;
+		const overview = await fetchOverview(app, days, parseTz(c.req.query("tz")));
+		if (!overview) {
+			return c.json<StatsRoastResponse>({ ok: false, err: OVERVIEW_FAILED }, 500);
+		}
 
 		// 名称在 SubRuntimeStore(cachedProfile 是外置运行时数据,不在配置里),
 		// 与 `/api/subs` 的 join 同源。
@@ -346,9 +383,10 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 		}
 
 		const days = clampDays(c.req.query("days"));
-		const overview = (await (
-			await app.request(`/overview?days=${days}&tz=${parseTz(c.req.query("tz"))}`)
-		).json()) as StatsOverviewResponse;
+		const overview = await fetchOverview(app, days, parseTz(c.req.query("tz")));
+		if (!overview) {
+			return c.json<StatsSoloRoastResponse>({ ok: false, err: OVERVIEW_FAILED }, 500);
+		}
 		const row = overview.rows.find((r) => r.uid === uid);
 		if (!row) {
 			return c.json<StatsSoloRoastResponse>({ ok: false, err: "该 UP 主暂无统计数据" }, 404);

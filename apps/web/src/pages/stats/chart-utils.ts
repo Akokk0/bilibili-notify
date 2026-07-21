@@ -15,6 +15,29 @@ export function formatWan(n: number): string {
 }
 
 /**
+ * 轴刻度标签 —— 小数位数由**步长**决定,而不是由数值大小决定。
+ *
+ * `formatWan` 是给单个数字看的,百万以上直接取整。拿它标刻度会撞车:227 万粉、
+ * 窗口内涨了约 5 千时,niceTicks 给出步长 2000 的四条刻度,标签却全成了
+ * 「227万 / 227万 / 227万 / 228万」—— 三条网格线一模一样,读图的人根本判断不出
+ * 一格值多少,这条轴等于没传达任何刻度信息。
+ *
+ * 精度取「刚好让相邻刻度不相同」所需的位数,上限 2 位:再多标签就长得挤不下,
+ * 而 niceTicks 的步长恒为 1/2/5×10ⁿ,两位小数已覆盖到步长 100。
+ */
+export function formatAxisWan(n: number, step: number): string {
+	const abs = Math.abs(n);
+	if (abs < 10_000) return String(Math.round(n));
+	const stepWan = Math.abs(step) / 10_000;
+	const digits = Math.min(2, Math.max(0, Math.ceil(-Math.log10(stepWan))));
+	const fixed = (n / 10_000).toFixed(digits);
+	// 尾随的 .0 / .00 去掉,但**只在真有小数位时**才去 —— 否则 "230" 会被当成
+	// 尾随零一路啃成 "23",230万 凭空缩水十倍。
+	const trimmed = digits > 0 ? fixed.replace(/\.?0+$/, "") : fixed;
+	return `${trimmed}万`;
+}
+
+/**
  * 带符号的净增值。负号用真减号 U+2212 而不是 ASCII 连字符 —— 等宽字体里
  * 连字符又短又靠上,一列数字排下来正负对不齐。
  */
@@ -75,7 +98,7 @@ export function niceTicks(
 		 */
 		integer?: boolean;
 	} = {},
-): { min: number; max: number; ticks: number[] } {
+): { min: number; max: number; ticks: number[]; step: number } {
 	const targetCount = opts.count ?? 4;
 	const includeZero = opts.includeZero ?? true;
 	let lo = includeZero ? Math.min(rawMin, 0) : rawMin;
@@ -106,7 +129,9 @@ export function niceTicks(
 	for (let i = 0; i <= count; i++) {
 		ticks.push(Number((min + i * step).toPrecision(12)));
 	}
-	return { min, max, ticks };
+	// step 一并给出:刻度标签的小数位数要按它定,否则相邻刻度会标成同一个数
+	// (见 formatAxisWan)。
+	return { min, max, ticks, step };
 }
 
 /**

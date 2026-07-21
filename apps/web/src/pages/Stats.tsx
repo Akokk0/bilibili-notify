@@ -8,6 +8,7 @@ import { api } from "../services/api";
 import {
 	activityLevel,
 	computeTotals,
+	coveredActivityTotal,
 	coveredDayCount,
 	cumulativeFans,
 	dayAxis,
@@ -326,6 +327,7 @@ function ContentMix({
 	lives,
 	days,
 	coveredDays,
+	coveredTotal,
 }: {
 	dynamics: number | null;
 	archives: number | null;
@@ -336,6 +338,11 @@ function ContentMix({
 	 * 我们在记的那些天,分母却把没在记的也算进去,日均会被摊薄成一个假的小数。
 	 */
 	coveredDays: number;
+	/**
+	 * 有覆盖那些天的活动合计 —— 「日均活动」的分子,与 `coveredDays` 同一把尺子。
+	 * 上面那个 `total` 是**窗口合计**、没被覆盖遮罩过,拿它当分子会把日均抬高几十倍。
+	 */
+	coveredTotal: number;
 }) {
 	// 「没在记」与「在记但没动静」是两回事,空态文案也得分开 —— 否则老库升级后
 	// 点开近 90 日,会看到一句「还没有发过任何内容」扣在一位高产 UP 头上。
@@ -371,7 +378,7 @@ function ContentMix({
 				<div className="flex flex-col gap-1">
 					<div className="text-[11px] text-bn-text-secondary">日均活动</div>
 					<div className="font-mono text-2xl font-bold leading-none" style={{ color: PURPLE }}>
-						{coveredDays > 0 ? (total / coveredDays).toFixed(1) : "—"}
+						{coveredDays > 0 ? (coveredTotal / coveredDays).toFixed(1) : "—"}
 					</div>
 					<div className="text-[10.5px] text-bn-text-secondary">
 						次 / 天 · {coveredDays < days ? `已记录${coveredDays}日` : `近${days}日`}
@@ -735,6 +742,7 @@ export default function Stats() {
 						lives={focused ? focused.liveSessions : (totals?.liveSessions ?? null)}
 						days={days}
 						coveredDays={coveredDayCount(focused ? focused.activity : totals?.activity)}
+						coveredTotal={coveredActivityTotal(focused ? focused.activity : totals?.activity)}
 					/>
 				</GlassPanel>
 

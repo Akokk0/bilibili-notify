@@ -1,7 +1,9 @@
 import type { StatsRoastResponse, StatsRoastResult } from "@bilibili-notify/contract";
 import { useMutation } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Avatar } from "../../components/atoms";
 import { api } from "../../services/api";
+import { localTzOffset } from "../../services/stats";
 import { ROAST_PURPLE, RoastShell, roastError } from "./RoastShell";
 
 interface UpMeta {
@@ -18,8 +20,18 @@ interface UpMeta {
  */
 export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMeta> }) {
 	const roast = useMutation<StatsRoastResponse>({
-		mutationFn: () => api.post<StatsRoastResponse>(`/api/stats/roast?days=${days}`, {}),
+		// 必须带 tz:服务端会拿这两个参数重算一遍 overview,漏了就按 parseTz(undefined)
+		// = UTC 分桶,喂给模型的净增与屏幕上的数对不上,榜单也是据此排的。
+		mutationFn: () =>
+			api.post<StatsRoastResponse>(`/api/stats/roast?days=${days}&tz=${localTzOffset()}`, {}),
 	});
+
+	// 换了时间范围,上一份结论讲的是另一个窗口 —— 留在屏幕上会被 RoastShell 的副标题
+	// 和评分说明重新标成新窗口的结论,用户看到的是贴着「近7日」标签的 30 日数字。
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 就是要在 days 变化时清掉
+	useEffect(() => {
+		roast.reset();
+	}, [days]);
 
 	const result: StatsRoastResult | undefined = roast.data?.ok ? roast.data.result : undefined;
 

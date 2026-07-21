@@ -31,6 +31,7 @@ const row: UpStatsRow = {
 	// 场均时长的分母,不参与表格列。
 	liveTimedSessions: 44,
 	series: [],
+	cumulative: [],
 	activity: [],
 	avgPeakViewers: null,
 	lastActivityAt: null,

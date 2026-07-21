@@ -21,6 +21,7 @@ function sentinel(over: Partial<UpStatsRow> = {}): UpStatsRow {
 		net7d: 3,
 		netWindow: 4,
 		series: [],
+		cumulative: [],
 		activity: [],
 		archives: 5,
 		dynamics: 6,

@@ -10,6 +10,7 @@ import {
 	compactSeries,
 	dash,
 	extent,
+	formatAxisWan,
 	formatSignedWan,
 	formatWan,
 	heatAxisLabels,
@@ -291,5 +292,41 @@ describe("signTone —— null 是独立一档,不能归零", () => {
 		expect(signTone(0)).toBe("positive");
 		expect(signTone(1)).toBe("positive");
 		expect(signTone(-1)).toBe("negative");
+	});
+});
+
+describe("formatAxisWan — 刻度标签按步长定精度", () => {
+	it("百万级小步长不再把相邻刻度标成同一个数", () => {
+		// 227 万粉、窗口内涨了约 5 千:niceTicks 给出步长 2000 的四条刻度,而 formatWan
+		// 在百万以上直接 toFixed(0),四条网格线标成「227万 / 227万 / 227万 / 228万」——
+		// 读图的人根本判断不出一格值多少,这条轴等于没有传达任何刻度信息。
+		const ticks = [2_270_000, 2_272_000, 2_274_000, 2_276_000];
+		const labels = ticks.map((t) => formatAxisWan(t, 2000));
+		expect(new Set(labels).size).toBe(labels.length);
+	});
+
+	it("步长够大时照旧取整,不平白多出小数", () => {
+		expect(formatAxisWan(2_270_000, 100_000)).toBe("227万");
+		expect(formatAxisWan(2_300_000, 100_000)).toBe("230万");
+	});
+
+	it("万以下照旧是原始整数", () => {
+		expect(formatAxisWan(8500, 500)).toBe("8500");
+		expect(formatAxisWan(-120, 20)).toBe("-120");
+	});
+
+	it("与 niceTicks 串起来:任意区间的刻度标签都两两不同", () => {
+		for (const [lo, hi] of [
+			[2_270_000, 2_275_000],
+			[9_800, 10_400],
+			[125_000, 126_000],
+			[0, 12_000_000],
+		] as const) {
+			const { ticks, step } = niceTicks(lo, hi, { includeZero: false, integer: true });
+			const labels = ticks.map((t) => formatAxisWan(Math.round(t), step));
+			expect(new Set(labels).size, `区间 ${lo}..${hi} 的刻度标签撞了:${labels.join(" / ")}`).toBe(
+				labels.length,
+			);
+		}
 	});
 });

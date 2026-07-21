@@ -11,6 +11,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
 	activityLevel,
 	computeTotals,
+	coveredActivityTotal,
 	coveredDayCount,
 	cumulativeFans,
 	dayAxis,
@@ -26,6 +27,7 @@ function row(over: Partial<UpStatsRow> = {}): UpStatsRow {
 		net7d: 7,
 		netWindow: 30,
 		series: [1, 2, 3],
+		cumulative: [100, 102, 105],
 		activity: [0, 1, 2],
 		archives: 1,
 		dynamics: 2,
@@ -111,31 +113,44 @@ describe("computeTotals", () => {
 	});
 });
 
-describe("cumulativeFans — 由当前值与每日净增反推累计曲线", () => {
-	it("末位是当前粉丝数,往前逐日减去净增", () => {
-		// 净增 [_, +10, +20],当前 200 → 前一天 180,再前一天 170
-		expect(cumulativeFans(200, [5, 10, 20])).toEqual([170, 180, 200]);
+describe("cumulativeFans — 粉丝总量曲线", () => {
+	// 曾经这条线由「当前粉丝数 + 每日净增」**反推**,理由写着「反推是无损的」。
+	// 那个前提是错的,两处都推不出来,而且索引信息在只传 net 的那一刻就丢了,
+	// 补不回来 —— 所以服务端现在照常把每日末值(cumulative)一并给出。
+	it("直接用服务端给的每日末值", () => {
+		expect(cumulativeFans(1200, [1000, 1100, 1180])).toEqual([1000, 1100, 1200]);
 	});
 
-	it("断档那天保持 null,差值记到它**之前**那个有数据的日上", () => {
-		// 服务端的 net 是「当日末值 − 前一个**有数据**的日的末值」,不是「减前一天」。
-		// d1 没记录时,d2 的 20 是相对 d0 的,所以 200−20=180 属于 d0 —— 曾经无条件
-		// 记到 d1 上,于是没记录的那天被画出一个编来的值,真正有值的那天反倒空着,
-		// 整条曲线在断档处错位一天(停机 6 天就错 6 天)。
-		expect(cumulativeFans(200, [5, null, 20])).toEqual([180, null, 200]);
+	it("末位换成 poller 的最新快照,它比当日最后一条采样更新", () => {
+		// 曲线右端点就是 KPI 上那个「当前粉丝数」,两者对不上会很显眼。
+		expect(cumulativeFans(1200, [1000, 1100, 1180])[2]).toBe(1200);
 	});
 
-	it("连续断档也只把值落在有数据的那几天上", () => {
-		// d1 d2 皆无记录,d3 的 30 相对 d0 → 100−30=70 属于 d0。
-		expect(cumulativeFans(100, [5, null, null, 30])).toEqual([70, null, null, 100]);
+	it("窗口最早那天有值就画出来 —— 净增为 null 不代表它没有值", () => {
+		// 反推法靠 net 找「上一个有数据的日」,而窗口内第一个有数据的日没有前一日
+		// 基线、net 恒为 null,于是被当成没数据跳过:明明由后一天减得出来,曲线却
+		// 白白晚起一天。
+		expect(cumulativeFans(1200, [1000, 1100, 1180])[0]).toBe(1000);
 	});
 
-	it("当前粉丝数未知 → 整条曲线都是 null", () => {
-		expect(cumulativeFans(null, [1, 2, 3])).toEqual([null, null, null]);
+	it("今天还没采到样本时,前面的点照常保留,不塌成孤零零一个点", () => {
+		// 轮询处在风控退避中,或页面在本地零点后几分钟打开:当日净增为 null。
+		// 反推法在第一轮就 break,TrendChart 只画得出一个圆点。
+		const got = cumulativeFans(1200, [1000, 1100, null]);
+		expect(got.slice(0, 2)).toEqual([1000, 1100]);
+		expect(got).toHaveLength(3);
+	});
+
+	it("中间断档保持 null —— 不在图上把没采到的日子连成直线", () => {
+		expect(cumulativeFans(1300, [1000, null, 1290])).toEqual([1000, null, 1300]);
+	});
+
+	it("当前粉丝未知时不硬凑末位", () => {
+		expect(cumulativeFans(null, [1000, 1100, null])).toEqual([1000, 1100, null]);
 	});
 
 	it("空序列 → 空结果", () => {
-		expect(cumulativeFans(100, [])).toEqual([]);
+		expect(cumulativeFans(1200, [])).toEqual([]);
 	});
 });
 
@@ -242,5 +257,27 @@ describe("activityLevel — 活跃度分档", () => {
 		expect(activityLevel(2)).toBe(2);
 		expect(activityLevel(4)).toBe(3);
 		expect(activityLevel(99)).toBe(4);
+	});
+});
+
+describe("coveredActivityTotal — 「日均活动」的分子", () => {
+	it("只数有采集覆盖的那些天,与 coveredDayCount 同一把尺子", () => {
+		// 分子取窗口合计、分母取覆盖天数,是两把不同的尺子:单订阅的 UP 被禁用再启用
+		// 会让 fans jsonl 被 dropUid 物理删掉,覆盖天数塌成 1 天,而统计 jsonl 里三个月
+		// 的 60 次活动原封不动 —— 卡片于是写着「60.0 次 / 天 · 已记录1日」,紧挨着一张
+		// 90 格空了 89 格的热力图。
+		const activity = [null, null, 2, 3];
+		expect(coveredActivityTotal(activity)).toBe(5);
+		expect(coveredDayCount(activity)).toBe(2);
+	});
+
+	it("覆盖到的那天真的是 0 就照算 0,不当成没覆盖", () => {
+		expect(coveredActivityTotal([0, 0])).toBe(0);
+		expect(coveredDayCount([0, 0])).toBe(2);
+	});
+
+	it("undefined / 全 null → 0", () => {
+		expect(coveredActivityTotal(undefined)).toBe(0);
+		expect(coveredActivityTotal([null, null])).toBe(0);
 	});
 });
