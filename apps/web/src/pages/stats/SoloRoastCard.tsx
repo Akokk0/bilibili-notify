@@ -4,7 +4,8 @@ import { useEffect } from "react";
 import { Avatar } from "../../components/atoms";
 import { api } from "../../services/api";
 import { localTzOffset } from "../../services/stats";
-import { ROAST_PURPLE, RoastShell, roastError } from "./RoastShell";
+import { RoastPushBox } from "./RoastPushBox";
+import { RoastShell, roastError } from "./RoastShell";
 
 /**
  * 单 UP 的 AI 锐评。
@@ -87,17 +88,12 @@ export function SoloRoastCard({
 							</div>
 						) : null}
 						{result.pushText ? (
-							<div className="rounded-bn-card border border-bn-border-subtle bg-bn-surface-muted p-3">
-								<div
-									className="mb-1.5 text-[10.5px] font-bold tracking-wide"
-									style={{ color: ROAST_PURPLE }}
-								>
-									可推送短评
-								</div>
-								<div className="text-xs leading-relaxed text-bn-text-tertiary">
-									{result.pushText}
-								</div>
-							</div>
+							<RoastPushBox
+								days={days}
+								label="可推送短评"
+								text={result.pushText}
+								payload={{ kind: "solo", result }}
+							/>
 						) : null}
 					</div>
 

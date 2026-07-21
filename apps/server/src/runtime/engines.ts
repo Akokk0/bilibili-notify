@@ -90,6 +90,16 @@ export interface EnginesRuntime extends Disposable {
 	readonly commentary: CommentaryGenerator | null;
 	/** Started BilibiliAPI; consumed by routes that need ad-hoc B-station calls (e.g. subs lookup). */
 	readonly api: BilibiliAPI;
+	/**
+	 * 推送用的卡片渲染器,`null` = 没有 puppeteer(未装 / 未配 Chrome)。
+	 *
+	 * **是 getter,别解构** —— `/api/cards/enable-rendering` 与热重载会整个换掉它,
+	 * 拿到一次就长期攥着会渲染到一个已 dispose 的浏览器上。
+	 *
+	 * 与 `cards.ts` 那个预览渲染器刻意分开:预览每次请求都按页面草稿 updateConfig,
+	 * 而这一个跟着**已保存**的 `cardStyle` 热同步 —— 周报卡要的正是后者。
+	 */
+	readonly imageRenderer: ImageRenderer | null;
 	/** Currently-broadcasting rooms; powers /api/live/listening. */
 	listLiveRooms(): LiveListenerSnapshot[];
 	/** Out-of-band reachability probe for `/api/adapters/:id/test`. */
@@ -891,6 +901,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		subscriptionStore: opts.subscriptionStore,
 		commentary,
 		api: opts.api,
+		// getter:`imageRenderer` 是个会被热切换重新赋值的 let,取值必须每次现读。
+		get imageRenderer() {
+			return imageRenderer;
+		},
 		listLiveRooms: () => listLiveRooms(live),
 		probeAdapter: (adapterId: string) => sink.probeAdapter(adapterId),
 		getModuleStatus: (): ModuleStatus => {

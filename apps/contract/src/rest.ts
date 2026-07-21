@@ -201,6 +201,30 @@ export interface StatsSoloRoastResponse {
 	result?: StatsSoloRoastResult;
 }
 
+/**
+ * `POST /api/stats/roast/push` 请求 —— 把**页面上已经生成的那一份**锐评推出去。
+ *
+ * 结果由前端回传,服务端不重新调模型:主人是看过卡片内容才决定推送的,重新生成会
+ * 推出一份谁都没审过的文本(还要再烧一次 token、再等一轮)。服务端只信 uid,名称 /
+ * 头像 / 配色一律自己 join —— 那几项前端说了不算。
+ */
+export type StatsRoastPushRequest = {
+	targetId: string;
+	/** 统计窗口天数,标在卡片上。 */
+	days: number;
+} & ({ kind: "board"; result: StatsRoastResult } | { kind: "solo"; result: StatsSoloRoastResult });
+
+/** `POST /api/stats/roast/push` 响应。 */
+export interface StatsRoastPushResponse {
+	ok: boolean;
+	err?: string;
+	/**
+	 * 实际投递形态。图片渲染开着且渲染成功 = `"image"`,否则回退 `"text"` ——
+	 * 前端据此告诉用户「推的是图还是文字」,渲染悄悄失败时不至于看起来一切正常。
+	 */
+	mode?: "image" | "text";
+}
+
 export interface StatsOverviewResponse {
 	/** 实际使用的窗口天数(服务端会 clamp)。 */
 	days: number;

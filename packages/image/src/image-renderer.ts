@@ -15,9 +15,25 @@ import { DynamicCard } from "./templates/dynamic-card";
 import { buildDynamicNode } from "./templates/dynamic-content";
 import { GuardCard } from "./templates/guard-card";
 import { LiveCard } from "./templates/live-card";
+import {
+	RoastBoardCard,
+	type RoastBoardCardProps,
+	RoastSoloCard,
+	type RoastSoloCardProps,
+} from "./templates/roast-card";
 import { SCCard } from "./templates/sc-card";
 import { buildWordCloudHtml } from "./templates/wordcloud";
 import type { CardColorOptions, Dynamic, LiveData } from "./types";
+
+/** 锐评卡的**业务**入参 —— 配色部分由渲染器从全局 `cardStyle` 填,调用方不用管。 */
+type RoastStyleKeys =
+	| "cardColorStart"
+	| "cardColorEnd"
+	| "glassOpacity"
+	| "glassClear"
+	| "backgroundImage";
+export type RoastBoardData = Omit<RoastBoardCardProps, RoastStyleKeys>;
+export type RoastSoloData = Omit<RoastSoloCardProps, RoastStyleKeys>;
 
 const GUARD_LEVEL_IMG: Record<GuardLevel, string> = {
 	[GuardLevel.None]: "",
@@ -538,6 +554,65 @@ export class ImageRenderer {
 			})
 			.catch((e) => {
 				throw new Error(`生成词云图片失败！错误: ${e}`);
+			});
+	}
+
+	/**
+	 * 锐评卡的配色一律吃全局 `cardStyle`(与词云卡同源),**不接 per-kind 样式矩阵**:
+	 * `cardStyleByKind` 是「每位 UP × 每种卡」的二维覆盖,而榜单周报压根不属于任何
+	 * 单个 UP,那个维度对它没有意义。
+	 */
+	private roastStyle(): Promise<string> {
+		return this.resolveBg(this.config.backgroundImage);
+	}
+
+	async generateRoastBoardCard(data: RoastBoardData): Promise<Buffer> {
+		const t0 = Date.now();
+		this.logger.debug(`[roast] 开始渲染周报卡片：近 ${data.days} 天`);
+		const html = await renderCard(
+			RoastBoardCard,
+			{
+				...data,
+				cardColorStart: this.config.cardColorStart,
+				cardColorEnd: this.config.cardColorEnd,
+				glassOpacity: this.config.glassOpacity,
+				glassClear: this.config.glassClear,
+				backgroundImage: await this.roastStyle(),
+			},
+			{ title: "UP 主周报", font: this.config.font, htmlWidth: 600 },
+		);
+		return withRetry(() => this.renderHtml(html))
+			.then((buf) => {
+				this.logger.debug(`[roast] 周报卡片渲染完成（${Date.now() - t0}ms）`);
+				return buf;
+			})
+			.catch((e) => {
+				throw new Error(`生成周报卡片失败！错误: ${e}`);
+			});
+	}
+
+	async generateRoastSoloCard(data: RoastSoloData): Promise<Buffer> {
+		const t0 = Date.now();
+		this.logger.debug(`[roast] 开始渲染单人锐评卡片：${data.up.name}`);
+		const html = await renderCard(
+			RoastSoloCard,
+			{
+				...data,
+				cardColorStart: this.config.cardColorStart,
+				cardColorEnd: this.config.cardColorEnd,
+				glassOpacity: this.config.glassOpacity,
+				glassClear: this.config.glassClear,
+				backgroundImage: await this.roastStyle(),
+			},
+			{ title: "UP 主锐评", font: this.config.font, htmlWidth: 430 },
+		);
+		return withRetry(() => this.renderHtml(html))
+			.then((buf) => {
+				this.logger.debug(`[roast] 单人锐评卡片渲染完成：${data.up.name}（${Date.now() - t0}ms）`);
+				return buf;
+			})
+			.catch((e) => {
+				throw new Error(`生成锐评卡片失败！错误: ${e}`);
 			});
 	}
 

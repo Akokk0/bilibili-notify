@@ -9,6 +9,8 @@ export {
 	ImageRenderer,
 	type ImageRendererConfig,
 	type ImageRendererOptions,
+	type RoastBoardData,
+	type RoastSoloData,
 } from "./image-renderer";
 export type {
 	BoundingBox,
@@ -24,6 +26,13 @@ export { renderCard } from "./render";
 export { DynamicCard, type DynamicCardProps, type DynamicNode } from "./templates/dynamic-card";
 export { GuardCard, type GuardCardProps } from "./templates/guard-card";
 export { LiveCard, type LiveCardProps } from "./templates/live-card";
+export {
+	RoastBoardCard,
+	type RoastBoardCardProps,
+	type RoastCardUp,
+	RoastSoloCard,
+	type RoastSoloCardProps,
+} from "./templates/roast-card";
 export { SCCard, type SCCardProps } from "./templates/sc-card";
 export type {
 	CardColorOptions,

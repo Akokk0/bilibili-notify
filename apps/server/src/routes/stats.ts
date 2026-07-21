@@ -1,11 +1,16 @@
 import { CommentaryGenerator } from "@bilibili-notify/ai";
 import type {
 	StatsOverviewResponse,
+	StatsRoastPushResponse,
 	StatsRoastResponse,
 	StatsSoloRoastResponse,
 	UpStatsRow,
 } from "@bilibili-notify/contract";
+import type { RoastCardUp } from "@bilibili-notify/image";
+import type { NotificationPayload } from "@bilibili-notify/internal";
+import { colorFromUid } from "@bilibili-notify/internal";
 import { Hono } from "hono";
+import { z } from "zod";
 import {
 	countDynamics,
 	dailyActivityCounts,
@@ -358,6 +363,89 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 	});
 
 	/**
+	 * `POST /api/stats/roast/push` —— 把**页面上已生成的那份**锐评推到一个目标。
+	 *
+	 * **必须注册在 `/roast/:uid` 之前。** Hono 按注册序匹配,反过来的话 `push` 会
+	 * 被当成 uid 吃掉,推送请求得到的是一句「该 UP 主不在订阅列表里」—— 类型、
+	 * 构建、lint 全绿,只有真发一次才看得出来。
+	 *
+	 * 结果由请求体带来而不是服务端重新生成:主人是看过卡片才决定推的,重新生成
+	 * 会推出一份谁都没审过的文本。请求体里**只有 uid 可信** —— 名称 / 头像 / 配色
+	 * 一律服务端 join(见 `upMeta`)。
+	 *
+	 * 开着图片渲染就推卡片图,否则推文字;渲染路上任何一步出问题都**降级成文字**
+	 * 而不是整条失败 —— 一份已经生成好的周报,不该因为服务器上没装 Chrome 就发不出去。
+	 */
+	app.post("/roast/push", async (c) => {
+		const engines = deps.runtime.engines;
+		if (!engines) {
+			return c.json<StatsRoastPushResponse>({ ok: false, err: "服务尚未就绪,请稍后重试" }, 503);
+		}
+
+		const parsed = RoastPushSchema.safeParse(await c.req.json().catch(() => null));
+		if (!parsed.success) {
+			return c.json<StatsRoastPushResponse>({ ok: false, err: "请求格式不正确" }, 400);
+		}
+		const { targetId, days, kind, result } = parsed.data;
+
+		const target = deps.store.getTargets().find((t) => t.id === targetId);
+		if (!target) {
+			return c.json<StatsRoastPushResponse>({ ok: false, err: "推送目标不存在" }, 404);
+		}
+
+		// uid → 名称 / 头像 / 配色。配色走 colorFromUid,与 dashboard 上同一位 UP 一致。
+		const subByUid = new Map(deps.store.getSubscriptions().map((s) => [s.uid, s]));
+		const upMeta = (uid: string): RoastCardUp => {
+			const sub = subByUid.get(uid);
+			const profile = sub ? deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile : undefined;
+			return {
+				name: profile?.name?.trim() || `UID ${uid}`,
+				avatar: profile?.avatar || undefined,
+				color: colorFromUid(uid),
+			};
+		};
+
+		const text = roastPushText(kind, result, days, upMeta);
+		const renderer = engines.imageRenderer;
+		const imageWanted = renderer !== null && deps.store.getGlobals().defaults.cardStyle.enabled;
+
+		let payload: NotificationPayload = { kind: "text", text };
+		let mode: "image" | "text" = "text";
+		if (imageWanted && renderer) {
+			try {
+				const buffer =
+					kind === "board"
+						? await renderer.generateRoastBoardCard({
+								days,
+								pigeon: { ...upMeta(result.pigeon.uid), reason: result.pigeon.reason },
+								diligent: { ...upMeta(result.diligent.uid), reason: result.diligent.reason },
+								roast: result.roast.map((r) => ({ ...upMeta(r.uid), comment: r.comment })),
+								scores: result.scores.map((s) => ({ ...upMeta(s.uid), score: s.score })),
+							})
+						: await renderer.generateRoastSoloCard({
+								days,
+								up: upMeta(result.uid),
+								verdict: result.verdict,
+								score: result.score,
+								highlights: result.highlights,
+							});
+				// caption 不是装饰:图挂了 / 客户端不展图时,那段文字是唯一还读得到的东西。
+				payload = { kind: "image", image: { buffer, mime: "image/jpeg" }, caption: text };
+				mode = "image";
+			} catch (err) {
+				deps.runtime.serviceCtx.logger.warn(
+					`[stats] 锐评卡片渲染失败，降级为文字推送: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
+		}
+
+		const delivery = await engines.push.sendToTarget(target.id, payload);
+		if (!delivery.ok) {
+			return c.json<StatsRoastPushResponse>({ ok: false, err: delivery.err ?? "推送失败" }, 502);
+		}
+		return c.json<StatsRoastPushResponse>({ ok: true, mode });
+	});
+	/**
 	 * `POST /api/stats/roast/:uid` —— 单 UP 锐评。
 	 *
 	 * 与榜单版共用取数与 AI 配置,但**没有「至少 2 位」那道闸门** —— 那道闸门是
@@ -429,6 +517,61 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 	});
 
 	return app;
+}
+
+// ── 锐评推送 ─────────────────────────────────────────────────────────────────
+
+const BoardResultSchema = z.object({
+	pigeon: z.object({ uid: z.string(), reason: z.string() }),
+	diligent: z.object({ uid: z.string(), reason: z.string() }),
+	roast: z.array(z.object({ uid: z.string(), comment: z.string() })).default([]),
+	scores: z.array(z.object({ uid: z.string(), score: z.number() })).default([]),
+	pushText: z.string().default(""),
+});
+
+const SoloResultSchema = z.object({
+	uid: z.string(),
+	verdict: z.string(),
+	score: z.number(),
+	highlights: z.array(z.object({ label: z.string(), comment: z.string() })).default([]),
+	pushText: z.string().default(""),
+});
+
+const RoastPushSchema = z.intersection(
+	z.object({ targetId: z.string().min(1), days: z.number().int().min(MIN_DAYS).max(MAX_DAYS) }),
+	z.discriminatedUnion("kind", [
+		z.object({ kind: z.literal("board"), result: BoardResultSchema }),
+		z.object({ kind: z.literal("solo"), result: SoloResultSchema }),
+	]),
+);
+
+type BoardResult = z.infer<typeof BoardResultSchema>;
+type SoloResult = z.infer<typeof SoloResultSchema>;
+
+/**
+ * 要发出去的那段文字 —— 图片推送时当图说明,没有图时就是正文。
+ *
+ * 模型可能压根没给 `pushText`(schema 里它有 `.default("")`),那时用结构化数据
+ * 拼一段兜底:宁可发一句干巴巴的「鸽王是谁」,也不能推一条空消息出去。兜底一律
+ * 写**名称**,群友不认识 uid。
+ */
+function roastPushText(
+	kind: "board" | "solo",
+	result: BoardResult | SoloResult,
+	days: number,
+	upMeta: (uid: string) => RoastCardUp,
+): string {
+	if (result.pushText.trim()) return result.pushText;
+	if (kind === "board") {
+		const r = result as BoardResult;
+		return [
+			`📊 UP 主周报（近 ${days} 天）`,
+			`🕊️ 本期鸽王：${upMeta(r.pigeon.uid).name} —— ${r.pigeon.reason}`,
+			`🏆 勤奋 UP：${upMeta(r.diligent.uid).name} —— ${r.diligent.reason}`,
+		].join("\n");
+	}
+	const s = result as SoloResult;
+	return `📊 ${upMeta(s.uid).name}（近 ${days} 天）：${s.verdict}`;
 }
 
 /**
