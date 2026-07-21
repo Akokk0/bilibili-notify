@@ -75,6 +75,18 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 	const peaks = new Map<string, { raw: string; value: number }>();
 	/** 当前仍在播的 UID。关服时据此补下播帧;正常下播会把它摘掉。 */
 	const openLive = new Set<string>();
+	/**
+	 * per-UID 本场已经用过的 `startedAt` —— **场次身份的最后一道闸**。
+	 *
+	 * 正常情况下引擎给的是 B 站 live_time,同一场无论被观测多少次都是同一个值。
+	 * 但 live_time 缺失 / 解析不出时两侧都回退到「此刻」,而同一场会被重连核对、
+	 * 重启 bootstrap 反复观测到 —— 两个「此刻」差着几秒,store 按 startedAt 精确
+	 * 认场次,这一场就裂成两条区间重叠的记录,场次数与总时长一起虚高。
+	 *
+	 * 记住第一次用的值,这一场结束(或该 UP 被退订)前一律复用。只在进程内有效:
+	 * 重启后本就走 bootstrap 重新观测,那时 live_time 通常已经拿得到了。
+	 */
+	const openStart = new Map<string, string>();
 	const handles: Disposable[] = [];
 
 	/**
@@ -117,14 +129,18 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 			if (status === "live") {
 				peaks.delete(uid);
 				openLive.add(uid);
-				opts.store
-					.openLiveSession(uid, liveStartIso(startedAt, at) ?? ts)
-					.catch(swallow(`openLiveSession ${uid}`));
+				// 本场已经落过盘就沿用原值,别让回退到「此刻」的那条路径每观测一次
+				// 就换一个身份。
+				const startIso = openStart.get(uid) ?? liveStartIso(startedAt, at) ?? ts;
+				openStart.set(uid, startIso);
+				opts.store.openLiveSession(uid, startIso).catch(swallow(`openLiveSession ${uid}`));
 				return;
 			}
 			const peak = peaks.get(uid);
 			peaks.delete(uid);
 			openLive.delete(uid);
+			// 这一场到此为止,下一场重新认身份。
+			openStart.delete(uid);
 			// 下播侧的第三个参数是**真实下播时刻**:走断流接续时它在进入挂起那刻就
 			// 定格了,而事件要等 N 分钟窗口到期才发得出来。用 `ts`(收到事件的此刻)
 			// 会把整个 grace 窗口算进直播时长,与下播卡上的时长对不上。缺省才回退。
@@ -146,6 +162,7 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 				// jsonl 整个重新创建出来 —— 从此是一份没人会读、也没人会再清的孤儿
 				// (dropUid 只在 remove 时调,而他已经不在订阅列表里了)。
 				openLive.delete(op.uid);
+				openStart.delete(op.uid);
 				opts.store.dropUid(op.uid).catch(swallow(`dropUid ${op.uid}`));
 			}
 		}),

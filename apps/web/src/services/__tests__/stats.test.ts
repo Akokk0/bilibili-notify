@@ -14,6 +14,7 @@ import {
 	coveredDayCount,
 	cumulativeFans,
 	dayAxis,
+	fansKnownCount,
 	sparseLabels,
 } from "../stats.js";
 
@@ -191,6 +192,20 @@ describe("sparseLabels", () => {
 		const labels = sparseLabels(dayAxis(30), 6);
 		expect(labels[0]).toBe("");
 		expect(labels).toHaveLength(30);
+	});
+});
+
+describe("fansKnownCount — 「总粉丝量」是不是全站合计", () => {
+	it("只数有粉丝记录的 UP", () => {
+		expect(fansKnownCount([row({ fans: 100 }), row({ uid: "2", fans: null })])).toBe(1);
+	});
+
+	it("全员有数 → 等于订阅数,标签就不必标注", () => {
+		expect(fansKnownCount([row({ fans: 1 }), row({ uid: "2", fans: 0 })])).toBe(2);
+	});
+
+	it("0 粉丝算有记录 —— 与「没采到」是两回事", () => {
+		expect(fansKnownCount([row({ fans: 0 })])).toBe(1);
 	});
 });
 

@@ -174,6 +174,49 @@ describe("StatsRecorder — 直播场次", () => {
 	});
 });
 
+describe("StatsRecorder — 场次身份在一场之内保持不变", () => {
+	it("同一场被重复观测到,复用第一次用过的 startedAt", async () => {
+		// live_time 解析不出时两侧都回退到「此刻」,而重连核对 / 重启 bootstrap 会
+		// 再观测同一场 —— 两个「此刻」差着几秒,store 按 startedAt 精确认场次,
+		// 同一场就裂成两条区间重叠的记录(正是那条 HIGH 的残余缺口)。
+		const { trigger, store } = setup();
+		trigger("live-state-changed", "1", "live", "不是时间"); // 解析不出 → 回退到此刻
+		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
+
+		clock = "2026-05-16T10:00:07.000Z"; // 7 秒后重连成功,再观测一次
+		trigger("live-state-changed", "1", "live", "还是不是时间");
+		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalledTimes(2));
+
+		const [first, second] = store.openLiveSession.mock.calls;
+		expect(second?.[1]).toBe(first?.[1]);
+	});
+
+	it("下播之后开的是新一场,身份重新认定", async () => {
+		const { trigger, store } = setup();
+		trigger("live-state-changed", "1", "live", "不是时间");
+		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
+		trigger("live-state-changed", "1", "idle");
+		clock = "2026-05-16T15:00:00.000Z";
+		trigger("live-state-changed", "1", "live", "不是时间");
+		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalledTimes(2));
+
+		const [first, second] = store.openLiveSession.mock.calls;
+		expect(second?.[1]).not.toBe(first?.[1]);
+		expect(second?.[1]).toBe("2026-05-16T15:00:00.000Z");
+	});
+
+	it("退订会清掉记住的身份,不残留到重新订阅之后", async () => {
+		const { trigger, store } = setup();
+		trigger("live-state-changed", "1", "live", "不是时间");
+		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
+		trigger("subscription-changed", [{ type: "remove", id: "sub-1", uid: "1" }]);
+		clock = "2026-05-16T16:00:00.000Z";
+		trigger("live-state-changed", "1", "live", "不是时间");
+		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalledTimes(2));
+		expect(store.openLiveSession.mock.calls[1]?.[1]).toBe("2026-05-16T16:00:00.000Z");
+	});
+});
+
 describe("StatsRecorder — 下播时刻", () => {
 	it("事件带了真实下播时刻就用它,不用收到事件的此刻", async () => {
 		// 断流接续:真实下播在进入挂起那刻就定格了,事件却要等 N 分钟窗口到期才发。

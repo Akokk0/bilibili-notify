@@ -150,6 +150,19 @@ export function cumulativeFans(
 }
 
 /**
+ * 有粉丝记录的 UP 数。
+ *
+ * 「总粉丝量」是 `sumNullable` 的结果 —— 只把有记录的那些加起来。若有 UP 还没
+ * 采到样本(刚订阅 / 采集期没覆盖),那个数就不是全站合计,而标签写着「总」。
+ * 调用方拿它与 `rows.length` 一比,就知道该不该在标签上说明白。
+ */
+export function fansKnownCount(rows: readonly UpStatsRow[]): number {
+	let n = 0;
+	for (const r of rows) if (r.fans !== null) n++;
+	return n;
+}
+
+/**
  * 窗口内**有采集覆盖**的天数 —— 「日均」类指标的正确分母。
  *
  * `activity` 里的 `null` 表示那天我们根本没在记(服务没跑 / 刚订阅),与「那天零

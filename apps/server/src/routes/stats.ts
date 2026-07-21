@@ -166,6 +166,12 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 			const activity = activityCounts.map((c, i) => {
 				const day = daily[i];
 				if (!day || !coveredDays.has(day.d)) return null;
+				// 严格小于:采集起始日**当天**照常出数。
+				//
+				// 已知的精度损失 —— 那天多半只采到了后半天(18:00 才装上的话,之前的
+				// 活动没记到),格子却和其他整天一样着色。权衡过:遮成 null 会把那天
+				// 真实记到的活动一并抹掉,那是拿「不完整」换「假装没有」,更不诚实。
+				// 页面上另有「已记录 N 日」的提示告诉用户采集覆盖了多久。
 				if (recordingSinceDay && day.d < recordingSinceDay) return null;
 				return c;
 			});

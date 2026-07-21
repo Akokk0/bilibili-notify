@@ -11,6 +11,7 @@ import {
 	coveredDayCount,
 	cumulativeFans,
 	dayAxis,
+	fansKnownCount,
 	localTzOffset,
 	type StatsOverviewResponse,
 	sparseLabels,
@@ -431,6 +432,8 @@ export default function Stats() {
 	const axis = useMemo(() => dayAxis(days), [days]);
 	const xLabels = useMemo(() => sparseLabels(axis), [axis]);
 	const totals = useMemo(() => (res ? computeTotals(res) : null), [res]);
+	/** 「总粉丝量」只加得动有记录的那几位,少于订阅数时标签要如实说明。 */
+	const fansKnown = fansKnownCount(rows);
 	const focused = picked ? (rows.find((r) => r.uid === picked) ?? null) : null;
 	const focusedMeta = focused ? meta.get(focused.uid) : undefined;
 	const focusColor = focusedMeta?.color ?? PINK;
@@ -557,7 +560,11 @@ export default function Stats() {
 				) : (
 					<>
 						<GlassStatCard
-							label="总粉丝量"
+							// 部分 UP 还没采到样本时,这个数不是全站合计 —— 标签得说明白,
+							// 否则「总粉丝量」会被读成所有订阅的和,而它少算了几位。
+							label={
+								fansKnown < rows.length ? `总粉丝量 · ${fansKnown}/${rows.length} 位` : "总粉丝量"
+							}
 							value={num(totals?.fans ?? null)}
 							color={PINK}
 							footer={

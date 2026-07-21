@@ -198,10 +198,15 @@ export async function bringUp(deps: LifecycleDeps): Promise<boolean> {
 		deps.logger.info("[login] 账号未登录，请在控制台扫码登录");
 		loginBridge.flow.reportLoggedOut("notLogin");
 		// 冷启动未登录路径：挂一个一次性 listener，在用户首次扫码登录成功后
-		// 触发 loadInitialSubscriptions。LoginFlow 在 reportLoggedIn 时只在
-		// `needsRestore=true` 的前提下 emit `auth-restored`（用于已登录态恢复），
-		// 全新冷启动这条路径走不到，因此这里订阅 `login-status-report` 并按
-		// 状态码过滤首次 LOGGED_IN 转换。
+		// 触发 loadInitialSubscriptions。
+		//
+		// 这里订阅的是 `login-status-report` 而不是 `auth-restored`，因为
+		// **koishi 端根本不消费 `auth-restored`**（全仓只有独立端的 runtime 接它）。
+		// 注意别照搬旧的理由：那条注释曾写着「冷启动走不到 auth-restored」，
+		// 而 LoginFlow 的 `needsRestore` 现在刻意不再要求先 LOGGED_IN 过
+		// （见 login-flow.ts 的说明：冷启动 cookie 过期时引擎自己会 park 住，
+		// 不发就永远醒不过来），所以冷启动首次登录**也会**发一条 auth-restored。
+		// 真正的理由自始至终是「这一端没接它」，不是「它不会发」。
 		//
 		// 同时把 release 推入 slots.cleanups,tearDown 时一并清。否则未登录状态
 		// 下 `bn restart` 会让旧 listener 永远挂着,下次登录成功触发已经 tearDown

@@ -51,7 +51,10 @@ describe("alpha 拼接颜色 conformance", () => {
 				for (const prop of ALPHA_PROPS) {
 					// 只匹配 JSX 上的字面量写法 accent={VAR} / color="var(--…)";
 					// 变量透传(color={focusColor})交由值的定义处负责。
-					const re = new RegExp(`${prop}=\\{?["'\`]?var\\(--`, "g");
+					// 不带 `g`:只 test 一次,而带 `g` 的正则会记住 lastIndex ——
+					// 哪天有人把它提到循环外复用,第二次 test 就会从上次的位置续查、
+					// 静默漏报。这里没有多次匹配的需求,别留这个隐患。
+					const re = new RegExp(`${prop}=\\{?["'\`]?var\\(--`);
 					if (re.test(src)) {
 						offenders.push(`${relative(SRC_DIR, file)} 的 ${prop}=`);
 					}
