@@ -169,6 +169,46 @@ export const Icon = {
 			<path d="M21 12H9" />
 		</>,
 	),
+	// 以下五个是为了替掉界面上当图标用的 emoji（⚠ ☐ ✂ 🕊️ 🏆）。emoji 的长相由
+	// 系统字体决定 —— 同一处警告在 macOS 是黄底黑感叹号、在 Windows 是另一副样子、
+	// 在缺字体的 Linux 上直接是豆腐块，而且彩色 emoji 混在单色图标里也不成体系。
+	warning: stroke(
+		<>
+			<path d="M12 3.2 1.8 20.8h20.4L12 3.2Z" />
+			<path d="M12 10v4" />
+			<path d="M12 17.2h.01" />
+		</>,
+	),
+	/** 空心方框 —— 与 {@link Icon.check} 配对表示「未选中」。 */
+	square: stroke(<rect x="4" y="4" width="16" height="16" rx="3" />),
+	scissors: stroke(
+		<>
+			<circle cx="6" cy="6" r="3" />
+			<circle cx="6" cy="18" r="3" />
+			<path d="M20 4 8.12 15.88" />
+			<path d="M14.47 14.48 20 20" />
+			<path d="M8.12 8.12 12 12" />
+		</>,
+	),
+	/** 羽毛 —— 鸽王。与卡片模板 `SVG_FEATHER` 同一套语义，别只改一边。 */
+	feather: stroke(
+		<>
+			<path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
+			<path d="M16 8 2 22" />
+			<path d="M17.5 15H9" />
+		</>,
+	),
+	/** 奖杯 —— 勤奋 UP。与卡片模板 `SVG_TROPHY` 同一套语义。 */
+	trophy: stroke(
+		<>
+			<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+			<path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+			<path d="M4 22h16" />
+			<path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+			<path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+			<path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+		</>,
+	),
 } as const;
 
 export type IconName = keyof typeof Icon;

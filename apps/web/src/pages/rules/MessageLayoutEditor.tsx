@@ -112,7 +112,16 @@ function SortableBlockRow({
 								: "text-bn-text-tertiary line-through"
 					}`}
 				>
-					{isSplit ? "✂ 分条符 · 上下切成两条消息" : (PART_LABELS[block.type] ?? block.type)}
+					{isSplit ? (
+						<>
+							{/* 行内图标:父 span 是文本流(还带 italic),用 align 微调基线而不是改成 flex
+							    —— 非分条符那支还要跟后面的 PART_HINTS 并排。 */}
+							<Icon.scissors size={11} className="mr-1 inline-block align-[-1px]" />
+							分条符 · 上下切成两条消息
+						</>
+					) : (
+						(PART_LABELS[block.type] ?? block.type)
+					)}
 					{!isSplit && PART_HINTS[block.type] ? (
 						<span className="ml-2 text-[11px] font-normal text-bn-text-tertiary">
 							{PART_HINTS[block.type]}

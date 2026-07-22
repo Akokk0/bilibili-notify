@@ -219,7 +219,9 @@ function SponsorPanel() {
 					</div>
 				)}
 				<p className="mt-3 text-[11px] text-bn-text-tertiary">
-					感谢每一位主人的供电 ♡ 名单在每次发布新版本时同步自爱发电。
+					感谢每一位主人的供电
+					<Icon.heart size={10} className="mx-1 inline-block align-[-1px] text-bn-pink" />
+					名单在每次发布新版本时同步自爱发电。
 				</p>
 			</div>
 		</div>

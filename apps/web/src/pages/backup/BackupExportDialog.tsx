@@ -61,9 +61,12 @@ export function BackupExportDialog({ onCancel, onExport, busy }: BackupExportDia
 			</div>
 
 			{kind === "full" ? (
-				<div className="mb-4 rounded-lg border border-bn-danger-border bg-bn-danger-soft px-3 py-2.5 text-[12px] leading-relaxed text-bn-danger-text">
-					⚠ 此文件 = 你的 B 站账号与面板密码，请妥善保管、切勿外发；6 位 PIN
-					仅防手滑，真正的安全靠保管好文件本身。
+				<div className="mb-4 flex items-start gap-1.5 rounded-lg border border-bn-danger-border bg-bn-danger-soft px-3 py-2.5 text-[12px] leading-relaxed text-bn-danger-text">
+					<Icon.warning size={14} className="mt-0.5 shrink-0" />
+					<span>
+						此文件 = 你的 B 站账号与面板密码，请妥善保管、切勿外发；6 位 PIN
+						仅防手滑，真正的安全靠保管好文件本身。
+					</span>
 				</div>
 			) : null}
 

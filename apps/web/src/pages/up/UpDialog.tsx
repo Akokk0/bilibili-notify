@@ -625,8 +625,9 @@ export function UpDialog({
 			{/* Footer */}
 			<div className="flex flex-col gap-1.5 border-t border-bn-border px-3.5 py-3">
 				{attachedTargets.length === 0 && targets.length > 0 ? (
-					<div className="rounded-md border border-bn-warning-border bg-bn-warning-soft px-2.5 py-1.5 text-[11px] text-bn-warning-text">
-						⚠️ 未选中任何推送目标,保存后该订阅不会向任何地方推送消息
+					<div className="flex items-start gap-1.5 rounded-md border border-bn-warning-border bg-bn-warning-soft px-2.5 py-1.5 text-[11px] text-bn-warning-text">
+						<Icon.warning size={12} className="mt-0.5 shrink-0" />
+						<span>未选中任何推送目标,保存后该订阅不会向任何地方推送消息</span>
 					</div>
 				) : null}
 				<div className="flex items-center gap-2">

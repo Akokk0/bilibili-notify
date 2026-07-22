@@ -2,6 +2,7 @@ import type { StatsRoastResponse, StatsRoastResult } from "@bilibili-notify/cont
 import { useMutation } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { Avatar } from "../../components/atoms";
+import { Icon } from "../../components/icons";
 import { api } from "../../services/api";
 import { localTzOffset } from "../../services/stats";
 import { RoastPushBox } from "./RoastPushBox";
@@ -63,15 +64,20 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 						<div className="grid grid-cols-2 gap-2.5">
 							{(
 								[
-									["🕊️ 本期鸽王", result.pigeon, "var(--color-bn-danger-text)"],
-									["🏆 勤奋 UP", result.diligent, "var(--color-bn-success-text)"],
+									// 图标与推送卡片模板(SVG_FEATHER / SVG_TROPHY)同一套语义,改一边记得改另一边。
+									[Icon.feather, "本期鸽王", result.pigeon, "var(--color-bn-danger-text)"],
+									[Icon.trophy, "勤奋 UP", result.diligent, "var(--color-bn-success-text)"],
 								] as const
-							).map(([label, who, color]) => (
+							).map(([Glyph, label, who, color]) => (
 								<div
 									key={label}
 									className="rounded-bn-card border border-bn-border-subtle bg-bn-surface-muted px-3 py-2.5"
 								>
-									<div className="mb-1.5 text-[10.5px] font-bold" style={{ color }}>
+									<div
+										className="mb-1.5 flex items-center gap-1 text-[10.5px] font-bold"
+										style={{ color }}
+									>
+										<Glyph size={12} />
 										{label}
 									</div>
 									<div className="mb-1.5 flex items-center gap-1.5">

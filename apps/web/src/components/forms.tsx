@@ -7,6 +7,7 @@
 
 import { type ReactNode, useEffect, useState } from "react";
 import { type FieldLabel, getFieldLabel } from "../config/field-labels.js";
+import { Icon } from "./icons";
 
 // ── Field ────────────────────────────────────────────────────────────────────
 
@@ -418,8 +419,17 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 								</option>
 							))}
 						</select>
-						<span className="text-[10.5px] text-bn-text-tertiary">
-							{crossMidnight ? "(跨次日)" : r.start === r.end ? "⚠ 区间为空" : ""}
+						<span className="flex items-center gap-1 text-[10.5px] text-bn-text-tertiary">
+							{crossMidnight ? (
+								"(跨次日)"
+							) : r.start === r.end ? (
+								<>
+									<Icon.warning size={11} className="shrink-0" />
+									区间为空
+								</>
+							) : (
+								""
+							)}
 						</span>
 						<button
 							type="button"

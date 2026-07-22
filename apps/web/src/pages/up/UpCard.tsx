@@ -100,7 +100,7 @@ export function UpCard({
 							selected ? "bg-bn-pink text-white" : "bg-bn-surface/90 text-bn-text-secondary"
 						}`}
 					>
-						{selected ? <Icon.check size={12} /> : <span className="text-[11px]">☐</span>}
+						{selected ? <Icon.check size={12} /> : <Icon.square size={12} />}
 					</button>
 				</div>
 			</div>
@@ -142,9 +142,12 @@ export function UpCard({
 				 * 那不等于「未关注」,别凭空吓人。
 				 */}
 				{sub.followed === false ? (
-					<div className="mb-2.5 rounded-md border border-bn-danger-border bg-bn-danger-soft px-2 py-1.5 text-[10.5px] leading-snug text-bn-danger-text">
-						⚠ 未关注该 UP —— 收不到动态
-						{sub.followError ? <span className="opacity-80">（{sub.followError}）</span> : null}
+					<div className="mb-2.5 flex items-start gap-1 rounded-md border border-bn-danger-border bg-bn-danger-soft px-2 py-1.5 text-[10.5px] leading-snug text-bn-danger-text">
+						<Icon.warning size={12} className="mt-px shrink-0" />
+						<span>
+							未关注该 UP —— 收不到动态
+							{sub.followError ? <span className="opacity-80">（{sub.followError}）</span> : null}
+						</span>
 					</div>
 				) : null}
 				<div className="mb-2.5 flex flex-wrap gap-1">
