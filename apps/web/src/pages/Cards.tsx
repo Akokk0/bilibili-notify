@@ -1464,7 +1464,7 @@ export default function Cards() {
 							</div>
 							{/* 一个框装四张卡:2×2 四宫格。固定高度(参考选项卡片满展开时的观感取值,不跟随它),
 							    四格 grid-rows-2 等分该高度,卡片 object-contain 缩放填格。 */}
-							<div className="flex h-[720px] flex-col rounded-bn-card border border-bn-border p-4">
+							<div className="flex h-180 flex-col rounded-bn-card border border-bn-border p-4">
 								<div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-3">
 									{familyPreviews.map(({ fk, style, content: fcontent }) => {
 										const FkIcon = Icon[KIND_LABELS[fk].icon];
