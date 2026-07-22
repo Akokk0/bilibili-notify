@@ -90,4 +90,35 @@ describe("AI 页 — 只改 apiKey 的保存闭环", () => {
 			expect(useDraftStore.getState().current?.diff ?? []).toHaveLength(0);
 		});
 	});
+
+	it("日志等级退回「跟随全局」→ PATCH 里显式 null(与 Cards 同一个坑)", async () => {
+		// PATCH 是 JSON Merge Patch:键消失 = 该字段不改。靠「把 ai 这个键过滤掉」
+		// 来表达清除,请求会成功但后端原样留着旧等级 —— 退不回跟随全局。
+		const globals = redactedGlobals();
+		globals.app.logLevels = { ai: "debug" };
+		vi.mocked(api.get).mockImplementation(async (path: string) =>
+			path === "/api/targets" ? [] : JSON.parse(JSON.stringify(globals)),
+		);
+		vi.mocked(api.patch).mockImplementation(async () => redactedGlobals());
+
+		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		render(
+			<QueryClientProvider client={qc}>
+				<Ai />
+			</QueryClientProvider>,
+		);
+
+		fireEvent.click(await screen.findByText("跟随全局"));
+		await act(async () => {
+			useDraftStore.getState().current?.onSave();
+		});
+		await waitFor(() => expect(api.patch).toHaveBeenCalled());
+
+		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
+			string,
+			{ app: { logLevels: Record<string, unknown> } },
+		];
+		expect(body.app.logLevels).toHaveProperty("ai");
+		expect(body.app.logLevels.ai).toBeNull();
+	});
 });

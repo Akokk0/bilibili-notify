@@ -27,6 +27,28 @@ export function setKindField<K extends keyof CardStyle>(
 	return { ...byKind, [kind]: { ...(byKind[kind] ?? {}), [key]: value } };
 }
 
+/** 四种卡片类型的固定全集 —— 下发时要逐个表态,不能只报有覆盖的那几个。 */
+const ALL_KINDS = ["live", "dynamic", "sc", "guard"] as const satisfies readonly CardKind[];
+
+/**
+ * 把「按类型覆盖」摊平成完整四键:有覆盖的给对象,没有的显式给 `null`。**保存前
+ * 必须过这一道**,否则关掉的类型关不掉。
+ *
+ * 配置 PATCH 走 JSON Merge Patch 语义 —— **键消失 = 该字段不改**,只有显式 `null`
+ * 才是删除(服务端 `config/store.ts` 的 deepMerge)。而关掉一个类型在前端是 `delete`
+ * 掉那个键,于是直接回传这个 map 时,「关掉直播卡的单独样式」在网络上等于什么都
+ * 没说:请求 200、后端原样留着旧覆盖,刷新回来开关又是开的 —— 用户看到的就是
+ * 「关不掉」。
+ */
+export function explicitByKind(
+	byKind: CardStyleByKind,
+): Record<CardKind, CardStyleByKind[CardKind] | null> {
+	return Object.fromEntries(ALL_KINDS.map((k) => [k, byKind[k] ?? null])) as Record<
+		CardKind,
+		CardStyleByKind[CardKind] | null
+	>;
+}
+
 /** 「应用到所有卡片」:把当前类型的生效样式提升为基准,清空全部 per-kind 覆盖。 */
 export function applyToAllKinds(
 	base: CardStyle,

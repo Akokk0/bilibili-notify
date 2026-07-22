@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { CardStyle } from "../../../types/globals";
-import { applyToAllKinds, resolveKindStyle, setKindField } from "../perkind";
+import { applyToAllKinds, explicitByKind, resolveKindStyle, setKindField } from "../perkind";
 
 const base: CardStyle = {
 	enabled: true,
@@ -49,5 +49,31 @@ describe("applyToAllKinds", () => {
 		const out = applyToAllKinds(base, byKind, "live");
 		expect(out.base.cardColorStart).toBe("#live");
 		expect(out.byKind).toEqual({});
+	});
+});
+
+describe("explicitByKind", () => {
+	// PATCH 走 JSON Merge Patch 语义:**键消失 = 该字段不改**,只有显式 null 才是
+	// 删除。所以「关掉某类型的单独样式」必须把那个键写成 null 送出去 —— 直接回传
+	// 一个 delete 过的 map,在网络上等于什么都没说。
+	it("关掉的类型必须显式写成 null,而不是让键消失", () => {
+		expect(explicitByKind({ live: { cardColorStart: "#live" } })).toEqual({
+			live: { cardColorStart: "#live" },
+			dynamic: null,
+			sc: null,
+			guard: null,
+		});
+	});
+
+	it("全部关掉时四个键都是 null", () => {
+		expect(explicitByKind({})).toEqual({ live: null, dynamic: null, sc: null, guard: null });
+	});
+
+	it("留着的类型原样下发,不被 null 误伤", () => {
+		const out = explicitByKind({ sc: { cardColorEnd: "#sc" }, guard: { glassClear: true } });
+		expect(out.sc).toEqual({ cardColorEnd: "#sc" });
+		expect(out.guard).toEqual({ glassClear: true });
+		expect(out.live).toBeNull();
+		expect(out.dynamic).toBeNull();
 	});
 });

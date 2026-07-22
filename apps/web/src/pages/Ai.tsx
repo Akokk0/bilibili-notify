@@ -140,16 +140,13 @@ export default function Ai() {
 
 	const save = useMutation({
 		mutationFn: async (payload: { ai: AISettings; aiLogLevel: AiLogLevel }) => {
-			const existing = globalsQuery.data?.app.logLevels ?? {};
-			// 与 cards 同款合并:"" → 删 ai key,落到全局;具体值 → 仅 patch 该 key,
-			// 其余模块 override 不动。
-			const nextLogLevels =
-				payload.aiLogLevel === ""
-					? Object.fromEntries(Object.entries(existing).filter(([k]) => k !== "ai"))
-					: { ...existing, ai: payload.aiLogLevel };
 			return await api.patch<GlobalConfig>("/api/globals", {
 				app: {
-					logLevels: Object.keys(nextLogLevels).length === 0 ? undefined : nextLogLevels,
+					// 与 cards 同款:只下发 ai 这一个键,其余模块 override 不动(deepMerge
+					// 只动送到的键)。"" = 不覆盖 → 显式 null 删除;靠「把该键过滤掉再整个
+					// 回传」表达清除是不行的 —— 键消失在 PATCH 里等于「不改」,等级退不回
+					// 跟随全局。
+					logLevels: { ai: payload.aiLogLevel === "" ? null : payload.aiLogLevel },
 				},
 				defaults: { ai: payload.ai },
 			});

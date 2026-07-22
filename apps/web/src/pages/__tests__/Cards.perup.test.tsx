@@ -239,7 +239,13 @@ describe("Cards per-UP 作用域接线", () => {
 		expect(url).toBe(`/api/subs/${byKindSub.id}`);
 		const overrides = body.overrides as Record<string, unknown>;
 		expect(overrides.cardStyle).toBeNull();
-		expect(overrides.cardStyleByKind).toEqual({ sc: { cardColorStart: "#abcdef" } });
+		// 有覆盖的类型原样带上(本例只有 sc);其余三类显式 null —— PATCH 里键消失
+		// 等于「不改」,没有这个 null 就关不掉已经保存过的单独样式。
+		const byKind = overrides.cardStyleByKind as Record<string, unknown>;
+		expect(byKind.sc).toEqual({ cardColorStart: "#abcdef" });
+		expect(byKind.live).toBeNull();
+		expect(byKind.dynamic).toBeNull();
+		expect(byKind.guard).toBeNull();
 	});
 
 	it("per-UP 直播数据区覆盖 → 进生效样式 / 预览请求(showFans=false)", async () => {

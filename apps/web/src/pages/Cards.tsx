@@ -41,6 +41,7 @@ import { GalleryPicker } from "./cards/GalleryPicker";
 import { removeAssetFromByKind, removeAssetFromStyle } from "./cards/gallery-ops";
 import {
 	type CardStyleByKind,
+	explicitByKind,
 	resolveKindStyle,
 	type CardKind as StyleKind,
 } from "./cards/perkind";
@@ -865,20 +866,18 @@ export default function Cards() {
 			cardLayout: CardLayoutFull;
 			imageLogLevel: ImageLogLevel;
 		}) => {
-			const existing = globalsQuery.data?.app.logLevels ?? {};
-			// "" → drop the override (fall back to global). Setting to a level
-			// → patch only that key, so other module overrides stay untouched.
-			const nextLogLevels =
-				payload.imageLogLevel === ""
-					? Object.fromEntries(Object.entries(existing).filter(([k]) => k !== "image"))
-					: { ...existing, image: payload.imageLogLevel };
 			await api.patch<GlobalConfig>("/api/globals", {
 				app: {
-					logLevels: Object.keys(nextLogLevels).length === 0 ? undefined : nextLogLevels,
+					// 只下发 image 这一个键,别的模块覆盖不受影响(deepMerge 只动送到的键)。
+					// "" = 不覆盖 → 显式 null 删除;从前是把该键过滤掉再整个回传,而键消失
+					// 在 PATCH 里等于「不改」—— 日志等级于是永远退不回「跟随全局」。
+					logLevels: { image: payload.imageLogLevel === "" ? null : payload.imageLogLevel },
 				},
 				defaults: {
 					cardStyle: payload.cardStyle,
-					cardStyleByKind: payload.cardStyleByKind,
+					// 摊平成完整四键(没覆盖的显式 null)—— 直接回传会让「关掉单独样式」
+					// 在 PATCH 里等于没说,后端留着旧覆盖。见 explicitByKind。
+					cardStyleByKind: explicitByKind(payload.cardStyleByKind),
 					cardLayout: payload.cardLayout,
 				},
 			});
@@ -894,8 +893,10 @@ export default function Cards() {
 					// 基准覆盖剥掉封面键再落盘:基准是「打开时的 gStyle 快照」,若携带封面会把
 					// 全局封面冻结/清空(封面的 per-UP 归宿只有 cardStyleByKind.live)。
 					cardStyle: puStyle ? omitCover(puStyle) : null,
-					// 空对象 = 无按类型覆盖 → 下发 null 清除该 slice(不存空对象)。
-					cardStyleByKind: Object.keys(puByKind).length > 0 ? puByKind : null,
+					// 空对象 = 无按类型覆盖 → 下发 null 清除该 slice(不存空对象)。还有
+					// 覆盖时逐类型表态:留下的给对象、关掉的给 null,否则只关掉其中一类
+					// 时那一类关不掉(键消失 = 不改)。见 explicitByKind。
+					cardStyleByKind: Object.keys(puByKind).length > 0 ? explicitByKind(puByKind) : null,
 					cardLayout: puLayout ?? null,
 				},
 			});
