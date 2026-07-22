@@ -26,6 +26,10 @@
 			"import": "./lib/constants.mjs",
 			"require": "./lib/constants.cjs"
 		},
+		"./patch": {
+			"import": "./lib/patch.mjs",
+			"require": "./lib/patch.cjs"
+		},
 		"./package.json": "./package.json"
 	},
 	"scripts": {
