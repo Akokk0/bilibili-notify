@@ -19,7 +19,12 @@ import {
 	Input,
 	TextArea,
 } from "../components/ui";
-import { featureRouteSummary, subscriptionTitle, withRouteTarget } from "../lib/config";
+import {
+	featureRouteSummary,
+	subscriptionMetaPatch,
+	subscriptionTitle,
+	withRouteTarget,
+} from "../lib/config";
 
 interface SubscriptionsTabProps {
 	readonly data: DashboardBootstrap;
@@ -230,14 +235,7 @@ function SubscriptionCard({
 	const [editingMeta, setEditingMeta] = useState(false);
 
 	const saveMeta = () => {
-		onPatch({
-			name: name.trim() || undefined,
-			groups: groups
-				.split(/,|\n/)
-				.map((item) => item.trim())
-				.filter(Boolean),
-			notes: notes.trim() || undefined,
-		});
+		onPatch(subscriptionMetaPatch(name, groups, notes));
 		setEditingMeta(false);
 	};
 

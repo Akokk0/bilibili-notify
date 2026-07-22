@@ -60,7 +60,7 @@ export function SettingsTab({ data, onData, onReload, onDirty }: SettingsTabProp
 		setSaving(true);
 		setError(null);
 		try {
-			const globals = await dashboardApi.patchGlobals(buildGlobalsPatch(draft));
+			const globals = await dashboardApi.patchGlobals(buildGlobalsPatch(draft, data.globals));
 			onData({ ...data, globals });
 			setDraft(cloneConfig(globals));
 		} catch (err) {

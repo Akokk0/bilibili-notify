@@ -1,3 +1,4 @@
+import type { DeepPatch } from "@bilibili-notify/internal/patch";
 import type {
 	ApiErrorBody,
 	AstrBotPushTarget,
@@ -114,7 +115,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 export const dashboardApi = {
 	bootstrap: () => request<DashboardBootstrap>("GET", "bootstrap"),
-	patchGlobals: (patch: Partial<GlobalConfig>) => request<GlobalConfig>("PATCH", "globals", patch),
+	// DeepPatch 而非 Partial:清空一个可选字段必须发显式 null(JSON Merge Patch
+	// 语义),`Partial` 表达不了删除。见 @bilibili-notify/internal/patch。
+	patchGlobals: (patch: DeepPatch<Partial<GlobalConfig>>) =>
+		request<GlobalConfig>("PATCH", "globals", patch),
 	resetGlobals: () => request<GlobalConfig>("POST", "danger/reset-globals"),
 	clearSubscriptions: () => request<Subscription[]>("POST", "danger/clear-subscriptions"),
 	clearTargets: () => request<AstrBotPushTarget[]>("POST", "danger/clear-targets"),

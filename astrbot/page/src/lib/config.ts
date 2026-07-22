@@ -1,3 +1,4 @@
+import { buildPatch, type DeepPatch } from "@bilibili-notify/internal/patch";
 import type {
 	FeatureKey,
 	GlobalConfig,
@@ -17,12 +18,25 @@ export function isDirty<T>(base: T, draft: T): boolean {
 	return stableJson(base) !== stableJson(draft);
 }
 
-export function buildGlobalsPatch(draft: GlobalConfig): Partial<GlobalConfig> {
-	return {
-		app: draft.app,
-		master: draft.master,
-		defaults: draft.defaults,
-	};
+/**
+ * 与**服务端当前值**做 diff 而不是把草稿整份回传。
+ *
+ * 配置 PATCH 是 JSON Merge Patch:键不出现 = 「不改」,只有显式 `null` 才是删除。
+ * 整份回传时,被用户清空的可选字段(`app.userAgent`、`master.targetId`……)在草稿
+ * 里是 `undefined`,`JSON.stringify` 会把整个键丢掉 —— 于是「清空」等于什么都没说,
+ * 服务端原样留着旧值,刷新回来又冒出来。
+ *
+ * apps/web 的 System 页早就踩过并修过同一个坑,但这里是另一套实现,没跟着改。
+ * 现在两端共用 `@bilibili-notify/internal/patch` 的同一份 diff,不会再各修各的。
+ */
+export function buildGlobalsPatch(
+	draft: GlobalConfig,
+	baseline: GlobalConfig,
+): DeepPatch<Partial<GlobalConfig>> {
+	return buildPatch(
+		{ app: draft.app, master: draft.master, defaults: draft.defaults },
+		{ app: baseline.app, master: baseline.master, defaults: baseline.defaults },
+	);
 }
 
 /**
@@ -50,6 +64,26 @@ export function listToLines(value: readonly string[] | undefined): string {
 
 export function emptyRouting(): SubscriptionRouting {
 	return Object.fromEntries(FEATURE_KEYS.map((key) => [key, [] as string[]])) as SubscriptionRouting;
+}
+
+/**
+ * 订阅元信息的 PATCH 载荷。清空的字段发**显式 `null`** —— 发 `undefined` 会被
+ * `JSON.stringify` 连键一起丢掉,而键不出现在 PATCH 里等于「这个字段别动」,
+ * 名称/备注于是清不掉(同 {@link buildGlobalsPatch})。
+ */
+export function subscriptionMetaPatch(
+	name: string,
+	groups: string,
+	notes: string,
+): { name: string | null; groups: string[]; notes: string | null } {
+	return {
+		name: name.trim() || null,
+		groups: groups
+			.split(/,|\n/)
+			.map((item) => item.trim())
+			.filter(Boolean),
+		notes: notes.trim() || null,
+	};
 }
 
 export function withRouteTarget(

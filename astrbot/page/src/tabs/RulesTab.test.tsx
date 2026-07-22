@@ -6,6 +6,21 @@ import { type DashboardBootstrap, FEATURE_KEYS } from "../api/types";
 import { ConfirmProvider } from "../components/ui";
 import { RulesTab } from "./RulesTab";
 
+vi.mock("../api/client", () => ({
+	dashboardApi: {
+		listPersonas: vi.fn(async () => []),
+		patchSubscription: vi.fn(async (_id: string, patch: Record<string, unknown>) => ({
+			id: "sub-1",
+			uid: "1001",
+			name: "UP 1",
+			overrides: {},
+			_patch: patch,
+		})),
+	},
+}));
+
+import { dashboardApi } from "../api/client";
+
 (
 	globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -16,6 +31,8 @@ let root: Root | undefined;
 beforeEach(() => {
 	container = document.createElement("div");
 	document.body.append(container);
+	// 不清的话 `calls.at(-1)` 会拿到上一个用例的调用 —— 断言照样过,但什么都没测到。
+	vi.clearAllMocks();
 });
 
 afterEach(async () => {
@@ -63,6 +80,57 @@ describe("RulesTab subscription switch guard", () => {
 
 		expect(getSelect().value).toBe("sub-2");
 		expect(onData).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * 关掉覆盖必须在线格式上表达成显式 null。PATCH 是 JSON Merge Patch:键不出现 =
+ * 「这个字段别动」,所以「把 slice 从对象里删掉再整份回传」等于什么都没说 ——
+ * 保存成功,覆盖却还在。`{}` 更彻底,一个键都遍历不到,全部覆盖都清不掉。
+ */
+describe("RulesTab 清除覆盖的线格式", () => {
+	it("清空当前覆盖 → 每个现存 slice 都显式为 null(发 {} 是清不掉的)", async () => {
+		const data = makeDashboard();
+		(data.subscriptions[0] as { overrides: unknown }).overrides = {
+			filters: { blockAv: true },
+			ai: { preset: "inherit" },
+		};
+		await render(
+			<ConfirmProvider>
+				<RulesTab data={data} onData={vi.fn()} onDirty={vi.fn()} />
+			</ConfirmProvider>,
+		);
+
+		await click(getButton("清空当前覆盖"));
+		await click(getButton("确定"));
+
+		const patch = vi.mocked(dashboardApi.patchSubscription).mock.calls.at(-1)?.[1] as {
+			overrides: Record<string, unknown>;
+		};
+		expect(patch.overrides.filters).toBeNull();
+		expect(patch.overrides.ai).toBeNull();
+	});
+
+	it("关掉一个 section 后保存 → 该 slice 显式为 null", async () => {
+		const data = makeDashboard();
+		(data.subscriptions[0] as { overrides: unknown }).overrides = { filters: { blockAv: true } };
+		await render(
+			<ConfirmProvider>
+				<RulesTab data={data} onData={vi.fn()} onDirty={vi.fn()} />
+			</ConfirmProvider>,
+		);
+
+		// 「动态过滤覆盖」那张卡的「自定义」开关 —— 关掉它 = 删掉 filters slice。
+		const toggles = [...container.querySelectorAll("button")].filter((b) =>
+			b.textContent?.includes("自定义"),
+		);
+		await click(toggles[2] as Element);
+		await click(getButton("保存高级规则"));
+
+		const patch = vi.mocked(dashboardApi.patchSubscription).mock.calls.at(-1)?.[1] as {
+			overrides: Record<string, unknown>;
+		};
+		expect(patch.overrides.filters).toBeNull();
 	});
 });
 

@@ -1,3 +1,4 @@
+import { buildPatch } from "@bilibili-notify/internal/patch";
 import { useEffect, useMemo, useState } from "react";
 import { dashboardApi } from "../api/client";
 import type { DashboardBootstrap, PersonaOption, SubscriptionOverrides } from "../api/types";
@@ -120,7 +121,10 @@ export function RulesTab({ data, onData, onDirty }: RulesTabProps) {
 		setSaving(true);
 		setError(null);
 		try {
-			const overrides = cleanOverrides(draft);
+			// 与该 UP 服务端当前值 diff:被关掉的 slice 由 buildPatch 变成显式 null。
+			// 直接下发 cleanOverrides 的结果不行 —— 清掉的 slice 只是「键没了」,而键
+			// 不出现在 PATCH 里等于「别动」,关掉的覆盖会原样留着。
+			const overrides = buildPatch(cleanOverrides(draft), selected.overrides ?? {});
 			const nextSub = await dashboardApi.patchSubscription(selected.id, { overrides });
 			onData({
 				...data,
@@ -139,7 +143,12 @@ export function RulesTab({ data, onData, onDirty }: RulesTabProps) {
 		setSaving(true);
 		setError(null);
 		try {
-			const nextSub = await dashboardApi.patchSubscription(selected.id, { overrides: {} });
+			// 发 `{}` 是没用的:空对象让服务端 deepMerge 一个键都遍历不到 → 全当「不改」
+			// → 一条覆盖也清不掉。必须把每个现存 slice 显式置 null,buildPatch({}, base)
+			// 正好生成(apps/web 的 Rules 页同款)。
+			const nextSub = await dashboardApi.patchSubscription(selected.id, {
+				overrides: buildPatch({}, selected.overrides ?? {}),
+			});
 			onData({
 				...data,
 				subscriptions: data.subscriptions.map((sub) => (sub.id === nextSub.id ? nextSub : sub)),
