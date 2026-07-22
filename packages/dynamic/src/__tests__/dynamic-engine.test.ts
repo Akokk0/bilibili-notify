@@ -383,6 +383,103 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 	});
 });
 
+/**
+ * 登录掉了以后,谁负责告诉主人。
+ *
+ * `auth-lost` 是 API 层单点广播的(任何 -101 响应都会经 interceptor 触发),上层
+ * master-notifier 收到后私聊「账号登录已失效,请到控制台重新扫码登录」—— 那句话
+ * 带着该怎么办。直播引擎收到同一个事件直接 `teardown()`。
+ *
+ * 动态引擎此前两样都没做:cron 照跑,直到下一轮自己撞上 -101,再报一句
+ * 「[bilibili-notify-dynamic] 账号未登录」。主人先收到一条登录失效,过一会儿又收
+ * 到一条听起来像新故障的报错,而后者不带任何新信息 —— 那正是同一件事的第二次通知。
+ */
+describe("DynamicEngine — 登录失效时不再报第二遍", () => {
+	const oneSub = { subs: { "1": { uid: "1", uname: "UP", dynamic: true } } } as const;
+	const authEc = (b: ReturnType<typeof makeEngine>) =>
+		b.emits.filter(
+			(e) =>
+				e.event === "engine-error" &&
+				(e.args as unknown[]).some((a) => String(a).includes("账号未登录")),
+		).length;
+
+	it("收到 auth-lost 立刻停 cron —— 别等下一轮再去白撞一次 -101", () => {
+		const b = makeEngine(oneSub);
+		b.engine.start();
+		expect(cronMock.instances[0]?.running).toBe(true);
+
+		b.trigger("auth-lost");
+		expect(cronMock.instances[0]?.running).toBe(false);
+	});
+
+	it("auth-lost 之后才落地的那一轮撞上 -101,不再报 engine-error", async () => {
+		// 事件到达时可能已经有一轮请求在飞。它照样会拿到 -101 走 handleApiError,
+		// 而主人在这之前已经收到那条更有用的「登录已失效」了。
+		const b = makeEngine(oneSub);
+		b.engine.start();
+		b.trigger("auth-lost");
+
+		b.getAllDynamic.mockResolvedValue(resp([], -101, "not login"));
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+
+		expect(authEc(b)).toBe(0);
+	});
+
+	it("没收到 auth-lost 就撞上 -101 时照常报 —— 冷启动 cookie 过期走的正是这条", async () => {
+		// `auth-lost` 只在**真的丢掉一个好会话**时才发(login-flow 的 wasLoggedIn 门)。
+		// 进程起来时 cookie 就已经过期的话根本没有那个事件,这里是唯一的通知路径,
+		// 静默掉就等于让主人对着一个不推送的服务干等。
+		const b = makeEngine(oneSub);
+		b.engine.start();
+
+		b.getAllDynamic.mockResolvedValue(resp([], -101, "not login"));
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+
+		expect(authEc(b)).toBe(1);
+	});
+
+	it("auth-restored 之后重新武装 —— 抑制只对这一次登录失效有效", async () => {
+		// 标记粘住的话,重新登录再掉一次就永远静默了。
+		const b = makeEngine(oneSub);
+		b.engine.start();
+		b.trigger("auth-lost");
+		b.trigger("auth-restored");
+
+		b.getAllDynamic.mockResolvedValue(resp([], -101, "not login"));
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+
+		expect(authEc(b)).toBe(1);
+	});
+
+	it("auth-lost 之后订阅变更不许把 cron 拉回来 —— 登录还没恢复,拉起来就是再撞一次", () => {
+		// reconcileJob 原本只认「-352 退避窗口」这一个不许启动的理由,登录失效不在其列。
+		// 于是 auth-lost 停掉 cron 之后,随便一次订阅增删都会立刻把它重新建起来。
+		const b = makeEngine(oneSub);
+		b.engine.start();
+		b.trigger("auth-lost");
+		const after = cronMock.instances.length;
+
+		b.engine.applyOps([
+			{ type: "add", sub: { uid: "2", uname: "UP2", dynamic: true } as SubItemView },
+		]);
+
+		expect(cronMock.instances.length).toBe(after);
+	});
+
+	it("auth-restored 之后才重新开跑", () => {
+		const b = makeEngine(oneSub);
+		b.engine.start();
+		b.trigger("auth-lost");
+
+		b.trigger("auth-restored");
+
+		expect(cronMock.instances.at(-1)?.running).toBe(true);
+	});
+});
+
 describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 	it("timeline >= pub_ts → 已推过,跳过不广播", async () => {
 		const b = makeEngine();

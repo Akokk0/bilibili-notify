@@ -299,6 +299,21 @@ export class DynamicEngine {
 	 * 退避重试热路径反复刷 error(Q1)。
 	 */
 	private riskControlled = false;
+	/**
+	 * 登录已失效,等 `auth-restored`。两个作用:
+	 *
+	 * 1. **不许重启 cron** —— 与 `detectorRestartTimer` 并列成为 `reconcileJob` 的门。
+	 *    少了它,auth-lost 停掉 cron 之后随便一次订阅增删就会把它重新建起来,
+	 *    再去撞一次 -101。
+	 * 2. **不再报「账号未登录」** —— 上层收到 `auth-lost` 已经私聊过主人「账号登录
+	 *    已失效,请到控制台重新扫码登录」,那句话还带着该怎么办;这里再报一句
+	 *    `[bilibili-notify-dynamic] 账号未登录` 不带新信息,只会让人以为又坏了一处。
+	 *
+	 * 反过来,**没有** auth-lost 的 -101 必须照常报:`auth-lost` 只在真的丢掉一个好
+	 * 会话时才发(login-flow 的 wasLoggedIn 门),进程起来时 cookie 就已过期的话根本
+	 * 没有那个事件,这条 engine-error 是唯一的通知路径。
+	 */
+	private authLost = false;
 	private dynamicSubManager: SubManagerView = new Map();
 	private dynamicTimelineManager: DynamicTimelineManager = new Map();
 	/** 连续图片渲染失败计数，达到阈值时仅通知一次但不停 cron */
@@ -339,10 +354,22 @@ export class DynamicEngine {
 		// MessageBus 事件用于其他下游；engine 自身只需在 auth-restored 时重建快照。
 		this.busHandles.push(
 			this.bus.on("auth-restored", () => {
+				this.authLost = false;
 				const subs = this.getSubs();
 				if (!subs) return;
 				this.logger.info("[detector] 收到 auth-restored，重启动态检测");
 				this.startDynamicDetector(subs);
+			}),
+		);
+
+		// 与直播引擎的 `auth-lost` → `teardown()` 对称。此前动态这边没接,cron 照跑到
+		// 下一轮自己撞上 -101 —— 主人于是先收到一条「账号登录已失效」,过一会儿又收到
+		// 一条听着像新故障的「账号未登录」,而那一轮请求本来就注定失败。
+		this.busHandles.push(
+			this.bus.on("auth-lost", () => {
+				this.authLost = true;
+				this.suspendDetector();
+				this.logger.warn("[auth] 账号登录已失效，动态检测已暂停（待 auth-restored 重启）");
 			}),
 		);
 
@@ -355,6 +382,8 @@ export class DynamicEngine {
 		// (不在 startDynamicDetector 复位 —— -352 自身退避重启也走那里,复位会
 		// 破坏边沿、每退避周期重刷 error,正是 Q7 要消除的。)
 		this.riskControlled = false;
+		// 同理:登录失效的抑制标记也只在一个 lifecycle 内有效。
+		this.authLost = false;
 		this.detectorRestartTimer?.dispose();
 		this.detectorRestartTimer = undefined;
 		if (this.dynamicJob) {
@@ -607,6 +636,26 @@ export class DynamicEngine {
 		this.logger.info("[detector] 动态检测任务已启动");
 	}
 
+	/**
+	 * 登录失效时停掉检测循环,但**保留事件订阅** —— 与 `stop()` 的区别就在这:
+	 * 这里还等着 `auth-restored` 把它拉起来。
+	 *
+	 * 挂着的退避重启必须一并作废:`scheduleDetectorRestart` 到点是直接调
+	 * `startDynamicDetector`,绕过 `reconcileJob`,所以 `authLost` 那道门拦不住它 ——
+	 * 上一轮 -352 排下的计时会在五分钟后把 cron 重新建起来,拿一个已经死掉的会话
+	 * 再去撞一次。
+	 *
+	 * 面向运维的那条日志由调用方打(auth-lost 是 warn,-101 是 error),这里不重复。
+	 */
+	private suspendDetector(): void {
+		this.detectorRestartTimer?.dispose();
+		this.detectorRestartTimer = undefined;
+		if (this.dynamicJob) {
+			this.dynamicJob.stop();
+			this.dynamicJob = undefined;
+		}
+	}
+
 	private reconcileJob(): void {
 		if (this.dynamicSubManager.size === 0) {
 			if (this.dynamicJob?.running) {
@@ -614,11 +663,13 @@ export class DynamicEngine {
 				this.dynamicJob = undefined;
 				this.logger.info("[detector] 订阅清空，动态检测任务已停止");
 			}
-		} else if (!this.dynamicJob?.running && !this.detectorRestartTimer) {
-			// detectorRestartTimer 非空 = 正处于 -352/瞬时错误的退避窗口:job 被 handleApiError
-			// 主动停了、等退避到点再重启。此刻别因 applyOps 就 startJob —— 那会提前去戳仍在
-			// 风控的端点,击穿退避(退避的全部意义就是不放大风控)。到点后 scheduleDetectorRestart
-			// 的回调会用最新快照重启,订阅变更不会丢。
+		} else if (!this.dynamicJob?.running && !this.detectorRestartTimer && !this.authLost) {
+			// 两个「此刻别启动」的理由,少一个都会让 applyOps 把 cron 提前拉起来:
+			//
+			// · detectorRestartTimer 非空 = 正处于 -352/瞬时错误的退避窗口。提前 startJob
+			//   会去戳仍在风控的端点,击穿退避(退避的全部意义就是不放大风控)。到点后
+			//   scheduleDetectorRestart 的回调会用最新快照重启,订阅变更不会丢。
+			// · authLost = 登录已经失效,等 auth-restored。这时候拉起来只是再撞一次 -101。
 			this.logger.debug(
 				`[detector] 动态检测 UID 列表：${[...this.dynamicSubManager.keys()].join(", ")}`,
 			);
@@ -1039,7 +1090,13 @@ export class DynamicEngine {
 				// 对死会话每 5 分钟刷一次毫无意义且放大风控)。auth-lost 由 api
 				// interceptor 单点广播,主人通知由上层 60s 节流统一发送。
 				this.logger.error("[api] 账号未登录，动态检测已停止（待 auth-restored 重启）");
-				this.bus.emit("engine-error", LOG_TAG, "账号未登录");
+				// 已经收过 auth-lost 就闭嘴:上层那条「账号登录已失效,请到控制台重新
+				// 扫码登录」既先到又更有用,这里再报一句只是同一件事的第二次通知。
+				// 详见 `authLost` 字段说明 —— 没有 auth-lost 的 -101 仍必须报。
+				if (!this.authLost) this.bus.emit("engine-error", LOG_TAG, "账号未登录");
+				this.authLost = true;
+				// 上面只停了 job,挂着的退避重启还得作废 —— 见 suspendDetector。
+				this.suspendDetector();
 				// auth-loss 是与风控不同的独立 episode,会停 cron 待 auth-restored。
 				// 清掉风控边沿:恢复后若再遇 -352 是全新 episode,必须重新告警
 				// (否则跨 auth-loss 的新风控会被陈旧 flag 静默 —— 审计发现的缺口)。
