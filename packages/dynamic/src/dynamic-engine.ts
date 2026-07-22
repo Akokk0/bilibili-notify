@@ -357,7 +357,9 @@ export class DynamicEngine {
 				this.authLost = false;
 				const subs = this.getSubs();
 				if (!subs) return;
-				this.logger.info("[detector] 收到 auth-restored，重启动态检测");
+				// 前缀与 auth-lost 那条、以及直播引擎的同一对日志统一成 [auth]:
+				// 这是登录生命周期事件,不是检测器自己的事。
+				this.logger.info("[auth] 账号登录已恢复，正在重启动态检测");
 				this.startDynamicDetector(subs);
 			}),
 		);

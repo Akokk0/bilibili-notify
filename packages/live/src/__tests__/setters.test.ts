@@ -75,35 +75,38 @@ describe("WordcloudGenerator — getImageRenderer provider 模式", () => {
 import type { LiveEngine } from "../live-engine";
 import { LiveEngine as LiveEngineImpl } from "../live-engine";
 
+const buildEngineWith = (initialImage: ImageRenderer | null, logger: Logger): LiveEngine => {
+	const serviceCtx = {
+		logger,
+		bus: { emit: vi.fn(), on: vi.fn() },
+		// biome-ignore lint/suspicious/noExplicitAny: 简化 mock,直播引擎构造期不触发监听。
+	} as any;
+	return new LiveEngineImpl({
+		serviceCtx,
+		// biome-ignore lint/suspicious/noExplicitAny: 测试白盒,LiveEngine 不会用 api 直到 start。
+		api: {} as any,
+		// biome-ignore lint/suspicious/noExplicitAny: 同上
+		push: {} as any,
+		// biome-ignore lint/suspicious/noExplicitAny: 同上
+		contentBuilder: {} as any,
+		imageRenderer: initialImage,
+		commentary: null,
+		config: {
+			wordcloudStopWords: "",
+			pushTime: 0,
+			liveSummaryDefault: "",
+			customGuardBuy: { enable: false },
+			customLiveMsg: { enable: false },
+			imageEnabled: true,
+			aiEnabled: true,
+		},
+		emitEngineError: vi.fn(),
+	});
+};
+
 describe("LiveEngine — setImageRenderer 与 setCommentary 后置注入", () => {
-	const buildEngine = (initialImage: ImageRenderer | null): LiveEngine => {
-		const serviceCtx = {
-			logger: fakeLogger(),
-			bus: { emit: vi.fn(), on: vi.fn() },
-			// biome-ignore lint/suspicious/noExplicitAny: 简化 mock,直播引擎构造期不触发监听。
-		} as any;
-		return new LiveEngineImpl({
-			serviceCtx,
-			// biome-ignore lint/suspicious/noExplicitAny: 测试白盒,LiveEngine 不会用 api 直到 start。
-			api: {} as any,
-			// biome-ignore lint/suspicious/noExplicitAny: 同上
-			push: {} as any,
-			// biome-ignore lint/suspicious/noExplicitAny: 同上
-			contentBuilder: {} as any,
-			imageRenderer: initialImage,
-			commentary: null,
-			config: {
-				wordcloudStopWords: "",
-				pushTime: 0,
-				liveSummaryDefault: "",
-				customGuardBuy: { enable: false },
-				customLiveMsg: { enable: false },
-				imageEnabled: true,
-				aiEnabled: true,
-			},
-			emitEngineError: vi.fn(),
-		});
-	};
+	const buildEngine = (initialImage: ImageRenderer | null): LiveEngine =>
+		buildEngineWith(initialImage, fakeLogger());
 
 	it("setImageRenderer 替换后,内部 WordcloudGenerator provider 自动看到新引用", async () => {
 		const engine = buildEngine(null);
@@ -151,5 +154,44 @@ describe("LiveEngine — setImageRenderer 与 setCommentary 后置注入", () =>
 
 		engine.setCommentary(null);
 		expect(requester.commentary).toBeNull();
+	});
+});
+
+/**
+ * `teardown()` / `rebuildFromSubs()` 各自只有一个调用场景 —— `auth-lost` 和
+ * `auth-restored`(独立端 engines.ts、koishi 端 live/service.ts 各一处)。所以
+ * 日志可以、也应该直接写明原因。
+ *
+ * 此前 teardown 打的是 info「关闭所有直播间监听」:级别上跟正常停服没区别、
+ * 措辞上不说为什么关也不说怎么恢复。同一时刻动态那边打的是 warn「账号登录已
+ * 失效,动态检测已暂停(待 auth-restored 重启)」—— 两条讲的是同一件事,读起来
+ * 却像两回事,而正是这条 warn 在告诉主人「得去扫码」。
+ *
+ * 下面只钉**级别**与**关键词**,不钉整句:措辞还可以再润色,但不能悄悄降回 info,
+ * 也不能把原因丢了。
+ */
+describe("LiveEngine — 登录失效/恢复的日志", () => {
+	it("teardown 打 warn 并说明是登录失效,不是普通停服", () => {
+		const logger = fakeLogger();
+		const engine = buildEngineWith(null, logger);
+		// biome-ignore lint/suspicious/noExplicitAny: 测试白盒,不实际拆监听
+		vi.spyOn((engine as any).listener, "disposeAll").mockImplementation(() => {});
+
+		engine.teardown();
+
+		expect(logger.info).not.toHaveBeenCalled();
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+		expect(String(vi.mocked(logger.warn).mock.calls[0]?.[0])).toContain("登录");
+	});
+
+	it("rebuildFromSubs 说明是登录恢复了", () => {
+		const logger = fakeLogger();
+		const engine = buildEngineWith(null, logger);
+		// biome-ignore lint/suspicious/noExplicitAny: 测试白盒,不实际起监听
+		vi.spyOn((engine as any).listener, "startAll").mockImplementation(() => {});
+
+		engine.rebuildFromSubs({});
+
+		expect(String(vi.mocked(logger.info).mock.calls[0]?.[0])).toContain("登录");
 	});
 });

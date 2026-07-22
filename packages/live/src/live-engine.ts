@@ -189,15 +189,22 @@ export class LiveEngine {
 		this.listener.startAll(subs);
 	}
 
-	/** Tear down all listeners + per-room state, leaving the engine instance reusable. */
+	/**
+	 * Tear down all listeners + per-room state, leaving the engine instance reusable.
+	 *
+	 * **只在 `auth-lost` 时调用**(独立端 `engines.ts`、koishi 端 `live/service.ts`
+	 * 各一处),所以日志直接写明原因。此前它打的是 info「关闭所有直播间监听」——
+	 * 级别上跟正常停服没区别,措辞上既不说为什么关也不说怎么恢复,而同一时刻动态
+	 * 那边打的是一条 warn。两条讲的是同一件事,读起来却像两回事。
+	 */
 	teardown(): void {
-		this.logger.info("[live] 关闭所有直播间监听");
+		this.logger.warn("[auth] 账号登录已失效，直播间监听已全部关闭（待 auth-restored 重建）");
 		this.listener.disposeAll();
 	}
 
-	/** Full rebootstrap. Used after auth-restored. */
+	/** Full rebootstrap. 与 {@link teardown} 一一对应,只在 `auth-restored` 时调用。 */
 	rebuildFromSubs(subs: SubscriptionsView): void {
-		this.logger.info("[live] 重建直播间监听");
+		this.logger.info("[auth] 账号登录已恢复，正在重建直播间监听");
 		this.listener.startAll(subs);
 	}
 
