@@ -1079,6 +1079,24 @@ export function liveTypeAllowsAtAll(type: number): boolean {
  * 引擎层不感知差异。preset 强制设为 "custom":adapter 已把 inherit / preset.id 在
  * resolve() 里折叠成具体 persona,引擎不需要再走 preset lookup 一次。
  */
+/**
+ * 一条订阅的 per-UP AI 覆盖 —— 没配就是 `undefined`。
+ *
+ * **`undefined` 与「把全局值折进来」不是一回事。** 留 undefined 时
+ * `CommentaryGenerator` 内部走 `?? this.config` 兜底,主人改了全局人格立刻生效;
+ * 折进来则把当时的全局值冻成这条订阅的 per-UP 值,快照不刷就永远沿用旧值。
+ *
+ * 三处调用点(动态视图、直播视图、统计页的单人锐评)共用这一个入口,免得
+ * 「只在真有 override 时才传」这条纪律各写各的 —— 漏写一处的表现是某位 UP
+ * 的人格悄悄失效,而类型、构建、lint 全绿。
+ */
+export function resolveAiOverride(
+	sub: Subscription,
+	defaults: GlobalDefaults,
+): CommentaryCallOverride | undefined {
+	return sub.overrides.ai ? buildAiOverride(resolve(sub, defaults)) : undefined;
+}
+
 function buildAiOverride(eff: ReturnType<typeof resolve>): CommentaryCallOverride {
 	return {
 		persona: {
@@ -1257,7 +1275,7 @@ export function buildDynamicSubViewSingle(
 		dynamic: sub.enabled && eff.features.dynamic,
 		customCardStyle: dynamicCardStyle,
 		filter: sub.overrides.filters ? buildDynamicFilter(eff) : undefined,
-		aiOverride: sub.overrides.ai ? buildAiOverride(eff) : undefined,
+		aiOverride: resolveAiOverride(sub, globals.defaults),
 		imageGroupEnable: sub.overrides.imageGroup?.enable,
 		imageGroupForward: sub.overrides.imageGroup?.forward,
 		customDynamicTemplate: sub.overrides.templates?.dynamic,
@@ -1337,7 +1355,7 @@ export function buildLiveSubViewSingle(
 		// 断流接续(per-UP ?? 全局,resolve 已折算):该 UP 下播是否先挂起等待重开。
 		liveEndGrace: eff.schedule.liveEndGrace,
 		liveEndGraceMinutes: eff.schedule.liveEndGraceMinutes,
-		aiOverride: sub.overrides.ai ? buildAiOverride(eff) : undefined,
+		aiOverride: resolveAiOverride(sub, globals.defaults),
 		// 无开关:始终下发 eff 模板(eff 合并 per-UP override → 全局),与 liveSummary
 		// 同模式;LiveEngine 在全局/per-UP 变更时收完整 update op 刷新,无快照陈旧问题。
 		customLiveMsg: {

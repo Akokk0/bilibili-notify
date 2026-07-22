@@ -11,6 +11,7 @@ import type { NotificationPayload } from "@bilibili-notify/internal";
 import { colorFromUid } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
+import { resolveAiOverride } from "../runtime/engines.js";
 import {
 	countDynamics,
 	dailyActivityCounts,
@@ -498,10 +499,19 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 			api: engines.api,
 			config: toGeneratorConfig(aiSettings),
 		});
+		// per-UP 人格:与动态点评 / 下播总结同源(见 ROAST_CALL 注释末段)。评的就是
+		// 这一位 UP,主人给他单配的人格没有理由不算数。
+		const aiOverride = resolveAiOverride(sub, deps.store.getGlobals().defaults);
 		let reply: string;
 		try {
 			// 同上:一次性调用,不留会话历史 —— 否则评完 A 再评 B,B 的上下文里坐着 A。
-			reply = await generator.comment(buildSoloRoastPrompt(up, days));
+			// scene / imageUrls 留空:锐评既不属于 dynamic 也不属于 liveSummary,更没有图。
+			reply = await generator.comment(
+				buildSoloRoastPrompt(up, days),
+				undefined,
+				undefined,
+				aiOverride,
+			);
 		} catch (err) {
 			return c.json<StatsSoloRoastResponse>(
 				{ ok: false, err: err instanceof Error ? err.message : String(err) },
@@ -594,4 +604,8 @@ function roastPushText(
  * 人格**不受影响**:`comment()` 内部同样调 `getSystemPrompt()`,主人配的女仆人格
  * 照常生效。这里只是不传 `scene`,因为动态点评 / 下播总结的场景补充提示词与锐评
  * 无关。
+ *
+ * per-UP 人格只有**单人锐评**接得上(`resolveAiOverride(sub, …)`)。榜单卡评的是
+ * 一群 UP,他们各自配的人格选谁都是错的,所以它恒走全局 —— 人格是女仆的,只是
+ * 按 UP 分别配置,而这张卡不属于任何单个 UP(同理它也不吃 per-kind 卡片样式)。
  */
