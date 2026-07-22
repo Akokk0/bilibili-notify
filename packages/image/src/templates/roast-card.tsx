@@ -10,7 +10,13 @@
  * 这两张卡不接 `cardStyleByKind` 的 per-kind 样式矩阵,也没有版式编辑器:那套是
  * 「每位 UP × 每种卡」的二维覆盖,而榜单卡压根不属于任何单个 UP。配色跟词云卡
  * 同源,直接吃全局 `cardStyle`。
+ *
+ * 图标一律用 {@link SVG_CHART_BARS} 这批内联 SVG,**卡里不写 emoji** —— emoji 的
+ * 长相由渲染机器的字体决定,同一张卡在开发机、Docker 镜像、koishi 宿主上各画各的,
+ * 缺字体时直接是豆腐块。推送的纯文字消息不受此限(那边由 IM 客户端画)。
  */
+
+import { SVG_CHART_BARS, SVG_FEATHER, SVG_TROPHY } from "../icons";
 
 export type RoastCardUp = {
 	name: string;
@@ -152,15 +158,19 @@ function ScoreRow(p: { up: RoastCardUp; score: number }) {
 export function RoastBoardCard(p: RoastBoardCardProps) {
 	const podium = (
 		[
-			["🕊️ 本期鸽王", p.pigeon, "#F85A54"],
-			["🏆 勤奋 UP", p.diligent, "#2AC864"],
+			[SVG_FEATHER, "本期鸽王", p.pigeon, "#F85A54"],
+			[SVG_TROPHY, "勤奋 UP", p.diligent, "#2AC864"],
 		] as const
-	).map(([label, who, tone]) => (
+	).map(([icon, label, who, tone]) => (
 		<div class="flex-1 rounded-[10px] p-[10px]" style="background: rgba(0,0,0,0.035);">
-			<div class="mb-[7px] text-[11px] font-bold" style={{ color: tone }}>
-				{label}
+			<div
+				class="mb-[7px] flex items-center gap-[5px] text-[11px] font-bold"
+				style={{ color: tone }}
+			>
+				{icon}
+				<span>{label}</span>
 			</div>
-			<div class="mb-[6px] flex items-center gap-[6px]">
+			<div class="mb-[6px] flex items-center gap-[8px]">
 				<UpAvatar up={who} size={26} />
 				<span class="truncate text-[14px] font-bold" style={{ color: INK }}>
 					{who.name}
@@ -174,9 +184,14 @@ export function RoastBoardCard(p: RoastBoardCardProps) {
 
 	return cardFrame({ ...p, width: 600 }, [
 		<>
-			<div class="flex items-baseline justify-between px-[16px] pt-[14px] pb-[11px]">
-				<span class="text-[17px] font-bold leading-none" style={{ color: INK }}>
-					📊 UP 主周报
+			{/* items-center 而非 baseline:图标没有基线可对,baseline 会把它按底边墩下去。 */}
+			<div class="flex items-center justify-between px-[16px] pt-[14px] pb-[11px]">
+				<span
+					class="flex items-center gap-[7px] text-[17px] font-bold leading-none"
+					style={{ color: INK }}
+				>
+					{SVG_CHART_BARS}
+					<span>UP 主周报</span>
 				</span>
 				<span class="text-[12px]" style={{ color: INK_SOFT }}>
 					近 {p.days} 天 · 智能女仆锐评
@@ -237,9 +252,9 @@ export function RoastBoardCard(p: RoastBoardCardProps) {
 export function RoastSoloCard(p: RoastSoloCardProps) {
 	return cardFrame({ ...p, width: 430 }, [
 		<>
-			<div class="flex items-center gap-[10px] px-[16px] pt-[14px] pb-[11px]">
+			<div class="flex items-center gap-[14px] px-[16px] pt-[14px] pb-[11px]">
 				<UpAvatar up={p.up} size={40} />
-				<div class="flex min-w-0 flex-col gap-[3px]">
+				<div class="flex min-w-0 flex-col gap-[4px]">
 					<span class="truncate text-[16px] font-bold leading-none" style={{ color: INK }}>
 						{p.up.name}
 					</span>

@@ -146,6 +146,15 @@ describe("RoastSoloCard", () => {
 		expect(await renderSolo({ highlights: [] })).not.toContain("掉了两万");
 	});
 
+	it("卡片自己不画 emoji —— 长相由渲染机器的字体说了算,换台机器就变样", async () => {
+		// 两张卡的装饰图标一律走内联 SVG。emoji 在开发机、Docker 镜像、koishi
+		// 宿主上各画各的,缺字体时直接是豆腐块。模型写的正文里有 emoji 不算违规
+		// (那是内容),所以这里的 props 本身不带 emoji。
+		const pictographic = /\p{Extended_Pictographic}/u;
+		expect(await renderBoard()).not.toMatch(pictographic);
+		expect(await renderSolo()).not.toMatch(pictographic);
+	});
+
 	it("进度条宽度夹在 0..100", async () => {
 		const html = await renderSolo({ score: 999 });
 		const widths = [...html.matchAll(/width:\s*([\d.]+)%/g)].map((m) => Number(m[1]));

@@ -264,3 +264,74 @@ export const SVG_DURATION = (
 		/>
 	</svg>
 );
+
+// ── AI 锐评卡 ─────────────────────────────────────────────────────────────────
+
+/**
+ * 锐评卡的三个图标走**描边**风格,与上面那批实心图标不同:它们贴着 11–17px 的
+ * 文字站,实心块在这个字号下会糊成一坨小色团。
+ *
+ * 卡片里一个 emoji 都不许出现 —— emoji 由渲染机器的字体决定长相,同一张卡在开发
+ * 机、Docker 镜像、koishi 宿主上会各画各的(缺字体时甚至是豆腐块),而且彩色emoji
+ * 混在扁平卡里格格不入。尺寸写死是刻意的:每个图标只在一处用,就近调最省事。
+ */
+export const SVG_CHART_BARS = (
+	<svg
+		style="width:16px;height:16px;flex-shrink:0"
+		xmlns="http://www.w3.org/2000/svg"
+		viewBox="0 0 24 24"
+		fill="none"
+		stroke="currentColor"
+		stroke-width="2.2"
+		stroke-linecap="round"
+		stroke-linejoin="round"
+		aria-label="周报"
+	>
+		{/* 柱子从矮到高递增。中间最高会看成一个「山」字,反而不像数据图。 */}
+		<path d="M3 21h18" />
+		<path d="M6 21v-6" />
+		<path d="M12 21v-10" />
+		<path d="M18 21V5" />
+	</svg>
+);
+
+/** 羽毛 —— 鸽王。B 站语境里「鸽」就是放鸽子,鸟毛比任何抽象图形都好认。 */
+export const SVG_FEATHER = (
+	<svg
+		style="width:14px;height:14px;flex-shrink:0"
+		xmlns="http://www.w3.org/2000/svg"
+		viewBox="0 0 24 24"
+		fill="none"
+		stroke="currentColor"
+		stroke-width="2"
+		stroke-linecap="round"
+		stroke-linejoin="round"
+		aria-label="鸽王"
+	>
+		<path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
+		<path d="M16 8 2 22" />
+		<path d="M17.5 15H9" />
+	</svg>
+);
+
+/** 奖杯 —— 勤奋 UP。 */
+export const SVG_TROPHY = (
+	<svg
+		style="width:14px;height:14px;flex-shrink:0"
+		xmlns="http://www.w3.org/2000/svg"
+		viewBox="0 0 24 24"
+		fill="none"
+		stroke="currentColor"
+		stroke-width="2"
+		stroke-linecap="round"
+		stroke-linejoin="round"
+		aria-label="勤奋 UP"
+	>
+		<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+		<path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+		<path d="M4 22h16" />
+		<path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+		<path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+		<path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+	</svg>
+);
