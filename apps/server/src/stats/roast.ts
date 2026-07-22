@@ -7,6 +7,16 @@ import { z } from "zod";
  * 与模型交互的部分单独抽出来是因为它最不可靠:模型随时可能回一段带 markdown
  * 围栏的解释文、少一个字段、或者把 UP 名字写错一个字。这里的职责就是**把不
  * 可靠的自由文本压回一个可信的结构**,压不动就诚实失败,绝不半信半疑地渲染。
+ *
+ * **这里只写任务,不写身份。** 「你是谁、用什么口吻说话」全部由 system prompt
+ * 里的人格负责(`CommentaryGenerator.getSystemPrompt()`),动态点评与下播总结的
+ * user message 也都是这个规矩 —— 前者只说「XX 发布了一条动态,内容如下:…」,
+ * 后者只说「请生成直播总结,弹幕发言人数:…」。曾经这两条提示词开头写着「你是
+ * 一个毒舌但公正的 B 站数据女仆」,于是它和主人配的人格成了两条并列的身份指令,
+ * 人格一旦不是毒舌女仆就串味,最后听谁的全看模型心情。
+ *
+ * 反过来,「评什么、输出什么形状」必须留在这里:锐评没有 dynamic / liveSummary
+ * 那样可配的场景补充提示词,删过头会让默认人格交出一份味同嚼蜡的周报。
  */
 
 /** 喂给模型的单个 UP。用下标而不是名字做引用键 —— 见 `RoastReplySchema`。 */
@@ -59,8 +69,8 @@ export function buildRoastPrompt(ups: readonly RoastInput[], days: number): stri
 		`以下是我订阅的 ${ups.length} 位 B 站 UP 主近 ${days} 天的数据(JSON):`,
 		JSON.stringify(table),
 		"",
-		"你是一个毒舌但公正的 B 站数据女仆。请评选出「鸽王」(最不勤奋:掉粉/停更/投稿直播都少)",
-		"和「勤奋 UP」(更新最勤/涨粉最猛),并对若干 UP 给出简短锐评。",
+		"请评选出「鸽王」(最不勤奋:掉粉/停更/投稿直播都少)和「勤奋 UP」(更新最勤/涨粉最猛),",
+		"并对若干 UP 给出简短锐评。",
 		"",
 		"严格只输出如下 JSON,不要任何多余文字、解释或 markdown 围栏:",
 		'{"pigeon":{"i":0,"reason":""},"diligent":{"i":0,"reason":""},',
@@ -184,8 +194,8 @@ export function buildSoloRoastPrompt(up: RoastInput, days: number): string {
 		`以下是我订阅的一位 B 站 UP 主近 ${days} 天的数据(JSON):`,
 		JSON.stringify(data),
 		"",
-		"你是一个毒舌但公正的 B 站数据女仆。请只针对这一位 UP 主作出评价 ——",
-		"他这段时间是勤快还是在鸽,涨粉掉粉说明了什么,投稿与直播的节奏如何。",
+		"请只针对这一位 UP 主作出评价 —— 他这段时间是勤快还是在鸽,",
+		"涨粉掉粉说明了什么,投稿与直播的节奏如何。",
 		"",
 		"严格只输出如下 JSON,不要任何多余文字、解释或 markdown 围栏:",
 		'{"verdict":"","score":0,"highlights":[{"label":"","comment":""}],"pushText":""}',

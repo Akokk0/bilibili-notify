@@ -229,6 +229,30 @@ describe("buildSoloRoastPrompt", () => {
 	});
 });
 
+describe("提示词只讲任务,不讲身份", () => {
+	it("两条提示词都不给模型安身份 —— 身份归 system prompt 的人格管", () => {
+		// 动态点评和下播总结的 user message 从来只有任务和数据:
+		//   「XX 发布了一条动态,内容如下:…」
+		//   「请生成直播总结,弹幕发言人数:…,热词TOP10:…」
+		// 「用什么口吻说」整个交给 system prompt —— 人格是基底,scene 再叠一层。
+		//
+		// 锐评早先在这里写死了「你是一个毒舌但公正的 B 站数据女仆」,于是它和主人
+		// 在 AI 页配的人格变成**两条并列的身份指令**,人格一旦不是毒舌女仆就串味,
+		// 最后听谁的全看模型心情。
+		for (const p of [buildRoastPrompt(UPS, 30), buildSoloRoastPrompt(SOLO, 30)]) {
+			expect(p).not.toContain("你是");
+		}
+	});
+
+	it("但任务本身的要求要留着 —— 摘身份不等于把活也摘了", () => {
+		// 锐评没有像 dynamic / liveSummary 那样的场景补充提示词可挂,「要评什么、
+		// 输出什么形状」只能写在这里。删过头会让默认人格(专业简洁的助理)交出一份
+		// 味同嚼蜡的周报。
+		expect(buildRoastPrompt(UPS, 30)).toContain("鸽王");
+		expect(buildSoloRoastPrompt(SOLO, 30)).toContain("只针对这一位");
+	});
+});
+
 describe("parseSoloRoastReply", () => {
 	it("解析正常回复", () => {
 		const r = parseSoloRoastReply(JSON.stringify(goodSolo), SOLO);
