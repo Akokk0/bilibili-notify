@@ -259,15 +259,23 @@ export function GlassHeader() {
 					</div>
 				</div>
 				<div className="flex shrink-0 items-center gap-2">
+					{/*
+					 * 这枚徽章只回答一件事:`/api/health` 通不通(见 useBackendReachable)。
+					 * 它曾经写着「推送服务运行中」,被读成了推送的启停开关 —— 而推送开没开
+					 * 是每位 UP 各自的 features,跟这里毫无关系。措辞必须落在「服务器」上。
+					 */}
 					{reachable ? (
-						<span className="inline-flex items-center gap-1.5 rounded-full bg-bn-success-soft px-2.5 py-1 text-[11.5px] font-semibold text-bn-success-text">
+						<span
+							className="inline-flex items-center gap-1.5 rounded-full bg-bn-success-soft px-2.5 py-1 text-[11.5px] font-semibold text-bn-success-text"
+							title="后端服务可访问。与推送开关无关 —— 推送是否启用见各 UP 的规则设置。"
+						>
 							<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-							推送服务运行中
+							服务器运行中
 						</span>
 					) : (
 						<span className="inline-flex items-center gap-1.5 rounded-full bg-bn-danger-soft px-2.5 py-1 text-[11.5px] font-semibold text-bn-danger-text">
 							<span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-							后端失联
+							服务器失联
 						</span>
 					)}
 					<ThemeSwitcher />
