@@ -128,12 +128,18 @@ function Divider() {
 	return <div class="mx-[16px] h-px" style="background: rgba(0,0,0,0.07);" />;
 }
 
-/** 评分条一行。名字列定宽,免得长短名把进度条起点参差不齐地推来推去。 */
-function ScoreRow(p: { up: RoastCardUp; score: number }) {
+/**
+ * 评分条一行。
+ *
+ * 榜单卡多行并列,名字列**定宽**,免得长短名把进度条起点参差不齐地推来推去。
+ * 单人卡只有一行,没有对齐对象 —— 定宽只会白白把名字截成「极客湾Geeker…」,
+ * 所以传 `autoName` 让它按内容撑开;再用 max-width 兜底,免得超长名把条挤没。
+ */
+function ScoreRow(p: { up: RoastCardUp; score: number; autoName?: boolean }) {
 	return (
 		<div class="flex items-center gap-[8px]">
 			<span
-				class="w-[92px] shrink-0 truncate text-[12px] font-semibold"
+				class={`${p.autoName ? "max-w-[46%]" : "w-[120px]"} shrink-0 truncate text-[12px] font-semibold`}
 				style={{ color: INK }}
 				title={p.up.name}
 			>
@@ -276,17 +282,21 @@ export function RoastSoloCard(p: RoastSoloCardProps) {
 				<div class="mb-[8px] text-[11px] font-bold" style={{ color: INK_SOFT }}>
 					综合勤奋度 · 0–100
 				</div>
-				<ScoreRow up={p.up} score={p.score} />
+				<ScoreRow up={p.up} score={p.score} autoName />
 			</div>
 
 			{p.highlights.length > 0 && (
 				<>
 					<Divider />
 					<div class="flex flex-col gap-[7px] px-[16px] pt-[12px] pb-[14px]">
+						{/*
+						 * items-start 不能省:flex 默认 align-items: stretch,右边点评一旦
+						 * 换行,左边这块没有固定高度的标签就会被拉成两行高的长条。
+						 */}
 						{p.highlights.map((hl) => (
-							<div class="flex gap-[8px] text-[12px] leading-[1.6]">
+							<div class="flex items-start gap-[8px] text-[12px] leading-[1.6]">
 								<span
-									class="shrink-0 rounded-[5px] px-[7px] py-[2px] text-[11px] font-bold text-white"
+									class="mt-[1px] shrink-0 rounded-[5px] px-[7px] py-[2px] text-[11px] font-bold text-white"
 									style={{ background: p.up.color }}
 								>
 									{hl.label}

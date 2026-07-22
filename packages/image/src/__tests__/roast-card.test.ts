@@ -155,6 +155,30 @@ describe("RoastSoloCard", () => {
 		expect(await renderSolo()).not.toMatch(pictographic);
 	});
 
+	/**
+	 * 下面两条断言的是**类名**而不是渲染结果 —— 版式 bug 只有量出像素才看得见,
+	 * 而 SSR 出来的是没有布局的 HTML。所以退一步,把「当初为什么加这个类」钉住:
+	 * 类被顺手删掉时会红,这正是这两个 bug 当初的成因。
+	 */
+	it("名字按内容撑开而不是塞进定宽列 —— 定宽会把长 ID 截成「极客湾Geeker…」", async () => {
+		// 单人卡的评分条只有一行,没有对齐对象,定宽纯属白白截断。
+		const html = await renderSolo({ up: up("极客湾Geekerwan") });
+		expect(html).toContain("max-w-[46%]");
+		expect(html).not.toContain("w-[120px]");
+		// 榜单卡多行并列,定宽是刻意的:名字长短不一会把进度条起点推得参差不齐。
+		expect(await renderBoard()).toContain("w-[120px]");
+	});
+
+	it("分维度标签不跟着点评一起长高 —— 点评换行会把标签拉成长条", async () => {
+		const html = await renderSolo({
+			highlights: [
+				{ label: "涨粉", comment: "近 7 日涨粉 15720,近 30 日涨粉 17780,无新内容却集中涨粉" },
+			],
+		});
+		// flex 默认 align-items: stretch,少了 items-start 右边一换行左边就被拉高。
+		expect(html).toContain("items-start");
+	});
+
 	it("进度条宽度夹在 0..100", async () => {
 		const html = await renderSolo({ score: 999 });
 		const widths = [...html.matchAll(/width:\s*([\d.]+)%/g)].map((m) => Number(m[1]));
