@@ -14,6 +14,7 @@
  * Saves through PATCH /api/globals { defaults: { ai: ... } }.
  */
 
+import { buildPatch } from "@bilibili-notify/internal/patch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Pill } from "../components/atoms";
@@ -140,16 +141,23 @@ export default function Ai() {
 
 	const save = useMutation({
 		mutationFn: async (payload: { ai: AISettings; aiLogLevel: AiLogLevel }) => {
-			return await api.patch<GlobalConfig>("/api/globals", {
-				app: {
-					// 与 cards 同款:只下发 ai 这一个键,其余模块 override 不动(deepMerge
-					// 只动送到的键)。"" = 不覆盖 → 显式 null 删除;靠「把该键过滤掉再整个
-					// 回传」表达清除是不行的 —— 键消失在 PATCH 里等于「不改」,等级退不回
-					// 跟随全局。
-					logLevels: { ai: payload.aiLogLevel === "" ? null : payload.aiLogLevel },
-				},
-				defaults: { ai: payload.ai },
-			});
+			// 只挑本页编辑的 scope 做 diff:草稿里消失的键(退回「跟随全局」的日志等级、
+			// 被清空的 apiKey)由 buildPatch 变成显式 null。手写 payload 时 apiKey 清空
+			// 会被 JSON.stringify 连键一起丢掉 → 服务端当「不改」→ 旧 key 一直留着。
+			const base = globalsQuery.data;
+			return await api.patch<GlobalConfig>(
+				"/api/globals",
+				buildPatch(
+					{
+						app: { logLevels: { ai: payload.aiLogLevel || undefined } },
+						defaults: { ai: payload.ai },
+					},
+					{
+						app: { logLevels: { ai: base?.app.logLevels?.ai } },
+						defaults: { ai: base?.defaults.ai },
+					},
+				),
+			);
 		},
 		// 用 PATCH 的**响应**(后端返回的正是 redact 后的新 globals)把 draft 拉回已保存态。
 		//

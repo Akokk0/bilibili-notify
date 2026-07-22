@@ -1,3 +1,4 @@
+import { buildPatch } from "@bilibili-notify/internal/patch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmDialog } from "../components/dialog";
@@ -191,15 +192,33 @@ export default function Rules() {
 			// `defaults.cardStyle` and `defaults.ai` into the body and trigger the
 			// backend enable-check (puppeteer launch + chat.completions probe)
 			// every save, even though nothing here touches those scopes.
-			await api.patch<GlobalConfig>("/api/globals", {
-				defaults: {
-					filters: next.defaults.filters,
-					schedule: next.defaults.schedule,
-					templates: next.defaults.templates,
-					imageGroup: next.defaults.imageGroup,
-					messageLayout: next.defaults.messageLayout,
-				},
-			});
+			// 与基线 diff 而不是整份回传:这几片眼下全是必填字段,整份发也不会出事,
+			// 但哪天有人往里加一个可选字段,「清空」就会又一次变成「什么都没说」。
+			// 统一走 buildPatch,不给这个坑留复发的机会。
+			const base = globalsQuery.data;
+			await api.patch<GlobalConfig>(
+				"/api/globals",
+				buildPatch(
+					{
+						defaults: {
+							filters: next.defaults.filters,
+							schedule: next.defaults.schedule,
+							templates: next.defaults.templates,
+							imageGroup: next.defaults.imageGroup,
+							messageLayout: next.defaults.messageLayout,
+						},
+					},
+					{
+						defaults: {
+							filters: base?.defaults.filters,
+							schedule: base?.defaults.schedule,
+							templates: base?.defaults.templates,
+							imageGroup: base?.defaults.imageGroup,
+							messageLayout: base?.defaults.messageLayout,
+						},
+					},
+				),
+			);
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
 	});

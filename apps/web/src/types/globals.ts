@@ -25,6 +25,12 @@ export type {
 	TemplateBundle,
 } from "@bilibili-notify/internal";
 
-/** Patch payload for /api/globals — deeply partial; server merges + revalidates. */
-type DeepPartial<T> = T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;
+/**
+ * Patch payload for /api/globals — deeply partial; server merges + revalidates.
+ *
+ * 任意层级都可显式为 `null` = 删除该键(JSON Merge Patch 语义,同
+ * `@bilibili-notify/internal/patch`)。缺席的键表示「不改」,所以清除一个可选字段
+ * 只能靠 null,不能靠把键拿掉。
+ */
+type DeepPartial<T> = T extends object ? { [K in keyof T]?: DeepPartial<T[K]> | null } : T;
 export type GlobalConfigPatch = DeepPartial<GlobalConfig>;

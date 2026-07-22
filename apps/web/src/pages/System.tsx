@@ -1,3 +1,4 @@
+import { buildPatch } from "@bilibili-notify/internal/patch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Avatar, Btn } from "../components/atoms";
@@ -17,13 +18,7 @@ import { ApiError, api } from "../services/api";
 import { useAuthStore } from "../store/auth";
 import { BiliLoginStatus, type BiliLoginStatusValue } from "../types/auth";
 import type { PushTarget } from "../types/domain";
-import type {
-	AppConfig,
-	GlobalConfig,
-	GlobalConfigPatch,
-	LogLevel,
-	ModuleLogLevels,
-} from "../types/globals";
+import type { AppConfig, GlobalConfig, GlobalConfigPatch, LogLevel } from "../types/globals";
 import { BackupSection } from "./backup/BackupSection";
 
 const STATUS_LABELS: Record<BiliLoginStatusValue, string> = {
@@ -99,11 +94,22 @@ const NUM_TO_LOG: Record<LogLevelValue, LogLevel> = {
 	4: "debug",
 };
 
+/**
+ * 草稿层的合并。与线格式同一套语义:**`null` = 删除该键**,缺席 = 不改。
+ *
+ * 草稿层也必须认 null,否则「关掉一个可选覆盖」在这里就先失败了 —— 从前的写法是
+ * 「拷一份、删掉那个键、整份回传」,而整份回传走的是合并,被删的键当场被合回来
+ * (同时有两个以上模块覆盖时尤其明显:只剩一个时删空成 undefined 反而歪打正着)。
+ */
 function deepMerge<T>(base: T, patch: GlobalConfigPatch): T {
 	if (typeof patch !== "object" || patch === null || Array.isArray(patch)) return patch as T;
 	const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
 	for (const k of Object.keys(patch)) {
 		const pv = (patch as Record<string, unknown>)[k];
+		if (pv === null) {
+			delete out[k];
+			continue;
+		}
 		const bv = out[k];
 		if (
 			pv != null &&
@@ -137,15 +143,11 @@ function SystemSettingsSection({
 		onPatch({ app: { [key]: v } as Partial<AppConfig> });
 	};
 
-	// Only mutate `app.logLevels[id]` for this module; preserve any image / ai
-	// overrides that were set elsewhere.
+	// 只动 `app.logLevels[id]` 这一个键,别的模块(image / ai 在各自页面设)不受影响。
+	// 退回「跟随全局」发显式 null —— 从前是「拷一份、删掉该键、整份回传」,而整份
+	// 回传走合并,被删的键当场合回来:同时有两个以上模块覆盖时就删不掉了。
 	function setModuleLevel(id: "core" | "dynamic" | "live", value: LogLevelValue | null): void {
-		const current: ModuleLogLevels = { ...(app.logLevels ?? {}) };
-		if (value === null) delete current[id];
-		else current[id] = NUM_TO_LOG[value];
-		onPatch({
-			app: { logLevels: Object.keys(current).length === 0 ? undefined : current },
-		});
+		onPatch({ app: { logLevels: { [id]: value === null ? null : NUM_TO_LOG[value] } } });
 	}
 
 	const masterTarget = master.targetId ? targets.find((t) => t.id === master.targetId) : undefined;
@@ -300,17 +302,18 @@ export default function System() {
 			// and `defaults.ai` in the patch body and run the puppeteer +
 			// chat.completions probes on every save — slow and pointless when
 			// the user never touched those fields here.
-			// SY1:清空的可选字段经线发显式 `null`(后端 deepMerge 约定 null=
-			// 清除)。直接发 undefined 会被 JSON.stringify 丢键,后端当作未改 →
-			// 已配的 master.targetId / userAgent / logLevels 无法经 UI 清除。
-			await api.patch<GlobalConfig>("/api/globals", {
-				app: {
-					...next.app,
-					userAgent: next.app.userAgent ?? null,
-					logLevels: next.app.logLevels ?? null,
-				},
-				master: { ...next.master, targetId: next.master.targetId ?? null },
-			});
+			//
+			// 清空的可选字段(master.targetId / app.userAgent / 各模块 logLevels)由
+			// buildPatch 与基线一比自动变成显式 `null`。从前是逐个手写 `?? null`,
+			// 每加一个可选字段就得有人记得补一次 —— 漏掉的那个就是下一个「清不掉」。
+			const base = globalsQuery.data;
+			await api.patch<GlobalConfig>(
+				"/api/globals",
+				buildPatch(
+					{ app: next.app, master: next.master },
+					{ app: base?.app, master: base?.master },
+				),
+			);
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
 	});

@@ -14,6 +14,7 @@
  */
 
 import type { PreviewResponse, TestPushResponse } from "@bilibili-notify/contract";
+import { buildPatch } from "@bilibili-notify/internal/patch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Btn, Pill, Toggle } from "../components/atoms";
@@ -41,7 +42,6 @@ import { GalleryPicker } from "./cards/GalleryPicker";
 import { removeAssetFromByKind, removeAssetFromStyle } from "./cards/gallery-ops";
 import {
 	type CardStyleByKind,
-	explicitByKind,
 	resolveKindStyle,
 	type CardKind as StyleKind,
 } from "./cards/perkind";
@@ -866,21 +866,32 @@ export default function Cards() {
 			cardLayout: CardLayoutFull;
 			imageLogLevel: ImageLogLevel;
 		}) => {
-			await api.patch<GlobalConfig>("/api/globals", {
-				app: {
-					// 只下发 image 这一个键,别的模块覆盖不受影响(deepMerge 只动送到的键)。
-					// "" = 不覆盖 → 显式 null 删除;从前是把该键过滤掉再整个回传,而键消失
-					// 在 PATCH 里等于「不改」—— 日志等级于是永远退不回「跟随全局」。
-					logLevels: { image: payload.imageLogLevel === "" ? null : payload.imageLogLevel },
-				},
-				defaults: {
-					cardStyle: payload.cardStyle,
-					// 摊平成完整四键(没覆盖的显式 null)—— 直接回传会让「关掉单独样式」
-					// 在 PATCH 里等于没说,后端留着旧覆盖。见 explicitByKind。
-					cardStyleByKind: explicitByKind(payload.cardStyleByKind),
-					cardLayout: payload.cardLayout,
-				},
-			});
+			// 只挑本页真正编辑的 scope 做 diff —— 下发全量会让服务端的 enable-check
+			// 每次保存都跑一遍 puppeteer 启动 + chat.completions 探针。草稿里消失的键
+			// (关掉的 per-kind 样式、退回跟随全局的日志等级)由 buildPatch 自动变成
+			// 显式 null,不必再逐个记着手写。
+			const base = globalsQuery.data;
+			await api.patch<GlobalConfig>(
+				"/api/globals",
+				buildPatch(
+					{
+						app: { logLevels: { image: payload.imageLogLevel || undefined } },
+						defaults: {
+							cardStyle: payload.cardStyle,
+							cardStyleByKind: payload.cardStyleByKind,
+							cardLayout: payload.cardLayout,
+						},
+					},
+					{
+						app: { logLevels: { image: base?.app.logLevels?.image } },
+						defaults: {
+							cardStyle: base?.defaults.cardStyle,
+							cardStyleByKind: base?.defaults.cardStyleByKind ?? {},
+							cardLayout: base?.defaults.cardLayout,
+						},
+					},
+				),
+			);
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
 	});
@@ -893,10 +904,13 @@ export default function Cards() {
 					// 基准覆盖剥掉封面键再落盘:基准是「打开时的 gStyle 快照」,若携带封面会把
 					// 全局封面冻结/清空(封面的 per-UP 归宿只有 cardStyleByKind.live)。
 					cardStyle: puStyle ? omitCover(puStyle) : null,
-					// 空对象 = 无按类型覆盖 → 下发 null 清除该 slice(不存空对象)。还有
-					// 覆盖时逐类型表态:留下的给对象、关掉的给 null,否则只关掉其中一类
-					// 时那一类关不掉(键消失 = 不改)。见 explicitByKind。
-					cardStyleByKind: Object.keys(puByKind).length > 0 ? explicitByKind(puByKind) : null,
+					// 空对象 = 无按类型覆盖 → 下发 null 清除整片(不存空对象)。还有覆盖时
+					// 与该 UP 服务端当前值做 diff:关掉的类型由 buildPatch 变成显式 null,
+					// 否则「开了两类只关一类」那一类关不掉(键消失 = 不改)。
+					cardStyleByKind:
+						Object.keys(puByKind).length > 0
+							? buildPatch(puByKind, sub.overrides.cardStyleByKind ?? {})
+							: null,
 					cardLayout: puLayout ?? null,
 				},
 			});
