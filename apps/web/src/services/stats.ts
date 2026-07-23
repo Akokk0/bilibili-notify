@@ -129,15 +129,18 @@ export function computeTotals(res: StatsOverviewResponse): StatsTotals {
  *
  * 两处都不是能靠调回溯启发式补上的 —— 索引信息在只传 net 的那一刻就丢了。
  * 服务端现在照常把 `cumulative` 一并给出。
+ *
+ * **收整行而不是收两个位置参数**,是因为 `series`(每日净增)与 `cumulative`
+ * (每日末值)类型一模一样,位置参数根本挡不住传错。上面那次改动加了 `cumulative`
+ * 字段,调用点却仍传着 `series`:走势图于是画的是净增 —— 一串 0 附近的小数,末位
+ * 被换成几十万的当前粉丝数,成了一条贴着 0 走、末端垂直拉起的折线。typecheck 全绿。
+ * 现在传错字段直接编译不过。
  */
-export function cumulativeFans(
-	current: number | null,
-	cumulative: ReadonlyArray<number | null>,
-): Array<number | null> {
-	const out = [...cumulative];
+export function cumulativeFans(row: Pick<UpStatsRow, "fans" | "cumulative">): Array<number | null> {
+	const out = [...row.cumulative];
 	// 末位优先用 poller 的最新快照:它比当日最后一条采样更新,而这条线的右端点
 	// 正是 KPI 上那个「当前粉丝数」,两者对不上会很显眼。
-	if (current !== null && out.length > 0) out[out.length - 1] = current;
+	if (row.fans !== null && out.length > 0) out[out.length - 1] = row.fans;
 	return out;
 }
 

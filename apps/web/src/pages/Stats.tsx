@@ -628,7 +628,7 @@ export default function Stats() {
 										{
 											name: focused.uid,
 											color: focusColor,
-											data: cumulativeFans(focused.fans, focused.series),
+											data: cumulativeFans(focused),
 										},
 									]}
 									width={w}

@@ -114,43 +114,61 @@ describe("computeTotals", () => {
 });
 
 describe("cumulativeFans — 粉丝总量曲线", () => {
+	/** 只喂这个函数要的两项。字段名写全,免得又跟 `series` 弄混。 */
+	const fansRow = (fans: number | null, cumulative: Array<number | null>) => ({
+		fans,
+		cumulative,
+	});
+
 	// 曾经这条线由「当前粉丝数 + 每日净增」**反推**,理由写着「反推是无损的」。
 	// 那个前提是错的,两处都推不出来,而且索引信息在只传 net 的那一刻就丢了,
 	// 补不回来 —— 所以服务端现在照常把每日末值(cumulative)一并给出。
 	it("直接用服务端给的每日末值", () => {
-		expect(cumulativeFans(1200, [1000, 1100, 1180])).toEqual([1000, 1100, 1200]);
+		expect(cumulativeFans(fansRow(1200, [1000, 1100, 1180]))).toEqual([1000, 1100, 1200]);
+	});
+
+	it("取的是 cumulative 而不是 series —— 两者类型一模一样,只有这条认得出区别", () => {
+		// 回归:调用点一度传着 `series`(每日净增)。走势图于是画出一串 0 附近的
+		// 小数,末位被换成几十万的当前粉丝数 —— 一条贴着 0 走、末端垂直拉起的线。
+		// 现在签名收整行,传错编译不过;这条守的是函数内部别哪天改回去读 series。
+		const row = {
+			fans: 1_000_120,
+			series: [50, 70, null], // 每日净增
+			cumulative: [1_000_000, 1_000_070, null], // 每日末值
+		};
+		expect(cumulativeFans(row)).toEqual([1_000_000, 1_000_070, 1_000_120]);
 	});
 
 	it("末位换成 poller 的最新快照,它比当日最后一条采样更新", () => {
 		// 曲线右端点就是 KPI 上那个「当前粉丝数」,两者对不上会很显眼。
-		expect(cumulativeFans(1200, [1000, 1100, 1180])[2]).toBe(1200);
+		expect(cumulativeFans(fansRow(1200, [1000, 1100, 1180]))[2]).toBe(1200);
 	});
 
 	it("窗口最早那天有值就画出来 —— 净增为 null 不代表它没有值", () => {
 		// 反推法靠 net 找「上一个有数据的日」,而窗口内第一个有数据的日没有前一日
 		// 基线、net 恒为 null,于是被当成没数据跳过:明明由后一天减得出来,曲线却
 		// 白白晚起一天。
-		expect(cumulativeFans(1200, [1000, 1100, 1180])[0]).toBe(1000);
+		expect(cumulativeFans(fansRow(1200, [1000, 1100, 1180]))[0]).toBe(1000);
 	});
 
 	it("今天还没采到样本时,前面的点照常保留,不塌成孤零零一个点", () => {
 		// 轮询处在风控退避中,或页面在本地零点后几分钟打开:当日净增为 null。
 		// 反推法在第一轮就 break,TrendChart 只画得出一个圆点。
-		const got = cumulativeFans(1200, [1000, 1100, null]);
+		const got = cumulativeFans(fansRow(1200, [1000, 1100, null]));
 		expect(got.slice(0, 2)).toEqual([1000, 1100]);
 		expect(got).toHaveLength(3);
 	});
 
 	it("中间断档保持 null —— 不在图上把没采到的日子连成直线", () => {
-		expect(cumulativeFans(1300, [1000, null, 1290])).toEqual([1000, null, 1300]);
+		expect(cumulativeFans(fansRow(1300, [1000, null, 1290]))).toEqual([1000, null, 1300]);
 	});
 
 	it("当前粉丝未知时不硬凑末位", () => {
-		expect(cumulativeFans(null, [1000, 1100, null])).toEqual([1000, 1100, null]);
+		expect(cumulativeFans(fansRow(null, [1000, 1100, null]))).toEqual([1000, 1100, null]);
 	});
 
 	it("空序列 → 空结果", () => {
-		expect(cumulativeFans(1200, [])).toEqual([]);
+		expect(cumulativeFans(fansRow(1200, []))).toEqual([]);
 	});
 });
 
