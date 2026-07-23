@@ -9,6 +9,7 @@ import {
 	niceTicks,
 	splitSegments,
 } from "./chart-utils.js";
+import { bridgeSpans, type NetPoint } from "./gaps.js";
 import type { RadarAxis } from "./radar.js";
 
 /**
@@ -27,6 +28,13 @@ const GRID = "var(--color-bn-border-subtle)";
 const GRID_ZERO = "var(--color-bn-border)";
 const POS = "var(--color-bn-success-text)";
 const NEG = "var(--color-bn-danger-text)";
+/**
+ * 断档推断态的中性色 —— 服务没跑那几天,形状照画、颜色换掉。
+ *
+ * 必须与涨绿跌红拉开到一眼可辨:灰色是这套图里唯一「这段是猜的」的信号,和它
+ * 撞色就等于把推断值伪装成实测值。见 gaps.ts。
+ */
+const ESTIMATED = "var(--color-bn-text-secondary)";
 
 /** 自适宽容器:测出像素宽再把它交给 render(w),避免 SVG 用百分比宽导致文字被拉伸。 */
 export function ResponsiveChart({
@@ -147,6 +155,7 @@ export function TrendChart({
 	xLabels = [],
 	area = true,
 	absolute = false,
+	bridge = false,
 }: {
 	series: TrendSeries[];
 	width: number;
@@ -154,6 +163,14 @@ export function TrendChart({
 	xLabels?: string[];
 	area?: boolean;
 	absolute?: boolean;
+	/**
+	 * 断档处用灰色直线跨过去。
+	 *
+	 * 只对**累计量**成立:粉丝总量在服务停摆期间照样在变,两端点之间连一条线是
+	 * 对已知事实的最保守表达。净增之类的离散量不能这么连 —— 那是在无中生有地
+	 * 声称「那几天每天涨这么多」,所以缺省关闭。
+	 */
+	bridge?: boolean;
 }) {
 	const pad = { l: 46, r: 14, t: 14, b: 22 };
 	const iw = width - pad.l - pad.r;
@@ -218,6 +235,36 @@ export function TrendChart({
 				const segments = splitSegments(s.data);
 				return (
 					<g key={s.name}>
+						{/*
+						 * 桥接先画,让实测的线段与色块压在它上面 —— 推断段退到背景里,
+						 * 两者在交点处重叠时不会是灰色盖住主色。
+						 */}
+						{bridge
+							? bridgeSpans(s.data).map(([a, b]) => {
+									const ya = Y(s.data[a] as number);
+									const yb = Y(s.data[b] as number);
+									return (
+										<g key={`bridge-${a}`}>
+											{area && series.length === 1 ? (
+												<polygon
+													points={`${X(a)},${baseY} ${X(a)},${ya} ${X(b)},${yb} ${X(b)},${baseY}`}
+													fill={ESTIMATED}
+													opacity="0.1"
+												/>
+											) : null}
+											<line
+												x1={X(a)}
+												y1={ya}
+												x2={X(b)}
+												y2={yb}
+												stroke={ESTIMATED}
+												strokeWidth="2"
+												strokeLinecap="round"
+											/>
+										</g>
+									);
+								})
+							: null}
 						{segments.map((seg) => {
 							const pts = seg.map((i) => `${X(i).toFixed(1)},${Y(s.data[i] as number).toFixed(1)}`);
 							if (seg.length === 1) {
@@ -258,7 +305,7 @@ export function TrendChart({
 	);
 }
 
-/** 每日净增柱状图。涨绿跌红,零基线常驻。 */
+/** 每日净增柱状图。涨绿跌红,零基线常驻;停机断档摊出来的那几根走灰色。 */
 export function NetBars({
 	data,
 	days,
@@ -266,7 +313,8 @@ export function NetBars({
 	height = 190,
 	xLabels = [],
 }: {
-	data: ReadonlyArray<number | null>;
+	/** 逐日净增。`estimated` 的那几根是断档平摊出来的 —— 见 gaps.ts。 */
+	data: ReadonlyArray<NetPoint>;
 	/** 与 data 等长的本地日(YYYY-MM-DD)。既是 React key,也是每根柱子的 tooltip。 */
 	days: readonly string[];
 	width: number;
@@ -276,7 +324,7 @@ export function NetBars({
 	const pad = { l: 46, r: 14, t: 12, b: 22 };
 	const iw = width - pad.l - pad.r;
 	const ih = height - pad.t - pad.b;
-	const ext = extent(data);
+	const ext = extent(data.map((p) => p.value));
 	if (!ext) return <ChartEmpty hint="这段时间还没有采集到数据" />;
 
 	const { min, max, ticks: tickVals } = niceTicks(ext.min, ext.max, { integer: true });
@@ -312,8 +360,9 @@ export function NetBars({
 					</text>
 				</g>
 			))}
-			{data.map((v, i) =>
+			{data.map(({ value: v, estimated }, i) =>
 				// null 的那天不画柱子 —— 留白就是「没记录」,画一根零高柱会被读成「没涨粉」。
+				// 断档摊出来的值不是 null:总量是known的,只有分布是猜的,所以照画、改灰。
 				v === null ? null : (
 					<rect
 						key={days[i]}
@@ -322,10 +371,14 @@ export function NetBars({
 						width={bw}
 						height={Math.max(1.2, Math.abs(zeroY - Y(v)))}
 						rx="1.5"
-						fill={v >= 0 ? POS : NEG}
-						opacity="0.82"
+						fill={estimated ? ESTIMATED : v >= 0 ? POS : NEG}
+						opacity={estimated ? "0.45" : "0.82"}
 					>
-						<title>{`${days[i]} ${formatSignedWan(v)}`}</title>
+						<title>
+							{estimated
+								? `${days[i]} ${formatSignedWan(Math.round(v))}(停机期间,按天平摊)`
+								: `${days[i]} ${formatSignedWan(v)}`}
+						</title>
 					</rect>
 				),
 			)}

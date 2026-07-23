@@ -34,6 +34,7 @@ import {
 } from "./stats/charts";
 import { buildStatColumns, type StatColumnId } from "./stats/columns";
 import { buildCsv } from "./stats/csv";
+import { netFromCumulative, sumNetPoints } from "./stats/gaps";
 import { RoastCard } from "./stats/RoastCard";
 import { buildRadarAxes } from "./stats/radar";
 import { SoloRoastCard } from "./stats/SoloRoastCard";
@@ -636,6 +637,7 @@ export default function Stats() {
 									xLabels={xLabels}
 									area
 									absolute
+									bridge
 								/>
 							)}
 						/>
@@ -715,12 +717,23 @@ export default function Stats() {
 					 * 每日净增是**带符号**的离散量,面积图会从折线填到零基线,一旦曲线穿过 0,正负两段
 					 * 的填充用同一个颜色叠在一起,+5000 和 −5000 看起来一模一样,自交的多边形还会渲染出
 					 * 一堆奇形怪状的碎块。柱状天然能表达符号(涨绿跌红),也和单人视图口径统一。
+					 *
+					 * 两个视图都从**累计末值**重算净增,顺带把停机断档的整段涨幅按天摊开(灰柱)。
+					 * 服务端的 `series` 在断档处已经把整段合计压在末尾那一天,摊不回去 ——
+					 * 无断档时两者逐位相等,见 gaps.ts。
+					 *
+					 * 汇总是**先各摊各的、再逐位相加**,不是先加出一条全站累计再摊:某位 UP
+					 * 那天缺数据时,它的几十万粉丝会从合计里整个消失,曲线上多出一个假坑。
 					 */}
 					<ResponsiveChart
 						height={200}
 						render={(w) => (
 							<NetBars
-								data={focused ? focused.series : (totals?.series ?? [])}
+								data={
+									focused
+										? netFromCumulative(focused.cumulative)
+										: sumNetPoints(rows.map((r) => netFromCumulative(r.cumulative)))
+								}
 								days={axis}
 								width={w}
 								height={200}
