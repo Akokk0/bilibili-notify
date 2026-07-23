@@ -72,6 +72,20 @@ export const Icon = {
 	),
 	guard: filled(<path d="M12 1 3 5v7c0 5 4 9 9 11 5-2 9-6 9-11V5l-9-4Z" />),
 	check: stroke(<path d="m5 12 5 5L20 7" />, 3),
+	/**
+	 * 裸感叹号笔画 —— 跟 {@link Icon.check} 配对，供嵌进圆底徽章里当状态标记。
+	 * 别退回文本字符 `!`：`!` 的墨迹只占 baseline 以上，行盒下方那截 descender
+	 * 空白照样算进垂直居中，圆里看着就是整体往上偏一截（而且偏多少还随字体变）。
+	 * 这里墨迹上下沿是 3.5 / 20.5，对 viewBox 严格对称，缩到什么尺寸都在正中。
+	 * 三角警告牌是另一种语义，用 {@link Icon.warning}。
+	 */
+	exclaim: stroke(
+		<>
+			<path d="M12 5v9.5" />
+			<path d="M12 19h.01" />
+		</>,
+		3,
+	),
 	download: stroke(
 		<>
 			<path d="M12 3v11m0 0 4-4m-4 4-4-4" />

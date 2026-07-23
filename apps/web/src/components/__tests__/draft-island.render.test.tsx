@@ -97,6 +97,22 @@ describe("DraftIsland chip 5 态渲染", () => {
 		expect(useDraftStore.getState().uiState).toBe("dirty");
 	});
 
+	// 圆底徽章里的标记必须是 SVG。曾经这里放的是文本字符 `!`,而文本按行盒居中 ——
+	// `!` 的墨迹只占 baseline 以上,下方那截 descender 空白照样算进垂直居中,圆里
+	// 看着就是整体往上偏一截。jsdom 没有 layout 量不出偏移,只能钉住成因本身。
+	it("error → 红圆徽章里是 SVG 感叹号,不是文本字符", () => {
+		useDraftStore.setState({
+			current: makeReg(),
+			uiState: "error",
+			errorMessage: "网络异常",
+		});
+		const { container } = render(<DraftIsland />);
+		const badge = container.querySelector(".bg-red-500");
+		expect(badge).toBeTruthy();
+		expect(badge?.querySelector("svg")).toBeTruthy();
+		expect(badge?.textContent).toBe("");
+	});
+
 	it("error + errorMessage=null → 回退文案 '保存失败'", () => {
 		useDraftStore.setState({
 			current: makeReg(),

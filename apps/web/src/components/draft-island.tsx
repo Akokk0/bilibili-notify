@@ -280,11 +280,12 @@ function ErrorContent({ message }: { message: string | null }) {
 			}}
 			className="border border-red-400/60"
 		>
+			{/* 圆底徽章里必须放 SVG,不能放文本 `!` —— 理由见 Icon.exclaim 的注释。 */}
 			<span
-				className="grid h-4 w-4 place-items-center rounded-full bg-red-500 text-white"
+				className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-red-500 text-white"
 				aria-hidden
 			>
-				!
+				<Icon.exclaim size={12} />
 			</span>
 			<span className="max-w-65 truncate text-[12px]" title={message ?? undefined}>
 				{message ?? "保存失败"}
