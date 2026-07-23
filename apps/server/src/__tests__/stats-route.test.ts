@@ -314,6 +314,58 @@ describe("GET /api/stats/overview — 活动热力图的采集水位线", () => 
 		expect(activity).toEqual([null, null, null]);
 	});
 
+	it("今天才订阅的 UP,昨天那格是留白而不是灰色的 0", async () => {
+		// 昨天开的服(uid 1 从 5 天前就有采样),今天才订阅 uid 2 —— 昨天它根本不在
+		// 订阅列表里,没人采过它。但 coveredDays 是**跨 UP 并集**(服务器在不在跑是
+		// 服务器的属性),uid 1 昨天的采样让昨天算「在跑」,于是 uid 2 昨天那格被画成
+		// 0,读起来是「他昨天什么都没发」—— 真相是那天我们根本没在看他。
+		const deps = makeDeps({
+			subs: [{ uid: "1" }, { uid: "2" }],
+			samples: {
+				"1": dailySamples(),
+				"2": [{ ts: new Date(NOW).toISOString(), value: 500 }],
+			},
+			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
+		});
+		const rows = (await get(deps, "?days=5")).rows;
+		expect(rows.find((r) => r.uid === "2")?.activity).toEqual([null, null, null, null, 0]);
+		// 老 UP 不受牵连 —— 这 5 天它一直在被采。
+		expect(rows.find((r) => r.uid === "1")?.activity).toEqual([0, 0, 0, 0, 0]);
+	});
+
+	it("刚订阅、第一轮采样都还没跑的 UP → 整行留白", async () => {
+		// 别的 UP 在采样 ⇒ coveredDays 非空 ⇒ 旧实现给这位新 UP 画满一行 0。
+		// 而盘上关于它没有任何东西:没采样、没动态、没场次 —— 一无所知就该留白。
+		const deps = makeDeps({
+			subs: [{ uid: "1" }, { uid: "2" }],
+			samples: { "1": dailySamples() },
+			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
+		});
+		const row2 = (await get(deps, "?days=5")).rows.find((r) => r.uid === "2");
+		expect(row2?.activity).toEqual([null, null, null, null, null]);
+		// 一无所知时计数也是「不知道」,不是 0 —— 与热力图同一把尺子。
+		expect(row2?.dynamics).toBeNull();
+	});
+
+	it("早于首次采样、但盘上真有活动的那天照常上色 —— 新遮罩只遮 0", async () => {
+		// 禁用订阅会 `dropUid` 物理删掉 fans jsonl(退订才连带删 stats),重新启用后
+		// 首采日是今天,而它三天前那条动态原封不动在盘上。有活动就是有活动,铁证 ——
+		// 按首采日一刀切会把这格一起抹掉,那是拿「不知道」覆盖已经知道的事。
+		const deps = makeDeps({
+			subs: [{ uid: "1" }, { uid: "2" }],
+			samples: {
+				"1": dailySamples(),
+				"2": [{ ts: new Date(NOW).toISOString(), value: 500 }],
+			},
+			dynamics: {
+				"2": [{ id: "a", type: "DYNAMIC_TYPE_WORD", ts: new Date(NOW - 3 * DAY).toISOString() }],
+			},
+			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
+		});
+		const activity = (await get(deps, "?days=5")).rows.find((r) => r.uid === "2")?.activity;
+		expect(activity).toEqual([null, 1, null, null, 0]);
+	});
+
 	it("水位线当天有活动就照常上色,不被水位线抹掉", async () => {
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],

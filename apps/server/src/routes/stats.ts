@@ -85,6 +85,16 @@ function maxIso(values: readonly string[]): string | null {
 	return out;
 }
 
+/** 一串时刻里最早的那个本地日键。空串 / 全是脏值时返回 null。 */
+function minLocalDay(values: readonly string[], tzOffsetMin: number): string | null {
+	let out: string | null = null;
+	for (const v of values) {
+		const d = localDayKey(v, tzOffsetMin);
+		if (d && (out === null || d < out)) out = d;
+	}
+	return out;
+}
+
 /** 取序列末 n 天的净增合计。全为 null(无记录)时返回 null 而不是 0。 */
 function sumTail(series: Array<number | null>, n: number): number | null {
 	const tail = series.slice(-n);
@@ -208,7 +218,17 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 			//   · 那天服务根本没跑 —— 见上方 coveredDays;
 			//   · 那天还没开始采集活动 —— fans 采样比统计功能上线得早,光看采样
 			//     会把上线之前的日子全判成「活跃度 0」。
+			//   · 那天我们还没在看**这一位** —— 见下方 firstSampleDay。
 			const activityCounts = dailyActivityCounts(events, sessions, { days, tzOffsetMin });
+			// 这位 UP 自己的首个 fans 采样日。fans poller 只采**订阅中**的 UP、每 2min
+			// 一轮,稠密到足以当「那天我们在看着他」的凭证 —— 而 coveredDays 是跨 UP
+			// 并集,只证明得了服务器在跑,证明不了这一位在不在册。
+			const firstSampleDay = minLocalDay(
+				samples.map((s) => s.ts),
+				tzOffsetMin,
+			);
+			// 盘上关于这位 UP 有没有任何东西。三样全空 = 一无所知,整行留白。
+			const hasEvidence = samples.length > 0 || events.length > 0 || sessions.length > 0;
 			const activity = activityCounts.map((c, i) => {
 				const day = daily[i];
 				if (!day || !coveredDays.has(day.d)) return null;
@@ -219,6 +239,17 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 				// 真实记到的活动一并抹掉,那是拿「不完整」换「假装没有」,更不诚实。
 				// 页面上另有「已记录 N 日」的提示告诉用户采集覆盖了多久。
 				if (recordingSinceDay && day.d < recordingSinceDay) return null;
+				// 别的 UP 的采样能证明服务器在跑,证明不了我们在看他。
+				if (!hasEvidence) return null;
+				// 早于本 UP 首采日、且那天什么都没发生 → 留白。昨天开服、今天新订阅
+				// 一位 UP,他昨天那格本会被画成灰色的 0,读起来是「他昨天什么都没发」,
+				// 而那天他还不在订阅列表里。
+				//
+				// **只遮 0** 是要紧的:禁用订阅会 `dropUid` 物理删掉 fans jsonl(退订
+				// 才连带删 stats),订阅了三个月的 UP 被禁用再启用,首采日就成了今天,
+				// 而他更早的动态与场次原封不动在盘上 —— 那些格子有铁证,一刀切会把
+				// 已经知道的事实重新抹成「不知道」。
+				if (firstSampleDay && day.d < firstSampleDay && c === 0) return null;
 				return c;
 			});
 			// 窗口内是否有**任何**采集覆盖。三种证据取并集:
