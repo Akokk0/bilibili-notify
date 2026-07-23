@@ -34,10 +34,12 @@ export function csvColumns(days: number): CsvColumn[] {
 		{ header: "粉丝数", value: (r) => cell(r.fans) },
 		{ header: "近7日粉丝", value: (r) => cell(r.net7d) },
 		{ header: `近${days}日粉丝`, value: (r) => cell(r.netWindow) },
+		// 列序跟着屏幕上那张表走(见 columns.ts):导出的就是它,两边不一致的话
+		// 拿 CSV 对屏幕的人会以为自己看串行了。
 		{ header: "投稿", value: (r) => cell(r.archives) },
+		{ header: "动态", value: (r) => cell(r.dynamics) },
 		{ header: "直播场次", value: (r) => cell(r.liveSessions) },
 		{ header: "直播时长(h)", value: (r) => cell(r.liveHours, (n) => n.toFixed(1)) },
-		{ header: "动态", value: (r) => cell(r.dynamics) },
 		{ header: "峰值观看", value: (r) => cell(r.peakViewers) },
 		{ header: "最后活动", value: (r) => r.lastActivityAt ?? "" },
 	];

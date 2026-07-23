@@ -54,12 +54,30 @@ describe("csvColumns", () => {
 			近7日粉丝: "3",
 			近30日粉丝: "4",
 			投稿: "5",
+			动态: "6",
 			直播场次: "7",
 			"直播时长(h)": "8.0",
-			动态: "6",
 			峰值观看: "10",
 			最后活动: "2026-05-16T00:00:00.000Z",
 		});
+	});
+
+	it("列序跟屏幕上那张表一致 —— 上面那条是对象比较,钉不住顺序", () => {
+		// 导出的就是屏幕上那张表,两边列序必须同步(见 columns.ts 的分组说明):
+		// 「投稿」与「动态」相邻,直播三列成组。只改一边的话这条会红。
+		expect(csvColumns(30).map((c) => c.header)).toEqual([
+			"UP 主",
+			"UID",
+			"粉丝数",
+			"近7日粉丝",
+			"近30日粉丝",
+			"投稿",
+			"动态",
+			"直播场次",
+			"直播时长(h)",
+			"峰值观看",
+			"最后活动",
+		]);
 	});
 });
 
@@ -76,14 +94,14 @@ describe("buildCsv", () => {
 		const cells = csv.split("\n")[1]?.split(",") ?? [];
 		expect(cells[2]).toBe(""); // 粉丝数
 		expect(cells[5]).toBe(""); // 投稿
-		expect(cells[7]).toBe(""); // 直播时长
+		expect(cells[8]).toBe(""); // 直播时长
 	});
 
 	it("0 照常写 0,不与无记录混为一谈", () => {
 		const csv = buildCsv([sentinel({ archives: 0, liveHours: 0 })], 30, nameOf);
 		const cells = csv.split("\n")[1]?.split(",") ?? [];
 		expect(cells[5]).toBe("0");
-		expect(cells[7]).toBe("0.0");
+		expect(cells[8]).toBe("0.0");
 	});
 
 	it("昵称里的逗号 / 引号按 RFC4180 转义,不撕裂列", () => {

@@ -18,9 +18,9 @@ export type StatColumnId =
 	| "net7d"
 	| "netWindow"
 	| "archives"
+	| "dynamics"
 	| "liveSessions"
 	| "liveHours"
-	| "dynamics"
 	| "peakViewers";
 
 export interface StatColumn {
@@ -54,6 +54,9 @@ export function buildStatColumns(
 	palette: ColumnPalette,
 	fmt: { hours: (v: number) => string; num: (v: number | null) => string },
 ): StatColumn[] {
+	// 列序按维度成组:粉丝 → 内容产出(投稿 / 动态)→ 直播(场次 / 时长 / 峰值观看)。
+	// 「投稿」与「动态」曾被直播那两列从中间劈开,横着扫一行要跳着看。插新列时
+	// 请并进它所属的那一组,别插在组与组的接缝上。`columns.test.ts` 钉了全序。
 	return [
 		{ id: "net7d", label: "近7日粉丝", value: (r) => r.net7d, kind: "delta" },
 		{ id: "netWindow", label: `近${days}日粉丝`, value: (r) => r.netWindow, kind: "delta" },
@@ -64,6 +67,14 @@ export function buildStatColumns(
 			kind: "text",
 			format: (v) => dash(v),
 			color: palette.blue,
+		},
+		{
+			id: "dynamics",
+			label: "动态",
+			value: (r) => r.dynamics,
+			kind: "text",
+			format: (v) => dash(v),
+			color: palette.purple,
 		},
 		{
 			id: "liveSessions",
@@ -79,14 +90,6 @@ export function buildStatColumns(
 			value: (r) => r.liveHours,
 			kind: "text",
 			format: (v) => dash(v, (n) => `${fmt.hours(n)}h`),
-		},
-		{
-			id: "dynamics",
-			label: "动态",
-			value: (r) => r.dynamics,
-			kind: "text",
-			format: (v) => dash(v),
-			color: palette.purple,
 		},
 		{
 			id: "peakViewers",
