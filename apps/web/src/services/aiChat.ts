@@ -3,6 +3,7 @@ import type {
 	AiConversationDTO,
 	AiConversationListResponse,
 	AiConversationMetaDTO,
+	AiConversationMetaResponse,
 	AiConversationResponse,
 } from "@bilibili-notify/contract";
 import { ApiError, api } from "./api";
@@ -37,6 +38,19 @@ export async function createConversation(): Promise<AiConversationDTO> {
 export async function getConversation(id: string): Promise<AiConversationDTO> {
 	const res = await api.get<AiConversationResponse>(
 		`/api/ai/conversations/${encodeURIComponent(id)}`,
+	);
+	return res.conversation;
+}
+
+/**
+ * 让女仆给这个会话起个标题。第一轮聊完之后调一次。
+ *
+ * 失败不抛给主人看 —— 服务端那头起名失败也回 200 + 当前标题(等于没变)。标题
+ * 是装饰,不值得为它在刚聊完的界面上弹一条红字。
+ */
+export async function retitleConversation(id: string): Promise<AiConversationMetaDTO> {
+	const res = await api.post<AiConversationMetaResponse>(
+		`/api/ai/conversations/${encodeURIComponent(id)}/title`,
 	);
 	return res.conversation;
 }

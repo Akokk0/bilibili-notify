@@ -4,6 +4,7 @@ import type {
 	AiChatReplyResponse,
 	AiConversationDTO,
 	AiConversationListResponse,
+	AiConversationMetaResponse,
 	AiConversationResponse,
 	AiTestPushResponse,
 } from "@bilibili-notify/contract";
@@ -106,6 +107,57 @@ export function createAiRoute(deps: RouteDeps): Hono {
 		const removed = await store().remove(c.req.param("id"));
 		if (!removed) return c.json({ err: "会话不存在或已被删除" }, 404);
 		return c.json({ ok: true });
+	});
+
+	/**
+	 * 让女仆看一眼首轮问答,给这个会话起个标题。
+	 *
+	 * 单开一条路而不是塞进聊天流:标题是**装饰**,聊天是正事。混在一起的话,
+	 * 起名慢一点就得让主人多等着流不结束,起名失败还得在流里区分「回复失败」和
+	 * 「只是没起出名字」两种错。分开之后,这条怎么错都不碍着已经聊完的那一轮。
+	 *
+	 * 只看首轮:标题说的是这个会话**从哪儿开始**的,给全量历史既贵又跑题。
+	 *
+	 * 起名失败一律回 200 + 当前标题。前端拿它去更新侧栏,没起出来就是没变化 ——
+	 * 不值得为一个装饰弹红字,尤其余额不足那会儿主人正为聊天本身发愁。
+	 */
+	app.post("/conversations/:id/title", async (c) => {
+		const engines = deps.runtime.engines;
+		if (!engines) return c.json({ err: "服务尚未就绪,请稍后重试" }, 503);
+		const commentary = engines.commentary;
+		if (!commentary) {
+			return c.json({ err: "智能女仆的 baseUrl / apiKey 还没填齐,请先到「智能女仆」页补上" }, 400);
+		}
+
+		const conv = await store().get(c.req.param("id"));
+		if (!conv) return c.json({ err: "会话不存在或已被删除" }, 404);
+
+		const firstRound = conv.messages.slice(0, 2);
+		// 起过就不再起 —— 侧栏那行是主人认会话的路标,不该被反复挪。判据是这个
+		// 标记而**不是**「刚聊完第一轮」:拿轮次当判据的话,功能上线前就存在的
+		// 会话里早已有好几条消息,永远轮不上,标题永远停在首问那句。
+		//
+		// 一问一答都齐了才值得起名。只有半轮(或空会话)没什么可总结的,那一次
+		// 调用纯属白花。
+		if (conv.autoTitled || firstRound.length < 2) {
+			return c.json({ conversation: toMeta(conv) } satisfies AiConversationMetaResponse);
+		}
+
+		try {
+			const title = await commentary.summarizeTitle(
+				firstRound.map((m) => ({ role: m.role, content: m.content })),
+			);
+			const updated = await store().setTitle(conv.id, title);
+			if (updated)
+				return c.json({ conversation: toMeta(updated) } satisfies AiConversationMetaResponse);
+		} catch (err) {
+			// warn 而不是 debug:界面上这条是**静默**失败(标题原样留着),主人只会
+			// 看到「标题还是我那句提问」,却不知道为什么。日志页里得留下原因,
+			// 否则这就是一条无从下手的故障。
+			const msg = err instanceof Error ? err.message : String(err);
+			deps.runtime.serviceCtx.logger.warn(`[ai-chat] 起标题失败,保留原标题: ${msg}`);
+		}
+		return c.json({ conversation: toMeta(conv) } satisfies AiConversationMetaResponse);
 	});
 
 	/**
@@ -216,6 +268,7 @@ function toMeta(conv: Conversation): ConversationMeta {
 		createdAt: conv.createdAt,
 		updatedAt: conv.updatedAt,
 		messageCount: conv.messages.length,
+		autoTitled: conv.autoTitled,
 	};
 }
 

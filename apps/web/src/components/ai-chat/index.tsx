@@ -9,6 +9,7 @@ import {
 	deleteConversation,
 	getConversation,
 	listConversations,
+	retitleConversation,
 	sendChatMessage,
 } from "../../services/aiChat";
 import { api } from "../../services/api";
@@ -136,6 +137,17 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 		setSettled(null);
 	}, [activeId]);
 
+	/**
+	 * 起标题。刻意**不**把错误摊给主人:服务端起名失败也回 200 + 当前标题,
+	 * 真到网络层断了也只是标题没变 —— 为一个装饰在刚聊完的界面上弹红字,
+	 * 比标题还是「你好」更烦人。
+	 */
+	const retitle = useMutation({
+		mutationFn: retitleConversation,
+		onSuccess: () => qc.invalidateQueries({ queryKey: conversationsQueryKey }),
+		onError: () => {},
+	});
+
 	const send = useMutation({
 		mutationFn: async (text: string) => {
 			// 还没有会话就先开一个 —— 主人在空态直接打字发送时走这条路,
@@ -179,6 +191,17 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 			setPending(null);
 			// 列表还是得重拉:标题可能刚由这条首问定下来,而那只有服务端知道。
 			qc.invalidateQueries({ queryKey: conversationsQueryKey });
+
+			// 标题还没被 AI 起过 → 去要一个。
+			//
+			// 判据是这个标记而**不是**「刚聊完第一轮」。拿轮次当判据的话,主人在
+			// 这功能上线前就建好的那些会话里早有好几条消息,永远不满足条件 ——
+			// 一屋子叫「你好」的会话一个都轮不上,而且请求压根不发出去,连日志里
+			// 都查不到任何痕迹。
+			//
+			// 服务端那头也拿同一个标记把关(起过就直接回当前标题),所以这里多问
+			// 一次最多是一次空跑。
+			if (!res.conversation.autoTitled) void retitle.mutate(id);
 		},
 		onError: (err: Error, text: string) => {
 			// 服务端那一轮什么都没落盘,所以这里也把在途副本整个撤掉 —— 留着的话

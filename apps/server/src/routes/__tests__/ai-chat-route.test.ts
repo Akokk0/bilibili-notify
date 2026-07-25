@@ -29,6 +29,10 @@ const H = vi.hoisted(() => ({
 	error: null as Error | null,
 	/** 最后一次收到的历史,用来验「上文有没有真的带过去」。 */
 	lastHistory: null as Array<{ role: string; content: string }> | null,
+	/** AI 起的标题;置 Error 就模拟起名失败(余额不足 / 模型抽风)。 */
+	title: "本周勤奋榜" as string | Error,
+	/** 最后一次交给起名的那段对话。 */
+	titleInput: null as Array<{ role: string; content: string }> | null,
 }));
 
 /**
@@ -48,11 +52,18 @@ const chatStatelessStream = vi.fn(
 	},
 );
 
+const summarizeTitle = vi.fn(async (exchange: Array<{ role: string; content: string }>) => {
+	H.titleInput = exchange;
+	if (H.title instanceof Error) throw H.title;
+	return H.title;
+});
+
 vi.mock("@bilibili-notify/ai", () => ({
 	CommentaryGenerator: class {
 		chat = vi.fn();
 		chatStateless = vi.fn();
 		chatStatelessStream = chatStatelessStream;
+		summarizeTitle = summarizeTitle;
 		stop = vi.fn();
 	},
 }));
@@ -89,6 +100,7 @@ async function makeDeps(opts: StubOpts = {}) {
 							? null
 							: new (class {
 									chatStatelessStream = chatStatelessStream;
+									summarizeTitle = summarizeTitle;
 								})(),
 					},
 		},
@@ -101,7 +113,10 @@ beforeEach(() => {
 	H.chunks = null;
 	H.reply = "主人晚上好呀~(*´∀`)~♡";
 	H.lastHistory = null;
+	H.title = "本周勤奋榜";
+	H.titleInput = null;
 	chatStatelessStream.mockClear();
+	summarizeTitle.mockClear();
 });
 
 /** 一条 SSE 事件。 */
@@ -159,6 +174,8 @@ const listConvs = (app: App) => app.request("/conversations");
 const createConv = (app: App) => app.request("/conversations", { method: "POST" });
 const getConv = (app: App, id: string) => app.request(`/conversations/${id}`);
 const delConv = (app: App, id: string) => app.request(`/conversations/${id}`, { method: "DELETE" });
+const retitle = (app: App, id: string) =>
+	app.request(`/conversations/${id}/title`, { method: "POST" });
 const chat = (app: App, id: string, body: unknown) =>
 	app.request(`/conversations/${id}/chat`, {
 		method: "POST",
@@ -347,6 +364,130 @@ describe("POST /conversations/:id/chat — 聊天", () => {
 		const res = await chat(app, id, { message: "   " });
 		expect(res.status).toBe(400);
 		expect(chatStatelessStream).not.toHaveBeenCalled();
+	});
+});
+
+describe("POST /conversations/:id/title — AI 起标题", () => {
+	/**
+	 * 首问截断只是兜底。主人每次都以「你好」开场,那一列就全叫「你好」,等于没有
+	 * 标题 —— 所以聊完第一轮再让女仆看一眼,起个概括主题的短名字。
+	 */
+	async function firstRound(app: App, ask: string) {
+		const id = (await readJson(await createConv(app))).conversation.id as string;
+		await chatDrained(app, id, { message: ask });
+		return id;
+	}
+
+	it("聊完第一轮 → 标题换成 AI 起的那个", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = await firstRound(app, "你好");
+
+		const res = await retitle(app, id);
+		expect(res.status).toBe(200);
+		expect((await readJson(res)).conversation.title).toBe("本周勤奋榜");
+		// 真的落盘了,不只是回给前端看看。
+		expect((await readJson(await getConv(app, id))).conversation.title).toBe("本周勤奋榜");
+	});
+
+	it("交给女仆的是首轮问答本身,不是整段历史", async () => {
+		// 聊到第十轮再起名的话,给全量历史既贵又跑题 —— 标题说的是这个会话
+		// **从哪儿开始**的。
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = await firstRound(app, "你好");
+		await chatDrained(app, id, { message: "第二个问题" });
+
+		await retitle(app, id);
+		expect(H.titleInput?.map((m) => m.content)).toEqual(["你好", H.reply]);
+	});
+
+	it("起名失败会在日志里留下原因 —— 界面上是静默的,不留就无从下手", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = await firstRound(app, "你好");
+
+		H.title = new Error("402 余额不足");
+		await retitle(app, id);
+		const warn = (deps.runtime.serviceCtx.logger as unknown as { warn: ReturnType<typeof vi.fn> })
+			.warn;
+		expect(warn.mock.calls.some((c) => String(c[0]).includes("402"))).toBe(true);
+	});
+
+	it("起名失败 → 标题原样留着,不清空也不报错给主人看", async () => {
+		// 起不出名字是小事,不该连累已经聊完的那一轮。余额不足时尤其 —— 那会儿
+		// 主人已经在为聊天本身发愁了。
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = await firstRound(app, "你好");
+
+		H.title = new Error("402 余额不足");
+		const res = await retitle(app, id);
+		expect(res.status).toBe(200);
+		expect((await readJson(res)).conversation.title).toBe("你好");
+	});
+
+	it("一轮都没聊完 → 不去撞模型", async () => {
+		// 空会话没什么可总结的,那一次调用纯属白花。
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id as string;
+
+		expect((await retitle(app, id)).status).toBe(200);
+		expect(summarizeTitle).not.toHaveBeenCalled();
+	});
+
+	it("聊过好几轮的老会话照样能起名 —— 判据是「起过没」,不是「第几轮」", async () => {
+		// 主人报的正是这个:一屋子叫「你好」的会话都是功能上线前建的,里面早有
+		// 好几条消息。拿轮次当判据的话,它们一个都轮不上,标题永远是「你好」。
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = await firstRound(app, "你好");
+		await chatDrained(app, id, { message: "第二问" });
+		await chatDrained(app, id, { message: "第三问" });
+
+		const res = await retitle(app, id);
+		expect((await readJson(res)).conversation.title).toBe("本周勤奋榜");
+	});
+
+	it("起过一次就不再起 —— 路标不该被反复挪", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = await firstRound(app, "你好");
+
+		await retitle(app, id);
+		summarizeTitle.mockClear();
+		const res = await retitle(app, id);
+
+		expect(summarizeTitle).not.toHaveBeenCalled();
+		expect((await readJson(res)).conversation.title).toBe("本周勤奋榜");
+	});
+
+	it("起名成功后 autoTitled 传给前端 —— 它靠这个决定还要不要来要", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = await firstRound(app, "你好");
+		expect((await readJson(await retitle(app, id))).conversation.autoTitled).toBe(true);
+	});
+
+	it("起名失败 → autoTitled 仍是假,余额补上之后还能自动补起来", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = await firstRound(app, "你好");
+
+		H.title = new Error("402 余额不足");
+		expect((await readJson(await retitle(app, id))).conversation.autoTitled).toBeFalsy();
+	});
+
+	it("会话不存在 → 404", async () => {
+		const { deps } = await makeDeps();
+		expect((await retitle(createAiRoute(deps), "没这个人")).status).toBe(404);
+	});
+
+	it("没配 key → 400,跟聊天那条一个说法", async () => {
+		const { deps } = await makeDeps({ noCommentary: true });
+		const app = createAiRoute(deps);
+		expect((await retitle(app, "任意 id")).status).toBe(400);
 	});
 });
 

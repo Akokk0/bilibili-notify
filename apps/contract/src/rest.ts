@@ -283,6 +283,11 @@ export interface AiConversationMetaDTO {
 	createdAt: string;
 	updatedAt: string;
 	messageCount: number;
+	/**
+	 * 标题是否已由 AI 起过。缺失(旧会话)按 false 算 —— 前端据此决定要不要去要
+	 * 一个标题,所以「不知道」必须落在「还没起过」这一边,否则老会话一个都轮不上。
+	 */
+	autoTitled?: boolean;
 }
 
 /** 一整个会话(含消息)。`GET /api/ai/conversations/:id` 的载荷。 */
@@ -298,6 +303,16 @@ export interface AiConversationListResponse {
 /** `POST /api/ai/conversations` / `GET /api/ai/conversations/:id` 响应。 */
 export interface AiConversationResponse {
 	conversation: AiConversationDTO;
+}
+
+/**
+ * `POST /api/ai/conversations/:id/title` 响应 —— 起完标题后的会话元信息。
+ *
+ * 起名失败也回 200 + **当前**标题(等于没变)。标题是装饰,不值得为它弹红字;
+ * 前端照常拿它更新侧栏那一行就行。
+ */
+export interface AiConversationMetaResponse {
+	conversation: AiConversationMetaDTO;
 }
 
 /**

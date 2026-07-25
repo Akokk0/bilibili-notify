@@ -113,6 +113,7 @@ function createParams(n: number): {
 	messages: ChatMsg[];
 	temperature?: number;
 	tools?: unknown;
+	stream?: boolean;
 	extra_body?: Record<string, unknown>;
 } {
 	const call = oai.create.mock.calls[n];
@@ -435,6 +436,97 @@ const textChunk = (text: string) => ({ choices: [{ delta: { content: text } }] }
 /** tool_call 的分片:name / arguments 都是一段段来的,靠 index 归位。 */
 const toolChunk = (index: number, part: Record<string, unknown>) => ({
 	choices: [{ delta: { tool_calls: [{ index, ...part }] } }],
+});
+
+describe("CommentaryGenerator.summarizeTitle", () => {
+	/**
+	 * 侧栏那一行标题原本取首问的前 24 字。主人每次都以「你好」开场,于是每个会话
+	 * 都叫「你好」,一行看下来全是同一个词,等于没有标题。改成让模型看完首轮问答
+	 * 起一个短标题。
+	 */
+	const ROUND = [
+		{ role: "user" as const, content: "本周谁最勤奋" },
+		{ role: "assistant" as const, content: "小绫看了一下,是 A 君。" },
+	];
+
+	it("拿首轮问答换一句短标题", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp("本周勤奋榜"));
+		expect(await gen.summarizeTitle(ROUND)).toBe("本周勤奋榜");
+	});
+
+	it("不带工具 —— 起个标题不该顺手去查订阅", async () => {
+		// 带上 tools 的话模型可能真去调一轮,白花一次往返还可能改动什么。
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp("标题"));
+		await gen.summarizeTitle(ROUND);
+		expect(createParams(0).tools).toBeUndefined();
+	});
+
+	it("不流式 —— 一个短标题没什么可逐字看的", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp("标题"));
+		await gen.summarizeTitle(ROUND);
+		expect(createParams(0).stream).toBeUndefined();
+	});
+
+	it("模型爱加的引号 / 前缀 / 句号都洗掉", async () => {
+		// 「标题:」这类前缀和成对引号是最常见的两种,不洗就直接进了侧栏。
+		for (const [raw, want] of [
+			['"本周勤奋榜"', "本周勤奋榜"],
+			["「本周勤奋榜」", "本周勤奋榜"],
+			["标题：本周勤奋榜", "本周勤奋榜"],
+			["本周勤奋榜。", "本周勤奋榜"],
+			// 多行一律取最后一行(见「模型先想后答」那条),不是拼起来。
+			["  思考中…\n本周勤奋榜  ", "本周勤奋榜"],
+		] as const) {
+			const { gen } = makeGen();
+			oai.create.mockReset();
+			oai.create.mockResolvedValueOnce(msgResp(raw));
+			expect(await gen.summarizeTitle(ROUND)).toBe(want);
+		}
+	});
+
+	it("模型先想后答 → 取最后一行,别把思考过程当标题", async () => {
+		// 推理模型常常先写一段思考再给结论,而结论在**最后**。整段压成一行再截断
+		// 的话,侧栏那行会是「让我想想,这段对话在讲…」这种半截思考。
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp("让我想想,这段对话主要在讲订阅管理。\n\n订阅管理"));
+		expect(await gen.summarizeTitle(ROUND)).toBe("订阅管理");
+	});
+
+	it("给的 token 预算够模型想一会儿 —— 太抠会让它把额度花在思考上、正文空手而归", async () => {
+		// 32 个 token 对推理模型是不够的:思考吃光预算,content 回来是空的,于是
+		// 起名永远失败,而主人只看到标题一直是自己那句提问。
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp("标题"));
+		await gen.summarizeTitle(ROUND);
+		const budget = (createParams(0) as unknown as { max_tokens?: number }).max_tokens;
+		expect(budget).toBeGreaterThanOrEqual(100);
+	});
+
+	it("模型话痨就截断 —— 侧栏一行放不下", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(
+			msgResp("这是一个非常非常长的标题长到侧栏根本放不下还要继续说"),
+		);
+		const title = await gen.summarizeTitle(ROUND);
+		expect(title.length).toBeLessThanOrEqual(17);
+		expect(title.endsWith("…")).toBe(true);
+	});
+
+	it("模型回了空 → 抛,让调用方保留原来的标题", async () => {
+		// 静默返回空串的话,侧栏那一行会变成一片空白,比「你好」更糟。
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp("   "));
+		await expect(gen.summarizeTitle(ROUND)).rejects.toThrow();
+	});
+
+	it("空对话 → 直接抛,不拿一句只有 system prompt 的请求去撞模型", async () => {
+		const { gen } = makeGen();
+		await expect(gen.summarizeTitle([])).rejects.toThrow();
+		expect(oai.create).not.toHaveBeenCalled();
+	});
 });
 
 describe("CommentaryGenerator.chatStatelessStream — 真流式", () => {

@@ -132,6 +132,68 @@ describe("ConversationStore — 标题", () => {
 	});
 });
 
+describe("ConversationStore — setTitle", () => {
+	/**
+	 * AI 起完标题后回写。首问截断只是**兜底**:主人每次都以「你好」开场,那
+	 * 一列就全叫「你好」,等于没有标题。
+	 */
+	it("改掉标题,消息一条不动", async () => {
+		const conv = await store.create();
+		await store.appendMessages(conv.id, [
+			{ role: "user", content: "你好" },
+			{ role: "assistant", content: "在的" },
+		]);
+
+		const updated = await store.setTitle(conv.id, "打招呼");
+		expect(updated?.title).toBe("打招呼");
+		expect(updated?.messages.map((m) => m.content)).toEqual(["你好", "在的"]);
+	});
+
+	it("不碰 updatedAt —— 起个标题不算「聊过」,不该把它顶到侧栏最前", async () => {
+		// 顶上去的话,主人明明在聊别的会话,列表却因为一次后台改名重新排了序。
+		//
+		// **必须推假时钟**:时间戳只到毫秒,真实时钟下 append 与 setTitle 通常落在
+		// 同一毫秒,那时「没动」和「动了」写出来一模一样,断言恒真 —— 假绿。
+		const tick = useClock();
+		const conv = await store.create();
+		await store.appendMessages(conv.id, [{ role: "user", content: "问" }]);
+		const before = (await store.get(conv.id))?.updatedAt;
+
+		tick();
+		await store.setTitle(conv.id, "新标题");
+		expect((await store.get(conv.id))?.updatedAt).toBe(before);
+	});
+
+	it("空白标题不落 —— 侧栏那行会变成一片空白", async () => {
+		const conv = await store.create();
+		await store.appendMessages(conv.id, [{ role: "user", content: "本周谁最勤奋" }]);
+
+		expect(await store.setTitle(conv.id, "   ")).toBeNull();
+		expect((await store.get(conv.id))?.title).toBe("本周谁最勤奋");
+	});
+
+	it("会话不存在 → null,不凭空造一个", async () => {
+		expect(await store.setTitle("没这个人", "标题")).toBeNull();
+	});
+
+	it("落一次就打上 autoTitled —— 起名只做一次的判据靠它,不靠「是不是第一轮」", async () => {
+		// 早先用「刚聊完第一轮」当判据,结果是:功能上线前就存在的那些会话,
+		// 里面早有好几条消息,永远不满足条件,标题永远停在「你好」。
+		const conv = await store.create();
+		await store.appendMessages(conv.id, [{ role: "user", content: "你好" }]);
+		expect((await store.get(conv.id))?.autoTitled).toBeFalsy();
+
+		await store.setTitle(conv.id, "打招呼");
+		expect((await store.get(conv.id))?.autoTitled).toBe(true);
+	});
+
+	it("旧会话文件没这个字段 → 当作还没起过,不是当作已起过", async () => {
+		// 反过来的话,主人现有的会话一个都轮不上,新功能对他毫无作用。
+		const conv = await store.create();
+		expect(conv.autoTitled).toBeFalsy();
+	});
+});
+
 describe("ConversationStore — list", () => {
 	it("按 updatedAt 倒序,最近聊过的排最前", async () => {
 		const tick = useClock();

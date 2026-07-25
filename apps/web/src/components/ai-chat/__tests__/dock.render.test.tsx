@@ -57,6 +57,13 @@ vi.mock("../../../services/aiChat", async (orig) => {
 			messages: [],
 		})),
 		deleteConversation: vi.fn(async () => ({ ok: true })),
+		retitleConversation: vi.fn(async (id: string) => ({
+			id,
+			title: "本周勤奋榜",
+			createdAt: "2026-07-25T00:00:00.000Z",
+			updatedAt: "2026-07-25T00:00:01.000Z",
+			messageCount: 2,
+		})),
 		/**
 		 * 每一片都**等测试放行**才吐。
 		 *
@@ -114,7 +121,7 @@ vi.mock("../../../services/api", () => ({
 	api: { get: vi.fn(async () => ({ defaults: { ai: G.ai } })) },
 }));
 
-import { createConversation, sendChatMessage } from "../../../services/aiChat";
+import { createConversation, retitleConversation, sendChatMessage } from "../../../services/aiChat";
 import { DEFAULT_GLASS_OPACITY, useAiChatStore } from "../../../store/aiChat";
 import { useAuthStore } from "../../../store/auth";
 import { BiliLoginStatus } from "../../../types/auth";
@@ -135,6 +142,7 @@ beforeEach(() => {
 	H.holdConv = false;
 	H.convGate = [];
 	vi.mocked(createConversation).mockClear();
+	vi.mocked(retitleConversation).mockClear();
 	G.ai = {
 		model: "gpt-test",
 		persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
@@ -465,6 +473,102 @@ describe("AiChatDock — 开启新对话", () => {
 		fireEvent.keyDown(ta, { key: "Enter" });
 
 		await waitFor(() => expect(vi.mocked(createConversation)).toHaveBeenCalledTimes(1));
+	});
+});
+
+describe("AiChatDock — AI 起标题", () => {
+	/**
+	 * 主人报的:每个会话都叫「你好」。首问截断只是兜底 —— 主人每次都这么开场,
+	 * 那一列就全是同一个词。聊完第一轮让女仆看一眼,起个概括主题的名字。
+	 */
+	async function sendOnce(text: string) {
+		render(wrap(<AiChatDock />));
+		const ta = await screen.findByLabelText("聊天输入");
+		fireEvent.change(ta, { target: { value: text } });
+		fireEvent.keyDown(ta, { key: "Enter" });
+		for (const _ of H.chunks) {
+			await waitFor(() => expect(H.gate.length).toBeGreaterThan(0));
+			const open = H.gate.shift();
+			await act(async () => {
+				open?.();
+			});
+		}
+	}
+
+	it("第一轮聊完 → 去要一个标题", async () => {
+		useAiChatStore.setState({ open: true, activeId: "c1" });
+		await sendOnce("你好");
+		await waitFor(() => expect(vi.mocked(retitleConversation)).toHaveBeenCalled());
+		// react-query 会往 mutationFn 里多塞一个 context 参数,只看第一个实参。
+		expect(vi.mocked(retitleConversation).mock.calls[0]?.[0]).toBe("c1");
+	});
+
+	it("聊过好几轮的老会话照样会去要 —— 主人那一屋子「你好」正是这种", async () => {
+		// 这些会话是功能上线前建的:里面早有好几条消息,也从没被 AI 起过名。
+		// 用「刚聊完第一轮」当判据的话,它们一个都轮不上,请求压根不发出去 ——
+		// 主人查日志也查不到任何痕迹,因为服务端根本没被碰到。
+		vi.mocked(sendChatMessage).mockImplementationOnce(async (_id, message, h) => {
+			h.onDelta("好的");
+			return {
+				user: { id: "u9", role: "user" as const, content: message, ts: "2026-07-25T00:00:02.000Z" },
+				reply: {
+					id: "a9",
+					role: "assistant" as const,
+					content: "好的",
+					ts: "2026-07-25T00:00:03.000Z",
+				},
+				conversation: {
+					id: "c1",
+					title: "你好",
+					createdAt: "2026-07-20T00:00:00.000Z",
+					updatedAt: "2026-07-25T00:00:03.000Z",
+					messageCount: 8,
+					// 老文件里没有这个字段。
+				},
+			};
+		});
+		useAiChatStore.setState({ open: true, activeId: "c1" });
+		render(wrap(<AiChatDock />));
+		const ta = await screen.findByLabelText("聊天输入");
+		fireEvent.change(ta, { target: { value: "再问一句" } });
+		fireEvent.keyDown(ta, { key: "Enter" });
+
+		await waitFor(() => expect(vi.mocked(retitleConversation)).toHaveBeenCalled());
+	});
+
+	it("已经起过名字的会话不再要 —— 路标不该被反复挪", async () => {
+		useAiChatStore.setState({ open: true, activeId: "c1" });
+		await sendOnce("你好");
+		await waitFor(() => expect(vi.mocked(retitleConversation)).toHaveBeenCalledTimes(1));
+
+		// 第二轮:服务端回的 messageCount 已经不是 2 了。
+		vi.mocked(sendChatMessage).mockImplementationOnce(async (_id, message) => ({
+			user: { id: "u2", role: "user", content: message, ts: "2026-07-25T00:00:02.000Z" },
+			reply: { id: "a2", role: "assistant", content: "好", ts: "2026-07-25T00:00:03.000Z" },
+			conversation: {
+				id: "c1",
+				title: "本周勤奋榜",
+				createdAt: "2026-07-25T00:00:00.000Z",
+				updatedAt: "2026-07-25T00:00:03.000Z",
+				messageCount: 4,
+				// 第一轮已经起过名字了,服务端在这里回 true。
+				autoTitled: true,
+			},
+		}));
+		const ta = screen.getByLabelText("聊天输入");
+		fireEvent.change(ta, { target: { value: "再问一句" } });
+		fireEvent.keyDown(ta, { key: "Enter" });
+
+		await waitFor(() => expect(screen.queryByLabelText(/正在思考/)).toBeNull());
+		expect(vi.mocked(retitleConversation)).toHaveBeenCalledTimes(1);
+	});
+
+	it("起名失败不打扰主人 —— 刚聊完的界面上不该冒红字", async () => {
+		vi.mocked(retitleConversation).mockRejectedValueOnce(new Error("402 余额不足"));
+		useAiChatStore.setState({ open: true, activeId: "c1" });
+		await sendOnce("你好");
+		await waitFor(() => expect(vi.mocked(retitleConversation)).toHaveBeenCalled());
+		expect(screen.queryByRole("alert")).toBeNull();
 	});
 });
 

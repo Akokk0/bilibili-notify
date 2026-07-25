@@ -11,6 +11,16 @@ import {
 	TOOL_DEFINITIONS,
 } from "./tools";
 
+/** 起标题的硬超时。它只是个装饰,不值得让主人为它等到聊天那档 120s。 */
+const TITLE_TIMEOUT_MS = 20_000;
+/** 侧栏一行放得下的字数,超了截断加省略号。 */
+const TITLE_MAX_CHARS = 16;
+const TITLE_PROMPT = [
+	"你是一个会话标题生成器。",
+	"读完下面这轮对话,用中文起一个概括主题的短标题。",
+	"要求:4 到 12 个字;只输出标题本身;不要引号、书名号、句号,也不要「标题:」之类的前缀;不要解释。",
+].join("\n");
+
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 const SESSION_SWEEP_INTERVAL_MS = 10 * 60 * 1000; // 10 min — 清扫过期且不再被访问的 session
 
@@ -484,6 +494,54 @@ export class CommentaryGenerator implements CommentaryProvider {
 
 	/** :384 错误脱敏:抹掉 apiKey 明文与 `Bearer <token>`,再进日志 / 外抛。 */
 	/**
+	 * 看完首轮问答,起一个短标题。
+	 *
+	 * 不走 {@link callAPI}:那条路会挂上完整人格提示词和一整套工具,女仆会用她的
+	 * 口吻**回答**这段对话,而不是给个标题;工具还可能真被调起来,白花一次往返。
+	 * 这里要的是一句冷冰冰的概括,所以自带最小 system prompt、不给工具、不流式。
+	 *
+	 * 失败一律抛,由调用方决定退回原标题 —— 起不出名字是小事,不该连累已经聊完
+	 * 的那一轮。
+	 */
+	async summarizeTitle(exchange: readonly ConversationMessage[]): Promise<string> {
+		if (exchange.length === 0) throw new Error("没有可总结的对话");
+		const { apiKey, baseURL, model } = this.config;
+		if (!apiKey) throw new Error("AI apiKey 未配置");
+		if (!baseURL) throw new Error("AI baseURL 未配置");
+
+		const { default: OpenAI } = await import("openai");
+		const client = new OpenAI({ apiKey, baseURL, timeout: TITLE_TIMEOUT_MS });
+		let res: OpenAI.ChatCompletion;
+		try {
+			res = await client.chat.completions.create({
+				model,
+				// 低温:标题要的是概括,不是发挥。
+				temperature: 0.2,
+				// 别抠。推理模型会先想一段再给结论,预算太小就全花在思考上、正文
+				// 空手而归 —— 起名永远失败,而主人只看到标题一直是自己那句提问。
+				// 反正只调这一次,多给点无所谓。
+				max_tokens: 256,
+				messages: [
+					{ role: "system", content: TITLE_PROMPT },
+					{
+						role: "user",
+						content: exchange
+							.map((m) => `${m.role === "user" ? "问" : "答"}:${m.content}`)
+							.join("\n"),
+					},
+				],
+			});
+		} catch (e) {
+			throw CommentaryGenerator.rejectionOf(e) ?? new Error(this.sanitizeErr(e));
+		}
+
+		const title = clipTitle(stripTitleDecoration(res.choices?.[0]?.message?.content ?? ""));
+		// 空标题比「你好」更糟 —— 侧栏那一行会变成一片空白,看着像会话坏了。
+		if (!title) throw new Error("模型没给出标题");
+		return title;
+	}
+
+	/**
 	 * 账户层面的拒绝 —— 说人话地描述它,拿不准就返回 null。
 	 *
 	 * 这几种错误的共同点是**换个参数重来一样会被拒**:拒绝发生在账单和鉴权那一层,
@@ -753,4 +811,42 @@ export class CommentaryGenerator implements CommentaryProvider {
 
 		return "（工具调用轮次已达上限）";
 	}
+}
+
+/**
+ * 洗掉模型爱加的装饰:包裹的引号、「标题:」这类前缀、结尾的句号。
+ *
+ * 提示词里已经说了不要,但各家模型的听话程度差很多 —— 这些装饰一旦漏进去就
+ * 直接显示在侧栏那一行上,所以不指望提示词,在这儿兜住。
+ */
+function stripTitleDecoration(raw: string): string {
+	// 先按行取**最后一个非空行**。推理模型常先写一段思考再给结论,而结论在最后;
+	// 整段压成一行再截断的话,侧栏那行会变成半截思考。
+	const lines = raw
+		.split("\n")
+		.map((l) => l.trim())
+		.filter(Boolean);
+	let s = (lines[lines.length - 1] ?? "").replace(/\s+/g, " ");
+	s = s.replace(/^(?:标题|title)\s*[:：]\s*/i, "");
+	// 成对的引号才剥,只有一边的多半是内容的一部分。
+	const pairs: Array<[string, string]> = [
+		['"', '"'],
+		["'", "'"],
+		["「", "」"],
+		["《", "》"],
+		["“", "”"],
+		["‘", "’"],
+	];
+	for (const [open, close] of pairs) {
+		if (s.startsWith(open) && s.endsWith(close) && s.length > open.length + close.length) {
+			s = s.slice(open.length, -close.length).trim();
+			break;
+		}
+	}
+	return s.replace(/[。.!！?？]+$/, "").trim();
+}
+
+/** 超长就截断加省略号 —— 侧栏一行放不下。 */
+function clipTitle(text: string): string {
+	return text.length <= TITLE_MAX_CHARS ? text : `${text.slice(0, TITLE_MAX_CHARS)}…`;
 }

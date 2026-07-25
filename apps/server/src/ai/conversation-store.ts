@@ -41,6 +41,14 @@ export interface Conversation {
 	createdAt: string;
 	updatedAt: string;
 	messages: StoredMessage[];
+	/**
+	 * 标题是否已由 AI 起过。缺失(旧文件)按 false 算。
+	 *
+	 * 「只起一次」的判据是它,而**不是**「刚聊完第一轮」。用轮次当判据的话,
+	 * 功能上线前就存在的会话里早已有好几条消息,永远不满足条件 —— 主人一屋子
+	 * 叫「你好」的会话一个都轮不上。
+	 */
+	autoTitled?: boolean;
 }
 
 /** 侧栏列表项 —— 只有元信息,不驮消息体。 */
@@ -50,6 +58,8 @@ export interface ConversationMeta {
 	createdAt: string;
 	updatedAt: string;
 	messageCount: number;
+	/** 见 {@link Conversation.autoTitled}。前端拿它决定要不要去要一个标题。 */
+	autoTitled?: boolean;
 }
 
 export interface ConversationStore {
@@ -64,6 +74,13 @@ export interface ConversationStore {
 	 * 那会让「删掉的会话又冒出来」这种幽灵行为看着像正常功能)。
 	 */
 	appendMessages(id: string, messages: readonly NewMessage[]): Promise<Conversation | null>;
+	/**
+	 * 改标题(AI 起完名字回写)。返回更新后的会话;会话不存在或标题是空白返回 null。
+	 *
+	 * **不动 `updatedAt`** —— 起个标题不算「聊过」。动了的话,一次后台改名就会把
+	 * 这个会话顶到侧栏最前,而主人明明正在聊别的。
+	 */
+	setTitle(id: string, title: string): Promise<Conversation | null>;
 	/** 删除一个会话。返回它此前是否存在。 */
 	remove(id: string): Promise<boolean>;
 }
@@ -220,6 +237,20 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 					conv.messages = conv.messages.slice(-maxMessages);
 				}
 				conv.updatedAt = now;
+				await writeOne(conv);
+				return conv;
+			});
+		},
+
+		setTitle(id, title) {
+			return serial(async () => {
+				const next = title.trim().replace(/\s+/g, " ");
+				if (!next) return null;
+				const conv = await readOne(fileOf(id));
+				if (!conv) return null;
+				conv.title = clipTitle(next);
+				conv.autoTitled = true;
+				// updatedAt 保持不动,理由见接口上的注释。
 				await writeOne(conv);
 				return conv;
 			});
