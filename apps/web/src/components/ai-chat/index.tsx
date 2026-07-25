@@ -118,11 +118,13 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 	const [pending, setPending] = useState<{ ask: string; draft: string } | null>(null);
 
 	/**
-	 * 刚由在途副本交接成真身的那两条消息。
+	 * 这个会话里**已经由在途副本交接成真身**的消息 id,逐轮累积。
 	 *
-	 * 它们**已经在屏幕上待了一整轮**了 —— 主人眼看着自己那句飞上去、回复一个字
-	 * 一个字长出来。真身接手时若照常播入场动画,就是凭空又淡入上移一次,看上去
-	 * 正是「回复吐完最后整段闪一下」。
+	 * 它们都是主人眼看着长出来的 —— 自己那句飞上去、回复一个字一个字冒出来。
+	 * 真身接手时若照常播入场动画,就是凭空又淡入上移一次,看上去正是「闪一下」。
+	 *
+	 * 只留最近一轮不够:下一轮结束时,上一轮那两条会**重新**被加上动画类,于是
+	 * 轮到它们闪。所以是累积。
 	 *
 	 * 记会话 id 是为了切走再切回时自动失效:那时整个列表本来就是新挂载的,该播。
 	 */
@@ -164,7 +166,16 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 				...res.conversation,
 				messages: [...(prev?.messages ?? []), res.user, res.reply],
 			}));
-			setSettled({ conv: id, ids: [res.user.id, res.reply.id] });
+			// **累积**而不是替换。只留最近一轮的话,下一轮结束时上一轮那两条会重新
+			// 被加上入场动画类 —— CSS 于是又演一遍,表现就是「上一条闪了一下」。
+			// 已经在屏幕上待着的消息,任何时候都不该再演入场。
+			setSettled((prev) => ({
+				conv: id,
+				ids:
+					prev?.conv === id
+						? [...prev.ids, res.user.id, res.reply.id]
+						: [res.user.id, res.reply.id],
+			}));
 			setPending(null);
 			// 列表还是得重拉:标题可能刚由这条首问定下来,而那只有服务端知道。
 			qc.invalidateQueries({ queryKey: conversationsQueryKey });

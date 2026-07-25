@@ -114,7 +114,7 @@ vi.mock("../../../services/api", () => ({
 	api: { get: vi.fn(async () => ({ defaults: { ai: G.ai } })) },
 }));
 
-import { createConversation } from "../../../services/aiChat";
+import { createConversation, sendChatMessage } from "../../../services/aiChat";
 import { DEFAULT_GLASS_OPACITY, useAiChatStore } from "../../../store/aiChat";
 import { useAuthStore } from "../../../store/auth";
 import { BiliLoginStatus } from "../../../types/auth";
@@ -308,6 +308,53 @@ describe("AiChatDock — 发送与流式渲染", () => {
 			expect(inChat().getByText("主人晚上好").className).not.toContain("bn-anim-msg-in");
 			// 用户那条的动画类挂在气泡外层。
 			expect(inChat().getByText("在吗").parentElement?.className).not.toContain("bn-anim-msg-in");
+		});
+
+		it("第二轮结束时,上一轮那两条也不能重播 —— 主人看到的正是「上一条闪了一下」", async () => {
+			// 只记住最近一轮的话,第二轮把 settled 换掉,上一轮那两条就**重新**被加上
+			// 入场动画类 —— CSS 动画于是又演一遍。已经在屏幕上待着的消息,任何时候
+			// 都不该再演入场。
+			await typeAndSend("第一问");
+			await releaseChunk();
+			await releaseChunk();
+			await waitFor(() => expect(inChat().getByText("主人晚上好")).toBeTruthy());
+
+			// 第二轮换一组 id,模拟服务端新落盘的两条。
+			vi.mocked(sendChatMessage).mockImplementationOnce(async (_id, message, h) => {
+				h.onDelta("好的");
+				const user = {
+					id: "u2",
+					role: "user" as const,
+					content: message,
+					ts: "2026-07-25T00:00:02.000Z",
+				};
+				const reply = {
+					id: "a2",
+					role: "assistant" as const,
+					content: "好的",
+					ts: "2026-07-25T00:00:03.000Z",
+				};
+				H.messages = [...H.messages, user, reply];
+				return {
+					user,
+					reply,
+					conversation: {
+						id: "c1",
+						title: "t",
+						createdAt: "2026-07-25T00:00:00.000Z",
+						updatedAt: "2026-07-25T00:00:03.000Z",
+						messageCount: 4,
+					},
+				};
+			});
+			const ta = composer();
+			fireEvent.change(ta, { target: { value: "第二问" } });
+			fireEvent.keyDown(ta, { key: "Enter" });
+
+			await waitFor(() => expect(inChat().getByText("好的")).toBeTruthy());
+			// 第一轮那两条仍然不带动画类。
+			expect(inChat().getByText("主人晚上好").className).not.toContain("bn-anim-msg-in");
+			expect(inChat().getByText("第一问").parentElement?.className).not.toContain("bn-anim-msg-in");
 		});
 
 		it("但换个会话再回来时照常播 —— 那时整个列表本来就是新挂载的", async () => {
