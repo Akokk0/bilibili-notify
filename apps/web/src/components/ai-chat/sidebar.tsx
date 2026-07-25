@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { type AiConversationMetaDTO, groupConversations } from "../../services/aiChat";
 import { CHAT_THEME_LABELS, CHAT_THEMES, type ChatTheme } from "../../store/aiChat";
+import { Toggle } from "../atoms";
 import { Icon } from "../icons";
 
 /**
@@ -26,6 +27,11 @@ export interface ChatSidebarProps {
 	userFace?: string;
 	/** 女仆的名字,取自人格配置(见 {@link resolveChatPersona})。 */
 	aiName: string;
+	/** 玻璃片透明度 0..1;{@link glassClear} 开着时这个值留着但不生效。 */
+	glassOpacity: number;
+	onGlassOpacityChange: (next: number) => void;
+	glassClear: boolean;
+	onGlassClearChange: (next: boolean) => void;
 }
 
 export function ChatSidebar(props: ChatSidebarProps) {
@@ -186,6 +192,39 @@ export function ChatSidebar(props: ChatSidebarProps) {
 									</button>
 								);
 							})}
+						</div>
+
+						{/* 玻璃质感。跟推送卡片那对同名同义(玻璃片透明度 + 完全透明),
+						    主人在两处看到的是同一套说法,默认值也是同一个数。 */}
+						<div className="mb-2 mt-3.5 pl-0.5 text-[11px] font-bold tracking-wide text-bn-text-secondary">
+							玻璃质感
+						</div>
+						<div className="flex h-7 items-center gap-2.5 px-0.5">
+							<input
+								type="range"
+								min={0}
+								max={1}
+								step={0.02}
+								aria-label="玻璃片透明度"
+								// 开着完全透明时**禁用而不是藏起来**:藏掉的话主人看不见自己原来
+								// 调的是哪一档,关掉之后会突然跳回一个自己记不得的值。
+								disabled={props.glassClear}
+								value={props.glassOpacity}
+								onChange={(e) => props.onGlassOpacityChange(Number(e.target.value))}
+								className="flex-1 accent-bn-purple disabled:opacity-40"
+							/>
+							<span className="w-8 shrink-0 text-right font-mono text-[10.5px] text-bn-text-secondary">
+								{props.glassOpacity.toFixed(2)}
+							</span>
+						</div>
+						<div className="mt-2 flex items-center gap-2 px-0.5 text-[11px] text-bn-text-secondary">
+							<Toggle
+								size="sm"
+								ariaLabel="完全透明(去磨砂模糊)"
+								value={props.glassClear}
+								onChange={props.onGlassClearChange}
+							/>
+							完全透明（去磨砂模糊）
 						</div>
 					</div>
 				) : null}

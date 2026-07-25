@@ -66,6 +66,38 @@ describe("styles.css 分层", () => {
 	});
 });
 
+describe("完全透明的作用范围", () => {
+	/**
+	 * 「完全透明」把玻璃片透光 + 去掉磨砂,但**设置弹层不在其列** —— 调这个开关的
+	 * 控件就在那块弹层里。一起透掉的话,主人开完的下一秒就看不见自己在调什么,
+	 * 连关回去的开关都摸不着,只能去清 localStorage。
+	 *
+	 * 这条守在源码上而不是渲染上:jsdom 不算样式,量不出「透没透」。后来者顺手
+	 * 把 popover 补进那串选择器里是很自然的动作,得有句话拦一下。
+	 */
+	/** 弹层那条规则的正文。 */
+	async function popoverBlock(): Promise<string> {
+		const css = await readFile(STYLES, "utf8");
+		const start = css.indexOf(".bn-glass-popover {");
+		expect(start).toBeGreaterThan(-1);
+		return css.slice(start, css.indexOf("}", start));
+	}
+
+	/**
+	 * 测的是「有没有留后路」这个事实,不是具体数值 —— 数值是观感,该由主人在真机上
+	 * 定;有没有后路是可用性,一旦没了主人就被自己锁在外面,只能去清 localStorage。
+	 */
+	it("底色留了下限 —— 拉到 0 / 开了完全透明,弹层也得读得出来", async () => {
+		expect(await popoverBlock()).toContain("max(");
+	});
+
+	it("磨砂不跟着完全透明一起掉 —— 掉了就是文字叠文字", async () => {
+		// 其它玻璃件的 blur 都乘了 --bn-chat-blur(完全透明时归零),唯独这块不乘。
+		// 一起归零的话,弹层背后是清晰的会话列表,两层文字直接糊在一起。
+		expect(await popoverBlock()).not.toContain("--bn-chat-blur");
+	});
+});
+
 describe("findUnlayeredPositionRules 自身", () => {
 	it("认得出无层的 position", () => {
 		expect(findUnlayeredPositionRules(".a {\n\tposition: relative;\n}")).toHaveLength(1);

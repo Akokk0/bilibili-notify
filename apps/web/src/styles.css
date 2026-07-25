@@ -282,10 +282,14 @@ body {
 	.bn-glass-sheen {
 		position: relative;
 	}
+	/* 高光是玻璃**表面**的反光,所以跟着底色一起退场:底都透没了还留一道白光,
+	   那道光就没有附着的东西了,看着像凭空浮着一条白痕。除以默认档是为了让主人
+	   不动设置时仍是满强度。 */
 	.bn-glass-sheen::before {
 		content: "";
 		position: absolute;
 		inset: 0;
+		opacity: calc(var(--bn-chat-glass, 0.82) / 0.82);
 		border-radius: inherit;
 		pointer-events: none;
 		z-index: 0;
@@ -299,6 +303,7 @@ body {
 	.bn-glass-sheen::after {
 		content: "";
 		position: absolute;
+		opacity: calc(var(--bn-chat-glass, 0.82) / 0.82);
 		left: 0;
 		right: 0;
 		top: 0;
@@ -340,54 +345,83 @@ body {
    写成类而不是在 JSX 里堆 `bg-white/50 dark:bg-white/8`:那种写法散落在四五个
    组件里,调一次玻璃质感要翻遍所有用到的地方,而且 theme-conformance 守卫(它
    拦的就是裸 bg-white)每次都会拦下来。 */
-	.bn-glass-panel {
-		background: rgba(255, 255, 255, 0.5);
-		border: 1px solid rgba(255, 255, 255, 0.7);
-		backdrop-filter: blur(32px) saturate(1.8);
-		-webkit-backdrop-filter: blur(32px) saturate(1.8);
+	/* 玻璃片透明度(主人可调,见聊天设置弹层)。
+
+	   **写法照搬推送卡片的卡片内容层**(见 packages/image 各 card 模版):
+	       glass = 完全透明 ? 0 : 设置值
+	       blur  = 完全透明 ? 0 : 基线
+	   两个值都由 JS 算好送进来,「完全透明」不是另一套规则集,就是这两个值同时
+	   归零 —— 那边一直是这么写的,这边也就没有理由另起一套。
+
+	   设置值**直接当 alpha 用**,不做缩放。先前那版让各件保留各自基线再乘一个
+	   系数,暗色下就废了:面板基线才 0.07,整根滑块拉到头 alpha 也只走了 0.09,
+	   看着就是「拉了没反应」。
+
+	   底色随明暗换,而不是两边都用白:暗色下再淡的白铺上去也是提亮,玻璃会发灰,
+	   所以跟 --bn-glass-bg 一样换成深蓝灰。
+
+	   **边框和 saturate 也得跟着一起退。**它们不属于「底色」但同属这块玻璃:边框
+	   留着就是一圈没有玻璃的白框;saturate 更阴险 —— 它加工的是**背后**的像素,
+	   底色一透就露出本相,把背后的主题辉光按倍数放大,表现为「拉到最低反而比背景
+	   还鲜艳」。乘子取 0.85 / 0.15 是为了让默认档恰好落回原来的 0.7 / 0.12。 */
+	:root {
+		--bn-chat-glass-rgb: 255, 255, 255;
 	}
-	:root[data-theme="dark"] .bn-glass-panel {
-		background: rgba(255, 255, 255, 0.07);
-		border-color: rgba(255, 255, 255, 0.12);
+	:root[data-theme="dark"] {
+		--bn-chat-glass-rgb: 30, 41, 59;
 	}
 
-	/* 面板上的浮层(设置弹层)—— 比面板更实一点,免得透出下面的会话列表。 */
+	.bn-glass-panel {
+		background: rgba(var(--bn-chat-glass-rgb), var(--bn-chat-glass, 0.82));
+		border: 1px solid rgba(255, 255, 255, calc(0.85 * var(--bn-chat-glass, 0.82)));
+		backdrop-filter: blur(calc(32px * var(--bn-chat-blur, 1)))
+			saturate(var(--bn-chat-saturate, 1.82));
+		-webkit-backdrop-filter: blur(calc(32px * var(--bn-chat-blur, 1)))
+			saturate(var(--bn-chat-saturate, 1.82));
+	}
+	:root[data-theme="dark"] .bn-glass-panel {
+		border-color: rgba(255, 255, 255, calc(0.15 * var(--bn-chat-glass, 0.82)));
+	}
+
+	/* 面板上的浮层(设置弹层)。
+
+	   **这一处没照搬**:两个开关本身就装在这块弹层里。跟着一起归零的话,主人开完
+	   完全透明的下一秒,弹层就跟它底下的会话列表糊成一片 —— 文字叠文字,想关回去
+	   都读不出哪个是开关。所以底色留一道下限、磨砂也不跟着掉。
+	   有源码级守卫钉着,见 `__tests__/css-layer-conformance.test.ts`。 */
 	.bn-glass-popover {
-		background: rgba(255, 255, 255, 0.72);
-		border: 1px solid rgba(255, 255, 255, 0.8);
-		backdrop-filter: blur(32px) saturate(1.8);
-		-webkit-backdrop-filter: blur(32px) saturate(1.8);
+		background: rgba(var(--bn-chat-glass-rgb), max(0.42, var(--bn-chat-glass, 0.82)));
+		border: 1px solid rgba(255, 255, 255, max(0.34, calc(0.85 * var(--bn-chat-glass, 0.82))));
+		backdrop-filter: blur(32px) saturate(var(--bn-chat-saturate, 1.82));
+		-webkit-backdrop-filter: blur(32px) saturate(var(--bn-chat-saturate, 1.82));
 	}
 	:root[data-theme="dark"] .bn-glass-popover {
-		background: rgba(30, 41, 59, 0.86);
-		border-color: rgba(255, 255, 255, 0.14);
+		border-color: rgba(255, 255, 255, max(0.14, calc(0.15 * var(--bn-chat-glass, 0.82))));
 	}
 
 	/* 小尺寸的玻璃件:悬浮按钮、技能胶囊。模糊半径小一档,不然一颗 34px 的按钮
    背后糊出来的东西比按钮本身还抢眼。 */
 	.bn-glass-chip {
-		background: rgba(255, 255, 255, 0.5);
-		border: 1px solid rgba(255, 255, 255, 0.7);
-		backdrop-filter: blur(20px) saturate(1.8);
-		-webkit-backdrop-filter: blur(20px) saturate(1.8);
+		background: rgba(var(--bn-chat-glass-rgb), var(--bn-chat-glass, 0.82));
+		border: 1px solid rgba(255, 255, 255, calc(0.85 * var(--bn-chat-glass, 0.82)));
+		backdrop-filter: blur(calc(20px * var(--bn-chat-blur, 1)))
+			saturate(var(--bn-chat-saturate, 1.82));
+		-webkit-backdrop-filter: blur(calc(20px * var(--bn-chat-blur, 1)))
+			saturate(var(--bn-chat-saturate, 1.82));
 	}
 	:root[data-theme="dark"] .bn-glass-chip {
-		background: rgba(255, 255, 255, 0.08);
-		border-color: rgba(255, 255, 255, 0.12);
+		border-color: rgba(255, 255, 255, calc(0.15 * var(--bn-chat-glass, 0.82)));
 	}
+	/* 悬停比常态实一档。用加法而不是另给一个基线,这样它在整根滑块上都跟着走;
+	   alpha 超过 1 由浏览器夹住,不必自己算。完全透明时 glass 是 0,加完仍是一层
+	   很淡的底 —— 那正好是「摸得到但不挡住底图」的悬停反馈。 */
 	.bn-glass-chip:hover {
-		background: rgba(255, 255, 255, 0.75);
-	}
-	:root[data-theme="dark"] .bn-glass-chip:hover {
-		background: rgba(255, 255, 255, 0.14);
+		background: rgba(var(--bn-chat-glass-rgb), calc(var(--bn-chat-glass, 0.82) + 0.12));
 	}
 
-	/* 玻璃面板里被选中的那一项(主题色卡)。 */
+	/* 玻璃面板里被选中的那一项(主题色卡)。同样比常态实一档。 */
 	.bn-glass-selected {
-		background: rgba(255, 255, 255, 0.65);
-	}
-	:root[data-theme="dark"] .bn-glass-selected {
-		background: rgba(255, 255, 255, 0.1);
+		background: rgba(var(--bn-chat-glass-rgb), calc(var(--bn-chat-glass, 0.82) + 0.1));
 	}
 
 	/* 选中色点外圈那道环。浅色下是「从白底里挖一圈」的效果;暗色下同样的白会在

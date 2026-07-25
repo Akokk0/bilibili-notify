@@ -191,9 +191,14 @@ export interface ToggleProps {
 	onChange: (next: boolean) => void;
 	size?: "sm" | "md";
 	disabled?: boolean;
+	/**
+	 * 给读屏器的名字。不传时这颗开关念出来就是「一个按钮」—— 旁边有文字说明的
+	 * 场合还能靠上下文猜,单独摆着的就完全不知道它管什么。
+	 */
+	ariaLabel?: string;
 }
 
-export function Toggle({ value, onChange, size = "md", disabled }: ToggleProps) {
+export function Toggle({ value, onChange, size = "md", disabled, ariaLabel }: ToggleProps) {
 	const sz = size === "sm" ? { w: 28, h: 16, dot: 12 } : { w: 36, h: 20, dot: 16 };
 	const trackStyle: CSSProperties = {
 		width: sz.w,
@@ -216,6 +221,8 @@ export function Toggle({ value, onChange, size = "md", disabled }: ToggleProps) 
 				if (!disabled) onChange(!value);
 			}}
 			disabled={disabled}
+			aria-label={ariaLabel}
+			aria-pressed={ariaLabel ? value : undefined}
 			className="relative shrink-0 cursor-pointer border-none transition disabled:opacity-50"
 			style={trackStyle}
 		>

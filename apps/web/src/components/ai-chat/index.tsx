@@ -1,7 +1,7 @@
 import type { AiConversationDTO } from "@bilibili-notify/contract";
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import {
 	conversationQueryKey,
 	conversationsQueryKey,
@@ -59,6 +59,10 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 	const setRail = useAiChatStore((s) => s.setRail);
 	const theme = useAiChatStore((s) => s.theme);
 	const setTheme = useAiChatStore((s) => s.setTheme);
+	const glassOpacity = useAiChatStore((s) => s.glassOpacity);
+	const setGlassOpacity = useAiChatStore((s) => s.setGlassOpacity);
+	const glassClear = useAiChatStore((s) => s.glassClear);
+	const setGlassClear = useAiChatStore((s) => s.setGlassClear);
 	const activeId = useAiChatStore((s) => s.activeId);
 	const setActiveId = useAiChatStore((s) => s.setActiveId);
 
@@ -211,11 +215,32 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 		send.mutate(outgoing);
 	};
 
+	/** 玻璃片实际生效的透明度。完全透明优先,压过滑块拉到哪一档。 */
+	const glass = glassClear ? 0 : glassOpacity;
+
 	return (
 		<div
 			data-chat-theme={theme}
 			className="bn-anim-chat-in fixed inset-0 z-40 flex"
-			style={{ background: "var(--bn-chat-bg)" }}
+			// 玻璃片的三个值,算法照搬推送卡片的卡片内容层:
+			//     glass = 完全透明 ? 0 : 设置值      blur = 完全透明 ? 0 : 基线
+			// 「完全透明」就是这些值一起归零,不是另一套规则 —— 那边一直这么写。
+			// blur 送的是**倍率**而不是像素:各玻璃件的基线半径不一样(面板 32px、
+			// 胶囊 20px),送倍率才不用把那张表复制一份到 JS 里来。
+			//
+			// saturate 是推送卡片没有的那一项(那边只有 blur),但它必须跟着透明度
+			// 一起退:backdrop-filter 加工的是**背后**的像素,底色一透,它还在那儿
+			// 把背后的主题辉光按倍数放大 —— 表现就是「玻璃拉到最低,显出来的背景
+			// 反而比背景本身还鲜艳」。1 = 原样不动;默认档落在 1.82,与这功能之前
+			// 写死的 1.8 基本同观感。
+			style={
+				{
+					background: "var(--bn-chat-bg)",
+					"--bn-chat-glass": glass,
+					"--bn-chat-blur": glassClear ? 0 : 1,
+					"--bn-chat-saturate": 1 + glass,
+				} as CSSProperties
+			}
 			role="dialog"
 			aria-label="女仆 AI 聊天"
 		>
@@ -236,6 +261,10 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 					userName={userName}
 					userFace={card?.face}
 					aiName={persona.name}
+					glassOpacity={glassOpacity}
+					onGlassOpacityChange={setGlassOpacity}
+					glassClear={glassClear}
+					onGlassClearChange={setGlassClear}
 				/>
 			) : null}
 
