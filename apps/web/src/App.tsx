@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Route, Routes } from "react-router-dom";
 import { AuthGate } from "./components/AuthGate";
+import { AiChatDock } from "./components/ai-chat";
 import { AlertShell } from "./components/alert-shell";
 import { DraftIsland } from "./components/draft-island";
-import { FloatingAiBar } from "./components/floating-ai-bar";
 import { GlassHeader } from "./components/header";
 import { ShellError, ShellLoading } from "./components/shell-states";
 import { ToastShell } from "./components/toast-shell";
@@ -101,7 +101,7 @@ function AuthedApp() {
 					</Routes>
 				</main>
 			)}
-			<FloatingAiBar />
+			<AiChatDock />
 			<DraftIsland />
 			<ToastShell />
 			<AlertShell />

@@ -1,0 +1,117 @@
+/**
+ * 单元测试 — 聊天侧栏「最近」的分组。
+ *
+ * 分组是纯派生,但它依赖**本地日界**而不是 24 小时窗口:凌晨 1 点聊的那句,
+ * 到了当天下午仍该是「今天」,而不是因为过了 24 小时就掉进「昨天」。
+ */
+
+import { describe, expect, it } from "vite-plus/test";
+import { createSseParser, groupConversations, groupLabel } from "../aiChat";
+
+describe("createSseParser — 分片边界不认帧边界", () => {
+	/**
+	 * 这是整条流式链上最容易写错的一环:网络给什么就是什么。一条 `data:` 完全
+	 * 可能被劈成两块到达,两条事件也可能挤在同一块里。不跨块粘合的话,表现是
+	 * 回复里随机漏字 / 冒出 JSON 解析错误,而且只在网速差时复现。
+	 */
+	it("一块里有完整的一帧", () => {
+		const parse = createSseParser();
+		expect(parse('event: delta\ndata: {"text":"好"}\n\n')).toEqual([
+			{ event: "delta", data: '{"text":"好"}' },
+		]);
+	});
+
+	it("一帧被劈成两块 → 粘起来再交付,不吐半截", () => {
+		const parse = createSseParser();
+		expect(parse('event: delta\ndata: {"tex')).toEqual([]);
+		expect(parse('t":"好"}\n\n')).toEqual([{ event: "delta", data: '{"text":"好"}' }]);
+	});
+
+	it("一块里挤了两帧 → 一次全交付", () => {
+		const parse = createSseParser();
+		const got = parse('event: delta\ndata: "a"\n\nevent: delta\ndata: "b"\n\n');
+		expect(got.map((f) => f.data)).toEqual(['"a"', '"b"']);
+	});
+
+	it("最后一帧还没收完就先留着,不当成完整帧", () => {
+		const parse = createSseParser();
+		const got = parse('event: delta\ndata: "a"\n\nevent: done\ndata: {"partial"');
+		expect(got).toHaveLength(1);
+		expect(got[0]?.event).toBe("delta");
+	});
+
+	it("只裁掉冒号后那一个空格 —— 正文里的空格是内容", () => {
+		// 整体 trim 的话,「 world」会被裁成「world」,拼出来就是「helloworld」。
+		const parse = createSseParser();
+		expect(parse("event: delta\ndata:  hello \n\n")[0]?.data).toBe(" hello ");
+	});
+
+	it("没有 event 字段 → 落到默认的 message", () => {
+		expect(createSseParser()("data: 1\n\n")).toEqual([{ event: "message", data: "1" }]);
+	});
+
+	it("空帧 / 心跳注释被跳过", () => {
+		expect(createSseParser()("\n\n:heartbeat\n\n")).toEqual([]);
+	});
+
+	it("多行 data 按换行拼回去", () => {
+		expect(createSseParser()("event: x\ndata: 一\ndata: 二\n\n")[0]?.data).toBe("一\n二");
+	});
+});
+
+const NOW = new Date(2026, 6, 24, 15, 0, 0); // 2026-07-24 15:00 本地
+const at = (d: number, h: number) => new Date(2026, 6, d, h, 0, 0).toISOString();
+
+describe("groupLabel", () => {
+	it("同一本地日 → 今天", () => {
+		expect(groupLabel(at(24, 1), NOW)).toBe("今天");
+		expect(groupLabel(at(24, 14), NOW)).toBe("今天");
+	});
+
+	it("前一本地日 → 昨天", () => {
+		expect(groupLabel(at(23, 23), NOW)).toBe("昨天");
+	});
+
+	it("更早 → 更早", () => {
+		expect(groupLabel(at(20, 12), NOW)).toBe("更早");
+	});
+
+	it("按日界而不是 24 小时窗口 —— 凌晨聊的那句下午仍是「今天」", () => {
+		// 24 小时窗口的话,00:30 那条到了 15:00 还在窗口内没问题;但 23 日 23:00
+		// 那条距今才 16 小时,会被算成「今天」—— 明明是昨晚的事。
+		expect(groupLabel(at(23, 23), NOW)).toBe("昨天");
+	});
+
+	it("时间戳是脏值 → 归到「更早」,不抛也不显示 Invalid Date", () => {
+		expect(groupLabel("不是时间", NOW)).toBe("更早");
+	});
+});
+
+describe("groupConversations", () => {
+	const meta = (id: string, updatedAt: string) => ({
+		id,
+		title: id,
+		createdAt: updatedAt,
+		updatedAt,
+		messageCount: 2,
+	});
+
+	it("按标签成组,组内保持服务端给的倒序", () => {
+		const got = groupConversations(
+			[meta("a", at(24, 14)), meta("b", at(24, 9)), meta("c", at(23, 20)), meta("d", at(19, 8))],
+			NOW,
+		);
+		expect(got.map((g) => g.label)).toEqual(["今天", "昨天", "更早"]);
+		expect(got[0]?.items.map((i) => i.id)).toEqual(["a", "b"]);
+		expect(got[2]?.items.map((i) => i.id)).toEqual(["d"]);
+	});
+
+	it("空列表 → 空分组,不产出一个空的「今天」标题", () => {
+		expect(groupConversations([], NOW)).toEqual([]);
+	});
+
+	it("全在同一组时只有一个标题", () => {
+		const got = groupConversations([meta("a", at(24, 14)), meta("b", at(24, 9))], NOW);
+		expect(got).toHaveLength(1);
+	});
+});

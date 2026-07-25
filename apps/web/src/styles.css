@@ -225,38 +225,475 @@ body {
 	}
 }
 
-.bn-anim-aura {
-	position: absolute;
-	inset: -1px;
-	padding: 2px;
-	border-radius: inherit;
-	pointer-events: none;
-	background: conic-gradient(
-		from var(--bn-aura-angle),
-		var(--color-bn-pink) 0deg,
-		transparent 45deg,
-		transparent 360deg
-	);
-	-webkit-mask:
-		linear-gradient(#000 0 0) content-box,
-		linear-gradient(#000 0 0);
-	-webkit-mask-composite: xor;
-	mask:
-		linear-gradient(#000 0 0) content-box,
-		linear-gradient(#000 0 0);
-	mask-composite: exclude;
-	filter: drop-shadow(0 0 1px rgba(251, 114, 153, 0.55)) saturate(1.2);
-	animation:
-		bn-aura-spin var(--bn-aura-spin-dur, 2.4s) linear infinite,
-		bn-aura-fade-in 250ms ease-out both;
-}
-
-/* prefers-reduced-motion 下完全隐藏流光,plan Q8 C。 */
-@media (prefers-reduced-motion: reduce) {
+/* 包进 @layer 的理由与下方「女仆 AI 聊天」那一整块相同:无层 CSS 恒压过
+   @layer utilities 里的 .absolute / .fixed。这里目前没有调用处去覆盖它,
+   但同一个陷阱已经在 .bn-ai-fab 上真炸过一次,不留第二个。 */
+@layer components {
 	.bn-anim-aura {
-		display: none;
+		position: absolute;
+		inset: -1px;
+		padding: 2px;
+		border-radius: inherit;
+		pointer-events: none;
+		background: conic-gradient(
+			from var(--bn-aura-angle),
+			var(--color-bn-pink) 0deg,
+			transparent 45deg,
+			transparent 360deg
+		);
+		-webkit-mask:
+			linear-gradient(#000 0 0) content-box,
+			linear-gradient(#000 0 0);
+		-webkit-mask-composite: xor;
+		mask:
+			linear-gradient(#000 0 0) content-box,
+			linear-gradient(#000 0 0);
+		mask-composite: exclude;
+		filter: drop-shadow(0 0 1px rgba(251, 114, 153, 0.55)) saturate(1.2);
+		animation:
+			bn-aura-spin var(--bn-aura-spin-dur, 2.4s) linear infinite,
+			bn-aura-fade-in 250ms ease-out both;
+	}
+
+	/* prefers-reduced-motion 下完全隐藏流光,plan Q8 C。 */
+	@media (prefers-reduced-motion: reduce) {
+		.bn-anim-aura {
+			display: none;
+		}
 	}
 }
+
+/* ── 女仆 AI 聊天 ──────────────────────────────────────────────────────────
+   液态玻璃(macOS 26 风)的三件套 + 聊天页的进出场动效 + 4 套主题色。
+
+   为什么不用上面的 .bn-glass:那两个是页面卡片用的「一层半透明底」,聊天侧栏
+   要的是**有厚度**的玻璃 —— 顶部一道高光、左上一块柔光、悬停时微微抬起。
+   拆成 sheen / lift 两个可叠加的类,而不是再造一个大而全的 .bn-glass-xxl。
+
+   **整块必须包在 `@layer components` 里。**`@import "tailwindcss"` 会把工具类
+   放进 `@layer utilities`,而**无层 CSS 恒压过任何分层 CSS**(与书写顺序、
+   特异性都无关)。裸写的话 `.bn-glass-sheen{position:relative}` 会把调用处的
+   `absolute` / `fixed` 顶掉 —— 右下角那颗胶囊会回到常规流,再叠上 `display:flex`
+   直接摊成一整条横幅;`返回控制台` 也会从右上角掉回左边。放进 components 层后
+   工具类才压得过它,「用类打底、用工具类微调」这个前提才成立。 */
+@layer components {
+	/* 玻璃高光:::before 是斜向的一道，::after 是左上角的柔光块。
+   两者都 pointer-events:none 且压在内容之下(内容 z-index:1)。 */
+	.bn-glass-sheen {
+		position: relative;
+	}
+	.bn-glass-sheen::before {
+		content: "";
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		pointer-events: none;
+		z-index: 0;
+		background: linear-gradient(
+			150deg,
+			rgba(255, 255, 255, 0.55) 0%,
+			rgba(255, 255, 255, 0.12) 16%,
+			rgba(255, 255, 255, 0) 42%
+		);
+	}
+	.bn-glass-sheen::after {
+		content: "";
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 0;
+		height: 38%;
+		border-radius: inherit;
+		pointer-events: none;
+		z-index: 0;
+		background: radial-gradient(
+			120% 80% at 25% 0%,
+			rgba(255, 255, 255, 0.4),
+			rgba(255, 255, 255, 0) 60%
+		);
+	}
+	.bn-glass-sheen > * {
+		position: relative;
+		z-index: 1;
+	}
+	/* 暗色下白高光要收敛:同样的强度在深底上会糊成一片乳白,玻璃变成毛玻璃塑料。 */
+	:root[data-theme="dark"] .bn-glass-sheen::before {
+		background: linear-gradient(
+			150deg,
+			rgba(255, 255, 255, 0.16) 0%,
+			rgba(255, 255, 255, 0.05) 16%,
+			rgba(255, 255, 255, 0) 42%
+		);
+	}
+	:root[data-theme="dark"] .bn-glass-sheen::after {
+		background: radial-gradient(
+			120% 80% at 25% 0%,
+			rgba(255, 255, 255, 0.12),
+			rgba(255, 255, 255, 0) 60%
+		);
+	}
+
+	/* 液态玻璃的**表面**(底色 + 描边 + 模糊)。与上面的 sheen(高光)分开:高光是
+   装饰,表面是实体,两者的明暗取值规律不同 —— 浅色下是「半透明白」,暗色下不能
+   简单调暗,得换成极低透明度的白叠在深底上,否则会糊成一块死灰。
+
+   写成类而不是在 JSX 里堆 `bg-white/50 dark:bg-white/8`:那种写法散落在四五个
+   组件里,调一次玻璃质感要翻遍所有用到的地方,而且 theme-conformance 守卫(它
+   拦的就是裸 bg-white)每次都会拦下来。 */
+	.bn-glass-panel {
+		background: rgba(255, 255, 255, 0.5);
+		border: 1px solid rgba(255, 255, 255, 0.7);
+		backdrop-filter: blur(32px) saturate(1.8);
+		-webkit-backdrop-filter: blur(32px) saturate(1.8);
+	}
+	:root[data-theme="dark"] .bn-glass-panel {
+		background: rgba(255, 255, 255, 0.07);
+		border-color: rgba(255, 255, 255, 0.12);
+	}
+
+	/* 面板上的浮层(设置弹层)—— 比面板更实一点,免得透出下面的会话列表。 */
+	.bn-glass-popover {
+		background: rgba(255, 255, 255, 0.72);
+		border: 1px solid rgba(255, 255, 255, 0.8);
+		backdrop-filter: blur(32px) saturate(1.8);
+		-webkit-backdrop-filter: blur(32px) saturate(1.8);
+	}
+	:root[data-theme="dark"] .bn-glass-popover {
+		background: rgba(30, 41, 59, 0.86);
+		border-color: rgba(255, 255, 255, 0.14);
+	}
+
+	/* 小尺寸的玻璃件:悬浮按钮、技能胶囊。模糊半径小一档,不然一颗 34px 的按钮
+   背后糊出来的东西比按钮本身还抢眼。 */
+	.bn-glass-chip {
+		background: rgba(255, 255, 255, 0.5);
+		border: 1px solid rgba(255, 255, 255, 0.7);
+		backdrop-filter: blur(20px) saturate(1.8);
+		-webkit-backdrop-filter: blur(20px) saturate(1.8);
+	}
+	:root[data-theme="dark"] .bn-glass-chip {
+		background: rgba(255, 255, 255, 0.08);
+		border-color: rgba(255, 255, 255, 0.12);
+	}
+	.bn-glass-chip:hover {
+		background: rgba(255, 255, 255, 0.75);
+	}
+	:root[data-theme="dark"] .bn-glass-chip:hover {
+		background: rgba(255, 255, 255, 0.14);
+	}
+
+	/* 玻璃面板里被选中的那一项(主题色卡)。 */
+	.bn-glass-selected {
+		background: rgba(255, 255, 255, 0.65);
+	}
+	:root[data-theme="dark"] .bn-glass-selected {
+		background: rgba(255, 255, 255, 0.1);
+	}
+
+	/* 选中色点外圈那道环。浅色下是「从白底里挖一圈」的效果;暗色下同样的白会在
+   深底上炸成一团光晕,比色点本身还抢眼,得换成贴近面板底色的深环才读得出
+   「挖出来」的意思。 */
+	:root {
+		--bn-chat-ring: rgba(255, 255, 255, 0.7);
+	}
+	:root[data-theme="dark"] {
+		--bn-chat-ring: rgba(15, 23, 42, 0.78);
+	}
+
+	/* 小尺寸元素(按钮 / 胶囊)上的弱化高光 —— 全强度会把一颗按钮照成高光球。
+   写成 `.bn-glass-sheen.bn-glass-soft` 是为了靠特异性压过上面的 .bn-glass-sheen,
+   而不是甩一个 !important:两个类总是一起用,复合选择器天然更具体,后面真要
+   再覆盖一层时也还有余地。 */
+	.bn-glass-sheen.bn-glass-soft::before {
+		background: linear-gradient(
+			150deg,
+			rgba(255, 255, 255, 0.26) 0%,
+			rgba(255, 255, 255, 0.06) 16%,
+			rgba(255, 255, 255, 0) 42%
+		);
+	}
+	.bn-glass-sheen.bn-glass-soft::after {
+		background: radial-gradient(
+			120% 80% at 25% 0%,
+			rgba(255, 255, 255, 0.16),
+			rgba(255, 255, 255, 0) 60%
+		);
+	}
+
+	@keyframes bn-jelly {
+		0% {
+			transform: scale(1, 1);
+		}
+		22% {
+			transform: scale(1.14, 0.86);
+		}
+		44% {
+			transform: scale(0.9, 1.1);
+		}
+		64% {
+			transform: scale(1.06, 0.95);
+		}
+		82% {
+			transform: scale(0.98, 1.02);
+		}
+		100% {
+			transform: scale(1, 1);
+		}
+	}
+
+	.bn-glass-lift {
+		transition:
+			transform 0.5s cubic-bezier(0.34, 1.7, 0.42, 1),
+			box-shadow 0.3s ease;
+	}
+	.bn-glass-lift:hover {
+		transform: translateY(-4px) scale(1.035);
+		box-shadow: 0 20px 52px rgba(42, 30, 72, 0.24);
+	}
+	.bn-glass-lift:active {
+		animation: bn-jelly 0.55s cubic-bezier(0.34, 1.6, 0.5, 1) both;
+	}
+	/* 抬起但不加深阴影 —— 一排并列的胶囊各自加深会让整行看着脏。
+   复合选择器压过 .bn-glass-lift:hover 的阴影,同上,不用 !important。 */
+	.bn-glass-lift.bn-nohl:hover {
+		box-shadow: 0 16px 40px rgba(42, 30, 72, 0.2);
+	}
+
+	/* 右下角的「女仆 AI」胶囊。::after 是一道斜向扫光,hover 时扫过去。 */
+	.bn-ai-fab {
+		position: relative;
+		overflow: hidden;
+		isolation: isolate;
+		background: linear-gradient(135deg, rgba(162, 155, 254, 0.9), rgba(108, 92, 231, 0.92));
+		backdrop-filter: blur(10px) saturate(1.5);
+		-webkit-backdrop-filter: blur(10px) saturate(1.5);
+		border: 1px solid rgba(255, 255, 255, 0.4);
+		transition:
+			box-shadow 0.35s ease,
+			transform 0.25s cubic-bezier(0.34, 1.8, 0.64, 1);
+	}
+	.bn-ai-fab::before {
+		content: "";
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		pointer-events: none;
+		background: linear-gradient(160deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 46%);
+	}
+	.bn-ai-fab::after {
+		content: "";
+		position: absolute;
+		left: 0;
+		top: -60%;
+		width: 45%;
+		height: 220%;
+		pointer-events: none;
+		background: linear-gradient(
+			90deg,
+			rgba(255, 255, 255, 0),
+			rgba(255, 255, 255, 0.55),
+			rgba(255, 255, 255, 0)
+		);
+		transform: skewX(-20deg) translateX(-160%);
+		transition: transform 0.6s ease;
+	}
+	.bn-ai-fab:hover {
+		animation: bn-jelly 0.6s both;
+		box-shadow: 0 14px 40px rgba(108, 92, 231, 0.55);
+	}
+	.bn-ai-fab:hover::after {
+		transform: skewX(-20deg) translateX(420%);
+	}
+	.bn-ai-fab:active {
+		transform: scale(0.93);
+	}
+
+	@keyframes bn-chat-in {
+		from {
+			opacity: 0;
+			transform: scale(0.95) translateY(14px);
+		}
+		to {
+			opacity: 1;
+			transform: scale(1) translateY(0);
+		}
+	}
+	@keyframes bn-msg-in {
+		from {
+			opacity: 0;
+			transform: translateY(10px);
+		}
+		to {
+			opacity: 1;
+		}
+	}
+	@keyframes bn-cmd-in {
+		from {
+			opacity: 0;
+			transform: translateY(8px) scale(0.985);
+		}
+		to {
+			opacity: 1;
+		}
+	}
+	@keyframes bn-fade-up {
+		from {
+			opacity: 0;
+			transform: translateY(12px);
+		}
+		to {
+			opacity: 1;
+		}
+	}
+	@keyframes bn-typing {
+		0%,
+		60%,
+		100% {
+			transform: translateY(0);
+			opacity: 0.4;
+		}
+		30% {
+			transform: translateY(-4px);
+			opacity: 1;
+		}
+	}
+
+	/* 流式回复末尾那根光标。用 steps(1) 硬切而不是渐隐 —— 渐隐看着像呼吸灯,
+	   硬切才读得出「这是个文本光标,还在往下写」。 */
+	@keyframes bn-caret {
+		0%,
+		49% {
+			opacity: 1;
+		}
+		50%,
+		100% {
+			opacity: 0;
+		}
+	}
+
+	.bn-anim-chat-in {
+		animation: bn-chat-in 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+	}
+	.bn-anim-msg-in {
+		animation: bn-msg-in 0.28s ease-out;
+	}
+	.bn-anim-cmd-in {
+		animation: bn-cmd-in 0.16s ease-out;
+	}
+	.bn-anim-fade-up {
+		animation: bn-fade-up 0.35s ease-out;
+	}
+	.bn-anim-typing {
+		animation: bn-typing 1.2s infinite;
+	}
+	.bn-anim-caret {
+		animation: bn-caret 1s steps(1) infinite;
+	}
+
+	/* 聊天页 4 套主题色。`--bn-chat-bg` 是整页底,`--bn-chat-glow` 是空态大标题
+   背后那团光。暗色不是把浅色调暗那么简单 —— 浅色版靠「几乎白」的底衬托留白,
+   暗色版得反过来靠一点色相把深底跟应用背景区分开,所以两套值分别调。 */
+	[data-chat-theme="lime"] {
+		--bn-chat-dot: #a3de4f;
+		--bn-chat-bg: linear-gradient(135deg, #f2f7e8 0%, #f6faee 52%, #edf4e0 100%);
+		--bn-chat-glow: radial-gradient(
+			closest-side,
+			rgba(163, 222, 79, 0.34),
+			rgba(120, 200, 90, 0.16) 46%,
+			rgba(255, 255, 255, 0) 78%
+		);
+	}
+	[data-chat-theme="violet"] {
+		--bn-chat-dot: #a29bfe;
+		--bn-chat-bg: linear-gradient(135deg, #efeafb 0%, #f7eff5 52%, #eaf1fb 100%);
+		--bn-chat-glow: radial-gradient(
+			closest-side,
+			rgba(162, 155, 254, 0.32),
+			rgba(251, 114, 153, 0.14) 46%,
+			rgba(255, 255, 255, 0) 78%
+		);
+	}
+	[data-chat-theme="sky"] {
+		--bn-chat-dot: #57b9f0;
+		--bn-chat-bg: linear-gradient(135deg, #e8f2fb 0%, #eef6fc 52%, #e2eefa 100%);
+		--bn-chat-glow: radial-gradient(
+			closest-side,
+			rgba(87, 185, 240, 0.32),
+			rgba(120, 200, 255, 0.14) 46%,
+			rgba(255, 255, 255, 0) 78%
+		);
+	}
+	[data-chat-theme="peach"] {
+		--bn-chat-dot: #fb7299;
+		--bn-chat-bg: linear-gradient(135deg, #fdeef1 0%, #fdf2ee 52%, #fbe7ec 100%);
+		--bn-chat-glow: radial-gradient(
+			closest-side,
+			rgba(251, 114, 153, 0.3),
+			rgba(255, 170, 167, 0.16) 46%,
+			rgba(255, 255, 255, 0) 78%
+		);
+	}
+
+	:root[data-theme="dark"] [data-chat-theme="lime"] {
+		--bn-chat-bg: linear-gradient(135deg, #141b12 0%, #121a14 52%, #0f160f 100%);
+		--bn-chat-glow: radial-gradient(
+			closest-side,
+			rgba(163, 222, 79, 0.2),
+			rgba(120, 200, 90, 0.09) 46%,
+			rgba(0, 0, 0, 0) 78%
+		);
+	}
+	:root[data-theme="dark"] [data-chat-theme="violet"] {
+		--bn-chat-bg: linear-gradient(135deg, #171531 0%, #1a1527 52%, #13192e 100%);
+		--bn-chat-glow: radial-gradient(
+			closest-side,
+			rgba(162, 155, 254, 0.22),
+			rgba(251, 114, 153, 0.1) 46%,
+			rgba(0, 0, 0, 0) 78%
+		);
+	}
+	:root[data-theme="dark"] [data-chat-theme="sky"] {
+		--bn-chat-bg: linear-gradient(135deg, #0e1c2c 0%, #101f2f 52%, #0c1725 100%);
+		--bn-chat-glow: radial-gradient(
+			closest-side,
+			rgba(87, 185, 240, 0.22),
+			rgba(120, 200, 255, 0.1) 46%,
+			rgba(0, 0, 0, 0) 78%
+		);
+	}
+	:root[data-theme="dark"] [data-chat-theme="peach"] {
+		--bn-chat-bg: linear-gradient(135deg, #2a1621 0%, #26161d 52%, #20121a 100%);
+		--bn-chat-glow: radial-gradient(
+			closest-side,
+			rgba(251, 114, 153, 0.2),
+			rgba(255, 170, 167, 0.1) 46%,
+			rgba(0, 0, 0, 0) 78%
+		);
+	}
+
+	/* 动效敏感的主人:只留必要的位移,去掉果冻与扫光。 */
+	@media (prefers-reduced-motion: reduce) {
+		.bn-glass-lift,
+		.bn-glass-lift:hover,
+		.bn-glass-lift:active,
+		.bn-ai-fab:hover,
+		.bn-ai-fab:active {
+			transform: none;
+			animation: none;
+		}
+		.bn-ai-fab::after {
+			display: none;
+		}
+		.bn-anim-chat-in,
+		.bn-anim-msg-in,
+		.bn-anim-cmd-in,
+		.bn-anim-fade-up,
+		.bn-anim-typing,
+		.bn-anim-caret {
+			animation: none;
+		}
+	}
+} /* @layer components 结束 —— 女仆 AI 聊天 */
 
 /* 隐藏滚动条但保留滚动行为。Dashboard 「粉丝数变化」N 多时容器内滚动,
    不想露出滚动条破坏卡片视觉。 */

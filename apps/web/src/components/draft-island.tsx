@@ -21,7 +21,6 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { useAiBarStore } from "../store/aiBar";
 import type { DraftRegistration, DraftUiState } from "../store/draft";
 import { useDraftStore } from "../store/draft";
 import { formatDiffValue } from "../utils/formatDiffValue";
@@ -31,17 +30,14 @@ import { Icon } from "./icons";
 
 const SHELL_SPRING = { type: "spring" as const, stiffness: 380, damping: 28 };
 const PANEL_SPRING = { type: "spring" as const, stiffness: 320, damping: 30 };
-const STACK_SPRING = { type: "spring" as const, stiffness: 220, damping: 26 };
 
 /**
- * 灵动岛跟 FloatingAiBar 垂直堆叠避让(plan Q9):
- * - AiBar 未 dismissed → 贴底全宽 bar 占据 bottom-4 区域 → 灵动岛上移 64px
- * - AiBar dismissed → 收成右下小圆按钮,不冲突 → 灵动岛回默认位
- *
- * 64px ≈ AiBar 折叠态高度(48px h + 8px gap),实测对齐。展开态会更高,但
- * 也只是 AiBar 文本溢出向上推,不影响灵动岛的稳定位移基线。
+ * 曾经这里有一段「跟 FloatingAiBar 垂直堆叠避让」的位移(上移 64px)。
+ * 那条 AI 建议条是**贴底全宽**的,不让位就会跟灵动岛叠在一起;换成现在的
+ * AiChatDock 之后,收起态只是右下角一颗胶囊,与居中的灵动岛井水不犯河水,
+ * 展开态则是整页覆盖层(z-40 在灵动岛之下也无所谓 —— 那时看不到页面了)。
+ * 所以避让连同它依赖的 aiBar store 一起删掉,而不是留个恒为 0 的位移。
  */
-const STACK_LIFT_PX = -64;
 
 /**
  * 灵动岛 chip 子组件选择:5 态 + (idle / 无 current) → "none"。抽成纯函数
@@ -63,7 +59,6 @@ export function DraftIsland(): ReactNode {
 	const errorMessage = useDraftStore((s) => s.errorMessage);
 	const panelLocked = useDraftStore((s) => s.panelLocked);
 	const togglePanelLocked = useDraftStore((s) => s.togglePanelLocked);
-	const aiBarDismissed = useAiBarStore((s) => s.dismissed);
 
 	const [hovered, setHovered] = useState(false);
 	const containerRef = useRef<HTMLElement>(null);
@@ -131,8 +126,6 @@ export function DraftIsland(): ReactNode {
 			data-testid="draft-island"
 			className="pointer-events-none fixed left-1/2 z-100 flex -translate-x-1/2 flex-col items-center"
 			style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}
-			animate={{ y: aiBarDismissed ? 0 : STACK_LIFT_PX }}
-			transition={STACK_SPRING}
 			onMouseEnter={handleMouseEnter}
 			onMouseLeave={handleMouseLeave}
 		>
