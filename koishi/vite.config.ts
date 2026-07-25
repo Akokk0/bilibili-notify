@@ -56,6 +56,14 @@ export default defineConfig({
 		clean: true,
 		outDir: "lib",
 		exports: true,
+		// 词云的两个脚本随包带走。@bilibili-notify/image 被内联进来之后,它运行时
+		// readFileSync(<自己所在目录>/static/*.js) 找的就是 **lib/** —— image 包
+		// 自己 lib/static 下那一份完全帮不上忙,内联意味着那个模块已经搬到这儿了。
+		// 漏了的话:构建全绿、打出来的 npm 包也全绿,只有用户点一次词云才 ENOENT。
+		//
+		// 用 monorepo 源路径(始终存在、与 image 的 lib/static 同内容),与
+		// assemble-server-bundle.mjs / build-astrbot-sidecar.mjs 一个约定。
+		copy: [{ from: "../packages/image/src/static", to: "lib" }],
 		deps: {
 			// @bilibili-notify/* 全部内联 → 插件是自包含单文件,内部包不必再发 npm
 			// (它们已 private),koishi 版本与内部包版本彻底解耦。
