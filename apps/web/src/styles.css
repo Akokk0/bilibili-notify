@@ -623,6 +623,20 @@ body {
 	.bn-anim-caret {
 		animation: bn-caret 1s steps(1) infinite;
 	}
+	/* 流式光标,挂在 Markdown 最后一个块的尾巴上。
+	   为什么不是一个真节点:正文一经 Markdown 渲染就变成 <p>/<ul>/<pre> 这些**块**元素,
+	   一个跟在它们后面的 <span> 会自己掉到下一行去,而光标必须紧贴最后一个字。
+	   ::after 长在最后那个块的内部,行内追加,位置才对。 */
+	.bn-chat-md-caret > *:last-child::after {
+		content: "";
+		display: inline-block;
+		width: 2px;
+		height: 1.05em;
+		margin-left: 2px;
+		transform: translateY(0.18em);
+		background: var(--bn-chat-dot);
+		animation: bn-caret 1s steps(1) infinite;
+	}
 
 	/* ── 强调色的四种用法 ─────────────────────────────────────────────────
 	   聊天界面里凡是「有颜色的那一点」都从这里取,不在 JSX 里写死。
@@ -669,6 +683,11 @@ body {
 	   **不报错**,只是那条 class 悄悄不存在 —— 构建全绿,辉光没了。 */
 	.bn-chat-accent-glow {
 		box-shadow: 0 4px 14px rgba(var(--bn-chat-accent-rgb), 0.4);
+	}
+	/* Markdown 引用块的左竖条。走半透明分量而不是 --bn-chat-dot 原色:实色竖条
+	   在一段次要文字旁边太抢眼,压到四成刚好读成「这段是引来的」。 */
+	.bn-chat-accent-border {
+		border-color: rgba(var(--bn-chat-accent-rgb), 0.4);
 	}
 
 	/* 聊天页 4 套主题色。`--bn-chat-bg` 是整页底,`--bn-chat-glow` 是空态大标题
@@ -779,7 +798,8 @@ body {
 		.bn-anim-cmd-in,
 		.bn-anim-fade-up,
 		.bn-anim-typing,
-		.bn-anim-caret {
+		.bn-anim-caret,
+		.bn-chat-md-caret > *:last-child::after {
 			animation: none;
 		}
 	}

@@ -1,6 +1,98 @@
+import { useEffect, useSyncExternalStore } from "react";
 import type { AiChatMessageDTO } from "../../services/aiChat";
 import { Icon } from "../icons";
 import { toolLabel } from "./tools";
+
+/**
+ * Markdown 渲染**动态**加载。
+ *
+ * `react-markdown` 连带 micromark / mdast 那一整套约 153KB(实测:主 chunk
+ * 1029KB → 876KB)。`AiChatDock` 静态挂在 App 根上,静态引入就等于让每次打开
+ * dashboard 都扛这 153KB —— 而主人可能从不点开聊天。顺带还会毁掉 About 页那边
+ * `lazy(() => import("react-markdown"))` 的努力:库进了主包,那个 lazy 没东西可懒。
+ *
+ * **刻意不用 `lazy` + `Suspense`**,而是自己攥着模块。原因是 lazy 的 init 要等到
+ * 组件第一次真被渲染才跑,那时哪怕 chunk 早已在缓存里,`import()` 拿回来的仍是个
+ * promise —— React 照样先抛它、提交一帧 fallback,下个微任务才换成 Markdown。
+ * 于是**新会话**的第一句回复必然先闪一下纯文本(有历史消息的会话里这一帧被面板
+ * 入场动画盖住了,所以一直没露馅)。预取解决不了这个:那不是网络,是那一帧。
+ *
+ * 换成模块级变量 + `useSyncExternalStore` 之后,「到手了没」是个能**同步**读出来的
+ * 值:已经在手上,第一帧就是终态。顺带还去掉了一个隐患 —— 挂在 lazy 上时这里没有
+ * error boundary,chunk 取不到(离线 / 部署换版本)就是整个聊天白屏;现在退回纯文本。
+ */
+type MarkdownModule = typeof import("./markdown");
+
+/** 已到手的模块。非空 = 可以同步用。 */
+let markdownModule: MarkdownModule | null = null;
+/** 正在路上的那一次。预热会被调好几次(空闲、hover、面板挂载),靠它去重。 */
+let markdownInflight: Promise<MarkdownModule | null> | null = null;
+const markdownWaiters = new Set<() => void>();
+
+/**
+ * 取 Markdown 模块。幂等 —— 重复调只是拿同一个 promise。
+ *
+ * 加载与预热共用这一个 specifier,不各写一份 —— 两个字符串一旦写歪,预热的就是
+ * 另一个 chunk,而症状只是「偶尔闪一下」,极难查。
+ */
+function loadMarkdown(): Promise<MarkdownModule | null> {
+	if (markdownModule) return Promise.resolve(markdownModule);
+	markdownInflight ??= import("./markdown").then(
+		(m) => {
+			markdownModule = m;
+			for (const notify of markdownWaiters) notify();
+			return m;
+		},
+		(err) => {
+			// 把 inflight 清掉,下一次预热(空闲 / hover / 面板挂载)能重试;这期间
+			// 正文一直按纯文本显示,不白屏。
+			markdownInflight = null;
+			console.error("[ai-chat] Markdown 渲染模块没取到,先按纯文本显示", err);
+			return null;
+		},
+	);
+	return markdownInflight;
+}
+
+/**
+ * 预热 Markdown chunk。首屏空闲时就调,别等主人点开聊天。
+ *
+ * 不预热的话,首条回复到达时先落到纯文本、chunk 落地后再翻成 Markdown ——
+ * 那一下重排正是主人报过的「闪一下」。
+ *
+ * 返回 promise 是给测试用的:「预取已经完成」这个前提必须能被**等到**,否则断言
+ * 「第一帧就是排版好的」只能靠猜微任务次序。调用方一律当即弃即忘用。
+ */
+export function preloadChatMarkdown(): Promise<void> {
+	return loadMarkdown().then(() => undefined);
+}
+
+function subscribeMarkdown(onChange: () => void): () => void {
+	markdownWaiters.add(onChange);
+	return () => {
+		markdownWaiters.delete(onChange);
+	};
+}
+
+/** Markdown 渲染组件,还没到手时是 null(这一帧先用纯文本)。 */
+type MarkdownComp = MarkdownModule["ChatMarkdown"] | null;
+
+function useChatMarkdown(): MarkdownComp {
+	// 第三个参数(getServerSnapshot)在这个纯客户端应用里跑不到,但缺了它就没法用
+	// 单趟渲染(renderToStaticMarkup)去查「提交的第一帧长什么样」—— 那是**唯一**
+	// 能把「已在手上却慢一帧」这个 bug 抓出来的角度:RTL 的 render 裹在 act 里,
+	// effect 引起的重渲染在它返回之前就冲洗完了,查不出差别(试过,假绿)。
+	const mod = useSyncExternalStore(
+		subscribeMarkdown,
+		() => markdownModule,
+		() => markdownModule,
+	);
+	// 兜底:谁都没预热过(或上次取失败了)也得自己去取。
+	useEffect(() => {
+		if (!mod) preloadChatMarkdown();
+	}, [mod]);
+	return mod?.ChatMarkdown ?? null;
+}
 
 /**
  * 消息流。用户靠右、气泡带底色;女仆靠左、**不套气泡**。
@@ -53,24 +145,30 @@ export function MessageList({
 	aiSelf,
 	noAnimIds,
 }: MessageListProps) {
+	// 订阅放在这里而不是每条消息里:一屋子消息就只有一个订阅者,模块落地时也只重渲染
+	// 一次。往下传的是同一个组件引用,所以在途那份和落盘那份用的必然是同一个渲染器。
+	const Markdown = useChatMarkdown();
 	const anim = (id: string) => (noAnimIds?.includes(id) ? "" : "bn-anim-msg-in ");
 	return (
 		// testid 不是随手加的:输入框里的字、侧栏底部的用户名都会被 getByText 命中
 		// (受控 textarea 在 DOM 里也有同样的 textContent),不圈定范围的话,
 		// 「消息有没有上屏」这类断言会被那两处冒名顶替,测试假绿。
-		<div
-			data-testid="chat-messages"
-			className="mx-auto flex w-full max-w-[720px] flex-col gap-[22px]"
-		>
+		<div data-testid="chat-messages" className="mx-auto flex w-full max-w-180 flex-col gap-5.5">
 			{messages.map((m) =>
 				m.role === "user" ? (
 					<div key={m.id} className={`${anim(m.id)}flex justify-end`}>
-						<div className="bn-chat-accent-soft max-w-[74%] whitespace-pre-wrap break-words rounded-[22px] rounded-br-[7px] px-[17px] py-[11px] text-[15px] leading-relaxed text-bn-text-primary">
+						<div className="bn-chat-accent-soft max-w-[74%] whitespace-pre-wrap wrap-break-word rounded-[22px] rounded-br-[7px] px-4.25 py-2.75ext-[15px] leading-relaxed text-bn-text-primary">
 							{m.content}
 						</div>
 					</div>
 				) : (
-					<AssistantTurn key={m.id} animClass={anim(m.id)} tools={m.tools} text={m.content} />
+					<AssistantTurn
+						key={m.id}
+						animClass={anim(m.id)}
+						tools={m.tools}
+						text={m.content}
+						Markdown={Markdown}
+					/>
 				),
 			)}
 
@@ -80,13 +178,19 @@ export function MessageList({
 			{pending ? (
 				<>
 					<div className="bn-anim-msg-in flex justify-end">
-						<div className="bn-chat-accent-soft max-w-[74%] whitespace-pre-wrap break-words rounded-[22px] rounded-br-[7px] px-[17px] py-[11px] text-[15px] leading-relaxed text-bn-text-primary">
+						<div className="bn-chat-accent-soft max-w-[74%] whitespace-pre-wrap wrap-break-word rounded-[22px] rounded-br-[7px] px-4.25 py-2.75 text-[15px] leading-relaxed text-bn-text-primary">
 							{pending.ask}
 						</div>
 					</div>
 					{/* 工具还在跑、正文一个字都没有时也要出现 —— 那正是最需要说话的一刻。 */}
 					{pending.tools.length > 0 || pending.draft ? (
-						<AssistantTurn animClass="" tools={pending.tools} text={pending.draft} caret />
+						<AssistantTurn
+							animClass=""
+							tools={pending.tools}
+							text={pending.draft}
+							Markdown={Markdown}
+							caret
+						/>
 					) : null}
 				</>
 			) : null}
@@ -97,14 +201,14 @@ export function MessageList({
 				// role="status" 而不是裸 div:三个跳动的点对读屏器是完全不可见的,
 				// 加上它才会念出「女仆正在思考」,否则按下发送后那边一片死寂。
 				<div
-					className="bn-anim-msg-in flex gap-[5px] pl-0.5"
+					className="bn-anim-msg-in flex gap-1.25 pl-0.5"
 					role="status"
 					aria-label={`${aiSelf}正在思考`}
 				>
 					{[0, 1, 2].map((d) => (
 						<span
 							key={d}
-							className="bn-anim-typing bn-chat-accent-bg h-[7px] w-[7px] rounded-full"
+							className="bn-anim-typing bn-chat-accent-bg h-1.75 w-1.75 rounded-full"
 							style={{ animationDelay: `${d * 0.15}s` }}
 						/>
 					))}
@@ -136,31 +240,43 @@ function AssistantTurn({
 	animClass,
 	tools,
 	text,
+	Markdown,
 	caret,
 }: {
 	/** 入场动画类(含尾随空格)或空串。 */
 	animClass: string;
 	tools?: readonly ToolChipData[];
 	text: string;
+	/** Markdown 渲染器;还没到手时为 null,这一帧退回纯文本。 */
+	Markdown: MarkdownComp;
 	/** 跟在最后一个字后面的光标,只有在途那一份有。 */
 	caret?: boolean;
 }) {
 	return (
 		// 小条与正文之间的 8px 由 gap 给,不挂在小条自己身上 —— 工具还在跑、正文
 		// 一个字都没有时,那就是一段悬在空处的下边距。
-		<div className={`${animClass}flex flex-col gap-2`}>
+		//
+		// testid 是给测试找「这一轮的最外层」用的:入场动画类挂在这儿,而正文经
+		// Markdown 渲染后要往里套两层(样式层 + <p>),靠 parentElement 数层数的断言
+		// 会随渲染结构变化悄悄失准 —— 层数不对时 not.toContain 恰好无条件通过。
+		<div data-testid="assistant-turn" className={`${animClass}flex flex-col gap-2`}>
 			{tools?.length ? <ToolChips traces={tools} /> : null}
-			{/* whitespace-pre-wrap 只包正文:套在外层的话,JSX 里的换行缩进会
-			    变成小条与正文之间凭空多出的空行。 */}
+			{/* 正文按 Markdown 渲染。**在途与落盘走的是同一个 ChatMarkdown**,所以同一段
+			    文字两处长得一模一样,交接那一刻不会跳 —— 这是这个共用组件存在的全部理由。
+			    光标由 CSS 挂在最后一个块的尾巴上(见 .bn-chat-md-caret),不是一个真节点:
+			    Markdown 渲染出来的是块元素,跟在它们后面的 span 会掉到下一行去。 */}
 			{text ? (
-				<div className="whitespace-pre-wrap break-words text-[15px] leading-[1.78] text-bn-text-primary">
-					{text}
-					{caret ? (
-						<span
-							className="bn-anim-caret bn-chat-accent-bg ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[0.18em]"
-							aria-hidden="true"
-						/>
-					) : null}
+				<div
+					className={`wrap-break-word text-[15px] leading-[1.78] text-bn-text-primary ${
+						caret ? "bn-chat-md-caret" : ""
+					}`}
+				>
+					{/* 退路是**纯文本**而不是空白或转圈:chunk 还在路上时,主人看到的就是加
+					    Markdown 之前的样子,退化得毫无痕迹。用 <p> 包着是为了让
+					    .bn-chat-md-caret 那条 `> *:last-child::after` 照样够得着,光标不会
+					    在这一瞬间消失。正常情况下这条根本走不到 —— preloadChatMarkdown 在
+					    首屏空闲时就把 chunk 取回来了。 */}
+					{Markdown ? <Markdown text={text} /> : <p className="whitespace-pre-wrap">{text}</p>}
 				</div>
 			) : null}
 		</div>
@@ -188,7 +304,7 @@ function ToolChips({ traces }: { traces: readonly ToolChipData[] }) {
 						data-testid="tool-trace"
 						data-state={state}
 						title={`${label} · ${STATE_TEXT[state]}`}
-						className="bn-glass-chip flex max-w-full items-center gap-[6px] rounded-[13px] px-[9px] py-[3px] text-[11.5px] text-bn-text-tertiary"
+						className="bn-glass-chip flex max-w-full items-center gap-1.5 rounded-[13px] px-2.25 py-0.75 text-[11.5px] text-bn-text-tertiary"
 					>
 						<span
 							className={state === "failed" ? "flex text-bn-danger-text" : "bn-chat-accent flex"}

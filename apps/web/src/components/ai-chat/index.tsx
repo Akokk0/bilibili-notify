@@ -18,7 +18,7 @@ import { useAuthStore } from "../../store/auth";
 import { BiliLoginStatus } from "../../types/auth";
 import { Icon } from "../icons";
 import { Composer } from "./composer";
-import { MessageList, type ToolChipData } from "./messages";
+import { MessageList, preloadChatMarkdown, type ToolChipData } from "./messages";
 import { resolveChatPersona } from "./persona";
 import { ChatSidebar } from "./sidebar";
 import { AI_SKILLS, resolveOutgoing } from "./skills";
@@ -33,17 +33,54 @@ import { AI_SKILLS, resolveOutgoing } from "./skills";
  *
  * 挂在 App 根部而非某个页面里:它是全局的,任何一页都能召唤。
  */
+/**
+ * 首屏闲下来之后跑一次 `fn`,返回撤销函数。
+ *
+ * 用途是预取那个 153KB 的 Markdown chunk。要守住的是首屏的**解析与执行**不变重 ——
+ * 那才是卡交互的东西,不是那点带宽;所以不能同步跟着首屏一起加载,但也没必要抠到
+ * 「主人碰了胶囊才去取」(试过,提前量根本不够,一点进聊天页就看见纯文本闪成
+ * 排版好的)。空闲时段两头都占得住。
+ *
+ * `requestIdleCallback` 带 timeout 兜底,免得页面一直忙就永远排不上;没有这个 API
+ * 的浏览器退回一个宏任务 —— 那也已经在首次绘制之后了。
+ */
+function onIdle(fn: () => void): () => void {
+	if (typeof requestIdleCallback === "function") {
+		const id = requestIdleCallback(fn, { timeout: 2000 });
+		return () => cancelIdleCallback(id);
+	}
+	const id = setTimeout(fn, 1);
+	return () => clearTimeout(id);
+}
+
 export function AiChatDock() {
 	const open = useAiChatStore((s) => s.open);
 	const setOpen = useAiChatStore((s) => s.setOpen);
+
+	// 闲下来就把 Markdown chunk 取回来。这颗胶囊在每一页都挂着,所以这条**总会**跑,
+	// 与聊天开没开无关 —— 目的正是让主人第一次点进去时它已经在了。
+	useEffect(() => onIdle(preloadChatMarkdown), []);
 
 	if (!open) {
 		return (
 			<button
 				type="button"
 				onClick={() => setOpen(true)}
+				// 主人露出「要进来」的意思时就去取 Markdown 那个 chunk(约 153KB)。
+				//
+				// 这颗胶囊是打开聊天的**唯一**入口(`open` 不持久化,store 初值恒为
+				// false),所以在它身上预热就覆盖了全部路径。挪上来 / 聚焦到它,比真正
+				// 点开早几百毫秒 —— 足够取回来,于是进去之后纯文本那条退路根本
+				// 不会露面。
+				//
+				// 三个事件各管一类人:pointerEnter 是鼠标,focus 是键盘 Tab,
+				// pointerDown 是触屏(那儿没有 hover)。预热本身幂等,重复调只是
+				// 拿同一个已解析的 promise。
+				onPointerEnter={preloadChatMarkdown}
+				onPointerDown={preloadChatMarkdown}
+				onFocus={preloadChatMarkdown}
 				title="打开女仆 AI 聊天"
-				className="bn-ai-fab fixed bottom-5 right-5 z-30 flex h-12 cursor-pointer items-center gap-[9px] rounded-[26px] pl-4 pr-5 text-[13.5px] font-bold text-white shadow-[0_10px_28px_rgba(108,92,231,0.42)]"
+				className="bn-ai-fab fixed bottom-5 right-5 z-30 flex h-12 cursor-pointer items-center gap-2.25 rounded-[26px] pl-4 pr-5 text-[13.5px] font-bold text-white shadow-[0_10px_28px_rgba(108,92,231,0.42)]"
 			>
 				<Icon.ai size={20} />
 				女仆 AI
@@ -113,6 +150,12 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 	useEffect(() => {
 		if (activeId && activeQuery.isError) setActiveId(null);
 	}, [activeId, activeQuery.isError, setActiveId]);
+
+	// 面板一打开再取一次 —— 兜底。正常路径上首屏空闲那次早就取完了(见 AiChatDock),
+	// 这条覆盖的是「页面刚加载完、空闲回调还没排上就直奔胶囊」。预热幂等,白调无害。
+	useEffect(() => {
+		preloadChatMarkdown();
+	}, []);
 
 	/**
 	 * 本轮问答的**在途**状态 —— 还没落盘,只活在这次渲染里。
@@ -344,7 +387,7 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 						title="打开侧栏"
 						aria-label="打开侧栏"
 						onClick={() => setRail(true)}
-						className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass-chip absolute left-4 top-4 z-10 grid h-[34px] w-[34px] cursor-pointer place-items-center rounded-[9px] text-bn-text-tertiary shadow-[0_6px_18px_rgba(42,30,72,0.14)]"
+						className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass-chip absolute left-4 top-4 z-10 grid h-8.5 w-8.5 cursor-pointer place-items-center rounded-[9px] text-bn-text-tertiary shadow-[0_6px_18px_rgba(42,30,72,0.14)]"
 					>
 						<Icon.panelExpand size={18} />
 					</button>
@@ -353,7 +396,7 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 				<button
 					type="button"
 					onClick={onClose}
-					className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass-chip absolute right-4 top-4 z-10 flex h-[38px] cursor-pointer items-center gap-[7px] rounded-[19px] px-4 text-[12.5px] font-semibold text-bn-text-tertiary shadow-[0_6px_18px_rgba(42,30,72,0.14)]"
+					className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass-chip absolute right-4 top-4 z-10 flex h-9.5 cursor-pointer items-center gap-1.75 rounded-[19px] px-4 text-[12.5px] font-semibold text-bn-text-tertiary shadow-[0_6px_18px_rgba(42,30,72,0.14)]"
 				>
 					<Icon.arrowLeft size={15} />
 					返回控制台
@@ -362,12 +405,12 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 				{empty ? (
 					<div className="relative flex flex-1 flex-col justify-center overflow-y-auto p-6">
 						<div
-							className="pointer-events-none absolute left-1/2 top-[52%] h-[620px] w-[min(1100px,92%)] -translate-x-1/2 -translate-y-1/2 blur-[6px]"
+							className="pointer-events-none absolute left-1/2 top-[52%] h-155 w-[min(1100px,92%)] -translate-x-1/2 -translate-y-1/2 blur-[6px]"
 							style={{ background: "var(--bn-chat-glow)" }}
 							aria-hidden="true"
 						/>
-						<div className="relative mx-auto w-full max-w-[720px]">
-							<div className="bn-anim-fade-up mb-[30px] text-center">
+						<div className="relative mx-auto w-full max-w-180">
+							<div className="bn-anim-fade-up mb-7.5 text-center">
 								<h1 className="mb-1.5 text-[32px] font-bold leading-tight tracking-tight text-bn-text-primary">
 									{greeting()}
 									<span className="bn-chat-accent-grad-x bg-clip-text text-transparent">
@@ -389,7 +432,7 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 							{error ? (
 								<div
 									role="alert"
-									className="mx-auto mt-3 max-w-[720px] rounded-xl border border-bn-danger-border bg-bn-danger-soft px-4 py-3 text-[13px] leading-relaxed text-bn-danger-text"
+									className="mx-auto mt-3 max-w-180 rounded-xl border border-bn-danger-border bg-bn-danger-soft px-4 py-3 text-[13px] leading-relaxed text-bn-danger-text"
 								>
 									呜…{persona.self}出错了:{error}
 								</div>
@@ -402,7 +445,7 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 											key={s.cmd}
 											type="button"
 											onClick={() => submit(s.prompt)}
-											className="bn-glass-lift bn-nohl bn-glass-chip flex cursor-pointer items-center gap-[7px] rounded-[20px] px-[15px] py-2 text-[12.5px] font-semibold text-bn-text-tertiary shadow-[0_6px_18px_rgba(42,30,72,0.12)]"
+											className="bn-glass-lift bn-nohl bn-glass-chip flex cursor-pointer items-center gap-1.75 rounded-[20px] px-3.75 py-2 text-[12.5px] font-semibold text-bn-text-tertiary shadow-[0_6px_18px_rgba(42,30,72,0.12)]"
 										>
 											<span className="bn-chat-accent flex">
 												<Glyph size={14} />
@@ -416,7 +459,7 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 					</div>
 				) : (
 					<>
-						<div ref={scrollRef} className="flex-1 overflow-y-auto px-6 pb-2 pt-[62px]">
+						<div ref={scrollRef} className="flex-1 overflow-y-auto px-6 pb-2 pt-15.5">
 							<MessageList
 								messages={messages}
 								pending={pending}

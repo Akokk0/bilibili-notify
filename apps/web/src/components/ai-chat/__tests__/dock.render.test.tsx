@@ -249,6 +249,18 @@ describe("AiChatDock — 发送与流式渲染", () => {
 	/** 只在消息区里找 —— 见 messages.tsx 里 testid 的注释。 */
 	const inChat = () => within(screen.getByTestId("chat-messages"));
 
+	/**
+	 * 某段回复所在的「这一轮」最外层 —— 入场动画类挂在那儿。
+	 *
+	 * 不用 `.parentElement` 数层数:正文经 Markdown 渲染后要往里套两层,层数一变,
+	 * `not.toContain` 就成了无条件通过的假绿断言。这里顺带断言真找到了。
+	 */
+	function turnOf(text: string): HTMLElement {
+		const turn = inChat().getByText(text).closest('[data-testid="assistant-turn"]');
+		if (!turn) throw new Error(`没找到「${text}」所在的 assistant-turn`);
+		return turn as HTMLElement;
+	}
+
 	async function typeAndSend(text: string) {
 		useAiChatStore.setState({ open: true, activeId: "c1" });
 		render(wrap(<AiChatDock />));
@@ -329,9 +341,7 @@ describe("AiChatDock — 发送与流式渲染", () => {
 			await releaseChunk();
 			await releaseChunk();
 			await waitFor(() => expect(inChat().getByText("主人晚上好")).toBeTruthy());
-			expect(inChat().getByText("主人晚上好").parentElement?.className).not.toContain(
-				"bn-anim-msg-in",
-			);
+			expect(turnOf("主人晚上好").className).not.toContain("bn-anim-msg-in");
 			// 用户那条的动画类挂在气泡外层。
 			expect(inChat().getByText("在吗").parentElement?.className).not.toContain("bn-anim-msg-in");
 		});
@@ -379,9 +389,7 @@ describe("AiChatDock — 发送与流式渲染", () => {
 
 			await waitFor(() => expect(inChat().getByText("好的")).toBeTruthy());
 			// 第一轮那两条仍然不带动画类。
-			expect(inChat().getByText("主人晚上好").parentElement?.className).not.toContain(
-				"bn-anim-msg-in",
-			);
+			expect(turnOf("主人晚上好").className).not.toContain("bn-anim-msg-in");
 			expect(inChat().getByText("第一问").parentElement?.className).not.toContain("bn-anim-msg-in");
 		});
 
@@ -392,11 +400,7 @@ describe("AiChatDock — 发送与流式渲染", () => {
 			await waitFor(() => expect(inChat().getByText("主人晚上好")).toBeTruthy());
 			act(() => useAiChatStore.setState({ activeId: "other" }));
 			act(() => useAiChatStore.setState({ activeId: "c1" }));
-			await waitFor(() =>
-				expect(inChat().getByText("主人晚上好").parentElement?.className).toContain(
-					"bn-anim-msg-in",
-				),
-			);
+			await waitFor(() => expect(turnOf("主人晚上好").className).toContain("bn-anim-msg-in"));
 		});
 	});
 
@@ -414,6 +418,85 @@ describe("AiChatDock — 发送与流式渲染", () => {
  * 工具轮**不产生正文**,所以那几秒里界面上只有三个跳动的点 —— 跟「模型卡住了」
  * 长得一模一样。主人报的就是这个:她明明在查订阅,页面上却什么都没说。
  */
+/**
+ * Markdown 一进消息流,就多了一条容易悄悄破掉的不变量:**在途那份和落盘那份必须
+ * 渲染成同一个东西**。两边现在都走 AssistantTurn → ChatMarkdown,所以是由构造保证的;
+ * 这里钉住它,免得日后有人为了「流式期间省点开销」把在途那份改回纯文本 —— 那会
+ * 让交接那一刻整块重排,正是主人报过的「回复吐完闪一下」。
+ */
+describe("AiChatDock — Markdown 渲染", () => {
+	const inChat = () => within(screen.getByTestId("chat-messages"));
+
+	async function typeAndSend(text: string) {
+		useAiChatStore.setState({ open: true, activeId: "c1" });
+		render(wrap(<AiChatDock />));
+		const ta = await screen.findByLabelText("聊天输入");
+		fireEvent.change(ta, { target: { value: text } });
+		fireEvent.keyDown(ta, { key: "Enter" });
+	}
+
+	async function release() {
+		await waitFor(() => expect(H.gate.length).toBeGreaterThan(0));
+		const open = H.gate.shift();
+		await act(async () => {
+			open?.();
+		});
+	}
+
+	it("落盘的回复按 Markdown 渲染", async () => {
+		H.messages = [
+			{ id: "m1", role: "user", content: "列一下", ts: "2026-07-24T00:00:00.000Z" },
+			{
+				id: "m2",
+				role: "assistant",
+				content: "**重点**是这些:\n- 甲\n- 乙",
+				ts: "2026-07-24T00:00:01.000Z",
+			},
+		];
+		useAiChatStore.setState({ open: true, activeId: "c1" });
+		render(wrap(<AiChatDock />));
+		await waitFor(() => expect(inChat().getByText("重点")).toBeTruthy());
+		expect(inChat().getByText("重点").tagName).toBe("STRONG");
+		expect(screen.getByTestId("chat-messages").querySelectorAll("li")).toHaveLength(2);
+	});
+
+	it("流式期间就在渲染 —— 不是等 done 之后才切", async () => {
+		// 等 done 再切的话,交接那一刻整块重排。这条就是拦住那种实现的。
+		H.chunks = ["**重点**", "是这些"];
+		await typeAndSend("列一下");
+		await release();
+		await waitFor(() => expect(inChat().getByText("重点").tagName).toBe("STRONG"));
+	});
+
+	it("同一段文字,在途与落盘渲染出的结构完全一致", async () => {
+		H.chunks = ["**粗**\n- 甲\n- 乙"];
+		await typeAndSend("列一下");
+		await release();
+		// 在途:draft 已经全到,但 done 还没落。
+		await waitFor(() => expect(inChat().getByText("粗")).toBeTruthy());
+		const streaming = normalize(screen.getByTestId("chat-messages").innerHTML);
+
+		// 放行到 done,真身接手。
+		await waitFor(() => expect(inChat().getByText("甲")).toBeTruthy());
+		const settled = normalize(screen.getByTestId("chat-messages").innerHTML);
+		expect(settled).toBe(streaming);
+	});
+
+	/** 抹掉只与「在途」有关的差异:光标类、消息 id 带来的 key。 */
+	function normalize(html: string): string {
+		return html.replace(/\s*bn-chat-md-caret\s*/g, " ").replace(/\s+/g, " ");
+	}
+
+	it("主人自己那句**不**渲染 Markdown —— 打的 * 就是 *", async () => {
+		H.chunks = ["好"];
+		await typeAndSend("这里有 *星号* 和 **双星**");
+		await waitFor(() => expect(inChat().getByText(/这里有 \*星号\* 和 \*\*双星\*\*/)).toBeTruthy());
+		// 用户气泡里不该冒出 em / strong。
+		const bubble = inChat().getByText(/这里有/);
+		expect(bubble.querySelectorAll("em,strong")).toHaveLength(0);
+	});
+});
+
 describe("AiChatDock — 工具调用小条", () => {
 	const composer = () => screen.getByLabelText("聊天输入") as HTMLTextAreaElement;
 	const inChat = () => within(screen.getByTestId("chat-messages"));
