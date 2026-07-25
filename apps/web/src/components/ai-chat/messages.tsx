@@ -50,7 +50,7 @@ export function MessageList({
 			{messages.map((m) =>
 				m.role === "user" ? (
 					<div key={m.id} className={`${anim(m.id)}flex justify-end`}>
-						<div className="max-w-[74%] whitespace-pre-wrap break-words rounded-[22px] rounded-br-[7px] bg-bn-purple/12 px-[17px] py-[11px] text-[15px] leading-relaxed text-bn-text-primary">
+						<div className="bn-chat-accent-soft max-w-[74%] whitespace-pre-wrap break-words rounded-[22px] rounded-br-[7px] px-[17px] py-[11px] text-[15px] leading-relaxed text-bn-text-primary">
 							{m.content}
 						</div>
 					</div>
@@ -70,7 +70,7 @@ export function MessageList({
 			{pending ? (
 				<>
 					<div className="bn-anim-msg-in flex justify-end">
-						<div className="max-w-[74%] whitespace-pre-wrap break-words rounded-[22px] rounded-br-[7px] bg-bn-purple/12 px-[17px] py-[11px] text-[15px] leading-relaxed text-bn-text-primary">
+						<div className="bn-chat-accent-soft max-w-[74%] whitespace-pre-wrap break-words rounded-[22px] rounded-br-[7px] px-[17px] py-[11px] text-[15px] leading-relaxed text-bn-text-primary">
 							{pending.ask}
 						</div>
 					</div>
@@ -80,7 +80,7 @@ export function MessageList({
 							{/* 光标跟在最后一个字后面,说明「还在写」。回复结束后随整块一起
 							    被真身替换,不需要单独收尾。 */}
 							<span
-								className="bn-anim-caret ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[0.18em] bg-bn-purple"
+								className="bn-anim-caret bn-chat-accent-bg ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[0.18em]"
 								aria-hidden="true"
 							/>
 						</div>
@@ -101,7 +101,7 @@ export function MessageList({
 					{[0, 1, 2].map((d) => (
 						<span
 							key={d}
-							className="bn-anim-typing h-[7px] w-[7px] rounded-full bg-bn-purple"
+							className="bn-anim-typing bn-chat-accent-bg h-[7px] w-[7px] rounded-full"
 							style={{ animationDelay: `${d * 0.15}s` }}
 						/>
 					))}

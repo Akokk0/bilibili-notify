@@ -301,10 +301,7 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 							<div className="bn-anim-fade-up mb-[30px] text-center">
 								<h1 className="mb-1.5 text-[32px] font-bold leading-tight tracking-tight text-bn-text-primary">
 									{greeting()}
-									<span
-										className="bg-clip-text text-transparent"
-										style={{ backgroundImage: "linear-gradient(92deg, #6c5ce7, #fb7299)" }}
-									>
+									<span className="bn-chat-accent-grad-x bg-clip-text text-transparent">
 										{userName}
 									</span>
 								</h1>
@@ -338,7 +335,7 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 											onClick={() => submit(s.prompt)}
 											className="bn-glass-lift bn-nohl bn-glass-chip flex cursor-pointer items-center gap-[7px] rounded-[20px] px-[15px] py-2 text-[12.5px] font-semibold text-bn-text-tertiary shadow-[0_6px_18px_rgba(42,30,72,0.12)]"
 										>
-											<span className="flex text-[#6c5ce7] dark:text-bn-purple">
+											<span className="bn-chat-accent flex">
 												<Glyph size={14} />
 											</span>
 											{s.desc}

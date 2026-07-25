@@ -624,11 +624,60 @@ body {
 		animation: bn-caret 1s steps(1) infinite;
 	}
 
+	/* ── 强调色的四种用法 ─────────────────────────────────────────────────
+	   聊天界面里凡是「有颜色的那一点」都从这里取,不在 JSX 里写死。
+
+	   写死过一次,代价是整套主题形同虚设:设计稿通篇紫色,照抄进去之后,主人换
+	   主题只有侧栏那四颗色点在动,滑块 / 光标 / 打字点 / 消息气泡 / 输入框聚焦环 /
+	   发送键全是紫的。有条源码级守卫拦着别再抄进来,见 theme-conformance。
+
+	   半透明底走 rgb 分量而不是 `color-mix`:分量能直接塞进 rgba(),各处想要
+	   几成透明就写几成,不必为每一档都定义一个变量。 */
+	.bn-chat-accent {
+		color: var(--bn-chat-dot);
+	}
+	.bn-chat-accent-bg {
+		background: var(--bn-chat-dot);
+	}
+	.bn-chat-accent-soft {
+		background: rgba(var(--bn-chat-accent-rgb), 0.14);
+	}
+	.bn-chat-accent-soft-hover:hover {
+		background: rgba(var(--bn-chat-accent-rgb), 0.14);
+	}
+	/* 滑块的轨道与滑钮由浏览器画,只认 accent-color 这一个入口。 */
+	.bn-chat-accent-range {
+		accent-color: var(--bn-chat-dot);
+	}
+	/* 输入框聚焦:描边 + 一圈外发光,两者同色不同浓度。 */
+	.bn-chat-accent-focus {
+		border-color: rgba(var(--bn-chat-accent-rgb), 0.5);
+		box-shadow:
+			0 0 0 4px rgba(var(--bn-chat-accent-rgb), 0.12),
+			0 8px 24px rgba(24, 18, 45, 0.1);
+	}
+	/* 渐变两种走向:块状元素(发送键、头像)用 135°,横向长文本(问候语里的名字)
+	   用 92° —— 斜渐变铺在一行字上,首尾会一个偏亮一个偏暗。 */
+	.bn-chat-accent-grad {
+		background-image: linear-gradient(135deg, var(--bn-chat-dot), var(--bn-chat-accent-2));
+	}
+	.bn-chat-accent-grad-x {
+		background-image: linear-gradient(92deg, var(--bn-chat-dot), var(--bn-chat-accent-2));
+	}
+	/* 发送键脚下那圈同色辉光。写成类而不是 Tailwind 任意值:
+	   `shadow-[0_4px_14px_rgba(var(--x),0.4)]` 里嵌函数带逗号,生成不出规则时
+	   **不报错**,只是那条 class 悄悄不存在 —— 构建全绿,辉光没了。 */
+	.bn-chat-accent-glow {
+		box-shadow: 0 4px 14px rgba(var(--bn-chat-accent-rgb), 0.4);
+	}
+
 	/* 聊天页 4 套主题色。`--bn-chat-bg` 是整页底,`--bn-chat-glow` 是空态大标题
    背后那团光。暗色不是把浅色调暗那么简单 —— 浅色版靠「几乎白」的底衬托留白,
    暗色版得反过来靠一点色相把深底跟应用背景区分开,所以两套值分别调。 */
 	[data-chat-theme="lime"] {
 		--bn-chat-dot: #a3de4f;
+		--bn-chat-accent-rgb: 163, 222, 79;
+		--bn-chat-accent-2: #3ec98a;
 		--bn-chat-bg: linear-gradient(135deg, #f2f7e8 0%, #f6faee 52%, #edf4e0 100%);
 		--bn-chat-glow: radial-gradient(
 			closest-side,
@@ -639,6 +688,9 @@ body {
 	}
 	[data-chat-theme="violet"] {
 		--bn-chat-dot: #a29bfe;
+		--bn-chat-accent-rgb: 162, 155, 254;
+		/* 紫→粉是设计稿原本那条渐变,留在这套主题里 —— 别的三套各自配一条同调的。 */
+		--bn-chat-accent-2: #fb7299;
 		--bn-chat-bg: linear-gradient(135deg, #efeafb 0%, #f7eff5 52%, #eaf1fb 100%);
 		--bn-chat-glow: radial-gradient(
 			closest-side,
@@ -649,6 +701,8 @@ body {
 	}
 	[data-chat-theme="sky"] {
 		--bn-chat-dot: #57b9f0;
+		--bn-chat-accent-rgb: 87, 185, 240;
+		--bn-chat-accent-2: #6a7ef0;
 		--bn-chat-bg: linear-gradient(135deg, #e8f2fb 0%, #eef6fc 52%, #e2eefa 100%);
 		--bn-chat-glow: radial-gradient(
 			closest-side,
@@ -659,6 +713,8 @@ body {
 	}
 	[data-chat-theme="peach"] {
 		--bn-chat-dot: #fb7299;
+		--bn-chat-accent-rgb: 251, 114, 153;
+		--bn-chat-accent-2: #ff9a5c;
 		--bn-chat-bg: linear-gradient(135deg, #fdeef1 0%, #fdf2ee 52%, #fbe7ec 100%);
 		--bn-chat-glow: radial-gradient(
 			closest-side,

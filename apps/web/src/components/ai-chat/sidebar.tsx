@@ -58,7 +58,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 			<button
 				type="button"
 				onClick={props.onNew}
-				className="mb-[18px] flex w-full cursor-pointer items-center gap-2 rounded-xl bg-bn-code-bg px-3 py-2.5 text-[13px] font-semibold text-bn-text-tertiary transition-colors hover:bg-bn-purple/12"
+				className="mb-[18px] flex w-full cursor-pointer items-center gap-2 rounded-xl bg-bn-code-bg px-3 py-2.5 text-[13px] font-semibold text-bn-text-tertiary bn-chat-accent-soft-hover transition-colors"
 			>
 				<Icon.plus size={16} /> 开启新对话
 			</button>
@@ -82,7 +82,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 								<div
 									key={c.id}
 									className={`group/row flex items-center rounded-[9px] transition-colors ${
-										c.id === props.activeId ? "bg-bn-purple/12" : "hover:bg-bn-code-bg"
+										c.id === props.activeId ? "bn-chat-accent-soft" : "hover:bg-bn-code-bg"
 									}`}
 								>
 									<button
@@ -121,8 +121,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 					/>
 				) : (
 					<div
-						className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full text-[12.5px] font-bold text-white"
-						style={{ background: "linear-gradient(135deg,#FB7299,#e84393)" }}
+						className="bn-chat-accent-grad grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full text-[12.5px] font-bold text-white"
 						aria-hidden="true"
 					>
 						{props.userName.slice(0, 1)}
@@ -211,7 +210,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 								disabled={props.glassClear}
 								value={props.glassOpacity}
 								onChange={(e) => props.onGlassOpacityChange(Number(e.target.value))}
-								className="flex-1 accent-bn-purple disabled:opacity-40"
+								className="bn-chat-accent-range flex-1 disabled:opacity-40"
 							/>
 							<span className="w-8 shrink-0 text-right font-mono text-[10.5px] text-bn-text-secondary">
 								{props.glassOpacity.toFixed(2)}

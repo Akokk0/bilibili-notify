@@ -87,6 +87,45 @@ describe("theme conformance", () => {
 		expect(findings).toEqual([]);
 	});
 
+	/**
+	 * 聊天界面的强调色必须走 `--bn-chat-*`,不能写死。
+	 *
+	 * 四套聊天主题(青柠 / 紫罗兰 / 天青 / 蜜桃)只换那几个变量的值。设计稿通篇
+	 * 是紫色,照抄进 JSX 的结果就是「换什么主题,滑块 / 光标 / 气泡 / 发送键还是
+	 * 紫的」—— 主题色只剩四颗色点在动,别处纹丝不动。
+	 *
+	 * 这条守在源码上:jsdom 不算样式,颜色对不对量不出来;而「又从设计稿抄了一段
+	 * 紫色进来」恰恰是最容易反复发生的事。
+	 */
+	it("ai-chat 里没有写死的强调色 —— 全走 --bn-chat-* 变量", async () => {
+		const ACCENT = /bn-purple|#6c5ce7|#a29bfe|#[fF][bB]7299|#e84393/g;
+		const findings: string[] = [];
+		for (const file of await listTsxFiles(join(SRC_DIR, "components/ai-chat"))) {
+			const rel = relative(SRC_DIR, file);
+			const source = await readFile(file, "utf8");
+			for (const match of source.matchAll(ACCENT)) {
+				const line = source.slice(0, match.index).split("\n").length;
+				findings.push(`${rel}:${line} ${match[0]}`);
+			}
+		}
+		expect(findings).toEqual([]);
+	});
+
+	it("四套主题各自备齐强调色的三种形态", async () => {
+		// 实色(色点 / 光标)、rgb 分量(半透明底,rgba 要拆开的分量)、渐变副色。
+		// 缺任何一个,那套主题下就会有一处悄悄回落到 var() 的兜底值 —— 不报错,
+		// 只是那一处永远是别的主题的颜色。
+		const css = await readFile(fileURLToPath(new URL("../styles.css", import.meta.url)), "utf8");
+		for (const theme of ["lime", "violet", "sky", "peach"]) {
+			const start = css.indexOf(`[data-chat-theme="${theme}"] {`);
+			expect(start).toBeGreaterThan(-1);
+			const block = css.slice(start, css.indexOf("\n\t}", start));
+			expect(`${theme}: ${block.includes("--bn-chat-dot:")}`).toBe(`${theme}: true`);
+			expect(`${theme}: ${block.includes("--bn-chat-accent-rgb:")}`).toBe(`${theme}: true`);
+			expect(`${theme}: ${block.includes("--bn-chat-accent-2:")}`).toBe(`${theme}: true`);
+		}
+	});
+
 	it("ships a synchronous anti-FOUC theme script in index.html", async () => {
 		const html = await readFile(
 			fileURLToPath(new URL("../../index.html", import.meta.url)),

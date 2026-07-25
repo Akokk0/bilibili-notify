@@ -96,11 +96,11 @@ export function Composer({ value, onChange, onSubmit, busy, autoFocus, aiName }:
 								onClick={() => pick(s)}
 								onMouseEnter={() => setIndex(k)}
 								className={`block w-full rounded-[9px] px-[11px] py-2 text-left transition-colors ${
-									k === index ? "bg-bn-purple/10" : "bg-transparent"
+									k === index ? "bn-chat-accent-soft" : "bg-transparent"
 								}`}
 							>
 								<div className="flex items-center gap-2">
-									<span className="font-mono text-[13px] font-semibold text-[#6c5ce7] dark:text-bn-purple">
+									<span className="bn-chat-accent font-mono text-[13px] font-semibold">
 										{s.cmd}
 									</span>
 									<span className="rounded-[5px] bg-bn-code-bg px-[7px] py-px text-[10.5px] font-semibold text-bn-text-secondary">
@@ -122,7 +122,7 @@ export function Composer({ value, onChange, onSubmit, busy, autoFocus, aiName }:
 			<div
 				className={`flex items-end gap-2.5 rounded-[28px] border bg-bn-surface p-2 transition ${
 					focus
-						? "border-bn-purple/45 shadow-[0_0_0_4px_rgba(108,92,231,0.1),0_8px_24px_rgba(24,18,45,0.1)]"
+						? "bn-chat-accent-focus"
 						: "border-bn-border shadow-[0_8px_22px_rgba(24,18,45,0.08)]"
 				}`}
 			>
@@ -167,10 +167,9 @@ export function Composer({ value, onChange, onSubmit, busy, autoFocus, aiName }:
 					onClick={onSubmit}
 					className={`grid h-11 w-11 shrink-0 place-items-center self-end rounded-full transition ${
 						canSend
-							? "cursor-pointer text-white shadow-[0_4px_14px_rgba(108,92,231,0.4)]"
+							? "bn-chat-accent-grad bn-chat-accent-glow cursor-pointer text-white"
 							: "cursor-default bg-bn-hover-muted text-bn-text-secondary"
 					}`}
-					style={canSend ? { background: "linear-gradient(135deg, #a29bfe, #6c5ce7)" } : undefined}
 				>
 					<Icon.arrowUp size={19} />
 				</button>
