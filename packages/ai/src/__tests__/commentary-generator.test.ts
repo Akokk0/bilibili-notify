@@ -326,6 +326,289 @@ describe("CommentaryGenerator.chat — 会话历史", () => {
 });
 
 // ---------------------------------------------------------------------------
+// chatStateless()
+// ---------------------------------------------------------------------------
+
+/**
+ * `chat()` 把历史存在**进程内存**的 session map 里,重启即失忆;独立端 dashboard
+ * 的聊天记录却落在磁盘上,重开还在。两者搭在一起就会出现「界面上明明摆着上文,
+ * 女仆却完全不记得」——`chatStateless` 就是为此存在:历史由调用方交出来,引擎
+ * 一次性用完,不读也不写 session map。
+ */
+describe("CommentaryGenerator.chatStateless — 调用方自带历史", () => {
+	it("整段历史原样送进模型,顺序不变", async () => {
+		const { gen } = makeGen({ maxHistory: 5 });
+		oai.create.mockResolvedValueOnce(msgResp("答2"));
+		const { result } = await gen.chatStateless([
+			{ role: "user", content: "问1" },
+			{ role: "assistant", content: "答1" },
+			{ role: "user", content: "问2" },
+		]);
+
+		expect(result).toBe("答2");
+		// [0] 是 system prompt,其后是调用方给的三条。只断言这段前缀:callAPI 的
+		// 工具循环会**就地**往同一个数组里 push 助手回复,而 mock 记的是引用,
+		// 读到的是调用结束后的样子 —— 整段相等会被那条追加的记账消息带偏。
+		const msgs = createParams(0).messages;
+		expect(msgs[0]?.role).toBe("system");
+		expect(msgs.slice(1, 4).map((m) => m.content)).toEqual(["问1", "答1", "问2"]);
+	});
+
+	it("不改调用方交出来的数组 —— callAPI 的就地追加不许漏回去", async () => {
+		// 上一条测试暴露的:callAPI 拿到 messages 会往里 push。调用方(会话存储)
+		// 把持久化的消息数组直接递进来,漏回去就是往磁盘记录里掺记账消息。
+		const { gen } = makeGen();
+		const history = [{ role: "user" as const, content: "问" }];
+		oai.create.mockResolvedValueOnce(msgResp("答"));
+		await gen.chatStateless(history);
+		expect(history).toEqual([{ role: "user", content: "问" }]);
+	});
+
+	it("不碰 session map —— 调用前后会话数都是 0", async () => {
+		// enableConversation=true 时 chat() 会存一条;chatStateless 无论如何都不该存。
+		const { gen } = makeGen({ enableConversation: true });
+		oai.create.mockResolvedValueOnce(msgResp("答"));
+		await gen.chatStateless([{ role: "user", content: "问" }]);
+		expect(gen.sessionCount).toBe(0);
+	});
+
+	it("历史超过 maxHistory*2 条 → 只送最近的那些", async () => {
+		const { gen } = makeGen({ maxHistory: 1 }); // 上限 2 条
+		oai.create.mockResolvedValueOnce(msgResp("答"));
+		await gen.chatStateless([
+			{ role: "user", content: "很久以前" },
+			{ role: "assistant", content: "旧答" },
+			{ role: "user", content: "最新问题" },
+		]);
+
+		const texts = createParams(0).messages.map((m) => m.content);
+		expect(texts).not.toContain("很久以前");
+		expect(texts).toContain("旧答");
+		expect(texts).toContain("最新问题");
+	});
+
+	it("截断不会触发压缩 —— 只发一次请求,不额外调模型写摘要", async () => {
+		// chat() 满载时会多打一次 create 去压缩历史存回 session;无状态路径没有
+		// 「存回」这一步,再去压缩就是白白多花一次 token。
+		const { gen } = makeGen({ maxHistory: 1 });
+		oai.create.mockResolvedValueOnce(msgResp("答"));
+		await gen.chatStateless([
+			{ role: "user", content: "问1" },
+			{ role: "assistant", content: "答1" },
+			{ role: "user", content: "问2" },
+		]);
+		expect(oai.create).toHaveBeenCalledTimes(1);
+	});
+
+	it("带工具能力:首响应 tool_calls → 执行工具 → 二响应返回内容", async () => {
+		const { gen } = makeGen();
+		oai.create
+			.mockResolvedValueOnce(toolCallResp("fake_tool", { q: "abc" }))
+			.mockResolvedValueOnce(msgResp("最终回答"));
+		const { result } = await gen.chatStateless([{ role: "user", content: "帮我查" }]);
+
+		expect(result).toBe("最终回答");
+		expect(toolsMock.executeTool).toHaveBeenCalledTimes(1);
+		expect(toolsMock.executeTool.mock.calls[0]?.[0]).toBe("fake_tool");
+	});
+
+	it("空历史 → 直接抛,不拿一句只有 system prompt 的请求去撞模型", async () => {
+		const { gen } = makeGen();
+		await expect(gen.chatStateless([])).rejects.toThrow("对话历史为空");
+		expect(oai.create).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// chatStatelessStream()
+// ---------------------------------------------------------------------------
+
+/** 造一个 SDK 风格的流:async iterable of chunks。 */
+function streamOf(chunks: unknown[]): AsyncIterable<unknown> {
+	return {
+		async *[Symbol.asyncIterator]() {
+			for (const c of chunks) yield c;
+		},
+	};
+}
+const textChunk = (text: string) => ({ choices: [{ delta: { content: text } }] });
+/** tool_call 的分片:name / arguments 都是一段段来的,靠 index 归位。 */
+const toolChunk = (index: number, part: Record<string, unknown>) => ({
+	choices: [{ delta: { tool_calls: [{ index, ...part }] } }],
+});
+
+describe("CommentaryGenerator.chatStatelessStream — 真流式", () => {
+	it("逐块回调 onDelta,拼起来等于最终结果", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(
+			streamOf([textChunk("主人"), textChunk("晚上好"), textChunk("~")]),
+		);
+
+		const seen: string[] = [];
+		const { result } = await gen.chatStatelessStream([{ role: "user", content: "在吗" }], {
+			onDelta: (t) => seen.push(t),
+		});
+
+		expect(seen).toEqual(["主人", "晚上好", "~"]);
+		expect(result).toBe("主人晚上好~");
+	});
+
+	it("确实开了 stream —— 不是拿完整响应再假装逐字吐", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(streamOf([textChunk("好")]));
+		await gen.chatStatelessStream([{ role: "user", content: "在吗" }], { onDelta: () => {} });
+		expect(createParams(0)).toMatchObject({ stream: true });
+	});
+
+	it("空 delta 块被跳过,不回调空串", async () => {
+		// 首块常常只带 role、没有 content;真回调一个空串,前端那边会白闪一下。
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(
+			streamOf([{ choices: [{ delta: { role: "assistant" } }] }, textChunk("好")]),
+		);
+		const seen: string[] = [];
+		await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+			onDelta: (t) => seen.push(t),
+		});
+		expect(seen).toEqual(["好"]);
+	});
+
+	it("工具轮:分片拼出完整的 name/arguments,执行后继续流式吐正文", async () => {
+		// 流式下 tool_call 的函数名和参数是**一小段一小段**来的,不按 index 累加
+		// 就会拿到半个函数名,工具永远调不起来。
+		const { gen } = makeGen();
+		oai.create
+			.mockResolvedValueOnce(
+				streamOf([
+					toolChunk(0, { id: "c1", function: { name: "fake_", arguments: '{"q":' } }),
+					toolChunk(0, { function: { name: "tool", arguments: '"abc"}' } }),
+				]),
+			)
+			.mockResolvedValueOnce(streamOf([textChunk("查到了")]));
+
+		const { result } = await gen.chatStatelessStream([{ role: "user", content: "帮我查" }], {
+			onDelta: () => {},
+		});
+
+		expect(result).toBe("查到了");
+		expect(toolsMock.executeTool.mock.calls[0]?.[0]).toBe("fake_tool");
+		expect(toolsMock.executeTool.mock.calls[0]?.[1]).toEqual({ q: "abc" });
+	});
+
+	it("工具轮本身不吐正文 —— 那一轮没有给人看的内容", async () => {
+		const { gen } = makeGen();
+		oai.create
+			.mockResolvedValueOnce(
+				streamOf([toolChunk(0, { id: "c1", function: { name: "fake_tool", arguments: "{}" } })]),
+			)
+			.mockResolvedValueOnce(streamOf([textChunk("答案")]));
+		const seen: string[] = [];
+		await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+			onDelta: (t) => seen.push(t),
+		});
+		expect(seen).toEqual(["答案"]);
+	});
+
+	it("网关不支持流式 → 回落非流式,一次性把整段交出去", async () => {
+		// 一个不支持 stream 的兼容网关不该让聊天整个用不了。此时还没吐过任何字,
+		// 悄悄重来一次对主人是无感的。
+		const { gen } = makeGen();
+		oai.create
+			.mockRejectedValueOnce(new Error("stream is not supported"))
+			.mockResolvedValueOnce(msgResp("整段回复"));
+
+		const seen: string[] = [];
+		const { result } = await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+			onDelta: (t) => seen.push(t),
+		});
+		expect(result).toBe("整段回复");
+		expect(seen).toEqual(["整段回复"]);
+		expect(createParams(1)).not.toMatchObject({ stream: true });
+	});
+
+	/**
+	 * 账户层面的拒绝(余额 / 鉴权 / 限流)不该被当成「网关不支持流式」。
+	 *
+	 * 硅基流动余额用完时回的就是 `402 status code (no body)`。回落非流式一样会被
+	 * 拒 —— 拒绝发生在账单那一层,跟请求体里有没有 stream 毫无关系。硬回落只是把
+	 * 同一个错误再撞一次,还把真正的原因藏在「流式不可用」这句话后面:主人看着
+	 * 日志会以为是流式坏了,去翻代码而不是去充值。
+	 */
+	const httpErr = (status: number, msg: string) => Object.assign(new Error(msg), { status });
+
+	it("402 余额不足 → 直接说是余额,不回落再撞一次", async () => {
+		const { gen } = makeGen();
+		oai.create.mockRejectedValueOnce(httpErr(402, "402 status code (no body)"));
+
+		await expect(
+			gen.chatStatelessStream([{ role: "user", content: "x" }], { onDelta: () => {} }),
+		).rejects.toThrow(/余额|配额/);
+		// 只发了一次 —— 没有白撞第二次。
+		expect(oai.create).toHaveBeenCalledTimes(1);
+	});
+
+	it("401 key 无效 → 同样不回落,而且说的是 key 不是流式", async () => {
+		const { gen } = makeGen();
+		oai.create.mockRejectedValueOnce(httpErr(401, "401 Unauthorized"));
+		await expect(
+			gen.chatStatelessStream([{ role: "user", content: "x" }], { onDelta: () => {} }),
+		).rejects.toThrow(/API Key/);
+		expect(oai.create).toHaveBeenCalledTimes(1);
+	});
+
+	it("429 限流 → 不回落,立刻重来只会加剧", async () => {
+		const { gen } = makeGen();
+		oai.create.mockRejectedValueOnce(httpErr(429, "429 Too Many Requests"));
+		await expect(
+			gen.chatStatelessStream([{ role: "user", content: "x" }], { onDelta: () => {} }),
+		).rejects.toThrow(/频繁|限流/);
+		expect(oai.create).toHaveBeenCalledTimes(1);
+	});
+
+	it("开着 thinking 时 402 也不再降级重试一次", async () => {
+		// thinking 降级那条路同样是「换个参数重来」,对账单问题一样白搭。
+		const { gen } = makeGen({ enableThinking: true });
+		oai.create.mockRejectedValue(httpErr(402, "402 status code (no body)"));
+		await expect(
+			gen.chatStatelessStream([{ role: "user", content: "x" }], { onDelta: () => {} }),
+		).rejects.toThrow(/余额|配额/);
+		expect(oai.create).toHaveBeenCalledTimes(1);
+	});
+
+	it("500 之类的上游抖动仍然回落 —— 那确实可能换条路就好了", async () => {
+		const { gen } = makeGen();
+		oai.create
+			.mockRejectedValueOnce(httpErr(500, "500 Internal Server Error"))
+			.mockResolvedValueOnce(msgResp("整段回复"));
+		const { result } = await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+			onDelta: () => {},
+		});
+		expect(result).toBe("整段回复");
+	});
+
+	it("已经吐出字之后再断 → 抛错,不静默吞掉半截回复", async () => {
+		// 这时候页面上已经有半句话了,悄悄重来会让那半句凭空变成另一段。
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce({
+			async *[Symbol.asyncIterator]() {
+				yield textChunk("前半句");
+				throw new Error("connection reset");
+			},
+		});
+		await expect(
+			gen.chatStatelessStream([{ role: "user", content: "x" }], { onDelta: () => {} }),
+		).rejects.toThrow("connection reset");
+	});
+
+	it("空历史 → 直接抛,与 chatStateless 同约定", async () => {
+		const { gen } = makeGen();
+		await expect(gen.chatStatelessStream([], { onDelta: () => {} })).rejects.toThrow(
+			"对话历史为空",
+		);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // session 生命周期
 // ---------------------------------------------------------------------------
 

@@ -14,8 +14,9 @@ import {
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 const SESSION_SWEEP_INTERVAL_MS = 10 * 60 * 1000; // 10 min — 清扫过期且不再被访问的 session
 
-type ConversationRole = "user" | "assistant";
-interface ConversationMessage {
+export type ConversationRole = "user" | "assistant";
+/** 一条多轮对话消息。{@link CommentaryGenerator.chatStateless} 的入参元素。 */
+export interface ConversationMessage {
 	role: ConversationRole;
 	content: string;
 }
@@ -357,6 +358,86 @@ export class CommentaryGenerator implements CommentaryProvider {
 		return { result, pendingActions };
 	}
 
+	/**
+	 * 无状态多轮:整段历史由调用方交出来,引擎用完即弃。
+	 *
+	 * 与 {@link chat} 的分工是「历史存在谁那里」。`chat()` 的历史躺在进程内存的
+	 * session map 里,适合 koishi 那种「聊天窗口本身就是易失的」场景;独立端
+	 * dashboard 的会话却落在磁盘上,重开浏览器记录还在 —— 这时再走 session map,
+	 * 就会出现界面上明明摆着上文、女仆却完全不记得的裂缝。
+	 *
+	 * 因此这里**不读也不写** session map,`enableConversation` 对它没有意义;
+	 * 同理也不做历史压缩 —— 压缩的产物是要存回 session 的摘要,无状态路径没有
+	 * 「存回」这一步,再调一次模型写摘要纯属白烧 token。超长就按 maxHistory
+	 * 截掉最旧的,截断策略与 `chat()` 一致。
+	 */
+	async chatStateless(
+		messages: readonly ConversationMessage[],
+		opts?: { sessionCtx?: SessionContext; imageUrls?: string[] },
+	): Promise<{ result: string; pendingActions: Array<() => Promise<void>> }> {
+		return this.chatStatelessImpl(messages, opts);
+	}
+
+	/**
+	 * 与 {@link chatStateless} 同源,但正文**边生成边回调**。
+	 *
+	 * dashboard 的聊天用它:一次回答动辄十几秒,一次性甩出来的话,那十几秒里
+	 * 页面上只有三个跳动的点,读起来像卡住了。
+	 *
+	 * 注意 `onDelta` 只喂**给人看的正文**。工具轮(查订阅、查直播状态)不产生
+	 * 正文,那几轮自然静默 —— 表现为打字点多停一会儿,这是诚实的:那段时间
+	 * 她确实在查东西而不是在说话。
+	 */
+	async chatStatelessStream(
+		messages: readonly ConversationMessage[],
+		opts: { onDelta: (text: string) => void; sessionCtx?: SessionContext; imageUrls?: string[] },
+	): Promise<{ result: string; pendingActions: Array<() => Promise<void>> }> {
+		return this.chatStatelessImpl(messages, opts);
+	}
+
+	private async chatStatelessImpl(
+		messages: readonly ConversationMessage[],
+		opts?: {
+			sessionCtx?: SessionContext;
+			imageUrls?: string[];
+			onDelta?: (text: string) => void;
+		},
+	): Promise<{ result: string; pendingActions: Array<() => Promise<void>> }> {
+		if (messages.length === 0) throw new Error("对话历史为空");
+
+		// slice 顺带把调用方的数组复制了一份,这一点是必需的而非顺手:callAPI 的
+		// 工具循环会**就地**往 messages 里 push 助手回复 / 工具结果,直接把持久化
+		// 的消息数组递进去,那些记账消息就会漏回调用方,跟着存进磁盘。
+		const trimmed = messages.slice(-this.config.maxHistory * 2);
+		const systemPrompt = this.getSystemPrompt();
+		this.logger.debug(`[chat-stateless] 历史=${messages.length} 条,实发=${trimmed.length} 条`);
+
+		const pendingActions: Array<() => Promise<void>> = [];
+		const result = await this.callAPI(
+			systemPrompt,
+			trimmed,
+			{
+				tools: TOOL_DEFINITIONS,
+				onToolCall: (name, args) =>
+					executeTool(
+						name,
+						args,
+						this.api,
+						() => this.getSubs(),
+						opts?.sessionCtx,
+						this.subMgmt ?? undefined,
+						pendingActions,
+					),
+			},
+			this.config.enableVision ? opts?.imageUrls : undefined,
+			undefined,
+			opts?.onDelta,
+		);
+
+		this.logger.debug(`[chat-stateless] 响应长度=${result.length}`);
+		return { result, pendingActions };
+	}
+
 	/** 清除指定用户的对话历史 */
 	clearSession(sessionId: string): void {
 		this.sessions.delete(sessionId);
@@ -402,11 +483,87 @@ export class CommentaryGenerator implements CommentaryProvider {
 	}
 
 	/** :384 错误脱敏:抹掉 apiKey 明文与 `Bearer <token>`,再进日志 / 外抛。 */
+	/**
+	 * 账户层面的拒绝 —— 说人话地描述它,拿不准就返回 null。
+	 *
+	 * 这几种错误的共同点是**换个参数重来一样会被拒**:拒绝发生在账单和鉴权那一层,
+	 * 跟请求体里有没有 `stream`、开没开 thinking 毫无关系。所以它们既不该触发回落
+	 * 非流式,也不该触发 thinking 降级 —— 那只是把同一个错误再撞一次。
+	 *
+	 * 更要紧的是**别把原因说错**:硅基流动余额用完时回的是干巴巴一句
+	 * `402 status code (no body)`,若还套上「流式不可用」的措辞,主人只会以为是
+	 * 流式坏了,去翻代码而不是去充值。
+	 */
+	private static rejectionOf(e: unknown): Error | null {
+		const status = (e as { status?: unknown } | null)?.status;
+		const msg =
+			status === 401
+				? "AI 网关拒绝:API Key 无效或已失效(401)"
+				: status === 402
+					? "AI 网关拒绝:账户余额不足或配额已用尽(402)"
+					: status === 403
+						? "AI 网关拒绝:无权访问该模型(403)"
+						: status === 429
+							? "AI 网关拒绝:请求过于频繁,已被限流(429)"
+							: null;
+		// 带上 status 再抛:外层那条 thinking 降级路径也要靠它认出「重来也没用」。
+		return msg ? Object.assign(new Error(msg), { status }) : null;
+	}
+
 	private sanitizeErr(e: unknown): string {
 		let msg = e instanceof Error ? e.message : String(e);
 		const key = this.config.apiKey;
 		if (key && key.length >= 6) msg = msg.split(key).join("***");
 		return msg.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer ***");
+	}
+
+	/**
+	 * 流式地取回**一轮**响应,把 content 分片喂给 onDelta,并把 tool_call 分片
+	 * 按 index 拼回完整的调用。
+	 *
+	 * 两件事在流式下与非流式截然不同,都得自己收拾:
+	 * ① 正文是一小段一小段来的 —— 累加即可;
+	 * ② tool_call 的**函数名和参数同样是分片的**,而且靠 `index` 归位而不是 `id`
+	 *    (id 只在第一片里出现)。不按 index 累加就会拿到半个函数名,工具永远
+	 *    调不起来 —— 而且不报错,只是安静地什么都没查到。
+	 */
+	private async streamOnce(
+		client: OpenAI,
+		params: OpenAI.ChatCompletionCreateParamsStreaming,
+		onDelta: (text: string) => void,
+	): Promise<OpenAI.ChatCompletionMessage> {
+		const stream = await client.chat.completions.create(params);
+		let content = "";
+		const slots: Array<{ id: string; name: string; args: string }> = [];
+		for await (const chunk of stream) {
+			const delta = chunk.choices?.[0]?.delta;
+			if (!delta) continue;
+			// 首块通常只带 role、没有 content。回调一个空串会让页面白闪一下。
+			if (delta.content) {
+				content += delta.content;
+				onDelta(delta.content);
+			}
+			for (const tc of delta.tool_calls ?? []) {
+				let slot = slots[tc.index];
+				if (!slot) {
+					slot = { id: "", name: "", args: "" };
+					slots[tc.index] = slot;
+				}
+				if (tc.id) slot.id = tc.id;
+				if (tc.function?.name) slot.name += tc.function.name;
+				if (tc.function?.arguments) slot.args += tc.function.arguments;
+			}
+		}
+		const toolCalls = slots.filter(Boolean).map((s) => ({
+			id: s.id,
+			type: "function" as const,
+			function: { name: s.name, arguments: s.args },
+		}));
+		return {
+			role: "assistant",
+			content: content || null,
+			...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+		} as OpenAI.ChatCompletionMessage;
 	}
 
 	private async callAPI(
@@ -418,6 +575,11 @@ export class CommentaryGenerator implements CommentaryProvider {
 		},
 		imageUrls?: string[],
 		override?: CommentaryCallOverride,
+		/**
+		 * 给了就走流式,正文分片实时回调。工具轮**不**产生给人看的正文,所以
+		 * 那几轮自然什么都不回调。
+		 */
+		onDelta?: (text: string) => void,
 	): Promise<string> {
 		const { apiKey, baseURL } = this.config;
 		const model = override?.model ?? this.config.model;
@@ -475,21 +637,79 @@ export class CommentaryGenerator implements CommentaryProvider {
 			};
 		};
 
+		/** 本次调用总共已经吐给调用方多少字 —— 决定了出错时还能不能悄悄重来。 */
+		let emitted = 0;
+		const emit = onDelta
+			? (text: string) => {
+					emitted += text.length;
+					onDelta(text);
+				}
+			: undefined;
+
+		/**
+		 * 取一轮响应。开了流式就走流式,并在**还没吐过任何字**时容许回落非流式 ——
+		 * 有些 OpenAI 兼容网关不支持 stream,不该让整个聊天用不了;而这一刻页面上
+		 * 还是空的,悄悄重来一次对主人完全无感。
+		 *
+		 * 反过来,一旦吐过字再断,就必须把错误抛出去:那时页面上已经有半句话了,
+		 * 静默重来会让那半句凭空变成另一段,比直接报错更难懂。
+		 */
+		const fetchRound = async (): Promise<OpenAI.ChatCompletionMessage> => {
+			const base = makeParams(this.config.enableThinking, this.config.enableSearch);
+			if (emit) {
+				try {
+					return await this.streamOnce(
+						client,
+						{ ...base, stream: true } as OpenAI.ChatCompletionCreateParamsStreaming,
+						emit,
+					);
+				} catch (e) {
+					if (emitted > 0) throw new Error(this.sanitizeErr(e));
+					// 账单 / 鉴权那一层的拒绝跟 stream 无关,回落也是白撞一次。
+					const rejection = CommentaryGenerator.rejectionOf(e);
+					if (rejection) throw rejection;
+					this.logger.warn(`[api] 流式不可用,回落非流式: ${this.sanitizeErr(e)}`);
+				}
+			}
+			const res = await client.chat.completions.create(base);
+			// AI1:兼容网关命中内容审查 / 上游异常时会返回空 choices。直接
+			// res.choices[0].message 会抛不可读的 "Cannot read properties of
+			// undefined";给出明确可诊断的错误,让调用方 catch 后回退纯文字。
+			const choice = res.choices?.[0];
+			if (!choice) {
+				throw new Error("AI 网关返回空 choices(疑似命中内容审查或上游异常),无法生成");
+			}
+			// 回落路径下这一轮的正文是一次性到手的。仍然把它交给 onDelta ——
+			// 调用方只认「分片流」这一种形状,不必为「有时候流、有时候不流」分叉。
+			if (emit && choice.message.content) emit(choice.message.content);
+			return choice.message;
+		};
+
 		const MAX_ROUNDS = 8;
 		for (let round = 0; round < MAX_ROUNDS; round++) {
-			let res: Awaited<ReturnType<typeof client.chat.completions.create>>;
+			let message: OpenAI.ChatCompletionMessage;
 			try {
-				res = await client.chat.completions.create(
-					makeParams(this.config.enableThinking, this.config.enableSearch),
-				);
+				message = await fetchRound();
 			} catch (e) {
+				// 账单 / 鉴权那一层的拒绝原样抛出去。降级重试换的只是 thinking 参数,
+				// 对「没钱了」毫无帮助 —— 白撞一次,还会把原因说成「thinking 不受支持」。
+				const rejection = CommentaryGenerator.rejectionOf(e);
+				if (rejection) throw rejection;
 				// :384 OpenAI SDK 错误原文常含 baseURL / Authorization: Bearer
 				// <apikey> 片段;callAPI 的错误会经 engine-error / log WS 外泄到
 				// dashboard。脱敏后再 warn / 抛出。
-				if (this.config.enableThinking) {
+				if (this.config.enableThinking && emitted === 0) {
 					this.logger.warn(`[api] thinking 模式不受支持，降级重试: ${this.sanitizeErr(e)}`);
 					try {
-						res = await client.chat.completions.create(makeParams(false, this.config.enableSearch));
+						const res = await client.chat.completions.create(
+							makeParams(false, this.config.enableSearch),
+						);
+						const choice = res.choices?.[0];
+						if (!choice) {
+							throw new Error("AI 网关返回空 choices(疑似命中内容审查或上游异常),无法生成");
+						}
+						if (emit && choice.message.content) emit(choice.message.content);
+						message = choice.message;
 					} catch (e2) {
 						throw new Error(this.sanitizeErr(e2));
 					}
@@ -498,14 +718,6 @@ export class CommentaryGenerator implements CommentaryProvider {
 				}
 			}
 
-			// AI1:兼容网关命中内容审查 / 上游异常时会返回空 choices。直接
-			// res.choices[0].message 会抛不可读的 "Cannot read properties of
-			// undefined";给出明确可诊断的错误,让调用方 catch 后回退纯文字。
-			const choice = res.choices?.[0];
-			if (!choice) {
-				throw new Error("AI 网关返回空 choices(疑似命中内容审查或上游异常),无法生成");
-			}
-			const message = choice.message;
 			apiMessages.push(message);
 
 			if (!message.tool_calls?.length) {

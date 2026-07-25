@@ -5,6 +5,8 @@ export {
 	type CommentaryGeneratorConfig,
 	type CommentaryGeneratorOptions,
 	type CommentaryProvider,
+	type ConversationMessage,
+	type ConversationRole,
 	type PersonaConfig,
 } from "./commentary-generator";
 export * from "./persona-presets";
