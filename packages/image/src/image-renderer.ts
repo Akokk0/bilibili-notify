@@ -1,3 +1,5 @@
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
 	CardBlock,
 	Disposable,
@@ -24,6 +26,24 @@ import {
 import { SCCard } from "./templates/sc-card";
 import { buildWordCloudHtml } from "./templates/wordcloud";
 import type { CardColorOptions, Dynamic, LiveData } from "./types";
+
+/**
+ * 本模块能读到自带静态资源的目录 —— 词云要的那两个脚本就在 `static/` 下。
+ *
+ * **不能写 `__dirname`。**这个包是 ESM(`"type": "module"`),源码里根本没有
+ * 这个变量;以前不炸只是因为打包时开了 `shims: true`,给产物注入了一个。而 dev
+ * 服务器不走产物 —— `apps/server/tsconfig.dev.json` 的 paths 把工作区包直接映到各包
+ * 的 `src/index.ts`,tsx 加载的是源码,shim 无从注入,生成词云当场
+ * `__dirname is not defined`。构建全绿,只有开发时炸。
+ *
+ * 相对路径两种形态下都对得上:源码里 `static/` 挨着本文件(`src/static/`),
+ * 打包后 pack 的 copy 规则把它搬到 `lib/static/`,而那时本文件已被并进
+ * `lib/index.*` —— 都是「同级的 static」。
+ *
+ * 三种消费形态都验过:`lib/index.mjs`(独立端)、`lib/index.cjs` 与 koishi 的
+ * CJS bundle(打包器会把 `import.meta.url` 改写成 CJS 能跑的形式)。
+ */
+export const ASSET_DIR = dirname(fileURLToPath(import.meta.url));
 
 /** 锐评卡的**业务**入参 —— 配色部分由渲染器从全局 `cardStyle` 填,调用方不用管。 */
 type RoastStyleKeys =
@@ -541,7 +561,7 @@ export class ImageRenderer {
 		const html = await buildWordCloudHtml(
 			masterName,
 			words,
-			__dirname,
+			ASSET_DIR,
 			masterAvatarUrl,
 			this.config.cardColorStart,
 			this.config.cardColorEnd,
