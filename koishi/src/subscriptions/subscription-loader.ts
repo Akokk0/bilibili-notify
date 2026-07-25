@@ -163,9 +163,11 @@ export class SubscriptionLoader {
 		if (config.advancedSub.enabled) {
 			// Adapters + targets registered first so routing (which references
 			// their ids) resolves once subs land in the store.
-			const { subs, adapters, targets } = buildAdvancedSubAndTargets(config.advancedSub);
+			const { subs, adapters, targets, warnings } = buildAdvancedSubAndTargets(config.advancedSub);
 			for (const a of adapters) this.registry.setAdapter(a);
 			for (const t of targets) this.registry.set(t);
+			// 转换是纯函数,自己不打日志 —— 可疑配置在这里落地。加载期一次性,不是热路径。
+			for (const w of warnings) this.logger.warn(w);
 			if (!subs.length) {
 				this.logger.info("[sub] 高级订阅已加载，但未添加任何订阅");
 				return;

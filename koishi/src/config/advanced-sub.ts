@@ -43,6 +43,9 @@ export const AdvancedSubConfigSchema: Schema<AdvancedSubConfig> = Schema.object(
 						.description(
 							"消息推送平台，比如 onebot、qq、discord 这些～要和机器人适配器一致才找得到哦",
 						),
+					selfId: Schema.string().description(
+						"想让**哪个账号**来送这些消息呢？(´｡• ᵕ •｡`) 留空的话女仆会自己挑该平台第一个在线的机器人——挂了两个同平台机器人的主人，这里填上那个账号的 ID（QQ 群里就是机器人的 QQ 号）就能钦点啦～ ⚠️ 一旦填了女仆就**只认这一个号**：它要是离线了，这些消息就不发了，也不会偷偷换个号发出去。不知道该填什么的话，敲 `status.bot` 女仆会把当前连着的机器人报给主人喔 (๑˃ᴗ˂)ﻭ",
+					),
 					channelArr: Schema.array(
 						Schema.object({
 							channelId: Schema.string().required().description("频道号/群组号"),

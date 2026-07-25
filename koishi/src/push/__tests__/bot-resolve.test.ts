@@ -81,6 +81,60 @@ describe("resolveKoishiBot — 平台容错解析", () => {
 	});
 });
 
+/**
+ * 指定了发送账号(高级订阅 target 项里的 selfId)之后的语义。
+ *
+ * 关键点:**指定了就绝不回退**。回退的存在理由是「用户可能把平台名填错了」,而一旦
+ * 用户明确写下某个账号,再把消息从别的号发出去就是南辕北辙 —— 群里看到的是个可能
+ * 根本不该在场的机器人,@全体的权限也未必一样。发错号比没发出去更难收场。
+ */
+describe("resolveKoishiBot — 指定了发送账号(selfId)", () => {
+	it("指定的号存在但离线 → 返回它,不换成同平台在线的另一个号", () => {
+		// 「不发、如实报不可达」由调用方(sink)判 status 得出;解析器的责任是别改口。
+		const offline = bot("onebot", "111", OFFLINE);
+		const onlineSibling = bot("onebot", "222", ONLINE);
+		const res = resolveKoishiBot(
+			[offline, onlineSibling],
+			{ botPlatform: "onebot", selfId: "111" },
+			ONLINE,
+		);
+		expect(res.reason).toBe("exact");
+		expect(res.bot).toBe(offline);
+	});
+
+	it("指定的号根本不存在(填错一位数)→ 不给 bot,更不回退到唯一在线平台", () => {
+		// 不加这条判断的话会落进 fallback 分支:只有一个在线平台时,消息会静静地从
+		// 另一个号发出去 —— 恰恰是指定账号想避免的事。
+		const bots = [bot("onebot", "111"), bot("onebot", "222")];
+		const res = resolveKoishiBot(bots, { botPlatform: "onebot", selfId: "1111" }, ONLINE);
+		expect(res.reason).toBe("selfId-miss");
+		expect(res.bot).toBeUndefined();
+	});
+
+	it("指定的号不存在,且该平台一个 bot 都没有 → 同样不回退", () => {
+		const bots = [bot("discord", "d1")];
+		const res = resolveKoishiBot(bots, { botPlatform: "onebot", selfId: "111" }, ONLINE);
+		expect(res.reason).toBe("selfId-miss");
+		expect(res.bot).toBeUndefined();
+	});
+
+	it("带回该平台当前在线的 selfId 列表 —— 告警要说得出「那你有哪些号」", () => {
+		// 只说「没找到 1111」帮不上忙,主人还得自己去翻。列出可用的号才是可操作的。
+		const bots = [bot("onebot", "111"), bot("onebot", "222", OFFLINE), bot("discord", "d1")];
+		const res = resolveKoishiBot(bots, { botPlatform: "onebot", selfId: "1111" }, ONLINE);
+		// 只列配置平台的、且在线的:离线的 222 帮不上忙,别的平台的 d1 更是误导。
+		expect(res.onlineSelfIds).toEqual(["111"]);
+	});
+
+	it("没填 selfId 时行为一字不变 —— 这条分支对普通订阅与 master 不可达", () => {
+		// 普通订阅和主人私聊永远不填 selfId,回退语义必须原样保留。
+		const bots = [bot("onebot", "10086")];
+		const res = resolveKoishiBot(bots, { botPlatform: "qq" }, ONLINE);
+		expect(res.reason).toBe("fallback");
+		expect(res.bot).toBe(bots[0]);
+	});
+});
+
 describe("botResolutionWarning — 可操作告警文案", () => {
 	const res = (reason: string, onlinePlatforms: string[]) =>
 		({ reason, onlinePlatforms }) as Parameters<typeof botResolutionWarning>[2];
@@ -107,5 +161,20 @@ describe("botResolutionWarning — 可操作告警文案", () => {
 		const msg = botResolutionWarning("master", "qq", res("none", []));
 		expect(msg).not.toBeNull();
 		expect(msg).toContain("qq");
+	});
+
+	it("selfId-miss → 说清找不到哪个号,并列出该平台当前可用的号", () => {
+		const msg = botResolutionWarning("UP的群", "onebot", {
+			reason: "selfId-miss",
+			onlinePlatforms: ["onebot"],
+			onlineSelfIds: ["111", "222"],
+			selfId: "1111",
+		} as Parameters<typeof botResolutionWarning>[2]);
+		expect(msg).not.toBeNull();
+		expect(msg).toContain("1111"); // 填错的那个
+		expect(msg).toContain("111");
+		expect(msg).toContain("222"); // 实际可用的
+		// 不能把主人往「改平台名」上引 —— 平台名是对的,错的是账号。
+		expect(msg).not.toContain("平台改成");
 	});
 });

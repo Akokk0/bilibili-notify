@@ -1,4 +1,4 @@
-import { PushTargetSchema } from "@bilibili-notify/internal";
+import { deterministicUuid, PushTargetSchema } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { type AdvancedSubRawConfigShape, buildAdvancedSubAndTargets } from "../advanced";
 
@@ -426,6 +426,101 @@ describe("customDynamicMsg enable 门 → overrides.templates.dynamic/dynamicVid
 		);
 		expect(subs[0].overrides.templates?.dynamic).toBe("只改普通动态 {name}");
 		expect(subs[0].overrides.templates?.dynamicVideo).toBeUndefined();
+	});
+});
+
+/**
+ * 指定发送账号(高级订阅 target 项里的 selfId)。
+ *
+ * 背景:同平台挂了两个机器人时,原来只能拿到 `ctx.bots` 里第一个在线的那个 ——
+ * 顺序是插件注册顺序,重启后还可能换一个,而且全程没有任何日志。
+ *
+ * 这里守的是**身份派生**:adapter id 的种子必须含 selfId,否则同平台两个账号会算出
+ * 同一个 adapter id,`config.selfId` 互相覆盖,选谁全看哪个 entry 最后写入。
+ */
+describe("buildAdvancedSubAndTargets() — 指定发送账号", () => {
+	/** 造一份带 selfId 的 target 项(复用 makeRaw 造好的 channelArr 形状)。 */
+	function targetEntry(raw: ReturnType<typeof makeRaw>, channelId: string, selfId?: string) {
+		const ch = { ...raw.target[0].channelArr[0], channelId };
+		return { platform: "onebot", channelArr: [ch], ...(selfId ? { selfId } : {}) };
+	}
+
+	it("填了 selfId → adapter 种子含它,config 也带上", () => {
+		const raw = makeRaw("11", "g1");
+		raw.target = [targetEntry(raw, "g1", "222")];
+		const { adapters } = buildAdvancedSubAndTargets({
+			subs: { "UP-1": raw },
+		} as unknown as AdvancedSubRawConfigShape);
+
+		expect(adapters).toHaveLength(1);
+		expect(adapters[0].id).toBe(deterministicUuid("adapter:koishi-bot:onebot:222"));
+		expect((adapters[0].config as { selfId?: string }).selfId).toBe("222");
+	});
+
+	it("没填 selfId → adapter id 与改动前一字不差(老配置不能变成孤儿)", () => {
+		const raw = makeRaw("11", "g1");
+		const { adapters } = buildAdvancedSubAndTargets({
+			subs: { "UP-1": raw },
+		} as unknown as AdvancedSubRawConfigShape);
+
+		expect(adapters[0].id).toBe(deterministicUuid("adapter:koishi-bot:onebot"));
+		expect((adapters[0].config as { selfId?: string }).selfId).toBeUndefined();
+	});
+
+	it("同平台两个不同账号 → 两个 adapter、两组 target,互不相扰", () => {
+		const raw = makeRaw("11", "g1");
+		raw.target = [targetEntry(raw, "g1", "111"), targetEntry(raw, "g2", "222")];
+		const { adapters, targets } = buildAdvancedSubAndTargets({
+			subs: { "UP-1": raw },
+		} as unknown as AdvancedSubRawConfigShape);
+
+		expect(adapters).toHaveLength(2);
+		expect(new Set(adapters.map((a) => a.id)).size).toBe(2);
+		expect(targets).toHaveLength(2);
+		// 每个 target 挂在自己那个 adapter 上,不能串。
+		const byChannel = new Map(
+			targets.map((t) => [(t.session as { channelId?: string }).channelId, t.adapterId]),
+		);
+		expect(byChannel.get("g1")).toBe(deterministicUuid("adapter:koishi-bot:onebot:111"));
+		expect(byChannel.get("g2")).toBe(deterministicUuid("adapter:koishi-bot:onebot:222"));
+	});
+
+	it("同一个群配在两个不同账号下 → 照发两条,但要吐一条 warning", () => {
+		// 加 selfId 之前这两项会算出同一个 target id 而被自动去重,群只收一条;
+		// 现在 adapter 分开了,去重不再发生 —— 一个事件会让那个群收到两条。
+		// 不擅自吞掉主人写下的配置(确实可能是想双号播报),但必须让他知道。
+		const raw = makeRaw("11", "g1");
+		raw.target = [targetEntry(raw, "同一个群", "111"), targetEntry(raw, "同一个群", "222")];
+		const { subs, targets, warnings } = buildAdvancedSubAndTargets({
+			subs: { "UP-1": raw },
+		} as unknown as AdvancedSubRawConfigShape);
+
+		expect(targets).toHaveLength(2);
+		// routing 里两个都在 —— 「照发」不是空话。
+		expect(subs[0].routing.dynamic).toHaveLength(2);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain("同一个群");
+		expect(warnings[0]).toContain("111");
+		expect(warnings[0]).toContain("222");
+	});
+
+	it("没配重时 warnings 为空 —— 别让正常配置也跳一条", () => {
+		const raw = makeRaw("11", "g1");
+		raw.target = [targetEntry(raw, "g1", "111"), targetEntry(raw, "g2", "222")];
+		const { warnings } = buildAdvancedSubAndTargets({
+			subs: { "UP-1": raw },
+		} as unknown as AdvancedSubRawConfigShape);
+		expect(warnings).toEqual([]);
+	});
+
+	it("两个 UP 推同一个群不算配重 —— 那本来就该各发各的", () => {
+		// 跨订阅撞同一个群是常态(两个 UP 推同一个群),各自是独立事件,不是重复推送。
+		const a = makeRaw("11", "群A");
+		const b = makeRaw("22", "群A");
+		const { warnings } = buildAdvancedSubAndTargets({
+			subs: { "UP-1": a, "UP-2": b },
+		} as unknown as AdvancedSubRawConfigShape);
+		expect(warnings).toEqual([]);
 	});
 });
 

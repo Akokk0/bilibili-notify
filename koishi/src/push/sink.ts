@@ -55,7 +55,9 @@ export function createKoishiSink(opts: KoishiSinkOptions): NotificationSink {
 		);
 		const warning = botResolutionWarning(label, adapterCfg.botPlatform, res);
 		if (warning) {
-			const key = `${res.reason}:${adapterCfg.botPlatform}:${res.onlinePlatforms.join(",")}`;
+			// 键里带上 selfId:两个 target 各填错一个不同的账号时,不带它就会挤掉
+			// 彼此的告警,主人只看得到其中一条。
+			const key = `${res.reason}:${adapterCfg.botPlatform}:${adapterCfg.selfId ?? ""}:${res.onlinePlatforms.join(",")}`;
 			if (!warnedKeys.has(key)) {
 				warnedKeys.add(key);
 				logger.warn(warning);

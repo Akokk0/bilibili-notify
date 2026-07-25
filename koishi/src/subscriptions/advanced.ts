@@ -17,6 +17,7 @@ import {
 	type Subscription,
 	type SubscriptionRouting,
 } from "@bilibili-notify/internal";
+import { synthesizeKoishiBotAdapter } from "../push/target-synthesis";
 
 // ---- Type shapes (kept in lock-step with core.ts schema) ----
 
@@ -48,6 +49,13 @@ type ChannelConfig = Partial<Record<ChannelFeatureKey, boolean>> & {
 
 interface TargetConfig {
 	platform: string;
+	/**
+	 * 指定用哪个机器人账号发。留空 = 用该平台第一个**在线**的(历史行为)。
+	 *
+	 * 填了就只认它:那个号离线就不发,也不会改用同平台的别的号 —— 见 bot-resolve 的
+	 * selfId-miss 分支。
+	 */
+	selfId?: string;
 	channelArr: ChannelConfig[];
 }
 
@@ -151,6 +159,8 @@ interface ConversionResult {
 	sub: Subscription;
 	adapters: PushAdapter[];
 	targets: PushTarget[];
+	/** 这个订阅里发现的可疑配置(目前只有「同一个群配了多个账号」)。 */
+	warnings: string[];
 }
 
 function rawConfigToSubscription(name: string, raw: SubItemRawConfig): ConversionResult {
@@ -173,25 +183,35 @@ function rawConfigToSubscription(name: string, raw: SubItemRawConfig): Conversio
 	const targets: PushTarget[] = [];
 	const seenAdapterIds = new Set<string>();
 	const seenTargetIds = new Set<string>();
+	/**
+	 * channelId → 这个群被配到了哪些账号下。
+	 *
+	 * 加 selfId 之前,同一个群写两遍会算出同一个 target id 而被 seenTargetIds 自动
+	 * 去重;现在账号一分开,adapter id 就不同,去重不再发生 —— 一个事件会让那个群
+	 * 收到两条。不擅自吞掉主人写下的配置(确实可能是想双号播报),但必须报出来。
+	 */
+	const channelAccounts = new Map<string, string[]>();
 
 	for (const entry of raw.target ?? []) {
-		const { platform, channelArr } = entry;
+		const { platform, channelArr, selfId } = entry;
 		if (!channelArr?.length) continue;
-		const adapterId = deterministicUuid(`adapter:koishi-bot:${platform}`);
+		// 走 synthesizeKoishiBotAdapter 而不是就地拼种子:种子模板原本在这里手抄了
+		// 一份,加 selfId 时改一处忘一处,普通订阅与高级订阅算出的 adapter id 就会分家。
+		const adapter = synthesizeKoishiBotAdapter(platform, selfId);
+		const adapterId = adapter.id;
 		if (!seenAdapterIds.has(adapterId)) {
 			seenAdapterIds.add(adapterId);
-			adapters.push({
-				id: adapterId,
-				name: platform,
-				enabled: true,
-				platform: "koishi-bot",
-				config: { botPlatform: platform },
-			});
+			adapters.push(adapter);
 		}
 
 		for (const ch of channelArr) {
 			// Synthesize a target id for this channel (deterministic by adapterId + channelId)
 			const targetId = deterministicUuid(`target:${adapterId}:${ch.channelId}`);
+
+			const account = selfId?.trim() || "(自动选择)";
+			const accounts = channelAccounts.get(ch.channelId) ?? [];
+			if (!accounts.includes(account)) accounts.push(account);
+			channelAccounts.set(ch.channelId, accounts);
 
 			// Register a PushTarget for this channel exactly once per (adapterId, channelId).
 			if (!seenTargetIds.has(targetId)) {
@@ -455,13 +475,34 @@ function rawConfigToSubscription(name: string, raw: SubItemRawConfig): Conversio
 		}
 	}
 
-	return { sub, adapters, targets };
+	// 同一个群被配到多个账号下 → 一个事件会从每个号各发一次。照发,但报出来。
+	//
+	// 只在**单个订阅内**查:跨订阅撞同一个群是常态(两个 UP 推同一个群),那是各自
+	// 独立的事件,不是重复推送。
+	const warnings: string[] = [];
+	for (const [channelId, accounts] of channelAccounts) {
+		if (accounts.length < 2) continue;
+		warnings.push(
+			`[高级订阅 ${name}] 群/频道 "${channelId}" 同时配在了账号 ${accounts.join("、")} 下,` +
+				`同一条推送会分别从这些号各发一次(共 ${accounts.length} 条)。如果不是有意的,请删掉多余的那一项。`,
+		);
+	}
+
+	return { sub, adapters, targets, warnings };
 }
 
 export interface BuildResult {
 	subs: Subscription[];
 	adapters: PushAdapter[];
 	targets: PushTarget[];
+	/**
+	 * 可疑配置的告警文案,由调用方去打日志。
+	 *
+	 * 这里**返回**而不是就地 log:这个函数是纯的(没有 logger,也正因如此才能脱离
+	 * koishi 运行时做单测),把日志塞进来就得给它注入一个 logger,连带把测试也拖进
+	 * 桩的泥潭。
+	 */
+	warnings: string[];
 }
 
 /**
@@ -473,9 +514,11 @@ export function buildAdvancedSubAndTargets(config: AdvancedSubRawConfigShape): B
 	const subs: Subscription[] = [];
 	const adapterMap = new Map<string, PushAdapter>();
 	const targetMap = new Map<string, PushTarget>();
+	const warnings: string[] = [];
 	for (const [name, raw] of Object.entries(config.subs)) {
-		const { sub, adapters, targets } = rawConfigToSubscription(name, raw);
+		const { sub, adapters, targets, warnings: subWarnings } = rawConfigToSubscription(name, raw);
 		subs.push(sub);
+		warnings.push(...subWarnings);
 		// Dedup across subs: multiple UPs reusing the same adapter / channel collapse.
 		for (const a of adapters) if (!adapterMap.has(a.id)) adapterMap.set(a.id, a);
 		for (const t of targets) if (!targetMap.has(t.id)) targetMap.set(t.id, t);
@@ -484,5 +527,6 @@ export function buildAdvancedSubAndTargets(config: AdvancedSubRawConfigShape): B
 		subs,
 		adapters: [...adapterMap.values()],
 		targets: [...targetMap.values()],
+		warnings,
 	};
 }
