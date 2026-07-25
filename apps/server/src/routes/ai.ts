@@ -1,8 +1,17 @@
-import { CommentaryGenerator } from "@bilibili-notify/ai";
-import type { AiTestPushResponse } from "@bilibili-notify/contract";
+import { CommentaryGenerator, type ConversationMessage } from "@bilibili-notify/ai";
+import type {
+	AiChatMessageDTO,
+	AiChatReplyResponse,
+	AiConversationDTO,
+	AiConversationListResponse,
+	AiConversationResponse,
+	AiTestPushResponse,
+} from "@bilibili-notify/contract";
 import { AISettingsSchema, type NotificationPayload } from "@bilibili-notify/internal";
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { z } from "zod";
+import type { Conversation, ConversationMeta } from "../ai/conversation-store.js";
 import { REDACTED_API_KEY } from "./globals.js";
 import type { RouteDeps } from "./types.js";
 
@@ -70,7 +79,149 @@ export function createAiRoute(deps: RouteDeps): Hono {
 		return c.json<AiTestPushResponse>({ ...result, reply });
 	});
 
+	// ---- 女仆 AI 聊天 ------------------------------------------------------
+	//
+	// 与上面的 `/test-push` 分工:那条吃**页面草稿**、用完即弃的 generator,是在
+	// 调人格;这一族用**已保存**的配置和常驻的 commentary 实例,是在用配好的女仆
+	// 干活。会话落磁盘(ConversationStore),重启后接着聊。
+	const store = () => deps.runtime.conversationStore;
+
+	app.get("/conversations", async (c) => {
+		return c.json<AiConversationListResponse>({ conversations: await store().list() });
+	});
+
+	app.post("/conversations", async (c) => {
+		// 刻意**不**依赖 engines / AI 配置:主人在还没配好 key 的时候点「新对话」,
+		// 该看到一个空会话和一句「去把 key 填上」,而不是一个建不出来的按钮。
+		return c.json<AiConversationResponse>({ conversation: toDetail(await store().create()) });
+	});
+
+	app.get("/conversations/:id", async (c) => {
+		const conv = await store().get(c.req.param("id"));
+		if (!conv) return c.json({ err: "会话不存在或已被删除" }, 404);
+		return c.json<AiConversationResponse>({ conversation: toDetail(conv) });
+	});
+
+	app.delete("/conversations/:id", async (c) => {
+		const removed = await store().remove(c.req.param("id"));
+		if (!removed) return c.json({ err: "会话不存在或已被删除" }, 404);
+		return c.json({ ok: true });
+	});
+
+	/**
+	 * 聊天。响应是 **SSE**,不是一次性 JSON。
+	 *
+	 * 三种事件:`delta`(正文分片,来一段发一段)、`done`(落盘后的两条消息 +
+	 * 会话元信息)、`error`(一句给人看的话)。一次回答动辄十几秒,攒到最后一次性
+	 * 甩出来的话,那十几秒里页面上只有三个跳动的点,读起来像卡住了。
+	 *
+	 * **前置条件仍然走普通 JSON + 非 200 状态码。**这类错误("还没配 key")跟
+	 * 「聊到一半断了」是两回事:前者应该像任何一个失败的请求那样被 fetch 直接
+	 * 拒掉,而不是先回一个 200 的流、再在流里说其实不行 —— 那样调用方得把两种
+	 * 失败分两处处理。所以 SSE 只在真的要开始生成时才开。
+	 */
+	app.post("/conversations/:id/chat", async (c) => {
+		const parsed = ChatRequestSchema.safeParse(await c.req.json().catch(() => null));
+		if (!parsed.success) return c.json({ err: "消息不能为空" }, 400);
+		const message = parsed.data.message.trim();
+		if (!message) return c.json({ err: "消息不能为空" }, 400);
+
+		const engines = deps.runtime.engines;
+		if (!engines) return c.json({ err: "服务尚未就绪,请稍后重试" }, 503);
+		if (!deps.store.getGlobals().defaults.ai.enabled) {
+			return c.json({ err: "智能女仆尚未启用,请先到「智能女仆」页打开开关" }, 400);
+		}
+		// 开关开着但实例是 null,只有一个原因:baseUrl / apiKey 没填齐。这时回
+		// 「尚未启用」会把人支去翻开关 —— 而开关明明是开的,于是变成一个查不出
+		// 原因的死胡同。直接指向该填的那两栏。
+		const commentary = engines.commentary;
+		if (!commentary) {
+			return c.json({ err: "智能女仆的 baseUrl / apiKey 还没填齐,请先到「智能女仆」页补上" }, 400);
+		}
+
+		const conv = await store().get(c.req.param("id"));
+		if (!conv) return c.json({ err: "会话不存在或已被删除" }, 404);
+
+		// 先在内存里拼出「历史 + 这一问」交给女仆,**拿到回复之后才落盘**。
+		// 反过来先写用户消息的话,AI 那一跳一失败,磁盘上就留下一个没人回答的
+		// 问题;主人重开会话看到的是自己在自言自语,还得手动删。
+		const history: ConversationMessage[] = [
+			...conv.messages.map((m) => ({ role: m.role, content: m.content })),
+			{ role: "user" as const, content: message },
+		];
+
+		return streamSSE(c, async (sse) => {
+			let reply: string;
+			try {
+				const r = await commentary.chatStatelessStream(history, {
+					onDelta: (text) => {
+						// 不 await:回调是同步的,这里排一次写就行。真要背压也轮不到
+						// 这一层管 —— SSE 的写在内存里排队,量级是几十 KB。
+						void sse.writeSSE({ event: "delta", data: JSON.stringify({ text }) });
+					},
+				});
+				reply = r.result;
+			} catch (err) {
+				await sse.writeSSE({
+					event: "error",
+					data: JSON.stringify({ err: err instanceof Error ? err.message : String(err) }),
+				});
+				return;
+			}
+
+			const updated = await store().appendMessages(conv.id, [
+				{ role: "user", content: message },
+				{ role: "assistant", content: reply },
+			]);
+			if (!updated) {
+				// 聊天期间这个会话被删了(另一个标签页 / 超出会话数上限被修剪)。
+				await sse.writeSSE({
+					event: "error",
+					data: JSON.stringify({ err: "会话不存在或已被删除" }),
+				});
+				return;
+			}
+
+			const [user, assistant] = updated.messages.slice(-2) as [AiChatMessageDTO, AiChatMessageDTO];
+			const payload: AiChatReplyResponse = {
+				user,
+				reply: assistant,
+				conversation: toMeta(updated),
+			};
+			await sse.writeSSE({ event: "done", data: JSON.stringify(payload) });
+		});
+	});
+
 	return app;
+}
+
+/**
+ * 上限比 `/test-push` 的 500 宽得多:那条是「试一句人格」,这条是真聊天,主人
+ * 可能整段贴一份文案进来让女仆改。
+ */
+const ChatRequestSchema = z.object({
+	message: z.string().min(1).max(4000),
+});
+
+/**
+ * 会话 → 侧栏要的那点元信息(不驮消息体)。
+ *
+ * `messageCount` 是**算**出来的而不是存出来的:落盘结构里没有这个字段,存了就
+ * 得跟 messages 同步维护,裁剪一次忘了改就永久对不上。
+ */
+function toMeta(conv: Conversation): ConversationMeta {
+	return {
+		id: conv.id,
+		title: conv.title,
+		createdAt: conv.createdAt,
+		updatedAt: conv.updatedAt,
+		messageCount: conv.messages.length,
+	};
+}
+
+/** 会话 → 详情载荷(元信息 + 全部消息)。 */
+function toDetail(conv: Conversation): AiConversationDTO {
+	return { ...toMeta(conv), messages: conv.messages };
 }
 
 /**

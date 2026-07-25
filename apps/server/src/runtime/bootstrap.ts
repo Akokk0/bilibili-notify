@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { MessageBus } from "@bilibili-notify/internal";
 import { createKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
+import { type ConversationStore, createConversationStore } from "../ai/conversation-store.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createSecretStore } from "../config/secret-store.js";
 import { type ConfigStore, createConfigStore } from "../config/store.js";
@@ -42,6 +43,12 @@ export interface AppRuntime {
 	 * `/api/subs` join.
 	 */
 	subRuntimeStore: SubRuntimeStore;
+	/**
+	 * 女仆 AI 聊天的会话记录(dashboard 聊天侧栏「最近」的数据源)。刻意与
+	 * engines 解耦 —— AI 没配好时会话照样能建能列,页面才有地方摆「去把 key
+	 * 填上」这句话。
+	 */
+	conversationStore: ConversationStore;
 	/**
 	 * jsonl-by-day log archive. Fed (post-redaction) by the log sink installed
 	 * in index.ts; queried by the `/api/logs` route. No floor — level gating is
@@ -148,6 +155,10 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		dataDir: bootstrap.dataDir,
 		logger: serviceCtx.logger,
 	});
+	const conversationStore = createConversationStore({
+		dataDir: bootstrap.dataDir,
+		logger: serviceCtx.logger,
+	});
 	const logStore = createLogStore({
 		dataDir: bootstrap.dataDir,
 		serviceCtx,
@@ -167,6 +178,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		fansStore,
 		statsStore,
 		subRuntimeStore,
+		conversationStore,
 		logStore,
 		get engines() {
 			return engines;

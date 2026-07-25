@@ -102,6 +102,12 @@ vi.mock("@bilibili-notify/ai", () => ({
 		start = vi.fn();
 		stop = vi.fn();
 		updateConfig = vi.fn();
+		/**
+		 * 构造后 engines.ts 会立刻 `attachReadOnlyTools` 把只读工具接上。替身少了
+		 * 这个方法会当场抛,而 buildCommentary 的 try/catch 会把它吞成「AI 初始化
+		 * 失败」—— 表现是 H.ai 里有实例但 start 一次没调,不是一眼能看懂的报错。
+		 */
+		setSubManagement = vi.fn();
 		constructor(opts: any) {
 			this.opts = opts;
 			H.ai.push(this);
@@ -334,6 +340,15 @@ describe("createEngines — boot wiring", () => {
 		active = c;
 		expect(H.ai).toHaveLength(1);
 		expect(H.ai[0].start).toHaveBeenCalledTimes(1);
+	});
+
+	it("构造后立刻接上只读工具 —— 不接的话女仆连订阅列表都查不到", () => {
+		const c = setup({ globals: aiGlobals() });
+		active = c;
+		expect(H.ai[0].setSubManagement).toHaveBeenCalledTimes(1);
+		// 只读档的具体含义(不给 subMgmt)由 ai/read-only-tools 的测试盯着;
+		// 这里只钉「engines 确实接了」,免得那行接线被顺手删掉还全绿。
+		expect(H.ai[0].setSubManagement.mock.calls[0][0]).toHaveProperty("getSubs");
 	});
 
 	it("puppeteer 在位:构造 ImageRenderer 并 start", () => {

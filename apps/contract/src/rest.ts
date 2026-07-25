@@ -261,6 +261,60 @@ export interface AiTestPushResponse {
 	err?: string;
 }
 
+// ---- /api/ai/conversations(女仆 AI 聊天)------------------------------------
+
+/** 一条聊天消息。`id` 供前端当列表 key,`ts` 是服务端落盘时刻(ISO)。 */
+export interface AiChatMessageDTO {
+	id: string;
+	role: "user" | "assistant";
+	content: string;
+	ts: string;
+}
+
+/**
+ * 侧栏「最近」的一项 —— 只有元信息,**不驮消息体**。
+ *
+ * 列表与详情分开是刻意的:侧栏一次要列几十个会话,把每个会话的整段对话都带上,
+ * 光为了显示一行标题就要传几百 KB。点进某个会话时再 `GET /:id` 取全文。
+ */
+export interface AiConversationMetaDTO {
+	id: string;
+	title: string;
+	createdAt: string;
+	updatedAt: string;
+	messageCount: number;
+}
+
+/** 一整个会话(含消息)。`GET /api/ai/conversations/:id` 的载荷。 */
+export interface AiConversationDTO extends AiConversationMetaDTO {
+	messages: AiChatMessageDTO[];
+}
+
+/** `GET /api/ai/conversations` 响应,按最近聊过的排在前。 */
+export interface AiConversationListResponse {
+	conversations: AiConversationMetaDTO[];
+}
+
+/** `POST /api/ai/conversations` / `GET /api/ai/conversations/:id` 响应。 */
+export interface AiConversationResponse {
+	conversation: AiConversationDTO;
+}
+
+/**
+ * `POST /api/ai/conversations/:id/chat` 响应。
+ *
+ * 回的是**两条**消息而不只是回复:用户那条的 id / ts 由服务端生成,前端乐观
+ * 渲染的那条只是占位,拿回真身才能把 key 对上,刷新后也不会出现两条一样的话。
+ */
+export interface AiChatReplyResponse {
+	/** 落盘后的用户消息(id / ts 已定)。 */
+	user: AiChatMessageDTO;
+	/** 女仆的回复。 */
+	reply: AiChatMessageDTO;
+	/** 更新后的会话元信息 —— 标题可能刚由这条首问定下来,侧栏要跟着改。 */
+	conversation: AiConversationMetaDTO;
+}
+
 /** `POST /api/cards/preview` 响应。 */
 export interface PreviewResponse {
 	ok: boolean;

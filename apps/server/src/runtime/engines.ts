@@ -59,6 +59,7 @@ import {
 } from "@bilibili-notify/live";
 import { BilibiliPush } from "@bilibili-notify/push";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
+import { attachReadOnlyTools } from "../ai/read-only-tools.js";
 import type { ConfigStore } from "../config/store.js";
 import type { HistoryStore } from "../history/store.js";
 import type { PlatformAdapter, ProbeResult } from "../platforms/types.js";
@@ -316,6 +317,13 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				serviceCtx: aiCtx,
 				api: opts.api,
 				config: buildAiConfig(),
+			});
+			// 接工具能力 —— **只读档**。少了这一步,女仆连「我订了哪些 UP」都查不到,
+			// 会一口咬定「当前没有订阅」;带上写能力则等于让她能真的加减订阅。
+			// 两种都不是我们要的,取舍写在 attachReadOnlyTools 的文档里。
+			attachReadOnlyTools(c, {
+				subscriptionStore: opts.subscriptionStore,
+				subRuntimeStore: opts.subRuntimeStore,
 			});
 			c.start();
 			return c;
