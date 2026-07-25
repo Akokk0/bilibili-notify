@@ -875,6 +875,63 @@ describe("CommentaryGenerator.chatStatelessStream — 工具调用痕迹", () =>
 });
 
 // ---------------------------------------------------------------------------
+// 「只用纯文本」按调用方分叉
+// ---------------------------------------------------------------------------
+
+/**
+ * dashboard 的聊天要渲染 Markdown,推送渠道不渲染。所以那条约束只对**对话**这一路
+ * 摘掉,其余全部原样保留。
+ *
+ * 这一组的重心在推送侧:那才是一旦搞错就会把字面 `**加粗**` 送进主人群里的一侧。
+ */
+describe("CommentaryGenerator — Markdown 约束的作用域", () => {
+	const PLAIN_TEXT_RULE = "只用纯文本";
+	/** 取第 n 次调用实际发出去的 system prompt。 */
+	const sysPrompt = (n: number) => createParams(n).messages[0]?.content as string;
+
+	it("dashboard 流式聊天:摘掉那条约束", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(streamOf([textChunk("好")]));
+		await gen.chatStatelessStream([{ role: "user", content: "在吗" }], { onDelta: () => {} });
+		expect(sysPrompt(0)).not.toContain(PLAIN_TEXT_RULE);
+	});
+
+	it("动态点评:约束照旧 —— 这一路直奔 QQ / Telegram", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp("点评"));
+		await gen.comment("某 UP 发了动态", "dynamic");
+		expect(sysPrompt(0)).toContain(PLAIN_TEXT_RULE);
+	});
+
+	it("koishi 侧的 chat():约束照旧 —— 那边是群消息,不渲染 Markdown", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp("答"));
+		await gen.chat("问", "s1");
+		expect(sysPrompt(0)).toContain(PLAIN_TEXT_RULE);
+	});
+
+	it("非流式 chatStateless:同样摘掉 —— 它与流式是同一个 dashboard 入口", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp("答"));
+		await gen.chatStateless([{ role: "user", content: "在吗" }]);
+		expect(sysPrompt(0)).not.toContain(PLAIN_TEXT_RULE);
+	});
+
+	it("起标题那一跳不吃人格提示词,与这条约束无关", async () => {
+		// summarizeTitle 用的是自己的提示词(TITLE_PROMPT),这里只是钉住它没被顺手
+		// 接上人格那一段 —— 侧栏标题不该带口头禅。
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp("本周勤奋榜"));
+		await gen.summarizeTitle([
+			{ role: "user", content: "本周谁最勤奋" },
+			{ role: "assistant", content: "让我看看" },
+		]);
+		expect(sysPrompt(0)).not.toContain(PLAIN_TEXT_RULE);
+		expect(sysPrompt(0)).toContain("标题");
+	});
+});
+
+// ---------------------------------------------------------------------------
 // session 生命周期
 // ---------------------------------------------------------------------------
 

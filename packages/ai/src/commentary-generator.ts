@@ -243,9 +243,18 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 * 始终以人格配置为基础，场景补充说明叠加在其后。
 	 * `override` 用于 per-call 覆盖 persona/prompt，未指定字段回退到 this.config。
 	 */
-	getSystemPrompt(scene?: AIScene, summary?: string, override?: CommentaryCallOverride): string {
+	getSystemPrompt(
+		scene?: AIScene,
+		summary?: string,
+		override?: CommentaryCallOverride,
+		/**
+		 * 调用方会渲染 Markdown 吗?只有 dashboard 的聊天会,所以只有那一条路传它。
+		 * 缺省(推送、koishi 群聊、点评、总结)一律保持「只用纯文本」那条叮嘱。
+		 */
+		opts?: { allowMarkdown?: boolean },
+	): string {
 		const persona = override?.persona ?? this.config.persona;
-		const personaPrompt = buildSystemPrompt(persona);
+		const personaPrompt = buildSystemPrompt({ ...persona, allowMarkdown: opts?.allowMarkdown });
 		const dynamicPrompt = override?.dynamicPrompt ?? this.config.dynamicPrompt;
 		const liveSummaryPrompt = override?.liveSummaryPrompt ?? this.config.liveSummaryPrompt;
 		const sceneAddition =
@@ -443,7 +452,11 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// 工具循环会**就地**往 messages 里 push 助手回复 / 工具结果,直接把持久化
 		// 的消息数组递进去,那些记账消息就会漏回调用方,跟着存进磁盘。
 		const trimmed = messages.slice(-this.config.maxHistory * 2);
-		const systemPrompt = this.getSystemPrompt();
+		// 这一路的收件人是 dashboard 的聊天界面,它渲染 Markdown。**只有这里**这么传 ——
+		// 推送、koishi 群聊、点评、总结都落在缺省那一侧,继续拿到「只用纯文本」。
+		const systemPrompt = this.getSystemPrompt(undefined, undefined, undefined, {
+			allowMarkdown: true,
+		});
 		this.logger.debug(`[chat-stateless] 历史=${messages.length} 条,实发=${trimmed.length} 条`);
 
 		const pendingActions: Array<() => Promise<void>> = [];

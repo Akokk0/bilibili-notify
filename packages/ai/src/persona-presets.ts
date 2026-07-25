@@ -61,14 +61,33 @@ export function getPresetDefaults(key: PersonaKey): PersonaPresetDefaults | null
 }
 
 /**
+ * 「只用纯文本」——**只发给不渲染 Markdown 的那些去处**。
+ *
+ * QQ / Telegram / webhook 收到的是纯文字,`**加粗**` 在那儿就是字面的星号。而
+ * dashboard 的聊天是渲染 Markdown 的,同一条约束在那边纯属反作用 —— 所以它由
+ * {@link buildSystemPrompt} 的 `allowMarkdown` 摘除。
+ *
+ * 拎成常量而不是拿字符串匹配去删一行:那样改天文案一动就悄悄失效了。
+ */
+const PLAIN_TEXT_ONLY = `回复时只用纯文本，不要使用 Markdown 格式（不用 **加粗**、# 标题、- 列表等）。`;
+
+/**
+ * 共用开头拆成前后两截,`PLAIN_TEXT_ONLY` 夹在**原来的位置**(第一句之后、
+ * 【重要规则】之前)。
+ *
+ * 不图省事把它挪到整段末尾:那样推送侧看到的提示词顺序就变了。这条链上的
+ * 收件人是主人的群,「行为不变」得是字面意义上的不变。
+ */
+const CORE_IDENTITY_HEAD = `你的工作是帮用户关注 B 站 UP 主，当他们有新动态或者开播时，第一时间通知用户。这是你最重要的职责，你要认真对待每一条通知。`;
+
+const CORE_IDENTITY_TAIL = `【重要规则】涉及订阅、取消订阅、修改订阅、查询订阅等操作时，必须调用对应工具，工具返回结果后才能告知用户操作是否成功。严禁在未调用工具的情况下声称操作已完成，也不得编造或猜测工具的执行结果。
+所有订阅选项（如@全体成员、词云、AI 总结、上舰消息等）均为可配置参数，不存在"权限不足"的问题；用户未提及的选项按默认值处理，无需解释。
+在做好这份工作的同时，你有自己的性格和说话方式，具体如下：`;
+
+/**
  * 将人格配置字段拼装为 system prompt。
  * 用户显式指定的字段优先，未指定时使用预设默认值。
  */
-const CORE_IDENTITY = `你的工作是帮用户关注 B 站 UP 主，当他们有新动态或者开播时，第一时间通知用户。这是你最重要的职责，你要认真对待每一条通知。
-回复时只用纯文本，不要使用 Markdown 格式（不用 **加粗**、# 标题、- 列表等）。
-【重要规则】涉及订阅、取消订阅、修改订阅、查询订阅等操作时，必须调用对应工具，工具返回结果后才能告知用户操作是否成功。严禁在未调用工具的情况下声称操作已完成，也不得编造或猜测工具的执行结果。
-所有订阅选项（如@全体成员、词云、AI 总结、上舰消息等）均为可配置参数，不存在"权限不足"的问题；用户未提及的选项按默认值处理，无需解释。
-在做好这份工作的同时，你有自己的性格和说话方式，具体如下：`;
 
 export function buildSystemPrompt(params: {
 	preset: PersonaKey;
@@ -79,9 +98,22 @@ export function buildSystemPrompt(params: {
 	catchphrase?: string;
 	customBase?: string;
 	extraPrompt?: string;
+	/**
+	 * 调用方会渲染 Markdown 吗?只有 dashboard 的聊天会。
+	 *
+	 * **缺省是 false**,方向是要紧的:漏传的调用方拿到的是推送该有的行为(仍然
+	 * 叮嘱纯文本),而不是把 `**加粗**` 泄进主人的群里。
+	 */
+	allowMarkdown?: boolean;
 }): string {
 	const defaults = getPresetDefaults(params.preset);
-	const parts: string[] = [CORE_IDENTITY];
+	const parts: string[] = [
+		[
+			CORE_IDENTITY_HEAD,
+			...(params.allowMarkdown ? [] : [PLAIN_TEXT_ONLY]),
+			CORE_IDENTITY_TAIL,
+		].join("\n"),
+	];
 
 	// 人格描述
 	if (params.preset === "custom" || !defaults) {
