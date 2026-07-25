@@ -1,4 +1,5 @@
 import { BiliLoginStatus } from "@bilibili-notify/api";
+import { Universal } from "koishi";
 import type BilibiliNotifyServerManager from "../runtime/bootstrap";
 
 export function statusCommands(this: BilibiliNotifyServerManager): void {
@@ -43,18 +44,26 @@ export function statusCommands(this: BilibiliNotifyServerManager): void {
 			return "查看控制台";
 		});
 
+	// 这条是「指定发送账号」的发现路径:高级订阅里那个 selfId 要填什么，只能从这儿查。
+	// 所以它必须**回话**(原来只写 logger.debug，不调日志级别根本看不见)，也不能再
+	// hidden(不知道它存在的人永远找不到)——与 .auth / .dyn / .live 一致。
 	statusCom
-		.subcommand(".bot", "查询当前拥有的机器人信息", { hidden: true })
-		.usage("查询当前拥有的机器人信息")
+		.subcommand(".bot", "查询当前连着的机器人")
+		.usage("查询当前连着的机器人。高级订阅里「指定发送账号」要填的就是这里的账号 ID")
 		.example("status bot")
 		.action(() => {
-			this.ctx.logger.debug("[status] 开始输出BOT信息");
-			for (const bot of this.ctx.bots) {
-				this.ctx.logger.debug("[status] --------------------------------");
-				this.ctx.logger.debug(`[status] 平台：${bot.platform}`);
-				this.ctx.logger.debug(`[status] 名称：${bot.user?.name}`);
-				this.ctx.logger.debug("[status] --------------------------------");
-			}
+			const bots = [...this.ctx.bots];
+			if (!bots.length) return "当前没有连接任何机器人。";
+			const lines = bots.map((bot) => {
+				const online = bot.status === Universal.Status.ONLINE ? "在线" : "离线";
+				return `${online}｜平台：${bot.platform}｜账号 ID：${bot.selfId}｜名称：${bot.user?.name ?? "(未知)"}`;
+			});
+			return [
+				`当前连着 ${bots.length} 个机器人：`,
+				...lines,
+				"",
+				"（高级订阅里的「指定发送账号」填上面的「账号 ID」；留空则自动挑该平台第一个在线的）",
+			].join("\n");
 		});
 
 	statusCom
