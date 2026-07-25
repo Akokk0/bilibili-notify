@@ -701,6 +701,180 @@ describe("CommentaryGenerator.chatStatelessStream — 真流式", () => {
 });
 
 // ---------------------------------------------------------------------------
+// chatStatelessStream — 工具调用痕迹
+// ---------------------------------------------------------------------------
+
+/**
+ * 工具轮**不产生正文**,所以在主人那边表现为打字点原地多停几秒 —— 她在查东西,
+ * 界面上却和「模型卡住了」长得一模一样。`onToolEvent` 就是把这几秒讲出来。
+ *
+ * 分 start / end 两拍而不是查完一次性报:查订阅要走一趟 B 站,慢的时候好几秒,
+ * 而那正是最需要反馈的一刻 —— 等查完再说,等于什么都没说。
+ */
+describe("CommentaryGenerator.chatStatelessStream — 工具调用痕迹", () => {
+	interface Ev {
+		phase: string;
+		id: string;
+		name?: string;
+		args?: Record<string, string>;
+		ok?: boolean;
+	}
+
+	/** 第一轮调一个工具,第二轮出正文。 */
+	function toolThenText(name: string, args: object, text = "查到了") {
+		oai.create
+			.mockResolvedValueOnce(
+				streamOf([toolChunk(0, { id: "c1", function: { name, arguments: JSON.stringify(args) } })]),
+			)
+			.mockResolvedValueOnce(streamOf([textChunk(text)]));
+	}
+
+	it("每个工具调用发一对 start / end", async () => {
+		const { gen } = makeGen();
+		toolThenText("fake_tool", { uid: "123" });
+
+		const seen: Ev[] = [];
+		await gen.chatStatelessStream([{ role: "user", content: "帮我查" }], {
+			onDelta: () => {},
+			onToolEvent: (e) => seen.push(e as Ev),
+		});
+
+		expect(seen.map((e) => e.phase)).toEqual(["start", "end"]);
+		expect(seen[0]).toMatchObject({ name: "fake_tool", args: { uid: "123" } });
+		expect(seen[1]).toMatchObject({ ok: true });
+	});
+
+	it("start 在工具执行**之前**发出 —— 等查完再说等于没说", async () => {
+		const { gen } = makeGen();
+		toolThenText("fake_tool", {});
+		const order: string[] = [];
+		toolsMock.executeTool.mockImplementationOnce(async () => {
+			order.push("执行");
+			return "r";
+		});
+
+		await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+			onDelta: () => {},
+			onToolEvent: (e) => order.push(e.phase),
+		});
+
+		expect(order).toEqual(["start", "执行", "end"]);
+	});
+
+	it("end 用同一个 id 认回它的 start —— 一轮里两个工具不能串台", async () => {
+		const { gen } = makeGen();
+		oai.create
+			.mockResolvedValueOnce(
+				streamOf([
+					toolChunk(0, { id: "c1", function: { name: "fake_tool", arguments: "{}" } }),
+					toolChunk(1, { id: "c2", function: { name: "other_tool", arguments: "{}" } }),
+				]),
+			)
+			.mockResolvedValueOnce(streamOf([textChunk("好了")]));
+
+		const seen: Ev[] = [];
+		await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+			onDelta: () => {},
+			onToolEvent: (e) => seen.push(e as Ev),
+		});
+
+		const starts = seen.filter((e) => e.phase === "start");
+		expect(starts.map((e) => e.name)).toEqual(["fake_tool", "other_tool"]);
+		expect(new Set(starts.map((e) => e.id)).size).toBe(2);
+		// 每个 start 都配得上一个同 id 的 end。
+		for (const s of starts) {
+			expect(seen.some((e) => e.phase === "end" && e.id === s.id)).toBe(true);
+		}
+	});
+
+	it("跨轮的 id 也不重复 —— 否则第二轮的痕迹会盖掉第一轮的", async () => {
+		const { gen } = makeGen();
+		oai.create
+			.mockResolvedValueOnce(
+				streamOf([toolChunk(0, { id: "c1", function: { name: "fake_tool", arguments: "{}" } })]),
+			)
+			.mockResolvedValueOnce(
+				streamOf([toolChunk(0, { id: "c2", function: { name: "fake_tool", arguments: "{}" } })]),
+			)
+			.mockResolvedValueOnce(streamOf([textChunk("好了")]));
+
+		const seen: Ev[] = [];
+		await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+			onDelta: () => {},
+			onToolEvent: (e) => seen.push(e as Ev),
+		});
+
+		const ids = seen.filter((e) => e.phase === "start").map((e) => e.id);
+		expect(ids).toHaveLength(2);
+		expect(new Set(ids).size).toBe(2);
+	});
+
+	it("工具执行失败 → end 的 ok 是假,对话照常继续", async () => {
+		const { gen } = makeGen();
+		toolThenText("fake_tool", {}, "虽然没查到,但…");
+		toolsMock.executeTool.mockRejectedValueOnce(new Error("B 站超时"));
+
+		const seen: Ev[] = [];
+		const { result } = await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+			onDelta: () => {},
+			onToolEvent: (e) => seen.push(e as Ev),
+		});
+
+		expect(result).toBe("虽然没查到,但…");
+		expect(seen.find((e) => e.phase === "end")).toMatchObject({ ok: false });
+	});
+
+	it("参数没解析出来也要发 start —— 她确实伸手够过这个工具", async () => {
+		// 这条路上 executeTool 压根不会被调用(在 JSON.parse 就 catch 了)。若只在
+		// 执行前发 start,主人看到的就是一段无缘无故的空白等待。
+		const { gen } = makeGen();
+		oai.create
+			.mockResolvedValueOnce(
+				streamOf([
+					toolChunk(0, { id: "c1", function: { name: "fake_tool", arguments: "{不是json" } }),
+				]),
+			)
+			.mockResolvedValueOnce(streamOf([textChunk("收尾")]));
+
+		const seen: Ev[] = [];
+		await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+			onDelta: () => {},
+			onToolEvent: (e) => seen.push(e as Ev),
+		});
+
+		expect(seen.map((e) => e.phase)).toEqual(["start", "end"]);
+		expect(seen[0]).toMatchObject({ name: "fake_tool", args: {} });
+		expect(seen[1]).toMatchObject({ ok: false });
+		expect(toolsMock.executeTool).not.toHaveBeenCalled();
+	});
+
+	it("入参里的数字归一成字符串 —— 与交给工具的那份完全一致", async () => {
+		// 模型常把 uid 输出成数字。界面上和工具里拿到的必须是同一个值,否则
+		// 「查了 UID 12345」和实际查的对不上号。
+		const { gen } = makeGen();
+		toolThenText("fake_tool", { uid: 12345 });
+
+		const seen: Ev[] = [];
+		await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+			onDelta: () => {},
+			onToolEvent: (e) => seen.push(e as Ev),
+		});
+
+		expect(seen[0]?.args).toEqual({ uid: "12345" });
+		expect(toolsMock.executeTool.mock.calls[0]?.[1]).toEqual({ uid: "12345" });
+	});
+
+	it("不传 onToolEvent 照常跑 —— 它是可选的旁听席", async () => {
+		const { gen } = makeGen();
+		toolThenText("fake_tool", {});
+		const { result } = await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+			onDelta: () => {},
+		});
+		expect(result).toBe("查到了");
+	});
+});
+
+// ---------------------------------------------------------------------------
 // session 生命周期
 // ---------------------------------------------------------------------------
 

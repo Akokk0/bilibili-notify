@@ -7,6 +7,7 @@ import type {
 	AiConversationMetaResponse,
 	AiConversationResponse,
 	AiTestPushResponse,
+	AiToolTraceDTO,
 } from "@bilibili-notify/contract";
 import { AISettingsSchema, type NotificationPayload } from "@bilibili-notify/internal";
 import { Hono } from "hono";
@@ -203,6 +204,17 @@ export function createAiRoute(deps: RouteDeps): Hono {
 		];
 
 		return streamSSE(c, async (sse) => {
+			/**
+			 * 这一轮调过的工具,按**开始**的先后排 —— 那是主人眼看着它们冒出来的
+			 * 顺序,落盘之后重开会话得对得上。所以 start 时就占好位子,end 只回填
+			 * 成败,而不是等 end 再往后排(那样先开后完的会被插到后面去)。
+			 *
+			 * 落盘时只取回填过的:一条永远停在「进行中」的痕迹,在界面上就是一个
+			 * 转到天荒地老的圈,而落完盘就再没有第二次机会补状态了。
+			 */
+			const slots: Array<{ name: string; args: Record<string, string>; ok?: boolean }> = [];
+			const byId = new Map<string, (typeof slots)[number]>();
+
 			let reply: string;
 			try {
 				const r = await commentary.chatStatelessStream(history, {
@@ -210,6 +222,18 @@ export function createAiRoute(deps: RouteDeps): Hono {
 						// 不 await:回调是同步的,这里排一次写就行。真要背压也轮不到
 						// 这一层管 —— SSE 的写在内存里排队,量级是几十 KB。
 						void sse.writeSSE({ event: "delta", data: JSON.stringify({ text }) });
+					},
+					onToolEvent: (ev) => {
+						// 先转发再记账:实时那一份才是这个事件存在的理由,落盘是顺带。
+						void sse.writeSSE({ event: "tool", data: JSON.stringify(ev) });
+						if (ev.phase === "start") {
+							const slot = { name: ev.name, args: ev.args };
+							slots.push(slot);
+							byId.set(ev.id, slot);
+							return;
+						}
+						const slot = byId.get(ev.id);
+						if (slot) slot.ok = ev.ok;
 					},
 				});
 				reply = r.result;
@@ -221,9 +245,10 @@ export function createAiRoute(deps: RouteDeps): Hono {
 				return;
 			}
 
+			const traces = slots.filter((s): s is AiToolTraceDTO => s.ok !== undefined);
 			const updated = await store().appendMessages(conv.id, [
 				{ role: "user", content: message },
-				{ role: "assistant", content: reply },
+				{ role: "assistant", content: reply, tools: traces },
 			]);
 			if (!updated) {
 				// 聊天期间这个会话被删了(另一个标签页 / 超出会话数上限被修剪)。

@@ -27,6 +27,10 @@ const H = vi.hoisted(() => ({
 	/** 置上就让 getConversation 一直挂着不回,用来放大「真身还在路上」那段窗口。 */
 	holdConv: false,
 	convGate: [] as Array<() => void>,
+	/** 工具调用的两拍剧本,在正文分片**之前**逐个吐,与真实顺序一致。 */
+	toolEvents: [] as Array<Record<string, unknown>>,
+	/** 落盘后那条回复上带的工具痕迹 —— 交接与刷新之后靠它显示。 */
+	replyTools: null as Array<Record<string, unknown>> | null,
 }));
 
 vi.mock("../../../services/aiChat", async (orig) => {
@@ -73,7 +77,16 @@ vi.mock("../../../services/aiChat", async (orig) => {
 		 * 在把断言押在机器快慢上。
 		 */
 		sendChatMessage: vi.fn(
-			async (_id: string, message: string, h: { onDelta: (t: string) => void }) => {
+			async (
+				_id: string,
+				message: string,
+				h: { onDelta: (t: string) => void; onTool?: (ev: Record<string, unknown>) => void },
+			) => {
+				// 工具轮排在正文之前 —— 她是查完才开口的。
+				for (const ev of H.toolEvents) {
+					await new Promise<void>((r) => H.gate.push(r));
+					h.onTool?.(ev);
+				}
 				for (const c of H.chunks) {
 					await new Promise<void>((r) => H.gate.push(r));
 					h.onDelta(c);
@@ -84,6 +97,7 @@ vi.mock("../../../services/aiChat", async (orig) => {
 					role: "assistant",
 					content: H.chunks.join(""),
 					ts: "2026-07-25T00:00:01.000Z",
+					...(H.replyTools ? { tools: H.replyTools } : {}),
 				};
 				const user = {
 					id: "u1",
@@ -141,6 +155,8 @@ beforeEach(() => {
 	H.gate = [];
 	H.holdConv = false;
 	H.convGate = [];
+	H.toolEvents = [];
+	H.replyTools = null;
 	vi.mocked(createConversation).mockClear();
 	vi.mocked(retitleConversation).mockClear();
 	G.ai = {
@@ -313,7 +329,9 @@ describe("AiChatDock — 发送与流式渲染", () => {
 			await releaseChunk();
 			await releaseChunk();
 			await waitFor(() => expect(inChat().getByText("主人晚上好")).toBeTruthy());
-			expect(inChat().getByText("主人晚上好").className).not.toContain("bn-anim-msg-in");
+			expect(inChat().getByText("主人晚上好").parentElement?.className).not.toContain(
+				"bn-anim-msg-in",
+			);
 			// 用户那条的动画类挂在气泡外层。
 			expect(inChat().getByText("在吗").parentElement?.className).not.toContain("bn-anim-msg-in");
 		});
@@ -361,7 +379,9 @@ describe("AiChatDock — 发送与流式渲染", () => {
 
 			await waitFor(() => expect(inChat().getByText("好的")).toBeTruthy());
 			// 第一轮那两条仍然不带动画类。
-			expect(inChat().getByText("主人晚上好").className).not.toContain("bn-anim-msg-in");
+			expect(inChat().getByText("主人晚上好").parentElement?.className).not.toContain(
+				"bn-anim-msg-in",
+			);
 			expect(inChat().getByText("第一问").parentElement?.className).not.toContain("bn-anim-msg-in");
 		});
 
@@ -373,7 +393,9 @@ describe("AiChatDock — 发送与流式渲染", () => {
 			act(() => useAiChatStore.setState({ activeId: "other" }));
 			act(() => useAiChatStore.setState({ activeId: "c1" }));
 			await waitFor(() =>
-				expect(inChat().getByText("主人晚上好").className).toContain("bn-anim-msg-in"),
+				expect(inChat().getByText("主人晚上好").parentElement?.className).toContain(
+					"bn-anim-msg-in",
+				),
 			);
 		});
 	});
@@ -385,6 +407,141 @@ describe("AiChatDock — 发送与流式渲染", () => {
 		fireEvent.change(ta, { target: { value: "在吗" } });
 		fireEvent.keyDown(ta, { key: "Enter" });
 		await waitFor(() => expect(screen.queryByText(/今天想让/)).toBeNull());
+	});
+});
+
+/**
+ * 工具轮**不产生正文**,所以那几秒里界面上只有三个跳动的点 —— 跟「模型卡住了」
+ * 长得一模一样。主人报的就是这个:她明明在查订阅,页面上却什么都没说。
+ */
+describe("AiChatDock — 工具调用小条", () => {
+	const composer = () => screen.getByLabelText("聊天输入") as HTMLTextAreaElement;
+	const inChat = () => within(screen.getByTestId("chat-messages"));
+	const chips = () => inChat().queryAllByTestId("tool-trace");
+
+	async function typeAndSend(text: string) {
+		useAiChatStore.setState({ open: true, activeId: "c1" });
+		render(wrap(<AiChatDock />));
+		const ta = await screen.findByLabelText("聊天输入");
+		fireEvent.change(ta, { target: { value: text } });
+		fireEvent.keyDown(ta, { key: "Enter" });
+	}
+
+	/** 放行下一步(一拍工具事件或一片正文),并等它渲染完。 */
+	async function release() {
+		await waitFor(() => expect(H.gate.length).toBeGreaterThan(0));
+		const open = H.gate.shift();
+		await act(async () => {
+			open?.();
+		});
+	}
+
+	const start = (id: string, name: string, args: Record<string, string> = {}) => ({
+		phase: "start",
+		id,
+		name,
+		args,
+	});
+	const end = (id: string, ok: boolean) => ({ phase: "end", id, ok });
+
+	it("工具一开跑就冒出一条小条,正文一个字都还没到", async () => {
+		H.toolEvents = [start("0-0", "list_subscriptions")];
+		await typeAndSend("我订了谁");
+		await release();
+
+		await waitFor(() => expect(chips()).toHaveLength(1));
+		expect(chips()[0]?.textContent).toContain("查看订阅列表");
+		// 正文确实还没开始 —— 小条不是等回复出来才补上的。
+		expect(inChat().queryByText(/晚上好/)).toBeNull();
+	});
+
+	it("跑着的时候是「进行中」,收尾之后翻成「完成」", async () => {
+		H.toolEvents = [start("0-0", "list_subscriptions"), end("0-0", true)];
+		await typeAndSend("我订了谁");
+		await release();
+		await waitFor(() => expect(chips()[0]?.dataset.state).toBe("running"));
+		await release();
+		await waitFor(() => expect(chips()[0]?.dataset.state).toBe("ok"));
+	});
+
+	it("失败的那次留在原地并标成失败 —— 「查了没查到」和「压根没查」不一样", async () => {
+		H.toolEvents = [start("0-0", "get_live_status"), end("0-0", false)];
+		await typeAndSend("谁在播");
+		await release();
+		await release();
+		await waitFor(() => expect(chips()[0]?.dataset.state).toBe("failed"));
+		expect(chips()[0]?.textContent).toContain("查看直播状态");
+	});
+
+	it("入参带进小条 —— 「搜了什么」比「搜过」有用得多", async () => {
+		H.toolEvents = [start("0-0", "search_user", { keyword: "咩栗" })];
+		await typeAndSend("帮我找找咩栗");
+		await release();
+		await waitFor(() => expect(chips()[0]?.textContent).toContain("咩栗"));
+	});
+
+	it("几个工具各占一条,按开始顺序排", async () => {
+		H.toolEvents = [
+			start("0-0", "search_user", { keyword: "咩栗" }),
+			start("0-1", "get_user_info", { uid: "123" }),
+		];
+		await typeAndSend("查一下");
+		await release();
+		await release();
+		await waitFor(() => expect(chips()).toHaveLength(2));
+		expect(chips()[0]?.textContent).toContain("搜索 UP 主");
+		expect(chips()[1]?.textContent).toContain("查看 UP 主资料");
+	});
+
+	it("回复落盘、真身接手之后小条还在 —— 不能在最后一刻凭空消失", async () => {
+		// 只在流里显示的话,`done` 一到、真身把在途副本换下来的那一刻,几条小条就
+		// 没了。跟「回复吐完闪一下」是同一类观感事故。
+		H.toolEvents = [start("0-0", "list_subscriptions"), end("0-0", true)];
+		H.replyTools = [{ name: "list_subscriptions", args: {}, ok: true }];
+		await typeAndSend("我订了谁");
+		await release();
+		await release();
+		await release();
+		await release();
+		await waitFor(() => expect(inChat().getByText("主人晚上好")).toBeTruthy());
+		expect(chips()).toHaveLength(1);
+		expect(chips()[0]?.dataset.state).toBe("ok");
+	});
+
+	it("重开一个老会话也看得到她当时查过什么", async () => {
+		H.messages = [
+			{ id: "m1", role: "user", content: "我订了谁", ts: "2026-07-24T00:00:00.000Z" },
+			{
+				id: "m2",
+				role: "assistant",
+				content: "一共 3 位",
+				ts: "2026-07-24T00:00:01.000Z",
+				tools: [{ name: "list_subscriptions", args: {}, ok: true }],
+			},
+		];
+		useAiChatStore.setState({ open: true, activeId: "c1" });
+		render(wrap(<AiChatDock />));
+		await waitFor(() => expect(inChat().getByText("一共 3 位")).toBeTruthy());
+		expect(chips()).toHaveLength(1);
+		expect(chips()[0]?.textContent).toContain("查看订阅列表");
+	});
+
+	it("没调工具就一条都不画", async () => {
+		await typeAndSend("在吗");
+		await release();
+		await waitFor(() => expect(inChat().getByText("主人")).toBeTruthy());
+		expect(chips()).toHaveLength(0);
+	});
+
+	it("换个会话就把在途的小条清掉 —— 那几条属于上一个会话", async () => {
+		H.toolEvents = [start("0-0", "list_subscriptions")];
+		await typeAndSend("我订了谁");
+		await release();
+		await waitFor(() => expect(chips()).toHaveLength(1));
+		fireEvent.click(screen.getByText("开启新对话"));
+		await waitFor(() => expect(screen.queryByTestId("chat-messages")).toBeNull());
+		// 输入框回到空的新对话,上一轮的痕迹不跟过来。
+		expect(composer().value).toBe("");
 	});
 });
 

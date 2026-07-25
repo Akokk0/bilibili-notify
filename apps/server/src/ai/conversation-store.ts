@@ -21,18 +21,33 @@ import type { Logger } from "@bilibili-notify/internal";
 
 export type ConversationRole = "user" | "assistant";
 
+/**
+ * 女仆为了答这一句而调过的一个工具。
+ *
+ * 跟着回复一起落盘而不是只活在那次流里:只在流里显示的话,`done` 一到、真身把
+ * 在途副本换下来的那一刻,这几条就凭空消失了,刷新之后也再看不到她查过什么。
+ */
+export interface StoredToolTrace {
+	name: string;
+	args: Record<string, string>;
+	ok: boolean;
+}
+
 /** 一条聊天消息。`id` 供前端当 React key,`ts` 是落盘时刻(ISO)。 */
 export interface StoredMessage {
 	id: string;
 	role: ConversationRole;
 	content: string;
 	ts: string;
+	/** 助手消息专有,见 {@link StoredToolTrace}。没调过工具就整个字段缺席。 */
+	tools?: StoredToolTrace[];
 }
 
 /** 追加消息时的入参 —— id / ts 由 store 生成,调用方不许自己编。 */
 export interface NewMessage {
 	role: ConversationRole;
 	content: string;
+	tools?: readonly StoredToolTrace[];
 }
 
 export interface Conversation {
@@ -223,7 +238,15 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 
 				const now = new Date().toISOString();
 				for (const m of messages) {
-					conv.messages.push({ id: randomUUID(), role: m.role, content: m.content, ts: now });
+					conv.messages.push({
+						id: randomUUID(),
+						role: m.role,
+						content: m.content,
+						ts: now,
+						// 没调过工具就**不写**这个字段:绝大多数消息都没调,一条一个空
+						// 数组等于给每个会话文件白加一份噪音。
+						...(m.tools?.length ? { tools: [...m.tools] } : {}),
+					});
 				}
 
 				// 标题只认**首条**用户消息,且只定一次:侧栏那一行是主人用来认会话的

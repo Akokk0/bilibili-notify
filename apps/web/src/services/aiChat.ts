@@ -21,6 +21,7 @@ export type {
 	AiChatMessageDTO,
 	AiConversationDTO,
 	AiConversationMetaDTO,
+	AiToolTraceDTO,
 } from "@bilibili-notify/contract";
 
 export const conversationsQueryKey = ["ai", "conversations"] as const;
@@ -95,9 +96,21 @@ export function createSseParser(): (chunk: string) => SseFrame[] {
 	};
 }
 
+/**
+ * 一次工具调用的两拍,与服务端 `event: tool` 的载荷同形。
+ *
+ * 工具轮不产生正文,所以那几秒在界面上跟「模型卡住了」长得一模一样 —— 这两拍
+ * 就是把那段空白讲出来。`end` 靠 `id` 认回自己的 `start`。
+ */
+export type ChatToolEvent =
+	| { phase: "start"; id: string; name: string; args: Record<string, string> }
+	| { phase: "end"; id: string; ok: boolean };
+
 export interface ChatStreamHandlers {
 	/** 正文分片,来一段回调一次。 */
 	onDelta: (text: string) => void;
+	/** 工具调用的两拍。不关心就不传。 */
+	onTool?: (ev: ChatToolEvent) => void;
 }
 
 /**
@@ -139,6 +152,8 @@ export async function sendChatMessage(
 		for (const frame of parse(decoder.decode(value, { stream: true }))) {
 			if (frame.event === "delta") {
 				handlers.onDelta((JSON.parse(frame.data) as { text: string }).text);
+			} else if (frame.event === "tool") {
+				handlers.onTool?.(JSON.parse(frame.data) as ChatToolEvent);
 			} else if (frame.event === "done") {
 				done = JSON.parse(frame.data) as AiChatReplyResponse;
 			} else if (frame.event === "error") {

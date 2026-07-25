@@ -8,6 +8,7 @@ export {
 	type ConversationMessage,
 	type ConversationRole,
 	type PersonaConfig,
+	type ToolTraceEvent,
 } from "./commentary-generator";
 export * from "./persona-presets";
 export {

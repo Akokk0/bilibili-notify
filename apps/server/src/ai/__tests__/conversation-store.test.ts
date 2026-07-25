@@ -95,6 +95,33 @@ describe("ConversationStore — 往返", () => {
 	it("appendMessages 到不存在的会话 → null,不凭空造一个", async () => {
 		expect(await store.appendMessages("没这个会话", [{ role: "user", content: "x" }])).toBeNull();
 	});
+
+	/**
+	 * 工具痕迹跟着回复一起落盘,而不是只活在那次流里。
+	 *
+	 * 只在流里显示的话,`done` 一到、真身把在途副本换下来的那一刻,几条小条就会
+	 * 凭空消失 —— 跟「回复吐完闪一下」是同一类观感事故,而且刷新之后再也看不到
+	 * 她当时查过什么。
+	 */
+	it("助手消息的工具痕迹原样存下来", async () => {
+		const c = await store.create();
+		await store.appendMessages(c.id, [
+			{ role: "user", content: "我订了谁" },
+			{
+				role: "assistant",
+				content: "查到 3 位",
+				tools: [{ name: "list_subscriptions", args: {}, ok: true }],
+			},
+		]);
+		const got = await store.get(c.id);
+		expect(got?.messages[1]?.tools).toEqual([{ name: "list_subscriptions", args: {}, ok: true }]);
+	});
+
+	it("没调工具的消息不留空数组 —— 磁盘上不写没意义的字段", async () => {
+		const c = await store.create();
+		await store.appendMessages(c.id, [{ role: "assistant", content: "在的" }]);
+		expect((await store.get(c.id))?.messages[0]?.tools).toBeUndefined();
+	});
 });
 
 describe("ConversationStore — 标题", () => {

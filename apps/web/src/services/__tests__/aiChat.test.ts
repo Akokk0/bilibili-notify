@@ -5,8 +5,8 @@
  * 到了当天下午仍该是「今天」,而不是因为过了 24 小时就掉进「昨天」。
  */
 
-import { describe, expect, it } from "vite-plus/test";
-import { createSseParser, groupConversations, groupLabel } from "../aiChat";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { createSseParser, groupConversations, groupLabel, sendChatMessage } from "../aiChat";
 
 describe("createSseParser — 分片边界不认帧边界", () => {
 	/**
@@ -61,6 +61,84 @@ describe("createSseParser — 分片边界不认帧边界", () => {
 
 const NOW = new Date(2026, 6, 24, 15, 0, 0); // 2026-07-24 15:00 本地
 const at = (d: number, h: number) => new Date(2026, 6, d, h, 0, 0).toISOString();
+
+/**
+ * 事件分派 —— 解析器把帧切出来之后,`sendChatMessage` 按 event 名派活。
+ *
+ * 这一层单独盯住是因为「多认一种事件」的改动最容易漏在这儿:解析器照常把帧
+ * 交出来,派活的地方却没有对应分支,于是事件被静静吃掉,一路查到最后才发现
+ * 后端其实一直在发。
+ */
+describe("sendChatMessage — 事件分派", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	/** 把几段文本包成一个 SSE 响应,喂给被 stub 的 fetch。 */
+	function stubStream(...frames: string[]) {
+		const body = new ReadableStream<Uint8Array>({
+			start(ctrl) {
+				const enc = new TextEncoder();
+				for (const f of frames) ctrl.enqueue(enc.encode(f));
+				ctrl.close();
+			},
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response(body, { status: 200 })),
+		);
+	}
+
+	const doneFrame = (reply: object = {}) =>
+		`event: done\ndata: ${JSON.stringify({
+			user: { id: "u1", role: "user", content: "问", ts: "t" },
+			reply: { id: "a1", role: "assistant", content: "答", ts: "t", ...reply },
+			conversation: { id: "c1", title: "t", createdAt: "t", updatedAt: "t", messageCount: 2 },
+		})}\n\n`;
+
+	it("tool 帧派给 onTool,两拍都到", async () => {
+		stubStream(
+			`event: tool\ndata: {"phase":"start","id":"0-0","name":"list_subscriptions","args":{}}\n\n`,
+			`event: tool\ndata: {"phase":"end","id":"0-0","ok":true}\n\n`,
+			doneFrame(),
+		);
+		const seen: unknown[] = [];
+		await sendChatMessage("c1", "问", { onDelta: () => {}, onTool: (e) => seen.push(e) });
+
+		expect(seen).toEqual([
+			{ phase: "start", id: "0-0", name: "list_subscriptions", args: {} },
+			{ phase: "end", id: "0-0", ok: true },
+		]);
+	});
+
+	it("tool 帧不会被当成正文塞进回复里", async () => {
+		stubStream(
+			`event: delta\ndata: {"text":"查到"}\n\n`,
+			`event: tool\ndata: {"phase":"start","id":"0-0","name":"x","args":{}}\n\n`,
+			`event: delta\ndata: {"text":"了"}\n\n`,
+			doneFrame(),
+		);
+		const text: string[] = [];
+		await sendChatMessage("c1", "问", { onDelta: (t) => text.push(t), onTool: () => {} });
+		expect(text.join("")).toBe("查到了");
+	});
+
+	it("不关心工具时不传 onTool 也不炸", async () => {
+		stubStream(
+			`event: tool\ndata: {"phase":"start","id":"0-0","name":"x","args":{}}\n\n`,
+			doneFrame(),
+		);
+		await expect(sendChatMessage("c1", "问", { onDelta: () => {} })).resolves.toMatchObject({
+			reply: { content: "答" },
+		});
+	});
+
+	it("done 里回复带的工具痕迹原样交出去 —— 交接那一帧要拿它顶上", async () => {
+		stubStream(doneFrame({ tools: [{ name: "get_user_info", args: { uid: "1" }, ok: true }] }));
+		const res = await sendChatMessage("c1", "问", { onDelta: () => {} });
+		expect(res.reply.tools).toEqual([{ name: "get_user_info", args: { uid: "1" }, ok: true }]);
+	});
+});
 
 describe("groupLabel", () => {
 	it("同一本地日 → 今天", () => {

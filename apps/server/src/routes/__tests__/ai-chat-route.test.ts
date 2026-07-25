@@ -33,7 +33,14 @@ const H = vi.hoisted(() => ({
 	title: "本周勤奋榜" as string | Error,
 	/** 最后一次交给起名的那段对话。 */
 	titleInput: null as Array<{ role: string; content: string }> | null,
+	/** 置上就在吐正文**之前**按这个剧本回调 onToolEvent —— 真实顺序就是这样。 */
+	toolEvents: null as ToolEv[] | null,
 }));
+
+/** {@link ToolTraceEvent} 的测试侧影本 —— 这个包在测试里是 mock 掉的。 */
+type ToolEv =
+	| { phase: "start"; id: string; name: string; args: Record<string, string> }
+	| { phase: "end"; id: string; ok: boolean };
 
 /**
  * 流式版:按 `H.chunks` 逐段回调 onDelta,再返回拼起来的整段。`H.error` 置上就
@@ -42,9 +49,10 @@ const H = vi.hoisted(() => ({
 const chatStatelessStream = vi.fn(
 	async (
 		messages: Array<{ role: string; content: string }>,
-		opts: { onDelta: (t: string) => void },
+		opts: { onDelta: (t: string) => void; onToolEvent?: (ev: ToolEv) => void },
 	) => {
 		H.lastHistory = messages;
+		for (const ev of H.toolEvents ?? []) opts.onToolEvent?.(ev);
 		for (const c of H.chunks ?? []) opts.onDelta(c);
 		if (H.error) throw H.error;
 		const result = H.chunks ? H.chunks.join("") : H.reply;
@@ -115,6 +123,7 @@ beforeEach(() => {
 	H.lastHistory = null;
 	H.title = "本周勤奋榜";
 	H.titleInput = null;
+	H.toolEvents = null;
 	chatStatelessStream.mockClear();
 	summarizeTitle.mockClear();
 });
@@ -364,6 +373,125 @@ describe("POST /conversations/:id/chat — 聊天", () => {
 		const res = await chat(app, id, { message: "   " });
 		expect(res.status).toBe(400);
 		expect(chatStatelessStream).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * 工具轮不产生正文,所以那几秒在界面上跟「模型卡住了」长得一模一样。把它讲出来
+ * 需要两件事:流里实时报一声,以及跟着回复一起落盘 —— 只报不存的话,`done` 一到、
+ * 真身把在途副本换下来的那一刻,几条小条就凭空消失了。
+ */
+describe("POST /conversations/:id/chat — 工具调用痕迹", () => {
+	const listSubs: ToolEv[] = [
+		{ phase: "start", id: "0-0", name: "list_subscriptions", args: {} },
+		{ phase: "end", id: "0-0", ok: true },
+	];
+
+	it("工具调用实时变成 tool 事件 —— 查东西那几秒不能是一片死寂", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		H.toolEvents = listSubs;
+
+		const events = await chatDrained(app, id, { message: "我订了谁" });
+		const tools = events.filter((e) => e.event === "tool");
+		expect(tools.map((e) => e.data.phase)).toEqual(["start", "end"]);
+		expect(tools[0]?.data).toMatchObject({ name: "list_subscriptions", args: {} });
+		expect(tools[1]?.data).toMatchObject({ ok: true });
+	});
+
+	it("tool 事件排在 done 之前 —— 顺序反了就等于没实时报", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		H.toolEvents = listSubs;
+
+		const kinds = (await chatDrained(app, id, { message: "x" })).map((e) => e.event);
+		// 先钉住「有」。只比下标的话,一条 tool 都没发时 indexOf 是 -1,照样小于
+		// done 的下标 —— 这个断言会在功能整个缺席时假绿。
+		expect(kinds).toContain("tool");
+		expect(kinds.lastIndexOf("tool")).toBeLessThan(kinds.indexOf("done"));
+	});
+
+	it("痕迹随回复一起落盘 —— 刷新之后还看得到她查过什么", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		H.toolEvents = [
+			{ phase: "start", id: "0-0", name: "get_user_info", args: { uid: "12345" } },
+			{ phase: "end", id: "0-0", ok: true },
+		];
+
+		await chatDrained(app, id, { message: "查一下" });
+		const conv = (await readJson(await getConv(app, id))).conversation;
+		expect(conv.messages[1].tools).toEqual([
+			{ name: "get_user_info", args: { uid: "12345" }, ok: true },
+		]);
+		// 主人那条不该沾上工具 —— 工具是女仆调的。
+		expect(conv.messages[0].tools).toBeUndefined();
+	});
+
+	it("done 里的回复也带着痕迹 —— 前端交接那一帧要拿它顶上", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		H.toolEvents = listSubs;
+
+		const done = await readDone(await chat(app, id, { message: "x" }));
+		expect(done.reply.tools).toEqual([{ name: "list_subscriptions", args: {}, ok: true }]);
+	});
+
+	it("失败的那次也留着 —— 「查了但没查到」和「压根没查」不是一回事", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		H.toolEvents = [
+			{ phase: "start", id: "0-0", name: "get_live_status", args: {} },
+			{ phase: "end", id: "0-0", ok: false },
+		];
+
+		const done = await readDone(await chat(app, id, { message: "x" }));
+		expect(done.reply.tools).toEqual([{ name: "get_live_status", args: {}, ok: false }]);
+	});
+
+	it("同一轮多个工具按开始顺序落盘,不串台", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		// 真实世界里是顺序执行的,但 end 认的是 id 而不是「上一条」—— 这里故意
+		// 让两个 start 挨在一起、end 倒序回来,盯住配对靠的确实是 id。
+		H.toolEvents = [
+			{ phase: "start", id: "0-0", name: "search_user", args: { keyword: "咩栗" } },
+			{ phase: "start", id: "0-1", name: "get_user_info", args: { uid: "1" } },
+			{ phase: "end", id: "0-1", ok: false },
+			{ phase: "end", id: "0-0", ok: true },
+		];
+
+		const done = await readDone(await chat(app, id, { message: "x" }));
+		expect(done.reply.tools).toEqual([
+			{ name: "search_user", args: { keyword: "咩栗" }, ok: true },
+			{ name: "get_user_info", args: { uid: "1" }, ok: false },
+		]);
+	});
+
+	it("只开了头没收尾的那条不落盘 —— 状态不明的痕迹会在界面上永远转圈", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		H.toolEvents = [{ phase: "start", id: "0-0", name: "list_subscriptions", args: {} }];
+
+		const done = await readDone(await chat(app, id, { message: "x" }));
+		expect(done.reply.tools).toBeUndefined();
+	});
+
+	it("没调工具就不写这个字段 —— 绝大多数消息都没调", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+
+		const events = await chatDrained(app, id, { message: "在吗" });
+		expect(events.some((e) => e.event === "tool")).toBe(false);
+		expect(events.find((e) => e.event === "done")?.data.reply.tools).toBeUndefined();
 	});
 });
 

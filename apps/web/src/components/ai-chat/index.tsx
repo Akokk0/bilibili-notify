@@ -18,7 +18,7 @@ import { useAuthStore } from "../../store/auth";
 import { BiliLoginStatus } from "../../types/auth";
 import { Icon } from "../icons";
 import { Composer } from "./composer";
-import { MessageList } from "./messages";
+import { MessageList, type ToolChipData } from "./messages";
 import { resolveChatPersona } from "./persona";
 import { ChatSidebar } from "./sidebar";
 import { AI_SKILLS, resolveOutgoing } from "./skills";
@@ -54,6 +54,12 @@ export function AiChatDock() {
 	// 更不该在后台轮询会话列表。
 	return <ChatOverlay onClose={() => setOpen(false)} />;
 }
+
+/**
+ * 在途的一条工具痕迹。比落盘那份多一个 `id` —— `end` 事件靠它认回自己的 `start`,
+ * 而落盘时结论已定,不再需要这个中间量,所以契约里没有它。
+ */
+type PendingTool = ToolChipData & { id: string };
 
 function ChatOverlay({ onClose }: { onClose: () => void }) {
 	const rail = useAiChatStore((s) => s.rail);
@@ -111,12 +117,16 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 	/**
 	 * 本轮问答的**在途**状态 —— 还没落盘,只活在这次渲染里。
 	 *
-	 * 分成两半:`ask` 是主人刚发出的那句(按下回车立刻上屏),`draft` 是女仆
-	 * 正在逐字吐的回复。服务端要整轮成功才落盘,所以这段时间里两条消息都不在
-	 * `messages` 里 —— 没有这份在途状态,主人会盯着一个空屏等十几秒,完全不知道
-	 * 自己那句发出去没有。
+	 * 分成三半:`ask` 是主人刚发出的那句(按下回车立刻上屏),`draft` 是女仆
+	 * 正在逐字吐的回复,`tools` 是这一轮她动过的工具。服务端要整轮成功才落盘,
+	 * 所以这段时间里两条消息都不在 `messages` 里 —— 没有这份在途状态,主人会盯着
+	 * 一个空屏等十几秒,完全不知道自己那句发出去没有。
 	 */
-	const [pending, setPending] = useState<{ ask: string; draft: string } | null>(null);
+	const [pending, setPending] = useState<{
+		ask: string;
+		draft: string;
+		tools: readonly PendingTool[];
+	} | null>(null);
 
 	/**
 	 * 这个会话里**已经由在途副本交接成真身**的消息 id,逐轮累积。
@@ -156,6 +166,23 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 			if (id !== activeId) setActiveId(id);
 			return sendChatMessage(id, text, {
 				onDelta: (chunk) => setPending((p) => (p ? { ...p, draft: p.draft + chunk } : p)),
+				// 工具轮不产生正文,所以那几秒原本只有三个跳动的点 —— 跟「模型卡住了」
+				// 长得一模一样。start 就上屏、end 只回填结论:这样「正在查订阅」是在查的
+				// **当时**说的,而不是查完了才补一句。
+				//
+				// 按 id 认人而不是「改最后一条」:一轮里可以同时开好几个工具,end 回来的
+				// 次序不保证跟 start 一致。
+				onTool: (ev) =>
+					setPending((p) => {
+						if (!p) return p; // 已经切走 / 撤掉了,这一拍没人要
+						if (ev.phase === "start") {
+							return { ...p, tools: [...p.tools, { id: ev.id, name: ev.name, args: ev.args }] };
+						}
+						return {
+							...p,
+							tools: p.tools.map((t) => (t.id === ev.id ? { ...t, ok: ev.ok } : t)),
+						};
+					}),
 			});
 		},
 		onMutate: (text: string) => {
@@ -163,7 +190,7 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 			// 输入框,出现在对话里。
 			setInput("");
 			setError(null);
-			setPending({ ask: text, draft: "" });
+			setPending({ ask: text, draft: "", tools: [] });
 		},
 		onSuccess: (res, _text) => {
 			const id = res.conversation.id;

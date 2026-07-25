@@ -263,12 +263,30 @@ export interface AiTestPushResponse {
 
 // ---- /api/ai/conversations(女仆 AI 聊天)------------------------------------
 
+/**
+ * 女仆为了答这一句而调过的一个工具。
+ *
+ * 会跟着回复一起落盘,而不是只活在那次流里 —— 只在流里显示的话,`done` 一到、
+ * 真身把在途副本换下来的那一刻,这几条就凭空消失了,刷新之后也再看不到她当时
+ * 查过什么。
+ */
+export interface AiToolTraceDTO {
+	/** 工具名(`list_subscriptions` 之类),界面上翻成中文再显示。 */
+	name: string;
+	/** 归一成字符串的入参,与真正交给工具的那份一致。 */
+	args: Record<string, string>;
+	/** 执行成没成。失败的那次也留着 —— 「查了但没查到」和「压根没查」不一样。 */
+	ok: boolean;
+}
+
 /** 一条聊天消息。`id` 供前端当列表 key,`ts` 是服务端落盘时刻(ISO)。 */
 export interface AiChatMessageDTO {
 	id: string;
 	role: "user" | "assistant";
 	content: string;
 	ts: string;
+	/** 助手消息专有:答这一句时调过的工具。没调过就整个字段缺席。 */
+	tools?: AiToolTraceDTO[];
 }
 
 /**

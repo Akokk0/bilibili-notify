@@ -119,6 +119,24 @@ export interface CommentaryCallOverride {
 	personaId?: string;
 }
 
+/**
+ * 一次工具调用的两拍。dashboard 的聊天靠它把「她正在查什么」讲出来。
+ *
+ * 工具轮**不产生给人看的正文**,所以那几秒在界面上跟「模型卡住了」长得一模一样。
+ * 分 start / end 两拍而不是查完一次性报:查订阅要走一趟 B 站,慢起来好几秒,
+ * 那正是最需要反馈的一刻。
+ */
+export type ToolTraceEvent =
+	| {
+			phase: "start";
+			/** 本次调用内唯一,end 靠它认回自己的 start。 */
+			id: string;
+			name: string;
+			/** 已按 `onToolCall` 那份规则归一成字符串,与真正交给工具的完全一致。 */
+			args: Record<string, string>;
+	  }
+	| { phase: "end"; id: string; ok: boolean };
+
 export interface CommentaryProvider {
 	comment(
 		content: string,
@@ -395,12 +413,17 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 * 页面上只有三个跳动的点,读起来像卡住了。
 	 *
 	 * 注意 `onDelta` 只喂**给人看的正文**。工具轮(查订阅、查直播状态)不产生
-	 * 正文,那几轮自然静默 —— 表现为打字点多停一会儿,这是诚实的:那段时间
-	 * 她确实在查东西而不是在说话。
+	 * 正文,那几轮自然静默 —— 想知道那段时间她在查什么,听 `onToolEvent`。
 	 */
 	async chatStatelessStream(
 		messages: readonly ConversationMessage[],
-		opts: { onDelta: (text: string) => void; sessionCtx?: SessionContext; imageUrls?: string[] },
+		opts: {
+			onDelta: (text: string) => void;
+			/** 工具轮的旁听席,见 {@link ToolTraceEvent}。不传就什么都不报。 */
+			onToolEvent?: (ev: ToolTraceEvent) => void;
+			sessionCtx?: SessionContext;
+			imageUrls?: string[];
+		},
 	): Promise<{ result: string; pendingActions: Array<() => Promise<void>> }> {
 		return this.chatStatelessImpl(messages, opts);
 	}
@@ -411,6 +434,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			sessionCtx?: SessionContext;
 			imageUrls?: string[];
 			onDelta?: (text: string) => void;
+			onToolEvent?: (ev: ToolTraceEvent) => void;
 		},
 	): Promise<{ result: string; pendingActions: Array<() => Promise<void>> }> {
 		if (messages.length === 0) throw new Error("对话历史为空");
@@ -438,6 +462,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 						this.subMgmt ?? undefined,
 						pendingActions,
 					),
+				onToolEvent: opts?.onToolEvent,
 			},
 			this.config.enableVision ? opts?.imageUrls : undefined,
 			undefined,
@@ -630,6 +655,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		toolOptions?: {
 			tools: OpenAI.ChatCompletionTool[];
 			onToolCall: (name: string, args: Record<string, string>) => Promise<string>;
+			onToolEvent?: (ev: ToolTraceEvent) => void;
 		},
 		imageUrls?: string[],
 		override?: CommentaryCallOverride,
@@ -785,21 +811,50 @@ export class CommentaryGenerator implements CommentaryProvider {
 			this.logger.debug(`[tool] 第 ${round + 1} 轮，调用 ${message.tool_calls.length} 个工具`);
 			if (!toolOptions) break;
 
-			for (const toolCall of message.tool_calls) {
-				let result: string;
+			for (let i = 0; i < message.tool_calls.length; i++) {
+				const toolCall = message.tool_calls[i];
+				const name = toolCall.function.name;
+				// 痕迹 id 用「第几轮-第几个」自己编,**不用** `toolCall.id`:那是网关
+				// 给的,流式下常常整个缺席(streamOnce 里的 slot 初值就是空串),几个
+				// 工具会共用一个空 id,end 事件于是全配到同一条痕迹上。
+				const traceId = `${round}-${i}`;
+
+				// 参数先解析出来给 start 用。解析失败不在这儿抛 —— 下面那段要靠
+				// `parseErr` 保持原有语义:参数坏了就**不执行**工具,只把错误当结果回去。
+				let args: Record<string, string> = {};
+				let parseErr: Error | null = null;
 				try {
 					// :461 LLM 常把 uid 输出成数字(`{"uid":12345}`)。裸 as
 					// Record<string,string> 是谎言 → 下游用 args.uid 当字符串与
 					// 订阅 key("12345")比对失配。逐值强制 String 归一。
 					const rawArgs = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
-					const args: Record<string, string> = Object.fromEntries(
+					args = Object.fromEntries(
 						Object.entries(rawArgs).map(([k, v]) => [k, typeof v === "string" ? v : String(v)]),
 					);
-					this.logger.debug(`[tool] 执行 ${toolCall.function.name}(${JSON.stringify(args)})`);
-					result = await toolOptions.onToolCall(toolCall.function.name, args);
 				} catch (e) {
-					result = `工具执行失败: ${(e as Error).message}`;
+					parseErr = e as Error;
 				}
+
+				// 执行**之前**报一声。查订阅要走一趟 B 站,慢起来好几秒,而那正是最
+				// 需要反馈的一刻;等查完再说等于什么都没说。
+				toolOptions.onToolEvent?.({ phase: "start", id: traceId, name, args });
+
+				let result: string;
+				let ok: boolean;
+				if (parseErr) {
+					result = `工具执行失败: ${parseErr.message}`;
+					ok = false;
+				} else {
+					try {
+						this.logger.debug(`[tool] 执行 ${name}(${JSON.stringify(args)})`);
+						result = await toolOptions.onToolCall(name, args);
+						ok = true;
+					} catch (e) {
+						result = `工具执行失败: ${(e as Error).message}`;
+						ok = false;
+					}
+				}
+				toolOptions.onToolEvent?.({ phase: "end", id: traceId, ok });
 				this.logger.debug(`[tool] ${toolCall.function.name} 结果长度=${result.length}`);
 				apiMessages.push({
 					role: "tool",
