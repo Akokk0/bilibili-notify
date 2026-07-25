@@ -114,6 +114,7 @@ vi.mock("../../../services/api", () => ({
 	api: { get: vi.fn(async () => ({ defaults: { ai: G.ai } })) },
 }));
 
+import { createConversation } from "../../../services/aiChat";
 import { DEFAULT_GLASS_OPACITY, useAiChatStore } from "../../../store/aiChat";
 import { useAuthStore } from "../../../store/auth";
 import { BiliLoginStatus } from "../../../types/auth";
@@ -133,6 +134,7 @@ beforeEach(() => {
 	H.gate = [];
 	H.holdConv = false;
 	H.convGate = [];
+	vi.mocked(createConversation).mockClear();
 	G.ai = {
 		model: "gpt-test",
 		persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
@@ -383,6 +385,39 @@ describe("AiChatDock — 玻璃质感设置落到 DOM", () => {
 		expect((await glassVars()).glass).toBe("0");
 		// store 里那一档没被抹掉,关掉完全透明就回得去。
 		expect(useAiChatStore.getState().glassOpacity).toBe(0.5);
+	});
+});
+
+describe("AiChatDock — 开启新对话", () => {
+	/**
+	 * 主人报的:点完「开启新对话」,左侧立刻多出一条记录,而自己一个字都还没发。
+	 *
+	 * 空会话不该占位。发送那条路本来就有 `activeId ?? createConversation()`,
+	 * 真到要落盘的时候自然会建 —— 这颗按钮只需要把界面退回空态。
+	 */
+	it("只回到空态,不去服务端建一个空会话", async () => {
+		H.messages = [{ id: "m1", role: "user", content: "你好", ts: "2026-07-25T00:00:00.000Z" }];
+		useAiChatStore.setState({ open: true, activeId: "c1" });
+		render(wrap(<AiChatDock />));
+		await waitFor(() => expect(screen.getByTestId("chat-messages")).toBeTruthy());
+
+		fireEvent.click(screen.getByText("开启新对话"));
+
+		await waitFor(() => expect(screen.getByText(/今天想让/)).toBeTruthy());
+		expect(vi.mocked(createConversation)).not.toHaveBeenCalled();
+	});
+
+	it("退回空态后再发一句,这时才建会话", async () => {
+		useAiChatStore.setState({ open: true, activeId: "c1" });
+		render(wrap(<AiChatDock />));
+		fireEvent.click(await screen.findByText("开启新对话"));
+		expect(vi.mocked(createConversation)).not.toHaveBeenCalled();
+
+		const ta = await screen.findByLabelText("聊天输入");
+		fireEvent.change(ta, { target: { value: "本周谁最勤奋" } });
+		fireEvent.keyDown(ta, { key: "Enter" });
+
+		await waitFor(() => expect(vi.mocked(createConversation)).toHaveBeenCalledTimes(1));
 	});
 });
 

@@ -187,15 +187,23 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 		},
 	});
 
-	const startNew = useMutation({
-		mutationFn: createConversation,
-		onSuccess: (conv) => {
-			setActiveId(conv.id);
-			setInput("");
-			setError(null);
-			qc.invalidateQueries({ queryKey: conversationsQueryKey });
-		},
-	});
+	/**
+	 * 「开启新对话」**不碰服务端** —— 只把界面退回空态。
+	 *
+	 * 先建一个空会话的话,主人一个字都还没说,左侧就先多出一条记录躺在那儿;
+	 * 点两下就是两条空的。真到要落盘的时候,发送那条路上的
+	 * `activeId ?? createConversation()` 自然会建。
+	 *
+	 * 顺带清掉在途副本:上一轮要是还在流,那半截回复属于**上一个**会话,不该
+	 * 跟着进到新对话的空白页里。它的 onSuccess 认的是服务端返回的会话 id,
+	 * 所以照样会正确落到原来那个会话上。
+	 */
+	const startNew = () => {
+		setActiveId(null);
+		setInput("");
+		setError(null);
+		setPending(null);
+	};
 
 	const busy = send.isPending;
 	// 一有在途消息就离开空态 —— 主人发了话,问候页就该让位给对话。
@@ -252,7 +260,7 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 						setActiveId(id);
 						setError(null);
 					}}
-					onNew={() => startNew.mutate()}
+					onNew={startNew}
 					onDelete={(id) => removeConv.mutate(id)}
 					onCollapse={() => setRail(false)}
 					theme={theme}
