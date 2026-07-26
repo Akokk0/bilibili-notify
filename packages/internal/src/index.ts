@@ -6,6 +6,7 @@ export {
 	type AIProviderId,
 	type AIProviderMeta,
 	type AIProviderProfileShape,
+	BUILTIN_AI_PRESETS,
 	EMPTY_AI_PROVIDER_PROFILE,
 	providerMeta,
 	resolveAIProfile,

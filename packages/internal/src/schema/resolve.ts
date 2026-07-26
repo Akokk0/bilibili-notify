@@ -77,15 +77,21 @@ function resolveAI(globals: AISettings, override: AIOverride | undefined): Resol
 	// 连接与生成参数按家分桶存,先取出当前生效的那一套。per-UP override 覆盖的是
 	// **解析后**的值(它只动 temperature 与人格),不关心图来自哪个桶。
 	const profile = resolveAIProfile(globals);
+	// 全局此刻用的是哪份人格。`activePreset` 不填 = 用 `ai.persona`(老配置一字不变);
+	// 填了就用那份预设 —— 且**不改写** `ai.persona`,切回「默认」时主人手写的那份
+	// 原封不动地回来。指向一份已不存在的预设(刚删掉 / 备份换了一批)时静静回落。
+	const active = globals.activePreset
+		? globals.presets.find((p) => p.id === globals.activePreset)
+		: undefined;
 	const base: ResolvedAI = {
 		enabled: globals.enabled,
 		baseUrl: profile.baseUrl,
 		apiKey: profile.apiKey,
 		model: profile.model,
 		temperature: profile.temperature,
-		persona: globals.persona,
-		dynamicPrompt: globals.dynamicPrompt,
-		liveSummaryPrompt: globals.liveSummaryPrompt,
+		persona: active?.persona ?? globals.persona,
+		dynamicPrompt: active?.dynamicPrompt ?? globals.dynamicPrompt,
+		liveSummaryPrompt: active?.liveSummaryPrompt ?? globals.liveSummaryPrompt,
 	};
 
 	// personaId 是 per-UP 直通,与 preset 无关 —— 即便 preset=inherit 也要带出去。

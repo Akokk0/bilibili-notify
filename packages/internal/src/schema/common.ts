@@ -6,7 +6,7 @@ export type { FeatureKey } from "../constants";
 
 // 值与类型的单一来源在 ../constants(零依赖,供前端经 /constants 子路径运行时消费);
 // 这里重导出维持根入口的既有 API 面,后端消费者无感。
-import { AI_PROVIDER_IDS, THINKING_LEVELS } from "../constants";
+import { AI_PROVIDER_IDS, BUILTIN_AI_PRESETS, THINKING_LEVELS } from "../constants";
 
 export { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../constants";
 
@@ -263,6 +263,18 @@ const AISettingsObjectSchema = z.object({
 	 * {@link resolveAIProfile},它会兜一套空默认值回来。
 	 */
 	providers: z.partialRecord(z.enum(AI_PROVIDER_IDS), AIProviderProfileSchema).default({}),
+	/**
+	 * 全局此刻启用哪一份人格。**不填 = 用 `persona`**(老配置一字不变,无需迁移);
+	 * 填了就用 `presets` 里那一份。
+	 *
+	 * 它是个**指针**而不是「把预设复制进 `persona`」—— 后者一下就把主人手写的那份
+	 * 覆盖了且换不回来,而且想显示「现在选的是哪份」还得拿 persona 去逐字段比对猜。
+	 * 指向一份已不存在的预设时(刚删掉 / 备份换了一批)静静回落 `persona`。
+	 *
+	 * per-UP 的 `overrides.ai.preset` 语义**完全不受影响**:它照旧压过全局,
+	 * 而 `'inherit'` 继承的就是这里指定的那一份。
+	 */
+	activePreset: z.string().optional(),
 	/** 内置 preset 模板列表；per-UP overrides.ai.preset 可选 'inherit' | 'custom' | 任意 preset.id */
 	presets: z.array(
 		z.object({
@@ -300,7 +312,10 @@ const LEGACY_FLAT_KEYS = [
  */
 export const AISettingsSchema = z.preprocess((raw) => {
 	if (raw === null || typeof raw !== "object") return raw;
-	const o = raw as Record<string, unknown>;
+	return migratePersonaPointer(migrateFlatProviderFields(raw as Record<string, unknown>));
+}, AISettingsObjectSchema);
+
+function migrateFlatProviderFields(o: Record<string, unknown>): Record<string, unknown> {
 	if (o.providers !== undefined) return o;
 
 	const legacy: Record<string, unknown> = {};
@@ -312,7 +327,65 @@ export const AISettingsSchema = z.preprocess((raw) => {
 	// 一个字段都没有的话不造桶 —— 那是一份全新配置,左栏该是空的。
 	if (Object.keys(legacy).length === 0) return { ...rest, providers: {} };
 	return { ...rest, provider: "custom", providers: { custom: legacy } };
-}, AISettingsObjectSchema);
+}
+
+/** 结构比较用。schema 全是纯数据,键序由 zod 定死,`JSON.stringify` 足够可靠。 */
+function sameShape(a: unknown, b: unknown): boolean {
+	return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * 人格只住在 `presets[]` 里,`activePreset` 指着当前那一份。
+ *
+ * `DEFAULT_AI.persona` 与 `presets[0]`「温柔女仆」本就是同一份(见 globals.ts 那句
+ * 「默认配置 = 首个预设,单一真相」),所以设置页里再摆一个「默认」项是**重复** ——
+ * 同一份东西两个入口,还得解释哪个才算数。删掉它之后就必须回答:**手改过
+ * `ai.persona` 的老配置怎么办?** 不管的话那份人格数据还在盘上、界面上却再也点不到。
+ *
+ *   ① 已经有指针 → 不动(迁移只跑一次)
+ *   ② `persona` 与某份预设逐字段相同 → 指向它,不造重复项
+ *   ③ `persona` 是手改过的 → 造一份预设装着它并指过去,一个字都不丢
+ *
+ * 顺带守住一条不变量:`presets` 恒非空、`activePreset` 恒指向真实存在的项 ——
+ * 「当前这份人格」永远有着落,消费方不必各自兜底。
+ *
+ * `ai.persona` 本身留着不删:它是 `resolve()` 在指针万一落空时的安全网,也让老版本
+ * 读同一份配置文件时行为不变。界面上不再有任何入口编辑它。
+ */
+function migratePersonaPointer(o: Record<string, unknown>): Record<string, unknown> {
+	const stored = Array.isArray(o.presets) ? (o.presets as Record<string, unknown>[]) : [];
+	// `presets: []` 是预设功能上线**之前**写的 globals.json。这里补齐内置四份 ——
+	// 而不是只拿 persona 派生一份出来:那样老用户会平白少掉三份内置人格。
+	// (此前这件事由 ConfigStore 在加载后做,条件是 `presets.length === 0`;
+	// 现在这道迁移必然把列表填成非空,那个条件再也不成立,所以责任移到这里。)
+	const presets: Record<string, unknown>[] =
+		stored.length > 0
+			? [...stored]
+			: (BUILTIN_AI_PRESETS as readonly unknown[]).map((p) => ({ ...(p as object) }));
+	const persona = o.persona;
+
+	if (typeof o.activePreset === "string") {
+		// 指针已在。只兜一种坏情况:它指着一份不存在的预设(手改配置 / 备份换了一批)。
+		if (presets.some((p) => p?.id === o.activePreset)) return o;
+		if (presets.length > 0) return { ...o, activePreset: presets[0]?.id };
+	}
+
+	const matched = presets.find((p) => sameShape(p?.persona, persona));
+	if (matched) return { ...o, presets, activePreset: matched.id };
+
+	// 走到这里:persona 是手改过的(或 presets 干脆是空的)。给它造一份带得走的家。
+	const name = (persona as { name?: unknown } | undefined)?.name;
+	const label = typeof name === "string" && name.trim() ? name.trim() : "我的性格";
+	const taken = new Set(presets.map((p) => p?.id));
+	let id = "custom-persona";
+	for (let n = 2; taken.has(id); n += 1) id = `custom-persona-${n}`;
+	const mine: Record<string, unknown> = { id, label, persona };
+	if (typeof o.dynamicPrompt === "string" && o.dynamicPrompt) mine.dynamicPrompt = o.dynamicPrompt;
+	if (typeof o.liveSummaryPrompt === "string" && o.liveSummaryPrompt) {
+		mine.liveSummaryPrompt = o.liveSummaryPrompt;
+	}
+	return { ...o, presets: [...presets, mine], activePreset: id };
+}
 export type AISettings = z.infer<typeof AISettingsSchema>;
 
 const CardStyleObjectSchema = z.object({
