@@ -6,6 +6,7 @@ import {
 	type ThinkingLevel,
 } from "@bilibili-notify/internal";
 import { Schema } from "koishi";
+import { providerExtraFields } from "./provider-fields";
 
 interface PersonaConfig {
 	/** 基础人格预设 */
@@ -54,7 +55,9 @@ export interface AIConfig {
 
 	/**
 	 * 服务商。决定「开思考」翻译成哪家的方言 —— 四家四种写法，没有通用解。
-	 * 留空则按 baseURL 自动认；认不出来落 `custom`（不发任何方言参数）。
+	 * **只认主人明确选的那一个，绝不按 baseURL 猜**：猜错等于替主人往别家发方言
+	 * 参数，几乎必然 400，而且主人选了「自定义」却被地址悄悄改回去时无从下手。
+	 * 留空落 `custom`（不发任何方言参数，等价于这套适配上线之前的行为）。
 	 */
 	provider?: AIProviderId;
 
@@ -79,6 +82,58 @@ export interface AIConfig {
 	visionApiKey?: string;
 	visionModel?: string;
 }
+
+/**
+ * 深度思考那两项。做成工厂而不是共享常量 —— 同一个 Schema 实例摆进多条 union 分支
+ * 是自找麻烦(描述/默认值的归属会含混),各分支各造一份最省心。
+ */
+const thinkingFields = () => ({
+	enableThinking: Schema.boolean()
+		.default(false)
+		.description(
+			"开启模型的深度思考模式～女仆会按上面选的服务商发对应的参数。要是那家网关不认，女仆会自动摘掉参数重试一次，不会报错的。两件事要知道：① DeepSeek 和火山的思考模型**默认就是开着**的，关掉这个开关女仆才会显式让它别想那么久；② 部分服务商（如 DeepSeek）思考时会**忽略** temperature，那不是设置没存上哟 (｡･ω･｡)",
+		),
+	thinkingLevel: Schema.union([
+		Schema.const("low" as const).description("低 — 快，够用就行"),
+		Schema.const("medium" as const).description("中 — 默认"),
+		Schema.const("high" as const).description("高 — 慢且贵，留给难题"),
+	])
+		.default("medium")
+		.description(
+			"想让女仆想多深呢？各家的档位不一样（OpenRouter 是 low/medium/high，DeepSeek 只有 high/max，火山和硅基是 token 预算），女仆会自动换算成那家的说法 (｡･ω･｡)ﾉ♡",
+		),
+});
+
+/** 「主模型自己看得见图吗」。 */
+const visionToggleField = () => ({
+	enableVision: Schema.boolean()
+		.default(false)
+		.description(
+			"**主模型自己看得见图吗**？这个开关是在回答这个问题，不是在选「把图发给谁」哟。看得见（gpt-4o、qwen-vl 这类）就打开，点评动态或聊天时女仆会把图直接交给它，省一次往返也不掉细节。注意：一旦填了下面的「看图专用模型」，就一律以它为准，这个开关不再起作用 (｡･ω･｡)",
+		),
+});
+
+/**
+ * 按服务商分支 —— **选了哪家就只显哪家真有的那几项**。
+ *
+ * 摆一个那家根本不支持的开关,主人调了没反应只会以为配置坏了:兜底档的思考开关是死的
+ * (不发任何方言参数),DeepSeek 的「主模型看图」永远为否(官方接口无视觉模型)。
+ * 分支内容由 `providerExtraFields` 说了算,那边有单测;这里只是把清单摊开。
+ *
+ * 末尾那条空分支是兜底:`enabled: false` 时 `provider` 根本没渲染、取值为 undefined,
+ * 没有任何一条具名分支匹配得上,少了它整个 union 就无处可落。
+ */
+const ProviderBranchSchema = Schema.union([
+	...AI_PROVIDERS.map((p) => {
+		const fields = providerExtraFields(p.id);
+		return Schema.object({
+			provider: Schema.const(p.id).required(),
+			...(fields.includes("thinking") ? thinkingFields() : {}),
+			...(fields.includes("vision") ? visionToggleField() : {}),
+		});
+	}),
+	Schema.object({}),
+]);
 
 const PersonaConfigSchema: Schema<PersonaConfig> = Schema.intersect([
 	Schema.object({
@@ -193,33 +248,11 @@ export const AIConfigSchema: Schema<AIConfig> = Schema.intersect([
 					"你用的是哪家服务商呀？「开思考」这件事各家写法完全不一样（OpenRouter 用 reasoning、火山和 DeepSeek 用 thinking、硅基用 enable_thinking），女仆得知道是哪家才翻译得对哟 (๑•̀ㅂ•́)و✧ 选「自定义」的话女仆不会自作主张发任何参数，需要什么请写到下面的「额外请求参数」里",
 				),
 
-			enableThinking: Schema.boolean()
-				.default(false)
-				.description(
-					"开启模型的深度思考模式～女仆会按上面选的服务商发对应的参数。要是那家网关不认，女仆会自动摘掉参数重试一次，不会报错的。两件事要知道：① DeepSeek 和火山的思考模型**默认就是开着**的，关掉这个开关女仆才会显式让它别想那么久；② 部分服务商（如 DeepSeek）思考时会**忽略** temperature，那不是设置没存上哟 (｡･ω･｡)",
-				),
-
-			thinkingLevel: Schema.union([
-				Schema.const("low" as const).description("低 — 快，够用就行"),
-				Schema.const("medium" as const).description("中 — 默认"),
-				Schema.const("high" as const).description("高 — 慢且贵，留给难题"),
-			])
-				.default("medium")
-				.description(
-					"想让女仆想多深呢？各家的档位不一样（OpenRouter 是 low/medium/high，DeepSeek 只有 high/max，火山和硅基是 token 预算），女仆会自动换算成那家的说法 (｡･ω･｡)ﾉ♡",
-				),
-
 			extraParams: Schema.string()
 				.role("textarea", { rows: [3, 8] })
 				.default("")
 				.description(
 					'额外请求参数～一段 JSON，女仆会原样摊进请求体里。适配之外的服务商、或者联网搜索这类各家写法不同的功能都写这里，比如 OpenRouter 的 `{"plugins": [{"id": "web"}]}`、硅基流动的 `{"enable_search": true}`。跟女仆自己发的参数撞了以你为准；写错了也不要紧，那一次就当没填（日志里会说一声）。model / messages / tools 这几个是请求的骨架，改了会让对话或工具失灵，女仆会挡掉',
-				),
-
-			enableVision: Schema.boolean()
-				.default(false)
-				.description(
-					"**主模型自己看得见图吗**？这个开关是在回答这个问题，不是在选「把图发给谁」哟。看得见（gpt-4o、qwen-vl 这类）就打开，点评动态或聊天时女仆会把图直接交给它，省一次往返也不掉细节；看不见（比如 DeepSeek）就别开，改填下面的「看图专用模型」。注意：一旦填了看图专用模型，就一律以它为准，这个开关不再起作用 (｡･ω･｡)",
 				),
 
 			visionModel: Schema.string().description(
@@ -236,4 +269,7 @@ export const AIConfigSchema: Schema<AIConfig> = Schema.intersect([
 		}),
 		Schema.object({}),
 	]),
+	// 按服务商分支的那一层。摆在 intersect 最后 —— `enabled: false` 时 provider 取值
+	// 为 undefined,没有任何具名分支匹配,整层落到那条空兜底,于是一项都不多显。
+	ProviderBranchSchema,
 ]);
