@@ -125,4 +125,58 @@ describe("globals apiKey redact — P0-3", () => {
 
 		await runtime.dispose();
 	});
+	it("d) PATCH 把某家的桶置为 null → 桶真的消失,落盘文件里那把钥匙也不再有", async () => {
+		// 主人在设置页删掉一家。前端经 buildPatch 把「消失的键」编译成显式 null,
+		// deepMerge 据此删键。要紧的是**加密袋**要跟着掉:writeGlobals 每次都用
+		// collectAiSecrets 整袋重算,所以桶没了钥匙自然不再写入 —— 这条就是钉住
+		// 「删了却没真删」的那道锁(主人明确要的是一并抹掉)。
+		const runtime = createAppRuntime(makeBootstrap(dataDir));
+		await runtime.configStore.load();
+		await runtime.configStore.patchGlobals({
+			defaults: {
+				ai: {
+					provider: "deepseek",
+					providers: {
+						deepseek: { apiKey: "sk-going-away" },
+						openrouter: { apiKey: "sk-staying" },
+					},
+				},
+			},
+		});
+		const app = createApp(runtime, {});
+
+		const patchRes = await app.request("/api/globals", {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				defaults: { ai: { provider: "openrouter", providers: { deepseek: null } } },
+			}),
+		});
+		expect(patchRes.status).toBe(200);
+
+		const providers = runtime.configStore.getGlobals().defaults.ai.providers;
+		expect("deepseek" in providers).toBe(false);
+		// 邻居毫发无伤 —— 删一家不能顺手带走别家的 key。
+		expect(providers.openrouter?.apiKey).toBe("sk-staying");
+
+		// 「密钥也一并抹掉」怎么证?落盘是密文,grep 字节证不了。改证**可观测的后果**:
+		// 重新添加同一家时钥匙必须是空的 —— 袋子里若还留着旧的,hydrate 时
+		// applyAiSecrets 会把它填回新桶,主人以为自己在配一张白纸,实际连着旧 key。
+		await app.request("/api/globals", {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ defaults: { ai: { providers: { deepseek: { model: "ds-v4" } } } } }),
+		});
+		expect(runtime.configStore.getGlobals().defaults.ai.providers.deepseek?.apiKey).toBe("");
+
+		await runtime.dispose();
+
+		// 再从盘上冷启一次:删除与邻居的 key 都得是真落了盘,而不是只活在内存里。
+		const reopened = createAppRuntime(makeBootstrap(dataDir));
+		await reopened.configStore.load();
+		const after = reopened.configStore.getGlobals().defaults.ai.providers;
+		expect(after.deepseek?.apiKey).toBe("");
+		expect(after.openrouter?.apiKey).toBe("sk-staying");
+		await reopened.dispose();
+	});
 });

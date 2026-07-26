@@ -676,28 +676,11 @@ class NodeConfigStore implements ConfigStore {
 				},
 			};
 
-			// Backfill default AI presets for globals files written before any
-			// presets shipped (presets used to default to []). Only triggered
-			// when the user has never configured presets — once they have at
-			// least one entry we leave them alone, including subsequent
-			// edits/deletions, so the user can fully manage the list.
-			if (existed && this.globals.defaults.ai.presets.length === 0) {
-				const fresh = makeDefaultGlobalConfig();
-				if (fresh.defaults.ai.presets.length > 0) {
-					this.globals = {
-						...this.globals,
-						defaults: {
-							...this.globals.defaults,
-							ai: {
-								...this.globals.defaults.ai,
-								presets: fresh.defaults.ai.presets,
-							},
-						},
-					};
-					await this.persistGlobals(this.globals);
-					this.touch("globals");
-				}
-			}
+			// 「presets: [] 的老 globals.json 补齐内置四份」这件事**已经移到 schema 层**
+			// (`AISettingsSchema` 的 migratePersonaPointer)。那道迁移必然把列表填成非空,
+			// 所以这里原先那个 `presets.length === 0` 判据永远不成立 —— 留着是死代码,
+			// 更糟的是会让人以为补齐还归 store 管。见
+			// packages/internal/src/schema/ai-persona-pointer.test.ts。
 
 			// 一次性迁移:历代「旧默认原值」→ 当前默认。覆盖两代:① 占位符语法统一前
 			// (alpha.x)的 {title}/{duration}/{user}/{mastername} 旧变量默认;② 消息版式
