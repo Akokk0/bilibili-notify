@@ -33,10 +33,22 @@ const REDACTED = "__BN_REDACTED__";
 function redactedGlobals() {
 	const g = makeDefaultGlobalConfig();
 	g.defaults.ai.enabled = true;
-	g.defaults.ai.model = "test-model";
-	g.defaults.ai.baseUrl = "https://api.example.com/v1";
-	// 关键:无论真 key 是什么,出后端一律是这个占位。
-	g.defaults.ai.apiKey = REDACTED;
+	// 连接字段住在服务商桶里(各家一套配置)。
+	g.defaults.ai.provider = "deepseek";
+	g.defaults.ai.providers = {
+		deepseek: {
+			// 关键:无论真 key 是什么,出后端一律是这个占位。
+			apiKey: REDACTED,
+			baseUrl: "https://api.example.com/v1",
+			model: "test-model",
+			temperature: 0.7,
+			enableThinking: false,
+			thinkingLevel: "medium",
+			extraParams: "",
+			enableVision: false,
+			vision: { baseUrl: "", apiKey: "", model: "" },
+		},
+	};
 	return JSON.parse(JSON.stringify(g));
 }
 
@@ -115,10 +127,14 @@ describe("AI 页 — 只改 apiKey 的保存闭环", () => {
 
 		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
 			string,
-			{ defaults: { ai: Record<string, unknown> } },
+			{ defaults: { ai: { providers: Record<string, Record<string, unknown>> } } },
 		];
-		expect(body.defaults.ai).toHaveProperty("apiKey");
-		expect(body.defaults.ai.apiKey).toBeNull();
+		// 清空后送的是**空串**,不再是显式 null。分桶之后 apiKey 带 `.default("")`、
+		// 恒存在,空串就是「已清空」的合法值;`collectAiSecrets` 见空即把那把从加密袋
+		// 里剔除。旧模型里 apiKey 是 optional,缺键意味着「不改」,所以当年非得发 null。
+		const bucket = body.defaults.ai.providers.deepseek;
+		expect(bucket).toHaveProperty("apiKey");
+		expect(bucket?.apiKey).toBe("");
 	});
 
 	it("日志等级退回「跟随全局」→ PATCH 里显式 null(与 Cards 同一个坑)", async () => {

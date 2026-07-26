@@ -126,7 +126,9 @@ vi.mock("../../../services/aiChat", async (orig) => {
 
 const G = vi.hoisted(() => ({
 	ai: {
-		model: "gpt-test",
+		// 模型名住在当前生效的那个服务商桶里(各家一套配置)。
+		provider: "deepseek",
+		providers: { deepseek: { model: "gpt-test" } },
 		persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
 	} as Record<string, unknown>,
 }));
@@ -160,7 +162,9 @@ beforeEach(() => {
 	vi.mocked(createConversation).mockClear();
 	vi.mocked(retitleConversation).mockClear();
 	G.ai = {
-		model: "gpt-test",
+		// 模型名住在当前生效的那个服务商桶里(各家一套配置)。
+		provider: "deepseek",
+		providers: { deepseek: { model: "gpt-test" } },
 		persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
 	};
 	useAiChatStore.setState({
@@ -849,7 +853,8 @@ describe("AiChatDock — 称呼跟人格走", () => {
 	 * 漏掉任何一处,表现都是「侧栏写着 A、她自己开口自称 B」。
 	 */
 	const RINKO = {
-		model: "gpt-test",
+		provider: "deepseek",
+		providers: { deepseek: { model: "gpt-test" } },
 		persona: { name: "凛子", addressSelf: "本小姐", addressUser: "笨蛋" },
 	};
 
@@ -889,7 +894,11 @@ describe("AiChatDock — 称呼跟人格走", () => {
 	});
 
 	it("人格里名字被清空 → 回落成「女仆」,不显示空白", async () => {
-		G.ai = { model: "gpt-test", persona: { name: "", addressSelf: "", addressUser: "" } };
+		G.ai = {
+			provider: "deepseek",
+			providers: { deepseek: { model: "gpt-test" } },
+			persona: { name: "", addressSelf: "", addressUser: "" },
+		};
 		useAiChatStore.setState({ open: true });
 		render(wrap(<AiChatDock />));
 		await waitFor(() => expect(screen.getByText(/女仆AI · 女仆/)).toBeTruthy());

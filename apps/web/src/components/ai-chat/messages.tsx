@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import type { AiChatMessageDTO } from "../../services/aiChat";
+import { type AiChatMessageDTO, chatImageUrl } from "../../services/aiChat";
 import { Icon } from "../icons";
 import { toolLabel } from "./tools";
 
@@ -121,7 +121,13 @@ export interface MessageListProps {
 	 * `draft` 是正在逐字长出来的回复(空串 = 第一个字还没到),`tools` 是这一轮
 	 * 已经动过的工具。
 	 */
-	pending?: { ask: string; draft: string; tools: readonly ToolChipData[] } | null;
+	pending?: {
+		ask: string;
+		draft: string;
+		tools: readonly ToolChipData[];
+		/** 这一问带上去的图(显示地址)。在途期间也得看得见,否则像是没发出去。 */
+		images?: readonly string[];
+	} | null;
 	/** 正在等回复 → 第一个字到达之前显示打字点。 */
 	busy: boolean;
 	/** 上一轮失败时的错误文案;失败的问答不落盘,所以只存在于本次渲染。 */
@@ -156,11 +162,12 @@ export function MessageList({
 		<div data-testid="chat-messages" className="mx-auto flex w-full max-w-180 flex-col gap-5.5">
 			{messages.map((m) =>
 				m.role === "user" ? (
-					<div key={m.id} className={`${anim(m.id)}flex justify-end`}>
-						<div className="bn-chat-accent-soft max-w-[74%] whitespace-pre-wrap wrap-break-word rounded-[22px] rounded-br-[7px] px-4.25 py-2.75ext-[15px] leading-relaxed text-bn-text-primary">
-							{m.content}
-						</div>
-					</div>
+					<UserTurn
+						key={m.id}
+						animClass={anim(m.id)}
+						text={m.content}
+						images={m.images?.map(chatImageUrl)}
+					/>
 				) : (
 					<AssistantTurn
 						key={m.id}
@@ -177,11 +184,7 @@ export function MessageList({
 			    改动只落到其中一处就又跳起来了,所以现在由构造本身保证一致。 */}
 			{pending ? (
 				<>
-					<div className="bn-anim-msg-in flex justify-end">
-						<div className="bn-chat-accent-soft max-w-[74%] whitespace-pre-wrap wrap-break-word rounded-[22px] rounded-br-[7px] px-4.25 py-2.75 text-[15px] leading-relaxed text-bn-text-primary">
-							{pending.ask}
-						</div>
-					</div>
+					<UserTurn animClass="bn-anim-msg-in " text={pending.ask} images={pending.images} />
 					{/* 工具还在跑、正文一个字都没有时也要出现 —— 那正是最需要说话的一刻。 */}
 					{pending.tools.length > 0 || pending.draft ? (
 						<AssistantTurn
@@ -236,6 +239,46 @@ export function MessageList({
  * 两份,改动只落到其中一处,交接那一刻就又跳一下 —— 这类一致性靠人眼盯不住,
  * 只能由构造本身保证。
  */
+/**
+ * 主人那半边的一条消息。**在途副本与落盘真身共用它** —— 样式一致才能在 done
+ * 到达、真身替换上来的那一刻毫无痕迹地交接。
+ *
+ * (从前这里是复制的两份 className,其中一份还漏了个空格、把 `text-[15px]` 粘成
+ * 了 `py-2.75ext-[15px]`,于是真身接手时字号会跳一下。现在由构造本身保证一致。)
+ */
+function UserTurn({
+	animClass,
+	text,
+	images,
+}: {
+	animClass: string;
+	text: string;
+	images?: readonly string[];
+}) {
+	return (
+		<div className={`${animClass}flex flex-col items-end gap-1.5`}>
+			{images?.length ? (
+				<div className="flex max-w-[74%] flex-wrap justify-end gap-1.5">
+					{images.map((url) => (
+						<img
+							key={url}
+							src={url}
+							alt="主人发送的图片"
+							className="max-h-44 rounded-bn-card border border-bn-border object-cover"
+						/>
+					))}
+				</div>
+			) : null}
+			{/* 只有图没有字时不画空气泡 —— 那会是一小块突兀的色块。 */}
+			{text ? (
+				<div className="bn-chat-accent-soft max-w-[74%] whitespace-pre-wrap wrap-break-word rounded-[22px] rounded-br-[7px] px-4.25 py-2.75 text-[15px] leading-relaxed text-bn-text-primary">
+					{text}
+				</div>
+			) : null}
+		</div>
+	);
+}
+
 function AssistantTurn({
 	animClass,
 	tools,

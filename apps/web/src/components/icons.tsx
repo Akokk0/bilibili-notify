@@ -60,6 +60,14 @@ export const Icon = {
 	),
 	plus: stroke(<path d="M12 5v14M5 12h14" />, 2.4),
 	close: stroke(<path d="M6 6l12 12M18 6 6 18" />),
+	// 相框 + 太阳 + 远山 —— 聊天输入框的「加图片」用它。
+	image: stroke(
+		<>
+			<rect x="3" y="4" width="18" height="16" rx="2.5" />
+			<circle cx="8.5" cy="9.5" r="1.6" />
+			<path d="m4 17 4.5-4.5 3.5 3.5 3-2.5L20 18" />
+		</>,
+	),
 	bell: filled(
 		<path d="M12 2a6 6 0 0 0-6 6v3.5l-2 3.5h16l-2-3.5V8a6 6 0 0 0-6-6Zm-2 17a2 2 0 1 0 4 0Z" />,
 	),

@@ -1,8 +1,10 @@
 import type { AiConversationDTO } from "@bilibili-notify/contract";
 import type { GlobalConfig } from "@bilibili-notify/internal";
+import { resolveAIProfile } from "@bilibili-notify/internal/constants";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import {
+	chatImageUrl,
 	conversationQueryKey,
 	conversationsQueryKey,
 	createConversation,
@@ -11,13 +13,14 @@ import {
 	listConversations,
 	retitleConversation,
 	sendChatMessage,
+	uploadChatImage,
 } from "../../services/aiChat";
 import { api } from "../../services/api";
 import { useAiChatStore } from "../../store/aiChat";
 import { useAuthStore } from "../../store/auth";
 import { BiliLoginStatus } from "../../types/auth";
 import { Icon } from "../icons";
-import { Composer } from "./composer";
+import { Composer, type ComposerAttachment, MAX_ATTACHMENTS } from "./composer";
 import { MessageList, preloadChatMarkdown, type ToolChipData } from "./messages";
 import { resolveChatPersona } from "./persona";
 import { ChatSidebar } from "./sidebar";
@@ -119,7 +122,9 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 		queryKey: ["globals"],
 		queryFn: () => api.get<GlobalConfig>("/api/globals"),
 	});
-	const modelName = globalsQuery.data?.defaults.ai.model;
+	// 模型名在当前生效的那个服务商桶里(各家一套配置)。
+	const ai = globalsQuery.data?.defaults.ai;
+	const modelName = ai ? resolveAIProfile(ai).model : undefined;
 	// 名字 / 自称 / 对主人的称呼一律跟「智能女仆」页配的人格走,界面上不写死。
 	const persona = resolveChatPersona(globalsQuery.data?.defaults.ai.persona);
 
@@ -169,7 +174,17 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 		ask: string;
 		draft: string;
 		tools: readonly PendingTool[];
+		/** 这一问带上去的图(显示地址)。在途期间也得看得见,否则像是没发出去。 */
+		images?: readonly string[];
 	} | null>(null);
+
+	/**
+	 * 已经传好、等着随下一句发出去的附件。
+	 *
+	 * 传在**挑图那一刻**而不是发送那一刻:格式不对 / 超过 5MB 能当场报出来,
+	 * 而不是主人打完一整段话点了发送才发现图根本没进去。
+	 */
+	const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
 
 	/**
 	 * 这个会话里**已经由在途副本交接成真身**的消息 id,逐轮累积。
@@ -203,37 +218,45 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 
 	const send = useMutation({
 		mutationFn: async (text: string) => {
+			// 快照:发出去之后 `attachments` 会被清空,而这一跳还在飞。
+			const imageIds = attachments.map((a) => a.id);
 			// 还没有会话就先开一个 —— 主人在空态直接打字发送时走这条路,
 			// 不必先去点「新对话」。
 			const id = activeId ?? (await createConversation()).id;
 			if (id !== activeId) setActiveId(id);
-			return sendChatMessage(id, text, {
-				onDelta: (chunk) => setPending((p) => (p ? { ...p, draft: p.draft + chunk } : p)),
-				// 工具轮不产生正文,所以那几秒原本只有三个跳动的点 —— 跟「模型卡住了」
-				// 长得一模一样。start 就上屏、end 只回填结论:这样「正在查订阅」是在查的
-				// **当时**说的,而不是查完了才补一句。
-				//
-				// 按 id 认人而不是「改最后一条」:一轮里可以同时开好几个工具,end 回来的
-				// 次序不保证跟 start 一致。
-				onTool: (ev) =>
-					setPending((p) => {
-						if (!p) return p; // 已经切走 / 撤掉了,这一拍没人要
-						if (ev.phase === "start") {
-							return { ...p, tools: [...p.tools, { id: ev.id, name: ev.name, args: ev.args }] };
-						}
-						return {
-							...p,
-							tools: p.tools.map((t) => (t.id === ev.id ? { ...t, ok: ev.ok } : t)),
-						};
-					}),
-			});
+			return sendChatMessage(
+				id,
+				text,
+				{
+					onDelta: (chunk) => setPending((p) => (p ? { ...p, draft: p.draft + chunk } : p)),
+					// 工具轮不产生正文,所以那几秒原本只有三个跳动的点 —— 跟「模型卡住了」
+					// 长得一模一样。start 就上屏、end 只回填结论:这样「正在查订阅」是在查的
+					// **当时**说的,而不是查完了才补一句。
+					//
+					// 按 id 认人而不是「改最后一条」:一轮里可以同时开好几个工具,end 回来的
+					// 次序不保证跟 start 一致。
+					onTool: (ev) =>
+						setPending((p) => {
+							if (!p) return p; // 已经切走 / 撤掉了,这一拍没人要
+							if (ev.phase === "start") {
+								return { ...p, tools: [...p.tools, { id: ev.id, name: ev.name, args: ev.args }] };
+							}
+							return {
+								...p,
+								tools: p.tools.map((t) => (t.id === ev.id ? { ...t, ok: ev.ok } : t)),
+							};
+						}),
+				},
+				imageIds,
+			);
 		},
 		onMutate: (text: string) => {
 			// 立刻上屏 + 立刻清空输入框。这两件事一起做才自然:消息「离开」了
-			// 输入框,出现在对话里。
+			// 输入框,出现在对话里。图也一样跟着走。
 			setInput("");
 			setError(null);
-			setPending({ ask: text, draft: "", tools: [] });
+			setPending({ ask: text, draft: "", tools: [], images: attachments.map((a) => a.url) });
+			setAttachments([]);
 		},
 		onSuccess: (res, _text) => {
 			const id = res.conversation.id;
@@ -323,8 +346,23 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 
 	const submit = (text?: string) => {
 		const outgoing = resolveOutgoing(text ?? input);
-		if (!outgoing || busy) return;
+		// 只有图、一个字没打也算数 —— 图本身就是问题。
+		if ((!outgoing && attachments.length === 0) || busy) return;
 		send.mutate(outgoing);
+	};
+
+	/** 挑了图就立刻传,传完塞进待发送列表。格式 / 大小不对当场报,不等到点发送。 */
+	const pickFiles = async (files: FileList) => {
+		setError(null);
+		const room = MAX_ATTACHMENTS - attachments.length;
+		for (const file of Array.from(files).slice(0, room)) {
+			try {
+				const id = await uploadChatImage(file);
+				setAttachments((prev) => [...prev, { id, url: chatImageUrl(id) }]);
+			} catch (e) {
+				setError(e instanceof Error ? e.message : String(e));
+			}
+		}
 	};
 
 	/** 玻璃片实际生效的透明度。完全透明优先,压过滑块拉到哪一档。 */
@@ -426,6 +464,9 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 								onChange={setInput}
 								onSubmit={() => submit()}
 								busy={busy}
+								attachments={attachments}
+								onPickFiles={pickFiles}
+								onRemoveAttachment={(id) => setAttachments((p) => p.filter((a) => a.id !== id))}
 								autoFocus
 								aiName={persona.name}
 							/>
@@ -475,6 +516,9 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 								onChange={setInput}
 								onSubmit={() => submit()}
 								busy={busy}
+								attachments={attachments}
+								onPickFiles={pickFiles}
+								onRemoveAttachment={(id) => setAttachments((p) => p.filter((a) => a.id !== id))}
 								autoFocus
 								aiName={persona.name}
 							/>

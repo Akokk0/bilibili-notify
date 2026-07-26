@@ -132,11 +132,57 @@ export const FIELD_LABELS = {
 	// ── AI 连接 ───────────────────────────────────────────────────────────
 	"ai.apiKey": { label: "API Key", section: "ai", secret: true },
 	"ai.baseUrl": { label: "Base URL", section: "ai" },
+	"ai.provider": {
+		label: "服务商",
+		hint: "「开思考」这件事各家写法完全不一样，女仆得知道是哪家才翻译得对。选「自定义」则不发任何服务商专属参数，需要什么请写到下面的额外请求参数里",
+		section: "ai",
+	},
+	"ai.enableThinking": {
+		label: "深度思考",
+		hint: "让模型先想一轮再回答。更慢、更贵，但复杂内容的点评质量会好一截。要是那家网关不认，女仆会自动摘掉参数重试一次，不会报错",
+		section: "ai",
+	},
+	"ai.thinkingLevel": {
+		label: "思考深度",
+		hint: "统一三档，女仆按服务商换算：OpenRouter 是 low/medium/high，DeepSeek 只有 high/max，火山与硅基是 token 预算。换服务商时这个设置不作废",
+		section: "ai",
+	},
+	"ai.extraParams": {
+		label: "额外请求参数",
+		hint: '一段 JSON，原样摊进请求体。适配之外的服务商、或联网搜索这类各家写法不同的能力都写这里，比如 OpenRouter 的 {"plugins":[{"id":"web"}]}。跟女仆自己发的参数撞了以你为准；写错了那一次就当没填。model / messages / tools 是请求骨架，会被挡掉',
+		section: "ai",
+	},
 	"ai.model": { label: "模型 ID", section: "ai" },
 	"ai.temperature": {
 		label: "temperature",
 		hint: "0–2,越高越发散",
 		section: "ai",
+	},
+
+	// ── 图片理解 ──────────────────────────────────────────────────────────
+	// 这个开关是在**声明主模型的能力**，不是在选「把图发给谁」。写成后者的话
+	// （旧文案「主模型直接看图」）会让人以为打开就等于图归主模型看 —— 而下面
+	// 配了视觉模型时它其实完全不生效。
+	"ai.enableVision": {
+		label: "主模型支持看图",
+		hint: "你的主模型自己看得见图吗（gpt-4o、qwen-vl 这类）？看得见就打开，图直接交给它，省一次往返也不掉细节；看不见就别开，改填下面的视觉模型。注意：一旦填了视觉模型，就一律以视觉模型为准，这个开关不再起作用",
+		section: "ai",
+	},
+	"ai.vision.model": {
+		label: "视觉模型 ID",
+		hint: "主模型看不见图时（比如 DeepSeek）填这里，图会先由它转成文字描述再交给主模型。填了它就优先于上面那个开关。留空则不启用",
+		section: "ai",
+	},
+	"ai.vision.baseUrl": {
+		label: "视觉 Base URL",
+		hint: "留空则跟随主模型。只有视觉模型在另一家服务商时才需要单独填",
+		section: "ai",
+	},
+	"ai.vision.apiKey": {
+		label: "视觉 API Key",
+		hint: "留空则跟随主模型",
+		section: "ai",
+		secret: true,
 	},
 	"ai.test.target": {
 		label: "推到哪里",

@@ -1,0 +1,53 @@
+/**
+ * 服务商选择器 —— 标识平铺,点一下就选中。
+ *
+ * 之所以值得占这么大版面(而不是一个下拉框):选错这一项的后果不是「样式不对」,
+ * 而是**思考开关默默不生效**或者**往人家接口上发别家的方言参数**。铺开来选,
+ * 主人一眼就能确认选中的是不是自家那一块。
+ */
+
+import { AI_PROVIDERS, type AIProviderId } from "@bilibili-notify/internal/constants";
+import { PROVIDER_BRANDS, ProviderLogo } from "./provider-logos";
+
+export interface ProviderPickerProps {
+	value: AIProviderId;
+	onChange: (next: AIProviderId) => void;
+}
+
+export function ProviderPicker({ value, onChange }: ProviderPickerProps) {
+	return (
+		<div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+			{AI_PROVIDERS.map((p) => {
+				const active = p.id === value;
+				const brand = PROVIDER_BRANDS[p.id];
+				return (
+					<button
+						type="button"
+						key={p.id}
+						onClick={() => onChange(p.id)}
+						aria-pressed={active}
+						title={p.baseUrlHint}
+						className={`flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 transition ${
+							active
+								? "border-transparent shadow-sm ring-2"
+								: "border-bn-border bg-bn-surface-muted hover:bg-bn-surface-strong"
+						}`}
+						style={
+							active
+								? { backgroundColor: `${brand.color}1a`, boxShadow: `0 0 0 2px ${brand.color}` }
+								: undefined
+						}
+					>
+						<ProviderLogo id={p.id} />
+						<span
+							className={`text-[11.5px] font-semibold ${active ? "" : "text-bn-text-tertiary"}`}
+							style={active ? { color: brand.color } : undefined}
+						>
+							{p.label}
+						</span>
+					</button>
+				);
+			})}
+		</div>
+	);
+}

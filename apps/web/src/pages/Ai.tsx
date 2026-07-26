@@ -2,22 +2,28 @@
  * AI page (智能女仆) — port of `SmartMaidContent` from
  * `.bn-design/variation-ac-plugins.jsx`.
  *
- * Bound to GlobalConfig.defaults.ai. Three GlassBoxes:
- *   1. 模型连接 — apiKey / baseUrl / model / log level
- *   2. 能力开关 — enable + temperature (the design's enableThinking /
- *      enableSearch / enableVision / enableConversation toggles aren't yet
- *      in the canonical AISettings schema, so they're commented at the UI
- *      level until the schema gains them)
- *   3. 人格塑造 — preset + persona{name,addressUser,addressSelf,traits,
+ * Bound to GlobalConfig.defaults.ai. GlassBoxes:
+ *   1. 模型连接 — provider 平铺选择 + apiKey / baseUrl / model / log level
+ *   2. 图片理解 · vision — enableVision / vision.{model,baseUrl,apiKey}。与 1 并排,
+ *      因为它同样在描述「接哪个模型」,只是整块可以不填
+ *   3. 生成参数 — temperature + 深度思考(enableThinking / thinkingLevel / extraParams)。
+ *      思考那半边的可见形态取决于 1 里选的服务商:各家写法不一样,兜底档什么都不发
+ *   4. 人格塑造 — preset + persona{name,addressUser,addressSelf,traits,
  *      catchphrase} + dynamicPrompt + liveSummaryPrompt
  *
  * Saves through PATCH /api/globals { defaults: { ai: ... } }.
  */
 
+import {
+	type AIProviderProfileShape,
+	providerMeta,
+	resolveAIProfile,
+	type ThinkingLevel,
+} from "@bilibili-notify/internal/constants";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Pill } from "../components/atoms";
+import { Pill, Toggle } from "../components/atoms";
 import {
 	Field,
 	LogLevelPicker,
@@ -29,6 +35,7 @@ import {
 } from "../components/forms";
 import { GlassBox } from "../components/glass-box";
 import { Icon } from "../components/icons";
+import { ProviderPicker } from "../components/provider-picker";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { api } from "../services/api";
 import type { AIPersona, AISettings, GlobalConfig, LogLevel } from "../types/globals";
@@ -58,24 +65,44 @@ const fromPickerValue = (v: LogLevelValue | null): AiLogLevel =>
  * - 人格 / 预设:`<Field code="persona.name">` / `code="presets"` → 顶层
  */
 function packIsland(ai: AISettings, levelOverride: AiLogLevel) {
-	const {
-		apiKey,
-		baseUrl,
-		model,
-		temperature,
-		dynamicPrompt,
-		liveSummaryPrompt,
-		persona,
-		presets,
-		enabled,
-	} = ai;
+	const { dynamicPrompt, liveSummaryPrompt, persona, presets, enabled, provider } = ai;
+	// 连接与生成参数住在服务商桶里,但灵动岛的 dot-path 必须与 FIELD_LABELS 的键
+	// 对齐(否则改动列表全落「其他」段、锚点跳转也失效)。所以这里把**当前生效那家**
+	// 的桶摊平回 `ai.*` 命名空间 —— 页面一次只编辑一家,摊平后的 diff 正是主人看到的。
+	const p = resolveAIProfile(ai);
 	return {
-		ai: { apiKey, baseUrl, model, temperature, dynamicPrompt, liveSummaryPrompt },
+		ai: {
+			apiKey: p.apiKey,
+			baseUrl: p.baseUrl,
+			model: p.model,
+			temperature: p.temperature,
+			dynamicPrompt,
+			liveSummaryPrompt,
+			enableVision: p.enableVision,
+			vision: p.vision,
+			provider,
+			enableThinking: p.enableThinking,
+			thinkingLevel: p.thinkingLevel,
+			extraParams: p.extraParams,
+		},
 		persona,
 		presets,
 		enabled,
 		app: { logLevels: { ai: levelOverride === "" ? null : levelOverride } },
 	};
+}
+
+/**
+ * 说明条。本页几乎每条都在解释**为什么某个选项看起来不做事、或者干脆不见了**
+ * —— 兜底档不发方言参数、默认开思考的家关位反而要发东西、DeepSeek 没有视觉模型、
+ * 思考时 temperature 被忽略。不写清楚,主人只会觉得开关坏了或者设置没存上。
+ */
+function FieldNote({ children }: { children: React.ReactNode }) {
+	return (
+		<div className="rounded-lg border border-bn-border-subtle bg-bn-surface-muted px-3 py-2 text-[11.5px] leading-relaxed text-bn-text-secondary">
+			{children}
+		</div>
+	);
 }
 
 export default function Ai() {
@@ -210,11 +237,43 @@ export default function Ai() {
 		);
 	}
 
+	// 选中服务商的能力描述。**设置页上显示什么由它说了算** —— 摆出一个那家根本
+	// 不支持的选项,主人调了没反应,只会以为是保存坏了。
+	const meta = providerMeta(draft.provider);
+	// 当前生效那家的整套配置。桶可能还不存在(刚切到一家没配过的),
+	// resolveAIProfile 兜一套空默认值 —— 表单照常显示空,一编辑即建桶。
+	const profile = resolveAIProfile(draft);
+	// 配了视觉副模型 = 副模型无条件接管,enableVision 与它的地址/密钥两格的
+	// 可交互性都跟着这一个判断走(与 CommentaryGenerator#resolveImages 同源)。
+	const visionSubModelOn = profile.vision.model.trim().length > 0;
+	// 这家开思考时会静默忽略 temperature(DeepSeek 如此)。露着它纯属误导。
+	const temperatureLive = !(meta.temperatureIgnoredWhenThinking && profile.enableThinking);
+
 	function setAi<K extends keyof AISettings>(k: K, v: AISettings[K]): void {
 		setDraft((d) => (d ? { ...d, [k]: v } : d));
 	}
+	/** 改当前那家桶里的一项。桶不存在时按当前显示值(空默认)建出来。 */
+	function setProfile<K extends keyof AIProviderProfileShape>(
+		k: K,
+		v: AIProviderProfileShape[K],
+	): void {
+		setDraft((d) =>
+			d
+				? {
+						...d,
+						providers: {
+							...d.providers,
+							[d.provider]: { ...resolveAIProfile(d), [k]: v },
+						},
+					}
+				: d,
+		);
+	}
 	function setPersona<K extends keyof AIPersona>(k: K, v: AIPersona[K]): void {
 		setDraft((d) => (d ? { ...d, persona: { ...d.persona, [k]: v } } : d));
+	}
+	function setVision(k: "baseUrl" | "apiKey" | "model", v: string): void {
+		setProfile("vision", { ...profile.vision, [k]: v });
 	}
 
 	const presetOptions = [
@@ -248,7 +307,7 @@ export default function Ai() {
 						<div className="flex items-center gap-2 text-[15.5px] font-bold text-bn-text-primary">
 							智能女仆 · {draft.persona.name || "女仆"}
 							<Pill color="#a29bfe" subtle size="sm">
-								{draft.model || "未配置"}
+								{profile.model || "未配置"}
 							</Pill>
 						</div>
 						<div className="mt-1 text-xs text-bn-text-tertiary">
@@ -269,29 +328,32 @@ export default function Ai() {
 			<div className="grid gap-4 lg:grid-cols-2">
 				<GlassBox
 					title="模型连接"
-					subtitle="OpenAI 兼容 API · ai.{baseUrl,apiKey,model}"
+					subtitle="OpenAI 兼容 API · ai.{provider,baseUrl,apiKey,model}"
 					accent="#6c5ce7"
 					icon={<Icon.link size={14} />}
 					badge="connection"
 				>
+					<Field code="ai.provider" full>
+						<ProviderPicker value={draft.provider} onChange={(v) => setAi("provider", v)} />
+					</Field>
 					<Field code="ai.apiKey" required>
-						<TInput
-							value={draft.apiKey ?? ""}
-							onChange={(v) => setAi("apiKey", v || undefined)}
-							secret
-							mono
-						/>
+						<TInput value={profile.apiKey} onChange={(v) => setProfile("apiKey", v)} secret mono />
 					</Field>
 					<Field code="ai.baseUrl" full>
 						<TInput
-							value={draft.baseUrl ?? ""}
-							onChange={(v) => setAi("baseUrl", v || undefined)}
+							value={profile.baseUrl}
+							onChange={(v) => setProfile("baseUrl", v)}
 							mono
 							placeholder="https://api.openai.com/v1"
 						/>
 					</Field>
 					<Field code="ai.model">
-						<TInput value={draft.model} onChange={(v) => setAi("model", v)} mono full={false} />
+						<TInput
+							value={profile.model}
+							onChange={(v) => setProfile("model", v)}
+							mono
+							full={false}
+						/>
 					</Field>
 					<Field code="app.logLevels.ai" full>
 						<LogLevelPicker
@@ -302,25 +364,156 @@ export default function Ai() {
 					</Field>
 				</GlassBox>
 
+				{/* 图片理解。与「模型连接」并排 —— 它同样是在描述「接哪个模型」,
+				    只不过整块可以不填:两条路都不开时,发图会被明确拒绝而不是静默丢掉。 */}
 				<GlassBox
-					title="生成参数"
-					subtitle="temperature"
-					accent="#a29bfe"
-					icon={<Icon.sparkle size={14} />}
-					badge="generation"
+					title="图片理解 · vision"
+					subtitle="两条路二选一 · ai.enableVision / ai.vision.{model,baseUrl,apiKey}"
+					accent="#00b894"
+					icon={<Icon.image size={14} />}
+					badge="vision"
 				>
+					{/* 这家根本没有视觉模型(DeepSeek 官方接口一个都没有)的话,「主模型
+					    支持看图」是个永远为否的问题,整格不摆出来 —— 摆出来只会让人勾了
+					    发现没用。服务端的发图守卫也按同一条能力判断,两边同源。 */}
+					{meta.supportsVision ? (
+						<>
+							{/* 配了视觉模型之后这个开关**完全不生效**(副模型无条件优先)。与其
+							    只写在说明里,不如让它在那一刻就点不动 —— 否则一个能勾上、勾了
+							    却什么也不改变的开关,比没有还糟。 */}
+							<Field code="ai.enableVision">
+								<div className="flex h-7.5 items-center">
+									<Toggle
+										value={profile.enableVision}
+										onChange={(v) => setProfile("enableVision", v)}
+										disabled={visionSubModelOn}
+										ariaLabel="主模型支持看图"
+									/>
+								</div>
+							</Field>
+							{visionSubModelOn ? (
+								<FieldNote>
+									已配视觉模型，图一律先经它转成文字 —— 上面那个开关<strong>暂不生效</strong>。
+									想让主模型自己看图的话，把下面的视觉模型 ID 清空
+								</FieldNote>
+							) : null}
+						</>
+					) : (
+						<FieldNote>
+							{meta.label} 的接口里<strong>没有能看图的模型</strong>
+							，所以「主模型自己看图」这条路走不通。
+							想让女仆看得见图，填下面的视觉模型（可以是别家的）
+						</FieldNote>
+					)}
+					<Field code="ai.vision.model" full>
+						<TInput
+							value={profile.vision.model}
+							onChange={(v) => setVision("model", v)}
+							mono
+							placeholder="留空则不启用，例如 Qwen/Qwen2.5-VL-32B-Instruct"
+						/>
+					</Field>
+					{/* 副模型的地址与密钥只在真配了副模型时才有意义 —— 没填 model 时
+					    这两格根本不参与任何请求,摆着只会让人以为漏填了。 */}
+					{visionSubModelOn ? (
+						<>
+							<Field code="ai.vision.baseUrl" full>
+								<TInput
+									value={profile.vision.baseUrl}
+									onChange={(v) => setVision("baseUrl", v)}
+									mono
+									placeholder="留空则跟随上面主模型的 baseUrl"
+								/>
+							</Field>
+							<Field code="ai.vision.apiKey" full>
+								<TInput
+									value={profile.vision.apiKey}
+									onChange={(v) => setVision("apiKey", v)}
+									secret
+									mono
+									placeholder="留空则跟随上面主模型的 apiKey"
+								/>
+							</Field>
+						</>
+					) : null}
+				</GlassBox>
+			</div>
+
+			{/* 生成参数 —— temperature 与深度思考同属「这一次请求怎么生成」,合成一块。
+			    思考那半边的可见形态取决于上面选的服务商:各家写法不同,兜底档索性不发。 */}
+			<GlassBox
+				title="生成参数"
+				subtitle="temperature / 深度思考 · ai.{temperature,enableThinking,thinkingLevel,extraParams}"
+				accent="#a29bfe"
+				icon={<Icon.sparkle size={14} />}
+				badge="generation"
+			>
+				{/* 这家开思考时会静默忽略 temperature(DeepSeek 明确如此) —— 不报错也不
+				    生效,摆着让人调只会以为设置没存上。收起来并说明原因。 */}
+				{temperatureLive ? (
 					<Field code="ai.temperature">
 						<TNum
-							value={draft.temperature}
-							onChange={(v) => setAi("temperature", v)}
+							value={profile.temperature}
+							onChange={(v) => setProfile("temperature", v)}
 							min={0}
 							max={2}
 							step={0.1}
 							width={100}
 						/>
 					</Field>
-				</GlassBox>
-			</div>
+				) : (
+					<FieldNote>
+						{meta.label} 一开思考就会<strong>忽略 temperature</strong>（连同 top_p 那几个），
+						调了也不生效，所以先收起来。关掉下面的深度思考它就回来
+					</FieldNote>
+				)}
+				{meta.supportsThinking ? (
+					<>
+						<Field code="ai.enableThinking">
+							<div className="flex h-7.5 items-center">
+								<Toggle
+									value={profile.enableThinking}
+									onChange={(v) => setProfile("enableThinking", v)}
+									ariaLabel="深度思考"
+								/>
+							</div>
+						</Field>
+						{profile.enableThinking ? (
+							<Field code="ai.thinkingLevel" full>
+								<Picker<ThinkingLevel>
+									value={profile.thinkingLevel}
+									onChange={(v) => setProfile("thinkingLevel", v)}
+									options={[
+										{ value: "low", label: "低" },
+										{ value: "medium", label: "中" },
+										{ value: "high", label: "高" },
+									]}
+								/>
+							</Field>
+						) : null}
+						{meta.thinkingDefaultsOn && !profile.enableThinking ? (
+							<FieldNote>
+								{meta.label} 的思考模型<strong>默认就是开着</strong>的 ——
+								正因为如此，关掉这个开关女仆会显式告诉它别想那么久，而不是什么都不发
+							</FieldNote>
+						) : null}
+					</>
+				) : (
+					<FieldNote>
+						服务商选了「自定义」，女仆不会自作主张发任何服务商专属参数（发错了几乎必然报错）。
+						需要开思考的话，把那家的写法填到下面的额外请求参数里
+					</FieldNote>
+				)}
+				<Field code="ai.extraParams" full>
+					<TArea
+						value={profile.extraParams}
+						onChange={(v) => setProfile("extraParams", v)}
+						rows={4}
+						mono
+						placeholder={'{"enable_search": true}'}
+					/>
+				</Field>
+			</GlassBox>
 
 			<GlassBox
 				title="人格塑造 · persona"

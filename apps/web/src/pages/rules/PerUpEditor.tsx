@@ -10,6 +10,7 @@
  * at a time — matching the design's "侧栏选 section · 主体只看一项" pattern.
  */
 
+import { resolveAIProfile } from "@bilibili-notify/internal/constants";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Avatar, Toggle } from "../../components/atoms";
@@ -1163,7 +1164,7 @@ function AiOverrideBox({
 					) : null}
 					<Field code="ai.temperature">
 						<TNum
-							value={cur.temperature ?? baseline.temperature}
+							value={cur.temperature ?? resolveAIProfile(baseline).temperature}
 							onChange={(v) => onChange({ ...cur, temperature: v })}
 							min={0}
 							max={2}

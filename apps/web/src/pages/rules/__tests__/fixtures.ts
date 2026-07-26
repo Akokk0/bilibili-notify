@@ -53,11 +53,12 @@ export function makeDefaults(): GlobalDefaults {
 		},
 		ai: {
 			enabled: false,
-			model: "",
-			temperature: 0.7,
 			persona,
 			dynamicPrompt: "",
 			liveSummaryPrompt: "",
+			// 一家都没添加 = 全新配置。连接与生成参数都住在服务商桶里。
+			provider: "custom",
+			providers: {},
 			presets: [],
 		},
 		cardStyle: {
