@@ -1,5 +1,10 @@
 import type { PersonaKey } from "@bilibili-notify/ai";
-import { DEFAULT_AI } from "@bilibili-notify/internal";
+import {
+	AI_PROVIDERS,
+	type AIProviderId,
+	DEFAULT_AI,
+	type ThinkingLevel,
+} from "@bilibili-notify/internal";
 import { Schema } from "koishi";
 
 interface PersonaConfig {
@@ -47,14 +52,32 @@ export interface AIConfig {
 	/** 多轮对话保留的最大历史轮次（每轮=一问一答） */
 	maxHistory?: number;
 
-	/** 开启模型的思考模式（仅 Qwen3 等支持 enable_thinking 的模型有效） */
+	/**
+	 * 服务商。决定「开思考」翻译成哪家的方言 —— 四家四种写法，没有通用解。
+	 * 留空则按 baseURL 自动认；认不出来落 `custom`（不发任何方言参数）。
+	 */
+	provider?: AIProviderId;
+
+	/** 开启模型的深度思考。具体发什么字段由 {@link provider} 决定。 */
 	enableThinking?: boolean;
 
-	/** 开启模型内置的联网搜索（仅 SiliconFlow 等支持 enable_search 的提供商有效） */
-	enableSearch?: boolean;
+	/** 思考深度，统一三档，各家在适配层各自映射。 */
+	thinkingLevel?: ThinkingLevel;
 
-	/** 开启多模态图片理解，动态点评及对话时将图片一并传给模型（需模型支持视觉能力） */
+	/** 主人手写的一段 JSON，原样摊进请求体顶层。方言适配的兜底口。 */
+	extraParams?: string;
+
+	/** 开启多模态图片理解，动态点评及对话时将图片一并传给**主模型**（需主模型支持视觉能力） */
 	enableVision?: boolean;
+
+	/**
+	 * 专门看图的副模型。填了 `model` 即启用，此后图一律先经它转成文字，主模型
+	 * 全程只吃纯文本 —— 为的是 DeepSeek 这类根本没有视觉模型的主力。
+	 * baseURL / apiKey 留空则继承主模型的。
+	 */
+	visionBaseURL?: string;
+	visionApiKey?: string;
+	visionModel?: string;
 }
 
 const PersonaConfigSchema: Schema<PersonaConfig> = Schema.intersect([
@@ -164,23 +187,52 @@ export const AIConfigSchema: Schema<AIConfig> = Schema.intersect([
 					"多轮对话最多帮主人记住几轮呢？（一轮 = 一问一答）记太多女仆会脑袋不够用的 (＞﹏＜)",
 				),
 
+			provider: Schema.union(AI_PROVIDERS.map((p) => Schema.const(p.id).description(p.label)))
+				.default("custom")
+				.description(
+					"你用的是哪家服务商呀？「开思考」这件事各家写法完全不一样（OpenRouter 用 reasoning、火山和 DeepSeek 用 thinking、硅基用 enable_thinking），女仆得知道是哪家才翻译得对哟 (๑•̀ㅂ•́)و✧ 选「自定义」的话女仆不会自作主张发任何参数，需要什么请写到下面的「额外请求参数」里",
+				),
+
 			enableThinking: Schema.boolean()
 				.default(false)
 				.description(
-					"开启模型的深度思考模式～不过要模型支持 enable_thinking 参数才行（比如 Qwen3），不支持的话女仆会自动降级，不会报错的 (๑•̀ㅂ•́)و✧",
+					"开启模型的深度思考模式～女仆会按上面选的服务商发对应的参数。要是那家网关不认，女仆会自动摘掉参数重试一次，不会报错的。两件事要知道：① DeepSeek 和火山的思考模型**默认就是开着**的，关掉这个开关女仆才会显式让它别想那么久；② 部分服务商（如 DeepSeek）思考时会**忽略** temperature，那不是设置没存上哟 (｡･ω･｡)",
 				),
 
-			enableSearch: Schema.boolean()
-				.default(false)
+			thinkingLevel: Schema.union([
+				Schema.const("low" as const).description("低 — 快，够用就行"),
+				Schema.const("medium" as const).description("中 — 默认"),
+				Schema.const("high" as const).description("高 — 慢且贵，留给难题"),
+			])
+				.default("medium")
 				.description(
-					"开启模型自带的联网搜索功能～不过要提供商支持 enable_search 参数才行哦（比如 SiliconFlow）",
+					"想让女仆想多深呢？各家的档位不一样（OpenRouter 是 low/medium/high，DeepSeek 只有 high/max，火山和硅基是 token 预算），女仆会自动换算成那家的说法 (｡･ω･｡)ﾉ♡",
+				),
+
+			extraParams: Schema.string()
+				.role("textarea", { rows: [3, 8] })
+				.default("")
+				.description(
+					'额外请求参数～一段 JSON，女仆会原样摊进请求体里。适配之外的服务商、或者联网搜索这类各家写法不同的功能都写这里，比如 OpenRouter 的 `{"plugins": [{"id": "web"}]}`、硅基流动的 `{"enable_search": true}`。跟女仆自己发的参数撞了以你为准；写错了也不要紧，那一次就当没填（日志里会说一声）。model / messages / tools 这几个是请求的骨架，改了会让对话或工具失灵，女仆会挡掉',
 				),
 
 			enableVision: Schema.boolean()
 				.default(false)
 				.description(
-					"开启多模态图片理解～点评动态或聊天时，女仆会把图片也一起交给模型看看（前提是模型自己要支持视觉能力哟）",
+					"**主模型自己看得见图吗**？这个开关是在回答这个问题，不是在选「把图发给谁」哟。看得见（gpt-4o、qwen-vl 这类）就打开，点评动态或聊天时女仆会把图直接交给它，省一次往返也不掉细节；看不见（比如 DeepSeek）就别开，改填下面的「看图专用模型」。注意：一旦填了看图专用模型，就一律以它为准，这个开关不再起作用 (｡･ω･｡)",
 				),
+
+			visionModel: Schema.string().description(
+				"看图专用模型～有些主力模型压根没有视觉能力（DeepSeek 官方接口里一个视觉模型都没有呢），填上这里之后，图片会先交给它转成文字描述，再把描述交给主模型，主模型全程只看文字就够啦 (๑•̀ㅂ•́)و✧ 留空则不启用，图片按上面那个开关的老规矩走",
+			),
+
+			visionBaseURL: Schema.string().description(
+				"看图专用模型的 API 地址～留空就跟着主模型的用（硅基流动、OpenRouter 这类聚合网关上主模型和视觉模型同一个地址，那就不用填哦）",
+			),
+
+			visionApiKey: Schema.string()
+				.role("secret")
+				.description("看图专用模型的密钥～留空同样跟着主模型的用，只有换了一家服务商才需要单独填"),
 		}),
 		Schema.object({}),
 	]),

@@ -39,15 +39,9 @@ export function aiCommands(this: BilibiliNotifyServerManager): void {
 				.map((e) => e.attrs?.src as string)
 				.filter(Boolean);
 
-			const sessionCtx =
-				session?.platform && session?.channelId
-					? { platform: session.platform, channelId: session.channelId }
-					: undefined;
-
 			try {
-				const { result, pendingActions } = await ai.chat(message, sessionId, imageUrls, sessionCtx);
+				const result = await ai.chat(message, sessionId, imageUrls);
 				await session?.send(result);
-				await ai.flushPendingSubActions(pendingActions);
 			} catch (e) {
 				return `AI 调用失败：${(e as Error).message}`;
 			}

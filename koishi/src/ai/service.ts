@@ -2,8 +2,6 @@ import {
 	type AIScene,
 	CommentaryGenerator,
 	type CommentaryGeneratorConfig,
-	type SessionContext,
-	type SubManagement,
 	type Subscriptions,
 } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
@@ -12,7 +10,6 @@ import type { Context } from "koishi";
 import type { AIConfig } from "../config/ai";
 import type { TargetRegistry } from "../push/target-registry";
 import { makeKoishiServiceContext } from "../runtime/service-context";
-import { buildSubManagement } from "./sub-mgmt";
 
 const SERVICE_NAME = "bilibili-notify-ai";
 
@@ -38,9 +35,18 @@ function toEngineConfig(config: AIConfig): CommentaryGeneratorConfig {
 		liveSummaryPrompt: config.liveSummaryPrompt ?? "",
 		enableConversation: config.enableConversation ?? true,
 		maxHistory: config.maxHistory ?? 10,
+		// 服务商只认主人**明确选过**的那一个。不按 baseURL 猜 —— 猜错就是替主人
+		// 往别家发方言参数(几乎必然 400),而落兜底档最坏只是思考开关不生效。
+		provider: config.provider ?? "custom",
 		enableThinking: config.enableThinking ?? false,
-		enableSearch: config.enableSearch ?? false,
+		thinkingLevel: config.thinkingLevel ?? "medium",
+		extraParams: config.extraParams,
 		enableVision: config.enableVision ?? false,
+		vision: {
+			baseURL: config.visionBaseURL,
+			apiKey: config.visionApiKey,
+			model: config.visionModel,
+		},
 	};
 }
 
@@ -74,14 +80,11 @@ export class BilibiliNotifyAI {
 			api: deps.api,
 			config: toEngineConfig(config),
 		});
-		const subMgmt: SubManagement = buildSubManagement({
-			store: deps.store,
-			registry: deps.registry,
-		});
-		this.engine.setSubManagement({
-			getSubs: () => storeToAiSubs(deps.store),
-			subMgmt,
-		});
+		// 只接**查询**。写订阅的工具已整体下架 —— `bili.chat` 没有权限门,而它的
+		// 上下文里塞满了群友消息、B 站动态正文这类外部可控内容,写能力配上这样的
+		// 输入面等于任意一条群消息都可能改掉主人的订阅表。而且那个能力本来就撑不过
+		// 下一次插件重载(订阅每次都从配置 replaceAll 重建,没有回写通道)。
+		this.engine.setSubscriptionsSource(() => storeToAiSubs(deps.store));
 	}
 
 	start(): void {
@@ -102,21 +105,12 @@ export class BilibiliNotifyAI {
 		return this.engine.comment(content, scene, imageUrls);
 	}
 
-	chat(
-		content: string,
-		sessionId: string,
-		imageUrls?: string[],
-		sessionCtx?: SessionContext,
-	): Promise<{ result: string; pendingActions: Array<() => Promise<void>> }> {
-		return this.engine.chat(content, sessionId, imageUrls, sessionCtx);
+	chat(content: string, sessionId: string, imageUrls?: string[]): Promise<string> {
+		return this.engine.chat(content, sessionId, imageUrls);
 	}
 
 	clearSession(sessionId: string): void {
 		this.engine.clearSession(sessionId);
-	}
-
-	flushPendingSubActions(pendingActions: Array<() => Promise<void>>): Promise<void> {
-		return this.engine.flushPendingSubActions(pendingActions);
 	}
 
 	get sessionCount(): number {
