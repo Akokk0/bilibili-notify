@@ -231,3 +231,36 @@ describe("comment() — 没配视觉副模型(向后兼容,一字不变)", () =>
 		expect(visionCalls()).toHaveLength(0);
 	});
 });
+
+describe("enableVision 必须过服务商能力位这一关", () => {
+	beforeEach(() => {
+		oai.create.mockResolvedValue(msgResp("点评"));
+	});
+
+	it("这家没有视觉模型(DeepSeek)时,enableVision 开着也不把图交给主模型", async () => {
+		// 界面上 DeepSeek 已经不摆这个开关了,但**老配置里残留的 true 仍然读得到**
+		// —— 而藏起开关的同时,主人连关掉它的入口都没有了。所以把关的地方必须在这儿,
+		// 不能只在界面上。往 DeepSeek 发 image_url 的下场是整条点评 400。
+		const gen = makeGen({ provider: "deepseek", enableVision: true });
+		await gen.comment("看图", "dynamic", ["http://img/1.jpg"]);
+
+		const user = mainCall().messages.find((m) => m.role === "user");
+		expect(typeof user?.content).toBe("string");
+	});
+
+	it("这家支持视觉时照旧下挂 —— 不许顺手把能用的人也一起关掉", async () => {
+		const gen = makeGen({ provider: "openrouter", enableVision: true });
+		await gen.comment("看图", "dynamic", ["http://img/1.jpg"]);
+
+		const user = mainCall().messages.find((m) => m.role === "user");
+		expect(Array.isArray(user?.content)).toBe(true);
+	});
+
+	it("兜底档(自定义)当作支持 —— 主人自己接的网关,女仆无从判断,按他说的办", async () => {
+		const gen = makeGen({ provider: "custom", enableVision: true });
+		await gen.comment("看图", "dynamic", ["http://img/1.jpg"]);
+
+		const user = mainCall().messages.find((m) => m.role === "user");
+		expect(Array.isArray(user?.content)).toBe(true);
+	});
+});

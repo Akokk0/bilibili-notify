@@ -1,9 +1,10 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
-import type {
-	AIProviderId,
-	Logger,
-	ServiceContext,
-	ThinkingLevel,
+import {
+	type AIProviderId,
+	type Logger,
+	providerMeta,
+	type ServiceContext,
+	type ThinkingLevel,
 } from "@bilibili-notify/internal";
 import type OpenAI from "openai";
 import { mergeExtraParams, parseExtraParams } from "./extra-params";
@@ -349,6 +350,20 @@ export class CommentaryGenerator implements CommentaryProvider {
 	}
 
 	/**
+	 * 图能不能直接下挂给主模型。
+	 *
+	 * `enableVision` 是主人的**意愿**,还得过服务商能力位这一关:DeepSeek 官方接口
+	 * 里一个视觉模型都没有,往它发 `image_url` 的下场是整条点评 400。
+	 *
+	 * 把关的地方必须在这儿而不是只在界面上 —— 两端都已经不给 DeepSeek 摆这个开关了,
+	 * 但**老配置里残留的 `true` 仍然读得到**,而藏起开关的同时主人连关掉它的入口都
+	 * 没有了。兜底档(自定义)当作支持:主人自己接的网关,女仆无从判断,按他说的办。
+	 */
+	private mainModelCanSeeImages(): boolean {
+		return this.config.enableVision && providerMeta(this.config.provider).supportsVision;
+	}
+
+	/**
 	 * 图片的分流口 —— 这次点评的图到底走哪条路。
 	 *
 	 *   - 配了副模型 → 先转文字拼进正文,主模型收到的是**纯字符串**
@@ -363,7 +378,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 	): Promise<{ content: string; passthrough?: string[] }> {
 		const model = this.visionModel();
 		if (!model || !imageUrls?.length) {
-			return { content, passthrough: this.config.enableVision ? imageUrls : undefined };
+			return { content, passthrough: this.mainModelCanSeeImages() ? imageUrls : undefined };
 		}
 
 		const call = await this.makeVisionCaller();
@@ -532,7 +547,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 					executeTool(name, args, this.api, () => this.getSubs(), vision.ctx),
 			},
 			// 配了副模型就不再把图下挂给主模型 —— 它可能根本不支持多模态。
-			vision.ctx ? undefined : this.config.enableVision ? imageUrls : undefined,
+			vision.ctx ? undefined : this.mainModelCanSeeImages() ? imageUrls : undefined,
 		);
 
 		if (this.config.enableConversation) {
@@ -640,7 +655,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 					executeTool(name, args, this.api, () => this.getSubs(), vision.ctx),
 				onToolEvent: opts?.onToolEvent,
 			},
-			vision.ctx ? undefined : this.config.enableVision ? opts?.imageUrls : undefined,
+			vision.ctx ? undefined : this.mainModelCanSeeImages() ? opts?.imageUrls : undefined,
 			undefined,
 			opts?.onDelta,
 		);
