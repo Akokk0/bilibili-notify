@@ -266,6 +266,24 @@ export const Icon = {
 			<path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
 		</>,
 	),
+	// 太阳:圆盘 + 八道光芒。给「元气少女」那份人格用 —— sparkle 更像「闪一下」,
+	// 这一份要的是一整天都亮着的那种劲。
+	sun: stroke(
+		<>
+			<circle cx="12" cy="12" r="4.2" />
+			<path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22" />
+			<path d="m4.9 4.9 1.7 1.7M17.4 17.4l1.7 1.7M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7" />
+		</>,
+	),
+	// 计算器:机身 + 显示屏 + 两排按键。给「理性女仆」那份 —— 比 list 更直白地说
+	// 「她是来算清楚的」。
+	calculator: stroke(
+		<>
+			<rect x="4.5" y="2.5" width="15" height="19" rx="2.5" />
+			<path d="M8 6.5h8" />
+			<path d="M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 16.5h.01M12 16.5h.01M15.5 16.5h.01" />
+		</>,
+	),
 } as const;
 
 export type IconName = keyof typeof Icon;

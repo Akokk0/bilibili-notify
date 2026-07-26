@@ -137,6 +137,14 @@ export const FIELD_LABELS = {
 		hint: "「开思考」这件事各家写法完全不一样，女仆得知道是哪家才翻译得对。选「自定义」则不发任何服务商专属参数，需要什么请写到下面的额外请求参数里",
 		section: "ai",
 	},
+	// 合成字段,不是 schema 里的东西 —— 灵动岛只认得「摊平后的当前那一家」,
+	// 添加/删除别家在它眼里毫无变化,于是保存条不亮、主人一走就丢。这一行把
+	// 「已添加哪几家」显式喂给它。见 Ai.tsx#packIsland。
+	"ai.providerList": {
+		label: "已添加的服务商",
+		hint: "左栏列着的那几家。删掉一家会连同它存着的密钥一起抹掉",
+		section: "ai",
+	},
 	"ai.enableThinking": {
 		label: "深度思考",
 		hint: "让模型先想一轮再回答。更慢、更贵，但复杂内容的点评质量会好一截。要是那家网关不认，女仆会自动摘掉参数重试一次，不会报错",
@@ -195,6 +203,11 @@ export const FIELD_LABELS = {
 		section: "ai",
 	},
 	"ai.preset": { label: "预设", section: "ai" },
+	"ai.activePreset": {
+		label: "全局人格",
+		hint: "女仆平时用哪一份性格。它只是个指向，换来换去都不会动到「默认」那份的内容",
+		section: "ai",
+	},
 	// AI / Cards hero strip 的「启用」总开关 Toggle 没包 <Field>(Picker 直挂在
 	// GlassBox right 槽),walkTreeDiff 输出 `enabled` 顶层路径。label 取通用
 	// 「启用」,灵动岛上下文已经标 pageLabel("智能女仆" / "卡片样式"),用户

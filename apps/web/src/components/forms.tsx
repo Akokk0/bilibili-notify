@@ -59,6 +59,9 @@ export function Field({ code, label, hint, required, full, children }: FieldProp
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 
+/** 只读态的观感:压暗 + 禁用光标。与 Toggle 的 disabled 同一套语汇。 */
+const DISABLED_FIELD = "disabled:cursor-not-allowed disabled:opacity-60";
+
 const INPUT_BASE =
 	"h-[30px] rounded-md border border-bn-border bg-bn-field px-2.5 text-[12.5px] text-bn-text-primary outline-none focus:border-bn-pink focus:ring-1 focus:ring-bn-pink/30";
 
@@ -70,6 +73,8 @@ export interface TInputProps {
 	secret?: boolean;
 	full?: boolean;
 	type?: string;
+	/** 只读态(内置人格那几份)。禁用而不是隐藏 —— 内容本身仍是主人要看的。 */
+	disabled?: boolean;
 }
 
 export function TInput({
@@ -80,6 +85,7 @@ export function TInput({
 	secret,
 	full = true,
 	type = "text",
+	disabled,
 }: TInputProps) {
 	// secret=true 时使用 <input type="password">,DOM value 不在 devtools 树展示明文,
 	// 也阻止屏幕共享/截图泄漏。
@@ -91,7 +97,8 @@ export function TInput({
 			onChange={(e) => onChange(e.target.value)}
 			placeholder={placeholder}
 			autoComplete={secret ? "new-password" : undefined}
-			className={`${INPUT_BASE} ${mono || secret ? "font-mono" : ""} ${full ? "min-w-0 w-full" : "w-auto"}`}
+			disabled={disabled}
+			className={`${INPUT_BASE} ${mono || secret ? "font-mono" : ""} ${full ? "min-w-0 w-full" : "w-auto"} ${DISABLED_FIELD}`}
 		/>
 	);
 }
@@ -102,16 +109,19 @@ export interface TAreaProps {
 	placeholder?: string;
 	rows?: number;
 	mono?: boolean;
+	/** 只读态,同 {@link TInputProps.disabled}。 */
+	disabled?: boolean;
 }
 
-export function TArea({ value, onChange, placeholder, rows = 3, mono }: TAreaProps) {
+export function TArea({ value, onChange, placeholder, rows = 3, mono, disabled }: TAreaProps) {
 	return (
 		<textarea
 			value={value}
 			onChange={(e) => onChange(e.target.value)}
 			placeholder={placeholder}
 			rows={rows}
-			className={`min-w-0 w-full resize-y rounded-md border border-bn-border bg-bn-field px-2.5 py-2 text-[12.5px] leading-relaxed text-bn-text-primary outline-none focus:border-bn-pink focus:ring-1 focus:ring-bn-pink/30 ${mono ? "font-mono" : ""}`}
+			disabled={disabled}
+			className={`min-w-0 w-full resize-y rounded-md border border-bn-border bg-bn-field px-2.5 py-2 text-[12.5px] leading-relaxed text-bn-text-primary outline-none focus:border-bn-pink focus:ring-1 focus:ring-bn-pink/30 ${mono ? "font-mono" : ""} ${DISABLED_FIELD}`}
 		/>
 	);
 }
@@ -256,6 +266,9 @@ export function Picker<T extends string | number | boolean>({
 						type="button"
 						key={String(o.value)}
 						onClick={() => onChange(o.value)}
+						// 选中态此前只体现在 class 上 —— 读屏软件读不出来,测试也只能去比对
+						// 样式字符串。aria-pressed 让「选的是哪个」成为可查询的事实。
+						aria-pressed={active}
 						className={`rounded px-3 py-1 text-[11.5px] font-semibold transition ${
 							active ? "bg-bn-surface-strong text-bn-pink shadow-sm" : "text-bn-text-tertiary"
 						}`}

@@ -10,14 +10,18 @@ import { AI_PROVIDERS, type AIProviderId } from "@bilibili-notify/internal/const
 import { PROVIDER_BRANDS, ProviderLogo } from "./provider-logos";
 
 export interface ProviderPickerProps {
-	value: AIProviderId;
+	/** 当前选中的那家。`null` = 一个都没选(添加流程里就是这样)。 */
+	value: AIProviderId | null;
 	onChange: (next: AIProviderId) => void;
+	/** 只列这几家。给了就按它过滤 —— 「+ 添加服务商」用来只摆还没添加过的。 */
+	only?: readonly AIProviderId[];
 }
 
-export function ProviderPicker({ value, onChange }: ProviderPickerProps) {
+export function ProviderPicker({ value, onChange, only }: ProviderPickerProps) {
+	const shown = only ? AI_PROVIDERS.filter((p) => only.includes(p.id)) : AI_PROVIDERS;
 	return (
 		<div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-			{AI_PROVIDERS.map((p) => {
+			{shown.map((p) => {
 				const active = p.id === value;
 				const brand = PROVIDER_BRANDS[p.id];
 				return (

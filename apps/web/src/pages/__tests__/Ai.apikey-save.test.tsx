@@ -82,6 +82,8 @@ describe("AI 页 — 只改 apiKey 的保存闭环", () => {
 			</QueryClientProvider>,
 		);
 
+		// 落地页是「全局配置」;连接字段住在「模型配置」那个 Tab。
+		fireEvent.click(await screen.findByRole("tab", { name: /模型配置/ }));
 		// 等 hydrate 完成:apiKey 输入框里是占位。
 		const input = await screen.findByDisplayValue(REDACTED);
 
@@ -118,6 +120,7 @@ describe("AI 页 — 只改 apiKey 的保存闭环", () => {
 			</QueryClientProvider>,
 		);
 
+		fireEvent.click(await screen.findByRole("tab", { name: /模型配置/ }));
 		const input = await screen.findByDisplayValue(REDACTED);
 		fireEvent.change(input, { target: { value: "" } });
 		await act(async () => {
@@ -154,6 +157,7 @@ describe("AI 页 — 只改 apiKey 的保存闭环", () => {
 			</QueryClientProvider>,
 		);
 
+		// 日志等级住在「全局配置」Tab —— 它是落地页,不用切。
 		fireEvent.click(await screen.findByText("跟随全局"));
 		await act(async () => {
 			useDraftStore.getState().current?.onSave();

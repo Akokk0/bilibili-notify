@@ -12,6 +12,7 @@ import { colorFromUid, displayName } from "../pages/up/helpers";
 import type { Subscription } from "../types/domain";
 import { Avatar, Pill } from "./atoms";
 import { Icon } from "./icons";
+import { TabBarShell, TabButton } from "./tab-bar";
 
 /** "__global" = 全局默认;其余 = subscription.id。 */
 export type Scope = "__global" | string;
@@ -56,28 +57,16 @@ export function ScopeTabs({
 	const isGlobal = scope === "__global";
 
 	return (
-		<div className="relative z-30 flex flex-wrap items-center gap-1.5 rounded-[11px] border border-bn-border-subtle bg-bn-surface/70 p-1.5 backdrop-blur-sm">
-			{/* 全局 */}
-			<button
-				type="button"
+		<TabBarShell>
+			{/* 全局。与 AI 页那条 tab 用的是同一个按钮原语 —— 观感只有一处定义,改不散。 */}
+			<TabButton
+				active={isGlobal}
 				onClick={() => onChange("__global")}
-				className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12.5px] font-bold transition ${
-					isGlobal
-						? "text-white shadow-[0_2px_8px_rgba(251,114,153,0.35)]"
-						: "text-bn-text-tertiary hover:text-bn-text-primary"
-				}`}
-				style={isGlobal ? { background: "linear-gradient(135deg,#FB7299,#FF6699)" } : undefined}
+				icon={<Icon.bell size={14} />}
+				code="default"
 			>
-				<Icon.bell size={14} />
 				全局 / 全部 UP
-				<span
-					className={`ml-0.5 rounded px-1.5 py-px font-mono text-[10px] font-semibold ${
-						isGlobal ? "bg-bn-inverse-strong" : "bg-bn-code-bg"
-					}`}
-				>
-					default
-				</span>
-			</button>
+			</TabButton>
 
 			{tabSubs.length > 0 ? <span className="mx-0.5 h-5.5 w-px bg-black/10" /> : null}
 
@@ -218,6 +207,6 @@ export function ScopeTabs({
 					</>
 				)}
 			</div>
-		</div>
+		</TabBarShell>
 	);
 }
