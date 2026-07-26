@@ -208,12 +208,14 @@ const PRESET_GENTLE_MAID = {
 
 export const DEFAULT_AI = {
 	enabled: false,
-	model: "gpt-4o-mini",
-	temperature: 0.7,
 	// 默认 AI 配置 = 首个预设「温柔女仆」:persona 与两个 prompt 都取自 PRESET_GENTLE_MAID。
 	persona: PRESET_GENTLE_MAID.persona,
 	dynamicPrompt: PRESET_GENTLE_MAID.dynamicPrompt,
 	liveSummaryPrompt: PRESET_GENTLE_MAID.liveSummaryPrompt,
+	// 全新安装一家服务商都没添加 —— 设置页左栏是空的,引擎按「还没配齐」停用。
+	// provider 指针先停在兜底档,主人添加第一家时会跟着切过去。
+	provider: "custom",
+	providers: {},
 	presets: [
 		PRESET_GENTLE_MAID,
 		{

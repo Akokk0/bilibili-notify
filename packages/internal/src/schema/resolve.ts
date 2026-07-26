@@ -1,3 +1,4 @@
+import { resolveAIProfile } from "../constants";
 import { type CardLayout, normalizeCardLayout } from "./card-layout";
 import type {
 	AIPersona,
@@ -73,12 +74,15 @@ function merge<T extends object>(base: T, override: Partial<T> | undefined): T {
 }
 
 function resolveAI(globals: AISettings, override: AIOverride | undefined): ResolvedAI {
+	// 连接与生成参数按家分桶存,先取出当前生效的那一套。per-UP override 覆盖的是
+	// **解析后**的值(它只动 temperature 与人格),不关心图来自哪个桶。
+	const profile = resolveAIProfile(globals);
 	const base: ResolvedAI = {
 		enabled: globals.enabled,
-		baseUrl: globals.baseUrl,
-		apiKey: globals.apiKey,
-		model: globals.model,
-		temperature: globals.temperature,
+		baseUrl: profile.baseUrl,
+		apiKey: profile.apiKey,
+		model: profile.model,
+		temperature: profile.temperature,
 		persona: globals.persona,
 		dynamicPrompt: globals.dynamicPrompt,
 		liveSummaryPrompt: globals.liveSummaryPrompt,

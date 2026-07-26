@@ -8,7 +8,7 @@
  *     时的降级重试
  *   - chat():多轮会话历史携带 / enableConversation 关闭即丢弃 / 满载压缩 /
  *     tool-calling 循环 + MAX_ROUNDS 上限
- *   - session 生命周期:TTL 过期计数、stop() 清空、flushPendingSubActions 吞错
+ *   - session 生命周期:TTL 过期计数、stop() 清空
  *
  * 策略:`openai` 是 `await import("openai")` 动态导入 → `vi.mock` 注入 FakeOpenAI;
  * `./tools` 整体 mock 以隔离 tool 循环(不牵连真实 executeTool / api / 订阅);
@@ -63,8 +63,9 @@ function makeConfig(over: Partial<CommentaryGeneratorConfig> = {}): CommentaryGe
 		liveSummaryPrompt: "LIVE_SCENE_PROMPT",
 		enableConversation: true,
 		maxHistory: 5,
+		provider: "custom",
 		enableThinking: false,
-		enableSearch: false,
+		thinkingLevel: "high",
 		enableVision: false,
 		...over,
 	};
@@ -114,7 +115,19 @@ function createParams(n: number): {
 	temperature?: number;
 	tools?: unknown;
 	stream?: boolean;
+	/**
+	 * Python SDK 独有的写法,Node 侧发出去谁也不认。留在这里只为断言它**不再出现**
+	 * —— 曾经思考参数就是被塞进这个字段里,于是从来没有真正生效过。
+	 */
 	extra_body?: Record<string, unknown>;
+	// provider 方言参数一律落在请求体顶层。
+	enable_thinking?: boolean;
+	thinking_budget?: number;
+	thinking?: unknown;
+	reasoning?: unknown;
+	reasoning_effort?: string;
+	top_k?: number;
+	enable_search?: boolean;
 } {
 	const call = oai.create.mock.calls[n];
 	if (!call) throw new Error(`create 未被调用第 ${n} 次`);
@@ -209,16 +222,16 @@ describe("CommentaryGenerator.comment", () => {
 		expect(typeof userMsg?.content).toBe("string");
 	});
 
-	it("enableThinking=true 且首请求抛错 → 降级重试(第二次无 extra_body)", async () => {
-		const { gen } = makeGen({ enableThinking: true });
+	it("enableThinking=true 且首请求抛错 → 降级重试(第二次不带思考参数)", async () => {
+		const { gen } = makeGen({ provider: "siliconflow", enableThinking: true });
 		oai.create
 			.mockRejectedValueOnce(new Error("thinking unsupported"))
 			.mockResolvedValueOnce(msgResp("降级成功"));
 		const out = await gen.comment("x");
 		expect(out).toBe("降级成功");
 		expect(oai.create).toHaveBeenCalledTimes(2);
-		expect(createParams(0).extra_body).toMatchObject({ enable_thinking: true });
-		expect(createParams(1).extra_body).toBeUndefined();
+		expect(createParams(0).enable_thinking).toBe(true);
+		expect(createParams(1).enable_thinking).toBeUndefined();
 	});
 
 	it("enableThinking=false 且请求抛错 → 直接抛出,不重试", async () => {
@@ -226,6 +239,98 @@ describe("CommentaryGenerator.comment", () => {
 		oai.create.mockRejectedValueOnce(new Error("boom"));
 		await expect(gen.comment("x")).rejects.toThrow("boom");
 		expect(oai.create).toHaveBeenCalledTimes(1);
+	});
+
+	describe("provider 方言参数上线", () => {
+		it("落在请求体顶层,而不是 extra_body", async () => {
+			// extra_body 是 Python SDK 的糖(它会摊平);Node 的 openai 包不认识它,
+			// 会原样序列化成一个嵌套字段发出去 —— 没有任何服务商读得懂。
+			const { gen } = makeGen({
+				provider: "siliconflow",
+				enableThinking: true,
+				thinkingLevel: "medium",
+			});
+			oai.create.mockResolvedValueOnce(msgResp("ok"));
+			await gen.comment("x");
+			expect(createParams(0)).toMatchObject({ enable_thinking: true, thinking_budget: 16384 });
+			expect(createParams(0).extra_body).toBeUndefined();
+		});
+
+		it("换一家就换一套写法", async () => {
+			const { gen } = makeGen({
+				provider: "deepseek",
+				enableThinking: true,
+				thinkingLevel: "high",
+			});
+			oai.create.mockResolvedValueOnce(msgResp("ok"));
+			await gen.comment("x");
+			expect(createParams(0)).toMatchObject({
+				thinking: { type: "enabled" },
+				reasoning_effort: "max",
+			});
+			expect(createParams(0).enable_thinking).toBeUndefined();
+		});
+
+		it("兜底档一个方言字段都不发", async () => {
+			const { gen } = makeGen({ provider: "custom", enableThinking: true });
+			oai.create.mockResolvedValueOnce(msgResp("ok"));
+			await gen.comment("x");
+			const p = createParams(0);
+			expect(p.enable_thinking).toBeUndefined();
+			expect(p.thinking).toBeUndefined();
+			expect(p.reasoning).toBeUndefined();
+		});
+	});
+
+	describe("额外请求参数", () => {
+		it("摊进请求体顶层", async () => {
+			const { gen } = makeGen({ provider: "custom", extraParams: '{"top_k": 40}' });
+			oai.create.mockResolvedValueOnce(msgResp("ok"));
+			await gen.comment("x");
+			expect(createParams(0).top_k).toBe(40);
+		});
+
+		it("与内建参数冲突时主人写的赢", async () => {
+			const { gen } = makeGen({
+				provider: "siliconflow",
+				enableThinking: true,
+				thinkingLevel: "low",
+				extraParams: '{"thinking_budget": 999}',
+			});
+			oai.create.mockResolvedValueOnce(msgResp("ok"));
+			await gen.comment("x");
+			expect(createParams(0).thinking_budget).toBe(999);
+			// 没被覆盖的那半仍然生效。
+			expect(createParams(0).enable_thinking).toBe(true);
+		});
+
+		it("覆盖不了 messages —— 覆盖了就是整段对话凭空消失", async () => {
+			const { gen } = makeGen({ provider: "custom", extraParams: '{"messages": []}' });
+			oai.create.mockResolvedValueOnce(msgResp("ok"));
+			await gen.comment("正文在此");
+			expect(createParams(0).messages.length).toBeGreaterThan(0);
+		});
+
+		it("写错 JSON 照常发请求,只是不带额外参数 —— 不让一个填错的框拖垮整条链路", async () => {
+			const { gen } = makeGen({ provider: "custom", extraParams: "{不是 JSON}" });
+			oai.create.mockResolvedValueOnce(msgResp("ok"));
+			await expect(gen.comment("x")).resolves.toBe("ok");
+			expect(oai.create).toHaveBeenCalledTimes(1);
+		});
+
+		it("降级重试时额外参数原样带着 —— 摘掉的只该是女仆自己加的思考参数", async () => {
+			const { gen } = makeGen({
+				provider: "siliconflow",
+				enableThinking: true,
+				extraParams: '{"top_k": 40}',
+			});
+			oai.create
+				.mockRejectedValueOnce(new Error("thinking unsupported"))
+				.mockResolvedValueOnce(msgResp("降级成功"));
+			await gen.comment("x");
+			expect(createParams(1).enable_thinking).toBeUndefined();
+			expect(createParams(1).top_k).toBe(40);
+		});
 	});
 
 	it("AI1:网关返回空 choices → 抛明确错误(非不可读的 TypeError)", async () => {
@@ -283,7 +388,7 @@ describe("CommentaryGenerator.chat — 会话历史", () => {
 		oai.create
 			.mockResolvedValueOnce(toolCallResp("fake_tool", { q: "abc" }))
 			.mockResolvedValueOnce(msgResp("最终回答"));
-		const { result } = await gen.chat("帮我查", "s1");
+		const result = await gen.chat("帮我查", "s1");
 
 		expect(result).toBe("最终回答");
 		expect(toolsMock.executeTool).toHaveBeenCalledTimes(1);
@@ -294,7 +399,7 @@ describe("CommentaryGenerator.chat — 会话历史", () => {
 	it("tool-calling 持续返回工具调用 → MAX_ROUNDS(8)后返回上限提示", async () => {
 		const { gen } = makeGen();
 		oai.create.mockResolvedValue(toolCallResp("fake_tool", {}));
-		const { result } = await gen.chat("死循环工具", "s1");
+		const result = await gen.chat("死循环工具", "s1");
 		expect(result).toBe("（工具调用轮次已达上限）");
 		expect(oai.create).toHaveBeenCalledTimes(8);
 	});
@@ -319,7 +424,7 @@ describe("CommentaryGenerator.chat — 会话历史", () => {
 			],
 		};
 		oai.create.mockResolvedValueOnce(badArgs).mockResolvedValueOnce(msgResp("收尾"));
-		const { result } = await gen.chat("x", "s1");
+		const result = await gen.chat("x", "s1");
 		expect(result).toBe("收尾");
 		// 解析失败时 executeTool 不会被调用(在 JSON.parse 阶段就 catch)
 		expect(toolsMock.executeTool).not.toHaveBeenCalled();
@@ -340,7 +445,7 @@ describe("CommentaryGenerator.chatStateless — 调用方自带历史", () => {
 	it("整段历史原样送进模型,顺序不变", async () => {
 		const { gen } = makeGen({ maxHistory: 5 });
 		oai.create.mockResolvedValueOnce(msgResp("答2"));
-		const { result } = await gen.chatStateless([
+		const result = await gen.chatStateless([
 			{ role: "user", content: "问1" },
 			{ role: "assistant", content: "答1" },
 			{ role: "user", content: "问2" },
@@ -406,7 +511,7 @@ describe("CommentaryGenerator.chatStateless — 调用方自带历史", () => {
 		oai.create
 			.mockResolvedValueOnce(toolCallResp("fake_tool", { q: "abc" }))
 			.mockResolvedValueOnce(msgResp("最终回答"));
-		const { result } = await gen.chatStateless([{ role: "user", content: "帮我查" }]);
+		const result = await gen.chatStateless([{ role: "user", content: "帮我查" }]);
 
 		expect(result).toBe("最终回答");
 		expect(toolsMock.executeTool).toHaveBeenCalledTimes(1);
@@ -537,7 +642,7 @@ describe("CommentaryGenerator.chatStatelessStream — 真流式", () => {
 		);
 
 		const seen: string[] = [];
-		const { result } = await gen.chatStatelessStream([{ role: "user", content: "在吗" }], {
+		const result = await gen.chatStatelessStream([{ role: "user", content: "在吗" }], {
 			onDelta: (t) => seen.push(t),
 		});
 
@@ -578,7 +683,7 @@ describe("CommentaryGenerator.chatStatelessStream — 真流式", () => {
 			)
 			.mockResolvedValueOnce(streamOf([textChunk("查到了")]));
 
-		const { result } = await gen.chatStatelessStream([{ role: "user", content: "帮我查" }], {
+		const result = await gen.chatStatelessStream([{ role: "user", content: "帮我查" }], {
 			onDelta: () => {},
 		});
 
@@ -610,7 +715,7 @@ describe("CommentaryGenerator.chatStatelessStream — 真流式", () => {
 			.mockResolvedValueOnce(msgResp("整段回复"));
 
 		const seen: string[] = [];
-		const { result } = await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+		const result = await gen.chatStatelessStream([{ role: "user", content: "x" }], {
 			onDelta: (t) => seen.push(t),
 		});
 		expect(result).toBe("整段回复");
@@ -672,7 +777,7 @@ describe("CommentaryGenerator.chatStatelessStream — 真流式", () => {
 		oai.create
 			.mockRejectedValueOnce(httpErr(500, "500 Internal Server Error"))
 			.mockResolvedValueOnce(msgResp("整段回复"));
-		const { result } = await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+		const result = await gen.chatStatelessStream([{ role: "user", content: "x" }], {
 			onDelta: () => {},
 		});
 		expect(result).toBe("整段回复");
@@ -815,7 +920,7 @@ describe("CommentaryGenerator.chatStatelessStream — 工具调用痕迹", () =>
 		toolsMock.executeTool.mockRejectedValueOnce(new Error("B 站超时"));
 
 		const seen: Ev[] = [];
-		const { result } = await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+		const result = await gen.chatStatelessStream([{ role: "user", content: "x" }], {
 			onDelta: () => {},
 			onToolEvent: (e) => seen.push(e as Ev),
 		});
@@ -867,7 +972,7 @@ describe("CommentaryGenerator.chatStatelessStream — 工具调用痕迹", () =>
 	it("不传 onToolEvent 照常跑 —— 它是可选的旁听席", async () => {
 		const { gen } = makeGen();
 		toolThenText("fake_tool", {});
-		const { result } = await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+		const result = await gen.chatStatelessStream([{ role: "user", content: "x" }], {
 			onDelta: () => {},
 		});
 		expect(result).toBe("查到了");
@@ -969,19 +1074,6 @@ describe("CommentaryGenerator — session 生命周期", () => {
 		expect(gen.sessionCount).toBe(2);
 		gen.clearSession("sa");
 		expect(gen.sessionCount).toBe(1);
-	});
-
-	it("flushPendingSubActions 顺序执行并吞掉单个失败", async () => {
-		const { gen } = makeGen();
-		const ok1 = vi.fn(async () => {});
-		const bad = vi.fn(async () => {
-			throw new Error("boom");
-		});
-		const ok2 = vi.fn(async () => {});
-		await expect(gen.flushPendingSubActions([ok1, bad, ok2])).resolves.toBeUndefined();
-		expect(ok1).toHaveBeenCalled();
-		expect(bad).toHaveBeenCalled();
-		expect(ok2).toHaveBeenCalled();
 	});
 });
 

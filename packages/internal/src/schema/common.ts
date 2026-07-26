@@ -3,8 +3,11 @@ import { FEATURE_KEYS } from "../constants";
 import { checkUserRegex } from "../util/regex-safety";
 
 export type { FeatureKey } from "../constants";
+
 // 值与类型的单一来源在 ../constants(零依赖,供前端经 /constants 子路径运行时消费);
 // 这里重导出维持根入口的既有 API 面,后端消费者无感。
+import { AI_PROVIDER_IDS, THINKING_LEVELS } from "../constants";
+
 export { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../constants";
 
 /** blockRegex/whitelistRegex 的单元素校验:保存期即拦非法 / 超长 / 疑似 ReDoS 正则。 */
@@ -176,16 +179,90 @@ export const AIPersonaSchema = z.object({
 });
 export type AIPersona = z.infer<typeof AIPersonaSchema>;
 
+/**
+ * **一家服务商的整套配置。**
+ *
+ * 每家各存一份(见 {@link AISettingsSchema} 的 `providers`) —— 换家不必把 key
+ * 重敲一遍,也不会出现「地址还是上一家的、模型名已经换了」这种半截状态。
+ *
+ * 全部字段带默认值:设置页新添一家时只塞一个 `{}` 即可,余下由 schema 补齐。
+ */
+export const AIProviderProfileSchema = z.object({
+	apiKey: z.string().default(""),
+	baseUrl: z.string().default(""),
+	model: z.string().default(""),
+	/** chat.completions 的 temperature(0–2)。 */
+	temperature: z.number().min(0).max(2).default(0.7),
+	/**
+	 * 开启模型的深度思考。具体发什么字段由**这个桶属于哪家**决定 ——
+	 * 四家四种写法,没有通用解(见 `@bilibili-notify/ai#buildProviderParams`)。
+	 *
+	 * 注意:这个开关在修好 `extra_body` 那个 bug 之前**从未真正生效过**,
+	 * 所以对老配置而言它是「第一次开始花钱」,别顺手改默认值。
+	 */
+	enableThinking: z.boolean().default(false),
+	/**
+	 * 思考深度,统一三档。等级枚举派(OpenRouter / DeepSeek)与 token 预算派
+	 * (火山 / 硅基)各自映射 —— 统一档位是为了让这个设置在换家时不作废。
+	 */
+	thinkingLevel: z.enum(THINKING_LEVELS).default("medium"),
+	/**
+	 * 主人手写的一段 JSON,原样摊进**请求体顶层**。方言适配的兜底口:适配之外的
+	 * 服务商、以及联网搜索这种分裂到没法统一的能力(OpenRouter 填 `plugins`、
+	 * 硅基填 `enable_search`)都走这里。
+	 *
+	 * 这里只存字符串、不在 schema 里校验 JSON —— 设置页保存到一半的半截 JSON
+	 * 不该让整份配置存不下去。真正的解析与危险键过滤在
+	 * `@bilibili-notify/ai#parseExtraParams`,写错只影响这一次请求。
+	 */
+	extraParams: z.string().default(""),
+	/**
+	 * 把图**直接下挂给主模型**。它声明的是「这家的主模型自己看不看得见图」,
+	 * 不是「把图发给谁」 —— 所以按家存:gpt-4o 是,DeepSeek 永远否。
+	 *
+	 * 与下面的 {@link vision} 是两条独立的路:配了副模型就走副模型(它优先),
+	 * 两条都没开时发图会被明确拒绝,而不是静默丢掉。
+	 */
+	enableVision: z.boolean().default(false),
+	/**
+	 * 专门看图的副模型。填了 `model` 即启用:此后动态里的图先经它转成文字,
+	 * 主模型全程只吃纯文本。
+	 *
+	 * 为的是 DeepSeek 这类**根本没有视觉模型**的主力(官方 API 里一个都没有),
+	 * 所以副模型必然可能在另一家 —— baseUrl / apiKey 才要单独开口。两者留空
+	 * 则继承同桶主模型的。默认全空 = 不启用。
+	 */
+	vision: z
+		.object({
+			baseUrl: z.string().default(""),
+			apiKey: z.string().default(""),
+			model: z.string().default(""),
+		})
+		.default({ baseUrl: "", apiKey: "", model: "" }),
+});
+export type AIProviderProfile = z.infer<typeof AIProviderProfileSchema>;
+
 /** AI 总配置（在 GlobalConfig.defaults.ai 出现）。 */
-export const AISettingsSchema = z.object({
+const AISettingsObjectSchema = z.object({
 	enabled: z.boolean(),
-	baseUrl: z.string().optional(),
-	apiKey: z.string().optional(),
-	model: z.string(),
-	temperature: z.number().min(0).max(2),
 	persona: AIPersonaSchema,
 	dynamicPrompt: z.string(),
 	liveSummaryPrompt: z.string(),
+	/**
+	 * 当前用哪家。**只认主人明确选过的那一个,绝不按 baseUrl 猜** —— 猜错就是
+	 * 替主人往别家发方言参数(几乎必然 400),而主人选了「自定义」却被地址悄悄
+	 * 改回去的话,怎么改都改不掉。
+	 */
+	provider: z.enum(AI_PROVIDER_IDS).default("custom"),
+	/**
+	 * 各家各一套配置。**稀疏** —— 键存在 = 主人添加过这家,不存在 = 还没添加。
+	 * 设置页左栏据此只列已添加的那几块;若改成五键恒在,一打开就会列出五家,
+	 * 与「点添加才出现」的交互直接冲突。
+	 *
+	 * {@link provider} 指向的桶**可能不存在**(比如刚被删掉),取值一律经
+	 * {@link resolveAIProfile},它会兜一套空默认值回来。
+	 */
+	providers: z.partialRecord(z.enum(AI_PROVIDER_IDS), AIProviderProfileSchema).default({}),
 	/** 内置 preset 模板列表；per-UP overrides.ai.preset 可选 'inherit' | 'custom' | 任意 preset.id */
 	presets: z.array(
 		z.object({
@@ -197,6 +274,45 @@ export const AISettingsSchema = z.object({
 		}),
 	),
 });
+
+/** 上一版的扁平连接字段。读老配置时整份搬进 `providers.custom`。 */
+const LEGACY_FLAT_KEYS = [
+	"apiKey",
+	"baseUrl",
+	"model",
+	"temperature",
+	"enableThinking",
+	"thinkingLevel",
+	"extraParams",
+	"enableVision",
+	"vision",
+] as const;
+
+/**
+ * 老配置迁移:一套扁平的连接字段 → `providers.custom`,并选中 `custom`。
+ *
+ * 落 `custom` 而不是按 baseUrl 认出那一家,是刻意的:兜底档不发任何方言参数,
+ * 等价于分家这套东西上线之前的行为 —— **升级零行为变化**,也不必替主人猜。
+ * 想用上思考功能的主人,自己去设置页添加那一家。
+ *
+ * 判据是「有没有 `providers` 键」而不是「有没有 apiKey」:后者会把一份还没填过
+ * key 的新配置也当成老配置,平白造出一个空的 custom 桶,左栏就凭空多一块。
+ */
+export const AISettingsSchema = z.preprocess((raw) => {
+	if (raw === null || typeof raw !== "object") return raw;
+	const o = raw as Record<string, unknown>;
+	if (o.providers !== undefined) return o;
+
+	const legacy: Record<string, unknown> = {};
+	const rest: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(o)) {
+		if ((LEGACY_FLAT_KEYS as readonly string[]).includes(k)) legacy[k] = v;
+		else rest[k] = v;
+	}
+	// 一个字段都没有的话不造桶 —— 那是一份全新配置,左栏该是空的。
+	if (Object.keys(legacy).length === 0) return { ...rest, providers: {} };
+	return { ...rest, provider: "custom", providers: { custom: legacy } };
+}, AISettingsObjectSchema);
 export type AISettings = z.infer<typeof AISettingsSchema>;
 
 const CardStyleObjectSchema = z.object({

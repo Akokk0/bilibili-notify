@@ -1,15 +1,23 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
-import type { Logger, ServiceContext } from "@bilibili-notify/internal";
+import type {
+	AIProviderId,
+	Logger,
+	ServiceContext,
+	ThinkingLevel,
+} from "@bilibili-notify/internal";
 import type OpenAI from "openai";
+import { mergeExtraParams, parseExtraParams } from "./extra-params";
 import type { PersonaKey } from "./persona-presets";
 import { buildSystemPrompt } from "./persona-presets";
+import { buildProviderParams } from "./providers";
 import {
+	DESCRIBE_IMAGE_TOOL,
 	executeTool,
-	type SessionContext,
-	type SubManagement,
 	type Subscriptions,
 	TOOL_DEFINITIONS,
+	type VisionToolContext,
 } from "./tools";
+import { describeImages, renderImageDescriptions, type VisionCaller } from "./vision";
 
 /** 起标题的硬超时。它只是个装饰,不值得让主人为它等到聊天那档 120s。 */
 const TITLE_TIMEOUT_MS = 20_000;
@@ -20,6 +28,12 @@ const TITLE_PROMPT = [
 	"读完下面这轮对话,用中文起一个概括主题的短标题。",
 	"要求:4 到 12 个字;只输出标题本身;不要引号、书名号、句号,也不要「标题:」之类的前缀;不要解释。",
 ].join("\n");
+
+/**
+ * 视觉副模型的单张硬超时。**刻意远小于主请求的 120s** —— 看图只是点评前的一道
+ * 配菜,不该让推送热路径的最坏延迟直接翻倍。超时那张按没看成算,点评照出。
+ */
+const VISION_TIMEOUT_MS = 60_000;
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 const SESSION_SWEEP_INTERVAL_MS = 10 * 60 * 1000; // 10 min — 清扫过期且不再被访问的 session
@@ -88,14 +102,50 @@ export interface CommentaryGeneratorConfig {
 	/** 多轮对话保留的最大历史轮次（每轮=一问一答） */
 	maxHistory: number;
 
-	/** 开启模型的思考模式（仅 Qwen3 等支持 enable_thinking 的模型有效） */
+	/**
+	 * 服务商。决定「开思考」翻译成哪家的方言 —— 四家四种写法,没有通用解
+	 * (见 `./providers`)。`custom` 是兜底,不发任何方言参数,只认 {@link extraParams}。
+	 */
+	provider: AIProviderId;
+
+	/** 开启模型的深度思考。具体发什么字段由 {@link provider} 决定。 */
 	enableThinking: boolean;
 
-	/** 开启模型内置的联网搜索（仅 SiliconFlow 等支持 enable_search 的提供商有效） */
-	enableSearch: boolean;
+	/**
+	 * 思考深度,统一三档。等级枚举派(OpenRouter / DeepSeek)与 token 预算派
+	 * (火山 / 硅基)各自映射,主人换 provider 时这个设置不作废。
+	 */
+	thinkingLevel: ThinkingLevel;
 
-	/** 开启多模态图片理解（需模型支持视觉能力） */
+	/**
+	 * 主人手写的一段 JSON,原样摊进**请求体顶层**。方言适配的兜底口:适配之外的
+	 * 服务商、以及联网搜索这种分裂到没法统一的能力都走这里。写错不会拖垮请求,
+	 * 只是这一次不带它(并记一条日志)。
+	 */
+	extraParams?: string;
+
+	/**
+	 * 开启多模态图片理解:把图**直接下挂给主模型**（需主模型自己支持视觉能力）。
+	 *
+	 * 配了 {@link vision} 之后这个开关就不再起作用 —— 副模型全权接管。留着它
+	 * 纯粹是为了向后兼容:koishi 上已经有人把它开着在用,他们的主模型本来就
+	 * 支持视觉,不该因为这次改动被迫去填一遍副模型配置。
+	 */
 	enableVision: boolean;
+
+	/**
+	 * 专门看图的副模型。填了 `model` 即启用,此后图一律先经它转成文字,主模型
+	 * 全程只吃纯文本。
+	 *
+	 * 为的是 DeepSeek 这类**根本没有视觉模型**的主力:官方 API 里一个都没有,
+	 * 所以副模型必然可能在另一家 —— `baseURL` / `apiKey` 才要单独开口。两者
+	 * 留空则继承主模型的,聚合网关(硅基流动 / OpenRouter)上只需填一个模型名。
+	 */
+	vision?: {
+		baseURL?: string;
+		apiKey?: string;
+		model?: string;
+	};
 }
 
 /**
@@ -172,7 +222,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 	private sweepHandle?: { dispose(): void };
 
 	private subsAccessor: (() => Subscriptions | null) | null = null;
-	private subMgmt: SubManagement | null = null;
+	/** 已报过的告警键;去重用,见 {@link warnOnce}。 */
+	private readonly warned = new Set<string>();
 
 	constructor(opts: CommentaryGeneratorOptions) {
 		this.api = opts.api;
@@ -182,12 +233,14 @@ export class CommentaryGenerator implements CommentaryProvider {
 	}
 
 	/**
-	 * 注入订阅查询 / 管理能力。Koishi adapter 在 BilibiliNotifyServerManager 启动后调用。
-	 * 不调用此方法时，chat() 内的订阅相关工具会返回"功能不可用"。
+	 * 注入订阅**查询**能力(adapter 在启动后调用)。不调用时 `list_subscriptions`
+	 * 之类的工具会一口咬定「当前没有订阅」—— 那种答案比不会答更糟,因为它听起来
+	 * 像个事实,所以每个 adapter 都必须接。
+	 *
+	 * 只有查询,没有写入:工具表是只读的(见 tools.ts 的 `executeTool` 文档)。
 	 */
-	setSubManagement(opts: { getSubs: () => Subscriptions | null; subMgmt?: SubManagement }): void {
-		this.subsAccessor = opts.getSubs;
-		this.subMgmt = opts.subMgmt ?? null;
+	setSubscriptionsSource(getSubs: () => Subscriptions | null): void {
+		this.subsAccessor = getSubs;
 	}
 
 	/** 替换运行时配置（adapter 在 koishi config / dashboard 编辑后调用）。 */
@@ -278,15 +331,142 @@ export class CommentaryGenerator implements CommentaryProvider {
 		this.logger.debug(
 			`[comment] scene=${scene ?? "default"}, 内容长度=${content.length}, 图片数=${imageUrls?.length ?? 0}${override ? ", override=yes" : ""}`,
 		);
+		const shaped = await this.resolveImages(content, imageUrls);
 		const result = await this.callAPI(
 			systemPrompt,
-			[{ role: "user", content }],
+			[{ role: "user", content: shaped.content }],
 			undefined,
-			this.config.enableVision ? imageUrls : undefined,
+			shaped.passthrough,
 			override,
 		);
 		this.logger.debug(`[comment] 响应长度=${result.length}`);
 		return result;
+	}
+
+	/** 视觉副模型的模型名;没配 / 只填了空白 = 没启用。 */
+	private visionModel(): string | undefined {
+		return this.config.vision?.model?.trim() || undefined;
+	}
+
+	/**
+	 * 图片的分流口 —— 这次点评的图到底走哪条路。
+	 *
+	 *   - 配了副模型 → 先转文字拼进正文,主模型收到的是**纯字符串**
+	 *   - 没配 → 一字不变地维持现有行为(`enableVision` 说了算)
+	 *
+	 * 副模型全军覆没时 `renderImageDescriptions` 返回空串,正文原样送出 ——
+	 * 不为一张图没看成就丢掉整条点评。
+	 */
+	private async resolveImages(
+		content: string,
+		imageUrls: string[] | undefined,
+	): Promise<{ content: string; passthrough?: string[] }> {
+		const model = this.visionModel();
+		if (!model || !imageUrls?.length) {
+			return { content, passthrough: this.config.enableVision ? imageUrls : undefined };
+		}
+
+		const call = await this.makeVisionCaller();
+		const descriptions = await describeImages(imageUrls, {
+			call,
+			model,
+			// 正文当背景:副模型才分得清眼前这张是梗图、直播截图还是作品图。
+			contextText: content,
+			timeoutMs: VISION_TIMEOUT_MS,
+			onWarn: (msg, reason) => this.warnVisionOnce(msg, reason),
+		});
+
+		const block = renderImageDescriptions(descriptions);
+		const ok = descriptions.filter((d) => d !== null).length;
+		this.logger.debug(`[vision] ${ok}/${imageUrls.length} 张图转成了文字`);
+		// **不**回填 passthrough:主模型可能根本不支持多模态(这功能就是为它做的),
+		// 把图再下挂一份等于让它 400。
+		return { content: block ? `${content}\n\n${block}` : content };
+	}
+
+	/**
+	 * 多轮聊天里的看图装备:要挂哪些工具、给不给 visionCtx、以及告诉主模型「有图」
+	 * 的那句话。
+	 *
+	 * 那句 `note` 不是客套 —— 主模型看不见图,不明说它根本不知道有东西可看,
+	 * 于是永远不会去调 `describe_image`。
+	 */
+	private chatVision(imageUrls: string[] | undefined): {
+		tools: OpenAI.ChatCompletionTool[];
+		ctx?: VisionToolContext;
+		note: string;
+	} {
+		const model = this.visionModel();
+		if (!model || !imageUrls?.length) return { tools: TOOL_DEFINITIONS, note: "" };
+
+		const n = imageUrls.length;
+		return {
+			tools: [...TOOL_DEFINITIONS, DESCRIBE_IMAGE_TOOL],
+			ctx: {
+				images: imageUrls,
+				describe: async (url) => {
+					const call = await this.makeVisionCaller();
+					const [text] = await describeImages([url], {
+						call,
+						model,
+						timeoutMs: VISION_TIMEOUT_MS,
+						onWarn: (msg, reason) => this.warnVisionOnce(msg, reason),
+					});
+					if (text === null) throw new Error("视觉模型没能识别这张图");
+					return text;
+				},
+			},
+			note: `（本条消息附带了 ${n} 张图片。你看不见它们,需要时请用 describe_image 工具按序号 1~${n} 逐张查看。）`,
+		};
+	}
+
+	/**
+	 * 同一件事只报一次。这些告警都长在热路径上(每张图、每轮请求都会重新撞一遍),
+	 * 原样打日志会把日志刷成一片。`key` 相同即视为同一件事。
+	 */
+	private warnOnce(key: string, msg: string): void {
+		if (this.warned.has(key)) return;
+		this.warned.add(key);
+		this.logger.warn(this.sanitizeErr(msg));
+	}
+
+	/** 视觉失败按「失败原因」去重。 */
+	private warnVisionOnce(msg: string, reason: string): void {
+		this.warnOnce(`vision:${reason}`, msg);
+	}
+
+	/**
+	 * 造一个连到副模型的调用口子。client 只建一次,由所有图共用。
+	 *
+	 * `baseURL` / `apiKey` 留空则继承主模型的 —— 聚合网关(硅基流动 / OpenRouter)
+	 * 上主模型与视觉模型同 key 同址,那种情况下只需填一个模型名。
+	 */
+	private async makeVisionCaller(): Promise<VisionCaller> {
+		const cfg = this.config.vision;
+		const baseURL = cfg?.baseURL?.trim() || this.config.baseURL;
+		const apiKey = cfg?.apiKey?.trim() || this.config.apiKey;
+		if (!apiKey) throw new Error("视觉模型 apiKey 未配置(且主模型的也是空的)");
+		if (!baseURL) throw new Error("视觉模型 baseURL 未配置(且主模型的也是空的)");
+
+		const { default: OpenAI } = await import("openai");
+		const client = new OpenAI({ apiKey, baseURL, timeout: VISION_TIMEOUT_MS });
+		return async ({ url, prompt, model }) => {
+			const res = await client.chat.completions.create({
+				model,
+				messages: [
+					{
+						role: "user",
+						content: [
+							{ type: "text", text: prompt },
+							{ type: "image_url", image_url: { url } },
+						],
+					},
+				],
+			});
+			const choice = res.choices?.[0];
+			if (!choice) throw new Error("视觉模型返回空 choices(疑似命中内容审查或上游异常)");
+			return choice.message.content ?? "";
+		};
 	}
 
 	/**
@@ -294,17 +474,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 * 历史满载时自动压缩最旧一半为摘要。
 	 * 供 bili chat 指令使用。
 	 */
-	async chat(
-		content: string,
-		sessionId: string,
-		imageUrls?: string[],
-		sessionCtx?: SessionContext,
-	): Promise<{ result: string; pendingActions: Array<() => Promise<void>> }> {
+	async chat(content: string, sessionId: string, imageUrls?: string[]): Promise<string> {
 		// ②8:排在同 sessionId 上一次 chat 之后再跑(读-改-写历史原子化)。
 		const prior = this.chatChains.get(sessionId) ?? Promise.resolve();
-		const task = prior
-			.catch(() => {})
-			.then(() => this.chatImpl(content, sessionId, imageUrls, sessionCtx));
+		const task = prior.catch(() => {}).then(() => this.chatImpl(content, sessionId, imageUrls));
 		const tail = task.then(
 			() => {},
 			() => {},
@@ -323,8 +496,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		content: string,
 		sessionId: string,
 		imageUrls?: string[],
-		sessionCtx?: SessionContext,
-	): Promise<{ result: string; pendingActions: Array<() => Promise<void>> }> {
+	): Promise<string> {
 		const now = Date.now();
 		const entry = this.sessions.get(sessionId);
 		const isExpired = !entry || now - entry.lastActiveAt >= SESSION_TTL_MS;
@@ -334,6 +506,13 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const history: ConversationMessage[] = isExpired ? [] : [...entry.messages];
 		const prevSummary = isExpired ? undefined : entry.summary;
 
+		// 多轮场景走 tool 而不是管线:群里发完图往往还要追问「左下角那个是什么」,
+		// 一次性描述接不住。代价是主模型得会调工具 —— 但这条路本来就是给「主人
+		// 主动发图并追问」用的,不像点评那样必须无条件可靠。
+		const vision = this.chatVision(imageUrls);
+		// 提示**只发不存**。存进历史的话,下一轮(通常没图)那句「本条消息附带 2 张
+		// 图片,请用 describe_image 查看」还赖在上下文里,而工具这一轮压根没下发 ——
+		// 女仆会照着提示去调一个不存在的工具,或者干脆声称自己看过图。
 		history.push({ role: "user", content });
 
 		const systemPrompt = this.getSystemPrompt(undefined, prevSummary);
@@ -344,25 +523,16 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const maxMessages = this.config.maxHistory * 2;
 		const trimmedHistory = history.slice(-maxMessages);
 
-		const pendingActions: Array<() => Promise<void>> = [];
-
 		const result = await this.callAPI(
 			systemPrompt,
-			trimmedHistory,
+			withVisionNote(trimmedHistory, vision),
 			{
-				tools: TOOL_DEFINITIONS,
+				tools: vision.tools,
 				onToolCall: (name, args) =>
-					executeTool(
-						name,
-						args,
-						this.api,
-						() => this.getSubs(),
-						sessionCtx,
-						this.subMgmt ?? undefined,
-						pendingActions,
-					),
+					executeTool(name, args, this.api, () => this.getSubs(), vision.ctx),
 			},
-			this.config.enableVision ? imageUrls : undefined,
+			// 配了副模型就不再把图下挂给主模型 —— 它可能根本不支持多模态。
+			vision.ctx ? undefined : this.config.enableVision ? imageUrls : undefined,
 		);
 
 		if (this.config.enableConversation) {
@@ -392,7 +562,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		}
 
 		this.logger.debug(`[chat] 响应长度=${result.length}`);
-		return { result, pendingActions };
+		return result;
 	}
 
 	/**
@@ -410,8 +580,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 */
 	async chatStateless(
 		messages: readonly ConversationMessage[],
-		opts?: { sessionCtx?: SessionContext; imageUrls?: string[] },
-	): Promise<{ result: string; pendingActions: Array<() => Promise<void>> }> {
+		opts?: { imageUrls?: string[] },
+	): Promise<string> {
 		return this.chatStatelessImpl(messages, opts);
 	}
 
@@ -430,22 +600,20 @@ export class CommentaryGenerator implements CommentaryProvider {
 			onDelta: (text: string) => void;
 			/** 工具轮的旁听席,见 {@link ToolTraceEvent}。不传就什么都不报。 */
 			onToolEvent?: (ev: ToolTraceEvent) => void;
-			sessionCtx?: SessionContext;
 			imageUrls?: string[];
 		},
-	): Promise<{ result: string; pendingActions: Array<() => Promise<void>> }> {
+	): Promise<string> {
 		return this.chatStatelessImpl(messages, opts);
 	}
 
 	private async chatStatelessImpl(
 		messages: readonly ConversationMessage[],
 		opts?: {
-			sessionCtx?: SessionContext;
 			imageUrls?: string[];
 			onDelta?: (text: string) => void;
 			onToolEvent?: (ev: ToolTraceEvent) => void;
 		},
-	): Promise<{ result: string; pendingActions: Array<() => Promise<void>> }> {
+	): Promise<string> {
 		if (messages.length === 0) throw new Error("对话历史为空");
 
 		// slice 顺带把调用方的数组复制了一份,这一点是必需的而非顺手:callAPI 的
@@ -459,50 +627,32 @@ export class CommentaryGenerator implements CommentaryProvider {
 		});
 		this.logger.debug(`[chat-stateless] 历史=${messages.length} 条,实发=${trimmed.length} 条`);
 
-		const pendingActions: Array<() => Promise<void>> = [];
+		// 与 chatImpl 同样的多轮口径。dashboard 目前还传不了图,所以这条路上
+		// `vision.ctx` 恒为 undefined —— 接在这里是为了图片上传做好之后不必再回来
+		// 补一遍,而不是现在就生效。
+		const vision = this.chatVision(opts?.imageUrls);
 		const result = await this.callAPI(
 			systemPrompt,
-			trimmed,
+			withVisionNote(trimmed, vision),
 			{
-				tools: TOOL_DEFINITIONS,
+				tools: vision.tools,
 				onToolCall: (name, args) =>
-					executeTool(
-						name,
-						args,
-						this.api,
-						() => this.getSubs(),
-						opts?.sessionCtx,
-						this.subMgmt ?? undefined,
-						pendingActions,
-					),
+					executeTool(name, args, this.api, () => this.getSubs(), vision.ctx),
 				onToolEvent: opts?.onToolEvent,
 			},
-			this.config.enableVision ? opts?.imageUrls : undefined,
+			vision.ctx ? undefined : this.config.enableVision ? opts?.imageUrls : undefined,
 			undefined,
 			opts?.onDelta,
 		);
 
 		this.logger.debug(`[chat-stateless] 响应长度=${result.length}`);
-		return { result, pendingActions };
+		return result;
 	}
 
 	/** 清除指定用户的对话历史 */
 	clearSession(sessionId: string): void {
 		this.sessions.delete(sessionId);
 		this.logger.debug(`[session] 清除会话 sessionId=${sessionId}`);
-	}
-
-	/** 执行 chat() 返回的延迟订阅操作（在 AI 回复发送后调用） */
-	async flushPendingSubActions(pendingActions: Array<() => Promise<void>>): Promise<void> {
-		if (!pendingActions.length) return;
-		this.logger.debug(`[deferred] 执行 ${pendingActions.length} 个延迟操作`);
-		for (const action of pendingActions) {
-			try {
-				await action();
-			} catch (e) {
-				this.logger.error(`[deferred] 延迟操作执行失败：${(e as Error).message}`);
-			}
-		}
 	}
 
 	/** 当前活跃（未过期）会话数 */
@@ -608,8 +758,11 @@ export class CommentaryGenerator implements CommentaryProvider {
 
 	private sanitizeErr(e: unknown): string {
 		let msg = e instanceof Error ? e.message : String(e);
-		const key = this.config.apiKey;
-		if (key && key.length >= 6) msg = msg.split(key).join("***");
+		// 两把 key 都要抹:视觉副模型常常在另一家,它的 key 同样会出现在 SDK 的
+		// 错误原文里,而这些错误会经日志 WS 外泄到 dashboard。
+		for (const key of [this.config.apiKey, this.config.vision?.apiKey]) {
+			if (key && key.length >= 6) msg = msg.split(key).join("***");
+		}
 		return msg.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer ***");
 	}
 
@@ -717,22 +870,42 @@ export class CommentaryGenerator implements CommentaryProvider {
 			}
 		}
 
-		/** ChatCompletionCreateParams + SiliconFlow/Qwen3 扩展字段 */
-		type CreateParams = OpenAI.ChatCompletionCreateParamsNonStreaming & {
-			extra_body?: Record<string, unknown>;
-		};
-		const makeParams = (withThinking: boolean, withSearch: boolean): CreateParams => {
-			const extra_body: Record<string, unknown> = {};
-			if (withThinking) extra_body.enable_thinking = true;
-			if (withSearch) extra_body.enable_search = true;
-			return {
-				model,
-				messages: apiMessages,
-				...(temperature !== undefined ? { temperature } : {}),
-				...(toolOptions ? { tools: toolOptions.tools, tool_choice: "auto" } : {}),
-				...(Object.keys(extra_body).length > 0 ? { extra_body } : {}),
-			};
-		};
+		/**
+		 * ChatCompletionCreateParams + provider 方言字段。方言一律落在**请求体顶层**
+		 * —— 曾经它们被塞进 `extra_body`,那是 Python SDK 的糖,Node 的 openai 包
+		 * 会原样序列化成一个谁都不认识的嵌套字段,于是从未真正生效过。
+		 */
+		type CreateParams = OpenAI.ChatCompletionCreateParamsNonStreaming & Record<string, unknown>;
+
+		// 主人手写的那段 JSON 解析一次,两轮(首发 + 降级重试)共用。
+		const extra = parseExtraParams(this.config.extraParams);
+		if (!extra.ok && extra.error) this.warnOnce("extra-params", `[api] ${extra.error}`);
+		if (extra.dropped?.length) {
+			this.warnOnce(
+				`extra-params-dropped:${extra.dropped.join(",")}`,
+				`[api] 额外请求参数里的 ${extra.dropped.join(" / ")} 被忽略了 —— 这些字段是请求的骨架,覆盖它们会让对话或工具静默失灵`,
+			);
+		}
+
+		const thinkingParams = buildProviderParams({
+			provider: this.config.provider,
+			enableThinking: this.config.enableThinking,
+			thinkingLevel: this.config.thinkingLevel,
+		});
+
+		/**
+		 * `withProviderParams=false` 是**降级重试**用的:那时的判断是「这个网关根本
+		 * 不认这套方言」,所以一个方言字段都不发 —— 注意这跟「思考开关拨到关」不是
+		 * 一回事,后者对 DeepSeek 这类默认开思考的家还得显式发一条禁用。
+		 * 主人手写的额外参数两轮都带着:那是他自己写的,不该被女仆悄悄摘掉。
+		 */
+		const makeParams = (withProviderParams: boolean): CreateParams => ({
+			model,
+			messages: apiMessages,
+			...(temperature !== undefined ? { temperature } : {}),
+			...(toolOptions ? { tools: toolOptions.tools, tool_choice: "auto" } : {}),
+			...mergeExtraParams(withProviderParams ? thinkingParams : {}, extra.value),
+		});
 
 		/** 本次调用总共已经吐给调用方多少字 —— 决定了出错时还能不能悄悄重来。 */
 		let emitted = 0;
@@ -752,7 +925,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		 * 静默重来会让那半句凭空变成另一段,比直接报错更难懂。
 		 */
 		const fetchRound = async (): Promise<OpenAI.ChatCompletionMessage> => {
-			const base = makeParams(this.config.enableThinking, this.config.enableSearch);
+			const base = makeParams(true);
 			if (emit) {
 				try {
 					return await this.streamOnce(
@@ -795,12 +968,15 @@ export class CommentaryGenerator implements CommentaryProvider {
 				// :384 OpenAI SDK 错误原文常含 baseURL / Authorization: Bearer
 				// <apikey> 片段;callAPI 的错误会经 engine-error / log WS 外泄到
 				// dashboard。脱敏后再 warn / 抛出。
-				if (this.config.enableThinking && emitted === 0) {
-					this.logger.warn(`[api] thinking 模式不受支持，降级重试: ${this.sanitizeErr(e)}`);
+				// 只要这轮真发了方言参数就值得摘掉重来一次 —— 不限于「开着思考」:
+				// DeepSeek / 火山这类默认开思考的家,连「关」位都要发一条显式禁用,
+				// 那条同样可能被某些兼容网关拒掉。
+				if (Object.keys(thinkingParams).length > 0 && emitted === 0) {
+					this.logger.warn(
+						`[api] 服务商方言参数不受支持，摘掉后重试(主人手写的额外参数保留): ${this.sanitizeErr(e)}`,
+					);
 					try {
-						const res = await client.chat.completions.create(
-							makeParams(false, this.config.enableSearch),
-						);
+						const res = await client.chat.completions.create(makeParams(false));
 						const choice = res.choices?.[0];
 						if (!choice) {
 							throw new Error("AI 网关返回空 choices(疑似命中内容审查或上游异常),无法生成");
@@ -879,6 +1055,24 @@ export class CommentaryGenerator implements CommentaryProvider {
 
 		return "（工具调用轮次已达上限）";
 	}
+}
+
+/**
+ * 把「本条消息有几张图、怎么看」那句提示挂到**最后一条 user 消息**上,返回一份
+ * 新数组 —— 原数组不动,因为那一份是要存进会话历史的。
+ *
+ * 提示只发不存:存下去的话,下一轮(通常没图)它还赖在上下文里,而 describe_image
+ * 那一轮压根没下发,女仆会照着提示去调一个不存在的工具。
+ */
+function withVisionNote(
+	messages: readonly ConversationMessage[],
+	vision: { ctx?: unknown; note: string },
+): ConversationMessage[] {
+	if (!vision.ctx) return [...messages];
+	const last = messages.length - 1;
+	return messages.map((m, i) =>
+		i === last && m.role === "user" ? { ...m, content: `${m.content}\n\n${vision.note}` } : m,
+	);
 }
 
 /**

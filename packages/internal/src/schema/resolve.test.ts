@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { resolveAIProfile } from "../constants";
 import { DEFAULT_CARD_LAYOUT } from "./card-layout";
 import { makeDefaultGlobalConfig } from "./globals";
 import { DEFAULT_MESSAGE_LAYOUT } from "./message-layout";
@@ -19,7 +20,7 @@ describe("resolve()", () => {
 		expect(eff.filters).toEqual(globals.defaults.filters);
 		expect(eff.schedule).toEqual(globals.defaults.schedule);
 		expect(eff.cardStyle).toEqual(globals.defaults.cardStyle);
-		expect(eff.ai.model).toBe(globals.defaults.ai.model);
+		expect(eff.ai.model).toBe(resolveAIProfile(globals.defaults.ai).model);
 		expect(eff.ai.persona).toEqual(globals.defaults.ai.persona);
 	});
 
