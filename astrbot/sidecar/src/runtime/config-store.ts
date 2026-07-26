@@ -649,9 +649,18 @@ function sanitizeAstrBotGlobals(globals: GlobalConfig): { value: GlobalConfig; c
 		delete value.bootstrap;
 		changed = true;
 	}
-	if (value.defaults.ai.apiKey !== undefined) {
-		delete value.defaults.ai.apiKey;
-		changed = true;
+	// AI 密钥住在服务商桶里,每桶两把。抠成空串而非删键 —— 保持 zod parse 后的
+	// 规范键序(引擎的 config-changed diff 是键序敏感的 JSON.stringify 比较)。
+	for (const p of Object.values(value.defaults.ai.providers ?? {})) {
+		if (!p) continue;
+		if (p.apiKey) {
+			p.apiKey = "";
+			changed = true;
+		}
+		if (p.vision?.apiKey) {
+			p.vision.apiKey = "";
+			changed = true;
+		}
 	}
 	return { value, changed };
 }

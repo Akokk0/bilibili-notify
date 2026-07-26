@@ -15,28 +15,25 @@ interface ProfileSource {
 }
 
 /**
- * 把「只读」的工具能力接给女仆 —— 独立端唯一的 `setSubManagement` 调用处。
+ * 把订阅**查询**能力接给女仆 —— 独立端唯一的 `setSubscriptionsSource` 调用处。
  *
- * `CommentaryGenerator` 的工具表是一整套:list_subscriptions / get_user_info /
- * get_live_status 这些只查,subscribe_user / unsubscribe_user /
- * update_subscription 这些真会改订阅。后一类**只在拿到 `subMgmt` 时才可用**,
- * 没有它就统一回「功能不可用」。所以「只读档」不是靠约定,而是靠这里少传一个
- * 字段落实的 —— 也因此它值得单独成一个函数、单独一条测试盯着,而不是散在
- * engines.ts 一千多行里当一句普通接线。
+ * 「只读」如今是**结构性**的:`CommentaryGenerator` 的工具表里根本没有会改订阅
+ * 的工具了(三个写工具已整体下架,见 `packages/ai/src/tools.ts`)。这与从前不同
+ * —— 从前只读是靠这里少传一个 `subMgmt` 字段换来的,那是个一改就破的约定。
  *
- * 反过来说,`getSubs` 是**必须**接的:不接的话连 list_subscriptions 都查不到,
- * 女仆会一口咬定「当前没有订阅」,而主人明明订了十几个 —— 那种答案比不会答
- * 更糟,因为它听起来像个事实。
+ * `getSubs` 是**必须**接的:不接的话连 list_subscriptions 都查不到,女仆会一口
+ * 咬定「当前没有订阅」,而主人明明订了十几个 —— 那种答案比不会答更糟,因为它
+ * 听起来像个事实。
  */
 export function attachReadOnlyTools(
-	engine: { setSubManagement(opts: { getSubs: () => Subscriptions | null }): void },
+	engine: { setSubscriptionsSource(getSubs: () => Subscriptions | null): void },
 	stores: { subscriptionStore: SubsSource; subRuntimeStore: ProfileSource },
 ): void {
-	engine.setSubManagement({
-		// 每次工具调用现取,不是接线那一刻的快照:接线发生在启动时,订阅却是
-		// 运行期随时增删的。
-		getSubs: () => buildAiSubsView(stores.subscriptionStore, stores.subRuntimeStore),
-	});
+	// 每次工具调用现取,不是接线那一刻的快照:接线发生在启动时,订阅却是
+	// 运行期随时增删的。
+	engine.setSubscriptionsSource(() =>
+		buildAiSubsView(stores.subscriptionStore, stores.subRuntimeStore),
+	);
 }
 
 /**

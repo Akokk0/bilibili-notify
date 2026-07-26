@@ -1,11 +1,10 @@
 /**
- * 单元测试 — `attachReadOnlyTools`(独立端把工具能力接给女仆的唯一入口)。
+ * 单元测试 — `attachReadOnlyTools`(独立端把订阅查询能力接给女仆的唯一入口)。
  *
- * 这个模块存在的理由只有一条:**主人选的是只读档。**`CommentaryGenerator`
- * 的工具表里既有 list_subscriptions 这种查询,也有 subscribe_user /
- * unsubscribe_user / update_subscription 这种真会改订阅的;后者只在
- * `setSubManagement` 收到 `subMgmt` 时才可用。所以「只读」不是一句注释,
- * 而是「调用时不带 subMgmt」这一个具体动作 —— 由下面的测试钉住。
+ * 「只读」如今是**结构性**的 —— 工具表里根本没有会改订阅的工具了(见
+ * `packages/ai/src/__tests__/read-only-tools-gate.test.ts` 那道闸)。所以这里
+ * 不再需要盯着「有没有多传一个 subMgmt」,只钉两件事:接线接上了,而且
+ * `getSubs` 是每次现取的。
  *
  * 顺带钉住投影本身:AI 看到的订阅列表得是**人看得懂的名字**和**真实的**
  * 动态/直播开关,不然它答出来的每句话都在描述另一个后台。
@@ -50,26 +49,19 @@ function makeStores(subs: Subscription[], names: Record<string, string> = {}) {
 	};
 }
 
-describe("attachReadOnlyTools — 只读档", () => {
-	it("绝不把 subMgmt 交出去 —— 交了 AI 就能真的加减订阅", () => {
-		const setSubManagement = vi.fn();
-		const stores = makeStores([]);
-		attachReadOnlyTools({ setSubManagement }, stores);
-
-		expect(setSubManagement).toHaveBeenCalledTimes(1);
-		const arg = setSubManagement.mock.calls[0]?.[0] as Record<string, unknown>;
-		expect(arg).toHaveProperty("getSubs");
-		// `undefined` 也不行:引擎读的是 `opts.subMgmt ?? null`,给 undefined 与
-		// 不给等价 —— 但显式写出这条断言,是为了让任何一次「顺手补上 subMgmt」
-		// 的改动都撞红,而不是悄悄放开写权限。
-		expect(arg.subMgmt).toBeUndefined();
+describe("attachReadOnlyTools — 查询接线", () => {
+	it("接上了 —— 不接的话女仆会一口咬定「当前没有订阅」", () => {
+		const setSubscriptionsSource = vi.fn();
+		attachReadOnlyTools({ setSubscriptionsSource }, makeStores([]));
+		expect(setSubscriptionsSource).toHaveBeenCalledTimes(1);
+		expect(typeof setSubscriptionsSource.mock.calls[0]?.[0]).toBe("function");
 	});
 
 	it("getSubs 是每次现取的,不是接线那一刻的快照", () => {
-		const setSubManagement = vi.fn();
+		const setSubscriptionsSource = vi.fn();
 		const subs: Subscription[] = [];
-		attachReadOnlyTools({ setSubManagement }, makeStores(subs));
-		const getSubs = (setSubManagement.mock.calls[0]?.[0] as { getSubs: () => unknown }).getSubs;
+		attachReadOnlyTools({ setSubscriptionsSource }, makeStores(subs));
+		const getSubs = setSubscriptionsSource.mock.calls[0]?.[0] as () => unknown;
 
 		expect(getSubs()).toEqual({});
 		subs.push(makeSub({ uid: "1", name: "小明" }));

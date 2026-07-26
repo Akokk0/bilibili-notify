@@ -48,7 +48,7 @@ import type {
 	SubscriptionOp,
 	SubscriptionOverrides,
 } from "@bilibili-notify/internal";
-import { resolve, resolveCardStyleForKind } from "@bilibili-notify/internal";
+import { resolve, resolveAIProfile, resolveCardStyleForKind } from "@bilibili-notify/internal";
 import {
 	LiveEngine,
 	type LiveEngineConfig,
@@ -280,14 +280,18 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 命名,与 koishi 端的 PersonaConfig 一致)。在这里做一次性翻译,引擎层不感知差异。
 	const buildAiConfig = () => {
 		const a = globals().defaults.ai;
+		// 连接与生成参数按服务商分桶存 —— 取出当前选中那家的那一套。
+		// 指针指向一个还没添加的家时 resolveAIProfile 兜一套空值回来,下方
+		// buildCommentary 的 `!p.apiKey || !p.baseUrl` 就会照既有规矩停用 AI。
+		const p = resolveAIProfile(a);
 		return {
-			apiKey: a.apiKey ?? "",
-			baseURL: a.baseUrl ?? "",
-			model: a.model,
+			apiKey: p.apiKey,
+			baseURL: p.baseUrl,
+			model: p.model,
 			// `temperature` 是 CommentaryGeneratorConfig 的 optional 字段;dashboard 滑块
 			// 改值后,config-changed 路径下方 `commentary.updateConfig(buildAiConfig())` 会把
 			// 新值推到引擎,下次 chat.completions.create 即生效。
-			temperature: a.temperature,
+			temperature: p.temperature,
 			persona: {
 				preset: "custom" as const,
 				name: a.persona.name,
@@ -302,16 +306,25 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			liveSummaryPrompt: a.liveSummaryPrompt,
 			enableConversation: false,
 			maxHistory: 6,
-			enableThinking: false,
-			enableSearch: false,
-			enableVision: false,
+			provider: a.provider,
+			enableThinking: p.enableThinking,
+			thinkingLevel: p.thinkingLevel,
+			extraParams: p.extraParams,
+			// 主模型自己支持视觉时开它,图直接下挂,省一次往返也不掉保真度。
+			// 配了下面的副模型则副模型优先(见 CommentaryGenerator#resolveImages)。
+			enableVision: p.enableVision,
+			vision: {
+				baseURL: p.vision.baseUrl,
+				apiKey: p.vision.apiKey,
+				model: p.vision.model,
+			},
 		};
 	};
 
 	let commentary: CommentaryGenerator | null = null;
 	const buildCommentary = (): CommentaryGenerator | null => {
-		const a = globals().defaults.ai;
-		if (!a.apiKey || !a.baseUrl) return null;
+		const p = resolveAIProfile(globals().defaults.ai);
+		if (!p.apiKey || !p.baseUrl) return null;
 		try {
 			const c = new CommentaryGenerator({
 				serviceCtx: aiCtx,
@@ -775,7 +788,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					// 引擎构造时 ai 字段是 snapshot,新建/置空后必须通过 setAi/setCommentary
 					// 把引用同步过去,否则永远沿用启动时的 null。
 					const a = g.defaults.ai;
-					const needsCommentary = Boolean(a.apiKey && a.baseUrl);
+					// 当前选中那家的连接是否配齐 —— 换家也会走到这里(provider 指针
+					// 本身就在 defaults.ai 里,变了就算 aiChanged)。
+					const ap = resolveAIProfile(a);
+					const needsCommentary = Boolean(ap.apiKey && ap.baseUrl);
 					if (!needsCommentary && commentary) {
 						try {
 							commentary.stop();
@@ -793,7 +809,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					} else if (commentary) {
 						commentary.updateConfig(buildAiConfig());
 						log.info(
-							`[ai] commentary 配置已更新: model=${a.model}, persona.name=${a.persona.name}, traits=${a.persona.traits}`,
+							`[ai] commentary 配置已更新: provider=${a.provider}, model=${ap.model}, persona.name=${a.persona.name}, traits=${a.persona.traits}`,
 						);
 					}
 				}

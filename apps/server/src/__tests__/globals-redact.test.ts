@@ -6,6 +6,13 @@
  *   b) PATCH 收到 apiKey === __BN_REDACTED__ → 删除该字段,store 保留原值
  *      (这是最危险的回归点:写坏会把所有用户的 apiKey 静默覆盖为占位字符串)
  *   c) PATCH 收到正常新 apiKey → 替换为新值
+ *
+ * 走的是 createApp + 真实 store 的**端到端**路径。两个纯函数
+ * (redactGlobals / stripRedactedSecrets)自己的单测在 `routes/__tests__/
+ * globals-redact-fns.test.ts`,那边按「每家一桶、每桶两把」逐一遍历。
+ *
+ * 密钥现在住在 `defaults.ai.providers.<provider>.apiKey` —— 各家一套配置之后
+ * 不再有全局那一把。这里固定用 deepseek 桶做样本。
  */
 
 import { mkdtemp, rm } from "node:fs/promises";
@@ -38,18 +45,20 @@ describe("globals apiKey redact — P0-3", () => {
 		await runtime.configStore.load();
 		// 先写一个真实 apiKey
 		await runtime.configStore.patchGlobals({
-			defaults: { ai: { apiKey: "sk-secret-real-key" } },
+			defaults: { ai: { providers: { deepseek: { apiKey: "sk-secret-real-key" } } } },
 		});
 		const app = createApp(runtime, {});
 
 		const res = await app.request("/api/globals");
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
-			defaults: { ai: { apiKey: string } };
+			defaults: { ai: { providers: Record<string, { apiKey: string }> } };
 		};
-		expect(body.defaults.ai.apiKey).toBe(REDACTED);
+		expect(body.defaults.ai.providers.deepseek?.apiKey).toBe(REDACTED);
 		// 内部 store 仍持真实 key
-		expect(runtime.configStore.getGlobals().defaults.ai.apiKey).toBe("sk-secret-real-key");
+		expect(runtime.configStore.getGlobals().defaults.ai.providers.deepseek?.apiKey).toBe(
+			"sk-secret-real-key",
+		);
 
 		await runtime.dispose();
 	});
@@ -60,9 +69,11 @@ describe("globals apiKey redact — P0-3", () => {
 		const app = createApp(runtime, {});
 
 		const res = await app.request("/api/globals");
-		const body = (await res.json()) as { defaults: { ai: { apiKey?: string } } };
-		// schema default 是 "" 或 undefined,这里宽松断言:不是 REDACTED 占位即可
-		expect(body.defaults.ai.apiKey ?? "").not.toBe(REDACTED);
+		const body = (await res.json()) as {
+			defaults: { ai: { providers: Record<string, { apiKey?: string } | undefined> } };
+		};
+		// 全新配置一家都没添加,连桶都不该有 —— 更谈不上占位。
+		expect(body.defaults.ai.providers).toEqual({});
 
 		await runtime.dispose();
 	});
@@ -71,7 +82,7 @@ describe("globals apiKey redact — P0-3", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		await runtime.configStore.patchGlobals({
-			defaults: { ai: { apiKey: "sk-original-key" } },
+			defaults: { ai: { providers: { deepseek: { apiKey: "sk-original-key" } } } },
 		});
 		const app = createApp(runtime, {});
 
@@ -79,14 +90,15 @@ describe("globals apiKey redact — P0-3", () => {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				defaults: { ai: { apiKey: REDACTED, model: "gpt-4o-mini" } },
+				defaults: { ai: { providers: { deepseek: { apiKey: REDACTED, model: "gpt-4o-mini" } } } },
 			}),
 		});
 		expect(patchRes.status).toBe(200);
 		// store 内 apiKey 必须仍是原值 — 这是 P0-3 最危险的回归点
-		expect(runtime.configStore.getGlobals().defaults.ai.apiKey).toBe("sk-original-key");
-		// 其他字段(model)应正常落地
-		expect(runtime.configStore.getGlobals().defaults.ai.model).toBe("gpt-4o-mini");
+		const ds = () => runtime.configStore.getGlobals().defaults.ai.providers.deepseek;
+		expect(ds()?.apiKey).toBe("sk-original-key");
+		// 同桶其他字段(model)应正常落地
+		expect(ds()?.model).toBe("gpt-4o-mini");
 
 		await runtime.dispose();
 	});
@@ -95,7 +107,7 @@ describe("globals apiKey redact — P0-3", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir));
 		await runtime.configStore.load();
 		await runtime.configStore.patchGlobals({
-			defaults: { ai: { apiKey: "sk-old-key" } },
+			defaults: { ai: { providers: { deepseek: { apiKey: "sk-old-key" } } } },
 		});
 		const app = createApp(runtime, {});
 
@@ -103,11 +115,13 @@ describe("globals apiKey redact — P0-3", () => {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				defaults: { ai: { apiKey: "sk-brand-new-key" } },
+				defaults: { ai: { providers: { deepseek: { apiKey: "sk-brand-new-key" } } } },
 			}),
 		});
 		expect(patchRes.status).toBe(200);
-		expect(runtime.configStore.getGlobals().defaults.ai.apiKey).toBe("sk-brand-new-key");
+		expect(runtime.configStore.getGlobals().defaults.ai.providers.deepseek?.apiKey).toBe(
+			"sk-brand-new-key",
+		);
 
 		await runtime.dispose();
 	});

@@ -155,33 +155,46 @@ async function runEnableCheck(args: EnableCheckArgs): Promise<EnableCheckResult>
 	}
 
 	if (shouldRunAiEnableCheck(args.current, args.patch)) {
-		const apiKey = mergedString(
-			args.current.defaults.ai.apiKey,
-			pluck(args.patch, ["defaults", "ai", "apiKey"]),
-		);
-		const baseUrl = mergedString(
-			args.current.defaults.ai.baseUrl,
-			pluck(args.patch, ["defaults", "ai", "baseUrl"]),
-		);
-		const model = mergedString(
-			args.current.defaults.ai.model,
-			pluck(args.patch, ["defaults", "ai", "model"]),
-		);
-		const r = await checkAiEnable({ apiKey, baseUrl, model });
+		// 探活要打的是**本次保存之后**生效的那家:provider 指针本身可能就在这个
+		// patch 里被换掉了。拿旧指针去取连接字段,会用 A 家的 key 打 B 家的接口。
+		const id = aiProviderAfterPatch(args.current, args.patch);
+		const cur = args.current.defaults.ai.providers[id];
+		const at = (field: string) =>
+			mergedString(
+				cur?.[field as "apiKey" | "baseUrl" | "model"],
+				pluck(args.patch, ["defaults", "ai", "providers", id, field]),
+			);
+		const r = await checkAiEnable({
+			apiKey: at("apiKey"),
+			baseUrl: at("baseUrl"),
+			model: at("model"),
+		});
 		if (!r.ok) return r;
 	}
 
 	return { ok: true };
 }
 
+/** 本次 patch 生效后当前用哪家 —— 指针可能就在这个 patch 里被换掉。 */
+export function aiProviderAfterPatch(
+	current: import("@bilibili-notify/internal").GlobalConfig,
+	patch: Record<string, unknown>,
+): import("@bilibili-notify/internal").AIProviderId {
+	const inPatch = pluck(patch, ["defaults", "ai", "provider"]);
+	return typeof inPatch === "string"
+		? (inPatch as import("@bilibili-notify/internal").AIProviderId)
+		: current.defaults.ai.provider;
+}
+
 /**
- * AI 连接探活(checkAiEnable,会真打一次 chat/completions 请求)是否该跑。仅两种情况:
- *  1. 本次 patch 把连接字段 apiKey / baseUrl / model **改成跟 current 不同的新值**;
- *  2. 本次 patch 把 ai.enabled 从 false 翻成 true(启用动作本身要验)。
+ * AI 连接探活(checkAiEnable,会真打一次 chat/completions 请求)是否该跑。三种情况:
+ *  1. 本次 patch 把当前那家的连接字段 apiKey / baseUrl / model **改成跟 current 不同的新值**;
+ *  2. 本次 patch **换了服务商** —— 换家就是换连接,新那家的 key 还没验过;
+ *  3. 本次 patch 把 ai.enabled 从 false 翻成 true(启用动作本身要验)。
  * 改 persona / prompt / temperature 不触发探活;AI 最终为禁用态时一律不跑。
  *
  * 「值跟 current 相同也不触发」是为兼容前端整段 patch 风格 —— Ai.tsx save mutation
- * 现在把整段 `defaults.ai` 原样送上,只改 persona 时 baseUrl/model 也跟着进 patch,
+ * 把整段 `defaults.ai` 原样送上,只改 persona 时连接字段也跟着进 patch,
  * 仅判断「字段在 patch 里」会误触探活。apiKey 经 stripRedactedSecrets 处理:用户没动
  * 它时已从 patch 剔除,pluck 自然取不到。
  */
@@ -194,15 +207,17 @@ export function shouldRunAiEnableCheck(
 		pluck(patch, ["defaults", "ai", "enabled"]),
 	);
 	if (!aiEnabled) return false;
-	const apiKeyInPatch = pluck(patch, ["defaults", "ai", "apiKey"]);
-	const baseUrlInPatch = pluck(patch, ["defaults", "ai", "baseUrl"]);
-	const modelInPatch = pluck(patch, ["defaults", "ai", "model"]);
-	const touchesConnection =
-		(apiKeyInPatch !== undefined && apiKeyInPatch !== current.defaults.ai.apiKey) ||
-		(baseUrlInPatch !== undefined && baseUrlInPatch !== current.defaults.ai.baseUrl) ||
-		(modelInPatch !== undefined && modelInPatch !== current.defaults.ai.model);
+
+	const id = aiProviderAfterPatch(current, patch);
+	const switchedProvider = id !== current.defaults.ai.provider;
+	const cur = current.defaults.ai.providers[id];
+	const changed = (field: "apiKey" | "baseUrl" | "model") => {
+		const inPatch = pluck(patch, ["defaults", "ai", "providers", id, field]);
+		return inPatch !== undefined && inPatch !== cur?.[field];
+	};
+	const touchesConnection = changed("apiKey") || changed("baseUrl") || changed("model");
 	const enabling = !current.defaults.ai.enabled && aiEnabled;
-	return touchesConnection || enabling;
+	return switchedProvider || touchesConnection || enabling;
 }
 
 // ── Image / puppeteer probe ────────────────────────────────────────────────
@@ -334,40 +349,89 @@ function mergedString(current: string | undefined, patchValue: unknown): string 
 // ── Secret redaction ───────────────────────────────────────────────────────
 
 /**
- * 浅复制 globals,把所有 secret 字段(目前只有 `defaults.ai.apiKey`)替换成
- * REDACTED 占位 — 仅当原值非空。空值保持空,让前端能区分"未配置"与"已配置"。
+ * 浅复制 globals,把所有 secret 字段替换成 REDACTED 占位 — 仅当原值非空。
+ * 空值保持空,让前端能区分"未配置"与"已配置"。
+ *
+ * 密钥数量随「各家一套配置」翻了好几倍:**每个服务商桶里两把** —— 主模型的
+ * `apiKey` 与看图副模型的 `vision.apiKey`。副模型常在另一家(DeepSeek 没有视觉
+ * 模型,跨厂商是常态),所以那把是真正独立的密钥。
+ *
+ * 遍历**实际存在的桶**,不写死家数:注册表加一家时这里自动跟上,而写死的实现
+ * 会静默漏掉新那家 —— 那就是明文 key 直接进浏览器。同理也不补全缺席的桶,
+ * 否则设置页左栏会凭空多出几家。
  */
-function redactGlobals(
+export function redactGlobals(
 	g: import("@bilibili-notify/internal").GlobalConfig,
 ): import("@bilibili-notify/internal").GlobalConfig {
-	const apiKey = g.defaults.ai.apiKey;
-	if (!apiKey) return g;
+	const entries = Object.entries(g.defaults.ai.providers);
+	if (!entries.some(([, p]) => p && (p.apiKey || p.vision.apiKey))) return g;
 	return {
 		...g,
 		defaults: {
 			...g.defaults,
-			ai: { ...g.defaults.ai, apiKey: REDACTED_API_KEY },
+			ai: {
+				...g.defaults.ai,
+				providers: Object.fromEntries(
+					entries.map(([id, p]) => [
+						id,
+						p && {
+							...p,
+							...(p.apiKey ? { apiKey: REDACTED_API_KEY } : {}),
+							...(p.vision.apiKey ? { vision: { ...p.vision, apiKey: REDACTED_API_KEY } } : {}),
+						},
+					]),
+				),
+			},
 		},
 	};
 }
 
 /**
- * Patch body 入口处理:用户没改 apiKey 字段时,前端会把 GET 拿到的 REDACTED 占位原样
+ * Patch body 入口处理:用户没改 key 字段时,前端会把 GET 拿到的 REDACTED 占位原样
  * 回传 — 这里识别并删掉该字段,让 patchGlobals 不会用占位字符串覆盖真实 key。
+ *
+ * 漏掉任何一把的后果都很具体:主人在页面上改一项别的设置、点保存,真 key 就被
+ * 覆盖成 `__BN_REDACTED__` 这个字符串,而且**没有任何报错**,直到下次调用失败。
  */
-function stripRedactedSecrets(patch: Record<string, unknown>): Record<string, unknown> {
+export function stripRedactedSecrets(patch: Record<string, unknown>): Record<string, unknown> {
 	const defaults = patch.defaults;
 	if (!defaults || typeof defaults !== "object") return patch;
 	const ai = (defaults as Record<string, unknown>).ai;
 	if (!ai || typeof ai !== "object") return patch;
-	const aiObj = ai as Record<string, unknown>;
-	if (aiObj.apiKey !== REDACTED_API_KEY) return patch;
-	const { apiKey: _drop, ...aiRest } = aiObj;
+	const providers = (ai as Record<string, unknown>).providers;
+	if (!providers || typeof providers !== "object") return patch;
+
+	let touched = false;
+	const cleaned = Object.fromEntries(
+		Object.entries(providers as Record<string, unknown>).map(([id, raw]) => {
+			if (!raw || typeof raw !== "object") return [id, raw];
+			let bucket = raw as Record<string, unknown>;
+
+			if (bucket.apiKey === REDACTED_API_KEY) {
+				const { apiKey: _drop, ...rest } = bucket;
+				bucket = rest;
+				touched = true;
+			}
+
+			const vision = bucket.vision;
+			if (vision && typeof vision === "object") {
+				const v = vision as Record<string, unknown>;
+				if (v.apiKey === REDACTED_API_KEY) {
+					const { apiKey: _drop, ...vRest } = v;
+					bucket = { ...bucket, vision: vRest };
+					touched = true;
+				}
+			}
+			return [id, bucket];
+		}),
+	);
+
+	if (!touched) return patch;
 	return {
 		...patch,
 		defaults: {
 			...(defaults as Record<string, unknown>),
-			ai: aiRest,
+			ai: { ...(ai as Record<string, unknown>), providers: cleaned },
 		},
 	};
 }

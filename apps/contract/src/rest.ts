@@ -287,6 +287,11 @@ export interface AiChatMessageDTO {
 	ts: string;
 	/** 助手消息专有:答这一句时调过的工具。没调过就整个字段缺席。 */
 	tools?: AiToolTraceDTO[];
+	/**
+	 * 用户消息专有:这一问带的图片资产 id。前端拿它拼
+	 * `/api/ai/assets/<id>` 显示缩略图。没带图就整个字段缺席。
+	 */
+	images?: string[];
 }
 
 /**

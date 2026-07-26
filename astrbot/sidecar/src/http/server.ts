@@ -975,19 +975,36 @@ async function writeEventStream(
 	});
 }
 
+/**
+ * 打码所有 AI 密钥。密钥住在**服务商桶**里(各家一套配置),每桶两把 —— 主模型的
+ * `apiKey` 与看图副模型的 `vision.apiKey`。遍历实际存在的桶,不写死家数:注册表
+ * 加一家时这里自动跟上,而写死的实现会让新那家的 key 明文进浏览器。
+ */
 function redactGlobals(globals: GlobalConfig): GlobalConfig {
 	const value = structuredClone(globals);
-	if (value.defaults.ai.apiKey) {
-		value.defaults.ai.apiKey = REDACTED_SECRET;
+	for (const p of Object.values(value.defaults.ai.providers)) {
+		if (!p) continue;
+		if (p.apiKey) p.apiKey = REDACTED_SECRET;
+		if (p.vision.apiKey) p.vision.apiKey = REDACTED_SECRET;
 	}
 	return value;
 }
 
+/**
+ * 把回传的打码占位剔除(视为「这一项没改」)。漏掉任何一把的后果是:主人改一项
+ * 别的设置、点保存,真 key 就被覆盖成占位串本身,而且**没有任何报错**。
+ */
 function unredactGlobalsPatch(patch: Record<string, unknown>): Record<string, unknown> {
 	const clone = structuredClone(patch);
 	const defaults = isPlainObject(clone.defaults) ? clone.defaults : undefined;
 	const ai = defaults && isPlainObject(defaults.ai) ? defaults.ai : undefined;
-	if (ai?.apiKey === REDACTED_SECRET) delete ai.apiKey;
+	const providers = ai && isPlainObject(ai.providers) ? ai.providers : undefined;
+	for (const bucket of Object.values(providers ?? {})) {
+		if (!isPlainObject(bucket)) continue;
+		if (bucket.apiKey === REDACTED_SECRET) delete bucket.apiKey;
+		const vision = isPlainObject(bucket.vision) ? bucket.vision : undefined;
+		if (vision?.apiKey === REDACTED_SECRET) delete vision.apiKey;
+	}
 	return clone;
 }
 

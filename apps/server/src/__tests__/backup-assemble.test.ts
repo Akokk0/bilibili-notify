@@ -7,10 +7,27 @@ import { assembleFullBackup, openFullBackup } from "../backup/assemble.js";
  * cookie / adapter config)进 PIN 加密块。open 用正确 PIN 把机密并回、重建可落盘
  * 的完整配置 + cookie;错 PIN 抛错。
  */
-function globalsWithApiKey(k: string) {
-	const g = makeDefaultGlobalConfig();
-	g.defaults.ai.apiKey = k;
+function withDeepseekKey(g: ReturnType<typeof makeDefaultGlobalConfig>, k: string) {
+	g.defaults.ai.provider = "deepseek";
+	g.defaults.ai.providers = {
+		deepseek: {
+			apiKey: k,
+			baseUrl: "https://api.deepseek.com",
+			model: "deepseek-v4-pro",
+			temperature: 0.7,
+			enableThinking: false,
+			thinkingLevel: "medium",
+			extraParams: "",
+			enableVision: false,
+			vision: { baseUrl: "", apiKey: "", model: "" },
+		},
+	};
 	return g;
+}
+
+function globalsWithApiKey(k: string) {
+	// 密钥现在住在服务商桶里(各家一套配置);这里固定用 deepseek 桶做样本。
+	return withDeepseekKey(makeDefaultGlobalConfig(), k);
 }
 
 function onebot(id: string, token: string): PushAdapter {
@@ -64,7 +81,7 @@ describe("full backup assemble/open", () => {
 		);
 
 		const { sections, cookies } = openFullBackup(env, "123456");
-		expect(sections.globals?.defaults.ai.apiKey).toBe("sk-1");
+		expect(sections.globals?.defaults.ai.providers.deepseek?.apiKey).toBe("sk-1");
 		expect(sections.adapters?.[0]?.config).toMatchObject({ accessToken: "tok-1" });
 		expect(cookies).toEqual({ cookiesJson: "CJ", refreshToken: "RT" });
 	});

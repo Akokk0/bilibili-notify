@@ -4,6 +4,7 @@ import type {
 	PushTarget,
 	Subscription,
 } from "@bilibili-notify/internal";
+import { applyAiSecrets, collectAiSecrets } from "../config/ai-secrets.js";
 import { type BackupSecretBag, openSecrets, sealSecrets } from "./crypto.js";
 import { type BackupEnvelope, type BackupSections, buildBackup } from "./envelope.js";
 import { redactSecretKeys } from "./sanitize.js";
@@ -37,7 +38,12 @@ export function assembleFullBackup(
 	createdAt: string,
 ): BackupEnvelope {
 	const bag: BackupSecretBag = {};
-	if (input.globals?.defaults?.ai?.apiKey) bag.aiApiKey = input.globals.defaults.ai.apiKey;
+	// 每家两把,全收。`redactSecretKeys` 会按键名把明文段里的 apiKey 一律抹平
+	// (它是深度遍历的,桶里那些自动覆盖到),所以真值只存在于这个加密袋里。
+	if (input.globals) {
+		const aiApiKeys = collectAiSecrets(input.globals);
+		if (Object.keys(aiApiKeys).length > 0) bag.aiApiKeys = aiApiKeys;
+	}
 	if (input.cookies?.cookiesJson) bag.cookiesJson = input.cookies.cookiesJson;
 	if (input.cookies?.refreshToken) bag.refreshToken = input.cookies.refreshToken;
 	if (input.adapters?.length) {
@@ -64,8 +70,14 @@ export function openFullBackup(env: BackupEnvelope, pin: string): OpenedFullBack
 	const bag = openSecrets(pin, env.secrets);
 	const sections: BackupSections = structuredClone(env.sections);
 
-	if (sections.globals && bag.aiApiKey !== undefined) {
-		sections.globals.defaults.ai.apiKey = bag.aiApiKey;
+	if (sections.globals) {
+		// 老备份里是单把 aiApiKey → 落 custom 槽(那份备份的配置本身也是扁平的,
+		// schema 迁移会把它整份放进 providers.custom,两边对得上)。
+		const keys = {
+			...(bag.aiApiKey !== undefined ? { custom: bag.aiApiKey } : {}),
+			...(bag.aiApiKeys ?? {}),
+		};
+		sections.globals = applyAiSecrets(sections.globals, keys);
 	}
 	if (sections.adapters && bag.adapterConfigs) {
 		for (const a of sections.adapters) {

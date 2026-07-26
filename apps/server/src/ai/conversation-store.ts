@@ -41,6 +41,13 @@ export interface StoredMessage {
 	ts: string;
 	/** 助手消息专有,见 {@link StoredToolTrace}。没调过工具就整个字段缺席。 */
 	tools?: StoredToolTrace[];
+	/**
+	 * 用户消息专有:这一问带的图片资产 id(见 `runtime/chat-assets`)。
+	 *
+	 * 存 id 而**不是** base64:会话文件是整份读进内存的,把图塞进去之后,往后
+	 * 每次打开这个会话都要连着几 MB 的 base64 一起扛。没带图就整个字段缺席。
+	 */
+	images?: string[];
 }
 
 /** 追加消息时的入参 —— id / ts 由 store 生成,调用方不许自己编。 */
@@ -48,6 +55,7 @@ export interface NewMessage {
 	role: ConversationRole;
 	content: string;
 	tools?: readonly StoredToolTrace[];
+	images?: readonly string[];
 }
 
 export interface Conversation {
@@ -244,8 +252,9 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 						content: m.content,
 						ts: now,
 						// 没调过工具就**不写**这个字段:绝大多数消息都没调,一条一个空
-						// 数组等于给每个会话文件白加一份噪音。
+						// 数组等于给每个会话文件白加一份噪音。图片同理。
 						...(m.tools?.length ? { tools: [...m.tools] } : {}),
+						...(m.images?.length ? { images: [...m.images] } : {}),
 					});
 				}
 

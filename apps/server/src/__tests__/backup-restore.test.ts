@@ -47,17 +47,43 @@ describe("planImport", () => {
 	it("overwrite applies globals when the backup carries them", () => {
 		const current = currentWith([]);
 		const g = makeDefaultGlobalConfig();
-		g.defaults.ai.apiKey = "sk-imported";
+		g.defaults.ai.provider = "deepseek";
+		g.defaults.ai.providers = {
+			deepseek: {
+				apiKey: "sk-imported",
+				baseUrl: "",
+				model: "",
+				temperature: 0.7,
+				enableThinking: false,
+				thinkingLevel: "medium",
+				extraParams: "",
+				enableVision: false,
+				vision: { baseUrl: "", apiKey: "", model: "" },
+			},
+		};
 
 		const plan = planImport(current, { globals: g }, "overwrite");
 
-		expect(plan.setGlobals?.defaults.ai.apiKey).toBe("sk-imported");
+		expect(plan.setGlobals?.defaults.ai.providers.deepseek?.apiKey).toBe("sk-imported");
 	});
 
 	it("merge never touches globals, even when the backup carries them", () => {
 		const current = currentWith([]);
 		const g = makeDefaultGlobalConfig();
-		g.defaults.ai.apiKey = "sk-imported";
+		g.defaults.ai.provider = "deepseek";
+		g.defaults.ai.providers = {
+			deepseek: {
+				apiKey: "sk-imported",
+				baseUrl: "",
+				model: "",
+				temperature: 0.7,
+				enableThinking: false,
+				thinkingLevel: "medium",
+				extraParams: "",
+				enableVision: false,
+				vision: { baseUrl: "", apiKey: "", model: "" },
+			},
+		};
 
 		const plan = planImport(current, { globals: g }, "merge");
 

@@ -30,7 +30,7 @@ vi.mock("@bilibili-notify/ai", () => ({
 		config: unknown;
 		chat = vi.fn(async () => {
 			if (H.chatError) throw H.chatError;
-			return { result: H.reply, pendingActions: [] };
+			return H.reply;
 		});
 		stop = vi.fn();
 		clearSession = vi.fn();
@@ -46,14 +46,33 @@ beforeEach(() => {
 	H.chatError = null;
 });
 
-function draftAi(over: Partial<GlobalConfig["defaults"]["ai"]> = {}) {
+/**
+ * 造一份「AI 页草稿」。连接字段住在服务商桶里(各家一套配置),`bucket` 用来覆盖
+ * 桶内字段(apiKey / model …),`over` 覆盖 ai 顶层字段。
+ */
+function draftAi(
+	bucket: Partial<GlobalConfig["defaults"]["ai"]["providers"]["deepseek"]> = {},
+	over: Partial<GlobalConfig["defaults"]["ai"]> = {},
+) {
 	const ai = makeDefaultGlobalConfig().defaults.ai;
 	return {
 		...ai,
 		enabled: true,
-		apiKey: "sk-draft",
-		baseUrl: "https://api.example.com/v1",
-		model: "test-model",
+		provider: "deepseek" as const,
+		providers: {
+			deepseek: {
+				apiKey: "sk-draft",
+				baseUrl: "https://api.example.com/v1",
+				model: "test-model",
+				temperature: 0.7,
+				enableThinking: false,
+				thinkingLevel: "medium" as const,
+				extraParams: "",
+				enableVision: false,
+				vision: { baseUrl: "", apiKey: "", model: "" },
+				...bucket,
+			},
+		},
 		persona: { ...ai.persona, name: "恶魔兔", traits: "调皮，会整活" },
 		...over,
 	};
@@ -62,7 +81,22 @@ function draftAi(over: Partial<GlobalConfig["defaults"]["ai"]> = {}) {
 function makeDeps() {
 	const sendToTarget = vi.fn(async () => ({ ok: true, latencyMs: 12 }));
 	const globals = makeDefaultGlobalConfig();
-	globals.defaults.ai.apiKey = "sk-stored";
+	// store 里已存的那把 —— 必须与草稿选中的**同一个桶**,否则会拿 A 家的 key
+	// 去打 B 家的接口。
+	globals.defaults.ai.provider = "deepseek";
+	globals.defaults.ai.providers = {
+		deepseek: {
+			apiKey: "sk-stored",
+			baseUrl: "https://api.example.com/v1",
+			model: "test-model",
+			temperature: 0.7,
+			enableThinking: false,
+			thinkingLevel: "medium",
+			extraParams: "",
+			enableVision: false,
+			vision: { baseUrl: "", apiKey: "", model: "" },
+		},
+	};
 	return {
 		deps: {
 			runtime: {

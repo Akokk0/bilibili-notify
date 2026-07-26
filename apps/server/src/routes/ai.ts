@@ -9,11 +9,24 @@ import type {
 	AiTestPushResponse,
 	AiToolTraceDTO,
 } from "@bilibili-notify/contract";
-import { AISettingsSchema, type NotificationPayload } from "@bilibili-notify/internal";
+import {
+	type AISettings,
+	AISettingsSchema,
+	type NotificationPayload,
+	providerMeta,
+	resolveAIProfile,
+} from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { Conversation, ConversationMeta } from "../ai/conversation-store.js";
+import {
+	deleteChatImage,
+	MAX_CHAT_IMAGES_PER_MESSAGE,
+	readChatImage,
+	readChatImageDataUrl,
+	saveChatImage,
+} from "../runtime/chat-assets.js";
 import { REDACTED_API_KEY } from "./globals.js";
 import type { RouteDeps } from "./types.js";
 
@@ -61,16 +74,14 @@ export function createAiRoute(deps: RouteDeps): Hono {
 		const generator = new CommentaryGenerator({
 			serviceCtx: deps.runtime.serviceCtx,
 			api: engines.api,
-			config: toGeneratorConfig({
-				...ai,
-				apiKey: resolveDraftApiKey(ai.apiKey, deps.store.getGlobals().defaults.ai.apiKey),
-			}),
+			// 草稿里的 apiKey 可能是脱敏占位(页面从未见过真值) —— 用已存的那把补回来。
+			// 两边都要按**同一个桶**取:草稿选的是哪家,就拿那家已存的 key。
+			config: toGeneratorConfig(withStoredApiKey(ai, deps.store.getGlobals().defaults.ai)),
 		});
 
 		let reply: string;
 		try {
-			const r = await generator.chat(message, `test-push-${targetId}`);
-			reply = r.result;
+			reply = await generator.chat(message, `test-push-${targetId}`);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			return c.json<AiTestPushResponse>({ ok: false, latencyMs: 0, err: msg }, 500);
@@ -105,9 +116,53 @@ export function createAiRoute(deps: RouteDeps): Hono {
 	});
 
 	app.delete("/conversations/:id", async (c) => {
-		const removed = await store().remove(c.req.param("id"));
+		const id = c.req.param("id");
+		// 先把图片 id 抄下来再删会话 —— 删完就再也问不出这个会话带过哪些图了,
+		// 那些文件会在磁盘上永远留着,而这种泄漏要很久之后才会被发现。
+		const doomed = await store().get(id);
+		const removed = await store().remove(id);
 		if (!removed) return c.json({ err: "会话不存在或已被删除" }, 404);
+		const doomedImages = (doomed?.messages ?? []).flatMap((m) => m.images ?? []);
+		if (doomedImages.length > 0) {
+			const dataDir = deps.store.bootstrap.dataDir;
+			for (const img of doomedImages) await deleteChatImage(dataDir, img);
+		}
 		return c.json({ ok: true });
+	});
+
+	// ---- 聊天附件 ---------------------------------------------------------
+	//
+	// 与卡片背景图的图廊分开:那边是主人精心挑的长期素材,这边是随手一发、跟着
+	// 会话生灭的。照抄那套「落盘 + id 引用 + 定向读取」的形状,但各用各的目录。
+
+	/** 上传一张附件 → 落盘 `<dataDir>/assets/chat/<id>`,返回 id 供随消息带上。 */
+	app.post("/assets", async (c) => {
+		const body = await c.req.parseBody().catch(() => null);
+		const file = body?.file;
+		if (!(file instanceof File)) return c.json({ ok: false, err: "缺少图片文件" }, 400);
+		try {
+			const bytes = new Uint8Array(await file.arrayBuffer());
+			const id = await saveChatImage(deps.store.bootstrap.dataDir, bytes, file.type);
+			return c.json({ ok: true, id });
+		} catch (err) {
+			return c.json({ ok: false, err: String((err as Error)?.message ?? err) }, 400);
+		}
+	});
+
+	/**
+	 * 附件服务 —— 供页面显示缩略图。
+	 *
+	 * 经 id 正则校验的**定向读取**,绝不 serveStatic 整个 dataDir —— 那里面躺着
+	 * `bn.config.yaml`,带 apiKey 与 cookie。
+	 */
+	app.get("/assets/:id", async (c) => {
+		const res = await readChatImage(deps.store.bootstrap.dataDir, c.req.param("id"));
+		if (!res) return c.json({ err: "图片不存在" }, 404);
+		return c.body(res.bytes as unknown as ArrayBuffer, 200, {
+			"content-type": res.mime,
+			// 内容按 id 寻址,id 是随机的、永不复用 —— 可以放心长缓存。
+			"cache-control": "public, max-age=31536000, immutable",
+		});
 	});
 
 	/**
@@ -195,6 +250,42 @@ export function createAiRoute(deps: RouteDeps): Hono {
 		const conv = await store().get(c.req.param("id"));
 		if (!conv) return c.json({ err: "会话不存在或已被删除" }, 404);
 
+		// 附件。看图有**两条路**:主模型自己看(enableVision),或交给副模型转文字
+		// (vision.model)。两条都没开的话图是彻底没人看的 —— 静默吞掉会让主人看着
+		// 女仆一本正经地聊天却对图只字不提,以为是模型笨,而真正的原因在另一个页面上。
+		const attached = parsed.data.images ?? [];
+		if (attached.length > 0) {
+			const aiCfg = deps.store.getGlobals().defaults.ai;
+			const aiProfile = resolveAIProfile(aiCfg);
+			// 「主模型直接看图」这条路还要那家**真有**视觉模型才算数:DeepSeek 官方
+			// 接口一个都没有,勾着开关也只会把图带到模型那儿才被拒 —— 白烧一次请求,
+			// 报错还来自上游、主人看不懂。这里当场拦下并指路。
+			const mainModelCanSee = aiProfile.enableVision && providerMeta(aiCfg.provider).supportsVision;
+			if (!mainModelCanSee && !aiProfile.vision.model.trim()) {
+				return c.json(
+					{
+						// 这句是**按控件名指路**的,两个引号里的名字必须与设置页
+						// FIELD_LABELS 里的 label 一字不差 —— 指向一个叫不出名字的
+						// 控件,比不给指引更让人打转。
+						err: "女仆还看不见图片。请到「智能女仆」页的「图片理解」:主模型自己看得见图就打开「主模型支持看图」;看不见(比如 DeepSeek)就填上「视觉模型 ID」",
+					},
+					400,
+				);
+			}
+		}
+		// id → data URL。视觉服务商在公网,拉不到主人本地的
+		// `http://localhost:9000/api/ai/assets/xxx` —— 只能把字节本身带过去。
+		// 这与 B 站动态里的图不同,那些本来就是公网可达的,所以那条路直接传 URL。
+		const resolved: Array<{ id: string; url: string }> = [];
+		if (attached.length > 0) {
+			const dataDir = deps.store.bootstrap.dataDir;
+			for (const id of attached) {
+				const url = await readChatImageDataUrl(dataDir, id);
+				// 非法 id(穿越尝试)与盘上已经没了的 id 一律跳过,不让它们混进去。
+				if (url) resolved.push({ id, url });
+			}
+		}
+
 		// 先在内存里拼出「历史 + 这一问」交给女仆,**拿到回复之后才落盘**。
 		// 反过来先写用户消息的话,AI 那一跳一失败,磁盘上就留下一个没人回答的
 		// 问题;主人重开会话看到的是自己在自言自语,还得手动删。
@@ -217,7 +308,8 @@ export function createAiRoute(deps: RouteDeps): Hono {
 
 			let reply: string;
 			try {
-				const r = await commentary.chatStatelessStream(history, {
+				reply = await commentary.chatStatelessStream(history, {
+					imageUrls: resolved.length ? resolved.map((r) => r.url) : undefined,
 					onDelta: (text) => {
 						// 不 await:回调是同步的,这里排一次写就行。真要背压也轮不到
 						// 这一层管 —— SSE 的写在内存里排队,量级是几十 KB。
@@ -236,7 +328,6 @@ export function createAiRoute(deps: RouteDeps): Hono {
 						if (slot) slot.ok = ev.ok;
 					},
 				});
-				reply = r.result;
 			} catch (err) {
 				await sse.writeSSE({
 					event: "error",
@@ -247,7 +338,9 @@ export function createAiRoute(deps: RouteDeps): Hono {
 
 			const traces = slots.filter((s): s is AiToolTraceDTO => s.ok !== undefined);
 			const updated = await store().appendMessages(conv.id, [
-				{ role: "user", content: message },
+				// 存**能用的那些** id,不是主人递进来的原样 —— 存进去的每一个都得
+				// 在盘上真实存在,否则重开会话时那几个格子就是一片碎图。
+				{ role: "user", content: message, images: resolved.map((r) => r.id) },
 				{ role: "assistant", content: reply, tools: traces },
 			]);
 			if (!updated) {
@@ -278,6 +371,11 @@ export function createAiRoute(deps: RouteDeps): Hono {
  */
 const ChatRequestSchema = z.object({
 	message: z.string().min(1).max(4000),
+	/**
+	 * 这一问带的图片资产 id。上限与动态点评那条路一致(4 张)—— 超了在这里就拒,
+	 * 而不是悄悄截断:主人明明挑了 6 张,只有 4 张被看了却什么都不说,比报错更难查。
+	 */
+	images: z.array(z.string()).max(MAX_CHAT_IMAGES_PER_MESSAGE).optional(),
 });
 
 /**
@@ -318,6 +416,33 @@ export function resolveDraftApiKey(draft: string | undefined, stored: string | u
 }
 
 /**
+ * 把草稿里的脱敏占位换回真实密钥。
+ *
+ * 页面永远看不到真 key(GET /globals 一律回占位),所以主人没改过 key 时草稿里带的
+ * 就是那个占位。直接拿去请求必然 401。这里按**草稿选中的那家**去已存配置里取回
+ * 对应桶的真 key —— 取错桶就会用 A 家的 key 打 B 家的接口。
+ *
+ * 主模型与视觉副模型两把各自还原:主人可能只换了其中一把。
+ */
+export function withStoredApiKey(draft: AISettings, stored: AISettings): AISettings {
+	const id = draft.provider;
+	const d = draft.providers[id];
+	if (!d) return draft;
+	const s = stored.providers[id];
+	return {
+		...draft,
+		providers: {
+			...draft.providers,
+			[id]: {
+				...d,
+				apiKey: resolveDraftApiKey(d.apiKey, s?.apiKey),
+				vision: { ...d.vision, apiKey: resolveDraftApiKey(d.vision.apiKey, s?.vision.apiKey) },
+			},
+		},
+	};
+}
+
+/**
  * 草稿 AI 配置 → CommentaryGeneratorConfig。
  *
  * 字段名映射与 `engines.ts` 的 buildAiConfig 一致:schema 用面向用户的 `baseRole` /
@@ -325,11 +450,13 @@ export function resolveDraftApiKey(draft: string | undefined, stored: string | u
  * preset 固定 `custom` —— 页面上的人格字段就是最终人格,不再二次套内置模板。
  */
 export function toGeneratorConfig(ai: z.infer<typeof AISettingsSchema>) {
+	// 连接与生成参数按服务商分桶存 —— 取当前选中那家的那一套。
+	const p = resolveAIProfile(ai);
 	return {
-		apiKey: ai.apiKey ?? "",
-		baseURL: ai.baseUrl ?? "",
-		model: ai.model,
-		temperature: ai.temperature,
+		apiKey: p.apiKey,
+		baseURL: p.baseUrl,
+		model: p.model,
+		temperature: p.temperature,
 		persona: {
 			preset: "custom" as const,
 			name: ai.persona.name,
@@ -344,8 +471,15 @@ export function toGeneratorConfig(ai: z.infer<typeof AISettingsSchema>) {
 		liveSummaryPrompt: ai.liveSummaryPrompt,
 		enableConversation: false,
 		maxHistory: 6,
-		enableThinking: false,
-		enableSearch: false,
-		enableVision: false,
+		provider: ai.provider,
+		enableThinking: p.enableThinking,
+		thinkingLevel: p.thinkingLevel,
+		extraParams: p.extraParams,
+		enableVision: p.enableVision,
+		vision: {
+			baseURL: p.vision.baseUrl,
+			apiKey: p.vision.apiKey,
+			model: p.vision.model,
+		},
 	};
 }

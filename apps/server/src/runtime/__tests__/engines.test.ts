@@ -107,7 +107,7 @@ vi.mock("@bilibili-notify/ai", () => ({
 		 * 这个方法会当场抛,而 buildCommentary 的 try/catch 会把它吞成「AI 初始化
 		 * 失败」—— 表现是 H.ai 里有实例但 start 一次没调,不是一眼能看懂的报错。
 		 */
-		setSubManagement = vi.fn();
+		setSubscriptionsSource = vi.fn();
 		constructor(opts: any) {
 			this.opts = opts;
 			H.ai.push(this);
@@ -256,8 +256,21 @@ function patchGlobals(c: Ctx, mutate: (g: GlobalConfig) => void): void {
 
 function aiGlobals(): GlobalConfig {
 	const g = makeDefaultGlobalConfig();
-	(g.defaults.ai as Record<string, unknown>).apiKey = "k-test";
-	(g.defaults.ai as Record<string, unknown>).baseUrl = "https://api.example.com";
+	// 连接字段住在服务商桶里(各家一套配置)。
+	g.defaults.ai.provider = "deepseek";
+	g.defaults.ai.providers = {
+		deepseek: {
+			apiKey: "k-test",
+			baseUrl: "https://api.example.com",
+			model: "gpt-4o-mini",
+			temperature: 0.7,
+			enableThinking: false,
+			thinkingLevel: "medium",
+			extraParams: "",
+			enableVision: false,
+			vision: { baseUrl: "", apiKey: "", model: "" },
+		},
+	};
 	return g;
 }
 
@@ -345,10 +358,10 @@ describe("createEngines — boot wiring", () => {
 	it("构造后立刻接上只读工具 —— 不接的话女仆连订阅列表都查不到", () => {
 		const c = setup({ globals: aiGlobals() });
 		active = c;
-		expect(H.ai[0].setSubManagement).toHaveBeenCalledTimes(1);
-		// 只读档的具体含义(不给 subMgmt)由 ai/read-only-tools 的测试盯着;
+		expect(H.ai[0].setSubscriptionsSource).toHaveBeenCalledTimes(1);
+		// 只读如今是结构性的(工具表里就没有写工具),由 packages/ai 那道闸盯着;
 		// 这里只钉「engines 确实接了」,免得那行接线被顺手删掉还全绿。
-		expect(H.ai[0].setSubManagement.mock.calls[0][0]).toHaveProperty("getSubs");
+		expect(typeof H.ai[0].setSubscriptionsSource.mock.calls[0][0]).toBe("function");
 	});
 
 	it("puppeteer 在位:构造 ImageRenderer 并 start", () => {
@@ -647,8 +660,9 @@ describe("createEngines — AI 热重载三态", () => {
 		active = c;
 		expect(H.ai).toHaveLength(0);
 		patchGlobals(c, (g) => {
-			(g.defaults.ai as Record<string, unknown>).apiKey = "k";
-			(g.defaults.ai as Record<string, unknown>).baseUrl = "https://api.example.com";
+			// 添加一家并选中它 —— 「配齐了」现在的意思是「当前那家的桶里连接齐备」。
+			g.defaults.ai.provider = "deepseek";
+			g.defaults.ai.providers = aiGlobals().defaults.ai.providers;
 		});
 		c.bus.emit("config-changed", "globals");
 		expect(H.ai).toHaveLength(1);
@@ -662,7 +676,8 @@ describe("createEngines — AI 热重载三态", () => {
 		active = c;
 		expect(H.ai).toHaveLength(1);
 		patchGlobals(c, (g) => {
-			(g.defaults.ai as Record<string, unknown>).apiKey = "";
+			const p = g.defaults.ai.providers[g.defaults.ai.provider];
+			if (p) p.apiKey = "";
 		});
 		c.bus.emit("config-changed", "globals");
 		expect(H.ai[0].stop).toHaveBeenCalledTimes(1);
@@ -676,7 +691,8 @@ describe("createEngines — AI 热重载三态", () => {
 		const c = setup({ globals: aiGlobals() });
 		active = c;
 		patchGlobals(c, (g) => {
-			g.defaults.ai.model = "gpt-4o";
+			const p = g.defaults.ai.providers[g.defaults.ai.provider];
+			if (p) p.model = "gpt-4o";
 		});
 		c.bus.emit("config-changed", "globals");
 		expect(H.ai).toHaveLength(1);

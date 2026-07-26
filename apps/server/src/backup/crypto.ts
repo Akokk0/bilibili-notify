@@ -9,10 +9,20 @@ import {
 /**
  * The secret payload of a full backup — everything that must never sit in the
  * plaintext sections. Assembled at the service layer from the config store
- * (apiKey, adapter configs) and the cookie store (cookiesJson/refreshToken).
+ * (每家两把 apiKey、adapter configs) 与 cookie store (cookiesJson/refreshToken)。
  */
 export interface BackupSecretBag {
+	/**
+	 * 上一版备份里的**单把** AI 密钥(那时全局只有一套 AI 连接)。只读不写:
+	 * 恢复老备份时迁进 {@link aiApiKeys} 的 `custom` 槽,与 schema 那边
+	 * 「扁平旧配置整份落进 providers.custom」对上。
+	 */
 	aiApiKey?: string;
+	/**
+	 * 各家各自的 AI 密钥,键是自描述路径(`"<provider>"` / `"<provider>:vision"`,
+	 * 见 `../config/ai-secrets.ts`)。最多 5 家 × 2 把。
+	 */
+	aiApiKeys?: Record<string, string>;
 	cookiesJson?: string;
 	refreshToken?: string;
 	/** Full per-adapter connection configs keyed by adapter id (they carry credentials). */

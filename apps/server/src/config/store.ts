@@ -21,6 +21,7 @@ import {
 	type Subscription,
 	SubscriptionSchema,
 } from "@bilibili-notify/internal";
+import { applyAiSecrets, collectAiSecrets, stripAiSecrets } from "./ai-secrets.js";
 import type { BootstrapConfig } from "./schema.js";
 import type { ConfigSecrets, SecretStore } from "./secret-store.js";
 
@@ -188,12 +189,12 @@ async function atomicWriteJson(absPath: string, value: unknown): Promise<void> {
  * in-memory `this.globals` keeps the real value (engines read it via
  * getGlobals); only the on-disk copy is stripped.
  */
+/**
+ * 落盘前抠掉全部 AI 密钥(每家两把)。`state/globals.json` **不加密**,漏掉任何
+ * 一把就是明文躺在盘上。具体规则见 `./ai-secrets.ts#stripAiSecrets`。
+ */
 function stripApiKeyForDisk(g: GlobalConfig): GlobalConfig {
-	const clone = deepClone(g);
-	if (clone.defaults?.ai && "apiKey" in clone.defaults.ai) {
-		delete (clone.defaults.ai as { apiKey?: string }).apiKey;
-	}
-	return clone;
+	return stripAiSecrets(deepClone(g));
 }
 
 async function readJsonOrInit<T>(
@@ -568,7 +569,11 @@ class NodeConfigStore implements ConfigStore {
 		// P2:无 SecretStore 的 legacy 路径,apiKey 明文落 globals.json。这是
 		// 既有兼容回退(非缺陷),但此前无任何提示 —— 运维不知密钥在盘上明文。
 		// 首次遇到非空 apiKey 时高可见告警一次(建议配置 passphrase 启用加密)。
-		if (!this.secretStore && !this.plaintextApiKeyWarned && g.defaults?.ai?.apiKey) {
+		if (
+			!this.secretStore &&
+			!this.plaintextApiKeyWarned &&
+			Object.keys(collectAiSecrets(g)).length > 0
+		) {
 			this.plaintextApiKeyWarned = true;
 			this.serviceCtx.logger.warn(
 				"[secret] AI apiKey 以明文写入 globals.json(未配置加密密钥)。建议设置 passphrase 启用 SecretStore 加密。",
@@ -587,10 +592,28 @@ class NodeConfigStore implements ConfigStore {
 	private async hydrateSecrets(): Promise<void> {
 		if (!this.secretStore) return;
 		this.secretBag = await this.secretStore.load();
-		const diskKey = this.globals.defaults.ai.apiKey;
-		const hadPlaintext = typeof diskKey === "string" && diskKey.length > 0;
-		if (hadPlaintext && !this.secretBag.aiApiKey) {
-			this.secretBag = { ...this.secretBag, aiApiKey: diskKey };
+
+		// 上一版的**单把** aiApiKey → 新的多把袋子。schema 那边把扁平旧配置整份
+		// 迁进了 `providers.custom`,所以这把 key 的去处正是 custom 槽。
+		if (this.secretBag.aiApiKey) {
+			const { aiApiKey, ...rest } = this.secretBag;
+			this.secretBag = {
+				...rest,
+				aiApiKeys: { custom: aiApiKey, ...(this.secretBag.aiApiKeys ?? {}) },
+			};
+			await this.secretStore.save(this.secretBag);
+			this.serviceCtx.logger.info("[secrets] 已把旧的单把 apiKey 迁进按服务商分桶的密钥袋");
+		}
+
+		// 明文密钥(功能上线前写下的、或用户手改过 globals.json)一并抬进加密袋。
+		const plaintext = collectAiSecrets(this.globals);
+		const hadPlaintext = Object.keys(plaintext).length > 0;
+		if (hadPlaintext) {
+			// 袋里已有的优先 —— 盘上的明文可能是更早的残留。
+			this.secretBag = {
+				...this.secretBag,
+				aiApiKeys: { ...plaintext, ...(this.secretBag.aiApiKeys ?? {}) },
+			};
 			await this.secretStore.save(this.secretBag);
 			this.serviceCtx.logger.info(
 				"[secrets] 已把明文 apiKey 从 globals.json 迁移进加密 secrets 文件",
@@ -607,13 +630,9 @@ class NodeConfigStore implements ConfigStore {
 		// 字段(哪怕只是 dynamicCron),`defaults.ai` 都会被误判成「变了」,白白热重载一次
 		// AI 实例并刷两条日志。走 legacy 明文路径时键还在原位,spread 只覆盖值,所以这个
 		// 坑只在「配了 AI + 启用加密 + 重启后首次变更」三者同时满足时才现形。
-		this.globals = GlobalConfigSchema.parse({
-			...this.globals,
-			defaults: {
-				...this.globals.defaults,
-				ai: { ...this.globals.defaults.ai, apiKey: this.secretBag.aiApiKey ?? "" },
-			},
-		});
+		this.globals = GlobalConfigSchema.parse(
+			applyAiSecrets(this.globals, this.secretBag.aiApiKeys ?? {}),
+		);
 		// Scrub disk if it ever held the plaintext.
 		if (hadPlaintext) await this.persistGlobals(this.globals);
 	}
@@ -962,11 +981,9 @@ class NodeConfigStore implements ConfigStore {
 			// globals.json/in-memory 仍旧值 → 重启后两边分叉。失败即回滚密钥袋,
 			// 两端始终一致(全旧或全新);in-memory 仅在双写都成功后更新。
 			const prevBag = this.secretBag;
-			const apiKey = g.defaults.ai.apiKey;
-			const nextBag = {
-				...this.secretBag,
-				aiApiKey: apiKey && apiKey.length > 0 ? apiKey : undefined,
-			};
+			// 整份重算而不是并进旧袋:主人删掉一家时,那家的 key 必须跟着消失,
+			// 否则删了又加回来会拿到一把他以为已经删掉的旧密钥。
+			const nextBag = { ...this.secretBag, aiApiKey: undefined, aiApiKeys: collectAiSecrets(g) };
 			await this.secretStore.save(nextBag);
 			try {
 				await this.persistGlobals(g);

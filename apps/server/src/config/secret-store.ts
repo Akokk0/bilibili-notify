@@ -6,7 +6,7 @@ import { gcmDecrypt, gcmEncrypt, type KeyProvider } from "@bilibili-notify/stora
 
 /**
  * Encrypted at-rest bag for runtime config secrets that must never sit in the
- * plaintext `state/*.json` files. Currently just the AI apiKey.
+ * plaintext `state/*.json` files. Currently the AI apiKeys (每家两把).
  *
  * On disk: `<dataDir>/secrets/config-secrets.enc` — a single AES-256-GCM blob
  * keyed off the same {@link KeyProvider} as the cookie store (so one
@@ -16,14 +16,25 @@ import { gcmDecrypt, gcmEncrypt, type KeyProvider } from "@bilibili-notify/stora
  *   - file ABSENT (`ENOENT`) → empty bag (legit first run).
  *   - file PRESENT but undecryptable (legacy CBC / key change / corrupt) →
  *     empty bag + warn. By-design per the GCM session: a key change must not
- *     brick the server; the user just re-enters the apiKey in the dashboard.
+ *     brick the server; the user just re-enters the apiKeys in the dashboard.
  *   - file PRESENT but unreadable (`EACCES`/`EIO`/`EBUSY`/…) → THROW. Never
  *     swallow to `{}`: a subsequent `save()` would atomically overwrite the
  *     real on-disk secret with an empty bag and permanently destroy a stored
- *     `aiApiKey` the user never asked to drop.
+ *     `aiApiKeys` the user never asked to drop.
  */
 export interface ConfigSecrets {
+	/**
+	 * 上一版的**单把** AI 密钥(那时全局只有一套 AI 连接配置)。
+	 * 读到就迁进 {@link aiApiKeys} 的 `custom` 槽 —— 与 schema 那边「扁平旧配置
+	 * 整份落进 providers.custom」正好对上。迁完置 undefined,不再写新值。
+	 */
 	aiApiKey?: string;
+	/**
+	 * 各家各自的 AI 密钥。键是自描述路径:`"<provider>"` = 主模型那把,
+	 * `"<provider>:vision"` = 看图副模型那把(见 `./ai-secrets.ts`)。
+	 * 最多 5 家 × 2 把。
+	 */
+	aiApiKeys?: Record<string, string>;
 }
 
 export interface SecretStore {
@@ -54,7 +65,7 @@ export function createSecretStore(opts: CreateSecretStoreOptions): SecretStore {
 				if ((e as NodeJS.ErrnoException).code === "ENOENT") return {}; // first run — no secrets yet
 				// EACCES/EIO/EBUSY…:文件存在但读不了。绝不能静默退化为 {} ——
 				// 随后任一 writeGlobals → save() 会用空 bag 原子覆盖,永久销毁
-				// 已存 aiApiKey。响亮抛出,让调用方据此中止而非毁数据。
+				// 已存 aiApiKeys。响亮抛出,让调用方据此中止而非毁数据。
 				throw e;
 			}
 			try {

@@ -25,10 +25,7 @@ import type { RouteDeps } from "../routes/types.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: 断言 mock 收到的 override 参数,不为测试再造一遍类型
 const comment = vi.fn(async (_p: string, _scene?: unknown, _img?: unknown, _ov?: any) => "{}");
-const chat = vi.fn(async (_prompt: string, _sessionId: string) => ({
-	result: "{}",
-	pendingActions: [],
-}));
+const chat = vi.fn(async (_prompt: string, _sessionId: string) => "{}");
 
 vi.mock("@bilibili-notify/ai", () => ({
 	// class 而不是箭头函数 —— 路由是 `new CommentaryGenerator(...)`,

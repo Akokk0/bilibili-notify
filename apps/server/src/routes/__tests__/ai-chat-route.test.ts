@@ -55,8 +55,7 @@ const chatStatelessStream = vi.fn(
 		for (const ev of H.toolEvents ?? []) opts.onToolEvent?.(ev);
 		for (const c of H.chunks ?? []) opts.onDelta(c);
 		if (H.error) throw H.error;
-		const result = H.chunks ? H.chunks.join("") : H.reply;
-		return { result, pendingActions: [] };
+		return H.chunks ? H.chunks.join("") : H.reply;
 	},
 );
 
