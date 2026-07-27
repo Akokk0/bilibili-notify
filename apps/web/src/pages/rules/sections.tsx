@@ -104,7 +104,7 @@ export const GLOBAL_SECTIONS: SectionMeta[] = [
 ];
 
 /**
- * per-UP 9 个分类:全局 5 个 + 特别关注弹幕 / 进房 / 卡片样式 / AI 人格塑造。
+ * per-UP 9 个分类:全局 5 个 + 特别关注弹幕 / 进房 / 卡片样式 / AI 人格。
  * 每项独立 toggle 到「覆盖中」才会写入 Subscription.overrides;关闭即继承全局。
  */
 export const PERUP_SECTIONS: SectionMeta[] = [
@@ -170,9 +170,9 @@ export const PERUP_SECTIONS: SectionMeta[] = [
 	},
 	{
 		id: "ai",
-		label: "AI 人格塑造",
+		label: "AI 人格",
 		icon: <Icon.ai size={14} />,
-		desc: "覆盖人设 / 口吻 / prompt",
+		desc: "挑一份人格给这个 UP",
 	},
 ];
 

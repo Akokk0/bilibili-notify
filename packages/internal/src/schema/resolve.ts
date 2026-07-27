@@ -97,21 +97,28 @@ function resolveAI(globals: AISettings, override: AIOverride | undefined): Resol
 	// personaId 是 per-UP 直通,与 preset 无关 —— 即便 preset=inherit 也要带出去。
 	const personaId = override?.personaId;
 
-	if (!override || override.preset === "inherit") return { ...base, personaId };
+	if (!override) return { ...base, personaId };
 
-	// override 形如 { preset: 'custom' | <preset.id>; persona?; dynamicPrompt?; liveSummaryPrompt?; temperature? }
-	const namedPreset =
-		override.preset === "custom"
-			? undefined
-			: globals.presets.find((p) => p.id === override.preset);
+	/*
+	 * per-UP 只做一件事:**从 `globals.presets` 里挑一份**。挑不着就是全局那份。
+	 *
+	 * `override` 上的 `persona` / `dynamicPrompt` / `liveSummaryPrompt` **一概不读**
+	 * —— 设置页曾经给过一档「完全自定义」能就地写死一套人设,那一档撤掉了(人格一律
+	 * 在「智能女仆」页里写),但盘上还留着当年写下的字段。继续读它们就成了界面上
+	 * 看不见、实际仍在生效的鬼配置。字段本身留在 schema 里没删 —— **koishi 端在用**:
+	 * 那一侧压根不暴露 preset 选择,`enable` 即「我自己填」,恒写 `preset:"custom"`
+	 * 外加整份 persona,并且走自己的 `buildAiOverride` 读回去,不经过这里。
+	 *
+	 * 于是三种取值在这里殊途同归、都落到全局:老的 `'inherit'`(当年那档「继承全局」)、
+	 * 老的 `'custom'`、以及指向一份已被删掉的人格。三者的实际行为本来就都是「继承
+	 * 全局」,设置页据此把开关显示成「关」,界面与行为对得上。
+	 */
+	const namedPreset = globals.presets.find((p) => p.id === override.preset);
 
-	// R1:与 dynamicPrompt / liveSummaryPrompt 同序 —— 显式 per-UP override 最高,
-	// 其次具名 preset,最后全局 base。此前 persona 反着写(namedPreset 先于
-	// override),用户选了 preset 又自定义 persona 时其自定义被静默丢弃。
-	const persona = override.persona ?? namedPreset?.persona ?? base.persona;
-	const dynamicPrompt = override.dynamicPrompt ?? namedPreset?.dynamicPrompt ?? base.dynamicPrompt;
-	const liveSummaryPrompt =
-		override.liveSummaryPrompt ?? namedPreset?.liveSummaryPrompt ?? base.liveSummaryPrompt;
+	const persona = namedPreset?.persona ?? base.persona;
+	const dynamicPrompt = namedPreset?.dynamicPrompt ?? base.dynamicPrompt;
+	const liveSummaryPrompt = namedPreset?.liveSummaryPrompt ?? base.liveSummaryPrompt;
+	// temperature 不在撤掉之列 —— 它本来就是独立一格,与挑哪份人格无关。
 	const temperature = override.temperature ?? base.temperature;
 
 	return { ...base, persona, dynamicPrompt, liveSummaryPrompt, temperature, personaId };

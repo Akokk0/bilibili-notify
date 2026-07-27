@@ -46,8 +46,33 @@ export function hasLiveThresholdOverride(slices: {
 	);
 }
 
-/** per-UP 子分类是否当前 sub 已设置覆盖 → 侧栏小红点。 */
-export function isSectionCustomized(sub: Subscription, sectionId: SectionId): boolean {
+/**
+ * 「AI 人格」域是否真的覆盖着 —— 判据是**挑中的那份人格真实存在**,而不是
+ * `overrides.ai` 这个键在不在。
+ *
+ * 盘上有三种指不着人格的老值:当年那档「继承全局」(`'inherit'`)、当年那档
+ * 「完全自定义」(`'custom'`)、以及指向一份后来被删掉的人格。它们在 `resolveAI`
+ * 眼里都是完整继承全局,所以设置页那一格照实显示「继承」—— 侧栏小点必须跟着同一
+ * 个判据,否则就会在一个明明写着「继承」的分类旁边亮起来。
+ */
+export function hasAiPersonaOverride(
+	ai: Subscription["overrides"]["ai"],
+	presets: readonly { id: string }[],
+): boolean {
+	return ai !== undefined && presets.some((p) => p.id === ai.preset);
+}
+
+/**
+ * per-UP 子分类是否当前 sub 已设置覆盖 → 侧栏小红点。
+ *
+ * `presets` 只有 AI 那一格用得上(见 {@link hasAiPersonaOverride})。缺省空列表 =
+ * 任何 preset 都指不着 = AI 那格恒不亮,对其余分类没有影响。
+ */
+export function isSectionCustomized(
+	sub: Subscription,
+	sectionId: SectionId,
+	presets: readonly { id: string }[] = [],
+): boolean {
 	switch (sectionId) {
 		case "filter":
 			return hasFilterContentOverride(sub.overrides.filters);
@@ -87,7 +112,7 @@ export function isSectionCustomized(sub: Subscription, sectionId: SectionId): bo
 				Boolean(sub.overrides.templates?.specialUserEnter)
 			);
 		case "ai":
-			return sub.overrides.ai !== undefined;
+			return hasAiPersonaOverride(sub.overrides.ai, presets);
 		case "imageGroup":
 			return sub.overrides.imageGroup !== undefined;
 		default:

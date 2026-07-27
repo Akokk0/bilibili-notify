@@ -384,9 +384,15 @@ export default function Rules() {
 	// 灵动岛绑定改由互斥子组件承载:isGlobal → <GlobalDraftBinder>,per-UP →
 	// <PerUpEditor> 自调 useDirtyDraft。两者条件渲染互斥,见下方 JSX 与
 	// GlobalDraftBinder 注释。
+	// presets 只被「AI 人格」那一格用到 —— 它判的是「挑中的人格还在不在」,
+	// 与 PerUpEditor 里那颗开关同一个判据(见 section-scope#hasAiPersonaOverride)。
 	const customizedIds: Set<SectionId> | undefined =
 		!isGlobal && focusedSub
-			? new Set(sections.map((s) => s.id).filter((id) => isSectionCustomized(focusedSub, id)))
+			? new Set(
+					sections
+						.map((s) => s.id)
+						.filter((id) => isSectionCustomized(focusedSub, id, draft?.defaults.ai.presets ?? [])),
+				)
 			: undefined;
 
 	if (!draft) {

@@ -50,6 +50,7 @@ import { buildOverridesPatch, type OverridesPatch } from "./overrides-patch";
 import { projectPerUpIsland } from "./perup-island";
 import {
 	FILTER_CONTENT_KEYS,
+	hasAiPersonaOverride,
 	hasFilterContentOverride,
 	hasLiveThresholdOverride,
 } from "./section-scope";
@@ -1022,6 +1023,22 @@ function SpecialUserBox({
 
 /* -------- AI -------------------------------------------------------------- */
 
+/**
+ * 覆盖开着时写回磁盘的那个对象 —— 只留「挑了哪份人格」,外加与人格无关的那两项。
+ *
+ * 刻意**逐字段挑**而不是 `{ ...prev, preset }`:老配置里可能还留着当年那档
+ * 「完全自定义」写下的 persona 与两段 prompt(见 schema/resolve.ts 的说明)。
+ * 它们已经不参与解析了,原样带上就等于把一份死配置重新写回盘上,下一个人打开
+ * 文件照样看得见,还以为它在起作用。
+ */
+function pickAiOverride(prev: AIOverride | undefined, presetId: string): AIOverride {
+	const next: AIOverride = { preset: presetId };
+	if (prev?.temperature !== undefined) next.temperature = prev.temperature;
+	// AstrBot 端的人格 id,与挑哪份 preset 是两回事,照旧留着。
+	if (prev?.personaId !== undefined) next.personaId = prev.personaId;
+	return next;
+}
+
 function AiOverrideBox({
 	value,
 	onChange,
@@ -1031,141 +1048,63 @@ function AiOverrideBox({
 	onChange: (next: AIOverride | undefined) => void;
 	baseline: GlobalDefaults["ai"];
 }) {
-	const enabled = value !== undefined;
-	const cur: AIOverride = value ?? { preset: "inherit" };
-	const presetOptions = [
-		{ value: "inherit", label: "继承全局" },
-		...baseline.presets.map((p) => ({ value: p.id, label: p.label })),
-		{ value: "custom", label: "完全自定义" },
-	];
-	const isCustom = cur.preset === "custom";
-	const isInherit = cur.preset === "inherit";
-	const isPreset = !isCustom && !isInherit;
-	const activePreset = isPreset ? baseline.presets.find((p) => p.id === cur.preset) : null;
-
-	// In custom mode: empty until the user types. Don't fall back to the global
-	// baseline persona — that would make "完全自定义" surface global state and
-	// confuse users who just want a blank slate to fill out.
-	const EMPTY_PERSONA = {
-		name: "",
-		addressUser: "",
-		addressSelf: "",
-		traits: "",
-		catchphrase: "",
-		baseRole: "",
-		extraSystemPrompt: "",
-	};
-	const personaBase = isCustom ? (cur.persona ?? EMPTY_PERSONA) : (cur.persona ?? baseline.persona);
-	function setPersonaField(k: keyof typeof baseline.persona, v: string): void {
-		onChange({
-			...cur,
-			persona: { ...personaBase, [k]: v },
-		});
-	}
+	// 人格一律在「智能女仆」页里写,这里只负责**挑一份**。所以选项就是已有的那几份,
+	// 没有「继承全局」(关掉开关就是继承,再摆一个同义的选项纯属多此一举),也没有
+	// 「完全自定义」(想要专属人格就去那边新建一份,再回来挑它)。
+	const presetOptions = baseline.presets.map((p) => ({ value: p.id, label: p.label }));
+	const activePreset = baseline.presets.find((p) => p.id === value?.preset);
+	/*
+	 * 覆盖到底开着没有 —— 判据是**挑中的那份人格真实存在**(判定本身住在
+	 * `section-scope`,侧栏那颗小点用的是同一个,两处口径不许各走各的)。
+	 *
+	 * 三种指不着人格的老值在 `resolveAI` 眼里都是完整继承全局 —— 与关掉开关一模
+	 * 一样,所以这里就照实显示成「关」。界面和实际行为于是永远对得上;主人哪天真去
+	 * 开它,写回去的是一个干干净净的新对象,当年残留的 persona / prompt 顺手就没了。
+	 */
+	const enabled = hasAiPersonaOverride(value, baseline.presets);
+	// 开关打开时落到第一份。`presets` 恒非空是 schema 保证的不变量
+	// (见 ai-persona-pointer.test.ts:「presets 空 → 把内置四份补齐」),
+	// 所以这里不必为空列表留一条永远走不到的分支。
+	const firstPresetId = baseline.presets[0]?.id ?? "";
 
 	return (
 		<GlassBox
-			title="AI 人格塑造覆盖"
-			subtitle="开 = 该 UP 使用自定义 preset / persona / prompt;关 = 继承全局 AI 设置"
+			title="AI 人格"
+			subtitle="给这个 UP 单挑一份人格 · 关 = 跟着全局那份走"
 			accent="#6c5ce7"
 			icon={<Icon.ai size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
 			right={
 				<Toggle
 					value={enabled}
-					onChange={(on) => onChange(on ? { preset: "inherit" } : undefined)}
+					// 开:落到第一份人格。关:整个 override 拿掉 —— 那才是「继承全局」,
+					// 不必再往里塞一个表示同一件事的值。
+					onChange={(on) => onChange(on ? pickAiOverride(value, firstPresetId) : undefined)}
 				/>
 			}
 		>
-			{enabled ? (
+			{enabled && activePreset ? (
 				<>
 					<Field code="ai.preset" full>
 						<Picker
-							value={cur.preset}
-							onChange={(v) => onChange({ ...cur, preset: v })}
+							value={activePreset.id}
+							onChange={(v) => onChange(pickAiOverride(value, v))}
 							options={presetOptions}
 						/>
 					</Field>
 
-					{isPreset && activePreset ? (
-						<div className="rounded-lg border border-bn-purple/30 bg-bn-purple/8 px-3 py-2 text-[11.5px] text-bn-text-secondary">
-							已套用预设「{activePreset.label}」 · 名字 {activePreset.persona.name} · 称呼用户{" "}
-							{activePreset.persona.addressUser} ·
-							提示词随预设。需要更细的微调请改用「完全自定义」。
-						</div>
-					) : null}
+					<div className="rounded-lg border border-bn-purple/30 bg-bn-purple/8 px-3 py-2 text-[11.5px] text-bn-text-secondary">
+						这个 UP 用「{activePreset.label}」 · 名字 {activePreset.persona.name} · 称呼你{" "}
+						{activePreset.persona.addressUser} ·
+						提示词随这份走。想改内容或另起一份，都到「智能女仆」页
+					</div>
 
-					{isCustom ? (
-						<>
-							<div className="grid grid-cols-1 gap-0 lg:grid-cols-2">
-								<Field code="ai.persona.name">
-									<TInput
-										value={personaBase.name}
-										onChange={(v) => setPersonaField("name", v)}
-										full={false}
-									/>
-								</Field>
-								<Field code="ai.persona.addressUser">
-									<TInput
-										value={personaBase.addressUser}
-										onChange={(v) => setPersonaField("addressUser", v)}
-										full={false}
-									/>
-								</Field>
-								<Field code="ai.persona.addressSelf">
-									<TInput
-										value={personaBase.addressSelf}
-										onChange={(v) => setPersonaField("addressSelf", v)}
-										full={false}
-									/>
-								</Field>
-								<Field code="ai.persona.catchphrase">
-									<TInput
-										value={personaBase.catchphrase}
-										onChange={(v) => setPersonaField("catchphrase", v)}
-										full={false}
-									/>
-								</Field>
-							</div>
-							<Field code="ai.persona.traits" full>
-								<TInput value={personaBase.traits} onChange={(v) => setPersonaField("traits", v)} />
-							</Field>
-							<Field code="ai.persona.baseRole" full>
-								<TArea
-									value={personaBase.baseRole}
-									onChange={(v) => setPersonaField("baseRole", v)}
-									rows={2}
-								/>
-							</Field>
-							<Field code="ai.persona.extraSystemPrompt" full>
-								<TArea
-									value={personaBase.extraSystemPrompt}
-									onChange={(v) => setPersonaField("extraSystemPrompt", v)}
-									rows={2}
-								/>
-							</Field>
-							<Field code="ai.dynamicPrompt" full>
-								<TArea
-									value={cur.dynamicPrompt ?? ""}
-									onChange={(v) => onChange({ ...cur, dynamicPrompt: v })}
-									rows={3}
-									mono
-								/>
-							</Field>
-							<Field code="ai.liveSummaryPrompt" full>
-								<TArea
-									value={cur.liveSummaryPrompt ?? ""}
-									onChange={(v) => onChange({ ...cur, liveSummaryPrompt: v })}
-									rows={3}
-									mono
-								/>
-							</Field>
-						</>
-					) : null}
 					<Field code="ai.temperature">
 						<TNum
-							value={cur.temperature ?? resolveAIProfile(baseline).temperature}
-							onChange={(v) => onChange({ ...cur, temperature: v })}
+							value={value?.temperature ?? resolveAIProfile(baseline).temperature}
+							onChange={(v) =>
+								onChange({ ...pickAiOverride(value, activePreset.id), temperature: v })
+							}
 							min={0}
 							max={2}
 							step={0.1}
@@ -1174,7 +1113,7 @@ function AiOverrideBox({
 					</Field>
 				</>
 			) : (
-				<InheritHint>该 UP 将继承全局 AI 人格塑造设置</InheritHint>
+				<InheritHint>该 UP 将跟着全局那份人格走</InheritHint>
 			)}
 		</GlassBox>
 	);

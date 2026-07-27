@@ -50,13 +50,35 @@ describe("isSectionCustomized filter / live 分域", () => {
 		expect(isSectionCustomized(sub, "live")).toBe(false);
 	});
 
-	it("其余 section 判定保持不变(imageGroup / ai)", () => {
-		const sub = subWith({
-			imageGroup: { enable: true, forward: false },
-			ai: { preset: "inherit" },
-		});
+	it("imageGroup 判定保持不变", () => {
+		const sub = subWith({ imageGroup: { enable: true, forward: false } });
 		expect(isSectionCustomized(sub, "imageGroup")).toBe(true);
-		expect(isSectionCustomized(sub, "ai")).toBe(true);
 		expect(isSectionCustomized(sub, "filter")).toBe(false);
+	});
+});
+
+/**
+ * AI 那一格判的是「**挑中的人格真实存在**」,而不是 `overrides.ai` 这个键在不在。
+ *
+ * 盘上有三种指不着人格的老值(当年那档「继承全局」/「完全自定义」、以及指向一份
+ * 后来被删掉的人格),它们在 `resolveAI` 眼里都是完整继承全局,`AiOverrideBox` 也
+ * 照实显示成「关」。侧栏小点若只看键在不在,就会在一个明明写着「继承」的分类旁边
+ * 亮起来 —— 两处口径打架,而这个文件存在的理由就是不让它们打架。
+ */
+describe("isSectionCustomized — AI 人格", () => {
+	const PRESETS = [{ id: "gentle-maid" }, { id: "tsundere" }];
+
+	it("挑中一份真实存在的人格 → 小点亮", () => {
+		expect(isSectionCustomized(subWith({ ai: { preset: "tsundere" } }), "ai", PRESETS)).toBe(true);
+	});
+
+	for (const stale of ["inherit", "custom", "deleted-preset-id"]) {
+		it(`指不着人格的老值 '${stale}' → 小点不亮(那一格显示的正是「继承」)`, () => {
+			expect(isSectionCustomized(subWith({ ai: { preset: stale } }), "ai", PRESETS)).toBe(false);
+		});
+	}
+
+	it("压根没有 ai 覆盖 → 小点不亮", () => {
+		expect(isSectionCustomized(subWith({}), "ai", PRESETS)).toBe(false);
 	});
 });

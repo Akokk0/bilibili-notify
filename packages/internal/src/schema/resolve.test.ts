@@ -90,7 +90,11 @@ describe("resolve()", () => {
 		expect(eff.ai.dynamicPrompt).toBe(globals.defaults.ai.dynamicPrompt);
 	});
 
-	it("AI override 'custom' uses provided persona but inherits missing fields", () => {
+	it("老的 'custom' 人格就地失效 —— per-UP 只能挑一份已有人格,写不了自己的", () => {
+		// 设置页曾经给过一档「完全自定义」,能就地写一套只属于这个 UP 的人设。
+		// 那一档撤掉了(人格一律在「智能女仆」页里写,per-UP 只负责挑一份),盘上
+		// 却还留着当年写下的字段。**它们不再参与解析** —— 留着继续生效的话就成了
+		// 界面上看不见、实际仍在起作用的鬼配置,日后排查起来最费劲。
 		const globals = makeDefaultGlobalConfig();
 		const customPersona = {
 			name: "助手",
@@ -107,16 +111,19 @@ describe("resolve()", () => {
 				ai: {
 					preset: "custom",
 					persona: customPersona,
+					dynamicPrompt: "老的动态模板",
+					liveSummaryPrompt: "老的总结模板",
 					temperature: 1.5,
 				},
 			},
 		};
 		const eff = resolve(sub, globals.defaults);
 
-		expect(eff.ai.persona).toEqual(customPersona);
-		expect(eff.ai.temperature).toBe(1.5);
-		// dynamicPrompt 没显式覆盖 → 继承全局
+		expect(eff.ai.persona).toEqual(globals.defaults.ai.persona);
 		expect(eff.ai.dynamicPrompt).toBe(globals.defaults.ai.dynamicPrompt);
+		expect(eff.ai.liveSummaryPrompt).toBe(globals.defaults.ai.liveSummaryPrompt);
+		// temperature 不在撤掉之列 —— 它本来就是独立一格,与人格无关。
+		expect(eff.ai.temperature).toBe(1.5);
 	});
 
 	it("AI override personaId 直通(与 preset 无关,inherit 时也生效;AstrBot 端用,其它端忽略)", () => {
@@ -178,7 +185,7 @@ describe("resolve()", () => {
 		expect(eff2.ai.dynamicPrompt).toBe(globals.defaults.ai.dynamicPrompt);
 	});
 
-	it("R1: 显式 override.persona 优先于具名 preset.persona(与 prompt 字段同序)", () => {
+	it("挑了具名人格时,盘上残留的 persona / prompt 一概不参与 —— 挑哪份就是哪份", () => {
 		const globals = makeDefaultGlobalConfig();
 		const presetPersona = {
 			name: "preset名",
@@ -203,12 +210,14 @@ describe("resolve()", () => {
 		};
 		const sub: Subscription = {
 			...SUB_BASE,
-			overrides: { ai: { preset: "tsundere", persona: overridePersona } },
+			overrides: {
+				ai: { preset: "tsundere", persona: overridePersona, dynamicPrompt: "残留模板" },
+			},
 		};
 		const eff = resolve(sub, globals.defaults);
-		// 显式 per-UP persona 必须胜过 preset 的 persona(此前被静默丢弃)。
-		expect(eff.ai.persona).toEqual(overridePersona);
-		// 未被 override 覆盖的 dynamicPrompt 仍取 preset —— 既有语义不回归。
+		// 选中的那份人格说了算。残留的 persona 曾经压过它 —— 那时「完全自定义」还在,
+		// 两者能同时存在;现在挑一份就是挑一份,不该被看不见的旧字段改写。
+		expect(eff.ai.persona).toEqual(presetPersona);
 		expect(eff.ai.dynamicPrompt).toBe("P 模板");
 	});
 

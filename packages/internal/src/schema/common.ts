@@ -272,10 +272,15 @@ const AISettingsObjectSchema = z.object({
 	 * 指向一份已不存在的预设时(刚删掉 / 备份换了一批)静静回落 `persona`。
 	 *
 	 * per-UP 的 `overrides.ai.preset` 语义**完全不受影响**:它照旧压过全局,
-	 * 而 `'inherit'` 继承的就是这里指定的那一份。
+	 * 而没设 per-UP 覆盖时继承的就是这里指定的那一份。
 	 */
 	activePreset: z.string().optional(),
-	/** 内置 preset 模板列表；per-UP overrides.ai.preset 可选 'inherit' | 'custom' | 任意 preset.id */
+	/**
+	 * 备着的人格清单。**恒非空** —— 空数组会被补齐成内置那几份
+	 * (见 `ai-persona-pointer.test.ts`),所以设置页不必为「一份都没有」留分支。
+	 *
+	 * per-UP 的 `overrides.ai.preset` 指的就是这里的 `id`(详见 `AIOverrideSchema`)。
+	 */
 	presets: z.array(
 		z.object({
 			id: z.string(),

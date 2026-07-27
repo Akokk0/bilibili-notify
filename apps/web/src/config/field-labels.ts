@@ -208,7 +208,11 @@ export const FIELD_LABELS = {
 		hint: "一句话或一个问题 · 最多 500 字",
 		section: "ai",
 	},
-	"ai.preset": { label: "预设", section: "ai" },
+	"ai.preset": {
+		label: "人格",
+		hint: "从「智能女仆」页备着的那几份里挑一份给这个 UP。想改内容或另起一份都到那边去",
+		section: "ai",
+	},
 	"ai.activePreset": {
 		label: "全局人格",
 		hint: "女仆平时用哪一份性格。它只是个指向，换来换去都不会动到「默认」那份的内容",
