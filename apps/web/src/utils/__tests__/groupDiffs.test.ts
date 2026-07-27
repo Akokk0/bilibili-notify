@@ -110,4 +110,34 @@ describe("groupDiffsBySection", () => {
 			expect(getFieldLabel("templateDefaultsSeen.guardBuy.captain.template")).not.toBeNull();
 		});
 	});
+
+	describe("逐家服务商的桶", () => {
+		// 连接与生成参数住在 `ai.providers.<家>.*` 里,一家一套。code 因此是**动态**的
+		// (家数 × 十来个字段),逐条登记进字典不现实。
+		it("归到「AI 模型」组,而不是掉进「其他」", () => {
+			const [sec] = groupDiffsBySection([D("ai.providers.deepseek.model", "a", "b")]);
+			expect(sec?.section).toBe("ai");
+		});
+
+		it("label 带上是哪一家 —— 否则两家都改了 API Key 会出现两行一模一样的", () => {
+			expect(getFieldLabel("ai.providers.deepseek.apiKey")?.label).toBe("DeepSeek · API Key");
+			expect(getFieldLabel("ai.providers.openrouter.apiKey")?.label).toBe("OpenRouter · API Key");
+		});
+
+		it("视觉副模型那几格(路径再深一层)也认得出来", () => {
+			expect(getFieldLabel("ai.providers.siliconflow.vision.apiKey")?.label).toBe(
+				"硅基流动 · 视觉 API Key",
+			);
+		});
+
+		it("字段名不认识 → 老实说不认识,不硬造一个半截标签", () => {
+			expect(getFieldLabel("ai.providers.deepseek.__nope__")).toBeNull();
+		});
+
+		it("不是真服务商的段 → 不认", () => {
+			// 不校验这一段的话,任何 `ai.providers.X.Y` 都会被认下来并渲染成
+			// 「undefined · 某字段」。
+			expect(getFieldLabel("ai.providers.notAProvider.model")).toBeNull();
+		});
+	});
 });

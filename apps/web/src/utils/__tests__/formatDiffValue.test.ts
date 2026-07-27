@@ -106,4 +106,26 @@ describe("formatDiffValue", () => {
 			expect(formatDiffValue("templates.liveSummary", "开播啦")).toEqual({ display: "开播啦" });
 		});
 	});
+
+	describe("逐家服务商的桶", () => {
+		// 密钥住在 `ai.providers.<家>.apiKey`,字典里没有这条逐家的 entry ——
+		// 直接读字典就查不到 secret 位,于是**明文密钥会摊在灵动岛面板上**。
+		it("逐家路径下的 apiKey 照样脱敏", () => {
+			expect(formatDiffValue("ai.providers.deepseek.apiKey", "sk-real-key")).toEqual({
+				display: "••• 已改",
+			});
+		});
+
+		it("视觉副模型的密钥同理", () => {
+			expect(formatDiffValue("ai.providers.openrouter.vision.apiKey", "sk-vision")).toEqual({
+				display: "••• 已改",
+			});
+		});
+
+		it("不是密钥的那些照常显示", () => {
+			expect(formatDiffValue("ai.providers.deepseek.model", "deepseek-chat")).toEqual({
+				display: "deepseek-chat",
+			});
+		});
+	});
 });

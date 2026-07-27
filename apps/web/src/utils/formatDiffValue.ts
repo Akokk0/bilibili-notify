@@ -1,4 +1,4 @@
-import { FIELD_LABELS } from "../config/field-labels";
+import { getFieldLabel } from "../config/field-labels";
 
 /**
  * 灵动岛 diff 行的值格式化结果。
@@ -45,7 +45,10 @@ function isHexColor(s: unknown): s is string {
  * 脱敏(展示「••• 已改」一个 token 即可,不显示 hex/raw 文本)。
  */
 export function formatDiffValue(code: string, value: unknown): FormattedValue {
-	const entry = FIELD_LABELS[code as keyof typeof FIELD_LABELS] as { secret?: boolean } | undefined;
+	// 走 getFieldLabel 而不是直接读字典:动态 code(逐家服务商的 `ai.providers.<家>.*`)
+	// 的 secret 位是从 `ai.<字段>` 那条**继承**来的,绕过去就查不到 —— 后果是主人刚
+	// 敲进去的 API Key 明文被摊在灵动岛面板上。
+	const entry = getFieldLabel(code);
 	if (entry?.secret) return REDACTED;
 
 	// 「默认文案有更新」的账本:存的是内容指纹(`1hxy5zb` 这种),对用户零信息量。

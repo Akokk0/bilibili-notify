@@ -16,6 +16,12 @@
  * 由各调用处兜底。
  */
 
+import {
+	AI_PROVIDER_IDS,
+	type AIProviderId,
+	providerMeta,
+} from "@bilibili-notify/internal/constants";
+
 /** 字段分组,灵动岛 expand panel 按 section 分组渲染。 */
 export type FieldSection =
 	| "general"
@@ -547,6 +553,19 @@ export const FIELD_LABELS = {
  */
 const SEEN_PREFIX = "templateDefaultsSeen.";
 
+/**
+ * 逐家服务商的桶前缀 —— `ai.providers.<家>.<字段>`。
+ *
+ * 连接与生成参数一家存一套,code 因此是**家数 × 十来个字段**的笛卡尔积,逐条登记
+ * 就是把 `ai.*` 那批 entry 抄五遍。所以走前缀 fallback:hint / section / **secret**
+ * 全部继承 `ai.<字段>` 那条,label 前面缀上是哪一家。
+ *
+ * 继承 `secret` 尤其要紧:漏了这一步,灵动岛的 diff 面板查不到密钥位,会把主人刚
+ * 敲进去的 **API Key 明文**摊在面板上。
+ */
+const PROVIDER_PREFIX = "ai.providers.";
+const PROVIDER_IDS: ReadonlySet<string> = new Set(AI_PROVIDER_IDS);
+
 export function getFieldLabel(code: string): FieldLabel | null {
 	const hit = (FIELD_LABELS as Record<string, FieldLabel | undefined>)[code];
 	if (hit) return hit;
@@ -558,6 +577,21 @@ export function getFieldLabel(code: string): FieldLabel | null {
 			hint: "主人对「默认文案有更新」那条提示的处理结果;记下来是为了不再重复问。",
 			section: "templates",
 		};
+	}
+	if (code.startsWith(PROVIDER_PREFIX)) {
+		const rest = code.slice(PROVIDER_PREFIX.length);
+		const cut = rest.indexOf(".");
+		const id = cut < 0 ? "" : rest.slice(0, cut);
+		// 认不出的家、或者认不出的字段,一律**老实说不认识** —— 兜一个半截标签
+		// (「undefined · 某字段」)比缺一行更难查。
+		if (PROVIDER_IDS.has(id)) {
+			const base = (FIELD_LABELS as Record<string, FieldLabel | undefined>)[
+				`ai.${rest.slice(cut + 1)}`
+			];
+			if (base) {
+				return { ...base, label: `${providerMeta(id as AIProviderId).label} · ${base.label}` };
+			}
+		}
 	}
 	if (import.meta.env.DEV) {
 		console.warn(`[field-labels] missing entry for code="${code}"`);
