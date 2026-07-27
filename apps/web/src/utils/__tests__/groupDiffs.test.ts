@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { getFieldLabel } from "../../config/field-labels";
 import { groupDiffsBySection, sectionOf } from "../groupDiffs";
 import type { FieldDiff } from "../walkTreeDiff";
 
@@ -84,5 +85,29 @@ describe("groupDiffsBySection", () => {
 		for (const s of out) {
 			expect(s.label.length).toBeGreaterThan(0);
 		}
+	});
+
+	describe("默认更新提示的账本", () => {
+		// 账本的 code 是**动态**的(templateDefaultsSeen.<任意模板路径>),没法逐条
+		// 登记进 FIELD_LABELS,不特判就会掉进「其他」兜底组 —— 用户看到一行
+		// `templateDefaultsSeen.liveSummary  (未设置) → 1hxy5zb`,完全不知所云。
+		it("归到「消息模板」组,而不是掉进「其他」", () => {
+			const [sec] = groupDiffsBySection([
+				{ code: "templateDefaultsSeen.liveSummary", oldValue: undefined, newValue: "1hxy5zb" },
+			]);
+			expect(sec?.section).toBe("templates");
+		});
+
+		it("label 借对应模板字段的名字,读得出是哪条文案", () => {
+			// `templates.liveSummary` 在字典里叫「总结正文」,账本这条就该跟着它走 ——
+			// 硬写一份新名字的话,哪天模板改名两边就对不上了。
+			expect(getFieldLabel("templateDefaultsSeen.liveSummary")?.label).toBe(
+				"总结正文 · 默认更新提示",
+			);
+		});
+
+		it("嵌套路径的账本条目也认得出来", () => {
+			expect(getFieldLabel("templateDefaultsSeen.guardBuy.captain.template")).not.toBeNull();
+		});
 	});
 });

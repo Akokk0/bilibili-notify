@@ -1,4 +1,4 @@
-import { FIELD_LABELS, type FieldSection } from "../config/field-labels";
+import { type FieldSection, getFieldLabel } from "../config/field-labels";
 import type { FieldDiff } from "./walkTreeDiff";
 
 /**
@@ -67,10 +67,9 @@ const SECTION_ORDER: GroupSectionKey[] = [
 
 /** 给定 code,返回它在字典中归属的 section,缺则 "other"。 */
 export function sectionOf(code: string): GroupSectionKey {
-	const entry = FIELD_LABELS[code as keyof typeof FIELD_LABELS] as
-		| { section?: FieldSection }
-		| undefined;
-	return entry?.section ?? "other";
+	// 走 getFieldLabel 而不是直接读字典:动态 code(如「默认更新提示」的账本
+	// `templateDefaultsSeen.*`)的归属规则住在那个函数里,绕过去就会掉进「其他」。
+	return getFieldLabel(code)?.section ?? "other";
 }
 
 export function groupDiffsBySection(diffs: FieldDiff[]): DiffSection[] {

@@ -15,6 +15,11 @@ const REDACTED: FormattedValue = { display: "••• 已改" };
 const UNSET: FormattedValue = { display: "(未设置)" };
 const EMPTY_LIST: FormattedValue = { display: "[]" };
 
+/** 「默认文案有更新」的账本前缀;它的值是指纹,不该按字符串原样吐出来。 */
+export const SEEN_PREFIX = "templateDefaultsSeen.";
+const SEEN_YES: FormattedValue = { display: "已确认" };
+const SEEN_NO: FormattedValue = { display: "未确认" };
+
 const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 function isColorCode(code: string): boolean {
@@ -42,6 +47,12 @@ function isHexColor(s: unknown): s is string {
 export function formatDiffValue(code: string, value: unknown): FormattedValue {
 	const entry = FIELD_LABELS[code as keyof typeof FIELD_LABELS] as { secret?: boolean } | undefined;
 	if (entry?.secret) return REDACTED;
+
+	// 「默认文案有更新」的账本:存的是内容指纹(`1hxy5zb` 这种),对用户零信息量。
+	// 它在灵动岛里只需要回答一句话 ——「这条提示我确认过没有」。
+	if (code.startsWith(SEEN_PREFIX)) {
+		return value === undefined || value === null ? SEEN_NO : SEEN_YES;
+	}
 
 	if (value === undefined || value === null) return UNSET;
 

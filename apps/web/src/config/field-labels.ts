@@ -537,9 +537,28 @@ export const FIELD_LABELS = {
  * 在字典里 lookup;命中则返回 entry,否则返回 `null` 并在开发环境 warn。Field
  * 组件需要 lookup 失败时回退到 prop label,确保 schema 漂移不直接白屏。
  */
+/**
+ * 「默认文案有更新」的账本前缀。
+ *
+ * 它的 code 是**动态**的 —— `templateDefaultsSeen.<任意模板路径>`,模板加一条这里
+ * 就多一条,逐个登记进 FIELD_LABELS 等于把同一份清单抄两遍(而且必然有人忘)。
+ * 所以走前缀 fallback,label 直接**借对应模板字段自己的名字**:模板哪天改名,
+ * 账本这条跟着改,不会两边对不上。
+ */
+const SEEN_PREFIX = "templateDefaultsSeen.";
+
 export function getFieldLabel(code: string): FieldLabel | null {
 	const hit = (FIELD_LABELS as Record<string, FieldLabel | undefined>)[code];
 	if (hit) return hit;
+	if (code.startsWith(SEEN_PREFIX)) {
+		const path = code.slice(SEEN_PREFIX.length);
+		const owner = (FIELD_LABELS as Record<string, FieldLabel | undefined>)[`templates.${path}`];
+		return {
+			label: `${owner?.label ?? path} · 默认更新提示`,
+			hint: "主人对「默认文案有更新」那条提示的处理结果;记下来是为了不再重复问。",
+			section: "templates",
+		};
+	}
 	if (import.meta.env.DEV) {
 		console.warn(`[field-labels] missing entry for code="${code}"`);
 	}
