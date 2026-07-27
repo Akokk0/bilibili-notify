@@ -101,6 +101,16 @@ export function AiChatDock() {
  */
 type PendingTool = ToolChipData & { id: string };
 
+/**
+ * 一次发送的全部输入 —— 正文**与附件**。
+ *
+ * 附件走 variables 而不是让 `mutationFn` 回头读组件状态,是必需的而非讲究:
+ * `onMutate` 会把待发送列表清空,而它跑在 `mutationFn` **之前**(返回值被 await,
+ * 那一让步足够 React 把重渲染 flush 掉)。闭包里读到的于是恒为空数组 —— 图能选、
+ * 能预览、也照常挂在自己那条消息上,唯独服务端一张都收不到。
+ */
+type SendVars = { text: string; attachments: readonly ComposerAttachment[] };
+
 function ChatOverlay({ onClose }: { onClose: () => void }) {
 	const rail = useAiChatStore((s) => s.rail);
 	const setRail = useAiChatStore((s) => s.setRail);
@@ -217,9 +227,8 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 	});
 
 	const send = useMutation({
-		mutationFn: async (text: string) => {
-			// 快照:发出去之后 `attachments` 会被清空,而这一跳还在飞。
-			const imageIds = attachments.map((a) => a.id);
+		mutationFn: async ({ text, attachments: outgoingFiles }: SendVars) => {
+			const imageIds = outgoingFiles.map((a) => a.id);
 			// 还没有会话就先开一个 —— 主人在空态直接打字发送时走这条路,
 			// 不必先去点「新对话」。
 			const id = activeId ?? (await createConversation()).id;
@@ -250,15 +259,15 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 				imageIds,
 			);
 		},
-		onMutate: (text: string) => {
+		onMutate: ({ text, attachments: outgoingFiles }: SendVars) => {
 			// 立刻上屏 + 立刻清空输入框。这两件事一起做才自然:消息「离开」了
 			// 输入框,出现在对话里。图也一样跟着走。
 			setInput("");
 			setError(null);
-			setPending({ ask: text, draft: "", tools: [], images: attachments.map((a) => a.url) });
+			setPending({ ask: text, draft: "", tools: [], images: outgoingFiles.map((a) => a.url) });
 			setAttachments([]);
 		},
-		onSuccess: (res, _text) => {
+		onSuccess: (res, _vars) => {
 			const id = res.conversation.id;
 			// 真身**同步**写进缓存,和下面清在途副本落在同一批渲染里 —— 交接在一帧内
 			// 完成,中间不留空窗。
@@ -296,12 +305,17 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 			// 一次最多是一次空跑。
 			if (!res.conversation.autoTitled) void retitle.mutate(id);
 		},
-		onError: (err: Error, text: string) => {
+		onError: (err: Error, { text, attachments: outgoingFiles }: SendVars) => {
 			// 服务端那一轮什么都没落盘,所以这里也把在途副本整个撤掉 —— 留着的话
 			// 屏幕上会挂着一轮「看起来存在、刷新就消失」的问答。
 			// 原文退回输入框:主人按个回车就能重试,不用把刚才那段话重打一遍。
 			setPending(null);
 			setInput((cur) => (cur.trim() ? cur : text));
+			// 图跟着退回来。这一轮什么都没落盘、图还好端端在磁盘上,而发图最常见的
+			// 失败(那家没配看图能力,服务端当场 400)恰恰是去设置页点一下就能好的
+			// —— 让主人回来重挑一遍图,纯属白丢。
+			// 已经又挑了新图就不覆盖:那是主人这会儿正想发的,比上一轮的更要紧。
+			setAttachments((cur) => (cur.length > 0 ? cur : [...outgoingFiles]));
 			setError(err.message);
 		},
 	});
@@ -348,7 +362,11 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 		const outgoing = resolveOutgoing(text ?? input);
 		// 只有图、一个字没打也算数 —— 图本身就是问题。
 		if ((!outgoing && attachments.length === 0) || busy) return;
-		send.mutate(outgoing);
+		// 附件快照必须在**这里**取。`mutationFn` 是在 `onMutate` 之后才跑的
+		// (onMutate 的返回值被 await,那一让步足够 React 把重渲染 flush 掉),
+		// 那时 `setAttachments([])` 已经生效 —— 从 mutationFn 的闭包里读
+		// `attachments` 只能读到空数组,于是服务端一张图也收不到。
+		send.mutate({ text: outgoing, attachments });
 	};
 
 	/** 挑了图就立刻传,传完塞进待发送列表。格式 / 大小不对当场报,不等到点发送。 */
