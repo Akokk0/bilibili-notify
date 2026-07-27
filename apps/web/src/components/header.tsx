@@ -1,10 +1,28 @@
+import {
+	closestCenter,
+	DndContext,
+	type DragEndEvent,
+	KeyboardSensor,
+	PointerSensor,
+	useSensor,
+	useSensors,
+} from "@dnd-kit/core";
+import {
+	SortableContext,
+	sortableKeyboardCoordinates,
+	useSortable,
+	verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
+import { canHideNav, NAV_ITEMS, type NavItem, orderedNav, resolveNav } from "../config/nav";
 import { useBackendReachable } from "../hooks/useBackendReachable";
 import { api } from "../services/api";
 import { submitLogout } from "../services/session";
 import { useAuthStore } from "../store/auth";
+import { useNavStore } from "../store/nav";
 import { useSessionStore } from "../store/session";
 import { type ThemePreference, useThemeStore } from "../store/theme";
 import { BiliLoginStatus } from "../types/auth";
@@ -20,23 +38,132 @@ interface UserCardData {
 	};
 }
 
-const NAV: ReadonlyArray<{
-	to: string;
-	label: string;
-	countKey?: "subs" | "targets";
-}> = [
-	{ to: "/", label: "概览" },
-	{ to: "/subs", label: "订阅 UP 主", countKey: "subs" },
-	{ to: "/targets", label: "推送目标", countKey: "targets" },
-	{ to: "/history", label: "推送历史" },
-	{ to: "/stats", label: "数据统计" },
-	{ to: "/rules", label: "高级规则" },
-	{ to: "/cards", label: "卡片渲染 · 样式" },
-	{ to: "/ai", label: "智能女仆" },
-	{ to: "/system", label: "系统" },
-	{ to: "/logs", label: "日志" },
-	{ to: "/about", label: "关于" },
-];
+/**
+ * 面板里的一行 —— ⠿ 拖动排序 + 勾选显隐。
+ *
+ * `useSortable` 必须 per-item,所以单抽一个组件(同 `cards/BlockListEditor`)。
+ * 拖拽手柄只绑在 ⠿ 上,勾选框照常点得动。
+ */
+function NavEditorRow({ item, shown, locked }: { item: NavItem; shown: boolean; locked: boolean }) {
+	const toggle = useNavStore((s) => s.toggle);
+	const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition } =
+		useSortable({ id: item.to });
+
+	return (
+		<div
+			ref={setNodeRef}
+			style={{ transform: CSS.Transform.toString(transform), transition }}
+			className="flex items-center gap-1.5 rounded-md px-1 py-1 hover:bg-bn-surface-muted"
+		>
+			<button
+				type="button"
+				ref={setActivatorNodeRef}
+				{...attributes}
+				{...listeners}
+				title="拖动排序"
+				aria-label={`拖动排序 ${item.label}`}
+				className="cursor-grab touch-none select-none px-0.5 text-[14px] leading-none text-bn-text-tertiary active:cursor-grabbing"
+			>
+				⠿
+			</button>
+			<label
+				className={`flex flex-1 items-center gap-2 text-[12.5px] ${
+					locked
+						? "cursor-not-allowed text-bn-text-tertiary"
+						: "cursor-pointer text-bn-text-primary"
+				}`}
+				// 「系统」是唯一能把别的改回来的地方,藏了就锁死了。说清楚原因,
+				// 否则一个点不动的勾选框只会让人以为是坏了。
+				title={locked ? "「系统」不能隐藏 —— 否则就没地方把别的改回来了" : undefined}
+			>
+				<input
+					type="checkbox"
+					checked={shown}
+					disabled={locked}
+					onChange={() => toggle(item.to)}
+					className="accent-bn-pink"
+				/>
+				{item.label}
+			</label>
+		</div>
+	);
+}
+
+/**
+ * 导航条右侧那颗按钮展开的面板 —— 主人自己挑要看见哪几项、按什么顺序摆。
+ *
+ * 藏的只是入口:路由一个没动,URL 直达照常打得开。所以这里的文案说的是「显示」,
+ * 不是「启用」—— 后者是「系统」页里各功能自己的开关,与这份名单无关。
+ *
+ * 面板里列的是**全部**项(含藏起来的),排序也照排:这样可以先把一项摆到想要的位置,
+ * 再决定要不要显示它,而不必为了调顺序先把它放出来。
+ */
+function NavEditor({ onClose }: { onClose: () => void }) {
+	const hidden = useNavStore((s) => s.hidden);
+	const order = useNavStore((s) => s.order);
+	const showAll = useNavStore((s) => s.showAll);
+	const reorder = useNavStore((s) => s.reorder);
+	const resetOrder = useNavStore((s) => s.resetOrder);
+	const ref = useRef<HTMLDivElement>(null);
+
+	// pointer 拖拽设 4px 启动阈值,免得点一下手柄被误判成拖拽;键盘可达走 KeyboardSensor。
+	// 与 cards/BlockListEditor 同一套参数。
+	const sensors = useSensors(
+		useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+		useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+	);
+
+	// 点外面就收起来。面板本身不拦点击 —— 勾完一项还想勾下一项,不该每次都重新展开。
+	useEffect(() => {
+		function onDocPointerDown(e: PointerEvent): void {
+			if (!ref.current?.contains(e.target as Node)) onClose();
+		}
+		document.addEventListener("pointerdown", onDocPointerDown);
+		return () => document.removeEventListener("pointerdown", onDocPointerDown);
+	}, [onClose]);
+
+	const rows = orderedNav(NAV_ITEMS, order);
+
+	function onDragEnd(e: DragEndEvent): void {
+		const { active, over } = e;
+		if (!over || active.id === over.id) return;
+		reorder(String(active.id), String(over.id));
+	}
+
+	return (
+		<div
+			ref={ref}
+			className="bn-glass absolute right-0 top-full z-30 mt-1 w-60 rounded-bn-card p-2 shadow-bn-card"
+		>
+			<div className="flex items-center justify-between gap-1 px-1 py-1">
+				<span className="text-[11.5px] font-bold text-bn-text-secondary">标签显示与排序</span>
+				<div className="flex items-center gap-0.5">
+					<Btn variant="ghost" size="sm" onClick={showAll}>
+						全部显示
+					</Btn>
+					<Btn variant="ghost" size="sm" onClick={resetOrder}>
+						默认顺序
+					</Btn>
+				</div>
+			</div>
+			<DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+				<SortableContext items={rows.map((i) => i.to)} strategy={verticalListSortingStrategy}>
+					{rows.map((item) => {
+						const locked = !canHideNav(item.to);
+						return (
+							<NavEditorRow
+								key={item.to}
+								item={item}
+								locked={locked}
+								shown={locked || !hidden.includes(item.to)}
+							/>
+						);
+					})}
+				</SortableContext>
+			</DndContext>
+		</div>
+	);
+}
 
 function AccountChip() {
 	const snapshot = useAuthStore((s) => s.snapshot);
@@ -215,6 +342,12 @@ export function GlassHeader() {
 		targets: targets.data?.length ?? 0,
 	};
 
+	// 导航条显哪几项、按什么顺序 —— 纯本地偏好,见 config/nav.ts。
+	const hiddenNav = useNavStore((s) => s.hidden);
+	const navOrder = useNavStore((s) => s.order);
+	const shownNav = resolveNav(NAV_ITEMS, { order: navOrder, hidden: hiddenNav });
+	const [navEditorOpen, setNavEditorOpen] = useState(false);
+
 	function refreshAll(): void {
 		qc.invalidateQueries({ queryKey: ["health"] });
 		qc.invalidateQueries({ queryKey: ["auth-status"] });
@@ -290,8 +423,8 @@ export function GlassHeader() {
 					<LogoutButton />
 				</div>
 			</div>
-			<nav className="flex gap-0 px-5 pt-3">
-				{NAV.map((t) => (
+			<nav className="relative flex gap-0 px-5 pt-3">
+				{shownNav.map((t) => (
 					<NavLink
 						key={t.to}
 						to={t.to}
@@ -327,6 +460,18 @@ export function GlassHeader() {
 						)}
 					</NavLink>
 				))}
+				{/* 挑标签的入口。贴在导航条右端 —— 它讲的就是这一条的事,摆在别处得先
+				    让人找。图标按钮而非文字,免得这个「让界面别那么满」的功能自己先占一格。 */}
+				<div className="relative ml-auto self-center">
+					<Btn
+						variant="ghost"
+						size="sm"
+						icon={<Icon.sliders size={14} />}
+						title="挑要显示的标签"
+						onClick={() => setNavEditorOpen((v) => !v)}
+					/>
+					{navEditorOpen ? <NavEditor onClose={() => setNavEditorOpen(false)} /> : null}
+				</div>
 			</nav>
 		</header>
 	);
