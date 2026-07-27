@@ -283,3 +283,57 @@ export const BUILTIN_AI_PRESETS = [
 		liveSummaryPrompt: "用元气满满的语气帮用户回顾这场直播的重点(200 字内),保持热情但抓住关键点。",
 	},
 ] as const;
+
+/**
+ * 模板默认值（占位，可由 UI 编辑）。
+ *
+ * 占位符统一 `{key}` 语法,由 `LiveTemplateRenderer.applyTemplate` / `interpolate`
+ * 替换(`applyTemplate` 同时兼容 koishi 旧存档的 legacy `-key`)。变量集严格对齐
+ * 渲染器实际提供的字段:
+ * - 直播:`{name}` `{time}` `{follower}` `{follower_change}` `{watched}`
+ * - 上舰:`{uname}` `{mname}` `{guard}`
+ * - 特别关注:`{mastername}` `{uname}` `{msg}`
+ * - 弹幕总结:`{dmc}` `{mdn}` `{dca}` `{un1..5}` `{dc1..5}`
+ * - 动态:`{name}`
+ *
+ * 链接不再是模板变量:动态 / 视频 / 开播的链接是消息版式的独立「链接」部件
+ * (显隐 / 位置由版式或 koishi 端的开关决定)。旧存档模板里残留的 `{url}` /
+ * `{link}` 在版式路径渲染时连同前导分隔符一起剥离,不会双链接。
+ *
+ * liveStart/liveOngoing/liveEnd 与 packages/live 的 `DEFAULT_LIVE_TEMPLATES`
+ * 保持字面量一致 —— 这样「自定义关闭时实际推送的内建默认」== 「自定义打开时
+ * UI 载入的默认文本」,不再出现 `{name}` 原样吐出的错配。
+ */
+export const DEFAULT_TEMPLATES = {
+	liveStart: "{name} 开播啦，当前粉丝数：{follower}",
+	liveOngoing: "{name} 正在直播，已播 {time}，累计观看：{watched}",
+	liveEnd: "{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
+	liveSummary: `🔍【弹幕情报站】本场直播数据如下：
+🧍‍♂️ 总共 {dmc} 位{mdn}上线
+💬 共计 {dca} 条弹幕飞驰而过
+📊 热词云图已生成，快来看看你有没有上榜！
+👑 本场顶级输出选手：
+🥇 {un1} - 弹幕输出 {dc1} 条
+🥈 {un2} - 弹幕 {dc2} 条，萌力惊人
+🥉 {un3} - {dc3} 条精准狙击
+🎖️ 特别嘉奖：{un4} & {un5}
+你们的弹幕，我们都记录在案！🕵️‍♀️`,
+	dynamic: "{name}发布了一条动态",
+	dynamicVideo: "{name}发布了新视频",
+	wordcloudStopWords: "",
+	specialDanmaku: "{mastername} 的关注用户 {uname} 发送弹幕：{msg}",
+	specialUserEnter: "{uname} 进入了 {mastername} 的直播间",
+	guardBuy: {
+		// false = 默认上舰图 + 内置文案；true = 启用三档自定义文案/图片
+		enable: false,
+		captain: { imageUrl: "", template: "{uname} 成为了 {mname} 的舰长！" },
+		commander: {
+			imageUrl: "",
+			template: "{uname} 成为了 {mname} 的提督！",
+		},
+		governor: {
+			imageUrl: "",
+			template: "{uname} 成为了 {mname} 的总督！",
+		},
+	},
+} as const;

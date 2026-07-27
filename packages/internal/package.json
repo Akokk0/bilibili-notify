@@ -30,6 +30,10 @@
 			"import": "./lib/patch.mjs",
 			"require": "./lib/patch.cjs"
 		},
+		"./template-defaults": {
+			"import": "./lib/template-defaults.mjs",
+			"require": "./lib/template-defaults.cjs"
+		},
 		"./package.json": "./package.json"
 	},
 	"scripts": {
