@@ -128,6 +128,24 @@ export class LoginFlow {
 	 * spurious one is wasted work, never corruption.
 	 */
 	private needsRestore = false;
+	/**
+	 * 每次 `reportLoggedOut` 递增。在途探活在入口捕获它,落地前比对 —— 不一致说明
+	 * 这份结果问的是一个已经作废的会话,整份丢掉。
+	 *
+	 * 没有它会怎样(2026-07-27 线上实况):cookie 刷新链拿到 `-101`,拦截器同步发
+	 * `auth-lost`,动态检测暂停、直播间连接全关;**33 毫秒后**,一次在会话被判死
+	 * **之前**就发出去的探活带着 `code 0` 回来,`reportLoggedIn` 只看「上一帧不是
+	 * LOGGED_IN」+「needsRestore」,于是把快照推回 LOGGED_IN 并发一条 `auth-restored`。
+	 * 下游照单全收:重建直播监听、重启动态检测、补关注 —— 全部再撞一遍 `-101`,
+	 * 主人的私聊被刷屏,「账号登录已失效」还连发两条。
+	 *
+	 * 这个窗口不是理论上的:健康检查默认 30 分钟、cookie 刷新固定 60 分钟,两者
+	 * 每小时对齐一次,而刷新是四次网络往返的长链,探活很容易正卡在里面。
+	 *
+	 * `BilibiliAPI.refreshGeneration` 对 cookie 刷新做的是同一件事,这里补的是
+	 * 登录流那一半。
+	 */
+	private authGeneration = 0;
 
 	constructor(opts: LoginFlowOptions) {
 		this.serviceCtx = opts.serviceCtx;
@@ -160,15 +178,18 @@ export class LoginFlow {
 	 * Network failures keep the current status (transient) and are logged at warn.
 	 */
 	async reportAccountInfo(): Promise<void> {
+		const gen = this.authGeneration;
 		let personalInfo: MySelfInfoData;
 		try {
 			personalInfo = await this.api.getMyselfInfo();
 		} catch (e) {
+			if (this.supersededSince(gen)) return;
 			this.logger.warn(`[account] 获取个人信息异常: ${e}`);
 			this.reportTransientFailure(e);
 			this.attachHealthCheck();
 			return;
 		}
+		if (this.supersededSince(gen)) return;
 		if (personalInfo.code !== 0) {
 			this.reportLoginCheck(personalInfo.code);
 			if (personalInfo.code !== -101) this.attachHealthCheck();
@@ -181,8 +202,20 @@ export class LoginFlow {
 		} catch (e) {
 			this.logger.warn(`[account] 获取用户卡片失败: ${e}`);
 		}
+		// 取卡片是第二次网络往返,窗口和探活那次一样宽 —— 必须再比一次。
+		if (this.supersededSince(gen)) return;
 		this.reportLoggedIn(card);
 		this.attachHealthCheck();
+	}
+
+	/**
+	 * 本轮探活是否已被一次登出作废。`true` = 结果不作数,调用方原样返回:
+	 * 既不动快照,也**不重挂心跳**(`reportLoggedOut` 是刻意把心跳摘掉的)。
+	 */
+	private supersededSince(gen: number): boolean {
+		if (gen === this.authGeneration) return false;
+		this.logger.debug("[auth] 探活结果已被一次登出取代，丢弃本轮");
+		return true;
 	}
 
 	/** Mark the session as logged-out due to upstream session invalidation. */
@@ -204,6 +237,9 @@ export class LoginFlow {
 		// 已过期的话这里是 LOADING_LOGIN_INFO → NOT_LOGIN,而引擎照样会自己撞上
 		// -101 并停下等 auth-restored。
 		this.needsRestore = true;
+		// 作废任何在途探活 —— 它们问的是刚死掉的那个会话,迟到的 code 0 不得
+		// 把快照推回 LOGGED_IN(更不得由此发出一条假的 auth-restored)。
+		this.authGeneration++;
 		// auth-lost 仍只在真的丢掉一个好会话时发:它的消费方是 teardown,
 		// 拆一个从没建起来的引擎没有意义。
 		if (wasLoggedIn) {
@@ -429,8 +465,11 @@ export class LoginFlow {
 			this.snapshot.status === BiliLoginStatus.LOGGING_QR ||
 			this.snapshot.status === BiliLoginStatus.NOT_LOGIN;
 		if (skip) return;
+		// skip 判据取的是**发请求之前**那一帧,答复回来时状态可能早就变了。
+		const gen = this.authGeneration;
 		try {
 			const res = await this.api.getMyselfInfo();
+			if (this.supersededSince(gen)) return;
 			this.reportLoginCheck(res.code);
 		} catch (e) {
 			this.logger.warn(`[auth] 心跳异常（保持当前状态）：${e}`);

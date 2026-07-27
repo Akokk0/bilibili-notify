@@ -374,3 +374,199 @@ describe("LoginFlow — 冷启动即登录过期,重新登录后必须放行 aut
 		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(1);
 	});
 });
+
+/** 手动兑现的 Promise —— 把「请求还在途中」这个状态钉在测试里。 */
+function deferred<T>(): {
+	promise: Promise<T>;
+	resolve: (v: T) => void;
+	reject: (e: unknown) => void;
+} {
+	let resolve!: (v: T) => void;
+	let reject!: (e: unknown) => void;
+	const promise = new Promise<T>((res, rej) => {
+		resolve = res;
+		reject = rej;
+	});
+	return { promise, resolve, reject };
+}
+
+/** 还活着(没被 dispose)的定时器。心跳有没有被悄悄重挂,看这个。 */
+function liveTimers(h: Harness): unknown[] {
+	return h.scFake.intervals.filter((i) => !i.handle.disposed);
+}
+
+/** 让所有已排队的微任务跑完。 */
+function flush(): Promise<void> {
+	return new Promise<void>((r) => setTimeout(r, 0));
+}
+
+describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它救活", () => {
+	/*
+	 * 线上实况(2026-07-27 20:15:12):cookie 刷新链拿到 -101,拦截器同步发
+	 * `auth-lost`,动态检测暂停、三个直播间连接全关。**33 毫秒后**却冒出一条
+	 * `auth-restored`,于是直播监听重建、动态检测重启、五个订阅补关注 —— 全部
+	 * 再撞一遍 -101,主人的 QQ 被刷了六条私聊,其中「账号登录已失效」两条。
+	 *
+	 * 根因不是谁乱发事件,而是**在会话被判死之前发出去的那次探活**迟到返回了
+	 * code 0:`reportLoggedIn` 只看「上一帧不是 LOGGED_IN」+「needsRestore」,
+	 * 没有任何判据能认出这份成功已经过期。
+	 *
+	 * 健康检查默认 30 分钟、cookie 刷新固定 60 分钟,两者每小时对齐一次 ——
+	 * 这个窗口不是理论上的,是每小时都要经过一遍的。
+	 */
+
+	it("心跳探活在途时会话被判死 → 迟到的 code 0 不得触发 auth-restored", async () => {
+		const h = makeFlow({ healthCheckMs: 30 * 60_000 });
+		h.api.getMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.getUserCardInfo.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		await h.flow.reportAccountInfo();
+		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
+
+		// 心跳发出探活请求,此刻会话还活着,B 站也还认。
+		const probe = deferred<{ code: number; data: { mid: number } }>();
+		h.api.getMyselfInfo.mockReturnValueOnce(probe.promise);
+		h.scFake.intervals[0].handle.fire();
+		await flush();
+
+		// 探活在途期间,cookie 刷新链撞上 -101 —— 拦截器同步走到这里。
+		await h.flow.handleAuthLost();
+		expect(h.flow.current().status).toBe(BiliLoginStatus.NOT_LOGIN);
+		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(1);
+
+		// 迟到的答复:它问的是那个已经死掉的会话,答案早就不作数了。
+		probe.resolve({ code: 0, data: { mid: 42 } });
+		await flush();
+
+		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(0);
+		expect(h.flow.current().status).toBe(BiliLoginStatus.NOT_LOGIN);
+	});
+
+	it("取用户卡片在途时会话被判死 → 不得报回 LOGGED_IN", async () => {
+		// `reportAccountInfo` 在探活成功与 `reportLoggedIn` 之间还夹着一次
+		// `getUserCardInfo` 网络往返,那是第二个同样宽的窗口。
+		const h = makeFlow();
+		h.api.getMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.getUserCardInfo.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		await h.flow.reportAccountInfo();
+
+		h.api.getMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		const card = deferred<{ code: number; data: { card: { mid: string } } }>();
+		h.api.getUserCardInfo.mockReturnValueOnce(card.promise);
+		const pending = h.flow.reportAccountInfo();
+		await flush();
+
+		await h.flow.handleAuthLost();
+		card.resolve({ code: 0, data: { card: { mid: "42" } } });
+		await pending;
+
+		expect(h.flow.current().status).toBe(BiliLoginStatus.NOT_LOGIN);
+		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(0);
+	});
+
+	it("主人手动退出登录后,在途探活不得把他登回去", async () => {
+		// 同一个洞的另一面,而且这一面是安全问题:点了「退出登录」,盘上 cookie
+		// 已清、内存 jar 已清,快照却被一次迟到的探活推回「已登录」。
+		const h = makeFlow({ healthCheckMs: 30 * 60_000 });
+		h.api.getMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.getUserCardInfo.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		await h.flow.reportAccountInfo();
+
+		const probe = deferred<{ code: number; data: { mid: number } }>();
+		h.api.getMyselfInfo.mockReturnValueOnce(probe.promise);
+		h.scFake.intervals[0].handle.fire();
+		await flush();
+
+		h.flow.reportLoggedOut("notLogin");
+		probe.resolve({ code: 0, data: { mid: 42 } });
+		await flush();
+
+		expect(h.flow.current().status).toBe(BiliLoginStatus.NOT_LOGIN);
+	});
+
+	/*
+	 * 下面三条守的是同一个洞的另一头:`reportAccountInfo` 在失败路径上会
+	 * `attachHealthCheck()`,而 `reportLoggedOut` 是**刻意**把心跳摘掉的
+	 * (登出后 runHealthCheck 只会一路 skip,留着就是个空转定时器 —— 那正是
+	 * 当初 P2 修过的问题)。一次迟到的答复不该把它重新挂回来。
+	 */
+
+	it("迟到的探活返回风控码 → 不得把已被摘掉的心跳重新挂上", async () => {
+		const h = makeFlow({ healthCheckMs: 30 * 60_000 });
+		h.api.getMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.getUserCardInfo.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		await h.flow.reportAccountInfo();
+		expect(liveTimers(h)).toHaveLength(1);
+
+		const probe = deferred<{ code: number; data: { mid: number } }>();
+		h.api.getMyselfInfo.mockReturnValueOnce(probe.promise);
+		const pending = h.flow.reportAccountInfo();
+		await flush();
+
+		await h.flow.handleAuthLost();
+		expect(liveTimers(h)).toHaveLength(0);
+
+		// -352 既不是 0 也不是 -101,走的正是「瞬时失败 + 重挂心跳」那条路。
+		probe.resolve({ code: -352, data: { mid: 0 } });
+		await pending;
+
+		expect(liveTimers(h)).toHaveLength(0);
+	});
+
+	it("迟到的探活抛网络异常 → 同样不得复活心跳", async () => {
+		const h = makeFlow({ healthCheckMs: 30 * 60_000 });
+		h.api.getMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.getUserCardInfo.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		await h.flow.reportAccountInfo();
+
+		const probe = deferred<{ code: number; data: { mid: number } }>();
+		h.api.getMyselfInfo.mockReturnValueOnce(probe.promise);
+		const pending = h.flow.reportAccountInfo();
+		await flush();
+
+		await h.flow.handleAuthLost();
+		probe.reject(new Error("net down"));
+		await pending;
+
+		expect(liveTimers(h)).toHaveLength(0);
+	});
+
+	it("主人手动退出后,迟到的 -101 不得把「已退出」改写成「登录已失效」", async () => {
+		const h = makeFlow();
+		h.api.getMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.getUserCardInfo.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		await h.flow.reportAccountInfo();
+
+		const probe = deferred<{ code: number; data: { mid: number } }>();
+		h.api.getMyselfInfo.mockReturnValueOnce(probe.promise);
+		const pending = h.flow.reportAccountInfo();
+		await flush();
+
+		// 主人自己点了「退出登录」。
+		h.flow.reportLoggedOut("notLogin");
+		const msgAfterLogout = h.flow.current().msg;
+
+		probe.resolve({ code: -101, data: { mid: 0 } });
+		await pending;
+
+		// 面板上该显示「请点击扫码登录」,而不是吓人的「登录已失效」。
+		expect(h.flow.current().msg).toBe(msgAfterLogout);
+	});
+
+	it("登出与探活无交叠时,一切照旧 —— 守卫不得误伤正常恢复", async () => {
+		const h = makeFlow();
+		h.api.getMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.getUserCardInfo.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		await h.flow.reportAccountInfo();
+
+		await h.flow.handleAuthLost();
+		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(1);
+
+		// 登出**先**落定,之后才发起的探活是问新状态的,必须照常放行。
+		h.api.getMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.getUserCardInfo.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		await h.flow.reportAccountInfo();
+
+		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
+		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(1);
+	});
+});
