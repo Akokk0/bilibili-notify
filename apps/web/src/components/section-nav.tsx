@@ -21,8 +21,29 @@ export interface SectionNavItem {
 	icon?: ReactNode;
 	/** 图标底色 tint(hex);给则把图标包进一个 tinted 圆角盒(Targets 平台色)。 */
 	iconTint?: string;
-	/** 标题旁内联角标(Rules 覆盖红点 / Targets「(停用)」)。 */
+	/** 标题旁内联角标(Rules 覆盖点 / Targets「(停用)」)。 */
 	badge?: ReactNode;
+}
+
+/**
+ * 左栏项旁边那颗小点 —— 「这一项有点特别」的通用记号,喂给 `badge`。
+ *
+ * 站内两处语义不同但视觉语汇相同:Rules 的「该 UP 主覆盖了这一项」、AI 页的
+ * 「女仆平时用的就是这个」。抽出来是为了让观感**只有一处定义** —— 各页自己画的话
+ * 立刻就会飘(AI 页那颗一开始画成 8px 绿点,摆在一起明显不是一路)。
+ *
+ * 纯色块对读屏器等于不存在,所以 `title` 同时喂给 `aria-label`。
+ */
+export function RailDot({ title }: { title: string }) {
+	return (
+		<span
+			data-rail-dot
+			role="img"
+			aria-label={title}
+			title={title}
+			className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-bn-pink"
+		/>
+	);
 }
 
 export interface SectionNavProps {

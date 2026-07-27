@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConfirmDialog } from "../components/dialog";
 import { type FieldUpdate, FieldUpdatesProvider } from "../components/field-updates";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
-import { SectionNav } from "../components/section-nav";
+import { RailDot, SectionNav } from "../components/section-nav";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { api } from "../services/api";
 import type { Subscription } from "../types/domain";
@@ -85,12 +85,7 @@ function SectionList({
 				label: s.label,
 				desc: s.desc,
 				icon: s.icon,
-				badge: customizedIds?.has(s.id) ? (
-					<span
-						className="inline-block h-1.5 w-1.5 rounded-full bg-bn-pink"
-						title="该 UP 主已设置该项覆盖"
-					/>
-				) : undefined,
+				badge: customizedIds?.has(s.id) ? <RailDot title="该 UP 主已设置该项覆盖" /> : undefined,
 			}))}
 		/>
 	);
