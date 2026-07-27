@@ -8,7 +8,9 @@
  * 雷区)。于是把**会写错的那部分**——读哪个能力位、哪家该少哪项——挪到这里钉住,
  * 剩下的只是把这份清单摊进 `Schema.object` 的几行字面映射。
  *
- * 控制台的真实渲染仍然只能手工看,那条在 docs/agents/ai-page-redesign.md 里。
+ * 剩下**控制台的真实渲染**只能手工看:换分支时哪份 default 生效、上一家已填的值是
+ * 留在配置文件里还是被抹掉。结构本身另在真 koishi 运行时下 `require` 构建产物验过
+ * (五条具名分支 + 一条兜底,字段分布与本文件的清单一致)。
  */
 
 import { AI_PROVIDER_IDS } from "@bilibili-notify/internal";

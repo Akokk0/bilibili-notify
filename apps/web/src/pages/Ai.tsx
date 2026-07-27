@@ -14,7 +14,7 @@
  *   人格)。要套用到全局有单独的「设为默认」按钮。
  *
  * 页面级的两项(总开关、日志等级)不属于任何一家或任何一份人格,分别放在头图与
- * 底部,不进 Tab。设计稿与决策依据见 `docs/agents/ai-page-redesign.md`。
+ * 底部,不进 Tab。
  *
  * 存盘走 PATCH /api/globals { defaults: { ai: ... } }。
  */
