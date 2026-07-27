@@ -682,6 +682,21 @@ class NodeConfigStore implements ConfigStore {
 			// 更糟的是会让人以为补齐还归 store 管。见
 			// packages/internal/src/schema/ai-persona-pointer.test.ts。
 
+			// ⚠️ **这张表已冻结,不要再往里加条目。**
+			//
+			// 它是「改了默认怎么惠及老用户」的**上一代**解法:手写一张历代旧默认,
+			// 值对得上就判定「他没改过」,悄悄改写成当前默认。毛病是这张表跟当前默认
+			// (`DEFAULT_TEMPLATES`,另一个包)分居两处,改默认时没有任何东西提醒你来补
+			// 一条 —— `liveSummary` 已经这么漏过一次(改了占位符语法却没进表)。
+			//
+			// 现在这件事归 `templateDefaultsSeen` 账本 + 规则页的逐字段提示管:不再猜
+			// 「他改没改过」,只问「**这一版**默认他见过没有」,于是历代表整张不需要了。
+			// 见 `packages/internal/src/template-defaults.ts`。
+			//
+			// 留着不删是因为**它对还停在老版本、将来才升级的用户仍然生效** —— 删掉
+			// 那些人就从自动迁移退化成「打开页面看见提示再点一下」。新的默认变更一律
+			// 走提示,不要再碰这张表。
+			//
 			// 一次性迁移:历代「旧默认原值」→ 当前默认。覆盖两代:① 占位符语法统一前
 			// (alpha.x)的 {title}/{duration}/{user}/{mastername} 旧变量默认;② 消息版式
 			// 引入前「链接内嵌模板」的 {url}/{link} 默认(链接已改为版式的独立部件,
