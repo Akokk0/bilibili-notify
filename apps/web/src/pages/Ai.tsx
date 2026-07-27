@@ -687,8 +687,8 @@ export default function Ai() {
 								{/* 图片理解。它同样是在描述「接哪个模型」,只不过整块可以不填:
 								    两条路都不开时,发图会被明确拒绝而不是静默丢掉。 */}
 								<GlassBox
-									title="图片理解 · vision"
-									subtitle="两条路二选一 · ai.enableVision / ai.vision.{model,baseUrl,apiKey}"
+									title="图片理解"
+									subtitle="两条路二选一 · ai.providers.<服务商>.{enableVision,vision}"
 									accent="#00b894"
 									icon={<Icon.image size={14} />}
 									badge="vision"
@@ -726,6 +726,30 @@ export default function Ai() {
 											想让女仆看得见图，填下面的视觉模型（可以是别家的）
 										</FieldNote>
 									)}
+									{/* 密钥 → 地址 → 模型,与上面「模型连接」**同序**:两块摆的是同一件事
+									    (接哪个模型),顺序各走各的只会让人以为这是另一种东西。
+
+									    地址与密钥**恒在场**,不等填了模型 ID 才现身。这块存在的前提就是主模型
+									    那家没有视觉模型,副模型多半在另一家 —— 藏起来的话主人打开只看见一个
+									    模型 ID 框,结论是「没法给它单配地址和密钥」,而副标题偏偏还写着有。
+									    三格全是选填(留空即跟随主模型 / 不启用),摆着不会被当成漏填。 */}
+									<Field code={`ai.providers.${editing}.vision.apiKey`} full>
+										<TInput
+											value={profile.vision.apiKey}
+											onChange={(v) => setVision("apiKey", v)}
+											secret
+											mono
+											placeholder="留空则跟随上面主模型的 apiKey"
+										/>
+									</Field>
+									<Field code={`ai.providers.${editing}.vision.baseUrl`} full>
+										<TInput
+											value={profile.vision.baseUrl}
+											onChange={(v) => setVision("baseUrl", v)}
+											mono
+											placeholder="留空则跟随上面主模型的 baseUrl"
+										/>
+									</Field>
 									<Field code={`ai.providers.${editing}.vision.model`} full>
 										<TInput
 											value={profile.vision.model}
@@ -734,29 +758,6 @@ export default function Ai() {
 											placeholder="留空则不启用，例如 Qwen/Qwen2.5-VL-32B-Instruct"
 										/>
 									</Field>
-									{/* 副模型的地址与密钥只在真配了副模型时才有意义 —— 没填 model 时
-									    这两格根本不参与任何请求,摆着只会让人以为漏填了。 */}
-									{visionSubModelOn ? (
-										<>
-											<Field code={`ai.providers.${editing}.vision.baseUrl`} full>
-												<TInput
-													value={profile.vision.baseUrl}
-													onChange={(v) => setVision("baseUrl", v)}
-													mono
-													placeholder="留空则跟随上面主模型的 baseUrl"
-												/>
-											</Field>
-											<Field code={`ai.providers.${editing}.vision.apiKey`} full>
-												<TInput
-													value={profile.vision.apiKey}
-													onChange={(v) => setVision("apiKey", v)}
-													secret
-													mono
-													placeholder="留空则跟随上面主模型的 apiKey"
-												/>
-											</Field>
-										</>
-									) : null}
 								</GlassBox>
 
 								{/* 生成参数 —— temperature 与深度思考同属「这一次请求怎么生成」,合成一块。
