@@ -7,6 +7,8 @@
 
 import { type ReactNode, useEffect, useState } from "react";
 import { type FieldLabel, getFieldLabel } from "../config/field-labels.js";
+import { Btn } from "./atoms";
+import { type FieldUpdate, useFieldReset, useFieldUpdate } from "./field-updates";
 import { Icon } from "./icons";
 
 // ── Field ────────────────────────────────────────────────────────────────────
@@ -33,6 +35,8 @@ export function Field({ code, label, hint, required, full, children }: FieldProp
 	const entry: FieldLabel | null = getFieldLabel(code);
 	const effectiveLabel: ReactNode = label ?? entry?.label ?? code;
 	const effectiveHint: ReactNode = hint ?? entry?.hint;
+	const update = useFieldUpdate(code);
+	const reset = useFieldReset(code);
 	return (
 		<div
 			data-code={code}
@@ -47,12 +51,54 @@ export function Field({ code, label, hint, required, full, children }: FieldProp
 					<code className="rounded bg-bn-code-bg px-1.5 py-px font-mono text-[10.5px] text-bn-text-tertiary">
 						{code}
 					</code>
+					{reset ? (
+						<span data-field-reset>
+							<Btn variant="ghost" size="sm" onClick={reset} title="把这条文案还原成当前默认">
+								恢复默认
+							</Btn>
+						</span>
+					) : null}
 				</div>
 				{effectiveHint ? (
 					<div className="text-[11px] leading-snug text-bn-text-secondary">{effectiveHint}</div>
 				) : null}
 			</div>
-			<div className="flex min-w-0 flex-1 items-start">{children}</div>
+			<div className="flex min-w-0 flex-1 flex-col items-stretch gap-1.5">
+				{children}
+				{update ? <DefaultUpdateNotice update={update} /> : null}
+			</div>
+		</div>
+	);
+}
+
+/**
+ * 「这条文案的默认值变了」的提示条,贴在字段下方。
+ *
+ * 摆出新默认让主人自己比,再给两条出路 —— 换成新的,或者留着自己的。两个动作都会
+ * 把这一版记进账本,所以**点完就不再打扰**(留着自己的那条尤其要紧:不记的话他每次
+ * 打开这页都被问一遍同一件事)。
+ */
+function DefaultUpdateNotice({ update }: { update: FieldUpdate }) {
+	return (
+		<div
+			data-template-update
+			className="rounded-bn-card border border-bn-warning-border bg-bn-warning-soft px-2.5 py-2"
+		>
+			<div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold text-bn-warning-text">
+				<Icon.sparkle className="h-3 w-3" />
+				默认文案有更新
+			</div>
+			<pre className="mb-2 max-h-24 overflow-auto whitespace-pre-wrap break-all rounded-md bg-bn-code-bg px-2 py-1.5 font-mono text-[10.5px] leading-relaxed text-bn-text-secondary">
+				{update.preview}
+			</pre>
+			<div className="flex flex-wrap gap-2">
+				<Btn variant="primary" size="sm" onClick={update.accept}>
+					用新默认
+				</Btn>
+				<Btn variant="outline" size="sm" onClick={update.keep}>
+					保持我的
+				</Btn>
+			</div>
 		</div>
 	);
 }

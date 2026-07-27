@@ -1,7 +1,14 @@
+import { DEFAULT_TEMPLATES } from "@bilibili-notify/internal/constants";
 import { buildPatch } from "@bilibili-notify/internal/patch";
+import {
+	pendingTemplateUpdates,
+	templateDefaultAt,
+	templateFingerprint,
+} from "@bilibili-notify/internal/template-defaults";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConfirmDialog } from "../components/dialog";
+import { type FieldUpdate, FieldUpdatesProvider } from "../components/field-updates";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { SectionNav } from "../components/section-nav";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
@@ -27,6 +34,14 @@ import {
 import { displayName } from "./up/helpers";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+/** 把点路径摊成嵌套对象:`guardBuy.captain.template` → `{guardBuy:{captain:{template:v}}}`。 */
+function nestByPath(path: string, value: string): Record<string, unknown> {
+	const segs = path.split(".");
+	let node: Record<string, unknown> = { [segs[segs.length - 1] as string]: value };
+	for (let i = segs.length - 2; i >= 0; i -= 1) node = { [segs[i] as string]: node };
+	return node;
+}
 
 /** Slices on Subscription.overrides that are populated; per-UP "已覆盖" 状态来源。 */
 function overrideKeysOf(sub: Subscription): Set<PerUpOverrideKey> {
@@ -136,6 +151,9 @@ export function GlobalDraftBinder({
 			schedule: defaults.schedule,
 			templates: defaults.templates,
 			messageLayout: defaults.messageLayout,
+			// 账本也算脏:点「保持我的」时**只有**它变,不纳进来保存条就不亮,
+			// 主人一离开页面这个决定就丢了,下次进来还被问同一件事。
+			templateDefaultsSeen: defaults.templateDefaultsSeen,
 		}),
 		[defaults],
 	);
@@ -146,6 +164,7 @@ export function GlobalDraftBinder({
 			schedule: baseline.schedule,
 			templates: baseline.templates,
 			messageLayout: baseline.messageLayout,
+			templateDefaultsSeen: baseline.templateDefaultsSeen,
 		}),
 		[baseline],
 	);
@@ -206,6 +225,9 @@ export default function Rules() {
 							templates: next.defaults.templates,
 							imageGroup: next.defaults.imageGroup,
 							messageLayout: next.defaults.messageLayout,
+							// 账本必须跟模板同批下发:主人点「保持我的」时**只有**账本变了,
+							// 不带上它这一下就等于什么都没保存,下次进来还问同一件事。
+							templateDefaultsSeen: next.defaults.templateDefaultsSeen,
 						},
 					},
 					{
@@ -215,6 +237,7 @@ export default function Rules() {
 							templates: base?.defaults.templates,
 							imageGroup: base?.defaults.imageGroup,
 							messageLayout: base?.defaults.messageLayout,
+							templateDefaultsSeen: base?.defaults.templateDefaultsSeen,
 						},
 					},
 				),
@@ -236,9 +259,66 @@ export default function Rules() {
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
 	});
 
-	function patchDraft(delta: GlobalConfigPatch): void {
+	// useCallback 不是为了省渲染:下面 `fieldUpdates` 那个 useMemo 要把它列进依赖,
+	// 每渲染新建一个函数会让 memo 每次都重算,等于白 memo。
+	const patchDraft = useCallback((delta: GlobalConfigPatch): void => {
 		setDraft((d) => (d ? deepMerge(d, delta) : d));
-	}
+	}, []);
+
+	// ── 「默认文案有更新」 ───────────────────────────────────────────────────
+	//
+	// 主人改了某条模板的默认,已装好的用户拿不到 —— 盘上写的是当初那一版。这里算出
+	// 哪几条该亮提示,经 context 广播下去:`Field` 拿自己的 code 去认领,于是十几个
+	// 模板字段的调用点**一个都不用改**(详见 components/field-updates.tsx)。
+	const fieldUpdates = useMemo(() => {
+		const templates = draft?.defaults.templates;
+		const seen = draft?.defaults.templateDefaultsSeen ?? {};
+		const pending = new Set(
+			templates ? pendingTemplateUpdates(templates, DEFAULT_TEMPLATES, seen) : [],
+		);
+		return {
+			lookup(code: string): FieldUpdate | null {
+				const path = code.startsWith("templates.") ? code.slice("templates.".length) : null;
+				if (!path || !pending.has(path)) return null;
+				const next = templateDefaultAt(DEFAULT_TEMPLATES, path);
+				if (next === undefined) return null;
+				// 两个动作都记账 ——「保持我的」尤其要紧:不记的话主人每次打开这页
+				// 都被问一遍同一件事,提示很快就被当成噪音。
+				const remember = { [path]: templateFingerprint(next) };
+				return {
+					preview: next,
+					accept: () =>
+						patchDraft({
+							defaults: {
+								templates: nestByPath(path, next) as NonNullable<
+									GlobalConfigPatch["defaults"]
+								>["templates"],
+								templateDefaultsSeen: remember,
+							},
+						}),
+					keep: () => patchDraft({ defaults: { templateDefaultsSeen: remember } }),
+				};
+			},
+			// 「恢复默认」跟上面那个提示是两件事:它常驻,管的是「我改坏了想还原」,
+			// 只要值不是默认就一直在。顺手也把这一版记进账本 —— 值都跟默认一样了,
+			// 再问一句「要不要更新」纯属多余。
+			resetter(code: string): (() => void) | null {
+				const path = code.startsWith("templates.") ? code.slice("templates.".length) : null;
+				if (!path || !templates) return null;
+				const def = templateDefaultAt(DEFAULT_TEMPLATES, path);
+				if (def === undefined || templateDefaultAt(templates, path) === def) return null;
+				return () =>
+					patchDraft({
+						defaults: {
+							templates: nestByPath(path, def) as NonNullable<
+								GlobalConfigPatch["defaults"]
+							>["templates"],
+							templateDefaultsSeen: { [path]: templateFingerprint(def) },
+						},
+					});
+			},
+		};
+	}, [draft, patchDraft]);
 
 	const allSubs = subsQuery.data ?? [];
 
@@ -355,37 +435,41 @@ export default function Rules() {
 					customizedIds={customizedIds}
 				/>
 
-				<div className="space-y-4">
-					{!isGlobal && focusedSub ? (
-						<PerUpEditor sub={focusedSub} defaults={draft.defaults} section={section} />
-					) : section === "filter" ? (
-						<FilterSection value={draft.defaults.filters} onPatch={patchDraft} />
-					) : section === "imageGroup" ? (
-						<ImageGroupSection value={draft.defaults.imageGroup} onPatch={patchDraft} />
-					) : section === "live" ? (
-						<LiveThresholdsSection
-							filters={draft.defaults.filters}
-							schedule={draft.defaults.schedule}
-							onPatch={patchDraft}
-						/>
-					) : section === "summary" ? (
-						<SummarySection templates={draft.defaults.templates} onPatch={patchDraft} />
-					) : section === "msg" ? (
-						<LiveMsgSection
-							templates={draft.defaults.templates}
-							layout={draft.defaults.messageLayout.live}
-							onPatch={patchDraft}
-						/>
-					) : section === "dynamicMsg" ? (
-						<DynamicMsgSection
-							templates={draft.defaults.templates}
-							layout={draft.defaults.messageLayout.dynamic}
-							onPatch={patchDraft}
-						/>
-					) : section === "guard" ? (
-						<GuardSection templates={draft.defaults.templates} onPatch={patchDraft} />
-					) : null}
-				</div>
+				{/* 「默认文案有更新」的提示只对**全局**模板成立:per-UP 的模板是主人显式
+				    覆盖出来的,缺字段就跟随全局,没有「他没见过这版默认」这回事。 */}
+				<FieldUpdatesProvider value={isGlobal ? fieldUpdates : null}>
+					<div className="space-y-4">
+						{!isGlobal && focusedSub ? (
+							<PerUpEditor sub={focusedSub} defaults={draft.defaults} section={section} />
+						) : section === "filter" ? (
+							<FilterSection value={draft.defaults.filters} onPatch={patchDraft} />
+						) : section === "imageGroup" ? (
+							<ImageGroupSection value={draft.defaults.imageGroup} onPatch={patchDraft} />
+						) : section === "live" ? (
+							<LiveThresholdsSection
+								filters={draft.defaults.filters}
+								schedule={draft.defaults.schedule}
+								onPatch={patchDraft}
+							/>
+						) : section === "summary" ? (
+							<SummarySection templates={draft.defaults.templates} onPatch={patchDraft} />
+						) : section === "msg" ? (
+							<LiveMsgSection
+								templates={draft.defaults.templates}
+								layout={draft.defaults.messageLayout.live}
+								onPatch={patchDraft}
+							/>
+						) : section === "dynamicMsg" ? (
+							<DynamicMsgSection
+								templates={draft.defaults.templates}
+								layout={draft.defaults.messageLayout.dynamic}
+								onPatch={patchDraft}
+							/>
+						) : section === "guard" ? (
+							<GuardSection templates={draft.defaults.templates} onPatch={patchDraft} />
+						) : null}
+					</div>
+				</FieldUpdatesProvider>
 			</div>
 
 			{pendingRemoval ? (
