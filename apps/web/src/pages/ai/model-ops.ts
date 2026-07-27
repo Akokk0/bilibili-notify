@@ -31,20 +31,56 @@ export function addableProviders(ai: AISettings): AIProviderId[] {
 }
 
 /**
- * 添加一家:建一个空桶并当场切过去。
+ * 添加一家:建一个空桶。
  *
- * 已存在的桶**保持原样**,只切指针。界面上不会把已添加的那家摆进清单,但这是数据
- * 安全底线 —— 拿空档案盖掉主人填好的 key 是不可逆的。
+ * **不抢指针** —— 「添加一家」与「换用这一家」是两件事,后者是「全局配置」里那个
+ * 选择器的事(与人格的 `activePreset` 同一套语义)。唯一的例外是指针还没着落时
+ * (全新配置指着 `custom` 却一个桶都没有):头一家添加的就成了在用的那家,否则主人
+ * 填好密钥、女仆却仍然「没配齐」,而界面上看不出还差一步。
+ *
+ * 已存在的桶**保持原样**。界面上不会把已添加的那家摆进清单,但这是数据安全底线
+ * —— 拿空档案盖掉主人填好的 key 是不可逆的。
  */
 export function addProvider(ai: AISettings, id: AIProviderId): AISettings {
+	const pointerLanded = ai.providers[ai.provider] !== undefined;
 	return {
 		...ai,
-		provider: id,
+		provider: pointerLanded ? ai.provider : id,
 		providers: {
 			...ai.providers,
 			[id]: ai.providers[id] ?? { ...EMPTY_AI_PROVIDER_PROFILE },
 		},
 	};
+}
+
+/**
+ * 「设为默认」—— 把全局指针拨到这一家。
+ *
+ * 桶不存在就**不动**:指向一个没添加过的服务商是悬空引用,左栏里没有它、
+ * `resolveAIProfile` 兜一套空档案,于是女仆静默停工而主人以为选好了。
+ */
+export function setGlobalProvider(ai: AISettings, id: AIProviderId): AISettings {
+	if (ai.providers[id] === undefined) return ai;
+	return { ...ai, provider: id };
+}
+
+/**
+ * 把「左栏在看哪一家」收敛到一家**真实存在**的。
+ *
+ * 它与 `ai.provider`(女仆真正在用的那家)是两个独立的东西 —— 点左栏只换看的对象,
+ * 不换用的那家。曾经这两件事共用 `ai.provider`,于是「想看看另一家的配置」等于
+ * 当场换掉了女仆在用的那家,而界面上没有任何提示。
+ *
+ * 收敛顺序:看的那家还在 → 原样;否则落到在用的那家;在用的那家也没添加过(全新
+ * 配置、或删到只剩别家)→ 注册表序第一家;一家都没有 → null,右侧出添加面板。
+ */
+export function resolveEditingProvider(
+	ai: AISettings,
+	id: AIProviderId | null,
+): AIProviderId | null {
+	if (id !== null && ai.providers[id] !== undefined) return id;
+	if (ai.providers[ai.provider] !== undefined) return ai.provider;
+	return AI_PROVIDER_IDS.find((p) => ai.providers[p] !== undefined) ?? null;
 }
 
 /**

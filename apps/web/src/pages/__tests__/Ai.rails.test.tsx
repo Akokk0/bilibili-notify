@@ -14,6 +14,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { Icon } from "../../components/icons";
 import { useDraftStore } from "../../store/draft";
+import { formatDiffValue } from "../../utils/formatDiffValue";
 import Ai from "../Ai";
 import { personaIconKey } from "../ai/persona-icons";
 
@@ -61,6 +62,19 @@ function mount(g: Globals) {
 			<Ai />
 		</QueryClientProvider>,
 	);
+}
+
+/**
+ * 左栏里挂着小圆点的那几项的名字(去重)。
+ *
+ * `SectionNav` 竖栏与窄视口横条各渲染一份同样的项,所以按按钮找再去重 ——
+ * 直接数指示器个数会把同一项数两遍。
+ */
+function inUseRailLabels(): string[] {
+	const hit = Array.from(document.querySelectorAll("button")).filter((b) =>
+		b.querySelector("[data-rail-dot]"),
+	);
+	return [...new Set(hit.map((b) => (b.textContent ?? "").trim()))];
 }
 
 beforeEach(() => {
@@ -198,6 +212,146 @@ describe("模型配置 · 服务商左栏", () => {
 	});
 });
 
+/**
+ * 「在看哪一家」与「在用哪一家」是两件事。
+ *
+ * 曾经它们共用 `ai.provider`:点左栏想看看另一家的配置 = 当场换掉了女仆在用的那家,
+ * 界面上没有任何提示。人格那半边早就拆开了(左栏 = 编辑谁,`activePreset` = 用谁),
+ * 服务商这半边补上同一套语义。
+ *
+ * 观察点是**头图那颗 model 药丸** —— 它显示的是女仆真正在用的那家的模型,与右侧
+ * 正在编辑的那家无关。用它来区分两个概念,比读内部状态更贴近主人看到的东西。
+ */
+describe("在用哪一家 vs 在看哪一家", () => {
+	function twoProviders() {
+		return globalsWith((g) => {
+			g.defaults.ai.provider = "deepseek";
+			g.defaults.ai.providers = {
+				deepseek: bucket({ model: "ds-model" }),
+				openrouter: bucket({ model: "or-model" }),
+			};
+		});
+	}
+
+	/** 头图药丸上的模型名 —— 女仆此刻真正在用的那家。 */
+	function heroModel(): string {
+		const pill = document.querySelector("[data-hero-model]");
+		return pill?.textContent ?? "";
+	}
+
+	async function gotoModel() {
+		fireEvent.click(await screen.findByRole("tab", { name: /模型配置/ }));
+		await screen.findByText("模型连接");
+	}
+
+	it("点左栏另一家 → 只换在编辑谁,女仆在用的还是原来那家", async () => {
+		mount(twoProviders());
+		await gotoModel();
+		expect(heroModel()).toBe("ds-model");
+		fireEvent.click(screen.getAllByText("OpenRouter")[0] as HTMLElement);
+		await waitFor(() => expect(screen.getByDisplayValue("or-model")).toBeTruthy());
+		expect(heroModel()).toBe("ds-model");
+	});
+
+	it("左栏用指示器标出在用的那家,不写「在用」二字", async () => {
+		// 左栏一栏里有两个概念:高亮 = 在看谁,指示器 = 在用哪家。写成文字角标会跟
+		// 底下那行模型名挤在一起,读起来像是模型的一部分。
+		mount(twoProviders());
+		await gotoModel();
+		expect(inUseRailLabels().every((t) => t.includes("DeepSeek"))).toBe(true);
+		expect(inUseRailLabels().length).toBeGreaterThan(0);
+		expect(screen.queryByText("在用")).toBeNull();
+	});
+
+	it("在看的不是在用的那家 → 右上角摆「设为默认」,点了才真换", async () => {
+		mount(twoProviders());
+		await gotoModel();
+		fireEvent.click(screen.getAllByText("OpenRouter")[0] as HTMLElement);
+		await waitFor(() => expect(screen.getByDisplayValue("or-model")).toBeTruthy());
+		fireEvent.click(screen.getByText("设为默认"));
+		await waitFor(() => expect(heroModel()).toBe("or-model"));
+	});
+
+	it("在看的就是在用的那家 → 不摆「设为默认」,而是说明白它就是在用的那家", async () => {
+		// 摆一个点了等于没点的按钮,比不摆还糟。
+		mount(twoProviders());
+		await gotoModel();
+		expect(screen.queryByText("设为默认")).toBeNull();
+		expect(screen.getByText(/女仆平时用的就是这家/)).toBeTruthy();
+	});
+
+	it("「全局配置」里能直接选用哪一家 —— 和选人格同一个地方", async () => {
+		mount(twoProviders());
+		// 落地页就是「全局配置」。
+		await screen.findByText("全局服务商 · provider");
+		fireEvent.click(screen.getByText("OpenRouter"));
+		await waitFor(() => expect(heroModel()).toBe("or-model"));
+	});
+
+	it("添加第二家**不**抢走在用的那家,只是切过去编辑", async () => {
+		mount(twoProviders());
+		await gotoModel();
+		fireEvent.click(screen.getAllByText("+ 添加")[0] as HTMLElement);
+		fireEvent.click(await screen.findByText("硅基流动"));
+		await waitFor(() => expect(screen.getByText(/删除 硅基流动/)).toBeTruthy());
+		expect(heroModel()).toBe("ds-model");
+	});
+
+	it("删掉一家填了密钥的 → 灵动岛面板上不该出现明文密钥", async () => {
+		// 逐家摊平时若让没添加过的那家**整个缺席**,walkTreeDiff 碰上「一侧是对象、
+		// 另一侧 undefined」会把整只桶当**一个叶子**吐出来 —— 那一行的值就是桶的
+		// JSON,脱敏位挂在字段级、管不到整只桶,于是密钥明文直接摊在面板上。
+		mount(
+			globalsWith((g) => {
+				g.defaults.ai.provider = "deepseek";
+				g.defaults.ai.providers = {
+					deepseek: bucket({ model: "ds-model" }),
+					openrouter: bucket({ apiKey: "sk-super-secret", model: "or-model" }),
+				};
+			}),
+		);
+		await gotoModel();
+		fireEvent.click(screen.getAllByText("OpenRouter")[0] as HTMLElement);
+		await waitFor(() => expect(screen.getByDisplayValue("or-model")).toBeTruthy());
+		fireEvent.click(screen.getByText(/删除 OpenRouter/));
+		await waitFor(() => {
+			expect(useDraftStore.getState().current?.diff.length ?? 0).toBeGreaterThan(0);
+		});
+		// 断言的是**面板上真会显示的东西**(diff 里存的本就是原值,脱敏发生在渲染)。
+		const shown = (useDraftStore.getState().current?.diff ?? [])
+			.flatMap((d) => [formatDiffValue(d.code, d.oldValue), formatDiffValue(d.code, d.newValue)])
+			.map((v) => v.display)
+			.join("\n");
+		expect(shown).not.toContain("sk-super-secret");
+	});
+
+	it("编辑**不在用**的那家 → 改在它自己的桶上,不是写回在用那家", async () => {
+		// 写错桶的后果有两层:输入框显示的还是旧值(「我改了没反应」),而**在用的那家**
+		// 被悄悄改坏了 —— 那才是真正生效的配置。
+		mount(twoProviders());
+		await gotoModel();
+		fireEvent.click(screen.getAllByText("OpenRouter")[0] as HTMLElement);
+		await waitFor(() => expect(screen.getByDisplayValue("or-model")).toBeTruthy());
+		fireEvent.change(screen.getByDisplayValue("or-model"), { target: { value: "or-model-2" } });
+		await waitFor(() => expect(screen.getByDisplayValue("or-model-2")).toBeTruthy());
+		// 在用的那家一个字没动。
+		expect(heroModel()).toBe("ds-model");
+	});
+
+	it("编辑**不在用**的那家 → 灵动岛照样亮,否则一离开页面就白改了", async () => {
+		// 灵动岛此前只摊平「在用的那家」。左栏改成编辑器之后,改别家的桶在它眼里
+		// 毫无变化 —— 保存条不亮,主人一走改动就没了。
+		mount(twoProviders());
+		await gotoModel();
+		fireEvent.click(screen.getAllByText("OpenRouter")[0] as HTMLElement);
+		await waitFor(() => expect(screen.getByDisplayValue("or-model")).toBeTruthy());
+		fireEvent.change(screen.getByDisplayValue("or-model"), { target: { value: "or-model-2" } });
+		await waitFor(() => {
+			expect(useDraftStore.getState().current?.diff.length ?? 0).toBeGreaterThan(0);
+		});
+	});
+});
+
 describe("女仆性格左栏", () => {
 	/** 切到「女仆性格」Tab。 */
 	async function gotoPersona() {
@@ -273,6 +427,20 @@ describe("女仆性格左栏", () => {
 		fireEvent.click(screen.getAllByText("+ 添加")[0] as HTMLElement);
 		fireEvent.click(await screen.findByText("+ 空白性格"));
 		await waitFor(() => expect(screen.getByDisplayValue("新性格")).toBeTruthy());
+	});
+
+	it("左栏用指示器标出在用的那份,不写字", async () => {
+		mount(
+			globalsWith((g) => {
+				g.defaults.ai.presets = [
+					{ id: "a", label: "甲", persona: g.defaults.ai.persona },
+					{ id: "b", label: "乙", persona: g.defaults.ai.persona },
+				];
+				g.defaults.ai.activePreset = "b";
+			}),
+		);
+		await gotoPersona();
+		expect(inUseRailLabels()).toEqual(["乙"]);
 	});
 
 	it("正在用的那份不摆「设为默认」,别的才摆", async () => {

@@ -27,8 +27,10 @@ import {
 	removePersona,
 	removeProvider,
 	renamePersona,
+	resolveEditingProvider,
 	restoreBuiltinPersona,
 	setGlobalPersona,
+	setGlobalProvider,
 	updatePersonaAt,
 } from "../model-ops";
 
@@ -96,10 +98,25 @@ describe("addableProviders", () => {
 });
 
 describe("addProvider", () => {
-	it("建一个空桶,并当场切到它", () => {
+	it("建一个空桶", () => {
 		const next = addProvider(settings(), "openrouter");
 		expect(next.providers.openrouter).toEqual(EMPTY_AI_PROVIDER_PROFILE);
+	});
+
+	it("指针还没着落时(全新配置)→ 头一家添加的就成了在用的那家", () => {
+		// 不这么做的话:主人添加了第一家、填好密钥,女仆却仍然「没配齐」,
+		// 而界面上看不出还差一步。
+		const next = addProvider(settings({ provider: "custom", providers: {} }), "openrouter");
 		expect(next.provider).toBe("openrouter");
+	});
+
+	it("已经有在用的那家 → 再添加一家**不抢**指针", () => {
+		// 添加 ≠ 换用。换用是「全局配置」里那个选择器的事(与人格同一套语义)。
+		const ai = settings({
+			provider: "deepseek",
+			providers: { deepseek: { ...EMPTY_AI_PROVIDER_PROFILE, apiKey: "sk-ds" } },
+		});
+		expect(addProvider(ai, "openrouter").provider).toBe("deepseek");
 	});
 
 	it("不动别家已填好的桶", () => {
@@ -111,7 +128,7 @@ describe("addProvider", () => {
 		expect(next.providers.deepseek?.apiKey).toBe("sk-ds");
 	});
 
-	it("重复添加同一家**不覆盖**它已有的配置,只是切过去", () => {
+	it("重复添加同一家**不覆盖**它已有的配置", () => {
 		// 界面上不会把已添加的那家摆进清单,但这条是数据安全底线 —— 一旦哪天
 		// 清单算错、或者两处入口撞上,拿空档案盖掉主人填好的 key 是不可逆的。
 		const ai = settings({
@@ -120,7 +137,6 @@ describe("addProvider", () => {
 		});
 		const next = addProvider(ai, "deepseek");
 		expect(next.providers.deepseek).toMatchObject({ apiKey: "sk-ds", model: "ds-v4" });
-		expect(next.provider).toBe("deepseek");
 	});
 
 	it("不改原对象", () => {
@@ -128,6 +144,72 @@ describe("addProvider", () => {
 		addProvider(ai, "openrouter");
 		expect(ai.providers).toEqual({});
 		expect(ai.provider).toBe("custom");
+	});
+});
+
+describe("setGlobalProvider —— 「设为默认」拨的就是这个指针", () => {
+	it("拨到另一家", () => {
+		const ai = settings({
+			provider: "deepseek",
+			providers: { deepseek: EMPTY_AI_PROVIDER_PROFILE, openrouter: EMPTY_AI_PROVIDER_PROFILE },
+		});
+		expect(setGlobalProvider(ai, "openrouter").provider).toBe("openrouter");
+	});
+
+	it("拨到一家没添加过的 → 不动", () => {
+		// 指向一个不存在的桶就是悬空引用:界面上左栏没有它、`resolveAIProfile`
+		// 兜一套空档案,于是女仆静默停工而主人以为选好了。
+		const ai = settings({
+			provider: "deepseek",
+			providers: { deepseek: EMPTY_AI_PROVIDER_PROFILE },
+		});
+		expect(setGlobalProvider(ai, "openrouter").provider).toBe("deepseek");
+	});
+
+	it("不改原对象", () => {
+		const ai = settings({
+			provider: "deepseek",
+			providers: { deepseek: EMPTY_AI_PROVIDER_PROFILE, openrouter: EMPTY_AI_PROVIDER_PROFILE },
+		});
+		setGlobalProvider(ai, "openrouter");
+		expect(ai.provider).toBe("deepseek");
+	});
+});
+
+describe("resolveEditingProvider —— 左栏在看哪一家", () => {
+	const both = settings({
+		provider: "deepseek",
+		providers: { deepseek: EMPTY_AI_PROVIDER_PROFILE, openrouter: EMPTY_AI_PROVIDER_PROFILE },
+	});
+
+	it("看着一家真实存在的 → 原样", () => {
+		expect(resolveEditingProvider(both, "openrouter")).toBe("openrouter");
+	});
+
+	it("还没选过(刚进页面)→ 落在女仆正用的那家", () => {
+		expect(resolveEditingProvider(both, null)).toBe("deepseek");
+	});
+
+	it("正看着的那家被删掉了 → 收回到在用的那家,不让左栏高亮到虚空", () => {
+		const ai = settings({
+			provider: "deepseek",
+			providers: { deepseek: EMPTY_AI_PROVIDER_PROFILE },
+		});
+		expect(resolveEditingProvider(ai, "openrouter")).toBe("deepseek");
+	});
+
+	it("连在用的那家都没添加过 → 落到注册表序第一家(不是对象键序)", () => {
+		// 键序先写 deepseek,注册表里 openrouter 在前 —— 左栏就是按注册表渲染的,
+		// 这里跟着它才不会「高亮项与右侧内容各说各话」。
+		const ai = settings({
+			provider: "custom",
+			providers: { deepseek: EMPTY_AI_PROVIDER_PROFILE, openrouter: EMPTY_AI_PROVIDER_PROFILE },
+		});
+		expect(resolveEditingProvider(ai, null)).toBe("openrouter");
+	});
+
+	it("一家都没添加 → null(右侧该出添加面板,不是一组空框子)", () => {
+		expect(resolveEditingProvider(settings(), null)).toBeNull();
 	});
 });
 
