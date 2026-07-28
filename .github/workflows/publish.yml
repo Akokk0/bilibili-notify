@@ -9,6 +9,16 @@ on:
     paths:
       - "koishi/package.json"
 
+  # 手动补发。用于「版本号已经推上去了,但那次 gate 红了」这类卡死:push 触发只认
+  # version **变动**,修完再 push 时版本号相对上一次没变,自动触发就永远不会再来一次,
+  # 只能靠往前跳一个版本号绕过。
+  #
+  # detect 与 koishi-version-changed.mjs 都不用改:dispatch 时 `github.event.before`
+  # 求值为空串,脚本的 versionAt("") 返回 null,decide 对 `before === null` 本来就是
+  # 「拿不到基线 —— 放行,交给 registry 幂等把关」。误发那条路已被 publish.mjs 的
+  # registry 查询堵死(版本已存在就安静跳过),所以手动触发是安全的。
+  workflow_dispatch:
+
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:

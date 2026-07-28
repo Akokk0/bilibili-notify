@@ -58,15 +58,38 @@ const AI_SETTINGS = {
 /** 一份挂在某位 UP 头上的人格,用来认出「这次用的是他那份」。 */
 const PER_UP_ROLE = "你是一只只会喵喵叫的猫";
 
+/** per-UP 覆盖指向的那份人格在人设库里的 id。 */
+const PER_UP_PRESET_ID = "preset-cat";
+
+/** 人设库里的那一份 —— per-UP 覆盖只存 id,内容在这里。 */
+const PER_UP_PRESET = {
+	id: PER_UP_PRESET_ID,
+	label: "猫",
+	persona: {
+		name: "喵喵",
+		addressUser: "铲屎官",
+		addressSelf: "喵",
+		traits: "只会喵喵叫",
+		catchphrase: "喵",
+		baseRole: PER_UP_ROLE,
+		extraSystemPrompt: "",
+	},
+	dynamicPrompt: "",
+	liveSummaryPrompt: "",
+};
+
 /**
  * `overrides` 必须显式给 —— schema 上它是必填字段(空覆盖也是 `{}`),
  * `resolve()` / `resolveAiOverride()` 都直接读 `sub.overrides`。
+ *
+ * per-UP 人格是**一个指向人设库的 id**,不是就地写死的一份:设置页当年那档
+ * 「完全自定义」已经撤掉(见 `resolve.ts` 的 `resolveAI`),per-UP 只能从库里挑。
  */
 function makeSub(id: string, uid: string, perUpPersona?: boolean) {
 	return {
 		id,
 		uid,
-		overrides: perUpPersona ? { ai: { preset: "custom", persona: { baseRole: PER_UP_ROLE } } } : {},
+		overrides: perUpPersona ? { ai: { preset: PER_UP_PRESET_ID } } : {},
 	};
 }
 
@@ -75,6 +98,8 @@ function makeDeps(subs: Array<ReturnType<typeof makeSub>>): RouteDeps {
 	// presets 等一系列字段,只喂 { ai } 的话 per-UP 覆盖那条路径会当场炸。
 	const globals = makeDefaultGlobalConfig();
 	globals.defaults.ai = { ...globals.defaults.ai, ...AI_SETTINGS };
+	// per-UP 覆盖只认人设库里的 id,所以那一份得先在库里躺着。
+	globals.defaults.ai.presets = [...globals.defaults.ai.presets, PER_UP_PRESET];
 	return {
 		runtime: {
 			fansStore: { listSamplesSince: async () => [] },
@@ -147,6 +172,22 @@ describe("锐评带谁的人格", () => {
 		const deps = makeDeps([makeSub("s1", "1"), makeSub("s2", "2", true)]);
 		await createStatsRoute(deps).request("/roast/2", { method: "POST" });
 		expect(comment.mock.calls[0]?.[3]?.persona?.customBase).toBe(PER_UP_ROLE);
+	});
+
+	it("老配置里就地写死的那套人格不再生效,落回全局", async () => {
+		// 设置页当年有一档「完全自定义」能就地写死一套人设,那一档撤掉了(人格一律
+		// 在「智能女仆」页里写),但盘上还留着当年写下的 `persona` 字段。继续读它
+		// 就成了界面上看不见、实际仍在生效的鬼配置 —— `resolveAI` 刻意不读,于是
+		// 老的 `'custom'`、老的 `'inherit'`、以及指向一份已被删掉的人格,三者殊途
+		// 同归都落到全局。这不是回归,是迁移决定,别再「修」回去。
+		const legacy = {
+			id: "s1",
+			uid: "1",
+			overrides: { ai: { preset: "custom", persona: { baseRole: PER_UP_ROLE } } },
+		} as unknown as ReturnType<typeof makeSub>;
+		const deps = makeDeps([legacy]);
+		await createStatsRoute(deps).request("/roast/1", { method: "POST" });
+		expect(comment.mock.calls[0]?.[3]?.persona?.customBase).not.toBe(PER_UP_ROLE);
 	});
 
 	it("没配 per-UP 人格时递 undefined,而不是把当时的全局值折进来", async () => {
