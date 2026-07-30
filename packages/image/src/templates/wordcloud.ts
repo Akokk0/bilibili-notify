@@ -36,6 +36,8 @@ export async function buildWordCloudHtml(
 	colorStart = "#e0c3fc",
 	colorEnd = "#8ec5fc",
 	font = "sans-serif",
+	/** 主人自带字体的 `@font-face` 规则(有就跟着一起进 CSS)。 */
+	fontFace?: string,
 ): Promise<string> {
 	const wordcloudJS = readFileSync(resolve(dirname, "static/wordcloud2.min.js"), "utf-8");
 	const renderFunc = readFileSync(resolve(dirname, "static/render.js"), "utf-8");
@@ -43,7 +45,7 @@ export async function buildWordCloudHtml(
 	const html = await renderCard(
 		WordCloudCard,
 		{ masterName, masterAvatarUrl, colorStart, colorEnd },
-		{ title: "弹幕词云", font, htmlWidth: 720 },
+		{ title: "弹幕词云", font, fontFace, htmlWidth: 720 },
 	);
 
 	const initScript = `

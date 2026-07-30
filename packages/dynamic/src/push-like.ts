@@ -110,6 +110,13 @@ export interface SubItemView {
 		 * 经注入的 pickCardBackground 选下一张覆盖 backgroundImage。缺省 / ≤1 张 = 不轮换。
 		 */
 		backgroundImages?: string[];
+		/**
+		 * 字体家族名;透传给 generateDynamicCard 的 colorOptions(缺省回退全局)。
+		 * 此前整条链都漏着,per-UP 换字体选了等于没选。
+		 */
+		font?: string;
+		/** 主人自带字体的资产 id(独立端专属);设了优先于 `font`,缺省回退全局。 */
+		fontAsset?: string;
 	};
 	/** Per-UP 动态过滤覆盖；undefined 时使用 engine 的全局 filter。 */
 	filter?: DynamicFilterConfig & { notify?: boolean };

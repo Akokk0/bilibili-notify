@@ -86,6 +86,15 @@ export interface CustomCardStyleLike {
 	 * key 维度独立)。adapter 填入;推送点选下一张覆盖 `liveCoverImage`。
 	 */
 	liveCoverImages?: string[];
+	/**
+	 * 字体家族名;透传给 generate* 的 colorOptions(缺省回退渲染器全局 config)。
+	 *
+	 * 这一项此前整条链都漏着:schema 存得下、resolve 算得出,但 adapter 没往这里填、
+	 * 类型里也没有 —— 于是「给这位 UP 单独换个字体」选了等于没选。
+	 */
+	font?: string;
+	/** 主人自带字体的资产 id(独立端专属);设了优先于 `font`,缺省回退全局。 */
+	fontAsset?: string;
 	/** 直播卡数据区:显示人气 / 点赞;透传给 generateLiveCard 的 colorOptions(缺省回退全局)。 */
 	showPopularity?: boolean;
 	/** 直播卡数据区:显示分区;透传给 generateLiveCard 的 colorOptions(缺省回退全局)。 */

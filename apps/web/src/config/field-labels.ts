@@ -285,7 +285,12 @@ export const FIELD_LABELS = {
 	cardColorEnd: { label: "渐变结束", section: "cardStyle" },
 	font: {
 		label: "字体",
-		hint: "CSS font-family。容器/浏览器没装时自动回退到内置兜底链(Microsoft YaHei / Noto Sans CJK / sans-serif)。",
+		hint: "字体家族名。渲染那台机器没装这个字体时自动回退到内置兜底链(Microsoft YaHei / Noto Sans CJK / sans-serif)。想用别的字体就把文件传上来。",
+		section: "cardStyle",
+	},
+	fontAsset: {
+		label: "自带字体",
+		hint: "主人上传的字体文件。设了就优先于字体家族名;文件被删掉时静静回退,不会让出图崩。",
 		section: "cardStyle",
 	},
 	showPopularity: { label: "人气 / 点赞", section: "cardStyle" },

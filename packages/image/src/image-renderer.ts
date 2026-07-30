@@ -11,7 +11,7 @@ import { GuardLevel } from "blive-message-listener";
 import { JSDOM } from "jsdom";
 import { DateTime } from "luxon";
 import type { PuppeteerLike } from "./puppeteer";
-import { renderCard } from "./render";
+import { buildFontFace, renderCard, USER_FONT_FAMILY } from "./render";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
 import { DynamicCard } from "./templates/dynamic-card";
 import { buildDynamicNode } from "./templates/dynamic-content";
@@ -107,6 +107,12 @@ export interface ImageRendererConfig {
 	glassClear?: boolean;
 	/** 自定义卡片背景图资产 id(空 = 渐变);渲染期经 resolveAsset 解析成 data URL。 */
 	backgroundImage?: string;
+	/**
+	 * 主人自带的字体文件资产 id(独立端专属);渲染期经 `resolveFontAsset` 解析成
+	 * data URL 拼成 `@font-face`。设了就**优先于 `font`**;宿主没注入 resolver、或资产
+	 * 悬空时静静回落 `font`。
+	 */
+	fontAsset?: string;
 	/** CSS font-family，默认值由 adapter 提供(通常透传 `DEFAULT_CARD_STYLE.font`)。 */
 	font: string;
 	/** 直播卡数据区:显示人气 / 点赞(直播中=人气,下播=点赞)。 */
@@ -127,6 +133,11 @@ export interface ImageRendererOptions {
 	 */
 	resolveAsset?: (id: string) => Promise<string>;
 	/**
+	 * 把字体资产 id 解析成 data URL(服务端注入,读 `<dataDir>/assets/font`)。
+	 * 未注入 = 自带字体特性不可用,回落家族名(koishi / AstrBot 就是这一档)。
+	 */
+	resolveFontAsset?: (id: string) => Promise<string>;
+	/**
 	 * 热更日志降级到 debug。**预览渲染器**(dashboard 每来一次预览请求就
 	 * updateConfig 一遍)必须开:主人在 Cards 页拖一格滑块就是一条 INFO「配置已
 	 * 更新」,既刷屏,又和真正落盘生效的那条(推送渲染器热重载)长得一模一样,读起来
@@ -141,7 +152,17 @@ export class ImageRenderer {
 	private readonly puppeteer: PuppeteerLike;
 	private config: ImageRendererConfig;
 	private readonly resolveAsset?: (id: string) => Promise<string>;
+	private readonly resolveFontAsset?: (id: string) => Promise<string>;
 	private readonly quietConfigUpdates: boolean;
+
+	/**
+	 * 自带字体的解析结果缓存 —— **只留一款**。
+	 *
+	 * 一款完整中文字库十几到几十兆,base64 之后还要再涨三分之一。每张卡重读一遍盘既慢
+	 * 又在 Docker 那点堆上限里反复搓大字符串;而同一时刻真正在用的通常就一款,留一份
+	 * 足够(per-UP 换了一款就换掉这一份,不攒)。
+	 */
+	private fontCache: { id: string; dataUrl: string } | null = null;
 
 	// 图片 base64 缓存
 	private readonly imageCache = new Map<string, { dataUrl: string; updatedAt: number }>();
@@ -176,6 +197,7 @@ export class ImageRenderer {
 		this.puppeteer = opts.puppeteer;
 		this.config = opts.config;
 		this.resolveAsset = opts.resolveAsset;
+		this.resolveFontAsset = opts.resolveFontAsset;
 		this.quietConfigUpdates = opts.quietConfigUpdates ?? false;
 		this.logger = opts.serviceCtx.logger;
 	}
@@ -205,6 +227,11 @@ export class ImageRenderer {
 			diffs.push(`cardColorEnd=${config.cardColorEnd}`);
 		}
 		if (prev.font !== config.font) diffs.push(`font=${config.font}`);
+		if (prev.fontAsset !== config.fontAsset) {
+			diffs.push(`fontAsset=${config.fontAsset ? "(自带字体)" : "(无)"}`);
+			// 换了一款就把缓存里那份几十兆的 base64 放掉,别攥着已经不用的字体。
+			this.fontCache = null;
+		}
 		if (prev.showPopularity !== config.showPopularity) {
 			diffs.push(`showPopularity=${config.showPopularity}`);
 		}
@@ -254,6 +281,32 @@ export class ImageRenderer {
 		if (!v) return "";
 		if (v.startsWith("data:") || v.startsWith("http")) return v;
 		return this.resolveAsset ? await this.resolveAsset(v) : "";
+	}
+
+	/**
+	 * 这张卡用哪款字体 —— 每个 generate* 都经它,per-call 覆盖优先于全局 config。
+	 *
+	 * `colorOptions.font` 曾经**根本没被读过**:设置页允许给单个 UP / 单类卡另设字体,
+	 * 存得下也解析得出,就是没人交给渲染器,于是选了等于没选。这一族 bug 长得都一样 ——
+	 * 界面上改得动、保存得下、行为不变。
+	 *
+	 * 自带的字体文件优先:解析成 data URL 拼成 `@font-face`,家族名换成内部那个。
+	 * 解析不出来(宿主没注入 resolver、或资产被删了)就静静回落家族名 —— 出图不该因为
+	 * 少一个文件而崩,也不该塞一条空 src 的规则进 CSS。
+	 */
+	private async resolveFont(
+		colorOptions: CardColorOptions = {},
+	): Promise<{ font: string; fontFace?: string }> {
+		const font = colorOptions.font ?? this.config.font;
+		const assetId = colorOptions.fontAsset ?? this.config.fontAsset;
+		if (!assetId || !this.resolveFontAsset) return { font };
+
+		if (this.fontCache?.id !== assetId) {
+			const dataUrl = await this.resolveFontAsset(assetId);
+			this.fontCache = dataUrl ? { id: assetId, dataUrl } : null;
+		}
+		if (!this.fontCache) return { font };
+		return { font: USER_FONT_FAMILY, fontFace: buildFontFace(this.fontCache.dataUrl) };
 	}
 
 	async getTimeDifference(dateString: string): Promise<string> {
@@ -370,7 +423,7 @@ export class ImageRenderer {
 				})(),
 				layout,
 			},
-			{ title: "直播通知", font: this.config.font, htmlWidth: 600 },
+			{ title: "直播通知", ...(await this.resolveFont(colorOptions)), htmlWidth: 600 },
 		);
 
 		return withRetry(() => this.renderHtml(html))
@@ -424,7 +477,7 @@ export class ImageRenderer {
 				glassClear,
 				backgroundImage,
 			},
-			{ title: "上舰通知", font: this.config.font, htmlWidth: 430 },
+			{ title: "上舰通知", ...(await this.resolveFont(colorOptions)), htmlWidth: 430 },
 		);
 
 		return withRetry(() => this.renderHtml(html))
@@ -489,7 +542,7 @@ export class ImageRenderer {
 				glassClear,
 				backgroundImage,
 			},
-			{ title: "醒目留言通知", font: this.config.font, htmlWidth: 290 },
+			{ title: "醒目留言通知", ...(await this.resolveFont(colorOptions)), htmlWidth: 290 },
 		);
 
 		return withRetry(() => this.renderHtml(html))
@@ -536,7 +589,7 @@ export class ImageRenderer {
 				node,
 				layout,
 			},
-			{ title: "动态通知", font: this.config.font, htmlWidth: 600 },
+			{ title: "动态通知", ...(await this.resolveFont(colorOptions)), htmlWidth: 600 },
 		);
 
 		return withRetry(() => this.renderHtml(html))
@@ -558,6 +611,7 @@ export class ImageRenderer {
 	): Promise<Buffer> {
 		const t0 = Date.now();
 		this.logger.debug(`[wordcloud] 开始渲染词云卡片：${masterName}（${words.length} 词）`);
+		const { font, fontFace } = await this.resolveFont();
 		const html = await buildWordCloudHtml(
 			masterName,
 			words,
@@ -565,7 +619,8 @@ export class ImageRenderer {
 			masterAvatarUrl,
 			this.config.cardColorStart,
 			this.config.cardColorEnd,
-			this.config.font,
+			font,
+			fontFace,
 		);
 		return withRetry(() => this.renderHtml(html, "window.wordcloudDone === true"))
 			.then((buf) => {
@@ -599,7 +654,7 @@ export class ImageRenderer {
 				glassClear: this.config.glassClear,
 				backgroundImage: await this.roastStyle(),
 			},
-			{ title: "UP 主周报", font: this.config.font, htmlWidth: 600 },
+			{ title: "UP 主周报", ...(await this.resolveFont()), htmlWidth: 600 },
 		);
 		return withRetry(() => this.renderHtml(html))
 			.then((buf) => {
@@ -624,7 +679,7 @@ export class ImageRenderer {
 				glassClear: this.config.glassClear,
 				backgroundImage: await this.roastStyle(),
 			},
-			{ title: "UP 主锐评", font: this.config.font, htmlWidth: 430 },
+			{ title: "UP 主锐评", ...(await this.resolveFont()), htmlWidth: 430 },
 		);
 		return withRetry(() => this.renderHtml(html))
 			.then((buf) => {

@@ -102,6 +102,15 @@ export type CardColorOptions = {
 	glassClear?: boolean;
 	/** 自定义背景图资产 id(或已解析 URL);缺省时走渐变。 */
 	backgroundImage?: string;
+	/**
+	 * 字体家族名;缺省时回退渲染器全局 config。
+	 *
+	 * 这一项此前**整个漏在外面**:设置页允许给单个 UP / 单类卡另设字体,schema 存得下、
+	 * resolve 也算得出,唯独没人把它交给渲染器 —— 于是选了等于没选。
+	 */
+	font?: string;
+	/** 自带字体文件的资产 id;设了就优先于 `font`,缺省时回退渲染器全局 config。 */
+	fontAsset?: string;
 	/** 直播卡自定义封面资产 id(或已解析 URL);缺省时用 B 站房间封面/关键帧。仅 live 卡消费。 */
 	liveCoverImage?: string;
 	/** 直播卡数据区:显示人气 / 点赞;缺省时回退渲染器全局 config。 */

@@ -38,6 +38,8 @@ import { ApiError, api } from "../services/api";
 import type { CardLayoutFull, PushTarget, Subscription } from "../types/domain";
 import type { CardStyle, GlobalConfig, LogLevel } from "../types/globals";
 import { CardLayoutEditor } from "./cards/CardLayoutEditor";
+import { FontPicker } from "./cards/FontPicker";
+import { removeFontFromByKind, removeFontFromStyle } from "./cards/font-ops";
 import { GalleryPicker } from "./cards/GalleryPicker";
 import { removeAssetFromByKind, removeAssetFromStyle } from "./cards/gallery-ops";
 import {
@@ -378,7 +380,11 @@ export function CardStyleFields({
 				<TColor value={style.cardColorEnd} onChange={(v) => set("cardColorEnd", v)} />
 			</Field>
 			<Field code="font" full>
-				<TInput value={style.font} onChange={(v) => set("font", v)} />
+				<FontPicker
+					value={{ font: style.font, fontAsset: style.fontAsset }}
+					onChange={(next) => onChange({ ...style, font: next.font, fontAsset: next.fontAsset })}
+					onAssetDeleted={onAssetDeleted}
+				/>
 			</Field>
 			<Field code="glassOpacity" full>
 				<div className="flex flex-col gap-2">
@@ -797,15 +803,25 @@ export default function Cards() {
 	const [puByKind, setPuByKind] = useState<CardStyleByKind>({});
 	const [puLayout, setPuLayout] = useState<CardLayoutFull | undefined>(undefined);
 
-	// 图廊删盘后清扫页面上所有仍引用该 id 的样式草稿(全局基准 / 全局 per-kind / per-UP
-	// 基准 / per-UP per-kind 的背景图 + 直播封面)。picker 自身的 onChange 只清它绑定的
-	// 那一个字段;其余草稿若攥着这个 id 不放,下次保存就落盘成悬空引用(幽灵占轮换位)。
-	// 服务端 409 只拦「已保存配置」里的引用,未保存草稿只能靠这里。
+	// 删盘后清扫页面上所有仍引用该 id 的样式草稿(全局基准 / 全局 per-kind / per-UP
+	// 基准 / per-UP per-kind 的背景图 + 直播封面 + 字体)。picker 自身的 onChange 只清它
+	// 绑定的那一个字段;其余草稿若攥着这个 id 不放,下次保存就落盘成悬空引用(背景图是
+	// 幽灵占轮换位,字体是出图静静回落兜底)。服务端 409 只拦「已保存配置」里的引用,
+	// 未保存草稿只能靠这里。
+	//
+	// 图与字体两套清扫都跑:两类资产 id 各自随机 32 位 hex,撞不到一起,所以对另一类
+	// 是纯 no-op —— 比让两个 picker 各带一个回调简单,也不会漏。
+	const sweep = <
+		T extends { backgroundImages?: string[]; liveCoverImages?: string[]; fontAsset?: string },
+	>(
+		s: T,
+		id: string,
+	): T => removeFontFromStyle(removeAssetFromStyle(s, id), id);
 	const sweepDeletedAsset = (id: string) => {
-		setGStyle((s) => (s ? removeAssetFromStyle(s, id) : s));
-		setGByKind((bk) => removeAssetFromByKind(bk, id));
-		setPuStyle((s) => (s ? removeAssetFromStyle(s, id) : s));
-		setPuByKind((bk) => removeAssetFromByKind(bk, id));
+		setGStyle((s) => (s ? sweep(s, id) : s));
+		setGByKind((bk) => removeFontFromByKind(removeAssetFromByKind(bk, id), id));
+		setPuStyle((s) => (s ? sweep(s, id) : s));
+		setPuByKind((bk) => removeFontFromByKind(removeAssetFromByKind(bk, id), id));
 	};
 
 	// 左侧导航:「全局」(基准通用样式)或某卡片类型。与作用域无关。

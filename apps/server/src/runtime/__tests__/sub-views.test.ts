@@ -76,6 +76,35 @@ describe("buildDynamicSubsView — 不伪装全局值", () => {
 		expect(view["12345"]?.filter).toBeUndefined();
 	});
 
+	/**
+	 * 回归守卫 —— per-UP 字体一路传到渲染器。
+	 *
+	 * 设置页从一开始就允许给单个 UP 另设字体,schema 存得下、resolve 也算得出,唯独
+	 * 这一步**没把它映射进 colorOptions**,于是渲染器压根收不到:选了等于没选,而界面
+	 * 上改得动也保存得下。字体选择器上线后这条更不能漏 —— 上传的字体走 `fontAsset`,
+	 * 同一条路。
+	 */
+	it("per-UP 单独换了字体 → 一路传下去(以前整个漏在外面,选了等于没选)", () => {
+		const sub = makeSub({ cardStyle: { font: "这位 UP 的字体" } });
+		const view = buildDynamicSubsView(
+			fakeStore([sub]),
+			fakeRuntimeStore(),
+			makeDefaultGlobalConfig(),
+		);
+		expect(view["12345"]?.customCardStyle?.font).toBe("这位 UP 的字体");
+	});
+
+	it("per-UP 选了自己上传的那款字体 → fontAsset 也跟着传下去", () => {
+		const id = `${"a".repeat(32)}.woff2`;
+		const sub = makeSub({ cardStyle: { fontAsset: id } });
+		const view = buildDynamicSubsView(
+			fakeStore([sub]),
+			fakeRuntimeStore(),
+			makeDefaultGlobalConfig(),
+		);
+		expect(view["12345"]?.customCardStyle?.fontAsset).toBe(id);
+	});
+
 	it("仅设 ai override → aiOverride 有值(eff.ai 派生),customCardStyle/filter 不影响", () => {
 		const sub = makeSub({ ai: { preset: "inherit" } });
 		const view = buildDynamicSubsView(

@@ -69,6 +69,7 @@ import { makeExistingCardBgPicker, readCardBgDataUrl } from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
 import { syncFollows } from "./follow-sync.js";
+import { readFontAssetDataUrl } from "./font-assets.js";
 import { MasterNotifier } from "./master-notifier.js";
 import type { NodeServiceContext } from "./service-context.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
@@ -331,8 +332,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				glassOpacity: cs.glassOpacity,
 				glassClear: cs.glassClear,
 				backgroundImage: cs.backgroundImages[0] ?? "",
+				fontAsset: cs.fontAsset,
 			},
 			resolveAsset: (id) => readCardBgDataUrl(opts.configStore.bootstrap.dataDir, id),
+			resolveFontAsset: (id) => readFontAssetDataUrl(opts.configStore.bootstrap.dataDir, id),
 		});
 		renderer.start();
 		return renderer;
@@ -716,6 +719,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						glassOpacity: cs.glassOpacity,
 						glassClear: cs.glassClear,
 						backgroundImage: cs.backgroundImages[0] ?? "",
+						fontAsset: cs.fontAsset,
 					});
 				}
 				// dynamicConfig() 的完整输入集:app.dynamicCron + defaults.{filters,
@@ -1149,6 +1153,8 @@ function cardStyleToColorOptions(s: {
 	glassClear?: boolean;
 	backgroundImages?: string[];
 	liveCoverImages?: string[];
+	font?: string;
+	fontAsset?: string;
 	showPopularity?: boolean;
 	showArea?: boolean;
 	showFans?: boolean;
@@ -1159,6 +1165,10 @@ function cardStyleToColorOptions(s: {
 		cardColorEnd: s.cardColorEnd,
 		glassOpacity: s.glassOpacity,
 		glassClear: s.glassClear,
+		// 字体两项此前整个漏在这里:设置页允许给单个 UP / 单类卡另设字体,schema 存得下、
+		// resolve 也算得出,就是没人映射进 colorOptions —— 渲染器收不到,选了等于没选。
+		font: s.font,
+		fontAsset: s.fontAsset,
 		backgroundImage: s.backgroundImages?.[0],
 		// 完整列表透传给推送点;>1 张时「每次推送轮换」(见 RoomSession.resolvedCardStyle /
 		// DynamicEngine)。单图 / 缺省即用 backgroundImage,不轮换。
