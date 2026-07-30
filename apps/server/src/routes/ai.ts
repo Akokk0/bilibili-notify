@@ -20,6 +20,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { Conversation, ConversationMeta } from "../ai/conversation-store.js";
+import { toGeneratorConfig } from "../runtime/ai-config.js";
 import {
 	deleteChatImage,
 	MAX_CHAT_IMAGES_PER_MESSAGE,
@@ -442,44 +443,6 @@ export function withStoredApiKey(draft: AISettings, stored: AISettings): AISetti
 	};
 }
 
-/**
- * 草稿 AI 配置 → CommentaryGeneratorConfig。
- *
- * 字段名映射与 `engines.ts` 的 buildAiConfig 一致:schema 用面向用户的 `baseRole` /
- * `extraSystemPrompt`,引擎的 PersonaConfig 用历史命名 `customBase` / `extraPrompt`。
- * preset 固定 `custom` —— 页面上的人格字段就是最终人格,不再二次套内置模板。
- */
-export function toGeneratorConfig(ai: z.infer<typeof AISettingsSchema>) {
-	// 连接与生成参数按服务商分桶存 —— 取当前选中那家的那一套。
-	const p = resolveAIProfile(ai);
-	return {
-		apiKey: p.apiKey,
-		baseURL: p.baseUrl,
-		model: p.model,
-		temperature: p.temperature,
-		persona: {
-			preset: "custom" as const,
-			name: ai.persona.name,
-			addressUser: ai.persona.addressUser,
-			addressSelf: ai.persona.addressSelf,
-			traits: ai.persona.traits,
-			catchphrase: ai.persona.catchphrase,
-			customBase: ai.persona.baseRole,
-			extraPrompt: ai.persona.extraSystemPrompt,
-		},
-		dynamicPrompt: ai.dynamicPrompt,
-		liveSummaryPrompt: ai.liveSummaryPrompt,
-		enableConversation: false,
-		maxHistory: 6,
-		provider: ai.provider,
-		enableThinking: p.enableThinking,
-		thinkingLevel: p.thinkingLevel,
-		extraParams: p.extraParams,
-		enableVision: p.enableVision,
-		vision: {
-			baseURL: p.vision.baseUrl,
-			apiKey: p.vision.apiKey,
-			model: p.vision.model,
-		},
-	};
-}
+// 草稿 AI 配置 → CommentaryGeneratorConfig 的翻译住在 `runtime/ai-config.ts` ——
+// 常驻 generator 与统计页的锐评用的是同一份映射。这里曾经自带一份一模一样的,
+// 于是「人格该从哪儿读」有了两个答案,修一处另一处照旧。

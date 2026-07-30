@@ -17,6 +17,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
+import { resolveActivePersona } from "../constants";
 import { AISettingsSchema } from "./common";
 import { DEFAULT_AI } from "./globals";
 
@@ -138,5 +139,73 @@ describe("不变量:恒有一份人格可用", () => {
 	it("指针指着一份不存在的预设 → 收回到第一份,不留悬空", () => {
 		const ai = AISettingsSchema.parse(modern({ activePreset: "gone" }));
 		expect(ai.activePreset).toBe(ai.presets[0]?.id);
+	});
+});
+
+/**
+ * 指针得**有人读**才算数。
+ *
+ * 这是「换了人格没反应」那个 bug 的根:指针语义原先只写在 `resolve()` 里(per-UP
+ * 那条路),而别的消费方 —— 常驻 generator、「试一句」、锐评、聊天窗抬头 —— 一律
+ * 直读 `ai.persona`。那个字段自从指针上线就**再没有界面入口**、永远冻在老值上,
+ * 于是主人在设置页换来换去,女仆开口还是原来那位。
+ *
+ * 所以「当前用哪份人格」只能有一个定义处,就是这个函数;各消费方一律经它。
+ */
+describe("resolveActivePersona —— 当前用哪份人格,单一读法", () => {
+	it("指针指着某份预设 → 用那份的人格,而不是冻在 ai.persona 的那份", () => {
+		const ai = AISettingsSchema.parse(
+			modern({ persona: DEFAULT_AI.persona, activePreset: "tsundere" }),
+		);
+		expect(resolveActivePersona(ai).persona.name).toBe("凛子");
+	});
+
+	it("两段 prompt 也跟着那份预设走 —— 只换人格不换口吻等于换了一半", () => {
+		const ai = AISettingsSchema.parse(
+			modern({
+				activePreset: "mine",
+				presets: [
+					...DEFAULT_AI.presets,
+					{
+						id: "mine",
+						label: "我的",
+						persona: HAND_WRITTEN,
+						dynamicPrompt: "就照这个说",
+						liveSummaryPrompt: "直播也照这个说",
+					},
+				],
+			}),
+		);
+		expect(resolveActivePersona(ai).dynamicPrompt).toBe("就照这个说");
+		expect(resolveActivePersona(ai).liveSummaryPrompt).toBe("直播也照这个说");
+	});
+
+	it("那份预设没写 prompt → 回落到全局那两段,不发一段空的", () => {
+		// 预设的两段 prompt 是 optional,`undefined` = 「用全局那份」。存空串会让
+		// `??` 链落不到全局,女仆从此发一段**空** prompt 出去。
+		const ai = AISettingsSchema.parse(
+			modern({
+				dynamicPrompt: "全局这段",
+				liveSummaryPrompt: "全局直播那段",
+				activePreset: "mine",
+				presets: [{ id: "mine", label: "我的", persona: HAND_WRITTEN }],
+			}),
+		);
+		expect(resolveActivePersona(ai).dynamicPrompt).toBe("全局这段");
+		expect(resolveActivePersona(ai).liveSummaryPrompt).toBe("全局直播那段");
+	});
+
+	it("指针落空(没填 / 指着一份已删掉的)→ 回落 ai.persona,老配置一字不变", () => {
+		const legacy = {
+			persona: HAND_WRITTEN,
+			dynamicPrompt: "老的那段",
+			liveSummaryPrompt: "老的直播那段",
+			presets: [],
+		};
+		expect(resolveActivePersona(legacy).persona).toEqual(HAND_WRITTEN);
+		expect(resolveActivePersona({ ...legacy, activePreset: "gone" }).persona).toEqual(HAND_WRITTEN);
+		expect(resolveActivePersona({ ...legacy, activePreset: "gone" }).dynamicPrompt).toBe(
+			"老的那段",
+		);
 	});
 });

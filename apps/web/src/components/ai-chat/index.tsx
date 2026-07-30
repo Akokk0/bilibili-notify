@@ -1,6 +1,6 @@
 import type { AiConversationDTO } from "@bilibili-notify/contract";
 import type { GlobalConfig } from "@bilibili-notify/internal";
-import { resolveAIProfile } from "@bilibili-notify/internal/constants";
+import { resolveActivePersona, resolveAIProfile } from "@bilibili-notify/internal/constants";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import {
@@ -135,8 +135,10 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 	// 模型名在当前生效的那个服务商桶里(各家一套配置)。
 	const ai = globalsQuery.data?.defaults.ai;
 	const modelName = ai ? resolveAIProfile(ai).model : undefined;
-	// 名字 / 自称 / 对主人的称呼一律跟「智能女仆」页配的人格走,界面上不写死。
-	const persona = resolveChatPersona(globalsQuery.data?.defaults.ai.persona);
+	// 名字 / 自称 / 对主人的称呼一律跟**当前选中的那份人格**走(`activePreset` 指的
+	// 那份),界面上不写死。直读 `ai.persona` 的话主人换了人格这里也不动 —— 那个字段
+	// 自人格指针上线就没有界面入口、永远冻在老值上,而她开口自称的是新那位。
+	const persona = resolveChatPersona(ai ? resolveActivePersona(ai).persona : undefined);
 
 	const snapshot = useAuthStore((s) => s.snapshot);
 	const card =

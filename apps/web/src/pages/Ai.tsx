@@ -25,6 +25,7 @@ import {
 	type AIProviderProfileShape,
 	EMPTY_AI_PROVIDER_PROFILE,
 	providerMeta,
+	resolveActivePersona,
 	resolveAIProfile,
 	type ThinkingLevel,
 } from "@bilibili-notify/internal/constants";
@@ -313,6 +314,10 @@ export default function Ai() {
 	});
 	// 头图那颗药丸报的是**女仆真正在用的那家**的模型,与左栏在看哪一家无关。
 	const globalProfile = resolveAIProfile(draft);
+	// 头图那行名字同理:报的是**女仆真正在用的那份人格**(`activePreset` 指的那份),
+	// 与左栏在编辑哪一份无关。直读 `draft.persona` 的话换来换去它一动不动 —— 那个
+	// 字段自人格指针上线就没有界面入口、永远冻在老值上。
+	const globalPersona = resolveActivePersona(draft).persona;
 	// 配了视觉副模型 = 副模型无条件接管,enableVision 与它的地址/密钥两格的
 	// 可交互性都跟着这一个判断走(与 CommentaryGenerator#resolveImages 同源)。
 	const visionSubModelOn = profile.vision.model.trim().length > 0;
@@ -409,7 +414,7 @@ export default function Ai() {
 					</div>
 					<div className="flex-1">
 						<div className="flex items-center gap-2 text-[15.5px] font-bold text-bn-text-primary">
-							智能女仆 · {draft.persona.name || "女仆"}
+							智能女仆 · {globalPersona.name || "女仆"}
 							<span data-hero-model>
 								<Pill color="#a29bfe" subtle size="sm">
 									{globalProfile.model || "未配置"}

@@ -11,6 +11,7 @@ import type { NotificationPayload } from "@bilibili-notify/internal";
 import { colorFromUid } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
+import { toGeneratorConfig } from "../runtime/ai-config.js";
 import { resolveAiOverride } from "../runtime/engines.js";
 import {
 	countDynamics,
@@ -27,7 +28,6 @@ import {
 	parseSoloRoastReply,
 	type RoastInput,
 } from "../stats/roast.js";
-import { toGeneratorConfig } from "./ai.js";
 import type { RouteDeps } from "./types.js";
 
 /**

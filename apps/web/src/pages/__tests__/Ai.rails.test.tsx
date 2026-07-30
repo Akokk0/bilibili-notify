@@ -543,6 +543,28 @@ describe("全局配置 Tab", () => {
 		expect(body.defaults.ai.persona?.name ?? "梦梦").toBe("梦梦");
 	});
 
+	/**
+	 * 头图那行名字得跟着**指针**走。
+	 *
+	 * `ai.persona` 自指针上线就没有界面入口了,永远冻在老值上。头图直读它的话,主人
+	 * 在这一页把人格换成谁,标题都还写着原来那位 —— 而下面的选择器、左栏指示器全都
+	 * 指着新那份。这正是「换了人格没反应」看起来的样子。
+	 */
+	it("换全局人格 → 头图那行名字跟着换,不是冻着的 ai.persona", async () => {
+		mount(
+			globalsWith((g) => {
+				g.defaults.ai.persona.name = "小绫";
+				g.defaults.ai.presets = [
+					{ id: "m", label: "温柔女仆", persona: { ...g.defaults.ai.persona } },
+					{ id: "t", label: "傲娇", persona: { ...g.defaults.ai.persona, name: "凛子" } },
+				];
+				g.defaults.ai.activePreset = "t";
+			}),
+		);
+		await gotoGlobal();
+		expect(screen.getByText(/智能女仆 · 凛子/)).toBeTruthy();
+	});
+
 	it("换全局人格 → 灵动岛亮起来", async () => {
 		mount(
 			globalsWith((g) => {

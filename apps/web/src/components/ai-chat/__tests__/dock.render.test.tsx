@@ -893,6 +893,33 @@ describe("AiChatDock — 称呼跟人格走", () => {
 		expect(screen.queryByText("主人")).toBeNull();
 	});
 
+	/**
+	 * 名字得跟着**指针**走,不是跟着 `ai.persona` 走。
+	 *
+	 * `ai.persona` 自人格指针上线就没有界面入口了,永远冻在老值上。直读它的话,
+	 * 主人在「智能女仆」页换成谁,聊天窗抬头都还写着原来那位 —— 而她开口自称的
+	 * 又是新那位(那一侧走的是后端 resolve),两边对不上。
+	 */
+	it("换了人格 → 抬头跟着指针指的那份走,不是冻着的 ai.persona", async () => {
+		G.ai = {
+			provider: "deepseek",
+			providers: { deepseek: { model: "gpt-test" } },
+			persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
+			activePreset: "tsundere",
+			presets: [
+				{ id: "gentle-maid", label: "温柔女仆", persona: { name: "小绫" } },
+				{
+					id: "tsundere",
+					label: "傲娇毒舌",
+					persona: { name: "凛子", addressSelf: "本小姐", addressUser: "笨蛋" },
+				},
+			],
+		};
+		useAiChatStore.setState({ open: true });
+		render(wrap(<AiChatDock />));
+		await waitFor(() => expect(screen.getByText(/女仆AI · 凛子/)).toBeTruthy());
+	});
+
 	it("人格里名字被清空 → 回落成「女仆」,不显示空白", async () => {
 		G.ai = {
 			provider: "deepseek",

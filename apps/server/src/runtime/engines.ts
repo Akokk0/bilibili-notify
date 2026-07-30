@@ -64,6 +64,7 @@ import type { ConfigStore } from "../config/store.js";
 import type { HistoryStore } from "../history/store.js";
 import type { PlatformAdapter, ProbeResult } from "../platforms/types.js";
 import { createMultiplexSink } from "../sink/multiplex.js";
+import { toGeneratorConfig } from "./ai-config.js";
 import { makeExistingCardBgPicker, readCardBgDataUrl } from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
@@ -275,51 +276,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 的 aiEnabled flag 在每次推送前热判断。这样用户在 dashboard 把 AI 开关切关再切开
 	// 不需要重启服务。完整字段变更则走下方 `rebuildCommentary` 重建实例。
 	//
-	// 字段名映射:schema 用 `baseRole` / `extraSystemPrompt` (面向用户的字段名),
-	// CommentaryGenerator 的 PersonaConfig 用 `customBase` / `extraPrompt` (历史
-	// 命名,与 koishi 端的 PersonaConfig 一致)。在这里做一次性翻译,引擎层不感知差异。
-	const buildAiConfig = () => {
-		const a = globals().defaults.ai;
-		// 连接与生成参数按服务商分桶存 —— 取出当前选中那家的那一套。
-		// 指针指向一个还没添加的家时 resolveAIProfile 兜一套空值回来,下方
-		// buildCommentary 的 `!p.apiKey || !p.baseUrl` 就会照既有规矩停用 AI。
-		const p = resolveAIProfile(a);
-		return {
-			apiKey: p.apiKey,
-			baseURL: p.baseUrl,
-			model: p.model,
-			// `temperature` 是 CommentaryGeneratorConfig 的 optional 字段;dashboard 滑块
-			// 改值后,config-changed 路径下方 `commentary.updateConfig(buildAiConfig())` 会把
-			// 新值推到引擎,下次 chat.completions.create 即生效。
-			temperature: p.temperature,
-			persona: {
-				preset: "custom" as const,
-				name: a.persona.name,
-				addressUser: a.persona.addressUser,
-				addressSelf: a.persona.addressSelf,
-				traits: a.persona.traits,
-				catchphrase: a.persona.catchphrase,
-				customBase: a.persona.baseRole,
-				extraPrompt: a.persona.extraSystemPrompt,
-			},
-			dynamicPrompt: a.dynamicPrompt,
-			liveSummaryPrompt: a.liveSummaryPrompt,
-			enableConversation: false,
-			maxHistory: 6,
-			provider: a.provider,
-			enableThinking: p.enableThinking,
-			thinkingLevel: p.thinkingLevel,
-			extraParams: p.extraParams,
-			// 主模型自己支持视觉时开它,图直接下挂,省一次往返也不掉保真度。
-			// 配了下面的副模型则副模型优先(见 CommentaryGenerator#resolveImages)。
-			enableVision: p.enableVision,
-			vision: {
-				baseURL: p.vision.baseUrl,
-				apiKey: p.vision.apiKey,
-				model: p.vision.model,
-			},
-		};
-	};
+	// `AISettings` → CommentaryGeneratorConfig 的翻译(含字段改名与「人格看指针」)
+	// 本体在 `./ai-config.ts` —— 「试一句」与统计页的锐评用的是同一份映射,人格该
+	// 从哪儿读只能有一个答案。指针指向一个还没添加的服务商时 resolveAIProfile 兜一套
+	// 空值回来,下方 buildCommentary 的 `!p.apiKey || !p.baseUrl` 就会照既有规矩停用 AI。
+	const buildAiConfig = () => toGeneratorConfig(globals().defaults.ai);
 
 	let commentary: CommentaryGenerator | null = null;
 	const buildCommentary = (): CommentaryGenerator | null => {
@@ -807,9 +768,12 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						live.setCommentary(commentary);
 						if (commentary) log.info("[ai] commentary 已激活");
 					} else if (commentary) {
-						commentary.updateConfig(buildAiConfig());
+						const next = buildAiConfig();
+						commentary.updateConfig(next);
+						// 报**真正推给引擎的那份人格**(指针指的那份),不是 `a.persona` ——
+						// 后者永远冻在老值上,照它打日志等于给排查的人指错方向。
 						log.info(
-							`[ai] commentary 配置已更新: provider=${a.provider}, model=${ap.model}, persona.name=${a.persona.name}, traits=${a.persona.traits}`,
+							`[ai] commentary 配置已更新: provider=${a.provider}, model=${ap.model}, persona.name=${next.persona.name}, traits=${next.persona.traits}`,
 						);
 					}
 				}

@@ -193,6 +193,64 @@ export function resolveAIProfile(ai: {
 	return ai.providers?.[id] ?? EMPTY_AI_PROVIDER_PROFILE;
 }
 
+/**
+ * 一份人格(与 `schema/common.ts#AIPersonaSchema` 同形)。类型声明在这里的理由与
+ * {@link AIProviderProfileShape} 一样:让下面那个**零依赖**的解析函数能直供浏览器端。
+ */
+export interface AIPersonaShape {
+	name: string;
+	addressUser: string;
+	addressSelf: string;
+	traits: string;
+	catchphrase: string;
+	baseRole: string;
+	extraSystemPrompt: string;
+}
+
+/** 人格库里的一份 —— 两段 prompt 缺席 = 「用全局那份」。 */
+export interface AIPresetShape {
+	id: string;
+	persona: AIPersonaShape;
+	dynamicPrompt?: string;
+	liveSummaryPrompt?: string;
+}
+
+/** 当前生效的那份人格与它的两段 prompt。 */
+export interface ActivePersonaShape {
+	persona: AIPersonaShape;
+	dynamicPrompt: string;
+	liveSummaryPrompt: string;
+}
+
+/**
+ * 全局此刻用的是哪份人格 —— **「当前用哪份」只能有这一个读法**。
+ *
+ * 人格住在 `presets[]` 里,`activePreset` 是指着其中一份的指针,且**不改写**
+ * `ai.persona`(切回原来那份时主人手写的内容原封不动地回来)。代价是 `ai.persona`
+ * 自指针上线就再没有界面入口 —— 它只剩两个身份:老配置的原值、以及指针落空时的
+ * 安全网。**谁直读它,谁那条路上的人格就永远停在老值上**:主人在设置页换来换去,
+ * 那一侧的女仆还是原来那位,而界面上高亮、指示器全都指着新那份,看不出哪儿不对。
+ * (「换了人格没反应」就是这么来的,一次同时坑了常驻 generator、试一句、锐评与
+ * 聊天窗抬头四处。)
+ *
+ * 指针落空 —— 没填、或指着一份刚被删掉 / 备份换掉的预设 —— 静静回落 `ai.persona`。
+ * 两段 prompt 逐段回落:预设里缺席 = 「用全局那段」,不是「发一段空的」。
+ */
+export function resolveActivePersona(ai: {
+	persona: AIPersonaShape;
+	dynamicPrompt: string;
+	liveSummaryPrompt: string;
+	activePreset?: string;
+	presets?: readonly AIPresetShape[];
+}): ActivePersonaShape {
+	const active = ai.activePreset ? ai.presets?.find((p) => p.id === ai.activePreset) : undefined;
+	return {
+		persona: active?.persona ?? ai.persona,
+		dynamicPrompt: active?.dynamicPrompt ?? ai.dynamicPrompt,
+		liveSummaryPrompt: active?.liveSummaryPrompt ?? ai.liveSummaryPrompt,
+	};
+}
+
 // 第一个 AI 人格预设「温柔女仆」。同时作为 DEFAULT_AI 的默认 persona / prompt 来源,
 // 保证「默认配置 = 首个预设」单一真相,不靠手抄两份。
 const PRESET_GENTLE_MAID = {

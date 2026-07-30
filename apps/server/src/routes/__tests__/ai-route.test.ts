@@ -49,6 +49,10 @@ beforeEach(() => {
 /**
  * 造一份「AI 页草稿」。连接字段住在服务商桶里(各家一套配置),`bucket` 用来覆盖
  * 桶内字段(apiKey / model …),`over` 覆盖 ai 顶层字段。
+ *
+ * 人格走**指针**:设置页改人格改的是 `presets[i]`,`activePreset` 指着当前那份 ——
+ * `ai.persona` 自指针上线就没有界面入口了。所以草稿里「主人现在用的那份」得这么造,
+ * 照老样子直接改 `ai.persona` 是造不出来的形状。
  */
 function draftAi(
 	bucket: Partial<GlobalConfig["defaults"]["ai"]["providers"]["deepseek"]> = {},
@@ -73,7 +77,16 @@ function draftAi(
 				...bucket,
 			},
 		},
-		persona: { ...ai.persona, name: "恶魔兔", traits: "调皮，会整活" },
+		presets: [
+			...ai.presets,
+			{
+				id: "demon-bunny",
+				label: "恶魔兔",
+				persona: { ...ai.persona, name: "恶魔兔", traits: "调皮，会整活" },
+				dynamicPrompt: "用恶魔兔的口气讲",
+			},
+		],
+		activePreset: "demon-bunny",
 		...over,
 	};
 }
@@ -169,6 +182,30 @@ describe("POST /api/ai/test-push", () => {
 		const cfg = H.instances[0]?.config as { model: string; persona: { name: string } };
 		expect(cfg.model).toBe("draft-only-model");
 		expect(cfg.persona.name).toBe("恶魔兔");
+	});
+
+	/**
+	 * 「换了人格没反应」那个 bug 的现场之一。
+	 *
+	 * `ai.persona` 自指针上线就没有界面入口,永远冻在老值上(全新配置里是「小绫」)。
+	 * 这里直读它的话,主人在设置页把人格换成谁都白换 —— 试出来的还是原来那位,
+	 * 而界面上左栏高亮、指示器全都指着新那份,看不出哪里不对。
+	 */
+	it("指针指向别的人格 → 试的就是那份,不是冻在 ai.persona 的老值", async () => {
+		const { deps } = makeDeps();
+		const app = createAiRoute(deps);
+
+		await post(app, { targetId: TARGET_ID, message: "在吗?", ai: draftAi() });
+
+		const cfg = H.instances[0]?.config as {
+			persona: { name: string; traits: string };
+			dynamicPrompt: string;
+		};
+		// 草稿的 ai.persona 还是默认那份「小绫」,指针指着「恶魔兔」。
+		expect(cfg.persona.name).not.toBe("小绫");
+		expect(cfg.persona.traits).toBe("调皮，会整活");
+		// 口吻那两段同理 —— 只换人格不换 prompt 等于只换了一半。
+		expect(cfg.dynamicPrompt).toBe("用恶魔兔的口气讲");
 	});
 
 	// 前端 GET /api/globals 拿到的 apiKey 是 REDACTED 占位。用户只要没动过那一栏,
