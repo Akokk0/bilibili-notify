@@ -195,24 +195,24 @@ describe("ImageRenderer 纯映射辅助", () => {
 // ---------------------------------------------------------------------------
 
 describe("ImageRenderer.compressBiliImageUrl", () => {
-	it("i*.hdslb.com 的 /bfs/ 图 → 追加 @1280w_80q.webp 后缀", () => {
+	it("i*.hdslb.com 的 /bfs/ 图 → 追加 @1280w_80q_1s.webp 后缀", () => {
 		const r = makeRenderer() as AnyRenderer;
 		expect(r.compressBiliImageUrl("https://i0.hdslb.com/bfs/new_dyn/abc.jpg")).toBe(
-			"https://i0.hdslb.com/bfs/new_dyn/abc.jpg@1280w_80q.webp",
+			"https://i0.hdslb.com/bfs/new_dyn/abc.jpg@1280w_80q_1s.webp",
 		);
 	});
 
 	it("已有 @ 处理后缀 → 替换为统一缩放后缀", () => {
 		const r = makeRenderer() as AnyRenderer;
 		expect(r.compressBiliImageUrl("https://i2.hdslb.com/bfs/album/x.png@600w_1c.webp")).toBe(
-			"https://i2.hdslb.com/bfs/album/x.png@1280w_80q.webp",
+			"https://i2.hdslb.com/bfs/album/x.png@1280w_80q_1s.webp",
 		);
 	});
 
 	it("保留 query 串", () => {
 		const r = makeRenderer() as AnyRenderer;
 		expect(r.compressBiliImageUrl("https://i0.hdslb.com/bfs/x.jpg?foo=bar")).toBe(
-			"https://i0.hdslb.com/bfs/x.jpg@1280w_80q.webp?foo=bar",
+			"https://i0.hdslb.com/bfs/x.jpg@1280w_80q_1s.webp?foo=bar",
 		);
 	});
 
@@ -227,15 +227,99 @@ describe("ImageRenderer.compressBiliImageUrl", () => {
 		expect(r.compressBiliImageUrl("https://example.com/a.jpg")).toBe("https://example.com/a.jpg");
 	});
 
+	it("**必须带静态首帧参数** —— 否则 GIF 会被转成动画 webp,又慢又大", () => {
+		// 实测同一张 6.7MB 的 GIF(i0.hdslb.com/bfs/article/…gif):
+		//   @1280w_80q.webp      → 2.33MB,含 74 个 ANMF 帧块(动画),首次转码 6.9s
+		//   @1280w_80q_1s.webp   → 37KB,静态,0.17s
+		// 出图是截图,动画本来就只截得到一帧 —— 那 2.29MB 和 6.7 秒纯属白烧,还正好
+		// 撞上 10s 抓取超时,一超时就静默换成透明占位。多图动态里三张 GIF 同批抢 CDN
+		// 转码,于是「大图和 GIF 图渲染不出来」。`_1s` 对静图字节完全一致(实测两张
+		// face 图两种后缀 12354B / 7918B 分毫不差),所以不必按源格式分流,统一带上。
+		const r = makeRenderer() as AnyRenderer;
+		expect(r.compressBiliImageUrl("https://i0.hdslb.com/bfs/new_dyn/anim.gif")).toBe(
+			"https://i0.hdslb.com/bfs/new_dyn/anim.gif@1280w_80q_1s.webp",
+		);
+	});
+
 	it("fetchImageAsDataUrl 用缩放后的 URL 作缓存键(命中即不发 fetch)", async () => {
 		const r = makeRenderer() as AnyRenderer;
-		const resized = "https://i0.hdslb.com/bfs/new_dyn/huge.jpg@1280w_80q.webp";
+		const resized = "https://i0.hdslb.com/bfs/new_dyn/huge.jpg@1280w_80q_1s.webp";
 		r.imageCache.set(resized, { dataUrl: "data:resized", updatedAt: 1 });
 		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
 		const out = await r.fetchImageAsDataUrl("https://i0.hdslb.com/bfs/new_dyn/huge.jpg");
 		expect(out).toBe("data:resized");
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// fetchImageAsDataUrl —— 处理版取不到时回退原图
+// ---------------------------------------------------------------------------
+
+/**
+ * 加处理后缀是**为了**避开 8MB 上限,但它自己也是一条会失败的路:CDN 要现场转码,
+ * 可能超时、可能对某些源不吃这套参数。而预取失败在 inlineRemoteImages 里是被吞掉
+ * 的(换成 1x1 透明占位),整张卡照样「渲染成功」—— 于是主人只能靠肉眼发现某几格是
+ * 空的。所以处理版这条路断了必须退回原图再试一次,原图不需要转码,通常直接命中存储。
+ */
+describe("ImageRenderer.fetchImageAsDataUrl 回退原图", () => {
+	it("处理版超时 → 退回原图重试,而不是直接判死", async () => {
+		const r = makeRenderer() as AnyRenderer;
+		const raw = "https://i0.hdslb.com/bfs/new_dyn/anim.gif";
+		const processed = `${raw}@1280w_80q_1s.webp`;
+		const fetchMock = vi.fn(async (u: string) => {
+			if (u === processed) throw new Error("The operation was aborted");
+			return fakeResponse({ contentType: "image/gif", body: new Uint8Array([71]) });
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		const out = await r.fetchImageAsDataUrl(raw);
+		expect(out).toBe(`data:image/gif;base64,${Buffer.from([71]).toString("base64")}`);
+		expect(fetchMock.mock.calls.map((c) => c[0])).toEqual([processed, raw]);
+	});
+
+	it("回退拿到的图也进缓存 —— 同一张图在一张卡里常出现多次,别每次都先撞一遍死路", async () => {
+		const r = makeRenderer() as AnyRenderer;
+		const raw = "https://i0.hdslb.com/bfs/new_dyn/anim.gif";
+		const processed = `${raw}@1280w_80q_1s.webp`;
+		const fetchMock = vi.fn(async (u: string) => {
+			if (u === processed) throw new Error("HTTP 404 Not Found");
+			return fakeResponse({ contentType: "image/gif" });
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		await r.fetchImageAsDataUrl(raw);
+		await r.fetchImageAsDataUrl(raw);
+		expect(fetchMock).toHaveBeenCalledTimes(2); // 第二次全走缓存,一发都不再发
+		expect(r.imageCache.has(processed)).toBe(true);
+	});
+
+	it("原图这条路本身就失败 → 原样抛,不做第二次无谓重试", async () => {
+		const r = makeRenderer() as AnyRenderer;
+		const fetchMock = vi.fn(async () => fakeResponse({ ok: false, status: 404 }));
+		vi.stubGlobal("fetch", fetchMock);
+		// 第三方域不加处理后缀 → 处理版就是原图,没有第二条路可退。
+		await expect(r.fetchImageAsDataUrl("https://s1.hdslb.com/bfs/static/x.png")).rejects.toThrow(
+			"HTTP 404",
+		);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("回退也拿不到 → 抛的是**原图那次**的错,别拿处理版的错误误导排障", async () => {
+		const r = makeRenderer() as AnyRenderer;
+		const raw = "https://i0.hdslb.com/bfs/new_dyn/gone.jpg";
+		// 两次给不同状态码,才分得清抛出来的是哪一次 —— 都给同一个的话,砍掉回退这条
+		// 测试照样绿,等于没测。
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (u: string) =>
+				fakeResponse(
+					u === raw
+						? { ok: false, status: 404, statusText: "Not Found" }
+						: { ok: false, status: 400, statusText: "Bad Request" },
+				),
+			),
+		);
+		await expect(r.fetchImageAsDataUrl(raw)).rejects.toThrow("HTTP 404");
 	});
 });
 

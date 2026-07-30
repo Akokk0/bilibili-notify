@@ -740,10 +740,20 @@ export class ImageRenderer {
 	}
 
 	/** B 站图片处理服务的缩放目标宽 / 质量(webp)。动态原图常达十几 MB,超 8MB 上限会
-	 * 被丢成透明占位 → 图渲染不出来。给 i*.hdslb.com 的 /bfs/ 资源加 `@<w>w_<q>q.webp`
+	 * 被丢成透明占位 → 图渲染不出来。给 i*.hdslb.com 的 /bfs/ 资源加 `@<w>w_<q>q_1s.webp`
 	 * 后缀,让 CDN 直接返回缩放压缩版,既不触发上限,内联体积也小一个数量级。 */
 	private static readonly BILI_IMG_MAX_W = 1280;
 	private static readonly BILI_IMG_QUALITY = 80;
+	/**
+	 * 「只要第一帧」。**没有它 GIF 会被转成动画 webp** —— 实测一张 6.7MB 的 GIF:
+	 * 带 `_1s` 是 37KB / 0.17s 的静态图,不带是 2.33MB / 6.9s、含 74 个动画帧块。
+	 * 出图走截图,动画本来就只截得到一帧,那点体积和秒数纯属白烧,还正好撞上 10s
+	 * 抓取超时 —— 一超时就被静默换成 1x1 透明占位,于是卡片上凭空缺几张图。
+	 *
+	 * 对静图无副作用(实测两张 face 图带不带 `_1s` 返回字节分毫不差),所以不按源
+	 * 格式分流,一律带上 —— 少一条「靠扩展名猜是不是动图」的分支,也就少一处会错。
+	 */
+	private static readonly BILI_IMG_FIRST_FRAME = "_1s";
 
 	/**
 	 * 对 B 站图片处理服务器(i0/i1/i2…​.hdslb.com 的 /bfs/ 资源)的 URL 追加缩放 +
@@ -762,7 +772,7 @@ export class ImageRenderer {
 		const [beforeQuery, query] = url.split("?", 2);
 		// B 站图 URL 无 userinfo,`@` 只可能是已有的处理后缀 → 截到它之前。
 		const cleanBase = beforeQuery.split("@")[0];
-		const suffix = `@${ImageRenderer.BILI_IMG_MAX_W}w_${ImageRenderer.BILI_IMG_QUALITY}q.webp`;
+		const suffix = `@${ImageRenderer.BILI_IMG_MAX_W}w_${ImageRenderer.BILI_IMG_QUALITY}q${ImageRenderer.BILI_IMG_FIRST_FRAME}.webp`;
 		return query ? `${cleanBase}${suffix}?${query}` : `${cleanBase}${suffix}`;
 	}
 
@@ -775,8 +785,30 @@ export class ImageRenderer {
 			return cached.dataUrl;
 		}
 
+		let dataUrl: string;
+		try {
+			dataUrl = await this.fetchOnce(url);
+		} catch (err) {
+			// 加处理后缀是**为了**避开 8MB 上限,但它自己也是一条会断的路:CDN 得现场
+			// 转码,可能超时,也可能对某个源根本不吃这套参数。而预取失败在上游是被吞掉
+			// 的(换 1x1 透明占位、整张卡照样「渲染成功」),主人只能靠肉眼发现某几格
+			// 是空的 —— 所以这条路断了必须退回原图再试一次。原图不需要转码,通常直接
+			// 命中 CDN 存储;只有它也拿不到才算真没辙。
+			if (url === rawUrl) throw err;
+			this.logger.warn(`[prefetch] 处理版取图失败,回退原图重试:${url} (${err})`);
+			dataUrl = await this.fetchOnce(rawUrl);
+		}
+		// 缓存键恒用处理后 URL(回退拿到的也记在这个键上)—— 同一张图在一张卡里常出现
+		// 多次,让后面几次直接命中,而不是每次都先把那条死路重撞一遍。
+		this.imageCache.set(url, { dataUrl, updatedAt: Date.now() });
+		this.pruneImageCache();
+		return dataUrl;
+	}
+
+	/** 真正发起一次抓取并转成 data URL。失败一律抛,由调用方决定要不要换条路再来。 */
+	private async fetchOnce(url: string): Promise<string> {
 		// IM1:SSRF 闸门(防御纵深 —— 调用方也已 gate,但这里才是真正发起 fetch
-		// 的点,独立守一道)。
+		// 的点,独立守一道)。回退路径同样经过这里,不存在绕过。
 		if (!this.isFetchAllowed(url)) {
 			throw new Error(`SSRF blocked: non-allowlisted image host (${url})`);
 		}
@@ -805,10 +837,9 @@ export class ImageRenderer {
 			const buf = await this.readCapped(response, controller);
 			const contentType =
 				response.headers.get("content-type")?.split(";")[0]?.trim() || this.getMimeType(url);
-			const dataUrl = `data:${contentType};base64,${buf.toString("base64")}`;
-			this.imageCache.set(url, { dataUrl, updatedAt: Date.now() });
-			this.pruneImageCache();
-			return dataUrl;
+			// 写缓存由调用方统一做 —— 这里若自己写一笔,回退路径就会在 rawUrl 上多留
+			// 一个键,跟处理后 URL 那个键各存一份同一张图,白占额度还搅乱逐出顺序。
+			return `data:${contentType};base64,${buf.toString("base64")}`;
 		} finally {
 			clearTimeout(timeout);
 		}
