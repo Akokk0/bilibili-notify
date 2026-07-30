@@ -10,12 +10,14 @@ export {
 	type AIProviderMeta,
 	type AIProviderProfileShape,
 	BUILTIN_AI_PRESETS,
+	colorFromUid,
 	EMPTY_AI_PROVIDER_PROFILE,
 	providerMeta,
 	resolveActivePersona,
 	resolveAIProfile,
 	THINKING_LEVELS,
 	type ThinkingLevel,
+	UP_COLORS,
 } from "./constants";
 export * from "./platform";
 export * from "./schema";

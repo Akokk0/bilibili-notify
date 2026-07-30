@@ -11,8 +11,13 @@ import { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../../types/domain";
  * UP 主配色住在 `@bilibili-notify/internal`,不在这里 —— 服务端渲染周报图片时
  * 要用同一套色,同一位 UP 在页面上和推到群里的图片上必须是同一个颜色。这里
  * re-export 只是让页面侧的既有引用点不用改。调色板的取舍见那边的说明。
+ *
+ * **必须走 `/constants` 子路径**,不能从根入口拿:根入口带 zod,而这是页面里唯一
+ * 一处从 internal 做**运行时**导入的地方 —— 曾经写成根入口,于是整个 zod(300+ 处
+ * 引用)被拖进浏览器 bundle,只为一个调色板。其余对 internal 的引用一律 `import type`
+ * (编译后擦除),见 `types/domain.ts` 开头那段。
  */
-export { colorFromUid, UP_COLORS } from "@bilibili-notify/internal";
+export { colorFromUid, UP_COLORS } from "@bilibili-notify/internal/constants";
 
 export function displayName(sub: Subscription): string {
 	return sub.cachedProfile?.name?.trim() || `UID ${sub.uid}`;

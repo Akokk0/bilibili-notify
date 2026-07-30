@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { colorFromUid, UP_COLORS } from "./up-color";
+import { colorFromUid, UP_COLORS } from "./constants";
 
 /** sRGB hex → CIE Lab。只为算色差与体检明度,不追求极致精度。 */
 function toLab(hex: string): [number, number, number] {
