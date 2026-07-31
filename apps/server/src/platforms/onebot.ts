@@ -11,6 +11,10 @@ import type {
 	PushTarget,
 	ServiceContext,
 } from "@bilibili-notify/internal";
+import {
+	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
+	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
+} from "@bilibili-notify/internal/constants";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import type { PlatformAdapter, ProbeResult } from "./types.js";
 
@@ -42,13 +46,26 @@ export interface OnebotPlatformAdapterOptions {
 	 * 推送历史不再谎报失败。取 `max(cfg.timeoutMs, 此值)`。测试注入用。
 	 */
 	forwardMinTimeoutMs?: number;
+	/**
+	 * **带图**普通消息(send_group_msg / send_private_msg 里含 image 段)的超时下限
+	 * (ms),默认 30s。与 forward 同一个道理,只是当初只想到了合并转发:带图消息在
+	 * OneBot 实现那侧要先落盘、传腾讯图床、拿 fileid 才回响应,15s 常不够(用户实测
+	 * LLOneBot,词云 / 动态卡每条都恰好卡在 15000ms 死线,而同时段纯文字全部秒回)。
+	 *
+	 * 比 forward 的 60s 短:单图只有一次上传往返,而 forward 要逐张来一遍。取
+	 * `max(cfg.timeoutMs, 此值)`。测试注入用。
+	 */
+	imageMinTimeoutMs?: number;
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_RETRY_INTERVAL_MS = 1_000;
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
-const DEFAULT_FORWARD_MIN_TIMEOUT_MS = 60_000;
+// 两个下限与前端共用一个数(见 `@bilibili-notify/internal/constants` 的说明),否则
+// 界面上写着 30s、这边实际按别的数放宽,主人对不上账。
+const DEFAULT_FORWARD_MIN_TIMEOUT_MS = ONEBOT_FORWARD_MIN_TIMEOUT_MS;
+const DEFAULT_IMAGE_MIN_TIMEOUT_MS = ONEBOT_IMAGE_MIN_TIMEOUT_MS;
 
 /**
  * 「结果未知」类发送失败:action 帧 / HTTP 请求**已经发出去之后**才失败(响应超时、
@@ -68,6 +85,37 @@ const INDETERMINATE_NOTE = "(动作已发出、结果未知,为免重复送达�
 /** 合并转发动作 —— NapCat 要逐张下载图片再上传组装,处理时长远超普通消息。 */
 function isForwardAction(action: string): boolean {
 	return action === "send_group_forward_msg" || action === "send_private_forward_msg";
+}
+
+/**
+ * 这条消息带不带图 —— 带图的 OneBot 实现要先把图落盘再传腾讯图床才回响应,耗时与
+ * 图多大关系不大(卡片图只有 0.1MB 量级),但稳定压在十几秒。
+ *
+ * 按**最终要发出去的 message 段**判,不按 payload.kind:段才是真正决定 bot 侧干多少
+ * 活的东西。`forward-images` 且 `forward:false` 就是活例 —— 它 kind 看着像图集,却被
+ * buildSegments 并成了普通多图 send_group_msg,照 kind 判会漏掉最该放宽的那一类。
+ */
+function hasImageSegment(params: Record<string, unknown>): boolean {
+	const message = params.message;
+	if (!Array.isArray(message)) return false;
+	return message.some((seg) => (seg as OneBotMessageSegment | null)?.type === "image");
+}
+
+/**
+ * 这次动作该等多久的**下限**(0 = 不放宽,照配置走)。HTTP 与 WS 两条路共用,免得
+ * 两边各判一次、日后漂移成「WS 放宽了 HTTP 没有」。
+ *
+ * 只给真的慢的活放宽:纯文字消息不动 —— bot 真挂了的场景,每条文本都多等几十秒
+ * 只会让失败来得更晚,并拖住串行发送的后续目标。
+ */
+function minTimeoutFor(
+	action: string,
+	params: Record<string, unknown>,
+	limits: { forward: number; image: number },
+): number {
+	if (isForwardAction(action)) return limits.forward;
+	if (hasImageSegment(params)) return limits.image;
+	return 0;
 }
 
 type OnebotHttpConfig = Extract<OnebotAdapterConfig, { transport: "http" }>;
@@ -633,7 +681,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	const log = opts.logger;
 	const serviceCtx = opts.serviceCtx;
 	const fallbackTimeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-	const forwardMinTimeoutMs = opts.forwardMinTimeoutMs ?? DEFAULT_FORWARD_MIN_TIMEOUT_MS;
+	const minTimeouts = {
+		forward: opts.forwardMinTimeoutMs ?? DEFAULT_FORWARD_MIN_TIMEOUT_MS,
+		image: opts.imageMinTimeoutMs ?? DEFAULT_IMAGE_MIN_TIMEOUT_MS,
+	};
 
 	const forwardConns = new Map<string, ForwardConn>();
 	const reverseListeners = new Map<string, ReverseListener>();
@@ -747,9 +798,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		t0: number,
 	): Promise<DeliveryResult> {
 		const baseTimeoutMs = cfg.timeoutMs ?? fallbackTimeoutMs;
-		const timeoutMs = isForwardAction(action)
-			? Math.max(baseTimeoutMs, forwardMinTimeoutMs)
-			: baseTimeoutMs;
+		const timeoutMs = Math.max(baseTimeoutMs, minTimeoutFor(action, params, minTimeouts));
 		const retryTimes = cfg.retryTimes ?? 0;
 		const retryIntervalMs = cfg.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
 		let lastErr = "ws send failed";
@@ -990,7 +1039,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 						fallbackTimeoutMs,
 						{
 							nonIdempotent: true,
-							minTimeoutMs: isForwardAction(built.action) ? forwardMinTimeoutMs : undefined,
+							minTimeoutMs: minTimeoutFor(built.action, built.params, minTimeouts),
 						},
 					);
 					const verdict = interpretResponse(result);

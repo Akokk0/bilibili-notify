@@ -1,4 +1,9 @@
 import type { QQDiscoveredEntry, TestResponse } from "@bilibili-notify/contract";
+// 走零依赖的 /constants 子路径 —— 从包根 import 会把 zod 拖进浏览器 bundle。
+import {
+	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
+	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
+} from "@bilibili-notify/internal/constants";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Btn, PlatformIcon, platformLabel, StatusDot, Toggle } from "../components/atoms";
@@ -486,12 +491,15 @@ function AdapterConnectionFields({
 						secret
 					/>
 				</Field>
+				{/* 这句 hint 要说的不是「超时是什么」,而是「为什么它看起来没生效」:带图
+				    消息内部另有更长的下限(单图 30s / 合并转发 60s),不然主人会以为自己
+				    调的 15s 被无视了。带图慢是 OneBot 实现那侧传图床的往返,不是我们卡着。 */}
 				<Field
 					label={cfg.transport === "http" ? "请求超时" : "响应超时"}
 					code="config.timeoutMs"
-					hint={
+					hint={`${
 						cfg.transport === "http" ? "单次 HTTP 请求总超时(毫秒)" : "等 OneBot echo 响应的超时"
-					}
+					}。只对纯文字消息作数：带图的要等协议端把图传到 QQ 图床，实测常超 15s，所以内部按单图 ${ONEBOT_IMAGE_MIN_TIMEOUT_MS / 1000}s / 合并转发 ${ONEBOT_FORWARD_MIN_TIMEOUT_MS / 1000}s 兜底（配得更大则以你的为准）`}
 				>
 					<TNum
 						value={cfg.timeoutMs}

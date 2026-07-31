@@ -810,6 +810,117 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 	});
 });
 
+/**
+ * 带图的**普通**消息(send_group_msg / send_private_msg)同样要放宽超时下限。
+ *
+ * 背景(用户实测,LLOneBot):推送历史里词云 / 动态卡反复标失败,服务端日志每一条都
+ * 恰好卡在 `响应超时 (15000ms)` —— 不是 bot 报错,是我们的死线掐的。带图消息在
+ * OneBot 实现那侧要先把图落盘、上传到腾讯图床再拿 fileid 组消息,这个往返与图多大
+ * 关系不大(实测卡片图只有 0.1MB 量级),15s 常不够;纯文字消息同一时段全部秒回。
+ *
+ * 这正是 forward 当初放宽的同一个理由(「要逐张下载再上传」),只是当时只想到了
+ * 合并转发。判定按**最终要发出去的 message 段**看有没有 image,不按 payload.kind ——
+ * 段才是真正决定 bot 侧干多少活的东西(forward=false 的图集也会并成普通多图消息)。
+ *
+ * 边界同样要守:纯文字**不放宽**。否则 bot 真挂了的场景,每条文本都要多等几十秒。
+ */
+describe("onebot — 带图消息放宽超时下限", () => {
+	const IMAGE: NotificationPayload = {
+		kind: "image",
+		image: { buffer: Buffer.from("fake-jpeg"), mime: "image/jpeg" },
+	};
+
+	it("WS 带图:慢响应在放宽后的下限内等得到成功(而非谎报失败)", async () => {
+		const bot = await startFakeBotServer({
+			onFrame: (frame, reply) =>
+				// 模拟 LLOneBot 传图床的慢响应:超过 cfg.timeoutMs,但在放宽后的下限内。
+				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200),
+		});
+		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 1000 });
+		const adapter = obWsAdapter(bot.port, { timeoutMs: 60, retryTimes: 0 });
+		ad.reconcile?.([adapter]);
+		await waitFor(() => bot.connections.length > 0);
+		await sleep(40);
+		const r = await ad.send(adapter, obTarget(), IMAGE);
+		expect(r.ok).toBe(true);
+		expect(bot.received.filter((f) => f.action === "send_group_msg")).toHaveLength(1);
+		ad.dispose?.();
+	});
+
+	it("WS 纯文字:**不**放宽 —— bot 真挂了不该让每条文本都多等几十秒", async () => {
+		const bot = await startFakeBotServer({
+			onFrame: (frame, reply) =>
+				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200),
+		});
+		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 1000 });
+		const adapter = obWsAdapter(bot.port, { timeoutMs: 60, retryTimes: 0 });
+		ad.reconcile?.([adapter]);
+		await waitFor(() => bot.connections.length > 0);
+		await sleep(40);
+		const r = await ad.send(adapter, obTarget(), TEXT);
+		expect(r.ok).toBe(false);
+		expect(r.err).toMatch(/超时/);
+		ad.dispose?.();
+	});
+
+	it("WS 图集不走合并转发(forward=false)→ 并成普通多图消息,同样放宽", async () => {
+		// 这条走的是 send_group_msg 而非 send_group_forward_msg,forwardMinTimeoutMs
+		// 够不着它 —— 但 bot 侧照样要逐张下载再上传,是最该放宽的一类。
+		const bot = await startFakeBotServer({
+			onFrame: (frame, reply) =>
+				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200),
+		});
+		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 1000 });
+		const adapter = obWsAdapter(bot.port, { timeoutMs: 60, retryTimes: 0 });
+		ad.reconcile?.([adapter]);
+		await waitFor(() => bot.connections.length > 0);
+		await sleep(40);
+		const r = await ad.send(adapter, obTarget(), {
+			kind: "forward-images",
+			images: [{ url: "https://x/1.jpg" }, { url: "https://x/2.jpg" }],
+			forward: false,
+		});
+		expect(r.ok).toBe(true);
+		expect(bot.received.filter((f) => f.action === "send_group_msg")).toHaveLength(1);
+		ad.dispose?.();
+	});
+
+	it("HTTP 带图:同样放宽(两种 transport 走同一条图床上传路)", async () => {
+		fetchMock.mockImplementation(
+			(_url: string, init: RequestInit) =>
+				new Promise((resolve, reject) => {
+					const t = setTimeout(
+						() => resolve(res({ ok: true, json: { status: "ok", retcode: 0 } })),
+						150,
+					);
+					(init.signal as AbortSignal).addEventListener("abort", () => {
+						clearTimeout(t);
+						reject(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }));
+					});
+				}),
+		);
+		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 1000 });
+		const r = await ad.send(obAdapter({ timeoutMs: 50, retryTimes: 0 }), obTarget(), IMAGE);
+		expect(r.ok).toBe(true);
+	});
+
+	it("配置的超时已经比下限大 → 尊重配置,下限不反过来压低它", async () => {
+		// max() 而非直接取下限:主人把超时调到 120s 是有意为之,别被 30s 的下限截断。
+		const bot = await startFakeBotServer({ autoReply: false });
+		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 60 });
+		const adapter = obWsAdapter(bot.port, { timeoutMs: 400, retryTimes: 0 });
+		ad.reconcile?.([adapter]);
+		await waitFor(() => bot.connections.length > 0);
+		await sleep(40);
+		const t0 = Date.now();
+		const r = await ad.send(adapter, obTarget(), IMAGE);
+		expect(r.ok).toBe(false);
+		// 等满了配置的 400ms 才超时,而不是在 60ms 的下限处就掐断。
+		expect(Date.now() - t0).toBeGreaterThanOrEqual(300);
+		ad.dispose?.();
+	});
+});
+
 describe("onebot — isAvailable / probe", () => {
 	it("isAvailable:平台匹配+启用+baseUrl 非空", () => {
 		const ad = createOnebotAdapter(obOpts());
