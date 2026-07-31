@@ -7,9 +7,11 @@
  * 而两边都看不出哪里不对。这正是本仓库反复复发的那类「切了没生效 / 关不掉」。
  */
 
+import { FONT_ASSET_WARN_BYTES } from "@bilibili-notify/internal/constants";
 import { describe, expect, it } from "vite-plus/test";
 import {
 	fontSelection,
+	fontSizeWarning,
 	pickDefaultFont,
 	pickFamilyFont,
 	pickUploadedFont,
@@ -101,5 +103,33 @@ describe("删盘之后的悬空清扫", () => {
 		const got = removeFontFromStyle(style, UPLOADED);
 		expect(got).toEqual(style);
 		expect("fontAsset" in got).toBe(false);
+	});
+});
+
+/**
+ * 上传大字体的提醒。
+ *
+ * 单款上限是 20MB,但那个上限是按「字体文件本身多大」定的,没算出图时的开销:
+ * 一款 ttf 会被 base64 内联进渲染 HTML(再涨三分之一),而 Docker 镜像里 V8 的堆上限
+ * 只有 384MB。真有人传了 20MB 的 ttf 之后卡片就渲染不出来了。
+ *
+ * 所以**不降上限**(降了会把已经传上去的那款拒之门外),改成传完就直说:这么大在容器里
+ * 悬,同一套字转 woff2 通常只占三分之一。
+ */
+describe("大字体提醒", () => {
+	it("超过阈值 → 提醒换 woff2,并说出它实际多大", () => {
+		const msg = fontSizeWarning(12.5 * 1024 * 1024);
+		expect(msg).toMatch(/12\.5\s*MB/);
+		expect(msg).toMatch(/woff2/);
+	});
+
+	it("阈值以内不吵 —— 正常大小的 woff2 不该每次上传都被念一遍", () => {
+		expect(fontSizeWarning(3 * 1024 * 1024)).toBeNull();
+		expect(fontSizeWarning(0)).toBeNull();
+	});
+
+	it("正好等于阈值不吵 —— 边界归「没超」那一侧", () => {
+		expect(fontSizeWarning(FONT_ASSET_WARN_BYTES)).toBeNull();
+		expect(fontSizeWarning(FONT_ASSET_WARN_BYTES + 1)).not.toBeNull();
 	});
 });

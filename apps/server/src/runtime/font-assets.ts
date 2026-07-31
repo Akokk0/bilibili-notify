@@ -17,15 +17,17 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
 
 /**
- * 单款字体上限 20MB —— 完整中文字库的 ttf/otf 单字重就有 15-25MB。
+ * 单款字体上限 —— 与前端共用一个数(`@bilibili-notify/internal/constants`),否则两边各写
+ * 一个 20MB,改了一处另一处照旧,主人看到的说明和实际拒收线就对不上。
  *
- * 它会被 base64 内联进渲染 HTML(再涨 33%),与背景图同一条路,而 Docker 那边堆上限是
- * 384MB。所以设置页要引导主人优先用 woff2(同一套字通常只占 ttf 的 1/3),解析结果也
- * 在渲染器里缓存住,不每张卡重算一遍。
+ * 超过 {@link FONT_ASSET_WARN_BYTES} 的**不拒**,只在设置页提醒转 woff2:上限是按文件
+ * 本身多大定的,没算出图开销(base64 内联再涨三分之一,而镜像堆上限只有 384MB),但降
+ * 上限会把主人已经传上去的那款挡在门外。
  */
-export const MAX_FONT_ASSET_BYTES = 20 * 1024 * 1024;
+export { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES };
 
 /** 后缀 → data URL 用的 mime(RFC 8081 的 `font/*`,Chromium 认)。 */
 const EXT_TO_MIME: Record<string, string> = {
@@ -113,7 +115,8 @@ export async function saveFontAsset(
 	}
 	if (bytes.byteLength > MAX_FONT_ASSET_BYTES) {
 		throw new Error(
-			`字体文件过大（上限 20MB，这个 ${(bytes.byteLength / 1024 / 1024).toFixed(1)}MB）—— 同一套字转成 woff2 通常只占三分之一`,
+			// 上限从常量算,别硬写 —— 写死的话改了常量这句话还在说旧数字。
+			`字体文件过大（上限 ${Math.round(MAX_FONT_ASSET_BYTES / 1024 / 1024)}MB，这个 ${(bytes.byteLength / 1024 / 1024).toFixed(1)}MB）—— 同一套字转成 woff2 通常只占三分之一`,
 		);
 	}
 	const id = `${randomBytes(16).toString("hex")}.${ext}`;

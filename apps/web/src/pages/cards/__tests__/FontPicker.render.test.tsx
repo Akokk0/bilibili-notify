@@ -122,3 +122,43 @@ describe("删除", () => {
 		await waitFor(() => expect(onChange).toHaveBeenCalledWith({ font: "" }));
 	});
 });
+
+/**
+ * 大字体的提醒。
+ *
+ * 20MB 的上限是按「文件本身多大」定的,没算出图开销 —— 字体会被 base64 内联进渲染
+ * HTML(再涨三分之一),而镜像里 V8 堆上限只有 384MB。所以一款完全合法的大 ttf 照样
+ * 能让卡片渲染不出来。**提醒而不是拒收**:降上限会把主人已经传上去的那款挡在门外。
+ */
+describe("传了一款很大的字体", () => {
+	/** 造一个「看起来有这么大」的文件 —— 真造 12MB 内容只会让测试变慢。 */
+	function bigFile(mb: number): File {
+		const f = new File(["x"], "超大字体.ttf");
+		Object.defineProperty(f, "size", { value: mb * 1024 * 1024 });
+		return f;
+	}
+
+	async function upload(file: File) {
+		mount({ font: "" });
+		vi.mocked(api.upload).mockResolvedValue({ ok: true, id: UPLOADED } as never);
+		const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+		Object.defineProperty(input, "files", { value: [file] });
+		fireEvent.change(input);
+	}
+
+	it("照收不误,同时提醒转 woff2 —— 拦下来只会让主人没法用自己的字体", async () => {
+		await upload(bigFile(12));
+		// 先确认真的上传了:这条提醒的前提是「收下了」,不是「拦住了」。
+		await waitFor(() => expect(api.upload).toHaveBeenCalled());
+		// 按提醒块独有的说法查:「woff2」在上传说明那一行本来就有,拿它当特征串会白过。
+		const warn = await screen.findByText(/会整份进内存/);
+		expect(warn.textContent).toMatch(/12\.0 MB/);
+		expect(warn.textContent).toMatch(/woff2/);
+	});
+
+	it("正常大小的不吵 —— 每传一次都被念一遍就没人看提醒了", async () => {
+		await upload(bigFile(3));
+		await waitFor(() => expect(api.upload).toHaveBeenCalled());
+		expect(screen.queryByText(/会整份进内存/)).toBeNull();
+	});
+});

@@ -20,6 +20,7 @@ import { ApiError, api } from "../../services/api";
 import {
 	type FontChoice,
 	fontSelection,
+	fontSizeWarning,
 	pickDefaultFont,
 	pickFamilyFont,
 	pickUploadedFont,
@@ -88,6 +89,8 @@ export function FontPicker({
 	const qc = useQueryClient();
 	const [uploading, setUploading] = useState(false);
 	const [err, setErr] = useState<string | null>(null);
+	/** 传上来了、但大到会影响出图的提醒。与 err 分开:那是失败,这是收下了但要打个招呼。 */
+	const [warn, setWarn] = useState<string | null>(null);
 	const list = useQuery({
 		queryKey: ["card-font-assets"],
 		queryFn: () => api.get<FontListResponse>("/api/cards/font-assets"),
@@ -98,6 +101,7 @@ export function FontPicker({
 	const onFile = async (file: File | undefined) => {
 		if (!file) return;
 		setErr(null);
+		setWarn(null);
 		setUploading(true);
 		try {
 			const form = new FormData();
@@ -109,6 +113,8 @@ export function FontPicker({
 			if (!res.ok || !res.id) throw new Error(res.err ?? "上传失败");
 			await qc.invalidateQueries({ queryKey: ["card-font-assets"] });
 			onChange(pickUploadedFont(value, res.id)); // 传上来的当场选用,否则像没反应
+			// 传完再说 —— 这是提醒不是拦截:文件合法就该收下,只是大到会影响出图时得让主人知道。
+			setWarn(fontSizeWarning(file.size));
 		} catch (e) {
 			setErr((e as Error).message);
 		} finally {
@@ -235,6 +241,12 @@ export function FontPicker({
 			</details>
 
 			{err ? <span className="text-[11px] text-bn-danger-text">{err}</span> : null}
+			{/* 提醒不是错误:字体已经收下并选用了,只是大到会影响出图,得让主人心里有数。 */}
+			{warn ? (
+				<div className="rounded-md border border-bn-warning-border bg-bn-warning-soft px-2.5 py-1.5 text-[11px] text-bn-warning-text">
+					{warn}
+				</div>
+			) : null}
 		</div>
 	);
 }
