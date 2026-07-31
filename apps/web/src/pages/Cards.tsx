@@ -47,6 +47,8 @@ import {
 	resolveKindStyle,
 	type CardKind as StyleKind,
 } from "./cards/perkind";
+import { previewErrorHint, previewErrorTitle } from "./cards/preview-error";
+import { enqueuePreview } from "./cards/preview-queue";
 import {
 	colorOnly,
 	hasColorOverride,
@@ -145,13 +147,18 @@ function PreviewImage({
 
 	const query = useQuery({
 		queryKey: ["card-preview", debouncedSpec],
-		queryFn: async () => {
-			const res = await api.post<PreviewResponse>("/api/cards/preview", debouncedSpec);
-			if (!res.ok || !res.dataUrl) {
-				throw new ApiError(500, res, res.err ?? "preview failed");
-			}
-			return res.dataUrl;
-		},
+		// 经串行队列 —— 全家福一屏四张卡,四个请求一起打出去的话,后三个只是挂在服务端
+		// 渲染闸门口空等(服务端本来就串行,见 runtime/serial-gate.ts)。等在浏览器这边
+		// 总耗时一样,但每条连接的存活时间只剩自己那张卡的渲染时间,不会被反代的读超时
+		// 连坐掐断。详见 cards/preview-queue.ts。
+		queryFn: () =>
+			enqueuePreview(async () => {
+				const res = await api.post<PreviewResponse>("/api/cards/preview", debouncedSpec);
+				if (!res.ok || !res.dataUrl) {
+					throw new ApiError(500, res, res.err ?? "preview failed");
+				}
+				return res.dataUrl;
+			}),
 		retry: false,
 	});
 
@@ -166,10 +173,11 @@ function PreviewImage({
 		</div>
 	) : query.error ? (
 		<div className="w-full max-w-95 rounded-xl bg-bn-surface p-4 text-[12px]">
-			<div className="mb-1 font-bold text-bn-danger-text">
-				{status === 503 ? "puppeteer 未配置" : status === 501 ? "kind 暂未支持" : "渲染失败"}
-			</div>
+			<div className="mb-1 font-bold text-bn-danger-text">{previewErrorTitle(status)}</div>
 			<div className="text-bn-text-secondary">{apiErr?.message ?? "未知错误"}</div>
+			{previewErrorHint(status) ? (
+				<div className="mt-2 text-[11px] text-bn-text-tertiary">{previewErrorHint(status)}</div>
+			) : null}
 			{status === 503 ? <ChromeAutoDetect onEnabled={() => query.refetch()} /> : null}
 		</div>
 	) : (

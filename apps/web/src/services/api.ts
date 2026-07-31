@@ -50,15 +50,52 @@ function errorMessage(payload: unknown, what: string, status: number): string {
 	return `${what} → ${status}`;
 }
 
+/**
+ * 断线的状态码。真 HTTP 状态码从 100 起,`0` 不与任何一个撞 —— 调用方靠它把
+ * 「压根没连上」与「服务端返回了错误」分开:后者有服务端那句话可显示,前者没有。
+ */
+export const OFFLINE_STATUS = 0;
+
+/**
+ * 把 `fetch` 的断线包装成 ApiError。
+ *
+ * `fetch` 只在**连接层**失败时抛 `TypeError`(DNS / 拒连 / 连接被切 / CORS),
+ * 拿到响应哪怕是 500 也照样 resolve。所以这里捕到 TypeError 就等价于「这次请求
+ * 根本没走完」,而浏览器给的那句 `Failed to fetch` 对用户零信息量。
+ *
+ * 真实案例:卡片全家福四张卡并发请求,服务端串行渲染,排在后面的超过反代超时被
+ * 切断 —— 服务端日志一路「渲染完成」,用户屏幕上却是三块「渲染失败 · Failed to
+ * fetch」。两边对不上,谁也查不动。原话保留在括号里,是给排查的人对线索用的。
+ *
+ * 只包 TypeError:别的错误(代码写错、AbortError 等)原样抛出去,吞掉只会把 bug
+ * 伪装成网络问题。
+ */
+async function withOffline<T>(what: string, run: () => Promise<T>): Promise<T> {
+	try {
+		return await run();
+	} catch (err) {
+		if (err instanceof TypeError) {
+			throw new ApiError(
+				OFFLINE_STATUS,
+				undefined,
+				`连接中断，${what}没有拿到服务器响应（${err.message}）—— 可能是服务已重启、网络断开，或反向代理把这次请求掐断了`,
+			);
+		}
+		throw err;
+	}
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-	const res = await fetch(path, {
-		method,
-		headers: withDesktopTokenHeader(
-			body !== undefined ? { "content-type": "application/json" } : undefined,
-		),
-		body: body !== undefined ? JSON.stringify(body) : undefined,
-		credentials: "include",
-	});
+	const res = await withOffline(`${method} ${path}`, () =>
+		fetch(path, {
+			method,
+			headers: withDesktopTokenHeader(
+				body !== undefined ? { "content-type": "application/json" } : undefined,
+			),
+			body: body !== undefined ? JSON.stringify(body) : undefined,
+			credentials: "include",
+		}),
+	);
 	let payload: unknown;
 	if (res.headers.get("content-type")?.includes("application/json")) {
 		payload = await res.json().catch(() => undefined);
@@ -77,12 +114,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
  * boundary;其余(desktop token / 凭据 / 错误处理)与 `request` 一致。
  */
 async function upload<T>(path: string, form: FormData): Promise<T> {
-	const res = await fetch(path, {
-		method: "POST",
-		headers: withDesktopTokenHeader(),
-		body: form,
-		credentials: "include",
-	});
+	const res = await withOffline(`POST ${path}`, () =>
+		fetch(path, {
+			method: "POST",
+			headers: withDesktopTokenHeader(),
+			body: form,
+			credentials: "include",
+		}),
+	);
 	let payload: unknown;
 	if (res.headers.get("content-type")?.includes("application/json")) {
 		payload = await res.json().catch(() => undefined);
@@ -100,10 +139,12 @@ async function upload<T>(path: string, form: FormData): Promise<T> {
  * `URL.createObjectURL` 喂给 `<img>`。token 留在 header、不进 URL。
  */
 async function requestBlob(path: string): Promise<Blob> {
-	const res = await fetch(path, {
-		headers: withDesktopTokenHeader(),
-		credentials: "include",
-	});
+	const res = await withOffline(`GET ${path}`, () =>
+		fetch(path, {
+			headers: withDesktopTokenHeader(),
+			credentials: "include",
+		}),
+	);
 	if (!res.ok) {
 		if (res.status === 401 && !path.startsWith("/api/session")) onUnauthorized?.();
 		throw new ApiError(res.status, undefined, `GET ${path} → ${res.status}`);

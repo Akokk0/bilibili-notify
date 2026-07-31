@@ -103,3 +103,54 @@ describe("api 错误信息", () => {
 		await expect(api.post("/api/whatever", {})).rejects.toThrow("500");
 	});
 });
+
+/**
+ * 断线(压根没拿到 HTTP 响应)与「服务端返回了一个错误」是两码事,给用户的话也该
+ * 两样。`fetch` 在连接被切断时抛的是原生 `TypeError: Failed to fetch` —— 那句话
+ * 对用户零信息量:他不知道是没网、是服务挂了、还是反代把长请求掐了。
+ *
+ * 真实案例:卡片全家福四张卡同时请求,服务端串行渲染,最后几张排队超过反代超时被
+ * 切断。服务端日志一路「渲染完成」,用户屏幕上只有三块「渲染失败 · Failed to fetch」,
+ * 两边对不上,根本没法查。
+ */
+describe("api 断线", () => {
+	const offline = (message = "Failed to fetch") =>
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				throw new TypeError(message);
+			}),
+		);
+
+	it("包装成 status=0 的 ApiError —— 调用方据此把断线与 HTTP 错误分开处理", async () => {
+		offline();
+		await expect(api.post("/api/cards/preview", {})).rejects.toMatchObject({
+			name: "ApiError",
+			status: 0,
+		});
+	});
+
+	it("消息说人话,并保留原始那句供排查", async () => {
+		offline();
+		// 「连接中断」是给用户看的结论,「Failed to fetch」是给排查的人对线索用的。
+		await expect(api.post("/api/cards/preview", {})).rejects.toThrow(/连接中断.*Failed to fetch/);
+	});
+
+	it("上传与取二进制走同一套 —— 三条出口都会断线,不能只包一条", async () => {
+		offline();
+		await expect(api.upload("/api/cards/font-asset", new FormData())).rejects.toMatchObject({
+			status: 0,
+		});
+		await expect(api.blob("/api/cards/asset/x")).rejects.toMatchObject({ status: 0 });
+	});
+
+	it("不吞掉真正的程序错误 —— 非 TypeError 原样抛出", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				throw new RangeError("boom");
+			}),
+		);
+		await expect(api.post("/api/whatever", {})).rejects.toThrow(RangeError);
+	});
+});
