@@ -30,8 +30,12 @@ describe("buildSystemPrompt — allowMarkdown", () => {
 	});
 
 	it("allowMarkdown 只摘掉那一条,人格与工具铁律一个字不动", () => {
-		const plain = buildSystemPrompt({ preset: "assistant" });
-		const md = buildSystemPrompt({ preset: "assistant", allowMarkdown: true });
+		// 两边都带 withTools —— 工具铁律现在按调用方分档(挂了工具才发,见
+		// persona-prompt-tools.test.ts),这一条要验的是**在同一档里**
+		// allowMarkdown 只摘纯文本那一行,所以两边的档位必须对齐才比得出来。
+		const opts = { preset: "assistant" as const, withTools: true };
+		const plain = buildSystemPrompt(opts);
+		const md = buildSystemPrompt({ ...opts, allowMarkdown: true });
 		// 「必须调用工具才能声称操作成功」那条铁律绝不能被顺手带走。
 		expect(md).toContain("必须调用对应工具");
 		expect(md).toContain("严禁在未调用工具的情况下声称操作已完成");
@@ -42,6 +46,16 @@ describe("buildSystemPrompt — allowMarkdown", () => {
 			.map((l) => l.trim());
 		expect(removed).toHaveLength(1);
 		expect(removed[0]).toContain(PLAIN_TEXT_RULE);
+	});
+
+	it("不带工具那一档也一样 —— allowMarkdown 同样只摘那一行", () => {
+		const plain = buildSystemPrompt({ preset: "assistant" });
+		const md = buildSystemPrompt({ preset: "assistant", allowMarkdown: true });
+		const removed = plain.split("\n").filter((l) => !md.split("\n").includes(l));
+		expect(removed).toHaveLength(1);
+		expect(removed[0]).toContain(PLAIN_TEXT_RULE);
+		// 「你没有工具」那条在两边都在,不会被 allowMarkdown 带走。
+		expect(md).toContain("没有任何可调用的工具");
 	});
 
 	it("那条约束留在**原来的位置** —— 推送侧的提示词顺序不许变", () => {

@@ -305,10 +305,22 @@ export class CommentaryGenerator implements CommentaryProvider {
 		 * 调用方会渲染 Markdown 吗?只有 dashboard 的聊天会,所以只有那一条路传它。
 		 * 缺省(推送、koishi 群聊、点评、总结)一律保持「只用纯文本」那条叮嘱。
 		 */
-		opts?: { allowMarkdown?: boolean },
+		opts?: {
+			allowMarkdown?: boolean;
+			/**
+			 * 这条路真的给模型挂了工具吗?只有 `chat()` / `chatStateless()` 会。
+			 * 缺省(点评、总结、推送)一律告诉模型「你没有工具」—— 否则它会照着工具
+			 * 铁律去演一遍「我先查查订阅列表」,而手上根本没有那个工具。
+			 */
+			withTools?: boolean;
+		},
 	): string {
 		const persona = override?.persona ?? this.config.persona;
-		const personaPrompt = buildSystemPrompt({ ...persona, allowMarkdown: opts?.allowMarkdown });
+		const personaPrompt = buildSystemPrompt({
+			...persona,
+			allowMarkdown: opts?.allowMarkdown,
+			withTools: opts?.withTools,
+		});
 		const dynamicPrompt = override?.dynamicPrompt ?? this.config.dynamicPrompt;
 		const liveSummaryPrompt = override?.liveSummaryPrompt ?? this.config.liveSummaryPrompt;
 		const sceneAddition =
@@ -530,7 +542,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// 女仆会照着提示去调一个不存在的工具,或者干脆声称自己看过图。
 		history.push({ role: "user", content });
 
-		const systemPrompt = this.getSystemPrompt(undefined, prevSummary);
+		// withTools:下面 callAPI 是真的把 TOOL_DEFINITIONS 挂上去的,这条路才该收工具铁律。
+		const systemPrompt = this.getSystemPrompt(undefined, prevSummary, undefined, {
+			withTools: true,
+		});
 		this.logger.debug(
 			`[chat] sessionId=${sessionId}, 历史轮次=${Math.floor(history.length / 2)}, 新消息长度=${content.length}`,
 		);
@@ -639,6 +654,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// 推送、koishi 群聊、点评、总结都落在缺省那一侧,继续拿到「只用纯文本」。
 		const systemPrompt = this.getSystemPrompt(undefined, undefined, undefined, {
 			allowMarkdown: true,
+			withTools: true,
 		});
 		this.logger.debug(`[chat-stateless] 历史=${messages.length} 条,实发=${trimmed.length} 条`);
 
