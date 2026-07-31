@@ -6,6 +6,15 @@
 # pull 时提示 "Layer already exists" 是正常的层复用,不代表没更新。
 # 若走镜像加速站,:alpha/:latest 浮动 tag 的 manifest 可能被站方缓存导致
 # 短时间拉不到新版 —— 改用固定版本 tag(如 :v0.1.0-alpha.13)或直连官源即可。
+#
+# 内存:full 镜像内置 chromium,出图那一下峰值不低,建议宿主可用内存 >= 1GB。
+# 只有 512MB 的小鸡请改用 :slim + 远程浏览器(见下方 browser 服务),否则渲染
+# 时容易被系统 OOM 杀掉 —— 表现为「隔几分钟断线重连、卡片预览转半天报错」。
+# 排查:docker inspect bilibili-notify --format '{{.RestartCount}} {{.State.OOMKilled}}'
+#
+# 反向代理:卡片渲染是串行的,一次要出几张图时单个请求可能跑十几秒。nginx 等
+# 代理的读超时(proxy_read_timeout)请调到 120s 以上,否则请求会被代理掐断,
+# 而服务端那边其实渲染成功了 —— 两边对不上,很难查。
 
 services:
   bilibili-notify:

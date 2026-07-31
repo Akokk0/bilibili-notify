@@ -104,9 +104,29 @@ slim 变体的卡片图片渲染改由 `BN_CHROME_ENDPOINT` 指向的**远程浏
 
 `BN_CONFIG` / `BN_HOST` / `BN_PORT` / `BN_DATA_DIR` / `BN_CHROME_PATH` / `BN_WEB_DIST` 由镜像固定注入,compose 里不要重写。
 
+### 内存与反向代理
+
+出图那一下是整个服务的内存峰值 —— full 镜像内置 chromium,**建议宿主可用内存 ≥ 1GB**。
+只有 512MB 的机器请改用 `:slim` + 远程浏览器,否则渲染时容易被系统 OOM 杀掉;因为
+compose 模板是 `restart: unless-stopped`,被杀后会自动拉起,所以现象不是「服务挂了」
+而是**隔几分钟断一次线**(OneBot 连接 `ECONNRESET`、面板转圈)。
+
+卡片渲染是**串行**的(并发截图会在浏览器冷启动窗口触发 CDP 竞态,把一张卡平铺成
+2×2),所以一次要出几张图时,单个请求跑十几秒很正常。经反向代理访问的话,把读超时
+调到 **120s 以上**(nginx 的 `proxy_read_timeout`),否则请求会被代理掐断,而服务端
+那边其实渲染成功了 —— 日志一路「渲染完成」,页面上却是「连接中断」。
+
+```bash
+# 是不是被 OOM 杀过 / 反复重启
+docker inspect bilibili-notify --format '重启={{.RestartCount}} OOM={{.State.OOMKilled}}'
+# 容器日志里找重启横幅与堆溢出
+docker logs bilibili-notify --tail 300 2>&1 | grep -iE "out of memory|heap limit|listening"
+```
+
 ### 故障排查
 
 - `curl localhost:8787` 返回 404:检查 `./config/bn.config.yaml` 是否缺少 `webDistDir: /app/web-dist`;正常启动日志会出现 `serving dashboard static assets from /app/web-dist`。如果配置和 `BN_WEB_DIST` 都缺失,服务会再检查镜像默认 `/app/web-dist/index.html`;仍没有时日志会说明 Dashboard 静态资源已禁用。
+- 卡片预览显示「**连接中断**」:请求没拿到响应,不是渲染失败。多半是上面那两条 —— 反代读超时太短,或服务端被 OOM 杀掉重启了。先按上面两条命令查。
 - 手写过 `bn.config.yaml`:建议备份后删除该文件,让容器重新生成;不要删除 `./data`。
 
 ### Volume
