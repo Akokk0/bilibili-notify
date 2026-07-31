@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import {
+	createFontDataUrlReader,
 	deleteFontAsset,
 	fontAssetDir,
 	isValidFontAssetId,
@@ -151,5 +152,102 @@ describe("渲染期解析成 data URL", () => {
 		expect(await readFontAssetDataUrl(dir, "")).toBe("");
 		expect(await readFontAssetDataUrl(dir, `${"d".repeat(32)}.woff2`)).toBe("");
 		expect(await readFontAssetDataUrl(dir, "../../secret")).toBe("");
+	});
+});
+
+/**
+ * 带缓存的读取器。
+ *
+ * 一款完整中文字库十几到几十兆,转成 base64 还要再涨三分之一。预览路由那条 mock 路径
+ * (live / dyn 用示例数据出图)每来一个请求就从头读一遍盘、再搓一个 26MB 的字符串,而
+ * Docker 镜像里 V8 的 old-space 上限被压到 384MB —— 一屏几张卡就能把堆顶起来。
+ *
+ * 按 **id** 缓存是安全的:资产 id 是随机 32 位 hex,换字体必然换 id,删了再传也是新 id,
+ * 所以缓存永远不会喂出过期的内容。只留一条 —— 同一时刻真正在用的通常就一款。
+ */
+describe("带缓存的字体读取器", () => {
+	it("同一款字体只读一次盘", async () => {
+		let reads = 0;
+		const read = async (_d: string, id: string) => {
+			reads += 1;
+			return `data:font/woff2;base64,${id}`;
+		};
+		const load = createFontDataUrlReader(dir, read);
+
+		expect(await load("a".repeat(32) + ".woff2")).toMatch(/^data:font\/woff2;base64,/);
+		await load("a".repeat(32) + ".woff2");
+		await load("a".repeat(32) + ".woff2");
+		expect(reads).toBe(1);
+	});
+
+	it("并发同一款也只读一次 —— 缓存存的是那次读取本身,不是它的结果", async () => {
+		let reads = 0;
+		const read = async (_d: string, id: string) => {
+			reads += 1;
+			// 慢一点,让第二个调用一定落在第一个还没读完的窗口里。
+			await new Promise((r) => setTimeout(r, 20));
+			return `data:font/woff2;base64,${id}`;
+		};
+		const load = createFontDataUrlReader(dir, read);
+
+		const both = await Promise.all([
+			load("b".repeat(32) + ".woff2"),
+			load("b".repeat(32) + ".woff2"),
+		]);
+		expect(reads).toBe(1);
+		expect(both[0]).toBe(both[1]);
+	});
+
+	it("换一款就换掉缓存,不攒着已经不用的那几十兆", async () => {
+		const seen: string[] = [];
+		const read = async (_d: string, id: string) => {
+			seen.push(id);
+			return `data:font/woff2;base64,${id}`;
+		};
+		const load = createFontDataUrlReader(dir, read);
+
+		await load("c".repeat(32) + ".woff2");
+		await load("d".repeat(32) + ".woff2");
+		// 切回去要重读 —— 只留一条,旧的已经被顶掉了。
+		await load("c".repeat(32) + ".woff2");
+		expect(seen).toHaveLength(3);
+	});
+
+	it("空 id 直接返回空串,连读都不读", async () => {
+		let reads = 0;
+		const load = createFontDataUrlReader(dir, async () => {
+			reads += 1;
+			return "x";
+		});
+		expect(await load("")).toBe("");
+		expect(reads).toBe(0);
+	});
+
+	it("解析不出来的不进缓存 —— 否则重新传一份同名字体也永远拿不回来", async () => {
+		let reads = 0;
+		const read = async () => {
+			reads += 1;
+			// 资产悬空(被删了)时 readFontAssetDataUrl 的约定返回值。
+			return "";
+		};
+		const load = createFontDataUrlReader(dir, read);
+
+		expect(await load("e".repeat(32) + ".woff2")).toBe("");
+		expect(await load("e".repeat(32) + ".woff2")).toBe("");
+		expect(reads).toBe(2);
+	});
+
+	it("读盘抛错时不把坏结果焊死在缓存里", async () => {
+		let attempt = 0;
+		const read = async () => {
+			attempt += 1;
+			if (attempt === 1) throw new Error("EIO");
+			return "data:font/woff2;base64,ok";
+		};
+		const load = createFontDataUrlReader(dir, read);
+
+		await expect(load("f".repeat(32) + ".woff2")).rejects.toThrow("EIO");
+		// 下一次要真的重试,而不是把那个 rejected promise 一直抛出来。
+		expect(await load("f".repeat(32) + ".woff2")).toBe("data:font/woff2;base64,ok");
 	});
 });

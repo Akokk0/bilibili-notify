@@ -153,6 +153,46 @@ export async function readFontAssetDataUrl(dataDir: string, id: string): Promise
 }
 
 /**
+ * 造一个**带缓存**的字体 data URL 读取器,只留一条缓存。
+ *
+ * 直接用 {@link readFontAssetDataUrl} 的地方每次都会从头读一遍盘、再搓一个 base64
+ * 字符串。一款完整中文字库十几到几十兆,base64 之后还要再涨三分之一,而 Docker 镜像
+ * 里 V8 的 old-space 上限被压到 384MB(见 `apps/Dockerfile`)—— 预览路由那条 mock
+ * 路径(live / dyn 走示例数据)是**每个请求**读一次,一屏几张卡就能把堆顶起来。
+ *
+ * 按 **id** 缓存是安全的:资产 id 是随机 32 位 hex,换字体必然换 id,删掉再传也是新
+ * id,所以缓存永远不会喂出过期内容,不需要看 mtime。只留一条 —— 同一时刻真正在用的
+ * 通常就一款,攒着已经不用的那几十兆没有意义。
+ *
+ * 缓存里存的是**那次读取本身**(promise)而不是结果:并发同一款时后来者搭上前一次
+ * 的车,不会各读各的。读不出来(资产悬空,约定返回空串)与读崩了都不留缓存 —— 前者
+ * 是为了重新传一份还能拿回来,后者是别把一个 rejected promise 焊死在那儿。
+ */
+export function createFontDataUrlReader(
+	dataDir: string,
+	/** 底层读取,默认真读盘;注入便于单测观察读了几次。 */
+	read: (dataDir: string, id: string) => Promise<string> = readFontAssetDataUrl,
+): (id: string) => Promise<string> {
+	let cached: { id: string; pending: Promise<string> } | null = null;
+
+	return async function load(id: string): Promise<string> {
+		if (!id) return "";
+		if (cached?.id !== id) cached = { id, pending: read(dataDir, id) };
+		const entry = cached;
+		try {
+			const dataUrl = await entry.pending;
+			// 空串 = 资产悬空。别缓存它,否则主人重新传一份同一个 id 也拿不回来。
+			if (!dataUrl && cached === entry) cached = null;
+			return dataUrl;
+		} catch (err) {
+			// 失败的那次读取不能留下 —— 留着就等于把这款字体永久判死。
+			if (cached === entry) cached = null;
+			throw err;
+		}
+	};
+}
+
+/**
  * 从图廊删除一款字体。id 非法 / 文件不存在返回 false(幂等);删成功返回 true。
  * 清单里那条一并抹掉 —— 留着就是个永远对不上的名字。
  */

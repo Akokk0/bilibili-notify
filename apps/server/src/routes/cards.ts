@@ -59,11 +59,11 @@ import {
 	saveCardBg,
 } from "../runtime/card-assets.js";
 import {
+	createFontDataUrlReader,
 	deleteFontAsset,
 	isValidFontAssetId,
 	listFontAssets,
 	readFontAsset,
-	readFontAssetDataUrl,
 	saveFontAsset,
 } from "../runtime/font-assets.js";
 import {
@@ -489,6 +489,21 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	//
 	// 每次请求都 updateConfig 一遍传入的 style — 否则用户在 Cards 页改完颜色后
 	// 第一次 /preview 构造一个 renderer 后,后续改色就不生效(renderer 是 lazy 单例)。
+	// 字体 data URL 的读取口 —— **本路由只此一份**,mock 路径(live / dyn 走示例数据)
+	// 与 ImageRenderer 都走它。一款中文字库 base64 后二三十兆,而镜像里 V8 堆上限只有
+	// 384MB;各读各的话,一屏几张卡就能把堆顶起来。共用之后两边拿到的是同一个字符串
+	// 引用,内存里始终只有一份。
+	//
+	// 惰性构造:`/enable-rendering`、`/detect-chrome` 这些路由不碰 store,它们的测试
+	// 给的也是不带 store 的最小 deps —— 在这儿直接取 `bootstrap.dataDir` 会让整条路由
+	// 建不起来。真要读字体时再取,那条路径上 store 必然在。
+	let fontReader: ((id: string) => Promise<string>) | null = null;
+	const loadFontDataUrl = (id: string): Promise<string> => {
+		if (!id) return Promise.resolve("");
+		fontReader ??= createFontDataUrlReader(opts.deps.store.bootstrap.dataDir);
+		return fontReader(id);
+	};
+
 	let imageRenderer: ImageRenderer | null = null;
 	// 缓存绑定的 adapter 快照 —— 热切换(/enable-rendering)会把 currentPuppeteer 换成
 	// 新 adapter 并 dispose 旧的,若不比对直接复用,imageRenderer 会一直攥着已销毁的
@@ -522,7 +537,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				// 背景图 id → data URL(读 <dataDir>/assets/card-bg);sc/guard/真实拉取走 generate* 解析。
 				resolveAsset: (id) => readCardBgDataUrl(opts.deps.store.bootstrap.dataDir, id),
 				// 字体 id → data URL(读 <dataDir>/assets/font),渲染器拼成 @font-face。
-				resolveFontAsset: (id) => readFontAssetDataUrl(opts.deps.store.bootstrap.dataDir, id),
+				resolveFontAsset: loadFontDataUrl,
 				// 预览:每来一次请求就热更一次样式,打 info 会刷屏且像"已保存"。真正生效的
 				// INFO 由推送渲染器(runtime/engines.ts)在 config-changed 后打。
 				quietConfigUpdates: true,
@@ -702,7 +717,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 						readCardBgDataUrl(dataDir, id),
 					)
 				: Promise.resolve(""),
-			style.fontAsset ? readFontAssetDataUrl(dataDir, style.fontAsset) : Promise.resolve(""),
+			loadFontDataUrl(style.fontAsset ?? ""),
 		]);
 		const { component, props, title, htmlWidth } = buildPreviewSpec(
 			kind,
