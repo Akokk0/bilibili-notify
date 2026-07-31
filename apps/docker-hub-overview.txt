@@ -12,19 +12,20 @@ B 站 UP 主动态 / 直播开播推送工具的**独立端**镜像 —— 自�
 
 | Tag | 说明 |
 |---|---|
-| `alpha` | 持续构建的测试版,当前可用镜像 |
-| `latest` | 稳定版(首个稳定版发布后才有) |
+| `latest` | 最新正式版 —— **推荐** |
 | `vX.Y.Z` | 固定版本 |
 | `<short-sha>` | 按 commit,不可变,用于精确 pin / 回滚 |
+| `alpha` | 预览渠道,**只在发布预览版(`vX.Y.Z-alpha.N`)时更新** —— 没有在途预览版时会一直停在上一个预览版,落后于 `latest` |
+| `*-slim` | 上述各 tag 的 slim 变体(`slim` / `vX.Y.Z-slim` / …):不含 chromium,体积小得多,卡片渲染需外接远程浏览器 |
 
 ## 快速开始
 
-推荐 docker compose。新建一个目录,放入 `docker-compose.yaml`;不要手动创建 `config/bn.config.yaml`。镜像默认走 Docker Hub,也可改用 GHCR:`ghcr.io/akokk0/bilibili-notify:alpha`。
+推荐 docker compose。新建一个目录,放入 `docker-compose.yaml`;不要手动创建 `config/bn.config.yaml`。镜像默认走 Docker Hub,也可改用 GHCR:`ghcr.io/akokk0/bilibili-notify:latest`。
 
 ```yaml
 services:
   bilibili-notify:
-    image: akokk0/bilibili-notify:alpha
+    image: akokk0/bilibili-notify:latest
     container_name: bilibili-notify
     restart: unless-stopped
     ports:
@@ -47,13 +48,13 @@ docker compose up -d
 docker run -d --name bilibili-notify \
   -p 8787:8787 \
   -v "$(pwd)/data:/data" -v "$(pwd)/config:/config" \
-  akokk0/bilibili-notify:alpha
+  akokk0/bilibili-notify:latest
 ```
 
 GHCR 镜像同 tag 发布:
 
 ```bash
-docker pull ghcr.io/akokk0/bilibili-notify:alpha
+docker pull ghcr.io/akokk0/bilibili-notify:latest
 ```
 
 启动后打开 `http://<host>:8787`,登录后扫码绑定 B 站账号。

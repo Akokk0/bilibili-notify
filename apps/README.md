@@ -1,6 +1,6 @@
 # Bilibili-Notify Dashboard
 
-独立端形态:Hono HTTP / WS 服务端 + React 控制台。Docker 部署,自带可视化面板(扫码登录、订阅、推送目标、历史、日志)。
+独立端形态:Hono HTTP / WS 服务端 + React 控制台,自带可视化面板(扫码登录、订阅、推送目标、历史、日志)。两种部署方式:**Docker**(下方)或 **macOS / Windows 桌面应用**(见「部署(桌面应用)」)。
 
 ## 部署(Docker)
 
@@ -42,8 +42,10 @@ docker pull ghcr.io/akokk0/bilibili-notify:latest
 
 | 变体 | tag | 内容 |
 |---|---|---|
-| full(默认) | `:latest` / `:alpha` / `:vX.Y.Z` | 内置 chromium + CJK 字体,开箱即用 |
-| slim | `:slim` / `:alpha-slim` / `:vX.Y.Z-slim` | 无 chromium,体积与内存占用小得多 |
+| full(默认) | `:latest` / `:vX.Y.Z` / `:<short-sha>` | 内置 chromium + CJK 字体,开箱即用 |
+| slim | `:slim` / `:vX.Y.Z-slim` / `:<short-sha>-slim` | 无 chromium,体积与内存占用小得多 |
+
+预览渠道另有 `:alpha` / `:alpha-slim`,**只在发布预览版(`vX.Y.Z-alpha.N`)时更新** —— 长期没有预览版时它们会停在上一个预览版、落后于正式渠道,别拿来当「最新」。
 
 slim 变体的卡片图片渲染改由 `BN_CHROME_ENDPOINT` 指向的**远程浏览器**承担
 (`ws://…` 直连 browserless 等 DevTools WS;`http://…` 为 chromium
@@ -57,6 +59,20 @@ slim 变体的卡片图片渲染改由 `BN_CHROME_ENDPOINT` 指向的**远程浏
 
 浏览器来源(本地路径 / 远程端点)也可在 **dashboard 系统页**查看与热切换:先探测新浏览器
 连通,通了才替换并写回配置,无需重启;坏候选不会顶掉在用的配置。
+
+## 部署(桌面应用)
+
+不想碰 Docker 的话,[Releases](https://github.com/Akokk0/bilibili-notify/releases) 里有打包好的桌面应用,与 Docker 镜像同一个 `v<VERSION>` tag 一起发:
+
+| 平台 | 产物 |
+|---|---|
+| macOS(Apple Silicon) | `bilibili-notify-macos-arm64.dmg` / `.app.zip` |
+| Windows x64 | `bilibili-notify-windows-x64-setup.exe` / `.zip`(免安装) |
+
+装完直接开,面板与功能同 Docker 版 —— 它内嵌的就是同一套服务端与控制台。两点差异:
+
+- **卡片渲染用你本机的浏览器**,按平台自动探测 Chrome / Edge / Chromium 的默认安装位置;都没有则降级为纯文字推送,也可在系统页手填路径或指向远程浏览器。
+- **字体来自你的操作系统**,不是镜像里那套 —— 所以卡片设置里「手填字体名」在桌面版填苹方 / 微软雅黑这类系统自带字体就作数(容器里则只有思源黑 / 思源宋)。
 
 ## 配置
 

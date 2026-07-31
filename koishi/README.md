@@ -14,10 +14,10 @@
 
 ## 安装
 
-在 Koishi 插件市场中搜索 `bilibili-notify` 并安装。**不再需要**额外安装 `koishi-plugin-bilibili-notify-dynamic` / `-live` / `-ai` / `-image` / `-advanced-subscription` —— 这五个包自 6.0.0 起停止更新，功能已全部并入本包。
+在 Koishi 插件市场中搜索 `bilibili-notify` 并安装。**不再需要**额外安装 `koishi-plugin-bilibili-notify-dynamic` / `-live` / `-ai` / `-image` / `-advanced-subscription` —— 本包 5.0.0 起五合一，这五个子包已停止更新，功能全部并入本包。
 
 > [!IMPORTANT]
-> 从旧版（多插件版本，`koishi-plugin-bilibili-notify` < 6.0.0）升级的用户：请先卸载上述五个子插件，只保留并升级本包，再按下方「配置结构」重新填写一遍配置。旧插件各自的配置字段不会自动迁移。
+> 从**多插件版本**（`koishi-plugin-bilibili-notify` 4.x 及更早）升级的用户：请先卸载上述五个子插件，只保留并升级本包，再按下方「配置结构」重新填写一遍配置。旧插件各自的配置字段不会自动迁移。
 
 ## 配置结构
 
@@ -42,7 +42,7 @@
 
 **订阅 UP 主**
 
-在插件配置的 `subs` 中填写 UP 主信息，保存后自动加载订阅。
+在插件配置的 `subscriptions.list` 中填写 UP 主信息，保存后自动加载订阅。想按 UP 主粒度精细配置就改用 `advancedSub`。
 
 **常用指令**
 
