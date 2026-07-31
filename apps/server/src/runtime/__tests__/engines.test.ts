@@ -116,6 +116,8 @@ vi.mock("@bilibili-notify/ai", () => ({
 }));
 
 vi.mock("@bilibili-notify/image", () => ({
+	// 引擎把它当 transform 交给字体读取器 —— 真身在 packages/image,这里只要个能认出来的替身。
+	buildFontFace: (dataUrl: string) => `@font-face{src:url("${dataUrl}")}`,
 	ImageRenderer: class {
 		opts: any;
 		start = vi.fn();

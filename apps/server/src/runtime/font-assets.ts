@@ -153,7 +153,7 @@ export async function readFontAssetDataUrl(dataDir: string, id: string): Promise
 }
 
 /**
- * 造一个**带缓存**的字体 data URL 读取器,只留一条缓存。
+ * 造一个**带缓存**的字体资产读取器,只留一条缓存。
  *
  * 直接用 {@link readFontAssetDataUrl} 的地方每次都会从头读一遍盘、再搓一个 base64
  * 字符串。一款完整中文字库十几到几十兆,base64 之后还要再涨三分之一,而 Docker 镜像
@@ -168,16 +168,36 @@ export async function readFontAssetDataUrl(dataDir: string, id: string): Promise
  * 的车,不会各读各的。读不出来(资产悬空,约定返回空串)与读崩了都不留缓存 —— 前者
  * 是为了重新传一份还能拿回来,后者是别把一个 rejected promise 焊死在那儿。
  */
-export function createFontDataUrlReader(
+export function createFontAssetReader(
 	dataDir: string,
-	/** 底层读取,默认真读盘;注入便于单测观察读了几次。 */
-	read: (dataDir: string, id: string) => Promise<string> = readFontAssetDataUrl,
+	opts: {
+		/**
+		 * data URL → **缓存里真正留下的那个串**。缺省原样留 data URL。
+		 *
+		 * 渲染那条路传 `buildFontFace`:留拼好的 `@font-face` 规则,原始 data URL 随即
+		 * 可被回收 —— 规则本身就把它包在里头,两个都留就是白占一份几十兆。
+		 */
+		transform?: (dataUrl: string) => string;
+		/** 底层读取,默认真读盘;注入便于单测观察读了几次。 */
+		read?: (dataDir: string, id: string) => Promise<string>;
+	} = {},
 ): (id: string) => Promise<string> {
+	const read = opts.read ?? readFontAssetDataUrl;
+	const transform = opts.transform;
 	let cached: { id: string; pending: Promise<string> } | null = null;
 
 	return async function load(id: string): Promise<string> {
 		if (!id) return "";
-		if (cached?.id !== id) cached = { id, pending: read(dataDir, id) };
+		if (cached?.id !== id) {
+			// transform 在这儿跑一次就定住 —— 放到下面每次 await 之后跑,等于每张卡重拼一遍。
+			// 解析不出来(空串)保持空串,别拼出一条 src 为空的规则。
+			cached = {
+				id,
+				pending: transform
+					? read(dataDir, id).then((v) => (v ? transform(v) : ""))
+					: read(dataDir, id),
+			};
+		}
 		const entry = cached;
 		try {
 			const dataUrl = await entry.pending;

@@ -59,7 +59,7 @@ import {
 	saveCardBg,
 } from "../runtime/card-assets.js";
 import {
-	createFontDataUrlReader,
+	createFontAssetReader,
 	deleteFontAsset,
 	isValidFontAssetId,
 	listFontAssets,
@@ -489,18 +489,23 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	//
 	// 每次请求都 updateConfig 一遍传入的 style — 否则用户在 Cards 页改完颜色后
 	// 第一次 /preview 构造一个 renderer 后,后续改色就不生效(renderer 是 lazy 单例)。
-	// 字体 data URL 的读取口 —— **本路由只此一份**,mock 路径(live / dyn 走示例数据)
+	// `@font-face` 规则的读取口 —— **本路由只此一份**,mock 路径(live / dyn 走示例数据)
 	// 与 ImageRenderer 都走它。一款中文字库 base64 后二三十兆,而镜像里 V8 堆上限只有
 	// 384MB;各读各的话,一屏几张卡就能把堆顶起来。共用之后两边拿到的是同一个字符串
 	// 引用,内存里始终只有一份。
+	//
+	// 缓存里留的是**拼好的规则**而不是 data URL:规则本身就把 data URL 包在里头,存前者
+	// 就等于让后者可被回收,同一串东西不必占两份。
 	//
 	// 惰性构造:`/enable-rendering`、`/detect-chrome` 这些路由不碰 store,它们的测试
 	// 给的也是不带 store 的最小 deps —— 在这儿直接取 `bootstrap.dataDir` 会让整条路由
 	// 建不起来。真要读字体时再取,那条路径上 store 必然在。
 	let fontReader: ((id: string) => Promise<string>) | null = null;
-	const loadFontDataUrl = (id: string): Promise<string> => {
+	const loadFontFace = (id: string): Promise<string> => {
 		if (!id) return Promise.resolve("");
-		fontReader ??= createFontDataUrlReader(opts.deps.store.bootstrap.dataDir);
+		fontReader ??= createFontAssetReader(opts.deps.store.bootstrap.dataDir, {
+			transform: buildFontFace,
+		});
 		return fontReader(id);
 	};
 
@@ -526,7 +531,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				style.backgroundImages,
 			),
 			// 预览得跟出图用同一款字体,否则「预览好看、推出去变样」。悬空 id 由
-			// resolveFontAsset 兜成空串,渲染器据此回落家族名。
+			// resolveFontFace 兜成空串,渲染器据此回落家族名。
 			fontAsset: style.fontAsset,
 		};
 		if (!imageRenderer || imageRendererPuppeteer !== currentPuppeteer) {
@@ -536,8 +541,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				config,
 				// 背景图 id → data URL(读 <dataDir>/assets/card-bg);sc/guard/真实拉取走 generate* 解析。
 				resolveAsset: (id) => readCardBgDataUrl(opts.deps.store.bootstrap.dataDir, id),
-				// 字体 id → data URL(读 <dataDir>/assets/font),渲染器拼成 @font-face。
-				resolveFontAsset: loadFontDataUrl,
+				// 字体 id → 拼好的 @font-face(读 <dataDir>/assets/font)。
+				resolveFontFace: loadFontFace,
 				// 预览:每来一次请求就热更一次样式,打 info 会刷屏且像"已保存"。真正生效的
 				// INFO 由推送渲染器(runtime/engines.ts)在 config-changed 后打。
 				quietConfigUpdates: true,
@@ -708,7 +713,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// 取「第一张盘上存在的图」,跳过悬空引用。
 		const dataDir = opts.deps.store.bootstrap.dataDir;
 		// 背景图、直播封面、自带字体互不依赖(各自独立的资产解析),并发发起省几次串行 I/O。
-		const [bgDataUrl, coverDataUrl, fontDataUrl] = await Promise.all([
+		const [bgDataUrl, coverDataUrl, fontFace] = await Promise.all([
 			firstExistingCardBg(dataDir, style.backgroundImages).then((id) =>
 				readCardBgDataUrl(dataDir, id),
 			),
@@ -717,7 +722,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 						readCardBgDataUrl(dataDir, id),
 					)
 				: Promise.resolve(""),
-			loadFontDataUrl(style.fontAsset ?? ""),
+			loadFontFace(style.fontAsset ?? ""),
 		]);
 		const { component, props, title, htmlWidth } = buildPreviewSpec(
 			kind,
@@ -727,11 +732,11 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			coverDataUrl,
 		);
 		// 自带字体优先于家族名(与 ImageRenderer#resolveFont 同一套判断);资产悬空时
-		// fontDataUrl 是空串,静静回落家族名。
+		// fontFace 是空串,静静回落家族名。
 		const html = await renderCard(component, props, {
 			title,
-			font: fontDataUrl ? USER_FONT_FAMILY : (style.font ?? "PingFang SC, sans-serif"),
-			fontFace: fontDataUrl ? buildFontFace(fontDataUrl) : undefined,
+			font: fontFace ? USER_FONT_FAMILY : (style.font ?? "PingFang SC, sans-serif"),
+			fontFace: fontFace || undefined,
 			htmlWidth,
 		});
 		const buffer = await screenshotHtml(puppeteer, html);

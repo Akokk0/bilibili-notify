@@ -11,7 +11,7 @@ import { GuardLevel } from "blive-message-listener";
 import { JSDOM } from "jsdom";
 import { DateTime } from "luxon";
 import type { PuppeteerLike } from "./puppeteer";
-import { buildFontFace, renderCard, USER_FONT_FAMILY } from "./render";
+import { renderCard, USER_FONT_FAMILY } from "./render";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
 import { DynamicCard } from "./templates/dynamic-card";
 import { buildDynamicNode } from "./templates/dynamic-content";
@@ -108,8 +108,8 @@ export interface ImageRendererConfig {
 	/** 自定义卡片背景图资产 id(空 = 渐变);渲染期经 resolveAsset 解析成 data URL。 */
 	backgroundImage?: string;
 	/**
-	 * 主人自带的字体文件资产 id(独立端专属);渲染期经 `resolveFontAsset` 解析成
-	 * data URL 拼成 `@font-face`。设了就**优先于 `font`**;宿主没注入 resolver、或资产
+	 * 主人自带的字体文件资产 id(独立端专属);渲染期经 `resolveFontFace` 解析成一条
+	 * 现成的 `@font-face` 规则。设了就**优先于 `font`**;宿主没注入 resolver、或资产
 	 * 悬空时静静回落 `font`。
 	 */
 	fontAsset?: string;
@@ -133,10 +133,15 @@ export interface ImageRendererOptions {
 	 */
 	resolveAsset?: (id: string) => Promise<string>;
 	/**
-	 * 把字体资产 id 解析成 data URL(服务端注入,读 `<dataDir>/assets/font`)。
+	 * 把字体资产 id 解析成**一整条 `@font-face` 规则**(服务端注入,读
+	 * `<dataDir>/assets/font` 后用 {@link buildFontFace} 拼好)。解析不出来返回空串。
 	 * 未注入 = 自带字体特性不可用,回落家族名(koishi / AstrBot 就是这一档)。
+	 *
+	 * 契约是整条规则而不是 data URL,为的是**省一整份内存**:一款中文字库 base64 之后
+	 * 二三十兆,渲染器若再自己拼一遍,同一串东西在堆里就有两份 —— 而镜像里 V8 的
+	 * old-space 上限只有 384MB。宿主那边本来就按资产 id 缓存着解析结果,顺手拼好即可。
 	 */
-	resolveFontAsset?: (id: string) => Promise<string>;
+	resolveFontFace?: (id: string) => Promise<string>;
 	/**
 	 * 热更日志降级到 debug。**预览渲染器**(dashboard 每来一次预览请求就
 	 * updateConfig 一遍)必须开:主人在 Cards 页拖一格滑块就是一条 INFO「配置已
@@ -152,17 +157,20 @@ export class ImageRenderer {
 	private readonly puppeteer: PuppeteerLike;
 	private config: ImageRendererConfig;
 	private readonly resolveAsset?: (id: string) => Promise<string>;
-	private readonly resolveFontAsset?: (id: string) => Promise<string>;
+	private readonly resolveFontFace?: (id: string) => Promise<string>;
 	private readonly quietConfigUpdates: boolean;
 
 	/**
-	 * 自带字体的解析结果缓存 —— **只留一款**。
+	 * 自带字体的解析结果缓存 —— **只留一款,且留的是拼好的那条规则**。
 	 *
 	 * 一款完整中文字库十几到几十兆,base64 之后还要再涨三分之一。每张卡重读一遍盘既慢
 	 * 又在 Docker 那点堆上限里反复搓大字符串;而同一时刻真正在用的通常就一款,留一份
 	 * 足够(per-UP 换了一款就换掉这一份,不攒)。
+	 *
+	 * 存 `@font-face` 规则而不是 data URL:规则本身就把 data URL 包在里头,只留它就等于
+	 * 少留一整份几十兆的串。
 	 */
-	private fontCache: { id: string; dataUrl: string } | null = null;
+	private fontCache: { id: string; fontFace: string } | null = null;
 
 	// 图片 base64 缓存
 	private readonly imageCache = new Map<string, { dataUrl: string; updatedAt: number }>();
@@ -197,7 +205,7 @@ export class ImageRenderer {
 		this.puppeteer = opts.puppeteer;
 		this.config = opts.config;
 		this.resolveAsset = opts.resolveAsset;
-		this.resolveFontAsset = opts.resolveFontAsset;
+		this.resolveFontFace = opts.resolveFontFace;
 		this.quietConfigUpdates = opts.quietConfigUpdates ?? false;
 		this.logger = opts.serviceCtx.logger;
 	}
@@ -290,7 +298,7 @@ export class ImageRenderer {
 	 * 存得下也解析得出,就是没人交给渲染器,于是选了等于没选。这一族 bug 长得都一样 ——
 	 * 界面上改得动、保存得下、行为不变。
 	 *
-	 * 自带的字体文件优先:解析成 data URL 拼成 `@font-face`,家族名换成内部那个。
+	 * 自带的字体文件优先:宿主把它解析成一条现成的 `@font-face`,家族名换成内部那个。
 	 * 解析不出来(宿主没注入 resolver、或资产被删了)就静静回落家族名 —— 出图不该因为
 	 * 少一个文件而崩,也不该塞一条空 src 的规则进 CSS。
 	 */
@@ -299,14 +307,15 @@ export class ImageRenderer {
 	): Promise<{ font: string; fontFace?: string }> {
 		const font = colorOptions.font ?? this.config.font;
 		const assetId = colorOptions.fontAsset ?? this.config.fontAsset;
-		if (!assetId || !this.resolveFontAsset) return { font };
+		if (!assetId || !this.resolveFontFace) return { font };
 
 		if (this.fontCache?.id !== assetId) {
-			const dataUrl = await this.resolveFontAsset(assetId);
-			this.fontCache = dataUrl ? { id: assetId, dataUrl } : null;
+			const fontFace = await this.resolveFontFace(assetId);
+			this.fontCache = fontFace ? { id: assetId, fontFace } : null;
 		}
 		if (!this.fontCache) return { font };
-		return { font: USER_FONT_FAMILY, fontFace: buildFontFace(this.fontCache.dataUrl) };
+		// 原样透传,**不再自己拼** —— 拼一遍就是在堆里多一份几十兆的串。
+		return { font: USER_FONT_FAMILY, fontFace: this.fontCache.fontFace };
 	}
 
 	async getTimeDifference(dateString: string): Promise<string> {

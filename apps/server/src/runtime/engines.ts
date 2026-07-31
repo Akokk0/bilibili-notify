@@ -33,7 +33,7 @@ import {
 	type SubscriptionsView as DynamicSubsView,
 	type PushSegment,
 } from "@bilibili-notify/dynamic";
-import { ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
+import { buildFontFace, ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
 	CardKind,
 	Disposable,
@@ -69,7 +69,7 @@ import { makeExistingCardBgPicker, readCardBgDataUrl } from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
 import { syncFollows } from "./follow-sync.js";
-import { readFontAssetDataUrl } from "./font-assets.js";
+import { createFontAssetReader } from "./font-assets.js";
 import { MasterNotifier } from "./master-notifier.js";
 import type { NodeServiceContext } from "./service-context.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
@@ -317,6 +317,13 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// the engines bypass the renderer and emit text-only payloads, so we keep the
 	// instance alive rather than hot-swapping on the user toggling the switch.
 	let imageRenderer: ImageRenderer | null = null;
+	// 推送渲染器的字体读取口。缓存里留**拼好的 `@font-face`** 而不是 data URL —— 规则
+	// 本身就把 data URL 包在里头,只留它就少留一整份几十兆的串,而镜像里 V8 堆上限只有
+	// 384MB。热切换浏览器会重建渲染器,读取口跨重建复用,免得又从盘上搓一遍。
+	const loadFontFace = createFontAssetReader(opts.configStore.bootstrap.dataDir, {
+		transform: buildFontFace,
+	});
+
 	const buildImageRenderer = (pup: PuppeteerLike): ImageRenderer => {
 		const cs = globals().defaults.cardStyle;
 		const renderer = new ImageRenderer({
@@ -335,7 +342,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				fontAsset: cs.fontAsset,
 			},
 			resolveAsset: (id) => readCardBgDataUrl(opts.configStore.bootstrap.dataDir, id),
-			resolveFontAsset: (id) => readFontAssetDataUrl(opts.configStore.bootstrap.dataDir, id),
+			resolveFontFace: loadFontFace,
 		});
 		renderer.start();
 		return renderer;

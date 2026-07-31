@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import {
-	createFontDataUrlReader,
+	createFontAssetReader,
 	deleteFontAsset,
 	fontAssetDir,
 	isValidFontAssetId,
@@ -165,14 +165,14 @@ describe("渲染期解析成 data URL", () => {
  * 按 **id** 缓存是安全的:资产 id 是随机 32 位 hex,换字体必然换 id,删了再传也是新 id,
  * 所以缓存永远不会喂出过期的内容。只留一条 —— 同一时刻真正在用的通常就一款。
  */
-describe("带缓存的字体读取器", () => {
+describe("带缓存的字体资产读取器", () => {
 	it("同一款字体只读一次盘", async () => {
 		let reads = 0;
 		const read = async (_d: string, id: string) => {
 			reads += 1;
 			return `data:font/woff2;base64,${id}`;
 		};
-		const load = createFontDataUrlReader(dir, read);
+		const load = createFontAssetReader(dir, { read });
 
 		expect(await load("a".repeat(32) + ".woff2")).toMatch(/^data:font\/woff2;base64,/);
 		await load("a".repeat(32) + ".woff2");
@@ -188,7 +188,7 @@ describe("带缓存的字体读取器", () => {
 			await new Promise((r) => setTimeout(r, 20));
 			return `data:font/woff2;base64,${id}`;
 		};
-		const load = createFontDataUrlReader(dir, read);
+		const load = createFontAssetReader(dir, { read });
 
 		const both = await Promise.all([
 			load("b".repeat(32) + ".woff2"),
@@ -204,7 +204,7 @@ describe("带缓存的字体读取器", () => {
 			seen.push(id);
 			return `data:font/woff2;base64,${id}`;
 		};
-		const load = createFontDataUrlReader(dir, read);
+		const load = createFontAssetReader(dir, { read });
 
 		await load("c".repeat(32) + ".woff2");
 		await load("d".repeat(32) + ".woff2");
@@ -215,9 +215,11 @@ describe("带缓存的字体读取器", () => {
 
 	it("空 id 直接返回空串,连读都不读", async () => {
 		let reads = 0;
-		const load = createFontDataUrlReader(dir, async () => {
-			reads += 1;
-			return "x";
+		const load = createFontAssetReader(dir, {
+			read: async () => {
+				reads += 1;
+				return "x";
+			},
 		});
 		expect(await load("")).toBe("");
 		expect(reads).toBe(0);
@@ -230,11 +232,51 @@ describe("带缓存的字体读取器", () => {
 			// 资产悬空(被删了)时 readFontAssetDataUrl 的约定返回值。
 			return "";
 		};
-		const load = createFontDataUrlReader(dir, read);
+		const load = createFontAssetReader(dir, { read });
 
 		expect(await load("e".repeat(32) + ".woff2")).toBe("");
 		expect(await load("e".repeat(32) + ".woff2")).toBe("");
 		expect(reads).toBe(2);
+	});
+
+	it("transform 决定缓存里留什么 —— 渲染那条路留的是拼好的 @font-face", async () => {
+		const load = createFontAssetReader(dir, {
+			read: async () => "data:font/woff2;base64,AAAA",
+			transform: (v) => `@font-face{src:url("${v}")}`,
+		});
+		expect(await load(`${"g".repeat(32)}.woff2`)).toBe(
+			'@font-face{src:url("data:font/woff2;base64,AAAA")}',
+		);
+	});
+
+	it("transform 只跑一次 —— 这才是它存在的理由,不然每张卡重拼一份几十兆", async () => {
+		let transforms = 0;
+		const load = createFontAssetReader(dir, {
+			read: async () => "data:font/woff2;base64,AAAA",
+			transform: (v) => {
+				transforms += 1;
+				return `@font-face{${v}}`;
+			},
+		});
+		const id = `${"h".repeat(32)}.woff2`;
+		await load(id);
+		await load(id);
+		await load(id);
+		expect(transforms).toBe(1);
+	});
+
+	it("资产悬空时不跑 transform —— 别拼出一条 src 为空的规则", async () => {
+		let transforms = 0;
+		const load = createFontAssetReader(dir, {
+			read: async () => "",
+			transform: (v) => {
+				transforms += 1;
+				return `@font-face{${v}}`;
+			},
+		});
+		// 空串要原样传下去,渲染器据此回落家族名。
+		expect(await load(`${"i".repeat(32)}.woff2`)).toBe("");
+		expect(transforms).toBe(0);
 	});
 
 	it("读盘抛错时不把坏结果焊死在缓存里", async () => {
@@ -244,7 +286,7 @@ describe("带缓存的字体读取器", () => {
 			if (attempt === 1) throw new Error("EIO");
 			return "data:font/woff2;base64,ok";
 		};
-		const load = createFontDataUrlReader(dir, read);
+		const load = createFontAssetReader(dir, { read });
 
 		await expect(load("f".repeat(32) + ".woff2")).rejects.toThrow("EIO");
 		// 下一次要真的重试,而不是把那个 rejected promise 一直抛出来。

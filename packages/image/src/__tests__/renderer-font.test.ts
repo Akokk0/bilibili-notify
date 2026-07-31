@@ -7,16 +7,20 @@
  *    字体,schema 存得下、`resolveCardStyleForKind` 也解析得出 —— 唯独渲染器**从来
  *    没收到过**这个字段,于是「给这位 UP 单独换个字体」选了等于没选。这一族 bug 的
  *    共同长相:界面上改得动、保存得下、就是不生效。
- * 2. **自带字体文件优先于家族名。** 主人上传的字体经 `resolveFontAsset` 读成 data URL,
- *    拼成 `@font-face` 交给模版;资产悬空(删了 / 卷丢了)就静静回落家族名 —— 出图
+ * 2. **自带字体文件优先于家族名。** 主人上传的字体经 `resolveFontFace` 解析成一条现成的
+ *    `@font-face` 规则交给模版;资产悬空(删了 / 卷丢了)就静静回落家族名 —— 出图
  *    不该因为少一个文件而崩,与背景图同一条纪律。
+ *
+ * resolver 的契约是**整条 `@font-face` 规则**,不是 data URL:一款中文字库 base64 之后
+ * 二三十兆,渲染器再自己 `buildFontFace` 拼一遍就等于在堆里多留一整份。宿主那边本来就
+ * 缓存着解析结果,让它顺手拼好、全进程只存这一份。
  */
 
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { ImageRenderer, type ImageRendererConfig } from "../image-renderer";
 import type { PuppeteerLike } from "../puppeteer";
-import { USER_FONT_FAMILY } from "../render";
+import { buildFontFace, USER_FONT_FAMILY } from "../render";
 import type { CardColorOptions } from "../types";
 
 // biome-ignore lint/suspicious/noExplicitAny: 与 image-renderer.test.ts 同款白盒访问
@@ -24,7 +28,7 @@ type AnyRenderer = any;
 
 function makeRenderer(
 	config: Partial<ImageRendererConfig> = {},
-	resolveFontAsset?: (id: string) => Promise<string>,
+	resolveFontFace?: (id: string) => Promise<string>,
 ): ImageRenderer {
 	const ctx: ServiceContext = {
 		logger: { debug() {}, info() {}, warn() {}, error() {} },
@@ -44,7 +48,7 @@ function makeRenderer(
 			showFans: true,
 			...config,
 		},
-		...(resolveFontAsset ? { resolveFontAsset } : {}),
+		...(resolveFontFace ? { resolveFontFace } : {}),
 	});
 }
 
@@ -69,17 +73,25 @@ describe("家族名那条路", () => {
 
 describe("自带字体文件那条路", () => {
 	const DATA_URL = "data:font/woff2;base64,AAAA";
+	/** resolver 现在交回来的就是这个 —— 整条规则,渲染器不再加工。 */
+	const FONT_FACE = buildFontFace(DATA_URL);
 
 	it("配了字体资产 → 家族名换成内部那个,并带上 @font-face", async () => {
-		const r = makeRenderer({ fontAsset: "abc.woff2" }, async () => DATA_URL);
+		const r = makeRenderer({ fontAsset: "abc.woff2" }, async () => FONT_FACE);
 		const got = await resolveFont(r);
 		expect(got.font).toBe(USER_FONT_FAMILY);
 		expect(got.fontFace).toContain(DATA_URL);
 		expect(got.fontFace).toContain(USER_FONT_FAMILY);
 	});
 
+	it("resolver 给什么就用什么 —— 渲染器不自己拼,那份几十兆的串全进程只存一处", async () => {
+		// 若实现退回「自己 buildFontFace(收到的东西)」,这里会被再包一层 url(...) 而炸。
+		const r = makeRenderer({ fontAsset: "x.woff2" }, async () => "@font-face{SENTINEL}");
+		expect((await resolveFont(r)).fontFace).toBe("@font-face{SENTINEL}");
+	});
+
 	it("字体资产优先于家族名 —— 两个都设了以文件为准", async () => {
-		const r = makeRenderer({ font: "家族名", fontAsset: "abc.woff2" }, async () => DATA_URL);
+		const r = makeRenderer({ font: "家族名", fontAsset: "abc.woff2" }, async () => FONT_FACE);
 		expect((await resolveFont(r)).font).toBe(USER_FONT_FAMILY);
 	});
 
@@ -87,7 +99,7 @@ describe("自带字体文件那条路", () => {
 		const seen: string[] = [];
 		const r = makeRenderer({ fontAsset: "global.woff2" }, async (id) => {
 			seen.push(id);
-			return DATA_URL;
+			return FONT_FACE;
 		});
 		await resolveFont(r, { fontAsset: "per-up.ttf" });
 		expect(seen).toEqual(["per-up.ttf"]);
@@ -107,7 +119,7 @@ describe("自带字体文件那条路", () => {
 
 describe("解析结果要缓存 —— 一款中文字体几十兆,不能每张卡读一遍盘", () => {
 	it("同一个资产连着出好几张卡,只解析一次", async () => {
-		const resolve = vi.fn(async () => "data:font/woff2;base64,AAAA");
+		const resolve = vi.fn(async () => buildFontFace("data:font/woff2;base64,AAAA"));
 		const r = makeRenderer({ fontAsset: "same.woff2" }, resolve);
 		await resolveFont(r);
 		await resolveFont(r);
@@ -116,7 +128,7 @@ describe("解析结果要缓存 —— 一款中文字体几十兆,不能每张�
 	});
 
 	it("换了一款就重新解析 —— 缓存不能把旧字体黏住", async () => {
-		const resolve = vi.fn(async () => "data:font/woff2;base64,AAAA");
+		const resolve = vi.fn(async () => buildFontFace("data:font/woff2;base64,AAAA"));
 		const r = makeRenderer({ fontAsset: "a.woff2" }, resolve);
 		await resolveFont(r);
 		await resolveFont(r, { fontAsset: "b.woff2" });
