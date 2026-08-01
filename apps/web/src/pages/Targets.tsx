@@ -492,19 +492,47 @@ function AdapterConnectionFields({
 					/>
 				</Field>
 				{/* 这句 hint 要说的不是「超时是什么」,而是「为什么它看起来没生效」:带图
-				    消息内部另有更长的下限(单图 30s / 合并转发 60s),不然主人会以为自己
-				    调的 15s 被无视了。带图慢是 OneBot 实现那侧传图床的往返,不是我们卡着。 */}
+				    消息另有更长的下限,不然主人会以为自己调的 15s 被无视了。下限现在就在
+				    下面两栏里,调得动也关得掉 —— 别再让它在代码里悄悄盖掉主人配的数。 */}
 				<Field
 					label={cfg.transport === "http" ? "请求超时" : "响应超时"}
 					code="config.timeoutMs"
 					hint={`${
 						cfg.transport === "http" ? "单次 HTTP 请求总超时(毫秒)" : "等 OneBot echo 响应的超时"
-					}。只对纯文字消息作数：带图的要等协议端把图传到 QQ 图床，实测常超 15s，所以内部按单图 ${ONEBOT_IMAGE_MIN_TIMEOUT_MS / 1000}s / 合并转发 ${ONEBOT_FORWARD_MIN_TIMEOUT_MS / 1000}s 兜底（配得更大则以你的为准）`}
+					}。纯文字消息按这个数走；带图的另看下面两栏的下限`}
 				>
 					<TNum
 						value={cfg.timeoutMs}
 						onChange={(v) => setCfg({ ...cfg, timeoutMs: v })}
 						min={1000}
+						step={1000}
+						suffix="ms"
+						width={120}
+					/>
+				</Field>
+				<Field
+					label="带图超时下限"
+					code="config.imageMinTimeoutMs"
+					hint={`带图消息实际等 max(上面的超时, 此值)。协议端要先把图传到 QQ 图床才回响应，实测常超 15s，所以单独放宽（默认 ${ONEBOT_IMAGE_MIN_TIMEOUT_MS / 1000}s）。填 0 = 不放宽，严格按上面的超时走`}
+				>
+					<TNum
+						value={cfg.imageMinTimeoutMs}
+						onChange={(v) => setCfg({ ...cfg, imageMinTimeoutMs: v })}
+						min={0}
+						step={1000}
+						suffix="ms"
+						width={120}
+					/>
+				</Field>
+				<Field
+					label="合并转发超时下限"
+					code="config.forwardMinTimeoutMs"
+					hint={`语义同上，只是合并转发要把每张图逐张下载再上传组装，更慢（默认 ${ONEBOT_FORWARD_MIN_TIMEOUT_MS / 1000}s）。填 0 = 不放宽`}
+				>
+					<TNum
+						value={cfg.forwardMinTimeoutMs}
+						onChange={(v) => setCfg({ ...cfg, forwardMinTimeoutMs: v })}
+						min={0}
 						step={1000}
 						suffix="ms"
 						width={120}

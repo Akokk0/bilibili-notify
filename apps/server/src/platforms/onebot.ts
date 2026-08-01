@@ -41,19 +41,22 @@ export interface OnebotPlatformAdapterOptions {
 	/** Fallback timeout (ms) when adapter.config.timeoutMs is missing. Defaults to 15s. */
 	timeoutMs?: number;
 	/**
-	 * 合并转发动作(send_*_forward_msg)的超时下限(ms),默认 60s。NapCat 组装多图
-	 * forward 要逐张下载再上传,常规 15s 几乎必超 —— 单独放宽,让慢成功等得到真响应,
-	 * 推送历史不再谎报失败。取 `max(cfg.timeoutMs, 此值)`。测试注入用。
+	 * 合并转发动作(send_*_forward_msg)的超时下限(ms)**兜底值**,默认 60s。NapCat
+	 * 组装多图 forward 要逐张下载再上传,常规 15s 几乎必超 —— 单独放宽,让慢成功等得
+	 * 到真响应,推送历史不再谎报失败。取 `max(cfg.timeoutMs, 下限)`。
+	 *
+	 * 真正生效的下限来自 adapter config 的同名字段(界面上「合并转发超时下限」那栏);
+	 * 本项只在配置里没这个字段时才用得上 —— 测试注入,以及未过 schema 的裸配置。
 	 */
 	forwardMinTimeoutMs?: number;
 	/**
 	 * **带图**普通消息(send_group_msg / send_private_msg 里含 image 段)的超时下限
-	 * (ms),默认 30s。与 forward 同一个道理,只是当初只想到了合并转发:带图消息在
-	 * OneBot 实现那侧要先落盘、传腾讯图床、拿 fileid 才回响应,15s 常不够(用户实测
-	 * LLOneBot,词云 / 动态卡每条都恰好卡在 15000ms 死线,而同时段纯文字全部秒回)。
+	 * (ms)**兜底值**,默认 30s。与 forward 同一个道理,只是当初只想到了合并转发:带图
+	 * 消息在 OneBot 实现那侧要先落盘、传腾讯图床、拿 fileid 才回响应,15s 常不够(用户
+	 * 实测 LLOneBot,词云 / 动态卡每条都恰好卡在 15000ms 死线,而同时段纯文字全部秒回)。
 	 *
-	 * 比 forward 的 60s 短:单图只有一次上传往返,而 forward 要逐张来一遍。取
-	 * `max(cfg.timeoutMs, 此值)`。测试注入用。
+	 * 比 forward 的 60s 短:单图只有一次上传往返,而 forward 要逐张来一遍。同上,配置
+	 * 里的同名字段优先,本项只是兜底。
 	 */
 	imageMinTimeoutMs?: number;
 }
@@ -116,6 +119,24 @@ function minTimeoutFor(
 	if (isForwardAction(action)) return limits.forward;
 	if (hasImageSegment(params)) return limits.image;
 	return 0;
+}
+
+/**
+ * 这条连接实际生效的两档下限。**adapter 配置里的值优先** —— 界面上那两栏就是主人的
+ * 意思,内建默认只是「没配过」时的兜底(schema 会给解析过的配置补 default,所以回落
+ * 这条路只在测试注入和未过 schema 的裸配置上走到)。
+ *
+ * 配 `0` 就是关掉放宽:为快速故障转移特意把 `timeoutMs` 调小的用户,不该被下限静默
+ * 无视 —— 串行扇出下,每个目标多等的那几十秒是要累加的。
+ */
+function minTimeoutLimits(
+	cfg: { forwardMinTimeoutMs?: number; imageMinTimeoutMs?: number },
+	fallbacks: { forward: number; image: number },
+): { forward: number; image: number } {
+	return {
+		forward: cfg.forwardMinTimeoutMs ?? fallbacks.forward,
+		image: cfg.imageMinTimeoutMs ?? fallbacks.image,
+	};
 }
 
 type OnebotHttpConfig = Extract<OnebotAdapterConfig, { transport: "http" }>;
@@ -681,7 +702,8 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	const log = opts.logger;
 	const serviceCtx = opts.serviceCtx;
 	const fallbackTimeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-	const minTimeouts = {
+	// 「adapter 配置里没写」时才用得上的兜底;真正生效的值见 minTimeoutLimits()。
+	const minTimeoutFallbacks = {
 		forward: opts.forwardMinTimeoutMs ?? DEFAULT_FORWARD_MIN_TIMEOUT_MS,
 		image: opts.imageMinTimeoutMs ?? DEFAULT_IMAGE_MIN_TIMEOUT_MS,
 	};
@@ -798,7 +820,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		t0: number,
 	): Promise<DeliveryResult> {
 		const baseTimeoutMs = cfg.timeoutMs ?? fallbackTimeoutMs;
-		const timeoutMs = Math.max(baseTimeoutMs, minTimeoutFor(action, params, minTimeouts));
+		const timeoutMs = Math.max(
+			baseTimeoutMs,
+			minTimeoutFor(action, params, minTimeoutLimits(cfg, minTimeoutFallbacks)),
+		);
 		const retryTimes = cfg.retryTimes ?? 0;
 		const retryIntervalMs = cfg.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
 		let lastErr = "ws send failed";
@@ -1039,7 +1064,11 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 						fallbackTimeoutMs,
 						{
 							nonIdempotent: true,
-							minTimeoutMs: minTimeoutFor(built.action, built.params, minTimeouts),
+							minTimeoutMs: minTimeoutFor(
+								built.action,
+								built.params,
+								minTimeoutLimits(cfg, minTimeoutFallbacks),
+							),
 						},
 					);
 					const verdict = interpretResponse(result);

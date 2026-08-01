@@ -490,6 +490,16 @@ export const FIELD_LABELS = {
 		secret: true,
 	},
 	"config.timeoutMs": { label: "超时", section: "transport" },
+	"config.imageMinTimeoutMs": {
+		label: "带图超时下限",
+		hint: "带图消息实际等 max(超时, 此值);0 = 不放宽",
+		section: "transport",
+	},
+	"config.forwardMinTimeoutMs": {
+		label: "合并转发超时下限",
+		hint: "合并转发要逐张下载再上传,比单图更慢;0 = 不放宽",
+		section: "transport",
+	},
 	"config.retryTimes": {
 		label: "重试次数",
 		hint: "不含首次,失败后再尝试",

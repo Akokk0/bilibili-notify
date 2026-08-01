@@ -104,6 +104,8 @@ function makeOnebotAdapter(overrides: Partial<Extract<PushAdapter, { platform: "
 			protocolVersion: "v11" as const,
 			headers: {},
 			timeoutMs: 15_000,
+			imageMinTimeoutMs: 30_000,
+			forwardMinTimeoutMs: 60_000,
 			retryTimes: 0,
 			retryIntervalMs: 1_000,
 		},

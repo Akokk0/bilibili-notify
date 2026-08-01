@@ -30,6 +30,8 @@ function onebot(id: string, token: string): PushAdapter {
 			accessToken: token,
 			protocolVersion: "v11",
 			timeoutMs: 15_000,
+			imageMinTimeoutMs: 30_000,
+			forwardMinTimeoutMs: 60_000,
 			retryTimes: 0,
 			retryIntervalMs: 1_000,
 		},

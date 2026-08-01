@@ -15,6 +15,7 @@ import {
 	makeEmptyTarget,
 	maskWebhookUrl,
 	newId,
+	switchOnebotTransport,
 	WEBHOOK_PROVIDERS,
 	webhookSecretHint,
 	webhookUrlPlaceholder,
@@ -163,5 +164,32 @@ describe("qq-official adapter factories", () => {
 			enabled: true,
 			session: {},
 		});
+	});
+});
+
+describe("switchOnebotTransport", () => {
+	it("换连接方式时保留共用字段 —— 超时下限不该被悄悄打回默认", () => {
+		// strict schema 逼着换 transport 要整体换 config,共用字段得一个个搬过去。
+		// 漏搬哪个,主人就会遇到「明明调过、换个连接方式又变回去了」。
+		const http = makeEmptyAdapter("onebot", "NapCat").config as Parameters<
+			typeof switchOnebotTransport
+		>[0];
+		const tuned = {
+			...http,
+			timeoutMs: 45_000,
+			imageMinTimeoutMs: 0,
+			forwardMinTimeoutMs: 90_000,
+			retryTimes: 2,
+			retryIntervalMs: 500,
+		};
+
+		for (const transport of ["ws", "ws-reverse", "http"] as const) {
+			const next = switchOnebotTransport(tuned, transport);
+			expect(next.transport).toBe(transport);
+			expect(next.timeoutMs).toBe(45_000);
+			expect(next.imageMinTimeoutMs).toBe(0);
+			expect(next.forwardMinTimeoutMs).toBe(90_000);
+			expect(next.retryIntervalMs).toBe(500);
+		}
 	});
 });

@@ -187,6 +187,50 @@ describe("OnebotAdapterConfigSchema (transport discriminatedUnion)", () => {
 		}
 	});
 
+	// --- 超时下限(带图 / 合并转发) ---
+	it("超时下限:缺省补 default(带图 30s / 合并转发 60s),三种 transport 共用", () => {
+		const http = OnebotAdapterConfigSchema.safeParse({ baseUrl: "http://localhost:5700" });
+		expect(http.success).toBe(true);
+		if (http.success && http.data.transport === "http") {
+			expect(http.data.imageMinTimeoutMs).toBe(30_000);
+			expect(http.data.forwardMinTimeoutMs).toBe(60_000);
+		}
+		const rev = OnebotAdapterConfigSchema.safeParse({ transport: "ws-reverse", port: 6700 });
+		expect(rev.success).toBe(true);
+		if (rev.success && rev.data.transport === "ws-reverse") {
+			expect(rev.data.imageMinTimeoutMs).toBe(30_000);
+			expect(rev.data.forwardMinTimeoutMs).toBe(60_000);
+		}
+	});
+
+	it("超时下限:显式 0 合法 —— 想「严格按我配的超时走」得关得掉", () => {
+		const r = OnebotAdapterConfigSchema.safeParse({
+			baseUrl: "http://localhost:5700",
+			imageMinTimeoutMs: 0,
+			forwardMinTimeoutMs: 0,
+		});
+		expect(r.success).toBe(true);
+		if (r.success && r.data.transport === "http") {
+			expect(r.data.imageMinTimeoutMs).toBe(0);
+			expect(r.data.forwardMinTimeoutMs).toBe(0);
+		}
+	});
+
+	it("超时下限:负数拒绝", () => {
+		expect(
+			OnebotAdapterConfigSchema.safeParse({
+				baseUrl: "http://localhost:5700",
+				imageMinTimeoutMs: -1,
+			}).success,
+		).toBe(false);
+		expect(
+			OnebotAdapterConfigSchema.safeParse({
+				baseUrl: "http://localhost:5700",
+				forwardMinTimeoutMs: -1,
+			}).success,
+		).toBe(false);
+	});
+
 	// --- http branch ---
 	it("http branch:显式 transport + baseUrl 合法", () => {
 		const r = OnebotAdapterConfigSchema.safeParse({

@@ -921,6 +921,89 @@ describe("onebot — 带图消息放宽超时下限", () => {
 	});
 });
 
+describe("onebot — 超时下限可按 adapter 配置调整", () => {
+	const IMAGE: NotificationPayload = {
+		kind: "image",
+		image: { buffer: Buffer.from("fake-jpeg"), mime: "image/jpeg" },
+	};
+
+	it("cfg.imageMinTimeoutMs 覆盖内建默认 —— 界面上配的数说了算", async () => {
+		const bot = await startFakeBotServer({
+			onFrame: (frame, reply) =>
+				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200),
+		});
+		// opts 里的 60 是「没配时的兜底」,cfg 里的 1000 才是主人的意思。
+		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 60 });
+		const adapter = obWsAdapter(bot.port, {
+			timeoutMs: 60,
+			retryTimes: 0,
+			imageMinTimeoutMs: 1000,
+		});
+		ad.reconcile?.([adapter]);
+		await waitFor(() => bot.connections.length > 0);
+		await sleep(40);
+		const r = await ad.send(adapter, obTarget(), IMAGE);
+		expect(r.ok).toBe(true);
+		ad.dispose?.();
+	});
+
+	it("cfg.imageMinTimeoutMs=0 → 关掉放宽,带图消息严格按 timeoutMs 快速失败", async () => {
+		// 为快速故障转移特意把 timeoutMs 调小的用户,得有办法不被 30s 下限静默无视。
+		const bot = await startFakeBotServer({
+			onFrame: (frame, reply) =>
+				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200),
+		});
+		const ad = createOnebotAdapter(obOpts());
+		const adapter = obWsAdapter(bot.port, { timeoutMs: 60, retryTimes: 0, imageMinTimeoutMs: 0 });
+		ad.reconcile?.([adapter]);
+		await waitFor(() => bot.connections.length > 0);
+		await sleep(40);
+		const t0 = Date.now();
+		const r = await ad.send(adapter, obTarget(), IMAGE);
+		expect(r.ok).toBe(false);
+		expect(r.err).toMatch(/超时/);
+		// 在配置的 60ms 附近就断,而不是被内建的 30s 下限拖住。
+		expect(Date.now() - t0).toBeLessThan(1000);
+		ad.dispose?.();
+	});
+
+	it("cfg.forwardMinTimeoutMs=0 → 合并转发的放宽同样关得掉", async () => {
+		const bot = await startFakeBotServer({
+			onFrame: (frame, reply) => {
+				if (frame.action === "get_login_info") {
+					reply({
+						status: "ok",
+						retcode: 0,
+						data: { user_id: 1, nickname: "bot" },
+						echo: frame.echo,
+					});
+					return;
+				}
+				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200);
+			},
+		});
+		const ad = createOnebotAdapter(obOpts());
+		const adapter = obWsAdapter(bot.port, {
+			timeoutMs: 60,
+			retryTimes: 0,
+			forwardMinTimeoutMs: 0,
+		});
+		ad.reconcile?.([adapter]);
+		await waitFor(() => bot.connections.length > 0);
+		await sleep(40);
+		const t0 = Date.now();
+		const r = await ad.send(adapter, obTarget(), {
+			kind: "forward-images",
+			images: [{ url: "https://x/1.jpg" }, { url: "https://x/2.jpg" }],
+			forward: true,
+		});
+		expect(r.ok).toBe(false);
+		expect(r.err).toMatch(/超时/);
+		expect(Date.now() - t0).toBeLessThan(1000);
+		ad.dispose?.();
+	});
+});
+
 describe("onebot — isAvailable / probe", () => {
 	it("isAvailable:平台匹配+启用+baseUrl 非空", () => {
 		const ad = createOnebotAdapter(obOpts());

@@ -21,6 +21,10 @@ import {
 	type Subscription,
 	SubscriptionSchema,
 } from "@bilibili-notify/internal";
+import {
+	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
+	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
+} from "@bilibili-notify/internal/constants";
 import { applyAiSecrets, collectAiSecrets, stripAiSecrets } from "./ai-secrets.js";
 import type { BootstrapConfig } from "./schema.js";
 import type { ConfigSecrets, SecretStore } from "./secret-store.js";
@@ -277,6 +281,8 @@ function migrateLegacyTargets(raw: unknown[]): {
 						protocolVersion: cfg.protocolVersion ?? "v11",
 						headers: {},
 						timeoutMs: 15_000,
+						imageMinTimeoutMs: ONEBOT_IMAGE_MIN_TIMEOUT_MS,
+						forwardMinTimeoutMs: ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 						retryTimes: 0,
 						retryIntervalMs: 1_000,
 					},

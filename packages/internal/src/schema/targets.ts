@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ONEBOT_FORWARD_MIN_TIMEOUT_MS, ONEBOT_IMAGE_MIN_TIMEOUT_MS } from "../constants.js";
 
 /**
  * Push 目标平台。Adapter 矩阵按 platform 分发：
@@ -35,6 +36,14 @@ const onebotCommonConfigShape = {
 	protocolVersion: z.literal("v11").default("v11"),
 	/** 单次操作总超时（毫秒）。HTTP = 请求超时；WS = 等 echo 响应超时。 */
 	timeoutMs: z.number().int().positive().default(15_000),
+	/**
+	 * 带图普通消息的超时**下限**（毫秒）。协议端要先把图传到 QQ 图床才回响应，实测
+	 * 常超 15s，所以取 `max(timeoutMs, 此值)` 单独放宽。`0` = 关闭放宽，严格按
+	 * `timeoutMs` 走（想让挂掉的 bot 快速失败、别拖住串行发送的后续目标时用）。
+	 */
+	imageMinTimeoutMs: z.number().int().min(0).default(ONEBOT_IMAGE_MIN_TIMEOUT_MS),
+	/** 合并转发（`send_*_forward_msg`）的超时下限（毫秒）。语义同上，`0` = 关闭放宽。 */
+	forwardMinTimeoutMs: z.number().int().min(0).default(ONEBOT_FORWARD_MIN_TIMEOUT_MS),
 	/** 失败时的重试次数（不含首次）。 */
 	retryTimes: z.number().int().min(0).default(0),
 	/** 两次重试之间的等待（毫秒）。 */

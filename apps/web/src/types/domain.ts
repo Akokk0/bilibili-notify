@@ -25,6 +25,8 @@ import {
 	DEFAULT_FEATURE_FLAGS,
 	FEATURE_KEYS,
 	type FeatureKey,
+	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
+	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 } from "@bilibili-notify/internal/constants";
 
 export type { FeatureKey };
@@ -200,6 +202,8 @@ export function makeEmptyAdapter(platform: PushTargetPlatform, name: string): Pu
 				protocolVersion: "v11",
 				headers: {},
 				timeoutMs: 15_000,
+				imageMinTimeoutMs: ONEBOT_IMAGE_MIN_TIMEOUT_MS,
+				forwardMinTimeoutMs: ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 				retryTimes: 0,
 				retryIntervalMs: 1_000,
 			},
@@ -222,7 +226,13 @@ export function makeEmptyAdapter(platform: PushTargetPlatform, name: string): Pu
 /** OneBot 三种连接方式(transport)共用的连接字段。 */
 type OnebotAdapterConfigCommon = Pick<
 	OnebotAdapterConfig,
-	"accessToken" | "protocolVersion" | "timeoutMs" | "retryTimes" | "retryIntervalMs"
+	| "accessToken"
+	| "protocolVersion"
+	| "timeoutMs"
+	| "imageMinTimeoutMs"
+	| "forwardMinTimeoutMs"
+	| "retryTimes"
+	| "retryIntervalMs"
 >;
 
 /**
@@ -238,6 +248,8 @@ export function switchOnebotTransport(
 		accessToken: cfg.accessToken,
 		protocolVersion: cfg.protocolVersion ?? "v11",
 		timeoutMs: cfg.timeoutMs,
+		imageMinTimeoutMs: cfg.imageMinTimeoutMs,
+		forwardMinTimeoutMs: cfg.forwardMinTimeoutMs,
 		retryTimes: cfg.retryTimes || (transport === "http" ? 0 : 3),
 		retryIntervalMs: cfg.retryIntervalMs,
 	};
