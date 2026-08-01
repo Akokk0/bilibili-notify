@@ -114,33 +114,66 @@ interface RequestOptions {
 	timeoutMs?: number;
 }
 
+/**
+ * 读 JSON 响应体,并把「读失败」如实带出来。
+ *
+ * 从前这儿是 `.catch(() => undefined)` 一把吞掉,于是**成功响应**读到一半断了(服务端
+ * 被 OOM 杀掉、反代读超时)也会当成「成功,内容是 undefined」返回,调用方再去读它的
+ * 字段就炸出一句「Cannot read properties of undefined」—— 正是「服务端日志写着完成、
+ * 前端却对不上」那类查不动的场面。
+ *
+ * 但错误响应上它仍该被容忍:那时已经有状态码可报,状态码比一句解析失败有用得多。
+ */
+async function readJsonPayload(res: Response): Promise<{ payload: unknown; failed: boolean }> {
+	if (!res.headers.get("content-type")?.includes("application/json")) {
+		return { payload: undefined, failed: false };
+	}
+	try {
+		return { payload: await res.json(), failed: false };
+	} catch {
+		return { payload: undefined, failed: true };
+	}
+}
+
+/** 成功响应却没把 body 读全时的说法 —— 与「连接压根没建起来」分开。 */
+function incompleteBodyError(what: string): ApiError {
+	return new ApiError(
+		OFFLINE_STATUS,
+		undefined,
+		`响应不完整，${what}的返回内容没有读全 —— 连接多半在传输途中被切断（服务已重启、内存不足被杀,或反向代理读超时）`,
+	);
+}
+
 async function request<T>(
 	method: string,
 	path: string,
 	body?: unknown,
 	opts?: RequestOptions,
 ): Promise<T> {
-	const res = await withOffline(`${method} ${path}`, () =>
+	const what = `${method} ${path}`;
+	// 组请求的活儿留在包装**外面**:`Headers.set` 与 `JSON.stringify` 都会抛 TypeError,
+	// 跑在里头就会被认成断线,把一个前端 bug 说成网络问题(还附赠一句去调反代读超时)。
+	const headers = withDesktopTokenHeader(
+		body !== undefined ? { "content-type": "application/json" } : undefined,
+	);
+	const payloadBody = body !== undefined ? JSON.stringify(body) : undefined;
+	const res = await withOffline(what, () =>
 		fetch(path, {
 			method,
-			headers: withDesktopTokenHeader(
-				body !== undefined ? { "content-type": "application/json" } : undefined,
-			),
-			body: body !== undefined ? JSON.stringify(body) : undefined,
+			headers,
+			body: payloadBody,
 			credentials: "include",
 			signal: opts?.timeoutMs ? AbortSignal.timeout(opts.timeoutMs) : undefined,
 		}),
 	);
-	let payload: unknown;
-	if (res.headers.get("content-type")?.includes("application/json")) {
-		payload = await res.json().catch(() => undefined);
-	}
+	const { payload, failed } = await readJsonPayload(res);
 	if (!res.ok) {
 		if (res.status === 401 && !path.startsWith("/api/session")) {
 			onUnauthorized?.();
 		}
-		throw new ApiError(res.status, payload, errorMessage(payload, `${method} ${path}`, res.status));
+		throw new ApiError(res.status, payload, errorMessage(payload, what, res.status));
 	}
+	if (failed) throw incompleteBodyError(what);
 	return payload as T;
 }
 
@@ -149,22 +182,17 @@ async function request<T>(
  * boundary;其余(desktop token / 凭据 / 错误处理)与 `request` 一致。
  */
 async function upload<T>(path: string, form: FormData): Promise<T> {
-	const res = await withOffline(`POST ${path}`, () =>
-		fetch(path, {
-			method: "POST",
-			headers: withDesktopTokenHeader(),
-			body: form,
-			credentials: "include",
-		}),
+	const what = `POST ${path}`;
+	const headers = withDesktopTokenHeader();
+	const res = await withOffline(what, () =>
+		fetch(path, { method: "POST", headers, body: form, credentials: "include" }),
 	);
-	let payload: unknown;
-	if (res.headers.get("content-type")?.includes("application/json")) {
-		payload = await res.json().catch(() => undefined);
-	}
+	const { payload, failed } = await readJsonPayload(res);
 	if (!res.ok) {
 		if (res.status === 401 && !path.startsWith("/api/session")) onUnauthorized?.();
-		throw new ApiError(res.status, payload, errorMessage(payload, `POST ${path}`, res.status));
+		throw new ApiError(res.status, payload, errorMessage(payload, what, res.status));
 	}
+	if (failed) throw incompleteBodyError(what);
 	return payload as T;
 }
 

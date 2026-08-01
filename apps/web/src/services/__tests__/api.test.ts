@@ -214,3 +214,57 @@ describe("api 请求死线", () => {
 		expect(settled).toBe(false);
 	});
 });
+
+/**
+ * `withOffline` 是按**异常类型**认断线的:`fetch` 只在连接层失败时抛 TypeError。
+ * 可 TypeError 不是 fetch 的专利 —— 循环引用 / BigInt 会让 `JSON.stringify` 抛
+ * TypeError,非法字符会让 `Headers.set` 抛 TypeError。这些活儿要是也跑在被包住的
+ * 闭包里,一个前端自己的 bug 就会被报成「连接中断」,还附赠一句「去调反向代理的读
+ * 超时」—— 人被支去查一个根本不存在的网络问题,真正的错误反倒不见了。
+ *
+ * 结论:只有**网络调用本身**该待在包装里,组请求的活儿必须挪到外面。
+ */
+describe("api 错误归因", () => {
+	it("组不出请求体时原样抛出真错误,不谎报断线", async () => {
+		const circular: Record<string, unknown> = {};
+		circular.self = circular;
+		// 这次请求压根没发出去,说成「连接中断」就是把线索指反了方向。
+		await expect(api.post("/api/cards/preview", circular)).rejects.toThrow(TypeError);
+	});
+
+	it("组不出请求体时连 fetch 都不该被调用", async () => {
+		const circular: Record<string, unknown> = {};
+		circular.self = circular;
+		await api.post("/api/cards/preview", circular).catch(() => undefined);
+		expect(globalThis.fetch).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * 另一头:响应**状态行已经回来了**(fetch 已 resolve、res.ok 为 true),body 却读
+	 * 到一半断了 —— 服务端被 OOM 杀掉、反代读超时到点,都会这样。这时 withOffline
+	 * 什么都看不到,而读 body 的失败被 `.catch(() => undefined)` 吞掉之后,ok 分支就
+	 * 把 undefined 当成功结果返回,调用方再去读它的字段,炸出一句谁也看不懂的
+	 * 「Cannot read properties of undefined」。得如实说这次没拿全。
+	 */
+	it("ok 响应的 body 读不全时如实报错,而不是返回 undefined", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response("{只有半", { status: 200, headers: { "content-type": "application/json" } }),
+			),
+		);
+		await expect(api.get("/api/globals")).rejects.toMatchObject({ name: "ApiError" });
+	});
+
+	it("HTTP 错误响应的 body 坏掉时仍报那个状态码 —— 状态码比解析失败有用得多", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response("{坏", { status: 503, headers: { "content-type": "application/json" } }),
+			),
+		);
+		await expect(api.get("/api/globals")).rejects.toMatchObject({ status: 503 });
+	});
+});
