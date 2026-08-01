@@ -23,6 +23,7 @@ import type { Conversation, ConversationMeta } from "../ai/conversation-store.js
 import { toGeneratorConfig } from "../runtime/ai-config.js";
 import {
 	deleteChatImage,
+	MAX_CHAT_IMAGE_BYTES,
 	MAX_CHAT_IMAGES_PER_MESSAGE,
 	readChatImage,
 	readChatImageDataUrl,
@@ -30,6 +31,7 @@ import {
 } from "../runtime/chat-assets.js";
 import { REDACTED_API_KEY } from "./globals.js";
 import type { RouteDeps } from "./types.js";
+import { uploadBodyLimit } from "./upload-limit.js";
 
 /**
  * 智能女仆的「试一句」。
@@ -137,7 +139,8 @@ export function createAiRoute(deps: RouteDeps): Hono {
 	// 会话生灭的。照抄那套「落盘 + id 引用 + 定向读取」的形状,但各用各的目录。
 
 	/** 上传一张附件 → 落盘 `<dataDir>/assets/chat/<id>`,返回 id 供随消息带上。 */
-	app.post("/assets", async (c) => {
+	// 闸在 parseBody 之前:超大的当场回绝,别先整份读进那 384MB 的堆里。见 upload-limit.ts。
+	app.post("/assets", uploadBodyLimit(MAX_CHAT_IMAGE_BYTES, "图片"), async (c) => {
 		const body = await c.req.parseBody().catch(() => null);
 		const file = body?.file;
 		if (!(file instanceof File)) return c.json({ ok: false, err: "缺少图片文件" }, 400);

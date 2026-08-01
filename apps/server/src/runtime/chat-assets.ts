@@ -18,7 +18,7 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 /** 单张附件上限 5MB —— 与卡片背景图同口径。 */
-const MAX_CHAT_IMAGE_BYTES = 5 * 1024 * 1024;
+export const MAX_CHAT_IMAGE_BYTES = 5 * 1024 * 1024;
 
 /** 一条消息最多带几张图。与动态点评那条路的上限一致(`extractDynamicImages`)。 */
 export const MAX_CHAT_IMAGES_PER_MESSAGE = 4;

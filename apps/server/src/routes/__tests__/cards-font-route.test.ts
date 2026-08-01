@@ -94,6 +94,27 @@ describe("POST /font-asset —— 上传", () => {
 		});
 	});
 
+	/**
+	 * 超大上传必须**在读进堆之前**就被挡掉。
+	 *
+	 * `parseBody()` + `arrayBuffer()` 会把整个 multipart body 实体化,而
+	 * `saveFontAsset` 的上限是在那之后才校验的 —— 镜像里 V8 老生代只有 384MB,拖一个
+	 * 几百兆的 ttf 进来是把进程弄死,而不是收到那句「字体文件过大」。容器被
+	 * `restart: unless-stopped` 拉起来,主人看到的是面板断线又重连,永远等不到那句话。
+	 */
+	it("大到离谱的上传 → 413 当场回绝,不先把它整份读进内存", async () => {
+		await withDir(async (dir) => {
+			// 比 MAX_FONT_ASSET_BYTES(20MB)大一截,但没大到让测试自己吃不消。
+			const huge = new Uint8Array(21 * 1024 * 1024);
+			const res = await upload(route(makeDeps({ dataDir: dir })), "巨无霸.ttf", huge);
+			expect(res.status).toBe(413);
+			const json = (await res.json()) as { ok: boolean; err: string };
+			expect(json.ok).toBe(false);
+			expect(json.err).toContain("过大");
+			expect(await listFontAssets(dir)).toEqual([]);
+		});
+	});
+
 	it("不是字体的后缀 → 400,错因说得出支持哪几种", async () => {
 		await withDir(async (dir) => {
 			const res = await upload(route(makeDeps({ dataDir: dir })), "trojan.exe");

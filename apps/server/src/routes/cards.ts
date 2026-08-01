@@ -53,6 +53,7 @@ import {
 	firstExistingCardBg,
 	isValidCardBgId,
 	listCardBg,
+	MAX_CARD_BG_BYTES,
 	readCardBg,
 	readCardBgDataUrl,
 	saveCardBg,
@@ -61,6 +62,7 @@ import {
 	deleteFontAsset,
 	isValidFontAssetId,
 	listFontAssets,
+	MAX_FONT_ASSET_BYTES,
 	readFontAsset,
 	saveFontAsset,
 } from "../runtime/font-assets.js";
@@ -70,6 +72,7 @@ import {
 	type StandalonePuppeteer,
 } from "../runtime/puppeteer.js";
 import type { RouteDeps } from "./types.js";
+import { uploadBodyLimit } from "./upload-limit.js";
 
 export interface CardsRouteOptions {
 	deps: RouteDeps;
@@ -370,7 +373,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	});
 
 	// 背景图上传 → 落盘 `<dataDir>/assets/card-bg/<id>`,返回资产 id 写进 cardStyle.backgroundImage。
-	app.post("/asset", async (c) => {
+	// 闸在 parseBody 之前:超大的当场回绝,别先整份读进那 384MB 的堆里。见 upload-limit.ts。
+	app.post("/asset", uploadBodyLimit(MAX_CARD_BG_BYTES, "图片"), async (c) => {
 		const body = await c.req.parseBody().catch(() => null);
 		const file = body?.file;
 		if (!(file instanceof File)) return c.json({ ok: false, err: "缺少图片文件" }, 400);
@@ -429,7 +433,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 字体上传 → 落盘 `<dataDir>/assets/font/<id>`,返回资产 id 写进 cardStyle.fontAsset。
 	// 后缀取自**原始文件名**而不是 mime —— 浏览器给字体的 mime 一塌糊涂(同一个 .ttf 可能
 	// 是 font/ttf、application/x-font-ttf、application/octet-stream 甚至空串)。
-	app.post("/font-asset", async (c) => {
+	app.post("/font-asset", uploadBodyLimit(MAX_FONT_ASSET_BYTES, "字体文件"), async (c) => {
 		const body = await c.req.parseBody().catch(() => null);
 		const file = body?.file;
 		if (!(file instanceof File)) return c.json({ ok: false, err: "缺少字体文件" }, 400);
