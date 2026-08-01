@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { buildFontFace } from "@bilibili-notify/image";
 import type { MessageBus } from "@bilibili-notify/internal";
 import { createKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { type ConversationStore, createConversationStore } from "../ai/conversation-store.js";
@@ -12,6 +13,7 @@ import { createStatsRecorder } from "../stats/recorder.js";
 import { createStatsStore, type StatsStore } from "../stats/store.js";
 import type { EnginesRuntime } from "./engines.js";
 import type { FansPollerHandle } from "./fans-poller.js";
+import { createFontAssetReader } from "./font-assets.js";
 import { createNodeMessageBus } from "./message-bus.js";
 import { createNodeServiceContext, type NodeServiceContext } from "./service-context.js";
 import { createSubRuntimeStore, type SubRuntimeStore } from "./sub-runtime-store.js";
@@ -27,6 +29,15 @@ export interface AppRuntime {
 	 * exactly one scrypt salt is persisted.
 	 */
 	keyProvider: KeyProvider;
+	/**
+	 * 自带字体的读取口,**全进程唯一一个**。给 id 返回拼好的 `@font-face` 规则,
+	 * 没选字体(空 id)返回空串。
+	 *
+	 * 为什么挂在这儿而不是各建各的:缓存里留的就是那条几十兆的规则,建两个读取器
+	 * 就是同一份东西在堆里存两遍,而镜像里 V8 的 old-space 只有 384MB。推送渲染器
+	 * 与预览路由都从这里取同一个,读盘、base64、拼规则一个进程只干一遍。
+	 */
+	loadFontFace: (id: string) => Promise<string>;
 	configStore: ConfigStore;
 	historyStore: HistoryStore;
 	fansStore: FansStore;
@@ -173,6 +184,9 @@ export function createAppRuntime(bootstrap: BootstrapConfig): AppRuntime {
 		serviceCtx,
 		bus,
 		keyProvider,
+		// 缓存里留拼好的 `@font-face` 而不是 data URL —— 规则本身就把 data URL 包在
+		// 里头,只留它就少留一整份几十兆的串。闲置到点自动放掉,见读取器内部说明。
+		loadFontFace: createFontAssetReader(bootstrap.dataDir, { transform: buildFontFace }),
 		configStore,
 		historyStore,
 		fansStore,

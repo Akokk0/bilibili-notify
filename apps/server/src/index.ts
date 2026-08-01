@@ -205,6 +205,8 @@ export async function startStandaloneServer(
 		];
 		engines = createEngines({
 			serviceCtx: runtime.serviceCtx,
+			// 全进程唯一那个字体读取口 —— 预览路由经 RouteDeps.runtime 取的是同一个。
+			loadFontFace: runtime.loadFontFace,
 			api: authSystem.api,
 			loginFlow: authSystem.flow,
 			configStore: runtime.configStore,

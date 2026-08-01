@@ -27,7 +27,6 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { PreviewResponse, TestPushResponse } from "@bilibili-notify/contract";
 import {
-	buildFontFace,
 	type Component,
 	DynamicCard,
 	type DynamicCardProps,
@@ -59,7 +58,6 @@ import {
 	saveCardBg,
 } from "../runtime/card-assets.js";
 import {
-	createFontAssetReader,
 	deleteFontAsset,
 	isValidFontAssetId,
 	listFontAssets,
@@ -500,13 +498,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 惰性构造:`/enable-rendering`、`/detect-chrome` 这些路由不碰 store,它们的测试
 	// 给的也是不带 store 的最小 deps —— 在这儿直接取 `bootstrap.dataDir` 会让整条路由
 	// 建不起来。真要读字体时再取,那条路径上 store 必然在。
-	let fontReader: ((id: string) => Promise<string>) | null = null;
 	const loadFontFace = (id: string): Promise<string> => {
 		if (!id) return Promise.resolve("");
-		fontReader ??= createFontAssetReader(opts.deps.store.bootstrap.dataDir, {
-			transform: buildFontFace,
-		});
-		return fontReader(id);
+		return opts.deps.runtime.loadFontFace(id);
 	};
 
 	let imageRenderer: ImageRenderer | null = null;

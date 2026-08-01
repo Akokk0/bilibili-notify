@@ -279,6 +279,55 @@ describe("带缓存的字体资产读取器", () => {
 		expect(transforms).toBe(0);
 	});
 
+	it("闲置超过上限就放掉 —— 主人切回默认字体后,那几十兆不该一直占着堆", async () => {
+		let reads = 0;
+		let now = 1_000_000;
+		const read = async (_d: string, id: string) => {
+			reads += 1;
+			return `data:font/woff2;base64,${id}`;
+		};
+		const load = createFontAssetReader(dir, { read, idleMs: 60_000, now: () => now });
+		const id = `${"j".repeat(32)}.woff2`;
+
+		await load(id);
+		expect(reads).toBe(1);
+
+		// 窗口内:照常命中,别为了省内存把热路径变成每次读盘。
+		now += 59_000;
+		await load(id);
+		expect(reads).toBe(1);
+
+		// 没人再用它了(主人切回默认字体 / 那个 UP 不再推送)。到点就该放掉,
+		// 于是下一次要它得重新读 —— 这正是「上一份已经不在堆里」的证据。
+		now += 61_000;
+		await load(id);
+		expect(reads).toBe(2);
+	});
+
+	it("不带字体的卡不冲掉缓存 —— 混用时每交替一次就重读一份几十兆更糟", async () => {
+		// fontAsset 能按 UP 覆盖,「这个 UP 有字体、那个用默认」是常态。若照
+		// 「load('') 就释放」去改,交替渲染就会反复读盘 + 重搓 base64,在 384MB
+		// 的堆里是拿一个 OOM 换另一个。释放的触发点是闲置,不是「这张卡没字体」。
+		let reads = 0;
+		let now = 1_000_000;
+		const load = createFontAssetReader(dir, {
+			read: async (_d: string, id: string) => {
+				reads += 1;
+				return `data:font/woff2;base64,${id}`;
+			},
+			idleMs: 60_000,
+			now: () => now,
+		});
+		const id = `${"k".repeat(32)}.woff2`;
+
+		await load(id);
+		now += 1_000;
+		expect(await load("")).toBe("");
+		now += 1_000;
+		await load(id);
+		expect(reads).toBe(1);
+	});
+
 	it("读盘抛错时不把坏结果焊死在缓存里", async () => {
 		let attempt = 0;
 		const read = async () => {

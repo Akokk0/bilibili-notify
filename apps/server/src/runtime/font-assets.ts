@@ -43,6 +43,12 @@ const ID_RE = /^[a-f0-9]{32}\.(woff2|woff|ttf|otf)$/;
 /** 名字清单的文件名。它住在资产目录里,故 id 正则不会让它被当成一款字体读出去。 */
 const MANIFEST = "index.json";
 
+/**
+ * 字体缓存的闲置释放上限。跟「空闲就把浏览器关掉」同一套路数:占大头的东西没人用了
+ * 就该放掉,而不是攒到进程结束。5 分钟远长于一轮推送里几张卡的间隔,热路径不受影响。
+ */
+const DEFAULT_FONT_CACHE_IDLE_MS = 5 * 60_000;
+
 /** 字体资产目录 `<dataDir>/assets/font`。 */
 export function fontAssetDir(dataDir: string): string {
 	return join(dataDir, "assets", "font");
@@ -183,13 +189,35 @@ export function createFontAssetReader(
 		transform?: (dataUrl: string) => string;
 		/** 底层读取,默认真读盘;注入便于单测观察读了几次。 */
 		read?: (dataDir: string, id: string) => Promise<string>;
+		/**
+		 * 闲置多久就把缓存放掉(ms),默认 5 分钟。
+		 *
+		 * 只留一条缓存不等于「留得住」—— 主人把卡片切回默认字体之后,那份拼好的
+		 * `@font-face` 没有任何一条路径会再碰它,却会一直挂到进程结束;一款几十兆的
+		 * 中文字库在镜像那 384MB 的堆里就是白扔一大块。
+		 *
+		 * 释放的触发点是**闲置**,不是「这张卡没选字体」。`fontAsset` 能按 UP 覆盖,
+		 * 「这个 UP 有字体、那个用默认」是常态,拿 `load("")` 当释放信号会让交替渲染
+		 * 反复读盘 + 重搓 base64 —— 那是拿一个 OOM 换另一个。
+		 *
+		 * 惰性判定,不挂定时器:每次调用先扫一眼过没过期。于是释放必定发生在下一次
+		 * 分配**之前**,也就是堆压力真正到来的那一刻,而进程闲着时也没有 timer 要收。
+		 */
+		idleMs?: number;
+		/** 取当前时刻,默认 `Date.now`;注入便于单测拨表。 */
+		now?: () => number;
 	} = {},
 ): (id: string) => Promise<string> {
 	const read = opts.read ?? readFontAssetDataUrl;
 	const transform = opts.transform;
-	let cached: { id: string; pending: Promise<string> } | null = null;
+	const idleMs = opts.idleMs ?? DEFAULT_FONT_CACHE_IDLE_MS;
+	const now = opts.now ?? Date.now;
+	let cached: { id: string; pending: Promise<string>; lastUsedAt: number } | null = null;
 
 	return async function load(id: string): Promise<string> {
+		// 先扫过期再干别的 —— 包括 id 为空这条路:不带字体的卡也是一次「没人再要它」
+		// 的机会,错过它,取消选择之后就再没有任何调用会来收这几十兆。
+		if (cached && now() - cached.lastUsedAt >= idleMs) cached = null;
 		if (!id) return "";
 		if (cached?.id !== id) {
 			// transform 在这儿跑一次就定住 —— 放到下面每次 await 之后跑,等于每张卡重拼一遍。
@@ -199,9 +227,12 @@ export function createFontAssetReader(
 				pending: transform
 					? read(dataDir, id).then((v) => (v ? transform(v) : ""))
 					: read(dataDir, id),
+				lastUsedAt: now(),
 			};
 		}
 		const entry = cached;
+		// 命中也要续期,否则一直在用的那款也会到点被扔掉,下一张卡又从盘上搓一遍。
+		entry.lastUsedAt = now();
 		try {
 			const dataUrl = await entry.pending;
 			// 空串 = 资产悬空。别缓存它,否则主人重新传一份同一个 id 也拿不回来。

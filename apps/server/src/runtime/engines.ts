@@ -33,7 +33,7 @@ import {
 	type SubscriptionsView as DynamicSubsView,
 	type PushSegment,
 } from "@bilibili-notify/dynamic";
-import { buildFontFace, ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
+import { ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
 	CardKind,
 	Disposable,
@@ -69,7 +69,6 @@ import { makeExistingCardBgPicker, readCardBgDataUrl } from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
 import { syncFollows } from "./follow-sync.js";
-import { createFontAssetReader } from "./font-assets.js";
 import { MasterNotifier } from "./master-notifier.js";
 import type { NodeServiceContext } from "./service-context.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
@@ -134,6 +133,11 @@ export interface CreateEnginesOptions {
 	 * runtime constructs the parent context once at boot.
 	 */
 	serviceCtx: NodeServiceContext;
+	/**
+	 * 自带字体的读取口(`AppRuntime.loadFontFace`)。刻意由外面传进来而不是自建:
+	 * 缓存里留的就是那条几十兆的 `@font-face`,建两个就在堆里存两遍。
+	 */
+	loadFontFace: (id: string) => Promise<string>;
 	api: BilibiliAPI;
 	/**
 	 * Auth subsystem 的 LoginFlow 实例。engines.ts 用它在 config-changed 时
@@ -317,12 +321,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// the engines bypass the renderer and emit text-only payloads, so we keep the
 	// instance alive rather than hot-swapping on the user toggling the switch.
 	let imageRenderer: ImageRenderer | null = null;
-	// 推送渲染器的字体读取口。缓存里留**拼好的 `@font-face`** 而不是 data URL —— 规则
-	// 本身就把 data URL 包在里头,只留它就少留一整份几十兆的串,而镜像里 V8 堆上限只有
-	// 384MB。热切换浏览器会重建渲染器,读取口跨重建复用,免得又从盘上搓一遍。
-	const loadFontFace = createFontAssetReader(opts.configStore.bootstrap.dataDir, {
-		transform: buildFontFace,
-	});
+	// 字体读取口由 runtime 建好传进来,**全进程只有那一个** —— 从前这儿自建一个、
+	// 预览路由再自建一个,同一份几十兆的 `@font-face` 就在 384MB 的堆里存了两遍。
+	// 热切换浏览器会重建渲染器,读取口跨重建复用,免得又从盘上搓一遍。
+	const loadFontFace = opts.loadFontFace;
 
 	const buildImageRenderer = (pup: PuppeteerLike): ImageRenderer => {
 		const cs = globals().defaults.cardStyle;

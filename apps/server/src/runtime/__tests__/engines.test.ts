@@ -227,6 +227,8 @@ function setup(opts?: { globals?: GlobalConfig; puppeteer?: boolean; subs?: Subs
 	const subs = opts?.subs ?? [];
 	const runtime = createEngines({
 		serviceCtx: serviceCtx as unknown as NodeServiceContext,
+		// 这批用例不碰自带字体;真实实现由 runtime 传进来,这里给个空实现即可。
+		loadFontFace: async () => "",
 		api: api as any,
 		loginFlow: loginFlow as any,
 		configStore: configStore as unknown as ConfigStore,
