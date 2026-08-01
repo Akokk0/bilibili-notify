@@ -45,3 +45,16 @@ export function createSerialQueue(): <T>(task: () => Promise<T> | T) => Promise<
  * 没排队,四张卡照样一起打出去。
  */
 export const enqueuePreview = createSerialQueue();
+
+/**
+ * 单次预览请求的死线。
+ *
+ * 串行队列有个代价:一个**永不落地**的请求不再只坑它自己 —— 队尾不前进,后面几张卡
+ * 连请求都发不出去,屏幕上只剩一排「渲染中…」,连错误文字都没有(错误提示只在 query
+ * 被 reject 时才渲染)。服务端收下 POST 却不回应是真会发生的:puppeteer 挂住并占着
+ * 渲染闸门,或者代理不 reset 而是干晾着连接。
+ *
+ * 取 120s:服务端自己的渲染死线是 20s,加上 chromium 冷启动与真实数据拉取仍绰绰有余,
+ * 也与「若经反向代理,请把读超时调到 120s 以上」那句提示对得上。它是看门狗,不是 SLA。
+ */
+export const PREVIEW_TIMEOUT_MS = 120_000;

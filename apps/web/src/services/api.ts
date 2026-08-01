@@ -70,10 +70,28 @@ export const OFFLINE_STATUS = 0;
  * 只包 TypeError:别的错误(代码写错、AbortError 等)原样抛出去,吞掉只会把 bug
  * 伪装成网络问题。
  */
+/**
+ * 这次失败是不是「等超时了」。`AbortSignal.timeout()` 到点抛的是 name 为
+ * `TimeoutError` 的 DOMException;按 name 判而不按类型判,免得换个运行时(测试环境、
+ * 桌面壳)构造出来的不是同一个 DOMException 就漏掉。
+ */
+function isTimeoutError(err: unknown): boolean {
+	return err instanceof Error && err.name === "TimeoutError";
+}
+
 async function withOffline<T>(what: string, run: () => Promise<T>): Promise<T> {
 	try {
 		return await run();
 	} catch (err) {
+		if (isTimeoutError(err)) {
+			// 与「连接被切」分开说:那边是连接层断了,这边是服务端收下了却迟迟不回应。
+			// 两种排查方向完全不同,混成一句话只会把人带偏。
+			throw new ApiError(
+				OFFLINE_STATUS,
+				undefined,
+				`等待超时，${what}在死线内没有等到服务器响应 —— 服务端可能仍在渲染,也可能卡住了`,
+			);
+		}
 		if (err instanceof TypeError) {
 			throw new ApiError(
 				OFFLINE_STATUS,
@@ -85,7 +103,23 @@ async function withOffline<T>(what: string, run: () => Promise<T>): Promise<T> {
 	}
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+/**
+ * 单次请求的可选项。
+ *
+ * `timeoutMs` 是**死线**,不是性能调优:预览走客户端串行队列,一个永不落地的请求会
+ * 让队尾永远不前进,后面几张卡连请求都发不出去 —— 屏幕上一排转圈,错误文字都没有。
+ * 到点 abort 既把那条连接放掉,也让队伍能往前挪。不传 = 不设死线(照旧)。
+ */
+interface RequestOptions {
+	timeoutMs?: number;
+}
+
+async function request<T>(
+	method: string,
+	path: string,
+	body?: unknown,
+	opts?: RequestOptions,
+): Promise<T> {
 	const res = await withOffline(`${method} ${path}`, () =>
 		fetch(path, {
 			method,
@@ -94,6 +128,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 			),
 			body: body !== undefined ? JSON.stringify(body) : undefined,
 			credentials: "include",
+			signal: opts?.timeoutMs ? AbortSignal.timeout(opts.timeoutMs) : undefined,
 		}),
 	);
 	let payload: unknown;
@@ -184,7 +219,8 @@ function nullifyUndefined(value: unknown): unknown {
 
 export const api = {
 	get: <T>(path: string) => request<T>("GET", path),
-	post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
+	post: <T>(path: string, body?: unknown, opts?: RequestOptions) =>
+		request<T>("POST", path, body, opts),
 	patch: <T>(path: string, body?: unknown) =>
 		request<T>("PATCH", path, body === undefined ? undefined : nullifyUndefined(body)),
 	delete: <T>(path: string) => request<T>("DELETE", path),

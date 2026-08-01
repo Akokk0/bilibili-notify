@@ -48,7 +48,7 @@ import {
 	type CardKind as StyleKind,
 } from "./cards/perkind";
 import { previewErrorHint, previewErrorTitle } from "./cards/preview-error";
-import { enqueuePreview } from "./cards/preview-queue";
+import { enqueuePreview, PREVIEW_TIMEOUT_MS } from "./cards/preview-queue";
 import {
 	colorOnly,
 	hasColorOverride,
@@ -153,7 +153,10 @@ function PreviewImage({
 		// 连坐掐断。详见 cards/preview-queue.ts。
 		queryFn: () =>
 			enqueuePreview(async () => {
-				const res = await api.post<PreviewResponse>("/api/cards/preview", debouncedSpec);
+				// 带死线:队伍是串行的,一个永不落地的请求会让后面几张卡连发都发不出去。
+				const res = await api.post<PreviewResponse>("/api/cards/preview", debouncedSpec, {
+					timeoutMs: PREVIEW_TIMEOUT_MS,
+				});
 				if (!res.ok || !res.dataUrl) {
 					throw new ApiError(500, res, res.err ?? "preview failed");
 				}

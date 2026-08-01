@@ -154,3 +154,63 @@ describe("api 断线", () => {
 		await expect(api.post("/api/whatever", {})).rejects.toThrow(RangeError);
 	});
 });
+
+/**
+ * 预览请求走客户端串行队列(cards/preview-queue.ts):后一张卡要等前一张 settle 才
+ * 发得出去。于是「一个永不落地的请求」不再只坑它自己 —— 服务端收下了 POST 却不回应
+ * (puppeteer 挂住并占着渲染闸门、代理不 reset 而是干晾着连接),那条 fetch 永远不
+ * settle,队尾就永远不前进,后面几张卡连请求都发不出去,屏幕上只剩一排转圈、连错误
+ * 文字都没有。请求本身必须有个死线,到点就断,让队伍能往前挪。
+ */
+describe("api 请求死线", () => {
+	/** 只认 abort、否则永不落地的 fetch —— 模拟「服务端收下了但不回应」。 */
+	const neverSettles = () =>
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				(_url: string, init: RequestInit) =>
+					new Promise((_resolve, reject) => {
+						init.signal?.addEventListener("abort", () =>
+							reject(
+								Object.assign(new Error("This operation was aborted"), { name: "TimeoutError" }),
+							),
+						);
+					}),
+			),
+		);
+
+	it("到点就断,而不是把整条队伍一起挂死", async () => {
+		neverSettles();
+		await expect(api.post("/api/cards/preview", {}, { timeoutMs: 20 })).rejects.toMatchObject({
+			name: "ApiError",
+			status: 0,
+		});
+	});
+
+	it("说清楚是等超时了,别跟「连接被切」混为一谈", async () => {
+		neverSettles();
+		await expect(api.post("/api/cards/preview", {}, { timeoutMs: 20 })).rejects.toThrow(/超时/);
+	});
+
+	it("真的把 signal 交给了 fetch —— 否则那条连接还在后台吊着", async () => {
+		neverSettles();
+		await api.post("/api/cards/preview", {}, { timeoutMs: 20 }).catch(() => undefined);
+		const init = vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[1] as RequestInit;
+		expect(init.signal).toBeInstanceOf(AbortSignal);
+	});
+
+	it("没给死线的请求不受影响 —— 别给所有请求平白加一道超时", async () => {
+		neverSettles();
+		let settled = false;
+		void api.post("/api/whatever", {}).then(
+			() => {
+				settled = true;
+			},
+			() => {
+				settled = true;
+			},
+		);
+		await new Promise((r) => setTimeout(r, 60));
+		expect(settled).toBe(false);
+	});
+});
