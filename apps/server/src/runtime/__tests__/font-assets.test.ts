@@ -92,7 +92,9 @@ describe("列表带得出原始文件名", () => {
 	it("列出来的每一款都带上传时那个名字,中文名也不丢", async () => {
 		const fresh = await mkdtemp(join(tmpdir(), "font-list-"));
 		const id = await saveFontAsset(fresh, WOFF2, "霞鹜文楷.ttf");
-		expect(await listFontAssets(fresh)).toEqual([{ id, name: "霞鹜文楷.ttf" }]);
+		expect(await listFontAssets(fresh)).toEqual([
+			{ id, name: "霞鹜文楷.ttf", size: WOFF2.byteLength },
+		]);
 		await rm(fresh, { recursive: true, force: true });
 	});
 
@@ -101,7 +103,7 @@ describe("列表带得出原始文件名", () => {
 		const id = await saveFontAsset(fresh, WOFF2, "某字体.otf");
 		// 模拟清单被手删 / 卷丢失。
 		await rm(join(fontAssetDir(fresh), "index.json"), { force: true });
-		expect(await listFontAssets(fresh)).toEqual([{ id, name: id }]);
+		expect(await listFontAssets(fresh)).toEqual([{ id, name: id, size: WOFF2.byteLength }]);
 		await rm(fresh, { recursive: true, force: true });
 	});
 
@@ -115,6 +117,15 @@ describe("列表带得出原始文件名", () => {
 		);
 		const listed = await listFontAssets(fresh);
 		expect(listed.some((f: { id: string }) => f.id === ghost)).toBe(false);
+		await rm(fresh, { recursive: true, force: true });
+	});
+
+	it("带上文件大小 —— 设置页据它提醒「这款大到会把出图撑爆」,而不是只在上传那一下说一次", async () => {
+		const fresh = await mkdtemp(join(tmpdir(), "font-size-"));
+		const id = await saveFontAsset(fresh, WOFF2, "霞鹜文楷.ttf");
+		expect(await listFontAssets(fresh)).toEqual([
+			{ id, name: "霞鹜文楷.ttf", size: WOFF2.byteLength },
+		]);
 		await rm(fresh, { recursive: true, force: true });
 	});
 

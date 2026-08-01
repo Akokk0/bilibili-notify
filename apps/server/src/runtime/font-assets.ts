@@ -15,7 +15,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
 
@@ -89,6 +89,12 @@ async function writeManifest(dataDir: string, next: Record<string, string>): Pro
 export interface FontAsset {
 	id: string;
 	name: string;
+	/**
+	 * 文件字节数。列表里带上它,设置页那句「这款大到会把出图撑爆」才能**按当前选中的
+	 * 那款**算出来 —— 从前只在上传那一下提醒一次,重载页面就没了,而正被 OOM 折磨的
+	 * 主人恰恰是重载之后来看这块界面的。读不到大小(文件刚被删)记 0,不影响列出。
+	 */
+	size: number;
 }
 
 /**
@@ -103,7 +109,23 @@ export async function listFontAssets(dataDir: string): Promise<FontAsset[]> {
 		return [];
 	}
 	const manifest = await readManifest(dataDir);
-	return names.filter(isValidFontAssetId).map((id) => ({ id, name: manifest[id] ?? id }));
+	const dir = fontAssetDir(dataDir);
+	return await Promise.all(
+		names.filter(isValidFontAssetId).map(async (id) => ({
+			id,
+			name: manifest[id] ?? id,
+			size: await fileSize(join(dir, id)),
+		})),
+	);
+}
+
+/** 文件字节数;读不到(刚被删 / 权限)记 0 —— 少一句提醒好过整个图廊列不出来。 */
+async function fileSize(path: string): Promise<number> {
+	try {
+		return (await stat(path)).size;
+	} catch {
+		return 0;
+	}
 }
 
 /**

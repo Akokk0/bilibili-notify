@@ -13,6 +13,7 @@
  * 要指定具体某款:上传字体文件(两端都作数),或走「手填」用本机装过的。
  */
 
+import { MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Icon } from "../../components/icons";
@@ -28,7 +29,8 @@ import {
 
 interface FontListResponse {
 	ok: boolean;
-	fonts: Array<{ id: string; name: string }>;
+	/** `size` 是文件字节数 —— 大字体提醒按**当前选中的那款**算,就靠它。 */
+	fonts: Array<{ id: string; name: string; size?: number }>;
 }
 
 /** 一行可选项。选中态用 aria-pressed 表达 —— 读屏读得出,测试也查得到。 */
@@ -89,19 +91,24 @@ export function FontPicker({
 	const qc = useQueryClient();
 	const [uploading, setUploading] = useState(false);
 	const [err, setErr] = useState<string | null>(null);
-	/** 传上来了、但大到会影响出图的提醒。与 err 分开:那是失败,这是收下了但要打个招呼。 */
-	const [warn, setWarn] = useState<string | null>(null);
 	const list = useQuery({
 		queryKey: ["card-font-assets"],
 		queryFn: () => api.get<FontListResponse>("/api/cards/font-assets"),
 	});
 	const fonts = list.data?.fonts ?? [];
 	const sel = fontSelection(value, list.data ? fonts.map((f) => f.id) : null);
+	/**
+	 * 大到会影响出图的提醒。**从当前选中那款派生**,不是上传时存下来的一句话:存成
+	 * state 的话切走不消(横幅还在说一款已经不用了的字体)、重载就没(而正被 OOM 折磨
+	 * 的主人恰恰是重载之后来看这块界面的)。与 err 分开:那是失败,这是收下了但要打个
+	 * 招呼。
+	 */
+	const warn =
+		sel.kind === "uploaded" ? fontSizeWarning(fonts.find((f) => f.id === sel.id)?.size ?? 0) : null;
 
 	const onFile = async (file: File | undefined) => {
 		if (!file) return;
 		setErr(null);
-		setWarn(null);
 		setUploading(true);
 		try {
 			const form = new FormData();
@@ -112,9 +119,9 @@ export function FontPicker({
 			);
 			if (!res.ok || !res.id) throw new Error(res.err ?? "上传失败");
 			await qc.invalidateQueries({ queryKey: ["card-font-assets"] });
-			onChange(pickUploadedFont(value, res.id)); // 传上来的当场选用,否则像没反应
-			// 传完再说 —— 这是提醒不是拦截:文件合法就该收下,只是大到会影响出图时得让主人知道。
-			setWarn(fontSizeWarning(file.size));
+			// 传上来的当场选用,否则像没反应。大字体那句提醒不在这儿说 —— 它由「当前选中
+			// 的是哪款、那款多大」派生,列表刷新后自然就出来了,切走 / 重载也都对得上。
+			onChange(pickUploadedFont(value, res.id));
 		} catch (e) {
 			setErr((e as Error).message);
 		} finally {
@@ -205,8 +212,10 @@ export function FontPicker({
 						onChange={(e) => onFile(e.target.files?.[0])}
 					/>
 				</label>
+				{/* 上限从共享常量算,别硬写:写死的话调了 MAX_FONT_ASSET_BYTES 这句话还在
+				    说旧数字,主人等完一次上传才被告知一个跟按钮旁边写的不一样的上限。 */}
 				<span className="text-[10.5px] text-bn-text-tertiary">
-					woff2 / woff / ttf / otf，单款 20MB 以内 —— 优先用 woff2，同一套字通常只占 ttf 的三分之一
+					{`woff2 / woff / ttf / otf，单款 ${Math.round(MAX_FONT_ASSET_BYTES / 1024 / 1024)}MB 以内 —— 优先用 woff2，同一套字通常只占 ttf 的三分之一`}
 				</span>
 			</div>
 

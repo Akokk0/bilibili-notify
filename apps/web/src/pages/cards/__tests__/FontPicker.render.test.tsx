@@ -31,7 +31,7 @@ import { ApiError, api } from "../../../services/api";
 
 const UPLOADED = `${"a".repeat(32)}.woff2`;
 
-function mount(value: FontChoice, fonts: Array<{ id: string; name: string }> = []) {
+function mount(value: FontChoice, fonts: Array<{ id: string; name: string; size?: number }> = []) {
 	vi.mocked(api.get).mockResolvedValue({ ok: true, fonts } as never);
 	const onChange = vi.fn();
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -146,19 +146,45 @@ describe("传了一款很大的字体", () => {
 		fireEvent.change(input);
 	}
 
-	it("照收不误,同时提醒转 woff2 —— 拦下来只会让主人没法用自己的字体", async () => {
+	it("照收不误 —— 拦下来只会让主人没法用自己的字体", async () => {
 		await upload(bigFile(12));
-		// 先确认真的上传了:这条提醒的前提是「收下了」,不是「拦住了」。
+		// 这条提醒的前提是「收下了」,不是「拦住了」:传上去、并且当场被选用。
 		await waitFor(() => expect(api.upload).toHaveBeenCalled());
+	});
+});
+
+/**
+ * 提醒**按当前选中的那一款算**,不是上传那一下的一次性弹词。
+ *
+ * 从前它是个 state,只在 `onFile` 里赋值:切走不消(横幅还在说一款已经不用了的字体)、
+ * 重载就没(而正被 OOM 折磨的主人恰恰是重载之后来看这块界面的)。派生出来之后两头
+ * 都对上了 —— 列表接口现在带 size,选着哪款就说哪款。
+ */
+describe("大字体提醒随当前选中走", () => {
+	const BIG = `${"b".repeat(32)}.ttf`;
+	const SMALL = `${"c".repeat(32)}.woff2`;
+	const LIB = [
+		{ id: BIG, name: "超大字体.ttf", size: 12 * 1024 * 1024 },
+		{ id: SMALL, name: "小字体.woff2", size: 3 * 1024 * 1024 },
+	];
+
+	it("一进页面就选着那款大的 → 提醒还在,不必重传一次才看得到", async () => {
+		mount({ font: "", fontAsset: BIG }, LIB);
 		// 按提醒块独有的说法查:「woff2」在上传说明那一行本来就有,拿它当特征串会白过。
 		const warn = await screen.findByText(/会整份进内存/);
 		expect(warn.textContent).toMatch(/12\.0 MB/);
 		expect(warn.textContent).toMatch(/woff2/);
 	});
 
-	it("正常大小的不吵 —— 每传一次都被念一遍就没人看提醒了", async () => {
-		await upload(bigFile(3));
-		await waitFor(() => expect(api.upload).toHaveBeenCalled());
+	it("选的是正常大小那款 → 不吵,哪怕库里还躺着一款大的", async () => {
+		mount({ font: "", fontAsset: SMALL }, LIB);
+		expect(await screen.findByText("小字体.woff2")).toBeTruthy();
+		expect(screen.queryByText(/会整份进内存/)).toBeNull();
+	});
+
+	it("切回默认 → 提醒跟着消失,不再说一款已经不用了的字体", async () => {
+		mount({ font: "" }, LIB);
+		expect(await screen.findByText("超大字体.ttf")).toBeTruthy();
 		expect(screen.queryByText(/会整份进内存/)).toBeNull();
 	});
 });

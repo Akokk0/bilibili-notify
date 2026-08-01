@@ -87,7 +87,10 @@ describe("POST /font-asset —— 上传", () => {
 			expect(json.ok).toBe(true);
 			expect(json.id).toMatch(/^[a-f0-9]{32}\.woff2$/);
 			expect(json.name).toBe("思源黑体.woff2");
-			expect(await listFontAssets(dir)).toEqual([{ id: json.id, name: "思源黑体.woff2" }]);
+			expect(await listFontAssets(dir)).toEqual([
+				// size 是设置页那句「这款大到会把出图撑爆」的依据,按当前选中那款算。
+				{ id: json.id, name: "思源黑体.woff2", size: expect.any(Number) },
+			]);
 		});
 	});
 
