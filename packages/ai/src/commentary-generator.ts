@@ -36,16 +36,6 @@ const TITLE_PROMPT = [
  */
 const VISION_TIMEOUT_MS = 60_000;
 
-/**
- * 启动 / 配置更新时打进日志的那份提示词是**哪一版**。
- *
- * 那两处调 `getSystemPrompt()` 不传参,拿到的必然是「无场景 + 无工具」那一版,里头明写
- * 着「这一次你没有任何可调用的工具」;而 `chat()` / `chatStateless()` 真正发出去的是带
- * 工具铁律的另一版。不标清楚的话,有人排查「女仆怎么不肯调订阅工具」,翻日志看到白纸
- * 黑字禁用工具,就会去追一个在那条路径上根本不存在的 prompt bug。
- */
-const PROMPT_LOG_VARIANT = "无场景 · 无工具那一版；聊天那条路发出去的会多一段工具铁律";
-
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 const SESSION_SWEEP_INTERVAL_MS = 10 * 60 * 1000; // 10 min — 清扫过期且不再被访问的 session
 
@@ -261,9 +251,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 		this.logger.info(
 			`[update] 人格预设：${preset}，名字：${name ?? "(默认)"}，模型：${config.model}，性格：${traits ?? "(默认)"}`,
 		);
-		this.logger.debug(
-			`[update] 新系统提示词（${PROMPT_LOG_VARIANT}）：\n${this.getSystemPrompt()}`,
-		);
+		// 不传参 = 无场景、未挂工具那一版;聊天那条路发出去的会多一段工具铁律。
+		this.logger.debug(`[update] 新系统提示词（无场景 · 未挂工具）：\n${this.getSystemPrompt()}`);
 	}
 
 	/** 删除所有已过 TTL 的 session(无界增长根因:过期项此前从不 delete)。 */
@@ -289,7 +278,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		this.logger.info(
 			`[start] 人格预设：${preset}，模型：${this.config.model}，多轮对话：${this.config.enableConversation ? "开启" : "关闭"}`,
 		);
-		this.logger.debug(`[start] 系统提示词（${PROMPT_LOG_VARIANT}）：\n${this.getSystemPrompt()}`);
+		this.logger.debug(`[start] 系统提示词（无场景 · 未挂工具）：\n${this.getSystemPrompt()}`);
 	}
 
 	/** 停止钩子，停清扫定时器并清空会话历史。 */

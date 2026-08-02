@@ -38,7 +38,7 @@ describe("buildSystemPrompt — allowMarkdown", () => {
 		const md = buildSystemPrompt({ ...opts, allowMarkdown: true });
 		// 「必须调用工具才能声称操作成功」那条铁律绝不能被顺手带走。
 		expect(md).toContain("必须调用对应工具");
-		expect(md).toContain("严禁在未调用工具的情况下声称操作已完成");
+		expect(md).toContain("严禁在未调用工具的情况下编造或猜测结果");
 		// 两者之差**只有**那一行。
 		const removed = plain
 			.split("\n")
@@ -54,8 +54,8 @@ describe("buildSystemPrompt — allowMarkdown", () => {
 		const removed = plain.split("\n").filter((l) => !md.split("\n").includes(l));
 		expect(removed).toHaveLength(1);
 		expect(removed[0]).toContain(PLAIN_TEXT_RULE);
-		// 「你没有工具」那条在两边都在,不会被 allowMarkdown 带走。
-		expect(md).toContain("没有任何可调用的工具");
+		// 「本次任务范围」那条在两边都在,不会被 allowMarkdown 带走。
+		expect(md).toContain("就眼前给到的内容直接作答");
 	});
 
 	it("那条约束留在**原来的位置** —— 推送侧的提示词顺序不许变", () => {
@@ -65,11 +65,13 @@ describe("buildSystemPrompt — allowMarkdown", () => {
 		const lines = plain.split("\n");
 		const ruleAt = lines.findIndex((l) => l.includes(PLAIN_TEXT_RULE));
 		const dutyAt = lines.findIndex((l) => l.includes("这是你最重要的职责"));
-		const toolLawAt = lines.findIndex((l) => l.includes("【重要规则】"));
+		// 规则块的抬头按档位不同:挂了工具是【重要规则】,没挂是【本次任务】。这条要守的
+		// 是**位置**(纯文本那句夹在职责句与规则块之间),所以两种抬头都认。
+		const ruleBlockAt = lines.findIndex((l) => /^【(重要规则|本次任务)】/.test(l));
 		expect(dutyAt).toBeGreaterThanOrEqual(0);
-		expect(toolLawAt).toBeGreaterThanOrEqual(0);
+		expect(ruleBlockAt).toBeGreaterThanOrEqual(0);
 		expect(ruleAt).toBeGreaterThan(dutyAt);
-		expect(ruleAt).toBeLessThan(toolLawAt);
+		expect(ruleAt).toBeLessThan(ruleBlockAt);
 	});
 
 	it("custom 预设下同样管用 —— 自定义人格也吃这段共用开头", () => {
