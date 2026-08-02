@@ -75,6 +75,21 @@ function Row({
 	);
 }
 
+/**
+ * 字段下方的提示块。**错误与提醒长一个样,只换颜色**。
+ *
+ * 从前报错是光秃秃一行红字,提醒却是个带边框的块 —— 看着像前者不要紧,可「文件太大
+ * 被拒了」恰恰是最需要一眼看清的那句,而且两者会同时出现(刚被拒的那次 + 当前选着的
+ * 那款偏大),一行字贴在一个块旁边只会显得是那个块的注脚。
+ */
+function Notice({ tone, children }: { tone: "danger" | "warning"; children: React.ReactNode }) {
+	const palette =
+		tone === "danger"
+			? "border-bn-danger-border bg-bn-danger-soft text-bn-danger-text"
+			: "border-bn-warning-border bg-bn-warning-soft text-bn-warning-text";
+	return <div className={`rounded-md border px-2.5 py-1.5 text-[11px] ${palette}`}>{children}</div>;
+}
+
 export function FontPicker({
 	value,
 	onChange,
@@ -249,13 +264,9 @@ export function FontPicker({
 				</div>
 			</details>
 
-			{err ? <span className="text-[11px] text-bn-danger-text">{err}</span> : null}
+			{err ? <Notice tone="danger">{err}</Notice> : null}
 			{/* 提醒不是错误:字体已经收下并选用了,只是大到会影响出图,得让主人心里有数。 */}
-			{warn ? (
-				<div className="rounded-md border border-bn-warning-border bg-bn-warning-soft px-2.5 py-1.5 text-[11px] text-bn-warning-text">
-					{warn}
-				</div>
-			) : null}
+			{warn ? <Notice tone="warning">{warn}</Notice> : null}
 		</div>
 	);
 }
