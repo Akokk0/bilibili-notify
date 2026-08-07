@@ -554,6 +554,25 @@ export const FIELD_LABELS = {
 	"session.channelId": { label: "子频道 ID (channelId)", section: "session" },
 	"session.groupOpenid": { label: "群 openid (groupOpenid)", section: "session" },
 	"session.userOpenid": { label: "用户 openid (C2C)", section: "session" },
+
+	// ── 定时周报(roastSchedule.*) ─────────────────────────────────────────
+	// 周期与统计范围是**解耦**的两个字段:cron 定何时发,days 定统计多少天。
+	// 不预设「周报 / 月报」这类组合 —— 用户自己搭。
+	"roastSchedule.cron": {
+		label: "发送时间",
+		hint: "cron 表达式 · 如 0 9 * * 1(每周一早九点)",
+		section: "schedule",
+	},
+	"roastSchedule.days": {
+		label: "统计范围",
+		hint: "往前统计多少天(1–90)· 与发送周期无关,想每天发一份近 7 天的榜也可以",
+		section: "schedule",
+	},
+	"roastSchedule.targets": {
+		label: "发送到",
+		hint: "可多选 · 一个群发失败不影响其他群",
+		section: "schedule",
+	},
 } satisfies Record<string, FieldLabel>;
 
 /** 所有已知 code 的联合类型。 */

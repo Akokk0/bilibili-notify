@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
 	DEFAULT_ROAST_CRON,
 	DEFAULT_ROAST_DAYS,
+	DEFAULT_ROAST_SCHEDULE,
 	ROAST_MAX_DAYS,
 	ROAST_MIN_DAYS,
 } from "../constants";
@@ -17,7 +18,13 @@ import {
 
 // 边界与默认值本体住在 zero-dep 的 `../constants` —— 配置页要拿它们做输入提示,
 // 而 `apps/web` 不能把 zod 拉进浏览器 bundle,从这个文件 import 就会。这里只 re-export。
-export { DEFAULT_ROAST_CRON, DEFAULT_ROAST_DAYS, ROAST_MAX_DAYS, ROAST_MIN_DAYS };
+export {
+	DEFAULT_ROAST_CRON,
+	DEFAULT_ROAST_DAYS,
+	DEFAULT_ROAST_SCHEDULE,
+	ROAST_MAX_DAYS,
+	ROAST_MIN_DAYS,
+};
 
 export const RoastScheduleSchema = z.object({
 	/**
@@ -47,6 +54,3 @@ export const RoastScheduleSchema = z.object({
 	ccMaster: z.boolean().default(false),
 });
 export type RoastSchedule = z.infer<typeof RoastScheduleSchema>;
-
-/** 缺字段的老配置补全用 —— 全默认 = 关着的一条调度。 */
-export const DEFAULT_ROAST_SCHEDULE: RoastSchedule = RoastScheduleSchema.parse({});

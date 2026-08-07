@@ -11,6 +11,7 @@ export {
 	type AIProviderProfileShape,
 	BUILTIN_AI_PRESETS,
 	colorFromUid,
+	DEFAULT_ROAST_SCHEDULE,
 	EMPTY_AI_PROVIDER_PROFILE,
 	INBOUND_CAPABLE_PLATFORMS,
 	platformCanReceiveReply,

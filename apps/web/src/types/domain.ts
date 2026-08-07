@@ -23,6 +23,7 @@ import type {
 } from "@bilibili-notify/internal";
 import {
 	DEFAULT_FEATURE_FLAGS,
+	DEFAULT_ROAST_SCHEDULE,
 	FEATURE_KEYS,
 	type FeatureKey,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
@@ -181,6 +182,9 @@ export function makeEmptySubscription(uid: string): Subscription {
 		atAllDefaults: { dynamic: false, live: true },
 		atAll: { dynamic: {}, live: {} },
 		overrides: {},
+		// 新订阅不自带定时锐评 —— 加一个 UP 不该顺手给群里排一条周期推送。
+		// 与服务端的 makeEmptySubscription 保持一致。
+		roastSchedule: { ...DEFAULT_ROAST_SCHEDULE },
 		specialUsers: [],
 		state: {
 			lastDynamicId: undefined,

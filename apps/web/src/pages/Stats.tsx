@@ -36,6 +36,7 @@ import { buildStatColumns, type StatColumnId } from "./stats/columns";
 import { buildCsv } from "./stats/csv";
 import { netFromCumulative, sumNetPoints } from "./stats/gaps";
 import { RoastCard } from "./stats/RoastCard";
+import { RoastScheduleBox } from "./stats/RoastScheduleBox";
 import { buildRadarAxes } from "./stats/radar";
 import { SoloRoastCard } from "./stats/SoloRoastCard";
 import { colorFromUid, displayName } from "./up/helpers";
@@ -864,6 +865,10 @@ export default function Stats() {
 			) : (
 				<RoastCard days={days} meta={meta} />
 			)}
+
+			{/* 定时周报的配置。只在榜单视图下露出 —— 它配的是全局那条榜单流水线,
+			    跟当前钻取的是哪一位 UP 无关(单人锐评的定时挂在各自的订阅上)。 */}
+			{!focused && <RoastScheduleBox />}
 		</div>
 	);
 }

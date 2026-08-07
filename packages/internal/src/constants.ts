@@ -534,6 +534,25 @@ export const DEFAULT_ROAST_CRON = "0 9 * * 1";
 export const DEFAULT_ROAST_DAYS = 7;
 
 /**
+ * 一条**关着**的定时锐评配置。
+ *
+ * 住在这里而不是 schema 文件:`apps/web` 造空订阅时要用它,而那个文件 import 了
+ * zod —— 从那儿取一份默认值就把 zod 拉进浏览器 bundle 了。schema 侧拿它当
+ * `.default()`,两边同一份。
+ *
+ * `enabled: false` 是硬要求:存量用户升级上来,不该有任何东西开始自己往群里发帖。
+ */
+export const DEFAULT_ROAST_SCHEDULE = {
+	enabled: false,
+	cron: DEFAULT_ROAST_CRON,
+	days: DEFAULT_ROAST_DAYS,
+	targets: [] as string[],
+	approval: false,
+	notifyOnError: true,
+	ccMaster: false,
+} as const;
+
+/**
  * 已经**实现了入站消息解析**的推送平台。
  *
  * 列的是「主人在这里回一句话，我们真的收得到」，不是「协议上理论可行」。审批要靠
