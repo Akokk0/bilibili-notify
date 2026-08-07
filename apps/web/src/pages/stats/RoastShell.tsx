@@ -14,7 +14,6 @@ import { Icon } from "../../components/icons";
 
 // 十六进制字面量,不能用 var() —— GlassPanel 要拼 `${accent}1f` 造光晕。
 export const ROAST_PURPLE = "#6c5ce7";
-const PURPLE_LIGHT = "#a29bfe";
 
 export interface RoastShellProps {
 	title: string;
@@ -65,17 +64,9 @@ export function RoastShell({
 				children
 			) : (
 				/* 居中而不是左图右按钮:与定时周报并排之后面板只有半宽,
-				   按钮贴到最右会离文案很远,读起来像两件事。 */
+				   按钮贴到最右会离文案很远,读起来像两件事。
+				   正文里不再放大图标 —— 面板标题左边已经有一枚同样的 AI 图标了。 */
 				<div className="flex flex-col items-center gap-3 px-1 py-4 text-center">
-					<div
-						className="flex h-11 w-11 shrink-0 items-center justify-center rounded-bn-card text-white"
-						style={{
-							background: `linear-gradient(135deg, ${PURPLE_LIGHT}, ${ROAST_PURPLE})`,
-							boxShadow: `0 6px 16px ${ROAST_PURPLE}4d`,
-						}}
-					>
-						<Icon.ai width={22} height={22} />
-					</div>
 					<div className="max-w-md text-xs leading-relaxed text-bn-text-tertiary">
 						{err ? <span className="text-bn-danger-text">生成失败:{err}</span> : idle}
 					</div>
