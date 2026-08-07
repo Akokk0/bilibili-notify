@@ -40,6 +40,7 @@ import { RoastScheduleBox } from "./stats/RoastScheduleBox";
 import { buildRadarAxes } from "./stats/radar";
 import { STATS_RANGES } from "./stats/ranges";
 import { SoloRoastCard } from "./stats/SoloRoastCard";
+import { SoloRoastScheduleBox } from "./stats/SoloRoastScheduleBox";
 import { colorFromUid, displayName } from "./up/helpers";
 
 /**
@@ -848,19 +849,26 @@ export default function Stats() {
 			</div>
 
 			{/* AI 锐评 —— 两张不同的卡:榜单需要对照组,单人只就自己的数据说话 */}
+			{/* 定时配置与手动生成并排:同一件事的两种触发方式,配置在左、现在就生成在右。
+			    页头选了某位 UP 就整组换成他自己的那一套(定时锐评 + 单人锐评),没选就是
+			    全局那套(榜单周报 + 榜单锐评)—— 看的是谁,配的就是谁。窄屏回落成单栏。 */}
 			{focused ? (
-				<SoloRoastCard
-					key={focused.uid}
-					uid={focused.uid}
-					name={focusedMeta?.name ?? `UID ${focused.uid}`}
-					color={focusColor}
-					avatar={focusedMeta?.avatar}
-					days={days}
-				/>
+				<div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+					<SoloRoastScheduleBox
+						key={`sched-${focused.uid}`}
+						uid={focused.uid}
+						name={focusedMeta?.name ?? `UID ${focused.uid}`}
+					/>
+					<SoloRoastCard
+						key={focused.uid}
+						uid={focused.uid}
+						name={focusedMeta?.name ?? `UID ${focused.uid}`}
+						color={focusColor}
+						avatar={focusedMeta?.avatar}
+						days={days}
+					/>
+				</div>
 			) : (
-				/* 定时周报与手动锐评并排:同一件事的两种触发方式,配置在左、现在就生成
-				   在右。窄屏回落成单栏。只在榜单视图下露出 —— 这里配的是全局那条榜单
-				   流水线,跟当前钻取的是哪一位 UP 无关(单人锐评的定时挂在各自订阅上)。 */
 				<div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
 					<RoastScheduleBox />
 					<RoastCard days={days} meta={meta} />
