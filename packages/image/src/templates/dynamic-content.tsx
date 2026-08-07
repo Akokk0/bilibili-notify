@@ -23,6 +23,7 @@ const DYNAMIC_TYPE_UGC_SEASON = "DYNAMIC_TYPE_UGC_SEASON";
 const ADDITIONAL_TYPE_RESERVE = "ADDITIONAL_TYPE_RESERVE";
 const ADDITIONAL_TYPE_GOODS = "ADDITIONAL_TYPE_GOODS";
 const ADDITIONAL_TYPE_COMMON = "ADDITIONAL_TYPE_COMMON";
+const ADDITIONAL_TYPE_UGC = "ADDITIONAL_TYPE_UGC";
 
 /** 时间戳 / 数字的格式化器(由 image-renderer 注入,保持模版层纯净)。 */
 export type NodeFormatters = {
@@ -341,8 +342,8 @@ function buildPicsContent(pics: DynamicPic[]) {
 }
 
 /**
- * 附加内容(预约 / 商品 / 通用卡)。返回内层 VNode(无外边距 —— 间距由 additional
- * 版式块的 marginTop 控制),无附加内容时返回 null(块自动收起)。
+ * 附加内容(预约 / 商品 / 通用卡 / 关联视频)。返回内层 VNode(无外边距 —— 间距由
+ * additional 版式块的 marginTop 控制),无附加内容时返回 null(块自动收起)。
  */
 function buildAdditionalContent(dynamic: Dynamic): VNode | null {
 	const additional = dynamic.modules.module_dynamic.additional;
@@ -354,6 +355,9 @@ function buildAdditionalContent(dynamic: Dynamic): VNode | null {
 			return buildGoodsAdditional(additional.goods);
 		case ADDITIONAL_TYPE_COMMON:
 			return buildCommonAdditional(additional.common);
+		case ADDITIONAL_TYPE_UGC:
+			// type 说是 UGC 但 ugc 缺席的情况真实存在(接口降级),没内容就当没附加块。
+			return additional.ugc ? buildUgcAdditional(additional.ugc) : null;
 		default:
 			return null;
 	}
@@ -463,6 +467,51 @@ function buildCommonAdditional(common: any) {
 							{common.button.jump_style.text}
 						</div>
 					)}
+				</div>
+			</div>
+		</div>
+	);
+}
+
+/**
+ * 关联视频卡 —— 图文/文字动态正文下方挂的那条投稿。
+ *
+ * 与 DYNAMIC_TYPE_AV 的主视频卡(buildVideoContent)是两套数据:那边 `stat.play` /
+ * `stat.danmaku` 是数字、要配图标,这边 `desc_second` 已经是接口拼好的成品文案
+ * (「2654观看 102弹幕」),官方页面也是当纯文本灰字渲染的,别再套图标重排。
+ */
+// biome-ignore lint/suspicious/noExplicitAny: Bilibili API 返回的关联视频数据类型不固定
+function buildUgcAdditional(ugc: any) {
+	return (
+		<div>
+			{/* head_text 在抓包里常为空串,空就整行不渲染,免得多出一条空白灰字。 */}
+			{ugc.head_text && (
+				<div class="flex items-center gap-1 text-[12px] text-[#999] mb-[6px]">{ugc.head_text}</div>
+			)}
+			<div class="bg-black/4 rounded-lg p-[10px]">
+				<div class="flex gap-[10px] items-center">
+					<div class="relative w-[140px] h-[80px] shrink-0 rounded-md overflow-hidden bg-black/8">
+						<img class="w-full h-full object-cover block" src={ugc.cover} alt="" />
+						{/*
+						 * 角标衬一层深色底,不是只给文字加 text-shadow —— 封面右下角是什么颜色
+						 * 完全由 UP 决定,遇上亮底(放射光、白背景)白字加弱阴影就糊没了。
+						 * 主视频卡靠整张压暗 bg-black/20 兜住,这里封面小、压暗会让整卡发灰,
+						 * 改成只在角标下垫一块。
+						 */}
+						{ugc.duration && (
+							<span class="absolute bottom-[4px] right-[4px] px-[4px] py-[1px] rounded-[3px] bg-black/60 text-white text-[11px] font-bold leading-[1.4]">
+								{ugc.duration}
+							</span>
+						)}
+					</div>
+					<div class="flex-1 min-w-0">
+						<div class="text-[13px] font-bold text-[#18191C] line-clamp-2 mb-[6px]">
+							{ugc.title}
+						</div>
+						{ugc.desc_second && (
+							<div class="text-[12px] text-[#999] truncate">{ugc.desc_second}</div>
+						)}
+					</div>
 				</div>
 			</div>
 		</div>
