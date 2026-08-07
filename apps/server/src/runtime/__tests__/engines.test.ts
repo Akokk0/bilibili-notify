@@ -531,6 +531,42 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(H.ai[0].updateConfig).not.toHaveBeenCalled();
 	});
 
+	it("启动时没配 AI、之后补齐 → runtime.commentary 跟着变成实例", () => {
+		// 现场(桌面端 2026-08-07):启动那会儿密钥袋还没 key → commentary 为 null。
+		// 随后在设置页填上 apiKey 保存,热重载把实例建起来了(日志确有「commentary
+		// 已激活」),`dynamic`/`live` 也靠显式 setAi/setCommentary 拿到了新引用 ——
+		// 唯独对外暴露的这个字段没人管。聊天路由读的正是它(routes/ai.ts),于是
+		// 「保存成功了,进聊天照样报『baseUrl / apiKey 还没填齐』,重启才好」。
+		const c = setup(); // 不配 AI
+		active = c;
+		expect(c.runtime.commentary).toBeNull();
+
+		patchGlobals(c, (g) => {
+			const ai = aiGlobals().defaults.ai;
+			g.defaults.ai.provider = ai.provider;
+			g.defaults.ai.providers = ai.providers;
+		});
+		c.bus.emit("config-changed", "globals");
+
+		expect(H.ai).toHaveLength(1); // 实例确实建起来了
+		expect(c.runtime.commentary).not.toBeNull(); // 读得到的必须是同一个
+	});
+
+	it("配着 AI 启动、之后清空密钥 → runtime.commentary 跟着变回 null", () => {
+		// 反向的一半:属性若是快照,停用后它还攥着已 stop 的旧实例,聊天会拿一个
+		// 主人已经撤掉的配置继续答话 —— 比报错更难发现。
+		const c = setup({ globals: aiGlobals() });
+		active = c;
+		expect(c.runtime.commentary).not.toBeNull();
+
+		patchGlobals(c, (g) => {
+			g.defaults.ai.providers = {};
+		});
+		c.bus.emit("config-changed", "globals");
+
+		expect(c.runtime.commentary).toBeNull();
+	});
+
 	it("新 dynamicCron 透传进 DynamicEngineConfig", () => {
 		const c = setup();
 		active = c;

@@ -900,7 +900,15 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		live,
 		push,
 		subscriptionStore: opts.subscriptionStore,
-		commentary,
+		// getter,理由同下面的 `imageRenderer` —— 这也是个会被热重载重新赋值的 let。
+		// 写成普通属性的话它就是**启动那一刻的值拷贝**:没配 AI 起的服务永远是 null,
+		// 主人在设置页补上 apiKey 后热重载确实把实例建起来了(`dynamic`/`live` 靠
+		// setAi/setCommentary 拿到了新引用),可读这个字段的聊天路由还是拿到 null,
+		// 于是「保存成功却照样报『还没填齐』,重启才好」。反向亦然:撤掉密钥后它会
+		// 攥着已 stop 的旧实例继续答话。
+		get commentary() {
+			return commentary;
+		},
 		api: opts.api,
 		// getter:`imageRenderer` 是个会被热切换重新赋值的 let,取值必须每次现读。
 		get imageRenderer() {
