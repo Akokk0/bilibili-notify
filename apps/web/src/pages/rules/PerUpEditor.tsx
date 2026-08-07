@@ -44,7 +44,6 @@ import type {
 	ImageGroupSettings,
 	TemplateBundle,
 } from "../../types/globals";
-import { RoastScheduleFields } from "../stats/RoastScheduleFields";
 import { colorFromUid, displayName } from "../up/helpers";
 import { MessageLayoutEditor } from "./MessageLayoutEditor";
 import { buildOverridesPatch, type OverridesPatch } from "./overrides-patch";
@@ -87,9 +86,6 @@ interface SubPatch {
 	// overrides 走清除哨兵线格式:被关闭的 slice 显式 null(见 buildOverridesPatch / store SY1)。
 	overrides?: OverridesPatch;
 	specialUsers?: SpecialUser[];
-	// 不是 override,是这位 UP 自己的一条排程(同 specialUsers)。整份回传即可 ——
-	// 服务端 deepMerge 对数组是整体替换,所以 targets 清空也是一次真的清除。
-	roastSchedule?: Subscription["roastSchedule"];
 }
 
 function patchSub(id: string, body: SubPatch) {
@@ -107,7 +103,6 @@ export interface PerUpEditorProps {
 interface PerUpDraft {
 	overrides: Subscription["overrides"];
 	specialUsers: SpecialUser[];
-	roastSchedule: Subscription["roastSchedule"];
 }
 
 export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
@@ -115,16 +110,11 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 	const [draft, setDraft] = useState<PerUpDraft>({
 		overrides: sub.overrides,
 		specialUsers: sub.specialUsers,
-		roastSchedule: sub.roastSchedule,
 	});
 
 	useEffect(() => {
-		setDraft({
-			overrides: sub.overrides,
-			specialUsers: sub.specialUsers,
-			roastSchedule: sub.roastSchedule,
-		});
-	}, [sub.overrides, sub.specialUsers, sub.roastSchedule]);
+		setDraft({ overrides: sub.overrides, specialUsers: sub.specialUsers });
+	}, [sub.overrides, sub.specialUsers]);
 
 	const save = useMutation({
 		mutationFn: () =>
@@ -132,17 +122,12 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 				// 关闭的覆盖 slice 需显式 null 清除,否则 deepMerge 当「不改」→ 旧值残留、diff 不归零。
 				overrides: buildOverridesPatch(draft.overrides, sub.overrides),
 				specialUsers: draft.specialUsers,
-				roastSchedule: draft.roastSchedule,
 			}),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
 	});
 
 	function discard(): void {
-		setDraft({
-			overrides: sub.overrides,
-			specialUsers: sub.specialUsers,
-			roastSchedule: sub.roastSchedule,
-		});
+		setDraft({ overrides: sub.overrides, specialUsers: sub.specialUsers });
 	}
 
 	// per-UP 草稿接入灵动岛:draft / sub 同款投影成扁平 code 结构,walkTreeDiff 出的
@@ -150,12 +135,12 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 	// 丢弃统一由灵动岛触发,不再走页内按钮;保存失败时 mutateAsync reject →
 	// useDirtyDraft 捕获并切 error 态展示在灵动岛。
 	const islandDraft = useMemo(
-		() => projectPerUpIsland(draft.overrides, draft.specialUsers, draft.roastSchedule),
+		() => projectPerUpIsland(draft.overrides, draft.specialUsers),
 		[draft],
 	);
 	const islandBaseline = useMemo(
-		() => projectPerUpIsland(sub.overrides, sub.specialUsers, sub.roastSchedule),
-		[sub.overrides, sub.specialUsers, sub.roastSchedule],
+		() => projectPerUpIsland(sub.overrides, sub.specialUsers),
+		[sub.overrides, sub.specialUsers],
 	);
 	useDirtyDraft({
 		pageKey: "rules-perup",
@@ -180,10 +165,6 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 
 	function setSpecialUsers(next: SpecialUser[]): void {
 		setDraft((d) => ({ ...d, specialUsers: next }));
-	}
-
-	function setRoastSchedule(next: Subscription["roastSchedule"]): void {
-		setDraft((d) => ({ ...d, roastSchedule: next }));
 	}
 
 	const color = colorFromUid(sub.uid);
@@ -308,52 +289,7 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 					baseline={defaults.imageGroup}
 				/>
 			) : null}
-			{section === "roast" ? (
-				<RoastScheduleBoxPerUp
-					name={displayName(sub)}
-					value={draft.roastSchedule}
-					onChange={setRoastSchedule}
-				/>
-			) : null}
 		</div>
-	);
-}
-
-/**
- * 这位 UP 的定时锐评。
- *
- * **不是 override,所以没有「覆盖全局」那个开关** —— 全局那条排的是榜单周报
- * (评鸽王、要对照组),这里排的是「到点单独点评这一位」,两件不同的事,各开各的。
- * 两条都开就是两条 cron,各发各的(调度器给每位开了的 UP 各建一条)。
- *
- * 表单本体与全局那份共用 {@link RoastScheduleFields},字段不会两边漂。
- */
-function RoastScheduleBoxPerUp({
-	name,
-	value,
-	onChange,
-}: {
-	name: string;
-	value: Subscription["roastSchedule"];
-	onChange: (next: Subscription["roastSchedule"]) => void;
-}) {
-	return (
-		<GlassBox
-			title="定时锐评"
-			subtitle={`到点单独点评 ${name} · 与全局那条榜单周报互不相干`}
-			accent="#6c5ce7"
-			icon={<Icon.bell size={14} />}
-			badge={value.enabled ? "已开启" : "未开启"}
-			right={
-				<Toggle
-					value={value.enabled}
-					onChange={(on) => onChange({ ...value, enabled: on })}
-					ariaLabel="启用这位 UP 的定时锐评"
-				/>
-			}
-		>
-			<RoastScheduleFields value={value} onChange={onChange} noun="锐评" />
-		</GlassBox>
 	);
 }
 

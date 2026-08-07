@@ -1,12 +1,10 @@
-import { DEFAULT_ROAST_SCHEDULE } from "@bilibili-notify/internal/constants";
 import { describe, expect, it } from "vite-plus/test";
-import type { OverridesShape, SpecialUser, Subscription } from "../../../types/domain";
+import type { OverridesShape, SpecialUser } from "../../../types/domain";
 import { sectionOf } from "../../../utils/groupDiffs";
 import { walkTreeDiff } from "../../../utils/walkTreeDiff";
 import { projectPerUpIsland } from "../perup-island";
 
 const NO_USERS: SpecialUser[] = [];
-const NO_ROAST: Subscription["roastSchedule"] = { ...DEFAULT_ROAST_SCHEDULE };
 
 /** 投影两份 overrides 再 diff,返回 code 列表(灵动岛实际消费路径)。 */
 function diffCodes(
@@ -14,12 +12,10 @@ function diffCodes(
 	after: OverridesShape,
 	beforeUsers: SpecialUser[] = NO_USERS,
 	afterUsers: SpecialUser[] = NO_USERS,
-	beforeRoast: Subscription["roastSchedule"] = NO_ROAST,
-	afterRoast: Subscription["roastSchedule"] = NO_ROAST,
 ): string[] {
 	const diff = walkTreeDiff(
-		projectPerUpIsland(before, beforeUsers, beforeRoast),
-		projectPerUpIsland(after, afterUsers, afterRoast),
+		projectPerUpIsland(before, beforeUsers),
+		projectPerUpIsland(after, afterUsers),
 	);
 	return diff.map((d) => d.code);
 }
@@ -97,31 +93,6 @@ describe("projectPerUpIsland — imageGroup 打平 + specialUsers 叶子", () =>
 		const codes = diffCodes({}, {}, [], [{ uid: "1", kinds: ["danmaku"] }]);
 		expect(codes).toContain("specialUsers");
 		expect(sectionOf("specialUsers")).toBe("specialUsers");
-	});
-});
-
-describe("projectPerUpIsland — roastSchedule 保 nested", () => {
-	// 这位 UP 自己的一条排程,不是 override。它同样得进灵动岛 —— 不进的话开了
-	// 「定时锐评」却按不亮保存,改动就那么丢了(这一版里同类问题已经复发过)。
-	it("改 roastSchedule.cron → 'roastSchedule.cron',section 对得上 FIELD_LABELS", () => {
-		const codes = diffCodes({}, {}, NO_USERS, NO_USERS, NO_ROAST, {
-			...NO_ROAST,
-			cron: "0 8 * * 2",
-		});
-		expect(codes).toContain("roastSchedule.cron");
-		expect(sectionOf("roastSchedule.cron")).toBe("schedule");
-	});
-
-	it("开启这位 UP 的定时锐评 → 检出 dirty", () => {
-		const codes = diffCodes({}, {}, NO_USERS, NO_USERS, NO_ROAST, {
-			...NO_ROAST,
-			enabled: true,
-		});
-		expect(codes).toContain("roastSchedule.enabled");
-	});
-
-	it("两侧一样 → 无 diff(别让它天天喊有改动)", () => {
-		expect(diffCodes({}, {}, NO_USERS, NO_USERS, NO_ROAST, { ...NO_ROAST })).toEqual([]);
 	});
 });
 

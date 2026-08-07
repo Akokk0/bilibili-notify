@@ -42,7 +42,6 @@ export type SectionId =
 	| "cardStyle"
 	| "ai"
 	| "imageGroup"
-	| "roast"
 	| "core";
 
 export interface SectionMeta {
@@ -105,12 +104,8 @@ export const GLOBAL_SECTIONS: SectionMeta[] = [
 ];
 
 /**
- * per-UP 分类:全局那几个 + 特别关注弹幕 / 进房 / AI 人格 / 定时锐评。
+ * per-UP 9 个分类:全局 5 个 + 特别关注弹幕 / 进房 / 卡片样式 / AI 人格。
  * 每项独立 toggle 到「覆盖中」才会写入 Subscription.overrides;关闭即继承全局。
- *
- * **定时锐评是例外**:它不是 override,是这位 UP 自己的一条独立排程
- * (住在 `Subscription.roastSchedule`,同 specialUsers),所以没有「覆盖全局」
- * 那个开关 —— 全局那条是榜单周报,和「单独点评这一位」本来就是两件事。
  */
 export const PERUP_SECTIONS: SectionMeta[] = [
 	{
@@ -178,12 +173,6 @@ export const PERUP_SECTIONS: SectionMeta[] = [
 		label: "AI 人格",
 		icon: <Icon.ai size={14} />,
 		desc: "挑一份人格给这个 UP",
-	},
-	{
-		id: "roast",
-		label: "定时锐评",
-		icon: <Icon.bell size={14} />,
-		desc: "到点单独点评这一位",
 	},
 ];
 

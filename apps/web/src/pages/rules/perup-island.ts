@@ -11,18 +11,15 @@
  * - **code 带前缀的 slice 保 nested**(schedule / templates / ai):整段挂在
  *   对应 key 下,walkTreeDiff 递归出 `schedule.X` / `templates.X` / `ai.X`。
  * - `specialUsers` 作为整数组叶子(walkTreeDiff 把数组当叶子整体比较)。
- * - `roastSchedule` 不是 override(是这位 UP 自己的一条排程),但同样要进灵动岛 ——
- *   保 nested,递归出的 `roastSchedule.X` 正好对上 FIELD_LABELS 里那几条 code。
  *
  * `overrides.features` 不在此页编辑(由 UP 对话框管理),刻意排除。
  */
 
-import type { OverridesShape, SpecialUser, Subscription } from "../../types/domain";
+import type { OverridesShape, SpecialUser } from "../../types/domain";
 
 export function projectPerUpIsland(
 	overrides: OverridesShape,
 	specialUsers: SpecialUser[],
-	roastSchedule: Subscription["roastSchedule"],
 ): Record<string, unknown> {
 	return {
 		...overrides.filters,
@@ -32,6 +29,5 @@ export function projectPerUpIsland(
 		ai: overrides.ai,
 		messageLayout: overrides.messageLayout,
 		specialUsers,
-		roastSchedule,
 	};
 }
