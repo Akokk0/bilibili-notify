@@ -5,11 +5,12 @@ import {
 } from "@bilibili-notify/internal/constants";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { Btn, PlatformIcon, Toggle } from "../../components/atoms";
+import { useCallback, useEffect, useState } from "react";
+import { PlatformIcon, Toggle } from "../../components/atoms";
 import { Field, TInput } from "../../components/forms";
 import { GlassPanel } from "../../components/glass";
 import { Icon } from "../../components/icons";
+import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
@@ -70,6 +71,22 @@ export function RoastScheduleBox() {
 			);
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
+	});
+
+	// 保存交给底部那枚草稿灵动岛(与 Rules / Cards / Ai / System 同一套),面板里
+	// 不再自带保存按钮 —— 改了什么、要不要存,统一在同一个地方回答。
+	const baseline = globalsQuery.data?.roastSchedule ?? null;
+	const saveMutate = save.mutateAsync;
+	useDirtyDraft({
+		pageKey: "stats",
+		pageLabel: "数据统计",
+		draft,
+		baseline,
+		// hook 会捕获 throw 并切到 error 态,所以这里要 await 到底、不吞异常。
+		onSave: useCallback(async () => {
+			if (draft) await saveMutate(draft);
+		}, [draft, saveMutate]),
+		onDiscard: useCallback(() => setDraft(baseline), [baseline]),
 	});
 
 	if (!draft) return null;
@@ -175,18 +192,6 @@ export function RoastScheduleBox() {
 					value={draft.ccMaster}
 					onChange={(v) => patch({ ccMaster: v })}
 				/>
-			</div>
-
-			<div className="flex items-center gap-2 mt-4">
-				<Btn onClick={() => save.mutate(draft)} disabled={save.isPending || daysInvalid}>
-					{save.isPending ? "保存中…" : "保存"}
-				</Btn>
-				{save.isSuccess && <span className="text-[12px] opacity-70">✓ 已保存</span>}
-				{save.isError && (
-					<span className="text-[12px]" style={{ color: "#e5484d" }}>
-						{save.error instanceof Error ? save.error.message : "保存失败"}
-					</span>
-				)}
 			</div>
 		</GlassPanel>
 	);

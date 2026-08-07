@@ -64,7 +64,9 @@ export function RoastShell({
 			) : children ? (
 				children
 			) : (
-				<div className="flex flex-wrap items-center gap-4 px-1 py-2">
+				/* 居中而不是左图右按钮:与定时周报并排之后面板只有半宽,
+				   按钮贴到最右会离文案很远,读起来像两件事。 */
+				<div className="flex flex-col items-center gap-3 px-1 py-4 text-center">
 					<div
 						className="flex h-11 w-11 shrink-0 items-center justify-center rounded-bn-card text-white"
 						style={{
@@ -74,7 +76,7 @@ export function RoastShell({
 					>
 						<Icon.ai width={22} height={22} />
 					</div>
-					<div className="min-w-48 flex-1 text-xs leading-relaxed text-bn-text-tertiary">
+					<div className="max-w-md text-xs leading-relaxed text-bn-text-tertiary">
 						{err ? <span className="text-bn-danger-text">生成失败:{err}</span> : idle}
 					</div>
 					<Btn variant="primary" onClick={onRun}>
