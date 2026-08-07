@@ -532,3 +532,19 @@ export const ROAST_MAX_DAYS = 90;
 export const DEFAULT_ROAST_CRON = "0 9 * * 1";
 /** 默认统计窗口,与默认 cron 的一周间隔对齐。周期与窗口本身是解耦的两个字段。 */
 export const DEFAULT_ROAST_DAYS = 7;
+
+/**
+ * 已经**实现了入站消息解析**的推送平台。
+ *
+ * 列的是「主人在这里回一句话，我们真的收得到」，不是「协议上理论可行」。审批要靠
+ * 它把 y/n 收回来 —— 一个平台如果只是协议上支持而我们没解析，配置页放行就等于让
+ * 主人开了一个永远等不到回复的开关，草稿全部超时作废。宁可少列。
+ *
+ * webhook 天生不可能:它就是个出站 HTTP POST，没有回程。
+ */
+export const INBOUND_CAPABLE_PLATFORMS = ["onebot"] as const;
+
+/** 这个平台收不收得到主人的回复。审批开关能不能用就看它。 */
+export function platformCanReceiveReply(platform: string): boolean {
+	return (INBOUND_CAPABLE_PLATFORMS as readonly string[]).includes(platform);
+}

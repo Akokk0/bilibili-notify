@@ -1,3 +1,4 @@
+import { platformCanReceiveReply } from "@bilibili-notify/internal";
 import { CronTime } from "cron";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -102,6 +103,7 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 			current: deps.store.getGlobals(),
 			patch,
 			puppeteer: deps.puppeteer,
+			targets: deps.store.getTargets(),
 		});
 		if (!enableCheck.ok) {
 			return c.json(
@@ -128,12 +130,65 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 // Enable check
 // ---------------------------------------------------------------------------
 
-type EnableCheckResult = { ok: true } | { ok: false; scope: "cardStyle" | "ai"; message: string };
+type EnableCheckResult =
+	| { ok: true }
+	| { ok: false; scope: "cardStyle" | "ai" | "roastSchedule"; message: string };
 
 interface EnableCheckArgs {
 	current: import("@bilibili-notify/internal").GlobalConfig;
 	patch: Record<string, unknown>;
 	puppeteer: StandalonePuppeteer | null;
+	targets: readonly import("@bilibili-notify/internal").PushTarget[];
+}
+
+/**
+ * 审批开关的前置检查。
+ *
+ * 审批靠主人在 IM 里回一句 `y` 才走得下去,而独立端的推送通道**大多只出不进**
+ * —— webhook 更是天生没有回程(它就是个出站 HTTP POST)。在一个收不到回复的通道
+ * 上把审批打开,结果是每期周报都生成、都私聊、然后 48 小时后全部超时作废,一份
+ * 也发不出去,而配置页上看着一切正常。所以宁可不给开,并说清该去改什么。
+ *
+ * 判据是**主人那条私聊通道**所在的平台 —— 草稿预览就是发给他的。
+ */
+export function checkApprovalEnable(
+	current: import("@bilibili-notify/internal").GlobalConfig,
+	patch: Record<string, unknown>,
+	targets: readonly import("@bilibili-notify/internal").PushTarget[],
+): EnableCheckResult {
+	// 同 per-scope gating:这次 patch 没碰 roastSchedule 就别插手,
+	// 否则存别的 tab 会被一个早就存在的 approval=true 拦住。
+	if (pluck(patch, ["roastSchedule"]) === undefined) return { ok: true };
+	const approval = mergedFlag(
+		current.roastSchedule.approval,
+		pluck(patch, ["roastSchedule", "approval"]),
+	);
+	if (!approval) return { ok: true };
+
+	const masterId = current.master.targetId;
+	if (!masterId) {
+		return {
+			ok: false,
+			scope: "roastSchedule",
+			message: "审批需要先配好「主人私聊目标」—— 草稿要发给主人过目，没有这个目标就没人能批。",
+		};
+	}
+	const target = targets.find((t) => t.id === masterId);
+	if (!target) {
+		return {
+			ok: false,
+			scope: "roastSchedule",
+			message: "审批打不开：配置里的主人私聊目标已经不存在了，请先重新指定。",
+		};
+	}
+	if (!platformCanReceiveReply(target.platform)) {
+		return {
+			ok: false,
+			scope: "roastSchedule",
+			message: `审批打不开：主人私聊走的是 ${target.platform}，这个通道只能发不能收，回复的 y 我们收不到。请把主人私聊目标换成 OneBot，或者关掉审批直接发送。`,
+		};
+	}
+	return { ok: true };
 }
 
 async function runEnableCheck(args: EnableCheckArgs): Promise<EnableCheckResult> {
@@ -153,6 +208,9 @@ async function runEnableCheck(args: EnableCheckArgs): Promise<EnableCheckResult>
 			if (!r.ok) return r;
 		}
 	}
+
+	const approvalCheck = checkApprovalEnable(args.current, args.patch, args.targets);
+	if (!approvalCheck.ok) return approvalCheck;
 
 	if (shouldRunAiEnableCheck(args.current, args.patch)) {
 		// 探活要打的是**本次保存之后**生效的那家:provider 指针本身可能就在这个

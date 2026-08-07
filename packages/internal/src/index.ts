@@ -12,6 +12,8 @@ export {
 	BUILTIN_AI_PRESETS,
 	colorFromUid,
 	EMPTY_AI_PROVIDER_PROFILE,
+	INBOUND_CAPABLE_PLATFORMS,
+	platformCanReceiveReply,
 	providerMeta,
 	resolveActivePersona,
 	resolveAIProfile,
