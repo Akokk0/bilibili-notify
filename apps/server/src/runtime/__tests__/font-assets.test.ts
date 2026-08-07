@@ -185,9 +185,9 @@ describe("带缓存的字体资产读取器", () => {
 		};
 		const load = createFontAssetReader(dir, { read });
 
-		expect(await load("a".repeat(32) + ".woff2")).toMatch(/^data:font\/woff2;base64,/);
-		await load("a".repeat(32) + ".woff2");
-		await load("a".repeat(32) + ".woff2");
+		expect(await load(`${"a".repeat(32)}.woff2`)).toMatch(/^data:font\/woff2;base64,/);
+		await load(`${"a".repeat(32)}.woff2`);
+		await load(`${"a".repeat(32)}.woff2`);
 		expect(reads).toBe(1);
 	});
 
@@ -202,8 +202,8 @@ describe("带缓存的字体资产读取器", () => {
 		const load = createFontAssetReader(dir, { read });
 
 		const both = await Promise.all([
-			load("b".repeat(32) + ".woff2"),
-			load("b".repeat(32) + ".woff2"),
+			load(`${"b".repeat(32)}.woff2`),
+			load(`${"b".repeat(32)}.woff2`),
 		]);
 		expect(reads).toBe(1);
 		expect(both[0]).toBe(both[1]);
@@ -217,10 +217,10 @@ describe("带缓存的字体资产读取器", () => {
 		};
 		const load = createFontAssetReader(dir, { read });
 
-		await load("c".repeat(32) + ".woff2");
-		await load("d".repeat(32) + ".woff2");
+		await load(`${"c".repeat(32)}.woff2`);
+		await load(`${"d".repeat(32)}.woff2`);
 		// 切回去要重读 —— 只留一条,旧的已经被顶掉了。
-		await load("c".repeat(32) + ".woff2");
+		await load(`${"c".repeat(32)}.woff2`);
 		expect(seen).toHaveLength(3);
 	});
 
@@ -245,8 +245,8 @@ describe("带缓存的字体资产读取器", () => {
 		};
 		const load = createFontAssetReader(dir, { read });
 
-		expect(await load("e".repeat(32) + ".woff2")).toBe("");
-		expect(await load("e".repeat(32) + ".woff2")).toBe("");
+		expect(await load(`${"e".repeat(32)}.woff2`)).toBe("");
+		expect(await load(`${"e".repeat(32)}.woff2`)).toBe("");
 		expect(reads).toBe(2);
 	});
 
@@ -348,8 +348,8 @@ describe("带缓存的字体资产读取器", () => {
 		};
 		const load = createFontAssetReader(dir, { read });
 
-		await expect(load("f".repeat(32) + ".woff2")).rejects.toThrow("EIO");
+		await expect(load(`${"f".repeat(32)}.woff2`)).rejects.toThrow("EIO");
 		// 下一次要真的重试,而不是把那个 rejected promise 一直抛出来。
-		expect(await load("f".repeat(32) + ".woff2")).toBe("data:font/woff2;base64,ok");
+		expect(await load(`${"f".repeat(32)}.woff2`)).toBe("data:font/woff2;base64,ok");
 	});
 });
