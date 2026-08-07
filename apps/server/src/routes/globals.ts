@@ -1,13 +1,9 @@
-import {
-	INBOUND_CAPABLE_PLATFORMS,
-	inboundGapReason,
-	platformCanReceiveReply,
-} from "@bilibili-notify/internal";
 import { CronTime } from "cron";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
 import type { StandalonePuppeteer } from "../runtime/puppeteer.js";
+import { checkApprovalReachable } from "./roast-approval-guard.js";
 import type { RouteDeps } from "./types.js";
 
 /**
@@ -169,31 +165,13 @@ export function checkApprovalEnable(
 	);
 	if (!approval) return { ok: true };
 
-	const masterId = current.master.targetId;
-	if (!masterId) {
-		return {
-			ok: false,
-			scope: "roastSchedule",
-			message: "审批需要先配好「主人私聊目标」—— 草稿要发给主人过目，没有这个目标就没人能批。",
-		};
-	}
-	const target = targets.find((t) => t.id === masterId);
-	if (!target) {
-		return {
-			ok: false,
-			scope: "roastSchedule",
-			message: "审批打不开：配置里的主人私聊目标已经不存在了，请先重新指定。",
-		};
-	}
-	if (!platformCanReceiveReply(target.platform)) {
-		return {
-			ok: false,
-			scope: "roastSchedule",
-			// 可选平台从常量里取,不手写 —— 手写的那份哪天补了平台就会漏。
-			message: `审批打不开：${inboundGapReason(target.platform)}。请把主人私聊目标换成收得到回复的通道（${INBOUND_CAPABLE_PLATFORMS.join(" / ")}），或者关掉审批直接发送。`,
-		};
-	}
-	return { ok: true };
+	// 判据与话术住在 roast-approval-guard —— per-UP 那条(subs PATCH)用的是同一份。
+	const r = checkApprovalReachable({
+		approvalOn: true,
+		masterTargetId: current.master.targetId,
+		targets,
+	});
+	return r.ok ? { ok: true } : { ok: false, scope: "roastSchedule", message: r.message };
 }
 
 async function runEnableCheck(args: EnableCheckArgs): Promise<EnableCheckResult> {

@@ -4,6 +4,7 @@ import type { CachedProfile, Subscription } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
+import { checkApprovalReachable } from "./roast-approval-guard.js";
 import type { RouteDeps } from "./types.js";
 
 // DTO 形状在 @bilibili-notify/contract(web 同源消费):持久化 Subscription +
@@ -238,6 +239,27 @@ export function createSubsRoute(deps: RouteDeps): Hono {
 				400,
 			);
 		}
+		// per-UP 审批的前置检查 —— 与全局那条(checkApprovalEnable)同一道闸。
+		// 只拦一半的话,主人换个地方开同一个开关就绕过去了。
+		const roastPatch = shapeCheck.data.roastSchedule;
+		if (isPlainObject(roastPatch)) {
+			const cur = deps.store.getSubscriptions().find((s) => s.id === id);
+			const approvalOn =
+				typeof roastPatch.approval === "boolean"
+					? roastPatch.approval
+					: (cur?.roastSchedule.approval ?? false);
+			const gate = checkApprovalReachable({
+				approvalOn,
+				masterTargetId: deps.store.getGlobals().master.targetId,
+				targets: deps.store.getTargets(),
+			});
+			if (!gate.ok) {
+				return c.json(
+					{ error: "enable_check_failed", scope: "roastSchedule", message: gate.message },
+					400,
+				);
+			}
+		}
 		try {
 			const next = await deps.store.patchSubscription(id, shapeCheck.data);
 			return c.json(toDTO(next));
@@ -276,4 +298,9 @@ function normaliseAvatarUrl(raw: unknown): string {
 	if (typeof raw !== "string" || !raw) return "";
 	if (raw.startsWith("//")) return `https:${raw}`;
 	return raw;
+}
+
+/** 只认真正的对象 —— 数组 / null 不是 patch 片段。 */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
