@@ -38,6 +38,13 @@ import type { PlatformAdapter, ProbeResult } from "./types.js";
 export interface OnebotPlatformAdapterOptions {
 	logger: Logger;
 	serviceCtx: ServiceContext;
+	/**
+	 * 入站 OneBot 事件帧的出口。不传 = 这个 adapter 保持纯 push-only。
+	 *
+	 * 帧原样交出,adapter 不解析业务语义。目前唯一的消费者是锐评审批
+	 * (主人私聊回 y/n),见 `runtime/roast-command.ts`。
+	 */
+	onInbound?: (frame: Record<string, unknown>) => void;
 	/** Fallback timeout (ms) when adapter.config.timeoutMs is missing. Defaults to 15s. */
 	timeoutMs?: number;
 	/**
@@ -434,6 +441,13 @@ class WsChannel {
 		private readonly ws: WebSocket,
 		private readonly idPrefix: string,
 		private readonly serviceCtx: ServiceContext,
+		/**
+		 * 入站事件出口。缺省 = 保持纯 push-only(旧行为)。
+		 *
+		 * 只在这里开了一道口子:帧仍旧原样交出去,认不认、认哪些,全由上层决定。
+		 * adapter 自己不解析业务语义 —— 它只知道「这是一条没有 echo 的帧」。
+		 */
+		private readonly onInbound?: (frame: Record<string, unknown>) => void,
 	) {
 		ws.on("message", (raw: RawData) => this.onMessage(raw));
 	}
@@ -470,8 +484,17 @@ class WsChannel {
 			return; // 非 JSON,丢弃
 		}
 		const echo = typeof frame.echo === "string" ? frame.echo : undefined;
-		// 无 echo = 入站事件 / heartbeat;echo 不在表里 = 未知响应。push-only,一律忽略。
-		if (!echo) return;
+		// 无 echo = 入站事件 / heartbeat。以前一律忽略(纯 push-only);现在交给上层,
+		// 由它决定认不认 —— 审批要靠这条路把主人回的 y 收回来。没接 onInbound 的
+		// 场景行为不变。echo 不在表里 = 未知响应,仍旧丢弃。
+		if (!echo) {
+			try {
+				this.onInbound?.(frame as unknown as Record<string, unknown>);
+			} catch {
+				// 上层解析炸了不该影响这条 WS 的收发 —— 它还担着推送。
+			}
+			return;
+		}
 		const p = this.pending.get(echo);
 		if (!p) return;
 		this.pending.delete(echo);
@@ -511,6 +534,7 @@ class ForwardConn {
 		private readonly headers: Record<string, string>,
 		private readonly serviceCtx: ServiceContext,
 		private readonly log: Logger,
+		private readonly onInbound?: (frame: Record<string, unknown>) => void,
 	) {
 		this.connect();
 	}
@@ -530,7 +554,7 @@ class ForwardConn {
 		ws.on("open", () => {
 			this.attempt = 0;
 			this.lastError = null;
-			this.channel = new WsChannel(ws, `fwd:${this.adapterId}`, this.serviceCtx);
+			this.channel = new WsChannel(ws, `fwd:${this.adapterId}`, this.serviceCtx, this.onInbound);
 			this.log.info(`[onebot] 正向 WS 已连接 adapter=${this.adapterId} url=${this.url}`);
 		});
 		ws.on("error", (err: Error) => {
@@ -585,6 +609,7 @@ class ReverseListener {
 		private readonly accessToken: string | undefined,
 		private readonly serviceCtx: ServiceContext,
 		private readonly log: Logger,
+		private readonly onInbound?: (frame: Record<string, unknown>) => void,
 	) {
 		this.start();
 	}
@@ -618,7 +643,7 @@ class ReverseListener {
 			ws.close(1008, "unauthorized");
 			return;
 		}
-		const channel = new WsChannel(ws, `rev:${this.adapterId}`, this.serviceCtx);
+		const channel = new WsChannel(ws, `rev:${this.adapterId}`, this.serviceCtx, this.onInbound);
 		const entry = { ws, channel };
 		this.bots.add(entry);
 		this.log.info(`[onebot] 反向 WS bot 已连入 adapter=${this.adapterId}(在线 ${this.bots.size})`);
@@ -900,7 +925,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				existing?.close();
 				forwardConns.set(
 					id,
-					new ForwardConn(id, fp, cfg.url, forwardHeaders(cfg), serviceCtx, log),
+					new ForwardConn(id, fp, cfg.url, forwardHeaders(cfg), serviceCtx, log, opts.onInbound),
 				);
 			}
 
@@ -923,7 +948,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				// error 事件落到 bindError,经 probe 暴露给 dashboard。
 				reverseListeners.set(
 					id,
-					new ReverseListener(id, cfg.port, cfg.accessToken, serviceCtx, log),
+					new ReverseListener(id, cfg.port, cfg.accessToken, serviceCtx, log, opts.onInbound),
 				);
 			}
 		},
