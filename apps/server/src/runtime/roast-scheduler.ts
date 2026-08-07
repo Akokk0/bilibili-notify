@@ -39,15 +39,37 @@ export interface CreateRoastSchedulerOptions {
 	tellMaster: (text: string) => Promise<void>;
 }
 
+/**
+ * 一轮跑完的结论。
+ *
+ * cron 那条路**不看**它(到点自动跑,结论落日志与私聊就够了),它是给面板上的
+ * 「试一次」按钮用的 —— 点了之后总得回答「成了没、发给了谁、还是在等我批」,
+ * 而落进日志的结论对着浏览器的人是看不见的。
+ */
+export type RoastRunOutcome =
+	/** 一个推送目标都没配,连模型都没调。 */
+	| { kind: "no-targets" }
+	/** 生成这一步就没过去(AI 没开、数据不够、模型报错…)。 */
+	| { kind: "gen-failed"; why: string }
+	/** 审批开着:已经生成并私聊给主人了,群里还没发。 */
+	| { kind: "pending-approval"; draftId: string }
+	/** 发了。`failed` 非空表示部分目标没成 —— 那也算发过了,不是整轮失败。 */
+	| {
+			kind: "sent";
+			mode: "text" | "image";
+			sent: number;
+			failed: Array<{ targetId: string; err: string }>;
+	  };
+
 export interface RoastScheduler {
 	start(): void;
 	stop(): void;
 	/** 重读配置,增删改各条 job。config-changed / subscription-changed 后调。 */
 	reconcile(): void;
-	/** 立刻跑一次榜单周报。cron 到点调它,测试也直接调它。 */
-	runBoardOnce(): Promise<void>;
+	/** 立刻跑一次榜单周报。cron 到点调它,面板的「试一次」和测试也直接调它。 */
+	runBoardOnce(): Promise<RoastRunOutcome>;
 	/** 立刻跑一次某位 UP 的单人锐评。 */
-	runSoloOnce(uid: string): Promise<void>;
+	runSoloOnce(uid: string): Promise<RoastRunOutcome>;
 	/**
 	 * 把一份**已经获批**的草稿发出去。审批指令链路调它。
 	 *
@@ -96,14 +118,14 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		cfg: RoastSchedule,
 		label: string,
 		uid?: string,
-	): Promise<void> {
-		if (stopped) return;
+	): Promise<RoastRunOutcome> {
+		if (stopped) return { kind: "gen-failed", why: "调度器已停止" };
 
 		// 一个目标都没配 —— 先拦住,别白调一次模型再把结果扔掉。
 		if (cfg.targets.length === 0) {
 			logger.warn(`[roast-sched] ${label}:没有配置推送目标,跳过`);
 			if (cfg.notifyOnError) await tell(`${label}没有发出去：还没有配置推送目标。`);
-			return;
+			return { kind: "no-targets" };
 		}
 
 		const gen =
@@ -121,7 +143,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 			logger.warn(`[roast-sched] ${label} 生成失败:${why}`);
 			// 「这周没发」后面必须跟得上原因,否则主人对着沉默猜。
 			if (cfg.notifyOnError) await tell(`${label}没有发出去：${why}`);
-			return;
+			return { kind: "gen-failed", why };
 		}
 
 		// 审批开着:先落草稿,等主人点头。**目标是此刻的快照** —— 他点头的是
@@ -138,10 +160,10 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 			await tell(
 				`${label}已经生成好了，等主人过目～\n回复「y ${draft.id}」发送，「n ${draft.id}」丢弃。\n48 小时没有回复就自动作废。`,
 			);
-			return;
+			return { kind: "pending-approval", draftId: draft.id };
 		}
 
-		await deliverAndReport(kind, gen.result as BoardLike | SoloLike, cfg, label);
+		return await deliverAndReport(kind, gen.result as BoardLike | SoloLike, cfg, label);
 	}
 
 	/** 发送 + 善后(部分失败汇总、抄送)。审批通过后也走这里,所以单独成函数。 */
@@ -150,7 +172,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		result: BoardLike | SoloLike,
 		cfg: Pick<RoastSchedule, "days" | "targets" | "notifyOnError" | "ccMaster">,
 		label: string,
-	): Promise<void> {
+	): Promise<RoastRunOutcome> {
 		const out = await deliverRoast(deps, {
 			kind,
 			result,
@@ -175,6 +197,8 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		if (cfg.ccMaster && out.sent.length > 0) {
 			await tell(`${label}已发送：\n${out.text}`);
 		}
+
+		return { kind: "sent", mode: out.mode, sent: out.sent.length, failed: out.failed };
 	}
 
 	/** 审批通过后把这份草稿发出去。指令链路调它。 */
@@ -228,9 +252,14 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		}
 	}
 
-	/** 期望的排程表:key → { cron, 触发时干什么, 日志用的名字 }。 */
-	function desired(): Map<string, { cron: string; run: () => Promise<void>; label: string }> {
-		const out = new Map<string, { cron: string; run: () => Promise<void>; label: string }>();
+	/**
+	 * 期望的排程表:key → { cron, 触发时干什么, 日志用的名字 }。
+	 *
+	 * `run` 的返回值这里**故意丢掉**(`Promise<unknown>`)—— 结论是给「试一次」按钮
+	 * 看的,cron 到点自动跑时没人在场,该说的话已经落进日志与私聊了。
+	 */
+	function desired(): Map<string, { cron: string; run: () => Promise<unknown>; label: string }> {
+		const out = new Map<string, { cron: string; run: () => Promise<unknown>; label: string }>();
 		const board = deps.store.getGlobals().roastSchedule;
 		if (board?.enabled) {
 			out.set(BOARD_KEY, { cron: board.cron, run: runBoardOnce, label: "UP 主周报" });
@@ -248,19 +277,19 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		return out;
 	}
 
-	async function runBoardOnce(): Promise<void> {
-		await runOnce("board", boardConfig(), "UP 主周报");
+	async function runBoardOnce(): Promise<RoastRunOutcome> {
+		return await runOnce("board", boardConfig(), "UP 主周报");
 	}
 
-	async function runSoloOnce(uid: string): Promise<void> {
+	async function runSoloOnce(uid: string): Promise<RoastRunOutcome> {
 		const cfg = soloConfig(uid);
 		if (!cfg) {
 			// 订阅在这一轮之间被删掉了。reconcile 会撤掉这条 job,这里只是兜底。
 			logger.debug(`[roast-sched] uid=${uid} 已不在订阅列表,跳过`);
-			return;
+			return { kind: "gen-failed", why: "这位 UP 已经不在订阅列表里了" };
 		}
 		const sub = deps.store.getSubscriptions().find((s) => s.uid === uid);
-		await runOnce("solo", cfg, `${sub?.name?.trim() || `UID ${uid}`} 的锐评`, uid);
+		return await runOnce("solo", cfg, `${sub?.name?.trim() || `UID ${uid}`} 的锐评`, uid);
 	}
 
 	function reconcile(): void {

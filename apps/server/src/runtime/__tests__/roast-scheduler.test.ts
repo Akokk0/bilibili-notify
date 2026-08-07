@@ -283,3 +283,64 @@ describe("调度器 — 到点之后", () => {
 		await expect(sched.runBoardOnce()).resolves.not.toThrow();
 	});
 });
+
+/**
+ * 一轮跑完到底发生了什么 —— 面板上的「试一次」按钮要靠这个返回值说话。
+ *
+ * cron 那条路不看返回值(它只需要日志与私聊),但按钮点下去必须能回答「成了没、
+ * 发给了谁、还是在等我批」。落进日志的结论对着浏览器的人是看不见的。
+ */
+describe("调度器 — 一轮的结论", () => {
+	function armed(over: Record<string, unknown> = {}) {
+		globals.roastSchedule = {
+			...globals.roastSchedule,
+			enabled: true,
+			targets: ["t1", "t2"],
+			...over,
+		};
+		return makeScheduler();
+	}
+
+	it("直发成功 → sent,带上投递形态与成功条数", async () => {
+		deliverRoast.mockResolvedValue({ mode: "image", sent: ["t1", "t2"], failed: [], text: "x" });
+		const { sched } = armed();
+		expect(await sched.runBoardOnce()).toEqual({
+			kind: "sent",
+			mode: "image",
+			sent: 2,
+			failed: [],
+		});
+	});
+
+	it("部分失败 → 还是 sent,但把失败的目标原样带出来", async () => {
+		deliverRoast.mockResolvedValue({
+			mode: "text",
+			sent: ["t1"],
+			failed: [{ targetId: "t2", err: "机器人不在群里" }],
+			text: "x",
+		});
+		const { sched } = armed();
+		const out = await sched.runBoardOnce();
+		expect(out).toMatchObject({ kind: "sent", sent: 1 });
+		expect(out.kind === "sent" && out.failed).toEqual([{ targetId: "t2", err: "机器人不在群里" }]);
+	});
+
+	it("一个目标都没配 → no-targets", async () => {
+		const { sched } = armed({ targets: [] });
+		expect(await sched.runBoardOnce()).toEqual({ kind: "no-targets" });
+	});
+
+	it("生成失败 → gen-failed,带上给人看的原因", async () => {
+		generateBoardRoast.mockResolvedValue({ ok: false, kind: "too-few-ups" });
+		const { sched } = armed();
+		const out = await sched.runBoardOnce();
+		expect(out.kind).toBe("gen-failed");
+		expect(out.kind === "gen-failed" && out.why).toContain("2 位");
+	});
+
+	it("审批开 → pending-approval,带上主人要回的那个编号", async () => {
+		const { sched, drafts } = armed({ approval: true });
+		const out = await sched.runBoardOnce();
+		expect(out).toEqual({ kind: "pending-approval", draftId: drafts.list()[0]?.id });
+	});
+});

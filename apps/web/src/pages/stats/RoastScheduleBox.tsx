@@ -14,6 +14,7 @@ import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
+import { RoastRunNowBox } from "./RoastRunNowBox";
 import { ROAST_PURPLE } from "./RoastShell";
 import { STATS_RANGES } from "./ranges";
 
@@ -193,6 +194,15 @@ export function RoastScheduleBox() {
 					onChange={(v) => patch({ ccMaster: v })}
 				/>
 			</div>
+
+			{/* 「试一次」读的是**已保存**的那份配置,所以要把「面板上还有没存的改动」
+			    告诉它。脏判据用的是灵动岛同一对值(draft / baseline),不另立一套。 */}
+			<RoastRunNowBox
+				approval={draft.approval && canApprove}
+				targetCount={draft.targets.length}
+				dirty={JSON.stringify(draft) !== JSON.stringify(baseline)}
+				targetName={(id) => (targetsQuery.data ?? []).find((t) => t.id === id)?.name ?? id}
+			/>
 		</GlassPanel>
 	);
 }

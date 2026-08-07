@@ -2,12 +2,14 @@ import type {
 	StatsOverviewResponse,
 	StatsRoastPushResponse,
 	StatsRoastResponse,
+	StatsRoastRunNowResponse,
 	StatsSoloRoastResponse,
 	UpStatsRow,
 } from "@bilibili-notify/contract";
 import { ROAST_MAX_DAYS, ROAST_MIN_DAYS } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
+import type { RoastRunOutcome } from "../runtime/roast-scheduler.js";
 import {
 	countDynamics,
 	dailyActivityCounts,
@@ -128,7 +130,18 @@ async function fetchOverview(
 	}
 }
 
-export function createStatsRoute(deps: RouteDeps): Hono {
+export interface StatsRouteOptions {
+	/**
+	 * 立刻跑一轮榜单周报 —— 面板上的「试一次」按它。
+	 *
+	 * 由 `index.ts` late-bind 进来(调度器建得比路由晚):没传就等于「还没就绪」,
+	 * 端点回 503 而不是假装成功。**它调的就是 cron 到点调的那个函数** —— 另写一条
+	 * 「测试专用」的路径,测出来的就不是真到点时会发生的事。
+	 */
+	runBoardNow?: () => Promise<RoastRunOutcome>;
+}
+
+export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {}): Hono {
 	const app = new Hono();
 	const cache = new Map<string, CacheEntry>();
 
@@ -380,6 +393,36 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 		const mode = out.mode;
 		return c.json<StatsRoastPushResponse>({ ok: true, mode });
 	});
+	/**
+	 * `POST /api/stats/roast/run-now` —— 立刻跑一轮定时周报(面板上的「试一次」)。
+	 *
+	 * **必须注册在 `/roast/:uid` 之前**,理由同 `/roast/push`:Hono 按注册序匹配,
+	 * 反过来 `run-now` 会被当成一个 uid 吃掉。
+	 *
+	 * 三件要紧事:
+	 * - 走的是**和 cron 完全同一个函数**。另写一条「测试专用」的轻量路径,验的就
+	 *   不是真到点时会发生的事 —— 那样的按钮绿了也不能说明什么。
+	 * - 因此审批关着时它会**真的发进群里**。前端负责在点之前把这话讲清楚。
+	 * - 读的是**已保存**的配置,不吃页面草稿(同 `/roast` 那条的理由:这里不是在调
+	 *   参数,是在验一条已经配好的流水线)。
+	 *
+	 * 业务性失败(生成不出来、没配目标)一律 **200 + 结构化结局**,不用 4xx ——
+	 * 前端的 error 分支只拿得到一句 HTTP 错误,原因就丢了(锐评卡踩过这个坑)。
+	 */
+	app.post("/roast/run-now", async (c) => {
+		if (!options.runBoardNow) {
+			return c.json<StatsRoastRunNowResponse>({ ok: false, err: "服务尚未就绪,请稍后重试" }, 503);
+		}
+		try {
+			return c.json<StatsRoastRunNowResponse>({ ok: true, outcome: await options.runBoardNow() });
+		} catch (err) {
+			// 这一轮里任何一步炸了都收在这儿:端点是给人点的,不能把异常漏出去。
+			const why = err instanceof Error ? err.message : String(err);
+			deps.runtime.serviceCtx.logger.warn(`[stats] 手动跑周报失败: ${why}`);
+			return c.json<StatsRoastRunNowResponse>({ ok: false, err: why }, 502);
+		}
+	});
+
 	/**
 	 * `POST /api/stats/roast/:uid` —— 单 UP 锐评。
 	 *

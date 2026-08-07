@@ -225,6 +225,35 @@ export interface StatsRoastPushResponse {
 	mode?: "image" | "text";
 }
 
+/**
+ * 一轮定时周报跑完的结局。与服务端 `RoastRunOutcome` 同构 —— 那边是权威定义,
+ * 这里是过 wire 的那份契约。
+ *
+ * **业务性失败不是 HTTP 失败**:生成不出来、没配目标都是 200 + 这里的 kind。
+ * 用 4xx 表达的话,前端 error 分支只拿得到一句 HTTP 错误,原因就丢了。
+ */
+export type StatsRoastRunOutcome =
+	/** 一个推送目标都没配,连模型都没调。 */
+	| { kind: "no-targets" }
+	/** 生成这一步就没过去(AI 没开、数据不够、模型报错…)。 */
+	| { kind: "gen-failed"; why: string }
+	/** 审批开着:已经生成并私聊给主人了,群里还没发,等主人回 y。 */
+	| { kind: "pending-approval"; draftId: string }
+	/** 发了。`failed` 非空 = 部分目标没成,那也算发过了,不是整轮失败。 */
+	| {
+			kind: "sent";
+			mode: "text" | "image";
+			sent: number;
+			failed: Array<{ targetId: string; err: string }>;
+	  };
+
+/** `POST /api/stats/roast/run-now` 响应。`ok:false` 只用于服务没就绪 / 这一轮抛了异常。 */
+export interface StatsRoastRunNowResponse {
+	ok: boolean;
+	err?: string;
+	outcome?: StatsRoastRunOutcome;
+}
+
 export interface StatsOverviewResponse {
 	/** 实际使用的窗口天数(服务端会 clamp)。 */
 	days: number;

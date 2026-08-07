@@ -428,6 +428,8 @@ export async function startStandaloneServer(
 			onStatsRoute: (route) => {
 				statsRoute = route;
 			},
+			// 面板上的「试一次」—— 调的就是 cron 到点调的那个函数,不是模拟。
+			runBoardNow: () => roastScheduler.runBoardOnce(),
 		});
 		await new Promise<void>((resolveServe) => {
 			server = serve(

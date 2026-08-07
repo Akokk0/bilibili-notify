@@ -32,6 +32,7 @@ import { createTargetsRoute } from "./routes/targets.js";
 import type { RouteDeps } from "./routes/types.js";
 import type { AppRuntime } from "./runtime/bootstrap.js";
 import type { StandalonePuppeteer } from "./runtime/puppeteer.js";
+import type { RoastRunOutcome } from "./runtime/roast-scheduler.js";
 
 interface BasicAuthCredentials {
 	username: string;
@@ -64,6 +65,11 @@ export interface CreateAppOptions {
 	 * 的引用,不是新开的信任面。走父 app 反而会被自己的鉴权 401 掉(它没有 cookie)。
 	 */
 	onStatsRoute?: (route: Hono) => void;
+	/**
+	 * 立刻跑一轮榜单周报 —— 面板上的「试一次」。由 `index.ts` 交给调度器。
+	 * 不传就是「还没就绪」,端点回 503。
+	 */
+	runBoardNow?: () => Promise<RoastRunOutcome>;
 	/**
 	 * Session codec used to sign/verify the `bn_session` cookie. Must be
 	 * provided exactly when `basicAuthCredentials` is — `index.ts` builds it
@@ -226,7 +232,9 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	app.route("/api/push", createPushRoute(deps));
 	app.route("/api/ai", createAiRoute(deps));
 	app.route("/api/fans", createFansRoute(deps));
-	const statsRoute = createStatsRoute(deps);
+	const statsRoute = createStatsRoute(deps, {
+		...(options.runBoardNow ? { runBoardNow: options.runBoardNow } : {}),
+	});
 	app.route("/api/stats", statsRoute);
 	options.onStatsRoute?.(statsRoute);
 	app.route("/api/qq", createQQRoute(deps));
