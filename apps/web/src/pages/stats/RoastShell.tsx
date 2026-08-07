@@ -53,7 +53,7 @@ export function RoastShell({
 			}
 		>
 			{isPending ? (
-				<div className="flex flex-col items-center justify-center gap-3 py-7">
+				<div className="flex h-full flex-col items-center justify-center gap-3 py-7">
 					<div
 						className="h-8 w-8 animate-spin rounded-full border-4 border-bn-border"
 						style={{ borderTopColor: ROAST_PURPLE }}
@@ -65,8 +65,10 @@ export function RoastShell({
 			) : (
 				/* 居中而不是左图右按钮:与定时周报并排之后面板只有半宽,
 				   按钮贴到最右会离文案很远,读起来像两件事。
-				   正文里不再放大图标 —— 面板标题左边已经有一枚同样的 AI 图标了。 */
-				<div className="flex flex-col items-center gap-3 px-1 py-4 text-center">
+				   正文里不再放大图标 —— 面板标题左边已经有一枚同样的 AI 图标了。
+				   `h-full` + `justify-center`:栅格把这张卡拉到与定时周报等高,不撑满
+				   的话邀请文案会吊在顶上、下面空一大片。 */
+				<div className="flex h-full flex-col items-center justify-center gap-3 px-1 py-4 text-center">
 					<div className="max-w-md text-xs leading-relaxed text-bn-text-tertiary">
 						{err ? <span className="text-bn-danger-text">生成失败:{err}</span> : idle}
 					</div>
