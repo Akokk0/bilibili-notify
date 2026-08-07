@@ -88,6 +88,14 @@ export interface RoastCommandHandlerOptions {
 export interface RoastCommandHandler {
 	/** 喂一帧 OneBot 事件。不是主人的审批指令就静默返回。 */
 	handle(frame: Record<string, unknown>): Promise<void>;
+	/**
+	 * 喂一条**已经解析好**的私聊消息。给帧格式不是 OneBot 的平台用
+	 * (qq-official 的网关那边送来的就是 `{userOpenid, text}`)。
+	 *
+	 * 鉴权与指令语义全在这里,`handle` 也只是「解析 OneBot 帧 → 调它」——
+	 * 两条路各写一份的话,迟早有一边把「不是主人也放行」写漏。
+	 */
+	handleMessage(msg: InboundPrivateMessage): Promise<void>;
 }
 
 export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): RoastCommandHandler {
@@ -141,26 +149,28 @@ export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): Roa
 		await opts.deliver(taken);
 	}
 
+	async function handleMessage(msg: InboundPrivateMessage): Promise<void> {
+		const master = opts.masterUserId();
+		// 不是主人就当没看见:不回复、不报错。回一句「你没权限」等于告诉对方
+		// 这里有个接口可以试探。
+		if (!master || msg.userId !== master) return;
+
+		const cmd = parseRoastCommand(msg.text);
+		if (cmd.kind === "none") return;
+
+		try {
+			await run(cmd);
+		} catch (err) {
+			logger.warn(`[roast-cmd] 处理指令失败: ${err instanceof Error ? err.message : String(err)}`);
+		}
+	}
+
 	return {
 		async handle(frame) {
 			const msg = extractPrivateMessage(frame);
 			if (!msg) return;
-
-			const master = opts.masterUserId();
-			// 不是主人就当没看见:不回复、不报错。回一句「你没权限」等于告诉对方
-			// 这里有个接口可以试探。
-			if (!master || msg.userId !== master) return;
-
-			const cmd = parseRoastCommand(msg.text);
-			if (cmd.kind === "none") return;
-
-			try {
-				await run(cmd);
-			} catch (err) {
-				logger.warn(
-					`[roast-cmd] 处理指令失败: ${err instanceof Error ? err.message : String(err)}`,
-				);
-			}
+			await handleMessage(msg);
 		},
+		handleMessage,
 	};
 }

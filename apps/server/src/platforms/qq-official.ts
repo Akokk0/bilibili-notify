@@ -250,6 +250,39 @@ export function extractQQDiscoveredSession(
 	return null;
 }
 
+/** 一条 C2C 私聊消息 —— 审批指令(主人回的 y/n)就是从这儿进来的。 */
+export interface QQInboundPrivateMessage {
+	/** 发送者的 C2C 用户 openid。与 PushTarget 里存的 `session.userOpenid` 同一命名空间。 */
+	userOpenid: string;
+	text: string;
+	/** 这条消息的 id。QQ 的被动回复要带它,留着备用;缺了不影响认指令。 */
+	msgId?: string;
+}
+
+/**
+ * 从 C2C 事件取私聊正文。**只认 C2C_MESSAGE_CREATE**。
+ *
+ * 与 {@link extractQQDiscoveredSession} 分成两个函数而不是合并:那个只要 openid
+ * (拿来当推送地址,群和 C2C 都要),这个要正文且**只能是私聊** —— 群里有人打个 y
+ * 不该把一份待审的周报发出去。合起来写迟早有人顺手把群那条也接上。
+ *
+ * `member_openid` 同样绝不回退,理由见 {@link extractQQDiscoveredSession}:那是群成员
+ * 域的身份,与 C2C 用户 openid 是两个命名空间,拿它去比对主人身份会认错人。
+ */
+export function extractQQPrivateMessage(
+	eventType: string,
+	data: Record<string, unknown>,
+): QQInboundPrivateMessage | null {
+	if (eventType !== "C2C_MESSAGE_CREATE") return null;
+	const author = data.author as { user_openid?: string } | undefined;
+	const userOpenid = author?.user_openid;
+	if (typeof userOpenid !== "string" || !userOpenid) return null;
+	const content = data.content;
+	if (typeof content !== "string" || !content.trim()) return null;
+	const msgId = typeof data.id === "string" && data.id ? data.id : undefined;
+	return { userOpenid, text: content, ...(msgId ? { msgId } : {}) };
+}
+
 /** 单 adapter 发现列表上限 —— 内存 ring buffer,超出丢最旧(纯便利选择器,不持久化)。 */
 const QQ_DISCOVERY_MAX_PER_ADAPTER = 50;
 
@@ -315,6 +348,13 @@ export interface QQGatewayConnOptions {
 	getToken(): Promise<string>;
 	/** 捞到群/C2C 会话时回调 —— adapter 落进 {@link QQSessionRegistry}。 */
 	onDiscovered(session: QQDiscoveredSession): void;
+	/**
+	 * 收到 C2C 私聊正文时回调 —— 审批指令(主人回的 y/n)靠它送出去。
+	 *
+	 * 可选:没接就当没有入站,这条连接退回纯 push-only(与接这个功能之前一样)。
+	 * 由回调那边决定认不认发送者,这里只负责搬运。
+	 */
+	onInbound?(msg: QQInboundPrivateMessage): void;
 	serviceCtx: ServiceContext;
 	logger: Logger;
 	/** 订阅 intents,默认 {@link QQ_PUSH_INTENTS}。 */
@@ -435,6 +475,18 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 		if (typeof t === "string") {
 			const discovered = extractQQDiscoveredSession(t, d);
 			if (discovered) opts.onDiscovered(discovered);
+			// 私聊正文另走一路(只有 C2C 认)。**catch 不能省**:这条连接同时担着
+			// 推送,指令处理里抛个错不该把整条长连带走。
+			const inbound = opts.onInbound ? extractQQPrivateMessage(t, d) : null;
+			if (inbound) {
+				try {
+					opts.onInbound?.(inbound);
+				} catch (err) {
+					logger.warn(
+						`[qq] adapter=${adapterId} 处理入站私聊失败: ${err instanceof Error ? err.message : String(err)}`,
+					);
+				}
+			}
 		}
 	}
 
@@ -889,6 +941,11 @@ export interface QQOfficialAdapterOptions {
 	serviceCtx: ServiceContext;
 	/** 共享发现表 —— 网关捞到的 openid 落这,路由 qq-sessions 读它。 */
 	registry: QQSessionRegistry;
+	/**
+	 * 收到主人的 C2C 私聊时回调 —— 审批指令(y/n)靠它。可选,不接就是纯 push-only。
+	 * 与 onebot adapter 的同名选项是同一个角色。
+	 */
+	onInbound?: (msg: QQInboundPrivateMessage) => void;
 }
 
 interface QQLive {
@@ -952,6 +1009,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			},
 			getToken: () => tm.getToken(),
 			onDiscovered: (s) => registry.record(adapter.id, s, Date.now()),
+			...(opts.onInbound ? { onInbound: opts.onInbound } : {}),
 			serviceCtx,
 			logger,
 			shouldLogReconnects: () => logReconnectsBox.value,

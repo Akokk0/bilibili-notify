@@ -3,7 +3,12 @@ import type { AddressInfo } from "node:net";
 import type { Disposable, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { type WebSocket, WebSocketServer } from "ws";
-import { createQQGatewayConn, QQ_OPCODE, type QQDiscoveredSession } from "../qq-official";
+import {
+	createQQGatewayConn,
+	QQ_OPCODE,
+	type QQDiscoveredSession,
+	type QQInboundPrivateMessage,
+} from "../qq-official";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 async function waitFor(cond: () => boolean, timeoutMs = 3000): Promise<void> {
@@ -162,6 +167,52 @@ describe("createQQGatewayConn — openid 捞取", () => {
 		gw.dispatch("C2C_MESSAGE_CREATE", { author: { user_openid: "U_OPENID" } });
 		await waitFor(() => onDiscovered.mock.calls.length > 0);
 		expect(onDiscovered).toHaveBeenCalledWith({ scope: "private", openid: "U_OPENID" });
+	});
+});
+
+describe("createQQGatewayConn — C2C 私聊正文(审批指令的入口)", () => {
+	it("C2C_MESSAGE_CREATE → onInbound(openid + 正文)", async () => {
+		const gw = await startFakeGateway();
+		const onInbound = vi.fn();
+		const conn = createQQGatewayConn(connOpts(gw, { onInbound }));
+		cleanups.push(() => conn.close());
+		await waitFor(() => lastIdentify(gw) !== undefined);
+		gw.dispatch("C2C_MESSAGE_CREATE", {
+			author: { user_openid: "U_OPENID" },
+			content: "y",
+			id: "M1",
+		});
+		await waitFor(() => onInbound.mock.calls.length > 0);
+		expect(onInbound).toHaveBeenCalledWith({ userOpenid: "U_OPENID", text: "y", msgId: "M1" });
+	});
+
+	it("群消息不进 onInbound —— 群里打个 y 不该发出待审的周报", async () => {
+		const gw = await startFakeGateway();
+		const onInbound = vi.fn();
+		const onDiscovered = vi.fn();
+		const conn = createQQGatewayConn(connOpts(gw, { onInbound, onDiscovered }));
+		cleanups.push(() => conn.close());
+		await waitFor(() => lastIdentify(gw) !== undefined);
+		gw.dispatch("GROUP_AT_MESSAGE_CREATE", { group_openid: "G1", content: "y" });
+		// 用 onDiscovered 当节拍器:它一定会被这帧触发,到了就说明这帧处理完了。
+		await waitFor(() => onDiscovered.mock.calls.length > 0);
+		expect(onInbound).not.toHaveBeenCalled();
+	});
+
+	it("onInbound 抛错不能带崩连接 —— 它还担着推送", async () => {
+		const gw = await startFakeGateway();
+		const onInbound = vi.fn((_msg: QQInboundPrivateMessage) => {
+			throw new Error("指令处理炸了");
+		});
+		const conn = createQQGatewayConn(connOpts(gw, { onInbound }));
+		cleanups.push(() => conn.close());
+		await waitFor(() => lastIdentify(gw) !== undefined);
+		gw.dispatch("C2C_MESSAGE_CREATE", { author: { user_openid: "U1" }, content: "y" });
+		await waitFor(() => onInbound.mock.calls.length > 0);
+		// 还活着的直接证据:再来一帧照样派发到。
+		gw.dispatch("C2C_MESSAGE_CREATE", { author: { user_openid: "U1" }, content: "n" });
+		await waitFor(() => onInbound.mock.calls.length > 1);
+		expect(onInbound.mock.calls[1]?.[0]).toEqual({ userOpenid: "U1", text: "n" });
 	});
 });
 

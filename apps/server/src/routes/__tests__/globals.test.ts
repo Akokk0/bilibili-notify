@@ -175,13 +175,20 @@ describe("checkApprovalEnable", () => {
 		expect(r.ok === false && r.message).toMatch(/webhook|回复|收不到/);
 	});
 
-	it("master 私聊走 qq-official → 照样拦下，但理由是「还没接」而不是「通道收不到」", () => {
+	it("master 私聊走 qq-official（C2C 入站已接）→ 放行", () => {
 		const g = withApproval(false);
 		g.master.targetId = "m1";
 		const r = checkApprovalEnable(g, patchOn, [{ id: "m1", platform: "qq-official" }] as Targets);
+		expect(r.ok).toBe(true);
+	});
+
+	it("还没接入站的平台 → 拦下，但理由是「还没接」而不是「通道收不到」", () => {
+		const g = withApproval(false);
+		g.master.targetId = "m1";
+		const r = checkApprovalEnable(g, patchOn, [{ id: "m1", platform: "koishi-bot" }] as Targets);
 		expect(r.ok).toBe(false);
-		// QQ 官方协议上收得到,WS 网关与 USER_MESSAGE intent 也一直在跑,差的只是
-		// 我们没把 C2C 正文接出来。说成平台的毛病,主人会怀疑是自己配错了。
+		// 这些平台协议上都收得到,差的是我们没接。说成平台的毛病,主人会去查自己
+		// 的配置(qq-official 就是这么被主人当场抓到的)。
 		expect(r.ok === false && r.message).not.toMatch(/只能发不能收/);
 		expect(r.ok === false && r.message).toMatch(/还没/);
 	});

@@ -185,6 +185,25 @@ describe("审批指令处理", () => {
 		expect(deliver).toHaveBeenCalledTimes(1);
 	});
 
+	it("平台中立入口:qq-official 那边送来的 {userId,text} 同样认", async () => {
+		// onebot 送的是一整帧 OneBot 事件,qq-official 送的是网关那边解析好的
+		// {userOpenid, text}。两条路在这里汇合成同一个身份判定与同一套指令语义 ——
+		// 各写一份鉴权迟早有一边把「不是主人也放行」写漏。
+		const d = await seedDraft();
+		const h = makeHandler();
+		await h.handleMessage({ userId: MASTER, text: "y" });
+		expect(deliver).toHaveBeenCalledTimes(1);
+		expect(deliver.mock.calls[0]?.[0].id).toBe(d.id);
+	});
+
+	it("平台中立入口同样只认主人 —— 别人的 y 当没看见", async () => {
+		await seedDraft();
+		const h = makeHandler();
+		await h.handleMessage({ userId: "99999", text: "y" });
+		expect(deliver).not.toHaveBeenCalled();
+		expect(reply).not.toHaveBeenCalled();
+	});
+
 	it("发送本身抛错 → 不把异常抛回 WS 通道(它还担着推送)", async () => {
 		await seedDraft();
 		const h = makeHandler();

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
-import { createQQSessionRegistry, extractQQDiscoveredSession } from "../qq-official";
+import {
+	createQQSessionRegistry,
+	extractQQDiscoveredSession,
+	extractQQPrivateMessage,
+} from "../qq-official";
 
 describe("extractQQDiscoveredSession — 从入站事件捞 group/C2C openid", () => {
 	it("GROUP_AT_MESSAGE_CREATE → group session(group_openid + 触发者用户名 hint)", () => {
@@ -110,5 +114,58 @@ describe("createQQSessionRegistry — per-adapter 发现 ring buffer", () => {
 		reg.record("a1", { scope: "group", openid: "X" }, 1000);
 		reg.record("a1", { scope: "private", openid: "X" }, 2000);
 		expect(reg.list("a1")).toHaveLength(2);
+	});
+});
+
+/**
+ * C2C 私聊正文 —— 审批指令(主人回的 y/n)走这条路进来。
+ *
+ * 与 {@link extractQQDiscoveredSession} 是两件事:那个只要 openid(拿来当推送地址),
+ * 这个要正文。守的重点和 onebot 那条一样 ——「口子有多窄」:群消息不算、别人发的不算。
+ * 放宽任何一条,后果都是把一份没人审过的锐评发进群里。
+ */
+describe("extractQQPrivateMessage — 从 C2C 事件取私聊正文", () => {
+	it("C2C_MESSAGE_CREATE → 取 user_openid + 正文 + msg_id", () => {
+		expect(
+			extractQQPrivateMessage("C2C_MESSAGE_CREATE", {
+				author: { id: "x", user_openid: "U1" },
+				content: "y a3",
+				id: "ROBOT1.0_abc",
+			}),
+		).toEqual({ userOpenid: "U1", text: "y a3", msgId: "ROBOT1.0_abc" });
+	});
+
+	it("群消息不算 —— 群里有人打个 y 不该把待审的周报发出去", () => {
+		expect(
+			extractQQPrivateMessage("GROUP_AT_MESSAGE_CREATE", {
+				group_openid: "G1",
+				author: { member_openid: "M1" },
+				content: "y",
+			}),
+		).toBeNull();
+	});
+
+	it("绝不回退 author.member_openid —— 那是群成员域的身份,与 C2C 用户 openid 是两个命名空间", () => {
+		expect(
+			extractQQPrivateMessage("C2C_MESSAGE_CREATE", {
+				author: { member_openid: "M1" },
+				content: "y",
+			}),
+		).toBeNull();
+	});
+
+	it("空正文 / 只有空白 → null(纯表情、纯图片消息都会走到这儿)", () => {
+		const author = { user_openid: "U1" };
+		expect(extractQQPrivateMessage("C2C_MESSAGE_CREATE", { author, content: "   " })).toBeNull();
+		expect(extractQQPrivateMessage("C2C_MESSAGE_CREATE", { author })).toBeNull();
+	});
+
+	it("msg_id 缺了也认 —— 正文才是要紧的", () => {
+		expect(
+			extractQQPrivateMessage("C2C_MESSAGE_CREATE", {
+				author: { user_openid: "U1" },
+				content: "n",
+			}),
+		).toEqual({ userOpenid: "U1", text: "n" });
 	});
 });

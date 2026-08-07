@@ -17,7 +17,11 @@ import { startHistoryRetention } from "./history/retention.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
 import { createOnebotAdapter } from "./platforms/onebot.js";
-import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq-official.js";
+import {
+	createQQOfficialAdapter,
+	createQQSessionRegistry,
+	type QQInboundPrivateMessage,
+} from "./platforms/qq-official.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
 import { createEngines } from "./runtime/engines.js";
@@ -199,9 +203,14 @@ export async function startStandaloneServer(
 		// longer exists (deleted while the server was down). FansPoller's
 		// subscription-changed listener handles deletions made while running.
 		await runtime.subRuntimeStore.prune(subBinding.store.list().map((s) => s.id));
-		// 入站帧的转发口。指令处理器要等 engines / 调度器建好才有,所以这里先留一个
+		// 入站的转发口。指令处理器要等 engines / 调度器建好才有,所以这里先留两个
 		// 可后填的引用 —— adapter 建得比它们早。
+		//
+		// 两个而不是一个:onebot 送的是**一整帧 OneBot 事件**(要在指令层解析),
+		// qq-official 的网关那边已经解析成 `{userOpenid, text}` 了。帧格式不同,
+		// 但汇合点是同一个(handle / handleMessage 共用同一套鉴权与指令语义)。
 		let onInboundFrame: ((frame: Record<string, unknown>) => void) | undefined;
+		let onInboundQQ: ((msg: QQInboundPrivateMessage) => void) | undefined;
 		const adapters = [
 			createOnebotAdapter({
 				logger: log,
@@ -212,6 +221,7 @@ export async function startStandaloneServer(
 				logger: log,
 				serviceCtx: runtime.serviceCtx,
 				registry: qqSessionRegistry,
+				onInbound: (msg) => onInboundQQ?.(msg),
 			}),
 			createWebhookAdapter({ logger: log }),
 		];
@@ -295,18 +305,27 @@ export async function startStandaloneServer(
 		const roastCommands = createRoastCommandHandler({
 			drafts: roastDrafts,
 			logger: log,
-			// 主人的 OneBot user_id —— 只有他回的 y/n 算数。私聊目标不是 onebot
-			// (或压根没配)就返回 undefined,于是谁都不认。
+			// 主人在他那条私聊通道上的身份 —— 只有这个 id 回的 y/n 算数。
+			//
+			// 每个平台的「谁」长得不一样:onebot 是 user_id,qq-official 是 C2C 的
+			// userOpenid。**绝不能跨平台比对** —— 两个命名空间里的字符串撞上就等于
+			// 认错人。取不到(没配 / 群目标没有 userOpenid / 平台还没接入站)就返回
+			// undefined,于是谁都不认。
 			masterUserId: () => {
 				const id = runtime.configStore.getGlobals().master.targetId;
 				if (!id) return undefined;
 				const t = runtime.configStore.getTargets().find((x) => x.id === id);
-				return t?.platform === "onebot" ? t.session.userId : undefined;
+				if (t?.platform === "onebot") return t.session.userId;
+				if (t?.platform === "qq-official") return t.session.userOpenid;
+				return undefined;
 			},
 			deliver: (draft) => roastScheduler.deliverApproved(draft),
 			reply: tellMaster,
 		});
 		onInboundFrame = (frame) => void roastCommands.handle(frame);
+		// QQ 那边网关已经解析好了,直接喂平台中立入口。userOpenid 就是身份本身。
+		onInboundQQ = (msg) =>
+			void roastCommands.handleMessage({ userId: msg.userOpenid, text: msg.text });
 
 		roastScheduler.start();
 		runtime.bus.on("config-changed", (scope) => {

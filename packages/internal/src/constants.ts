@@ -559,9 +559,10 @@ export const DEFAULT_ROAST_SCHEDULE = {
  * 它把 y/n 收回来 —— 一个平台如果只是协议上支持而我们没解析，配置页放行就等于让
  * 主人开了一个永远等不到回复的开关，草稿全部超时作废。宁可少列。
  *
- * webhook 天生不可能:它就是个出站 HTTP POST，没有回程。
+ * webhook 天生不可能:它就是个出站 HTTP POST，没有回程。koishi-bot / astrbot 协议上
+ * 收得到,只是我们还没接 —— 说法见 {@link inboundGapReason}，别写成平台的毛病。
  */
-export const INBOUND_CAPABLE_PLATFORMS = ["onebot"] as const;
+export const INBOUND_CAPABLE_PLATFORMS = ["onebot", "qq-official"] as const;
 
 /** 这个平台收不收得到主人的回复。审批开关能不能用就看它。 */
 export function platformCanReceiveReply(platform: string): boolean {
