@@ -549,7 +549,6 @@ export const DEFAULT_ROAST_SCHEDULE = {
 	targets: [] as string[],
 	approval: false,
 	notifyOnError: true,
-	ccMaster: false,
 } as const;
 
 /**

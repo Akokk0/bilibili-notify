@@ -31,11 +31,16 @@ describe("RoastScheduleSchema", () => {
 		expect(s.approval).toBe(false);
 	});
 
-	it("异常通知默认开、成功抄送默认关", () => {
-		const s = RoastScheduleSchema.parse({});
-		// 没发出去要说一声(主人刚为这事修过动态检测);发成功了不必每次都打扰。
-		expect(s.notifyOnError).toBe(true);
-		expect(s.ccMaster).toBe(false);
+	it("异常通知默认开 —— 没发出去要说一声(主人刚为这事修过动态检测)", () => {
+		expect(RoastScheduleSchema.parse({}).notifyOnError).toBe(true);
+	});
+
+	it("老配置里残留的 ccMaster 被静默丢掉,不是解析失败", () => {
+		// 这个开关删掉了(有「发送前给主人过目」就没意义了)。schema 不是 strict,
+		// 所以存量 bn.config.yaml 里那一行只会被 strip —— 升级不该因此起不来。
+		const r = RoastScheduleSchema.safeParse({ ccMaster: true });
+		expect(r.success).toBe(true);
+		expect(r.success && "ccMaster" in r.data).toBe(false);
 	});
 
 	it("days 卡在 1–90,越界拒绝", () => {

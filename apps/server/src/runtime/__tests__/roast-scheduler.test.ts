@@ -237,22 +237,10 @@ describe("调度器 — 到点之后", () => {
 		expect(msg).toContain("机器人不在群里");
 	});
 
-	it("全都发成功 + 抄送关 → 不打扰主人", async () => {
-		const { sched } = armed({ ccMaster: false });
+	it("全都发成功 → 不打扰主人(「发成功了」不是需要私聊的事)", async () => {
+		const { sched } = armed();
 		await sched.runBoardOnce();
 		expect(tellMaster).not.toHaveBeenCalled();
-	});
-
-	it("抄送开 → 发完把同一份正文抄给主人", async () => {
-		deliverRoast.mockResolvedValue({
-			mode: "text",
-			sent: ["t1", "t2"],
-			failed: [],
-			text: "本周榜单正文",
-		});
-		const { sched } = armed({ ccMaster: true });
-		await sched.runBoardOnce();
-		expect(String(tellMaster.mock.calls[0]?.[0])).toContain("本周榜单正文");
 	});
 
 	it("一轮里抛出的异常不能逃出 cron 回调 —— 独立端会因 unhandledRejection 关进程", async () => {
@@ -278,7 +266,9 @@ describe("调度器 — 到点之后", () => {
 	});
 
 	it("私聊自己抛错 → 不影响这一轮的结论(通知是锦上添花)", async () => {
-		const { sched } = armed({ ccMaster: true });
+		// 借一条一定会私聊的路(生成失败 + notifyOnError)来触发。
+		generateBoardRoast.mockResolvedValue({ ok: false, kind: "too-few-ups" });
+		const { sched } = armed({ notifyOnError: true });
 		tellMaster.mockRejectedValue(new Error("master unreachable"));
 		await expect(sched.runBoardOnce()).resolves.not.toThrow();
 	});

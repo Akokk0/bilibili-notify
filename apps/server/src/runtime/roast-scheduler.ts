@@ -170,7 +170,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 	async function deliverAndReport(
 		kind: "board" | "solo",
 		result: BoardLike | SoloLike,
-		cfg: Pick<RoastSchedule, "days" | "targets" | "notifyOnError" | "ccMaster">,
+		cfg: Pick<RoastSchedule, "days" | "targets" | "notifyOnError">,
 		label: string,
 	): Promise<RoastRunOutcome> {
 		const out = await deliverRoast(deps, {
@@ -193,11 +193,6 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 			logger.info(`[roast-sched] ${label} 已发送到 ${out.sent.length} 个目标(${out.mode})`);
 		}
 
-		// 抄送与异常通知是两件事:一个是故障告警,一个是内容留底。
-		if (cfg.ccMaster && out.sent.length > 0) {
-			await tell(`${label}已发送：\n${out.text}`);
-		}
-
 		return { kind: "sent", mode: out.mode, sent: out.sent.length, failed: out.failed };
 	}
 
@@ -218,7 +213,6 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 				// 草稿里记的是生成那一刻的目标,不重读配置。
 				targets: draft.targets,
 				notifyOnError: cfg?.notifyOnError ?? true,
-				ccMaster: cfg?.ccMaster ?? false,
 			},
 			draft.kind === "board" ? "UP 主周报" : `${draft.uid} 的锐评`,
 		);

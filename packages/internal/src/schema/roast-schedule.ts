@@ -50,7 +50,5 @@ export const RoastScheduleSchema = z.object({
 	approval: z.boolean().default(false),
 	/** 没发出去时(生成失败 / 订阅不足 / 全部目标推送失败)私聊说明原因。 */
 	notifyOnError: z.boolean().default(true),
-	/** 发成功后把同一份抄送主人一份。与 `notifyOnError` 分开 —— 一个是故障告警,一个是内容留底。 */
-	ccMaster: z.boolean().default(false),
 });
 export type RoastSchedule = z.infer<typeof RoastScheduleSchema>;

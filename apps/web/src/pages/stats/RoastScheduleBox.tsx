@@ -187,12 +187,6 @@ export function RoastScheduleBox() {
 					value={draft.notifyOnError}
 					onChange={(v) => patch({ notifyOnError: v })}
 				/>
-				<SwitchRow
-					label="发出去后抄送我一份"
-					hint="群里发了什么，同一份也私聊给主人留个底"
-					value={draft.ccMaster}
-					onChange={(v) => patch({ ccMaster: v })}
-				/>
 			</div>
 
 			{/* 「试一次」读的是**已保存**的那份配置,所以要把「面板上还有没存的改动」
