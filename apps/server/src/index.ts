@@ -3,6 +3,7 @@ import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
 import { join } from "node:path";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
+import type { NotificationPayload } from "@bilibili-notify/internal";
 import { type ServerType, serve } from "@hono/node-server";
 import type { Hono } from "hono";
 import { createApp } from "./app.js";
@@ -281,6 +282,11 @@ export async function startStandaloneServer(
 		const tellMaster = async (text: string): Promise<void> => {
 			await engines?.push.sendPrivateMsg(text);
 		};
+		// 审批预览要发的是渲染好的那一份(出图就发图),所以走 payload 版而不是
+		// sendPrivateMsg —— 后者只收字符串。
+		const tellMasterPayload = async (payload: NotificationPayload): Promise<void> => {
+			await engines?.push.sendToMaster(payload);
+		};
 
 		const roastScheduler = createRoastScheduler({
 			deps: { runtime, store: runtime.configStore },
@@ -300,6 +306,7 @@ export async function startStandaloneServer(
 				}
 			},
 			tellMaster,
+			tellMasterPayload,
 		});
 
 		const roastCommands = createRoastCommandHandler({

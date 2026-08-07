@@ -49,6 +49,7 @@ vi.mock("cron", () => ({ CronJob: cronMock.FakeCronJob }));
 const generateBoardRoast = vi.hoisted(() => vi.fn());
 const generateSoloRoast = vi.hoisted(() => vi.fn());
 const deliverRoast = vi.hoisted(() => vi.fn());
+const buildRoastPayload = vi.hoisted(() => vi.fn());
 
 vi.mock("../../stats/roast-generate.js", async (orig) => ({
 	...(await orig<Record<string, unknown>>()),
@@ -58,6 +59,7 @@ vi.mock("../../stats/roast-generate.js", async (orig) => ({
 vi.mock("../../stats/roast-deliver.js", async (orig) => ({
 	...(await orig<Record<string, unknown>>()),
 	deliverRoast,
+	buildRoastPayload,
 }));
 
 const { createRoastScheduler } = await import("../roast-scheduler.js");
@@ -87,10 +89,12 @@ function memDrafts() {
 
 let globals: GlobalConfig;
 let tellMaster: ReturnType<typeof vi.fn>;
+let tellMasterPayload: ReturnType<typeof vi.fn>;
 
 function makeScheduler(over: { subs?: Array<Record<string, unknown>> } = {}) {
 	const drafts = memDrafts();
 	tellMaster = vi.fn(async () => {});
+	tellMasterPayload = vi.fn(async () => {});
 	const deps = {
 		runtime: {
 			engines: { api: {}, imageRenderer: null, push: {} },
@@ -109,6 +113,7 @@ function makeScheduler(over: { subs?: Array<Record<string, unknown>> } = {}) {
 		logger,
 		fetchOverview: async () => ({ days: 7, rows: [] }),
 		tellMaster: tellMaster as Any,
+		tellMasterPayload: tellMasterPayload as Any,
 	});
 	return { sched, drafts };
 }
@@ -120,6 +125,11 @@ beforeEach(() => {
 	generateBoardRoast.mockReset().mockResolvedValue({ ok: true, result: BOARD_RESULT });
 	generateSoloRoast.mockReset().mockResolvedValue({ ok: true, result: BOARD_RESULT });
 	deliverRoast.mockReset().mockResolvedValue({ mode: "text", sent: ["t1"], failed: [], text: "x" });
+	buildRoastPayload.mockReset().mockResolvedValue({
+		mode: "text",
+		text: "本周榜单正文",
+		payload: { kind: "text", text: "本周榜单正文" },
+	});
 });
 
 afterEach(() => {
@@ -208,14 +218,48 @@ describe("调度器 — 到点之后", () => {
 		expect(tellMaster).toHaveBeenCalledTimes(1);
 	});
 
-	it("审批开 → 存草稿并私聊带上短 ID,群里先不发", async () => {
+	it("审批开 → 存草稿,群里先不发", async () => {
 		const { sched, drafts } = armed({ approval: true });
 		await sched.runBoardOnce();
 		expect(deliverRoast).not.toHaveBeenCalled();
-		const pending = drafts.list();
-		expect(pending).toHaveLength(1);
-		// 主人得知道回什么才批得动。
-		expect(String(tellMaster.mock.calls[0]?.[0])).toContain(pending[0]?.id);
+		expect(drafts.list()).toHaveLength(1);
+	});
+
+	it("审批开 → 私聊里必须带上**正文**,否则「过目」根本没东西可看", async () => {
+		const { sched } = armed({ approval: true });
+		await sched.runBoardOnce();
+		// 曾经这条私聊只有「已经生成好了」+ 编号 + 超时说明,一个字的内容都没有。
+		// 主人对着它只能盲批 —— 审批这功能整个就是假的。
+		const sent = tellMasterPayload.mock.calls[0]?.[0];
+		expect(JSON.stringify(sent)).toContain("本周榜单正文");
+	});
+
+	it("审批开 → 同一条私聊里也要说清楚怎么批", async () => {
+		const { sched, drafts } = armed({ approval: true });
+		await sched.runBoardOnce();
+		const sent = JSON.stringify(tellMasterPayload.mock.calls[0]?.[0]);
+		expect(sent).toContain(drafts.list()[0]?.id);
+		expect(sent).toContain("y ");
+	});
+
+	it("审批开 + 出图 → 私聊发的就是**将来真发出去的那张卡**,不是文字复述", async () => {
+		const buf = Buffer.from("fake-png");
+		buildRoastPayload.mockResolvedValue({
+			mode: "image",
+			text: "本周榜单正文",
+			payload: {
+				kind: "image",
+				image: { buffer: buf, mime: "image/jpeg" },
+				caption: "本周榜单正文",
+			},
+		});
+		const { sched } = armed({ approval: true });
+		await sched.runBoardOnce();
+		const sent = tellMasterPayload.mock.calls[0]?.[0];
+		expect(sent.kind).toBe("image");
+		expect(sent.image.buffer).toBe(buf);
+		// 说明文字挂在 caption 上 —— 图发不出去时那段字是唯一还读得到的东西。
+		expect(String(sent.caption)).toContain("本周榜单正文");
 	});
 
 	it("审批开 → 草稿记下的是**这一刻**的目标快照", async () => {

@@ -87,6 +87,60 @@ export function roastPushText(
  * 单个目标失败不影响其他目标 —— 群 A 把机器人踢了,不该连累群 B 收不到。发送本身
  * 的重试由推送管线负责(退避 + routing 复检),这里拿到的已经是终局。
  */
+export interface RoastPayload {
+	/** 实际形态。渲染不可用或失败时降级成 text。 */
+	mode: "image" | "text";
+	/** 送出去的消息本体。 */
+	payload: NotificationPayload;
+	/** 正文。图片形态下它同时是 caption。 */
+	text: string;
+}
+
+/**
+ * 把一份锐评**渲染成待发的消息**,但不发。
+ *
+ * 从 {@link deliverRoast} 里抽出来的前半段。抽的理由不是复用好看,而是审批预览
+ * 必须发**将来真会发出去的那一份** —— 让主人过目一段文字、群里却收到一张信息更
+ * 多的卡片,那个「过目」就是假的。
+ *
+ * 代价是获批的那份会渲染两次(预览一次、真发一次)。周报是周级低频动作,而渲染器
+ * 本来就是串行队列,这点开销换「批的就是发的」值得;把 buffer 塞进落盘的草稿里
+ * 反而要往 JSON 里塞 base64,还得跟 48 小时 TTL 一起过期。
+ */
+export async function buildRoastPayload(
+	deps: RoastDeliverDeps,
+	opts: { kind: "board" | "solo"; result: BoardLike | SoloLike; days: number },
+): Promise<RoastPayload> {
+	const upMeta = makeUpMeta(deps);
+	const text = roastPushText(opts.kind, opts.result, opts.days, upMeta);
+
+	const renderer = deps.runtime.engines?.imageRenderer ?? null;
+	const imageWanted = renderer !== null && deps.store.getGlobals().defaults.cardStyle.enabled;
+	if (!imageWanted || !renderer) return { mode: "text", payload: { kind: "text", text }, text };
+
+	try {
+		const buffer =
+			opts.kind === "board"
+				? await renderer.generateRoastBoardCard(
+						boardCardData(opts.result as BoardLike, opts.days, upMeta),
+					)
+				: await renderer.generateRoastSoloCard(
+						soloCardData(opts.result as SoloLike, opts.days, upMeta),
+					);
+		// caption 不是装饰:图挂了 / 客户端不展图时,那段文字是唯一还读得到的东西。
+		return {
+			mode: "image",
+			payload: { kind: "image", image: { buffer, mime: "image/jpeg" }, caption: text },
+			text,
+		};
+	} catch (err) {
+		deps.runtime.serviceCtx.logger.warn(
+			`[roast] 卡片渲染失败，降级为文字推送: ${err instanceof Error ? err.message : String(err)}`,
+		);
+		return { mode: "text", payload: { kind: "text", text }, text };
+	}
+}
+
 export async function deliverRoast(
 	deps: RoastDeliverDeps,
 	opts: {
@@ -97,33 +151,7 @@ export async function deliverRoast(
 	},
 ): Promise<DeliverOutcome> {
 	const engines = deps.runtime.engines;
-	const upMeta = makeUpMeta(deps);
-	const text = roastPushText(opts.kind, opts.result, opts.days, upMeta);
-
-	const renderer = engines?.imageRenderer ?? null;
-	const imageWanted = renderer !== null && deps.store.getGlobals().defaults.cardStyle.enabled;
-
-	let payload: NotificationPayload = { kind: "text", text };
-	let mode: "image" | "text" = "text";
-	if (imageWanted && renderer) {
-		try {
-			const buffer =
-				opts.kind === "board"
-					? await renderer.generateRoastBoardCard(
-							boardCardData(opts.result as BoardLike, opts.days, upMeta),
-						)
-					: await renderer.generateRoastSoloCard(
-							soloCardData(opts.result as SoloLike, opts.days, upMeta),
-						);
-			// caption 不是装饰:图挂了 / 客户端不展图时,那段文字是唯一还读得到的东西。
-			payload = { kind: "image", image: { buffer, mime: "image/jpeg" }, caption: text };
-			mode = "image";
-		} catch (err) {
-			deps.runtime.serviceCtx.logger.warn(
-				`[roast] 卡片渲染失败，降级为文字推送: ${err instanceof Error ? err.message : String(err)}`,
-			);
-		}
-	}
+	const { mode, payload, text } = await buildRoastPayload(deps, opts);
 
 	const sent: string[] = [];
 	const failed: DeliverOutcome["failed"] = [];

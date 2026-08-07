@@ -10,10 +10,11 @@
  * 周报 / 月报 / 季报这类组合。
  */
 
-import type { Logger, RoastSchedule } from "@bilibili-notify/internal";
+import type { Logger, NotificationPayload, RoastSchedule } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import {
 	type BoardLike,
+	buildRoastPayload,
 	deliverRoast,
 	type RoastDeliverDeps,
 	type SoloLike,
@@ -37,6 +38,12 @@ export interface CreateRoastSchedulerOptions {
 	 * 生成结果或后续步骤一起带走(动态引擎那边刚为同一个道理修过一处)。
 	 */
 	tellMaster: (text: string) => Promise<void>;
+	/**
+	 * 私聊主人一条**完整消息**(可能带图)。审批预览走它 —— 要主人过目的东西必须
+	 * 是将来真发出去的那一份,只私聊一段文字、群里却收到一张信息更多的卡片,那个
+	 * 「过目」就是假的。同样,发不出去只该被吞掉。
+	 */
+	tellMasterPayload: (payload: NotificationPayload) => Promise<void>;
 }
 
 /**
@@ -107,6 +114,17 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		}
 	}
 
+	/** 同上,但发的是完整消息(审批预览)。 */
+	async function tellPayload(payload: NotificationPayload): Promise<void> {
+		try {
+			await opts.tellMasterPayload(payload);
+		} catch (err) {
+			logger.warn(
+				`[roast-sched] 私聊审批预览失败: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
+	}
+
 	/**
 	 * 一条流水线跑一趟。
 	 *
@@ -157,8 +175,20 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 				result: gen.result,
 			});
 			logger.info(`[roast-sched] ${label} 已生成,等待审批(id=${draft.id})`);
-			await tell(
-				`${label}已经生成好了，等主人过目～\n回复「y ${draft.id}」发送，「n ${draft.id}」丢弃。\n48 小时没有回复就自动作废。`,
+
+			// 私聊里**必须带上正文** —— 曾经这条消息只有「已经生成好了」加一个编号,
+			// 主人对着它只能盲批,审批这功能整个是假的。而且发的是渲染好的那一份
+			// (出图就发图),不是文字复述:批的和发的得是同一个东西。
+			const preview = await buildRoastPayload(deps, {
+				kind,
+				result: gen.result as BoardLike | SoloLike,
+				days: cfg.days,
+			});
+			const guide = `☝️ ${label}已经生成好了，等主人过目～\n回复「y ${draft.id}」发送，「n ${draft.id}」丢弃。\n48 小时没有回复就自动作废。`;
+			await tellPayload(
+				preview.payload.kind === "image"
+					? { ...preview.payload, caption: `${preview.text}\n\n${guide}` }
+					: { kind: "text", text: `${preview.text}\n\n${guide}` },
 			);
 			return { kind: "pending-approval", draftId: draft.id };
 		}
