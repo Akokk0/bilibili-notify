@@ -55,6 +55,16 @@ export interface CreateAppOptions {
 	 */
 	basicAuthCredentials?: BasicAuthCredentials;
 	/**
+	 * 把 stats 子路由实例递出去。
+	 *
+	 * 定时锐评的调度器要取统计数据,而取数是「内部代理一次 `/overview`」——
+	 * 手动锐评在 handler 里做的就是这件事(`fetchOverview(app, …)`,传的正是这个
+	 * 子实例)。子实例上没有鉴权中间件,鉴权挂在父 app 的 `/api/*`;调度器与
+	 * handler 同属鉴权边界之内的进程内代码,所以这里递出去的是**同一条已有路径**
+	 * 的引用,不是新开的信任面。走父 app 反而会被自己的鉴权 401 掉(它没有 cookie)。
+	 */
+	onStatsRoute?: (route: Hono) => void;
+	/**
 	 * Session codec used to sign/verify the `bn_session` cookie. Must be
 	 * provided exactly when `basicAuthCredentials` is — `index.ts` builds it
 	 * from the runtime key provider (HKDF) + the same credentials.
@@ -216,7 +226,9 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	app.route("/api/push", createPushRoute(deps));
 	app.route("/api/ai", createAiRoute(deps));
 	app.route("/api/fans", createFansRoute(deps));
-	app.route("/api/stats", createStatsRoute(deps));
+	const statsRoute = createStatsRoute(deps);
+	app.route("/api/stats", statsRoute);
+	options.onStatsRoute?.(statsRoute);
 	app.route("/api/qq", createQQRoute(deps));
 	app.route(
 		"/api/cards",

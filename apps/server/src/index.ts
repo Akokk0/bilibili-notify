@@ -2,7 +2,9 @@ import { constants } from "node:fs";
 import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
 import { join } from "node:path";
+import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import { type ServerType, serve } from "@hono/node-server";
+import type { Hono } from "hono";
 import { createApp } from "./app.js";
 import { shouldRefuseBareAuth } from "./auth/bare-auth-policy.js";
 import { type AuthSystem, createAuthSystem } from "./auth/index.js";
@@ -22,6 +24,9 @@ import { createEngines } from "./runtime/engines.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
 import { startFansPoller } from "./runtime/fans-poller.js";
 import { createPuppeteerAdapter, type StandalonePuppeteer } from "./runtime/puppeteer.js";
+import { createRoastCommandHandler } from "./runtime/roast-command.js";
+import { createRoastDraftStore } from "./runtime/roast-draft-store.js";
+import { createRoastScheduler } from "./runtime/roast-scheduler.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
 import { createWsServer } from "./ws/server.js";
 import type { LogEntry } from "./ws/types.js";
@@ -194,8 +199,15 @@ export async function startStandaloneServer(
 		// longer exists (deleted while the server was down). FansPoller's
 		// subscription-changed listener handles deletions made while running.
 		await runtime.subRuntimeStore.prune(subBinding.store.list().map((s) => s.id));
+		// 入站帧的转发口。指令处理器要等 engines / 调度器建好才有,所以这里先留一个
+		// 可后填的引用 —— adapter 建得比它们早。
+		let onInboundFrame: ((frame: Record<string, unknown>) => void) | undefined;
 		const adapters = [
-			createOnebotAdapter({ logger: log, serviceCtx: runtime.serviceCtx }),
+			createOnebotAdapter({
+				logger: log,
+				serviceCtx: runtime.serviceCtx,
+				onInbound: (frame) => onInboundFrame?.(frame),
+			}),
 			createQQOfficialAdapter({
 				logger: log,
 				serviceCtx: runtime.serviceCtx,
@@ -247,6 +259,81 @@ export async function startStandaloneServer(
 		});
 		runtime.attachFansPoller(fansPoller);
 		runtime.serviceCtx.onDispose(() => fansPoller.dispose());
+
+		// ── 定时锐评 ──────────────────────────────────────────────────────────
+		// 草稿库 → 调度器 → 审批指令,按依赖顺序建;取数与主人私聊两个口子是回填的
+		// (statsRoute 要等 createApp,engines 上面刚建好)。
+		const roastDrafts = createRoastDraftStore({ dataDir: bootstrap.dataDir, logger: log });
+		await roastDrafts.load();
+
+		let statsRoute: Hono | null = null;
+		/** 私聊主人。发不出去由调用方各自兜住(调度器与指令处理器都不让它拖垮流程)。 */
+		const tellMaster = async (text: string): Promise<void> => {
+			await engines?.push.sendPrivateMsg(text);
+		};
+
+		const roastScheduler = createRoastScheduler({
+			deps: { runtime, store: runtime.configStore },
+			drafts: roastDrafts,
+			logger: log,
+			// 与手动锐评**同一条路径**:内部代理一次 stats 子路由的 /overview。
+			// 子路由上没有鉴权中间件(鉴权在父 app 的 /api/*),而调度器与 route
+			// handler 同属鉴权边界内的进程内代码 —— 走父 app 反而会被自己 401。
+			fetchOverview: async (days, tz) => {
+				if (!statsRoute) return null;
+				const res = await statsRoute.request(`/overview?days=${days}&tz=${tz}`);
+				if (!res.ok) return null;
+				try {
+					return (await res.json()) as StatsOverviewResponse;
+				} catch {
+					return null;
+				}
+			},
+			tellMaster,
+		});
+
+		const roastCommands = createRoastCommandHandler({
+			drafts: roastDrafts,
+			logger: log,
+			// 主人的 OneBot user_id —— 只有他回的 y/n 算数。私聊目标不是 onebot
+			// (或压根没配)就返回 undefined,于是谁都不认。
+			masterUserId: () => {
+				const id = runtime.configStore.getGlobals().master.targetId;
+				if (!id) return undefined;
+				const t = runtime.configStore.getTargets().find((x) => x.id === id);
+				return t?.platform === "onebot" ? t.session.userId : undefined;
+			},
+			deliver: (draft) => roastScheduler.deliverApproved(draft),
+			reply: tellMaster,
+		});
+		onInboundFrame = (frame) => void roastCommands.handle(frame);
+
+		roastScheduler.start();
+		runtime.bus.on("config-changed", (scope) => {
+			// 全局那条(roastSchedule)与 per-UP 那些(subscriptions)各自都可能增删改。
+			if (scope === "globals" || scope === "subscriptions") roastScheduler.reconcile();
+		});
+		runtime.serviceCtx.onDispose(() => roastScheduler.stop());
+
+		// 过期草稿:每小时清一轮,清掉的**告诉主人一声**。悄悄消失的话他只会以为
+		// 这期又没发 —— 那正是这个功能要消除的沉默。
+		runtime.serviceCtx.setInterval(
+			() => {
+				void roastDrafts
+					.sweep()
+					.then(async (dead) => {
+						for (const d of dead) {
+							await tellMaster(`编号 ${d.id} 的锐评超过 48 小时没有回复，已经作废了～`);
+						}
+					})
+					.catch((err) => {
+						log.warn(
+							`[roast-draft] 过期清理失败: ${err instanceof Error ? err.message : String(err)}`,
+						);
+					});
+			},
+			60 * 60 * 1000,
+		);
 
 		const webDist = await resolveEffectiveWebDistDir({
 			configured: bootstrap.webDistDir,
@@ -319,6 +406,9 @@ export async function startStandaloneServer(
 			allowedOrigins,
 			desktopToken,
 			qqSessionRegistry,
+			onStatsRoute: (route) => {
+				statsRoute = route;
+			},
 		});
 		await new Promise<void>((resolveServe) => {
 			server = serve(

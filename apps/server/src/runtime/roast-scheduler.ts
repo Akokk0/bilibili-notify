@@ -48,6 +48,18 @@ export interface RoastScheduler {
 	runBoardOnce(): Promise<void>;
 	/** 立刻跑一次某位 UP 的单人锐评。 */
 	runSoloOnce(uid: string): Promise<void>;
+	/**
+	 * 把一份**已经获批**的草稿发出去。审批指令链路调它。
+	 *
+	 * 目标取草稿里那份快照而不是重读配置 —— 主人点头的是「这份内容发给这些人」。
+	 */
+	deliverApproved(draft: {
+		kind: "board" | "solo";
+		uid?: string;
+		days: number;
+		targets: string[];
+		result: unknown;
+	}): Promise<void>;
 }
 
 /** 调度器自己的时区 = 服务器本地。它没有浏览器可问,统计窗口按本地日边界对齐。 */
@@ -297,7 +309,6 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		reconcile,
 		runBoardOnce,
 		runSoloOnce,
-		// 指令链路要用它把审批通过的草稿发出去。
 		deliverApproved,
-	} as RoastScheduler & { deliverApproved: typeof deliverApproved };
+	};
 }
