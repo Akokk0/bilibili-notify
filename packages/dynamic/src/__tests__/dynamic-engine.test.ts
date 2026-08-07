@@ -335,11 +335,15 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 					e.event === "engine-error" &&
 					(e.args as unknown[]).some((a) => String(a).includes("账号被风控")),
 			).length;
+		// 数的是**风控告警**这一种私聊,不是私聊总数 —— 恢复时还会来一条「已恢复」
+		// (见「故障恢复通知」),拿总数计这条边沿会被那条报喜带偏。
+		const dmCount = () =>
+			b.push.sendPrivateMsg.mock.calls.filter((c) => String(c[0]).includes("账号被风控")).length;
 
 		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine); // 进入风控
 		await detect(b.engine); // 仍风控 → 抑制
-		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
+		expect(dmCount()).toBe(1);
 		expect(ecCount()).toBe(1);
 		expect(b.logs.filter((l) => l.level === "error" && l.msg.includes("账号被风控"))).toHaveLength(
 			1,
@@ -352,7 +356,7 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 
 		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine); // 再次风控 → 边沿复位后重新告警
-		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
+		expect(dmCount()).toBe(2);
 		expect(ecCount()).toBe(2);
 	});
 
@@ -380,6 +384,166 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 		await detect(b.engine); // 风控 episode #2(跨过 -101)→ 必须重新告警
 		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
 		expect(riskEc()).toBe(2);
+	});
+
+	/**
+	 * 告警私聊发不出去,不能把退避重启一起带走。
+	 *
+	 * `handleApiError` 开头就把 cron stop 了,重新起来全靠末尾那句
+	 * `scheduleDetectorRestart`。中间的私聊要是裸 `await` 并抛了出去,后面的
+	 * emit 和排程都不执行 —— 动态检测就此永久停摆,而日志上只有一条私聊失败。
+	 */
+	it("告警私聊抛错 → 退避重启照排(不因通知失败而永久停摆)", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+		b.push.sendPrivateMsg.mockRejectedValue(new Error("master unreachable"));
+		b.getAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		await detect(b.engine);
+		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
+	});
+
+	it("风控告警私聊抛错 → 退避重启同样照排", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+		b.push.sendPrivateMsg.mockRejectedValue(new Error("master unreachable"));
+		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		await detect(b.engine);
+		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
+	});
+});
+
+/**
+ * 「到底好没好」—— 故障恢复得跟报错走同一条通道说一声。
+ *
+ * 瞬时错误(4101132 这类未知码)会退避 300s 后自动重启检测,日志里三条
+ * 「将在 300s 后自动重试」「退避计时到,重启动态检测」「动态检测任务已启动」
+ * 一应俱全 —— 但全都只进日志。主人在 IM 里只收到一条报错,之后再无下文,分不清
+ * 是自己好了还是还坏着只是不再吭声。
+ *
+ * 报「恢复」的时机是**下一次真正拉取成功**,不是「重启了检测任务」:重启只是把
+ * cron 挂回去,故障还在的话下一轮照样失败,那时候说"好了"就是骗人。
+ *
+ * 恢复通知只走私聊,不发 `engine-error` —— 那个事件在独立端会点亮 AlertShell 的
+ * 红色告警面板,拿它报喜语义是反的。
+ */
+describe("DynamicEngine — 故障恢复通知", () => {
+	it("瞬时错误恢复后私聊说一声,并带上此前的错误码", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+
+		b.getAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		await detect(b.engine);
+		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
+
+		b.getAllDynamic.mockResolvedValue(resp([]));
+		await detect(b.engine);
+		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
+		const msg = String(b.push.sendPrivateMsg.mock.calls[1][0]);
+		expect(msg).toContain("恢复");
+		expect(msg).toContain("4101132");
+	});
+
+	it("从没坏过的成功拉取不发恢复通知(否则每个 cron tick 刷一条)", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+		b.getAllDynamic.mockResolvedValue(resp([]));
+		await detect(b.engine);
+		await detect(b.engine);
+		expect(b.push.sendPrivateMsg).not.toHaveBeenCalled();
+	});
+
+	it("恢复只报一次,后续成功拉取保持安静", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+		b.getAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		await detect(b.engine);
+		b.getAllDynamic.mockResolvedValue(resp([]));
+		await detect(b.engine); // 恢复 → 报一次
+		await detect(b.engine); // 已经好了 → 不该再报
+		await detect(b.engine);
+		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
+	});
+
+	it("瞬时错误连续失败只告警一次(与风控边沿对称,不每 300s 打扰一次)", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+		b.getAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		await detect(b.engine);
+		await detect(b.engine);
+		await detect(b.engine);
+		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
+		expect(
+			b.emits.filter(
+				(e) =>
+					e.event === "engine-error" &&
+					(e.args as unknown[]).some((a) => String(a).includes("4101132")),
+			),
+		).toHaveLength(1);
+	});
+
+	it("错误码变了 → 当作新故障重新告警", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+		b.getAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		await detect(b.engine);
+		b.getAllDynamic.mockResolvedValue(resp([], -509, "限流"));
+		await detect(b.engine);
+		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
+	});
+
+	it("风控解除同样私聊说一声", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		await detect(b.engine);
+		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
+
+		b.getAllDynamic.mockResolvedValue(resp([]));
+		await detect(b.engine);
+		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
+		expect(String(b.push.sendPrivateMsg.mock.calls[1][0])).toContain("风控");
+	});
+
+	it("风控与瞬时错误同时挂着 → 恢复报一条,两样都说到", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		await detect(b.engine); // riskControlled 置位
+		b.getAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		await detect(b.engine); // transientErrorCode 也置位(风控边沿不清)
+
+		b.getAllDynamic.mockResolvedValue(resp([]));
+		await detect(b.engine);
+		const recovery = b.push.sendPrivateMsg.mock.calls.filter((c) => String(c[0]).includes("恢复"));
+		expect(recovery).toHaveLength(1);
+		expect(String(recovery[0][0])).toContain("风控");
+		expect(String(recovery[0][0])).toContain("4101132");
+	});
+
+	it("跨 -101 后恢复:不拿陈旧错误码报喜(登录恢复由上层 auth-restored 负责)", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+		b.getAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		await detect(b.engine); // DM #1:报错
+		b.getAllDynamic.mockResolvedValue(resp([], -101, "not login"));
+		await detect(b.engine); // 独立 episode,-101 不发 DM
+		b.getAllDynamic.mockResolvedValue(resp([]));
+		await detect(b.engine); // 成功,但这是登录恢复,不该由这里报喜
+		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
+	});
+
+	it("恢复通知发不出去不能打断本轮动态推送", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+		b.getAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		await detect(b.engine);
+
+		// 私聊通道自己坏了(master 不可达 / 适配器抛错)。恢复通知是锦上添花,
+		// 绝不能因为它发不出去就把这一轮真正要推的动态吞掉。
+		b.push.sendPrivateMsg.mockRejectedValue(new Error("master unreachable"));
+		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		await detect(b.engine);
+		expect(b.push.broadcastDynamic).toHaveBeenCalled();
 	});
 });
 

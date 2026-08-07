@@ -300,6 +300,17 @@ export class DynamicEngine {
 	 */
 	private riskControlled = false;
 	/**
+	 * 瞬时错误(-509 / 瞬时 -403 / 4101132 之类未知码)的边沿标记,存着当前故障的
+	 * 错误码。作用与 {@link riskControlled} 对称:
+	 *
+	 * 1. **不重复打扰** —— 同一个码连续失败只告警一次。退避周期是 300s,持续故障
+	 *    一小时就是十几条私聊,而每条的信息量和第一条一模一样。换了码 = 换了故障,
+	 *    重新告警。
+	 * 2. **知道该不该报喜** —— 成功拉取时靠它判断「此前真的坏过」,否则每个 cron
+	 *    tick 都会报一次"已恢复"。
+	 */
+	private transientErrorCode: number | null = null;
+	/**
 	 * 登录已失效,等 `auth-restored`。两个作用:
 	 *
 	 * 1. **不许重启 cron** —— 与 `detectorRestartTimer` 并列成为 `reconcileJob` 的门。
@@ -386,6 +397,9 @@ export class DynamicEngine {
 		this.riskControlled = false;
 		// 同理:登录失效的抑制标记也只在一个 lifecycle 内有效。
 		this.authLost = false;
+		// 瞬时错误边沿同理 —— 留着的话下次 start 后第一次成功拉取会报一句
+		// 上个 lifecycle 的「已恢复」。
+		this.transientErrorCode = null;
 		this.detectorRestartTimer?.dispose();
 		this.detectorRestartTimer = undefined;
 		if (this.dynamicJob) {
@@ -698,10 +712,7 @@ export class DynamicEngine {
 			return;
 		}
 
-		if (this.riskControlled) {
-			this.riskControlled = false;
-			this.logger.info("[api] 风控已解除，动态检测恢复正常");
-		}
+		await this.announceRecovery();
 		this.logger.debug("[detector] 成功获取动态信息，开始处理");
 
 		// DY1:per-uid 记账 —— 成功处理(含被过滤/开播伪动态/已发)的 pub_ts 进
@@ -1103,6 +1114,9 @@ export class DynamicEngine {
 				// 清掉风控边沿:恢复后若再遇 -352 是全新 episode,必须重新告警
 				// (否则跨 auth-loss 的新风控会被陈旧 flag 静默 —— 审计发现的缺口)。
 				this.riskControlled = false;
+				// 瞬时错误边沿同理清掉。登录恢复后的第一次成功拉取属于 auth-restored
+				// 那条线(上层自己会通知),不该由这里拿着跨 episode 的陈旧错误码报喜。
+				this.transientErrorCode = null;
 				break;
 			}
 			case -352: {
@@ -1113,7 +1127,7 @@ export class DynamicEngine {
 				if (!this.riskControlled) {
 					this.riskControlled = true;
 					this.logger.error("[api] 账号被风控，动态检测暂停，将退避后自动重试");
-					await this.push.sendPrivateMsg("账号被风控，请使用 `bili cap` 指令解除风控");
+					await this.tellMaster("账号被风控，请使用 `bili cap` 指令解除风控");
 					this.bus.emit("engine-error", LOG_TAG, "账号被风控");
 				} else {
 					this.logger.debug("[api] 仍处于风控态，退避后继续重探(不重复告警)");
@@ -1124,12 +1138,58 @@ export class DynamicEngine {
 			default: {
 				// 瞬时错误(-509 限流 / 瞬时 -403 / 未知码):不可永久停 cron。
 				// 退避后自动重试,瞬时抖动自愈,无需人工重启进程 → Q3 warn 不冒充事故。
-				this.logger.warn(`[api] 获取动态信息失败，错误码：${code}，${message}，将退避后自动重试`);
-				await this.push.sendPrivateMsg(`获取动态信息失败，错误码：${code}`);
-				this.bus.emit("engine-error", LOG_TAG, `获取动态失败，错误码：${code}`);
+				// 边沿去重同 -352:同一个码连续失败只告警一次,换了码才当新故障重报。
+				if (this.transientErrorCode !== code) {
+					this.transientErrorCode = code;
+					this.logger.warn(`[api] 获取动态信息失败，错误码：${code}，${message}，将退避后自动重试`);
+					await this.tellMaster(`获取动态信息失败，错误码：${code}`);
+					this.bus.emit("engine-error", LOG_TAG, `获取动态失败，错误码：${code}`);
+				} else {
+					this.logger.debug(`[api] 仍是错误码 ${code}，退避后继续重试(不重复告警)`);
+				}
 				this.scheduleDetectorRestart(`错误码 ${code}`);
 			}
 		}
+	}
+
+	/**
+	 * 私聊通知主人,发不出去只记一句 warn。
+	 *
+	 * 调用方全在关键控制流上:告警之后还要 `scheduleDetectorRestart` 排退避重启,
+	 * 报喜之后还要接着处理这一轮的动态。裸 `await` 的话,私聊通道自己坏掉(master
+	 * 不可达 / 适配器抛错)就会把后面的活儿一起带走 —— 尤其告警那条,`handleApiError`
+	 * 开头已经 stop 了 job,退避重启再排不上,动态检测就**再也不会自己起来**了。
+	 */
+	private async tellMaster(text: string): Promise<void> {
+		try {
+			await this.push.sendPrivateMsg(text);
+		} catch (e) {
+			this.logger.warn(`[push] 通知主人失败：${e instanceof Error ? e.message : String(e)}`);
+		}
+	}
+
+	/**
+	 * 成功拉取后的「好了」通知 —— 只在此前真的报过故障时说一次。
+	 *
+	 * 报错走私聊,恢复也得走私聊。否则主人手里只剩一条报错:退避重启、任务已启动
+	 * 这些都只进日志,IM 里再无下文,分不清是自愈了还是还坏着只是不再吭声。
+	 *
+	 * 说的时机是**这一次真的拉成功了**,不是「重启了检测任务」—— 重启只是把 cron
+	 * 挂回去,故障还在的话下一轮照样失败,那会儿报喜就是骗人。
+	 *
+	 * 只私聊、不发 `engine-error`:那个事件在独立端会点亮 AlertShell 的红色告警面板,
+	 * 拿它报喜语义是反的。
+	 */
+	private async announceRecovery(): Promise<void> {
+		const parts: string[] = [];
+		if (this.riskControlled) parts.push("风控已解除");
+		if (this.transientErrorCode !== null) parts.push(`此前错误码：${this.transientErrorCode}`);
+		if (parts.length === 0) return;
+		this.riskControlled = false;
+		this.transientErrorCode = null;
+		const detail = parts.join("，");
+		this.logger.info(`[api] ${detail}，动态检测恢复正常`);
+		await this.tellMaster(`动态检测已恢复正常（${detail}）`);
 	}
 
 	/**
