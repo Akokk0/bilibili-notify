@@ -1,4 +1,8 @@
-import { DEFAULT_ROAST_CRON } from "@bilibili-notify/internal/constants";
+import {
+	DEFAULT_ROAST_CRON,
+	inboundGapReason,
+	platformCanReceiveReply,
+} from "@bilibili-notify/internal/constants";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
@@ -46,15 +50,16 @@ export function RoastScheduleBox() {
 	// 主人私聊那条通道所在的平台 —— 审批能不能开就看它收不收得到回复。
 	const masterTargetId = globalsQuery.data?.master?.targetId;
 	const masterTarget = (targetsQuery.data ?? []).find((t) => t.id === masterTargetId);
-	// 与服务端同一份判据(INBOUND_CAPABLE_PLATFORMS):目前只有 OneBot 实现了入站。
-	const canApprove = masterTarget?.platform === "onebot";
+	// 判据与理由都跟服务端取同一份(platformCanReceiveReply / inboundGapReason)——
+	// 这里手写一句「只有 onebot」的话,哪天补了平台就会两边说得不一样。
+	const canApprove = platformCanReceiveReply(masterTarget?.platform ?? "");
 	const approvalHint = !masterTargetId
 		? "需要先在「系统」里配好主人私聊目标"
 		: !masterTarget
 			? "配置里的主人私聊目标已经不存在了"
 			: canApprove
 				? undefined
-				: `主人私聊走的是 ${masterTarget.platform}，这个通道只能发不能收，回复的 y 收不到`;
+				: inboundGapReason(masterTarget.platform);
 
 	const save = useMutation({
 		// 要发的东西走 variables,不从闭包里捞 —— 闭包捞到的是这一轮渲染的旧值。

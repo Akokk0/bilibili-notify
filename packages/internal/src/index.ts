@@ -14,6 +14,7 @@ export {
 	DEFAULT_ROAST_SCHEDULE,
 	EMPTY_AI_PROVIDER_PROFILE,
 	INBOUND_CAPABLE_PLATFORMS,
+	inboundGapReason,
 	platformCanReceiveReply,
 	providerMeta,
 	resolveActivePersona,

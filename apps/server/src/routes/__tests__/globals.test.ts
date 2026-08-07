@@ -175,6 +175,17 @@ describe("checkApprovalEnable", () => {
 		expect(r.ok === false && r.message).toMatch(/webhook|回复|收不到/);
 	});
 
+	it("master 私聊走 qq-official → 照样拦下，但理由是「还没接」而不是「通道收不到」", () => {
+		const g = withApproval(false);
+		g.master.targetId = "m1";
+		const r = checkApprovalEnable(g, patchOn, [{ id: "m1", platform: "qq-official" }] as Targets);
+		expect(r.ok).toBe(false);
+		// QQ 官方协议上收得到,WS 网关与 USER_MESSAGE intent 也一直在跑,差的只是
+		// 我们没把 C2C 正文接出来。说成平台的毛病,主人会怀疑是自己配错了。
+		expect(r.ok === false && r.message).not.toMatch(/只能发不能收/);
+		expect(r.ok === false && r.message).toMatch(/还没/);
+	});
+
 	it("压根没配 master 私聊目标 → 拦下（没人可审）", () => {
 		const g = withApproval(false);
 		g.master.targetId = undefined;

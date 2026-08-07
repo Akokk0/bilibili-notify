@@ -1,4 +1,4 @@
-import { platformCanReceiveReply } from "@bilibili-notify/internal";
+import { inboundGapReason, platformCanReceiveReply } from "@bilibili-notify/internal";
 import { CronTime } from "cron";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -185,7 +185,7 @@ export function checkApprovalEnable(
 		return {
 			ok: false,
 			scope: "roastSchedule",
-			message: `审批打不开：主人私聊走的是 ${target.platform}，这个通道只能发不能收，回复的 y 我们收不到。请把主人私聊目标换成 OneBot，或者关掉审批直接发送。`,
+			message: `审批打不开：${inboundGapReason(target.platform)}。请把主人私聊目标换成 OneBot，或者关掉审批直接发送。`,
 		};
 	}
 	return { ok: true };

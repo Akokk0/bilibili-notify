@@ -567,3 +567,17 @@ export const INBOUND_CAPABLE_PLATFORMS = ["onebot"] as const;
 export function platformCanReceiveReply(platform: string): boolean {
 	return (INBOUND_CAPABLE_PLATFORMS as readonly string[]).includes(platform);
 }
+
+/**
+ * 为什么这个平台上收不到主人的回复 —— 一句给人看的话。
+ *
+ * **不能一律说成「这个通道只能发不能收」**:除了 webhook,别的平台协议上都收得到,
+ * 只是我们还没解析(qq-official 甚至连 WS 网关和 USER_MESSAGE intent 都已经在跑了,
+ * 只差把正文接出来)。把实现缺口说成平台的毛病,主人会对着一个「明明能收」的通道
+ * 反复怀疑自己配错了。
+ */
+export function inboundGapReason(platform: string): string {
+	return platform === "webhook"
+		? "webhook 只是一个出站 HTTP 请求、没有回程，主人没法在上面回话"
+		: `女仆还没在 ${platform} 上接入站消息，主人回的 y 送不到女仆手里`;
+}
