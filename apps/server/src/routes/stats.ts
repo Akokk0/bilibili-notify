@@ -8,7 +8,7 @@ import type {
 } from "@bilibili-notify/contract";
 import type { RoastCardUp } from "@bilibili-notify/image";
 import type { NotificationPayload } from "@bilibili-notify/internal";
-import { colorFromUid } from "@bilibili-notify/internal";
+import { colorFromUid, ROAST_MAX_DAYS, ROAST_MIN_DAYS } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import { toGeneratorConfig } from "../runtime/ai-config.js";
@@ -41,8 +41,10 @@ import type { RouteDeps } from "./types.js";
  * 每多一天就多扫一天的 fans 采样。
  */
 
-const MIN_DAYS = 1;
-const MAX_DAYS = 90;
+// 单一来源:定时锐评的 schema 校验用的是同一对边界(见 internal 的 constants),
+// 在这儿另立一份的话,两条路对「90 天」的理解迟早会漂开。
+const MIN_DAYS = ROAST_MIN_DAYS;
+const MAX_DAYS = ROAST_MAX_DAYS;
 /**
  * overview 结果的短 TTL 缓存。fans 采样每 ~2min 才动一次,而单次 overview 要
  * 逐 UP 流式扫 N 天的 jsonl(30 天 × 2min × 10 个 UP ≈ 20 万行),不缓存的话

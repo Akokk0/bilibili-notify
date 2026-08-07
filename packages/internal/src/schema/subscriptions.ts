@@ -13,6 +13,7 @@ import {
 	TemplateBundlePartialSchema,
 } from "./common";
 import { MessageLayoutSchema } from "./message-layout";
+import { DEFAULT_ROAST_SCHEDULE, RoastScheduleSchema } from "./roast-schedule";
 
 /**
  * 路由：每个特性 → PushTarget.id[]。空数组 = 该特性不推。
@@ -204,6 +205,16 @@ export const SubscriptionSchema = z
 		atAllDefaults: SubscriptionAtAllDefaultsSchema.default({ dynamic: false, live: true }),
 		atAll: SubscriptionAtAllSchema.default({ dynamic: {}, live: {} }),
 		overrides: SubscriptionOverridesSchema,
+		/**
+		 * 这位 UP 的单人锐评定时推送。
+		 *
+		 * 与 `specialUsers` 同类:per-UP 独有、**不参与 `resolve()` 折叠**,所以放
+		 * 顶层而不是 `overrides`。塞进 overrides 的话它会去继承全局那条,而全局那
+		 * 条是**榜单**周报 —— 继承过来的 cron / targets 跟界面上显示的对不上。
+		 *
+		 * UP 退订时这条配置跟着一起消失,不留孤儿调度。
+		 */
+		roastSchedule: RoastScheduleSchema.default(DEFAULT_ROAST_SCHEDULE),
 		specialUsers: z.array(SpecialUserSchema).default([]),
 	})
 	.refine((s) => Object.keys(s.atAll.dynamic).every((t) => s.routing.dynamic.includes(t)), {
@@ -232,6 +243,8 @@ export function makeEmptySubscription(opts: { id: string; uid: string }): Subscr
 		atAllDefaults: { dynamic: false, live: true },
 		atAll: { dynamic: {}, live: {} },
 		overrides: {},
+		// 新订阅不自带定时锐评 —— 加一个 UP 不该顺手给群里排一条周期推送。
+		roastSchedule: { ...DEFAULT_ROAST_SCHEDULE },
 		specialUsers: [],
 	};
 }

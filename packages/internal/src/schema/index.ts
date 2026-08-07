@@ -4,5 +4,6 @@ export * from "./globals";
 export * from "./history";
 export * from "./message-layout";
 export * from "./resolve";
+export * from "./roast-schedule";
 export * from "./subscriptions";
 export * from "./targets";

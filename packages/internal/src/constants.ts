@@ -519,3 +519,16 @@ export const DEFAULT_TEMPLATES = {
 		},
 	},
 } as const;
+
+// ── 锐评定时推送 ──────────────────────────────────────────────────────────────
+// 住在这里而不是 `schema/roast-schedule.ts`:配置页要拿它们做输入提示,而
+// `apps/web` 不能把 zod 拉进浏览器 bundle —— 从那个文件 import 就会。
+
+/** 锐评统计窗口下界。schema 校验与 `apps/server` 的取数共用,别在两处各定一份。 */
+export const ROAST_MIN_DAYS = 1;
+/** 锐评统计窗口上界。取数与 AI prompt 都按这个上界设计。 */
+export const ROAST_MAX_DAYS = 90;
+/** 定时锐评的默认 cron —— 每周一早九点,「周报」最符合直觉的那档,用户可改。 */
+export const DEFAULT_ROAST_CRON = "0 9 * * 1";
+/** 默认统计窗口,与默认 cron 的一周间隔对齐。周期与窗口本身是解耦的两个字段。 */
+export const DEFAULT_ROAST_DAYS = 7;

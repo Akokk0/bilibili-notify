@@ -22,6 +22,7 @@ import {
 	TemplateBundleSchema,
 } from "./common";
 import { DEFAULT_MESSAGE_LAYOUT, MessageLayoutSchema } from "./message-layout";
+import { DEFAULT_ROAST_SCHEDULE, RoastScheduleSchema } from "./roast-schedule";
 
 /** 启动时注入、运行时只读的引导配置。Koishi 端为 undefined（Koishi 接管 lifecycle）。 */
 export const BootstrapConfigSchema = z.object({
@@ -148,6 +149,17 @@ export const GlobalConfigSchema = z.object({
 	app: AppConfigSchema,
 	master: MasterConfigSchema,
 	defaults: GlobalDefaultsSchema,
+	/**
+	 * 榜单周报的定时推送 —— 全局唯一一条。
+	 *
+	 * 放顶层而非 `defaults`:`defaults` 的语义是「per-UP overrides 缺字段时回退到
+	 * 这里」,而榜单周报压根不是 per-UP 的东西,单人锐评那条(挂在 Subscription
+	 * 顶层)也不该继承它 —— 两者内容根本不同。
+	 *
+	 * `.default(...)` 同 imageGroup / cardLayout:缺这个字段的老 globals.json 在
+	 * 独立端启动时被 `parse` 自动补全,否则直接 ConfigValidationError 开不了机。
+	 */
+	roastSchedule: RoastScheduleSchema.default(DEFAULT_ROAST_SCHEDULE),
 	bootstrap: BootstrapConfigSchema.optional(),
 });
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
