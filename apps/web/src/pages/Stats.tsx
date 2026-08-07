@@ -863,12 +863,14 @@ export default function Stats() {
 					days={days}
 				/>
 			) : (
-				<RoastCard days={days} meta={meta} />
+				/* 定时周报与手动锐评并排:同一件事的两种触发方式,配置在左、现在就生成
+				   在右。窄屏回落成单栏。只在榜单视图下露出 —— 这里配的是全局那条榜单
+				   流水线,跟当前钻取的是哪一位 UP 无关(单人锐评的定时挂在各自订阅上)。 */
+				<div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+					<RoastScheduleBox />
+					<RoastCard days={days} meta={meta} />
+				</div>
 			)}
-
-			{/* 定时周报的配置。只在榜单视图下露出 —— 它配的是全局那条榜单流水线,
-			    跟当前钻取的是哪一位 UP 无关(单人锐评的定时挂在各自的订阅上)。 */}
-			{!focused && <RoastScheduleBox />}
 		</div>
 	);
 }

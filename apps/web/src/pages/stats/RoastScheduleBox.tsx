@@ -8,6 +8,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Btn, PlatformIcon, Toggle } from "../../components/atoms";
 import { Field, TInput } from "../../components/forms";
+import { GlassPanel } from "../../components/glass";
+import { Icon } from "../../components/icons";
 import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
@@ -81,20 +83,20 @@ export function RoastScheduleBox() {
 	const daysInvalid = draft.days < ROAST_MIN_DAYS || draft.days > ROAST_MAX_DAYS;
 
 	return (
-		<section className="rounded-xl p-4" style={{ border: `1px solid ${ROAST_PURPLE}33` }}>
-			<div className="flex items-center justify-between mb-3">
-				<div>
-					<div className="text-[15px] font-bold">定时周报</div>
-					<div className="text-[12px] opacity-60">到点自动生成榜单并发到指定的群</div>
-				</div>
+		<GlassPanel
+			title="定时周报"
+			subtitle="到点自动生成榜单并发到指定的群"
+			accent={ROAST_PURPLE}
+			icon={<Icon.bell width={15} height={15} />}
+			right={
 				<Toggle
 					value={draft.enabled}
 					onChange={(v) => patch({ enabled: v })}
 					ariaLabel="启用定时周报"
 				/>
-			</div>
-
-			<div className="grid grid-cols-2 gap-3">
+			}
+		>
+			<div className="grid gap-3">
 				<Field
 					code="roastSchedule.cron"
 					label="发送时间"
@@ -186,7 +188,7 @@ export function RoastScheduleBox() {
 					</span>
 				)}
 			</div>
-		</section>
+		</GlassPanel>
 	);
 }
 
