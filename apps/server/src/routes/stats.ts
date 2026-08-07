@@ -5,9 +5,7 @@ import type {
 	StatsSoloRoastResponse,
 	UpStatsRow,
 } from "@bilibili-notify/contract";
-import type { RoastCardUp } from "@bilibili-notify/image";
-import type { NotificationPayload } from "@bilibili-notify/internal";
-import { colorFromUid, ROAST_MAX_DAYS, ROAST_MIN_DAYS } from "@bilibili-notify/internal";
+import { ROAST_MAX_DAYS, ROAST_MIN_DAYS } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -18,6 +16,7 @@ import {
 	summarizeLiveSessions,
 	windowSinceIso,
 } from "../stats/aggregate.js";
+import { deliverRoast } from "../stats/roast-deliver.js";
 import {
 	generateBoardRoast,
 	generateSoloRoast,
@@ -369,56 +368,16 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 			return c.json<StatsRoastPushResponse>({ ok: false, err: "推送目标不存在" }, 404);
 		}
 
-		// uid → 名称 / 头像 / 配色。配色走 colorFromUid,与 dashboard 上同一位 UP 一致。
-		const subByUid = new Map(deps.store.getSubscriptions().map((s) => [s.uid, s]));
-		const upMeta = (uid: string): RoastCardUp => {
-			const sub = subByUid.get(uid);
-			const profile = sub ? deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile : undefined;
-			return {
-				name: profile?.name?.trim() || `UID ${uid}`,
-				avatar: profile?.avatar || undefined,
-				color: colorFromUid(uid),
-			};
-		};
-
-		const text = roastPushText(kind, result, days, upMeta);
-		const renderer = engines.imageRenderer;
-		const imageWanted = renderer !== null && deps.store.getGlobals().defaults.cardStyle.enabled;
-
-		let payload: NotificationPayload = { kind: "text", text };
-		let mode: "image" | "text" = "text";
-		if (imageWanted && renderer) {
-			try {
-				const buffer =
-					kind === "board"
-						? await renderer.generateRoastBoardCard({
-								days,
-								pigeon: { ...upMeta(result.pigeon.uid), reason: result.pigeon.reason },
-								diligent: { ...upMeta(result.diligent.uid), reason: result.diligent.reason },
-								roast: result.roast.map((r) => ({ ...upMeta(r.uid), comment: r.comment })),
-								scores: result.scores.map((s) => ({ ...upMeta(s.uid), score: s.score })),
-							})
-						: await renderer.generateRoastSoloCard({
-								days,
-								up: upMeta(result.uid),
-								verdict: result.verdict,
-								score: result.score,
-								highlights: result.highlights,
-							});
-				// caption 不是装饰:图挂了 / 客户端不展图时,那段文字是唯一还读得到的东西。
-				payload = { kind: "image", image: { buffer, mime: "image/jpeg" }, caption: text };
-				mode = "image";
-			} catch (err) {
-				deps.runtime.serviceCtx.logger.warn(
-					`[stats] 锐评卡片渲染失败，降级为文字推送: ${err instanceof Error ? err.message : String(err)}`,
-				);
-			}
+		// 渲染与投递的本体在 `../stats/roast-deliver.ts` —— 定时推送走同一份,
+		// 免得「渲染挂了降级成文字」这类行为将来只剩一条路上还留着。
+		const out = await deliverRoast(deps, { kind, result, days, targetIds: [target.id] });
+		if (out.sent.length === 0) {
+			return c.json<StatsRoastPushResponse>(
+				{ ok: false, err: out.failed[0]?.err ?? "推送失败" },
+				502,
+			);
 		}
-
-		const delivery = await engines.push.sendToTarget(target.id, payload);
-		if (!delivery.ok) {
-			return c.json<StatsRoastPushResponse>({ ok: false, err: delivery.err ?? "推送失败" }, 502);
-		}
+		const mode = out.mode;
 		return c.json<StatsRoastPushResponse>({ ok: true, mode });
 	});
 	/**
@@ -471,35 +430,6 @@ const RoastPushSchema = z.intersection(
 		z.object({ kind: z.literal("solo"), result: SoloResultSchema }),
 	]),
 );
-
-type BoardResult = z.infer<typeof BoardResultSchema>;
-type SoloResult = z.infer<typeof SoloResultSchema>;
-
-/**
- * 要发出去的那段文字 —— 图片推送时当图说明,没有图时就是正文。
- *
- * 模型可能压根没给 `pushText`(schema 里它有 `.default("")`),那时用结构化数据
- * 拼一段兜底:宁可发一句干巴巴的「鸽王是谁」,也不能推一条空消息出去。兜底一律
- * 写**名称**,群友不认识 uid。
- */
-function roastPushText(
-	kind: "board" | "solo",
-	result: BoardResult | SoloResult,
-	days: number,
-	upMeta: (uid: string) => RoastCardUp,
-): string {
-	if (result.pushText.trim()) return result.pushText;
-	if (kind === "board") {
-		const r = result as BoardResult;
-		return [
-			`📊 UP 主周报（近 ${days} 天）`,
-			`🕊️ 本期鸽王：${upMeta(r.pigeon.uid).name} —— ${r.pigeon.reason}`,
-			`🏆 勤奋 UP：${upMeta(r.diligent.uid).name} —— ${r.diligent.reason}`,
-		].join("\n");
-	}
-	const s = result as SoloResult;
-	return `📊 ${upMeta(s.uid).name}（近 ${days} 天）：${s.verdict}`;
-}
 
 /**
  * ROAST_CALL —— 为什么两处锐评都走 `comment()` 而不是 `chat()`。
