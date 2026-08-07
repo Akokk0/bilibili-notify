@@ -1,4 +1,3 @@
-import { CommentaryGenerator } from "@bilibili-notify/ai";
 import type {
 	StatsOverviewResponse,
 	StatsRoastPushResponse,
@@ -11,8 +10,6 @@ import type { NotificationPayload } from "@bilibili-notify/internal";
 import { colorFromUid, ROAST_MAX_DAYS, ROAST_MIN_DAYS } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
-import { toGeneratorConfig } from "../runtime/ai-config.js";
-import { resolveAiOverride } from "../runtime/engines.js";
 import {
 	countDynamics,
 	dailyActivityCounts,
@@ -22,12 +19,11 @@ import {
 	windowSinceIso,
 } from "../stats/aggregate.js";
 import {
-	buildRoastPrompt,
-	buildSoloRoastPrompt,
-	parseRoastReply,
-	parseSoloRoastReply,
-	type RoastInput,
-} from "../stats/roast.js";
+	generateBoardRoast,
+	generateSoloRoast,
+	roastGenErrorStatus,
+	roastGenErrorText,
+} from "../stats/roast-generate.js";
 import type { RouteDeps } from "./types.js";
 
 /**
@@ -132,9 +128,6 @@ async function fetchOverview(
 		return null;
 	}
 }
-
-/** 取数失败时给用户的话。两处锐评同一套措辞。 */
-const OVERVIEW_FAILED = "统计数据读取失败,请稍后重试";
 
 export function createStatsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
@@ -329,71 +322,20 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 	 * 调人格,而是在用配好的女仆干活,草稿会让结果不可复现。
 	 */
 	app.post("/roast", async (c) => {
-		const engines = deps.runtime.engines;
-		if (!engines) {
-			return c.json<StatsRoastResponse>({ ok: false, err: "服务尚未就绪,请稍后重试" }, 503);
-		}
-		const aiSettings = deps.store.getGlobals().defaults.ai;
-		if (!aiSettings.enabled) {
-			return c.json<StatsRoastResponse>({ ok: false, err: "智能女仆尚未启用" }, 400);
-		}
-
-		const days = clampDays(c.req.query("days"));
-		const overview = await fetchOverview(app, days, parseTz(c.req.query("tz")));
-		if (!overview) {
-			return c.json<StatsRoastResponse>({ ok: false, err: OVERVIEW_FAILED }, 500);
-		}
-
-		// 名称在 SubRuntimeStore(cachedProfile 是外置运行时数据,不在配置里),
-		// 与 `/api/subs` 的 join 同源。
-		const nameByUid = new Map(
-			deps.store
-				.getSubscriptions()
-				.map((s) => [
-					s.uid,
-					deps.runtime.subRuntimeStore.get(s.id)?.cachedProfile?.name?.trim() || `UID ${s.uid}`,
-				]),
-		);
-		const ups: RoastInput[] = overview.rows.map((r) => ({
-			uid: r.uid,
-			name: nameByUid.get(r.uid) ?? `UID ${r.uid}`,
-			net7d: r.net7d,
-			netWindow: r.netWindow,
-			archives: r.archives,
-			dynamics: r.dynamics,
-			liveSessions: r.liveSessions,
-			liveHours: r.liveHours,
-			lastActivityAt: r.lastActivityAt,
-		}));
-		if (ups.length < 2) {
-			return c.json<StatsRoastResponse>(
-				{ ok: false, err: "至少要订阅 2 位 UP 主才评得出鸽王" },
-				400,
-			);
-		}
-
-		const generator = new CommentaryGenerator({
-			serviceCtx: deps.runtime.serviceCtx,
-			api: engines.api,
-			config: toGeneratorConfig(aiSettings),
+		// 生成本体在 `../stats/roast-generate.ts` —— 定时推送要走同一份实现,
+		// 否则页面上看到的和到点自动发出去的迟早不是一回事。
+		const gen = await generateBoardRoast(deps, {
+			days: clampDays(c.req.query("days")),
+			tz: parseTz(c.req.query("tz")),
+			fetchOverview: (d, t) => fetchOverview(app, d, t),
 		});
-		let reply: string;
-		try {
-			// `comment()` 而不是 `chat()` —— 见文件末尾 ROAST_CALL 注释。
-			reply = await generator.comment(buildRoastPrompt(ups, days));
-		} catch (err) {
+		if (!gen.ok) {
 			return c.json<StatsRoastResponse>(
-				{ ok: false, err: err instanceof Error ? err.message : String(err) },
-				500,
+				{ ok: false, err: roastGenErrorText(gen) },
+				roastGenErrorStatus(gen),
 			);
 		}
-
-		const result = parseRoastReply(reply, ups);
-		if (!result) {
-			// 解析不出来就直说,不把半截结构渲染成一张看着像模像样的卡。
-			return c.json<StatsRoastResponse>({ ok: false, err: "女仆的回复解析失败,请重试" }, 502);
-		}
-		return c.json<StatsRoastResponse>({ ok: true, result });
+		return c.json<StatsRoastResponse>({ ok: true, result: gen.result });
 	});
 
 	/**
@@ -486,77 +428,19 @@ export function createStatsRoute(deps: RouteDeps): Hono {
 	 * 榜单特有的(评鸽王需要对照组),单人只就他自己的数据说话。
 	 */
 	app.post("/roast/:uid", async (c) => {
-		const uid = c.req.param("uid");
-		const engines = deps.runtime.engines;
-		if (!engines) {
-			return c.json<StatsSoloRoastResponse>({ ok: false, err: "服务尚未就绪,请稍后重试" }, 503);
-		}
-
-		// 先确认这个 uid 真的订阅着。不校验的话,任何人构造一个 uid 就能让我们
-		// 拿着一份空数据去请求模型 —— 白烧 token,还会渲染出一张查无此人的卡。
-		const sub = deps.store.getSubscriptions().find((s) => s.uid === uid);
-		if (!sub) {
-			return c.json<StatsSoloRoastResponse>({ ok: false, err: "该 UP 主不在订阅列表里" }, 404);
-		}
-
-		const aiSettings = deps.store.getGlobals().defaults.ai;
-		if (!aiSettings.enabled) {
-			return c.json<StatsSoloRoastResponse>({ ok: false, err: "智能女仆尚未启用" }, 400);
-		}
-
-		const days = clampDays(c.req.query("days"));
-		const overview = await fetchOverview(app, days, parseTz(c.req.query("tz")));
-		if (!overview) {
-			return c.json<StatsSoloRoastResponse>({ ok: false, err: OVERVIEW_FAILED }, 500);
-		}
-		const row = overview.rows.find((r) => r.uid === uid);
-		if (!row) {
-			return c.json<StatsSoloRoastResponse>({ ok: false, err: "该 UP 主暂无统计数据" }, 404);
-		}
-
-		const up: RoastInput = {
-			uid: row.uid,
-			name:
-				deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name?.trim() || `UID ${row.uid}`,
-			net7d: row.net7d,
-			netWindow: row.netWindow,
-			archives: row.archives,
-			dynamics: row.dynamics,
-			liveSessions: row.liveSessions,
-			liveHours: row.liveHours,
-			lastActivityAt: row.lastActivityAt,
-		};
-
-		const generator = new CommentaryGenerator({
-			serviceCtx: deps.runtime.serviceCtx,
-			api: engines.api,
-			config: toGeneratorConfig(aiSettings),
+		const gen = await generateSoloRoast(deps, {
+			uid: c.req.param("uid"),
+			days: clampDays(c.req.query("days")),
+			tz: parseTz(c.req.query("tz")),
+			fetchOverview: (d, t) => fetchOverview(app, d, t),
 		});
-		// per-UP 人格:与动态点评 / 下播总结同源(见 ROAST_CALL 注释末段)。评的就是
-		// 这一位 UP,主人给他单配的人格没有理由不算数。
-		const aiOverride = resolveAiOverride(sub, deps.store.getGlobals().defaults);
-		let reply: string;
-		try {
-			// 同上:一次性调用,不留会话历史 —— 否则评完 A 再评 B,B 的上下文里坐着 A。
-			// scene / imageUrls 留空:锐评既不属于 dynamic 也不属于 liveSummary,更没有图。
-			reply = await generator.comment(
-				buildSoloRoastPrompt(up, days),
-				undefined,
-				undefined,
-				aiOverride,
-			);
-		} catch (err) {
+		if (!gen.ok) {
 			return c.json<StatsSoloRoastResponse>(
-				{ ok: false, err: err instanceof Error ? err.message : String(err) },
-				500,
+				{ ok: false, err: roastGenErrorText(gen) },
+				roastGenErrorStatus(gen),
 			);
 		}
-
-		const result = parseSoloRoastReply(reply, up);
-		if (!result) {
-			return c.json<StatsSoloRoastResponse>({ ok: false, err: "女仆的回复解析失败,请重试" }, 502);
-		}
-		return c.json<StatsSoloRoastResponse>({ ok: true, result });
+		return c.json<StatsSoloRoastResponse>({ ok: true, result: gen.result });
 	});
 
 	return app;
