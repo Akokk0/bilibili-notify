@@ -565,7 +565,7 @@ export const FIELD_LABELS = {
 	},
 	"roastSchedule.days": {
 		label: "统计范围",
-		hint: "往前统计多少天(1–90)· 与发送周期无关,想每天发一份近 7 天的榜也可以",
+		hint: "周报往前统计多少天(近 7 / 30 / 90 日)· 与发送周期无关,想每天发一份近 7 天的榜也可以",
 		section: "schedule",
 	},
 	"roastSchedule.targets": {

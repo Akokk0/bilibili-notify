@@ -38,6 +38,7 @@ import { netFromCumulative, sumNetPoints } from "./stats/gaps";
 import { RoastCard } from "./stats/RoastCard";
 import { RoastScheduleBox } from "./stats/RoastScheduleBox";
 import { buildRadarAxes } from "./stats/radar";
+import { STATS_RANGES } from "./stats/ranges";
 import { SoloRoastCard } from "./stats/SoloRoastCard";
 import { colorFromUid, displayName } from "./up/helpers";
 
@@ -68,12 +69,6 @@ const NET_TONE_COLOR: Record<SignTone, string> = {
 	negative: RED,
 	unknown: "var(--color-bn-text-secondary)",
 };
-
-const RANGES = [
-	{ days: 7, label: "近7日" },
-	{ days: 30, label: "近30日" },
-	{ days: 90, label: "近90日" },
-] as const;
 
 /** 数值展示统一走这里:`null` 一律显示破折号,绝不用 0 顶替「没有记录」。 */
 function num(v: number | null, fmt: (n: number) => string = formatWan): string {
@@ -506,7 +501,7 @@ export default function Stats() {
 				<div className="flex items-center gap-2.5">
 					<UpPicker rows={rows} meta={meta} value={picked} onChange={setPicked} />
 					<div className="flex gap-1 rounded-bn-card border border-bn-border bg-bn-surface p-0.5">
-						{RANGES.map((r) => (
+						{STATS_RANGES.map((r) => (
 							<button
 								key={r.days}
 								type="button"

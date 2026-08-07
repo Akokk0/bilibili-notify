@@ -1,13 +1,9 @@
-import {
-	DEFAULT_ROAST_CRON,
-	ROAST_MAX_DAYS,
-	ROAST_MIN_DAYS,
-} from "@bilibili-notify/internal/constants";
+import { DEFAULT_ROAST_CRON } from "@bilibili-notify/internal/constants";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { PlatformIcon, Toggle } from "../../components/atoms";
-import { Field, TInput } from "../../components/forms";
+import { Field, Picker, TInput } from "../../components/forms";
 import { GlassPanel } from "../../components/glass";
 import { Icon } from "../../components/icons";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
@@ -15,6 +11,7 @@ import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 import { ROAST_PURPLE } from "./RoastShell";
+import { STATS_RANGES } from "./ranges";
 
 /**
  * 定时周报的配置。
@@ -97,7 +94,17 @@ export function RoastScheduleBox() {
 		patch({ targets: has ? draft.targets.filter((t) => t !== id) : [...draft.targets, id] });
 	};
 
-	const daysInvalid = draft.days < ROAST_MIN_DAYS || draft.days > ROAST_MAX_DAYS;
+	// 三档预设与页头的范围切换同源。若配置里存的是别的天数(手改过 bn.config.yaml),
+	// 就临时补一档把它显示出来 —— 不然那格是空的,主人看不出现在到底统计几天,
+	// 随手点一下就把原值悄悄换掉了。
+	const presets = STATS_RANGES.map((r) => ({
+		value: r.days,
+		label: r.label,
+		color: ROAST_PURPLE,
+	}));
+	const dayOptions = presets.some((o) => o.value === draft.days)
+		? presets
+		: [...presets, { value: draft.days, label: `近${draft.days}日`, color: ROAST_PURPLE }];
 
 	return (
 		<GlassPanel
@@ -125,22 +132,10 @@ export function RoastScheduleBox() {
 						placeholder={DEFAULT_ROAST_CRON}
 					/>
 				</Field>
-				<Field
-					code="roastSchedule.days"
-					label="统计范围"
-					hint={`往前统计多少天（${ROAST_MIN_DAYS}–${ROAST_MAX_DAYS}），与发送周期无关`}
-				>
-					<TInput
-						value={String(draft.days)}
-						onChange={(v) => patch({ days: Number(v) || ROAST_MIN_DAYS })}
-					/>
+				<Field code="roastSchedule.days" label="统计范围" hint="周报往前统计多少天，与发送周期无关">
+					<Picker value={draft.days} onChange={(days) => patch({ days })} options={dayOptions} />
 				</Field>
 			</div>
-			{daysInvalid && (
-				<div className="text-[12px] mt-1" style={{ color: "#e5484d" }}>
-					统计天数要在 {ROAST_MIN_DAYS}–{ROAST_MAX_DAYS} 之间
-				</div>
-			)}
 
 			<Field
 				code="roastSchedule.targets"
