@@ -558,6 +558,21 @@ export const FIELD_LABELS = {
 	// ── 定时周报(roastSchedule.*) ─────────────────────────────────────────
 	// 周期与统计范围是**解耦**的两个字段:cron 定何时发,days 定统计多少天。
 	// 不预设「周报 / 月报」这类组合 —— 用户自己搭。
+	"roastSchedule.enabled": {
+		label: "定时锐评",
+		hint: "到点自动生成并发送 · 关掉就只剩手动那颗按钮",
+		section: "schedule",
+	},
+	"roastSchedule.approval": {
+		label: "发送前先给主人过目",
+		hint: "私聊发预览 · 回复 y 才进群,48 小时没回复就作废",
+		section: "schedule",
+	},
+	"roastSchedule.notifyOnError": {
+		label: "没发出去时通知我",
+		hint: "生成失败 / 没配目标 / 群发失败都会私聊说明原因",
+		section: "schedule",
+	},
 	"roastSchedule.cron": {
 		label: "发送时间",
 		hint: "cron 表达式 · 如 0 9 * * 1(每周一早九点)",
