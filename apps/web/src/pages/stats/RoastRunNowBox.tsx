@@ -24,16 +24,24 @@ export function RoastRunNowBox({
 	dirty,
 	/** id → 群名。失败明细里报 UUID 的话,主人根本读不出是哪个群没收到。 */
 	targetName,
+	/** 给了就跑这位 UP 的单人锐评;不给跑全局那条榜单周报。 */
+	uid,
 }: {
 	approval: boolean;
 	targetCount: number;
 	dirty: boolean;
 	targetName: (id: string) => string;
+	uid?: string;
 }) {
 	const [asking, setAsking] = useState(false);
 
 	const run = useMutation<StatsRoastRunNowResponse>({
-		mutationFn: () => api.post<StatsRoastRunNowResponse>("/api/stats/roast/run-now", {}),
+		// uid 进的是路径 —— 漏掉它会跑成一份全站榜单并真发进群,完全不是主人要试的东西。
+		mutationFn: () =>
+			api.post<StatsRoastRunNowResponse>(
+				uid ? `/api/stats/roast/run-now/${encodeURIComponent(uid)}` : "/api/stats/roast/run-now",
+				{},
+			),
 	});
 
 	const err = run.isError
@@ -42,14 +50,15 @@ export function RoastRunNowBox({
 			? run.data.err
 			: undefined;
 
+	const noun = uid ? "锐评" : "周报";
 	const confirmMessage = approval ? (
 		<>
-			会立刻生成一份周报并私聊发给主人等你回 y，<b>群里先不发</b>。顺便也能验一下「回
+			会立刻生成一份{noun}并私聊发给主人等你回 y，<b>群里先不发</b>。顺便也能验一下「回
 			y」这条路通不通。
 		</>
 	) : (
 		<>
-			会立刻生成一份周报，并<b className="text-bn-danger-text">真的发到 {targetCount} 个群</b>
+			会立刻生成一份{noun}，并<b className="text-bn-danger-text">真的发到 {targetCount} 个群</b>
 			里，不是演习。想先看过再发的话，请先打开上面的「发送前先给主人过目」。
 		</>
 	);
@@ -86,7 +95,7 @@ export function RoastRunNowBox({
 
 			{asking ? (
 				<ConfirmDialog
-					title="立刻跑一轮周报"
+					title={`立刻跑一轮${noun}`}
 					message={confirmMessage}
 					confirmLabel={approval ? "生成并私聊我" : "真的发出去"}
 					danger={!approval}

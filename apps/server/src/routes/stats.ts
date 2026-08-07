@@ -7,7 +7,7 @@ import type {
 	UpStatsRow,
 } from "@bilibili-notify/contract";
 import { ROAST_MAX_DAYS, ROAST_MIN_DAYS } from "@bilibili-notify/internal";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { z } from "zod";
 import type { RoastRunOutcome } from "../runtime/roast-scheduler.js";
 import {
@@ -132,13 +132,14 @@ async function fetchOverview(
 
 export interface StatsRouteOptions {
 	/**
-	 * 立刻跑一轮榜单周报 —— 面板上的「试一次」按它。
+	 * 立刻跑一轮 —— 面板上的「试一次」按它。带 uid 跑那位 UP 的单人锐评,
+	 * 不带则跑全局那条榜单周报。
 	 *
 	 * 由 `index.ts` late-bind 进来(调度器建得比路由晚):没传就等于「还没就绪」,
 	 * 端点回 503 而不是假装成功。**它调的就是 cron 到点调的那个函数** —— 另写一条
 	 * 「测试专用」的路径,测出来的就不是真到点时会发生的事。
 	 */
-	runBoardNow?: () => Promise<RoastRunOutcome>;
+	runRoastNow?: (uid?: string) => Promise<RoastRunOutcome>;
 }
 
 export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {}): Hono {
@@ -409,19 +410,26 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 	 * 业务性失败(生成不出来、没配目标)一律 **200 + 结构化结局**,不用 4xx ——
 	 * 前端的 error 分支只拿得到一句 HTTP 错误,原因就丢了(锐评卡踩过这个坑)。
 	 */
-	app.post("/roast/run-now", async (c) => {
-		if (!options.runBoardNow) {
+	async function runNow(c: Context, uid?: string): Promise<Response> {
+		if (!options.runRoastNow) {
 			return c.json<StatsRoastRunNowResponse>({ ok: false, err: "服务尚未就绪,请稍后重试" }, 503);
 		}
 		try {
-			return c.json<StatsRoastRunNowResponse>({ ok: true, outcome: await options.runBoardNow() });
+			return c.json<StatsRoastRunNowResponse>({
+				ok: true,
+				outcome: await options.runRoastNow(uid),
+			});
 		} catch (err) {
 			// 这一轮里任何一步炸了都收在这儿:端点是给人点的,不能把异常漏出去。
 			const why = err instanceof Error ? err.message : String(err);
-			deps.runtime.serviceCtx.logger.warn(`[stats] 手动跑周报失败: ${why}`);
+			deps.runtime.serviceCtx.logger.warn(`[stats] 手动跑锐评失败: ${why}`);
 			return c.json<StatsRoastRunNowResponse>({ ok: false, err: why }, 502);
 		}
-	});
+	}
+
+	app.post("/roast/run-now", (c) => runNow(c));
+	/** 带 uid = 跑这位 UP 的单人锐评。漏掉它就会发出一份全站榜单,完全不是主人要试的东西。 */
+	app.post("/roast/run-now/:uid", (c) => runNow(c, c.req.param("uid")));
 
 	/**
 	 * `POST /api/stats/roast/:uid` —— 单 UP 锐评。

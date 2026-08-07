@@ -19,10 +19,10 @@ const deps = {
 } as unknown as RouteDeps;
 
 function appWith(outcome: RoastRunOutcome | null) {
-	const runBoardNow = vi.fn(async () => outcome as RoastRunOutcome);
+	const runRoastNow = vi.fn(async (_uid?: string) => outcome as RoastRunOutcome);
 	// null = 调度器还没建好(启动早期 / 引擎没起来)。
-	const app = createStatsRoute(deps, outcome === null ? {} : { runBoardNow });
-	return { app, runBoardNow };
+	const app = createStatsRoute(deps, outcome === null ? {} : { runRoastNow });
+	return { app, runBoardNow: runRoastNow, runRoastNow };
 }
 
 const post = (app: ReturnType<typeof createStatsRoute>) =>
@@ -81,12 +81,29 @@ describe("POST /roast/run-now", () => {
 	});
 
 	it("跑这一轮时抛异常 → 502 + 原因,不把异常漏成未处理拒绝", async () => {
-		const runBoardNow = vi.fn(async () => {
+		const runRoastNow = vi.fn(async () => {
 			throw new Error("盘挂了");
 		});
-		const app = createStatsRoute(deps, { runBoardNow });
+		const app = createStatsRoute(deps, { runRoastNow });
 		const res = await app.request("/roast/run-now", { method: "POST" });
 		expect(res.status).toBe(502);
 		expect(String(((await res.json()) as any).err)).toContain("盘挂了");
+	});
+});
+
+describe("POST /roast/run-now/:uid — 单人那条", () => {
+	it("带上 uid → 跑的是这位 UP 的那条排程,不是榜单", async () => {
+		const { app, runRoastNow } = appWith({ kind: "sent", mode: "text", sent: 1, failed: [] });
+		const res = await app.request("/roast/run-now/12345", { method: "POST" });
+		expect(res.status).toBe(200);
+		// 传错(或压根没传)uid 的话,主人点「试一次」会收到一份全站榜单 —— 完全
+		// 不是他要试的东西,而且真发进群。
+		expect(runRoastNow).toHaveBeenCalledWith("12345");
+	});
+
+	it("不带 uid → 跑榜单那条", async () => {
+		const { app, runRoastNow } = appWith({ kind: "sent", mode: "text", sent: 1, failed: [] });
+		await app.request("/roast/run-now", { method: "POST" });
+		expect(runRoastNow).toHaveBeenCalledWith(undefined);
 	});
 });

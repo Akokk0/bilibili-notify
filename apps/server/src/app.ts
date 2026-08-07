@@ -66,10 +66,10 @@ export interface CreateAppOptions {
 	 */
 	onStatsRoute?: (route: Hono) => void;
 	/**
-	 * 立刻跑一轮榜单周报 —— 面板上的「试一次」。由 `index.ts` 交给调度器。
-	 * 不传就是「还没就绪」,端点回 503。
+	 * 立刻跑一轮 —— 面板上的「试一次」。带 uid 跑单人,不带跑榜单。
+	 * 由 `index.ts` 交给调度器;不传就是「还没就绪」,端点回 503。
 	 */
-	runBoardNow?: () => Promise<RoastRunOutcome>;
+	runRoastNow?: (uid?: string) => Promise<RoastRunOutcome>;
 	/**
 	 * Session codec used to sign/verify the `bn_session` cookie. Must be
 	 * provided exactly when `basicAuthCredentials` is — `index.ts` builds it
@@ -233,7 +233,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	app.route("/api/ai", createAiRoute(deps));
 	app.route("/api/fans", createFansRoute(deps));
 	const statsRoute = createStatsRoute(deps, {
-		...(options.runBoardNow ? { runBoardNow: options.runBoardNow } : {}),
+		...(options.runRoastNow ? { runRoastNow: options.runRoastNow } : {}),
 	});
 	app.route("/api/stats", statsRoute);
 	options.onStatsRoute?.(statsRoute);
