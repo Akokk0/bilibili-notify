@@ -2,7 +2,7 @@
 	"name": "@root/bilibili-notify",
 	"version": "0.0.0",
 	"private": true,
-	"packageManager": "pnpm@11.11.0",
+	"packageManager": "pnpm@11.20.0",
 	"scripts": {
 		"build": "pnpm -r run build && pnpm --filter koishi-plugin-bilibili-notify run build:client && node scripts/build-astrbot-sidecar.mjs && node scripts/build-astrbot-page.mjs",
 		"typecheck": "pnpm -r run typecheck",
@@ -41,11 +41,11 @@
 		"@commitlint/cli": "^20.5.0",
 		"@commitlint/config-conventional": "^20.5.0",
 		"@types/node": "^22.15.21",
-		"@voidzero-dev/vite-plus-core": "0.2.5",
+		"@voidzero-dev/vite-plus-core": "0.2.8",
 		"knip": "^6.14.1",
 		"lefthook": "^1.11.12",
 		"typescript": "^5.8.3",
-		"vite-plus": "0.2.5",
+		"vite-plus": "0.2.8",
 		"vitest": "4.1.10"
 	}
 }
