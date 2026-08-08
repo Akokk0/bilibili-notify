@@ -55,7 +55,7 @@ slim 变体的卡片图片渲染改由 `BN_CHROME_ENDPOINT` 指向的**远程浏
 另有两个省内存开关(两种变体都适用):
 
 - 渲染空闲 `chromeIdleSeconds`(默认 300)秒后自动关闭 / 断开浏览器,下次渲染懒重启;`0` = 常驻。
-- Node 堆上限默认 `NODE_OPTIONS=--max-old-space-size=384`,在 compose `environment` 设同名变量可覆盖。
+- Node 堆上限默认 `NODE_OPTIONS=--max-old-space-size=512`,在 compose `environment` 设同名变量可覆盖。
 
 浏览器来源(本地路径 / 远程端点)也可在 **dashboard 系统页**查看与热切换:先探测新浏览器
 连通,通了才替换并写回配置,无需重启;坏候选不会顶掉在用的配置。
@@ -95,7 +95,7 @@ slim 变体的卡片图片渲染改由 `BN_CHROME_ENDPOINT` 指向的**远程浏
 | `BN_CHROME_PATH` | `/usr/bin/chromium`(slim 变体未设) | puppeteer-core 浏览器 |
 | `BN_CHROME_ENDPOINT` | 未设 | 远程浏览器端点(`ws://…` / `http://…`),优先于 `BN_CHROME_PATH`;slim 变体的卡片渲染靠它 |
 | `BN_CHROME_IDLE_SECONDS` | 未设(=300) | 渲染空闲多久后关闭 / 断开浏览器省内存;`0` = 常驻 |
-| `NODE_OPTIONS` | `--max-old-space-size=384` | V8 堆上限,压住 RSS 浮高;compose 可覆盖 |
+| `NODE_OPTIONS` | `--max-old-space-size=512` | V8 堆上限,压住 RSS 浮高;compose 可覆盖 |
 | `BN_WEB_DIST` | `/app/web-dist` | 控制台静态资源 |
 | `TZ` | `Asia/Shanghai` | 容器时区(影响日志 / 历史按日切文件) |
 | `BN_LOG_LEVEL` | `info` | 日志级别;引擎启动后被 dashboard 配置接管 |

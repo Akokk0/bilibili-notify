@@ -139,7 +139,7 @@ export interface ImageRendererOptions {
 	 *
 	 * 契约是整条规则而不是 data URL,为的是**省一整份内存**:一款中文字库 base64 之后
 	 * 二三十兆,渲染器若再自己拼一遍,同一串东西在堆里就有两份 —— 而镜像里 V8 的
-	 * old-space 上限只有 384MB。宿主那边本来就按资产 id 缓存着解析结果,顺手拼好即可。
+	 * old-space 上限只有 512MB。宿主那边本来就按资产 id 缓存着解析结果,顺手拼好即可。
 	 */
 	resolveFontFace?: (id: string) => Promise<string>;
 	/**

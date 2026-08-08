@@ -34,7 +34,7 @@ export interface AppRuntime {
 	 * 没选字体(空 id)返回空串。
 	 *
 	 * 为什么挂在这儿而不是各建各的:缓存里留的就是那条几十兆的规则,建两个读取器
-	 * 就是同一份东西在堆里存两遍,而镜像里 V8 的 old-space 只有 384MB。推送渲染器
+	 * 就是同一份东西在堆里存两遍,而镜像里 V8 的 old-space 只有 512MB。推送渲染器
 	 * 与预览路由都从这里取同一个,读盘、base64、拼规则一个进程只干一遍。
 	 */
 	loadFontFace: (id: string) => Promise<string>;

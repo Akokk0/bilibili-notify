@@ -99,12 +99,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # 与 runtime 的 ENV 相比:无 BN_CHROME_PATH(镜像内没有浏览器)。
 # NODE_OPTIONS 堆上限:V8 默认按宿主机内存推导 old-space 上限(动辄数 GB),
-# 没内存压力就不勤 GC,RSS 长期浮高。384MB 逼 GC 勤快回收(实测稳态 heapUsed
-# 远低于此,Buffer/WASM 等堆外内存不受此限)。用户可在 compose 的 environment
-# 里设同名变量覆盖。
+# 没内存压力就不勤 GC,RSS 长期浮高。压一个上限逼 GC 勤快回收(Buffer/WASM 等
+# 堆外内存不受此限)。用户可在 compose 的 environment 里设同名变量覆盖。
+#
+# 384 → 512(2026-08-08):有用户订阅十几个 UP、其中不乏大主播,堆撞到 384 的
+# 天花板后 `FATAL ERROR: Reached heap limit` 自杀。**这是抬余量,不是修好了**
+# —— 撞墙的根因(稳态就需要这么多 / 慢泄漏)尚未定位,内存自检日志
+# (server/src/runtime/memory-probe.ts)就是为了把那条曲线记进日志归档。
 ENV NODE_ENV=production \
     TZ=Asia/Shanghai \
-    NODE_OPTIONS=--max-old-space-size=384 \
+    NODE_OPTIONS=--max-old-space-size=512 \
     BN_CONFIG=/config/bn.config.yaml \
     BN_HOST=0.0.0.0 \
     BN_PORT=8787 \
@@ -134,12 +138,11 @@ FROM ${BN_BASE_IMAGE} AS runtime
 # 目录都是 root 级 VOLUME,在镜像外彼此平级(用户挂 ./data:/data + ./config:/config),
 # yaml 自动出现在 host 端 ./config/bn.config.yaml,可直接 vim。其他 BN_* 是 first-boot
 # 的种子源,首次启动后用户编辑 yaml 才生效。
-# NODE_OPTIONS 堆上限:V8 默认按宿主机内存推导 old-space 上限(动辄数 GB),没内存
-# 压力就不勤 GC,RSS 长期浮高。384MB 逼 GC 勤快回收(实测稳态 heapUsed 远低于此,
-# Buffer/WASM 等堆外内存与 chromium 进程不受此限)。compose environment 可覆盖。
+# NODE_OPTIONS 堆上限:理由与 512 的来历同 runtime-slim 那段(本文件上方),
+# 差别只在 chromium 是独立进程、同样不受此限。compose environment 可覆盖。
 ENV NODE_ENV=production \
     TZ=Asia/Shanghai \
-    NODE_OPTIONS=--max-old-space-size=384 \
+    NODE_OPTIONS=--max-old-space-size=512 \
     BN_CONFIG=/config/bn.config.yaml \
     BN_HOST=0.0.0.0 \
     BN_PORT=8787 \

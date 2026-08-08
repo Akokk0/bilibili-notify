@@ -123,7 +123,7 @@ export const MAX_FONT_ASSET_BYTES = 20 * 1024 * 1024;
  * 超过它就在上传后提醒换 woff2。
  *
  * 上限那个数是按「文件本身多大」定的,**没算出图时的开销**:字体会被 base64 内联进
- * 渲染 HTML(再涨三分之一),而 Docker 镜像里 V8 的 old-space 上限只有 384MB
+ * 渲染 HTML(再涨三分之一),而 Docker 镜像里 V8 的 old-space 上限只有 512MB
  * (见 `apps/Dockerfile`)。传一款 20MB 的 ttf 完全合法,出图时却可能把服务撑爆。
  *
  * 做成**提醒而不是拒收**:降上限会把已经传上去的字体挡在门外,那是破坏性的;而同一套

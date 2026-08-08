@@ -24,7 +24,7 @@ import { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES } from "@bilibili-notify/in
  * 一个 20MB,改了一处另一处照旧,主人看到的说明和实际拒收线就对不上。
  *
  * 超过 {@link FONT_ASSET_WARN_BYTES} 的**不拒**,只在设置页提醒转 woff2:上限是按文件
- * 本身多大定的,没算出图开销(base64 内联再涨三分之一,而镜像堆上限只有 384MB),但降
+ * 本身多大定的,没算出图开销(base64 内联再涨三分之一,而镜像堆上限只有 512MB),但降
  * 上限会把主人已经传上去的那款挡在门外。
  */
 export { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES };
@@ -188,7 +188,7 @@ export async function readFontAssetDataUrl(dataDir: string, id: string): Promise
  *
  * 直接用 {@link readFontAssetDataUrl} 的地方每次都会从头读一遍盘、再搓一个 base64
  * 字符串。一款完整中文字库十几到几十兆,base64 之后还要再涨三分之一,而 Docker 镜像
- * 里 V8 的 old-space 上限被压到 384MB(见 `apps/Dockerfile`)—— 预览路由那条 mock
+ * 里 V8 的 old-space 上限被压到 512MB(见 `apps/Dockerfile`)—— 预览路由那条 mock
  * 路径(live / dyn 走示例数据)是**每个请求**读一次,一屏几张卡就能把堆顶起来。
  *
  * 按 **id** 缓存是安全的:资产 id 是随机 32 位 hex,换字体必然换 id,删掉再传也是新
@@ -216,7 +216,7 @@ export function createFontAssetReader(
 		 *
 		 * 只留一条缓存不等于「留得住」—— 主人把卡片切回默认字体之后,那份拼好的
 		 * `@font-face` 没有任何一条路径会再碰它,却会一直挂到进程结束;一款几十兆的
-		 * 中文字库在镜像那 384MB 的堆里就是白扔一大块。
+		 * 中文字库在镜像那 512MB 的堆里就是白扔一大块。
 		 *
 		 * 释放的触发点是**闲置**,不是「这张卡没选字体」。`fontAsset` 能按 UP 覆盖,
 		 * 「这个 UP 有字体、那个用默认」是常态,拿 `load("")` 当释放信号会让交替渲染

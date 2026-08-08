@@ -3,7 +3,7 @@
  *
  * 每条上传路由后面都有一道自己的上限(字体 20MB、背景图 / 聊天图各 5MB),但那道闸
  * 在 `parseBody()` + `arrayBuffer()` **之后** —— 也就是整个 multipart body 已经实体化
- * 进堆之后才拦。镜像里 V8 的 old-space 只有 384MB(见 `apps/Dockerfile`),拖一个几百
+ * 进堆之后才拦。镜像里 V8 的 old-space 只有 512MB(见 `apps/Dockerfile`),拖一个几百
  * 兆的文件进来,结果不是那句「过大」,而是进程被 OOM 杀掉:`restart: unless-stopped`
  * 把它拉起来,主人看到的是面板断线又重连,而那句本该收到的提示永远不会来。
  *

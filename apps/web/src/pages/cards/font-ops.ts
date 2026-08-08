@@ -102,7 +102,7 @@ export function removeFontFromByKind<T extends { fontAsset?: string }>(
  * 传上来的这款字体够大到该提醒吗?返回提醒文案,不用提醒则返回 null。
  *
  * 上限(20MB)是按「文件本身多大」定的,**没算出图时的开销**:字体会被 base64 内联进
- * 渲染 HTML(再涨三分之一),而 Docker 镜像里 V8 的 old-space 上限只有 384MB。所以一款
+ * 渲染 HTML(再涨三分之一),而 Docker 镜像里 V8 的 old-space 上限只有 512MB。所以一款
  * 完全合法的 20MB ttf,照样能让卡片渲染不出来。
  *
  * 提醒而不是拒收:降上限会把主人已经传上去的那款挡在门外。
@@ -110,5 +110,5 @@ export function removeFontFromByKind<T extends { fontAsset?: string }>(
 export function fontSizeWarning(bytes: number): string | null {
 	if (bytes <= FONT_ASSET_WARN_BYTES) return null;
 	const mb = (bytes / 1024 / 1024).toFixed(1);
-	return `这款字体有 ${mb} MB —— 出图时它会整份进内存，在 Docker（默认堆上限 384MB）里容易把服务撑爆。同一套字转成 woff2 通常只占三分之一，建议换 woff2 再传。`;
+	return `这款字体有 ${mb} MB —— 出图时它会整份进内存，在 Docker（默认堆上限 512MB）里容易把服务撑爆。同一套字转成 woff2 通常只占三分之一，建议换 woff2 再传。`;
 }

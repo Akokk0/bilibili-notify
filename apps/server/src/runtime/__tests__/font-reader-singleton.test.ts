@@ -4,7 +4,7 @@
  *
  * 背景:`createFontAssetReader` 的缓存里留的是拼好的 `@font-face` —— 一款几十兆的
  * 中文字库 base64 之后还要再涨三分之一。建两个读取器就等于同一份东西在堆里存两遍,
- * 而镜像里 V8 的 old-space 上限只有 384MB。这事发生过:推送渲染器(runtime/engines)
+ * 而镜像里 V8 的 old-space 上限只有 512MB。这事发生过:推送渲染器(runtime/engines)
  * 和预览路由(routes/cards)各建了一个,谁都没错,合起来就把省下来的又赔了回去。
  *
  * 类型检查拦不住它 —— 多建一个完全合法。所以在这儿扫源码:非测试代码里

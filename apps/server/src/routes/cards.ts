@@ -373,7 +373,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	});
 
 	// 背景图上传 → 落盘 `<dataDir>/assets/card-bg/<id>`,返回资产 id 写进 cardStyle.backgroundImage。
-	// 闸在 parseBody 之前:超大的当场回绝,别先整份读进那 384MB 的堆里。见 upload-limit.ts。
+	// 闸在 parseBody 之前:超大的当场回绝,别先整份读进那 512MB 的堆里。见 upload-limit.ts。
 	app.post("/asset", uploadBodyLimit(MAX_CARD_BG_BYTES, "图片"), async (c) => {
 		const body = await c.req.parseBody().catch(() => null);
 		const file = body?.file;
@@ -493,7 +493,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 第一次 /preview 构造一个 renderer 后,后续改色就不生效(renderer 是 lazy 单例)。
 	// `@font-face` 规则的读取口 —— **本路由只此一份**,mock 路径(live / dyn 走示例数据)
 	// 与 ImageRenderer 都走它。一款中文字库 base64 后二三十兆,而镜像里 V8 堆上限只有
-	// 384MB;各读各的话,一屏几张卡就能把堆顶起来。共用之后两边拿到的是同一个字符串
+	// 512MB;各读各的话,一屏几张卡就能把堆顶起来。共用之后两边拿到的是同一个字符串
 	// 引用,内存里始终只有一份。
 	//
 	// 缓存里留的是**拼好的规则**而不是 data URL:规则本身就把 data URL 包在里头,存前者

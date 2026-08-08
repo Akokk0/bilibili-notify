@@ -139,7 +139,7 @@ export function createAiRoute(deps: RouteDeps): Hono {
 	// 会话生灭的。照抄那套「落盘 + id 引用 + 定向读取」的形状,但各用各的目录。
 
 	/** 上传一张附件 → 落盘 `<dataDir>/assets/chat/<id>`,返回 id 供随消息带上。 */
-	// 闸在 parseBody 之前:超大的当场回绝,别先整份读进那 384MB 的堆里。见 upload-limit.ts。
+	// 闸在 parseBody 之前:超大的当场回绝,别先整份读进那 512MB 的堆里。见 upload-limit.ts。
 	app.post("/assets", uploadBodyLimit(MAX_CHAT_IMAGE_BYTES, "图片"), async (c) => {
 		const body = await c.req.parseBody().catch(() => null);
 		const file = body?.file;

@@ -322,7 +322,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// instance alive rather than hot-swapping on the user toggling the switch.
 	let imageRenderer: ImageRenderer | null = null;
 	// 字体读取口由 runtime 建好传进来,**全进程只有那一个** —— 从前这儿自建一个、
-	// 预览路由再自建一个,同一份几十兆的 `@font-face` 就在 384MB 的堆里存了两遍。
+	// 预览路由再自建一个,同一份几十兆的 `@font-face` 就在 512MB 的堆里存了两遍。
 	// 热切换浏览器会重建渲染器,读取口跨重建复用,免得又从盘上搓一遍。
 	const loadFontFace = opts.loadFontFace;
 

@@ -98,7 +98,7 @@ describe("POST /font-asset —— 上传", () => {
 	 * 超大上传必须**在读进堆之前**就被挡掉。
 	 *
 	 * `parseBody()` + `arrayBuffer()` 会把整个 multipart body 实体化,而
-	 * `saveFontAsset` 的上限是在那之后才校验的 —— 镜像里 V8 老生代只有 384MB,拖一个
+	 * `saveFontAsset` 的上限是在那之后才校验的 —— 镜像里 V8 老生代只有 512MB,拖一个
 	 * 几百兆的 ttf 进来是把进程弄死,而不是收到那句「字体文件过大」。容器被
 	 * `restart: unless-stopped` 拉起来,主人看到的是面板断线又重连,永远等不到那句话。
 	 */

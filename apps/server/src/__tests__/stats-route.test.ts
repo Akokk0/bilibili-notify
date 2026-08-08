@@ -414,7 +414,7 @@ describe("GET /api/stats/overview — 缓存", () => {
 
 	it("条目数有上限 —— 换着参数刷不会让缓存无限涨", async () => {
 		// days×tz 的组合空间有 15 万种,每份都装着全部 UP 的整段序列。没有上限的话
-		// 换着参数刷就能把独立端(Docker 堆上限 384MB)顶爆。
+		// 换着参数刷就能把独立端(Docker 堆上限 512MB)顶爆。
 		const listSamplesSince = vi.fn(async () => []);
 		const deps = makeDeps({ subs: [{ uid: "1" }] });
 		(deps.runtime as unknown as { fansStore: unknown }).fansStore = { listSamplesSince };
