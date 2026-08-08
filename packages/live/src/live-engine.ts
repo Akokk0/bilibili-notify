@@ -264,6 +264,16 @@ export class LiveEngine {
 		}
 	}
 
+	/**
+	 * 弹幕收集器当前占着的 key 规模,给内存自检日志用(见 `DanmakuCollector.stats`)。
+	 *
+	 * 这是引擎里唯一一处会随「弹幕量 × 在播时长」无界增长的结构,所以单独开一个
+	 * 口子报出来 —— 堆在涨的时候,得能一眼看出是不是它。
+	 */
+	danmakuStats(): { rooms: number; words: number; senders: number } {
+		return this.danmakuCollector.stats();
+	}
+
 	/** Replace runtime config (called when the adapter receives a config-changed event). */
 	updateConfig(config: LiveEngineConfig): void {
 		const pushTimeChanged = this.config.pushTime !== config.pushTime;

@@ -99,6 +99,7 @@ slim 变体的卡片图片渲染改由 `BN_CHROME_ENDPOINT` 指向的**远程浏
 | `BN_WEB_DIST` | `/app/web-dist` | 控制台静态资源 |
 | `TZ` | `Asia/Shanghai` | 容器时区(影响日志 / 历史按日切文件) |
 | `BN_LOG_LEVEL` | `info` | 日志级别;引擎启动后被 dashboard 配置接管 |
+| `BN_MEMORY_PROBE_SECONDS` | 未设(=600) | 内存自检日志的采样间隔(秒);`0` = 关闭,下限 30 |
 | `BN_DASHBOARD_USER` / `BN_DASHBOARD_PASS` | 未设 | dashboard 登录凭据(首启动 seed 源) |
 | `BN_COOKIE_KEY` | 未设 | secrets 加密密钥(首启动 seed 源) |
 
@@ -122,6 +123,35 @@ docker inspect bilibili-notify --format '重启={{.RestartCount}} OOM={{.State.O
 # 容器日志里找重启横幅与堆溢出
 docker logs bilibili-notify --tail 300 2>&1 | grep -iE "out of memory|heap limit|listening"
 ```
+
+撞堆上限和被系统 OOM 杀掉是**两回事**,现象像但修法相反:
+
+| 日志现象 | `docker inspect` | 含义 |
+|---|---|---|
+| `FATAL ERROR: Reached heap limit` + 一段 V8 栈 | `OOMKilled=false` | 撞的是上面那个 Node 堆上限,跟宿主机还剩多少内存无关 |
+| 没有这段日志,进程凭空消失 | `OOMKilled=true` | 宿主机 / cgroup 内存不够,被系统杀 |
+
+撞堆上限时,先在 compose 里抬一档撑住:
+
+```yaml
+environment:
+  NODE_OPTIONS: --max-old-space-size=1024
+```
+
+但抬上限只是止痛 —— 堆要是**慢慢涨**上去的,抬完只是把崩溃推迟。想分清是哪一种,
+翻日志里的 `[mem]` 行(默认 10 分钟一条,一并报出弹幕收集器占的规模):
+
+```
+[mem] heap 210/512MB (41%, 已提交 250MB) rss 340MB external 12MB | 弹幕 3 房/12000 词/8000 人
+```
+
+`heap 已用/上限`是唯一会导致 FATAL 的那个数;`已提交`是 V8 为此实际占下的量,
+用量平而它一路涨说明是碎片化。**`external` 不受堆上限管**(jieba 词典等都在里面),
+所以别照堆上限去设 `mem_limit`,否则会从撞 V8 上限变成被系统 OOM 杀。
+
+一开机就接近上限 → 是容量不够,抬上限就对了;几个小时一路爬上去 → 是泄漏,
+请带上这几行开 issue。堆用量超过上限 85% 时这条会升成 `warn` 并附上处理办法;
+不想要这条日志可设 `BN_MEMORY_PROBE_SECONDS=0` 关掉。
 
 ### 故障排查
 

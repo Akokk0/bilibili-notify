@@ -83,6 +83,24 @@ export class DanmakuCollector {
 		};
 	}
 
+	/**
+	 * 当前占着多少内存(按 key 数计)。
+	 *
+	 * 这两张表的 key 空间无界:词表随弹幕内容涨、发送者表随观众数涨,一场大主播
+	 * 的长播能塞进几万个 key,而它们只在下播 / 换场时才 `clear`。给内存自检日志
+	 * (server 端 `runtime/memory-probe.ts`)用,把这条曲线和堆用量画在同一行,
+	 * 好回答「堆涨的时候是不是它在涨」。
+	 *
+	 * `senders` 报的是**跨房间的 key 总数**而非去重人头 —— 占内存的就是 key 本身。
+	 */
+	stats(): { rooms: number; words: number; senders: number } {
+		let words = 0;
+		for (const rec of this.weightByRoom.values()) words += Object.keys(rec).length;
+		let senders = 0;
+		for (const rec of this.senderByRoom.values()) senders += Object.keys(rec).length;
+		return { rooms: this.weightByRoom.size, words, senders };
+	}
+
 	/** Drop all collected data for a room (called at live-end / room-stop). */
 	clear(roomId: string): void {
 		this.weightByRoom.delete(roomId);

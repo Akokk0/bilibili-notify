@@ -28,6 +28,7 @@ import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
 import { createEngines } from "./runtime/engines.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
 import { startFansPoller } from "./runtime/fans-poller.js";
+import { resolveProbeInterval, startMemoryProbe } from "./runtime/memory-probe.js";
 import { createPuppeteerAdapter, type StandalonePuppeteer } from "./runtime/puppeteer.js";
 import { createRoastCommandHandler } from "./runtime/roast-command.js";
 import { createRoastDraftStore } from "./runtime/roast-draft-store.js";
@@ -241,6 +242,20 @@ export async function startStandaloneServer(
 			puppeteer,
 		});
 		runtime.attachEngines(engines);
+
+		// 内存自检:默认 10 分钟一条,`BN_MEMORY_PROBE_SECONDS=0` 关掉。
+		// 挂在 engines 之后,好把弹幕收集器的规模一起报出来 —— 那是引擎里唯一
+		// 一处随「弹幕量 × 在播时长」无界增长的结构,堆涨时第一个该看它。
+		startMemoryProbe({
+			serviceCtx: runtime.serviceCtx,
+			intervalSeconds: resolveProbeInterval(process.env.BN_MEMORY_PROBE_SECONDS),
+			probes: [
+				() => {
+					const s = engines?.live.danmakuStats();
+					return s ? `弹幕 ${s.rooms} 房/${s.words} 词/${s.senders} 人` : "";
+				},
+			],
+		});
 
 		// Daily retention pass for history jsonl files.
 		startHistoryRetention({
