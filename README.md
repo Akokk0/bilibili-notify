@@ -82,16 +82,48 @@
 
 ### 独立 Dashboard(Docker)
 
+compose 与 `docker run` 都可以,**推荐 compose** —— 配置留在文件里,以后升级或改参数不用重敲一长串命令。新建 `docker-compose.yaml`:
+
+```yaml
+services:
+  bilibili-notify:
+    image: akokk0/bilibili-notify:latest
+    container_name: bilibili-notify
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      # 首启动后请改掉默认密码;删掉这两行则自动生成随机密码(见容器日志)
+      BN_DASHBOARD_USER: admin
+      BN_DASHBOARD_PASS: change-me-on-first-boot
+    volumes:
+      - ./data:/data       # 运行时状态(订阅 / 历史 / 日志 / 凭据)
+      - ./config:/config   # 只挂目录,bn.config.yaml 由容器自动生成
+```
+
+然后在同目录启动:
+
+```bash
+docker compose up -d
+```
+
+浏览器打开 `http://<host>:8787`,登录后扫码绑定 B 站账号。**不要手动创建 `config/bn.config.yaml`** —— 容器首次启动会自己生成完整配置。
+
+更新镜像用 `docker compose pull && docker compose up -d`(`restart` 不换镜像)。带 browserless / NapCat 边车的完整模板见 [`apps/docker-compose.example.yaml`](./apps/docker-compose.example.yaml),完整部署 / 配置见 **[apps/README.md](./apps/README.md)**。
+
+不想写 compose 文件也可以直接 `docker run`。下面这条与上面的 compose 等效,只是没设登录凭据 —— 密码会随机生成,到容器日志或 `./config/bn.config.yaml` 里取:
+
 ```bash
 docker run -d --name bilibili-notify \
+  --restart unless-stopped \
   -p 8787:8787 \
   -v "$(pwd)/data:/data" -v "$(pwd)/config:/config" \
   akokk0/bilibili-notify:latest
 ```
 
-浏览器打开 `http://<host>:8787`。首次启动自动生成 dashboard 登录凭据,见容器日志或 `./config/bn.config.yaml`。完整部署 / 配置见 **[apps/README.md](./apps/README.md)**。
+镜像 tag:`latest` = 最新正式版(**推荐**);`vX.Y.Z` = 固定版本;`<short-sha>` = 按 commit 精确 pin。另有 `alpha` 预览渠道,**只在发布预览版时才更新** —— 没有在途预览版时它会一直停在上一个预览版,别拿它当「最新」。
 
-镜像 tag:`latest` = 最新正式版(**推荐**);`vX.Y.Z` = 固定版本;`<short-sha>` = 按 commit 精确 pin。另有 `alpha` 预览渠道,**只在发布预览版时才更新** —— 没有在途预览版时它会一直停在上一个预览版,别拿它当「最新」。免 chromium 的 slim 变体见 [apps/README.md](./apps/README.md)。
+full 镜像内置 chromium,出图峰值不低,建议宿主可用内存 ≥ 1GB;只有 512MB 的小鸡请改用免 chromium 的 slim 变体 + 远程浏览器,见 [apps/README.md](./apps/README.md)。
 
 ### 独立 Dashboard(桌面应用)
 
