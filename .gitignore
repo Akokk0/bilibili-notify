@@ -30,6 +30,11 @@ tsconfig.tsbuildinfo
 # 本地审计/评审产物,不入库
 docs/review/
 
+# README 界面截图 —— 托管在 GitHub Release 的 `assets` tag 上,README 引绝对链接。
+# 本地留一份是为了好重传(`gh release upload assets docs/images/dashboard/*.png --clobber`),
+# 不入库是为了别让反复换的大图沉进 git 历史。
+docs/images/dashboard/
+
 # 群公告 txt 本地草稿,不入库(锚定根,避免误伤 .claude/skills/release-notes/)
 /release-notes/
 

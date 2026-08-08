@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="./docs/images/logo.png" width="160" />
+  <img src="./docs/images/logo-squircle.png" width="200" />
   <br>
   Bilibili Notify
   <br>
@@ -13,6 +13,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/koishi-plugin-bilibili-notify"><img src="https://img.shields.io/npm/v/koishi-plugin-bilibili-notify?label=koishi-plugin" alt="npm" /></a>
+  <a href="https://github.com/Akokk0/bilibili-notify/releases/latest"><img src="https://img.shields.io/github/v/release/Akokk0/bilibili-notify?label=standalone" alt="独立端最新版本" /></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license" /></a>
   <img src="https://img.shields.io/badge/node-%E2%89%A524-339933?logo=nodedotjs&logoColor=white" alt="node" />
 </p>
@@ -35,6 +36,33 @@
 - **多推送目标**:OneBot v11(NapCat 等,支持 HTTP / 正向 WS / 反向 WS)/ Webhook / Web 通知中心
 - **per-UP 定制**:特性开关 / 路由 / 过滤 / 模板 / AI / 卡片样式全部 inherit-or-override
 - **其它**:推送历史(按日 jsonl)、扫码登录、Cookie 自动续期
+
+## 界面预览
+
+以下为独立 Web Dashboard,Koishi 端的配置界面在 Koishi 控制台内。
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="https://github.com/Akokk0/bilibili-notify/releases/download/assets/dashboard-1.png" alt="概览" /><br />
+      <sub><b>概览</b> —— 开播状态、粉丝涨跌、本周推送趋势、最近推送时间轴,以及各模块健康度一览</sub>
+    </td>
+    <td width="50%">
+      <img src="https://github.com/Akokk0/bilibili-notify/releases/download/assets/dashboard-2.png" alt="数据统计" /><br />
+      <sub><b>数据统计</b> —— 多 UP 横向对比、活跃热力图、粉丝净增趋势与内容构成,可让 AI 据此写周报锐评</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="https://github.com/Akokk0/bilibili-notify/releases/download/assets/dashboard-3.png" alt="订阅 UP 主" /><br />
+      <sub><b>订阅 UP 主</b> —— 每个 UP 单独开关动态 / 开播 / 词云 / 直播总结等,还能按推送目标再覆盖一层</sub>
+    </td>
+    <td width="50%">
+      <img src="https://github.com/Akokk0/bilibili-notify/releases/download/assets/dashboard-4.png" alt="卡片渲染 · 样式" /><br />
+      <sub><b>卡片渲染 · 样式</b> —— 配色、字体、背景图随改随看,四种卡片由 Puppeteer 真实渲染实时预览</sub>
+    </td>
+  </tr>
+</table>
 
 ## 选哪种形态
 
