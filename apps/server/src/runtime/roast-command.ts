@@ -14,6 +14,7 @@
  */
 
 import type { Logger } from "@bilibili-notify/internal";
+import { extractPrivateMessage, type InboundPrivateMessage } from "./inbound-message.js";
 import type { RoastDraft, RoastDraftStore } from "./roast-draft-store.js";
 
 export type RoastCommand =
@@ -36,43 +37,10 @@ export function parseRoastCommand(raw: string): RoastCommand {
 	return m[1] === "y" || m[1] === "yes" ? { kind: "approve", id } : { kind: "reject", id };
 }
 
-/** OneBot v11 私聊文本事件里我们用得到的那几个字段。 */
-export interface InboundPrivateMessage {
-	userId: string;
-	text: string;
-}
-
-/**
- * 从一帧 OneBot 事件里挑出私聊文本。不是私聊消息就返回 null。
- *
- * `message` 段可能是字符串,也可能是 OneBot 的段数组;后者只取 text 段拼起来 ——
- * 主人回 `y` 时客户端可能顺手带上别的段(比如 reply),不该因此认不出来。
- */
-export function extractPrivateMessage(
-	frame: Record<string, unknown>,
-): InboundPrivateMessage | null {
-	if (frame.post_type !== "message") return null;
-	if (frame.message_type !== "private") return null;
-	const userId = frame.user_id;
-	if (typeof userId !== "number" && typeof userId !== "string") return null;
-
-	let text = "";
-	if (typeof frame.raw_message === "string" && frame.raw_message.trim()) {
-		text = frame.raw_message;
-	} else if (typeof frame.message === "string") {
-		text = frame.message;
-	} else if (Array.isArray(frame.message)) {
-		text = frame.message
-			.filter(
-				(seg): seg is { type: string; data: { text?: string } } =>
-					typeof seg === "object" && seg !== null && (seg as { type?: string }).type === "text",
-			)
-			.map((seg) => seg.data?.text ?? "")
-			.join("");
-	}
-	if (!text.trim()) return null;
-	return { userId: String(userId), text };
-}
+export type { InboundPrivateMessage };
+// 入站私聊解析已挪到 `inbound-message.ts` —— 指令分发器也要用,不该让通用设施
+// 反过来依赖某一条具体指令。这里继续 re-export,既有调用点不用动。
+export { extractPrivateMessage };
 
 export interface RoastCommandHandlerOptions {
 	drafts: RoastDraftStore;
