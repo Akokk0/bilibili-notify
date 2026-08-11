@@ -40,6 +40,7 @@ import { createPuppeteerAdapter, type StandalonePuppeteer } from "./runtime/pupp
 import { createRoastCommandHandler } from "./runtime/roast-command.js";
 import { createRoastDraftStore } from "./runtime/roast-draft-store.js";
 import { createRoastScheduler } from "./runtime/roast-scheduler.js";
+import { createStatusCommand } from "./runtime/status-command.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
 import { createWsServer } from "./ws/server.js";
 import type { LogEntry } from "./ws/types.js";
@@ -375,6 +376,26 @@ export async function startStandaloneServer(
 		);
 		// 静音的闸装在 push 里(见 engines.ts),这里只是改状态的入口。
 		commands.push(createMuteCommand({ muteState: engines.muteState, reply: tellMaster }));
+		commands.push(
+			createStatusCommand({
+				reply: tellMaster,
+				probe: () => ({
+					// 登录态直接用 LoginFlow 那句人话(「已登录」/「账号登录已失效…」)——
+					// 在这儿把 status 码再翻译一遍,就是第二份会跟它跑偏的文案。
+					login: authSystem?.status().msg ?? "还没起来",
+					lastFetchAt: engines?.dynamic.lastFetchAt(),
+					// 没装 Chrome 就没有渲染队列。
+					renderQueue: puppeteer?.renderQueueDepth() ?? 0,
+					adapters: runtime.configStore
+						.getAdapters()
+						.filter((a) => a.enabled)
+						// **没探测过 ≠ 断了**。webhook 这类平台压根不支持探测,testStatus
+						// 永远是 undefined;当成断线的话主人会永远看见一条假报警。
+						.map((a) => ({ name: a.name, ok: a.testStatus?.ok ?? true })),
+					mutedUntil: engines?.muteState.mutedUntil() ?? 0,
+				}),
+			}),
+		);
 
 		const commandDispatcher = createCommandDispatcher({
 			logger: log,

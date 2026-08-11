@@ -151,6 +151,11 @@ export interface PuppeteerAdapterOptions {
 
 export interface StandalonePuppeteer extends PuppeteerLike {
 	dispose(): Promise<void>;
+	/**
+	 * 还在排队等渲染的数量。`/status` 拿它回答「是不是卡住了」——
+	 * 所有渲染都串行经过同一把闸,这个数持续不为 0 就是推送在堆积。
+	 */
+	renderQueueDepth(): number;
 }
 
 export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): StandalonePuppeteer {
@@ -163,7 +168,7 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Standalon
 	let idleTimer: NodeJS.Timeout | null = null;
 	// 串行闸:所有渲染(预览 screenshotHtml + 推送 ImageRenderer)经同一浏览器,冷启动
 	// 窗口期并发截图会触发 CDP 竞态把卡片平铺成 2×2(见 serial-gate.ts)。串起来即根除。
-	const acquire = createSerialGate();
+	const renderGate = createSerialGate();
 
 	function cancelIdleTimer(): void {
 		if (idleTimer) {
@@ -265,9 +270,10 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Standalon
 	}
 
 	return {
+		renderQueueDepth: () => renderGate.waiting(),
 		async page(): Promise<PageLike> {
 			// 进闸:等上一个渲染(页面 close)后才继续,保证全程并发度为 1。
-			const release = await acquire();
+			const release = await renderGate.acquire();
 			cancelIdleTimer();
 			try {
 				const b = await ensure();

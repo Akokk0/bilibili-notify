@@ -330,6 +330,14 @@ export class DynamicEngine {
 	/** 连续图片渲染失败计数，达到阈值时仅通知一次但不停 cron */
 	private imageFailureStreak = 0;
 	private imageFailureNotified = false;
+	/**
+	 * 上次**成功**拉到动态列表的时刻。`undefined` = 起来以后一次都没成功过。
+	 *
+	 * 只记成功、不记尝试:独立端的 `/status` 拿它回答「还在跑吗」,而连着失败三小时
+	 * 的系统若报「1 分钟前抓过」,这一项就从答案变成了骗局 —— 那恰好是主人掏出手机
+	 * 问状态的场合。
+	 */
+	private lastSuccessfulFetchAt?: number;
 	private readonly busHandles: Disposable[] = [];
 
 	constructor(opts: DynamicEngineOptions) {
@@ -434,6 +442,14 @@ export class DynamicEngine {
 	 * 热替换 CommentaryClient 实例。adapter 在用户运行时打开 / 关闭 / 更换 AI
 	 * 配置后调用,引擎随后的动态点评会立即用新实例 (或回退到纯文字) ,无需重启 server。
 	 */
+	/**
+	 * 上次成功拉到动态列表的时刻(epoch ms),`undefined` = 一次都还没成功。
+	 * 独立端的 `/status` 用它回答「还在跑吗」。
+	 */
+	lastFetchAt(): number | undefined {
+		return this.lastSuccessfulFetchAt;
+	}
+
 	setAi(ai: CommentaryClient | undefined): void {
 		this.ai = ai;
 	}
@@ -713,6 +729,8 @@ export class DynamicEngine {
 		}
 
 		await this.announceRecovery();
+		// 记在这里而不是入口:上面那两个 return(网络抛错 / 接口错误码)都不算抓到。
+		this.lastSuccessfulFetchAt = Date.now();
 		this.logger.debug("[detector] 成功获取动态信息，开始处理");
 
 		// DY1:per-uid 记账 —— 成功处理(含被过滤/开播伪动态/已发)的 pub_ts 进

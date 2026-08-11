@@ -14,11 +14,11 @@ describe("createSerialGate", () => {
 		const gate = createSerialGate();
 		const order: string[] = [];
 
-		const r1 = await gate(); // 立即拿到第一把
+		const r1 = await gate.acquire(); // 立即拿到第一把
 		order.push("a-acquired");
 
 		let secondAcquired = false;
-		const second = gate().then((r2: () => void) => {
+		const second = gate.acquire().then((r2: () => void) => {
 			secondAcquired = true;
 			order.push("b-acquired");
 			return r2;
@@ -42,7 +42,7 @@ describe("createSerialGate", () => {
 		let active = 0;
 		let maxActive = 0;
 		const task = async () => {
-			const release = await gate();
+			const release = await gate.acquire();
 			active += 1;
 			maxActive = Math.max(maxActive, active);
 			await new Promise((r) => setTimeout(r, 5));
@@ -55,7 +55,7 @@ describe("createSerialGate", () => {
 
 	it("某个临界区抛错也不卡死后续(release 在 finally 调用)", async () => {
 		const gate = createSerialGate();
-		const release = await gate();
+		const release = await gate.acquire();
 		// 模拟调用方 try/finally:即便业务抛错,finally 里 release 仍执行
 		try {
 			throw new Error("boom");
@@ -65,8 +65,44 @@ describe("createSerialGate", () => {
 			release();
 		}
 		// 后续应能立即拿到
-		const r2 = await gate();
+		const r2 = await gate.acquire();
 		expect(typeof r2).toBe("function");
 		r2();
+	});
+});
+
+/**
+ * 排队深度 —— `/status` 用它回答「是不是卡住了」。
+ *
+ * 数的是**还在等**的,不含正在跑的那个:主人要知道的是「后面堆了多少」,一个正在跑
+ * 的渲染是正常状态,不是积压。
+ */
+describe("createSerialGate — 排队深度", () => {
+	it("闲着时是 0", () => {
+		expect(createSerialGate().waiting()).toBe(0);
+	});
+
+	it("一个在跑、两个在等 → 2", async () => {
+		const gate = createSerialGate();
+		const r1 = await gate.acquire();
+		const second = gate.acquire();
+		const third = gate.acquire();
+		// 让两个排队者跑到 await 处挂住
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(gate.waiting()).toBe(2);
+
+		r1();
+		(await second)();
+		(await third)();
+	});
+
+	it("排空之后回落到 0", async () => {
+		const gate = createSerialGate();
+		const r1 = await gate.acquire();
+		const second = gate.acquire();
+		r1();
+		(await second)();
+		expect(gate.waiting()).toBe(0);
 	});
 });

@@ -2022,3 +2022,53 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 		expect(detected(b)).toHaveLength(1);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// F. 上次成功抓取的时刻
+//
+// 独立端的 `/status` 拿它回答「还在跑吗」。**只记成功、不记尝试**:连着失败三小时
+// 的系统若报「1 分钟前抓过」,这一项就从答案变成了骗局 —— 而那正是主人掏出手机
+// 敲 status 的场合。
+// ---------------------------------------------------------------------------
+
+describe("DynamicEngine.lastFetchAt", () => {
+	it("还没跑过 → undefined,而不是 0", () => {
+		const b = makeEngine();
+		expect(b.engine.lastFetchAt()).toBeUndefined();
+	});
+
+	it("成功拉到一轮 → 记下时刻", async () => {
+		const b = makeEngine();
+		b.getAllDynamic.mockResolvedValue(resp([]));
+		seed(b.engine, "1", 0);
+		const before = Date.now();
+		await detect(b.engine);
+		const at = b.engine.lastFetchAt();
+		expect(at).toBeDefined();
+		expect(at as number).toBeGreaterThanOrEqual(before);
+	});
+
+	it("拉取抛错 → 不刷新(否则「还在跑吗」永远答是)", async () => {
+		const b = makeEngine();
+		b.getAllDynamic.mockResolvedValue(resp([]));
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		const first = b.engine.lastFetchAt();
+
+		b.getAllDynamic.mockRejectedValue(new Error("network down"));
+		await detect(b.engine);
+		expect(b.engine.lastFetchAt()).toBe(first);
+	});
+
+	it("接口返回错误码 → 同样不刷新", async () => {
+		const b = makeEngine();
+		b.getAllDynamic.mockResolvedValue(resp([]));
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		const first = b.engine.lastFetchAt();
+
+		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		await detect(b.engine);
+		expect(b.engine.lastFetchAt()).toBe(first);
+	});
+});
