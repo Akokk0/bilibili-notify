@@ -35,6 +35,7 @@ import { createEngines } from "./runtime/engines.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
 import { startFansPoller } from "./runtime/fans-poller.js";
 import { resolveProbeInterval, startMemoryProbe } from "./runtime/memory-probe.js";
+import { createMuteCommand } from "./runtime/mute-command.js";
 import { createPuppeteerAdapter, type StandalonePuppeteer } from "./runtime/puppeteer.js";
 import { createRoastCommandHandler } from "./runtime/roast-command.js";
 import { createRoastDraftStore } from "./runtime/roast-draft-store.js";
@@ -372,6 +373,8 @@ export async function startStandaloneServer(
 				},
 			}),
 		);
+		// 静音的闸装在 push 里(见 engines.ts),这里只是改状态的入口。
+		commands.push(createMuteCommand({ muteState: engines.muteState, reply: tellMaster }));
 
 		const commandDispatcher = createCommandDispatcher({
 			logger: log,

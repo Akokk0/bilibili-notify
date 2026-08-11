@@ -70,6 +70,7 @@ import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
 import { syncFollows } from "./follow-sync.js";
 import { MasterNotifier } from "./master-notifier.js";
+import { createMuteState, type MuteState } from "./mute-state.js";
 import type { NodeServiceContext } from "./service-context.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
@@ -88,6 +89,11 @@ export interface EnginesRuntime extends Disposable {
 	readonly dynamic: DynamicEngine;
 	readonly live: LiveEngine;
 	readonly push: BilibiliPush;
+	/**
+	 * 全局静音。`push` 已经接了闸(订阅推送在 `broadcastToFeature` 处被挡),
+	 * 这里暴露出来是给指令与面板改状态用的。
+	 */
+	readonly muteState: MuteState;
 	readonly subscriptionStore: SubscriptionStore;
 	readonly commentary: CommentaryGenerator | null;
 	/** Started BilibiliAPI; consumed by routes that need ad-hoc B-station calls (e.g. subs lookup). */
@@ -234,6 +240,14 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		return opts.configStore.getTargets().find((t) => t.id === id);
 	};
 
+	// 全局静音。到期时刻存在 globals 里 —— 重启不解除,网页上也看得见。
+	const muteState = createMuteState({
+		read: () => globals().mutedUntil,
+		write: async (until) => {
+			await opts.configStore.patchGlobals({ mutedUntil: until });
+		},
+	});
+
 	const push = new BilibiliPush({
 		sink,
 		store: opts.subscriptionStore,
@@ -241,6 +255,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		logger: log,
 		serviceCtx: opts.serviceCtx,
 		defaults: () => globals().defaults,
+		muted: () => muteState.isMuted(),
 		onSend: (info) => {
 			// 私聊不走 history(语义上是给主人的运行状态通知,不是订阅推送)。
 			if (info.private) return;
@@ -899,6 +914,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		dynamic,
 		live,
 		push,
+		muteState,
 		subscriptionStore: opts.subscriptionStore,
 		// getter,理由同下面的 `imageRenderer` —— 这也是个会被热重载重新赋值的 let。
 		// 写成普通属性的话它就是**启动那一刻的值拷贝**:没配 AI 起的服务永远是 null,

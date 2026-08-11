@@ -160,6 +160,18 @@ export const GlobalConfigSchema = z.object({
 	 * 独立端启动时被 `parse` 自动补全,否则直接 ConfigValidationError 开不了机。
 	 */
 	roastSchedule: RoastScheduleSchema.default(DEFAULT_ROAST_SCHEDULE),
+	/**
+	 * 全局静音到哪一刻(epoch ms)。`0` = 没在静音。
+	 *
+	 * 放顶层的理由同 `roastSchedule`:`defaults` 的语义是「per-UP overrides 缺字段时
+	 * 回退到这里」,而静音压根不是 per-UP 的东西 —— 它是「现在别推给我」这一个开关。
+	 *
+	 * 存**到期时刻**而不是「剩余多久」,判定就永远是 `now < mutedUntil` 一个比较:
+	 * 重启、时钟跳变、进程睡过去都不影响它,不需要任何定时器或恢复逻辑。落在 globals
+	 * 里则顺带拿到两件事 —— 重启不解除静音,以及网页上看得见(指令能做的事,面板上
+	 * 都得有一份)。
+	 */
+	mutedUntil: z.number().int().min(0).default(0),
 	bootstrap: BootstrapConfigSchema.optional(),
 });
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
