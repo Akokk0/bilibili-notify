@@ -23,7 +23,12 @@ const STRANGER = "20002";
 
 /** `null` = 主人私聊 user_id 没配上(不能用 undefined:默认参数会把它换成 MASTER)。 */
 function makeDispatcher(
-	commands: { name: string; signature?: string; run: (values: Any) => Promise<void> }[],
+	commands: {
+		name: string;
+		aliases?: string[];
+		signature?: string;
+		run: (values: Any) => Promise<void>;
+	}[],
 	master: string | null = MASTER,
 	prefix = "/",
 	confirmation?: Any,
@@ -276,5 +281,49 @@ describe("确认流窗口(第二道门)", () => {
 		await dispatcher.handleMessage({ userId: STRANGER, text: "y" });
 
 		expect(confirmation.tryHandle).not.toHaveBeenCalled();
+	});
+});
+
+describe("别名", () => {
+	it("别名能触发,和主名等价", async () => {
+		const run = vi.fn(async () => {});
+		const { dispatcher } = makeDispatcher([{ name: "help", aliases: ["帮助", "?"], run }]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/帮助" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/?" });
+		await dispatcher.handleMessage({ userId: MASTER, text: "/help" });
+
+		expect(run).toHaveBeenCalledTimes(3);
+	});
+
+	// koishi 专门修过这个回归(`fix regression of command alias args`)—— 别名匹配
+	// 只剥掉主名的长度,参数就跟着错位。它的别名还是硬编码的,我们的还让主人自己配。
+	it("别名带参数 —— 参数不能因为别名长度不同而错位", async () => {
+		const run = vi.fn(async () => {});
+		const { dispatcher } = makeDispatcher([
+			{ name: "mute", aliases: ["静音"], signature: "<duration:duration|时长>", run },
+		]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/静音 3h" });
+
+		expect(run).toHaveBeenCalledWith({ duration: 3 * 3600_000 });
+	});
+
+	it("没配别名的指令照常工作", async () => {
+		const run = vi.fn(async () => {});
+		const { dispatcher } = makeDispatcher([{ name: "status", run }]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/status" });
+
+		expect(run).toHaveBeenCalledOnce();
+	});
+
+	it("边界仍然要守 —— 「/静音吧」不该命中别名「静音」", async () => {
+		const run = vi.fn(async () => {});
+		const { dispatcher } = makeDispatcher([{ name: "mute", aliases: ["静音"], run }]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/静音吧" });
+
+		expect(run).not.toHaveBeenCalled();
 	});
 });

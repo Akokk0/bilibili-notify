@@ -361,12 +361,14 @@ export async function startStandaloneServer(
 		const commands: CommandSpec[] = [];
 		commands.push(
 			command({
-				name: "帮助",
-				signature: "[指令名:string]",
+				name: "help",
+				aliases: ["帮助", "?"],
+				signature: "[name:string|指令名]",
 				description: "看看能敲哪些指令",
-				// values.指令名 由签名推出来,是 string | undefined —— 不用断言、不用 typeof。
+				// values.name 由签名推出来,是 string | undefined —— 不用断言、不用 typeof。
+				// 报错里显示的是「指令名」那个显示名,不是 name。
 				run: async (values) => {
-					await tellMaster(renderHelp(commands, commandPrefix, values.指令名));
+					await tellMaster(renderHelp(commands, commandPrefix, values.name));
 				},
 			}),
 		);

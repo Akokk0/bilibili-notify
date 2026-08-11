@@ -28,15 +28,22 @@ import { extractPrivateMessage, type InboundPrivateMessage } from "./inbound-mes
  * 注册就能拿到,不必自己写。
  */
 export interface CommandSpec<S extends string = string> {
-	/** 触发词。 */
+	/** 主名。**用英文** —— 中文放 {@link aliases}。 */
 	name: string;
-	/** 参数签名,如 `<时长:duration>`。不含指令名。省略 = 不收参数。 */
+	/**
+	 * 别名,和主名等价。内置的中文名走这里,主人在面板上加的也并进来。
+	 *
+	 * 匹配时剥掉的是**实际命中的那个触发词**的长度,不是主名的 —— 拿主名长度去剥
+	 * 别名,参数就整体错位了(koishi 专门修过这个回归)。
+	 */
+	aliases?: readonly string[];
+	/** 参数签名,如 `<duration:duration|时长>`。不含指令名。省略 = 不收参数。 */
 	signature?: S;
 	/** 一句话说明,帮助里会列出来。 */
 	description?: string;
 	/**
 	 * 拿到的永远是**已校验**的值 —— 解析失败根本不会走到这里,
-	 * 而且类型是从 `signature` 推出来的:`<时长:duration>` → `{ 时长: number }`。
+	 * 而且类型是从 `signature` 推出来的:`<duration:duration|时长>` → `{ duration: number }`。
 	 */
 	run: (values: Values<S>) => Promise<void>;
 }
@@ -47,9 +54,10 @@ export interface CommandSpec<S extends string = string> {
  *
  * ```ts
  * command({
- *   name: "静音",
- *   signature: "<时长:duration>",
- *   run: async (values) => { values.时长 },  // ← number,不用断言
+ *   name: "mute",
+ *   aliases: ["静音"],
+ *   signature: "<duration:duration|时长>",
+ *   run: async (values) => { values.duration },  // ← number,不用断言
  * })
  * ```
  */
@@ -105,10 +113,14 @@ export interface CommandDispatcher {
 export function createCommandDispatcher(opts: CommandDispatcherOptions): CommandDispatcher {
 	// 签名在这里就解析掉,不等到主人敲指令时才解析:签名是代码里写死的,写错了该在
 	// 启动那一刻炸(parseSignature 会抛),而不是等某天主人真敲了那条指令才发现。
-	const compiled: { spec: CommandSpec; params: ParamSpec[] }[] = opts.commands.map((spec) => ({
-		spec,
-		params: parseSignature(spec.signature ?? ""),
-	}));
+	const compiled: { spec: CommandSpec; params: ParamSpec[]; triggers: string[] }[] =
+		opts.commands.map((spec) => ({
+			spec,
+			params: parseSignature(spec.signature ?? ""),
+			// 主名与别名一视同仁。长的排前面:别名之间可能互为前缀(「静音」/「静」),
+			// 短的先匹上就会把剩下那截当成参数。
+			triggers: [spec.name, ...(spec.aliases ?? [])].sort((a, b) => b.length - a.length),
+		}));
 
 	/**
 	 * 剥掉前缀并认出指令。三种结果要分开 —— 「没带前缀」与「带了前缀但认不出」
@@ -123,13 +135,17 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 		const trimmed = text.trim();
 		if (!trimmed.startsWith(opts.prefix)) return { kind: "not-a-command" };
 		const body = trimmed.slice(opts.prefix.length).trim();
-		for (const { spec, params } of compiled) {
-			if (!body.startsWith(spec.name)) continue;
-			const rest = body.slice(spec.name.length);
-			// 触发词后面必须是边界:到头,或者空白 + 参数。不做前缀模糊匹配 ——
-			// 「静」不该命中「静音」,否则主人随口一个字就触发了动作。
-			if (rest.length > 0 && !/^\s/.test(rest)) continue;
-			return { kind: "hit", spec, params, rest: rest.trim() };
+		for (const { spec, params, triggers } of compiled) {
+			for (const trigger of triggers) {
+				if (!body.startsWith(trigger)) continue;
+				// **剥掉的是命中的那个触发词的长度**,不是主名的 —— 用主名长度去剥别名,
+				// 参数会整体错位(koishi 修过这个回归)。
+				const rest = body.slice(trigger.length);
+				// 触发词后面必须是边界:到头,或者空白 + 参数。不做前缀模糊匹配 ——
+				// 「静」不该命中「静音」,否则主人随口一个字就触发了动作。
+				if (rest.length > 0 && !/^\s/.test(rest)) continue;
+				return { kind: "hit", spec, params, rest: rest.trim() };
+			}
 		}
 		return { kind: "unknown" };
 	}

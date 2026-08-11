@@ -131,6 +131,46 @@ describe("parseArgs", () => {
 	});
 });
 
+describe("参数名与显示名", () => {
+	// 参数名进代码(`values.duration`),显示名进报错(「缺少参数「时长」」)。
+	// 不分开的话:要么代码里写 values.时长,要么主人在手机上收到「缺少参数「duration」」。
+	it("`名:类型|显示名` 拆成 name 与 label", () => {
+		expect(parseSignature("<duration:duration|时长>")).toEqual([
+			{ name: "duration", label: "时长", type: "duration", required: true },
+		]);
+	});
+
+	it("不写显示名时 label 缺省 —— 报错就直接用参数名", () => {
+		expect(parseSignature("<uid:string>")).toEqual([
+			{ name: "uid", type: "string", required: true },
+		]);
+	});
+
+	it("显示名可以随便写,不必是参数名的翻译", () => {
+		expect(parseSignature("[page:number|第几页（从 1 开始）]")).toEqual([
+			{ name: "page", label: "第几页（从 1 开始）", type: "number", required: false },
+		]);
+	});
+
+	it("报错用的是显示名,不是参数名", () => {
+		const specs = parseSignature("<duration:duration|时长>");
+		const r = parseArgs(specs, "");
+		expect(r.ok === false && r.message).toContain("时长");
+		expect(r.ok === false && r.message).not.toContain("duration");
+	});
+
+	it("解析出来的值挂在**参数名**下,不是显示名", () => {
+		const specs = parseSignature("<duration:duration|时长>");
+		expect(parseArgs(specs, "3h")).toEqual({ ok: true, values: { duration: 3 * 3600_000 } });
+	});
+
+	// 竖线曾经写在冒号左边。写反了不能静默放过 —— 那样参数会挂在 `duration|时长`
+	// 这个键上,handler 读 `values.duration` 永远是 undefined,而且一路到运行时才发作。
+	it("竖线写在类型前面 → 抛错,不静默认成参数名的一部分", () => {
+		expect(() => parseSignature("<duration|时长:duration>")).toThrow(/参数名/);
+	});
+});
+
 // ---------------------------------------------------------------------------
 // 类型层面的断言。这些不在运行时跑,但 typecheck 会验 —— 推导错了这个文件编译不过。
 // 光看「编译通过」不算数:得钉死推出来的到底是什么形状。
@@ -147,11 +187,14 @@ type _string与text都是字符串 = Assert<
 >;
 /** 没有签名 → 一个键都没有(直接跟 `{}` 比会被索引签名之类的细节绊住)。 */
 type _没有签名就是一个键都没有 = Assert<Equals<keyof Values<"">, never>>;
+/** 键必须是**参数名**,显示名只进报错、不进类型。 */
+type _显示名不进类型 = Assert<Equals<Values<"<duration:duration|时长>">, { duration: number }>>;
 
 // 这几个类型只为让 tsc 检查,运行时用不到 —— 导出以免被当成未使用。
 export type {
 	_string与text都是字符串,
 	_可选带上undefined,
 	_必填推成对应类型,
+	_显示名不进类型,
 	_没有签名就是一个键都没有,
 };

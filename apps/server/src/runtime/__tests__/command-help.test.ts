@@ -9,33 +9,51 @@ import { describe, expect, it } from "vite-plus/test";
 import { renderHelp } from "../command-help.js";
 
 const COMMANDS = [
-	{ name: "状态", description: "看看现在怎么样" },
-	{ name: "静音", signature: "<时长:duration>", description: "安静一会儿" },
+	{ name: "status", aliases: ["状态"], description: "看看现在怎么样" },
+	{
+		name: "mute",
+		aliases: ["静音", "免打扰"],
+		signature: "<duration:duration|时长>",
+		description: "安静一会儿",
+	},
 ];
 
 describe("renderHelp", () => {
 	it("不带参数:列出全部指令", () => {
 		const text = renderHelp(COMMANDS, "/");
-		expect(text).toContain("状态");
-		expect(text).toContain("静音");
+		expect(text).toContain("status");
+		expect(text).toContain("mute");
 		expect(text).toContain("看看现在怎么样");
 	});
 
+	// 主名是英文,主人多半记的是中文那个 —— 帮助里不列出来他就不知道能敲什么。
+	it("列出别名", () => {
+		const text = renderHelp(COMMANDS, "/");
+		expect(text).toContain("静音");
+		expect(text).toContain("免打扰");
+	});
+
 	it("示例用**当前**前缀拼,不是硬编码的", () => {
-		expect(renderHelp(COMMANDS, "/")).toContain("/静音");
+		expect(renderHelp(COMMANDS, "/")).toContain("/mute");
 	});
 
 	// 方案里专门点了这条:主人改完前缀,帮助恰恰是他第一个会看的东西。
 	it("前缀改了,帮助里的示例跟着变", () => {
 		const text = renderHelp(COMMANDS, "bn ");
-		expect(text).toContain("bn 静音");
-		expect(text).not.toContain("/静音");
+		expect(text).toContain("bn mute");
+		expect(text).not.toContain("/mute");
 	});
 
 	it("带参数:只给那一条的详情,含签名", () => {
+		const text = renderHelp(COMMANDS, "/", "mute");
+		expect(text).toContain("<duration:duration|时长>");
+		expect(text).not.toContain("status");
+	});
+
+	// 主人多半是用中文别名敲的「/帮助 静音」,这时也得查得到。
+	it("按别名也查得到详情", () => {
 		const text = renderHelp(COMMANDS, "/", "静音");
-		expect(text).toContain("<时长:duration>");
-		expect(text).not.toContain("状态");
+		expect(text).toContain("安静一会儿");
 	});
 
 	it("问一条不存在的指令 → 说清楚,而不是给一份空白帮助", () => {
