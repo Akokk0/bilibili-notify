@@ -73,8 +73,12 @@ export interface RoastScheduler {
 	stop(): void;
 	/** 重读配置,增删改各条 job。config-changed / subscription-changed 后调。 */
 	reconcile(): void;
-	/** 立刻跑一次榜单周报。cron 到点调它,面板的「试一次」和测试也直接调它。 */
-	runBoardOnce(): Promise<RoastRunOutcome>;
+	/**
+	 * 立刻跑一次榜单周报。cron 到点调它,面板的「试一次」和测试也直接调它。
+	 *
+	 * `days` 只覆盖统计天数(私聊里 `/report 14` 用),其余照配置走;不传 = 全按配置。
+	 */
+	runBoardOnce(days?: number): Promise<RoastRunOutcome>;
 	/** 立刻跑一次某位 UP 的单人锐评。 */
 	runSoloOnce(uid: string): Promise<RoastRunOutcome>;
 	/**
@@ -301,8 +305,11 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		return out;
 	}
 
-	async function runBoardOnce(): Promise<RoastRunOutcome> {
-		return await runOnce("board", boardConfig(), "UP 主周报");
+	async function runBoardOnce(days?: number): Promise<RoastRunOutcome> {
+		const cfg = boardConfig();
+		// 只覆盖 days,目标与出错通知照旧走配置 —— 主人在私聊里说的是「统计多少天」,
+		// 不是「这次发给谁」。cron 那条调用不传,行为逐字不变。
+		return await runOnce("board", days === undefined ? cfg : { ...cfg, days }, "UP 主周报");
 	}
 
 	async function runSoloOnce(uid: string): Promise<RoastRunOutcome> {

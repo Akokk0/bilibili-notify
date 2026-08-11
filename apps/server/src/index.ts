@@ -37,6 +37,7 @@ import { startFansPoller } from "./runtime/fans-poller.js";
 import { resolveProbeInterval, startMemoryProbe } from "./runtime/memory-probe.js";
 import { createMuteCommand } from "./runtime/mute-command.js";
 import { createPuppeteerAdapter, type StandalonePuppeteer } from "./runtime/puppeteer.js";
+import { createReportCommand } from "./runtime/report-command.js";
 import { createRoastCommandHandler } from "./runtime/roast-command.js";
 import { createRoastDraftStore } from "./runtime/roast-draft-store.js";
 import { createRoastScheduler } from "./runtime/roast-scheduler.js";
@@ -394,6 +395,14 @@ export async function startStandaloneServer(
 						.map((a) => ({ name: a.name, ok: a.testStatus?.ok ?? true })),
 					mutedUntil: engines?.muteState.mutedUntil() ?? 0,
 				}),
+			}),
+		);
+		commands.push(
+			createReportCommand({
+				logger: log,
+				reply: tellMaster,
+				// 审批开着时,草稿连同「回复 y <id>」由调度器自己私聊出去,指令层不再补一句。
+				run: (days) => roastScheduler.runBoardOnce(days),
 			}),
 		);
 
