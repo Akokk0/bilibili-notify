@@ -77,6 +77,18 @@ export interface BilibiliPushOptions {
 	 * multiplex sink can't see. Standalone wires this to history-store append.
 	 */
 	onSend?: (info: PushSendInfo) => void;
+	/**
+	 * 全局静音 —— 「安静一会儿」。返回 true 时 {@link BilibiliPush.broadcastToFeature}
+	 * 整条短路,所有 feature 一起挡。
+	 *
+	 * **每条推送现问一次**,不快照:静音是有到期时刻的,快照下来就得等下次重启才恢复。
+	 *
+	 * 发给主人的私聊(`sendToMaster` / `sendPrivateMsg`)**不受它管** —— 指令回复走的
+	 * 就是那条路,连同挡掉的话主人只会看到指令毫无反应。
+	 *
+	 * 不传 = 没有静音这回事(koishi 端没有指令系统)。
+	 */
+	muted?: () => boolean;
 }
 
 /**
@@ -98,6 +110,7 @@ export class BilibiliPush {
 	private masterReachable?: boolean;
 	private readonly logger: Logger;
 	private readonly defaults?: () => GlobalDefaults;
+	private readonly muted?: () => boolean;
 	private readonly onSend?: (info: PushSendInfo) => void;
 	private readonly serviceCtx?: ServiceContext;
 	private disposed = false;
@@ -120,6 +133,7 @@ export class BilibiliPush {
 		this.master = opts.master ?? null;
 		this.logger = opts.logger;
 		this.defaults = opts.defaults;
+		this.muted = opts.muted;
 		this.onSend = opts.onSend;
 		this.serviceCtx = opts.serviceCtx;
 	}
@@ -217,6 +231,13 @@ export class BilibiliPush {
 		// 归一成单元素序列,后续路径统一按序列处理,行为与旧签名逐字一致。
 		const payloads = Array.isArray(payload) ? payload : [payload];
 		if (payloads.length === 0) return [];
+
+		// 全局静音闸,排在所有查询之前 —— 静音期间一次订阅查找都不必做。
+		// 只挡订阅推送;发给主人的私聊不走这里,理由见 `muted` 的注释。
+		if (this.muted?.()) {
+			this.logger.debug(`[push] uid=${uid} feature=${feature} 处于全局静音，跳过`);
+			return [];
+		}
 
 		const sub = this.store.findByUid(uid);
 		if (!sub) {
