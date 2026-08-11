@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Avatar, Btn } from "../components/atoms";
 import { BrowserSourceSettings } from "../components/browser-source-settings";
+import { CommandsSettings } from "../components/commands-settings";
 import {
 	Field,
 	LogLevelPicker,
@@ -310,8 +311,8 @@ export default function System() {
 			await api.patch<GlobalConfig>(
 				"/api/globals",
 				buildPatch(
-					{ app: next.app, master: next.master },
-					{ app: base?.app, master: base?.master },
+					{ app: next.app, master: next.master, commands: next.commands },
+					{ app: base?.app, master: base?.master, commands: base?.commands },
 				),
 			);
 		},
@@ -463,6 +464,8 @@ export default function System() {
 					拉取 /api/globals 失败：{String((globalsQuery.error as Error).message)}
 				</div>
 			) : null}
+
+			{draft ? <CommandsSettings draft={draft} onPatch={patchDraft} /> : null}
 
 			<BrowserSourceSettings />
 

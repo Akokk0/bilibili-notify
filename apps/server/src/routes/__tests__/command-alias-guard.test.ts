@@ -80,3 +80,34 @@ describe("checkCommandAliases", () => {
 		expect(check({ commands: { aliases: { mute: [] } } }).ok).toBe(true);
 	});
 });
+
+/**
+ * 「恢复默认」在线上就是一个显式 `null`(JSON Merge Patch 的删除哨兵,
+ * 前端由 buildPatch 自动生成)。判定要按「删掉这个键、回落到内置别名」来算。
+ */
+describe("恢复默认(显式 null)", () => {
+	it("删掉覆盖后回落到内置别名,不当成「没有别名」", () => {
+		// 盘上 mute 被改成了「安静」,这次把它恢复默认 → 内置的「静音」重新生效,
+		// 于是 report 想叫「静音」就该被拦下。
+		const r = check(
+			{ commands: { aliases: { mute: null, report: ["静音"] } } },
+			{ mute: ["安静"] },
+		);
+		expect(r.ok).toBe(false);
+		expect(r.ok === false && r.message).toContain("静音");
+	});
+
+	it("恢复默认本身不该被自己拦下", () => {
+		const r = check({ commands: { aliases: { mute: null } } }, { mute: ["安静"] });
+		expect(r.ok).toBe(true);
+	});
+
+	// 恢复默认腾出来的词,别人可以接手。
+	it("恢复默认腾出的词可以被别人用", () => {
+		const r = check(
+			{ commands: { aliases: { mute: null, report: ["安静"] } } },
+			{ mute: ["安静"] },
+		);
+		expect(r.ok).toBe(true);
+	});
+});

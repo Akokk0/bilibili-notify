@@ -31,14 +31,18 @@ export function checkCommandAliases(args: {
 }): AliasCheckResult {
 	// per-scope 门:这次 patch 没碰 commands 就别插手。否则存别的 tab 会被一份早就
 	// 躺在盘上的配置拦住(同 checkApprovalEnable 那条)。
-	const incoming = (args.patch as { commands?: { aliases?: Record<string, string[]> } }).commands;
+	const incoming = (args.patch as { commands?: { aliases?: Record<string, string[] | null> } })
+		.commands;
 	if (incoming?.aliases === undefined) return { ok: true };
 
-	// deepMerge 语义:传了哪个键就替换哪个键的整份数组,没传的沿用盘上那份。
-	const merged: Record<string, string[]> = {
-		...args.current.commands.aliases,
-		...incoming.aliases,
-	};
+	// deepMerge 语义:传了哪个键就替换哪个键的整份数组,没传的沿用盘上那份,
+	// **显式 `null` 是删除** —— 面板上的「恢复默认」就是删掉这个键、回落到内置别名。
+	// 照抄进 merged 的话,`effectiveAliases` 会拿到一个 null 当别名表。
+	const merged: Record<string, string[]> = { ...args.current.commands.aliases };
+	for (const [name, list] of Object.entries(incoming.aliases)) {
+		if (list === null) delete merged[name];
+		else merged[name] = list;
+	}
 
 	const owner = new Map<string, string>();
 	for (const spec of args.commands) {

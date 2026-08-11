@@ -40,7 +40,8 @@ export type FieldSection =
 	| "adapter"
 	| "transport"
 	| "session"
-	| "logging";
+	| "logging"
+	| "commands";
 
 export interface FieldLabel {
 	/** UI 显示标签(中文)。 */
@@ -133,6 +134,23 @@ export const FIELD_LABELS = {
 	"master.targetId": {
 		label: "Master 推送目标",
 		section: "master",
+	},
+
+	// ── 私聊指令 ──────────────────────────────────────────────────────────
+	"commands.enabled": {
+		label: "私聊指令",
+		hint: "关掉之后只剩审批的 y/n —— 否则手里那份等审批的周报就再也批不掉了",
+		section: "commands",
+	},
+	"commands.prefix": {
+		label: "指令前缀",
+		hint: "可以留空;留空后认不出的话一律当没看见(否则会对你每句聊天都回一句)",
+		section: "commands",
+	},
+	"commands.aliases": {
+		label: "指令别名",
+		hint: "主名永远有效;别名撞了会在保存时拦下",
+		section: "commands",
 	},
 
 	// ── AI 连接 ───────────────────────────────────────────────────────────
