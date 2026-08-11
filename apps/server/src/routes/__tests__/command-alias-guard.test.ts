@@ -1,0 +1,82 @@
+/**
+ * 保存别名时的冲突检查。
+ *
+ * 撞车的后果是**静默**的:运行时二选一,主人看到某条指令神秘失灵,他会先怀疑机器人
+ * 掉线、怀疑权限,唯独想不到是自己起的那个别名。所以拦在保存那一刻。
+ */
+
+import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { describe, expect, it } from "vite-plus/test";
+import { checkCommandAliases } from "../command-alias-guard.js";
+
+const COMMANDS = [
+	{ name: "status", aliases: ["状态"] },
+	{ name: "mute", aliases: ["静音", "免打扰"] },
+	{ name: "report", aliases: ["周报"] },
+];
+
+function check(patch: Record<string, unknown>, currentAliases: Record<string, string[]> = {}) {
+	const current = makeDefaultGlobalConfig();
+	current.commands.aliases = currentAliases;
+	return checkCommandAliases({ current, patch, commands: COMMANDS });
+}
+
+describe("checkCommandAliases", () => {
+	// per-scope 门:存别的 tab 不该被一份早就躺在盘上的配置拦住。
+	it("这次没碰别名 → 不插手", () => {
+		expect(check({ app: { logLevel: "debug" } }).ok).toBe(true);
+	});
+
+	it("互不相干的别名照常放行", () => {
+		expect(check({ commands: { aliases: { status: ["看看"] } } }).ok).toBe(true);
+	});
+
+	it("两条指令抢同一个词 → 拦下,并说清跟谁撞了", () => {
+		const r = check({ commands: { aliases: { status: ["安静"], mute: ["安静"] } } });
+		expect(r.ok).toBe(false);
+		expect(r.ok === false && r.message).toContain("安静");
+		expect(r.ok === false && r.message).toContain("status");
+		expect(r.ok === false && r.message).toContain("mute");
+	});
+
+	it("别名撞上别的指令的主名 → 拦下", () => {
+		const r = check({ commands: { aliases: { report: ["status"] } } });
+		expect(r.ok).toBe(false);
+		expect(r.ok === false && r.message).toContain("status");
+	});
+
+	// 最容易漏的一种:新配的别名撞的是另一条指令**内置**的那个别名。只比对
+	// 「这次传上来的这几份」是查不出来的。
+	it("别名撞上别的指令的内置别名 → 拦下", () => {
+		const r = check({ commands: { aliases: { report: ["静音"] } } });
+		expect(r.ok).toBe(false);
+		expect(r.ok === false && r.message).toContain("静音");
+	});
+
+	// PATCH 只传了改动的那条,盘上其它几条照旧参与判定。
+	it("和盘上已存的别名撞了 → 拦下", () => {
+		const r = check({ commands: { aliases: { report: ["安静"] } } }, { mute: ["安静"] });
+		expect(r.ok).toBe(false);
+	});
+
+	// 整份替换:把 mute 的别名改掉之后,原来那个词就腾出来了。
+	it("同一次 patch 里腾出来的词可以被别人用", () => {
+		const r = check({ commands: { aliases: { mute: ["安静"], report: ["静音"] } } });
+		expect(r.ok).toBe(true);
+	});
+
+	it("别名和自己的主名重复 → 也拦下,话说得明白些", () => {
+		const r = check({ commands: { aliases: { mute: ["mute"] } } });
+		expect(r.ok).toBe(false);
+		expect(r.ok === false && r.message).toContain("自己");
+	});
+
+	it("同一条指令里别名重复 → 拦下", () => {
+		const r = check({ commands: { aliases: { mute: ["安静", "安静"] } } });
+		expect(r.ok).toBe(false);
+	});
+
+	it("清空别名(空数组)是合法的", () => {
+		expect(check({ commands: { aliases: { mute: [] } } }).ok).toBe(true);
+	});
+});

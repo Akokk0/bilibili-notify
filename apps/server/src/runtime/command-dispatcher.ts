@@ -17,7 +17,7 @@
  * 的回音会先于鉴权漏出去。
  */
 
-import type { Logger } from "@bilibili-notify/internal";
+import type { CommandConfig, Logger } from "@bilibili-notify/internal";
 import { type ParamSpec, parseArgs, parseSignature, type Values } from "./command-params.js";
 import { extractPrivateMessage, type InboundPrivateMessage } from "./inbound-message.js";
 
@@ -97,8 +97,12 @@ export interface CommandDispatcherOptions {
 	masterUserId: () => string | undefined;
 	/** 回一句话给主人(用的是既有的私聊通道)。 */
 	reply: (text: string) => Promise<void>;
-	/** 指令前缀,主人可配。默认 `/`。 */
-	prefix: string;
+	/**
+	 * 面板上那份指令配置(总开关 / 前缀 / 别名覆盖)。**现读**,不快照 ——
+	 * 主人改完保存,前缀与总开关立刻按新的算;别名进了触发词表,要 {@link
+	 * CommandDispatcher.reconcile} 重建。
+	 */
+	config: () => CommandConfig;
 	commands: readonly CommandSpec[];
 	/** 待确认队列。不传 = 这条链路上没有需要确认的东西。 */
 	confirmation?: ConfirmationWindow;
@@ -115,23 +119,51 @@ export interface CommandDispatcher {
 	 * 迟早有一边把「不是主人也放行」写漏。
 	 */
 	handleMessage(msg: InboundPrivateMessage): Promise<void>;
+	/**
+	 * 别名配置变了之后重建触发词表。挂在 `config-changed` 上。
+	 *
+	 * **重建失败不抛**:它是在总线回调里被调的,那里抛出去就是一个
+	 * unhandledRejection,而独立端装了处理器会直接关掉整个进程 —— 一次手滑的别名
+	 * 配置不该有这种后果。保住上一份能用的表,记一条 error。
+	 */
+	reconcile(): void;
 }
 
-export function createCommandDispatcher(opts: CommandDispatcherOptions): CommandDispatcher {
-	// 签名在这里就解析掉,不等到主人敲指令时才解析:签名是代码里写死的,写错了该在
-	// 启动那一刻炸(parseSignature 会抛),而不是等某天主人真敲了那条指令才发现。
-	const compiled: { spec: CommandSpec; params: ParamSpec[]; triggers: string[] }[] =
-		opts.commands.map((spec) => ({
-			spec,
-			params: parseSignature(spec.signature ?? ""),
-			// 主名与别名一视同仁。长的排前面:别名之间可能互为前缀(「静音」/「静」),
-			// 短的先匹上就会把剩下那截当成参数。
-			triggers: [spec.name, ...(spec.aliases ?? [])].sort((a, b) => b.length - a.length),
-		}));
+/**
+ * 这条指令**实际生效**的别名。
+ *
+ * 面板上配了就整份替换内置那份(配成 `[]` 就是一个别名都不要),没配过(键不在)
+ * 才用内置的。指令表与帮助共用这一个判定 —— 各写一份的话,帮助迟早会列出一批
+ * 敲了没反应的别名。
+ */
+export function effectiveAliases(
+	spec: { name: string; aliases?: readonly string[] },
+	aliases: Record<string, string[]>,
+): readonly string[] {
+	return aliases[spec.name] ?? spec.aliases ?? [];
+}
+
+type Compiled = { spec: CommandSpec; params: ParamSpec[]; triggers: string[] };
+
+/**
+ * 编译指令表:解析签名、算出每条的触发词、查重。
+ *
+ * 签名在这里就解析掉,不等主人敲指令时才解析 —— 签名是代码里写死的,写错了该在启动
+ * 那一刻炸,而不是等某天他真敲了那条指令才发现。
+ */
+function compile(commands: readonly CommandSpec[], aliases: Record<string, string[]>): Compiled[] {
+	const compiled: Compiled[] = commands.map((spec) => ({
+		spec,
+		params: parseSignature(spec.signature ?? ""),
+		triggers: [spec.name, ...effectiveAliases(spec, aliases)]
+			// 长的排前面:别名之间可能互为前缀(「静音」/「静」),短的先匹上就会把
+			// 剩下那截当成参数。
+			.sort((a, b) => b.length - a.length),
+	}));
 
 	// 两条指令抢同一个词,只有一条会响 —— 而且是**静默**的,另一条就此人间蒸发。
-	// 别名将来是面板上可配的(主人给「周报」起个别名叫「状态」),所以这道判定迟早
-	// 会被真实用户踩到;在注册那一刻炸,比让他自己猜哪条坏了强得多。
+	// 别名是面板上可配的(主人给「周报」起个别名叫「状态」),这道判定迟早会被真实
+	// 用户踩到;当场拒绝比让他自己猜哪条坏了强得多。
 	const seen = new Map<string, string>();
 	for (const { spec, triggers } of compiled) {
 		for (const t of triggers) {
@@ -144,6 +176,13 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 			seen.set(t, spec.name);
 		}
 	}
+	return compiled;
+}
+
+export function createCommandDispatcher(opts: CommandDispatcherOptions): CommandDispatcher {
+	// 构造期照旧**抛** —— 这时候撞车只可能是代码里内置的那几条自己撞了,是 bug,
+	// 该在启动那一刻炸掉。运行期的 reconcile 走另一套(见下)。
+	let compiled = compile(opts.commands, opts.config().aliases);
 
 	/**
 	 * 剥掉前缀并认出指令。三种结果要分开 —— 「没带前缀」与「带了前缀但认不出」
@@ -154,10 +193,10 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 		| { kind: "unknown" }
 		| { kind: "not-a-command" };
 
-	function match(text: string): MatchResult {
+	function match(text: string, prefix: string): MatchResult {
 		const trimmed = text.trim();
-		if (!trimmed.startsWith(opts.prefix)) return { kind: "not-a-command" };
-		const body = trimmed.slice(opts.prefix.length).trim();
+		if (!trimmed.startsWith(prefix)) return { kind: "not-a-command" };
+		const body = trimmed.slice(prefix.length).trim();
 		for (const { spec, params, triggers } of compiled) {
 			for (const trigger of triggers) {
 				if (!body.startsWith(trigger)) continue;
@@ -188,13 +227,19 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 			if (await opts.confirmation.tryHandle(msg)) return;
 		}
 
-		const hit = match(msg.text);
+		// —— 第三道门:总开关。**排在确认流之后** —— 「关掉 = 整条链路只剩确认流」,
+		// 一起关掉的话,主人关一下指令,手里那份等审批的周报就再也批不掉了。
+		// 关掉后一个字都不回:他自己关的,不需要被提醒;回音只会让这条私聊又开始插嘴。
+		const config = opts.config();
+		if (!config.enabled) return;
+
+		const hit = match(msg.text, config.prefix);
 		// 没带前缀 = 主人在正常说话,当没看见。这条私聊同时是他聊天的地方。
 		if (hit.kind === "not-a-command") return;
 		if (hit.kind === "unknown") {
 			// **强制联动**:前缀为空时必须静默。否则同一套逻辑会对主人的每一句话都回
 			// 这句 —— 用户配出一个会打扰自己的组合,是我们的设计错误,不是他的操作错误。
-			if (!opts.prefix) return;
+			if (!config.prefix) return;
 			await opts.reply("没有这条指令哦～");
 			return;
 		}
@@ -225,5 +270,18 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 			await handleMessage(msg);
 		},
 		handleMessage,
+		reconcile() {
+			try {
+				compiled = compile(opts.commands, opts.config().aliases);
+			} catch (err) {
+				// 这里**不能抛**:调用点在 `config-changed` 的总线回调里,抛出去就是一个
+				// unhandledRejection,而独立端装了处理器会直接关掉整个进程。保存那一刻
+				// 已经查过重(见 globals 路由),能走到这儿说明是从别的路径写进来的
+				// (恢复备份、手改盘上的 json)—— 那更不该拿整个服务陪葬。
+				opts.logger.error(
+					`[command] 指令表重建失败,仍按上一份配置工作:${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
+		},
 	};
 }

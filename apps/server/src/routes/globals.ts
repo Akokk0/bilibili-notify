@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
 import type { StandalonePuppeteer } from "../runtime/puppeteer.js";
+import { checkCommandAliases } from "./command-alias-guard.js";
 import { checkApprovalReachable } from "./roast-approval-guard.js";
 import type { RouteDeps } from "./types.js";
 
@@ -95,6 +96,16 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 					400,
 				);
 			}
+		}
+		// 别名冲突:撞了就静默失灵一条指令,主人根本查不到是别名干的。堵在保存这一刻,
+		// 并说清跟谁撞了。(dispatcher 重建时还有第二道,但那道只能记日志。)
+		const aliasCheck = checkCommandAliases({
+			current: deps.store.getGlobals(),
+			patch,
+			commands: deps.commands ?? [],
+		});
+		if (!aliasCheck.ok) {
+			return c.json({ error: "alias_conflict", message: aliasCheck.message }, 400);
 		}
 		// Enable-check pre-flight. Runs against the *merged* view so a request
 		// that only toggles `enabled=true` without restating apiKey still works

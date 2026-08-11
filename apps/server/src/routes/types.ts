@@ -28,4 +28,17 @@ export interface RouteDeps {
 	 * 未启用 QQ adapter(路由仍挂载,返回空列表)。
 	 */
 	qqSessionRegistry: QQSessionRegistry | null;
+	/**
+	 * 私聊指令注册表(主名 + 内置别名)。globals PATCH 用它做别名冲突检查,
+	 * `GET /api/commands` 用它把「你可以在私聊里敲这些」列给面板。
+	 *
+	 * 可选:路由测试大多不关心指令,省掉时冲突检查退化成「别名之间互查」。
+	 */
+	commands?: readonly {
+		name: string;
+		aliases?: readonly string[];
+		signature?: string;
+		description?: string;
+		details?: string;
+	}[];
 }

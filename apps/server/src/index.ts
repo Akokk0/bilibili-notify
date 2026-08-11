@@ -29,6 +29,7 @@ import {
 	type CommandSpec,
 	command,
 	createCommandDispatcher,
+	effectiveAliases,
 } from "./runtime/command-dispatcher.js";
 import { renderHelp } from "./runtime/command-help.js";
 import { createEngines } from "./runtime/engines.js";
@@ -359,8 +360,6 @@ export async function startStandaloneServer(
 			reply: tellMaster,
 		});
 
-		// 指令前缀。可配置化还没做,先按方案的默认值走。
-		const commandPrefix = "/";
 		// 自引用:帮助要列出「包括它自己在内」的全部指令,所以先建表再往里塞。
 		//
 		// **所有 push 必须排在下面 createCommandDispatcher 之前** —— 它在构造时就把
@@ -376,7 +375,14 @@ export async function startStandaloneServer(
 				// values.name 由签名推出来,是 string | undefined —— 不用断言、不用 typeof。
 				// 报错里显示的是「指令名」那个显示名,不是 name。
 				run: async (values) => {
-					await tellMaster(renderHelp(commands, commandPrefix, values.name));
+					// 前缀与别名都**现读**:主人改完前缀,帮助恰恰是他第一个会看的东西,
+					// 而列出一批已经被他改掉的别名等于教他敲没反应的词。
+					const cfg = runtime.configStore.getGlobals().commands;
+					const entries = commands.map((c) => ({
+						...c,
+						aliases: effectiveAliases(c, cfg.aliases),
+					}));
+					await tellMaster(renderHelp(entries, cfg.prefix, values.name));
 				},
 			}),
 		);
@@ -434,7 +440,7 @@ export async function startStandaloneServer(
 			logger: log,
 			masterUserId,
 			reply: tellMaster,
-			prefix: commandPrefix,
+			config: () => runtime.configStore.getGlobals().commands,
 			commands,
 			// 审批的 y/n 作为第二道门 —— 有待审草稿时才认,没有时它只是个普通字母。
 			confirmation: roastCommands.confirmation,
@@ -449,6 +455,10 @@ export async function startStandaloneServer(
 		runtime.bus.on("config-changed", (scope) => {
 			// 全局那条(roastSchedule)与 per-UP 那些(subscriptions)各自都可能增删改。
 			if (scope === "globals" || scope === "subscriptions") roastScheduler.reconcile();
+			// 别名进了触发词表,得重建;前缀与总开关是现读的,不用管。
+			// reconcile 自己吞异常 —— 这里是总线回调,抛出去会被 unhandledRejection
+			// 处理器变成一次进程退出。
+			if (scope === "globals") commandDispatcher.reconcile();
 		});
 		runtime.serviceCtx.onDispose(() => roastScheduler.stop());
 
@@ -543,6 +553,9 @@ export async function startStandaloneServer(
 			allowedOrigins,
 			desktopToken,
 			qqSessionRegistry,
+			// 注册表交给路由:别名冲突检查与 `GET /api/commands` 都照它来,
+			// 面板上那张指令卡片不必再手写一份清单。
+			commands,
 			onStatsRoute: (route) => {
 				statsRoute = route;
 			},

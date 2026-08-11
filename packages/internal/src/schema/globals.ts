@@ -7,6 +7,7 @@ import { allTemplateFingerprints } from "../template-defaults";
 export { DEFAULT_TEMPLATES } from "../constants";
 
 import { CardLayoutSchema, DEFAULT_CARD_LAYOUT } from "./card-layout";
+import { CommandConfigSchema, DEFAULT_COMMAND_CONFIG } from "./commands";
 import {
 	AISettingsSchema,
 	CardStyleByKindSchema,
@@ -172,6 +173,13 @@ export const GlobalConfigSchema = z.object({
 	 * 都得有一份)。
 	 */
 	mutedUntil: z.number().int().min(0).default(0),
+	/**
+	 * 私聊指令的可配置项(前缀 / 别名 / 总开关)。独立端专有 —— koishi 与 AstrBot
+	 * 各有框架自带的命令系统。
+	 *
+	 * 放顶层同 `roastSchedule`:它不是「per-UP overrides 缺字段时的回退」。
+	 */
+	commands: CommandConfigSchema.default(DEFAULT_COMMAND_CONFIG),
 	bootstrap: BootstrapConfigSchema.optional(),
 });
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;

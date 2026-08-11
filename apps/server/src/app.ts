@@ -17,6 +17,7 @@ import { createAiRoute } from "./routes/ai.js";
 import { createAuthRoute } from "./routes/auth.js";
 import { createBackupRoute } from "./routes/backup.js";
 import { createCardsRoute } from "./routes/cards.js";
+import { createCommandsRoute } from "./routes/commands.js";
 import { createFansRoute } from "./routes/fans.js";
 import { createGlobalsRoute } from "./routes/globals.js";
 import { createHealthRoute } from "./routes/health.js";
@@ -132,6 +133,12 @@ export interface CreateAppOptions {
 	 * `/api/qq/sessions/:id` 读它。省略 → 路由仍挂载但返回空列表。
 	 */
 	qqSessionRegistry?: QQSessionRegistry | null;
+	/**
+	 * 私聊指令注册表。globals PATCH 用它查别名冲突,`GET /api/commands` 用它
+	 * 把「你可以在私聊里敲这些」列给面板 —— 注册表是可序列化的声明,这两件事都是
+	 * 白拿的,不必再手写一份指令清单(手写的那份必然与实现脱节)。
+	 */
+	commands?: RouteDeps["commands"];
 }
 
 /**
@@ -153,6 +160,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 		puppeteer: options.puppeteer ?? null,
 		wsTicketStore: options.wsTicketStore ?? null,
 		qqSessionRegistry: options.qqSessionRegistry ?? null,
+		commands: options.commands,
 	};
 
 	app.onError((err, c) => {
@@ -223,6 +231,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 
 	app.route("/api/health", createHealthRoute(deps));
 	app.route("/api/globals", createGlobalsRoute(deps));
+	app.route("/api/commands", createCommandsRoute(deps));
 	app.route("/api/subs", createSubsRoute(deps));
 	app.route("/api/adapters", createAdaptersRoute(deps));
 	app.route("/api/targets", createTargetsRoute(deps));

@@ -34,15 +34,17 @@ function makeDispatcher(
 	confirmation?: Any,
 ) {
 	const reply = vi.fn(async () => {});
+	// 配置是**现读**的:主人在面板上改完前缀 / 别名,reconcile 之后就该生效。
+	const config = { enabled: true, prefix, aliases: {} as Record<string, string[]> };
 	const dispatcher = createCommandDispatcher({
 		logger,
 		masterUserId: () => master ?? undefined,
 		reply: reply as Any,
-		prefix,
+		config: () => config,
 		commands,
 		confirmation,
 	});
-	return { dispatcher, reply };
+	return { dispatcher, reply, config };
 }
 
 describe("鉴权门", () => {
@@ -372,5 +374,117 @@ describe("createCommandDispatcher — 触发词冲突", () => {
 				{ name: "report", aliases: ["周报"], run: noop },
 			]),
 		).not.toThrow();
+	});
+});
+
+/**
+ * 面板上的可配置项:总开关 / 前缀 / 别名。
+ *
+ * 配置改完走 `config-changed` 总线,dispatcher `reconcile()` 重建指令表 —— 前缀与
+ * 总开关是每条消息现读的,别名要重建(它进了触发词表)。
+ */
+describe("配置", () => {
+	const noop = async () => {};
+
+	// 「关掉 = 整条入站链路只剩确认流」。**确认流不能一起关掉** —— 否则主人关一下
+	// 指令,手里那份等审批的周报就再也批不掉了,而他多半想不到是这个开关干的。
+	it("总开关关掉:指令不跑,但审批的 y/n 照常认", async () => {
+		const run = vi.fn(async () => {});
+		// 只认 y/n,别的原样放过 —— 真实的确认流就是这样,一律吞掉的替身会让
+		// 「指令被总开关挡住」和「被确认流吃掉」两件事分不开。
+		const confirmation = {
+			isWaiting: () => true,
+			tryHandle: vi.fn(async (msg: { text: string }) => /^(y|n)$/i.test(msg.text.trim())),
+		};
+		const { dispatcher, config } = makeDispatcher(
+			[{ name: "status", run }],
+			MASTER,
+			"/",
+			confirmation,
+		);
+		config.enabled = false;
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/status" });
+		expect(run).not.toHaveBeenCalled();
+
+		// 总开关关着,y 仍然进得了确认流(每条消息都会被问一次 —— 那正是
+		// 「只剩确认流」的意思),而且是**被消费**的那一条。
+		await dispatcher.handleMessage({ userId: MASTER, text: "y" });
+		expect(confirmation.tryHandle).toHaveBeenCalledWith(expect.objectContaining({ text: "y" }));
+		expect(await confirmation.tryHandle.mock.results.at(-1)?.value).toBe(true);
+	});
+
+	// 关掉之后连「指令已关闭」都不回:他自己关的,不需要被提醒;而回音又会把这条
+	// 私聊变回一个会插嘴的地方。
+	it("总开关关掉:一个字都不回", async () => {
+		const { dispatcher, reply, config } = makeDispatcher([{ name: "status", run: noop }]);
+		config.enabled = false;
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/status" });
+		expect(reply).not.toHaveBeenCalled();
+	});
+
+	it("前缀是现读的 —— 改完立刻按新的认", async () => {
+		const run = vi.fn(async () => {});
+		const { dispatcher, config } = makeDispatcher([{ name: "status", run }]);
+		config.prefix = "bn ";
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "bn status" });
+		expect(run).toHaveBeenCalledOnce();
+	});
+
+	it("配了别名 → 内置的那份被整份替换", async () => {
+		const run = vi.fn(async () => {});
+		const { dispatcher, config } = makeDispatcher([{ name: "status", aliases: ["状态"], run }]);
+		config.aliases = { status: ["看看"] };
+		dispatcher.reconcile();
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/看看" });
+		expect(run).toHaveBeenCalledOnce();
+		// 整份替换:内置的「状态」已经不认了。区分「我不想要别名」和「我没动过」
+		// 正是为此 —— 两者在盘上必须长得不一样。
+		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" });
+		expect(run).toHaveBeenCalledOnce();
+	});
+
+	it("别名配成空数组 → 只剩主名", async () => {
+		const run = vi.fn(async () => {});
+		const { dispatcher, config } = makeDispatcher([{ name: "status", aliases: ["状态"], run }]);
+		config.aliases = { status: [] };
+		dispatcher.reconcile();
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" });
+		expect(run).not.toHaveBeenCalled();
+		await dispatcher.handleMessage({ userId: MASTER, text: "/status" });
+		expect(run).toHaveBeenCalledOnce();
+	});
+
+	it("没配的指令继续用内置别名", async () => {
+		const run = vi.fn(async () => {});
+		const { dispatcher, config } = makeDispatcher([
+			{ name: "status", aliases: ["状态"], run },
+			{ name: "mute", aliases: ["静音"], run: noop },
+		]);
+		config.aliases = { mute: ["安静"] };
+		dispatcher.reconcile();
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" });
+		expect(run).toHaveBeenCalledOnce();
+	});
+
+	// reconcile 是在 `config-changed` 的总线回调里被调的。那里抛出去 = 一个
+	// unhandledRejection,而独立端装了处理器会**直接关掉整个进程** —— 一次手滑的
+	// 别名配置不该有这种后果。保住上一份能用的表,记一条日志。
+	it("重建撞车:保住上一份表,不抛", async () => {
+		const run = vi.fn(async () => {});
+		const { dispatcher, config } = makeDispatcher([
+			{ name: "status", aliases: ["状态"], run },
+			{ name: "mute", run: noop },
+		]);
+		config.aliases = { mute: ["status"] };
+
+		expect(() => dispatcher.reconcile()).not.toThrow();
+		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" });
+		expect(run).toHaveBeenCalledOnce();
 	});
 });
