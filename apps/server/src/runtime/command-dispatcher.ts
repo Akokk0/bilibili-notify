@@ -129,6 +129,22 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 			triggers: [spec.name, ...(spec.aliases ?? [])].sort((a, b) => b.length - a.length),
 		}));
 
+	// 两条指令抢同一个词,只有一条会响 —— 而且是**静默**的,另一条就此人间蒸发。
+	// 别名将来是面板上可配的(主人给「周报」起个别名叫「状态」),所以这道判定迟早
+	// 会被真实用户踩到;在注册那一刻炸,比让他自己猜哪条坏了强得多。
+	const seen = new Map<string, string>();
+	for (const { spec, triggers } of compiled) {
+		for (const t of triggers) {
+			const owner = seen.get(t);
+			if (owner !== undefined) {
+				throw new Error(
+					`指令「${spec.name}」的触发词「${t}」和「${owner}」撞了,一个词只能归一条指令`,
+				);
+			}
+			seen.set(t, spec.name);
+		}
+	}
+
 	/**
 	 * 剥掉前缀并认出指令。三种结果要分开 —— 「没带前缀」与「带了前缀但认不出」
 	 * 该有不同反应,前者是主人在正常说话,后者是他敲错了指令名。

@@ -362,6 +362,10 @@ export async function startStandaloneServer(
 		// 指令前缀。可配置化还没做,先按方案的默认值走。
 		const commandPrefix = "/";
 		// 自引用:帮助要列出「包括它自己在内」的全部指令,所以先建表再往里塞。
+		//
+		// **所有 push 必须排在下面 createCommandDispatcher 之前** —— 它在构造时就把
+		// 指令表编译好(解析签名、排触发词)。之后再 push 的指令会出现在帮助里,
+		// 却永远不响应,而帮助里看得见恰恰让人不往这上面想。
 		const commands: CommandSpec[] = [];
 		commands.push(
 			command({

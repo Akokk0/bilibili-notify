@@ -327,3 +327,50 @@ describe("别名", () => {
 		expect(run).not.toHaveBeenCalled();
 	});
 });
+
+/**
+ * 触发词冲突 —— 两条指令抢同一个词,只有一条会响,而且是**静默**的。
+ *
+ * 方案里点名过这个:主人给「周报」起了个别名叫「状态」,运行时二选一,他看到的是
+ * 某条指令神秘失灵。别名将来是面板上可配的,所以这道判定迟早要被真实用户踩到 ——
+ * 在注册那一刻就炸,比让他自己去猜哪条坏了强得多。
+ */
+describe("createCommandDispatcher — 触发词冲突", () => {
+	const noop = async () => {};
+
+	it("两条指令主名撞了 → 注册时就抛", () => {
+		expect(() =>
+			makeDispatcher([
+				{ name: "report", run: noop },
+				{ name: "report", run: noop },
+			]),
+		).toThrow(/report/);
+	});
+
+	it("别名撞了别的指令的主名 → 一样抛", () => {
+		expect(() =>
+			makeDispatcher([
+				{ name: "status", run: noop },
+				{ name: "report", aliases: ["status"], run: noop },
+			]),
+		).toThrow(/status/);
+	});
+
+	it("两条指令共用一个别名 → 一样抛", () => {
+		expect(() =>
+			makeDispatcher([
+				{ name: "status", aliases: ["看看"], run: noop },
+				{ name: "report", aliases: ["看看"], run: noop },
+			]),
+		).toThrow(/看看/);
+	});
+
+	it("互不相干的指令照常注册", () => {
+		expect(() =>
+			makeDispatcher([
+				{ name: "status", aliases: ["状态"], run: noop },
+				{ name: "report", aliases: ["周报"], run: noop },
+			]),
+		).not.toThrow();
+	});
+});
