@@ -18,19 +18,45 @@
  */
 
 import type { Logger } from "@bilibili-notify/internal";
-import { type ParamSpec, type ParamValue, parseArgs, parseSignature } from "./command-params.js";
+import { type ParamSpec, parseArgs, parseSignature, type Values } from "./command-params.js";
 import { extractPrivateMessage, type InboundPrivateMessage } from "./inbound-message.js";
 
-/** 一条注册进来的指令。业务实现各归各的服务,这里只管认出来、校验、交出去。 */
-export interface CommandSpec {
+/**
+ * 一条注册进来的指令。业务实现各归各的服务,这里只管认出来、校验、交出去。
+ *
+ * 泛型参数 `S` 是签名的**字面量**类型,`run` 的入参由它推出来 —— 用 {@link command}
+ * 注册就能拿到,不必自己写。
+ */
+export interface CommandSpec<S extends string = string> {
 	/** 触发词。 */
 	name: string;
 	/** 参数签名,如 `<时长:duration>`。不含指令名。省略 = 不收参数。 */
-	signature?: string;
+	signature?: S;
 	/** 一句话说明,帮助里会列出来。 */
 	description?: string;
-	/** 拿到的永远是**已校验**的值 —— 解析失败根本不会走到这里。 */
-	run: (values: Record<string, ParamValue>) => Promise<void>;
+	/**
+	 * 拿到的永远是**已校验**的值 —— 解析失败根本不会走到这里,
+	 * 而且类型是从 `signature` 推出来的:`<时长:duration>` → `{ 时长: number }`。
+	 */
+	run: (values: Values<S>) => Promise<void>;
+}
+
+/**
+ * 注册一条指令。存在的唯一理由是**留住签名的字面量类型** ——
+ * 直接往 `CommandSpec[]` 里塞对象的话,`signature` 会被拓宽成 `string`,推导就没了。
+ *
+ * ```ts
+ * command({
+ *   name: "静音",
+ *   signature: "<时长:duration>",
+ *   run: async (values) => { values.时长 },  // ← number,不用断言
+ * })
+ * ```
+ */
+export function command<S extends string>(spec: CommandSpec<S>): CommandSpec {
+	// 这里必须断言:函数参数是逆变的,`(v: {时长: number}) => …` 不能直接当
+	// `(v: {}) => …` 用。断言只此一处、在库代码里,换来的是每个 handler 都不用断言。
+	return spec as unknown as CommandSpec;
 }
 
 /**

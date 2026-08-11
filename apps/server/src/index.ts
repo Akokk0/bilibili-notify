@@ -25,7 +25,11 @@ import {
 } from "./platforms/qq-official.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
-import { type CommandSpec, createCommandDispatcher } from "./runtime/command-dispatcher.js";
+import {
+	type CommandSpec,
+	command,
+	createCommandDispatcher,
+} from "./runtime/command-dispatcher.js";
 import { renderHelp } from "./runtime/command-help.js";
 import { createEngines } from "./runtime/engines.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
@@ -355,15 +359,17 @@ export async function startStandaloneServer(
 		const commandPrefix = "/";
 		// 自引用:帮助要列出「包括它自己在内」的全部指令,所以先建表再往里塞。
 		const commands: CommandSpec[] = [];
-		commands.push({
-			name: "帮助",
-			signature: "[指令名:string]",
-			description: "看看能敲哪些指令",
-			run: async (values) => {
-				const topic = typeof values.指令名 === "string" ? values.指令名 : undefined;
-				await tellMaster(renderHelp(commands, commandPrefix, topic));
-			},
-		});
+		commands.push(
+			command({
+				name: "帮助",
+				signature: "[指令名:string]",
+				description: "看看能敲哪些指令",
+				// values.指令名 由签名推出来,是 string | undefined —— 不用断言、不用 typeof。
+				run: async (values) => {
+					await tellMaster(renderHelp(commands, commandPrefix, values.指令名));
+				},
+			}),
+		);
 
 		const commandDispatcher = createCommandDispatcher({
 			logger: log,

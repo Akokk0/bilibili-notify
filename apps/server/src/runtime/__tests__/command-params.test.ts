@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { parseArgs, parseSignature } from "../command-params.js";
+import { parseArgs, parseSignature, type Values } from "../command-params.js";
 
 describe("parseSignature", () => {
 	it("尖括号 = 必填", () => {
@@ -117,4 +117,41 @@ describe("parseArgs", () => {
 		const r = parseArgs(parseSignature(""), "多余的");
 		expect(r.ok).toBe(false);
 	});
+	// 类型推导要求「必填在前、可选在后」—— 支持交错顺序会让类型体操撞上
+	// `Type instantiation is excessively deep`。类型和运行时不能各说各话,
+	// 所以这条约定在运行时也钉死。
+	it("可选参数后面不能再出现必填 —— 类型推导指着这条约定", () => {
+		expect(() => parseSignature("[页:number] <uid:string>")).toThrow(/可选/);
+	});
+
+	it("全必填、全可选、先必填后可选都合法", () => {
+		expect(() => parseSignature("<a:string> <b:string>")).not.toThrow();
+		expect(() => parseSignature("[a:string] [b:string]")).not.toThrow();
+		expect(() => parseSignature("<a:string> [b:string]")).not.toThrow();
+	});
 });
+
+// ---------------------------------------------------------------------------
+// 类型层面的断言。这些不在运行时跑,但 typecheck 会验 —— 推导错了这个文件编译不过。
+// 光看「编译通过」不算数:得钉死推出来的到底是什么形状。
+// ---------------------------------------------------------------------------
+
+type Equals<A, B> =
+	(<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+type Assert<T extends true> = T;
+
+type _必填推成对应类型 = Assert<Equals<Values<"<时长:duration>">, { 时长: number }>>;
+type _可选带上undefined = Assert<Equals<Values<"[天数:number]">, { 天数?: number | undefined }>>;
+type _string与text都是字符串 = Assert<
+	Equals<Values<"<uid:string> [备注:text]">, { uid: string; 备注?: string | undefined }>
+>;
+/** 没有签名 → 一个键都没有(直接跟 `{}` 比会被索引签名之类的细节绊住)。 */
+type _没有签名就是一个键都没有 = Assert<Equals<keyof Values<"">, never>>;
+
+// 这几个类型只为让 tsc 检查,运行时用不到 —— 导出以免被当成未使用。
+export type {
+	_string与text都是字符串,
+	_可选带上undefined,
+	_必填推成对应类型,
+	_没有签名就是一个键都没有,
+};

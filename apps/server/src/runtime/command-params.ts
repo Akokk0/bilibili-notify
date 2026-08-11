@@ -40,6 +40,14 @@ export function parseSignature(signature: string): ParamSpec[] {
 		if (previous?.type === "text") {
 			throw new Error(`指令签名「${signature}」把参数放在了 text 之后,text 只能是最后一个`);
 		}
+		// 必填必须排在可选前面。这条不只是风格 —— `Values<S>` 那套类型推导按这个顺序
+		// 解析签名,支持交错会让它撞上 `Type instantiation is excessively deep`。
+		// 类型和运行时不能各说各话,所以这里也钉死。
+		if (reqName !== undefined && specs.some((s) => !s.required)) {
+			throw new Error(
+				`指令签名「${signature}」把必填参数「${name}」放在了可选参数后面,必填必须排在前面`,
+			);
+		}
 		specs.push({ name, type: type as ParamType, required: reqName !== undefined });
 	}
 	return specs;
@@ -160,3 +168,40 @@ export function parseArgs(specs: readonly ParamSpec[], input: string): ParseResu
 	}
 	return { ok: true, values };
 }
+
+// ---------------------------------------------------------------------------
+// 从签名字符串推导出 values 的类型。
+//
+// 有了这个,handler 里就不用再写 `values.时长 as number` —— 断言写反了 typecheck
+// 抓不到,运行时才炸。推导之后连参数名拼错(`values.时间`)都会在编译期报出来。
+//
+// **依赖「必填在前、可选在后」这条约定**(parseSignature 在运行时也钉了它)。
+// 试过支持交错顺序,直接撞 `Type instantiation is excessively deep and possibly
+// infinite`,全部推成 never;放弃交错之后一次就过。
+// ---------------------------------------------------------------------------
+
+type TypeOfParam<T extends string> = T extends "string" | "text"
+	? string
+	: T extends "number" | "duration"
+		? number
+		: never;
+
+type ParamEntry<Body extends string, Req extends boolean> = Body extends `${infer N}:${infer T}`
+	? Req extends true
+		? { [K in N]: TypeOfParam<T> }
+		: { [K in N]?: TypeOfParam<T> }
+	: // biome-ignore lint/complexity/noBannedTypes: 递归出口,空对象正是要表达的
+		{};
+
+type ParseSig<S extends string> = S extends `${string}<${infer Body}>${infer Rest}`
+	? ParamEntry<Body, true> & ParseSig<Rest>
+	: S extends `${string}[${infer Body}]${infer Rest}`
+		? ParamEntry<Body, false> & ParseSig<Rest>
+		: // biome-ignore lint/complexity/noBannedTypes: 递归出口
+			{};
+
+/** 展平交叉类型 —— 否则 hover 出来是 `A & B & {}` 而不是一个对象,报错也难读。 */
+type Pretty<T> = { [K in keyof T]: T[K] } & {};
+
+/** `Values<"<时长:duration> [备注:text]">` → `{ 时长: number; 备注?: string }` */
+export type Values<S extends string> = Pretty<ParseSig<S>>;
