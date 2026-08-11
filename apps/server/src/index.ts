@@ -34,6 +34,7 @@ import { renderHelp } from "./runtime/command-help.js";
 import { createEngines } from "./runtime/engines.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
 import { startFansPoller } from "./runtime/fans-poller.js";
+import { createLoginCommand } from "./runtime/login-command.js";
 import { resolveProbeInterval, startMemoryProbe } from "./runtime/memory-probe.js";
 import { createMuteCommand } from "./runtime/mute-command.js";
 import { createPuppeteerAdapter, type StandalonePuppeteer } from "./runtime/puppeteer.js";
@@ -403,6 +404,25 @@ export async function startStandaloneServer(
 				reply: tellMaster,
 				// 审批开着时,草稿连同「回复 y <id>」由调度器自己私聊出去,指令层不再补一句。
 				run: (days) => roastScheduler.runBoardOnce(days),
+			}),
+		);
+		commands.push(
+			createLoginCommand({
+				logger: log,
+				reply: tellMaster,
+				begin: () => authSystem?.beginLogin() ?? Promise.resolve(),
+				snapshot: () => authSystem?.status() ?? { status: 0, msg: "登录系统还没起来" },
+				// **走 sendToMaster 而不是普通推送**:它强制私聊,onebot adapter 在拿不到
+				// userId 时直接报错而不会回落到群。二维码进群等于公开征集「谁来当我的
+				// B 站账号」。这里还要把「没送到」如实带回去 —— 见 login-command.ts。
+				sendQr: async (buffer) => {
+					// LoginFlow 的 renderQr 走 qrcode 包的 toDataURL,产物恒为 PNG。
+					const r = await engines?.push.sendToMaster({
+						kind: "image",
+						image: { buffer, mime: "image/png" },
+					});
+					return r?.ok === true;
+				},
 			}),
 		);
 
