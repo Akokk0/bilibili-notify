@@ -66,6 +66,7 @@ export function createReportCommand(opts: ReportCommandOptions): CommandSpec {
 		aliases: ["周报"],
 		signature: "[days:number|天数]",
 		description: "现在就要一份周报",
+		example: "7",
 		details: "要跑几十秒。生成期间再敲不会重复生成，也不会重复花钱。",
 		run: async (values) => {
 			// 范围是这条指令自己的业务规则,parser 只管格式 —— 它要是替各指令管范围,

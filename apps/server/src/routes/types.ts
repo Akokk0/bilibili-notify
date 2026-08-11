@@ -40,5 +40,6 @@ export interface RouteDeps {
 		signature?: string;
 		description?: string;
 		details?: string;
+		example?: string;
 	}[];
 }

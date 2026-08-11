@@ -488,3 +488,39 @@ describe("配置", () => {
 		expect(run).toHaveBeenCalledOnce();
 	});
 });
+
+/**
+ * 手机输入法会把 `/mute` 自动首字母大写成 `/Mute`。严格比对的话主人得到的是
+ * 「没有这条指令」,而他屏幕上那行字和帮助里印的看起来一模一样 —— 这种「明明照着
+ * 抄的却不认」最劝退。触发词全是小写英文或中文,放宽大小写没有歧义代价。
+ */
+describe("大小写", () => {
+	it("`/Mute` 认得出来", async () => {
+		const run = vi.fn(async () => {});
+		const { dispatcher } = makeDispatcher([{ name: "mute", run }]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/Mute" });
+
+		expect(run).toHaveBeenCalledOnce();
+	});
+
+	it("大小写混排带参数也不错位", async () => {
+		const run = vi.fn(async () => {});
+		const { dispatcher } = makeDispatcher([
+			{ name: "mute", signature: "<duration:duration|时长>", run },
+		]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/MuTe 3h" });
+
+		expect(run).toHaveBeenCalledWith({ duration: 3 * 3600_000 });
+	});
+
+	it("别名同样宽容", async () => {
+		const run = vi.fn(async () => {});
+		const { dispatcher } = makeDispatcher([{ name: "report", aliases: ["Weekly"], run }]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/weekly" });
+
+		expect(run).toHaveBeenCalledOnce();
+	});
+});

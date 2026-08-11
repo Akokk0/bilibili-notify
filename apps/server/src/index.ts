@@ -372,6 +372,7 @@ export async function startStandaloneServer(
 				aliases: ["帮助", "?"],
 				signature: "[name:string|指令名]",
 				description: "看看能敲哪些指令",
+				example: "mute",
 				// values.name 由签名推出来,是 string | undefined —— 不用断言、不用 typeof。
 				// 报错里显示的是「指令名」那个显示名,不是 name。
 				run: async (values) => {

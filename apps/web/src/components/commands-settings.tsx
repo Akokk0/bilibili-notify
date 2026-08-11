@@ -22,7 +22,8 @@ interface CommandEntry {
 	name: string;
 	defaultAliases: string[];
 	aliases: string[];
-	signature: string;
+	usage: string;
+	example: string;
 	description: string;
 	details: string;
 }
@@ -124,7 +125,7 @@ export function CommandsSettings({
 									<code className="rounded bg-bn-code-bg px-1.5 py-px font-mono text-[11.5px] font-bold text-bn-text-primary">
 										{cfg.prefix}
 										{cmd.name}
-										{cmd.signature ? ` ${cmd.signature}` : ""}
+										{cmd.usage ? ` ${cmd.usage}` : ""}
 									</code>
 									<span className="text-[11.5px] text-bn-text-tertiary">{cmd.description}</span>
 									{isOverridden(cmd) ? (
@@ -143,6 +144,12 @@ export function CommandsSettings({
 									onChange={(v) => setAliases(cmd.name, v)}
 									placeholder="别名,用空格分隔;留空则只认主名"
 								/>
+								{cmd.example ? (
+									<div className="mt-1 font-mono text-[11px] text-bn-text-tertiary">
+										例：{cfg.prefix}
+										{cmd.name} {cmd.example}
+									</div>
+								) : null}
 								{cmd.details ? (
 									<div className="mt-1 text-[11px] text-bn-text-tertiary">{cmd.details}</div>
 								) : null}

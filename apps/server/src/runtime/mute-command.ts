@@ -44,6 +44,7 @@ export function createMuteCommand(opts: MuteCommandOptions): CommandSpec {
 		aliases: ["静音", "免打扰"],
 		signature: "<duration:duration|时长>",
 		description: "安静一会儿，到点自动恢复",
+		example: "3h",
 		// 静音挡的是订阅推送。另外两条路不归它管,而这两条都会在静音期间真的响 ——
 		// 主人不知道的话,只会以为静音坏了。
 		details: "挡的是订阅推送。定时周报和锐评到点照发，出错也还是会叫你。",

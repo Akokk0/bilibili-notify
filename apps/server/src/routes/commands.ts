@@ -14,6 +14,7 @@
 
 import { Hono } from "hono";
 import { effectiveAliases } from "../runtime/command-dispatcher.js";
+import { renderUsage } from "../runtime/command-help.js";
 import type { RouteDeps } from "./types.js";
 
 export function createCommandsRoute(deps: RouteDeps): Hono {
@@ -28,7 +29,11 @@ export function createCommandsRoute(deps: RouteDeps): Hono {
 				name: spec.name,
 				defaultAliases: spec.aliases ?? [],
 				aliases: effectiveAliases(spec, cfg.aliases),
-				signature: spec.signature ?? "",
+				// 面板要印的是**给人看的**用法(`<时长>`),不是写给解析器的签名
+				// (`<duration:duration|时长>`)—— 后者三段里有两段跟用户无关。
+				// 渲染规则与私聊帮助共用一份,免得两处印出不同的东西。
+				usage: renderUsage(spec.signature),
+				example: spec.example ?? "",
 				description: spec.description ?? "",
 				details: spec.details ?? "",
 			})),

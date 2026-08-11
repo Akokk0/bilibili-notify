@@ -16,6 +16,7 @@ const COMMANDS = [
 		signature: "<duration:duration|时长>",
 		description: "安静一会儿",
 		details: "定时周报和锐评不受静音管，到点照发。",
+		example: "3h",
 	},
 ];
 
@@ -45,9 +46,9 @@ describe("renderHelp", () => {
 		expect(text).not.toContain("/mute");
 	});
 
-	it("带参数:只给那一条的详情,含签名", () => {
+	it("带参数:只给那一条的详情,含用法", () => {
 		const text = renderHelp(COMMANDS, "/", "mute");
-		expect(text).toContain("<duration:duration|时长>");
+		expect(text).toContain("/mute <时长>");
 		expect(text).not.toContain("status");
 	});
 
@@ -72,5 +73,75 @@ describe("renderHelp", () => {
 	it("问一条不存在的指令 → 说清楚,而不是给一份空白帮助", () => {
 		const text = renderHelp(COMMANDS, "/", "不存在");
 		expect(text).toContain("不存在");
+	});
+});
+
+/**
+ * 大小写与空白 —— 手机输入法会把 `/help mute` 自动首字母大写成 `/help Mute`。
+ * 严格比对的话主人收到的是「没有「Mute」这条指令」,而他看屏幕上那行字和帮助里
+ * 印的一模一样,根本不知道差在哪。
+ */
+describe("renderHelp — 输入宽容度", () => {
+	it("大小写不敏感", () => {
+		expect(renderHelp(COMMANDS, "/", "Mute")).toContain("安静一会儿");
+		expect(renderHelp(COMMANDS, "/", "MUTE")).toContain("安静一会儿");
+	});
+
+	it("两头空白不算数", () => {
+		expect(renderHelp(COMMANDS, "/", " mute ")).toContain("安静一会儿");
+	});
+});
+
+/**
+ * 用法怎么印给主人看。
+ *
+ * 签名(`<duration:duration|时长>`)是**写给解析器**的:参数名进代码、类型驱动校验。
+ * 把它原样端到主人面前,他要先看懂三段冒号竖线才知道该填什么 —— 那三段里有两段
+ * 跟他无关。他要看的是「填一个时长」,以及最好直接给他一个能照抄的例子。
+ */
+describe("用法展示", () => {
+	it("参数只印显示名,不印参数名与类型", () => {
+		const text = renderHelp(COMMANDS, "/", "mute");
+		expect(text).toContain("<时长>");
+		expect(text).not.toContain("duration");
+		expect(text).not.toContain(":");
+	});
+
+	it("列表里也是显示名", () => {
+		const text = renderHelp(COMMANDS, "/");
+		expect(text).toContain("<时长>");
+		expect(text).not.toContain("duration:duration");
+	});
+
+	// 没写显示名的参数退回参数名 —— 总比印一段类型声明强。
+	it("没写显示名 → 用参数名", () => {
+		const text = renderHelp([{ name: "x", signature: "<uid:string>" }], "/", "x");
+		expect(text).toContain("<uid>");
+		expect(text).not.toContain("string");
+	});
+
+	it("可选参数保留方括号 —— 必填和可选得看得出区别", () => {
+		const text = renderHelp([{ name: "x", signature: "[days:number|天数]" }], "/", "x");
+		expect(text).toContain("[天数]");
+	});
+
+	// 一个能照抄的例子胜过一行语法说明。
+	it("有示例就印出来,并且用**当前**前缀拼", () => {
+		expect(renderHelp(COMMANDS, "/", "mute")).toContain("/mute 3h");
+		expect(renderHelp(COMMANDS, "bn ", "mute")).toContain("bn mute 3h");
+	});
+
+	it("列表里也带示例", () => {
+		expect(renderHelp(COMMANDS, "/")).toContain("/mute 3h");
+	});
+
+	it("没有示例的指令不硬凑一行", () => {
+		const text = renderHelp([{ name: "status", description: "看看" }], "/", "status");
+		expect(text).not.toContain("例");
+	});
+
+	it("不收参数的指令不留空的尖括号", () => {
+		expect(renderHelp(COMMANDS, "/", "status")).toContain("/status");
+		expect(renderHelp(COMMANDS, "/", "status")).not.toContain("<");
 	});
 });

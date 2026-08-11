@@ -49,6 +49,11 @@ export interface CommandSpec<S extends string = string> {
 	 */
 	details?: string;
 	/**
+	 * 一个能照抄的例子,**只写参数部分**(如 `3h`)—— 前缀与指令名由帮助现场拼。
+	 * 连前缀一起写死的话,主人改完前缀,例子就成了错的。
+	 */
+	example?: string;
+	/**
 	 * 拿到的永远是**已校验**的值 —— 解析失败根本不会走到这里,
 	 * 而且类型是从 `signature` 推出来的:`<duration:duration|时长>` → `{ duration: number }`。
 	 */
@@ -166,11 +171,15 @@ function compile(commands: readonly CommandSpec[], aliases: Record<string, strin
 	// 用户踩到;当场拒绝比让他自己猜哪条坏了强得多。
 	const seen = new Map<string, string>();
 	for (const { spec, triggers } of compiled) {
-		for (const t of triggers) {
+		for (const raw of triggers) {
+			// 查重也要按小写来 —— 匹配是大小写不敏感的,`Mute` 和 `mute` 在运行时就是
+			// 同一个词,查重放过它们等于放进一对必然静默失灵的触发词。
+			const t = raw.toLowerCase();
 			const owner = seen.get(t);
 			if (owner !== undefined) {
+				// 报错里用主人**写的那个**大小写,不是折算过的 —— 他要在配置里找的是原样。
 				throw new Error(
-					`指令「${spec.name}」的触发词「${t}」和「${owner}」撞了,一个词只能归一条指令`,
+					`指令「${spec.name}」的触发词「${raw}」和「${owner}」撞了,一个词只能归一条指令`,
 				);
 			}
 			seen.set(t, spec.name);
@@ -199,7 +208,13 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 		const body = trimmed.slice(prefix.length).trim();
 		for (const { spec, params, triggers } of compiled) {
 			for (const trigger of triggers) {
-				if (!body.startsWith(trigger)) continue;
+				// 大小写不敏感:手机输入法会把 `/mute` 自动首字母大写成 `/Mute`,而主人
+				// 屏幕上那行字和帮助里印的看起来一模一样 —— 「明明照着抄的却不认」最劝退。
+				// 触发词全是小写英文或中文,放宽没有歧义代价。
+				//
+				// **按 trigger 的长度切片再比**,不用 `toLowerCase().startsWith()`:某些
+				// 字符小写化会改变长度(İ → i̇),那样下面剥长度就会错位。
+				if (body.slice(0, trigger.length).toLowerCase() !== trigger.toLowerCase()) continue;
 				// **剥掉的是命中的那个触发词的长度**,不是主名的 —— 用主名长度去剥别名,
 				// 参数会整体错位(koishi 修过这个回归)。
 				const rest = body.slice(trigger.length);
