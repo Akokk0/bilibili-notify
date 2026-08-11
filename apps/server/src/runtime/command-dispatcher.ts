@@ -39,8 +39,15 @@ export interface CommandSpec<S extends string = string> {
 	aliases?: readonly string[];
 	/** 参数签名,如 `<duration:duration|时长>`。不含指令名。省略 = 不收参数。 */
 	signature?: S;
-	/** 一句话说明,帮助里会列出来。 */
+	/** 一句话说明,帮助里会列出来。列表是在手机上看的,**一行以内**。 */
 	description?: string;
+	/**
+	 * 补充说明,只在 `help <这条>` 的详情里出现。
+	 *
+	 * 放这些「敲之前才想知道」的注意事项(比如静音管不管定时周报)。写进
+	 * {@link description} 的话,整份列表会被这类长句撑散。
+	 */
+	details?: string;
 	/**
 	 * 拿到的永远是**已校验**的值 —— 解析失败根本不会走到这里,
 	 * 而且类型是从 `signature` 推出来的:`<duration:duration|时长>` → `{ duration: number }`。

@@ -15,6 +15,7 @@ const COMMANDS = [
 		aliases: ["静音", "免打扰"],
 		signature: "<duration:duration|时长>",
 		description: "安静一会儿",
+		details: "定时周报和锐评不受静音管，到点照发。",
 	},
 ];
 
@@ -54,6 +55,18 @@ describe("renderHelp", () => {
 	it("按别名也查得到详情", () => {
 		const text = renderHelp(COMMANDS, "/", "静音");
 		expect(text).toContain("安静一会儿");
+	});
+
+	// 有些注意事项只有在「我正打算敲这条」的时候才想知道 —— 比如静音管不管定时周报。
+	it("详情里带上 details 那段补充", () => {
+		const text = renderHelp(COMMANDS, "/", "mute");
+		expect(text).toContain("定时周报");
+	});
+
+	// 列表是在手机上看的,每条挤一行。补充说明进详情,别把列表撑长。
+	it("列表里不出现 details", () => {
+		const text = renderHelp(COMMANDS, "/");
+		expect(text).not.toContain("定时周报");
 	});
 
 	it("问一条不存在的指令 → 说清楚,而不是给一份空白帮助", () => {

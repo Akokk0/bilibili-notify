@@ -12,6 +12,7 @@ export interface HelpEntry {
 	aliases?: readonly string[];
 	signature?: string;
 	description?: string;
+	details?: string;
 }
 
 /**
@@ -25,7 +26,9 @@ export function renderHelp(commands: readonly HelpEntry[], prefix: string, topic
 		// 这里指路用**主名**:别名是主人可配的,写死中文那个,他改完就指向一个不存在的名字。
 		if (!hit) return `没有「${topic}」这条指令，敲 ${prefix}help 看看有哪些。`;
 		const usage = `${prefix}${hit.name}${hit.signature ? ` ${hit.signature}` : ""}`;
-		return hit.description ? `${usage}\n${hit.description}` : usage;
+		// details 只在详情里露面。它是「我正打算敲这条」时才想知道的注意事项,
+		// 塞进列表只会把手机上那份一行一条的清单撑散。
+		return [usage, hit.description, hit.details].filter(Boolean).join("\n");
 	}
 
 	const lines = commands.map((c) => {
