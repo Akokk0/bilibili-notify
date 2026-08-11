@@ -14,6 +14,7 @@
  */
 
 import type { Logger } from "@bilibili-notify/internal";
+import type { ConfirmationWindow } from "./command-dispatcher.js";
 import { extractPrivateMessage, type InboundPrivateMessage } from "./inbound-message.js";
 import type { RoastDraft, RoastDraftStore } from "./roast-draft-store.js";
 
@@ -64,6 +65,13 @@ export interface RoastCommandHandler {
 	 * 两条路各写一份的话,迟早有一边把「不是主人也放行」写漏。
 	 */
 	handleMessage(msg: InboundPrivateMessage): Promise<void>;
+	/**
+	 * 作为指令分发器的**第二道门**接入 —— 有待审草稿时才认 y/n。
+	 *
+	 * 依赖方向是这边指过去(具体指令 → 通用设施),反过来不行:让 dispatcher 去认
+	 * y/n 这个语法,就等于通用设施依赖了某一条具体指令。
+	 */
+	confirmation: ConfirmationWindow;
 }
 
 export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): RoastCommandHandler {
@@ -73,10 +81,10 @@ export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): Roa
 		if (cmd.kind === "none") return;
 
 		const pending = drafts.list();
-		if (pending.length === 0) {
-			await opts.reply("现在没有等待审批的锐评哦～");
-			return;
-		}
+		// 没待审就当没看见。以前这里回一句「现在没有等待审批的锐评哦～」,于是主人在
+		// 私聊里随口打个 y(英文聊天里很常见)就收到这句莫名其妙的话 —— 而这条私聊
+		// 同时是他正常说话的地方。草稿 TTL 有 48 小时,真想批准几乎不可能撞上超时。
+		if (pending.length === 0) return;
 
 		// 没带 ID:只有一份待审时就是它 —— 常见情况一个字母搞定。多份时必须指明,
 		// 猜错的代价是把不该发的那份发出去了,而那正是审批要防的事。
@@ -117,20 +125,32 @@ export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): Roa
 		await opts.deliver(taken);
 	}
 
-	async function handleMessage(msg: InboundPrivateMessage): Promise<void> {
+	/**
+	 * 试着把这条消息当审批回应处理。返回 false = 没消费,机会让回给指令表。
+	 *
+	 * 鉴权在这里**再做一次**,虽然 dispatcher 那边已经鉴过:两条路各写一份的话,
+	 * 迟早有一边把「不是主人也放行」写漏,而这条链路的代价是把没审过的锐评发出去。
+	 */
+	async function tryHandle(msg: InboundPrivateMessage): Promise<boolean> {
 		const master = opts.masterUserId();
 		// 不是主人就当没看见:不回复、不报错。回一句「你没权限」等于告诉对方
 		// 这里有个接口可以试探。
-		if (!master || msg.userId !== master) return;
+		if (!master || msg.userId !== master) return false;
 
 		const cmd = parseRoastCommand(msg.text);
-		if (cmd.kind === "none") return;
+		// 认不出来 → 让回给指令表。有待审的时候主人照样得能敲别的指令。
+		if (cmd.kind === "none") return false;
 
 		try {
 			await run(cmd);
 		} catch (err) {
 			logger.warn(`[roast-cmd] 处理指令失败: ${err instanceof Error ? err.message : String(err)}`);
 		}
+		return true;
+	}
+
+	async function handleMessage(msg: InboundPrivateMessage): Promise<void> {
+		await tryHandle(msg);
 	}
 
 	return {
@@ -140,5 +160,9 @@ export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): Roa
 			await handleMessage(msg);
 		},
 		handleMessage,
+		confirmation: {
+			isWaiting: () => drafts.list().length > 0,
+			tryHandle,
+		},
 	};
 }

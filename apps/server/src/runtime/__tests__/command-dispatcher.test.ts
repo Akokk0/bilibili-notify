@@ -26,6 +26,7 @@ function makeDispatcher(
 	commands: { name: string; signature?: string; run: (values: Any) => Promise<void> }[],
 	master: string | null = MASTER,
 	prefix = "/",
+	confirmation?: Any,
 ) {
 	const reply = vi.fn(async () => {});
 	const dispatcher = createCommandDispatcher({
@@ -34,6 +35,7 @@ function makeDispatcher(
 		reply: reply as Any,
 		prefix,
 		commands,
+		confirmation,
 	});
 	return { dispatcher, reply };
 }
@@ -215,5 +217,64 @@ describe("健壮性", () => {
 		});
 
 		expect(run).toHaveBeenCalledOnce();
+	});
+});
+
+describe("确认流窗口(第二道门)", () => {
+	/** 待确认队列的替身。dispatcher 不知道 y/n 这个语法,只问「消费了吗」。 */
+	function makeConfirmation(waiting: boolean) {
+		return {
+			isWaiting: () => waiting,
+			tryHandle: vi.fn(async (msg: { text: string }) => /^(y|n)$/i.test(msg.text.trim())),
+		};
+	}
+
+	it("有待确认项时,y 交给确认流,不进指令表", async () => {
+		const run = vi.fn(async () => {});
+		const confirmation = makeConfirmation(true);
+		const { dispatcher } = makeDispatcher([{ name: "y", run }], MASTER, "", confirmation);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "y" });
+
+		expect(confirmation.tryHandle).toHaveBeenCalledOnce();
+		expect(run).not.toHaveBeenCalled();
+	});
+
+	// 这是收编时顺带修掉的一个毛病:以前无条件解析 y/n,主人在私聊里随口打个 y
+	// (英文聊天里很常见)就会收到「现在没有等待审批的锐评哦～」。草稿 TTL 有 48 小时,
+	// 真要批准几乎不可能撞上超时;没待审时那个 y 就只是个普通字母。
+	it("没有待确认项时,压根不问确认流 —— y 只是个普通字母", async () => {
+		const confirmation = makeConfirmation(false);
+		const { dispatcher, reply } = makeDispatcher(
+			[{ name: "状态", run: async () => {} }],
+			MASTER,
+			"/",
+			confirmation,
+		);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "y" });
+
+		expect(confirmation.tryHandle).not.toHaveBeenCalled();
+		expect(reply).not.toHaveBeenCalled();
+	});
+
+	it("确认流不认的输入继续往下走指令表", async () => {
+		const run = vi.fn(async () => {});
+		const confirmation = makeConfirmation(true);
+		const { dispatcher } = makeDispatcher([{ name: "状态", run }], MASTER, "/", confirmation);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" });
+
+		expect(confirmation.tryHandle).toHaveBeenCalledOnce();
+		expect(run).toHaveBeenCalledOnce();
+	});
+
+	it("确认流也在鉴权门之后 —— 陌生人的 y 碰不到它", async () => {
+		const confirmation = makeConfirmation(true);
+		const { dispatcher } = makeDispatcher([], MASTER, "/", confirmation);
+
+		await dispatcher.handleMessage({ userId: STRANGER, text: "y" });
+
+		expect(confirmation.tryHandle).not.toHaveBeenCalled();
 	});
 });

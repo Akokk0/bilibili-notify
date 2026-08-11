@@ -172,9 +172,15 @@ describe("审批指令处理", () => {
 		expect(String(reply.mock.calls[0]?.[0])).toContain("zz");
 	});
 
-	it("一份待审都没有 → 告诉主人,不静默", async () => {
+	// **规格变更**(2026-08-11):以前这里回一句「现在没有等待审批的锐评哦～」,于是主人
+	// 在私聊里随口打个 y(英文聊天里很常见)就收到这句莫名其妙的话。收编进指令系统的
+	// 确认流之后,监听窗口有状态了:没待审时 y 只是个普通字母。
+	//
+	// 敢这么改是因为草稿 TTL 有 48 小时 —— 主人要等超过两天才回 y 才会撞上「想批准
+	// 却没反应」,概率极低;而聊天里打 y 是日常。
+	it("一份待审都没有 → 静默,不拿这句去打扰主人", async () => {
 		await makeHandler().handle(privateFrame("y"));
-		expect(String(reply.mock.calls[0]?.[0])).toContain("没有");
+		expect(reply).not.toHaveBeenCalled();
 	});
 
 	it("同一份连批两次 → 第二次落空,不重复发送", async () => {
@@ -209,5 +215,43 @@ describe("审批指令处理", () => {
 		const h = makeHandler();
 		deliver.mockRejectedValue(new Error("推送炸了"));
 		await expect(h.handle(privateFrame("y"))).resolves.not.toThrow();
+	});
+});
+
+describe("作为 dispatcher 的确认流窗口", () => {
+	it("有待审时 isWaiting 为真,没有时为假", async () => {
+		const h = makeHandler();
+		expect(h.confirmation.isWaiting()).toBe(false);
+		await seedDraft();
+		expect(h.confirmation.isWaiting()).toBe(true);
+	});
+
+	it("认得出 y → 消费掉(返回 true)并真的发出去", async () => {
+		await seedDraft();
+		const h = makeHandler();
+
+		await expect(h.confirmation.tryHandle({ userId: MASTER, text: "y" })).resolves.toBe(true);
+
+		expect(deliver).toHaveBeenCalledOnce();
+	});
+
+	// 返回 false 是让 dispatcher 继续往下走指令表 —— 否则有待审的时候
+	// 主人就一条指令都敲不了了。
+	it("认不出的输入 → 返回 false,把机会让回给指令表", async () => {
+		await seedDraft();
+		const h = makeHandler();
+
+		await expect(h.confirmation.tryHandle({ userId: MASTER, text: "/状态" })).resolves.toBe(false);
+	});
+
+	// dispatcher 那边已经鉴过一道了,这里再鉴一次是防御:两条路各写一份的话,
+	// 迟早有一边把「不是主人也放行」写漏。
+	it("也鉴权 —— 别人的 y 不消费、不执行", async () => {
+		await seedDraft();
+		const h = makeHandler();
+
+		await expect(h.confirmation.tryHandle({ userId: "99999", text: "y" })).resolves.toBe(false);
+
+		expect(deliver).not.toHaveBeenCalled();
 	});
 });

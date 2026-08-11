@@ -31,6 +31,19 @@ export interface CommandSpec {
 	run: (values: Record<string, ParamValue>) => Promise<void>;
 }
 
+/**
+ * 待确认队列 —— 审批的 `y`/`n` 走这里,不进指令表。
+ *
+ * dispatcher **故意不知道** y/n 这个语法:它只问「有待确认的吗」「你消费了吗」。
+ * 让通用设施去认某一条具体指令的语法,就又把依赖方向倒过来了。
+ */
+export interface ConfirmationWindow {
+	/** 有待确认项吗?没有的话 `y` 只是个普通字母,压根不该进指令层。 */
+	isWaiting(): boolean;
+	/** 试着当确认回应处理。返回 true = 已消费,不再往下走。 */
+	tryHandle(msg: InboundPrivateMessage): Promise<boolean>;
+}
+
 export interface CommandDispatcherOptions {
 	logger: Logger;
 	/**
@@ -44,6 +57,8 @@ export interface CommandDispatcherOptions {
 	/** 指令前缀,主人可配。默认 `/`。 */
 	prefix: string;
 	commands: readonly CommandSpec[];
+	/** 待确认队列。不传 = 这条链路上没有需要确认的东西。 */
+	confirmation?: ConfirmationWindow;
 }
 
 export interface CommandDispatcher {
@@ -95,6 +110,16 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 		// —— 第一道门:鉴权。必须在解析之前,理由见文件头。
 		const master = opts.masterUserId();
 		if (!master || msg.userId !== master) return;
+
+		// —— 第二道门:待确认窗口。**只在真有待确认项时才开。**
+		//
+		// 以前是无条件解析 y/n,没待审时回一句「现在没有等待审批的锐评哦～」——
+		// 于是主人在私聊里随口打个 y(英文聊天里很常见)就收到这句莫名其妙的话。
+		// 草稿 TTL 有 48 小时,真要批准几乎不可能撞上超时;没待审时那个 y 就只是
+		// 个普通字母,不该进指令层。
+		if (opts.confirmation?.isWaiting()) {
+			if (await opts.confirmation.tryHandle(msg)) return;
+		}
 
 		const hit = match(msg.text);
 		// 没带前缀 = 主人在正常说话,当没看见。这条私聊同时是他聊天的地方。
