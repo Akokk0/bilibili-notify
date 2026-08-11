@@ -25,6 +25,8 @@ import {
 } from "./platforms/qq-official.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
+import { type CommandSpec, createCommandDispatcher } from "./runtime/command-dispatcher.js";
+import { renderHelp } from "./runtime/command-help.js";
 import { createEngines } from "./runtime/engines.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
 import { startFansPoller } from "./runtime/fans-poller.js";
@@ -324,30 +326,59 @@ export async function startStandaloneServer(
 			tellMasterPayload,
 		});
 
+		// 主人在他那条私聊通道上的身份 —— 只有这个 id 敲的指令算数。
+		//
+		// 每个平台的「谁」长得不一样:onebot 是 user_id,qq-official 是 C2C 的
+		// userOpenid。**绝不能跨平台比对** —— 两个命名空间里的字符串撞上就等于
+		// 认错人。取不到(没配 / 群目标没有 userOpenid / 平台还没接入站)就返回
+		// undefined,于是谁都不认。
+		//
+		// 审批与指令分发共用同一个来源:各写一份迟早有一边判得不一样。
+		const masterUserId = () => {
+			const id = runtime.configStore.getGlobals().master.targetId;
+			if (!id) return undefined;
+			const t = runtime.configStore.getTargets().find((x) => x.id === id);
+			if (t?.platform === "onebot") return t.session.userId;
+			if (t?.platform === "qq-official") return t.session.userOpenid;
+			return undefined;
+		};
+
 		const roastCommands = createRoastCommandHandler({
 			drafts: roastDrafts,
 			logger: log,
-			// 主人在他那条私聊通道上的身份 —— 只有这个 id 回的 y/n 算数。
-			//
-			// 每个平台的「谁」长得不一样:onebot 是 user_id,qq-official 是 C2C 的
-			// userOpenid。**绝不能跨平台比对** —— 两个命名空间里的字符串撞上就等于
-			// 认错人。取不到(没配 / 群目标没有 userOpenid / 平台还没接入站)就返回
-			// undefined,于是谁都不认。
-			masterUserId: () => {
-				const id = runtime.configStore.getGlobals().master.targetId;
-				if (!id) return undefined;
-				const t = runtime.configStore.getTargets().find((x) => x.id === id);
-				if (t?.platform === "onebot") return t.session.userId;
-				if (t?.platform === "qq-official") return t.session.userOpenid;
-				return undefined;
-			},
+			masterUserId,
 			deliver: (draft) => roastScheduler.deliverApproved(draft),
 			reply: tellMaster,
 		});
-		onInboundFrame = (frame) => void roastCommands.handle(frame);
+
+		// 指令前缀。可配置化还没做,先按方案的默认值走。
+		const commandPrefix = "/";
+		// 自引用:帮助要列出「包括它自己在内」的全部指令,所以先建表再往里塞。
+		const commands: CommandSpec[] = [];
+		commands.push({
+			name: "帮助",
+			signature: "[指令名:string]",
+			description: "看看能敲哪些指令",
+			run: async (values) => {
+				const topic = typeof values.指令名 === "string" ? values.指令名 : undefined;
+				await tellMaster(renderHelp(commands, commandPrefix, topic));
+			},
+		});
+
+		const commandDispatcher = createCommandDispatcher({
+			logger: log,
+			masterUserId,
+			reply: tellMaster,
+			prefix: commandPrefix,
+			commands,
+			// 审批的 y/n 作为第二道门 —— 有待审草稿时才认,没有时它只是个普通字母。
+			confirmation: roastCommands.confirmation,
+		});
+
+		onInboundFrame = (frame) => void commandDispatcher.handle(frame);
 		// QQ 那边网关已经解析好了,直接喂平台中立入口。userOpenid 就是身份本身。
 		onInboundQQ = (msg) =>
-			void roastCommands.handleMessage({ userId: msg.userOpenid, text: msg.text });
+			void commandDispatcher.handleMessage({ userId: msg.userOpenid, text: msg.text });
 
 		roastScheduler.start();
 		runtime.bus.on("config-changed", (scope) => {

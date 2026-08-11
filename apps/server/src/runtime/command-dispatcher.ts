@@ -27,6 +27,8 @@ export interface CommandSpec {
 	name: string;
 	/** 参数签名,如 `<时长:duration>`。不含指令名。省略 = 不收参数。 */
 	signature?: string;
+	/** 一句话说明,帮助里会列出来。 */
+	description?: string;
 	/** 拿到的永远是**已校验**的值 —— 解析失败根本不会走到这里。 */
 	run: (values: Record<string, ParamValue>) => Promise<void>;
 }
