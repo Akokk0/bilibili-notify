@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { parseSignature } from "../command-params.js";
+import { parseArgs, parseSignature } from "../command-params.js";
 
 describe("parseSignature", () => {
 	it("尖括号 = 必填", () => {
@@ -50,5 +50,71 @@ describe("parseSignature", () => {
 			{ name: "uid", type: "string", required: true },
 			{ name: "内容", type: "text", required: true },
 		]);
+	});
+});
+
+describe("parseArgs", () => {
+	it("string:取一段不含空白的文本", () => {
+		const specs = parseSignature("<uid:string>");
+		expect(parseArgs(specs, "12345")).toEqual({ ok: true, values: { uid: "12345" } });
+	});
+	it("必填参数缺了 → 报错,并说清缺的是哪个", () => {
+		const specs = parseSignature("<时长:duration>");
+		const r = parseArgs(specs, "");
+		expect(r.ok).toBe(false);
+		expect(r.ok === false && r.message).toMatch(/时长/);
+	});
+	it("number:转成数字,不是字符串", () => {
+		const specs = parseSignature("[天数:number]");
+		expect(parseArgs(specs, "7")).toEqual({ ok: true, values: { 天数: 7 } });
+	});
+
+	it("number:不是整数 → 报错,并说清是哪个参数", () => {
+		const specs = parseSignature("[天数:number]");
+		const r = parseArgs(specs, "七天");
+		expect(r.ok).toBe(false);
+		expect(r.ok === false && r.message).toMatch(/天数/);
+	});
+	// 静音专用的领域类型。主人在手机上敲,中英文都得认。
+	it.each([
+		["3h", 3 * 3600_000],
+		["30m", 30 * 60_000],
+		["2小时", 2 * 3600_000],
+		["30分钟", 30 * 60_000],
+		["1天", 24 * 3600_000],
+	])("duration:%s → %d 毫秒", (input, ms) => {
+		const specs = parseSignature("<时长:duration>");
+		expect(parseArgs(specs, input)).toEqual({ ok: true, values: { 时长: ms } });
+	});
+
+	it("duration:看不懂的写法 → 报错", () => {
+		const specs = parseSignature("<时长:duration>");
+		const r = parseArgs(specs, "一会儿");
+		expect(r.ok).toBe(false);
+		expect(r.ok === false && r.message).toMatch(/时长/);
+	});
+	it("text:吞掉剩余全部,连中间的空白也原样保留", () => {
+		const specs = parseSignature("<uid:string> <备注:text>");
+		expect(parseArgs(specs, "12345 前面   后面")).toEqual({
+			ok: true,
+			values: { uid: "12345", 备注: "前面   后面" },
+		});
+	});
+
+	it("text 是可选且没填 → 不塞进 values", () => {
+		const specs = parseSignature("<uid:string> [备注:text]");
+		expect(parseArgs(specs, "12345")).toEqual({ ok: true, values: { uid: "12345" } });
+	});
+	// 静默忽略会让主人以为参数生效了 —— 比如「周报 7 天」,「7」被吃掉、「天」被丢掉,
+	// 结果和他想的一样,下次写「周报 一 周」就莫名其妙不灵了。
+	it("多给了参数 → 报错,不静默丢掉", () => {
+		const specs = parseSignature("<时长:duration>");
+		const r = parseArgs(specs, "3h 还有别的");
+		expect(r.ok).toBe(false);
+	});
+
+	it("无参数指令收到参数 → 同样报错", () => {
+		const r = parseArgs(parseSignature(""), "多余的");
+		expect(r.ok).toBe(false);
 	});
 });
