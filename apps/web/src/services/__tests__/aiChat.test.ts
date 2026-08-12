@@ -138,6 +138,36 @@ describe("sendChatMessage — 事件分派", () => {
 		const res = await sendChatMessage("c1", "问", { onDelta: () => {} });
 		expect(res.reply.tools).toEqual([{ name: "get_user_info", args: { uid: "1" }, ok: true }]);
 	});
+
+	it("reasoning 帧派给 onReasoning,不混进正文", async () => {
+		stubStream(
+			`event: reasoning\ndata: {"text":"主人问的是"}\n\n`,
+			`event: reasoning\ndata: {"text":"订阅"}\n\n`,
+			`event: delta\ndata: {"text":"晚上好"}\n\n`,
+			doneFrame(),
+		);
+		const think: string[] = [];
+		const text: string[] = [];
+		await sendChatMessage("c1", "问", {
+			onDelta: (t) => text.push(t),
+			onReasoning: (t) => think.push(t),
+		});
+		expect(think).toEqual(["主人问的是", "订阅"]);
+		expect(text).toEqual(["晚上好"]);
+	});
+
+	it("不关心思考时不传 onReasoning 也不炸", async () => {
+		stubStream(`event: reasoning\ndata: {"text":"想想"}\n\n`, doneFrame());
+		await expect(sendChatMessage("c1", "问", { onDelta: () => {} })).resolves.toMatchObject({
+			reply: { content: "答" },
+		});
+	});
+
+	it("done 里回复带的思考原样交出去 —— 交接那一帧要拿它顶上", async () => {
+		stubStream(doneFrame({ reasoning: "想了一下" }));
+		const res = await sendChatMessage("c1", "问", { onDelta: () => {} });
+		expect(res.reply.reasoning).toBe("想了一下");
+	});
 });
 
 describe("groupLabel", () => {

@@ -81,7 +81,7 @@ describe("Markdown 首帧", () => {
 		const frame = firstFrame(
 			<MessageList
 				messages={[]}
-				pending={{ ask: "你好", draft: "- 甲\n- 乙", tools: [] }}
+				pending={{ ask: "你好", draft: "- 甲\n- 乙", tools: [], think: "" }}
 				busy
 				aiSelf="小绫"
 			/>,

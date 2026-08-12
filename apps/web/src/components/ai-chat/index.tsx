@@ -205,6 +205,8 @@ export function ChatPage() {
 		ask: string;
 		draft: string;
 		tools: readonly PendingTool[];
+		/** 思考草稿(思考模型专有),同样逐字长出来。 */
+		think: string;
 		/** 这一问带上去的图(显示地址)。在途期间也得看得见,否则像是没发出去。 */
 		images?: readonly string[];
 	} | null>(null);
@@ -259,6 +261,8 @@ export function ChatPage() {
 				text,
 				{
 					onDelta: (chunk) => setPending((p) => (p ? { ...p, draft: p.draft + chunk } : p)),
+					// 思考流单独累积,不混进正文 —— 它是要折叠、要用另一副面孔渲染的。
+					onReasoning: (chunk) => setPending((p) => (p ? { ...p, think: p.think + chunk } : p)),
 					// 工具轮不产生正文,所以那几秒原本只有三个跳动的点 —— 跟「模型卡住了」
 					// 长得一模一样。start 就上屏、end 只回填结论:这样「正在查订阅」是在查的
 					// **当时**说的,而不是查完了才补一句。
@@ -285,7 +289,13 @@ export function ChatPage() {
 			// 输入框,出现在对话里。图也一样跟着走。
 			setInput("");
 			setError(null);
-			setPending({ ask: text, draft: "", tools: [], images: outgoingFiles.map((a) => a.url) });
+			setPending({
+				ask: text,
+				draft: "",
+				tools: [],
+				think: "",
+				images: outgoingFiles.map((a) => a.url),
+			});
 			setAttachments([]);
 		},
 		onSuccess: (res, _vars) => {
@@ -373,11 +383,12 @@ export function ChatPage() {
 
 	// 内容一长就贴底。依赖里带上 `pending.draft.length` 是要紧的:流式回复是逐字
 	// 长出来的,只盯消息数的话,整段生成过程中视图纹丝不动,新字全长在视野之外。
+	// 思考流同理 —— 它先于正文长出来,不跟着它滚,思考阶段就全长在视野之外。
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 这几个值只作触发条件,不在函数体内读
 	useEffect(() => {
 		const el = scrollRef.current;
 		if (el) el.scrollTop = el.scrollHeight;
-	}, [busy, messages.length, pending?.draft.length]);
+	}, [busy, messages.length, pending?.draft.length, pending?.think.length]);
 
 	const submit = (text?: string) => {
 		const outgoing = resolveOutgoing(text ?? input);

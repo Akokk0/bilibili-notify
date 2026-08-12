@@ -34,6 +34,10 @@ const H = vi.hoisted(() => ({
 	toolEvents: [] as Array<Record<string, unknown>>,
 	/** 落盘后那条回复上带的工具痕迹 —— 交接与刷新之后靠它显示。 */
 	replyTools: null as Array<Record<string, unknown>> | null,
+	/** 思考分片,在工具与正文**之前**逐个吐 —— 先想后说,真实顺序就是这样。 */
+	reasoningChunks: [] as string[],
+	/** 落盘后那条回复上带的完整思考 —— 交接与刷新之后靠它显示。 */
+	replyReasoning: null as string | null,
 }));
 
 vi.mock("../../../services/aiChat", async (orig) => {
@@ -83,8 +87,17 @@ vi.mock("../../../services/aiChat", async (orig) => {
 			async (
 				_id: string,
 				message: string,
-				h: { onDelta: (t: string) => void; onTool?: (ev: Record<string, unknown>) => void },
+				h: {
+					onDelta: (t: string) => void;
+					onTool?: (ev: Record<string, unknown>) => void;
+					onReasoning?: (t: string) => void;
+				},
 			) => {
+				// 思考先于一切 —— 她是想完才决定查什么、说什么的。
+				for (const t of H.reasoningChunks) {
+					await new Promise<void>((r) => H.gate.push(r));
+					h.onReasoning?.(t);
+				}
 				// 工具轮排在正文之前 —— 她是查完才开口的。
 				for (const ev of H.toolEvents) {
 					await new Promise<void>((r) => H.gate.push(r));
@@ -101,6 +114,7 @@ vi.mock("../../../services/aiChat", async (orig) => {
 					content: H.chunks.join(""),
 					ts: "2026-07-25T00:00:01.000Z",
 					...(H.replyTools ? { tools: H.replyTools } : {}),
+					...(H.replyReasoning ? { reasoning: H.replyReasoning } : {}),
 				};
 				const user = {
 					id: "u1",
@@ -183,6 +197,8 @@ beforeEach(() => {
 	H.convGate = [];
 	H.toolEvents = [];
 	H.replyTools = null;
+	H.reasoningChunks = [];
+	H.replyReasoning = null;
 	vi.mocked(createConversation).mockClear();
 	vi.mocked(retitleConversation).mockClear();
 	G.ai = {
@@ -667,6 +683,110 @@ describe("AiChatDock — 工具调用小条", () => {
 		await waitFor(() => expect(screen.queryByTestId("chat-messages")).toBeNull());
 		// 输入框回到空的新对话,上一轮的痕迹不跟过来。
 		expect(composer().value).toBe("");
+	});
+});
+
+/**
+ * 思考预览(DeepSeek 式)—— 思考模型「先想后说」的那段草稿,实时streaming、
+ * 折叠可看。它跟工具小条解决同一类问题:回答到来之前那十几秒不能是一片死寂,
+ * 而思考恰恰是那段时间里唯一真实发生着的事。
+ */
+describe("AiChatDock — 思考预览", () => {
+	const inChat = () => within(screen.getByTestId("chat-messages"));
+	const block = () => inChat().queryByTestId("thinking-block");
+
+	async function typeAndSend(text: string) {
+		useAiChatStore.setState({ activeId: "c1" });
+		render(wrap(<ChatPage />));
+		const ta = await screen.findByLabelText("聊天输入");
+		fireEvent.change(ta, { target: { value: text } });
+		fireEvent.keyDown(ta, { key: "Enter" });
+	}
+
+	async function release() {
+		await waitFor(() => expect(H.gate.length).toBeGreaterThan(0));
+		const open = H.gate.shift();
+		await act(async () => {
+			open?.();
+		});
+	}
+
+	it("思考分片实时上屏 —— 正文一个字都没到,也看得见她在想什么", async () => {
+		H.reasoningChunks = ["主人在问", "天气"];
+		await typeAndSend("明天天气如何");
+		await release();
+		await waitFor(() => expect(block()?.textContent).toContain("主人在问"));
+		// 还在想:标头是进行时。
+		expect(block()?.textContent).toContain("思考中");
+		// 正文区确实还没开口。
+		expect(inChat().queryByText(/晚上好/)).toBeNull();
+		await release();
+		await waitFor(() => expect(block()?.textContent).toContain("主人在问天气"));
+	});
+
+	it("正文一开口,标头翻成「已深度思考」", async () => {
+		H.reasoningChunks = ["想想"];
+		await typeAndSend("在吗");
+		await release(); // 思考
+		await release(); // 第一片正文
+		await waitFor(() => expect(inChat().getByText("主人")).toBeTruthy());
+		expect(block()?.textContent).toContain("已深度思考");
+		expect(block()?.textContent).not.toContain("思考中");
+	});
+
+	it("落盘交接后思考还在,而且保持展开 —— 不能在最后一刻塌下去", async () => {
+		H.reasoningChunks = ["想想"];
+		H.replyReasoning = "想想";
+		await typeAndSend("在吗");
+		await release();
+		await release();
+		await release();
+		await waitFor(() => expect(inChat().getByText("主人晚上好")).toBeTruthy());
+		// 真身接手之后草稿还挂在原地、开着。
+		expect(block()?.textContent).toContain("想想");
+	});
+
+	it("点标头折叠,再点展开 —— 长思考不能占着整屏赶不走", async () => {
+		H.reasoningChunks = ["一大段思考"];
+		await typeAndSend("在吗");
+		await release();
+		await waitFor(() => expect(block()?.textContent).toContain("一大段思考"));
+
+		fireEvent.click(within(block() as HTMLElement).getByRole("button"));
+		expect(block()?.textContent).not.toContain("一大段思考");
+
+		fireEvent.click(within(block() as HTMLElement).getByRole("button"));
+		expect(block()?.textContent).toContain("一大段思考");
+	});
+
+	it("重开老会话:默认折叠成一行「已深度思考」,点开才看全文", async () => {
+		H.messages = [
+			{ id: "m1", role: "user", content: "在吗", ts: "2026-07-24T00:00:00.000Z" },
+			{
+				id: "m2",
+				role: "assistant",
+				content: "在的",
+				ts: "2026-07-24T00:00:01.000Z",
+				reasoning: "主人在确认我在不在",
+			},
+		];
+		useAiChatStore.setState({ activeId: "c1" });
+		render(wrap(<ChatPage />));
+		await waitFor(() => expect(inChat().getByText("在的")).toBeTruthy());
+		// 折叠态:标头在,正文不在。
+		expect(block()?.textContent).toContain("已深度思考");
+		expect(block()?.textContent).not.toContain("主人在确认我在不在");
+
+		fireEvent.click(within(block() as HTMLElement).getByRole("button"));
+		expect(block()?.textContent).toContain("主人在确认我在不在");
+	});
+
+	it("没思考的回复不画这个块 —— 非思考模型的对话不该多一行摆设", async () => {
+		await typeAndSend("在吗");
+		await release();
+		await release();
+		await waitFor(() => expect(inChat().getByText("主人晚上好")).toBeTruthy());
+		expect(block()).toBeNull();
 	});
 });
 

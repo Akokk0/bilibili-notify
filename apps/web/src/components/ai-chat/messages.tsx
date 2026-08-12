@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { type AiChatMessageDTO, chatImageUrl } from "../../services/aiChat";
 import { Icon } from "../icons";
 import { toolLabel } from "./tools";
@@ -125,6 +125,8 @@ export interface MessageListProps {
 		ask: string;
 		draft: string;
 		tools: readonly ToolChipData[];
+		/** 正在逐字长出来的思考草稿(思考模型专有);空串 = 这轮没思考(或还没开始)。 */
+		think: string;
 		/** 这一问带上去的图(显示地址)。在途期间也得看得见,否则像是没发出去。 */
 		images?: readonly string[];
 	} | null;
@@ -174,6 +176,11 @@ export function MessageList({
 						animClass={anim(m.id)}
 						tools={m.tools}
 						text={m.content}
+						reasoning={m.reasoning}
+						// 刚交接的真身保持展开:它上一帧还以在途形态开着挂在同一个位置,
+						// 交接那一刻塌下去就是又一种「闪」。重开的老会话则默认折叠 ——
+						// 那时主人要看的是结论,草稿点开才看。
+						reasoningOpen={noAnimIds?.includes(m.id) ?? false}
 						Markdown={Markdown}
 					/>
 				),
@@ -185,12 +192,18 @@ export function MessageList({
 			{pending ? (
 				<>
 					<UserTurn animClass="bn-anim-msg-in " text={pending.ask} images={pending.images} />
-					{/* 工具还在跑、正文一个字都没有时也要出现 —— 那正是最需要说话的一刻。 */}
-					{pending.tools.length > 0 || pending.draft ? (
+					{/* 思考或工具已经在动、正文一个字都没有时也要出现 —— 那正是最需要
+					    说话的一刻。 */}
+					{pending.tools.length > 0 || pending.draft || pending.think ? (
 						<AssistantTurn
 							animClass=""
 							tools={pending.tools}
 							text={pending.draft}
+							reasoning={pending.think}
+							// 正文一开口思考就算收笔 —— DeepSeek 的「思考中→已深度思考」
+							// 同一个翻转。
+							reasoningLive={!pending.draft}
+							reasoningOpen
 							Markdown={Markdown}
 							caret
 						/>
@@ -283,6 +296,9 @@ function AssistantTurn({
 	animClass,
 	tools,
 	text,
+	reasoning,
+	reasoningLive,
+	reasoningOpen,
 	Markdown,
 	caret,
 }: {
@@ -290,6 +306,12 @@ function AssistantTurn({
 	animClass: string;
 	tools?: readonly ToolChipData[];
 	text: string;
+	/** 思考草稿。空 / 缺席 = 这一轮没思考,块整个不画。 */
+	reasoning?: string;
+	/** 还在想(正文一个字都没有)→ 标头是进行时「思考中…」。 */
+	reasoningLive?: boolean;
+	/** 思考块初始是否展开。在途与刚交接的真身展开,重开的老会话折叠。 */
+	reasoningOpen?: boolean;
 	/** Markdown 渲染器;还没到手时为 null,这一帧退回纯文本。 */
 	Markdown: MarkdownComp;
 	/** 跟在最后一个字后面的光标,只有在途那一份有。 */
@@ -303,6 +325,14 @@ function AssistantTurn({
 		// Markdown 渲染后要往里套两层(样式层 + <p>),靠 parentElement 数层数的断言
 		// 会随渲染结构变化悄悄失准 —— 层数不对时 not.toContain 恰好无条件通过。
 		<div data-testid="assistant-turn" className={`${animClass}flex flex-col gap-2`}>
+			{/* 思考排最前 —— 她是想完才决定查什么、说什么的,画面顺序跟真实顺序一致。 */}
+			{reasoning ? (
+				<ThinkingBlock
+					text={reasoning}
+					live={reasoningLive ?? false}
+					defaultOpen={reasoningOpen ?? false}
+				/>
+			) : null}
 			{tools?.length ? <ToolChips traces={tools} /> : null}
 			{/* 正文按 Markdown 渲染。**在途与落盘走的是同一个 ChatMarkdown**,所以同一段
 			    文字两处长得一模一样,交接那一刻不会跳 —— 这是这个共用组件存在的全部理由。
@@ -320,6 +350,53 @@ function AssistantTurn({
 					    在这一瞬间消失。正常情况下这条根本走不到 —— preloadChatMarkdown 在
 					    首屏空闲时就把 chunk 取回来了。 */}
 					{Markdown ? <Markdown text={text} /> : <p className="whitespace-pre-wrap">{text}</p>}
+				</div>
+			) : null}
+		</div>
+	);
+}
+
+/**
+ * 思考预览(DeepSeek 式)—— 模型「先想后说」的那段草稿。
+ *
+ * 三条设计判断:
+ * - **纯文本渲染**,不走 Markdown:这是草稿纸,不值得为它扛一份渲染面;灰字 +
+ *   左边线的引用式排版本身就在说「这不是回答」。
+ * - **标头随进度翻转**:正文一个字都没有时是进行时「思考中…」,开口之后变
+ *   「已深度思考」—— 回答到来之前那十几秒不能是一片死寂。
+ * - **折叠是本地状态**:初始开合由调用方定(在途展开、重开折叠),之后归主人,
+ *   长思考不能占着整屏赶不走。
+ */
+function ThinkingBlock({
+	text,
+	live,
+	defaultOpen,
+}: {
+	text: string;
+	live: boolean;
+	defaultOpen: boolean;
+}) {
+	const [open, setOpen] = useState(defaultOpen);
+	return (
+		<div data-testid="thinking-block" className="flex flex-col gap-1.5">
+			<button
+				type="button"
+				aria-expanded={open}
+				onClick={() => setOpen((v) => !v)}
+				className="flex w-fit cursor-pointer items-center gap-1.5 rounded-[13px] text-[12px] font-semibold text-bn-text-tertiary"
+			>
+				<span className={live ? "bn-chat-accent flex" : "flex"} aria-hidden="true">
+					<Icon.sparkle size={12} />
+				</span>
+				{live ? "思考中…" : "已深度思考"}
+				{/* 文本三角当 chevron:图标库里没有,一个字符不值得为它开一枚。 */}
+				<span aria-hidden="true" className="text-[10px]">
+					{open ? "▾" : "▸"}
+				</span>
+			</button>
+			{open ? (
+				<div className="whitespace-pre-wrap wrap-break-word border-l-2 border-bn-border-subtle pl-3 text-[13px] leading-relaxed text-bn-text-tertiary">
+					{text}
 				</div>
 			) : null}
 		</div>

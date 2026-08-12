@@ -111,6 +111,8 @@ export interface ChatStreamHandlers {
 	onDelta: (text: string) => void;
 	/** 工具调用的两拍。不关心就不传。 */
 	onTool?: (ev: ChatToolEvent) => void;
+	/** 思考分片(思考模型「先想后说」的那段草稿)。不关心就不传。 */
+	onReasoning?: (text: string) => void;
 }
 
 /**
@@ -154,6 +156,8 @@ export async function sendChatMessage(
 		for (const frame of parse(decoder.decode(value, { stream: true }))) {
 			if (frame.event === "delta") {
 				handlers.onDelta((JSON.parse(frame.data) as { text: string }).text);
+			} else if (frame.event === "reasoning") {
+				handlers.onReasoning?.((JSON.parse(frame.data) as { text: string }).text);
 			} else if (frame.event === "tool") {
 				handlers.onTool?.(JSON.parse(frame.data) as ChatToolEvent);
 			} else if (frame.event === "done") {
