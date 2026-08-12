@@ -28,7 +28,7 @@ const LEVELS: ReadonlyArray<{ id: ThinkingLevel; label: string }> = [
 
 /** 一次保存的载荷。走 variables 而不是闭包 —— 见 react-query onMutate 的时序坑。 */
 type SaveVars = {
-	provider: string;
+	provider: GlobalConfig["defaults"]["ai"]["provider"];
 	delta: { enableThinking?: boolean; thinkingLevel?: ThinkingLevel };
 };
 
@@ -41,8 +41,40 @@ export function ThinkingControl() {
 	const save = useMutation({
 		mutationFn: ({ provider, delta }: SaveVars) =>
 			api.patch("/api/globals", { defaults: { ai: { providers: { [provider]: delta } } } }),
-		// 重拉而不是本地改缓存:这份配置设置页也在看,谁写谁失效,别让两处各猜各的。
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
+		/**
+		 * 乐观更新:点下去缓存立刻改,界面**当场**就是终态。
+		 *
+		 * 曾经是等服务端回话 + invalidate 重拉,并在在途期间连坐禁用整个控件 ——
+		 * `disabled:opacity-40` 一来一回,主人看到的就是「切个档,开关闪一下」。
+		 * 配置这种毫秒级往返的小字段,观感不该被网络牵着走。
+		 */
+		onMutate: async ({ provider, delta }: SaveVars) => {
+			await qc.cancelQueries({ queryKey: ["globals"] });
+			const prev = qc.getQueryData<GlobalConfig>(["globals"]);
+			qc.setQueryData<GlobalConfig>(["globals"], (cur) => {
+				if (!cur) return cur;
+				// 桶可能还不存在(从没在设置页动过这家)—— 拿 resolve 出来的完整
+				// 缺省当底,别往缓存里塞半个桶。
+				const base = cur.defaults.ai.providers[provider] ?? resolveAIProfile(cur.defaults.ai);
+				return {
+					...cur,
+					defaults: {
+						...cur.defaults,
+						ai: {
+							...cur.defaults.ai,
+							providers: { ...cur.defaults.ai.providers, [provider]: { ...base, ...delta } },
+						},
+					},
+				};
+			});
+			return { prev };
+		},
+		// 失败弹回原样 —— 留一个骗人的高亮,主人会以为开成了。
+		onError: (_err, _vars, ctx) => {
+			if (ctx?.prev) qc.setQueryData(["globals"], ctx.prev);
+		},
+		// 收尾重拉一次对账:这份配置设置页也在看,以服务端落盘的为准。
+		onSettled: () => qc.invalidateQueries({ queryKey: ["globals"] }),
 	});
 
 	const ai = globalsQuery.data?.defaults.ai;
@@ -52,14 +84,16 @@ export function ThinkingControl() {
 	const meta = providerMeta(ai.provider);
 	const profile = resolveAIProfile(ai);
 	const on = meta.supportsThinking && profile.enableThinking;
-	const busy = save.isPending;
 
 	return (
 		<div className="flex shrink-0 items-center gap-1.5 self-center">
 			<button
 				type="button"
 				aria-pressed={on}
-				disabled={!meta.supportsThinking || busy}
+				// 只有「不支持」才禁用。保存在途**不**禁用 —— 乐观更新下界面已是终态,
+				// 这时再灰一下就是主人报过的那个「闪」。连点的最后一下赢,与服务端
+				// merge-patch 的语义一致。
+				disabled={!meta.supportsThinking}
 				title={
 					meta.supportsThinking
 						? "让她想清楚再答,响应会慢一些"
@@ -87,7 +121,6 @@ export function ThinkingControl() {
 								key={l.id}
 								type="button"
 								aria-pressed={active}
-								disabled={busy}
 								onClick={() =>
 									save.mutate({ provider: ai.provider, delta: { thinkingLevel: l.id } })
 								}

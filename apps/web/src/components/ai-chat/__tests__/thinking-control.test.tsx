@@ -113,6 +113,47 @@ describe("ThinkingControl — 档位", () => {
 			defaults: { ai: { providers: { deepseek: { thinkingLevel: "high" } } } },
 		});
 	});
+
+	it("切档不闪 —— 保存在途中开关不禁用、亮着不跌,档位当场就换", async () => {
+		// 主人报的:点完深度思考再切档,开关胶囊会闪一下。病根是保存期间整个控件
+		// 被 isPending 连坐禁用,disabled:opacity-40 一来一回就是那一下。改成乐观
+		// 更新之后,界面**立刻**是终态,网络往返与观感无关。
+		G.ai = {
+			enabled: true,
+			provider: "deepseek",
+			providers: { deepseek: { model: "m", enableThinking: true, thinkingLevel: "medium" } },
+		};
+		// 保存永远在途 —— 把「在途中」这一拍放大到无限长,闪的实现在这里会一直暗着。
+		G.patch.mockImplementationOnce(() => new Promise(() => {}));
+		render(wrap(<ThinkingControl />));
+
+		fireEvent.click(await screen.findByRole("button", { name: "高" }));
+
+		// 开关不掉状态、不被禁用。
+		expect((toggle() as HTMLButtonElement).disabled).toBe(false);
+		expect(toggle().getAttribute("aria-pressed")).toBe("true");
+		// 档位高亮当场切过去,不等服务端回话。
+		await waitFor(() =>
+			expect(screen.getByRole("button", { name: "高" }).getAttribute("aria-pressed")).toBe("true"),
+		);
+	});
+
+	it("保存失败 → 档位弹回原样,不留一个骗人的高亮", async () => {
+		G.ai = {
+			enabled: true,
+			provider: "deepseek",
+			providers: { deepseek: { model: "m", enableThinking: true, thinkingLevel: "medium" } },
+		};
+		G.patch.mockRejectedValueOnce(new Error("500"));
+		render(wrap(<ThinkingControl />));
+
+		fireEvent.click(await screen.findByRole("button", { name: "高" }));
+
+		await waitFor(() =>
+			expect(screen.getByRole("button", { name: "中" }).getAttribute("aria-pressed")).toBe("true"),
+		);
+		expect(screen.getByRole("button", { name: "高" }).getAttribute("aria-pressed")).toBe("false");
+	});
 });
 
 describe("ThinkingControl — 不支持思考的服务商", () => {
