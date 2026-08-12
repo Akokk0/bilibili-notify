@@ -48,6 +48,8 @@ export function toGeneratorConfig(ai: AISettings) {
 		maxHistory: 6,
 		// 方言归属写在桶里 —— activeProfile 只是实例指针,同一家可以有多份实例。
 		provider: p.provider,
+		// 接口风味同样跟桶走:chat completions(现状)或 responses。
+		apiFlavor: p.apiFlavor,
 		enableThinking: p.enableThinking,
 		thinkingLevel: p.thinkingLevel,
 		extraParams: p.extraParams,
