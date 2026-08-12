@@ -1149,7 +1149,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const MAX_ROUNDS = 8;
 		// 本次 callAPI 已真正执行的搜索次数。计在调用局部而不是实例上 —— 并发的
 		// 两条生成各有各的预算,记在 this 上会互相吃额度。
-		let searchCalls = 0;
+		const budget = { searchCalls: 0 };
 		for (let round = 0; round < MAX_ROUNDS; round++) {
 			let message: OpenAI.ChatCompletionMessage;
 			try {
@@ -1196,79 +1196,16 @@ export class CommentaryGenerator implements CommentaryProvider {
 
 			for (let i = 0; i < message.tool_calls.length; i++) {
 				const toolCall = message.tool_calls[i];
-				const name = toolCall.function.name;
 				// 痕迹 id 用「第几轮-第几个」自己编,**不用** `toolCall.id`:那是网关
 				// 给的,流式下常常整个缺席(streamOnce 里的 slot 初值就是空串),几个
 				// 工具会共用一个空 id,end 事件于是全配到同一条痕迹上。
-				const traceId = `${round}-${i}`;
-
-				// 参数先解析出来给 start 用。解析失败不在这儿抛 —— 下面那段要靠
-				// `parseErr` 保持原有语义:参数坏了就**不执行**工具,只把错误当结果回去。
-				let args: Record<string, string> = {};
-				let parseErr: Error | null = null;
-				try {
-					// :461 LLM 常把 uid 输出成数字(`{"uid":12345}`)。裸 as
-					// Record<string,string> 是谎言 → 下游用 args.uid 当字符串与
-					// 订阅 key("12345")比对失配。逐值强制 String 归一。
-					const rawArgs = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
-					args = Object.fromEntries(
-						Object.entries(rawArgs).map(([k, v]) => [k, typeof v === "string" ? v : String(v)]),
-					);
-				} catch (e) {
-					parseErr = e as Error;
-				}
-
-				// 执行**之前**报一声。查订阅要走一趟 B 站,慢起来好几秒,而那正是最
-				// 需要反馈的一刻;等查完再说等于什么都没说。
-				toolOptions.onToolEvent?.({ phase: "start", id: traceId, name, args });
-
-				let result: string;
-				let ok: boolean;
-				/** `web_search` 专属:搜到的来源,end 事件带给界面画「来源列表」。 */
-				let sources: WebSearchSourceRef[] | undefined;
-				if (parseErr) {
-					result = `工具执行失败: ${parseErr.message}`;
-					ok = false;
-				} else if (name === WEB_SEARCH_TOOL_NAME && toolOptions.webSearch) {
-					// 联网搜索由生成器亲自执行(不走 onToolCall 的字符串通道):
-					// 界面要的来源列表是结构化的,字符串通道带不动。
-					if (searchCalls >= WEB_SEARCH_MAX_CALLS) {
-						result = "（本次回答的联网搜索次数已用完，请基于已有资料作答。）";
-						ok = false;
-					} else if (!args.query?.trim()) {
-						result = "工具执行失败: 搜索词为空";
-						ok = false;
-					} else {
-						searchCalls++;
-						try {
-							this.logger.debug(`[tool] web_search(${args.query})`);
-							const found = await toolOptions.webSearch.search(args.query);
-							result = formatWebSearchResults(found);
-							sources = sourceRefsOf(found);
-							ok = true;
-						} catch (e) {
-							// 失败当资料回给模型,让它照常作答 —— 推送链路不因搜索败了而断。
-							result = `联网搜索失败: ${(e as Error).message}`;
-							ok = false;
-						}
-					}
-				} else {
-					try {
-						this.logger.debug(`[tool] 执行 ${name}(${JSON.stringify(args)})`);
-						result = await toolOptions.onToolCall(name, args);
-						ok = true;
-					} catch (e) {
-						result = `工具执行失败: ${(e as Error).message}`;
-						ok = false;
-					}
-				}
-				toolOptions.onToolEvent?.({
-					phase: "end",
-					id: traceId,
-					ok,
-					...(sources ? { sources } : {}),
-				});
-				this.logger.debug(`[tool] ${toolCall.function.name} 结果长度=${result.length}`);
+				const result = await this.execToolCall(
+					`${round}-${i}`,
+					toolCall.function.name,
+					toolCall.function.arguments,
+					toolOptions,
+					budget,
+				);
 				apiMessages.push({
 					role: "tool",
 					tool_call_id: toolCall.id,
@@ -1278,6 +1215,94 @@ export class CommentaryGenerator implements CommentaryProvider {
 		}
 
 		return "（工具调用轮次已达上限）";
+	}
+
+	/**
+	 * 执行一次工具调用:解析参数 → start 事件 → 执行 → end 事件,返回给模型的
+	 * 结果文本。chat 与 responses 两条风味的工具环共用这一段 —— 差的只是结果
+	 * 以什么形状回填历史(`role:"tool"` 消息 vs `function_call_output` item),
+	 * 那留在各自的环里。
+	 */
+	private async execToolCall(
+		traceId: string,
+		name: string,
+		rawArgs: string,
+		toolOptions: {
+			onToolCall: (name: string, args: Record<string, string>) => Promise<string>;
+			onToolEvent?: (ev: ToolTraceEvent) => void;
+			webSearch?: WebSearchExecutor;
+		},
+		/** 本次 callAPI 的搜索预算。对象引用共享 —— 多轮之间要接着数。 */
+		budget: { searchCalls: number },
+	): Promise<string> {
+		// 参数先解析出来给 start 用。解析失败不在这儿抛 —— 下面那段要靠
+		// `parseErr` 保持原有语义:参数坏了就**不执行**工具,只把错误当结果回去。
+		let args: Record<string, string> = {};
+		let parseErr: Error | null = null;
+		try {
+			// :461 LLM 常把 uid 输出成数字(`{"uid":12345}`)。裸 as
+			// Record<string,string> 是谎言 → 下游用 args.uid 当字符串与
+			// 订阅 key("12345")比对失配。逐值强制 String 归一。
+			const parsed = JSON.parse(rawArgs) as Record<string, unknown>;
+			args = Object.fromEntries(
+				Object.entries(parsed).map(([k, v]) => [k, typeof v === "string" ? v : String(v)]),
+			);
+		} catch (e) {
+			parseErr = e as Error;
+		}
+
+		// 执行**之前**报一声。查订阅要走一趟 B 站,慢起来好几秒,而那正是最
+		// 需要反馈的一刻;等查完再说等于什么都没说。
+		toolOptions.onToolEvent?.({ phase: "start", id: traceId, name, args });
+
+		let result: string;
+		let ok: boolean;
+		/** `web_search` 专属:搜到的来源,end 事件带给界面画「来源列表」。 */
+		let sources: WebSearchSourceRef[] | undefined;
+		if (parseErr) {
+			result = `工具执行失败: ${parseErr.message}`;
+			ok = false;
+		} else if (name === WEB_SEARCH_TOOL_NAME && toolOptions.webSearch) {
+			// 联网搜索由生成器亲自执行(不走 onToolCall 的字符串通道):
+			// 界面要的来源列表是结构化的,字符串通道带不动。
+			if (budget.searchCalls >= WEB_SEARCH_MAX_CALLS) {
+				result = "（本次回答的联网搜索次数已用完，请基于已有资料作答。）";
+				ok = false;
+			} else if (!args.query?.trim()) {
+				result = "工具执行失败: 搜索词为空";
+				ok = false;
+			} else {
+				budget.searchCalls++;
+				try {
+					this.logger.debug(`[tool] web_search(${args.query})`);
+					const found = await toolOptions.webSearch.search(args.query);
+					result = formatWebSearchResults(found);
+					sources = sourceRefsOf(found);
+					ok = true;
+				} catch (e) {
+					// 失败当资料回给模型,让它照常作答 —— 推送链路不因搜索败了而断。
+					result = `联网搜索失败: ${(e as Error).message}`;
+					ok = false;
+				}
+			}
+		} else {
+			try {
+				this.logger.debug(`[tool] 执行 ${name}(${JSON.stringify(args)})`);
+				result = await toolOptions.onToolCall(name, args);
+				ok = true;
+			} catch (e) {
+				result = `工具执行失败: ${(e as Error).message}`;
+				ok = false;
+			}
+		}
+		toolOptions.onToolEvent?.({
+			phase: "end",
+			id: traceId,
+			ok,
+			...(sources ? { sources } : {}),
+		});
+		this.logger.debug(`[tool] ${name} 结果长度=${result.length}`);
+		return result;
 	}
 }
 
