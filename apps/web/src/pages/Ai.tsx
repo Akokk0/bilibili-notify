@@ -22,6 +22,7 @@
 
 import {
 	type AIProviderProfileShape,
+	type APIFlavorId,
 	EMPTY_AI_PROVIDER_PROFILE,
 	providerMeta,
 	resolveActivePersona,
@@ -778,7 +779,7 @@ export default function Ai() {
 							<>
 								<GlassBox
 									title="模型连接"
-									subtitle="OpenAI 兼容 API · ai.providers.<实例>.{label,baseUrl,apiKey,model}"
+									subtitle="OpenAI 兼容 API · ai.providers.<实例>.{label,baseUrl,apiKey,model,apiFlavor}"
 									accent="#6c5ce7"
 									icon={<Icon.link size={14} />}
 									badge="connection"
@@ -853,6 +854,30 @@ export default function Ai() {
 											full={false}
 										/>
 									</Field>
+									{/* 接口风味 —— 只对确认支持 /responses 的家摆出来(supportsResponses),
+									    硅基/火山未确认前不给选:选得到却必然 404 的组合比没有选项更糟。 */}
+									{meta.supportsResponses ? (
+										<>
+											<Field code={`ai.providers.${editing}.apiFlavor`} full>
+												<Picker<APIFlavorId>
+													value={profile.apiFlavor}
+													onChange={(v) => setProfile("apiFlavor", v)}
+													options={[
+														{ value: "chat", label: "chat completions" },
+														{ value: "responses", label: "responses" },
+													]}
+												/>
+											</Field>
+											{profile.apiFlavor === "responses" ? (
+												<FieldNote>
+													responses 是 OpenAI 这套接口的<strong>新协议</strong>
+													:深度思考是标准字段（统一三档，不再按家翻译方言），思考 +
+													工具连用也更稳。DeepSeek 需要 v4 系模型；这里失败
+													<strong>不会</strong>悄悄换回旧协议，报错就是真没配对
+												</FieldNote>
+											) : null}
+										</>
+									) : null}
 								</GlassBox>
 
 								{/* 图片理解。它同样是在描述「接哪个模型」,只不过整块可以不填:
@@ -959,7 +984,9 @@ export default function Ai() {
 											（连同 top_p 那几个）， 调了也不生效，所以先收起来。关掉下面的深度思考它就回来
 										</FieldNote>
 									)}
-									{meta.supportsThinking ? (
+									{/* responses 风味下思考是标准字段(reasoning.effort),custom 也能开 ——
+									    「方言未知不敢发」只是 chat completions 的处境。 */}
+									{meta.supportsThinking || profile.apiFlavor === "responses" ? (
 										<>
 											<Field code={`ai.providers.${editing}.enableThinking`}>
 												<div className="flex h-7.5 items-center">
@@ -983,7 +1010,12 @@ export default function Ai() {
 													/>
 												</Field>
 											) : null}
-											{meta.thinkingDefaultsOn && !profile.enableThinking ? (
+											{/* 「默认开着」的说明只描述 chat 方言的关位语义;responses 那边
+											    的关位各家不同(百炼发 effort:none,DeepSeek 什么都不发),
+											    没有一句能概括两家的话,索性不说。 */}
+											{meta.thinkingDefaultsOn &&
+											!profile.enableThinking &&
+											profile.apiFlavor !== "responses" ? (
 												<FieldNote>
 													{meta.label} 的思考模型<strong>默认就是开着</strong>的 ——
 													正因为如此，关掉这个开关女仆会显式告诉它别想那么久，而不是什么都不发
@@ -1005,6 +1037,13 @@ export default function Ai() {
 											placeholder={'{"enable_search": true}'}
 										/>
 									</Field>
+									{profile.apiFlavor === "responses" ? (
+										<FieldNote>
+											这份实例走 responses 协议，额外参数会摊进 responses 的请求体 ——
+											<strong>字段名与 chat completions 不同</strong>（如 max_tokens 在那边叫
+											max_output_tokens），别照抄旧写法
+										</FieldNote>
+									) : null}
 								</GlassBox>
 							</>
 						)}

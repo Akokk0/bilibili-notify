@@ -24,7 +24,7 @@ vi.mock("../../../services/api", () => ({
 
 import { api } from "../../../services/api";
 
-function globalsWith(provider: "deepseek" | "custom") {
+function globalsWith(provider: "deepseek" | "custom", flavor: "chat" | "responses" = "chat") {
 	const g = makeDefaultGlobalConfig();
 	g.defaults.ai.activeProfile = "p1";
 	g.defaults.ai.providers = {
@@ -34,7 +34,7 @@ function globalsWith(provider: "deepseek" | "custom") {
 			apiKey: "k",
 			baseUrl: "https://x",
 			model: "m",
-			apiFlavor: "chat",
+			apiFlavor: flavor,
 			temperature: 0.7,
 			enableThinking: false,
 			thinkingLevel: "medium",
@@ -49,8 +49,9 @@ function globalsWith(provider: "deepseek" | "custom") {
 function mount(
 	provider: "deepseek" | "custom",
 	props: { on: boolean; onToggle: (v: boolean) => void },
+	flavor: "chat" | "responses" = "chat",
 ) {
-	vi.mocked(api.get).mockResolvedValue(JSON.parse(JSON.stringify(globalsWith(provider))));
+	vi.mocked(api.get).mockResolvedValue(JSON.parse(JSON.stringify(globalsWith(provider, flavor))));
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
@@ -87,6 +88,12 @@ describe("ThinkingControl — 会话级受控胶囊", () => {
 		const btn = (await screen.findByRole("button", { name: "深度思考" })) as HTMLButtonElement;
 		expect(btn.disabled).toBe(true);
 		expect(btn.title).toContain("额外请求参数");
+	});
+
+	it("自定义 + responses 风味 → 解禁:思考在那套协议里是标准字段,不再是方言", async () => {
+		mount("custom", { on: false, onToggle: () => {} }, "responses");
+		const btn = (await screen.findByRole("button", { name: "深度思考" })) as HTMLButtonElement;
+		expect(btn.disabled).toBe(false);
 	});
 
 	it("等级不在这里调 —— 聊天工具栏不摆低/中/高", async () => {

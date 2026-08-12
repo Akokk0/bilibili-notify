@@ -173,6 +173,12 @@ export const FIELD_LABELS = {
 		hint: "同一家添加多份时全靠它区分。留空则显示那家的名字",
 		section: "ai",
 	},
+	// 实例桶的接口风味(经 `ai.providers.<实例>.apiFlavor` 前缀规则继承到这条)。
+	"ai.apiFlavor": {
+		label: "接口风味",
+		hint: "chat completions 是现状；responses 是 OpenAI 一系的新协议，思考是标准字段、思考 + 工具连用更稳。只有确认支持的家才摆这一格，失败不会悄悄换回旧协议",
+		section: "ai",
+	},
 	// 聊天页自己的思考等级(ai.chat)—— 与实例桶里的同名格分了家,别混。
 	// 开关不落盘:聊天输入框旁那颗 ✦ 胶囊是会话级的,按消息走请求体。
 	"ai.chat.thinkingLevel": {
