@@ -135,7 +135,7 @@ describe("globals apiKey redact — P0-3", () => {
 		await runtime.configStore.patchGlobals({
 			defaults: {
 				ai: {
-					provider: "deepseek",
+					activeProfile: "deepseek",
 					providers: {
 						deepseek: { apiKey: "sk-going-away" },
 						openrouter: { apiKey: "sk-staying" },

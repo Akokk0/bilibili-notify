@@ -62,9 +62,11 @@ function draftAi(
 	return {
 		...ai,
 		enabled: true,
-		provider: "deepseek" as const,
+		activeProfile: "deepseek",
 		providers: {
 			deepseek: {
+				provider: "deepseek" as const,
+				label: "",
 				apiKey: "sk-draft",
 				baseUrl: "https://api.example.com/v1",
 				model: "test-model",
@@ -96,9 +98,11 @@ function makeDeps() {
 	const globals = makeDefaultGlobalConfig();
 	// store 里已存的那把 —— 必须与草稿选中的**同一个桶**,否则会拿 A 家的 key
 	// 去打 B 家的接口。
-	globals.defaults.ai.provider = "deepseek";
+	globals.defaults.ai.activeProfile = "deepseek";
 	globals.defaults.ai.providers = {
 		deepseek: {
+			provider: "deepseek",
+			label: "",
 			apiKey: "sk-stored",
 			baseUrl: "https://api.example.com/v1",
 			model: "test-model",

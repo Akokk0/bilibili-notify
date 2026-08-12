@@ -56,8 +56,8 @@ export function makeDefaults(): GlobalDefaults {
 			persona,
 			dynamicPrompt: "",
 			liveSummaryPrompt: "",
-			// 一家都没添加 = 全新配置。连接与生成参数都住在服务商桶里。
-			provider: "custom",
+			// 一份实例都没添加 = 全新配置。连接与生成参数都住在实例桶里。
+			activeProfile: "",
 			providers: {},
 			presets: [],
 		},

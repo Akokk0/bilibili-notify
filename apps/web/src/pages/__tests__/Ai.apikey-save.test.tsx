@@ -34,9 +34,11 @@ function redactedGlobals() {
 	const g = makeDefaultGlobalConfig();
 	g.defaults.ai.enabled = true;
 	// 连接字段住在服务商桶里(各家一套配置)。
-	g.defaults.ai.provider = "deepseek";
+	g.defaults.ai.activeProfile = "deepseek";
 	g.defaults.ai.providers = {
 		deepseek: {
+			provider: "deepseek",
+			label: "",
 			// 关键:无论真 key 是什么,出后端一律是这个占位。
 			apiKey: REDACTED,
 			baseUrl: "https://api.example.com/v1",

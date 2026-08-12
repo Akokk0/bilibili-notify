@@ -46,7 +46,8 @@ export function toGeneratorConfig(ai: AISettings) {
 		liveSummaryPrompt: active.liveSummaryPrompt,
 		enableConversation: false,
 		maxHistory: 6,
-		provider: ai.provider,
+		// 方言归属写在桶里 —— activeProfile 只是实例指针,同一家可以有多份实例。
+		provider: p.provider,
 		enableThinking: p.enableThinking,
 		thinkingLevel: p.thinkingLevel,
 		extraParams: p.extraParams,

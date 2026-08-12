@@ -207,9 +207,9 @@ async function runEnableCheck(args: EnableCheckArgs): Promise<EnableCheckResult>
 	if (!approvalCheck.ok) return approvalCheck;
 
 	if (shouldRunAiEnableCheck(args.current, args.patch)) {
-		// 探活要打的是**本次保存之后**生效的那家:provider 指针本身可能就在这个
-		// patch 里被换掉了。拿旧指针去取连接字段,会用 A 家的 key 打 B 家的接口。
-		const id = aiProviderAfterPatch(args.current, args.patch);
+		// 探活要打的是**本次保存之后**生效的那份实例:activeProfile 指针本身可能
+		// 就在这个 patch 里被换掉了。拿旧指针去取连接字段,会用 A 家的 key 打 B 家的接口。
+		const id = aiActiveProfileAfterPatch(args.current, args.patch);
 		const cur = args.current.defaults.ai.providers[id];
 		const at = (field: string) =>
 			mergedString(
@@ -227,21 +227,19 @@ async function runEnableCheck(args: EnableCheckArgs): Promise<EnableCheckResult>
 	return { ok: true };
 }
 
-/** 本次 patch 生效后当前用哪家 —— 指针可能就在这个 patch 里被换掉。 */
-export function aiProviderAfterPatch(
+/** 本次 patch 生效后当前用哪份实例 —— 指针可能就在这个 patch 里被换掉。 */
+export function aiActiveProfileAfterPatch(
 	current: import("@bilibili-notify/internal").GlobalConfig,
 	patch: Record<string, unknown>,
-): import("@bilibili-notify/internal").AIProviderId {
-	const inPatch = pluck(patch, ["defaults", "ai", "provider"]);
-	return typeof inPatch === "string"
-		? (inPatch as import("@bilibili-notify/internal").AIProviderId)
-		: current.defaults.ai.provider;
+): string {
+	const inPatch = pluck(patch, ["defaults", "ai", "activeProfile"]);
+	return typeof inPatch === "string" ? inPatch : current.defaults.ai.activeProfile;
 }
 
 /**
  * AI 连接探活(checkAiEnable,会真打一次 chat/completions 请求)是否该跑。三种情况:
- *  1. 本次 patch 把当前那家的连接字段 apiKey / baseUrl / model **改成跟 current 不同的新值**;
- *  2. 本次 patch **换了服务商** —— 换家就是换连接,新那家的 key 还没验过;
+ *  1. 本次 patch 把当前那份实例的连接字段 apiKey / baseUrl / model **改成跟 current 不同的新值**;
+ *  2. 本次 patch **换了实例** —— 换实例就是换连接,新那份的 key 还没验过;
  *  3. 本次 patch 把 ai.enabled 从 false 翻成 true(启用动作本身要验)。
  * 改 persona / prompt / temperature 不触发探活;AI 最终为禁用态时一律不跑。
  *
@@ -260,8 +258,8 @@ export function shouldRunAiEnableCheck(
 	);
 	if (!aiEnabled) return false;
 
-	const id = aiProviderAfterPatch(current, patch);
-	const switchedProvider = id !== current.defaults.ai.provider;
+	const id = aiActiveProfileAfterPatch(current, patch);
+	const switchedProfile = id !== current.defaults.ai.activeProfile;
 	const cur = current.defaults.ai.providers[id];
 	const changed = (field: "apiKey" | "baseUrl" | "model") => {
 		const inPatch = pluck(patch, ["defaults", "ai", "providers", id, field]);
@@ -269,7 +267,7 @@ export function shouldRunAiEnableCheck(
 	};
 	const touchesConnection = changed("apiKey") || changed("baseUrl") || changed("model");
 	const enabling = !current.defaults.ai.enabled && aiEnabled;
-	return switchedProvider || touchesConnection || enabling;
+	return switchedProfile || touchesConnection || enabling;
 }
 
 // ── Image / puppeteer probe ────────────────────────────────────────────────

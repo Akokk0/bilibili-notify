@@ -1,8 +1,8 @@
 /**
  * AI 设置页两个左栏的增删操作 —— 对 `AISettings` 草稿的纯变换,一律返回新对象。
  *
- * 抽出来是因为这里的分支最容易悄悄错、又最难在界面上看出来:删掉正在用的那家之后
- * 指针指向哪、删到一家不剩会不会炸、新人格的 id 撞没撞上。
+ * 抽出来是因为这里的分支最容易悄悄错、又最难在界面上看出来:删掉正在用的那份之后
+ * 指针指向哪、删到一份不剩会不会炸、新实例 / 新人格的 id 撞没撞上。
  */
 
 import {
@@ -10,100 +10,139 @@ import {
 	type AIProviderId,
 	BUILTIN_AI_PRESETS,
 	EMPTY_AI_PROVIDER_PROFILE,
+	providerMeta,
 } from "@bilibili-notify/internal/constants";
 import type { AIPersona, AISettings } from "../../types/globals";
 
 type AIPreset = AISettings["presets"][number];
 
-/**
- * 已添加的服务商,**按注册表顺序**。
- *
- * 不能直接用 `Object.keys` —— 那是插入序:主人先加硅基后加 OpenRouter,左栏顺序
- * 就与「+ 添加服务商」清单不一致,删掉再加回来还会自己换位置。
- */
-export function addedProviders(ai: AISettings): AIProviderId[] {
-	return AI_PROVIDER_IDS.filter((id) => ai.providers[id] !== undefined);
-}
+// ── 服务商实例左栏 ──────────────────────────────────────────────────────
+//
+// 连接与生成配置按**实例**存(`ai.providers[实例id]`),同一家服务商可以有多份
+// (两个 DeepSeek 号)。`ai.activeProfile` 指着女仆正用的那份。
 
-/** 「+ 添加服务商」清单:还没添加过的那些。空数组 = 五家全加过,调用方据此禁用按钮。 */
-export function addableProviders(ai: AISettings): AIProviderId[] {
-	return AI_PROVIDER_IDS.filter((id) => ai.providers[id] === undefined);
+/** 左栏一行。`label` 已经解析成显示名 —— 空名回落到注册表里那家的名字。 */
+export interface ProfileRailItem {
+	id: string;
+	provider: AIProviderId;
+	label: string;
 }
 
 /**
- * 添加一家:建一个空桶。
+ * 左栏顺序:**注册表序分家,同家内按添加先后**(对象键序 = 插入序)。
  *
- * **不抢指针** —— 「添加一家」与「换用这一家」是两件事,后者是「全局配置」里那个
- * 选择器的事(与人格的 `activePreset` 同一套语义)。唯一的例外是指针还没着落时
- * (全新配置指着 `custom` 却一个桶都没有):头一家添加的就成了在用的那家,否则主人
- * 填好密钥、女仆却仍然「没配齐」,而界面上看不出还差一步。
- *
- * 已存在的桶**保持原样**。界面上不会把已添加的那家摆进清单,但这是数据安全底线
- * —— 拿空档案盖掉主人填好的 key 是不可逆的。
+ * 纯键序的话,主人先加硅基后加 OpenRouter,左栏就与「+ 添加服务商」清单里的
+ * 顺序不一致;删掉再加回来还会自己换位置。
  */
-export function addProvider(ai: AISettings, id: AIProviderId): AISettings {
-	const pointerLanded = ai.providers[ai.provider] !== undefined;
+function railOrder(ai: AISettings): string[] {
+	const rank = new Map<string, number>(AI_PROVIDER_IDS.map((id, i) => [id, i]));
+	return Object.keys(ai.providers)
+		.map((id, at) => ({
+			id,
+			at,
+			rank: rank.get(ai.providers[id]?.provider ?? "") ?? AI_PROVIDER_IDS.length,
+		}))
+		.sort((a, b) => a.rank - b.rank || a.at - b.at)
+		.map((x) => x.id);
+}
+
+export function profileRailItems(ai: AISettings): ProfileRailItem[] {
+	return railOrder(ai).map((id) => {
+		const p = ai.providers[id];
+		const provider = p?.provider ?? "custom";
+		return { id, provider, label: p?.label || providerMeta(provider).label };
+	});
+}
+
+/**
+ * 添加一份实例:建一只空桶,盖上 provider 章,交回新实例 id 好当场切过去编辑。
+ *
+ * - **id 挑第一个空位**(`deepseek` → `deepseek-2` → …),跳过已占用的 —— 撞键
+ *   等于拿空档案盖掉主人填好的 key,不可逆。
+ * - **同家的后续实例默认名带序号**(「DeepSeek 2」):左栏两行都叫「DeepSeek」的话
+ *   主人分不清哪只是哪只;头一份留空名,显示时回落到家名。
+ * - **不抢指针** —— 「添加」与「换用」是两件事,后者是「全局配置」里那个选择器的事
+ *   (与人格的 `activePreset` 同一套语义)。唯一的例外是指针还没着落时(全新配置):
+ *   头一份添加的就成了在用的那份,否则主人填好密钥、女仆却仍然「没配齐」。
+ */
+export function addProfile(ai: AISettings, provider: AIProviderId): { ai: AISettings; id: string } {
+	const taken = new Set(Object.keys(ai.providers));
+	let id: string = provider;
+	let n = 1;
+	while (taken.has(id)) {
+		n += 1;
+		id = `${provider}-${n}`;
+	}
+	const sameFamily = Object.values(ai.providers).some((p) => p?.provider === provider);
+	const label = sameFamily ? `${providerMeta(provider).label} ${n}` : "";
+	const pointerLanded = ai.providers[ai.activeProfile] !== undefined;
 	return {
-		...ai,
-		provider: pointerLanded ? ai.provider : id,
-		providers: {
-			...ai.providers,
-			[id]: ai.providers[id] ?? { ...EMPTY_AI_PROVIDER_PROFILE },
+		id,
+		ai: {
+			...ai,
+			activeProfile: pointerLanded ? ai.activeProfile : id,
+			providers: {
+				...ai.providers,
+				[id]: { ...EMPTY_AI_PROVIDER_PROFILE, provider, label },
+			},
 		},
 	};
 }
 
 /**
- * 「设为默认」—— 把全局指针拨到这一家。
+ * 「设为默认」—— 把全局指针拨到这一份。
  *
- * 桶不存在就**不动**:指向一个没添加过的服务商是悬空引用,左栏里没有它、
+ * 桶不存在就**不动**:指向一份没添加过的实例是悬空引用,左栏里没有它、
  * `resolveAIProfile` 兜一套空档案,于是女仆静默停工而主人以为选好了。
  */
-export function setGlobalProvider(ai: AISettings, id: AIProviderId): AISettings {
+export function setActiveProfile(ai: AISettings, id: string): AISettings {
 	if (ai.providers[id] === undefined) return ai;
-	return { ...ai, provider: id };
+	return { ...ai, activeProfile: id };
+}
+
+/** 给实例改显示名。清空 = 回落到注册表里那家的名字(见 {@link profileRailItems})。 */
+export function renameProfile(ai: AISettings, id: string, label: string): AISettings {
+	const p = ai.providers[id];
+	if (p === undefined) return ai;
+	return { ...ai, providers: { ...ai.providers, [id]: { ...p, label } } };
 }
 
 /**
- * 把「左栏在看哪一家」收敛到一家**真实存在**的。
+ * 把「左栏在看哪一份」收敛到一份**真实存在**的。
  *
- * 它与 `ai.provider`(女仆真正在用的那家)是两个独立的东西 —— 点左栏只换看的对象,
- * 不换用的那家。曾经这两件事共用 `ai.provider`,于是「想看看另一家的配置」等于
- * 当场换掉了女仆在用的那家,而界面上没有任何提示。
+ * 它与 `ai.activeProfile`(女仆真正在用的那份)是两个独立的东西 —— 点左栏只换看的
+ * 对象,不换用的那份。曾经这两件事共用一个字段,于是「想看看另一份的配置」等于
+ * 当场换掉了女仆在用的那份,而界面上没有任何提示。
  *
- * 收敛顺序:看的那家还在 → 原样;否则落到在用的那家;在用的那家也没添加过(全新
- * 配置、或删到只剩别家)→ 注册表序第一家;一家都没有 → null,右侧出添加面板。
+ * 收敛顺序:看的那份还在 → 原样;否则落到在用的那份;在用的那份也没添加过(全新
+ * 配置、或删到只剩别份)→ 左栏第一项(与渲染同序);一份都没有 → null,右侧出添加面板。
  */
-export function resolveEditingProvider(
-	ai: AISettings,
-	id: AIProviderId | null,
-): AIProviderId | null {
+export function resolveEditingProfile(ai: AISettings, id: string | null): string | null {
 	if (id !== null && ai.providers[id] !== undefined) return id;
-	if (ai.providers[ai.provider] !== undefined) return ai.provider;
-	return AI_PROVIDER_IDS.find((p) => ai.providers[p] !== undefined) ?? null;
+	if (ai.providers[ai.activeProfile] !== undefined) return ai.activeProfile;
+	return railOrder(ai)[0] ?? null;
 }
 
 /**
- * 删掉一家:桶整个移除(不留空壳,否则左栏还会列着它)。
+ * 删掉一份实例:桶整个移除(不留空壳,否则左栏还会列着它)。
  *
- * 删的正是在用的那家时,指针落到**剩下的第一家(注册表序)** —— 与左栏渲染同序,
- * 否则删完之后高亮项与右侧内容各说各话。删到一家不剩时指针**原样留着**:那是允许
- * 的悬空引用,`resolveAIProfile` 明确兜空默认值,页面据此显示空态、引擎据此判定
- * 「没配齐」。硬改成 `custom` 反倒是撒谎(它也没添加过)。
+ * 删的正是在用的那份时,指针落到**左栏剩下的第一项** —— 与渲染同序,否则删完之后
+ * 高亮项与右侧内容各说各话。删到一份不剩时指针**原样留着**:那是允许的悬空引用,
+ * `resolveAIProfile` 明确兜空默认值,页面据此显示空态、引擎据此判定「没配齐」。
  *
- * 这家的密钥不用在这里处理:落盘时 `writeGlobals` 用 `collectAiSecrets` 整袋重算,
+ * 这份的密钥不用在这里处理:落盘时 `writeGlobals` 用 `collectAiSecrets` 整袋重算,
  * 桶没了它自然不再写进加密袋。
  */
-export function removeProvider(ai: AISettings, id: AIProviderId): AISettings {
+export function removeProfile(ai: AISettings, id: string): AISettings {
 	if (ai.providers[id] === undefined) return ai;
 	// 用「浅拷贝 + delete」而非计算键 rest 解构:后者会让 TS 把 rest 推成 `{}`,
-	// 之后按 AIProviderId 索引就报隐式 any。
+	// 之后按字符串索引就报隐式 any。
 	const rest: AISettings["providers"] = { ...ai.providers };
 	delete rest[id];
-	const fallback = AI_PROVIDER_IDS.find((p) => rest[p] !== undefined);
+	const fallback = railOrder({ ...ai, providers: rest })[0];
 	return {
 		...ai,
-		provider: ai.provider === id && fallback !== undefined ? fallback : ai.provider,
+		activeProfile: ai.activeProfile === id && fallback !== undefined ? fallback : ai.activeProfile,
 		providers: rest,
 	};
 }

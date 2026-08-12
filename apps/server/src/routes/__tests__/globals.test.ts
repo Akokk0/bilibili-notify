@@ -7,9 +7,11 @@ function enabledAiGlobals() {
 	const g = makeDefaultGlobalConfig();
 	g.defaults.ai.enabled = true;
 	// 连接字段住在服务商桶里(各家一套配置)。
-	g.defaults.ai.provider = "deepseek";
+	g.defaults.ai.activeProfile = "deepseek";
 	g.defaults.ai.providers = {
 		deepseek: {
+			provider: "deepseek",
+			label: "",
 			apiKey: "k",
 			baseUrl: "https://api.example.com",
 			model: "gpt-4o-mini",
@@ -50,9 +52,16 @@ describe("shouldRunAiEnableCheck", () => {
 		expect(shouldRunAiEnableCheck(cur, aiPatch({ model: "m2" }))).toBe(true);
 	});
 
-	it("换服务商就触发探活 —— 换家等于换连接,新那家的 key 还没验过", () => {
+	it("换实例就触发探活 —— 换实例等于换连接,新那份的 key 还没验过", () => {
 		const cur = enabledAiGlobals(); // 当前是 deepseek
-		expect(shouldRunAiEnableCheck(cur, { defaults: { ai: { provider: "openrouter" } } })).toBe(
+		expect(shouldRunAiEnableCheck(cur, { defaults: { ai: { activeProfile: "openrouter" } } })).toBe(
+			true,
+		);
+	});
+
+	it("同一家的另一份实例也算换 —— 两个 DeepSeek 号各有各的 key", () => {
+		const cur = enabledAiGlobals();
+		expect(shouldRunAiEnableCheck(cur, { defaults: { ai: { activeProfile: "deepseek-2" } } })).toBe(
 			true,
 		);
 	});

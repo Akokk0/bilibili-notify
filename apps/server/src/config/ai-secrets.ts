@@ -1,9 +1,9 @@
 /**
  * AI 密钥与 globals.json 之间的唯一通道。
  *
- * 「各家一套配置」之后密钥不再是一把,而是**每个服务商桶两把** —— 主模型的
+ * 「按实例分桶」之后密钥不再是一把,而是**每个实例桶两把** —— 主模型的
  * `apiKey` 与看图副模型的 `vision.apiKey`(副模型常在另一家,DeepSeek 没有视觉
- * 模型,跨厂商是常态)。桶最多五个,所以最多十把。
+ * 模型,跨厂商是常态)。
  *
  * 三个函数配成一套:
  *
@@ -14,18 +14,19 @@
  * 三者必须互为逆运算:`apply(strip(g), collect(g))` 恒等于 `g`。破了这条就意味着
  * 「重启一次配置就掉一部分」,而这种故障看着像「配置丢了」,极难溯源。
  *
- * **袋子的键是自描述的路径**(`"deepseek"` / `"deepseek:vision"`),而不是固定的
- * 十个字段名:注册表加一家时这里自动跟上,不必再改一次数据结构。
+ * **袋子的键是自描述的路径**(`"<实例id>"` / `"<实例id>:vision"`),而不是固定的
+ * 一批字段名:添加实例时这里自动跟上,不必再改一次数据结构。上一代按服务商分桶
+ * 时袋键就是服务商名 —— 迁移刻意保留桶键,袋子无需搬迁。
  */
 
-import type { AIProviderId, GlobalConfig } from "@bilibili-notify/internal";
+import type { GlobalConfig } from "@bilibili-notify/internal";
 
 /** 视觉副模型那把 key 在袋子里的后缀。 */
 const VISION_SUFFIX = ":vision";
 
 /** 一把 AI 密钥在袋子里的键。 */
-export function aiSecretKey(provider: AIProviderId, vision = false): string {
-	return vision ? `${provider}${VISION_SUFFIX}` : provider;
+export function aiSecretKey(profileId: string, vision = false): string {
+	return vision ? `${profileId}${VISION_SUFFIX}` : profileId;
 }
 
 /**
@@ -38,8 +39,8 @@ export function collectAiSecrets(g: GlobalConfig): Record<string, string> {
 	const out: Record<string, string> = {};
 	for (const [id, p] of Object.entries(g.defaults.ai.providers)) {
 		if (!p) continue;
-		if (p.apiKey) out[aiSecretKey(id as AIProviderId)] = p.apiKey;
-		if (p.vision.apiKey) out[aiSecretKey(id as AIProviderId, true)] = p.vision.apiKey;
+		if (p.apiKey) out[aiSecretKey(id)] = p.apiKey;
+		if (p.vision.apiKey) out[aiSecretKey(id, true)] = p.vision.apiKey;
 	}
 	return out;
 }
@@ -71,7 +72,7 @@ export function applyAiSecrets(g: GlobalConfig, bag: Record<string, string>): Gl
 /** 对每个已存在的桶里的两把 key 各取一次新值。只读入参,返回新对象。 */
 function mapAiSecrets(
 	g: GlobalConfig,
-	next: (provider: AIProviderId, vision: boolean) => string,
+	next: (profileId: string, vision: boolean) => string,
 ): GlobalConfig {
 	const entries = Object.entries(g.defaults.ai.providers);
 	if (entries.length === 0) return g;
@@ -86,8 +87,8 @@ function mapAiSecrets(
 						id,
 						p && {
 							...p,
-							apiKey: next(id as AIProviderId, false),
-							vision: { ...p.vision, apiKey: next(id as AIProviderId, true) },
+							apiKey: next(id, false),
+							vision: { ...p.vision, apiKey: next(id, true) },
 						},
 					]),
 				),

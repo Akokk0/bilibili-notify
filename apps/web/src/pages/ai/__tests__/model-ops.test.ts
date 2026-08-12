@@ -7,30 +7,30 @@
  */
 
 import {
-	AI_PROVIDER_IDS,
+	type AIProviderId,
 	BUILTIN_AI_PRESETS,
 	EMPTY_AI_PROVIDER_PROFILE,
 } from "@bilibili-notify/internal/constants";
 import { describe, expect, it } from "vite-plus/test";
 import type { AIPersona, AISettings } from "../../../types/globals";
 import {
-	addableProviders,
-	addedProviders,
 	addPersona,
-	addProvider,
+	addProfile,
 	duplicatePersona,
 	globalPersonaRailId,
 	isBuiltinPersona,
 	missingBuiltinPersonas,
 	personaAt,
 	personaRailItems,
+	profileRailItems,
 	removePersona,
-	removeProvider,
+	removeProfile,
 	renamePersona,
-	resolveEditingProvider,
+	renameProfile,
+	resolveEditingProfile,
 	restoreBuiltinPersona,
+	setActiveProfile,
 	setGlobalPersona,
-	setGlobalProvider,
 	updatePersonaAt,
 } from "../model-ops";
 
@@ -50,237 +50,249 @@ function settings(over: Partial<AISettings> = {}): AISettings {
 		persona: PERSONA,
 		dynamicPrompt: "",
 		liveSummaryPrompt: "",
-		provider: "custom",
+		activeProfile: "",
 		providers: {},
 		presets: [],
 		...over,
 	};
 }
 
-describe("addedProviders", () => {
-	it("只列已添加的那几家", () => {
-		const ai = settings({
-			providers: { deepseek: { ...EMPTY_AI_PROVIDER_PROFILE } },
-		});
-		expect(addedProviders(ai)).toEqual(["deepseek"]);
+/** 一只属于某家的实例桶。 */
+function bucket(provider: AIProviderId, over: Partial<AISettings["providers"][string]> = {}) {
+	return { ...EMPTY_AI_PROVIDER_PROFILE, provider, ...over };
+}
+
+describe("profileRailItems —— 左栏列什么", () => {
+	it("只列已添加的实例,显示名空着就用注册表里那家的名字", () => {
+		const ai = settings({ providers: { deepseek: bucket("deepseek") } });
+		expect(profileRailItems(ai)).toEqual([
+			{ id: "deepseek", provider: "deepseek", label: "DeepSeek" },
+		]);
 	});
 
-	it("全新配置一家都没有 —— 左栏该是空的", () => {
-		expect(addedProviders(settings())).toEqual([]);
+	it("起过名的显示自己的名字", () => {
+		const ai = settings({ providers: { deepseek: bucket("deepseek", { label: "备用号" }) } });
+		expect(profileRailItems(ai)[0]?.label).toBe("备用号");
 	});
 
-	it("顺序按注册表来,不随主人添加的先后跳动", () => {
-		// 对象键序 = 插入序。照它渲染的话,主人先加硅基后加 OpenRouter,左栏就与
-		// 「+ 添加服务商」清单里的顺序不一致;删掉再加回来还会自己换位置。
+	it("全新配置一份都没有 —— 左栏该是空的", () => {
+		expect(profileRailItems(settings())).toEqual([]);
+	});
+
+	it("按注册表序分家排,同家内按添加先后", () => {
+		// 纯对象键序的话,主人先加硅基后加 OpenRouter,左栏就与「+ 添加服务商」
+		// 清单里的顺序不一致;删掉再加回来还会自己换位置。
 		const ai = settings({
 			providers: {
-				siliconflow: { ...EMPTY_AI_PROVIDER_PROFILE },
-				openrouter: { ...EMPTY_AI_PROVIDER_PROFILE },
+				"deepseek-2": bucket("deepseek", { label: "乙" }),
+				openrouter: bucket("openrouter"),
+				deepseek: bucket("deepseek", { label: "甲" }),
 			},
 		});
-		const expected = AI_PROVIDER_IDS.filter((id) => id === "openrouter" || id === "siliconflow");
-		expect(addedProviders(ai)).toEqual(expected);
+		expect(profileRailItems(ai).map((i) => i.id)).toEqual(["openrouter", "deepseek-2", "deepseek"]);
 	});
 });
 
-describe("addableProviders", () => {
-	it("「+ 添加服务商」清单 = 还没添加过的那些", () => {
-		const ai = settings({ providers: { deepseek: { ...EMPTY_AI_PROVIDER_PROFILE } } });
-		expect(addableProviders(ai)).toEqual(AI_PROVIDER_IDS.filter((id) => id !== "deepseek"));
+describe("addProfile", () => {
+	it("建一只空桶,盖上 provider 章,把新实例 id 交回调用方切过去", () => {
+		const { ai, id } = addProfile(settings(), "openrouter");
+		expect(id).toBe("openrouter");
+		expect(ai.providers.openrouter).toEqual({
+			...EMPTY_AI_PROVIDER_PROFILE,
+			provider: "openrouter",
+		});
 	});
 
-	it("五家全加过 → 空清单(调用方据此禁用按钮)", () => {
-		const providers = Object.fromEntries(
-			AI_PROVIDER_IDS.map((id) => [id, { ...EMPTY_AI_PROVIDER_PROFILE }]),
-		);
-		expect(addableProviders(settings({ providers }))).toEqual([]);
-	});
-});
-
-describe("addProvider", () => {
-	it("建一个空桶", () => {
-		const next = addProvider(settings(), "openrouter");
-		expect(next.providers.openrouter).toEqual(EMPTY_AI_PROVIDER_PROFILE);
-	});
-
-	it("指针还没着落时(全新配置)→ 头一家添加的就成了在用的那家", () => {
-		// 不这么做的话:主人添加了第一家、填好密钥,女仆却仍然「没配齐」,
+	it("指针还没着落时(全新配置)→ 头一份添加的就成了在用的那份", () => {
+		// 不这么做的话:主人添加了第一份、填好密钥,女仆却仍然「没配齐」,
 		// 而界面上看不出还差一步。
-		const next = addProvider(settings({ provider: "custom", providers: {} }), "openrouter");
-		expect(next.provider).toBe("openrouter");
+		const { ai } = addProfile(settings(), "openrouter");
+		expect(ai.activeProfile).toBe("openrouter");
 	});
 
-	it("已经有在用的那家 → 再添加一家**不抢**指针", () => {
+	it("已经有在用的那份 → 再添加**不抢**指针", () => {
 		// 添加 ≠ 换用。换用是「全局配置」里那个选择器的事(与人格同一套语义)。
-		const ai = settings({
-			provider: "deepseek",
-			providers: { deepseek: { ...EMPTY_AI_PROVIDER_PROFILE, apiKey: "sk-ds" } },
+		const base = settings({
+			activeProfile: "deepseek",
+			providers: { deepseek: bucket("deepseek", { apiKey: "sk-ds" }) },
 		});
-		expect(addProvider(ai, "openrouter").provider).toBe("deepseek");
+		expect(addProfile(base, "openrouter").ai.activeProfile).toBe("deepseek");
 	});
 
-	it("不动别家已填好的桶", () => {
-		const ai = settings({
-			provider: "deepseek",
-			providers: { deepseek: { ...EMPTY_AI_PROVIDER_PROFILE, apiKey: "sk-ds" } },
+	it("同一家再添加一份 → 新实例 id 带序号,默认名也带序号好区分", () => {
+		// 这正是分实例的意义:两个 DeepSeek 号并存。左栏两行都叫「DeepSeek」的话,
+		// 主人分不清哪只是哪只。
+		const base = settings({
+			activeProfile: "deepseek",
+			providers: { deepseek: bucket("deepseek", { apiKey: "sk-a" }) },
 		});
-		const next = addProvider(ai, "openrouter");
-		expect(next.providers.deepseek?.apiKey).toBe("sk-ds");
+		const { ai, id } = addProfile(base, "deepseek");
+		expect(id).toBe("deepseek-2");
+		expect(ai.providers["deepseek-2"]).toMatchObject({ provider: "deepseek", label: "DeepSeek 2" });
+		// 原来那份一根毛都不动。
+		expect(ai.providers.deepseek?.apiKey).toBe("sk-a");
 	});
 
-	it("重复添加同一家**不覆盖**它已有的配置", () => {
-		// 界面上不会把已添加的那家摆进清单,但这条是数据安全底线 —— 一旦哪天
-		// 清单算错、或者两处入口撞上,拿空档案盖掉主人填好的 key 是不可逆的。
-		const ai = settings({
-			provider: "custom",
-			providers: { deepseek: { ...EMPTY_AI_PROVIDER_PROFILE, apiKey: "sk-ds", model: "ds-v4" } },
+	it("id 挑第一个空位,跳过已占用的", () => {
+		const base = settings({
+			providers: {
+				deepseek: bucket("deepseek"),
+				"deepseek-2": bucket("deepseek"),
+			},
 		});
-		const next = addProvider(ai, "deepseek");
-		expect(next.providers.deepseek).toMatchObject({ apiKey: "sk-ds", model: "ds-v4" });
+		expect(addProfile(base, "deepseek").id).toBe("deepseek-3");
 	});
 
 	it("不改原对象", () => {
 		const ai = settings();
-		addProvider(ai, "openrouter");
+		addProfile(ai, "openrouter");
 		expect(ai.providers).toEqual({});
-		expect(ai.provider).toBe("custom");
+		expect(ai.activeProfile).toBe("");
 	});
 });
 
-describe("setGlobalProvider —— 「设为默认」拨的就是这个指针", () => {
-	it("拨到另一家", () => {
+describe("setActiveProfile —— 「设为默认」拨的就是这个指针", () => {
+	it("拨到另一份", () => {
 		const ai = settings({
-			provider: "deepseek",
-			providers: { deepseek: EMPTY_AI_PROVIDER_PROFILE, openrouter: EMPTY_AI_PROVIDER_PROFILE },
+			activeProfile: "deepseek",
+			providers: { deepseek: bucket("deepseek"), "deepseek-2": bucket("deepseek") },
 		});
-		expect(setGlobalProvider(ai, "openrouter").provider).toBe("openrouter");
+		expect(setActiveProfile(ai, "deepseek-2").activeProfile).toBe("deepseek-2");
 	});
 
-	it("拨到一家没添加过的 → 不动", () => {
+	it("拨到一份没添加过的 → 不动", () => {
 		// 指向一个不存在的桶就是悬空引用:界面上左栏没有它、`resolveAIProfile`
 		// 兜一套空档案,于是女仆静默停工而主人以为选好了。
 		const ai = settings({
-			provider: "deepseek",
-			providers: { deepseek: EMPTY_AI_PROVIDER_PROFILE },
+			activeProfile: "deepseek",
+			providers: { deepseek: bucket("deepseek") },
 		});
-		expect(setGlobalProvider(ai, "openrouter").provider).toBe("deepseek");
+		expect(setActiveProfile(ai, "openrouter").activeProfile).toBe("deepseek");
 	});
 
 	it("不改原对象", () => {
 		const ai = settings({
-			provider: "deepseek",
-			providers: { deepseek: EMPTY_AI_PROVIDER_PROFILE, openrouter: EMPTY_AI_PROVIDER_PROFILE },
+			activeProfile: "deepseek",
+			providers: { deepseek: bucket("deepseek"), openrouter: bucket("openrouter") },
 		});
-		setGlobalProvider(ai, "openrouter");
-		expect(ai.provider).toBe("deepseek");
+		setActiveProfile(ai, "openrouter");
+		expect(ai.activeProfile).toBe("deepseek");
 	});
 });
 
-describe("resolveEditingProvider —— 左栏在看哪一家", () => {
+describe("renameProfile", () => {
+	it("改显示名,不动配置", () => {
+		const ai = settings({
+			providers: { deepseek: bucket("deepseek", { apiKey: "sk-ds" }) },
+		});
+		const next = renameProfile(ai, "deepseek", "主号");
+		expect(next.providers.deepseek).toMatchObject({ label: "主号", apiKey: "sk-ds" });
+	});
+
+	it("清空名字 → 显示名回落到注册表里那家的名字", () => {
+		const ai = settings({
+			providers: { deepseek: bucket("deepseek", { label: "主号" }) },
+		});
+		const next = renameProfile(ai, "deepseek", "");
+		expect(profileRailItems(next)[0]?.label).toBe("DeepSeek");
+	});
+
+	it("改一份不存在的 → 原样返回", () => {
+		const ai = settings({ providers: { deepseek: bucket("deepseek") } });
+		expect(renameProfile(ai, "gone", "x")).toEqual(ai);
+	});
+});
+
+describe("resolveEditingProfile —— 左栏在看哪一份", () => {
 	const both = settings({
-		provider: "deepseek",
-		providers: { deepseek: EMPTY_AI_PROVIDER_PROFILE, openrouter: EMPTY_AI_PROVIDER_PROFILE },
+		activeProfile: "deepseek",
+		providers: { deepseek: bucket("deepseek"), openrouter: bucket("openrouter") },
 	});
 
-	it("看着一家真实存在的 → 原样", () => {
-		expect(resolveEditingProvider(both, "openrouter")).toBe("openrouter");
+	it("看着一份真实存在的 → 原样", () => {
+		expect(resolveEditingProfile(both, "openrouter")).toBe("openrouter");
 	});
 
-	it("还没选过(刚进页面)→ 落在女仆正用的那家", () => {
-		expect(resolveEditingProvider(both, null)).toBe("deepseek");
+	it("还没选过(刚进页面)→ 落在女仆正用的那份", () => {
+		expect(resolveEditingProfile(both, null)).toBe("deepseek");
 	});
 
-	it("正看着的那家被删掉了 → 收回到在用的那家,不让左栏高亮到虚空", () => {
+	it("正看着的那份被删掉了 → 收回到在用的那份,不让左栏高亮到虚空", () => {
 		const ai = settings({
-			provider: "deepseek",
-			providers: { deepseek: EMPTY_AI_PROVIDER_PROFILE },
+			activeProfile: "deepseek",
+			providers: { deepseek: bucket("deepseek") },
 		});
-		expect(resolveEditingProvider(ai, "openrouter")).toBe("deepseek");
+		expect(resolveEditingProfile(ai, "openrouter")).toBe("deepseek");
 	});
 
-	it("连在用的那家都没添加过 → 落到注册表序第一家(不是对象键序)", () => {
-		// 键序先写 deepseek,注册表里 openrouter 在前 —— 左栏就是按注册表渲染的,
-		// 这里跟着它才不会「高亮项与右侧内容各说各话」。
+	it("连在用的那份都没添加过 → 落到左栏第一项(注册表序分家,不是对象键序)", () => {
 		const ai = settings({
-			provider: "custom",
-			providers: { deepseek: EMPTY_AI_PROVIDER_PROFILE, openrouter: EMPTY_AI_PROVIDER_PROFILE },
+			activeProfile: "gone",
+			providers: { deepseek: bucket("deepseek"), openrouter: bucket("openrouter") },
 		});
-		expect(resolveEditingProvider(ai, null)).toBe("openrouter");
+		expect(resolveEditingProfile(ai, null)).toBe("openrouter");
 	});
 
-	it("一家都没添加 → null(右侧该出添加面板,不是一组空框子)", () => {
-		expect(resolveEditingProvider(settings(), null)).toBeNull();
+	it("一份都没添加 → null(右侧该出添加面板,不是一组空框子)", () => {
+		expect(resolveEditingProfile(settings(), null)).toBeNull();
 	});
 });
 
-describe("removeProvider", () => {
-	/** 三家都添加过,当前用 deepseek。 */
+describe("removeProfile", () => {
+	/** 三份实例(两只 DeepSeek + 一只 OpenRouter),当前用 deepseek。 */
 	function three(): AISettings {
 		return settings({
-			provider: "deepseek",
+			activeProfile: "deepseek",
 			providers: {
-				openrouter: { ...EMPTY_AI_PROVIDER_PROFILE, apiKey: "sk-or" },
-				deepseek: { ...EMPTY_AI_PROVIDER_PROFILE, apiKey: "sk-ds" },
-				siliconflow: { ...EMPTY_AI_PROVIDER_PROFILE, apiKey: "sk-sf" },
+				"deepseek-2": bucket("deepseek", { apiKey: "sk-b" }),
+				deepseek: bucket("deepseek", { apiKey: "sk-a" }),
+				openrouter: bucket("openrouter", { apiKey: "sk-or" }),
 			},
 		});
 	}
 
 	it("桶真的没了 —— 不是留着一个空壳", () => {
-		// 留空壳的话左栏还会列着它(addedProviders 看的是「键存不存在」),
+		// 留空壳的话左栏还会列着它(profileRailItems 看的是「键存不存在」),
 		// 而且落盘时 collectAiSecrets 仍会去看它一眼。
-		const next = removeProvider(three(), "siliconflow");
-		expect("siliconflow" in next.providers).toBe(false);
+		const next = removeProfile(three(), "deepseek-2");
+		expect("deepseek-2" in next.providers).toBe(false);
 	});
 
-	it("删掉不在用的那家,指针不动", () => {
-		expect(removeProvider(three(), "siliconflow").provider).toBe("deepseek");
+	it("删掉不在用的那份,指针不动", () => {
+		expect(removeProfile(three(), "deepseek-2").activeProfile).toBe("deepseek");
 	});
 
-	it("删掉**正在用**的那家 → 指针落到剩下的第一家(注册表序)", () => {
-		const next = removeProvider(three(), "deepseek");
-		expect(next.provider).toBe("openrouter");
+	it("删掉**正在用**的那份 → 指针落到左栏剩下的第一项", () => {
+		// 左栏按注册表序分家渲染(OpenRouter 在 DeepSeek 前),指针跟着它才不会
+		// 「高亮项与右侧内容各说各话」。
+		const next = removeProfile(three(), "deepseek");
+		expect(next.activeProfile).toBe("openrouter");
 		// 而且落在一个**真实存在**的桶上,不是随手指个名字。
-		expect(next.providers[next.provider]).toBeDefined();
+		expect(next.providers[next.activeProfile]).toBeDefined();
 	});
 
-	it("剩下的第一家按注册表序,不按对象键序", () => {
-		// 键序是「硅基先、OpenRouter 后」,注册表序反过来。照键序取就会指向硅基,
-		// 与左栏第一项(注册表序渲染)对不上 —— 删完之后高亮项和内容各说各话。
-		const ai = settings({
-			provider: "deepseek",
-			providers: {
-				siliconflow: { ...EMPTY_AI_PROVIDER_PROFILE },
-				openrouter: { ...EMPTY_AI_PROVIDER_PROFILE },
-				deepseek: { ...EMPTY_AI_PROVIDER_PROFILE },
-			},
-		});
-		expect(removeProvider(ai, "deepseek").provider).toBe("openrouter");
-	});
-
-	it("删到一家不剩:不炸,指针原样留着", () => {
+	it("删到一份不剩:不炸,指针原样留着", () => {
 		// 指针成了悬空引用 —— 这是**允许**的:resolveAIProfile 明确兜一套空默认值,
-		// 页面据此显示空态、引擎据此判定「没配齐」而停用 AI。硬改成 'custom' 反而是
-		// 撒谎(custom 也没添加),还会让主人重新添加同一家时指针莫名跑掉。
+		// 页面据此显示空态、引擎据此判定「没配齐」而停用 AI。
 		const ai = settings({
-			provider: "deepseek",
-			providers: { deepseek: { ...EMPTY_AI_PROVIDER_PROFILE } },
+			activeProfile: "deepseek",
+			providers: { deepseek: bucket("deepseek") },
 		});
-		const next = removeProvider(ai, "deepseek");
+		const next = removeProfile(ai, "deepseek");
 		expect(next.providers).toEqual({});
-		expect(next.provider).toBe("deepseek");
+		expect(next.activeProfile).toBe("deepseek");
 	});
 
-	it("删一家没添加过的 → 原样返回,不凭空造出别的变化", () => {
+	it("删一份没添加过的 → 原样返回,不凭空造出别的变化", () => {
 		const ai = three();
-		expect(removeProvider(ai, "volcengine")).toEqual(ai);
+		expect(removeProfile(ai, "volcengine")).toEqual(ai);
 	});
 
 	it("不改原对象", () => {
 		const ai = three();
-		removeProvider(ai, "deepseek");
-		expect(Object.keys(ai.providers).sort()).toEqual(["deepseek", "openrouter", "siliconflow"]);
-		expect(ai.provider).toBe("deepseek");
+		removeProfile(ai, "deepseek");
+		expect(Object.keys(ai.providers).sort()).toEqual(["deepseek", "deepseek-2", "openrouter"]);
+		expect(ai.activeProfile).toBe("deepseek");
 	});
 });
 

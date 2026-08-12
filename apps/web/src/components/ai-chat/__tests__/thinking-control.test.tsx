@@ -40,8 +40,10 @@ beforeEach(() => {
 	G.patch.mockClear();
 	G.ai = {
 		enabled: true,
-		provider: "deepseek",
-		providers: { deepseek: { model: "deepseek-chat", enableThinking: false } },
+		activeProfile: "deepseek",
+		providers: {
+			deepseek: { provider: "deepseek", model: "deepseek-chat", enableThinking: false },
+		},
 	};
 });
 afterEach(cleanup);
@@ -62,11 +64,33 @@ describe("ThinkingControl — 开关", () => {
 		});
 	});
 
+	it("在用的是同一家的第二份实例 → PATCH 写进**那只**桶,不写错邻居", async () => {
+		// 一家可设多份之后,写路径必须跟着 activeProfile 走 —— 按家名写的话,
+		// 两个 DeepSeek 号里被改的永远是第一只。
+		G.ai = {
+			enabled: true,
+			activeProfile: "deepseek-2",
+			providers: {
+				deepseek: { provider: "deepseek", model: "m", enableThinking: false },
+				"deepseek-2": { provider: "deepseek", model: "m", enableThinking: false },
+			},
+		};
+		render(wrap(<ThinkingControl />));
+		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("false"));
+
+		fireEvent.click(toggle());
+
+		await waitFor(() => expect(G.patch).toHaveBeenCalledTimes(1));
+		expect(G.patch.mock.calls[0]?.[1]).toEqual({
+			defaults: { ai: { providers: { "deepseek-2": { enableThinking: true } } } },
+		});
+	});
+
 	it("开着时再点 → 关掉", async () => {
 		G.ai = {
 			enabled: true,
-			provider: "deepseek",
-			providers: { deepseek: { model: "m", enableThinking: true } },
+			activeProfile: "deepseek",
+			providers: { deepseek: { provider: "deepseek", model: "m", enableThinking: true } },
 		};
 		render(wrap(<ThinkingControl />));
 		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("true"));
@@ -84,8 +108,10 @@ describe("ThinkingControl — 档位", () => {
 	it("开着才显示三档,当前档标为按下", async () => {
 		G.ai = {
 			enabled: true,
-			provider: "deepseek",
-			providers: { deepseek: { model: "m", enableThinking: true, thinkingLevel: "high" } },
+			activeProfile: "deepseek",
+			providers: {
+				deepseek: { provider: "deepseek", model: "m", enableThinking: true, thinkingLevel: "high" },
+			},
 		};
 		render(wrap(<ThinkingControl />));
 		await waitFor(() => expect(screen.getByRole("button", { name: "高" })).toBeTruthy());
@@ -102,8 +128,15 @@ describe("ThinkingControl — 档位", () => {
 	it("点别的档 → PATCH thinkingLevel", async () => {
 		G.ai = {
 			enabled: true,
-			provider: "deepseek",
-			providers: { deepseek: { model: "m", enableThinking: true, thinkingLevel: "medium" } },
+			activeProfile: "deepseek",
+			providers: {
+				deepseek: {
+					provider: "deepseek",
+					model: "m",
+					enableThinking: true,
+					thinkingLevel: "medium",
+				},
+			},
 		};
 		render(wrap(<ThinkingControl />));
 		fireEvent.click(await screen.findByRole("button", { name: "高" }));
@@ -120,8 +153,15 @@ describe("ThinkingControl — 档位", () => {
 		// 更新之后,界面**立刻**是终态,网络往返与观感无关。
 		G.ai = {
 			enabled: true,
-			provider: "deepseek",
-			providers: { deepseek: { model: "m", enableThinking: true, thinkingLevel: "medium" } },
+			activeProfile: "deepseek",
+			providers: {
+				deepseek: {
+					provider: "deepseek",
+					model: "m",
+					enableThinking: true,
+					thinkingLevel: "medium",
+				},
+			},
 		};
 		// 保存永远在途 —— 把「在途中」这一拍放大到无限长,闪的实现在这里会一直暗着。
 		G.patch.mockImplementationOnce(() => new Promise(() => {}));
@@ -141,8 +181,15 @@ describe("ThinkingControl — 档位", () => {
 	it("保存失败 → 档位弹回原样,不留一个骗人的高亮", async () => {
 		G.ai = {
 			enabled: true,
-			provider: "deepseek",
-			providers: { deepseek: { model: "m", enableThinking: true, thinkingLevel: "medium" } },
+			activeProfile: "deepseek",
+			providers: {
+				deepseek: {
+					provider: "deepseek",
+					model: "m",
+					enableThinking: true,
+					thinkingLevel: "medium",
+				},
+			},
 		};
 		G.patch.mockRejectedValueOnce(new Error("500"));
 		render(wrap(<ThinkingControl />));
@@ -158,7 +205,11 @@ describe("ThinkingControl — 档位", () => {
 
 describe("ThinkingControl — 不支持思考的服务商", () => {
 	it("自定义:按钮灰着,并指路去额外请求参数 —— 方言未知,开关帮不上忙", async () => {
-		G.ai = { enabled: true, provider: "custom", providers: { custom: { model: "m" } } };
+		G.ai = {
+			enabled: true,
+			activeProfile: "custom",
+			providers: { custom: { provider: "custom", model: "m" } },
+		};
 		render(wrap(<ThinkingControl />));
 		await waitFor(() => expect(toggle()).toBeTruthy());
 		expect((toggle() as HTMLButtonElement).disabled).toBe(true);

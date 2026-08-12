@@ -31,9 +31,11 @@ import { api } from "../../services/api";
 function globals() {
 	const g = makeDefaultGlobalConfig();
 	g.defaults.ai.enabled = true;
-	g.defaults.ai.provider = "deepseek";
+	g.defaults.ai.activeProfile = "deepseek";
 	g.defaults.ai.providers = {
 		deepseek: {
+			provider: "deepseek",
+			label: "",
 			apiKey: "sk-main",
 			baseUrl: "https://api.deepseek.com/v1",
 			model: "deepseek-chat",

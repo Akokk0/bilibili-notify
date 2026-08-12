@@ -190,9 +190,9 @@ export const DEFAULT_AI = {
 	persona: BUILTIN_AI_PRESETS[0].persona,
 	dynamicPrompt: BUILTIN_AI_PRESETS[0].dynamicPrompt,
 	liveSummaryPrompt: BUILTIN_AI_PRESETS[0].liveSummaryPrompt,
-	// 全新安装一家服务商都没添加 —— 设置页左栏是空的,引擎按「还没配齐」停用。
-	// provider 指针先停在兜底档,主人添加第一家时会跟着切过去。
-	provider: "custom",
+	// 全新安装一份实例都没添加 —— 设置页左栏是空的,引擎按「还没配齐」停用。
+	// activeProfile 指针先悬空,主人添加第一份时会跟着落过去。
+	activeProfile: "",
 	providers: {},
 	presets: BUILTIN_AI_PRESETS,
 } as const;

@@ -777,8 +777,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					// 引擎构造时 ai 字段是 snapshot,新建/置空后必须通过 setAi/setCommentary
 					// 把引用同步过去,否则永远沿用启动时的 null。
 					const a = g.defaults.ai;
-					// 当前选中那家的连接是否配齐 —— 换家也会走到这里(provider 指针
-					// 本身就在 defaults.ai 里,变了就算 aiChanged)。
+					// 当前选中那份实例的连接是否配齐 —— 换实例也会走到这里(activeProfile
+					// 指针本身就在 defaults.ai 里,变了就算 aiChanged)。
 					const ap = resolveAIProfile(a);
 					const needsCommentary = Boolean(ap.apiKey && ap.baseUrl);
 					if (!needsCommentary && commentary) {
@@ -801,7 +801,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						// 报**真正推给引擎的那份人格**(指针指的那份),不是 `a.persona` ——
 						// 后者永远冻在老值上,照它打日志等于给排查的人指错方向。
 						log.info(
-							`[ai] commentary 配置已更新: provider=${a.provider}, model=${ap.model}, persona.name=${next.persona.name}, traits=${next.persona.traits}`,
+							`[ai] commentary 配置已更新: profile=${a.activeProfile}(${ap.provider}), model=${ap.model}, persona.name=${next.persona.name}, traits=${next.persona.traits}`,
 						);
 					}
 				}

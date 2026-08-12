@@ -264,7 +264,8 @@ export function createAiRoute(deps: RouteDeps): Hono {
 			// 「主模型直接看图」这条路还要那家**真有**视觉模型才算数:DeepSeek 官方
 			// 接口一个都没有,勾着开关也只会把图带到模型那儿才被拒 —— 白烧一次请求,
 			// 报错还来自上游、主人看不懂。这里当场拦下并指路。
-			const mainModelCanSee = aiProfile.enableVision && providerMeta(aiCfg.provider).supportsVision;
+			const mainModelCanSee =
+				aiProfile.enableVision && providerMeta(aiProfile.provider).supportsVision;
 			if (!mainModelCanSee && !aiProfile.vision.model.trim()) {
 				return c.json(
 					{
@@ -434,13 +435,13 @@ export function resolveDraftApiKey(draft: string | undefined, stored: string | u
  * 把草稿里的脱敏占位换回真实密钥。
  *
  * 页面永远看不到真 key(GET /globals 一律回占位),所以主人没改过 key 时草稿里带的
- * 就是那个占位。直接拿去请求必然 401。这里按**草稿选中的那家**去已存配置里取回
- * 对应桶的真 key —— 取错桶就会用 A 家的 key 打 B 家的接口。
+ * 就是那个占位。直接拿去请求必然 401。这里按**草稿选中的那份实例**去已存配置里
+ * 取回对应桶的真 key —— 取错桶就会用 A 家的 key 打 B 家的接口。
  *
  * 主模型与视觉副模型两把各自还原:主人可能只换了其中一把。
  */
 export function withStoredApiKey(draft: AISettings, stored: AISettings): AISettings {
-	const id = draft.provider;
+	const id = draft.activeProfile;
 	const d = draft.providers[id];
 	if (!d) return draft;
 	const s = stored.providers[id];

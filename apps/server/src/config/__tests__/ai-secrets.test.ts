@@ -22,6 +22,8 @@ import { applyAiSecrets, collectAiSecrets, stripAiSecrets } from "../ai-secrets.
 
 function profile(over: Record<string, unknown> = {}) {
 	return {
+		provider: "deepseek" as const,
+		label: "",
 		apiKey: "",
 		baseUrl: "",
 		model: "",

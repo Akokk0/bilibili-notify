@@ -12,9 +12,10 @@ import { Icon } from "../icons";
  * 聊天输入框旁的「深度思考」开关 + 档位 —— 不离开对话就能开思考。
  *
  * 它是**同一份配置的另一个入口**:读写的就是智能女仆页那套
- * `ai.providers.<id>.enableThinking / thinkingLevel`,不另起一份状态。保存走
- * PATCH /api/globals,服务端 `config-changed` 会把新配置热推给引擎,下一句就生效;
- * 只动这两个字段不会触发 AI 探活,所以开关是即点即应的。
+ * `ai.providers.<实例>.enableThinking / thinkingLevel`(实例 = `activeProfile`
+ * 指着的那份),不另起一份状态。保存走 PATCH /api/globals,服务端 `config-changed`
+ * 会把新配置热推给引擎,下一句就生效;只动这两个字段不会触发 AI 探活,
+ * 所以开关是即点即应的。
  *
  * 自定义服务商没有这颗开关能翻译成的方言(我们不知道对面是哪家),按钮灰着并
  * 指路去「额外请求参数」—— 藏起来的话,主人只会觉得功能时有时无。
@@ -28,7 +29,8 @@ const LEVELS: ReadonlyArray<{ id: ThinkingLevel; label: string }> = [
 
 /** 一次保存的载荷。走 variables 而不是闭包 —— 见 react-query onMutate 的时序坑。 */
 type SaveVars = {
-	provider: GlobalConfig["defaults"]["ai"]["provider"];
+	/** 写进哪只实例桶(= `ai.activeProfile` 指着的那份)。 */
+	profileId: string;
 	delta: { enableThinking?: boolean; thinkingLevel?: ThinkingLevel };
 };
 
@@ -39,8 +41,8 @@ export function ThinkingControl() {
 		queryFn: () => api.get<GlobalConfig>("/api/globals"),
 	});
 	const save = useMutation({
-		mutationFn: ({ provider, delta }: SaveVars) =>
-			api.patch("/api/globals", { defaults: { ai: { providers: { [provider]: delta } } } }),
+		mutationFn: ({ profileId, delta }: SaveVars) =>
+			api.patch("/api/globals", { defaults: { ai: { providers: { [profileId]: delta } } } }),
 		/**
 		 * 乐观更新:点下去缓存立刻改,界面**当场**就是终态。
 		 *
@@ -48,21 +50,21 @@ export function ThinkingControl() {
 		 * `disabled:opacity-40` 一来一回,主人看到的就是「切个档,开关闪一下」。
 		 * 配置这种毫秒级往返的小字段,观感不该被网络牵着走。
 		 */
-		onMutate: async ({ provider, delta }: SaveVars) => {
+		onMutate: async ({ profileId, delta }: SaveVars) => {
 			await qc.cancelQueries({ queryKey: ["globals"] });
 			const prev = qc.getQueryData<GlobalConfig>(["globals"]);
 			qc.setQueryData<GlobalConfig>(["globals"], (cur) => {
 				if (!cur) return cur;
-				// 桶可能还不存在(从没在设置页动过这家)—— 拿 resolve 出来的完整
-				// 缺省当底,别往缓存里塞半个桶。
-				const base = cur.defaults.ai.providers[provider] ?? resolveAIProfile(cur.defaults.ai);
+				// 桶理应存在(指针不悬空时开关才可点)—— 仍拿 resolve 出来的完整
+				// 缺省兜底,别往缓存里塞半个桶。
+				const base = cur.defaults.ai.providers[profileId] ?? resolveAIProfile(cur.defaults.ai);
 				return {
 					...cur,
 					defaults: {
 						...cur.defaults,
 						ai: {
 							...cur.defaults.ai,
-							providers: { ...cur.defaults.ai.providers, [provider]: { ...base, ...delta } },
+							providers: { ...cur.defaults.ai.providers, [profileId]: { ...base, ...delta } },
 						},
 					},
 				};
@@ -81,8 +83,9 @@ export function ThinkingControl() {
 	// 配置还没到手就先不画 —— 一颗状态未知的开关比没有开关更误导。
 	if (!ai) return null;
 
-	const meta = providerMeta(ai.provider);
 	const profile = resolveAIProfile(ai);
+	// 方言归属认桶里的 provider 章 —— activeProfile 只是实例 id,同一家可以有多份。
+	const meta = providerMeta(profile.provider);
 	const on = meta.supportsThinking && profile.enableThinking;
 
 	return (
@@ -100,7 +103,10 @@ export function ThinkingControl() {
 						: '自定义服务商的方言未知,请到「智能女仆」页的「额外请求参数」手写(如 DeepSeek 填 {"thinking":{"type":"enabled"}})'
 				}
 				onClick={() =>
-					save.mutate({ provider: ai.provider, delta: { enableThinking: !profile.enableThinking } })
+					save.mutate({
+						profileId: ai.activeProfile,
+						delta: { enableThinking: !profile.enableThinking },
+					})
 				}
 				className={`flex h-8 cursor-pointer items-center gap-1.25 rounded-full border px-3 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
 					on
@@ -122,7 +128,7 @@ export function ThinkingControl() {
 								type="button"
 								aria-pressed={active}
 								onClick={() =>
-									save.mutate({ provider: ai.provider, delta: { thinkingLevel: l.id } })
+									save.mutate({ profileId: ai.activeProfile, delta: { thinkingLevel: l.id } })
 								}
 								className={`h-6.5 cursor-pointer rounded-full px-2.5 text-[11.5px] font-semibold transition-colors ${
 									active ? "bn-chat-accent bn-chat-accent-soft" : "text-bn-text-tertiary"

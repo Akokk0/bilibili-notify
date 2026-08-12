@@ -284,6 +284,13 @@ export function providerMeta(id: AIProviderId): AIProviderMeta {
  * 也能用上 —— 设置页经 `/constants` 子路径运行时消费它,不能把 zod 拖进前端 bundle。
  */
 export interface AIProviderProfileShape {
+	/**
+	 * 这桶配置属于哪家服务商 —— 决定「开思考」翻译成哪家方言。桶键只是**实例 id**
+	 * (同一家可以有多份实例),方言归属必须写在桶里,不能再从键名推。
+	 */
+	provider: AIProviderId;
+	/** 实例的显示名。空串 = 用注册表里那家的名字(避免把家名抄进配置,改名会过期)。 */
+	label: string;
 	apiKey: string;
 	baseUrl: string;
 	model: string;
@@ -300,6 +307,8 @@ export interface AIProviderProfileShape {
  * 一致** —— 那边有一条测试拿 `parse({})` 与这里比深等,写歪了会当场红。
  */
 export const EMPTY_AI_PROVIDER_PROFILE: AIProviderProfileShape = {
+	provider: "custom",
+	label: "",
 	apiKey: "",
 	baseUrl: "",
 	model: "",
@@ -314,8 +323,8 @@ export const EMPTY_AI_PROVIDER_PROFILE: AIProviderProfileShape = {
 /**
  * 取当前生效的那一套配置。
  *
- * `provider` 指向的桶可能不存在(主人刚把它删掉、配置是手改的、或者这就是一份
- * 全新配置),这时返回一套**空默认值**而不是 undefined:调用方拿到空 `model` 会按
+ * `activeProfile` 指向的实例可能不存在(主人刚把它删掉、配置是手改的、或者这就是
+ * 一份全新配置),这时返回一套**空默认值**而不是 undefined:调用方拿到空 `model` 会按
  * 既有规矩判定「还没配齐」并停用 AI —— 那是它们本来就处理得了的情形;返回
  * undefined 则会在各处炸出读属性的 TypeError。
  *
@@ -323,11 +332,10 @@ export const EMPTY_AI_PROVIDER_PROFILE: AIProviderProfileShape = {
  * 局部状态与后端的完整配置,前者在数据还没到齐时就会渲染。
  */
 export function resolveAIProfile(ai: {
-	provider?: AIProviderId;
-	providers?: Partial<Record<AIProviderId, AIProviderProfileShape>>;
+	activeProfile?: string;
+	providers?: Record<string, AIProviderProfileShape | undefined>;
 }): AIProviderProfileShape {
-	const id = ai.provider ?? "custom";
-	return ai.providers?.[id] ?? EMPTY_AI_PROVIDER_PROFILE;
+	return ai.providers?.[ai.activeProfile ?? ""] ?? EMPTY_AI_PROVIDER_PROFILE;
 }
 
 /**

@@ -156,17 +156,29 @@ export const FIELD_LABELS = {
 	// ── AI 连接 ───────────────────────────────────────────────────────────
 	"ai.apiKey": { label: "API Key", section: "ai", secret: true },
 	"ai.baseUrl": { label: "Base URL", section: "ai" },
-	"ai.provider": {
-		label: "服务商",
-		hint: "「开思考」这件事各家写法完全不一样，女仆得知道是哪家才翻译得对。选「自定义」则不发任何服务商专属参数，需要什么请写到下面的额外请求参数里",
+	// 指向当前在用实例的**指针**(与人格的 activePreset 同一套语义)。
+	"ai.activeProfile": {
+		label: "使用的服务商",
+		hint: "女仆平时用哪一份实例。只拨指针不改配置，换来换去各份的密钥与模型都不会丢",
 		section: "ai",
 	},
-	// 合成字段,不是 schema 里的东西 —— 灵动岛只认得「摊平后的当前那一家」,
-	// 添加/删除别家在它眼里毫无变化,于是保存条不亮、主人一走就丢。这一行把
-	// 「已添加哪几家」显式喂给它。见 Ai.tsx#packIsland。
+	// 实例桶里的方言归属字段(经 `ai.providers.<实例>.provider` 前缀规则继承到这条)。
+	"ai.provider": {
+		label: "所属服务商",
+		hint: "「开思考」这件事各家写法完全不一样，女仆得知道是哪家才翻译得对。「自定义」则不发任何服务商专属参数，需要什么请写到额外请求参数里",
+		section: "ai",
+	},
+	"ai.label": {
+		label: "实例名称",
+		hint: "同一家添加多份时全靠它区分。留空则显示那家的名字",
+		section: "ai",
+	},
+	// 合成字段,不是 schema 里的东西 —— 灵动岛只认得「摊平后的那几只桶」,
+	// 添加/删除实例在它眼里毫无变化,于是保存条不亮、主人一走就丢。这一行把
+	// 「已添加哪几份」显式喂给它。见 Ai.tsx#packIsland。
 	"ai.providerList": {
 		label: "已添加的服务商",
-		hint: "左栏列着的那几家。删掉一家会连同它存着的密钥一起抹掉",
+		hint: "左栏列着的那几份实例。删掉一份会连同它存着的密钥一起抹掉",
 		section: "ai",
 	},
 	"ai.enableThinking": {
@@ -625,17 +637,32 @@ export const FIELD_LABELS = {
 const SEEN_PREFIX = "templateDefaultsSeen.";
 
 /**
- * 逐家服务商的桶前缀 —— `ai.providers.<家>.<字段>`。
+ * 逐实例的桶前缀 —— `ai.providers.<实例>.<字段>`。
  *
- * 连接与生成参数一家存一套,code 因此是**家数 × 十来个字段**的笛卡尔积,逐条登记
- * 就是把 `ai.*` 那批 entry 抄五遍。所以走前缀 fallback:hint / section / **secret**
- * 全部继承 `ai.<字段>` 那条,label 前面缀上是哪一家。
+ * 连接与生成参数一份实例存一套,code 因此是**份数 × 十来个字段**的笛卡尔积,逐条
+ * 登记就是把 `ai.*` 那批 entry 抄几遍。所以走前缀 fallback:hint / section /
+ * **secret** 全部继承 `ai.<字段>` 那条,label 前面缀上是哪一份。
  *
  * 继承 `secret` 尤其要紧:漏了这一步,灵动岛的 diff 面板查不到密钥位,会把主人刚
  * 敲进去的 **API Key 明文**摊在面板上。
  */
 const PROVIDER_PREFIX = "ai.providers.";
 const PROVIDER_IDS: ReadonlySet<string> = new Set(AI_PROVIDER_IDS);
+
+/**
+ * 实例 id → 显示名。id 由 `addProfile` 生成,只有两种形状:`<家>`(头一份)与
+ * `<家>-<序号>`(后续)。字典这儿拿不到配置,解析不了主人起的名字,只能按 id
+ * 还原个能认的(「DeepSeek 2 · API Key」)。两种形状都不是的(手改配置)返回
+ * null,调用方照旧「老实说不认识」。
+ */
+function profileDisplayName(id: string): string | null {
+	if (PROVIDER_IDS.has(id)) return providerMeta(id as AIProviderId).label;
+	const m = /^(.+)-(\d+)$/.exec(id);
+	if (m?.[1] !== undefined && PROVIDER_IDS.has(m[1])) {
+		return `${providerMeta(m[1] as AIProviderId).label} ${m[2]}`;
+	}
+	return null;
+}
 
 export function getFieldLabel(code: string): FieldLabel | null {
 	const hit = (FIELD_LABELS as Record<string, FieldLabel | undefined>)[code];
@@ -653,14 +680,15 @@ export function getFieldLabel(code: string): FieldLabel | null {
 		const rest = code.slice(PROVIDER_PREFIX.length);
 		const cut = rest.indexOf(".");
 		const id = cut < 0 ? "" : rest.slice(0, cut);
-		// 认不出的家、或者认不出的字段,一律**老实说不认识** —— 兜一个半截标签
+		// 认不出的实例、或者认不出的字段,一律**老实说不认识** —— 兜一个半截标签
 		// (「undefined · 某字段」)比缺一行更难查。
-		if (PROVIDER_IDS.has(id)) {
+		const display = profileDisplayName(id);
+		if (display !== null) {
 			const base = (FIELD_LABELS as Record<string, FieldLabel | undefined>)[
 				`ai.${rest.slice(cut + 1)}`
 			];
 			if (base) {
-				return { ...base, label: `${providerMeta(id as AIProviderId).label} · ${base.label}` };
+				return { ...base, label: `${display} · ${base.label}` };
 			}
 		}
 	}

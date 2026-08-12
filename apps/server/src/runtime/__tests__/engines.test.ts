@@ -261,9 +261,11 @@ function patchGlobals(c: Ctx, mutate: (g: GlobalConfig) => void): void {
 function aiGlobals(): GlobalConfig {
 	const g = makeDefaultGlobalConfig();
 	// 连接字段住在服务商桶里(各家一套配置)。
-	g.defaults.ai.provider = "deepseek";
+	g.defaults.ai.activeProfile = "deepseek";
 	g.defaults.ai.providers = {
 		deepseek: {
+			provider: "deepseek",
+			label: "",
 			apiKey: "k-test",
 			baseUrl: "https://api.example.com",
 			model: "gpt-4o-mini",
@@ -543,7 +545,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 
 		patchGlobals(c, (g) => {
 			const ai = aiGlobals().defaults.ai;
-			g.defaults.ai.provider = ai.provider;
+			g.defaults.ai.activeProfile = ai.activeProfile;
 			g.defaults.ai.providers = ai.providers;
 		});
 		c.bus.emit("config-changed", "globals");
@@ -701,7 +703,7 @@ describe("createEngines — AI 热重载三态", () => {
 		expect(H.ai).toHaveLength(0);
 		patchGlobals(c, (g) => {
 			// 添加一家并选中它 —— 「配齐了」现在的意思是「当前那家的桶里连接齐备」。
-			g.defaults.ai.provider = "deepseek";
+			g.defaults.ai.activeProfile = "deepseek";
 			g.defaults.ai.providers = aiGlobals().defaults.ai.providers;
 		});
 		c.bus.emit("config-changed", "globals");
@@ -716,7 +718,7 @@ describe("createEngines — AI 热重载三态", () => {
 		active = c;
 		expect(H.ai).toHaveLength(1);
 		patchGlobals(c, (g) => {
-			const p = g.defaults.ai.providers[g.defaults.ai.provider];
+			const p = g.defaults.ai.providers[g.defaults.ai.activeProfile];
 			if (p) p.apiKey = "";
 		});
 		c.bus.emit("config-changed", "globals");
@@ -731,7 +733,7 @@ describe("createEngines — AI 热重载三态", () => {
 		const c = setup({ globals: aiGlobals() });
 		active = c;
 		patchGlobals(c, (g) => {
-			const p = g.defaults.ai.providers[g.defaults.ai.provider];
+			const p = g.defaults.ai.providers[g.defaults.ai.activeProfile];
 			if (p) p.model = "gpt-4o";
 		});
 		c.bus.emit("config-changed", "globals");

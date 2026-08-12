@@ -180,14 +180,24 @@ export const AIPersonaSchema = z.object({
 export type AIPersona = z.infer<typeof AIPersonaSchema>;
 
 /**
- * **一家服务商的整套配置。**
+ * **一份服务商实例的整套配置。**
  *
- * 每家各存一份(见 {@link AISettingsSchema} 的 `providers`) —— 换家不必把 key
- * 重敲一遍,也不会出现「地址还是上一家的、模型名已经换了」这种半截状态。
+ * 按**实例**各存一份(见 {@link AISettingsSchema} 的 `providers`),同一家服务商
+ * 可以有多份实例(两个 DeepSeek 号、一个测试用的百炼)。换来换去不必把 key 重敲
+ * 一遍,也不会出现「地址还是上一份的、模型名已经换了」这种半截状态。
  *
- * 全部字段带默认值:设置页新添一家时只塞一个 `{}` 即可,余下由 schema 补齐。
+ * 除 `provider` 外全部字段带默认值:设置页新添一份时塞 `{ provider }` 即可,
+ * 余下由 schema 补齐。`provider` 刻意**无默认**:桶键只是实例 id,方言归属认不出
+ * 又没写明时(手改坏的数据)宁可拒收,也不猜一个、更不悄悄吞掉。
  */
 export const AIProviderProfileSchema = z.object({
+	/**
+	 * 这桶配置属于哪家服务商 —— 决定「开思考」翻译成哪家的方言。上一代配置
+	 * 以服务商名当桶键,迁移时按键名盖章(见 {@link AISettingsSchema} 的 preprocess)。
+	 */
+	provider: z.enum(AI_PROVIDER_IDS),
+	/** 实例的显示名。空串 = 用注册表里那家的名字(不把家名抄进配置,免得改名过期)。 */
+	label: z.string().default(""),
 	apiKey: z.string().default(""),
 	baseUrl: z.string().default(""),
 	model: z.string().default(""),
@@ -249,20 +259,23 @@ const AISettingsObjectSchema = z.object({
 	dynamicPrompt: z.string(),
 	liveSummaryPrompt: z.string(),
 	/**
-	 * 当前用哪家。**只认主人明确选过的那一个,绝不按 baseUrl 猜** —— 猜错就是
-	 * 替主人往别家发方言参数(几乎必然 400),而主人选了「自定义」却被地址悄悄
-	 * 改回去的话,怎么改都改不掉。
+	 * 当前用哪份实例(指向 {@link providers} 的键)。**只认主人明确选过的那一份,
+	 * 绝不按 baseUrl 猜** —— 猜错就是替主人往别家发方言参数(几乎必然 400)。
+	 * 与人格的 `activePreset` 同一套指针语义;上一代的 `provider` 字段迁移时改名至此。
 	 */
-	provider: z.enum(AI_PROVIDER_IDS).default("custom"),
+	activeProfile: z.string().default(""),
 	/**
-	 * 各家各一套配置。**稀疏** —— 键存在 = 主人添加过这家,不存在 = 还没添加。
-	 * 设置页左栏据此只列已添加的那几块;若改成五键恒在,一打开就会列出五家,
-	 * 与「点添加才出现」的交互直接冲突。
+	 * 各实例各一套配置,键是**实例 id**(同一家服务商可以有多份)。**稀疏** ——
+	 * 键存在 = 主人添加过这份,不存在 = 还没添加。设置页左栏据此只列已添加的那几块。
 	 *
-	 * {@link provider} 指向的桶**可能不存在**(比如刚被删掉),取值一律经
+	 * 上一代「一家一桶」的配置,桶键就是服务商名;迁移时**键名原样保留**(密钥
+	 * 加密袋的袋键 = 桶键,搬键名等于重启后密钥对不上号),只按键名往桶里盖
+	 * `provider` 章。
+	 *
+	 * {@link activeProfile} 指向的桶**可能不存在**(比如刚被删掉),取值一律经
 	 * {@link resolveAIProfile},它会兜一套空默认值回来。
 	 */
-	providers: z.partialRecord(z.enum(AI_PROVIDER_IDS), AIProviderProfileSchema).default({}),
+	providers: z.record(z.string(), AIProviderProfileSchema).default({}),
 	/**
 	 * 全局此刻启用哪一份人格。**不填 = 用 `persona`**(老配置一字不变,无需迁移);
 	 * 填了就用 `presets` 里那一份。
@@ -317,7 +330,9 @@ const LEGACY_FLAT_KEYS = [
  */
 export const AISettingsSchema = z.preprocess((raw) => {
 	if (raw === null || typeof raw !== "object") return raw;
-	return migratePersonaPointer(migrateFlatProviderFields(raw as Record<string, unknown>));
+	return migratePersonaPointer(
+		migrateProviderInstances(migrateFlatProviderFields(raw as Record<string, unknown>)),
+	);
 }, AISettingsObjectSchema);
 
 function migrateFlatProviderFields(o: Record<string, unknown>): Record<string, unknown> {
@@ -332,6 +347,43 @@ function migrateFlatProviderFields(o: Record<string, unknown>): Record<string, u
 	// 一个字段都没有的话不造桶 —— 那是一份全新配置,左栏该是空的。
 	if (Object.keys(legacy).length === 0) return { ...rest, providers: {} };
 	return { ...rest, provider: "custom", providers: { custom: legacy } };
+}
+
+/**
+ * 上一代「一家一桶」→ 当代「实例桶」:
+ *
+ * - 指针改名:`provider` → `activeProfile`(值原样 —— 老指针指的服务商名恰好
+ *   就是迁移后那只桶的实例 id)。
+ * - 桶盖章:键是认得的服务商名、桶里又没写 `provider` 的,按键名补上。键名
+ *   **原样保留**:密钥加密袋的袋键就是桶键,搬键名等于重启后密钥对不上号。
+ *
+ * 认不出的键(不是服务商名、桶里也没写 provider)**不盖章**,留给 schema 拒收
+ * —— 那是手改坏的数据,猜一个方言归属比报错更糟。
+ */
+function migrateProviderInstances(o: Record<string, unknown>): Record<string, unknown> {
+	const out = { ...o };
+	if (out.activeProfile === undefined && typeof out.provider === "string") {
+		out.activeProfile = out.provider;
+	}
+	delete out.provider;
+
+	const providers = out.providers;
+	if (providers !== null && typeof providers === "object" && !Array.isArray(providers)) {
+		const next: Record<string, unknown> = { ...(providers as Record<string, unknown>) };
+		for (const [key, bucket] of Object.entries(next)) {
+			if (
+				bucket !== null &&
+				typeof bucket === "object" &&
+				!Array.isArray(bucket) &&
+				(bucket as Record<string, unknown>).provider === undefined &&
+				(AI_PROVIDER_IDS as readonly string[]).includes(key)
+			) {
+				next[key] = { ...bucket, provider: key };
+			}
+		}
+		out.providers = next;
+	}
+	return out;
 }
 
 /** 结构比较用。schema 全是纯数据,键序由 zod 定死,`JSON.stringify` 足够可靠。 */

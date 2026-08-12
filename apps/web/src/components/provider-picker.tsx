@@ -20,7 +20,7 @@ export interface ProviderPickerProps {
 export function ProviderPicker({ value, onChange, only }: ProviderPickerProps) {
 	const shown = only ? AI_PROVIDERS.filter((p) => only.includes(p.id)) : AI_PROVIDERS;
 	return (
-		<div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+		<div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
 			{shown.map((p) => {
 				const active = p.id === value;
 				const brand = PROVIDER_BRANDS[p.id];

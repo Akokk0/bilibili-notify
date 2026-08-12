@@ -25,6 +25,8 @@ function withAllBuckets() {
 		AI_PROVIDER_IDS.map((id) => [
 			id,
 			{
+				provider: id,
+				label: "",
 				apiKey: `sk-main-${id}`,
 				baseUrl: "https://x/v1",
 				model: "m",
@@ -60,6 +62,8 @@ describe("redactGlobals — 每个桶的两把 key 都要打码", () => {
 		const g = makeDefaultGlobalConfig();
 		g.defaults.ai.providers = {
 			deepseek: {
+				provider: "deepseek",
+				label: "",
 				apiKey: "",
 				baseUrl: "",
 				model: "",
@@ -80,6 +84,8 @@ describe("redactGlobals — 每个桶的两把 key 都要打码", () => {
 		const g = makeDefaultGlobalConfig();
 		g.defaults.ai.providers = {
 			deepseek: {
+				provider: "deepseek",
+				label: "",
 				apiKey: "",
 				baseUrl: "",
 				model: "",
@@ -99,6 +105,8 @@ describe("redactGlobals — 每个桶的两把 key 都要打码", () => {
 		const g = makeDefaultGlobalConfig();
 		g.defaults.ai.providers = {
 			deepseek: {
+				provider: "deepseek",
+				label: "",
 				apiKey: "sk-x",
 				baseUrl: "",
 				model: "",

@@ -47,9 +47,11 @@ describe("planImport", () => {
 	it("overwrite applies globals when the backup carries them", () => {
 		const current = currentWith([]);
 		const g = makeDefaultGlobalConfig();
-		g.defaults.ai.provider = "deepseek";
+		g.defaults.ai.activeProfile = "deepseek";
 		g.defaults.ai.providers = {
 			deepseek: {
+				provider: "deepseek",
+				label: "",
 				apiKey: "sk-imported",
 				baseUrl: "",
 				model: "",
@@ -70,9 +72,11 @@ describe("planImport", () => {
 	it("merge never touches globals, even when the backup carries them", () => {
 		const current = currentWith([]);
 		const g = makeDefaultGlobalConfig();
-		g.defaults.ai.provider = "deepseek";
+		g.defaults.ai.activeProfile = "deepseek";
 		g.defaults.ai.providers = {
 			deepseek: {
+				provider: "deepseek",
+				label: "",
 				apiKey: "sk-imported",
 				baseUrl: "",
 				model: "",
