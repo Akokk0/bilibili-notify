@@ -66,6 +66,7 @@ function draftAi(
 		providers: {
 			deepseek: {
 				provider: "deepseek" as const,
+				apiFlavor: "chat",
 				label: "",
 				apiKey: "sk-draft",
 				baseUrl: "https://api.example.com/v1",
@@ -102,6 +103,7 @@ function makeDeps() {
 	globals.defaults.ai.providers = {
 		deepseek: {
 			provider: "deepseek",
+			apiFlavor: "chat",
 			label: "",
 			apiKey: "sk-stored",
 			baseUrl: "https://api.example.com/v1",

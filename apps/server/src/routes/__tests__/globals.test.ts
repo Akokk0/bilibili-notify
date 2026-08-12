@@ -11,6 +11,7 @@ function enabledAiGlobals() {
 	g.defaults.ai.providers = {
 		deepseek: {
 			provider: "deepseek",
+			apiFlavor: "chat",
 			label: "",
 			apiKey: "k",
 			baseUrl: "https://api.example.com",

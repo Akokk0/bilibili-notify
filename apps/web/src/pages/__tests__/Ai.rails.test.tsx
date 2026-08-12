@@ -35,6 +35,7 @@ function bucket(over: Partial<Bucket> = {}): Bucket {
 		apiKey: "sk-x",
 		baseUrl: "",
 		model: "m-1",
+		apiFlavor: "chat",
 		temperature: 0.7,
 		enableThinking: false,
 		thinkingLevel: "medium",

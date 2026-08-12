@@ -272,6 +272,7 @@ function aiGlobals(): GlobalConfig {
 			apiKey: "k-test",
 			baseUrl: "https://api.example.com",
 			model: "gpt-4o-mini",
+			apiFlavor: "chat",
 			temperature: 0.7,
 			enableThinking: false,
 			thinkingLevel: "medium",

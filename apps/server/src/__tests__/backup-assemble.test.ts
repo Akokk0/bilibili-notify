@@ -12,6 +12,7 @@ function withDeepseekKey(g: ReturnType<typeof makeDefaultGlobalConfig>, k: strin
 	g.defaults.ai.providers = {
 		deepseek: {
 			provider: "deepseek",
+			apiFlavor: "chat",
 			label: "",
 			apiKey: k,
 			baseUrl: "https://api.deepseek.com",

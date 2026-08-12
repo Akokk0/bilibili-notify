@@ -34,6 +34,7 @@ function globalsWith(provider: "deepseek" | "custom") {
 			apiKey: "k",
 			baseUrl: "https://x",
 			model: "m",
+			apiFlavor: "chat",
 			temperature: 0.7,
 			enableThinking: false,
 			thinkingLevel: "medium",

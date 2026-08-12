@@ -51,6 +51,7 @@ describe("planImport", () => {
 		g.defaults.ai.providers = {
 			deepseek: {
 				provider: "deepseek",
+				apiFlavor: "chat",
 				label: "",
 				apiKey: "sk-imported",
 				baseUrl: "",
@@ -76,6 +77,7 @@ describe("planImport", () => {
 		g.defaults.ai.providers = {
 			deepseek: {
 				provider: "deepseek",
+				apiFlavor: "chat",
 				label: "",
 				apiKey: "sk-imported",
 				baseUrl: "",
