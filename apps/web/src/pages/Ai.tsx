@@ -28,6 +28,8 @@ import {
 	resolveAIProfile,
 	resolveChatThinking,
 	type ThinkingLevel,
+	WEB_SEARCH_BACKENDS,
+	webSearchBackendMeta,
 } from "@bilibili-notify/internal/constants";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -147,6 +149,7 @@ function packIsland(ai: AISettings, levelOverride: AiLogLevel, providerKeys: rea
 		activeProfile,
 		activePreset,
 		chat,
+		search,
 	} = ai;
 	return {
 		ai: {
@@ -155,6 +158,9 @@ function packIsland(ai: AISettings, levelOverride: AiLogLevel, providerKeys: rea
 			// 聊天页的思考设置(与实例桶分家)。不喂给灵动岛的话,聊天块的改动
 			// 在它眼里毫无变化 —— 保存条不亮,主人一走就丢。
 			chat,
+			// 联网搜索(后端 / key / 引擎开关)。两侧都经 schema 补齐,恒为完整对象,
+			// 不会踩「一侧 undefined 整块当叶子」那个明文 key 外泄的坑。
+			search,
 			// 女仆真正在用的是哪一份实例 —— 它是个**指针**,与左栏在看哪一份无关。
 			activeProfile,
 			// 「已添加哪几份」的人话版。逐实例摊平之后删一份其实也能逐字段看出来,
@@ -380,6 +386,22 @@ export default function Ai() {
 	function setChat(delta: Partial<AISettings["chat"]>): void {
 		setDraft((d) => (d ? { ...d, chat: { ...d.chat, ...delta } } : d));
 	}
+	/** 换联网搜索的执行后端。key 各存一格,这里只拨指针。 */
+	function setSearchBackend(v: AISettings["search"]["backend"]): void {
+		setDraft((d) => (d ? { ...d, search: { ...d.search, backend: v } } : d));
+	}
+	/** 改某家搜索后端的 key —— 只动那一格,换后端不丢另一家的。 */
+	function setSearchKey(backend: AISettings["search"]["backend"], v: string): void {
+		setDraft((d) =>
+			d ? { ...d, search: { ...d.search, keys: { ...d.search.keys, [backend]: v } } } : d,
+		);
+	}
+	/** 拨某个引擎的联网搜索开关。 */
+	function setSearchEngine(k: keyof AISettings["search"]["engines"], v: boolean): void {
+		setDraft((d) =>
+			d ? { ...d, search: { ...d.search, engines: { ...d.search.engines, [k]: v } } } : d,
+		);
+	}
 	/**
 	 * 改**正在编辑**那家桶里的一项(不是在用的那家 —— 两者可以不是同一家)。
 	 * 桶不存在时按当前显示值(空默认)建出来。
@@ -577,6 +599,71 @@ export default function Ai() {
 								需要的话写到那份实例的额外请求参数里
 							</FieldNote>
 						)}
+					</GlassBox>
+
+					{/* 联网搜索 —— 与选哪家 AI 服务商**正交**:web_search 工具由这里选定的
+					    后端真正执行,任何支持 function calling 的服务商都能用上。所以它不挂
+					    在实例桶下,自己一块。聊天页那颗「联网搜索」胶囊是会话级的不落盘,
+					    这里落盘的只有后端 / key / 引擎开关。 */}
+					<GlassBox
+						title="联网搜索"
+						subtitle="web_search 工具的执行后端与引擎开关 · ai.search"
+						accent="#00b894"
+						icon={<Icon.search size={14} />}
+						badge="search"
+					>
+						<Field code="ai.search.backend" full>
+							<Picker<AISettings["search"]["backend"]>
+								value={draft.search.backend}
+								onChange={setSearchBackend}
+								options={WEB_SEARCH_BACKENDS.map((b) => ({ value: b.id, label: b.label }))}
+							/>
+						</Field>
+						<Field
+							code={`ai.search.keys.${draft.search.backend}`}
+							full
+							hint={`到 ${webSearchBackendMeta(draft.search.backend).keyUrl} 申请;两家的 key 各存一格,换来换去不会丢`}
+						>
+							<TInput
+								value={draft.search.keys[draft.search.backend]}
+								onChange={(v) => setSearchKey(draft.search.backend, v)}
+								secret
+								mono
+							/>
+						</Field>
+						<Field code="ai.search.engines.dynamic">
+							<div className="flex h-7.5 items-center">
+								<Toggle
+									value={draft.search.engines.dynamic}
+									onChange={(v) => setSearchEngine("dynamic", v)}
+									ariaLabel="动态点评联网搜索"
+								/>
+							</div>
+						</Field>
+						<Field code="ai.search.engines.live">
+							<div className="flex h-7.5 items-center">
+								<Toggle
+									value={draft.search.engines.live}
+									onChange={(v) => setSearchEngine("live", v)}
+									ariaLabel="直播总结联网搜索"
+								/>
+							</div>
+						</Field>
+						<Field code="ai.search.engines.roast">
+							<div className="flex h-7.5 items-center">
+								<Toggle
+									value={draft.search.engines.roast}
+									onChange={(v) => setSearchEngine("roast", v)}
+									ariaLabel="锐评联网搜索"
+								/>
+							</div>
+						</Field>
+						<FieldNote>
+							搜索<strong>按次计费</strong>，引擎开关出厂全关：开了之后每条点评 / 总结 / 锐评
+							都可能多几次搜索调用和几秒延迟。聊天页的「联网搜索」胶囊按会话手动点亮，不在这里。
+							另外别在实例的「额外请求参数」里同时开那家自带的联网（如 OpenRouter 的 plugins）——
+							两头都开等于每次问话搜两遍
+						</FieldNote>
 					</GlassBox>
 
 					{/* 全局人格选择 —— 它是个**指针**(ai.activePreset),不改写 ai.persona。

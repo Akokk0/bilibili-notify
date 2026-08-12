@@ -184,6 +184,39 @@ export const FIELD_LABELS = {
 		hint: "只管 AI 聊天页,统一三档,按在用实例的服务商换算方言",
 		section: "ai",
 	},
+	// 联网搜索(ai.search)—— web_search 工具的执行后端,与选哪家 AI 服务商正交。
+	"ai.search.backend": {
+		label: "搜索后端",
+		hint: "女仆的 web_search 工具由这家真正执行。博查中文质量好;Tavily 有免费额度",
+		section: "ai",
+	},
+	"ai.search.keys.bocha": {
+		label: "博查 API Key",
+		hint: "在 open.bochaai.com 申请。留空 = 未配置,女仆不会挂搜索工具",
+		section: "ai",
+		secret: true,
+	},
+	"ai.search.keys.tavily": {
+		label: "Tavily API Key",
+		hint: "在 app.tavily.com 申请。留空 = 未配置,女仆不会挂搜索工具",
+		section: "ai",
+		secret: true,
+	},
+	"ai.search.engines.dynamic": {
+		label: "动态点评联网搜索",
+		hint: "开了之后每条动态点评都可能多几次搜索调用(按次计费)和几秒延迟",
+		section: "ai",
+	},
+	"ai.search.engines.live": {
+		label: "直播总结联网搜索",
+		hint: "开了之后每次下播总结都可能多几次搜索调用(按次计费)和几秒延迟",
+		section: "ai",
+	},
+	"ai.search.engines.roast": {
+		label: "锐评联网搜索",
+		hint: "开了之后每次锐评都可能多几次搜索调用(按次计费)",
+		section: "ai",
+	},
 	// 合成字段,不是 schema 里的东西 —— 灵动岛只认得「摊平后的那几只桶」,
 	// 添加/删除实例在它眼里毫无变化,于是保存条不亮、主人一走就丢。这一行把
 	// 「已添加哪几份」显式喂给它。见 Ai.tsx#packIsland。
