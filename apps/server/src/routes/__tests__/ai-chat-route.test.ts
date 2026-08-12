@@ -39,12 +39,19 @@ const H = vi.hoisted(() => ({
 	reasoningChunks: null as string[] | null,
 	/** 最后一次收到的独立思考设置 —— 聊天的思考配置与引擎分家后,路由必须带上它。 */
 	lastThinking: null as unknown,
+	/** 最后一次收到的联网搜索开关 —— 聊天页那颗胶囊是会话级的,按消息传。 */
+	lastWebSearch: null as boolean | null | undefined,
 }));
 
 /** {@link ToolTraceEvent} 的测试侧影本 —— 这个包在测试里是 mock 掉的。 */
 type ToolEv =
 	| { phase: "start"; id: string; name: string; args: Record<string, string> }
-	| { phase: "end"; id: string; ok: boolean };
+	| {
+			phase: "end";
+			id: string;
+			ok: boolean;
+			sources?: Array<{ title: string; url: string; siteName?: string }>;
+	  };
 
 /**
  * 流式版:按 `H.chunks` 逐段回调 onDelta,再返回拼起来的整段。`H.error` 置上就
@@ -58,10 +65,12 @@ const chatStatelessStream = vi.fn(
 			onToolEvent?: (ev: ToolEv) => void;
 			onReasoning?: (t: string) => void;
 			thinking?: unknown;
+			webSearch?: boolean;
 		},
 	) => {
 		H.lastHistory = messages;
 		H.lastThinking = opts.thinking ?? null;
+		H.lastWebSearch = opts.webSearch;
 		for (const t of H.reasoningChunks ?? []) opts.onReasoning?.(t);
 		for (const ev of H.toolEvents ?? []) opts.onToolEvent?.(ev);
 		for (const c of H.chunks ?? []) opts.onDelta(c);
@@ -139,6 +148,7 @@ beforeEach(() => {
 	H.titleInput = null;
 	H.toolEvents = null;
 	H.reasoningChunks = null;
+	H.lastWebSearch = null;
 	H.lastThinking = null;
 	chatStatelessStream.mockClear();
 	summarizeTitle.mockClear();
@@ -737,5 +747,61 @@ describe("聊天的独立思考设置 —— 与引擎配置分家", () => {
 		await chatDrained(app, id, { message: "在吗" });
 
 		expect(H.lastThinking).toEqual({ enableThinking: false, thinkingLevel: "low" });
+	});
+});
+
+describe("POST /conversations/:id/chat — 联网搜索 flag 与来源", () => {
+	/**
+	 * 聊天页的「联网搜索」胶囊是**会话级**的(默认关、手动开、不落盘),所以开关
+	 * 按消息走请求体,路由原样透传给生成器 —— 存进配置的只有搜索后端和 key。
+	 */
+	it("body 带 search:true → 生成器收到 webSearch:true", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		await chatDrained(app, id, { message: "今天有什么新闻", search: true });
+		expect(H.lastWebSearch).toBe(true);
+	});
+
+	it("不带 search → 不开(默认不烧钱)", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		await chatDrained(app, id, { message: "在吗" });
+		expect(H.lastWebSearch ?? false).toBe(false);
+	});
+
+	it("body 带 thinking → 压过配置里的 chat 段;思考等级仍从配置读", async () => {
+		const { deps } = await makeDeps({
+			aiConfig: { chat: { enableThinking: true, thinkingLevel: "high" } },
+		});
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		await chatDrained(app, id, { message: "1+1", thinking: false });
+		expect(H.lastThinking).toEqual({ enableThinking: false, thinkingLevel: "high" });
+	});
+
+	it("web_search 的 end 事件带 sources → SSE 带出去,并随痕迹落盘", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		const SOURCES = [
+			{ title: "T1", url: "https://a.example/1", siteName: "站A" },
+			{ title: "T2", url: "https://b.example/2" },
+		];
+		H.toolEvents = [
+			{ phase: "start", id: "0-0", name: "web_search", args: { query: "b站 新闻" } },
+			{ phase: "end", id: "0-0", ok: true, sources: SOURCES },
+		];
+
+		const events = await chatDrained(app, id, { message: "搜搜", search: true });
+		const toolEnd = events.filter((e) => e.event === "tool").at(-1);
+		expect(toolEnd?.data.sources).toEqual(SOURCES);
+
+		// 落盘的痕迹也带来源 —— 重开会话还能点开「来源」。
+		const conv = (await readJson(await getConv(app, id))).conversation;
+		expect(conv.messages[1].tools).toEqual([
+			{ name: "web_search", args: { query: "b站 新闻" }, ok: true, sources: SOURCES },
+		]);
 	});
 });

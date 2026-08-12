@@ -309,7 +309,12 @@ export function createAiRoute(deps: RouteDeps): Hono {
 			 * 落盘时只取回填过的:一条永远停在「进行中」的痕迹,在界面上就是一个
 			 * 转到天荒地老的圈,而落完盘就再没有第二次机会补状态了。
 			 */
-			const slots: Array<{ name: string; args: Record<string, string>; ok?: boolean }> = [];
+			const slots: Array<{
+				name: string;
+				args: Record<string, string>;
+				ok?: boolean;
+				sources?: Array<{ title: string; url: string; siteName?: string }>;
+			}> = [];
 			const byId = new Map<string, (typeof slots)[number]>();
 			// 思考流的账本。分片原样拼接 —— 引擎那边多轮(工具轮)的思考也走同一个
 			// 回调,这里不感知轮次边界。
@@ -317,11 +322,17 @@ export function createAiRoute(deps: RouteDeps): Hono {
 
 			let reply: string;
 			try {
+				// 聊天的思考设置与引擎(点评/总结)分了家。开关按消息走请求体(会话级
+				// 胶囊),没带的老客户端回落配置;等级始终从配置读。
+				const chatThinking = resolveChatThinking(deps.store.getGlobals().defaults.ai);
 				reply = await commentary.chatStatelessStream(history, {
 					imageUrls: resolved.length ? resolved.map((r) => r.url) : undefined,
-					// 聊天的思考设置与引擎(点评/总结)分了家:没写过的字段跟随当前
-					// 实例,写过的压过 —— 不带这一项,聊天页那颗开关就是个摆设。
-					thinking: resolveChatThinking(deps.store.getGlobals().defaults.ai),
+					thinking: {
+						enableThinking: parsed.data.thinking ?? chatThinking.enableThinking,
+						thinkingLevel: chatThinking.thinkingLevel,
+					},
+					// 联网搜索同样会话级;不带 = 不开。执行器没配置时生成器静默不挂。
+					webSearch: parsed.data.search ?? false,
 					onDelta: (text) => {
 						// 不 await:回调是同步的,这里排一次写就行。真要背压也轮不到
 						// 这一层管 —— SSE 的写在内存里排队,量级是几十 KB。
@@ -343,7 +354,11 @@ export function createAiRoute(deps: RouteDeps): Hono {
 							return;
 						}
 						const slot = byId.get(ev.id);
-						if (slot) slot.ok = ev.ok;
+						if (slot) {
+							slot.ok = ev.ok;
+							// web_search 的来源列表:落盘后重开会话还能点开「来源」。
+							if (ev.sources) slot.sources = ev.sources;
+						}
 					},
 				});
 			} catch (err) {
@@ -396,6 +411,14 @@ const ChatRequestSchema = z.object({
 	 * 而不是悄悄截断:主人明明挑了 6 张,只有 4 张被看了却什么都不说,比报错更难查。
 	 */
 	images: z.array(z.string()).max(MAX_CHAT_IMAGES_PER_MESSAGE).optional(),
+	/**
+	 * 这一问开不开深度思考。聊天页那颗胶囊是**会话级**的(默认关、手动开、
+	 * 不落盘),所以按消息走请求体;不带 = 老客户端,回落到配置里的 chat 段。
+	 * 思考**等级**始终从配置读 —— 低频档位不值得每条消息驮一遍。
+	 */
+	thinking: z.boolean().optional(),
+	/** 这一问允不允许联网搜索。同上,会话级;不带 = 不开(默认不烧钱)。 */
+	search: z.boolean().optional(),
 });
 
 /**

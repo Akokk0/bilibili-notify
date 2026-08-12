@@ -306,6 +306,11 @@ export interface AiToolTraceDTO {
 	args: Record<string, string>;
 	/** 执行成没成。失败的那次也留着 —— 「查了但没查到」和「压根没查」不一样。 */
 	ok: boolean;
+	/**
+	 * `web_search` 专属:这次搜到的来源(标题 + 链接),给消息里的「来源」折叠
+	 * 列表用。别的工具没有这个字段。
+	 */
+	sources?: Array<{ title: string; url: string; siteName?: string }>;
 }
 
 /** 一条聊天消息。`id` 供前端当列表 key,`ts` 是服务端落盘时刻(ISO)。 */
