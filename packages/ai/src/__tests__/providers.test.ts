@@ -124,6 +124,32 @@ describe("硅基流动 — 扁平的 enable_thinking + thinking_budget", () => {
 	});
 });
 
+describe("阿里云百炼 — 与硅基同派的 enable_thinking + thinking_budget", () => {
+	it("开思考", () => {
+		expect(
+			buildProviderParams({
+				provider: "bailian",
+				enableThinking: true,
+				thinkingLevel: "medium",
+			}),
+		).toEqual({ enable_thinking: true, thinking_budget: 16384 });
+	});
+
+	it("三档预算严格递增", () => {
+		const budgetOf = (thinkingLevel: ThinkingLevel) =>
+			buildProviderParams({ provider: "bailian", enableThinking: true, thinkingLevel })
+				.thinking_budget as number;
+		expect(budgetOf("low")).toBeLessThan(budgetOf("medium"));
+		expect(budgetOf("medium")).toBeLessThan(budgetOf("high"));
+	});
+
+	it("关思考发 false —— qwen3.7+ 商业版与开源版默认就开着,不发等于关不掉", () => {
+		expect(
+			buildProviderParams({ provider: "bailian", enableThinking: false, thinkingLevel: "high" }),
+		).toEqual({ enable_thinking: false });
+	});
+});
+
 describe("自定义 — 兜底档不替主人乱发方言", () => {
 	it("开也好关也好,一个字段都不发", () => {
 		for (const enableThinking of [true, false]) {

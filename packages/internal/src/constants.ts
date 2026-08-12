@@ -172,6 +172,7 @@ export const AI_PROVIDER_IDS = [
 	"openrouter",
 	"volcengine",
 	"siliconflow",
+	"bailian",
 	"deepseek",
 	"custom",
 ] as const;
@@ -239,6 +240,18 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		supportsVision: true,
 		temperatureIgnoredWhenThinking: false,
 		baseUrlHint: "https://api.siliconflow.cn/v1",
+	},
+	{
+		id: "bailian",
+		label: "阿里云百炼",
+		supportsThinking: true,
+		// 百炼的默认按**模型**分:qwen-plus / qwen-flash / qwen3-max 默认关,
+		// qwen3.7+ 商业版与开源版默认开。填 true 让「关」位显式发 enable_thinking:false
+		// —— 对默认开的模型这是唯一能关掉的路,对默认关的模型这个字段也合法无害。
+		thinkingDefaultsOn: true,
+		supportsVision: true,
+		temperatureIgnoredWhenThinking: false,
+		baseUrlHint: "https://dashscope.aliyuncs.com/compatible-mode/v1",
 	},
 	{
 		id: "deepseek",

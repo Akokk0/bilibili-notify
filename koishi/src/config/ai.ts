@@ -91,7 +91,7 @@ const thinkingFields = () => ({
 	enableThinking: Schema.boolean()
 		.default(false)
 		.description(
-			"开启模型的深度思考模式～女仆会按上面选的服务商发对应的参数。要是那家网关不认，女仆会自动摘掉参数重试一次，不会报错的。两件事要知道：① DeepSeek 和火山的思考模型**默认就是开着**的，关掉这个开关女仆才会显式让它别想那么久；② 部分服务商（如 DeepSeek）思考时会**忽略** temperature，那不是设置没存上哟 (｡･ω･｡)",
+			"开启模型的深度思考模式～女仆会按上面选的服务商发对应的参数。要是那家网关不认，女仆会自动摘掉参数重试一次，不会报错的。两件事要知道：① DeepSeek、火山、硅基和百炼的思考模型**默认就是开着**的，关掉这个开关女仆才会显式让它别想那么久；② 部分服务商（如 DeepSeek）思考时会**忽略** temperature，那不是设置没存上哟 (｡･ω･｡)",
 		),
 	thinkingLevel: Schema.union([
 		Schema.const("low" as const).description("低 — 快，够用就行"),
@@ -100,7 +100,7 @@ const thinkingFields = () => ({
 	])
 		.default("medium")
 		.description(
-			"想让女仆想多深呢？各家的档位不一样（OpenRouter 是 low/medium/high，DeepSeek 只有 high/max，火山和硅基是 token 预算），女仆会自动换算成那家的说法 (｡･ω･｡)ﾉ♡",
+			"想让女仆想多深呢？各家的档位不一样（OpenRouter 是 low/medium/high，DeepSeek 只有 high/max，火山、硅基和百炼是 token 预算），女仆会自动换算成那家的说法 (｡･ω･｡)ﾉ♡",
 		),
 });
 
@@ -245,7 +245,7 @@ export const AIConfigSchema: Schema<AIConfig> = Schema.intersect([
 			provider: Schema.union(AI_PROVIDERS.map((p) => Schema.const(p.id).description(p.label)))
 				.default("custom")
 				.description(
-					"你用的是哪家服务商呀？「开思考」这件事各家写法完全不一样（OpenRouter 用 reasoning、火山和 DeepSeek 用 thinking、硅基用 enable_thinking），女仆得知道是哪家才翻译得对哟 (๑•̀ㅂ•́)و✧ 选「自定义」的话女仆不会自作主张发任何参数，需要什么请写到下面的「额外请求参数」里",
+					"你用的是哪家服务商呀？「开思考」这件事各家写法完全不一样（OpenRouter 用 reasoning、火山和 DeepSeek 用 thinking、硅基和百炼用 enable_thinking），女仆得知道是哪家才翻译得对哟 (๑•̀ㅂ•́)و✧ 选「自定义」的话女仆不会自作主张发任何参数，需要什么请写到下面的「额外请求参数」里",
 				),
 
 			extraParams: Schema.string()

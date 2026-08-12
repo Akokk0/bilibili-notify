@@ -16,9 +16,17 @@ describe("能力门控 —— 决定设置页上哪些项该露面", () => {
 	});
 
 	it("聚合网关与多模型平台都有视觉模型", () => {
-		for (const id of ["openrouter", "volcengine", "siliconflow"] as const) {
+		for (const id of ["openrouter", "volcengine", "siliconflow", "bailian"] as const) {
 			expect(providerMeta(id).supportsVision).toBe(true);
 		}
+	});
+
+	it("百炼:支持思考,且「关」位要显式发 —— 新款商业版与开源版默认就开着", () => {
+		// qwen-plus / qwen-flash / qwen3-max 默认关,qwen3.7+ 商业版与开源版默认开。
+		// defaultsOn 填 true:对默认开的模型这是唯一能关掉的路,对默认关的模型
+		// enable_thinking:false 也是合法参数,不构成风险。
+		expect(providerMeta("bailian").supportsThinking).toBe(true);
+		expect(providerMeta("bailian").thinkingDefaultsOn).toBe(true);
 	});
 
 	it("兜底档一律按「支持」放行 —— 能力未知时不替主人做减法", () => {

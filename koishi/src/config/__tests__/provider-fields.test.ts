@@ -26,8 +26,8 @@ describe("providerExtraFields", () => {
 		expect(providerExtraFields("deepseek")).toEqual(["thinking"]);
 	});
 
-	it("OpenRouter / 火山 / 硅基:两样都有", () => {
-		for (const id of ["openrouter", "volcengine", "siliconflow"] as const) {
+	it("OpenRouter / 火山 / 硅基 / 百炼:两样都有", () => {
+		for (const id of ["openrouter", "volcengine", "siliconflow", "bailian"] as const) {
 			expect(providerExtraFields(id)).toEqual(["thinking", "vision"]);
 		}
 	});

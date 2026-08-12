@@ -62,6 +62,17 @@ export const PROVIDER_BRANDS: Record<AIProviderId, ProviderBrand> = {
 			</>
 		),
 	},
+	// 云括号:阿里云标志性的一对方括弧,中间一道横线。
+	bailian: {
+		color: "#ff6a00",
+		glyph: (
+			<>
+				<path {...stroke} d="M9.2 4.5H7A3.5 3.5 0 0 0 3.5 8v8A3.5 3.5 0 0 0 7 19.5h2.2" />
+				<path {...stroke} d="M14.8 4.5H17A3.5 3.5 0 0 1 20.5 8v8a3.5 3.5 0 0 1-3.5 3.5h-2.2" />
+				<path {...stroke} d="M9.5 12h5" />
+			</>
+		),
+	},
 	// 鲸鱼:身子 + 尾鳍 + 一柱水花。
 	deepseek: {
 		color: "#4d6bfe",

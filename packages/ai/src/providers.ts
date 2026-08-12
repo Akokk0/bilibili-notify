@@ -10,9 +10,9 @@
  * enableThinking 从来没有真正生效过。各家官方文档里满屏的 `extra_body=...`
  * 说的都是 Python 的写法,不是线上协议。
  *
- * 四家分两派:OpenRouter / DeepSeek 用**等级枚举**,火山 / 硅基用 **token 预算**。
- * 配置面上统一成低/中/高三档,映射全部收在这一个文件里 —— 主人换 provider
- * 时已有的档位设置不作废。
+ * 五家分两派:OpenRouter / DeepSeek 用**等级枚举**,火山 / 硅基 / 百炼用
+ * **token 预算**。配置面上统一成低/中/高三档,映射全部收在这一个文件里 ——
+ * 主人换 provider 时已有的档位设置不作废。
  */
 
 import { type AIProviderId, providerMeta, type ThinkingLevel } from "@bilibili-notify/internal";
@@ -52,6 +52,7 @@ export function buildProviderParams(input: BuildProviderParamsInput): Record<str
 			case "volcengine":
 				return { thinking: { type: "disabled" } };
 			case "siliconflow":
+			case "bailian":
 				return { enable_thinking: false };
 			default:
 				return {};
@@ -75,6 +76,7 @@ export function buildProviderParams(input: BuildProviderParamsInput): Record<str
 			return { thinking: { type: "enabled", budget_tokens: BUDGET_BY_LEVEL[thinkingLevel] } };
 
 		case "siliconflow":
+		case "bailian":
 			return { enable_thinking: true, thinking_budget: BUDGET_BY_LEVEL[thinkingLevel] };
 
 		default:
