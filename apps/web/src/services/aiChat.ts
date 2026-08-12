@@ -104,7 +104,13 @@ export function createSseParser(): (chunk: string) => SseFrame[] {
  */
 export type ChatToolEvent =
 	| { phase: "start"; id: string; name: string; args: Record<string, string> }
-	| { phase: "end"; id: string; ok: boolean };
+	| {
+			phase: "end";
+			id: string;
+			ok: boolean;
+			/** `web_search` 专属:搜到的来源(标题 + 链接),给「来源」折叠列表。 */
+			sources?: Array<{ title: string; url: string; siteName?: string }>;
+	  };
 
 export interface ChatStreamHandlers {
 	/** 正文分片,来一段回调一次。 */

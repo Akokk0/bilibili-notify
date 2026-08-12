@@ -112,6 +112,8 @@ export interface ToolChipData {
 	name: string;
 	args: Record<string, string>;
 	ok?: boolean;
+	/** `web_search` 专属:搜到的来源(标题 + 链接),画「来源」折叠列表。 */
+	sources?: readonly { title: string; url: string; siteName?: string }[];
 }
 
 export interface MessageListProps {
@@ -334,6 +336,14 @@ function AssistantTurn({
 				/>
 			) : null}
 			{tools?.length ? <ToolChips traces={tools} /> : null}
+			{/* 联网搜索的来源列表 —— 主人要能点开核对女仆的说法,不点开时不占地方。
+			    跟着痕迹走(在途与落盘同一条路),不是跟着正文走:没搜就没有这一块。 */}
+			{(tools ?? [])
+				.filter((t) => t.sources?.length)
+				.map((t, i) => (
+					// biome-ignore lint/suspicious/noArrayIndexKey: 同 ToolChips —— 只追加不重排
+					<SourcesBlock key={`src-${i}`} sources={t.sources ?? []} />
+				))}
 			{/* 正文按 Markdown 渲染。**在途与落盘走的是同一个 ChatMarkdown**,所以同一段
 			    文字两处长得一模一样,交接那一刻不会跳 —— 这是这个共用组件存在的全部理由。
 			    光标由 CSS 挂在最后一个块的尾巴上(见 .bn-chat-md-caret),不是一个真节点:
@@ -402,6 +412,57 @@ function ThinkingBlock({
 				<div className="whitespace-pre-wrap wrap-break-word border-l-2 border-bn-border pl-3.5 text-[12px] leading-[1.7] text-bn-text-tertiary opacity-[0.88]">
 					{text}
 				</div>
+			) : null}
+		</div>
+	);
+}
+
+/**
+ * 联网搜索的来源折叠列表 —— 标题可点、新窗口打开,主人能核对女仆的说法。
+ *
+ * 与 {@link ThinkingBlock} 同族(小胶囊标头 + 折叠内容):它们都是「回答之外的
+ * 过程注记」。**默认折叠**:来源是给存疑的那一刻用的,不是每次都要读的正文。
+ */
+function SourcesBlock({
+	sources,
+}: {
+	sources: readonly { title: string; url: string; siteName?: string }[];
+}) {
+	const [open, setOpen] = useState(false);
+	return (
+		<div data-testid="sources-block" className="flex flex-col gap-1.5">
+			<button
+				type="button"
+				aria-expanded={open}
+				onClick={() => setOpen((v) => !v)}
+				className="bn-glass-chip flex w-fit cursor-pointer items-center gap-1.5 rounded-[13px] px-2.25 py-0.75 text-[11.5px] font-semibold text-bn-text-tertiary transition-colors hover:text-bn-text-secondary"
+			>
+				<span className="flex opacity-70" aria-hidden="true">
+					<Icon.search size={11} />
+				</span>
+				来源 · {sources.length}
+				<span aria-hidden="true" className="text-[9px] opacity-70">
+					{open ? "▾" : "▸"}
+				</span>
+			</button>
+			{open ? (
+				<ol className="flex list-none flex-col gap-1 border-l-2 border-bn-border pl-3.5 text-[12px] leading-[1.7]">
+					{sources.map((s, i) => (
+						<li key={s.url} className="truncate">
+							<span className="text-bn-text-tertiary">{i + 1}. </span>
+							{/* 新窗口打开 —— 点个来源不该把整个对话顶掉。 */}
+							<a
+								href={s.url}
+								target="_blank"
+								rel="noreferrer noopener"
+								className="text-bn-text-secondary underline decoration-bn-border underline-offset-2 transition-colors hover:text-bn-pink"
+							>
+								{s.title || s.url}
+							</a>
+							{s.siteName ? <span className="text-bn-text-tertiary">（{s.siteName}）</span> : null}
+						</li>
+					))}
+				</ol>
 			) : null}
 		</div>
 	);

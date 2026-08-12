@@ -22,6 +22,8 @@ const TOOL_LABELS: Record<string, LabelSpec> = {
 	get_user_stats: { label: "查看数据概览", arg: ["name", "uid"] },
 	get_user_videos: { label: "查看最近视频", arg: ["name", "uid"] },
 	search_user: { label: "搜索 UP 主", arg: ["keyword"] },
+	// 联网搜索(web_search)。转圈态就是「搜索中:关键词」—— 搜了什么比搜过有用。
+	web_search: { label: "联网搜索", arg: ["query"] },
 	subscribe_user: { label: "添加订阅", arg: ["name", "uid"] },
 	unsubscribe_user: { label: "取消订阅", arg: ["name", "uid"] },
 	update_subscription: { label: "修改订阅设置", arg: ["name", "uid"] },

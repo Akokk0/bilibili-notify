@@ -300,7 +300,11 @@ export function ChatPage() {
 							}
 							return {
 								...p,
-								tools: p.tools.map((t) => (t.id === ev.id ? { ...t, ok: ev.ok } : t)),
+								tools: p.tools.map((t) =>
+									t.id === ev.id
+										? { ...t, ok: ev.ok, ...(ev.sources ? { sources: ev.sources } : {}) }
+										: t,
+								),
 							};
 						}),
 				},
