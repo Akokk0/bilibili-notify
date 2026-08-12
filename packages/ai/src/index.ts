@@ -25,4 +25,5 @@ export {
 	type WebSearchExecutorConfig,
 	type WebSearchResult,
 	type WebSearchSourceRef,
+	webSearchExecutorFromSettings,
 } from "./web-search";

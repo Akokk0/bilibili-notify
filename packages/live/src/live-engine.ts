@@ -55,6 +55,11 @@ export interface LiveEngineConfig {
 	 */
 	aiEnabled?: boolean;
 	/**
+	 * 总结时允不允许联网搜索。缺省 false(搜索按次付费,自动路径必须主人亲手
+	 * 点亮)。Adapter 用 `globals.defaults.ai.search.engines.live` 填充。
+	 */
+	aiWebSearch?: boolean;
+	/**
 	 * 引擎级消息版式(开播切片)。per-UP `SubItemView.messageLayout` 缺失时兜底 ——
 	 * koishi 端用 `defaultMessageKindLayout("live", { link: 开关 })` 填充;独立端
 	 * per-UP 恒有值。两级都缺 = 旧路径(链接内嵌开播模板 {link})。
@@ -156,6 +161,7 @@ export class LiveEngine {
 		this.liveSummaryRequester = new LiveSummaryRequester({
 			commentary: opts.commentary ?? null,
 			isAiEnabled: () => this.config.aiEnabled !== false,
+			isWebSearchEnabled: () => this.config.aiWebSearch === true,
 			templateRenderer,
 			logger: this.logger,
 		});

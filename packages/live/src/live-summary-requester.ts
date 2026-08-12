@@ -35,6 +35,7 @@ export interface CommentaryClient {
 export class LiveSummaryRequester {
 	private commentary: CommentaryClient | null;
 	private readonly isAiEnabled: () => boolean;
+	private readonly isWebSearchEnabled: () => boolean;
 	private readonly templateRenderer: LiveTemplateRenderer;
 	private readonly logger: Logger;
 
@@ -46,11 +47,19 @@ export class LiveSummaryRequester {
 		 * 缺省 () => true。
 		 */
 		isAiEnabled?: () => boolean;
+		/**
+		 * 联网搜索开关查询。true 时给这一次 comment() 的 override 盖 webSearch 章;
+		 * 执行器在不在是生成器的事。Adapter 用
+		 * `() => globals.defaults.ai.search.engines.live` 填充,缺省 () => false ——
+		 * 搜索按次付费,方向要紧:漏接的 adapter 拿到的是不烧钱的那侧。
+		 */
+		isWebSearchEnabled?: () => boolean;
 		templateRenderer: LiveTemplateRenderer;
 		logger: Logger;
 	}) {
 		this.commentary = opts.commentary;
 		this.isAiEnabled = opts.isAiEnabled ?? (() => true);
+		this.isWebSearchEnabled = opts.isWebSearchEnabled ?? (() => false);
 		this.templateRenderer = opts.templateRenderer;
 		this.logger = opts.logger;
 	}
@@ -95,12 +104,11 @@ export class LiveSummaryRequester {
 					`热词TOP10：${top10Words.join("、")}`,
 					`弹幕排行TOP5：${top5Senders.map(([u, c]) => `${u}(${c}条)`).join("、")}`,
 				].join("，");
-				const aiResult = await this.commentary.comment(
-					prompt,
-					"liveSummary",
-					undefined,
-					aiOverride,
-				);
+				// 联网搜索是引擎级开关,盖在 per-UP 覆盖之上(per-UP 没有这一项)。
+				const override = this.isWebSearchEnabled()
+					? { ...aiOverride, webSearch: true }
+					: aiOverride;
+				const aiResult = await this.commentary.comment(prompt, "liveSummary", undefined, override);
 				this.logger.debug(`[summary] AI 直播总结生成完毕，长度=${aiResult.length}`);
 				return aiResult;
 			} catch (e) {

@@ -21,13 +21,24 @@ import {
 	roastGenErrorText,
 } from "../roast-generate";
 
-const comment = vi.fn(async () => "{}");
+// 显式标注参数,否则 vi.fn 推出空参元组,.mock.calls[0][3] 会触发 TS2493。
+const comment = vi.fn(
+	async (
+		_content: string,
+		_scene?: string,
+		_imgs?: string[],
+		_override?: Record<string, unknown>,
+	) => "{}",
+);
+const setWebSearchSource = vi.fn();
 
 vi.mock("@bilibili-notify/ai", () => ({
 	// class 而不是箭头函数 —— 生成服务是 `new CommentaryGenerator(...)`。
 	CommentaryGenerator: class {
 		comment = comment;
+		setWebSearchSource = setWebSearchSource;
 	},
+	webSearchExecutorFromSettings: () => null,
 }));
 
 /** overview 的一行,字段齐全即可,数值不影响分类。 */
@@ -212,5 +223,43 @@ describe("失败分类 → 人话与状态码", () => {
 
 	it("ai-error 把模型原文透出去,而不是笼统一句「生成失败」", () => {
 		expect(roastGenErrorText({ kind: "ai-error", message: "429 rate limited" })).toContain("429");
+	});
+});
+
+describe("联网搜索 override(engines.roast)", () => {
+	it("engines.roast 开着 → comment 的 override 带 webSearch:true,且生成器接了搜索源", async () => {
+		const deps = makeDeps(["1", "2"]);
+		deps.store.getGlobals().defaults.ai.search.engines.roast = true;
+		await generateBoardRoast(deps, {
+			days: 7,
+			tz: 0,
+			fetchOverview: overviewOf(["1", "2"]),
+		});
+		expect(setWebSearchSource).toHaveBeenCalled();
+		expect(comment).toHaveBeenCalledWith(
+			expect.any(String),
+			undefined,
+			undefined,
+			expect.objectContaining({ webSearch: true }),
+		);
+	});
+
+	it("默认全关 → override 不带 webSearch(现状不变)", async () => {
+		const deps = makeDeps(["1", "2"]);
+		await generateBoardRoast(deps, { days: 7, tz: 0, fetchOverview: overviewOf(["1", "2"]) });
+		const override = comment.mock.calls[0]?.[3] as Record<string, unknown> | undefined;
+		expect(override?.webSearch).toBeUndefined();
+	});
+
+	it("单人锐评同样吃 engines.roast,per-UP 覆盖不丢", async () => {
+		const deps = makeDeps(["1"]);
+		deps.store.getGlobals().defaults.ai.search.engines.roast = true;
+		await generateSoloRoast(deps, { uid: "1", days: 7, tz: 0, fetchOverview: overviewOf(["1"]) });
+		expect(comment).toHaveBeenCalledWith(
+			expect.any(String),
+			undefined,
+			undefined,
+			expect.objectContaining({ webSearch: true }),
+		);
 	});
 });

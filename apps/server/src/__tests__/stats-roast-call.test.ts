@@ -33,7 +33,10 @@ vi.mock("@bilibili-notify/ai", () => ({
 	CommentaryGenerator: class {
 		comment = comment;
 		chat = chat;
+		// 锐评生成器构造后会接联网搜索的执行器热读口,替身少了它当场抛。
+		setWebSearchSource = vi.fn();
 	},
+	webSearchExecutorFromSettings: () => null,
 }));
 
 const AI_SETTINGS = {
@@ -53,6 +56,11 @@ const AI_SETTINGS = {
 	},
 	dynamicPrompt: "",
 	liveSummaryPrompt: "",
+	search: {
+		backend: "bocha" as const,
+		keys: { bocha: "", tavily: "" },
+		engines: { dynamic: false, live: false, roast: false },
+	},
 };
 
 /** 一份挂在某位 UP 头上的人格,用来认出「这次用的是他那份」。 */

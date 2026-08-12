@@ -2072,3 +2072,37 @@ describe("DynamicEngine.lastFetchAt", () => {
 		expect(b.engine.lastFetchAt()).toBe(first);
 	});
 });
+
+describe("联网搜索 override(aiWebSearch)", () => {
+	/**
+	 * 引擎自己不碰搜索 —— 它只负责把 per-engine 开关翻成这一次 comment() 的
+	 * override.webSearch。执行器在不在、要不要真挂工具,是生成器的事。
+	 */
+	const oneDyn = () => {
+		return resp([makeItem({ uid: 1, pubTs: 1000, text: "原始内容" })]);
+	};
+
+	it("aiWebSearch 开着 → comment 的 override 带 webSearch:true", async () => {
+		const b = makeEngine({ withAi: true, config: { aiEnabled: true, aiWebSearch: true } });
+		b.comment.mockResolvedValue("点评");
+		b.getAllDynamic.mockResolvedValue(oneDyn());
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		expect(b.comment).toHaveBeenCalledWith(
+			expect.any(String),
+			"dynamic",
+			expect.anything(),
+			expect.objectContaining({ webSearch: true }),
+		);
+	});
+
+	it("没开 aiWebSearch → override 不带 webSearch(现状不变)", async () => {
+		const b = makeEngine({ withAi: true, config: { aiEnabled: true } });
+		b.comment.mockResolvedValue("点评");
+		b.getAllDynamic.mockResolvedValue(oneDyn());
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		const override = b.comment.mock.calls[0]?.[3] as Record<string, unknown> | undefined;
+		expect(override?.webSearch).toBeUndefined();
+	});
+});

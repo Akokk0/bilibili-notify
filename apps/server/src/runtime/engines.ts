@@ -21,7 +21,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
-import { CommentaryGenerator } from "@bilibili-notify/ai";
+import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { LiveListenerSnapshot } from "@bilibili-notify/contract";
 import {
@@ -319,6 +319,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				subscriptionStore: opts.subscriptionStore,
 				subRuntimeStore: opts.subRuntimeStore,
 			});
+			// 联网搜索的执行器**每次工具调用现取** —— 后端 / key 是运行期随时改的
+			// 配置,快照会让「刚填的 key 不生效,重启才行」。没填 key 时取到 null,
+			// 生成器那侧静默不挂 web_search。
+			c.setWebSearchSource(() => webSearchExecutorFromSettings(globals().defaults.ai.search));
 			c.start();
 			return c;
 		} catch (err) {
@@ -437,6 +441,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			imageGroup: globals().defaults.imageGroup,
 			imageEnabled: globals().defaults.cardStyle.enabled,
 			aiEnabled: globals().defaults.ai.enabled,
+			aiWebSearch: globals().defaults.ai.search.engines.dynamic,
 			dynamicTemplate: globals().defaults.templates.dynamic,
 			videoTemplate: globals().defaults.templates.dynamicVideo,
 			filter: {
@@ -525,6 +530,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			wordcloudStopWords: g.defaults.templates.wordcloudStopWords,
 			imageEnabled: g.defaults.cardStyle.enabled,
 			aiEnabled: g.defaults.ai.enabled,
+			aiWebSearch: g.defaults.ai.search.engines.live,
 			customGuardBuy: {
 				enable: g.defaults.templates.guardBuy.enable,
 				guardBuyMsg: g.defaults.templates.guardBuy.captain.template,

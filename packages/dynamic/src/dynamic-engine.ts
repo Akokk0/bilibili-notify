@@ -176,6 +176,12 @@ export interface DynamicEngineConfig {
 	 */
 	aiEnabled?: boolean;
 	/**
+	 * 点评时允不允许联网搜索。缺省 false —— 搜索按次付费,自动路径必须主人亲手
+	 * 点亮。Adapter 用 `globals.defaults.ai.search.engines.dynamic` 填充;引擎只把
+	 * 它翻成 override.webSearch,执行器在不在是生成器的事。
+	 */
+	aiWebSearch?: boolean;
+	/**
 	 * 引擎级消息版式(动态切片)。per-UP `SubItemView.messageLayout` 缺失时兜底 ——
 	 * koishi 端用 `defaultMessageKindLayout("dynamic", { link: 开关 })` 填充(无版式
 	 * 编辑 UI,仅开关链接);独立端 per-UP 恒有值,不落到这里。两级都缺 = 旧路径
@@ -942,7 +948,10 @@ export class DynamicEngine {
 								`${name}发布了一条动态，内容如下：\n${dynamicText}`,
 								"dynamic",
 								imageUrls,
-								subForAi?.aiOverride,
+								// 联网搜索是引擎级开关,盖在 per-UP 覆盖之上(per-UP 没有这一项)。
+								this.config.aiWebSearch
+									? { ...subForAi?.aiOverride, webSearch: true }
+									: subForAi?.aiOverride,
 							);
 							this.logger.debug(`[ai] 动态点评生成完毕，长度=${aiComment?.length ?? 0}`);
 						} catch (e) {

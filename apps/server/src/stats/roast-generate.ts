@@ -11,7 +11,7 @@
  * 自己的 `app.request('/overview')` 传进来,调度器传同一份。
  */
 
-import { CommentaryGenerator } from "@bilibili-notify/ai";
+import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-notify/ai";
 import type {
 	StatsOverviewResponse,
 	StatsRoastResult,
@@ -122,6 +122,39 @@ function displayName(deps: RoastGenDeps, subId: string, uid: string): string {
 	return deps.runtime.subRuntimeStore.get(subId)?.cachedProfile?.name?.trim() || `UID ${uid}`;
 }
 
+/** 这两个函数只读 `defaults.ai` 的这个投影,不为它们抄一遍完整类型。 */
+type RoastAiSettings = ReturnType<RoastGenDeps["store"]["getGlobals"]>["defaults"]["ai"];
+
+/**
+ * 锐评的一次性生成器。engines.commentary 那台是常驻的,这里刻意自建(见调用点
+ * 注释),所以搜索源也得自己接 —— 常驻那台的接线惠及不到它。
+ */
+function makeRoastGenerator(
+	deps: RoastGenDeps,
+	engines: NonNullable<RoastGenDeps["runtime"]["engines"]>,
+	aiSettings: RoastAiSettings,
+): CommentaryGenerator {
+	const generator = new CommentaryGenerator({
+		serviceCtx: deps.runtime.serviceCtx,
+		api: engines.api,
+		config: toGeneratorConfig(aiSettings),
+	});
+	generator.setWebSearchSource(() => webSearchExecutorFromSettings(aiSettings.search));
+	return generator;
+}
+
+/**
+ * `engines.roast` 开着才给 override 盖 webSearch 章。关着时**原样递回 base**
+ * (可能是 undefined)—— 「没覆盖递 undefined 而不是空对象」是被测试钉住的契约,
+ * 空对象会让「有没有 override」这个判断失真。
+ */
+function roastSearchOverride(
+	aiSettings: RoastAiSettings,
+	base?: Parameters<CommentaryGenerator["comment"]>[3],
+): Parameters<CommentaryGenerator["comment"]>[3] {
+	return aiSettings.search.engines.roast ? { ...base, webSearch: true } : base;
+}
+
 /** 榜单锐评:全体订阅一起评,需要至少 2 位做对照。 */
 export async function generateBoardRoast(
 	deps: RoastGenDeps,
@@ -141,16 +174,18 @@ export async function generateBoardRoast(
 	const ups = overview.rows.map((r) => toRoastInput(r, nameByUid.get(r.uid) ?? `UID ${r.uid}`));
 	if (ups.length < 2) return { ok: false, kind: "too-few-ups" };
 
-	const generator = new CommentaryGenerator({
-		serviceCtx: deps.runtime.serviceCtx,
-		api: engines.api,
-		config: toGeneratorConfig(aiSettings),
-	});
+	const generator = makeRoastGenerator(deps, engines, aiSettings);
 	let reply: string;
 	try {
-		// `comment()` 而不是 `chat()` —— 一次性调用,不留会话历史、不挂工具。
+		// `comment()` 而不是 `chat()` —— 一次性调用,不留会话历史。工具默认不挂,
+		// 只有 engines.roast 开着时才带上 web_search(见 roastSearchOverride)。
 		// 走 chat() 的话评完 A 再评 B,B 的上下文里坐着 A(详见 stats-roast-call.test.ts)。
-		reply = await generator.comment(buildRoastPrompt(ups, opts.days));
+		reply = await generator.comment(
+			buildRoastPrompt(ups, opts.days),
+			undefined,
+			undefined,
+			roastSearchOverride(aiSettings),
+		);
 	} catch (err) {
 		return {
 			ok: false,
@@ -188,11 +223,7 @@ export async function generateSoloRoast(
 
 	const up = toRoastInput(row, displayName(deps, sub.id, row.uid));
 
-	const generator = new CommentaryGenerator({
-		serviceCtx: deps.runtime.serviceCtx,
-		api: engines.api,
-		config: toGeneratorConfig(aiSettings),
-	});
+	const generator = makeRoastGenerator(deps, engines, aiSettings);
 	// per-UP 人格:与动态点评 / 下播总结同源。评的就是这一位 UP,主人给他单配的
 	// 人格没有理由不算数。
 	const aiOverride = resolveAiOverride(sub, deps.store.getGlobals().defaults);
@@ -203,7 +234,7 @@ export async function generateSoloRoast(
 			buildSoloRoastPrompt(up, opts.days),
 			undefined,
 			undefined,
-			aiOverride,
+			roastSearchOverride(aiSettings, aiOverride),
 		);
 	} catch (err) {
 		return {

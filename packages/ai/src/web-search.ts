@@ -64,6 +64,20 @@ export function createWebSearchExecutor(cfg: WebSearchExecutorConfig): WebSearch
 }
 
 /**
+ * `ai.search` 配置段 → 执行器。**「未配置」的唯一判据是当前后端那格 key 为空**,
+ * 此时返回 null,生成器那侧的表现是静默不挂工具。server 与 koishi 共用这一个
+ * 映射 —— 判据写两遍迟早分叉。
+ */
+export function webSearchExecutorFromSettings(search: {
+	backend: WebSearchBackendId;
+	keys: Partial<Record<WebSearchBackendId, string>>;
+}): WebSearchExecutor | null {
+	const apiKey = search.keys[search.backend]?.trim();
+	if (!apiKey) return null;
+	return createWebSearchExecutor({ backend: search.backend, apiKey });
+}
+
+/**
  * 发请求并解析 JSON。错误一律包成 {@link WebSearchError} —— 上游响应体里可能
  * 带着对排障有用的话(配额、鉴权),截一小段进消息;key 在请求头里,不会出现。
  */

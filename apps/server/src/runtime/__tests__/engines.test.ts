@@ -108,11 +108,14 @@ vi.mock("@bilibili-notify/ai", () => ({
 		 * 失败」—— 表现是 H.ai 里有实例但 start 一次没调,不是一眼能看懂的报错。
 		 */
 		setSubscriptionsSource = vi.fn();
+		/** 同上:engines.ts 构造后还会接联网搜索的执行器热读口。 */
+		setWebSearchSource = vi.fn();
 		constructor(opts: any) {
 			this.opts = opts;
 			H.ai.push(this);
 		}
 	},
+	webSearchExecutorFromSettings: () => null,
 }));
 
 vi.mock("@bilibili-notify/image", () => ({
@@ -359,6 +362,12 @@ describe("createEngines — boot wiring", () => {
 		active = c;
 		expect(H.ai).toHaveLength(1);
 		expect(H.ai[0].start).toHaveBeenCalledTimes(1);
+	});
+
+	it("构造后立刻接上联网搜索的执行器热读口 —— 快照式接线会让「刚填的 key 不生效」", () => {
+		const c = setup({ globals: aiGlobals() });
+		active = c;
+		expect(H.ai[0].setWebSearchSource).toHaveBeenCalledTimes(1);
 	});
 
 	it("构造后立刻接上只读工具 —— 不接的话女仆连订阅列表都查不到", () => {

@@ -163,3 +163,25 @@ describe("createWebSearchExecutor — 公共纪律", () => {
 		expect(init.signal).toBeInstanceOf(AbortSignal);
 	});
 });
+
+describe("webSearchExecutorFromSettings — 配置到执行器的映射", () => {
+	// 动态导入躲开顶部 import 收敛;这个工厂与 fetch 无关,不吃上面的 stub。
+	it("当前后端的 key 为空 → null(「未配置」的唯一判据)", async () => {
+		const { webSearchExecutorFromSettings } = await import("../web-search");
+		expect(
+			webSearchExecutorFromSettings({ backend: "bocha", keys: { bocha: "", tavily: "tvly-x" } }),
+		).toBeNull();
+		expect(
+			webSearchExecutorFromSettings({ backend: "bocha", keys: { bocha: "   ", tavily: "" } }),
+		).toBeNull();
+	});
+
+	it("key 在 → 执行器,认的是当前后端自己的那格 key", async () => {
+		const { webSearchExecutorFromSettings } = await import("../web-search");
+		const ex = webSearchExecutorFromSettings({
+			backend: "tavily",
+			keys: { bocha: "", tavily: "tvly-x" },
+		});
+		expect(ex?.backend).toBe("tavily");
+	});
+});
