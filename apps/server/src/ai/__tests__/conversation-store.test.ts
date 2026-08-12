@@ -122,6 +122,21 @@ describe("ConversationStore — 往返", () => {
 		await store.appendMessages(c.id, [{ role: "assistant", content: "在的" }]);
 		expect((await store.get(c.id))?.messages[0]?.tools).toBeUndefined();
 	});
+
+	it("思考过程跟着助手消息落盘,重开会话还看得到", async () => {
+		const c = await store.create();
+		await store.appendMessages(c.id, [
+			{ role: "user", content: "在吗" },
+			{ role: "assistant", content: "在的", reasoning: "主人在确认我在不在,直接答" },
+		]);
+		expect((await store.get(c.id))?.messages[1]?.reasoning).toBe("主人在确认我在不在,直接答");
+	});
+
+	it("没思考的消息不留空字段 —— 非思考模型的会话文件不该背这个键", async () => {
+		const c = await store.create();
+		await store.appendMessages(c.id, [{ role: "assistant", content: "在的", reasoning: "" }]);
+		expect((await store.get(c.id))?.messages[0]?.reasoning).toBeUndefined();
+	});
 });
 
 describe("ConversationStore — 标题", () => {

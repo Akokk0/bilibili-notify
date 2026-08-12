@@ -309,6 +309,9 @@ export function createAiRoute(deps: RouteDeps): Hono {
 			 */
 			const slots: Array<{ name: string; args: Record<string, string>; ok?: boolean }> = [];
 			const byId = new Map<string, (typeof slots)[number]>();
+			// 思考流的账本。分片原样拼接 —— 引擎那边多轮(工具轮)的思考也走同一个
+			// 回调,这里不感知轮次边界。
+			let reasoning = "";
 
 			let reply: string;
 			try {
@@ -318,6 +321,12 @@ export function createAiRoute(deps: RouteDeps): Hono {
 						// 不 await:回调是同步的,这里排一次写就行。真要背压也轮不到
 						// 这一层管 —— SSE 的写在内存里排队,量级是几十 KB。
 						void sse.writeSSE({ event: "delta", data: JSON.stringify({ text }) });
+					},
+					onReasoning: (text) => {
+						// 先转发再记账,与 tool 事件同一个纪律:实时那一份才是这个回调
+						// 存在的理由,落盘是顺带。
+						void sse.writeSSE({ event: "reasoning", data: JSON.stringify({ text }) });
+						reasoning += text;
 					},
 					onToolEvent: (ev) => {
 						// 先转发再记账:实时那一份才是这个事件存在的理由,落盘是顺带。
@@ -345,7 +354,9 @@ export function createAiRoute(deps: RouteDeps): Hono {
 				// 存**能用的那些** id,不是主人递进来的原样 —— 存进去的每一个都得
 				// 在盘上真实存在,否则重开会话时那几个格子就是一片碎图。
 				{ role: "user", content: message, images: resolved.map((r) => r.id) },
-				{ role: "assistant", content: reply, tools: traces },
+				// reasoning 只作展示,store 会在空串时略去字段;历史回传给模型的
+				// 路径(上面的 history 拼装)读的是 content,思考永不回炉。
+				{ role: "assistant", content: reply, tools: traces, reasoning },
 			]);
 			if (!updated) {
 				// 聊天期间这个会话被删了(另一个标签页 / 超出会话数上限被修剪)。

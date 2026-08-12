@@ -35,6 +35,8 @@ const H = vi.hoisted(() => ({
 	titleInput: null as Array<{ role: string; content: string }> | null,
 	/** 置上就在吐正文**之前**按这个剧本回调 onToolEvent —— 真实顺序就是这样。 */
 	toolEvents: null as ToolEv[] | null,
+	/** 置上就在正文之前按分片回调 onReasoning —— 思考先于开口,真实顺序就是这样。 */
+	reasoningChunks: null as string[] | null,
 }));
 
 /** {@link ToolTraceEvent} 的测试侧影本 —— 这个包在测试里是 mock 掉的。 */
@@ -49,9 +51,14 @@ type ToolEv =
 const chatStatelessStream = vi.fn(
 	async (
 		messages: Array<{ role: string; content: string }>,
-		opts: { onDelta: (t: string) => void; onToolEvent?: (ev: ToolEv) => void },
+		opts: {
+			onDelta: (t: string) => void;
+			onToolEvent?: (ev: ToolEv) => void;
+			onReasoning?: (t: string) => void;
+		},
 	) => {
 		H.lastHistory = messages;
+		for (const t of H.reasoningChunks ?? []) opts.onReasoning?.(t);
 		for (const ev of H.toolEvents ?? []) opts.onToolEvent?.(ev);
 		for (const c of H.chunks ?? []) opts.onDelta(c);
 		if (H.error) throw H.error;
@@ -123,6 +130,7 @@ beforeEach(() => {
 	H.title = "本周勤奋榜";
 	H.titleInput = null;
 	H.toolEvents = null;
+	H.reasoningChunks = null;
 	chatStatelessStream.mockClear();
 	summarizeTitle.mockClear();
 });
@@ -380,6 +388,49 @@ describe("POST /conversations/:id/chat — 聊天", () => {
  * 需要两件事:流里实时报一声,以及跟着回复一起落盘 —— 只报不存的话,`done` 一到、
  * 真身把在途副本换下来的那一刻,几条小条就凭空消失了。
  */
+describe("POST /conversations/:id/chat — 思考流", () => {
+	it("思考分片实时变成 reasoning 事件,不混进 delta", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		H.reasoningChunks = ["主人问的是", "订阅"];
+		H.chunks = ["晚上好"];
+
+		const events = await chatDrained(app, id, { message: "在吗" });
+		const think = events.filter((e) => e.event === "reasoning").map((e) => e.data.text);
+		expect(think).toEqual(["主人问的是", "订阅"]);
+		// 正文那条路一个思考字都不能带 —— 它是要落盘当上下文的。
+		const text = events.filter((e) => e.event === "delta").map((e) => e.data.text);
+		expect(text).toEqual(["晚上好"]);
+	});
+
+	it("思考随回复一起落盘,done 与重开会话都带着", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		H.reasoningChunks = ["想了", "一下"];
+		H.chunks = ["答案"];
+
+		const events = await chatDrained(app, id, { message: "x" });
+		const done = events.find((e) => e.event === "done")?.data;
+		expect(done.reply.reasoning).toBe("想了一下");
+
+		const stored = (await readJson(await getConv(app, id))).conversation;
+		expect(stored.messages[1]?.reasoning).toBe("想了一下");
+	});
+
+	it("没思考的回复不背这个字段 —— done 和盘上都没有", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+
+		const events = await chatDrained(app, id, { message: "x" });
+		const done = events.find((e) => e.event === "done")?.data;
+		expect(done.reply.reasoning).toBeUndefined();
+		expect(events.some((e) => e.event === "reasoning")).toBe(false);
+	});
+});
+
 describe("POST /conversations/:id/chat — 工具调用痕迹", () => {
 	const listSubs: ToolEv[] = [
 		{ phase: "start", id: "0-0", name: "list_subscriptions", args: {} },

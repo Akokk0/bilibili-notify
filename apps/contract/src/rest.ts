@@ -317,6 +317,11 @@ export interface AiChatMessageDTO {
 	/** 助手消息专有:答这一句时调过的工具。没调过就整个字段缺席。 */
 	tools?: AiToolTraceDTO[];
 	/**
+	 * 助手消息专有:答这一句之前的思考过程(思考模型的那段草稿)。前端折叠展示,
+	 * 永不回传给模型。没思考就整个字段缺席。
+	 */
+	reasoning?: string;
+	/**
 	 * 用户消息专有:这一问带的图片资产 id。前端拿它拼
 	 * `/api/ai/assets/<id>` 显示缩略图。没带图就整个字段缺席。
 	 */

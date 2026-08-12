@@ -42,6 +42,11 @@ export interface StoredMessage {
 	/** 助手消息专有,见 {@link StoredToolTrace}。没调过工具就整个字段缺席。 */
 	tools?: StoredToolTrace[];
 	/**
+	 * 助手消息专有:答这一句之前的思考过程(思考模型的那段草稿)。
+	 * 只作展示,**永不**回传给模型当上下文。没思考就整个字段缺席。
+	 */
+	reasoning?: string;
+	/**
 	 * 用户消息专有:这一问带的图片资产 id(见 `runtime/chat-assets`)。
 	 *
 	 * 存 id 而**不是** base64:会话文件是整份读进内存的,把图塞进去之后,往后
@@ -55,6 +60,7 @@ export interface NewMessage {
 	role: ConversationRole;
 	content: string;
 	tools?: readonly StoredToolTrace[];
+	reasoning?: string;
 	images?: readonly string[];
 }
 
@@ -252,8 +258,9 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 						content: m.content,
 						ts: now,
 						// 没调过工具就**不写**这个字段:绝大多数消息都没调,一条一个空
-						// 数组等于给每个会话文件白加一份噪音。图片同理。
+						// 数组等于给每个会话文件白加一份噪音。思考与图片同理。
 						...(m.tools?.length ? { tools: [...m.tools] } : {}),
+						...(m.reasoning ? { reasoning: m.reasoning } : {}),
 						...(m.images?.length ? { images: [...m.images] } : {}),
 					});
 				}
