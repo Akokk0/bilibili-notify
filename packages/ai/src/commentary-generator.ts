@@ -749,6 +749,15 @@ export class CommentaryGenerator implements CommentaryProvider {
 				// 空手而归 —— 起名永远失败,而主人只看到标题一直是自己那句提问。
 				// 反正只调这一次,多给点无所谓。
 				max_tokens: 256,
+				// 显式**关**思考,与主人的开关无关:起标题是杂务,不值得烧思考的
+				// 钱;更要紧的是 DeepSeek v4 这类**默认就开思考**的模型,不发禁用
+				// 的话思维链会把上面的预算烧光,content 空手而归,起名永远失败。
+				// 自定义档照旧一个字段不发(方言未知)。
+				...buildProviderParams({
+					provider: this.config.provider,
+					enableThinking: false,
+					thinkingLevel: this.config.thinkingLevel,
+				}),
 				messages: [
 					{ role: "system", content: TITLE_PROMPT },
 					{

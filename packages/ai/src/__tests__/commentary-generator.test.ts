@@ -600,6 +600,29 @@ describe("CommentaryGenerator.summarizeTitle", () => {
 		expect(await gen.summarizeTitle(ROUND)).toBe("订阅管理");
 	});
 
+	it("显式关思考 —— 起标题是杂务,思维链只会烧光预算让 content 空手而归", async () => {
+		// 现场(2026-08-12):DeepSeek v4 **默认就开思考**,而起标题这一单原本一个
+		// 方言字段都不发,于是思维链把 max_tokens 烧光,content 回来是空的 →
+		// 「模型没给出标题」,每个会话都失败。起标题永远发「关」位方言,与主人的
+		// 思考开关无关 —— 这是一句冷冰冰的概括,不值得烧思考的钱。
+		const { gen } = makeGen({ provider: "deepseek", enableThinking: true, thinkingLevel: "high" });
+		oai.create.mockResolvedValueOnce(msgResp("标题"));
+		await gen.summarizeTitle(ROUND);
+		expect((createParams(0) as unknown as Record<string, unknown>).thinking).toEqual({
+			type: "disabled",
+		});
+	});
+
+	it("自定义服务商起标题照旧一个方言字段都不发 —— 方言未知,发了几乎必然被拒", async () => {
+		const { gen } = makeGen({ provider: "custom", enableThinking: false });
+		oai.create.mockResolvedValueOnce(msgResp("标题"));
+		await gen.summarizeTitle(ROUND);
+		const params = createParams(0) as unknown as Record<string, unknown>;
+		expect(params.thinking).toBeUndefined();
+		expect(params.enable_thinking).toBeUndefined();
+		expect(params.reasoning).toBeUndefined();
+	});
+
 	it("给的 token 预算够模型想一会儿 —— 太抠会让它把额度花在思考上、正文空手而归", async () => {
 		// 32 个 token 对推理模型是不够的:思考吃光预算,content 回来是空的,于是
 		// 起名永远失败,而主人只看到标题一直是自己那句提问。
