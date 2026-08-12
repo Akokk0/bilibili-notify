@@ -41,6 +41,8 @@ export interface BilibiliNotifyLiveDeps {
 	store: SubscriptionStore;
 	image?: ImageRenderer;
 	ai?: CommentaryGenerator;
+	/** 总结时允不允许联网搜索(AI 子配置的 webSearchLive)。缺省关。 */
+	aiWebSearch?: boolean;
 }
 
 /**
@@ -242,7 +244,9 @@ export class BilibiliNotifyLive {
 			contentBuilder: koishiContentBuilder,
 			imageRenderer: deps.image ?? null,
 			commentary: deps.ai ?? null,
-			config: this.toEngineConfig(config),
+			// aiWebSearch 来自 AI 子配置而不是本插件的 —— 搜索的 key / 后端都住在
+			// 那边,开关跟着钱包走。
+			config: { ...this.toEngineConfig(config), aiWebSearch: deps.aiWebSearch ?? false },
 			emitEngineError: (message) =>
 				this.ctx.emit("bilibili-notify/engine-error", SERVICE_NAME, message),
 			emitLiveState: (uid, status) =>

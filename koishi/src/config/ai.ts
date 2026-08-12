@@ -4,6 +4,7 @@ import {
 	type AIProviderId,
 	DEFAULT_AI,
 	type ThinkingLevel,
+	type WebSearchBackendId,
 } from "@bilibili-notify/internal";
 import { Schema } from "koishi";
 import { providerExtraFields } from "./provider-fields";
@@ -81,6 +82,21 @@ export interface AIConfig {
 	visionBaseURL?: string;
 	visionApiKey?: string;
 	visionModel?: string;
+
+	/**
+	 * 联网搜索(`web_search` 工具)。与选哪家 AI 服务商**正交**:搜索由这里选定的
+	 * 后端真正执行,任何支持 function calling 的服务商都能用上 —— 不走各家 LLM
+	 * 的原生联网方言(分裂且 DeepSeek 官方压根没有)。
+	 */
+	webSearchBackend?: WebSearchBackendId;
+	/** 博查的 API Key。两家各存一格,换后端不丢另一家的。 */
+	webSearchBochaKey?: string;
+	/** Tavily 的 API Key。 */
+	webSearchTavilyKey?: string;
+	/** 动态点评允许联网搜索。默认关 —— 搜索按次付费,自动路径必须主人亲手点亮。 */
+	webSearchDynamic?: boolean;
+	/** 直播总结允许联网搜索。默认关,理由同上。 */
+	webSearchLive?: boolean;
 }
 
 /**
@@ -252,7 +268,7 @@ export const AIConfigSchema: Schema<AIConfig> = Schema.intersect([
 				.role("textarea", { rows: [3, 8] })
 				.default("")
 				.description(
-					'额外请求参数～一段 JSON，女仆会原样摊进请求体里。适配之外的服务商、或者联网搜索这类各家写法不同的功能都写这里，比如 OpenRouter 的 `{"plugins": [{"id": "web"}]}`、硅基流动的 `{"enable_search": true}`。跟女仆自己发的参数撞了以你为准；写错了也不要紧，那一次就当没填（日志里会说一声）。model / messages / tools 这几个是请求的骨架，改了会让对话或工具失灵，女仆会挡掉',
+					'额外请求参数～一段 JSON，女仆会原样摊进请求体里。适配之外的服务商专属参数写这里，比如百炼的 `{"enable_search": true}`（阿里自家的联网）或 OpenRouter 的 `{"plugins": [{"id": "web"}]}`。要联网搜索的话建议直接用下面的「联网搜索」配置（各家通用），别两头都开——那等于每次都搜两遍。跟女仆自己发的参数撞了以你为准；写错了也不要紧，那一次就当没填（日志里会说一声）。model / messages / tools 这几个是请求的骨架，改了会让对话或工具失灵，女仆会挡掉',
 				),
 
 			visionModel: Schema.string().description(
@@ -266,6 +282,33 @@ export const AIConfigSchema: Schema<AIConfig> = Schema.intersect([
 			visionApiKey: Schema.string()
 				.role("secret")
 				.description("看图专用模型的密钥～留空同样跟着主模型的用，只有换了一家服务商才需要单独填"),
+
+			webSearchBackend: Schema.union([
+				Schema.const("bocha" as const).description("博查 — 中文搜索质量好"),
+				Schema.const("tavily" as const).description("Tavily — 有免费额度"),
+			])
+				.default("bocha")
+				.description(
+					"联网搜索的执行后端～女仆的 web_search 工具由这家真正执行，跟上面选哪家 AI 服务商没有关系，DeepSeek 官方也能联网哦。博查在 open.bochaai.com 申请，Tavily 在 app.tavily.com（每月有免费额度）(๑•̀ㅂ•́)و✧",
+				),
+
+			webSearchBochaKey: Schema.string()
+				.role("secret")
+				.description("博查的 API Key～留空 = 不用博查。两家的 key 各存一格，换来换去不会丢"),
+
+			webSearchTavilyKey: Schema.string()
+				.role("secret")
+				.description("Tavily 的 API Key～留空 = 不用 Tavily"),
+
+			webSearchDynamic: Schema.boolean()
+				.default(false)
+				.description(
+					"动态点评时允许女仆联网搜索～碰到不认识的事件或梗她会先搜一两次再点评。**按次计费**且每条点评可能多几秒延迟，所以默认是关着的，主人想清楚再开哦",
+				),
+
+			webSearchLive: Schema.boolean()
+				.default(false)
+				.description("直播总结时允许女仆联网搜索～注意事项同上，默认关"),
 		}),
 		Schema.object({}),
 	]),

@@ -56,6 +56,9 @@ export function buildEngines(
 		store: core.store,
 		image: render?.engine,
 		ai: ai?.engine,
+		// 联网搜索的 per-engine 开关住在 AI 子配置里(key / 后端也在那边)。
+		// AI 没启用时恒关 —— 没有生成器,搜了也没人用。
+		aiWebSearch: config.ai.enabled ? (config.ai.webSearchDynamic ?? false) : false,
 	});
 
 	const live = new BilibiliNotifyLive(ctx, config.live);
@@ -65,6 +68,7 @@ export function buildEngines(
 		store: core.store,
 		image: render?.engine,
 		ai: ai?.engine,
+		aiWebSearch: config.ai.enabled ? (config.ai.webSearchLive ?? false) : false,
 	});
 
 	return { render, ai, dynamic, live };

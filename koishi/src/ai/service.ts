@@ -3,11 +3,13 @@ import {
 	CommentaryGenerator,
 	type CommentaryGeneratorConfig,
 	type Subscriptions,
+	webSearchExecutorFromSettings,
 } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import type { Context } from "koishi";
 import type { AIConfig } from "../config/ai";
+import { webSearchSettingsOf } from "../config/web-search";
 import type { TargetRegistry } from "../push/target-registry";
 import { makeKoishiServiceContext } from "../runtime/service-context";
 
@@ -85,6 +87,11 @@ export class BilibiliNotifyAI {
 		// 输入面等于任意一条群消息都可能改掉主人的订阅表。而且那个能力本来就撑不过
 		// 下一次插件重载(订阅每次都从配置 replaceAll 重建,没有回写通道)。
 		this.engine.setSubscriptionsSource(() => storeToAiSubs(deps.store));
+		// 联网搜索的执行器。koishi 的配置随插件重载整份替换,闭包住 config 就够;
+		// 没填当前后端的 key 时工厂回 null,生成器那侧静默不挂 web_search。
+		this.engine.setWebSearchSource(() =>
+			webSearchExecutorFromSettings(webSearchSettingsOf(config)),
+		);
 	}
 
 	start(): void {

@@ -29,6 +29,8 @@ export interface BilibiliNotifyDynamicDeps {
 	store: SubscriptionStore;
 	image?: ImageRenderer;
 	ai?: CommentaryGenerator;
+	/** 点评时允不允许联网搜索(AI 子配置的 webSearchDynamic)。缺省关。 */
+	aiWebSearch?: boolean;
 }
 
 /**
@@ -76,7 +78,9 @@ export class BilibiliNotifyDynamic {
 			push: pushLike,
 			image: deps.image,
 			ai: deps.ai,
-			config: this.toEngineConfig(this.config),
+			// aiWebSearch 来自 AI 子配置而不是本插件的 —— 搜索的 key / 后端都住在
+			// 那边,开关跟着钱包走。
+			config: { ...this.toEngineConfig(this.config), aiWebSearch: deps.aiWebSearch ?? false },
 			getSubs: () => storeToDynamicView(deps.store),
 		});
 

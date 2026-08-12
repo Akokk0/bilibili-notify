@@ -23,6 +23,11 @@ export {
 	THINKING_LEVELS,
 	type ThinkingLevel,
 	UP_COLORS,
+	WEB_SEARCH_BACKEND_IDS,
+	WEB_SEARCH_BACKENDS,
+	type WebSearchBackendId,
+	type WebSearchBackendMeta,
+	webSearchBackendMeta,
 } from "./constants";
 export * from "./platform";
 export * from "./schema";
