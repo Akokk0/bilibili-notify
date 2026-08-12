@@ -140,3 +140,46 @@ describe("applyAiSecrets — 读回时灌回内存", () => {
 		expect(Object.keys(out.defaults.ai.providers)).toEqual(["deepseek"]);
 	});
 });
+
+describe("联网搜索的 key 也走袋子", () => {
+	/**
+	 * `ai.search.keys` 按后端各存一格,袋键 `search:<backend>` —— 与实例桶的袋键
+	 * (裸实例 id / `<id>:vision`)不同域,实例 id 由 addProfile 生成、永不带冒号,
+	 * 不会撞车。漏收 = 明文躺进不加密的 globals.json;漏灌 = 重启后搜索静默失效。
+	 */
+	function withSearchKeys() {
+		const g = makeDefaultGlobalConfig();
+		g.defaults.ai.search.keys = { bocha: "sk-bocha", tavily: "tvly-x" };
+		return g;
+	}
+
+	it("collect:两家的 key 都进袋,键名带 search: 前缀", () => {
+		const bag = collectAiSecrets(withSearchKeys());
+		expect(bag["search:bocha"]).toBe("sk-bocha");
+		expect(bag["search:tavily"]).toBe("tvly-x");
+	});
+
+	it("collect:空 key 不进袋 —— 「未配置」不该被记成「配置了个空的」", () => {
+		const g = makeDefaultGlobalConfig();
+		g.defaults.ai.search.keys = { bocha: "sk-bocha", tavily: "" };
+		const bag = collectAiSecrets(g);
+		expect(bag["search:bocha"]).toBe("sk-bocha");
+		expect("search:tavily" in bag).toBe(false);
+	});
+
+	it("strip:落盘前抠成空串,别的字段不动", () => {
+		const g = withSearchKeys();
+		g.defaults.ai.search.backend = "tavily";
+		const out = stripAiSecrets(g);
+		expect(out.defaults.ai.search.keys).toEqual({ bocha: "", tavily: "" });
+		expect(out.defaults.ai.search.backend).toBe("tavily");
+		// 原对象不动 —— 内存里的明文还要给引擎用。
+		expect(g.defaults.ai.search.keys.bocha).toBe("sk-bocha");
+	});
+
+	it("apply(strip(g), collect(g)) 恒等往返 —— 破了就是「重启掉配置」", () => {
+		const g = withSearchKeys();
+		const restored = applyAiSecrets(stripAiSecrets(g), collectAiSecrets(g));
+		expect(restored.defaults.ai.search.keys).toEqual({ bocha: "sk-bocha", tavily: "tvly-x" });
+	});
+});

@@ -414,7 +414,9 @@ export function redactGlobals(
 	g: import("@bilibili-notify/internal").GlobalConfig,
 ): import("@bilibili-notify/internal").GlobalConfig {
 	const entries = Object.entries(g.defaults.ai.providers);
-	if (!entries.some(([, p]) => p && (p.apiKey || p.vision.apiKey))) return g;
+	const search = g.defaults.ai.search;
+	const searchHasKey = Object.values(search.keys).some(Boolean);
+	if (!entries.some(([, p]) => p && (p.apiKey || p.vision.apiKey)) && !searchHasKey) return g;
 	return {
 		...g,
 		defaults: {
@@ -431,6 +433,13 @@ export function redactGlobals(
 						},
 					]),
 				),
+				// 联网搜索的 key 同一纪律:非空换占位,空保持空。
+				search: {
+					...search,
+					keys: Object.fromEntries(
+						Object.entries(search.keys).map(([b, v]) => [b, v ? REDACTED_API_KEY : ""]),
+					) as typeof search.keys,
+				},
 			},
 		},
 	};
@@ -448,40 +457,65 @@ export function stripRedactedSecrets(patch: Record<string, unknown>): Record<str
 	if (!defaults || typeof defaults !== "object") return patch;
 	const ai = (defaults as Record<string, unknown>).ai;
 	if (!ai || typeof ai !== "object") return patch;
-	const providers = (ai as Record<string, unknown>).providers;
-	if (!providers || typeof providers !== "object") return patch;
 
 	let touched = false;
-	const cleaned = Object.fromEntries(
-		Object.entries(providers as Record<string, unknown>).map(([id, raw]) => {
-			if (!raw || typeof raw !== "object") return [id, raw];
-			let bucket = raw as Record<string, unknown>;
+	let aiOut = ai as Record<string, unknown>;
 
-			if (bucket.apiKey === REDACTED_API_KEY) {
-				const { apiKey: _drop, ...rest } = bucket;
-				bucket = rest;
+	const providers = aiOut.providers;
+	if (providers && typeof providers === "object") {
+		let touchedProviders = false;
+		const cleaned = Object.fromEntries(
+			Object.entries(providers as Record<string, unknown>).map(([id, raw]) => {
+				if (!raw || typeof raw !== "object") return [id, raw];
+				let bucket = raw as Record<string, unknown>;
+
+				if (bucket.apiKey === REDACTED_API_KEY) {
+					const { apiKey: _drop, ...rest } = bucket;
+					bucket = rest;
+					touchedProviders = true;
+				}
+
+				const vision = bucket.vision;
+				if (vision && typeof vision === "object") {
+					const v = vision as Record<string, unknown>;
+					if (v.apiKey === REDACTED_API_KEY) {
+						const { apiKey: _drop, ...vRest } = v;
+						bucket = { ...bucket, vision: vRest };
+						touchedProviders = true;
+					}
+				}
+				return [id, bucket];
+			}),
+		);
+		if (touchedProviders) {
+			aiOut = { ...aiOut, providers: cleaned };
+			touched = true;
+		}
+	}
+
+	// 联网搜索的 key 同一纪律:回传的占位剥掉,别让它覆盖真 key。
+	const search = aiOut.search;
+	if (search && typeof search === "object") {
+		const keys = (search as Record<string, unknown>).keys;
+		if (keys && typeof keys === "object") {
+			const entries = Object.entries(keys as Record<string, unknown>);
+			const kept = entries.filter(([, v]) => v !== REDACTED_API_KEY);
+			if (kept.length !== entries.length) {
+				aiOut = {
+					...aiOut,
+					search: { ...(search as Record<string, unknown>), keys: Object.fromEntries(kept) },
+				};
 				touched = true;
 			}
-
-			const vision = bucket.vision;
-			if (vision && typeof vision === "object") {
-				const v = vision as Record<string, unknown>;
-				if (v.apiKey === REDACTED_API_KEY) {
-					const { apiKey: _drop, ...vRest } = v;
-					bucket = { ...bucket, vision: vRest };
-					touched = true;
-				}
-			}
-			return [id, bucket];
-		}),
-	);
+		}
+	}
 
 	if (!touched) return patch;
 	return {
 		...patch,
 		defaults: {
 			...(defaults as Record<string, unknown>),
-			ai: { ...(ai as Record<string, unknown>), providers: cleaned },
+			ai: aiOut,
 		},
 	};
 }

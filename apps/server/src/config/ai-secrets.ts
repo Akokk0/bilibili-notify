@@ -30,6 +30,15 @@ export function aiSecretKey(profileId: string, vision = false): string {
 }
 
 /**
+ * 联网搜索后端的 key 在袋子里的键(`search:bocha` / `search:tavily`)。
+ * 与实例桶的袋键不同域:实例 id 由 addProfile 生成(`<provider>` / `<provider>-<N>`),
+ * 永不带冒号,不会撞车。
+ */
+export function searchSecretKey(backend: string): string {
+	return `search:${backend}`;
+}
+
+/**
  * 收集所有非空的 AI 密钥。
  *
  * **空值不进袋**:袋里存个空串等于把「未配置」记成「配置了一个空的」,
@@ -41,6 +50,9 @@ export function collectAiSecrets(g: GlobalConfig): Record<string, string> {
 		if (!p) continue;
 		if (p.apiKey) out[aiSecretKey(id)] = p.apiKey;
 		if (p.vision.apiKey) out[aiSecretKey(id, true)] = p.vision.apiKey;
+	}
+	for (const [backend, key] of Object.entries(g.defaults.ai.search.keys)) {
+		if (key) out[searchSecretKey(backend)] = key;
 	}
 	return out;
 }
@@ -56,7 +68,11 @@ export function collectAiSecrets(g: GlobalConfig): Record<string, string> {
  * 不改动传进来的那份 —— 内存里的明文还要继续给引擎用。
  */
 export function stripAiSecrets(g: GlobalConfig): GlobalConfig {
-	return mapAiSecrets(g, () => "");
+	return mapAiSecrets(
+		g,
+		() => "",
+		() => "",
+	);
 }
 
 /**
@@ -66,16 +82,24 @@ export function stripAiSecrets(g: GlobalConfig): GlobalConfig {
  * key 时会走到这儿,凭空造出桶来会让设置页左栏多一块本该没有的。
  */
 export function applyAiSecrets(g: GlobalConfig, bag: Record<string, string>): GlobalConfig {
-	return mapAiSecrets(g, (id, vision) => bag[aiSecretKey(id, vision)] ?? "");
+	return mapAiSecrets(
+		g,
+		(id, vision) => bag[aiSecretKey(id, vision)] ?? "",
+		(backend) => bag[searchSecretKey(backend)] ?? "",
+	);
 }
 
-/** 对每个已存在的桶里的两把 key 各取一次新值。只读入参,返回新对象。 */
+/**
+ * 对每个已存在的桶里的两把 key、以及搜索后端的每格 key 各取一次新值。
+ * 只读入参,返回新对象。**没有早退**:就算一个实例桶都没有,搜索 key 也要照走。
+ */
 function mapAiSecrets(
 	g: GlobalConfig,
 	next: (profileId: string, vision: boolean) => string,
+	nextSearch: (backend: string) => string,
 ): GlobalConfig {
 	const entries = Object.entries(g.defaults.ai.providers);
-	if (entries.length === 0) return g;
+	const search = g.defaults.ai.search;
 	return {
 		...g,
 		defaults: {
@@ -92,6 +116,12 @@ function mapAiSecrets(
 						},
 					]),
 				),
+				search: {
+					...search,
+					keys: Object.fromEntries(
+						Object.keys(search.keys).map((backend) => [backend, nextSearch(backend)]),
+					) as GlobalConfig["defaults"]["ai"]["search"]["keys"],
+				},
 			},
 		},
 	};
