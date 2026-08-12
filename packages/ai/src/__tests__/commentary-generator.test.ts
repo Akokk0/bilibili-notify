@@ -821,6 +821,64 @@ describe("CommentaryGenerator.chatStatelessStream — 真流式", () => {
 			});
 			expect(result).toBe("好");
 		});
+
+		/**
+		 * DeepSeek v4 的硬性契约:思考 + 工具调用时,工具轮的后续请求必须把
+		 * `reasoning_content` 原样回传,缺了直接 400(官方 thinking_mode 文档)。
+		 * 流式下这条消息是我们自己拼的,漏掉字段就等于每一次「边想边查」都必炸。
+		 */
+		it("思考 + 工具调用:工具轮把 reasoning_content 原样带回给 API", async () => {
+			const { gen } = makeGen();
+			oai.create
+				.mockResolvedValueOnce(
+					streamOf([
+						thinkChunk("得查一下订阅"),
+						toolChunk(0, { id: "c1", function: { name: "fake_tool", arguments: "{}" } }),
+					]),
+				)
+				.mockResolvedValueOnce(streamOf([textChunk("答案")]));
+			await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+				onDelta: () => {},
+				onReasoning: () => {},
+			});
+			const echoed = createParams(1).messages.find(
+				(m) => (m as { role?: string }).role === "assistant",
+			) as unknown as Record<string, unknown>;
+			expect(echoed.reasoning_content).toBe("得查一下订阅");
+		});
+
+		it("回传不看有没有人听 —— 它是 API 契约,不是显示需求", async () => {
+			// koishi 那条路不传 onReasoning,但它同样挂工具;漏了回传,主人在 koishi
+			// 群里用思考模型一样会 400。
+			const { gen } = makeGen();
+			oai.create
+				.mockResolvedValueOnce(
+					streamOf([
+						thinkChunk("想想"),
+						toolChunk(0, { id: "c1", function: { name: "fake_tool", arguments: "{}" } }),
+					]),
+				)
+				.mockResolvedValueOnce(streamOf([textChunk("好")]));
+			await gen.chatStatelessStream([{ role: "user", content: "x" }], { onDelta: () => {} });
+			const echoed = createParams(1).messages.find(
+				(m) => (m as { role?: string }).role === "assistant",
+			) as unknown as Record<string, unknown>;
+			expect(echoed.reasoning_content).toBe("想想");
+		});
+
+		it("没思考的工具轮不凭空多一个字段", async () => {
+			const { gen } = makeGen();
+			oai.create
+				.mockResolvedValueOnce(
+					streamOf([toolChunk(0, { id: "c1", function: { name: "fake_tool", arguments: "{}" } })]),
+				)
+				.mockResolvedValueOnce(streamOf([textChunk("好")]));
+			await gen.chatStatelessStream([{ role: "user", content: "x" }], { onDelta: () => {} });
+			const echoed = createParams(1).messages.find(
+				(m) => (m as { role?: string }).role === "assistant",
+			) as unknown as Record<string, unknown>;
+			expect("reasoning_content" in echoed).toBe(false);
+		});
 	});
 
 	it("网关不支持流式 → 回落非流式,一次性把整段交出去", async () => {

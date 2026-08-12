@@ -838,6 +838,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 	): Promise<OpenAI.ChatCompletionMessage> {
 		const stream = await client.chat.completions.create(params);
 		let content = "";
+		// 思考**无条件**累积,不看有没有人听:DeepSeek v4 要求思考 + 工具调用时把
+		// `reasoning_content` 原样回传到后续请求,缺了直接 400 —— 回传是 API 契约,
+		// 不是显示需求。回调才看 onReasoning。
+		let reasoning = "";
 		const slots: Array<{ id: string; name: string; args: string }> = [];
 		for await (const chunk of stream) {
 			const delta = chunk.choices?.[0]?.delta;
@@ -847,9 +851,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 				content += delta.content;
 				onDelta(delta.content);
 			}
-			if (onReasoning) {
-				const think = CommentaryGenerator.reasoningOf(delta);
-				if (think) onReasoning(think);
+			const think = CommentaryGenerator.reasoningOf(delta);
+			if (think) {
+				reasoning += think;
+				onReasoning?.(think);
 			}
 			for (const tc of delta.tool_calls ?? []) {
 				let slot = slots[tc.index];
@@ -870,6 +875,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 		return {
 			role: "assistant",
 			content: content || null,
+			// 回传统一用 `reasoning_content`(要求回传的只有 DeepSeek 这一系;别家
+			// 对陌生字段的约定是忽略不报错)。非流式路径不用管 —— 那边推回去的是
+			// SDK 原始 message,字段本来就在。
+			...(reasoning ? { reasoning_content: reasoning } : {}),
 			...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
 		} as OpenAI.ChatCompletionMessage;
 	}
