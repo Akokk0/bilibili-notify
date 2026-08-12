@@ -6,7 +6,12 @@ export type { FeatureKey } from "../constants";
 
 // 值与类型的单一来源在 ../constants(零依赖,供前端经 /constants 子路径运行时消费);
 // 这里重导出维持根入口的既有 API 面,后端消费者无感。
-import { AI_PROVIDER_IDS, BUILTIN_AI_PRESETS, THINKING_LEVELS } from "../constants";
+import {
+	AI_PROVIDER_IDS,
+	BUILTIN_AI_PRESETS,
+	THINKING_LEVELS,
+	WEB_SEARCH_BACKEND_IDS,
+} from "../constants";
 
 export { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../constants";
 
@@ -291,6 +296,41 @@ const AISettingsObjectSchema = z.object({
 			thinkingLevel: z.enum(THINKING_LEVELS).optional(),
 		})
 		.default({}),
+	/**
+	 * 联网搜索(`web_search` 工具)的配置。与选哪家 AI 服务商**正交**:搜索不走
+	 * 各家 LLM 的原生联网方言,由这里选定的后端真正执行,所以任何支持 function
+	 * calling 的服务商都能联网。
+	 *
+	 * key 按后端**各存一格**:换后端不丢另一家的 key(对齐实例桶「换来换去不必
+	 * 重敲 key」的纪律)。落盘前会被抠进加密袋,袋键 `search:<backend>`,见
+	 * `apps/server/src/config/ai-secrets.ts`。
+	 *
+	 * `engines` 三个开关**默认全关**:搜索按次付费,自动路径(点评/总结)一旦
+	 * 开了,每条推送都可能烧额度,必须主人亲手点亮。聊天页不在此列 —— 那颗
+	 * 胶囊是会话级的,不落盘。
+	 */
+	search: z
+		.object({
+			backend: z.enum(WEB_SEARCH_BACKEND_IDS).default("bocha"),
+			keys: z
+				.object({
+					bocha: z.string().default(""),
+					tavily: z.string().default(""),
+				})
+				.default({ bocha: "", tavily: "" }),
+			engines: z
+				.object({
+					dynamic: z.boolean().default(false),
+					live: z.boolean().default(false),
+					roast: z.boolean().default(false),
+				})
+				.default({ dynamic: false, live: false, roast: false }),
+		})
+		.default({
+			backend: "bocha",
+			keys: { bocha: "", tavily: "" },
+			engines: { dynamic: false, live: false, roast: false },
+		}),
 	/**
 	 * 全局此刻启用哪一份人格。**不填 = 用 `persona`**(老配置一字不变,无需迁移);
 	 * 填了就用 `presets` 里那一份。
