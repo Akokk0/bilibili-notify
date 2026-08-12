@@ -213,99 +213,106 @@ export function Composer({
 					</div>
 				) : null}
 
-				<div className="flex items-end gap-2.5">
-					<input
-						ref={fileRef}
-						type="file"
-						accept="image/png,image/jpeg,image/webp"
-						multiple
-						hidden
-						onChange={(e) => {
-							if (e.target.files?.length) onPickFiles?.(e.target.files);
-							// 清空 value:同一张图连挑两次时 change 不会再触发,看着就像点了没反应。
-							e.target.value = "";
-						}}
-					/>
-					<div className="relative shrink-0 self-center" ref={actionsRef}>
-						<button
-							type="button"
-							title="添加图片或唤起女仆技能"
-							aria-label="添加"
-							aria-haspopup="menu"
-							aria-expanded={actionsOpen}
-							onClick={() => setActionsOpen((v) => !v)}
-							className="grid h-9 w-9 cursor-pointer place-items-center rounded-full text-bn-text-secondary transition-colors hover:bg-bn-hover-muted"
-						>
-							<Icon.plus size={19} />
-						</button>
-						{actionsOpen ? (
-							<div
-								role="menu"
-								aria-label="更多"
-								className="bn-anim-cmd-in absolute bottom-full left-0 z-10 mb-2 w-44 overflow-hidden rounded-[14px] border border-bn-border bg-bn-surface-strong p-1 shadow-bn-elev"
+				{/* 学 DeepSeek 的两段式:输入框独占一行,下面单独一条工具栏(+ / 深度思考
+				    这类开关 / 发送键)。曾经这些按钮跟输入框挤在同一行,内容一多输入区
+				    反而被越挤越窄;分行之后输入区永远占满宽度,工具栏也有地方把开关
+				    做成带文字的胶囊,不必缩成一个谁都认不出的图标。 */}
+				<textarea
+					ref={taRef}
+					rows={1}
+					// biome-ignore lint/a11y/noAutofocus: 聊天页是主人主动点开的整页覆盖层,打开就该能直接打字
+					autoFocus={autoFocus}
+					value={value}
+					onChange={(e) => {
+						onChange(e.target.value);
+						setClosed(false);
+						setIndex(0);
+					}}
+					onKeyDown={onKeyDown}
+					onFocus={() => setFocus(true)}
+					// 延后收焦点态:点技能菜单里的项会先触发 blur,立刻收会让菜单在
+					// click 落地前就消失,于是那一下点了个寂寞。
+					onBlur={() => setTimeout(() => setFocus(false), 120)}
+					placeholder={`给${aiName}发消息,输入 / 唤起技能`}
+					aria-label="聊天输入"
+					className="max-h-[150px] w-full resize-none border-none bg-transparent px-2 pt-1.5 pb-1 text-[16.5px] leading-relaxed text-bn-text-primary outline-none placeholder:text-bn-text-secondary"
+				/>
+
+				<div className="flex items-center justify-between gap-2 px-1 pt-1 pb-0.5">
+					<div className="flex min-w-0 items-center gap-1.5">
+						<input
+							ref={fileRef}
+							type="file"
+							accept="image/png,image/jpeg,image/webp"
+							multiple
+							hidden
+							onChange={(e) => {
+								if (e.target.files?.length) onPickFiles?.(e.target.files);
+								// 清空 value:同一张图连挑两次时 change 不会再触发,看着就像点了没反应。
+								e.target.value = "";
+							}}
+						/>
+						<div className="relative shrink-0" ref={actionsRef}>
+							<button
+								type="button"
+								title="添加图片或唤起女仆技能"
+								aria-label="添加"
+								aria-haspopup="menu"
+								aria-expanded={actionsOpen}
+								onClick={() => setActionsOpen((v) => !v)}
+								className="grid h-9 w-9 cursor-pointer place-items-center rounded-full text-bn-text-secondary transition-colors hover:bg-bn-hover-muted"
 							>
-								<button
-									type="button"
-									role="menuitem"
-									title={full ? `最多 ${MAX_ATTACHMENTS} 张` : "添加图片"}
-									aria-label="添加图片"
-									disabled={full}
-									onClick={() => {
-										fileRef.current?.click();
-										setActionsOpen(false);
-									}}
-									className="flex w-full cursor-pointer items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-[13px] text-bn-text-primary transition-colors hover:bg-bn-hover-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+								<Icon.plus size={19} />
+							</button>
+							{actionsOpen ? (
+								<div
+									role="menu"
+									aria-label="更多"
+									className="bn-anim-cmd-in absolute bottom-full left-0 z-10 mb-2 w-44 overflow-hidden rounded-[14px] border border-bn-border bg-bn-surface-strong p-1 shadow-bn-elev"
 								>
-									<Icon.image size={16} />
-									添加图片
-								</button>
-								<button
-									type="button"
-									role="menuitem"
-									title="女仆技能"
-									aria-label="女仆技能"
-									onClick={() => {
-										onChange("/");
-										setClosed(false);
-										setActionsOpen(false);
-										taRef.current?.focus();
-									}}
-									className="flex w-full cursor-pointer items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-[13px] text-bn-text-primary transition-colors hover:bg-bn-hover-muted"
-								>
-									<Icon.sparkle size={16} />
-									女仆技能
-								</button>
-							</div>
-						) : null}
+									<button
+										type="button"
+										role="menuitem"
+										title={full ? `最多 ${MAX_ATTACHMENTS} 张` : "添加图片"}
+										aria-label="添加图片"
+										disabled={full}
+										onClick={() => {
+											fileRef.current?.click();
+											setActionsOpen(false);
+										}}
+										className="flex w-full cursor-pointer items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-[13px] text-bn-text-primary transition-colors hover:bg-bn-hover-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+									>
+										<Icon.image size={16} />
+										添加图片
+									</button>
+									<button
+										type="button"
+										role="menuitem"
+										title="女仆技能"
+										aria-label="女仆技能"
+										onClick={() => {
+											onChange("/");
+											setClosed(false);
+											setActionsOpen(false);
+											taRef.current?.focus();
+										}}
+										className="flex w-full cursor-pointer items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-[13px] text-bn-text-primary transition-colors hover:bg-bn-hover-muted"
+									>
+										<Icon.sparkle size={16} />
+										女仆技能
+									</button>
+								</div>
+							) : null}
+						</div>
+						{extras}
 					</div>
-					{extras}
-					<textarea
-						ref={taRef}
-						rows={1}
-						// biome-ignore lint/a11y/noAutofocus: 聊天页是主人主动点开的整页覆盖层,打开就该能直接打字
-						autoFocus={autoFocus}
-						value={value}
-						onChange={(e) => {
-							onChange(e.target.value);
-							setClosed(false);
-							setIndex(0);
-						}}
-						onKeyDown={onKeyDown}
-						onFocus={() => setFocus(true)}
-						// 延后收焦点态:点技能菜单里的项会先触发 blur,立刻收会让菜单在
-						// click 落地前就消失,于是那一下点了个寂寞。
-						onBlur={() => setTimeout(() => setFocus(false), 120)}
-						placeholder={`给${aiName}发消息,输入 / 唤起技能`}
-						aria-label="聊天输入"
-						className="max-h-[150px] flex-1 resize-none self-center border-none bg-transparent px-0.5 py-2 text-[16.5px] leading-relaxed text-bn-text-primary outline-none placeholder:text-bn-text-secondary"
-					/>
 					<button
 						type="button"
 						title="发送"
 						aria-label="发送"
 						disabled={!canSend}
 						onClick={onSubmit}
-						className={`grid h-11 w-11 shrink-0 place-items-center self-end rounded-full transition ${
+						className={`grid h-9 w-9 shrink-0 place-items-center rounded-full transition ${
 							canSend
 								? "bn-chat-accent-grad bn-chat-accent-glow cursor-pointer text-white"
 								: "cursor-default bg-bn-hover-muted text-bn-text-secondary"
