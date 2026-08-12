@@ -182,6 +182,34 @@ export type AIProviderId = (typeof AI_PROVIDER_IDS)[number];
 export const THINKING_LEVELS = ["low", "medium", "high"] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
+/**
+ * 联网搜索的后端。与 AI 服务商是**两个正交的选择**:搜索不走各家 LLM 的原生
+ * 联网方言(分裂且 DeepSeek 官方压根没有),而是我们自己的 `web_search` 工具,
+ * 由这里选定的后端真正执行 —— 所以任何支持 function calling 的服务商都能联网。
+ */
+export const WEB_SEARCH_BACKEND_IDS = ["bocha", "tavily"] as const;
+export type WebSearchBackendId = (typeof WEB_SEARCH_BACKEND_IDS)[number];
+
+export interface WebSearchBackendMeta {
+	id: WebSearchBackendId;
+	/** 配置面上的显示名。 */
+	label: string;
+	/** 申请 key 的入口,只作提示。 */
+	keyUrl: string;
+}
+
+export const WEB_SEARCH_BACKENDS: readonly WebSearchBackendMeta[] = [
+	// 博查在前:B 站语境下中文搜索质量是主场景。
+	{ id: "bocha", label: "博查", keyUrl: "https://open.bochaai.com" },
+	{ id: "tavily", label: "Tavily", keyUrl: "https://app.tavily.com" },
+];
+
+/** 按 id 取搜索后端元数据。id 只可能来自 zod 校验过的配置,不做兜底。 */
+export function webSearchBackendMeta(id: WebSearchBackendId): WebSearchBackendMeta {
+	// biome-ignore lint/style/noNonNullAssertion: 枚举封闭,zod 已挡住未知 id
+	return WEB_SEARCH_BACKENDS.find((b) => b.id === id)!;
+}
+
 export interface AIProviderMeta {
 	id: AIProviderId;
 	/** 配置面上的显示名。 */

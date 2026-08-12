@@ -18,3 +18,10 @@ export {
 export * from "./persona-presets";
 export { type BuildProviderParamsInput, buildProviderParams } from "./providers";
 export { executeTool, type SubItemView, type Subscriptions, TOOL_DEFINITIONS } from "./tools";
+export {
+	createWebSearchExecutor,
+	WebSearchError,
+	type WebSearchExecutor,
+	type WebSearchExecutorConfig,
+	type WebSearchResult,
+} from "./web-search";
