@@ -19,6 +19,7 @@
 
 import type { CommandConfig, Logger } from "@bilibili-notify/internal";
 import { type ParamSpec, parseArgs, parseSignature, type Values } from "./command-params.js";
+import { suggestCommand } from "./command-suggest.js";
 import { extractPrivateMessage, type InboundPrivateMessage } from "./inbound-message.js";
 
 /**
@@ -199,7 +200,9 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 	 */
 	type MatchResult =
 		| { kind: "hit"; spec: CommandSpec; params: ParamSpec[]; rest: string }
-		| { kind: "unknown" }
+		// `typed` 是主人**当成指令名敲的那一截**(第一个词),拿去找近似建议。
+		// 整串带上参数去比的话,`/mut 3h` 离 `mute` 就有三步远,建议直接失灵。
+		| { kind: "unknown"; typed: string }
 		| { kind: "not-a-command" };
 
 	function match(text: string, prefix: string): MatchResult {
@@ -224,7 +227,7 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 				return { kind: "hit", spec, params, rest: rest.trim() };
 			}
 		}
-		return { kind: "unknown" };
+		return { kind: "unknown", typed: body.split(/\s+/, 1)[0] ?? "" };
 	}
 
 	async function handleMessage(msg: InboundPrivateMessage): Promise<void> {
@@ -255,7 +258,16 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 			// **强制联动**:前缀为空时必须静默。否则同一套逻辑会对主人的每一句话都回
 			// 这句 —— 用户配出一个会打扰自己的组合,是我们的设计错误,不是他的操作错误。
 			if (!config.prefix) return;
-			await opts.reply("没有这条指令哦～");
+			// 他多半只是漏了个字母,指出最近的那条,这次手滑就地结束。建议敢在这儿
+			// 出声,是因为已经过了鉴权门 —— 它本质上是接口指纹,见 `./command-suggest`。
+			// 前缀现拼:写死 `/` 的话,主人改完前缀拿到的是一条敲了没反应的指令。
+			const near = suggestCommand(
+				hit.typed,
+				compiled.flatMap((c) => c.triggers),
+			);
+			await opts.reply(
+				near ? `没有这条指令哦～是不是想敲 ${config.prefix}${near}？` : "没有这条指令哦～",
+			);
 			return;
 		}
 

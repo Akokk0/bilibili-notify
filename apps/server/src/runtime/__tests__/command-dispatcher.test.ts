@@ -33,7 +33,9 @@ function makeDispatcher(
 	prefix = "/",
 	confirmation?: Any,
 ) {
-	const reply = vi.fn(async () => {});
+	// 声明出入参:回给主人的**那句话**本身也是断言对象(比如未知指令时有没有连带
+	// 给出建议),无参的替身会让 `mock.calls[0][0]` 连类型都取不到。
+	const reply = vi.fn(async (_text: string) => {});
 	// 配置是**现读**的:主人在面板上改完前缀 / 别名,reconcile 之后就该生效。
 	const config = { enabled: true, prefix, aliases: {} as Record<string, string[]> };
 	const dispatcher = createCommandDispatcher({
@@ -113,6 +115,60 @@ describe("前缀闸", () => {
 		await dispatcher.handleMessage({ userId: MASTER, text: "/不存在" });
 
 		expect(reply).toHaveBeenCalled();
+	});
+
+	// 一句「没有这条指令」把主人扔回去自己翻帮助,而他多半只是漏了个字母。
+	it("敲错一点点 → 连带指出最近的那条", async () => {
+		const { dispatcher, reply } = makeDispatcher([{ name: "mute", run: async () => {} }]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/mut" });
+
+		// 带上**当前**前缀,主人能直接照抄 —— 他把前缀改成 `bn ` 之后,写死 `/` 的
+		// 建议就是一条敲了没反应的指令。
+		expect(reply.mock.calls[0]?.[0]).toContain("/mute");
+	});
+
+	it("建议只看指令名那一截 —— 参数不该把距离撑爆", async () => {
+		const { dispatcher, reply } = makeDispatcher([
+			{ name: "mute", signature: "<时长:duration>", run: async () => {} },
+		]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/mut 3h" });
+
+		expect(reply.mock.calls[0]?.[0]).toContain("/mute");
+	});
+
+	it("别名同样能被指出来 —— 主人敲的是中文,回英文主名等于让他重学一遍", async () => {
+		const { dispatcher, reply } = makeDispatcher([
+			{ name: "mute", aliases: ["静音"], run: async () => {} },
+		]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/静因" });
+
+		expect(reply.mock.calls[0]?.[0]).toContain("/静音");
+	});
+
+	// 指错一条比不指更糟:主人会照着敲第二次,发现还是不对,才开始怀疑我们。
+	it("差太远就只说没有,不乱指", async () => {
+		const { dispatcher, reply } = makeDispatcher([{ name: "mute", run: async () => {} }]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/天气预报" });
+
+		expect(reply).toHaveBeenCalledOnce();
+		expect(reply.mock.calls[0]?.[0]).not.toContain("/mute");
+	});
+
+	// 强制联动优先:前缀为空时连「没有这条指令」都不说,建议自然更不能漏出去。
+	it("前缀为空时,再像也不给建议", async () => {
+		const { dispatcher, reply } = makeDispatcher(
+			[{ name: "mute", run: async () => {} }],
+			MASTER,
+			"",
+		);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "mut" });
+
+		expect(reply).not.toHaveBeenCalled();
 	});
 
 	// 强制联动:前缀配成空,就必须退化成「认不出当没看见」。这两件事得在代码里绑死,
