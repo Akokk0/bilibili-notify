@@ -11,10 +11,11 @@
  * 症状全都表现为「女仆突然变笨/失忆」,而没有人会往一个叫「额外参数」的框上想。
  *
  * - `model` / `messages`:整段对话与模型选择,覆盖 = 请求变成另一回事
+ * - `input`:responses 风味下的整段对话,与 `messages` 同罪
  * - `stream`:流式与非流式在代码里是两条分支,这里改它只会让分支与实际不符
  * - `tools` / `tool_choice`:覆盖会连带废掉看图(describe_image)与全部只读工具
  */
-const BLOCKED_KEYS = ["model", "messages", "stream", "tools", "tool_choice"] as const;
+const BLOCKED_KEYS = ["model", "messages", "input", "stream", "tools", "tool_choice"] as const;
 
 export interface ParsedExtraParams {
 	/** 解析是否成功。**被挡掉危险键不算失败** —— 剩下的参数照常生效。 */

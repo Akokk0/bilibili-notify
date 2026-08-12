@@ -1,6 +1,7 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import {
 	type AIProviderId,
+	type APIFlavorId,
 	type Logger,
 	providerMeta,
 	type ServiceContext,
@@ -11,6 +12,15 @@ import { mergeExtraParams, parseExtraParams } from "./extra-params";
 import type { PersonaKey } from "./persona-presets";
 import { buildSystemPrompt } from "./persona-presets";
 import { buildProviderParams } from "./providers";
+import {
+	buildResponsesReasoning,
+	type ResponsesInputItem,
+	responsesFunctionCalls,
+	responsesOutputText,
+	responsesReasoningText,
+	toResponsesInput,
+	toResponsesTools,
+} from "./responses-api";
 import {
 	DESCRIBE_IMAGE_TOOL,
 	executeTool,
@@ -63,6 +73,19 @@ interface SessionEntry {
 }
 
 export type AIScene = "dynamic" | "liveSummary";
+
+/** callAPI 的工具选项 —— chat 与 responses 两条风味共用的形状。 */
+interface CallToolOptions {
+	tools: OpenAI.ChatCompletionTool[];
+	onToolCall: (name: string, args: Record<string, string>) => Promise<string>;
+	onToolEvent?: (ev: ToolTraceEvent) => void;
+	/**
+	 * 联网搜索执行器。给了它,循环里名为 `web_search` 的调用就由生成器
+	 * **亲自执行**而不走 `onToolCall` —— 字符串通道带不动结构化的来源列表,
+	 * 而界面要拿它画「来源」。
+	 */
+	webSearch?: WebSearchExecutor;
+}
 
 /** 平台中立的人格配置（与 koishi 端 PersonaConfig 字段保持一致，但不依赖 koishi Schema）。 */
 export interface PersonaConfig {
@@ -117,6 +140,13 @@ export interface CommentaryGeneratorConfig {
 	 * (见 `./providers`)。`custom` 是兜底,不发任何方言参数,只认 {@link extraParams}。
 	 */
 	provider: AIProviderId;
+
+	/**
+	 * 走哪套 wire 协议。缺省 `chat`(chat completions,现状);`responses` 走
+	 * `/responses` —— 思考在那边是标准字段(`reasoning.effort`),不再吃上面
+	 * provider 的 chat 方言,custom 档案的思考开关也因此在这条路上可用。
+	 */
+	apiFlavor?: APIFlavorId;
 
 	/** 开启模型的深度思考。具体发什么字段由 {@link provider} 决定。 */
 	enableThinking: boolean;
@@ -984,17 +1014,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 	private async callAPI(
 		systemPrompt: string,
 		messages: ConversationMessage[],
-		toolOptions?: {
-			tools: OpenAI.ChatCompletionTool[];
-			onToolCall: (name: string, args: Record<string, string>) => Promise<string>;
-			onToolEvent?: (ev: ToolTraceEvent) => void;
-			/**
-			 * 联网搜索执行器。给了它,循环里名为 `web_search` 的调用就由生成器
-			 * **亲自执行**而不走 `onToolCall` —— 字符串通道带不动结构化的来源列表,
-			 * 而界面要拿它画「来源」。
-			 */
-			webSearch?: WebSearchExecutor;
-		},
+		toolOptions?: CallToolOptions,
 		imageUrls?: string[],
 		override?: CommentaryCallOverride,
 		/**
@@ -1059,6 +1079,23 @@ export class CommentaryGenerator implements CommentaryProvider {
 				`extra-params-dropped:${extra.dropped.join(",")}`,
 				`[api] 额外请求参数里的 ${extra.dropped.join(" / ")} 被忽略了 —— 这些字段是请求的骨架,覆盖它们会让对话或工具静默失灵`,
 			);
+		}
+
+		// 风味岔路:responses 走自己的取轮与工具环。放在 chat 方言参数之前 ——
+		// buildProviderParams 那套(enable_thinking / thinking.type…)是 chat
+		// completions 专属,在 /responses 上一个字段都不该出现。
+		if ((this.config.apiFlavor ?? "chat") === "responses") {
+			return this.callResponsesAPI({
+				client,
+				apiMessages,
+				model,
+				temperature,
+				extra: extra.value,
+				toolOptions,
+				override,
+				onDelta,
+				onReasoning,
+			});
 		}
 
 		// override 是 per-call 的(dashboard 聊天的思考设置与引擎分了家),没给就用全局。
@@ -1215,6 +1252,191 @@ export class CommentaryGenerator implements CommentaryProvider {
 		}
 
 		return "（工具调用轮次已达上限）";
+	}
+
+	/**
+	 * responses 风味的取轮与工具环(callAPI 的岔路,消息组装 / 额外参数解析仍在
+	 * 那边共用)。与 chat 环同一套骨架:流式优先、没吐过字才容许回落非流式、
+	 * reasoning 参数被拒且没吐过字则摘掉重试、失败**绝不回落 chat completions**
+	 * —— 两套协议的 404 语义完全不同,静默换协议只会把「没配对」演成玄学。
+	 */
+	private async callResponsesAPI(args: {
+		client: OpenAI;
+		apiMessages: OpenAI.ChatCompletionMessageParam[];
+		model: string;
+		temperature?: number;
+		extra: Record<string, unknown>;
+		toolOptions?: CallToolOptions;
+		override?: CommentaryCallOverride;
+		onDelta?: (text: string) => void;
+		onReasoning?: (text: string) => void;
+	}): Promise<string> {
+		const { client, model, temperature, toolOptions, override } = args;
+
+		// 思考走标准 reasoning.effort,不吃 chat 方言 —— 这正是上这套协议的动机。
+		const reasoningParams = buildResponsesReasoning({
+			provider: this.config.provider,
+			enableThinking: override?.enableThinking ?? this.config.enableThinking,
+			thinkingLevel: override?.thinkingLevel ?? this.config.thinkingLevel,
+		});
+
+		const input: ResponsesInputItem[] = toResponsesInput(args.apiMessages);
+		const tools = toolOptions ? toResponsesTools(toolOptions.tools) : undefined;
+		const makeParams = (withReasoning: boolean): Record<string, unknown> => ({
+			model,
+			input,
+			...(temperature !== undefined ? { temperature } : {}),
+			...(tools ? { tools, tool_choice: "auto" } : {}),
+			...mergeExtraParams(withReasoning ? reasoningParams : {}, args.extra),
+		});
+
+		// 与 chat 环同一本账:吐过字就不许悄悄重来(见 callAPI 里的说明)。
+		let emitted = 0;
+		const emit = args.onDelta
+			? (text: string) => {
+					emitted += text.length;
+					args.onDelta?.(text);
+				}
+			: undefined;
+		const emitReasoning = args.onReasoning
+			? (text: string) => {
+					emitted += text.length;
+					args.onReasoning?.(text);
+				}
+			: undefined;
+
+		/** 非流式取一轮,思考与正文按「先想后说」补喂回调(与 chat 的回落路径同规矩)。 */
+		const createOnce = async (withReasoning: boolean): Promise<unknown[]> => {
+			const res = (await client.responses.create(
+				// SDK 的参数类型要求具名字段,而这里的请求体是动态拼的(方言 + 主人
+				// 的额外参数),经 unknown 过桥 —— 形状由 responses-api 的测试钉住。
+				makeParams(withReasoning) as unknown as Parameters<OpenAI["responses"]["create"]>[0],
+			)) as { output?: unknown[] };
+			const items = res.output;
+			if (!Array.isArray(items)) {
+				throw new Error("AI 网关返回的 responses 响应缺少 output(疑似不支持该协议或命中审查)");
+			}
+			if (emitReasoning) {
+				const think = responsesReasoningText(items);
+				if (think) emitReasoning(think);
+			}
+			if (emit) {
+				const text = responsesOutputText(items);
+				if (text) emit(text);
+			}
+			return items;
+		};
+
+		const fetchRound = async (): Promise<unknown[]> => {
+			if (emit) {
+				try {
+					return await this.streamResponsesOnce(client, makeParams(true), emit, emitReasoning);
+				} catch (e) {
+					if (emitted > 0) throw new Error(this.sanitizeErr(e));
+					const rejection = CommentaryGenerator.rejectionOf(e);
+					if (rejection) throw rejection;
+					this.logger.warn(`[api] responses 流式不可用,回落非流式: ${this.sanitizeErr(e)}`);
+				}
+			}
+			return createOnce(true);
+		};
+
+		const MAX_ROUNDS = 8;
+		const budget = { searchCalls: 0 };
+		for (let round = 0; round < MAX_ROUNDS; round++) {
+			let items: unknown[];
+			try {
+				items = await fetchRound();
+			} catch (e) {
+				const rejection = CommentaryGenerator.rejectionOf(e);
+				if (rejection) throw rejection;
+				if (Object.keys(reasoningParams).length > 0 && emitted === 0) {
+					this.logger.warn(
+						`[api] reasoning 参数不受支持，摘掉后重试(主人手写的额外参数保留): ${this.sanitizeErr(e)}`,
+					);
+					try {
+						items = await createOnce(false);
+					} catch (e2) {
+						throw new Error(this.sanitizeErr(e2));
+					}
+				} else {
+					throw new Error(this.sanitizeErr(e));
+				}
+			}
+
+			// 整轮 output(含 reasoning item)原样回填历史 —— 思考回传是这套协议
+			// 对推理模型的契约(丢了轻则变笨,DeepSeek 直接 400),不是显示需求。
+			input.push(...(items as ResponsesInputItem[]));
+
+			const calls = responsesFunctionCalls(items);
+			if (calls.length === 0) {
+				return responsesOutputText(items);
+			}
+			this.logger.debug(`[tool] 第 ${round + 1} 轮，调用 ${calls.length} 个工具`);
+			if (!toolOptions) break;
+			for (let i = 0; i < calls.length; i++) {
+				const call = calls[i];
+				const result = await this.execToolCall(
+					`${round}-${i}`,
+					call.name,
+					call.argsJson,
+					toolOptions,
+					budget,
+				);
+				input.push({ type: "function_call_output", call_id: call.callId, output: result });
+			}
+		}
+
+		return "（工具调用轮次已达上限）";
+	}
+
+	/**
+	 * 流式地取回 responses 的**一轮**:正文分片喂 onDelta、思考分片喂 onReasoning,
+	 * 终态 items 从 `response.completed` 里拿(工具调用在那里已是完整件,不必像
+	 * chat 那样按 index 拼分片)。
+	 *
+	 * 事件一律按 `type` 字符串 + 宽对象消费 —— SDK 4.104 的事件联合类型跟不上
+	 * 线上协议(`response.reasoning_text.*` 一族整个缺席),运行时它照样透传。
+	 */
+	private async streamResponsesOnce(
+		client: OpenAI,
+		params: Record<string, unknown>,
+		onDelta: (text: string) => void,
+		onReasoning?: (text: string) => void,
+	): Promise<unknown[]> {
+		const stream = (await client.responses.create({
+			...params,
+			stream: true,
+		} as unknown as Parameters<OpenAI["responses"]["create"]>[0])) as unknown as AsyncIterable<
+			Record<string, unknown>
+		>;
+		let items: unknown[] | null = null;
+		for await (const ev of stream) {
+			const type = ev.type;
+			if (type === "response.output_text.delta") {
+				if (typeof ev.delta === "string" && ev.delta) onDelta(ev.delta);
+			} else if (
+				// 思考正文(DeepSeek 全文直给)与思考摘要(OpenAI 官方只给 summary)
+				// 都喂同一个回调 —— 对界面而言它们是同一样东西:先想后说的那段草稿。
+				type === "response.reasoning_text.delta" ||
+				type === "response.reasoning_summary_text.delta"
+			) {
+				if (typeof ev.delta === "string" && ev.delta) onReasoning?.(ev.delta);
+			} else if (type === "response.completed" || type === "response.incomplete") {
+				// incomplete(如 max_output_tokens 截断)也取已有产物,与 chat 风味
+				// 对 finish_reason=length 照样返回正文的行为一致。
+				items = (ev.response as { output?: unknown[] } | undefined)?.output ?? [];
+			} else if (type === "response.failed") {
+				const msg = (ev.response as { error?: { message?: unknown } } | undefined)?.error?.message;
+				throw new Error(typeof msg === "string" ? msg : "responses 流式响应报告失败");
+			} else if (type === "error") {
+				throw new Error(typeof ev.message === "string" ? ev.message : "responses 流式响应错误");
+			}
+		}
+		if (!items) {
+			throw new Error("responses 流式未收到 response.completed(网关可能不支持流式)");
+		}
+		return items;
 	}
 
 	/**

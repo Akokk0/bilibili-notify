@@ -50,7 +50,9 @@ describe("解析", () => {
 });
 
 describe("结构性字段的闸", () => {
-	it.each(["model", "messages", "stream", "tools", "tool_choice"])("挡掉 %s", (key) => {
+	// `input` 是 responses 风味下的整段对话,与 `messages` 同罪 —— 两条风味的
+	// 骨架键都在同一道闸上,不按风味分家(闸多了迟早漏)。
+	it.each(["model", "messages", "input", "stream", "tools", "tool_choice"])("挡掉 %s", (key) => {
 		const r = parseExtraParams(JSON.stringify({ [key]: "x", top_k: 40 }));
 		expect(r.value).toEqual({ top_k: 40 });
 		expect(r.dropped).toContain(key);

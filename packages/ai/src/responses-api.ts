@@ -89,3 +89,64 @@ export function toResponsesTools(
 		strict: false,
 	}));
 }
+
+/**
+ * 一轮响应(`response.output`)里的正文:message item 的 `output_text` parts
+ * 逐段拼接。items 全程宽形状 —— SDK 4.104 的类型联合跟不上线上协议(reasoning
+ * 事件一族整个缺席),与其对着过时的类型硬拗,不如统一按结构探测。
+ */
+export function responsesOutputText(items: readonly unknown[]): string {
+	let text = "";
+	for (const it of items) {
+		const item = it as { type?: unknown; content?: unknown };
+		if (item?.type !== "message" || !Array.isArray(item.content)) continue;
+		for (const part of item.content) {
+			const p = part as { type?: unknown; text?: unknown };
+			if (p?.type === "output_text" && typeof p.text === "string") text += p.text;
+		}
+	}
+	return text;
+}
+
+/** 一轮响应里的工具调用。`call_id` 是回填 function_call_output 的配对钥匙。 */
+export interface ResponsesFunctionCall {
+	callId: string;
+	name: string;
+	argsJson: string;
+}
+
+export function responsesFunctionCalls(items: readonly unknown[]): ResponsesFunctionCall[] {
+	const calls: ResponsesFunctionCall[] = [];
+	for (const it of items) {
+		const item = it as { type?: unknown; call_id?: unknown; name?: unknown; arguments?: unknown };
+		if (item?.type !== "function_call") continue;
+		calls.push({
+			callId: typeof item.call_id === "string" ? item.call_id : "",
+			name: typeof item.name === "string" ? item.name : "",
+			argsJson: typeof item.arguments === "string" ? item.arguments : "{}",
+		});
+	}
+	return calls;
+}
+
+/**
+ * 非流式路径从 reasoning item 里抠思考文本,补喂给回调(流式下走
+ * `response.reasoning_text.delta`,不经这里)。两种壳都认:DeepSeek 把全文
+ * 放 `content[].text`,OpenAI 官方只给 `summary[].text` —— 都是「能给多少
+ * 显示多少」,抠不出来就安静返回空串,绝不影响正文。
+ */
+export function responsesReasoningText(items: readonly unknown[]): string {
+	let text = "";
+	for (const it of items) {
+		const item = it as { type?: unknown; summary?: unknown; content?: unknown };
+		if (item?.type !== "reasoning") continue;
+		for (const list of [item.content, item.summary]) {
+			if (!Array.isArray(list)) continue;
+			for (const entry of list) {
+				const e = entry as { text?: unknown };
+				if (typeof e?.text === "string") text += e.text;
+			}
+		}
+	}
+	return text;
+}
