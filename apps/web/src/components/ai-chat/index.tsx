@@ -3,6 +3,7 @@ import type { GlobalConfig } from "@bilibili-notify/internal";
 import { resolveActivePersona, resolveAIProfile } from "@bilibili-notify/internal/constants";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
 	chatImageUrl,
 	conversationQueryKey,
@@ -27,15 +28,21 @@ import { ChatSidebar } from "./sidebar";
 import { AI_SKILLS, resolveOutgoing } from "./skills";
 
 /**
- * 女仆 AI 聊天 —— 右下角一颗胶囊,点开是整页覆盖的对话界面。
+ * 女仆 AI 聊天 —— 一条独立路由(/chat)的整页对话界面,右下角的胶囊
+ * ({@link AiChatDock})是它的全局入口。
  *
  * 取代了旧的「贴底建议条」:那条是**单向**的,按当前路由播一句预置话术,主人
  * 没法回话,读完只能关掉。会话记录落在服务端(见 apps/server 的 ConversationStore),
  * 所以换设备、重启服务都还在;女仆带只读工具,查得到订阅 / 直播状态 / 粉丝数,
  * 但改不动任何东西。
  *
- * 挂在 App 根部而非某个页面里:它是全局的,任何一页都能召唤。
+ * 曾经是盖在当前 tab 上的 overlay(开合态在 store 里)。改成路由之后,开没开由
+ * URL 说了算:刷新留在聊天里、浏览器返回键好使、/chat 也能存成书签直达。
  */
+
+/** 聊天页的路由。App 的 Route 与胶囊的跳转共用这一份,免得两处各写各的字符串。 */
+export const CHAT_PATH = "/chat";
+
 /**
  * 首屏闲下来之后跑一次 `fn`,返回撤销函数。
  *
@@ -56,43 +63,43 @@ function onIdle(fn: () => void): () => void {
 	return () => clearTimeout(id);
 }
 
+/**
+ * 右下角的「女仆 AI」胶囊。挂在 App 根部而非某个页面里:它是全局的,任何一页
+ * 都能召唤;已经在聊天页时不渲染 —— 自己叠在自己的入口上没有意义。
+ */
 export function AiChatDock() {
-	const open = useAiChatStore((s) => s.open);
-	const setOpen = useAiChatStore((s) => s.setOpen);
+	const navigate = useNavigate();
+	const onChatPage = useLocation().pathname === CHAT_PATH;
 
 	// 闲下来就把 Markdown chunk 取回来。这颗胶囊在每一页都挂着,所以这条**总会**跑,
 	// 与聊天开没开无关 —— 目的正是让主人第一次点进去时它已经在了。
 	useEffect(() => onIdle(preloadChatMarkdown), []);
 
-	if (!open) {
-		return (
-			<button
-				type="button"
-				onClick={() => setOpen(true)}
-				// 主人露出「要进来」的意思时就去取 Markdown 那个 chunk(约 153KB)。
-				//
-				// 这颗胶囊是打开聊天的**唯一**入口(`open` 不持久化,store 初值恒为
-				// false),所以在它身上预热就覆盖了全部路径。挪上来 / 聚焦到它,比真正
-				// 点开早几百毫秒 —— 足够取回来,于是进去之后纯文本那条退路根本
-				// 不会露面。
-				//
-				// 三个事件各管一类人:pointerEnter 是鼠标,focus 是键盘 Tab,
-				// pointerDown 是触屏(那儿没有 hover)。预热本身幂等,重复调只是
-				// 拿同一个已解析的 promise。
-				onPointerEnter={preloadChatMarkdown}
-				onPointerDown={preloadChatMarkdown}
-				onFocus={preloadChatMarkdown}
-				title="打开女仆 AI 聊天"
-				className="bn-ai-fab fixed bottom-5 right-5 z-30 flex h-12 cursor-pointer items-center gap-2.25 rounded-[26px] pl-4 pr-5 text-[13.5px] font-bold text-white shadow-[0_10px_28px_rgba(108,92,231,0.42)]"
-			>
-				<Icon.ai size={20} />
-				女仆 AI
-			</button>
-		);
-	}
-	// 拆成两个组件而不是一路 if:关着的时候不该挂那一堆 query 和订阅,
-	// 更不该在后台轮询会话列表。
-	return <ChatOverlay onClose={() => setOpen(false)} />;
+	if (onChatPage) return null;
+	return (
+		<button
+			type="button"
+			onClick={() => navigate(CHAT_PATH)}
+			// 主人露出「要进来」的意思时就去取 Markdown 那个 chunk(约 153KB)。
+			//
+			// 站内进聊天页只有这颗胶囊一个入口,在它身上预热就覆盖了站内全部路径
+			// (直接输 /chat 进来的那条由 ChatPage 挂载时的兜底预热接住)。挪上来 /
+			// 聚焦到它,比真正点开早几百毫秒 —— 足够取回来,于是进去之后纯文本那条
+			// 退路根本不会露面。
+			//
+			// 三个事件各管一类人:pointerEnter 是鼠标,focus 是键盘 Tab,
+			// pointerDown 是触屏(那儿没有 hover)。预热本身幂等,重复调只是
+			// 拿同一个已解析的 promise。
+			onPointerEnter={preloadChatMarkdown}
+			onPointerDown={preloadChatMarkdown}
+			onFocus={preloadChatMarkdown}
+			title="打开女仆 AI 聊天"
+			className="bn-ai-fab fixed bottom-5 right-5 z-30 flex h-12 cursor-pointer items-center gap-2.25 rounded-[26px] pl-4 pr-5 text-[13.5px] font-bold text-white shadow-[0_10px_28px_rgba(108,92,231,0.42)]"
+		>
+			<Icon.ai size={20} />
+			女仆 AI
+		</button>
+	);
 }
 
 /**
@@ -111,7 +118,18 @@ type PendingTool = ToolChipData & { id: string };
  */
 type SendVars = { text: string; attachments: readonly ComposerAttachment[] };
 
-function ChatOverlay({ onClose }: { onClose: () => void }) {
+/** /chat 路由页。除了「返回控制台」的去向,不感知路由 —— 其余全是聊天自己的事。 */
+export function ChatPage() {
+	const navigate = useNavigate();
+	const location = useLocation();
+	// 「返回控制台」回**来路**:从统计页点进来就该回统计页。直接输网址 / 书签进来时
+	// 历史里没有上一页(初始 entry 的 key 恒为 "default"),navigate(-1) 要么退出站点
+	// 要么原地不动 —— 这种时候显式回首页。
+	const onClose = () => {
+		if (location.key === "default") navigate("/", { replace: true });
+		else navigate(-1);
+	};
+
 	const rail = useAiChatStore((s) => s.rail);
 	const setRail = useAiChatStore((s) => s.setRail);
 	const theme = useAiChatStore((s) => s.theme);
@@ -168,8 +186,9 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 		if (activeId && activeQuery.isError) setActiveId(null);
 	}, [activeId, activeQuery.isError, setActiveId]);
 
-	// 面板一打开再取一次 —— 兜底。正常路径上首屏空闲那次早就取完了(见 AiChatDock),
-	// 这条覆盖的是「页面刚加载完、空闲回调还没排上就直奔胶囊」。预热幂等,白调无害。
+	// 页面一挂载再取一次 —— 兜底。正常路径上首屏空闲那次早就取完了(见 AiChatDock),
+	// 这条覆盖的是「刚加载完、空闲回调还没排上就直奔胶囊」,以及**直接输 /chat 进来**
+	// (根本没经过胶囊)。预热幂等,白调无害。
 	useEffect(() => {
 		preloadChatMarkdown();
 	}, []);
@@ -389,7 +408,7 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 	const glass = glassClear ? 0 : glassOpacity;
 
 	return (
-		<div
+		<section
 			data-chat-theme={theme}
 			className="bn-anim-chat-in fixed inset-0 z-40 flex"
 			// 玻璃片的三个值,算法照搬推送卡片的卡片内容层:
@@ -411,7 +430,10 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 					"--bn-chat-saturate": 1 + glass,
 				} as CSSProperties
 			}
-			role="dialog"
+			// overlay 时代这里是 div + role="dialog"。成了路由页之后它不再是「盖在
+			// 页面上的对话框」,对屏幕阅读器自称 dialog 会让人找「关闭」而不是「返回」。
+			// 带名字的 <section> 暴露出来就是 region 地标;不用 <main> —— App 壳里
+			// 已经有一个 <main>,页面里嵌第二个是违规的。
 			aria-label="女仆 AI 聊天"
 		>
 			{rail ? (
@@ -549,7 +571,7 @@ function ChatOverlay({ onClose }: { onClose: () => void }) {
 					</>
 				)}
 			</div>
-		</div>
+		</section>
 	);
 }
 

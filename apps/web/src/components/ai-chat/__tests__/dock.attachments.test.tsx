@@ -18,6 +18,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("../../../services/aiChat", async (orig) => {
@@ -84,13 +85,18 @@ vi.mock("../../../services/api", () => ({
 
 import { sendChatMessage, uploadChatImage } from "../../../services/aiChat";
 import { DEFAULT_GLASS_OPACITY, useAiChatStore } from "../../../store/aiChat";
-import { AiChatDock } from "../index";
+import { ChatPage } from "../index";
 
 const ASSET_ID = "aabbccddeeff00112233445566778899.png";
 
+/** ChatPage 用 useNavigate / useLocation,得裹在 Router 里;这份测试不关心来路。 */
 function wrap(node: ReactNode) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return <QueryClientProvider client={qc}>{node}</QueryClientProvider>;
+	return (
+		<QueryClientProvider client={qc}>
+			<MemoryRouter>{node}</MemoryRouter>
+		</QueryClientProvider>
+	);
 }
 
 /** 选一张图并等它传完(传完才会出现「移除图片」那颗按钮)。 */
@@ -114,7 +120,6 @@ beforeEach(() => {
 	vi.mocked(sendChatMessage).mockClear();
 	vi.mocked(uploadChatImage).mockClear();
 	useAiChatStore.setState({
-		open: true,
 		rail: true,
 		theme: "lime",
 		activeId: null,
@@ -127,7 +132,7 @@ afterEach(cleanup);
 
 describe("AiChatDock — 发图", () => {
 	it("附件 id 跟着请求一起走 —— 不跟着走的话服务端一张也收不到", async () => {
-		const { container } = render(wrap(<AiChatDock />));
+		const { container } = render(wrap(<ChatPage />));
 		await attachOne(container);
 
 		fireEvent.change(await screen.findByLabelText("聊天输入"), {
@@ -140,7 +145,7 @@ describe("AiChatDock — 发图", () => {
 	});
 
 	it("一个字没打、只有图也发得出去 —— 图本身就是问题", async () => {
-		const { container } = render(wrap(<AiChatDock />));
+		const { container } = render(wrap(<ChatPage />));
 		await attachOne(container);
 
 		fireEvent.click(screen.getByLabelText("发送"));
@@ -150,7 +155,7 @@ describe("AiChatDock — 发图", () => {
 	});
 
 	it("没挑图时不带 images 字段 —— 纯文字那一问不该平白多一个空数组", async () => {
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 
 		fireEvent.change(await screen.findByLabelText("聊天输入"), { target: { value: "在吗" } });
 		fireEvent.click(screen.getByLabelText("发送"));
@@ -163,7 +168,7 @@ describe("AiChatDock — 发图", () => {
 		// 发图最常见的失败就是「这家没配看图能力」,服务端当场 400 并指路 ——
 		// 那是去设置页点一下就能好的事,却要主人回来重挑一遍图,纯属白丢。
 		vi.mocked(sendChatMessage).mockRejectedValueOnce(new Error("女仆还看不见图片"));
-		const { container } = render(wrap(<AiChatDock />));
+		const { container } = render(wrap(<ChatPage />));
 		await attachOne(container);
 
 		fireEvent.change(await screen.findByLabelText("聊天输入"), { target: { value: "这张图" } });
@@ -178,7 +183,7 @@ describe("AiChatDock — 发图", () => {
 	});
 
 	it("发完之后待发送列表清空 —— 下一问不该把上一问的图再带一遍", async () => {
-		const { container } = render(wrap(<AiChatDock />));
+		const { container } = render(wrap(<ChatPage />));
 		await attachOne(container);
 
 		fireEvent.change(await screen.findByLabelText("聊天输入"), { target: { value: "第一问" } });

@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 /**
- * AiChatDock 的开合与两种主视图。
+ * 聊天页(/chat)的开合与两种主视图。
  *
- * 重点钉三件在页面上不容易反复验的事:
- *   - 关着时**不发任何请求**(会话列表不该在后台被拉起来)
+ * 聊天是一条**路由**,不是盖在当前页上的 overlay:胶囊把主人送到 /chat,
+ * 「返回控制台」回来路。重点钉四件在页面上不容易反复验的事:
+ *   - 不在聊天页时**不发任何请求**(会话列表不该在后台被拉起来)
+ *   - 开合走路由:直接落在 /chat(书签)也能进、也回得去
  *   - 主题色切换会落到 DOM 的 data-chat-theme 上 —— 整页配色全靠这个属性驱动,
  *     CSS 变量在 jsdom 里量不出来,但属性变没变量得出来
  *   - 有消息 / 没消息切两种版式(空态问候页 vs 消息流)
@@ -12,6 +14,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const H = vi.hoisted(() => ({
@@ -141,11 +144,32 @@ import { createConversation, retitleConversation, sendChatMessage } from "../../
 import { DEFAULT_GLASS_OPACITY, useAiChatStore } from "../../../store/aiChat";
 import { useAuthStore } from "../../../store/auth";
 import { BiliLoginStatus } from "../../../types/auth";
-import { AiChatDock } from "../index";
+import { AiChatDock, ChatPage } from "../index";
 
-function wrap(node: ReactNode) {
+/** ChatPage 用 useNavigate / useLocation,得裹在 Router 里;单渲染聊天页时来路无所谓。 */
+function wrap(node: ReactNode, initialPath = "/chat") {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return <QueryClientProvider client={qc}>{node}</QueryClientProvider>;
+	return (
+		<QueryClientProvider client={qc}>
+			<MemoryRouter initialEntries={[initialPath]}>{node}</MemoryRouter>
+		</QueryClientProvider>
+	);
+}
+
+/**
+ * 完整的开合链路:胶囊 + 两条路由。验「点胶囊进得去、返回出得来」必须两页都在 ——
+ * 只渲染 ChatPage 的话,导航发生了也看不见任何变化。
+ */
+function shell() {
+	return (
+		<>
+			<AiChatDock />
+			<Routes>
+				<Route path="/" element={<div data-testid="console-page" />} />
+				<Route path="/chat" element={<ChatPage />} />
+			</Routes>
+		</>
+	);
 }
 
 beforeEach(() => {
@@ -168,7 +192,6 @@ beforeEach(() => {
 		persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
 	};
 	useAiChatStore.setState({
-		open: false,
 		rail: true,
 		theme: "lime",
 		activeId: null,
@@ -182,16 +205,16 @@ afterEach(() => {
 	cleanup();
 });
 
-describe("AiChatDock — 收起态", () => {
+describe("AiChatDock — 不在聊天页时", () => {
 	it("只显示右下角那颗胶囊", () => {
-		render(wrap(<AiChatDock />));
+		render(wrap(shell(), "/"));
 		expect(screen.getByTitle("打开女仆 AI 聊天")).toBeTruthy();
-		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(screen.queryByRole("region")).toBeNull();
 	});
 
-	it("关着时一个请求都不发 —— 不在后台悄悄拉会话列表", async () => {
+	it("一个请求都不发 —— 不在后台悄悄拉会话列表", async () => {
 		// 这颗胶囊在每一页都挂着,顺手起个轮询就是全站常驻的无谓流量。
-		render(wrap(<AiChatDock />));
+		render(wrap(shell(), "/"));
 		await new Promise((r) => setTimeout(r, 20));
 		expect(H.listCalls).toBe(0);
 	});
@@ -201,23 +224,46 @@ describe("AiChatDock — 收起态", () => {
 		// 恒压过 @layer utilities 里的 .fixed —— 按钮回到常规流,再叠上 display:flex
 		// 就摊成了一整条横幅。样式表那边已改成 @layer components;这里守住调用处
 		// 确实挂了定位类(jsdom 没有 layout,量不出实际位置,只能查类名)。
-		render(wrap(<AiChatDock />));
+		render(wrap(shell(), "/"));
 		const fab = screen.getByTitle("打开女仆 AI 聊天");
 		expect(fab.className).toContain("fixed");
 		expect(fab.className).toContain("right-5");
 	});
 });
 
-describe("AiChatDock — 展开态", () => {
-	it("点胶囊展开整页聊天", async () => {
-		render(wrap(<AiChatDock />));
+describe("聊天页 — 路由开合", () => {
+	it("点胶囊 → 去 /chat,整页聊天出现", async () => {
+		render(wrap(shell(), "/"));
 		screen.getByTitle("打开女仆 AI 聊天").click();
-		await waitFor(() => expect(screen.getByRole("dialog", { name: "女仆 AI 聊天" })).toBeTruthy());
+		await waitFor(() => expect(screen.getByRole("region", { name: "女仆 AI 聊天" })).toBeTruthy());
+	});
+
+	it("聊天页上胶囊不再显示 —— 自己叠在自己的入口上没有意义", async () => {
+		render(wrap(shell(), "/chat"));
+		await screen.findByRole("region", { name: "女仆 AI 聊天" });
+		expect(screen.queryByTitle("打开女仆 AI 聊天")).toBeNull();
+	});
+
+	it("「返回控制台」回来路,胶囊回来", async () => {
+		render(wrap(shell(), "/"));
+		screen.getByTitle("打开女仆 AI 聊天").click();
+		await screen.findByRole("region", { name: "女仆 AI 聊天" });
+
+		screen.getByText("返回控制台").click();
+		await waitFor(() => expect(screen.getByTestId("console-page")).toBeTruthy());
+		expect(screen.queryByRole("region")).toBeNull();
+		expect(screen.getByTitle("打开女仆 AI 聊天")).toBeTruthy();
+	});
+
+	it("直接落在 /chat(书签 / 手输网址)→ 「返回控制台」回首页,不是退出站点", async () => {
+		// 历史里没有上一页,navigate(-1) 无处可退 —— 这时必须显式回 /。
+		render(wrap(shell(), "/chat"));
+		(await screen.findByText("返回控制台")).click();
+		await waitFor(() => expect(screen.getByTestId("console-page")).toBeTruthy());
 	});
 
 	it("没有消息 → 空态问候页,带技能胶囊", async () => {
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 		await waitFor(() => expect(screen.getByText(/今天想让小绫帮主人做点什么呢/)).toBeTruthy());
 		expect(screen.getByText("评选鸽王与勤奋 UP,毒舌锐评")).toBeTruthy();
 	});
@@ -227,19 +273,12 @@ describe("AiChatDock — 展开态", () => {
 			{ id: "m1", role: "user", content: "本周谁最勤奋", ts: "2026-07-24T00:00:00.000Z" },
 			{ id: "m2", role: "assistant", content: "小铃看了一下～", ts: "2026-07-24T00:00:01.000Z" },
 		];
-		useAiChatStore.setState({ open: true, activeId: "c1" });
-		render(wrap(<AiChatDock />));
+		useAiChatStore.setState({ activeId: "c1" });
+		render(wrap(<ChatPage />));
 
 		await waitFor(() => expect(screen.getByText("本周谁最勤奋")).toBeTruthy());
 		expect(screen.getByText("小铃看了一下～")).toBeTruthy();
 		expect(screen.queryByText(/今天想让小铃帮主人做点什么呢/)).toBeNull();
-	});
-
-	it("「返回控制台」收回胶囊态", async () => {
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
-		screen.getByText("返回控制台").click();
-		await waitFor(() => expect(screen.getByTitle("打开女仆 AI 聊天")).toBeTruthy());
 	});
 });
 
@@ -266,8 +305,8 @@ describe("AiChatDock — 发送与流式渲染", () => {
 	}
 
 	async function typeAndSend(text: string) {
-		useAiChatStore.setState({ open: true, activeId: "c1" });
-		render(wrap(<AiChatDock />));
+		useAiChatStore.setState({ activeId: "c1" });
+		render(wrap(<ChatPage />));
 		const ta = await screen.findByLabelText("聊天输入");
 		fireEvent.change(ta, { target: { value: text } });
 		fireEvent.keyDown(ta, { key: "Enter" });
@@ -409,8 +448,7 @@ describe("AiChatDock — 发送与流式渲染", () => {
 	});
 
 	it("发出去之后立刻离开空态问候页", async () => {
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 		const ta = await screen.findByLabelText("聊天输入");
 		fireEvent.change(ta, { target: { value: "在吗" } });
 		fireEvent.keyDown(ta, { key: "Enter" });
@@ -432,8 +470,8 @@ describe("AiChatDock — Markdown 渲染", () => {
 	const inChat = () => within(screen.getByTestId("chat-messages"));
 
 	async function typeAndSend(text: string) {
-		useAiChatStore.setState({ open: true, activeId: "c1" });
-		render(wrap(<AiChatDock />));
+		useAiChatStore.setState({ activeId: "c1" });
+		render(wrap(<ChatPage />));
 		const ta = await screen.findByLabelText("聊天输入");
 		fireEvent.change(ta, { target: { value: text } });
 		fireEvent.keyDown(ta, { key: "Enter" });
@@ -457,8 +495,8 @@ describe("AiChatDock — Markdown 渲染", () => {
 				ts: "2026-07-24T00:00:01.000Z",
 			},
 		];
-		useAiChatStore.setState({ open: true, activeId: "c1" });
-		render(wrap(<AiChatDock />));
+		useAiChatStore.setState({ activeId: "c1" });
+		render(wrap(<ChatPage />));
 		await waitFor(() => expect(inChat().getByText("重点")).toBeTruthy());
 		expect(inChat().getByText("重点").tagName).toBe("STRONG");
 		expect(screen.getByTestId("chat-messages").querySelectorAll("li")).toHaveLength(2);
@@ -507,8 +545,8 @@ describe("AiChatDock — 工具调用小条", () => {
 	const chips = () => inChat().queryAllByTestId("tool-trace");
 
 	async function typeAndSend(text: string) {
-		useAiChatStore.setState({ open: true, activeId: "c1" });
-		render(wrap(<AiChatDock />));
+		useAiChatStore.setState({ activeId: "c1" });
+		render(wrap(<ChatPage />));
 		const ta = await screen.findByLabelText("聊天输入");
 		fireEvent.change(ta, { target: { value: text } });
 		fireEvent.keyDown(ta, { key: "Enter" });
@@ -606,8 +644,8 @@ describe("AiChatDock — 工具调用小条", () => {
 				tools: [{ name: "list_subscriptions", args: {}, ok: true }],
 			},
 		];
-		useAiChatStore.setState({ open: true, activeId: "c1" });
-		render(wrap(<AiChatDock />));
+		useAiChatStore.setState({ activeId: "c1" });
+		render(wrap(<ChatPage />));
 		await waitFor(() => expect(inChat().getByText("一共 3 位")).toBeTruthy());
 		expect(chips()).toHaveLength(1);
 		expect(chips()[0]?.textContent).toContain("查看订阅列表");
@@ -638,7 +676,7 @@ describe("AiChatDock — 玻璃质感设置落到 DOM", () => {
 	 * 送到之后长什么样(alpha 缩放、磨砂去没去掉)是 CSS 的事,只能真机看。
 	 */
 	const glassVars = async () => {
-		const dialog = await screen.findByRole("dialog");
+		const dialog = await screen.findByRole("region");
 		return {
 			glass: dialog.style.getPropertyValue("--bn-chat-glass"),
 			blur: dialog.style.getPropertyValue("--bn-chat-blur"),
@@ -654,33 +692,32 @@ describe("AiChatDock — 玻璃质感设置落到 DOM", () => {
 	 * 所以饱和度必须跟着透明度一起退场:玻璃都没了,就不该再给背景加料。
 	 */
 	it("拉到最低时饱和度回到 1 —— 玻璃没了就不该再给背景加料", async () => {
-		useAiChatStore.setState({ open: true, glassOpacity: 0 });
-		render(wrap(<AiChatDock />));
+		useAiChatStore.setState({ glassOpacity: 0 });
+		render(wrap(<ChatPage />));
 		expect((await glassVars()).saturate).toBe("1");
 	});
 
 	it("完全透明同理 —— 三个值一起退到「这块玻璃不存在」", async () => {
-		useAiChatStore.setState({ open: true, glassClear: true });
-		render(wrap(<AiChatDock />));
+		useAiChatStore.setState({ glassClear: true });
+		render(wrap(<ChatPage />));
 		expect(await glassVars()).toEqual({ glass: "0", blur: "0", saturate: "1" });
 	});
 
 	it("透明度直接就是 alpha,原样送到 CSS 手上", async () => {
-		useAiChatStore.setState({ open: true, glassOpacity: 0.4 });
-		render(wrap(<AiChatDock />));
+		useAiChatStore.setState({ glassOpacity: 0.4 });
+		render(wrap(<ChatPage />));
 		// 饱和度跟着走:1(不加料)→ 1.8(满档质感)之间线性。
 		expect(await glassVars()).toEqual({ glass: "0.4", blur: "1", saturate: "1.4" });
 	});
 
 	it("默认那一档也照常送出去", async () => {
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 		expect((await glassVars()).glass).toBe(String(DEFAULT_GLASS_OPACITY));
 	});
 
 	it("完全透明压过滑块 —— 拉过的值留着,但这会儿不算数", async () => {
-		useAiChatStore.setState({ open: true, glassOpacity: 0.5, glassClear: true });
-		render(wrap(<AiChatDock />));
+		useAiChatStore.setState({ glassOpacity: 0.5, glassClear: true });
+		render(wrap(<ChatPage />));
 		expect((await glassVars()).glass).toBe("0");
 		// store 里那一档没被抹掉,关掉完全透明就回得去。
 		expect(useAiChatStore.getState().glassOpacity).toBe(0.5);
@@ -696,8 +733,8 @@ describe("AiChatDock — 开启新对话", () => {
 	 */
 	it("只回到空态,不去服务端建一个空会话", async () => {
 		H.messages = [{ id: "m1", role: "user", content: "你好", ts: "2026-07-25T00:00:00.000Z" }];
-		useAiChatStore.setState({ open: true, activeId: "c1" });
-		render(wrap(<AiChatDock />));
+		useAiChatStore.setState({ activeId: "c1" });
+		render(wrap(<ChatPage />));
 		await waitFor(() => expect(screen.getByTestId("chat-messages")).toBeTruthy());
 
 		fireEvent.click(screen.getByText("开启新对话"));
@@ -707,8 +744,8 @@ describe("AiChatDock — 开启新对话", () => {
 	});
 
 	it("退回空态后再发一句,这时才建会话", async () => {
-		useAiChatStore.setState({ open: true, activeId: "c1" });
-		render(wrap(<AiChatDock />));
+		useAiChatStore.setState({ activeId: "c1" });
+		render(wrap(<ChatPage />));
 		fireEvent.click(await screen.findByText("开启新对话"));
 		expect(vi.mocked(createConversation)).not.toHaveBeenCalled();
 
@@ -726,7 +763,7 @@ describe("AiChatDock — AI 起标题", () => {
 	 * 那一列就全是同一个词。聊完第一轮让女仆看一眼,起个概括主题的名字。
 	 */
 	async function sendOnce(text: string) {
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 		const ta = await screen.findByLabelText("聊天输入");
 		fireEvent.change(ta, { target: { value: text } });
 		fireEvent.keyDown(ta, { key: "Enter" });
@@ -740,7 +777,7 @@ describe("AiChatDock — AI 起标题", () => {
 	}
 
 	it("第一轮聊完 → 去要一个标题", async () => {
-		useAiChatStore.setState({ open: true, activeId: "c1" });
+		useAiChatStore.setState({ activeId: "c1" });
 		await sendOnce("你好");
 		await waitFor(() => expect(vi.mocked(retitleConversation)).toHaveBeenCalled());
 		// react-query 会往 mutationFn 里多塞一个 context 参数,只看第一个实参。
@@ -771,8 +808,8 @@ describe("AiChatDock — AI 起标题", () => {
 				},
 			};
 		});
-		useAiChatStore.setState({ open: true, activeId: "c1" });
-		render(wrap(<AiChatDock />));
+		useAiChatStore.setState({ activeId: "c1" });
+		render(wrap(<ChatPage />));
 		const ta = await screen.findByLabelText("聊天输入");
 		fireEvent.change(ta, { target: { value: "再问一句" } });
 		fireEvent.keyDown(ta, { key: "Enter" });
@@ -781,7 +818,7 @@ describe("AiChatDock — AI 起标题", () => {
 	});
 
 	it("已经起过名字的会话不再要 —— 路标不该被反复挪", async () => {
-		useAiChatStore.setState({ open: true, activeId: "c1" });
+		useAiChatStore.setState({ activeId: "c1" });
 		await sendOnce("你好");
 		await waitFor(() => expect(vi.mocked(retitleConversation)).toHaveBeenCalledTimes(1));
 
@@ -809,7 +846,7 @@ describe("AiChatDock — AI 起标题", () => {
 
 	it("起名失败不打扰主人 —— 刚聊完的界面上不该冒红字", async () => {
 		vi.mocked(retitleConversation).mockRejectedValueOnce(new Error("402 余额不足"));
-		useAiChatStore.setState({ open: true, activeId: "c1" });
+		useAiChatStore.setState({ activeId: "c1" });
 		await sendOnce("你好");
 		await waitFor(() => expect(vi.mocked(retitleConversation)).toHaveBeenCalled());
 		expect(screen.queryByRole("alert")).toBeNull();
@@ -818,8 +855,7 @@ describe("AiChatDock — AI 起标题", () => {
 
 describe("AiChatDock — 设置弹层里的玻璃质感两项", () => {
 	async function openSettings() {
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 		fireEvent.click(await screen.findByLabelText("聊天设置"));
 	}
 
@@ -859,16 +895,14 @@ describe("AiChatDock — 称呼跟人格走", () => {
 	};
 
 	it("侧栏标题用配置里的名字,不是设计稿的「小铃」", async () => {
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 		await waitFor(() => expect(screen.getByText(/女仆AI · 小绫/)).toBeTruthy());
 		expect(screen.queryByText(/小铃/)).toBeNull();
 	});
 
 	it("输入框 placeholder 也用配置里的名字", async () => {
 		G.ai = RINKO;
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 		await waitFor(() =>
 			expect(screen.getByLabelText("聊天输入").getAttribute("placeholder")).toContain(
 				"给凛子发消息",
@@ -878,16 +912,14 @@ describe("AiChatDock — 称呼跟人格走", () => {
 
 	it("空态那句问候用「自称 + 对主人的称呼」,两处都跟着人格变", async () => {
 		G.ai = RINKO;
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 		await waitFor(() => expect(screen.getByText(/今天想让本小姐帮笨蛋做点什么呢/)).toBeTruthy());
 	});
 
 	it("没登录时问候语里的称呼回落到人格的 addressUser,不硬写「主人」", async () => {
 		G.ai = RINKO;
 		useAuthStore.setState({ snapshot: null } as never);
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 		// getAll:问候语和侧栏底部各显示一次称呼,两处都该跟着人格走。
 		await waitFor(() => expect(screen.getAllByText("笨蛋").length).toBeGreaterThanOrEqual(2));
 		expect(screen.queryByText("主人")).toBeNull();
@@ -915,8 +947,7 @@ describe("AiChatDock — 称呼跟人格走", () => {
 				},
 			],
 		};
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 		await waitFor(() => expect(screen.getByText(/女仆AI · 凛子/)).toBeTruthy());
 	});
 
@@ -926,31 +957,27 @@ describe("AiChatDock — 称呼跟人格走", () => {
 			providers: { deepseek: { model: "gpt-test" } },
 			persona: { name: "", addressSelf: "", addressUser: "" },
 		};
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 		await waitFor(() => expect(screen.getByText(/女仆AI · 女仆/)).toBeTruthy());
 	});
 
 	it("底部显示配置里的模型名", async () => {
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 		await waitFor(() => expect(screen.getByText("gpt-test")).toBeTruthy());
 	});
 });
 
 describe("AiChatDock — 侧栏与主题", () => {
 	it("收起侧栏后换成展开按钮", async () => {
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 		screen.getByLabelText("收起侧栏").click();
 		await waitFor(() => expect(screen.getByLabelText("打开侧栏")).toBeTruthy());
 		expect(screen.queryByLabelText("收起侧栏")).toBeNull();
 	});
 
 	it("换主题色 → data-chat-theme 跟着变(整页配色全靠它驱动)", async () => {
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
-		const dialog = screen.getByRole("dialog", { name: "女仆 AI 聊天" });
+		render(wrap(<ChatPage />));
+		const dialog = screen.getByRole("region", { name: "女仆 AI 聊天" });
 		expect(dialog.getAttribute("data-chat-theme")).toBe("lime");
 
 		screen.getByLabelText("聊天设置").click();
@@ -960,8 +987,7 @@ describe("AiChatDock — 侧栏与主题", () => {
 	});
 
 	it("一次都没聊过时侧栏给一句引导,不是空白", async () => {
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 		await waitFor(() => expect(screen.getByText(/还没有聊过天呢/)).toBeTruthy());
 	});
 
@@ -972,8 +998,7 @@ describe("AiChatDock — 侧栏与主题", () => {
 				data: { card: { name: "晨风UP主", face: "https://i0.hdslb.com/face.jpg" } },
 			},
 		} as never);
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 
 		const img = await screen.findByAltText("晨风UP主");
 		expect(img.getAttribute("src")).toBe("https://i0.hdslb.com/face.jpg");
@@ -985,8 +1010,7 @@ describe("AiChatDock — 侧栏与主题", () => {
 		useAuthStore.setState({
 			snapshot: { status: BiliLoginStatus.LOGGED_IN, data: { card: { name: "晨风UP主" } } },
 		} as never);
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 
 		await waitFor(() => expect(screen.getAllByText("晨").length).toBeGreaterThan(0));
 		expect(screen.queryByAltText("晨风UP主")).toBeNull();
@@ -997,8 +1021,7 @@ describe("AiChatDock — 侧栏与主题", () => {
 		H.conversations = [
 			{ id: "c1", title: "本周谁最勤奋", createdAt: today, updatedAt: today, messageCount: 2 },
 		];
-		useAiChatStore.setState({ open: true });
-		render(wrap(<AiChatDock />));
+		render(wrap(<ChatPage />));
 		await waitFor(() => expect(screen.getByText("本周谁最勤奋")).toBeTruthy());
 		expect(screen.getByText("今天")).toBeTruthy();
 	});

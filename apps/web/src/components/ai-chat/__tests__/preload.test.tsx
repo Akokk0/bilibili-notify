@@ -22,7 +22,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const P = vi.hoisted(() => ({ preload: vi.fn() }));
@@ -56,17 +56,31 @@ vi.mock("../../../services/api", () => ({
 }));
 
 import { useAiChatStore } from "../../../store/aiChat";
-import { AiChatDock } from "../index";
+import { AiChatDock, ChatPage } from "../index";
 
-function wrap(node: ReactNode) {
+/**
+ * 从首页出发的完整壳:胶囊 + /chat 路由。点胶囊是一次导航,聊天页真的挂载 ——
+ * 「点开时的兜底预热」验的就是那次挂载。
+ */
+function wrap() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return <QueryClientProvider client={qc}>{node}</QueryClientProvider>;
+	return (
+		<QueryClientProvider client={qc}>
+			<MemoryRouter initialEntries={["/"]}>
+				<AiChatDock />
+				<Routes>
+					<Route path="/" element={null} />
+					<Route path="/chat" element={<ChatPage />} />
+				</Routes>
+			</MemoryRouter>
+		</QueryClientProvider>
+	);
 }
 
 beforeEach(() => {
 	vi.useFakeTimers();
 	P.preload.mockClear();
-	useAiChatStore.setState({ open: false, rail: true, activeId: null });
+	useAiChatStore.setState({ rail: true, activeId: null });
 });
 afterEach(() => {
 	cleanup();
@@ -80,53 +94,54 @@ const runIdle = () => act(() => vi.runAllTimers());
 describe("Markdown chunk 的预热时机", () => {
 	it("挂载的那一刻**不**取 —— 不跟首屏渲染抢解析与执行", () => {
 		// 要守的是关键路径,不是带宽:同步地跟着首屏一起加载才是真的白拆。
-		render(wrap(<AiChatDock />));
+		render(wrap());
 		expect(P.preload).not.toHaveBeenCalled();
 	});
 
 	it("首屏空闲下来就去取 —— 主人真点进去时它早就在了", () => {
-		render(wrap(<AiChatDock />));
+		render(wrap());
 		runIdle();
 		expect(P.preload).toHaveBeenCalled();
 	});
 
 	it("鼠标挪到胶囊上立刻取,不等空闲 —— 覆盖「刚加载完就直奔胶囊」", () => {
-		render(wrap(<AiChatDock />));
+		render(wrap());
 		fireEvent.pointerEnter(fab());
 		expect(P.preload).toHaveBeenCalled();
 	});
 
 	it("键盘聚焦到胶囊同样开始取 —— 不能只照顾鼠标", () => {
-		render(wrap(<AiChatDock />));
+		render(wrap());
 		fireEvent.focus(fab());
 		expect(P.preload).toHaveBeenCalled();
 	});
 
 	it("碰一下胶囊(触屏没有 hover)也开始取", () => {
-		render(wrap(<AiChatDock />));
+		render(wrap());
 		fireEvent.pointerDown(fab());
 		expect(P.preload).toHaveBeenCalled();
 	});
 
 	it("预热不会顺手把聊天打开 —— 挪过去而已,别弹一整页", () => {
-		render(wrap(<AiChatDock />));
+		render(wrap());
 		fireEvent.pointerEnter(fab());
 		fireEvent.focus(fab());
-		expect(screen.queryByRole("dialog")).toBeNull();
-		expect(useAiChatStore.getState().open).toBe(false);
+		// 没发生导航:聊天页没挂上来,胶囊还在原地。
+		expect(screen.queryByRole("region")).toBeNull();
+		expect(screen.getByTitle("打开女仆 AI 聊天")).toBeTruthy();
 	});
 
 	it("直接点开(没经过 hover)也还有一道兜底 —— 面板挂载时再取一次", () => {
-		render(wrap(<AiChatDock />));
+		render(wrap());
 		act(() => {
 			fireEvent.click(fab());
 		});
-		expect(screen.getByRole("dialog")).toBeTruthy();
+		expect(screen.getByRole("region")).toBeTruthy();
 		expect(P.preload).toHaveBeenCalled();
 	});
 
 	it("离开页面时把没跑的空闲回调撤掉 —— 不留一个指着已卸载组件的定时器", () => {
-		const { unmount } = render(wrap(<AiChatDock />));
+		const { unmount } = render(wrap());
 		unmount();
 		runIdle();
 		expect(P.preload).not.toHaveBeenCalled();
@@ -173,19 +188,19 @@ describe("Markdown chunk 的预热时机 — 有 requestIdleCallback 的浏览�
 		});
 
 	it("走的确实是 rIC 那条,不是定时器", () => {
-		render(wrap(<AiChatDock />));
+		render(wrap());
 		expect(scheduled).toHaveLength(1);
 	});
 
 	it("排上的空闲回调跑起来就预取", () => {
-		render(wrap(<AiChatDock />));
+		render(wrap());
 		expect(P.preload).not.toHaveBeenCalled();
 		flushIdle();
 		expect(P.preload).toHaveBeenCalled();
 	});
 
 	it("卸载时用 cancelIdleCallback 撤掉", () => {
-		const { unmount } = render(wrap(<AiChatDock />));
+		const { unmount } = render(wrap());
 		unmount();
 		expect(scheduled[0]?.cancelled).toBe(true);
 		flushIdle();
@@ -196,7 +211,7 @@ describe("Markdown chunk 的预热时机 — 有 requestIdleCallback 的浏览�
 		// 显式标注两个参数:不标的话 vi.fn 推出空参元组,读 calls[0][1] 会触发 TS2493。
 		const ric = vi.fn((_fn: () => void, _opts?: { timeout?: number }) => 1);
 		vi.stubGlobal("requestIdleCallback", ric);
-		render(wrap(<AiChatDock />));
+		render(wrap());
 		expect(ric.mock.calls[0]?.[1]).toMatchObject({ timeout: expect.any(Number) });
 	});
 });
