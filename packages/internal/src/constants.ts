@@ -183,6 +183,14 @@ export const THINKING_LEVELS = ["low", "medium", "high"] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
 /**
+ * 实例桶的「接口风味」—— 同一家服务商的两套 wire 协议。`chat` 在前作默认位:
+ * 老配置零迁移,谁都不会被静默换协议。`responses` 是 OpenAI 2025 起的接任协议,
+ * 思考在那边是一等公民(`reasoning.effort` 与三档天然对齐),不再走各家方言。
+ */
+export const API_FLAVOR_IDS = ["chat", "responses"] as const;
+export type APIFlavorId = (typeof API_FLAVOR_IDS)[number];
+
+/**
  * 联网搜索的后端。与 AI 服务商是**两个正交的选择**:搜索不走各家 LLM 的原生
  * 联网方言(分裂且 DeepSeek 官方压根没有),而是我们自己的 `web_search` 工具,
  * 由这里选定的后端真正执行 —— 所以任何支持 function calling 的服务商都能联网。
@@ -237,6 +245,14 @@ export interface AIProviderMeta {
 	 * 只会让主人以为设置没存上。
 	 */
 	temperatureIgnoredWhenThinking: boolean;
+	/**
+	 * 这家有没有 **Responses API**(`/responses`,OpenAI 2025 起的接任协议)。
+	 * 决定设置页「接口风味」选项露不露 —— 未确认支持的家不开放,免得选出
+	 * 必然 404 的组合;日后他们支持了,这里改一行即可。2026-08 核实:
+	 * DeepSeek 生产级、百炼 qwen3-max 系、OpenRouter beta;硅基/火山未见。
+	 * custom 恒 true:能力未知时不替主人做减法(OpenAI 官方正是经此接入)。
+	 */
+	supportsResponses: boolean;
 	/** 配置面上的参考地址,只作提示,不自动填。 */
 	baseUrlHint: string;
 }
@@ -249,6 +265,7 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		thinkingDefaultsOn: false,
 		supportsVision: true,
 		temperatureIgnoredWhenThinking: false,
+		supportsResponses: true,
 		baseUrlHint: "https://openrouter.ai/api/v1",
 	},
 	{
@@ -258,6 +275,7 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		thinkingDefaultsOn: true,
 		supportsVision: true,
 		temperatureIgnoredWhenThinking: false,
+		supportsResponses: false,
 		baseUrlHint: "https://ark.cn-beijing.volces.com/api/v3",
 	},
 	{
@@ -267,6 +285,7 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		thinkingDefaultsOn: true,
 		supportsVision: true,
 		temperatureIgnoredWhenThinking: false,
+		supportsResponses: false,
 		baseUrlHint: "https://api.siliconflow.cn/v1",
 	},
 	{
@@ -279,6 +298,7 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		thinkingDefaultsOn: true,
 		supportsVision: true,
 		temperatureIgnoredWhenThinking: false,
+		supportsResponses: true,
 		baseUrlHint: "https://dashscope.aliyuncs.com/compatible-mode/v1",
 	},
 	{
@@ -288,6 +308,7 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		thinkingDefaultsOn: true,
 		supportsVision: false,
 		temperatureIgnoredWhenThinking: true,
+		supportsResponses: true,
 		baseUrlHint: "https://api.deepseek.com",
 	},
 	{
@@ -297,6 +318,7 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		thinkingDefaultsOn: false,
 		supportsVision: true,
 		temperatureIgnoredWhenThinking: false,
+		supportsResponses: true,
 		baseUrlHint: "任何 OpenAI 兼容地址",
 	},
 ];
@@ -322,6 +344,8 @@ export interface AIProviderProfileShape {
 	apiKey: string;
 	baseUrl: string;
 	model: string;
+	/** 这桶走哪套 wire 协议。默认 `chat`;能否选 `responses` 见 {@link AIProviderMeta.supportsResponses}。 */
+	apiFlavor: APIFlavorId;
 	temperature: number;
 	enableThinking: boolean;
 	thinkingLevel: ThinkingLevel;
@@ -340,6 +364,7 @@ export const EMPTY_AI_PROVIDER_PROFILE: AIProviderProfileShape = {
 	apiKey: "",
 	baseUrl: "",
 	model: "",
+	apiFlavor: "chat",
 	temperature: 0.7,
 	enableThinking: false,
 	thinkingLevel: "medium",

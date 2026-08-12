@@ -8,6 +8,7 @@ export type { FeatureKey } from "../constants";
 // 这里重导出维持根入口的既有 API 面,后端消费者无感。
 import {
 	AI_PROVIDER_IDS,
+	API_FLAVOR_IDS,
 	BUILTIN_AI_PRESETS,
 	THINKING_LEVELS,
 	WEB_SEARCH_BACKEND_IDS,
@@ -206,6 +207,13 @@ export const AIProviderProfileSchema = z.object({
 	apiKey: z.string().default(""),
 	baseUrl: z.string().default(""),
 	model: z.string().default(""),
+	/**
+	 * 这桶走哪套 wire 协议:`chat`(chat completions,现状)或 `responses`
+	 * (OpenAI 2025 起的接任协议)。默认 `chat`,老配置零迁移;哪些家能选
+	 * `responses` 由 providerMeta 的 `supportsResponses` 把门(设置页不露选项),
+	 * schema 这层不掺和 —— 手改配置选了未确认的家,后果(404)自负且可逆。
+	 */
+	apiFlavor: z.enum(API_FLAVOR_IDS).default("chat"),
 	/** chat.completions 的 temperature(0–2)。 */
 	temperature: z.number().min(0).max(2).default(0.7),
 	/**

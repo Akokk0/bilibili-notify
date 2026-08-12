@@ -9,6 +9,8 @@ export {
 	type AIProviderId,
 	type AIProviderMeta,
 	type AIProviderProfileShape,
+	API_FLAVOR_IDS,
+	type APIFlavorId,
 	BUILTIN_AI_PRESETS,
 	colorFromUid,
 	DEFAULT_ROAST_SCHEDULE,
