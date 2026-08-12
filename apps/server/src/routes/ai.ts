@@ -15,7 +15,7 @@ import {
 	type NotificationPayload,
 	providerMeta,
 	resolveAIProfile,
-	resolveChatThinking,
+	resolveChatThinkingLevel,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -322,14 +322,13 @@ export function createAiRoute(deps: RouteDeps): Hono {
 
 			let reply: string;
 			try {
-				// 聊天的思考设置与引擎(点评/总结)分了家。开关按消息走请求体(会话级
-				// 胶囊),没带的老客户端回落配置;等级始终从配置读。
-				const chatThinking = resolveChatThinking(deps.store.getGlobals().defaults.ai);
+				// 聊天的思考设置与引擎(点评/总结)分了家。开关是会话级的,按消息走
+				// 请求体,不带 = 关(配置里已经没有它的位置);等级始终从配置读。
 				reply = await commentary.chatStatelessStream(history, {
 					imageUrls: resolved.length ? resolved.map((r) => r.url) : undefined,
 					thinking: {
-						enableThinking: parsed.data.thinking ?? chatThinking.enableThinking,
-						thinkingLevel: chatThinking.thinkingLevel,
+						enableThinking: parsed.data.thinking ?? false,
+						thinkingLevel: resolveChatThinkingLevel(deps.store.getGlobals().defaults.ai),
 					},
 					// 联网搜索同样会话级;不带 = 不开。执行器没配置时生成器静默不挂。
 					webSearch: parsed.data.search ?? false,

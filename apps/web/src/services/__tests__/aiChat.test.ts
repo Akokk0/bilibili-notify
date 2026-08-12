@@ -223,3 +223,43 @@ describe("groupConversations", () => {
 		expect(got).toHaveLength(1);
 	});
 });
+
+describe("sendChatMessage — 会话级胶囊 flags", () => {
+	/** 最小可用的 SSE 响应:一个 done 事件。 */
+	function doneRes() {
+		const payload = `event: done\ndata: ${JSON.stringify({ user: {}, reply: {}, conversation: { id: "c1" } })}\n\n`;
+		const body = new ReadableStream<Uint8Array>({
+			start(c) {
+				c.enqueue(new TextEncoder().encode(payload));
+				c.close();
+			},
+		});
+		return new Response(body, { status: 200 });
+	}
+
+	it("两颗胶囊点亮 → 请求体带 thinking/search:true", async () => {
+		const fetchMock = vi.fn(async () => doneRes());
+		vi.stubGlobal("fetch", fetchMock);
+		await sendChatMessage("c1", "问", { onDelta: () => {} }, undefined, {
+			thinking: true,
+			search: true,
+		});
+		const body = JSON.parse(
+			((fetchMock.mock.calls[0] as unknown[])[1] as RequestInit).body as string,
+		);
+		expect(body).toMatchObject({ thinking: true, search: true });
+		vi.unstubAllGlobals();
+	});
+
+	it("胶囊全灭 / 不传 flags → 请求体里根本没有这两个键(不带 = 关)", async () => {
+		const fetchMock = vi.fn(async () => doneRes());
+		vi.stubGlobal("fetch", fetchMock);
+		await sendChatMessage("c1", "问", { onDelta: () => {} });
+		const body = JSON.parse(
+			((fetchMock.mock.calls[0] as unknown[])[1] as RequestInit).body as string,
+		);
+		expect("thinking" in body).toBe(false);
+		expect("search" in body).toBe(false);
+		vi.unstubAllGlobals();
+	});
+});

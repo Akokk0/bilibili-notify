@@ -53,6 +53,11 @@ function settings(over: Partial<AISettings> = {}): AISettings {
 		activeProfile: "",
 		providers: {},
 		chat: {},
+		search: {
+			backend: "bocha",
+			keys: { bocha: "", tavily: "" },
+			engines: { dynamic: false, live: false, roast: false },
+		},
 		presets: [],
 		...over,
 	};

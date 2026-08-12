@@ -717,7 +717,7 @@ describe("POST /conversations/:id/chat — 前置条件", () => {
 	});
 });
 
-describe("聊天的独立思考设置 —— 与引擎配置分家", () => {
+describe("聊天的独立思考设置 —— 开关会话级、等级从配置读", () => {
 	const PROFILE = {
 		activeProfile: "deepseek",
 		providers: {
@@ -725,28 +725,30 @@ describe("聊天的独立思考设置 —— 与引擎配置分家", () => {
 		},
 	};
 
-	it("chat 段没写 → 跟随当前实例(初始默认值从女仆读取)", async () => {
+	it("不带 thinking flag → 关。引擎那格开着也不影响 —— 配置里已没有聊天开关", async () => {
+		// 曾经这里回落 ai.chat.enableThinking;胶囊改会话级后,「不带 = 关」,
+		// 引擎实例的 enableThinking 更不该渗进来(那是分家前的病)。
 		const { deps } = await makeDeps({ aiConfig: { ...PROFILE, chat: {} } });
 		const app = createAiRoute(deps);
 		const id = (await readJson(await createConv(app))).conversation.id;
 
 		await chatDrained(app, id, { message: "在吗" });
 
-		expect(H.lastThinking).toEqual({ enableThinking: true, thinkingLevel: "high" });
+		expect(H.lastThinking).toEqual({ enableThinking: false, thinkingLevel: "high" });
 	});
 
-	it("chat 段写过 → 压过实例,引擎那格怎么开都不影响聊天", async () => {
+	it("等级:chat 段写过 → 压过实例,引擎那格怎么调都不影响聊天", async () => {
 		// 主人报的原病:聊天页拨思考等级,整个女仆引擎的设置跟着变。分家后聊天
-		// 只读写 ai.chat,这里验证路由真的把独立值带给了引擎。
+		// 等级只读 ai.chat,这里验证路由真的把独立值带给了引擎。
 		const { deps } = await makeDeps({
-			aiConfig: { ...PROFILE, chat: { enableThinking: false, thinkingLevel: "low" } },
+			aiConfig: { ...PROFILE, chat: { thinkingLevel: "low" } },
 		});
 		const app = createAiRoute(deps);
 		const id = (await readJson(await createConv(app))).conversation.id;
 
-		await chatDrained(app, id, { message: "在吗" });
+		await chatDrained(app, id, { message: "在吗", thinking: true });
 
-		expect(H.lastThinking).toEqual({ enableThinking: false, thinkingLevel: "low" });
+		expect(H.lastThinking).toEqual({ enableThinking: true, thinkingLevel: "low" });
 	});
 });
 

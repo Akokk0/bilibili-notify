@@ -367,23 +367,21 @@ export function resolveAIProfile(ai: {
 }
 
 /**
- * AI 聊天此刻用什么思考设置。
+ * AI 聊天此刻用的思考**等级**。
  *
  * `ai.chat` 与实例桶里的那两格是**分了家的**:桶里的管引擎(点评 / 总结 / 锐评),
- * `ai.chat` 管聊天页。chat 里没写的字段跟随当前实例(「初始默认值从女仆读取」),
- * 写过的字段压过实例、从此互不牵动。方言翻译仍按当前实例的 `provider` 走 ——
- * 这里只决定「想不想 / 想多深」,不决定「怎么说」。
+ * `ai.chat` 管聊天页。chat 里没写等级就跟随当前实例(「初始默认值从女仆读取」),
+ * 写过就压过实例、从此互不牵动。方言翻译仍按当前实例的 `provider` 走。
+ *
+ * 只剩**等级**没有开关:聊天的思考开关是**会话级**的(输入框旁那颗胶囊,默认关、
+ * 手动开、不落盘),按消息走请求体 —— 配置里没有它的位置。
  */
-export function resolveChatThinking(ai: {
+export function resolveChatThinkingLevel(ai: {
 	activeProfile?: string;
 	providers?: Record<string, AIProviderProfileShape | undefined>;
-	chat?: { enableThinking?: boolean; thinkingLevel?: ThinkingLevel };
-}): { enableThinking: boolean; thinkingLevel: ThinkingLevel } {
-	const p = resolveAIProfile(ai);
-	return {
-		enableThinking: ai.chat?.enableThinking ?? p.enableThinking,
-		thinkingLevel: ai.chat?.thinkingLevel ?? p.thinkingLevel,
-	};
+	chat?: { thinkingLevel?: ThinkingLevel };
+}): ThinkingLevel {
+	return ai.chat?.thinkingLevel ?? resolveAIProfile(ai).thinkingLevel;
 }
 
 /**

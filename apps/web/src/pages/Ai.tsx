@@ -26,7 +26,7 @@ import {
 	providerMeta,
 	resolveActivePersona,
 	resolveAIProfile,
-	resolveChatThinking,
+	resolveChatThinkingLevel,
 	type ThinkingLevel,
 	WEB_SEARCH_BACKENDS,
 	webSearchBackendMeta,
@@ -347,7 +347,7 @@ export default function Ai() {
 	// 头图那颗药丸报的是**女仆真正在用的那份**的模型,与左栏在看哪一份无关。
 	const globalProfile = resolveAIProfile(draft);
 	// 聊天页的思考设置(带「没写 = 跟随在用实例」的继承展开)与在用实例的能力位。
-	const chatThinking = resolveChatThinking(draft);
+	const chatThinkingLevel = resolveChatThinkingLevel(draft);
 	const chatMeta = providerMeta(globalProfile.provider);
 	// 头图那行名字同理:报的是**女仆真正在用的那份人格**(`activePreset` 指的那份),
 	// 与左栏在编辑哪一份无关。直读 `draft.persona` 的话换来换去它一动不动 —— 那个
@@ -554,43 +554,33 @@ export default function Ai() {
 						</FieldNote>
 					</GlassBox>
 
-					{/* 聊天页的思考设置 —— 与实例桶里那两格**分了家**:那两格是引擎的
-					    (动态点评 / 直播总结 / 锐评),这里只管 AI 聊天。聊天输入框旁那颗
-					    ✦ 图标拨的就是这里的开关;等级只在这里调(主人定的:聊天页只留图标)。 */}
+					{/* 聊天页的思考**等级** —— 与实例桶里那两格分了家:那两格是引擎的
+					    (动态点评 / 直播总结 / 锐评),这里只管 AI 聊天。开关不在这里:
+					    聊天输入框旁那颗 ✦ 胶囊是会话级的(默认关、手动开、不落盘)。 */}
 					<GlassBox
 						title="AI 聊天 · chat"
-						subtitle="聊天页的深度思考,独立于实例配置 · ai.chat"
+						subtitle="聊天页的思考深度,独立于实例配置 · ai.chat"
 						accent="#e84393"
 						icon={<Icon.sparkle size={14} />}
 						badge="chat"
 					>
 						{chatMeta.supportsThinking ? (
 							<>
-								<Field code="ai.chat.enableThinking">
-									<div className="flex h-7.5 items-center">
-										<Toggle
-											value={chatThinking.enableThinking}
-											onChange={(v) => setChat({ enableThinking: v })}
-											ariaLabel="聊天深度思考"
-										/>
-									</div>
+								<Field code="ai.chat.thinkingLevel" full>
+									<Picker<ThinkingLevel>
+										value={chatThinkingLevel}
+										onChange={(v) => setChat({ thinkingLevel: v })}
+										options={[
+											{ value: "low", label: "低" },
+											{ value: "medium", label: "中" },
+											{ value: "high", label: "高" },
+										]}
+									/>
 								</Field>
-								{chatThinking.enableThinking ? (
-									<Field code="ai.chat.thinkingLevel" full>
-										<Picker<ThinkingLevel>
-											value={chatThinking.thinkingLevel}
-											onChange={(v) => setChat({ thinkingLevel: v })}
-											options={[
-												{ value: "low", label: "低" },
-												{ value: "medium", label: "中" },
-												{ value: "high", label: "高" },
-											]}
-										/>
-									</Field>
-								) : null}
 								<FieldNote>
-									聊天输入框旁那颗 ✦ 拨的就是这个开关。初始<strong>跟随</strong>
-									「全局服务商」选中实例的思考设置;任一格改过之后就分家，此后与实例配置互不影响
+									聊天的思考<strong>开关</strong>在输入框旁 —— 那颗 ✦ 胶囊按会话手动点亮，
+									不落盘。这里只调点亮之后想多深;初始<strong>跟随</strong>
+									「全局服务商」选中实例的等级，调过之后就分家，此后与实例配置互不影响
 								</FieldNote>
 							</>
 						) : (

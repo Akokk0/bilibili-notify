@@ -60,6 +60,11 @@ export function makeDefaults(): GlobalDefaults {
 			activeProfile: "",
 			providers: {},
 			chat: {},
+			search: {
+				backend: "bocha",
+				keys: { bocha: "", tavily: "" },
+				engines: { dynamic: false, live: false, roast: false },
+			},
 			presets: [],
 		},
 		cardStyle: {

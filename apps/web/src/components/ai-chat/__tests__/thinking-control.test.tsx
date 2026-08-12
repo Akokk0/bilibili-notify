@@ -1,153 +1,98 @@
 // @vitest-environment jsdom
 /**
- * 聊天页的「深度思考」图标开关。
+ * 「深度思考」胶囊 —— **会话级受控组件**(主人定的:默认关、手动开、不落盘)。
  *
- * 读写的是 `ai.chat.enableThinking` —— 聊天页自己的思考设置,与实例桶里那两格
- * (引擎的:点评 / 总结 / 锐评)**分了家**。曾经它直接改实例桶,于是在对话里拨
- * 一下开关,整个女仆的点评行为跟着变。
+ * 它曾经直接写配置(ai.chat.enableThinking),于是刷新 / 换设备后「上次开的思考」
+ * 还阴魂不散地烧钱。改会话级后组件不再发任何写请求:状态由聊天页持有,点一下只是
+ * 回调 onToggle,发消息时随请求体走。这里守三件事:
  *
- * 继承语义:chat 段没写 = 跟随当前实例(初始默认值从女仆读取);拨过一次就写实
- * 分叉。思考**等级**不在聊天页调 —— 去「智能女仆 → 全局配置」。
+ * 1. 纯受控:aria-pressed 跟 props 走,点击只回调、**绝不 PATCH**;
+ * 2. 自定义服务商灰着并指路(方言未知,发了也没用);
+ * 3. 等级不在这里调 —— 低/中/高属于设置页。
  */
 
+import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-
-const G = vi.hoisted(() => ({
-	ai: {} as Record<string, unknown>,
-	// 显式标注两参:不标的话 vi.fn 推出空参元组,读 calls[0][1] 会触发 TS2493。
-	patch: vi.fn(async (_path: string, _body?: unknown) => ({})),
-}));
-
-vi.mock("../../../services/api", () => ({
-	api: {
-		get: vi.fn(async () => ({ defaults: { ai: G.ai } })),
-		patch: G.patch,
-	},
-}));
-
 import { ThinkingControl } from "../thinking-control";
 
-function wrap(node: ReactNode) {
-	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return <QueryClientProvider client={qc}>{node}</QueryClientProvider>;
-}
+vi.mock("../../../services/api", () => ({
+	api: { get: vi.fn(), patch: vi.fn(), post: vi.fn() },
+	ApiError: class extends Error {},
+}));
 
-function aiWith(over: Record<string, unknown> = {}) {
-	return {
-		enabled: true,
-		activeProfile: "deepseek",
-		providers: {
-			deepseek: { provider: "deepseek", model: "m", enableThinking: false },
+import { api } from "../../../services/api";
+
+function globalsWith(provider: "deepseek" | "custom") {
+	const g = makeDefaultGlobalConfig();
+	g.defaults.ai.activeProfile = "p1";
+	g.defaults.ai.providers = {
+		p1: {
+			provider,
+			label: "",
+			apiKey: "k",
+			baseUrl: "https://x",
+			model: "m",
+			temperature: 0.7,
+			enableThinking: false,
+			thinkingLevel: "medium",
+			extraParams: "",
+			enableVision: false,
+			vision: { baseUrl: "", apiKey: "", model: "" },
 		},
-		chat: {},
-		...over,
 	};
+	return g;
 }
 
-beforeEach(() => {
-	G.patch.mockClear();
-	G.ai = aiWith();
-});
+function mount(
+	provider: "deepseek" | "custom",
+	props: { on: boolean; onToggle: (v: boolean) => void },
+) {
+	vi.mocked(api.get).mockResolvedValue(JSON.parse(JSON.stringify(globalsWith(provider))));
+	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	return render(
+		<QueryClientProvider client={qc}>
+			<ThinkingControl {...props} />
+		</QueryClientProvider>,
+	);
+}
+
+beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
-const toggle = () => screen.getByRole("button", { name: "深度思考" });
+describe("ThinkingControl — 会话级受控胶囊", () => {
+	it("aria-pressed 跟 props 走:off 灭、on 亮", async () => {
+		mount("deepseek", { on: false, onToggle: () => {} });
+		const off = await screen.findByRole("button", { name: "深度思考" });
+		expect(off.getAttribute("aria-pressed")).toBe("false");
+		cleanup();
 
-describe("ThinkingControl — 图标开关,写的是 ai.chat", () => {
-	it("点一下 → PATCH ai.chat.enableThinking,**不碰**实例桶", async () => {
-		render(wrap(<ThinkingControl />));
-		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("false"));
-
-		fireEvent.click(toggle());
-
-		await waitFor(() => expect(G.patch).toHaveBeenCalledTimes(1));
-		expect(G.patch.mock.calls[0]?.[0]).toBe("/api/globals");
-		expect(G.patch.mock.calls[0]?.[1]).toEqual({
-			defaults: { ai: { chat: { enableThinking: true } } },
-		});
+		mount("deepseek", { on: true, onToggle: () => {} });
+		const lit = await screen.findByRole("button", { name: "深度思考" });
+		expect(lit.getAttribute("aria-pressed")).toBe("true");
 	});
 
-	it("chat 段没写 → 跟随当前实例的开关(初始默认值从女仆读取)", async () => {
-		G.ai = aiWith({
-			providers: { deepseek: { provider: "deepseek", model: "m", enableThinking: true } },
-		});
-		render(wrap(<ThinkingControl />));
-		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("true"));
+	it("点一下只回调 onToggle,绝不写配置 —— 会话级就是不落盘", async () => {
+		const onToggle = vi.fn();
+		mount("deepseek", { on: false, onToggle });
+		fireEvent.click(await screen.findByRole("button", { name: "深度思考" }));
+		expect(onToggle).toHaveBeenCalledWith(true);
+		expect(api.patch).not.toHaveBeenCalled();
 	});
 
-	it("chat 写过就压过实例 —— 引擎开着思考,聊天自己关了", async () => {
-		G.ai = aiWith({
-			providers: { deepseek: { provider: "deepseek", model: "m", enableThinking: true } },
-			chat: { enableThinking: false },
-		});
-		render(wrap(<ThinkingControl />));
-		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("false"));
-
-		fireEvent.click(toggle());
-
-		await waitFor(() => expect(G.patch).toHaveBeenCalled());
-		expect(G.patch.mock.calls[0]?.[1]).toEqual({
-			defaults: { ai: { chat: { enableThinking: true } } },
-		});
+	it("自定义服务商 → 灰着并指路「额外请求参数」", async () => {
+		mount("custom", { on: false, onToggle: () => {} });
+		const btn = (await screen.findByRole("button", { name: "深度思考" })) as HTMLButtonElement;
+		expect(btn.disabled).toBe(true);
+		expect(btn.title).toContain("额外请求参数");
 	});
 
-	it("聊天页没有档位按钮 —— 思考等级只在设置里调", async () => {
-		G.ai = aiWith({ chat: { enableThinking: true } });
-		render(wrap(<ThinkingControl />));
-		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("true"));
-		for (const name of ["低", "中", "高"]) {
-			expect(screen.queryByRole("button", { name })).toBeNull();
+	it("等级不在这里调 —— 聊天工具栏不摆低/中/高", async () => {
+		mount("deepseek", { on: true, onToggle: () => {} });
+		await screen.findByRole("button", { name: "深度思考" });
+		for (const label of ["低", "中", "高"]) {
+			expect(screen.queryByRole("button", { name: label })).toBeNull();
 		}
-	});
-
-	it("连点不闪 —— 保存在途中开关不禁用,乐观态当场翻转", async () => {
-		// 主人报过的闪:保存期间整个控件被 isPending 连坐禁用,opacity 一来一回。
-		// 用一个永远不 resolve 的 PATCH 把「在途中」放大到无限长,闪的实现藏不住。
-		G.patch.mockImplementationOnce(() => new Promise(() => {}));
-		render(wrap(<ThinkingControl />));
-		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("false"));
-
-		fireEvent.click(toggle());
-
-		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("true"));
-		expect((toggle() as HTMLButtonElement).disabled).toBe(false);
-	});
-
-	it("保存失败 → 弹回原样,不留一个骗人的高亮", async () => {
-		// 手控 reject:先钉住乐观态确实翻转了,再放失败进来看它弹回 —— 直接
-		// mockRejected 的话回滚快过断言,瞬态抓不住,测试等于没测乐观那一半。
-		let rejectPatch!: (e: Error) => void;
-		G.patch.mockImplementationOnce(
-			() =>
-				new Promise((_, rj) => {
-					rejectPatch = rj;
-				}),
-		);
-		render(wrap(<ThinkingControl />));
-		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("false"));
-
-		fireEvent.click(toggle());
-		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("true"));
-
-		rejectPatch(new Error("500"));
-		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("false"));
-	});
-});
-
-describe("ThinkingControl — 不支持思考的服务商", () => {
-	it("自定义:按钮灰着,并指路去额外请求参数 —— 方言未知,开关帮不上忙", async () => {
-		G.ai = aiWith({
-			activeProfile: "custom",
-			providers: { custom: { provider: "custom", model: "m" } },
-		});
-		render(wrap(<ThinkingControl />));
-		await waitFor(() => expect(toggle()).toBeTruthy());
-		expect((toggle() as HTMLButtonElement).disabled).toBe(true);
-		expect(toggle().getAttribute("title")).toContain("额外请求参数");
-		// 灰按钮点了不该发请求。
-		fireEvent.click(toggle());
-		expect(G.patch).not.toHaveBeenCalled();
 	});
 });

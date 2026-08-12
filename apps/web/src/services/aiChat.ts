@@ -130,12 +130,22 @@ export async function sendChatMessage(
 	handlers: ChatStreamHandlers,
 	/** 这一问带的图片资产 id(已经传好的),见 {@link uploadChatImage}。 */
 	images?: readonly string[],
+	/**
+	 * 会话级的两颗胶囊(深度思考 / 联网搜索)。它们不落盘,只在这一问的请求体里
+	 * 活着 —— 不带 = 都关。**要发的东西必须走参数**,别从组件闭包里读。
+	 */
+	flags?: { thinking?: boolean; search?: boolean },
 ): Promise<AiChatReplyResponse> {
 	const path = `/api/ai/conversations/${encodeURIComponent(id)}/chat`;
 	const res = await fetch(path, {
 		method: "POST",
 		headers: withDesktopTokenHeader({ "content-type": "application/json" }),
-		body: JSON.stringify({ message, ...(images?.length ? { images: [...images] } : {}) }),
+		body: JSON.stringify({
+			message,
+			...(images?.length ? { images: [...images] } : {}),
+			...(flags?.thinking ? { thinking: true } : {}),
+			...(flags?.search ? { search: true } : {}),
+		}),
 		credentials: "include",
 	});
 	if (!res.ok || !res.body) {

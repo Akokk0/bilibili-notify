@@ -1,17 +1,17 @@
 /**
- * AI 聊天页自己的思考设置(`ai.chat`)—— 与服务商实例桶里的那两格**分家**。
+ * AI 聊天页的思考**等级**(`ai.chat.thinkingLevel`)—— 与实例桶里的两格分家。
  *
- * 实例桶里的 enableThinking / thinkingLevel 是**引擎**的(动态点评、直播总结、
- * 锐评);聊天页曾经直接改它,于是在对话里拨一下开关,整个女仆的点评行为跟着变。
- * 分家后聊天读写 `ai.chat`,两边互不牵动。
+ * 桶里的 enableThinking / thinkingLevel 是**引擎**的(动态点评、直播总结、锐评);
+ * 聊天页只在配置里存**等级**,且「没写 = 跟随当前实例,写过即分家」。
  *
- * 继承语义:`ai.chat` 的字段是 **optional 的「没写 = 跟随当前实例」**。全新配置
- * 什么都不写,聊天页显示的就是女仆引擎的当下值;一旦拨过开关 / 调过等级,那个
- * 字段写实,此后引擎那边怎么改都不再影响聊天(反之亦然)。
+ * 聊天的思考**开关**不在配置里:它是会话级的(输入框旁那颗胶囊,默认关、手动开、
+ * 不落盘),按消息走请求体。曾经有过一格 `ai.chat.enableThinking`(未发版即删),
+ * 老数据里残留时 zod 静默剥掉 —— 这里钉住「剥掉」而不是「拒收」:拒收会让一份
+ * 本来能用的备份整个还原失败。
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { resolveChatThinking } from "../constants";
+import { resolveChatThinkingLevel } from "../constants";
 import { AISettingsSchema } from "./common";
 
 const BASE = {
@@ -43,44 +43,33 @@ function withProfile(chat?: Record<string, unknown>) {
 
 describe("schema:ai.chat", () => {
 	it("老配置没有 chat 段 → 补一个空对象,不是 undefined", () => {
-		// 空对象 = 「全跟随」。undefined 会让每个读它的地方都多背一个分支。
-		expect(AISettingsSchema.parse({ ...BASE }).chat).toEqual({});
+		const ai = AISettingsSchema.parse(BASE);
+		expect(ai.chat).toEqual({});
 	});
 
-	it("写过的字段原样保留,没写的保持缺席", () => {
-		const ai = withProfile({ enableThinking: false });
-		expect(ai.chat.enableThinking).toBe(false);
-		expect(ai.chat.thinkingLevel).toBeUndefined();
+	it("残留的 enableThinking 被静默剥掉(未发版即删的字段),等级照常保留", () => {
+		const ai = withProfile({ enableThinking: true, thinkingLevel: "low" });
+		expect("enableThinking" in ai.chat).toBe(false);
+		expect(ai.chat.thinkingLevel).toBe("low");
 	});
 
-	it("非法等级直接拒", () => {
-		expect(AISettingsSchema.safeParse({ ...BASE, chat: { thinkingLevel: "ultra" } }).success).toBe(
-			false,
-		);
+	it("非法等级拒收 —— 别让一个坏档位悄悄变成默认档", () => {
+		const r = AISettingsSchema.safeParse({ ...BASE, chat: { thinkingLevel: "ultra" } });
+		expect(r.success).toBe(false);
 	});
 });
 
-describe("resolveChatThinking —— 聊天此刻用什么思考设置", () => {
-	it("chat 段全空 → 跟随当前实例(初始默认值从 AI 女仆读取)", () => {
-		expect(resolveChatThinking(withProfile())).toEqual({
-			enableThinking: true,
-			thinkingLevel: "high",
-		});
+describe("resolveChatThinkingLevel — 继承与分家", () => {
+	it("chat 没写等级 → 跟随当前实例(初始默认值从女仆读取)", () => {
+		expect(resolveChatThinkingLevel(withProfile())).toBe("high");
 	});
 
-	it("chat 写过的字段压过实例,没写的仍跟随", () => {
-		// 「后面就分开了」:拨过开关之后,引擎那边怎么改都不再影响聊天。
-		const ai = withProfile({ enableThinking: false });
-		expect(resolveChatThinking(ai)).toEqual({ enableThinking: false, thinkingLevel: "high" });
+	it("chat 写过等级 → 压过实例,从此互不牵动", () => {
+		expect(resolveChatThinkingLevel(withProfile({ thinkingLevel: "low" }))).toBe("low");
 	});
 
-	it("两个字段各分各的家 —— 只调过等级时,开关照旧跟随实例", () => {
-		const ai = withProfile({ thinkingLevel: "low" });
-		expect(resolveChatThinking(ai)).toEqual({ enableThinking: true, thinkingLevel: "low" });
-	});
-
-	it("指针悬空(一份实例都没有)→ 落到空档案的默认值,不炸", () => {
-		const ai = AISettingsSchema.parse({ ...BASE, activeProfile: "", providers: {} });
-		expect(resolveChatThinking(ai)).toEqual({ enableThinking: false, thinkingLevel: "medium" });
+	it("指针悬空(实例刚被删)→ 落回空档案的 medium,不炸", () => {
+		const ai = AISettingsSchema.parse({ ...BASE, activeProfile: "ghost" });
+		expect(resolveChatThinkingLevel(ai)).toBe("medium");
 	});
 });

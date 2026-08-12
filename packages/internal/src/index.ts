@@ -19,7 +19,7 @@ export {
 	providerMeta,
 	resolveActivePersona,
 	resolveAIProfile,
-	resolveChatThinking,
+	resolveChatThinkingLevel,
 	THINKING_LEVELS,
 	type ThinkingLevel,
 	UP_COLORS,

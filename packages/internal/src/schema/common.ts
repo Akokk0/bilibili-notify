@@ -282,17 +282,19 @@ const AISettingsObjectSchema = z.object({
 	 */
 	providers: z.record(z.string(), AIProviderProfileSchema).default({}),
 	/**
-	 * AI 聊天页自己的思考设置,**独立于**实例桶里的那两格 —— 那两格是引擎的
-	 * (动态点评 / 直播总结 / 锐评),聊天页曾经直接改它,于是在对话里拨一下开关,
+	 * AI 聊天页自己的思考**等级**,独立于实例桶里的那两格 —— 那两格是引擎的
+	 * (动态点评 / 直播总结 / 锐评),聊天页曾经直接改它,于是在对话里拨一下,
 	 * 整个女仆的点评行为跟着变。
 	 *
-	 * 字段是 optional 的「没写 = 跟随当前实例」:全新配置什么都不写,聊天显示的
-	 * 就是引擎的当下值;一旦在聊天页拨过开关 / 在设置里调过等级,那个字段写实,
-	 * 此后两边互不牵动。取值一律经 `resolveChatThinking`。
+	 * 字段是 optional 的「没写 = 跟随当前实例」:调过一次就写实,此后两边互不
+	 * 牵动。取值一律经 `resolveChatThinkingLevel`。
+	 *
+	 * 这里**没有开关**:聊天的思考开关是会话级的(输入框旁那颗胶囊,默认关、
+	 * 手动开、不落盘),按消息走请求体。曾经有过一格 `enableThinking`,未发版
+	 * 即删 —— 老数据里若残留,zod 会静默剥掉。
 	 */
 	chat: z
 		.object({
-			enableThinking: z.boolean().optional(),
 			thinkingLevel: z.enum(THINKING_LEVELS).optional(),
 		})
 		.default({}),

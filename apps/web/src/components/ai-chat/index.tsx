@@ -24,6 +24,7 @@ import { Icon } from "../icons";
 import { Composer, type ComposerAttachment, MAX_ATTACHMENTS } from "./composer";
 import { MessageList, preloadChatMarkdown, type ToolChipData } from "./messages";
 import { resolveChatPersona } from "./persona";
+import { SearchControl } from "./search-control";
 import { ChatSidebar } from "./sidebar";
 import { AI_SKILLS, resolveOutgoing } from "./skills";
 import { ThinkingControl } from "./thinking-control";
@@ -117,7 +118,15 @@ type PendingTool = ToolChipData & { id: string };
  * 那一让步足够 React 把重渲染 flush 掉)。闭包里读到的于是恒为空数组 —— 图能选、
  * 能预览、也照常挂在自己那条消息上,唯独服务端一张都收不到。
  */
-type SendVars = { text: string; attachments: readonly ComposerAttachment[] };
+type SendVars = {
+	text: string;
+	attachments: readonly ComposerAttachment[];
+	/**
+	 * 会话级胶囊在**点发送那一刻**的状态。走 variables 而不是让 mutationFn 从
+	 * 组件闭包里读 —— 见 react-query onMutate 的时序坑:要发的东西必须随载荷走。
+	 */
+	flags: { thinking: boolean; search: boolean };
+};
 
 /** /chat 路由页。除了「返回控制台」的去向,不感知路由 —— 其余全是聊天自己的事。 */
 export function ChatPage() {
@@ -240,6 +249,19 @@ export function ChatPage() {
 	}, [activeId]);
 
 	/**
+	 * 会话级的两颗胶囊(深度思考 / 联网搜索)。**不落盘**(主人定的):默认关、
+	 * 手动点亮、换个会话就归零 —— 曾经思考那颗直接写配置,于是刷新 / 换设备后
+	 * 「上次开的」还阴魂不散地烧钱。发送时随请求体走(见 send 的 flags)。
+	 */
+	const [thinkingOn, setThinkingOn] = useState(false);
+	const [searchOn, setSearchOn] = useState(false);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 只按 activeId 归零,不读旧值
+	useEffect(() => {
+		setThinkingOn(false);
+		setSearchOn(false);
+	}, [activeId]);
+
+	/**
 	 * 起标题。刻意**不**把错误摊给主人:服务端起名失败也回 200 + 当前标题,
 	 * 真到网络层断了也只是标题没变 —— 为一个装饰在刚聊完的界面上弹红字,
 	 * 比标题还是「你好」更烦人。
@@ -251,7 +273,7 @@ export function ChatPage() {
 	});
 
 	const send = useMutation({
-		mutationFn: async ({ text, attachments: outgoingFiles }: SendVars) => {
+		mutationFn: async ({ text, attachments: outgoingFiles, flags }: SendVars) => {
 			const imageIds = outgoingFiles.map((a) => a.id);
 			// 还没有会话就先开一个 —— 主人在空态直接打字发送时走这条路,
 			// 不必先去点「新对话」。
@@ -283,6 +305,7 @@ export function ChatPage() {
 						}),
 				},
 				imageIds,
+				flags,
 			);
 		},
 		onMutate: ({ text, attachments: outgoingFiles }: SendVars) => {
@@ -399,7 +422,12 @@ export function ChatPage() {
 		// (onMutate 的返回值被 await,那一让步足够 React 把重渲染 flush 掉),
 		// 那时 `setAttachments([])` 已经生效 —— 从 mutationFn 的闭包里读
 		// `attachments` 只能读到空数组,于是服务端一张图也收不到。
-		send.mutate({ text: outgoing, attachments });
+		// 两颗胶囊同理随载荷走。
+		send.mutate({
+			text: outgoing,
+			attachments,
+			flags: { thinking: thinkingOn, search: searchOn },
+		});
 	};
 
 	/** 挑了图就立刻传,传完塞进待发送列表。格式 / 大小不对当场报,不等到点发送。 */
@@ -523,7 +551,12 @@ export function ChatPage() {
 								onRemoveAttachment={(id) => setAttachments((p) => p.filter((a) => a.id !== id))}
 								autoFocus
 								aiName={persona.name}
-								extras={<ThinkingControl />}
+								extras={
+									<>
+										<ThinkingControl on={thinkingOn} onToggle={setThinkingOn} />
+										<SearchControl on={searchOn} onToggle={setSearchOn} />
+									</>
+								}
 							/>
 							{error ? (
 								<div
@@ -576,7 +609,12 @@ export function ChatPage() {
 								onRemoveAttachment={(id) => setAttachments((p) => p.filter((a) => a.id !== id))}
 								autoFocus
 								aiName={persona.name}
-								extras={<ThinkingControl />}
+								extras={
+									<>
+										<ThinkingControl on={thinkingOn} onToggle={setThinkingOn} />
+										<SearchControl on={searchOn} onToggle={setSearchOn} />
+									</>
+								}
 							/>
 							<div className="mt-2 text-center text-[11px] text-bn-text-secondary">
 								{persona.name}可能会出错,请核对重要信息
