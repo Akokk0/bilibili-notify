@@ -52,6 +52,7 @@ function settings(over: Partial<AISettings> = {}): AISettings {
 		liveSummaryPrompt: "",
 		activeProfile: "",
 		providers: {},
+		chat: {},
 		presets: [],
 		...over,
 	};

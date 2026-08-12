@@ -15,6 +15,7 @@ import {
 	type NotificationPayload,
 	providerMeta,
 	resolveAIProfile,
+	resolveChatThinking,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -318,6 +319,9 @@ export function createAiRoute(deps: RouteDeps): Hono {
 			try {
 				reply = await commentary.chatStatelessStream(history, {
 					imageUrls: resolved.length ? resolved.map((r) => r.url) : undefined,
+					// 聊天的思考设置与引擎(点评/总结)分了家:没写过的字段跟随当前
+					// 实例,写过的压过 —— 不带这一项,聊天页那颗开关就是个摆设。
+					thinking: resolveChatThinking(deps.store.getGlobals().defaults.ai),
 					onDelta: (text) => {
 						// 不 await:回调是同步的,这里排一次写就行。真要背压也轮不到
 						// 这一层管 —— SSE 的写在内存里排队,量级是几十 KB。

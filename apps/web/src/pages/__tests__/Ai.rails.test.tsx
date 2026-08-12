@@ -734,3 +734,32 @@ describe("内置性格:锁死、可删、可恢复、可另存", () => {
 		expect(await screen.findByText(/都在清单里/)).toBeTruthy();
 	});
 });
+
+describe("AI 聊天 —— 思考设置与实例分家", () => {
+	function thinkGlobals() {
+		return globalsWith((g) => {
+			g.defaults.ai.activeProfile = "deepseek";
+			g.defaults.ai.providers = {
+				deepseek: bucket({ provider: "deepseek", enableThinking: true, thinkingLevel: "high" }),
+			};
+		});
+	}
+
+	it("初始跟随在用实例的思考设置(chat 段还没写过)", async () => {
+		mount(thinkGlobals());
+		const t = await screen.findByRole("button", { name: "聊天深度思考" });
+		expect(t.getAttribute("aria-pressed")).toBe("true");
+		expect(screen.getByRole("button", { name: "高" }).getAttribute("aria-pressed")).toBe("true");
+	});
+
+	it("改聊天的等级不碰实例桶 —— 主人报的原病:拨一下,整个女仆引擎跟着变", async () => {
+		mount(thinkGlobals());
+		await screen.findByRole("button", { name: "聊天深度思考" });
+		fireEvent.click(screen.getByRole("button", { name: "低" }));
+		expect(screen.getByRole("button", { name: "低" }).getAttribute("aria-pressed")).toBe("true");
+		// 切到「模型配置」:实例桶里的思考等级仍是「高」,纹丝不动。
+		fireEvent.click(await screen.findByRole("tab", { name: /模型配置/ }));
+		await screen.findByText("模型连接");
+		expect(screen.getByRole("button", { name: "高" }).getAttribute("aria-pressed")).toBe("true");
+	});
+});

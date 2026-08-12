@@ -173,6 +173,17 @@ export const FIELD_LABELS = {
 		hint: "同一家添加多份时全靠它区分。留空则显示那家的名字",
 		section: "ai",
 	},
+	// 聊天页自己的思考设置(ai.chat)—— 与实例桶里的同名两格分了家,别混。
+	"ai.chat.enableThinking": {
+		label: "聊天 · 深度思考",
+		hint: "只管 AI 聊天页;点评 / 总结的思考在「模型配置」里那份实例上。初始跟随在用实例,改过即分家",
+		section: "ai",
+	},
+	"ai.chat.thinkingLevel": {
+		label: "聊天 · 思考深度",
+		hint: "只管 AI 聊天页,统一三档,按在用实例的服务商换算方言",
+		section: "ai",
+	},
 	// 合成字段,不是 schema 里的东西 —— 灵动岛只认得「摊平后的那几只桶」,
 	// 添加/删除实例在它眼里毫无变化,于是保存条不亮、主人一走就丢。这一行把
 	// 「已添加哪几份」显式喂给它。见 Ai.tsx#packIsland。

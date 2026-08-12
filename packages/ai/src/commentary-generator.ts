@@ -164,6 +164,13 @@ export interface CommentaryCallOverride {
 	temperature?: number;
 	model?: string;
 	/**
+	 * 这一次调用的思考开关 / 深度,压过全局配置。dashboard 聊天用它 —— 聊天页的
+	 * 思考设置与引擎(点评 / 总结)分了家,不传则照旧用全局的。方言翻译仍按
+	 * 全局 provider 走:override 决定「想不想 / 想多深」,不决定「怎么说」。
+	 */
+	enableThinking?: boolean;
+	thinkingLevel?: ThinkingLevel;
+	/**
 	 * per-UP 指定的 AstrBot 人格 id。仅 AstrBot bridge 消费(覆盖全局 --ai-persona-id);
 	 * 自带 OpenAI 的 CommentaryGenerator 忽略此字段。
 	 */
@@ -611,7 +618,11 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 */
 	async chatStateless(
 		messages: readonly ConversationMessage[],
-		opts?: { imageUrls?: string[] },
+		opts?: {
+			imageUrls?: string[];
+			/** 这一次的思考开关 / 深度,压过引擎全局配置。见 {@link CommentaryCallOverride}。 */
+			thinking?: { enableThinking: boolean; thinkingLevel: ThinkingLevel };
+		},
 	): Promise<string> {
 		return this.chatStatelessImpl(messages, opts);
 	}
@@ -638,6 +649,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 			 */
 			onReasoning?: (text: string) => void;
 			imageUrls?: string[];
+			/** 这一次的思考开关 / 深度,压过引擎全局配置。见 {@link CommentaryCallOverride}。 */
+			thinking?: { enableThinking: boolean; thinkingLevel: ThinkingLevel };
 		},
 	): Promise<string> {
 		return this.chatStatelessImpl(messages, opts);
@@ -650,6 +663,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			onDelta?: (text: string) => void;
 			onToolEvent?: (ev: ToolTraceEvent) => void;
 			onReasoning?: (text: string) => void;
+			thinking?: { enableThinking: boolean; thinkingLevel: ThinkingLevel };
 		},
 	): Promise<string> {
 		if (messages.length === 0) throw new Error("对话历史为空");
@@ -680,7 +694,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 				onToolEvent: opts?.onToolEvent,
 			},
 			vision.ctx ? undefined : this.mainModelCanSeeImages() ? opts?.imageUrls : undefined,
-			undefined,
+			// 只带思考两项的最小 override —— 聊天的思考设置与引擎分了家。
+			opts?.thinking,
 			opts?.onDelta,
 			opts?.onReasoning,
 		);
@@ -966,10 +981,11 @@ export class CommentaryGenerator implements CommentaryProvider {
 			);
 		}
 
+		// override 是 per-call 的(dashboard 聊天的思考设置与引擎分了家),没给就用全局。
 		const thinkingParams = buildProviderParams({
 			provider: this.config.provider,
-			enableThinking: this.config.enableThinking,
-			thinkingLevel: this.config.thinkingLevel,
+			enableThinking: override?.enableThinking ?? this.config.enableThinking,
+			thinkingLevel: override?.thinkingLevel ?? this.config.thinkingLevel,
 		});
 
 		/**

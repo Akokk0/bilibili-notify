@@ -277,6 +277,21 @@ const AISettingsObjectSchema = z.object({
 	 */
 	providers: z.record(z.string(), AIProviderProfileSchema).default({}),
 	/**
+	 * AI 聊天页自己的思考设置,**独立于**实例桶里的那两格 —— 那两格是引擎的
+	 * (动态点评 / 直播总结 / 锐评),聊天页曾经直接改它,于是在对话里拨一下开关,
+	 * 整个女仆的点评行为跟着变。
+	 *
+	 * 字段是 optional 的「没写 = 跟随当前实例」:全新配置什么都不写,聊天显示的
+	 * 就是引擎的当下值;一旦在聊天页拨过开关 / 在设置里调过等级,那个字段写实,
+	 * 此后两边互不牵动。取值一律经 `resolveChatThinking`。
+	 */
+	chat: z
+		.object({
+			enableThinking: z.boolean().optional(),
+			thinkingLevel: z.enum(THINKING_LEVELS).optional(),
+		})
+		.default({}),
+	/**
 	 * 全局此刻启用哪一份人格。**不填 = 用 `persona`**(老配置一字不变,无需迁移);
 	 * 填了就用 `presets` 里那一份。
 	 *

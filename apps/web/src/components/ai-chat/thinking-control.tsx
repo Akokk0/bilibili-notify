@@ -2,37 +2,26 @@ import type { GlobalConfig } from "@bilibili-notify/internal";
 import {
 	providerMeta,
 	resolveAIProfile,
-	type ThinkingLevel,
+	resolveChatThinking,
 } from "@bilibili-notify/internal/constants";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../services/api";
 import { Icon } from "../icons";
 
 /**
- * 聊天输入框旁的「深度思考」开关 + 档位 —— 不离开对话就能开思考。
+ * 聊天输入框旁的「深度思考」图标开关 —— 不离开对话就能开思考。
  *
- * 它是**同一份配置的另一个入口**:读写的就是智能女仆页那套
- * `ai.providers.<实例>.enableThinking / thinkingLevel`(实例 = `activeProfile`
- * 指着的那份),不另起一份状态。保存走 PATCH /api/globals,服务端 `config-changed`
- * 会把新配置热推给引擎,下一句就生效;只动这两个字段不会触发 AI 探活,
- * 所以开关是即点即应的。
+ * 读写的是 `ai.chat.enableThinking`,**聊天页自己的**思考设置:实例桶里那两格是
+ * 引擎的(动态点评 / 直播总结 / 锐评),这颗开关曾经直接改它,于是在对话里拨一下,
+ * 整个女仆的点评行为跟着变。分家后 chat 段没写 = 跟随当前实例(初始默认值从女仆
+ * 读取),拨过一次就写实分叉,此后两边互不牵动。
+ *
+ * 思考**等级**不在这里调 —— 「智能女仆 → 全局配置 → AI 聊天」。聊天页只留一颗
+ * 图标,是主人要的克制:开关高频、档位低频,低频的不值得常驻占一排。
  *
  * 自定义服务商没有这颗开关能翻译成的方言(我们不知道对面是哪家),按钮灰着并
  * 指路去「额外请求参数」—— 藏起来的话,主人只会觉得功能时有时无。
  */
-
-const LEVELS: ReadonlyArray<{ id: ThinkingLevel; label: string }> = [
-	{ id: "low", label: "低" },
-	{ id: "medium", label: "中" },
-	{ id: "high", label: "高" },
-];
-
-/** 一次保存的载荷。走 variables 而不是闭包 —— 见 react-query onMutate 的时序坑。 */
-type SaveVars = {
-	/** 写进哪只实例桶(= `ai.activeProfile` 指着的那份)。 */
-	profileId: string;
-	delta: { enableThinking?: boolean; thinkingLevel?: ThinkingLevel };
-};
 
 export function ThinkingControl() {
 	const qc = useQueryClient();
@@ -41,41 +30,32 @@ export function ThinkingControl() {
 		queryFn: () => api.get<GlobalConfig>("/api/globals"),
 	});
 	const save = useMutation({
-		mutationFn: ({ profileId, delta }: SaveVars) =>
-			api.patch("/api/globals", { defaults: { ai: { providers: { [profileId]: delta } } } }),
+		// 载荷走 variables 而不是闭包 —— 见 react-query onMutate 的时序坑。
+		mutationFn: (delta: { enableThinking: boolean }) =>
+			api.patch("/api/globals", { defaults: { ai: { chat: delta } } }),
 		/**
-		 * 乐观更新:点下去缓存立刻改,界面**当场**就是终态。
-		 *
-		 * 曾经是等服务端回话 + invalidate 重拉,并在在途期间连坐禁用整个控件 ——
-		 * `disabled:opacity-40` 一来一回,主人看到的就是「切个档,开关闪一下」。
-		 * 配置这种毫秒级往返的小字段,观感不该被网络牵着走。
+		 * 乐观更新:点下去缓存立刻改,界面**当场**就是终态,保存在途什么都不禁用
+		 * —— 等服务端回话再刷新的话,开关会闪一下(主人报过的那个)。失败弹回,
+		 * 收尾静默重拉对账(这份配置设置页也在看)。
 		 */
-		onMutate: async ({ profileId, delta }: SaveVars) => {
+		onMutate: async (delta: { enableThinking: boolean }) => {
 			await qc.cancelQueries({ queryKey: ["globals"] });
 			const prev = qc.getQueryData<GlobalConfig>(["globals"]);
 			qc.setQueryData<GlobalConfig>(["globals"], (cur) => {
 				if (!cur) return cur;
-				// 桶理应存在(指针不悬空时开关才可点)—— 仍拿 resolve 出来的完整
-				// 缺省兜底,别往缓存里塞半个桶。
-				const base = cur.defaults.ai.providers[profileId] ?? resolveAIProfile(cur.defaults.ai);
 				return {
 					...cur,
 					defaults: {
 						...cur.defaults,
-						ai: {
-							...cur.defaults.ai,
-							providers: { ...cur.defaults.ai.providers, [profileId]: { ...base, ...delta } },
-						},
+						ai: { ...cur.defaults.ai, chat: { ...cur.defaults.ai.chat, ...delta } },
 					},
 				};
 			});
 			return { prev };
 		},
-		// 失败弹回原样 —— 留一个骗人的高亮,主人会以为开成了。
 		onError: (_err, _vars, ctx) => {
 			if (ctx?.prev) qc.setQueryData(["globals"], ctx.prev);
 		},
-		// 收尾重拉一次对账:这份配置设置页也在看,以服务端落盘的为准。
 		onSettled: () => qc.invalidateQueries({ queryKey: ["globals"] }),
 	});
 
@@ -83,63 +63,30 @@ export function ThinkingControl() {
 	// 配置还没到手就先不画 —— 一颗状态未知的开关比没有开关更误导。
 	if (!ai) return null;
 
-	const profile = resolveAIProfile(ai);
-	// 方言归属认桶里的 provider 章 —— activeProfile 只是实例 id,同一家可以有多份。
-	const meta = providerMeta(profile.provider);
-	const on = meta.supportsThinking && profile.enableThinking;
+	// 方言归属认当前实例桶里的 provider 章;想不想思考看的是 chat 段(带继承)。
+	const meta = providerMeta(resolveAIProfile(ai).provider);
+	const thinking = resolveChatThinking(ai);
+	const on = meta.supportsThinking && thinking.enableThinking;
 
 	return (
-		<div className="flex shrink-0 items-center gap-1.5 self-center">
-			<button
-				type="button"
-				aria-pressed={on}
-				// 只有「不支持」才禁用。保存在途**不**禁用 —— 乐观更新下界面已是终态,
-				// 这时再灰一下就是主人报过的那个「闪」。连点的最后一下赢,与服务端
-				// merge-patch 的语义一致。
-				disabled={!meta.supportsThinking}
-				title={
-					meta.supportsThinking
-						? "让她想清楚再答,响应会慢一些"
-						: '自定义服务商的方言未知,请到「智能女仆」页的「额外请求参数」手写(如 DeepSeek 填 {"thinking":{"type":"enabled"}})'
-				}
-				onClick={() =>
-					save.mutate({
-						profileId: ai.activeProfile,
-						delta: { enableThinking: !profile.enableThinking },
-					})
-				}
-				className={`flex h-8 cursor-pointer items-center gap-1.25 rounded-full border px-3 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-					on
-						? "bn-chat-accent bn-chat-accent-soft border-transparent"
-						: "border-bn-border text-bn-text-secondary hover:bg-bn-hover-muted"
-				}`}
-			>
-				<Icon.sparkle size={12} />
-				深度思考
-			</button>
-			{/* 档位只在开着时出现 —— 灰着一排点不动的按钮只会让人怀疑坏了。 */}
-			{on ? (
-				<div className="flex items-center gap-0.5 rounded-full border border-bn-border p-0.5">
-					{LEVELS.map((l) => {
-						const active = profile.thinkingLevel === l.id;
-						return (
-							<button
-								key={l.id}
-								type="button"
-								aria-pressed={active}
-								onClick={() =>
-									save.mutate({ profileId: ai.activeProfile, delta: { thinkingLevel: l.id } })
-								}
-								className={`h-6.5 cursor-pointer rounded-full px-2.5 text-[11.5px] font-semibold transition-colors ${
-									active ? "bn-chat-accent bn-chat-accent-soft" : "text-bn-text-tertiary"
-								}`}
-							>
-								{l.label}
-							</button>
-						);
-					})}
-				</div>
-			) : null}
-		</div>
+		<button
+			type="button"
+			aria-label="深度思考"
+			aria-pressed={on}
+			disabled={!meta.supportsThinking}
+			title={
+				meta.supportsThinking
+					? on
+						? "深度思考已开启,想清楚再答(等级在「智能女仆 → 全局配置」里调)"
+						: "深度思考:让她想清楚再答,响应会慢一些"
+					: '自定义服务商的方言未知,请到「智能女仆」页的「额外请求参数」手写(如 DeepSeek 填 {"thinking":{"type":"enabled"}})'
+			}
+			onClick={() => save.mutate({ enableThinking: !thinking.enableThinking })}
+			className={`grid h-9 w-9 shrink-0 cursor-pointer place-items-center self-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+				on ? "bn-chat-accent bn-chat-accent-soft" : "text-bn-text-secondary hover:bg-bn-hover-muted"
+			}`}
+		>
+			<Icon.sparkle size={18} />
+		</button>
 	);
 }

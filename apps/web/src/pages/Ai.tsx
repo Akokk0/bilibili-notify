@@ -26,6 +26,7 @@ import {
 	providerMeta,
 	resolveActivePersona,
 	resolveAIProfile,
+	resolveChatThinking,
 	type ThinkingLevel,
 } from "@bilibili-notify/internal/constants";
 import { buildPatch } from "@bilibili-notify/internal/patch";
@@ -145,11 +146,15 @@ function packIsland(ai: AISettings, levelOverride: AiLogLevel, providerKeys: rea
 		enabled,
 		activeProfile,
 		activePreset,
+		chat,
 	} = ai;
 	return {
 		ai: {
 			dynamicPrompt,
 			liveSummaryPrompt,
+			// 聊天页的思考设置(与实例桶分家)。不喂给灵动岛的话,聊天块的改动
+			// 在它眼里毫无变化 —— 保存条不亮,主人一走就丢。
+			chat,
 			// 女仆真正在用的是哪一份实例 —— 它是个**指针**,与左栏在看哪一份无关。
 			activeProfile,
 			// 「已添加哪几份」的人话版。逐实例摊平之后删一份其实也能逐字段看出来,
@@ -335,6 +340,9 @@ export default function Ai() {
 	const editingLabel = rail.find((i) => i.id === editing)?.label ?? meta.label;
 	// 头图那颗药丸报的是**女仆真正在用的那份**的模型,与左栏在看哪一份无关。
 	const globalProfile = resolveAIProfile(draft);
+	// 聊天页的思考设置(带「没写 = 跟随在用实例」的继承展开)与在用实例的能力位。
+	const chatThinking = resolveChatThinking(draft);
+	const chatMeta = providerMeta(globalProfile.provider);
 	// 头图那行名字同理:报的是**女仆真正在用的那份人格**(`activePreset` 指的那份),
 	// 与左栏在编辑哪一份无关。直读 `draft.persona` 的话换来换去它一动不动 —— 那个
 	// 字段自人格指针上线就没有界面入口、永远冻在老值上。
@@ -367,6 +375,10 @@ export default function Ai() {
 
 	function setAi<K extends keyof AISettings>(k: K, v: AISettings[K]): void {
 		setDraft((d) => (d ? { ...d, [k]: v } : d));
+	}
+	/** 改聊天页的思考设置 —— 写 `ai.chat`,**不碰**实例桶(两边已分家)。 */
+	function setChat(delta: Partial<AISettings["chat"]>): void {
+		setDraft((d) => (d ? { ...d, chat: { ...d.chat, ...delta } } : d));
 	}
 	/**
 	 * 改**正在编辑**那家桶里的一项(不是在用的那家 —— 两者可以不是同一家)。
@@ -518,6 +530,53 @@ export default function Ai() {
 							这里只决定<strong>用哪一份</strong>，不改它的配置 ——
 							密钥、模型、思考那几项在「模型配置」那个 Tab 里填。每份各存一套，换来换去都不会丢
 						</FieldNote>
+					</GlassBox>
+
+					{/* 聊天页的思考设置 —— 与实例桶里那两格**分了家**:那两格是引擎的
+					    (动态点评 / 直播总结 / 锐评),这里只管 AI 聊天。聊天输入框旁那颗
+					    ✦ 图标拨的就是这里的开关;等级只在这里调(主人定的:聊天页只留图标)。 */}
+					<GlassBox
+						title="AI 聊天 · chat"
+						subtitle="聊天页的深度思考,独立于实例配置 · ai.chat"
+						accent="#e84393"
+						icon={<Icon.sparkle size={14} />}
+						badge="chat"
+					>
+						{chatMeta.supportsThinking ? (
+							<>
+								<Field code="ai.chat.enableThinking">
+									<div className="flex h-7.5 items-center">
+										<Toggle
+											value={chatThinking.enableThinking}
+											onChange={(v) => setChat({ enableThinking: v })}
+											ariaLabel="聊天深度思考"
+										/>
+									</div>
+								</Field>
+								{chatThinking.enableThinking ? (
+									<Field code="ai.chat.thinkingLevel" full>
+										<Picker<ThinkingLevel>
+											value={chatThinking.thinkingLevel}
+											onChange={(v) => setChat({ thinkingLevel: v })}
+											options={[
+												{ value: "low", label: "低" },
+												{ value: "medium", label: "中" },
+												{ value: "high", label: "高" },
+											]}
+										/>
+									</Field>
+								) : null}
+								<FieldNote>
+									聊天输入框旁那颗 ✦ 拨的就是这个开关。初始<strong>跟随</strong>
+									「全局服务商」选中实例的思考设置;任一格改过之后就分家，此后与实例配置互不影响
+								</FieldNote>
+							</>
+						) : (
+							<FieldNote>
+								当前在用的实例是「自定义」，女仆不会自作主张发思考参数 ——
+								需要的话写到那份实例的额外请求参数里
+							</FieldNote>
+						)}
 					</GlassBox>
 
 					{/* 全局人格选择 —— 它是个**指针**(ai.activePreset),不改写 ai.persona。

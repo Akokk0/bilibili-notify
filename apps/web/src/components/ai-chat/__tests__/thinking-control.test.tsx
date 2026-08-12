@@ -1,14 +1,13 @@
 // @vitest-environment jsdom
 /**
- * 聊天页的「深度思考」开关 —— 不离开对话就能开思考、调档位。
+ * 聊天页的「深度思考」图标开关。
  *
- * 它是**同一份配置的另一个入口**:读写的就是智能女仆页那套
- * `ai.providers.<id>.enableThinking / thinkingLevel`,不另起一份状态 ——
- * 两处各存一份的话,聊天页开了、设置页看着还是关的,迟早对不上。
+ * 读写的是 `ai.chat.enableThinking` —— 聊天页自己的思考设置,与实例桶里那两格
+ * (引擎的:点评 / 总结 / 锐评)**分了家**。曾经它直接改实例桶,于是在对话里拨
+ * 一下开关,整个女仆的点评行为跟着变。
  *
- * 写路径走 PATCH /api/globals。只动这两个字段不会触发 AI 探活
- * (`shouldRunAiEnableCheck` 只认 key/baseUrl/model/换家/首次启用),所以
- * 开关是即点即生效的,不用白等一次探活请求。
+ * 继承语义:chat 段没写 = 跟随当前实例(初始默认值从女仆读取);拨过一次就写实
+ * 分叉。思考**等级**不在聊天页调 —— 去「智能女仆 → 全局配置」。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -36,22 +35,28 @@ function wrap(node: ReactNode) {
 	return <QueryClientProvider client={qc}>{node}</QueryClientProvider>;
 }
 
-beforeEach(() => {
-	G.patch.mockClear();
-	G.ai = {
+function aiWith(over: Record<string, unknown> = {}) {
+	return {
 		enabled: true,
 		activeProfile: "deepseek",
 		providers: {
-			deepseek: { provider: "deepseek", model: "deepseek-chat", enableThinking: false },
+			deepseek: { provider: "deepseek", model: "m", enableThinking: false },
 		},
+		chat: {},
+		...over,
 	};
+}
+
+beforeEach(() => {
+	G.patch.mockClear();
+	G.ai = aiWith();
 });
 afterEach(cleanup);
 
 const toggle = () => screen.getByRole("button", { name: "深度思考" });
 
-describe("ThinkingControl — 开关", () => {
-	it("关着时按钮未按下,点一下 → PATCH 当前服务商桶的 enableThinking", async () => {
+describe("ThinkingControl — 图标开关,写的是 ai.chat", () => {
+	it("点一下 → PATCH ai.chat.enableThinking,**不碰**实例桶", async () => {
 		render(wrap(<ThinkingControl />));
 		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("false"));
 
@@ -60,156 +65,83 @@ describe("ThinkingControl — 开关", () => {
 		await waitFor(() => expect(G.patch).toHaveBeenCalledTimes(1));
 		expect(G.patch.mock.calls[0]?.[0]).toBe("/api/globals");
 		expect(G.patch.mock.calls[0]?.[1]).toEqual({
-			defaults: { ai: { providers: { deepseek: { enableThinking: true } } } },
+			defaults: { ai: { chat: { enableThinking: true } } },
 		});
 	});
 
-	it("在用的是同一家的第二份实例 → PATCH 写进**那只**桶,不写错邻居", async () => {
-		// 一家可设多份之后,写路径必须跟着 activeProfile 走 —— 按家名写的话,
-		// 两个 DeepSeek 号里被改的永远是第一只。
-		G.ai = {
-			enabled: true,
-			activeProfile: "deepseek-2",
-			providers: {
-				deepseek: { provider: "deepseek", model: "m", enableThinking: false },
-				"deepseek-2": { provider: "deepseek", model: "m", enableThinking: false },
-			},
-		};
+	it("chat 段没写 → 跟随当前实例的开关(初始默认值从女仆读取)", async () => {
+		G.ai = aiWith({
+			providers: { deepseek: { provider: "deepseek", model: "m", enableThinking: true } },
+		});
+		render(wrap(<ThinkingControl />));
+		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("true"));
+	});
+
+	it("chat 写过就压过实例 —— 引擎开着思考,聊天自己关了", async () => {
+		G.ai = aiWith({
+			providers: { deepseek: { provider: "deepseek", model: "m", enableThinking: true } },
+			chat: { enableThinking: false },
+		});
 		render(wrap(<ThinkingControl />));
 		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("false"));
 
 		fireEvent.click(toggle());
 
-		await waitFor(() => expect(G.patch).toHaveBeenCalledTimes(1));
+		await waitFor(() => expect(G.patch).toHaveBeenCalled());
 		expect(G.patch.mock.calls[0]?.[1]).toEqual({
-			defaults: { ai: { providers: { "deepseek-2": { enableThinking: true } } } },
+			defaults: { ai: { chat: { enableThinking: true } } },
 		});
 	});
 
-	it("开着时再点 → 关掉", async () => {
-		G.ai = {
-			enabled: true,
-			activeProfile: "deepseek",
-			providers: { deepseek: { provider: "deepseek", model: "m", enableThinking: true } },
-		};
+	it("聊天页没有档位按钮 —— 思考等级只在设置里调", async () => {
+		G.ai = aiWith({ chat: { enableThinking: true } });
 		render(wrap(<ThinkingControl />));
 		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("true"));
+		for (const name of ["低", "中", "高"]) {
+			expect(screen.queryByRole("button", { name })).toBeNull();
+		}
+	});
+
+	it("连点不闪 —— 保存在途中开关不禁用,乐观态当场翻转", async () => {
+		// 主人报过的闪:保存期间整个控件被 isPending 连坐禁用,opacity 一来一回。
+		// 用一个永远不 resolve 的 PATCH 把「在途中」放大到无限长,闪的实现藏不住。
+		G.patch.mockImplementationOnce(() => new Promise(() => {}));
+		render(wrap(<ThinkingControl />));
+		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("false"));
 
 		fireEvent.click(toggle());
 
-		await waitFor(() => expect(G.patch).toHaveBeenCalled());
-		expect(G.patch.mock.calls[0]?.[1]).toEqual({
-			defaults: { ai: { providers: { deepseek: { enableThinking: false } } } },
-		});
-	});
-});
-
-describe("ThinkingControl — 档位", () => {
-	it("开着才显示三档,当前档标为按下", async () => {
-		G.ai = {
-			enabled: true,
-			activeProfile: "deepseek",
-			providers: {
-				deepseek: { provider: "deepseek", model: "m", enableThinking: true, thinkingLevel: "high" },
-			},
-		};
-		render(wrap(<ThinkingControl />));
-		await waitFor(() => expect(screen.getByRole("button", { name: "高" })).toBeTruthy());
-		expect(screen.getByRole("button", { name: "高" }).getAttribute("aria-pressed")).toBe("true");
-		expect(screen.getByRole("button", { name: "低" }).getAttribute("aria-pressed")).toBe("false");
-	});
-
-	it("关着时不显示档位 —— 灰着一排点不动的按钮只会让人怀疑坏了", async () => {
-		render(wrap(<ThinkingControl />));
-		await waitFor(() => expect(toggle()).toBeTruthy());
-		expect(screen.queryByRole("button", { name: "高" })).toBeNull();
-	});
-
-	it("点别的档 → PATCH thinkingLevel", async () => {
-		G.ai = {
-			enabled: true,
-			activeProfile: "deepseek",
-			providers: {
-				deepseek: {
-					provider: "deepseek",
-					model: "m",
-					enableThinking: true,
-					thinkingLevel: "medium",
-				},
-			},
-		};
-		render(wrap(<ThinkingControl />));
-		fireEvent.click(await screen.findByRole("button", { name: "高" }));
-
-		await waitFor(() => expect(G.patch).toHaveBeenCalled());
-		expect(G.patch.mock.calls[0]?.[1]).toEqual({
-			defaults: { ai: { providers: { deepseek: { thinkingLevel: "high" } } } },
-		});
-	});
-
-	it("切档不闪 —— 保存在途中开关不禁用、亮着不跌,档位当场就换", async () => {
-		// 主人报的:点完深度思考再切档,开关胶囊会闪一下。病根是保存期间整个控件
-		// 被 isPending 连坐禁用,disabled:opacity-40 一来一回就是那一下。改成乐观
-		// 更新之后,界面**立刻**是终态,网络往返与观感无关。
-		G.ai = {
-			enabled: true,
-			activeProfile: "deepseek",
-			providers: {
-				deepseek: {
-					provider: "deepseek",
-					model: "m",
-					enableThinking: true,
-					thinkingLevel: "medium",
-				},
-			},
-		};
-		// 保存永远在途 —— 把「在途中」这一拍放大到无限长,闪的实现在这里会一直暗着。
-		G.patch.mockImplementationOnce(() => new Promise(() => {}));
-		render(wrap(<ThinkingControl />));
-
-		fireEvent.click(await screen.findByRole("button", { name: "高" }));
-
-		// 开关不掉状态、不被禁用。
+		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("true"));
 		expect((toggle() as HTMLButtonElement).disabled).toBe(false);
-		expect(toggle().getAttribute("aria-pressed")).toBe("true");
-		// 档位高亮当场切过去,不等服务端回话。
-		await waitFor(() =>
-			expect(screen.getByRole("button", { name: "高" }).getAttribute("aria-pressed")).toBe("true"),
-		);
 	});
 
-	it("保存失败 → 档位弹回原样,不留一个骗人的高亮", async () => {
-		G.ai = {
-			enabled: true,
-			activeProfile: "deepseek",
-			providers: {
-				deepseek: {
-					provider: "deepseek",
-					model: "m",
-					enableThinking: true,
-					thinkingLevel: "medium",
-				},
-			},
-		};
-		G.patch.mockRejectedValueOnce(new Error("500"));
-		render(wrap(<ThinkingControl />));
-
-		fireEvent.click(await screen.findByRole("button", { name: "高" }));
-
-		await waitFor(() =>
-			expect(screen.getByRole("button", { name: "中" }).getAttribute("aria-pressed")).toBe("true"),
+	it("保存失败 → 弹回原样,不留一个骗人的高亮", async () => {
+		// 手控 reject:先钉住乐观态确实翻转了,再放失败进来看它弹回 —— 直接
+		// mockRejected 的话回滚快过断言,瞬态抓不住,测试等于没测乐观那一半。
+		let rejectPatch!: (e: Error) => void;
+		G.patch.mockImplementationOnce(
+			() =>
+				new Promise((_, rj) => {
+					rejectPatch = rj;
+				}),
 		);
-		expect(screen.getByRole("button", { name: "高" }).getAttribute("aria-pressed")).toBe("false");
+		render(wrap(<ThinkingControl />));
+		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("false"));
+
+		fireEvent.click(toggle());
+		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("true"));
+
+		rejectPatch(new Error("500"));
+		await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("false"));
 	});
 });
 
 describe("ThinkingControl — 不支持思考的服务商", () => {
 	it("自定义:按钮灰着,并指路去额外请求参数 —— 方言未知,开关帮不上忙", async () => {
-		G.ai = {
-			enabled: true,
+		G.ai = aiWith({
 			activeProfile: "custom",
 			providers: { custom: { provider: "custom", model: "m" } },
-		};
+		});
 		render(wrap(<ThinkingControl />));
 		await waitFor(() => expect(toggle()).toBeTruthy());
 		expect((toggle() as HTMLButtonElement).disabled).toBe(true);

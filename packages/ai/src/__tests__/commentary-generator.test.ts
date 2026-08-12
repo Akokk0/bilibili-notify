@@ -523,6 +523,39 @@ describe("CommentaryGenerator.chatStateless — 调用方自带历史", () => {
 		await expect(gen.chatStateless([])).rejects.toThrow("对话历史为空");
 		expect(oai.create).not.toHaveBeenCalled();
 	});
+
+	it("带独立思考设置 → 压过引擎配置,只对这一次生效", async () => {
+		// 聊天页的思考配置与引擎(点评/总结)分了家:引擎开着 high,聊天自己关了,
+		// 这一单就得发「关」位方言 —— 否则聊天页的开关只是个摆设。
+		const { gen } = makeGen({ provider: "deepseek", enableThinking: true, thinkingLevel: "high" });
+		oai.create.mockResolvedValueOnce(msgResp("回答"));
+		await gen.chatStateless([{ role: "user", content: "问" }], {
+			thinking: { enableThinking: false, thinkingLevel: "high" },
+		});
+		const params = createParams(0) as unknown as Record<string, unknown>;
+		expect(params.thinking).toEqual({ type: "disabled" });
+		expect(params.reasoning_effort).toBeUndefined();
+	});
+
+	it("独立设置的等级也翻译成方言 —— 引擎 high、聊天 low 各走各的", async () => {
+		const { gen } = makeGen({ provider: "deepseek", enableThinking: false, thinkingLevel: "low" });
+		oai.create.mockResolvedValueOnce(msgResp("回答"));
+		await gen.chatStateless([{ role: "user", content: "问" }], {
+			thinking: { enableThinking: true, thinkingLevel: "high" },
+		});
+		const params = createParams(0) as unknown as Record<string, unknown>;
+		expect(params.thinking).toEqual({ type: "enabled" });
+		expect(params.reasoning_effort).toBe("max");
+	});
+
+	it("不带独立设置 → 照旧用引擎配置,老调用方零变化", async () => {
+		const { gen } = makeGen({ provider: "deepseek", enableThinking: true, thinkingLevel: "high" });
+		oai.create.mockResolvedValueOnce(msgResp("回答"));
+		await gen.chatStateless([{ role: "user", content: "问" }]);
+		const params = createParams(0) as unknown as Record<string, unknown>;
+		expect(params.thinking).toEqual({ type: "enabled" });
+		expect(params.reasoning_effort).toBe("max");
+	});
 });
 
 // ---------------------------------------------------------------------------

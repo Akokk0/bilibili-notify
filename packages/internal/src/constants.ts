@@ -339,6 +339,26 @@ export function resolveAIProfile(ai: {
 }
 
 /**
+ * AI 聊天此刻用什么思考设置。
+ *
+ * `ai.chat` 与实例桶里的那两格是**分了家的**:桶里的管引擎(点评 / 总结 / 锐评),
+ * `ai.chat` 管聊天页。chat 里没写的字段跟随当前实例(「初始默认值从女仆读取」),
+ * 写过的字段压过实例、从此互不牵动。方言翻译仍按当前实例的 `provider` 走 ——
+ * 这里只决定「想不想 / 想多深」,不决定「怎么说」。
+ */
+export function resolveChatThinking(ai: {
+	activeProfile?: string;
+	providers?: Record<string, AIProviderProfileShape | undefined>;
+	chat?: { enableThinking?: boolean; thinkingLevel?: ThinkingLevel };
+}): { enableThinking: boolean; thinkingLevel: ThinkingLevel } {
+	const p = resolveAIProfile(ai);
+	return {
+		enableThinking: ai.chat?.enableThinking ?? p.enableThinking,
+		thinkingLevel: ai.chat?.thinkingLevel ?? p.thinkingLevel,
+	};
+}
+
+/**
  * 一份人格(与 `schema/common.ts#AIPersonaSchema` 同形)。类型声明在这里的理由与
  * {@link AIProviderProfileShape} 一样:让下面那个**零依赖**的解析函数能直供浏览器端。
  */

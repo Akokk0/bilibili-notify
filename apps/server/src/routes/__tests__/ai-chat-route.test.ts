@@ -37,6 +37,8 @@ const H = vi.hoisted(() => ({
 	toolEvents: null as ToolEv[] | null,
 	/** 置上就在正文之前按分片回调 onReasoning —— 思考先于开口,真实顺序就是这样。 */
 	reasoningChunks: null as string[] | null,
+	/** 最后一次收到的独立思考设置 —— 聊天的思考配置与引擎分家后,路由必须带上它。 */
+	lastThinking: null as unknown,
 }));
 
 /** {@link ToolTraceEvent} 的测试侧影本 —— 这个包在测试里是 mock 掉的。 */
@@ -55,9 +57,11 @@ const chatStatelessStream = vi.fn(
 			onDelta: (t: string) => void;
 			onToolEvent?: (ev: ToolEv) => void;
 			onReasoning?: (t: string) => void;
+			thinking?: unknown;
 		},
 	) => {
 		H.lastHistory = messages;
+		H.lastThinking = opts.thinking ?? null;
 		for (const t of H.reasoningChunks ?? []) opts.onReasoning?.(t);
 		for (const ev of H.toolEvents ?? []) opts.onToolEvent?.(ev);
 		for (const c of H.chunks ?? []) opts.onDelta(c);
@@ -91,6 +95,8 @@ interface StubOpts {
 	aiEnabled?: boolean;
 	/** baseUrl / apiKey 没填齐时 engines.commentary 就是 null。 */
 	noCommentary?: boolean;
+	/** 追加进 `defaults.ai` 的字段(activeProfile / providers / chat …)。 */
+	aiConfig?: Record<string, unknown>;
 }
 
 async function makeDeps(opts: StubOpts = {}) {
@@ -99,7 +105,9 @@ async function makeDeps(opts: StubOpts = {}) {
 	const conversationStore = createConversationStore({ dataDir, logger });
 	const deps = {
 		store: {
-			getGlobals: () => ({ defaults: { ai: { enabled: opts.aiEnabled ?? true } } }),
+			getGlobals: () => ({
+				defaults: { ai: { enabled: opts.aiEnabled ?? true, ...(opts.aiConfig ?? {}) } },
+			}),
 			getTargets: () => [],
 			getSubscriptions: () => [],
 		},
@@ -131,6 +139,7 @@ beforeEach(() => {
 	H.titleInput = null;
 	H.toolEvents = null;
 	H.reasoningChunks = null;
+	H.lastThinking = null;
 	chatStatelessStream.mockClear();
 	summarizeTitle.mockClear();
 });
@@ -695,5 +704,38 @@ describe("POST /conversations/:id/chat — 前置条件", () => {
 		const res = await chat(app, id, { message: "在吗" });
 		expect(res.status).toBe(400);
 		expect((await readJson(res)).err).toMatch(/baseUrl|apiKey/i);
+	});
+});
+
+describe("聊天的独立思考设置 —— 与引擎配置分家", () => {
+	const PROFILE = {
+		activeProfile: "deepseek",
+		providers: {
+			deepseek: { provider: "deepseek", enableThinking: true, thinkingLevel: "high" },
+		},
+	};
+
+	it("chat 段没写 → 跟随当前实例(初始默认值从女仆读取)", async () => {
+		const { deps } = await makeDeps({ aiConfig: { ...PROFILE, chat: {} } });
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+
+		await chatDrained(app, id, { message: "在吗" });
+
+		expect(H.lastThinking).toEqual({ enableThinking: true, thinkingLevel: "high" });
+	});
+
+	it("chat 段写过 → 压过实例,引擎那格怎么开都不影响聊天", async () => {
+		// 主人报的原病:聊天页拨思考等级,整个女仆引擎的设置跟着变。分家后聊天
+		// 只读写 ai.chat,这里验证路由真的把独立值带给了引擎。
+		const { deps } = await makeDeps({
+			aiConfig: { ...PROFILE, chat: { enableThinking: false, thinkingLevel: "low" } },
+		});
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+
+		await chatDrained(app, id, { message: "在吗" });
+
+		expect(H.lastThinking).toEqual({ enableThinking: false, thinkingLevel: "low" });
 	});
 });

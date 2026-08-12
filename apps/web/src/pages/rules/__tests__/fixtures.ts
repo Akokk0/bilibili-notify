@@ -59,6 +59,7 @@ export function makeDefaults(): GlobalDefaults {
 			// 一份实例都没添加 = 全新配置。连接与生成参数都住在实例桶里。
 			activeProfile: "",
 			providers: {},
+			chat: {},
 			presets: [],
 		},
 		cardStyle: {
