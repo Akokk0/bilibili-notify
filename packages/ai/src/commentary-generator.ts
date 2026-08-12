@@ -631,6 +631,12 @@ export class CommentaryGenerator implements CommentaryProvider {
 			onDelta: (text: string) => void;
 			/** 工具轮的旁听席,见 {@link ToolTraceEvent}。不传就什么都不报。 */
 			onToolEvent?: (ev: ToolTraceEvent) => void;
+			/**
+			 * 思考流(DeepSeek 式「先想后说」的那段草稿)。分片实时回调,**不混进**
+			 * onDelta —— 正文是要落盘、要当上下文回传给模型的,思考不是。
+			 * 模型没开思考 / 网关不吐这个字段时自然一声不响。
+			 */
+			onReasoning?: (text: string) => void;
 			imageUrls?: string[];
 		},
 	): Promise<string> {
@@ -643,6 +649,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			imageUrls?: string[];
 			onDelta?: (text: string) => void;
 			onToolEvent?: (ev: ToolTraceEvent) => void;
+			onReasoning?: (text: string) => void;
 		},
 	): Promise<string> {
 		if (messages.length === 0) throw new Error("对话历史为空");
@@ -675,6 +682,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			vision.ctx ? undefined : this.mainModelCanSeeImages() ? opts?.imageUrls : undefined,
 			undefined,
 			opts?.onDelta,
+			opts?.onReasoning,
 		);
 
 		this.logger.debug(`[chat-stateless] 响应长度=${result.length}`);
@@ -799,8 +807,22 @@ export class CommentaryGenerator implements CommentaryProvider {
 	}
 
 	/**
-	 * 流式地取回**一轮**响应,把 content 分片喂给 onDelta,并把 tool_call 分片
-	 * 按 index 拼回完整的调用。
+	 * delta / message 上的思考方言字段。
+	 *
+	 * 两派:DeepSeek / 硅基 / 火山 / 百炼吐 `reasoning_content`,OpenRouter 吐
+	 * `reasoning`。**只认字符串** —— 有网关会把这些字段塞成对象(OpenRouter 的
+	 * `reasoning_details` 一族),盲拼会得到一串 [object Object]。
+	 */
+	private static reasoningOf(carrier: unknown): string {
+		const c = carrier as { reasoning_content?: unknown; reasoning?: unknown } | null | undefined;
+		if (typeof c?.reasoning_content === "string") return c.reasoning_content;
+		if (typeof c?.reasoning === "string") return c.reasoning;
+		return "";
+	}
+
+	/**
+	 * 流式地取回**一轮**响应,把 content 分片喂给 onDelta、思考分片喂给
+	 * onReasoning,并把 tool_call 分片按 index 拼回完整的调用。
 	 *
 	 * 两件事在流式下与非流式截然不同,都得自己收拾:
 	 * ① 正文是一小段一小段来的 —— 累加即可;
@@ -812,6 +834,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		client: OpenAI,
 		params: OpenAI.ChatCompletionCreateParamsStreaming,
 		onDelta: (text: string) => void,
+		onReasoning?: (text: string) => void,
 	): Promise<OpenAI.ChatCompletionMessage> {
 		const stream = await client.chat.completions.create(params);
 		let content = "";
@@ -823,6 +846,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 			if (delta.content) {
 				content += delta.content;
 				onDelta(delta.content);
+			}
+			if (onReasoning) {
+				const think = CommentaryGenerator.reasoningOf(delta);
+				if (think) onReasoning(think);
 			}
 			for (const tc of delta.tool_calls ?? []) {
 				let slot = slots[tc.index];
@@ -862,6 +889,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 		 * 那几轮自然什么都不回调。
 		 */
 		onDelta?: (text: string) => void,
+		/** 思考流,方言见 {@link CommentaryGenerator.reasoningOf}。 */
+		onReasoning?: (text: string) => void,
 	): Promise<string> {
 		const { apiKey, baseURL } = this.config;
 		const model = override?.model ?? this.config.model;
@@ -939,12 +968,22 @@ export class CommentaryGenerator implements CommentaryProvider {
 			...mergeExtraParams(withProviderParams ? thinkingParams : {}, extra.value),
 		});
 
-		/** 本次调用总共已经吐给调用方多少字 —— 决定了出错时还能不能悄悄重来。 */
+		/**
+		 * 本次调用总共已经吐给调用方多少字 —— 决定了出错时还能不能悄悄重来。
+		 * **思考也计入**:它同样已经印在主人屏幕上了,静默重来会让同一段思考再播
+		 * 一遍、或者接上一段完全不同的正文。
+		 */
 		let emitted = 0;
 		const emit = onDelta
 			? (text: string) => {
 					emitted += text.length;
 					onDelta(text);
+				}
+			: undefined;
+		const emitReasoning = onReasoning
+			? (text: string) => {
+					emitted += text.length;
+					onReasoning(text);
 				}
 			: undefined;
 
@@ -964,6 +1003,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 						client,
 						{ ...base, stream: true } as OpenAI.ChatCompletionCreateParamsStreaming,
 						emit,
+						emitReasoning,
 					);
 				} catch (e) {
 					if (emitted > 0) throw new Error(this.sanitizeErr(e));
@@ -981,8 +1021,13 @@ export class CommentaryGenerator implements CommentaryProvider {
 			if (!choice) {
 				throw new Error("AI 网关返回空 choices(疑似命中内容审查或上游异常),无法生成");
 			}
-			// 回落路径下这一轮的正文是一次性到手的。仍然把它交给 onDelta ——
-			// 调用方只认「分片流」这一种形状,不必为「有时候流、有时候不流」分叉。
+			// 回落路径下这一轮的思考与正文都是一次性到手的。仍然按「先想后说」的
+			// 顺序交给回调 —— 调用方只认「分片流」这一种形状,不必为「有时候流、
+			// 有时候不流」分叉。
+			if (emitReasoning) {
+				const think = CommentaryGenerator.reasoningOf(choice.message);
+				if (think) emitReasoning(think);
+			}
 			if (emit && choice.message.content) emit(choice.message.content);
 			return choice.message;
 		};

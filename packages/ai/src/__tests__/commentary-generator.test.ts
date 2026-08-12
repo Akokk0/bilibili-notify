@@ -706,6 +706,123 @@ describe("CommentaryGenerator.chatStatelessStream — 真流式", () => {
 		expect(seen).toEqual(["答案"]);
 	});
 
+	/**
+	 * 思考流 —— DeepSeek 式「先想后说」的那段草稿。
+	 *
+	 * 方言两派:DeepSeek / 硅基 / 火山 / 百炼在 delta 上吐 `reasoning_content`,
+	 * OpenRouter 吐 `reasoning`。两个都认,但**只认字符串**:有网关会把这些字段
+	 * 塞成对象,盲拼会得到一串 [object Object]。
+	 */
+	describe("思考流(onReasoning)", () => {
+		const thinkChunk = (text: string) => ({ choices: [{ delta: { reasoning_content: text } }] });
+
+		it("reasoning_content 分片走 onReasoning,不混进正文", async () => {
+			const { gen } = makeGen();
+			oai.create.mockResolvedValueOnce(
+				streamOf([thinkChunk("主人问的是"), thinkChunk("天气"), textChunk("晚上好")]),
+			);
+			const think: string[] = [];
+			const text: string[] = [];
+			const result = await gen.chatStatelessStream([{ role: "user", content: "在吗" }], {
+				onDelta: (t) => text.push(t),
+				onReasoning: (t) => think.push(t),
+			});
+			// 思考一个字都不能漏进正文 —— 正文是要落盘、要当上下文回传给模型的。
+			expect(result).toBe("晚上好");
+			expect(text).toEqual(["晚上好"]);
+			expect(think).toEqual(["主人问的是", "天气"]);
+		});
+
+		it("OpenRouter 方言(delta.reasoning)同样认", async () => {
+			const { gen } = makeGen();
+			oai.create.mockResolvedValueOnce(
+				streamOf([{ choices: [{ delta: { reasoning: "想想" } }] }, textChunk("好")]),
+			);
+			const think: string[] = [];
+			await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+				onDelta: () => {},
+				onReasoning: (t) => think.push(t),
+			});
+			expect(think).toEqual(["想想"]);
+		});
+
+		it("字段不是字符串(某些网关塞对象)→ 跳过,不吐 [object Object]", async () => {
+			const { gen } = makeGen();
+			oai.create.mockResolvedValueOnce(
+				streamOf([
+					{ choices: [{ delta: { reasoning_content: { detail: "x" } } }] },
+					textChunk("好"),
+				]),
+			);
+			const think: string[] = [];
+			await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+				onDelta: () => {},
+				onReasoning: (t) => think.push(t),
+			});
+			expect(think).toEqual([]);
+		});
+
+		it("工具轮的思考同样上报 —— 她决定去查什么的过程也是思考", async () => {
+			const { gen } = makeGen();
+			oai.create
+				.mockResolvedValueOnce(
+					streamOf([
+						thinkChunk("得查一下订阅"),
+						toolChunk(0, { id: "c1", function: { name: "fake_tool", arguments: "{}" } }),
+					]),
+				)
+				.mockResolvedValueOnce(streamOf([thinkChunk("查到了,整理一下"), textChunk("答案")]));
+			const think: string[] = [];
+			await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+				onDelta: () => {},
+				onReasoning: (t) => think.push(t),
+			});
+			expect(think).toEqual(["得查一下订阅", "查到了,整理一下"]);
+		});
+
+		it("回落非流式时,message 上的 reasoning_content 一次性交出来", async () => {
+			const { gen } = makeGen();
+			oai.create.mockRejectedValueOnce(new Error("stream is not supported")).mockResolvedValueOnce({
+				choices: [
+					{ message: { role: "assistant", content: "整段", reasoning_content: "整段思考" } },
+				],
+			});
+			const think: string[] = [];
+			await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+				onDelta: () => {},
+				onReasoning: (t) => think.push(t),
+			});
+			expect(think).toEqual(["整段思考"]);
+		});
+
+		it("吐过思考再断 → 不再静默回落 —— 屏幕上已经有字了", async () => {
+			// emitted 的语义是「主人看见过任何输出没有」。思考也是输出:回落重来
+			// 会让同一段思考再播一遍,或者接上一段完全不同的正文。
+			const { gen } = makeGen();
+			async function* broken() {
+				yield thinkChunk("想到一半");
+				throw new Error("connection reset");
+			}
+			oai.create.mockResolvedValueOnce({ [Symbol.asyncIterator]: broken });
+			await expect(
+				gen.chatStatelessStream([{ role: "user", content: "x" }], {
+					onDelta: () => {},
+					onReasoning: () => {},
+				}),
+			).rejects.toThrow(/connection reset/);
+			expect(oai.create).toHaveBeenCalledTimes(1);
+		});
+
+		it("没人听思考(不传 onReasoning)→ 一切照旧", async () => {
+			const { gen } = makeGen();
+			oai.create.mockResolvedValueOnce(streamOf([thinkChunk("想想"), textChunk("好")]));
+			const result = await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+				onDelta: () => {},
+			});
+			expect(result).toBe("好");
+		});
+	});
+
 	it("网关不支持流式 → 回落非流式,一次性把整段交出去", async () => {
 		// 一个不支持 stream 的兼容网关不该让聊天整个用不了。此时还没吐过任何字,
 		// 悄悄重来一次对主人是无感的。
