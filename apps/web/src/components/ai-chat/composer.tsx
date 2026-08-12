@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { Icon } from "../icons";
 import { type AiSkill, matchSkills } from "./skills";
 
@@ -37,6 +37,11 @@ export interface ComposerProps {
 	onPickFiles?: (files: FileList) => void;
 	/** 去掉某一张。给的是 **id 不是下标** —— 下标会在数组变短后指错人。 */
 	onRemoveAttachment?: (id: string) => void;
+	/**
+	 * 动作行左侧的附加控件(如「深度思考」开关)。以插槽递进来而不是在这里写死:
+	 * Composer 不该知道全局配置长什么样,它只管排版位置。
+	 */
+	extras?: ReactNode;
 }
 
 export function Composer({
@@ -49,6 +54,7 @@ export function Composer({
 	attachments = [],
 	onPickFiles,
 	onRemoveAttachment,
+	extras,
 }: ComposerProps) {
 	const fileRef = useRef<HTMLInputElement>(null);
 	const full = attachments.length >= MAX_ATTACHMENTS;
@@ -216,6 +222,7 @@ export function Composer({
 					>
 						<Icon.plus size={19} />
 					</button>
+					{extras}
 					<textarea
 						ref={taRef}
 						rows={1}

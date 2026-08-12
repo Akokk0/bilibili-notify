@@ -26,6 +26,7 @@ import { MessageList, preloadChatMarkdown, type ToolChipData } from "./messages"
 import { resolveChatPersona } from "./persona";
 import { ChatSidebar } from "./sidebar";
 import { AI_SKILLS, resolveOutgoing } from "./skills";
+import { ThinkingControl } from "./thinking-control";
 
 /**
  * 女仆 AI 聊天 —— 一条独立路由(/chat)的整页对话界面,右下角的胶囊
@@ -522,6 +523,7 @@ export function ChatPage() {
 								onRemoveAttachment={(id) => setAttachments((p) => p.filter((a) => a.id !== id))}
 								autoFocus
 								aiName={persona.name}
+								extras={<ThinkingControl />}
 							/>
 							{error ? (
 								<div
@@ -574,6 +576,7 @@ export function ChatPage() {
 								onRemoveAttachment={(id) => setAttachments((p) => p.filter((a) => a.id !== id))}
 								autoFocus
 								aiName={persona.name}
+								extras={<ThinkingControl />}
 							/>
 							<div className="mt-2 text-center text-[11px] text-bn-text-secondary">
 								{persona.name}可能会出错,请核对重要信息
