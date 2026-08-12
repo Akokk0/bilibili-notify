@@ -379,23 +379,27 @@ function ThinkingBlock({
 	const [open, setOpen] = useState(defaultOpen);
 	return (
 		<div data-testid="thinking-block" className="flex flex-col gap-1.5">
+			{/* 标头做成小胶囊,和工具小条同一族 —— 它们都是「回答之外的过程注记」。 */}
 			<button
 				type="button"
 				aria-expanded={open}
 				onClick={() => setOpen((v) => !v)}
-				className="flex w-fit cursor-pointer items-center gap-1.5 rounded-[13px] text-[12px] font-semibold text-bn-text-tertiary"
+				className="bn-glass-chip flex w-fit cursor-pointer items-center gap-1.5 rounded-[13px] px-2.25 py-0.75 text-[11.5px] font-semibold text-bn-text-tertiary transition-colors hover:text-bn-text-secondary"
 			>
-				<span className={live ? "bn-chat-accent flex" : "flex"} aria-hidden="true">
-					<Icon.sparkle size={12} />
+				<span className={live ? "bn-chat-accent flex" : "flex opacity-70"} aria-hidden="true">
+					<Icon.sparkle size={11} />
 				</span>
 				{live ? "思考中…" : "已深度思考"}
 				{/* 文本三角当 chevron:图标库里没有,一个字符不值得为它开一枚。 */}
-				<span aria-hidden="true" className="text-[10px]">
+				<span aria-hidden="true" className="text-[9px] opacity-70">
 					{open ? "▾" : "▸"}
 				</span>
 			</button>
+			{/* 草稿要**一眼让位给正文**:比正文小两号(12px vs 15px)、行距收紧、
+			    颜色再退半档(opacity),配一条安静的左线 —— 引用式排版本身就在说
+			    「这不是回答」。截图反馈过的问题正是它和正文长得太像、喧宾夺主。 */}
 			{open ? (
-				<div className="whitespace-pre-wrap wrap-break-word border-l-2 border-bn-border-subtle pl-3 text-[13px] leading-relaxed text-bn-text-tertiary">
+				<div className="whitespace-pre-wrap wrap-break-word border-l-2 border-bn-border pl-3.5 text-[12px] leading-[1.7] text-bn-text-tertiary opacity-[0.88]">
 					{text}
 				</div>
 			) : null}
