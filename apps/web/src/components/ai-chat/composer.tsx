@@ -3,11 +3,17 @@ import { Icon } from "../icons";
 import { type AiSkill, matchSkills } from "./skills";
 
 /**
- * 聊天输入框 —— 一根 textarea、一个技能入口、一颗发送键,外加 `/` 唤起的技能菜单。
+ * 聊天输入框 —— 一根 textarea、一颗「+」二级菜单(添加图片 / 女仆技能)、一颗
+ * 发送键,外加 `/` 唤起的技能菜单。
  *
- * 空态与对话态用的是**同一个**实例(位置不同而已),所以状态都收在这里:菜单开合、
- * 高亮项、焦点。放到外层的话,两处各持一份就会出现「空态里打了半句 `/锐`,发完
- * 第一句切到对话态,菜单还挂着」这种鬼影。
+ * 空态与对话态用的是**同一个**实例(位置不同而已),所以状态都收在这里:两层菜单
+ * 的开合、高亮项、焦点。放到外层的话,两处各持一份就会出现「空态里打了半句
+ * `/锐`,发完第一句切到对话态,菜单还挂着」这种鬼影。
+ *
+ * 「+」菜单与 `/` 唤起的技能菜单是**两层独立的东西**:前者是个固定两项的小菜单
+ * (点按钮开合、Esc / 点外关闭),后者是打 `/` 触发的搜索式列表(随输入过滤、
+ * ↑↓ 选择)。合并成一层的话,「+」选了技能之后残留的搜索态会立刻又弹出后者,
+ * 界面会连闪两层菜单。
  */
 
 /** 一张已经传好的附件。上传发生在 Composer **外面**,它只负责显示与去留。 */
@@ -62,7 +68,28 @@ export function Composer({
 	const [index, setIndex] = useState(0);
 	/** Esc 关掉菜单后,得等下一次输入变化才重新弹 —— 否则 Esc 按了跟没按一样。 */
 	const [closed, setClosed] = useState(false);
+	/** 「+」二级菜单的开合 —— 与上面 `/` 那层技能搜索菜单各管各的状态。 */
+	const [actionsOpen, setActionsOpen] = useState(false);
+	const actionsRef = useRef<HTMLDivElement>(null);
 	const taRef = useRef<HTMLTextAreaElement>(null);
+
+	// 「+」菜单开着时:点外部 / 按 Esc 关闭。只在展开时挂监听,与 header 的
+	// 主题下拉同一套写法。
+	useEffect(() => {
+		if (!actionsOpen) return;
+		const onDocClick = (e: MouseEvent) => {
+			if (!actionsRef.current?.contains(e.target as Node)) setActionsOpen(false);
+		};
+		const onKey = (e: KeyboardEvent | globalThis.KeyboardEvent) => {
+			if (e.key === "Escape") setActionsOpen(false);
+		};
+		document.addEventListener("mousedown", onDocClick);
+		document.addEventListener("keydown", onKey as (e: globalThis.KeyboardEvent) => void);
+		return () => {
+			document.removeEventListener("mousedown", onDocClick);
+			document.removeEventListener("keydown", onKey as (e: globalThis.KeyboardEvent) => void);
+		};
+	}, [actionsOpen]);
 
 	const matches = matchSkills(value);
 	const showMenu = matches.length > 0 && !closed;
@@ -199,29 +226,58 @@ export function Composer({
 							e.target.value = "";
 						}}
 					/>
-					<button
-						type="button"
-						title={full ? `最多 ${MAX_ATTACHMENTS} 张` : "添加图片"}
-						aria-label="添加图片"
-						disabled={full}
-						onClick={() => fileRef.current?.click()}
-						className="grid h-9 w-9 shrink-0 cursor-pointer place-items-center self-center rounded-full text-bn-text-secondary transition-colors hover:bg-bn-hover-muted disabled:cursor-not-allowed disabled:opacity-40"
-					>
-						<Icon.image size={18} />
-					</button>
-					<button
-						type="button"
-						title="技能"
-						aria-label="唤起女仆技能"
-						onClick={() => {
-							onChange("/");
-							setClosed(false);
-							taRef.current?.focus();
-						}}
-						className="grid h-9 w-9 shrink-0 cursor-pointer place-items-center self-center rounded-full text-bn-text-secondary transition-colors hover:bg-bn-hover-muted"
-					>
-						<Icon.plus size={19} />
-					</button>
+					<div className="relative shrink-0 self-center" ref={actionsRef}>
+						<button
+							type="button"
+							title="添加图片或唤起女仆技能"
+							aria-label="添加"
+							aria-haspopup="menu"
+							aria-expanded={actionsOpen}
+							onClick={() => setActionsOpen((v) => !v)}
+							className="grid h-9 w-9 cursor-pointer place-items-center rounded-full text-bn-text-secondary transition-colors hover:bg-bn-hover-muted"
+						>
+							<Icon.plus size={19} />
+						</button>
+						{actionsOpen ? (
+							<div
+								role="menu"
+								aria-label="更多"
+								className="bn-anim-cmd-in absolute bottom-full left-0 z-10 mb-2 w-44 overflow-hidden rounded-[14px] border border-bn-border bg-bn-surface-strong p-1 shadow-bn-elev"
+							>
+								<button
+									type="button"
+									role="menuitem"
+									title={full ? `最多 ${MAX_ATTACHMENTS} 张` : "添加图片"}
+									aria-label="添加图片"
+									disabled={full}
+									onClick={() => {
+										fileRef.current?.click();
+										setActionsOpen(false);
+									}}
+									className="flex w-full cursor-pointer items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-[13px] text-bn-text-primary transition-colors hover:bg-bn-hover-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+								>
+									<Icon.image size={16} />
+									添加图片
+								</button>
+								<button
+									type="button"
+									role="menuitem"
+									title="女仆技能"
+									aria-label="女仆技能"
+									onClick={() => {
+										onChange("/");
+										setClosed(false);
+										setActionsOpen(false);
+										taRef.current?.focus();
+									}}
+									className="flex w-full cursor-pointer items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-[13px] text-bn-text-primary transition-colors hover:bg-bn-hover-muted"
+								>
+									<Icon.sparkle size={16} />
+									女仆技能
+								</button>
+							</div>
+						) : null}
+					</div>
 					{extras}
 					<textarea
 						ref={taRef}

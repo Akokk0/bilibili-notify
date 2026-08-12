@@ -62,15 +62,24 @@ describe("Composer — 附件缩略图", () => {
 });
 
 describe("Composer — 上限", () => {
+	// 「添加图片」现在是「+」二级菜单里的一项,得先展开菜单才摸得到它。
+	const openMenu = () => fireEvent.click(screen.getByRole("button", { name: "添加" }));
+
 	it("到 4 张就不让再挑了", () => {
 		const full = [one, two, { ...one, id: "c" }, { ...one, id: "d" }];
 		renderComposer({ attachments: full });
-		expect((screen.getByLabelText("添加图片") as HTMLButtonElement).disabled).toBe(true);
+		openMenu();
+		expect((screen.getByRole("menuitem", { name: "添加图片" }) as HTMLButtonElement).disabled).toBe(
+			true,
+		);
 	});
 
 	it("没满时挑图键是活的", () => {
 		renderComposer({ attachments: [one] });
-		expect((screen.getByLabelText("添加图片") as HTMLButtonElement).disabled).toBe(false);
+		openMenu();
+		expect((screen.getByRole("menuitem", { name: "添加图片" }) as HTMLButtonElement).disabled).toBe(
+			false,
+		);
 	});
 });
 
