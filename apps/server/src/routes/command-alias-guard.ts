@@ -47,7 +47,11 @@ export function checkCommandAliases(args: {
 	const owner = new Map<string, string>();
 	for (const spec of args.commands) {
 		for (const trigger of [spec.name, ...effectiveAliases(spec, merged)]) {
-			const prev = owner.get(trigger);
+			// 查重键折小写 —— dispatcher 的 compile()/匹配都是大小写不敏感的,
+			// 「Mute」和「mute」运行时是同一个词。守卫若按原样比对,只差大小写的
+			// 坏别名就能落盘:当场 reconcile 只记日志,下次重启构造期 compile
+			// 直接 throw,独立端就起不来了。报错文案仍用主人写的原样(见下)。
+			const prev = owner.get(trigger.toLowerCase());
 			if (prev !== undefined) {
 				return {
 					ok: false,
@@ -57,7 +61,7 @@ export function checkCommandAliases(args: {
 							: `别名「${trigger}」被「${spec.name}」和「${prev}」同时占用了，一个词只能归一条指令`,
 				};
 			}
-			owner.set(trigger, spec.name);
+			owner.set(trigger.toLowerCase(), spec.name);
 		}
 	}
 	return { ok: true };

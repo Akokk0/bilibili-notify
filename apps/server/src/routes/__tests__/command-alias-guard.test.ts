@@ -53,6 +53,21 @@ describe("checkCommandAliases", () => {
 		expect(r.ok === false && r.message).toContain("静音");
 	});
 
+	// dispatcher 的 compile()/匹配都按小写来(`Mute` 和 `mute` 运行时是同一个词),
+	// 守卫查重若按原样大小写,只差大小写的坏别名就会落盘 —— 当场只是 reconcile
+	// 记条日志,可下一次重启构造期 compile 直接 throw,整个独立端起不来。
+	it("与内置主名只差大小写 → 也要拦下(dispatcher 是大小写不敏感的)", () => {
+		const r = check({ commands: { aliases: { report: ["Mute"] } } });
+		expect(r.ok).toBe(false);
+		// 报错用主人写的原样大小写 —— 他要回配置里找的是「Mute」。
+		expect(r.ok === false && r.message).toContain("Mute");
+	});
+
+	it("同一次 patch 里两条指令的别名只差大小写 → 拦下", () => {
+		const r = check({ commands: { aliases: { status: ["Quiet"], mute: ["quiet"] } } });
+		expect(r.ok).toBe(false);
+	});
+
 	// PATCH 只传了改动的那条,盘上其它几条照旧参与判定。
 	it("和盘上已存的别名撞了 → 拦下", () => {
 		const r = check({ commands: { aliases: { report: ["安静"] } } }, { mute: ["安静"] });
