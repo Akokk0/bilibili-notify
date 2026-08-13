@@ -28,7 +28,6 @@ import {
 	providerMeta,
 	resolveActivePersona,
 	resolveAIProfile,
-	resolveChatThinkingLevel,
 	type ThinkingLevel,
 	WEB_SEARCH_BACKENDS,
 	webSearchBackendMeta,
@@ -150,16 +149,14 @@ function packIsland(ai: AISettings, levelOverride: AiLogLevel, providerKeys: rea
 		enabled,
 		activeProfile,
 		activePreset,
-		chat,
 		search,
 	} = ai;
 	return {
 		ai: {
 			dynamicPrompt,
 			liveSummaryPrompt,
-			// 聊天页的思考设置(与实例桶分家)。不喂给灵动岛的话,聊天块的改动
-			// 在它眼里毫无变化 —— 保存条不亮,主人一走就丢。
-			chat,
+			// `ai.chat`(聊天页的思考等级)**不在**这里:它的编辑口在聊天侧栏的
+			// 「设置」弹层,点档位立即 PATCH,不走本页的草稿 + 保存条。
 			// 联网搜索(后端 / key / 引擎开关)。两侧都经 schema 补齐,恒为完整对象,
 			// 不会踩「一侧 undefined 整块当叶子」那个明文 key 外泄的坑。
 			search,
@@ -348,9 +345,6 @@ export default function Ai() {
 	const editingLabel = rail.find((i) => i.id === editing)?.label ?? meta.label;
 	// 头图那颗药丸报的是**女仆真正在用的那份**的模型,与左栏在看哪一份无关。
 	const globalProfile = resolveAIProfile(draft);
-	// 聊天页的思考设置(带「没写 = 跟随在用实例」的继承展开)。能力位看
-	// canProfileThink(globalProfile) —— 谓词只有 constants 那一份。
-	const chatThinkingLevel = resolveChatThinkingLevel(draft);
 	// 头图那行名字同理:报的是**女仆真正在用的那份人格**(`activePreset` 指的那份),
 	// 与左栏在编辑哪一份无关。直读 `draft.persona` 的话换来换去它一动不动 —— 那个
 	// 字段自人格指针上线就没有界面入口、永远冻在老值上。
@@ -384,13 +378,9 @@ export default function Ai() {
 	function setAi<K extends keyof AISettings>(k: K, v: AISettings[K]): void {
 		setDraft((d) => (d ? { ...d, [k]: v } : d));
 	}
-	/** 改聊天页的思考设置 —— 写 `ai.chat`,**不碰**实例桶(两边已分家)。 */
-	function setChat(delta: Partial<AISettings["chat"]>): void {
-		setDraft((d) => (d ? { ...d, chat: { ...d.chat, ...delta } } : d));
-	}
 	/**
 	 * 改联网搜索段的若干项 —— backend 指针 / keys / engines 都走这一个口
-	 * (与隔壁 setChat 同款,曾经三个 setter 各抄一遍嵌套 spread)。
+	 * (曾经三个 setter 各抄一遍嵌套 spread)。
 	 * keys / engines 是嵌套袋:调用方只给改动的那几格,这里在**函数式更新**里
 	 * 补上其余的 —— 漏一层内 spread 就是静默丢兄弟键(换后端丢另一家的 key)。
 	 */
@@ -565,42 +555,9 @@ export default function Ai() {
 						</FieldNote>
 					</GlassBox>
 
-					{/* 聊天页的思考**等级** —— 与实例桶里那两格分了家:那两格是引擎的
-					    (动态点评 / 直播总结 / 锐评),这里只管 AI 聊天。开关不在这里:
-					    聊天输入框旁那颗 ✦ 胶囊是会话级的(默认关、手动开、不落盘)。 */}
-					<GlassBox
-						title="AI 聊天 · chat"
-						subtitle="聊天页的思考深度,独立于实例配置 · ai.chat"
-						accent="#e84393"
-						icon={<Icon.sparkle size={14} />}
-						badge="chat"
-					>
-						{canProfileThink(globalProfile) ? (
-							<>
-								<Field code="ai.chat.thinkingLevel" full>
-									<Picker<ThinkingLevel>
-										value={chatThinkingLevel}
-										onChange={(v) => setChat({ thinkingLevel: v })}
-										options={[
-											{ value: "low", label: "低" },
-											{ value: "medium", label: "中" },
-											{ value: "high", label: "高" },
-										]}
-									/>
-								</Field>
-								<FieldNote>
-									聊天的思考<strong>开关</strong>在输入框旁 —— 那颗 ✦ 胶囊按会话手动点亮，
-									不落盘。这里只调点亮之后想多深;初始<strong>跟随</strong>
-									「全局服务商」选中实例的等级，调过之后就分家，此后与实例配置互不影响
-								</FieldNote>
-							</>
-						) : (
-							<FieldNote>
-								当前在用的实例是「自定义」，女仆不会自作主张发思考参数 ——
-								需要的话写到那份实例的额外请求参数里
-							</FieldNote>
-						)}
-					</GlassBox>
+					{/* 聊天页的思考设置不在这里:开关是输入框旁那颗 ✦ 胶囊(会话级不落盘),
+					    **等级**(ai.chat.thinkingLevel)搬进了聊天侧栏的「设置」弹层 ——
+					    深度只有聊天在用,编辑口跟着聊天走。 */}
 
 					{/* 联网搜索 —— 与选哪家 AI 服务商**正交**:web_search 工具由这里选定的
 					    后端真正执行,任何支持 function calling 的服务商都能用上。所以它不挂

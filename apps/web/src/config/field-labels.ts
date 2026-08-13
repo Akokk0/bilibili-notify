@@ -179,13 +179,9 @@ export const FIELD_LABELS = {
 		hint: "chat completions 是现状；responses 是 OpenAI 一系的新协议，思考是标准字段、思考 + 工具连用更稳。只有确认支持的家才摆这一格，失败不会悄悄换回旧协议",
 		section: "ai",
 	},
-	// 聊天页自己的思考等级(ai.chat)—— 与实例桶里的同名格分了家,别混。
-	// 开关不落盘:聊天输入框旁那颗 ✦ 胶囊是会话级的,按消息走请求体。
-	"ai.chat.thinkingLevel": {
-		label: "聊天 · 思考深度",
-		hint: "只管 AI 聊天页,统一三档,按在用实例的服务商换算方言。初始跟随在用实例,调过即分家",
-		section: "ai",
-	},
+	// 聊天页自己的思考等级(ai.chat.thinkingLevel)**不在**这张表里:它的编辑口
+	// 在聊天侧栏的「设置」弹层,点档位直接 PATCH,不经过灵动岛的 diff,也没有
+	// `Field code` —— 表里挂一条永远显示不出来的死条目只会误导。
 	// 联网搜索(ai.search)—— web_search 工具的执行后端,与选哪家 AI 服务商正交。
 	"ai.search.backend": {
 		label: "搜索后端",

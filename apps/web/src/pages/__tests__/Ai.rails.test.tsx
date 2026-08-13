@@ -736,34 +736,6 @@ describe("内置性格:锁死、可删、可恢复、可另存", () => {
 	});
 });
 
-describe("AI 聊天 —— 思考设置与实例分家", () => {
-	function thinkGlobals() {
-		return globalsWith((g) => {
-			g.defaults.ai.activeProfile = "deepseek";
-			g.defaults.ai.providers = {
-				deepseek: bucket({ provider: "deepseek", enableThinking: true, thinkingLevel: "high" }),
-			};
-		});
-	}
-
-	it("等级初始跟随在用实例;设置页没有思考开关(它是聊天页的会话级胶囊)", async () => {
-		mount(thinkGlobals());
-		// 等级 Picker 恒在场,初始值继承实例的「高」。
-		const high = await screen.findByRole("button", { name: "高" });
-		expect(high.getAttribute("aria-pressed")).toBe("true");
-		// 开关不在设置页 —— 它曾经在这儿(写 ai.chat.enableThinking),改会话级后
-		// 这里再摆一颗只会让人以为它还落盘。
-		expect(screen.queryByRole("button", { name: "聊天深度思考" })).toBeNull();
-	});
-
-	it("改聊天的等级不碰实例桶 —— 主人报的原病:拨一下,整个女仆引擎跟着变", async () => {
-		mount(thinkGlobals());
-		await screen.findByRole("button", { name: "低" });
-		fireEvent.click(screen.getByRole("button", { name: "低" }));
-		expect(screen.getByRole("button", { name: "低" }).getAttribute("aria-pressed")).toBe("true");
-		// 切到「模型配置」:实例桶里的思考等级仍是「高」,纹丝不动。
-		fireEvent.click(await screen.findByRole("tab", { name: /模型配置/ }));
-		await screen.findByText("模型连接");
-		expect(screen.getByRole("button", { name: "高" }).getAttribute("aria-pressed")).toBe("true");
-	});
-});
+// 「AI 聊天 —— 思考设置与实例分家」那组测试搬去了 thinking-level-setting.test.tsx:
+// 编辑口如今在聊天侧栏的「设置」弹层。继承展示在那边逐条守;「改等级不碰实例桶」
+// 由 PATCH 载荷的深等断言接住 —— 载荷只有 `ai.chat` 一片,想碰实例桶都写不进去。

@@ -3,6 +3,7 @@ import { type AiConversationMetaDTO, groupConversations } from "../../services/a
 import { CHAT_THEME_LABELS, CHAT_THEMES, type ChatTheme } from "../../store/aiChat";
 import { Toggle } from "../atoms";
 import { Icon } from "../icons";
+import { ThinkingLevelSetting } from "./thinking-level-setting";
 
 /**
  * 聊天页左侧的会话栏 —— 悬浮的液态玻璃面板(macOS 26 风)。
@@ -225,6 +226,10 @@ export function ChatSidebar(props: ChatSidebarProps) {
 							/>
 							完全透明（去磨砂模糊）
 						</div>
+
+						{/* 思考深度(ai.chat.thinkingLevel)。组件自带查询与落盘,弹层这边
+						    不用为它多穿一层 props —— 与 ✦ 胶囊(ThinkingControl)同款自理。 */}
+						<ThinkingLevelSetting />
 					</div>
 				) : null}
 			</div>

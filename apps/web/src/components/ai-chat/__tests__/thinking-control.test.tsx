@@ -8,7 +8,7 @@
  *
  * 1. 纯受控:aria-pressed 跟 props 走,点击只回调、**绝不 PATCH**;
  * 2. 自定义服务商灰着并指路(方言未知,发了也没用);
- * 3. 等级不在这里调 —— 低/中/高属于设置页。
+ * 3. 等级不在这里调 —— 低/中/高属于侧栏的「设置」弹层(思考深度)。
  */
 
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";

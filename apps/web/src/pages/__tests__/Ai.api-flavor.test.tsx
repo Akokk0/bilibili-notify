@@ -88,22 +88,8 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
-describe("AI 页 · 全局配置的「AI 聊天」块", () => {
-	// 谓词曾在三处各手抄一份,这块漏了 responses 解锁:custom+responses 下聊天
-	// 胶囊点得亮、服务端真在发 reasoning.effort,这里却藏起档位还谎称
-	// 「女仆不会自作主张发思考参数」—— 文案是假的,档位卡死在 medium 调不了。
-	it("custom+responses → 思考等级照摆,不再谎称「不会发思考参数」", async () => {
-		mount("custom", "responses");
-		await waitFor(() => expect(fieldAt("ai.chat.thinkingLevel")).toBeTruthy());
-		expect(screen.queryByText(/不会自作主张发思考参数/)).toBeNull();
-	});
-
-	it("custom+chat → 维持灰话术,指路额外请求参数", async () => {
-		mount("custom", "chat");
-		await waitFor(() => expect(screen.getByText(/不会自作主张发思考参数/)).toBeTruthy());
-		expect(fieldAt("ai.chat.thinkingLevel")).toBeNull();
-	});
-});
+// 「AI 聊天」块已从本页搬走:`ai.chat.thinkingLevel` 的编辑口如今在聊天侧栏的
+// 「设置」弹层里,能力位与灰话术在 thinking-level-setting.test.tsx 逐条守。
 
 describe("AI 页 · 接口风味", () => {
 	it("deepseek 档案摆出风味格,两个选项在场,默认停在 chat completions", async () => {
