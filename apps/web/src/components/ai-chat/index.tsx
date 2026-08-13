@@ -253,6 +253,14 @@ export function ChatPage() {
 	// 不算换会话」的豁免都住在 hook 里 —— 见 use-session-capsules.ts。
 	const { thinkingOn, setThinkingOn, searchOn, setSearchOn, adoptConversation } =
 		useSessionCapsules(activeId);
+	// 空态与会话态两个 Composer 用同一份 —— 各写一遍的话,加第三颗胶囊只改到
+	// 一处,问候屏和聊天里的工具栏就长得不一样了(正是本文件头警告过的分裂态)。
+	const composerExtras = (
+		<>
+			<ThinkingControl on={thinkingOn} onToggle={setThinkingOn} />
+			<SearchControl on={searchOn} onToggle={setSearchOn} />
+		</>
+	);
 
 	/**
 	 * 起标题。刻意**不**把错误摊给主人:服务端起名失败也回 200 + 当前标题,
@@ -552,12 +560,7 @@ export function ChatPage() {
 								onRemoveAttachment={(id) => setAttachments((p) => p.filter((a) => a.id !== id))}
 								autoFocus
 								aiName={persona.name}
-								extras={
-									<>
-										<ThinkingControl on={thinkingOn} onToggle={setThinkingOn} />
-										<SearchControl on={searchOn} onToggle={setSearchOn} />
-									</>
-								}
+								extras={composerExtras}
 							/>
 							{error ? (
 								<div
@@ -610,12 +613,7 @@ export function ChatPage() {
 								onRemoveAttachment={(id) => setAttachments((p) => p.filter((a) => a.id !== id))}
 								autoFocus
 								aiName={persona.name}
-								extras={
-									<>
-										<ThinkingControl on={thinkingOn} onToggle={setThinkingOn} />
-										<SearchControl on={searchOn} onToggle={setSearchOn} />
-									</>
-								}
+								extras={composerExtras}
 							/>
 							<div className="mt-2 text-center text-[11px] text-bn-text-secondary">
 								{persona.name}可能会出错,请核对重要信息
