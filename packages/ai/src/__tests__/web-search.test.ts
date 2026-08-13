@@ -185,3 +185,14 @@ describe("webSearchExecutorFromSettings — 配置到执行器的映射", () => 
 		expect(ex?.backend).toBe("tavily");
 	});
 });
+
+describe("formatWebSearchResults — 回灌模型的文本", () => {
+	it("空结果必须指引模型换词重试 —— 干巴巴的「没搜到」等于叫它就地放弃", async () => {
+		const { formatWebSearchResults } = await import("../web-search");
+		const msg = formatWebSearchResults([]);
+		// 真实案例:博查对「国际重大新闻 最新」确定性回空,模型看到旧文案
+		// 直接放弃,预算里剩下的搜索次数一次没用。文案要点出「换关键词再试」。
+		expect(msg).toContain("没有搜到");
+		expect(msg).toMatch(/换.*关键词/);
+	});
+});
