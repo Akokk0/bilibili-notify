@@ -98,30 +98,45 @@ function mapAiSecrets(
 	next: (profileId: string, vision: boolean) => string,
 	nextSearch: (backend: string) => string,
 ): GlobalConfig {
-	const entries = Object.entries(g.defaults.ai.providers);
-	const search = g.defaults.ai.search;
+	// 恢复路径(assemble.ts 的 openFullBackup)会把**未经 schema 迁移**的老备份
+	// globals 原样递进来:可能没有 ai.search 段(搜索上线前)、没有 providers 桶
+	// (扁平时代)、甚至没有 defaults.ai(AI 上线前)。缺哪段就原样跳过哪段 ——
+	// 这里只对存在的形状灌密钥,补默认是下游 GlobalConfigSchema parse 的事;
+	// 曾经无守卫地 Object.keys(undefined),升级前的所有全量备份因此不可恢复。
+	const ai = g.defaults.ai as GlobalConfig["defaults"]["ai"] | undefined;
+	if (!ai) return g;
+	const search = ai.search as GlobalConfig["defaults"]["ai"]["search"] | undefined;
+	const providers = ai.providers as GlobalConfig["defaults"]["ai"]["providers"] | undefined;
 	return {
 		...g,
 		defaults: {
 			...g.defaults,
 			ai: {
-				...g.defaults.ai,
-				providers: Object.fromEntries(
-					entries.map(([id, p]) => [
-						id,
-						p && {
-							...p,
-							apiKey: next(id, false),
-							vision: { ...p.vision, apiKey: next(id, true) },
-						},
-					]),
-				),
-				search: {
-					...search,
-					keys: Object.fromEntries(
-						Object.keys(search.keys).map((backend) => [backend, nextSearch(backend)]),
-					) as GlobalConfig["defaults"]["ai"]["search"]["keys"],
-				},
+				...ai,
+				...(providers
+					? {
+							providers: Object.fromEntries(
+								Object.entries(providers).map(([id, p]) => [
+									id,
+									p && {
+										...p,
+										apiKey: next(id, false),
+										vision: { ...p.vision, apiKey: next(id, true) },
+									},
+								]),
+							),
+						}
+					: {}),
+				...(search?.keys
+					? {
+							search: {
+								...search,
+								keys: Object.fromEntries(
+									Object.keys(search.keys).map((backend) => [backend, nextSearch(backend)]),
+								) as GlobalConfig["defaults"]["ai"]["search"]["keys"],
+							},
+						}
+					: {}),
 			},
 		},
 	};

@@ -184,3 +184,33 @@ describe("联网搜索的 key 也走袋子", () => {
 		expect(restored.defaults.ai.search.keys).toEqual({ bocha: "sk-bocha", tavily: "tvly-x" });
 	});
 });
+
+/**
+ * 恢复路径会把**未经 schema 迁移**的老备份 globals 原样递进 applyAiSecrets
+ * (assemble.ts 的 openFullBackup 在 GlobalConfigSchema 补默认之前灌密钥)。
+ * 老备份可能没有 ai.search 段(搜索上线前)、甚至没有 providers 桶(扁平时代)。
+ * 曾经这里无守卫地 Object.keys(undefined) —— 于是升级前的所有全量备份不可恢复。
+ * 缺段就跳过:密钥灌回只对存在的形状负责,补默认是下游 schema parse 的事。
+ */
+describe("applyAiSecrets — 老备份缺段不许炸", () => {
+	it("缺 ai.search 段(搜索上线前的备份)→ 原样跳过,不抛 TypeError", () => {
+		const g = makeDefaultGlobalConfig();
+		delete (g.defaults.ai as Record<string, unknown>).search;
+		const out = applyAiSecrets(g, { deepseek: "sk-x" });
+		expect((out.defaults.ai as Record<string, unknown>).search).toBeUndefined();
+	});
+
+	it("缺 providers 桶(实例桶迁移前的扁平备份)→ 原样跳过,搜索段照灌", () => {
+		const g = makeDefaultGlobalConfig();
+		delete (g.defaults.ai as Record<string, unknown>).providers;
+		const out = applyAiSecrets(g, { "search:bocha": "sk-b" });
+		expect((out.defaults.ai as Record<string, unknown>).providers).toBeUndefined();
+		expect(out.defaults.ai.search.keys.bocha).toBe("sk-b");
+	});
+
+	it("连 defaults.ai 都没有(AI 上线前的化石备份)→ 原物返回", () => {
+		const g = makeDefaultGlobalConfig();
+		delete (g.defaults as Record<string, unknown>).ai;
+		expect(applyAiSecrets(g, {})).toEqual(g);
+	});
+});
