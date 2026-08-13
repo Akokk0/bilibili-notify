@@ -28,6 +28,7 @@ import { SearchControl } from "./search-control";
 import { ChatSidebar } from "./sidebar";
 import { AI_SKILLS, resolveOutgoing } from "./skills";
 import { ThinkingControl } from "./thinking-control";
+import { useSessionCapsules } from "./use-session-capsules";
 
 /**
  * 女仆 AI 聊天 —— 一条独立路由(/chat)的整页对话界面,右下角的胶囊
@@ -248,18 +249,10 @@ export function ChatPage() {
 		setSettled(null);
 	}, [activeId]);
 
-	/**
-	 * 会话级的两颗胶囊(深度思考 / 联网搜索)。**不落盘**(主人定的):默认关、
-	 * 手动点亮、换个会话就归零 —— 曾经思考那颗直接写配置,于是刷新 / 换设备后
-	 * 「上次开的」还阴魂不散地烧钱。发送时随请求体走(见 send 的 flags)。
-	 */
-	const [thinkingOn, setThinkingOn] = useState(false);
-	const [searchOn, setSearchOn] = useState(false);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: 只按 activeId 归零,不读旧值
-	useEffect(() => {
-		setThinkingOn(false);
-		setSearchOn(false);
-	}, [activeId]);
+	// 会话级的两颗胶囊(深度思考 / 联网搜索)。归零策略连同「首发落地新会话
+	// 不算换会话」的豁免都住在 hook 里 —— 见 use-session-capsules.ts。
+	const { thinkingOn, setThinkingOn, searchOn, setSearchOn, adoptConversation } =
+		useSessionCapsules(activeId);
 
 	/**
 	 * 起标题。刻意**不**把错误摊给主人:服务端起名失败也回 200 + 当前标题,
@@ -278,7 +271,11 @@ export function ChatPage() {
 			// 还没有会话就先开一个 —— 主人在空态直接打字发送时走这条路,
 			// 不必先去点「新对话」。
 			const id = activeId ?? (await createConversation()).id;
-			if (id !== activeId) setActiveId(id);
+			if (id !== activeId) {
+				// 这次 activeId 变化是首发落的户口,不是换会话 —— 别把刚点亮的胶囊打回默认。
+				adoptConversation();
+				setActiveId(id);
+			}
 			return sendChatMessage(
 				id,
 				text,
