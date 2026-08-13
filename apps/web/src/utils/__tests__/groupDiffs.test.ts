@@ -134,10 +134,22 @@ describe("groupDiffsBySection", () => {
 			expect(getFieldLabel("ai.providers.deepseek.__nope__")).toBeNull();
 		});
 
-		it("不是真服务商的段 → 不认", () => {
-			// 不校验这一段的话,任何 `ai.providers.X.Y` 都会被认下来并渲染成
-			// 「undefined · 某字段」。
-			expect(getFieldLabel("ai.providers.notAProvider.model")).toBeNull();
+		// providers 已是 z.record(z.string()):手改配置/备份恢复出的任意桶 id
+		// (「my-deepseek」)是合法可加载的。认不出形状就返回 null 的话,继承的
+		// secret 标志跟着丢 —— 灵动岛 diff 面板会把刚输入的 API Key 按明文摊开。
+		// 桶 id 本身就是主人写的,拿它当显示名毫不含糊,而 secret 一位都不能丢。
+		it("非常规桶 id → 用原样 id 当显示名,secret 标志必须继承", () => {
+			const entry = getFieldLabel("ai.providers.my-deepseek.apiKey");
+			expect(entry?.secret).toBe(true);
+			expect(entry?.label).toBe("my-deepseek · API Key");
+			expect(getFieldLabel("ai.providers.my-deepseek.vision.apiKey")?.secret).toBe(true);
+		});
+
+		it("非常规桶 id 的普通字段照样归进 AI 组,不掉「其他」", () => {
+			const entry = getFieldLabel("ai.providers.notAProvider.model");
+			expect(entry).not.toBeNull();
+			expect(entry?.section).toBe("ai");
+			expect(entry?.label).toContain("notAProvider");
 		});
 	});
 });

@@ -726,9 +726,11 @@ export function getFieldLabel(code: string): FieldLabel | null {
 		const rest = code.slice(PROVIDER_PREFIX.length);
 		const cut = rest.indexOf(".");
 		const id = cut < 0 ? "" : rest.slice(0, cut);
-		// 认不出的实例、或者认不出的字段,一律**老实说不认识** —— 兜一个半截标签
-		// (「undefined · 某字段」)比缺一行更难查。
-		const display = profileDisplayName(id);
+		// 认不出的**字段**才「老实说不认识」;认不出形状的**桶 id** 不行 ——
+		// providers 是 z.record,手改配置/备份恢复出的任意 id(「my-deepseek」)
+		// 合法可加载,返回 null 会把继承的 secret 标志一起丢掉,diff 面板就把
+		// 刚输入的 API Key 按明文摊开了。桶 id 本来就是主人写的,原样当显示名。
+		const display = profileDisplayName(id) ?? (id !== "" ? id : null);
 		if (display !== null) {
 			const base = (FIELD_LABELS as Record<string, FieldLabel | undefined>)[
 				`ai.${rest.slice(cut + 1)}`
