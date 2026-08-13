@@ -428,10 +428,12 @@ export class RoomSession extends RoomSessionBase {
 		if (data.code !== 0) {
 			const text = `【${this.masterInfo?.username ?? ""}的直播间】${body.user.uname}的SC:${body.content}（${body.price}元）`;
 			if (this.ctx.isDisposed()) return;
-			await this.ctx.push.broadcastToTargets(
-				this.sub.uid,
-				this.ctx.contentBuilder.message([this.ctx.contentBuilder.text(text)]),
-				LivePushType.Superchat,
+			await this.enqueuePush(() =>
+				this.ctx.push.broadcastToTargets(
+					this.sub.uid,
+					this.ctx.contentBuilder.message([this.ctx.contentBuilder.text(text)]),
+					LivePushType.Superchat,
+				),
 			);
 			return;
 		}
@@ -452,10 +454,12 @@ export class RoomSession extends RoomSessionBase {
 					this.sub.cardLayout?.sc,
 				);
 				if (this.ctx.isDisposed()) return;
-				await this.ctx.push.broadcastToTargets(
-					this.sub.uid,
-					this.ctx.contentBuilder.image(buf, "image/jpeg"),
-					LivePushType.Superchat,
+				await this.enqueuePush(() =>
+					this.ctx.push.broadcastToTargets(
+						this.sub.uid,
+						this.ctx.contentBuilder.image(buf, "image/jpeg"),
+						LivePushType.Superchat,
+					),
 				);
 				return;
 			} catch (e) {
@@ -464,10 +468,12 @@ export class RoomSession extends RoomSessionBase {
 		}
 		const fallback = `【${this.masterInfo?.username ?? ""}的直播间】${data.data.uname}的SC:${body.content}（${body.price}元）`;
 		if (this.ctx.isDisposed()) return;
-		await this.ctx.push.broadcastToTargets(
-			this.sub.uid,
-			this.ctx.contentBuilder.message([this.ctx.contentBuilder.text(fallback)]),
-			LivePushType.Superchat,
+		await this.enqueuePush(() =>
+			this.ctx.push.broadcastToTargets(
+				this.sub.uid,
+				this.ctx.contentBuilder.message([this.ctx.contentBuilder.text(fallback)]),
+				LivePushType.Superchat,
+			),
 		);
 	}
 
@@ -649,18 +655,25 @@ export class RoomSession extends RoomSessionBase {
 			omitLink: messageLayout !== undefined,
 		});
 
-		await this.ctx.sendLiveNotifyCard({
-			liveType: LiveType.StartBroadcasting,
-			liveData: this.liveData,
-			liveRoomInfo: this.liveRoomInfo,
-			master: this.masterInfo,
-			cardStyle: this.resolvedCardStyle("live"),
-			cardLayout: this.sub.cardLayout,
-			uid: this.sub.uid,
-			notifyMsg: liveStartMsg,
-			messageLayout,
-			roomLink,
-		});
+		// 串行闸(enqueuePush):秒级断流重开时,这张开播卡会与上一场还在途的下播卡
+		// 并发 —— 不排队的话谁快谁先送达,用户看到「先开播后下播」的倒序。
+		// 抓成局部变量再入闸:非空收窄进不了闭包,卡片也本就该反映发起时刻的状态。
+		const liveRoomInfo = this.liveRoomInfo;
+		const master = this.masterInfo;
+		await this.enqueuePush(() =>
+			this.ctx.sendLiveNotifyCard({
+				liveType: LiveType.StartBroadcasting,
+				liveData: this.liveData,
+				liveRoomInfo,
+				master,
+				cardStyle: this.resolvedCardStyle("live"),
+				cardLayout: this.sub.cardLayout,
+				uid: this.sub.uid,
+				notifyMsg: liveStartMsg,
+				messageLayout,
+				roomLink,
+			}),
+		);
 
 		if (this.ctx.isDisposed()) return;
 		// 跨 useLiveRoomInfo / useMasterInfo / getTimeDifference / sendLiveNotifyCard

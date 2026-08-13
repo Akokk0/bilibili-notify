@@ -99,6 +99,31 @@ export abstract class RoomSessionBase {
 		this.sub = sub;
 	}
 
+	/** {@link enqueuePush} 的链尾。永不 reject(失败在链上吞掉,但会抛回发起方)。 */
+	private pushTail: Promise<unknown> = Promise.resolve();
+
+	/**
+	 * 同房间对外推送的串行闸:所有 target 推送(开播 / 下播 / 正在直播 / 词云 / 总结 /
+	 * SC / 上舰)都从这里过,**送达次序 = 发起次序**。
+	 *
+	 * 真实事故:主播下播后几秒内重开,下播流程与新场开播流程是两个互不排队的异步
+	 * 上下文,各自渲染 + 发送 —— 开播卡跑得快就先送达,QQ 与 history(按送达完成序
+	 * 落库)都呈现「开播 → 下播 → 总结」的倒序,一小时后新场的周期复推于是被用户
+	 * 读成「下播了还推正在直播」的误报。
+	 *
+	 * 只包**发送**那一步,不包渲染前的取数与生成:词云 / AI 总结要跑几十秒,把它们
+	 * 也锁进闸里,重开的开播卡就得白等一整段生成。失败不断链:排在后面的推送照常
+	 * 送出,异常原样抛回发起方(各调用点的错误语义与从前一致)。
+	 *
+	 * `safeBroadcast`(特别关注弹幕 / 进房)不在闸内 —— 它本身就是 fire-and-forget、
+	 * 不 await 送达,队列锁不住它真正的送达时刻。
+	 */
+	protected enqueuePush<T>(fn: () => Promise<T>): Promise<T> {
+		const run = this.pushTail.then(fn);
+		this.pushTail = run.catch(() => undefined);
+		return run;
+	}
+
 	/**
 	 * 取某卡片类型的生效样式:优先该 kind 的 per-kind 覆盖,缺失回退基准 `customCardStyle`。
 	 * 始终有定义(基准恒在);是否启用由调用点据 `enable` 自行判定 —— SC / guard 把未启用
@@ -331,19 +356,24 @@ export abstract class RoomSessionBase {
 			});
 
 			// restartPush 已由 adapter 折算好(per-UP ?? 全局)。
+			// 抓成局部变量再入闸:非空收窄进不了闭包,而且卡片本就该反映**发起时刻**的状态。
+			const liveRoomInfo = this.liveRoomInfo;
+			const master = this.masterInfo;
 			if (this.sub.restartPush) {
-				await this.ctx.sendLiveNotifyCard({
-					liveType: LiveType.LiveBroadcast,
-					liveData: this.liveData,
-					liveRoomInfo: this.liveRoomInfo,
-					master: this.masterInfo,
-					cardStyle: this.resolvedCardStyle("live"),
-					cardLayout: this.sub.cardLayout,
-					uid: this.sub.uid,
-					notifyMsg: liveMsg,
-					messageLayout,
-					roomLink,
-				});
+				await this.enqueuePush(() =>
+					this.ctx.sendLiveNotifyCard({
+						liveType: LiveType.LiveBroadcast,
+						liveData: this.liveData,
+						liveRoomInfo,
+						master,
+						cardStyle: this.resolvedCardStyle("live"),
+						cardLayout: this.sub.cardLayout,
+						uid: this.sub.uid,
+						notifyMsg: liveMsg,
+						messageLayout,
+						roomLink,
+					}),
+				);
 			}
 			// 卡片推送也在窗口内,所以裁决放在最后一刻:这几秒里 UP 停播的话,翻成
 			// 在播就再没有第二条 END 能把它翻回来了。
@@ -470,18 +500,23 @@ export abstract class RoomSessionBase {
 			omitLink: messageLayout !== undefined,
 		});
 
-		await this.ctx.sendLiveNotifyCard({
-			liveType: LiveType.LiveBroadcast,
-			liveData: this.liveData,
-			liveRoomInfo: this.liveRoomInfo,
-			master: this.masterInfo,
-			cardStyle: this.resolvedCardStyle("live"),
-			cardLayout: this.sub.cardLayout,
-			uid: this.sub.uid,
-			notifyMsg: liveMsg,
-			messageLayout,
-			roomLink,
-		});
+		// 抓成局部变量再入闸:非空收窄进不了闭包,卡片也本就该反映发起时刻的状态。
+		const liveRoomInfo = this.liveRoomInfo;
+		const master = this.masterInfo;
+		await this.enqueuePush(() =>
+			this.ctx.sendLiveNotifyCard({
+				liveType: LiveType.LiveBroadcast,
+				liveData: this.liveData,
+				liveRoomInfo,
+				master,
+				cardStyle: this.resolvedCardStyle("live"),
+				cardLayout: this.sub.cardLayout,
+				uid: this.sub.uid,
+				notifyMsg: liveMsg,
+				messageLayout,
+				roomLink,
+			}),
+		);
 	}
 
 	/** 断流接续等待时长(分钟),per-UP 缺省 2,防御性夹到 [1,10]。 */
@@ -630,20 +665,25 @@ export abstract class RoomSessionBase {
 			omitLink: messageLayout !== undefined,
 		});
 
+		// 抓成局部变量再入闸:非空收窄进不了闭包,卡片也本就该反映发起时刻的状态。
+		const liveRoomInfo = this.liveRoomInfo;
+		const master = this.masterInfo;
 		try {
 			if (this.ctx.isSubscribed(this.sub, "liveEnd")) {
-				await this.ctx.sendLiveNotifyCard({
-					liveType: LiveType.StopBroadcast,
-					liveData: this.liveData,
-					liveRoomInfo: this.liveRoomInfo,
-					master: this.masterInfo,
-					cardStyle: this.resolvedCardStyle("live"),
-					cardLayout: this.sub.cardLayout,
-					uid: this.sub.uid,
-					notifyMsg: liveEndMsg,
-					messageLayout,
-					roomLink,
-				});
+				await this.enqueuePush(() =>
+					this.ctx.sendLiveNotifyCard({
+						liveType: LiveType.StopBroadcast,
+						liveData: this.liveData,
+						liveRoomInfo,
+						master,
+						cardStyle: this.resolvedCardStyle("live"),
+						cardLayout: this.sub.cardLayout,
+						uid: this.sub.uid,
+						notifyMsg: liveEndMsg,
+						messageLayout,
+						roomLink,
+					}),
+				);
 			}
 			await this.dispatchWordCloudAndSummary(
 				this.sub.customLiveSummary.liveSummary || this.ctx.config.liveSummaryDefault,
@@ -699,14 +739,14 @@ export abstract class RoomSessionBase {
 		const wcMsg = img ? this.ctx.contentBuilder.image(img, "image/jpeg") : undefined;
 		const summaryMsg = summary ? this.ctx.contentBuilder.text(summary) : undefined;
 		if (wcMsg) {
-			await this.ctx.push.broadcastToTargets(
-				this.sub.uid,
-				wcMsg,
-				LivePushType.WordCloudAndLiveSummary,
+			await this.enqueuePush(() =>
+				this.ctx.push.broadcastToTargets(this.sub.uid, wcMsg, LivePushType.WordCloudAndLiveSummary),
 			);
 		}
 		if (summaryMsg) {
-			await this.ctx.push.broadcastToTargets(this.sub.uid, summaryMsg, LivePushType.LiveSummary);
+			await this.enqueuePush(() =>
+				this.ctx.push.broadcastToTargets(this.sub.uid, summaryMsg, LivePushType.LiveSummary),
+			);
 		}
 	}
 }
