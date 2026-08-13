@@ -26,12 +26,12 @@ export function extractPrivateMessage(
 	const userId = frame.user_id;
 	if (typeof userId !== "number" && typeof userId !== "string") return null;
 
+	// 段数组优先:真实客户端两个字段**都发**,raw_message 是裹着 CQ 码的字符串
+	// ("[CQ:reply,id=…]y")。让它抢跑的话,「主人回 y 时顺手带上 reply 段也该
+	// 认得出」的容错永远轮不到 —— 引用回复的 y/n 与指令全认不出。raw_message
+	// 只作老客户端(没有段数组)的回落,且要先还原 CQ 转义。
 	let text = "";
-	if (typeof frame.raw_message === "string" && frame.raw_message.trim()) {
-		text = frame.raw_message;
-	} else if (typeof frame.message === "string") {
-		text = frame.message;
-	} else if (Array.isArray(frame.message)) {
+	if (Array.isArray(frame.message)) {
 		text = frame.message
 			.filter(
 				(seg): seg is { type: string; data: { text?: string } } =>
@@ -39,7 +39,20 @@ export function extractPrivateMessage(
 			)
 			.map((seg) => seg.data?.text ?? "")
 			.join("");
+	} else if (typeof frame.message === "string") {
+		text = frame.message;
+	} else if (typeof frame.raw_message === "string") {
+		text = unescapeCq(frame.raw_message);
 	}
 	if (!text.trim()) return null;
 	return { userId: String(userId), text };
+}
+
+/** OneBot 的 CQ 码转义还原([ ] , & 在 raw_message 里以 HTML 实体出现)。 */
+function unescapeCq(s: string): string {
+	return s
+		.replace(/&#91;/g, "[")
+		.replace(/&#93;/g, "]")
+		.replace(/&#44;/g, ",")
+		.replace(/&amp;/g, "&");
 }

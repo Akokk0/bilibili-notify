@@ -112,6 +112,33 @@ describe("extractPrivateMessage", () => {
 		});
 		expect(got).toEqual({ userId: "10001", text: "y a3" });
 	});
+
+	// 真实客户端**两个字段都发**:raw_message 是裹着 CQ 码的字符串。它曾经
+	// 只要非空就抢跑,段数组的容错路径永远轮不到 —— 主人在手机上长按引用草稿
+	// 回 "y",拿到的 text 是 "[CQ:reply,id=…]y",y/n 和指令全认不出。
+	it("段数组与 raw_message 并存 → 段数组优先,reply 段不进 text", () => {
+		const got = extractPrivateMessage({
+			post_type: "message",
+			message_type: "private",
+			user_id: 10001,
+			raw_message: "[CQ:reply,id=123]y",
+			message: [
+				{ type: "reply", data: { id: "123" } },
+				{ type: "text", data: { text: "y" } },
+			],
+		});
+		expect(got).toEqual({ userId: "10001", text: "y" });
+	});
+
+	it("只有 raw_message(无段数组的老客户端)→ 仍可用,且 CQ 转义要还原", () => {
+		const got = extractPrivateMessage({
+			post_type: "message",
+			message_type: "private",
+			user_id: 10001,
+			raw_message: "&#91;测试&#93; a &amp; b",
+		});
+		expect(got).toEqual({ userId: "10001", text: "[测试] a & b" });
+	});
 });
 
 describe("审批指令处理", () => {
