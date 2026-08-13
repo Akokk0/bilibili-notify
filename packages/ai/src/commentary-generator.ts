@@ -1031,8 +1031,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 		if (!apiKey) throw new Error("AI apiKey 未配置");
 		if (!baseURL) throw new Error("AI baseURL 未配置");
 
+		// flavor 必须打出来:两种风味成功时的其余日志一字不差,主人切了 responses
+		// 只能靠这里确认真的换了协议,否则「到底走没走新路」查无实据。
 		this.logger.debug(
-			`[api] baseURL=${baseURL}, model=${model}, temperature=${temperature ?? "default"}, messages=${messages.length}, tools=${toolOptions ? "yes" : "no"}, images=${imageUrls?.length ?? 0}`,
+			`[api] flavor=${this.config.apiFlavor ?? "chat"}, baseURL=${baseURL}, model=${model}, temperature=${temperature ?? "default"}, messages=${messages.length}, tools=${toolOptions ? "yes" : "no"}, images=${imageUrls?.length ?? 0}`,
 		);
 		const { default: OpenAI } = await import("openai");
 		// 单次 chat.completions.create 的硬超时。下播总结/动态点评偶发的 LLM 长尾(模型 hang
