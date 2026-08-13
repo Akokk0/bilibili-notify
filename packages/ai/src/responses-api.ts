@@ -11,6 +11,7 @@
  * custom 档案也因此在 responses 风味下第一次有了能用的思考开关。
  */
 
+import { providerMeta } from "@bilibili-notify/internal";
 import type OpenAI from "openai";
 import type { BuildProviderParamsInput } from "./providers";
 
@@ -21,15 +22,16 @@ import type { BuildProviderParamsInput } from "./providers";
  * 「关」位有方言差(百炼 2026-08 官方文档钉死;DeepSeek 官方文档没写关位,
  * 2026-08-13 真 key 实测钉死 —— 文档当时读成「不传即关」,上线后胶囊关了
  * 回复照样思考,实测不传默认思考 41 tokens、发 none 归零):
- * - DeepSeek / 百炼:`/responses` 上**思考默认开**,必须显式 `{effort:"none"}`
- *   才关得掉,不发等于开关失灵;
- * - OpenRouter / custom:上游是谁都有可能,`none` 不是 OpenAI 词表里的标准档,
- *   乱发换来 400;不传、交给上游默认(真被拒还有摘 reasoning 的降级重试兜底)。
+ * - **默认开思考的家**(meta 的 `thinkingDefaultsOn`,DeepSeek/百炼实测吻合):
+ *   必须显式 `{effort:"none"}` 才关得掉,不发等于开关失灵。读 meta 而不是在
+ *   这里点名 —— 日后哪家默认开思考的(硅基/火山)开了 supportsResponses,
+ *   关位自动跟上,不会静默失效;
+ * - OpenRouter / custom(默认关):`none` 不是 OpenAI 词表里的标准档,乱发
+ *   换来 400;不传、交给上游默认(真被拒还有摘 reasoning 的降级重试兜底)。
  */
 export function buildResponsesReasoning(input: BuildProviderParamsInput): Record<string, unknown> {
 	if (!input.enableThinking) {
-		const defaultsOn = input.provider === "deepseek" || input.provider === "bailian";
-		return defaultsOn ? { reasoning: { effort: "none" } } : {};
+		return providerMeta(input.provider).thinkingDefaultsOn ? { reasoning: { effort: "none" } } : {};
 	}
 	return { reasoning: { effort: input.thinkingLevel } };
 }
