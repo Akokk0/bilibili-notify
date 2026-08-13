@@ -213,13 +213,15 @@ async function runEnableCheck(args: EnableCheckArgs): Promise<EnableCheckResult>
 		const cur = args.current.defaults.ai.providers[id];
 		const at = (field: string) =>
 			mergedString(
-				cur?.[field as "apiKey" | "baseUrl" | "model"],
+				cur?.[field as "apiKey" | "baseUrl" | "model" | "apiFlavor"],
 				pluck(args.patch, ["defaults", "ai", "providers", id, field]),
 			);
 		const r = await checkAiEnable({
 			apiKey: at("apiKey"),
 			baseUrl: at("baseUrl"),
 			model: at("model"),
+			// 风味也可能就在这个 patch 里被切换 —— 与连接字段同一套 merged 取法。
+			apiFlavor: at("apiFlavor") || "chat",
 		});
 		if (!r.ok) return r;
 	}
@@ -305,9 +307,11 @@ interface AiProbeFields {
 	apiKey: string;
 	baseUrl: string;
 	model: string;
+	apiFlavor: string;
 }
 
-async function checkAiEnable(fields: AiProbeFields): Promise<EnableCheckResult> {
+/** exported for tests —— 端点必须跟实例的接口风味走,这条契约要能被钉住。 */
+export async function checkAiEnable(fields: AiProbeFields): Promise<EnableCheckResult> {
 	if (!fields.apiKey) {
 		return { ok: false, scope: "ai", message: "apiKey 字段为空，启用 AI 前请先填写。" };
 	}
@@ -318,7 +322,27 @@ async function checkAiEnable(fields: AiProbeFields): Promise<EnableCheckResult> 
 		return { ok: false, scope: "ai", message: "model 字段为空，启用 AI 前请先填写。" };
 	}
 
-	const url = `${fields.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+	// 探活打的端点跟实例的接口风味走 —— responses-only 的模型(o1-pro 这类)在
+	// /chat/completions 上是 404,打错端点等于把用户永久挡在自己的探活门外,
+	// 而真正的聊天路径本来能通。responses 的 ping 不带 temperature:o 系推理
+	// 模型会 400 拒掉它,探活自己不能先踩雷。
+	const base = fields.baseUrl.replace(/\/+$/, "");
+	const responses = fields.apiFlavor === "responses";
+	const url = responses ? `${base}/responses` : `${base}/chat/completions`;
+	const body = responses
+		? {
+				model: fields.model,
+				input: [{ role: "user", content: "ping" }],
+				max_output_tokens: 16,
+				stream: false,
+			}
+		: {
+				model: fields.model,
+				messages: [{ role: "user", content: "ping" }],
+				max_tokens: 5,
+				temperature: 0,
+				stream: false,
+			};
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), 10_000);
 	try {
@@ -328,13 +352,7 @@ async function checkAiEnable(fields: AiProbeFields): Promise<EnableCheckResult> 
 				"Content-Type": "application/json",
 				Authorization: `Bearer ${fields.apiKey}`,
 			},
-			body: JSON.stringify({
-				model: fields.model,
-				messages: [{ role: "user", content: "ping" }],
-				max_tokens: 5,
-				temperature: 0,
-				stream: false,
-			}),
+			body: JSON.stringify(body),
 			signal: controller.signal,
 		});
 		if (res.ok) return { ok: true };

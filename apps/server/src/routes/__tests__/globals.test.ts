@@ -1,5 +1,5 @@
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { checkApprovalEnable, shouldRunAiEnableCheck } from "../globals.js";
 
 /** 默认 globals + AI 启用 + 连接字段齐备。 */
@@ -222,5 +222,58 @@ describe("checkApprovalEnable", () => {
 			webhookTarget,
 		] as Targets);
 		expect(r.ok).toBe(true);
+	});
+});
+
+describe("checkAiEnable — 探活打的端点要跟实例的接口风味走", () => {
+	const okJson = () => ({ ok: true, status: 200, text: async () => "" }) as unknown as Response;
+
+	it("chat 风味(默认)→ 打 /chat/completions", async () => {
+		const { checkAiEnable } = await import("../globals.js");
+		const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+		vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+			calls.push({ url, body: JSON.parse(String(init.body)) });
+			return okJson();
+		});
+		try {
+			const r = await checkAiEnable({
+				apiKey: "k",
+				baseUrl: "https://api.example.com/",
+				model: "m",
+				apiFlavor: "chat",
+			});
+			expect(r.ok).toBe(true);
+			expect(calls[0]?.url).toBe("https://api.example.com/chat/completions");
+			expect(calls[0]?.body.messages).toBeDefined();
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	// responses-only 的模型(o1-pro 这类)在 /chat/completions 上是 404 ——
+	// 探活打错端点,用户就被自己的探活永久挡在门外,而真聊天路径本来能通。
+	it("responses 风味 → 打 /responses,body 是 input 形状且不带 temperature", async () => {
+		const { checkAiEnable } = await import("../globals.js");
+		const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+		vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+			calls.push({ url, body: JSON.parse(String(init.body)) });
+			return okJson();
+		});
+		try {
+			const r = await checkAiEnable({
+				apiKey: "k",
+				baseUrl: "https://api.example.com",
+				model: "o1-pro",
+				apiFlavor: "responses",
+			});
+			expect(r.ok).toBe(true);
+			expect(calls[0]?.url).toBe("https://api.example.com/responses");
+			expect(calls[0]?.body.input).toBeDefined();
+			expect(calls[0]?.body.messages).toBeUndefined();
+			// o 系推理模型会 400 拒掉 temperature —— 探活自己不能先踩雷
+			expect("temperature" in (calls[0]?.body ?? {})).toBe(false);
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });
