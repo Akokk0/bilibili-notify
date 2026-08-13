@@ -58,11 +58,16 @@ export function toResponsesInput(
 			continue;
 		}
 		if (!Array.isArray(msg.content)) continue;
+		// 段词表按 role 分家:assistant 消息那边只收 output_text/refusal,发
+		// input_text 在 OpenAI 严格网关上是 400。当前调用方只给最后一条 user
+		// 挂段数组(assistant 历史恒为字符串),但签名收整个 message 数组 ——
+		// 契约面不能敞着等第一个复用方去撞。
+		const isOutput = msg.role === "assistant";
 		const parts: Record<string, unknown>[] = [];
 		for (const part of msg.content) {
 			if (part.type === "text") {
-				parts.push({ type: "input_text", text: part.text });
-			} else if (part.type === "image_url") {
+				parts.push({ type: isOutput ? "output_text" : "input_text", text: part.text });
+			} else if (part.type === "image_url" && !isOutput) {
 				parts.push({ type: "input_image", image_url: part.image_url.url, detail: "auto" });
 			}
 		}

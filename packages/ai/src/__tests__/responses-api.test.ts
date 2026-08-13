@@ -10,6 +10,7 @@
  * 这个开关根本关不掉,和 chat 方言里 thinkingDefaultsOn 是同一课。
  */
 
+import type OpenAI from "openai";
 import { describe, expect, it } from "vite-plus/test";
 import { buildResponsesReasoning, toResponsesInput, toResponsesTools } from "../responses-api";
 
@@ -89,6 +90,21 @@ describe("toResponsesInput", () => {
 				],
 			},
 		]);
+	});
+
+	// 真实 Responses API 对 assistant 消息只收 output 词表(output_text/refusal),
+	// 发 input_text 在 OpenAI 严格网关上是 400。当前调用方不会给 assistant 挂段
+	// 数组(历史恒为字符串),但函数签名收整个 ChatCompletionMessageParam[] ——
+	// 契约面敞着,按 role 换词把它钉死。
+	it("assistant 的多段 content → output_text(那边 assistant 只收 output 词表)", () => {
+		expect(
+			toResponsesInput([
+				{
+					role: "assistant",
+					content: [{ type: "text", text: "之前说过" }],
+				} as unknown as OpenAI.ChatCompletionMessageParam,
+			]),
+		).toEqual([{ role: "assistant", content: [{ type: "output_text", text: "之前说过" }] }]);
 	});
 });
 
