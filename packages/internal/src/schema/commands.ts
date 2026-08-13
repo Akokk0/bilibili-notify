@@ -20,6 +20,9 @@ export const CommandConfigSchema = z.object({
 		.string()
 		// 纯空白的前缀等于一个敲不出来的前缀。空串是合法的(见上),所以这里放行 ""。
 		.refine((s) => s === "" || s.trim() !== "", { message: "前缀不能是纯空白" })
+		// dispatcher 匹配前会先把入站文本 trim 两头 —— 以空白**开头**的前缀
+		// (" /")永远匹配不上,和纯空白同一种「敲不出来」;尾空格(`bn `)照旧合法。
+		.refine((s) => s === s.trimStart(), { message: "前缀不能以空白开头" })
 		.default("/"),
 	aliases: z
 		.record(

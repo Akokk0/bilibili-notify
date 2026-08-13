@@ -25,6 +25,13 @@ describe("CommandConfigSchema", () => {
 		expect(() => CommandConfigSchema.parse({ prefix: "   " })).toThrow();
 	});
 
+	// dispatcher 匹配前先把入站文本 trim 两头 —— 以空白开头的前缀(" /")
+	// 永远匹配不上,和纯空白同一种「敲不出来」,存进去照样锁死全部指令。
+	it("以空白开头的前缀拒绝(入站会先 trim,首空格永远匹配不上)", () => {
+		expect(() => CommandConfigSchema.parse({ prefix: " /" })).toThrow();
+		expect(() => CommandConfigSchema.parse({ prefix: "\t/" })).toThrow();
+	});
+
 	it("别名整份替换 —— 空数组是「一个别名都不要」,不是「没配」", () => {
 		expect(CommandConfigSchema.parse({ aliases: { mute: [] } }).aliases).toEqual({ mute: [] });
 	});
