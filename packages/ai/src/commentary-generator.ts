@@ -1214,6 +1214,13 @@ export class CommentaryGenerator implements CommentaryProvider {
 						if (!choice) {
 							throw new Error("AI 网关返回空 choices(疑似命中内容审查或上游异常),无法生成");
 						}
+						// 与 fetchRound 的非流式回落同一条纪律:message 上的思考也要补喂,
+						// 先想后说。摘掉的只是**请求侧**的方言参数 —— 默认开思考的模型
+						// 照想、token 照烧,不喂的话这一轮的思考块就从界面上无声消失。
+						if (emitReasoning) {
+							const think = CommentaryGenerator.reasoningOf(choice.message);
+							if (think) emitReasoning(think);
+						}
 						if (emit && choice.message.content) emit(choice.message.content);
 						message = choice.message;
 					} catch (e2) {

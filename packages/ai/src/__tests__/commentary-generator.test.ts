@@ -818,6 +818,29 @@ describe("CommentaryGenerator.chatStatelessStream — 真流式", () => {
 			expect(think).toEqual([]);
 		});
 
+		// 摘方言重试那一轮曾只喂正文不喂思考 —— 与 fetchRound 的非流式回落(补喂
+		// 思考)不一致:兼容网关拒掉方言参数时,模型照想、token 照烧、字段就在
+		// message 上,dashboard 的思考块却无声消失。
+		it("摘方言重试的那一轮,message 上的思考也要补喂 onReasoning", async () => {
+			// 开着思考才有方言参数可摘 —— 默认档的关位一个字段都不发,进不了重试分支。
+			const { gen } = makeGen({ provider: "siliconflow", enableThinking: true });
+			oai.create
+				.mockRejectedValueOnce(new Error("dialect unsupported")) // 流式
+				.mockRejectedValueOnce(new Error("dialect unsupported")) // 非流式回落
+				.mockResolvedValueOnce({
+					choices: [{ message: { role: "assistant", content: "答", reasoning_content: "想了想" } }],
+				}); // 摘掉方言的重试
+			const think: string[] = [];
+			const text: string[] = [];
+			const result = await gen.chatStatelessStream([{ role: "user", content: "x" }], {
+				onDelta: (t) => text.push(t),
+				onReasoning: (t) => think.push(t),
+			});
+			expect(result).toBe("答");
+			expect(text).toEqual(["答"]);
+			expect(think).toEqual(["想了想"]);
+		});
+
 		it("工具轮的思考同样上报 —— 她决定去查什么的过程也是思考", async () => {
 			const { gen } = makeGen();
 			oai.create
