@@ -388,20 +388,29 @@ export default function Ai() {
 	function setChat(delta: Partial<AISettings["chat"]>): void {
 		setDraft((d) => (d ? { ...d, chat: { ...d.chat, ...delta } } : d));
 	}
-	/** 换联网搜索的执行后端。key 各存一格,这里只拨指针。 */
-	function setSearchBackend(v: AISettings["search"]["backend"]): void {
-		setDraft((d) => (d ? { ...d, search: { ...d.search, backend: v } } : d));
-	}
-	/** 改某家搜索后端的 key —— 只动那一格,换后端不丢另一家的。 */
-	function setSearchKey(backend: AISettings["search"]["backend"], v: string): void {
+	/**
+	 * 改联网搜索段的若干项 —— backend 指针 / keys / engines 都走这一个口
+	 * (与隔壁 setChat 同款,曾经三个 setter 各抄一遍嵌套 spread)。
+	 * keys / engines 是嵌套袋:调用方只给改动的那几格,这里在**函数式更新**里
+	 * 补上其余的 —— 漏一层内 spread 就是静默丢兄弟键(换后端丢另一家的 key)。
+	 */
+	function setSearch(delta: {
+		backend?: AISettings["search"]["backend"];
+		keys?: Partial<AISettings["search"]["keys"]>;
+		engines?: Partial<AISettings["search"]["engines"]>;
+	}): void {
 		setDraft((d) =>
-			d ? { ...d, search: { ...d.search, keys: { ...d.search.keys, [backend]: v } } } : d,
-		);
-	}
-	/** 拨某个引擎的联网搜索开关。 */
-	function setSearchEngine(k: keyof AISettings["search"]["engines"], v: boolean): void {
-		setDraft((d) =>
-			d ? { ...d, search: { ...d.search, engines: { ...d.search.engines, [k]: v } } } : d,
+			d
+				? {
+						...d,
+						search: {
+							...d.search,
+							...delta,
+							keys: { ...d.search.keys, ...delta.keys },
+							engines: { ...d.search.engines, ...delta.engines },
+						},
+					}
+				: d,
 		);
 	}
 	/**
@@ -607,7 +616,7 @@ export default function Ai() {
 						<Field code="ai.search.backend" full>
 							<Picker<AISettings["search"]["backend"]>
 								value={draft.search.backend}
-								onChange={setSearchBackend}
+								onChange={(v) => setSearch({ backend: v })}
 								options={WEB_SEARCH_BACKENDS.map((b) => ({ value: b.id, label: b.label }))}
 							/>
 						</Field>
@@ -618,38 +627,30 @@ export default function Ai() {
 						>
 							<TInput
 								value={draft.search.keys[draft.search.backend]}
-								onChange={(v) => setSearchKey(draft.search.backend, v)}
+								onChange={(v) => setSearch({ keys: { [draft.search.backend]: v } })}
 								secret
 								mono
 							/>
 						</Field>
-						<Field code="ai.search.engines.dynamic">
-							<div className="flex h-7.5 items-center">
-								<Toggle
-									value={draft.search.engines.dynamic}
-									onChange={(v) => setSearchEngine("dynamic", v)}
-									ariaLabel="动态点评联网搜索"
-								/>
-							</div>
-						</Field>
-						<Field code="ai.search.engines.live">
-							<div className="flex h-7.5 items-center">
-								<Toggle
-									value={draft.search.engines.live}
-									onChange={(v) => setSearchEngine("live", v)}
-									ariaLabel="直播总结联网搜索"
-								/>
-							</div>
-						</Field>
-						<Field code="ai.search.engines.roast">
-							<div className="flex h-7.5 items-center">
-								<Toggle
-									value={draft.search.engines.roast}
-									onChange={(v) => setSearchEngine("roast", v)}
-									ariaLabel="锐评联网搜索"
-								/>
-							</div>
-						</Field>
+						{/* 三个引擎开关按表生成 —— 手抄三块只差 key/ariaLabel 的 JSX,
+						    抄错一处在评审里根本看不出来;加第四个引擎也只改这张表。 */}
+						{(
+							[
+								["dynamic", "动态点评联网搜索"],
+								["live", "直播总结联网搜索"],
+								["roast", "锐评联网搜索"],
+							] as const
+						).map(([k, aria]) => (
+							<Field key={k} code={`ai.search.engines.${k}`}>
+								<div className="flex h-7.5 items-center">
+									<Toggle
+										value={draft.search.engines[k]}
+										onChange={(v) => setSearch({ engines: { [k]: v } })}
+										ariaLabel={aria}
+									/>
+								</div>
+							</Field>
+						))}
 						<FieldNote>
 							搜索<strong>按次计费</strong>，引擎开关出厂全关：开了之后每条点评 / 总结 / 锐评
 							都可能多几次搜索调用和几秒延迟。聊天页的「联网搜索」胶囊按会话手动点亮，不在这里。
