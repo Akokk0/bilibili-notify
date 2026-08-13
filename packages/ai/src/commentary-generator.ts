@@ -58,6 +58,43 @@ const VISION_TIMEOUT_MS = 60_000;
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 const SESSION_SWEEP_INTERVAL_MS = 10 * 60 * 1000; // 10 min — 清扫过期且不再被访问的 session
 
+/** 工具环单次调用的轮数上限 —— chat 与 responses 两条风味同一本账。 */
+const MAX_TOOL_ROUNDS = 8;
+
+/**
+ * 出字记账:包一层回调,累计本次调用总共吐给调用方多少字。**思考也计入** ——
+ * 它同样已经印在主人屏幕上了。`emitted` 决定出错时还能不能悄悄重来:一旦吐过字,
+ * 静默重试会让同一段思考再播一遍、或者半句正文凭空接上另一段。chat 与 responses
+ * 两条风味同用这一本账,规则只许改这一处。
+ */
+function makeAccountedEmitters(
+	onDelta?: (text: string) => void,
+	onReasoning?: (text: string) => void,
+): {
+	readonly emitted: number;
+	emit: ((text: string) => void) | undefined;
+	emitReasoning: ((text: string) => void) | undefined;
+} {
+	let emitted = 0;
+	return {
+		get emitted() {
+			return emitted;
+		},
+		emit: onDelta
+			? (text) => {
+					emitted += text.length;
+					onDelta(text);
+				}
+			: undefined,
+		emitReasoning: onReasoning
+			? (text) => {
+					emitted += text.length;
+					onReasoning(text);
+				}
+			: undefined,
+	};
+}
+
 export type ConversationRole = "user" | "assistant";
 /** 一条多轮对话消息。{@link CommentaryGenerator.chatStateless} 的入参元素。 */
 export interface ConversationMessage {
@@ -1121,24 +1158,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 			...mergeExtraParams(withProviderParams ? thinkingParams : {}, extra.value),
 		});
 
-		/**
-		 * 本次调用总共已经吐给调用方多少字 —— 决定了出错时还能不能悄悄重来。
-		 * **思考也计入**:它同样已经印在主人屏幕上了,静默重来会让同一段思考再播
-		 * 一遍、或者接上一段完全不同的正文。
-		 */
-		let emitted = 0;
-		const emit = onDelta
-			? (text: string) => {
-					emitted += text.length;
-					onDelta(text);
-				}
-			: undefined;
-		const emitReasoning = onReasoning
-			? (text: string) => {
-					emitted += text.length;
-					onReasoning(text);
-				}
-			: undefined;
+		// 出字记账(吐过字就不许悄悄重来)—— 规则本体见 makeAccountedEmitters。
+		const acct = makeAccountedEmitters(onDelta, onReasoning);
+		const { emit, emitReasoning } = acct;
 
 		/**
 		 * 取一轮响应。开了流式就走流式,并在**还没吐过任何字**时容许回落非流式 ——
@@ -1159,7 +1181,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 						emitReasoning,
 					);
 				} catch (e) {
-					if (emitted > 0) throw new Error(this.sanitizeErr(e));
+					if (acct.emitted > 0) throw new Error(this.sanitizeErr(e));
 					// 账单 / 鉴权那一层的拒绝跟 stream 无关,回落也是白撞一次。
 					const rejection = CommentaryGenerator.rejectionOf(e);
 					if (rejection) throw rejection;
@@ -1185,11 +1207,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 			return choice.message;
 		};
 
-		const MAX_ROUNDS = 8;
 		// 本次 callAPI 已真正执行的搜索次数。计在调用局部而不是实例上 —— 并发的
 		// 两条生成各有各的预算,记在 this 上会互相吃额度。
 		const budget = { searchCalls: 0 };
-		for (let round = 0; round < MAX_ROUNDS; round++) {
+		for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
 			let message: OpenAI.ChatCompletionMessage;
 			try {
 				message = await fetchRound();
@@ -1204,7 +1225,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 				// 只要这轮真发了方言参数就值得摘掉重来一次 —— 不限于「开着思考」:
 				// DeepSeek / 火山这类默认开思考的家,连「关」位都要发一条显式禁用,
 				// 那条同样可能被某些兼容网关拒掉。
-				if (Object.keys(thinkingParams).length > 0 && emitted === 0) {
+				if (Object.keys(thinkingParams).length > 0 && acct.emitted === 0) {
 					this.logger.warn(
 						`[api] 服务商方言参数不受支持，摘掉后重试(主人手写的额外参数保留): ${this.sanitizeErr(e)}`,
 					);
@@ -1299,20 +1320,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 			...mergeExtraParams(withReasoning ? reasoningParams : {}, args.extra),
 		});
 
-		// 与 chat 环同一本账:吐过字就不许悄悄重来(见 callAPI 里的说明)。
-		let emitted = 0;
-		const emit = args.onDelta
-			? (text: string) => {
-					emitted += text.length;
-					args.onDelta?.(text);
-				}
-			: undefined;
-		const emitReasoning = args.onReasoning
-			? (text: string) => {
-					emitted += text.length;
-					args.onReasoning?.(text);
-				}
-			: undefined;
+		// 与 chat 环同一本账:吐过字就不许悄悄重来 —— 同一份 makeAccountedEmitters。
+		const acct = makeAccountedEmitters(args.onDelta, args.onReasoning);
+		const { emit, emitReasoning } = acct;
 
 		/** 非流式取一轮,思考与正文按「先想后说」补喂回调(与 chat 的回落路径同规矩)。 */
 		const createOnce = async (withReasoning: boolean): Promise<unknown[]> => {
@@ -1341,7 +1351,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 				try {
 					return await this.streamResponsesOnce(client, makeParams(true), emit, emitReasoning);
 				} catch (e) {
-					if (emitted > 0) throw new Error(this.sanitizeErr(e));
+					if (acct.emitted > 0) throw new Error(this.sanitizeErr(e));
 					const rejection = CommentaryGenerator.rejectionOf(e);
 					if (rejection) throw rejection;
 					this.logger.warn(`[api] responses 流式不可用,回落非流式: ${this.sanitizeErr(e)}`);
@@ -1350,16 +1360,15 @@ export class CommentaryGenerator implements CommentaryProvider {
 			return createOnce(true);
 		};
 
-		const MAX_ROUNDS = 8;
 		const budget = { searchCalls: 0 };
-		for (let round = 0; round < MAX_ROUNDS; round++) {
+		for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
 			let items: unknown[];
 			try {
 				items = await fetchRound();
 			} catch (e) {
 				const rejection = CommentaryGenerator.rejectionOf(e);
 				if (rejection) throw rejection;
-				if (Object.keys(reasoningParams).length > 0 && emitted === 0) {
+				if (Object.keys(reasoningParams).length > 0 && acct.emitted === 0) {
 					this.logger.warn(
 						`[api] reasoning 参数不受支持，摘掉后重试(主人手写的额外参数保留): ${this.sanitizeErr(e)}`,
 					);
