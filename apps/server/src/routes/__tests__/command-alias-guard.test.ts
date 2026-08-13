@@ -117,6 +117,14 @@ describe("恢复默认(显式 null)", () => {
 		expect(r.ok).toBe(true);
 	});
 
+	// 整个 aliases 键置 null = 清掉全部覆盖(本仓 merge 语义自定义的合法删除哨兵,
+	// deepMerge 删键、schema 回默认 {})。守卫只判 undefined 的话,null 会穿门進
+	// Object.entries 抛 TypeError —— 一个合法 PATCH 就这么变成了 500。
+	it("整键 aliases:null(清空全部覆盖)是合法形状,不许 500", () => {
+		const r = check({ commands: { aliases: null } }, { mute: ["安静"] });
+		expect(r.ok).toBe(true);
+	});
+
 	// 恢复默认腾出来的词,别人可以接手。
 	it("恢复默认腾出的词可以被别人用", () => {
 		const r = check(
