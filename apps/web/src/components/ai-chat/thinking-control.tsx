@@ -3,6 +3,7 @@ import { canProfileThink, resolveAIProfile } from "@bilibili-notify/internal/con
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../services/api";
 import { Icon } from "../icons";
+import { ComposerPill } from "./composer-pill";
 
 /**
  * 聊天输入框工具栏里的「深度思考」胶囊开关 —— 学 DeepSeek 的 DeepThink:
@@ -29,30 +30,21 @@ export function ThinkingControl({ on, onToggle }: { on: boolean; onToggle: (v: b
 	// responses 风味下思考是标准字段(reasoning.effort),custom 档案也能开 ——
 	// 「方言未知不敢发」只是 chat completions 的处境。谓词一份,住 constants。
 	const canThink = canProfileThink(profile);
-	const lit = canThink && on;
 
 	return (
-		<button
-			type="button"
-			aria-label="深度思考"
-			aria-pressed={lit}
+		<ComposerPill
+			label="深度思考"
+			icon={<Icon.sparkle size={14} />}
+			on={on}
 			disabled={!canThink}
 			title={
 				canThink
-					? lit
+					? canThink && on
 						? "深度思考已开启,只管当前会话(等级在「智能女仆 → 全局配置」里调)"
 						: "深度思考:让她想清楚再答,响应会慢一些。只管当前会话,不落盘"
 					: '自定义服务商的方言未知,请到「智能女仆」页的「额外请求参数」手写(如 DeepSeek 填 {"thinking":{"type":"enabled"}});或把那份实例的接口风味换成 responses,思考在那套协议里是标准字段'
 			}
-			onClick={() => onToggle(!on)}
-			className={`flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-				lit
-					? "bn-chat-accent bn-chat-accent-soft border-transparent"
-					: "border-bn-border text-bn-text-secondary hover:bg-bn-hover-muted"
-			}`}
-		>
-			<Icon.sparkle size={14} />
-			深度思考
-		</button>
+			onToggle={onToggle}
+		/>
 	);
 }

@@ -3,6 +3,7 @@ import { webSearchBackendMeta } from "@bilibili-notify/internal/constants";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../services/api";
 import { Icon } from "../icons";
+import { ComposerPill } from "./composer-pill";
 
 /**
  * 聊天输入框工具栏里的「联网搜索」胶囊 —— 学 DeepSeek 的 Search,与隔壁
@@ -27,30 +28,21 @@ export function SearchControl({ on, onToggle }: { on: boolean; onToggle: (v: boo
 
 	const backend = webSearchBackendMeta(search.backend);
 	const configured = Boolean(search.keys[search.backend]);
-	const lit = configured && on;
 
 	return (
-		<button
-			type="button"
-			aria-label="联网搜索"
-			aria-pressed={lit}
+		<ComposerPill
+			label="联网搜索"
+			icon={<Icon.search size={14} />}
+			on={on}
 			disabled={!configured}
 			title={
 				configured
-					? lit
+					? configured && on
 						? `联网搜索已开启(${backend.label}),只管当前会话`
 						: "联网搜索:她会先搜再答,按次计费。只管当前会话,不落盘"
 					: `还没配搜索后端 —— 到「智能女仆 → 全局配置 → 联网搜索」填 ${backend.label} 的 API Key`
 			}
-			onClick={() => onToggle(!on)}
-			className={`flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-				lit
-					? "bn-chat-accent bn-chat-accent-soft border-transparent"
-					: "border-bn-border text-bn-text-secondary hover:bg-bn-hover-muted"
-			}`}
-		>
-			<Icon.search size={14} />
-			联网搜索
-		</button>
+			onToggle={onToggle}
+		/>
 	);
 }
