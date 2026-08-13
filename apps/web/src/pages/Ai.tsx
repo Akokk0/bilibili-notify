@@ -23,6 +23,7 @@
 import {
 	type AIProviderProfileShape,
 	type APIFlavorId,
+	canProfileThink,
 	EMPTY_AI_PROVIDER_PROFILE,
 	providerMeta,
 	resolveActivePersona,
@@ -347,9 +348,9 @@ export default function Ai() {
 	const editingLabel = rail.find((i) => i.id === editing)?.label ?? meta.label;
 	// 头图那颗药丸报的是**女仆真正在用的那份**的模型,与左栏在看哪一份无关。
 	const globalProfile = resolveAIProfile(draft);
-	// 聊天页的思考设置(带「没写 = 跟随在用实例」的继承展开)与在用实例的能力位。
+	// 聊天页的思考设置(带「没写 = 跟随在用实例」的继承展开)。能力位看
+	// canProfileThink(globalProfile) —— 谓词只有 constants 那一份。
 	const chatThinkingLevel = resolveChatThinkingLevel(draft);
-	const chatMeta = providerMeta(globalProfile.provider);
 	// 头图那行名字同理:报的是**女仆真正在用的那份人格**(`activePreset` 指的那份),
 	// 与左栏在编辑哪一份无关。直读 `draft.persona` 的话换来换去它一动不动 —— 那个
 	// 字段自人格指针上线就没有界面入口、永远冻在老值上。
@@ -565,7 +566,7 @@ export default function Ai() {
 						icon={<Icon.sparkle size={14} />}
 						badge="chat"
 					>
-						{chatMeta.supportsThinking ? (
+						{canProfileThink(globalProfile) ? (
 							<>
 								<Field code="ai.chat.thinkingLevel" full>
 									<Picker<ThinkingLevel>
@@ -985,8 +986,8 @@ export default function Ai() {
 										</FieldNote>
 									)}
 									{/* responses 风味下思考是标准字段(reasoning.effort),custom 也能开 ——
-									    「方言未知不敢发」只是 chat completions 的处境。 */}
-									{meta.supportsThinking || profile.apiFlavor === "responses" ? (
+									    「方言未知不敢发」只是 chat completions 的处境。谓词一份,住 constants。 */}
+									{canProfileThink(profile) ? (
 										<>
 											<Field code={`ai.providers.${editing}.enableThinking`}>
 												<div className="flex h-7.5 items-center">

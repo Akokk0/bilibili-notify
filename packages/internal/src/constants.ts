@@ -329,6 +329,19 @@ export function providerMeta(id: AIProviderId): AIProviderMeta {
 }
 
 /**
+ * 这份实例能不能开「深度思考」—— chat 风味看这家有没有适配过的方言
+ * (`supportsThinking`),responses 风味一律解禁:那套协议里思考是标准字段
+ * (`reasoning.effort`),不再是「方言未知不敢发」。
+ *
+ * **谓词只能有这一份。**它曾在三处各手抄一遍(聊天胶囊 / 实例编辑器 /
+ * 「AI 聊天」设置块),第三处漏掉 responses 解锁 —— 胶囊点得亮、服务端真在
+ * 发思考参数,设置页却藏起档位还宣称「不会发」。
+ */
+export function canProfileThink(p: { provider: AIProviderId; apiFlavor?: APIFlavorId }): boolean {
+	return providerMeta(p.provider).supportsThinking || (p.apiFlavor ?? "chat") === "responses";
+}
+
+/**
  * 一家服务商的整套配置(与 `schema/common.ts#AIProviderProfileSchema` 同形)。
  * 类型声明在这里而不是 schema 里,是为了让**零依赖**的 {@link resolveAIProfile}
  * 也能用上 —— 设置页经 `/constants` 子路径运行时消费它,不能把 zod 拖进前端 bundle。

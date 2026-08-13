@@ -88,6 +88,23 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
+describe("AI 页 · 全局配置的「AI 聊天」块", () => {
+	// 谓词曾在三处各手抄一份,这块漏了 responses 解锁:custom+responses 下聊天
+	// 胶囊点得亮、服务端真在发 reasoning.effort,这里却藏起档位还谎称
+	// 「女仆不会自作主张发思考参数」—— 文案是假的,档位卡死在 medium 调不了。
+	it("custom+responses → 思考等级照摆,不再谎称「不会发思考参数」", async () => {
+		mount("custom", "responses");
+		await waitFor(() => expect(fieldAt("ai.chat.thinkingLevel")).toBeTruthy());
+		expect(screen.queryByText(/不会自作主张发思考参数/)).toBeNull();
+	});
+
+	it("custom+chat → 维持灰话术,指路额外请求参数", async () => {
+		mount("custom", "chat");
+		await waitFor(() => expect(screen.getByText(/不会自作主张发思考参数/)).toBeTruthy());
+		expect(fieldAt("ai.chat.thinkingLevel")).toBeNull();
+	});
+});
+
 describe("AI 页 · 接口风味", () => {
 	it("deepseek 档案摆出风味格,两个选项在场,默认停在 chat completions", async () => {
 		mount("deepseek");
@@ -113,7 +130,9 @@ describe("AI 页 · 接口风味", () => {
 		await waitFor(() => {
 			expect(useDraftStore.getState().current?.diff.length ?? 0).toBeGreaterThan(0);
 		});
-		expect(screen.getByText(/请求体.*不同|字段名.*不同/)).toBeTruthy();
+		// 精确到 <strong> 原文 —— 泛匹配会撞上 extraParams 的 hint(#80 之后任意
+		// 桶 id 也渲染继承的 label/hint 了,那是修复的正向副作用)。
+		expect(screen.getByText("字段名与 chat completions 不同")).toBeTruthy();
 	});
 
 	it("custom + responses 解禁深度思考(标准 reasoning.effort,不再是方言)", async () => {
@@ -128,6 +147,6 @@ describe("AI 页 · 接口风味", () => {
 		await gotoModel();
 		await screen.findByText("生成参数");
 		expect(fieldAt("ai.providers.p1.enableThinking")).toBeNull();
-		expect(screen.getByText(/额外请求参数/)).toBeTruthy();
+		expect(screen.getByText(/把那家的写法填到/)).toBeTruthy();
 	});
 });

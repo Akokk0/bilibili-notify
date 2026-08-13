@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { API_FLAVOR_IDS, providerMeta } from "../constants";
+import { API_FLAVOR_IDS, canProfileThink, providerMeta } from "../constants";
 import { AISettingsSchema } from "./common";
 
 const BASE = {
@@ -65,5 +65,21 @@ describe("providerMeta.supportsResponses", () => {
 		expect(providerMeta("custom").supportsResponses).toBe(true);
 		expect(providerMeta("siliconflow").supportsResponses).toBe(false);
 		expect(providerMeta("volcengine").supportsResponses).toBe(false);
+	});
+});
+
+/**
+ * 「这份实例能不能开思考」曾经在三处各手抄一份谓词(聊天胶囊/实例编辑器/
+ * 「AI 聊天」设置块),第三处漏掉了 responses 解锁 —— custom+responses 下胶囊
+ * 点得亮、真在发 reasoning.effort,设置页却藏起档位还谎称「不会发思考参数」。
+ * 谓词只能有一份,住在 constants。
+ */
+describe("canProfileThink", () => {
+	it("chat 风味看 meta.supportsThinking;responses 风味一律解禁(标准字段)", () => {
+		expect(canProfileThink({ provider: "deepseek", apiFlavor: "chat" })).toBe(true);
+		expect(canProfileThink({ provider: "custom", apiFlavor: "chat" })).toBe(false);
+		expect(canProfileThink({ provider: "custom", apiFlavor: "responses" })).toBe(true);
+		// 风味字段缺省(老配置未过 schema)按 chat 算
+		expect(canProfileThink({ provider: "custom" })).toBe(false);
 	});
 });

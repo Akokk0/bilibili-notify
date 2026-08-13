@@ -1,5 +1,5 @@
 import type { GlobalConfig } from "@bilibili-notify/internal";
-import { providerMeta, resolveAIProfile } from "@bilibili-notify/internal/constants";
+import { canProfileThink, resolveAIProfile } from "@bilibili-notify/internal/constants";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../services/api";
 import { Icon } from "../icons";
@@ -26,10 +26,9 @@ export function ThinkingControl({ on, onToggle }: { on: boolean; onToggle: (v: b
 	if (!ai) return null;
 
 	const profile = resolveAIProfile(ai);
-	const meta = providerMeta(profile.provider);
 	// responses 风味下思考是标准字段(reasoning.effort),custom 档案也能开 ——
-	// 「方言未知不敢发」只是 chat completions 的处境。
-	const canThink = meta.supportsThinking || profile.apiFlavor === "responses";
+	// 「方言未知不敢发」只是 chat completions 的处境。谓词一份,住 constants。
+	const canThink = canProfileThink(profile);
 	const lit = canThink && on;
 
 	return (
