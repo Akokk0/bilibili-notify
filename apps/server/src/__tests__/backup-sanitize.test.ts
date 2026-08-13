@@ -45,6 +45,25 @@ describe("redactSecretKeys", () => {
 		expect(out.targets[0]?.session.group).toBe("123");
 	});
 
+	it("blanks every leaf under a `keys` container —— 搜索 key 的叶子键名是后端名,白名单认不出", () => {
+		// 真实泄漏案:ai.search.keys 的叶子键叫 bocha/tavily(后端枚举,不是 apiKey),
+		// 按键名的白名单永远追不上新后端 —— 容器名 `keys` 本身就是「里面全是凭据」。
+		const input = {
+			defaults: {
+				ai: {
+					search: { backend: "bocha", keys: { bocha: "sk-BOCHA-SECRET", tavily: "tvly-SECRET" } },
+				},
+			},
+		};
+		const json = JSON.stringify(redactSecretKeys(input));
+		expect(json).not.toContain("sk-BOCHA-SECRET");
+		expect(json).not.toContain("tvly-SECRET");
+		// 形状保留:键还在,值抹空
+		expect(redactSecretKeys(input).defaults.ai.search.keys).toEqual({ bocha: "", tavily: "" });
+		// backend 不是凭据,不许误伤
+		expect(redactSecretKeys(input).defaults.ai.search.backend).toBe("bocha");
+	});
+
 	it("does not mutate the input", () => {
 		const input = { a: { apiKey: "sk-SECRET" } };
 		redactSecretKeys(input);

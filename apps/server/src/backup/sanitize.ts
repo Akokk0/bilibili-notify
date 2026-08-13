@@ -23,7 +23,17 @@ export const SECRET_KEYS: readonly string[] = [
 	"password",
 ];
 
+/**
+ * Key names whose values are **containers of credentials**: every leaf below
+ * them is a secret regardless of its own key name. `ai.search.keys` is the
+ * archetype — its leaves are named after backends (`bocha`/`tavily`), so the
+ * per-key denylist above can never keep up as new backends land; the container
+ * name is the stable signal.
+ */
+export const SECRET_CONTAINER_KEYS: readonly string[] = ["keys"];
+
 const SECRET_KEY_SET = new Set<string>(SECRET_KEYS);
+const SECRET_CONTAINER_SET = new Set<string>(SECRET_CONTAINER_KEYS);
 
 /**
  * Deep-clone `value`, replacing every leaf whose key is in {@link SECRET_KEYS}
@@ -40,9 +50,22 @@ function redact(value: unknown): unknown {
 	if (value !== null && typeof value === "object") {
 		const out: Record<string, unknown> = {};
 		for (const [key, v] of Object.entries(value)) {
-			out[key] = SECRET_KEY_SET.has(key) ? "" : redact(v);
+			if (SECRET_KEY_SET.has(key)) out[key] = "";
+			else if (SECRET_CONTAINER_SET.has(key)) out[key] = blankLeaves(v);
+			else out[key] = redact(v);
 		}
 		return out;
 	}
 	return value;
+}
+
+/** Blank every leaf under a secret container, keeping the shape intact. */
+function blankLeaves(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(blankLeaves);
+	if (value !== null && typeof value === "object") {
+		const out: Record<string, unknown> = {};
+		for (const [key, v] of Object.entries(value)) out[key] = blankLeaves(v);
+		return out;
+	}
+	return "";
 }
