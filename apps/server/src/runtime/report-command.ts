@@ -82,9 +82,11 @@ export function createReportCommand(opts: ReportCommandOptions): CommandSpec {
 				return;
 			}
 			running = true;
-			// ack 在 await 之前发出去:主人先看到「收到了」,再等结果。
-			await opts.reply("好的，在生成了，稍等～");
 			try {
+				// ack 在跑生成之前发出去:主人先看到「收到了」,再等结果。它必须在
+				// try **里面** —— reply 本身也可能 reject(适配器瞬断),写在外面的话
+				// finally 不执行,running 卡死 true,此后每次 /report 都被挡到重启为止。
+				await opts.reply("好的，在生成了，稍等～");
 				const outcome = await opts.run(days);
 				const text = describeOutcome(outcome);
 				if (text) await opts.reply(text);

@@ -124,6 +124,30 @@ describe("report 指令", () => {
 		expect(run).toHaveBeenCalledTimes(2);
 	});
 
+	// 「失败路径上也松开」不只指 run 炸:**ack 那句回复本身**也可能 reject(适配器
+	// 瞬断)。它曾写在 running=true 之后、try 之前 —— reject 一次,finally 永不
+	// 执行,running 卡死 true,此后每次 /report 都被「还在跑呢」挡到重启为止。
+	it("ack 回复失败,闸也要松开(不能卡死在「还在跑」)", async () => {
+		let ackShouldFail = true;
+		const replies: string[] = [];
+		const run = vi.fn(async () => ({ kind: "sent" }) as never);
+		const spec = createReportCommand({
+			run,
+			reply: async (t: string) => {
+				if (ackShouldFail && t.includes("在生成了")) {
+					ackShouldFail = false;
+					throw new Error("adapter 瞬断");
+				}
+				replies.push(t);
+			},
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
+		});
+		await spec.run({} as never).catch(() => {});
+		// 第二次必须能真的跑,而不是被卡死的闸挡回
+		await spec.run({} as never);
+		expect(run).toHaveBeenCalled();
+	});
+
 	it("天数透传给生成", async () => {
 		const { run, fire } = setup();
 		await fire(14);
