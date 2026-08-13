@@ -25,8 +25,13 @@ const logger = { debug() {}, info() {}, warn() {}, error() {} } as Any;
 
 const MASTER = "10001";
 
-function privateFrame(text: string, userId = MASTER) {
-	return { post_type: "message", message_type: "private", user_id: userId, raw_message: text };
+/** 经存活的 seam(确认窗)喂一句私聊。帧解析已收口 dispatcher,这里没有帧入口。 */
+async function feed(
+	h: ReturnType<typeof createRoastCommandHandler>,
+	text: string,
+	userId = MASTER,
+): Promise<boolean> {
+	return h.confirmation.tryHandle({ userId, text });
 }
 
 let dir: string;
@@ -144,7 +149,7 @@ describe("extractPrivateMessage", () => {
 describe("审批指令处理", () => {
 	it("主人回 y(只有一份待审)→ 发出去", async () => {
 		const d = await seedDraft();
-		await makeHandler().handle(privateFrame("y"));
+		await feed(makeHandler(), "y");
 		expect(deliver).toHaveBeenCalledTimes(1);
 		expect(deliver.mock.calls[0]?.[0].id).toBe(d.id);
 		// 批过的草稿要消失,不能再批第二次。
@@ -153,7 +158,7 @@ describe("审批指令处理", () => {
 
 	it("主人回 n → 丢弃,不发", async () => {
 		await seedDraft();
-		await makeHandler().handle(privateFrame("n"));
+		await feed(makeHandler(), "n");
 		expect(deliver).not.toHaveBeenCalled();
 		expect(drafts.list()).toHaveLength(0);
 	});
@@ -161,7 +166,7 @@ describe("审批指令处理", () => {
 	it("别人发的 y → 当没看见,连回复都不给", async () => {
 		await seedDraft();
 		const h = makeHandler();
-		await h.handle(privateFrame("y", "99999"));
+		await feed(h, "y", "99999");
 		expect(deliver).not.toHaveBeenCalled();
 		// 回一句「你没权限」等于告诉对方这里有个接口可以试探。
 		expect(reply).not.toHaveBeenCalled();
@@ -170,14 +175,14 @@ describe("审批指令处理", () => {
 
 	it("没配主人 user_id → 谁都不认", async () => {
 		await seedDraft();
-		await makeHandler(null).handle(privateFrame("y"));
+		await feed(makeHandler(null), "y");
 		expect(deliver).not.toHaveBeenCalled();
 	});
 
 	it("多份待审又没带编号 → 要求指明,绝不替主人猜", async () => {
 		await seedDraft();
 		await seedDraft("solo");
-		await makeHandler().handle(privateFrame("y"));
+		await feed(makeHandler(), "y");
 		expect(deliver).not.toHaveBeenCalled();
 		expect(String(reply.mock.calls[0]?.[0])).toContain("编号");
 		// 两份都还在,一份都没被误发。
@@ -187,14 +192,14 @@ describe("审批指令处理", () => {
 	it("多份待审、带对编号 → 只发那一份", async () => {
 		const a = await seedDraft();
 		await seedDraft("solo");
-		await makeHandler().handle(privateFrame(`y ${a.id}`));
+		await feed(makeHandler(), `y ${a.id}`);
 		expect(deliver.mock.calls[0]?.[0].id).toBe(a.id);
 		expect(drafts.list()).toHaveLength(1);
 	});
 
 	it("编号不存在 → 说清楚,不误发别的那份", async () => {
 		await seedDraft();
-		await makeHandler().handle(privateFrame("y zz"));
+		await feed(makeHandler(), "y zz");
 		expect(deliver).not.toHaveBeenCalled();
 		expect(String(reply.mock.calls[0]?.[0])).toContain("zz");
 	});
@@ -206,15 +211,15 @@ describe("审批指令处理", () => {
 	// 敢这么改是因为草稿 TTL 有 48 小时 —— 主人要等超过两天才回 y 才会撞上「想批准
 	// 却没反应」,概率极低;而聊天里打 y 是日常。
 	it("一份待审都没有 → 静默,不拿这句去打扰主人", async () => {
-		await makeHandler().handle(privateFrame("y"));
+		await feed(makeHandler(), "y");
 		expect(reply).not.toHaveBeenCalled();
 	});
 
 	it("同一份连批两次 → 第二次落空,不重复发送", async () => {
 		await seedDraft();
 		const h = makeHandler();
-		await h.handle(privateFrame("y"));
-		await h.handle(privateFrame("y"));
+		await feed(h, "y");
+		await feed(h, "y");
 		expect(deliver).toHaveBeenCalledTimes(1);
 	});
 
@@ -224,7 +229,7 @@ describe("审批指令处理", () => {
 		// 各写一份鉴权迟早有一边把「不是主人也放行」写漏。
 		const d = await seedDraft();
 		const h = makeHandler();
-		await h.handleMessage({ userId: MASTER, text: "y" });
+		await h.confirmation.tryHandle({ userId: MASTER, text: "y" });
 		expect(deliver).toHaveBeenCalledTimes(1);
 		expect(deliver.mock.calls[0]?.[0].id).toBe(d.id);
 	});
@@ -232,7 +237,7 @@ describe("审批指令处理", () => {
 	it("平台中立入口同样只认主人 —— 别人的 y 当没看见", async () => {
 		await seedDraft();
 		const h = makeHandler();
-		await h.handleMessage({ userId: "99999", text: "y" });
+		await h.confirmation.tryHandle({ userId: "99999", text: "y" });
 		expect(deliver).not.toHaveBeenCalled();
 		expect(reply).not.toHaveBeenCalled();
 	});
@@ -241,7 +246,7 @@ describe("审批指令处理", () => {
 		await seedDraft();
 		const h = makeHandler();
 		deliver.mockRejectedValue(new Error("推送炸了"));
-		await expect(h.handle(privateFrame("y"))).resolves.not.toThrow();
+		await expect(feed(h, "y")).resolves.not.toThrow();
 	});
 });
 

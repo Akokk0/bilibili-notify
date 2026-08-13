@@ -55,21 +55,16 @@ export interface RoastCommandHandlerOptions {
 }
 
 export interface RoastCommandHandler {
-	/** 喂一帧 OneBot 事件。不是主人的审批指令就静默返回。 */
-	handle(frame: Record<string, unknown>): Promise<void>;
 	/**
-	 * 喂一条**已经解析好**的私聊消息。给帧格式不是 OneBot 的平台用
-	 * (qq-official 的网关那边送来的就是 `{userOpenid, text}`)。
-	 *
-	 * 鉴权与指令语义全在这里,`handle` 也只是「解析 OneBot 帧 → 调它」——
-	 * 两条路各写一份的话,迟早有一边把「不是主人也放行」写漏。
-	 */
-	handleMessage(msg: InboundPrivateMessage): Promise<void>;
-	/**
-	 * 作为指令分发器的**第二道门**接入 —— 有待审草稿时才认 y/n。
+	 * **唯一的对外口**:作为指令分发器的第二道门接入 —— 有待审草稿时才认 y/n。
+	 * 鉴权与指令语义全在门后。
 	 *
 	 * 依赖方向是这边指过去(具体指令 → 通用设施),反过来不行:让 dispatcher 去认
 	 * y/n 这个语法,就等于通用设施依赖了某一条具体指令。
+	 *
+	 * 曾经还有 handle(帧)/handleMessage(消息)两个入口 —— 入站收口 dispatcher
+	 * 之后它们没有生产调用方,却**绕过**确认窗门控与指令表;留着等于给未来的
+	 * 调用方(或一次合并冲突)一条静默复活旧行为的路。
 	 */
 	confirmation: ConfirmationWindow;
 }
@@ -149,17 +144,7 @@ export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): Roa
 		return true;
 	}
 
-	async function handleMessage(msg: InboundPrivateMessage): Promise<void> {
-		await tryHandle(msg);
-	}
-
 	return {
-		async handle(frame) {
-			const msg = extractPrivateMessage(frame);
-			if (!msg) return;
-			await handleMessage(msg);
-		},
-		handleMessage,
 		confirmation: {
 			isWaiting: () => drafts.list().length > 0,
 			tryHandle,
