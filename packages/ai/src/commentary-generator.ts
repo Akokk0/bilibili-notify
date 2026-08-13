@@ -114,7 +114,13 @@ export type AIScene = "dynamic" | "liveSummary";
 /** callAPI 的工具选项 —— chat 与 responses 两条风味共用的形状。 */
 interface CallToolOptions {
 	tools: OpenAI.ChatCompletionTool[];
-	onToolCall: (name: string, args: Record<string, string>) => Promise<string>;
+	/**
+	 * 名字不是 `web_search` 的工具调用走这里执行。可缺席:只挂了 web_search
+	 * 的调用方(引擎的 comment 路)没有别的工具可执行,走到这个口只可能是模型
+	 * 编了个不存在的工具名 —— execToolCall 统一回「未知工具」的失败资料,
+	 * 不必每个调用方自造 throw 桩。
+	 */
+	onToolCall?: (name: string, args: Record<string, string>) => Promise<string>;
 	onToolEvent?: (ev: ToolTraceEvent) => void;
 	/**
 	 * 联网搜索执行器。给了它,循环里名为 `web_search` 的调用就由生成器
@@ -483,10 +489,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 				? {
 						tools: [WEB_SEARCH_TOOL],
 						// web_search 由 callAPI 内部截胡执行;这条路没有别的工具,
-						// 走到这儿只可能是模型编了个不存在的工具名。
-						onToolCall: async (name) => {
-							throw new Error(`未知工具: ${name}`);
-						},
+						// onToolCall 缺席时 execToolCall 统一回「未知工具」失败资料。
 						webSearch: searchExec,
 					}
 				: undefined,
@@ -1467,11 +1470,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 		traceId: string,
 		name: string,
 		rawArgs: string,
-		toolOptions: {
-			onToolCall: (name: string, args: Record<string, string>) => Promise<string>;
-			onToolEvent?: (ev: ToolTraceEvent) => void;
-			webSearch?: WebSearchExecutor;
-		},
+		// 直接吃 CallToolOptions —— 这里曾内联手抄同一形状,onToolCall 改
+		// optional 时就漏改了它(第三份拷贝的经典死法)。
+		toolOptions: CallToolOptions,
 		/** 本次 callAPI 的搜索预算。对象引用共享 —— 多轮之间要接着数。 */
 		budget: { searchCalls: number },
 	): Promise<string> {
@@ -1525,7 +1526,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 					ok = false;
 				}
 			}
-		} else {
+		} else if (toolOptions.onToolCall) {
 			try {
 				this.logger.debug(`[tool] 执行 ${name}(${JSON.stringify(args)})`);
 				result = await toolOptions.onToolCall(name, args);
@@ -1534,6 +1535,11 @@ export class CommentaryGenerator implements CommentaryProvider {
 				result = `工具执行失败: ${(e as Error).message}`;
 				ok = false;
 			}
+		} else {
+			// 没有执行器还叫到了这里 = 模型编了个不存在的工具名。当失败资料回给
+			// 模型让它照常作答 —— 与其它工具失败同一条路,不炸生成链。
+			result = `工具执行失败: 未知工具 ${name}`;
+			ok = false;
 		}
 		toolOptions.onToolEvent?.({
 			phase: "end",
