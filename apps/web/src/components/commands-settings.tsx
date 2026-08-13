@@ -62,6 +62,24 @@ export function CommandsSettings({
 		return cfg.aliases[cmd.name] ?? cmd.defaultAliases;
 	}
 
+	/**
+	 * 输入框显示什么:原样文本只在**解析后与草稿当前值一致**时才可信 ——
+	 * 那时它只是同一份值的另一种写法(多个尾空格、打到一半的逗号),保住它
+	 * 光标才不跳。不一致说明草稿在别处被改了(灵动岛「放弃」回滚、恢复默认),
+	 * 这份文本已是陈旧孤儿:再显示它等于谎称放弃没生效,下一次击键还会把它
+	 * 重新 patch 回草稿。
+	 */
+	function displayValue(cmd: CommandEntry): string {
+		const raw = text[cmd.name];
+		const canonical = aliasesOf(cmd);
+		if (raw !== undefined) {
+			const parsed = parseAliases(raw);
+			const same = parsed.length === canonical.length && parsed.every((a, i) => a === canonical[i]);
+			if (same) return raw;
+		}
+		return canonical.join(" ");
+	}
+
 	function isOverridden(cmd: CommandEntry): boolean {
 		return cfg.aliases[cmd.name] !== undefined;
 	}
@@ -140,7 +158,7 @@ export function CommandsSettings({
 									) : null}
 								</div>
 								<TInput
-									value={text[cmd.name] ?? aliasesOf(cmd).join(" ")}
+									value={displayValue(cmd)}
 									onChange={(v) => setAliases(cmd.name, v)}
 									placeholder="别名,用空格分隔;留空则只认主名"
 								/>
