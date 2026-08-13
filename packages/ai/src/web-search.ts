@@ -102,7 +102,17 @@ async function postJson(url: string, apiKey: string, body: unknown): Promise<unk
 		const text = await res.text().catch(() => "");
 		throw new WebSearchError(`搜索后端回了 ${res.status}:${text.slice(0, 200)}`);
 	}
-	return res.json();
+	// 200 也不代表是 JSON:网关维护页/反代错误页照样带着 2xx 回 HTML。json()
+	// 的 SyntaxError(或读 body 中途的超时)原样外逃就破了「唯一出口」的契约,
+	// 回给模型/日志的会是「Unexpected token <…」这类原始噪音。
+	try {
+		return await res.json();
+	} catch (e) {
+		throw new WebSearchError(
+			`搜索后端回了 200 但正文不是 JSON(疑似网关维护页或反代错误页):${e instanceof Error ? e.message.slice(0, 120) : String(e).slice(0, 120)}`,
+			{ cause: e },
+		);
+	}
 }
 
 /** 博查:POST /v1/web-search,结果在 `data.webPages.value`,Bing 系字段名。 */

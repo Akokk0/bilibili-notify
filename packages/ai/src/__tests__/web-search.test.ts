@@ -149,6 +149,17 @@ describe("createWebSearchExecutor — 公共纪律", () => {
 		expect(String(err)).not.toContain("sk-secret");
 	});
 
+	// 「搜索失败的唯一出口是 WebSearchError」是本文件自立的契约 —— 200 + 非 JSON
+	// (网关维护页)时 res.json() 的 SyntaxError 曾原样外逃,回给模型/日志的是
+	// 「Unexpected token <…」这类原始英文噪音而非约定的人话错误。
+	it("200 + 非 JSON 正文(网关维护页)→ 也包成 WebSearchError", async () => {
+		fetchMock.mockResolvedValueOnce(new Response("<html>maintenance</html>", { status: 200 }));
+		const ex = createWebSearchExecutor({ backend: "bocha", apiKey: "sk-secret" });
+		const err = await ex.search("q").catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(WebSearchError);
+		expect(String(err)).not.toContain("sk-secret");
+	});
+
 	it("网络层直接 reject 也包成 WebSearchError —— 调用方只须接一种错", async () => {
 		fetchMock.mockRejectedValueOnce(new TypeError("fetch failed"));
 		const ex = createWebSearchExecutor({ backend: "tavily", apiKey: "k" });
