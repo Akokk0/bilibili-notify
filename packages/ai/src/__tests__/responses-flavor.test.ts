@@ -183,7 +183,7 @@ describe("responses 风味:流式分流与思考参数", () => {
 		expect(thinks).toEqual(["先想", "再想"]);
 	});
 
-	it("per-message 思考开 → 标准 reasoning.effort;关(deepseek)→ 一个字段都不发", async () => {
+	it("per-message 思考开 → 标准 reasoning.effort;关(deepseek)→ 显式 effort:none(实测不发=默认思考)", async () => {
 		oai.responsesCreate.mockResolvedValueOnce(streamOf([completed([msgItem("a")])]));
 		const gen = makeGen();
 		await gen.chatStatelessStream([{ role: "user", content: "1" }], {
@@ -194,7 +194,7 @@ describe("responses 风味:流式分流与思考参数", () => {
 
 		oai.responsesCreate.mockResolvedValueOnce(streamOf([completed([msgItem("b")])]));
 		await gen.chatStatelessStream([{ role: "user", content: "2" }], { onDelta: () => {} });
-		expect(params(1).reasoning).toBeUndefined();
+		expect(params(1).reasoning).toEqual({ effort: "none" });
 	});
 
 	it("流式不可用且没吐过字 → 回落非流式,正文补喂回调", async () => {

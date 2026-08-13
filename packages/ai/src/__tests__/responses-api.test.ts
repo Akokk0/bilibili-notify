@@ -37,22 +37,20 @@ describe("buildResponsesReasoning", () => {
 		).toEqual({ reasoning: { effort: "medium" } });
 	});
 
-	it("关思考:DeepSeek/OpenRouter/custom 不传即关,一个字段都不发", () => {
-		for (const provider of ["deepseek", "openrouter", "custom"] as const) {
+	it("关思考:OpenRouter/custom 方言未知,不传、交给上游默认", () => {
+		for (const provider of ["openrouter", "custom"] as const) {
 			expect(
 				buildResponsesReasoning({ provider, enableThinking: false, thinkingLevel: "medium" }),
 			).toEqual({});
 		}
 	});
 
-	it("关思考:百炼默认开,必须显式发 effort:none 才关得掉", () => {
-		expect(
-			buildResponsesReasoning({
-				provider: "bailian",
-				enableThinking: false,
-				thinkingLevel: "medium",
-			}),
-		).toEqual({ reasoning: { effort: "none" } });
+	it("关思考:DeepSeek/百炼在 /responses 上默认就思考,必须显式 effort:none 才关得掉(真 key 实测)", () => {
+		for (const provider of ["deepseek", "bailian"] as const) {
+			expect(
+				buildResponsesReasoning({ provider, enableThinking: false, thinkingLevel: "medium" }),
+			).toEqual({ reasoning: { effort: "none" } });
+		}
 	});
 });
 

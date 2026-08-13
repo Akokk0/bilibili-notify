@@ -18,16 +18,18 @@ import type { BuildProviderParamsInput } from "./providers";
  * 思考 → 标准 `reasoning.effort`。返回请求体**顶层**字段,与
  * `buildProviderParams` 同一姿势,方便降级重试时整块摘掉。
  *
- * 「关」位有方言差(2026-08 官方文档钉死):
- * - DeepSeek / OpenRouter / custom:不传 reasoning 即不思考,少发一个字段;
- * - 百炼:默认 `medium`(**思考默认开**),必须显式 `{effort:"none"}` 才关得掉
- *   —— 不发等于开关失灵,与 chat 方言的 thinkingDefaultsOn 同一课。但那个
- *   meta 不能直接搬过来:DeepSeek 在 chat 侧默认开、responses 侧默认关,
- *   两套协议的默认位是两回事,所以这里自己按家列举。
+ * 「关」位有方言差(百炼 2026-08 官方文档钉死;DeepSeek 官方文档没写关位,
+ * 2026-08-13 真 key 实测钉死 —— 文档当时读成「不传即关」,上线后胶囊关了
+ * 回复照样思考,实测不传默认思考 41 tokens、发 none 归零):
+ * - DeepSeek / 百炼:`/responses` 上**思考默认开**,必须显式 `{effort:"none"}`
+ *   才关得掉,不发等于开关失灵;
+ * - OpenRouter / custom:上游是谁都有可能,`none` 不是 OpenAI 词表里的标准档,
+ *   乱发换来 400;不传、交给上游默认(真被拒还有摘 reasoning 的降级重试兜底)。
  */
 export function buildResponsesReasoning(input: BuildProviderParamsInput): Record<string, unknown> {
 	if (!input.enableThinking) {
-		return input.provider === "bailian" ? { reasoning: { effort: "none" } } : {};
+		const defaultsOn = input.provider === "deepseek" || input.provider === "bailian";
+		return defaultsOn ? { reasoning: { effort: "none" } } : {};
 	}
 	return { reasoning: { effort: input.thinkingLevel } };
 }
