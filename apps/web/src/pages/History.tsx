@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Avatar, Input, Pill } from "../components/atoms";
+import { Avatar, ErrorNote, Input, Pill } from "../components/atoms";
 import { Icon } from "../components/icons";
 import { api } from "../services/api";
 import {
@@ -171,9 +171,7 @@ export default function History() {
 			{historyQuery.isLoading ? (
 				<div className="text-sm text-bn-text-tertiary">加载中…</div>
 			) : historyQuery.error ? (
-				<div className="rounded border border-bn-danger-border bg-bn-danger-soft p-3 text-xs text-bn-danger-text">
-					加载失败：{String((historyQuery.error as Error).message)}
-				</div>
+				<ErrorNote>加载失败：{String((historyQuery.error as Error).message)}</ErrorNote>
 			) : (
 				<HistoryTable entries={filtered} subByUid={subByUid} targetById={targetById} />
 			)}

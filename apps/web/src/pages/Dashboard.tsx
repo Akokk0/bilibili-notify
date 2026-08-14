@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { Avatar, Btn, Pill, StatsBar } from "../components/atoms";
+import { Avatar, Btn, ErrorNote, Pill, StatsBar } from "../components/atoms";
 import { GlassPanel, GlassStatCard } from "../components/glass";
 import { GlassBox } from "../components/glass-box";
 import { Icon } from "../components/icons";
@@ -631,10 +631,10 @@ function SystemHealthCard({
 			dense
 		>
 			{!reachable ? (
-				<div className="mb-2.5 rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-[11.5px] text-bn-danger-text">
+				<ErrorNote className="mb-2.5">
 					后端 API 当前不可达 (apps/server 未运行 或
 					网络中断),以下数据可能为最后一次成功拉取的快照。
-				</div>
+				</ErrorNote>
 			) : null}
 			<PluginMatrix cells={cells} />
 		</GlassBox>

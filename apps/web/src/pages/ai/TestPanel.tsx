@@ -11,7 +11,7 @@
 import type { AiTestPushResponse as TestPushResponse } from "@bilibili-notify/contract";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Btn } from "../../components/atoms";
+import { Btn, ErrorNote } from "../../components/atoms";
 import { Field, TArea, TSelect } from "../../components/forms";
 import { GlassBox } from "../../components/glass-box";
 import { Icon } from "../../components/icons";
@@ -97,11 +97,7 @@ export function AiTestPanel({ draft }: { draft: AISettings }) {
 					{reply}
 				</div>
 			)}
-			{err !== null && (
-				<div className="mt-2 rounded-md border border-bn-danger-border bg-bn-danger-soft px-3 py-2 text-[12px] leading-relaxed text-bn-danger-text">
-					{err}
-				</div>
-			)}
+			{err !== null && <ErrorNote className="mt-2">{err}</ErrorNote>}
 		</GlassBox>
 	);
 }

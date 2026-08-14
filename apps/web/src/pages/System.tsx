@@ -1,7 +1,7 @@
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Avatar, Btn } from "../components/atoms";
+import { Avatar, Btn, ErrorNote } from "../components/atoms";
 import { BrowserSourceSettings } from "../components/browser-source-settings";
 import { CommandsSettings } from "../components/commands-settings";
 import {
@@ -413,15 +413,9 @@ export default function System() {
 				{extraMsg ? <div className="mt-2 text-[11px] text-amber-600">{extraMsg}</div> : null}
 
 				{status === BiliLoginStatus.LOGIN_FAILED ? (
-					<div className="mt-2.5 rounded border border-bn-danger-border bg-bn-danger-soft p-2.5 text-xs text-bn-danger-text">
-						{msg || "登录失败，可重试。"}
-					</div>
+					<ErrorNote className="mt-2.5">{msg || "登录失败，可重试。"}</ErrorNote>
 				) : null}
-				{actionError ? (
-					<div className="mt-2.5 rounded border border-bn-danger-border bg-bn-danger-soft p-2.5 text-xs text-bn-danger-text">
-						操作失败：{actionError}
-					</div>
-				) : null}
+				{actionError ? <ErrorNote className="mt-2.5">操作失败：{actionError}</ErrorNote> : null}
 
 				<div className="mt-3.5 flex flex-wrap gap-2 border-t border-bn-border-subtle pt-3">
 					<Btn
@@ -460,9 +454,9 @@ export default function System() {
 			) : globalsQuery.isLoading ? (
 				<div className="text-xs text-bn-text-tertiary">加载系统配置中…</div>
 			) : globalsQuery.error ? (
-				<div className="rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
+				<ErrorNote>
 					拉取 /api/globals 失败：{String((globalsQuery.error as Error).message)}
-				</div>
+				</ErrorNote>
 			) : null}
 
 			{draft ? <CommandsSettings draft={draft} onPatch={patchDraft} /> : null}

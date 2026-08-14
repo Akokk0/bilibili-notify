@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Btn, Input } from "../components/atoms";
+import { Btn, ErrorNote, Input } from "../components/atoms";
 import { ConfirmDialog, ModalShell } from "../components/dialog";
 import { Icon } from "../components/icons";
 import { ApiError, api } from "../services/api";
@@ -194,11 +194,7 @@ function NewSubDialog({
 					该 UID 已经在订阅列表中,无需重复添加
 				</div>
 			) : null}
-			{opErr ? (
-				<div className="mt-3 rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
-					{opErr}
-				</div>
-			) : null}
+			{opErr ? <ErrorNote className="mt-3">{opErr}</ErrorNote> : null}
 			{profile ? (
 				<ProfilePreview profile={profile} subscribed={existingUids.has(profile.uid)} />
 			) : null}
@@ -214,11 +210,7 @@ function NewSubDialog({
 					onNext={() => gotoPage(page + 1)}
 				/>
 			) : null}
-			{error ? (
-				<div className="mt-3 rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
-					{error}
-				</div>
-			) : null}
+			{error ? <ErrorNote className="mt-3">{error}</ErrorNote> : null}
 			<div className="mt-4 flex justify-end gap-2">
 				<Btn variant="outline" size="sm" onClick={onCancel} disabled={pending}>
 					{searchData ? "关闭" : "取消"}
@@ -690,17 +682,11 @@ export default function Subs() {
 				</div>
 			) : null}
 
-			{error ? (
-				<div className="rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
-					{error}
-				</div>
-			) : null}
+			{error ? <ErrorNote>{error}</ErrorNote> : null}
 
 			{subsQuery.isLoading ? <div className="text-sm text-bn-text-secondary">加载中…</div> : null}
 			{subsQuery.error ? (
-				<div className="rounded border border-bn-danger-border bg-bn-danger-soft p-3 text-xs text-bn-danger-text">
-					加载失败：{String((subsQuery.error as Error).message)}
-				</div>
+				<ErrorNote>加载失败：{String((subsQuery.error as Error).message)}</ErrorNote>
 			) : null}
 			{subsQuery.data &&
 			filtered.length === 0 &&

@@ -6,7 +6,14 @@ import {
 } from "@bilibili-notify/internal/constants";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Btn, PlatformIcon, platformLabel, StatusDot, Toggle } from "../components/atoms";
+import {
+	Btn,
+	ErrorNote,
+	PlatformIcon,
+	platformLabel,
+	StatusDot,
+	Toggle,
+} from "../components/atoms";
 import { ModalShell } from "../components/dialog";
 import { Field, Picker, TInput, TNum, TSelect } from "../components/forms";
 import { Icon } from "../components/icons";
@@ -383,11 +390,7 @@ function AdapterEditorModal({
 				</SectionBox>
 			</div>
 
-			{error ? (
-				<div className="mt-3 rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
-					{error}
-				</div>
-			) : null}
+			{error ? <ErrorNote className="mt-3">{error}</ErrorNote> : null}
 
 			<div className="mt-4 flex justify-end gap-2">
 				<Btn variant="outline" onClick={onCancel} disabled={saving}>
@@ -891,11 +894,7 @@ function TargetEditorModal({
 				) : null}
 			</div>
 
-			{error ? (
-				<div className="mt-3 rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
-					{error}
-				</div>
-			) : null}
+			{error ? <ErrorNote className="mt-3">{error}</ErrorNote> : null}
 
 			<div className="mt-4 flex justify-end gap-2">
 				<Btn variant="outline" onClick={onCancel} disabled={saving}>
@@ -1224,11 +1223,7 @@ function DeleteModal({
 					</>
 				) : null}
 			</div>
-			{error ? (
-				<div className="mb-3 rounded border border-bn-danger-border bg-bn-danger-soft p-2 text-xs text-bn-danger-text">
-					{error}
-				</div>
-			) : null}
+			{error ? <ErrorNote className="mb-3">{error}</ErrorNote> : null}
 			<div className="flex justify-end gap-2">
 				<Btn variant="outline" onClick={onCancel} disabled={deleting}>
 					取消

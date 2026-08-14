@@ -296,6 +296,22 @@ export function Spinner({ size = 32, thickness = 2, className }: SpinnerProps) {
 	);
 }
 
+// ── ErrorNote ───────────────────────────────────────────────────────────────
+
+/**
+ * 错误/失败提示盒 —— 「XX 失败:…」这类红字盒子的唯一写法。
+ * 外边距(mt-3 / mb-3 …)交给调用方 className,盒子本体样式不许各处漂。
+ */
+export function ErrorNote({ children, className }: { children: ReactNode; className?: string }) {
+	return (
+		<div
+			className={`rounded-md border border-bn-danger-border bg-bn-danger-soft p-2.5 text-xs leading-relaxed text-bn-danger-text ${className ?? ""}`}
+		>
+			{children}
+		</div>
+	);
+}
+
 // ── PlatformIcon ────────────────────────────────────────────────────────────
 
 const PLATFORM_META: Record<string, { color: string; label: string; icon?: IconName }> = {

@@ -1,5 +1,5 @@
 import { type ChangeEvent, useState } from "react";
-import { Btn } from "../../components/atoms";
+import { Btn, ErrorNote } from "../../components/atoms";
 import { ModalShell } from "../../components/dialog";
 import { type ClientBackup, isValidPin, looksLikeBackup, readFileAsText } from "./backup-file";
 
@@ -62,11 +62,7 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 				/>
 			</label>
 
-			{error ? (
-				<div className="mb-3 rounded-lg border border-bn-danger-border bg-bn-danger-soft px-3 py-2 text-[12px] text-bn-danger-text">
-					{error}
-				</div>
-			) : null}
+			{error ? <ErrorNote className="mb-3">{error}</ErrorNote> : null}
 
 			{backup ? (
 				<>

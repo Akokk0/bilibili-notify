@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Btn } from "../../components/atoms";
+import { Btn, ErrorNote } from "../../components/atoms";
 import { ConfirmDialog } from "../../components/dialog";
 import { GlassBox } from "../../components/glass-box";
 import { Icon } from "../../components/icons";
@@ -140,11 +140,7 @@ export function BackupSection() {
 				：机密位置留空，纯明文 JSON，可存档、可分享给别人抄配置。
 			</div>
 
-			{error ? (
-				<div className="mt-3 rounded border border-bn-danger-border bg-bn-danger-soft p-2.5 text-xs text-bn-danger-text">
-					{error}
-				</div>
-			) : null}
+			{error ? <ErrorNote className="mt-3">{error}</ErrorNote> : null}
 			{notice ? (
 				<div className="mt-3 rounded border border-bn-border bg-bn-surface/60 p-2.5 text-xs text-bn-text-secondary">
 					{notice}
