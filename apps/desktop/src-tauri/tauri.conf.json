@@ -4,7 +4,10 @@
 	"version": "0.0.0-dev",
 	"identifier": "moe.akokko.bilibili-notify",
 	"build": {
-		"frontendDist": "../src"
+		"beforeDevCommand": "vp run front:dev",
+		"devUrl": "http://localhost:1421",
+		"beforeBuildCommand": "vp run front:build",
+		"frontendDist": "../dist"
 	},
 	"app": {
 		"withGlobalTauri": true,

@@ -1,0 +1,6 @@
+@import "tailwindcss";
+@import "@bilibili-notify/ui/theme.css";
+
+/* 与 apps/web 同一套 tokens/玻璃面 —— 启动页的「统一风格」就统一在这一行 import 上。
+   @source 让 Tailwind 扫到 ui 包组件源码里的 class,缺了它 Btn/Pill 等会没样式。 */
+@source "../../../packages/ui/src";
