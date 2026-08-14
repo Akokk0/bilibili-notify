@@ -9,7 +9,10 @@
 
 import {
 	SKIN_COLOR_TOKEN_MAP,
+	SKIN_DECORATION_ANCHORS,
 	SKIN_SCHEMA_VERSION,
+	SKIN_TEXT_SLOTS,
+	type SkinDecoration,
 	type SkinManifest,
 	type SkinMode,
 } from "@bilibili-notify/contract";
@@ -51,7 +54,21 @@ function isBackground(v: string): boolean {
 // ---- mode 解析 ------------------------------------------------------------
 
 const KNOWN_COLOR_KEYS = new Set(Object.keys(SKIN_COLOR_TOKEN_MAP));
-const KNOWN_MODE_KEYS = new Set(["colors", "page", "wallpaper", "glass", "fonts", "radius"]);
+const KNOWN_MODE_KEYS = new Set([
+	"colors",
+	"page",
+	"wallpaper",
+	"glass",
+	"fonts",
+	"radius",
+	"decorations",
+	"shadows",
+	"banner",
+]);
+const DECORATION_ANCHORS = new Set<string>(SKIN_DECORATION_ANCHORS);
+const MAX_DECORATIONS = 6;
+/** 阴影语法:与渐变同一把安全尺(数字/px/颜色函数/逗号),再叠 FORBIDDEN 黑名单。 */
+const SHADOW_RE = /^[a-z0-9#%.,()\s/-]{1,200}$/i;
 
 /** 只认包内 assets 一级目录下的图片文件;路径穿越连正则都进不来。zip 层复用同一把尺。 */
 export const WALLPAPER_IMAGE_RE = /^assets\/[A-Za-z0-9._-]+\.(webp|jpe?g|png)$/i;
@@ -223,6 +240,116 @@ function parseMode(
 		}
 	}
 
+	if (raw.decorations !== undefined) {
+		if (!Array.isArray(raw.decorations)) {
+			errors.push(`${path}.decorations: 必须是数组`);
+		} else if (raw.decorations.length > MAX_DECORATIONS) {
+			errors.push(`${path}.decorations: 最多 ${MAX_DECORATIONS} 件装饰`);
+		} else {
+			const out: SkinDecoration[] = [];
+			raw.decorations.forEach((item, i) => {
+				const dec = asRecord(item);
+				const p = `${path}.decorations[${i}]`;
+				if (!dec) {
+					errors.push(`${p}: 必须是对象`);
+					return;
+				}
+				if (
+					typeof dec.image !== "string" ||
+					dec.image.includes("..") ||
+					!WALLPAPER_IMAGE_RE.test(dec.image)
+				) {
+					errors.push(`${p}.image: 只能引用包内 assets/<文件名>.webp|jpg|png`);
+					return;
+				}
+				if (
+					dec.anchor !== undefined &&
+					(typeof dec.anchor !== "string" || !DECORATION_ANCHORS.has(dec.anchor))
+				) {
+					errors.push(`${p}.anchor: 只能是九宫格锚点(top-left/bottom-right 等)`);
+					return;
+				}
+				if (dec.width !== undefined && !numberIn(dec.width, 20, 600)) {
+					errors.push(`${p}.width: 必须是 20~600 的数字(px)`);
+					return;
+				}
+				if (dec.opacity !== undefined && !numberIn(dec.opacity, 0, 1)) {
+					errors.push(`${p}.opacity: 必须是 0~1 的数字`);
+					return;
+				}
+				const offsets: { offsetX?: number; offsetY?: number } = {};
+				for (const key of ["offsetX", "offsetY"] as const) {
+					const v = dec[key];
+					if (v === undefined) continue;
+					if (!numberIn(v, -400, 400)) {
+						errors.push(`${p}.${key}: 必须是 -400~400 的数字(px)`);
+						return;
+					}
+					offsets[key] = v;
+				}
+				out.push({
+					image: dec.image,
+					anchor: (dec.anchor as SkinDecoration["anchor"]) ?? "bottom-right",
+					width: (dec.width as number | undefined) ?? 200,
+					opacity: (dec.opacity as number | undefined) ?? 1,
+					...offsets,
+				});
+			});
+			if (out.length > 0) mode.decorations = out;
+		}
+	}
+
+	if (raw.shadows !== undefined) {
+		const shadows = asRecord(raw.shadows);
+		if (!shadows) {
+			errors.push(`${path}.shadows: 必须是对象`);
+		} else {
+			const out: NonNullable<SkinMode["shadows"]> = {};
+			for (const key of ["card", "elev"] as const) {
+				const v = shadows[key];
+				if (v === undefined) continue;
+				if (typeof v !== "string" || hasForbidden(v) || !SHADOW_RE.test(v)) {
+					errors.push(`${path}.shadows.${key}: 不是合法阴影值`);
+				} else {
+					out[key] = v.trim();
+				}
+			}
+			if (Object.keys(out).length > 0) mode.shadows = out;
+		}
+	}
+
+	if (raw.banner !== undefined) {
+		const banner = asRecord(raw.banner);
+		if (!banner) {
+			errors.push(`${path}.banner: 必须是对象`);
+		} else if (
+			typeof banner.image !== "string" ||
+			banner.image.includes("..") ||
+			!WALLPAPER_IMAGE_RE.test(banner.image)
+		) {
+			errors.push(`${path}.banner.image: 必填,且只能引用包内 assets/<文件名>.webp|jpg|png`);
+		} else if (banner.height !== undefined && !numberIn(banner.height, 80, 400)) {
+			errors.push(`${path}.banner.height: 必须是 80~400 的数字(px)`);
+		} else if (
+			banner.fit !== undefined &&
+			(typeof banner.fit !== "string" || !["cover", "contain"].includes(banner.fit))
+		) {
+			errors.push(`${path}.banner.fit: 只能是 cover / contain`);
+		} else if (
+			banner.position !== undefined &&
+			(typeof banner.position !== "string" || !POSITION_RE.test(banner.position))
+		) {
+			errors.push(`${path}.banner.position: 只收关键词/百分比`);
+		} else {
+			mode.banner = {
+				image: banner.image,
+				height: (banner.height as number | undefined) ?? 160,
+				...(banner.fit !== undefined ? { fit: banner.fit as "cover" | "contain" } : {}),
+				...(banner.position !== undefined ? { position: (banner.position as string).trim() } : {}),
+			};
+		}
+	}
+
 	for (const key of Object.keys(raw)) {
 		if (!KNOWN_MODE_KEYS.has(key)) warnings.push(`${path}.${key}: 不认识的字段,已忽略`);
 	}
@@ -265,10 +392,34 @@ export function parseSkinManifest(input: unknown): ParseSkinResult {
 
 	const errors: string[] = [];
 	const warnings: string[] = [];
-	const KNOWN_TOP_KEYS = ["schemaVersion", "name", "author", "description", "modes"];
+	const KNOWN_TOP_KEYS = ["schemaVersion", "name", "author", "description", "modes", "texts"];
 	for (const key of Object.keys(input)) {
 		if (!KNOWN_TOP_KEYS.includes(key)) warnings.push(`${key}: 不认识的字段,已忽略`);
 	}
+
+	let texts: SkinManifest["texts"];
+	const rawTexts = (input as Record<string, unknown>).texts;
+	if (rawTexts !== undefined) {
+		const rec = asRecord(rawTexts);
+		if (!rec) {
+			errors.push("texts: 必须是对象");
+		} else {
+			const out: Record<string, string> = {};
+			for (const [slot, value] of Object.entries(rec)) {
+				if (!(SKIN_TEXT_SLOTS as readonly string[]).includes(slot)) {
+					warnings.push(`texts.${slot}: 不认识的文案槽位,已忽略`);
+					continue;
+				}
+				if (typeof value !== "string" || value.length === 0 || value.length > 60) {
+					errors.push(`texts.${slot}: 必须是 1~60 字的字符串`);
+					continue;
+				}
+				out[slot] = value;
+			}
+			if (Object.keys(out).length > 0) texts = out as SkinManifest["texts"];
+		}
+	}
+
 	const modes: SkinManifest["modes"] = {};
 	if (raw.modes.light) modes.light = parseMode(raw.modes.light, "modes.light", errors, warnings);
 	if (raw.modes.dark) modes.dark = parseMode(raw.modes.dark, "modes.dark", errors, warnings);
@@ -280,6 +431,7 @@ export function parseSkinManifest(input: unknown): ParseSkinResult {
 		...(raw.author !== undefined ? { author: raw.author } : {}),
 		...(raw.description !== undefined ? { description: raw.description } : {}),
 		modes,
+		...(texts !== undefined ? { texts } : {}),
 	};
 	return { ok: true, skin, warnings };
 }

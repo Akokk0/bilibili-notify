@@ -136,3 +136,36 @@ describe("openSkinPackage", () => {
 		expect(r.ok).toBe(false);
 	});
 });
+
+describe("openSkinPackage / decorations 与 banner 的资产引用", () => {
+	it("decorations/banner 引用的图在包里 → ok 且计入已引用(不再告警未使用)", () => {
+		const zip = makeZip({
+			"skin.json": manifestJson({
+				modes: {
+					dark: {
+						decorations: [{ image: "assets/chara.png" }],
+						banner: { image: "assets/hero.png" },
+					},
+				},
+			}),
+			"assets/chara.png": PNG,
+			"assets/hero.png": PNG,
+		});
+		const r = openSkinPackage(zip);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.warnings).toEqual([]);
+	});
+
+	it("decorations 引用的图缺失 → 拒绝并点名文件", () => {
+		const zip = makeZip({
+			"skin.json": manifestJson({
+				modes: { dark: { decorations: [{ image: "assets/missing.png" }] } },
+			}),
+		});
+		const r = openSkinPackage(zip);
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.errors.join()).toContain("assets/missing.png");
+	});
+});

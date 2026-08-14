@@ -86,10 +86,17 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 
 	const referenced = new Set<string>();
 	for (const mode of [parsed.skin.modes.light, parsed.skin.modes.dark]) {
-		const image = mode?.wallpaper?.image;
-		if (!image) continue;
-		referenced.add(image);
-		if (!assets.has(image)) errors.push(`${image}: manifest 引用了它,但包里没有这个文件`);
+		if (!mode) continue;
+		const images = [
+			mode.wallpaper?.image,
+			mode.banner?.image,
+			...(mode.decorations ?? []).map((d) => d.image),
+		];
+		for (const image of images) {
+			if (!image) continue;
+			referenced.add(image);
+			if (!assets.has(image)) errors.push(`${image}: manifest 引用了它,但包里没有这个文件`);
+		}
 	}
 	if (errors.length > 0) return { ok: false, errors };
 

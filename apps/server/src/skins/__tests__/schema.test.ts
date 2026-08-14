@@ -259,3 +259,133 @@ describe("parseSkinManifest / 未知字段告警(向前兼容)", () => {
 		expect(r.skin.modes.light?.colors?.accent).toBe("#fff");
 	});
 });
+
+describe("parseSkinManifest / decorations(贴纸装饰层)", () => {
+	function withDecorations(decorations: unknown) {
+		return { schemaVersion: 1, name: "t", modes: { dark: { decorations } } };
+	}
+
+	it("合法贴纸数组 → ok,默认值补齐(anchor=bottom-right,width=200,opacity=1)", () => {
+		const r = parseSkinManifest(
+			withDecorations([
+				{ image: "assets/chara.png", anchor: "bottom-right", width: 260, opacity: 0.9 },
+				{ image: "assets/star.webp" },
+			]),
+		);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		const d = r.skin.modes.dark?.decorations;
+		expect(d).toHaveLength(2);
+		expect(d?.[0]).toMatchObject({ image: "assets/chara.png", width: 260, opacity: 0.9 });
+		expect(d?.[1]).toMatchObject({
+			image: "assets/star.webp",
+			anchor: "bottom-right",
+			width: 200,
+			opacity: 1,
+		});
+	});
+
+	it("超过 6 张 / image 非包内资产 / anchor 非法 / width·opacity·offset 越界 → 拒绝", () => {
+		const many = Array.from({ length: 7 }, (_, i) => ({ image: `assets/a${i}.png` }));
+		expect(parseSkinManifest(withDecorations(many)).ok).toBe(false);
+		expect(parseSkinManifest(withDecorations([{ image: "https://evil.example/x.png" }])).ok).toBe(
+			false,
+		);
+		expect(
+			parseSkinManifest(withDecorations([{ image: "assets/a.png", anchor: "middle-ish" }])).ok,
+		).toBe(false);
+		expect(parseSkinManifest(withDecorations([{ image: "assets/a.png", width: 1000 }])).ok).toBe(
+			false,
+		);
+		expect(parseSkinManifest(withDecorations([{ image: "assets/a.png", opacity: 1.5 }])).ok).toBe(
+			false,
+		);
+		expect(parseSkinManifest(withDecorations([{ image: "assets/a.png", offsetX: -500 }])).ok).toBe(
+			false,
+		);
+	});
+});
+
+describe("parseSkinManifest / shadows(辉光阴影)", () => {
+	it("合法阴影语法 → ok;藏 url()/分号 → 拒绝", () => {
+		const ok = parseSkinManifest({
+			schemaVersion: 1,
+			name: "t",
+			modes: {
+				dark: {
+					shadows: {
+						card: "0 10px 30px rgba(57, 197, 187, 0.25)",
+						elev: "0 18px 50px rgba(57, 197, 187, 0.4), 0 0 0 1px #39c5bb",
+					},
+				},
+			},
+		});
+		expect(ok.ok).toBe(true);
+		if (ok.ok) {
+			expect(ok.skin.modes.dark?.shadows?.card).toContain("rgba(57, 197, 187, 0.25)");
+		}
+		const bad = parseSkinManifest({
+			schemaVersion: 1,
+			name: "t",
+			modes: { dark: { shadows: { card: "0 0 4px red; background: url(x)" } } },
+		});
+		expect(bad.ok).toBe(false);
+	});
+});
+
+describe("parseSkinManifest / banner(hero 横幅)", () => {
+	it("合法 banner → ok,height 默认 160;image 缺失或 height 越界 → 拒绝", () => {
+		const ok = parseSkinManifest({
+			schemaVersion: 1,
+			name: "t",
+			modes: { light: { banner: { image: "assets/hero.png" } } },
+		});
+		expect(ok.ok).toBe(true);
+		if (ok.ok) {
+			expect(ok.skin.modes.light?.banner).toMatchObject({ image: "assets/hero.png", height: 160 });
+		}
+		expect(
+			parseSkinManifest({
+				schemaVersion: 1,
+				name: "t",
+				modes: { light: { banner: { height: 200 } } },
+			}).ok,
+		).toBe(false);
+		expect(
+			parseSkinManifest({
+				schemaVersion: 1,
+				name: "t",
+				modes: { light: { banner: { image: "assets/hero.png", height: 900 } } },
+			}).ok,
+		).toBe(false);
+	});
+});
+
+describe("parseSkinManifest / texts(主题文案槽,manifest 顶层)", () => {
+	it("已知槽位收下,未知槽位告警忽略,超长拒绝", () => {
+		const r = parseSkinManifest({
+			schemaVersion: 1,
+			name: "t",
+			texts: {
+				headerTitle: "Miku Codex · 电子歌姬值班室",
+				chatPlaceholder: "和 Miku 酱说点什么吧~",
+				futureSlot: "x",
+			},
+			modes: { light: {} },
+		});
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.skin.texts?.headerTitle).toBe("Miku Codex · 电子歌姬值班室");
+		expect(r.skin.texts?.chatPlaceholder).toBe("和 Miku 酱说点什么吧~");
+		expect((r.skin.texts as Record<string, unknown>).futureSlot).toBeUndefined();
+		expect(r.warnings.join()).toContain("futureSlot");
+
+		const long = parseSkinManifest({
+			schemaVersion: 1,
+			name: "t",
+			texts: { headerTitle: "长".repeat(61) },
+			modes: { light: {} },
+		});
+		expect(long.ok).toBe(false);
+	});
+});

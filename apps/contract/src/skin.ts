@@ -51,6 +51,34 @@ export type SkinColorKey = keyof typeof SKIN_COLOR_TOKEN_MAP;
 
 export type SkinWallpaperFit = "cover" | "contain" | "tile";
 
+/** 主题文案槽位白名单;加新槽位只增不改。 */
+export const SKIN_TEXT_SLOTS = ["headerTitle", "chatPlaceholder"] as const;
+export type SkinTextSlot = (typeof SKIN_TEXT_SLOTS)[number];
+
+export const SKIN_DECORATION_ANCHORS = [
+	"top-left",
+	"top",
+	"top-right",
+	"left",
+	"center",
+	"right",
+	"bottom-left",
+	"bottom",
+	"bottom-right",
+] as const;
+export type SkinDecorationAnchor = (typeof SKIN_DECORATION_ANCHORS)[number];
+
+/** 贴纸/立绘装饰件:钉在视口九宫格锚点上,渲染层 pointer-events 穿透。 */
+export interface SkinDecoration {
+	image: string;
+	anchor: SkinDecorationAnchor;
+	/** 渲染宽度 px(高度按图片比例)。 */
+	width: number;
+	opacity: number;
+	offsetX?: number;
+	offsetY?: number;
+}
+
 /** 一套模式(light 或 dark)下的皮肤定义,所有字段可选 —— 没给的回默认装。 */
 export interface SkinMode {
 	colors?: Partial<Record<SkinColorKey, string>>;
@@ -84,6 +112,18 @@ export interface SkinMode {
 		/** 胶囊圆角 px,0~999。 */
 		pill?: number;
 	};
+	/** 贴纸装饰层,最多 6 件。 */
+	decorations?: SkinDecoration[];
+	/** 卡片/悬浮两档阴影 —— 有色 glow 即霓虹感。 */
+	shadows?: { card?: string; elev?: string };
+	/** Dashboard 首页顶部 hero 横幅;皮肤给了才渲染。 */
+	banner?: {
+		image: string;
+		/** 渲染高度 px,80~400。 */
+		height: number;
+		fit?: "cover" | "contain";
+		position?: string;
+	};
 }
 
 export interface SkinManifest {
@@ -93,6 +133,8 @@ export interface SkinManifest {
 	description?: string;
 	/** 至少给一套;只给一套时前端应用后锁定该模式。 */
 	modes: { light?: SkinMode; dark?: SkinMode };
+	/** 主题文案槽(跨明暗共用),槽位白名单见 SKIN_TEXT_SLOTS。 */
+	texts?: Partial<Record<SkinTextSlot, string>>;
 }
 
 // ---- wire 形状(皮肤库 API) ----------------------------------------------
