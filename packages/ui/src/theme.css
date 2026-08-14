@@ -63,6 +63,8 @@
 	--bn-glass-border: rgba(255, 255, 255, 0.6);
 	--bn-glass-strong-bg: rgba(255, 255, 255, 0.92);
 	--bn-glass-strong-border: rgba(0, 0, 0, 0.05);
+	--bn-glass-blur: 12px;
+	--bn-glass-strong-blur: 16px;
 	/* --shadow-bn-card / --shadow-bn-elev 的浅色默认值由上方 @theme 块提供(已落到 :root),
 	   此处无需重复;暗色值在下方 [data-theme="dark"] 覆盖。 */
 }
@@ -133,15 +135,15 @@ body {
 /* Glass surface — used by the GlassPanel / GlassHeader atoms */
 .bn-glass {
 	background: var(--bn-glass-bg);
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
+	backdrop-filter: blur(var(--bn-glass-blur));
+	-webkit-backdrop-filter: blur(var(--bn-glass-blur));
 	border: 1px solid var(--bn-glass-border);
 }
 
 .bn-glass-strong {
 	background: var(--bn-glass-strong-bg);
-	backdrop-filter: blur(16px);
-	-webkit-backdrop-filter: blur(16px);
+	backdrop-filter: blur(var(--bn-glass-strong-blur));
+	-webkit-backdrop-filter: blur(var(--bn-glass-strong-blur));
 	border: 1px solid var(--bn-glass-strong-border);
 }
 

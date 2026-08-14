@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
+import { SkinRoot } from "./components/skin-root";
 import { ThemeRoot } from "./components/theme-root";
 import "./styles.css";
 
@@ -19,9 +20,11 @@ createRoot(root).render(
 	<StrictMode>
 		<QueryClientProvider client={queryClient}>
 			<ThemeRoot>
-				<BrowserRouter>
-					<App />
-				</BrowserRouter>
+				<SkinRoot>
+					<BrowserRouter>
+						<App />
+					</BrowserRouter>
+				</SkinRoot>
 			</ThemeRoot>
 		</QueryClientProvider>
 	</StrictMode>,

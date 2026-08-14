@@ -249,6 +249,7 @@ export const api = {
 	get: <T>(path: string) => request<T>("GET", path),
 	post: <T>(path: string, body?: unknown, opts?: RequestOptions) =>
 		request<T>("POST", path, body, opts),
+	put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body),
 	patch: <T>(path: string, body?: unknown) =>
 		request<T>("PATCH", path, body === undefined ? undefined : nullifyUndefined(body)),
 	delete: <T>(path: string) => request<T>("DELETE", path),
