@@ -441,7 +441,7 @@ export default function Ai() {
 	}
 
 	return (
-		<div className="bn-anim-fade-in flex flex-col gap-4">
+		<div className="bn-anim-page-in flex flex-col gap-4">
 			{/* Hero strip。总开关是页面级的 —— 它既不属于某一家服务商,也不属于某一份人格。 */}
 			<div
 				// 渐变叠在玻璃底上(.bn-glass 供底色+blur+边框),否则皮肤壁纸下整条近乎全透明

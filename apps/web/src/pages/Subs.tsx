@@ -587,7 +587,7 @@ export default function Subs() {
 	}
 
 	return (
-		<div className="bn-anim-fade-in space-y-4">
+		<div className="bn-anim-page-in space-y-4">
 			<div className="flex flex-wrap items-center gap-2.5">
 				<Input
 					value={q}

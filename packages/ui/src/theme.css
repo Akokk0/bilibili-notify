@@ -192,11 +192,23 @@ body {
 	animation: bn-spin 1s linear infinite;
 }
 .bn-anim-fade-in {
-	/* fill-mode 千万别写 both/forwards:结束后仍在 filling 的 opacity 动画会让
-	   Chromium 把元素长期当作合成层,形成 backdrop root —— 页面根挂上它之后,
-	   全页 .bn-glass 的 backdrop-filter 都采样不到 body 上的壁纸,磨砂彻底失效
-	   (曾经整站只有没挂它的统计页有磨砂)。无 delay,也不需要 backwards 填充。 */
+	/* 淡入。只许挂在**不含玻璃卡**的元素上(toast / alert / 预览图等):opacity 动画
+	   会让元素在动画期间成为 backdrop root,其内部 .bn-glass 的 backdrop-filter
+	   采样不到 body 壁纸,磨砂瞬时熄灭。页面根一律用下面的 .bn-anim-page-in。
+	   fill-mode 也千万别写 both/forwards:结束后仍在 filling 的 opacity 动画会让
+	   Chromium 长期保持合成层,磨砂就永久失效了(曾经整站只有统计页有磨砂)。 */
 	animation: bn-fade-in 0.35s ease-out;
+}
+
+/* 页面根的入场动画:只做位移、绝不碰 opacity/filter/mask —— 那些属性的动画会把
+   页面根变成 backdrop root,切页就会出现「先透明、动画一停突然磨砂」的钝感。 */
+@keyframes bn-page-in {
+	from {
+		transform: translateY(10px);
+	}
+}
+.bn-anim-page-in {
+	animation: bn-page-in 0.3s ease-out;
 }
 
 /* 隐藏滚动条但保留滚动行为(容器内滚动、不想露出滚动条破坏卡片视觉时用)。 */

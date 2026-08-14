@@ -464,7 +464,7 @@ export default function Stats() {
 	}));
 
 	return (
-		<div className="flex flex-col gap-3.5 p-6">
+		<div className="bn-anim-page-in flex flex-col gap-3.5 p-6">
 			<div className="flex flex-wrap items-end justify-between gap-3">
 				<div className="flex items-center gap-3">
 					{/* 单 UP 视图给一枚大头像 —— 钻进某个人之后,页头得先回答「现在看的是谁」。 */}

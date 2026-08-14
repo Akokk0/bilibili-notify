@@ -1128,7 +1128,7 @@ export default function Cards() {
 	const KindIcon = Icon[KIND_LABELS[kind].icon];
 
 	return (
-		<div className="bn-anim-fade-in flex flex-col gap-4">
+		<div className="bn-anim-page-in flex flex-col gap-4">
 			{/* Hero strip — 全局插件信息 + (仅全局作用域)总开关 */}
 			<div
 				// 渐变叠在玻璃底上(.bn-glass 供底色+blur+边框),否则皮肤壁纸下整条近乎全透明

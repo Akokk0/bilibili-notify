@@ -9,8 +9,8 @@ import { externalLinkClick } from "../utils/externalLink";
  * - 更新日志(独立端 CHANGELOG.md,从原 `/logs` 页迁来)
  * - 关于本项目(仓库 · 交流群 · 协议)
  *
- * 与 Logs 同构:bn-anim-fade-in 的残留 transform 与 grid/sticky 分层,避免改写
- * SectionNav 竖栏的包含块,导致窄视口坍缩。
+ * 与 Logs 同构。入场动画走 bn-anim-page-in(纯位移、无 filling),不会留下
+ * 残留 transform 去改写 SectionNav 竖栏的包含块。
  */
 
 // 主人:把下面换成你的真实爱发电主页地址。
@@ -107,7 +107,7 @@ export default function About() {
 	const [section, setSection] = useState<AboutSectionId>("sponsor");
 
 	return (
-		<div className="bn-anim-fade-in flex flex-col gap-4">
+		<div className="bn-anim-page-in flex flex-col gap-4">
 			<div className="grid gap-4 xl:grid-cols-[220px_1fr]">
 				<SectionNav
 					heading="关于"

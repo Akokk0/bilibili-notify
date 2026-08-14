@@ -38,11 +38,11 @@ describe("About page", () => {
 		expect(await screen.findByText("apps/CHANGELOG.md")).toBeTruthy();
 	});
 
-	// 回归:bn-anim-fade-in 的残留 transform 不挂在 grid 上,否则会改写内部 sticky 竖栏的
-	// 包含块,使窄视口单列布局坍缩。该约束随「更新日志」从 Logs 一并迁来。
-	it("keeps the fade-in transform off the grid/sticky layer", () => {
+	// 回归:入场动画(bn-anim-page-in,动画期间持有 transform)不挂在 grid 上,否则会改写
+	// 内部 sticky 竖栏的包含块,使窄视口单列布局坍缩。该约束随「更新日志」从 Logs 一并迁来。
+	it("keeps the entrance-animation transform off the grid/sticky layer", () => {
 		const { container } = render(<About />);
-		const fade = container.querySelector(".bn-anim-fade-in");
+		const fade = container.querySelector(".bn-anim-page-in");
 		expect(fade).toBeTruthy();
 		expect(fade?.classList.contains("grid")).toBe(false);
 		const grid = fade?.querySelector(".grid");

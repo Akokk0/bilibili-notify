@@ -408,7 +408,7 @@ export default function Rules() {
 	}
 
 	return (
-		<div className="bn-anim-fade-in flex flex-col gap-4">
+		<div className="bn-anim-page-in flex flex-col gap-4">
 			{isGlobal && globalsQuery.data ? (
 				<GlobalDraftBinder
 					defaults={draft.defaults}

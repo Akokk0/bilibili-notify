@@ -1622,7 +1622,7 @@ export default function Targets() {
 	const isLoading = adaptersQuery.isLoading || targetsQuery.isLoading;
 
 	return (
-		<div className="bn-anim-fade-in flex flex-col gap-4">
+		<div className="bn-anim-page-in flex flex-col gap-4">
 			<div className="grid gap-4 xl:grid-cols-[220px_1fr]">
 				<AdapterRail
 					adapters={adapters}

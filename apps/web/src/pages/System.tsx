@@ -369,7 +369,7 @@ export default function System() {
 	});
 
 	return (
-		<div className="bn-anim-fade-in space-y-5">
+		<div className="bn-anim-page-in space-y-5">
 			<GlassBox
 				title="账号 · auth"
 				subtitle="B 站账号登录 + Cookie / 会话 · 扫码后实时生效"

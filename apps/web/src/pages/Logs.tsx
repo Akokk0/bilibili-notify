@@ -255,8 +255,8 @@ export default function Logs() {
 		</div>
 	);
 
-	// 日志页全宽单栏;「更新日志」已迁出到 `/about`。保留 bn-anim-fade-in 入场动画。
-	return <div className="bn-anim-fade-in">{runtimeLogs}</div>;
+	// 日志页全宽单栏;「更新日志」已迁出到 `/about`。入场动画同各页(bn-anim-page-in)。
+	return <div className="bn-anim-page-in">{runtimeLogs}</div>;
 }
 
 export function formatLocalTime(iso: string): string {

@@ -731,7 +731,7 @@ export default function Dashboard() {
 	);
 
 	return (
-		<div className="bn-anim-fade-in flex flex-col gap-4">
+		<div className="bn-anim-page-in flex flex-col gap-4">
 			<SkinBanner />
 			{/* KPI grid */}
 			<div className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
