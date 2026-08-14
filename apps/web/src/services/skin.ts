@@ -4,7 +4,13 @@
  * 这里用 setProperty 注入 —— DOM API 不解析分号逃逸,是第二道保险。
  */
 
-import { SKIN_COLOR_TOKEN_MAP, type SkinManifest, type SkinMode } from "@bilibili-notify/contract";
+import {
+	SKIN_COLOR_TOKEN_MAP,
+	type SkinDecoration,
+	type SkinManifest,
+	type SkinMode,
+} from "@bilibili-notify/contract";
+import type { CSSProperties } from "react";
 import type { ResolvedTheme } from "../store/theme";
 
 export type SkinVars = Record<string, string>;
@@ -63,7 +69,53 @@ export function composeSkinVars(mode: SkinMode, assetUrl: (name: string) => stri
 	if (mode.radius?.card !== undefined) vars["--radius-bn-card"] = `${mode.radius.card}px`;
 	if (mode.radius?.pill !== undefined) vars["--radius-bn-pill"] = `${mode.radius.pill}px`;
 
+	if (mode.shadows?.card) vars["--shadow-bn-card"] = mode.shadows.card;
+	if (mode.shadows?.elev) vars["--shadow-bn-elev"] = mode.shadows.elev;
+
 	return vars;
+}
+
+/** 九宫格锚点 → fixed 定位样式;offset 与居中位移一起进 transform。 */
+export function decorationStyle(d: SkinDecoration): CSSProperties {
+	const [v, h] = ((): [string, string] => {
+		switch (d.anchor) {
+			case "top-left":
+				return ["top", "left"];
+			case "top":
+				return ["top", "center"];
+			case "top-right":
+				return ["top", "right"];
+			case "left":
+				return ["middle", "left"];
+			case "center":
+				return ["middle", "center"];
+			case "right":
+				return ["middle", "right"];
+			case "bottom-left":
+				return ["bottom", "left"];
+			case "bottom":
+				return ["bottom", "center"];
+			default:
+				return ["bottom", "right"];
+		}
+	})();
+	const style: CSSProperties = { width: d.width, opacity: d.opacity };
+	let tx = `${d.offsetX ?? 0}px`;
+	let ty = `${d.offsetY ?? 0}px`;
+	if (v === "top") style.top = 0;
+	else if (v === "bottom") style.bottom = 0;
+	else {
+		style.top = "50%";
+		ty = `calc(-50% + ${ty})`;
+	}
+	if (h === "left") style.left = 0;
+	else if (h === "right") style.right = 0;
+	else {
+		style.left = "50%";
+		tx = `calc(-50% + ${tx})`;
+	}
+	style.transform = `translate(${tx}, ${ty})`;
+	return style;
 }
 
 export interface ResolvedSkinMode {

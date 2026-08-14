@@ -12,6 +12,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { SkinBanner } from "../components/skin-banner";
 import {
 	HEALTH_QUERY_KEY,
 	HEALTH_QUERY_OPTIONS,
@@ -729,6 +730,7 @@ export default function Dashboard() {
 
 	return (
 		<div className="bn-anim-fade-in flex flex-col gap-4">
+			<SkinBanner />
 			{/* KPI grid */}
 			<div className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
 				<GlassStatCard

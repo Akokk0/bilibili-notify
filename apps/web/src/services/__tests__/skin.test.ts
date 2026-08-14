@@ -11,6 +11,7 @@ import {
 	applySkinVars,
 	clearSkinVars,
 	composeSkinVars,
+	decorationStyle,
 	resolveSkinMode,
 	skinKillSwitchActive,
 } from "../skin";
@@ -133,5 +134,54 @@ describe("skinKillSwitchActive(?skin=off 逃生舱)", () => {
 		expect(skinKillSwitchActive("?foo=1&skin=off")).toBe(true);
 		expect(skinKillSwitchActive("?skin=on")).toBe(false);
 		expect(skinKillSwitchActive("")).toBe(false);
+	});
+});
+
+describe("composeSkinVars / shadows(辉光)", () => {
+	it("card/elev 映射到 --shadow-bn-* 变量", () => {
+		const vars = composeSkinVars(
+			{
+				shadows: {
+					card: "0 10px 30px rgba(57, 197, 187, 0.25)",
+					elev: "0 18px 50px rgba(57, 197, 187, 0.4)",
+				},
+			},
+			assetUrl,
+		);
+		expect(vars["--shadow-bn-card"]).toBe("0 10px 30px rgba(57, 197, 187, 0.25)");
+		expect(vars["--shadow-bn-elev"]).toBe("0 18px 50px rgba(57, 197, 187, 0.4)");
+	});
+});
+
+describe("decorationStyle(九宫格贴纸定位)", () => {
+	it("bottom-right 贴边;center 双向居中;offset 叠进 translate", () => {
+		const br = decorationStyle({
+			image: "assets/a.png",
+			anchor: "bottom-right",
+			width: 220,
+			opacity: 0.9,
+		});
+		expect(br).toMatchObject({ bottom: 0, right: 0, width: 220, opacity: 0.9 });
+
+		const center = decorationStyle({
+			image: "assets/a.png",
+			anchor: "center",
+			width: 100,
+			opacity: 1,
+		});
+		expect(center.left).toBe("50%");
+		expect(center.top).toBe("50%");
+		expect(String(center.transform)).toContain("-50%");
+
+		const offset = decorationStyle({
+			image: "assets/a.png",
+			anchor: "bottom-right",
+			width: 100,
+			opacity: 1,
+			offsetX: -12,
+			offsetY: -8,
+		});
+		expect(String(offset.transform)).toContain("-12px");
+		expect(String(offset.transform)).toContain("-8px");
 	});
 });

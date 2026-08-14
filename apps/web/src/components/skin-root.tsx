@@ -1,10 +1,11 @@
-import type { ActiveSkinResponse } from "@bilibili-notify/contract";
+import type { ActiveSkinResponse, SkinMode } from "@bilibili-notify/contract";
 import { type ReactNode, useEffect, useLayoutEffect } from "react";
 import { api } from "../services/api";
 import {
 	applySkinVars,
 	clearSkinVars,
 	composeSkinVars,
+	decorationStyle,
 	resolveSkinMode,
 	skinKillSwitchActive,
 } from "../services/skin";
@@ -14,6 +15,42 @@ import { useThemeStore } from "../store/theme";
 
 export function skinAssetUrl(id: string, name: string): string {
 	return `/api/skins/${id}/assets/${name.slice("assets/".length)}`;
+}
+
+/** 此刻生效的皮肤及其当前模式;没换装/逃生舱下为 null。装饰层/banner/文案槽共用。 */
+export function useCurrentSkinMode(): { id: string; mode: SkinMode } | null {
+	const active = useSkinStore((s) => s.active);
+	const preview = useSkinStore((s) => s.preview);
+	const killSwitch = useSkinStore((s) => s.killSwitch);
+	const resolved = useThemeStore((s) => s.resolved);
+	const skin = effectiveSkin({ active, preview, killSwitch });
+	if (!skin) return null;
+	return { id: skin.id, mode: resolveSkinMode(skin.manifest, resolved).mode };
+}
+
+/** 贴纸装饰层:fixed 全屏、点击穿透,件数少(≤6)且不进布局流。 */
+function SkinDecorations() {
+	const current = useCurrentSkinMode();
+	const decorations = current?.mode.decorations;
+	if (!current || !decorations?.length) return null;
+	return (
+		<div
+			data-skin-decorations
+			aria-hidden
+			className="pointer-events-none fixed inset-0 z-30 overflow-hidden"
+		>
+			{decorations.map((d, i) => (
+				<img
+					// biome-ignore lint/suspicious/noArrayIndexKey: 装饰件无 id,列表来自 manifest 静态数组,不重排
+					key={`${d.image}-${i}`}
+					src={skinAssetUrl(current.id, d.image)}
+					alt=""
+					className="absolute max-w-none"
+					style={decorationStyle(d)}
+				/>
+			))}
+		</div>
+	);
 }
 
 /**
@@ -62,5 +99,10 @@ export function SkinRoot({ children }: { children: ReactNode }) {
 		useSkinStore.getState().setLockedTheme(locked ? theme : null);
 	}, [active, preview, killSwitch, resolved]);
 
-	return <>{children}</>;
+	return (
+		<>
+			{children}
+			<SkinDecorations />
+		</>
+	);
 }

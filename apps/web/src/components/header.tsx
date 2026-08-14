@@ -25,7 +25,7 @@ import { submitLogout } from "../services/session";
 import { useAuthStore } from "../store/auth";
 import { useNavStore } from "../store/nav";
 import { useSessionStore } from "../store/session";
-import { useSkinStore } from "../store/skin";
+import { useSkinStore, useSkinText } from "../store/skin";
 import { type ThemePreference, useThemeStore } from "../store/theme";
 import { BiliLoginStatus } from "../types/auth";
 import type { PushTarget, Subscription } from "../types/domain";
@@ -344,6 +344,8 @@ function LogoutButton() {
 export function GlassHeader() {
 	const qc = useQueryClient();
 	const reachable = useBackendReachable();
+	// 皮肤文案槽:皮肤没给就用产品默认标题。
+	const headerTitle = useSkinText("headerTitle") ?? "Bilibili Notify · 女仆值班室";
 	const subs = useQuery({
 		queryKey: ["subscriptions"],
 		queryFn: () => api.get<Subscription[]>("/api/subs"),
@@ -399,7 +401,7 @@ export function GlassHeader() {
 					</div>
 					<div className="min-w-0">
 						<div className="text-[17px] font-bold tracking-tight text-bn-text-primary">
-							Bilibili Notify · 女仆值班室
+							{headerTitle}
 						</div>
 						<div className="mt-0.5 truncate text-[11.5px] text-bn-text-secondary">
 							<AccountChip />

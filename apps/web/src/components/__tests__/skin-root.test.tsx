@@ -155,3 +155,33 @@ describe("SkinRoot × 登录门", () => {
 		await waitFor(() => expect(rootVar("--color-bn-pink")).toBe("#654321"));
 	});
 });
+
+describe("SkinRoot / 贴纸装饰层", () => {
+	it("active 皮肤带 decorations → 渲染穿透点击的贴纸 img,src 指向皮肤资产", async () => {
+		H.activeResponse = {
+			active: makeSkin({
+				light: {
+					decorations: [
+						{ image: "assets/chara.png", anchor: "bottom-right", width: 220, opacity: 0.9 },
+					],
+				},
+			}),
+		};
+		const { container } = renderRoots();
+		await waitFor(() => {
+			const img = container.querySelector("img[src='/api/skins/abc/assets/chara.png']");
+			expect(img).toBeTruthy();
+		});
+		const layer = container.querySelector("[data-skin-decorations]") as HTMLElement;
+		expect(layer.className).toContain("pointer-events-none");
+	});
+
+	it("无 decorations → 不渲染贴纸层;killSwitch 下也不渲染", async () => {
+		H.activeResponse = {
+			active: makeSkin({ light: { colors: { accent: "#123456" } } }),
+		};
+		const { container } = renderRoots();
+		await waitFor(() => expect(rootVar("--color-bn-pink")).toBe("#123456"));
+		expect(container.querySelector("[data-skin-decorations]")).toBeNull();
+	});
+});

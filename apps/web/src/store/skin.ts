@@ -1,4 +1,4 @@
-import type { SkinManifest } from "@bilibili-notify/contract";
+import type { SkinManifest, SkinTextSlot } from "@bilibili-notify/contract";
 import { create } from "zustand";
 import type { ResolvedTheme } from "./theme";
 
@@ -36,4 +36,17 @@ export const useSkinStore = create<SkinState>((set) => ({
 /** 此刻真正生效的皮肤:preview > killSwitch(关皮肤)> active。 */
 export function effectiveSkin(s: Pick<SkinState, "active" | "preview" | "killSwitch">) {
 	return s.preview ?? (s.killSwitch ? null : s.active);
+}
+
+/** 当前生效皮肤的文案槽(manifest 级,跨明暗共用);没换装或槽位缺省 → null。 */
+export function skinTextOf(
+	s: Pick<SkinState, "active" | "preview" | "killSwitch">,
+	slot: SkinTextSlot,
+): string | null {
+	return effectiveSkin(s)?.manifest.texts?.[slot] ?? null;
+}
+
+/** 组件侧读文案槽;槽位值为 null 时用产品默认文案。 */
+export function useSkinText(slot: SkinTextSlot): string | null {
+	return useSkinStore((s) => skinTextOf(s, slot));
 }

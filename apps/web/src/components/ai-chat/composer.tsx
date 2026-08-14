@@ -1,5 +1,6 @@
 import { Icon } from "@bilibili-notify/ui";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { useSkinText } from "../../store/skin";
 import { type AiSkill, matchSkills } from "./skills";
 
 /**
@@ -64,6 +65,8 @@ export function Composer({
 }: ComposerProps) {
 	const fileRef = useRef<HTMLInputElement>(null);
 	const full = attachments.length >= MAX_ATTACHMENTS;
+	// 皮肤文案槽:皮肤给了 chatPlaceholder 就整句替换默认提示。
+	const skinPlaceholder = useSkinText("chatPlaceholder");
 	const [focus, setFocus] = useState(false);
 	const [index, setIndex] = useState(0);
 	/** Esc 关掉菜单后,得等下一次输入变化才重新弹 —— 否则 Esc 按了跟没按一样。 */
@@ -233,7 +236,7 @@ export function Composer({
 					// 延后收焦点态:点技能菜单里的项会先触发 blur,立刻收会让菜单在
 					// click 落地前就消失,于是那一下点了个寂寞。
 					onBlur={() => setTimeout(() => setFocus(false), 120)}
-					placeholder={`给${aiName}发消息,输入 / 唤起技能`}
+					placeholder={skinPlaceholder ?? `给${aiName}发消息,输入 / 唤起技能`}
 					aria-label="聊天输入"
 					className="max-h-[150px] w-full resize-none border-none bg-transparent px-2 pt-1.5 pb-1 text-[16.5px] leading-relaxed text-bn-text-primary outline-none placeholder:text-bn-text-secondary"
 				/>
