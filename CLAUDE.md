@@ -40,6 +40,8 @@ apps/       Hono 服务端 + React Dashboard
 
 ## 硬约束(违反即 bug)
 
+- **写前端 UI 前先查组件清单**:`packages/ui`(`@bilibili-notify/ui`)是纯展示基础件库,给 web / desktop 写任何 UI **之前必须先读 `packages/ui/README.md` 的组件清单**——清单里有的组件不许重写。新增纯展示件(零业务依赖)进库并**同步更新清单**;缠 api/store/react-query 的留在 `apps/web/src/components`。库是源码直出(exports 指 src,无构建步),消费方入口 CSS 要 `@import "@bilibili-notify/ui/theme.css"` + `@source` 库的 src。
+
 - **路径**:`koishi/` 本身就是插件包根目录(已展平,不再有 `koishi/core/` 那层子目录)。若未来在 `koishi/` 下新增其他 koishi 包,目录名**不能含 `bilibili-notify` 子串** —— Koishi 插件加载器会混乱;npm 名与目录名解耦(在 `package.json#name` 设)。
 - **依赖卫生**:`src/` 里解析到运行时值(常量 / 类 / 函数)的 import,必须声明进该包 `package.json` 的 `dependencies`;`import type` 不用。
 - **MessageBus**:bus 与 koishi `ctx` 是同一事件通道的两个视图,绝不写 bus↔ctx 转发器 —— 会自喂死循环爆栈。详见 `docs/agents/events.md`。
