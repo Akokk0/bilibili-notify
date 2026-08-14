@@ -1634,11 +1634,11 @@ export default function Targets() {
 
 				<div className="space-y-4">
 					{isLoading ? (
-						<div className="rounded-bn-card bg-bn-surface p-6 shadow-bn-card">
+						<div className="bn-glass rounded-bn-card p-6 shadow-bn-card">
 							<div className="h-20 animate-pulse rounded-[10px] bg-bn-surface-muted" />
 						</div>
 					) : !selectedAdapter ? (
-						<div className="rounded-bn-card bg-bn-surface p-8 text-center shadow-bn-card">
+						<div className="bn-glass rounded-bn-card p-8 text-center shadow-bn-card">
 							<div className="mb-1 text-[14px] font-bold text-bn-text-primary">还没有适配器</div>
 							<div className="mb-4 text-[11.5px] text-bn-text-tertiary">
 								先在左侧新建一个适配器(OneBot HTTP / Webhook),再为它配置推送目标。
@@ -1650,7 +1650,7 @@ export default function Targets() {
 					) : (
 						<>
 							{/* Adapter detail header */}
-							<div className="rounded-bn-card bg-bn-surface p-4 shadow-bn-card">
+							<div className="bn-glass rounded-bn-card p-4 shadow-bn-card">
 								<div className="flex items-start gap-3">
 									<div
 										className="grid h-11 w-11 shrink-0 place-items-center rounded-lg"
@@ -1748,7 +1748,7 @@ export default function Targets() {
 							</div>
 
 							{/* Targets bound to this adapter */}
-							<div className="rounded-bn-card bg-bn-surface p-4 shadow-bn-card">
+							<div className="bn-glass rounded-bn-card p-4 shadow-bn-card">
 								<div className="mb-3 flex items-baseline justify-between">
 									<div>
 										<div className="text-[14px] font-bold text-bn-text-primary">

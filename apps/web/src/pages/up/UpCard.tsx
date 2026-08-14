@@ -69,11 +69,12 @@ export function UpCard({
 			}}
 			onMouseEnter={() => setHover(true)}
 			onMouseLeave={() => setHover(false)}
-			className={`group relative cursor-pointer overflow-hidden rounded-xl text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink ${
-				selected ? "ring-2 ring-bn-pink" : "ring-1 ring-bn-border"
+			// 玻璃底(皮肤壁纸可透出);未选中态的描边交给 .bn-glass 自带边框,选中态叠粉色 ring
+			className={`bn-glass group relative cursor-pointer overflow-hidden rounded-xl text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink ${
+				selected ? "ring-2 ring-bn-pink" : ""
 			} ${hover ? "-translate-y-0.5 shadow-bn-elev" : "shadow-sm"} ${
 				sub.enabled ? "" : "opacity-70"
-			} bg-bn-surface`}
+			}`}
 		>
 			{/* cover band */}
 			<div

@@ -69,6 +69,7 @@
 
 ## 维护约定
 
+- **页级卡片容器一律玻璃底**:直接坐在页面背景上的卡片/容器,必须用玻璃件(`GlassPanel`/`GlassBox`/`GlassStatCard`)或裸 `.bn-glass` 类,**禁止**写实底(`bg-bn-surface`、`bg-white`)或「只有边框全透明」的容器——皮肤壁纸一开就穿帮。实底(`bg-bn-surface` 系)只许出现在玻璃容器**内部**的行/芯片上。自绘染色渐变要**叠**在玻璃底上(`background: <渐变>, var(--bn-glass-bg)`),别让渐变「渐到」玻璃底。
 - 新组件先问一句:**它零业务依赖吗?** 不是就放 `apps/web`,别为了「进库」把 api/store 拖进来。
 - 组件里的颜色类必须是已定义 token(`apps/web/src/__tests__/color-token-conformance.test.ts` 会拦未定义的);theme.css 里不许写无层 `position`(`css-layer-conformance.test.ts` 拦)。
 - 加了组件**同步更新本清单** —— 清单失真,「先查清单」就废了。

@@ -92,7 +92,7 @@ export interface GlassStatCardProps {
 	suffix?: ReactNode;
 	/**
 	 * 主题色。**必须是十六进制字面量** —— 同 {@link GlassPanelProps.accent},
-	 * 这里要拼 `${color}1a` / `${color}33` 造底色与描边。
+	 * 这里要拼 `${color}1f` / `${color}33` 造染色层与描边。
 	 */
 	color: string;
 	pulse?: boolean;
@@ -101,15 +101,15 @@ export interface GlassStatCardProps {
 }
 
 export function GlassStatCard({ label, value, suffix, color, pulse, footer }: GlassStatCardProps) {
+	// 染色渐变叠在完整玻璃底(--bn-glass-bg)之上,而不是渐变「渐到」玻璃底 ——
+	// 后者会让渐变起点侧几乎全透明,花壁纸(皮肤)一透进来数字就没法读了。
+	// blur / 边框宽度交给 .bn-glass(随皮肤变量),这里只覆盖染色与描边色。
 	const bg: CSSProperties = {
-		background: `linear-gradient(135deg, ${color}1a, var(--bn-glass-bg))`,
-		border: `1px solid ${color}33`,
+		background: `linear-gradient(135deg, ${color}1f, ${color}0a), var(--bn-glass-bg)`,
+		borderColor: `${color}33`,
 	};
 	return (
-		<div
-			className="relative overflow-hidden rounded-bn-card px-4 py-3.5 backdrop-blur-md"
-			style={bg}
-		>
+		<div className="bn-glass relative overflow-hidden rounded-bn-card px-4 py-3.5" style={bg}>
 			<div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-bn-text-tertiary">
 				{pulse ? <PulseDot color={color} /> : null}
 				{label}

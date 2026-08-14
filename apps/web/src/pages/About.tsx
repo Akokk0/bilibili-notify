@@ -153,7 +153,7 @@ function SponsorPanel() {
 
 	return (
 		<div className="space-y-4">
-			<div className="rounded-bn-card border border-black/6 bg-bn-surface/80 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)] backdrop-blur-sm">
+			<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
 				<div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-black/6 pb-4">
 					<div>
 						<div className="flex items-center gap-2 text-[15px] font-extrabold text-bn-text-primary">
@@ -181,7 +181,7 @@ function SponsorPanel() {
 				</div>
 			</div>
 
-			<div className="rounded-bn-card border border-black/6 bg-bn-surface/80 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)] backdrop-blur-sm">
+			<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
 				<div className="mb-3 flex items-center gap-2 text-[14px] font-extrabold text-bn-text-primary">
 					<Icon.gift size={15} />
 					赞助者名单
@@ -240,7 +240,7 @@ function AboutPanel() {
 	];
 
 	return (
-		<div className="rounded-bn-card border border-black/6 bg-bn-surface/80 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)] backdrop-blur-sm">
+		<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
 			<div className="mb-4 flex items-center gap-2 border-b border-black/6 pb-4 text-[15px] font-extrabold text-bn-text-primary">
 				<Icon.star size={16} />
 				关于本项目
@@ -320,7 +320,7 @@ function ChangelogPanel() {
 	}, []);
 
 	return (
-		<div className="rounded-bn-card border border-black/6 bg-bn-surface/80 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)] backdrop-blur-sm">
+		<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
 			<div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-black/6 pb-4">
 				<div>
 					<div className="flex items-center gap-2 text-[15px] font-extrabold text-bn-text-primary">

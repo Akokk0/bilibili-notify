@@ -444,9 +444,11 @@ export default function Ai() {
 		<div className="bn-anim-fade-in flex flex-col gap-4">
 			{/* Hero strip。总开关是页面级的 —— 它既不属于某一家服务商,也不属于某一份人格。 */}
 			<div
-				className="relative rounded-bn-card border p-5"
+				// 渐变叠在玻璃底上(.bn-glass 供底色+blur+边框),否则皮肤壁纸下整条近乎全透明
+				className="bn-glass relative rounded-bn-card p-5"
 				style={{
-					background: "linear-gradient(135deg, rgba(162,155,254,0.18), rgba(108,92,231,0.08))",
+					background:
+						"linear-gradient(135deg, rgba(162,155,254,0.18), rgba(108,92,231,0.08)), var(--bn-glass-bg)",
 					borderColor: "rgba(108,92,231,0.25)",
 				}}
 			>

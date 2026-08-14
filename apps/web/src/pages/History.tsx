@@ -188,9 +188,9 @@ function HistoryTable({
 	targetById: Map<string, PushTarget>;
 }) {
 	return (
-		<div className="overflow-hidden rounded-[10px] border border-bn-border-subtle bg-bn-surface">
+		<div className="bn-glass overflow-hidden rounded-[10px]">
 			<div
-				className="grid items-center gap-2.5 border-b border-bn-border-subtle bg-bn-surface-muted px-4 py-2.5 text-[11px] font-bold tracking-wide text-bn-text-tertiary"
+				className="grid items-center gap-2.5 border-b border-bn-border-subtle bg-bn-surface-muted/70 px-4 py-2.5 text-[11px] font-bold tracking-wide text-bn-text-tertiary"
 				style={{ gridTemplateColumns: HISTORY_GRID }}
 			>
 				<span>时间</span>
