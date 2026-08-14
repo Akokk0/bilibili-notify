@@ -75,8 +75,11 @@ function storeToAiSubs(store: any): Subscriptions {
  */
 export class BilibiliNotifyAI {
 	readonly engine: CommentaryGenerator;
+	/** chat 代理要回读的那几个开关。koishi 配置随插件重载整份替换,存引用就够。 */
+	private readonly chatConfig: AIConfig;
 
 	constructor(ctx: Context, config: AIConfig, deps: BilibiliNotifyAIDeps) {
+		this.chatConfig = config;
 		const serviceCtx = makeKoishiServiceContext(ctx, SERVICE_NAME, config.logLevel ?? 1);
 		this.engine = new CommentaryGenerator({
 			serviceCtx,
@@ -114,7 +117,11 @@ export class BilibiliNotifyAI {
 	}
 
 	chat(content: string, sessionId: string, imageUrls?: string[]): Promise<string> {
-		return this.engine.chat(content, sessionId, imageUrls);
+		// 搜索意愿从配置闭包里取 —— koishi 没有 per-message 开关,webSearchChat
+		// 就是这条路的静态策略;执行器缺席(没填 key)时引擎那侧静默不挂。
+		return this.engine.chat(content, sessionId, imageUrls, {
+			webSearch: this.chatConfig.webSearchChat ?? false,
+		});
 	}
 
 	clearSession(sessionId: string): void {

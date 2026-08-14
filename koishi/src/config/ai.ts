@@ -104,6 +104,8 @@ export interface AIConfig {
 	webSearchDynamic?: boolean;
 	/** 直播总结允许联网搜索。默认关,理由同上。 */
 	webSearchLive?: boolean;
+	/** `bili chat` 对话允许联网搜索。默认关,理由同上。 */
+	webSearchChat?: boolean;
 }
 
 /**
@@ -347,6 +349,12 @@ export const AIConfigSchema: Schema<AIConfig> = Schema.intersect([
 			webSearchLive: Schema.boolean()
 				.default(false)
 				.description("直播总结时允许女仆联网搜索～注意事项同上，默认关"),
+
+			webSearchChat: Schema.boolean()
+				.default(false)
+				.description(
+					"`bili chat` 聊天时允许女仆联网搜索～问到她不知道的新鲜事就能先搜再答啦。同样**按次计费**，而且聊天往往比点评更高频，所以默认也是关着的哦 (｡･ω･｡)",
+				),
 		}),
 		Schema.object({}),
 	]),

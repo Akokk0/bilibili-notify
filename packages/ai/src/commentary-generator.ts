@@ -645,10 +645,20 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 * 历史满载时自动压缩最旧一半为摘要。
 	 * 供 bili chat 指令使用。
 	 */
-	async chat(content: string, sessionId: string, imageUrls?: string[]): Promise<string> {
+	async chat(
+		content: string,
+		sessionId: string,
+		imageUrls?: string[],
+		opts?: {
+			/** 这一次允不允许联网搜索。koishi 侧按 `webSearchChat` 配置传,静态策略也走按次口径。 */
+			webSearch?: boolean;
+		},
+	): Promise<string> {
 		// ②8:排在同 sessionId 上一次 chat 之后再跑(读-改-写历史原子化)。
 		const prior = this.chatChains.get(sessionId) ?? Promise.resolve();
-		const task = prior.catch(() => {}).then(() => this.chatImpl(content, sessionId, imageUrls));
+		const task = prior
+			.catch(() => {})
+			.then(() => this.chatImpl(content, sessionId, imageUrls, opts));
 		const tail = task.then(
 			() => {},
 			() => {},
@@ -667,6 +677,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		content: string,
 		sessionId: string,
 		imageUrls?: string[],
+		opts?: { webSearch?: boolean },
 	): Promise<string> {
 		const now = Date.now();
 		const entry = this.sessions.get(sessionId);
@@ -697,13 +708,17 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const maxMessages = this.config.maxHistory * 2;
 		const trimmedHistory = history.slice(-maxMessages);
 
+		// 搜索是**加装**:开了且执行器在,才在既有工具表上多出 web_search(与
+		// chatStatelessImpl 同一口径)。
+		const searchExec = this.resolveWebSearch(opts?.webSearch);
 		const result = await this.callAPI(
 			systemPrompt,
 			withVisionNote(trimmedHistory, vision),
 			{
-				tools: vision.tools,
+				tools: searchExec ? [...vision.tools, WEB_SEARCH_TOOL] : vision.tools,
 				onToolCall: (name, args) =>
 					executeTool(name, args, this.api, () => this.getSubs(), vision.ctx),
+				...(searchExec ? { webSearch: searchExec } : {}),
 			},
 			// 配了副模型就不再把图下挂给主模型 —— 它可能根本不支持多模态。
 			vision.ctx ? undefined : this.mainModelCanSeeImages() ? imageUrls : undefined,
