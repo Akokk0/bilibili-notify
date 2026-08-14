@@ -6,6 +6,7 @@ import { AlertShell } from "./components/alert-shell";
 import { DraftIsland } from "./components/draft-island";
 import { GlassHeader } from "./components/header";
 import { ShellError, ShellLoading } from "./components/shell-states";
+import { SkinPreviewBar } from "./components/skin-preview-bar";
 import { ToastShell } from "./components/toast-shell";
 import { useAlertChannel } from "./hooks/useAlertChannel";
 import { useAuthChannel } from "./hooks/useAuthChannel";
@@ -108,6 +109,7 @@ function AuthedApp() {
 			)}
 			<AiChatDock />
 			<DraftIsland />
+			<SkinPreviewBar />
 			<ToastShell />
 			<AlertShell />
 		</div>

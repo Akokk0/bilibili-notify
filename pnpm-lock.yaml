@@ -182,6 +182,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.51.0
         version: 5.100.9(react@19.2.6)
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       motion:
         specifier: ^12.40.0
         version: 12.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)

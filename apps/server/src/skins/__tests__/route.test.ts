@@ -137,3 +137,13 @@ describe("skins route", () => {
 		expect((await app.request(`/${id}/assets/..%2Fskin.json`)).status).toBe(404);
 	});
 });
+
+describe("GET /:id/manifest(试穿用)", () => {
+	it("存在 → manifest;不存在 → 404", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const ok = await app.request(`/${id}/manifest`);
+		expect(ok.status).toBe(200);
+		expect(((await ok.json()) as any).manifest.name).toBe("樱花夜");
+		expect((await app.request("/nope/manifest")).status).toBe(404);
+	});
+});

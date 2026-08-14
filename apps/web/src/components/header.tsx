@@ -25,6 +25,7 @@ import { submitLogout } from "../services/session";
 import { useAuthStore } from "../store/auth";
 import { useNavStore } from "../store/nav";
 import { useSessionStore } from "../store/session";
+import { useSkinStore } from "../store/skin";
 import { type ThemePreference, useThemeStore } from "../store/theme";
 import { BiliLoginStatus } from "../types/auth";
 import type { PushTarget, Subscription } from "../types/domain";
@@ -207,6 +208,8 @@ function ThemeSwitcher() {
 	const preference = useThemeStore((s) => s.preference);
 	const resolved = useThemeStore((s) => s.resolved);
 	const setPreference = useThemeStore((s) => s.setPreference);
+	// 单套皮肤锁模式:锁住时切换无效,按钮置灰说明原因,而不是让用户点了没反应。
+	const lockedTheme = useSkinStore((s) => s.lockedTheme);
 	const [open, setOpen] = useState(false);
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const current = themeLabel(preference);
@@ -221,6 +224,19 @@ function ThemeSwitcher() {
 		document.addEventListener("mousedown", handleDocClick);
 		return () => document.removeEventListener("mousedown", handleDocClick);
 	}, [open]);
+
+	if (lockedTheme) {
+		return (
+			<Btn
+				variant="outline"
+				size="sm"
+				disabled
+				title={`当前皮肤只提供${lockedTheme === "dark" ? "深色" : "浅色"}一套,换回默认装或双套皮肤即可切换`}
+			>
+				主题：{lockedTheme === "dark" ? "深色" : "浅色"}(皮肤锁定)
+			</Btn>
+		);
+	}
 
 	return (
 		<div className="relative" ref={containerRef}>

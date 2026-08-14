@@ -19,6 +19,7 @@ import { BiliLoginStatus, type BiliLoginStatusValue } from "../types/auth";
 import type { PushTarget } from "../types/domain";
 import type { AppConfig, GlobalConfig, GlobalConfigPatch, LogLevel } from "../types/globals";
 import { BackupSection } from "./backup/BackupSection";
+import { SkinSection } from "./skins/SkinSection";
 
 const STATUS_LABELS: Record<BiliLoginStatusValue, string> = {
 	[BiliLoginStatus.NOT_LOGIN]: "未登录",
@@ -460,6 +461,8 @@ export default function System() {
 			{draft ? <CommandsSettings draft={draft} onPatch={patchDraft} /> : null}
 
 			<BrowserSourceSettings />
+
+			<SkinSection />
 
 			<BackupSection />
 

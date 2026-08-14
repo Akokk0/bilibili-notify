@@ -74,6 +74,12 @@ export function createSkinsRoute(deps: { skinStore: SkinStore }): Hono {
 		return c.json({ ok: true });
 	});
 
+	app.get("/:id/manifest", async (c) => {
+		const manifest = await skinStore.get(c.req.param("id"));
+		if (!manifest) return c.json({ ok: false, err: "皮肤不存在" }, 404);
+		return c.json({ manifest });
+	});
+
 	app.delete("/:id", async (c) => {
 		await skinStore.remove(c.req.param("id"));
 		return c.json({ ok: true });
