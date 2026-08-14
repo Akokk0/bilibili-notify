@@ -39,10 +39,13 @@ export interface AppProps {
 	pollMs?: number;
 }
 
+// 契约对面是 main.rs LauncherStatus::as_str() 的五个真串 —— 别发明这里没有的状态名。
 const DOT_KIND: Record<string, StatusDotKind> = {
 	starting: "pending",
 	ready: "ok",
-	error: "err",
+	stopped: "warn",
+	failed: "err",
+	crashed: "err",
 };
 
 function errText(err: unknown): string {

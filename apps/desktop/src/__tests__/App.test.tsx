@@ -63,7 +63,7 @@ describe("App — 启动中", () => {
 	it("非 starting 且有 panelUrl 时按钮解禁", async () => {
 		const invoke = vi.fn(async (cmd: string) =>
 			cmd === "get_launcher_state"
-				? state({ status: "error", statusLabel: "启动失败", panelUrl: "http://127.0.0.1:8787" })
+				? state({ status: "failed", statusLabel: "启动失败", panelUrl: "http://127.0.0.1:8787" })
 				: undefined,
 		);
 		render(<App invoke={invoke} navigate={vi.fn()} />);
@@ -77,6 +77,38 @@ describe("App — 启动中", () => {
 		expect(
 			(screen.getByRole("button", { name: "打开 Dashboard" }) as HTMLButtonElement).disabled,
 		).toBe(false);
+	});
+});
+
+describe("App — 状态点对 Rust 真实状态串的映射", () => {
+	// 契约对面是 main.rs LauncherStatus::as_str():starting/ready/stopped/failed/crashed。
+	// 曾经这里映射的是虚构的 "error",真实故障时点色掉到灰色兜底 —— 用 Rust 真串钉死。
+	async function dotBackground(status: string, statusLabel: string): Promise<string> {
+		const invoke = vi.fn(async (cmd: string) =>
+			cmd === "get_launcher_state" ? state({ status, statusLabel }) : undefined,
+		);
+		const { container } = render(<App invoke={invoke} navigate={vi.fn()} />);
+		await waitFor(() => {
+			expect(screen.getByText(statusLabel)).toBeTruthy();
+		});
+		const dot = container.querySelector("span.h-2.w-2") as HTMLElement;
+		return dot.style.background;
+	}
+
+	it("failed → 红点", async () => {
+		expect(await dotBackground("failed", "后端服务启动失败")).toMatch(
+			/#ef4444|rgb\(239, 68, 68\)/i,
+		);
+	});
+
+	it("crashed → 红点", async () => {
+		expect(await dotBackground("crashed", "后端服务已崩溃")).toMatch(/#ef4444|rgb\(239, 68, 68\)/i);
+	});
+
+	it("stopped → 橙点", async () => {
+		expect(await dotBackground("stopped", "后端服务已停止")).toMatch(
+			/#f59e0b|rgb\(245, 158, 11\)/i,
+		);
 	});
 });
 
@@ -130,7 +162,7 @@ describe("App — 按钮 invoke 语义", () => {
 	it("打开 Dashboard / 日志 / 数据目录 / 退出各自击发对应命令", async () => {
 		const invoke = vi.fn(async (cmd: string) =>
 			cmd === "get_launcher_state"
-				? state({ status: "error", statusLabel: "启动失败", panelUrl: "http://127.0.0.1:8787" })
+				? state({ status: "failed", statusLabel: "启动失败", panelUrl: "http://127.0.0.1:8787" })
 				: undefined,
 		);
 		render(<App invoke={invoke} navigate={vi.fn()} />);
@@ -159,7 +191,7 @@ describe("App — 按钮 invoke 语义", () => {
 	it("重试启动 → retry_service,随后立即刷新状态", async () => {
 		const invoke = vi.fn(async (cmd: string) =>
 			cmd === "get_launcher_state"
-				? state({ status: "error", statusLabel: "启动失败" })
+				? state({ status: "failed", statusLabel: "启动失败" })
 				: undefined,
 		);
 		render(<App invoke={invoke} navigate={vi.fn()} />);
@@ -180,7 +212,7 @@ describe("App — 按钮 invoke 语义", () => {
 	it("命令失败时错误信息落进 detail 区", async () => {
 		const invoke = vi.fn(async (cmd: string) => {
 			if (cmd === "get_launcher_state")
-				return state({ status: "error", statusLabel: "启动失败", panelUrl: "http://x" });
+				return state({ status: "failed", statusLabel: "启动失败", panelUrl: "http://x" });
 			if (cmd === "open_data_dir") throw new Error("没权限打开目录");
 			return undefined;
 		});
@@ -223,7 +255,7 @@ describe("App — Dock 按钮", () => {
 		let hidden = false;
 		const invoke = vi.fn(async (cmd: string) => {
 			if (cmd === "get_launcher_state")
-				return state({ status: "error", statusLabel: "启动失败", dockHidden: hidden });
+				return state({ status: "failed", statusLabel: "启动失败", dockHidden: hidden });
 			if (cmd === "toggle_dock_icon") hidden = true;
 			return undefined;
 		});
