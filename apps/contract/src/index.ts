@@ -6,4 +6,5 @@
  * 职责,留在 apps/server 各自模块里,用这里的类型做注解防漂移。
  */
 export * from "./rest";
+export * from "./skin";
 export * from "./ws";
