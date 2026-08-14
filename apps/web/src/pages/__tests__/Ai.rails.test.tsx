@@ -9,10 +9,10 @@
  */
 
 import { DEFAULT_AI, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { Icon } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { Icon } from "../../components/icons";
 import { useDraftStore } from "../../store/draft";
 import { formatDiffValue } from "../../utils/formatDiffValue";
 import Ai from "../Ai";

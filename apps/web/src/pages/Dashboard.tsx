@@ -1,10 +1,17 @@
+import {
+	Avatar,
+	Btn,
+	ErrorNote,
+	GlassBox,
+	GlassPanel,
+	GlassStatCard,
+	Icon,
+	Pill,
+	StatsBar,
+} from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { Avatar, Btn, ErrorNote, Pill, StatsBar } from "../components/atoms";
-import { GlassPanel, GlassStatCard } from "../components/glass";
-import { GlassBox } from "../components/glass-box";
-import { Icon } from "../components/icons";
 import {
 	HEALTH_QUERY_KEY,
 	HEALTH_QUERY_OPTIONS,

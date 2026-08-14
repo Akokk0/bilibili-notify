@@ -4,20 +4,20 @@ import {
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 } from "@bilibili-notify/internal/constants";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
 	Btn,
 	ErrorNote,
+	Icon,
+	ModalShell,
 	PlatformIcon,
 	platformLabel,
+	SectionNav,
 	StatusDot,
 	Toggle,
-} from "../components/atoms";
-import { ModalShell } from "../components/dialog";
+} from "@bilibili-notify/ui";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Field, Picker, TInput, TNum, TSelect } from "../components/forms";
-import { Icon } from "../components/icons";
-import { SectionNav } from "../components/section-nav";
 import { ApiError, api } from "../services/api";
 import {
 	KNOWN_PLATFORMS,

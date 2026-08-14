@@ -1,3 +1,4 @@
+import { Btn, Icon } from "@bilibili-notify/ui";
 import {
 	closestCenter,
 	DndContext,
@@ -27,8 +28,6 @@ import { useSessionStore } from "../store/session";
 import { type ThemePreference, useThemeStore } from "../store/theme";
 import { BiliLoginStatus } from "../types/auth";
 import type { PushTarget, Subscription } from "../types/domain";
-import { Btn } from "./atoms";
-import { Icon } from "./icons";
 
 interface UserCardData {
 	card?: {

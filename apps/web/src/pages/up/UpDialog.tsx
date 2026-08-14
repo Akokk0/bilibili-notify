@@ -1,7 +1,13 @@
+import {
+	Avatar,
+	Btn,
+	ConfirmDialog,
+	Icon,
+	ModalShell,
+	PlatformIcon,
+	Toggle,
+} from "@bilibili-notify/ui";
 import { useEffect, useMemo, useState } from "react";
-import { Avatar, Btn, PlatformIcon, Toggle } from "../../components/atoms";
-import { ConfirmDialog, ModalShell } from "../../components/dialog";
-import { Icon } from "../../components/icons";
 import {
 	DEFAULT_FEATURE_FLAGS,
 	FEATURE_KEYS,

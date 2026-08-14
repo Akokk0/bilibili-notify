@@ -5,8 +5,8 @@
  * (empty bootstrap).
  */
 
+import { Btn, Spinner } from "@bilibili-notify/ui";
 import { useNavigate } from "react-router-dom";
-import { Btn, Spinner } from "./atoms";
 
 export function ShellLoading() {
 	return (

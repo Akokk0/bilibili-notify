@@ -1,5 +1,5 @@
+import { Icon } from "@bilibili-notify/ui";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { Icon } from "../icons";
 import { type AiSkill, matchSkills } from "./skills";
 
 /**

@@ -11,9 +11,9 @@
  */
 
 import { resolveAIProfile } from "@bilibili-notify/internal/constants";
+import { Avatar, CollapseBlock, GlassBox, Icon, Toggle } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Avatar, Toggle } from "../../components/atoms";
 import {
 	ArrayEditor,
 	Field,
@@ -23,8 +23,6 @@ import {
 	TInput,
 	TNum,
 } from "../../components/forms";
-import { CollapseBlock, GlassBox } from "../../components/glass-box";
-import { Icon } from "../../components/icons";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
 import type {

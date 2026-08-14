@@ -1,9 +1,7 @@
 import type { SubscriptionDTO } from "@bilibili-notify/contract";
+import { Avatar, Btn, GlassPanel, GlassStatCard, Icon } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Avatar, Btn } from "../components/atoms";
-import { GlassPanel, GlassStatCard } from "../components/glass";
-import { Icon } from "../components/icons";
 import { api } from "../services/api";
 import {
 	activityLevel,

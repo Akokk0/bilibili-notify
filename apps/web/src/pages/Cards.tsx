@@ -15,11 +15,20 @@
 
 import type { PreviewResponse, TestPushResponse } from "@bilibili-notify/contract";
 import { buildPatch } from "@bilibili-notify/internal/patch";
+import {
+	Btn,
+	ConfirmDialog,
+	GlassBox,
+	Icon,
+	type IconName,
+	Pill,
+	SectionNav,
+	Spinner,
+	Toggle,
+} from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Btn, Pill, Spinner, Toggle } from "../components/atoms";
 import { ChromeAutoDetect } from "../components/chrome-autodetect";
-import { ConfirmDialog } from "../components/dialog";
 import {
 	Field,
 	LogLevelPicker,
@@ -29,10 +38,7 @@ import {
 	TColor,
 	TInput,
 } from "../components/forms";
-import { GlassBox } from "../components/glass-box";
-import { Icon, type IconName } from "../components/icons";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
-import { SectionNav } from "../components/section-nav";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
 import type { CardLayoutFull, PushTarget, Subscription } from "../types/domain";

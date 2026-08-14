@@ -1,7 +1,7 @@
+import { Btn, Input } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
 import { submitLogin } from "../services/session";
 import { useSessionStore } from "../store/session";
-import { Btn, Input } from "./atoms";
 
 /**
  * Dashboard login card (Q5). Replaces the browser-native HTTP Basic popup.

@@ -23,6 +23,9 @@ import { describe, expect, it } from "vite-plus/test";
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const SRC_DIR = join(TEST_DIR, "..");
 const STYLES = join(SRC_DIR, "styles.css");
+/** tokens 的正主 —— @theme 块已随纯展示件搬进 @bilibili-notify/ui。 */
+const UI_SRC_DIR = join(SRC_DIR, "../../../packages/ui/src");
+const UI_THEME = join(UI_SRC_DIR, "theme.css");
 
 /** 会被 UnoCSS 解析成 `var(--color-…)` 的 utility 前缀。 */
 const COLOR_PREFIXES = [
@@ -56,9 +59,9 @@ function listTsxRecursive(dir: string): string[] {
 	return acc;
 }
 
-/** styles.css 里定义了的颜色 token(`--color-bn-pink` → `bn-pink`)。 */
+/** 已定义的颜色 token(`--color-bn-pink` → `bn-pink`),ui 包 theme.css + web styles.css 合并。 */
 function definedColorTokens(): Set<string> {
-	const css = readFileSync(STYLES, "utf8");
+	const css = readFileSync(UI_THEME, "utf8") + readFileSync(STYLES, "utf8");
 	const found = css.match(/--color-(bn-[a-z0-9-]+)\s*:/g) ?? [];
 	return new Set(found.map((m) => m.replace(/--color-|\s*:/g, "")));
 }
@@ -74,6 +77,8 @@ describe("颜色 token conformance", () => {
 		for (const file of [
 			...listTsxRecursive(join(SRC_DIR, "pages")),
 			...listTsxRecursive(join(SRC_DIR, "components")),
+			// 库里的纯展示件同样受此约束 —— 它们的 class 也靠这两份 css 的 token 兑现。
+			...listTsxRecursive(UI_SRC_DIR),
 		]) {
 			const src = readFileSync(file, "utf8");
 			for (const m of src.matchAll(USAGE_RE)) {

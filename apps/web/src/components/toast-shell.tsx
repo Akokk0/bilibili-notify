@@ -1,3 +1,4 @@
+import { Icon, type IconName } from "@bilibili-notify/ui";
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -6,7 +7,6 @@ import {
 	type ToastItem,
 	useToastStore,
 } from "../store/notifications";
-import { Icon, type IconName } from "./icons";
 
 /**
  * Notification-center toast surface. Rendered into a portal so the fixed

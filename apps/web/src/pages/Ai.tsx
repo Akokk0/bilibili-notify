@@ -33,9 +33,9 @@ import {
 	webSearchBackendMeta,
 } from "@bilibili-notify/internal/constants";
 import { buildPatch } from "@bilibili-notify/internal/patch";
+import { GlassBox, Icon, Pill, RailDot, SectionNav, TabBar, Toggle } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Pill, Toggle } from "../components/atoms";
 import {
 	Field,
 	LogLevelPicker,
@@ -45,12 +45,8 @@ import {
 	TInput,
 	TNum,
 } from "../components/forms";
-import { GlassBox } from "../components/glass-box";
-import { Icon } from "../components/icons";
 import { PROVIDER_BRANDS, ProviderLogo } from "../components/provider-logos";
 import { ProviderPicker } from "../components/provider-picker";
-import { RailDot, SectionNav } from "../components/section-nav";
-import { TabBar } from "../components/tab-bar";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { api } from "../services/api";
 import type { AIPersona, AISettings, GlobalConfig, LogLevel } from "../types/globals";

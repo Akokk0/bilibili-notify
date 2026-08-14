@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 
+/**
+ * 主题适配守卫(web 留守侧)—— forms 复合件不许出现「只在浅色下成立」的工具类。
+ * 基础原子(Btn / Input / Section / Row / ModalShell)的同款守卫已随组件搬进
+ * packages/ui(src/__tests__/theme-atoms.test.tsx)。
+ */
+
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { Btn, Input, Row, Section } from "../atoms";
-import { ModalShell } from "../dialog";
 import { ArrayEditor, LogLevelPicker, Picker, TArea, TInput, TSelect } from "../forms";
 
 const LIGHT_ONLY_CLASS_RE =
@@ -19,38 +23,7 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-describe("theme-aware shared components", () => {
-	it("button variants use semantic surfaces instead of light-only utilities", () => {
-		render(
-			<div>
-				<Btn variant="outline">outline</Btn>
-				<Btn variant="ghost">ghost</Btn>
-				<Btn variant="danger">danger</Btn>
-			</div>,
-		);
-
-		expectNoLightOnlyClass(screen.getByRole("button", { name: "outline" }));
-		expectNoLightOnlyClass(screen.getByRole("button", { name: "ghost" }));
-		expectNoLightOnlyClass(screen.getByRole("button", { name: "danger" }));
-	});
-
-	it("atom input, section and row use theme-aware field and border utilities", () => {
-		render(
-			<div>
-				<Input value="" onChange={() => {}} placeholder="搜索" />
-				<Section label="基础">
-					<Row label="一行" />
-				</Section>
-			</div>,
-		);
-
-		expectNoLightOnlyClass(screen.getByPlaceholderText("搜索").parentElement);
-		expectNoLightOnlyClass(screen.getByText("一行").closest(".flex"));
-		expect(
-			screen.getByText("一行").closest(".rounded-lg")?.getAttribute("class") ?? "",
-		).not.toMatch(LIGHT_ONLY_CLASS_RE);
-	});
-
+describe("theme-aware form components", () => {
 	it("form inputs and pickers use theme-aware surfaces", () => {
 		render(
 			<div>
@@ -74,15 +47,5 @@ describe("theme-aware shared components", () => {
 		]) {
 			expectNoLightOnlyClass(el);
 		}
-	});
-
-	it("modal card uses theme-aware surface instead of fixed white", () => {
-		render(
-			<ModalShell width={320} onCancel={vi.fn()}>
-				<div>弹窗内容</div>
-			</ModalShell>,
-		);
-
-		expectNoLightOnlyClass(screen.getByRole("dialog"));
 	});
 });

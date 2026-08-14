@@ -1,7 +1,6 @@
+import { Icon, SectionNav } from "@bilibili-notify/ui";
 import { lazy, Suspense, useEffect, useState } from "react";
 import type { Components } from "react-markdown";
-import { Icon } from "../components/icons";
-import { SectionNav } from "../components/section-nav";
 import { externalLinkClick } from "../utils/externalLink";
 
 /**

@@ -1,6 +1,5 @@
+import { Btn, CheckRow, Input, ModalShell } from "@bilibili-notify/ui";
 import { useState } from "react";
-import { Btn, CheckRow, Input } from "../../components/atoms";
-import { ModalShell } from "../../components/dialog";
 import { addGroupName, toggleGroup } from "./group-edit";
 
 export interface GroupEditDialogProps {

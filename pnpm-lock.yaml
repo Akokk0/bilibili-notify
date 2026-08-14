@@ -127,6 +127,9 @@ importers:
       '@bilibili-notify/internal':
         specifier: workspace:*
         version: link:../../packages/internal
+      '@bilibili-notify/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -474,6 +477,30 @@ importers:
       '@bilibili-notify/internal':
         specifier: workspace:^
         version: link:../internal
+
+  packages/ui:
+    devDependencies:
+      '@testing-library/dom':
+        specifier: ^10.4.1
+        version: 10.4.1
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.2.3(@types/react@19.2.14)
+      jsdom:
+        specifier: ^26.1.0
+        version: 26.1.0(supports-color@8.1.1)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.6(react@19.2.6)
 
 packages:
 

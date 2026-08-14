@@ -3,8 +3,8 @@ import {
 	inboundGapReason,
 	platformCanReceiveReply,
 } from "@bilibili-notify/internal/constants";
+import { PlatformIcon, Toggle } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
-import { PlatformIcon, Toggle } from "../../components/atoms";
 import { Field, Picker, TInput } from "../../components/forms";
 import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";

@@ -14,9 +14,9 @@
  */
 
 import { MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
+import { Icon } from "@bilibili-notify/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Icon } from "../../components/icons";
 import { ApiError, api } from "../../services/api";
 import {
 	type FontChoice,

@@ -1,6 +1,6 @@
+import { Icon } from "@bilibili-notify/ui";
 import { createPortal } from "react-dom";
 import { type AlertItem, useAlertStore } from "../store/alerts";
-import { Icon } from "./icons";
 
 /**
  * 右上角红色告警面板。被 `engine-error` WS 事件喂养。

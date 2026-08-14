@@ -1,0 +1,31 @@
+{
+	"name": "@bilibili-notify/ui",
+	"private": true,
+	"version": "0.0.0-dev",
+	"type": "module",
+	"description": "纯展示 React 基础件 + design tokens。源码直出(exports 指 src),消费方必须是 vite 系构建。",
+	"exports": {
+		".": "./src/index.ts",
+		"./theme.css": "./src/theme.css",
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit"
+	},
+	"peerDependencies": {
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0"
+	},
+	"devDependencies": {
+		"@testing-library/dom": "^10.4.1",
+		"@testing-library/react": "^16.3.2",
+		"@types/react": "^19.0.0",
+		"@types/react-dom": "^19.0.0",
+		"jsdom": "^26.1.0",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	}
+}

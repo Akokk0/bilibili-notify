@@ -9,12 +9,10 @@
  */
 
 import type { AiTestPushResponse as TestPushResponse } from "@bilibili-notify/contract";
+import { Btn, ErrorNote, GlassBox, Icon } from "@bilibili-notify/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Btn, ErrorNote } from "../../components/atoms";
 import { Field, TArea, TSelect } from "../../components/forms";
-import { GlassBox } from "../../components/glass-box";
-import { Icon } from "../../components/icons";
 import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";
 import type { AISettings } from "../../types/globals";

@@ -9,14 +9,12 @@
  * 得先知道有这么些东西可敲。
  */
 
+import { Btn, GlassBox, Icon, Toggle } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../services/api";
 import type { GlobalConfig, GlobalConfigPatch } from "../types/globals";
-import { Btn, Toggle } from "./atoms";
 import { Field, TInput } from "./forms";
-import { GlassBox } from "./glass-box";
-import { Icon } from "./icons";
 
 interface CommandEntry {
 	name: string;

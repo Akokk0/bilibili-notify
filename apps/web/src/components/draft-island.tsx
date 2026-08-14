@@ -19,6 +19,7 @@
  * ToastShell(z-200)与 Dialog(z-300)— toast/dialog 弹出时不被遮挡。
  */
 
+import { Icon } from "@bilibili-notify/ui";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { DraftRegistration, DraftUiState } from "../store/draft";
@@ -26,7 +27,6 @@ import { useDraftStore } from "../store/draft";
 import { formatDiffValue } from "../utils/formatDiffValue";
 import { type DiffSection, groupDiffsBySection } from "../utils/groupDiffs";
 import type { FieldDiff } from "../utils/walkTreeDiff";
-import { Icon } from "./icons";
 
 const SHELL_SPRING = { type: "spring" as const, stiffness: 380, damping: 28 };
 const PANEL_SPRING = { type: "spring" as const, stiffness: 320, damping: 30 };

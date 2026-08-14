@@ -6,6 +6,7 @@
  * 全局绑 defaults.templates,per-UP 绑 overrides.templates,由调用方组合)。
  */
 
+import { Icon, Toggle } from "@bilibili-notify/ui";
 import {
 	closestCenter,
 	DndContext,
@@ -23,9 +24,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ReactNode } from "react";
-import { Toggle } from "../../components/atoms";
 import { Field, TInput } from "../../components/forms";
-import { Icon } from "../../components/icons";
 import type { MessageBlockFull, MessageKindLayoutFull } from "../../types/domain";
 import {
 	decodeSeparator,

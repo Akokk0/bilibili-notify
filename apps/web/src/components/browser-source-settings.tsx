@@ -1,9 +1,8 @@
 import type { RenderSourceResponse } from "@bilibili-notify/contract";
+import { Btn, GlassBox } from "@bilibili-notify/ui";
 import { useEffect, useState } from "react";
 import { api } from "../services/api";
-import { Btn } from "./atoms";
 import { Field, TInput } from "./forms";
-import { GlassBox } from "./glass-box";
 
 type Busy = null | "detect" | "path" | "endpoint";
 

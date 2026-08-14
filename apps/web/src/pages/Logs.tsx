@@ -1,7 +1,6 @@
+import { Icon, Input } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Input } from "../components/atoms";
-import { Icon } from "../components/icons";
 import { useLogChannel } from "../hooks/useLogChannel";
 import { api } from "../services/api";
 import {

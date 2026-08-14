@@ -1,4 +1,4 @@
-import type { IconName } from "../icons";
+import type { IconName } from "@bilibili-notify/ui";
 
 /**
  * 女仆技能 —— 输入框里打 `/` 唤起的那几条。

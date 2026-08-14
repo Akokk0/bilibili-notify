@@ -1,8 +1,6 @@
+import { Btn, ConfirmDialog, ErrorNote, Icon, Input, ModalShell } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Btn, ErrorNote, Input } from "../components/atoms";
-import { ConfirmDialog, ModalShell } from "../components/dialog";
-import { Icon } from "../components/icons";
 import { ApiError, api } from "../services/api";
 import { makeEmptySubscription, type PushTarget, type Subscription } from "../types/domain";
 import { copyToClipboard } from "../utils/clipboard";

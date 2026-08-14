@@ -8,7 +8,7 @@
  * 「内置预设加了一份却没人画图标」——那种事在界面上得盯着看才发现得了。
  */
 
-import type { Icon } from "../../components/icons";
+import type { Icon } from "@bilibili-notify/ui";
 
 export type IconKey = keyof typeof Icon;
 

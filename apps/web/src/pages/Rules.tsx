@@ -5,12 +5,16 @@ import {
 	templateDefaultAt,
 	templateFingerprint,
 } from "@bilibili-notify/internal/template-defaults";
+import {
+	ConfirmDialog,
+	type FieldUpdate,
+	FieldUpdatesProvider,
+	RailDot,
+	SectionNav,
+} from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ConfirmDialog } from "../components/dialog";
-import { type FieldUpdate, FieldUpdatesProvider } from "../components/field-updates";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
-import { RailDot, SectionNav } from "../components/section-nav";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { api } from "../services/api";
 import type { Subscription } from "../types/domain";
@@ -264,7 +268,7 @@ export default function Rules() {
 	//
 	// 主人改了某条模板的默认,已装好的用户拿不到 —— 盘上写的是当初那一版。这里算出
 	// 哪几条该亮提示,经 context 广播下去:`Field` 拿自己的 code 去认领,于是十几个
-	// 模板字段的调用点**一个都不用改**(详见 components/field-updates.tsx)。
+	// 模板字段的调用点**一个都不用改**(详见 packages/ui 的 field-updates.tsx)。
 	const fieldUpdates = useMemo(() => {
 		const templates = draft?.defaults.templates;
 		const seen = draft?.defaults.templateDefaultsSeen ?? {};

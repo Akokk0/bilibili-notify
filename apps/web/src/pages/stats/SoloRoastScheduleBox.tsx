@@ -1,8 +1,6 @@
+import { GlassPanel, Icon, Toggle } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
-import { Toggle } from "../../components/atoms";
-import { GlassPanel } from "../../components/glass";
-import { Icon } from "../../components/icons";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
 import type { PushTarget, Subscription } from "../../types/domain";

@@ -1,7 +1,5 @@
+import { Btn, CheckRow, Icon, ModalShell } from "@bilibili-notify/ui";
 import { useState } from "react";
-import { Btn, CheckRow } from "../../components/atoms";
-import { ModalShell } from "../../components/dialog";
-import { Icon } from "../../components/icons";
 import { type BackupKind, type BackupSectionSelection, isValidPin } from "./backup-file";
 import { ChoiceCard, PinField } from "./dialog-bits";
 

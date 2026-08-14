@@ -1,6 +1,5 @@
+import { Avatar, Icon, Pill, Toggle } from "@bilibili-notify/ui";
 import { useState } from "react";
-import { Avatar, Pill, Toggle } from "../../components/atoms";
-import { Icon } from "../../components/icons";
 import { useLongPress } from "../../hooks/useLongPress";
 import { FEATURE_LABELS, type Subscription } from "../../types/domain";
 import { colorFromUid, displayName, relativeTime, subscribedFeatures } from "./helpers";

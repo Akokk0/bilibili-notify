@@ -4,9 +4,9 @@
  * 1 = 单张,>1 = 轮换。删被引用的图被服务端 409 拦截,这里把 referencedBy 提示出来。
  */
 
+import { Icon } from "@bilibili-notify/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Icon } from "../../components/icons";
 import { ApiError, api } from "../../services/api";
 import { removeFromGallery, toggleSelected } from "./gallery-ops";
 import { useAssetObjectUrl } from "./useAssetObjectUrl";

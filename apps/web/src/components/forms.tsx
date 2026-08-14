@@ -5,11 +5,9 @@
  * the label so users see which schema field they're editing).
  */
 
+import { Btn, type FieldUpdate, Icon, useFieldReset, useFieldUpdate } from "@bilibili-notify/ui";
 import { type ReactNode, useEffect, useState } from "react";
 import { type FieldLabel, getFieldLabel } from "../config/field-labels.js";
-import { Btn } from "./atoms";
-import { type FieldUpdate, useFieldReset, useFieldUpdate } from "./field-updates";
-import { Icon } from "./icons";
 
 // ── Field ────────────────────────────────────────────────────────────────────
 

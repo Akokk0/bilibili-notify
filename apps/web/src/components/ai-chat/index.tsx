@@ -1,6 +1,7 @@
 import type { AiConversationDTO } from "@bilibili-notify/contract";
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { resolveActivePersona, resolveAIProfile } from "@bilibili-notify/internal/constants";
+import { Icon } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -20,7 +21,6 @@ import { api } from "../../services/api";
 import { useAiChatStore } from "../../store/aiChat";
 import { useAuthStore } from "../../store/auth";
 import { BiliLoginStatus } from "../../types/auth";
-import { Icon } from "../icons";
 import { Composer, type ComposerAttachment, MAX_ATTACHMENTS } from "./composer";
 import { MessageList, preloadChatMarkdown, type ToolChipData } from "./messages";
 import { resolveChatPersona } from "./persona";

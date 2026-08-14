@@ -1,7 +1,7 @@
 import type { StatsSoloRoastResponse, StatsSoloRoastResult } from "@bilibili-notify/contract";
+import { Avatar } from "@bilibili-notify/ui";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { Avatar } from "../../components/atoms";
 import { api } from "../../services/api";
 import { localTzOffset } from "../../services/stats";
 import { RoastPushBox } from "./RoastPushBox";

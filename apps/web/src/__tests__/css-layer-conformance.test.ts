@@ -56,9 +56,18 @@ describe("styles.css 分层", () => {
 		expect(findUnlayeredPositionRules(css)).toEqual([]);
 	});
 
+	it("ui 包的 theme.css 同样不许无层 position(它被 @import 进来,陷阱一模一样)", async () => {
+		const css = await readFile(
+			fileURLToPath(new URL("../../../../packages/ui/src/theme.css", import.meta.url)),
+			"utf8",
+		);
+		expect(findUnlayeredPositionRules(css)).toEqual([]);
+	});
+
 	it("女仆 AI 聊天那一整块在 @layer components 里", async () => {
 		const css = await readFile(STYLES, "utf8");
-		const idx = css.indexOf("女仆 AI 聊天");
+		// 锚在区段线标题上(不是裸词)—— 文件头部的搬迁注释里也会提到「女仆 AI 聊天」。
+		const idx = css.indexOf("── 女仆 AI 聊天");
 		expect(idx).toBeGreaterThan(-1);
 		// 段落注释之后紧跟着开层。写死这一条是因为上面的通用规则只拦 position,
 		// 而这一块里的 background / box-shadow 同样需要让位给工具类。

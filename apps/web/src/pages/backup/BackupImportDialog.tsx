@@ -1,6 +1,5 @@
+import { Btn, ErrorNote, ModalShell } from "@bilibili-notify/ui";
 import { type ChangeEvent, useState } from "react";
-import { Btn, ErrorNote } from "../../components/atoms";
-import { ModalShell } from "../../components/dialog";
 import { type ClientBackup, isValidPin, looksLikeBackup, readFileAsText } from "./backup-file";
 import { ChoiceCard, PinField } from "./dialog-bits";
 

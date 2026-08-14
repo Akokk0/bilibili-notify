@@ -4,8 +4,8 @@
  * delta for /api/globals.
  */
 
+import { CollapseBlock, GlassBox, Icon, Toggle } from "@bilibili-notify/ui";
 import { type ReactNode, useState } from "react";
-import { Toggle } from "../../components/atoms";
 import {
 	ArrayEditor,
 	Field,
@@ -16,8 +16,6 @@ import {
 	TInput,
 	TNum,
 } from "../../components/forms";
-import { CollapseBlock, GlassBox } from "../../components/glass-box";
-import { Icon } from "../../components/icons";
 import type { MessageKindLayoutFull } from "../../types/domain";
 import type {
 	ContentFilters,

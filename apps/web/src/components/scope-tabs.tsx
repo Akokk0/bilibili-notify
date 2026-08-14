@@ -7,12 +7,10 @@
  * 计数,从而在同一 Subscription.overrides 上各管各的切片。
  */
 
+import { Avatar, Icon, Pill, TabBarShell, TabButton } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
 import { colorFromUid, displayName } from "../pages/up/helpers";
 import type { Subscription } from "../types/domain";
-import { Avatar, Pill } from "./atoms";
-import { Icon } from "./icons";
-import { TabBarShell, TabButton } from "./tab-bar";
 
 /** "__global" = 全局默认;其余 = subscription.id。 */
 export type Scope = "__global" | string;

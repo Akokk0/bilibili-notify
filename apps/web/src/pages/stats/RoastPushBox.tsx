@@ -3,9 +3,9 @@ import type {
 	StatsRoastResult,
 	StatsSoloRoastResult,
 } from "@bilibili-notify/contract";
+import { Btn, PlatformIcon } from "@bilibili-notify/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Btn, PlatformIcon } from "../../components/atoms";
 import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";
 import { ROAST_PURPLE } from "./RoastShell";

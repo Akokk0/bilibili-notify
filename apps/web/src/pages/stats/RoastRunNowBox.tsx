@@ -1,8 +1,7 @@
 import type { StatsRoastRunNowResponse, StatsRoastRunOutcome } from "@bilibili-notify/contract";
+import { Btn, ConfirmDialog } from "@bilibili-notify/ui";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
-import { Btn } from "../../components/atoms";
-import { ConfirmDialog } from "../../components/dialog";
 import { api } from "../../services/api";
 
 /**

@@ -1,6 +1,6 @@
+import { Icon } from "@bilibili-notify/ui";
 import { type ReactNode, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Icon } from "../../components/icons";
 
 export interface UpCardMenuProps {
 	/** 订阅当前是否启用,决定开关项文案(禁用 / 启用)。 */

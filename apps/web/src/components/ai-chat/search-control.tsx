@@ -1,8 +1,8 @@
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { webSearchBackendMeta } from "@bilibili-notify/internal/constants";
+import { Icon } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../services/api";
-import { Icon } from "../icons";
 import { ComposerPill } from "./composer-pill";
 
 /**

@@ -1,9 +1,6 @@
+import { Btn, ConfirmDialog, ErrorNote, GlassBox, Icon } from "@bilibili-notify/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Btn, ErrorNote } from "../../components/atoms";
-import { ConfirmDialog } from "../../components/dialog";
-import { GlassBox } from "../../components/glass-box";
-import { Icon } from "../../components/icons";
 import { ApiError, api } from "../../services/api";
 import { BackupExportDialog } from "./BackupExportDialog";
 import { BackupImportDialog } from "./BackupImportDialog";

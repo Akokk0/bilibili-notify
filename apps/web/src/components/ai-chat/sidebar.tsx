@@ -1,8 +1,7 @@
+import { Icon, Toggle } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { type AiConversationMetaDTO, groupConversations } from "../../services/aiChat";
 import { CHAT_THEME_LABELS, CHAT_THEMES, type ChatTheme } from "../../store/aiChat";
-import { Toggle } from "../atoms";
-import { Icon } from "../icons";
 import { ThinkingLevelSetting } from "./thinking-level-setting";
 
 /**

@@ -1,6 +1,6 @@
+import { Icon } from "@bilibili-notify/ui";
 import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 import { type AiChatMessageDTO, chatImageUrl } from "../../services/aiChat";
-import { Icon } from "../icons";
 import { toolLabel } from "./tools";
 
 /**

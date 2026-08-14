@@ -8,6 +8,7 @@
  * 正常。拖拽手柄只绑在 ⠿ 上 —— 开关 / 边距输入 / 删除按钮仍可正常点击。
  */
 
+import { Icon, Toggle } from "@bilibili-notify/ui";
 import {
 	closestCenter,
 	DndContext,
@@ -24,8 +25,6 @@ import {
 	verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Toggle } from "../../components/atoms";
-import { Icon } from "../../components/icons";
 import type { CardBlockFull } from "../../types/domain";
 import { DIVIDER_LABEL } from "./block-labels";
 import {

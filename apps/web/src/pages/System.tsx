@@ -1,7 +1,7 @@
 import { buildPatch } from "@bilibili-notify/internal/patch";
+import { Avatar, Btn, ErrorNote, GlassBox, Icon } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Avatar, Btn, ErrorNote } from "../components/atoms";
 import { BrowserSourceSettings } from "../components/browser-source-settings";
 import { CommandsSettings } from "../components/commands-settings";
 import {
@@ -12,8 +12,6 @@ import {
 	TNum,
 	TSelect,
 } from "../components/forms";
-import { GlassBox } from "../components/glass-box";
-import { Icon } from "../components/icons";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
 import { useAuthStore } from "../store/auth";

@@ -1,7 +1,5 @@
+import { Btn, GlassPanel, Icon } from "@bilibili-notify/ui";
 import type { ReactNode } from "react";
-import { Btn } from "../../components/atoms";
-import { GlassPanel } from "../../components/glass";
-import { Icon } from "../../components/icons";
 
 /**
  * 两张 AI 锐评卡(榜单版 / 单人版)共用的外壳。

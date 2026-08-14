@@ -1,7 +1,6 @@
+import { Avatar, ErrorNote, Icon, Input, Pill } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Avatar, ErrorNote, Input, Pill } from "../components/atoms";
-import { Icon } from "../components/icons";
 import { api } from "../services/api";
 import {
 	type HistoryEntryView,
