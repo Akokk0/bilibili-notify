@@ -6,7 +6,7 @@
  */
 
 import type { CSSProperties, ReactNode } from "react";
-import { Pill } from "./atoms";
+import { Pill, Toggle } from "./atoms";
 
 export interface GlassBoxProps {
 	title: ReactNode;
@@ -102,18 +102,12 @@ export function CollapseBlock({
 				>
 					{label}
 				</span>
-				<button
-					type="button"
-					onClick={() => onToggle(!enabled)}
-					className="relative h-4 w-7 cursor-pointer rounded-full transition"
-					style={{ background: enabled ? "#FB7299" : "#d8d8d8" }}
-					aria-pressed={enabled}
-				>
-					<span
-						className="absolute top-[2px] h-3 w-3 rounded-full bg-bn-surface shadow-[0_1px_3px_rgba(0,0,0,0.2)]"
-						style={{ left: enabled ? 14 : 2, transition: "left 0.18s" }}
-					/>
-				</button>
+				<Toggle
+					size="sm"
+					value={enabled}
+					onChange={onToggle}
+					ariaLabel={typeof label === "string" ? label : undefined}
+				/>
 			</div>
 			{enabled ? <div className="mt-2">{children}</div> : null}
 		</div>
