@@ -58,8 +58,14 @@
 }
 
 :root {
-	--bn-page-bg: linear-gradient(135deg, #fef0f4 0%, #f0f7fd 50%, #faf2ff 100%);
-	--bn-glass-bg: rgba(255, 255, 255, 0.78);
+	/* 原版也是磨砂玻璃材质:背景要有色斑层次、玻璃留足透明度,blur 才读得出来
+	   (纯素渐变 + 高不透明度白 = 磨砂完全不可见,和实底没区别)。 */
+	--bn-page-bg:
+		radial-gradient(circle at 12% 10%, rgba(251, 114, 153, 0.16), transparent 30%),
+		radial-gradient(circle at 88% 6%, rgba(0, 174, 236, 0.14), transparent 28%),
+		radial-gradient(circle at 75% 88%, rgba(162, 155, 254, 0.15), transparent 30%),
+		linear-gradient(135deg, #fef0f4 0%, #f0f7fd 50%, #faf2ff 100%);
+	--bn-glass-bg: rgba(255, 255, 255, 0.7);
 	--bn-glass-border: rgba(255, 255, 255, 0.6);
 	--bn-glass-strong-bg: rgba(255, 255, 255, 0.92);
 	--bn-glass-strong-border: rgba(0, 0, 0, 0.05);
@@ -171,10 +177,9 @@ body {
 		opacity: 0;
 		transform: translateY(6px);
 	}
-	/* `to` 故意不声明 transform:动画期间从 translateY(6px) 平滑插值到基础值(无位移),
-	   但因 fill-mode:both 只保留 `to` 帧显式声明的属性,动画结束后元素回归 transform:none。
-	   若写成 transform:translateY(0),残留的 transform 会把内部 position:sticky 的包含块
-	   改成本元素,使桌面竖向 SectionNav 竖栏滚动时被"往下带一点"。 */
+	/* `to` 故意不声明 transform:动画期间从 translateY(6px) 平滑插值到基础值(无位移)。
+	   .bn-anim-fade-in 不用 filling(原因见其注释),结束后整段效果移除、回归基础样式,
+	   所以不会再有残留 transform 去改写内部 position:sticky / fixed 的包含块。 */
 	to {
 		opacity: 1;
 	}
@@ -187,7 +192,11 @@ body {
 	animation: bn-spin 1s linear infinite;
 }
 .bn-anim-fade-in {
-	animation: bn-fade-in 0.35s ease-out both;
+	/* fill-mode 千万别写 both/forwards:结束后仍在 filling 的 opacity 动画会让
+	   Chromium 把元素长期当作合成层,形成 backdrop root —— 页面根挂上它之后,
+	   全页 .bn-glass 的 backdrop-filter 都采样不到 body 上的壁纸,磨砂彻底失效
+	   (曾经整站只有没挂它的统计页有磨砂)。无 delay,也不需要 backwards 填充。 */
+	animation: bn-fade-in 0.35s ease-out;
 }
 
 /* 隐藏滚动条但保留滚动行为(容器内滚动、不想露出滚动条破坏卡片视觉时用)。 */

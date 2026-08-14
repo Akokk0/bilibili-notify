@@ -3,10 +3,10 @@
  *
  * Renders into a portal at `document.body` so the `fixed` overlay is
  * positioned against the viewport, not whatever ancestor happens to have
- * a `transform` (e.g. page-level `bn-anim-fade-in` keeps a residual
- * `translateY(0)` via the animation's `both` fill mode, which would otherwise
- * make the overlay a child of that page-sized containing block and clip the
- * backdrop to the page width).
+ * a `transform` (e.g. page-level `bn-anim-fade-in` holds a transform while
+ * its entrance animation runs, which would otherwise make the overlay a
+ * child of that page-sized containing block and clip the backdrop to the
+ * page width).
  *
  * Body padding is left to the caller so dialogs that need flush headers
  * (e.g. cover gradients) can opt out.
