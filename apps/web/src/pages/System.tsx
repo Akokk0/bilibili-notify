@@ -408,7 +408,7 @@ export default function System() {
 					</div>
 				)}
 
-				{extraMsg ? <div className="mt-2 text-[11px] text-amber-600">{extraMsg}</div> : null}
+				{extraMsg ? <div className="mt-2 text-[11px] text-bn-warning">{extraMsg}</div> : null}
 
 				{status === BiliLoginStatus.LOGIN_FAILED ? (
 					<ErrorNote className="mt-2.5">{msg || "登录失败，可重试。"}</ErrorNote>

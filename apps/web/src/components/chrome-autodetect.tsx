@@ -104,7 +104,7 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 							type="button"
 							onClick={enable}
 							disabled={state === "enabling"}
-							className="rounded-full border border-emerald-400/50 bg-bn-success-soft px-3 py-1 font-semibold text-bn-success-text disabled:opacity-60"
+							className="rounded-full border border-bn-success/50 bg-bn-success-soft px-3 py-1 font-semibold text-bn-success-text disabled:opacity-60"
 						>
 							{state === "enabling" ? "启用中…" : "启用"}
 						</button>
@@ -132,7 +132,7 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 						type="button"
 						onClick={connectRemote}
 						disabled={state === "connecting" || !endpoint.trim()}
-						className="rounded-full border border-emerald-400/50 bg-bn-success-soft px-3 py-1 font-semibold text-bn-success-text disabled:opacity-60"
+						className="rounded-full border border-bn-success/50 bg-bn-success-soft px-3 py-1 font-semibold text-bn-success-text disabled:opacity-60"
 					>
 						{state === "connecting" ? "连接中…" : "连接远程浏览器"}
 					</button>

@@ -107,7 +107,7 @@ describe("DraftIsland chip 5 态渲染", () => {
 			errorMessage: "网络异常",
 		});
 		const { container } = render(<DraftIsland />);
-		const badge = container.querySelector(".bg-red-500");
+		const badge = container.querySelector(".bg-bn-danger");
 		expect(badge).toBeTruthy();
 		expect(badge?.querySelector("svg")).toBeTruthy();
 		expect(badge?.textContent).toBe("");

@@ -32,6 +32,10 @@
 	--color-bn-inverse-muted: rgba(255, 255, 255, 0.05);
 	--color-bn-inverse-hover: rgba(255, 255, 255, 0.1);
 	--color-bn-inverse-strong: rgba(255, 255, 255, 0.25);
+	--color-bn-danger: #ef4444;
+	--color-bn-success: #10b981;
+	--color-bn-warning: #d97706;
+	--color-bn-text-disabled: #d1d5db;
 	--color-bn-success-soft: #dcfce7;
 	--color-bn-success-text: #047857;
 	--color-bn-success-border: #bbf7d0;
@@ -79,6 +83,8 @@
 	--color-bn-border: rgba(148, 163, 184, 0.28);
 	--color-bn-border-subtle: rgba(148, 163, 184, 0.16);
 	--color-bn-hover-muted: rgba(255, 255, 255, 0.07);
+	/* 禁用文字暗色下必须暗于 secondary(#cbd5e1),否则「禁用」反而比正常字亮。 */
+	--color-bn-text-disabled: rgba(148, 163, 184, 0.45);
 	--color-bn-code-bg: rgba(255, 255, 255, 0.08);
 	--color-bn-overlay: rgba(2, 6, 23, 0.62);
 	--color-bn-inverse-muted: rgba(255, 255, 255, 0.05);

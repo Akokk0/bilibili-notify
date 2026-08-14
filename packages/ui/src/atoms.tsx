@@ -86,7 +86,7 @@ const VARIANT_CLS: Record<BtnVariant, string> = {
 	blue: "bg-bn-blue text-white border-transparent hover:opacity-90",
 	ghost: "bg-transparent text-bn-text-tertiary border-transparent hover:bg-bn-hover-muted",
 	outline: "bg-bn-surface text-bn-text-primary border-bn-border hover:bg-bn-surface-muted",
-	danger: "bg-transparent text-red-500 border-transparent hover:bg-red-500/10",
+	danger: "bg-transparent text-bn-danger border-transparent hover:bg-bn-danger/10",
 };
 
 const SIZE_CLS: Record<BtnSize, string> = {

@@ -617,7 +617,7 @@ export function UpDialog({
 										type="button"
 										key={id}
 										onClick={() => removeStaleId(id)}
-										className="inline-flex items-center gap-1.5 rounded-full border border-bn-danger-border bg-bn-surface px-2.5 py-1 text-[11.5px] text-red-500 hover:bg-red-500/10"
+										className="inline-flex items-center gap-1.5 rounded-full border border-bn-danger-border bg-bn-surface px-2.5 py-1 text-[11.5px] text-bn-danger hover:bg-bn-danger/10"
 									>
 										{id.slice(0, 8)} ×
 									</button>
@@ -774,7 +774,7 @@ function AtAllInlineToggle({
 			: "动态推送时附加 @全体";
 	return (
 		<div
-			className={`mt-0.5 ml-9 flex items-center gap-1.5 text-[11px] ${parentOn ? "text-bn-text-secondary" : "text-gray-300"}`}
+			className={`mt-0.5 ml-9 flex items-center gap-1.5 text-[11px] ${parentOn ? "text-bn-text-secondary" : "text-bn-text-disabled"}`}
 			title={parentOn ? hint : "需先开启父订阅项才能 @全体"}
 		>
 			<Toggle
@@ -827,7 +827,7 @@ function AtAllPerTargetToggle({
 	return (
 		<div className="mt-0.5 ml-9">
 			<div
-				className={`flex items-center gap-1.5 text-[11px] ${blocked ? "text-gray-300" : "text-bn-text-secondary"}`}
+				className={`flex items-center gap-1.5 text-[11px] ${blocked ? "text-bn-text-disabled" : "text-bn-text-secondary"}`}
 				title={hint}
 			>
 				<Toggle
@@ -907,7 +907,7 @@ function TargetRoutingCard({
 					onClick={onDetach}
 					aria-label="移除该推送目标"
 					title="移除该推送目标"
-					className="grid h-6 w-6 place-items-center rounded-full text-bn-text-tertiary hover:bg-red-500/10 hover:text-red-500"
+					className="grid h-6 w-6 place-items-center rounded-full text-bn-text-tertiary hover:bg-bn-danger/10 hover:text-bn-danger"
 				>
 					<Icon.close size={11} />
 				</button>

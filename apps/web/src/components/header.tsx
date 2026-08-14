@@ -401,12 +401,12 @@ export function GlassHeader() {
 							className="inline-flex items-center gap-1.5 rounded-full bg-bn-success-soft px-2.5 py-1 text-[11.5px] font-semibold text-bn-success-text"
 							title="后端服务可访问。与推送开关无关 —— 推送是否启用见各 UP 的规则设置。"
 						>
-							<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+							<span className="h-1.5 w-1.5 rounded-full bg-bn-success" />
 							服务器运行中
 						</span>
 					) : (
 						<span className="inline-flex items-center gap-1.5 rounded-full bg-bn-danger-soft px-2.5 py-1 text-[11.5px] font-semibold text-bn-danger-text">
-							<span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+							<span className="h-1.5 w-1.5 rounded-full bg-bn-danger" />
 							服务器失联
 						</span>
 					)}

@@ -68,7 +68,7 @@ function ToastCard({ item }: { item: ToastItem }) {
 					<span className="text-[12.5px] font-bold text-bn-text-primary">
 						{meta.label}
 						{item.ok ? null : (
-							<span className="ml-1.5 text-[10.5px] font-semibold text-red-500">推送失败</span>
+							<span className="ml-1.5 text-[10.5px] font-semibold text-bn-danger">推送失败</span>
 						)}
 					</span>
 					<span className="font-mono text-[10.5px] text-bn-text-tertiary">{time}</span>

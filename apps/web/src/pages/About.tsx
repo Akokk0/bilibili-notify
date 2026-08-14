@@ -335,7 +335,7 @@ function ChangelogPanel() {
 			</div>
 			<div className="max-w-none">
 				{loadError ? (
-					<div className="py-8 text-center text-[12px] text-red-500">
+					<div className="py-8 text-center text-[12px] text-bn-danger">
 						更新日志加载失败: {loadError}
 					</div>
 				) : markdown == null ? (

@@ -45,7 +45,7 @@ export function Field({ code, label, hint, required, full, children }: FieldProp
 			<div className={`pt-1 ${full ? "flex-none" : "flex-none basis-50"}`}>
 				<div className="mb-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
 					<span className="text-[12.5px] font-semibold text-bn-text-primary">{effectiveLabel}</span>
-					{required ? <span className="text-[11px] text-red-500">*</span> : null}
+					{required ? <span className="text-[11px] text-bn-danger">*</span> : null}
 					<code className="rounded bg-bn-code-bg px-1.5 py-px font-mono text-[10.5px] text-bn-text-tertiary">
 						{code}
 					</code>
@@ -403,7 +403,7 @@ export function ArrayEditor({ value, onChange, placeholder }: ArrayEditorProps) 
 					<button
 						type="button"
 						onClick={() => onChange(value.filter((_, j) => j !== i))}
-						className="grid h-7.5 w-7.5 place-items-center rounded-md border border-bn-border bg-bn-field text-bn-text-secondary hover:text-red-500"
+						className="grid h-7.5 w-7.5 place-items-center rounded-md border border-bn-border bg-bn-field text-bn-text-secondary hover:text-bn-danger"
 						aria-label="移除"
 					>
 						×
@@ -491,7 +491,7 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 						<button
 							type="button"
 							onClick={() => onChange(value.filter((_, j) => j !== i))}
-							className="grid h-7.5 w-7.5 place-items-center rounded-md border border-bn-border bg-bn-field text-bn-text-secondary hover:text-red-500"
+							className="grid h-7.5 w-7.5 place-items-center rounded-md border border-bn-border bg-bn-field text-bn-text-secondary hover:text-bn-danger"
 							aria-label="移除"
 						>
 							×

@@ -26,7 +26,7 @@ export function AlertShell(): React.ReactElement | null {
 				<button
 					type="button"
 					onClick={clear}
-					className="cursor-pointer rounded px-2 py-0.5 text-[10.5px] font-semibold text-bn-danger-text hover:bg-red-500/10"
+					className="cursor-pointer rounded px-2 py-0.5 text-[10.5px] font-semibold text-bn-danger-text hover:bg-bn-danger/10"
 				>
 					全部清除
 				</button>

@@ -347,7 +347,9 @@ function TestPushCard({
 						推送失败:{(push.error as ApiError)?.message ?? "未知错误"}
 					</div>
 				) : push.isSuccess ? (
-					<div className="mt-2 text-[11px] text-emerald-600">已送达 · {push.data.latencyMs}ms</div>
+					<div className="mt-2 text-[11px] text-bn-success-text">
+						已送达 · {push.data.latencyMs}ms
+					</div>
 				) : null}
 			</div>
 		</GlassBox>
@@ -647,13 +649,13 @@ function PreviewContentFields({
 								placeholder="1"
 							/>
 						</Field>
-						<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-emerald-800">
+						<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
 							{realDataLabel ??
 								"使用该 UP 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。"}
 						</div>
 					</>
 				) : (
-					<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-emerald-800">
+					<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
 						{kind === "live"
 							? (realDataLabel ??
 								"使用该 UP 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。")
@@ -669,7 +671,7 @@ function PreviewContentFields({
 							placeholder="留空则使用示例数据"
 						/>
 					</Field>
-					<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-emerald-800">
+					<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
 						需要后端账号已登录 B 站；填入后将真实拉取该直播间数据并渲染。留空则继续使用示例数据。
 					</div>
 				</>
@@ -692,7 +694,7 @@ function PreviewContentFields({
 							placeholder="1"
 						/>
 					</Field>
-					<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-emerald-800">
+					<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
 						需要后端账号已登录 B 站；填入后将拉取该 UP 的 space 动态列表，按 offset 选取并渲染。
 					</div>
 				</>

@@ -1068,7 +1068,7 @@ function QQSessionPicker({
 			{isLoading ? (
 				<div className="text-[11px] text-bn-text-tertiary">加载中…</div>
 			) : isError ? (
-				<div className="text-[11px] text-red-500">拉取失败(适配器是否已保存并连上网关?)</div>
+				<div className="text-[11px] text-bn-danger">拉取失败(适配器是否已保存并连上网关?)</div>
 			) : list.length === 0 ? (
 				<div className="text-[11px] leading-relaxed text-bn-text-tertiary">
 					暂无发现的{label}会话 —— 先让机器人在目标
@@ -1125,7 +1125,7 @@ function QQGuildPicker({
 				</Btn>
 			</div>
 			{isError ? (
-				<div className="text-[11px] text-red-500">拉取失败(适配器是否已保存且凭据正确?)</div>
+				<div className="text-[11px] text-bn-danger">拉取失败(适配器是否已保存且凭据正确?)</div>
 			) : !fetched ? (
 				<div className="text-[11px] text-bn-text-tertiary">点「拉取频道」从 QQ 实时枚举。</div>
 			) : guilds.length === 0 ? (
@@ -1232,7 +1232,7 @@ function DeleteModal({
 					type="button"
 					onClick={onConfirm}
 					disabled={deleting}
-					className="inline-flex h-7.5 items-center justify-center rounded-md border border-transparent bg-red-500 px-3.5 text-[13px] font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+					className="inline-flex h-7.5 items-center justify-center rounded-md border border-transparent bg-bn-danger px-3.5 text-[13px] font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{deleting ? "移除中…" : "确认移除"}
 				</button>
@@ -1772,7 +1772,7 @@ export default function Targets() {
 								</div>
 								{selectedAdapter.platform === "webhook" ? (
 									<div className="space-y-2.5">
-										<div className="rounded-[9px] border border-emerald-100 bg-bn-success-soft/70 px-3 py-2 text-[11.5px] leading-relaxed text-emerald-800">
+										<div className="rounded-[9px] border border-bn-success-border bg-bn-success-soft/70 px-3 py-2 text-[11.5px] leading-relaxed text-bn-success-text">
 											无需手动配置额外 PushTarget；订阅页会看到这个 Webhook，可直接选择并投递。
 										</div>
 										{selectedManagedWebhookTarget ? (
@@ -1905,7 +1905,7 @@ export default function Targets() {
 			{toast ? (
 				<div
 					className={`fixed bottom-4 right-4 z-400 rounded-md px-4 py-2 text-[12.5px] font-semibold text-white shadow-lg ${
-						toast.ok ? "bg-emerald-600" : "bg-red-500"
+						toast.ok ? "bg-bn-success" : "bg-bn-danger"
 					}`}
 				>
 					{toast.msg}
