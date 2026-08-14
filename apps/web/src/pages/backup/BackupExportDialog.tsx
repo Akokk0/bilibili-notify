@@ -3,6 +3,7 @@ import { Btn, CheckRow } from "../../components/atoms";
 import { ModalShell } from "../../components/dialog";
 import { Icon } from "../../components/icons";
 import { type BackupKind, type BackupSectionSelection, isValidPin } from "./backup-file";
+import { ChoiceCard, PinField } from "./dialog-bits";
 
 export interface BackupExportDialogProps {
 	onCancel: () => void;
@@ -46,13 +47,13 @@ export function BackupExportDialog({ onCancel, onExport, busy }: BackupExportDia
 			<div className="mb-3 text-base font-bold text-bn-text-primary">导出备份</div>
 
 			<div className="mb-4 grid grid-cols-2 gap-2">
-				<KindCard
+				<ChoiceCard
 					active={kind === "full"}
 					title="完整备份"
 					sub="含机密 · 用于灾备还原"
 					onClick={() => setKind("full")}
 				/>
-				<KindCard
+				<ChoiceCard
 					active={kind === "sanitized"}
 					title="脱敏导出"
 					sub="无机密 · 可存档/分享"
@@ -71,20 +72,7 @@ export function BackupExportDialog({ onCancel, onExport, busy }: BackupExportDia
 			) : null}
 
 			{kind === "full" ? (
-				<label className="mb-4 block">
-					<span className="mb-1 block text-[12px] font-semibold text-bn-text-secondary">
-						备份 PIN（6 位数字）
-					</span>
-					<input
-						type="password"
-						inputMode="numeric"
-						maxLength={6}
-						value={pin}
-						onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
-						placeholder="设置 6 位数字 PIN"
-						className="w-full rounded-md border border-bn-border bg-bn-surface px-3 py-2 text-[13px] tracking-[0.4em] text-bn-text-primary outline-none focus:border-bn-pink"
-					/>
-				</label>
+				<PinField className="mb-4" value={pin} onChange={setPin} placeholder="设置 6 位数字 PIN" />
 			) : null}
 
 			<div className="mb-1 text-[12px] font-semibold text-bn-text-secondary">备份内容</div>
@@ -105,22 +93,5 @@ export function BackupExportDialog({ onCancel, onExport, busy }: BackupExportDia
 				</Btn>
 			</div>
 		</ModalShell>
-	);
-}
-
-function KindCard(props: { active: boolean; title: string; sub: string; onClick: () => void }) {
-	return (
-		<button
-			type="button"
-			onClick={props.onClick}
-			className={`rounded-lg border px-3 py-2.5 text-left transition ${
-				props.active
-					? "border-bn-pink/60 bg-bn-pink/10"
-					: "border-bn-border bg-bn-surface hover:border-bn-pink/40"
-			}`}
-		>
-			<div className="text-[13px] font-bold text-bn-text-primary">{props.title}</div>
-			<div className="text-[11px] text-bn-text-tertiary">{props.sub}</div>
-		</button>
 	);
 }

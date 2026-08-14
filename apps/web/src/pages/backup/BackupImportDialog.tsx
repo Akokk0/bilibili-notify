@@ -2,6 +2,7 @@ import { type ChangeEvent, useState } from "react";
 import { Btn, ErrorNote } from "../../components/atoms";
 import { ModalShell } from "../../components/dialog";
 import { type ClientBackup, isValidPin, looksLikeBackup, readFileAsText } from "./backup-file";
+import { ChoiceCard, PinField } from "./dialog-bits";
 
 type Mode = "overwrite" | "merge";
 
@@ -73,13 +74,13 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 
 					<div className="mb-1 text-[12px] font-semibold text-bn-text-secondary">落地方式</div>
 					<div className="mb-3 grid grid-cols-2 gap-2">
-						<ModeCard
+						<ChoiceCard
 							active={mode === "overwrite"}
 							title="覆盖"
 							sub="回到快照 · 删多余"
 							onClick={() => setMode("overwrite")}
 						/>
-						<ModeCard
+						<ChoiceCard
 							active={mode === "merge"}
 							title="合并"
 							sub="并入现有 · 不删"
@@ -88,20 +89,12 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 					</div>
 
 					{isFull ? (
-						<label className="mb-1 block">
-							<span className="mb-1 block text-[12px] font-semibold text-bn-text-secondary">
-								备份 PIN（6 位数字）
-							</span>
-							<input
-								type="password"
-								inputMode="numeric"
-								maxLength={6}
-								value={pin}
-								onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
-								placeholder="输入 6 位数字 PIN"
-								className="w-full rounded-md border border-bn-border bg-bn-surface px-3 py-2 text-[13px] tracking-[0.4em] text-bn-text-primary outline-none focus:border-bn-pink"
-							/>
-						</label>
+						<PinField
+							className="mb-1"
+							value={pin}
+							onChange={setPin}
+							placeholder="输入 6 位数字 PIN"
+						/>
 					) : null}
 				</>
 			) : null}
@@ -115,22 +108,5 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 				</Btn>
 			</div>
 		</ModalShell>
-	);
-}
-
-function ModeCard(props: { active: boolean; title: string; sub: string; onClick: () => void }) {
-	return (
-		<button
-			type="button"
-			onClick={props.onClick}
-			className={`rounded-lg border px-3 py-2.5 text-left transition ${
-				props.active
-					? "border-bn-pink/60 bg-bn-pink/10"
-					: "border-bn-border bg-bn-surface hover:border-bn-pink/40"
-			}`}
-		>
-			<div className="text-[13px] font-bold text-bn-text-primary">{props.title}</div>
-			<div className="text-[11px] text-bn-text-tertiary">{props.sub}</div>
-		</button>
 	);
 }
