@@ -2,12 +2,13 @@ import type { PersonaKey } from "@bilibili-notify/ai";
 import {
 	AI_PROVIDERS,
 	type AIProviderId,
+	type APIFlavorId,
 	DEFAULT_AI,
 	type ThinkingLevel,
 	type WebSearchBackendId,
 } from "@bilibili-notify/internal";
 import { Schema } from "koishi";
-import { providerExtraFields } from "./provider-fields";
+import { flavorUnlocksThinking, providerExtraFields } from "./provider-fields";
 
 interface PersonaConfig {
 	/** 基础人格预设 */
@@ -61,6 +62,12 @@ export interface AIConfig {
 	 * 留空落 `custom`（不发任何方言参数，等价于这套适配上线之前的行为）。
 	 */
 	provider?: AIProviderId;
+
+	/**
+	 * 接口风味:`chat`(经典 `/chat/completions`,默认)或 `responses`(OpenAI 2025
+	 * 起的接任协议)。只在确认支持的服务商分支下显示;留空落 `chat`,老配置零迁移。
+	 */
+	apiFlavor?: APIFlavorId;
 
 	/** 开启模型的深度思考。具体发什么字段由 {@link provider} 决定。 */
 	enableThinking?: boolean;
@@ -120,6 +127,20 @@ const thinkingFields = () => ({
 		),
 });
 
+/** 「接口风味」。只出现在 `supportsResponses` 的服务商分支下(见 provider-fields)。 */
+const flavorField = () => ({
+	apiFlavor: Schema.union([
+		Schema.const("chat" as const).description("chat — /chat/completions,经典协议,默认"),
+		Schema.const("responses" as const).description(
+			"responses — /responses,OpenAI 2025 起的接任协议",
+		),
+	])
+		.default("chat")
+		.description(
+			"这家 API 用哪套协议说话～`chat` 就是经典的 /chat/completions,跟以前完全一样;`responses` 是 OpenAI 2025 年起的接任协议(DeepSeek 已生产级支持、百炼 qwen3-max 系可用、OpenRouter 还在 beta)。不确定的话留 chat 就好,女仆不会擅自换协议的 (｡･ω･｡) 小贴士:「自定义」档选了 responses 之后思考开关会亮出来——那套协议里思考是标准字段,不需要女仆翻译各家方言,OpenAI 官方接口正是这么接的哟",
+		),
+});
+
 /** 「主模型自己看得见图吗」。 */
 const visionToggleField = () => ({
 	enableVision: Schema.boolean()
@@ -144,10 +165,27 @@ const ProviderBranchSchema = Schema.union([
 		const fields = providerExtraFields(p.id);
 		return Schema.object({
 			provider: Schema.const(p.id).required(),
+			...(fields.includes("flavor") ? flavorField() : {}),
 			...(fields.includes("thinking") ? thinkingFields() : {}),
 			...(fields.includes("vision") ? visionToggleField() : {}),
 		});
 	}),
+	Schema.object({}),
+]);
+
+/**
+ * 「responses 风味解禁思考」的那层(目前只有自定义档命中)。单独一层 intersect ——
+ * 风味**选择器**住在上面 ProviderBranchSchema 的分支里,这里只按(provider, apiFlavor)
+ * 的取值补发思考两项,与 persona 那边「preset 选 custom 才多出 customBase」同一个套路。
+ */
+const FlavorThinkingUnlockSchema = Schema.union([
+	...AI_PROVIDERS.filter((p) => flavorUnlocksThinking(p.id)).map((p) =>
+		Schema.object({
+			provider: Schema.const(p.id).required(),
+			apiFlavor: Schema.const("responses" as const).required(),
+			...thinkingFields(),
+		}),
+	),
 	Schema.object({}),
 ]);
 
@@ -315,4 +353,5 @@ export const AIConfigSchema: Schema<AIConfig> = Schema.intersect([
 	// 按服务商分支的那一层。摆在 intersect 最后 —— `enabled: false` 时 provider 取值
 	// 为 undefined,没有任何具名分支匹配,整层落到那条空兜底,于是一项都不多显。
 	ProviderBranchSchema,
+	FlavorThinkingUnlockSchema,
 ]);

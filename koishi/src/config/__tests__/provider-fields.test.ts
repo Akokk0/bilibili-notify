@@ -15,20 +15,26 @@
 
 import { AI_PROVIDER_IDS } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { providerExtraFields } from "../provider-fields";
+import { flavorUnlocksThinking, providerExtraFields } from "../provider-fields";
 
 describe("providerExtraFields", () => {
 	it("自定义:不给思考两项 —— 那一档女仆什么方言参数都不发,开关摆着也是死的", () => {
-		expect(providerExtraFields("custom")).toEqual(["vision"]);
+		expect(providerExtraFields("custom")).toEqual(["flavor", "vision"]);
 	});
 
 	it("DeepSeek:不给「主模型支持看图」—— 它官方接口里一个视觉模型都没有", () => {
-		expect(providerExtraFields("deepseek")).toEqual(["thinking"]);
+		expect(providerExtraFields("deepseek")).toEqual(["flavor", "thinking"]);
 	});
 
-	it("OpenRouter / 火山 / 硅基 / 百炼:两样都有", () => {
-		for (const id of ["openrouter", "volcengine", "siliconflow", "bailian"] as const) {
+	it("火山 / 硅基:未确认有 Responses API,不露风味选项 —— 免得选出必然 404 的组合", () => {
+		for (const id of ["volcengine", "siliconflow"] as const) {
 			expect(providerExtraFields(id)).toEqual(["thinking", "vision"]);
+		}
+	});
+
+	it("OpenRouter / 百炼:三样都有", () => {
+		for (const id of ["openrouter", "bailian"] as const) {
+			expect(providerExtraFields(id)).toEqual(["flavor", "thinking", "vision"]);
 		}
 	});
 
@@ -39,7 +45,19 @@ describe("providerExtraFields", () => {
 	});
 
 	it("顺序稳定 —— 控制台里字段的先后不该随注册表改动跳动", () => {
-		expect(providerExtraFields("openrouter")).toEqual(["thinking", "vision"]);
+		expect(providerExtraFields("openrouter")).toEqual(["flavor", "thinking", "vision"]);
 		expect(providerExtraFields("volcengine")).toEqual(["thinking", "vision"]);
+	});
+});
+
+describe("flavorUnlocksThinking", () => {
+	it("自定义:responses 风味解禁思考 —— 那套协议里思考是标准字段,不再依赖方言适配", () => {
+		expect(flavorUnlocksThinking("custom")).toBe(true);
+	});
+
+	it("本来就支持思考的家不需要解锁 —— 思考两项走常规清单,别在分支里重复摆", () => {
+		for (const id of ["openrouter", "volcengine", "siliconflow", "bailian", "deepseek"] as const) {
+			expect(flavorUnlocksThinking(id)).toBe(false);
+		}
 	});
 });

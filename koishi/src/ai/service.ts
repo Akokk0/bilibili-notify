@@ -40,6 +40,7 @@ function toEngineConfig(config: AIConfig): CommentaryGeneratorConfig {
 		// 服务商只认主人**明确选过**的那一个。不按 baseURL 猜 —— 猜错就是替主人
 		// 往别家发方言参数(几乎必然 400),而落兜底档最坏只是思考开关不生效。
 		provider: config.provider ?? "custom",
+		apiFlavor: config.apiFlavor ?? "chat",
 		enableThinking: config.enableThinking ?? false,
 		thinkingLevel: config.thinkingLevel ?? "medium",
 		extraParams: config.extraParams,
