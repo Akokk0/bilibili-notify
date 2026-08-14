@@ -27,6 +27,7 @@ import { createLogsRoute } from "./routes/logs.js";
 import { createPushRoute } from "./routes/push.js";
 import { createQQRoute } from "./routes/qq.js";
 import { createSessionRoute } from "./routes/session.js";
+import { createSkinsRoute } from "./routes/skins.js";
 import { createStatsRoute } from "./routes/stats.js";
 import { createSubsRoute } from "./routes/subs.js";
 import { createTargetsRoute } from "./routes/targets.js";
@@ -34,6 +35,7 @@ import type { RouteDeps } from "./routes/types.js";
 import type { AppRuntime } from "./runtime/bootstrap.js";
 import type { StandalonePuppeteer } from "./runtime/puppeteer.js";
 import type { RoastRunOutcome } from "./runtime/roast-scheduler.js";
+import { SkinStore } from "./skins/store.js";
 
 interface BasicAuthCredentials {
 	username: string;
@@ -247,6 +249,12 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	app.route("/api/stats", statsRoute);
 	options.onStatsRoute?.(statsRoute);
 	app.route("/api/qq", createQQRoute(deps));
+	app.route(
+		"/api/skins",
+		createSkinsRoute({
+			skinStore: new SkinStore({ skinsDir: joinPath(runtime.bootstrap.dataDir, "skins") }),
+		}),
+	);
 	app.route(
 		"/api/cards",
 		createCardsRoute({

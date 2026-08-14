@@ -94,3 +94,26 @@ export interface SkinManifest {
 	/** 至少给一套;只给一套时前端应用后锁定该模式。 */
 	modes: { light?: SkinMode; dark?: SkinMode };
 }
+
+// ---- wire 形状(皮肤库 API) ----------------------------------------------
+
+export interface SkinListEntry {
+	id: string;
+	name: string;
+	author?: string;
+	description?: string;
+	/** 提供了哪几套模式;单套皮肤应用后前端锁定该模式。 */
+	modes: Array<"light" | "dark">;
+	hasWallpaper: boolean;
+}
+
+/** GET /api/skins */
+export interface SkinsListResponse {
+	list: SkinListEntry[];
+	activeId: string | null;
+}
+
+/** GET /api/skins/active(未启用皮肤时 wire 上是 { active: null })。 */
+export interface ActiveSkinResponse {
+	active: { id: string; manifest: SkinManifest } | null;
+}

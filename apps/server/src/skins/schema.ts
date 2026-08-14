@@ -53,8 +53,8 @@ function isBackground(v: string): boolean {
 const KNOWN_COLOR_KEYS = new Set(Object.keys(SKIN_COLOR_TOKEN_MAP));
 const KNOWN_MODE_KEYS = new Set(["colors", "page", "wallpaper", "glass", "fonts", "radius"]);
 
-/** 只认包内 assets 一级目录下的图片文件;路径穿越连正则都进不来。 */
-const WALLPAPER_IMAGE_RE = /^assets\/[A-Za-z0-9._-]+\.(webp|jpe?g|png)$/i;
+/** 只认包内 assets 一级目录下的图片文件;路径穿越连正则都进不来。zip 层复用同一把尺。 */
+export const WALLPAPER_IMAGE_RE = /^assets\/[A-Za-z0-9._-]+\.(webp|jpe?g|png)$/i;
 const WALLPAPER_FITS = new Set(["cover", "contain", "tile"]);
 const POSITION_RE = /^[a-z0-9%\s]{1,40}$/i;
 /** 字体名:任意语言文字/数字/空格/点/连字符;引号等标点进不来,合成层自己加引号。 */
