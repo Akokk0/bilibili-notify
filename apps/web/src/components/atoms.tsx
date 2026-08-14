@@ -296,6 +296,42 @@ export function Spinner({ size = 32, thickness = 2, className }: SpinnerProps) {
 	);
 }
 
+// ── CheckRow ────────────────────────────────────────────────────────────────
+
+export interface CheckRowProps {
+	checked: boolean;
+	onChange: (next: boolean) => void;
+	children: ReactNode;
+}
+
+/** 多选列表的选项行:粉色勾选方块 + 文本,checkbox 本体 sr-only。 */
+export function CheckRow({ checked, onChange, children }: CheckRowProps) {
+	return (
+		<label
+			className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 py-2 text-[13px] transition ${
+				checked
+					? "border-bn-pink/60 bg-bn-pink/10 font-semibold text-bn-text-primary"
+					: "border-bn-border bg-bn-surface text-bn-text-secondary hover:border-bn-pink/40 hover:bg-bn-surface-muted"
+			}`}
+		>
+			<input
+				type="checkbox"
+				checked={checked}
+				onChange={() => onChange(!checked)}
+				className="sr-only"
+			/>
+			<span
+				className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+					checked ? "border-bn-pink bg-bn-pink text-white" : "border-bn-border bg-bn-surface"
+				}`}
+			>
+				{checked ? <Icon.check size={11} /> : null}
+			</span>
+			<span className="truncate">{children}</span>
+		</label>
+	);
+}
+
 // ── ErrorNote ───────────────────────────────────────────────────────────────
 
 /**

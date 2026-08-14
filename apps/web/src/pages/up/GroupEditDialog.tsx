@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { Btn, Input } from "../../components/atoms";
+import { Btn, CheckRow, Input } from "../../components/atoms";
 import { ModalShell } from "../../components/dialog";
-import { Icon } from "../../components/icons";
 import { addGroupName, toggleGroup } from "./group-edit";
 
 export interface GroupEditDialogProps {
@@ -38,36 +37,15 @@ export function GroupEditDialog({
 				{options.length === 0 ? (
 					<div className="text-[12px] text-bn-text-tertiary">还没有任何分组,在下方新建一个吧</div>
 				) : (
-					options.map((g) => {
-						const checked = draft.includes(g);
-						return (
-							<label
-								key={g}
-								className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 py-2 text-[13px] transition ${
-									checked
-										? "border-bn-pink/60 bg-bn-pink/10 font-semibold text-bn-text-primary"
-										: "border-bn-border bg-bn-surface text-bn-text-secondary hover:border-bn-pink/40 hover:bg-bn-surface-muted"
-								}`}
-							>
-								<input
-									type="checkbox"
-									checked={checked}
-									onChange={() => setDraft((d) => toggleGroup(d, g))}
-									className="sr-only"
-								/>
-								<span
-									className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
-										checked
-											? "border-bn-pink bg-bn-pink text-white"
-											: "border-bn-border bg-bn-surface"
-									}`}
-								>
-									{checked ? <Icon.check size={11} /> : null}
-								</span>
-								<span className="truncate">{g}</span>
-							</label>
-						);
-					})
+					options.map((g) => (
+						<CheckRow
+							key={g}
+							checked={draft.includes(g)}
+							onChange={() => setDraft((d) => toggleGroup(d, g))}
+						>
+							{g}
+						</CheckRow>
+					))
 				)}
 			</div>
 			<div className="mt-3 flex gap-2">

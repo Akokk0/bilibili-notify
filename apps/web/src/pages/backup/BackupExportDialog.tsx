@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Btn } from "../../components/atoms";
+import { Btn, CheckRow } from "../../components/atoms";
 import { ModalShell } from "../../components/dialog";
 import { Icon } from "../../components/icons";
 import { type BackupKind, type BackupSectionSelection, isValidPin } from "./backup-file";
@@ -89,36 +89,11 @@ export function BackupExportDialog({ onCancel, onExport, busy }: BackupExportDia
 
 			<div className="mb-1 text-[12px] font-semibold text-bn-text-secondary">备份内容</div>
 			<div className="flex flex-col gap-1.5">
-				{SECTIONS.map(({ key, label }) => {
-					const checked = sections[key];
-					return (
-						<label
-							key={key}
-							className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 py-2 text-[13px] transition ${
-								checked
-									? "border-bn-pink/60 bg-bn-pink/10 font-semibold text-bn-text-primary"
-									: "border-bn-border bg-bn-surface text-bn-text-secondary hover:border-bn-pink/40"
-							}`}
-						>
-							<input
-								type="checkbox"
-								checked={checked}
-								onChange={() => toggle(key)}
-								className="sr-only"
-							/>
-							<span
-								className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
-									checked
-										? "border-bn-pink bg-bn-pink text-white"
-										: "border-bn-border bg-bn-surface"
-								}`}
-							>
-								{checked ? <Icon.check size={11} /> : null}
-							</span>
-							<span className="truncate">{label}</span>
-						</label>
-					);
-				})}
+				{SECTIONS.map(({ key, label }) => (
+					<CheckRow key={key} checked={sections[key]} onChange={() => toggle(key)}>
+						{label}
+					</CheckRow>
+				))}
 			</div>
 
 			<div className="mt-4 flex justify-end gap-2">
