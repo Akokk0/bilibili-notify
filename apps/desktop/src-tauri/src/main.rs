@@ -1160,14 +1160,22 @@ fn navigate_main_window(app: &AppHandle, url: &str) {
 
 fn show_status_page(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.navigate(app_status_url());
+        let _ = window.navigate(app_status_url(app));
         let _ = window.show();
         let _ = window.set_focus();
         activate_app(app);
     }
 }
 
-fn app_status_url() -> Url {
+fn app_status_url(app: &AppHandle) -> Url {
+    // 与 tauri 自身对 WebviewUrl::App 的解析同口径:dev 下前端由 vite dev
+    // server(devUrl)供页,asset 协议里没有文件,硬导 tauri://localhost 会
+    // 「asset not found: index.html」;产物构建才走 asset 协议。
+    if tauri::is_dev() {
+        if let Some(url) = app.config().build.dev_url.clone() {
+            return url;
+        }
+    }
     Url::parse("tauri://localhost/index.html").expect("valid app status url")
 }
 
