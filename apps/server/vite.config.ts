@@ -28,6 +28,7 @@ export default defineConfig({
 							/^@hono\//,
 							/^hono(\/|$)/,
 							/^cron(\/|$)/,
+							/^fflate(\/|$)/,
 							/^pino(\/|$)/,
 							/^pino-pretty(\/|$)/,
 							/^puppeteer-core(\/|$)/,
