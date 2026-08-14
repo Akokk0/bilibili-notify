@@ -8,6 +8,7 @@ import {
 	resolveSkinMode,
 	skinKillSwitchActive,
 } from "../services/skin";
+import { useSessionStore } from "../store/session";
 import { effectiveSkin, useSkinStore } from "../store/skin";
 import { useThemeStore } from "../store/theme";
 
@@ -26,15 +27,24 @@ export function SkinRoot({ children }: { children: ReactNode }) {
 	const killSwitch = useSkinStore((s) => s.killSwitch);
 	const resolved = useThemeStore((s) => s.resolved);
 
+	// /api/skins/* 在登录门之内 —— 冷启动未登录时拉必 401,得等 authed 翻 true 再拉,
+	// 否则「登录后皮肤不生效,刷新才好」。authRequired=false 的部署首个 effect 就拉。
+	const authed = useSessionStore((s) => s.authed);
+	const authRequired = useSessionStore((s) => s.authRequired);
+
 	useLayoutEffect(() => {
 		useSkinStore.getState().setKillSwitch(skinKillSwitchActive(window.location.search));
+	}, []);
+
+	useEffect(() => {
+		if (authRequired && !authed) return;
 		void api
 			.get<ActiveSkinResponse>("/api/skins/active")
 			.then((res) => useSkinStore.getState().setActive(res.active))
 			.catch(() => {
-				// 拉不到当前皮肤(未登录/网络抖动)就先默认装;登录后 AuthGate 重挂载会再拉。
+				// 网络抖动就先默认装;下次 authed 状态变化会再试。
 			});
-	}, []);
+	}, [authed, authRequired]);
 
 	useEffect(() => {
 		const root = document.documentElement;

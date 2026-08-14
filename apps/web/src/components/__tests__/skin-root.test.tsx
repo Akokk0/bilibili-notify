@@ -9,6 +9,7 @@
 import type { SkinManifest } from "@bilibili-notify/contract";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { useSessionStore } from "../../store/session";
 import { useSkinStore } from "../../store/skin";
 import { useThemeStore } from "../../store/theme";
 import { SkinRoot } from "../skin-root";
@@ -50,6 +51,7 @@ beforeEach(() => {
 	window.history.replaceState({}, "", "/");
 	H.activeResponse = { active: null };
 	useThemeStore.setState({ preference: "system", systemPrefersDark: false, resolved: "light" });
+	useSessionStore.setState({ authRequired: false, authed: false, hydrated: false, expired: false });
 	useSkinStore.setState({ active: null, preview: null, killSwitch: false, lockedTheme: null });
 	document.documentElement.removeAttribute("style");
 	delete document.documentElement.dataset.theme;
@@ -135,5 +137,21 @@ describe("SkinRoot", () => {
 		useThemeStore.getState().setPreference("dark");
 		await waitFor(() => expect(rootVar("--color-bn-pink")).toBe("#222222"));
 		expect(document.documentElement.dataset.theme).toBe("dark");
+	});
+});
+
+describe("SkinRoot × 登录门", () => {
+	it("authRequired 且未 authed → 不拉 active;登录(markAuthed)后才拉并注入", async () => {
+		useSessionStore.setState({ authRequired: true, authed: false, hydrated: true });
+		H.activeResponse = {
+			active: makeSkin({ light: { colors: { accent: "#654321" } } }),
+		};
+		renderRoots();
+		// 未登录:不该有任何注入
+		await new Promise((r) => setTimeout(r, 20));
+		expect(rootVar("--color-bn-pink")).toBe("");
+
+		useSessionStore.getState().markAuthed();
+		await waitFor(() => expect(rootVar("--color-bn-pink")).toBe("#654321"));
 	});
 });
