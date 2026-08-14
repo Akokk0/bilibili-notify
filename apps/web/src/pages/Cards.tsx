@@ -17,7 +17,7 @@ import type { PreviewResponse, TestPushResponse } from "@bilibili-notify/contrac
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Btn, Pill, Toggle } from "../components/atoms";
+import { Btn, Pill, Spinner, Toggle } from "../components/atoms";
 import { ChromeAutoDetect } from "../components/chrome-autodetect";
 import { ConfirmDialog } from "../components/dialog";
 import {
@@ -171,7 +171,7 @@ function PreviewImage({
 
 	const body = showSkeleton ? (
 		<div className="flex w-full max-w-95 flex-col items-center gap-3 rounded-xl bg-bn-surface/70 p-6">
-			<div className="bn-anim-spin h-8 w-8 rounded-full border-2 border-bn-pink/30 border-t-bn-pink" />
+			<Spinner />
 			<div className="text-[12px] font-bold text-bn-text-secondary">puppeteer 渲染中…</div>
 		</div>
 	) : query.error ? (

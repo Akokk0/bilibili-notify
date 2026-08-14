@@ -276,6 +276,26 @@ export function Input({
 	);
 }
 
+// ── Spinner ────────────────────────────────────────────────────────────────
+
+export interface SpinnerProps {
+	/** 直径(px)。 */
+	size?: number;
+	/** 环粗(px)。 */
+	thickness?: number;
+	className?: string;
+}
+
+/** 品牌色圆环加载指示:淡粉底环 + 粉色顶弧旋转。 */
+export function Spinner({ size = 32, thickness = 2, className }: SpinnerProps) {
+	return (
+		<div
+			className={`bn-anim-spin rounded-full border-solid border-bn-pink/30 border-t-bn-pink ${className ?? ""}`}
+			style={{ width: size, height: size, borderWidth: thickness }}
+		/>
+	);
+}
+
 // ── PlatformIcon ────────────────────────────────────────────────────────────
 
 const PLATFORM_META: Record<string, { color: string; label: string; icon?: IconName }> = {

@@ -6,15 +6,12 @@
  */
 
 import { useNavigate } from "react-router-dom";
-import { Btn } from "./atoms";
+import { Btn, Spinner } from "./atoms";
 
 export function ShellLoading() {
 	return (
 		<div className="flex flex-1 flex-col items-center justify-center gap-3 px-7 py-20">
-			<div
-				className="bn-anim-spin h-10 w-10 rounded-full border-4 border-bn-border-subtle"
-				style={{ borderTopColor: "#FB7299" }}
-			/>
+			<Spinner size={40} thickness={4} />
 			<div className="text-[13px] text-bn-text-tertiary">正在加载订阅列表...</div>
 			<div className="text-[11px] text-bn-text-secondary">女仆正在向 B 站打招呼 (｡･ω･｡)ﾉ</div>
 		</div>
