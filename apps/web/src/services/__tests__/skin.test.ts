@@ -12,6 +12,7 @@ import {
 	applySkinVars,
 	clearSkinCss,
 	clearSkinVars,
+	composeEffectsCss,
 	composeSkinCss,
 	composeSkinVars,
 	decorationStyle,
@@ -242,5 +243,41 @@ describe("自定义 CSS:hook 翻译与合成", () => {
 		// 空串 = 不留空标签
 		applySkinCss("");
 		expect(document.getElementById("bn-skin-css")).toBeNull();
+	});
+});
+
+describe("composeEffectsCss(动效预设 → 内置 CSS)", () => {
+	it("backgroundFlow:渐变背景才生效;配了壁纸图自动失效(放大位图会糊)", () => {
+		const flow = composeEffectsCss({ effects: { backgroundFlow: true } });
+		expect(flow).toContain("background-size:200% 200%");
+		expect(flow).toContain("bn-skin-bg-flow");
+		expect(flow).toContain("prefers-reduced-motion: no-preference");
+
+		const withWallpaper = composeEffectsCss({
+			wallpaper: { image: "assets/bg.png" },
+			effects: { backgroundFlow: true },
+		});
+		expect(withWallpaper).not.toContain("bn-skin-bg-flow");
+	});
+
+	it("glassShine:默认主强调色,可指定颜色;动画只碰 box-shadow", () => {
+		const dflt = composeEffectsCss({ effects: { glassShine: {} } });
+		expect(dflt).toContain("var(--color-bn-pink)");
+		expect(dflt).toContain("bn-skin-glass-shine");
+		const custom = composeEffectsCss({ effects: { glassShine: { color: "#39c5bb" } } });
+		expect(custom).toContain("#39c5bb");
+	});
+
+	it("粒子/光斑:输出 keyframes,且 reduce 偏好下隐藏效果层", () => {
+		const css = composeEffectsCss({
+			effects: { particles: { kind: "sakura" }, bokeh: { colors: ["#fb7299"] } },
+		});
+		expect(css).toContain("bn-skin-fall");
+		expect(css).toContain("bn-skin-drift");
+		expect(css).toMatch(/prefers-reduced-motion: reduce[^}]*\{\s*\[data-skin-effects\]/);
+	});
+
+	it("没配 effects → 空串", () => {
+		expect(composeEffectsCss({})).toBe("");
 	});
 });

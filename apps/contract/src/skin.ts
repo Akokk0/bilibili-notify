@@ -88,6 +88,25 @@ export const SKIN_CSS_HOOK_MAP = {
 
 export type SkinCssHook = keyof typeof SKIN_CSS_HOOK_MAP;
 
+/** 粒子飘落的三款造型。 */
+export const SKIN_PARTICLE_KINDS = ["sakura", "snow", "stardust"] as const;
+export type SkinParticleKind = (typeof SKIN_PARTICLE_KINDS)[number];
+
+/**
+ * 动效预设(每套 mode 独立;全部自动尊重 prefers-reduced-motion)。
+ * 有对象/为 true 即开启;字段缺省走各自默认。
+ */
+export interface SkinEffects {
+	/** 粒子飘落层。density 0.1~1(默认 0.6);color 覆盖默认粒子色。 */
+	particles?: { kind: SkinParticleKind; density?: number; color?: string };
+	/** 页面背景渐变缓慢流动(配了壁纸图时自动失效 —— 放大位图会糊)。 */
+	backgroundFlow?: boolean;
+	/** 玻璃卡辉光呼吸/游走(box-shadow 动画,不动布局)。color 默认主强调色。 */
+	glassShine?: { color?: string };
+	/** 悬浮大光斑(bokeh),1~4 团颜色。 */
+	bokeh?: { colors: string[] };
+}
+
 export const SKIN_DECORATION_ANCHORS = [
 	"top-left",
 	"top",
@@ -163,6 +182,8 @@ export interface SkinMode {
 	 * 形式存盘,注入时才翻译成真实选择器。单段 ≤64KB。
 	 */
 	css?: string;
+	/** 动效预设(粒子/渐变流动/玻璃流光/光斑),见 SkinEffects。 */
+	effects?: SkinEffects;
 }
 
 export interface SkinManifest {

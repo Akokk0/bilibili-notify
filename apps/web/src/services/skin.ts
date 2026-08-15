@@ -183,6 +183,56 @@ export function composeSkinCss(manifest: SkinManifest, mode: "light" | "dark"): 
 	return translateSkinCssHooks(parts.join("\n"));
 }
 
+/**
+ * 动效预设 → 内置 CSS。这段是**我们自己写的可信产物**(不过白名单),与皮肤
+ * 自定义 CSS 拼进同一个 style 标签。所有动画包在 prefers-reduced-motion:
+ * no-preference 里;粒子/光斑层在 reduce 偏好下整层隐藏(不动的粒子只是杂点)。
+ */
+export function composeEffectsCss(mode: SkinMode): string {
+	const fx = mode.effects;
+	if (!fx) return "";
+	const anim: string[] = [];
+
+	// 流动只对渐变背景成立:background-size 200% 会把壁纸位图放大到糊。
+	if (fx.backgroundFlow && !mode.wallpaper?.image) {
+		anim.push(
+			"body{background-size:200% 200%;animation:bn-skin-bg-flow 24s ease-in-out infinite alternate}",
+			"@keyframes bn-skin-bg-flow{from{background-position:0% 0%}to{background-position:100% 100%}}",
+		);
+	}
+
+	if (fx.glassShine) {
+		// 只动 box-shadow:不碰 position/transform,零布局回归面。
+		const c = fx.glassShine.color ?? "var(--color-bn-pink)";
+		anim.push(
+			".bn-glass{animation:bn-skin-glass-shine 7s ease-in-out infinite}",
+			`@keyframes bn-skin-glass-shine{0%,100%{box-shadow:0 -10px 28px -14px ${c}}25%{box-shadow:10px 0 28px -14px ${c}}50%{box-shadow:0 10px 28px -14px ${c}}75%{box-shadow:-10px 0 28px -14px ${c}}}`,
+		);
+	}
+
+	if (fx.particles) {
+		anim.push(
+			"@keyframes bn-skin-fall{from{transform:translateY(-8vh) translateX(0) rotate(0deg)}to{transform:translateY(108vh) translateX(7vw) rotate(320deg)}}",
+			"@keyframes bn-skin-twinkle{0%,100%{opacity:0.15}50%{opacity:1}}",
+		);
+	}
+
+	if (fx.bokeh) {
+		anim.push(
+			"@keyframes bn-skin-drift{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(6vw,-5vh) scale(1.15)}66%{transform:translate(-5vw,5vh) scale(0.9)}}",
+		);
+	}
+
+	const parts: string[] = [];
+	if (anim.length > 0) {
+		parts.push(`@media (prefers-reduced-motion: no-preference){${anim.join("")}}`);
+	}
+	if (fx.particles || fx.bokeh) {
+		parts.push("@media (prefers-reduced-motion: reduce){[data-skin-effects]{display:none}}");
+	}
+	return parts.join("\n");
+}
+
 const SKIN_STYLE_ID = "bn-skin-css";
 
 /** 皮肤 CSS 注入:单例 <style>,重复调用覆盖内容;空串等价于清除。 */

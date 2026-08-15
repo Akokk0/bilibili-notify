@@ -32,6 +32,13 @@ describe("buildSkinPrompt", () => {
 		expect(p).toMatch(/url\(/); // 明说 url() 禁用,别让 AI 白写
 		expect(p).toMatch(/@keyframes/);
 	});
+
+	it("教会 AI 动效预设:四道菜与粒子款式都点名", () => {
+		const p = buildSkinPrompt(readVar);
+		expect(p).toContain("effects");
+		for (const k of ["particles", "backgroundFlow", "glassShine", "bokeh"]) expect(p).toContain(k);
+		for (const kind of ["sakura", "snow", "stardust"]) expect(p).toContain(kind);
+	});
 });
 
 describe("makeSkinZip", () => {

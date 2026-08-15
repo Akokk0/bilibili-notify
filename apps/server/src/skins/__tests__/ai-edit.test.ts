@@ -29,6 +29,12 @@ describe("buildSkinAiSystemPrompt", () => {
 		expect(p).toMatch(/只输出|仅输出/);
 	});
 
+	it("动效预设四道菜与粒子款式都点名", () => {
+		const p = buildSkinAiSystemPrompt(ASSETS);
+		for (const k of ["particles", "backgroundFlow", "glassShine", "bokeh"]) expect(p).toContain(k);
+		for (const kind of ["sakura", "snow", "stardust"]) expect(p).toContain(kind);
+	});
+
 	it("包里没有图时明说别引用图片字段", () => {
 		expect(buildSkinAiSystemPrompt([])).toMatch(/没有.*图片|无.*图片/);
 	});

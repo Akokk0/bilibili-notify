@@ -433,3 +433,46 @@ describe("parseSkinManifest / 自定义 CSS(清洗层接入)", () => {
 		).toBe(false);
 	});
 });
+
+describe("parseSkinManifest / effects(动效预设)", () => {
+	function withEffects(effects: unknown) {
+		return { schemaVersion: 1, name: "t", modes: { light: { effects } } };
+	}
+
+	it("四道全开的合法 effects → 原样收下(density/color 校验过)", () => {
+		const r = parseSkinManifest(
+			withEffects({
+				particles: { kind: "sakura", density: 0.8, color: "#ffb7c5" },
+				backgroundFlow: true,
+				glassShine: { color: "#39c5bb" },
+				bokeh: { colors: ["#fb7299", "rgba(0,174,236,0.5)"] },
+			}),
+		);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		const fx = r.skin.modes.light?.effects;
+		expect(fx?.particles).toEqual({ kind: "sakura", density: 0.8, color: "#ffb7c5" });
+		expect(fx?.backgroundFlow).toBe(true);
+		expect(fx?.glassShine).toEqual({ color: "#39c5bb" });
+		expect(fx?.bokeh?.colors).toHaveLength(2);
+	});
+
+	it("非法值逐项拒绝:未知 kind / density 越界 / bokeh 超 4 团 / 颜色带 url(", () => {
+		expect(parseSkinManifest(withEffects({ particles: { kind: "rain" } })).ok).toBe(false);
+		expect(parseSkinManifest(withEffects({ particles: { kind: "snow", density: 2 } })).ok).toBe(
+			false,
+		);
+		expect(
+			parseSkinManifest(withEffects({ bokeh: { colors: ["#1", "#2", "#3", "#4", "#5"] } })).ok,
+		).toBe(false);
+		expect(parseSkinManifest(withEffects({ glassShine: { color: "url(evil)" } })).ok).toBe(false);
+	});
+
+	it("空 effects 对象 → 字段消失;未知子键告警忽略", () => {
+		const r = parseSkinManifest(withEffects({ future: 1 }));
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.skin.modes.light?.effects).toBeUndefined();
+		expect(r.warnings.join()).toContain("future");
+	});
+});

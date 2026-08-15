@@ -164,6 +164,49 @@ describe("SkinRoot / 自定义 CSS 注入", () => {
 	});
 });
 
+describe("SkinRoot / 动效预设层", () => {
+	it("particles+bokeh → 渲染穿透点击的效果层;effects CSS 拼进 style 标签", async () => {
+		H.activeResponse = {
+			active: makeSkin({
+				light: {
+					effects: {
+						particles: { kind: "sakura", density: 0.5 },
+						bokeh: { colors: ["#fb7299", "#00aeec"] },
+						backgroundFlow: true,
+					},
+				},
+			}),
+		};
+		const { container } = renderRoots();
+		await waitFor(() => {
+			const layer = container.querySelector("[data-skin-effects]") as HTMLElement | null;
+			expect(layer).toBeTruthy();
+			expect(layer?.className).toContain("pointer-events-none");
+		});
+		// 粒子:density 0.5 → 20 枚;光斑:2 团
+		const layer = container.querySelector("[data-skin-effects]") as HTMLElement;
+		expect(layer.querySelectorAll("[data-skin-particle]")).toHaveLength(20);
+		expect(layer.querySelectorAll("[data-skin-bokeh]")).toHaveLength(2);
+		// 动效 CSS 同一拍进了 style 标签
+		const css = document.getElementById("bn-skin-css")?.textContent ?? "";
+		expect(css).toContain("bn-skin-bg-flow");
+		expect(css).toContain("bn-skin-fall");
+	});
+
+	it("只有 glassShine(无粒子/光斑)→ 不渲染效果层,但 CSS 在", async () => {
+		H.activeResponse = {
+			active: makeSkin({ light: { effects: { glassShine: {} } } }),
+		};
+		const { container } = renderRoots();
+		await waitFor(() =>
+			expect(document.getElementById("bn-skin-css")?.textContent ?? "").toContain(
+				"bn-skin-glass-shine",
+			),
+		);
+		expect(container.querySelector("[data-skin-effects]")).toBeNull();
+	});
+});
+
 describe("SkinRoot × 登录门", () => {
 	it("authRequired 且未 authed → 不拉 active;登录(markAuthed)后才拉并注入", async () => {
 		useSessionStore.setState({ authRequired: true, authed: false, hydrated: true });

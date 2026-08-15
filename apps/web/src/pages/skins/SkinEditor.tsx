@@ -2,11 +2,13 @@ import {
 	SKIN_DECORATION_ANCHORS,
 	type SkinAiEditResponse,
 	type SkinDecoration,
+	type SkinEffects,
 	type SkinManifest,
 	type SkinManifestUpdateResponse,
 	type SkinMode,
+	type SkinParticleKind,
 } from "@bilibili-notify/contract";
-import { Btn, ConfirmDialog, DrawerShell, ErrorNote } from "@bilibili-notify/ui";
+import { Btn, ConfirmDialog, DrawerShell, ErrorNote, Toggle } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { api } from "../../services/api";
@@ -59,6 +61,13 @@ export function SkinEditor(props: {
 	const [error, setError] = useState<string | null>(null);
 	const [aiInstruction, setAiInstruction] = useState("");
 	const [aiWarnings, setAiWarnings] = useState<string[]>([]);
+	// 光斑颜色框存原始文本(受控地 join 回去会吃掉正在输入的逗号),draft 只收解析产物;
+	// 换模式/AI 整份替换 draft 时手动回灌。
+	const [bokehText, setBokehText] = useState(() =>
+		(manifest.modes[manifest.modes.light ? "light" : "dark"]?.effects?.bokeh?.colors ?? []).join(
+			", ",
+		),
+	);
 	const dirty = draft !== manifest;
 
 	// 挂载即接管:试穿浮条让位;卸载时归还通道并清预览(未保存的改动随之还原)。
@@ -97,6 +106,7 @@ export function SkinEditor(props: {
 		onSuccess: (res) => {
 			if (!res.ok) return; // 4xx/5xx 走 onError;这里只剩 ok 形状
 			setDraft(res.manifest);
+			setBokehText((res.manifest.modes[modeKey]?.effects?.bokeh?.colors ?? []).join(", "));
 			setAiWarnings(res.warnings);
 			setAiInstruction("");
 			setError(null);
@@ -122,7 +132,13 @@ export function SkinEditor(props: {
 	const decorations = mode.decorations ?? [];
 	// const 绑定让 TS 在 JSX 三元分支里完成收窄,省掉一串非空断言。
 	const banner = mode.banner;
+	const effects = mode.effects ?? {};
 	const missing = missingModeOf(draft);
+
+	/** 动效字段:patch 值为 undefined 即删该道;全关后 effects 整个消失。 */
+	function setEffects(patch: Partial<SkinEffects>): void {
+		setSection("effects", cleanSection({ ...effects, ...patch }));
+	}
 
 	function setDecorations(next: SkinDecoration[]): void {
 		setSection("decorations", next.length > 0 ? next : undefined);
@@ -178,7 +194,10 @@ export function SkinEditor(props: {
 							<button
 								key={k}
 								type="button"
-								onClick={() => setModeKey(k)}
+								onClick={() => {
+									setModeKey(k);
+									setBokehText((draft.modes[k]?.effects?.bokeh?.colors ?? []).join(", "));
+								}}
 								className={`rounded-bn-pill px-3 py-1 text-[12px] font-semibold transition ${
 									modeKey === k
 										? "bg-bn-pink text-white"
@@ -488,6 +507,101 @@ export function SkinEditor(props: {
 					{assets.length === 0 ? (
 						<p className="text-[11px] text-bn-text-tertiary">包里没有图片资产,加图要重新组包上传</p>
 					) : null}
+				</Fold>
+
+				<Fold title="动效">
+					<SelectField
+						label="粒子飘落"
+						value={effects.particles?.kind ?? ""}
+						onChange={(v) =>
+							setEffects({
+								particles:
+									v === ""
+										? undefined
+										: { ...(effects.particles ?? {}), kind: v as SkinParticleKind },
+							})
+						}
+						options={[
+							{ value: "", label: "关闭" },
+							{ value: "sakura", label: "樱花" },
+							{ value: "snow", label: "雪花" },
+							{ value: "stardust", label: "星尘" },
+						]}
+					/>
+					{effects.particles ? (
+						<>
+							<RangeField
+								label="粒子密度"
+								min={0.1}
+								max={1}
+								step={0.05}
+								value={effects.particles.density}
+								fallback={0.6}
+								onChange={(v) => {
+									const p = { ...effects.particles, kind: effects.particles?.kind ?? "sakura" };
+									if (v === undefined) delete p.density;
+									else p.density = v;
+									setEffects({ particles: p });
+								}}
+							/>
+							<ColorField
+								label="粒子颜色"
+								value={effects.particles.color}
+								onChange={(v) => {
+									const p = { ...effects.particles, kind: effects.particles?.kind ?? "sakura" };
+									if (v === "") delete p.color;
+									else p.color = v;
+									setEffects({ particles: p });
+								}}
+							/>
+						</>
+					) : null}
+					<FieldRow label="渐变流动">
+						<Toggle
+							value={Boolean(effects.backgroundFlow)}
+							onChange={(b) => setEffects({ backgroundFlow: b ? true : undefined })}
+							ariaLabel="渐变流动"
+							size="sm"
+						/>
+					</FieldRow>
+					{effects.backgroundFlow && wp.image ? (
+						<p className="text-[11px] text-bn-text-tertiary">
+							配了壁纸图时流动不生效(放大位图会糊)
+						</p>
+					) : null}
+					<FieldRow label="玻璃流光">
+						<Toggle
+							value={Boolean(effects.glassShine)}
+							onChange={(b) => setEffects({ glassShine: b ? {} : undefined })}
+							ariaLabel="玻璃流光"
+							size="sm"
+						/>
+					</FieldRow>
+					{effects.glassShine ? (
+						<ColorField
+							label="流光颜色"
+							value={effects.glassShine.color}
+							onChange={(v) => setEffects({ glassShine: v === "" ? {} : { color: v } })}
+						/>
+					) : null}
+					<TextField
+						label="光斑颜色"
+						mono
+						value={bokehText}
+						placeholder="逗号分隔 1~4 个颜色,留空关闭"
+						onChange={(v) => {
+							setBokehText(v);
+							const colors = v
+								.split(",")
+								.map((s) => s.trim())
+								.filter(Boolean)
+								.slice(0, 4);
+							setEffects({ bokeh: colors.length > 0 ? { colors } : undefined });
+						}}
+					/>
+					<p className="text-[11px] leading-4 text-bn-text-tertiary">
+						所有动效自动尊重系统「减少动态效果」设置。
+					</p>
 				</Fold>
 
 				<Fold title="自定义 CSS">

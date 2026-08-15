@@ -10,11 +10,14 @@
 import {
 	SKIN_COLOR_TOKEN_MAP,
 	SKIN_DECORATION_ANCHORS,
+	SKIN_PARTICLE_KINDS,
 	SKIN_SCHEMA_VERSION,
 	SKIN_TEXT_SLOTS,
 	type SkinDecoration,
+	type SkinEffects,
 	type SkinManifest,
 	type SkinMode,
+	type SkinParticleKind,
 } from "@bilibili-notify/contract";
 import { z } from "zod";
 import { sanitizeSkinCss } from "./css-sanitizer.js";
@@ -66,7 +69,10 @@ const KNOWN_MODE_KEYS = new Set([
 	"shadows",
 	"banner",
 	"css",
+	"effects",
 ]);
+const PARTICLE_KINDS = new Set<string>(SKIN_PARTICLE_KINDS);
+const MAX_BOKEH_COLORS = 4;
 const DECORATION_ANCHORS = new Set<string>(SKIN_DECORATION_ANCHORS);
 const MAX_DECORATIONS = 6;
 /** 阴影语法:与渐变同一把安全尺(数字/px/颜色函数/逗号),再叠 FORBIDDEN 黑名单。 */
@@ -378,6 +384,73 @@ function parseMode(
 	if (raw.css !== undefined) {
 		const css = parseCssField(raw.css, `${path}.css`, errors, warnings);
 		if (css !== undefined) mode.css = css;
+	}
+
+	if (raw.effects !== undefined) {
+		const fx = asRecord(raw.effects);
+		if (!fx) {
+			errors.push(`${path}.effects: 必须是对象`);
+		} else {
+			const out: SkinEffects = {};
+
+			if (fx.particles !== undefined) {
+				const p = asRecord(fx.particles);
+				if (!p || typeof p.kind !== "string" || !PARTICLE_KINDS.has(p.kind)) {
+					errors.push(`${path}.effects.particles.kind: 只能是 sakura / snow / stardust`);
+				} else if (p.density !== undefined && !numberIn(p.density, 0.1, 1)) {
+					errors.push(`${path}.effects.particles.density: 必须是 0.1~1 的数字`);
+				} else if (p.color !== undefined && (typeof p.color !== "string" || !isColor(p.color))) {
+					errors.push(`${path}.effects.particles.color: 不是合法颜色值`);
+				} else {
+					out.particles = {
+						kind: p.kind as SkinParticleKind,
+						...(p.density !== undefined ? { density: p.density as number } : {}),
+						...(p.color !== undefined ? { color: (p.color as string).trim() } : {}),
+					};
+				}
+			}
+
+			if (fx.backgroundFlow !== undefined) {
+				if (typeof fx.backgroundFlow !== "boolean") {
+					errors.push(`${path}.effects.backgroundFlow: 必须是布尔值`);
+				} else if (fx.backgroundFlow) {
+					out.backgroundFlow = true;
+				}
+			}
+
+			if (fx.glassShine !== undefined) {
+				const g = asRecord(fx.glassShine);
+				if (!g) {
+					errors.push(`${path}.effects.glassShine: 必须是对象(可为空对象)`);
+				} else if (g.color !== undefined && (typeof g.color !== "string" || !isColor(g.color))) {
+					errors.push(`${path}.effects.glassShine.color: 不是合法颜色值`);
+				} else {
+					out.glassShine = g.color !== undefined ? { color: (g.color as string).trim() } : {};
+				}
+			}
+
+			if (fx.bokeh !== undefined) {
+				const b = asRecord(fx.bokeh);
+				if (
+					!b ||
+					!Array.isArray(b.colors) ||
+					b.colors.length === 0 ||
+					b.colors.length > MAX_BOKEH_COLORS ||
+					!b.colors.every((c) => typeof c === "string" && isColor(c))
+				) {
+					errors.push(`${path}.effects.bokeh.colors: 必须是 1~${MAX_BOKEH_COLORS} 个合法颜色`);
+				} else {
+					out.bokeh = { colors: b.colors.map((c) => (c as string).trim()) };
+				}
+			}
+
+			for (const key of Object.keys(fx)) {
+				if (!["particles", "backgroundFlow", "glassShine", "bokeh"].includes(key)) {
+					warnings.push(`${path}.effects.${key}: 不认识的字段,已忽略`);
+				}
+			}
+			if (Object.keys(out).length > 0) mode.effects = out;
+		}
 	}
 
 	for (const key of Object.keys(raw)) {
