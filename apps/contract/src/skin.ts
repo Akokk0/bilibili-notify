@@ -55,6 +55,39 @@ export type SkinWallpaperFit = "cover" | "contain" | "tile";
 export const SKIN_TEXT_SLOTS = ["headerTitle", "chatPlaceholder"] as const;
 export type SkinTextSlot = (typeof SKIN_TEXT_SLOTS)[number];
 
+/**
+ * 皮肤 CSS 的语义挂点(hook)→ 真实选择器映射。与 SKIN_COLOR_TOKEN_MAP 同哲学:
+ * 左侧 hook 名是对外承诺的公开 API(只增不改,皮肤 CSS 里写 `[data-bn="<hook>"]`),
+ * 右侧真实选择器是实现细节 —— 清洗层(server)只验 hook 合法性并按 hook 形式存盘,
+ * **翻译发生在注入时**(web 合成层),所以内部重构改这张表即可,存量皮肤跟着走。
+ *
+ * `~=` 匹配:一个元素可以同时挂多个 hook(`data-bn="btn btn-primary"`)。
+ */
+export const SKIN_CSS_HOOK_MAP = {
+	/** 整页(壁纸层之上、所有内容之下的根;粒子/氛围层挂它的伪元素)。 */
+	page: "body",
+	/** 所有轻玻璃卡片。 */
+	glass: ".bn-glass",
+	/** 强玻璃面(弹窗、浮条、抽屉)。 */
+	"glass-strong": ".bn-glass-strong",
+	/** 所有按钮。 */
+	btn: '[data-bn~="btn"]',
+	/** 主(粉色实底)按钮。 */
+	"btn-primary": '[data-bn~="btn-primary"]',
+	/** 单行输入框。 */
+	input: '[data-bn~="input"]',
+	/** 顶栏。 */
+	header: '[data-bn~="header"]',
+	/** 页面级导航条(tab 条 / 分区导航)。 */
+	nav: '[data-bn~="nav"]',
+	/** 圆头像。 */
+	avatar: '[data-bn~="avatar"]',
+	/** 弹窗卡片本体。 */
+	modal: '[data-bn~="modal"]',
+} as const;
+
+export type SkinCssHook = keyof typeof SKIN_CSS_HOOK_MAP;
+
 export const SKIN_DECORATION_ANCHORS = [
 	"top-left",
 	"top",
@@ -124,6 +157,12 @@ export interface SkinMode {
 		fit?: "cover" | "contain";
 		position?: string;
 	};
+	/**
+	 * 本模式追加的自定义 CSS(叠在顶层 css 之后)。选择器只准引用
+	 * SKIN_CSS_HOOK_MAP 的 hook,属性走视觉白名单 —— 服务端清洗后按 hook
+	 * 形式存盘,注入时才翻译成真实选择器。单段 ≤64KB。
+	 */
+	css?: string;
 }
 
 export interface SkinManifest {
@@ -135,6 +174,8 @@ export interface SkinManifest {
 	modes: { light?: SkinMode; dark?: SkinMode };
 	/** 主题文案槽(跨明暗共用),槽位白名单见 SKIN_TEXT_SLOTS。 */
 	texts?: Partial<Record<SkinTextSlot, string>>;
+	/** 明暗共用的自定义 CSS;语法与约束同 SkinMode.css,mode 级的追加在它之后。 */
+	css?: string;
 }
 
 // ---- wire 形状(皮肤库 API) ----------------------------------------------

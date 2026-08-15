@@ -17,6 +17,7 @@ import {
 	type SkinMode,
 } from "@bilibili-notify/contract";
 import { z } from "zod";
+import { sanitizeSkinCss } from "./css-sanitizer.js";
 
 export type ParseSkinResult =
 	| { ok: true; skin: SkinManifest; warnings: string[] }
@@ -64,6 +65,7 @@ const KNOWN_MODE_KEYS = new Set([
 	"decorations",
 	"shadows",
 	"banner",
+	"css",
 ]);
 const DECORATION_ANCHORS = new Set<string>(SKIN_DECORATION_ANCHORS);
 const MAX_DECORATIONS = 6;
@@ -76,6 +78,29 @@ const WALLPAPER_FITS = new Set(["cover", "contain", "tile"]);
 const POSITION_RE = /^[a-z0-9%\s]{1,40}$/i;
 /** 字体名:任意语言文字/数字/空格/点/连字符;引号等标点进不来,合成层自己加引号。 */
 const FONT_NAME_RE = /^[\p{L}\p{N}\s._-]{1,50}$/u;
+
+/**
+ * css 字段的统一入口:清洗后存产物,warnings 挂 path 前缀透传;
+ * 清洗后为空 = 与没写同构(不留空串字段)。
+ */
+function parseCssField(
+	raw: unknown,
+	path: string,
+	errors: string[],
+	warnings: string[],
+): string | undefined {
+	if (typeof raw !== "string") {
+		errors.push(`${path}: 必须是 CSS 字符串`);
+		return undefined;
+	}
+	const res = sanitizeSkinCss(raw);
+	if (!res.ok) {
+		errors.push(...res.errors.map((e) => `${path}: ${e}`));
+		return undefined;
+	}
+	warnings.push(...res.warnings.map((w) => `${path}: ${w}`));
+	return res.css !== "" ? res.css : undefined;
+}
 
 function numberIn(v: unknown, min: number, max: number): v is number {
 	return typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
@@ -350,6 +375,11 @@ function parseMode(
 		}
 	}
 
+	if (raw.css !== undefined) {
+		const css = parseCssField(raw.css, `${path}.css`, errors, warnings);
+		if (css !== undefined) mode.css = css;
+	}
+
 	for (const key of Object.keys(raw)) {
 		if (!KNOWN_MODE_KEYS.has(key)) warnings.push(`${path}.${key}: 不认识的字段,已忽略`);
 	}
@@ -392,7 +422,15 @@ export function parseSkinManifest(input: unknown): ParseSkinResult {
 
 	const errors: string[] = [];
 	const warnings: string[] = [];
-	const KNOWN_TOP_KEYS = ["schemaVersion", "name", "author", "description", "modes", "texts"];
+	const KNOWN_TOP_KEYS = [
+		"schemaVersion",
+		"name",
+		"author",
+		"description",
+		"modes",
+		"texts",
+		"css",
+	];
 	for (const key of Object.keys(input)) {
 		if (!KNOWN_TOP_KEYS.includes(key)) warnings.push(`${key}: 不认识的字段,已忽略`);
 	}
@@ -420,6 +458,10 @@ export function parseSkinManifest(input: unknown): ParseSkinResult {
 		}
 	}
 
+	let css: string | undefined;
+	const rawCss = (input as Record<string, unknown>).css;
+	if (rawCss !== undefined) css = parseCssField(rawCss, "css", errors, warnings);
+
 	const modes: SkinManifest["modes"] = {};
 	if (raw.modes.light) modes.light = parseMode(raw.modes.light, "modes.light", errors, warnings);
 	if (raw.modes.dark) modes.dark = parseMode(raw.modes.dark, "modes.dark", errors, warnings);
@@ -432,6 +474,7 @@ export function parseSkinManifest(input: unknown): ParseSkinResult {
 		...(raw.description !== undefined ? { description: raw.description } : {}),
 		modes,
 		...(texts !== undefined ? { texts } : {}),
+		...(css !== undefined ? { css } : {}),
 	};
 	return { ok: true, skin, warnings };
 }

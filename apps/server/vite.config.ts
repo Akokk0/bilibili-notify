@@ -28,6 +28,7 @@ export default defineConfig({
 							/^@hono\//,
 							/^hono(\/|$)/,
 							/^cron(\/|$)/,
+							/^css-tree(\/|$)/,
 							/^fflate(\/|$)/,
 							/^pino(\/|$)/,
 							/^pino-pretty(\/|$)/,

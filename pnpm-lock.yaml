@@ -130,6 +130,9 @@ importers:
       cron:
         specifier: ^3.1.7
         version: 3.5.0
+      css-tree:
+        specifier: ^3.2.1
+        version: 3.2.1
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
@@ -155,6 +158,9 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@types/css-tree':
+        specifier: ^3.2.0
+        version: 3.2.0
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
@@ -2484,6 +2490,9 @@ packages:
 
   '@types/cookies@0.9.2':
     resolution: {integrity: sha512-1AvkDdZM2dbyFybL4fxpuNCaWyv//0AwsuUk2DWeXyM1/5ZKm6W3z6mQi24RZ4l2ucY+bkSHzbDVpySqPGuV8A==}
+
+  '@types/css-tree@3.2.0':
+    resolution: {integrity: sha512-J5KXmk6BFIepOT7280FdFyNs4c5fh0Uee0otjKEvzchrRs38Ii9qminqc4ds0L19X8Zd/rT+brR9jkBthygjWw==}
 
   '@types/debug@4.1.13':
     resolution: {integrity: sha512-KSVgmQmzMwPlmtljOomayoR89W4FynCAi3E8PPs7vmDVPe84hT+vGPKkJfThkmXs0x0jAaa9U8uW8bbfyS2fWw==}
@@ -7327,6 +7336,8 @@ snapshots:
       '@types/express': 5.0.6
       '@types/keygrip': 1.0.6
       '@types/node': 22.19.18
+
+  '@types/css-tree@3.2.0': {}
 
   '@types/debug@4.1.13':
     dependencies:

@@ -389,3 +389,47 @@ describe("parseSkinManifest / texts(主题文案槽,manifest 顶层)", () => {
 		expect(long.ok).toBe(false);
 	});
 });
+
+describe("parseSkinManifest / 自定义 CSS(清洗层接入)", () => {
+	it("mode.css 与顶层 css 都过清洗,存的是清洗后的产物,warnings 透传", () => {
+		const r = parseSkinManifest({
+			schemaVersion: 1,
+			name: "t",
+			css: `[data-bn="glass"] { border-width: 2px; } div { color: red; }`,
+			modes: {
+				light: { css: `[data-bn="btn"] { transform: rotate(-1deg); display: none; }` },
+			},
+		});
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.skin.css).toContain("border-width:2px");
+		expect(r.skin.css).not.toContain("color");
+		expect(r.skin.modes.light?.css).toContain("transform:");
+		expect(r.skin.modes.light?.css).not.toContain("display");
+		// div 整条 + display 一条 = 两条告警
+		expect(r.warnings).toHaveLength(2);
+	});
+
+	it("清洗后为空串 → css 字段整个消失(与没写同构)", () => {
+		const r = parseSkinManifest({
+			schemaVersion: 1,
+			name: "t",
+			css: "div { color: red; }",
+			modes: { light: { css: "  " } },
+		});
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.skin.css).toBeUndefined();
+		expect(r.skin.modes.light?.css).toBeUndefined();
+	});
+
+	it("css 不是字符串 / 超 64KB → 拒绝", () => {
+		expect(
+			parseSkinManifest({ schemaVersion: 1, name: "t", css: 1, modes: { light: {} } }).ok,
+		).toBe(false);
+		const big = `[data-bn="glass"]{border-width:1px}`.repeat(3000);
+		expect(
+			parseSkinManifest({ schemaVersion: 1, name: "t", css: big, modes: { light: {} } }).ok,
+		).toBe(false);
+	});
+});
