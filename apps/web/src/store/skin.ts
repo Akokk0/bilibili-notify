@@ -16,10 +16,13 @@ export interface SkinState {
 	killSwitch: boolean;
 	/** 单套皮肤锁定的模式;ThemeRoot 以它覆盖用户偏好,主题切换钮据此置灰。 */
 	lockedTheme: ResolvedTheme | null;
+	/** 编辑器开着:它借 preview 通道做实时预览,试穿浮条(SkinPreviewBar)让位。 */
+	editing: boolean;
 	setActive: (active: ActiveSkin | null) => void;
 	setPreview: (preview: ActiveSkin | null) => void;
 	setKillSwitch: (killSwitch: boolean) => void;
 	setLockedTheme: (lockedTheme: ResolvedTheme | null) => void;
+	setEditing: (editing: boolean) => void;
 }
 
 export const useSkinStore = create<SkinState>((set) => ({
@@ -27,10 +30,12 @@ export const useSkinStore = create<SkinState>((set) => ({
 	preview: null,
 	killSwitch: false,
 	lockedTheme: null,
+	editing: false,
 	setActive: (active) => set({ active }),
 	setPreview: (preview) => set({ preview }),
 	setKillSwitch: (killSwitch) => set({ killSwitch }),
 	setLockedTheme: (lockedTheme) => set({ lockedTheme }),
+	setEditing: (editing) => set({ editing }),
 }));
 
 /** 此刻真正生效的皮肤:preview > killSwitch(关皮肤)> active。 */

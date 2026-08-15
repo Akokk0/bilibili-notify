@@ -211,6 +211,16 @@ body {
 	animation: bn-page-in 0.3s ease-out;
 }
 
+/* 抽屉(DrawerShell)的滑入:同 bn-page-in 的纪律,纯位移保磨砂。 */
+@keyframes bn-drawer-in {
+	from {
+		transform: translateX(28px);
+	}
+}
+.bn-anim-drawer-in {
+	animation: bn-drawer-in 0.25s ease-out;
+}
+
 /* 隐藏滚动条但保留滚动行为(容器内滚动、不想露出滚动条破坏卡片视觉时用)。 */
 .bn-no-scrollbar {
 	scrollbar-width: none;

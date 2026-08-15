@@ -15,7 +15,7 @@
 
 ## tokens(src/theme.css)
 
-`@theme` 品牌调色板(`--color-bn-*` → `bg-bn-pink` 等 utilities)、明暗双套玻璃/页面变量(`--bn-glass-*` / `--bn-page-bg`,暗色走 `[data-theme="dark"]`)、`html/body` 基础皮肤、`.bn-glass` / `.bn-glass-strong` 玻璃面、`bn-pulse|spin|fade-in|page-in` 动效(页面根一律 `page-in`——纯位移;`fade-in` 这类 opacity 动画挂在玻璃卡祖先上会瞬时杀掉磨砂)、`.bn-no-scrollbar`。品牌色的另一份正本在 `packages/image/src/styles.ts`(SSR 渲染器),改色要两边同步。
+`@theme` 品牌调色板(`--color-bn-*` → `bg-bn-pink` 等 utilities)、明暗双套玻璃/页面变量(`--bn-glass-*` / `--bn-page-bg`,暗色走 `[data-theme="dark"]`)、`html/body` 基础皮肤、`.bn-glass` / `.bn-glass-strong` 玻璃面、`bn-pulse|spin|fade-in|page-in|drawer-in` 动效(页面根一律 `page-in`、抽屉用 `drawer-in`——都是纯位移;`fade-in` 这类 opacity 动画挂在玻璃卡祖先上会瞬时杀掉磨砂)、`.bn-no-scrollbar`。品牌色的另一份正本在 `packages/image/src/styles.ts`(SSR 渲染器),改色要两边同步。
 
 ## 组件清单
 
@@ -51,6 +51,7 @@
 | --- | --- |
 | `ModalShell` | 弹窗骨架:portal 到 body、遮罩 + 居中卡、ESC/点遮罩关闭;body padding 可覆盖 |
 | `ConfirmDialog` | ModalShell 之上的「确认/取消」轻对话框,`danger` 换红确认钮 |
+| `DrawerShell` | 右侧滑出的**非模态**玻璃抽屉:portal 到 body、全高内滚、ESC 关闭、无遮罩(页面保持可见可交互,实时调参工作台用) |
 
 ### 导航
 

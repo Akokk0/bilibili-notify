@@ -10,6 +10,8 @@ import { useSkinStore } from "../store/skin";
  */
 export function SkinPreviewBar() {
 	const preview = useSkinStore((s) => s.preview);
+	// 编辑器开着时 preview 是它的实时画布,「应用/取消」由编辑器自己的「保存/取消」承接。
+	const editing = useSkinStore((s) => s.editing);
 	const qc = useQueryClient();
 	const [error, setError] = useState<string | null>(null);
 
@@ -28,7 +30,7 @@ export function SkinPreviewBar() {
 		onError: (e) => setError(String((e as Error).message)),
 	});
 
-	if (!preview) return null;
+	if (!preview || editing) return null;
 	return (
 		<div className="fixed inset-x-0 top-3 z-500 flex justify-center px-4">
 			<div className="bn-glass-strong flex items-center gap-3 rounded-bn-pill px-4 py-2 shadow-bn-elev">

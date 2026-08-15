@@ -36,7 +36,13 @@ function renderBar() {
 
 beforeEach(() => {
 	H.putCalls = [];
-	useSkinStore.setState({ active: null, preview: null, killSwitch: false, lockedTheme: null });
+	useSkinStore.setState({
+		active: null,
+		preview: null,
+		killSwitch: false,
+		lockedTheme: null,
+		editing: false,
+	});
 });
 
 afterEach(cleanup);
@@ -54,6 +60,13 @@ describe("SkinPreviewBar", () => {
 		fireEvent.click(screen.getByText("取消"));
 		expect(useSkinStore.getState().preview).toBeNull();
 		expect(H.putCalls).toEqual([]);
+	});
+
+	it("编辑器占用 preview 通道时(editing)→ 浮条让位不渲染", () => {
+		const { container } = renderBar();
+		useSkinStore.getState().setEditing(true);
+		useSkinStore.getState().setPreview({ id: "p1", manifest });
+		expect(container.firstChild).toBeNull();
 	});
 
 	it("点「应用」→ PUT {id};preview 转正成 active 并清空", async () => {

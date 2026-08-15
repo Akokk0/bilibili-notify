@@ -36,7 +36,7 @@ vi.mock("../../../services/api", () => ({
 	api: {
 		get: vi.fn(async (path: string) => {
 			if (path === "/api/skins") return H.list;
-			if (path === "/api/skins/s1/manifest") return { manifest: H.manifest };
+			if (path === "/api/skins/s1/manifest") return { manifest: H.manifest, assets: [] };
 			throw new Error(`unexpected GET ${path}`);
 		}),
 		put: vi.fn(async (_path: string, body: unknown) => {
@@ -60,7 +60,13 @@ function renderSection() {
 beforeEach(() => {
 	H.putCalls = [];
 	H.list.activeId = null;
-	useSkinStore.setState({ active: null, preview: null, killSwitch: false, lockedTheme: null });
+	useSkinStore.setState({
+		active: null,
+		preview: null,
+		killSwitch: false,
+		lockedTheme: null,
+		editing: false,
+	});
 });
 
 afterEach(cleanup);
@@ -92,6 +98,19 @@ describe("SkinSection", () => {
 		await waitFor(() => expect(useSkinStore.getState().preview?.id).toBe("s1"));
 		expect(useSkinStore.getState().active).toBeNull();
 		expect(H.putCalls).toEqual([]);
+	});
+
+	it("点「调整」→ 拉 manifest+assets 打开编辑抽屉;默认装行没有这个入口", async () => {
+		renderSection();
+		await waitFor(() => expect(screen.getByText("樱花夜")).toBeTruthy());
+		// 只有皮肤行有「调整」;默认装行没有 → 恰好一个
+		const editButtons = screen.getAllByText("调整");
+		expect(editButtons).toHaveLength(1);
+		fireEvent.click(editButtons[0]);
+		await waitFor(() => expect(screen.getByText("调整皮肤")).toBeTruthy());
+		// 编辑器已接管 preview 通道
+		expect(useSkinStore.getState().editing).toBe(true);
+		expect(useSkinStore.getState().preview?.id).toBe("s1");
 	});
 
 	it("已换装时:默认装行有「启用」(恢复默认)→ PUT {id:null}", async () => {

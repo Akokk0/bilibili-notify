@@ -1,4 +1,8 @@
-import type { SkinManifest, SkinsListResponse } from "@bilibili-notify/contract";
+import type {
+	SkinManifest,
+	SkinManifestResponse,
+	SkinsListResponse,
+} from "@bilibili-notify/contract";
 import {
 	Btn,
 	ConfirmDialog,
@@ -13,6 +17,7 @@ import { type ChangeEvent, useRef, useState } from "react";
 import { api } from "../../services/api";
 import { buildSkinPrompt, makeSkinZip } from "../../services/skin-pack";
 import { useSkinStore } from "../../store/skin";
+import { SkinEditor } from "./SkinEditor";
 
 const MODE_LABEL: Record<"light" | "dark", string> = { light: "浅色", dark: "深色" };
 
@@ -24,7 +29,7 @@ interface UploadResult {
 }
 
 async function fetchManifest(id: string): Promise<SkinManifest> {
-	const res = await api.get<{ manifest: SkinManifest }>(`/api/skins/${id}/manifest`);
+	const res = await api.get<SkinManifestResponse>(`/api/skins/${id}/manifest`);
 	return res.manifest;
 }
 
@@ -38,6 +43,11 @@ export function SkinSection() {
 	const [warnings, setWarnings] = useState<string[]>([]);
 	const [confirmRemove, setConfirmRemove] = useState<{ id: string; name: string } | null>(null);
 	const [guideOpen, setGuideOpen] = useState(false);
+	const [editing, setEditing] = useState<{
+		id: string;
+		manifest: SkinManifest;
+		assets: string[];
+	} | null>(null);
 	const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
 	const listQuery = useQuery({
@@ -104,6 +114,17 @@ export function SkinSection() {
 		try {
 			const manifest = await fetchManifest(id);
 			useSkinStore.getState().setPreview({ id, manifest });
+			setError(null);
+		} catch (e) {
+			setError(String((e as Error).message));
+		}
+	}
+
+	/** 打开调整抽屉:拉 manifest + 包内资产清单(图片字段的可选项)。 */
+	async function openEditor(id: string): Promise<void> {
+		try {
+			const res = await api.get<SkinManifestResponse>(`/api/skins/${id}/manifest`);
+			setEditing({ id, manifest: res.manifest, assets: res.assets ?? [] });
 			setError(null);
 		} catch (e) {
 			setError(String((e as Error).message));
@@ -188,6 +209,7 @@ export function SkinSection() {
 						}
 						current={activeId === entry.id}
 						onTryOn={() => void tryOn(entry.id)}
+						onEdit={() => void openEditor(entry.id)}
 						onActivate={() => activate.mutate(entry.id)}
 						onRemove={() => setConfirmRemove({ id: entry.id, name: entry.name })}
 						busy={activate.isPending || remove.isPending}
@@ -216,6 +238,15 @@ export function SkinSection() {
 			) : null}
 
 			{guideOpen ? <SkinGuideModal onClose={() => setGuideOpen(false)} /> : null}
+
+			{editing ? (
+				<SkinEditor
+					id={editing.id}
+					manifest={editing.manifest}
+					assets={editing.assets}
+					onClose={() => setEditing(null)}
+				/>
+			) : null}
 		</GlassBox>
 	);
 }
@@ -228,6 +259,7 @@ function SkinRow(props: {
 	busy: boolean;
 	onActivate: () => void;
 	onTryOn?: () => void;
+	onEdit?: () => void;
 	onRemove?: () => void;
 }) {
 	return (
@@ -246,6 +278,11 @@ function SkinRow(props: {
 				{props.onTryOn ? (
 					<Btn size="sm" variant="ghost" onClick={props.onTryOn}>
 						试穿
+					</Btn>
+				) : null}
+				{props.onEdit ? (
+					<Btn size="sm" variant="ghost" onClick={props.onEdit}>
+						调整
 					</Btn>
 				) : null}
 				{!props.current ? (
