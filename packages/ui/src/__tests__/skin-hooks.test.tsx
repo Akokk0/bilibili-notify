@@ -10,6 +10,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { Avatar, Btn, Input } from "../atoms";
 import { ModalShell } from "../dialog";
+import { SectionNav } from "../section-nav";
 import { TabBarShell } from "../tab-bar";
 
 afterEach(cleanup);
@@ -51,8 +52,19 @@ describe("skin css hooks", () => {
 		expect(hooksOf(screen.getByRole("dialog"))).toContain("modal");
 	});
 
-	it("TabBarShell 根挂 nav", () => {
+	it("TabBarShell 根挂 nav,且带圆角(皮肤描边不许画出直角框)", () => {
 		const { container } = render(<TabBarShell>x</TabBarShell>);
-		expect(container.querySelector('[data-bn~="nav"]')).toBeTruthy();
+		const el = container.querySelector('[data-bn~="nav"]');
+		expect(el).toBeTruthy();
+		expect(el?.className).toMatch(/rounded/);
+	});
+
+	it("SectionNav 竖栏与横条都挂 nav,挂点元素都带圆角", () => {
+		const { container } = render(
+			<SectionNav heading="H" items={[{ id: "a", label: "A" }]} activeId="a" onPick={() => {}} />,
+		);
+		const hosts = [...container.querySelectorAll('[data-bn~="nav"]')];
+		expect(hosts).toHaveLength(2);
+		for (const el of hosts) expect(el.className).toMatch(/rounded/);
 	});
 });

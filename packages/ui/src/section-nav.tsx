@@ -168,11 +168,13 @@ export function SectionNav({
 		// contents 后包含块变成整个 grid(与内容等高),sticky 才能真正吸顶整段滚动。
 		<div data-section-nav="root" className="contents xl:block xl:min-w-0">
 			{/* 竖栏(桌面 xl+) */}
+			{/* rounded-2xl 默认不可见(无底无边),是给皮肤 CSS 的:nav 挂点元素必须有
+			    圆角形状,皮肤描边才不会画出直角方框(avatar 同款坑)。 */}
 			<aside
 				data-section-nav="rail"
 				data-bn="nav"
 				style={{ top: STICKY_TOP }}
-				className="sticky hidden h-fit min-w-0 xl:block"
+				className="sticky hidden h-fit min-w-0 rounded-2xl xl:block"
 			>
 				<div className="mb-2 flex items-center justify-between px-1">
 					<span className="text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
