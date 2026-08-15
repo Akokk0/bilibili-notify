@@ -35,7 +35,7 @@ export function buildSkinPrompt(readVar: (name: string) => string): string {
 每套 mode 里全部字段可选,没写的沿用默认装:
 - colors: 语义色键值,值只收 hex / rgb() / hsl() / oklch() / transparent(禁 url()、var()、分号)。可用键:
 ${colorLines}
-- page.background: 整页背景,纯色或 linear/radial 渐变${pageBg ? `(当前 ${pageBg})` : ""}
+- page.background: 整页背景,纯色或 linear/radial/conic(含 repeating-*)渐变${pageBg ? `(当前 ${pageBg})` : ""}
 - wallpaper: { image, fit: cover|contain|tile, position, overlay: 0~0.8, blur: 0~40 }
   —— image 固定写 "${WALLPAPER_BASENAME}.webp"(用户上传时会自动修正扩展名);overlay 是遮罩纱,纱色自动跟模式走(亮色蒙白纱/暗色蒙黑纱),配壁纸建议 ≥0.2 保文字可读;blur 是壁纸自身高斯模糊(px),高饱和/高对比壁纸建议 8~16 退成柔和色底,免得玻璃卡上透出脏斑
   —— 亮色 + 艳壁纸的经典配方:overlay 0.3~0.4 + blur 8~16。卡内列表行**默认全透明**(内容直接画在玻璃上,区块玻璃卡是唯一一层,别叠第二层),只有刻意要行条底/描边时才配 colors.listRow / colors.listRowBorder

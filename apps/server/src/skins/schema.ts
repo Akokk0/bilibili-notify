@@ -28,7 +28,7 @@ const FORBIDDEN_SUBSTRINGS = ["url(", "var(", "expression", ";", "{", "}", "@", 
 
 const HEX_RE = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 const COLOR_FN_RE = /^(rgb|rgba|hsl|hsla|oklch|oklab)\(\s*[0-9a-z%.,\s/-]*\)$/i;
-const GRADIENT_HEAD_RE = /^(linear|radial|conic)-gradient\(/i;
+const GRADIENT_HEAD_RE = /^(repeating-)?(linear|radial|conic)-gradient\(/i;
 const GRADIENT_BODY_RE = /^[a-z0-9#%.,()\s/-]+$/i;
 
 function hasForbidden(v: string): boolean {

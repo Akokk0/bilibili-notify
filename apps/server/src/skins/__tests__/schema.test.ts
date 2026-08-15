@@ -126,6 +126,16 @@ describe("parseSkinManifest / page.background(允许渐变,仍禁注入)", () =>
 		}
 	});
 
+	it("repeating-* 渐变(静态纹理层,如扫描线)→ ok", () => {
+		for (const v of [
+			"repeating-linear-gradient(0deg, rgba(125, 249, 255, 0.03) 0px, rgba(125, 249, 255, 0.03) 1px, transparent 1px, transparent 4px), linear-gradient(160deg, #05060f, #170b2b)",
+			"repeating-radial-gradient(circle, #111 0, #111 2px, #222 2px, #222 4px)",
+		]) {
+			const r = parseSkinManifest(withPage(v));
+			expect(r.ok).toBe(true);
+		}
+	});
+
 	it("渐变里藏 url() 或注释符 → 拒绝", () => {
 		for (const v of [
 			"linear-gradient(#fff, #000), url(https://evil.example/x.png)",
