@@ -172,7 +172,6 @@ describe("SkinRoot / 动效预设层", () => {
 					effects: {
 						particles: { kind: "sakura", density: 0.5 },
 						bokeh: { colors: ["#fb7299", "#00aeec"] },
-						backgroundFlow: true,
 					},
 				},
 			}),
@@ -189,7 +188,6 @@ describe("SkinRoot / 动效预设层", () => {
 		expect(layer.querySelectorAll("[data-skin-bokeh]")).toHaveLength(2);
 		// 动效 CSS 同一拍进了 style 标签
 		const css = document.getElementById("bn-skin-css")?.textContent ?? "";
-		expect(css).toContain("bn-skin-bg-flow");
 		expect(css).toContain("bn-skin-fall");
 	});
 

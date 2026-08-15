@@ -439,11 +439,10 @@ describe("parseSkinManifest / effects(动效预设)", () => {
 		return { schemaVersion: 1, name: "t", modes: { light: { effects } } };
 	}
 
-	it("四道全开的合法 effects → 原样收下(density/color 校验过)", () => {
+	it("三道全开的合法 effects → 原样收下(density/color 校验过)", () => {
 		const r = parseSkinManifest(
 			withEffects({
 				particles: { kind: "sakura", density: 0.8, color: "#ffb7c5" },
-				backgroundFlow: true,
 				glassShine: { color: "#39c5bb" },
 				bokeh: { colors: ["#fb7299", "rgba(0,174,236,0.5)"] },
 			}),
@@ -452,9 +451,16 @@ describe("parseSkinManifest / effects(动效预设)", () => {
 		if (!r.ok) return;
 		const fx = r.skin.modes.light?.effects;
 		expect(fx?.particles).toEqual({ kind: "sakura", density: 0.8, color: "#ffb7c5" });
-		expect(fx?.backgroundFlow).toBe(true);
 		expect(fx?.glassShine).toEqual({ color: "#39c5bb" });
 		expect(fx?.bokeh?.colors).toHaveLength(2);
+	});
+
+	it("backgroundFlow 已下线:按未知字段忽略并告警,存量皮肤优雅降级", () => {
+		const r = parseSkinManifest(withEffects({ backgroundFlow: true, glassShine: {} }));
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.skin.modes.light?.effects).toEqual({ glassShine: {} });
+		expect(r.warnings.some((w) => w.includes("backgroundFlow"))).toBe(true);
 	});
 
 	it("非法值逐项拒绝:未知 kind / density 越界 / bokeh 超 4 团 / 颜色带 url(", () => {

@@ -45,7 +45,7 @@ export function buildSkinAiSystemPrompt(assets: string[]): string {
 
 - schemaVersion 固定 1;没被要求改的字段一律原样保留,不要顺手删改
 - modes: { light?, dark? },每套里可用 colors / page.background / wallpaper / glass(background·border·strongBackground·strongBorder·blur 0~40·strongBlur)/ fonts.body / radius(card 0~32·pill 0~999)/ decorations(≤6 件,anchor 九宫格)/ shadows(card·elev)/ banner / css / effects
-- effects 动效预设四道可选:particles { kind: sakura|snow|stardust, density: 0.1~1, color? } / backgroundFlow: true(配壁纸图时无效)/ glassShine { color? } / bokeh { colors: [1~4 色] }
+- effects 动效预设三道可选:particles { kind: sakura|snow|stardust, density: 0.1~1, color? } / glassShine { color? } / bokeh { colors: [1~4 色] }
 - 顶层可给 texts: { headerTitle, chatPlaceholder }(≤60 字)与 css(明暗共用)
 - ${assetNote}
 

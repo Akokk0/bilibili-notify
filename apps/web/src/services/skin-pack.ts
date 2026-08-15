@@ -44,9 +44,8 @@ ${colorLines}
 - shadows: { card, elev } —— 卡片/悬浮两档阴影,值如 "0 10px 30px rgba(57, 197, 187, 0.25)";用带颜色的阴影能做出霓虹辉光感
 - decorations: 贴纸/立绘装饰件数组(≤6),每件 { image, anchor: 九宫格锚点(top-left/top/top-right/left/center/right/bottom-left/bottom/bottom-right), width: 20~600, opacity: 0~1, offsetX/offsetY: -400~400 } —— 悬浮在界面上、不挡点击
 - banner: { image, height: 80~400, fit: cover|contain, position } —— 首页顶部 hero 横幅,给了才显示
-- effects: 动效预设(自动尊重系统减少动效设置),四道可选:
+- effects: 动效预设(自动尊重系统减少动效设置),三道可选:
   - particles: { kind: sakura|snow|stardust, density: 0.1~1, color? } —— 粒子飘落层
-  - backgroundFlow: true —— 页面渐变背景缓慢流动(配了壁纸图时无效)
   - glassShine: { color? } —— 玻璃卡辉光呼吸游走,默认主强调色
   - bokeh: { colors: [1~4 个颜色] } —— 悬浮大光斑慢速漂移
 

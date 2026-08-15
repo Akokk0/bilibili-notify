@@ -193,14 +193,6 @@ export function composeEffectsCss(mode: SkinMode): string {
 	if (!fx) return "";
 	const anim: string[] = [];
 
-	// 流动只对渐变背景成立:background-size 200% 会把壁纸位图放大到糊。
-	if (fx.backgroundFlow && !mode.wallpaper?.image) {
-		anim.push(
-			"body{background-size:200% 200%;animation:bn-skin-bg-flow 24s ease-in-out infinite alternate}",
-			"@keyframes bn-skin-bg-flow{from{background-position:0% 0%}to{background-position:100% 100%}}",
-		);
-	}
-
 	if (fx.glassShine) {
 		// 只动 box-shadow:不碰 position/transform,零布局回归面。
 		const c = fx.glassShine.color ?? "var(--color-bn-pink)";

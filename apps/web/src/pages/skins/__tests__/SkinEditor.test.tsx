@@ -179,12 +179,11 @@ describe("SkinEditor", () => {
 		expect(H.putCalls).toEqual([]); // 不落盘
 	});
 
-	it("动效预设:粒子/流动/流光/光斑四道都能开关,改动实时进 preview", async () => {
+	it("动效预设:粒子/流光/光斑三道都能开关,改动实时进 preview", async () => {
 		renderEditor();
 		fireEvent.click(screen.getByText("动效"));
 
 		fireEvent.change(screen.getByLabelText("粒子飘落"), { target: { value: "sakura" } });
-		fireEvent.click(screen.getByLabelText("渐变流动"));
 		fireEvent.click(screen.getByLabelText("玻璃流光"));
 		fireEvent.change(screen.getByLabelText("光斑颜色"), {
 			target: { value: "#fb7299, #00aeec" },
@@ -192,14 +191,12 @@ describe("SkinEditor", () => {
 		await waitFor(() => {
 			const fx = useSkinStore.getState().preview?.manifest.modes.light?.effects;
 			expect(fx?.particles?.kind).toBe("sakura");
-			expect(fx?.backgroundFlow).toBe(true);
 			expect(fx?.glassShine).toEqual({});
 			expect(fx?.bokeh?.colors).toEqual(["#fb7299", "#00aeec"]);
 		});
 
 		// 全关 → effects 字段整个消失
 		fireEvent.change(screen.getByLabelText("粒子飘落"), { target: { value: "" } });
-		fireEvent.click(screen.getByLabelText("渐变流动"));
 		fireEvent.click(screen.getByLabelText("玻璃流光"));
 		fireEvent.change(screen.getByLabelText("光斑颜色"), { target: { value: "" } });
 		await waitFor(() =>

@@ -33,11 +33,12 @@ describe("buildSkinPrompt", () => {
 		expect(p).toMatch(/@keyframes/);
 	});
 
-	it("教会 AI 动效预设:四道菜与粒子款式都点名", () => {
+	it("教会 AI 动效预设:三道菜与粒子款式都点名", () => {
 		const p = buildSkinPrompt(readVar);
 		expect(p).toContain("effects");
-		for (const k of ["particles", "backgroundFlow", "glassShine", "bokeh"]) expect(p).toContain(k);
+		for (const k of ["particles", "glassShine", "bokeh"]) expect(p).toContain(k);
 		for (const kind of ["sakura", "snow", "stardust"]) expect(p).toContain(kind);
+		expect(p).not.toContain("backgroundFlow"); // 已移除的动效不许再教给外部 AI
 	});
 });
 

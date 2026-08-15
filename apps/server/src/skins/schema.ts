@@ -410,14 +410,6 @@ function parseMode(
 				}
 			}
 
-			if (fx.backgroundFlow !== undefined) {
-				if (typeof fx.backgroundFlow !== "boolean") {
-					errors.push(`${path}.effects.backgroundFlow: 必须是布尔值`);
-				} else if (fx.backgroundFlow) {
-					out.backgroundFlow = true;
-				}
-			}
-
 			if (fx.glassShine !== undefined) {
 				const g = asRecord(fx.glassShine);
 				if (!g) {
@@ -445,7 +437,9 @@ function parseMode(
 			}
 
 			for (const key of Object.keys(fx)) {
-				if (!["particles", "backgroundFlow", "glassShine", "bokeh"].includes(key)) {
+				// backgroundFlow 已移除(整页 background 动画真机卡顿):存量皮肤里的它走这里的
+				// 未知字段告警 + 忽略,优雅降级。
+				if (!["particles", "glassShine", "bokeh"].includes(key)) {
 					warnings.push(`${path}.effects.${key}: 不认识的字段,已忽略`);
 				}
 			}

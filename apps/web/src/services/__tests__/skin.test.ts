@@ -247,17 +247,9 @@ describe("自定义 CSS:hook 翻译与合成", () => {
 });
 
 describe("composeEffectsCss(动效预设 → 内置 CSS)", () => {
-	it("backgroundFlow:渐变背景才生效;配了壁纸图自动失效(放大位图会糊)", () => {
-		const flow = composeEffectsCss({ effects: { backgroundFlow: true } });
-		expect(flow).toContain("background-size:200% 200%");
-		expect(flow).toContain("bn-skin-bg-flow");
-		expect(flow).toContain("prefers-reduced-motion: no-preference");
-
-		const withWallpaper = composeEffectsCss({
-			wallpaper: { image: "assets/bg.png" },
-			effects: { backgroundFlow: true },
-		});
-		expect(withWallpaper).not.toContain("bn-skin-bg-flow");
+	it("backgroundFlow 已移除(整页 background 动画真机卡顿):存量数据不再产出任何 CSS", () => {
+		const legacyMode = { effects: { backgroundFlow: true } } as unknown as SkinMode;
+		expect(composeEffectsCss(legacyMode)).toBe("");
 	});
 
 	it("glassShine:默认主强调色,可指定颜色;动画只碰 box-shadow", () => {

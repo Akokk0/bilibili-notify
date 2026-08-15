@@ -556,19 +556,6 @@ export function SkinEditor(props: {
 							/>
 						</>
 					) : null}
-					<FieldRow label="渐变流动">
-						<Toggle
-							value={Boolean(effects.backgroundFlow)}
-							onChange={(b) => setEffects({ backgroundFlow: b ? true : undefined })}
-							ariaLabel="渐变流动"
-							size="sm"
-						/>
-					</FieldRow>
-					{effects.backgroundFlow && wp.image ? (
-						<p className="text-[11px] text-bn-text-tertiary">
-							配了壁纸图时流动不生效(放大位图会糊)
-						</p>
-					) : null}
 					<FieldRow label="玻璃流光">
 						<Toggle
 							value={Boolean(effects.glassShine)}
