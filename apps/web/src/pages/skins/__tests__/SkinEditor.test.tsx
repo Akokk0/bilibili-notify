@@ -119,6 +119,24 @@ describe("SkinEditor", () => {
 		});
 	});
 
+	it("玻璃高级字段(能力对齐):色相/描边/双档模糊都有编辑口", async () => {
+		renderEditor();
+		fireEvent.change(screen.getByLabelText("玻璃描边"), {
+			target: { value: "rgba(57, 197, 187, 0.3)" },
+		});
+		fireEvent.change(screen.getByLabelText("玻璃模糊"), { target: { value: "32" } });
+		fireEvent.change(screen.getByLabelText("强玻璃模糊"), { target: { value: "28" } });
+		await waitFor(() => {
+			const g = useSkinStore.getState().preview?.manifest.modes.light?.glass;
+			expect(g?.border).toBe("rgba(57, 197, 187, 0.3)");
+			expect(g?.blur).toBe(32);
+			expect(g?.strongBlur).toBe(28);
+		});
+		expect(screen.getByLabelText("玻璃底色")).toBeTruthy();
+		expect(screen.getByLabelText("强玻璃底色")).toBeTruthy();
+		expect(screen.getByLabelText("强玻璃描边")).toBeTruthy();
+	});
+
 	it("拖壁纸模糊滑杆 → preview 的 wallpaper.blur 实时反映", async () => {
 		renderEditor();
 		fireEvent.change(screen.getByLabelText("壁纸模糊"), { target: { value: "12" } });

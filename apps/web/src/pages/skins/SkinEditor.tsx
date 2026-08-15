@@ -28,6 +28,9 @@ import {
  * 皮肤调整抽屉:manifest 的每个语义字段都给了控件,改一下整页立即生效 ——
  * 借 store 的 preview 通道(与试穿同一条注入路径),editing 标记压住试穿浮条。
  * 「保存」PUT /api/skins/:id/manifest 就地落盘(资产不动);「取消」丢弃。
+ *
+ * **编辑器 = 能力全集(硬性原则,主人拍板)**:contract 的 SkinManifest/SkinMode
+ * 有的字段,这里必须有编辑口;给 schema 加字段时同步加控件,砍能力时同步撤。
  */
 
 const inputCls =
@@ -344,8 +347,48 @@ export function SkinEditor(props: {
 							size="sm"
 						/>
 					</FieldRow>
-					{/* 色相/描边/双档模糊等高级字段仍在 schema 里(AI 与 JSON 可配),
-					    抽屉按主人拍板只留「玻璃片透明度 + 完全透明」这对。 */}
+					{/* 编辑器 = 能力全集(主人定的原则):透明度对是便利入口,下面是
+					    玻璃的全部字段 —— schema 有的这里都要有编辑口。 */}
+					<ColorField
+						label="玻璃底色"
+						value={glass.background}
+						onChange={(v) => setSection("glass", cleanSection({ ...glass, background: v }))}
+					/>
+					<ColorField
+						label="玻璃描边"
+						value={glass.border}
+						onChange={(v) => setSection("glass", cleanSection({ ...glass, border: v }))}
+					/>
+					<ColorField
+						label="强玻璃底色"
+						value={glass.strongBackground}
+						onChange={(v) => setSection("glass", cleanSection({ ...glass, strongBackground: v }))}
+					/>
+					<ColorField
+						label="强玻璃描边"
+						value={glass.strongBorder}
+						onChange={(v) => setSection("glass", cleanSection({ ...glass, strongBorder: v }))}
+					/>
+					<RangeField
+						label="玻璃模糊"
+						min={0}
+						max={40}
+						step={1}
+						unit="px"
+						value={glass.blur}
+						fallback={16}
+						onChange={(v) => setSection("glass", cleanSection({ ...glass, blur: v }))}
+					/>
+					<RangeField
+						label="强玻璃模糊"
+						min={0}
+						max={40}
+						step={1}
+						unit="px"
+						value={glass.strongBlur}
+						fallback={20}
+						onChange={(v) => setSection("glass", cleanSection({ ...glass, strongBlur: v }))}
+					/>
 				</Fold>
 
 				<Fold title="语义颜色">
