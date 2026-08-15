@@ -30,8 +30,11 @@ export function Avatar({ name, color, size = 44, ring = false, status, url }: Av
 		border: ring ? "3px solid var(--color-bn-surface)" : "2px solid var(--color-bn-surface)",
 	};
 	return (
-		<div data-bn="avatar" className="relative shrink-0" style={{ width: size, height: size }}>
+		<div className="relative shrink-0" style={{ width: size, height: size }}>
+			{/* 皮肤挂点在圆形元素上:hook 语义是「圆头像」,border/box-shadow 必须跟圆走,
+			    挂外层方形定位容器会画出方框(踩过)。 */}
 			<div
+				data-bn="avatar"
 				className="flex items-center justify-center overflow-hidden rounded-full font-bold text-white shadow-bn-card"
 				style={inner}
 			>

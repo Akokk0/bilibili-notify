@@ -35,9 +35,11 @@ describe("skin css hooks", () => {
 		expect(container.querySelector('[data-bn~="input"]')).toBeTruthy();
 	});
 
-	it("Avatar 根节点挂 avatar", () => {
+	it("Avatar 的挂点在圆形元素上(挂方形定位容器会让皮肤 border 画成方框)", () => {
 		const { container } = render(<Avatar name="兔" color="#fb7299" />);
-		expect(container.querySelector('[data-bn~="avatar"]')).toBeTruthy();
+		const el = container.querySelector('[data-bn~="avatar"]');
+		expect(el).toBeTruthy();
+		expect(el?.className).toContain("rounded-full");
 	});
 
 	it("ModalShell 弹窗卡挂 modal", () => {
