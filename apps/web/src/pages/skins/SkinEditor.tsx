@@ -445,6 +445,33 @@ export function SkinEditor(props: {
 					) : null}
 				</Fold>
 
+				<Fold title="自定义 CSS">
+					<p className="text-[11px] leading-4 text-bn-text-tertiary">
+						选择器只准 <code className="rounded bg-bn-code-bg px-1">[data-bn="挂点"]</code>
+						(挂点见制作引导),属性走视觉白名单;违禁项保存时会被逐条丢弃并提示。
+					</p>
+					<FieldRow label="共用 CSS">
+						<textarea
+							aria-label="共用 CSS"
+							value={draft.css ?? ""}
+							onChange={(e) => setDraft(withOptionalCss(draft, e.target.value))}
+							placeholder='如 [data-bn="glass"]:hover { box-shadow: 0 0 24px rgba(251,114,153,0.4); }'
+							rows={6}
+							className={`${inputCls} resize-y font-mono text-[11px]`}
+						/>
+					</FieldRow>
+					<FieldRow label="本模式 CSS">
+						<textarea
+							aria-label="本模式 CSS"
+							value={mode.css ?? ""}
+							onChange={(e) => setSection("css", e.target.value || undefined)}
+							placeholder="只在当前明/暗套生效,叠在共用 CSS 之后"
+							rows={4}
+							className={`${inputCls} resize-y font-mono text-[11px]`}
+						/>
+					</FieldRow>
+				</Fold>
+
 				<Fold title="顶部横幅">
 					{banner ? (
 						<>
@@ -537,6 +564,14 @@ function withOptional(m: SkinManifest, key: "author" | "description", value: str
 	const next = { ...m };
 	if (value === "") delete next[key];
 	else next[key] = value;
+	return next;
+}
+
+/** 顶层共用 CSS:空串即删除(与 withOptional 同律,类型上分开写)。 */
+function withOptionalCss(m: SkinManifest, value: string): SkinManifest {
+	const next = { ...m };
+	if (value === "") delete next.css;
+	else next.css = value;
 	return next;
 }
 

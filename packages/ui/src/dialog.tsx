@@ -55,6 +55,7 @@ export function ModalShell({
 			<div
 				role="dialog"
 				aria-modal="true"
+				data-bn="modal"
 				className={`relative max-h-full overflow-y-auto rounded-bn-card bg-bn-surface-strong text-bn-text-primary ${bodyClassName}`}
 				style={{
 					width,

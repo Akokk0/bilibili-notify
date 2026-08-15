@@ -140,6 +140,30 @@ describe("SkinRoot", () => {
 	});
 });
 
+describe("SkinRoot / 自定义 CSS 注入", () => {
+	it("皮肤带 css → <style#bn-skin-css> 注入且 hook 已翻译;清皮肤 → style 移除", async () => {
+		H.activeResponse = {
+			active: {
+				id: "abc",
+				manifest: {
+					schemaVersion: 1,
+					name: "测试",
+					css: '[data-bn="glass"]{border-width:2px}',
+					modes: { light: { css: '[data-bn="btn"]{opacity:0.9}' } },
+				},
+			},
+		};
+		renderRoots();
+		await waitFor(() => expect(document.getElementById("bn-skin-css")).not.toBeNull());
+		const css = document.getElementById("bn-skin-css")?.textContent ?? "";
+		expect(css).toContain(".bn-glass{border-width:2px}");
+		expect(css).toContain('[data-bn~="btn"]{opacity:0.9}');
+
+		useSkinStore.getState().setKillSwitch(true);
+		await waitFor(() => expect(document.getElementById("bn-skin-css")).toBeNull());
+	});
+});
+
 describe("SkinRoot × 登录门", () => {
 	it("authRequired 且未 authed → 不拉 active;登录(markAuthed)后才拉并注入", async () => {
 		useSessionStore.setState({ authRequired: true, authed: false, hydrated: true });

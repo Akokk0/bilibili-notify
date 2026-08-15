@@ -132,6 +132,25 @@ describe("SkinEditor", () => {
 		expect(onClose).toHaveBeenCalledTimes(1);
 	});
 
+	it("自定义 CSS:共用/本模式两个编辑区,输入即进 preview(实时生效)", async () => {
+		renderEditor();
+		fireEvent.click(screen.getByText("自定义 CSS"));
+		fireEvent.change(screen.getByLabelText("共用 CSS"), {
+			target: { value: '[data-bn="glass"]{border-width:2px}' },
+		});
+		fireEvent.change(screen.getByLabelText("本模式 CSS"), {
+			target: { value: '[data-bn="btn"]{opacity:0.9}' },
+		});
+		await waitFor(() => {
+			const m = useSkinStore.getState().preview?.manifest;
+			expect(m?.css).toBe('[data-bn="glass"]{border-width:2px}');
+			expect(m?.modes.light?.css).toBe('[data-bn="btn"]{opacity:0.9}');
+		});
+		// 清空 = 字段消失
+		fireEvent.change(screen.getByLabelText("共用 CSS"), { target: { value: "" } });
+		await waitFor(() => expect(useSkinStore.getState().preview?.manifest.css).toBeUndefined());
+	});
+
 	it("单套皮肤:点「补一套深色」→ draft 长出 dark 套(复制自浅色)", async () => {
 		renderEditor();
 		fireEvent.click(screen.getByText("补一套深色"));

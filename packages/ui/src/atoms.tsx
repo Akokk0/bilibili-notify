@@ -30,7 +30,7 @@ export function Avatar({ name, color, size = 44, ring = false, status, url }: Av
 		border: ring ? "3px solid var(--color-bn-surface)" : "2px solid var(--color-bn-surface)",
 	};
 	return (
-		<div className="relative shrink-0" style={{ width: size, height: size }}>
+		<div data-bn="avatar" className="relative shrink-0" style={{ width: size, height: size }}>
 			<div
 				className="flex items-center justify-center overflow-hidden rounded-full font-bold text-white shadow-bn-card"
 				style={inner}
@@ -116,6 +116,7 @@ export function Btn({
 			title={title}
 			aria-haspopup={ariaHasPopup}
 			aria-expanded={ariaExpanded}
+			data-bn={variant === "primary" ? "btn btn-primary" : "btn"}
 			className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${SIZE_CLS[size]} ${VARIANT_CLS[variant]} ${full ? "w-full" : "w-auto"}`}
 		>
 			{icon ? <span className="inline-flex shrink-0">{icon}</span> : null}
@@ -260,6 +261,7 @@ export function Input({
 	const sz = size === "sm" ? "h-7 text-xs" : "h-8 text-[13px]";
 	return (
 		<div
+			data-bn="input"
 			className={`inline-flex items-center gap-1.5 rounded-md border border-bn-border bg-bn-field px-2.5 ${sz} ${full ? "w-full flex-1" : "w-auto"}`}
 		>
 			{icon ? (

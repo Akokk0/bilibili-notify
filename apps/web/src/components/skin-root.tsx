@@ -2,8 +2,11 @@ import type { ActiveSkinResponse, SkinMode } from "@bilibili-notify/contract";
 import { type ReactNode, useEffect, useLayoutEffect } from "react";
 import { api } from "../services/api";
 import {
+	applySkinCss,
 	applySkinVars,
+	clearSkinCss,
 	clearSkinVars,
+	composeSkinCss,
 	composeSkinVars,
 	decorationStyle,
 	resolveSkinMode,
@@ -88,6 +91,7 @@ export function SkinRoot({ children }: { children: ReactNode }) {
 		const skin = effectiveSkin({ active, preview, killSwitch });
 		if (!skin) {
 			clearSkinVars(root);
+			clearSkinCss();
 			useSkinStore.getState().setLockedTheme(null);
 			return;
 		}
@@ -96,6 +100,8 @@ export function SkinRoot({ children }: { children: ReactNode }) {
 			root,
 			composeSkinVars(mode, (name) => skinAssetUrl(skin.id, name)),
 		);
+		// 自定义 CSS:与变量同一拍注入;hook → 真实选择器的翻译只发生在这里。
+		applySkinCss(composeSkinCss(skin.manifest, theme));
 		useSkinStore.getState().setLockedTheme(locked ? theme : null);
 	}, [active, preview, killSwitch, resolved]);
 

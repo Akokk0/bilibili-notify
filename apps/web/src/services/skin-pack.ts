@@ -3,7 +3,7 @@
  * 用户全程不碰压缩软件 —— AI 吐 JSON,粘过来,可选拖一张壁纸,这里拼成标准 zip。
  */
 
-import { SKIN_COLOR_TOKEN_MAP } from "@bilibili-notify/contract";
+import { SKIN_COLOR_TOKEN_MAP, SKIN_CSS_HOOK_MAP } from "@bilibili-notify/contract";
 import { strToU8, zipSync } from "fflate";
 
 /** 组包时壁纸统一用这个基名,提示词里也这么约定,扩展名按实际文件修正。 */
@@ -47,6 +47,20 @@ ${colorLines}
 
 顶层(与 modes 平级)还可给:
 - texts: { headerTitle, chatPlaceholder } —— 顶栏标题与聊天输入框提示语,每条 ≤60 字,给皮肤配人格化文案
+- css: 自定义 CSS 字符串(明暗共用;每套 mode 里也可给 css 做本模式追加)—— 深度定制的主力,规则见下节
+
+## 自定义 CSS(组件级造型与动效都靠它)
+
+- 选择器**只准**写 \`[data-bn="<挂点>"]\`,可配伪类(:hover 等)/伪元素(::before/::after)/组合器;class、id、标签名选择器一律会被丢弃。可用挂点:
+${Object.entries(SKIN_CSS_HOOK_MAP)
+	.map(([hook]) => `  - "${hook}"`)
+	.join("\n")}
+  ("page" 是整页,"glass"/"glass-strong" 是玻璃卡片/弹层,其余对应同名组件)
+- 属性走视觉白名单:background/border/outline/box-shadow/text-shadow/color/opacity/filter/backdrop-filter/transform/transition/animation/border-radius/clip-path/inset/width/height/z-index 等;**display、pointer-events、visibility 会被丢弃**
+- **禁 url()**(以及 image-set/element/src)—— 图片一律走 wallpaper/decorations/banner 字段,CSS 里写了会被逐条剔除
+- position 只准 static/relative/absolute;伪元素 content 只准 "" 或 none
+- 动画用 @keyframes,**名字必须以 skin- 开头**(如 @keyframes skin-float),再在 animation 里引用;可用 @media (prefers-reduced-motion) 做无动效降级
+- 违禁项不会导致整包被拒,但会被逐条静默丢弃 —— 别浪费笔墨写白名单外的东西
 
 ## 设计要求
 

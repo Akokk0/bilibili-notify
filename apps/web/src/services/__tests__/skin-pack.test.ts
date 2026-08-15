@@ -4,6 +4,7 @@
  * - makeSkinZip:粘贴的 JSON + 可选壁纸 → 标准 zip(壁纸统一命名并同步 manifest 引用)
  */
 
+import { SKIN_CSS_HOOK_MAP } from "@bilibili-notify/contract";
 import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { buildSkinPrompt, makeSkinZip } from "../skin-pack";
@@ -19,6 +20,17 @@ describe("buildSkinPrompt", () => {
 		expect(p).toContain("#fb7299");
 		expect(p).toMatch(/只输出|只回复|仅输出/);
 		expect(p).toContain("assets/wallpaper");
+	});
+
+	it("教会 AI 自定义 CSS:全部 hook 名、白名单要点、skin- 前缀与红线", () => {
+		const p = buildSkinPrompt(readVar);
+		for (const hook of Object.keys(SKIN_CSS_HOOK_MAP)) {
+			expect(p).toContain(`"${hook}"`);
+		}
+		expect(p).toContain("data-bn");
+		expect(p).toContain("skin-");
+		expect(p).toMatch(/url\(/); // 明说 url() 禁用,别让 AI 白写
+		expect(p).toMatch(/@keyframes/);
 	});
 });
 

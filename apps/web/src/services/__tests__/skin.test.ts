@@ -8,12 +8,16 @@
 import type { SkinManifest, SkinMode } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vitest";
 import {
+	applySkinCss,
 	applySkinVars,
+	clearSkinCss,
 	clearSkinVars,
+	composeSkinCss,
 	composeSkinVars,
 	decorationStyle,
 	resolveSkinMode,
 	skinKillSwitchActive,
+	translateSkinCssHooks,
 } from "../skin";
 
 const assetUrl = (name: string) => `/api/skins/abc/assets/${name.slice("assets/".length)}`;
@@ -183,5 +187,60 @@ describe("decorationStyle(九宫格贴纸定位)", () => {
 		});
 		expect(String(offset.transform)).toContain("-12px");
 		expect(String(offset.transform)).toContain("-8px");
+	});
+});
+
+describe("自定义 CSS:hook 翻译与合成", () => {
+	it("hook 按映射表翻译成真实选择器;未知 hook 原样保留(命中不了任何元素)", () => {
+		expect(translateSkinCssHooks('[data-bn="glass"]:hover{border-width:2px}')).toBe(
+			".bn-glass:hover{border-width:2px}",
+		);
+		expect(translateSkinCssHooks('[data-bn="page"]::before{content:""}')).toBe(
+			'body::before{content:""}',
+		);
+		// 挂属性的组件 hook → ~= 匹配(一个元素可挂多个 hook)
+		expect(translateSkinCssHooks('[data-bn="btn-primary"]{opacity:0.9}')).toBe(
+			'[data-bn~="btn-primary"]{opacity:0.9}',
+		);
+		// 无引号形式(css-tree 对 Identifier 值的序列化)同样认
+		expect(translateSkinCssHooks("[data-bn=glass]{opacity:1}")).toBe(".bn-glass{opacity:1}");
+		expect(translateSkinCssHooks('[data-bn="nope"]{opacity:1}')).toBe(
+			'[data-bn="nope"]{opacity:1}',
+		);
+	});
+
+	it("composeSkinCss:顶层共用 + 当前模式追加,输出已翻译;两段都缺 → 空串", () => {
+		const manifest: SkinManifest = {
+			schemaVersion: 1,
+			name: "t",
+			css: '[data-bn="glass"]{border-width:1px}',
+			modes: {
+				light: { css: '[data-bn="btn"]{opacity:0.9}' },
+				dark: {},
+			},
+		};
+		const light = composeSkinCss(manifest, "light");
+		expect(light).toContain(".bn-glass{border-width:1px}");
+		expect(light).toContain('[data-bn~="btn"]{opacity:0.9}');
+		// dark 套没有自己的 css,但顶层共用仍在
+		expect(composeSkinCss(manifest, "dark")).toBe(".bn-glass{border-width:1px}");
+		expect(composeSkinCss({ schemaVersion: 1, name: "t", modes: { light: {} } }, "light")).toBe("");
+	});
+
+	it("applySkinCss 注入 <style>;再次调用覆盖;clearSkinCss 移除", () => {
+		applySkinCss(".bn-glass{opacity:0.95}");
+		const el = document.getElementById("bn-skin-css");
+		expect(el?.tagName).toBe("STYLE");
+		expect(el?.textContent).toBe(".bn-glass{opacity:0.95}");
+
+		applySkinCss("body{border-width:0}");
+		expect(document.querySelectorAll("#bn-skin-css")).toHaveLength(1);
+		expect(document.getElementById("bn-skin-css")?.textContent).toBe("body{border-width:0}");
+
+		clearSkinCss();
+		expect(document.getElementById("bn-skin-css")).toBeNull();
+		// 空串 = 不留空标签
+		applySkinCss("");
+		expect(document.getElementById("bn-skin-css")).toBeNull();
 	});
 });

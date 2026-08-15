@@ -6,6 +6,7 @@
 
 import {
 	SKIN_COLOR_TOKEN_MAP,
+	SKIN_CSS_HOOK_MAP,
 	type SkinDecoration,
 	type SkinManifest,
 	type SkinMode,
@@ -157,4 +158,48 @@ export function clearSkinVars(el: HTMLElement): void {
 /** `?skin=off`:本次会话强制默认装(不改服务端状态),皮肤糊了界面时的逃生舱。 */
 export function skinKillSwitchActive(search: string): boolean {
 	return new URLSearchParams(search).get("skin") === "off";
+}
+
+// ---- 自定义 CSS ------------------------------------------------------------
+
+/**
+ * hook → 真实选择器的注入时翻译。存盘的皮肤 CSS 永远是 hook 形式
+ * (`[data-bn="glass"]`),内部选择器重构只改 SKIN_CSS_HOOK_MAP,存量皮肤跟着走。
+ * 输入是服务端清洗后的产物,格式可控(css-tree 序列化,引号或裸标识符两种);
+ * 未知 hook 原样保留 —— 属性选择器命中不了任何元素,天然无害。
+ */
+export function translateSkinCssHooks(css: string): string {
+	return css.replace(/\[data-bn[~|]?="?([A-Za-z0-9-]+)"?\]/g, (raw, hook: string) => {
+		const real = SKIN_CSS_HOOK_MAP[hook as keyof typeof SKIN_CSS_HOOK_MAP];
+		return real ?? raw;
+	});
+}
+
+/** 顶层共用 + 当前模式追加(后到的覆盖先到的),输出已完成 hook 翻译。 */
+export function composeSkinCss(manifest: SkinManifest, mode: "light" | "dark"): string {
+	const parts = [manifest.css, manifest.modes[mode]?.css].filter(
+		(s): s is string => typeof s === "string" && s !== "",
+	);
+	return translateSkinCssHooks(parts.join("\n"));
+}
+
+const SKIN_STYLE_ID = "bn-skin-css";
+
+/** 皮肤 CSS 注入:单例 <style>,重复调用覆盖内容;空串等价于清除。 */
+export function applySkinCss(css: string): void {
+	if (css === "") {
+		clearSkinCss();
+		return;
+	}
+	let el = document.getElementById(SKIN_STYLE_ID);
+	if (!(el instanceof HTMLStyleElement)) {
+		el = document.createElement("style");
+		el.id = SKIN_STYLE_ID;
+		document.head.appendChild(el);
+	}
+	el.textContent = css;
+}
+
+export function clearSkinCss(): void {
+	document.getElementById(SKIN_STYLE_ID)?.remove();
 }

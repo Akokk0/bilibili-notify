@@ -393,7 +393,7 @@ export function GlassHeader() {
 	}, []);
 
 	return (
-		<header ref={headerRef} className="bn-glass-strong sticky top-0 z-10">
+		<header ref={headerRef} data-bn="header" className="bn-glass-strong sticky top-0 z-10">
 			<div className="flex items-center justify-between gap-4 px-7 pt-4">
 				<div className="flex min-w-0 items-center gap-3">
 					<div className="flex h-13 items-center px-1">

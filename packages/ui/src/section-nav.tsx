@@ -170,6 +170,7 @@ export function SectionNav({
 			{/* 竖栏(桌面 xl+) */}
 			<aside
 				data-section-nav="rail"
+				data-bn="nav"
 				style={{ top: STICKY_TOP }}
 				className="sticky hidden h-fit min-w-0 xl:block"
 			>
@@ -228,6 +229,7 @@ export function SectionNav({
 			    左右两端用箭头按钮滚动,隐藏原生滚动条(bn-no-scrollbar)。 */}
 			<div
 				data-section-nav="bar"
+				data-bn="nav"
 				style={{ top: STICKY_TOP }}
 				className="sticky z-20 rounded-[11px] border border-bn-border-subtle bg-bn-surface/70 backdrop-blur-sm xl:hidden"
 			>
