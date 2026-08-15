@@ -75,6 +75,31 @@ export class SkinStore {
 		return this.index.get(id) ?? null;
 	}
 
+	/** 包内资产清单(`assets/<名>` 形式,与 manifest 引用同构);皮肤不存在 → 空数组。 */
+	async listAssets(id: string): Promise<string[]> {
+		if (!this.index.has(id)) return [];
+		let names: string[];
+		try {
+			names = await readdir(join(this.skinsDir, id, "assets"));
+		} catch {
+			return [];
+		}
+		return names.map((n) => `assets/${n}`).filter((n) => WALLPAPER_IMAGE_RE.test(n));
+	}
+
+	/**
+	 * 就地更新 manifest(编辑器保存)。资产一字不动 —— 资产 URL 的 immutable 长缓存
+	 * 契约不被破坏,变的只有 skin.json。调用方(路由层)负责先过 parseSkinManifest
+	 * 与资产引用校验,这里只管原子落盘。
+	 */
+	async updateManifest(id: string, manifest: SkinManifest): Promise<void> {
+		if (!this.index.has(id)) throw new Error(`皮肤不存在: ${id}`);
+		const tmp = join(this.skinsDir, id, "skin.json.tmp");
+		await writeFile(tmp, JSON.stringify(manifest, null, "\t"));
+		await rename(tmp, join(this.skinsDir, id, "skin.json"));
+		this.index.set(id, manifest);
+	}
+
 	async remove(id: string): Promise<void> {
 		await rm(join(this.skinsDir, id), { recursive: true, force: true });
 		this.index.delete(id);

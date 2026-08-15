@@ -159,3 +159,14 @@ export interface SkinsListResponse {
 export interface ActiveSkinResponse {
 	active: { id: string; manifest: SkinManifest } | null;
 }
+
+/** GET /api/skins/:id/manifest —— assets 是包内资产清单(`assets/<名>`),编辑器图片字段的可选项。 */
+export interface SkinManifestResponse {
+	manifest: SkinManifest;
+	assets: string[];
+}
+
+/** PUT /api/skins/:id/manifest(编辑器就地保存,资产不变)。 */
+export type SkinManifestUpdateResponse =
+	| { ok: true; warnings: string[] }
+	| { ok: false; errors: string[] };

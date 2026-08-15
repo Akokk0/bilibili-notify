@@ -138,12 +138,82 @@ describe("skins route", () => {
 	});
 });
 
-describe("GET /:id/manifest(试穿用)", () => {
-	it("存在 → manifest;不存在 → 404", async () => {
-		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+describe("GET /:id/manifest(试穿/编辑用)", () => {
+	it("存在 → manifest + 包内资产清单;不存在 → 404", async () => {
+		const { id } = (await (await upload(app, makeZipFile(true))).json()) as any;
 		const ok = await app.request(`/${id}/manifest`);
 		expect(ok.status).toBe(200);
-		expect(((await ok.json()) as any).manifest.name).toBe("樱花夜");
+		const body = (await ok.json()) as any;
+		expect(body.manifest.name).toBe("樱花夜");
+		expect(body.assets).toEqual(["assets/bg.png"]);
 		expect((await app.request("/nope/manifest")).status).toBe(404);
+	});
+});
+
+describe("PUT /:id/manifest(编辑器保存)", () => {
+	async function putManifest(id: string, manifest: unknown): Promise<Response> {
+		return app.request(`/${id}/manifest`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(manifest),
+		});
+	}
+
+	it("合法 manifest → 200,后续 GET 读到新值,列表条目同步", async () => {
+		const { id } = (await (await upload(app, makeZipFile(true))).json()) as any;
+		const res = await putManifest(id, {
+			schemaVersion: 1,
+			name: "樱花夜·改",
+			modes: {
+				light: { wallpaper: { image: "assets/bg.png", overlay: 0.3 } },
+				dark: { colors: { accent: "#00aeec" } },
+			},
+		});
+		expect(res.status).toBe(200);
+		expect(((await res.json()) as any).ok).toBe(true);
+
+		const got = (await (await app.request(`/${id}/manifest`)).json()) as any;
+		expect(got.manifest.name).toBe("樱花夜·改");
+		expect(got.manifest.modes.light.wallpaper.overlay).toBe(0.3);
+		const list = (await (await app.request("/")).json()) as any;
+		expect(list.list[0]).toMatchObject({ name: "樱花夜·改", modes: ["light", "dark"] });
+	});
+
+	it("校验不过 → 400 带 errors,盘上原样", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const res = await putManifest(id, {
+			schemaVersion: 1,
+			name: "坏",
+			modes: { light: { colors: { accent: "url(evil)" } } },
+		});
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as any).errors.length).toBeGreaterThan(0);
+		const got = (await (await app.request(`/${id}/manifest`)).json()) as any;
+		expect(got.manifest.name).toBe("樱花夜");
+	});
+
+	it("引用包里没有的图 → 400", async () => {
+		const { id } = (await (await upload(app, makeZipFile(true))).json()) as any;
+		const res = await putManifest(id, {
+			schemaVersion: 1,
+			name: "樱花夜",
+			modes: { light: { wallpaper: { image: "assets/nope.png" } } },
+		});
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as any;
+		expect(body.errors.join()).toContain("assets/nope.png");
+	});
+
+	it("不存在的皮肤 → 404;非 JSON → 400", async () => {
+		expect(
+			(await putManifest("nope", { schemaVersion: 1, name: "x", modes: { light: {} } })).status,
+		).toBe(404);
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const bad = await app.request(`/${id}/manifest`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: "not json",
+		});
+		expect(bad.status).toBe(400);
 	});
 });

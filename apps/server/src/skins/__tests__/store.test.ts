@@ -99,4 +99,46 @@ describe("SkinStore", () => {
 		expect(await store.assetPath(id, "assets/../skin.json")).toBeNull();
 		expect(await store.assetPath(id, "assets/none.png")).toBeNull();
 	});
+
+	it("listAssets:按 assets/<名> 形式列出包内资产;无资产 / 不存在的 id → 空数组", async () => {
+		const { id } = await store.save({
+			manifest: makeManifest(),
+			assets: new Map([
+				["assets/bg.png", PNG],
+				["assets/deco.webp", PNG],
+			]),
+		});
+		expect((await store.listAssets(id)).sort()).toEqual(["assets/bg.png", "assets/deco.webp"]);
+
+		const { id: bare } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		expect(await store.listAssets(bare)).toEqual([]);
+		expect(await store.listAssets("nope")).toEqual([]);
+	});
+
+	it("updateManifest:落盘 + 索引即时可见,重启不丢;不存在的 id → 抛错", async () => {
+		const { id } = await store.save({
+			manifest: makeManifest(),
+			assets: new Map([["assets/bg.png", PNG]]),
+		});
+		const next = makeManifest({
+			name: "樱花夜·改",
+			modes: { light: { colors: { accent: "#00aeec" } }, dark: {} },
+		});
+		await store.updateManifest(id, next);
+
+		expect((await store.get(id))?.name).toBe("樱花夜·改");
+		expect((await store.list())[0]).toMatchObject({
+			id,
+			name: "樱花夜·改",
+			modes: ["light", "dark"],
+		});
+
+		const reborn = new SkinStore({ skinsDir: dir });
+		await reborn.init();
+		expect((await reborn.get(id))?.name).toBe("樱花夜·改");
+		// 资产原封不动
+		expect(await reborn.assetPath(id, "assets/bg.png")).not.toBeNull();
+
+		await expect(store.updateManifest("nope", next)).rejects.toThrow();
+	});
 });

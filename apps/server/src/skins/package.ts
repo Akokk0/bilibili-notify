@@ -25,6 +25,23 @@ function isJunk(name: string): boolean {
 	);
 }
 
+/** manifest 各处引用的图片集合(wallpaper/banner/decorations)。zip 校验与编辑保存共用一把尺。 */
+export function referencedImages(manifest: SkinManifest): Set<string> {
+	const referenced = new Set<string>();
+	for (const mode of [manifest.modes.light, manifest.modes.dark]) {
+		if (!mode) continue;
+		const images = [
+			mode.wallpaper?.image,
+			mode.banner?.image,
+			...(mode.decorations ?? []).map((d) => d.image),
+		];
+		for (const image of images) {
+			if (image) referenced.add(image);
+		}
+	}
+	return referenced;
+}
+
 export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 	let entries: Record<string, Uint8Array>;
 	let precheckError: string | null = null;
@@ -84,19 +101,9 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 	const parsed = parseSkinManifest(json);
 	if (!parsed.ok) return parsed;
 
-	const referenced = new Set<string>();
-	for (const mode of [parsed.skin.modes.light, parsed.skin.modes.dark]) {
-		if (!mode) continue;
-		const images = [
-			mode.wallpaper?.image,
-			mode.banner?.image,
-			...(mode.decorations ?? []).map((d) => d.image),
-		];
-		for (const image of images) {
-			if (!image) continue;
-			referenced.add(image);
-			if (!assets.has(image)) errors.push(`${image}: manifest 引用了它,但包里没有这个文件`);
-		}
+	const referenced = referencedImages(parsed.skin);
+	for (const image of referenced) {
+		if (!assets.has(image)) errors.push(`${image}: manifest 引用了它,但包里没有这个文件`);
 	}
 	if (errors.length > 0) return { ok: false, errors };
 

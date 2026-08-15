@@ -6,7 +6,8 @@
 import { readFile } from "node:fs/promises";
 import type { ActiveSkinResponse, SkinsListResponse } from "@bilibili-notify/contract";
 import { Hono } from "hono";
-import { openSkinPackage } from "../skins/package.js";
+import { openSkinPackage, referencedImages } from "../skins/package.js";
+import { parseSkinManifest } from "../skins/schema.js";
 import type { SkinStore } from "../skins/store.js";
 import { uploadBodyLimit } from "./upload-limit.js";
 
@@ -75,9 +76,33 @@ export function createSkinsRoute(deps: { skinStore: SkinStore }): Hono {
 	});
 
 	app.get("/:id/manifest", async (c) => {
-		const manifest = await skinStore.get(c.req.param("id"));
+		const id = c.req.param("id");
+		const manifest = await skinStore.get(id);
 		if (!manifest) return c.json({ ok: false, err: "皮肤不存在" }, 404);
-		return c.json({ manifest });
+		// assets 给编辑器画图片下拉;试穿路径拿到也无害。
+		return c.json({ manifest, assets: await skinStore.listAssets(id) });
+	});
+
+	// 编辑器保存:就地更新 manifest(资产不动)。校验与 zip 上传同权威:
+	// parseSkinManifest + 「引用的图必须在包里」同一把尺(referencedImages)。
+	app.put("/:id/manifest", async (c) => {
+		const id = c.req.param("id");
+		if (!(await skinStore.get(id))) return c.json({ ok: false, errors: ["皮肤不存在"] }, 404);
+		const body = await c.req.json().catch(() => null);
+		if (body === null) return c.json({ ok: false, errors: ["请求体不是合法 JSON"] }, 400);
+		const parsed = parseSkinManifest(body);
+		if (!parsed.ok) return c.json({ ok: false, errors: parsed.errors }, 400);
+
+		const assets = new Set(await skinStore.listAssets(id));
+		const missing = [...referencedImages(parsed.skin)].filter((image) => !assets.has(image));
+		if (missing.length > 0) {
+			return c.json(
+				{ ok: false, errors: missing.map((m) => `${m}: manifest 引用了它,但包里没有这个文件`) },
+				400,
+			);
+		}
+		await skinStore.updateManifest(id, parsed.skin);
+		return c.json({ ok: true, warnings: parsed.warnings });
 	});
 
 	app.delete("/:id", async (c) => {
