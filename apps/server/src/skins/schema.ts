@@ -67,7 +67,6 @@ const KNOWN_MODE_KEYS = new Set([
 	"radius",
 	"decorations",
 	"shadows",
-	"banner",
 	"css",
 	"effects",
 ]);
@@ -356,37 +355,8 @@ function parseMode(
 		}
 	}
 
-	if (raw.banner !== undefined) {
-		const banner = asRecord(raw.banner);
-		if (!banner) {
-			errors.push(`${path}.banner: 必须是对象`);
-		} else if (
-			typeof banner.image !== "string" ||
-			banner.image.includes("..") ||
-			!WALLPAPER_IMAGE_RE.test(banner.image)
-		) {
-			errors.push(`${path}.banner.image: 必填,且只能引用包内 assets/<文件名>.webp|jpg|png`);
-		} else if (banner.height !== undefined && !numberIn(banner.height, 80, 400)) {
-			errors.push(`${path}.banner.height: 必须是 80~400 的数字(px)`);
-		} else if (
-			banner.fit !== undefined &&
-			(typeof banner.fit !== "string" || !["cover", "contain"].includes(banner.fit))
-		) {
-			errors.push(`${path}.banner.fit: 只能是 cover / contain`);
-		} else if (
-			banner.position !== undefined &&
-			(typeof banner.position !== "string" || !POSITION_RE.test(banner.position))
-		) {
-			errors.push(`${path}.banner.position: 只收关键词/百分比`);
-		} else {
-			mode.banner = {
-				image: banner.image,
-				height: (banner.height as number | undefined) ?? 160,
-				...(banner.fit !== undefined ? { fit: banner.fit as "cover" | "contain" } : {}),
-				...(banner.position !== undefined ? { position: (banner.position as string).trim() } : {}),
-			};
-		}
-	}
+	// banner(首页 hero 横幅)已下线(主人拍板不要这个入口):存量皮肤里的它
+	// 走下方 KNOWN_MODE_KEYS 的未知字段告警 + 忽略,优雅降级。
 
 	if (raw.css !== undefined) {
 		const css = parseCssField(raw.css, `${path}.css`, errors, warnings);

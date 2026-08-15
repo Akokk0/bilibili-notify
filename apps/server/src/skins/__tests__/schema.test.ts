@@ -343,31 +343,17 @@ describe("parseSkinManifest / shadows(辉光阴影)", () => {
 	});
 });
 
-describe("parseSkinManifest / banner(hero 横幅)", () => {
-	it("合法 banner → ok,height 默认 160;image 缺失或 height 越界 → 拒绝", () => {
-		const ok = parseSkinManifest({
+describe("parseSkinManifest / banner 已下线", () => {
+	it("存量皮肤里的 banner → 按未知字段忽略并告警,优雅降级", () => {
+		const r = parseSkinManifest({
 			schemaVersion: 1,
 			name: "t",
 			modes: { light: { banner: { image: "assets/hero.png" } } },
 		});
-		expect(ok.ok).toBe(true);
-		if (ok.ok) {
-			expect(ok.skin.modes.light?.banner).toMatchObject({ image: "assets/hero.png", height: 160 });
-		}
-		expect(
-			parseSkinManifest({
-				schemaVersion: 1,
-				name: "t",
-				modes: { light: { banner: { height: 200 } } },
-			}).ok,
-		).toBe(false);
-		expect(
-			parseSkinManifest({
-				schemaVersion: 1,
-				name: "t",
-				modes: { light: { banner: { image: "assets/hero.png", height: 900 } } },
-			}).ok,
-		).toBe(false);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect((r.skin.modes.light as Record<string, unknown>).banner).toBeUndefined();
+		expect(r.warnings.some((w) => w.includes("banner"))).toBe(true);
 	});
 });
 

@@ -137,19 +137,17 @@ describe("openSkinPackage", () => {
 	});
 });
 
-describe("openSkinPackage / decorations 与 banner 的资产引用", () => {
-	it("decorations/banner 引用的图在包里 → ok 且计入已引用(不再告警未使用)", () => {
+describe("openSkinPackage / decorations 的资产引用", () => {
+	it("decorations 引用的图在包里 → ok 且计入已引用(不再告警未使用)", () => {
 		const zip = makeZip({
 			"skin.json": manifestJson({
 				modes: {
 					dark: {
 						decorations: [{ image: "assets/chara.png" }],
-						banner: { image: "assets/hero.png" },
 					},
 				},
 			}),
 			"assets/chara.png": PNG,
-			"assets/hero.png": PNG,
 		});
 		const r = openSkinPackage(zip);
 		expect(r.ok).toBe(true);

@@ -12,7 +12,6 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { SkinBanner } from "../components/skin-banner";
 import {
 	HEALTH_QUERY_KEY,
 	HEALTH_QUERY_OPTIONS,
@@ -140,40 +139,43 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 						const sub = subByUid.get(r.uid);
 						const name = sub ? displayName(sub) : `UID ${r.uid}`;
 						const color = colorFromUid(r.uid);
+						// 数据小卡同款视觉语法(淡染色渐变 + 同色细描边),单层直接画在
+						// 区块玻璃上 —— 旧的「渐变包裹 + 白底内层」在行条透明化后会整块露色。
 						return (
 							<Link
 								key={r.uid}
 								to="/subs"
-								className="block overflow-hidden rounded-xl p-px"
-								style={{ background: `linear-gradient(135deg, ${color}, ${color}88)` }}
+								className="flex items-center gap-3 rounded-xl border p-2.5"
+								style={{
+									background: `linear-gradient(135deg, ${color}1f, ${color}0a)`,
+									borderColor: `${color}33`,
+								}}
 							>
-								<div className="flex items-center gap-3 rounded-[10px] border border-bn-list-row-border bg-bn-list-row p-2.5">
-									<Avatar
-										name={name}
-										color={color}
-										size={44}
-										status="living"
-										url={sub?.cachedProfile?.avatar}
-									/>
-									<div className="min-w-0 flex-1">
-										<div className="mb-0.5 flex items-center gap-2">
-											<span className="text-[13.5px] font-bold text-bn-text-primary">{name}</span>
-											{r.areaName ? (
-												<Pill color="#FB7299" subtle size="sm">
-													{r.areaName}
-												</Pill>
-											) : null}
-										</div>
-										<div className="truncate text-xs text-bn-text-tertiary">
-											{r.title ?? "（未拉取到房间标题）"}
-										</div>
+								<Avatar
+									name={name}
+									color={color}
+									size={44}
+									status="living"
+									url={sub?.cachedProfile?.avatar}
+								/>
+								<div className="min-w-0 flex-1">
+									<div className="mb-0.5 flex items-center gap-2">
+										<span className="text-[13.5px] font-bold text-bn-text-primary">{name}</span>
+										{r.areaName ? (
+											<Pill color="#FB7299" subtle size="sm">
+												{r.areaName}
+											</Pill>
+										) : null}
 									</div>
-									<div className="flex flex-col items-end gap-1">
-										<span className="inline-flex items-center gap-1 text-[11px] font-bold text-bn-pink">
-											<Icon.eye size={11} />
-											{formatViewers(r.viewers)}
-										</span>
+									<div className="truncate text-xs text-bn-text-tertiary">
+										{r.title ?? "（未拉取到房间标题）"}
 									</div>
+								</div>
+								<div className="flex flex-col items-end gap-1">
+									<span className="inline-flex items-center gap-1 text-[11px] font-bold text-bn-pink">
+										<Icon.eye size={11} />
+										{formatViewers(r.viewers)}
+									</span>
 								</div>
 							</Link>
 						);
@@ -520,7 +522,7 @@ function PluginMatrix({ cells }: { cells: PluginCell[] }) {
 				const levelLabel = c.logLevel ? c.logLevel.toUpperCase() : "—";
 				const isOverride = c.logLevelSource === "module";
 				return (
-					<div key={c.id} className="rounded-lg border border-black/6 bg-bn-surface px-3 py-2.5">
+					<div key={c.id} className="rounded-lg px-3 py-2.5">
 						<div className="mb-1.5 flex items-center justify-between">
 							<span className="text-[12.5px] font-bold text-bn-text-primary">{c.label}</span>
 							<span
@@ -732,7 +734,6 @@ export default function Dashboard() {
 
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
-			<SkinBanner />
 			{/* KPI grid */}
 			<div className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
 				<GlassStatCard

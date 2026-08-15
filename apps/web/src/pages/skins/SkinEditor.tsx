@@ -130,8 +130,6 @@ export function SkinEditor(props: {
 	const radius = mode.radius ?? {};
 	const shadows = mode.shadows ?? {};
 	const decorations = mode.decorations ?? [];
-	// const 绑定让 TS 在 JSX 三元分支里完成收窄,省掉一串非空断言。
-	const banner = mode.banner;
 	const effects = mode.effects ?? {};
 	const missing = missingModeOf(draft);
 
@@ -625,60 +623,6 @@ export function SkinEditor(props: {
 							className={`${inputCls} resize-y font-mono text-[11px]`}
 						/>
 					</FieldRow>
-				</Fold>
-
-				<Fold title="顶部横幅">
-					{banner ? (
-						<>
-							<SelectField
-								label="横幅图片"
-								value={banner.image}
-								onChange={(v) => setSection("banner", { ...banner, image: v })}
-								options={assets.map((a) => ({ value: a, label: a }))}
-							/>
-							<RangeField
-								label="横幅高度"
-								min={80}
-								max={400}
-								step={10}
-								unit="px"
-								value={banner.height}
-								fallback={160}
-								clearable={false}
-								onChange={(v) => setSection("banner", { ...banner, height: v ?? 160 })}
-							/>
-							<SelectField
-								label="横幅铺法"
-								value={banner.fit ?? "cover"}
-								onChange={(v) => setSection("banner", { ...banner, fit: v as "cover" | "contain" })}
-								options={[
-									{ value: "cover", label: "cover 铺满" },
-									{ value: "contain", label: "contain 完整显示" },
-								]}
-							/>
-							<TextField
-								label="横幅位置"
-								value={banner.position ?? ""}
-								placeholder="默认 center;如 center top"
-								onChange={(v) => {
-									const { position: _drop, ...rest } = banner;
-									setSection("banner", v ? { ...rest, position: v } : rest);
-								}}
-							/>
-							<Btn size="sm" variant="danger" onClick={() => setSection("banner", undefined)}>
-								移除横幅
-							</Btn>
-						</>
-					) : (
-						<Btn
-							size="sm"
-							variant="outline"
-							disabled={assets.length === 0}
-							onClick={() => setSection("banner", { image: assets[0], height: 160 })}
-						>
-							启用横幅
-						</Btn>
-					)}
 				</Fold>
 			</div>
 

@@ -22,7 +22,7 @@ export function skinAssetUrl(id: string, name: string): string {
 	return `/api/skins/${id}/assets/${name.slice("assets/".length)}`;
 }
 
-/** 此刻生效的皮肤及其当前模式;没换装/逃生舱下为 null。装饰层/banner/文案槽共用。 */
+/** 此刻生效的皮肤及其当前模式;没换装/逃生舱下为 null。装饰层/文案槽共用。 */
 export function useCurrentSkinMode(): { id: string; mode: SkinMode } | null {
 	const active = useSkinStore((s) => s.active);
 	const preview = useSkinStore((s) => s.preview);

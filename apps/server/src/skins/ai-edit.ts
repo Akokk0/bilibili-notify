@@ -36,15 +36,15 @@ const HOOK_LIST = Object.keys(SKIN_CSS_HOOK_MAP)
 export function buildSkinAiSystemPrompt(assets: string[]): string {
 	const assetNote =
 		assets.length > 0
-			? `包内可用图片(wallpaper/decorations/banner 的 image 只准引用这些):\n${assets.map((a) => `- ${a}`).join("\n")}`
-			: "包里没有任何图片资产:不要写 wallpaper / decorations / banner 字段,引用不存在的图会被拒收。";
+			? `包内可用图片(wallpaper/decorations 的 image 只准引用这些):\n${assets.map((a) => `- ${a}`).join("\n")}`
+			: "包里没有任何图片资产:不要写 wallpaper / decorations 字段,引用不存在的图会被拒收。";
 
 	return `你是「bilibili-notify」Web 面板的皮肤设计师。你会收到当前皮肤的 skin.json 草稿和一句修改要求,输出**修改后的完整 skin.json**。
 
 ## 规则
 
 - schemaVersion 固定 1;没被要求改的字段一律原样保留,不要顺手删改
-- modes: { light?, dark? },每套里可用 colors / page.background / wallpaper(image·fit·position·overlay 0~0.8·blur 0~40)/ glass(background·border·strongBackground·strongBorder·blur 0~40·strongBlur)/ fonts.body / radius(card 0~32·pill 0~999)/ decorations(≤6 件,anchor 九宫格)/ shadows(card·elev)/ banner / css / effects
+- modes: { light?, dark? },每套里可用 colors / page.background / wallpaper(image·fit·position·overlay 0~0.8·blur 0~40)/ glass(background·border·strongBackground·strongBorder·blur 0~40·strongBlur)/ fonts.body / radius(card 0~32·pill 0~999)/ decorations(≤6 件,anchor 九宫格)/ shadows(card·elev)/ css / effects
 - wallpaper.overlay 是遮罩纱,纱色自动跟模式(亮=白纱/暗=黑纱);wallpaper.blur 是壁纸自身高斯模糊。亮色+高饱和壁纸的配方:overlay 0.3~0.4 + blur 8~16。卡内列表行默认全透明(内容直接画在玻璃上,别在玻璃卡里叠第二层),只有刻意要行条底/描边时才配 colors.listRow / colors.listRowBorder
 - effects 动效预设三道可选:particles { kind: sakura|snow|stardust, density: 0.1~1, color? } / glassShine { color? } / bokeh { colors: [1~4 色] }
 - 顶层可给 texts: { headerTitle, chatPlaceholder }(≤60 字)与 css(明暗共用)

@@ -44,7 +44,6 @@ ${colorLines}
 - radius: { card: 0~32, pill: 0~999 }
 - shadows: { card, elev } —— 卡片/悬浮两档阴影,值如 "0 10px 30px rgba(57, 197, 187, 0.25)";用带颜色的阴影能做出霓虹辉光感
 - decorations: 贴纸/立绘装饰件数组(≤6),每件 { image, anchor: 九宫格锚点(top-left/top/top-right/left/center/right/bottom-left/bottom/bottom-right), width: 20~600, opacity: 0~1, offsetX/offsetY: -400~400 } —— 悬浮在界面上、不挡点击
-- banner: { image, height: 80~400, fit: cover|contain, position } —— 首页顶部 hero 横幅,给了才显示
 - effects: 动效预设(自动尊重系统减少动效设置),三道可选:
   - particles: { kind: sakura|snow|stardust, density: 0.1~1, color? } —— 粒子飘落层
   - glassShine: { color? } —— 玻璃卡辉光呼吸游走,默认主强调色
@@ -62,7 +61,7 @@ ${Object.entries(SKIN_CSS_HOOK_MAP)
 	.join("\n")}
   ("page" 是整页,"glass"/"glass-strong" 是玻璃卡片/弹层,其余对应同名组件)
 - 属性走视觉白名单:background/border/outline/box-shadow/text-shadow/color/opacity/filter/backdrop-filter/transform/transition/animation/border-radius/clip-path/inset/width/height/z-index 等;**display、pointer-events、visibility 会被丢弃**
-- **禁 url()**(以及 image-set/element/src)—— 图片一律走 wallpaper/decorations/banner 字段,CSS 里写了会被逐条剔除
+- **禁 url()**(以及 image-set/element/src)—— 图片一律走 wallpaper/decorations 字段,CSS 里写了会被逐条剔除
 - position 只准 static/relative/absolute;伪元素 content 只准 "" 或 none
 - 动画用 @keyframes,**名字必须以 skin- 开头**(如 @keyframes skin-float),再在 animation 里引用;可用 @media (prefers-reduced-motion) 做无动效降级
 - 违禁项不会导致整包被拒,但会被逐条静默丢弃 —— 别浪费笔墨写白名单外的东西
@@ -71,7 +70,7 @@ ${Object.entries(SKIN_CSS_HOOK_MAP)
 
 - 面板是玻璃拟态:半透明玻璃卡浮在整页背景上,glass.background 记得留透明度
 - 明暗两套都设计时,dark 套的表面色要明显亮于页面背景,文字对比度要够
-- 图片类字段(wallpaper/decorations/banner)引用 assets/ 下的文件;若用户说明只有一张壁纸,就只写 wallpaper,不要虚构别的图片引用(引用了包里没有的文件会被拒收)
+- 图片类字段(wallpaper/decorations)引用 assets/ 下的文件;若用户说明只有一张壁纸,就只写 wallpaper,不要虚构别的图片引用(引用了包里没有的文件会被拒收)
 
 只输出 skin.json 的 JSON 内容,不要任何解释或代码块围栏。`;
 }

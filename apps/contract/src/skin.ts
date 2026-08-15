@@ -173,14 +173,6 @@ export interface SkinMode {
 	decorations?: SkinDecoration[];
 	/** 卡片/悬浮两档阴影 —— 有色 glow 即霓虹感。 */
 	shadows?: { card?: string; elev?: string };
-	/** Dashboard 首页顶部 hero 横幅;皮肤给了才渲染。 */
-	banner?: {
-		image: string;
-		/** 渲染高度 px,80~400。 */
-		height: number;
-		fit?: "cover" | "contain";
-		position?: string;
-	};
 	/**
 	 * 本模式追加的自定义 CSS(叠在顶层 css 之后)。选择器只准引用
 	 * SKIN_CSS_HOOK_MAP 的 hook,属性走视觉白名单 —— 服务端清洗后按 hook
