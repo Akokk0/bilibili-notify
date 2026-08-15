@@ -197,6 +197,13 @@ function parseMode(
 					out.overlay = wp.overlay;
 				}
 			}
+			if (wp.blur !== undefined) {
+				if (!numberIn(wp.blur, 0, 40)) {
+					errors.push(`${path}.wallpaper.blur: 必须是 0~40 的数字(px)`);
+				} else {
+					out.blur = wp.blur;
+				}
+			}
 			if (Object.keys(out).length > 0) mode.wallpaper = out;
 		}
 	}

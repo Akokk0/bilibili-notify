@@ -33,6 +33,13 @@ describe("buildSkinPrompt", () => {
 		expect(p).toMatch(/@keyframes/);
 	});
 
+	it("教会 AI 壁纸糊化/白纱语义/行条键(玻璃叠玻璃定案)", () => {
+		const p = buildSkinPrompt(readVar);
+		expect(p).toContain("blur: 0~40");
+		expect(p).toContain("白纱");
+		expect(p).toContain("colors.listRow");
+	});
+
 	it("教会 AI 动效预设:三道菜与粒子款式都点名", () => {
 		const p = buildSkinPrompt(readVar);
 		expect(p).toContain("effects");

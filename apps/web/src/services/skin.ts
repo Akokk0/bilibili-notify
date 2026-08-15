@@ -21,7 +21,37 @@ function quoteFontName(name: string): string {
 	return /^[A-Za-z0-9-]+$/.test(name) ? name : `"${name}"`;
 }
 
-export function composeSkinVars(mode: SkinMode, assetUrl: (name: string) => string): SkinVars {
+/**
+ * 壁纸背景层清单:遮罩纱 + 图。纱色跟模式走 —— 亮色蒙白纱、暗色蒙黑纱,
+ * 黑纱压高饱和亮壁纸只会更浑浊(玻璃叠玻璃议题的定案之一)。
+ */
+function buildWallpaperLayers(
+	wp: NonNullable<SkinMode["wallpaper"]> & { image: string },
+	assetUrl: (name: string) => string,
+	theme: ResolvedTheme,
+): string {
+	const fit = wp.fit ?? "cover";
+	const position = wp.position ?? "center";
+	const layers: string[] = [];
+	if (wp.overlay !== undefined && wp.overlay > 0) {
+		const base = theme === "light" ? "255, 255, 255" : "0, 0, 0";
+		const o = `rgba(${base}, ${wp.overlay})`;
+		layers.push(`linear-gradient(${o}, ${o})`);
+	}
+	const image = `url("${assetUrl(wp.image)}")`;
+	layers.push(
+		fit === "tile"
+			? `${image} ${position} repeat`
+			: `${image} ${position} / ${fit === "contain" ? "contain" : "cover"} no-repeat`,
+	);
+	return layers.join(", ");
+}
+
+export function composeSkinVars(
+	mode: SkinMode,
+	assetUrl: (name: string) => string,
+	theme: ResolvedTheme,
+): SkinVars {
 	const vars: SkinVars = {};
 
 	if (mode.colors) {
@@ -34,22 +64,12 @@ export function composeSkinVars(mode: SkinMode, assetUrl: (name: string) => stri
 	if (mode.page?.background) vars["--bn-page-bg"] = mode.page.background;
 
 	if (mode.wallpaper?.image) {
-		const wp = mode.wallpaper;
-		const imageName = mode.wallpaper.image;
-		const fit = wp.fit ?? "cover";
-		const position = wp.position ?? "center";
-		const layers: string[] = [];
-		if (wp.overlay !== undefined && wp.overlay > 0) {
-			const o = `rgba(0, 0, 0, ${wp.overlay})`;
-			layers.push(`linear-gradient(${o}, ${o})`);
+		const wp = { ...mode.wallpaper, image: mode.wallpaper.image };
+		// blur>0 时壁纸交给 composeWallpaperCss 的 body::before 糊化层;
+		// --bn-page-bg 留给 page.background/默认底色,垫在糊化层后面。
+		if (!(wp.blur !== undefined && wp.blur > 0)) {
+			vars["--bn-page-bg"] = buildWallpaperLayers(wp, assetUrl, theme);
 		}
-		const image = `url("${assetUrl(imageName)}")`;
-		layers.push(
-			fit === "tile"
-				? `${image} ${position} repeat`
-				: `${image} ${position} / ${fit === "contain" ? "contain" : "cover"} no-repeat`,
-		);
-		vars["--bn-page-bg"] = layers.join(", ");
 	}
 
 	if (mode.glass) {
@@ -181,6 +201,23 @@ export function composeSkinCss(manifest: SkinManifest, mode: "light" | "dark"): 
 		(s): s is string => typeof s === "string" && s !== "",
 	);
 	return translateSkinCssHooks(parts.join("\n"));
+}
+
+/**
+ * 壁纸糊化层:wallpaper.blur > 0 时壁纸(含纱)整体搬进 body::before 固定层
+ * 做静态高斯模糊 —— 一次成像、无逐帧动画。负 inset 按 2×blur 外扩,遮掉模糊
+ * 的边缘透底;z-index:-1 让它画在 body 底色之上、页面内容之下。
+ * 与动效 CSS 同为可信内置产物,拼进同一个 style 标签。
+ */
+export function composeWallpaperCss(
+	mode: SkinMode,
+	assetUrl: (name: string) => string,
+	theme: ResolvedTheme,
+): string {
+	const wp = mode.wallpaper;
+	if (!wp?.image || wp.blur === undefined || wp.blur <= 0) return "";
+	const layers = buildWallpaperLayers({ ...wp, image: wp.image }, assetUrl, theme);
+	return `body::before{content:"";position:fixed;inset:-${wp.blur * 2}px;z-index:-1;pointer-events:none;background:${layers};filter:blur(${wp.blur}px)}`;
 }
 
 /**

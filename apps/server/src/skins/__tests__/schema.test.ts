@@ -169,6 +169,16 @@ describe("parseSkinManifest / wallpaper", () => {
 		}
 	});
 
+	it("blur 0~40 收下;越界或非数字 → 拒绝", () => {
+		const ok = parseSkinManifest(withWallpaper({ image: "assets/a.png", blur: 12 }));
+		expect(ok.ok).toBe(true);
+		if (!ok.ok) return;
+		expect(ok.skin.modes.dark?.wallpaper?.blur).toBe(12);
+		expect(parseSkinManifest(withWallpaper({ image: "assets/a.png", blur: 41 })).ok).toBe(false);
+		expect(parseSkinManifest(withWallpaper({ image: "assets/a.png", blur: -1 })).ok).toBe(false);
+		expect(parseSkinManifest(withWallpaper({ image: "assets/a.png", blur: "12" })).ok).toBe(false);
+	});
+
 	it("overlay 超出 0~0.8 或 fit 非枚举 → 拒绝", () => {
 		expect(parseSkinManifest(withWallpaper({ image: "assets/a.png", overlay: 0.9 })).ok).toBe(
 			false,

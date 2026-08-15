@@ -306,6 +306,15 @@ export function SkinEditor(props: {
 								fallback={0}
 								onChange={(v) => setSection("wallpaper", cleanWallpaper({ ...wp, overlay: v }))}
 							/>
+							<RangeField
+								label="壁纸模糊"
+								min={0}
+								max={40}
+								step={1}
+								value={wp.blur}
+								fallback={0}
+								onChange={(v) => setSection("wallpaper", cleanWallpaper({ ...wp, blur: v }))}
+							/>
 						</>
 					) : null}
 				</Fold>

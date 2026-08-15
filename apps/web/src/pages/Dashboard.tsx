@@ -147,7 +147,7 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 								className="block overflow-hidden rounded-xl p-px"
 								style={{ background: `linear-gradient(135deg, ${color}, ${color}88)` }}
 							>
-								<div className="flex items-center gap-3 rounded-[10px] bg-bn-surface/95 p-2.5 backdrop-blur-sm">
+								<div className="flex items-center gap-3 rounded-[10px] border border-bn-list-row-border bg-bn-list-row p-2.5">
 									<Avatar
 										name={name}
 										color={color}
@@ -339,7 +339,7 @@ function TimelinePanel({
 									/>
 								</div>
 								<div
-									className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg bg-bn-surface/70 px-3 py-2 text-[12.5px]"
+									className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg border border-bn-list-row-border bg-bn-list-row px-3 py-2 text-[12.5px]"
 									// 失败标记用 inset 阴影而非 border-left:不占 box 宽度,内容不被挤右、与其它行对齐,
 									// 且被 rounded-lg 圆角裁成左侧细红条,比硬边框精致。
 									style={!h.ok ? { boxShadow: "inset 3px 0 0 #ef4444" } : undefined}
@@ -454,7 +454,7 @@ function FansPanel({ subs }: { subs: Subscription[] }) {
 						return (
 							<div
 								key={e.uid}
-								className="flex items-center gap-3 rounded-lg bg-bn-surface/70 px-3 py-2.5 text-[12.5px]"
+								className="flex items-center gap-3 rounded-lg border border-bn-list-row-border bg-bn-list-row px-3 py-2.5 text-[12.5px]"
 							>
 								<Avatar name={name} color={color} size={32} url={sub?.cachedProfile?.avatar} />
 								<div className="min-w-0 flex-1">

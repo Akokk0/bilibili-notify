@@ -29,6 +29,13 @@ describe("buildSkinAiSystemPrompt", () => {
 		expect(p).toMatch(/只输出|仅输出/);
 	});
 
+	it("壁纸糊化与行条键都教到(玻璃叠玻璃定案)", () => {
+		const p = buildSkinAiSystemPrompt(ASSETS);
+		expect(p).toContain("blur 0~40");
+		expect(p).toContain("白纱");
+		expect(p).toContain("listRow");
+	});
+
 	it("动效预设三道菜与粒子款式都点名", () => {
 		const p = buildSkinAiSystemPrompt(ASSETS);
 		for (const k of ["particles", "glassShine", "bokeh"]) expect(p).toContain(k);

@@ -9,6 +9,7 @@ import {
 	composeEffectsCss,
 	composeSkinCss,
 	composeSkinVars,
+	composeWallpaperCss,
 	decorationStyle,
 	resolveSkinMode,
 	skinKillSwitchActive,
@@ -199,14 +200,16 @@ export function SkinRoot({ children }: { children: ReactNode }) {
 			return;
 		}
 		const { mode, theme, locked } = resolveSkinMode(skin.manifest, resolved);
-		applySkinVars(
-			root,
-			composeSkinVars(mode, (name) => skinAssetUrl(skin.id, name)),
-		);
-		// 自定义 CSS + 动效预设产物:与变量同一拍进同一个 style 标签;
+		const assetUrl = (name: string) => skinAssetUrl(skin.id, name);
+		applySkinVars(root, composeSkinVars(mode, assetUrl, theme));
+		// 自定义 CSS + 壁纸糊化层 + 动效预设产物:与变量同一拍进同一个 style 标签;
 		// hook → 真实选择器的翻译只发生在这里。
 		applySkinCss(
-			[composeSkinCss(skin.manifest, theme), composeEffectsCss(mode)]
+			[
+				composeSkinCss(skin.manifest, theme),
+				composeWallpaperCss(mode, assetUrl, theme),
+				composeEffectsCss(mode),
+			]
 				.filter((s) => s !== "")
 				.join("\n"),
 		);

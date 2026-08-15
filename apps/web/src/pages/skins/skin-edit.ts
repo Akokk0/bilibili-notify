@@ -81,6 +81,8 @@ export const COLOR_GROUPS: ReadonlyArray<{
 			{ key: "border", label: "边框" },
 			{ key: "borderSubtle", label: "边框·淡" },
 			{ key: "hoverMuted", label: "悬停底" },
+			{ key: "listRow", label: "行条底" },
+			{ key: "listRowBorder", label: "行条描边" },
 			{ key: "codeBg", label: "代码底" },
 			{ key: "overlay", label: "遮罩" },
 		],

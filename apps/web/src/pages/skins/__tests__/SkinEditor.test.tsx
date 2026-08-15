@@ -99,6 +99,14 @@ describe("SkinEditor", () => {
 		);
 	});
 
+	it("拖壁纸模糊滑杆 → preview 的 wallpaper.blur 实时反映", async () => {
+		renderEditor();
+		fireEvent.change(screen.getByLabelText("壁纸模糊"), { target: { value: "12" } });
+		await waitFor(() =>
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.wallpaper?.blur).toBe(12),
+		);
+	});
+
 	it("壁纸下拉列出包内资产;选「(不用壁纸)」→ wallpaper 从 draft 消失", async () => {
 		renderEditor();
 		const select = screen.getByLabelText("壁纸图片") as HTMLSelectElement;

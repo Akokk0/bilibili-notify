@@ -15,6 +15,7 @@ import {
 	composeEffectsCss,
 	composeSkinCss,
 	composeSkinVars,
+	composeWallpaperCss,
 	decorationStyle,
 	resolveSkinMode,
 	skinKillSwitchActive,
@@ -28,6 +29,7 @@ describe("composeSkinVars", () => {
 		const vars = composeSkinVars(
 			{ colors: { accent: "#123456", textPrimary: "#111111", dangerSoft: "#fee" } },
 			assetUrl,
+			"light",
 		);
 		expect(vars["--color-bn-pink"]).toBe("#123456");
 		expect(vars["--color-bn-text-primary"]).toBe("#111111");
@@ -35,27 +37,31 @@ describe("composeSkinVars", () => {
 	});
 
 	it("page.background → --bn-page-bg", () => {
-		const vars = composeSkinVars({ page: { background: "#fef0f4" } }, assetUrl);
+		const vars = composeSkinVars({ page: { background: "#fef0f4" } }, assetUrl, "light");
 		expect(vars["--bn-page-bg"]).toBe("#fef0f4");
 	});
 
-	it("wallpaper 合成:overlay 渐变层 + 资产 URL + cover 铺法,并覆盖 page.background", () => {
-		const vars = composeSkinVars(
-			{
-				page: { background: "#000000" },
-				wallpaper: { image: "assets/bg.webp", fit: "cover", overlay: 0.3 },
-			},
-			assetUrl,
-		);
-		const bg = vars["--bn-page-bg"];
-		expect(bg).toContain('url("/api/skins/abc/assets/bg.webp")');
-		expect(bg).toContain("rgba(0, 0, 0, 0.3)");
-		expect(bg).toContain("cover");
-		expect(bg).not.toContain("#000000");
+	it("wallpaper 合成:overlay 纱跟模式走(亮=白纱/暗=黑纱)+ 资产 URL + cover,并覆盖 page.background", () => {
+		const mode: SkinMode = {
+			page: { background: "#000000" },
+			wallpaper: { image: "assets/bg.webp", fit: "cover", overlay: 0.3 },
+		};
+		const light = composeSkinVars(mode, assetUrl, "light");
+		expect(light["--bn-page-bg"]).toContain('url("/api/skins/abc/assets/bg.webp")');
+		expect(light["--bn-page-bg"]).toContain("rgba(255, 255, 255, 0.3)");
+		expect(light["--bn-page-bg"]).toContain("cover");
+		expect(light["--bn-page-bg"]).not.toContain("#000000");
+
+		const dark = composeSkinVars(mode, assetUrl, "dark");
+		expect(dark["--bn-page-bg"]).toContain("rgba(0, 0, 0, 0.3)");
 	});
 
 	it("wallpaper tile 铺法用 repeat,不带 cover", () => {
-		const vars = composeSkinVars({ wallpaper: { image: "assets/bg.png", fit: "tile" } }, assetUrl);
+		const vars = composeSkinVars(
+			{ wallpaper: { image: "assets/bg.png", fit: "tile" } },
+			assetUrl,
+			"light",
+		);
 		expect(vars["--bn-page-bg"]).toContain("repeat");
 		expect(vars["--bn-page-bg"]).not.toContain("cover");
 	});
@@ -73,6 +79,7 @@ describe("composeSkinVars", () => {
 				},
 			},
 			assetUrl,
+			"light",
 		);
 		expect(vars["--bn-glass-bg"]).toBe("rgba(255, 255, 255, 0.5)");
 		expect(vars["--bn-glass-border"]).toBe("rgba(255, 255, 255, 0.3)");
@@ -86,18 +93,63 @@ describe("composeSkinVars", () => {
 		const vars = composeSkinVars(
 			{ fonts: { body: ["LXGW WenKai", "霞鹜文楷", "monospace"] } },
 			assetUrl,
+			"light",
 		);
 		expect(vars["--font-cjk"]).toBe('"LXGW WenKai", "霞鹜文楷", monospace, system-ui, sans-serif');
 	});
 
 	it("radius 数字拼 px", () => {
-		const vars = composeSkinVars({ radius: { card: 8, pill: 12 } }, assetUrl);
+		const vars = composeSkinVars({ radius: { card: 8, pill: 12 } }, assetUrl, "light");
 		expect(vars["--radius-bn-card"]).toBe("8px");
 		expect(vars["--radius-bn-pill"]).toBe("12px");
 	});
 
 	it("空 mode → 空表(全回默认装)", () => {
-		expect(composeSkinVars({}, assetUrl)).toEqual({});
+		expect(composeSkinVars({}, assetUrl, "light")).toEqual({});
+	});
+
+	it("colors 新键 listRow/listRowBorder 映射到行条变量", () => {
+		const vars = composeSkinVars(
+			{ colors: { listRow: "rgba(255, 255, 255, 0.45)", listRowBorder: "#39c5bb" } },
+			assetUrl,
+			"light",
+		);
+		expect(vars["--color-bn-list-row"]).toBe("rgba(255, 255, 255, 0.45)");
+		expect(vars["--color-bn-list-row-border"]).toBe("#39c5bb");
+	});
+});
+
+describe("composeWallpaperCss(壁纸糊化层)", () => {
+	const wp = { image: "assets/bg.webp", overlay: 0.3, blur: 12 } as const;
+
+	it("blur>0:壁纸(含纱)整体搬进 body::before 固定层做静态高斯模糊", () => {
+		const css = composeWallpaperCss({ wallpaper: { ...wp } }, assetUrl, "light");
+		expect(css).toContain("body::before");
+		expect(css).toContain("position:fixed");
+		expect(css).toContain("filter:blur(12px)");
+		// 负 inset 外扩,遮掉 blur 的边缘透底
+		expect(css).toContain("inset:-24px");
+		expect(css).toContain('url("/api/skins/abc/assets/bg.webp")');
+		expect(css).toContain("rgba(255, 255, 255, 0.3)");
+		// 纱色照旧跟模式走
+		expect(composeWallpaperCss({ wallpaper: { ...wp } }, assetUrl, "dark")).toContain(
+			"rgba(0, 0, 0, 0.3)",
+		);
+	});
+
+	it("blur>0 时 --bn-page-bg 不再放壁纸(留给 page.background/默认底)", () => {
+		const vars = composeSkinVars(
+			{ page: { background: "#101010" }, wallpaper: { ...wp } },
+			assetUrl,
+			"light",
+		);
+		expect(vars["--bn-page-bg"]).toBe("#101010");
+	});
+
+	it("没配 blur → 返回空串,壁纸照旧走 --bn-page-bg(现状不变)", () => {
+		const mode: SkinMode = { wallpaper: { image: "assets/bg.webp" } };
+		expect(composeWallpaperCss(mode, assetUrl, "light")).toBe("");
+		expect(composeSkinVars(mode, assetUrl, "light")["--bn-page-bg"]).toContain("url(");
 	});
 });
 
@@ -152,6 +204,7 @@ describe("composeSkinVars / shadows(辉光)", () => {
 				},
 			},
 			assetUrl,
+			"light",
 		);
 		expect(vars["--shadow-bn-card"]).toBe("0 10px 30px rgba(57, 197, 187, 0.25)");
 		expect(vars["--shadow-bn-elev"]).toBe("0 18px 50px rgba(57, 197, 187, 0.4)");

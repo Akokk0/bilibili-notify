@@ -31,6 +31,9 @@ export const SKIN_COLOR_TOKEN_MAP = {
 	border: "--color-bn-border",
 	borderSubtle: "--color-bn-border-subtle",
 	hoverMuted: "--color-bn-hover-muted",
+	/** 玻璃卡内数据列表行的底色/描边(默认:70% surface / 透明)——治「玻璃叠玻璃」的口子。 */
+	listRow: "--color-bn-list-row",
+	listRowBorder: "--color-bn-list-row-border",
 	codeBg: "--color-bn-code-bg",
 	overlay: "--color-bn-overlay",
 	danger: "--color-bn-danger",
@@ -142,8 +145,10 @@ export interface SkinMode {
 		fit?: SkinWallpaperFit;
 		/** CSS background-position 语法的受限子集(关键词/百分比)。 */
 		position?: string;
-		/** 压暗遮罩不透明度 0~0.8,保文字可读性。 */
+		/** 遮罩纱不透明度 0~0.8,保文字可读性;纱色跟模式走(亮=白纱,暗=黑纱)。 */
 		overlay?: number;
+		/** 壁纸自身高斯模糊 0~40px(静态一次成像):高饱和壁纸退成柔和色底。 */
+		blur?: number;
 	};
 	glass?: {
 		background?: string;
