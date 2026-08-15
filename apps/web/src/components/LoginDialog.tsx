@@ -7,7 +7,9 @@ import { useSessionStore } from "../store/session";
  * Dashboard login card (Q5). Replaces the browser-native HTTP Basic popup.
  *
  * - Cold start (`variant="cold"`): centered card on the app gradient backdrop;
- *   the authed app is not mounted yet (so WS never connects pre-login).
+ *   the authed app is not mounted yet (so WS never connects pre-login). The
+ *   pink tint must stay translucent — an opaque layer (e.g. `via-white`)
+ *   ignores dark mode and washes the whole viewport bright.
  * - Mid-session expiry (`variant="overlay"`): same card floating on a blurred
  *   backdrop over the still-mounted (frozen) app — resume in place after
  *   re-login, with an explicit "session expired" hint.
@@ -75,7 +77,7 @@ export function LoginDialog({ variant }: { variant: "cold" | "overlay" }) {
 			className={`fixed inset-0 z-50 flex items-center justify-center p-6 ${
 				expired
 					? "bg-black/30 backdrop-blur-sm"
-					: "bg-gradient-to-br from-bn-pink/10 via-white to-bn-pink/5"
+					: "bg-gradient-to-br from-bn-pink/10 via-transparent to-bn-pink/5"
 			}`}
 		>
 			<form
