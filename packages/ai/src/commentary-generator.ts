@@ -905,6 +905,15 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 * 失败一律抛,由调用方决定退回原标题 —— 起不出名字是小事,不该连累已经聊完
 	 * 的那一轮。
 	 */
+	/**
+	 * 结构化生成:调用方全权提供 system prompt —— 不叠人格、不叠场景、不挂工具、
+	 * 不落会话历史。「要一份 JSON,不要女仆口癖」的场景用它(皮肤 AI 编辑等);
+	 * 网关/方言/思考参数与其他调用走同一条 callAPI。
+	 */
+	async generateRaw(system: string, user: string): Promise<string> {
+		return this.callAPI(system, [{ role: "user", content: user }]);
+	}
+
 	async summarizeTitle(exchange: readonly ConversationMessage[]): Promise<string> {
 		if (exchange.length === 0) throw new Error("没有可总结的对话");
 		const { apiKey, baseURL, model } = this.config;

@@ -253,6 +253,8 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 		"/api/skins",
 		createSkinsRoute({
 			skinStore: new SkinStore({ skinsDir: joinPath(runtime.bootstrap.dataDir, "skins") }),
+			// 热读:engines 是后挂的,ai-edit 每次现取,不做快照。
+			commentary: () => runtime.engines?.commentary ?? null,
 		}),
 	);
 	app.route(

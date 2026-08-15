@@ -1427,3 +1427,19 @@ describe("CommentaryGenerator — ②8 chat 串行化 / :384 脱敏 (P2)", () =>
 		expect(msg).toContain("Bearer ***");
 	});
 });
+
+describe("CommentaryGenerator.generateRaw(无人格结构化生成)", () => {
+	it("system 原样直达、不叠人格/场景、不挂工具;返回正文", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp('{"a":1}'));
+		const out = await gen.generateRaw("RAW_SYSTEM", "RAW_USER");
+		expect(out).toBe('{"a":1}');
+		const params = oai.create.mock.calls.at(-1)?.[0] as {
+			messages: ChatMsg[];
+			tools?: unknown;
+		};
+		expect(params.messages[0]).toEqual({ role: "system", content: "RAW_SYSTEM" });
+		expect(params.messages[1]).toEqual({ role: "user", content: "RAW_USER" });
+		expect(params.tools).toBeUndefined();
+	});
+});

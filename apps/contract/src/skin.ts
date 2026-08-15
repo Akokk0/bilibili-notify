@@ -211,3 +211,8 @@ export interface SkinManifestResponse {
 export type SkinManifestUpdateResponse =
 	| { ok: true; warnings: string[] }
 	| { ok: false; errors: string[] };
+
+/** POST /api/skins/:id/ai-edit(「让女仆改」)。产物只回编辑器 draft,不落盘。 */
+export type SkinAiEditResponse =
+	| { ok: true; manifest: SkinManifest; warnings: string[] }
+	| { ok: false; errors: string[] };

@@ -1,5 +1,6 @@
 import {
 	SKIN_DECORATION_ANCHORS,
+	type SkinAiEditResponse,
 	type SkinDecoration,
 	type SkinManifest,
 	type SkinManifestUpdateResponse,
@@ -56,6 +57,8 @@ export function SkinEditor(props: {
 	const [modeKey, setModeKey] = useState<"light" | "dark">(manifest.modes.light ? "light" : "dark");
 	const [confirmDiscard, setConfirmDiscard] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [aiInstruction, setAiInstruction] = useState("");
+	const [aiWarnings, setAiWarnings] = useState<string[]>([]);
 	const dirty = draft !== manifest;
 
 	// 挂载即接管:试穿浮条让位;卸载时归还通道并清预览(未保存的改动随之还原)。
@@ -82,6 +85,21 @@ export function SkinEditor(props: {
 			void qc.invalidateQueries({ queryKey: ["skins"] });
 			setError(null);
 			onClose();
+		},
+		onError: (e) => setError(String((e as Error).message)),
+	});
+
+	// 「让女仆改」:AI 产物只进 draft(实时预览),不落盘 —— 保存永远主人点。
+	// 要发的东西必须走 variables(react-query 回调时序下闭包靠不住)。
+	const aiEdit = useMutation({
+		mutationFn: (vars: { instruction: string; draft: SkinManifest }) =>
+			api.post<SkinAiEditResponse>(`/api/skins/${id}/ai-edit`, vars),
+		onSuccess: (res) => {
+			if (!res.ok) return; // 4xx/5xx 走 onError;这里只剩 ok 形状
+			setDraft(res.manifest);
+			setAiWarnings(res.warnings);
+			setAiInstruction("");
+			setError(null);
 		},
 		onError: (e) => setError(String((e as Error).message)),
 	});
@@ -121,6 +139,33 @@ export function SkinEditor(props: {
 					<div className="text-[11px] text-bn-text-secondary">
 						每一项改动整页立即生效;保存前只是预览
 					</div>
+				</div>
+			</div>
+
+			<div className="space-y-1.5 border-b border-bn-border-subtle px-4 py-3">
+				<textarea
+					aria-label="修改要求"
+					value={aiInstruction}
+					onChange={(e) => setAiInstruction(e.target.value)}
+					placeholder="用一句话让女仆改,如「整体换成赛博朋克风,卡片加霓虹流光」"
+					rows={2}
+					className={`${inputCls} resize-y`}
+				/>
+				<div className="flex items-start justify-between gap-2">
+					{aiWarnings.length > 0 ? (
+						<span className="min-w-0 flex-1 text-[11px] leading-4 text-bn-warning">
+							{aiWarnings.join(";")}
+						</span>
+					) : (
+						<span className="text-[11px] text-bn-text-tertiary">改完直接上身预览,不满意再改</span>
+					)}
+					<Btn
+						size="sm"
+						disabled={aiEdit.isPending || aiInstruction.trim() === ""}
+						onClick={() => aiEdit.mutate({ instruction: aiInstruction.trim(), draft })}
+					>
+						{aiEdit.isPending ? "女仆修改中…" : "让女仆改"}
+					</Btn>
 				</div>
 			</div>
 
@@ -528,7 +573,7 @@ export function SkinEditor(props: {
 			</div>
 
 			<div className="sticky bottom-0 space-y-2 border-t border-bn-border-subtle bg-bn-surface-strong/80 px-4 py-3 backdrop-blur-sm">
-				{error ? <ErrorNote>保存失败:{error}</ErrorNote> : null}
+				{error ? <ErrorNote>操作失败:{error}</ErrorNote> : null}
 				<div className="flex justify-end gap-2">
 					<Btn variant="outline" onClick={requestClose} disabled={save.isPending}>
 						取消

@@ -6,6 +6,7 @@
 import { readFile } from "node:fs/promises";
 import type { ActiveSkinResponse, SkinsListResponse } from "@bilibili-notify/contract";
 import { Hono } from "hono";
+import { runSkinAiEdit, type SkinAiGenerator } from "../skins/ai-edit.js";
 import { openSkinPackage, referencedImages } from "../skins/package.js";
 import { parseSkinManifest } from "../skins/schema.js";
 import type { SkinStore } from "../skins/store.js";
@@ -20,7 +21,11 @@ const ASSET_MIME: Record<string, string> = {
 	jpeg: "image/jpeg",
 };
 
-export function createSkinsRoute(deps: { skinStore: SkinStore }): Hono {
+export function createSkinsRoute(deps: {
+	skinStore: SkinStore;
+	/** 活的 AI 生成器热读口;null = AI 未配置/未就绪(ai-edit 回 503)。 */
+	commentary?: () => SkinAiGenerator | null;
+}): Hono {
 	const { skinStore } = deps;
 	const app = new Hono();
 
@@ -73,6 +78,37 @@ export function createSkinsRoute(deps: { skinStore: SkinStore }): Hono {
 		}
 		await skinStore.setActive(id);
 		return c.json({ ok: true });
+	});
+
+	// 「让女仆改」:AI 产物只回编辑器 draft 做实时预览,**不落盘** —— 保存永远主人点。
+	app.post("/:id/ai-edit", async (c) => {
+		const id = c.req.param("id");
+		if (!(await skinStore.get(id))) return c.json({ ok: false, errors: ["皮肤不存在"] }, 404);
+		const generator = deps.commentary?.() ?? null;
+		if (!generator) {
+			return c.json(
+				{ ok: false, errors: ["智能女仆尚未配置或未就绪,先去 AI 设置页接好模型"] },
+				503,
+			);
+		}
+		const body = await c.req.json().catch(() => null);
+		const instruction =
+			body && typeof body === "object" ? (body as { instruction?: unknown }).instruction : null;
+		const draft = body && typeof body === "object" ? (body as { draft?: unknown }).draft : null;
+		if (typeof instruction !== "string" || instruction.trim() === "" || instruction.length > 2000) {
+			return c.json({ ok: false, errors: ["修改要求必须是 1~2000 字的文本"] }, 400);
+		}
+		if (typeof draft !== "object" || draft === null) {
+			return c.json({ ok: false, errors: ["draft 必须是当前 manifest 对象"] }, 400);
+		}
+		const result = await runSkinAiEdit({
+			generateRaw: (s, u) => generator.generateRaw(s, u),
+			assets: await skinStore.listAssets(id),
+			draft,
+			instruction: instruction.trim(),
+		});
+		if (!result.ok) return c.json(result, 422);
+		return c.json(result);
 	});
 
 	app.get("/:id/manifest", async (c) => {

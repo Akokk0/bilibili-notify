@@ -217,3 +217,58 @@ describe("PUT /:id/manifest(编辑器保存)", () => {
 		expect(bad.status).toBe(400);
 	});
 });
+
+describe("POST /:id/ai-edit(让女仆改,不落盘)", () => {
+	function appWithAi(reply: string | null): Hono {
+		return new Hono().route(
+			"/",
+			createSkinsRoute({
+				skinStore: store,
+				commentary: () =>
+					reply === null ? null : { generateRaw: async (_s: string, _u: string) => reply },
+			}),
+		);
+	}
+
+	async function aiEdit(aiApp: Hono, id: string, body: unknown): Promise<Response> {
+		return aiApp.request(`/${id}/ai-edit`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
+	}
+
+	it("AI 给出合法 manifest → 200 带清洗后的 manifest;盘上原样(不落盘)", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const aiApp = appWithAi(
+			JSON.stringify({ schemaVersion: 1, name: "AI 改名", modes: { light: {} } }),
+		);
+		const res = await aiEdit(aiApp, id, {
+			instruction: "改个名",
+			draft: { schemaVersion: 1, name: "樱花夜", modes: { light: {} } },
+		});
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as any;
+		expect(body.ok).toBe(true);
+		expect(body.manifest.name).toBe("AI 改名");
+		// 盘上没动
+		const got = (await (await app.request(`/${id}/manifest`)).json()) as any;
+		expect(got.manifest.name).toBe("樱花夜");
+	});
+
+	it("AI 未配置(commentary 为 null)→ 503;皮肤不存在 → 404;缺 instruction → 400", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		expect((await aiEdit(appWithAi(null), id, { instruction: "x", draft: {} })).status).toBe(503);
+		const aiApp = appWithAi("{}");
+		expect((await aiEdit(aiApp, "nope", { instruction: "x", draft: {} })).status).toBe(404);
+		expect((await aiEdit(aiApp, id, { instruction: "", draft: {} })).status).toBe(400);
+	});
+
+	it("AI 两答都不合法 → 422 带 errors", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const aiApp = appWithAi("不是 JSON");
+		const res = await aiEdit(aiApp, id, { instruction: "x", draft: {} });
+		expect(res.status).toBe(422);
+		expect(((await res.json()) as any).errors.length).toBeGreaterThan(0);
+	});
+});

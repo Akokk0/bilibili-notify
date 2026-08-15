@@ -15,6 +15,7 @@ import { SkinEditor } from "../SkinEditor";
 
 const H = vi.hoisted(() => ({
 	putCalls: [] as Array<{ path: string; body: unknown }>,
+	postCalls: [] as Array<{ path: string; body: unknown }>,
 }));
 
 vi.mock("../../../services/api", () => ({
@@ -22,6 +23,14 @@ vi.mock("../../../services/api", () => ({
 		put: vi.fn(async (path: string, body: unknown) => {
 			H.putCalls.push({ path, body });
 			return { ok: true, warnings: [] };
+		}),
+		post: vi.fn(async (path: string, body: unknown) => {
+			H.postCalls.push({ path, body });
+			return {
+				ok: true,
+				manifest: { schemaVersion: 1, name: "AI 皮肤", modes: { light: {} } },
+				warnings: ["texts.foo: 不认识的文案槽位,已忽略"],
+			};
 		}),
 	},
 }));
@@ -59,6 +68,7 @@ function renderEditor(overrides?: { manifest?: SkinManifest; onClose?: () => voi
 
 beforeEach(() => {
 	H.putCalls = [];
+	H.postCalls = [];
 	useSkinStore.setState({
 		active: null,
 		preview: null,
@@ -149,6 +159,24 @@ describe("SkinEditor", () => {
 		// 清空 = 字段消失
 		fireEvent.change(screen.getByLabelText("共用 CSS"), { target: { value: "" } });
 		await waitFor(() => expect(useSkinStore.getState().preview?.manifest.css).toBeUndefined());
+	});
+
+	it("让女仆改:发 POST ai-edit 带当前 draft;返回的 manifest 直接进 draft 实时预览", async () => {
+		renderEditor();
+		// 先手调一个值,验证发出去的 draft 是当前草稿而非初始 manifest
+		fireEvent.change(screen.getByLabelText("玻璃模糊"), { target: { value: "24" } });
+		fireEvent.change(screen.getByLabelText("修改要求"), {
+			target: { value: "换成赛博朋克风" },
+		});
+		fireEvent.click(screen.getByText("让女仆改"));
+		await waitFor(() => expect(H.postCalls).toHaveLength(1));
+		expect(H.postCalls[0].path).toBe("/api/skins/s1/ai-edit");
+		const sent = H.postCalls[0].body as { instruction: string; draft: SkinManifest };
+		expect(sent.instruction).toBe("换成赛博朋克风");
+		expect(sent.draft.modes.light?.glass?.blur).toBe(24);
+		// 产物进 draft → 实时预览;要求框清空
+		await waitFor(() => expect(useSkinStore.getState().preview?.manifest.name).toBe("AI 皮肤"));
+		expect(H.putCalls).toEqual([]); // 不落盘
 	});
 
 	it("单套皮肤:点「补一套深色」→ draft 长出 dark 套(复制自浅色)", async () => {
