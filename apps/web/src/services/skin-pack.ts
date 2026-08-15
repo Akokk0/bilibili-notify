@@ -38,7 +38,7 @@ ${colorLines}
 - page.background: 整页背景,纯色或 linear/radial 渐变${pageBg ? `(当前 ${pageBg})` : ""}
 - wallpaper: { image, fit: cover|contain|tile, position, overlay: 0~0.8, blur: 0~40 }
   —— image 固定写 "${WALLPAPER_BASENAME}.webp"(用户上传时会自动修正扩展名);overlay 是遮罩纱,纱色自动跟模式走(亮色蒙白纱/暗色蒙黑纱),配壁纸建议 ≥0.2 保文字可读;blur 是壁纸自身高斯模糊(px),高饱和/高对比壁纸建议 8~16 退成柔和色底,免得玻璃卡上透出脏斑
-  —— 亮色 + 艳壁纸的经典配方:overlay 0.3~0.4 + blur 8~16,再把 colors.listRow 给成近透明淡底、colors.listRowBorder 给主题色细描边,卡内列表行就不会「玻璃叠玻璃」
+  —— 亮色 + 艳壁纸的经典配方:overlay 0.3~0.4 + blur 8~16。卡内列表行**默认全透明**(内容直接画在玻璃上,区块玻璃卡是唯一一层,别叠第二层),只有刻意要行条底/描边时才配 colors.listRow / colors.listRowBorder
 - glass: { background, border, strongBackground, strongBorder, blur: 0~40, strongBlur: 0~40 } —— 玻璃面板的底色(带透明度的颜色)与模糊度
 - fonts.body: 字体名数组(1~8 个)
 - radius: { card: 0~32, pill: 0~999 }

@@ -23,10 +23,10 @@
 	--color-bn-surface: #ffffff;
 	--color-bn-surface-strong: #ffffff;
 	--color-bn-surface-muted: #f8fafc;
-	/* 玻璃卡内数据列表行的底/描边:默认 = 旧 bg-bn-surface/70 观感、无描边;
-	   皮肤可整体接管(艳壁纸下透明底+主题色描边),是「玻璃叠玻璃」的治理口。
-	   默认用 color-mix 引 surface —— 皮肤只改 surface 时行条照旧跟着走。 */
-	--color-bn-list-row: color-mix(in srgb, var(--color-bn-surface) 70%, transparent);
+	/* 玻璃卡内数据列表行的底/描边:默认全透明(iOS 26 式,内容直接画在玻璃上,
+	   区块玻璃卡是唯一一层 —— 主人拍板的全站方向)。皮肤想要行条底/描边可配
+	   listRow / listRowBorder 两键,这是刻意保留的口子而非默认。 */
+	--color-bn-list-row: transparent;
 	--color-bn-list-row-border: transparent;
 	--color-bn-field: #ffffff;
 	--color-bn-border: #e5e7eb;
@@ -92,7 +92,7 @@
 	--color-bn-surface: #1e2738;
 	--color-bn-surface-strong: #26314a;
 	--color-bn-surface-muted: #182030;
-	--color-bn-list-row: color-mix(in srgb, var(--color-bn-surface) 70%, transparent);
+	--color-bn-list-row: transparent;
 	--color-bn-list-row-border: transparent;
 	--color-bn-field: #161d2b;
 	--color-bn-border: rgba(148, 163, 184, 0.28);
