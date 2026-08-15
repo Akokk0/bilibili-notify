@@ -137,33 +137,18 @@ describe("openSkinPackage", () => {
 	});
 });
 
-describe("openSkinPackage / decorations 的资产引用", () => {
-	it("decorations 引用的图在包里 → ok 且计入已引用(不再告警未使用)", () => {
+describe("openSkinPackage / decorations 已下线", () => {
+	it("存量包里的 decorations → 字段忽略告警,引用的图按未使用资产提示", () => {
 		const zip = makeZip({
 			"skin.json": manifestJson({
-				modes: {
-					dark: {
-						decorations: [{ image: "assets/chara.png" }],
-					},
-				},
+				modes: { dark: { decorations: [{ image: "assets/chara.png" }] } },
 			}),
 			"assets/chara.png": PNG,
 		});
 		const r = openSkinPackage(zip);
 		expect(r.ok).toBe(true);
 		if (!r.ok) return;
-		expect(r.warnings).toEqual([]);
-	});
-
-	it("decorations 引用的图缺失 → 拒绝并点名文件", () => {
-		const zip = makeZip({
-			"skin.json": manifestJson({
-				modes: { dark: { decorations: [{ image: "assets/missing.png" }] } },
-			}),
-		});
-		const r = openSkinPackage(zip);
-		expect(r.ok).toBe(false);
-		if (r.ok) return;
-		expect(r.errors.join()).toContain("assets/missing.png");
+		expect(r.warnings.some((w) => w.includes("decorations"))).toBe(true);
+		expect(r.warnings.some((w) => w.includes("assets/chara.png"))).toBe(true);
 	});
 });

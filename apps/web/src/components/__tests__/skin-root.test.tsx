@@ -165,12 +165,11 @@ describe("SkinRoot / 自定义 CSS 注入", () => {
 });
 
 describe("SkinRoot / 动效预设层", () => {
-	it("particles+bokeh → 渲染穿透点击的效果层;effects CSS 拼进 style 标签", async () => {
+	it("bokeh → 渲染穿透点击的效果层;effects CSS 拼进 style 标签", async () => {
 		H.activeResponse = {
 			active: makeSkin({
 				light: {
 					effects: {
-						particles: { kind: "sakura", density: 0.5 },
 						bokeh: { colors: ["#fb7299", "#00aeec"] },
 					},
 				},
@@ -182,16 +181,15 @@ describe("SkinRoot / 动效预设层", () => {
 			expect(layer).toBeTruthy();
 			expect(layer?.className).toContain("pointer-events-none");
 		});
-		// 粒子:density 0.5 → 20 枚;光斑:2 团
+		// 光斑:2 团
 		const layer = container.querySelector("[data-skin-effects]") as HTMLElement;
-		expect(layer.querySelectorAll("[data-skin-particle]")).toHaveLength(20);
 		expect(layer.querySelectorAll("[data-skin-bokeh]")).toHaveLength(2);
 		// 动效 CSS 同一拍进了 style 标签
 		const css = document.getElementById("bn-skin-css")?.textContent ?? "";
-		expect(css).toContain("bn-skin-fall");
+		expect(css).toContain("bn-skin-drift");
 	});
 
-	it("只有 glassShine(无粒子/光斑)→ 不渲染效果层,但 CSS 在", async () => {
+	it("只有 glassShine(无光斑)→ 不渲染效果层,但 CSS 在", async () => {
 		H.activeResponse = {
 			active: makeSkin({ light: { effects: { glassShine: {} } } }),
 		};
@@ -218,35 +216,5 @@ describe("SkinRoot × 登录门", () => {
 
 		useSessionStore.getState().markAuthed();
 		await waitFor(() => expect(rootVar("--color-bn-pink")).toBe("#654321"));
-	});
-});
-
-describe("SkinRoot / 贴纸装饰层", () => {
-	it("active 皮肤带 decorations → 渲染穿透点击的贴纸 img,src 指向皮肤资产", async () => {
-		H.activeResponse = {
-			active: makeSkin({
-				light: {
-					decorations: [
-						{ image: "assets/chara.png", anchor: "bottom-right", width: 220, opacity: 0.9 },
-					],
-				},
-			}),
-		};
-		const { container } = renderRoots();
-		await waitFor(() => {
-			const img = container.querySelector("img[src='/api/skins/abc/assets/chara.png']");
-			expect(img).toBeTruthy();
-		});
-		const layer = container.querySelector("[data-skin-decorations]") as HTMLElement;
-		expect(layer.className).toContain("pointer-events-none");
-	});
-
-	it("无 decorations → 不渲染贴纸层;killSwitch 下也不渲染", async () => {
-		H.activeResponse = {
-			active: makeSkin({ light: { colors: { accent: "#123456" } } }),
-		};
-		const { container } = renderRoots();
-		await waitFor(() => expect(rootVar("--color-bn-pink")).toBe("#123456"));
-		expect(container.querySelector("[data-skin-decorations]")).toBeNull();
 	});
 });

@@ -16,7 +16,6 @@ import {
 	composeSkinCss,
 	composeSkinVars,
 	composeWallpaperCss,
-	decorationStyle,
 	resolveSkinMode,
 	skinKillSwitchActive,
 	translateSkinCssHooks,
@@ -211,39 +210,6 @@ describe("composeSkinVars / shadows(辉光)", () => {
 	});
 });
 
-describe("decorationStyle(九宫格贴纸定位)", () => {
-	it("bottom-right 贴边;center 双向居中;offset 叠进 translate", () => {
-		const br = decorationStyle({
-			image: "assets/a.png",
-			anchor: "bottom-right",
-			width: 220,
-			opacity: 0.9,
-		});
-		expect(br).toMatchObject({ bottom: 0, right: 0, width: 220, opacity: 0.9 });
-
-		const center = decorationStyle({
-			image: "assets/a.png",
-			anchor: "center",
-			width: 100,
-			opacity: 1,
-		});
-		expect(center.left).toBe("50%");
-		expect(center.top).toBe("50%");
-		expect(String(center.transform)).toContain("-50%");
-
-		const offset = decorationStyle({
-			image: "assets/a.png",
-			anchor: "bottom-right",
-			width: 100,
-			opacity: 1,
-			offsetX: -12,
-			offsetY: -8,
-		});
-		expect(String(offset.transform)).toContain("-12px");
-		expect(String(offset.transform)).toContain("-8px");
-	});
-});
-
 describe("自定义 CSS:hook 翻译与合成", () => {
 	it("hook 按映射表翻译成真实选择器;未知 hook 原样保留(命中不了任何元素)", () => {
 		expect(translateSkinCssHooks('[data-bn="glass"]:hover{border-width:2px}')).toBe(
@@ -313,11 +279,10 @@ describe("composeEffectsCss(动效预设 → 内置 CSS)", () => {
 		expect(custom).toContain("#39c5bb");
 	});
 
-	it("粒子/光斑:输出 keyframes,且 reduce 偏好下隐藏效果层", () => {
+	it("光斑:输出 keyframes,且 reduce 偏好下隐藏效果层", () => {
 		const css = composeEffectsCss({
-			effects: { particles: { kind: "sakura" }, bokeh: { colors: ["#fb7299"] } },
+			effects: { bokeh: { colors: ["#fb7299"] } },
 		});
-		expect(css).toContain("bn-skin-fall");
 		expect(css).toContain("bn-skin-drift");
 		expect(css).toMatch(/prefers-reduced-motion: reduce[^}]*\{\s*\[data-skin-effects\]/);
 	});

@@ -36,11 +36,12 @@ describe("buildSkinAiSystemPrompt", () => {
 		expect(p).toContain("listRow");
 	});
 
-	it("动效预设三道菜与粒子款式都点名", () => {
+	it("动效预设两道菜都点名;已移除的动效与贴纸不许再教给内嵌 AI", () => {
 		const p = buildSkinAiSystemPrompt(ASSETS);
-		for (const k of ["particles", "glassShine", "bokeh"]) expect(p).toContain(k);
-		for (const kind of ["sakura", "snow", "stardust"]) expect(p).toContain(kind);
-		expect(p).not.toContain("backgroundFlow"); // 已移除的动效不许再教给内嵌 AI
+		for (const k of ["glassShine", "bokeh"]) expect(p).toContain(k);
+		for (const gone of ["backgroundFlow", "particles", "decorations"]) {
+			expect(p).not.toContain(gone);
+		}
 	});
 
 	it("包里没有图时明说别引用图片字段", () => {

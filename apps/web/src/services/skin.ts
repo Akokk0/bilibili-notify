@@ -7,11 +7,9 @@
 import {
 	SKIN_COLOR_TOKEN_MAP,
 	SKIN_CSS_HOOK_MAP,
-	type SkinDecoration,
 	type SkinManifest,
 	type SkinMode,
 } from "@bilibili-notify/contract";
-import type { CSSProperties } from "react";
 import type { ResolvedTheme } from "../store/theme";
 
 export type SkinVars = Record<string, string>;
@@ -94,49 +92,6 @@ export function composeSkinVars(
 	if (mode.shadows?.elev) vars["--shadow-bn-elev"] = mode.shadows.elev;
 
 	return vars;
-}
-
-/** 九宫格锚点 → fixed 定位样式;offset 与居中位移一起进 transform。 */
-export function decorationStyle(d: SkinDecoration): CSSProperties {
-	const [v, h] = ((): [string, string] => {
-		switch (d.anchor) {
-			case "top-left":
-				return ["top", "left"];
-			case "top":
-				return ["top", "center"];
-			case "top-right":
-				return ["top", "right"];
-			case "left":
-				return ["middle", "left"];
-			case "center":
-				return ["middle", "center"];
-			case "right":
-				return ["middle", "right"];
-			case "bottom-left":
-				return ["bottom", "left"];
-			case "bottom":
-				return ["bottom", "center"];
-			default:
-				return ["bottom", "right"];
-		}
-	})();
-	const style: CSSProperties = { width: d.width, opacity: d.opacity };
-	let tx = `${d.offsetX ?? 0}px`;
-	let ty = `${d.offsetY ?? 0}px`;
-	if (v === "top") style.top = 0;
-	else if (v === "bottom") style.bottom = 0;
-	else {
-		style.top = "50%";
-		ty = `calc(-50% + ${ty})`;
-	}
-	if (h === "left") style.left = 0;
-	else if (h === "right") style.right = 0;
-	else {
-		style.left = "50%";
-		tx = `calc(-50% + ${tx})`;
-	}
-	style.transform = `translate(${tx}, ${ty})`;
-	return style;
 }
 
 export interface ResolvedSkinMode {
@@ -223,7 +178,7 @@ export function composeWallpaperCss(
 /**
  * 动效预设 → 内置 CSS。这段是**我们自己写的可信产物**(不过白名单),与皮肤
  * 自定义 CSS 拼进同一个 style 标签。所有动画包在 prefers-reduced-motion:
- * no-preference 里;粒子/光斑层在 reduce 偏好下整层隐藏(不动的粒子只是杂点)。
+ * no-preference 里;光斑层在 reduce 偏好下整层隐藏(不动的光斑只是色块)。
  */
 export function composeEffectsCss(mode: SkinMode): string {
 	const fx = mode.effects;
@@ -239,13 +194,6 @@ export function composeEffectsCss(mode: SkinMode): string {
 		);
 	}
 
-	if (fx.particles) {
-		anim.push(
-			"@keyframes bn-skin-fall{from{transform:translateY(-8vh) translateX(0) rotate(0deg)}to{transform:translateY(108vh) translateX(7vw) rotate(320deg)}}",
-			"@keyframes bn-skin-twinkle{0%,100%{opacity:0.15}50%{opacity:1}}",
-		);
-	}
-
 	if (fx.bokeh) {
 		anim.push(
 			"@keyframes bn-skin-drift{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(6vw,-5vh) scale(1.15)}66%{transform:translate(-5vw,5vh) scale(0.9)}}",
@@ -256,7 +204,7 @@ export function composeEffectsCss(mode: SkinMode): string {
 	if (anim.length > 0) {
 		parts.push(`@media (prefers-reduced-motion: no-preference){${anim.join("")}}`);
 	}
-	if (fx.particles || fx.bokeh) {
+	if (fx.bokeh) {
 		parts.push("@media (prefers-reduced-motion: reduce){[data-skin-effects]{display:none}}");
 	}
 	return parts.join("\n");

@@ -1,12 +1,9 @@
-import {
-	SKIN_DECORATION_ANCHORS,
-	type SkinAiEditResponse,
-	type SkinDecoration,
-	type SkinEffects,
-	type SkinManifest,
-	type SkinManifestUpdateResponse,
-	type SkinMode,
-	type SkinParticleKind,
+import type {
+	SkinAiEditResponse,
+	SkinEffects,
+	SkinManifest,
+	SkinManifestUpdateResponse,
+	SkinMode,
 } from "@bilibili-notify/contract";
 import { Btn, ConfirmDialog, DrawerShell, ErrorNote, Toggle } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -32,18 +29,6 @@ import {
  * 借 store 的 preview 通道(与试穿同一条注入路径),editing 标记压住试穿浮条。
  * 「保存」PUT /api/skins/:id/manifest 就地落盘(资产不动);「取消」丢弃。
  */
-
-const ANCHOR_LABEL: Record<(typeof SKIN_DECORATION_ANCHORS)[number], string> = {
-	"top-left": "左上",
-	top: "上",
-	"top-right": "右上",
-	left: "左",
-	center: "中",
-	right: "右",
-	"bottom-left": "左下",
-	bottom: "下",
-	"bottom-right": "右下",
-};
 
 const inputCls =
 	"w-full rounded-lg border border-bn-border bg-bn-field px-2 py-1 text-[12px] text-bn-text-primary outline-none focus:border-bn-pink";
@@ -136,20 +121,12 @@ export function SkinEditor(props: {
 	const colors = mode.colors ?? {};
 	const radius = mode.radius ?? {};
 	const shadows = mode.shadows ?? {};
-	const decorations = mode.decorations ?? [];
 	const effects = mode.effects ?? {};
 	const missing = missingModeOf(draft);
 
 	/** 动效字段:patch 值为 undefined 即删该道;全关后 effects 整个消失。 */
 	function setEffects(patch: Partial<SkinEffects>): void {
 		setSection("effects", cleanSection({ ...effects, ...patch }));
-	}
-
-	function setDecorations(next: SkinDecoration[]): void {
-		setSection("decorations", next.length > 0 ? next : undefined);
-	}
-	function patchDecoration(i: number, patch: Partial<SkinDecoration>): void {
-		setDecorations(decorations.map((d, j) => (j === i ? { ...d, ...patch } : d)));
 	}
 
 	return (
@@ -367,46 +344,8 @@ export function SkinEditor(props: {
 							size="sm"
 						/>
 					</FieldRow>
-					<ColorField
-						label="玻璃底色"
-						value={glass.background}
-						onChange={(v) => setSection("glass", cleanSection({ ...glass, background: v }))}
-					/>
-					<ColorField
-						label="玻璃描边"
-						value={glass.border}
-						onChange={(v) => setSection("glass", cleanSection({ ...glass, border: v }))}
-					/>
-					<ColorField
-						label="强玻璃底色"
-						value={glass.strongBackground}
-						onChange={(v) => setSection("glass", cleanSection({ ...glass, strongBackground: v }))}
-					/>
-					<ColorField
-						label="强玻璃描边"
-						value={glass.strongBorder}
-						onChange={(v) => setSection("glass", cleanSection({ ...glass, strongBorder: v }))}
-					/>
-					<RangeField
-						label="玻璃模糊"
-						min={0}
-						max={40}
-						step={1}
-						unit="px"
-						value={glass.blur}
-						fallback={16}
-						onChange={(v) => setSection("glass", cleanSection({ ...glass, blur: v }))}
-					/>
-					<RangeField
-						label="强玻璃模糊"
-						min={0}
-						max={40}
-						step={1}
-						unit="px"
-						value={glass.strongBlur}
-						fallback={20}
-						onChange={(v) => setSection("glass", cleanSection({ ...glass, strongBlur: v }))}
-					/>
+					{/* 色相/描边/双档模糊等高级字段仍在 schema 里(AI 与 JSON 可配),
+					    抽屉按主人拍板只留「玻璃片透明度 + 完全透明」这对。 */}
 				</Fold>
 
 				<Fold title="语义颜色">
@@ -474,144 +413,7 @@ export function SkinEditor(props: {
 					/>
 				</Fold>
 
-				<Fold title="装饰贴纸">
-					{decorations.map((d, i) => (
-						<div
-							// biome-ignore lint/suspicious/noArrayIndexKey: 列表按位编辑,无稳定 id
-							key={i}
-							className="space-y-1.5 rounded-[10px] border border-bn-border-subtle p-2"
-						>
-							<div className="flex items-center justify-between">
-								<span className="text-[11px] font-semibold text-bn-text-tertiary">
-									贴纸 {i + 1}
-								</span>
-								<Btn
-									size="sm"
-									variant="danger"
-									onClick={() => setDecorations(decorations.filter((_, j) => j !== i))}
-								>
-									删除
-								</Btn>
-							</div>
-							<SelectField
-								label={`贴纸${i + 1}图片`}
-								value={d.image}
-								onChange={(v) => patchDecoration(i, { image: v })}
-								options={assets.map((a) => ({ value: a, label: a }))}
-							/>
-							<SelectField
-								label={`贴纸${i + 1}锚点`}
-								value={d.anchor}
-								onChange={(v) => patchDecoration(i, { anchor: v as SkinDecoration["anchor"] })}
-								options={SKIN_DECORATION_ANCHORS.map((a) => ({
-									value: a,
-									label: ANCHOR_LABEL[a],
-								}))}
-							/>
-							<RangeField
-								label={`贴纸${i + 1}宽度`}
-								min={20}
-								max={600}
-								step={5}
-								unit="px"
-								value={d.width}
-								fallback={200}
-								clearable={false}
-								onChange={(v) => patchDecoration(i, { width: v ?? 200 })}
-							/>
-							<RangeField
-								label={`贴纸${i + 1}透明度`}
-								min={0}
-								max={1}
-								step={0.05}
-								value={d.opacity}
-								fallback={1}
-								clearable={false}
-								onChange={(v) => patchDecoration(i, { opacity: v ?? 1 })}
-							/>
-							<NumberField
-								label="横向偏移"
-								value={d.offsetX}
-								placeholder="-400~400 px"
-								min={-400}
-								max={400}
-								onChange={(v) => patchDecoration(i, { offsetX: v })}
-							/>
-							<NumberField
-								label="纵向偏移"
-								value={d.offsetY}
-								placeholder="-400~400 px"
-								min={-400}
-								max={400}
-								onChange={(v) => patchDecoration(i, { offsetY: v })}
-							/>
-						</div>
-					))}
-					<Btn
-						size="sm"
-						variant="outline"
-						disabled={assets.length === 0 || decorations.length >= 6}
-						onClick={() =>
-							setDecorations([
-								...decorations,
-								{ image: assets[0], anchor: "bottom-right", width: 200, opacity: 1 },
-							])
-						}
-					>
-						添加贴纸
-					</Btn>
-					{assets.length === 0 ? (
-						<p className="text-[11px] text-bn-text-tertiary">包里没有图片资产,加图要重新组包上传</p>
-					) : null}
-				</Fold>
-
 				<Fold title="动效">
-					<SelectField
-						label="粒子飘落"
-						value={effects.particles?.kind ?? ""}
-						onChange={(v) =>
-							setEffects({
-								particles:
-									v === ""
-										? undefined
-										: { ...(effects.particles ?? {}), kind: v as SkinParticleKind },
-							})
-						}
-						options={[
-							{ value: "", label: "关闭" },
-							{ value: "sakura", label: "樱花" },
-							{ value: "snow", label: "雪花" },
-							{ value: "stardust", label: "星尘" },
-						]}
-					/>
-					{effects.particles ? (
-						<>
-							<RangeField
-								label="粒子密度"
-								min={0.1}
-								max={1}
-								step={0.05}
-								value={effects.particles.density}
-								fallback={0.6}
-								onChange={(v) => {
-									const p = { ...effects.particles, kind: effects.particles?.kind ?? "sakura" };
-									if (v === undefined) delete p.density;
-									else p.density = v;
-									setEffects({ particles: p });
-								}}
-							/>
-							<ColorField
-								label="粒子颜色"
-								value={effects.particles.color}
-								onChange={(v) => {
-									const p = { ...effects.particles, kind: effects.particles?.kind ?? "sakura" };
-									if (v === "") delete p.color;
-									else p.color = v;
-									setEffects({ particles: p });
-								}}
-							/>
-						</>
-					) : null}
 					<FieldRow label="玻璃流光">
 						<Toggle
 							value={Boolean(effects.glassShine)}
@@ -812,7 +614,7 @@ function RangeField(props: {
 	/** 未设置时滑杆停在的参考位(只影响滑杆起点,不写进 draft)。 */
 	fallback: number;
 	unit?: string;
-	/** false = 该字段必填(贴纸宽度等),不给「清除回默认」。 */
+	/** false = 该字段必填,不给「清除回默认」。 */
 	clearable?: boolean;
 	/** 禁用而不是藏起来(完全透明开着时的透明度滑杆)—— 与 AI 聊天那边同款处理。 */
 	disabled?: boolean;

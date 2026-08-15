@@ -91,14 +91,6 @@ describe("SkinEditor", () => {
 		expect(useSkinStore.getState().preview).toBeNull();
 	});
 
-	it("拖玻璃模糊滑杆 → preview.manifest 立即反映(实时预览)", async () => {
-		renderEditor();
-		fireEvent.change(screen.getByLabelText("玻璃模糊"), { target: { value: "32" } });
-		await waitFor(() =>
-			expect(useSkinStore.getState().preview?.manifest.modes.light?.glass?.blur).toBe(32),
-		);
-	});
-
 	it("玻璃片透明度滑杆(与推送卡片同名同义):保色相只调 alpha", async () => {
 		renderEditor();
 		fireEvent.change(screen.getByLabelText("玻璃片透明度"), { target: { value: "0.3" } });
@@ -150,21 +142,23 @@ describe("SkinEditor", () => {
 	it("保存 → PUT 当前 draft;该皮肤正是 active 时同步转正", async () => {
 		useSkinStore.getState().setActive({ id: "s1", manifest: makeManifest() });
 		const { onClose } = renderEditor();
-		fireEvent.change(screen.getByLabelText("玻璃模糊"), { target: { value: "8" } });
+		fireEvent.change(screen.getByLabelText("玻璃片透明度"), { target: { value: "0.8" } });
 		fireEvent.click(screen.getByText("保存"));
 		await waitFor(() => expect(H.putCalls).toHaveLength(1));
 		expect(H.putCalls[0].path).toBe("/api/skins/s1/manifest");
 		const sent = H.putCalls[0].body as SkinManifest;
-		expect(sent.modes.light?.glass?.blur).toBe(8);
+		expect(sent.modes.light?.glass?.background).toBe("rgba(255, 255, 255, 0.8)");
 		await waitFor(() =>
-			expect(useSkinStore.getState().active?.manifest.modes.light?.glass?.blur).toBe(8),
+			expect(useSkinStore.getState().active?.manifest.modes.light?.glass?.background).toBe(
+				"rgba(255, 255, 255, 0.8)",
+			),
 		);
 		expect(onClose).toHaveBeenCalled();
 	});
 
 	it("有脏改动时点取消 → 确认框;确认丢弃 → 不发 PUT 直接关", async () => {
 		const { onClose } = renderEditor();
-		fireEvent.change(screen.getByLabelText("玻璃模糊"), { target: { value: "40" } });
+		fireEvent.change(screen.getByLabelText("玻璃片透明度"), { target: { value: "0.4" } });
 		fireEvent.click(screen.getByText("取消"));
 		expect(onClose).not.toHaveBeenCalled();
 		fireEvent.click(await screen.findByText("丢弃"));
@@ -200,7 +194,7 @@ describe("SkinEditor", () => {
 	it("让女仆改:发 POST ai-edit 带当前 draft;返回的 manifest 直接进 draft 实时预览", async () => {
 		renderEditor();
 		// 先手调一个值,验证发出去的 draft 是当前草稿而非初始 manifest
-		fireEvent.change(screen.getByLabelText("玻璃模糊"), { target: { value: "24" } });
+		fireEvent.change(screen.getByLabelText("玻璃片透明度"), { target: { value: "0.25" } });
 		fireEvent.change(screen.getByLabelText("修改要求"), {
 			target: { value: "换成赛博朋克风" },
 		});
@@ -209,30 +203,27 @@ describe("SkinEditor", () => {
 		expect(H.postCalls[0].path).toBe("/api/skins/s1/ai-edit");
 		const sent = H.postCalls[0].body as { instruction: string; draft: SkinManifest };
 		expect(sent.instruction).toBe("换成赛博朋克风");
-		expect(sent.draft.modes.light?.glass?.blur).toBe(24);
+		expect(sent.draft.modes.light?.glass?.background).toBe("rgba(255, 255, 255, 0.25)");
 		// 产物进 draft → 实时预览;要求框清空
 		await waitFor(() => expect(useSkinStore.getState().preview?.manifest.name).toBe("AI 皮肤"));
 		expect(H.putCalls).toEqual([]); // 不落盘
 	});
 
-	it("动效预设:粒子/流光/光斑三道都能开关,改动实时进 preview", async () => {
+	it("动效预设:流光/光斑两道都能开关,改动实时进 preview", async () => {
 		renderEditor();
 		fireEvent.click(screen.getByText("动效"));
 
-		fireEvent.change(screen.getByLabelText("粒子飘落"), { target: { value: "sakura" } });
 		fireEvent.click(screen.getByLabelText("玻璃流光"));
 		fireEvent.change(screen.getByLabelText("光斑颜色"), {
 			target: { value: "#fb7299, #00aeec" },
 		});
 		await waitFor(() => {
 			const fx = useSkinStore.getState().preview?.manifest.modes.light?.effects;
-			expect(fx?.particles?.kind).toBe("sakura");
 			expect(fx?.glassShine).toEqual({});
 			expect(fx?.bokeh?.colors).toEqual(["#fb7299", "#00aeec"]);
 		});
 
 		// 全关 → effects 字段整个消失
-		fireEvent.change(screen.getByLabelText("粒子飘落"), { target: { value: "" } });
 		fireEvent.click(screen.getByLabelText("玻璃流光"));
 		fireEvent.change(screen.getByLabelText("光斑颜色"), { target: { value: "" } });
 		await waitFor(() =>

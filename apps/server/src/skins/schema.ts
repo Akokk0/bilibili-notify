@@ -9,15 +9,11 @@
 
 import {
 	SKIN_COLOR_TOKEN_MAP,
-	SKIN_DECORATION_ANCHORS,
-	SKIN_PARTICLE_KINDS,
 	SKIN_SCHEMA_VERSION,
 	SKIN_TEXT_SLOTS,
-	type SkinDecoration,
 	type SkinEffects,
 	type SkinManifest,
 	type SkinMode,
-	type SkinParticleKind,
 } from "@bilibili-notify/contract";
 import { z } from "zod";
 import { sanitizeSkinCss } from "./css-sanitizer.js";
@@ -65,15 +61,11 @@ const KNOWN_MODE_KEYS = new Set([
 	"glass",
 	"fonts",
 	"radius",
-	"decorations",
 	"shadows",
 	"css",
 	"effects",
 ]);
-const PARTICLE_KINDS = new Set<string>(SKIN_PARTICLE_KINDS);
 const MAX_BOKEH_COLORS = 4;
-const DECORATION_ANCHORS = new Set<string>(SKIN_DECORATION_ANCHORS);
-const MAX_DECORATIONS = 6;
 /** 阴影语法:与渐变同一把安全尺(数字/px/颜色函数/逗号),再叠 FORBIDDEN 黑名单。 */
 const SHADOW_RE = /^[a-z0-9#%.,()\s/-]{1,200}$/i;
 
@@ -277,64 +269,8 @@ function parseMode(
 		}
 	}
 
-	if (raw.decorations !== undefined) {
-		if (!Array.isArray(raw.decorations)) {
-			errors.push(`${path}.decorations: 必须是数组`);
-		} else if (raw.decorations.length > MAX_DECORATIONS) {
-			errors.push(`${path}.decorations: 最多 ${MAX_DECORATIONS} 件装饰`);
-		} else {
-			const out: SkinDecoration[] = [];
-			raw.decorations.forEach((item, i) => {
-				const dec = asRecord(item);
-				const p = `${path}.decorations[${i}]`;
-				if (!dec) {
-					errors.push(`${p}: 必须是对象`);
-					return;
-				}
-				if (
-					typeof dec.image !== "string" ||
-					dec.image.includes("..") ||
-					!WALLPAPER_IMAGE_RE.test(dec.image)
-				) {
-					errors.push(`${p}.image: 只能引用包内 assets/<文件名>.webp|jpg|png`);
-					return;
-				}
-				if (
-					dec.anchor !== undefined &&
-					(typeof dec.anchor !== "string" || !DECORATION_ANCHORS.has(dec.anchor))
-				) {
-					errors.push(`${p}.anchor: 只能是九宫格锚点(top-left/bottom-right 等)`);
-					return;
-				}
-				if (dec.width !== undefined && !numberIn(dec.width, 20, 600)) {
-					errors.push(`${p}.width: 必须是 20~600 的数字(px)`);
-					return;
-				}
-				if (dec.opacity !== undefined && !numberIn(dec.opacity, 0, 1)) {
-					errors.push(`${p}.opacity: 必须是 0~1 的数字`);
-					return;
-				}
-				const offsets: { offsetX?: number; offsetY?: number } = {};
-				for (const key of ["offsetX", "offsetY"] as const) {
-					const v = dec[key];
-					if (v === undefined) continue;
-					if (!numberIn(v, -400, 400)) {
-						errors.push(`${p}.${key}: 必须是 -400~400 的数字(px)`);
-						return;
-					}
-					offsets[key] = v;
-				}
-				out.push({
-					image: dec.image,
-					anchor: (dec.anchor as SkinDecoration["anchor"]) ?? "bottom-right",
-					width: (dec.width as number | undefined) ?? 200,
-					opacity: (dec.opacity as number | undefined) ?? 1,
-					...offsets,
-				});
-			});
-			if (out.length > 0) mode.decorations = out;
-		}
-	}
+	// decorations(贴纸装饰层)已下线(主人真机验收后砍掉):存量皮肤里的它
+	// 走 KNOWN_MODE_KEYS 的未知字段告警 + 忽略,优雅降级。
 
 	if (raw.shadows !== undefined) {
 		const shadows = asRecord(raw.shadows);
@@ -370,23 +306,6 @@ function parseMode(
 		} else {
 			const out: SkinEffects = {};
 
-			if (fx.particles !== undefined) {
-				const p = asRecord(fx.particles);
-				if (!p || typeof p.kind !== "string" || !PARTICLE_KINDS.has(p.kind)) {
-					errors.push(`${path}.effects.particles.kind: 只能是 sakura / snow / stardust`);
-				} else if (p.density !== undefined && !numberIn(p.density, 0.1, 1)) {
-					errors.push(`${path}.effects.particles.density: 必须是 0.1~1 的数字`);
-				} else if (p.color !== undefined && (typeof p.color !== "string" || !isColor(p.color))) {
-					errors.push(`${path}.effects.particles.color: 不是合法颜色值`);
-				} else {
-					out.particles = {
-						kind: p.kind as SkinParticleKind,
-						...(p.density !== undefined ? { density: p.density as number } : {}),
-						...(p.color !== undefined ? { color: (p.color as string).trim() } : {}),
-					};
-				}
-			}
-
 			if (fx.glassShine !== undefined) {
 				const g = asRecord(fx.glassShine);
 				if (!g) {
@@ -414,9 +333,9 @@ function parseMode(
 			}
 
 			for (const key of Object.keys(fx)) {
-				// backgroundFlow 已移除(整页 background 动画真机卡顿):存量皮肤里的它走这里的
-				// 未知字段告警 + 忽略,优雅降级。
-				if (!["particles", "glassShine", "bokeh"].includes(key)) {
+				// backgroundFlow(卡顿)与 particles(主人砍掉)均已移除:存量皮肤里的它们
+				// 走这里的未知字段告警 + 忽略,优雅降级。
+				if (!["glassShine", "bokeh"].includes(key)) {
 					warnings.push(`${path}.effects.${key}: 不认识的字段,已忽略`);
 				}
 			}

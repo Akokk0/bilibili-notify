@@ -91,47 +91,17 @@ export const SKIN_CSS_HOOK_MAP = {
 
 export type SkinCssHook = keyof typeof SKIN_CSS_HOOK_MAP;
 
-/** 粒子飘落的三款造型。 */
-export const SKIN_PARTICLE_KINDS = ["sakura", "snow", "stardust"] as const;
-export type SkinParticleKind = (typeof SKIN_PARTICLE_KINDS)[number];
-
 /**
  * 动效预设(每套 mode 独立;全部自动尊重 prefers-reduced-motion)。
  * 有对象即开启;字段缺省走各自默认。
- * 注:曾有 backgroundFlow(页面背景流动),因整页 background 动画每帧全页重绘、
- * 真机卡顿严重,2026-08 移除 —— 别再以动画 background-* 的方式加回来。
+ * 注:曾有 backgroundFlow(页面背景流动,整页重绘卡顿)与 particles(粒子飘落,
+ * 主人真机验收后砍掉),均已移除 —— 存量字段走未知字段告警 + 忽略降级。
  */
 export interface SkinEffects {
-	/** 粒子飘落层。density 0.1~1(默认 0.6);color 覆盖默认粒子色。 */
-	particles?: { kind: SkinParticleKind; density?: number; color?: string };
 	/** 玻璃卡辉光呼吸/游走(box-shadow 动画,不动布局)。color 默认主强调色。 */
 	glassShine?: { color?: string };
 	/** 悬浮大光斑(bokeh),1~4 团颜色。 */
 	bokeh?: { colors: string[] };
-}
-
-export const SKIN_DECORATION_ANCHORS = [
-	"top-left",
-	"top",
-	"top-right",
-	"left",
-	"center",
-	"right",
-	"bottom-left",
-	"bottom",
-	"bottom-right",
-] as const;
-export type SkinDecorationAnchor = (typeof SKIN_DECORATION_ANCHORS)[number];
-
-/** 贴纸/立绘装饰件:钉在视口九宫格锚点上,渲染层 pointer-events 穿透。 */
-export interface SkinDecoration {
-	image: string;
-	anchor: SkinDecorationAnchor;
-	/** 渲染宽度 px(高度按图片比例)。 */
-	width: number;
-	opacity: number;
-	offsetX?: number;
-	offsetY?: number;
 }
 
 /** 一套模式(light 或 dark)下的皮肤定义,所有字段可选 —— 没给的回默认装。 */
@@ -169,8 +139,6 @@ export interface SkinMode {
 		/** 胶囊圆角 px,0~999。 */
 		pill?: number;
 	};
-	/** 贴纸装饰层,最多 6 件。 */
-	decorations?: SkinDecoration[];
 	/** 卡片/悬浮两档阴影 —— 有色 glow 即霓虹感。 */
 	shadows?: { card?: string; elev?: string };
 	/**

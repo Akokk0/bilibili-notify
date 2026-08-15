@@ -1,5 +1,5 @@
-import type { ActiveSkinResponse, SkinEffects, SkinMode } from "@bilibili-notify/contract";
-import { type CSSProperties, type ReactNode, useEffect, useLayoutEffect, useMemo } from "react";
+import type { ActiveSkinResponse, SkinMode } from "@bilibili-notify/contract";
+import { type ReactNode, useEffect, useLayoutEffect } from "react";
 import { api } from "../services/api";
 import {
 	applySkinCss,
@@ -10,7 +10,6 @@ import {
 	composeSkinCss,
 	composeSkinVars,
 	composeWallpaperCss,
-	decorationStyle,
 	resolveSkinMode,
 	skinKillSwitchActive,
 } from "../services/skin";
@@ -31,79 +30,6 @@ export function useCurrentSkinMode(): { id: string; mode: SkinMode } | null {
 	const skin = effectiveSkin({ active, preview, killSwitch });
 	if (!skin) return null;
 	return { id: skin.id, mode: resolveSkinMode(skin.manifest, resolved).mode };
-}
-
-/** 贴纸装饰层:fixed 全屏、点击穿透,件数少(≤6)且不进布局流。 */
-function SkinDecorations() {
-	const current = useCurrentSkinMode();
-	const decorations = current?.mode.decorations;
-	if (!current || !decorations?.length) return null;
-	return (
-		<div
-			data-skin-decorations
-			aria-hidden
-			className="pointer-events-none fixed inset-0 z-30 overflow-hidden"
-		>
-			{decorations.map((d, i) => (
-				<img
-					// biome-ignore lint/suspicious/noArrayIndexKey: 装饰件无 id,列表来自 manifest 静态数组,不重排
-					key={`${d.image}-${i}`}
-					src={skinAssetUrl(current.id, d.image)}
-					alt=""
-					className="absolute max-w-none"
-					style={decorationStyle(d)}
-				/>
-			))}
-		</div>
-	);
-}
-
-/** 粒子默认色:樱花粉 / 雪白 / 星尘金。 */
-const PARTICLE_DEFAULT_COLOR: Record<string, string> = {
-	sakura: "#ffb7c5",
-	snow: "rgba(255,255,255,0.9)",
-	stardust: "#ffe9a8",
-};
-
-function ParticleField({ cfg }: { cfg: NonNullable<SkinEffects["particles"]> }) {
-	// 随机参数一次生成、mount 内稳定 —— 每帧重算会让粒子跳位。
-	const items = useMemo(() => {
-		const count = Math.round((cfg.density ?? 0.6) * 40);
-		return Array.from({ length: count }, (_, i) => ({
-			left: `${(i * 37 + Math.random() * 23) % 100}%`,
-			size: 6 + Math.random() * (cfg.kind === "stardust" ? 4 : 8),
-			duration: 9 + Math.random() * 9,
-			delay: -Math.random() * 18,
-			opacity: 0.5 + Math.random() * 0.5,
-		}));
-	}, [cfg.density, cfg.kind]);
-
-	const color = cfg.color ?? PARTICLE_DEFAULT_COLOR[cfg.kind] ?? "#ffffff";
-	return (
-		<>
-			{items.map((p, i) => {
-				const style: CSSProperties = {
-					left: p.left,
-					top: 0,
-					width: p.size,
-					height: cfg.kind === "sakura" ? p.size * 0.85 : p.size,
-					background: color,
-					opacity: p.opacity,
-					// sakura 是花瓣形,其余圆点;stardust 额外一圈光晕 + 闪烁
-					borderRadius: cfg.kind === "sakura" ? "62% 6% 62% 6%" : "50%",
-					...(cfg.kind === "stardust" ? { boxShadow: `0 0 ${p.size}px ${color}` } : {}),
-					animation:
-						cfg.kind === "stardust"
-							? `bn-skin-fall ${p.duration}s linear ${p.delay}s infinite, bn-skin-twinkle ${2 + (i % 3)}s ease-in-out infinite`
-							: `bn-skin-fall ${p.duration}s linear ${p.delay}s infinite`,
-				};
-				return (
-					// biome-ignore lint/suspicious/noArrayIndexKey: 粒子无身份,列表长度只随配置变
-					<span key={i} data-skin-particle className="absolute" style={style} />
-				);
-			})}
-		</>
-	);
 }
 
 /** 悬浮光斑:大尺寸柔光团慢速漂移;位置按序落在四个角落区。 */
@@ -147,7 +73,7 @@ function BokehField({ colors }: { colors: string[] }) {
 function SkinEffectsLayer() {
 	const current = useCurrentSkinMode();
 	const fx = current?.mode.effects;
-	if (!fx || (!fx.particles && !fx.bokeh)) return null;
+	if (!fx?.bokeh) return null;
 	return (
 		<div
 			data-skin-effects
@@ -155,7 +81,6 @@ function SkinEffectsLayer() {
 			className="pointer-events-none fixed inset-0 z-20 overflow-hidden"
 		>
 			{fx.bokeh ? <BokehField colors={fx.bokeh.colors} /> : null}
-			{fx.particles ? <ParticleField cfg={fx.particles} /> : null}
 		</div>
 	);
 }
@@ -220,7 +145,6 @@ export function SkinRoot({ children }: { children: ReactNode }) {
 		<>
 			{children}
 			<SkinEffectsLayer />
-			<SkinDecorations />
 		</>
 	);
 }

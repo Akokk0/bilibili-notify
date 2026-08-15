@@ -270,49 +270,17 @@ describe("parseSkinManifest / 未知字段告警(向前兼容)", () => {
 	});
 });
 
-describe("parseSkinManifest / decorations(贴纸装饰层)", () => {
-	function withDecorations(decorations: unknown) {
-		return { schemaVersion: 1, name: "t", modes: { dark: { decorations } } };
-	}
-
-	it("合法贴纸数组 → ok,默认值补齐(anchor=bottom-right,width=200,opacity=1)", () => {
-		const r = parseSkinManifest(
-			withDecorations([
-				{ image: "assets/chara.png", anchor: "bottom-right", width: 260, opacity: 0.9 },
-				{ image: "assets/star.webp" },
-			]),
-		);
+describe("parseSkinManifest / decorations 已下线", () => {
+	it("存量皮肤里的 decorations → 按未知字段忽略并告警,优雅降级", () => {
+		const r = parseSkinManifest({
+			schemaVersion: 1,
+			name: "t",
+			modes: { dark: { decorations: [{ image: "assets/chara.png" }] } },
+		});
 		expect(r.ok).toBe(true);
 		if (!r.ok) return;
-		const d = r.skin.modes.dark?.decorations;
-		expect(d).toHaveLength(2);
-		expect(d?.[0]).toMatchObject({ image: "assets/chara.png", width: 260, opacity: 0.9 });
-		expect(d?.[1]).toMatchObject({
-			image: "assets/star.webp",
-			anchor: "bottom-right",
-			width: 200,
-			opacity: 1,
-		});
-	});
-
-	it("超过 6 张 / image 非包内资产 / anchor 非法 / width·opacity·offset 越界 → 拒绝", () => {
-		const many = Array.from({ length: 7 }, (_, i) => ({ image: `assets/a${i}.png` }));
-		expect(parseSkinManifest(withDecorations(many)).ok).toBe(false);
-		expect(parseSkinManifest(withDecorations([{ image: "https://evil.example/x.png" }])).ok).toBe(
-			false,
-		);
-		expect(
-			parseSkinManifest(withDecorations([{ image: "assets/a.png", anchor: "middle-ish" }])).ok,
-		).toBe(false);
-		expect(parseSkinManifest(withDecorations([{ image: "assets/a.png", width: 1000 }])).ok).toBe(
-			false,
-		);
-		expect(parseSkinManifest(withDecorations([{ image: "assets/a.png", opacity: 1.5 }])).ok).toBe(
-			false,
-		);
-		expect(parseSkinManifest(withDecorations([{ image: "assets/a.png", offsetX: -500 }])).ok).toBe(
-			false,
-		);
+		expect((r.skin.modes.dark as Record<string, unknown>).decorations).toBeUndefined();
+		expect(r.warnings.some((w) => w.includes("decorations"))).toBe(true);
 	});
 });
 
@@ -435,10 +403,9 @@ describe("parseSkinManifest / effects(动效预设)", () => {
 		return { schemaVersion: 1, name: "t", modes: { light: { effects } } };
 	}
 
-	it("三道全开的合法 effects → 原样收下(density/color 校验过)", () => {
+	it("两道全开的合法 effects → 原样收下", () => {
 		const r = parseSkinManifest(
 			withEffects({
-				particles: { kind: "sakura", density: 0.8, color: "#ffb7c5" },
 				glassShine: { color: "#39c5bb" },
 				bokeh: { colors: ["#fb7299", "rgba(0,174,236,0.5)"] },
 			}),
@@ -446,9 +413,18 @@ describe("parseSkinManifest / effects(动效预设)", () => {
 		expect(r.ok).toBe(true);
 		if (!r.ok) return;
 		const fx = r.skin.modes.light?.effects;
-		expect(fx?.particles).toEqual({ kind: "sakura", density: 0.8, color: "#ffb7c5" });
 		expect(fx?.glassShine).toEqual({ color: "#39c5bb" });
 		expect(fx?.bokeh?.colors).toHaveLength(2);
+	});
+
+	it("particles 已下线:按未知字段忽略并告警,存量皮肤优雅降级", () => {
+		const r = parseSkinManifest(
+			withEffects({ particles: { kind: "sakura", density: 0.8 }, glassShine: {} }),
+		);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.skin.modes.light?.effects).toEqual({ glassShine: {} });
+		expect(r.warnings.some((w) => w.includes("particles"))).toBe(true);
 	});
 
 	it("backgroundFlow 已下线:按未知字段忽略并告警,存量皮肤优雅降级", () => {
@@ -459,11 +435,7 @@ describe("parseSkinManifest / effects(动效预设)", () => {
 		expect(r.warnings.some((w) => w.includes("backgroundFlow"))).toBe(true);
 	});
 
-	it("非法值逐项拒绝:未知 kind / density 越界 / bokeh 超 4 团 / 颜色带 url(", () => {
-		expect(parseSkinManifest(withEffects({ particles: { kind: "rain" } })).ok).toBe(false);
-		expect(parseSkinManifest(withEffects({ particles: { kind: "snow", density: 2 } })).ok).toBe(
-			false,
-		);
+	it("非法值逐项拒绝:bokeh 超 4 团 / 颜色带 url(", () => {
 		expect(
 			parseSkinManifest(withEffects({ bokeh: { colors: ["#1", "#2", "#3", "#4", "#5"] } })).ok,
 		).toBe(false);

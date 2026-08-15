@@ -40,12 +40,13 @@ describe("buildSkinPrompt", () => {
 		expect(p).toContain("colors.listRow");
 	});
 
-	it("教会 AI 动效预设:三道菜与粒子款式都点名", () => {
+	it("教会 AI 动效预设:两道菜都点名;已移除的动效与贴纸不再教", () => {
 		const p = buildSkinPrompt(readVar);
 		expect(p).toContain("effects");
-		for (const k of ["particles", "glassShine", "bokeh"]) expect(p).toContain(k);
-		for (const kind of ["sakura", "snow", "stardust"]) expect(p).toContain(kind);
-		expect(p).not.toContain("backgroundFlow"); // 已移除的动效不许再教给外部 AI
+		for (const k of ["glassShine", "bokeh"]) expect(p).toContain(k);
+		for (const gone of ["backgroundFlow", "particles", "decorations"]) {
+			expect(p).not.toContain(gone);
+		}
 	});
 });
 
