@@ -17,12 +17,14 @@ import {
 	addMissingMode,
 	COLOR_GROUPS,
 	cleanSection,
+	colorAlphaOf,
 	fontsToText,
 	missingModeOf,
 	setManifestText,
 	setModeSection,
 	textToFonts,
 	toHex6,
+	withColorAlpha,
 } from "./skin-edit";
 
 /**
@@ -126,6 +128,11 @@ export function SkinEditor(props: {
 
 	const wp = mode.wallpaper ?? {};
 	const glass = mode.glass ?? {};
+	// 「完全透明」没有独立字段,从数据推断:透明度与模糊都归零即是 —— 与推送卡片/
+	// AI 聊天那边「完全透明就是这些值一起归零」的哲学同构。
+	const glassClear = colorAlphaOf(glass.background) === 0 && glass.blur === 0;
+	/** 透明度滑杆的兜底色相 = 默认装当前模式的玻璃色相。 */
+	const glassBaseRgb = modeKey === "dark" ? "30, 41, 59" : "255, 255, 255";
 	const colors = mode.colors ?? {};
 	const radius = mode.radius ?? {};
 	const shadows = mode.shadows ?? {};
@@ -318,6 +325,48 @@ export function SkinEditor(props: {
 				</Fold>
 
 				<Fold title="玻璃面板" defaultOpen>
+					{/* 与推送卡片/AI 聊天同名同义的一对(玻璃片透明度 + 完全透明):
+					    完全透明 = 透明度与模糊一起归零(那边的哲学),关闭清字段回默认装。 */}
+					<RangeField
+						label="玻璃片透明度"
+						min={0}
+						max={1}
+						step={0.05}
+						value={colorAlphaOf(glass.background) ?? undefined}
+						fallback={0.7}
+						clearable={false}
+						disabled={glassClear}
+						onChange={(v) =>
+							setSection(
+								"glass",
+								cleanSection({
+									...glass,
+									background: withColorAlpha(glass.background, v ?? 0.7, glassBaseRgb),
+								}),
+							)
+						}
+					/>
+					<FieldRow label="完全透明">
+						<Toggle
+							value={glassClear}
+							onChange={(b) =>
+								setSection(
+									"glass",
+									cleanSection(
+										b
+											? {
+													...glass,
+													background: withColorAlpha(glass.background, 0, glassBaseRgb),
+													blur: 0,
+												}
+											: { ...glass, background: undefined, blur: undefined },
+									),
+								)
+							}
+							ariaLabel="完全透明(去磨砂模糊)"
+							size="sm"
+						/>
+					</FieldRow>
 					<ColorField
 						label="玻璃底色"
 						value={glass.background}
@@ -765,6 +814,8 @@ function RangeField(props: {
 	unit?: string;
 	/** false = 该字段必填(贴纸宽度等),不给「清除回默认」。 */
 	clearable?: boolean;
+	/** 禁用而不是藏起来(完全透明开着时的透明度滑杆)—— 与 AI 聊天那边同款处理。 */
+	disabled?: boolean;
 	onChange: (v: number | undefined) => void;
 }) {
 	const clearable = props.clearable ?? true;
@@ -778,8 +829,9 @@ function RangeField(props: {
 					max={props.max}
 					step={props.step}
 					value={props.value ?? props.fallback}
+					disabled={props.disabled}
 					onChange={(e) => props.onChange(Number(e.target.value))}
-					className="min-w-0 flex-1 accent-bn-pink"
+					className="min-w-0 flex-1 accent-bn-pink disabled:opacity-40"
 				/>
 				<span className="w-13 shrink-0 text-right text-[11px] tabular-nums text-bn-text-tertiary">
 					{props.value !== undefined ? `${props.value}${props.unit ?? ""}` : "默认"}

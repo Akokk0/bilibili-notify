@@ -116,6 +116,41 @@ export function toHex6(value: string): string | null {
 	return null;
 }
 
+const RGBA_RE = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*([0-9.]+)\s*)?\)$/i;
+const HEX_ALPHA_RE = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i;
+
+/**
+ * 颜色的 alpha 通道 ——「玻璃片透明度」滑杆(与推送卡片/AI 聊天那对同名同义)
+ * 的读端。支持 rgb()/rgba()/#rrggbb(aa);hsl/oklch 等认不出 → null。
+ */
+export function colorAlphaOf(color: string | undefined): number | null {
+	if (!color) return null;
+	const t = color.trim();
+	const m = RGBA_RE.exec(t);
+	if (m) return m[4] !== undefined ? Number(m[4]) : 1;
+	const h = HEX_ALPHA_RE.exec(t);
+	if (h) return h[2] !== undefined ? Number.parseInt(h[2], 16) / 255 : 1;
+	return null;
+}
+
+/** 保色相只换 alpha,统一产 rgba();色相解析不出时用 fallbackRgb("r, g, b")。 */
+export function withColorAlpha(
+	color: string | undefined,
+	alpha: number,
+	fallbackRgb: string,
+): string {
+	const a = Math.round(alpha * 100) / 100;
+	const t = color?.trim() ?? "";
+	const m = RGBA_RE.exec(t);
+	if (m) return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${a})`;
+	const h = HEX_ALPHA_RE.exec(t);
+	if (h) {
+		const n = Number.parseInt(h[1], 16);
+		return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+	}
+	return `rgba(${fallbackRgb}, ${a})`;
+}
+
 export function fontsToText(fonts: string[] | undefined): string {
 	return fonts?.join(", ") ?? "";
 }

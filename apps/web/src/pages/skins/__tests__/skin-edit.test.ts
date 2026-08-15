@@ -9,12 +9,14 @@ import {
 	addMissingMode,
 	COLOR_GROUPS,
 	cleanSection,
+	colorAlphaOf,
 	fontsToText,
 	missingModeOf,
 	setManifestText,
 	setModeSection,
 	textToFonts,
 	toHex6,
+	withColorAlpha,
 } from "../skin-edit";
 
 function makeManifest(): SkinManifest {
@@ -24,6 +26,26 @@ function makeManifest(): SkinManifest {
 		modes: { light: { colors: { accent: "#fb7299" } } },
 	};
 }
+
+describe("colorAlphaOf / withColorAlpha(玻璃片透明度滑杆的解析层)", () => {
+	it("colorAlphaOf:rgba/rgb/hex6/hex8 都解析;认不出与缺省 → null", () => {
+		expect(colorAlphaOf("rgba(255, 255, 255, 0.5)")).toBe(0.5);
+		expect(colorAlphaOf("rgb(10, 20, 30)")).toBe(1);
+		expect(colorAlphaOf("#39c5bb")).toBe(1);
+		expect(colorAlphaOf("#39c5bb80")).toBeCloseTo(0.5, 1);
+		expect(colorAlphaOf("oklch(0.7 0.1 200)")).toBeNull();
+		expect(colorAlphaOf(undefined)).toBeNull();
+	});
+
+	it("withColorAlpha:保色相只换 alpha,统一输出 rgba;解析不了用 fallback 色相", () => {
+		expect(withColorAlpha("rgba(10, 20, 30, 0.8)", 0.3, "255, 255, 255")).toBe(
+			"rgba(10, 20, 30, 0.3)",
+		);
+		expect(withColorAlpha("#39c5bb", 0.5, "255, 255, 255")).toBe("rgba(57, 197, 187, 0.5)");
+		expect(withColorAlpha(undefined, 0.4, "255, 255, 255")).toBe("rgba(255, 255, 255, 0.4)");
+		expect(withColorAlpha("oklch(0.7 0.1 200)", 0.4, "30, 41, 59")).toBe("rgba(30, 41, 59, 0.4)");
+	});
+});
 
 describe("cleanSection", () => {
 	it("去掉 undefined 与空串;数字 0 保留;全空 → undefined", () => {

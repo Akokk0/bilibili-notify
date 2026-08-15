@@ -99,6 +99,34 @@ describe("SkinEditor", () => {
 		);
 	});
 
+	it("玻璃片透明度滑杆(与推送卡片同名同义):保色相只调 alpha", async () => {
+		renderEditor();
+		fireEvent.change(screen.getByLabelText("玻璃片透明度"), { target: { value: "0.3" } });
+		await waitFor(() =>
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.glass?.background).toBe(
+				"rgba(255, 255, 255, 0.3)",
+			),
+		);
+	});
+
+	it("完全透明开关:开 = 透明度与模糊一起归零;关 = 清字段回默认", async () => {
+		renderEditor();
+		fireEvent.click(screen.getByLabelText("完全透明(去磨砂模糊)"));
+		await waitFor(() => {
+			const g = useSkinStore.getState().preview?.manifest.modes.light?.glass;
+			expect(g?.background).toBe("rgba(255, 255, 255, 0)");
+			expect(g?.blur).toBe(0);
+		});
+		expect((screen.getByLabelText("玻璃片透明度") as HTMLInputElement).disabled).toBe(true);
+
+		fireEvent.click(screen.getByLabelText("完全透明(去磨砂模糊)"));
+		await waitFor(() => {
+			const g = useSkinStore.getState().preview?.manifest.modes.light?.glass;
+			expect(g?.background).toBeUndefined();
+			expect(g?.blur).toBeUndefined();
+		});
+	});
+
 	it("拖壁纸模糊滑杆 → preview 的 wallpaper.blur 实时反映", async () => {
 		renderEditor();
 		fireEvent.change(screen.getByLabelText("壁纸模糊"), { target: { value: "12" } });
