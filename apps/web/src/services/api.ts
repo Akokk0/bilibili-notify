@@ -33,10 +33,10 @@ export function setUnauthorizedHandler(fn: UnauthorizedHandler | null): void {
 /**
  * 从错误响应体里挑出给人看的那句话。
  *
- * 服务端有**两种**错误体形状:`{err}`(锐评 / 推送测试 / 卡片测试…)与
- * `{message}`(backup…)。两边都要认 —— 只认一种的话,另一种会被降级成
- * 「POST /api/… → 400」这种线格式噪音,用户看不到「智能女仆尚未启用」这类真正
- * 可操作的原因,只能来问「这功能是不是没写」。
+ * 服务端有**三种**错误体形状:`{err}`(锐评 / 推送测试 / 卡片测试…)、
+ * `{message}`(backup…)与 `{errors: string[]}`(皮肤上传 / 编辑保存的字段级
+ * 校验)。都要认 —— 漏认一种,那一路的失败就被降级成「POST /api/… → 400」这种
+ * 线格式噪音,用户看不到「哪个字段不合法」这类真正可操作的原因。
  */
 function errorMessage(payload: unknown, what: string, status: number): string {
 	if (typeof payload === "object" && payload !== null) {
@@ -45,6 +45,11 @@ function errorMessage(payload: unknown, what: string, status: number): string {
 				const v = (payload as Record<string, unknown>)[key];
 				if (typeof v === "string" && v.trim()) return v;
 			}
+		}
+		const errors = (payload as Record<string, unknown>).errors;
+		if (Array.isArray(errors)) {
+			const lines = errors.filter((e): e is string => typeof e === "string" && e.trim() !== "");
+			if (lines.length > 0) return lines.join(";");
 		}
 	}
 	return `${what} → ${status}`;

@@ -98,6 +98,16 @@ describe("api 错误信息", () => {
 		);
 	});
 
+	it("读得出 {errors:[…]} 形状(皮肤上传/编辑保存的字段级校验),逐条拼给用户", async () => {
+		fail(400, {
+			ok: false,
+			errors: ["modes.light.colors.accent: 不是合法颜色值", "texts.headerTitle: 必须是 1~60 字"],
+		});
+		await expect(api.put("/api/skins/s1/manifest", {})).rejects.toThrow(
+			"modes.light.colors.accent: 不是合法颜色值;texts.headerTitle: 必须是 1~60 字",
+		);
+	});
+
 	it("两个字段都没有时退回线格式,至少带上状态码", async () => {
 		fail(500, { nope: 1 });
 		await expect(api.post("/api/whatever", {})).rejects.toThrow("500");
