@@ -552,12 +552,13 @@ export default function Stats() {
 							value={num(focused.netWindow, formatSignedWan)}
 							color={PURPLE}
 						/>
-						<GlassStatCard label="投稿" value={dash(focused.archives)} suffix="个" color={BLUE} />
+						<GlassStatCard label="投稿" value={dash(focused.archives)} suffix="个" color={AMBER} />
+						{/* KPI 行收尾在蓝:呼应「左粉右蓝」的品牌轴。 */}
 						<GlassStatCard
 							label="开播"
 							value={dash(focused.liveSessions)}
 							suffix={`场 · ${dash(focused.liveHours, hours)}h`}
-							color={AMBER}
+							color={BLUE}
 						/>
 					</>
 				) : (
@@ -596,12 +597,12 @@ export default function Stats() {
 							value={num(totals?.netWindow ?? null, formatSignedWan)}
 							color={PURPLE}
 						/>
-						<GlassStatCard label="投稿" value={dash(totals?.archives)} suffix="个" color={BLUE} />
+						<GlassStatCard label="投稿" value={dash(totals?.archives)} suffix="个" color={AMBER} />
 						<GlassStatCard
 							label="开播"
 							value={dash(totals?.liveSessions)}
 							suffix={`场 · ${dash(totals?.liveHours, hours)}h`}
-							color={AMBER}
+							color={BLUE}
 						/>
 					</>
 				)}
