@@ -16,7 +16,10 @@
 
 import { SKIN_CSS_HOOK_MAP } from "@bilibili-notify/contract";
 import type { Atrule, CssNode, Declaration, Rule } from "css-tree";
-import { generate, parse } from "css-tree";
+// 走自包含 dist bundle,不走默认入口:默认入口的 lexer 数据层在运行时
+// require('../data/patch.json') 读包内文件,内联进 server bundle 后必炸
+// (assemble-server-bundle.test 拦到的正是它);dist 版数据全内联,无此雷。
+import { generate, parse } from "css-tree/dist/csstree.esm";
 
 export const MAX_SKIN_CSS_BYTES = 64 * 1024;
 
