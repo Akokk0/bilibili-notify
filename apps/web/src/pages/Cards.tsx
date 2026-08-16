@@ -1131,8 +1131,8 @@ export default function Cards() {
 		<div className="bn-anim-page-in flex flex-col gap-4">
 			{/* Hero strip — 全局插件信息 + (仅全局作用域)总开关 */}
 			<div
-				// 渐变叠在玻璃底上(.bn-glass 供底色+blur+边框),否则皮肤壁纸下整条近乎全透明
-				className="bn-glass relative rounded-bn-card p-5"
+				// 渐变叠在玻璃底上(.bn-glass 供底色+blur),否则皮肤壁纸下整条近乎全透明
+				className="bn-glass relative rounded-bn-card p-5 shadow-bn-card"
 				style={{
 					background:
 						"linear-gradient(135deg, rgba(162,155,254,0.18), rgba(0,174,236,0.08)), var(--bn-glass-bg)",

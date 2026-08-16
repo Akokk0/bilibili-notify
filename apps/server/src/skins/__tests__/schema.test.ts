@@ -225,6 +225,15 @@ describe("parseSkinManifest / glass · fonts · radius", () => {
 			},
 		});
 		expect(ok.ok).toBe(true);
+		if (ok.ok) {
+			expect(ok.skin.modes.light?.glass).toEqual({
+				background: "rgba(255, 255, 255, 0.6)",
+				border: "rgba(255, 255, 255, 0.4)",
+				strongBackground: "rgba(255, 255, 255, 0.9)",
+				blur: 20,
+				strongBlur: 24,
+			});
+		}
 		const bad = parseSkinManifest({
 			schemaVersion: 1,
 			name: "t",

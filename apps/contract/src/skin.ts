@@ -120,6 +120,7 @@ export interface SkinMode {
 		/** 壁纸自身高斯模糊 0~40px(静态一次成像):高饱和壁纸退成柔和色底。 */
 		blur?: number;
 	};
+	/** 默认装玻璃卡无描边(卡片风,层次靠阴影);border 对是皮肤刻意要描边风格的口子。 */
 	glass?: {
 		background?: string;
 		border?: string;

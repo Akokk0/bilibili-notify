@@ -111,8 +111,8 @@ describe("声明白名单", () => {
 	});
 
 	it("var() 引用令牌放行(读内部样式变量无安全面,且是正经用法)", () => {
-		const { css, warnings } = ok(`[data-bn="btn"] { border-color: var(--bn-glass-border); }`);
-		expect(css).toContain("var(--bn-glass-border)");
+		const { css, warnings } = ok(`[data-bn="btn"] { border-color: var(--color-bn-border); }`);
+		expect(css).toContain("var(--color-bn-border)");
 		expect(warnings).toEqual([]);
 	});
 });

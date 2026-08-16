@@ -227,8 +227,8 @@ function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
 function AiInsightStrip({ tip }: { tip: React.ReactNode }) {
 	return (
 		<div
-			// 渐变叠在玻璃底上(.bn-glass 供底色+blur+边框),否则皮肤壁纸下整条近乎全透明
-			className="bn-glass flex items-center gap-3.5 rounded-bn-card p-4"
+			// 渐变叠在玻璃底上(.bn-glass 供底色+blur),否则皮肤壁纸下整条近乎全透明
+			className="bn-glass flex items-center gap-3.5 rounded-bn-card p-4 shadow-bn-card"
 			style={{
 				background:
 					"linear-gradient(135deg, rgba(162,155,254,0.18), rgba(0,174,236,0.08)), var(--bn-glass-bg)",

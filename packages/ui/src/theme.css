@@ -58,8 +58,12 @@
 	--radius-bn-card: 14px;
 	--radius-bn-pill: 999px;
 
-	--shadow-bn-card: 0 4px 16px rgba(0, 0, 0, 0.05);
-	--shadow-bn-elev: 0 8px 24px rgba(0, 0, 0, 0.08);
+	/* 玻璃卡无描边后层次全靠影 —— 双层:贴身 contact 影给「厚度」,远影给「悬浮」。
+	   远影带负 spread 收拢在卡片正下方:推送卡片同款的无 spread 0.12 在密集网格里
+	   会让相邻卡的影子在窄间隙叠加,整片间隙发灰(真机验过「脏」);单层 0.05 又
+	   读不出来像纸片。负 spread 保正下方浓度、不往间隙伸,是两者间的解。 */
+	--shadow-bn-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 5px 14px -6px rgba(0, 0, 0, 0.1);
+	--shadow-bn-elev: 0 2px 6px rgba(0, 0, 0, 0.05), 0 12px 32px -8px rgba(0, 0, 0, 0.15);
 }
 
 :root {
@@ -71,9 +75,7 @@
 		radial-gradient(circle at 75% 88%, rgba(162, 155, 254, 0.15), transparent 30%),
 		linear-gradient(135deg, #fef0f4 0%, #f0f7fd 50%, #faf2ff 100%);
 	--bn-glass-bg: rgba(255, 255, 255, 0.7);
-	--bn-glass-border: rgba(255, 255, 255, 0.6);
 	--bn-glass-strong-bg: rgba(255, 255, 255, 0.92);
-	--bn-glass-strong-border: rgba(0, 0, 0, 0.05);
 	--bn-glass-blur: 12px;
 	--bn-glass-strong-blur: 16px;
 	/* --shadow-bn-card / --shadow-bn-elev 的浅色默认值由上方 @theme 块提供(已落到 :root),
@@ -119,11 +121,10 @@
 		radial-gradient(circle at 88% 4%, rgba(0, 174, 236, 0.2), transparent 26%),
 		linear-gradient(135deg, #0b1020 0%, #111827 48%, #1e1733 100%);
 	--bn-glass-bg: rgba(30, 41, 59, 0.72);
-	--bn-glass-border: rgba(255, 255, 255, 0.12);
 	--bn-glass-strong-bg: rgba(30, 41, 59, 0.85);
-	--bn-glass-strong-border: rgba(255, 255, 255, 0.14);
-	--shadow-bn-card: 0 10px 30px rgba(0, 0, 0, 0.32);
-	--shadow-bn-elev: 0 18px 50px rgba(0, 0, 0, 0.42);
+	/* 暗色同走双层(contact + 收拢远影);深底上要读出层次得比浅色更浓。 */
+	--shadow-bn-card: 0 1px 3px rgba(0, 0, 0, 0.28), 0 10px 28px -8px rgba(0, 0, 0, 0.42);
+	--shadow-bn-elev: 0 2px 8px rgba(0, 0, 0, 0.32), 0 20px 48px -10px rgba(0, 0, 0, 0.5);
 }
 
 /* Page background — pink → blue → lavender gradient mirrors variation-ac's app shell */
@@ -145,19 +146,23 @@ body {
 	-webkit-font-smoothing: antialiased;
 }
 
-/* Glass surface — used by the GlassPanel / GlassHeader atoms */
+/* Glass surface — used by the GlassPanel / GlassHeader atoms.
+   默认装无描边(卡片风):立体感交给消费方的 shadow-bn-card / shadow-bn-elev
+   工具类。阴影不写在这里:这是无层 CSS,写了会压死 utilities 层的阴影梯度
+   (如 UpCard 的常态轻影 → hover 加深)。描边位保留但默认透明 ——
+   --bn-glass(-strong)-border 变量只由皮肤注入(skin.ts),默认装不定义它。 */
 .bn-glass {
 	background: var(--bn-glass-bg);
 	backdrop-filter: blur(var(--bn-glass-blur));
 	-webkit-backdrop-filter: blur(var(--bn-glass-blur));
-	border: 1px solid var(--bn-glass-border);
+	border: 1px solid var(--bn-glass-border, transparent);
 }
 
 .bn-glass-strong {
 	background: var(--bn-glass-strong-bg);
 	backdrop-filter: blur(var(--bn-glass-strong-blur));
 	-webkit-backdrop-filter: blur(var(--bn-glass-strong-blur));
-	border: 1px solid var(--bn-glass-strong-border);
+	border: 1px solid var(--bn-glass-strong-border, transparent);
 }
 
 /* Animations */
