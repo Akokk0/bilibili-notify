@@ -10,7 +10,7 @@ import type { SkinManifest } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { useSkinStore } from "../../../store/skin";
+import { EMPTY_SLOTS, useSkinStore } from "../../../store/skin";
 import { SkinEditor } from "../SkinEditor";
 
 const H = vi.hoisted(() => ({
@@ -70,7 +70,7 @@ beforeEach(() => {
 	H.putCalls = [];
 	H.postCalls = [];
 	useSkinStore.setState({
-		active: null,
+		active: EMPTY_SLOTS,
 		preview: null,
 		killSwitch: false,
 		lockedTheme: null,
@@ -157,8 +157,10 @@ describe("SkinEditor", () => {
 		);
 	});
 
-	it("保存 → PUT 当前 draft;该皮肤正是 active 时同步转正", async () => {
-		useSkinStore.getState().setActive({ id: "s1", manifest: makeManifest() });
+	it("保存 → PUT 当前 draft;该皮肤正占着槽时同步转正(只动占用的槽)", async () => {
+		useSkinStore
+			.getState()
+			.setActive({ light: { id: "s1", manifest: makeManifest() }, dark: null });
 		const { onClose } = renderEditor();
 		fireEvent.change(screen.getByLabelText("玻璃片透明度"), { target: { value: "0.8" } });
 		fireEvent.click(screen.getByText("保存"));
@@ -167,10 +169,11 @@ describe("SkinEditor", () => {
 		const sent = H.putCalls[0].body as SkinManifest;
 		expect(sent.modes.light?.glass?.background).toBe("rgba(255, 255, 255, 0.8)");
 		await waitFor(() =>
-			expect(useSkinStore.getState().active?.manifest.modes.light?.glass?.background).toBe(
+			expect(useSkinStore.getState().active.light?.manifest.modes.light?.glass?.background).toBe(
 				"rgba(255, 255, 255, 0.8)",
 			),
 		);
+		expect(useSkinStore.getState().active.dark).toBeNull();
 		expect(onClose).toHaveBeenCalled();
 	});
 

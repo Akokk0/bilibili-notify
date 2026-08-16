@@ -80,7 +80,13 @@ export function SkinEditor(props: {
 			api.put<SkinManifestUpdateResponse>(`/api/skins/${id}/manifest`, m),
 		onSuccess: (_res, m) => {
 			const st = useSkinStore.getState();
-			if (st.active?.id === id) st.setActive({ id, manifest: m });
+			// 正被哪个槽启用就同步哪个槽的 manifest,编辑保存立即生效
+			if (st.active.light?.id === id || st.active.dark?.id === id) {
+				st.setActive({
+					light: st.active.light?.id === id ? { id, manifest: m } : st.active.light,
+					dark: st.active.dark?.id === id ? { id, manifest: m } : st.active.dark,
+				});
+			}
 			void qc.invalidateQueries({ queryKey: ["skins"] });
 			setError(null);
 			onClose();

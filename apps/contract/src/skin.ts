@@ -157,7 +157,7 @@ export interface SkinManifest {
 	name: string;
 	author?: string;
 	description?: string;
-	/** 至少给一套;只给一套时前端应用后锁定该模式。 */
+	/** 至少给一套;深浅色槽各自换装,单套皮肤只装扮它有的那个模式(锁模式只发生在试穿)。 */
 	modes: { light?: SkinMode; dark?: SkinMode };
 	/** 主题文案槽(跨明暗共用),槽位白名单见 SKIN_TEXT_SLOTS。 */
 	texts?: Partial<Record<SkinTextSlot, string>>;
@@ -172,20 +172,29 @@ export interface SkinListEntry {
 	name: string;
 	author?: string;
 	description?: string;
-	/** 提供了哪几套模式;单套皮肤应用后前端锁定该模式。 */
+	/** 提供了哪几套模式;决定能占哪个启用槽(试穿单套皮肤时前端锁到该模式看效果)。 */
 	modes: Array<"light" | "dark">;
 	hasWallpaper: boolean;
+}
+
+/** 深浅色各一个启用槽:浅色模式渲染 light 槽,暗色渲染 dark 槽;槽空 = 默认装。 */
+export interface SkinActiveIds {
+	light: string | null;
+	dark: string | null;
 }
 
 /** GET /api/skins */
 export interface SkinsListResponse {
 	list: SkinListEntry[];
-	activeId: string | null;
+	active: SkinActiveIds;
 }
 
-/** GET /api/skins/active(未启用皮肤时 wire 上是 { active: null })。 */
+/** GET /api/skins/active —— 双槽,槽里带完整 manifest,空槽为 null。 */
 export interface ActiveSkinResponse {
-	active: { id: string; manifest: SkinManifest } | null;
+	active: {
+		light: { id: string; manifest: SkinManifest } | null;
+		dark: { id: string; manifest: SkinManifest } | null;
+	};
 }
 
 /** GET /api/skins/:id/manifest —— assets 是包内资产清单(`assets/<名>`),编辑器图片字段的可选项。 */

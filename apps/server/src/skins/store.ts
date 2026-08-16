@@ -15,9 +15,15 @@ interface SavedSkin {
 	assets: Map<string, Uint8Array>;
 }
 
+/** 深浅色各一个槽位:浅色模式渲染 light 槽的皮肤,暗色渲染 dark 槽;槽空=默认装。 */
+export interface ActiveSlots {
+	light: string | null;
+	dark: string | null;
+}
+
 export class SkinStore {
 	private readonly skinsDir: string;
-	private activeId: string | null = null;
+	private active: ActiveSlots = { light: null, dark: null };
 	/** id → manifest 内存索引;盘是唯一权威,这里只是读缓存。 */
 	private index = new Map<string, SkinManifest>();
 
@@ -37,10 +43,21 @@ export class SkinStore {
 				// 残缺目录(写入中断等)不进索引,也不动它 —— 交给人查,别静默删数据。
 			}
 		}
-		this.activeId = null;
+		this.active = { light: null, dark: null };
 		try {
 			const raw = JSON.parse(await readFile(join(this.skinsDir, "active.json"), "utf8"));
-			if (typeof raw.id === "string" && this.index.has(raw.id)) this.activeId = raw.id;
+			for (const theme of ["light", "dark"] as const) {
+				const id = raw[theme];
+				if (typeof id === "string" && this.index.get(id)?.modes[theme]) this.active[theme] = id;
+			}
+			// 旧单指针格式 {id}:按该皮肤具备的模式落槽,一次读盘即完成迁移语义
+			// (落盘格式在下次 set 时自然升级,这里不主动回写)。
+			if (typeof raw.id === "string") {
+				const m = this.index.get(raw.id);
+				for (const theme of ["light", "dark"] as const) {
+					if (m?.modes[theme]) this.active[theme] = raw.id;
+				}
+			}
 		} catch {
 			// 没有 active.json = 没启用皮肤。
 		}
@@ -103,21 +120,47 @@ export class SkinStore {
 	async remove(id: string): Promise<void> {
 		await rm(join(this.skinsDir, id), { recursive: true, force: true });
 		this.index.delete(id);
-		if (this.activeId === id) await this.setActive(null);
-	}
-
-	async setActive(id: string | null): Promise<void> {
-		if (id !== null && !this.index.has(id)) {
-			throw new Error(`皮肤不存在: ${id}`);
+		if (this.active.light === id || this.active.dark === id) {
+			await this.writeActive({
+				light: this.active.light === id ? null : this.active.light,
+				dark: this.active.dark === id ? null : this.active.dark,
+			});
 		}
-		const tmp = join(this.skinsDir, "active.json.tmp");
-		await writeFile(tmp, JSON.stringify({ id }));
-		await rename(tmp, join(this.skinsDir, "active.json"));
-		this.activeId = id;
 	}
 
-	getActive(): string | null {
-		return this.activeId;
+	/** 设置单个主题槽;皮肤必须提供该模式(纯暗皮肤进不了亮槽,反之亦然)。 */
+	async setActiveSlot(theme: keyof ActiveSlots, id: string | null): Promise<void> {
+		if (id !== null) {
+			const m = this.index.get(id);
+			if (!m) throw new Error(`皮肤不存在: ${id}`);
+			if (!m.modes[theme]) throw new Error(`皮肤没有 ${theme} 模式: ${id}`);
+		}
+		await this.writeActive({ ...this.active, [theme]: id });
+	}
+
+	/** 整套启用:按皮肤具备的模式落槽,不具备的槽保持原样;null 清空两槽。 */
+	async activate(id: string | null): Promise<void> {
+		if (id === null) {
+			await this.writeActive({ light: null, dark: null });
+			return;
+		}
+		const m = this.index.get(id);
+		if (!m) throw new Error(`皮肤不存在: ${id}`);
+		await this.writeActive({
+			light: m.modes.light ? id : this.active.light,
+			dark: m.modes.dark ? id : this.active.dark,
+		});
+	}
+
+	getActive(): ActiveSlots {
+		return { ...this.active };
+	}
+
+	private async writeActive(next: ActiveSlots): Promise<void> {
+		const tmp = join(this.skinsDir, "active.json.tmp");
+		await writeFile(tmp, JSON.stringify(next));
+		await rename(tmp, join(this.skinsDir, "active.json"));
+		this.active = next;
 	}
 
 	/** 资产的磁盘绝对路径;名字不合白名单或文件不存在 → null。 */

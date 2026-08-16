@@ -1,4 +1,6 @@
 import type {
+	ActiveSkinResponse,
+	SkinListEntry,
 	SkinManifest,
 	SkinManifestResponse,
 	SkinsListResponse,
@@ -14,6 +16,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, useRef, useState } from "react";
+import { Picker } from "../../components/forms";
 import { api } from "../../services/api";
 import { buildSkinPrompt, makeSkinZip } from "../../services/skin-pack";
 import { useSkinStore } from "../../store/skin";
@@ -54,27 +57,25 @@ export function SkinSection() {
 		queryKey: ["skins"],
 		queryFn: () => api.get<SkinsListResponse>("/api/skins"),
 	});
-	const activeId = listQuery.data?.activeId ?? null;
+	const activeIds = listQuery.data?.active ?? { light: null, dark: null };
 
 	function refresh(): void {
 		void qc.invalidateQueries({ queryKey: ["skins"] });
 	}
 
-	/** 启用/恢复默认后,把 store 的 active 同步到服务端新状态(SkinRoot 即时换装)。 */
-	async function syncActiveToStore(id: string | null): Promise<void> {
-		if (id === null) {
-			useSkinStore.getState().setActive(null);
-			return;
-		}
-		const manifest = await fetchManifest(id);
-		useSkinStore.getState().setActive({ id, manifest });
+	/** 任何启用/停用/删除之后,以服务端双槽为权威回灌 store(SkinRoot 即时换装)。 */
+	async function syncActiveToStore(): Promise<void> {
+		const res = await api.get<ActiveSkinResponse>("/api/skins/active");
+		useSkinStore.getState().setActive(res.active);
 	}
 
 	const activate = useMutation({
-		mutationFn: (id: string | null) => api.put<{ ok: boolean }>("/api/skins/active", { id }),
-		onSuccess: async (_data, id) => {
+		// 深浅槽各自设置;id:null = 该槽回默认装。
+		mutationFn: (req: { id: string | null; theme: "light" | "dark" }) =>
+			api.put<{ ok: boolean }>("/api/skins/active", req),
+		onSuccess: async () => {
 			setError(null);
-			await syncActiveToStore(id);
+			await syncActiveToStore();
 			useSkinStore.getState().setPreview(null);
 			refresh();
 		},
@@ -83,11 +84,9 @@ export function SkinSection() {
 
 	const remove = useMutation({
 		mutationFn: (id: string) => api.delete<{ ok: boolean }>(`/api/skins/${id}`),
-		onSuccess: async (_data, id) => {
+		onSuccess: async () => {
 			setError(null);
-			if (useSkinStore.getState().active?.id === id) {
-				useSkinStore.getState().setActive(null);
-			}
+			await syncActiveToStore();
 			refresh();
 		},
 		onError: (e) => setError(String((e as Error).message)),
@@ -145,7 +144,7 @@ export function SkinSection() {
 			subtitle="给面板换装 —— 上传皮肤包,或让任意 AI 帮你做一套"
 			accent="#a29bfe"
 			icon={<Icon.palette size={14} />}
-			badge={activeId ? "已换装" : "原生外观"}
+			badge={activeIds.light || activeIds.dark ? "已换装" : "原生外观"}
 			right={
 				<div className="flex items-center gap-2">
 					<Btn size="sm" variant="outline" onClick={() => setGuideOpen(true)}>
@@ -178,43 +177,68 @@ export function SkinSection() {
 				</div>
 			) : null}
 
-			<div className="space-y-2">
-				<SkinRow
-					name="默认装"
-					desc="bilibili-notify 的原生粉蓝玻璃装"
-					current={activeId === null}
-					onActivate={() => activate.mutate(null)}
-					busy={activate.isPending}
-				/>
-				{entries.map((entry) => (
-					<SkinRow
-						key={entry.id}
-						name={entry.name}
-						desc={[entry.author ? `by ${entry.author}` : null, entry.description ?? null]
-							.filter(Boolean)
-							.join(" · ")}
-						tags={
-							<>
-								{entry.modes.map((m) => (
-									<Pill key={m} subtle color="#00aeec">
-										{MODE_LABEL[m]}
-									</Pill>
-								))}
-								{entry.hasWallpaper ? (
-									<Pill subtle color="#a29bfe">
-										壁纸
-									</Pill>
-								) : null}
-							</>
-						}
-						current={activeId === entry.id}
-						onTryOn={() => void tryOn(entry.id)}
-						onEdit={() => void openEditor(entry.id)}
-						onActivate={() => activate.mutate(entry.id)}
-						onRemove={() => setConfirmRemove({ id: entry.id, name: entry.name })}
-						busy={activate.isPending || remove.isPending}
-					/>
+			{/* 换装 Picker(分段按钮组):深浅色各自挑一套,只列具备该模式的皮肤;
+			    点「默认装」即卸下该槽。 */}
+			<div className="mb-3 space-y-2">
+				{(["light", "dark"] as const).map((theme) => (
+					<fieldset
+						key={theme}
+						aria-label={`${MODE_LABEL[theme]}模式皮肤`}
+						className="flex flex-wrap items-center gap-2"
+					>
+						<span className="w-14 shrink-0 text-[12px] font-semibold text-bn-text-secondary">
+							{MODE_LABEL[theme]}模式
+						</span>
+						<Picker
+							value={activeIds[theme] ?? ""}
+							onChange={(id) => {
+								if (id === (activeIds[theme] ?? "")) return;
+								activate.mutate({ theme, id: id === "" ? null : id });
+							}}
+							options={[
+								{ value: "", label: "默认装" },
+								...entries
+									.filter((entry) => entry.modes.includes(theme))
+									.map((entry) => ({ value: entry.id, label: entry.name })),
+							]}
+						/>
+					</fieldset>
 				))}
+			</div>
+
+			<div className="space-y-2">
+				{entries.map((entry) => {
+					const usage = (["light", "dark"] as const).filter((t) => activeIds[t] === entry.id);
+					return (
+						<SkinRow
+							key={entry.id}
+							name={entry.name}
+							desc={[entry.author ? `by ${entry.author}` : null, entry.description ?? null]
+								.filter(Boolean)
+								.join(" · ")}
+							tags={
+								<>
+									{entry.modes.map((m) => (
+										<Pill key={m} subtle color="#00aeec">
+											{MODE_LABEL[m]}
+										</Pill>
+									))}
+									{entry.hasWallpaper ? (
+										<Pill subtle color="#a29bfe">
+											壁纸
+										</Pill>
+									) : null}
+								</>
+							}
+							usage={usage}
+							onTryOn={() => void tryOn(entry.id)}
+							onEdit={() => void openEditor(entry.id)}
+							onExport={() => downloadSkin(entry)}
+							onRemove={() => setConfirmRemove({ id: entry.id, name: entry.name })}
+							busy={remove.isPending}
+						/>
+					);
+				})}
 			</div>
 
 			<p className="mt-3 text-[11px] leading-5 text-bn-text-tertiary">
@@ -251,16 +275,25 @@ export function SkinSection() {
 	);
 }
 
+/** 皮肤导出:直接开导出端点,浏览器按 content-disposition 落文件(会话 cookie 同源自带)。 */
+function downloadSkin(entry: SkinListEntry): void {
+	const a = document.createElement("a");
+	a.href = `/api/skins/${entry.id}/export`;
+	a.download = `${entry.name}.zip`;
+	a.click();
+}
+
 function SkinRow(props: {
 	name: string;
 	desc?: string;
 	tags?: React.ReactNode;
-	current: boolean;
+	/** 正占用的槽位;「浅色·使用中」等徽标按此渲染。启用/卸下都走上方的 picker。 */
+	usage: Array<"light" | "dark">;
 	busy: boolean;
-	onActivate: () => void;
-	onTryOn?: () => void;
-	onEdit?: () => void;
-	onRemove?: () => void;
+	onTryOn: () => void;
+	onEdit: () => void;
+	onExport: () => void;
+	onRemove: () => void;
 }) {
 	return (
 		<div className="flex items-center gap-3 rounded-[10px] border border-bn-border-subtle bg-bn-surface-muted/60 px-3 py-2.5">
@@ -268,33 +301,29 @@ function SkinRow(props: {
 				<div className="flex flex-wrap items-center gap-1.5">
 					<span className="text-[13px] font-semibold text-bn-text-primary">{props.name}</span>
 					{props.tags}
-					{props.current ? <Pill color="#fb7299">使用中</Pill> : null}
+					{props.usage.length > 0 ? (
+						<Pill color="#fb7299">
+							{props.usage.length === 2 ? "使用中" : `${MODE_LABEL[props.usage[0]]}·使用中`}
+						</Pill>
+					) : null}
 				</div>
 				{props.desc ? (
 					<div className="mt-0.5 truncate text-[11px] text-bn-text-secondary">{props.desc}</div>
 				) : null}
 			</div>
 			<div className="flex shrink-0 items-center gap-1.5">
-				{props.onTryOn ? (
-					<Btn size="sm" variant="ghost" onClick={props.onTryOn}>
-						试穿
-					</Btn>
-				) : null}
-				{props.onEdit ? (
-					<Btn size="sm" variant="ghost" onClick={props.onEdit}>
-						调整
-					</Btn>
-				) : null}
-				{!props.current ? (
-					<Btn size="sm" variant="outline" onClick={props.onActivate} disabled={props.busy}>
-						启用
-					</Btn>
-				) : null}
-				{props.onRemove ? (
-					<Btn size="sm" variant="danger" onClick={props.onRemove} disabled={props.busy}>
-						删除
-					</Btn>
-				) : null}
+				<Btn size="sm" variant="ghost" onClick={props.onTryOn}>
+					试穿
+				</Btn>
+				<Btn size="sm" variant="ghost" onClick={props.onEdit}>
+					调整
+				</Btn>
+				<Btn size="sm" variant="ghost" onClick={props.onExport}>
+					导出
+				</Btn>
+				<Btn size="sm" variant="danger" onClick={props.onRemove} disabled={props.busy}>
+					删除
+				</Btn>
 			</div>
 		</div>
 	);

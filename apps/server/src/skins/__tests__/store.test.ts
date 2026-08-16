@@ -59,35 +59,81 @@ describe("SkinStore", () => {
 		expect(await store.get("nope")).toBeNull();
 	});
 
-	it("setActive / getActive / setActive(null);不存在的 id → 抛错", async () => {
-		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
-		await store.setActive(id);
-		expect(store.getActive()).toBe(id);
-		await store.setActive(null);
-		expect(store.getActive()).toBeNull();
-		await expect(store.setActive("nope")).rejects.toThrow();
+	it("setActiveSlot / getActive 双槽独立读写;槽皮肤没有该模式或 id 不存在 → 抛错", async () => {
+		const { id: lightSkin } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		const { id: darkSkin } = await store.save({
+			manifest: makeManifest({ name: "夜装", modes: { dark: {} } }),
+			assets: new Map(),
+		});
+		await store.setActiveSlot("light", lightSkin);
+		await store.setActiveSlot("dark", darkSkin);
+		expect(store.getActive()).toEqual({ light: lightSkin, dark: darkSkin });
+		await store.setActiveSlot("dark", null);
+		expect(store.getActive()).toEqual({ light: lightSkin, dark: null });
+		// 纯亮皮肤不能进暗槽,反之亦然
+		await expect(store.setActiveSlot("dark", lightSkin)).rejects.toThrow();
+		await expect(store.setActiveSlot("light", darkSkin)).rejects.toThrow();
+		await expect(store.setActiveSlot("light", "nope")).rejects.toThrow();
 	});
 
-	it("remove 删目录;删的是 active → active 归 null", async () => {
-		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
-		await store.setActive(id);
-		await store.remove(id);
-		expect(await store.get(id)).toBeNull();
-		expect(store.getActive()).toBeNull();
-		expect(await store.list()).toHaveLength(0);
+	it("activate:按皮肤具备的模式落槽,不具备的槽保持原样;null 清空两槽", async () => {
+		const { id: lightSkin } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		const { id: darkSkin } = await store.save({
+			manifest: makeManifest({ name: "夜装", modes: { dark: {} } }),
+			assets: new Map(),
+		});
+		const { id: dual } = await store.save({
+			manifest: makeManifest({ name: "双装", modes: { light: {}, dark: {} } }),
+			assets: new Map(),
+		});
+		await store.activate(lightSkin);
+		expect(store.getActive()).toEqual({ light: lightSkin, dark: null });
+		// 启用纯暗皮肤,亮槽的青柠不被顶掉 —— 深浅色各自换装的核心语义
+		await store.activate(darkSkin);
+		expect(store.getActive()).toEqual({ light: lightSkin, dark: darkSkin });
+		await store.activate(dual);
+		expect(store.getActive()).toEqual({ light: dual, dark: dual });
+		await store.activate(null);
+		expect(store.getActive()).toEqual({ light: null, dark: null });
 	});
 
-	it("重启(同目录新实例 init)→ 列表与 active 指针都还在", async () => {
+	it("remove 删目录;占槽的被删 → 该槽归 null,另一槽保留", async () => {
+		const { id: lightSkin } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		const { id: darkSkin } = await store.save({
+			manifest: makeManifest({ name: "夜装", modes: { dark: {} } }),
+			assets: new Map(),
+		});
+		await store.activate(lightSkin);
+		await store.activate(darkSkin);
+		await store.remove(darkSkin);
+		expect(await store.get(darkSkin)).toBeNull();
+		expect(store.getActive()).toEqual({ light: lightSkin, dark: null });
+	});
+
+	it("重启(同目录新实例 init)→ 列表与双槽指针都还在", async () => {
 		const { id } = await store.save({
 			manifest: makeManifest(),
 			assets: new Map([["assets/bg.png", PNG]]),
 		});
-		await store.setActive(id);
+		await store.setActiveSlot("light", id);
 
 		const reborn = new SkinStore({ skinsDir: dir });
 		await reborn.init();
 		expect((await reborn.list()).map((e) => e.id)).toEqual([id]);
-		expect(reborn.getActive()).toBe(id);
+		expect(reborn.getActive()).toEqual({ light: id, dark: null });
+	});
+
+	it("旧单指针 active.json({id}) → init 迁移:按皮肤具备的模式落槽", async () => {
+		const { id: dual } = await store.save({
+			manifest: makeManifest({ name: "双装", modes: { light: {}, dark: {} } }),
+			assets: new Map(),
+		});
+		const { writeFile } = await import("node:fs/promises");
+		await writeFile(join(dir, "active.json"), JSON.stringify({ id: dual }));
+
+		const reborn = new SkinStore({ skinsDir: dir });
+		await reborn.init();
+		expect(reborn.getActive()).toEqual({ light: dual, dark: dual });
 	});
 
 	it("assetPath:合法资产名 → 绝对路径;白名单外 / 不存在 → null", async () => {

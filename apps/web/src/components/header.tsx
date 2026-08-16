@@ -208,7 +208,8 @@ function ThemeSwitcher() {
 	const preference = useThemeStore((s) => s.preference);
 	const resolved = useThemeStore((s) => s.resolved);
 	const setPreference = useThemeStore((s) => s.setPreference);
-	// 单套皮肤锁模式:锁住时切换无效,按钮置灰说明原因,而不是让用户点了没反应。
+	// 试穿单套皮肤时锁模式:锁住时切换无效,按钮置灰说明原因,而不是让用户点了没反应。
+	// (已启用的皮肤按深浅槽各自生效,不锁 —— 锁只发生在试穿。)
 	const lockedTheme = useSkinStore((s) => s.lockedTheme);
 	const [open, setOpen] = useState(false);
 	const containerRef = useRef<HTMLDivElement | null>(null);
@@ -231,9 +232,9 @@ function ThemeSwitcher() {
 				variant="outline"
 				size="sm"
 				disabled
-				title={`当前皮肤只提供${lockedTheme === "dark" ? "深色" : "浅色"}一套,换回默认装或双套皮肤即可切换`}
+				title={`试穿中的皮肤只有${lockedTheme === "dark" ? "深色" : "浅色"}一套,应用或取消试穿即可切换`}
 			>
-				主题：{lockedTheme === "dark" ? "深色" : "浅色"}(皮肤锁定)
+				主题：{lockedTheme === "dark" ? "深色" : "浅色"}(试穿锁定)
 			</Btn>
 		);
 	}

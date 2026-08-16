@@ -5,6 +5,7 @@
 
 import { readFile } from "node:fs/promises";
 import type { ActiveSkinResponse, SkinsListResponse } from "@bilibili-notify/contract";
+import { strToU8, zipSync } from "fflate";
 import { Hono } from "hono";
 import { runSkinAiEdit, type SkinAiGenerator } from "../skins/ai-edit.js";
 import { openSkinPackage, referencedImages } from "../skins/package.js";
@@ -40,7 +41,7 @@ export function createSkinsRoute(deps: {
 	app.get("/", async (c) => {
 		const body: SkinsListResponse = {
 			list: await skinStore.list(),
-			activeId: skinStore.getActive(),
+			active: skinStore.getActive(),
 		};
 		return c.json(body);
 	});
@@ -59,24 +60,37 @@ export function createSkinsRoute(deps: {
 	});
 
 	app.get("/active", async (c) => {
-		const id = skinStore.getActive();
-		const manifest = id ? await skinStore.get(id) : null;
+		const ids = skinStore.getActive();
+		const slot = async (id: string | null) => {
+			const manifest = id ? await skinStore.get(id) : null;
+			return id && manifest ? { id, manifest } : null;
+		};
 		const body: ActiveSkinResponse = {
-			active: id && manifest ? { id, manifest } : null,
+			active: { light: await slot(ids.light), dark: await slot(ids.dark) },
 		};
 		return c.json(body);
 	});
 
+	// 不带 theme = 整套启用(按皮肤具备的模式落槽,null 清两槽);带 theme = 单槽设置。
 	app.put("/active", async (c) => {
 		const body = await c.req.json().catch(() => null);
-		const id = body && typeof body === "object" ? (body as { id?: unknown }).id : undefined;
+		const req = body && typeof body === "object" ? (body as { id?: unknown; theme?: unknown }) : {};
+		const { id, theme } = req;
 		if (id !== null && typeof id !== "string") {
 			return c.json({ ok: false, err: "id 必须是皮肤 id 或 null" }, 400);
+		}
+		if (theme !== undefined && theme !== "light" && theme !== "dark") {
+			return c.json({ ok: false, err: "theme 只能是 light 或 dark" }, 400);
 		}
 		if (id !== null && !(await skinStore.get(id))) {
 			return c.json({ ok: false, err: "皮肤不存在" }, 404);
 		}
-		await skinStore.setActive(id);
+		try {
+			if (theme === undefined) await skinStore.activate(id);
+			else await skinStore.setActiveSlot(theme, id);
+		} catch (e) {
+			return c.json({ ok: false, err: String((e as Error).message) }, 400);
+		}
 		return c.json({ ok: true });
 	});
 
@@ -139,6 +153,24 @@ export function createSkinsRoute(deps: {
 		}
 		await skinStore.updateManifest(id, parsed.skin);
 		return c.json({ ok: true, warnings: parsed.warnings });
+	});
+
+	// 导出皮肤包:manifest + 全部资产打回标准 zip,和上传收的是同一种包(往返闭环)。
+	app.get("/:id/export", async (c) => {
+		const id = c.req.param("id");
+		const manifest = await skinStore.get(id);
+		if (!manifest) return c.json({ ok: false, err: "皮肤不存在" }, 404);
+		const files: Record<string, Uint8Array> = {
+			"skin.json": strToU8(JSON.stringify(manifest, null, "\t")),
+		};
+		for (const name of await skinStore.listAssets(id)) {
+			const path = await skinStore.assetPath(id, name);
+			if (path) files[name] = new Uint8Array(await readFile(path));
+		}
+		return c.body(zipSync(files), 200, {
+			"content-type": "application/zip",
+			"content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(manifest.name)}.zip`,
+		});
 	});
 
 	app.delete("/:id", async (c) => {

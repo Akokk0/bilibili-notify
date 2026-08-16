@@ -16,17 +16,27 @@ import { SkinStore } from "../store.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
-function makeZipFile(withWallpaper = false): File {
+function makeZipFile(withWallpaper = false, modes?: Record<string, unknown>): File {
 	const manifest = {
 		schemaVersion: 1,
 		name: "樱花夜",
-		modes: withWallpaper
-			? { light: { wallpaper: { image: "assets/bg.png" } } }
-			: { light: { colors: { accent: "#fb7299" } } },
+		modes:
+			modes ??
+			(withWallpaper
+				? { light: { wallpaper: { image: "assets/bg.png" } } }
+				: { light: { colors: { accent: "#fb7299" } } }),
 	};
 	const files: Record<string, Uint8Array> = { "skin.json": strToU8(JSON.stringify(manifest)) };
 	if (withWallpaper) files["assets/bg.png"] = PNG;
 	return new File([Buffer.from(zipSync(files))], "skin.zip", { type: "application/zip" });
+}
+
+async function putActive(app: Hono, body: unknown): Promise<Response> {
+	return app.request("/active", {
+		method: "PUT",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(body),
+	});
 }
 
 async function upload(app: Hono, file: File): Promise<Response> {
@@ -45,12 +55,12 @@ beforeEach(async () => {
 });
 
 describe("skins route", () => {
-	it("GET / 初始为空:list=[] activeId=null", async () => {
+	it("GET / 初始为空:list=[] active 双槽全空", async () => {
 		const res = await app.request("/");
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as any;
 		expect(body.list).toEqual([]);
-		expect(body.activeId).toBeNull();
+		expect(body.active).toEqual({ light: null, dark: null });
 	});
 
 	it("POST / 合法 zip → 201 带 id;列表随之出现", async () => {
@@ -73,57 +83,67 @@ describe("skins route", () => {
 		expect(body.errors.length).toBeGreaterThan(0);
 	});
 
-	it("PUT /active 启用与取消;不存在的 id → 404", async () => {
+	it("PUT /active 整套启用(纯亮→亮槽)与清空;不存在的 id → 404", async () => {
 		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
-		const on = await app.request("/active", {
-			method: "PUT",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ id }),
-		});
+		const on = await putActive(app, { id });
 		expect(on.status).toBe(200);
-		expect(((await (await app.request("/")).json()) as any).activeId as string).toBe(id);
-
-		const off = await app.request("/active", {
-			method: "PUT",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ id: null }),
+		expect(((await (await app.request("/")).json()) as any).active).toEqual({
+			light: id,
+			dark: null,
 		});
+
+		const off = await putActive(app, { id: null });
 		expect(off.status).toBe(200);
-		expect(((await (await app.request("/")).json()) as any).activeId as unknown).toBeNull();
-
-		const missing = await app.request("/active", {
-			method: "PUT",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ id: "nope" }),
+		expect(((await (await app.request("/")).json()) as any).active).toEqual({
+			light: null,
+			dark: null,
 		});
-		expect(missing.status).toBe(404);
+
+		expect((await putActive(app, { id: "nope" })).status).toBe(404);
 	});
 
-	it("GET /active:未启用 → {active:null};启用后带 manifest", async () => {
-		expect(((await (await app.request("/active")).json()) as any).active as unknown).toBeNull();
-		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
-		await app.request("/active", {
-			method: "PUT",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ id }),
+	it("PUT /active 带 theme:单槽设置;皮肤没有该模式 → 400", async () => {
+		const { id: lightSkin } = (await (await upload(app, makeZipFile())).json()) as any;
+		const { id: darkSkin } = (await (
+			await upload(app, makeZipFile(false, { dark: { colors: { accent: "#00e5ff" } } }))
+		).json()) as any;
+		expect((await putActive(app, { theme: "light", id: lightSkin })).status).toBe(200);
+		expect((await putActive(app, { theme: "dark", id: darkSkin })).status).toBe(200);
+		expect(((await (await app.request("/")).json()) as any).active).toEqual({
+			light: lightSkin,
+			dark: darkSkin,
 		});
+		// 纯暗皮肤进不了亮槽
+		expect((await putActive(app, { theme: "light", id: darkSkin })).status).toBe(400);
+		// 单槽卸下,另一槽不动
+		expect((await putActive(app, { theme: "light", id: null })).status).toBe(200);
+		expect(((await (await app.request("/")).json()) as any).active).toEqual({
+			light: null,
+			dark: darkSkin,
+		});
+	});
+
+	it("GET /active:双槽形状,槽里带 manifest,空槽为 null", async () => {
+		expect(((await (await app.request("/active")).json()) as any).active).toEqual({
+			light: null,
+			dark: null,
+		});
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		await putActive(app, { id });
 		const body = (await (await app.request("/active")).json()) as any;
-		expect(body.active.id).toBe(id);
-		expect(body.active.manifest.name).toBe("樱花夜");
+		expect(body.active.light.id).toBe(id);
+		expect(body.active.light.manifest.name).toBe("樱花夜");
+		expect(body.active.dark).toBeNull();
 	});
 
-	it("DELETE /:id 删除;删的是 active → activeId 归 null", async () => {
+	it("DELETE /:id 删除;占槽的被删 → 该槽归 null", async () => {
 		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
-		await app.request("/active", {
-			method: "PUT",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ id }),
-		});
+		await putActive(app, { id });
 		const res = await app.request(`/${id}`, { method: "DELETE" });
 		expect(res.status).toBe(200);
 		const list = (await (await app.request("/")).json()) as any;
 		expect(list.list).toEqual([]);
-		expect(list.activeId).toBeNull();
+		expect(list.active).toEqual({ light: null, dark: null });
 	});
 
 	it("GET /:id/assets/:name serve 壁纸;不存在 → 404", async () => {
@@ -147,6 +167,36 @@ describe("GET /:id/manifest(试穿/编辑用)", () => {
 		expect(body.manifest.name).toBe("樱花夜");
 		expect(body.assets).toEqual(["assets/bg.png"]);
 		expect((await app.request("/nope/manifest")).status).toBe(404);
+	});
+});
+
+describe("GET /:id/export(导出皮肤包)", () => {
+	it("导出 zip:含盘上 skin.json 与全部资产,带 attachment 头;不存在 → 404", async () => {
+		const { id } = (await (await upload(app, makeZipFile(true))).json()) as any;
+		const res = await app.request(`/${id}/export`);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toBe("application/zip");
+		expect(res.headers.get("content-disposition")).toContain("attachment");
+
+		const { unzipSync, strFromU8 } = await import("fflate");
+		const files = unzipSync(new Uint8Array(await res.arrayBuffer()));
+		expect(Object.keys(files).sort()).toEqual(["assets/bg.png", "skin.json"]);
+		const manifest = JSON.parse(strFromU8(files["skin.json"] as Uint8Array));
+		expect(manifest.name).toBe("樱花夜");
+		expect(new Uint8Array(files["assets/bg.png"] as Uint8Array)).toEqual(PNG);
+
+		expect((await app.request("/nope/export")).status).toBe(404);
+	});
+
+	it("导出的 zip 能原样再上传(往返闭环)", async () => {
+		const { id } = (await (await upload(app, makeZipFile(true))).json()) as any;
+		const res = await app.request(`/${id}/export`);
+		const file = new File([Buffer.from(await res.arrayBuffer())], "skin.zip", {
+			type: "application/zip",
+		});
+		const again = await upload(app, file);
+		expect(again.status).toBe(201);
+		expect(((await again.json()) as any).ok).toBe(true);
 	});
 });
 

@@ -30,7 +30,7 @@ export function buildSkinPrompt(readVar: (name: string) => string): string {
 - schemaVersion: 固定 1
 - name: 皮肤名(≤50 字)
 - author / description: 可选
-- modes: { light?, dark? } —— 尽量两套都给;只给一套时应用后会锁定该模式
+- modes: { light?, dark? } —— 深浅色槽各自换装:只给一套也完全成立(它只装扮对应模式,另一模式由默认装或另一套皮肤负责);风格明确偏亮/偏暗时,专注做好一套比硬凑两套更好
 
 每套 mode 里全部字段可选,没写的沿用默认装:
 - colors: 语义色键值,值只收 hex / rgb() / hsl() / oklch() / transparent(禁 url()、var()、分号)。可用键:

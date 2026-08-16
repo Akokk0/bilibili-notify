@@ -14,11 +14,29 @@ import {
 	skinKillSwitchActive,
 } from "../services/skin";
 import { useSessionStore } from "../store/session";
-import { effectiveSkin, useSkinStore } from "../store/skin";
+import { type ActiveSkin, effectiveSkin, type SkinState, useSkinStore } from "../store/skin";
+import type { ResolvedTheme } from "../store/theme";
 import { useThemeStore } from "../store/theme";
 
 export function skinAssetUrl(id: string, name: string): string {
 	return `/api/skins/${id}/assets/${name.slice("assets/".length)}`;
+}
+
+/**
+ * 此刻生效的皮肤 + 应渲染的模式。锁模式只属于试穿:preview 是单套皮肤时锁到
+ * 它有的那套看效果;active 槽皮肤永远渲染当前主题对应的槽,不锁 —— 槽空=默认装。
+ */
+function resolveCurrent(
+	s: Pick<SkinState, "active" | "preview" | "killSwitch">,
+	resolved: ResolvedTheme,
+): { skin: ActiveSkin; mode: SkinMode; theme: ResolvedTheme; locked: boolean } | null {
+	const skin = effectiveSkin(s, resolved);
+	if (!skin) return null;
+	if (s.preview) {
+		const r = resolveSkinMode(skin.manifest, resolved);
+		return { skin, mode: r.mode, theme: r.theme, locked: r.locked };
+	}
+	return { skin, mode: skin.manifest.modes[resolved] ?? {}, theme: resolved, locked: false };
 }
 
 /** 此刻生效的皮肤及其当前模式;没换装/逃生舱下为 null。装饰层/文案槽共用。 */
@@ -27,9 +45,9 @@ export function useCurrentSkinMode(): { id: string; mode: SkinMode } | null {
 	const preview = useSkinStore((s) => s.preview);
 	const killSwitch = useSkinStore((s) => s.killSwitch);
 	const resolved = useThemeStore((s) => s.resolved);
-	const skin = effectiveSkin({ active, preview, killSwitch });
-	if (!skin) return null;
-	return { id: skin.id, mode: resolveSkinMode(skin.manifest, resolved).mode };
+	const current = resolveCurrent({ active, preview, killSwitch }, resolved);
+	if (!current) return null;
+	return { id: current.skin.id, mode: current.mode };
 }
 
 /** 悬浮光斑:大尺寸柔光团慢速漂移;位置按序落在四个角落区。 */
@@ -117,14 +135,14 @@ export function SkinRoot({ children }: { children: ReactNode }) {
 
 	useEffect(() => {
 		const root = document.documentElement;
-		const skin = effectiveSkin({ active, preview, killSwitch });
-		if (!skin) {
+		const current = resolveCurrent({ active, preview, killSwitch }, resolved);
+		if (!current) {
 			clearSkinVars(root);
 			clearSkinCss();
 			useSkinStore.getState().setLockedTheme(null);
 			return;
 		}
-		const { mode, theme, locked } = resolveSkinMode(skin.manifest, resolved);
+		const { skin, mode, theme, locked } = current;
 		const assetUrl = (name: string) => skinAssetUrl(skin.id, name);
 		applySkinVars(root, composeSkinVars(mode, assetUrl, theme));
 		// 自定义 CSS + 壁纸糊化层 + 动效预设产物:与变量同一拍进同一个 style 标签;

@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
 
 /**
- * 皮肤库 section 的行为:列表(默认装永远在列)、启用、试穿(只写 preview,
- * 注入由 SkinRoot 负责)、恢复默认。上传/组包走 services 层已测的纯函数。
+ * 皮肤库 section 的行为:深浅两个换装 Picker(forms.tsx 的分段按钮组;
+ * 各列具备该模式的皮肤+默认装,选中即 PUT 单槽)、试穿(只写 preview,注入由
+ * SkinRoot 负责)、导出。上传/组包走 services 层已测的纯函数。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { useSkinStore } from "../../../store/skin";
+import { EMPTY_SLOTS, useSkinStore } from "../../../store/skin";
 import { SkinSection } from "../SkinSection";
 
 const H = vi.hoisted(() => ({
@@ -22,7 +23,7 @@ const H = vi.hoisted(() => ({
 				hasWallpaper: true,
 			},
 		],
-		activeId: null as string | null,
+		active: { light: null, dark: null } as { light: string | null; dark: string | null },
 	},
 	manifest: {
 		schemaVersion: 1,
@@ -36,11 +37,20 @@ vi.mock("../../../services/api", () => ({
 	api: {
 		get: vi.fn(async (path: string) => {
 			if (path === "/api/skins") return H.list;
+			if (path === "/api/skins/active") {
+				const slot = (id: string | null) => (id ? { id, manifest: H.manifest } : null);
+				return { active: { light: slot(H.list.active.light), dark: slot(H.list.active.dark) } };
+			}
 			if (path === "/api/skins/s1/manifest") return { manifest: H.manifest, assets: [] };
 			throw new Error(`unexpected GET ${path}`);
 		}),
 		put: vi.fn(async (_path: string, body: unknown) => {
 			H.putCalls.push(body);
+			// 模拟服务端落槽:整套启用按 modes 占槽;带 theme 的单槽设置;null 清两槽
+			const req = body as { id: string | null; theme?: "light" | "dark" };
+			if (req.theme) H.list.active[req.theme] = req.id;
+			else if (req.id === null) H.list.active = { light: null, dark: null };
+			else H.list.active = { light: req.id, dark: req.id };
 			return { ok: true };
 		}),
 		delete: vi.fn(async () => ({ ok: true })),
@@ -59,9 +69,10 @@ function renderSection() {
 
 beforeEach(() => {
 	H.putCalls = [];
-	H.list.activeId = null;
+	H.list.active = { light: null, dark: null };
+	H.list.list[0].modes = ["light", "dark"];
 	useSkinStore.setState({
-		active: null,
+		active: EMPTY_SLOTS,
 		preview: null,
 		killSwitch: false,
 		lockedTheme: null,
@@ -72,23 +83,61 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("SkinSection", () => {
-	it("列表:默认装永远在列,皮肤条目带模式/壁纸标签", async () => {
+	function pickerGroup(name: string): HTMLElement {
+		return screen.getByRole("group", { name });
+	}
+
+	it("列表:皮肤条目带模式/壁纸标签与导出入口;深浅两个 Picker 按钮组在场", async () => {
 		renderSection();
-		await waitFor(() => expect(screen.getByText("樱花夜")).toBeTruthy());
-		expect(screen.getByText("默认装")).toBeTruthy();
+		await waitFor(() => expect(screen.getAllByText("樱花夜").length).toBeGreaterThan(0));
+		expect(pickerGroup("浅色模式皮肤")).toBeTruthy();
+		expect(pickerGroup("深色模式皮肤")).toBeTruthy();
 		expect(screen.getByText("浅色")).toBeTruthy();
 		expect(screen.getByText("深色")).toBeTruthy();
 		expect(screen.getByText("壁纸")).toBeTruthy();
+		expect(screen.getAllByText("导出")).toHaveLength(1);
 	});
 
-	it("未换装时默认装标「使用中」;点皮肤「启用」→ PUT {id} 且 store.active 更新", async () => {
+	it("Picker 只列具备该模式的皮肤 + 默认装", async () => {
+		H.list.list[0].modes = ["light"];
 		renderSection();
-		await waitFor(() => expect(screen.getByText("樱花夜")).toBeTruthy());
-		expect(screen.getByText("使用中")).toBeTruthy();
+		await waitFor(() => expect(screen.getAllByText("樱花夜").length).toBeGreaterThan(0));
+		const light = within(pickerGroup("浅色模式皮肤")).getAllByRole("button");
+		expect(light.map((el) => el.textContent)).toEqual(["默认装", "樱花夜"]);
+		const dark = within(pickerGroup("深色模式皮肤")).getAllByRole("button");
+		expect(dark.map((el) => el.textContent)).toEqual(["默认装"]);
+		// 未换装:两组的「默认装」都是选中态
+		expect(light[0].getAttribute("aria-pressed")).toBe("true");
+		expect(dark[0].getAttribute("aria-pressed")).toBe("true");
+	});
 
-		fireEvent.click(screen.getByText("启用"));
-		await waitFor(() => expect(H.putCalls).toEqual([{ id: "s1" }]));
-		await waitFor(() => expect(useSkinStore.getState().active?.id).toBe("s1"));
+	it("浅色 Picker 点皮肤 → PUT {theme:'light', id} 且选中态切换", async () => {
+		renderSection();
+		await waitFor(() => expect(screen.getAllByText("樱花夜").length).toBeGreaterThan(0));
+		fireEvent.click(within(pickerGroup("浅色模式皮肤")).getByText("樱花夜"));
+		await waitFor(() => expect(H.putCalls).toEqual([{ theme: "light", id: "s1" }]));
+		await waitFor(() => expect(useSkinStore.getState().active.light?.id).toBe("s1"));
+		expect(useSkinStore.getState().active.dark).toBeNull();
+		await waitFor(() =>
+			expect(
+				within(pickerGroup("浅色模式皮肤")).getByText("樱花夜").getAttribute("aria-pressed"),
+			).toBe("true"),
+		);
+	});
+
+	it("Picker 点「默认装」→ PUT {theme, id:null} 卸下该槽;点已选中的不重复发", async () => {
+		H.list.list[0].modes = ["light"];
+		H.list.active = { light: "s1", dark: null };
+		renderSection();
+		await waitFor(() => expect(screen.getByText("浅色·使用中")).toBeTruthy());
+
+		// 点已选中的皮肤:不发请求
+		fireEvent.click(within(pickerGroup("浅色模式皮肤")).getByText("樱花夜"));
+		expect(H.putCalls).toEqual([]);
+
+		fireEvent.click(within(pickerGroup("浅色模式皮肤")).getByText("默认装"));
+		await waitFor(() => expect(H.putCalls).toEqual([{ theme: "light", id: null }]));
+		await waitFor(() => expect(useSkinStore.getState().active.light).toBeNull());
 	});
 
 	it("点「试穿」→ 只写 preview,不动 active、不发 PUT", async () => {
@@ -96,13 +145,13 @@ describe("SkinSection", () => {
 		await waitFor(() => expect(screen.getByText("试穿")).toBeTruthy());
 		fireEvent.click(screen.getByText("试穿"));
 		await waitFor(() => expect(useSkinStore.getState().preview?.id).toBe("s1"));
-		expect(useSkinStore.getState().active).toBeNull();
+		expect(useSkinStore.getState().active).toEqual(EMPTY_SLOTS);
 		expect(H.putCalls).toEqual([]);
 	});
 
 	it("点「调整」→ 拉 manifest+assets 打开编辑抽屉;默认装行没有这个入口", async () => {
 		renderSection();
-		await waitFor(() => expect(screen.getByText("樱花夜")).toBeTruthy());
+		await waitFor(() => expect(screen.getAllByText("樱花夜").length).toBeGreaterThan(0));
 		// 只有皮肤行有「调整」;默认装行没有 → 恰好一个
 		const editButtons = screen.getAllByText("调整");
 		expect(editButtons).toHaveLength(1);
@@ -113,13 +162,15 @@ describe("SkinSection", () => {
 		expect(useSkinStore.getState().preview?.id).toBe("s1");
 	});
 
-	it("已换装时:默认装行有「启用」(恢复默认)→ PUT {id:null}", async () => {
-		H.list.activeId = "s1";
+	it("双模皮肤占两槽时:两个 Picker 都选中它,皮肤行标「使用中」", async () => {
+		H.list.active = { light: "s1", dark: "s1" };
 		renderSection();
-		await waitFor(() => expect(screen.getByText("樱花夜")).toBeTruthy());
-		// 此时「使用中」在皮肤行;默认装行的「启用」是唯一一个
-		fireEvent.click(screen.getByText("启用"));
-		await waitFor(() => expect(H.putCalls).toEqual([{ id: null }]));
-		await waitFor(() => expect(useSkinStore.getState().active).toBeNull());
+		await waitFor(() => expect(screen.getByText("使用中")).toBeTruthy());
+		expect(
+			within(pickerGroup("浅色模式皮肤")).getByText("樱花夜").getAttribute("aria-pressed"),
+		).toBe("true");
+		expect(
+			within(pickerGroup("深色模式皮肤")).getByText("樱花夜").getAttribute("aria-pressed"),
+		).toBe("true");
 	});
 });

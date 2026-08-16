@@ -1,3 +1,4 @@
+import type { ActiveSkinResponse } from "@bilibili-notify/contract";
 import { Btn } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -5,8 +6,8 @@ import { api } from "../services/api";
 import { useSkinStore } from "../store/skin";
 
 /**
- * 试穿浮条:preview 非空时悬在页面顶部中央。「应用」把预览落成服务端 active,
- * 「取消」清预览回真实状态;刷新页面预览自然消失(不落盘)。
+ * 试穿浮条:preview 非空时悬在页面顶部中央。「应用」把预览按皮肤具备的模式
+ * 落进服务端的深浅槽,「取消」清预览回真实状态;刷新页面预览自然消失(不落盘)。
  */
 export function SkinPreviewBar() {
 	const preview = useSkinStore((s) => s.preview);
@@ -18,11 +19,10 @@ export function SkinPreviewBar() {
 	const apply = useMutation({
 		// 要发的东西必须走 variables —— preview 闭包在 onMutate/onSuccess 时序下靠不住。
 		mutationFn: (id: string) => api.put<{ ok: boolean }>("/api/skins/active", { id }),
-		onSuccess: (_data, id) => {
-			const applied = useSkinStore.getState().preview;
-			if (applied && applied.id === id) {
-				useSkinStore.getState().setActive(applied);
-			}
+		onSuccess: async () => {
+			// 服务端双槽是权威(单模皮肤只占一个槽),回拉而不是本地拼
+			const res = await api.get<ActiveSkinResponse>("/api/skins/active");
+			useSkinStore.getState().setActive(res.active);
 			useSkinStore.getState().setPreview(null);
 			setError(null);
 			void qc.invalidateQueries({ queryKey: ["skins"] });

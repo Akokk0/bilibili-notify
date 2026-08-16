@@ -9,13 +9,20 @@ import type { SkinManifest } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { useSkinStore } from "../../store/skin";
+import { EMPTY_SLOTS, useSkinStore } from "../../store/skin";
 import { SkinPreviewBar } from "../skin-preview-bar";
 
-const H = vi.hoisted(() => ({ putCalls: [] as unknown[] }));
+const H = vi.hoisted(() => ({
+	putCalls: [] as unknown[],
+	activeResponse: { active: { light: null, dark: null } } as unknown,
+}));
 
 vi.mock("../../services/api", () => ({
 	api: {
+		get: vi.fn(async (path: string) => {
+			if (path === "/api/skins/active") return H.activeResponse;
+			throw new Error(`unexpected GET ${path}`);
+		}),
 		put: vi.fn(async (_path: string, body: unknown) => {
 			H.putCalls.push(body);
 			return { ok: true };
@@ -36,8 +43,9 @@ function renderBar() {
 
 beforeEach(() => {
 	H.putCalls = [];
+	H.activeResponse = { active: { light: null, dark: null } };
 	useSkinStore.setState({
-		active: null,
+		active: EMPTY_SLOTS,
 		preview: null,
 		killSwitch: false,
 		lockedTheme: null,
@@ -69,13 +77,15 @@ describe("SkinPreviewBar", () => {
 		expect(container.firstChild).toBeNull();
 	});
 
-	it("点「应用」→ PUT {id};preview 转正成 active 并清空", async () => {
+	it("点「应用」→ PUT {id};以服务端双槽回灌 active 并清空 preview", async () => {
 		renderBar();
 		useSkinStore.getState().setPreview({ id: "p1", manifest });
+		H.activeResponse = { active: { light: { id: "p1", manifest }, dark: null } };
 		await waitFor(() => expect(screen.getByText("应用")).toBeTruthy());
 		fireEvent.click(screen.getByText("应用"));
 		await waitFor(() => expect(H.putCalls).toEqual([{ id: "p1" }]));
-		await waitFor(() => expect(useSkinStore.getState().active?.id).toBe("p1"));
+		await waitFor(() => expect(useSkinStore.getState().active.light?.id).toBe("p1"));
+		expect(useSkinStore.getState().active.dark).toBeNull();
 		expect(useSkinStore.getState().preview).toBeNull();
 	});
 });
