@@ -91,6 +91,18 @@ describe("openSkinPackage", () => {
 		expect(r.errors.join()).toContain("assets/missing.webp");
 	});
 
+	it("chat.wallpaper 引用的图同样要在包里 → 缺了拒绝", () => {
+		const zip = makeZip({
+			"skin.json": manifestJson({
+				modes: { light: { chat: { wallpaper: { image: "assets/chat-missing.webp" } } } },
+			}),
+		});
+		const r = openSkinPackage(zip);
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.errors.join()).toContain("assets/chat-missing.webp");
+	});
+
 	it("包里混入白名单外的文件 → 拒绝;macOS 打包垃圾静默忽略", () => {
 		const evil = openSkinPackage(
 			makeZip({ "skin.json": manifestJson(), "evil.sh": strToU8("rm -rf /") }),

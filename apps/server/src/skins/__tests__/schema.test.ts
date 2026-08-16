@@ -469,3 +469,62 @@ describe("parseSkinManifest / effects(动效预设)", () => {
 		expect(r.warnings.join()).toContain("future");
 	});
 });
+
+describe("parseSkinManifest / chat(AI 聊天页专属外观)", () => {
+	it("完整合法 chat 段 → ok,全部保留", () => {
+		const r = parseSkinManifest({
+			...minimal(),
+			modes: {
+				light: {
+					chat: {
+						accent: "#a3de4f",
+						accentSecondary: "rgb(62, 201, 138)",
+						background: "linear-gradient(135deg, #f2f7e8, #edf4e0)",
+						wallpaper: { image: "assets/chat-bg.webp", fit: "cover", overlay: 0.3, blur: 8 },
+					},
+				},
+			},
+		});
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		const chat = r.skin.modes.light?.chat;
+		expect(chat?.accent).toBe("#a3de4f");
+		expect(chat?.accentSecondary).toBe("rgb(62, 201, 138)");
+		expect(chat?.background).toContain("linear-gradient");
+		expect(chat?.wallpaper?.image).toBe("assets/chat-bg.webp");
+		expect(chat?.wallpaper?.overlay).toBe(0.3);
+	});
+
+	it("accent 收纯色不收渐变;background 收渐变;非法值报错带路径", () => {
+		const bad = parseSkinManifest({
+			...minimal(),
+			modes: { light: { chat: { accent: "linear-gradient(#fff, #000)" } } },
+		});
+		expect(bad.ok).toBe(false);
+		if (bad.ok) return;
+		expect(bad.errors.join()).toContain("chat.accent");
+
+		const evil = parseSkinManifest({
+			...minimal(),
+			modes: { light: { chat: { background: "url(https://x/y.png)" } } },
+		});
+		expect(evil.ok).toBe(false);
+	});
+
+	it("chat.wallpaper.image 走同一把资产白名单尺", () => {
+		const r = parseSkinManifest({
+			...minimal(),
+			modes: { light: { chat: { wallpaper: { image: "../../etc/passwd" } } } },
+		});
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.errors.join()).toContain("chat.wallpaper.image");
+	});
+
+	it("空 chat 对象 → 与没写同构(不留空字段)", () => {
+		const r = parseSkinManifest({ ...minimal(), modes: { light: { chat: {} } } });
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.skin.modes.light?.chat).toBeUndefined();
+	});
+});

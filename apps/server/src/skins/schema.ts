@@ -58,6 +58,7 @@ const KNOWN_MODE_KEYS = new Set([
 	"colors",
 	"page",
 	"wallpaper",
+	"chat",
 	"glass",
 	"fonts",
 	"radius",
@@ -109,6 +110,60 @@ function asRecord(v: unknown): Record<string, unknown> | null {
 		: null;
 }
 
+/** 壁纸段解析:整页 wallpaper 与 chat.wallpaper 同构,共用这一把尺。 */
+function parseWallpaper(
+	raw: unknown,
+	path: string,
+	errors: string[],
+): SkinMode["wallpaper"] | undefined {
+	const wp = asRecord(raw);
+	if (!wp) {
+		errors.push(`${path}: 必须是对象`);
+		return undefined;
+	}
+	const out: NonNullable<SkinMode["wallpaper"]> = {};
+	if (wp.image !== undefined) {
+		if (
+			typeof wp.image !== "string" ||
+			wp.image.includes("..") ||
+			!WALLPAPER_IMAGE_RE.test(wp.image)
+		) {
+			errors.push(`${path}.image: 只能引用包内 assets/<文件名>.webp|jpg|png`);
+		} else {
+			out.image = wp.image;
+		}
+	}
+	if (wp.fit !== undefined) {
+		if (typeof wp.fit !== "string" || !WALLPAPER_FITS.has(wp.fit)) {
+			errors.push(`${path}.fit: 只能是 cover / contain / tile`);
+		} else {
+			out.fit = wp.fit as NonNullable<SkinMode["wallpaper"]>["fit"];
+		}
+	}
+	if (wp.position !== undefined) {
+		if (typeof wp.position !== "string" || !POSITION_RE.test(wp.position)) {
+			errors.push(`${path}.position: 只收关键词/百分比(如 "center top")`);
+		} else {
+			out.position = wp.position.trim();
+		}
+	}
+	if (wp.overlay !== undefined) {
+		if (!numberIn(wp.overlay, 0, 0.8)) {
+			errors.push(`${path}.overlay: 必须是 0~0.8 的数字`);
+		} else {
+			out.overlay = wp.overlay;
+		}
+	}
+	if (wp.blur !== undefined) {
+		if (!numberIn(wp.blur, 0, 40)) {
+			errors.push(`${path}.blur: 必须是 0~40 的数字(px)`);
+		} else {
+			out.blur = wp.blur;
+		}
+	}
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function parseMode(
 	raw: Record<string, unknown>,
 	path: string,
@@ -151,51 +206,37 @@ function parseMode(
 	}
 
 	if (raw.wallpaper !== undefined) {
-		const wp = asRecord(raw.wallpaper);
-		if (!wp) {
-			errors.push(`${path}.wallpaper: 必须是对象`);
+		const wp = parseWallpaper(raw.wallpaper, `${path}.wallpaper`, errors);
+		if (wp) mode.wallpaper = wp;
+	}
+
+	if (raw.chat !== undefined) {
+		const chat = asRecord(raw.chat);
+		if (!chat) {
+			errors.push(`${path}.chat: 必须是对象`);
 		} else {
-			const out: NonNullable<SkinMode["wallpaper"]> = {};
-			if (wp.image !== undefined) {
-				if (
-					typeof wp.image !== "string" ||
-					wp.image.includes("..") ||
-					!WALLPAPER_IMAGE_RE.test(wp.image)
-				) {
-					errors.push(`${path}.wallpaper.image: 只能引用包内 assets/<文件名>.webp|jpg|png`);
+			const out: NonNullable<SkinMode["chat"]> = {};
+			for (const key of ["accent", "accentSecondary"] as const) {
+				const v = chat[key];
+				if (v === undefined) continue;
+				if (typeof v !== "string" || !isColor(v)) {
+					errors.push(`${path}.chat.${key}: 不是合法颜色值(hex/rgb/hsl/oklch/transparent)`);
 				} else {
-					out.image = wp.image;
+					out[key] = v.trim();
 				}
 			}
-			if (wp.fit !== undefined) {
-				if (typeof wp.fit !== "string" || !WALLPAPER_FITS.has(wp.fit)) {
-					errors.push(`${path}.wallpaper.fit: 只能是 cover / contain / tile`);
+			if (chat.background !== undefined) {
+				if (typeof chat.background !== "string" || !isBackground(chat.background)) {
+					errors.push(`${path}.chat.background: 不是合法背景值(纯色或渐变)`);
 				} else {
-					out.fit = wp.fit as NonNullable<SkinMode["wallpaper"]>["fit"];
+					out.background = chat.background.trim();
 				}
 			}
-			if (wp.position !== undefined) {
-				if (typeof wp.position !== "string" || !POSITION_RE.test(wp.position)) {
-					errors.push(`${path}.wallpaper.position: 只收关键词/百分比(如 "center top")`);
-				} else {
-					out.position = wp.position.trim();
-				}
+			if (chat.wallpaper !== undefined) {
+				const wp = parseWallpaper(chat.wallpaper, `${path}.chat.wallpaper`, errors);
+				if (wp) out.wallpaper = wp;
 			}
-			if (wp.overlay !== undefined) {
-				if (!numberIn(wp.overlay, 0, 0.8)) {
-					errors.push(`${path}.wallpaper.overlay: 必须是 0~0.8 的数字`);
-				} else {
-					out.overlay = wp.overlay;
-				}
-			}
-			if (wp.blur !== undefined) {
-				if (!numberIn(wp.blur, 0, 40)) {
-					errors.push(`${path}.wallpaper.blur: 必须是 0~40 的数字(px)`);
-				} else {
-					out.blur = wp.blur;
-				}
-			}
-			if (Object.keys(out).length > 0) mode.wallpaper = out;
+			if (Object.keys(out).length > 0) mode.chat = out;
 		}
 	}
 

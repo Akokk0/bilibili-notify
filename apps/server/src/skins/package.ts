@@ -25,13 +25,14 @@ function isJunk(name: string): boolean {
 	);
 }
 
-/** manifest 各处引用的图片集合(目前只有 wallpaper)。zip 校验与编辑保存共用一把尺。 */
+/** manifest 各处引用的图片集合(整页壁纸 + chat 壁纸)。zip 校验与编辑保存共用一把尺。 */
 export function referencedImages(manifest: SkinManifest): Set<string> {
 	const referenced = new Set<string>();
 	for (const mode of [manifest.modes.light, manifest.modes.dark]) {
 		if (!mode) continue;
-		const image = mode.wallpaper?.image;
-		if (image) referenced.add(image);
+		for (const image of [mode.wallpaper?.image, mode.chat?.wallpaper?.image]) {
+			if (image) referenced.add(image);
+		}
 	}
 	return referenced;
 }

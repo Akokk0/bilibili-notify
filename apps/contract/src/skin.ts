@@ -104,21 +104,39 @@ export interface SkinEffects {
 	bokeh?: { colors: string[] };
 }
 
+/** 壁纸定义 —— 整页 wallpaper 与 chat.wallpaper 同构共用。 */
+export interface SkinWallpaper {
+	/** 只允许引用包内资源:`assets/<文件名>`。 */
+	image?: string;
+	fit?: SkinWallpaperFit;
+	/** CSS background-position 语法的受限子集(关键词/百分比)。 */
+	position?: string;
+	/** 遮罩纱不透明度 0~0.8,保文字可读性;纱色跟模式走(亮=白纱,暗=黑纱)。 */
+	overlay?: number;
+	/** 壁纸自身高斯模糊 0~40px(静态一次成像):高饱和壁纸退成柔和色底。 */
+	blur?: number;
+}
+
 /** 一套模式(light 或 dark)下的皮肤定义,所有字段可选 —— 没给的回默认装。 */
 export interface SkinMode {
 	colors?: Partial<Record<SkinColorKey, string>>;
 	/** 整页背景(颜色或渐变);wallpaper.image 存在时被壁纸合成覆盖。 */
 	page?: { background?: string };
-	wallpaper?: {
-		/** 只允许引用包内资源:`assets/<文件名>`。 */
-		image?: string;
-		fit?: SkinWallpaperFit;
-		/** CSS background-position 语法的受限子集(关键词/百分比)。 */
-		position?: string;
-		/** 遮罩纱不透明度 0~0.8,保文字可读性;纱色跟模式走(亮=白纱,暗=黑纱)。 */
-		overlay?: number;
-		/** 壁纸自身高斯模糊 0~40px(静态一次成像):高饱和壁纸退成柔和色底。 */
-		blur?: number;
+	wallpaper?: SkinWallpaper;
+	/**
+	 * AI 聊天页专属外观。皮肤生效时 chat 观感整体由皮肤接管(四色预设隐藏):
+	 * 全部字段可缺省 —— accent 从 colors.accent 派生,background 缺省透出皮肤
+	 * 整页背景;本段只是精调入口。
+	 */
+	chat?: {
+		/** chat 主强调色(发送键/链接/选中);缺省派生自 colors.accent。 */
+		accent?: string;
+		/** 渐变次色(发送键/问候语渐变的第二站);缺省 = accent。 */
+		accentSecondary?: string;
+		/** chat 整页底(纯色或渐变);缺省 transparent,透出皮肤整页背景。 */
+		background?: string;
+		/** chat 专属壁纸(独立于整页壁纸),字段同构。 */
+		wallpaper?: SkinWallpaper;
 	};
 	/** 默认装玻璃卡无描边(卡片风,层次靠阴影);border 对是皮肤刻意要描边风格的口子。 */
 	glass?: {
