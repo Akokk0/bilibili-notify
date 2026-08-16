@@ -57,20 +57,27 @@
 
 	--radius-bn-card: 14px;
 	--radius-bn-pill: 999px;
+}
 
-	/* 玻璃卡无描边后层次全靠影 —— 亮色三层:顶缘 inset 高光(苹果材质语法,
-	   「光打在玻璃上缘」)+ 贴身 contact 影给「厚度」+ 远影给「悬浮」。
-	   高光并进令牌而不是写进 .bn-glass:box-shadow 是单属性,分开写会互相顶掉,
-	   且类里写死会压死 utilities 层的阴影梯度。
-	   远影带负 spread 收拢在卡片正下方:推送卡片同款的无 spread 0.12 在密集网格里
-	   会让相邻卡的影子在窄间隙叠加,整片间隙发灰(真机验过「脏」);单层 0.05 又
-	   读不出来像纸片。负 spread 保正下方浓度、不往间隙伸,是两者间的解。 */
-	--shadow-bn-card:
-		inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 1px 2px rgba(0, 0, 0, 0.04),
-		0 5px 14px -6px rgba(0, 0, 0, 0.1);
-	--shadow-bn-elev:
-		inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 2px 6px rgba(0, 0, 0, 0.05),
-		0 12px 32px -8px rgba(0, 0, 0, 0.15);
+/* shadow-bn-card / shadow-bn-elev 特意不放 @theme:Tailwind v4 对 shadow 族
+   token 是编译期内联 —— utility 产物里只有拆好的字面值(颜色替换成
+   var(--tw-shadow-color, #…) 以支持 shadow-color 修饰符),没有
+   var(--shadow-bn-card) 引用,运行时改变量(皮肤注入、[data-theme="dark"]
+   覆盖)全部失效。手写 @utility 显式引用 var() 才能换肤;保留 --tw-* 合成链
+   (选中态 ring-2 也走 box-shadow,不合成会互踩),var() 带 0 0 #0000 兜底,
+   消费端产物缺原生 shadow/ring utility 的 @property 注册时也不至于整条失效。 */
+@utility shadow-bn-card {
+	--tw-shadow: var(--shadow-bn-card);
+	box-shadow:
+		var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+		var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+
+@utility shadow-bn-elev {
+	--tw-shadow: var(--shadow-bn-elev);
+	box-shadow:
+		var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+		var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
 }
 
 :root {
@@ -85,8 +92,19 @@
 	--bn-glass-strong-bg: rgba(255, 255, 255, 0.92);
 	--bn-glass-blur: 12px;
 	--bn-glass-strong-blur: 16px;
-	/* --shadow-bn-card / --shadow-bn-elev 的浅色默认值由上方 @theme 块提供(已落到 :root),
-	   此处无需重复;暗色值在下方 [data-theme="dark"] 覆盖。 */
+	/* 玻璃卡无描边后层次全靠影 —— 亮色三层:顶缘 inset 高光(苹果材质语法,
+	   「光打在玻璃上缘」)+ 贴身 contact 影给「厚度」+ 远影给「悬浮」。
+	   高光并进变量而不是写进 .bn-glass:box-shadow 是单属性,分开写会互相顶掉,
+	   且类里写死会压死 utilities 层的阴影梯度(如 UpCard 常态轻影 → hover 加深)。
+	   远影带负 spread 收拢在卡片正下方:无 spread 的浓影在密集网格里会让相邻卡
+	   的影子在窄间隙叠加、整片发灰(真机验过「脏」)。
+	   暗色值在下方 [data-theme="dark"] 覆盖;皮肤经 skin.ts 运行时注入同名变量。 */
+	--shadow-bn-card:
+		inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 1px 2px rgba(0, 0, 0, 0.04),
+		0 5px 14px -6px rgba(0, 0, 0, 0.1);
+	--shadow-bn-elev:
+		inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 2px 6px rgba(0, 0, 0, 0.05),
+		0 12px 32px -8px rgba(0, 0, 0, 0.15);
 }
 
 :root[data-theme="dark"] {
