@@ -187,10 +187,15 @@ export function composeEffectsCss(mode: SkinMode): string {
 
 	if (fx.glassShine) {
 		// 只动 box-shadow:不碰 position/transform,零布局回归面。
+		// 动画值会覆盖 utility 的 box-shadow,所以每帧都把元素自己的 --tw-* 合成链
+		// 合回来(自定义属性动画覆盖不到,hover 切 elev 也跟着走),基础三层影保住,
+		// 流光只是追加的最外层;裸 .bn-glass(没配 shadow-bn-*)兜底 0 0 #0000。
 		const c = fx.glassShine.color ?? "var(--color-bn-pink)";
+		const base =
+			"var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow, 0 0 #0000)";
 		anim.push(
 			".bn-glass{animation:bn-skin-glass-shine 7s ease-in-out infinite}",
-			`@keyframes bn-skin-glass-shine{0%,100%{box-shadow:0 -10px 28px -14px ${c}}25%{box-shadow:10px 0 28px -14px ${c}}50%{box-shadow:0 10px 28px -14px ${c}}75%{box-shadow:-10px 0 28px -14px ${c}}}`,
+			`@keyframes bn-skin-glass-shine{0%,100%{box-shadow:${base}, 0 -10px 28px -14px ${c}}25%{box-shadow:${base}, 10px 0 28px -14px ${c}}50%{box-shadow:${base}, 0 10px 28px -14px ${c}}75%{box-shadow:${base}, -10px 0 28px -14px ${c}}}`,
 		);
 	}
 

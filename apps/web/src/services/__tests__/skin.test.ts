@@ -279,6 +279,14 @@ describe("composeEffectsCss(动效预设 → 内置 CSS)", () => {
 		expect(custom).toContain("#39c5bb");
 	});
 
+	it("glassShine 叠加在基础影上:关键帧合回 --tw-shadow 链,不顶掉 shadow-bn-* 的层次", () => {
+		// CSS 动画值覆盖 utility 的 box-shadow —— 帧里必须引用元素自己的
+		// --tw-shadow(自定义属性动画覆盖不到)把基础三层影合回来,流光只做追加层;
+		// 否则流光一开,无描边卡片风的层次感整个被吃掉(真机验过)。
+		const css = composeEffectsCss({ effects: { glassShine: {} } });
+		expect(css).toContain("var(--tw-shadow, 0 0 #0000)");
+	});
+
 	it("光斑:输出 keyframes,且 reduce 偏好下隐藏效果层", () => {
 		const css = composeEffectsCss({
 			effects: { bokeh: { colors: ["#fb7299"] } },
