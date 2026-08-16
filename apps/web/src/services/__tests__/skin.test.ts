@@ -305,12 +305,12 @@ describe("composeEffectsCss(动效预设 → 内置 CSS)", () => {
 });
 
 describe("chat 变量(皮肤生效即整体接管 AI 聊天观感,变量必须全套输出)", () => {
-	it("无 chat 段:从 colors.accent 派生全套 --bn-chat-*,背景 transparent 透出皮肤底", () => {
+	it("无 chat 段:从 colors.accent 派生全套 --bn-chat-*;背景引用整页皮肤底 —— chat 是盖在框架上的全屏层,transparent 会把整个 dashboard 透出来", () => {
 		const vars = composeSkinVars({ colors: { accent: "#a3de4f" } }, assetUrl, "light");
 		expect(vars["--bn-chat-dot"]).toBe("#a3de4f");
 		expect(vars["--bn-chat-accent-rgb"]).toBe("163, 222, 79");
 		expect(vars["--bn-chat-accent-2"]).toBe("#a3de4f");
-		expect(vars["--bn-chat-bg"]).toBe("transparent");
+		expect(vars["--bn-chat-bg"]).toBe("var(--bn-page-bg)");
 		expect(vars["--bn-chat-glow"]).toContain("163, 222, 79");
 	});
 
@@ -349,6 +349,11 @@ describe("chat 变量(皮肤生效即整体接管 AI 聊天观感,变量必须�
 		);
 		expect(bare["--bn-chat-bg"]).toContain('url("/api/skins/abc/assets/c.webp")');
 		expect(bare["--bn-chat-bg"]).toContain("rgba(255, 255, 255, 0.3)");
+		// 没配 background 也要有实底兜住 contain/tile 的留白(var 只能当渐变的颜色参数用,
+		// --bn-page-bg 是多层列表不能进渐变,所以兜底用单色 token 包渐变)
+		expect(bare["--bn-chat-bg"]).toContain(
+			"linear-gradient(var(--color-bn-surface-muted), var(--color-bn-surface-muted))",
+		);
 
 		const withBg = composeSkinVars(
 			{
@@ -366,7 +371,7 @@ describe("chat 变量(皮肤生效即整体接管 AI 聊天观感,变量必须�
 	it("chat 壁纸 blur>0:壁纸整体搬进 chat 根的 ::before 糊化层,--bn-chat-bg 留底", () => {
 		const mode: SkinMode = { chat: { wallpaper: { image: "assets/c.webp", blur: 10 } } };
 		const vars = composeSkinVars(mode, assetUrl, "light");
-		expect(vars["--bn-chat-bg"]).toBe("transparent");
+		expect(vars["--bn-chat-bg"]).toBe("var(--bn-page-bg)");
 		const css = composeChatWallpaperCss(mode, assetUrl, "light");
 		expect(css).toContain("[data-bn-chat-root]::before");
 		expect(css).toContain("blur(10px)");

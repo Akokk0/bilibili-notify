@@ -107,18 +107,22 @@ export function composeSkinVars(
 			theme === "light"
 				? `radial-gradient(closest-side, rgba(${rgb}, 0.32), rgba(${rgb}, 0.14) 46%, rgba(255, 255, 255, 0) 78%)`
 				: `radial-gradient(closest-side, rgba(${rgb}, 0.2), rgba(${rgb}, 0.09) 46%, rgba(0, 0, 0, 0) 78%)`;
-		// 背景:缺省 transparent 透出皮肤整页底;chat 壁纸(无 blur)合成进来,
-		// 配了 background 就垫在壁纸最底(纯色包成渐变才能当 background 层)
-		const base = chat.background ?? "transparent";
+		// 背景:缺省引用整页皮肤底(--bn-page-bg)—— chat 是盖在框架上的全屏层,
+		// transparent 会把整个 dashboard 内容透出来(真机踩过)。chat 壁纸(无 blur)
+		// 合成进来时,底层用显式 background(纯色包渐变)或 surface-muted 兜底
+		// (--bn-page-bg 可能是多层列表,拼进多层 background 或渐变参数都非法)。
 		const wp = chat.wallpaper;
 		if (wp?.image && !(wp.blur !== undefined && wp.blur > 0)) {
 			const layers = buildWallpaperLayers({ ...wp, image: wp.image }, assetUrl, theme);
-			vars["--bn-chat-bg"] =
-				base === "transparent"
-					? layers
-					: `${layers}, ${base.includes("gradient(") ? base : `linear-gradient(${base}, ${base})`}`;
+			const base = chat.background;
+			const bottom = base
+				? base.includes("gradient(")
+					? base
+					: `linear-gradient(${base}, ${base})`
+				: "linear-gradient(var(--color-bn-surface-muted), var(--color-bn-surface-muted))";
+			vars["--bn-chat-bg"] = `${layers}, ${bottom}`;
 		} else {
-			vars["--bn-chat-bg"] = base;
+			vars["--bn-chat-bg"] = chat.background ?? "var(--bn-page-bg)";
 		}
 	}
 
