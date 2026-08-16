@@ -107,6 +107,11 @@ export function composeSkinVars(
 			theme === "light"
 				? `radial-gradient(closest-side, rgba(${rgb}, 0.32), rgba(${rgb}, 0.14) 46%, rgba(255, 255, 255, 0) 78%)`
 				: `radial-gradient(closest-side, rgba(${rgb}, 0.2), rgba(${rgb}, 0.09) 46%, rgba(0, 0, 0, 0) 78%)`;
+		// chat 玻璃族(.bn-glass-panel:侧栏/输入胶囊)的底色分量:从皮肤玻璃底色派生,
+		// 否则写死的白/蓝灰在任何皮肤下都是同一块板(真机踩过);没配按模式回落原值。
+		vars["--bn-chat-glass-rgb"] =
+			toRgbTriple(mode.glass?.background ?? "") ??
+			(theme === "light" ? "255, 255, 255" : "30, 41, 59");
 		// 背景:缺省引用整页皮肤底(--bn-page-bg)—— chat 是盖在框架上的全屏层,
 		// transparent 会把整个 dashboard 内容透出来(真机踩过)。chat 壁纸(无 blur)
 		// 合成进来时,底层用显式 background(纯色包渐变)或 surface-muted 兜底

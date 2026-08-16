@@ -108,7 +108,7 @@ describe("composeSkinVars", () => {
 		const vars = composeSkinVars({}, assetUrl, "light");
 		const keys = Object.keys(vars);
 		expect(keys.every((k) => k.startsWith("--bn-chat-"))).toBe(true);
-		expect(keys).toHaveLength(5);
+		expect(keys).toHaveLength(6);
 	});
 
 	it("colors 新键 listRow/listRowBorder 映射到行条变量", () => {
@@ -376,6 +376,18 @@ describe("chat 变量(皮肤生效即整体接管 AI 聊天观感,变量必须�
 		expect(css).toContain("[data-bn-chat-root]::before");
 		expect(css).toContain("blur(10px)");
 		expect(css).toContain('url("/api/skins/abc/assets/c.webp")');
+	});
+
+	it("chat 玻璃族底色分量从皮肤 glass.background 派生;没配按模式回落", () => {
+		const skinned = composeSkinVars(
+			{ glass: { background: "rgba(30, 20, 50, 0.7)" } },
+			assetUrl,
+			"dark",
+		);
+		expect(skinned["--bn-chat-glass-rgb"]).toBe("30, 20, 50");
+
+		expect(composeSkinVars({}, assetUrl, "light")["--bn-chat-glass-rgb"]).toBe("255, 255, 255");
+		expect(composeSkinVars({}, assetUrl, "dark")["--bn-chat-glass-rgb"]).toBe("30, 41, 59");
 	});
 
 	it("chat 壁纸没配或 blur=0 → composeChatWallpaperCss 输出空串", () => {
