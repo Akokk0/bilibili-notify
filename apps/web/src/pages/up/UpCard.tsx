@@ -72,7 +72,7 @@ export function UpCard({
 			// 玻璃底(皮肤壁纸可透出);玻璃卡无描边(卡片风),未选中态靠阴影分层,选中态叠粉色 ring
 			className={`bn-glass group relative cursor-pointer overflow-hidden rounded-xl text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink ${
 				selected ? "ring-2 ring-bn-pink" : ""
-			} ${hover ? "-translate-y-0.5 shadow-bn-elev" : "shadow-sm"} ${
+			} ${hover ? "-translate-y-0.5 shadow-bn-elev" : "shadow-bn-card"} ${
 				sub.enabled ? "" : "opacity-70"
 			}`}
 		>
