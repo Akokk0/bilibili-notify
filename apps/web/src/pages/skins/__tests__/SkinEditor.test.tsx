@@ -330,4 +330,20 @@ describe("SkinEditor", () => {
 		fireEvent.change(screen.getByLabelText("玻璃片透明度"), { target: { value: "0.3" } });
 		await waitFor(() => expect(btn.disabled).toBe(true));
 	});
+
+	it("「AI 聊天」节:chat 段的编辑口(能力全集);改强调色 → preview 的 chat.accent 更新", async () => {
+		renderEditor();
+		fireEvent.click(screen.getByText("AI 聊天"));
+		fireEvent.change(screen.getByLabelText("聊天强调色"), { target: { value: "#39c5bb" } });
+		await waitFor(() =>
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.chat?.accent).toBe("#39c5bb"),
+		);
+		// 聊天壁纸选包内资产 → chat.wallpaper.image 落 draft
+		fireEvent.change(screen.getByLabelText("聊天壁纸"), { target: { value: "assets/deco.webp" } });
+		await waitFor(() =>
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.chat?.wallpaper?.image).toBe(
+				"assets/deco.webp",
+			),
+		);
+	});
 });

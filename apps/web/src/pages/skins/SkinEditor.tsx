@@ -185,6 +185,8 @@ export function SkinEditor(props: {
 	/** 透明度滑杆的兜底色相 = 默认装当前模式的玻璃色相。 */
 	const glassBaseRgb = modeKey === "dark" ? "30, 41, 59" : "255, 255, 255";
 	const colors = mode.colors ?? {};
+	const chat = mode.chat ?? {};
+	const chatWp = chat.wallpaper ?? {};
 	const radius = mode.radius ?? {};
 	const shadows = mode.shadows ?? {};
 	const effects = mode.effects ?? {};
@@ -193,6 +195,11 @@ export function SkinEditor(props: {
 	/** 动效字段:patch 值为 undefined 即删该道;全关后 effects 整个消失。 */
 	function setEffects(patch: Partial<SkinEffects>): void {
 		setSection("effects", cleanSection({ ...effects, ...patch }));
+	}
+
+	/** chat 段:同 setEffects 律 —— 空值键即删,整段空了字段消失。 */
+	function setChat(patch: Partial<NonNullable<SkinMode["chat"]>>): void {
+		setSection("chat", cleanSection({ ...chat, ...patch }));
 	}
 
 	return (
@@ -491,6 +498,95 @@ export function SkinEditor(props: {
 							))}
 						</div>
 					))}
+				</Fold>
+
+				<Fold title="AI 聊天">
+					<p className="text-[11px] leading-4 text-bn-text-tertiary">
+						皮肤生效时聊天页整体换装(默认四色预设隐藏)。不配时强调色自动跟随
+						「主强调色」,背景透出整页皮肤底 —— 这里只是精调入口。
+					</p>
+					<ColorField
+						label="聊天强调色"
+						value={chat.accent}
+						isDefault={isDef(chat.accent, dm.chat?.accent)}
+						onChange={(v) => setChat({ accent: v })}
+					/>
+					<ColorField
+						label="聊天渐变次色"
+						value={chat.accentSecondary}
+						isDefault={isDef(chat.accentSecondary, dm.chat?.accentSecondary)}
+						onChange={(v) => setChat({ accentSecondary: v })}
+					/>
+					<FieldRow label="聊天页背景">
+						<textarea
+							aria-label="聊天页背景"
+							value={chat.background ?? ""}
+							onChange={(e) => setChat({ background: e.target.value || undefined })}
+							placeholder="纯色或渐变;留空透出整页皮肤背景"
+							rows={2}
+							className={`${inputCls} resize-y font-mono text-[11px]`}
+						/>
+					</FieldRow>
+					<SelectField
+						label="聊天壁纸"
+						value={chatWp.image ?? ""}
+						isDefault={isDef(chatWp.image, dm.chat?.wallpaper?.image)}
+						onChange={(v) => setChat({ wallpaper: v === "" ? undefined : { ...chatWp, image: v } })}
+						options={[
+							{ value: "", label: "(不用壁纸)" },
+							...assets.map((a) => ({ value: a, label: a })),
+						]}
+					/>
+					{chatWp.image ? (
+						<>
+							<SelectField
+								label="聊天壁纸铺法"
+								value={chatWp.fit ?? ""}
+								isDefault={isDef(chatWp.fit, dm.chat?.wallpaper?.fit)}
+								onChange={(v) =>
+									setChat({
+										wallpaper: cleanWallpaper({
+											...chatWp,
+											fit: (v || undefined) as typeof chatWp.fit,
+										}),
+									})
+								}
+								options={[
+									{ value: "", label: "默认(cover 铺满)" },
+									{ value: "cover", label: "cover 铺满" },
+									{ value: "contain", label: "contain 完整显示" },
+									{ value: "tile", label: "tile 平铺" },
+								]}
+							/>
+							<TextField
+								label="聊天壁纸位置"
+								value={chatWp.position ?? ""}
+								isDefault={isDef(chatWp.position, dm.chat?.wallpaper?.position)}
+								placeholder="默认 center;如 center top"
+								onChange={(v) => setChat({ wallpaper: cleanWallpaper({ ...chatWp, position: v }) })}
+							/>
+							<RangeField
+								label="聊天壁纸遮罩"
+								min={0}
+								max={0.8}
+								step={0.05}
+								value={chatWp.overlay}
+								fallback={0}
+								isDefault={isDef(chatWp.overlay, dm.chat?.wallpaper?.overlay)}
+								onChange={(v) => setChat({ wallpaper: cleanWallpaper({ ...chatWp, overlay: v }) })}
+							/>
+							<RangeField
+								label="聊天壁纸模糊"
+								min={0}
+								max={40}
+								step={1}
+								value={chatWp.blur}
+								fallback={0}
+								isDefault={isDef(chatWp.blur, dm.chat?.wallpaper?.blur)}
+								onChange={(v) => setChat({ wallpaper: cleanWallpaper({ ...chatWp, blur: v }) })}
+							/>
+						</>
+					) : null}
 				</Fold>
 
 				<Fold title="圆角与阴影">
