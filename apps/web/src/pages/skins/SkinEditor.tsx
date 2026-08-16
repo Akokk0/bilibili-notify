@@ -1,5 +1,6 @@
 import type {
 	SkinAiEditResponse,
+	SkinDefaultResponse,
 	SkinEffects,
 	SkinManifest,
 	SkinManifestUpdateResponse,
@@ -49,6 +50,8 @@ export function SkinEditor(props: {
 	const [modeKey, setModeKey] = useState<"light" | "dark">(manifest.modes.light ? "light" : "dark");
 	const [confirmDiscard, setConfirmDiscard] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	/** 默认值操作的成功反馈(出错走 error;两者互斥)。 */
+	const [note, setNote] = useState<string | null>(null);
 	const [aiInstruction, setAiInstruction] = useState("");
 	const [aiWarnings, setAiWarnings] = useState<string[]>([]);
 	// 光斑颜色框存原始文本(受控地 join 回去会吃掉正在输入的逗号),draft 只收解析产物;
@@ -108,6 +111,42 @@ export function SkinEditor(props: {
 			setError(null);
 		},
 		onError: (e) => setError(String((e as Error).message)),
+	});
+
+	// 「设为默认值」:把**已保存**的当前 manifest 钉成出厂快照 —— 有未保存改动时
+	// 禁用(先保存),免得钉进去的和眼前预览对不上。
+	const setDefault = useMutation({
+		mutationFn: () => api.put(`/api/skins/${id}/default`),
+		onSuccess: () => {
+			setError(null);
+			setNote("已把当前状态钉为这个皮肤包的默认值");
+		},
+		onError: (e) => {
+			setNote(null);
+			setError(String((e as Error).message));
+		},
+	});
+
+	// 「恢复默认值」:快照只拉回 draft 实时预览(与「让女仆改」同构),落盘仍走保存。
+	const restoreDefault = useMutation({
+		mutationFn: () => api.get<SkinDefaultResponse>(`/api/skins/${id}/default`),
+		onSuccess: (res) => {
+			setDraft(res.manifest);
+			// 快照可能没有当前正在编辑的那套模式,跟着切到它有的那套
+			const nextKey = res.manifest.modes[modeKey]
+				? modeKey
+				: res.manifest.modes.light
+					? "light"
+					: "dark";
+			setModeKey(nextKey);
+			setBokehText((res.manifest.modes[nextKey]?.effects?.bokeh?.colors ?? []).join(", "));
+			setError(null);
+			setNote("已拉回默认值预览,满意就点保存落盘");
+		},
+		onError: (e) => {
+			setNote(null);
+			setError(String((e as Error).message));
+		},
 	});
 
 	function requestClose(): void {
@@ -528,16 +567,39 @@ export function SkinEditor(props: {
 
 			<div className="sticky bottom-0 space-y-2 border-t border-bn-border-subtle bg-bn-surface-strong/80 px-4 py-3 backdrop-blur-sm">
 				{error ? <ErrorNote>操作失败:{error}</ErrorNote> : null}
-				<div className="flex justify-end gap-2">
-					<Btn variant="outline" onClick={requestClose} disabled={save.isPending}>
-						取消
-					</Btn>
-					<Btn
-						onClick={() => save.mutate(draft)}
-						disabled={save.isPending || draft.name.trim().length === 0}
-					>
-						{save.isPending ? "保存中…" : "保存"}
-					</Btn>
+				{note ? <p className="text-[11px] text-bn-success-text">{note}</p> : null}
+				<div className="flex items-center justify-between gap-2">
+					<div className="flex gap-2">
+						<Btn
+							size="sm"
+							variant="outline"
+							onClick={() => setDefault.mutate()}
+							disabled={dirty || setDefault.isPending}
+							title={dirty ? "有未保存的改动,先保存再钉默认值" : "把当前状态钉为这个皮肤包的默认值"}
+						>
+							设为默认值
+						</Btn>
+						<Btn
+							size="sm"
+							variant="outline"
+							onClick={() => restoreDefault.mutate()}
+							disabled={restoreDefault.isPending}
+							title="把出厂快照拉回来预览,保存后才落盘"
+						>
+							恢复默认值
+						</Btn>
+					</div>
+					<div className="flex gap-2">
+						<Btn variant="outline" onClick={requestClose} disabled={save.isPending}>
+							取消
+						</Btn>
+						<Btn
+							onClick={() => save.mutate(draft)}
+							disabled={save.isPending || draft.name.trim().length === 0}
+						>
+							{save.isPending ? "保存中…" : "保存"}
+						</Btn>
+					</div>
 				</div>
 			</div>
 

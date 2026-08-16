@@ -16,10 +16,18 @@ import { SkinEditor } from "../SkinEditor";
 const H = vi.hoisted(() => ({
 	putCalls: [] as Array<{ path: string; body: unknown }>,
 	postCalls: [] as Array<{ path: string; body: unknown }>,
+	getCalls: [] as string[],
 }));
 
 vi.mock("../../../services/api", () => ({
 	api: {
+		get: vi.fn(async (path: string) => {
+			H.getCalls.push(path);
+			if (path === "/api/skins/s1/default") {
+				return { manifest: { schemaVersion: 1, name: "出厂樱花", modes: { light: {} } } };
+			}
+			throw new Error(`unexpected GET ${path}`);
+		}),
 		put: vi.fn(async (path: string, body: unknown) => {
 			H.putCalls.push({ path, body });
 			return { ok: true, warnings: [] };
@@ -69,6 +77,7 @@ function renderEditor(overrides?: { manifest?: SkinManifest; onClose?: () => voi
 beforeEach(() => {
 	H.putCalls = [];
 	H.postCalls = [];
+	H.getCalls = [];
 	useSkinStore.setState({
 		active: EMPTY_SLOTS,
 		preview: null,
@@ -259,5 +268,24 @@ describe("SkinEditor", () => {
 			const dark = useSkinStore.getState().preview?.manifest.modes.dark;
 			expect(dark?.glass?.blur).toBe(16);
 		});
+	});
+
+	it("恢复默认值:拉出厂快照进 draft 实时预览,不发落盘请求", async () => {
+		renderEditor();
+		fireEvent.click(screen.getByText("恢复默认值"));
+		await waitFor(() => expect(useSkinStore.getState().preview?.manifest.name).toBe("出厂樱花"));
+		expect(H.getCalls).toEqual(["/api/skins/s1/default"]);
+		expect(H.putCalls).toEqual([]);
+	});
+
+	it("设为默认值:干净状态发 PUT /default;有未保存改动时禁用(先保存)", async () => {
+		renderEditor();
+		const btn = screen.getByText("设为默认值").closest("button") as HTMLButtonElement;
+		expect(btn.disabled).toBe(false);
+		fireEvent.click(btn);
+		await waitFor(() => expect(H.putCalls.map((c) => c.path)).toEqual(["/api/skins/s1/default"]));
+
+		fireEvent.change(screen.getByLabelText("玻璃片透明度"), { target: { value: "0.3" } });
+		await waitFor(() => expect(btn.disabled).toBe(true));
 	});
 });

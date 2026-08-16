@@ -4,7 +4,11 @@
  */
 
 import { readFile } from "node:fs/promises";
-import type { ActiveSkinResponse, SkinsListResponse } from "@bilibili-notify/contract";
+import type {
+	ActiveSkinResponse,
+	SkinDefaultResponse,
+	SkinsListResponse,
+} from "@bilibili-notify/contract";
 import { strToU8, zipSync } from "fflate";
 import { Hono } from "hono";
 import { runSkinAiEdit, type SkinAiGenerator } from "../skins/ai-edit.js";
@@ -153,6 +157,25 @@ export function createSkinsRoute(deps: {
 		}
 		await skinStore.updateManifest(id, parsed.skin);
 		return c.json({ ok: true, warnings: parsed.warnings });
+	});
+
+	// 出厂快照:GET 读基准(「恢复默认值」的数据源,前端拉回编辑器 draft 预览,
+	// 落盘仍走主人点保存);PUT 把当前 manifest 钉成新基准(「设为默认值」)。
+	// 上传时快照自动 = 上传内容;存量皮肤(无快照)GET 404,先 PUT 补钉。
+	app.get("/:id/default", async (c) => {
+		const id = c.req.param("id");
+		if (!(await skinStore.get(id))) return c.json({ ok: false, err: "皮肤不存在" }, 404);
+		const manifest = await skinStore.getDefault(id);
+		if (!manifest) return c.json({ ok: false, err: "该皮肤还没有钉过默认值" }, 404);
+		const body: SkinDefaultResponse = { manifest };
+		return c.json(body);
+	});
+
+	app.put("/:id/default", async (c) => {
+		const id = c.req.param("id");
+		if (!(await skinStore.get(id))) return c.json({ ok: false, err: "皮肤不存在" }, 404);
+		await skinStore.setDefault(id);
+		return c.json({ ok: true });
 	});
 
 	// 导出皮肤包:manifest + 全部资产打回标准 zip,和上传收的是同一种包(往返闭环)。

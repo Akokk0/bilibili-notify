@@ -68,6 +68,8 @@ export class SkinStore {
 		const tmpDir = join(this.skinsDir, `${id}.tmp`);
 		await mkdir(join(tmpDir, "assets"), { recursive: true });
 		await writeFile(join(tmpDir, "skin.json"), JSON.stringify(pkg.manifest, null, "\t"));
+		// 出厂快照 = 上传时的 manifest;之后编辑只动 skin.json,快照是「恢复默认」的基准。
+		await writeFile(join(tmpDir, "default.json"), JSON.stringify(pkg.manifest, null, "\t"));
 		for (const [name, data] of pkg.assets) {
 			if (!WALLPAPER_IMAGE_RE.test(name) || name.includes("..")) continue;
 			await writeFile(join(tmpDir, "assets", name.slice("assets/".length)), data);
@@ -115,6 +117,26 @@ export class SkinStore {
 		await writeFile(tmp, JSON.stringify(manifest, null, "\t"));
 		await rename(tmp, join(this.skinsDir, id, "skin.json"));
 		this.index.set(id, manifest);
+	}
+
+	/** 把当前 manifest 钉成出厂快照(「设为默认值」);皮肤不存在 → 抛错。 */
+	async setDefault(id: string): Promise<void> {
+		const manifest = this.index.get(id);
+		if (!manifest) throw new Error(`皮肤不存在: ${id}`);
+		const tmp = join(this.skinsDir, id, "default.json.tmp");
+		await writeFile(tmp, JSON.stringify(manifest, null, "\t"));
+		await rename(tmp, join(this.skinsDir, id, "default.json"));
+	}
+
+	/** 出厂快照;皮肤不存在或(存量目录)从未钉过 → null。读频率低,不进内存索引。 */
+	async getDefault(id: string): Promise<SkinManifest | null> {
+		if (!this.index.has(id)) return null;
+		try {
+			const raw = await readFile(join(this.skinsDir, id, "default.json"), "utf8");
+			return JSON.parse(raw) as SkinManifest;
+		} catch {
+			return null;
+		}
 	}
 
 	async remove(id: string): Promise<void> {

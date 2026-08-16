@@ -208,6 +208,14 @@ export type SkinManifestUpdateResponse =
 	| { ok: true; warnings: string[] }
 	| { ok: false; errors: string[] };
 
+/**
+ * GET /api/skins/:id/default —— 出厂快照(「恢复默认值」的基准)。
+ * 上传时快照自动 = 上传内容;PUT 同路径把当前 manifest 钉成新基准(「设为默认值」)。
+ */
+export interface SkinDefaultResponse {
+	manifest: SkinManifest;
+}
+
 /** POST /api/skins/:id/ai-edit(「让女仆改」)。产物只回编辑器 draft,不落盘。 */
 export type SkinAiEditResponse =
 	| { ok: true; manifest: SkinManifest; warnings: string[] }

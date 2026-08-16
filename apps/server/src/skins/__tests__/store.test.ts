@@ -188,3 +188,40 @@ describe("SkinStore", () => {
 		await expect(store.updateManifest("nope", next)).rejects.toThrow();
 	});
 });
+
+describe("出厂快照(default.json)", () => {
+	it("上传即有快照 = 上传时的 manifest;编辑保存不动快照", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		expect((await store.getDefault(id))?.name).toBe("樱花夜");
+
+		await store.updateManifest(id, makeManifest({ name: "樱花夜·改" }));
+		// manifest 变了,快照还是出厂值
+		expect((await store.get(id))?.name).toBe("樱花夜·改");
+		expect((await store.getDefault(id))?.name).toBe("樱花夜");
+	});
+
+	it("setDefault:用当前 manifest 覆盖快照,重启后仍在", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		await store.updateManifest(id, makeManifest({ name: "樱花夜·改" }));
+		await store.setDefault(id);
+		expect((await store.getDefault(id))?.name).toBe("樱花夜·改");
+
+		const reborn = new SkinStore({ skinsDir: dir });
+		await reborn.init();
+		expect((await reborn.getDefault(id))?.name).toBe("樱花夜·改");
+	});
+
+	it("存量皮肤(目录里没有 default.json)→ getDefault null;setDefault 可补钉", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		const { rm } = await import("node:fs/promises");
+		await rm(join(dir, id, "default.json"));
+		expect(await store.getDefault(id)).toBeNull();
+		await store.setDefault(id);
+		expect((await store.getDefault(id))?.name).toBe("樱花夜");
+	});
+
+	it("setDefault(不存在) 抛错;getDefault(不存在) → null", async () => {
+		await expect(store.setDefault("nope")).rejects.toThrow();
+		expect(await store.getDefault("nope")).toBeNull();
+	});
+});

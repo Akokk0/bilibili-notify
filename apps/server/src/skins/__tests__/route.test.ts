@@ -322,3 +322,52 @@ describe("POST /:id/ai-edit(让女仆改,不落盘)", () => {
 		expect(((await res.json()) as any).errors.length).toBeGreaterThan(0);
 	});
 });
+
+describe("出厂快照 API", () => {
+	it("GET /:id/default:上传后即返回出厂 manifest;编辑保存不影响快照", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+
+		const before = (await (await app.request(`/${id}/default`)).json()) as any;
+		expect(before.manifest.name).toBe("樱花夜");
+
+		const edited = { schemaVersion: 1, name: "樱花夜·改", modes: { light: {} } };
+		const put = await app.request(`/${id}/manifest`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(edited),
+		});
+		expect(put.status).toBe(200);
+
+		const after = (await (await app.request(`/${id}/default`)).json()) as any;
+		expect(after.manifest.name).toBe("樱花夜");
+	});
+
+	it("PUT /:id/default:把当前 manifest 钉成快照", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const edited = { schemaVersion: 1, name: "樱花夜·改", modes: { light: {} } };
+		await app.request(`/${id}/manifest`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(edited),
+		});
+
+		const pin = await app.request(`/${id}/default`, { method: "PUT" });
+		expect(pin.status).toBe(200);
+		expect(((await pin.json()) as any).ok).toBe(true);
+
+		const snap = (await (await app.request(`/${id}/default`)).json()) as any;
+		expect(snap.manifest.name).toBe("樱花夜·改");
+	});
+
+	it("皮肤不存在 → 双端 404;存量皮肤没钉过快照 → GET 404(文案区分)", async () => {
+		expect((await app.request("/nope/default")).status).toBe(404);
+		expect((await app.request("/nope/default", { method: "PUT" })).status).toBe(404);
+
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const { rm } = await import("node:fs/promises");
+		await rm(join((store as any).skinsDir, id, "default.json"));
+		const res = await app.request(`/${id}/default`);
+		expect(res.status).toBe(404);
+		expect(((await res.json()) as any).err).toContain("默认值");
+	});
+});
