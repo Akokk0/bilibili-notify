@@ -9,6 +9,7 @@ import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { EMPTY_SLOTS, useSkinStore } from "../../../store/skin";
 import { ChatSidebar } from "../sidebar";
 
 vi.mock("../../../services/api", () => ({
@@ -61,7 +62,16 @@ function mountSidebar() {
 	);
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+	vi.clearAllMocks();
+	useSkinStore.setState({
+		active: EMPTY_SLOTS,
+		preview: null,
+		killSwitch: false,
+		lockedTheme: null,
+		editing: false,
+	});
+});
 afterEach(cleanup);
 
 describe("ChatSidebar — 设置弹层", () => {
@@ -71,5 +81,18 @@ describe("ChatSidebar — 设置弹层", () => {
 		expect(screen.getByText("主题色")).toBeTruthy();
 		expect(screen.getByText("玻璃质感")).toBeTruthy();
 		expect(await screen.findByText("思考深度")).toBeTruthy();
+	});
+
+	it("皮肤生效时:四色「主题色」节整个隐藏(chat 观感由皮肤接管),其余节照常", async () => {
+		useSkinStore.setState({
+			active: {
+				light: { id: "s1", manifest: { schemaVersion: 1, name: "t", modes: { light: {} } } },
+				dark: null,
+			},
+		});
+		mountSidebar();
+		fireEvent.click(screen.getByRole("button", { name: "聊天设置" }));
+		expect(screen.queryByText("主题色")).toBeNull();
+		expect(screen.getByText("玻璃质感")).toBeTruthy();
 	});
 });

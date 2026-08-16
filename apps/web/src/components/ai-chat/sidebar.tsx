@@ -2,6 +2,7 @@ import { Icon, Toggle } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { type AiConversationMetaDTO, groupConversations } from "../../services/aiChat";
 import { CHAT_THEME_LABELS, CHAT_THEMES, type ChatTheme } from "../../store/aiChat";
+import { useCurrentSkinMode } from "../skin-root";
 import { ThinkingLevelSetting } from "./thinking-level-setting";
 
 /**
@@ -36,6 +37,8 @@ export interface ChatSidebarProps {
 
 export function ChatSidebar(props: ChatSidebarProps) {
 	const [settingsOpen, setSettingsOpen] = useState(false);
+	// 皮肤(含试穿/预览)生效 → chat 观感由皮肤接管,四色预设节隐藏。
+	const skinOn = useCurrentSkinMode() !== null;
 	const groups = groupConversations(props.conversations);
 
 	return (
@@ -148,50 +151,56 @@ export function ChatSidebar(props: ChatSidebarProps) {
 
 				{settingsOpen ? (
 					<div className="bn-glass-sheen bn-glass-popover bn-anim-fade-up absolute inset-x-0 bottom-[calc(100%+8px)] z-20 rounded-2xl p-3 shadow-[0_12px_36px_rgba(42,30,72,0.18)]">
-						<div className="mb-2.5 pl-0.5 text-[11px] font-bold tracking-wide text-bn-text-secondary">
-							主题色
-						</div>
-						<div className="flex gap-2">
-							{CHAT_THEMES.map((id) => {
-								const active = props.theme === id;
-								return (
-									<button
-										key={id}
-										type="button"
-										title={CHAT_THEME_LABELS[id]}
-										aria-pressed={active}
-										onClick={() => props.onThemeChange(id)}
-										data-chat-theme={id}
-										className={`flex flex-1 cursor-pointer flex-col items-center gap-[5px] rounded-[10px] border-[1.5px] px-0.5 py-2 transition ${
-											active
-												? "bn-glass-selected border-[var(--bn-chat-dot)]"
-												: "border-transparent hover:bg-bn-code-bg"
-										}`}
-									>
-										<span
-											// 选中圈用 --bn-chat-ring 而不是写死的半透明白:暗色下白圈会在
-											// 深底上炸成一圈光晕,比色点本身还抢眼。
-											className="h-[22px] w-[22px] rounded-full"
-											style={{
-												background: "var(--bn-chat-dot)",
-												boxShadow: active
-													? "0 0 0 3px var(--bn-chat-ring), 0 2px 6px rgba(0,0,0,0.18)"
-													: "0 1px 4px rgba(0,0,0,0.12)",
-											}}
-										/>
-										<span
-											// nowrap:「紫罗兰」三个字在 1/4 宽的格子里会折成「紫罗 / 兰」,
-											// 把那一格顶高一截,四个色卡立刻参差不齐。
-											className={`whitespace-nowrap text-[10.5px] font-semibold ${
-												active ? "text-bn-text-primary" : "text-bn-text-secondary"
-											}`}
-										>
-											{CHAT_THEME_LABELS[id]}
-										</span>
-									</button>
-								);
-							})}
-						</div>
+						{/* 皮肤生效时 chat 观感整体由皮肤接管:四色预设不再有意义,整节隐藏;
+						    默认装下照常。玻璃质感/思考深度与皮肤无关,永远在。 */}
+						{skinOn ? null : (
+							<>
+								<div className="mb-2.5 pl-0.5 text-[11px] font-bold tracking-wide text-bn-text-secondary">
+									主题色
+								</div>
+								<div className="flex gap-2">
+									{CHAT_THEMES.map((id) => {
+										const active = props.theme === id;
+										return (
+											<button
+												key={id}
+												type="button"
+												title={CHAT_THEME_LABELS[id]}
+												aria-pressed={active}
+												onClick={() => props.onThemeChange(id)}
+												data-chat-theme={id}
+												className={`flex flex-1 cursor-pointer flex-col items-center gap-[5px] rounded-[10px] border-[1.5px] px-0.5 py-2 transition ${
+													active
+														? "bn-glass-selected border-[var(--bn-chat-dot)]"
+														: "border-transparent hover:bg-bn-code-bg"
+												}`}
+											>
+												<span
+													// 选中圈用 --bn-chat-ring 而不是写死的半透明白:暗色下白圈会在
+													// 深底上炸成一圈光晕,比色点本身还抢眼。
+													className="h-[22px] w-[22px] rounded-full"
+													style={{
+														background: "var(--bn-chat-dot)",
+														boxShadow: active
+															? "0 0 0 3px var(--bn-chat-ring), 0 2px 6px rgba(0,0,0,0.18)"
+															: "0 1px 4px rgba(0,0,0,0.12)",
+													}}
+												/>
+												<span
+													// nowrap:「紫罗兰」三个字在 1/4 宽的格子里会折成「紫罗 / 兰」,
+													// 把那一格顶高一截,四个色卡立刻参差不齐。
+													className={`whitespace-nowrap text-[10.5px] font-semibold ${
+														active ? "text-bn-text-primary" : "text-bn-text-secondary"
+													}`}
+												>
+													{CHAT_THEME_LABELS[id]}
+												</span>
+											</button>
+										);
+									})}
+								</div>
+							</>
+						)}
 
 						{/* 玻璃质感。跟推送卡片那对同名同义(玻璃片透明度 + 完全透明),
 						    主人在两处看到的是同一套说法,默认值也是同一个数。 */}
