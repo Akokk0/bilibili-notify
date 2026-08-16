@@ -7,7 +7,7 @@ import type {
 	SkinMode,
 } from "@bilibili-notify/contract";
 import { Btn, ConfirmDialog, DrawerShell, ErrorNote, Toggle } from "@bilibili-notify/ui";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { api } from "../../services/api";
 import { useSkinStore } from "../../store/skin";
@@ -113,11 +113,22 @@ export function SkinEditor(props: {
 		onError: (e) => setError(String((e as Error).message)),
 	});
 
+	// 出厂快照:挂载拉一次,既喂「恢复默认值」(点击零请求),也喂字段旁的
+	// 「(默认)」标注。404(没钉过)走 error → 恢复按钮禁用、全部不标注。
+	const snapshot = useQuery({
+		queryKey: ["skins", id, "default"],
+		queryFn: () => api.get<SkinDefaultResponse>(`/api/skins/${id}/default`),
+		retry: false,
+	});
+	const defaultManifest = snapshot.data?.manifest ?? null;
+
 	// 「设为默认值」:把**已保存**的当前 manifest 钉成出厂快照 —— 有未保存改动时
 	// 禁用(先保存),免得钉进去的和眼前预览对不上。
 	const setDefault = useMutation({
 		mutationFn: () => api.put(`/api/skins/${id}/default`),
 		onSuccess: () => {
+			// 快照变了,重拉喂给「(默认)」标注与恢复按钮
+			void qc.invalidateQueries({ queryKey: ["skins", id, "default"] });
 			setError(null);
 			setNote("已把当前状态钉为这个皮肤包的默认值");
 		},
@@ -127,27 +138,21 @@ export function SkinEditor(props: {
 		},
 	});
 
-	// 「恢复默认值」:快照只拉回 draft 实时预览(与「让女仆改」同构),落盘仍走保存。
-	const restoreDefault = useMutation({
-		mutationFn: () => api.get<SkinDefaultResponse>(`/api/skins/${id}/default`),
-		onSuccess: (res) => {
-			setDraft(res.manifest);
-			// 快照可能没有当前正在编辑的那套模式,跟着切到它有的那套
-			const nextKey = res.manifest.modes[modeKey]
-				? modeKey
-				: res.manifest.modes.light
-					? "light"
-					: "dark";
-			setModeKey(nextKey);
-			setBokehText((res.manifest.modes[nextKey]?.effects?.bokeh?.colors ?? []).join(", "));
-			setError(null);
-			setNote("已拉回默认值预览,满意就点保存落盘");
-		},
-		onError: (e) => {
-			setNote(null);
-			setError(String((e as Error).message));
-		},
-	});
+	// 「恢复默认值」:快照只回填 draft 实时预览(与「让女仆改」同构),落盘仍走保存。
+	function restoreDefault(): void {
+		if (!defaultManifest) return;
+		setDraft(defaultManifest);
+		// 快照可能没有当前正在编辑的那套模式,跟着切到它有的那套
+		const nextKey = defaultManifest.modes[modeKey]
+			? modeKey
+			: defaultManifest.modes.light
+				? "light"
+				: "dark";
+		setModeKey(nextKey);
+		setBokehText((defaultManifest.modes[nextKey]?.effects?.bokeh?.colors ?? []).join(", "));
+		setError(null);
+		setNote("已拉回默认值预览,满意就点保存落盘");
+	}
 
 	function requestClose(): void {
 		if (dirty) setConfirmDiscard(true);
@@ -157,6 +162,19 @@ export function SkinEditor(props: {
 	const mode: SkinMode = draft.modes[modeKey] ?? {};
 	function setSection<K extends keyof SkinMode>(section: K, value: SkinMode[K] | undefined): void {
 		setDraft((d) => setModeSection(d, modeKey, section, value));
+	}
+
+	// 「(默认)」标注的比较基准:出厂快照里同一套模式的对应字段。
+	const dm: SkinMode = defaultManifest?.modes[modeKey] ?? {};
+	/**
+	 * 当前值与出厂快照一致(且确实配了值)→ 值旁标「(默认)」。空串与 undefined
+	 * 视为同一种「没配」,没配的不标 —— 那是回落原版的占位「默认」,别撞概念。
+	 */
+	function isDef(cur: string | number | undefined, def: string | number | undefined): boolean {
+		if (defaultManifest === null) return false;
+		const c = cur === "" ? undefined : cur;
+		const d = def === "" ? undefined : def;
+		return c !== undefined && c === d;
 	}
 
 	const wp = mode.wallpaper ?? {};
@@ -251,28 +269,33 @@ export function SkinEditor(props: {
 					<TextField
 						label="皮肤名"
 						value={draft.name}
+						isDefault={isDef(draft.name, defaultManifest?.name)}
 						onChange={(v) => setDraft({ ...draft, name: v })}
 					/>
 					<TextField
 						label="作者"
 						value={draft.author ?? ""}
+						isDefault={isDef(draft.author, defaultManifest?.author)}
 						onChange={(v) => setDraft(withOptional(draft, "author", v))}
 					/>
 					<TextField
 						label="描述"
 						value={draft.description ?? ""}
+						isDefault={isDef(draft.description, defaultManifest?.description)}
 						onChange={(v) => setDraft(withOptional(draft, "description", v))}
 					/>
 					<TextField
 						label="顶栏标题"
 						value={draft.texts?.headerTitle ?? ""}
 						placeholder="默认「bilibili-notify」"
+						isDefault={isDef(draft.texts?.headerTitle, defaultManifest?.texts?.headerTitle)}
 						onChange={(v) => setDraft(setManifestText(draft, "headerTitle", v))}
 					/>
 					<TextField
 						label="聊天提示语"
 						value={draft.texts?.chatPlaceholder ?? ""}
 						placeholder="聊天输入框的占位文案"
+						isDefault={isDef(draft.texts?.chatPlaceholder, defaultManifest?.texts?.chatPlaceholder)}
 						onChange={(v) => setDraft(setManifestText(draft, "chatPlaceholder", v))}
 					/>
 				</Fold>
@@ -293,6 +316,7 @@ export function SkinEditor(props: {
 					<SelectField
 						label="壁纸图片"
 						value={wp.image ?? ""}
+						isDefault={isDef(wp.image, dm.wallpaper?.image)}
 						onChange={(v) =>
 							v === ""
 								? setSection("wallpaper", undefined)
@@ -308,6 +332,7 @@ export function SkinEditor(props: {
 							<SelectField
 								label="壁纸铺法"
 								value={wp.fit ?? ""}
+								isDefault={isDef(wp.fit, dm.wallpaper?.fit)}
 								onChange={(v) =>
 									setSection(
 										"wallpaper",
@@ -324,6 +349,7 @@ export function SkinEditor(props: {
 							<TextField
 								label="壁纸位置"
 								value={wp.position ?? ""}
+								isDefault={isDef(wp.position, dm.wallpaper?.position)}
 								placeholder="默认 center;如 center top"
 								onChange={(v) => setSection("wallpaper", cleanWallpaper({ ...wp, position: v }))}
 							/>
@@ -334,6 +360,7 @@ export function SkinEditor(props: {
 								step={0.05}
 								value={wp.overlay}
 								fallback={0}
+								isDefault={isDef(wp.overlay, dm.wallpaper?.overlay)}
 								onChange={(v) => setSection("wallpaper", cleanWallpaper({ ...wp, overlay: v }))}
 							/>
 							<RangeField
@@ -343,6 +370,7 @@ export function SkinEditor(props: {
 								step={1}
 								value={wp.blur}
 								fallback={0}
+								isDefault={isDef(wp.blur, dm.wallpaper?.blur)}
 								onChange={(v) => setSection("wallpaper", cleanWallpaper({ ...wp, blur: v }))}
 							/>
 						</>
@@ -358,9 +386,13 @@ export function SkinEditor(props: {
 						max={1}
 						step={0.05}
 						value={colorAlphaOf(glass.background) ?? undefined}
-						fallback={0.7}
+						fallback={modeKey === "dark" ? 0.72 : 0.7}
 						clearable={false}
 						disabled={glassClear}
+						isDefault={isDef(
+							colorAlphaOf(glass.background) ?? undefined,
+							colorAlphaOf(dm.glass?.background) ?? undefined,
+						)}
 						onChange={(v) =>
 							setSection(
 								"glass",
@@ -397,21 +429,25 @@ export function SkinEditor(props: {
 					<ColorField
 						label="玻璃底色"
 						value={glass.background}
+						isDefault={isDef(glass.background, dm.glass?.background)}
 						onChange={(v) => setSection("glass", cleanSection({ ...glass, background: v }))}
 					/>
 					<ColorField
 						label="玻璃描边"
 						value={glass.border}
+						isDefault={isDef(glass.border, dm.glass?.border)}
 						onChange={(v) => setSection("glass", cleanSection({ ...glass, border: v }))}
 					/>
 					<ColorField
 						label="强玻璃底色"
 						value={glass.strongBackground}
+						isDefault={isDef(glass.strongBackground, dm.glass?.strongBackground)}
 						onChange={(v) => setSection("glass", cleanSection({ ...glass, strongBackground: v }))}
 					/>
 					<ColorField
 						label="强玻璃描边"
 						value={glass.strongBorder}
+						isDefault={isDef(glass.strongBorder, dm.glass?.strongBorder)}
 						onChange={(v) => setSection("glass", cleanSection({ ...glass, strongBorder: v }))}
 					/>
 					<RangeField
@@ -421,7 +457,8 @@ export function SkinEditor(props: {
 						step={1}
 						unit="px"
 						value={glass.blur}
-						fallback={16}
+						fallback={12}
+						isDefault={isDef(glass.blur, dm.glass?.blur)}
 						onChange={(v) => setSection("glass", cleanSection({ ...glass, blur: v }))}
 					/>
 					<RangeField
@@ -431,7 +468,8 @@ export function SkinEditor(props: {
 						step={1}
 						unit="px"
 						value={glass.strongBlur}
-						fallback={20}
+						fallback={16}
+						isDefault={isDef(glass.strongBlur, dm.glass?.strongBlur)}
 						onChange={(v) => setSection("glass", cleanSection({ ...glass, strongBlur: v }))}
 					/>
 				</Fold>
@@ -447,6 +485,7 @@ export function SkinEditor(props: {
 									key={key}
 									label={label}
 									value={colors[key]}
+									isDefault={isDef(colors[key], dm.colors?.[key])}
 									onChange={(v) => setSection("colors", cleanSection({ ...colors, [key]: v }))}
 								/>
 							))}
@@ -463,11 +502,13 @@ export function SkinEditor(props: {
 						unit="px"
 						value={radius.card}
 						fallback={14}
+						isDefault={isDef(radius.card, dm.radius?.card)}
 						onChange={(v) => setSection("radius", cleanSection({ ...radius, card: v }))}
 					/>
 					<NumberField
 						label="胶囊圆角"
 						value={radius.pill}
+						isDefault={isDef(radius.pill, dm.radius?.pill)}
 						placeholder="默认;0~999 px"
 						min={0}
 						max={999}
@@ -477,6 +518,7 @@ export function SkinEditor(props: {
 						label="卡片阴影"
 						mono
 						value={shadows.card ?? ""}
+						isDefault={isDef(shadows.card, dm.shadows?.card)}
 						placeholder="如 0 10px 30px rgba(57,197,187,0.25)"
 						onChange={(v) => setSection("shadows", cleanSection({ ...shadows, card: v }))}
 					/>
@@ -484,6 +526,7 @@ export function SkinEditor(props: {
 						label="悬浮阴影"
 						mono
 						value={shadows.elev ?? ""}
+						isDefault={isDef(shadows.elev, dm.shadows?.elev)}
 						placeholder="悬停/浮层那一档"
 						onChange={(v) => setSection("shadows", cleanSection({ ...shadows, elev: v }))}
 					/>
@@ -493,6 +536,7 @@ export function SkinEditor(props: {
 					<TextField
 						label="正文字体栈"
 						value={fontsToText(mode.fonts?.body)}
+						isDefault={isDef(fontsToText(mode.fonts?.body), fontsToText(dm.fonts?.body))}
 						placeholder="逗号分隔,如 LXGW WenKai, sans-serif"
 						onChange={(v) => {
 							const body = textToFonts(v);
@@ -514,6 +558,7 @@ export function SkinEditor(props: {
 						<ColorField
 							label="流光颜色"
 							value={effects.glassShine.color}
+							isDefault={isDef(effects.glassShine.color, dm.effects?.glassShine?.color)}
 							onChange={(v) => setEffects({ glassShine: v === "" ? {} : { color: v } })}
 						/>
 					) : null}
@@ -521,6 +566,7 @@ export function SkinEditor(props: {
 						label="光斑颜色"
 						mono
 						value={bokehText}
+						isDefault={isDef(bokehText, (dm.effects?.bokeh?.colors ?? []).join(", "))}
 						placeholder="逗号分隔 1~4 个颜色,留空关闭"
 						onChange={(v) => {
 							setBokehText(v);
@@ -582,9 +628,13 @@ export function SkinEditor(props: {
 						<Btn
 							size="sm"
 							variant="outline"
-							onClick={() => restoreDefault.mutate()}
-							disabled={restoreDefault.isPending}
-							title="把出厂快照拉回来预览,保存后才落盘"
+							onClick={restoreDefault}
+							disabled={!defaultManifest}
+							title={
+								defaultManifest
+									? "把出厂快照拉回来预览,保存后才落盘"
+									: "该皮肤还没有钉过默认值,先点「设为默认值」"
+							}
 						>
 							恢复默认值
 						</Btn>
@@ -660,6 +710,15 @@ function Fold(props: { title: string; defaultOpen?: boolean; children: ReactNode
 	);
 }
 
+/**
+ * 值与出厂快照一致时挂在输入框尾的小标 —— 出现即「处于这个皮肤包的默认基准」。
+ * 显示规范(主人拍板):数值类(滑杆)在数值后内嵌「数值(默认)」;字符串类(输入框)
+ * 尾标不带括号,直接写「默认」—— 孤立的括号形态看着乱。
+ */
+function DefaultTag() {
+	return <span className="shrink-0 text-[10.5px] text-bn-text-tertiary">默认</span>;
+}
+
 function FieldRow(props: { label: string; children: ReactNode }) {
 	return (
 		<div className="flex items-center gap-2 text-[12px] text-bn-text-secondary">
@@ -675,16 +734,20 @@ function TextField(props: {
 	onChange: (v: string) => void;
 	placeholder?: string;
 	mono?: boolean;
+	isDefault?: boolean;
 }) {
 	return (
 		<FieldRow label={props.label}>
-			<input
-				aria-label={props.label}
-				value={props.value}
-				onChange={(e) => props.onChange(e.target.value)}
-				placeholder={props.placeholder}
-				className={`${inputCls}${props.mono ? " font-mono text-[11px]" : ""}`}
-			/>
+			<div className="flex items-center gap-1.5">
+				<input
+					aria-label={props.label}
+					value={props.value}
+					onChange={(e) => props.onChange(e.target.value)}
+					placeholder={props.placeholder}
+					className={`${inputCls}${props.mono ? " font-mono text-[11px]" : ""}`}
+				/>
+				{props.isDefault ? <DefaultTag /> : null}
+			</div>
 		</FieldRow>
 	);
 }
@@ -696,22 +759,26 @@ function NumberField(props: {
 	placeholder?: string;
 	min?: number;
 	max?: number;
+	isDefault?: boolean;
 }) {
 	return (
 		<FieldRow label={props.label}>
-			<input
-				aria-label={props.label}
-				type="number"
-				value={props.value ?? ""}
-				min={props.min}
-				max={props.max}
-				onChange={(e) => {
-					const n = Number(e.target.value);
-					props.onChange(e.target.value === "" || Number.isNaN(n) ? undefined : n);
-				}}
-				placeholder={props.placeholder}
-				className={inputCls}
-			/>
+			<div className="flex items-center gap-1.5">
+				<input
+					aria-label={props.label}
+					type="number"
+					value={props.value ?? ""}
+					min={props.min}
+					max={props.max}
+					onChange={(e) => {
+						const n = Number(e.target.value);
+						props.onChange(e.target.value === "" || Number.isNaN(n) ? undefined : n);
+					}}
+					placeholder={props.placeholder}
+					className={inputCls}
+				/>
+				{props.isDefault ? <DefaultTag /> : null}
+			</div>
 		</FieldRow>
 	);
 }
@@ -722,13 +789,14 @@ function RangeField(props: {
 	max: number;
 	step: number;
 	value: number | undefined;
-	/** 未设置时滑杆停在的参考位(只影响滑杆起点,不写进 draft)。 */
+	/** 未设置时的回落值:滑杆停靠位 + 右侧「数值(默认)」显示,必须=原版实际生效值。 */
 	fallback: number;
 	unit?: string;
 	/** false = 该字段必填,不给「清除回默认」。 */
 	clearable?: boolean;
 	/** 禁用而不是藏起来(完全透明开着时的透明度滑杆)—— 与 AI 聊天那边同款处理。 */
 	disabled?: boolean;
+	isDefault?: boolean;
 	onChange: (v: number | undefined) => void;
 }) {
 	const clearable = props.clearable ?? true;
@@ -746,8 +814,10 @@ function RangeField(props: {
 					onChange={(e) => props.onChange(Number(e.target.value))}
 					className="min-w-0 flex-1 accent-bn-pink disabled:opacity-40"
 				/>
-				<span className="w-13 shrink-0 text-right text-[11px] tabular-nums text-bn-text-tertiary">
-					{props.value !== undefined ? `${props.value}${props.unit ?? ""}` : "默认"}
+				<span className="min-w-13 shrink-0 text-right text-[11px] tabular-nums text-bn-text-tertiary">
+					{props.value !== undefined
+						? `${props.value}${props.unit ?? ""}${props.isDefault ? "(默认)" : ""}`
+						: `${props.fallback}${props.unit ?? ""}(默认)`}
 				</span>
 				{clearable && props.value !== undefined ? (
 					<button
@@ -769,21 +839,25 @@ function SelectField(props: {
 	value: string;
 	onChange: (v: string) => void;
 	options: Array<{ value: string; label: string }>;
+	isDefault?: boolean;
 }) {
 	return (
 		<FieldRow label={props.label}>
-			<select
-				aria-label={props.label}
-				value={props.value}
-				onChange={(e) => props.onChange(e.target.value)}
-				className={inputCls}
-			>
-				{props.options.map((o) => (
-					<option key={o.value} value={o.value}>
-						{o.label}
-					</option>
-				))}
-			</select>
+			<div className="flex items-center gap-1.5">
+				<select
+					aria-label={props.label}
+					value={props.value}
+					onChange={(e) => props.onChange(e.target.value)}
+					className={inputCls}
+				>
+					{props.options.map((o) => (
+						<option key={o.value} value={o.value}>
+							{o.label}
+						</option>
+					))}
+				</select>
+				{props.isDefault ? <DefaultTag /> : null}
+			</div>
 		</FieldRow>
 	);
 }
@@ -792,6 +866,7 @@ function ColorField(props: {
 	label: string;
 	value: string | undefined;
 	onChange: (v: string) => void;
+	isDefault?: boolean;
 }) {
 	const hex = toHex6(props.value ?? "");
 	return (
@@ -811,6 +886,7 @@ function ColorField(props: {
 					placeholder="默认"
 					className={`${inputCls} font-mono text-[11px]`}
 				/>
+				{props.isDefault ? <DefaultTag /> : null}
 			</div>
 		</FieldRow>
 	);

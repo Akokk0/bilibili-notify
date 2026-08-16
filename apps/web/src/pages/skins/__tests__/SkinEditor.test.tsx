@@ -8,7 +8,7 @@
 
 import type { SkinManifest } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { EMPTY_SLOTS, useSkinStore } from "../../../store/skin";
 import { SkinEditor } from "../SkinEditor";
@@ -17,6 +17,8 @@ const H = vi.hoisted(() => ({
 	putCalls: [] as Array<{ path: string; body: unknown }>,
 	postCalls: [] as Array<{ path: string; body: unknown }>,
 	getCalls: [] as string[],
+	/** 出厂快照;null = 没钉过(GET /default 404)。 */
+	defaultManifest: null as unknown,
 }));
 
 vi.mock("../../../services/api", () => ({
@@ -24,7 +26,8 @@ vi.mock("../../../services/api", () => ({
 		get: vi.fn(async (path: string) => {
 			H.getCalls.push(path);
 			if (path === "/api/skins/s1/default") {
-				return { manifest: { schemaVersion: 1, name: "出厂樱花", modes: { light: {} } } };
+				if (H.defaultManifest === null) throw new Error("该皮肤还没有钉过默认值");
+				return { manifest: H.defaultManifest };
 			}
 			throw new Error(`unexpected GET ${path}`);
 		}),
@@ -78,6 +81,7 @@ beforeEach(() => {
 	H.putCalls = [];
 	H.postCalls = [];
 	H.getCalls = [];
+	H.defaultManifest = { schemaVersion: 1, name: "出厂樱花", modes: { light: {} } };
 	useSkinStore.setState({
 		active: EMPTY_SLOTS,
 		preview: null,
@@ -270,12 +274,50 @@ describe("SkinEditor", () => {
 		});
 	});
 
-	it("恢复默认值:拉出厂快照进 draft 实时预览,不发落盘请求", async () => {
+	it("恢复默认值:用挂载时拉好的快照回填 draft 实时预览,不发落盘请求", async () => {
 		renderEditor();
-		fireEvent.click(screen.getByText("恢复默认值"));
+		const btn = screen.getByText("恢复默认值").closest("button") as HTMLButtonElement;
+		await waitFor(() => expect(btn.disabled).toBe(false));
+		fireEvent.click(btn);
 		await waitFor(() => expect(useSkinStore.getState().preview?.manifest.name).toBe("出厂樱花"));
+		// 快照在挂载时拉过一次,点击复用,不再发第二次
 		expect(H.getCalls).toEqual(["/api/skins/s1/default"]);
 		expect(H.putCalls).toEqual([]);
+	});
+
+	it("与出厂快照一致:数值类内嵌「数值(默认)」,字符串类尾标「默认」;改动后消失", async () => {
+		H.defaultManifest = {
+			schemaVersion: 1,
+			name: "樱花夜",
+			modes: { light: { glass: { blur: 16 } } },
+		};
+		renderEditor();
+		// 皮肤名与快照一致 → 输入框尾标「默认」(不带括号);等它出现 = 快照已到位
+		const nameRow = screen.getByLabelText("皮肤名").parentElement as HTMLElement;
+		await waitFor(() => expect(within(nameRow).getByText("默认")).toBeTruthy());
+		expect(within(nameRow).queryByText("(默认)")).toBeNull();
+		// 玻璃模糊 16 与快照一致(内嵌标注);强玻璃模糊未配置回落 16px 同形态 → 共 2 处
+		expect(screen.getAllByText("16px(默认)")).toHaveLength(2);
+		// 未配置的滑杆(数值类)也给数值:玻璃透明度显示原版回落 0.7(默认)
+		expect(screen.getByText("0.7(默认)")).toBeTruthy();
+
+		fireEvent.change(screen.getByLabelText("玻璃模糊"), { target: { value: "20" } });
+		await waitFor(() => expect(screen.getByText("20px")).toBeTruthy());
+		expect(screen.queryByText("20px(默认)")).toBeNull();
+	});
+
+	it("没钉过默认值:恢复按钮禁用、快照匹配标注不出现", async () => {
+		H.defaultManifest = null;
+		renderEditor();
+		const btn = screen.getByText("恢复默认值").closest("button") as HTMLButtonElement;
+		await waitFor(() => expect(btn.title).toContain("还没有钉过"));
+		expect(btn.disabled).toBe(true);
+		// 有值的字段(玻璃模糊 16)不再标 —— 无快照没有比较基准
+		expect(screen.getByText("16px")).toBeTruthy();
+		const nameRow = screen.getByLabelText("皮肤名").parentElement as HTMLElement;
+		expect(within(nameRow).queryByText("默认")).toBeNull();
+		// 未配置滑杆的回落显示与快照无关,照常给「数值(默认)」
+		expect(screen.getByText("0.7(默认)")).toBeTruthy();
 	});
 
 	it("设为默认值:干净状态发 PUT /default;有未保存改动时禁用(先保存)", async () => {
