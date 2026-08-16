@@ -91,7 +91,56 @@ export function composeSkinVars(
 	if (mode.shadows?.card) vars["--shadow-bn-card"] = mode.shadows.card;
 	if (mode.shadows?.elev) vars["--shadow-bn-elev"] = mode.shadows.elev;
 
+	// AI 聊天页:皮肤生效即整体接管(chat 根摘 data-chat-theme、四色预设隐藏),
+	// 所以变量必须全套输出 —— styles.css 的 bn-chat-accent-* 族没有 fallback。
+	// 派生链:chat.accent → colors.accent → 品牌粉;chat 段只是精调入口。
+	{
+		const chat = mode.chat ?? {};
+		const accent = chat.accent ?? mode.colors?.accent ?? "#fb7299";
+		// hsl/oklch 解析不了时退品牌粉分量(soft 层会偏粉,已知限制;hex/rgb 覆盖绝大多数)
+		const rgb = toRgbTriple(accent) ?? "251, 114, 153";
+		vars["--bn-chat-dot"] = accent;
+		vars["--bn-chat-accent-rgb"] = rgb;
+		vars["--bn-chat-accent-2"] = chat.accentSecondary ?? accent;
+		// 空态大标题背后那团光:从 accent 合成,浓度两套跟模式走(与四色预设同律)
+		vars["--bn-chat-glow"] =
+			theme === "light"
+				? `radial-gradient(closest-side, rgba(${rgb}, 0.32), rgba(${rgb}, 0.14) 46%, rgba(255, 255, 255, 0) 78%)`
+				: `radial-gradient(closest-side, rgba(${rgb}, 0.2), rgba(${rgb}, 0.09) 46%, rgba(0, 0, 0, 0) 78%)`;
+		// 背景:缺省 transparent 透出皮肤整页底;chat 壁纸(无 blur)合成进来,
+		// 配了 background 就垫在壁纸最底(纯色包成渐变才能当 background 层)
+		const base = chat.background ?? "transparent";
+		const wp = chat.wallpaper;
+		if (wp?.image && !(wp.blur !== undefined && wp.blur > 0)) {
+			const layers = buildWallpaperLayers({ ...wp, image: wp.image }, assetUrl, theme);
+			vars["--bn-chat-bg"] =
+				base === "transparent"
+					? layers
+					: `${layers}, ${base.includes("gradient(") ? base : `linear-gradient(${base}, ${base})`}`;
+		} else {
+			vars["--bn-chat-bg"] = base;
+		}
+	}
+
 	return vars;
+}
+
+/** hex(#rgb/#rgba/#rrggbb/#rrggbbaa) 或 rgb()/rgba() → "r, g, b" 分量;解析不了 → null。 */
+function toRgbTriple(color: string): string | null {
+	const t = color.trim();
+	let m = /^#([0-9a-f]{6})(?:[0-9a-f]{2})?$/i.exec(t);
+	if (m?.[1]) {
+		const h = m[1];
+		return [0, 2, 4].map((i) => Number.parseInt(h.slice(i, i + 2), 16)).join(", ");
+	}
+	m = /^#([0-9a-f]{3})(?:[0-9a-f])?$/i.exec(t);
+	if (m?.[1]) {
+		const h = m[1];
+		return [0, 1, 2].map((i) => Number.parseInt(`${h[i]}${h[i]}`, 16)).join(", ");
+	}
+	m = /^rgba?\(\s*(\d{1,3})[,\s]+(\d{1,3})[,\s]+(\d{1,3})/i.exec(t);
+	if (m) return `${m[1]}, ${m[2]}, ${m[3]}`;
+	return null;
 }
 
 export interface ResolvedSkinMode {
@@ -213,6 +262,22 @@ export function composeEffectsCss(mode: SkinMode): string {
 		parts.push("@media (prefers-reduced-motion: reduce){[data-skin-effects]{display:none}}");
 	}
 	return parts.join("\n");
+}
+
+/**
+ * chat 专属壁纸的糊化层:与整页 composeWallpaperCss 同哲学 —— blur > 0 时
+ * 壁纸(含纱)搬进 chat 根([data-bn-chat-root],fixed 满屏、自带 stacking
+ * context)的 ::before 做静态高斯模糊;z-index:-1 画在根背景之上、内容之下。
+ */
+export function composeChatWallpaperCss(
+	mode: SkinMode,
+	assetUrl: (name: string) => string,
+	theme: ResolvedTheme,
+): string {
+	const wp = mode.chat?.wallpaper;
+	if (!wp?.image || wp.blur === undefined || wp.blur <= 0) return "";
+	const layers = buildWallpaperLayers({ ...wp, image: wp.image }, assetUrl, theme);
+	return `[data-bn-chat-root]::before{content:"";position:absolute;inset:-${wp.blur * 2}px;z-index:-1;pointer-events:none;background:${layers};filter:blur(${wp.blur}px)}`;
 }
 
 const SKIN_STYLE_ID = "bn-skin-css";

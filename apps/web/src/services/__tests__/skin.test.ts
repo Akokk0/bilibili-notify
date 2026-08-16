@@ -12,6 +12,7 @@ import {
 	applySkinVars,
 	clearSkinCss,
 	clearSkinVars,
+	composeChatWallpaperCss,
 	composeEffectsCss,
 	composeSkinCss,
 	composeSkinVars,
@@ -103,8 +104,11 @@ describe("composeSkinVars", () => {
 		expect(vars["--radius-bn-pill"]).toBe("12px");
 	});
 
-	it("空 mode → 空表(全回默认装)", () => {
-		expect(composeSkinVars({}, assetUrl, "light")).toEqual({});
+	it("空 mode → 只剩 chat 接管变量(皮肤生效即接管聊天观感),其余全回默认装", () => {
+		const vars = composeSkinVars({}, assetUrl, "light");
+		const keys = Object.keys(vars);
+		expect(keys.every((k) => k.startsWith("--bn-chat-"))).toBe(true);
+		expect(keys).toHaveLength(5);
 	});
 
 	it("colors 新键 listRow/listRowBorder 映射到行条变量", () => {
@@ -297,5 +301,86 @@ describe("composeEffectsCss(动效预设 → 内置 CSS)", () => {
 
 	it("没配 effects → 空串", () => {
 		expect(composeEffectsCss({})).toBe("");
+	});
+});
+
+describe("chat 变量(皮肤生效即整体接管 AI 聊天观感,变量必须全套输出)", () => {
+	it("无 chat 段:从 colors.accent 派生全套 --bn-chat-*,背景 transparent 透出皮肤底", () => {
+		const vars = composeSkinVars({ colors: { accent: "#a3de4f" } }, assetUrl, "light");
+		expect(vars["--bn-chat-dot"]).toBe("#a3de4f");
+		expect(vars["--bn-chat-accent-rgb"]).toBe("163, 222, 79");
+		expect(vars["--bn-chat-accent-2"]).toBe("#a3de4f");
+		expect(vars["--bn-chat-bg"]).toBe("transparent");
+		expect(vars["--bn-chat-glow"]).toContain("163, 222, 79");
+	});
+
+	it("chat 段覆盖派生:accent/accentSecondary/background 各自生效", () => {
+		const vars = composeSkinVars(
+			{
+				colors: { accent: "#a3de4f" },
+				chat: {
+					accent: "#fb7299",
+					accentSecondary: "#ff9a5c",
+					background: "linear-gradient(135deg, #fdeef1, #fbe7ec)",
+				},
+			},
+			assetUrl,
+			"light",
+		);
+		expect(vars["--bn-chat-dot"]).toBe("#fb7299");
+		expect(vars["--bn-chat-accent-rgb"]).toBe("251, 114, 153");
+		expect(vars["--bn-chat-accent-2"]).toBe("#ff9a5c");
+		expect(vars["--bn-chat-bg"]).toContain("linear-gradient");
+	});
+
+	it("皮肤全无 accent → 品牌粉兜底;暗色 glow 与亮色两套浓度", () => {
+		const light = composeSkinVars({}, assetUrl, "light");
+		expect(light["--bn-chat-dot"]).toBe("#fb7299");
+		expect(light["--bn-chat-accent-rgb"]).toBe("251, 114, 153");
+		const dark = composeSkinVars({}, assetUrl, "dark");
+		expect(dark["--bn-chat-glow"]).not.toBe(light["--bn-chat-glow"]);
+	});
+
+	it("chat 壁纸(无 blur):纱层+图层合进 --bn-chat-bg;配了 background 时垫在最底", () => {
+		const bare = composeSkinVars(
+			{ chat: { wallpaper: { image: "assets/c.webp", overlay: 0.3 } } },
+			assetUrl,
+			"light",
+		);
+		expect(bare["--bn-chat-bg"]).toContain('url("/api/skins/abc/assets/c.webp")');
+		expect(bare["--bn-chat-bg"]).toContain("rgba(255, 255, 255, 0.3)");
+
+		const withBg = composeSkinVars(
+			{
+				chat: {
+					background: "linear-gradient(135deg, #fff, #eee)",
+					wallpaper: { image: "assets/c.webp" },
+				},
+			},
+			assetUrl,
+			"light",
+		);
+		expect(withBg["--bn-chat-bg"]).toMatch(/url\(.+\).*linear-gradient\(135deg/);
+	});
+
+	it("chat 壁纸 blur>0:壁纸整体搬进 chat 根的 ::before 糊化层,--bn-chat-bg 留底", () => {
+		const mode: SkinMode = { chat: { wallpaper: { image: "assets/c.webp", blur: 10 } } };
+		const vars = composeSkinVars(mode, assetUrl, "light");
+		expect(vars["--bn-chat-bg"]).toBe("transparent");
+		const css = composeChatWallpaperCss(mode, assetUrl, "light");
+		expect(css).toContain("[data-bn-chat-root]::before");
+		expect(css).toContain("blur(10px)");
+		expect(css).toContain('url("/api/skins/abc/assets/c.webp")');
+	});
+
+	it("chat 壁纸没配或 blur=0 → composeChatWallpaperCss 输出空串", () => {
+		expect(composeChatWallpaperCss({}, assetUrl, "light")).toBe("");
+		expect(
+			composeChatWallpaperCss(
+				{ chat: { wallpaper: { image: "assets/c.webp" } } },
+				assetUrl,
+				"light",
+			),
+		).toBe("");
 	});
 });
