@@ -80,7 +80,7 @@ function SortableBlockRow({
 			style={style}
 			className={`relative rounded-lg border px-2.5 py-2 ${
 				isDragging
-					? "z-10 border-bn-pink/60 bg-bn-surface opacity-90 shadow-lg"
+					? "z-10 border-bn-pink/60 bg-bn-surface opacity-90 shadow-bn-elev"
 					: isSplit
 						? "border-dashed border-bn-border bg-bn-surface/40"
 						: "border-bn-border-subtle bg-bn-surface/60"

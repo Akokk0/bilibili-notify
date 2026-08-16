@@ -56,10 +56,9 @@ export function ModalShell({
 				role="dialog"
 				aria-modal="true"
 				data-bn="modal"
-				className={`relative max-h-full overflow-y-auto rounded-bn-card bg-bn-surface-strong text-bn-text-primary ${bodyClassName}`}
+				className={`relative max-h-full overflow-y-auto rounded-bn-card bg-bn-surface-strong text-bn-text-primary shadow-bn-elev ${bodyClassName}`}
 				style={{
 					width,
-					boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
 					...bodyStyle,
 				}}
 			>

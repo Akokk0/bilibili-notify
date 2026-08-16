@@ -1904,7 +1904,7 @@ export default function Targets() {
 
 			{toast ? (
 				<div
-					className={`fixed bottom-4 right-4 z-400 rounded-md px-4 py-2 text-[12.5px] font-semibold text-white shadow-lg ${
+					className={`fixed bottom-4 right-4 z-400 rounded-md px-4 py-2 text-[12.5px] font-semibold text-white shadow-bn-elev ${
 						toast.ok ? "bg-bn-success" : "bg-bn-danger"
 					}`}
 				>

@@ -236,8 +236,11 @@ function AiInsightStrip({ tip }: { tip: React.ReactNode }) {
 			}}
 		>
 			<div
-				className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-white shadow-bn-card"
-				style={{ background: "linear-gradient(135deg, #a29bfe, #6c5ce7)" }}
+				className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-white"
+				style={{
+					background: "linear-gradient(135deg, #a29bfe, #6c5ce7)",
+					boxShadow: "0 6px 18px rgba(108,92,231,0.35)",
+				}}
 			>
 				<Icon.ai size={20} />
 			</div>
