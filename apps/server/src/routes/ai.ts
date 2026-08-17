@@ -30,7 +30,11 @@ import {
 	readChatImageDataUrl,
 	saveChatImage,
 } from "../runtime/chat-assets.js";
-import { createSkinChatTool, SKIN_MODE_SYSTEM_PROMPT } from "../skins/chat-tool.js";
+import {
+	type ChatSkinImage,
+	createSkinChatTool,
+	SKIN_MODE_SYSTEM_PROMPT,
+} from "../skins/chat-tool.js";
 import type { SkinStore } from "../skins/store.js";
 import { REDACTED_API_KEY } from "./globals.js";
 import type { RouteDeps } from "./types.js";
@@ -334,6 +338,20 @@ export function createAiRoute(
 							skinStore: opts.skinStore,
 							// 热读同 ai-edit:engines 是后挂的,别做快照。
 							generator: () => deps.runtime.engines?.commentary ?? null,
+							/**
+							 * 壁纸的唯一来源:主人**这一问**贴的图。字节直接从聊天附件
+							 * 目录读 —— 上面那份 resolved 是喂给视觉模型的 data URL,
+							 * 拿它再解一次 base64 只是绕远路。
+							 */
+							attachedImages: async () => {
+								const dataDir = deps.store.bootstrap.dataDir;
+								const out: ChatSkinImage[] = [];
+								for (const { id } of resolved) {
+									const img = await readChatImage(dataDir, id);
+									if (img) out.push({ bytes: img.bytes, ext: id.split(".").pop() ?? "png" });
+								}
+								return out;
+							},
 						}),
 					]
 				: undefined;

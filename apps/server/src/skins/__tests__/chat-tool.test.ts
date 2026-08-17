@@ -12,7 +12,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createSkinChatTool, SKIN_MODE_SYSTEM_PROMPT } from "../chat-tool.js";
+import { type ChatSkinImage, createSkinChatTool, SKIN_MODE_SYSTEM_PROMPT } from "../chat-tool.js";
 import { SkinStore } from "../store.js";
 
 const DARK_SKIN = {
@@ -40,14 +40,14 @@ function toolWith(generateRaw: ReturnType<typeof genOf>) {
 }
 
 describe("create_skin 工具定义", () => {
-	it("叫 create_skin,收 brief(必填)与 activate(可选)", () => {
+	it("叫 create_skin,收 brief(必填)与 wallpaper / activate(可选)", () => {
 		const def = toolWith(genOf()).definition;
 		expect(def.function.name).toBe("create_skin");
 		const params = def.function.parameters as {
 			properties: Record<string, unknown>;
 			required: string[];
 		};
-		expect(Object.keys(params.properties)).toEqual(["brief", "activate"]);
+		expect(Object.keys(params.properties)).toEqual(["brief", "wallpaper", "activate"]);
 		expect(params.required).toEqual(["brief"]);
 	});
 
@@ -69,10 +69,17 @@ describe("皮肤工坊的 system", () => {
 		expect(SKIN_MODE_SYSTEM_PROMPT).toMatch(/写进 brief|填进 brief/);
 	});
 
-	it("明说这条路做不出壁纸 —— 主人要图时得如实说,别答应下来", () => {
+	it("说清壁纸从哪来 —— 主人把图贴进聊天才有,没贴就别编", () => {
 		// 真机踩过(2026-08-18):主人要「加雷姆的壁纸」,女仆把它写进 brief 就当
-		// 做成了,回话里报了一张根本不存在的壁纸。工具这一侧零资产,图进不来。
-		expect(SKIN_MODE_SYSTEM_PROMPT).toMatch(/壁纸|图片/);
+		// 做成了,回话里报了一张根本不存在的壁纸。图只能由主人贴进来。
+		expect(SKIN_MODE_SYSTEM_PROMPT).toContain("壁纸");
+		expect(SKIN_MODE_SYSTEM_PROMPT).toMatch(/贴|发给我|发过来/);
+	});
+
+	it("交代「你看得见那张图」—— 配色得跟壁纸搭,取色只能靠她自己看", () => {
+		// 外层聊天本来就把附件喂给了模型(imageUrls),而嵌套的设计师只看得到
+		// brief。她不把图里的主色写下来,壁纸和配色就会各走各的。
+		expect(SKIN_MODE_SYSTEM_PROMPT).toMatch(/图里.*色|从图.*取/);
 	});
 
 	it("只转述工具返回的东西 —— brief 里写了不等于做出来了", () => {
@@ -83,6 +90,62 @@ describe("皮肤工坊的 system", () => {
 		// 接搜索就是把外部可控文本请进这个窗口,而这里唯一的写工具就是 create_skin。
 		// 这条是提示层那道防线,别在重写 system 时顺手删掉。
 		expect(SKIN_MODE_SYSTEM_PROMPT).toMatch(/不作数|不要照做|不执行/);
+	});
+});
+
+describe("create_skin × 主人贴的图", () => {
+	const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+	const WALLPAPER_SKIN = {
+		schemaVersion: 1,
+		name: "夜航灯",
+		modes: { dark: { wallpaper: { image: "assets/wallpaper.png", overlay: 0.35 } } },
+	};
+
+	function toolWithImage(generateRaw: ReturnType<typeof genOf>, images: ChatSkinImage[]) {
+		return createSkinChatTool({
+			skinStore: store,
+			generator: () => ({ generateRaw }),
+			attachedImages: async () => images,
+		});
+	}
+
+	it("wallpaper=true → 主人贴的图进包,设计师也知道有这张图可用", async () => {
+		const g = genOf(JSON.stringify(WALLPAPER_SKIN));
+		const out = await toolWithImage(g, [{ bytes: PNG, ext: "png" }]).execute({
+			brief: "暗色,配这张图",
+			wallpaper: "true",
+		});
+
+		const [skin] = await store.list();
+		expect(skin?.hasWallpaper).toBe(true);
+		expect(await store.listAssets(skin?.id ?? "")).toEqual(["assets/wallpaper.png"]);
+		// 包里有图这件事必须进 system —— 不说,设计师按「零资产」那条规矩绕开壁纸。
+		expect(g.mock.calls[0]?.[0] ?? "").toContain("assets/wallpaper.png");
+		expect(out).toMatch(/壁纸/);
+	});
+
+	it("没贴图却要壁纸 → 当场拒,别白烧一趟生成", async () => {
+		const g = genOf(JSON.stringify(WALLPAPER_SKIN));
+		await expect(
+			toolWithImage(g, []).execute({ brief: "暗色", wallpaper: "true" }),
+		).rejects.toThrow(/贴|发|图/);
+		expect(g).not.toHaveBeenCalled();
+	});
+
+	it("贴了图但没要壁纸 → 不塞进去(贴图也可能只是给她看看风格)", async () => {
+		const g = genOf(JSON.stringify(DARK_SKIN));
+		await toolWithImage(g, [{ bytes: PNG, ext: "png" }]).execute({ brief: "暗色" });
+
+		const [skin] = await store.list();
+		expect(await store.listAssets(skin?.id ?? "")).toEqual([]);
+	});
+
+	it("brief 提了图、又真做了壁纸 → 不再念叨「图没做进去」", async () => {
+		const out = await toolWithImage(genOf(JSON.stringify(WALLPAPER_SKIN)), [
+			{ bytes: PNG, ext: "png" },
+		]).execute({ brief: "暗色,用这张壁纸", wallpaper: "true" });
+
+		expect(out).not.toMatch(/没有做进去|没做进去/);
 	});
 });
 

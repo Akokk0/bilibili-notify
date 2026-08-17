@@ -14,7 +14,7 @@
 
 // biome-ignore-all lint/suspicious/noExplicitAny: 断言 wire 载荷,不为测试再造一遍类型
 
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -59,7 +59,20 @@ async function makeDeps(opts: { skins?: boolean } = {}) {
 	const dataDir = await mkdtemp(join(tmpdir(), "bn-skinchat-"));
 	const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 	const deps = {
-		store: { getGlobals: () => ({ defaults: { ai: { enabled: true } } }), getTargets: () => [] },
+		store: {
+			// 桶里的 vision.model 填着,附件才过得了「女仆看不见图」那道闸。
+			getGlobals: () => ({
+				defaults: {
+					ai: {
+						enabled: true,
+						activeProfile: "p",
+						providers: { p: { vision: { model: "vm" } } },
+					},
+				},
+			}),
+			getTargets: () => [],
+			bootstrap: { dataDir },
+		},
 		runtime: {
 			serviceCtx: { logger },
 			conversationStore: createConversationStore({ dataDir, logger }),
@@ -69,7 +82,7 @@ async function makeDeps(opts: { skins?: boolean } = {}) {
 	const skinStore = new SkinStore({ skinsDir: join(dataDir, "skins") });
 	await skinStore.init();
 	const app = createAiRoute(deps, opts.skins === false ? undefined : { skinStore });
-	return { app, skinStore };
+	return { app, skinStore, dataDir };
 }
 
 async function say(
@@ -141,6 +154,26 @@ describe("皮肤工坊模式", () => {
 		await inSkinMode(app);
 
 		expect(H.lastOpts.webSearch).toBe(false);
+	});
+
+	it("主人贴的图接到了工具上 —— 壁纸的唯一来源就是它", async () => {
+		const { app, skinStore, dataDir } = await makeDeps();
+		const id = `${"a".repeat(32)}.png`;
+		await mkdir(join(dataDir, "assets", "chat"), { recursive: true });
+		await writeFile(join(dataDir, "assets", "chat", id), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+		generateRaw.mockResolvedValueOnce(
+			JSON.stringify({
+				schemaVersion: 1,
+				name: "夜航灯",
+				modes: { dark: { wallpaper: { image: "assets/wallpaper.png" } } },
+			}),
+		);
+
+		await inSkinMode(app, { images: [id] });
+		await lastTools()?.[0].execute({ brief: "配这张图", wallpaper: "true" });
+
+		const [skin] = await skinStore.list();
+		expect(await skinStore.listAssets(skin?.id ?? "")).toEqual(["assets/wallpaper.png"]);
 	});
 
 	it("没装皮肤库却点了皮肤模式 → 400,不静默退回普通聊天", async () => {

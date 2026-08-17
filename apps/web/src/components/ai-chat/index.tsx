@@ -559,7 +559,7 @@ export function ChatPage() {
 								</h1>
 								<div className="text-[15.5px] text-bn-text-secondary">
 									{skinMode
-										? "说说想要什么样的界面皮肤吧,氛围、主色、深浅都可以聊"
+										? "说说想要什么样的界面皮肤吧 —— 氛围、主色、深浅都可以聊,想要壁纸就把图一起发过来"
 										: `今天想让${persona.self}帮${persona.user}做点什么呢?`}
 								</div>
 							</div>
