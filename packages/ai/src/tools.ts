@@ -126,6 +126,22 @@ function extractDynamicText(item: Record<string, any>): string {
 }
 
 /**
+ * 调用方**注入**的额外工具 —— 挂在调用点上,不进 {@link TOOL_DEFINITIONS}。
+ *
+ * 这张表是三端共用的、且只读(见 `executeTool` 的文档与 read-only-tools-gate);
+ * 而写能力只有**有权限门的那一端**才配拥有。所以口子开在调用点:注入者给定义 +
+ * 执行器,generator 只管挂上与转发,不认识它的语义。目前唯一的注入者是独立端
+ * dashboard 的聊天(cookie session 后面,只有主人本人)。
+ *
+ * `execute` 拿到的入参已被逐值 String 归一(见 `execToolCall`)—— 布尔到手是
+ * `"true"` / `"false"`,数字是字符串,按字符串判。
+ */
+export interface ExtraTool {
+	definition: OpenAI.ChatCompletionTool;
+	execute: (args: Record<string, string>) => Promise<string>;
+}
+
+/**
  * 「看图」工具 —— **不在** {@link TOOL_DEFINITIONS} 里,由调用方在配了视觉副模型
  * 且本轮确实有图时才挂上。没图还下发它,模型会白调一轮再拿到「不可用」。
  *

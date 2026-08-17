@@ -17,7 +17,13 @@ export {
 } from "./extra-params";
 export * from "./persona-presets";
 export { type BuildProviderParamsInput, buildProviderParams } from "./providers";
-export { executeTool, type SubItemView, type Subscriptions, TOOL_DEFINITIONS } from "./tools";
+export {
+	type ExtraTool,
+	executeTool,
+	type SubItemView,
+	type Subscriptions,
+	TOOL_DEFINITIONS,
+} from "./tools";
 export {
 	createWebSearchExecutor,
 	WebSearchError,

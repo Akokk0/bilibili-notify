@@ -23,6 +23,7 @@ import {
 } from "./responses-api";
 import {
 	DESCRIBE_IMAGE_TOOL,
+	type ExtraTool,
 	executeTool,
 	type Subscriptions,
 	TOOL_DEFINITIONS,
@@ -806,6 +807,13 @@ export class CommentaryGenerator implements CommentaryProvider {
 			thinking?: { enableThinking: boolean; thinkingLevel: ThinkingLevel };
 			/** 这一次允不允许联网搜索。聊天页那颗胶囊是会话级的,按消息传进来。 */
 			webSearch?: boolean;
+			/**
+			 * 调用方注入的额外工具(见 {@link ExtraTool})。**只有这条路**开这个口:
+			 * 它的收件人是 dashboard 的聊天,坐在 cookie session 后面,只有主人本人
+			 * 能说话;群聊那两条路(chat / comment)的上下文里全是外部可控文本,
+			 * 写能力挂上去等于把口子开给任何人。
+			 */
+			extraTools?: readonly ExtraTool[];
 		},
 	): Promise<string> {
 		return this.chatStatelessImpl(messages, opts);
@@ -820,6 +828,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			onReasoning?: (text: string) => void;
 			thinking?: { enableThinking: boolean; thinkingLevel: ThinkingLevel };
 			webSearch?: boolean;
+			extraTools?: readonly ExtraTool[];
 		},
 	): Promise<string> {
 		if (messages.length === 0) throw new Error("对话历史为空");
@@ -842,13 +851,23 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const vision = this.chatVision(opts?.imageUrls);
 		// 搜索是**加装**:开了且执行器在,才在既有工具表上多出 web_search。
 		const searchExec = this.resolveWebSearch(opts?.webSearch);
+		// 注入工具同样是加装。按名字建索引,调用时**先查注入的**:同名时以调用方
+		// 给的为准 —— 注入是显式意图,不该被内置表悄悄压过去。
+		const extra = new Map((opts?.extraTools ?? []).map((t) => [t.definition.function.name, t]));
 		const result = await this.callAPI(
 			systemPrompt,
 			withVisionNote(trimmed, vision),
 			{
-				tools: searchExec ? [...vision.tools, WEB_SEARCH_TOOL] : vision.tools,
-				onToolCall: (name, args) =>
-					executeTool(name, args, this.api, () => this.getSubs(), vision.ctx),
+				tools: [
+					...vision.tools,
+					...(searchExec ? [WEB_SEARCH_TOOL] : []),
+					...[...extra.values()].map((t) => t.definition),
+				],
+				onToolCall: (name, args) => {
+					const injected = extra.get(name);
+					if (injected) return injected.execute(args);
+					return executeTool(name, args, this.api, () => this.getSubs(), vision.ctx);
+				},
 				onToolEvent: opts?.onToolEvent,
 				...(searchExec ? { webSearch: searchExec } : {}),
 			},
