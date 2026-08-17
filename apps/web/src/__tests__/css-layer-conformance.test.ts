@@ -107,6 +107,38 @@ describe("完全透明的作用范围", () => {
 	});
 });
 
+describe("用户气泡的玻璃底", () => {
+	/**
+	 * 用户消息气泡曾经只有一层 0.14 的 accent 纱 —— 预设纯色渐变底上够看,
+	 * 压在皮肤壁纸上直接融进背景,「聊天胶囊几乎看不到」。修法是给纱下面垫一层
+	 * 跟随聊天玻璃滑块的玻璃底。守在源码上,理由同上:jsdom 量不出「透没透」。
+	 */
+	async function bubbleBlock(): Promise<string> {
+		const css = await readFile(STYLES, "utf8");
+		const start = css.indexOf(".bn-chat-bubble-user {");
+		expect(start).toBeGreaterThan(-1);
+		return css.slice(start, css.indexOf("}", start));
+	}
+
+	it("有跟随滑块的玻璃底 —— 只有 accent 纱的话在皮肤壁纸上会融进背景", async () => {
+		const block = await bubbleBlock();
+		expect(block).toContain("--bn-chat-glass-rgb");
+		expect(block).toContain("--bn-chat-glass,");
+	});
+
+	it("accent 纱还在 —— 玻璃底垫在纱下面,不是换掉主题色", async () => {
+		expect(await bubbleBlock()).toContain("--bn-chat-accent-rgb");
+	});
+
+	it("消息组件真的用上了这块玻璃", async () => {
+		const tsx = await readFile(
+			fileURLToPath(new URL("../components/ai-chat/messages.tsx", import.meta.url)),
+			"utf8",
+		);
+		expect(tsx).toContain("bn-chat-bubble-user");
+	});
+});
+
 describe("findUnlayeredPositionRules 自身", () => {
 	it("认得出无层的 position", () => {
 		expect(findUnlayeredPositionRules(".a {\n\tposition: relative;\n}")).toHaveLength(1);

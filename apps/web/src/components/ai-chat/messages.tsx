@@ -286,7 +286,7 @@ function UserTurn({
 			) : null}
 			{/* 只有图没有字时不画空气泡 —— 那会是一小块突兀的色块。 */}
 			{text ? (
-				<div className="bn-chat-accent-soft max-w-[74%] whitespace-pre-wrap wrap-break-word rounded-[22px] rounded-br-[7px] px-4.25 py-2.75 text-[15px] leading-relaxed text-bn-text-primary">
+				<div className="bn-chat-bubble-user max-w-[74%] whitespace-pre-wrap wrap-break-word rounded-[22px] rounded-br-[7px] px-4.25 py-2.75 text-[15px] leading-relaxed text-bn-text-primary">
 					{text}
 				</div>
 			) : null}

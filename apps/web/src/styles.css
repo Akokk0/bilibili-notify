@@ -249,6 +249,23 @@
 		background: rgba(var(--bn-chat-glass-rgb), calc(var(--bn-chat-glass, 0.82) + 0.12));
 	}
 
+	/* 用户消息气泡:accent 纱 + 跟随滑块的玻璃底。曾经只有那层 0.14 的纱 ——
+	   预设纯色渐变底上够看,压在皮肤壁纸上直接融进背景。玻璃底/磨砂/描边全数
+	   跟随聊天玻璃滑块,完全透明档退回纯纱,与全家同一套规则。 */
+	.bn-chat-bubble-user {
+		background:
+			linear-gradient(rgba(var(--bn-chat-accent-rgb), 0.14), rgba(var(--bn-chat-accent-rgb), 0.14)),
+			rgba(var(--bn-chat-glass-rgb), var(--bn-chat-glass, 0.82));
+		border: 1px solid rgba(255, 255, 255, calc(0.85 * var(--bn-chat-glass, 0.82)));
+		backdrop-filter: blur(calc(20px * var(--bn-chat-blur, 1)))
+			saturate(var(--bn-chat-saturate, 1.82));
+		-webkit-backdrop-filter: blur(calc(20px * var(--bn-chat-blur, 1)))
+			saturate(var(--bn-chat-saturate, 1.82));
+	}
+	:root[data-theme="dark"] .bn-chat-bubble-user {
+		border-color: rgba(255, 255, 255, calc(0.15 * var(--bn-chat-glass, 0.82)));
+	}
+
 	/* 玻璃面板里被选中的那一项(主题色卡)。同样比常态实一档。 */
 	.bn-glass-selected {
 		background: rgba(var(--bn-chat-glass-rgb), calc(var(--bn-chat-glass, 0.82) + 0.1));
