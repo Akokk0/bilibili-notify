@@ -383,7 +383,8 @@ function SkinGuideModal({ onClose }: { onClose: () => void }) {
 				*/}
 				<div className="rounded-lg border border-bn-border-subtle bg-bn-surface-muted p-2.5 text-bn-text-secondary">
 					更省事的一条:点右下角的女仆胶囊进聊天页,把上方的模式切到「皮肤工坊」,直接说想要什么风格 ——
-					她会问清细节,自己生成好存进库,也能顺手替主人换上。下面这套是找外部 AI 做、再粘回来的路子。
+					她会问清细节,自己生成好存进库,也能顺手替主人换上。想要某部作品的配色,顺手开着「联网搜索」,
+					她会先去查那部作品的代表色。下面这套是找外部 AI 做、再粘回来的路子。
 				</div>
 				<ol className="list-decimal space-y-1 pl-5">
 					<li>点「复制提示词」,粘给任意 AI(ChatGPT / Claude / 豆包都行)</li>

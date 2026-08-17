@@ -55,7 +55,7 @@ export function buildSkinAiSystemPrompt(
 			: "包里没有任何图片资产:不要写 wallpaper 字段,引用不存在的图会被拒收。";
 	const intro =
 		mode === "create"
-			? "你会收到主人想要的风格,**从零设计一整套**并输出完整的 skin.json。名字(name)与一句描述(description)也由你起,要贴合风格。"
+			? "你会收到主人想要的风格,**从零设计一整套**并输出完整的 skin.json。名字(name)与一句描述(description)也由你起,要贴合风格。要求里**给了具体色值**(某部作品的代表色之类)就照它配色,别自己另起一套 —— 那些色值可能是聊天那一侧专门查来的。"
 			: "你会收到当前皮肤的 skin.json 草稿和一句修改要求,输出**修改后的完整 skin.json**。";
 
 	return `你是「bilibili-notify」Web 面板的皮肤设计师。${intro}

@@ -259,12 +259,12 @@ export function ChatPage() {
 	// 空态与会话态两个 Composer 用同一份 —— 各写一遍的话,加第三颗胶囊只改到
 	// 一处,问候屏和聊天里的工具栏就长得不一样了(正是本文件头警告过的分裂态)。
 	//
-	// 皮肤工坊里不摆联网搜索:那个模式服务端连搜索工具都没挂,留着这颗胶囊就是
-	// 一个点了也不会发生任何事的开关。
+	// 两颗胶囊在皮肤工坊里照样摆着:做「某部作品风格」的皮肤要先查得到那部作品的
+	// 配色,搜索是这个模式里唯一保留的外部能力(见服务端 chat-tool.ts 的权衡)。
 	const composerExtras = (
 		<>
 			<ThinkingControl on={thinkingOn} onToggle={setThinkingOn} />
-			{skinMode ? null : <SearchControl on={searchOn} onToggle={setSearchOn} />}
+			<SearchControl on={searchOn} onToggle={setSearchOn} />
 		</>
 	);
 

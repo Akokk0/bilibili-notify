@@ -154,13 +154,25 @@ describe("模式切换器", () => {
 		expect(H.lastFlags?.mode).toBe("skin");
 	});
 
-	it("皮肤工坊里不显示联网搜索 —— 那个模式压根没挂搜索工具", async () => {
+	it("皮肤工坊里照样有联网搜索 —— 做二次元皮肤得先查得到那部作品的配色", async () => {
 		mount();
 		// 这颗胶囊要等 globals 到手才画得出来(没配后端时它自己返回 null)。
 		await screen.findByLabelText("联网搜索");
 
 		fireEvent.click(modeTab("皮肤工坊"));
-		expect(screen.queryByLabelText("联网搜索")).toBeNull();
+		expect(screen.queryByLabelText("联网搜索")).not.toBeNull();
+	});
+
+	it("皮肤工坊里开了搜索,这一问就带 search: true", async () => {
+		mount();
+		const search = await screen.findByLabelText("联网搜索");
+		fireEvent.click(modeTab("皮肤工坊"));
+		fireEvent.click(search);
+		await send("做套初音未来风格的");
+
+		await waitFor(() => expect(H.lastFlags).not.toBeNull());
+		expect(H.lastFlags?.mode).toBe("skin");
+		expect(H.lastFlags?.search).toBe(true);
 	});
 
 	it("打 /皮肤 技能 → 自己切进皮肤工坊,这一问就带 skin", async () => {

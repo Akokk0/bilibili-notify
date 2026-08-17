@@ -3,8 +3,9 @@
  *
  * 写能力**只在皮肤模式里存在**(主人拍板的隔离):日常聊天那个窗口的上下文里有
  * B 站动态正文、图片里的字这些外部可控文本,写工具挂在那儿就是给注入面开口。
- * 切到皮肤工坊之后反过来:人格不带、B 站只读工具不带、搜索不带,模型手上只有
- * `create_skin` 一把。
+ * 切到皮肤工坊之后反过来:人格不带、B 站只读工具不带,模型手上只有 `create_skin`
+ * 一把。联网搜索是后来放行的那个例外(做「某部作品风格」的皮肤得先查得到配色),
+ * 按主人那颗胶囊走。
  *
  * 另一条要紧的契约是**预算跟着请求走**:一轮最多两套,而「一轮」= 一次聊天请求。
  * 工具要是建在路由装配时,那把计数器会跨请求累加 —— 聊到第三句就再也做不了皮肤,
@@ -128,9 +129,16 @@ describe("皮肤工坊模式", () => {
 		expect(String(H.lastOpts.systemPrompt)).toContain("皮肤");
 	});
 
-	it("搜索开关在这个模式下一律当没开 —— 工具都没挂,留着只会骗模型", async () => {
+	it("搜索开关照样透传 —— 做「某部作品风格」的皮肤得先查得到那部作品的配色", async () => {
 		const { app } = await makeDeps();
 		await inSkinMode(app, { search: true });
+
+		expect(H.lastOpts.webSearch).toBe(true);
+	});
+
+	it("没开搜索就还是不开 —— 这个模式不偷偷替主人打开联网", async () => {
+		const { app } = await makeDeps();
+		await inSkinMode(app);
 
 		expect(H.lastOpts.webSearch).toBe(false);
 	});

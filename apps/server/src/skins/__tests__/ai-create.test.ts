@@ -56,6 +56,15 @@ describe("runSkinAiCreate", () => {
 		expect(present.length).toBe(Object.keys(SKIN_COLOR_TOKEN_MAP).length);
 	});
 
+	it("system 交代 brief 里的具体色值要照用 —— 不然聊天里查来的配色白查", async () => {
+		// 聊天那一层可以联网查「某部作品的代表色」,但结果只能经 brief 递到这一跳。
+		// 设计师若自顾自另配一套,查资料这条链就断在最后一步。
+		const g = gen(JSON.stringify(SKIN));
+		await runSkinAiCreate({ generateRaw: g, brief: "初音未来风,主色 #39C5BB" });
+
+		expect(g.mock.calls[0]?.[0] ?? "").toMatch(/给了具体色值|指定了色值/);
+	});
+
 	it("system 明说包里没有图片 —— 聊天里递不了壁纸", async () => {
 		const g = gen(JSON.stringify(SKIN));
 		await runSkinAiCreate({ generateRaw: g, brief: "随便来一套" });

@@ -12,7 +12,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createSkinChatTool } from "../chat-tool.js";
+import { createSkinChatTool, SKIN_MODE_SYSTEM_PROMPT } from "../chat-tool.js";
 import { SkinStore } from "../store.js";
 
 const DARK_SKIN = {
@@ -55,6 +55,24 @@ describe("create_skin 工具定义", () => {
 		const desc = toolWith(genOf()).definition.function.description ?? "";
 		expect(desc).toContain("皮肤");
 		expect(desc).toMatch(/两套|2 套/);
+	});
+});
+
+describe("皮肤工坊的 system", () => {
+	it("教会模型先查资料再动手 —— 「某部作品风格」靠猜配色做不出来", () => {
+		expect(SKIN_MODE_SYSTEM_PROMPT).toContain("web_search");
+	});
+
+	it("明说查到的色值要写进 brief —— 设计师那一跳看不见搜索结果", () => {
+		// create_skin 内部是**另一趟**无状态调用,只拿到 brief 这一个字符串。
+		// 不把这条讲清,模型会「搜完就当自己记住了」,brief 里仍是一句空泛的风格词。
+		expect(SKIN_MODE_SYSTEM_PROMPT).toMatch(/写进 brief|填进 brief/);
+	});
+
+	it("网页内容只当资料 —— 搜索结果里的指令不作数", () => {
+		// 接搜索就是把外部可控文本请进这个窗口,而这里唯一的写工具就是 create_skin。
+		// 这条是提示层那道防线,别在重写 system 时顺手删掉。
+		expect(SKIN_MODE_SYSTEM_PROMPT).toMatch(/不作数|不要照做|不执行/);
 	});
 });
 

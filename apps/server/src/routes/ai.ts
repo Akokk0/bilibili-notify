@@ -314,8 +314,9 @@ export function createAiRoute(
 		/**
 		 * 皮肤工坊模式的装配。写能力**只在这个模式里存在**(主人拍板的隔离):
 		 * 日常聊天的上下文里有 B 站动态正文、图片里的字这些外部可控文本,写工具
-		 * 挂在那儿就是给注入面开口。这个模式反过来 —— 人格、B 站只读工具、搜索
-		 * 全不带,模型手上只有 create_skin 一把。
+		 * 挂在那儿就是给注入面开口。这个模式反过来 —— 人格、B 站只读工具都不带,
+		 * 模型手上只有 create_skin 一把(联网搜索按主人那颗胶囊来,做「某部作品
+		 * 风格」的皮肤离不开它)。
 		 *
 		 * 工具**每个请求现配**:它带着「一轮最多两套」的预算,建在装配处的话那把
 		 * 计数器会跨请求累加 —— 聊到第三句就再也做不了皮肤,而且得重启才恢复。
@@ -368,8 +369,9 @@ export function createAiRoute(
 						thinkingLevel: resolveChatThinkingLevel(deps.store.getGlobals().defaults.ai),
 					},
 					// 联网搜索同样会话级;不带 = 不开。执行器没配置时生成器静默不挂。
-					// 皮肤工坊里一律当没开:那个模式连工具表都收了,留着只会骗模型。
-					webSearch: !skinMode && (parsed.data.search ?? false),
+					// 皮肤工坊里照样透传 —— 「做套某部作品风格的皮肤」得先查得到那部
+					// 作品的代表色,靠模型记忆猜配色多半是白做一趟。
+					webSearch: parsed.data.search ?? false,
 					...(skinTools
 						? {
 								extraTools: skinTools,
