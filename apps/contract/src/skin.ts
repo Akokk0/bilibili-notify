@@ -125,15 +125,11 @@ export interface SkinMode {
 	wallpaper?: SkinWallpaper;
 	/**
 	 * AI 聊天页专属外观。皮肤生效时 chat 观感整体由皮肤接管(四色预设隐藏):
-	 * 全部字段可缺省 —— accent 从 colors.accent 派生,background 缺省透出皮肤
-	 * 整页背景;本段只是精调入口。
+	 * 强调色从 colors.accent 派生、玻璃件直接用 glass 段参数 —— chat 段**只管
+	 * 背景**(底色/壁纸),不另设一套颜色或玻璃参数。
 	 */
 	chat?: {
-		/** chat 主强调色(发送键/链接/选中);缺省派生自 colors.accent。 */
-		accent?: string;
-		/** 渐变次色(发送键/问候语渐变的第二站);缺省 = accent。 */
-		accentSecondary?: string;
-		/** chat 整页底(纯色或渐变);缺省 transparent,透出皮肤整页背景。 */
+		/** chat 整页底(纯色或渐变);缺省引用皮肤整页背景。 */
 		background?: string;
 		/** chat 专属壁纸(独立于整页壁纸),字段同构。 */
 		wallpaper?: SkinWallpaper;

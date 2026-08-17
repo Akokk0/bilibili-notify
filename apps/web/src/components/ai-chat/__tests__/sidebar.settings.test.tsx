@@ -83,7 +83,7 @@ describe("ChatSidebar — 设置弹层", () => {
 		expect(await screen.findByText("思考深度")).toBeTruthy();
 	});
 
-	it("皮肤生效时:四色「主题色」节整个隐藏(chat 观感由皮肤接管),其余节照常", async () => {
+	it("皮肤生效时:四色「主题色」与「玻璃质感」两节整个隐藏(chat 观感与玻璃参数都由皮肤接管),思考深度照常", async () => {
 		useSkinStore.setState({
 			active: {
 				light: { id: "s1", manifest: { schemaVersion: 1, name: "t", modes: { light: {} } } },
@@ -93,6 +93,7 @@ describe("ChatSidebar — 设置弹层", () => {
 		mountSidebar();
 		fireEvent.click(screen.getByRole("button", { name: "聊天设置" }));
 		expect(screen.queryByText("主题色")).toBeNull();
-		expect(screen.getByText("玻璃质感")).toBeTruthy();
+		expect(screen.queryByText("玻璃质感")).toBeNull();
+		expect(await screen.findByText("思考深度")).toBeTruthy();
 	});
 });

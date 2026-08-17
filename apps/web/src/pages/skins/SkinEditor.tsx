@@ -502,21 +502,9 @@ export function SkinEditor(props: {
 
 				<Fold title="AI 聊天">
 					<p className="text-[11px] leading-4 text-bn-text-tertiary">
-						皮肤生效时聊天页整体换装(默认四色预设隐藏)。不配时强调色自动跟随
-						「主强调色」,背景透出整页皮肤底 —— 这里只是精调入口。
+						皮肤生效时聊天页整体换装(默认四色预设隐藏):强调色跟随「主强调色」,
+						玻璃件直接用上面「玻璃」一节的参数 —— 这里只管聊天页自己的背景。
 					</p>
-					<ColorField
-						label="聊天强调色"
-						value={chat.accent}
-						isDefault={isDef(chat.accent, dm.chat?.accent)}
-						onChange={(v) => setChat({ accent: v })}
-					/>
-					<ColorField
-						label="聊天渐变次色"
-						value={chat.accentSecondary}
-						isDefault={isDef(chat.accentSecondary, dm.chat?.accentSecondary)}
-						onChange={(v) => setChat({ accentSecondary: v })}
-					/>
 					<FieldRow label="聊天页背景">
 						<textarea
 							aria-label="聊天页背景"

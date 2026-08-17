@@ -12,6 +12,7 @@ import {
 	applySkinVars,
 	clearSkinCss,
 	clearSkinVars,
+	composeChatGlassCss,
 	composeChatWallpaperCss,
 	composeEffectsCss,
 	composeSkinCss,
@@ -108,7 +109,7 @@ describe("composeSkinVars", () => {
 		const vars = composeSkinVars({}, assetUrl, "light");
 		const keys = Object.keys(vars);
 		expect(keys.every((k) => k.startsWith("--bn-chat-"))).toBe(true);
-		expect(keys).toHaveLength(6);
+		expect(keys).toHaveLength(5);
 	});
 
 	it("colors 新键 listRow/listRowBorder 映射到行条变量", () => {
@@ -314,22 +315,17 @@ describe("chat 变量(皮肤生效即整体接管 AI 聊天观感,变量必须�
 		expect(vars["--bn-chat-glow"]).toContain("163, 222, 79");
 	});
 
-	it("chat 段覆盖派生:accent/accentSecondary/background 各自生效", () => {
+	it("chat 段只管背景:background 生效,强调色仍从 colors.accent 派生(不另设一套颜色)", () => {
 		const vars = composeSkinVars(
 			{
 				colors: { accent: "#a3de4f" },
-				chat: {
-					accent: "#fb7299",
-					accentSecondary: "#ff9a5c",
-					background: "linear-gradient(135deg, #fdeef1, #fbe7ec)",
-				},
+				chat: { background: "linear-gradient(135deg, #fdeef1, #fbe7ec)" },
 			},
 			assetUrl,
 			"light",
 		);
-		expect(vars["--bn-chat-dot"]).toBe("#fb7299");
-		expect(vars["--bn-chat-accent-rgb"]).toBe("251, 114, 153");
-		expect(vars["--bn-chat-accent-2"]).toBe("#ff9a5c");
+		expect(vars["--bn-chat-dot"]).toBe("#a3de4f");
+		expect(vars["--bn-chat-accent-2"]).toBe("#a3de4f");
 		expect(vars["--bn-chat-bg"]).toContain("linear-gradient");
 	});
 
@@ -378,16 +374,27 @@ describe("chat 变量(皮肤生效即整体接管 AI 聊天观感,变量必须�
 		expect(css).toContain('url("/api/skins/abc/assets/c.webp")');
 	});
 
-	it("chat 玻璃族底色分量从皮肤 glass.background 派生;没配按模式回落", () => {
-		const skinned = composeSkinVars(
-			{ glass: { background: "rgba(30, 20, 50, 0.7)" } },
-			assetUrl,
-			"dark",
-		);
-		expect(skinned["--bn-chat-glass-rgb"]).toBe("30, 20, 50");
+	it("皮肤生效时聊天玻璃族整体改吃外部玻璃参数(--bn-glass-*),不再有 chat 专属玻璃", () => {
+		// 皮肤下不再输出 --bn-chat-glass-rgb —— 类被 composeChatGlassCss 覆盖,变量成死枝
+		expect(composeSkinVars({}, assetUrl, "light")["--bn-chat-glass-rgb"]).toBeUndefined();
 
-		expect(composeSkinVars({}, assetUrl, "light")["--bn-chat-glass-rgb"]).toBe("255, 255, 255");
-		expect(composeSkinVars({}, assetUrl, "dark")["--bn-chat-glass-rgb"]).toBe("30, 41, 59");
+		const css = composeChatGlassCss();
+		// 面板/弹层 = 强玻璃档,胶囊/气泡 = 普通档 —— 与 dashboard 的 .bn-glass(-strong) 同参
+		expect(css).toContain(".bn-glass-panel");
+		expect(css).toContain(".bn-glass-popover");
+		expect(css).toContain(".bn-glass-chip");
+		expect(css).toContain("var(--bn-glass-strong-bg)");
+		expect(css).toContain("var(--bn-glass-bg)");
+		expect(css).toContain("var(--bn-glass-blur)");
+		expect(css).toContain("var(--bn-glass-strong-blur)");
+		// 描边随皮肤 glass.border 入口走,默认装无描边
+		expect(css).toContain("var(--bn-glass-border, transparent)");
+		// 用户气泡保住 accent 纱,玻璃底换成外部玻璃
+		expect(css).toContain(".bn-chat-bubble-user");
+		expect(css).toContain("rgba(var(--bn-chat-accent-rgb), 0.14)");
+		// hover/选中态一并覆盖:无层规则恒压分层,不覆盖的话悬停反馈会死掉
+		expect(css).toContain(".bn-glass-chip:hover");
+		expect(css).toContain(".bn-glass-selected");
 	});
 
 	it("chat 壁纸没配或 blur=0 → composeChatWallpaperCss 输出空串", () => {

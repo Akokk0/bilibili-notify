@@ -6,6 +6,7 @@ import {
 	applySkinVars,
 	clearSkinCss,
 	clearSkinVars,
+	composeChatGlassCss,
 	composeChatWallpaperCss,
 	composeEffectsCss,
 	composeSkinCss,
@@ -153,6 +154,7 @@ export function SkinRoot({ children }: { children: ReactNode }) {
 				composeSkinCss(skin.manifest, theme),
 				composeWallpaperCss(mode, assetUrl, theme),
 				composeChatWallpaperCss(mode, assetUrl, theme),
+				composeChatGlassCss(),
 				composeEffectsCss(mode),
 			]
 				.filter((s) => s !== "")

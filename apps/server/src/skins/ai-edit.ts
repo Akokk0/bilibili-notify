@@ -44,7 +44,7 @@ export function buildSkinAiSystemPrompt(assets: string[]): string {
 ## 规则
 
 - schemaVersion 固定 1;没被要求改的字段一律原样保留,不要顺手删改
-- modes: { light?, dark? },每套里可用 colors / page.background / wallpaper(image·fit·position·overlay 0~0.8·blur 0~40)/ chat(accent·accentSecondary·background·wallpaper 同构 —— AI 聊天页专属外观,accent 缺省跟随 colors.accent、background 缺省透出整页皮肤底,通常不用写)/ glass(background·border·strongBackground·strongBorder·blur 0~40·strongBlur;默认装无描边,border 对只在刻意要描边风格(如暗色霓虹边)时才配,亮色/玻璃感皮肤不配)/ fonts.body / radius(card 0~32·pill 0~999)/ shadows(card·elev)/ css / effects
+- modes: { light?, dark? },每套里可用 colors / page.background / wallpaper(image·fit·position·overlay 0~0.8·blur 0~40)/ chat(background·wallpaper 同构 —— AI 聊天页专属背景,只管背景:强调色跟随 colors.accent、玻璃件直用 glass 段,background 缺省透出整页皮肤底,通常不用写)/ glass(background·border·strongBackground·strongBorder·blur 0~40·strongBlur;默认装无描边,border 对只在刻意要描边风格(如暗色霓虹边)时才配,亮色/玻璃感皮肤不配)/ fonts.body / radius(card 0~32·pill 0~999)/ shadows(card·elev)/ css / effects
 - wallpaper.overlay 是遮罩纱,纱色自动跟模式(亮=白纱/暗=黑纱);wallpaper.blur 是壁纸自身高斯模糊。亮色+高饱和壁纸的配方:overlay 0.3~0.4 + blur 8~16。卡内列表行默认全透明(内容直接画在玻璃上,别在玻璃卡里叠第二层),只有刻意要行条底/描边时才配 colors.listRow / colors.listRowBorder
 - effects 动效预设两道可选:glassShine { color? } / bokeh { colors: [1~4 色] }
 - 顶层可给 texts: { headerTitle, chatPlaceholder }(≤60 字)与 css(明暗共用)

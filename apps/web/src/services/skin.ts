@@ -93,25 +93,21 @@ export function composeSkinVars(
 
 	// AI 聊天页:皮肤生效即整体接管(chat 根摘 data-chat-theme、四色预设隐藏),
 	// 所以变量必须全套输出 —— styles.css 的 bn-chat-accent-* 族没有 fallback。
-	// 派生链:chat.accent → colors.accent → 品牌粉;chat 段只是精调入口。
+	// chat 段只管背景:强调色全部派生自 colors.accent,玻璃件由 composeChatGlassCss
+	// 覆盖成外部玻璃参数 —— 不另设一套 chat 专属颜色/玻璃。
 	{
 		const chat = mode.chat ?? {};
-		const accent = chat.accent ?? mode.colors?.accent ?? "#fb7299";
+		const accent = mode.colors?.accent ?? "#fb7299";
 		// hsl/oklch 解析不了时退品牌粉分量(soft 层会偏粉,已知限制;hex/rgb 覆盖绝大多数)
 		const rgb = toRgbTriple(accent) ?? "251, 114, 153";
 		vars["--bn-chat-dot"] = accent;
 		vars["--bn-chat-accent-rgb"] = rgb;
-		vars["--bn-chat-accent-2"] = chat.accentSecondary ?? accent;
+		vars["--bn-chat-accent-2"] = accent;
 		// 空态大标题背后那团光:从 accent 合成,浓度两套跟模式走(与四色预设同律)
 		vars["--bn-chat-glow"] =
 			theme === "light"
 				? `radial-gradient(closest-side, rgba(${rgb}, 0.32), rgba(${rgb}, 0.14) 46%, rgba(255, 255, 255, 0) 78%)`
 				: `radial-gradient(closest-side, rgba(${rgb}, 0.2), rgba(${rgb}, 0.09) 46%, rgba(0, 0, 0, 0) 78%)`;
-		// chat 玻璃族(.bn-glass-panel:侧栏/输入胶囊)的底色分量:从皮肤玻璃底色派生,
-		// 否则写死的白/蓝灰在任何皮肤下都是同一块板(真机踩过);没配按模式回落原值。
-		vars["--bn-chat-glass-rgb"] =
-			toRgbTriple(mode.glass?.background ?? "") ??
-			(theme === "light" ? "255, 255, 255" : "30, 41, 59");
 		// 背景:缺省引用整页皮肤底(--bn-page-bg)—— chat 是盖在框架上的全屏层,
 		// transparent 会把整个 dashboard 内容透出来(真机踩过)。chat 壁纸(无 blur)
 		// 合成进来时,底层用显式 background(纯色包渐变)或 surface-muted 兜底
@@ -287,6 +283,43 @@ export function composeChatWallpaperCss(
 	if (!wp?.image || wp.blur === undefined || wp.blur <= 0) return "";
 	const layers = buildWallpaperLayers({ ...wp, image: wp.image }, assetUrl, theme);
 	return `[data-bn-chat-root]::before{content:"";position:absolute;inset:-${wp.blur * 2}px;z-index:-1;pointer-events:none;background:${layers};filter:blur(${wp.blur}px)}`;
+}
+
+/**
+ * 皮肤生效时,聊天页玻璃族整体改吃**外部玻璃参数**(--bn-glass-*,与 dashboard 的
+ * .bn-glass / .bn-glass-strong 同一套):面板/弹层 = 强玻璃档,胶囊/气泡 = 普通档。
+ * 不另设 chat 专属玻璃参数 —— 皮肤编辑器「玻璃」一节就是聊天玻璃的唯一调节入口,
+ * chat 侧栏里的玻璃质感滑杆在皮肤下隐藏(与四色预设同律)。
+ *
+ * 注入的是无层 CSS,恒压 styles.css 里 @layer components 的原定义 —— 所以
+ * hover/选中态必须一并覆盖,否则「无层基态压过分层 hover」会杀掉悬停反馈。
+ * 常量输出:变量引用在运行时解析,皮肤没配玻璃段时自然回落 theme.css 的默认值。
+ */
+export function composeChatGlassCss(): string {
+	return [
+		".bn-glass-panel, .bn-glass-popover {",
+		"\tbackground: var(--bn-glass-strong-bg);",
+		"\tborder-color: var(--bn-glass-strong-border, transparent);",
+		"\tbackdrop-filter: blur(var(--bn-glass-strong-blur));",
+		"\t-webkit-backdrop-filter: blur(var(--bn-glass-strong-blur));",
+		"}",
+		".bn-glass-chip {",
+		"\tbackground: var(--bn-glass-bg);",
+		"\tborder-color: var(--bn-glass-border, transparent);",
+		"\tbackdrop-filter: blur(var(--bn-glass-blur));",
+		"\t-webkit-backdrop-filter: blur(var(--bn-glass-blur));",
+		"}",
+		// 悬停/选中 = 上一档更实,与 dashboard 的层级语义一致
+		".bn-glass-chip:hover, .bn-glass-selected {",
+		"\tbackground: var(--bn-glass-strong-bg);",
+		"}",
+		".bn-chat-bubble-user {",
+		"\tbackground: linear-gradient(rgba(var(--bn-chat-accent-rgb), 0.14), rgba(var(--bn-chat-accent-rgb), 0.14)), var(--bn-glass-bg);",
+		"\tborder-color: var(--bn-glass-border, transparent);",
+		"\tbackdrop-filter: blur(var(--bn-glass-blur));",
+		"\t-webkit-backdrop-filter: blur(var(--bn-glass-blur));",
+		"}",
+	].join("\n");
 }
 
 const SKIN_STYLE_ID = "bn-skin-css";

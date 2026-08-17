@@ -40,7 +40,7 @@ ${colorLines}
   —— image 固定写 "${WALLPAPER_BASENAME}.webp"(用户上传时会自动修正扩展名);overlay 是遮罩纱,纱色自动跟模式走(亮色蒙白纱/暗色蒙黑纱),配壁纸建议 ≥0.2 保文字可读;blur 是壁纸自身高斯模糊(px),高饱和/高对比壁纸建议 8~16 退成柔和色底,免得玻璃卡上透出脏斑
   —— 亮色 + 艳壁纸的经典配方:overlay 0.3~0.4 + blur 8~16。卡内列表行**默认全透明**(内容直接画在玻璃上,区块玻璃卡是唯一一层,别叠第二层),只有刻意要行条底/描边时才配 colors.listRow / colors.listRowBorder
 - glass: { background, border, strongBackground, strongBorder, blur: 0~40, strongBlur: 0~40 } —— 玻璃面板的底色(带透明度的颜色)与模糊度;默认装玻璃卡**无描边**(卡片风,层次靠 shadows),border 对只在刻意要描边风格(如暗色霓虹边)时才配 —— 亮色/玻璃感皮肤一律不配描边
-- chat: { accent, accentSecondary, background, wallpaper } —— AI 聊天页专属外观。皮肤生效时聊天页整体换装(默认四色预设隐藏):accent 缺省自动跟随 colors.accent,background 缺省透出整页皮肤底,所以**通常不用写这段**;只在聊天页想要独立配色/独立壁纸时才配。wallpaper 与整页壁纸同构(image/fit/position/overlay/blur),image 同样只准引用包内 assets
+- chat: { background, wallpaper } —— AI 聊天页专属背景。皮肤生效时聊天页整体换装(默认四色预设隐藏):强调色自动跟随 colors.accent、玻璃件直接用 glass 段参数,chat 段**只管背景**且缺省透出整页皮肤底,所以**通常不用写这段**;只在聊天页想要独立底色/独立壁纸时才配。wallpaper 与整页壁纸同构(image/fit/position/overlay/blur),image 同样只准引用包内 assets
 - fonts.body: 字体名数组(1~8 个)
 - radius: { card: 0~32, pill: 0~999 }
 - shadows: { card, elev } —— 卡片/悬浮两档阴影,值如 "0 10px 30px rgba(57, 197, 187, 0.25)";用带颜色的阴影能做出霓虹辉光感

@@ -331,12 +331,17 @@ describe("SkinEditor", () => {
 		await waitFor(() => expect(btn.disabled).toBe(true));
 	});
 
-	it("「AI 聊天」节:chat 段的编辑口(能力全集);改强调色 → preview 的 chat.accent 更新", async () => {
+	it("「AI 聊天」节只管背景(能力全集=schema 全集):改背景/壁纸落 draft,没有强调色入口", async () => {
 		renderEditor();
 		fireEvent.click(screen.getByText("AI 聊天"));
-		fireEvent.change(screen.getByLabelText("聊天强调色"), { target: { value: "#39c5bb" } });
+		// 颜色全部派生自主强调色、玻璃直用「玻璃」节 —— chat 段不另设一套参数
+		expect(screen.queryByLabelText("聊天强调色")).toBeNull();
+		expect(screen.queryByLabelText("聊天渐变次色")).toBeNull();
+		fireEvent.change(screen.getByLabelText("聊天页背景"), { target: { value: "#0e1c2c" } });
 		await waitFor(() =>
-			expect(useSkinStore.getState().preview?.manifest.modes.light?.chat?.accent).toBe("#39c5bb"),
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.chat?.background).toBe(
+				"#0e1c2c",
+			),
 		);
 		// 聊天壁纸选包内资产 → chat.wallpaper.image 落 draft
 		fireEvent.change(screen.getByLabelText("聊天壁纸"), { target: { value: "assets/deco.webp" } });

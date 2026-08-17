@@ -215,16 +215,9 @@ function parseMode(
 		if (!chat) {
 			errors.push(`${path}.chat: 必须是对象`);
 		} else {
+			// chat 段只管背景:强调色派生自 colors.accent、玻璃件直用 glass 段,
+			// 不另设一套参数。老包里的 accent/accentSecondary 静默忽略。
 			const out: NonNullable<SkinMode["chat"]> = {};
-			for (const key of ["accent", "accentSecondary"] as const) {
-				const v = chat[key];
-				if (v === undefined) continue;
-				if (typeof v !== "string" || !isColor(v)) {
-					errors.push(`${path}.chat.${key}: 不是合法颜色值(hex/rgb/hsl/oklch/transparent)`);
-				} else {
-					out[key] = v.trim();
-				}
-			}
 			if (chat.background !== undefined) {
 				if (typeof chat.background !== "string" || !isBackground(chat.background)) {
 					errors.push(`${path}.chat.background: 不是合法背景值(纯色或渐变)`);
