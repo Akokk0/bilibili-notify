@@ -1,5 +1,4 @@
 import type {
-	ActiveSkinResponse,
 	SkinListEntry,
 	SkinManifest,
 	SkinManifestResponse,
@@ -18,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, useRef, useState } from "react";
 import { Picker } from "../../components/forms";
 import { api } from "../../services/api";
+import { syncActiveSkinToStore } from "../../services/skin-active";
 import { buildSkinPrompt, makeSkinZip } from "../../services/skin-pack";
 import { useSkinStore } from "../../store/skin";
 import { SkinEditor } from "./SkinEditor";
@@ -63,19 +63,13 @@ export function SkinSection() {
 		void qc.invalidateQueries({ queryKey: ["skins"] });
 	}
 
-	/** 任何启用/停用/删除之后,以服务端双槽为权威回灌 store(SkinRoot 即时换装)。 */
-	async function syncActiveToStore(): Promise<void> {
-		const res = await api.get<ActiveSkinResponse>("/api/skins/active");
-		useSkinStore.getState().setActive(res.active);
-	}
-
 	const activate = useMutation({
 		// 深浅槽各自设置;id:null = 该槽回默认装。
 		mutationFn: (req: { id: string | null; theme: "light" | "dark" }) =>
 			api.put<{ ok: boolean }>("/api/skins/active", req),
 		onSuccess: async () => {
 			setError(null);
-			await syncActiveToStore();
+			await syncActiveSkinToStore();
 			useSkinStore.getState().setPreview(null);
 			refresh();
 		},
@@ -86,7 +80,7 @@ export function SkinSection() {
 		mutationFn: (id: string) => api.delete<{ ok: boolean }>(`/api/skins/${id}`),
 		onSuccess: async () => {
 			setError(null);
-			await syncActiveToStore();
+			await syncActiveSkinToStore();
 			refresh();
 		},
 		onError: (e) => setError(String((e as Error).message)),

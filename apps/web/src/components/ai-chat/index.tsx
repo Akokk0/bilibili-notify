@@ -18,6 +18,7 @@ import {
 	uploadChatImage,
 } from "../../services/aiChat";
 import { api } from "../../services/api";
+import { syncActiveSkinToStore } from "../../services/skin-active";
 import { useAiChatStore } from "../../store/aiChat";
 import { useAuthStore } from "../../store/auth";
 import { BiliLoginStatus } from "../../types/auth";
@@ -28,6 +29,7 @@ import { SearchControl } from "./search-control";
 import { ChatSidebar } from "./sidebar";
 import { AI_SKILLS, resolveOutgoing } from "./skills";
 import { ThinkingControl } from "./thinking-control";
+import { CREATE_SKIN_TOOL } from "./tools";
 import { useSessionCapsules } from "./use-session-capsules";
 
 /**
@@ -272,6 +274,10 @@ export function ChatPage() {
 			const imageIds = outgoingFiles.map((a) => a.id);
 			// 还没有会话就先开一个 —— 主人在空态直接打字发送时走这条路,
 			// 不必先去点「新对话」。
+			// 这一轮开过的工具:id → 名字。end 事件只带 id 与成败,而「做完皮肤要
+			// 补一拍状态回灌」得先认出它是哪个工具。建在**这一轮**的闭包里,跨轮
+			// 不留残影。
+			const toolNames = new Map<string, string>();
 			const id = activeId ?? (await createConversation()).id;
 			if (id !== activeId) {
 				// 这次 activeId 变化是首发落的户口,不是换会话 —— 别把刚点亮的胶囊打回默认。
@@ -291,7 +297,17 @@ export function ChatPage() {
 					//
 					// 按 id 认人而不是「改最后一条」:一轮里可以同时开好几个工具,end 回来的
 					// 次序不保证跟 start 一致。
-					onTool: (ev) =>
+					onTool: (ev) => {
+						if (ev.phase === "start") toolNames.set(ev.id, ev.name);
+						// 女仆做完一套皮肤(很可能顺手已经替主人换上了)—— 服务端那边
+						// 已经落盘,界面得自己去问一声,否则她说「换好啦」而屏幕不动。
+						// 只认做成了的:白拉一趟没意义,还会把失败演成成功。
+						else if (ev.ok && toolNames.get(ev.id) === CREATE_SKIN_TOOL) {
+							void syncActiveSkinToStore().catch(() => {
+								// 拉失败就维持现状:皮肤已经在库里了,主人去皮肤页照样看得到。
+							});
+							void qc.invalidateQueries({ queryKey: ["skins"] });
+						}
 						setPending((p) => {
 							if (!p) return p; // 已经切走 / 撤掉了,这一拍没人要
 							if (ev.phase === "start") {
@@ -305,7 +321,8 @@ export function ChatPage() {
 										: t,
 								),
 							};
-						}),
+						});
+					},
 				},
 				imageIds,
 				flags,

@@ -32,6 +32,10 @@ describe("toolLabel", () => {
 		expect(toolLabel("subscribe_user", { uid: "123" })).toBe("添加订阅「123」");
 	});
 
+	it("做皮肤那几十秒里写清「在做什么样的」—— 光转圈跟卡住没区别", () => {
+		expect(toolLabel("create_skin", { brief: "赛博朋克暗色" })).toBe("制作皮肤「赛博朋克暗色」");
+	});
+
 	it("不认识的工具显示原名,不是空白", () => {
 		expect(toolLabel("brand_new_tool", {})).toBe("brand_new_tool");
 	});

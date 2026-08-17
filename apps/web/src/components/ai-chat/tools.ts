@@ -12,6 +12,13 @@ interface LabelSpec {
 	arg?: readonly string[];
 }
 
+/**
+ * 「做一套皮肤」。女仆手上唯一一个会改到界面本身的工具 —— 它跑完之后,聊天页要
+ * 补一拍皮肤状态回灌(见 index.tsx),所以这个名字在前端也是有语义的,不只是一行
+ * 文案。写死在这里而不是各处硬编码字符串。
+ */
+export const CREATE_SKIN_TOOL = "create_skin";
+
 const TOOL_LABELS: Record<string, LabelSpec> = {
 	list_subscriptions: { label: "查看订阅列表" },
 	get_live_status: { label: "查看直播状态" },
@@ -24,6 +31,9 @@ const TOOL_LABELS: Record<string, LabelSpec> = {
 	search_user: { label: "搜索 UP 主", arg: ["keyword"] },
 	// 联网搜索(web_search)。转圈态就是「搜索中:关键词」—— 搜了什么比搜过有用。
 	web_search: { label: "联网搜索", arg: ["query"] },
+	// 做皮肤要跑一整趟嵌套生成,几十秒起步 —— 转圈那会儿写清「在做什么样的」,
+	// 主人才知道这是在忙正事,而不是卡住了。
+	[CREATE_SKIN_TOOL]: { label: "制作皮肤", arg: ["brief"] },
 	subscribe_user: { label: "添加订阅", arg: ["name", "uid"] },
 	unsubscribe_user: { label: "取消订阅", arg: ["name", "uid"] },
 	update_subscription: { label: "修改订阅设置", arg: ["name", "uid"] },
