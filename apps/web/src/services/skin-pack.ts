@@ -73,8 +73,8 @@ ${Object.entries(SKIN_CSS_HOOK_MAP)
 
 ## 库内最佳实践(官方皮肤库的统一手感,照此执行)
 
-- **亮色皮肤**:glass 统一 { background: "rgba(255, 255, 255, 0.85)", strongBackground: "rgba(255, 255, 255, 0.88)", blur: 12 },不配描边;**不写 shadows**(默认装的双层影就是亮色标准);**不开 glassShine**(亮底上流光会吃掉卡片层次),动效只用 bokeh(2~3 团主题色淡染,alpha 0.35~0.45)
-- **暗色皮肤**:glass 统一透明度 —— background 取皮肤深底色相 alpha 0.55、strongBackground 取更深一档 alpha 0.85,blur: 18、strongBlur: 26;描边配霓虹细边(border alpha 0.22~0.28 / strongBorder 0.3~0.35);shadows 统一双层结构:card "0 10px 36px rgba(<深底>, 0.65), 0 0 18px rgba(<主强调>, 0.12)"、elev "0 18px 56px rgba(<深底>, 0.75), 0 0 30px rgba(<主强调>, 0.2)";**开 glassShine**(color 取主强调 alpha 0.32),bokeh 用 2~3 团霓虹色(alpha 0.4~0.75)
+- **亮色皮肤**:glass 统一 { background: "rgba(255, 255, 255, 0.85)", strongBackground: "rgba(255, 255, 255, 0.88)", blur: 12 },不配描边;**不写 shadows**(默认装的双层影就是亮色标准);**不写 effects**(流光/光斑这类特效全属暗色 —— 亮底上流光吃层次、光斑发灰),亮色的表现力靠渐变结界底 + 配色 + CSS
+- **暗色皮肤**:glass 统一透明度 —— background 取皮肤深底色相 alpha 0.55、strongBackground 取更深一档 alpha 0.85,blur: 18、strongBlur: 26;描边配霓虹细边(border alpha 0.22~0.28 / strongBorder 0.3~0.35);shadows 统一双层结构:card "0 10px 36px rgba(<深底>, 0.65), 0 0 18px rgba(<主强调>, 0.12)"、elev "0 18px 56px rgba(<深底>, 0.75), 0 0 30px rgba(<主强调>, 0.2)";**开 glassShine**(color 取主强调 alpha 0.32)+ bokeh(2~3 团霓虹色,alpha 0.4~0.75)—— 动效特效是暗色的专属语汇
 - **texts 写沉浸式世界观文案**:chatPlaceholder 用「状态确认 + 引导输入」句式(如「神经链路已接入,输入指令开始同步…」「39 频道已连线,和 Miku 酱开始今天的演出吧♪」),别写说明书腔
 
 只输出 skin.json 的 JSON 内容,不要任何解释或代码块围栏。`;
