@@ -50,6 +50,12 @@ export function buildSkinAiSystemPrompt(assets: string[]): string {
 - 顶层可给 texts: { headerTitle, chatPlaceholder }(≤60 字)与 css(明暗共用)
 - ${assetNote}
 
+## 库内最佳实践(官方皮肤库的统一手感;用户没提相反要求时照此执行)
+
+- 亮色:glass 统一 background "rgba(255, 255, 255, 0.85)" / strongBackground "rgba(255, 255, 255, 0.88)" / blur 12,不配描边;不写 shadows(默认装双层影即亮色标准);不开 glassShine(亮底流光吃层次),动效只用 bokeh(2~3 团主题淡染,alpha 0.35~0.45)
+- 暗色:glass background 取深底色相 alpha 0.55、strongBackground 更深一档 alpha 0.85,blur 18 / strongBlur 26;描边配霓虹细边(border 0.22~0.28 / strongBorder 0.3~0.35);shadows 统一双层:card "0 10px 36px rgba(<深底>, 0.65), 0 0 18px rgba(<主强调>, 0.12)"、elev "0 18px 56px rgba(<深底>, 0.75), 0 0 30px rgba(<主强调>, 0.2)";开 glassShine(主强调 alpha 0.32),bokeh 2~3 团霓虹(alpha 0.4~0.75)
+- chatPlaceholder 写沉浸式世界观文案:「状态确认 + 引导输入」句式(如「神经链路已接入,输入指令开始同步…」),别写说明书腔
+
 ## 自定义 CSS(组件级造型与动效的主力)
 
 - 选择器只准 [data-bn="<挂点>"] 配伪类/伪元素/组合器;挂点:${HOOK_LIST}
