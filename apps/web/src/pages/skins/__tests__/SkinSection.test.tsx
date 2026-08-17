@@ -92,7 +92,7 @@ describe("SkinSection", () => {
 		await waitFor(() => expect(screen.getAllByText("樱花夜").length).toBeGreaterThan(0));
 		fireEvent.click(screen.getByText("制作皮肤"));
 
-		await waitFor(() => expect(screen.getByText(/做套皮肤/)).toBeTruthy());
+		await waitFor(() => expect(screen.getByText(/皮肤工坊/)).toBeTruthy());
 		// 外部 AI 那条路还在,只是退到了后面。
 		expect(screen.getByText("复制提示词")).toBeTruthy();
 	});

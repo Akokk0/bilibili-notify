@@ -1,7 +1,7 @@
 import type { AiConversationDTO } from "@bilibili-notify/contract";
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { resolveActivePersona, resolveAIProfile } from "@bilibili-notify/internal/constants";
-import { Icon } from "@bilibili-notify/ui";
+import { Icon, TabBar } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -27,10 +27,10 @@ import { MessageList, preloadChatMarkdown, type ToolChipData } from "./messages"
 import { resolveChatPersona } from "./persona";
 import { SearchControl } from "./search-control";
 import { ChatSidebar } from "./sidebar";
-import { AI_SKILLS, resolveOutgoing } from "./skills";
+import { AI_SKILLS, resolveOutgoing, resolveSkill } from "./skills";
 import { ThinkingControl } from "./thinking-control";
 import { CREATE_SKIN_TOOL } from "./tools";
-import { useSessionCapsules } from "./use-session-capsules";
+import { type ChatMode, useSessionCapsules } from "./use-session-capsules";
 
 /**
  * 女仆 AI 聊天 —— 一条独立路由(/chat)的整页对话界面,右下角的胶囊
@@ -128,8 +128,14 @@ type SendVars = {
 	 * 会话级胶囊在**点发送那一刻**的状态。走 variables 而不是让 mutationFn 从
 	 * 组件闭包里读 —— 见 react-query onMutate 的时序坑:要发的东西必须随载荷走。
 	 */
-	flags: { thinking: boolean; search: boolean };
+	flags: { thinking: boolean; search: boolean; mode: ChatMode };
 };
+
+/** 模式切换器的两段。皮肤工坊里女仆没有人格、也够不着 B 站数据 —— 见服务端路由。 */
+const MODE_TABS = [
+	{ id: "chat" as const, label: "聊天", icon: <Icon.chat size={14} /> },
+	{ id: "skin" as const, label: "皮肤工坊", icon: <Icon.palette size={14} /> },
+];
 
 /** /chat 路由页。除了「返回控制台」的去向,不感知路由 —— 其余全是聊天自己的事。 */
 export function ChatPage() {
@@ -245,17 +251,28 @@ export function ChatPage() {
 		setSettled(null);
 	}, [activeId]);
 
-	// 会话级的两颗胶囊(深度思考 / 联网搜索)。归零策略连同「首发落地新会话
+	// 会话级的两颗胶囊(深度思考 / 联网搜索)与模式。归零策略连同「首发落地新会话
 	// 不算换会话」的豁免都住在 hook 里 —— 见 use-session-capsules.ts。
-	const { thinkingOn, setThinkingOn, searchOn, setSearchOn, adoptConversation } =
+	const { thinkingOn, setThinkingOn, searchOn, setSearchOn, mode, setMode, adoptConversation } =
 		useSessionCapsules(activeId);
+	const skinMode = mode === "skin";
 	// 空态与会话态两个 Composer 用同一份 —— 各写一遍的话,加第三颗胶囊只改到
 	// 一处,问候屏和聊天里的工具栏就长得不一样了(正是本文件头警告过的分裂态)。
+	//
+	// 皮肤工坊里不摆联网搜索:那个模式服务端连搜索工具都没挂,留着这颗胶囊就是
+	// 一个点了也不会发生任何事的开关。
 	const composerExtras = (
 		<>
 			<ThinkingControl on={thinkingOn} onToggle={setThinkingOn} />
-			<SearchControl on={searchOn} onToggle={setSearchOn} />
+			{skinMode ? null : <SearchControl on={searchOn} onToggle={setSearchOn} />}
 		</>
+	);
+
+	/** 模式切换。两个 Composer 各摆一份,与 extras 同理。 */
+	const modeSwitch = (
+		<div className="mx-auto mb-2.5 w-fit">
+			<TabBar items={MODE_TABS} value={mode} onChange={setMode} />
+		</div>
 	);
 
 	/**
@@ -435,9 +452,15 @@ export function ChatPage() {
 	}, [busy, messages.length, pending?.draft.length, pending?.think.length]);
 
 	const submit = (text?: string) => {
-		const outgoing = resolveOutgoing(text ?? input);
+		const raw = text ?? input;
+		const outgoing = resolveOutgoing(raw);
 		// 只有图、一个字没打也算数 —— 图本身就是问题。
 		if ((!outgoing && attachments.length === 0) || busy) return;
+		// 技能可以自带模式(`/皮肤` 要在皮肤工坊里跑)。切换器跟着一起动,主人
+		// 看得见自己换了副面孔;而这一问用的模式**随载荷走**,不等 setMode 那一拍
+		// 生效 —— 从闭包里读 `mode` 会读到切换前的旧值。
+		const outgoingMode = resolveSkill(raw)?.mode ?? mode;
+		if (outgoingMode !== mode) setMode(outgoingMode);
 		// 附件快照必须在**这里**取。`mutationFn` 是在 `onMutate` 之后才跑的
 		// (onMutate 的返回值被 await,那一让步足够 React 把重渲染 flush 掉),
 		// 那时 `setAttachments([])` 已经生效 —— 从 mutationFn 的闭包里读
@@ -446,7 +469,7 @@ export function ChatPage() {
 		send.mutate({
 			text: outgoing,
 			attachments,
-			flags: { thinking: thinkingOn, search: searchOn },
+			flags: { thinking: thinkingOn, search: searchOn, mode: outgoingMode },
 		});
 	};
 
@@ -535,9 +558,12 @@ export function ChatPage() {
 									</span>
 								</h1>
 								<div className="text-[15.5px] text-bn-text-secondary">
-									今天想让{persona.self}帮{persona.user}做点什么呢?
+									{skinMode
+										? "说说想要什么样的界面皮肤吧,氛围、主色、深浅都可以聊"
+										: `今天想让${persona.self}帮${persona.user}做点什么呢?`}
 								</div>
 							</div>
+							{modeSwitch}
 							<Composer
 								value={input}
 								onChange={setInput}
@@ -558,7 +584,9 @@ export function ChatPage() {
 									呜…{persona.self}出错了:{error}
 								</div>
 							) : null}
-							<div className="bn-anim-fade-up mt-4 flex flex-wrap justify-center gap-2">
+							<div
+								className={`bn-anim-fade-up mt-4 flex-wrap justify-center gap-2 ${skinMode ? "hidden" : "flex"}`}
+							>
 								{AI_SKILLS.map((s) => {
 									const Glyph = Icon[s.icon];
 									return (
@@ -591,6 +619,7 @@ export function ChatPage() {
 							/>
 						</div>
 						<div className="px-6 pb-5 pt-2.5">
+							{modeSwitch}
 							<Composer
 								value={input}
 								onChange={setInput}

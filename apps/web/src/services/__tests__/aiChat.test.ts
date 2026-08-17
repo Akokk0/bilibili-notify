@@ -251,6 +251,28 @@ describe("sendChatMessage — 会话级胶囊 flags", () => {
 		vi.unstubAllGlobals();
 	});
 
+	it("皮肤工坊 → 请求体带 mode:skin", async () => {
+		const fetchMock = vi.fn(async () => doneRes());
+		vi.stubGlobal("fetch", fetchMock);
+		await sendChatMessage("c1", "做套皮肤", { onDelta: () => {} }, undefined, { mode: "skin" });
+		const body = JSON.parse(
+			((fetchMock.mock.calls[0] as unknown[])[1] as RequestInit).body as string,
+		);
+		expect(body).toMatchObject({ mode: "skin" });
+		vi.unstubAllGlobals();
+	});
+
+	it("日常聊天 → 请求体压根没有 mode 键(不带 = 只读窗口,写能力不会漏出来)", async () => {
+		const fetchMock = vi.fn(async () => doneRes());
+		vi.stubGlobal("fetch", fetchMock);
+		await sendChatMessage("c1", "问", { onDelta: () => {} }, undefined, { mode: "chat" });
+		const body = JSON.parse(
+			((fetchMock.mock.calls[0] as unknown[])[1] as RequestInit).body as string,
+		);
+		expect("mode" in body).toBe(false);
+		vi.unstubAllGlobals();
+	});
+
 	it("胶囊全灭 / 不传 flags → 请求体里根本没有这两个键(不带 = 关)", async () => {
 		const fetchMock = vi.fn(async () => doneRes());
 		vi.stubGlobal("fetch", fetchMock);

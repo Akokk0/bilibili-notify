@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { AI_SKILLS, matchSkills, resolveOutgoing } from "../skills";
+import { AI_SKILLS, matchSkills, resolveOutgoing, resolveSkill } from "../skills";
 
 describe("matchSkills — 菜单什么时候弹", () => {
 	it("普通文字不弹菜单", () => {
@@ -60,6 +60,22 @@ describe("resolveOutgoing — 到底发出去什么", () => {
 	it("技能命令带首尾空白也认得出来", () => {
 		const skill = AI_SKILLS[0];
 		expect(resolveOutgoing(`  ${skill?.cmd}  `)).toBe(skill?.prompt);
+	});
+});
+
+describe("技能自带的模式", () => {
+	it("/皮肤 要在皮肤工坊里跑 —— 聊天模式没有做皮肤的工具", () => {
+		expect(resolveSkill("/皮肤")?.mode).toBe("skin");
+	});
+
+	it("其余技能不指定模式 —— 它们在日常聊天里本来就能干", () => {
+		expect(resolveSkill("/锐评")?.mode).toBeUndefined();
+	});
+
+	it("不是技能就没有模式意见", () => {
+		expect(resolveSkill("本周谁最勤奋")).toBeUndefined();
+		// 追加了要求的那种照旧不算整条命令(与 resolveOutgoing 同一判据)。
+		expect(resolveSkill("/锐评 只看这三个人")).toBeUndefined();
 	});
 });
 

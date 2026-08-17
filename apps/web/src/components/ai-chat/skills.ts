@@ -1,4 +1,5 @@
 import type { IconName } from "@bilibili-notify/ui";
+import type { ChatMode } from "./use-session-capsules";
 
 /**
  * 女仆技能 —— 输入框里打 `/` 唤起的那几条。
@@ -17,6 +18,13 @@ export interface AiSkill {
 	desc: string;
 	/** 选中后真正发给女仆的话。 */
 	prompt: string;
+	/**
+	 * 这条技能要在哪个模式下跑。不给 = 用主人当下选的那个。
+	 *
+	 * `/皮肤` 必须带上它:做皮肤那把工具只在皮肤工坊里挂着,留在日常聊天里发出去,
+	 * 女仆会答应下来然后什么也做不出来。
+	 */
+	mode?: ChatMode;
 }
 
 export const AI_SKILLS: readonly AiSkill[] = [
@@ -41,6 +49,7 @@ export const AI_SKILLS: readonly AiSkill[] = [
 	{
 		cmd: "/皮肤",
 		icon: "palette",
+		mode: "skin",
 		desc: "让女仆做一套界面皮肤",
 		// 技能选中就直接发出去,所以这句得自洽:主人这会儿还没想好风格,让她先问
 		// 一句再动手 —— 生成是一整趟模型调用,凭空猜一套多半是白做。
@@ -71,6 +80,16 @@ export function matchSkills(input: string): AiSkill[] {
 }
 
 /**
+ * 整条输入恰好是某个技能命令时,给出那条技能;否则 undefined。
+ *
+ * 判据与 {@link resolveOutgoing} 是同一个(必须整条相等)—— 两处若各判各的,
+ * 就会出现「话按技能换了、模式却没跟着换」这种半吊子状态。
+ */
+export function resolveSkill(input: string): AiSkill | undefined {
+	return AI_SKILLS.find((s) => s.cmd === input.trim());
+}
+
+/**
  * 把输入解析成真正要发出去的那句话。
  *
  * 整条输入恰好是某个技能命令 → 换成它的 `prompt`;否则原样发送。刻意**只在
@@ -78,6 +97,5 @@ export function matchSkills(input: string): AiSkill[] {
  * 换成预置话术会把那句追加悄悄吃掉。
  */
 export function resolveOutgoing(input: string): string {
-	const text = input.trim();
-	return AI_SKILLS.find((s) => s.cmd === text)?.prompt ?? text;
+	return resolveSkill(input)?.prompt ?? input.trim();
 }

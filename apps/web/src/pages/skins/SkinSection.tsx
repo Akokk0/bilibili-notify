@@ -382,8 +382,8 @@ function SkinGuideModal({ onClose }: { onClose: () => void }) {
 				  但那个入口在聊天页,主人站在这个弹窗前是看不见的,所以在这儿指一下路。
 				*/}
 				<div className="rounded-lg border border-bn-border-subtle bg-bn-surface-muted p-2.5 text-bn-text-secondary">
-					更省事的一条:点右下角的女仆胶囊,直接跟她说「做套皮肤」—— 她会问清风格,自己生成好存进库,
-					也能顺手替主人换上。下面这套是找外部 AI 做、再粘回来的路子。
+					更省事的一条:点右下角的女仆胶囊进聊天页,把上方的模式切到「皮肤工坊」,直接说想要什么风格 ——
+					她会问清细节,自己生成好存进库,也能顺手替主人换上。下面这套是找外部 AI 做、再粘回来的路子。
 				</div>
 				<ol className="list-decimal space-y-1 pl-5">
 					<li>点「复制提示词」,粘给任意 AI(ChatGPT / Claude / 豆包都行)</li>
