@@ -121,7 +121,6 @@ beforeEach(() => {
 	vi.mocked(uploadChatImage).mockClear();
 	useAiChatStore.setState({
 		rail: true,
-		theme: "lime",
 		activeId: null,
 		glassOpacity: DEFAULT_GLASS_OPACITY,
 		glassClear: false,

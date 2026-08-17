@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 /**
- * 聊天界面的样式偏好 —— 主题色之外的两项:玻璃片透明度、完全透明。
+ * 聊天界面的样式偏好 —— 玻璃片透明度、完全透明两项(四色主题预设已砍)。
  *
  * 这两项刻意跟推送卡片的 `cardStyle.glassOpacity` / `glassClear` 同名同义,
  * 主人在两处看到的是同一套说法。区别只在**存哪**:推送卡片那对是业务配置,
- * 落服务端;这一对是「这台设备上看着舒服」的偏好,跟主题色一样留在 localStorage。
+ * 落服务端;这一对是「这台设备上看着舒服」的偏好,留在 localStorage。
  */
 
 import { beforeEach, describe, expect, it } from "vite-plus/test";

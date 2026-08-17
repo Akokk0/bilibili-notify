@@ -266,19 +266,9 @@
 		border-color: rgba(255, 255, 255, calc(0.15 * var(--bn-chat-glass, 0.82)));
 	}
 
-	/* 玻璃面板里被选中的那一项(主题色卡)。同样比常态实一档。 */
+	/* 玻璃面板里被选中的那一项(思考深度卡)。同样比常态实一档。 */
 	.bn-glass-selected {
 		background: rgba(var(--bn-chat-glass-rgb), calc(var(--bn-chat-glass, 0.82) + 0.1));
-	}
-
-	/* 选中色点外圈那道环。浅色下是「从白底里挖一圈」的效果;暗色下同样的白会在
-   深底上炸成一团光晕,比色点本身还抢眼,得换成贴近面板底色的深环才读得出
-   「挖出来」的意思。 */
-	:root {
-		--bn-chat-ring: rgba(255, 255, 255, 0.7);
-	}
-	:root[data-theme="dark"] {
-		--bn-chat-ring: rgba(15, 23, 42, 0.78);
 	}
 
 	/* 小尺寸元素(按钮 / 胶囊)上的弱化高光 —— 全强度会把一颗按钮照成高光球。
@@ -537,47 +527,12 @@
 		border-color: rgba(var(--bn-chat-accent-rgb), 0.4);
 	}
 
-	/* 聊天页 4 套主题色。`--bn-chat-bg` 是整页底,`--bn-chat-glow` 是空态大标题
-   背后那团光。暗色不是把浅色调暗那么简单 —— 浅色版靠「几乎白」的底衬托留白,
-   暗色版得反过来靠一点色相把深底跟应用背景区分开,所以两套值分别调。 */
-	[data-chat-theme="lime"] {
-		--bn-chat-dot: #a3de4f;
-		--bn-chat-accent-rgb: 163, 222, 79;
-		--bn-chat-accent-2: #3ec98a;
-		--bn-chat-bg: linear-gradient(135deg, #f2f7e8 0%, #f6faee 52%, #edf4e0 100%);
-		--bn-chat-glow: radial-gradient(
-			closest-side,
-			rgba(163, 222, 79, 0.34),
-			rgba(120, 200, 90, 0.16) 46%,
-			rgba(255, 255, 255, 0) 78%
-		);
-	}
-	[data-chat-theme="violet"] {
-		--bn-chat-dot: #a29bfe;
-		--bn-chat-accent-rgb: 162, 155, 254;
-		/* 紫→粉是设计稿原本那条渐变,留在这套主题里 —— 别的三套各自配一条同调的。 */
-		--bn-chat-accent-2: #fb7299;
-		--bn-chat-bg: linear-gradient(135deg, #efeafb 0%, #f7eff5 52%, #eaf1fb 100%);
-		--bn-chat-glow: radial-gradient(
-			closest-side,
-			rgba(162, 155, 254, 0.32),
-			rgba(251, 114, 153, 0.14) 46%,
-			rgba(255, 255, 255, 0) 78%
-		);
-	}
-	[data-chat-theme="sky"] {
-		--bn-chat-dot: #57b9f0;
-		--bn-chat-accent-rgb: 87, 185, 240;
-		--bn-chat-accent-2: #6a7ef0;
-		--bn-chat-bg: linear-gradient(135deg, #e8f2fb 0%, #eef6fc 52%, #e2eefa 100%);
-		--bn-chat-glow: radial-gradient(
-			closest-side,
-			rgba(87, 185, 240, 0.32),
-			rgba(120, 200, 255, 0.14) 46%,
-			rgba(255, 255, 255, 0) 78%
-		);
-	}
-	[data-chat-theme="peach"] {
+	/* 聊天页默认主题(品牌粉)。四色预设已砍 —— 默认装只有这一套默认样式,换观感
+   一律走皮肤包(composeSkinVars 输出整套 --bn-chat-*,root 内联变量顶掉这里)。
+   `--bn-chat-bg` 是整页底,`--bn-chat-glow` 是空态大标题背后那团光。暗色不是把
+   浅色调暗那么简单 —— 浅色版靠「几乎白」的底衬托留白,暗色版得反过来靠一点
+   色相把深底跟应用背景区分开,所以两套值分别调。 */
+	:root {
 		--bn-chat-dot: #fb7299;
 		--bn-chat-accent-rgb: 251, 114, 153;
 		--bn-chat-accent-2: #ff9a5c;
@@ -589,35 +544,7 @@
 			rgba(255, 255, 255, 0) 78%
 		);
 	}
-
-	:root[data-theme="dark"] [data-chat-theme="lime"] {
-		--bn-chat-bg: linear-gradient(135deg, #141b12 0%, #121a14 52%, #0f160f 100%);
-		--bn-chat-glow: radial-gradient(
-			closest-side,
-			rgba(163, 222, 79, 0.2),
-			rgba(120, 200, 90, 0.09) 46%,
-			rgba(0, 0, 0, 0) 78%
-		);
-	}
-	:root[data-theme="dark"] [data-chat-theme="violet"] {
-		--bn-chat-bg: linear-gradient(135deg, #171531 0%, #1a1527 52%, #13192e 100%);
-		--bn-chat-glow: radial-gradient(
-			closest-side,
-			rgba(162, 155, 254, 0.22),
-			rgba(251, 114, 153, 0.1) 46%,
-			rgba(0, 0, 0, 0) 78%
-		);
-	}
-	:root[data-theme="dark"] [data-chat-theme="sky"] {
-		--bn-chat-bg: linear-gradient(135deg, #0e1c2c 0%, #101f2f 52%, #0c1725 100%);
-		--bn-chat-glow: radial-gradient(
-			closest-side,
-			rgba(87, 185, 240, 0.22),
-			rgba(120, 200, 255, 0.1) 46%,
-			rgba(0, 0, 0, 0) 78%
-		);
-	}
-	:root[data-theme="dark"] [data-chat-theme="peach"] {
+	:root[data-theme="dark"] {
 		--bn-chat-bg: linear-gradient(135deg, #2a1621 0%, #26161d 52%, #20121a 100%);
 		--bn-chat-glow: radial-gradient(
 			closest-side,

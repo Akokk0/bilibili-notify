@@ -21,7 +21,6 @@ import { api } from "../../services/api";
 import { useAiChatStore } from "../../store/aiChat";
 import { useAuthStore } from "../../store/auth";
 import { BiliLoginStatus } from "../../types/auth";
-import { useCurrentSkinMode } from "../skin-root";
 import { Composer, type ComposerAttachment, MAX_ATTACHMENTS } from "./composer";
 import { MessageList, preloadChatMarkdown, type ToolChipData } from "./messages";
 import { resolveChatPersona } from "./persona";
@@ -144,11 +143,6 @@ export function ChatPage() {
 
 	const rail = useAiChatStore((s) => s.rail);
 	const setRail = useAiChatStore((s) => s.setRail);
-	const theme = useAiChatStore((s) => s.theme);
-	// 皮肤生效时摘掉 data-chat-theme:四色预设的元素级变量规则不再命中,
-	// --bn-chat-* 全套走 root 继承(皮肤注入);data-bn-chat-root 给 chat 专属壁纸寻址。
-	const skinOn = useCurrentSkinMode() !== null;
-	const setTheme = useAiChatStore((s) => s.setTheme);
 	const glassOpacity = useAiChatStore((s) => s.glassOpacity);
 	const setGlassOpacity = useAiChatStore((s) => s.setGlassOpacity);
 	const glassClear = useAiChatStore((s) => s.glassClear);
@@ -462,7 +456,9 @@ export function ChatPage() {
 
 	return (
 		<section
-			data-chat-theme={skinOn ? undefined : theme}
+			// 四色预设已砍,不再有 data-chat-theme:默认主题样式定义在 styles.css 的
+			// :root 上,皮肤注入的 root 内联变量天然顶掉它;换观感一律走皮肤包。
+			// data-bn-chat-root 给 chat 专属壁纸寻址。
 			data-bn-chat-root=""
 			className="bn-anim-chat-in fixed inset-0 z-40 flex"
 			// 玻璃片的三个值,算法照搬推送卡片的卡片内容层:
@@ -501,8 +497,6 @@ export function ChatPage() {
 					onNew={startNew}
 					onDelete={(id) => removeConv.mutate(id)}
 					onCollapse={() => setRail(false)}
-					theme={theme}
-					onThemeChange={setTheme}
 					modelName={modelName}
 					userName={userName}
 					userFace={card?.face}

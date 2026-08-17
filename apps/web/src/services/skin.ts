@@ -91,8 +91,8 @@ export function composeSkinVars(
 	if (mode.shadows?.card) vars["--shadow-bn-card"] = mode.shadows.card;
 	if (mode.shadows?.elev) vars["--shadow-bn-elev"] = mode.shadows.elev;
 
-	// AI 聊天页:皮肤生效即整体接管(chat 根摘 data-chat-theme、四色预设隐藏),
-	// 所以变量必须全套输出 —— styles.css 的 bn-chat-accent-* 族没有 fallback。
+	// AI 聊天页:皮肤生效即整体接管(默认主题定义在 styles.css 的 :root 上,
+	// 皮肤把整套变量注入 root 内联样式顶掉它),所以变量必须全套输出。
 	// chat 段只管背景:强调色全部派生自 colors.accent,玻璃件由 composeChatGlassCss
 	// 覆盖成外部玻璃参数 —— 不另设一套 chat 专属颜色/玻璃。
 	{

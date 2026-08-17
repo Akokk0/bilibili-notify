@@ -2,7 +2,7 @@
 /**
  * 侧栏设置弹层的成员清单 —— 「思考深度」搬进来之后,守住它真的在弹层里。
  * 档位行为、能力位、PATCH 载荷在 thinking-level-setting.test.tsx 里逐条守;
- * 这里只看集成:齿轮点开,主题色 / 玻璃质感 / 思考深度三节都在。
+ * 这里只看集成:齿轮点开,玻璃质感 / 思考深度两节都在(四色主题预设已砍)。
  */
 
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
@@ -49,8 +49,6 @@ function mountSidebar() {
 				onNew={() => {}}
 				onDelete={() => {}}
 				onCollapse={() => {}}
-				theme="violet"
-				onThemeChange={() => {}}
 				userName="主人"
 				aiName="伦伦"
 				glassOpacity={0.5}
@@ -75,15 +73,15 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("ChatSidebar — 设置弹层", () => {
-	it("齿轮点开 → 主题色 / 玻璃质感 / 思考深度三节都在", async () => {
+	it("齿轮点开 → 玻璃质感 / 思考深度两节都在;四色预设已砍,没有主题色节", async () => {
 		mountSidebar();
 		fireEvent.click(screen.getByRole("button", { name: "聊天设置" }));
-		expect(screen.getByText("主题色")).toBeTruthy();
+		expect(screen.queryByText("主题色")).toBeNull();
 		expect(screen.getByText("玻璃质感")).toBeTruthy();
 		expect(await screen.findByText("思考深度")).toBeTruthy();
 	});
 
-	it("皮肤生效时:四色「主题色」与「玻璃质感」两节整个隐藏(chat 观感与玻璃参数都由皮肤接管),思考深度照常", async () => {
+	it("皮肤生效时:「玻璃质感」节整个隐藏(玻璃参数由皮肤接管),思考深度照常", async () => {
 		useSkinStore.setState({
 			active: {
 				light: { id: "s1", manifest: { schemaVersion: 1, name: "t", modes: { light: {} } } },

@@ -90,9 +90,9 @@ describe("theme conformance", () => {
 	/**
 	 * 聊天界面的强调色必须走 `--bn-chat-*`,不能写死。
 	 *
-	 * 四套聊天主题(青柠 / 紫罗兰 / 天青 / 蜜桃)只换那几个变量的值。设计稿通篇
-	 * 是紫色,照抄进 JSX 的结果就是「换什么主题,滑块 / 光标 / 气泡 / 发送键还是
-	 * 紫的」—— 主题色只剩四颗色点在动,别处纹丝不动。
+	 * 换观感只换那几个变量的值(默认主题在 styles.css 的 :root、皮肤经
+	 * composeSkinVars 注入)。设计稿通篇是紫色,照抄进 JSX 的结果就是
+	 * 「换什么皮肤,滑块 / 光标 / 气泡 / 发送键还是紫的」。
 	 *
 	 * 这条守在源码上:jsdom 不算样式,颜色对不对量不出来;而「又从设计稿抄了一段
 	 * 紫色进来」恰恰是最容易反复发生的事。
@@ -111,19 +111,15 @@ describe("theme conformance", () => {
 		expect(findings).toEqual([]);
 	});
 
-	it("四套主题各自备齐强调色的三种形态", async () => {
+	it("默认聊天主题在 :root 上备齐强调色的三种形态;四色预设已砍干净", async () => {
 		// 实色(色点 / 光标)、rgb 分量(半透明底,rgba 要拆开的分量)、渐变副色。
-		// 缺任何一个,那套主题下就会有一处悄悄回落到 var() 的兜底值 —— 不报错,
-		// 只是那一处永远是别的主题的颜色。
+		// 缺任何一个就有一处悄悄回落到 var() 的兜底值 —— 不报错,只是颜色永远不对。
 		const css = await readFile(fileURLToPath(new URL("../styles.css", import.meta.url)), "utf8");
-		for (const theme of ["lime", "violet", "sky", "peach"]) {
-			const start = css.indexOf(`[data-chat-theme="${theme}"] {`);
-			expect(start).toBeGreaterThan(-1);
-			const block = css.slice(start, css.indexOf("\n\t}", start));
-			expect(`${theme}: ${block.includes("--bn-chat-dot:")}`).toBe(`${theme}: true`);
-			expect(`${theme}: ${block.includes("--bn-chat-accent-rgb:")}`).toBe(`${theme}: true`);
-			expect(`${theme}: ${block.includes("--bn-chat-accent-2:")}`).toBe(`${theme}: true`);
+		for (const varName of ["--bn-chat-dot:", "--bn-chat-accent-rgb:", "--bn-chat-accent-2:"]) {
+			expect(`${varName} ${css.includes(varName)}`).toBe(`${varName} true`);
 		}
+		// 预设选择器一个都不许剩:剩一块就是一段永远不命中的死 CSS。
+		expect(css.includes("data-chat-theme")).toBe(false);
 	});
 
 	it("ships a synchronous anti-FOUC theme script in index.html", async () => {

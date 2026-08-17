@@ -6,8 +6,8 @@
  * 「返回控制台」回来路。重点钉四件在页面上不容易反复验的事:
  *   - 不在聊天页时**不发任何请求**(会话列表不该在后台被拉起来)
  *   - 开合走路由:直接落在 /chat(书签)也能进、也回得去
- *   - 主题色切换会落到 DOM 的 data-chat-theme 上 —— 整页配色全靠这个属性驱动,
- *     CSS 变量在 jsdom 里量不出来,但属性变没变量得出来
+ *   - 四色预设已砍:chat 根不再挂 data-chat-theme,默认主题定义在 styles.css
+ *     的 :root 上,换观感一律走皮肤包
  *   - 有消息 / 没消息切两种版式(空态问候页 vs 消息流)
  */
 
@@ -209,7 +209,6 @@ beforeEach(() => {
 	};
 	useAiChatStore.setState({
 		rail: true,
-		theme: "lime",
 		activeId: null,
 		glassOpacity: DEFAULT_GLASS_OPACITY,
 		glassClear: false,
@@ -1095,15 +1094,14 @@ describe("AiChatDock — 侧栏与主题", () => {
 		expect(screen.queryByLabelText("收起侧栏")).toBeNull();
 	});
 
-	it("换主题色 → data-chat-theme 跟着变(整页配色全靠它驱动)", async () => {
+	it("四色预设已砍:chat 根不再有 data-chat-theme,设置弹层里也没有主题色节", async () => {
 		render(wrap(<ChatPage />));
 		const dialog = screen.getByRole("region", { name: "女仆 AI 聊天" });
-		expect(dialog.getAttribute("data-chat-theme")).toBe("lime");
+		expect(dialog.getAttribute("data-chat-theme")).toBeNull();
 
 		screen.getByLabelText("聊天设置").click();
-		await waitFor(() => expect(screen.getByTitle("蜜桃")).toBeTruthy());
-		screen.getByTitle("蜜桃").click();
-		await waitFor(() => expect(dialog.getAttribute("data-chat-theme")).toBe("peach"));
+		await waitFor(() => expect(screen.getByText("玻璃质感")).toBeTruthy());
+		expect(screen.queryByText("主题色")).toBeNull();
 	});
 
 	it("一次都没聊过时侧栏给一句引导,不是空白", async () => {
