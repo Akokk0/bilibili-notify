@@ -29,6 +29,7 @@ export {
 	WebSearchError,
 	type WebSearchExecutor,
 	type WebSearchExecutorConfig,
+	type WebSearchImage,
 	type WebSearchResult,
 	type WebSearchSourceRef,
 	webSearchExecutorFromSettings,

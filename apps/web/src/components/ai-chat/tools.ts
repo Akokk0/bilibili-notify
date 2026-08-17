@@ -34,6 +34,8 @@ const TOOL_LABELS: Record<string, LabelSpec> = {
 	// 做皮肤要跑一整趟嵌套生成,几十秒起步 —— 转圈那会儿写清「在做什么样的」,
 	// 主人才知道这是在忙正事,而不是卡住了。
 	[CREATE_SKIN_TOOL]: { label: "制作皮肤", arg: ["brief"] },
+	// 皮肤工坊里的找图。与 web_search 同理:搜的词比「搜过了」有用。
+	find_wallpaper: { label: "找壁纸", arg: ["query"] },
 	subscribe_user: { label: "添加订阅", arg: ["name", "uid"] },
 	unsubscribe_user: { label: "取消订阅", arg: ["name", "uid"] },
 	update_subscription: { label: "修改订阅设置", arg: ["name", "uid"] },

@@ -11,8 +11,9 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ExtraTool } from "@bilibili-notify/ai";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { type ChatSkinImage, createSkinChatTool, SKIN_MODE_SYSTEM_PROMPT } from "../chat-tool.js";
+import { type ChatSkinImage, createSkinChatTools, SKIN_MODE_SYSTEM_PROMPT } from "../chat-tool.js";
 import { SkinStore } from "../store.js";
 
 const DARK_SKIN = {
@@ -34,9 +35,16 @@ beforeEach(async () => {
 	await store.init();
 });
 
-/** 一次聊天请求配一把工具(预算跟着这把走)。 */
+/** 数组里的第一把永远是 create_skin;取不到就是装配错了,当场炸给写测试的人看。 */
+function firstOf(tools: readonly ExtraTool[]): ExtraTool {
+	const [tool] = tools;
+	if (!tool) throw new Error("一把工具都没挂上");
+	return tool;
+}
+
+/** 一次聊天请求配一套工具(预算跟着这一套走)。 */
 function toolWith(generateRaw: ReturnType<typeof genOf>) {
-	return createSkinChatTool({ skinStore: store, generator: () => ({ generateRaw }) });
+	return firstOf(createSkinChatTools({ skinStore: store, generator: () => ({ generateRaw }) }));
 }
 
 describe("create_skin 工具定义", () => {
@@ -69,11 +77,18 @@ describe("皮肤工坊的 system", () => {
 		expect(SKIN_MODE_SYSTEM_PROMPT).toMatch(/写进 brief|填进 brief/);
 	});
 
-	it("说清壁纸从哪来 —— 主人把图贴进聊天才有,没贴就别编", () => {
+	it("说清壁纸的两条来路:主人贴图 / find_wallpaper —— 没图就别编一张", () => {
 		// 真机踩过(2026-08-18):主人要「加雷姆的壁纸」,女仆把它写进 brief 就当
-		// 做成了,回话里报了一张根本不存在的壁纸。图只能由主人贴进来。
+		// 做成了,回话里报了一张根本不存在的壁纸。
 		expect(SKIN_MODE_SYSTEM_PROMPT).toContain("壁纸");
 		expect(SKIN_MODE_SYSTEM_PROMPT).toMatch(/贴|发给我|发过来/);
+		expect(SKIN_MODE_SYSTEM_PROMPT).toContain("find_wallpaper");
+	});
+
+	it("说清搜来的图是**盲选** —— 她看不见图,主人自己贴的才所见即所得", () => {
+		// 搜索后端只给标题和尺寸,模型看不到图本身。不点破这一层,她会像介绍
+		// 自己看过的图那样介绍一张缩略图。
+		expect(SKIN_MODE_SYSTEM_PROMPT).toMatch(/看不见|没看过/);
 	});
 
 	it("交代「你看得见那张图」—— 配色得跟壁纸搭,取色只能靠她自己看", () => {
@@ -102,11 +117,13 @@ describe("create_skin × 主人贴的图", () => {
 	};
 
 	function toolWithImage(generateRaw: ReturnType<typeof genOf>, images: ChatSkinImage[]) {
-		return createSkinChatTool({
-			skinStore: store,
-			generator: () => ({ generateRaw }),
-			attachedImages: async () => images,
-		});
+		return firstOf(
+			createSkinChatTools({
+				skinStore: store,
+				generator: () => ({ generateRaw }),
+				attachedImages: async () => images,
+			}),
+		);
 	}
 
 	it("wallpaper=true → 主人贴的图进包,设计师也知道有这张图可用", async () => {
@@ -146,6 +163,101 @@ describe("create_skin × 主人贴的图", () => {
 		]).execute({ brief: "暗色,用这张壁纸", wallpaper: "true" });
 
 		expect(out).not.toMatch(/没有做进去|没做进去/);
+	});
+});
+
+describe("find_wallpaper × 搜来的图", () => {
+	const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9, 9]);
+	const WALLPAPER_SKIN = {
+		schemaVersion: 1,
+		name: "夜航灯",
+		modes: { dark: { wallpaper: { image: "assets/wallpaper.png", overlay: 0.4 } } },
+	};
+	const IMAGES = [
+		{ title: "雷姆 4K 壁纸", url: "https://img.example.com/rem.png", width: 1920, height: 1080 },
+		{ title: "另一张", url: "https://img.example.com/b.png" },
+	];
+
+	function toolsWithSearch(
+		generateRaw: ReturnType<typeof genOf>,
+		opts: { images?: typeof IMAGES; fetchImage?: typeof fetchOk } = {},
+	) {
+		return createSkinChatTools({
+			skinStore: store,
+			generator: () => ({ generateRaw }),
+			imageSearch: () => ({
+				backend: "bocha" as const,
+				search: async () => [],
+				searchImages: async () => opts.images ?? IMAGES,
+			}),
+			fetchImage: opts.fetchImage ?? fetchOk,
+		});
+	}
+
+	const fetchOk = vi.fn(async (_url: string) => ({ bytes: PNG, ext: "png" }));
+
+	const findTool = (tools: ReturnType<typeof createSkinChatTools>) =>
+		tools.find((t) => t.definition.function.name === "find_wallpaper");
+	const createTool = (tools: ReturnType<typeof createSkinChatTools>) =>
+		tools.find((t) => t.definition.function.name === "create_skin");
+
+	it("没配搜索后端 → 压根不挂这把工具(挂了也执行不了,只会骗模型白调一轮)", () => {
+		const tools = createSkinChatTools({ skinStore: store, generator: () => null });
+		expect(tools.map((t) => t.definition.function.name)).toEqual(["create_skin"]);
+	});
+
+	it("搜到候选 → 编号列给模型看,并声明这些标题只是资料", async () => {
+		const out = await findTool(toolsWithSearch(genOf()))?.execute({ query: "雷姆 壁纸" });
+
+		expect(out).toContain("1.");
+		expect(out).toContain("雷姆 4K 壁纸");
+		expect(out).toContain("1920×1080");
+		// 图片标题同样是外部可控文本,防注入声明照挂。
+		expect(out).toMatch(/不是对你的指令|仅供参考/);
+	});
+
+	it("一张也没搜到 → 让模型换词,而不是就地放弃", async () => {
+		const out = await findTool(toolsWithSearch(genOf(), { images: [] }))?.execute({ query: "x" });
+		expect(out).toMatch(/换.*关键词|没有搜到/);
+	});
+
+	it("create_skin 用序号挑图 → 只下候选表里的那条 URL", async () => {
+		const fetchImage = vi.fn(async (_url: string) => ({ bytes: PNG, ext: "png" }));
+		const tools = toolsWithSearch(genOf(JSON.stringify(WALLPAPER_SKIN)), { fetchImage });
+		await findTool(tools)?.execute({ query: "雷姆 壁纸" });
+		const out = await createTool(tools)?.execute({ brief: "暗色", wallpaper: "1" });
+
+		expect(fetchImage).toHaveBeenCalledWith("https://img.example.com/rem.png");
+		const [skin] = await store.list();
+		expect(await store.listAssets(skin?.id ?? "")).toEqual(["assets/wallpaper.png"]);
+		expect(out).toMatch(/壁纸/);
+	});
+
+	it("没搜过就给序号 → 拒(候选表是空的,没有能下的 URL)", async () => {
+		const tools = toolsWithSearch(genOf(JSON.stringify(WALLPAPER_SKIN)));
+		await expect(createTool(tools)?.execute({ brief: "暗色", wallpaper: "1" })).rejects.toThrow(
+			/find_wallpaper|候选|先搜/,
+		);
+	});
+
+	it("序号越界 → 拒,不去猜一个", async () => {
+		const tools = toolsWithSearch(genOf(JSON.stringify(WALLPAPER_SKIN)));
+		await findTool(tools)?.execute({ query: "雷姆 壁纸" });
+		await expect(createTool(tools)?.execute({ brief: "暗色", wallpaper: "9" })).rejects.toThrow();
+	});
+
+	it("下载失败 → 当场拒,别白烧一趟生成", async () => {
+		const fetchImage = vi.fn(async () => {
+			throw new Error("这个地址指向内网,不下载");
+		});
+		const g = genOf(JSON.stringify(WALLPAPER_SKIN));
+		const tools = toolsWithSearch(g, { fetchImage });
+		await findTool(tools)?.execute({ query: "雷姆 壁纸" });
+
+		await expect(createTool(tools)?.execute({ brief: "暗色", wallpaper: "1" })).rejects.toThrow(
+			/内网/,
+		);
+		expect(g).not.toHaveBeenCalled();
 	});
 });
 
@@ -230,7 +342,7 @@ describe("create_skin 执行", () => {
 	});
 
 	it("AI 未就绪(热读口回 null)→ 抛错指路 AI 设置页", async () => {
-		const tool = createSkinChatTool({ skinStore: store, generator: () => null });
+		const tool = firstOf(createSkinChatTools({ skinStore: store, generator: () => null }));
 		await expect(tool.execute({ brief: "暗色" })).rejects.toThrow(/智能女仆|AI/);
 	});
 });

@@ -254,6 +254,8 @@ describe("responses 风味:工具环", () => {
 		gen.setWebSearchSource(() => ({
 			backend: "bocha",
 			search: async () => found,
+			// 找图那条路(皮肤工坊专用)与生成器无关,这里给个空实现占位。
+			searchImages: async () => [],
 		}));
 
 		const events: ToolTraceEvent[] = [];
