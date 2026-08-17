@@ -196,3 +196,50 @@ describe("chatStatelessStream × 注入工具", () => {
 		expect(String(toolMsg?.content)).toContain("咩栗");
 	});
 });
+
+/**
+ * 专职模式 —— 调用方自带 system、并且**不要**内置那套 B 站只读工具。
+ *
+ * 它服务的是「一个窗口只干一件事」的形态(皮肤工坊):人格不带、B 站数据的口子
+ * 不开,模型手上只剩注入的那一把工具。少一样东西在上下文里,就少一条能把它带跑
+ * 的路。
+ */
+describe("chatStatelessStream × 专职模式", () => {
+	it("给了 systemPrompt → system 消息就是它,人格一个字都不掺", async () => {
+		oai.create.mockResolvedValueOnce(streamOf([textChunk("好")]));
+		await makeGen().chatStatelessStream(HIST, {
+			onDelta: () => {},
+			systemPrompt: "你只做皮肤。",
+		});
+
+		const sys = createParams(0).messages.find((m) => m.role === "system");
+		expect(sys?.content).toBe("你只做皮肤。");
+	});
+
+	it("builtinTools:false → 工具表只剩注入的那把", async () => {
+		oai.create.mockResolvedValueOnce(streamOf([textChunk("好")]));
+		await makeGen().chatStatelessStream(HIST, {
+			onDelta: () => {},
+			builtinTools: false,
+			extraTools: [makeTool()],
+		});
+
+		expect(toolNames(0)).toEqual(["make_thing"]);
+	});
+
+	it("工具表空了就**不发** tools 字段 —— 空数组有网关会当参数错拒掉", async () => {
+		oai.create.mockResolvedValueOnce(streamOf([textChunk("好")]));
+		await makeGen().chatStatelessStream(HIST, { onDelta: () => {}, builtinTools: false });
+
+		expect(createParams(0).tools).toBeUndefined();
+	});
+
+	it("不给这两项 → 照旧人格 + 全套只读工具(钉住默认没变)", async () => {
+		oai.create.mockResolvedValueOnce(streamOf([textChunk("好")]));
+		await makeGen().chatStatelessStream(HIST, { onDelta: () => {} });
+
+		const sys = createParams(0).messages.find((m) => m.role === "system");
+		expect(String(sys?.content).length).toBeGreaterThan(50);
+		expect(toolNames(0)).toContain("list_subscriptions");
+	});
+});

@@ -814,6 +814,17 @@ export class CommentaryGenerator implements CommentaryProvider {
 			 * 写能力挂上去等于把口子开给任何人。
 			 */
 			extraTools?: readonly ExtraTool[];
+			/**
+			 * 顶掉女仆人格,直接用这段当 system。**专职模式**用(一个窗口只干一件事,
+			 * 比如皮肤工坊):人格不进上下文,模型就不会一边扮女仆一边干活。
+			 * 注意它顶掉的是整段 —— 连「可以用 Markdown」这类约定也得自己写上。
+			 */
+			systemPrompt?: string;
+			/**
+			 * 挂不挂内置的 B 站只读工具。默认挂;专职模式关掉之后,工具表只剩
+			 * {@link ExtraTool} 注入的那些 —— 少一个口子,就少一条把它带跑的路。
+			 */
+			builtinTools?: boolean;
 		},
 	): Promise<string> {
 		return this.chatStatelessImpl(messages, opts);
@@ -829,6 +840,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 			thinking?: { enableThinking: boolean; thinkingLevel: ThinkingLevel };
 			webSearch?: boolean;
 			extraTools?: readonly ExtraTool[];
+			systemPrompt?: string;
+			builtinTools?: boolean;
 		},
 	): Promise<string> {
 		if (messages.length === 0) throw new Error("对话历史为空");
@@ -839,10 +852,13 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const trimmed = messages.slice(-this.config.maxHistory * 2);
 		// 这一路的收件人是 dashboard 的聊天界面,它渲染 Markdown。**只有这里**这么传 ——
 		// 推送、koishi 群聊、点评、总结都落在缺省那一侧,继续拿到「只用纯文本」。
-		const systemPrompt = this.getSystemPrompt(undefined, undefined, undefined, {
-			allowMarkdown: true,
-			withTools: true,
-		});
+		// 专职模式(opts.systemPrompt)则整段顶掉人格,连 Markdown 那句约定也由它自带。
+		const systemPrompt =
+			opts?.systemPrompt ??
+			this.getSystemPrompt(undefined, undefined, undefined, {
+				allowMarkdown: true,
+				withTools: true,
+			});
 		this.logger.debug(`[chat-stateless] 历史=${messages.length} 条,实发=${trimmed.length} 条`);
 
 		// 与 chatImpl 同样的多轮口径。dashboard 目前还传不了图,所以这条路上
@@ -859,7 +875,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 			withVisionNote(trimmed, vision),
 			{
 				tools: [
-					...vision.tools,
+					// 专职模式不带内置只读工具;看图那道口子跟着 builtinTools 一起收,
+					// 它也是 vision.tools 的一部分(专职窗口本来就不传图)。
+					...(opts?.builtinTools === false ? [] : vision.tools),
 					...(searchExec ? [WEB_SEARCH_TOOL] : []),
 					...[...extra.values()].map((t) => t.definition),
 				],
@@ -1200,7 +1218,11 @@ export class CommentaryGenerator implements CommentaryProvider {
 			model,
 			messages: apiMessages,
 			...(temperature !== undefined ? { temperature } : {}),
-			...(toolOptions ? { tools: toolOptions.tools, tool_choice: "auto" } : {}),
+			// 空表就整个字段都不发:`tools: []` 有网关直接当参数错拒掉,而「一把工具
+			// 都没有」是专职模式的正常状态。
+			...(toolOptions && toolOptions.tools.length > 0
+				? { tools: toolOptions.tools, tool_choice: "auto" }
+				: {}),
 			...mergeExtraParams(withProviderParams ? thinkingParams : {}, extra.value),
 		});
 
@@ -1357,7 +1379,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 		});
 
 		const input: ResponsesInputItem[] = toResponsesInput(args.apiMessages);
-		const tools = toolOptions ? toResponsesTools(toolOptions.tools) : undefined;
+		// 同 chat 风味:空表不发字段(见那边的注释)。
+		const tools =
+			toolOptions && toolOptions.tools.length > 0 ? toResponsesTools(toolOptions.tools) : undefined;
 		const makeParams = (withReasoning: boolean): Record<string, unknown> => ({
 			model,
 			input,
