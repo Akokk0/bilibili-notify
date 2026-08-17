@@ -16,6 +16,7 @@ import { SkinEditor } from "../SkinEditor";
 const H = vi.hoisted(() => ({
 	putCalls: [] as Array<{ path: string; body: unknown }>,
 	postCalls: [] as Array<{ path: string; body: unknown }>,
+	uploadCalls: [] as Array<{ path: string; name: string }>,
 	getCalls: [] as string[],
 	/** 出厂快照;null = 没钉过(GET /default 404)。 */
 	defaultManifest: null as unknown,
@@ -42,6 +43,10 @@ vi.mock("../../../services/api", () => ({
 				manifest: { schemaVersion: 1, name: "AI 皮肤", modes: { light: {} } },
 				warnings: ["texts.foo: 不认识的文案槽位,已忽略"],
 			};
+		}),
+		upload: vi.fn(async (path: string, form: FormData) => {
+			H.uploadCalls.push({ path, name: (form.get("file") as File | null)?.name ?? "" });
+			return { ok: true, name: "assets/img-abcd1234.png" };
 		}),
 	},
 }));
@@ -80,6 +85,7 @@ function renderEditor(overrides?: { manifest?: SkinManifest; onClose?: () => voi
 beforeEach(() => {
 	H.putCalls = [];
 	H.postCalls = [];
+	H.uploadCalls = [];
 	H.getCalls = [];
 	H.defaultManifest = { schemaVersion: 1, name: "出厂樱花", modes: { light: {} } };
 	useSkinStore.setState({
@@ -329,6 +335,27 @@ describe("SkinEditor", () => {
 
 		fireEvent.change(screen.getByLabelText("玻璃片透明度"), { target: { value: "0.3" } });
 		await waitFor(() => expect(btn.disabled).toBe(true));
+	});
+
+	it("传张图进来 → 进包、进下拉、并当场选成壁纸", async () => {
+		// 没有这个入口时,给一套皮肤换壁纸只能导出 zip、塞图、改 JSON、再传回来;
+		// 而聊天里做出来的皮肤天生零资产,等于压根没有壁纸这回事。
+		renderEditor();
+		const input = screen.getByLabelText("上传图片") as HTMLInputElement;
+		const file = new File([new Uint8Array([1, 2, 3])], "rem.png", { type: "image/png" });
+		fireEvent.change(input, { target: { files: [file] } });
+
+		await waitFor(() =>
+			expect(H.uploadCalls).toEqual([{ path: "/api/skins/s1/assets", name: "rem.png" }]),
+		);
+		// 传完立刻用上 —— 传图的人正是想换壁纸,还要再点一次下拉是多余的一步。
+		await waitFor(() =>
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.wallpaper?.image).toBe(
+				"assets/img-abcd1234.png",
+			),
+		);
+		const options = within(screen.getByLabelText("壁纸图片")).getAllByRole("option");
+		expect(options.map((o) => o.getAttribute("value"))).toContain("assets/img-abcd1234.png");
 	});
 
 	it("「AI 聊天」节只管背景(能力全集=schema 全集):改背景/壁纸落 draft,没有强调色入口", async () => {

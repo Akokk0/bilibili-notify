@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SkinManifest } from "@bilibili-notify/contract";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
-import { SkinStore } from "../store.js";
+import { MAX_SKIN_ASSETS, SkinStore } from "../store.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -186,6 +186,48 @@ describe("SkinStore", () => {
 		expect(await reborn.assetPath(id, "assets/bg.png")).not.toBeNull();
 
 		await expect(store.updateManifest("nope", next)).rejects.toThrow();
+	});
+});
+
+describe("往已有皮肤里加图(addAsset)", () => {
+	/**
+	 * 编辑器里那个「传图」入口的落点。皮肤包做出来之后想换张壁纸,原先只能
+	 * 导出 zip、塞图、改 JSON、再传回来 —— 而聊天里做的皮肤天生一张图都没有。
+	 */
+	it("加进去 → 出现在资产清单里,字节原样落盘", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		const name = await store.addAsset(id, PNG, "png");
+
+		expect(name).toMatch(/^assets\/[A-Za-z0-9._-]+\.png$/);
+		expect(await store.listAssets(id)).toEqual([name]);
+		const onDisk = await readFile(join(dir, id, name));
+		expect(new Uint8Array(onDisk)).toEqual(PNG);
+	});
+
+	it("名字自己生成 —— 不拿上传的文件名拼路径", async () => {
+		// 文件名是不可信输入(中文、空格、`../` 都可能),而这里要拼进磁盘路径。
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		const a = await store.addAsset(id, PNG, "png");
+		const b = await store.addAsset(id, PNG, "png");
+
+		expect(a).not.toBe(b);
+		expect((await store.listAssets(id)).sort()).toEqual([a, b].sort());
+	});
+
+	it("不认识的扩展名 → 抛错(SVG 能带脚本,永远不收)", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		await expect(store.addAsset(id, PNG, "svg")).rejects.toThrow();
+	});
+
+	it("皮肤不存在 → 抛错,不在库里凭空造目录", async () => {
+		await expect(store.addAsset("nope", PNG, "png")).rejects.toThrow();
+	});
+
+	it("一套皮肤塞不下无限张图 —— 到上限就拒", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		for (let i = 0; i < MAX_SKIN_ASSETS; i++) await store.addAsset(id, PNG, "png");
+
+		await expect(store.addAsset(id, PNG, "png")).rejects.toThrow(/最多|上限/);
 	});
 });
 

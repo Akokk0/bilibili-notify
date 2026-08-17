@@ -54,6 +54,9 @@ export function SkinEditor(props: {
 	const [note, setNote] = useState<string | null>(null);
 	const [aiInstruction, setAiInstruction] = useState("");
 	const [aiWarnings, setAiWarnings] = useState<string[]>([]);
+	/** 包内资产 —— props 是打开那一刻的快照,传了新图就在这儿接着长。 */
+	const [assetList, setAssetList] = useState<string[]>(assets);
+	const [uploading, setUploading] = useState(false);
 	// 光斑颜色框存原始文本(受控地 join 回去会吃掉正在输入的逗号),draft 只收解析产物;
 	// 换模式/AI 整份替换 draft 时手动回灌。
 	const [bokehText, setBokehText] = useState(() =>
@@ -157,6 +160,29 @@ export function SkinEditor(props: {
 	function requestClose(): void {
 		if (dirty) setConfirmDiscard(true);
 		else onClose();
+	}
+
+	/**
+	 * 传一张图进这套皮肤。**立刻落盘**(POST /assets),不等主人点保存 ——
+	 * 资产与 manifest 是两套东西:manifest 能整份丢弃回滚,盘上的图不能。让传图
+	 * 跟着「保存」走,取消一次就得把图重传一次。
+	 *
+	 * 传完当场选成壁纸:会来传图的人正是想换壁纸,再点一次下拉是多余的一步。
+	 */
+	async function uploadAsset(file: File): Promise<void> {
+		setUploading(true);
+		setError(null);
+		try {
+			const form = new FormData();
+			form.set("file", file);
+			const res = await api.upload<{ name: string }>(`/api/skins/${id}/assets`, form);
+			setAssetList((prev) => (prev.includes(res.name) ? prev : [...prev, res.name]));
+			setSection("wallpaper", { ...(draft.modes[modeKey]?.wallpaper ?? {}), image: res.name });
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e));
+		} finally {
+			setUploading(false);
+		}
 	}
 
 	const mode: SkinMode = draft.modes[modeKey] ?? {};
@@ -331,9 +357,29 @@ export function SkinEditor(props: {
 						}
 						options={[
 							{ value: "", label: "(不用壁纸)" },
-							...assets.map((a) => ({ value: a, label: a })),
+							...assetList.map((a) => ({ value: a, label: a })),
 						]}
 					/>
+					<FieldRow label="上传图片">
+						<div className="flex items-center gap-2">
+							<input
+								aria-label="上传图片"
+								type="file"
+								accept="image/png,image/jpeg,image/webp"
+								disabled={uploading}
+								onChange={(e) => {
+									const file = e.target.files?.[0];
+									// 输入框清空:同一张图连传两次时 change 不会再触发。
+									e.target.value = "";
+									if (file) uploadAsset(file);
+								}}
+								className="w-full text-[11px] text-bn-text-secondary file:mr-2 file:rounded-md file:border-0 file:bg-bn-surface-muted file:px-2 file:py-1 file:text-[11px] file:text-bn-text-primary"
+							/>
+							{uploading ? (
+								<span className="shrink-0 text-[11px] text-bn-text-secondary">上传中…</span>
+							) : null}
+						</div>
+					</FieldRow>
 					{wp.image ? (
 						<>
 							<SelectField
@@ -523,7 +569,7 @@ export function SkinEditor(props: {
 						onChange={(v) => setChat({ wallpaper: v === "" ? undefined : { ...chatWp, image: v } })}
 						options={[
 							{ value: "", label: "(不用壁纸)" },
-							...assets.map((a) => ({ value: a, label: a })),
+							...assetList.map((a) => ({ value: a, label: a })),
 						]}
 					/>
 					{chatWp.image ? (

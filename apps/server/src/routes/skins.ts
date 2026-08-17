@@ -12,7 +12,7 @@ import type {
 import { strToU8, zipSync } from "fflate";
 import { Hono } from "hono";
 import { runSkinAiEdit, type SkinAiGenerator } from "../skins/ai-edit.js";
-import { openSkinPackage, referencedImages } from "../skins/package.js";
+import { MAX_ASSET_BYTES, openSkinPackage, referencedImages } from "../skins/package.js";
 import { parseSkinManifest } from "../skins/schema.js";
 import type { SkinStore } from "../skins/store.js";
 import { uploadBodyLimit } from "./upload-limit.js";
@@ -24,6 +24,13 @@ const ASSET_MIME: Record<string, string> = {
 	webp: "image/webp",
 	jpg: "image/jpeg",
 	jpeg: "image/jpeg",
+};
+
+/** 上传图片时 mime → 包内扩展名。SVG 不在表里(能带脚本,而这些图直接渲染)。 */
+const MIME_TO_ASSET_EXT: Record<string, string> = {
+	"image/png": "png",
+	"image/jpeg": "jpg",
+	"image/webp": "webp",
 };
 
 export function createSkinsRoute(deps: {
@@ -135,6 +142,31 @@ export function createSkinsRoute(deps: {
 		if (!manifest) return c.json({ ok: false, err: "皮肤不存在" }, 404);
 		// assets 给编辑器画图片下拉;试穿路径拿到也无害。
 		return c.json({ manifest, assets: await skinStore.listAssets(id) });
+	});
+
+	/**
+	 * 编辑器里往这套皮肤加一张图。加完就能在「壁纸图片」下拉里选中它。
+	 *
+	 * 没有这个口子时,给一套皮肤换壁纸得导出 zip、塞图、改 JSON、再传回来 ——
+	 * 而聊天里做出来的皮肤天生零资产,那条路等于没有壁纸可言。
+	 */
+	app.post("/:id/assets", uploadBodyLimit(MAX_ASSET_BYTES, "图片"), async (c) => {
+		const id = c.req.param("id");
+		if (!(await skinStore.get(id))) return c.json({ ok: false, err: "皮肤不存在" }, 404);
+		const body = await c.req.parseBody().catch(() => null);
+		const file = body?.file;
+		if (!(file instanceof File)) {
+			return c.json({ ok: false, err: "缺少图片文件(multipart 字段 file)" }, 400);
+		}
+		// 扩展名由 mime 定,不信上传来的文件名 —— 名字是不可信输入,而它要拼进磁盘路径。
+		const ext = MIME_TO_ASSET_EXT[file.type];
+		if (!ext) return c.json({ ok: false, err: "只收 PNG / JPEG / WebP 图片" }, 400);
+		try {
+			const name = await skinStore.addAsset(id, new Uint8Array(await file.arrayBuffer()), ext);
+			return c.json({ ok: true, name }, 201);
+		} catch (e) {
+			return c.json({ ok: false, err: e instanceof Error ? e.message : String(e) }, 400);
+		}
 	});
 
 	// 编辑器保存:就地更新 manifest(资产不动)。校验与 zip 上传同权威:

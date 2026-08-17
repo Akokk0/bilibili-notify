@@ -158,6 +158,54 @@ describe("skins route", () => {
 	});
 });
 
+describe("POST /:id/assets(编辑器里传图)", () => {
+	const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+	async function postAsset(id: string, file: File): Promise<Response> {
+		const form = new FormData();
+		form.set("file", file);
+		return app.request(`/${id}/assets`, { method: "POST", body: form });
+	}
+
+	it("传一张 png → 201 带包内名字,manifest 接口那边也看得到", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const res = await postAsset(
+			id,
+			new File([Buffer.from(PNG)], "壁纸 (1).png", { type: "image/png" }),
+		);
+
+		expect(res.status).toBe(201);
+		const body = (await res.json()) as any;
+		expect(body.name).toMatch(/^assets\/[A-Za-z0-9._-]+\.png$/);
+		const manifest = (await (await app.request(`/${id}/manifest`)).json()) as any;
+		expect(manifest.assets).toContain(body.name);
+	});
+
+	it("不是图片 → 400,别把随便什么字节都收进皮肤包", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const res = await postAsset(
+			id,
+			new File([Buffer.from("x")], "x.svg", { type: "image/svg+xml" }),
+		);
+
+		expect(res.status).toBe(400);
+	});
+
+	it("皮肤不存在 → 404", async () => {
+		const res = await postAsset(
+			"nope",
+			new File([Buffer.from(PNG)], "a.png", { type: "image/png" }),
+		);
+		expect(res.status).toBe(404);
+	});
+
+	it("没带文件 → 400", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const res = await app.request(`/${id}/assets`, { method: "POST", body: new FormData() });
+		expect(res.status).toBe(400);
+	});
+});
+
 describe("GET /:id/manifest(试穿/编辑用)", () => {
 	it("存在 → manifest + 包内资产清单;不存在 → 404", async () => {
 		const { id } = (await (await upload(app, makeZipFile(true))).json()) as any;

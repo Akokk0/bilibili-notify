@@ -8,12 +8,22 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SkinListEntry, SkinManifest } from "@bilibili-notify/contract";
+import { MAX_ASSET_BYTES } from "./package.js";
 import { WALLPAPER_IMAGE_RE } from "./schema.js";
 
 interface SavedSkin {
 	manifest: SkinManifest;
 	assets: Map<string, Uint8Array>;
 }
+
+/**
+ * 一套皮肤最多放几张图。留在 zip 那道闸(MAX_PACKAGE_FILES)之内 —— 传到超过
+ * 上限的包会连自己的导出都传不回来。
+ */
+export const MAX_SKIN_ASSETS = 12;
+
+/** 包内图片的扩展名白名单,与 {@link WALLPAPER_IMAGE_RE} 同口径(无 SVG)。 */
+const SKIN_ASSET_EXTS = new Set(["png", "jpg", "jpeg", "webp"]);
 
 /** 深浅色各一个槽位:浅色模式渲染 light 槽的皮肤,暗色渲染 dark 槽;槽空=默认装。 */
 export interface ActiveSlots {
@@ -92,6 +102,31 @@ export class SkinStore {
 
 	async get(id: string): Promise<SkinManifest | null> {
 		return this.index.get(id) ?? null;
+	}
+
+	/**
+	 * 往已有皮肤里加一张图,返回它在包里的名字(`assets/<名>`)。
+	 *
+	 * 名字**这边生成**,不用上传来的文件名:那是不可信输入(中文、空格、`../`),
+	 * 而它要拼进磁盘路径。扩展名过白名单 —— SVG 能带脚本,而这些图会在 dashboard
+	 * 里直接渲染,永远不收(同聊天附件那条规矩)。
+	 */
+	async addAsset(id: string, bytes: Uint8Array, ext: string): Promise<string> {
+		if (!this.index.has(id)) throw new Error("皮肤不存在或已被删除");
+		const clean = ext.toLowerCase().replace(/^\./, "");
+		if (!SKIN_ASSET_EXTS.has(clean)) {
+			throw new Error(`不支持的图片类型:${ext}(仅 PNG / JPEG / WebP)`);
+		}
+		if (bytes.byteLength > MAX_ASSET_BYTES) throw new Error("图片过大(上限 5MB)");
+		const existing = await this.listAssets(id);
+		if (existing.length >= MAX_SKIN_ASSETS) {
+			throw new Error(`一套皮肤最多放 ${MAX_SKIN_ASSETS} 张图,先删掉用不上的再传`);
+		}
+		const name = `assets/img-${randomBytes(4).toString("hex")}.${clean}`;
+		const dir = join(this.skinsDir, id, "assets");
+		await mkdir(dir, { recursive: true });
+		await writeFile(join(dir, name.slice("assets/".length)), bytes);
+		return name;
 	}
 
 	/** 包内资产清单(`assets/<名>` 形式,与 manifest 引用同构);皮肤不存在 → 空数组。 */
