@@ -1,0 +1,97 @@
+/**
+ * 聊天里「女仆,给我做一套皮肤」的服务端生成。
+ *
+ * 与 `ai-edit` 同一条纪律(剥围栏 → parseSkinManifest 清洗 → 资产引用校验 →
+ * 首答不过带错误反馈重试一次),差别只有两处:
+ * - 起点是**一句话**,不是现成 draft —— 所以 system 里必须把可用的 colors 键
+ *   摊开给 AI 看,否则它从零写只能瞎编键名,写出来的一片被静默忽略。
+ * - 新包里**一张图都没有**(聊天里递不了图) —— 任何壁纸引用当场拒收。
+ */
+
+import { SKIN_COLOR_TOKEN_MAP } from "@bilibili-notify/contract";
+import { describe, expect, it, vi } from "vite-plus/test";
+import { runSkinAiCreate } from "../ai-create.js";
+
+const SKIN = {
+	schemaVersion: 1,
+	name: "夜航灯",
+	modes: { dark: { colors: { accent: "#00e5ff" } } },
+};
+
+function gen(...answers: string[]) {
+	let i = 0;
+	return vi.fn(async (_system: string, _user: string) => answers[i++] ?? answers.at(-1) ?? "");
+}
+
+describe("runSkinAiCreate", () => {
+	it("一次给出合法 JSON(哪怕带围栏)→ ok,产物是清洗后的 manifest", async () => {
+		const g = gen(
+			[
+				"```json",
+				JSON.stringify({ ...SKIN, css: '[data-bn="glass"]{border-width:2px}' }),
+				"```",
+			].join("\n"),
+		);
+		const res = await runSkinAiCreate({ generateRaw: g, brief: "赛博朋克风,暗色,青色霓虹" });
+
+		expect(res.ok).toBe(true);
+		if (!res.ok) return;
+		expect(res.manifest.name).toBe("夜航灯");
+		expect(res.manifest.modes.dark?.colors?.accent).toBe("#00e5ff");
+		expect(g).toHaveBeenCalledTimes(1);
+		// 主人的要求原样进 user 消息 —— 生成靠它,丢了就成了随机出图。
+		expect(g.mock.calls[0]?.[1] ?? "").toContain("赛博朋克风,暗色,青色霓虹");
+	});
+
+	it("system 摊开可用的 colors 键 —— 从零设计不能靠猜键名", async () => {
+		const g = gen(JSON.stringify(SKIN));
+		await runSkinAiCreate({ generateRaw: g, brief: "随便来一套" });
+
+		const system = g.mock.calls[0]?.[0] ?? "";
+		for (const key of ["accent", "textPrimary", "surface", "listRow", "danger"]) {
+			expect(system).toContain(key);
+		}
+		// 抽查够了,但键名总数别掉队:少一半就是这张表换了形状而提示词没跟上。
+		const present = Object.keys(SKIN_COLOR_TOKEN_MAP).filter((k) => system.includes(k));
+		expect(present.length).toBe(Object.keys(SKIN_COLOR_TOKEN_MAP).length);
+	});
+
+	it("system 明说包里没有图片 —— 聊天里递不了壁纸", async () => {
+		const g = gen(JSON.stringify(SKIN));
+		await runSkinAiCreate({ generateRaw: g, brief: "随便来一套" });
+
+		expect(g.mock.calls[0]?.[0] ?? "").toMatch(/没有.*图片|无.*图片/);
+	});
+
+	it("产物引用了壁纸 → 拒收(包里根本没有那张图)", async () => {
+		const bad = JSON.stringify({
+			...SKIN,
+			modes: { dark: { wallpaper: { image: "assets/wallpaper.webp" } } },
+		});
+		const res = await runSkinAiCreate({ generateRaw: gen(bad, bad), brief: "带张壁纸" });
+
+		expect(res.ok).toBe(false);
+		if (res.ok) return;
+		expect(res.errors.join()).toContain("assets/wallpaper.webp");
+	});
+
+	it("首答不是 JSON → 带错误反馈重试一次,第二答合法就 ok", async () => {
+		const g = gen("我觉得可以这样:", JSON.stringify(SKIN));
+		const res = await runSkinAiCreate({ generateRaw: g, brief: "暗色" });
+
+		expect(res.ok).toBe(true);
+		expect(g).toHaveBeenCalledTimes(2);
+		// 重试的 user 里带上「上次错在哪」,否则弱模型只会原样再错一遍。
+		const retryUser = g.mock.calls[1]?.[1] ?? "";
+		expect(retryUser).toContain("暗色");
+		expect(retryUser).toMatch(/未通过校验|不是合法 JSON/);
+	});
+
+	it("两答都不过 → ok:false,错误串给上层转述", async () => {
+		const res = await runSkinAiCreate({ generateRaw: gen("不行", "还是不行"), brief: "暗色" });
+
+		expect(res.ok).toBe(false);
+		if (res.ok) return;
+		expect(res.errors.length).toBeGreaterThan(0);
+	});
+});

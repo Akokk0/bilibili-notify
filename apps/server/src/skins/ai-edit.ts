@@ -7,7 +7,11 @@
  * 二败才对外报 errors。
  */
 
-import { SKIN_CSS_HOOK_MAP, type SkinManifest } from "@bilibili-notify/contract";
+import {
+	SKIN_COLOR_TOKEN_MAP,
+	SKIN_CSS_HOOK_MAP,
+	type SkinManifest,
+} from "@bilibili-notify/contract";
 import { referencedImages } from "./package.js";
 import { parseSkinManifest } from "./schema.js";
 
@@ -33,17 +37,33 @@ const HOOK_LIST = Object.keys(SKIN_CSS_HOOK_MAP)
 	.map((h) => `"${h}"`)
 	.join(" / ");
 
-export function buildSkinAiSystemPrompt(assets: string[]): string {
+/**
+ * colors 的可用键。改皮肤时 draft 里已有的键就是活样板,但**从零建**(聊天里
+ * 「做一套皮肤」)手上什么都没有 —— 不摊开这张表,AI 只能瞎编键名,而不认识的键
+ * 是**静默忽略**的:构建全绿、皮肤装上去半边不变色,最难查的那种。
+ */
+const COLOR_KEY_LIST = Object.keys(SKIN_COLOR_TOKEN_MAP).join(" / ");
+
+export function buildSkinAiSystemPrompt(
+	assets: string[],
+	/** create = 从零建一套(聊天里「给我做套皮肤」),没有草稿可依。 */
+	mode: "edit" | "create" = "edit",
+): string {
 	const assetNote =
 		assets.length > 0
 			? `包内可用图片(wallpaper.image / chat.wallpaper.image 只准引用这些):\n${assets.map((a) => `- ${a}`).join("\n")}`
 			: "包里没有任何图片资产:不要写 wallpaper 字段,引用不存在的图会被拒收。";
+	const intro =
+		mode === "create"
+			? "你会收到主人想要的风格,**从零设计一整套**并输出完整的 skin.json。名字(name)与一句描述(description)也由你起,要贴合风格。"
+			: "你会收到当前皮肤的 skin.json 草稿和一句修改要求,输出**修改后的完整 skin.json**。";
 
-	return `你是「bilibili-notify」Web 面板的皮肤设计师。你会收到当前皮肤的 skin.json 草稿和一句修改要求,输出**修改后的完整 skin.json**。
+	return `你是「bilibili-notify」Web 面板的皮肤设计师。${intro}
 
 ## 规则
 
 - schemaVersion 固定 1;没被要求改的字段一律原样保留,不要顺手删改
+- colors 的可用键(只收这些,别的键会被静默忽略):${COLOR_KEY_LIST};值只收 hex / rgb() / hsl() / oklch() / transparent(禁 url()、var()、分号)
 - modes: { light?, dark? },每套里可用 colors / page.background / wallpaper(image·fit·position·overlay 0~0.8·blur 0~40)/ chat(background·wallpaper 同构 —— AI 聊天页专属背景,只管背景:强调色跟随 colors.accent、玻璃件直用 glass 段,background 缺省透出整页皮肤底,通常不用写)/ glass(background·border·strongBackground·strongBorder·blur 0~40·strongBlur;默认装无描边,border 对只在刻意要描边风格(如暗色霓虹边)时才配,亮色/玻璃感皮肤不配)/ fonts.body / radius(card 0~32·pill 0~999)/ shadows(card·elev)/ css / effects
 - wallpaper.overlay 是遮罩纱,纱色自动跟模式(亮=白纱/暗=黑纱);wallpaper.blur 是壁纸自身高斯模糊。亮色+高饱和壁纸的配方:overlay 0.3~0.4 + blur 8~16。卡内列表行默认全透明(内容直接画在玻璃上,别在玻璃卡里叠第二层),只有刻意要行条底/描边时才配 colors.listRow / colors.listRowBorder
 - effects 动效预设两道可选:glassShine { color? } / bokeh { colors: [1~4 色] }
@@ -102,17 +122,34 @@ function tryParse(
 	return { ok: true, manifest: parsed.skin, warnings: parsed.warnings };
 }
 
-export async function runSkinAiEdit(input: SkinAiEditInput): Promise<SkinAiEditResult> {
-	const system = buildSkinAiSystemPrompt(input.assets);
-	const assets = new Set(input.assets);
-	const baseUser = `当前 skin.json 草稿:\n${JSON.stringify(input.draft, null, "\t")}\n\n修改要求:${input.instruction}`;
-
-	const first = await input.generateRaw(system, baseUser);
-	const parsed = tryParse(first, assets);
+/**
+ * 一轮「生成 → 校验 → 失败带反馈重试一次」。改皮肤(edit)与从零建皮肤(create)
+ * 共用这条纪律 —— 弱模型常犯的是格式小错,直接报错太挫败;但也只给一次机会,
+ * 二败还硬试就是在替主人烧 token。
+ */
+export async function runSkinAiRound(input: {
+	generateRaw: SkinAiGenerator["generateRaw"];
+	system: string;
+	/** 首轮的 user 消息;重试时在它后面追加错误反馈。 */
+	user: string;
+	/** 包内可用资产;manifest 引用了这之外的图 = 拒收。 */
+	assets: Set<string>;
+}): Promise<SkinAiEditResult> {
+	const first = await input.generateRaw(input.system, input.user);
+	const parsed = tryParse(first, input.assets);
 	if (parsed.ok) return parsed;
 
 	// 带错误反馈重试一次 —— 原答也附上,让模型知道自己上次说了什么。
-	const retryUser = `${baseUser}\n\n你上次的输出未通过校验:\n${parsed.errors.map((e) => `- ${e}`).join("\n")}\n\n上次输出:\n${first}\n\n请修正后重新输出完整 skin.json,仍然只输出 JSON。`;
-	const second = await input.generateRaw(system, retryUser);
-	return tryParse(second, assets);
+	const retryUser = `${input.user}\n\n你上次的输出未通过校验:\n${parsed.errors.map((e) => `- ${e}`).join("\n")}\n\n上次输出:\n${first}\n\n请修正后重新输出完整 skin.json,仍然只输出 JSON。`;
+	const second = await input.generateRaw(input.system, retryUser);
+	return tryParse(second, input.assets);
+}
+
+export async function runSkinAiEdit(input: SkinAiEditInput): Promise<SkinAiEditResult> {
+	return runSkinAiRound({
+		generateRaw: input.generateRaw,
+		system: buildSkinAiSystemPrompt(input.assets),
+		user: `当前 skin.json 草稿:\n${JSON.stringify(input.draft, null, "\t")}\n\n修改要求:${input.instruction}`,
+		assets: new Set(input.assets),
+	});
 }
