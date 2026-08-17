@@ -30,6 +30,8 @@ import {
 	readChatImageDataUrl,
 	saveChatImage,
 } from "../runtime/chat-assets.js";
+import { createSkinChatTool } from "../skins/chat-tool.js";
+import type { SkinStore } from "../skins/store.js";
 import { REDACTED_API_KEY } from "./globals.js";
 import type { RouteDeps } from "./types.js";
 import { uploadBodyLimit } from "./upload-limit.js";
@@ -50,7 +52,16 @@ const TestPushRequestSchema = z.object({
 
 // AiTestPushResponse 在 @bilibili-notify/contract(web 同源消费)。
 
-export function createAiRoute(deps: RouteDeps): Hono {
+export function createAiRoute(
+	deps: RouteDeps,
+	opts?: {
+		/**
+		 * 皮肤库。给了才把 `create_skin` 挂进聊天 —— 女仆手上唯一一个会写东西的
+		 * 工具,不该因为「某处装配忘了传」而以别的形式凭空出现。
+		 */
+		skinStore?: SkinStore;
+	},
+): Hono {
 	const app = new Hono();
 
 	app.post("/test-push", async (c) => {
@@ -300,6 +311,19 @@ export function createAiRoute(deps: RouteDeps): Hono {
 			{ role: "user" as const, content: message },
 		];
 
+		// 「做一套皮肤」这把工具**每个请求现配**:它带着「一轮最多两套」的预算,
+		// 建在装配处的话那把计数器会跨请求累加 —— 聊到第三句就再也做不了皮肤,
+		// 而且得重启才恢复。
+		const extraTools = opts?.skinStore
+			? [
+					createSkinChatTool({
+						skinStore: opts.skinStore,
+						// 热读同 ai-edit:engines 是后挂的,别做快照。
+						generator: () => deps.runtime.engines?.commentary ?? null,
+					}),
+				]
+			: undefined;
+
 		return streamSSE(c, async (sse) => {
 			/**
 			 * 这一轮调过的工具,按**开始**的先后排 —— 那是主人眼看着它们冒出来的
@@ -332,6 +356,7 @@ export function createAiRoute(deps: RouteDeps): Hono {
 					},
 					// 联网搜索同样会话级;不带 = 不开。执行器没配置时生成器静默不挂。
 					webSearch: parsed.data.search ?? false,
+					...(extraTools ? { extraTools } : {}),
 					onDelta: (text) => {
 						// 不 await:回调是同步的,这里排一次写就行。真要背压也轮不到
 						// 这一层管 —— SSE 的写在内存里排队,量级是几十 KB。

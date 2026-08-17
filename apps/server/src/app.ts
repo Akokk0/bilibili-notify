@@ -241,7 +241,11 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	app.route("/api/history", createHistoryRoute(deps));
 	app.route("/api/logs", createLogsRoute(deps));
 	app.route("/api/push", createPushRoute(deps));
-	app.route("/api/ai", createAiRoute(deps));
+	// 皮肤库一份两处用:`/api/skins` 是它的主场,聊天路由拿它挂 `create_skin`
+	// (「女仆,做套皮肤」)。两处必须是**同一个实例** —— 各 new 一个的话,内存
+	// 索引各存各的,聊天里刚做好的皮肤在皮肤页上要等到重启才出现。
+	const skinStore = new SkinStore({ skinsDir: joinPath(runtime.bootstrap.dataDir, "skins") });
+	app.route("/api/ai", createAiRoute(deps, { skinStore }));
 	app.route("/api/fans", createFansRoute(deps));
 	const statsRoute = createStatsRoute(deps, {
 		...(options.runRoastNow ? { runRoastNow: options.runRoastNow } : {}),
@@ -252,7 +256,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	app.route(
 		"/api/skins",
 		createSkinsRoute({
-			skinStore: new SkinStore({ skinsDir: joinPath(runtime.bootstrap.dataDir, "skins") }),
+			skinStore,
 			// 热读:engines 是后挂的,ai-edit 每次现取,不做快照。
 			commentary: () => runtime.engines?.commentary ?? null,
 		}),
