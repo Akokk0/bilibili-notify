@@ -111,13 +111,14 @@ describe("theme conformance", () => {
 		expect(findings).toEqual([]);
 	});
 
-	it("默认聊天主题在 :root 上备齐强调色的三种形态;四色预设已砍干净", async () => {
-		// 实色(色点 / 光标)、rgb 分量(半透明底,rgba 要拆开的分量)、渐变副色。
-		// 缺任何一个就有一处悄悄回落到 var() 的兜底值 —— 不报错,只是颜色永远不对。
+	it("默认聊天主题在 :root 上备齐强调色形态;四色预设已砍干净", async () => {
+		// 实色(色点 / 光标)与渐变副色;半透明纱一律 color-mix 从 --bn-chat-dot 现调,
+		// 不再维护 rgb 分量副本。缺任何一个就有一处悄悄回落到 var() 的兜底值。
 		const css = await readFile(fileURLToPath(new URL("../styles.css", import.meta.url)), "utf8");
-		for (const varName of ["--bn-chat-dot:", "--bn-chat-accent-rgb:", "--bn-chat-accent-2:"]) {
+		for (const varName of ["--bn-chat-dot:", "--bn-chat-accent-2:"]) {
 			expect(`${varName} ${css.includes(varName)}`).toBe(`${varName} true`);
 		}
+		expect(css.includes("--bn-chat-accent-rgb")).toBe(false);
 		// 预设选择器一个都不许剩:剩一块就是一段永远不命中的死 CSS。
 		expect(css.includes("data-chat-theme")).toBe(false);
 	});

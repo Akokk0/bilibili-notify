@@ -75,59 +75,40 @@ describe("styles.css 分层", () => {
 	});
 });
 
-describe("完全透明的作用范围", () => {
+describe("聊天玻璃族与外部玻璃 token 统一", () => {
 	/**
-	 * 「完全透明」把玻璃片透光 + 去掉磨砂,但**设置弹层不在其列** —— 调这个开关的
-	 * 控件就在那块弹层里。一起透掉的话,主人开完的下一秒就看不见自己在调什么,
-	 * 连关回去的开关都摸不着,只能去清 localStorage。
-	 *
-	 * 这条守在源码上而不是渲染上:jsdom 不算样式,量不出「透没透」。后来者顺手
-	 * 把 popover 补进那串选择器里是很自然的动作,得有句话拦一下。
+	 * 聊天页的玻璃件不再有 chat 专属参数(玻璃质感滑杆/完全透明已撤):全族直接吃
+	 * 默认装与皮肤共用的 --bn-glass-* token,皮肤在「玻璃」节调什么聊天页就长什么样。
+	 * 守在源码上:jsdom 不算样式,量不出「透没透」;而「顺手给聊天玻璃再开一套
+	 * 专属变量」正是最容易复发的回退。
 	 */
-	/** 弹层那条规则的正文。 */
-	async function popoverBlock(): Promise<string> {
+	async function block(selector: string): Promise<string> {
 		const css = await readFile(STYLES, "utf8");
-		const start = css.indexOf(".bn-glass-popover {");
-		expect(start).toBeGreaterThan(-1);
+		const start = css.indexOf(`${selector} {`);
+		expect(`${selector}: ${start > -1}`).toBe(`${selector}: true`);
 		return css.slice(start, css.indexOf("}", start));
 	}
 
-	/**
-	 * 测的是「有没有留后路」这个事实,不是具体数值 —— 数值是观感,该由主人在真机上
-	 * 定;有没有后路是可用性,一旦没了主人就被自己锁在外面,只能去清 localStorage。
-	 */
-	it("底色留了下限 —— 拉到 0 / 开了完全透明,弹层也得读得出来", async () => {
-		expect(await popoverBlock()).toContain("max(");
+	it("面板/弹层吃强玻璃档,胶囊吃普通档 —— 与 dashboard 的 .bn-glass(-strong) 同参", async () => {
+		const panel = await block(".bn-glass-panel,\n\t.bn-glass-popover");
+		expect(panel).toContain("var(--bn-glass-strong-bg)");
+		expect(panel).toContain("var(--bn-glass-strong-blur)");
+		const chip = await block(".bn-glass-chip");
+		expect(chip).toContain("var(--bn-glass-bg)");
+		expect(chip).toContain("var(--bn-glass-blur)");
 	});
 
-	it("磨砂不跟着完全透明一起掉 —— 掉了就是文字叠文字", async () => {
-		// 其它玻璃件的 blur 都乘了 --bn-chat-blur(完全透明时归零),唯独这块不乘。
-		// 一起归零的话,弹层背后是清晰的会话列表,两层文字直接糊在一起。
-		expect(await popoverBlock()).not.toContain("--bn-chat-blur");
-	});
-});
-
-describe("用户气泡的玻璃底", () => {
-	/**
-	 * 用户消息气泡曾经只有一层 0.14 的 accent 纱 —— 预设纯色渐变底上够看,
-	 * 压在皮肤壁纸上直接融进背景,「聊天胶囊几乎看不到」。修法是给纱下面垫一层
-	 * 跟随聊天玻璃滑块的玻璃底。守在源码上,理由同上:jsdom 量不出「透没透」。
-	 */
-	async function bubbleBlock(): Promise<string> {
+	it("chat 专属玻璃变量一个不剩 —— 剩一个就是回退的种子", async () => {
 		const css = await readFile(STYLES, "utf8");
-		const start = css.indexOf(".bn-chat-bubble-user {");
-		expect(start).toBeGreaterThan(-1);
-		return css.slice(start, css.indexOf("}", start));
-	}
-
-	it("有跟随滑块的玻璃底 —— 只有 accent 纱的话在皮肤壁纸上会融进背景", async () => {
-		const block = await bubbleBlock();
-		expect(block).toContain("--bn-chat-glass-rgb");
-		expect(block).toContain("--bn-chat-glass,");
+		for (const dead of ["--bn-chat-glass", "--bn-chat-blur", "--bn-chat-saturate"]) {
+			expect(`${dead}: ${css.includes(dead)}`).toBe(`${dead}: false`);
+		}
 	});
 
-	it("accent 纱还在 —— 玻璃底垫在纱下面,不是换掉主题色", async () => {
-		expect(await bubbleBlock()).toContain("--bn-chat-accent-rgb");
+	it("用户气泡 = accent 纱垫在普通档玻璃上 —— 纯纱在皮肤壁纸上会融进背景", async () => {
+		const bubble = await block(".bn-chat-bubble-user");
+		expect(bubble).toContain("var(--bn-glass-bg)");
+		expect(bubble).toContain("color-mix(in srgb, var(--bn-chat-dot) 14%, transparent)");
 	});
 
 	it("消息组件真的用上了这块玻璃", async () => {
@@ -136,6 +117,13 @@ describe("用户气泡的玻璃底", () => {
 			"utf8",
 		);
 		expect(tsx).toContain("bn-chat-bubble-user");
+	});
+
+	it("默认聊天主题从默认装 token 派生,不另写一套配色", async () => {
+		const css = await readFile(STYLES, "utf8");
+		// 强调色/整页底都必须是 var 引用 —— 手写字面量就是「原生皮肤自己写了一套」。
+		expect(css).toContain("--bn-chat-dot: var(--color-bn-pink)");
+		expect(css).toContain("--bn-chat-bg: var(--bn-page-bg)");
 	});
 });
 

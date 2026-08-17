@@ -84,7 +84,7 @@ vi.mock("../../../services/api", () => ({
 }));
 
 import { sendChatMessage, uploadChatImage } from "../../../services/aiChat";
-import { DEFAULT_GLASS_OPACITY, useAiChatStore } from "../../../store/aiChat";
+import { useAiChatStore } from "../../../store/aiChat";
 import { ChatPage } from "../index";
 
 const ASSET_ID = "aabbccddeeff00112233445566778899.png";
@@ -119,12 +119,7 @@ function sentImageIds(): readonly string[] | undefined {
 beforeEach(() => {
 	vi.mocked(sendChatMessage).mockClear();
 	vi.mocked(uploadChatImage).mockClear();
-	useAiChatStore.setState({
-		rail: true,
-		activeId: null,
-		glassOpacity: DEFAULT_GLASS_OPACITY,
-		glassClear: false,
-	});
+	useAiChatStore.setState({ rail: true, activeId: null });
 });
 
 afterEach(cleanup);

@@ -91,27 +91,14 @@ export function composeSkinVars(
 	if (mode.shadows?.card) vars["--shadow-bn-card"] = mode.shadows.card;
 	if (mode.shadows?.elev) vars["--shadow-bn-elev"] = mode.shadows.elev;
 
-	// AI 聊天页:皮肤生效即整体接管(默认主题定义在 styles.css 的 :root 上,
-	// 皮肤把整套变量注入 root 内联样式顶掉它),所以变量必须全套输出。
-	// chat 段只管背景:强调色全部派生自 colors.accent,玻璃件由 composeChatGlassCss
-	// 覆盖成外部玻璃参数 —— 不另设一套 chat 专属颜色/玻璃。
+	// AI 聊天页:强调色/辉光/玻璃全走 styles.css 的 token 派生链(--bn-chat-dot ←
+	// --color-bn-pink ← colors.accent;玻璃族直接吃 --bn-glass-*),JS 不再复刻。
+	// 这里只在皮肤 chat 段给了独立底色/壁纸时覆盖 --bn-chat-bg 这一个变量。
 	{
 		const chat = mode.chat ?? {};
-		const accent = mode.colors?.accent ?? "#fb7299";
-		// hsl/oklch 解析不了时退品牌粉分量(soft 层会偏粉,已知限制;hex/rgb 覆盖绝大多数)
-		const rgb = toRgbTriple(accent) ?? "251, 114, 153";
-		vars["--bn-chat-dot"] = accent;
-		vars["--bn-chat-accent-rgb"] = rgb;
-		vars["--bn-chat-accent-2"] = accent;
-		// 空态大标题背后那团光:从 accent 合成,浓度两套跟模式走(与四色预设同律)
-		vars["--bn-chat-glow"] =
-			theme === "light"
-				? `radial-gradient(closest-side, rgba(${rgb}, 0.32), rgba(${rgb}, 0.14) 46%, rgba(255, 255, 255, 0) 78%)`
-				: `radial-gradient(closest-side, rgba(${rgb}, 0.2), rgba(${rgb}, 0.09) 46%, rgba(0, 0, 0, 0) 78%)`;
-		// 背景:缺省引用整页皮肤底(--bn-page-bg)—— chat 是盖在框架上的全屏层,
-		// transparent 会把整个 dashboard 内容透出来(真机踩过)。chat 壁纸(无 blur)
-		// 合成进来时,底层用显式 background(纯色包渐变)或 surface-muted 兜底
-		// (--bn-page-bg 可能是多层列表,拼进多层 background 或渐变参数都非法)。
+		// chat 壁纸(无 blur)合成进背景时,底层用显式 background(纯色包渐变)或
+		// surface-muted 兜底 —— --bn-page-bg 可能是多层列表,拼进多层 background
+		// 或渐变参数都非法。blur>0 时壁纸走 composeChatWallpaperCss 的糊化层。
 		const wp = chat.wallpaper;
 		if (wp?.image && !(wp.blur !== undefined && wp.blur > 0)) {
 			const layers = buildWallpaperLayers({ ...wp, image: wp.image }, assetUrl, theme);
@@ -122,30 +109,12 @@ export function composeSkinVars(
 					: `linear-gradient(${base}, ${base})`
 				: "linear-gradient(var(--color-bn-surface-muted), var(--color-bn-surface-muted))";
 			vars["--bn-chat-bg"] = `${layers}, ${bottom}`;
-		} else {
-			vars["--bn-chat-bg"] = chat.background ?? "var(--bn-page-bg)";
+		} else if (chat.background) {
+			vars["--bn-chat-bg"] = chat.background;
 		}
 	}
 
 	return vars;
-}
-
-/** hex(#rgb/#rgba/#rrggbb/#rrggbbaa) 或 rgb()/rgba() → "r, g, b" 分量;解析不了 → null。 */
-function toRgbTriple(color: string): string | null {
-	const t = color.trim();
-	let m = /^#([0-9a-f]{6})(?:[0-9a-f]{2})?$/i.exec(t);
-	if (m?.[1]) {
-		const h = m[1];
-		return [0, 2, 4].map((i) => Number.parseInt(h.slice(i, i + 2), 16)).join(", ");
-	}
-	m = /^#([0-9a-f]{3})(?:[0-9a-f])?$/i.exec(t);
-	if (m?.[1]) {
-		const h = m[1];
-		return [0, 1, 2].map((i) => Number.parseInt(`${h[i]}${h[i]}`, 16)).join(", ");
-	}
-	m = /^rgba?\(\s*(\d{1,3})[,\s]+(\d{1,3})[,\s]+(\d{1,3})/i.exec(t);
-	if (m) return `${m[1]}, ${m[2]}, ${m[3]}`;
-	return null;
 }
 
 export interface ResolvedSkinMode {
@@ -283,43 +252,6 @@ export function composeChatWallpaperCss(
 	if (!wp?.image || wp.blur === undefined || wp.blur <= 0) return "";
 	const layers = buildWallpaperLayers({ ...wp, image: wp.image }, assetUrl, theme);
 	return `[data-bn-chat-root]::before{content:"";position:absolute;inset:-${wp.blur * 2}px;z-index:-1;pointer-events:none;background:${layers};filter:blur(${wp.blur}px)}`;
-}
-
-/**
- * 皮肤生效时,聊天页玻璃族整体改吃**外部玻璃参数**(--bn-glass-*,与 dashboard 的
- * .bn-glass / .bn-glass-strong 同一套):面板/弹层 = 强玻璃档,胶囊/气泡 = 普通档。
- * 不另设 chat 专属玻璃参数 —— 皮肤编辑器「玻璃」一节就是聊天玻璃的唯一调节入口,
- * chat 侧栏里的玻璃质感滑杆在皮肤下隐藏(与四色预设同律)。
- *
- * 注入的是无层 CSS,恒压 styles.css 里 @layer components 的原定义 —— 所以
- * hover/选中态必须一并覆盖,否则「无层基态压过分层 hover」会杀掉悬停反馈。
- * 常量输出:变量引用在运行时解析,皮肤没配玻璃段时自然回落 theme.css 的默认值。
- */
-export function composeChatGlassCss(): string {
-	return [
-		".bn-glass-panel, .bn-glass-popover {",
-		"\tbackground: var(--bn-glass-strong-bg);",
-		"\tborder-color: var(--bn-glass-strong-border, transparent);",
-		"\tbackdrop-filter: blur(var(--bn-glass-strong-blur));",
-		"\t-webkit-backdrop-filter: blur(var(--bn-glass-strong-blur));",
-		"}",
-		".bn-glass-chip {",
-		"\tbackground: var(--bn-glass-bg);",
-		"\tborder-color: var(--bn-glass-border, transparent);",
-		"\tbackdrop-filter: blur(var(--bn-glass-blur));",
-		"\t-webkit-backdrop-filter: blur(var(--bn-glass-blur));",
-		"}",
-		// 悬停/选中 = 上一档更实,与 dashboard 的层级语义一致
-		".bn-glass-chip:hover, .bn-glass-selected {",
-		"\tbackground: var(--bn-glass-strong-bg);",
-		"}",
-		".bn-chat-bubble-user {",
-		"\tbackground: linear-gradient(rgba(var(--bn-chat-accent-rgb), 0.14), rgba(var(--bn-chat-accent-rgb), 0.14)), var(--bn-glass-bg);",
-		"\tborder-color: var(--bn-glass-border, transparent);",
-		"\tbackdrop-filter: blur(var(--bn-glass-blur));",
-		"\t-webkit-backdrop-filter: blur(var(--bn-glass-blur));",
-		"}",
-	].join("\n");
 }
 
 const SKIN_STYLE_ID = "bn-skin-css";

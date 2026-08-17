@@ -3,7 +3,7 @@ import type { GlobalConfig } from "@bilibili-notify/internal";
 import { resolveActivePersona, resolveAIProfile } from "@bilibili-notify/internal/constants";
 import { Icon } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
 	chatImageUrl,
@@ -143,10 +143,6 @@ export function ChatPage() {
 
 	const rail = useAiChatStore((s) => s.rail);
 	const setRail = useAiChatStore((s) => s.setRail);
-	const glassOpacity = useAiChatStore((s) => s.glassOpacity);
-	const setGlassOpacity = useAiChatStore((s) => s.setGlassOpacity);
-	const glassClear = useAiChatStore((s) => s.glassClear);
-	const setGlassClear = useAiChatStore((s) => s.setGlassClear);
 	const activeId = useAiChatStore((s) => s.activeId);
 	const setActiveId = useAiChatStore((s) => s.setActiveId);
 
@@ -451,35 +447,15 @@ export function ChatPage() {
 		}
 	};
 
-	/** 玻璃片实际生效的透明度。完全透明优先,压过滑块拉到哪一档。 */
-	const glass = glassClear ? 0 : glassOpacity;
-
 	return (
 		<section
 			// 四色预设已砍,不再有 data-chat-theme:默认主题样式定义在 styles.css 的
 			// :root 上,皮肤注入的 root 内联变量天然顶掉它;换观感一律走皮肤包。
-			// data-bn-chat-root 给 chat 专属壁纸寻址。
+			// 玻璃质感同理不再有 chat 专属参数 —— 玻璃族直接吃 --bn-glass-* token,
+			// 调玻璃去皮肤编辑器。data-bn-chat-root 给 chat 专属壁纸寻址。
 			data-bn-chat-root=""
 			className="bn-anim-chat-in fixed inset-0 z-40 flex"
-			// 玻璃片的三个值,算法照搬推送卡片的卡片内容层:
-			//     glass = 完全透明 ? 0 : 设置值      blur = 完全透明 ? 0 : 基线
-			// 「完全透明」就是这些值一起归零,不是另一套规则 —— 那边一直这么写。
-			// blur 送的是**倍率**而不是像素:各玻璃件的基线半径不一样(面板 32px、
-			// 胶囊 20px),送倍率才不用把那张表复制一份到 JS 里来。
-			//
-			// saturate 是推送卡片没有的那一项(那边只有 blur),但它必须跟着透明度
-			// 一起退:backdrop-filter 加工的是**背后**的像素,底色一透,它还在那儿
-			// 把背后的主题辉光按倍数放大 —— 表现就是「玻璃拉到最低,显出来的背景
-			// 反而比背景本身还鲜艳」。1 = 原样不动;默认档落在 1.82,与这功能之前
-			// 写死的 1.8 基本同观感。
-			style={
-				{
-					background: "var(--bn-chat-bg)",
-					"--bn-chat-glass": glass,
-					"--bn-chat-blur": glassClear ? 0 : 1,
-					"--bn-chat-saturate": 1 + glass,
-				} as CSSProperties
-			}
+			style={{ background: "var(--bn-chat-bg)" }}
 			// overlay 时代这里是 div + role="dialog"。成了路由页之后它不再是「盖在
 			// 页面上的对话框」,对屏幕阅读器自称 dialog 会让人找「关闭」而不是「返回」。
 			// 带名字的 <section> 暴露出来就是 region 地标;不用 <main> —— App 壳里
@@ -501,10 +477,6 @@ export function ChatPage() {
 					userName={userName}
 					userFace={card?.face}
 					aiName={persona.name}
-					glassOpacity={glassOpacity}
-					onGlassOpacityChange={setGlassOpacity}
-					glassClear={glassClear}
-					onGlassClearChange={setGlassClear}
 				/>
 			) : null}
 

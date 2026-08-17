@@ -155,7 +155,7 @@ vi.mock("../../../services/api", () => ({
 }));
 
 import { createConversation, retitleConversation, sendChatMessage } from "../../../services/aiChat";
-import { DEFAULT_GLASS_OPACITY, useAiChatStore } from "../../../store/aiChat";
+import { useAiChatStore } from "../../../store/aiChat";
 import { useAuthStore } from "../../../store/auth";
 import { BiliLoginStatus } from "../../../types/auth";
 import { AiChatDock, ChatPage } from "../index";
@@ -207,12 +207,7 @@ beforeEach(() => {
 		providers: { deepseek: { model: "gpt-test" } },
 		persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
 	};
-	useAiChatStore.setState({
-		rail: true,
-		activeId: null,
-		glassOpacity: DEFAULT_GLASS_OPACITY,
-		glassClear: false,
-	});
+	useAiChatStore.setState({ rail: true, activeId: null });
 });
 afterEach(() => {
 	// 卸载前把还挂着的 getConversation 放掉,免得未 settle 的 promise 跨用例悬着。
@@ -789,57 +784,13 @@ describe("AiChatDock — 思考预览", () => {
 	});
 });
 
-describe("AiChatDock — 玻璃质感设置落到 DOM", () => {
-	/**
-	 * jsdom 没有布局也不算 calc,所以这里只验**交界**:设置有没有送到 CSS 手上。
-	 * 送到之后长什么样(alpha 缩放、磨砂去没去掉)是 CSS 的事,只能真机看。
-	 */
-	const glassVars = async () => {
+describe("AiChatDock — 玻璃质感不再有 chat 专属参数", () => {
+	it("chat 根不再写玻璃内联变量 —— 玻璃族直接吃 --bn-glass-* token,调玻璃走皮肤编辑器", async () => {
+		render(wrap(<ChatPage />));
 		const dialog = await screen.findByRole("region");
-		return {
-			glass: dialog.style.getPropertyValue("--bn-chat-glass"),
-			blur: dialog.style.getPropertyValue("--bn-chat-blur"),
-			saturate: dialog.style.getPropertyValue("--bn-chat-saturate"),
-		};
-	};
-
-	/**
-	 * 主人报的:拉到最低时显出了背景色,却**比背景本身还鲜艳**。
-	 *
-	 * 元凶是 backdrop-filter 里的 saturate —— 它加工的是**背后**的像素。底色实的
-	 * 时候被白层盖着看不出来,底色一透,它还在那儿把背后的主题辉光按倍数放大。
-	 * 所以饱和度必须跟着透明度一起退场:玻璃都没了,就不该再给背景加料。
-	 */
-	it("拉到最低时饱和度回到 1 —— 玻璃没了就不该再给背景加料", async () => {
-		useAiChatStore.setState({ glassOpacity: 0 });
-		render(wrap(<ChatPage />));
-		expect((await glassVars()).saturate).toBe("1");
-	});
-
-	it("完全透明同理 —— 三个值一起退到「这块玻璃不存在」", async () => {
-		useAiChatStore.setState({ glassClear: true });
-		render(wrap(<ChatPage />));
-		expect(await glassVars()).toEqual({ glass: "0", blur: "0", saturate: "1" });
-	});
-
-	it("透明度直接就是 alpha,原样送到 CSS 手上", async () => {
-		useAiChatStore.setState({ glassOpacity: 0.4 });
-		render(wrap(<ChatPage />));
-		// 饱和度跟着走:1(不加料)→ 1.8(满档质感)之间线性。
-		expect(await glassVars()).toEqual({ glass: "0.4", blur: "1", saturate: "1.4" });
-	});
-
-	it("默认那一档也照常送出去", async () => {
-		render(wrap(<ChatPage />));
-		expect((await glassVars()).glass).toBe(String(DEFAULT_GLASS_OPACITY));
-	});
-
-	it("完全透明压过滑块 —— 拉过的值留着,但这会儿不算数", async () => {
-		useAiChatStore.setState({ glassOpacity: 0.5, glassClear: true });
-		render(wrap(<ChatPage />));
-		expect((await glassVars()).glass).toBe("0");
-		// store 里那一档没被抹掉,关掉完全透明就回得去。
-		expect(useAiChatStore.getState().glassOpacity).toBe(0.5);
+		expect(dialog.style.getPropertyValue("--bn-chat-glass")).toBe("");
+		expect(dialog.style.getPropertyValue("--bn-chat-blur")).toBe("");
+		expect(dialog.style.getPropertyValue("--bn-chat-saturate")).toBe("");
 	});
 });
 
@@ -972,32 +923,13 @@ describe("AiChatDock — AI 起标题", () => {
 	});
 });
 
-describe("AiChatDock — 设置弹层里的玻璃质感两项", () => {
-	async function openSettings() {
+describe("AiChatDock — 设置弹层不再有玻璃质感项", () => {
+	it("滑杆与完全透明开关都不在了 —— 玻璃调整只属于皮肤编辑器", async () => {
 		render(wrap(<ChatPage />));
 		fireEvent.click(await screen.findByLabelText("聊天设置"));
-	}
-
-	it("滑块拉一下,透明度跟着走", async () => {
-		await openSettings();
-		const slider = screen.getByLabelText("玻璃片透明度") as HTMLInputElement;
-		expect(slider.value).toBe(String(DEFAULT_GLASS_OPACITY));
-		fireEvent.change(slider, { target: { value: "0.3" } });
-		expect(useAiChatStore.getState().glassOpacity).toBe(0.3);
-	});
-
-	it("完全透明开关翻一下就生效", async () => {
-		await openSettings();
-		fireEvent.click(screen.getByLabelText("完全透明(去磨砂模糊)"));
-		expect(useAiChatStore.getState().glassClear).toBe(true);
-	});
-
-	it("开着完全透明时滑块禁用 —— 拉了也不生效,就别让人白拉", async () => {
-		// 不是把滑块藏起来:藏掉的话主人看不见自己原来调的是哪一档,关掉完全透明
-		// 之后会突然跳回一个记不得的值。留在原地、灰着,才看得出「等下就回来」。
-		useAiChatStore.setState({ glassClear: true });
-		await openSettings();
-		expect((screen.getByLabelText("玻璃片透明度") as HTMLInputElement).disabled).toBe(true);
+		await waitFor(() => expect(screen.getByText("思考深度")).toBeTruthy());
+		expect(screen.queryByLabelText("玻璃片透明度")).toBeNull();
+		expect(screen.queryByLabelText("完全透明(去磨砂模糊)")).toBeNull();
 	});
 });
 
@@ -1100,7 +1032,7 @@ describe("AiChatDock — 侧栏与主题", () => {
 		expect(dialog.getAttribute("data-chat-theme")).toBeNull();
 
 		screen.getByLabelText("聊天设置").click();
-		await waitFor(() => expect(screen.getByText("玻璃质感")).toBeTruthy());
+		await waitFor(() => expect(screen.getByText("思考深度")).toBeTruthy());
 		expect(screen.queryByText("主题色")).toBeNull();
 	});
 

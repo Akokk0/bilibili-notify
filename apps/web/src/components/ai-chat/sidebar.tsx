@@ -1,7 +1,6 @@
-import { Icon, Toggle } from "@bilibili-notify/ui";
+import { Icon } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { type AiConversationMetaDTO, groupConversations } from "../../services/aiChat";
-import { useCurrentSkinMode } from "../skin-root";
 import { ThinkingLevelSetting } from "./thinking-level-setting";
 
 /**
@@ -25,17 +24,10 @@ export interface ChatSidebarProps {
 	userFace?: string;
 	/** 女仆的名字,取自人格配置(见 {@link resolveChatPersona})。 */
 	aiName: string;
-	/** 玻璃片透明度 0..1;{@link glassClear} 开着时这个值留着但不生效。 */
-	glassOpacity: number;
-	onGlassOpacityChange: (next: number) => void;
-	glassClear: boolean;
-	onGlassClearChange: (next: boolean) => void;
 }
 
 export function ChatSidebar(props: ChatSidebarProps) {
 	const [settingsOpen, setSettingsOpen] = useState(false);
-	// 皮肤(含试穿/预览)生效 → chat 观感由皮肤接管,四色预设节隐藏。
-	const skinOn = useCurrentSkinMode() !== null;
 	const groups = groupConversations(props.conversations);
 
 	return (
@@ -148,47 +140,9 @@ export function ChatSidebar(props: ChatSidebarProps) {
 
 				{settingsOpen ? (
 					<div className="bn-glass-sheen bn-glass-popover bn-anim-fade-up absolute inset-x-0 bottom-[calc(100%+8px)] z-20 rounded-2xl p-3 shadow-[0_12px_36px_rgba(42,30,72,0.18)]">
-						{/* 四色预设已砍:默认装只有一套默认主题样式,换观感一律走皮肤包。
-						    思考深度与皮肤无关,永远在。 */}
-						{/* 玻璃质感。跟推送卡片那对同名同义(玻璃片透明度 + 完全透明),
-						    主人在两处看到的是同一套说法,默认值也是同一个数。
-						    皮肤生效时同样隐藏:那时玻璃件整体改吃皮肤「玻璃」段的参数
-						    (composeChatGlassCss 覆盖了这几个类),滑杆调了也不生效。 */}
-						{skinOn ? null : (
-							<>
-								<div className="mb-2 mt-3.5 pl-0.5 text-[11px] font-bold tracking-wide text-bn-text-secondary">
-									玻璃质感
-								</div>
-								<div className="flex h-7 items-center gap-2.5 px-0.5">
-									<input
-										type="range"
-										min={0}
-										max={1}
-										step={0.02}
-										aria-label="玻璃片透明度"
-										// 开着完全透明时**禁用而不是藏起来**:藏掉的话主人看不见自己原来
-										// 调的是哪一档,关掉之后会突然跳回一个自己记不得的值。
-										disabled={props.glassClear}
-										value={props.glassOpacity}
-										onChange={(e) => props.onGlassOpacityChange(Number(e.target.value))}
-										className="bn-chat-accent-range flex-1 disabled:opacity-40"
-									/>
-									<span className="w-8 shrink-0 text-right font-mono text-[10.5px] text-bn-text-secondary">
-										{props.glassOpacity.toFixed(2)}
-									</span>
-								</div>
-								<div className="mt-2 flex items-center gap-2 px-0.5 text-[11px] text-bn-text-secondary">
-									<Toggle
-										size="sm"
-										ariaLabel="完全透明(去磨砂模糊)"
-										value={props.glassClear}
-										onChange={props.onGlassClearChange}
-									/>
-									完全透明（去磨砂模糊）
-								</div>
-							</>
-						)}
-
+						{/* 主题色与玻璃质感都不在这里:四色预设已砍,玻璃族直接吃
+						    --bn-glass-* token —— 观感调整一律走皮肤包(皮肤编辑器)。
+						    弹层里只剩与皮肤无关的行为设置。 */}
 						{/* 思考深度(ai.chat.thinkingLevel)。组件自带查询与落盘,弹层这边
 						    不用为它多穿一层 props —— 与 ✦ 胶囊(ThinkingControl)同款自理。 */}
 						<ThinkingLevelSetting />
