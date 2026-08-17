@@ -257,6 +257,59 @@ describe("parseSkinManifest / glass · fonts · radius", () => {
 		expect(bad.ok).toBe(false);
 	});
 
+	it("fonts.body 超过 8 个 → 截到 8 个收下,不整包拒收", () => {
+		// 真机踩过(2026-08-18):AI 写了一整条中文字体栈(十来个名字),整包被拒
+		// → 白跑一趟两分半的生成。字体栈长一点是格式毛病不是安全问题,截断即可。
+		const res = parseSkinManifest({
+			schemaVersion: 1,
+			name: "t",
+			modes: {
+				light: {
+					fonts: {
+						body: [
+							"PingFang SC",
+							"Hiragino Sans GB",
+							"Microsoft YaHei",
+							"Source Han Sans SC",
+							"Noto Sans CJK SC",
+							"system-ui",
+							"-apple-system",
+							"BlinkMacSystemFont",
+							"Segoe UI",
+							"Helvetica Neue",
+							"Arial",
+							"sans-serif",
+						],
+					},
+				},
+			},
+		});
+		expect(res.ok).toBe(true);
+		if (!res.ok) return;
+		expect(res.skin.modes.light?.fonts?.body).toEqual([
+			"PingFang SC",
+			"Hiragino Sans GB",
+			"Microsoft YaHei",
+			"Source Han Sans SC",
+			"Noto Sans CJK SC",
+			"system-ui",
+			"-apple-system",
+			"BlinkMacSystemFont",
+		]);
+		expect(res.warnings.some((w) => w.includes("fonts.body"))).toBe(true);
+	});
+
+	it("fonts.body 字体名带 CSS 原文的引号 → 剥掉引号收下", () => {
+		const res = parseSkinManifest({
+			schemaVersion: 1,
+			name: "t",
+			modes: { light: { fonts: { body: ['"PingFang SC"', "'Segoe UI'", "sans-serif"] } } },
+		});
+		expect(res.ok).toBe(true);
+		if (!res.ok) return;
+		expect(res.skin.modes.light?.fonts?.body).toEqual(["PingFang SC", "Segoe UI", "sans-serif"]);
+	});
+
 	it("radius card 0~32 / pill 0~999 → ok;越界 → 拒绝", () => {
 		const ok = parseSkinManifest({
 			schemaVersion: 1,

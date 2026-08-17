@@ -10,6 +10,7 @@
 import {
 	SKIN_COLOR_TOKEN_MAP,
 	SKIN_CSS_HOOK_MAP,
+	type SkinCssHook,
 	type SkinManifest,
 } from "@bilibili-notify/contract";
 import { referencedImages } from "./package.js";
@@ -33,9 +34,30 @@ export type SkinAiEditResult =
 	| { ok: true; manifest: SkinManifest; warnings: string[] }
 	| { ok: false; errors: string[] };
 
-const HOOK_LIST = Object.keys(SKIN_CSS_HOOK_MAP)
-	.map((h) => `"${h}"`)
-	.join(" / ");
+/**
+ * 每个 CSS 挂点在这个面板里**长什么样**。
+ *
+ * 光把名字列出来,AI 只能按名字想象形状,而想错了没有任何东西会拦它:真机上
+ * `nav` 被当成横向胶囊条写了 `border-radius:999px`,落到竖向的分区列表上就成了
+ * 一个盖住半个页面的大椭圆(2026-08-18)。挂点是对外承诺的公开 API,加一个就得
+ * 在这儿补一句 —— ai-create 的测试遍历 {@link SKIN_CSS_HOOK_MAP} 钉着这条。
+ */
+export const SKIN_CSS_HOOK_NOTES: Record<SkinCssHook, string> = {
+	page: '"page"=整页根(壁纸之上、内容之下;氛围层挂它的伪元素)',
+	glass: '"glass"=所有轻玻璃卡片(小到一行数据卡,大到整块面板)',
+	"glass-strong": '"glass-strong"=强玻璃面(弹层、浮条、抽屉)',
+	btn: '"btn"=所有按钮(矮元素,胶囊圆角安全)',
+	"btn-primary": '"btn-primary"=主按钮(粉色实底那种)',
+	input: '"input"=单行输入框',
+	header: '"header"=顶栏(横向长条)',
+	nav: '"nav"=页面级导航容器 —— 横向 tab 条和**竖向的分区列表**都挂它,别当成横条设形状',
+	avatar: '"avatar"=圆头像(本身已经是圆的)',
+	modal: '"modal"=弹窗卡片本体',
+};
+
+const HOOK_LIST = Object.values(SKIN_CSS_HOOK_NOTES)
+	.map((n) => `  ${n}`)
+	.join("\n");
 
 /**
  * colors 的可用键。改皮肤时 draft 里已有的键就是活样板,但**从零建**(聊天里
@@ -64,7 +86,7 @@ export function buildSkinAiSystemPrompt(
 
 - schemaVersion 固定 1;没被要求改的字段一律原样保留,不要顺手删改
 - colors 的可用键(只收这些,别的键会被静默忽略):${COLOR_KEY_LIST};值只收 hex / rgb() / hsl() / oklch() / transparent(禁 url()、var()、分号)
-- modes: { light?, dark? },每套里可用 colors / page.background / wallpaper(image·fit·position·overlay 0~0.8·blur 0~40)/ chat(background·wallpaper 同构 —— AI 聊天页专属背景,只管背景:强调色跟随 colors.accent、玻璃件直用 glass 段,background 缺省透出整页皮肤底,通常不用写)/ glass(background·border·strongBackground·strongBorder·blur 0~40·strongBlur;默认装无描边,border 对只在刻意要描边风格(如暗色霓虹边)时才配,亮色/玻璃感皮肤不配)/ fonts.body / radius(card 0~32·pill 0~999)/ shadows(card·elev)/ css / effects
+- modes: { light?, dark? },每套里可用 colors / page.background / wallpaper(image·fit·position·overlay 0~0.8·blur 0~40)/ chat(background·wallpaper 同构 —— AI 聊天页专属背景,只管背景:强调色跟随 colors.accent、玻璃件直用 glass 段,background 缺省透出整页皮肤底,通常不用写)/ glass(background·border·strongBackground·strongBorder·blur 0~40·strongBlur;默认装无描边,border 对只在刻意要描边风格(如暗色霓虹边)时才配,亮色/玻璃感皮肤不配)/ fonts.body(**最多 8 个**字体名的数组,只准字母/数字/空格/点/连字符,别加引号;拿不准就整个不写)/ radius(card 0~32·pill 0~999)/ shadows(card·elev)/ css / effects
 - wallpaper.overlay 是遮罩纱,纱色自动跟模式(亮=白纱/暗=黑纱);wallpaper.blur 是壁纸自身高斯模糊。亮色+高饱和壁纸的配方:overlay 0.3~0.4 + blur 8~16。卡内列表行默认全透明(内容直接画在玻璃上,别在玻璃卡里叠第二层),只有刻意要行条底/描边时才配 colors.listRow / colors.listRowBorder
 - effects 动效预设两道可选:glassShine { color? } / bokeh { colors: [1~4 色] }
 - 顶层可给 texts: { headerTitle, chatPlaceholder }(≤60 字)与 css(明暗共用)
@@ -78,13 +100,14 @@ export function buildSkinAiSystemPrompt(
 
 ## 自定义 CSS(组件级造型与动效的主力)
 
-- 选择器只准 [data-bn="<挂点>"] 配伪类/伪元素/组合器;挂点:${HOOK_LIST}
-  ("page"=整页,"glass"/"glass-strong"=玻璃卡/弹层,其余对应同名组件)
+- 选择器只准 [data-bn="<挂点>"] 配伪类/伪元素/组合器。挂点就这些,各自长这样:
+${HOOK_LIST}
+- **胶囊/正圆圆角(border-radius 999px、50%)只准给按钮、头像这类矮元素**;容器类挂点(page / glass / glass-strong / nav / header / modal)圆角别超过 24px —— 容器有高瘦形态,套上 999px 会鼓成一个大椭圆
 - 属性只收视觉白名单(background/border/box-shadow/color/opacity/filter/backdrop-filter/transform/transition/animation/border-radius/clip-path/inset/width/height/z-index 等);display、pointer-events、visibility 会被丢弃
 - 禁 url()(图走字段,CSS 里写了会被剔除);position 只准 static/relative/absolute;伪元素 content 只准 "" 或 none
 - @keyframes 名必须以 skin- 开头;可用 @media (prefers-reduced-motion) 做降级
 
-只输出修改后的 skin.json 的 JSON 内容,不要解释,不要代码块围栏。`;
+只输出 skin.json 的 JSON 内容,不要解释,不要代码块围栏。`;
 }
 
 /** 剥掉模型爱加的 \`\`\`json 围栏与首尾闲话,尽力取出 JSON 本体。 */

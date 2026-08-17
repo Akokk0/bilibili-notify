@@ -8,9 +8,14 @@
  * - 新包里**一张图都没有**(聊天里递不了图) —— 任何壁纸引用当场拒收。
  */
 
-import { SKIN_COLOR_TOKEN_MAP } from "@bilibili-notify/contract";
+import {
+	SKIN_COLOR_TOKEN_MAP,
+	SKIN_CSS_HOOK_MAP,
+	type SkinCssHook,
+} from "@bilibili-notify/contract";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { runSkinAiCreate } from "../ai-create.js";
+import { SKIN_CSS_HOOK_NOTES } from "../ai-edit.js";
 
 const SKIN = {
 	schemaVersion: 1,
@@ -63,6 +68,34 @@ describe("runSkinAiCreate", () => {
 		await runSkinAiCreate({ generateRaw: g, brief: "初音未来风,主色 #39C5BB" });
 
 		expect(g.mock.calls[0]?.[0] ?? "").toMatch(/给了具体色值|指定了色值/);
+	});
+
+	it("system 交代每个 CSS 挂点长什么样 —— 光给名字,AI 只能按名字猜形状", async () => {
+		const g = gen(JSON.stringify(SKIN));
+		await runSkinAiCreate({ generateRaw: g, brief: "随便来一套" });
+
+		const system = g.mock.calls[0]?.[0] ?? "";
+		// 说明表必须覆盖全部挂点 —— 加了新挂点不补说明,AI 就又回到瞎猜。
+		for (const hook of Object.keys(SKIN_CSS_HOOK_MAP)) {
+			expect(Object.keys(SKIN_CSS_HOOK_NOTES)).toContain(hook);
+			expect(system).toContain(SKIN_CSS_HOOK_NOTES[hook as SkinCssHook]);
+		}
+	});
+
+	it("system 拦住「容器套胶囊圆角」—— 真机上 nav 被 999px 压成了一个大椭圆", async () => {
+		const g = gen(JSON.stringify(SKIN));
+		await runSkinAiCreate({ generateRaw: g, brief: "随便来一套" });
+
+		expect(g.mock.calls[0]?.[0] ?? "").toContain("999px");
+		// nav 在这个面板里既有横向 tab 条也有竖向分区列表,这句是那次事故的解药。
+		expect(SKIN_CSS_HOOK_NOTES.nav).toMatch(/竖/);
+	});
+
+	it("system 写明 fonts.body 最多 8 个 —— 不说,AI 会照 CSS 习惯列一长串", async () => {
+		const g = gen(JSON.stringify(SKIN));
+		await runSkinAiCreate({ generateRaw: g, brief: "随便来一套" });
+
+		expect(g.mock.calls[0]?.[0] ?? "").toMatch(/最多 8 个|≤ ?8 个/);
 	});
 
 	it("system 明说包里没有图片 —— 聊天里递不了壁纸", async () => {

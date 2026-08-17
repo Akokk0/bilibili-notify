@@ -77,6 +77,9 @@ const POSITION_RE = /^[a-z0-9%\s]{1,40}$/i;
 /** 字体名:任意语言文字/数字/空格/点/连字符;引号等标点进不来,合成层自己加引号。 */
 const FONT_NAME_RE = /^[\p{L}\p{N}\s._-]{1,50}$/u;
 
+/** 字体栈保留几个。超出的截掉 —— 回退链有 8 个已经绰绰有余。 */
+const MAX_FONTS = 8;
+
 /**
  * css 字段的统一入口:清洗后存产物,warnings 挂 path 前缀透传;
  * 清洗后为空 = 与没写同构(不留空串字段)。
@@ -266,15 +269,30 @@ function parseMode(
 		if (!fonts) {
 			errors.push(`${path}.fonts: 必须是对象`);
 		} else if (fonts.body !== undefined) {
-			if (
-				!Array.isArray(fonts.body) ||
-				fonts.body.length === 0 ||
-				fonts.body.length > 8 ||
-				!fonts.body.every((f) => typeof f === "string" && FONT_NAME_RE.test(f))
-			) {
+			/**
+			 * 字体栈**宽容收**:超长截断、CSS 原文的引号剥掉,只有真出现注入字符
+			 * 才拒整包。
+			 *
+			 * 分寸在这里:一串十来个名字的中文字体栈是 AI 照 CSS 习惯写出来的格式
+			 * 毛病(真机踩过,白烧一趟两分半的生成),截到 8 个毫发无伤;而 `url(`、
+			 * 分号这类东西不是笔误是攻击信号,静默剔掉等于把它藏起来 —— 那种照旧拒。
+			 */
+			const list = Array.isArray(fonts.body) ? fonts.body : null;
+			const names = list?.every((f) => typeof f === "string")
+				? (list as string[]).map((f) =>
+						f
+							.trim()
+							.replace(/^["']|["']$/g, "")
+							.trim(),
+					)
+				: null;
+			if (!names || names.length === 0 || !names.every((f) => FONT_NAME_RE.test(f))) {
 				errors.push(`${path}.fonts.body: 必须是 1~8 个字体名(仅文字/数字/空格/点/连字符)`);
 			} else {
-				mode.fonts = { body: fonts.body.map((f) => (f as string).trim()) };
+				if (names.length > MAX_FONTS) {
+					warnings.push(`${path}.fonts.body: 超过 ${MAX_FONTS} 个字体名,已截断`);
+				}
+				mode.fonts = { body: names.slice(0, MAX_FONTS) };
 			}
 		}
 	}

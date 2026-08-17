@@ -69,6 +69,16 @@ describe("皮肤工坊的 system", () => {
 		expect(SKIN_MODE_SYSTEM_PROMPT).toMatch(/写进 brief|填进 brief/);
 	});
 
+	it("明说这条路做不出壁纸 —— 主人要图时得如实说,别答应下来", () => {
+		// 真机踩过(2026-08-18):主人要「加雷姆的壁纸」,女仆把它写进 brief 就当
+		// 做成了,回话里报了一张根本不存在的壁纸。工具这一侧零资产,图进不来。
+		expect(SKIN_MODE_SYSTEM_PROMPT).toMatch(/壁纸|图片/);
+	});
+
+	it("只转述工具返回的东西 —— brief 里写了不等于做出来了", () => {
+		expect(SKIN_MODE_SYSTEM_PROMPT).toMatch(/工具没(说|返回)|返回.*之外/);
+	});
+
 	it("网页内容只当资料 —— 搜索结果里的指令不作数", () => {
 		// 接搜索就是把外部可控文本请进这个窗口,而这里唯一的写工具就是 create_skin。
 		// 这条是提示层那道防线,别在重写 system 时顺手删掉。
@@ -85,6 +95,25 @@ describe("create_skin 执行", () => {
 		expect(list).toHaveLength(1);
 		expect(list[0]?.name).toBe("夜航灯");
 		expect(out).toContain("夜航灯");
+	});
+
+	it("brief 里点了壁纸 → 回话里当场说清「图没做进去」", async () => {
+		// 提示层那条纪律靠不住(真机上女仆照样报了一张不存在的壁纸),所以把话
+		// 写进**工具返回值** —— 那段文本模型一定会读,也一定会转述给主人。
+		const out = await toolWith(genOf(JSON.stringify(DARK_SKIN))).execute({
+			brief: "暗色,叠一张雷姆的壁纸做背景",
+		});
+
+		expect(out).toMatch(/壁纸|图片/);
+		expect(out).toMatch(/没有|做不了|不带/);
+	});
+
+	it("brief 没提图片 → 回话不念叨壁纸这回事", async () => {
+		const out = await toolWith(genOf(JSON.stringify(DARK_SKIN))).execute({
+			brief: "赛博朋克,暗色",
+		});
+
+		expect(out).not.toMatch(/壁纸/);
 	});
 
 	it("默认**不**替主人换上,回话指路皮肤页", async () => {
