@@ -87,6 +87,16 @@ describe("SkinSection", () => {
 		return screen.getByRole("group", { name });
 	}
 
+	it("制作引导先指路聊天页 —— 女仆自己会做,粘 JSON 那条路已经不是唯一的了", async () => {
+		renderSection();
+		await waitFor(() => expect(screen.getAllByText("樱花夜").length).toBeGreaterThan(0));
+		fireEvent.click(screen.getByText("制作皮肤"));
+
+		await waitFor(() => expect(screen.getByText(/做套皮肤/)).toBeTruthy());
+		// 外部 AI 那条路还在,只是退到了后面。
+		expect(screen.getByText("复制提示词")).toBeTruthy();
+	});
+
 	it("列表:皮肤条目带模式/壁纸标签与导出入口;深浅两个 Picker 按钮组在场", async () => {
 		renderSection();
 		await waitFor(() => expect(screen.getAllByText("樱花夜").length).toBeGreaterThan(0));
