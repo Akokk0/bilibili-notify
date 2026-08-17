@@ -1,12 +1,14 @@
 /**
- * 聊天路由 × `create_skin` —— 「做一套皮肤」这条写能力挂进聊天的接线。
+ * 聊天路由 × 皮肤工坊模式。
  *
- * 两条要紧的契约:
- * - **挂载是有条件的**:装配时给了皮肤库才挂。没给(老装配 / 只测聊天的用例)
- *   照旧一个工具都不多,写能力不会凭空出现。
- * - **预算跟着请求走**:一轮对话最多两套,而「一轮」= 一次聊天请求。工具要是
- *   建在路由装配时,那把计数器会跨请求累加 —— 聊到第三句就再也做不了皮肤,
- *   而且重启才恢复。
+ * 写能力**只在皮肤模式里存在**(主人拍板的隔离):日常聊天那个窗口的上下文里有
+ * B 站动态正文、图片里的字这些外部可控文本,写工具挂在那儿就是给注入面开口。
+ * 切到皮肤工坊之后反过来:人格不带、B 站只读工具不带、搜索不带,模型手上只有
+ * `create_skin` 一把。
+ *
+ * 另一条要紧的契约是**预算跟着请求走**:一轮最多两套,而「一轮」= 一次聊天请求。
+ * 工具要是建在路由装配时,那把计数器会跨请求累加 —— 聊到第三句就再也做不了皮肤,
+ * 而且得重启才恢复。
  */
 
 // biome-ignore-all lint/suspicious/noExplicitAny: 断言 wire 载荷,不为测试再造一遍类型
@@ -27,15 +29,17 @@ const DARK_SKIN = {
 };
 
 const H = vi.hoisted(() => ({
-	/** 最后一次聊天调用收到的注入工具。 */
-	lastExtraTools: null as any,
+	/** 最后一次聊天调用收到的整份 opts —— 工具、system、开关都在里面。 */
+	lastOpts: null as any,
 }));
 
 const chatStatelessStream = vi.fn(async (_messages: unknown, opts: any) => {
-	H.lastExtraTools = opts.extraTools ?? null;
+	H.lastOpts = opts;
 	opts.onDelta("好的主人~");
 	return "好的主人~";
 });
+
+const lastTools = (): any[] | null => H.lastOpts?.extraTools ?? null;
 
 /** 皮肤设计师那一跳(嵌套调用)—— 直接回一份合法 manifest。 */
 const generateRaw = vi.fn(async (_s: string, _u: string) => JSON.stringify(DARK_SKIN));
@@ -67,55 +71,96 @@ async function makeDeps(opts: { skins?: boolean } = {}) {
 	return { app, skinStore };
 }
 
-async function say(app: ReturnType<typeof createAiRoute>): Promise<void> {
+async function say(
+	app: ReturnType<typeof createAiRoute>,
+	body: Record<string, unknown> = {},
+): Promise<Response> {
 	const conv = (await (await app.request("/conversations", { method: "POST" })).json()) as any;
 	const res = await app.request(`/conversations/${conv.conversation.id}/chat`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ message: "给我做套皮肤" }),
+		body: JSON.stringify({ message: "给我做套皮肤", ...body }),
 	});
 	// 流抽干,handler 才算跑完(落盘在流的末尾)。
 	await res.text();
+	return res;
 }
 
+const inSkinMode = (app: ReturnType<typeof createAiRoute>, body: Record<string, unknown> = {}) =>
+	say(app, { mode: "skin", ...body });
+
 beforeEach(() => {
-	H.lastExtraTools = null;
+	H.lastOpts = null;
 	chatStatelessStream.mockClear();
 	generateRaw.mockClear();
 });
 
-describe("聊天 × create_skin 接线", () => {
-	it("装配时给了皮肤库 → 聊天带上 create_skin", async () => {
+describe("日常聊天模式(缺省)", () => {
+	it("一个写工具都不挂 —— 这个窗口只读", async () => {
 		const { app } = await makeDeps();
 		await say(app);
 
-		expect(H.lastExtraTools?.map((t: any) => t.definition.function.name)).toEqual(["create_skin"]);
+		expect(lastTools()).toBeNull();
 	});
 
-	it("没给皮肤库 → 一个注入工具都不挂", async () => {
-		const { app } = await makeDeps({ skins: false });
+	it("人格与内置只读工具照旧 —— 不碰这条路的现状", async () => {
+		const { app } = await makeDeps();
 		await say(app);
 
-		expect(H.lastExtraTools).toBeNull();
+		expect(H.lastOpts.systemPrompt).toBeUndefined();
+		expect(H.lastOpts.builtinTools).toBeUndefined();
+	});
+});
+
+describe("皮肤工坊模式", () => {
+	it("工具表只有 create_skin", async () => {
+		const { app } = await makeDeps();
+		await inSkinMode(app);
+
+		expect(lastTools()?.map((t: any) => t.definition.function.name)).toEqual(["create_skin"]);
+	});
+
+	it("人格不带、内置只读工具不带 —— 隔离的全部意义在这两条", async () => {
+		const { app } = await makeDeps();
+		await inSkinMode(app);
+
+		expect(H.lastOpts.builtinTools).toBe(false);
+		expect(String(H.lastOpts.systemPrompt)).toContain("皮肤");
+	});
+
+	it("搜索开关在这个模式下一律当没开 —— 工具都没挂,留着只会骗模型", async () => {
+		const { app } = await makeDeps();
+		await inSkinMode(app, { search: true });
+
+		expect(H.lastOpts.webSearch).toBe(false);
+	});
+
+	it("没装皮肤库却点了皮肤模式 → 400,不静默退回普通聊天", async () => {
+		// 静默降级的话,主人会在一个根本做不了皮肤的窗口里一直说「做套皮肤」,
+		// 而女仆一本正经地打太极。
+		const { app } = await makeDeps({ skins: false });
+		const res = await inSkinMode(app);
+
+		expect(res.status).toBe(400);
 	});
 
 	it("工具真能落盘:执行一次,皮肤进了库", async () => {
 		const { app, skinStore } = await makeDeps();
-		await say(app);
-		await H.lastExtraTools[0].execute({ brief: "赛博朋克,暗色" });
+		await inSkinMode(app);
+		await lastTools()?.[0].execute({ brief: "赛博朋克,暗色" });
 
 		expect((await skinStore.list()).map((s) => s.name)).toEqual(["夜航灯"]);
 	});
 
 	it("预算按请求重置 —— 上一轮做满两套,下一轮照样能做", async () => {
 		const { app } = await makeDeps();
-		await say(app);
-		const first = H.lastExtraTools[0];
+		await inSkinMode(app);
+		const first = lastTools()?.[0];
 		await first.execute({ brief: "一套" });
 		await first.execute({ brief: "两套" });
 		await expect(first.execute({ brief: "三套" })).rejects.toThrow();
 
-		await say(app);
-		await expect(H.lastExtraTools[0].execute({ brief: "新一轮" })).resolves.toContain("夜航灯");
+		await inSkinMode(app);
+		await expect(lastTools()?.[0].execute({ brief: "新一轮" })).resolves.toContain("夜航灯");
 	});
 });

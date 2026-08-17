@@ -30,7 +30,7 @@ import {
 	readChatImageDataUrl,
 	saveChatImage,
 } from "../runtime/chat-assets.js";
-import { createSkinChatTool } from "../skins/chat-tool.js";
+import { createSkinChatTool, SKIN_MODE_SYSTEM_PROMPT } from "../skins/chat-tool.js";
 import type { SkinStore } from "../skins/store.js";
 import { REDACTED_API_KEY } from "./globals.js";
 import type { RouteDeps } from "./types.js";
@@ -311,18 +311,31 @@ export function createAiRoute(
 			{ role: "user" as const, content: message },
 		];
 
-		// 「做一套皮肤」这把工具**每个请求现配**:它带着「一轮最多两套」的预算,
-		// 建在装配处的话那把计数器会跨请求累加 —— 聊到第三句就再也做不了皮肤,
-		// 而且得重启才恢复。
-		const extraTools = opts?.skinStore
-			? [
-					createSkinChatTool({
-						skinStore: opts.skinStore,
-						// 热读同 ai-edit:engines 是后挂的,别做快照。
-						generator: () => deps.runtime.engines?.commentary ?? null,
-					}),
-				]
-			: undefined;
+		/**
+		 * 皮肤工坊模式的装配。写能力**只在这个模式里存在**(主人拍板的隔离):
+		 * 日常聊天的上下文里有 B 站动态正文、图片里的字这些外部可控文本,写工具
+		 * 挂在那儿就是给注入面开口。这个模式反过来 —— 人格、B 站只读工具、搜索
+		 * 全不带,模型手上只有 create_skin 一把。
+		 *
+		 * 工具**每个请求现配**:它带着「一轮最多两套」的预算,建在装配处的话那把
+		 * 计数器会跨请求累加 —— 聊到第三句就再也做不了皮肤,而且得重启才恢复。
+		 */
+		const skinMode = parsed.data.mode === "skin";
+		if (skinMode && !opts?.skinStore) {
+			// 静默退回普通聊天的话,主人会在一个根本做不了皮肤的窗口里反复说
+			// 「做套皮肤」,而女仆一本正经地打太极。
+			return c.json({ err: "皮肤工坊在这个部署里没有装配好,请改用聊天模式" }, 400);
+		}
+		const skinTools =
+			skinMode && opts?.skinStore
+				? [
+						createSkinChatTool({
+							skinStore: opts.skinStore,
+							// 热读同 ai-edit:engines 是后挂的,别做快照。
+							generator: () => deps.runtime.engines?.commentary ?? null,
+						}),
+					]
+				: undefined;
 
 		return streamSSE(c, async (sse) => {
 			/**
@@ -355,8 +368,15 @@ export function createAiRoute(
 						thinkingLevel: resolveChatThinkingLevel(deps.store.getGlobals().defaults.ai),
 					},
 					// 联网搜索同样会话级;不带 = 不开。执行器没配置时生成器静默不挂。
-					webSearch: parsed.data.search ?? false,
-					...(extraTools ? { extraTools } : {}),
+					// 皮肤工坊里一律当没开:那个模式连工具表都收了,留着只会骗模型。
+					webSearch: !skinMode && (parsed.data.search ?? false),
+					...(skinTools
+						? {
+								extraTools: skinTools,
+								systemPrompt: SKIN_MODE_SYSTEM_PROMPT,
+								builtinTools: false,
+							}
+						: {}),
 					onDelta: (text) => {
 						// 不 await:回调是同步的,这里排一次写就行。真要背压也轮不到
 						// 这一层管 —— SSE 的写在内存里排队,量级是几十 KB。
@@ -443,6 +463,14 @@ const ChatRequestSchema = z.object({
 	thinking: z.boolean().optional(),
 	/** 这一问允不允许联网搜索。同上,会话级;不带 = 不开(默认不烧钱)。 */
 	search: z.boolean().optional(),
+	/**
+	 * 这一问在哪个模式下问的。`chat`(缺省)= 日常聊天,女仆人格 + B 站只读工具;
+	 * `skin` = 皮肤工坊,人格与只读工具全收、只留 create_skin。
+	 *
+	 * 与思考 / 搜索同一口径:界面上那个切换是**会话级**的,不落盘,按消息走请求体。
+	 * 不带 = 老客户端 = 日常聊天,写能力不会因为漏传字段而凭空出现。
+	 */
+	mode: z.enum(["chat", "skin"]).optional(),
 });
 
 /**
