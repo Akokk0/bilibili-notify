@@ -1,0 +1,126 @@
+/**
+ * 聊天里的 `create_skin` 工具 —— 女仆把「做一套皮肤」真的做出来的那一步。
+ *
+ * 这是**唯一**一个带写能力的聊天工具,所以它的边界都得钉死:一轮对话最多做几套、
+ * 入参空了怎么办、生成失败怎么向主人交代、什么时候才允许直接给主人换上。
+ *
+ * 失败一律 **throw**:执行层会把它翻成 ok:false,界面上那一格就是叉而不是对勾 ——
+ * 回一句「失败了」的成功结果,会让主人看着对勾却什么都没多出来。
+ */
+
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { createSkinChatTool } from "../chat-tool.js";
+import { SkinStore } from "../store.js";
+
+const DARK_SKIN = {
+	schemaVersion: 1,
+	name: "夜航灯",
+	description: "青色霓虹的暗色终端",
+	modes: { dark: { colors: { accent: "#00e5ff" } } },
+};
+
+function genOf(...answers: string[]) {
+	let i = 0;
+	return vi.fn(async (_s: string, _u: string) => answers[i++] ?? answers.at(-1) ?? "");
+}
+
+let store: SkinStore;
+
+beforeEach(async () => {
+	store = new SkinStore({ skinsDir: await mkdtemp(join(tmpdir(), "bn-skintool-")) });
+	await store.init();
+});
+
+/** 一次聊天请求配一把工具(预算跟着这把走)。 */
+function toolWith(generateRaw: ReturnType<typeof genOf>) {
+	return createSkinChatTool({ skinStore: store, generator: () => ({ generateRaw }) });
+}
+
+describe("create_skin 工具定义", () => {
+	it("叫 create_skin,收 brief(必填)与 activate(可选)", () => {
+		const def = toolWith(genOf()).definition;
+		expect(def.function.name).toBe("create_skin");
+		const params = def.function.parameters as {
+			properties: Record<string, unknown>;
+			required: string[];
+		};
+		expect(Object.keys(params.properties)).toEqual(["brief", "activate"]);
+		expect(params.required).toEqual(["brief"]);
+	});
+
+	it("描述里写明「生成要等一会儿」与「一轮最多两套」—— 模型据此收敛", () => {
+		const desc = toolWith(genOf()).definition.function.description ?? "";
+		expect(desc).toContain("皮肤");
+		expect(desc).toMatch(/两套|2 套/);
+	});
+});
+
+describe("create_skin 执行", () => {
+	it("生成成功 → 皮肤真进了库,回话里带皮肤名", async () => {
+		const tool = toolWith(genOf(JSON.stringify(DARK_SKIN)));
+		const out = await tool.execute({ brief: "赛博朋克,暗色" });
+
+		const list = await store.list();
+		expect(list).toHaveLength(1);
+		expect(list[0]?.name).toBe("夜航灯");
+		expect(out).toContain("夜航灯");
+	});
+
+	it("默认**不**替主人换上,回话指路皮肤页", async () => {
+		const out = await toolWith(genOf(JSON.stringify(DARK_SKIN))).execute({ brief: "暗色" });
+
+		expect(store.getActive()).toEqual({ light: null, dark: null });
+		expect(out).toContain("皮肤");
+		expect(out).toMatch(/还没换上|没有换上/);
+	});
+
+	it("activate=true → 落进它具备的那个槽,并说清哪个模式下生效", async () => {
+		// 入参过执行层时被逐值 String 归一,布尔到手是字符串。
+		const out = await toolWith(genOf(JSON.stringify(DARK_SKIN))).execute({
+			brief: "暗色",
+			activate: "true",
+		});
+
+		const active = store.getActive();
+		expect(active.dark).not.toBeNull();
+		// 只有暗色一套 —— 浅色槽绝不能被顺手占掉。
+		expect(active.light).toBeNull();
+		expect(out).toContain("暗色");
+	});
+
+	it("activate=false → 不换", async () => {
+		await toolWith(genOf(JSON.stringify(DARK_SKIN))).execute({ brief: "暗色", activate: "false" });
+		expect(store.getActive()).toEqual({ light: null, dark: null });
+	});
+
+	it("生成两次都不过 → 抛错,错误里带原因,库里不留半个皮肤", async () => {
+		const tool = toolWith(genOf("这不是 JSON", "还是不是"));
+		await expect(tool.execute({ brief: "暗色" })).rejects.toThrow(/JSON|校验|失败/);
+		expect(await store.list()).toHaveLength(0);
+	});
+
+	it("brief 是空白 → 当场拒,不白烧一次生成", async () => {
+		const g = genOf(JSON.stringify(DARK_SKIN));
+		await expect(toolWith(g).execute({ brief: "   " })).rejects.toThrow();
+		expect(g).not.toHaveBeenCalled();
+	});
+
+	it("一轮最多两套 —— 第三次不生成,直接拒", async () => {
+		const g = genOf(JSON.stringify(DARK_SKIN));
+		const tool = toolWith(g);
+		await tool.execute({ brief: "一套" });
+		await tool.execute({ brief: "两套" });
+		await expect(tool.execute({ brief: "三套" })).rejects.toThrow(/两套|上限|够/);
+
+		expect(g).toHaveBeenCalledTimes(2);
+		expect(await store.list()).toHaveLength(2);
+	});
+
+	it("AI 未就绪(热读口回 null)→ 抛错指路 AI 设置页", async () => {
+		const tool = createSkinChatTool({ skinStore: store, generator: () => null });
+		await expect(tool.execute({ brief: "暗色" })).rejects.toThrow(/智能女仆|AI/);
+	});
+});
