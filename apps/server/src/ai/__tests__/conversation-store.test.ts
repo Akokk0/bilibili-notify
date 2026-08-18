@@ -333,3 +333,70 @@ describe("ConversationStore — 上限裁剪", () => {
 		expect(ids).toContain(newest.id);
 	});
 });
+
+/**
+ * 会话的**面孔** —— 模式(日常聊天 / 皮肤工坊)与人格开关。
+ *
+ * 这两样以前是界面上的会话级临时状态,不落盘、换个会话就归零。主人后来定了要
+ * **锁定**:开局选定,整个会话不再改,侧栏那一行还要标出来。于是它们成了会话
+ * 自己的属性,得跟着 JSON 一起活。
+ *
+ * 缺省口径是要紧的:功能上线前就存在的会话文件里没有这两个字段,读出来必须是
+ * 「日常聊天 + 有人格」—— 也就是它们一直以来的样子。往任何别的方向兜,主人一屋子
+ * 老会话会集体变脸。
+ */
+describe("会话的模式与人格", () => {
+	it("建的时候定下来,读回来一字不差", async () => {
+		const conv = await store.create({ mode: "skin", persona: false });
+		expect(conv.mode).toBe("skin");
+		expect(conv.persona).toBe(false);
+
+		const back = await store.get(conv.id);
+		expect(back?.mode).toBe("skin");
+		expect(back?.persona).toBe(false);
+	});
+
+	it("不给 = 日常聊天 + 有人格", async () => {
+		const conv = await store.create();
+		expect(conv.mode).toBe("chat");
+		expect(conv.persona).toBe(true);
+	});
+
+	it("侧栏列表也带着 —— 那一行的 label 全指着它", async () => {
+		await store.create({ mode: "skin", persona: false });
+		const [meta] = await store.list();
+		expect(meta?.mode).toBe("skin");
+		expect(meta?.persona).toBe(false);
+	});
+
+	it("老会话文件没这两个字段 → 按聊天 + 有人格读,别让主人的旧会话集体变脸", async () => {
+		const dir = join(dataDir, "ai", "chat");
+		await mkdir(dir, { recursive: true });
+		await writeFile(
+			join(dir, "legacy.json"),
+			JSON.stringify({
+				id: "legacy",
+				title: "老会话",
+				createdAt: "2026-01-01T00:00:00.000Z",
+				updatedAt: "2026-01-01T00:00:00.000Z",
+				messages: [],
+			}),
+			"utf8",
+		);
+
+		expect((await store.get("legacy"))?.mode).toBe("chat");
+		expect((await store.get("legacy"))?.persona).toBe(true);
+		const [meta] = await store.list();
+		expect(meta?.mode).toBe("chat");
+		expect(meta?.persona).toBe(true);
+	});
+
+	it("聊过之后模式不变 —— 「锁定」就是这个意思", async () => {
+		const conv = await store.create({ mode: "skin", persona: false });
+		await store.appendMessages(conv.id, [{ role: "user", content: "做套皮肤" }]);
+
+		const back = await store.get(conv.id);
+		expect(back?.mode).toBe("skin");
+		expect(back?.persona).toBe(false);
+	});
+});

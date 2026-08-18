@@ -339,12 +339,28 @@ export interface AiChatMessageDTO {
  * 列表与详情分开是刻意的:侧栏一次要列几十个会话,把每个会话的整段对话都带上,
  * 光为了显示一行标题就要传几百 KB。点进某个会话时再 `GET /:id` 取全文。
  */
+/**
+ * 一场对话的**面孔**:`chat` = 日常聊天(女仆人格 + B 站只读工具),
+ * `skin` = 皮肤工坊(人格与只读工具全收,只留 create_skin)。
+ *
+ * 它是**会话级且锁定**的:开局定下,整场不再改 —— 聊到一半换面孔,前半段的
+ * 上下文与后半段的工具表对不上,主人也说不清自己在跟谁说话。
+ */
+export type AiChatMode = "chat" | "skin";
+
 export interface AiConversationMetaDTO {
 	id: string;
 	title: string;
 	createdAt: string;
 	updatedAt: string;
 	messageCount: number;
+	/** 见 {@link AiChatMode}。缺失(老会话)按 `chat` 算。 */
+	mode?: AiChatMode;
+	/**
+	 * 带不带女仆人格。缺失(老会话)按 `true` 算 —— 那正是它们一直以来的样子。
+	 * 皮肤工坊那一档本来就没有人格,这个字段在那儿不起作用。
+	 */
+	persona?: boolean;
 	/**
 	 * 标题是否已由 AI 起过。缺失(旧会话)按 false 算 —— 前端据此决定要不要去要
 	 * 一个标题,所以「不知道」必须落在「还没起过」这一边,否则老会话一个都轮不上。

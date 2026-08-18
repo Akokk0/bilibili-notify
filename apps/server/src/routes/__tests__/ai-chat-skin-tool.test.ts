@@ -90,8 +90,16 @@ async function makeDeps(opts: { skins?: boolean } = {}) {
 async function say(
 	app: ReturnType<typeof createAiRoute>,
 	body: Record<string, unknown> = {},
+	/** 建会话时定下的面孔 —— 模式与人格开局锁定,不再随每条消息走。 */
+	init: Record<string, unknown> = {},
 ): Promise<Response> {
-	const conv = (await (await app.request("/conversations", { method: "POST" })).json()) as any;
+	const conv = (await (
+		await app.request("/conversations", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(init),
+		})
+	).json()) as any;
 	const res = await app.request(`/conversations/${conv.conversation.id}/chat`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
@@ -103,7 +111,7 @@ async function say(
 }
 
 const inSkinMode = (app: ReturnType<typeof createAiRoute>, body: Record<string, unknown> = {}) =>
-	say(app, { mode: "skin", ...body });
+	say(app, body, { mode: "skin" });
 
 beforeEach(() => {
 	H.lastOpts = null;
@@ -205,5 +213,57 @@ describe("皮肤工坊模式", () => {
 
 		await inSkinMode(app);
 		await expect(lastTools()?.[0].execute({ brief: "新一轮" })).resolves.toContain("夜航灯");
+	});
+});
+
+/**
+ * 面孔归**会话**所有,不归每条消息所有。
+ *
+ * 主人拍板的「锁定」:开局选定,整场对话不再改。落到服务端就是一句话 —— 皮肤模式
+ * 与人格开关一律从会话记录里读,请求体说什么都不算数。这不只是界面上少个 picker:
+ * 写能力(create_skin)只在皮肤模式里存在,让请求体决定模式,等于把开那道口子的
+ * 钥匙交给了每一条消息。
+ */
+describe("面孔从会话读,不从请求体读", () => {
+	it("会话建成皮肤工坊 → 这条消息不说模式也照样是工坊", async () => {
+		const { app } = await makeDeps();
+		await say(app, {}, { mode: "skin" });
+
+		expect(lastTools()?.map((t: any) => t.definition.function.name)).toEqual(["create_skin"]);
+	});
+
+	it("聊天会话里塞一句 mode:skin → 不作数,写工具一个都不给", async () => {
+		const { app } = await makeDeps();
+		await say(app, { mode: "skin" });
+
+		expect(lastTools()).toBeNull();
+		expect(H.lastOpts.systemPrompt).toBeUndefined();
+	});
+
+	it("会话选了无人格 → 那一档传给引擎", async () => {
+		const { app } = await makeDeps();
+		await say(app, {}, { persona: false });
+
+		expect(H.lastOpts.persona).toBe(false);
+	});
+
+	it("缺省会话是有人格的 —— 老会话与没选过的都落在这一侧", async () => {
+		const { app } = await makeDeps();
+		await say(app);
+
+		expect(H.lastOpts.persona ?? true).toBe(true);
+	});
+
+	it("建会话时的面孔回在响应里 —— 侧栏那一行的 label 指着它", async () => {
+		const { app } = await makeDeps();
+		const res = await app.request("/conversations", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ mode: "skin", persona: false }),
+		});
+		const body = (await res.json()) as any;
+
+		expect(body.conversation.mode).toBe("skin");
+		expect(body.conversation.persona).toBe(false);
 	});
 });

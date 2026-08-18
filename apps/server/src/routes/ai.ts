@@ -129,7 +129,14 @@ export function createAiRoute(
 	app.post("/conversations", async (c) => {
 		// 刻意**不**依赖 engines / AI 配置:主人在还没配好 key 的时候点「新对话」,
 		// 该看到一个空会话和一句「去把 key 填上」,而不是一个建不出来的按钮。
-		return c.json<AiConversationResponse>({ conversation: toDetail(await store().create()) });
+		//
+		// 面孔(模式 / 人格)只在**这一刻**收 —— 之后没有任何接口能改它。「锁定」
+		// 不是界面上藏个按钮,是根本没有那条路。
+		const parsed = newConversationSchema.safeParse(await c.req.json().catch(() => ({})));
+		const init = parsed.success ? parsed.data : {};
+		return c.json<AiConversationResponse>({
+			conversation: toDetail(await store().create(init)),
+		});
 	});
 
 	app.get("/conversations/:id", async (c) => {
@@ -329,7 +336,8 @@ export function createAiRoute(
 		 * 工具**每个请求现配**:它带着「一轮最多两套」的预算,建在装配处的话那把
 		 * 计数器会跨请求累加 —— 聊到第三句就再也做不了皮肤,而且得重启才恢复。
 		 */
-		const skinMode = parsed.data.mode === "skin";
+		// 面孔归会话所有(见 newConversationSchema)—— 这一行是「锁定」的落点。
+		const skinMode = conv.mode === "skin";
 		if (skinMode && !opts?.skinStore) {
 			// 静默退回普通聊天的话,主人会在一个根本做不了皮肤的窗口里反复说
 			// 「做套皮肤」,而女仆一本正经地打太极。
@@ -396,6 +404,9 @@ export function createAiRoute(
 					// 皮肤工坊里照样透传 —— 「做套某部作品风格的皮肤」得先查得到那部
 					// 作品的代表色,靠模型记忆猜配色多半是白做一趟。
 					webSearch: parsed.data.search ?? false,
+					// 人格同样归会话所有。皮肤工坊那条路整段顶掉 system,人格本来就
+					// 不在场 —— 这个字段只对日常聊天起作用。
+					persona: conv.persona,
 					...(skinTools
 						? {
 								extraTools: skinTools,
@@ -489,14 +500,19 @@ const ChatRequestSchema = z.object({
 	thinking: z.boolean().optional(),
 	/** 这一问允不允许联网搜索。同上,会话级;不带 = 不开(默认不烧钱)。 */
 	search: z.boolean().optional(),
-	/**
-	 * 这一问在哪个模式下问的。`chat`(缺省)= 日常聊天,女仆人格 + B 站只读工具;
-	 * `skin` = 皮肤工坊,人格与只读工具全收、只留 create_skin。
-	 *
-	 * 与思考 / 搜索同一口径:界面上那个切换是**会话级**的,不落盘,按消息走请求体。
-	 * 不带 = 老客户端 = 日常聊天,写能力不会因为漏传字段而凭空出现。
-	 */
+});
+
+/**
+ * `POST /conversations` 的入参 —— 这场对话的**面孔**,只在建的时候定一次。
+ *
+ * 模式曾经跟思考 / 搜索同口径,按消息走请求体。主人后来定了锁定,而这不只是界面
+ * 上少个 picker:写能力(create_skin)**只在皮肤模式里存在**,让请求体决定模式,
+ * 等于把开那道口子的钥匙交给了每一条消息。现在它归会话所有,聊天会话里再怎么喊
+ * `mode: "skin"` 都不作数。
+ */
+const newConversationSchema = z.object({
 	mode: z.enum(["chat", "skin"]).optional(),
+	persona: z.boolean().optional(),
 });
 
 /**
@@ -513,6 +529,8 @@ function toMeta(conv: Conversation): ConversationMeta {
 		updatedAt: conv.updatedAt,
 		messageCount: conv.messages.length,
 		autoTitled: conv.autoTitled,
+		mode: conv.mode,
+		persona: conv.persona,
 	};
 }
 

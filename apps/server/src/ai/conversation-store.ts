@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { AiChatMode } from "@bilibili-notify/contract";
 import type { Logger } from "@bilibili-notify/internal";
 
 /**
@@ -71,6 +72,16 @@ export interface Conversation {
 	updatedAt: string;
 	messages: StoredMessage[];
 	/**
+	 * 这场对话的面孔,开局定下、整场锁定(见 {@link AiChatMode})。
+	 *
+	 * 读的时候**一律补默认**,不让 undefined 流出去:上线前的会话文件里没有这个
+	 * 字段,而下游(路由挑 system、侧栏画 label)每一处都得自己想一遍「没有算什么」
+	 * 的话,迟早有一处想反 —— 那就是老会话集体变成皮肤工坊。
+	 */
+	mode: AiChatMode;
+	/** 带不带女仆人格;同样读时补默认(老会话 = true)。 */
+	persona: boolean;
+	/**
 	 * 标题是否已由 AI 起过。缺失(旧文件)按 false 算。
 	 *
 	 * 「只起一次」的判据是它,而**不是**「刚聊完第一轮」。用轮次当判据的话,
@@ -87,6 +98,10 @@ export interface ConversationMeta {
 	createdAt: string;
 	updatedAt: string;
 	messageCount: number;
+	/** 见 {@link Conversation.mode}。侧栏那一行的 label 指着它。 */
+	mode: AiChatMode;
+	/** 见 {@link Conversation.persona}。 */
+	persona: boolean;
 	/** 见 {@link Conversation.autoTitled}。前端拿它决定要不要去要一个标题。 */
 	autoTitled?: boolean;
 }
@@ -96,8 +111,13 @@ export interface ConversationStore {
 	list(): Promise<ConversationMeta[]>;
 	/** 读一整个会话(含消息);不存在返回 null。 */
 	get(id: string): Promise<Conversation | null>;
-	/** 新建一个空会话。会话总数超上限时顺手删掉最旧的。 */
-	create(): Promise<Conversation>;
+	/**
+	 * 新建一个空会话。会话总数超上限时顺手删掉最旧的。
+	 *
+	 * 面孔在这一刻定死,之后没有任何接口能改它 —— 「锁定」不是界面上藏个按钮,
+	 * 是**根本没有那条路**。
+	 */
+	create(init?: { mode?: AiChatMode; persona?: boolean }): Promise<Conversation>;
 	/**
 	 * 追加消息并回写。返回更新后的会话;会话不存在返回 null(**不**凭空造一个 ——
 	 * 那会让「删掉的会话又冒出来」这种幽灵行为看着像正常功能)。
@@ -164,7 +184,10 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 			if (!parsed || typeof parsed.id !== "string" || !Array.isArray(parsed.messages)) {
 				throw new Error("shape mismatch");
 			}
-			return parsed;
+			// 面孔在**读的这一处**补默认,一次补齐、下游全都拿到实值。上线前的
+			// 会话文件里没这两个字段,让 undefined 流出去的话,每一个下游都得自己
+			// 想一遍「没有算什么」—— 想反一处,主人的老会话就集体变了面孔。
+			return { ...parsed, mode: parsed.mode ?? "chat", persona: parsed.persona ?? true };
 		} catch (err) {
 			// 一条脏记录不该让侧栏整个空掉:跳过它,别的照常列出来。
 			logger.warn(`[ai-chat] 跳过损坏的会话文件 ${file}: ${String(err)}`);
@@ -212,6 +235,8 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 				createdAt: c.createdAt,
 				updatedAt: c.updatedAt,
 				messageCount: c.messages.length,
+				mode: c.mode,
+				persona: c.persona,
 			}));
 		},
 
@@ -219,7 +244,7 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 			return readOne(fileOf(id));
 		},
 
-		create() {
+		create(init) {
 			return serial(async () => {
 				const now = new Date().toISOString();
 				const conv: Conversation = {
@@ -228,6 +253,8 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 					createdAt: now,
 					updatedAt: now,
 					messages: [],
+					mode: init?.mode ?? "chat",
+					persona: init?.persona ?? true,
 				};
 				await writeOne(conv);
 
