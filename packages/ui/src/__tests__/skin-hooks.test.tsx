@@ -59,6 +59,23 @@ describe("skin css hooks", () => {
 		expect(el?.className).toMatch(/rounded/);
 	});
 
+	// 主人在真机上撞到的:皮肤给 nav 画了底色,连「卡片样式」这行小标题一起被罩进去,
+	// 看着像标题掉进了 tab 卡里。挂点要只裹 tab 列表本身,标题留在外面。
+	it("竖栏挂点只裹 tab 列表,heading 不在里面", () => {
+		const { container } = render(
+			<SectionNav
+				heading="卡片样式"
+				items={[{ id: "a", label: "全局" }]}
+				activeId="a"
+				onPick={() => {}}
+			/>,
+		);
+		const host = container.querySelector('[data-section-nav="rail"] [data-bn~="nav"]');
+		expect(host).toBeTruthy();
+		expect(host?.textContent).toContain("全局");
+		expect(host?.textContent).not.toContain("卡片样式");
+	});
+
 	it("SectionNav 竖栏与横条都挂 nav,挂点元素都带圆角", () => {
 		const { container } = render(
 			<SectionNav heading="H" items={[{ id: "a", label: "A" }]} activeId="a" onPick={() => {}} />,

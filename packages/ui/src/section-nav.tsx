@@ -168,13 +168,10 @@ export function SectionNav({
 		// contents 后包含块变成整个 grid(与内容等高),sticky 才能真正吸顶整段滚动。
 		<div data-section-nav="root" className="contents xl:block xl:min-w-0">
 			{/* 竖栏(桌面 xl+) */}
-			{/* rounded-2xl 默认不可见(无底无边),是给皮肤 CSS 的:nav 挂点元素必须有
-			    圆角形状,皮肤描边才不会画出直角方框(avatar 同款坑)。 */}
 			<aside
 				data-section-nav="rail"
-				data-bn="nav"
 				style={{ top: STICKY_TOP }}
-				className="sticky hidden h-fit min-w-0 rounded-2xl xl:block"
+				className="sticky hidden h-fit min-w-0 xl:block"
 			>
 				<div className="mb-2 flex items-center justify-between px-1">
 					<span className="text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
@@ -190,41 +187,44 @@ export function SectionNav({
 						</button>
 					) : null}
 				</div>
-				{items.length === 0 ? (
-					(emptyState ?? null)
-				) : (
-					<div className="flex flex-col gap-1">
-						{items.map((item) => {
-							const active = activeId === item.id;
-							return (
-								<button
-									type="button"
-									key={item.id}
-									onClick={() => onPick(item.id)}
-									aria-current={active ? "true" : undefined}
-									className={`${RAIL_ITEM_BASE} ${active ? RAIL_ITEM_ACTIVE : RAIL_ITEM_IDLE}`}
-								>
-									<IconBox icon={item.icon} tint={item.iconTint} active={active} />
-									<span className="block min-w-0 flex-1">
-										<span
-											className={`flex items-center gap-1.5 text-[12.5px] font-bold ${
-												active ? "text-bn-pink" : "text-bn-text-primary"
-											}`}
-										>
-											<span className="truncate">{item.label}</span>
-											{item.badge}
-										</span>
-										{item.desc ? (
-											<span className="mt-0.5 block wrap-break-word text-[10.5px] leading-snug text-bn-text-tertiary">
-												{item.desc}
+				{/* nav 挂点只裹 tab 列表本身 —— 上面那行 heading 留在外面,否则皮肤给 nav
+				    画的底色/描边会把小标题一起罩进去,看着像标题掉进了 tab 卡里。
+				    空态也包在里面:挂点是公开 API,不能因为「这页还没内容」就消失。
+				    rounded-2xl 默认不可见(无底无边),是给皮肤 CSS 的形状底座 ——
+				    没圆角的话皮肤描边会画出直角方框(avatar 同款坑)。 */}
+				<div className="flex flex-col gap-1 rounded-2xl" data-bn="nav">
+					{items.length === 0
+						? (emptyState ?? null)
+						: items.map((item) => {
+								const active = activeId === item.id;
+								return (
+									<button
+										type="button"
+										key={item.id}
+										onClick={() => onPick(item.id)}
+										aria-current={active ? "true" : undefined}
+										className={`${RAIL_ITEM_BASE} ${active ? RAIL_ITEM_ACTIVE : RAIL_ITEM_IDLE}`}
+									>
+										<IconBox icon={item.icon} tint={item.iconTint} active={active} />
+										<span className="block min-w-0 flex-1">
+											<span
+												className={`flex items-center gap-1.5 text-[12.5px] font-bold ${
+													active ? "text-bn-pink" : "text-bn-text-primary"
+												}`}
+											>
+												<span className="truncate">{item.label}</span>
+												{item.badge}
 											</span>
-										) : null}
-									</span>
-								</button>
-							);
-						})}
-					</div>
-				)}
+											{item.desc ? (
+												<span className="mt-0.5 block wrap-break-word text-[10.5px] leading-snug text-bn-text-tertiary">
+													{item.desc}
+												</span>
+											) : null}
+										</span>
+									</button>
+								);
+							})}
+				</div>
 			</aside>
 
 			{/* 横向条(窄视口 < xl):sticky + 背景 + z-index → 内容从其下穿过,不再覆盖。
