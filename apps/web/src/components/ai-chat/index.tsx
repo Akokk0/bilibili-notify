@@ -1,4 +1,4 @@
-import type { AiConversationDTO } from "@bilibili-notify/contract";
+import type { AiChatMode, AiConversationDTO } from "@bilibili-notify/contract";
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { resolveActivePersona, resolveAIProfile } from "@bilibili-notify/internal/constants";
 import { Icon, TabBar } from "@bilibili-notify/ui";
@@ -30,7 +30,7 @@ import { ChatSidebar } from "./sidebar";
 import { AI_SKILLS, resolveOutgoing, resolveSkill } from "./skills";
 import { ThinkingControl } from "./thinking-control";
 import { CREATE_SKIN_TOOL } from "./tools";
-import { type ChatMode, useSessionCapsules } from "./use-session-capsules";
+import { useSessionCapsules } from "./use-session-capsules";
 
 /**
  * 女仆 AI 聊天 —— 一条独立路由(/chat)的整页对话界面,右下角的胶囊
@@ -128,13 +128,31 @@ type SendVars = {
 	 * 会话级胶囊在**点发送那一刻**的状态。走 variables 而不是让 mutationFn 从
 	 * 组件闭包里读 —— 见 react-query onMutate 的时序坑:要发的东西必须随载荷走。
 	 */
-	flags: { thinking: boolean; search: boolean; mode: ChatMode };
+	flags: { thinking: boolean; search: boolean };
+	/**
+	 * 这一问发去哪场对话。`null` = 现开一场(空态首发,或技能要的面孔与当下这场
+	 * 对不上)。同样走 variables:mutationFn 从闭包里读 activeId 会读到旧值。
+	 */
+	conversationId: string | null;
+	/** 现开一场时用的面孔。已有对话时它不起作用 —— 面孔开局就锁死了。 */
+	face: ChatFace;
 };
 
-/** 模式切换器的两段。皮肤工坊里女仆没有人格、也够不着 B 站数据 —— 见服务端路由。 */
-const MODE_TABS = [
-	{ id: "chat" as const, label: "聊天", icon: <Icon.chat size={14} /> },
-	{ id: "skin" as const, label: "皮肤工坊", icon: <Icon.palette size={14} /> },
+/** 一场对话的面孔:模式 + 带不带人格。开局定死,见 contract 的 AiChatMode。 */
+type ChatFace = { mode: AiChatMode; persona: boolean };
+
+const DEFAULT_FACE: ChatFace = { mode: "chat", persona: true };
+
+/**
+ * 人格那一档的两段 —— **只在空态摆一次**。
+ *
+ * 模式那个切换器已经撤了(改由侧栏两个入口决定),这个位置留给人格:女仆气质是
+ * 这个项目的底色,但主人也有「就正经问点事」的时候。同样开局锁定 —— 聊到一半
+ * 换人格,前半段的语气和后半段对不上,读起来像换了个人。
+ */
+const PERSONA_TABS = [
+	{ id: "on" as const, label: "有人格", icon: <Icon.ai size={14} /> },
+	{ id: "off" as const, label: "无人格", icon: <Icon.chat size={14} /> },
 ];
 
 /** /chat 路由页。除了「返回控制台」的去向,不感知路由 —— 其余全是聊天自己的事。 */
@@ -253,9 +271,28 @@ export function ChatPage() {
 
 	// 会话级的两颗胶囊(深度思考 / 联网搜索)与模式。归零策略连同「首发落地新会话
 	// 不算换会话」的豁免都住在 hook 里 —— 见 use-session-capsules.ts。
-	const { thinkingOn, setThinkingOn, searchOn, setSearchOn, mode, setMode, adoptConversation } =
+	const { thinkingOn, setThinkingOn, searchOn, setSearchOn, adoptConversation } =
 		useSessionCapsules(activeId);
-	const skinMode = mode === "skin";
+
+	/**
+	 * 还没落户的那场对话的面孔。只有空态用得上它 —— 一旦会话建起来,面孔就归
+	 * 服务端那份记录所有,这里说了不算。
+	 */
+	const [pendingFace, setPendingFace] = useState<ChatFace>(DEFAULT_FACE);
+	/**
+	 * 当下这场对话的面孔:有会话就读会话的,没有就是待建的那份。
+	 *
+	 * 会话详情还在路上时先从侧栏列表里取 —— 那份早到,而这中间的空窗期如果回落
+	 * 成默认值,工坊会话会闪一下聊天的样子。
+	 */
+	const activeMeta = conversations.find((c) => c.id === activeId);
+	const activeFace: ChatFace = activeId
+		? {
+				mode: activeQuery.data?.mode ?? activeMeta?.mode ?? DEFAULT_FACE.mode,
+				persona: activeQuery.data?.persona ?? activeMeta?.persona ?? DEFAULT_FACE.persona,
+			}
+		: pendingFace;
+	const skinMode = activeFace.mode === "skin";
 	// 空态与会话态两个 Composer 用同一份 —— 各写一遍的话,加第三颗胶囊只改到
 	// 一处,问候屏和聊天里的工具栏就长得不一样了(正是本文件头警告过的分裂态)。
 	//
@@ -266,13 +303,6 @@ export function ChatPage() {
 			<ThinkingControl on={thinkingOn} onToggle={setThinkingOn} />
 			<SearchControl on={searchOn} onToggle={setSearchOn} />
 		</>
-	);
-
-	/** 模式切换。两个 Composer 各摆一份,与 extras 同理。 */
-	const modeSwitch = (
-		<div className="mx-auto mb-2.5 w-fit">
-			<TabBar items={MODE_TABS} value={mode} onChange={setMode} />
-		</div>
 	);
 
 	/**
@@ -287,7 +317,13 @@ export function ChatPage() {
 	});
 
 	const send = useMutation({
-		mutationFn: async ({ text, attachments: outgoingFiles, flags }: SendVars) => {
+		mutationFn: async ({
+			text,
+			attachments: outgoingFiles,
+			flags,
+			conversationId,
+			face,
+		}: SendVars) => {
 			const imageIds = outgoingFiles.map((a) => a.id);
 			// 还没有会话就先开一个 —— 主人在空态直接打字发送时走这条路,
 			// 不必先去点「新对话」。
@@ -295,7 +331,9 @@ export function ChatPage() {
 			// 补一拍状态回灌」得先认出它是哪个工具。建在**这一轮**的闭包里,跨轮
 			// 不留残影。
 			const toolNames = new Map<string, string>();
-			const id = activeId ?? (await createConversation()).id;
+			// 面孔归会话所有,所以「发去哪一场」是发送方在点下回车那一刻就定好的:
+			// 给了 id 就发去那场,给 null 就照 face 现开一场。
+			const id = conversationId ?? (await createConversation(face)).id;
 			if (id !== activeId) {
 				// 这次 activeId 变化是首发落的户口,不是换会话 —— 别把刚点亮的胶囊打回默认。
 				adoptConversation();
@@ -431,16 +469,36 @@ export function ChatPage() {
 	 * 跟着进到新对话的空白页里。它的 onSuccess 认的是服务端返回的会话 id,
 	 * 所以照样会正确落到原来那个会话上。
 	 */
-	const startNew = () => {
+	const startNew = (mode: AiChatMode = "chat") => {
 		setActiveId(null);
 		setInput("");
 		setError(null);
 		setPending(null);
+		// 侧栏那两颗按钮**就是**选面孔的动作 —— 会话还没落户,先记在待建的这份上。
+		// 工坊不带人格:那条路整段顶掉 system,人格本来就不在场。
+		setPendingFace(mode === "skin" ? { mode: "skin", persona: false } : DEFAULT_FACE);
 	};
 
 	const busy = send.isPending;
 	// 一有在途消息就离开空态 —— 主人发了话,问候页就该让位给对话。
 	const empty = messages.length === 0 && pending === null;
+
+	/**
+	 * 人格那一档 —— **只在空态摆**,而且只给日常聊天。
+	 *
+	 * 皮肤工坊那条路整段顶掉 system,人格本来就不在场;在那儿摆个开关是承诺一件
+	 * 做不到的事。会话一旦开口就撤掉:面孔锁定,留着一个点不动的切换器更让人困惑。
+	 */
+	const personaPicker =
+		empty && !skinMode ? (
+			<div className="mx-auto mb-2.5 w-fit">
+				<TabBar
+					items={PERSONA_TABS}
+					value={pendingFace.persona ? "on" : "off"}
+					onChange={(v) => setPendingFace((f) => ({ ...f, persona: v === "on" }))}
+				/>
+			</div>
+		) : null;
 
 	// 内容一长就贴底。依赖里带上 `pending.draft.length` 是要紧的:流式回复是逐字
 	// 长出来的,只盯消息数的话,整段生成过程中视图纹丝不动,新字全长在视野之外。
@@ -456,11 +514,14 @@ export function ChatPage() {
 		const outgoing = resolveOutgoing(raw);
 		// 只有图、一个字没打也算数 —— 图本身就是问题。
 		if ((!outgoing && attachments.length === 0) || busy) return;
-		// 技能可以自带模式(`/皮肤` 要在皮肤工坊里跑)。切换器跟着一起动,主人
-		// 看得见自己换了副面孔;而这一问用的模式**随载荷走**,不等 setMode 那一拍
-		// 生效 —— 从闭包里读 `mode` 会读到切换前的旧值。
-		const outgoingMode = resolveSkill(raw)?.mode ?? mode;
-		if (outgoingMode !== mode) setMode(outgoingMode);
+		// 技能可以点名要哪副面孔(`/皮肤` 只在皮肤工坊里跑得动)。模式锁定之后
+		// 它不再「切」—— 面孔对不上就**另开一场**,把 conversationId 传 null。
+		// 留在只读窗口里发出去的话,女仆会答应下来然后什么也做不出来。
+		const wantMode = resolveSkill(raw)?.mode ?? activeFace.mode;
+		const reuse = activeId !== null && activeFace.mode === wantMode;
+		// 新开的工坊会话不带人格(那条路整段顶掉 system,人格本来就不在场)。
+		const outgoingFace: ChatFace =
+			wantMode === "skin" ? { mode: "skin", persona: false } : { ...pendingFace, mode: "chat" };
 		// 附件快照必须在**这里**取。`mutationFn` 是在 `onMutate` 之后才跑的
 		// (onMutate 的返回值被 await,那一让步足够 React 把重渲染 flush 掉),
 		// 那时 `setAttachments([])` 已经生效 —— 从 mutationFn 的闭包里读
@@ -469,7 +530,9 @@ export function ChatPage() {
 		send.mutate({
 			text: outgoing,
 			attachments,
-			flags: { thinking: thinkingOn, search: searchOn, mode: outgoingMode },
+			flags: { thinking: thinkingOn, search: searchOn },
+			conversationId: reuse ? activeId : null,
+			face: outgoingFace,
 		});
 	};
 
@@ -563,7 +626,7 @@ export function ChatPage() {
 										: `今天想让${persona.self}帮${persona.user}做点什么呢?`}
 								</div>
 							</div>
-							{modeSwitch}
+							{personaPicker}
 							<Composer
 								value={input}
 								onChange={setInput}
@@ -619,7 +682,6 @@ export function ChatPage() {
 							/>
 						</div>
 						<div className="px-6 pb-5 pt-2.5">
-							{modeSwitch}
 							<Composer
 								value={input}
 								onChange={setInput}

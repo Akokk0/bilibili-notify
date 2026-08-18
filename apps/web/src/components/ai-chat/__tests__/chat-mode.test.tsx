@@ -1,16 +1,19 @@
 // @vitest-environment jsdom
 /**
- * 聊天页的模式切换 —— 日常聊天 / 皮肤工坊。
+ * 聊天页的**面孔**:模式(日常聊天 / 皮肤工坊)与人格开关。
  *
- * 隔离是主人拍板的:做皮肤那把写工具只在皮肤工坊里存在,日常聊天那个窗口(上下文
- * 里混着 B 站动态正文、图片里的字这些外部可控文本)保持只读。界面这一侧要守住的是
- * 三件事:**默认在聊天模式**、切过去之后**这一问真的带上 mode**、以及**换会话回到
- * 默认** —— 模式和思考 / 搜索两颗胶囊一样不落盘,悄悄留在皮肤模式里会让主人下一次
- * 打开聊天时对着一个不认识 B 站数据的女仆发问。
+ * 主人拍板改成**开局锁定**:面孔在会话诞生那一刻定死,整场不再改。落到界面上是
+ * 三件事 —— 聊天框里不再有模式 picker、模式改由侧栏那两个入口决定、人格那一档
+ * 只在还没开口的空态里选一次。
+ *
+ * 为什么锁死而不是随手切:做皮肤那把**写工具**只在皮肤工坊里存在,日常聊天那个
+ * 窗口(上下文里混着 B 站动态正文、图片里的字这些外部可控文本)保持只读。让每条
+ * 消息决定模式,等于把开那道口子的钥匙交给每一条消息。服务端那一侧的同款契约在
+ * apps/server/src/routes/__tests__/ai-chat-skin-tool.test.ts。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -18,40 +21,45 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 const H = vi.hoisted(() => ({
 	/** 最后一次发送带的 flags。 */
 	lastFlags: null as Record<string, unknown> | null,
+	/** 最后一次建会话时定下的面孔。 */
+	lastInit: undefined as Record<string, unknown> | undefined,
+	/** 当前会话读回来的样子 —— 用例按需改它来摆出「这是一场工坊会话」。 */
+	conv: { mode: "chat", persona: true, messages: [] } as Record<string, unknown>,
 }));
 
 vi.mock("../../../services/aiChat", async (orig) => {
 	const actual = (await orig()) as Record<string, unknown>;
-	const msg = (role: string, content: string) => ({
-		id: `${role}1`,
-		role,
-		content,
-		ts: "2026-08-17T00:00:00.000Z",
-	});
+	const AT = "2026-08-19T00:00:00.000Z";
+	const msg = (role: string, content: string) => ({ id: `${role}1`, role, content, ts: AT });
 	return {
 		...actual,
 		listConversations: vi.fn(async () => ({ conversations: [] })),
 		getConversation: vi.fn(async (id: string) => ({
 			id,
 			title: "t",
-			createdAt: "2026-08-17T00:00:00.000Z",
-			updatedAt: "2026-08-17T00:00:00.000Z",
+			createdAt: AT,
+			updatedAt: AT,
 			messageCount: 0,
-			messages: [],
+			...H.conv,
 		})),
-		createConversation: vi.fn(async () => ({
-			id: "c1",
-			title: "新对话",
-			createdAt: "2026-08-17T00:00:00.000Z",
-			updatedAt: "2026-08-17T00:00:00.000Z",
-			messageCount: 0,
-			messages: [],
-		})),
+		createConversation: vi.fn(async (init?: Record<string, unknown>) => {
+			H.lastInit = init;
+			return {
+				id: "c1",
+				title: "新对话",
+				createdAt: AT,
+				updatedAt: AT,
+				messageCount: 0,
+				messages: [],
+				mode: init?.mode ?? "chat",
+				persona: init?.persona ?? true,
+			};
+		}),
 		retitleConversation: vi.fn(async (id: string) => ({
 			id,
 			title: "做皮肤",
-			createdAt: "2026-08-17T00:00:00.000Z",
-			updatedAt: "2026-08-17T00:00:00.000Z",
+			createdAt: AT,
+			updatedAt: AT,
 			messageCount: 2,
 		})),
 		sendChatMessage: vi.fn(
@@ -70,8 +78,8 @@ vi.mock("../../../services/aiChat", async (orig) => {
 					conversation: {
 						id: "c1",
 						title: message,
-						createdAt: "2026-08-17T00:00:00.000Z",
-						updatedAt: "2026-08-17T00:00:01.000Z",
+						createdAt: AT,
+						updatedAt: AT,
 						messageCount: 2,
 					},
 				};
@@ -88,8 +96,8 @@ vi.mock("../../../services/api", () => ({
 					activeProfile: "deepseek",
 					providers: { deepseek: { model: "gpt-test" } },
 					persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
-					// 搜索后端配好了,聊天模式下那颗胶囊才画得出来 —— 没有它
-					// SearchControl 自己就返回 null,断言「皮肤模式下没有」会假绿。
+					// 搜索后端配好了,那颗胶囊才画得出来 —— 没有它 SearchControl
+					// 自己就返回 null,断言「它还在」会假绿。
 					search: { backend: "bocha", keys: { bocha: "sk-x" } },
 				},
 			},
@@ -109,7 +117,20 @@ function wrap(node: ReactNode) {
 	);
 }
 
-function mount() {
+/** 空态 = 还没开口的新对话,面孔这时才选得动。 */
+function mountFresh() {
+	useAiChatStore.setState({ rail: true, activeId: null });
+	render(wrap(<ChatPage />));
+}
+
+/** 已经聊过的会话 —— 面孔已锁。 */
+function mountOngoing(conv: Record<string, unknown> = {}) {
+	H.conv = {
+		mode: "chat",
+		persona: true,
+		messages: [{ id: "u0", role: "user", content: "在吗", ts: "2026-08-19T00:00:00.000Z" }],
+		...conv,
+	};
 	useAiChatStore.setState({ rail: true, activeId: "c1" });
 	render(wrap(<ChatPage />));
 }
@@ -120,86 +141,120 @@ async function send(text: string) {
 	fireEvent.keyDown(ta, { key: "Enter" });
 }
 
-const modeTab = (name: string) => screen.getByRole("tab", { name });
+const tab = (name: string) => screen.queryByRole("tab", { name });
 
 beforeEach(() => {
 	H.lastFlags = null;
+	H.lastInit = undefined;
+	H.conv = { mode: "chat", persona: true, messages: [] };
 });
 afterEach(cleanup);
 
-describe("模式切换器", () => {
-	it("两段都在,默认停在聊天", async () => {
-		mount();
+describe("聊天框里不再有模式 picker", () => {
+	it("空态没有", async () => {
+		mountFresh();
 		await screen.findByLabelText("聊天输入");
-
-		expect(modeTab("聊天").getAttribute("aria-selected")).toBe("true");
-		expect(modeTab("皮肤工坊").getAttribute("aria-selected")).toBe("false");
+		expect(tab("皮肤工坊")).toBeNull();
+		expect(tab("聊天")).toBeNull();
 	});
 
-	it("默认发送就是聊天模式(请求体那一层的「不带 = 聊天」在 services 测试里钉)", async () => {
-		mount();
+	it("聊到一半更没有 —— 锁定的意思就是这场改不了", async () => {
+		mountOngoing();
+		await screen.findByLabelText("聊天输入");
+		expect(tab("皮肤工坊")).toBeNull();
+	});
+
+	it("这一问不再驮 mode —— 模式归会话所有,请求体说了不算", async () => {
+		mountFresh();
 		await send("在吗");
 
 		await waitFor(() => expect(H.lastFlags).not.toBeNull());
-		expect(H.lastFlags?.mode).toBe("chat");
+		expect(H.lastFlags).not.toHaveProperty("mode");
+	});
+});
+
+describe("人格那一档:空态选一次", () => {
+	it("空态摆着两段,默认停在有人格", async () => {
+		mountFresh();
+		await screen.findByLabelText("聊天输入");
+
+		expect(tab("有人格")?.getAttribute("aria-selected")).toBe("true");
+		expect(tab("无人格")?.getAttribute("aria-selected")).toBe("false");
 	});
 
-	it("切到皮肤工坊 → 这一问带 mode: skin", async () => {
-		mount();
+	it("选了无人格 → 会话就以那一档建起来", async () => {
+		mountFresh();
 		await screen.findByLabelText("聊天输入");
-		fireEvent.click(modeTab("皮肤工坊"));
+		fireEvent.click(tab("无人格") as HTMLElement);
+		await send("查一下咩栗");
+
+		await waitFor(() => expect(H.lastInit).toBeDefined());
+		expect(H.lastInit).toMatchObject({ mode: "chat", persona: false });
+	});
+
+	it("聊过之后不再出现 —— 开局那一次就是全部机会", async () => {
+		mountOngoing();
+		// 等历史消息真的上屏:会话详情还在路上时页面仍是空态,这时断言等于什么都没测。
+		await screen.findByText("在吗");
+		expect(tab("有人格")).toBeNull();
+		expect(tab("无人格")).toBeNull();
+	});
+});
+
+describe("侧栏那两个入口决定模式", () => {
+	it("点「新建皮肤工坊」→ 空态换成工坊的样子,人格那一档不再摆(那条路本来就没有人格)", async () => {
+		mountFresh();
+		await screen.findByLabelText("聊天输入");
+		fireEvent.click(screen.getByRole("button", { name: /新建皮肤工坊/ }));
+
+		// 空态副标题换成工坊那句。别拿「界面皮肤」当锚 —— `/皮肤` 那枚技能胶囊上
+		// 也有这四个字,查出来是两个元素。
+		await waitFor(() => expect(screen.queryByText(/想要什么样的界面皮肤/)).not.toBeNull());
+		expect(tab("有人格")).toBeNull();
+	});
+
+	it("工坊空态发出的第一句 → 会话以 skin 建起来", async () => {
+		mountFresh();
+		await screen.findByLabelText("聊天输入");
+		fireEvent.click(screen.getByRole("button", { name: /新建皮肤工坊/ }));
 		await send("做套暗色的");
 
-		await waitFor(() => expect(H.lastFlags).not.toBeNull());
-		expect(H.lastFlags?.mode).toBe("skin");
+		await waitFor(() => expect(H.lastInit).toBeDefined());
+		expect(H.lastInit).toMatchObject({ mode: "skin" });
 	});
+});
 
-	it("皮肤工坊里照样有联网搜索 —— 做二次元皮肤得先查得到那部作品的配色", async () => {
-		mount();
-		// 这颗胶囊要等 globals 到手才画得出来(没配后端时它自己返回 null)。
-		await screen.findByLabelText("联网搜索");
-
-		fireEvent.click(modeTab("皮肤工坊"));
-		expect(screen.queryByLabelText("联网搜索")).not.toBeNull();
-	});
-
-	it("皮肤工坊里开了搜索,这一问就带 search: true", async () => {
-		mount();
-		const search = await screen.findByLabelText("联网搜索");
-		fireEvent.click(modeTab("皮肤工坊"));
-		fireEvent.click(search);
-		await send("做套初音未来风格的");
-
-		await waitFor(() => expect(H.lastFlags).not.toBeNull());
-		expect(H.lastFlags?.mode).toBe("skin");
-		expect(H.lastFlags?.search).toBe(true);
-	});
-
-	it("打 /皮肤 技能 → 自己切进皮肤工坊,这一问就带 skin", async () => {
-		// 那条技能说的是「帮我做一套皮肤」,而聊天模式压根没挂做皮肤的工具 ——
-		// 不跟着切模式的话,女仆会答应下来然后什么也做不出来。
-		mount();
+describe("/皮肤 技能", () => {
+	it("在聊天会话里用 → 另开一场工坊会话,而不是在只读窗口里空转", async () => {
+		// 做皮肤那把工具只在工坊里挂着。以前它靠切模式解决,现在模式锁死 ——
+		// 那就得另开一场,否则女仆会答应下来然后什么也做不出来。
+		mountOngoing();
+		// 先等这场对话真的上屏 —— 详情还在路上时页面是空态,那时的面孔是「待建」
+		// 那一份,测的就不是「在已锁定的聊天会话里用技能」了。
+		await screen.findByText("在吗");
 		const ta = await screen.findByLabelText("聊天输入");
 		fireEvent.change(ta, { target: { value: "/皮肤" } });
-		// 打斜杠命令时菜单是展开的:第一下回车**选中技能**(输入框变成「/皮肤 」),
-		// 第二下才是发送。真实交互就是两下,少按一下这条测试会假红。
+		// 打斜杠命令时菜单是展开的:第一下回车**选中技能**,第二下才是发送。
 		fireEvent.keyDown(ta, { key: "Enter" });
 		fireEvent.keyDown(await screen.findByLabelText("聊天输入"), { key: "Enter" });
 
-		await waitFor(() => expect(H.lastFlags).not.toBeNull());
-		expect(H.lastFlags?.mode).toBe("skin");
-		expect(modeTab("皮肤工坊").getAttribute("aria-selected")).toBe("true");
+		await waitFor(() => expect(H.lastInit).toBeDefined());
+		expect(H.lastInit).toMatchObject({ mode: "skin" });
+	});
+});
+
+describe("两颗胶囊照旧", () => {
+	it("工坊里也有联网搜索 —— 做二次元皮肤得先查得到那部作品的配色", async () => {
+		mountOngoing({ mode: "skin" });
+		expect(await screen.findByLabelText("联网搜索")).toBeTruthy();
 	});
 
-	it("换会话回到聊天模式 —— 模式不落盘,别把上一场的面孔带过来", async () => {
-		mount();
-		await screen.findByLabelText("聊天输入");
-		fireEvent.click(modeTab("皮肤工坊"));
-		expect(modeTab("皮肤工坊").getAttribute("aria-selected")).toBe("true");
+	it("开了搜索,这一问就带 search: true", async () => {
+		mountOngoing({ mode: "skin" });
+		fireEvent.click(await screen.findByLabelText("联网搜索"));
+		await send("做套初音未来风格的");
 
-		await act(async () => {
-			useAiChatStore.setState({ activeId: "c2" });
-		});
-		await waitFor(() => expect(modeTab("聊天").getAttribute("aria-selected")).toBe("true"));
+		await waitFor(() => expect(H.lastFlags).not.toBeNull());
+		expect(H.lastFlags?.search).toBe(true);
 	});
 });

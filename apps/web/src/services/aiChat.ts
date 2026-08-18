@@ -1,4 +1,5 @@
 import type {
+	AiChatMode,
 	AiChatReplyResponse,
 	AiConversationDTO,
 	AiConversationListResponse,
@@ -19,6 +20,7 @@ import { withDesktopTokenHeader } from "./desktop-token";
 
 export type {
 	AiChatMessageDTO,
+	AiChatMode,
 	AiConversationDTO,
 	AiConversationMetaDTO,
 	AiToolTraceDTO,
@@ -31,8 +33,15 @@ export function listConversations(): Promise<AiConversationListResponse> {
 	return api.get<AiConversationListResponse>("/api/ai/conversations");
 }
 
-export async function createConversation(): Promise<AiConversationDTO> {
-	const res = await api.post<AiConversationResponse>("/api/ai/conversations");
+/**
+ * 开一场新对话。`init` 是这场对话的**面孔**,只在这一刻定得了 —— 之后没有任何
+ * 接口能改它(见服务端 newConversationSchema)。
+ */
+export async function createConversation(init?: {
+	mode?: AiChatMode;
+	persona?: boolean;
+}): Promise<AiConversationDTO> {
+	const res = await api.post<AiConversationResponse>("/api/ai/conversations", init ?? {});
 	return res.conversation;
 }
 

@@ -1,5 +1,5 @@
+import type { AiChatMode } from "@bilibili-notify/contract";
 import type { IconName } from "@bilibili-notify/ui";
-import type { ChatMode } from "./use-session-capsules";
 
 /**
  * 女仆技能 —— 输入框里打 `/` 唤起的那几条。
@@ -19,12 +19,13 @@ export interface AiSkill {
 	/** 选中后真正发给女仆的话。 */
 	prompt: string;
 	/**
-	 * 这条技能要在哪个模式下跑。不给 = 用主人当下选的那个。
+	 * 这条技能要在哪个模式下跑。不给 = 用这场对话本来的面孔。
 	 *
-	 * `/皮肤` 必须带上它:做皮肤那把工具只在皮肤工坊里挂着,留在日常聊天里发出去,
-	 * 女仆会答应下来然后什么也做不出来。
+	 * `/皮肤` 必须带上它:做皮肤那把工具只在皮肤工坊里挂着。模式锁定之后它不再
+	 * 「切」,而是**另开一场**工坊会话 —— 留在日常聊天里发出去的话,女仆会答应
+	 * 下来然后什么也做不出来。
 	 */
-	mode?: ChatMode;
+	mode?: AiChatMode;
 }
 
 export const AI_SKILLS: readonly AiSkill[] = [

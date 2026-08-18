@@ -1,3 +1,4 @@
+import type { AiChatMode } from "@bilibili-notify/contract";
 import { Icon } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { type AiConversationMetaDTO, groupConversations } from "../../services/aiChat";
@@ -14,7 +15,12 @@ export interface ChatSidebarProps {
 	conversations: readonly AiConversationMetaDTO[];
 	activeId: string | null;
 	onSelect: (id: string) => void;
-	onNew: () => void;
+	/**
+	 * 开一场新对话,面孔在这一刻定死(见 {@link AiChatMode})。
+	 *
+	 * 参数不是可选的:模式已经不在聊天框里选了,这颗按钮**就是**那个选择动作。
+	 */
+	onNew: (mode: AiChatMode) => void;
 	onDelete: (id: string) => void;
 	onCollapse: () => void;
 	/** 底部显示的模型名;没配置时留空。 */
@@ -47,13 +53,24 @@ export function ChatSidebar(props: ChatSidebarProps) {
 				</button>
 			</div>
 
-			<button
-				type="button"
-				onClick={props.onNew}
-				className="mb-[18px] flex w-full cursor-pointer items-center gap-2 rounded-xl bg-bn-code-bg px-3 py-2.5 text-[13px] font-semibold text-bn-text-tertiary bn-chat-accent-soft-hover transition-colors"
-			>
-				<Icon.plus size={16} /> 开启新对话
-			</button>
+			{/* 两个入口 = 两种面孔。工坊那颗矮一档、字小一号:它是偏门的那一个,
+			    平起平坐会让主人每次开对话都要先做一道选择题。 */}
+			<div className="mb-[18px] flex flex-col gap-1.5">
+				<button
+					type="button"
+					onClick={() => props.onNew("chat")}
+					className="flex w-full cursor-pointer items-center gap-2 rounded-xl bg-bn-code-bg px-3 py-2.5 text-[13px] font-semibold text-bn-text-tertiary bn-chat-accent-soft-hover transition-colors"
+				>
+					<Icon.plus size={16} /> 开启新对话
+				</button>
+				<button
+					type="button"
+					onClick={() => props.onNew("skin")}
+					className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-[12px] font-semibold text-bn-text-secondary bn-chat-accent-soft-hover transition-colors"
+				>
+					<Icon.palette size={15} /> 新建皮肤工坊
+				</button>
+			</div>
 
 			<div className="flex-1 overflow-y-auto">
 				{groups.length === 0 ? (
@@ -80,9 +97,10 @@ export function ChatSidebar(props: ChatSidebarProps) {
 									<button
 										type="button"
 										onClick={() => props.onSelect(c.id)}
-										className="min-w-0 flex-1 cursor-pointer truncate px-3 py-2.5 text-left text-[12.5px] text-bn-text-tertiary"
+										className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 px-3 py-2.5 text-left text-[12.5px] text-bn-text-tertiary"
 									>
-										{c.title}
+										<span className="min-w-0 flex-1 truncate">{c.title}</span>
+										<ConversationLabel mode={c.mode} persona={c.persona} />
 									</button>
 									<button
 										type="button"
@@ -150,5 +168,26 @@ export function ChatSidebar(props: ChatSidebarProps) {
 				) : null}
 			</div>
 		</div>
+	);
+}
+
+/**
+ * 会话行右边那块小牌 —— **只标非默认的那一档**。
+ *
+ * 默认(聊天 + 有人格)什么都不挂:一列全是标签的话,真正特殊的那几行反而淹了。
+ * 工坊会话也只挂一块 —— 那条路本来就没有人格,再标一次「无人格」是废话。
+ *
+ * 两个字段缺失都按默认算(老会话文件里没有它们),与服务端读盘时补的那套默认同口径。
+ */
+function ConversationLabel({ mode, persona }: { mode?: AiChatMode; persona?: boolean }) {
+	const text = mode === "skin" ? "工坊" : persona === false ? "无人格" : null;
+	if (!text) return null;
+	return (
+		<span
+			data-conv-label={text}
+			className="shrink-0 rounded-[5px] bg-bn-hover-muted px-1.5 py-0.5 text-[9.5px] font-bold text-bn-text-secondary"
+		>
+			{text}
+		</span>
 	);
 }
