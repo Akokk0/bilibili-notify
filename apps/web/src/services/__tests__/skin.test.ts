@@ -122,9 +122,18 @@ describe("composeSkinVars", () => {
 describe("composeWallpaperCss(壁纸糊化层)", () => {
 	const wp = { image: "assets/bg.webp", overlay: 0.3, blur: 12 } as const;
 
-	it("blur>0:壁纸(含纱)整体搬进 body::before 固定层做静态高斯模糊", () => {
+	/**
+	 * 为什么是 `html::before` 而不是 `body::before`:`page` 挂点就是 `body`,皮肤
+	 * 完全可以写 `[data-bn="page"]::before`(飘花瓣那类氛围层就得这么写)。两边抢
+	 * 同一个伪元素时 CSS 按声明**逐条**合并 —— 真机上「樱墨 · Sakura Ink」的花瓣
+	 * 把壁纸糊化层压成了 14×12px 且 opacity:0 的一小块,主人的壁纸就这么没了,
+	 * 且构建全绿、只在装上那一刻才看得出来。`html` 不是任何挂点,抢不到。
+	 */
+	it("blur>0:壁纸(含纱)整体搬进 html::before 固定层做静态高斯模糊", () => {
 		const css = composeWallpaperCss({ wallpaper: { ...wp } }, assetUrl, "light");
-		expect(css).toContain("body::before");
+		expect(css).toContain("html::before");
+		// body::before 留给皮肤的 page 氛围层,我们不占
+		expect(css).not.toContain("body::before");
 		expect(css).toContain("position:fixed");
 		expect(css).toContain("filter:blur(12px)");
 		// 负 inset 外扩,遮掉 blur 的边缘透底
@@ -231,18 +240,49 @@ describe("自定义 CSS:hook 翻译与合成", () => {
 	});
 
 	/**
-	 * 装饰性伪元素**永远不许吃点击**。
+	 * 装饰性伪元素:**永远在内容之下、永远不吃点击**。
 	 *
 	 * 真机上撞的(2026-08-19,「樱墨 · Sakura Ink」):设计师写了一层再标准不过的
-	 * 卡面高光(`::before` + `position:absolute` + `inset:0` + 渐变),整页按钮就都
-	 * 点不动了 —— 那段在任何前端项目里都得配一句 `pointer-events:none`,而这个属性
-	 * **在皮肤白名单外**(欺骗面,刻意不开),设计师写不出来也补不了。
+	 * 卡面高光(`::before` + `position:absolute` + `inset:0` + 渐变)。它带来两个症状,
+	 * 根都在同一处 —— 绝对定位的伪元素画进「定位后代」那一层,压在宿主所有非定位
+	 * 内容**之上**:
 	 *
-	 * 清洗层已经补了同一句,但**存盘的是清洗后的产物** —— 已经装在主人机器上的皮肤
-	 * 不会再过一遍清洗。所以注入层也得设这道闸:存量皮肤刷一下页面就好,不必等重存。
-	 * 皮肤 CSS 里不可能出现 pointer-events(清洗层丢掉),所以这道前置永远压得住。
+	 * 1. 那层膜吃掉了它盖住的每一次点击(`pointer-events` 在白名单外,设计师补不了);
+	 * 2. 顶栏和每张卡的文字、按钮都被那层白纱糊住,主人形容「像蒙了一层,很虚」。
+	 *
+	 * 清洗层已经替新皮肤补了这两句,但**存盘的是清洗后的产物** —— 已经装在主人机器
+	 * 上的皮肤不会再过一遍清洗。所以注入层也得设同一道闸,存量皮肤刷一下页面就好。
+	 *
+	 * 这道闸是**后置**的:`z-index` 在白名单里,皮肤自己写得出来,只有排在它后面
+	 * 才压得住(`pointer-events` 倒是怎么排都赢 —— 皮肤 CSS 里不可能出现它)。
 	 */
-	it("composeSkinCss:所有挂点的伪元素一律不吃点击 —— 存量皮肤也吃这道闸", () => {
+	it("composeSkinCss:伪元素既不吃点击、也压不到内容之上 —— 存量皮肤也吃这道闸", () => {
+		const css = composeSkinCss(
+			{
+				schemaVersion: 1,
+				name: "t",
+				css: '[data-bn="glass"]::before{content:"";position:absolute;inset:0;z-index:9}',
+				modes: { light: {} },
+			},
+			"light",
+		);
+		expect(css).toContain("pointer-events:none");
+		// 后置:必须排在皮肤自己那段**之后**,否则皮肤的 z-index 压得过它
+		expect(css.lastIndexOf("z-index:-1")).toBeGreaterThan(css.lastIndexOf("z-index:9"));
+		expect(css).toContain(".bn-glass::before");
+		expect(css).toContain(".bn-glass::after");
+	});
+
+	/**
+	 * `z-index:-1` 要生效在「宿主背景之上、宿主内容之下」,宿主得是个层叠上下文;
+	 * `inset:0` 要贴在宿主自己身上,宿主还得是个包含块。两件事一起补。
+	 *
+	 * **必须包在 `@layer components` 里**:顶栏是 `.bn-glass-strong` + Tailwind 的
+	 * `sticky`(在 `@layer utilities`)。层的比较发生在特异性**之前**,无层 author
+	 * 样式永远赢 —— 裸着写这句 `position:relative` 就会把顶栏的 `position:sticky`
+	 * 顶掉(上一轮就是这么踩的)。components 层排在 utilities 之前,工具类照旧赢。
+	 */
+	it("用了伪元素的挂点:宿主在 @layer components 里补定位与层叠上下文", () => {
 		const css = composeSkinCss(
 			{
 				schemaVersion: 1,
@@ -252,19 +292,32 @@ describe("自定义 CSS:hook 翻译与合成", () => {
 			},
 			"light",
 		);
-		expect(css).toContain("pointer-events:none");
-		// 前置必须在皮肤自己那段**之前**,而且覆盖到每一个挂点的两种伪元素。
-		expect(css.indexOf("pointer-events:none")).toBeLessThan(css.indexOf("content:"));
-		expect(css).toContain(".bn-glass::before");
-		expect(css).toContain(".bn-glass::after");
+		expect(css).toContain("@layer components{");
+		expect(css).toContain(".bn-glass{position:relative;isolation:isolate}");
+		// 没被装饰的挂点不碰 —— 凭空给它们建层叠上下文会困住里面的浮层
+		expect(css).not.toContain("body{position:relative");
 	});
 
-	it("皮肤压根没写伪元素 → 不白搭一段前置", () => {
+	it("伪元素挂在 :hover 后面也算 —— 宿主照样补", () => {
+		const css = composeSkinCss(
+			{
+				schemaVersion: 1,
+				name: "t",
+				css: '[data-bn="btn"]:hover::after{content:"";position:absolute;inset:0}',
+				modes: { light: {} },
+			},
+			"light",
+		);
+		expect(css).toContain('[data-bn~="btn"]{position:relative;isolation:isolate}');
+	});
+
+	it("皮肤压根没写伪元素 → 不白搭这一段", () => {
 		const css = composeSkinCss(
 			{ schemaVersion: 1, name: "t", css: '[data-bn="btn"]{opacity:0.9}', modes: { light: {} } },
 			"light",
 		);
 		expect(css).not.toContain("pointer-events");
+		expect(css).not.toContain("@layer");
 	});
 
 	it("composeSkinCss:顶层共用 + 当前模式追加,输出已翻译;两段都缺 → 空串", () => {

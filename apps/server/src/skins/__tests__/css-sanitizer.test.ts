@@ -93,10 +93,10 @@ describe("声明白名单", () => {
 	it("position 只准 static/relative/absolute;fixed/sticky 丢弃", () => {
 		const { css, warnings } = ok(
 			`[data-bn="page"]::after { position: absolute; inset: 0; }
-			[data-bn="glass"] { position: fixed; }`,
+			[data-bn="glass"]::before { content:""; position: fixed; }`,
 		);
 		expect(css).toContain("position:absolute");
-		expect(css).not.toContain("fixed");
+		expect(css).not.toContain("position:fixed");
 		expect(warnings).toHaveLength(1);
 	});
 
@@ -201,34 +201,53 @@ describe("伪元素不吃点击", () => {
 		expect(css).toContain("pointer-events:none");
 		expect(css).not.toContain("pointer-events:auto");
 	});
+
+	it("伪元素规则一律补 z-index:-1 —— 装饰永远画在宿主内容之下", () => {
+		const { css } = ok(`[data-bn="glass"]::before{content:"";position:absolute;inset:0}`);
+		expect(css).toContain("z-index:-1");
+	});
+
+	it("皮肤自己写 z-index 想压到内容之上 → 补的那句在它后面,压得住", () => {
+		const { css } = ok(`[data-bn="glass"]::before{content:"";position:absolute;inset:0;z-index:5}`);
+		expect(css.lastIndexOf("z-index:5")).toBeLessThan(css.lastIndexOf("z-index:-1"));
+	});
+
+	it("不是伪元素的规则不补 z-index —— 那是宿主自己的层级", () => {
+		const { css } = ok(`[data-bn="glass"]{opacity:0.9}`);
+		expect(css).not.toContain("z-index");
+	});
 });
 
 /**
- * 绝对定位的伪元素需要一个**定位祖先**,否则 `inset:0` 撑到远处某个祖先甚至整页。
+ * 宿主的 `position` **不是皮肤的事**。
  *
- * 站内多数 `.bn-glass` 卡片身上并没有 `relative`(实测),所以那层「卡面高光」实际
- * 铺满了整页 —— 这也是上面那口点不动的锅的另一半:它不只吃了卡上的点击,是吃了
- * 全页的。补 `pointer-events:none` 之后点击回来了,但那片渐变仍然糊在整页上。
+ * 上一轮为了让 `inset:0` 贴在自己那张卡上,这一层给宿主补了一句 `[data-bn=X]
+ * {position:relative}`。那句埋了两颗雷:
  *
- * 由这一层替它补上宿主的 `position:relative`:只给**真的用了绝对定位伪元素**的
- * 那几个挂点补,不碰别人的布局。
+ * 1. 顶栏是 `.bn-glass-strong` + Tailwind 的 `sticky` 工具类。皮肤 CSS 是**无层**
+ *    author 样式,而工具类在 `@layer utilities` 里 —— 层的比较发生在特异性**之前**,
+ *    无层永远赢。于是那句 `position:relative` 把顶栏的 `position:sticky` 顶掉了。
+ * 2. 它压根不必要:`.bn-glass` / `.bn-glass-strong` 身上有 `backdrop-filter`,那本身
+ *    就已经建立了包含块与层叠上下文。真正缺定位的宿主由**注入层**在 `@layer
+ *    components` 里补(见 web 的 composeSkinCss),那一层排在 utilities 之前,工具类
+ *    照旧赢。
+ *
+ * 所以这一层的职责反过来:host 规则里的 `position` 一律拒收,伪元素规则里照旧放行。
  */
-describe("绝对定位伪元素的宿主", () => {
-	it("宿主补上 position:relative,伪元素才贴在自己那张卡上", () => {
+describe("宿主的 position 不归皮肤管", () => {
+	it("非伪元素规则里的 position 一律丢弃并给出理由", () => {
+		const { css, warnings } = ok(`[data-bn="header"]{position:relative;opacity:0.9}`);
+		expect(css).not.toContain("position");
+		expect(warnings.some((w) => w.includes("position"))).toBe(true);
+	});
+
+	it("伪元素规则里的 position 照旧放行 —— 装饰层自己得能绝对定位", () => {
 		const { css } = ok(`[data-bn="glass"]::before{content:"";position:absolute;inset:0}`);
-		expect(css).toContain(`[data-bn="glass"]{position:relative}`);
+		expect(css).toContain("position:absolute");
 	});
 
-	it("伪元素没用绝对定位 → 不给宿主补,别为没有的问题改人家布局", () => {
-		const { css } = ok(`[data-bn="glass"]::before{content:"";background:#fff}`);
-		expect(css).not.toContain("position:relative");
-	});
-
-	it("一个挂点写了好几条绝对定位伪元素 → 宿主那句只补一次", () => {
-		const { css } = ok(
-			`[data-bn="page"]::before{content:"";position:absolute;inset:0}
-			 [data-bn="page"]::after{content:"";position:absolute;top:0}`,
-		);
-		expect(css.match(/\[data-bn="page"\]\{position:relative\}/g)).toHaveLength(1);
+	it("不再往产物里塞宿主定位那条规则(那活儿搬去注入层了)", () => {
+		const { css } = ok(`[data-bn="glass"]::before{content:"";position:absolute;inset:0}`);
+		expect(css).not.toContain("{position:relative}");
 	});
 });

@@ -63,7 +63,7 @@ export function composeSkinVars(
 
 	if (mode.wallpaper?.image) {
 		const wp = { ...mode.wallpaper, image: mode.wallpaper.image };
-		// blur>0 时壁纸交给 composeWallpaperCss 的 body::before 糊化层;
+		// blur>0 时壁纸交给 composeWallpaperCss 的 html::before 糊化层;
 		// --bn-page-bg 留给 page.background/默认底色,垫在糊化层后面。
 		if (!(wp.blur !== undefined && wp.blur > 0)) {
 			vars["--bn-page-bg"] = buildWallpaperLayers(wp, assetUrl, theme);
@@ -173,22 +173,52 @@ export function translateSkinCssHooks(css: string): string {
 	});
 }
 
+/** 正则转义 —— hook 映射表右侧的真实选择器里有 `[` `]` `"` `.` `~` `=` 这些元字符。 */
+function escapeForRegExp(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
- * 每个挂点的两种伪元素一律**不吃点击**的前置。
+ * 这套 CSS 里,哪些挂点真的挂了装饰性伪元素。
+ *
+ * 中间允许夹伪类:`[data-bn~="btn"]:hover::after` 照样算 btn 的装饰层。
+ * 只挑真用到的那几个 —— 凭空给每个挂点建层叠上下文,会把里面的浮层困死。
+ */
+function hooksWithDecoration(css: string): string[] {
+	return Object.values(SKIN_CSS_HOOK_MAP).filter((sel) =>
+		new RegExp(`${escapeForRegExp(sel)}(?::[a-z-]+(?:\\([^)]*\\))?)*::(?:before|after)`, "i").test(
+			css,
+		),
+	);
+}
+
+/**
+ * 装饰性伪元素的两道硬规矩 —— **永远在内容之下、永远不吃点击**,外加宿主那边
+ * 让这两句成立所需的定位与层叠上下文。
  *
  * 真机上撞的(2026-08-19「樱墨 · Sakura Ink」):设计师写了一层再标准不过的卡面高光
- * (`::before` + `position:absolute` + `inset:0` + 渐变),整页按钮就都点不动了。那段
- * 在任何前端项目里都得配一句 `pointer-events:none`,而这个属性**在皮肤白名单外**
- * (欺骗面,刻意不开)—— 设计师写不出来,也没法补救。
+ * (`::before` + `position:absolute` + `inset:0` + 渐变)。绝对定位的伪元素画进「定位
+ * 后代」那一层,压在宿主所有非定位内容**之上**,于是一处根因两个症状 —— 那层膜吃掉
+ * 了它盖住的每一次点击,顶栏与每张卡的文字按钮又都被白纱糊住(主人:「像蒙了一层,
+ * 很虚」)。`pointer-events` 在皮肤白名单外,设计师写不出来也补不了。
  *
- * 清洗层已经替它补了同一句,但**存盘的是清洗后的产物**:已经装在主人机器上的皮肤
- * 不会再过一遍清洗。所以这道闸在注入层也设一份,存量皮肤刷一下页面就好。
+ * 清洗层已经替新皮肤补了这两句,但**存盘的是清洗后的产物** —— 已经装在主人机器上的
+ * 皮肤不会再过一遍清洗。所以注入层也设同一道闸,存量皮肤刷一下页面就好。
  *
- * 压得住的原因不是顺序,是皮肤 CSS 里**不可能**出现 pointer-events(清洗层丢掉它)。
+ * 两处摆位都有讲究:
+ * - 伪元素那句**后置**。`z-index` 在白名单里、皮肤写得出来,只有排在它后面才压得住。
+ * - 宿主那句**包在 `@layer components` 里**。顶栏是 `.bn-glass-strong` + Tailwind 的
+ *   `sticky`(在 `@layer utilities`),而层的比较发生在特异性**之前**、无层 author 样式
+ *   永远赢 —— 裸着写这句 `position:relative` 就会把顶栏的 `position:sticky` 顶掉。
+ *   components 层排在 utilities 之前,工具类照旧赢。
  */
-const PSEUDO_NO_POINTER_CSS = `${Object.values(SKIN_CSS_HOOK_MAP)
-	.flatMap((sel) => [`${sel}::before`, `${sel}::after`])
-	.join(",")}{pointer-events:none}`;
+function decorationGuardCss(css: string): string {
+	const hosts = hooksWithDecoration(css);
+	if (hosts.length === 0) return "";
+	const hostRules = hosts.map((sel) => `${sel}{position:relative;isolation:isolate}`).join("");
+	const pseudos = hosts.flatMap((sel) => [`${sel}::before`, `${sel}::after`]).join(",");
+	return `@layer components{${hostRules}}\n${pseudos}{pointer-events:none;z-index:-1}`;
+}
 
 /** 顶层共用 + 当前模式追加(后到的覆盖先到的),输出已完成 hook 翻译。 */
 export function composeSkinCss(manifest: SkinManifest, mode: "light" | "dark"): string {
@@ -196,15 +226,22 @@ export function composeSkinCss(manifest: SkinManifest, mode: "light" | "dark"): 
 		(s): s is string => typeof s === "string" && s !== "",
 	);
 	const css = translateSkinCssHooks(parts.join("\n"));
-	// 没写伪元素就不白搭那一段 —— 它不短,而多数皮肤压根用不上。
-	return /::(?:before|after)\b/.test(css) ? `${PSEUDO_NO_POINTER_CSS}\n${css}` : css;
+	const guard = decorationGuardCss(css);
+	return guard === "" ? css : `${css}\n${guard}`;
 }
 
 /**
- * 壁纸糊化层:wallpaper.blur > 0 时壁纸(含纱)整体搬进 body::before 固定层
+ * 壁纸糊化层:wallpaper.blur > 0 时壁纸(含纱)整体搬进 `html::before` 固定层
  * 做静态高斯模糊 —— 一次成像、无逐帧动画。负 inset 按 2×blur 外扩,遮掉模糊
- * 的边缘透底;z-index:-1 让它画在 body 底色之上、页面内容之下。
+ * 的边缘透底;z-index:-1 让它画在页底之上、页面内容之下(body 的背景按 HTML
+ * 规则上浮成 canvas,所以这一层照旧压在它上面)。
  * 与动效 CSS 同为可信内置产物,拼进同一个 style 标签。
+ *
+ * **为什么是 html 而不是 body**:`page` 挂点就是 `body`,皮肤完全可以写
+ * `[data-bn="page"]::before`(飘花瓣那类氛围层就得这么写)。两边抢同一个伪元素时
+ * CSS 按声明**逐条**合并 —— 真机上「樱墨 · Sakura Ink」的花瓣把这一层压成了
+ * 14×12px、opacity:0 的一小块,主人的壁纸就这么没了,而且构建全绿、只在装上那一刻
+ * 才看得出来。`html` 不是任何挂点,抢不到。
  */
 export function composeWallpaperCss(
 	mode: SkinMode,
@@ -214,7 +251,7 @@ export function composeWallpaperCss(
 	const wp = mode.wallpaper;
 	if (!wp?.image || wp.blur === undefined || wp.blur <= 0) return "";
 	const layers = buildWallpaperLayers({ ...wp, image: wp.image }, assetUrl, theme);
-	return `body::before{content:"";position:fixed;inset:-${wp.blur * 2}px;z-index:-1;pointer-events:none;background:${layers};filter:blur(${wp.blur}px)}`;
+	return `html::before{content:"";position:fixed;inset:-${wp.blur * 2}px;z-index:-1;pointer-events:none;background:${layers};filter:blur(${wp.blur}px)}`;
 }
 
 /**
