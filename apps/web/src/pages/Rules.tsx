@@ -9,6 +9,7 @@ import {
 	ConfirmDialog,
 	type FieldUpdate,
 	FieldUpdatesProvider,
+	LoadingBlock,
 	RailDot,
 	SectionNav,
 } from "@bilibili-notify/ui";
@@ -400,11 +401,7 @@ export default function Rules() {
 			: undefined;
 
 	if (!draft) {
-		return (
-			<div className="bn-glass rounded-bn-card p-10 text-center text-sm text-bn-text-secondary shadow-bn-card">
-				加载全局配置中…
-			</div>
-		);
+		return <LoadingBlock label="正在读取全局配置" />;
 	}
 
 	return (

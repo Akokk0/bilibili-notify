@@ -1,4 +1,12 @@
-import { Btn, ConfirmDialog, ErrorNote, Icon, Input, ModalShell } from "@bilibili-notify/ui";
+import {
+	Btn,
+	ConfirmDialog,
+	ErrorNote,
+	Icon,
+	Input,
+	LoadingBlock,
+	ModalShell,
+} from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, api } from "../services/api";
@@ -682,7 +690,9 @@ export default function Subs() {
 
 			{error ? <ErrorNote>{error}</ErrorNote> : null}
 
-			{subsQuery.isLoading ? <div className="text-sm text-bn-text-secondary">加载中…</div> : null}
+			{subsQuery.isLoading ? (
+				<LoadingBlock label="正在读取订阅列表" hint="女仆正在点名,看看主人都关注了谁 (｡･ω･｡)ﾉ" />
+			) : null}
 			{subsQuery.error ? (
 				<ErrorNote>加载失败：{String((subsQuery.error as Error).message)}</ErrorNote>
 			) : null}

@@ -137,6 +137,12 @@ export interface LoadingBlockProps {
 	label: ReactNode;
 	/** 第二行小字(女仆碎碎念 / 在做什么);不给就不渲染,不留空行。 */
 	hint?: ReactNode;
+	/**
+	 * `card`(默认)=自带玻璃底,给直接坐在页面背景上的等待态。
+	 * `inset`=只有转圈与文案,给**已经在别人卡里**的位置 —— 再套一层玻璃就是
+	 * 玻璃叠玻璃,那个观感被否过。
+	 */
+	variant?: "card" | "inset";
 	className?: string;
 }
 
@@ -150,12 +156,14 @@ export interface LoadingBlockProps {
  * `role="status"` 是给读屏器的:转圈动画纯视觉,不念出来的话等待态等于不存在。
  * `aria-busy` 让它明确是「正在忙」,而不是一条静态提示。
  */
-export function LoadingBlock({ label, hint, className }: LoadingBlockProps) {
+export function LoadingBlock({ label, hint, variant = "card", className }: LoadingBlockProps) {
+	const shell =
+		variant === "card" ? "bn-glass rounded-bn-card px-6 py-14 shadow-bn-card" : "px-6 py-10";
 	return (
 		<div
 			role="status"
 			aria-busy="true"
-			className={`bn-glass flex flex-col items-center justify-center gap-3 rounded-bn-card px-6 py-14 text-center shadow-bn-card ${className ?? ""}`}
+			className={`flex flex-col items-center justify-center gap-3 text-center ${shell} ${className ?? ""}`}
 		>
 			<Spinner size={30} thickness={3} />
 			<div className="text-[13px] font-bold text-bn-text-secondary">{label}…</div>

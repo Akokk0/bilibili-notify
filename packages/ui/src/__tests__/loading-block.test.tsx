@@ -27,6 +27,16 @@ describe("LoadingBlock", () => {
 		expect(screen.getByRole("status").textContent).toContain("正在读取推送历史");
 	});
 
+	// 已经坐在 GlassBox / 玻璃卡里的位置(About 的更新日志、登录闸的白屏),再套一层
+	// 玻璃就是玻璃叠玻璃 —— 主人明确嫌过这个观感。
+	it("inset 变体不带玻璃底,只留转圈与文案", () => {
+		const { container } = render(<LoadingBlock label="正在读取更新日志" variant="inset" />);
+		const el = container.firstElementChild;
+		expect(el?.className).not.toContain("bn-glass");
+		expect(el?.className).not.toContain("shadow-bn");
+		expect(screen.getByRole("status").textContent).toContain("正在读取更新日志");
+	});
+
 	it("第二行小字给了才渲染,不给不留空行", () => {
 		const { rerender } = render(<LoadingBlock label="读取中" />);
 		expect(screen.queryByText("女仆正在翻账本")).toBeNull();

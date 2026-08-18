@@ -33,7 +33,16 @@ import {
 	webSearchBackendMeta,
 } from "@bilibili-notify/internal/constants";
 import { buildPatch } from "@bilibili-notify/internal/patch";
-import { GlassBox, Icon, Pill, RailDot, SectionNav, TabBar, Toggle } from "@bilibili-notify/ui";
+import {
+	GlassBox,
+	Icon,
+	LoadingBlock,
+	Pill,
+	RailDot,
+	SectionNav,
+	TabBar,
+	Toggle,
+} from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -314,11 +323,7 @@ export default function Ai() {
 	});
 
 	if (!draft) {
-		return (
-			<div className="bn-glass rounded-bn-card p-10 text-center text-sm text-bn-text-secondary shadow-bn-card">
-				加载 AI 配置中…
-			</div>
-		);
+		return <LoadingBlock label="正在读取 AI 配置" />;
 	}
 
 	// 左栏在看的那一份,收敛到真实存在的一份(可能刚被删掉、也可能还没选过)。

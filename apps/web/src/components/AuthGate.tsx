@@ -1,3 +1,4 @@
+import { LoadingBlock } from "@bilibili-notify/ui";
 import { type ReactNode, useEffect } from "react";
 import { setUnauthorizedHandler } from "../services/api";
 import { fetchSessionStatus } from "../services/session";
@@ -51,8 +52,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
 	if (!hydrated) {
 		return (
-			<div className="flex min-h-screen items-center justify-center text-[13px] text-bn-text-secondary">
-				加载中…
+			<div className="flex min-h-screen items-center justify-center">
+				<LoadingBlock label="正在唤醒女仆" variant="inset" />
 			</div>
 		);
 	}

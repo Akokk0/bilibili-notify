@@ -1,4 +1,4 @@
-import { Icon, SectionNav } from "@bilibili-notify/ui";
+import { Icon, LoadingBlock, SectionNav } from "@bilibili-notify/ui";
 import { lazy, Suspense, useEffect, useState } from "react";
 import type { Components } from "react-markdown";
 import { externalLinkClick } from "../utils/externalLink";
@@ -339,15 +339,9 @@ function ChangelogPanel() {
 						更新日志加载失败: {loadError}
 					</div>
 				) : markdown == null ? (
-					<div className="py-8 text-center text-[12px] text-bn-text-tertiary">加载更新日志…</div>
+					<LoadingBlock label="正在读取更新日志" variant="inset" />
 				) : (
-					<Suspense
-						fallback={
-							<div className="py-8 text-center text-[12px] text-bn-text-tertiary">
-								加载更新日志…
-							</div>
-						}
-					>
+					<Suspense fallback={<LoadingBlock label="正在读取更新日志" variant="inset" />}>
 						<ReactMarkdown components={MARKDOWN_COMPONENTS}>{markdown}</ReactMarkdown>
 					</Suspense>
 				)}

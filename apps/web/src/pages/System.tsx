@@ -1,5 +1,5 @@
 import { buildPatch } from "@bilibili-notify/internal/patch";
-import { Avatar, Btn, ErrorNote, GlassBox, Icon } from "@bilibili-notify/ui";
+import { Avatar, Btn, ErrorNote, GlassBox, Icon, LoadingBlock } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { BrowserSourceSettings } from "../components/browser-source-settings";
@@ -451,7 +451,7 @@ export default function System() {
 					onPatch={patchDraft}
 				/>
 			) : globalsQuery.isLoading ? (
-				<div className="text-xs text-bn-text-tertiary">加载系统配置中…</div>
+				<LoadingBlock label="正在读取系统配置" />
 			) : globalsQuery.error ? (
 				<ErrorNote>
 					拉取 /api/globals 失败：{String((globalsQuery.error as Error).message)}

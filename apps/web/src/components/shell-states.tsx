@@ -5,15 +5,18 @@
  * (empty bootstrap).
  */
 
-import { Btn, Spinner } from "@bilibili-notify/ui";
+import { Btn, LoadingBlock } from "@bilibili-notify/ui";
 import { useNavigate } from "react-router-dom";
 
 export function ShellLoading() {
 	return (
-		<div className="flex flex-1 flex-col items-center justify-center gap-3 px-7 py-20">
-			<Spinner size={40} thickness={4} />
-			<div className="text-[13px] text-bn-text-tertiary">正在加载订阅列表...</div>
-			<div className="text-[11px] text-bn-text-secondary">女仆正在向 B 站打招呼 (｡･ω･｡)ﾉ</div>
+		// 整屏空白上的等待,不套玻璃卡 —— 底下什么都还没有,一张卡浮在空页上更怪。
+		<div className="flex flex-1 items-center justify-center px-7 py-20">
+			<LoadingBlock
+				label="正在加载订阅列表"
+				hint="女仆正在向 B 站打招呼 (｡･ω･｡)ﾉ"
+				variant="inset"
+			/>
 		</div>
 	);
 }
