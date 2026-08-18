@@ -143,6 +143,26 @@ export interface ConversationStoreOptions {
 	maxConversations?: number;
 }
 
+/**
+ * 只有皮肤工坊挂得出来的那把工具 —— 日常聊天那个窗口一个写工具都没有。
+ * 所以它出现在痕迹里就是铁证,{@link inferMode} 靠它给老会话认面孔。
+ */
+const WORKSHOP_TOOL = "create_skin";
+
+/**
+ * 老会话(文件里没有 `mode`)的面孔 —— 从工具痕迹里认。
+ *
+ * 上线前的会话一律按「聊天」读的话,主人一屋子做过皮肤的老会话在侧栏里一块牌都
+ * 不挂,看不出哪场是工坊的。而 `create_skin` 的痕迹是**结论级**的证据,不是猜。
+ *
+ * 只在读的时候认,**不回写盘**:推断幂等,而改主人的存档不是。显式值永远优先 ——
+ * 这一层只补「文件里没写」的那种情况。
+ */
+function inferMode(conv: Conversation): AiChatMode {
+	const workshop = conv.messages.some((m) => m.tools?.some((t) => t.name === WORKSHOP_TOOL));
+	return workshop ? "skin" : "chat";
+}
+
 /** 新会话的占位标题。首条用户消息落下来之前一直显示它。 */
 const PLACEHOLDER_TITLE = "新对话";
 /** 标题从首问截取的最大字数。侧栏一行放得下,再长也是省略号。 */
@@ -187,7 +207,11 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 			// 面孔在**读的这一处**补默认,一次补齐、下游全都拿到实值。上线前的
 			// 会话文件里没这两个字段,让 undefined 流出去的话,每一个下游都得自己
 			// 想一遍「没有算什么」—— 想反一处,主人的老会话就集体变了面孔。
-			return { ...parsed, mode: parsed.mode ?? "chat", persona: parsed.persona ?? true };
+			return {
+				...parsed,
+				mode: parsed.mode ?? inferMode(parsed),
+				persona: parsed.persona ?? true,
+			};
 		} catch (err) {
 			// 一条脏记录不该让侧栏整个空掉:跳过它,别的照常列出来。
 			logger.warn(`[ai-chat] 跳过损坏的会话文件 ${file}: ${String(err)}`);

@@ -1,5 +1,12 @@
 import { Icon } from "@bilibili-notify/ui";
-import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import {
+	type KeyboardEvent,
+	type ReactNode,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import { useSkinText } from "../../store/skin";
 import { type AiSkill, matchSkills } from "./skills";
 
@@ -18,6 +25,13 @@ import { type AiSkill, matchSkills } from "./skills";
  */
 
 /** 一张已经传好的附件。上传发生在 Composer **外面**,它只负责显示与去留。 */
+/**
+ * 输入框最高长到这儿,再长就自己滚。
+ *
+ * 导出是给测试的:高度这件事只能靠这个数字对齐,写死两份迟早对不上。
+ */
+export const COMPOSER_MAX_HEIGHT = 150;
+
 export interface ComposerAttachment {
 	/** 服务端资产 id,随消息一起发出去。 */
 	id: string;
@@ -93,6 +107,19 @@ export function Composer({
 			document.removeEventListener("keydown", onKey as (e: globalThis.KeyboardEvent) => void);
 		};
 	}, [actionsOpen]);
+
+	// 内容长到这儿就不再长高,改成自己滚 —— 再长下去输入框会把整页吃掉。
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 只按 value 重算,函数体里不读别的
+	useLayoutEffect(() => {
+		const el = taRef.current;
+		if (!el) return;
+		// 先归零再读 scrollHeight:不归零的话读到的是「当前高度」的那个较大值,
+		// 框只会越来越高、从不回落(删字之后留一个空荡荡的大框)。
+		el.style.height = "auto";
+		// jsdom 不排版,scrollHeight 恒为 0 —— 那时别把高度写成 0px。
+		if (el.scrollHeight > 0)
+			el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT)}px`;
+	}, [value]);
 
 	const matches = matchSkills(value);
 	const showMenu = matches.length > 0 && !closed;
@@ -238,7 +265,7 @@ export function Composer({
 					onBlur={() => setTimeout(() => setFocus(false), 120)}
 					placeholder={skinPlaceholder ?? `给${aiName}发消息,输入 / 唤起技能`}
 					aria-label="聊天输入"
-					className="max-h-[150px] w-full resize-none border-none bg-transparent px-2 pt-1.5 pb-1 text-[16.5px] leading-relaxed text-bn-text-primary outline-none placeholder:text-bn-text-secondary"
+					className="w-full resize-none overflow-y-auto border-none bg-transparent px-2 pt-1.5 pb-1 text-[16.5px] leading-relaxed text-bn-text-primary outline-none placeholder:text-bn-text-secondary"
 				/>
 
 				<div className="flex items-center justify-between gap-2 px-1 pt-1 pb-0.5">

@@ -391,6 +391,100 @@ describe("会话的模式与人格", () => {
 		expect(meta?.persona).toBe(true);
 	});
 
+	/**
+	 * 上线前的会话文件里没有 mode,一律按「聊天」读 —— 于是主人一屋子做过皮肤的
+	 * 老会话在侧栏里一块牌都不挂,看不出哪场是工坊的(真机反馈,2026-08-19)。
+	 *
+	 * 但工具痕迹是铁证:`create_skin` **只有皮肤工坊挂得出来**(日常聊天那个窗口
+	 * 一个写工具都没有)。有它就是工坊,这不是猜。
+	 *
+	 * 只在**读**的时候认,不回写盘 —— 推断是幂等的,而改主人的存档不是。
+	 */
+	it("老会话里有 create_skin 痕迹 → 认成工坊", async () => {
+		const dir = join(dataDir, "ai", "chat");
+		await mkdir(dir, { recursive: true });
+		await writeFile(
+			join(dir, "oldskin.json"),
+			JSON.stringify({
+				id: "oldskin",
+				title: "雷姆主题皮肤设计",
+				createdAt: "2026-08-17T00:00:00.000Z",
+				updatedAt: "2026-08-17T00:00:00.000Z",
+				messages: [
+					{ id: "u", role: "user", content: "做套皮肤", ts: "2026-08-17T00:00:00.000Z" },
+					{
+						id: "a",
+						role: "assistant",
+						content: "好",
+						ts: "2026-08-17T00:00:01.000Z",
+						tools: [{ name: "create_skin", args: {}, ok: true }],
+					},
+				],
+			}),
+			"utf8",
+		);
+
+		expect((await store.get("oldskin"))?.mode).toBe("skin");
+		const [meta] = await store.list();
+		expect(meta?.mode).toBe("skin");
+	});
+
+	it("只调过只读工具的老会话仍是聊天 —— 别把查订阅认成做皮肤", async () => {
+		const dir = join(dataDir, "ai", "chat");
+		await mkdir(dir, { recursive: true });
+		await writeFile(
+			join(dir, "oldchat.json"),
+			JSON.stringify({
+				id: "oldchat",
+				title: "查看订阅的 UP 主",
+				createdAt: "2026-08-17T00:00:00.000Z",
+				updatedAt: "2026-08-17T00:00:00.000Z",
+				messages: [
+					{
+						id: "a",
+						role: "assistant",
+						content: "好",
+						ts: "2026-08-17T00:00:01.000Z",
+						tools: [{ name: "list_subscriptions", args: {}, ok: true }],
+					},
+				],
+			}),
+			"utf8",
+		);
+
+		expect((await store.get("oldchat"))?.mode).toBe("chat");
+	});
+
+	it("盘上写着 mode 就照它走,推断不许翻案", async () => {
+		const dir = join(dataDir, "ai", "chat");
+		await mkdir(dir, { recursive: true });
+		await writeFile(
+			join(dir, "explicit.json"),
+			JSON.stringify({
+				id: "explicit",
+				title: "明写着是聊天",
+				createdAt: "2026-08-17T00:00:00.000Z",
+				updatedAt: "2026-08-17T00:00:00.000Z",
+				mode: "chat",
+				persona: true,
+				// 现实里凑不出这种文件,但「显式值优先」这条得钉死:哪天推断改宽了,
+				// 主人明确建成聊天的会话不该被它改判。
+				messages: [
+					{
+						id: "a",
+						role: "assistant",
+						content: "好",
+						ts: "2026-08-17T00:00:01.000Z",
+						tools: [{ name: "create_skin", args: {}, ok: true }],
+					},
+				],
+			}),
+			"utf8",
+		);
+
+		expect((await store.get("explicit"))?.mode).toBe("chat");
+	});
+
 	it("聊过之后模式不变 —— 「锁定」就是这个意思", async () => {
 		const conv = await store.create({ mode: "skin", persona: false });
 		await store.appendMessages(conv.id, [{ role: "user", content: "做套皮肤" }]);
