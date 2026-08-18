@@ -173,12 +173,31 @@ export function translateSkinCssHooks(css: string): string {
 	});
 }
 
+/**
+ * 每个挂点的两种伪元素一律**不吃点击**的前置。
+ *
+ * 真机上撞的(2026-08-19「樱墨 · Sakura Ink」):设计师写了一层再标准不过的卡面高光
+ * (`::before` + `position:absolute` + `inset:0` + 渐变),整页按钮就都点不动了。那段
+ * 在任何前端项目里都得配一句 `pointer-events:none`,而这个属性**在皮肤白名单外**
+ * (欺骗面,刻意不开)—— 设计师写不出来,也没法补救。
+ *
+ * 清洗层已经替它补了同一句,但**存盘的是清洗后的产物**:已经装在主人机器上的皮肤
+ * 不会再过一遍清洗。所以这道闸在注入层也设一份,存量皮肤刷一下页面就好。
+ *
+ * 压得住的原因不是顺序,是皮肤 CSS 里**不可能**出现 pointer-events(清洗层丢掉它)。
+ */
+const PSEUDO_NO_POINTER_CSS = `${Object.values(SKIN_CSS_HOOK_MAP)
+	.flatMap((sel) => [`${sel}::before`, `${sel}::after`])
+	.join(",")}{pointer-events:none}`;
+
 /** 顶层共用 + 当前模式追加(后到的覆盖先到的),输出已完成 hook 翻译。 */
 export function composeSkinCss(manifest: SkinManifest, mode: "light" | "dark"): string {
 	const parts = [manifest.css, manifest.modes[mode]?.css].filter(
 		(s): s is string => typeof s === "string" && s !== "",
 	);
-	return translateSkinCssHooks(parts.join("\n"));
+	const css = translateSkinCssHooks(parts.join("\n"));
+	// 没写伪元素就不白搭那一段 —— 它不短,而多数皮肤压根用不上。
+	return /::(?:before|after)\b/.test(css) ? `${PSEUDO_NO_POINTER_CSS}\n${css}` : css;
 }
 
 /**

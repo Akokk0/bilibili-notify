@@ -100,6 +100,47 @@ function valueOfAttr(value: CssNode | null): string | null {
 	return null;
 }
 
+/**
+ * 这一支选择器瞄的是伪元素吗。
+ *
+ * 装饰性伪元素**永远不许吃点击**(见 {@link forcePointerEventsNone}),所以这个
+ * 判断是那道保险的触发条件。
+ */
+function targetsPseudoElement(selector: CssNode): boolean {
+	if (selector.type !== "Selector") return false;
+	let hit = false;
+	selector.children.forEach((node: CssNode) => {
+		if (node.type === "PseudoElementSelector") hit = true;
+	});
+	return hit;
+}
+
+/** 这一支选择器最后一个 hook 名 —— 补宿主定位那条规则要用。 */
+function lastHookOf(selector: CssNode): string | null {
+	if (selector.type !== "Selector") return null;
+	let hook: string | null = null;
+	selector.children.forEach((node: CssNode) => {
+		if (node.type === "AttributeSelector") {
+			const v = valueOfAttr(node.value);
+			if (v !== null) hook = v;
+		}
+	});
+	return hook;
+}
+
+/**
+ * 往声明块尾部塞一句 `pointer-events:none`。
+ *
+ * 在**过滤之后**才塞:`pointer-events` 不在白名单里,过滤会把皮肤自己写的那句
+ * (比如想抢回来的 `auto`)丢掉,而这一句因为塞在后面,躲过了过滤也压过了任何残留。
+ */
+function forcePointerEventsNone(rule: Rule): void {
+	const block = rule.block;
+	if (!block) return;
+	const decl = parse("pointer-events:none", { context: "declaration" }) as CssNode;
+	if (decl.type === "Declaration") block.children.push(decl);
+}
+
 /** 单个 Selector(逗号列表的一支)是否全由白名单件组成。 */
 function isAllowedSelector(selector: CssNode): boolean {
 	if (selector.type !== "Selector") return false;
@@ -180,6 +221,21 @@ function filterBlock(rule: Rule | Atrule, path: string, warnings: string[]): num
 	return kept;
 }
 
+/** 这条规则里写了 `position:absolute` 吗 —— 决定宿主要不要补定位。 */
+function blockHasAbsolute(rule: Rule): boolean {
+	let hit = false;
+	rule.block?.children.forEach((node: CssNode) => {
+		if (
+			node.type === "Declaration" &&
+			node.property.toLowerCase() === "position" &&
+			generate(node.value).trim().toLowerCase() === "absolute"
+		) {
+			hit = true;
+		}
+	});
+	return hit;
+}
+
 /** keyframes 内部:每个 keyframe 块只过声明白名单(from/to/百分比选择器无风险)。 */
 function filterKeyframes(atrule: Atrule, path: string, warnings: string[]): void {
 	atrule.block?.children.forEach((node: CssNode) => {
@@ -191,6 +247,8 @@ function filterKeyframes(atrule: Atrule, path: string, warnings: string[]): void
 function filterRuleList(
 	parent: { children: import("css-tree").List<CssNode> },
 	warnings: string[],
+	/** 用了绝对定位伪元素的挂点 —— 收齐之后统一给宿主补 position:relative。 */
+	needsPositioning?: Set<string>,
 ): boolean {
 	const drop: CssNode[] = [];
 	parent.children.forEach((node: CssNode) => {
@@ -208,7 +266,28 @@ function filterRuleList(
 				drop.push(node);
 				return;
 			}
-			if (filterBlock(node, selectorText, warnings) === 0) drop.push(node);
+			if (filterBlock(node, selectorText, warnings) === 0) {
+				drop.push(node);
+				return;
+			}
+			// 伪元素规则:补上「不吃点击」那句,并记下宿主要不要定位。
+			if (prelude.type === "SelectorList") {
+				let pseudo = false;
+				const hosts: string[] = [];
+				prelude.children.forEach((sel: CssNode) => {
+					if (!targetsPseudoElement(sel)) return;
+					pseudo = true;
+					const hook = lastHookOf(sel);
+					if (hook) hosts.push(hook);
+				});
+				if (pseudo) {
+					forcePointerEventsNone(node);
+					// 只有真用了绝对定位才需要定位祖先 —— 没用就别去改人家的布局。
+					if (needsPositioning && blockHasAbsolute(node)) {
+						for (const hook of hosts) needsPositioning.add(hook);
+					}
+				}
+			}
 			return;
 		}
 		if (node.type === "Atrule") {
@@ -224,7 +303,9 @@ function filterRuleList(
 				return;
 			}
 			if (name === "media") {
-				if (!node.block || !filterRuleList(node.block, warnings)) drop.push(node);
+				if (!node.block || !filterRuleList(node.block, warnings, needsPositioning)) {
+					drop.push(node);
+				}
 				return;
 			}
 			warnings.push(`@${name} 不在白名单,整段丢弃`);
@@ -257,6 +338,15 @@ export function sanitizeSkinCss(input: string): SanitizeCssResult {
 	if (ast.type !== "StyleSheet") return { ok: false, errors: ["CSS 顶层结构异常"] };
 
 	const warnings: string[] = [];
-	filterRuleList(ast, warnings);
-	return { ok: true, css: generate(ast), warnings };
+	/**
+	 * 绝对定位的伪元素需要一个定位祖先,否则 `inset:0` 会撑到远处某个祖先甚至整页
+	 * —— 站内多数 `.bn-glass` 卡身上并没有 `relative`。宿主那句由这一层补,设计师
+	 * 想不到也没关系;放在最前面,皮肤自己后面要覆盖也覆盖得掉。
+	 */
+	const needsPositioning = new Set<string>();
+	filterRuleList(ast, warnings, needsPositioning);
+	const hostRules = [...needsPositioning]
+		.map((hook) => `[data-bn="${hook}"]{position:relative}`)
+		.join("");
+	return { ok: true, css: hostRules + generate(ast), warnings };
 }

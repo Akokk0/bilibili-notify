@@ -230,6 +230,43 @@ describe("自定义 CSS:hook 翻译与合成", () => {
 		);
 	});
 
+	/**
+	 * 装饰性伪元素**永远不许吃点击**。
+	 *
+	 * 真机上撞的(2026-08-19,「樱墨 · Sakura Ink」):设计师写了一层再标准不过的
+	 * 卡面高光(`::before` + `position:absolute` + `inset:0` + 渐变),整页按钮就都
+	 * 点不动了 —— 那段在任何前端项目里都得配一句 `pointer-events:none`,而这个属性
+	 * **在皮肤白名单外**(欺骗面,刻意不开),设计师写不出来也补不了。
+	 *
+	 * 清洗层已经补了同一句,但**存盘的是清洗后的产物** —— 已经装在主人机器上的皮肤
+	 * 不会再过一遍清洗。所以注入层也得设这道闸:存量皮肤刷一下页面就好,不必等重存。
+	 * 皮肤 CSS 里不可能出现 pointer-events(清洗层丢掉),所以这道前置永远压得住。
+	 */
+	it("composeSkinCss:所有挂点的伪元素一律不吃点击 —— 存量皮肤也吃这道闸", () => {
+		const css = composeSkinCss(
+			{
+				schemaVersion: 1,
+				name: "t",
+				css: '[data-bn="glass"]::before{content:"";position:absolute;inset:0}',
+				modes: { light: {} },
+			},
+			"light",
+		);
+		expect(css).toContain("pointer-events:none");
+		// 前置必须在皮肤自己那段**之前**,而且覆盖到每一个挂点的两种伪元素。
+		expect(css.indexOf("pointer-events:none")).toBeLessThan(css.indexOf("content:"));
+		expect(css).toContain(".bn-glass::before");
+		expect(css).toContain(".bn-glass::after");
+	});
+
+	it("皮肤压根没写伪元素 → 不白搭一段前置", () => {
+		const css = composeSkinCss(
+			{ schemaVersion: 1, name: "t", css: '[data-bn="btn"]{opacity:0.9}', modes: { light: {} } },
+			"light",
+		);
+		expect(css).not.toContain("pointer-events");
+	});
+
 	it("composeSkinCss:顶层共用 + 当前模式追加,输出已翻译;两段都缺 → 空串", () => {
 		const manifest: SkinManifest = {
 			schemaVersion: 1,

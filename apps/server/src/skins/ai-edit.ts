@@ -108,6 +108,7 @@ ${HOOK_LIST}
 - **胶囊/正圆圆角(border-radius 999px、50%)只准给按钮、头像这类矮元素**;容器类挂点(page / glass / glass-strong / nav / header / modal)圆角别超过 24px —— 容器有高瘦形态,套上 999px 会鼓成一个大椭圆
 - 属性只收视觉白名单(background/border/box-shadow/color/opacity/filter/backdrop-filter/transform/transition/animation/border-radius/clip-path/inset/width/height/z-index 等);display、pointer-events、visibility 会被丢弃
 - 禁 url()(图走字段,CSS 里写了会被剔除);position 只准 static/relative/absolute;伪元素 content 只准 "" 或 none
+- 伪元素只管装饰,两件事**不用你操心**:pointer-events(白名单里没有,清洗层一律替你补 pointer-events:none —— 装饰层吃掉点击会让整页按钮点不动),以及绝对定位伪元素的宿主 position:relative(也自动补)。别浪费声明去写它们
 - @keyframes 名必须以 skin- 开头;可用 @media (prefers-reduced-motion) 做降级
 
 只输出 skin.json 的 JSON 内容,不要解释,不要代码块围栏。`;

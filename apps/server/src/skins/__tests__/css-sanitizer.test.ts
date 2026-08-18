@@ -162,3 +162,73 @@ describe("硬失败与体积", () => {
 		expect(ok("").css).toBe("");
 	});
 });
+
+/**
+ * 装饰性伪元素**永远不许吃点击**。
+ *
+ * 真机上撞的(2026-08-19,「樱墨 · Sakura Ink」):设计师写了一层再标准不过的
+ * 卡面高光 —— `[data-bn="glass"]::before{content:"";position:absolute;inset:0;
+ * background:linear-gradient(...)}`。放到任何前端项目里,这段都得配一句
+ * `pointer-events:none`;而 `pointer-events` **在我们的白名单外**(它是欺骗面,
+ * 刻意不开)。于是设计师写不出正确的覆盖层,也没法补救 —— 主人拿到的是一整页
+ * 点不动的按钮。
+ *
+ * 所以这件事不能求设计师做对,得由这一层**替它做掉**:凡是伪元素规则,一律补上
+ * `pointer-events:none`。它写不了(属性被禁)、也覆盖不掉(同样被禁),结构上就没有
+ * 出错的余地。
+ */
+describe("伪元素不吃点击", () => {
+	it("伪元素规则一律补 pointer-events:none", () => {
+		const { css } = ok(`[data-bn="glass"]::before{content:"";position:absolute;inset:0}`);
+		expect(css).toContain("pointer-events:none");
+	});
+
+	it("::after 同样补", () => {
+		const { css } = ok(`[data-bn="page"]::after{content:"";position:absolute;inset:0}`);
+		expect(css).toContain("pointer-events:none");
+	});
+
+	it("不是伪元素的规则不碰 —— 给按钮补这句会把按钮本身点死", () => {
+		const { css } = ok(`[data-bn="btn"]:hover{opacity:0.9}`);
+		expect(css).not.toContain("pointer-events");
+	});
+
+	it("皮肤自己写 pointer-events:auto 想抢回来 → 丢弃,补的那句照旧", () => {
+		const { css, warnings } = ok(
+			`[data-bn="glass"]::before{content:"";position:absolute;inset:0;pointer-events:auto}`,
+		);
+		expect(warnings.some((w) => w.includes("pointer-events"))).toBe(true);
+		expect(css).toContain("pointer-events:none");
+		expect(css).not.toContain("pointer-events:auto");
+	});
+});
+
+/**
+ * 绝对定位的伪元素需要一个**定位祖先**,否则 `inset:0` 撑到远处某个祖先甚至整页。
+ *
+ * 站内多数 `.bn-glass` 卡片身上并没有 `relative`(实测),所以那层「卡面高光」实际
+ * 铺满了整页 —— 这也是上面那口点不动的锅的另一半:它不只吃了卡上的点击,是吃了
+ * 全页的。补 `pointer-events:none` 之后点击回来了,但那片渐变仍然糊在整页上。
+ *
+ * 由这一层替它补上宿主的 `position:relative`:只给**真的用了绝对定位伪元素**的
+ * 那几个挂点补,不碰别人的布局。
+ */
+describe("绝对定位伪元素的宿主", () => {
+	it("宿主补上 position:relative,伪元素才贴在自己那张卡上", () => {
+		const { css } = ok(`[data-bn="glass"]::before{content:"";position:absolute;inset:0}`);
+		expect(css).toContain(`[data-bn="glass"]{position:relative}`);
+	});
+
+	it("伪元素没用绝对定位 → 不给宿主补,别为没有的问题改人家布局", () => {
+		const { css } = ok(`[data-bn="glass"]::before{content:"";background:#fff}`);
+		expect(css).not.toContain("position:relative");
+	});
+
+	it("一个挂点写了好几条绝对定位伪元素 → 宿主那句只补一次", () => {
+		const { css } = ok(
+			`[data-bn="page"]::before{content:"";position:absolute;inset:0}
+			 [data-bn="page"]::after{content:"";position:absolute;top:0}`,
+		);
+		expect(css.match(/\[data-bn="page"\]\{position:relative\}/g)).toHaveLength(1);
+	});
+});
