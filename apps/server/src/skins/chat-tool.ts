@@ -79,7 +79,7 @@ export const SKIN_MODE_SYSTEM_PROMPT = `你是「bilibili-notify」控制面板�
 - 动手 = 调用 create_skin 工具。brief 里把风格写足(氛围 / 主色与具体色值 / 明暗 / 质感 / 想要的动效感觉),主人只给一个词时由你补全细节。
 - 主人明确说了「换上 / 直接用」这类话,才把 activate 传 true;否则做完存进库就行。
 - 壁纸有两条来路。① 主人在这条消息里贴了图 → create_skin 的 wallpaper 传 "attached"。**这条最准,你看得见那张图** —— 把图里的主色、氛围写进 brief,配色才跟壁纸搭(设计师看不见图,只读 brief)。② 主人想要壁纸又没贴图 → 调 find_wallpaper 搜几张,再把选中的编号传给 wallpaper。
-- 搜图是**盲选**:find_wallpaper 只给你标题和尺寸,**你看不见图长什么样**。所以别像介绍看过的图那样介绍它 —— 跟主人说清这是网上搜的、你没看过,不满意可以自己贴一张更好的。挑的时候优先大尺寸、横图。
+- 搜图是**盲选**:find_wallpaper 只给你标题和尺寸,**你看不见图长什么样**。这是这条路的前提,不是弃权的理由 —— **搜到候选就挑一张用上**(优先大尺寸、横图),别因为「确认不了是不是那个角色 / 怕不合适」就不挑。你要做的是挑完**如实说明**:这是网上搜的、你没看过内容、不满意主人可以自己贴一张更好的,或者让你换一张。
 - 两条路都要求图**真的存在**。没贴图又没搜过就别给 wallpaper 传值,更**别自己编一张图**、别说「我放了一张」。
 - 工具会返回做成了什么,**照实转述,只说返回里有的东西**:皮肤叫什么、包含哪套模式、换没换上、去哪试穿。工具没返回的一律别说 —— 你写进 brief 的不等于做出来了(尤其是图片)。失败也照实说原因,不要假装成功。
 - 与做皮肤无关的话题(查 B 站数据、闲聊、推送设置)在这个模式下做不了,请主人切回聊天模式再说。
@@ -128,6 +128,21 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 	 */
 	async function resolveWallpaper(raw: string): Promise<ChatSkinImage | null> {
 		const w = raw.trim().toLowerCase();
+		/**
+		 * 搜都搜了却一张不挑 —— 当场问回去。
+		 *
+		 * 真机上模型搜到 5 张候选,3 秒后调 create_skin 连 wallpaper 都不传,理由是
+		 * 「看不到图内容,没法确认是不是本人」(2026-08-18)。盲选本来就是这条路的
+		 * 前提,不是弃权的理由;而主人开口要的是带壁纸的皮肤,闷头做一套纯色的
+		 * 等于白跑。这一步在生成之前,拦下来一分钱不花。
+		 *
+		 * `"none"` 是留给「主人明确说不要」的正当出口 —— 有出口才叫闸,没出口是堵死。
+		 */
+		if (!w && candidates.length > 0) {
+			throw new Error(
+				'这一轮搜过壁纸候选了,却没挑 —— 想要壁纸就把序号填进 wallpaper(看不见图不是不挑的理由,挑完如实跟主人说这是网上搜的、你没看过、可以换)。主人明确不要壁纸才传 "none"。',
+			);
+		}
 		if (!w || w === "false" || w === "none") return null;
 
 		if (w === "attached" || w === "true") {
@@ -287,7 +302,7 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 				lines.push(`${i + 1}. ${title}（${size}）`);
 			});
 			lines.push(
-				`挑一张就把它的编号填进 create_skin 的 wallpaper（如 "1"）。你看不见图本身，选大图、横图更稳。`,
+				`挑一张就把它的编号填进 create_skin 的 wallpaper（如 "1"）。你看不见图本身，选大图、横图更稳；看不见不是不挑的理由——挑完如实告诉主人这是网上搜的、可以换。`,
 			);
 			return lines.join("\n");
 		},

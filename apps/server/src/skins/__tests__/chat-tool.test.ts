@@ -91,6 +91,14 @@ describe("皮肤工坊的 system", () => {
 		expect(SKIN_MODE_SYSTEM_PROMPT).toMatch(/看不见|没看过/);
 	});
 
+	it("盲选是前提,不是弃权的理由 —— 搜到候选就得挑一张", () => {
+		// 上一版只写了「你看不见图长什么样」,真机上被读成「确认不了就别用」:
+		// 搜到 5 张候选,转头做了一套没壁纸的皮肤(2026-08-18 11:37)。提醒和
+		// 弃权只隔一句话,所以默认动作必须明写出来。
+		expect(SKIN_MODE_SYSTEM_PROMPT).toMatch(/搜到候选就挑|挑一张用上/);
+		expect(SKIN_MODE_SYSTEM_PROMPT).toMatch(/不是弃权|别因为.*就不挑/);
+	});
+
 	it("交代「你看得见那张图」—— 配色得跟壁纸搭,取色只能靠她自己看", () => {
 		// 外层聊天本来就把附件喂给了模型(imageUrls),而嵌套的设计师只看得到
 		// brief。她不把图里的主色写下来,壁纸和配色就会各走各的。
@@ -249,6 +257,43 @@ describe("find_wallpaper × 搜来的图", () => {
 		const [skin] = await store.list();
 		const saved = await store.get(skin?.id ?? "");
 		expect(saved?.modes.dark?.wallpaper?.image).toBe("assets/wallpaper.png");
+	});
+
+	/**
+	 * 第二次真机翻车(2026-08-18 11:37「桜色の約束」):搜到 5 张候选,3 秒后调
+	 * create_skin **连 wallpaper 都没传**,回话说「看不到图内容,没法确认是不是本人,
+	 * 所以这次没硬塞」。上一版提示词那句「搜图是盲选、你看不见图长什么样」被读成了
+	 * 「确认不了就别用」—— 一句提醒变成了退堂鼓。
+	 *
+	 * 提示词改归改,这里要的是道闸:搜都搜了却不挑,当场问回去。这一步在生成之前,
+	 * 拦下来一分钱不花。
+	 */
+	it("搜过图却不挑 → 当场问回去,别闷头做一套没壁纸的", async () => {
+		const g = genOf(JSON.stringify(WALLPAPER_SKIN));
+		const tools = toolsWithSearch(g);
+		await findTool(tools)?.execute({ query: "樱泽墨 壁纸" });
+
+		await expect(createTool(tools)?.execute({ brief: "浅色樱花粉" })).rejects.toThrow(/序号|none/);
+		// 拦在生成之前 —— 这道闸的价值就在于不烧那两分多钟。
+		expect(g).not.toHaveBeenCalled();
+	});
+
+	it("主人真的不要壁纸 → 传 none 就放行,不许把这条路堵死", async () => {
+		const tools = toolsWithSearch(
+			genOf(JSON.stringify({ ...WALLPAPER_SKIN, modes: { dark: {} } })),
+		);
+		await findTool(tools)?.execute({ query: "樱泽墨 壁纸" });
+
+		const out = await createTool(tools)?.execute({ brief: "浅色樱花粉", wallpaper: "none" });
+		expect(out).toContain("已生成皮肤");
+	});
+
+	it("压根没搜过 → 不传 wallpaper 照常放行(纯配色皮肤是正当需求)", async () => {
+		const tools = toolsWithSearch(
+			genOf(JSON.stringify({ ...WALLPAPER_SKIN, modes: { dark: {} } })),
+		);
+		const out = await createTool(tools)?.execute({ brief: "浅色樱花粉" });
+		expect(out).toContain("已生成皮肤");
 	});
 
 	it("没搜过就给序号 → 拒(候选表是空的,没有能下的 URL)", async () => {
