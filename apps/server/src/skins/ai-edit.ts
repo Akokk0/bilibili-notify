@@ -71,9 +71,12 @@ export function buildSkinAiSystemPrompt(
 	/** create = 从零建一套(聊天里「给我做套皮肤」),没有草稿可依。 */
 	mode: "edit" | "create" = "edit",
 ): string {
+	// 措辞是有代价的:这里原本写「包内可用图片」,真机上设计师就把它当成可选,
+	// 主人点名要的壁纸下下来了却没进 manifest(2026-08-18「樱落 · 樱泽墨」)。
+	// 包里有图 = 主人指定的,不是备选。
 	const assetNote =
 		assets.length > 0
-			? `包内可用图片(wallpaper.image / chat.wallpaper.image 只准引用这些):\n${assets.map((a) => `- ${a}`).join("\n")}`
+			? `包内图片(主人指定要用的,**必须用上**,别当可选):\n${assets.map((a) => `- ${a}`).join("\n")}\n每一套 mode 都要写 wallpaper.image 引用它(路径一字不差照抄),并配 fit / overlay / blur;整套配色要跟这张图搭。wallpaper.image / chat.wallpaper.image 只准引用上面这些,别的图一律不存在。`
 			: "包里没有任何图片资产:不要写 wallpaper 字段,引用不存在的图会被拒收。";
 	const intro =
 		mode === "create"

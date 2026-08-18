@@ -37,7 +37,7 @@ const MODE_LABEL = { light: "浅色", dark: "暗色" } as const;
 const IMAGE_HINT_RE = /壁纸|背景图|图片|插画|立绘|照片|海报|wallpaper|image|photo/i;
 
 const NO_IMAGE_NOTE =
-	"(这套没有壁纸 —— 图只能用主人贴进聊天的那张,这一问里没有。想要壁纸,请主人把图发过来再说一次。)";
+	"(这套没有壁纸 —— 这一问里既没有主人贴的图,也没有从 find_wallpaper 挑中的图。想要壁纸,请主人贴一张,或者让我去搜。)";
 
 /** 主人贴在这一问里的图,已从聊天附件里读出来的原始字节。 */
 export interface ChatSkinImage {
@@ -202,13 +202,17 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 			 */
 			const assets = new Map<string, Uint8Array>();
 			const image = await resolveWallpaper(args.wallpaper ?? "");
-			if (image) assets.set(`assets/${WALLPAPER_BASENAME}.${image.ext}`, image.bytes);
+			const wallpaper = image ? `assets/${WALLPAPER_BASENAME}.${image.ext}` : undefined;
+			if (image && wallpaper) assets.set(wallpaper, image.bytes);
 
 			made++;
 			const result = await runSkinAiCreate({
 				generateRaw: (s, u) => generator.generateRaw(s, u),
 				brief,
 				assets: [...assets.keys()],
+				// 主人点名的那张图交由生成层保证落进 manifest —— 设计师漏写过一次,
+				// 而一趟生成两分多钟,不能让它取决于设计师这一遍的心情。
+				wallpaper,
 			});
 			if (!result.ok) {
 				// 原因原样带回给模型 —— 它才能跟主人说清是哪儿没做成,而不是干瞪眼。

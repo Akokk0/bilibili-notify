@@ -233,6 +233,24 @@ describe("find_wallpaper × 搜来的图", () => {
 		expect(out).toMatch(/壁纸/);
 	});
 
+	/**
+	 * 真机翻车的正是这条(2026-08-18「樱落 · 樱泽墨」):图搜到了、下下来了、落盘了,
+	 * 设计师却没把它写进 manifest,于是女仆照着返回值如实告诉主人「壁纸没能放上」。
+	 * 上面几条都喂了「乖乖写了壁纸」的假答案,所以谁都没红。
+	 */
+	it("设计师没写壁纸 → 照样补上,回话不许说成没有", async () => {
+		const NO_WALLPAPER_SKIN = { schemaVersion: 1, name: "夜航灯", modes: { dark: {} } };
+		const tools = toolsWithSearch(genOf(JSON.stringify(NO_WALLPAPER_SKIN)));
+		await findTool(tools)?.execute({ query: "雷姆 壁纸" });
+		const out = await createTool(tools)?.execute({ brief: "暗色,要壁纸", wallpaper: "1" });
+
+		expect(out).toContain("壁纸");
+		expect(out).not.toContain("这套没有壁纸");
+		const [skin] = await store.list();
+		const saved = await store.get(skin?.id ?? "");
+		expect(saved?.modes.dark?.wallpaper?.image).toBe("assets/wallpaper.png");
+	});
+
 	it("没搜过就给序号 → 拒(候选表是空的,没有能下的 URL)", async () => {
 		const tools = toolsWithSearch(genOf(JSON.stringify(WALLPAPER_SKIN)));
 		await expect(createTool(tools)?.execute({ brief: "暗色", wallpaper: "1" })).rejects.toThrow(

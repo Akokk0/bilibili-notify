@@ -16,6 +16,7 @@ import {
 import { describe, expect, it, vi } from "vite-plus/test";
 import { runSkinAiCreate } from "../ai-create.js";
 import { SKIN_CSS_HOOK_NOTES } from "../ai-edit.js";
+import { WALLPAPER_IMAGE_RE } from "../schema.js";
 
 const SKIN = {
 	schemaVersion: 1,
@@ -46,6 +47,88 @@ describe("runSkinAiCreate", () => {
 		expect(g).toHaveBeenCalledTimes(1);
 		// 主人的要求原样进 user 消息 —— 生成靠它,丢了就成了随机出图。
 		expect(g.mock.calls[0]?.[1] ?? "").toContain("赛博朋克风,暗色,青色霓虹");
+	});
+
+	/**
+	 * 真机上栽的那一跤(2026-08-18,「樱落 · 樱泽墨」):find_wallpaper 搜到了、图也
+	 * 下下来落了盘,可设计师看到素材清单写的是「可用图片」,就当成可选、干脆没写
+	 * wallpaper —— 主人拿到一套纯色底皮肤,女仆还得跟主人解释壁纸没做上。
+	 * 一趟生成两分多钟,不能靠设计师的心情。
+	 */
+	describe("主人指定了壁纸", () => {
+		it("设计师没写 wallpaper → 服务端补进每一套 mode", async () => {
+			const g = gen(JSON.stringify({ ...SKIN, modes: { light: {}, dark: {} } }));
+			const res = await runSkinAiCreate({
+				generateRaw: g,
+				brief: "樱花粉浅色",
+				assets: ["assets/wallpaper.jpg"],
+				wallpaper: "assets/wallpaper.jpg",
+			});
+
+			expect(res.ok).toBe(true);
+			if (!res.ok) return;
+			for (const mode of ["light", "dark"] as const) {
+				expect(res.manifest.modes[mode]?.wallpaper?.image).toBe("assets/wallpaper.jpg");
+			}
+		});
+
+		it("设计师自己配好了就不动它 —— 它挑的 overlay / blur 比兜底值懂行", async () => {
+			const g = gen(
+				JSON.stringify({
+					...SKIN,
+					modes: {
+						light: { wallpaper: { image: "assets/wallpaper.jpg", overlay: 0.5, blur: 20 } },
+					},
+				}),
+			);
+			const res = await runSkinAiCreate({
+				generateRaw: g,
+				brief: "樱花粉浅色",
+				assets: ["assets/wallpaper.jpg"],
+				wallpaper: "assets/wallpaper.jpg",
+			});
+
+			expect(res.ok).toBe(true);
+			if (!res.ok) return;
+			expect(res.manifest.modes.light?.wallpaper?.overlay).toBe(0.5);
+			expect(res.manifest.modes.light?.wallpaper?.blur).toBe(20);
+		});
+
+		it("补出来的壁纸得是合法值 —— 兜底路径绕开了模型,可没绕开 schema", async () => {
+			const g = gen(JSON.stringify({ ...SKIN, modes: { light: {} } }));
+			const res = await runSkinAiCreate({
+				generateRaw: g,
+				brief: "樱花粉浅色",
+				assets: ["assets/wallpaper.jpg"],
+				wallpaper: "assets/wallpaper.jpg",
+			});
+
+			expect(res.ok).toBe(true);
+			if (!res.ok) return;
+			const wp = res.manifest.modes.light?.wallpaper;
+			expect(WALLPAPER_IMAGE_RE.test(wp?.image ?? "")).toBe(true);
+			expect(wp?.overlay).toBeGreaterThanOrEqual(0);
+			expect(wp?.overlay).toBeLessThanOrEqual(0.8);
+			expect(wp?.blur).toBeGreaterThanOrEqual(0);
+			expect(wp?.blur).toBeLessThanOrEqual(40);
+		});
+
+		it("system 把素材说成硬要求 —— 「可用」这个措辞正是上次被绕开的口子", async () => {
+			const g = gen(JSON.stringify(SKIN));
+			await runSkinAiCreate({
+				generateRaw: g,
+				brief: "樱花粉浅色",
+				assets: ["assets/wallpaper.jpg"],
+				wallpaper: "assets/wallpaper.jpg",
+			});
+
+			const system = g.mock.calls[0]?.[0] ?? "";
+			expect(system).toContain("assets/wallpaper.jpg");
+			// 「必须」在别处的规则里也出现(@keyframes 那条),所以要求它跟素材段挨着 ——
+			// 否则这条断言换个提示词照样绿,等于没测。
+			const note = system.slice(0, system.indexOf("assets/wallpaper.jpg") + 200);
+			expect(note.slice(note.lastIndexOf("包内"))).toMatch(/必须用上/);
+		});
 	});
 
 	it("system 摊开可用的 colors 键 —— 从零设计不能靠猜键名", async () => {
