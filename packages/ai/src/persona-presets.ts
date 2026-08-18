@@ -113,6 +113,14 @@ const NO_TOOL_LAW = `【本次任务】就眼前给到的内容直接作答，�
 const CORE_IDENTITY_TAIL = `在做好这份工作的同时，你有自己的性格和说话方式，具体如下：`;
 
 /**
+ * 无人格那一档的收尾 —— 替换 {@link CORE_IDENTITY_TAIL} 的位置。
+ *
+ * 不能只是「把性格删掉」了事:什么都不说的话,模型会自己找一副腔调补上(多半是
+ * 客服腔的「很高兴为您服务」)。明写一句要什么,比留白稳。
+ */
+const NO_PERSONA_TONE = `回答保持中立、简洁、就事论事，不要给自己设定名字或性格，也不要用角色扮演的口吻。`;
+
+/**
  * 将人格配置字段拼装为 system prompt。
  * 用户显式指定的字段优先，未指定时使用预设默认值。
  */
@@ -141,16 +149,31 @@ export function buildSystemPrompt(params: {
 	 * 那条路从来没人想起来要关掉它。
 	 */
 	withTools?: boolean;
+	/**
+	 * 这次要带上人格吗?dashboard 的聊天里主人开局能选「无人格」那一档。
+	 *
+	 * **缺省是 true**,方向与上面两个相反但同理:三端共享这个包,漏传的调用方
+	 * (推送、koishi 群聊、点评、总结)必须一字不变地拿到原来的行为。
+	 *
+	 * 关掉的只有**性格**:职责说明、Markdown 约定、工具铁律一条都不动 —— 少了
+	 * 工具铁律,模型连「查订阅得调工具」都会忘(见 persona-prompt-tools.test.ts
+	 * 记着的那个老 bug)。
+	 */
+	withPersona?: boolean;
 }): string {
 	const defaults = getPresetDefaults(params.preset);
+	const withPersona = params.withPersona ?? true;
 	const parts: string[] = [
 		[
 			CORE_IDENTITY_HEAD,
 			...(params.allowMarkdown ? [] : [PLAIN_TEXT_ONLY]),
 			params.withTools ? TOOL_LAW : NO_TOOL_LAW,
-			CORE_IDENTITY_TAIL,
+			// 引子后面就是性格那一串;不带人格时连引子一起收,否则末尾挂着一句
+			// 「具体如下:」而下文空空。
+			...(withPersona ? [CORE_IDENTITY_TAIL] : [NO_PERSONA_TONE]),
 		].join("\n"),
 	];
+	if (!withPersona) return parts.join("\n");
 
 	// 人格描述
 	if (params.preset === "custom" || !defaults) {

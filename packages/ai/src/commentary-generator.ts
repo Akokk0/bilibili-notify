@@ -439,6 +439,11 @@ export class CommentaryGenerator implements CommentaryProvider {
 			 * 铁律去演一遍「我先查查订阅列表」,而手上根本没有那个工具。
 			 */
 			withTools?: boolean;
+			/**
+			 * 这次带人格吗?缺省带。只有 dashboard 的聊天会传 false —— 主人开局
+			 * 选了「无人格」那一档(见 {@link buildSystemPrompt} 的同名参数)。
+			 */
+			withPersona?: boolean;
 		},
 	): string {
 		const persona = override?.persona ?? this.config.persona;
@@ -446,6 +451,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			...persona,
 			allowMarkdown: opts?.allowMarkdown,
 			withTools: opts?.withTools,
+			withPersona: opts?.withPersona,
 		});
 		const dynamicPrompt = override?.dynamicPrompt ?? this.config.dynamicPrompt;
 		const liveSummaryPrompt = override?.liveSummaryPrompt ?? this.config.liveSummaryPrompt;
@@ -825,6 +831,13 @@ export class CommentaryGenerator implements CommentaryProvider {
 			 * {@link ExtraTool} 注入的那些 —— 少一个口子,就少一条把它带跑的路。
 			 */
 			builtinTools?: boolean;
+			/**
+			 * 带不带女仆人格。缺省带 —— 会话开局主人选「无人格」那一档才传 false。
+			 * 关掉的只有性格,职责与工具铁律照旧(见 persona-presets 的 withPersona)。
+			 *
+			 * 与 `systemPrompt` 互不相干:后者整段顶掉时人格本来就不在场。
+			 */
+			persona?: boolean;
 		},
 	): Promise<string> {
 		return this.chatStatelessImpl(messages, opts);
@@ -842,6 +855,13 @@ export class CommentaryGenerator implements CommentaryProvider {
 			extraTools?: readonly ExtraTool[];
 			systemPrompt?: string;
 			builtinTools?: boolean;
+			/**
+			 * 带不带女仆人格。缺省带 —— 会话开局主人选「无人格」时才传 false,
+			 * 关掉的只有性格,职责与工具铁律照旧(见 persona-presets 的 withPersona)。
+			 *
+			 * `systemPrompt` 整段顶掉时它无从谈起:那条路(皮肤工坊)本来就没有人格。
+			 */
+			persona?: boolean;
 		},
 	): Promise<string> {
 		if (messages.length === 0) throw new Error("对话历史为空");
@@ -858,6 +878,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			this.getSystemPrompt(undefined, undefined, undefined, {
 				allowMarkdown: true,
 				withTools: true,
+				withPersona: opts?.persona ?? true,
 			});
 		this.logger.debug(`[chat-stateless] 历史=${messages.length} 条,实发=${trimmed.length} 条`);
 
