@@ -44,6 +44,7 @@
 | `GlassStatCard` | 数字大卡:label + 等宽大数字 + 可选呼吸点/footer;`color` 同样必须十六进制 |
 | `GlassBox` | 重玻璃分区卡(Rules/Cards/AI 页那种):icon 芯片 + badge + 右侧动作槽 + 分隔线 |
 | `CollapseBlock` | GlassBox 内的「开关折叠块」:关=灰、开=accent 染色并展开 children |
+| `LoadingBlock` | 等待占位卡:玻璃底 + Spinner + 提示语(可选第二行小字),`role=status`。「正在读取…」一律用它,别再裸写一行字 |
 
 ### 弹窗
 

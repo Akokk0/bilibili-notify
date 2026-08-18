@@ -7,6 +7,8 @@
 
 import type { CSSProperties, ReactNode } from "react";
 
+import { Spinner } from "./atoms";
+
 export interface GlassPanelProps {
 	title?: ReactNode;
 	subtitle?: ReactNode;
@@ -126,6 +128,38 @@ export function GlassStatCard({ label, value, suffix, color, pulse, footer }: Gl
 				{suffix ? <span className="text-xs text-bn-text-secondary">{suffix}</span> : null}
 			</div>
 			{footer ? <div className="mt-2 flex items-center gap-1.5">{footer}</div> : null}
+		</div>
+	);
+}
+
+export interface LoadingBlockProps {
+	/** 主提示语,如「正在读取统计数据」。别自带省略号,组件统一补。 */
+	label: ReactNode;
+	/** 第二行小字(女仆碎碎念 / 在做什么);不给就不渲染,不留空行。 */
+	hint?: ReactNode;
+	className?: string;
+}
+
+/**
+ * 等待占位卡 —— 「正在读取…」这类整页/整段等待态的唯一写法。
+ *
+ * 由来:数据统计与推送历史原本各写一行裸文字直接坐在页面背景上,没有任何包装。
+ * 页级容器一律玻璃底(见 README),等待态也是页级容器,凭什么例外 —— 皮肤壁纸
+ * 一开,那行灰字就是飘在图上的。
+ *
+ * `role="status"` 是给读屏器的:转圈动画纯视觉,不念出来的话等待态等于不存在。
+ * `aria-busy` 让它明确是「正在忙」,而不是一条静态提示。
+ */
+export function LoadingBlock({ label, hint, className }: LoadingBlockProps) {
+	return (
+		<div
+			role="status"
+			aria-busy="true"
+			className={`bn-glass flex flex-col items-center justify-center gap-3 rounded-bn-card px-6 py-14 text-center shadow-bn-card ${className ?? ""}`}
+		>
+			<Spinner size={30} thickness={3} />
+			<div className="text-[13px] font-bold text-bn-text-secondary">{label}…</div>
+			{hint ? <div className="text-[11px] text-bn-text-tertiary">{hint}</div> : null}
 		</div>
 	);
 }

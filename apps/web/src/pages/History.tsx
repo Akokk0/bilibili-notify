@@ -1,4 +1,4 @@
-import { Avatar, ErrorNote, Icon, Input, Pill } from "@bilibili-notify/ui";
+import { Avatar, ErrorNote, Icon, Input, LoadingBlock, Pill } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { api } from "../services/api";
@@ -168,7 +168,7 @@ export default function History() {
 			</div>
 
 			{historyQuery.isLoading ? (
-				<div className="text-sm text-bn-text-tertiary">加载中…</div>
+				<LoadingBlock label="正在读取推送历史" hint="女仆正在翻记录本,一条条对过去 (｡･ω･｡)ﾉ" />
 			) : historyQuery.error ? (
 				<ErrorNote>加载失败：{String((historyQuery.error as Error).message)}</ErrorNote>
 			) : (

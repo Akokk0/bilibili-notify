@@ -1,5 +1,13 @@
 import type { SubscriptionDTO } from "@bilibili-notify/contract";
-import { Avatar, Btn, GlassPanel, GlassStatCard, Icon } from "@bilibili-notify/ui";
+import {
+	Avatar,
+	Btn,
+	ErrorNote,
+	GlassPanel,
+	GlassStatCard,
+	Icon,
+	LoadingBlock,
+} from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { api } from "../services/api";
@@ -449,11 +457,21 @@ export default function Stats() {
 		[focused, rows],
 	);
 
+	// 等待/失败态也走页面自己的 p-6 外框 —— 直接裸一行字坐在页面背景上,皮肤壁纸
+	// 一开就是灰字飘在图上,而且切到正常态时整页会跳一下(内外边距对不上)。
 	if (statsQuery.isLoading) {
-		return <div className="p-8 text-sm text-bn-text-secondary">正在读取统计数据…</div>;
+		return (
+			<div className="bn-anim-page-in p-6">
+				<LoadingBlock label="正在读取统计数据" hint="女仆正在翻账本,清点这些天的推送 (｡･ω･｡)ﾉ" />
+			</div>
+		);
 	}
 	if (statsQuery.isError) {
-		return <div className="p-8 text-sm text-bn-danger-text">统计数据加载失败,请稍后重试。</div>;
+		return (
+			<div className="bn-anim-page-in p-6">
+				<ErrorNote>统计数据加载失败,请稍后重试。</ErrorNote>
+			</div>
+		);
 	}
 
 	const heatRows = (focused ? [focused] : rows).map((r) => ({
