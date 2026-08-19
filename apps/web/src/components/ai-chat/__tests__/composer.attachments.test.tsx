@@ -40,6 +40,57 @@ function renderComposer(over: Partial<Parameters<typeof Composer>[0]> = {}) {
 const one: Attachment = { id: `${"a".repeat(32)}.png`, url: "/api/ai/assets/a.png" };
 const two: Attachment = { id: `${"b".repeat(32)}.png`, url: "/api/ai/assets/b.png" };
 
+describe("Composer — 粘贴图片", () => {
+	const composer = () => screen.getByLabelText("聊天输入");
+	/** jsdom 不造 ClipboardEvent 的 clipboardData,自己拼一个够用的。 */
+	const pasteWith = (items: Array<{ kind: string; type: string; file?: File }>) => {
+		const ev = new Event("paste", { bubbles: true, cancelable: true });
+		Object.defineProperty(ev, "clipboardData", {
+			value: { items: items.map((i) => ({ ...i, getAsFile: () => i.file ?? null })) },
+		});
+		return ev;
+	};
+	const png = () => new File([new Uint8Array([1, 2])], "x.png", { type: "image/png" });
+
+	it("Ctrl+V 一张图 → 和点「+」挑图走同一条路", () => {
+		// 截个图直接粘上来是最顺手的动作;逼主人先存盘再点「+」去找那个文件,
+		// 是把一步拆成三步。
+		const { onPickFiles } = renderComposer();
+		const file = png();
+		fireEvent(composer(), pasteWith([{ kind: "file", type: "image/png", file }]));
+		expect(onPickFiles).toHaveBeenCalledTimes(1);
+		expect(onPickFiles.mock.calls[0]?.[0]).toEqual([file]);
+	});
+
+	it("粘的是文字 → 照常粘进输入框,不当附件也不拦默认行为", () => {
+		const { onPickFiles } = renderComposer();
+		const ev = pasteWith([{ kind: "string", type: "text/plain" }]);
+		fireEvent(composer(), ev);
+		expect(onPickFiles).not.toHaveBeenCalled();
+		expect(ev.defaultPrevented).toBe(false);
+	});
+
+	it("图文混着粘 → 只收图,但文字照旧粘进去", () => {
+		// 从网页上复制一段带图的内容就是这个形状。吞掉文字等于让主人白复制一次。
+		const { onPickFiles } = renderComposer();
+		const file = png();
+		const ev = pasteWith([
+			{ kind: "string", type: "text/plain" },
+			{ kind: "file", type: "image/png", file },
+		]);
+		fireEvent(composer(), ev);
+		expect(onPickFiles.mock.calls[0]?.[0]).toEqual([file]);
+		expect(ev.defaultPrevented).toBe(false);
+	});
+
+	it("粘的是 PDF 之类 → 不当图片收", () => {
+		const { onPickFiles } = renderComposer();
+		const pdf = new File([new Uint8Array([1])], "x.pdf", { type: "application/pdf" });
+		fireEvent(composer(), pasteWith([{ kind: "file", type: "application/pdf", file: pdf }]));
+		expect(onPickFiles).not.toHaveBeenCalled();
+	});
+});
+
 describe("Composer — 附件缩略图", () => {
 	it("每张附件渲染一个缩略图", () => {
 		renderComposer({ attachments: [one, two] });

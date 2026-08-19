@@ -227,13 +227,17 @@ describe("会话增删查", () => {
 		expect((await readJson(res)).conversations).toEqual([]);
 	});
 
-	it("POST 建会话 → 能在列表里看到", async () => {
+	it("POST 建会话 → 聊过之后才进列表,空壳不露面", async () => {
+		// 会话必须在**发送之前**就建好(前端要拿到 id 才能开那条 SSE),而整轮失败时
+		// 服务端一个字都不落盘 —— 侧栏于是冒出一条点进去空空如也的「对话」。
 		const { deps } = await makeDeps();
 		const app = createAiRoute(deps);
 		const created = (await readJson(await createConv(app))).conversation;
 		expect(created.id).toBeTruthy();
 		expect(created.messages).toEqual([]);
+		expect((await readJson(await listConvs(app))).conversations).toEqual([]);
 
+		await chatDrained(app, created.id, { message: "第一句" });
 		const list = (await readJson(await listConvs(app))).conversations;
 		expect(list.map((c: any) => c.id)).toEqual([created.id]);
 	});
@@ -377,6 +381,8 @@ describe("POST /conversations/:id/chat — 聊天", () => {
 		const app = createAiRoute(deps);
 		const first = (await readJson(await createConv(app))).conversation.id;
 		const second = (await readJson(await createConv(app))).conversation.id;
+		// 两边都得先聊过 —— 空壳不进列表(见上面那条)。second 先聊,first 后聊。
+		await chatDrained(app, second, { message: "先聊这边" });
 		await chatDrained(app, first, { message: "把它顶上去" });
 
 		const list = (await readJson(await listConvs(app))).conversations;

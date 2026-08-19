@@ -224,6 +224,12 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 		await writeFile(fileOf(conv.id), JSON.stringify(conv), "utf8");
 	}
 
+	/**
+	 * 空会话过多久算「凉透」。取得宽是因为一轮对话可以很长 —— 皮肤生成一趟几分钟,
+	 * 加上主人打字与读回复,半小时是个谁都不冤枉的界。
+	 */
+	const EMPTY_CONVERSATION_TTL_MS = 30 * 60 * 1000;
+
 	async function listAll(): Promise<Conversation[]> {
 		let names: string[];
 		try {
@@ -253,15 +259,23 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 	return {
 		async list() {
 			const all = await listAll();
-			return all.map((c) => ({
-				id: c.id,
-				title: c.title,
-				createdAt: c.createdAt,
-				updatedAt: c.updatedAt,
-				messageCount: c.messages.length,
-				mode: c.mode,
-				persona: c.persona,
-			}));
+			// 零消息的不露面。会话是在**发送之前**就建好的(前端要先拿到 id 才能
+			// 开那条 SSE),而整轮失败时服务端一个字都不落盘 —— 壳却留下了。主人
+			// 看到的是侧栏冒出一条点进去空空如也的「对话」,删又不知道该不该删。
+			//
+			// 只过滤不删:此刻正在发送的那一轮,盘上也是零消息。判它是垃圾要等到
+			// 它凉透(见 create 里的清理),列表这一层只管别让它碍眼。
+			return all
+				.filter((c) => c.messages.length > 0)
+				.map((c) => ({
+					id: c.id,
+					title: c.title,
+					createdAt: c.createdAt,
+					updatedAt: c.updatedAt,
+					messageCount: c.messages.length,
+					mode: c.mode,
+					persona: c.persona,
+				}));
 		},
 
 		async get(id) {
@@ -288,7 +302,26 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 				// **刚建的这个必须先排除在候选之外。**它的 updatedAt 与同毫秒里
 				// 别人的完全相同,靠排序保不住;真被挑中就是「点了新对话,对话没了」。
 				const others = (await listAll()).filter((c) => c.id !== conv.id);
-				for (const stale of others.slice(Math.max(0, maxConversations - 1))) {
+
+				// **先回收凉透的空壳**,再按数量修剪。壳不进列表(见 list),可它照样
+				// 占着名额;而修剪按 updatedAt 挑人下手,壳只要比某条真会话新,被挤
+				// 下去的就是主人真聊过的那一条。
+				//
+				// 「凉透」这个条件不能省:此刻正在发送的那一轮,盘上也是零消息 ——
+				// 皮肤生成一趟就要几分钟,中途另开一个对话把它清掉,主人回来会发现
+				// 刚才那轮凭空没了。
+				const cutoff = Date.now() - EMPTY_CONVERSATION_TTL_MS;
+				const alive: Conversation[] = [];
+				for (const c of others) {
+					if (c.messages.length === 0 && Date.parse(c.createdAt) < cutoff) {
+						await unlink(fileOf(c.id)).catch(() => {});
+						logger.debug(`[ai-chat] 回收没发出去的空会话 ${c.id}`);
+						continue;
+					}
+					alive.push(c);
+				}
+
+				for (const stale of alive.slice(Math.max(0, maxConversations - 1))) {
 					await unlink(fileOf(stale.id)).catch(() => {});
 					logger.debug(`[ai-chat] 会话数超上限,删除最旧的 ${stale.id}`);
 				}

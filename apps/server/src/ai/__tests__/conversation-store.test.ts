@@ -263,6 +263,17 @@ describe("ConversationStore — list", () => {
 		expect(meta?.messageCount).toBe(1);
 	});
 
+	it("零消息的会话不进列表 —— 那是一轮没发出去的对话留下的空壳", async () => {
+		// 会话在**发送之前**就建好了,整轮失败时服务端一个字都不落盘,壳却留着。
+		// 主人看到的是侧栏冒出一条点进去空空如也的「对话」。
+		const empty = await store.create();
+		const real = await store.create();
+		await store.appendMessages(real.id, [{ role: "user", content: "问" }]);
+		const ids = (await store.list()).map((m) => m.id);
+		expect(ids).toEqual([real.id]);
+		expect(ids).not.toContain(empty.id);
+	});
+
 	it("目录还不存在时 → 空列表,不抛", async () => {
 		// 全新安装、一次都没聊过。
 		const fresh = createConversationStore({ dataDir: join(dataDir, "never-written"), logger });
@@ -271,6 +282,7 @@ describe("ConversationStore — list", () => {
 
 	it("一条脏 JSON 不该让整个侧栏空掉,只跳过它", async () => {
 		const good = await store.create();
+		await store.appendMessages(good.id, [{ role: "user", content: "问" }]);
 		await mkdir(join(dataDir, "ai", "chat"), { recursive: true });
 		await writeFile(join(dataDir, "ai", "chat", "broken.json"), "{不是 json", "utf8");
 		const ids = (await store.list()).map((m) => m.id);
@@ -300,11 +312,40 @@ describe("ConversationStore — 上限裁剪", () => {
 		await s.appendMessages(b.id, [{ role: "user", content: "中间" }]);
 		tick();
 		const c = await s.create();
+		// 空壳不进列表(见上面那条),所以要看得见它就得让它真有一句话。
+		await s.appendMessages(c.id, [{ role: "user", content: "最新" }]);
 
 		const ids = (await s.list()).map((m) => m.id);
 		expect(ids).toHaveLength(2);
 		expect(ids).toContain(c.id);
 		expect(ids).not.toContain(a.id);
+	});
+
+	it("凉透的空壳会被回收 —— 别让它占着名额把真会话挤下去", async () => {
+		// 壳**比真会话新**才是坏情况:按 updatedAt 修剪时它稳稳留下,被挤掉的是
+		// 主人真聊过的那条。(壳恰好最旧时数量修剪会顺手带走它,那种排列验不出问题。)
+		const tick = useClock();
+		const s = createConversationStore({ dataDir, logger, maxConversations: 2 });
+		const a = await s.create();
+		await s.appendMessages(a.id, [{ role: "user", content: "真的一" }]);
+		tick();
+		const shell = await s.create(); // 一轮没发出去的对话留下的壳,比 a 新
+		vi.advanceTimersByTime(60 * 60 * 1000); // 凉透
+		const b = await s.create();
+		await s.appendMessages(b.id, [{ role: "user", content: "真的二" }]);
+
+		expect(await s.get(shell.id)).toBeNull();
+		expect((await s.list()).map((m) => m.id).sort()).toEqual([a.id, b.id].sort());
+	});
+
+	it("刚建、正在发送中的空会话不许动 —— 那一轮还没写完", async () => {
+		// 此刻盘上它确实是零消息,但判它是垃圾得等它凉透:皮肤生成一趟就要几分钟,
+		// 中途另开一个对话把它清掉,主人回来会发现刚才那轮凭空没了。
+		useClock();
+		const s = createConversationStore({ dataDir, logger });
+		const inflight = await s.create();
+		await s.create();
+		expect(await s.get(inflight.id)).toBeTruthy();
 	});
 
 	it("同一毫秒里连开新对话,也绝不会删掉刚建的那个", async () => {
@@ -320,13 +361,20 @@ describe("ConversationStore — 上限裁剪", () => {
 		]) {
 			await writeFile(
 				join(dataDir, "ai", "chat", `${id}.json`),
-				JSON.stringify({ id, title: "旧", createdAt: now, updatedAt: now, messages: [] }),
+				JSON.stringify({
+					id,
+					title: "旧",
+					createdAt: now,
+					updatedAt: now,
+					messages: [{ role: "user", content: "旧问" }],
+				}),
 				"utf8",
 			);
 		}
 		useClock();
 		const s = createConversationStore({ dataDir, logger, maxConversations: 2 });
 		const newest = await s.create();
+		await s.appendMessages(newest.id, [{ role: "user", content: "新问" }]);
 
 		const ids = (await s.list()).map((m) => m.id);
 		expect(ids).toHaveLength(2);
@@ -363,7 +411,8 @@ describe("会话的模式与人格", () => {
 	});
 
 	it("侧栏列表也带着 —— 那一行的 label 全指着它", async () => {
-		await store.create({ mode: "skin", persona: false });
+		const conv = await store.create({ mode: "skin", persona: false });
+		await store.appendMessages(conv.id, [{ role: "user", content: "问" }]);
 		const [meta] = await store.list();
 		expect(meta?.mode).toBe("skin");
 		expect(meta?.persona).toBe(false);
@@ -379,7 +428,7 @@ describe("会话的模式与人格", () => {
 				title: "老会话",
 				createdAt: "2026-01-01T00:00:00.000Z",
 				updatedAt: "2026-01-01T00:00:00.000Z",
-				messages: [],
+				messages: [{ role: "user", content: "老问题" }],
 			}),
 			"utf8",
 		);

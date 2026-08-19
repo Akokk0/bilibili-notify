@@ -544,10 +544,10 @@ export function ChatPage() {
 	};
 
 	/** 挑了图就立刻传,传完塞进待发送列表。格式 / 大小不对当场报,不等到点发送。 */
-	const pickFiles = async (files: FileList) => {
+	const pickFiles = async (files: readonly File[]) => {
 		setError(null);
 		const room = MAX_ATTACHMENTS - attachments.length;
-		for (const file of Array.from(files).slice(0, room)) {
+		for (const file of files.slice(0, room)) {
 			try {
 				const id = await uploadChatImage(file);
 				setAttachments((prev) => [...prev, { id, url: chatImageUrl(id) }]);

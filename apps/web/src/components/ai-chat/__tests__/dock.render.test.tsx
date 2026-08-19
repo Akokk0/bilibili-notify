@@ -654,13 +654,32 @@ describe("AiChatDock — 工具调用小条", () => {
 		expect(chips()[0]?.dataset.state).toBe("running");
 	});
 
-	it("收了尾就不再挂着进度 —— 完成了说完成,不是「已写 860 字」", async () => {
+	it("收了尾也留着总数 —— 「这趟写了多少」是结果的一部分", async () => {
 		H.toolEvents = [start("0-0", "list_subscriptions"), progress("0-0", 860), end("0-0", true)];
 		await typeAndSend("我订了谁");
 		await release();
 		await release();
 		await release();
 		await waitFor(() => expect(chips()[0]?.dataset.state).toBe("ok"));
+		expect(chips()[0]?.textContent).toContain("860");
+	});
+
+	it("上千之后收成 k —— 精确到个位只会看见一个乱跳的计数器", async () => {
+		H.toolEvents = [start("0-0", "list_subscriptions"), progress("0-0", 3247)];
+		await typeAndSend("我订了谁");
+		await release();
+		await release();
+		await waitFor(() => expect(chips()[0]?.textContent).toContain("3.2k"));
+		expect(chips()[0]?.textContent).not.toContain("3247");
+	});
+
+	it("没写成就不报数 —— 半截的字数说明不了什么", async () => {
+		H.toolEvents = [start("0-0", "list_subscriptions"), progress("0-0", 860), end("0-0", false)];
+		await typeAndSend("我订了谁");
+		await release();
+		await release();
+		await release();
+		await waitFor(() => expect(chips()[0]?.dataset.state).toBe("failed"));
 		expect(chips()[0]?.textContent).not.toContain("860");
 	});
 

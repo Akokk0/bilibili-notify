@@ -55,7 +55,11 @@ export interface ComposerProps {
 	/** 已经传好的附件。缺省空数组 —— 没接附件功能的调用方不必改。 */
 	attachments?: ComposerAttachment[];
 	/** 主人挑了文件。上传由调用方做,传完把结果塞回 `attachments`。 */
-	onPickFiles?: (files: FileList) => void;
+	/**
+	 * 挑好的图。收 `File[]` 而不是 `FileList` —— 粘贴板给的是一颗颗
+	 * `DataTransferItem`,凑不出 FileList,而这两条路本该汇进同一个入口。
+	 */
+	onPickFiles?: (files: readonly File[]) => void;
 	/** 去掉某一张。给的是 **id 不是下标** —— 下标会在数组变短后指错人。 */
 	onRemoveAttachment?: (id: string) => void;
 	/**
@@ -259,6 +263,21 @@ export function Composer({
 						setIndex(0);
 					}}
 					onKeyDown={onKeyDown}
+					// 截图直接粘上来是最顺手的动作;逼主人先存盘再点「+」去找那个
+					// 文件,是把一步拆成三步。
+					//
+					// **不拦默认行为**:从网页复制的内容常常图文混在一起(clipboard
+					// 里同时有 text/plain 和一张图),吞掉这一下就等于把文字也吃了。
+					// 图归图收着,文字照旧粘进输入框。
+					onPaste={(e) => {
+						const picked: File[] = [];
+						for (const item of e.clipboardData?.items ?? []) {
+							if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+							const file = item.getAsFile();
+							if (file) picked.push(file);
+						}
+						if (picked.length > 0) onPickFiles?.(picked);
+					}}
 					onFocus={() => setFocus(true)}
 					// 延后收焦点态:点技能菜单里的项会先触发 blur,立刻收会让菜单在
 					// click 落地前就消失,于是那一下点了个寂寞。
@@ -277,7 +296,7 @@ export function Composer({
 							multiple
 							hidden
 							onChange={(e) => {
-								if (e.target.files?.length) onPickFiles?.(e.target.files);
+								if (e.target.files?.length) onPickFiles?.([...e.target.files]);
 								// 清空 value:同一张图连挑两次时 change 不会再触发,看着就像点了没反应。
 								e.target.value = "";
 							}}

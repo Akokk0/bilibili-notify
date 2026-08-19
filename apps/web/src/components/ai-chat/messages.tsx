@@ -547,8 +547,15 @@ function ToolChips({
 			{traces.map((t, i) => {
 				const state = t.ok === undefined ? "running" : t.ok ? "ok" : "failed";
 				const label = toolLabel(t.name, t.args);
-				// 只在跑着的时候报数:收了尾还挂着字数,主人会以为它卡在那儿了。
-				const progress = state === "running" && t.progress ? `已写 ${t.progress} 字` : null;
+				// 成了就留着总数 —— 「这趟写了多少」是结果的一部分。没写成才不报:
+				// 半截的字数说明不了什么,只会让人以为它写完了却失败。
+				const progress = !t.progress
+					? null
+					: state === "running"
+						? `已写 ${formatChars(t.progress)} 字`
+						: state === "ok"
+							? `写了 ${formatChars(t.progress)} 字`
+							: null;
 				// 只有真被截短的才给展开钮 —— 「搜索 UP 主「咩栗」」点开也没有别的可看,
 				// 那个 ▾ 只会是个骗人的暗示。
 				const clipped = toolArgClipped(t.name, t.args);
@@ -623,3 +630,13 @@ function ToolChips({
 }
 
 const STATE_TEXT = { running: "正在查", ok: "已完成", failed: "没查成" } as const;
+
+/**
+ * 进度那个数字要**读得下去**。
+ *
+ * 精确到个位时它每来一片就跳一次,眼睛只看得到一个乱转的计数器,反而读不出快慢;
+ * 上千之后收成一位小数,跳动频率降一个数量级,「在动」和「多快」就都还在。
+ */
+function formatChars(n: number): string {
+	return n < 1000 ? `${n}` : `${(n / 1000).toFixed(1)}k`;
+}
