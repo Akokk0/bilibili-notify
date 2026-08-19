@@ -164,9 +164,10 @@ export class SkinStore {
 	 */
 	async updateManifest(id: string, manifest: SkinManifest): Promise<void> {
 		if (!this.index.has(id)) throw new Error(`皮肤不存在: ${id}`);
-		const tmp = join(this.skinsDir, id, "skin.json.tmp");
-		await writeFile(tmp, JSON.stringify(manifest, null, "\t"));
-		await rename(tmp, join(this.skinsDir, id, "skin.json"));
+		await this.writeAtomic(
+			join(this.skinsDir, id, "skin.json"),
+			JSON.stringify(manifest, null, "\t"),
+		);
 		this.index.set(id, manifest);
 	}
 
@@ -174,9 +175,10 @@ export class SkinStore {
 	async setDefault(id: string): Promise<void> {
 		const manifest = this.index.get(id);
 		if (!manifest) throw new Error(`皮肤不存在: ${id}`);
-		const tmp = join(this.skinsDir, id, "default.json.tmp");
-		await writeFile(tmp, JSON.stringify(manifest, null, "\t"));
-		await rename(tmp, join(this.skinsDir, id, "default.json"));
+		await this.writeAtomic(
+			join(this.skinsDir, id, "default.json"),
+			JSON.stringify(manifest, null, "\t"),
+		);
 	}
 
 	/** 出厂快照;皮肤不存在或(存量目录)从未钉过 → null。读频率低,不进内存索引。 */
@@ -240,10 +242,20 @@ export class SkinStore {
 	}
 
 	private async writeActive(next: ActiveSlots): Promise<void> {
-		const tmp = join(this.skinsDir, "active.json.tmp");
-		await writeFile(tmp, JSON.stringify(next));
-		await rename(tmp, join(this.skinsDir, "active.json"));
+		await this.writeAtomic(join(this.skinsDir, "active.json"), JSON.stringify(next));
 		this.active = next;
+	}
+
+	/**
+	 * 先写 `.tmp` 再 rename —— 目录级原子,断电/崩溃不会留下半截 JSON。
+	 *
+	 * 这家店的三份盘上状态(skin.json / default.json / active.json)都靠它,
+	 * 所以只留一份实现:哪天要加 fsync 或失败清理,不必记得改三处。
+	 */
+	private async writeAtomic(path: string, data: string): Promise<void> {
+		const tmp = `${path}.tmp`;
+		await writeFile(tmp, data);
+		await rename(tmp, path);
 	}
 
 	/** 资产的磁盘绝对路径;名字不合白名单或文件不存在 → null。 */
