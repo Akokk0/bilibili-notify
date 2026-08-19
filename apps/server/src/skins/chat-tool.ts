@@ -24,6 +24,15 @@ import type { SkinStore } from "./store.js";
  */
 const MAX_CREATES_PER_TURN = 2;
 
+/**
+ * 同一轮里最多**开跑**几次 —— 包含没做成的那些。
+ *
+ * 上面那个上限只数做成的:生成失败(模型返回的皮肤过不了校验)时主人手上什么也
+ * 没有,拿它抵一套配额等于让一次上游抖动废掉主人这一轮。但失败照样烧掉了一整趟
+ * 调用,不设闸的话模型会一次次重试到主人失去耐心,所以两头都占住。
+ */
+const MAX_ATTEMPTS_PER_TURN = 3;
+
 const MODE_LABEL = { light: "浅色", dark: "暗色" } as const;
 
 /**
@@ -96,7 +105,10 @@ export interface SkinChatToolDeps {
  * 这个闭包里,建在装配处就会跨请求串味。
  */
 export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
+	/** 真做成的套数。 */
 	let made = 0;
+	/** 开跑过的次数(含没做成的)。 */
+	let tried = 0;
 
 	/**
 	 * `wallpaper` 参数 → 真正的图片字节。只认 `"attached"`(也认 `"true"`,模型
@@ -163,6 +175,11 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 					`这一轮已经做了 ${MAX_CREATES_PER_TURN} 套,够多了 —— 先请主人看看效果,想再做等下一句话。`,
 				);
 			}
+			if (tried >= MAX_ATTEMPTS_PER_TURN) {
+				throw new Error(
+					"这一轮试了太多次都没做成 —— 别再重试了,把没做成这件事如实告诉主人,等下一句话再来。",
+				);
+			}
 			const generator = deps.generator();
 			if (!generator) {
 				throw new Error("智能女仆还没接好模型,先去 AI 设置页把 baseUrl / apiKey 填齐。");
@@ -177,7 +194,7 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 			const wallpaper = image ? `assets/${WALLPAPER_BASENAME}.${image.ext}` : undefined;
 			if (image && wallpaper) assets.set(wallpaper, image.bytes);
 
-			made++;
+			tried++;
 			const result = await runSkinAiCreate({
 				generateRaw: (s, u, p) => generator.generateRaw(s, u, p),
 				...(onProgress ? { onProgress } : {}),
@@ -189,8 +206,10 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 			});
 			if (!result.ok) {
 				// 原因原样带回给模型 —— 它才能跟主人说清是哪儿没做成,而不是干瞪眼。
+				// 这条路上 made 不动:没做成的不占主人那两套额度(尝试次数已经记过了)。
 				throw new Error(`皮肤生成失败:${result.errors.join(";")}`);
 			}
+			made++;
 
 			const { manifest } = result;
 			const { id } = await deps.skinStore.save({ manifest, assets });

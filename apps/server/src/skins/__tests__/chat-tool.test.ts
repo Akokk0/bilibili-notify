@@ -267,6 +267,34 @@ describe("create_skin 执行", () => {
 		expect(await store.list()).toHaveLength(2);
 	});
 
+	it("没做成的那次不占额度 —— 一次上游抖动不该废掉主人这一轮", async () => {
+		// 配额是「主人这一轮能拿到几套皮肤」,不是「模型能开几次口」。做砸了主人手上
+		// 什么也没有,拿它抵一套等于让上游抽风替主人做决定。
+		let call = 0;
+		const g = vi.fn(async () => (++call <= 2 ? "这不是 JSON" : JSON.stringify(DARK_SKIN)));
+		const tool = firstOf(
+			createSkinChatTools({ skinStore: store, generator: () => ({ generateRaw: g }) }),
+		);
+		await expect(tool.execute({ brief: "先砸一次" })).rejects.toThrow();
+		await tool.execute({ brief: "一套" });
+		await tool.execute({ brief: "两套" });
+		expect(await store.list()).toHaveLength(2);
+	});
+
+	it("一轮最多开跑三次 —— 做不成也不许一直重试下去", async () => {
+		// 失败不扣额度,那就得在别处收口:每趟生成都是几十秒真金白银,模型认死理时
+		// 主人只能干等着。
+		const g = genOf("这不是 JSON");
+		const tool = toolWith(g);
+		for (const n of ["一", "二", "三"]) {
+			await expect(tool.execute({ brief: `第${n}次` })).rejects.toThrow();
+		}
+		const burned = g.mock.calls.length;
+		await expect(tool.execute({ brief: "第四次" })).rejects.toThrow(/太多次|别再重试/);
+		// 第四次连生成都没开跑。
+		expect(g.mock.calls.length).toBe(burned);
+	});
+
 	it("AI 未就绪(热读口回 null)→ 抛错指路 AI 设置页", async () => {
 		const tool = firstOf(createSkinChatTools({ skinStore: store, generator: () => null }));
 		await expect(tool.execute({ brief: "暗色" })).rejects.toThrow(/智能女仆|AI/);
