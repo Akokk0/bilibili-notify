@@ -142,7 +142,7 @@ describe("create_skin × 主人贴的图", () => {
 			createSkinChatTools({
 				skinStore: store,
 				generator: () => ({ generateRaw }),
-				attachedImages: async () => images,
+				attachedImage: async () => images[0] ?? null,
 			}),
 		);
 	}

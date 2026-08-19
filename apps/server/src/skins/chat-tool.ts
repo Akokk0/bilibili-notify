@@ -92,12 +92,13 @@ export interface SkinChatToolDeps {
 	/** 热读:engines 是后挂的,每次调用现取。null = AI 未配置 / 未就绪。 */
 	generator: () => SkinAiGenerator | null;
 	/**
-	 * 主人这一问里贴的图。缺省 = 没贴。
+	 * 女仆这一轮看得见的那张图,拿来当壁纸。缺省 / null = 没有。
 	 *
-	 * 只认**这一问**的附件,不翻历史:主人上周发过的图跟这次要做的皮肤没关系,
-	 * 而「翻出一张旧图当壁纸」比不做壁纸更难解释。
+	 * 单数是有意的:壁纸只要一张,而这些图每张上限 5MB —— 装配处按需读第一张就
+	 * 停手,别把主人贴的四张全搬进内存再扔掉三张。取图口径与喂给视觉模型的那批
+	 * 一致(见 routes/ai.ts),否则会出现她描述得出那张图、一动手却说没有图。
 	 */
-	attachedImages?: () => Promise<readonly ChatSkinImage[]>;
+	attachedImage?: () => Promise<ChatSkinImage | null>;
 }
 
 /**
@@ -120,11 +121,11 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 	 * 描述得出那张图、一动手却说没有图。
 	 */
 	async function resolveWallpaper(raw: string): Promise<ChatSkinImage | null> {
+		// 空串、`false`、`none` 都落在这一句里 —— 不在白名单就是没要。
 		const w = raw.trim().toLowerCase();
-		if (!w || w === "false" || w === "none") return null;
 		if (w !== "attached" && w !== "true") return null;
 
-		const [image] = (await deps.attachedImages?.()) ?? [];
+		const image = (await deps.attachedImage?.()) ?? null;
 		if (!image) {
 			throw new Error(
 				"这场对话里没有图 —— 请主人把想当背景的图贴进聊天再说一次。你没有找图的能力,别去找。",

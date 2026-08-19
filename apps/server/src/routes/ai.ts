@@ -379,14 +379,14 @@ export function createAiRoute(
 						 * 字节直接从聊天附件目录读 —— 上面那两份存的是喂给视觉模型的 data
 						 * URL,拿它再解一次 base64 只是绕远路。
 						 */
-						attachedImages: async () => {
+						attachedImage: async (): Promise<ChatSkinImage | null> => {
 							const dataDir = deps.store.bootstrap.dataDir;
-							const out: ChatSkinImage[] = [];
+							// 读到一张就收手:壁纸只要一张,后面那几张(每张上限 5MB)读进来也是扔。
 							for (const { id } of resolved.length > 0 ? resolved : carried) {
 								const img = await readChatImage(dataDir, id);
-								if (img) out.push({ bytes: img.bytes, ext: id.split(".").pop() ?? "png" });
+								if (img) return { bytes: img.bytes, ext: id.split(".").pop() ?? "png" };
 							}
-							return out;
+							return null;
 						},
 					})
 				: undefined;
