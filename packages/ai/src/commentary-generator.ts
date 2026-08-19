@@ -89,6 +89,12 @@ const TITLE_PROMPT = [
  */
 const VISION_TIMEOUT_MS = 60_000;
 
+/**
+ * 认 `Retry-After` 时最多肯等多久(秒)。网关偶尔会甩一个几百秒的值过来 ——
+ * 那时候老老实实报错比让主人对着转圈等十分钟强。
+ */
+const MAX_RETRY_AFTER_S = 20;
+
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 const SESSION_SWEEP_INTERVAL_MS = 10 * 60 * 1000; // 10 min — 清扫过期且不再被访问的 session
 
@@ -681,7 +687,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 		if (!baseURL) throw new Error("视觉模型 baseURL 未配置(且主模型的也是空的)");
 
 		const { default: OpenAI } = await import("openai");
-		const client = new OpenAI({ apiKey, baseURL, timeout: VISION_TIMEOUT_MS });
+		// maxRetries 归零同主路:一道 60s 的闸叠上 SDK 默认的两次重试就是 180s,而
+		// 视觉在推送热路径上(动态带图就走它)。图描述不出来是**可降级**的,拿三倍
+		// 延迟换那点成功率不划算。
+		const client = new OpenAI({ apiKey, baseURL, timeout: VISION_TIMEOUT_MS, maxRetries: 0 });
 		return async ({ url, prompt, model }) => {
 			const res = await client.chat.completions.create({
 				model,
@@ -1054,7 +1063,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 		if (!baseURL) throw new Error("AI baseURL 未配置");
 
 		const { default: OpenAI } = await import("openai");
-		const client = new OpenAI({ apiKey, baseURL, timeout: TITLE_TIMEOUT_MS });
+		// 同视觉那条:标题没起出来就用默认标题,不值得为它把等待翻三倍。
+		const client = new OpenAI({ apiKey, baseURL, timeout: TITLE_TIMEOUT_MS, maxRetries: 0 });
 		let res: OpenAI.ChatCompletion;
 		try {
 			res = await client.chat.completions.create({
@@ -1157,6 +1167,33 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 */
 	private static fatalOf(e: unknown): Error | null {
 		return CommentaryGenerator.rejectionOf(e) ?? CommentaryGenerator.timeoutOf(e);
+	}
+
+	/**
+	 * 网关**自己说了**什么时候可以回来 → 等它说的那么久,重来一次;没说 → null。
+	 *
+	 * 这是 `maxRetries: 0` 唯一真正弄丢的东西。限流(429)在
+	 * {@link rejectionOf} 里一直被归为「重来也没用」,理由是**立刻**重来只会加剧
+	 * ——那条理由完全成立,所以这里不去推翻它:只有网关自己回了 `Retry-After`
+	 * 才重来,而且严格按它给的时间等。那不是「立刻重来」,是「按它说的点回来」。
+	 *
+	 * 超时不在此列(它连响应头都没有,自然也没有这个头):重来一趟同样慢。
+	 * HTTP-date 形式的 Retry-After 不认(AI 网关不用它),Number() 得 NaN 即放弃。
+	 */
+	private static retryAfterMs(e: unknown): number | null {
+		if ((e as { status?: unknown } | null)?.status !== 429) return null;
+		const h = (e as { headers?: unknown } | null)?.headers;
+		let raw: unknown = null;
+		if (h && typeof (h as { get?: unknown }).get === "function") {
+			raw = (h as { get(name: string): unknown }).get("retry-after");
+		} else if (h && typeof h === "object") {
+			const rec = h as Record<string, unknown>;
+			raw = rec["retry-after"] ?? rec["Retry-After"];
+		}
+		if (typeof raw !== "string" && typeof raw !== "number") return null;
+		const seconds = Number(raw);
+		if (!Number.isFinite(seconds) || seconds < 0) return null;
+		return Math.min(seconds, MAX_RETRY_AFTER_S) * 1000;
 	}
 
 	private sanitizeErr(e: unknown): string {
@@ -1466,13 +1503,34 @@ export class CommentaryGenerator implements CommentaryProvider {
 			return choice.message;
 		};
 
+		/**
+		 * 「抖一下就好」的失败原样重来 —— 判据见 {@link CommentaryGenerator.transientOf}。
+		 *
+		 * 只在**还没吐过字**时重来,理由同 fetchRound 里那条:页面上已经有半句话了,
+		 * 静默重来会让那半句凭空变成另一段。重来的是**整轮原样请求**,不换任何参数
+		 * (换参数那条路是给「网关不认这套方言」准备的,对限流毫无帮助)。
+		 */
+		const fetchRoundRetrying = async (): Promise<OpenAI.ChatCompletionMessage> => {
+			try {
+				return await fetchRound();
+			} catch (e) {
+				const wait = CommentaryGenerator.retryAfterMs(e);
+				// 吐过字就不许重来 —— 页面上已经有半句话了,静默重来会让那半句凭空
+				// 变成另一段(同 fetchRound 里那条纪律)。
+				if (wait === null || acct.emitted > 0) throw e;
+				this.logger.warn(`[api] 网关限流并给了 Retry-After,等 ${wait}ms 后重来一次`);
+				await new Promise((resolve) => setTimeout(resolve, wait));
+				return await fetchRound();
+			}
+		};
+
 		// 本次 callAPI 已真正执行的搜索次数。计在调用局部而不是实例上 —— 并发的
 		// 两条生成各有各的预算,记在 this 上会互相吃额度。
 		const budget = { searchCalls: 0 };
 		for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
 			let message: OpenAI.ChatCompletionMessage;
 			try {
-				message = await fetchRound();
+				message = await fetchRoundRetrying();
 			} catch (e) {
 				// 账单 / 鉴权那一层的拒绝原样抛出去。降级重试换的只是 thinking 参数,
 				// 对「没钱了」毫无帮助 —— 白撞一次,还会把原因说成「thinking 不受支持」。

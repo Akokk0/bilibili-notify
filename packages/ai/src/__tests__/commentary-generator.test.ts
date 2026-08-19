@@ -1609,3 +1609,110 @@ describe("CommentaryGenerator.generateRaw(无人格结构化生成)", () => {
 		expect(oai.ctorArgs.at(-1)).toMatchObject({ timeout: 120_000, maxRetries: 0 });
 	});
 });
+
+// ---------------------------------------------------------------------------
+// 抖一下就好的失败
+// ---------------------------------------------------------------------------
+
+describe("CommentaryGenerator — 限流时按网关点名的时间回来", () => {
+	/**
+	 * `maxRetries: 0` 真正弄丢的只有这一样:SDK 的默认重试**会认 Retry-After**。
+	 *
+	 * 「429 不重来」本身是 2026-07-25 就立下的决定(见上面那节),理由是**立刻**
+	 * 重来只会加剧 —— 那条完全成立,这里不推翻它。只有网关自己回了 Retry-After
+	 * 才重来,并严格按它给的时间等:那不是「立刻重来」,是「按它说的点回来」。
+	 */
+	const limited = (retryAfter?: string) =>
+		Object.assign(new Error("429 Too Many Requests"), {
+			status: 429,
+			...(retryAfter !== undefined ? { headers: { "retry-after": retryAfter } } : {}),
+		});
+
+	it("网关给了 Retry-After → 等它说的那么久,重来一次", async () => {
+		const { gen } = makeGen();
+		oai.create.mockRejectedValueOnce(limited("0")).mockResolvedValueOnce(msgResp("点评"));
+		expect(await gen.comment("x")).toBe("点评");
+		expect(oai.create).toHaveBeenCalledTimes(2);
+	});
+
+	it("没给 Retry-After → 不重来(既有决定:立刻重来只会加剧)", async () => {
+		const { gen } = makeGen();
+		oai.create.mockRejectedValue(limited());
+		await expect(gen.comment("x")).rejects.toThrow(/频繁|限流/);
+		expect(oai.create).toHaveBeenCalledTimes(1);
+	});
+
+	it("Retry-After 长得离谱 → 封顶,不让主人对着转圈等十分钟", async () => {
+		// 假时钟只推进到封顶值:没封顶的话这一轮推不完,测试当场超时 —— 这就是
+		// 断言本身,不必真等 600 秒。
+		vi.useFakeTimers();
+		try {
+			const { gen } = makeGen();
+			oai.create.mockRejectedValue(limited("600"));
+			const settled = expect(gen.comment("x")).rejects.toThrow(/频繁|限流/);
+			await vi.advanceTimersByTimeAsync(20_000);
+			await settled;
+			expect(oai.create).toHaveBeenCalledTimes(2);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("401 不重来 —— key 无效,重一万次也是无效", async () => {
+		const { gen } = makeGen();
+		oai.create.mockRejectedValue(Object.assign(new Error("401"), { status: 401 }));
+		await expect(gen.comment("x")).rejects.toThrow(/401|Key/);
+		expect(oai.create).toHaveBeenCalledTimes(1);
+	});
+
+	it("超时不重来 —— 重一趟同样慢,只是把主人的等待翻倍", async () => {
+		const { gen } = makeGen();
+		oai.create.mockRejectedValue(new Error("Request timed out."));
+		await expect(gen.comment("x")).rejects.toThrow(/超时/);
+		expect(oai.create).toHaveBeenCalledTimes(1);
+	});
+
+	it("已经吐过字之后再断 → 绝不重来(那半句会凭空变成另一段)", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce({
+			async *[Symbol.asyncIterator]() {
+				yield textChunk("半句");
+				throw limited("0");
+			},
+		});
+		const seen: string[] = [];
+		await expect(
+			gen.chatStatelessStream([{ role: "user", content: "在吗" }], {
+				onDelta: (t) => seen.push(t),
+			}),
+		).rejects.toThrow();
+		expect(seen).toEqual(["半句"]);
+		expect(oai.create).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("CommentaryGenerator — 副路两把闸也别放大超时", () => {
+	/**
+	 * 主路的 maxRetries 归零了,标题与视觉这两个副 client 当时漏了 —— 一道 60s 的
+	 * 视觉闸叠上 SDK 默认的两次重试就是 180s,而视觉在推送热路径上(动态带图就走
+	 * 它)。这两条都是**可降级**的增补(标题没了就用默认标题、图描述不出来就不描述),
+	 * 拿延迟换成功率不划算:归零,快速失败。
+	 */
+	it("标题客户端 maxRetries 归零", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp("标题"));
+		await gen.summarizeTitle([
+			{ role: "user", content: "本周谁最勤奋" },
+			{ role: "assistant", content: "是 A 君。" },
+		]);
+		expect(oai.ctorArgs.at(-1)).toMatchObject({ maxRetries: 0 });
+	});
+
+	it("视觉客户端 maxRetries 归零", async () => {
+		const { gen } = makeGen({ vision: { model: "v-test" } });
+		oai.create.mockResolvedValue(msgResp("一张图"));
+		await gen.comment("看图说话", "dynamic", ["https://img.test/a.png"]);
+		const visionCtor = oai.ctorArgs.find((a) => (a as { timeout?: number }).timeout === 60_000);
+		expect(visionCtor).toMatchObject({ maxRetries: 0 });
+	});
+});
