@@ -271,6 +271,29 @@ describe("SkinEditor", () => {
 		);
 	});
 
+	it("换一套模式 → 光斑颜色框跟着换成那一套的,不留上一套的残影", async () => {
+		// 这个框存的是主人正在敲的原文(受控 join 回去会吃掉逗号),所以每一条
+		// 「整份换掉 draft」的路径都得让它回到派生态 —— 漏一条的症状就是切过去
+		// 之后框里还挂着另一套的颜色,而 draft 里根本没有。
+		renderEditor({
+			manifest: {
+				schemaVersion: 1,
+				name: "双套",
+				modes: {
+					light: {},
+					dark: { effects: { bokeh: { colors: ["#123456"] } } },
+				},
+			},
+		});
+		fireEvent.click(screen.getByText("动效"));
+		expect((screen.getByLabelText("光斑颜色") as HTMLInputElement).value).toBe("");
+
+		fireEvent.click(screen.getByRole("button", { name: "深色" }));
+		await waitFor(() =>
+			expect((screen.getByLabelText("光斑颜色") as HTMLInputElement).value).toBe("#123456"),
+		);
+	});
+
 	it("单套皮肤:点「补一套深色」→ draft 长出 dark 套(复制自浅色)", async () => {
 		renderEditor();
 		fireEvent.click(screen.getByText("补一套深色"));

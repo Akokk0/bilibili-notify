@@ -59,13 +59,15 @@ export function SkinEditor(props: {
 	/** 包内资产 —— props 是打开那一刻的快照,传了新图就在这儿接着长。 */
 	const [assetList, setAssetList] = useState<string[]>(assets);
 	const [uploading, setUploading] = useState(false);
-	// 光斑颜色框存原始文本(受控地 join 回去会吃掉正在输入的逗号),draft 只收解析产物;
-	// 换模式/AI 整份替换 draft 时手动回灌。
-	const [bokehText, setBokehText] = useState(() =>
-		(manifest.modes[manifest.modes.light ? "light" : "dark"]?.effects?.bokeh?.colors ?? []).join(
-			", ",
-		),
-	);
+	/**
+	 * 光斑颜色框里主人正在敲的原文;null = 没在敲,显示值从 draft 派生。
+	 *
+	 * 不能全程受控地 join 回去 —— 那会吃掉正在输入的逗号。但也别存成一份独立的
+	 * 文本 state:那样每一条「整份替换 draft」的路径(AI 改完、恢复默认、切模式)
+	 * 都得记得回灌一次,漏一次就是输入框里还挂着上一套皮肤的颜色。派生 + 一句
+	 * `setBokehRaw(null)` 就够。
+	 */
+	const [bokehRaw, setBokehRaw] = useState<string | null>(null);
 	const dirty = draft !== manifest;
 
 	// 挂载即接管:试穿浮条让位;卸载时归还通道并清预览(未保存的改动随之还原)。
@@ -110,7 +112,7 @@ export function SkinEditor(props: {
 		onSuccess: (res) => {
 			if (!res.ok) return; // 4xx/5xx 走 onError;这里只剩 ok 形状
 			setDraft(res.manifest);
-			setBokehText((res.manifest.modes[modeKey]?.effects?.bokeh?.colors ?? []).join(", "));
+			setBokehRaw(null);
 			setAiWarnings(res.warnings);
 			setAiInstruction("");
 			setError(null);
@@ -154,7 +156,7 @@ export function SkinEditor(props: {
 				? "light"
 				: "dark";
 		setModeKey(nextKey);
-		setBokehText((defaultManifest.modes[nextKey]?.effects?.bokeh?.colors ?? []).join(", "));
+		setBokehRaw(null);
 		setError(null);
 		setNote("已拉回默认值预览,满意就点保存落盘");
 	}
@@ -188,6 +190,7 @@ export function SkinEditor(props: {
 	}
 
 	const mode: SkinMode = draft.modes[modeKey] ?? {};
+	const bokehText = bokehRaw ?? (mode.effects?.bokeh?.colors ?? []).join(", ");
 	function setSection<K extends keyof SkinMode>(section: K, value: SkinMode[K] | undefined): void {
 		setDraft((d) => setModeSection(d, modeKey, section, value));
 	}
@@ -277,7 +280,7 @@ export function SkinEditor(props: {
 						value={modeKey}
 						onChange={(k) => {
 							setModeKey(k);
-							setBokehText((draft.modes[k]?.effects?.bokeh?.colors ?? []).join(", "));
+							setBokehRaw(null);
 						}}
 						options={(["light", "dark"] as const)
 							.filter((k) => draft.modes[k])
@@ -593,7 +596,7 @@ export function SkinEditor(props: {
 						isDefault={isDef(bokehText, (dm.effects?.bokeh?.colors ?? []).join(", "))}
 						placeholder="逗号分隔 1~4 个颜色,留空关闭"
 						onChange={(v) => {
-							setBokehText(v);
+							setBokehRaw(v);
 							const colors = v
 								.split(",")
 								.map((s) => s.trim())
