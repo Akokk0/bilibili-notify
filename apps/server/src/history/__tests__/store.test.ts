@@ -237,6 +237,33 @@ describe("query — 排序 / 过滤 / 容错", () => {
 		expect(await store.query({ limit: 2 })).toHaveLength(2);
 	});
 
+	it("单日条数远超 limit → 只回最新那几条,且仍是 newest-first", async () => {
+		// 取尾巴那条路是环形缓冲:绕过一圈之后最旧的一行落在 seen % limit 处,
+		// 接不回去就会给出一个「中间新、两头旧」的乱序。当天只有寥寥几条时
+		// 绕不满一圈,这个坑照不出来 —— 所以这里刻意写满 50 条只取 5 条。
+		const base = await store.append(baseInput());
+		// 47 条取 5 条:**刻意不整除**。整除时最旧那行正好落在 0,绕圈那步退化成
+		// 恒等,接错也照样绿 —— 这条测试就白写了。
+		const entries = Array.from({ length: 47 }, (_, i) =>
+			clone(base, {
+				id: randomUUID(),
+				// 时序递增,与 append-only 的日文件一致(走分钟,别写出「46 点」)
+				ts: `2026-05-09T00:${String(i).padStart(2, "0")}:00.000Z`,
+			}),
+		);
+		await writeDay("2026-05-09", entries);
+
+		// seed 那条落在今日文件里,日期最新 → 永远排最前,单独占一格。
+		const got = await store.query({ limit: 6 });
+		expect(got[0]?.id).toBe(base.id);
+		expect(got.slice(1).map((e) => e.id)).toEqual(
+			entries
+				.slice(-5)
+				.reverse()
+				.map((e) => e.id),
+		);
+	});
+
 	it("since 过滤:ts <= since 的丢弃", async () => {
 		const base = await store.append(baseInput());
 		const oldId = randomUUID();

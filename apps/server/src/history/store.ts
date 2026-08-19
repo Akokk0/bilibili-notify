@@ -213,9 +213,16 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			return [];
 		}
 
+		// source / uid 的合格行可能散在整份文件里,拿尾巴不成立 —— 那条路只好照旧
+		// 全量解析。前端两个调用点(Dashboard limit=100 / History limit=200)都不带
+		// 这两个参数,也就是说热路径永远走便宜的那条。
+		const needsFullScan = q.source !== undefined || q.uid !== undefined;
+
 		for (const file of files) {
 			const path = join(root, file);
-			const collected = await readJsonl(path);
+			const collected = needsFullScan
+				? await readJsonl(path)
+				: await readTailEntries(path, limit - out.length);
 			// In-file is chronological (append-only); reverse so newest first per day.
 			for (let i = collected.length - 1; i >= 0; i--) {
 				const entry = collected[i];
@@ -278,25 +285,66 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		return out;
 	}
 
-	async function readJsonl(path: string): Promise<HistoryEntry[]> {
+	/** 一批 jsonl 原文行 → entry;坏行与不合 schema 的行静默跳过。 */
+	function parseLines(lines: readonly string[]): HistoryEntry[] {
 		const out: HistoryEntry[] = [];
+		for (const line of lines) {
+			try {
+				const r = HistoryEntrySchema.safeParse(JSON.parse(line));
+				if (r.success) out.push(r.data);
+			} catch {
+				// skip malformed line
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * 一个日文件里**最新的那几条**(仍是时序,最新的在最后)。
+	 *
+	 * 为什么不直接 {@link readJsonl} 再取尾巴:那样每次请求都要把当天每一行都
+	 * `JSON.parse` + zod 校验一遍,而返回的最多 `limit` 条 —— 解析开销跟「当天推了
+	 * 多少」成正比,跟「要拿几条」无关。攒得越多越慢,而多出来的全是白干。
+	 *
+	 * 这里逐行流读(不把整份文件读进内存),只把最后 `limit` 行的**原文**留在环形
+	 * 缓冲里,读完才解析那几行。解析量于是跟结果条数走。
+	 */
+	async function readTailEntries(path: string, limit: number): Promise<HistoryEntry[]> {
+		if (limit <= 0) return [];
+		// 环形缓冲而不是「push 完 shift」—— shift 是 O(n),在几万行的日文件上
+		// 那点省下来的解析又原样还回去了。
+		const ring: string[] = new Array(limit);
+		let seen = 0;
 		try {
 			const stream = createReadStream(path, { encoding: "utf8" });
 			const rl = createInterface({ input: stream, crlfDelay: Number.POSITIVE_INFINITY });
 			for await (const line of rl) {
 				if (!line.trim()) continue;
-				try {
-					const parsed = JSON.parse(line);
-					const r = HistoryEntrySchema.safeParse(parsed);
-					if (r.success) out.push(r.data);
-				} catch {
-					// skip malformed line
-				}
+				ring[seen % limit] = line;
+				seen += 1;
+			}
+		} catch {
+			// missing file is fine
+			return [];
+		}
+		if (seen <= limit) return parseLines(ring.slice(0, seen));
+		// 绕过一圈以上:最旧的那行在 seen % limit 处,从那儿接回去才是时序。
+		const head = seen % limit;
+		return parseLines([...ring.slice(head), ...ring.slice(0, head)]);
+	}
+
+	async function readJsonl(path: string): Promise<HistoryEntry[]> {
+		const lines: string[] = [];
+		try {
+			const stream = createReadStream(path, { encoding: "utf8" });
+			const rl = createInterface({ input: stream, crlfDelay: Number.POSITIVE_INFINITY });
+			for await (const line of rl) {
+				if (line.trim()) lines.push(line);
 			}
 		} catch {
 			// missing file is fine
 		}
-		return out;
+		return parseLines(lines);
 	}
 
 	return {
