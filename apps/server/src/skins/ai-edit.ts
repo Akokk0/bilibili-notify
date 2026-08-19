@@ -8,9 +8,10 @@
  */
 
 import {
+	SKIN_BEST_PRACTICES,
 	SKIN_COLOR_TOKEN_MAP,
-	SKIN_CSS_HOOK_MAP,
-	type SkinCssHook,
+	SKIN_CSS_HOOK_NOTES,
+	SKIN_LIMITS,
 	type SkinManifest,
 } from "@bilibili-notify/contract";
 import { referencedImages } from "./package.js";
@@ -37,27 +38,6 @@ export interface SkinAiEditInput {
 export type SkinAiEditResult =
 	| { ok: true; manifest: SkinManifest; warnings: string[] }
 	| { ok: false; errors: string[] };
-
-/**
- * 每个 CSS 挂点在这个面板里**长什么样**。
- *
- * 光把名字列出来,AI 只能按名字想象形状,而想错了没有任何东西会拦它:真机上
- * `nav` 被当成横向胶囊条写了 `border-radius:999px`,落到竖向的分区列表上就成了
- * 一个盖住半个页面的大椭圆(2026-08-18)。挂点是对外承诺的公开 API,加一个就得
- * 在这儿补一句 —— ai-create 的测试遍历 {@link SKIN_CSS_HOOK_MAP} 钉着这条。
- */
-export const SKIN_CSS_HOOK_NOTES: Record<SkinCssHook, string> = {
-	page: '"page"=整页根(壁纸之上、内容之下;氛围层挂它的伪元素)',
-	glass: '"glass"=所有轻玻璃卡片(小到一行数据卡,大到整块面板)',
-	"glass-strong": '"glass-strong"=强玻璃面(弹层、浮条、抽屉)',
-	btn: '"btn"=所有按钮(矮元素,胶囊圆角安全)',
-	"btn-primary": '"btn-primary"=主按钮(粉色实底那种)',
-	input: '"input"=单行输入框',
-	header: '"header"=顶栏(横向长条)',
-	nav: '"nav"=页面级导航容器 —— 横向 tab 条和**竖向的分区列表**都挂它,别当成横条设形状',
-	avatar: '"avatar"=圆头像(本身已经是圆的)',
-	modal: '"modal"=弹窗卡片本体',
-};
 
 const HOOK_LIST = Object.values(SKIN_CSS_HOOK_NOTES)
 	.map((n) => `  ${n}`)
@@ -93,17 +73,15 @@ export function buildSkinAiSystemPrompt(
 
 - schemaVersion 固定 1;没被要求改的字段一律原样保留,不要顺手删改
 - colors 的可用键(只收这些,别的键会被静默忽略):${COLOR_KEY_LIST};值只收 hex / rgb() / hsl() / oklch() / transparent(禁 url()、var()、分号)
-- modes: { light?, dark? },每套里可用 colors / page.background / wallpaper(image·fit·position·overlay 0~0.8·blur 0~40)/ chat(background·wallpaper 同构 —— AI 聊天页专属背景,只管背景:强调色跟随 colors.accent、玻璃件直用 glass 段,background 缺省透出整页皮肤底,通常不用写)/ glass(background·border·strongBackground·strongBorder·blur 0~40·strongBlur;默认装无描边,border 对只在刻意要描边风格(如暗色霓虹边)时才配,亮色/玻璃感皮肤不配)/ fonts.body(**最多 8 个**字体名的数组,只准字母/数字/空格/点/连字符,别加引号;拿不准就整个不写)/ radius(card 0~32·pill 0~999)/ shadows(card·elev)/ css / effects
+- modes: { light?, dark? },每套里可用 colors / page.background / wallpaper(image·fit·position·overlay ${SKIN_LIMITS.wallpaperOverlay.min}~${SKIN_LIMITS.wallpaperOverlay.max}·blur ${SKIN_LIMITS.wallpaperBlur.min}~${SKIN_LIMITS.wallpaperBlur.max})/ chat(background·wallpaper 同构 —— AI 聊天页专属背景,只管背景:强调色跟随 colors.accent、玻璃件直用 glass 段,background 缺省透出整页皮肤底,通常不用写)/ glass(background·border·strongBackground·strongBorder·blur ${SKIN_LIMITS.glassBlur.min}~${SKIN_LIMITS.glassBlur.max}·strongBlur;默认装无描边,border 对只在刻意要描边风格(如暗色霓虹边)时才配,亮色/玻璃感皮肤不配)/ fonts.body(**最多 ${SKIN_LIMITS.maxFonts} 个**字体名的数组,只准字母/数字/空格/点/连字符,别加引号;拿不准就整个不写)/ radius(card ${SKIN_LIMITS.radiusCard.min}~${SKIN_LIMITS.radiusCard.max}·pill ${SKIN_LIMITS.radiusPill.min}~${SKIN_LIMITS.radiusPill.max})/ shadows(card·elev)/ css / effects
 - wallpaper.overlay 是遮罩纱,纱色自动跟模式(亮=白纱/暗=黑纱);wallpaper.blur 是壁纸自身高斯模糊。亮色+高饱和壁纸的配方:overlay 0.3~0.4 + blur 8~16。卡内列表行默认全透明(内容直接画在玻璃上,别在玻璃卡里叠第二层),只有刻意要行条底/描边时才配 colors.listRow / colors.listRowBorder
-- effects 动效预设两道可选:glassShine { color? } / bokeh { colors: [1~4 色] }
-- 顶层可给 texts: { headerTitle, chatPlaceholder }(≤60 字)与 css(明暗共用)
+- effects 动效预设两道可选:glassShine { color? } / bokeh { colors: [1~${SKIN_LIMITS.maxBokehColors} 色] }
+- 顶层可给 texts: { headerTitle, chatPlaceholder }(≤${SKIN_LIMITS.maxTextChars} 字)与 css(明暗共用)
 - ${assetNote}
 
 ## 库内最佳实践(官方皮肤库的统一手感;用户没提相反要求时照此执行)
 
-- 亮色:glass 统一 background "rgba(255, 255, 255, 0.85)" / strongBackground "rgba(255, 255, 255, 0.88)" / blur 12,不配描边;不写 shadows(默认装双层影即亮色标准);**不写 effects**(流光/光斑全属暗色,亮色靠渐变结界底+配色+CSS 出表现力)
-- 暗色:glass background 取深底色相 alpha 0.55、strongBackground 更深一档 alpha 0.85,blur 18 / strongBlur 26;描边配霓虹细边(border 0.22~0.28 / strongBorder 0.3~0.35);shadows 统一双层:card "0 10px 36px rgba(<深底>, 0.65), 0 0 18px rgba(<主强调>, 0.12)"、elev "0 18px 56px rgba(<深底>, 0.75), 0 0 30px rgba(<主强调>, 0.2)";开 glassShine(主强调 alpha 0.32)+ bokeh 2~3 团霓虹(alpha 0.4~0.75)—— 动效特效是暗色专属语汇
-- chatPlaceholder 写沉浸式世界观文案:「状态确认 + 引导输入」句式(如「神经链路已接入,输入指令开始同步…」),别写说明书腔
+${SKIN_BEST_PRACTICES}
 
 ## 自定义 CSS(组件级造型与动效的主力)
 

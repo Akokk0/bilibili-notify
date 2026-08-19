@@ -18,7 +18,7 @@
  * 且保留 hook 形式不翻译(翻译在 web 注入层做,内部选择器重构不固化进存量皮肤)。
  */
 
-import { SKIN_CSS_HOOK_MAP } from "@bilibili-notify/contract";
+import { SKIN_CSS_HOOK_MAP, SKIN_LIMITS } from "@bilibili-notify/contract";
 import type { Atrule, CssNode, Declaration, List, ListItem, Rule } from "css-tree";
 // 走自包含 dist bundle,不走默认入口:默认入口的 lexer 数据层在运行时
 // require('../data/patch.json') 读包内文件,内联进 server bundle 后必炸
@@ -31,7 +31,7 @@ import { clone, generate, parse } from "css-tree/dist/csstree.esm";
  * 别写成 `input.length` —— 那是 UTF-16 单元数,一个汉字才记 1。皮肤里的中文注释
  * 一多,64K「字符」落到盘上就是将近 192KB,写出去的量是这条闸声称拦住的三倍。
  */
-export const MAX_SKIN_CSS_BYTES = 64 * 1024;
+export const MAX_SKIN_CSS_BYTES = SKIN_LIMITS.maxCssBytes;
 
 export type SanitizeCssResult =
 	| { ok: true; css: string; warnings: string[] }

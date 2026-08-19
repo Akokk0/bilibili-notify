@@ -8,6 +8,7 @@
  */
 
 import {
+	SKIN_LIMITS as L,
 	SKIN_COLOR_TOKEN_MAP,
 	SKIN_SCHEMA_VERSION,
 	SKIN_TEXT_SLOTS,
@@ -66,7 +67,7 @@ const KNOWN_MODE_KEYS = new Set([
 	"css",
 	"effects",
 ]);
-const MAX_BOKEH_COLORS = 4;
+const MAX_BOKEH_COLORS = L.maxBokehColors;
 /** 阴影语法:与渐变同一把安全尺(数字/px/颜色函数/逗号),再叠 FORBIDDEN 黑名单。 */
 const SHADOW_RE = /^[a-z0-9#%.,()\s/-]{1,200}$/i;
 
@@ -78,7 +79,7 @@ const POSITION_RE = /^[a-z0-9%\s]{1,40}$/i;
 const FONT_NAME_RE = /^[\p{L}\p{N}\s._-]{1,50}$/u;
 
 /** 字体栈保留几个。超出的截掉 —— 回退链有 8 个已经绰绰有余。 */
-const MAX_FONTS = 8;
+const MAX_FONTS = L.maxFonts;
 
 /**
  * css 字段的统一入口:清洗后存产物,warnings 挂 path 前缀透传;
@@ -174,9 +175,25 @@ function parseWallpaper(
 			out.position = wp.position.trim();
 		}
 	}
-	const overlay = takeNumber(wp, "overlay", 0, 0.8, path, "", errors);
+	const overlay = takeNumber(
+		wp,
+		"overlay",
+		L.wallpaperOverlay.min,
+		L.wallpaperOverlay.max,
+		path,
+		"",
+		errors,
+	);
 	if (overlay !== undefined) out.overlay = overlay;
-	const blur = takeNumber(wp, "blur", 0, 40, path, "(px)", errors);
+	const blur = takeNumber(
+		wp,
+		"blur",
+		L.wallpaperBlur.min,
+		L.wallpaperBlur.max,
+		path,
+		"(px)",
+		errors,
+	);
 	if (blur !== undefined) out.blur = blur;
 	return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -267,7 +284,15 @@ function parseMode(
 				}
 			}
 			for (const key of ["blur", "strongBlur"] as const) {
-				const v = takeNumber(glass, key, 0, 40, `${path}.glass`, "(px)", errors);
+				const v = takeNumber(
+					glass,
+					key,
+					L.glassBlur.min,
+					L.glassBlur.max,
+					`${path}.glass`,
+					"(px)",
+					errors,
+				);
 				if (v !== undefined) out[key] = v;
 			}
 			if (Object.keys(out).length > 0) mode.glass = out;
@@ -313,9 +338,25 @@ function parseMode(
 			errors.push(`${path}.radius: 必须是对象`);
 		} else {
 			const out: NonNullable<SkinMode["radius"]> = {};
-			const card = takeNumber(radius, "card", 0, 32, `${path}.radius`, "(px)", errors);
+			const card = takeNumber(
+				radius,
+				"card",
+				L.radiusCard.min,
+				L.radiusCard.max,
+				`${path}.radius`,
+				"(px)",
+				errors,
+			);
 			if (card !== undefined) out.card = card;
-			const pill = takeNumber(radius, "pill", 0, 999, `${path}.radius`, "(px)", errors);
+			const pill = takeNumber(
+				radius,
+				"pill",
+				L.radiusPill.min,
+				L.radiusPill.max,
+				`${path}.radius`,
+				"(px)",
+				errors,
+			);
 			if (pill !== undefined) out.pill = pill;
 			if (Object.keys(out).length > 0) mode.radius = out;
 		}
@@ -463,7 +504,7 @@ export function parseSkinManifest(input: unknown): ParseSkinResult {
 					warnings.push(`texts.${slot}: 不认识的文案槽位,已忽略`);
 					continue;
 				}
-				if (typeof value !== "string" || value.length === 0 || value.length > 60) {
+				if (typeof value !== "string" || value.length === 0 || value.length > L.maxTextChars) {
 					errors.push(`texts.${slot}: 必须是 1~60 字的字符串`);
 					continue;
 				}

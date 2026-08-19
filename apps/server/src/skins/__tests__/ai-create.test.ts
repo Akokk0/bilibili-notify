@@ -11,11 +11,11 @@
 import {
 	SKIN_COLOR_TOKEN_MAP,
 	SKIN_CSS_HOOK_MAP,
+	SKIN_CSS_HOOK_NOTES,
 	type SkinCssHook,
 } from "@bilibili-notify/contract";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { runSkinAiCreate } from "../ai-create.js";
-import { SKIN_CSS_HOOK_NOTES } from "../ai-edit.js";
 import { WALLPAPER_IMAGE_RE } from "../schema.js";
 
 const SKIN = {

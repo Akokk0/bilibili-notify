@@ -1,10 +1,11 @@
-import type {
-	SkinAiEditResponse,
-	SkinDefaultResponse,
-	SkinEffects,
-	SkinManifest,
-	SkinManifestUpdateResponse,
-	SkinMode,
+import {
+	SKIN_LIMITS,
+	type SkinAiEditResponse,
+	type SkinDefaultResponse,
+	type SkinEffects,
+	type SkinManifest,
+	type SkinManifestUpdateResponse,
+	type SkinMode,
 } from "@bilibili-notify/contract";
 import { Btn, ConfirmDialog, DrawerShell, ErrorNote, Toggle } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -452,8 +453,8 @@ export function SkinEditor(props: {
 					/>
 					<RangeField
 						label="玻璃模糊"
-						min={0}
-						max={40}
+						min={SKIN_LIMITS.glassBlur.min}
+						max={SKIN_LIMITS.glassBlur.max}
 						step={1}
 						unit="px"
 						value={glass.blur}
@@ -463,8 +464,8 @@ export function SkinEditor(props: {
 					/>
 					<RangeField
 						label="强玻璃模糊"
-						min={0}
-						max={40}
+						min={SKIN_LIMITS.glassBlur.min}
+						max={SKIN_LIMITS.glassBlur.max}
 						step={1}
 						unit="px"
 						value={glass.strongBlur}
@@ -522,8 +523,8 @@ export function SkinEditor(props: {
 				<Fold title="圆角与阴影">
 					<RangeField
 						label="卡片圆角"
-						min={0}
-						max={32}
+						min={SKIN_LIMITS.radiusCard.min}
+						max={SKIN_LIMITS.radiusCard.max}
 						step={1}
 						unit="px"
 						value={radius.card}
@@ -535,9 +536,9 @@ export function SkinEditor(props: {
 						label="胶囊圆角"
 						value={radius.pill}
 						isDefault={isDef(radius.pill, dm.radius?.pill)}
-						placeholder="默认;0~999 px"
-						min={0}
-						max={999}
+						placeholder={`默认;${SKIN_LIMITS.radiusPill.min}~${SKIN_LIMITS.radiusPill.max} px`}
+						min={SKIN_LIMITS.radiusPill.min}
+						max={SKIN_LIMITS.radiusPill.max}
 						onChange={(v) => setSection("radius", cleanSection({ ...radius, pill: v }))}
 					/>
 					<TextField
@@ -775,8 +776,8 @@ function WallpaperFields(props: {
 					/>
 					<RangeField
 						label={`${prefix}遮罩`}
-						min={0}
-						max={0.8}
+						min={SKIN_LIMITS.wallpaperOverlay.min}
+						max={SKIN_LIMITS.wallpaperOverlay.max}
 						step={0.05}
 						value={wp.overlay}
 						fallback={0}
@@ -785,8 +786,8 @@ function WallpaperFields(props: {
 					/>
 					<RangeField
 						label={`${prefix}模糊`}
-						min={0}
-						max={40}
+						min={SKIN_LIMITS.wallpaperBlur.min}
+						max={SKIN_LIMITS.wallpaperBlur.max}
 						step={1}
 						value={wp.blur}
 						fallback={0}

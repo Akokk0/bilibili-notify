@@ -52,6 +52,34 @@ export const SKIN_COLOR_TOKEN_MAP = {
 
 export type SkinColorKey = keyof typeof SKIN_COLOR_TOKEN_MAP;
 
+/**
+ * 皮肤各数值字段的取值域,**唯一事实源**。
+ *
+ * 服务端校验、编辑器滑杆、两份 AI 提示词读的都是这张表。分散着写的时候,放宽
+ * 任何一档都要同时改五处 —— 漏掉编辑器,滑杆拉不到合法值;漏掉提示词,AI 会
+ * 稳定产出被校验拒收的皮肤,而那是一趟两分半的调用。
+ */
+export const SKIN_LIMITS = {
+	/** 壁纸遮罩纱的不透明度。 */
+	wallpaperOverlay: { min: 0, max: 0.8 },
+	/** 壁纸自身的高斯模糊(px)。 */
+	wallpaperBlur: { min: 0, max: 40 },
+	/** 玻璃模糊(px);blur 与 strongBlur 同域。 */
+	glassBlur: { min: 0, max: 40 },
+	/** 卡片圆角(px)。 */
+	radiusCard: { min: 0, max: 32 },
+	/** 胶囊圆角(px);999 就是两端画圆。 */
+	radiusPill: { min: 0, max: 999 },
+	/** 字体栈最多收几个名字,超出截断(不拒包)。 */
+	maxFonts: 8,
+	/** 光斑最多几色。 */
+	maxBokehColors: 4,
+	/** 文案槽位每条最多几个字。 */
+	maxTextChars: 60,
+	/** 自定义 CSS 上限,**按 UTF-8 字节算**(不是 UTF-16 单元数)。 */
+	maxCssBytes: 64 * 1024,
+} as const;
+
 export type SkinWallpaperFit = "cover" | "contain" | "tile";
 
 /** 主题文案槽位白名单;加新槽位只增不改。 */
@@ -90,6 +118,42 @@ export const SKIN_CSS_HOOK_MAP = {
 } as const;
 
 export type SkinCssHook = keyof typeof SKIN_CSS_HOOK_MAP;
+
+/**
+ * 每个 CSS 挂点在这个面板里**长什么样**。
+ *
+ * 光把名字列出来,AI 只能按名字想象形状,而想错了没有任何东西会拦它:真机上
+ * `nav` 被当成横向胶囊条写了 `border-radius:999px`,落到竖向的分区列表上就成了
+ * 一个盖住半个页面的大椭圆(2026-08-18)。挂点是对外承诺的公开 API,加一个就得
+ * 在这儿补一句 —— ai-create 的测试遍历 {@link SKIN_CSS_HOOK_MAP} 钉着这条。
+ *
+ * 放在契约里是因为**两条造皮肤的路都要教这件事**:聊天里的内置设计师,和粘给
+ * 外部 AI 的那份提示词。只教一边的话,另一边会把同一个坑再踩一次。
+ */
+export const SKIN_CSS_HOOK_NOTES: Record<SkinCssHook, string> = {
+	page: '"page"=整页根(壁纸之上、内容之下;氛围层挂它的伪元素)',
+	glass: '"glass"=所有轻玻璃卡片(小到一行数据卡,大到整块面板)',
+	"glass-strong": '"glass-strong"=强玻璃面(弹层、浮条、抽屉)',
+	btn: '"btn"=所有按钮(矮元素,胶囊圆角安全)',
+	"btn-primary": '"btn-primary"=主按钮(粉色实底那种)',
+	input: '"input"=单行输入框',
+	header: '"header"=顶栏(横向长条)',
+	nav: '"nav"=页面级导航容器 —— 横向 tab 条和**竖向的分区列表**都挂它,别当成横条设形状',
+	avatar: '"avatar"=圆头像(本身已经是圆的)',
+	modal: '"modal"=弹窗卡片本体',
+};
+
+/**
+ * 官方皮肤库的统一手感,原样拼进两份 AI 提示词。
+ *
+ * 这几条是**与受众无关的硬事实**(哪些字段该配什么值),不是语气 —— 而它此前在
+ * 服务端与 web 各存一份措辞不同的副本。git 记录里 77201cc / acdf5a5 / 2af2191
+ * 每次都同时改两边,已经付过三次双份账;真正的代价是漏改一边之后,两条造皮肤的
+ * 路会教出两套不同规格的 AI,而构建全绿,只有真机上看得出来。
+ */
+export const SKIN_BEST_PRACTICES = `- **亮色皮肤**:glass 统一 { background: "rgba(255, 255, 255, 0.85)", strongBackground: "rgba(255, 255, 255, 0.88)", blur: 12 },不配描边;**不写 shadows**(默认装的双层影就是亮色标准);**不写 effects**(流光/光斑这类特效全属暗色 —— 亮底上流光吃层次、光斑发灰),亮色的表现力靠渐变结界底 + 配色 + CSS
+- **暗色皮肤**:glass 统一透明度 —— background 取皮肤深底色相 alpha 0.55、strongBackground 取更深一档 alpha 0.85,blur: 18、strongBlur: 26;描边配霓虹细边(border alpha 0.22~0.28 / strongBorder 0.3~0.35);shadows 统一双层结构:card "0 10px 36px rgba(<深底>, 0.65), 0 0 18px rgba(<主强调>, 0.12)"、elev "0 18px 56px rgba(<深底>, 0.75), 0 0 30px rgba(<主强调>, 0.2)";**开 glassShine**(color 取主强调 alpha 0.32)+ bokeh(2~3 团霓虹色,alpha 0.4~0.75)—— 动效特效是暗色的专属语汇
+- **texts 写沉浸式世界观文案**:chatPlaceholder 用「状态确认 + 引导输入」句式(如「神经链路已接入,输入指令开始同步…」「39 频道已连线,和 Miku 酱开始今天的演出吧♪」),别写说明书腔`;
 
 /**
  * 动效预设(每套 mode 独立;全部自动尊重 prefers-reduced-motion)。

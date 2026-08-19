@@ -3,7 +3,12 @@
  * 用户全程不碰压缩软件 —— AI 吐 JSON,粘过来,可选拖一张壁纸,这里拼成标准 zip。
  */
 
-import { SKIN_COLOR_TOKEN_MAP, SKIN_CSS_HOOK_MAP } from "@bilibili-notify/contract";
+import {
+	SKIN_BEST_PRACTICES,
+	SKIN_COLOR_TOKEN_MAP,
+	SKIN_CSS_HOOK_NOTES,
+	SKIN_LIMITS,
+} from "@bilibili-notify/contract";
 import { strToU8, zipSync } from "fflate";
 
 /** 组包时壁纸统一用这个基名,提示词里也这么约定,扩展名按实际文件修正。 */
@@ -36,29 +41,29 @@ export function buildSkinPrompt(readVar: (name: string) => string): string {
 - colors: 语义色键值,值只收 hex / rgb() / hsl() / oklch() / transparent(禁 url()、var()、分号)。可用键:
 ${colorLines}
 - page.background: 整页背景,纯色或 linear/radial/conic(含 repeating-*)渐变${pageBg ? `(当前 ${pageBg})` : ""}
-- wallpaper: { image, fit: cover|contain|tile, position, overlay: 0~0.8, blur: 0~40 }
+- wallpaper: { image, fit: cover|contain|tile, position, overlay: ${SKIN_LIMITS.wallpaperOverlay.min}~${SKIN_LIMITS.wallpaperOverlay.max}, blur: ${SKIN_LIMITS.wallpaperBlur.min}~${SKIN_LIMITS.wallpaperBlur.max} }
   —— image 固定写 "${WALLPAPER_BASENAME}.webp"(用户上传时会自动修正扩展名);overlay 是遮罩纱,纱色自动跟模式走(亮色蒙白纱/暗色蒙黑纱),配壁纸建议 ≥0.2 保文字可读;blur 是壁纸自身高斯模糊(px),高饱和/高对比壁纸建议 8~16 退成柔和色底,免得玻璃卡上透出脏斑
   —— 亮色 + 艳壁纸的经典配方:overlay 0.3~0.4 + blur 8~16。卡内列表行**默认全透明**(内容直接画在玻璃上,区块玻璃卡是唯一一层,别叠第二层),只有刻意要行条底/描边时才配 colors.listRow / colors.listRowBorder
-- glass: { background, border, strongBackground, strongBorder, blur: 0~40, strongBlur: 0~40 } —— 玻璃面板的底色(带透明度的颜色)与模糊度;默认装玻璃卡**无描边**(卡片风,层次靠 shadows),border 对只在刻意要描边风格(如暗色霓虹边)时才配 —— 亮色/玻璃感皮肤一律不配描边
+- glass: { background, border, strongBackground, strongBorder, blur: ${SKIN_LIMITS.glassBlur.min}~${SKIN_LIMITS.glassBlur.max}, strongBlur: ${SKIN_LIMITS.glassBlur.min}~${SKIN_LIMITS.glassBlur.max} } —— 玻璃面板的底色(带透明度的颜色)与模糊度;默认装玻璃卡**无描边**(卡片风,层次靠 shadows),border 对只在刻意要描边风格(如暗色霓虹边)时才配 —— 亮色/玻璃感皮肤一律不配描边
 - chat: { background, wallpaper } —— AI 聊天页专属背景。皮肤生效时聊天页整体换装(默认四色预设隐藏):强调色自动跟随 colors.accent、玻璃件直接用 glass 段参数,chat 段**只管背景**且缺省透出整页皮肤底,所以**通常不用写这段**;只在聊天页想要独立底色/独立壁纸时才配。wallpaper 与整页壁纸同构(image/fit/position/overlay/blur),image 同样只准引用包内 assets
-- fonts.body: 字体名数组(1~8 个)
-- radius: { card: 0~32, pill: 0~999 }
+- fonts.body: 字体名数组(1~${SKIN_LIMITS.maxFonts} 个)
+- radius: { card: ${SKIN_LIMITS.radiusCard.min}~${SKIN_LIMITS.radiusCard.max}, pill: ${SKIN_LIMITS.radiusPill.min}~${SKIN_LIMITS.radiusPill.max} }
 - shadows: { card, elev } —— 卡片/悬浮两档阴影,值如 "0 10px 30px rgba(57, 197, 187, 0.25)";用带颜色的阴影能做出霓虹辉光感
 - effects: 动效预设(自动尊重系统减少动效设置),两道可选:
   - glassShine: { color? } —— 玻璃卡辉光呼吸游走,默认主强调色
-  - bokeh: { colors: [1~4 个颜色] } —— 悬浮大光斑慢速漂移
+  - bokeh: { colors: [1~${SKIN_LIMITS.maxBokehColors} 个颜色] } —— 悬浮大光斑慢速漂移
 
 顶层(与 modes 平级)还可给:
-- texts: { headerTitle, chatPlaceholder } —— 顶栏标题与聊天输入框提示语,每条 ≤60 字,给皮肤配人格化文案
+- texts: { headerTitle, chatPlaceholder } —— 顶栏标题与聊天输入框提示语,每条 ≤${SKIN_LIMITS.maxTextChars} 字,给皮肤配人格化文案
 - css: 自定义 CSS 字符串(明暗共用;每套 mode 里也可给 css 做本模式追加)—— 深度定制的主力,规则见下节
 
 ## 自定义 CSS(组件级造型与动效都靠它)
 
 - 选择器**只准**写 \`[data-bn="<挂点>"]\`,可配伪类(:hover 等)/伪元素(::before/::after)/组合器;class、id、标签名选择器一律会被丢弃。可用挂点:
-${Object.entries(SKIN_CSS_HOOK_MAP)
-	.map(([hook]) => `  - "${hook}"`)
+${Object.values(SKIN_CSS_HOOK_NOTES)
+	.map((note) => `  - ${note}`)
 	.join("\n")}
-  ("page" 是整页,"glass"/"glass-strong" 是玻璃卡片/弹层,其余对应同名组件)
+- **胶囊/正圆圆角(border-radius 999px、50%)只准给按钮、头像这类矮元素**;容器类挂点(page / glass / glass-strong / nav / header / modal)圆角别超过 24px —— 容器有高瘦形态,套上 999px 会鼓成一个大椭圆
 - 属性走视觉白名单:background/border/outline/box-shadow/text-shadow/color/opacity/filter/backdrop-filter/transform/transition/animation/border-radius/clip-path/inset/width/height/z-index 等;**display、pointer-events、visibility 会被丢弃**
 - **禁 url()**(以及 image-set/element/src)—— 图片一律走 wallpaper 字段,CSS 里写了会被逐条剔除
 - position 只准 static/relative/absolute;伪元素 content 只准 "" 或 none
@@ -73,9 +78,7 @@ ${Object.entries(SKIN_CSS_HOOK_MAP)
 
 ## 库内最佳实践(官方皮肤库的统一手感,照此执行)
 
-- **亮色皮肤**:glass 统一 { background: "rgba(255, 255, 255, 0.85)", strongBackground: "rgba(255, 255, 255, 0.88)", blur: 12 },不配描边;**不写 shadows**(默认装的双层影就是亮色标准);**不写 effects**(流光/光斑这类特效全属暗色 —— 亮底上流光吃层次、光斑发灰),亮色的表现力靠渐变结界底 + 配色 + CSS
-- **暗色皮肤**:glass 统一透明度 —— background 取皮肤深底色相 alpha 0.55、strongBackground 取更深一档 alpha 0.85,blur: 18、strongBlur: 26;描边配霓虹细边(border alpha 0.22~0.28 / strongBorder 0.3~0.35);shadows 统一双层结构:card "0 10px 36px rgba(<深底>, 0.65), 0 0 18px rgba(<主强调>, 0.12)"、elev "0 18px 56px rgba(<深底>, 0.75), 0 0 30px rgba(<主强调>, 0.2)";**开 glassShine**(color 取主强调 alpha 0.32)+ bokeh(2~3 团霓虹色,alpha 0.4~0.75)—— 动效特效是暗色的专属语汇
-- **texts 写沉浸式世界观文案**:chatPlaceholder 用「状态确认 + 引导输入」句式(如「神经链路已接入,输入指令开始同步…」「39 频道已连线,和 Miku 酱开始今天的演出吧♪」),别写说明书腔
+${SKIN_BEST_PRACTICES}
 
 只输出 skin.json 的 JSON 内容,不要任何解释或代码块围栏。`;
 }
