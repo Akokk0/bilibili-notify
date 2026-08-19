@@ -204,9 +204,16 @@ export function createSkinsRoute(deps: {
 		const files: Record<string, Uint8Array> = {
 			"skin.json": strToU8(JSON.stringify(manifest, null, "\t")),
 		};
-		for (const name of await skinStore.listAssets(id)) {
-			const path = await skinStore.assetPath(id, name);
-			if (path) files[name] = new Uint8Array(await readFile(path));
+		// 各张资产之间没有先后关系,一张最大 5MB、最多 12 张 —— 串行读等于把
+		// 24 次系统调用排成一条队,而主人在等一个 zip。
+		const assets = await Promise.all(
+			(await skinStore.listAssets(id)).map(async (name) => {
+				const path = await skinStore.assetPath(id, name);
+				return path ? ([name, new Uint8Array(await readFile(path))] as const) : null;
+			}),
+		);
+		for (const entry of assets) {
+			if (entry) files[entry[0]] = entry[1];
 		}
 		return c.body(zipSync(files), 200, {
 			"content-type": "application/zip",
