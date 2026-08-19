@@ -383,6 +383,10 @@ describe("POST /conversations/:id/chat — 聊天", () => {
 		const second = (await readJson(await createConv(app))).conversation.id;
 		// 两边都得先聊过 —— 空壳不进列表(见上面那条)。second 先聊,first 后聊。
 		await chatDrained(app, second, { message: "先聊这边" });
+		// 隔开一小会儿再聊第二条。落盘的时间戳只到毫秒,两次 chat 在真实时钟下常常
+		// 落在**同一毫秒**里 —— 那时排序是并列的,这条断言通过与否全看运气(实测
+		// 六次里红三次)。同款理由见 conversation-store 测试里的 useClock 那段。
+		await new Promise((resolve) => setTimeout(resolve, 5));
 		await chatDrained(app, first, { message: "把它顶上去" });
 
 		const list = (await readJson(await listConvs(app))).conversations;
