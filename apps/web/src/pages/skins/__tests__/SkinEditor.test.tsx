@@ -20,6 +20,8 @@ const H = vi.hoisted(() => ({
 	getCalls: [] as string[],
 	/** 出厂快照;null = 没钉过(GET /default 404)。 */
 	defaultManifest: null as unknown,
+	/** 下一次传图要不要失败。 */
+	uploadFails: false,
 }));
 
 vi.mock("../../../services/api", () => ({
@@ -46,6 +48,7 @@ vi.mock("../../../services/api", () => ({
 		}),
 		upload: vi.fn(async (path: string, form: FormData) => {
 			H.uploadCalls.push({ path, name: (form.get("file") as File | null)?.name ?? "" });
+			if (H.uploadFails) throw new Error("图片过大(上限 5MB)");
 			return { ok: true, name: "assets/img-abcd1234.png" };
 		}),
 	},
@@ -87,6 +90,7 @@ beforeEach(() => {
 	H.postCalls = [];
 	H.uploadCalls = [];
 	H.getCalls = [];
+	H.uploadFails = false;
 	H.defaultManifest = { schemaVersion: 1, name: "出厂樱花", modes: { light: {} } };
 	useSkinStore.setState({
 		active: EMPTY_SLOTS,
@@ -292,6 +296,21 @@ describe("SkinEditor", () => {
 		await waitFor(() =>
 			expect((screen.getByLabelText("光斑颜色") as HTMLInputElement).value).toBe("#123456"),
 		);
+	});
+
+	it("底栏至多挂一条反馈 —— 传图失败要把上一条绿字顶掉", async () => {
+		// 红绿分成两个 state 时,互斥全靠每个写点自己记得清对方;传图那条就没清,
+		// 于是「已钉为默认值」和「图片过大」会一起挂在底栏上。
+		renderEditor();
+		fireEvent.click(screen.getByText("设为默认值").closest("button") as HTMLButtonElement);
+		await waitFor(() => expect(screen.getByText(/已把当前状态钉为/)).toBeTruthy());
+
+		H.uploadFails = true;
+		const file = new File([new Uint8Array([1])], "big.png", { type: "image/png" });
+		fireEvent.change(screen.getByLabelText("上传图片"), { target: { files: [file] } });
+
+		await waitFor(() => expect(screen.getByText(/图片过大/)).toBeTruthy());
+		expect(screen.queryByText(/已把当前状态钉为/)).toBeNull();
 	});
 
 	it("单套皮肤:点「补一套深色」→ draft 长出 dark 套(复制自浅色)", async () => {

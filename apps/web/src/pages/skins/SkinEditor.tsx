@@ -51,9 +51,13 @@ export function SkinEditor(props: {
 	const [draft, setDraft] = useState<SkinManifest>(manifest);
 	const [modeKey, setModeKey] = useState<"light" | "dark">(manifest.modes.light ? "light" : "dark");
 	const [confirmDiscard, setConfirmDiscard] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-	/** 默认值操作的成功反馈(出错走 error;两者互斥)。 */
-	const [note, setNote] = useState<string | null>(null);
+	/**
+	 * 底栏那一条反馈。**至多一条** —— 红的绿的共用一个 state,互斥由类型管着。
+	 *
+	 * 分成 error / note 两个的时候,互斥全靠每个写点自己记得清对方:传图失败时
+	 * 上一条绿色的成功提示还挂在那儿,「让女仆改」成功了也不清。
+	 */
+	const [feedback, setFeedback] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
 	const [aiInstruction, setAiInstruction] = useState("");
 	const [aiWarnings, setAiWarnings] = useState<string[]>([]);
 	/** 包内资产 —— props 是打开那一刻的快照,传了新图就在这儿接着长。 */
@@ -98,10 +102,10 @@ export function SkinEditor(props: {
 				});
 			}
 			void qc.invalidateQueries({ queryKey: ["skins"] });
-			setError(null);
+			setFeedback(null);
 			onClose();
 		},
-		onError: (e) => setError(String((e as Error).message)),
+		onError: (e) => setFeedback({ tone: "err", text: String((e as Error).message) }),
 	});
 
 	// 「让女仆改」:AI 产物只进 draft(实时预览),不落盘 —— 保存永远主人点。
@@ -115,9 +119,9 @@ export function SkinEditor(props: {
 			setBokehRaw(null);
 			setAiWarnings(res.warnings);
 			setAiInstruction("");
-			setError(null);
+			setFeedback(null);
 		},
-		onError: (e) => setError(String((e as Error).message)),
+		onError: (e) => setFeedback({ tone: "err", text: String((e as Error).message) }),
 	});
 
 	// 出厂快照:挂载拉一次,既喂「恢复默认值」(点击零请求),也喂字段旁的
@@ -136,13 +140,9 @@ export function SkinEditor(props: {
 		onSuccess: () => {
 			// 快照变了,重拉喂给「(默认)」标注与恢复按钮
 			void qc.invalidateQueries({ queryKey: ["skins", id, "default"] });
-			setError(null);
-			setNote("已把当前状态钉为这个皮肤包的默认值");
+			setFeedback({ tone: "ok", text: "已把当前状态钉为这个皮肤包的默认值" });
 		},
-		onError: (e) => {
-			setNote(null);
-			setError(String((e as Error).message));
-		},
+		onError: (e) => setFeedback({ tone: "err", text: String((e as Error).message) }),
 	});
 
 	// 「恢复默认值」:快照只回填 draft 实时预览(与「让女仆改」同构),落盘仍走保存。
@@ -157,8 +157,7 @@ export function SkinEditor(props: {
 				: "dark";
 		setModeKey(nextKey);
 		setBokehRaw(null);
-		setError(null);
-		setNote("已拉回默认值预览,满意就点保存落盘");
+		setFeedback({ tone: "ok", text: "已拉回默认值预览,满意就点保存落盘" });
 	}
 
 	function requestClose(): void {
@@ -175,7 +174,7 @@ export function SkinEditor(props: {
 	 */
 	async function uploadAsset(file: File): Promise<void> {
 		setUploading(true);
-		setError(null);
+		setFeedback(null);
 		try {
 			const form = new FormData();
 			form.set("file", file);
@@ -183,7 +182,7 @@ export function SkinEditor(props: {
 			setAssetList((prev) => (prev.includes(res.name) ? prev : [...prev, res.name]));
 			setSection("wallpaper", { ...(draft.modes[modeKey]?.wallpaper ?? {}), image: res.name });
 		} catch (e) {
-			setError(e instanceof Error ? e.message : String(e));
+			setFeedback({ tone: "err", text: e instanceof Error ? e.message : String(e) });
 		} finally {
 			setUploading(false);
 		}
@@ -639,8 +638,10 @@ export function SkinEditor(props: {
 			</div>
 
 			<div className="sticky bottom-0 space-y-2 border-t border-bn-border-subtle bg-bn-surface-strong/80 px-4 py-3 backdrop-blur-sm">
-				{error ? <ErrorNote>操作失败:{error}</ErrorNote> : null}
-				{note ? <p className="text-[11px] text-bn-success-text">{note}</p> : null}
+				{feedback?.tone === "err" ? <ErrorNote>操作失败:{feedback.text}</ErrorNote> : null}
+				{feedback?.tone === "ok" ? (
+					<p className="text-[11px] text-bn-success-text">{feedback.text}</p>
+				) : null}
 				<div className="flex items-center justify-between gap-2">
 					<div className="flex gap-2">
 						<Btn
