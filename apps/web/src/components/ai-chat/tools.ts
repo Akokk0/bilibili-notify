@@ -6,18 +6,13 @@
  * 那边加一个,这边得跟着配一句(有一条测试盯着,漏了会红)。
  */
 
+import { AI_TOOL_CREATE_SKIN } from "@bilibili-notify/contract";
+
 /** 入参里挑哪几个键来补上下文,按顺序取第一个有值的。 */
 interface LabelSpec {
 	label: string;
 	arg?: readonly string[];
 }
-
-/**
- * 「做一套皮肤」。女仆手上唯一一个会改到界面本身的工具 —— 它跑完之后,聊天页要
- * 补一拍皮肤状态回灌(见 index.tsx),所以这个名字在前端也是有语义的,不只是一行
- * 文案。写死在这里而不是各处硬编码字符串。
- */
-export const CREATE_SKIN_TOOL = "create_skin";
 
 const TOOL_LABELS: Record<string, LabelSpec> = {
 	list_subscriptions: { label: "查看订阅列表" },
@@ -33,7 +28,7 @@ const TOOL_LABELS: Record<string, LabelSpec> = {
 	web_search: { label: "联网搜索", arg: ["query"] },
 	// 做皮肤要跑一整趟嵌套生成,几十秒起步 —— 转圈那会儿写清「在做什么样的」,
 	// 主人才知道这是在忙正事,而不是卡住了。
-	[CREATE_SKIN_TOOL]: { label: "制作皮肤", arg: ["brief"] },
+	[AI_TOOL_CREATE_SKIN]: { label: "制作皮肤", arg: ["brief"] },
 	subscribe_user: { label: "添加订阅", arg: ["name", "uid"] },
 	unsubscribe_user: { label: "取消订阅", arg: ["name", "uid"] },
 	update_subscription: { label: "修改订阅设置", arg: ["name", "uid"] },
@@ -49,12 +44,40 @@ const ARG_MAX_CHARS = 14;
  * 界面上留一片空白比留一个英文标识符难查得多。
  */
 export function toolLabel(name: string, args: Record<string, string>): string {
+	return labelWith(name, toolArgText(name, args));
+}
+
+function labelWith(name: string, flat: string | null): string {
 	const spec = TOOL_LABELS[name];
 	if (!spec) return name;
-	const flat = toolArgText(name, args);
 	if (!flat) return spec.label;
 	const shown = flat.length <= ARG_MAX_CHARS ? flat : `${flat.slice(0, ARG_MAX_CHARS)}…`;
 	return `${spec.label}「${shown}」`;
+}
+
+/** 一条小条要的三样东西。 */
+export interface ToolDescription {
+	/** 界面上那一行中文,入参超长时截短。 */
+	label: string;
+	/** 入参完整原文(没有则 null)—— 展开时给主人看的就是它。 */
+	argText: string | null;
+	/** 入参被截短了吗。有才值得给展开钮。 */
+	clipped: boolean;
+}
+
+/**
+ * 一次工具调用 → 小条要的三样,入参**只规整一次**。
+ *
+ * 分开三个函数各问一遍的话,`toolArgText` 里那趟 `replace(/\s+/g," ")` 就要对
+ * 同一份入参跑三遍 —— 而做皮肤的 brief 是几百字,小条又跟着流式分片每片重渲一次。
+ */
+export function describeTool(name: string, args: Record<string, string>): ToolDescription {
+	const argText = toolArgText(name, args);
+	return {
+		label: labelWith(name, argText),
+		argText,
+		clipped: (argText?.length ?? 0) > ARG_MAX_CHARS,
+	};
 }
 
 /**
@@ -67,9 +90,4 @@ export function toolLabel(name: string, args: Record<string, string>): string {
 export function toolArgText(name: string, args: Record<string, string>): string | null {
 	const raw = TOOL_LABELS[name]?.arg?.map((k) => args[k]?.trim()).find(Boolean);
 	return raw ? raw.replace(/\s+/g, " ") : null;
-}
-
-/** 这条小条的入参有没有被截短 —— 有才值得给个展开钮。 */
-export function toolArgClipped(name: string, args: Record<string, string>): boolean {
-	return (toolArgText(name, args)?.length ?? 0) > ARG_MAX_CHARS;
 }

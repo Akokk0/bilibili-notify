@@ -1,7 +1,7 @@
 import { Icon } from "@bilibili-notify/ui";
 import { Fragment, type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 import { type AiChatMessageDTO, chatImageUrl } from "../../services/aiChat";
-import { toolArgClipped, toolArgText, toolLabel } from "./tools";
+import { describeTool } from "./tools";
 
 /**
  * Markdown 渲染**动态**加载。
@@ -525,8 +525,8 @@ function SourcesBlock({
  * 「查了但没查到」和「压根没查」会导出完全不同的追查方向。
  */
 /** 一条小条在展开账本里的身份 —— 交接前后一字不差的那两样。 */
-function toolArgKey(t: ToolChipData): string {
-	return `${t.name}|${toolArgText(t.name, t.args) ?? ""}`;
+function toolArgKey(name: string, argText: string | null): string {
+	return `${name}|${argText ?? ""}`;
 }
 
 /**
@@ -546,21 +546,26 @@ function ToolChips({
 		<div className="flex flex-wrap gap-1.5">
 			{traces.map((t, i) => {
 				const state = t.ok === undefined ? "running" : t.ok ? "ok" : "failed";
-				const label = toolLabel(t.name, t.args);
-				// 成了就留着总数 —— 「这趟写了多少」是结果的一部分。没写成才不报:
-				// 半截的字数说明不了什么,只会让人以为它写完了却失败。
-				const progress = !t.progress
-					? null
-					: state === "running"
-						? `已写 ${formatChars(t.progress)} 字`
-						: state === "ok"
-							? `写了 ${formatChars(t.progress)} 字`
-							: null;
 				// 只有真被截短的才给展开钮 —— 「搜索 UP 主「咩栗」」点开也没有别的可看,
 				// 那个 ▾ 只会是个骗人的暗示。
-				const clipped = toolArgClipped(t.name, t.args);
-				const open = openKeys.has(toolArgKey(t));
+				const { label, argText, clipped } = describeTool(t.name, t.args);
+				// 成了就留着总数 —— 「这趟写了多少」是结果的一部分。没写成才不报:
+				// 半截的字数说明不了什么,只会让人以为它写完了却失败。
+				const progress =
+					t.progress && state !== "failed"
+						? `${state === "running" ? "已写" : "写了"} ${formatChars(t.progress)} 字`
+						: null;
+				const key = toolArgKey(t.name, argText);
+				const open = openKeys.has(key);
 				const chipClass = `bn-glass-chip flex max-w-full items-center gap-1.5 rounded-[13px] px-2.25 py-0.75 text-[11.5px] text-bn-text-tertiary${clipped ? " cursor-pointer transition-colors hover:text-bn-text-secondary" : ""}`;
+				// 两条分支只差 button/span 这一个壳,属性一份就够 —— 分开抄的话,
+				// 加一个属性要记得加两处。
+				const chipProps = {
+					"data-testid": "tool-trace",
+					"data-state": state,
+					title: `${label} · ${progress ?? STATE_TEXT[state]}`,
+					className: chipClass,
+				};
 				const inner = (
 					<>
 						<span
@@ -595,31 +600,21 @@ function ToolChips({
 						{clipped ? (
 							<button
 								type="button"
-								data-testid="tool-trace"
-								data-state={state}
-								title={`${label} · ${progress ?? STATE_TEXT[state]}`}
+								{...chipProps}
 								aria-expanded={open}
-								onClick={() => onToggle(toolArgKey(t))}
-								className={chipClass}
+								onClick={() => onToggle(key)}
 							>
 								{inner}
 							</button>
 						) : (
-							<span
-								data-testid="tool-trace"
-								data-state={state}
-								title={`${label} · ${progress ?? STATE_TEXT[state]}`}
-								className={chipClass}
-							>
-								{inner}
-							</span>
+							<span {...chipProps}>{inner}</span>
 						)}
 						{/* 展开那一段独占一行:`w-full` 在 flex-wrap 里就是换行,不必把这排
 						    小条拆成两层布局。排版照思考块的引用式来 —— 这是**她收到的
 						    需求原文**,不是回答;也刻意不给底色,免得玻璃叠玻璃。 */}
 						{open ? (
 							<p className="w-full whitespace-pre-wrap wrap-break-word border-bn-border border-l-2 pl-3 text-[11.5px] text-bn-text-tertiary leading-[1.7]">
-								{toolArgText(t.name, t.args)}
+								{argText}
 							</p>
 						) : null}
 					</Fragment>
