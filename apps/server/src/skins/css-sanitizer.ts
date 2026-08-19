@@ -19,11 +19,11 @@
  */
 
 import { SKIN_CSS_HOOK_MAP } from "@bilibili-notify/contract";
-import type { Atrule, CssNode, Declaration, Rule } from "css-tree";
+import type { Atrule, CssNode, Declaration, List, ListItem, Rule } from "css-tree";
 // 走自包含 dist bundle,不走默认入口:默认入口的 lexer 数据层在运行时
 // require('../data/patch.json') 读包内文件,内联进 server bundle 后必炸
 // (assemble-server-bundle.test 拦到的正是它);dist 版数据全内联,无此雷。
-import { generate, parse } from "css-tree/dist/csstree.esm";
+import { clone, generate, parse } from "css-tree/dist/csstree.esm";
 
 /**
  * 自定义 CSS 的上限,**按 UTF-8 字节算**。
@@ -150,12 +150,18 @@ function valueOfAttr(value: CssNode | null): string | null {
  */
 function targetsPseudoElement(selector: CssNode): boolean {
 	if (selector.type !== "Selector") return false;
-	let hit = false;
-	selector.children.forEach((node: CssNode) => {
-		if (node.type === "PseudoElementSelector") hit = true;
-	});
-	return hit;
+	return selector.children.some((node: CssNode) => node.type === "PseudoElementSelector");
 }
+
+/** css-tree 的 List 只有 `some`,没有 `every` —— 反着用一次,别在调用处铺双重否定。 */
+function everyChild(list: List<CssNode>, pred: (node: CssNode) => boolean): boolean {
+	return !list.some((node: CssNode) => !pred(node));
+}
+
+/** 装饰层那两句硬规矩的 AST —— 解析结果恒定,没必要每条规则重跑一遍 parser。 */
+const DECORATION_DECLS: readonly Declaration[] = ["pointer-events:none", "z-index:-1"].map(
+	(text) => parse(text, { context: "declaration" }) as Declaration,
+);
 
 /**
  * 往声明块尾部塞上装饰层的两句硬规矩:`pointer-events:none` + `z-index:-1`。
@@ -172,10 +178,9 @@ function targetsPseudoElement(selector: CssNode): boolean {
 function forceDecorationBehindContent(rule: Rule): void {
 	const block = rule.block;
 	if (!block) return;
-	for (const text of ["pointer-events:none", "z-index:-1"]) {
-		const decl = parse(text, { context: "declaration" }) as CssNode;
-		if (decl.type === "Declaration") block.children.push(decl);
-	}
+	// 每条装饰规则都要这两句,而两句本身是常量 —— 解析一次留着,用时 clone。
+	// 直接共享节点的话,同一个 AST 对象会挂在多处子树上,谁改它就一起变。
+	for (const decl of DECORATION_DECLS) block.children.push(clone(decl));
 }
 
 /**
@@ -281,16 +286,18 @@ function filterBlock(
 	const block = rule.block;
 	if (!block) return 0;
 	let kept = 0;
-	const drop: CssNode[] = [];
-	block.children.forEach((node: CssNode) => {
+	// 收 item 而不是 node:`forEach` 的第二个参数就是能直接 remove 的链表句柄,
+	// 收 node 的话收尾还得为每个丢弃项把整条 children 重扫一遍去找它。
+	const drop: ListItem<CssNode>[] = [];
+	block.children.forEach((node: CssNode, item) => {
 		if (node.type !== "Declaration") {
-			drop.push(node);
+			drop.push(item);
 			return;
 		}
 		const reason = rejectDeclaration(node, scope);
 		if (reason) {
 			warnings.push(`${path}: ${reason},已丢弃`);
-			drop.push(node);
+			drop.push(item);
 		} else {
 			// `!important` 一律摘掉,只留声明本身。装饰层那两句硬规矩是**追加**在块
 			// 尾部的,靠「后到者赢」压过皮肤写的值 —— 而 !important 不吃这一套:
@@ -304,11 +311,7 @@ function filterBlock(
 			kept += 1;
 		}
 	});
-	for (const node of drop) {
-		block.children.forEach((child, item) => {
-			if (child === node) block.children.remove(item);
-		});
-	}
+	for (const item of drop) block.children.remove(item);
 	return kept;
 }
 
@@ -330,38 +333,23 @@ function filterKeyframes(atrule: Atrule, path: string, warnings: string[]): void
  * 祖先由注入层在 `@layer components` 里给(见 web 的 composeSkinCss),那一层排在
  * utilities 之前,工具类照旧赢。
  */
-function filterRuleList(
-	parent: { children: import("css-tree").List<CssNode> },
-	warnings: string[],
-): boolean {
-	const drop: CssNode[] = [];
-	parent.children.forEach((node: CssNode) => {
+function filterRuleList(parent: { children: List<CssNode> }, warnings: string[]): boolean {
+	const drop: ListItem<CssNode>[] = [];
+	parent.children.forEach((node: CssNode, item) => {
 		if (node.type === "Rule") {
 			const prelude = node.prelude;
 			const selectorText = generate(prelude);
-			let allOk = prelude.type === "SelectorList";
-			if (prelude.type === "SelectorList") {
-				prelude.children.forEach((sel: CssNode) => {
-					if (!isAllowedSelector(sel)) allOk = false;
-				});
-			}
-			if (!allOk) {
+			if (prelude.type !== "SelectorList" || !everyChild(prelude.children, isAllowedSelector)) {
 				warnings.push(`选择器「${selectorText}」不在 hook 白名单,整条丢弃`);
-				drop.push(node);
+				drop.push(item);
 				return;
 			}
 			// 逗号列表里**每一支**都瞄伪元素才算装饰规则。混着写的
 			// (`[data-bn="glass"],[data-bn="glass"]::before`)按宿主算 —— 否则那两句
 			// 硬规矩会连宿主一起钉死,整张卡当场点不动。
-			let pseudo = false;
-			if (prelude.type === "SelectorList") {
-				pseudo = true;
-				prelude.children.forEach((sel: CssNode) => {
-					if (!targetsPseudoElement(sel)) pseudo = false;
-				});
-			}
+			const pseudo = everyChild(prelude.children, targetsPseudoElement);
 			if (filterBlock(node, selectorText, warnings, { pseudo, keyframes: false }) === 0) {
-				drop.push(node);
+				drop.push(item);
 				return;
 			}
 			if (pseudo) forceDecorationBehindContent(node);
@@ -373,7 +361,7 @@ function filterRuleList(
 				const kfName = node.prelude ? generate(node.prelude).trim() : "";
 				if (!KEYFRAMES_NAME_RE.test(kfName)) {
 					warnings.push(`@keyframes 名「${kfName}」必须以 skin- 开头,整段丢弃`);
-					drop.push(node);
+					drop.push(item);
 					return;
 				}
 				filterKeyframes(node, `@keyframes ${kfName}`, warnings);
@@ -381,22 +369,18 @@ function filterRuleList(
 			}
 			if (name === "media") {
 				if (!node.block || !filterRuleList(node.block, warnings)) {
-					drop.push(node);
+					drop.push(item);
 				}
 				return;
 			}
 			warnings.push(`@${name} 不在白名单,整段丢弃`);
-			drop.push(node);
+			drop.push(item);
 			return;
 		}
 		// Raw(语法碎片)等其他节点:静默丢弃 —— parser 已尽力恢复,碎渣不进产物。
-		drop.push(node);
+		drop.push(item);
 	});
-	for (const node of drop) {
-		parent.children.forEach((child, item) => {
-			if (child === node) parent.children.remove(item);
-		});
-	}
+	for (const item of drop) parent.children.remove(item);
 	return !parent.children.isEmpty;
 }
 
