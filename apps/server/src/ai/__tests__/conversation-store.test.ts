@@ -543,3 +543,50 @@ describe("会话的模式与人格", () => {
 		expect(back?.persona).toBe(false);
 	});
 });
+
+describe("正在进行的那一轮不算空壳", () => {
+	/**
+	 * 两条既有决定各自都对,合起来有个洞:
+	 * - 消息**拿到回复之后才落盘**(routes/ai.ts,2026-07-25):先写用户消息的话,
+	 *   AI 一失败盘上就留下一个没人回答的问题。
+	 * - 零消息的会话**不进列表**:整轮失败留下的壳会在侧栏冒出来碍眼。
+	 *
+	 * 于是一轮正在生成的对话(皮肤要三分钟)在盘上也是零消息 —— 被当成壳藏了起来,
+	 * 主人正聊着的这一场却不在侧栏里。列表该藏的是**没人用的**壳,不是所有壳。
+	 */
+	it("在途的空会话照样进列表", async () => {
+		const conv = await store.create();
+		const done = store.markBusy(conv.id);
+		try {
+			expect((await store.list()).map((c) => c.id)).toContain(conv.id);
+		} finally {
+			done();
+		}
+	});
+
+	it("这一轮结束后又变回壳,藏起来", async () => {
+		const conv = await store.create();
+		store.markBusy(conv.id)();
+		expect((await store.list()).map((c) => c.id)).not.toContain(conv.id);
+	});
+
+	it("同一场并发两轮 —— 先收工的那次不该把还在跑的也放出去", async () => {
+		const conv = await store.create();
+		const first = store.markBusy(conv.id);
+		const second = store.markBusy(conv.id);
+		first();
+		expect((await store.list()).map((c) => c.id)).toContain(conv.id);
+		second();
+		expect((await store.list()).map((c) => c.id)).not.toContain(conv.id);
+	});
+
+	it("释放两次不会把别人的账也销掉", async () => {
+		const conv = await store.create();
+		const done = store.markBusy(conv.id);
+		const other = store.markBusy(conv.id);
+		done();
+		done();
+		expect((await store.list()).map((c) => c.id)).toContain(conv.id);
+		other();
+	});
+});

@@ -132,6 +132,18 @@ export interface ConversationStore {
 	setTitle(id: string, title: string): Promise<Conversation | null>;
 	/** 删除一个会话。返回它此前是否存在。 */
 	remove(id: string): Promise<boolean>;
+	/**
+	 * 标记这一场**正有一轮在跑**,返回收工时该调的那个函数。
+	 *
+	 * 为什么需要它:消息是「拿到回复之后才落盘」的(routes/ai.ts 那条既有决定 ——
+	 * 先写用户消息的话,AI 一失败盘上就留下一个没人回答的问题),所以一轮生成期间
+	 * 盘上仍是零消息;而 {@link list} 会把零消息的当空壳藏起来。皮肤生成要几分钟,
+	 * 主人正聊着的那一场就这么从侧栏消失了。
+	 *
+	 * 计数而非布尔:同一场可能同时有两轮在跑,先收工的那次不该把还在跑的也放出去。
+	 * 返回的函数**可以重复调**(只销自己那一笔),catch 与 finally 都调不会串账。
+	 */
+	markBusy(id: string): () => void;
 }
 
 export interface ConversationStoreOptions {
@@ -230,6 +242,12 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 	 */
 	const EMPTY_CONVERSATION_TTL_MS = 30 * 60 * 1000;
 
+	/**
+	 * 正在跑的轮次计数(会话 id → 几轮)。只活在内存里 —— 进程一重启,「在途」这件事
+	 * 本来就不存在了(那些 SSE 全断了),陈旧的标记反而会把死壳永久钉在侧栏上。
+	 */
+	const busy = new Map<string, number>();
+
 	async function listAll(): Promise<Conversation[]> {
 		let names: string[];
 		try {
@@ -263,10 +281,14 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 			// 开那条 SSE),而整轮失败时服务端一个字都不落盘 —— 壳却留下了。主人
 			// 看到的是侧栏冒出一条点进去空空如也的「对话」,删又不知道该不该删。
 			//
-			// 只过滤不删:此刻正在发送的那一轮,盘上也是零消息。判它是垃圾要等到
-			// 它凉透(见 create 里的清理),列表这一层只管别让它碍眼。
+			// 只过滤不删:判它是垃圾要等到它凉透(见 create 里的清理),列表这一层
+			// 只管别让它碍眼。
+			//
+			// **在途的那一场例外**:它盘上同样是零消息(消息拿到回复才落盘),可它
+			// 恰恰是主人此刻正看着的那一场 —— 藏掉它,侧栏里就没有「我正在聊的那条」。
+			// 见 markBusy。
 			return all
-				.filter((c) => c.messages.length > 0)
+				.filter((c) => c.messages.length > 0 || busy.has(c.id))
 				.map((c) => ({
 					id: c.id,
 					title: c.title,
@@ -377,6 +399,19 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 				await writeOne(conv);
 				return conv;
 			});
+		},
+
+		markBusy(id) {
+			busy.set(id, (busy.get(id) ?? 0) + 1);
+			let released = false;
+			return () => {
+				// 幂等:调用方的 catch 与 finally 都调一次也不会把别人那一笔销掉。
+				if (released) return;
+				released = true;
+				const left = (busy.get(id) ?? 1) - 1;
+				if (left > 0) busy.set(id, left);
+				else busy.delete(id);
+			};
 		},
 
 		remove(id) {
