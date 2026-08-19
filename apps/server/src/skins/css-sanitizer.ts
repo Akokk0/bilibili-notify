@@ -172,11 +172,18 @@ function forceDecorationBehindContent(rule: Rule): void {
 	}
 }
 
-/** 单个 Selector(逗号列表的一支)是否全由白名单件组成。 */
+/**
+ * 单个 Selector(逗号列表的一支)是否全由白名单件组成,**且真的挂着 hook**。
+ *
+ * 后半句是硬要求:光问「每个节点是不是白名单里的件」的话,`:hover` / `::before`
+ * 这种一个 hook 都没有的选择器会全票通过 —— 而它命中的是页面上**每一个**元素,
+ * 整个 hook 契约当场绕开(2026-08-19 审计实测放行)。
+ */
 function isAllowedSelector(selector: CssNode): boolean {
 	if (selector.type !== "Selector") return false;
 	let ok = true;
 	let parts = 0;
+	let hooks = 0;
 	selector.children.forEach((node: CssNode) => {
 		parts += 1;
 		switch (node.type) {
@@ -189,6 +196,8 @@ function isAllowedSelector(selector: CssNode): boolean {
 					!HOOKS.has(hook)
 				) {
 					ok = false;
+				} else {
+					hooks += 1;
 				}
 				break;
 			}
@@ -204,7 +213,7 @@ function isAllowedSelector(selector: CssNode): boolean {
 				ok = false;
 		}
 	});
-	return ok && parts > 0;
+	return ok && parts > 0 && hooks > 0;
 }
 
 /**
@@ -234,11 +243,14 @@ function rejectDeclaration(decl: Declaration, scope: DeclScope): string | null {
 			}
 		}
 		// filter:opacity() 是同一把锁的另一把钥匙,漏掉它上面那道闸一绕就过。
-		const fo = /opacity\(([^)]*)\)/.exec(value);
-		if (prop === "filter" && fo) {
-			const n = literalOpacity(fo[1] ?? "");
-			if (n === null || n < HOST_OPACITY_FLOOR) {
-				return `宿主的 filter:opacity() 只准写不低于 ${HOST_OPACITY_FLOOR} 的字面值(同上)`;
+		// **每一个**都要问 —— filter 的函数是相乘的,`opacity(1) opacity(0)` 结果
+		// 还是 0,只读第一个等于没读(2026-08-19 审计实测穿过)。
+		if (prop === "filter") {
+			for (const m of value.matchAll(/opacity\(([^)]*)\)/g)) {
+				const n = literalOpacity(m[1] ?? "");
+				if (n === null || n < HOST_OPACITY_FLOOR) {
+					return `宿主的 filter:opacity() 只准写不低于 ${HOST_OPACITY_FLOOR} 的字面值(同上)`;
+				}
 			}
 		}
 	}
@@ -274,6 +286,15 @@ function filterBlock(
 			warnings.push(`${path}: ${reason},已丢弃`);
 			drop.push(node);
 		} else {
+			// `!important` 一律摘掉,只留声明本身。装饰层那两句硬规矩是**追加**在块
+			// 尾部的,靠「后到者赢」压过皮肤写的值 —— 而 !important 不吃这一套:
+			// 实测 `z-index:99 !important` 让后面的 `z-index:-1` 完全失效,装饰照旧
+			// 糊在内容之上(「樱墨」那次的症状)。皮肤 CSS 本来就是 author 层、本来
+			// 就生效,!important 在这里没有正当用途,只会把布局的账搅乱。
+			if (node.important) {
+				node.important = false;
+				warnings.push(`${path}: 属性 ${node.property.toLowerCase()} 的 !important 已摘掉`);
+			}
 			kept += 1;
 		}
 	});

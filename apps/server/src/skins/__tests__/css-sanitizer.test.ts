@@ -316,3 +316,69 @@ describe("宿主不许隐身", () => {
 		expect(warnings.join()).toContain("opacity");
 	});
 });
+
+describe("hook 白名单不许绕开", () => {
+	/**
+	 * `isAllowedSelector` 逐个节点问「你是不是白名单里的件」,却从没问过
+	 * 「这里到底有没有 hook」—— 一支只由伪类/伪元素组成的选择器于是全票通过,
+	 * 而它命中的是**页面上每一个元素**。整个 hook 契约就这么绕开了。
+	 */
+	it("光秃秃的伪类 → 整条丢弃", () => {
+		const { css, warnings } = ok(`:hover { background: #000; }`);
+		expect(css).toBe("");
+		expect(warnings.join()).toContain("不在 hook 白名单");
+	});
+
+	it("光秃秃的伪元素 → 整条丢弃", () => {
+		const { css } = ok(`::before { content: ""; inset: 0; }`);
+		expect(css).toBe("");
+	});
+
+	it("挂了 hook 的照旧放行", () => {
+		const { css } = ok(`[data-bn="glass"]:hover { background: #000; }`);
+		expect(css).toContain('[data-bn="glass"]:hover');
+	});
+});
+
+describe("!important 一律摘掉", () => {
+	/**
+	 * 装饰层那两句硬规矩(pointer-events:none / z-index:-1)是**追加**在声明块尾部的,
+	 * 靠「后到者赢」压过皮肤自己写的值 —— 而 `!important` 不吃这一套。
+	 *
+	 * 实测(2026-08-19 审计):`z-index:99 !important` 原样留在产物里,后面那句
+	 * `z-index:-1` 完全无效,装饰照旧糊在内容之上(正是「樱墨」那次的症状)。
+	 * 皮肤 CSS 本来就是 author 层、本来就生效,`!important` 在这里没有正当用途。
+	 */
+	it("摘掉之后追加的硬规矩才压得住", () => {
+		const { css, warnings } = ok(
+			`[data-bn="glass"]::before { content: ""; position: absolute; z-index: 99 !important; }`,
+		);
+		expect(css).not.toContain("!important");
+		expect(css.lastIndexOf("z-index:-1")).toBeGreaterThan(css.indexOf("z-index:99"));
+		expect(warnings.join()).toContain("important");
+	});
+
+	it("宿主身上的也摘 —— 它能压过工具类,那是布局在打架", () => {
+		const { css } = ok(`[data-bn~="btn"] { border-radius: 4px !important; }`);
+		expect(css).toContain("border-radius:4px");
+		expect(css).not.toContain("!important");
+	});
+});
+
+describe("宿主不许隐身 —— 补漏", () => {
+	/**
+	 * 下限只读了 filter 里**第一个** opacity(),第二个原样穿过。
+	 * `filter:opacity(1) opacity(0)` 实测放行(2026-08-19 审计) —— 两个函数相乘,
+	 * 结果还是 0。
+	 */
+	it("filter 里第二个 opacity() 同样算数", () => {
+		const { warnings } = ok(`[data-bn="glass"] { filter: opacity(1) opacity(0); }`);
+		expect(warnings.join()).toContain("opacity");
+	});
+
+	it("多个 opacity() 都合格才放行", () => {
+		const { css, warnings } = ok(`[data-bn="glass"] { filter: opacity(0.9) opacity(0.8); }`);
+		expect(css).toContain("filter:opacity(0.9) opacity(0.8)");
+		expect(warnings).toEqual([]);
+	});
+});
