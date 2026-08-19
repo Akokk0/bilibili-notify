@@ -10,6 +10,7 @@
  */
 
 import type { ExtraTool } from "@bilibili-notify/ai";
+import { AI_TOOL_CREATE_SKIN } from "@bilibili-notify/contract";
 import { runSkinAiCreate } from "./ai-create.js";
 import type { SkinAiGenerator } from "./ai-edit.js";
 import { referencedImages } from "./package.js";
@@ -138,7 +139,7 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 		definition: {
 			type: "function",
 			function: {
-				name: "create_skin",
+				name: AI_TOOL_CREATE_SKIN,
 				description:
 					"为面板设计并生成一整套界面皮肤(配色 / 玻璃质感 / 阴影 / 动效 / 自定义 CSS),存进皮肤库。只在主人明确想要新皮肤、换界面风格时调用;生成要等几十秒,一轮对话最多做两套。brief 用一段话把主人要的风格说清楚(氛围、主色、明暗、想要的质感),主人只给了一个词时由你补全细节;查到过具体色值就一并写进去 —— 执行这一步的设计师只看得到 brief。",
 				parameters: {

@@ -1,4 +1,8 @@
-import type { AiChatMode, AiConversationDTO } from "@bilibili-notify/contract";
+import {
+	AI_TOOL_CREATE_SKIN,
+	type AiChatMode,
+	type AiConversationDTO,
+} from "@bilibili-notify/contract";
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { resolveActivePersona, resolveAIProfile } from "@bilibili-notify/internal/constants";
 import { Icon, TabBar } from "@bilibili-notify/ui";
@@ -29,7 +33,6 @@ import { SearchControl } from "./search-control";
 import { ChatSidebar } from "./sidebar";
 import { AI_SKILLS, resolveOutgoing, resolveSkill } from "./skills";
 import { ThinkingControl } from "./thinking-control";
-import { CREATE_SKIN_TOOL } from "./tools";
 import { useSessionCapsules } from "./use-session-capsules";
 
 /**
@@ -142,6 +145,8 @@ type SendVars = {
 type ChatFace = { mode: AiChatMode; persona: boolean };
 
 const DEFAULT_FACE: ChatFace = { mode: "chat", persona: true };
+/** 工坊那副面孔。**不带人格** —— 那条路整段顶掉 system,人格本来就不在场。 */
+const SKIN_FACE: ChatFace = { mode: "skin", persona: false };
 
 /**
  * 人格那一档的两段 —— **只在空态摆一次**。
@@ -357,7 +362,7 @@ export function ChatPage() {
 						// 女仆做完一套皮肤(很可能顺手已经替主人换上了)—— 服务端那边
 						// 已经落盘,界面得自己去问一声,否则她说「换好啦」而屏幕不动。
 						// 只认做成了的:白拉一趟没意义,还会把失败演成成功。
-						else if (ev.phase === "end" && ev.ok && toolNames.get(ev.id) === CREATE_SKIN_TOOL) {
+						else if (ev.phase === "end" && ev.ok && toolNames.get(ev.id) === AI_TOOL_CREATE_SKIN) {
 							void syncActiveSkinToStore().catch(() => {
 								// 拉失败就维持现状:皮肤已经在库里了,主人去皮肤页照样看得到。
 							});
@@ -482,8 +487,7 @@ export function ChatPage() {
 		setError(null);
 		setPending(null);
 		// 侧栏那两颗按钮**就是**选面孔的动作 —— 会话还没落户,先记在待建的这份上。
-		// 工坊不带人格:那条路整段顶掉 system,人格本来就不在场。
-		setPendingFace(mode === "skin" ? { mode: "skin", persona: false } : DEFAULT_FACE);
+		setPendingFace(mode === "skin" ? SKIN_FACE : DEFAULT_FACE);
 	};
 
 	const busy = send.isPending;
@@ -526,9 +530,8 @@ export function ChatPage() {
 		// 留在只读窗口里发出去的话,女仆会答应下来然后什么也做不出来。
 		const wantMode = resolveSkill(raw)?.mode ?? activeFace.mode;
 		const reuse = activeId !== null && activeFace.mode === wantMode;
-		// 新开的工坊会话不带人格(那条路整段顶掉 system,人格本来就不在场)。
 		const outgoingFace: ChatFace =
-			wantMode === "skin" ? { mode: "skin", persona: false } : { ...pendingFace, mode: "chat" };
+			wantMode === "skin" ? SKIN_FACE : { ...pendingFace, mode: "chat" };
 		// 附件快照必须在**这里**取。`mutationFn` 是在 `onMutate` 之后才跑的
 		// (onMutate 的返回值被 await,那一让步足够 React 把重渲染 flush 掉),
 		// 那时 `setAttachments([])` 已经生效 —— 从 mutationFn 的闭包里读

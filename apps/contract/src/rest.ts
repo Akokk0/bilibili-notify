@@ -348,6 +348,16 @@ export interface AiChatMessageDTO {
  */
 export type AiChatMode = "chat" | "skin";
 
+/**
+ * 「做一套皮肤」那把工具的名字 —— **三层共用的 wire 标识**,与 {@link AiChatMode}
+ * 同层。
+ *
+ * 服务端拿它建工具、拿它给没有 `mode` 的老会话认面孔;web 拿它判断「这轮跑完要不要
+ * 回灌皮肤状态」。三处各写一份字面量的话,改名会**静默**失效两处:侧栏的「工坊」
+ * 牌子和聊完的状态回灌都不报错,只是不生效。
+ */
+export const AI_TOOL_CREATE_SKIN = "create_skin";
+
 export interface AiConversationMetaDTO {
 	id: string;
 	title: string;

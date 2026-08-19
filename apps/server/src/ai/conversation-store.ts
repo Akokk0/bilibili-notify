@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AiChatMode } from "@bilibili-notify/contract";
+import { AI_TOOL_CREATE_SKIN, type AiChatMode } from "@bilibili-notify/contract";
 import type { Logger } from "@bilibili-notify/internal";
 
 /**
@@ -156,12 +156,6 @@ export interface ConversationStoreOptions {
 }
 
 /**
- * 只有皮肤工坊挂得出来的那把工具 —— 日常聊天那个窗口一个写工具都没有。
- * 所以它出现在痕迹里就是铁证,{@link inferMode} 靠它给老会话认面孔。
- */
-const WORKSHOP_TOOL = "create_skin";
-
-/**
  * 老会话(文件里没有 `mode`)的面孔 —— 从工具痕迹里认。
  *
  * 上线前的会话一律按「聊天」读的话,主人一屋子做过皮肤的老会话在侧栏里一块牌都
@@ -171,7 +165,7 @@ const WORKSHOP_TOOL = "create_skin";
  * 这一层只补「文件里没写」的那种情况。
  */
 function inferMode(conv: Conversation): AiChatMode {
-	const workshop = conv.messages.some((m) => m.tools?.some((t) => t.name === WORKSHOP_TOOL));
+	const workshop = conv.messages.some((m) => m.tools?.some((t) => t.name === AI_TOOL_CREATE_SKIN));
 	return workshop ? "skin" : "chat";
 }
 
