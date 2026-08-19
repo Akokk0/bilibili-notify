@@ -1026,6 +1026,40 @@ describe("CommentaryGenerator.chatStatelessStream — 真流式", () => {
 		expect(oai.create).toHaveBeenCalledTimes(1);
 	});
 
+	/**
+	 * 超时与账户拒绝同类:**换个参数重来一样会超时**。
+	 *
+	 * 真机现场(2026-08-19 07:45:20 → 07:57:22):皮肤生成那趟非流式调用超时,先被
+	 * 当成「网关不支持流式」回落一次,再被当成「方言参数不受支持」摘掉
+	 * enable_thinking 整轮重来 —— 叠上 SDK 默认的 maxRetries=2,一道 120s 的闸硬生生
+	 * 等成 12 分 02 秒,主人最后只等来一句 `Request timed out.`。
+	 */
+	const timeoutErr = () => {
+		// SDK 那个类不设 name,认得出它的只有 constructor.name 与那句 message。
+		class APIConnectionTimeoutError extends Error {}
+		return new APIConnectionTimeoutError("Request timed out.");
+	};
+
+	it("超时 → 既不回落非流式也不摘方言参数,只发一次", async () => {
+		// siliconflow 连「思考关着」都要发一条 enable_thinking:false,方言降级那条
+		// 分支于是必然命中 —— 它不是偶发路径,是这家网关的常态。
+		const { gen } = makeGen({ provider: "siliconflow", enableThinking: false });
+		oai.create.mockRejectedValue(timeoutErr());
+		await expect(
+			gen.chatStatelessStream([{ role: "user", content: "x" }], { onDelta: () => {} }),
+		).rejects.toThrow(/超时/);
+		expect(oai.create).toHaveBeenCalledTimes(1);
+	});
+
+	it("504 这类上游超时同样只发一次 —— 重来一趟一样会卡在那儿", async () => {
+		const { gen } = makeGen({ provider: "siliconflow", enableThinking: false });
+		oai.create.mockRejectedValue(httpErr(504, "504 Gateway Timeout"));
+		await expect(
+			gen.chatStatelessStream([{ role: "user", content: "x" }], { onDelta: () => {} }),
+		).rejects.toThrow(/超时/);
+		expect(oai.create).toHaveBeenCalledTimes(1);
+	});
+
 	it("500 之类的上游抖动仍然回落 —— 那确实可能换条路就好了", async () => {
 		const { gen } = makeGen();
 		oai.create
@@ -1441,5 +1475,21 @@ describe("CommentaryGenerator.generateRaw(无人格结构化生成)", () => {
 		expect(params.messages[0]).toEqual({ role: "system", content: "RAW_SYSTEM" });
 		expect(params.messages[1]).toEqual({ role: "user", content: "RAW_USER" });
 		expect(params.tools).toBeUndefined();
+	});
+
+	it("死线放宽到 300s,而且**不**让 SDK 偷偷重试", async () => {
+		// 一份 skin.json 是一口气吐完的 3–6KB JSON,聊天那档 120s 根本不够;而 SDK
+		// 默认 maxRetries=2 会把任何一次超时白等成三倍 —— 慢是常态时,重试只是等更久。
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp("{}"));
+		await gen.generateRaw("S", "U");
+		expect(oai.ctorArgs.at(-1)).toMatchObject({ timeout: 300_000, maxRetries: 0 });
+	});
+
+	it("聊天 / 点评那档照旧 120s —— 放宽只给结构化生成", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp("点评"));
+		await gen.comment("x");
+		expect(oai.ctorArgs.at(-1)).toMatchObject({ timeout: 120_000, maxRetries: 0 });
 	});
 });

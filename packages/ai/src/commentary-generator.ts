@@ -42,6 +42,17 @@ import {
 
 /** 起标题的硬超时。它只是个装饰,不值得让主人为它等到聊天那档 120s。 */
 const TITLE_TIMEOUT_MS = 20_000;
+
+/**
+ * 结构化生成({@link CommentaryGenerator.generateRaw})的硬超时 —— **刻意远大于
+ * 聊天那档 120s**。
+ *
+ * 它和聊天/点评的形状根本不同:那边是流式,首字节几秒内就到,120s 只用来兜「模型
+ * 卡死」;这边是**非流式一口气吐一份 3–6KB 的 skin.json**,整份生成完才回第一个
+ * 字节,计时从头压到尾。真机上(2026-08-19)硅基流动 + Kimi 就是没能在 120s 内吐完,
+ * 主人等了 12 分钟只等来一句 Request timed out.。
+ */
+const STRUCTURED_TIMEOUT_MS = 300_000;
 /** 侧栏一行放得下的字数,超了截断加省略号。 */
 const TITLE_MAX_CHARS = 16;
 const TITLE_PROMPT = [
@@ -264,6 +275,12 @@ export interface CommentaryCallOverride {
 	 * (没填 key / 没接 source)时静默不挂,不报错 —— 推送链路不因搜索没配置而断。
 	 */
 	webSearch?: boolean;
+	/**
+	 * 这一次调用的硬超时(毫秒),压过 callAPI 的默认死线。给「慢是常态」的调用用
+	 * (结构化生成一份 skin.json 要几分钟),不是性能旋钮 —— 别顺手调大聊天那档,
+	 * 那边一慢就该早点让主人知道。
+	 */
+	timeoutMs?: number;
 }
 
 /**
@@ -969,7 +986,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 * 网关/方言/思考参数与其他调用走同一条 callAPI。
 	 */
 	async generateRaw(system: string, user: string): Promise<string> {
-		return this.callAPI(system, [{ role: "user", content: user }]);
+		return this.callAPI(system, [{ role: "user", content: user }], undefined, undefined, {
+			timeoutMs: STRUCTURED_TIMEOUT_MS,
+		});
 	}
 
 	async summarizeTitle(exchange: readonly ConversationMessage[]): Promise<string> {
@@ -1044,6 +1063,44 @@ export class CommentaryGenerator implements CommentaryProvider {
 							: null;
 		// 带上 status 再抛:外层那条 thinking 降级路径也要靠它认出「重来也没用」。
 		return msg ? Object.assign(new Error(msg), { status }) : null;
+	}
+
+	/**
+	 * 超时 —— 与账户拒绝同一类:**换个参数重来一样会超时**。
+	 *
+	 * 现场(2026-08-19 07:45:20 → 07:57:22):皮肤生成那趟非流式调用超时,先被当成
+	 * 「网关不支持流式」回落一次,再被当成「方言参数不受支持」摘掉 enable_thinking
+	 * 整轮重来 —— 两条降级路都是「换个姿势把同样长的活再干一遍」,而慢的是生成本身,
+	 * 姿势换不出速度。一道 120s 的闸就这么等成了 12 分 02 秒。
+	 *
+	 * 认得出它的只有 constructor.name 与那句 message:SDK 的
+	 * `APIConnectionTimeoutError` 不设 `name`,`status` 也是 undefined,
+	 * {@link CommentaryGenerator.rejectionOf} 那套按 status 分诊的判据一条都用不上。
+	 */
+	private static timeoutOf(e: unknown): Error | null {
+		if (!(e instanceof Error)) return null;
+		const timedOut =
+			(e as { timedOut?: unknown }).timedOut === true ||
+			e.constructor?.name === "APIConnectionTimeoutError" ||
+			e.name === "TimeoutError" ||
+			/timed out|timeout/i.test(e.message);
+		if (!timedOut) return null;
+		// 打上记号再抛,和 rejectionOf 带 status 是同一个道理:这个错误会被**外面那圈
+		// catch 再问一次**「重来有没有用」,而翻译过的中文里既没有 timeout 也没有
+		// status,认不出来就又掉进方言降级那条路 —— 判过死刑的错误再撞一次,正是这
+		// 整件事要修的毛病。
+		return Object.assign(
+			new Error("AI 网关超时:模型在死线内没把这次回答吐完(生成太长 / 服务商太慢)"),
+			{ timedOut: true },
+		);
+	}
+
+	/**
+	 * 「重来也没用」的错误 —— 降级重试前一律先问它。账单/鉴权那一层的拒绝与超时
+	 * 都归这儿:前者换参数照样被拒,后者换姿势照样慢。
+	 */
+	private static fatalOf(e: unknown): Error | null {
+		return CommentaryGenerator.rejectionOf(e) ?? CommentaryGenerator.timeoutOf(e);
 	}
 
 	private sanitizeErr(e: unknown): string {
@@ -1164,7 +1221,15 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// 与 dispatchDynamic 的后续逻辑。120s 给模型留充足思考空间,超过即 reject,上层
 		// 走 catch 路径(logger.warn + 降级文字)。tool-calling 多轮独立计时,不累加。
 		const PER_REQUEST_TIMEOUT_MS = 120_000;
-		const client = new OpenAI({ apiKey, baseURL, timeout: PER_REQUEST_TIMEOUT_MS });
+		// maxRetries 显式归零。SDK 默认 2 —— 那是给「抖一下就好」的错误设计的,而这里
+		// 最常见的失败是**超时**:重来一趟同样慢,只是把主人的等待乘以三(实测 120s 的
+		// 闸等成 6 分钟)。真值得重来的场面,上面那两条降级路与调用方各有各的账。
+		const client = new OpenAI({
+			apiKey,
+			baseURL,
+			timeout: override?.timeoutMs ?? PER_REQUEST_TIMEOUT_MS,
+			maxRetries: 0,
+		});
 
 		const apiMessages: OpenAI.ChatCompletionMessageParam[] = [
 			{ role: "system", content: systemPrompt },
@@ -1272,7 +1337,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 				} catch (e) {
 					if (acct.emitted > 0) throw new Error(this.sanitizeErr(e));
 					// 账单 / 鉴权那一层的拒绝跟 stream 无关,回落也是白撞一次。
-					const rejection = CommentaryGenerator.rejectionOf(e);
+					const rejection = CommentaryGenerator.fatalOf(e);
 					if (rejection) throw rejection;
 					this.logger.warn(`[api] 流式不可用,回落非流式: ${this.sanitizeErr(e)}`);
 				}
@@ -1306,7 +1371,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			} catch (e) {
 				// 账单 / 鉴权那一层的拒绝原样抛出去。降级重试换的只是 thinking 参数,
 				// 对「没钱了」毫无帮助 —— 白撞一次,还会把原因说成「thinking 不受支持」。
-				const rejection = CommentaryGenerator.rejectionOf(e);
+				const rejection = CommentaryGenerator.fatalOf(e);
 				if (rejection) throw rejection;
 				// :384 OpenAI SDK 错误原文常含 baseURL / Authorization: Bearer
 				// <apikey> 片段;callAPI 的错误会经 engine-error / log WS 外泄到
@@ -1443,7 +1508,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 					return await this.streamResponsesOnce(client, makeParams(true), emit, emitReasoning);
 				} catch (e) {
 					if (acct.emitted > 0) throw new Error(this.sanitizeErr(e));
-					const rejection = CommentaryGenerator.rejectionOf(e);
+					const rejection = CommentaryGenerator.fatalOf(e);
 					if (rejection) throw rejection;
 					this.logger.warn(`[api] responses 流式不可用,回落非流式: ${this.sanitizeErr(e)}`);
 				}
@@ -1457,7 +1522,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			try {
 				items = await fetchRound();
 			} catch (e) {
-				const rejection = CommentaryGenerator.rejectionOf(e);
+				const rejection = CommentaryGenerator.fatalOf(e);
 				if (rejection) throw rejection;
 				if (Object.keys(reasoningParams).length > 0 && acct.emitted === 0) {
 					this.logger.warn(
