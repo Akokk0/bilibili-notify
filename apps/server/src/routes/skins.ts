@@ -41,11 +41,10 @@ export function createSkinsRoute(deps: {
 	const { skinStore } = deps;
 	const app = new Hono();
 
-	// createApp 是同步装配,init(读盘重建索引)推迟到首个请求;幂等,测试里先 init 过也无害。
-	let ready: Promise<void> | undefined;
+	// createApp 是同步装配,读盘重建索引推迟到首个请求。凭据记在 store 上而不是这里
+	// ——聊天里的 create_skin 用的是**同一个实例**,它也得能把这一步补上(见 ensureReady)。
 	app.use("*", async (_c, next) => {
-		ready ??= skinStore.init();
-		await ready;
+		await skinStore.ensureReady();
 		await next();
 	});
 

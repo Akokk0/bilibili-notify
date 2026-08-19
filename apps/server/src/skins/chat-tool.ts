@@ -148,6 +148,10 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 		},
 
 		async execute(args, onProgress) {
+			// 这家店与 /api/skins 是同一个实例,而读盘重建索引挂在那条路的中间件上。
+			// 主人一进 dashboard 就直奔聊天做皮肤时那一步还没跑过 —— 不补的话
+			// activate() 会拿一份空的 active 覆盖掉重启前启用着的槽。
+			await deps.skinStore.ensureReady();
 			const brief = (args.brief ?? "").trim();
 			if (!brief) throw new Error("没说要什么样的皮肤,先问清主人想要的风格再来。");
 			if (made >= MAX_CREATES_PER_TURN) {

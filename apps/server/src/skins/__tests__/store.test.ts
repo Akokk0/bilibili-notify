@@ -4,7 +4,8 @@
  * (重启不丢);删除当前启用的皮肤时 active 归 null(逃生舱兜底)。
  */
 
-import { mkdtemp, readFile, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SkinManifest } from "@bilibili-notify/contract";
@@ -265,5 +266,58 @@ describe("出厂快照(default.json)", () => {
 	it("setDefault(不存在) 抛错;getDefault(不存在) → null", async () => {
 		await expect(store.setDefault("nope")).rejects.toThrow();
 		expect(await store.getDefault("nope")).toBeNull();
+	});
+});
+
+describe("remove 的 id 不可信", () => {
+	/**
+	 * 路由把 `:id` 原样交进来,而 `%2e%2e%2f` 这种写法 URL 解析器不会折叠、Hono 的
+	 * param 却会解码 —— `join(skinsDir, "../..")` 直接跑出皮肤目录。remove() 是
+	 * 全店**唯一**没有 `index.has(id)` 守卫的方法,而它干的是 `rm -rf`。
+	 *
+	 * 实测(2026-08-19 审计):`DELETE /%2e%2e%2fconversations` 回 200,
+	 * `<dataDir>/conversations` 整个没了 —— 全部聊天记录。
+	 */
+	it("不认识的 id 一律不动手,哪怕它指得出一个真目录", async () => {
+		const outsider = join(dir, "..", "conversations");
+		await mkdir(outsider, { recursive: true });
+		await writeFile(join(outsider, "a.json"), "{}");
+
+		await store.remove("../conversations");
+
+		expect(existsSync(outsider)).toBe(true);
+	});
+
+	it("真皮肤照删不误", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		await store.remove(id);
+		expect(await store.get(id)).toBeNull();
+	});
+});
+
+describe("ensureReady:一份两处用,谁先来谁补上", () => {
+	/**
+	 * 这家店 `/api/skins` 与聊天里的 create_skin 共用一个实例,而读盘重建索引原先
+	 * 只挂在前者的中间件上。主人一进 dashboard 就直奔聊天做皮肤时,店里的 active
+	 * 还是构造函数那份空的 —— activate() 一落盘就把重启前启用着的槽清掉了。
+	 * 索引下次 init 能自愈,active.json 不能。
+	 */
+	it("没人显式 init 过 → 自己补,重启前的启用槽保得住", async () => {
+		const { id } = await store.save({
+			manifest: makeManifest({ modes: { light: {}, dark: {} } }),
+			assets: new Map(),
+		});
+		await store.setActiveSlot("dark", id);
+
+		// 换一个实例 = 重启后的进程,这次没人调 init。
+		const restarted = new SkinStore({ skinsDir: dir });
+		await restarted.ensureReady();
+		expect(restarted.getActive().dark).toBe(id);
+	});
+
+	it("幂等 —— 两处都调也只读一次盘", async () => {
+		const fresh = new SkinStore({ skinsDir: dir });
+		await Promise.all([fresh.ensureReady(), fresh.ensureReady()]);
+		expect(fresh.getActive()).toEqual({ light: null, dark: null });
 	});
 });

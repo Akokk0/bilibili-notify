@@ -41,6 +41,22 @@ export class SkinStore {
 		this.skinsDir = opts.skinsDir;
 	}
 
+	/** {@link ensureReady} 的一次性凭据 —— init 只该真的跑一遍。 */
+	private ready?: Promise<void>;
+
+	/**
+	 * 确保索引已从盘上重建过,幂等。
+	 *
+	 * 这家店**一份两处用**(`/api/skins` 与聊天里的 create_skin),而 init 原先只挂在
+	 * 前者的中间件上。主人一进 dashboard 就直奔聊天做皮肤的话,店里的 `active`
+	 * 还是构造函数给的 `{light:null,dark:null}` —— 这时 `activate()` 落盘,会把重启
+	 * 前启用着的另一个槽**悄悄清掉**。索引本身下次 init 能自愈,active.json 不能。
+	 */
+	async ensureReady(): Promise<void> {
+		this.ready ??= this.init();
+		await this.ready;
+	}
+
 	async init(): Promise<void> {
 		await mkdir(this.skinsDir, { recursive: true });
 		this.index.clear();
@@ -174,7 +190,17 @@ export class SkinStore {
 		}
 	}
 
+	/**
+	 * 删一套皮肤。**不认识的 id 一律不动手** —— 这道守卫不是可有可无的:路由把
+	 * `:id` 原样交进来,而 `%2e%2e%2f` 这种写法 URL 解析器不折叠、Hono 的 param
+	 * 却会解码,`join(skinsDir, "../..")` 就跑出了皮肤目录,而这里干的是 `rm -rf`。
+	 *
+	 * 实测(2026-08-19 审计):`DELETE /%2e%2e%2fconversations` 回 200,
+	 * `<dataDir>/conversations` 整个没了。店里每个方法都拿 index 认过 id,
+	 * 唯独这个没有 —— 而它是破坏力最大的那个。
+	 */
 	async remove(id: string): Promise<void> {
+		if (!this.index.has(id)) return;
 		await rm(join(this.skinsDir, id), { recursive: true, force: true });
 		this.index.delete(id);
 		if (this.active.light === id || this.active.dark === id) {
