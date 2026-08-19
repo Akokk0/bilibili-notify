@@ -156,7 +156,7 @@ export async function sendChatMessage(
 	 * 会话级的两颗胶囊(深度思考 / 联网搜索)。它们不落盘,只在这一问的请求体里
 	 * 活着 —— 不带 = 都关。**要发的东西必须走参数**,别从组件闭包里读。
 	 */
-	flags?: { thinking?: boolean; search?: boolean; mode?: "chat" | "skin" },
+	flags?: { thinking?: boolean; search?: boolean },
 ): Promise<AiChatReplyResponse> {
 	const path = `/api/ai/conversations/${encodeURIComponent(id)}/chat`;
 	const res = await fetch(path, {
@@ -167,9 +167,9 @@ export async function sendChatMessage(
 			...(images?.length ? { images: [...images] } : {}),
 			...(flags?.thinking ? { thinking: true } : {}),
 			...(flags?.search ? { search: true } : {}),
-			// 日常聊天不发这个字段:服务端缺省就是它,而「不带 = 只读窗口」这条
-			// 缺省语义,正是写能力不会因为漏传字段而凭空出现的那道保险。
-			...(flags?.mode === "skin" ? { mode: "skin" } : {}),
+			// 这里没有 mode:模式归会话所有(开局锁定),服务端 ChatRequestSchema 早
+			// 就不收这个字段了。别再加回来 —— 让请求体决定模式,等于把开写能力那道
+			// 口子的钥匙交给每一条消息。
 		}),
 		credentials: "include",
 	});

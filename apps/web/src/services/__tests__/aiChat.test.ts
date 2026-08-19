@@ -251,21 +251,16 @@ describe("sendChatMessage — 会话级胶囊 flags", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("皮肤工坊 → 请求体带 mode:skin", async () => {
+	it("这条路永远不发 mode —— 模式归会话所有,请求体说了不算", async () => {
+		// 模式曾经按消息走请求体,主人后来定了开局锁定,服务端 ChatRequestSchema 也
+		// 跟着删了这个字段。前端还往请求体里塞的话,读代码的人会以为这里改得动模式
+		// (实际被 zod 原地丢掉),而写能力本就不该由每条消息决定。
 		const fetchMock = vi.fn(async () => doneRes());
 		vi.stubGlobal("fetch", fetchMock);
-		await sendChatMessage("c1", "做套皮肤", { onDelta: () => {} }, undefined, { mode: "skin" });
-		const body = JSON.parse(
-			((fetchMock.mock.calls[0] as unknown[])[1] as RequestInit).body as string,
-		);
-		expect(body).toMatchObject({ mode: "skin" });
-		vi.unstubAllGlobals();
-	});
-
-	it("日常聊天 → 请求体压根没有 mode 键(不带 = 只读窗口,写能力不会漏出来)", async () => {
-		const fetchMock = vi.fn(async () => doneRes());
-		vi.stubGlobal("fetch", fetchMock);
-		await sendChatMessage("c1", "问", { onDelta: () => {} }, undefined, { mode: "chat" });
+		await sendChatMessage("c1", "做套皮肤", { onDelta: () => {} }, undefined, {
+			thinking: true,
+			search: true,
+		});
 		const body = JSON.parse(
 			((fetchMock.mock.calls[0] as unknown[])[1] as RequestInit).body as string,
 		);
