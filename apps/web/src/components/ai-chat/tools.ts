@@ -53,9 +53,25 @@ const ARG_MAX_CHARS = 14;
 export function toolLabel(name: string, args: Record<string, string>): string {
 	const spec = TOOL_LABELS[name];
 	if (!spec) return name;
-	const raw = spec.arg?.map((k) => args[k]?.trim()).find(Boolean);
-	if (!raw) return spec.label;
-	const flat = raw.replace(/\s+/g, " ");
+	const flat = toolArgText(name, args);
+	if (!flat) return spec.label;
 	const shown = flat.length <= ARG_MAX_CHARS ? flat : `${flat.slice(0, ARG_MAX_CHARS)}…`;
 	return `${spec.label}「${shown}」`;
+}
+
+/**
+ * 小条上那个入参的**完整原文**(没有则 null)。
+ *
+ * 与 {@link toolLabel} 挑的是同一个键,只是不截 —— 界面靠它判断「这条有没有被
+ * 截短」,以及展开之后给主人看什么。做皮肤的 brief 是几百字的一段需求,那是主人
+ * 唯一能核对「女仆理解对了没」的东西,只留十几个字等于没留。
+ */
+export function toolArgText(name: string, args: Record<string, string>): string | null {
+	const raw = TOOL_LABELS[name]?.arg?.map((k) => args[k]?.trim()).find(Boolean);
+	return raw ? raw.replace(/\s+/g, " ") : null;
+}
+
+/** 这条小条的入参有没有被截短 —— 有才值得给个展开钮。 */
+export function toolArgClipped(name: string, args: Record<string, string>): boolean {
+	return (toolArgText(name, args)?.length ?? 0) > ARG_MAX_CHARS;
 }

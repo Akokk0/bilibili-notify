@@ -609,6 +609,38 @@ describe("AiChatDock — 工具调用小条", () => {
 		expect(chips()[0]?.textContent).toContain("查看直播状态");
 	});
 
+	it("入参被截短了 → 小条能点开,看得到完整那一段", async () => {
+		// brief 是主人唯一能核对「女仆理解对了没」的东西,几百字压成十几个字之后
+		// 界面上原本再没有别的地方看得到它 —— 连悬停提示用的都是截断后的那份。
+		H.toolEvents = [
+			start("0-0", "create_skin", {
+				brief:
+					"以《主播女孩重度依赖》超天酱为主题的暗色霓虹风格皮肤。整体氛围是赛博网络主播舞台的绚烂与危险感，暗色底上叠加糖果粉与薄荷青作为霓虹高光。",
+			}),
+		];
+		await typeAndSend("做套皮肤");
+		await release();
+		await waitFor(() => expect(chips()).toHaveLength(1));
+
+		const chip = chips()[0] as HTMLElement;
+		expect(chip.getAttribute("aria-expanded")).toBe("false");
+		fireEvent.click(chip);
+		await waitFor(() => expect(chip.getAttribute("aria-expanded")).toBe("true"));
+		expect(inChat().getByText(/绚烂与危险感/)).toBeTruthy();
+
+		// 再点收起 —— 一整段需求占着屏幕,得赶得走。
+		fireEvent.click(chip);
+		await waitFor(() => expect(inChat().queryByText(/绚烂与危险感/)).toBeNull());
+	});
+
+	it("入参本来就短 → 不给展开钮,点了也没有别的东西可看", async () => {
+		H.toolEvents = [start("0-0", "search_user", { keyword: "咩栗" })];
+		await typeAndSend("找找咩栗");
+		await release();
+		await waitFor(() => expect(chips()).toHaveLength(1));
+		expect(chips()[0]?.getAttribute("aria-expanded")).toBeNull();
+	});
+
 	it("进度长在小条上 —— 一趟几分钟的活儿不能只有一个转圈", async () => {
 		// 做一套皮肤要几分钟,而工具轮不产生正文:没有这个数字,主人只能盯着一个
 		// 转圈猜她是在写还是已经死了。
@@ -665,6 +697,39 @@ describe("AiChatDock — 工具调用小条", () => {
 		await waitFor(() => expect(inChat().getByText("主人晚上好")).toBeTruthy());
 		expect(chips()).toHaveLength(1);
 		expect(chips()[0]?.dataset.state).toBe("ok");
+	});
+
+	it("展开着 brief 时回复落盘 —— 不能在交接那一刻塌下去", async () => {
+		// 在途那份小条和落盘那份是两个不同的渲染位置,展开态放在小条自己身上就会
+		// 随实例一起没掉:主人正读着几百字的需求,女仆一说完就啪地合上。思考块那条
+		// 「不能在最后一刻塌下去」是同一类事故。
+		H.toolEvents = [
+			start("0-0", "create_skin", {
+				brief:
+					"以《主播女孩重度依赖》超天酱为主题的暗色霓虹风格皮肤。整体氛围是赛博网络主播舞台的绚烂与危险感，暗色底上叠加糖果粉与薄荷青作为霓虹高光。",
+			}),
+			end("0-0", false),
+		];
+		H.replyTools = [
+			{
+				name: "create_skin",
+				args: {
+					brief:
+						"以《主播女孩重度依赖》超天酱为主题的暗色霓虹风格皮肤。整体氛围是赛博网络主播舞台的绚烂与危险感，暗色底上叠加糖果粉与薄荷青作为霓虹高光。",
+				},
+				ok: false,
+			},
+		];
+		await typeAndSend("做套皮肤");
+		await release();
+		fireEvent.click(chips()[0] as HTMLElement);
+		await waitFor(() => expect(inChat().getByText(/绚烂与危险感/)).toBeTruthy());
+
+		await release();
+		await release();
+		await release();
+		await waitFor(() => expect(inChat().getByText("主人晚上好")).toBeTruthy());
+		expect(inChat().queryByText(/绚烂与危险感/)).toBeTruthy();
 	});
 
 	it("重开一个老会话也看得到她当时查过什么", async () => {

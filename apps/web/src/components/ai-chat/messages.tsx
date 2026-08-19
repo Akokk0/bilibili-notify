@@ -1,7 +1,7 @@
 import { Icon } from "@bilibili-notify/ui";
-import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
+import { Fragment, type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 import { type AiChatMessageDTO, chatImageUrl } from "../../services/aiChat";
-import { toolLabel } from "./tools";
+import { toolArgClipped, toolArgText, toolLabel } from "./tools";
 
 /**
  * Markdown 渲染**动态**加载。
@@ -164,6 +164,21 @@ export function MessageList({
 	// 一次。往下传的是同一个组件引用,所以在途那份和落盘那份用的必然是同一个渲染器。
 	const Markdown = useChatMarkdown();
 	const anim = (id: string) => (noAnimIds?.includes(id) ? "" : "bn-anim-msg-in ");
+	/**
+	 * 哪几条小条把完整入参展开着。**放在这一层**而不是小条自己身上:在途那份和
+	 * 落盘那份是两个不同的渲染位置,状态挂在小条上就会随实例一起没掉 —— 主人正读着
+	 * 几百字的需求,女仆一说完就啪地合上。MessageList 跨交接不重建,状态活得下来。
+	 *
+	 * 身份用「工具名 + 完整入参」而不是下标:交接前后这两样一字不差,下标却会随
+	 * 消息进列表而挪位。同名同参的两条会一起开合 —— 那两条本来就一模一样,无害。
+	 */
+	const [openArgs, setOpenArgs] = useState<ReadonlySet<string>>(() => new Set());
+	const toggleArgs = (key: string) =>
+		setOpenArgs((prev) => {
+			const next = new Set(prev);
+			if (!next.delete(key)) next.add(key);
+			return next;
+		});
 	return (
 		// testid 不是随手加的:输入框里的字、侧栏底部的用户名都会被 getByText 命中
 		// (受控 textarea 在 DOM 里也有同样的 textContent),不圈定范围的话,
@@ -188,6 +203,8 @@ export function MessageList({
 						// 交接那一刻塌下去就是又一种「闪」。重开的老会话则默认折叠 ——
 						// 那时主人要看的是结论,草稿点开才看。
 						reasoningOpen={noAnimIds?.includes(m.id) ?? false}
+						openArgs={openArgs}
+						onToggleArgs={toggleArgs}
 						Markdown={Markdown}
 					/>
 				),
@@ -211,6 +228,8 @@ export function MessageList({
 							// 同一个翻转。
 							reasoningLive={!pending.draft}
 							reasoningOpen
+							openArgs={openArgs}
+							onToggleArgs={toggleArgs}
 							Markdown={Markdown}
 							caret
 						/>
@@ -306,6 +325,8 @@ function AssistantTurn({
 	reasoning,
 	reasoningLive,
 	reasoningOpen,
+	openArgs,
+	onToggleArgs,
 	Markdown,
 	caret,
 }: {
@@ -319,6 +340,9 @@ function AssistantTurn({
 	reasoningLive?: boolean;
 	/** 思考块初始是否展开。在途与刚交接的真身展开,重开的老会话折叠。 */
 	reasoningOpen?: boolean;
+	/** 哪几条小条展开着完整入参(键见 {@link toolArgKey}),与开合入口一起由上层攥着。 */
+	openArgs: ReadonlySet<string>;
+	onToggleArgs: (key: string) => void;
 	/** Markdown 渲染器;还没到手时为 null,这一帧退回纯文本。 */
 	Markdown: MarkdownComp;
 	/** 跟在最后一个字后面的光标,只有在途那一份有。 */
@@ -340,7 +364,7 @@ function AssistantTurn({
 					defaultOpen={reasoningOpen ?? false}
 				/>
 			) : null}
-			{tools?.length ? <ToolChips traces={tools} /> : null}
+			{tools?.length ? <ToolChips traces={tools} open={openArgs} onToggle={onToggleArgs} /> : null}
 			{/* 联网搜索的来源列表 —— 主人要能点开核对女仆的说法,不点开时不占地方。
 			    跟着痕迹走(在途与落盘同一条路),不是跟着正文走:没搜就没有这一块。 */}
 			{(tools ?? [])
@@ -500,7 +524,24 @@ function SourcesBlock({
  * 图标:转圈=还在查、勾=查到了、叉=没查成。失败的那条**留在原地**而不是抹掉 ——
  * 「查了但没查到」和「压根没查」会导出完全不同的追查方向。
  */
-function ToolChips({ traces }: { traces: readonly ToolChipData[] }) {
+/** 一条小条在展开账本里的身份 —— 交接前后一字不差的那两样。 */
+function toolArgKey(t: ToolChipData): string {
+	return `${t.name}|${toolArgText(t.name, t.args) ?? ""}`;
+}
+
+/**
+ * 展开态**受控**:宿主是 MessageList(理由见那儿的注释)。各开各的 —— 一轮里可以
+ * 同时开好几个工具,主人想对照着看,不该点开一条就把另一条合上。
+ */
+function ToolChips({
+	traces,
+	open: openKeys,
+	onToggle,
+}: {
+	traces: readonly ToolChipData[];
+	open: ReadonlySet<string>;
+	onToggle: (key: string) => void;
+}) {
 	return (
 		<div className="flex flex-wrap gap-1.5">
 			{traces.map((t, i) => {
@@ -508,16 +549,13 @@ function ToolChips({ traces }: { traces: readonly ToolChipData[] }) {
 				const label = toolLabel(t.name, t.args);
 				// 只在跑着的时候报数:收了尾还挂着字数,主人会以为它卡在那儿了。
 				const progress = state === "running" && t.progress ? `已写 ${t.progress} 字` : null;
-				return (
-					<span
-						// 同名工具在一轮里可能被调两次(查两个 UP),name 单独当不了 key。
-						// biome-ignore lint/suspicious/noArrayIndexKey: 这一排只在末尾追加、不删不重排(在途那份逐个 append,落盘那份整个不可变),下标就是稳定身份
-						key={`${t.name}-${i}`}
-						data-testid="tool-trace"
-						data-state={state}
-						title={`${label} · ${progress ?? STATE_TEXT[state]}`}
-						className="bn-glass-chip flex max-w-full items-center gap-1.5 rounded-[13px] px-2.25 py-0.75 text-[11.5px] text-bn-text-tertiary"
-					>
+				// 只有真被截短的才给展开钮 —— 「搜索 UP 主「咩栗」」点开也没有别的可看,
+				// 那个 ▾ 只会是个骗人的暗示。
+				const clipped = toolArgClipped(t.name, t.args);
+				const open = openKeys.has(toolArgKey(t));
+				const chipClass = `bn-glass-chip flex max-w-full items-center gap-1.5 rounded-[13px] px-2.25 py-0.75 text-[11.5px] text-bn-text-tertiary${clipped ? " cursor-pointer transition-colors hover:text-bn-text-secondary" : ""}`;
+				const inner = (
+					<>
 						<span
 							className={state === "failed" ? "flex text-bn-danger-text" : "bn-chat-accent flex"}
 							aria-hidden="true"
@@ -536,7 +574,48 @@ function ToolChips({ traces }: { traces: readonly ToolChipData[] }) {
 						{/* 单独一格、不参与 truncate:长入参把标签挤掉是可以的,把「她还
 						    活着」这个信号挤掉不行。 */}
 						{progress ? <span className="shrink-0 tabular-nums opacity-70">{progress}</span> : null}
-					</span>
+						{clipped ? (
+							<span aria-hidden="true" className="shrink-0 text-[9px] opacity-70">
+								{open ? "▾" : "▸"}
+							</span>
+						) : null}
+					</>
+				);
+				return (
+					// 同名工具在一轮里可能被调两次(查两个 UP),name 单独当不了 key。
+					// biome-ignore lint/suspicious/noArrayIndexKey: 这一排只在末尾追加、不删不重排(在途那份逐个 append,落盘那份整个不可变),下标就是稳定身份
+					<Fragment key={`${t.name}-${i}`}>
+						{clipped ? (
+							<button
+								type="button"
+								data-testid="tool-trace"
+								data-state={state}
+								title={`${label} · ${progress ?? STATE_TEXT[state]}`}
+								aria-expanded={open}
+								onClick={() => onToggle(toolArgKey(t))}
+								className={chipClass}
+							>
+								{inner}
+							</button>
+						) : (
+							<span
+								data-testid="tool-trace"
+								data-state={state}
+								title={`${label} · ${progress ?? STATE_TEXT[state]}`}
+								className={chipClass}
+							>
+								{inner}
+							</span>
+						)}
+						{/* 展开那一段独占一行:`w-full` 在 flex-wrap 里就是换行,不必把这排
+						    小条拆成两层布局。排版照思考块的引用式来 —— 这是**她收到的
+						    需求原文**,不是回答;也刻意不给底色,免得玻璃叠玻璃。 */}
+						{open ? (
+							<p className="w-full whitespace-pre-wrap wrap-break-word border-bn-border border-l-2 pl-3 text-[11.5px] text-bn-text-tertiary leading-[1.7]">
+								{toolArgText(t.name, t.args)}
+							</p>
+						) : null}
+					</Fragment>
 				);
 			})}
 		</div>
