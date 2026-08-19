@@ -36,10 +36,6 @@ describe("toolLabel", () => {
 		expect(toolLabel("create_skin", { brief: "赛博朋克暗色" })).toBe("制作皮肤「赛博朋克暗色」");
 	});
 
-	it("找壁纸也报关键词 —— 搜的是什么比「搜过了」有用", () => {
-		expect(toolLabel("find_wallpaper", { query: "雷姆 壁纸" })).toBe("找壁纸「雷姆 壁纸」");
-	});
-
 	it("不认识的工具显示原名,不是空白", () => {
 		expect(toolLabel("brand_new_tool", {})).toBe("brand_new_tool");
 	});

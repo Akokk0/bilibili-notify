@@ -46,8 +46,6 @@ const lastTools = (): any[] | null => H.lastOpts?.extraTools ?? null;
 const generateRaw = vi.fn(async (_s: string, _u: string) => JSON.stringify(DARK_SKIN));
 
 vi.mock("@bilibili-notify/ai", () => ({
-	// 搜索没配 key 时的真实返回 —— 这些用例都不测找图,让 find_wallpaper 不挂。
-	webSearchExecutorFromSettings: () => null,
 	CommentaryGenerator: class {
 		chat = vi.fn();
 		chatStateless = vi.fn();

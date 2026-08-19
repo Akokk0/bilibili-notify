@@ -19,26 +19,10 @@ export interface WebSearchResult {
 	publishedAt?: string;
 }
 
-/**
- * 一张图片候选。**只是候选** —— 这些 URL 来自搜索后端(第三方数据),谁真去下载
- * 谁负责校验:协议、目标 IP、体积、字节魔数。见 server 的 wallpaper-fetch。
- */
-export interface WebSearchImage {
-	title: string;
-	/** 图片直链;这一层只保证是 http(s)。 */
-	url: string;
-	width?: number;
-	height?: number;
-	/** 图片所在的网页(给主人溯源用,不下载它)。 */
-	sourceUrl?: string;
-}
-
 /** 统一的执行器接口。生成器经 `setWebSearchSource` 热取,不持有。 */
 export interface WebSearchExecutor {
 	readonly backend: WebSearchBackendId;
 	search(query: string): Promise<WebSearchResult[]>;
-	/** 图片候选。皮肤工坊「找张壁纸」用;普通聊天的 web_search 不碰它。 */
-	searchImages(query: string): Promise<WebSearchImage[]>;
 }
 
 /**
@@ -74,17 +58,10 @@ export function createWebSearchExecutor(cfg: WebSearchExecutorConfig): WebSearch
 	const count = cfg.count ?? DEFAULT_COUNT;
 	const isBocha = cfg.backend === "bocha";
 	const call = isBocha ? searchBocha : searchTavily;
-	const callImages = isBocha ? imagesBocha : imagesTavily;
 	return {
 		backend: cfg.backend,
 		search: (query) => call(query, cfg.apiKey, count),
-		searchImages: (query) => callImages(query, cfg.apiKey, count),
 	};
-}
-
-/** http(s) 之外一律丢:data:/file: 这些东西不该走到下载器面前。 */
-function isFetchableImageUrl(url: unknown): url is string {
-	return typeof url === "string" && /^https?:\/\//i.test(url);
 }
 
 /**
@@ -173,69 +150,6 @@ async function searchBocha(
 		...(v.siteName ? { siteName: v.siteName } : {}),
 		...(v.datePublished ? { publishedAt: v.datePublished } : {}),
 	}));
-}
-
-/** 博查:图片与网页在同一个响应里(`data.images.value`,同样是 Bing 系字段名)。 */
-async function imagesBocha(
-	query: string,
-	apiKey: string,
-	count: number,
-): Promise<WebSearchImage[]> {
-	const resp = (await postJson("https://api.bochaai.com/v1/web-search", apiKey, {
-		query,
-		summary: false,
-		freshness: "noLimit",
-		count,
-	})) as {
-		data?: {
-			images?: {
-				value?: Array<{
-					name?: string;
-					contentUrl?: string;
-					hostPageUrl?: string;
-					width?: number;
-					height?: number;
-				}>;
-			};
-		};
-	};
-	const values = resp.data?.images?.value ?? [];
-	const out: WebSearchImage[] = [];
-	for (const v of values.slice(0, count)) {
-		// 没有直链的候选整条丢:摆出来只会让模型白挑一次。
-		if (!isFetchableImageUrl(v.contentUrl)) continue;
-		out.push({
-			title: v.name ?? "",
-			url: v.contentUrl,
-			...(typeof v.width === "number" ? { width: v.width } : {}),
-			...(typeof v.height === "number" ? { height: v.height } : {}),
-			...(isFetchableImageUrl(v.hostPageUrl) ? { sourceUrl: v.hostPageUrl } : {}),
-		});
-	}
-	return out;
-}
-
-/** Tavily:图片要显式请求(`include_images`),回来的是 URL 串或带描述的对象。 */
-async function imagesTavily(
-	query: string,
-	apiKey: string,
-	count: number,
-): Promise<WebSearchImage[]> {
-	const resp = (await postJson("https://api.tavily.com/search", apiKey, {
-		query,
-		max_results: count,
-		search_depth: "basic",
-		include_images: true,
-		include_image_descriptions: true,
-	})) as { images?: Array<string | { url?: string; description?: string }> };
-	const out: WebSearchImage[] = [];
-	for (const item of (resp.images ?? []).slice(0, count)) {
-		const url = typeof item === "string" ? item : item?.url;
-		if (!isFetchableImageUrl(url)) continue;
-		const title = typeof item === "string" ? "" : (item?.description ?? "");
-		out.push({ title, url });
-	}
-	return out;
 }
 
 export const WEB_SEARCH_TOOL_NAME = "web_search";
