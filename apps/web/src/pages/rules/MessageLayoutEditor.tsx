@@ -6,7 +6,7 @@
  * 全局绑 defaults.templates,per-UP 绑 overrides.templates,由调用方组合)。
  */
 
-import { Icon, Toggle } from "@bilibili-notify/ui";
+import { Icon, Toggle, WarnNote } from "@bilibili-notify/ui";
 import {
 	closestCenter,
 	DndContext,
@@ -256,10 +256,10 @@ export function MessageLayoutEditor({
 			</div>
 
 			{cardNotFirst.length > 0 ? (
-				<div className="rounded-lg border border-bn-warning/40 bg-bn-warning/10 px-3 py-2 text-[11.5px] leading-6 text-bn-warning">
+				<WarnNote className="leading-6">
 					<b>提示:</b>第 {cardNotFirst.join("、")} 条消息里卡片图不在最前面 —— QQ
 					上先发文字再发图片会被自动拆成两条消息,卡片图放在最前才能合并成一条。
-				</div>
+				</WarnNote>
 			) : null}
 		</div>
 	);

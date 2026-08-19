@@ -31,6 +31,7 @@
 | `Input` | 带可选前置 icon 的单行输入框 |
 | `CheckRow` | 多选列表的选项行:粉勾选方块 + 文本,checkbox 本体 sr-only |
 | `ErrorNote` | 「XX 失败:…」红字提示盒的唯一写法;外边距走 `className` |
+| `WarnNote` | 「做完了但有几处没照办」黄字提示盒的唯一写法;**行高与外边距走 `className`** |
 | `Spinner` | 品牌色圆环加载指示(淡粉底环 + 粉顶弧) |
 | `PlatformIcon` / `platformLabel` | 推送平台图标与显示名(onebot / qq-official / webhook) |
 | `StatsBar` | 迷你堆叠柱状图(live/dyn/sc/guard 四色) |

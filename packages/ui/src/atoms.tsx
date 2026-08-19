@@ -353,6 +353,23 @@ export function ErrorNote({ children, className }: { children: ReactNode; classN
 	);
 }
 
+/**
+ * 黄字提示盒 —— 「做完了,但有几处没照办」这一档。红字那档见 {@link ErrorNote}。
+ *
+ * 行高**刻意不给**:两处用它的地方(皮肤上传警告、消息排版提示)一个是短句列表、
+ * 一个是整段说明,行高各要各的。同名工具类在一个 class 串里谁赢由生成顺序定,
+ * 靠调用方覆盖不住,所以基础样式里干脆不放。
+ */
+export function WarnNote({ children, className }: { children: ReactNode; className?: string }) {
+	return (
+		<div
+			className={`rounded-lg border border-bn-warning/40 bg-bn-warning/10 px-3 py-2 text-[11.5px] text-bn-warning ${className ?? ""}`}
+		>
+			{children}
+		</div>
+	);
+}
+
 // ── PlatformIcon ────────────────────────────────────────────────────────────
 
 const PLATFORM_META: Record<string, { color: string; label: string; icon?: IconName }> = {

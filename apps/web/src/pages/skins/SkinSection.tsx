@@ -12,6 +12,7 @@ import {
 	Icon,
 	ModalShell,
 	Pill,
+	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, useRef, useState } from "react";
@@ -21,8 +22,7 @@ import { syncActiveSkinToStore } from "../../services/skin-active";
 import { buildSkinPrompt, makeSkinZip } from "../../services/skin-pack";
 import { useSkinStore } from "../../store/skin";
 import { SkinEditor } from "./SkinEditor";
-
-const MODE_LABEL: Record<"light" | "dark", string> = { light: "浅色", dark: "深色" };
+import { MODE_LABEL } from "./skin-edit";
 
 /** 上传响应(POST /api/skins)。 */
 interface UploadResult {
@@ -164,11 +164,11 @@ export function SkinSection() {
 		>
 			{error ? <ErrorNote className="mb-3">操作失败:{error}</ErrorNote> : null}
 			{warnings.length > 0 ? (
-				<div className="mb-3 rounded-lg border border-bn-warning/40 bg-bn-warning/10 px-3 py-2 text-[11.5px] leading-5 text-bn-warning">
+				<WarnNote className="mb-3 leading-5">
 					{warnings.map((w) => (
 						<div key={w}>{w}</div>
 					))}
-				</div>
+				</WarnNote>
 			) : null}
 
 			{/* 换装 Picker(分段按钮组):深浅色各自挑一套,只列具备该模式的皮肤;
@@ -345,8 +345,10 @@ function SkinGuideModal({ onClose }: { onClose: (warnings?: string[]) => void })
 	const [error, setError] = useState<string | null>(null);
 
 	async function copyPrompt(): Promise<void> {
-		const readVar = (name: string) =>
-			getComputedStyle(document.documentElement).getPropertyValue(name);
+		// 取一次 live 声明对象反复读 —— buildSkinPrompt 要读三十几个令牌,
+		// 每读一个都调一次 getComputedStyle 就是三十几次强制样式重算。
+		const cs = getComputedStyle(document.documentElement);
+		const readVar = (name: string) => cs.getPropertyValue(name);
 		await navigator.clipboard.writeText(buildSkinPrompt(readVar));
 		setCopied(true);
 		setTimeout(() => setCopied(false), 2000);
