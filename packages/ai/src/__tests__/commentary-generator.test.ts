@@ -1128,7 +1128,10 @@ describe("CommentaryGenerator.chatStatelessStream — 真流式", () => {
 		}
 	});
 
-	it("第一个字都没来就卡住 —— 同样断,不回落非流式", async () => {
+	it("第一片的宽限**更长** —— 网关排队、模型先想很久,都不算卡住", async () => {
+		// 片与片之间静默一分钟一定是死了;但**第一片**之前静默一分钟很正常 ——
+		// 网关在排队,或者推理模型正闷头想。拿片间那一档去卡首片,等于把慢网关
+		// 和长思考一律误杀,比原先那道 120s 的闸还严。
 		vi.useFakeTimers();
 		try {
 			const { gen } = makeGen({ provider: "siliconflow", enableThinking: false });
@@ -1143,7 +1146,11 @@ describe("CommentaryGenerator.chatStatelessStream — 真流式", () => {
 					() => null,
 					(e: Error) => e,
 				);
-			await vi.advanceTimersByTimeAsync(70_000);
+			// 片间那一档早就过了,首片这一档还没到 —— 不许掐。
+			await vi.advanceTimersByTimeAsync(90_000);
+			expect(await Promise.race([caught, Promise.resolve("still-running")])).toBe("still-running");
+			// 首片这一档也过了 —— 这才是真卡住。
+			await vi.advanceTimersByTimeAsync(120_000);
 			expect((await caught)?.message).toMatch(/卡住|超时/);
 			expect(oai.create).toHaveBeenCalledTimes(1);
 		} finally {

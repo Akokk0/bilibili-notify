@@ -66,6 +66,15 @@ const STRUCTURED_TIMEOUT_MS = 300_000;
  * 但一分钟不吐一个字一定是死了。SDK 那道闸于是退化成「连响应头都不给」的兜底。
  */
 const STREAM_IDLE_TIMEOUT_MS = 60_000;
+
+/**
+ * **第一片**的宽限,刻意宽得多。
+ *
+ * 片与片之间静默一分钟一定是死了;第一片之前静默一分钟却很正常 —— 网关在排队,
+ * 或者推理模型正闷头想(不流思考的家在这段时间里一个字节都不发)。拿片间那一档
+ * 去卡首片,等于把慢网关和长思考一律误杀,比这套东西要修的毛病还糟。
+ */
+const STREAM_FIRST_CHUNK_TIMEOUT_MS = 180_000;
 /** 侧栏一行放得下的字数,超了截断加省略号。 */
 const TITLE_MAX_CHARS = 16;
 const TITLE_PROMPT = [
@@ -1189,11 +1198,14 @@ export class CommentaryGenerator implements CommentaryProvider {
 	): Promise<T> {
 		const controller = new AbortController();
 		let timer: ReturnType<typeof setTimeout> | undefined;
+		let started = false;
 		// 每来一片就重新计时。**任何**一片都算数(空 delta、思考、工具分片)——
-		// 证明的是「还活着」,不是「说了人话」:思考模型先想两分钟再开口是常态。
+		// 证明的是「还活着」,不是「说了人话」。第一片之前用宽的那一档,之后收紧。
 		const beat = () => {
 			if (timer) clearTimeout(timer);
-			timer = setTimeout(() => controller.abort(), STREAM_IDLE_TIMEOUT_MS);
+			const ms = started ? STREAM_IDLE_TIMEOUT_MS : STREAM_FIRST_CHUNK_TIMEOUT_MS;
+			started = true;
+			timer = setTimeout(() => controller.abort(), ms);
 		};
 		beat();
 		try {
@@ -1203,10 +1215,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 			// 照抄给主人等于什么都没说。打上记号是为了别再被当成「换个姿势重来」
 			// 的理由 —— 卡住和超时同类。
 			if (controller.signal.aborted) {
-				throw Object.assign(
-					new Error(`AI 网关卡住:开始回答后 ${STREAM_IDLE_TIMEOUT_MS / 1000} 秒没有新内容,已断开`),
-					{ timedOut: true },
-				);
+				throw Object.assign(new Error("AI 网关卡住:流开着但迟迟没有新内容,已断开"), {
+					timedOut: true,
+				});
 			}
 			throw e;
 		} finally {
