@@ -1642,20 +1642,28 @@ describe("CommentaryGenerator — 限流时按网关点名的时间回来", () =
 		expect(oai.create).toHaveBeenCalledTimes(1);
 	});
 
-	it("Retry-After 长得离谱 → 封顶,不让主人对着转圈等十分钟", async () => {
-		// 假时钟只推进到封顶值:没封顶的话这一轮推不完,测试当场超时 —— 这就是
-		// 断言本身,不必真等 600 秒。
-		vi.useFakeTimers();
-		try {
-			const { gen } = makeGen();
-			oai.create.mockRejectedValue(limited("600"));
-			const settled = expect(gen.comment("x")).rejects.toThrow(/频繁|限流/);
-			await vi.advanceTimersByTimeAsync(20_000);
-			await settled;
-			expect(oai.create).toHaveBeenCalledTimes(2);
-		} finally {
-			vi.useRealTimers();
-		}
+	it("Retry-After 长得离谱 → 干脆不重来,别撞进冷却期再吃一个 429", async () => {
+		// 截成 20 秒照样重来是最糟的一种:网关说要冷却十分钟,二十秒后再敲必然
+		// 又被拒。要么按它说的等,要么就别等。
+		const { gen } = makeGen();
+		oai.create.mockRejectedValue(limited("600"));
+		await expect(gen.comment("x")).rejects.toThrow(/频繁|限流/);
+		expect(oai.create).toHaveBeenCalledTimes(1);
+	});
+
+	it("流式那条路同样认 Retry-After —— dashboard 聊天与皮肤生成全走它", async () => {
+		// 这一条是审计补的:流式的 429 会先被 fatalOf/rejectionOf **重新造一个错误**
+		// 抛出去,原来那个 SDK 错误上的 headers 就此丢失 —— 于是 retryAfterMs 永远
+		// 读不到,整个特性只在非流式那条路上活着,而它本来就是为聊天写的。
+		const { gen } = makeGen();
+		oai.create
+			.mockRejectedValueOnce(limited("0"))
+			.mockResolvedValueOnce(streamOf([textChunk("好")]));
+		const out = await gen.chatStatelessStream([{ role: "user", content: "在吗" }], {
+			onDelta: () => {},
+		});
+		expect(out).toBe("好");
+		expect(oai.create).toHaveBeenCalledTimes(2);
 	});
 
 	it("401 不重来 —— key 无效,重一万次也是无效", async () => {

@@ -90,8 +90,10 @@ const TITLE_PROMPT = [
 const VISION_TIMEOUT_MS = 60_000;
 
 /**
- * 认 `Retry-After` 时最多肯等多久(秒)。网关偶尔会甩一个几百秒的值过来 ——
- * 那时候老老实实报错比让主人对着转圈等十分钟强。
+ * 认 `Retry-After` 时最多肯等多久(秒)。超过它就**不重来了**,老老实实报错 ——
+ * 截成 20 秒照样重来是最糟的一种:网关说要冷却五分钟,二十秒后再敲必然又是一个
+ * 429(有的服务商还会因为早退重试延长封禁),白烧一次往返。要么按它说的等,
+ * 要么就别等 —— 没有中间态。
  */
 const MAX_RETRY_AFTER_S = 20;
 
@@ -1128,7 +1130,13 @@ export class CommentaryGenerator implements CommentaryProvider {
 							? "AI 网关拒绝:请求过于频繁,已被限流(429)"
 							: null;
 		// 带上 status 再抛:外层那条 thinking 降级路径也要靠它认出「重来也没用」。
-		return msg ? Object.assign(new Error(msg), { status }) : null;
+		// **headers 也要带**:流式那条路的 429 就是在这里被重新造成一个新错误的,
+		// 原来那个 SDK 错误上的 Retry-After 一并丢掉的话,retryAfterMs 就永远读不到
+		// ——于是那道「按网关点名的时间回来」只在非流式路上活着,而它本来是为
+		// dashboard 聊天与皮肤生成(全走流式)写的。
+		return msg
+			? Object.assign(new Error(msg), { status, headers: (e as { headers?: unknown })?.headers })
+			: null;
 	}
 
 	/**
@@ -1193,7 +1201,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 		if (typeof raw !== "string" && typeof raw !== "number") return null;
 		const seconds = Number(raw);
 		if (!Number.isFinite(seconds) || seconds < 0) return null;
-		return Math.min(seconds, MAX_RETRY_AFTER_S) * 1000;
+		if (seconds > MAX_RETRY_AFTER_S) return null;
+		return seconds * 1000;
 	}
 
 	private sanitizeErr(e: unknown): string {
