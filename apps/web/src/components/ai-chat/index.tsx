@@ -664,7 +664,12 @@ export function ChatPage() {
 								    `prompt`(一整段自然语言),而认技能靠的是「整条输入恰好等于
 								    cmd」—— `mode` 在这条路上根本传不出去,点下去就是在只读的聊天
 								    窗口里说了句「帮我做套皮肤」,女仆答应下来然后什么也做不出来。
-								    进工坊的正经入口是侧栏那颗「新建皮肤工坊」。 */}
+								    进工坊的正经入口是侧栏那颗「新建皮肤工坊」。
+
+								    这道 filter 是**有意保留**的(主人 2026-08-20 拍板),不是没人
+								    修根:把 onClick 改成 submit(s.cmd) 就能让 mode 传出去,代价是
+								    空态多一枚「做皮肤」胶囊。那是产品决定,别当清理项顺手做掉 ——
+								    chat-mode.test.tsx 里两条测试钉着这个行为。 */}
 								{AI_SKILLS.filter((s) => !s.mode).map((s) => {
 									const Glyph = Icon[s.icon];
 									return (
