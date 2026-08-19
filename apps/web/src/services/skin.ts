@@ -205,8 +205,12 @@ function hooksWithDecoration(css: string): string[] {
  * 清洗层已经替新皮肤补了这两句,但**存盘的是清洗后的产物** —— 已经装在主人机器上的
  * 皮肤不会再过一遍清洗。所以注入层也设同一道闸,存量皮肤刷一下页面就好。
  *
- * 两处摆位都有讲究:
- * - 伪元素那句**后置**。`z-index` 在白名单里、皮肤写得出来,只有排在它后面才压得住。
+ * 三处讲究:
+ * - 伪元素那句**后置 + `!important`**。光靠后置只赢得了同特异性的:皮肤写
+ *   `[data-bn="card"]:hover::after{z-index:9}` 就比这句多一个伪类,排多后面都压不住。
+ *   `!important` 无视特异性,而皮肤自己的 `!important` 已经在 {@link stripImportant}
+ *   里摘干净了 —— 这一句于是必胜。宿主那句**不能**跟着加:`!important` 声明的层序
+ *   是反的,加了 components 层的 `position:relative` 就会反过来顶掉顶栏的 sticky。
  * - 宿主那句**包在 `@layer components` 里**。顶栏是 `.bn-glass-strong` + Tailwind 的
  *   `sticky`(在 `@layer utilities`),而层的比较发生在特异性**之前**、无层 author 样式
  *   永远赢 —— 裸着写这句 `position:relative` 就会把顶栏的 `position:sticky` 顶掉。
@@ -217,7 +221,21 @@ function decorationGuardCss(css: string): string {
 	if (hosts.length === 0) return "";
 	const hostRules = hosts.map((sel) => `${sel}{position:relative;isolation:isolate}`).join("");
 	const pseudos = hosts.flatMap((sel) => [`${sel}::before`, `${sel}::after`]).join(",");
-	return `@layer components{${hostRules}}\n${pseudos}{pointer-events:none;z-index:-1}`;
+	return `@layer components{${hostRules}}\n${pseudos}{pointer-events:none!important;z-index:-1!important}`;
+}
+
+/**
+ * 摘掉皮肤自己的 `!important`。
+ *
+ * 服务端清洗层已经这么干了,但**存盘的是当时那一版清洗的产物** —— 早于那条规矩
+ * 装上的皮肤仍带着 `!important`,它会压过上面那两句硬规矩(那才是它们要拦的东西)。
+ * 注入层再摘一遍,存量皮肤刷一下页面就好。
+ *
+ * 前瞻限定在声明结尾,`content:"读作!important"` 这种字符串字面量不受影响 ——
+ * 那里的 `!important` 后面跟的是引号,不是 `;` 或 `}`。
+ */
+function stripImportant(css: string): string {
+	return css.replace(/!\s*important(?=\s*[;}])/gi, "");
 }
 
 /** 顶层共用 + 当前模式追加(后到的覆盖先到的),输出已完成 hook 翻译。 */
@@ -225,7 +243,7 @@ export function composeSkinCss(manifest: SkinManifest, mode: "light" | "dark"): 
 	const parts = [manifest.css, manifest.modes[mode]?.css].filter(
 		(s): s is string => typeof s === "string" && s !== "",
 	);
-	const css = translateSkinCssHooks(parts.join("\n"));
+	const css = stripImportant(translateSkinCssHooks(parts.join("\n")));
 	const guard = decorationGuardCss(css);
 	return guard === "" ? css : `${css}\n${guard}`;
 }

@@ -311,6 +311,52 @@ describe("自定义 CSS:hook 翻译与合成", () => {
 		expect(css).toContain('[data-bn~="btn"]{position:relative;isolation:isolate}');
 	});
 
+	it("皮肤把 z-index 写在特异性更高的选择器上 → 这道闸照样压得住", () => {
+		// 后置只赢得了**同特异性**的那些。`:hover::after` 比闸多一个伪类,排在多后面
+		// 都白搭 —— 所以闸带 `!important`,它不比特异性。
+		const css = composeSkinCss(
+			{
+				schemaVersion: 1,
+				name: "t",
+				css: '[data-bn="glass"]:hover::after{content:"";position:absolute;inset:0;z-index:9}',
+				modes: { light: {} },
+			},
+			"light",
+		);
+		expect(css).toContain("pointer-events:none!important");
+		expect(css).toContain("z-index:-1!important");
+	});
+
+	it("存量皮肤自带的 !important 一律摘掉 —— 那正是这道闸要拦的东西", () => {
+		// 服务端清洗层现在会摘,但**存盘的是当时那一版清洗的产物**:早于那条规矩装上的
+		// 皮肤仍带着它,不摘的话闸的 `!important` 跟它比特异性,又输回去了。
+		const css = composeSkinCss(
+			{
+				schemaVersion: 1,
+				name: "t",
+				css: '[data-bn="glass"]::before{content:"";position:absolute;inset:0;z-index:9 !important}',
+				modes: { light: {} },
+			},
+			"light",
+		);
+		expect(css).not.toContain("9 !important");
+		expect(css).toContain("z-index:9");
+		expect(css).toContain("z-index:-1!important");
+	});
+
+	it("摘 !important 不动字符串字面量里的那几个字", () => {
+		const css = composeSkinCss(
+			{
+				schemaVersion: 1,
+				name: "t",
+				css: '[data-bn="glass"]::before{content:"!important"}',
+				modes: { light: {} },
+			},
+			"light",
+		);
+		expect(css).toContain('content:"!important"');
+	});
+
 	it("皮肤压根没写伪元素 → 不白搭这一段", () => {
 		const css = composeSkinCss(
 			{ schemaVersion: 1, name: "t", css: '[data-bn="btn"]{opacity:0.9}', modes: { light: {} } },
