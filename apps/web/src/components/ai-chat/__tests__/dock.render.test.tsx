@@ -578,6 +578,7 @@ describe("AiChatDock — 工具调用小条", () => {
 		args,
 	});
 	const end = (id: string, ok: boolean) => ({ phase: "end", id, ok });
+	const progress = (id: string, chars: number) => ({ phase: "progress", id, chars });
 
 	it("工具一开跑就冒出一条小条,正文一个字都还没到", async () => {
 		H.toolEvents = [start("0-0", "list_subscriptions")];
@@ -606,6 +607,29 @@ describe("AiChatDock — 工具调用小条", () => {
 		await release();
 		await waitFor(() => expect(chips()[0]?.dataset.state).toBe("failed"));
 		expect(chips()[0]?.textContent).toContain("查看直播状态");
+	});
+
+	it("进度长在小条上 —— 一趟几分钟的活儿不能只有一个转圈", async () => {
+		// 做一套皮肤要几分钟,而工具轮不产生正文:没有这个数字,主人只能盯着一个
+		// 转圈猜她是在写还是已经死了。
+		H.toolEvents = [start("0-0", "list_subscriptions"), progress("0-0", 860)];
+		await typeAndSend("我订了谁");
+		await release();
+		await waitFor(() => expect(chips()).toHaveLength(1));
+		await release();
+		await waitFor(() => expect(chips()[0]?.textContent).toContain("860"));
+		// 报进度不等于收尾 —— 还在跑。
+		expect(chips()[0]?.dataset.state).toBe("running");
+	});
+
+	it("收了尾就不再挂着进度 —— 完成了说完成,不是「已写 860 字」", async () => {
+		H.toolEvents = [start("0-0", "list_subscriptions"), progress("0-0", 860), end("0-0", true)];
+		await typeAndSend("我订了谁");
+		await release();
+		await release();
+		await release();
+		await waitFor(() => expect(chips()[0]?.dataset.state).toBe("ok"));
+		expect(chips()[0]?.textContent).not.toContain("860");
 	});
 
 	it("入参带进小条 —— 「搜了什么」比「搜过」有用得多", async () => {

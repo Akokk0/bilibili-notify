@@ -112,6 +112,11 @@ export interface ToolChipData {
 	name: string;
 	args: Record<string, string>;
 	ok?: boolean;
+	/**
+	 * 还在跑时的进度:已经产出多少字符。只有肯报进度的慢工具才有(做皮肤那种一趟
+	 * 几分钟的);收了尾就不再显示 —— 那时该说的是成败,不是「已写 860 字」。
+	 */
+	progress?: number;
 	/** `web_search` 专属:搜到的来源(标题 + 链接),画「来源」折叠列表。 */
 	sources?: readonly { title: string; url: string; siteName?: string }[];
 }
@@ -501,6 +506,8 @@ function ToolChips({ traces }: { traces: readonly ToolChipData[] }) {
 			{traces.map((t, i) => {
 				const state = t.ok === undefined ? "running" : t.ok ? "ok" : "failed";
 				const label = toolLabel(t.name, t.args);
+				// 只在跑着的时候报数:收了尾还挂着字数,主人会以为它卡在那儿了。
+				const progress = state === "running" && t.progress ? `已写 ${t.progress} 字` : null;
 				return (
 					<span
 						// 同名工具在一轮里可能被调两次(查两个 UP),name 单独当不了 key。
@@ -508,7 +515,7 @@ function ToolChips({ traces }: { traces: readonly ToolChipData[] }) {
 						key={`${t.name}-${i}`}
 						data-testid="tool-trace"
 						data-state={state}
-						title={`${label} · ${STATE_TEXT[state]}`}
+						title={`${label} · ${progress ?? STATE_TEXT[state]}`}
 						className="bn-glass-chip flex max-w-full items-center gap-1.5 rounded-[13px] px-2.25 py-0.75 text-[11.5px] text-bn-text-tertiary"
 					>
 						<span
@@ -526,6 +533,9 @@ function ToolChips({ traces }: { traces: readonly ToolChipData[] }) {
 						{/* 状态只靠图标和颜色区分,读屏器看不见 —— 靠上面那个 title
 						    把它念出来(图标本身是 aria-hidden 的)。 */}
 						<span className="truncate">{label}</span>
+						{/* 单独一格、不参与 truncate:长入参把标签挤掉是可以的,把「她还
+						    活着」这个信号挤掉不行。 */}
+						{progress ? <span className="shrink-0 tabular-nums opacity-70">{progress}</span> : null}
 					</span>
 				);
 			})}

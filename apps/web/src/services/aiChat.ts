@@ -106,13 +106,20 @@ export function createSseParser(): (chunk: string) => SseFrame[] {
 }
 
 /**
- * 一次工具调用的两拍,与服务端 `event: tool` 的载荷同形。
+ * 一次工具调用的几拍,与服务端 `event: tool` 的载荷同形。
  *
- * 工具轮不产生正文,所以那几秒在界面上跟「模型卡住了」长得一模一样 —— 这两拍
- * 就是把那段空白讲出来。`end` 靠 `id` 认回自己的 `start`。
+ * 工具轮不产生正文,所以那几秒在界面上跟「模型卡住了」长得一模一样 —— 这几拍
+ * 就是把那段空白讲出来。`progress` / `end` 都靠 `id` 认回自己的 `start`。
  */
 export type ChatToolEvent =
 	| { phase: "start"; id: string; name: string; args: Record<string, string> }
+	| {
+			/** 慢工具的活口:start 与 end 之间可以来任意多拍,也可以一拍都没有。 */
+			phase: "progress";
+			id: string;
+			/** 这个工具到此刻已经产出多少字符。 */
+			chars: number;
+	  }
 	| {
 			phase: "end";
 			id: string;

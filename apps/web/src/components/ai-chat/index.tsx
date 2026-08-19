@@ -357,7 +357,7 @@ export function ChatPage() {
 						// 女仆做完一套皮肤(很可能顺手已经替主人换上了)—— 服务端那边
 						// 已经落盘,界面得自己去问一声,否则她说「换好啦」而屏幕不动。
 						// 只认做成了的:白拉一趟没意义,还会把失败演成成功。
-						else if (ev.ok && toolNames.get(ev.id) === CREATE_SKIN_TOOL) {
+						else if (ev.phase === "end" && ev.ok && toolNames.get(ev.id) === CREATE_SKIN_TOOL) {
 							void syncActiveSkinToStore().catch(() => {
 								// 拉失败就维持现状:皮肤已经在库里了,主人去皮肤页照样看得到。
 							});
@@ -367,6 +367,13 @@ export function ChatPage() {
 							if (!p) return p; // 已经切走 / 撤掉了,这一拍没人要
 							if (ev.phase === "start") {
 								return { ...p, tools: [...p.tools, { id: ev.id, name: ev.name, args: ev.args }] };
+							}
+							// 慢工具的进度。只更新数字,状态仍是「在跑」—— 报进度不是收尾。
+							if (ev.phase === "progress") {
+								return {
+									...p,
+									tools: p.tools.map((t) => (t.id === ev.id ? { ...t, progress: ev.chars } : t)),
+								};
 							}
 							return {
 								...p,
