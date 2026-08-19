@@ -371,6 +371,16 @@ export interface CommentaryGeneratorOptions {
 }
 
 /**
+ * 进度回调的步长(字符)。
+ *
+ * 每来一片就报一次的话,这一个数字会一路放大成「每个 token 一帧 SSE + 一次聊天
+ * 页全量重渲」,而一趟皮肤生成有几千片。界面上那个数字过千之后本来就只显示到
+ * 0.1k(见 messages.tsx 的 formatChars),也就是每 100 字才动一格 —— 按同一个
+ * 粒度报,主人看到的东西不变,帧数少一到两个数量级。
+ */
+const PROGRESS_STEP_CHARS = 100;
+
+/**
  * 无状态多轮的可选项 —— {@link CommentaryGenerator.chatStateless}、
  * {@link CommentaryGenerator.chatStatelessStream} 与内部实现**共用这一份**。
  *
@@ -1028,15 +1038,17 @@ export class CommentaryGenerator implements CommentaryProvider {
 		system: string,
 		user: string,
 		/**
-		 * 已经吐出来多少字符,每来一片报一次。给「这一趟要几分钟」的调用一条进度
-		 * 出口 —— 皮肤生成期间界面上原本什么都没有,跟卡死长得一模一样。
+		 * 已经吐出来多少字符,每 {@link PROGRESS_STEP_CHARS} 字报一次。给「这一趟要
+		 * 几分钟」的调用一条进度出口 —— 皮肤生成期间界面上原本什么都没有,跟卡死
+		 * 长得一模一样。
 		 */
 		onProgress?: (chars: number) => void,
 	): Promise<string> {
 		let chars = 0;
+		let reported = 0;
 		// 无条件走流式(传了 onDelta 就是流式):非流式时网关要整份生成完才回响应头,
 		// SDK 那道闸于是压满全程 —— 一份 skin.json 写三分钟就必然被误杀。
-		return this.callAPI(
+		const result = await this.callAPI(
 			system,
 			[{ role: "user", content: user }],
 			undefined,
@@ -1044,9 +1056,15 @@ export class CommentaryGenerator implements CommentaryProvider {
 			{ timeoutMs: STRUCTURED_TIMEOUT_MS },
 			(text) => {
 				chars += text.length;
+				if (chars - reported < PROGRESS_STEP_CHARS) return;
+				reported = chars;
 				onProgress?.(chars);
 			},
 		);
+		// 收尾补一次准数:留在最后一格里的零头也要算上,而且短回复(没跨过一格)
+		// 不至于一次进度都没报过。
+		if (chars > reported) onProgress?.(chars);
+		return result;
 	}
 
 	async summarizeTitle(exchange: readonly ConversationMessage[]): Promise<string> {

@@ -1587,10 +1587,22 @@ describe("CommentaryGenerator.generateRaw(无人格结构化生成)", () => {
 
 	it("按累计字符数报进度 —— 主人能看见她在写", async () => {
 		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(
+			streamOf([textChunk("a".repeat(100)), textChunk("b".repeat(100))]),
+		);
+		const seen: number[] = [];
+		await gen.generateRaw("S", "U", (chars) => seen.push(chars));
+		expect(seen).toEqual([100, 200]);
+	});
+
+	it("不逐片报 —— 一片一帧会一路放大成聊天页的全量重渲", async () => {
+		// 界面上那个数字过千之后只显示到 0.1k,每 100 字报一次,主人看到的不变。
+		// 收尾那一次补的是零头,短回复也就不至于一次都没报过。
+		const { gen } = makeGen();
 		oai.create.mockResolvedValueOnce(streamOf([textChunk("12345"), textChunk("678")]));
 		const seen: number[] = [];
 		await gen.generateRaw("S", "U", (chars) => seen.push(chars));
-		expect(seen).toEqual([5, 8]);
+		expect(seen).toEqual([8]);
 	});
 
 	it("兜底死线放到 300s,而且**不**让 SDK 偷偷重试", async () => {
