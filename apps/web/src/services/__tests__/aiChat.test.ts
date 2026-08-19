@@ -5,6 +5,7 @@
  * 到了当天下午仍该是「今天」,而不是因为过了 24 小时就掉进「昨天」。
  */
 
+import type { AiConversationMetaDTO } from "@bilibili-notify/contract";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { createSseParser, groupConversations, groupLabel, sendChatMessage } from "../aiChat";
 
@@ -196,12 +197,14 @@ describe("groupLabel", () => {
 });
 
 describe("groupConversations", () => {
-	const meta = (id: string, updatedAt: string) => ({
+	const meta = (id: string, updatedAt: string): AiConversationMetaDTO => ({
 		id,
 		title: id,
 		createdAt: updatedAt,
 		updatedAt,
 		messageCount: 2,
+		mode: "chat",
+		persona: true,
 	});
 
 	it("按标签成组,组内保持服务端给的倒序", () => {

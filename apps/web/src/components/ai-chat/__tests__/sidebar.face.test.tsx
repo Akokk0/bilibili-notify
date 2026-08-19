@@ -24,7 +24,16 @@ vi.mock("../../../services/api", () => ({
 
 const AT = "2026-08-19T00:00:00.000Z";
 function conv(over: Partial<AiConversationMetaDTO>): AiConversationMetaDTO {
-	return { id: "x", title: "会话", createdAt: AT, updatedAt: AT, messageCount: 2, ...over };
+	return {
+		id: "x",
+		title: "会话",
+		createdAt: AT,
+		updatedAt: AT,
+		messageCount: 2,
+		mode: "chat",
+		persona: true,
+		...over,
+	};
 }
 
 function mount(props: {

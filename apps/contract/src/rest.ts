@@ -364,13 +364,17 @@ export interface AiConversationMetaDTO {
 	createdAt: string;
 	updatedAt: string;
 	messageCount: number;
-	/** 见 {@link AiChatMode}。缺失(老会话)按 `chat` 算。 */
-	mode?: AiChatMode;
 	/**
-	 * 带不带女仆人格。缺失(老会话)按 `true` 算 —— 那正是它们一直以来的样子。
-	 * 皮肤工坊那一档本来就没有人格,这个字段在那儿不起作用。
+	 * 见 {@link AiChatMode}。**必填** —— 老会话文件里没有这个字段,但缺省是在读盘
+	 * 那一处补齐的(见 conversation-store),wire 上永远带着。契约描述的是线上真会
+	 * 出现的形状,把「可能缺」写进来只会让边界另一侧再各判一遍。
 	 */
-	persona?: boolean;
+	mode: AiChatMode;
+	/**
+	 * 带不带女仆人格。同 `mode`,缺省在读盘那一处补齐(老会话按 `true` 算,那正是
+	 * 它们一直以来的样子)。皮肤工坊那一档本来就没有人格,这个字段在那儿不起作用。
+	 */
+	persona: boolean;
 	/**
 	 * 标题是否已由 AI 起过。缺失(旧会话)按 false 算 —— 前端据此决定要不要去要
 	 * 一个标题,所以「不知道」必须落在「还没起过」这一边,否则老会话一个都轮不上。

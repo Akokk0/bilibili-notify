@@ -179,8 +179,8 @@ export function ChatSidebar(props: ChatSidebarProps) {
  *
  * 两个字段缺失都按默认算(老会话文件里没有它们),与服务端读盘时补的那套默认同口径。
  */
-function ConversationLabel({ mode, persona }: { mode?: AiChatMode; persona?: boolean }) {
-	const text = mode === "skin" ? "工坊" : persona === false ? "无人格" : null;
+function ConversationLabel({ mode, persona }: { mode: AiChatMode; persona: boolean }) {
+	const text = mode === "skin" ? "工坊" : persona ? null : "无人格";
 	if (!text) return null;
 	return (
 		<span
