@@ -1085,6 +1085,98 @@ describe("CommentaryGenerator.chatStatelessStream — 真流式", () => {
 		).rejects.toThrow("connection reset");
 	});
 
+	/**
+	 * 首字节之后的看门狗。
+	 *
+	 * SDK 的 `timeout` 靠 `setTimeout(abort)` + fetch resolve 时 `clearTimeout` 实现
+	 * (`openai/core.js:386`),而 **fetch 在响应头到达时就 resolve** —— 流式一开,
+	 * 那道闸当场失效,后面整段生成没有任何死线,模型 hang 住就是永远转圈。
+	 *
+	 * 所以死线得换个问法:**慢不算错,卡住才算错**。
+	 */
+	const hangingStream = (opts?: { signal?: AbortSignal }, lead?: string) => ({
+		async *[Symbol.asyncIterator]() {
+			if (lead) yield textChunk(lead);
+			// 真 SDK 在 signal abort 时就是这么炸的。
+			await new Promise((_res, rej) => {
+				opts?.signal?.addEventListener("abort", () => rej(new Error("Request was aborted.")));
+			});
+		},
+	});
+
+	it("流开了之后卡住 —— 静默超过看门狗就断,而且只发一次", async () => {
+		vi.useFakeTimers();
+		try {
+			const { gen } = makeGen({ provider: "siliconflow", enableThinking: false });
+			oai.create.mockImplementation(async (_p: unknown, opts?: { signal?: AbortSignal }) =>
+				hangingStream(opts, "开头"),
+			);
+			const caught = gen
+				.chatStatelessStream([{ role: "user", content: "x" }], {
+					onDelta: () => {},
+				})
+				.then(
+					() => null,
+					(e: Error) => e,
+				);
+			await vi.advanceTimersByTimeAsync(70_000);
+			expect((await caught)?.message).toMatch(/卡住|超时/);
+			// 卡住和超时同类:换个姿势重来一样会卡。
+			expect(oai.create).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("第一个字都没来就卡住 —— 同样断,不回落非流式", async () => {
+		vi.useFakeTimers();
+		try {
+			const { gen } = makeGen({ provider: "siliconflow", enableThinking: false });
+			oai.create.mockImplementation(async (_p: unknown, opts?: { signal?: AbortSignal }) =>
+				hangingStream(opts),
+			);
+			const caught = gen
+				.chatStatelessStream([{ role: "user", content: "x" }], {
+					onDelta: () => {},
+				})
+				.then(
+					() => null,
+					(e: Error) => e,
+				);
+			await vi.advanceTimersByTimeAsync(70_000);
+			expect((await caught)?.message).toMatch(/卡住|超时/);
+			expect(oai.create).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("每来一片就重新计时 —— 慢不算卡住", async () => {
+		// 片与片之间各等 40s,总共 120s 早就超过看门狗那一档,但从没静默满一整档。
+		// 皮肤生成正是这个形状:很长,但一直在出字。
+		vi.useFakeTimers();
+		try {
+			const { gen } = makeGen();
+			oai.create.mockImplementation(async () => ({
+				async *[Symbol.asyncIterator]() {
+					for (const t of ["一", "二", "三"]) {
+						await new Promise((res) => setTimeout(res, 40_000));
+						yield textChunk(t);
+					}
+				},
+			}));
+			const done = gen.chatStatelessStream([{ role: "user", content: "x" }], {
+				onDelta: () => {},
+			});
+			await vi.advanceTimersByTimeAsync(200_000);
+			expect(await done).toBe("一二三");
+			// 收尾要把看门狗撤掉,别把定时器漏在外面。
+			expect(vi.getTimerCount()).toBe(0);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("空历史 → 直接抛,与 chatStateless 同约定", async () => {
 		const { gen } = makeGen();
 		await expect(gen.chatStatelessStream([], { onDelta: () => {} })).rejects.toThrow(
@@ -1465,7 +1557,7 @@ describe("CommentaryGenerator — ②8 chat 串行化 / :384 脱敏 (P2)", () =>
 describe("CommentaryGenerator.generateRaw(无人格结构化生成)", () => {
 	it("system 原样直达、不叠人格/场景、不挂工具;返回正文", async () => {
 		const { gen } = makeGen();
-		oai.create.mockResolvedValueOnce(msgResp('{"a":1}'));
+		oai.create.mockResolvedValueOnce(streamOf([textChunk('{"a":1}')]));
 		const out = await gen.generateRaw("RAW_SYSTEM", "RAW_USER");
 		expect(out).toBe('{"a":1}');
 		const params = oai.create.mock.calls.at(-1)?.[0] as {
@@ -1477,11 +1569,28 @@ describe("CommentaryGenerator.generateRaw(无人格结构化生成)", () => {
 		expect(params.tools).toBeUndefined();
 	});
 
-	it("死线放宽到 300s,而且**不**让 SDK 偷偷重试", async () => {
-		// 一份 skin.json 是一口气吐完的 3–6KB JSON,聊天那档 120s 根本不够;而 SDK
-		// 默认 maxRetries=2 会把任何一次超时白等成三倍 —— 慢是常态时,重试只是等更久。
+	it("走流式 —— 别让整段生成压在一道死线上", async () => {
+		// 非流式时网关要整份生成完才回响应头,SDK 那道闸于是压满全程;流式一开,
+		// 首字节几秒就到,剩下的交给分片看门狗。
 		const { gen } = makeGen();
-		oai.create.mockResolvedValueOnce(msgResp("{}"));
+		oai.create.mockResolvedValueOnce(streamOf([textChunk('{"a"'), textChunk(":1}")]));
+		expect(await gen.generateRaw("S", "U")).toBe('{"a":1}');
+		expect(createParams(0)).toMatchObject({ stream: true });
+	});
+
+	it("按累计字符数报进度 —— 主人能看见她在写", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(streamOf([textChunk("12345"), textChunk("678")]));
+		const seen: number[] = [];
+		await gen.generateRaw("S", "U", (chars) => seen.push(chars));
+		expect(seen).toEqual([5, 8]);
+	});
+
+	it("兜底死线放到 300s,而且**不**让 SDK 偷偷重试", async () => {
+		// 走了流式之后,SDK 这道闸只管到响应头 —— 剩下的交给分片看门狗。留着它是
+		// 兜「网关连响应头都不给」那一种死法。maxRetries 归零则是因为重试改不了慢。
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(streamOf([textChunk("{}")]));
 		await gen.generateRaw("S", "U");
 		expect(oai.ctorArgs.at(-1)).toMatchObject({ timeout: 300_000, maxRetries: 0 });
 	});

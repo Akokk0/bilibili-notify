@@ -47,12 +47,25 @@ const TITLE_TIMEOUT_MS = 20_000;
  * 结构化生成({@link CommentaryGenerator.generateRaw})的硬超时 —— **刻意远大于
  * 聊天那档 120s**。
  *
- * 它和聊天/点评的形状根本不同:那边是流式,首字节几秒内就到,120s 只用来兜「模型
- * 卡死」;这边是**非流式一口气吐一份 3–6KB 的 skin.json**,整份生成完才回第一个
- * 字节,计时从头压到尾。真机上(2026-08-19)硅基流动 + Kimi 就是没能在 120s 内吐完,
- * 主人等了 12 分钟只等来一句 Request timed out.。
+ * 走了流式之后它只管到**响应头**(见 {@link STREAM_IDLE_TIMEOUT_MS} 里那段机制),
+ * 是兜「网关连响应头都不给」的那一种死法;真正看着生成的是分片看门狗。放这么宽是
+ * 因为这条路的调用本来就长:真机上(2026-08-19)硅基流动 + Kimi 写一份 skin.json
+ * 没能在 120s 内吐完,而当时它还是非流式 —— 整份生成完才回响应头,那道闸于是压满
+ * 全程,主人等了 12 分钟只等来一句 Request timed out.。
  */
 const STRUCTURED_TIMEOUT_MS = 300_000;
+
+/**
+ * 流式的**唯一**死线:两片之间最多静默多久。
+ *
+ * SDK 的 `timeout` 靠 `setTimeout(abort)` + fetch resolve 时 `clearTimeout` 实现
+ * (`openai/core.js:386`),而 fetch 在**响应头**到达时就 resolve —— 流一开那道闸
+ * 当场失效,后面整段生成没有任何死线,模型 hang 住就是永远转圈。
+ *
+ * 换个问法就对了:**慢不算错,卡住才算错**。一份 skin.json 要写三分钟很正常,
+ * 但一分钟不吐一个字一定是死了。SDK 那道闸于是退化成「连响应头都不给」的兜底。
+ */
+const STREAM_IDLE_TIMEOUT_MS = 60_000;
 /** 侧栏一行放得下的字数,超了截断加省略号。 */
 const TITLE_MAX_CHARS = 16;
 const TITLE_PROMPT = [
@@ -985,10 +998,29 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 * 不落会话历史。「要一份 JSON,不要女仆口癖」的场景用它(皮肤 AI 编辑等);
 	 * 网关/方言/思考参数与其他调用走同一条 callAPI。
 	 */
-	async generateRaw(system: string, user: string): Promise<string> {
-		return this.callAPI(system, [{ role: "user", content: user }], undefined, undefined, {
-			timeoutMs: STRUCTURED_TIMEOUT_MS,
-		});
+	async generateRaw(
+		system: string,
+		user: string,
+		/**
+		 * 已经吐出来多少字符,每来一片报一次。给「这一趟要几分钟」的调用一条进度
+		 * 出口 —— 皮肤生成期间界面上原本什么都没有,跟卡死长得一模一样。
+		 */
+		onProgress?: (chars: number) => void,
+	): Promise<string> {
+		let chars = 0;
+		// 无条件走流式(传了 onDelta 就是流式):非流式时网关要整份生成完才回响应头,
+		// SDK 那道闸于是压满全程 —— 一份 skin.json 写三分钟就必然被误杀。
+		return this.callAPI(
+			system,
+			[{ role: "user", content: user }],
+			undefined,
+			undefined,
+			{ timeoutMs: STRUCTURED_TIMEOUT_MS },
+			(text) => {
+				chars += text.length;
+				onProgress?.(chars);
+			},
+		);
 	}
 
 	async summarizeTitle(exchange: readonly ConversationMessage[]): Promise<string> {
@@ -1137,20 +1169,67 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 *    (id 只在第一片里出现)。不按 index 累加就会拿到半个函数名,工具永远
 	 *    调不起来 —— 而且不报错,只是安静地什么都没查到。
 	 */
+	private async withStreamWatchdog<T>(
+		run: (signal: AbortSignal, beat: () => void) => Promise<T>,
+	): Promise<T> {
+		const controller = new AbortController();
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		// 每来一片就重新计时。**任何**一片都算数(空 delta、思考、工具分片)——
+		// 证明的是「还活着」,不是「说了人话」:思考模型先想两分钟再开口是常态。
+		const beat = () => {
+			if (timer) clearTimeout(timer);
+			timer = setTimeout(() => controller.abort(), STREAM_IDLE_TIMEOUT_MS);
+		};
+		beat();
+		try {
+			return await run(controller.signal, beat);
+		} catch (e) {
+			// 是我们掐的,就说是我们掐的:SDK 抛出来的是一句 "Request was aborted.",
+			// 照抄给主人等于什么都没说。打上记号是为了别再被当成「换个姿势重来」
+			// 的理由 —— 卡住和超时同类。
+			if (controller.signal.aborted) {
+				throw Object.assign(
+					new Error(`AI 网关卡住:开始回答后 ${STREAM_IDLE_TIMEOUT_MS / 1000} 秒没有新内容,已断开`),
+					{ timedOut: true },
+				);
+			}
+			throw e;
+		} finally {
+			// 正常收尾也要撤 —— 否则一次聊天漏一个定时器在外面。
+			if (timer) clearTimeout(timer);
+		}
+	}
+
 	private async streamOnce(
 		client: OpenAI,
 		params: OpenAI.ChatCompletionCreateParamsStreaming,
 		onDelta: (text: string) => void,
 		onReasoning?: (text: string) => void,
 	): Promise<OpenAI.ChatCompletionMessage> {
-		const stream = await client.chat.completions.create(params);
+		return this.withStreamWatchdog(async (signal, beat) =>
+			this.consumeChatStream(
+				await client.chat.completions.create(params, { signal }),
+				beat,
+				onDelta,
+				onReasoning,
+			),
+		);
+	}
+
+	private async consumeChatStream(
+		stream: Awaited<ReturnType<OpenAI["chat"]["completions"]["create"]>>,
+		beat: () => void,
+		onDelta: (text: string) => void,
+		onReasoning?: (text: string) => void,
+	): Promise<OpenAI.ChatCompletionMessage> {
 		let content = "";
 		// 思考**无条件**累积,不看有没有人听:DeepSeek v4 要求思考 + 工具调用时把
 		// `reasoning_content` 原样回传到后续请求,缺了直接 400 —— 回传是 API 契约,
 		// 不是显示需求。回调才看 onReasoning。
 		let reasoning = "";
 		const slots: Array<{ id: string; name: string; args: string }> = [];
-		for await (const chunk of stream) {
+		for await (const chunk of stream as AsyncIterable<OpenAI.ChatCompletionChunk>) {
+			beat();
 			const delta = chunk.choices?.[0]?.delta;
 			if (!delta) continue;
 			// 首块通常只带 role、没有 content。回调一个空串会让页面白闪一下。
@@ -1578,14 +1657,27 @@ export class CommentaryGenerator implements CommentaryProvider {
 		onDelta: (text: string) => void,
 		onReasoning?: (text: string) => void,
 	): Promise<unknown[]> {
-		const stream = (await client.responses.create({
-			...params,
-			stream: true,
-		} as unknown as Parameters<OpenAI["responses"]["create"]>[0])) as unknown as AsyncIterable<
-			Record<string, unknown>
-		>;
+		return this.withStreamWatchdog(async (signal, beat) => {
+			const stream = (await client.responses.create(
+				{
+					...params,
+					stream: true,
+				} as unknown as Parameters<OpenAI["responses"]["create"]>[0],
+				{ signal },
+			)) as unknown as AsyncIterable<Record<string, unknown>>;
+			return this.consumeResponsesStream(stream, beat, onDelta, onReasoning);
+		});
+	}
+
+	private async consumeResponsesStream(
+		stream: AsyncIterable<Record<string, unknown>>,
+		beat: () => void,
+		onDelta: (text: string) => void,
+		onReasoning?: (text: string) => void,
+	): Promise<unknown[]> {
 		let items: unknown[] | null = null;
 		for await (const ev of stream) {
+			beat();
 			const type = ev.type;
 			if (type === "response.output_text.delta") {
 				if (typeof ev.delta === "string" && ev.delta) onDelta(ev.delta);
