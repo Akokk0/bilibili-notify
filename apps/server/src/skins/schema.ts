@@ -113,6 +113,30 @@ function asRecord(v: unknown): Record<string, unknown> | null {
 		: null;
 }
 
+/**
+ * 「可选数值字段 + 范围校验 + 越界记一条错」—— 壁纸、玻璃、圆角里都是同一套。
+ *
+ * 缺字段与越界都回 `undefined`,调用方只在有值时才写进 out:这几个 out 都用
+ * `Object.keys(out).length > 0` 判空,写一个 `undefined` 进去会让空对象显得非空。
+ */
+function takeNumber(
+	src: Record<string, unknown>,
+	key: string,
+	min: number,
+	max: number,
+	path: string,
+	unit: string,
+	errors: string[],
+): number | undefined {
+	const v = src[key];
+	if (v === undefined) return undefined;
+	if (!numberIn(v, min, max)) {
+		errors.push(`${path}.${key}: 必须是 ${min}~${max} 的数字${unit}`);
+		return undefined;
+	}
+	return v;
+}
+
 /** 壁纸段解析:整页 wallpaper 与 chat.wallpaper 同构,共用这一把尺。 */
 function parseWallpaper(
 	raw: unknown,
@@ -150,20 +174,10 @@ function parseWallpaper(
 			out.position = wp.position.trim();
 		}
 	}
-	if (wp.overlay !== undefined) {
-		if (!numberIn(wp.overlay, 0, 0.8)) {
-			errors.push(`${path}.overlay: 必须是 0~0.8 的数字`);
-		} else {
-			out.overlay = wp.overlay;
-		}
-	}
-	if (wp.blur !== undefined) {
-		if (!numberIn(wp.blur, 0, 40)) {
-			errors.push(`${path}.blur: 必须是 0~40 的数字(px)`);
-		} else {
-			out.blur = wp.blur;
-		}
-	}
+	const overlay = takeNumber(wp, "overlay", 0, 0.8, path, "", errors);
+	if (overlay !== undefined) out.overlay = overlay;
+	const blur = takeNumber(wp, "blur", 0, 40, path, "(px)", errors);
+	if (blur !== undefined) out.blur = blur;
 	return Object.keys(out).length > 0 ? out : undefined;
 }
 
@@ -176,11 +190,12 @@ function parseMode(
 	const mode: SkinMode = {};
 
 	if (raw.colors !== undefined) {
-		if (typeof raw.colors !== "object" || raw.colors === null || Array.isArray(raw.colors)) {
+		const rawColors = asRecord(raw.colors);
+		if (!rawColors) {
 			errors.push(`${path}.colors: 必须是对象`);
 		} else {
 			const colors: Record<string, string> = {};
-			for (const [key, value] of Object.entries(raw.colors)) {
+			for (const [key, value] of Object.entries(rawColors)) {
 				if (!KNOWN_COLOR_KEYS.has(key)) {
 					warnings.push(`${path}.colors.${key}: 不认识的颜色键,已忽略`);
 					continue;
@@ -252,13 +267,8 @@ function parseMode(
 				}
 			}
 			for (const key of ["blur", "strongBlur"] as const) {
-				const v = glass[key];
-				if (v === undefined) continue;
-				if (!numberIn(v, 0, 40)) {
-					errors.push(`${path}.glass.${key}: 必须是 0~40 的数字(px)`);
-				} else {
-					out[key] = v;
-				}
+				const v = takeNumber(glass, key, 0, 40, `${path}.glass`, "(px)", errors);
+				if (v !== undefined) out[key] = v;
 			}
 			if (Object.keys(out).length > 0) mode.glass = out;
 		}
@@ -303,20 +313,10 @@ function parseMode(
 			errors.push(`${path}.radius: 必须是对象`);
 		} else {
 			const out: NonNullable<SkinMode["radius"]> = {};
-			if (radius.card !== undefined) {
-				if (!numberIn(radius.card, 0, 32)) {
-					errors.push(`${path}.radius.card: 必须是 0~32 的数字(px)`);
-				} else {
-					out.card = radius.card;
-				}
-			}
-			if (radius.pill !== undefined) {
-				if (!numberIn(radius.pill, 0, 999)) {
-					errors.push(`${path}.radius.pill: 必须是 0~999 的数字(px)`);
-				} else {
-					out.pill = radius.pill;
-				}
-			}
+			const card = takeNumber(radius, "card", 0, 32, `${path}.radius`, "(px)", errors);
+			if (card !== undefined) out.card = card;
+			const pill = takeNumber(radius, "pill", 0, 999, `${path}.radius`, "(px)", errors);
+			if (pill !== undefined) out.pill = pill;
 			if (Object.keys(out).length > 0) mode.radius = out;
 		}
 	}
