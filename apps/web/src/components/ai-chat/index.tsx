@@ -657,7 +657,12 @@ export function ChatPage() {
 							<div
 								className={`bn-anim-fade-up mt-4 flex-wrap justify-center gap-2 ${skinMode ? "hidden" : "flex"}`}
 							>
-								{AI_SKILLS.map((s) => {
+								{/* 要换副面孔才跑得动的技能**不摆在这里**。胶囊发的是技能的
+								    `prompt`(一整段自然语言),而认技能靠的是「整条输入恰好等于
+								    cmd」—— `mode` 在这条路上根本传不出去,点下去就是在只读的聊天
+								    窗口里说了句「帮我做套皮肤」,女仆答应下来然后什么也做不出来。
+								    进工坊的正经入口是侧栏那颗「新建皮肤工坊」。 */}
+								{AI_SKILLS.filter((s) => !s.mode).map((s) => {
 									const Glyph = Icon[s.icon];
 									return (
 										<button
