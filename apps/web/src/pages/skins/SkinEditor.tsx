@@ -9,6 +9,7 @@ import type {
 import { Btn, ConfirmDialog, DrawerShell, ErrorNote, Toggle } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
+import { Picker } from "../../components/forms";
 import { api } from "../../services/api";
 import { useSkinStore } from "../../store/skin";
 import {
@@ -270,25 +271,18 @@ export function SkinEditor(props: {
 			<div className="flex-1 space-y-3 px-4 py-3">
 				{/* 模式选择与补套 */}
 				<div className="flex flex-wrap items-center gap-1.5">
-					{(["light", "dark"] as const)
-						.filter((k) => draft.modes[k])
-						.map((k) => (
-							<button
-								key={k}
-								type="button"
-								onClick={() => {
-									setModeKey(k);
-									setBokehText((draft.modes[k]?.effects?.bokeh?.colors ?? []).join(", "));
-								}}
-								className={`rounded-bn-pill px-3 py-1 text-[12px] font-semibold transition ${
-									modeKey === k
-										? "bg-bn-pink text-white"
-										: "border border-bn-border text-bn-text-secondary hover:text-bn-text-primary"
-								}`}
-							>
-								{MODE_LABEL[k]}
-							</button>
-						))}
+					{/* 与皮肤库那边的深浅切换是同一个概念,用同一个控件 —— 各画一套的话
+					    两处长得不一样,而且少了 Picker 自带的 aria-pressed。 */}
+					<Picker
+						value={modeKey}
+						onChange={(k) => {
+							setModeKey(k);
+							setBokehText((draft.modes[k]?.effects?.bokeh?.colors ?? []).join(", "));
+						}}
+						options={(["light", "dark"] as const)
+							.filter((k) => draft.modes[k])
+							.map((k) => ({ value: k, label: MODE_LABEL[k] }))}
+					/>
 					{missing ? (
 						<Btn size="sm" variant="outline" onClick={() => setDraft(addMissingMode(draft))}>
 							补一套{MODE_LABEL[missing]}
@@ -347,88 +341,37 @@ export function SkinEditor(props: {
 							className={`${inputCls} resize-y font-mono text-[11px]`}
 						/>
 					</FieldRow>
-					<SelectField
-						label="壁纸图片"
-						value={wp.image ?? ""}
-						isDefault={isDef(wp.image, dm.wallpaper?.image)}
-						onChange={(v) =>
-							v === ""
-								? setSection("wallpaper", undefined)
-								: setSection("wallpaper", { ...wp, image: v })
+					<WallpaperFields
+						imageLabel="壁纸图片"
+						prefix="壁纸"
+						wp={wp}
+						def={dm.wallpaper}
+						assets={assetList}
+						isDef={isDef}
+						onChange={(next) => setSection("wallpaper", next)}
+						afterImage={
+							<FieldRow label="上传图片">
+								<div className="flex items-center gap-2">
+									<input
+										aria-label="上传图片"
+										type="file"
+										accept="image/png,image/jpeg,image/webp"
+										disabled={uploading}
+										onChange={(e) => {
+											const file = e.target.files?.[0];
+											// 输入框清空:同一张图连传两次时 change 不会再触发。
+											e.target.value = "";
+											if (file) uploadAsset(file);
+										}}
+										className="w-full text-[11px] text-bn-text-secondary file:mr-2 file:rounded-md file:border-0 file:bg-bn-surface-muted file:px-2 file:py-1 file:text-[11px] file:text-bn-text-primary"
+									/>
+									{uploading ? (
+										<span className="shrink-0 text-[11px] text-bn-text-secondary">上传中…</span>
+									) : null}
+								</div>
+							</FieldRow>
 						}
-						options={[
-							{ value: "", label: "(不用壁纸)" },
-							...assetList.map((a) => ({ value: a, label: a })),
-						]}
 					/>
-					<FieldRow label="上传图片">
-						<div className="flex items-center gap-2">
-							<input
-								aria-label="上传图片"
-								type="file"
-								accept="image/png,image/jpeg,image/webp"
-								disabled={uploading}
-								onChange={(e) => {
-									const file = e.target.files?.[0];
-									// 输入框清空:同一张图连传两次时 change 不会再触发。
-									e.target.value = "";
-									if (file) uploadAsset(file);
-								}}
-								className="w-full text-[11px] text-bn-text-secondary file:mr-2 file:rounded-md file:border-0 file:bg-bn-surface-muted file:px-2 file:py-1 file:text-[11px] file:text-bn-text-primary"
-							/>
-							{uploading ? (
-								<span className="shrink-0 text-[11px] text-bn-text-secondary">上传中…</span>
-							) : null}
-						</div>
-					</FieldRow>
-					{wp.image ? (
-						<>
-							<SelectField
-								label="壁纸铺法"
-								value={wp.fit ?? ""}
-								isDefault={isDef(wp.fit, dm.wallpaper?.fit)}
-								onChange={(v) =>
-									setSection(
-										"wallpaper",
-										cleanWallpaper({ ...wp, fit: (v || undefined) as typeof wp.fit }),
-									)
-								}
-								options={[
-									{ value: "", label: "默认(cover 铺满)" },
-									{ value: "cover", label: "cover 铺满" },
-									{ value: "contain", label: "contain 完整显示" },
-									{ value: "tile", label: "tile 平铺" },
-								]}
-							/>
-							<TextField
-								label="壁纸位置"
-								value={wp.position ?? ""}
-								isDefault={isDef(wp.position, dm.wallpaper?.position)}
-								placeholder="默认 center;如 center top"
-								onChange={(v) => setSection("wallpaper", cleanWallpaper({ ...wp, position: v }))}
-							/>
-							<RangeField
-								label="壁纸遮罩"
-								min={0}
-								max={0.8}
-								step={0.05}
-								value={wp.overlay}
-								fallback={0}
-								isDefault={isDef(wp.overlay, dm.wallpaper?.overlay)}
-								onChange={(v) => setSection("wallpaper", cleanWallpaper({ ...wp, overlay: v }))}
-							/>
-							<RangeField
-								label="壁纸模糊"
-								min={0}
-								max={40}
-								step={1}
-								value={wp.blur}
-								fallback={0}
-								isDefault={isDef(wp.blur, dm.wallpaper?.blur)}
-								onChange={(v) => setSection("wallpaper", cleanWallpaper({ ...wp, blur: v }))}
-							/>
-						</>
-					) : null}
 				</Fold>
 
 				<Fold title="玻璃面板" defaultOpen>
@@ -563,66 +506,15 @@ export function SkinEditor(props: {
 							className={`${inputCls} resize-y font-mono text-[11px]`}
 						/>
 					</FieldRow>
-					<SelectField
-						label="聊天壁纸"
-						value={chatWp.image ?? ""}
-						isDefault={isDef(chatWp.image, dm.chat?.wallpaper?.image)}
-						onChange={(v) => setChat({ wallpaper: v === "" ? undefined : { ...chatWp, image: v } })}
-						options={[
-							{ value: "", label: "(不用壁纸)" },
-							...assetList.map((a) => ({ value: a, label: a })),
-						]}
+					<WallpaperFields
+						imageLabel="聊天壁纸"
+						prefix="聊天壁纸"
+						wp={chatWp}
+						def={dm.chat?.wallpaper}
+						assets={assetList}
+						isDef={isDef}
+						onChange={(next) => setChat({ wallpaper: next })}
 					/>
-					{chatWp.image ? (
-						<>
-							<SelectField
-								label="聊天壁纸铺法"
-								value={chatWp.fit ?? ""}
-								isDefault={isDef(chatWp.fit, dm.chat?.wallpaper?.fit)}
-								onChange={(v) =>
-									setChat({
-										wallpaper: cleanWallpaper({
-											...chatWp,
-											fit: (v || undefined) as typeof chatWp.fit,
-										}),
-									})
-								}
-								options={[
-									{ value: "", label: "默认(cover 铺满)" },
-									{ value: "cover", label: "cover 铺满" },
-									{ value: "contain", label: "contain 完整显示" },
-									{ value: "tile", label: "tile 平铺" },
-								]}
-							/>
-							<TextField
-								label="聊天壁纸位置"
-								value={chatWp.position ?? ""}
-								isDefault={isDef(chatWp.position, dm.chat?.wallpaper?.position)}
-								placeholder="默认 center;如 center top"
-								onChange={(v) => setChat({ wallpaper: cleanWallpaper({ ...chatWp, position: v }) })}
-							/>
-							<RangeField
-								label="聊天壁纸遮罩"
-								min={0}
-								max={0.8}
-								step={0.05}
-								value={chatWp.overlay}
-								fallback={0}
-								isDefault={isDef(chatWp.overlay, dm.chat?.wallpaper?.overlay)}
-								onChange={(v) => setChat({ wallpaper: cleanWallpaper({ ...chatWp, overlay: v }) })}
-							/>
-							<RangeField
-								label="聊天壁纸模糊"
-								min={0}
-								max={40}
-								step={1}
-								value={chatWp.blur}
-								fallback={0}
-								isDefault={isDef(chatWp.blur, dm.chat?.wallpaper?.blur)}
-								onChange={(v) => setChat({ wallpaper: cleanWallpaper({ ...chatWp, blur: v }) })}
-							/>
-						</>
-					) : null}
 				</Fold>
 
 				<Fold title="圆角与阴影">
@@ -724,7 +616,7 @@ export function SkinEditor(props: {
 						<textarea
 							aria-label="共用 CSS"
 							value={draft.css ?? ""}
-							onChange={(e) => setDraft(withOptionalCss(draft, e.target.value))}
+							onChange={(e) => setDraft(withOptional(draft, "css", e.target.value))}
 							placeholder='如 [data-bn="glass"]:hover { box-shadow: 0 0 24px rgba(251,114,153,0.4); }'
 							rows={6}
 							className={`${inputCls} resize-y font-mono text-[11px]`}
@@ -802,28 +694,106 @@ export function SkinEditor(props: {
 	);
 }
 
-/** manifest 顶层可选字符串字段:空串即删除。 */
-function withOptional(m: SkinManifest, key: "author" | "description", value: string): SkinManifest {
+/** manifest 顶层可选字符串字段(author / description / css):空串即删除。 */
+function withOptional(
+	m: SkinManifest,
+	key: "author" | "description" | "css",
+	value: string,
+): SkinManifest {
 	const next = { ...m };
 	if (value === "") delete next[key];
 	else next[key] = value;
 	return next;
 }
 
-/** 顶层共用 CSS:空串即删除(与 withOptional 同律,类型上分开写)。 */
-function withOptionalCss(m: SkinManifest, value: string): SkinManifest {
-	const next = { ...m };
-	if (value === "") delete next.css;
-	else next.css = value;
-	return next;
-}
-
-/** wallpaper 的 clean:image 在(调用方保证)时其余空字段照删。 */
-function cleanWallpaper(wp: NonNullable<SkinMode["wallpaper"]>): SkinMode["wallpaper"] {
-	return cleanSection({ ...wp });
-}
-
 // ---- 局部小控件 -----------------------------------------------------------
+
+const WALLPAPER_FIT_OPTIONS = [
+	{ value: "", label: "默认(cover 铺满)" },
+	{ value: "cover", label: "cover 铺满" },
+	{ value: "contain", label: "contain 完整显示" },
+	{ value: "tile", label: "tile 平铺" },
+];
+
+/**
+ * 一组壁纸字段:图片 + (选了图才出现的)铺法 / 位置 / 遮罩 / 模糊。
+ *
+ * 整页壁纸与聊天壁纸吃的是同一个 `SkinWallpaper`,两处只差标签前缀、比较基准与
+ * 落点。抄成两份的话,给 schema 加一个壁纸字段就得记得改两处 —— 漏一处的症状是
+ * 「整页调得动、聊天调不动」,而这是本仓明令禁止的半吊子(编辑器 = 能力全集)。
+ */
+function WallpaperFields(props: {
+	/** 图片那一行的标签(整页叫「壁纸图片」,聊天叫「聊天壁纸」,不同构)。 */
+	imageLabel: string;
+	/** 其余各行的标签前缀,如「壁纸」→「壁纸铺法」。 */
+	prefix: string;
+	wp: NonNullable<SkinMode["wallpaper"]>;
+	/** 出厂快照里对应的那段,喂「(默认)」标注。 */
+	def: SkinMode["wallpaper"];
+	assets: string[];
+	isDef: (cur: string | number | undefined, def: string | number | undefined) => boolean;
+	/** 改完的整段 wallpaper(已 clean);undefined = 这套不要壁纸。 */
+	onChange: (next: SkinMode["wallpaper"]) => void;
+	/** 图片下拉之后插一段 —— 整页那边是「上传图片」那一行。 */
+	afterImage?: ReactNode;
+}) {
+	const { imageLabel, prefix, wp, def, assets, isDef, onChange, afterImage } = props;
+	return (
+		<>
+			<SelectField
+				label={imageLabel}
+				value={wp.image ?? ""}
+				isDefault={isDef(wp.image, def?.image)}
+				onChange={(v) => onChange(v === "" ? undefined : { ...wp, image: v })}
+				options={[
+					{ value: "", label: "(不用壁纸)" },
+					...assets.map((a) => ({ value: a, label: a })),
+				]}
+			/>
+			{afterImage}
+			{wp.image ? (
+				<>
+					<SelectField
+						label={`${prefix}铺法`}
+						value={wp.fit ?? ""}
+						isDefault={isDef(wp.fit, def?.fit)}
+						onChange={(v) =>
+							onChange(cleanSection({ ...wp, fit: (v || undefined) as typeof wp.fit }))
+						}
+						options={WALLPAPER_FIT_OPTIONS}
+					/>
+					<TextField
+						label={`${prefix}位置`}
+						value={wp.position ?? ""}
+						isDefault={isDef(wp.position, def?.position)}
+						placeholder="默认 center;如 center top"
+						onChange={(v) => onChange(cleanSection({ ...wp, position: v }))}
+					/>
+					<RangeField
+						label={`${prefix}遮罩`}
+						min={0}
+						max={0.8}
+						step={0.05}
+						value={wp.overlay}
+						fallback={0}
+						isDefault={isDef(wp.overlay, def?.overlay)}
+						onChange={(v) => onChange(cleanSection({ ...wp, overlay: v }))}
+					/>
+					<RangeField
+						label={`${prefix}模糊`}
+						min={0}
+						max={40}
+						step={1}
+						value={wp.blur}
+						fallback={0}
+						isDefault={isDef(wp.blur, def?.blur)}
+						onChange={(v) => onChange(cleanSection({ ...wp, blur: v }))}
+					/>
+				</>
+			) : null}
+		</>
+	);
+}
 
 function Fold(props: { title: string; defaultOpen?: boolean; children: ReactNode }) {
 	const [open, setOpen] = useState(props.defaultOpen ?? false);
