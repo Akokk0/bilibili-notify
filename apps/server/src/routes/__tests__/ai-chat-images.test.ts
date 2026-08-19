@@ -255,6 +255,76 @@ describe("发图 — 配了视觉模型", () => {
 	});
 });
 
+/**
+ * 历史里的图。
+ *
+ * 拼历史时只带 content,`m.images` 整个被丢掉 —— 女仆不是「忘了」那张图,是**从来
+ * 没看见过**,于是下一句就请主人再传一遍。主人自己传的那张往往正是整段对话的题眼
+ * (做皮肤的参考图、要认的截图),让他一遍遍重传是把最不该重复的一步重复。
+ */
+describe("接着聊 — 上一次的图捎上", () => {
+	it("这一问没带图、历史里有 → 把最近那次的图捎上", async () => {
+		const { app, deps } = await makeDeps({ visionModel: "qwen-vl" });
+		const id = await newConv(app);
+		const img = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		await chat(app, id, { message: "这是什么", images: [img] });
+
+		H.lastImageUrls = null;
+		await chat(app, id, { message: "那按这个配色做一套" });
+
+		expect(H.lastImageUrls).toHaveLength(1);
+		expect(`${H.lastImageUrls?.[0]}`.startsWith("data:image/png;base64,")).toBe(true);
+	});
+
+	it("捎上的图**不**落进这一问的 images —— 那一问并没有真的带图", async () => {
+		// 落盘要如实:记成带了图,删会话时的图片回收、以及重开会话的缩略图都会跟着错。
+		const { app, deps } = await makeDeps({ visionModel: "qwen-vl" });
+		const id = await newConv(app);
+		const img = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		await chat(app, id, { message: "这是什么", images: [img] });
+		await chat(app, id, { message: "接着说" });
+
+		const conv = (await (await app.request(`/conversations/${id}`)).json()) as any;
+		const asks = conv.conversation.messages.filter((m: any) => m.role === "user");
+		expect(asks[0].images).toEqual([img]);
+		expect(asks[1].images ?? []).toEqual([]);
+	});
+
+	it("这一问自己带了图 → 就用新的,不翻旧账", async () => {
+		// 主人重新挑了图,说明他要问的就是这张;把旧图一并端上去只会分散注意力,
+		// 还要多付一份钱。
+		const { app, deps } = await makeDeps({ visionModel: "qwen-vl" });
+		const id = await newConv(app);
+		const older = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		await chat(app, id, { message: "这是什么", images: [older] });
+		const newer = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		await chat(app, id, { message: "那这张呢", images: [newer] });
+
+		expect(H.lastImageUrls).toHaveLength(1);
+	});
+
+	it("只捎**最近**那一次 —— 不是把整段对话的图全端上来", async () => {
+		const { app, deps } = await makeDeps({ visionModel: "qwen-vl" });
+		const id = await newConv(app);
+		const a = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		const b = await saveChatImage(deps.store.bootstrap.dataDir, PNG, "image/png");
+		await chat(app, id, { message: "第一张", images: [a] });
+		await chat(app, id, { message: "第二张", images: [b] });
+
+		H.lastImageUrls = null;
+		await chat(app, id, { message: "接着说" });
+		expect(H.lastImageUrls).toHaveLength(1);
+	});
+
+	it("一张图都没聊过 → 什么都不捎,别凭空造一个 imageUrls", async () => {
+		const { app } = await makeDeps({ visionModel: "qwen-vl" });
+		const id = await newConv(app);
+		await chat(app, id, { message: "在吗" });
+		await chat(app, id, { message: "还在吗" });
+		expect(H.lastImageUrls ?? []).toEqual([]);
+	});
+});
+
 describe("删会话 — 图跟着走", () => {
 	it("删掉带图的会话,它的图从磁盘上消失", async () => {
 		const { app, deps } = await makeDeps({ visionModel: "qwen-vl" });

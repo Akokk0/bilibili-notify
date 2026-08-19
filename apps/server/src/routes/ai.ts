@@ -318,6 +318,31 @@ export function createAiRoute(
 			}
 		}
 
+		/**
+		 * 这一问自己没带图时,**捎上最近那一次的**。
+		 *
+		 * 拼历史只带 content,`m.images` 整个丢掉 —— 女仆不是「忘了」那张图,是从来
+		 * 没看见过,于是下一句就请主人再传一遍。而主人自己传的那张往往正是整段对话的
+		 * 题眼(做皮肤的参考图、要认的截图),让他一遍遍重传是把最不该重复的一步重复。
+		 *
+		 * 只捎最近一次、且只在这一问空手时捎:主人重新挑了图就说明他要问的是新的那张,
+		 * 旧的一并端上去只会分散注意力,还要多付一份钱。捎来的图**不进落盘的 images**
+		 * —— 那一问并没有真的带图,记错了会连累删会话时的图片回收与重开会话的缩略图。
+		 */
+		const carried: string[] = [];
+		if (resolved.length === 0) {
+			// 先找有没有这么一条,再去碰磁盘 —— 一句话都不带图的普通聊天(绝大多数)
+			// 不该为这个功能多走一步,更不该去读它本来用不着的 dataDir。
+			const recent = [...conv.messages].reverse().find((m) => m.images?.length);
+			if (recent?.images?.length) {
+				const dataDir = deps.store.bootstrap.dataDir;
+				for (const id of recent.images) {
+					const url = await readChatImageDataUrl(dataDir, id);
+					if (url) carried.push(url);
+				}
+			}
+		}
+
 		// 先在内存里拼出「历史 + 这一问」交给女仆,**拿到回复之后才落盘**。
 		// 反过来先写用户消息的话,AI 那一跳一失败,磁盘上就留下一个没人回答的
 		// 问题;主人重开会话看到的是自己在自言自语,还得手动删。
@@ -395,7 +420,11 @@ export function createAiRoute(
 				// 聊天的思考设置与引擎(点评/总结)分了家。开关是会话级的,按消息走
 				// 请求体,不带 = 关(配置里已经没有它的位置);等级始终从配置读。
 				reply = await commentary.chatStatelessStream(history, {
-					imageUrls: resolved.length ? resolved.map((r) => r.url) : undefined,
+					imageUrls: resolved.length
+						? resolved.map((r) => r.url)
+						: carried.length
+							? carried
+							: undefined,
 					thinking: {
 						enableThinking: parsed.data.thinking ?? false,
 						thinkingLevel: resolveChatThinkingLevel(deps.store.getGlobals().defaults.ai),
