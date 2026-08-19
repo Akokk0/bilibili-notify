@@ -46,6 +46,7 @@ const H = vi.hoisted(() => ({
 /** {@link ToolTraceEvent} 的测试侧影本 —— 这个包在测试里是 mock 掉的。 */
 type ToolEv =
 	| { phase: "start"; id: string; name: string; args: Record<string, string> }
+	| { phase: "progress"; id: string; chars: number }
 	| {
 			phase: "end";
 			id: string;
@@ -781,6 +782,30 @@ describe("POST /conversations/:id/chat — 联网搜索 flag 与来源", () => {
 		const id = (await readJson(await createConv(app))).conversation.id;
 		await chatDrained(app, id, { message: "1+1", thinking: false });
 		expect(H.lastThinking).toEqual({ enableThinking: false, thinkingLevel: "high" });
+	});
+
+	it("progress 实时转发,但**不**落盘 —— 它是「此刻」的东西", async () => {
+		// 一趟皮肤生成要几分钟,那几分钟里 SSE 上只有这几拍能证明她还活着。但存进
+		// 历史就变成一条过期的数字:重开会话看到「已写 860 字」毫无意义。
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		H.toolEvents = [
+			{ phase: "start", id: "0-0", name: "create_skin", args: { brief: "赛博" } },
+			{ phase: "progress", id: "0-0", chars: 120 },
+			{ phase: "progress", id: "0-0", chars: 860 },
+			{ phase: "end", id: "0-0", ok: true },
+		];
+
+		const events = await chatDrained(app, id, { message: "做套皮肤" });
+		const tools = events.filter((e) => e.event === "tool");
+		expect(tools.map((e) => e.data.phase)).toEqual(["start", "progress", "progress", "end"]);
+		expect(tools[1]?.data).toMatchObject({ chars: 120 });
+
+		const conv = (await readJson(await getConv(app, id))).conversation;
+		expect(conv.messages[1].tools).toEqual([
+			{ name: "create_skin", args: { brief: "赛博" }, ok: true },
+		]);
 	});
 
 	it("web_search 的 end 事件带 sources → SSE 带出去,并随痕迹落盘", async () => {

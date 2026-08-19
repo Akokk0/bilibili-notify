@@ -43,6 +43,8 @@ export interface SkinAiCreateInput {
 	 * 皮肤 —— 这种代价不该由一句措辞兜着。
 	 */
 	wallpaper?: string;
+	/** 设计师吐字的进度,原样交给 {@link runSkinAiRound}。 */
+	onProgress?: (chars: number) => void;
 }
 
 /** 与 edit 同形:成功给清洗后的 manifest + 清洗警告,失败给能转述给主人的错误串。 */
@@ -52,6 +54,7 @@ export async function runSkinAiCreate(input: SkinAiCreateInput): Promise<SkinAiC
 	const assets = [...(input.assets ?? [])];
 	const result = await runSkinAiRound({
 		generateRaw: input.generateRaw,
+		...(input.onProgress ? { onProgress: input.onProgress } : {}),
 		system: buildSkinAiSystemPrompt(assets, "create"),
 		user: `主人想要的皮肤风格:${input.brief}\n\n请据此从零设计一整套,输出完整的 skin.json。`,
 		assets: new Set(assets),

@@ -138,7 +138,12 @@ function extractDynamicText(item: Record<string, any>): string {
  */
 export interface ExtraTool {
 	definition: OpenAI.ChatCompletionTool;
-	execute: (args: Record<string, string>) => Promise<string>;
+	/**
+	 * `onProgress` 是**给慢工具的活口**:工具轮不产生正文,一趟几分钟的活儿在界面上
+	 * 跟卡死长得一模一样。报的是「已经吐了多少字符」这种粗粒度进度 —— 别把工具的
+	 * 中间产物往里塞,那条路会一路流到界面上。不报也行,只是主人得干等。
+	 */
+	execute: (args: Record<string, string>, onProgress?: (chars: number) => void) => Promise<string>;
 }
 
 /**

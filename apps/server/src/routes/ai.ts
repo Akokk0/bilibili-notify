@@ -434,6 +434,9 @@ export function createAiRoute(
 							byId.set(ev.id, slot);
 							return;
 						}
+						// progress 只转发不记账:它是「此刻」的东西,存进历史就是一条过期的
+						// 数字(重开会话看到「已写 860 字」毫无意义)。落盘的痕迹只认收了尾的。
+						if (ev.phase === "progress") return;
 						const slot = byId.get(ev.id);
 						if (slot) {
 							slot.ok = ev.ok;

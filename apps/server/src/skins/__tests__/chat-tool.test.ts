@@ -47,6 +47,31 @@ function toolWith(generateRaw: ReturnType<typeof genOf>) {
 	return firstOf(createSkinChatTools({ skinStore: store, generator: () => ({ generateRaw }) }));
 }
 
+describe("create_skin 的进度", () => {
+	it("设计师吐的字数一路报到执行层 —— 那几分钟里唯一的活口", async () => {
+		// 生成一份 skin.json 要几分钟,而工具轮不产生正文:没有这条通道,界面上
+		// 那几分钟跟「卡死了」长得一模一样。
+		const generateRaw = vi.fn(
+			async (_s: string, _u: string, onProgress?: (chars: number) => void) => {
+				onProgress?.(120);
+				onProgress?.(860);
+				return JSON.stringify(DARK_SKIN);
+			},
+		);
+		const tool = firstOf(
+			createSkinChatTools({ skinStore: store, generator: () => ({ generateRaw }) }),
+		);
+		const seen: number[] = [];
+		await tool.execute({ brief: "暗色霓虹" }, (chars) => seen.push(chars));
+		expect(seen).toEqual([120, 860]);
+	});
+
+	it("没人听进度也照做 —— onProgress 是可选的", async () => {
+		const tool = toolWith(genOf(JSON.stringify(DARK_SKIN)));
+		await expect(tool.execute({ brief: "暗色霓虹" })).resolves.toContain("夜航灯");
+	});
+});
+
 describe("create_skin 工具定义", () => {
 	it("叫 create_skin,收 brief(必填)与 wallpaper / activate(可选)", () => {
 		const def = toolWith(genOf()).definition;

@@ -18,7 +18,11 @@ import { parseSkinManifest } from "./schema.js";
 
 /** 单次调用里 AI 生成器的最小面;engines.commentary 的 generateRaw 即是。 */
 export interface SkinAiGenerator {
-	generateRaw(system: string, user: string): Promise<string>;
+	/**
+	 * `onProgress` 收「已经吐了多少字符」。这一趟要几分钟,而调用它的工具轮不产生
+	 * 正文 —— 不报进度的话,界面上那几分钟跟卡死一模一样。
+	 */
+	generateRaw(system: string, user: string, onProgress?: (chars: number) => void): Promise<string>;
 }
 
 export interface SkinAiEditInput {
@@ -161,14 +165,19 @@ export async function runSkinAiRound(input: {
 	user: string;
 	/** 包内可用资产;manifest 引用了这之外的图 = 拒收。 */
 	assets: Set<string>;
+	/**
+	 * 设计师吐字的进度。两趟**各报各的** —— 字数归零重来看着像倒退,但那正是
+	 * 实情:校验没过的那一份被扔了,现在写的是新的一份。
+	 */
+	onProgress?: (chars: number) => void;
 }): Promise<SkinAiEditResult> {
-	const first = await input.generateRaw(input.system, input.user);
+	const first = await input.generateRaw(input.system, input.user, input.onProgress);
 	const parsed = tryParse(first, input.assets);
 	if (parsed.ok) return parsed;
 
 	// 带错误反馈重试一次 —— 原答也附上,让模型知道自己上次说了什么。
 	const retryUser = `${input.user}\n\n你上次的输出未通过校验:\n${parsed.errors.map((e) => `- ${e}`).join("\n")}\n\n上次输出:\n${first}\n\n请修正后重新输出完整 skin.json,仍然只输出 JSON。`;
-	const second = await input.generateRaw(input.system, retryUser);
+	const second = await input.generateRaw(input.system, retryUser, input.onProgress);
 	return tryParse(second, input.assets);
 }
 

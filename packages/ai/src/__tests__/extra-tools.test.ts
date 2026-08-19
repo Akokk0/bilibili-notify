@@ -139,7 +139,8 @@ describe("chatStatelessStream × 注入工具", () => {
 		});
 
 		expect(reply).toBe("做好啦");
-		expect(tool.execute).toHaveBeenCalledWith({ brief: "暗色赛博" });
+		// 第二个参数是进度口子(见下面那条)—— 接不接由工具自己决定。
+		expect(tool.execute).toHaveBeenCalledWith({ brief: "暗色赛博" }, expect.any(Function));
 		const toolMsg = createParams(1).messages.find((m) => m.role === "tool");
 		expect(String(toolMsg?.content)).toContain("造好了:一个东西");
 	});
@@ -161,6 +162,32 @@ describe("chatStatelessStream × 注入工具", () => {
 			args: { brief: "暗色赛博" },
 		});
 		expect(events[1]).toMatchObject({ phase: "end", ok: true });
+	});
+
+	it("注入工具报进度 → 多出 progress 那几拍,与 start/end 同一个 id", async () => {
+		// 一趟皮肤生成要几分钟,而工具轮**不产生正文** —— 中间一个事件都没有的话,
+		// 界面上跟「卡死了」长得一模一样。进度是这段静默里唯一的活口。
+		oai.create
+			.mockResolvedValueOnce(streamOf([callChunk({ brief: "暗色赛博" })]))
+			.mockResolvedValueOnce(streamOf([textChunk("做好啦")]));
+		const tool = makeTool({
+			execute: vi.fn(async (_args: Record<string, string>, onProgress?: (n: number) => void) => {
+				onProgress?.(120);
+				onProgress?.(860);
+				return "造好了:一个东西";
+			}),
+		});
+		const events: Array<{ phase: string; id: string; chars?: number }> = [];
+		await makeGen().chatStatelessStream(HIST, {
+			onDelta: () => {},
+			onToolEvent: (ev) => events.push(ev as never),
+			extraTools: [tool],
+		});
+
+		expect(events.map((e) => e.phase)).toEqual(["start", "progress", "progress", "end"]);
+		// 界面按 id 认人:一轮里可以同时开好几个工具,进度得落到对的那一条上。
+		expect(new Set(events.map((e) => e.id)).size).toBe(1);
+		expect(events.filter((e) => e.phase === "progress").map((e) => e.chars)).toEqual([120, 860]);
 	});
 
 	it("执行器抛错 → end ok:false,生成不炸,失败当资料回给模型", async () => {

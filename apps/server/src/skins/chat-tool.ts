@@ -198,7 +198,7 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 			},
 		},
 
-		async execute(args) {
+		async execute(args, onProgress) {
 			const brief = (args.brief ?? "").trim();
 			if (!brief) throw new Error("没说要什么样的皮肤,先问清主人想要的风格再来。");
 			if (made >= MAX_CREATES_PER_TURN) {
@@ -222,7 +222,8 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 
 			made++;
 			const result = await runSkinAiCreate({
-				generateRaw: (s, u) => generator.generateRaw(s, u),
+				generateRaw: (s, u, p) => generator.generateRaw(s, u, p),
+				...(onProgress ? { onProgress } : {}),
 				brief,
 				assets: [...assets.keys()],
 				// 主人点名的那张图交由生成层保证落进 manifest —— 设计师漏写过一次,

@@ -145,7 +145,12 @@ interface CallToolOptions {
 	 * 编了个不存在的工具名 —— execToolCall 统一回「未知工具」的失败资料,
 	 * 不必每个调用方自造 throw 桩。
 	 */
-	onToolCall?: (name: string, args: Record<string, string>) => Promise<string>;
+	onToolCall?: (
+		name: string,
+		args: Record<string, string>,
+		/** 慢工具报进度的口子 —— 转发者不必接,接了就会变成 progress 事件。 */
+		onProgress?: (chars: number) => void,
+	) => Promise<string>;
 	onToolEvent?: (ev: ToolTraceEvent) => void;
 	/**
 	 * 联网搜索执行器。给了它,循环里名为 `web_search` 的调用就由生成器
@@ -311,6 +316,16 @@ export type ToolTraceEvent =
 			name: string;
 			/** 已按 `onToolCall` 那份规则归一成字符串,与真正交给工具的完全一致。 */
 			args: Record<string, string>;
+	  }
+	| {
+			/**
+			 * 慢工具的活口 —— start 与 end 之间可以来任意多拍(也可以一拍都没有)。
+			 * **不落盘**:它是「此刻」的东西,存进历史只会变成一条过期的数字。
+			 */
+			phase: "progress";
+			id: string;
+			/** 这个工具到此刻已经产出多少字符。 */
+			chars: number;
 	  }
 	| {
 			phase: "end";
@@ -932,9 +947,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 					...(searchExec ? [WEB_SEARCH_TOOL] : []),
 					...[...extra.values()].map((t) => t.definition),
 				],
-				onToolCall: (name, args) => {
+				onToolCall: (name, args, onProgress) => {
 					const injected = extra.get(name);
-					if (injected) return injected.execute(args);
+					if (injected) return injected.execute(args, onProgress);
 					return executeTool(name, args, this.api, () => this.getSubs(), vision.ctx);
 				},
 				onToolEvent: opts?.onToolEvent,
@@ -1774,7 +1789,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 		} else if (toolOptions.onToolCall) {
 			try {
 				this.logger.debug(`[tool] 执行 ${name}(${JSON.stringify(args)})`);
-				result = await toolOptions.onToolCall(name, args);
+				result = await toolOptions.onToolCall(name, args, (chars) =>
+					toolOptions.onToolEvent?.({ phase: "progress", id: traceId, chars }),
+				);
 				ok = true;
 			} catch (e) {
 				result = `工具执行失败: ${(e as Error).message}`;
