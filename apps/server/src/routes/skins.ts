@@ -11,6 +11,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { strToU8, zipSync } from "fflate";
 import { Hono } from "hono";
+import { EXT_TO_MIME, MIME_TO_EXT } from "../runtime/image-mime.js";
 import { runSkinAiEdit, type SkinAiGenerator } from "../skins/ai-edit.js";
 import { MAX_ASSET_BYTES, openSkinPackage, referencedImages } from "../skins/package.js";
 import { parseSkinManifest } from "../skins/schema.js";
@@ -18,20 +19,6 @@ import type { SkinStore } from "../skins/store.js";
 import { uploadBodyLimit } from "./upload-limit.js";
 
 const MAX_SKIN_ZIP_BYTES = 10 * 1024 * 1024;
-
-const ASSET_MIME: Record<string, string> = {
-	png: "image/png",
-	webp: "image/webp",
-	jpg: "image/jpeg",
-	jpeg: "image/jpeg",
-};
-
-/** 上传图片时 mime → 包内扩展名。SVG 不在表里(能带脚本,而这些图直接渲染)。 */
-const MIME_TO_ASSET_EXT: Record<string, string> = {
-	"image/png": "png",
-	"image/jpeg": "jpg",
-	"image/webp": "webp",
-};
 
 export function createSkinsRoute(deps: {
 	skinStore: SkinStore;
@@ -158,7 +145,7 @@ export function createSkinsRoute(deps: {
 			return c.json({ ok: false, err: "缺少图片文件(multipart 字段 file)" }, 400);
 		}
 		// 扩展名由 mime 定,不信上传来的文件名 —— 名字是不可信输入,而它要拼进磁盘路径。
-		const ext = MIME_TO_ASSET_EXT[file.type];
+		const ext = MIME_TO_EXT[file.type];
 		if (!ext) return c.json({ ok: false, err: "只收 PNG / JPEG / WebP 图片" }, 400);
 		try {
 			const name = await skinStore.addAsset(id, new Uint8Array(await file.arrayBuffer()), ext);
@@ -238,7 +225,7 @@ export function createSkinsRoute(deps: {
 		const ext = path.split(".").pop()?.toLowerCase() ?? "";
 		const data = await readFile(path);
 		return c.body(new Uint8Array(data), 200, {
-			"content-type": ASSET_MIME[ext] ?? "application/octet-stream",
+			"content-type": EXT_TO_MIME[ext] ?? "application/octet-stream",
 			// 皮肤资产内容不可变(改皮肤 = 新 id),放心长缓存。
 			"cache-control": "public, max-age=31536000, immutable",
 		});

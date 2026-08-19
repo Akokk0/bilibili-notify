@@ -9,21 +9,11 @@ import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { access, mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { EXT_TO_MIME, MIME_TO_EXT } from "./image-mime.js";
 
 /** 单张背景图上限 5MB(前端应先压缩;这里是兜底)。 */
 export const MAX_CARD_BG_BYTES = 5 * 1024 * 1024;
 
-const MIME_TO_EXT: Record<string, string> = {
-	"image/png": "png",
-	"image/jpeg": "jpg",
-	"image/webp": "webp",
-};
-const EXT_TO_MIME: Record<string, string> = {
-	png: "image/png",
-	jpg: "image/jpeg",
-	jpeg: "image/jpeg",
-	webp: "image/webp",
-};
 /** 资产 id 严格形如 `<32 位小写 hex>.<png|jpg|jpeg|webp>` —— 排除 `..` / `/` 等穿越。 */
 const ID_RE = /^[a-f0-9]{32}\.(png|jpe?g|webp)$/;
 
