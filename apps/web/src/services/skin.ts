@@ -9,6 +9,7 @@ import {
 	SKIN_CSS_HOOK_MAP,
 	type SkinManifest,
 	type SkinMode,
+	type SkinWallpaper,
 } from "@bilibili-notify/contract";
 import type { ResolvedTheme } from "../store/theme";
 
@@ -17,6 +18,17 @@ export type SkinVars = Record<string, string>;
 /** 需要引号的字体名:含空格或任何非 ASCII 字符。 */
 function quoteFontName(name: string): string {
 	return /^[A-Za-z0-9-]+$/.test(name) ? name : `"${name}"`;
+}
+
+/**
+ * 这张壁纸要不要走糊化层。
+ *
+ * 四处问的是同一句,而 `!(wp.blur !== undefined && wp.blur > 0)` 这种双重否定
+ * 读一次就得在脑内化简一次才敢确认几处一致。类型谓词是为了让早退之后 `wp.blur`
+ * 还是 number —— 糊化层的 inset 与 filter 都要用它。
+ */
+function hasBlur<T extends { blur?: number }>(wp: T | undefined): wp is T & { blur: number } {
+	return (wp?.blur ?? 0) > 0;
 }
 
 /**
@@ -65,7 +77,7 @@ export function composeSkinVars(
 		const wp = { ...mode.wallpaper, image: mode.wallpaper.image };
 		// blur>0 时壁纸交给 composeWallpaperCss 的 html::before 糊化层;
 		// --bn-page-bg 留给 page.background/默认底色,垫在糊化层后面。
-		if (!(wp.blur !== undefined && wp.blur > 0)) {
+		if (!hasBlur(wp)) {
 			vars["--bn-page-bg"] = buildWallpaperLayers(wp, assetUrl, theme);
 		}
 	}
@@ -100,7 +112,7 @@ export function composeSkinVars(
 		// surface-muted 兜底 —— --bn-page-bg 可能是多层列表,拼进多层 background
 		// 或渐变参数都非法。blur>0 时壁纸走 composeChatWallpaperCss 的糊化层。
 		const wp = chat.wallpaper;
-		if (wp?.image && !(wp.blur !== undefined && wp.blur > 0)) {
+		if (wp?.image && !hasBlur(wp)) {
 			const layers = buildWallpaperLayers({ ...wp, image: wp.image }, assetUrl, theme);
 			const base = chat.background;
 			const bottom = base
@@ -179,17 +191,25 @@ function escapeForRegExp(text: string): string {
 }
 
 /**
+ * 挂点 → 「这个挂点挂了装饰伪元素吗」的正则。映射表是常量,正则也就是常量 ——
+ * 编辑器每敲一个键都会重跑一趟 composeSkinCss,别在那条路上现编译十条。
+ */
+const DECORATION_RES: readonly (readonly [string, RegExp])[] = Object.values(SKIN_CSS_HOOK_MAP).map(
+	(sel) =>
+		[
+			sel,
+			new RegExp(`${escapeForRegExp(sel)}(?::[a-z-]+(?:\\([^)]*\\))?)*::(?:before|after)`, "i"),
+		] as const,
+);
+
+/**
  * 这套 CSS 里,哪些挂点真的挂了装饰性伪元素。
  *
  * 中间允许夹伪类:`[data-bn~="btn"]:hover::after` 照样算 btn 的装饰层。
  * 只挑真用到的那几个 —— 凭空给每个挂点建层叠上下文,会把里面的浮层困死。
  */
 function hooksWithDecoration(css: string): string[] {
-	return Object.values(SKIN_CSS_HOOK_MAP).filter((sel) =>
-		new RegExp(`${escapeForRegExp(sel)}(?::[a-z-]+(?:\\([^)]*\\))?)*::(?:before|after)`, "i").test(
-			css,
-		),
-	);
+	return DECORATION_RES.filter(([, re]) => re.test(css)).map(([sel]) => sel);
 }
 
 /**
@@ -266,10 +286,24 @@ export function composeWallpaperCss(
 	assetUrl: (name: string) => string,
 	theme: ResolvedTheme,
 ): string {
-	const wp = mode.wallpaper;
-	if (!wp?.image || wp.blur === undefined || wp.blur <= 0) return "";
+	return blurLayerCss(mode.wallpaper, "html::before", "fixed", assetUrl, theme);
+}
+
+/**
+ * 糊化层的本体,整页与聊天共用。两处只差选择器与 position —— 负 inset、
+ * `z-index:-1`、`pointer-events:none`、`filter:blur()` 这套规矩是同一套,
+ * 分成两份抄的话改一处忘另一处,两个壁纸的糊化行为就会悄悄分叉。
+ */
+function blurLayerCss(
+	wp: SkinWallpaper | undefined,
+	selector: string,
+	position: "fixed" | "absolute",
+	assetUrl: (name: string) => string,
+	theme: ResolvedTheme,
+): string {
+	if (!wp?.image || !hasBlur(wp)) return "";
 	const layers = buildWallpaperLayers({ ...wp, image: wp.image }, assetUrl, theme);
-	return `html::before{content:"";position:fixed;inset:-${wp.blur * 2}px;z-index:-1;pointer-events:none;background:${layers};filter:blur(${wp.blur}px)}`;
+	return `${selector}{content:"";position:${position};inset:-${wp.blur * 2}px;z-index:-1;pointer-events:none;background:${layers};filter:blur(${wp.blur}px)}`;
 }
 
 /**
@@ -322,10 +356,13 @@ export function composeChatWallpaperCss(
 	assetUrl: (name: string) => string,
 	theme: ResolvedTheme,
 ): string {
-	const wp = mode.chat?.wallpaper;
-	if (!wp?.image || wp.blur === undefined || wp.blur <= 0) return "";
-	const layers = buildWallpaperLayers({ ...wp, image: wp.image }, assetUrl, theme);
-	return `[data-bn-chat-root]::before{content:"";position:absolute;inset:-${wp.blur * 2}px;z-index:-1;pointer-events:none;background:${layers};filter:blur(${wp.blur}px)}`;
+	return blurLayerCss(
+		mode.chat?.wallpaper,
+		"[data-bn-chat-root]::before",
+		"absolute",
+		assetUrl,
+		theme,
+	);
 }
 
 const SKIN_STYLE_ID = "bn-skin-css";
@@ -342,6 +379,10 @@ export function applySkinCss(css: string): void {
 		el.id = SKIN_STYLE_ID;
 		document.head.appendChild(el);
 	}
+	// 一字不差就别碰:改颜色/圆角/玻璃时自定义 CSS 段根本没变,而重写 textContent
+	// 会把整张皮肤样式表推倒重解析(CSSOM 重建 + 全文档样式重算),这条 effect 上
+	// 它比注入变量贵得多,且编辑器每敲一个键都会走一遍。
+	if (el.textContent === css) return;
 	el.textContent = css;
 }
 
