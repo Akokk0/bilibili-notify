@@ -325,7 +325,7 @@ export function createAiRoute(
 		 * 旧的一并端上去只会分散注意力,还要多付一份钱。捎来的图**不进落盘的 images**
 		 * —— 那一问并没有真的带图,记错了会连累删会话时的图片回收与重开会话的缩略图。
 		 */
-		const carried: string[] = [];
+		const carried: Array<{ id: string; url: string }> = [];
 		if (resolved.length === 0) {
 			// 先找有没有这么一条,再去碰磁盘 —— 一句话都不带图的普通聊天(绝大多数)
 			// 不该为这个功能多走一步,更不该去读它本来用不着的 dataDir。
@@ -334,7 +334,7 @@ export function createAiRoute(
 				const dataDir = deps.store.bootstrap.dataDir;
 				for (const id of recent.images) {
 					const url = await readChatImageDataUrl(dataDir, id);
-					if (url) carried.push(url);
+					if (url) carried.push({ id, url });
 				}
 			}
 		}
@@ -371,14 +371,18 @@ export function createAiRoute(
 						// 热读同 ai-edit:engines 是后挂的,别做快照。
 						generator: () => deps.runtime.engines?.commentary ?? null,
 						/**
-						 * 壁纸的唯一来源:主人**这一问**贴的图。字节直接从聊天附件目录读 ——
-						 * 上面那份 resolved 是喂给视觉模型的 data URL,拿它再解一次 base64
-						 * 只是绕远路。
+						 * 壁纸的来源:主人这一问贴的图;**这一问空手就用捎来的那张** —— 跟
+						 * 喂给视觉模型的是同一批。女仆看得见的图她就得做得出壁纸,否则主人
+						 * 贴完图聊两句再说「用刚才那张当背景」,会撞上「她描述得出那张图、
+						 * 一动手却说你没贴图」这种自相矛盾。
+						 *
+						 * 字节直接从聊天附件目录读 —— 上面那两份存的是喂给视觉模型的 data
+						 * URL,拿它再解一次 base64 只是绕远路。
 						 */
 						attachedImages: async () => {
 							const dataDir = deps.store.bootstrap.dataDir;
 							const out: ChatSkinImage[] = [];
-							for (const { id } of resolved) {
+							for (const { id } of resolved.length > 0 ? resolved : carried) {
 								const img = await readChatImage(dataDir, id);
 								if (img) out.push({ bytes: img.bytes, ext: id.split(".").pop() ?? "png" });
 							}
@@ -420,7 +424,7 @@ export function createAiRoute(
 						imageUrls: resolved.length
 							? resolved.map((r) => r.url)
 							: carried.length
-								? carried
+								? carried.map((c) => c.url)
 								: undefined,
 						thinking: {
 							enableThinking: parsed.data.thinking ?? false,

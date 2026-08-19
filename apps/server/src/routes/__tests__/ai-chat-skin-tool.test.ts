@@ -111,6 +111,30 @@ async function say(
 const inSkinMode = (app: ReturnType<typeof createAiRoute>, body: Record<string, unknown> = {}) =>
 	say(app, body, { mode: "skin" });
 
+/** 开一场工坊会话,把 id 留在手上 —— 要连说两句时得是同一场。 */
+async function openSkinConv(app: ReturnType<typeof createAiRoute>): Promise<string> {
+	const res = await app.request("/conversations", {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ mode: "skin" }),
+	});
+	return ((await res.json()) as any).conversation.id as string;
+}
+
+/** 往已有的那场里再说一句。流抽干才算跑完(落盘在流的末尾)。 */
+async function sayIn(
+	app: ReturnType<typeof createAiRoute>,
+	id: string,
+	body: Record<string, unknown>,
+): Promise<void> {
+	const res = await app.request(`/conversations/${id}/chat`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ message: "…", ...body }),
+	});
+	await res.text();
+}
+
 beforeEach(() => {
 	H.lastOpts = null;
 	chatStatelessStream.mockClear();
@@ -179,6 +203,31 @@ describe("皮肤工坊模式", () => {
 
 		await inSkinMode(app, { images: [id] });
 		await lastTools()?.[0].execute({ brief: "配这张图", wallpaper: "true" });
+
+		const [skin] = await skinStore.list();
+		expect(await skinStore.listAssets(skin?.id ?? "")).toEqual(["assets/wallpaper.png"]);
+	});
+
+	it("这一问空手 → 拿得到上一问那张图,而不是回一句「你没贴图」", async () => {
+		// 装配处这一问空手时会捎上最近一次的图喂给视觉模型 —— 她**看得见**那张。
+		// 做壁纸那把工具若只认这一问的附件,主人贴完图聊两句再说「用刚才那张当背景」,
+		// 撞上的就是「她描述得出那张图、一动手却说你没贴图」。
+		const { app, skinStore, dataDir } = await makeDeps();
+		const id = `${"b".repeat(32)}.png`;
+		await mkdir(join(dataDir, "assets", "chat"), { recursive: true });
+		await writeFile(join(dataDir, "assets", "chat", id), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+		const conv = await openSkinConv(app);
+		await sayIn(app, conv, { message: "看看这张图", images: [id] });
+		generateRaw.mockResolvedValueOnce(
+			JSON.stringify({
+				schemaVersion: 1,
+				name: "夜航灯",
+				modes: { dark: { wallpaper: { image: "assets/wallpaper.png" } } },
+			}),
+		);
+		await sayIn(app, conv, { message: "用刚才那张当背景" });
+		await lastTools()?.[0].execute({ brief: "配那张图", wallpaper: "true" });
 
 		const [skin] = await skinStore.list();
 		expect(await skinStore.listAssets(skin?.id ?? "")).toEqual(["assets/wallpaper.png"]);

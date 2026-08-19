@@ -35,9 +35,9 @@ const MODE_LABEL = { light: "浅色", dark: "暗色" } as const;
  */
 const IMAGE_HINT_RE = /壁纸|背景图|图片|插画|立绘|照片|海报|wallpaper|image|photo/i;
 
-const NO_IMAGE_NOTE = "(这套没有壁纸 —— 主人这一问里没有贴图。想要壁纸,请主人贴一张再说一次。)";
+const NO_IMAGE_NOTE = "(这套没有壁纸 —— 这场对话里没有图。想要壁纸,请主人贴一张再说一次。)";
 
-/** 主人贴在这一问里的图,已从聊天附件里读出来的原始字节。 */
+/** 女仆这一轮看得见的图(主人这一问贴的,或空手时捎上的最近一张),原始字节。 */
 export interface ChatSkinImage {
 	bytes: Uint8Array;
 	/** 扩展名(png / jpg / jpeg / webp),决定包内文件名。 */
@@ -102,6 +102,10 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 	 * `wallpaper` 参数 → 真正的图片字节。只认 `"attached"`(也认 `"true"`,模型
 	 * 照旧当布尔传时不至于白跑),空 = 不要壁纸。**别的一律当没要** —— 猜一张主人
 	 * 没点的图比不做更糟。
+	 *
+	 * 「attached」指的是**女仆这一轮看得见的那张**,不限于主人这一问贴的:装配处
+	 * 空手时会捎上最近一次的图(见 routes/ai.ts)。两边取的是同一批,否则会出现她
+	 * 描述得出那张图、一动手却说没有图。
 	 */
 	async function resolveWallpaper(raw: string): Promise<ChatSkinImage | null> {
 		const w = raw.trim().toLowerCase();
@@ -111,7 +115,7 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 		const [image] = (await deps.attachedImages?.()) ?? [];
 		if (!image) {
 			throw new Error(
-				"主人这条消息里没有贴图 —— 请主人把想当背景的图贴进聊天再说一次。你没有找图的能力,别去找。",
+				"这场对话里没有图 —— 请主人把想当背景的图贴进聊天再说一次。你没有找图的能力,别去找。",
 			);
 		}
 		return image;
@@ -134,7 +138,7 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 						wallpaper: {
 							type: "string",
 							description:
-								'整页壁纸从哪来。主人在这条消息里贴了图、并且想让它当背景 → 传 "attached"(你看得见那张图,记得把图里的主色写进 brief)。不要壁纸、或者主人没贴图就别传 —— 你没有别的图源,主人没贴还传值会直接失败。',
+								'整页壁纸从哪来。你在这场对话里看得见图、并且主人想让它当背景 → 传 "attached"(记得把图里的主色写进 brief)。不要壁纸、或者整场都没有图就别传 —— 你没有别的图源,没有图还传值会直接失败。',
 						},
 						activate: {
 							type: "boolean",
