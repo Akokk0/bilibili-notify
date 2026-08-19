@@ -156,6 +156,15 @@ describe("硬失败与体积", () => {
 		expect(res.ok).toBe(false);
 	});
 
+	it("上限按 UTF-8 字节算 —— 中文注释不该按一个字一格算", () => {
+		// `input.length` 是 UTF-16 单元数,一个汉字才记 1。皮肤里的中文注释一多,
+		// 「64K 字符」落到盘上就是将近 192KB —— 闸声称拦住的量与实际差三倍。
+		const big = `/* ${"皮肤注释".repeat(6000)} */\n[data-bn="glass"]{color:red}`;
+		expect(big.length).toBeLessThan(64 * 1024);
+		expect(Buffer.byteLength(big, "utf8")).toBeGreaterThan(64 * 1024);
+		expect(sanitizeSkinCss(big).ok).toBe(false);
+	});
+
 	it("空串 / 全被丢弃 → ok 且产物为空串", () => {
 		const { css } = ok("div { color: red; }");
 		expect(css).toBe("");

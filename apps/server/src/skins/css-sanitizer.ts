@@ -25,6 +25,12 @@ import type { Atrule, CssNode, Declaration, Rule } from "css-tree";
 // (assemble-server-bundle.test 拦到的正是它);dist 版数据全内联,无此雷。
 import { generate, parse } from "css-tree/dist/csstree.esm";
 
+/**
+ * 自定义 CSS 的上限,**按 UTF-8 字节算**。
+ *
+ * 别写成 `input.length` —— 那是 UTF-16 单元数,一个汉字才记 1。皮肤里的中文注释
+ * 一多,64K「字符」落到盘上就是将近 192KB,写出去的量是这条闸声称拦住的三倍。
+ */
 export const MAX_SKIN_CSS_BYTES = 64 * 1024;
 
 export type SanitizeCssResult =
@@ -395,7 +401,7 @@ function filterRuleList(
 }
 
 export function sanitizeSkinCss(input: string): SanitizeCssResult {
-	if (input.length > MAX_SKIN_CSS_BYTES) {
+	if (Buffer.byteLength(input, "utf8") > MAX_SKIN_CSS_BYTES) {
 		return { ok: false, errors: [`自定义 CSS 超过 ${MAX_SKIN_CSS_BYTES / 1024}KB 上限`] };
 	}
 	if (input.trim() === "") return { ok: true, css: "", warnings: [] };
