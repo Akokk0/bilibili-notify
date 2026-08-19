@@ -17,6 +17,7 @@ import {
 	cleanSection,
 	colorAlphaOf,
 	fontsToText,
+	MODE_LABEL,
 	missingModeOf,
 	setManifestText,
 	setModeSection,
@@ -285,12 +286,12 @@ export function SkinEditor(props: {
 										: "border border-bn-border text-bn-text-secondary hover:text-bn-text-primary"
 								}`}
 							>
-								{k === "light" ? "浅色" : "深色"}
+								{MODE_LABEL[k]}
 							</button>
 						))}
 					{missing ? (
 						<Btn size="sm" variant="outline" onClick={() => setDraft(addMissingMode(draft))}>
-							补一套{missing === "dark" ? "深色" : "浅色"}
+							补一套{MODE_LABEL[missing]}
 						</Btn>
 					) : null}
 				</div>

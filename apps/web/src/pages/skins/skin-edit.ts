@@ -6,6 +6,12 @@
 
 import type { SkinColorKey, SkinManifest, SkinMode, SkinTextSlot } from "@bilibili-notify/contract";
 
+/**
+ * 明暗两套的中文名。皮肤这一块**只认这一份** —— 同一套皮肤在库列表叫「深色」、
+ * 在编辑器里叫别的,主人只会以为那是两回事。
+ */
+export const MODE_LABEL: Record<"light" | "dark", string> = { light: "浅色", dark: "深色" };
+
 /** 去掉 undefined 与空串成员(数字 0 是合法值,保留);清空后整个 section 就地消失。 */
 export function cleanSection<T extends Record<string, unknown>>(obj: T): T | undefined {
 	const out: Record<string, unknown> = {};

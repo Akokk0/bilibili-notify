@@ -232,9 +232,9 @@ function ThemeSwitcher() {
 				variant="outline"
 				size="sm"
 				disabled
-				title={`试穿中的皮肤只有${lockedTheme === "dark" ? "深色" : "浅色"}一套,应用或取消试穿即可切换`}
+				title={`试穿中的皮肤只有${themeLabel(lockedTheme)}一套,应用或取消试穿即可切换`}
 			>
-				主题：{lockedTheme === "dark" ? "深色" : "浅色"}(试穿锁定)
+				主题：{themeLabel(lockedTheme)}(试穿锁定)
 			</Btn>
 		);
 	}
