@@ -371,6 +371,60 @@ export interface CommentaryGeneratorOptions {
 }
 
 /**
+ * 无状态多轮的可选项 —— {@link CommentaryGenerator.chatStateless}、
+ * {@link CommentaryGenerator.chatStatelessStream} 与内部实现**共用这一份**。
+ *
+ * 三处各摆一个内联字面量的时候,加一个开关要改三处签名 + 三份文档;而漏掉
+ * 内部实现那份不会报错(多余属性只在字面量直接赋值时检查),症状是「传得进去、
+ * 里层不认」。
+ */
+export interface ChatStatelessOptions {
+	imageUrls?: string[];
+	/**
+	 * 正文分片回调。只喂**给人看的正文** —— 工具轮不产生正文,那几轮自然静默
+	 * (想知道那段时间她在查什么,听 {@link ChatStatelessOptions.onToolEvent})。
+	 */
+	onDelta?: (text: string) => void;
+	/** 工具轮的旁听席,见 {@link ToolTraceEvent}。不传就什么都不报。 */
+	onToolEvent?: (ev: ToolTraceEvent) => void;
+	/**
+	 * 思考流(DeepSeek 式「先想后说」的那段草稿)。分片实时回调,**不混进**
+	 * onDelta —— 正文是要落盘、要当上下文回传给模型的,思考不是。
+	 * 模型没开思考 / 网关不吐这个字段时自然一声不响。
+	 */
+	onReasoning?: (text: string) => void;
+	/** 这一次的思考开关 / 深度,压过引擎全局配置。见 {@link CommentaryCallOverride}。 */
+	thinking?: { enableThinking: boolean; thinkingLevel: ThinkingLevel };
+	/** 这一次允不允许联网搜索。聊天页那颗胶囊是会话级的,按消息传进来。 */
+	webSearch?: boolean;
+	/**
+	 * 调用方注入的额外工具(见 {@link ExtraTool})。**只有流式那条路**开这个口:
+	 * 它的收件人是 dashboard 的聊天,坐在 cookie session 后面,只有主人本人
+	 * 能说话;群聊那两条路(chat / comment)的上下文里全是外部可控文本,
+	 * 写能力挂上去等于把口子开给任何人。
+	 */
+	extraTools?: readonly ExtraTool[];
+	/**
+	 * 顶掉女仆人格,直接用这段当 system。**专职模式**用(一个窗口只干一件事,
+	 * 比如皮肤工坊):人格不进上下文,模型就不会一边扮女仆一边干活。
+	 * 注意它顶掉的是整段 —— 连「可以用 Markdown」这类约定也得自己写上。
+	 */
+	systemPrompt?: string;
+	/**
+	 * 挂不挂内置的 B 站只读工具。默认挂;专职模式关掉之后,工具表只剩
+	 * {@link ExtraTool} 注入的那些 —— 少一个口子,就少一条把它带跑的路。
+	 */
+	builtinTools?: boolean;
+	/**
+	 * 带不带女仆人格。缺省带 —— 会话开局主人选「无人格」那一档才传 false。
+	 * 关掉的只有性格,职责与工具铁律照旧(见 persona-presets 的 withPersona)。
+	 *
+	 * 与 `systemPrompt` 互不相干:后者整段顶掉时人格本来就不在场。
+	 */
+	persona?: boolean;
+}
+
+/**
  * 平台中立的 AI 点评 / 多轮对话核心。
  * 不依赖 koishi runtime；adapter 负责配置 logger、提供 BilibiliAPI 与可选的订阅管理钩子。
  */
@@ -841,13 +895,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 */
 	async chatStateless(
 		messages: readonly ConversationMessage[],
-		opts?: {
-			imageUrls?: string[];
-			/** 这一次的思考开关 / 深度,压过引擎全局配置。见 {@link CommentaryCallOverride}。 */
-			thinking?: { enableThinking: boolean; thinkingLevel: ThinkingLevel };
-			/** 这一次允不允许联网搜索。聊天页那颗胶囊是会话级的,按消息传进来。 */
-			webSearch?: boolean;
-		},
+		opts?: Pick<ChatStatelessOptions, "imageUrls" | "thinking" | "webSearch">,
 	): Promise<string> {
 		return this.chatStatelessImpl(messages, opts);
 	}
@@ -863,71 +911,14 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 */
 	async chatStatelessStream(
 		messages: readonly ConversationMessage[],
-		opts: {
-			onDelta: (text: string) => void;
-			/** 工具轮的旁听席,见 {@link ToolTraceEvent}。不传就什么都不报。 */
-			onToolEvent?: (ev: ToolTraceEvent) => void;
-			/**
-			 * 思考流(DeepSeek 式「先想后说」的那段草稿)。分片实时回调,**不混进**
-			 * onDelta —— 正文是要落盘、要当上下文回传给模型的,思考不是。
-			 * 模型没开思考 / 网关不吐这个字段时自然一声不响。
-			 */
-			onReasoning?: (text: string) => void;
-			imageUrls?: string[];
-			/** 这一次的思考开关 / 深度,压过引擎全局配置。见 {@link CommentaryCallOverride}。 */
-			thinking?: { enableThinking: boolean; thinkingLevel: ThinkingLevel };
-			/** 这一次允不允许联网搜索。聊天页那颗胶囊是会话级的,按消息传进来。 */
-			webSearch?: boolean;
-			/**
-			 * 调用方注入的额外工具(见 {@link ExtraTool})。**只有这条路**开这个口:
-			 * 它的收件人是 dashboard 的聊天,坐在 cookie session 后面,只有主人本人
-			 * 能说话;群聊那两条路(chat / comment)的上下文里全是外部可控文本,
-			 * 写能力挂上去等于把口子开给任何人。
-			 */
-			extraTools?: readonly ExtraTool[];
-			/**
-			 * 顶掉女仆人格,直接用这段当 system。**专职模式**用(一个窗口只干一件事,
-			 * 比如皮肤工坊):人格不进上下文,模型就不会一边扮女仆一边干活。
-			 * 注意它顶掉的是整段 —— 连「可以用 Markdown」这类约定也得自己写上。
-			 */
-			systemPrompt?: string;
-			/**
-			 * 挂不挂内置的 B 站只读工具。默认挂;专职模式关掉之后,工具表只剩
-			 * {@link ExtraTool} 注入的那些 —— 少一个口子,就少一条把它带跑的路。
-			 */
-			builtinTools?: boolean;
-			/**
-			 * 带不带女仆人格。缺省带 —— 会话开局主人选「无人格」那一档才传 false。
-			 * 关掉的只有性格,职责与工具铁律照旧(见 persona-presets 的 withPersona)。
-			 *
-			 * 与 `systemPrompt` 互不相干:后者整段顶掉时人格本来就不在场。
-			 */
-			persona?: boolean;
-		},
+		opts: ChatStatelessOptions & { onDelta: (text: string) => void },
 	): Promise<string> {
 		return this.chatStatelessImpl(messages, opts);
 	}
 
 	private async chatStatelessImpl(
 		messages: readonly ConversationMessage[],
-		opts?: {
-			imageUrls?: string[];
-			onDelta?: (text: string) => void;
-			onToolEvent?: (ev: ToolTraceEvent) => void;
-			onReasoning?: (text: string) => void;
-			thinking?: { enableThinking: boolean; thinkingLevel: ThinkingLevel };
-			webSearch?: boolean;
-			extraTools?: readonly ExtraTool[];
-			systemPrompt?: string;
-			builtinTools?: boolean;
-			/**
-			 * 带不带女仆人格。缺省带 —— 会话开局主人选「无人格」时才传 false,
-			 * 关掉的只有性格,职责与工具铁律照旧(见 persona-presets 的 withPersona)。
-			 *
-			 * `systemPrompt` 整段顶掉时它无从谈起:那条路(皮肤工坊)本来就没有人格。
-			 */
-			persona?: boolean;
-		},
+		opts?: ChatStatelessOptions,
 	): Promise<string> {
 		if (messages.length === 0) throw new Error("对话历史为空");
 
