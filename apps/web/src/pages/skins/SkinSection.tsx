@@ -255,7 +255,15 @@ export function SkinSection() {
 				/>
 			) : null}
 
-			{guideOpen ? <SkinGuideModal onClose={() => setGuideOpen(false)} /> : null}
+			{guideOpen ? (
+				<SkinGuideModal
+					onClose={(w) => {
+						setGuideOpen(false);
+						// 提示归本页显示 —— 弹窗当场就关了,搁在里面等于没写过。
+						if (w) setWarnings(w);
+					}}
+				/>
+			) : null}
 
 			{editing ? (
 				<SkinEditor
@@ -323,14 +331,18 @@ function SkinRow(props: {
 	);
 }
 
-/** 制作引导:复制提示词 → 粘给任意 AI → 粘回 JSON(+可选壁纸)→ 前端组包上传。 */
-function SkinGuideModal({ onClose }: { onClose: () => void }) {
+/**
+ * 制作引导:复制提示词 → 粘给任意 AI → 粘回 JSON(+可选壁纸)→ 前端组包上传。
+ *
+ * `onClose` 的入参 = 这次上传的提示(清洗层摘了什么、组包时发现了什么)。**提示不
+ * 留在这儿显示** —— 传完就关窗,写在弹窗里的那块跟着卸载,主人一个字也看不到。
+ */
+function SkinGuideModal({ onClose }: { onClose: (warnings?: string[]) => void }) {
 	const qc = useQueryClient();
 	const [json, setJson] = useState("");
 	const [wallpaper, setWallpaper] = useState<File | null>(null);
 	const [copied, setCopied] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [warnings, setWarnings] = useState<string[]>([]);
 
 	async function copyPrompt(): Promise<void> {
 		const readVar = (name: string) =>
@@ -363,18 +375,18 @@ function SkinGuideModal({ onClose }: { onClose: () => void }) {
 			return { res, packWarnings: packed.warnings };
 		},
 		onSuccess: async ({ res, packWarnings }) => {
-			setWarnings([...packWarnings, ...res.warnings]);
 			setError(null);
 			void qc.invalidateQueries({ queryKey: ["skins"] });
 			const manifest = await fetchManifest(res.id);
 			useSkinStore.getState().setPreview({ id: res.id, manifest });
-			onClose();
+			onClose([...packWarnings, ...res.warnings]);
 		},
 		onError: (e) => setError(String((e as Error).message)),
 	});
 
 	return (
-		<ModalShell onCancel={onClose} width={520}>
+		// onCancel 被 ModalShell 拿去当遮罩的 onClick,裸传会把 MouseEvent 灌进 warnings。
+		<ModalShell onCancel={() => onClose()} width={520}>
 			<div className="space-y-3 text-[12.5px] leading-6 text-bn-text-primary">
 				<div className="text-[15px] font-bold">制作皮肤</div>
 				{/*
@@ -412,11 +424,8 @@ function SkinGuideModal({ onClose }: { onClose: () => void }) {
 					/>
 				</label>
 				{error ? <ErrorNote>打包上传失败:{error}</ErrorNote> : null}
-				{warnings.length > 0 ? (
-					<div className="text-[11.5px] text-bn-warning">{warnings.join(";")}</div>
-				) : null}
 				<div className="flex justify-end gap-2">
-					<Btn variant="outline" onClick={onClose}>
+					<Btn variant="outline" onClick={() => onClose()}>
 						取消
 					</Btn>
 					<Btn

@@ -31,6 +31,8 @@ const H = vi.hoisted(() => ({
 		modes: { light: {}, dark: {} },
 	},
 	putCalls: [] as unknown[],
+	/** 上传接口这一次要回的提示(清洗层摘了什么)。 */
+	uploadWarnings: [] as string[],
 }));
 
 vi.mock("../../../services/api", () => ({
@@ -54,7 +56,7 @@ vi.mock("../../../services/api", () => ({
 			return { ok: true };
 		}),
 		delete: vi.fn(async () => ({ ok: true })),
-		upload: vi.fn(async () => ({ ok: true, id: "s1", warnings: [] })),
+		upload: vi.fn(async () => ({ ok: true, id: "s1", warnings: H.uploadWarnings })),
 	},
 }));
 
@@ -69,6 +71,7 @@ function renderSection() {
 
 beforeEach(() => {
 	H.putCalls = [];
+	H.uploadWarnings = [];
 	H.list.active = { light: null, dark: null };
 	H.list.list[0].modes = ["light", "dark"];
 	useSkinStore.setState({
@@ -95,6 +98,25 @@ describe("SkinSection", () => {
 		await waitFor(() => expect(screen.getByText(/皮肤工坊/)).toBeTruthy());
 		// 外部 AI 那条路还在,只是退到了后面。
 		expect(screen.getByText("复制提示词")).toBeTruthy();
+	});
+
+	it("粘 JSON 传完 → 清洗层的提示落在皮肤库这一页上", async () => {
+		// 提示曾经画在弹窗里,而传完那一刻弹窗就关了 —— 那块跟着卸载,主人一个字
+		// 也看不到。「哪几句被摘了」正是这条路上最该让人看见的东西。
+		H.uploadWarnings = ["属性 pointer-events 不在白名单"];
+		renderSection();
+		await waitFor(() => expect(screen.getAllByText("樱花夜").length).toBeGreaterThan(0));
+		fireEvent.click(screen.getByText("制作皮肤"));
+
+		const ta = await screen.findByPlaceholderText(/skin\.json/);
+		fireEvent.change(ta, {
+			target: { value: '{"schemaVersion":1,"name":"手工","modes":{"light":{}}}' },
+		});
+		fireEvent.click(screen.getByText("打包上传"));
+
+		await waitFor(() => expect(screen.getByText(/pointer-events/)).toBeTruthy());
+		// 窗确实关了 —— 提示不是靠「没关成」才看得见的。
+		expect(screen.queryByText("打包上传")).toBeNull();
 	});
 
 	it("列表:皮肤条目带模式/壁纸标签与导出入口;深浅两个 Picker 按钮组在场", async () => {
