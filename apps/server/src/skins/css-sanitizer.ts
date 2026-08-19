@@ -5,8 +5,12 @@
  * 红线(二轮 grilling 定案):
  * - 选择器只准 `[data-bn="<hook>"]`(hook ∈ SKIN_CSS_HOOK_MAP)+ 伪类/伪元素/组合器
  * - 声明只放行视觉属性;position 禁 fixed/sticky;伪元素 content 只准空串/none;
- *   pointer-events / display / visibility 等欺骗面不开
- * - 值里任何取网函数(url/image-set/element/src)→ 丢弃该声明
+ *   pointer-events / display / visibility 不开,宿主的 opacity 有下限
+ *   ({@link HOST_OPACITY_FLOOR})—— 收的是「看不见却点得到」这一类。**注意这不是
+ *   「皮肤无法欺骗」**:`background:transparent;color:transparent` 一样让按钮隐形,
+ *   而那是主题系统的固有能力,拦不掉也不该拦。装皮肤 = 信任那套皮肤。
+ * - 值里任何取网函数(url/image-set/element/src)→ 丢弃该声明;**值里出现反斜杠
+ *   一律丢弃** —— 转义在 tokenizer 里先于 ident 判定解开,`\75 rl(` 就是 `url(`
  * - @keyframes 名必须 `skin-` 前缀(不撞内置 bn-* 动画);@media 递归清洗;其余 at-rule 丢弃
  *
  * 宽容模式:非法项逐条丢弃并出 warning(AI 生成常夹带一两条违禁,整包拒收太挫败);
@@ -87,6 +91,38 @@ const FORBIDDEN_VALUE = ["url(", "image-set(", "element(", "expression(", "src("
 
 const POSITION_VALUES = new Set(["static", "relative", "absolute"]);
 const KEYFRAMES_NAME_RE = /^skin-[a-z0-9_-]+$/i;
+
+/**
+ * 宿主的透明度下限。低于它就是「看不见、但点得到」—— UI 欺骗的起手式,而
+ * `visibility` / `display` 这些**更温和**的隐身法本来就不在白名单里,放行 opacity
+ * 等于挡了安全的那个、开了危险的那个。
+ *
+ * 这道闸**不封闭**,也封不闭:`background:transparent;color:transparent` 同样让
+ * 一颗按钮隐形,而那是主题系统的固有能力。这里堵的是最顺手的那条路,不是宣称
+ * 「皮肤无法欺骗」。
+ */
+const HOST_OPACITY_FLOOR = 0.15;
+
+/** 读得懂的字面透明度(`0.4` / `40%`);读不懂 → null。 */
+function literalOpacity(raw: string): number | null {
+	const m = /^(\d*\.?\d+)(%?)$/.exec(raw.trim());
+	if (!m) return null;
+	const n = Number(m[1]);
+	if (!Number.isFinite(n)) return null;
+	return m[2] === "%" ? n / 100 : n;
+}
+
+/**
+ * 声明所处的位置 —— 两件事各有各的判据,不能共用一个布尔。
+ *
+ * `pseudo` 管 position(宿主的布局不归皮肤);`keyframes` 管透明度:一段
+ * `@keyframes` 挂得到宿主身上,所以里面的 opacity 必须按宿主从严,哪怕
+ * keyframe 块本身按「装饰」放行 position。
+ */
+interface DeclScope {
+	pseudo: boolean;
+	keyframes: boolean;
+}
 
 function isAllowedProp(prop: string): boolean {
 	const p = prop.toLowerCase();
@@ -174,18 +210,40 @@ function isAllowedSelector(selector: CssNode): boolean {
 /**
  * 声明级过滤;返回 null = 放行,字符串 = 丢弃原因。
  *
- * `isPseudo` = 这条规则瞄的是伪元素。宿主的 `position` 一律拒收(理由见
+ * `scope.pseudo` = 这条规则瞄的是伪元素。宿主的 `position` 一律拒收(理由见
  * {@link filterRuleList} 上方那段),伪元素自己的照旧放行。
  */
-function rejectDeclaration(decl: Declaration, isPseudo: boolean): string | null {
+function rejectDeclaration(decl: Declaration, scope: DeclScope): string | null {
 	const prop = decl.property.toLowerCase();
 	if (!isAllowedProp(prop)) return `属性 ${prop} 不在白名单`;
 	const value = generate(decl.value).toLowerCase();
+	// 反斜杠 = CSS 转义,而转义在 tokenizer 里**先于**ident 判定解开:`\75 rl(` 到
+	// 浏览器手上就是 `url(`,下面那圈子串匹配一个字都看不见。白名单里没有哪个属性
+	// 需要转义,整条拒掉最省事 —— schema.ts 的值校验一直是这个口径,这一层补上。
+	if (value.includes("\\")) return `属性 ${prop} 的值含转义写法(反斜杠)`;
 	for (const bad of FORBIDDEN_VALUE) {
 		if (value.includes(bad)) return `属性 ${prop} 的值含 ${bad.slice(0, -1)}()`;
 	}
+	// 装饰层随便淡 —— 它 pointer-events:none 且压在内容之下,淡到看不见也骗不到人。
+	// keyframes 不算装饰:同一段动画挂得到宿主身上。
+	if (!(scope.pseudo && !scope.keyframes)) {
+		if (prop === "opacity") {
+			const n = literalOpacity(value);
+			if (n === null || n < HOST_OPACITY_FLOOR) {
+				return `宿主的 opacity 只准写不低于 ${HOST_OPACITY_FLOOR} 的字面值(看不见却点得到 = UI 欺骗)`;
+			}
+		}
+		// filter:opacity() 是同一把锁的另一把钥匙,漏掉它上面那道闸一绕就过。
+		const fo = /opacity\(([^)]*)\)/.exec(value);
+		if (prop === "filter" && fo) {
+			const n = literalOpacity(fo[1] ?? "");
+			if (n === null || n < HOST_OPACITY_FLOOR) {
+				return `宿主的 filter:opacity() 只准写不低于 ${HOST_OPACITY_FLOOR} 的字面值(同上)`;
+			}
+		}
+	}
 	if (prop === "position") {
-		if (!isPseudo) return `position 只归宿主本身的布局管,皮肤改不了(装饰层写在伪元素上)`;
+		if (!scope.pseudo) return `position 只归宿主本身的布局管,皮肤改不了(装饰层写在伪元素上)`;
 		if (!POSITION_VALUES.has(value.trim())) return `position 只准 static/relative/absolute`;
 	}
 	if (prop === "content") {
@@ -200,7 +258,7 @@ function filterBlock(
 	rule: Rule | Atrule,
 	path: string,
 	warnings: string[],
-	isPseudo: boolean,
+	scope: DeclScope,
 ): number {
 	const block = rule.block;
 	if (!block) return 0;
@@ -211,7 +269,7 @@ function filterBlock(
 			drop.push(node);
 			return;
 		}
-		const reason = rejectDeclaration(node, isPseudo);
+		const reason = rejectDeclaration(node, scope);
 		if (reason) {
 			warnings.push(`${path}: ${reason},已丢弃`);
 			drop.push(node);
@@ -231,7 +289,7 @@ function filterBlock(
 function filterKeyframes(atrule: Atrule, path: string, warnings: string[]): void {
 	atrule.block?.children.forEach((node: CssNode) => {
 		// keyframe 块里没有宿主/装饰之分,position 照旧只按值域判。
-		if (node.type === "Rule") filterBlock(node, path, warnings, true);
+		if (node.type === "Rule") filterBlock(node, path, warnings, { pseudo: true, keyframes: true });
 	});
 }
 
@@ -275,7 +333,7 @@ function filterRuleList(
 					if (!targetsPseudoElement(sel)) pseudo = false;
 				});
 			}
-			if (filterBlock(node, selectorText, warnings, pseudo) === 0) {
+			if (filterBlock(node, selectorText, warnings, { pseudo, keyframes: false }) === 0) {
 				drop.push(node);
 				return;
 			}

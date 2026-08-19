@@ -251,3 +251,68 @@ describe("宿主的 position 不归皮肤管", () => {
 		expect(css).not.toContain("{position:relative}");
 	});
 });
+
+describe("取网面的转义写法", () => {
+	/**
+	 * `\75 ` 在 CSS 里就是 `u` —— tokenizer 按规范**先解转义再判 ident**,所以
+	 * `\75 rl(...)` 到了浏览器手上就是 `url(...)`,照发请求。子串匹配 `url(` 看不见
+	 * 它,而这一层挡的正是「外联隐私泄露面」。
+	 *
+	 * 同仓 schema.ts 的 FORBIDDEN_SUBSTRINGS 一直挡着反斜杠,这一层却没有 ——
+	 * 两处口径必须一致,否则弱的那层恰好是能力更强的那层。
+	 */
+	it("转义写的 url( → 该声明丢弃", () => {
+		const { css, warnings } = ok(
+			`[data-bn="page"]::before { content: ""; background: \\75 rl(https://evil.example/x.png); }`,
+		);
+		expect(css).not.toContain("75 rl");
+		expect(warnings.join()).toContain("转义");
+	});
+
+	it("值里任何反斜杠都丢 —— 白名单里的属性没有一个需要它", () => {
+		const { warnings } = ok(`[data-bn="page"] { background: \\72 ed; }`);
+		expect(warnings.join()).toContain("转义");
+	});
+});
+
+describe("宿主不许隐身", () => {
+	/**
+	 * `opacity:0` 比 `visibility:hidden` 更毒:不可见,但**仍然可点**。白名单挡掉了
+	 * 后者却放行前者,等于挡了安全的那个、放行了危险的那个。宿主给下限,装饰层
+	 * (伪元素)照旧随便淡 —— 它本来就 pointer-events:none 且压在内容之下。
+	 *
+	 * 注意这道闸**不封闭**:`background:transparent;color:transparent` 同样让按钮
+	 * 隐形,而那是主题系统的固有能力,拦不掉也不该拦。这里只堵最顺手的那条。
+	 */
+	it("宿主 opacity 低于下限 → 丢弃", () => {
+		const { warnings } = ok(`[data-bn~="btn"] { opacity: 0; }`);
+		expect(warnings.join()).toContain("opacity");
+	});
+
+	it("百分号写法同样算数", () => {
+		const { warnings } = ok(`[data-bn~="btn"] { opacity: 0%; }`);
+		expect(warnings.join()).toContain("opacity");
+	});
+
+	it("正常的淡化照旧放行", () => {
+		const { css, warnings } = ok(`[data-bn~="btn"] { opacity: 0.6; }`);
+		expect(css).toContain("opacity:0.6");
+		expect(warnings).toEqual([]);
+	});
+
+	it("装饰性伪元素想多淡有多淡", () => {
+		const { css, warnings } = ok(`[data-bn="page"]::before { content: ""; opacity: 0.04; }`);
+		expect(css).toContain("opacity:0.04");
+		expect(warnings).toEqual([]);
+	});
+
+	it("filter:opacity() 是同一把锁的另一把钥匙,一起收", () => {
+		const { warnings } = ok(`[data-bn~="btn"] { filter: opacity(0); }`);
+		expect(warnings.join()).toContain("opacity");
+	});
+
+	it("@keyframes 里按宿主从严 —— 同一段动画挂得到宿主身上", () => {
+		const { warnings } = ok(`@keyframes skin-vanish { to { opacity: 0; } }`);
+		expect(warnings.join()).toContain("opacity");
+	});
+});
