@@ -1,6 +1,5 @@
-import type { ActiveSkinResponse, SkinMode } from "@bilibili-notify/contract";
+import type { SkinMode } from "@bilibili-notify/contract";
 import { type ReactNode, useEffect, useLayoutEffect } from "react";
-import { api } from "../services/api";
 import {
 	applySkinCss,
 	applySkinVars,
@@ -14,6 +13,7 @@ import {
 	resolveSkinMode,
 	skinKillSwitchActive,
 } from "../services/skin";
+import { syncActiveSkinToStore } from "../services/skin-active";
 import { useSessionStore } from "../store/session";
 import { type ActiveSkin, effectiveSkin, type SkinState, useSkinStore } from "../store/skin";
 import type { ResolvedTheme } from "../store/theme";
@@ -99,7 +99,7 @@ function SkinEffectsLayer() {
 			aria-hidden
 			className="pointer-events-none fixed inset-0 z-20 overflow-hidden"
 		>
-			{fx.bokeh ? <BokehField colors={fx.bokeh.colors} /> : null}
+			<BokehField colors={fx.bokeh.colors} />
 		</div>
 	);
 }
@@ -126,12 +126,9 @@ export function SkinRoot({ children }: { children: ReactNode }) {
 
 	useEffect(() => {
 		if (authRequired && !authed) return;
-		void api
-			.get<ActiveSkinResponse>("/api/skins/active")
-			.then((res) => useSkinStore.getState().setActive(res.active))
-			.catch(() => {
-				// 网络抖动就先默认装;下次 authed 状态变化会再试。
-			});
+		void syncActiveSkinToStore().catch(() => {
+			// 网络抖动就先默认装;下次 authed 状态变化会再试。
+		});
 	}, [authed, authRequired]);
 
 	useEffect(() => {

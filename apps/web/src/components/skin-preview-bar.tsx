@@ -1,8 +1,8 @@
-import type { ActiveSkinResponse } from "@bilibili-notify/contract";
 import { Btn } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../services/api";
+import { syncActiveSkinToStore } from "../services/skin-active";
 import { useSkinStore } from "../store/skin";
 
 /**
@@ -21,8 +21,7 @@ export function SkinPreviewBar() {
 		mutationFn: (id: string) => api.put<{ ok: boolean }>("/api/skins/active", { id }),
 		onSuccess: async () => {
 			// 服务端双槽是权威(单模皮肤只占一个槽),回拉而不是本地拼
-			const res = await api.get<ActiveSkinResponse>("/api/skins/active");
-			useSkinStore.getState().setActive(res.active);
+			await syncActiveSkinToStore();
 			useSkinStore.getState().setPreview(null);
 			setError(null);
 			void qc.invalidateQueries({ queryKey: ["skins"] });
