@@ -49,7 +49,11 @@ vi.mock("../../../services/api", () => ({
 		upload: vi.fn(async (path: string, form: FormData) => {
 			H.uploadCalls.push({ path, name: (form.get("file") as File | null)?.name ?? "" });
 			if (H.uploadFails) throw new Error("图片过大(上限 5MB)");
-			return { ok: true, name: "assets/img-abcd1234.png" };
+			// 落盘名由服务端按类型生成(img- / font- 前缀),这里照着仿。
+			const name = (form.get("file") as File | null)?.name ?? "";
+			return name.endsWith(".woff2")
+				? { ok: true, name: "assets/font-99887766.woff2" }
+				: { ok: true, name: "assets/img-abcd1234.png" };
 		}),
 	},
 }));
@@ -67,7 +71,12 @@ function makeManifest(): SkinManifest {
 	};
 }
 
-const ASSETS = ["assets/bg.png", "assets/deco.webp"];
+const ASSETS = ["assets/bg.png", "assets/deco.webp", "assets/font-a1b2c3d4.woff2"];
+
+/** 「字体」是折叠段,收起时子节点根本不进 DOM —— 查控件之前先摊开。 */
+function openFontFold(): void {
+	fireEvent.click(screen.getByText("字体").closest("button") as HTMLButtonElement);
+}
 
 function renderEditor(overrides?: { manifest?: SkinManifest; onClose?: () => void }) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -311,6 +320,68 @@ describe("SkinEditor", () => {
 
 		await waitFor(() => expect(screen.getByText(/图片过大/)).toBeTruthy());
 		expect(screen.queryByText(/已把当前状态钉为/)).toBeNull();
+	});
+
+	it("壁纸下拉**不列字体** —— 资产清单是图与字体的全集,不分流就会选出个 woff2 当壁纸", async () => {
+		renderEditor();
+		const options = [...(screen.getByLabelText("壁纸图片") as HTMLSelectElement).options].map(
+			(o) => o.value,
+		);
+		expect(options).not.toContain("assets/font-a1b2c3d4.woff2");
+	});
+
+	it("自带字体下拉列出包内字体;选中 → draft.fonts.asset,选「不用」→ 字段消失", async () => {
+		renderEditor();
+		openFontFold();
+		const select = screen.getByLabelText("自带字体") as HTMLSelectElement;
+		expect([...select.options].map((o) => o.value)).toContain("assets/font-a1b2c3d4.woff2");
+		// 图不许混进来:选了图当字体,保存时才被服务端拒收,而主人已经调了半天。
+		expect([...select.options].map((o) => o.value)).not.toContain("assets/bg.png");
+
+		fireEvent.change(select, { target: { value: "assets/font-a1b2c3d4.woff2" } });
+		await waitFor(() =>
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.fonts?.asset).toBe(
+				"assets/font-a1b2c3d4.woff2",
+			),
+		);
+		fireEvent.change(screen.getByLabelText("自带字体"), { target: { value: "" } });
+		await waitFor(() =>
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.fonts?.asset).toBeUndefined(),
+		);
+	});
+
+	it("传一款字体 → 立刻选成自带字体(会来传字体的人正是想换字体)", async () => {
+		renderEditor();
+		openFontFold();
+		const file = new File([new Uint8Array([1])], "霞鹜文楷.woff2", { type: "" });
+		fireEvent.change(screen.getByLabelText("上传字体"), { target: { files: [file] } });
+
+		await waitFor(() =>
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.fonts?.asset).toBe(
+				"assets/font-99887766.woff2",
+			),
+		);
+		expect(H.uploadCalls.at(-1)?.path).toBe("/api/skins/s1/assets");
+	});
+
+	it("传字体不动字体栈 —— 两栏各管各的,拉不下来还有家族名兜着", async () => {
+		renderEditor({
+			manifest: {
+				schemaVersion: 1,
+				name: "樱花夜",
+				modes: { light: { fonts: { body: ["霞鹜文楷"] } } },
+			},
+		});
+		openFontFold();
+		const file = new File([new Uint8Array([1])], "f.woff2", { type: "" });
+		fireEvent.change(screen.getByLabelText("上传字体"), { target: { files: [file] } });
+
+		await waitFor(() =>
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.fonts?.asset).toBeTruthy(),
+		);
+		expect(useSkinStore.getState().preview?.manifest.modes.light?.fonts?.body).toEqual([
+			"霞鹜文楷",
+		]);
 	});
 
 	it("单套皮肤:点「补一套深色」→ draft 长出 dark 套(复制自浅色)", async () => {

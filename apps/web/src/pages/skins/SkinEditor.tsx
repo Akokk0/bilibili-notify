@@ -23,6 +23,7 @@ import {
 	missingModeOf,
 	setManifestText,
 	setModeSection,
+	splitSkinAssets,
 	textToFonts,
 	toHex6,
 	withColorAlpha,
@@ -167,11 +168,15 @@ export function SkinEditor(props: {
 	}
 
 	/**
-	 * 传一张图进这套皮肤。**立刻落盘**(POST /assets),不等主人点保存 ——
-	 * 资产与 manifest 是两套东西:manifest 能整份丢弃回滚,盘上的图不能。让传图
-	 * 跟着「保存」走,取消一次就得把图重传一次。
+	 * 传一份资产(壁纸图或自带字体)进这套皮肤。**立刻落盘**(POST /assets),不等
+	 * 主人点保存 —— 资产与 manifest 是两套东西:manifest 能整份丢弃回滚,盘上的文件
+	 * 不能。让传图跟着「保存」走,取消一次就得把图重传一次。
 	 *
-	 * 传完当场选成壁纸:会来传图的人正是想换壁纸,再点一次下拉是多余的一步。
+	 * 传完当场选上:会来传的人正是想换这一样,再点一次下拉是多余的一步。
+	 *
+	 * **落点看服务端给回的名字,不看上传的是什么** —— 那边才是「这份东西存成了图
+	 * 还是字体」的权威(它按 mime / 后缀各判各的)。照本地猜的话,两边一旦不同意,
+	 * 症状就是一张图被写进 fonts.asset,保存时才被拒收。
 	 */
 	async function uploadAsset(file: File): Promise<void> {
 		setUploading(true);
@@ -181,7 +186,13 @@ export function SkinEditor(props: {
 			form.set("file", file);
 			const res = await api.upload<{ name: string }>(`/api/skins/${id}/assets`, form);
 			setAssetList((prev) => (prev.includes(res.name) ? prev : [...prev, res.name]));
-			setSection("wallpaper", { ...(draft.modes[modeKey]?.wallpaper ?? {}), image: res.name });
+			const isFont = splitSkinAssets([res.name]).fonts.length > 0;
+			if (isFont) {
+				// 字体栈原样留着:自带字体排在它前面,拉不下来时还有家族名兜底。
+				setSection("fonts", { ...(draft.modes[modeKey]?.fonts ?? {}), asset: res.name });
+			} else {
+				setSection("wallpaper", { ...(draft.modes[modeKey]?.wallpaper ?? {}), image: res.name });
+			}
 		} catch (e) {
 			setFeedback({ tone: "err", text: e instanceof Error ? e.message : String(e) });
 		} finally {
@@ -190,6 +201,8 @@ export function SkinEditor(props: {
 	}
 
 	const mode: SkinMode = draft.modes[modeKey] ?? {};
+	// 两个下拉各取各的:资产清单是图与字体的全集,不分流「壁纸图片」里就会冒出 woff2。
+	const { images: imageAssets, fonts: fontAssets } = splitSkinAssets(assetList);
 	const bokehText = bokehRaw ?? (mode.effects?.bokeh?.colors ?? []).join(", ");
 	function setSection<K extends keyof SkinMode>(section: K, value: SkinMode[K] | undefined): void {
 		setDraft((d) => setModeSection(d, modeKey, section, value));
@@ -349,7 +362,7 @@ export function SkinEditor(props: {
 						prefix="壁纸"
 						wp={wp}
 						def={dm.wallpaper}
-						assets={assetList}
+						assets={imageAssets}
 						isDef={isDef}
 						onChange={(next) => setSection("wallpaper", next)}
 						afterImage={
@@ -514,7 +527,7 @@ export function SkinEditor(props: {
 						prefix="聊天壁纸"
 						wp={chatWp}
 						def={dm.chat?.wallpaper}
-						assets={assetList}
+						assets={imageAssets}
 						isDef={isDef}
 						onChange={(next) => setChat({ wallpaper: next })}
 					/>
@@ -560,16 +573,54 @@ export function SkinEditor(props: {
 				</Fold>
 
 				<Fold title="字体">
+					<SelectField
+						label="自带字体"
+						value={mode.fonts?.asset ?? ""}
+						isDefault={isDef(mode.fonts?.asset, dm.fonts?.asset)}
+						onChange={(v) =>
+							setSection("fonts", cleanSection({ ...mode.fonts, asset: v || undefined }))
+						}
+						options={[
+							{ value: "", label: "(不用自带字体)" },
+							...fontAssets.map((a) => ({ value: a, label: a })),
+						]}
+					/>
+					<FieldRow label="上传字体">
+						<div className="flex items-center gap-2">
+							<input
+								aria-label="上传字体"
+								type="file"
+								accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf"
+								disabled={uploading}
+								onChange={(e) => {
+									const file = e.target.files?.[0];
+									// 输入框清空:同一份文件连传两次时 change 不会再触发。
+									e.target.value = "";
+									if (file) uploadAsset(file);
+								}}
+								className="w-full text-[11px] text-bn-text-secondary file:mr-2 file:rounded-md file:border-0 file:bg-bn-surface-muted file:px-2 file:py-1 file:text-[11px] file:text-bn-text-primary"
+							/>
+							{uploading ? (
+								<span className="shrink-0 text-[11px] text-bn-text-secondary">上传中…</span>
+							) : null}
+						</div>
+					</FieldRow>
 					<TextField
 						label="正文字体栈"
 						value={fontsToText(mode.fonts?.body)}
 						isDefault={isDef(fontsToText(mode.fonts?.body), fontsToText(dm.fonts?.body))}
 						placeholder="逗号分隔,如 LXGW WenKai, sans-serif"
 						onChange={(v) => {
+							// 自带字体那一栏**不能被顺手清掉** —— 两栏是「先用文件、拉不下来
+							// 再退到家族名」的一对,改字体栈不该把主人传的那款字弄没。
 							const body = textToFonts(v);
-							setSection("fonts", body ? { body } : undefined);
+							setSection("fonts", cleanSection({ ...mode.fonts, body }));
 						}}
 					/>
+					<p className="text-[11px] leading-4 text-bn-text-tertiary">
+						自带字体排在字体栈**之前**;文件拉不下来时自动退到后面的家族名。
+						一款完整中文字库有八九兆,转成 woff2 通常只占三分之一,主人和访客都省。
+					</p>
 				</Fold>
 
 				<Fold title="动效">

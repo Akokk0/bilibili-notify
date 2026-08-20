@@ -4,7 +4,13 @@
  * 空串/空对象,这样保存的 manifest 与手写的一样干净,服务端校验也不会被空串绊倒。
  */
 
-import type { SkinColorKey, SkinManifest, SkinMode, SkinTextSlot } from "@bilibili-notify/contract";
+import {
+	SKIN_FONT_FORMATS,
+	type SkinColorKey,
+	type SkinManifest,
+	type SkinMode,
+	type SkinTextSlot,
+} from "@bilibili-notify/contract";
 
 /**
  * 明暗两套的中文名。皮肤这一块**只认这一份** —— 同一套皮肤在库列表叫「深色」、
@@ -152,6 +158,28 @@ export function withColorAlpha(
 		return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 	}
 	return `rgba(${fallbackRgb}, ${a})`;
+}
+
+/**
+ * 包内资产清单 → 分成图与字体两拨。
+ *
+ * 服务端的 `listAssets` 给的是**一份全集**(壁纸图 + 自带字体),因为它的四个调用方
+ * (编辑器、AI 改皮肤、保存时的引用校验、导出 zip)要的都是「盘上有什么」。分流是
+ * 用的时候的事,而编辑器有两个下拉,不分就会在「壁纸图片」里选出个 woff2 —— 保存
+ * 那一刻才被服务端拒收,而主人已经调了半天。
+ *
+ * 判据是**后缀**,不是名字前缀:前缀(img- / font-)只是落盘时的可读性,而包是可以
+ * 手工压出来再传进来的,里头的名字什么样都有。
+ */
+export function splitSkinAssets(assets: string[]): { images: string[]; fonts: string[] } {
+	const images: string[] = [];
+	const fonts: string[] = [];
+	for (const a of assets) {
+		const ext = a.toLowerCase().split(".").pop() ?? "";
+		if (SKIN_FONT_FORMATS[ext]) fonts.push(a);
+		else images.push(a);
+	}
+	return { images, fonts };
 }
 
 export function fontsToText(fonts: string[] | undefined): string {

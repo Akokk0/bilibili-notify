@@ -14,6 +14,7 @@ import {
 	clearSkinVars,
 	composeChatWallpaperCss,
 	composeEffectsCss,
+	composeFontFaceCss,
 	composeSkinCss,
 	composeSkinVars,
 	composeWallpaperCss,
@@ -98,6 +99,22 @@ describe("composeSkinVars", () => {
 		expect(vars["--font-cjk"]).toBe('"LXGW WenKai", "霞鹜文楷", monospace, system-ui, sans-serif');
 	});
 
+	it("fonts.asset 排在字体栈最前面,而不是顶掉它", () => {
+		// 顶掉的话,字体文件一旦拉不下来(网断、被删)就一路掉到系统兜底链;
+		// 排在前面则还有主人写的那几个家族名接着兜。
+		const vars = composeSkinVars(
+			{ fonts: { asset: "assets/font-a1b2c3d4.woff2", body: ["霞鹜文楷"] } },
+			assetUrl,
+			"light",
+		);
+		expect(vars["--font-cjk"]).toBe('"bn-skin-font", "霞鹜文楷", system-ui, sans-serif');
+	});
+
+	it("只有 fonts.asset、没写字体栈 → 照样进 --font-cjk", () => {
+		const vars = composeSkinVars({ fonts: { asset: "assets/f.ttf" } }, assetUrl, "light");
+		expect(vars["--font-cjk"]).toBe('"bn-skin-font", system-ui, sans-serif');
+	});
+
 	it("radius 数字拼 px", () => {
 		const vars = composeSkinVars({ radius: { card: 8, pill: 12 } }, assetUrl, "light");
 		expect(vars["--radius-bn-card"]).toBe("8px");
@@ -159,6 +176,36 @@ describe("composeWallpaperCss(壁纸糊化层)", () => {
 		const mode: SkinMode = { wallpaper: { image: "assets/bg.webp" } };
 		expect(composeWallpaperCss(mode, assetUrl, "light")).toBe("");
 		expect(composeSkinVars(mode, assetUrl, "light")["--bn-page-bg"]).toContain("url(");
+	});
+});
+
+describe("composeFontFaceCss(自带字体)", () => {
+	it("拼出 @font-face,format 提示按后缀给", () => {
+		// format() 让浏览器在**下载之前**就能判断认不认这份字体 —— 一款完整中文
+		// 字库有八九兆,拉完才发现不支持是实打实的浪费。
+		const css = composeFontFaceCss({ fonts: { asset: "assets/font-a1.woff2" } }, assetUrl);
+		expect(css).toContain('font-family:"bn-skin-font"');
+		expect(css).toContain('url("/api/skins/abc/assets/font-a1.woff2")');
+		expect(css).toContain('format("woff2")');
+	});
+
+	it("ttf / otf 的 format 名与后缀不同名 —— 照抄后缀等于没写", () => {
+		expect(composeFontFaceCss({ fonts: { asset: "assets/f.ttf" } }, assetUrl)).toContain(
+			'format("truetype")',
+		);
+		expect(composeFontFaceCss({ fonts: { asset: "assets/f.otf" } }, assetUrl)).toContain(
+			'format("opentype")',
+		);
+	});
+
+	it("font-display: swap —— 别在几兆字体下完之前把整页文字藏起来", () => {
+		const css = composeFontFaceCss({ fonts: { asset: "assets/f.woff2" } }, assetUrl);
+		expect(css).toContain("font-display:swap");
+	});
+
+	it("没配字体文件 → 空串(等价于不注入)", () => {
+		expect(composeFontFaceCss({}, assetUrl)).toBe("");
+		expect(composeFontFaceCss({ fonts: { body: ["霞鹜文楷"] } }, assetUrl)).toBe("");
 	});
 });
 

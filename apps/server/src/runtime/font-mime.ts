@@ -28,17 +28,3 @@ export function fontExtOf(filename: string): string | undefined {
 	const ext = filename.toLowerCase().split(".").pop();
 	return ext && ext in FONT_EXT_TO_MIME ? ext : undefined;
 }
-
-/**
- * 后缀 → CSS `@font-face` 的 `format()` 提示。
- *
- * 写上它浏览器才能在**下载之前**判断认不认这份字体 —— 一款完整中文字库有八九兆,
- * 拉完才发现格式不支持是实打实的浪费。注意 ttf/otf 的 format 名与后缀不同名
- * (`truetype` / `opentype`),抄错了等于没写。
- */
-export const FONT_EXT_TO_CSS_FORMAT: Record<string, string> = {
-	woff2: "woff2",
-	woff: "woff",
-	ttf: "truetype",
-	otf: "opentype",
-};

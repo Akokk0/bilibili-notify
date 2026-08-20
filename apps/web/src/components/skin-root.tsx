@@ -7,6 +7,7 @@ import {
 	clearSkinVars,
 	composeChatWallpaperCss,
 	composeEffectsCss,
+	composeFontFaceCss,
 	composeSkinCss,
 	composeSkinVars,
 	composeWallpaperCss,
@@ -143,13 +144,15 @@ export function SkinRoot({ children }: { children: ReactNode }) {
 		const { skin, mode, theme, locked } = current;
 		const assetUrl = (name: string) => skinAssetUrl(skin.id, name);
 		applySkinVars(root, composeSkinVars(mode, assetUrl, theme));
-		// 自定义 CSS + 壁纸糊化层 + 动效预设产物:与变量同一拍进同一个 style 标签;
-		// hook → 真实选择器的翻译只发生在这里。
+		// 自定义 CSS + 壁纸糊化层 + 自带字体 + 动效预设产物:与变量同一拍进同一个
+		// style 标签;hook → 真实选择器的翻译只发生在这里。
 		applySkinCss(
 			[
 				composeSkinCss(skin.manifest, theme),
 				composeWallpaperCss(mode, assetUrl, theme),
 				composeChatWallpaperCss(mode, assetUrl, theme),
+				// @font-face 与 --font-cjk 是一对,少接一半就是「选得动、就是不生效」。
+				composeFontFaceCss(mode, assetUrl),
 				composeEffectsCss(mode),
 			]
 				.filter((s) => s !== "")

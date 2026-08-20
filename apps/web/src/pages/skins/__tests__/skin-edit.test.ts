@@ -14,6 +14,7 @@ import {
 	missingModeOf,
 	setManifestText,
 	setModeSection,
+	splitSkinAssets,
 	textToFonts,
 	toHex6,
 	withColorAlpha,
@@ -128,5 +129,36 @@ describe("补缺失模式套", () => {
 		expect(next.modes.dark).toEqual(m.modes.light);
 		expect(next.modes.dark).not.toBe(m.modes.light);
 		expect(addMissingMode(next)).toBe(next);
+	});
+});
+
+describe("splitSkinAssets", () => {
+	it("按后缀分成图与字体两拨", () => {
+		expect(
+			splitSkinAssets([
+				"assets/bg.png",
+				"assets/font-a1.woff2",
+				"assets/deco.webp",
+				"assets/f.TTF",
+				"assets/g.otf",
+				"assets/h.woff",
+			]),
+		).toEqual({
+			images: ["assets/bg.png", "assets/deco.webp"],
+			fonts: ["assets/font-a1.woff2", "assets/f.TTF", "assets/g.otf", "assets/h.woff"],
+		});
+	});
+
+	it("判后缀不判名字前缀 —— 手工压出来的包里名字什么样都有", () => {
+		// `img-` / `font-` 是落盘时的可读性前缀,不是契约。拿前缀分流的话,主人自己
+		// 压一个 assets/wenkai.woff2 传进来,就会出现在「壁纸图片」下拉里。
+		expect(splitSkinAssets(["assets/wenkai.woff2", "assets/font-looking.png"])).toEqual({
+			images: ["assets/font-looking.png"],
+			fonts: ["assets/wenkai.woff2"],
+		});
+	});
+
+	it("空清单 → 两个空数组", () => {
+		expect(splitSkinAssets([])).toEqual({ images: [], fonts: [] });
 	});
 });

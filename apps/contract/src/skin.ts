@@ -79,6 +79,32 @@ export const SKIN_LIMITS = {
 
 export type SkinWallpaperFit = "cover" | "contain" | "tile";
 
+/**
+ * 皮肤自带字体在 CSS 里的家族名。
+ *
+ * 固定一个内部名字,而不是去解析字体文件里的真名:解析 ttf/otf 要拖一个字体解析库
+ * 进浏览器,而这里唯一需要的就是「@font-face 声明的名字」和 `--font-cjk` 引用的名字
+ * 对得上。与卡片出图那边的 `USER_FONT_FAMILY`(bn-user-font)刻意不同名 —— 两条路
+ * 的字体来源不同,撞名的话谁先声明谁说了算,而那正是最难查的一类。
+ */
+export const SKIN_FONT_FAMILY = "bn-skin-font";
+
+/**
+ * 字体后缀 → CSS `@font-face` 的 `format()` 提示。
+ *
+ * 写上它浏览器才能在**下载之前**判断认不认这份字体 —— 一款完整中文字库有八九兆,
+ * 拉完才发现格式不支持是实打实的浪费。注意 ttf / otf 的 format 名与后缀**不同名**
+ * (`truetype` / `opentype`),照抄后缀等于没写。
+ *
+ * 住在契约里是因为服务端(收什么后缀)与 web(拼 @font-face)得认同一份清单。
+ */
+export const SKIN_FONT_FORMATS: Record<string, string> = {
+	woff2: "woff2",
+	woff: "woff",
+	ttf: "truetype",
+	otf: "opentype",
+};
+
 /** 主题文案槽位白名单;加新槽位只增不改。 */
 export const SKIN_TEXT_SLOTS = ["headerTitle", "chatPlaceholder"] as const;
 export type SkinTextSlot = (typeof SKIN_TEXT_SLOTS)[number];

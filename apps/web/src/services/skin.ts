@@ -7,6 +7,8 @@
 import {
 	SKIN_COLOR_TOKEN_MAP,
 	SKIN_CSS_HOOK_MAP,
+	SKIN_FONT_FAMILY,
+	SKIN_FONT_FORMATS,
 	type SkinManifest,
 	type SkinMode,
 	type SkinWallpaper,
@@ -92,9 +94,17 @@ export function composeSkinVars(
 		if (g.strongBlur !== undefined) vars["--bn-glass-strong-blur"] = `${g.strongBlur}px`;
 	}
 
-	if (mode.fonts?.body?.length) {
-		const stack = mode.fonts.body.map(quoteFontName);
-		vars["--font-cjk"] = [...stack, "system-ui", "sans-serif"].join(", ");
+	// 自带字体**排在字体栈最前面,不是顶掉它**:文件一旦拉不下来(网断、被删),
+	// 后面那几个家族名还能接着兜,不至于一路掉到系统兜底链。@font-face 本体由
+	// composeFontFaceCss 出,和壁纸一样 —— 字段存名字,拼 URL 是注入层的事。
+	{
+		const stack = [
+			...(mode.fonts?.asset ? [`"${SKIN_FONT_FAMILY}"`] : []),
+			...(mode.fonts?.body ?? []).map(quoteFontName),
+		];
+		if (stack.length > 0) {
+			vars["--font-cjk"] = [...stack, "system-ui", "sans-serif"].join(", ");
+		}
 	}
 
 	if (mode.radius?.card !== undefined) vars["--radius-bn-card"] = `${mode.radius.card}px`;
@@ -304,6 +314,27 @@ function blurLayerCss(
 	if (!wp?.image || !hasBlur(wp)) return "";
 	const layers = buildWallpaperLayers({ ...wp, image: wp.image }, assetUrl, theme);
 	return `${selector}{content:"";position:${position};inset:-${wp.blur * 2}px;z-index:-1;pointer-events:none;background:${layers};filter:blur(${wp.blur}px)}`;
+}
+
+/**
+ * 皮肤自带字体 → 一条 `@font-face`。没配字体文件时返回空串。
+ *
+ * 为什么必须走这条内置路、而不能让皮肤自己在自定义 CSS 里写:**清洗层直接拒收
+ * `url()`**(外联是隐私泄露面),所以 `fonts.asset` 是自带字体唯一可能的入口 ——
+ * 与壁纸同一套安排,字段里只存包内名字,拼 URL 在这儿做。
+ *
+ * `font-display: swap` 与出图那条路(`packages/image` 的 `buildFontFace` 用 block)
+ * 刻意相反:那边字体是内联 data URL、不走网络,block 只是让浏览器别抢跑;这边是
+ * 真的要下载八九兆,block 会让整页文字在下完之前**一个字都不显示**。
+ */
+export function composeFontFaceCss(mode: SkinMode, assetUrl: (name: string) => string): string {
+	const asset = mode.fonts?.asset;
+	if (!asset) return "";
+	const ext = asset.toLowerCase().split(".").pop() ?? "";
+	const format = SKIN_FONT_FORMATS[ext];
+	// 认不出后缀就不给 format 提示 —— 猜一个错的比不写更糟(浏览器会据此直接跳过)。
+	const src = `url("${assetUrl(asset)}")${format ? ` format("${format}")` : ""}`;
+	return `@font-face{font-family:"${SKIN_FONT_FAMILY}";src:${src};font-display:swap}`;
 }
 
 /**

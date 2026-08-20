@@ -206,6 +206,27 @@ describe("SkinRoot / 自定义 CSS 注入", () => {
 	});
 });
 
+describe("SkinRoot / 自带字体", () => {
+	it("fonts.asset → @font-face 进同一个 style 标签,--font-cjk 排在最前", async () => {
+		// 两半各自能过单测也不够:少接上任何一半都是「选得动、存得住、就是不生效」
+		// —— 只有变量没有 @font-face,浏览器认不出这个家族名,静静跳到下一个。
+		H.activeResponse = {
+			active: slotsOf(
+				makeSkin({ light: { fonts: { asset: "assets/font-a1.woff2", body: ["霞鹜文楷"] } } }),
+			),
+		};
+		renderRoots();
+		await waitFor(() =>
+			expect(document.getElementById("bn-skin-css")?.textContent ?? "").toContain("@font-face"),
+		);
+		const css = document.getElementById("bn-skin-css")?.textContent ?? "";
+		expect(css).toContain('url("/api/skins/abc/assets/font-a1.woff2")');
+		expect(document.documentElement.style.getPropertyValue("--font-cjk")).toBe(
+			'"bn-skin-font", "霞鹜文楷", system-ui, sans-serif',
+		);
+	});
+});
+
 describe("SkinRoot / 动效预设层", () => {
 	it("bokeh → 渲染穿透点击的效果层;effects CSS 拼进 style 标签", async () => {
 		H.activeResponse = {
