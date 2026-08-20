@@ -188,6 +188,27 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 		return c.json({ error: "not_found" }, 404);
 	});
 
+	/**
+	 * `X-Content-Type-Options: nosniff`,一个口管住整片 API。
+	 *
+	 * 四条路在发**主人上传的字节**:皮肤包资产(壁纸 + 自带字体)、聊天附件、卡片
+	 * 背景图、卡片字体。它们各自都声明了正确的 content-type,但没有这个头时浏览器
+	 * 仍保留自行嗅探的余地 —— 而皮肤包是可以从外部导入的 zip,里头的字节不是我们
+	 * 写的。真被嗅成 HTML,那就是一个长在 API 同源上的存储型 XSS。
+	 *
+	 * **挂在中间件而不是各条路由自己写**:五处散着写,第六条上传路由必然会忘。
+	 *
+	 * **只管 /api/*,不往静态面板扩**:那边是我们自己的构建产物、不是攻击面,而
+	 * nosniff 会让浏览器严格照 content-type 办事 —— 万一 Hono 的 mime 表认不出某个
+	 * 构建产物,换来的是整块面板不加载。风险收益不对等。
+	 *
+	 * 注册在鉴权闸**之前**:401/403 那些响应也照样带上。
+	 */
+	app.use("/api/*", async (c, next) => {
+		await next();
+		c.res.headers.set("X-Content-Type-Options", "nosniff");
+	});
+
 	if (options.desktopToken) {
 		app.use("/api/*", createDesktopTokenAuth(options.desktopToken));
 	}
