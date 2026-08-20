@@ -183,8 +183,8 @@ export interface ToneChipProps {
 }
 
 /**
- * 「一排里选一个 / 开一个」的可点胶囊 —— 选中时按 `tone` 染色(底 12% / 字实色 /
- * 边 33%),未选中时退回中性描边。
+ * 「一排里选一个 / 开一个」的可点胶囊 —— 选中时 `tone` 上底(12%)与描边(实色)、
+ * 字走正文色,未选中时退回中性描边。
  *
  * 与 {@link Pill} 的分工:Pill 是不可点的徽章(`<span>`,无描边),这个是按钮
  * (`<button>`,挂 `data-bn="btn"` 跟着换肤走造型)。**别拿 Pill 套 onClick** ——
@@ -193,6 +193,10 @@ export interface ToneChipProps {
  * `tone` 是**内容语义色**(error 红 / 直播粉 / 暂停橙),刻意不跟主强调色换肤:
  * 换个皮肤不该把「error」染成别的颜色。皮肤能改的是造型那一半(圆角、描边样式、
  * 阴影、字重),那半走 `btn` 挂点。
+ *
+ * **tone 不承担可读性** —— 它只上底与边,文字恒走正文色 token。让 tone 当字色
+ * 时,字与底同色相,对比度受限于 tone 与主题背景的明度差:亮色下 warn 1.90:1、
+ * info 2.22:1,暗色下深调的紫 2.84:1、灰 2.45:1,七档里过不了 AA 的有五档 / 两档。
  */
 export function ToneChip({
 	children,
@@ -202,17 +206,20 @@ export function ToneChip({
 	disabled,
 	uppercase,
 }: ToneChipProps) {
-	// active 态的三色由 `tone` 现算,只能落 inline;未选中态是静态的,走 class ——
-	// inline 没有 `:hover`,写进去这颗胶囊就永远没有悬停反馈。
+	// 只有底与边由 `tone` 现算,得落 inline;**字色不用 tone**,走正文色 token ——
+	// 字与底同色相时对比度受限于 tone 与主题背景的明度差,亮色下 warn 只有
+	// 1.90:1、暗色下深紫 2.84:1(7 档里 5 档 / 2 档不过 AA)。改由实色边框承担
+	// 色彩识别,真机上比 12% 淡底更醒目,识别度不降反升。
+	// 未选中态整个是静态的,走 class —— inline 没有 `:hover`,写进去这颗胶囊就
+	// 永远没有悬停反馈。
 	const style: CSSProperties | undefined = active
 		? {
 				background: `color-mix(in srgb, ${tone} 12%, transparent)`,
-				color: tone,
-				borderColor: `color-mix(in srgb, ${tone} 33%, transparent)`,
+				borderColor: tone,
 			}
 		: undefined;
 	const toneCls = active
-		? ""
+		? "text-bn-text-primary"
 		: "bg-transparent text-bn-text-tertiary border-bn-border hover:text-bn-text-primary";
 	return (
 		<button

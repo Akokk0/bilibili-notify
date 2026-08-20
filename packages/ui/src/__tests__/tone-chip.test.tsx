@@ -17,16 +17,27 @@ afterEach(cleanup);
 const chip = () => screen.getByRole("button");
 
 describe("ToneChip", () => {
-	it("选中态按 tone 染色:底 12%、字实色、边 33%", () => {
+	/**
+	 * 选中态的**字不用 tone** —— tone 只管底与边。
+	 *
+	 * 初版是「12% tone 底 + 100% tone 字」,字与底同色相,对比度天然受限于 tone
+	 * 本身与主题背景的明度差:亮色下 warn 1.90:1、info 2.22:1、粉 2.30:1(7 档里
+	 * 5 档不过 AA),暗色下深色调的紫 2.84:1、灰 2.45:1 也塌。改用正文色后两套
+	 * 主题全部 12~16:1,而色彩识别改由**实色边框**接手 —— 真机上实色边比 12%
+	 * 淡底更醒目,识别度不降反升。
+	 */
+	it("选中态:底 12% tone、边实色 tone、字走正文色", () => {
 		render(
 			<ToneChip tone="#f2a053" active onClick={() => {}}>
 				暂停
 			</ToneChip>,
 		);
-		const s = chip().style;
-		expect(s.background).toBe("color-mix(in srgb, rgb(242, 160, 83) 12%, transparent)");
-		expect(s.color).toBe("rgb(242, 160, 83)");
-		expect(s.borderColor).toBe("color-mix(in srgb, rgb(242, 160, 83) 33%, transparent)");
+		const el = chip();
+		expect(el.style.background).toBe("color-mix(in srgb, rgb(242, 160, 83) 12%, transparent)");
+		expect(el.style.borderColor).toBe("rgb(242, 160, 83)");
+		// 字色不落 inline,走 token 类 —— 皮肤能搬,且两套主题各自跟随。
+		expect(el.style.color).toBe("");
+		expect(el.className).toContain("text-bn-text-primary");
 	});
 
 	/**
@@ -55,7 +66,7 @@ describe("ToneChip", () => {
 		);
 		const s = chip().style;
 		expect(s.background).toBe("color-mix(in srgb, var(--color-bn-pink) 12%, transparent)");
-		expect(s.color).toBe("var(--color-bn-pink)");
+		expect(s.borderColor).toBe("var(--color-bn-pink)");
 	});
 
 	it("挂 btn 皮肤挂点,圆角走 pill 轴而不是写死 rounded-full", () => {

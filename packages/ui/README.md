@@ -26,7 +26,7 @@
 | `Avatar` | 圆头像:有 `url` 显图,没有显首字母渐变底;`status` 加 LIVE 角标或呼吸点 |
 | `Btn` | 按钮,5 变体(`primary` 粉实底 / `blue` / `ghost` / `outline` / `danger` 红字)× 3 尺寸 |
 | `Pill` | 圆角小徽章(**不可点**的 `<span>`);`subtle` = 12% 底色染色字,否则实底白字 |
-| `ToneChip` | 「一排里选一个/开一个」的**可点**胶囊:选中按 `tone` 染色(底 12%/字实色/边 33%),未选中退中性描边 + 悬停变正文色。自带 `data-bn="btn"`;`tone` 收 hex **或** `var()`(内部 `color-mix`),没有开关态的纯操作钮可不填。别拿 `Pill` 套 `onClick` 顶替它 |
+| `ToneChip` | 「一排里选一个/开一个」的**可点**胶囊:选中 = 12% `tone` 底 + **实色 `tone` 边** + 正文色字,未选中退中性描边 + 悬停变正文色。**`tone` 不承担可读性**(当字色时字底同色相,亮色下 warn 只有 1.90:1),色彩识别交给实色边框。自带 `data-bn="btn"`;`tone` 收 hex **或** `var()`(内部 `color-mix`),纯操作钮可不填。别拿 `Pill` 套 `onClick` 顶替它 |
 | `StatusDot` | 8px 语义色状态点(`live/living` 粉+呼吸、`ok` 绿、`warn` 橙、`err` 红、`pending` 灰) |
 | `Toggle` | 开关(粉=开),`sm`/`md`;`ariaLabel` 给读屏器命名 |
 | `Input` | 带可选前置 icon 的单行输入框 |

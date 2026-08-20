@@ -3,7 +3,7 @@ import {
 	inboundGapReason,
 	platformCanReceiveReply,
 } from "@bilibili-notify/internal/constants";
-import { PlatformIcon, Toggle } from "@bilibili-notify/ui";
+import { PlatformIcon, Toggle, ToneChip } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Field, Picker, TInput } from "../../components/forms";
 import { api } from "../../services/api";
@@ -122,19 +122,15 @@ export function RoastScheduleFields({
 					{targets.map((t) => {
 						const on = value.targets.includes(t.id);
 						return (
-							<button
-								type="button"
+							<ToneChip
 								key={t.id}
+								tone={ROAST_PURPLE}
+								active={on}
 								onClick={() => toggleTarget(t.id)}
-								className="flex items-center gap-1 px-2 py-1 rounded-lg text-[12px]"
-								style={{
-									border: `1px solid ${on ? ROAST_PURPLE : "rgba(128,128,128,.35)"}`,
-									background: on ? `${ROAST_PURPLE}1a` : "transparent",
-								}}
 							>
 								<PlatformIcon platform={t.platform} size={13} />
 								{t.name}
-							</button>
+							</ToneChip>
 						);
 					})}
 				</div>
