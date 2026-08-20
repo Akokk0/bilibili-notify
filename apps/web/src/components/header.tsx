@@ -397,7 +397,10 @@ export function GlassHeader() {
 		<header
 			ref={headerRef}
 			data-bn="header"
-			className="bn-glass-strong sticky top-0 z-10 shadow-bn-card"
+			// z-35:卡在**页面内容**(最高 z-30,TabBarShell 给「添加 UP」下拉留的)之上、
+			// **覆盖层**(z-40 起:AI 抽屉/弹窗/toast/灵动岛)之下。原先是 z-10,比页面
+			// 内容还低 —— 往下滚,tab 条整条画在吸顶顶栏之上,把主导航切掉一截。
+			className="bn-glass-strong sticky top-0 z-35 shadow-bn-card"
 		>
 			<div className="flex items-center justify-between gap-4 px-7 pt-4">
 				<div className="flex min-w-0 items-center gap-3">
