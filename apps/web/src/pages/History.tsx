@@ -1,4 +1,4 @@
-import { Avatar, ErrorNote, Icon, Input, LoadingBlock, Pill } from "@bilibili-notify/ui";
+import { Avatar, ErrorNote, Icon, Input, LoadingBlock, Pill, ToneChip } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { PUSH_KIND_META, PUSH_TONE } from "../config/push-kinds";
@@ -118,33 +118,16 @@ export default function History() {
 					icon={<Icon.search size={14} />}
 				/>
 				<div className="flex gap-1">
-					{FILTERS.map((f) => {
-						const active = filterId === f.id;
-						return (
-							<button
-								key={f.id}
-								type="button"
-								onClick={() => setFilterId(f.id)}
-								data-bn="btn"
-								className="rounded-bn-pill border px-3 py-1 text-[12px] font-semibold transition"
-								style={
-									active
-										? {
-												background: `${f.tone}1f`,
-												color: f.tone,
-												borderColor: `${f.tone}55`,
-											}
-										: {
-												background: "transparent",
-												color: "var(--color-bn-text-tertiary)",
-												borderColor: "var(--color-bn-border)",
-											}
-								}
-							>
-								{f.label}
-							</button>
-						);
-					})}
+					{FILTERS.map((f) => (
+						<ToneChip
+							key={f.id}
+							tone={f.tone}
+							active={filterId === f.id}
+							onClick={() => setFilterId(f.id)}
+						>
+							{f.label}
+						</ToneChip>
+					))}
 				</div>
 				<div className="flex-1" />
 				<span className="text-[11px] text-bn-text-tertiary">

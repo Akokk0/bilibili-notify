@@ -1,4 +1,4 @@
-import { Icon, Input } from "@bilibili-notify/ui";
+import { Icon, Input, ToneChip } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLogChannel } from "../hooks/useLogChannel";
@@ -22,6 +22,14 @@ import { withDesktopTokenHeader } from "../services/desktop-token";
  */
 
 const LEVELS: ReadonlyArray<LogLineLevel> = ["debug", "info", "warn", "error"];
+
+/**
+ * 顶栏两个开关的状态色 —— 与 `LEVEL_TONE` 的 warn / info **同值但不同义**
+ * (暂停=警示、自动滚动=信息),刻意各写各的:改等级配色时不该连带改开关。
+ * 同 LEVEL_TONE 一样是内容语义色,不跟主强调色换肤。
+ */
+const PAUSED_TONE = "#f2a053";
+const AUTOSCROLL_TONE = "#00AEEC";
 
 const LEVEL_TONE: Record<LogLineLevel, string> = {
 	debug: "#94a3b8",
@@ -132,32 +140,17 @@ export default function Logs() {
 					icon={<Icon.search size={14} />}
 				/>
 				<div className="flex gap-1">
-					{LEVELS.map((l) => {
-						const active = levels.has(l);
-						const tone = LEVEL_TONE[l];
-						return (
-							<button
-								key={l}
-								type="button"
-								onClick={() => toggleLevel(l)}
-								className="rounded-bn-pill border px-3 py-1 text-[12px] font-semibold uppercase transition"
-								style={
-									active
-										? { background: `${tone}1f`, color: tone, borderColor: `${tone}55` }
-										: {
-												// 与同页的暂停/自动滚动、以及推送历史的筛选胶囊同档:
-												// 未选中态一律 tertiary。此前这排写成 secondary,三排
-												// 长得一样的胶囊却分两个档。
-												background: "transparent",
-												color: "var(--color-bn-text-tertiary)",
-												borderColor: "var(--color-bn-border)",
-											}
-								}
-							>
-								{l}
-							</button>
-						);
-					})}
+					{LEVELS.map((l) => (
+						<ToneChip
+							key={l}
+							tone={LEVEL_TONE[l]}
+							active={levels.has(l)}
+							onClick={() => toggleLevel(l)}
+							uppercase
+						>
+							{l}
+						</ToneChip>
+					))}
 				</div>
 
 				<select
@@ -185,57 +178,31 @@ export default function Logs() {
 					className="rounded-lg border border-bn-border bg-bn-surface px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
 				/>
 				{!isLive && (
-					<button
-						type="button"
-						onClick={() => setDay("")}
-						className="rounded-bn-pill border border-bn-pink/40 bg-bn-pink/10 px-3 py-1 text-[12px] font-semibold text-bn-pink"
-					>
+					// 常亮 active:它没有未选中态 —— 一旦回到实时,这颗自己就不显示了。
+					<ToneChip tone="var(--color-bn-pink)" active onClick={() => setDay("")}>
 						回到实时
-					</button>
+					</ToneChip>
 				)}
-				<button
-					type="button"
-					onClick={() => setPaused((p) => !p)}
-					className="rounded-bn-pill border px-3 py-1 text-[12px] font-semibold transition"
-					style={
-						paused
-							? { background: "#f2a05320", color: "#f2a053", borderColor: "#f2a05355" }
-							: {
-									background: "transparent",
-									color: "var(--color-bn-text-tertiary)",
-									borderColor: "var(--color-bn-border)",
-								}
-					}
-				>
+				<ToneChip tone={PAUSED_TONE} active={paused} onClick={() => setPaused((p) => !p)}>
 					{paused ? "已暂停" : "暂停"}
-				</button>
-				<button
-					type="button"
+				</ToneChip>
+				<ToneChip
+					tone={AUTOSCROLL_TONE}
+					active={autoscroll}
 					onClick={() => setAutoscroll((a) => !a)}
-					className="rounded-bn-pill border px-3 py-1 text-[12px] font-semibold transition"
-					style={
-						autoscroll
-							? { background: "#00AEEC1f", color: "#00AEEC", borderColor: "#00AEEC55" }
-							: {
-									background: "transparent",
-									color: "var(--color-bn-text-tertiary)",
-									borderColor: "var(--color-bn-border)",
-								}
-					}
 				>
 					自动滚动
-				</button>
-				<button
-					type="button"
+				</ToneChip>
+				{/* 纯操作钮,没有开关态 —— 恒走 ToneChip 的中性态,tone 用不上就不填。 */}
+				<ToneChip
 					onClick={() => {
 						void downloadRawLog(viewDay).catch((err) => {
 							alert(`下载失败:${String((err as Error).message ?? err)}`);
 						});
 					}}
-					className="inline-flex items-center gap-1 rounded-bn-pill border border-bn-border px-3 py-1 text-[12px] font-semibold text-bn-text-secondary hover:text-bn-text-primary"
 				>
 					↓ {viewDay}.jsonl
-				</button>
+				</ToneChip>
 			</div>
 
 			<div className="flex items-center justify-between px-1 text-[11px] text-bn-text-tertiary">
