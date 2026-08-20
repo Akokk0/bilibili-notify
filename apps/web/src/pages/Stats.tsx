@@ -50,17 +50,17 @@ import { SoloRoastScheduleBox } from "./stats/SoloRoastScheduleBox";
 import { colorFromUid, displayName } from "./up/helpers";
 
 /**
- * 面板 / KPI 卡的主题色。
+ * 面板 / KPI 卡的主题色 —— 走 token,跟皮肤换装。
  *
- * **必须是十六进制字面量,不能用 `var(--color-bn-*)`**:GlassPanel 与
- * GlassStatCard 会拼 alpha 后缀(`${color}1a`)来造渐变底色和描边,拼上 CSS
- * 变量会得到 `var(--color-bn-pink)1a` 这种非法值 —— 浏览器**静默丢弃整条声明**,
- * 卡片就变成没有底色、没有边框的裸块,而且 typecheck 和 lint 都发现不了。
- * 取值与 styles.css 里的同名 token 一致。
+ * 这里曾经写着「**必须是十六进制字面量**」,理由是 GlassPanel / GlassStatCard
+ * 拼 alpha 后缀(`${color}1a`),拼上 CSS 变量会得到 `var(--color-bn-pink)1a`
+ * 这种非法值、被浏览器静默丢弃。那两个组件现在用 `color-mix()` 造透明度,
+ * 限制没了 —— 而它一直在的代价是:统计页的强调色被钉死在 B 站粉/蓝/紫上,
+ * 装了别的皮肤,整站都换了,只有这几张卡还是原来的配色。
  */
-const PINK = "#fb7299";
-const BLUE = "#00aeec";
-const PURPLE = "#a29bfe";
+const PINK = "var(--color-bn-pink)";
+const BLUE = "var(--color-bn-blue)";
+const PURPLE = "var(--color-bn-purple)";
 /**
  * KPI 行的补充色相。品牌三色(粉/蓝/紫)在色轮上挨得太近,五张卡排一行时
  * 几乎糊成一片,分不出哪张讲的是哪件事。青与琥珀把色相拉开到另外两个象限,

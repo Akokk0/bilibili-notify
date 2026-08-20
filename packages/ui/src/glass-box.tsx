@@ -23,7 +23,7 @@ export interface GlassBoxProps {
 export function GlassBox({
 	title,
 	subtitle,
-	accent = "#FB7299",
+	accent = "var(--color-bn-pink)",
 	icon,
 	badge,
 	right,
@@ -32,11 +32,11 @@ export function GlassBox({
 	className,
 }: GlassBoxProps) {
 	const accentRadial: CSSProperties = {
-		background: `radial-gradient(circle at top right, ${accent}1f, transparent 70%)`,
+		background: `radial-gradient(circle at top right, color-mix(in srgb, ${accent} 12%, transparent), transparent 70%)`,
 	};
 	const iconChip: CSSProperties = {
-		background: `linear-gradient(135deg, ${accent}, ${accent}cc)`,
-		boxShadow: `0 4px 12px ${accent}55`,
+		background: `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} 80%, transparent))`,
+		boxShadow: `0 4px 12px color-mix(in srgb, ${accent} 33%, transparent)`,
 	};
 	return (
 		<div
@@ -88,11 +88,14 @@ export function CollapseBlock({
 	label,
 	enabled,
 	onToggle,
-	accent = "#FB7299",
+	accent = "var(--color-bn-pink)",
 	children,
 }: CollapseBlockProps) {
 	const style: CSSProperties = enabled
-		? { background: `${accent}0a`, borderColor: `${accent}33` }
+		? {
+				background: `color-mix(in srgb, ${accent} 4%, transparent)`,
+				borderColor: `color-mix(in srgb, ${accent} 20%, transparent)`,
+			}
 		: { background: "var(--color-bn-hover-muted)", borderColor: "var(--color-bn-border)" };
 	return (
 		<div className="mt-2.5 rounded-lg border px-3 py-2.5" style={style}>

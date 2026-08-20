@@ -25,7 +25,9 @@ export function Avatar({ name, color, size = 44, ring = false, status, url }: Av
 	const inner: CSSProperties = {
 		width: size,
 		height: size,
-		background: url ? "var(--color-bn-surface)" : `linear-gradient(135deg, ${color}, ${color}dd)`,
+		background: url
+			? "var(--color-bn-surface)"
+			: `linear-gradient(135deg, ${color}, color-mix(in srgb, ${color} 87%, transparent))`,
 		fontSize: Math.round(size * 0.4),
 		border: ring ? "3px solid var(--color-bn-surface)" : "2px solid var(--color-bn-surface)",
 	};
@@ -140,7 +142,7 @@ export interface PillProps {
 
 export function Pill({
 	children,
-	color = "#FB7299",
+	color = "var(--color-bn-pink)",
 	subtle = false,
 	size = "md",
 	className,
@@ -148,7 +150,7 @@ export function Pill({
 	const sizeCls =
 		size === "sm" ? "text-[10px] px-1.5 leading-4" : "text-[11px] px-2 leading-[18px]";
 	const style: CSSProperties = subtle
-		? { background: `${color}1f`, color }
+		? { background: `color-mix(in srgb, ${color} 12%, transparent)`, color }
 		: { background: color, color: "white" };
 	return (
 		<span

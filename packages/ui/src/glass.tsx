@@ -14,9 +14,13 @@ export interface GlassPanelProps {
 	subtitle?: ReactNode;
 	right?: ReactNode;
 	/**
-	 * 主题色。**必须是十六进制字面量**(如 `#FB7299`)—— 下面要拼 alpha 后缀
-	 * 构造渐变,传 `var(--color-bn-*)` 会拼出 `var(...)1f` 这种非法值,整条
-	 * background 声明会被浏览器静默丢弃。
+	 * 主题色。十六进制字面量与 `var(--color-bn-*)` 都收 —— 下面用
+	 * `color-mix()` 造透明度,不再拼 alpha 后缀。
+	 *
+	 * (曾经这里写着「**必须是十六进制字面量**」,因为实现是 `${accent}1f` 拼字符串,
+	 * 传 var() 会拼出 `var(...)1f` 这种非法值、整条声明被浏览器静默丢弃。那条限制
+	 * 在项目全面用上 color-mix 之后就过期了,只是没人回来改 —— 代价是所有带色件
+	 * 都被钉死在写死的十六进制上,皮肤换了主强调色也搬不动。)
 	 */
 	accent?: string;
 	/** 标题左侧的图标,会被放进一枚 accent 渐变圆角方块里。 */
@@ -35,7 +39,9 @@ export function GlassPanel({
 	className,
 }: GlassPanelProps) {
 	const accentStyle: CSSProperties | undefined = accent
-		? { background: `radial-gradient(circle at top right, ${accent}1f, transparent 70%)` }
+		? {
+				background: `radial-gradient(circle at top right, color-mix(in srgb, ${accent} 12%, transparent), transparent 70%)`,
+			}
 		: undefined;
 	return (
 		// flex-col + 下面 body 的 flex-1:让面板正文吃满卡片高度。栅格里的卡片会被
@@ -53,8 +59,8 @@ export function GlassPanel({
 						<div
 							className="flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-bn-card text-white"
 							style={{
-								background: `linear-gradient(135deg, ${accent}, ${accent}cc)`,
-								boxShadow: `0 4px 12px ${accent}55`,
+								background: `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} 80%, transparent))`,
+								boxShadow: `0 4px 12px color-mix(in srgb, ${accent} 33%, transparent)`,
 							}}
 						>
 							{icon}
@@ -92,10 +98,7 @@ export interface GlassStatCardProps {
 	label: string;
 	value: ReactNode;
 	suffix?: ReactNode;
-	/**
-	 * 主题色。**必须是十六进制字面量** —— 同 {@link GlassPanelProps.accent},
-	 * 这里要拼 `${color}1f` / `${color}33` 造染色层与描边。
-	 */
+	/** 主题色。同 {@link GlassPanelProps.accent} —— hex 与 var() 都收。 */
 	color: string;
 	pulse?: boolean;
 	/** 卡片底部的补充行(如涨跌幅 + 迷你走势),留给调用方自由组合。 */
@@ -107,7 +110,7 @@ export function GlassStatCard({ label, value, suffix, color, pulse, footer }: Gl
 	// 后者会让渐变起点侧几乎全透明,花壁纸(皮肤)一透进来数字就没法读了。
 	// blur 交给 .bn-glass(随皮肤变量),这里只覆盖染色。
 	const bg: CSSProperties = {
-		background: `linear-gradient(135deg, ${color}1f, ${color}0a), var(--bn-glass-bg)`,
+		background: `linear-gradient(135deg, color-mix(in srgb, ${color} 12%, transparent), color-mix(in srgb, ${color} 4%, transparent)), var(--bn-glass-bg)`,
 	};
 	return (
 		<div

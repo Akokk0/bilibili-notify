@@ -41,8 +41,8 @@
 
 | 组件 | 干什么 / 长什么样 |
 | --- | --- |
-| `GlassPanel` | 轻玻璃面板:标题/副标题/右槽/accent 渐变角光 + icon 方块。`accent` 必须是**十六进制字面量**(要拼 alpha 后缀,传 `var()` 会整条失效) |
-| `GlassStatCard` | 数字大卡:label + 等宽大数字 + 可选呼吸点/footer;`color` 同样必须十六进制 |
+| `GlassPanel` | 轻玻璃面板:标题/副标题/右槽/accent 渐变角光 + icon 方块。`accent` 收十六进制**或** `var(--color-bn-*)`(内部用 `color-mix()` 造透明度);缺省 = `var(--color-bn-pink)`,跟皮肤换装 |
+| `GlassStatCard` | 数字大卡:label + 等宽大数字 + 可选呼吸点/footer;`color` 同 `GlassPanel.accent`,hex 与 `var()` 都收 |
 | `GlassBox` | 重玻璃分区卡(Rules/Cards/AI 页那种):icon 芯片 + badge + 右侧动作槽 + 分隔线 |
 | `CollapseBlock` | GlassBox 内的「开关折叠块」:关=灰、开=accent 染色并展开 children |
 | `LoadingBlock` | 等待占位:Spinner + 提示语(可选第二行小字),`role=status`。`variant="card"`(默认)自带玻璃底,给直接坐在页面背景上的等待态;`variant="inset"` 去掉玻璃底,给**已经在别人卡里**的位置(否则玻璃叠玻璃)。「正在读取…」一律用它,别再裸写一行字 |
