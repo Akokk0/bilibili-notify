@@ -675,7 +675,7 @@ export function ChatPage() {
 								autoFocus
 								aiName={persona.name}
 								extras={composerExtras}
-								skills={skills}
+								skills={skinMode ? EMPTY_SKILLS : skills}
 							/>
 							{error ? (
 								<div
@@ -723,7 +723,7 @@ export function ChatPage() {
 								autoFocus
 								aiName={persona.name}
 								extras={composerExtras}
-								skills={skills}
+								skills={skinMode ? EMPTY_SKILLS : skills}
 							/>
 							<div className="mt-2 text-center text-[11px] text-bn-text-secondary">
 								{persona.name}可能会出错,请核对重要信息

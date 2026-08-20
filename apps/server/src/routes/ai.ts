@@ -408,6 +408,12 @@ export function createAiRoute(
 		 */
 		let skillTool: ReturnType<typeof createSkillChatTool> = null;
 		let pickedSkill: MaidSkillEntry | undefined;
+		// 工坊里打了斜杠命令 → 当场说清用不了。静默忽略的话,主人看着自己打的
+		// `/weekly-report` 发了出去、女仆却当普通话回了一句,而消息流里连一枚
+		// 痕迹都没有 —— 他没法从界面上看出技能压根没生效。
+		if (skinMode && parsed.data.skill !== undefined) {
+			return c.json({ err: "皮肤工坊里用不了技能,请回普通聊天窗口" }, 400);
+		}
 		if (!skinMode && opts?.skillStore) {
 			await opts.skillStore.reload();
 			const named = parsed.data.skill;

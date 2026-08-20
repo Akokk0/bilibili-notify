@@ -118,6 +118,16 @@ describe("模型自选", () => {
 		expect(toolNames()).toContain("load_skill");
 	});
 
+	it("工坊里硬塞一个 skill → 400,不静默吞掉", async () => {
+		// 静默忽略的话,主人看着自己打的 `/weekly-report` 发了出去、女仆却当普通话
+		// 回了一句,消息流里连一枚痕迹都没有 —— 他没法看出技能压根没生效。
+		const { app, skillStore } = await makeDeps();
+		await skillStore.create(MINE);
+		const res = await say(app, { skill: "my-skill" }, { mode: "skin" });
+		expect(res.status).toBe(400);
+		expect(chatStatelessStream).not.toHaveBeenCalled();
+	});
+
 	it("皮肤工坊 → 一把技能工具都没有,只剩 create_skin", async () => {
 		// 工坊是专职窗口:人格不带、B 站只读工具不带。技能正文串进去只会跟
 		// 工坊自己的 system 打架。
