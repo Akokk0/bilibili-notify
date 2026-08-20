@@ -1,6 +1,7 @@
 import { Icon, Input, ToneChip } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { LOG_LEVEL_TONE } from "../config/log-levels";
 import { useLogChannel } from "../hooks/useLogChannel";
 import { api } from "../services/api";
 import {
@@ -24,19 +25,12 @@ import { withDesktopTokenHeader } from "../services/desktop-token";
 const LEVELS: ReadonlyArray<LogLineLevel> = ["debug", "info", "warn", "error"];
 
 /**
- * 顶栏两个开关的状态色 —— 与 `LEVEL_TONE` 的 warn / info **同值但不同义**
+ * 顶栏两个开关的状态色 —— 与 `LOG_LEVEL_TONE` 的 warn / info **同值但不同义**
  * (暂停=警示、自动滚动=信息),刻意各写各的:改等级配色时不该连带改开关。
  * 同 LEVEL_TONE 一样是内容语义色,不跟主强调色换肤。
  */
 const PAUSED_TONE = "#f2a053";
 const AUTOSCROLL_TONE = "#00AEEC";
-
-const LEVEL_TONE: Record<LogLineLevel, string> = {
-	debug: "#94a3b8",
-	info: "#00AEEC",
-	warn: "#f2a053",
-	error: "#ef4444",
-};
 
 const RENDER_CAP = 800;
 
@@ -143,7 +137,7 @@ export default function Logs() {
 					{LEVELS.map((l) => (
 						<ToneChip
 							key={l}
-							tone={LEVEL_TONE[l]}
+							tone={LOG_LEVEL_TONE[l]}
 							active={levels.has(l)}
 							onClick={() => toggleLevel(l)}
 							uppercase
@@ -244,7 +238,7 @@ export function formatLocalTime(iso: string): string {
 }
 
 function LogRow({ entry }: { entry: LogLineView }) {
-	const tone = LEVEL_TONE[entry.level];
+	const tone = LOG_LEVEL_TONE[entry.level];
 	const time = formatLocalTime(entry.ts); // yyyy-MM-dd HH:MM:SS.sss(浏览器本地时区)
 	return (
 		<div className="flex gap-2 whitespace-pre-wrap break-all py-0.5 text-gray-300">

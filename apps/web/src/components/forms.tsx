@@ -8,6 +8,7 @@
 import { Btn, type FieldUpdate, Icon, useFieldReset, useFieldUpdate } from "@bilibili-notify/ui";
 import { type ReactNode, useEffect, useState } from "react";
 import { type FieldLabel, getFieldLabel } from "../config/field-labels.js";
+import { LOG_LEVEL_TONE } from "../config/log-levels";
 
 // ── Field ────────────────────────────────────────────────────────────────────
 
@@ -354,10 +355,10 @@ export interface LogLevelPickerProps {
 
 export function LogLevelPicker({ value, onChange, allowInherit }: LogLevelPickerProps) {
 	const opts: { v: LogLevelValue; label: string; color: string }[] = [
-		{ v: 1, label: "错误", color: "#ef4444" },
-		{ v: 2, label: "告警", color: "#f59e0b" },
-		{ v: 3, label: "信息", color: "#00AEEC" },
-		{ v: 4, label: "调试", color: "#a29bfe" },
+		{ v: 1, label: "错误", color: LOG_LEVEL_TONE.error },
+		{ v: 2, label: "告警", color: LOG_LEVEL_TONE.warn },
+		{ v: 3, label: "信息", color: LOG_LEVEL_TONE.info },
+		{ v: 4, label: "调试", color: LOG_LEVEL_TONE.debug },
 	];
 	return (
 		<div className="inline-flex flex-wrap gap-1 rounded-md bg-bn-surface-muted p-0.75">

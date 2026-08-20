@@ -1,3 +1,4 @@
+import type { LogLevel } from "@bilibili-notify/contract";
 import {
 	Avatar,
 	Btn,
@@ -12,6 +13,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { LOG_LEVEL_TONE, logLevelTint } from "../config/log-levels";
 import { familyTone, PUSH_KIND_META, PUSH_TONE } from "../config/push-kinds";
 import {
 	HEALTH_QUERY_KEY,
@@ -470,15 +472,9 @@ interface PluginCell {
 	logLevelSource: "global" | "module";
 }
 
-const LOG_LEVEL_TONE: Record<"error" | "info" | "debug", { fg: string; bg: string }> = {
-	error: { fg: "#ef4444", bg: "rgba(239,68,68,0.1)" },
-	info: { fg: "#00AEEC", bg: "rgba(0,174,236,0.1)" },
-	debug: { fg: "#a29bfe", bg: "rgba(162,155,254,0.1)" },
-};
-
 function pickLogTone(level: string | undefined): { fg: string; bg: string } {
-	if (level === "error" || level === "info" || level === "debug") return LOG_LEVEL_TONE[level];
-	return LOG_LEVEL_TONE.info;
+	const key: LogLevel = level === "error" || level === "debug" || level === "warn" ? level : "info";
+	return { fg: LOG_LEVEL_TONE[key], bg: logLevelTint(key) };
 }
 
 function PluginMatrix({ cells }: { cells: PluginCell[] }) {
