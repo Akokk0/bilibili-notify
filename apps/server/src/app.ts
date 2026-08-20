@@ -11,6 +11,7 @@ import type { SessionCodec } from "./auth/session.js";
 import type { WsTicketStore } from "./auth/ws-ticket.js";
 import type { BackupService } from "./backup/service.js";
 import type { ChromeSource } from "./config/persist.js";
+import { MaidSkillStore } from "./maid-skills/store.js";
 import type { QQSessionRegistry } from "./platforms/qq-official.js";
 import { createAdaptersRoute } from "./routes/adapters.js";
 import { createAiRoute } from "./routes/ai.js";
@@ -24,6 +25,7 @@ import { createHealthRoute } from "./routes/health.js";
 import { createHistoryRoute } from "./routes/history.js";
 import { createLiveRoute } from "./routes/live.js";
 import { createLogsRoute } from "./routes/logs.js";
+import { createMaidSkillsRoute } from "./routes/maid-skills.js";
 import { createPushRoute } from "./routes/push.js";
 import { createQQRoute } from "./routes/qq.js";
 import { createSessionRoute } from "./routes/session.js";
@@ -266,6 +268,13 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	// (「女仆,做套皮肤」)。两处必须是**同一个实例** —— 各 new 一个的话,内存
 	// 索引各存各的,聊天里刚做好的皮肤在皮肤页上要等到重启才出现。
 	const skinStore = new SkinStore({ skinsDir: joinPath(runtime.bootstrap.dataDir, "skins") });
+	// 技能库同样一份两处用:`/api/maid-skills` 是编辑器那一端,聊天路由拿它挂
+	// `load_skill`。盘上目录特意叫 `maid-skills` 而不是 `skills` —— 它跟隔壁的
+	// `skins` 只差一个字母,而这是主人要亲手往里放文件的地方。
+	const skillStore = new MaidSkillStore({
+		dir: joinPath(runtime.bootstrap.dataDir, "maid-skills"),
+	});
+	app.route("/api/maid-skills", createMaidSkillsRoute({ skillStore }));
 	app.route("/api/ai", createAiRoute(deps, { skinStore }));
 	app.route("/api/fans", createFansRoute(deps));
 	const statsRoute = createStatsRoute(deps, {
