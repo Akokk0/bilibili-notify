@@ -286,6 +286,56 @@ describe("GET /:id/export(导出皮肤包)", () => {
 	});
 });
 
+describe("自带字体的整条路(传 → 存 → 导出 → 再装回去)", () => {
+	const WOFF2 = new Uint8Array([0x77, 0x4f, 0x46, 0x32]);
+
+	/**
+	 * 每一段都有自己的单测,但**接缝上断掉的才是这个功能真正的失败形态** ——
+	 * 「存进皮肤包」这个决定的全部意义就是导出的 zip 带着字体走;三道白名单闸
+	 * (save / listAssets / assetPath)漏掉任何一道,前面的测试照样全绿,而主人
+	 * 拿到的包比传进去的少一个文件,装到另一台机器上字就没了。
+	 */
+	it("字体随导出的 zip 走,且那个 zip 能原样装回来", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const form = new FormData();
+		form.set("file", new File([Buffer.from(WOFF2)], "霞鹜文楷.woff2", { type: "" }));
+		const { name } = (await (
+			await app.request(`/${id}/assets`, { method: "POST", body: form })
+		).json()) as any;
+
+		const saved = await app.request(`/${id}/manifest`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				schemaVersion: 1,
+				name: "樱花夜",
+				modes: { light: { fonts: { asset: name, body: ["霞鹜文楷"] } } },
+			}),
+		});
+		expect(saved.status).toBe(200);
+
+		const zip = await app.request(`/${id}/export`);
+		const { unzipSync, strFromU8 } = await import("fflate");
+		const files = unzipSync(new Uint8Array(await zip.arrayBuffer()));
+		expect(Object.keys(files).sort()).toEqual([name, "skin.json"].sort());
+		expect(new Uint8Array(files[name] as Uint8Array)).toEqual(WOFF2);
+		expect(JSON.parse(strFromU8(files["skin.json"] as Uint8Array)).modes.light.fonts).toEqual({
+			asset: name,
+			body: ["霞鹜文楷"],
+		});
+
+		const again = await upload(
+			app,
+			new File([Buffer.from(zipSync(files))], "skin.zip", { type: "application/zip" }),
+		);
+		expect(again.status).toBe(201);
+		const reborn = (await again.json()) as any;
+		const back = (await (await app.request(`/${reborn.id}/manifest`)).json()) as any;
+		expect(back.manifest.modes.light.fonts.asset).toBe(name);
+		expect(back.assets).toContain(name);
+	});
+});
+
 describe("PUT /:id/manifest(编辑器保存)", () => {
 	async function putManifest(id: string, manifest: unknown): Promise<Response> {
 		return app.request(`/${id}/manifest`, {
