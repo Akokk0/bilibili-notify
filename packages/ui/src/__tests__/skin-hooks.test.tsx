@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 import { Avatar, Btn, Input } from "../atoms";
 import { ModalShell } from "../dialog";
 import { SectionNav } from "../section-nav";
-import { TabBarShell } from "../tab-bar";
+import { TabBarShell, TabButton } from "../tab-bar";
 
 afterEach(cleanup);
 
@@ -29,6 +29,26 @@ describe("skin css hooks", () => {
 		);
 		expect(hooksOf(screen.getByText("主"))).toEqual(["btn", "btn-primary"]);
 		expect(hooksOf(screen.getByText("次"))).toEqual(["btn"]);
+	});
+
+	/**
+	 * tab 上那排按钮此前一个挂点都没有,而选中态的粉色渐变还是写在 **inline style**
+	 * 上的 —— inline 优先级压过一切 author 样式,皮肤连覆盖的机会都没有。于是整站
+	 * 换皮之后,tab 条上的选中块仍是原来那个粉(2026-08-20 主人真机指出同一处)。
+	 */
+	it("TabButton 挂 btn;选中态额外挂 btn-primary", () => {
+		render(
+			<TabBarShell>
+				<TabButton active onClick={() => {}}>
+					选中
+				</TabButton>
+				<TabButton active={false} onClick={() => {}}>
+					未选
+				</TabButton>
+			</TabBarShell>,
+		);
+		expect(hooksOf(screen.getByText("选中").closest("button"))).toEqual(["btn", "btn-primary"]);
+		expect(hooksOf(screen.getByText("未选").closest("button"))).toEqual(["btn"]);
 	});
 
 	it("Input 外框挂 input(视觉盒是包壳 div)", () => {

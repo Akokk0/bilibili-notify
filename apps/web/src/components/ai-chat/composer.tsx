@@ -219,9 +219,7 @@ export function Composer({
 
 			<div
 				className={`rounded-bn-xl border bg-bn-surface p-2 transition ${
-					focus
-						? "bn-chat-accent-focus"
-						: "border-bn-border shadow-[0_8px_22px_rgba(24,18,45,0.08)]"
+					focus ? "bn-chat-accent-focus" : "border-bn-border shadow-bn-card"
 				}`}
 			>
 				{attachments.length > 0 ? (

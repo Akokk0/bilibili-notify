@@ -173,7 +173,7 @@ function SponsorPanel() {
 						target="_blank"
 						rel="noreferrer"
 						onClick={externalLinkClick(AFDIAN_URL)}
-						className="inline-flex items-center gap-2 rounded-full bg-bn-pink px-5 py-2.5 text-[13px] font-bold text-white shadow-[0_6px_18px_rgba(251,114,153,0.3)] transition hover:opacity-90"
+						className="inline-flex items-center gap-2 rounded-full bg-bn-pink px-5 py-2.5 text-[13px] font-bold text-white shadow-bn-accent-lg transition hover:opacity-90"
 					>
 						<Icon.heart size={15} />
 						前往爱发电支持

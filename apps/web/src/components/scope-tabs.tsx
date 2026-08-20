@@ -78,7 +78,7 @@ export function ScopeTabs({
 						key={sub.id}
 						className={`flex items-center gap-1.5 rounded-lg border py-1.5 pl-3 pr-1.5 text-[12.5px] font-bold transition ${
 							active
-								? "border-bn-pink/25 bg-bn-surface text-bn-pink shadow-[0_2px_8px_rgba(0,0,0,0.08)]"
+								? "border-bn-pink/25 bg-bn-surface text-bn-pink shadow-bn-card"
 								: "border-transparent text-bn-text-tertiary hover:text-bn-text-primary"
 						}`}
 					>
@@ -137,7 +137,7 @@ export function ScopeTabs({
 					添加 UP
 				</button>
 				{adding ? (
-					<div className="absolute left-0 top-[calc(100%+6px)] z-30 min-w-60 overflow-hidden rounded-bn-sm border border-black/8 bg-bn-surface shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
+					<div className="absolute left-0 top-[calc(100%+6px)] z-30 min-w-60 overflow-hidden rounded-bn-sm border border-black/8 bg-bn-surface shadow-bn-elev">
 						<div className="border-b border-bn-border-subtle px-3 pb-1.5 pt-2 text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
 							选择要单独定制的 UP 主
 						</div>

@@ -60,7 +60,7 @@ export interface SectionNavProps {
 
 const RAIL_ITEM_BASE =
 	"flex w-full min-w-0 items-start gap-2.5 rounded-bn-sm border px-3 py-2.5 text-left transition";
-const RAIL_ITEM_ACTIVE = "border-bn-pink/35 bg-bn-surface/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]";
+const RAIL_ITEM_ACTIVE = "border-bn-pink/35 bg-bn-surface/90 shadow-bn-card";
 const RAIL_ITEM_IDLE = "border-transparent hover:bg-bn-surface/55";
 
 // 吸顶位置 = header 实测高(`--bn-header-h`,由 GlassHeader 用 ResizeObserver 发布) + 1.5rem 间隔。
@@ -242,7 +242,7 @@ export function SectionNav({
 								type="button"
 								aria-label="向左滚动"
 								onClick={() => scrollByDir(-1)}
-								className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-bn-border-subtle bg-bn-surface text-bn-text-secondary shadow-[0_2px_8px_rgba(0,0,0,0.1)] transition hover:text-bn-pink"
+								className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-bn-border-subtle bg-bn-surface text-bn-text-secondary shadow-bn-card transition hover:text-bn-pink"
 							>
 								<Chevron dir="left" />
 							</button>
@@ -289,7 +289,7 @@ export function SectionNav({
 								type="button"
 								aria-label="向右滚动"
 								onClick={() => scrollByDir(1)}
-								className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-bn-border-subtle bg-bn-surface text-bn-text-secondary shadow-[0_2px_8px_rgba(0,0,0,0.1)] transition hover:text-bn-pink"
+								className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-bn-border-subtle bg-bn-surface text-bn-text-secondary shadow-bn-card transition hover:text-bn-pink"
 							>
 								<Chevron dir="right" />
 							</button>

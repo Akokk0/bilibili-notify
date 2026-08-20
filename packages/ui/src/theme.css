@@ -102,6 +102,23 @@
 		var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
 }
 
+/* 强调色光晕两档。与 shadow-bn-card/elev 同理由手写 @utility(shadow 族进 @theme
+   会被编译期内联,换肤失效)。此前是散在各处的 rgba(251,114,153,…) 字面值 ——
+   那串数字就是 --color-bn-pink 的 #fb7299,皮肤换了强调色,光晕还留在原地。 */
+@utility shadow-bn-accent {
+	--tw-shadow: 0 2px 8px color-mix(in oklab, var(--color-bn-pink) 35%, transparent);
+	box-shadow:
+		var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+		var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+
+@utility shadow-bn-accent-lg {
+	--tw-shadow: 0 6px 18px color-mix(in oklab, var(--color-bn-pink) 30%, transparent);
+	box-shadow:
+		var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+		var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+
 @utility shadow-bn-elev {
 	--tw-shadow: var(--shadow-bn-elev);
 	box-shadow:

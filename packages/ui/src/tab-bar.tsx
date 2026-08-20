@@ -46,12 +46,14 @@ export function TabButton({ active, onClick, icon, children, code, title, role }
 			onClick={onClick}
 			title={title}
 			{...tabRole}
+			// 挂点跟 Btn 同口径 —— 这排按钮此前一个 hook 都没有,选中态的粉还写在
+			// inline style 上,而 inline 压过一切 author 样式,皮肤连覆盖的机会都没有。
+			data-bn={active ? "btn btn-primary" : "btn"}
 			className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12.5px] font-bold transition ${
 				active
-					? "text-white shadow-[0_2px_8px_rgba(251,114,153,0.35)]"
+					? "bg-bn-pink text-white shadow-bn-accent"
 					: "text-bn-text-tertiary hover:text-bn-text-primary"
 			}`}
-			style={active ? { background: "linear-gradient(135deg,#FB7299,#FF6699)" } : undefined}
 		>
 			{icon}
 			{children}

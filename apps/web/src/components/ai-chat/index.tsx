@@ -605,7 +605,7 @@ export function ChatPage() {
 						title="打开侧栏"
 						aria-label="打开侧栏"
 						onClick={() => setRail(true)}
-						className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass-chip absolute left-4 top-4 z-10 grid h-8.5 w-8.5 cursor-pointer place-items-center rounded-bn-sm text-bn-text-tertiary shadow-[0_6px_18px_rgba(42,30,72,0.14)]"
+						className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass-chip absolute left-4 top-4 z-10 grid h-8.5 w-8.5 cursor-pointer place-items-center rounded-bn-sm text-bn-text-tertiary shadow-bn-card"
 					>
 						<Icon.panelExpand size={18} />
 					</button>
@@ -614,7 +614,7 @@ export function ChatPage() {
 				<button
 					type="button"
 					onClick={onClose}
-					className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass-chip absolute right-4 top-4 z-10 flex h-9.5 cursor-pointer items-center gap-1.75 rounded-bn-lg px-4 text-[12.5px] font-semibold text-bn-text-tertiary shadow-[0_6px_18px_rgba(42,30,72,0.14)]"
+					className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass-chip absolute right-4 top-4 z-10 flex h-9.5 cursor-pointer items-center gap-1.75 rounded-bn-lg px-4 text-[12.5px] font-semibold text-bn-text-tertiary shadow-bn-card"
 				>
 					<Icon.arrowLeft size={15} />
 					返回控制台
@@ -682,7 +682,7 @@ export function ChatPage() {
 											key={s.cmd}
 											type="button"
 											onClick={() => submit(s.prompt)}
-											className="bn-glass-lift bn-nohl bn-glass-chip flex cursor-pointer items-center gap-1.75 rounded-bn-lg px-3.75 py-2 text-[12.5px] font-semibold text-bn-text-tertiary shadow-[0_6px_18px_rgba(42,30,72,0.12)]"
+											className="bn-glass-lift bn-nohl bn-glass-chip flex cursor-pointer items-center gap-1.75 rounded-bn-lg px-3.75 py-2 text-[12.5px] font-semibold text-bn-text-tertiary shadow-bn-card"
 										>
 											<span className="bn-chat-accent flex">
 												<Glyph size={14} />
