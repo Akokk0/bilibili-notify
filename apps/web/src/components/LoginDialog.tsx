@@ -76,7 +76,7 @@ export function LoginDialog({ variant }: { variant: "cold" | "overlay" }) {
 		<div
 			className={`fixed inset-0 z-50 flex items-center justify-center p-6 ${
 				expired
-					? "bg-black/30 backdrop-blur-sm"
+					? "bg-bn-overlay backdrop-blur-sm"
 					: "bg-gradient-to-br from-bn-pink/10 via-transparent to-bn-pink/5"
 			}`}
 		>

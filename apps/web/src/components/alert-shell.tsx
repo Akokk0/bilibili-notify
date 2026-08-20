@@ -45,31 +45,16 @@ function AlertCard({ item }: { item: AlertItem }) {
 	return (
 		<div
 			className="bn-anim-fade-in pointer-events-auto flex gap-2.5 rounded-bn-card border bg-bn-surface p-3 shadow-bn-elev"
-			style={{ borderColor: "var(--color-bn-danger-border)", borderLeft: "3px solid #ef4444" }}
+			style={{
+				borderColor: "var(--color-bn-danger-border)",
+				borderLeft: "3px solid var(--color-bn-danger)",
+			}}
 		>
 			<div
-				className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-bn-danger-text"
-				style={{ background: "var(--color-bn-danger-soft)" }}
+				className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-bn-danger-soft text-bn-danger-text"
 				aria-hidden="true"
 			>
-				{/* 三角警告 inline svg；不动 Icon 集 */}
-				<svg
-					role="img"
-					aria-label="告警"
-					width="18"
-					height="18"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="2"
-					strokeLinecap="round"
-					strokeLinejoin="round"
-				>
-					<title>告警</title>
-					<path d="M12 2 1 22h22L12 2z" />
-					<path d="M12 9v6" />
-					<circle cx="12" cy="18" r="0.9" fill="currentColor" stroke="none" />
-				</svg>
+				<Icon.warning size={18} />
 			</div>
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center justify-between gap-2">

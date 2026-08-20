@@ -325,7 +325,7 @@ export function composeEffectsCss(mode: SkinMode): string {
 		const base =
 			"var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow, 0 0 #0000)";
 		anim.push(
-			".bn-glass{animation:bn-skin-glass-shine 7s ease-in-out infinite}",
+			`${SKIN_CSS_HOOK_MAP.glass}{animation:bn-skin-glass-shine 7s ease-in-out infinite}`,
 			`@keyframes bn-skin-glass-shine{0%,100%{box-shadow:${base}, 0 -10px 28px -14px ${c}}25%{box-shadow:${base}, 10px 0 28px -14px ${c}}50%{box-shadow:${base}, 0 10px 28px -14px ${c}}75%{box-shadow:${base}, -10px 0 28px -14px ${c}}}`,
 		);
 	}

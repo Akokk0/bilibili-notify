@@ -249,7 +249,7 @@ function HistoryRow({
 	return (
 		<div
 			className={`grid items-center gap-2.5 px-4 py-3 text-[12.5px] ${
-				isLast ? "" : "border-b border-black/4"
+				isLast ? "" : "border-b border-bn-border-subtle"
 			}`}
 			style={{ gridTemplateColumns: HISTORY_GRID }}
 		>

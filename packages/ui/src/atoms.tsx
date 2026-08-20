@@ -208,7 +208,10 @@ export function Toggle({ value, onChange, size = "md", disabled, ariaLabel }: To
 		width: sz.w,
 		height: sz.h,
 		borderRadius: sz.h / 2,
-		background: value ? "#FB7299" : "#d8d8d8",
+		// 走 token 而不是字面值 —— `--color-bn-pink` 正是皮肤 `colors.accent` 的落点。
+		// 写死 #FB7299 的后果是全站每一颗开关的「开」都还是 B 站粉,皮肤换了主强调色
+		// 也搬不动。inline style 里放 var() 完全合法,照样跟着换肤走。
+		background: value ? "var(--color-bn-pink)" : "#d8d8d8",
 	};
 	const dotStyle: CSSProperties = {
 		width: sz.dot,

@@ -20,9 +20,14 @@ const BANNED = [
 		re: /\btext-gray-(?:600|700|800|900)\b/g,
 		hint: "改用 text-bn-text-secondary / text-bn-text-tertiary",
 	},
-	{ re: /\bborder-black\/5\b/g, hint: "改用 border-bn-border-subtle" },
-	{ re: /\bbg-black\/5\b/g, hint: "改用 bg-bn-code-bg / bg-bn-hover-muted" },
-	{ re: /\bhover:bg-black\/5\b/g, hint: "改用 hover:bg-bn-hover-muted" },
+	// 透明度写死成 /5 是原始写法的洞:同族的 /4 /6 /8 /10 /15 一共 15 处全从守卫底下
+	// 溜过去了(2026-08-20 清扫查出)。黑色描边在深色皮肤/暗色主题上等于没有,而
+	// border-bn-* 系列都带 [data-theme="dark"] 覆盖。合法用途(恒深容器、图上遮罩)
+	// 登记进下面的 ALLOWED —— 归一化会摘掉 /N 后缀,一条覆盖全部透明度变体。
+	{
+		re: /\b(?:hover:)?(?:bg|border|ring)-black\/\d+\b/g,
+		hint: "改用 border-bn-border(-subtle) / bg-bn-overlay / bg-bn-hover-muted",
+	},
 	{ re: /\bhover:bg-gray-50\b/g, hint: "改用 hover:bg-bn-surface-muted" },
 	// arbitrary 浅色 hex(#e/#f 开头,如 bg-[#fafafa]/hover:bg-[#fdf2f5])在暗色下不翻转 → 必须走
 	// 语义 token(bg-bn-*/border-bn-*)。深色 arbitrary(#0/#1 开头,如 bg-[#0f1115] 终端)合法,不拦。
@@ -49,6 +54,12 @@ const BANNED = [
 const ALLOWED = new Set<string>([
 	// 灵动岛(恒深 pill)内的「保存」CTA —— 固定白底黑字,不能跟随主题翻转成深底黑字。
 	"components/draft-island.tsx:bg-white",
+	// 灵动岛自身的 pill / 面板底 —— 它是全站唯一「两套主题都恒定深色」的容器,
+	// 整套深色语汇(白字 + white/10 描边)建在这个黑底上,跟随主题翻转会整个散架。
+	"components/draft-island.tsx:bg-black",
+	// 图库缩略图右上角的删除角标 —— 压在用户上传的图片上,底色不可预测,
+	// 只能用固定的半透明黑保证白色 × 号在任何图上都读得出来。
+	"pages/cards/GalleryPicker.tsx:bg-black",
 ]);
 
 async function listTsxFiles(dir: string): Promise<string[]> {

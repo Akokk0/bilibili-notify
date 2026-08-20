@@ -81,7 +81,8 @@ export function RoastPushBox({
 						<select
 							value={targetId}
 							onChange={(e) => onPick(e.target.value)}
-							className="min-w-40 rounded-lg border border-black/10 bg-bn-surface px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
+							data-bn="input"
+							className="min-w-40 rounded-lg border border-bn-border bg-bn-surface px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
 						>
 							{targets.map((t) => (
 								<option key={t.id} value={t.id}>

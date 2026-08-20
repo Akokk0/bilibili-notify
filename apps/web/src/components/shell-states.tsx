@@ -27,7 +27,10 @@ export function ShellError({ message, onRetry }: { message: string; onRetry: () 
 		<div className="px-7 pt-5">
 			<div
 				className="rounded-lg border bg-bn-danger-soft p-4 backdrop-blur-sm"
-				style={{ borderColor: "rgba(239,68,68,0.2)", borderLeft: "3px solid #ef4444" }}
+				style={{
+					borderColor: "var(--color-bn-danger-border)",
+					borderLeft: "3px solid var(--color-bn-danger)",
+				}}
 			>
 				<div className="mb-1 text-[13px] font-bold text-bn-danger-text">
 					无法连接到 Bilibili Notify 后端

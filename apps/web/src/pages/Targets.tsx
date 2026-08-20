@@ -218,7 +218,7 @@ function TargetCard({
 								}
 							: {
 									background: "var(--color-bn-danger-soft)",
-									borderLeftColor: "#ef4444",
+									borderLeftColor: "var(--color-bn-danger)",
 									color: "var(--color-bn-danger-text)",
 								}
 					}

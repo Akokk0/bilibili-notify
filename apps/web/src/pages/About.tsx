@@ -43,7 +43,7 @@ async function loadChangelogMarkdown(): Promise<string> {
 
 const MARKDOWN_COMPONENTS: Components = {
 	h1: ({ children }) => (
-		<h1 className="mt-0 mb-4 border-b border-black/8 pb-3 text-[24px] font-extrabold tracking-tight text-bn-text-primary">
+		<h1 className="mt-0 mb-4 border-b border-bn-border-subtle pb-3 text-[24px] font-extrabold tracking-tight text-bn-text-primary">
 			{children}
 		</h1>
 	),
@@ -73,7 +73,7 @@ const MARKDOWN_COMPONENTS: Components = {
 		</code>
 	),
 	pre: ({ children }) => (
-		<pre className="my-3 overflow-x-auto rounded-xl border border-black/8 bg-[#0f1115] p-3 text-[12px] leading-relaxed text-gray-200">
+		<pre className="my-3 overflow-x-auto rounded-xl border border-bn-border-subtle bg-[#0f1115] p-3 text-[12px] leading-relaxed text-gray-200">
 			{children}
 		</pre>
 	),
@@ -154,7 +154,7 @@ function SponsorPanel() {
 	return (
 		<div className="space-y-4">
 			<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
-				<div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-black/6 pb-4">
+				<div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-bn-border-subtle pb-4">
 					<div>
 						<div className="flex items-center gap-2 text-[15px] font-extrabold text-bn-text-primary">
 							<Icon.heart size={16} />
@@ -202,6 +202,7 @@ function SponsorPanel() {
 										src={s.avatar}
 										alt={s.name}
 										referrerPolicy="no-referrer"
+										data-bn="avatar"
 										className="h-5 w-5 rounded-full object-cover"
 										onError={(e) => {
 											e.currentTarget.style.display = "none";
@@ -241,7 +242,7 @@ function AboutPanel() {
 
 	return (
 		<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
-			<div className="mb-4 flex items-center gap-2 border-b border-black/6 pb-4 text-[15px] font-extrabold text-bn-text-primary">
+			<div className="mb-4 flex items-center gap-2 border-b border-bn-border-subtle pb-4 text-[15px] font-extrabold text-bn-text-primary">
 				<Icon.star size={16} />
 				关于本项目
 			</div>
@@ -272,7 +273,7 @@ function LinkRow({
 }) {
 	const LinkIcon = Icon[icon];
 	const body = (
-		<div className="flex items-center gap-3 rounded-bn-sm border border-black/6 bg-bn-surface/60 px-3 py-2.5 transition hover:border-bn-pink/30">
+		<div className="flex items-center gap-3 rounded-bn-sm border border-bn-border-subtle bg-bn-surface/60 px-3 py-2.5 transition hover:border-bn-pink/30">
 			<span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-bn-pink/10 text-bn-pink">
 				<LinkIcon size={15} />
 			</span>
@@ -321,7 +322,7 @@ function ChangelogPanel() {
 
 	return (
 		<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
-			<div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-black/6 pb-4">
+			<div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-bn-border-subtle pb-4">
 				<div>
 					<div className="flex items-center gap-2 text-[15px] font-extrabold text-bn-text-primary">
 						<Icon.sparkle size={16} />

@@ -160,7 +160,8 @@ export default function Logs() {
 				<select
 					value={source}
 					onChange={(e) => setSource(e.target.value)}
-					className="rounded-lg border border-black/10 bg-bn-surface px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
+					data-bn="input"
+					className="rounded-lg border border-bn-border bg-bn-surface px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
 				>
 					<option value="">全部来源</option>
 					{sources.map((s) => (
@@ -177,7 +178,8 @@ export default function Logs() {
 					value={isLive ? "" : day}
 					max={todayStr()}
 					onChange={(e) => setDay(e.target.value)}
-					className="rounded-lg border border-black/10 bg-bn-surface px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
+					data-bn="input"
+					className="rounded-lg border border-bn-border bg-bn-surface px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
 				/>
 				{!isLive && (
 					<button
@@ -227,7 +229,7 @@ export default function Logs() {
 							alert(`下载失败:${String((err as Error).message ?? err)}`);
 						});
 					}}
-					className="inline-flex items-center gap-1 rounded-full border border-black/10 px-3 py-1 text-[12px] font-semibold text-bn-text-secondary hover:text-bn-text-primary"
+					className="inline-flex items-center gap-1 rounded-full border border-bn-border px-3 py-1 text-[12px] font-semibold text-bn-text-secondary hover:text-bn-text-primary"
 				>
 					↓ {viewDay}.jsonl
 				</button>
@@ -241,7 +243,7 @@ export default function Logs() {
 				{logsQuery.isLoading ? <span>加载中…</span> : null}
 			</div>
 
-			<div className="rounded-bn-sm border border-black/6 bg-[#0f1115] px-3 py-2.5 font-mono text-[12px] leading-relaxed">
+			<div className="rounded-bn-sm border border-bn-border-subtle bg-[#0f1115] px-3 py-2.5 font-mono text-[12px] leading-relaxed">
 				{logsQuery.error ? (
 					<div className="text-red-400">加载失败:{String((logsQuery.error as Error).message)}</div>
 				) : displayed.length === 0 ? (
