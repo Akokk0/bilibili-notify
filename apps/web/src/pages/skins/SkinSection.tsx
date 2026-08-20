@@ -350,7 +350,7 @@ function RemoveSkinDialog(props: {
 		<ModalShell onCancel={props.onCancel} width={340} bodyClassName="p-5">
 			<div className="mb-1.5 text-[14px] font-bold text-bn-text-primary">删除皮肤</div>
 			<div className="text-[13px] leading-relaxed text-bn-text-secondary">
-				「{props.name}」有浅色和暗色两套。要删哪一部分?删除后不可恢复。
+				「{props.name}」有浅色和深色两套。要删哪一部分?删除后不可恢复。
 			</div>
 			<div className="mt-4 flex flex-col gap-2">
 				{(["light", "dark"] as const).map((theme) => (

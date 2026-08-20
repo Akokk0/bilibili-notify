@@ -201,7 +201,7 @@ function AccountChip() {
 const THEME_OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string; hint: string }> = [
 	{ value: "system", label: "跟随系统", hint: "自动跟随系统外观" },
 	{ value: "light", label: "浅色", hint: "固定使用亮色主题" },
-	{ value: "dark", label: "深色", hint: "固定使用暗色主题" },
+	{ value: "dark", label: "深色", hint: "固定使用深色主题" },
 ];
 
 function themeLabel(value: ThemePreference): string {
