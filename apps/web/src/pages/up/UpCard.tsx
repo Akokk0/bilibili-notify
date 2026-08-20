@@ -33,6 +33,15 @@ export interface UpCardProps {
 	onRequestMenu: (pos: { x: number; y: number }) => void;
 }
 
+/**
+ * UP 卡与末尾那张「添加 UP 主」卡**共用**的最小高度。
+ *
+ * grid 同一行的高度由最高的那张卡决定。这个值从前只写在添加卡上,UP 卡自己没有
+ * —— 于是一切到分组筛选(添加卡按设计不出现),整排 UP 卡当场矮一截。两处引同一个
+ * 常量,谁也别再替谁撑着。
+ */
+export const UP_CARD_MIN_H = "min-h-55";
+
 export function UpCard({
 	sub,
 	selected,
@@ -76,7 +85,7 @@ export function UpCard({
 			onMouseEnter={() => setHover(true)}
 			onMouseLeave={() => setHover(false)}
 			// 玻璃底(皮肤壁纸可透出);玻璃卡无描边(卡片风),未选中态靠阴影分层,选中态叠粉色 ring
-			className={`bn-glass group relative cursor-pointer overflow-hidden rounded-xl text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink ${
+			className={`bn-glass group relative cursor-pointer overflow-hidden rounded-xl text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink ${UP_CARD_MIN_H} ${
 				selected ? "ring-2 ring-bn-pink" : ""
 			} ${hover ? "-translate-y-0.5 shadow-bn-elev" : "shadow-bn-card"} ${
 				sub.enabled ? "" : "opacity-70"

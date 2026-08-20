@@ -15,7 +15,7 @@ import { copyToClipboard } from "../utils/clipboard";
 import { GroupEditDialog } from "./up/GroupEditDialog";
 import { displayName } from "./up/helpers";
 import { computeMenuPosition } from "./up/menu-position";
-import { UpCard } from "./up/UpCard";
+import { UP_CARD_MIN_H, UpCard } from "./up/UpCard";
 import { UpCardMenu } from "./up/UpCardMenu";
 import { UpDialog } from "./up/UpDialog";
 
@@ -726,13 +726,16 @@ export default function Subs() {
 				{/* 在 grid 末尾追加「+ 添加 UP 主」预选卡。仅在没有任何搜索 / 过滤时
 				    显示 —— 过滤视图下加这张卡会让人误以为它本来就在过滤集合里。点击
 				    等价右上「添加」Btn,打开 NewDialog。视觉走 Targets 的 AddCard 风
-				    格(1px dashed + 实色白底 + unicode 加号),保留 UpCard 的圆角 +
-				    min-h 让它在 grid 里跟其他卡视觉等高。 */}
+				    格(1px dashed + 实色白底 + unicode 加号),圆角与最小高度跟 UpCard
+				    对齐,在 grid 里视觉等高。
+
+				    最小高度**必须与 UpCard 引同一个常量**:grid 同行的高度取最高那张卡,
+				    这个值从前只写在这儿,于是它一被筛掉,整排 UP 卡就矮一截(真机 220→199)。 */}
 				{!q.trim() && filterId === "all" && !groupFilter ? (
 					<button
 						type="button"
 						onClick={() => setShowNewDialog(true)}
-						className="flex min-h-55 flex-col items-center justify-center rounded-xl border border-dashed border-bn-border px-4 py-5 text-center transition hover:border-bn-pink focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink"
+						className={`flex ${UP_CARD_MIN_H} flex-col items-center justify-center rounded-xl border border-dashed border-bn-border px-4 py-5 text-center transition hover:border-bn-pink focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink`}
 					>
 						<span className="text-[28px] leading-none text-bn-text-tertiary">＋</span>
 						<span className="mt-2 text-[13px] font-semibold text-bn-text-primary">添加 UP 主</span>

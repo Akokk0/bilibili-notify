@@ -3,7 +3,7 @@
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeEmptySubscription } from "../../types/domain";
-import { UpCard, type UpCardProps } from "./UpCard";
+import { UP_CARD_MIN_H, UpCard, type UpCardProps } from "./UpCard";
 
 /**
  * 卡片的菜单触发接线:桌面右键(onContextMenu,阻止浏览器原生菜单)、触屏长按,都
@@ -85,5 +85,17 @@ describe("UpCard 未关注警告", () => {
 		const { queryByText } = render(<UpCard {...props()} />);
 
 		expect(queryByText(/收不到动态/)).toBeNull();
+	});
+});
+
+/**
+ * grid 同一行的高度由**最高的那张卡**决定。UP 卡从前没有自己的最小高度,一直是
+ * 末尾那张「添加 UP 主」卡(min-h-55)在替整行撑着 —— 于是一切到分组筛选(添加卡
+ * 按设计不出现),整排 UP 卡当场矮 21px。真机实测 220 → 199(2026-08-21 主人指出)。
+ */
+describe("UpCard 的高度不靠邻居撑着", () => {
+	it("根节点自带最小高度,且与「添加 UP 主」卡是同一个常量", () => {
+		const { container } = render(<UpCard {...props()} />);
+		expect((container.firstElementChild as HTMLElement).className).toContain(UP_CARD_MIN_H);
 	});
 });
