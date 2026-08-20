@@ -15,8 +15,8 @@ import {
 	SKIN_LIMITS,
 	type SkinManifest,
 } from "@bilibili-notify/contract";
-import { referencedImages } from "./package.js";
-import { parseSkinManifest } from "./schema.js";
+import { referencedAssets } from "./package.js";
+import { parseSkinManifest, SKIN_FONT_FILE_RE, WALLPAPER_IMAGE_RE } from "./schema.js";
 
 /** 单次调用里 AI 生成器的最小面;engines.commentary 的 generateRaw 即是。 */
 export interface SkinAiGenerator {
@@ -29,7 +29,7 @@ export interface SkinAiGenerator {
 
 export interface SkinAiEditInput {
 	generateRaw: SkinAiGenerator["generateRaw"];
-	/** 包内资产清单(assets/<名>);AI 只许引用这里面的图。 */
+	/** 包内资产清单(assets/<名>,图与字体的全集);AI 只许引用这里面的东西。 */
 	assets: string[];
 	/** 当前 draft(编辑器手上的整份 manifest,可能含未保存改动)。 */
 	draft: unknown;
@@ -59,10 +59,21 @@ export function buildSkinAiSystemPrompt(
 	// 措辞是有代价的:这里原本写「包内可用图片」,真机上设计师就把它当成可选,
 	// 主人点名要的壁纸下下来了却没进 manifest(2026-08-18「樱落 · 樱泽墨」)。
 	// 包里有图 = 主人指定的,不是备选。
-	const assetNote =
-		assets.length > 0
-			? `包内图片(主人指定要用的,**必须用上**,别当可选):\n${assets.map((a) => `- ${a}`).join("\n")}\n每一套 mode 都要写 wallpaper.image 引用它(路径一字不差照抄),并配 fit / overlay / blur;整套配色要跟这张图搭。wallpaper.image / chat.wallpaper.image 只准引用上面这些,别的图一律不存在。`
+	// 图与字体**必须分开讲**:listAssets 给的是一份全集,混在同一句「必须用上、
+	// 写进 wallpaper.image」里,设计师就会拿 woff2 去当壁纸 —— 产物必被拒收。
+	const images = assets.filter((a) => WALLPAPER_IMAGE_RE.test(a));
+	const fonts = assets.filter((a) => SKIN_FONT_FILE_RE.test(a));
+	const imageNote =
+		images.length > 0
+			? `包内图片(主人指定要用的,**必须用上**,别当可选):\n${images.map((a) => `- ${a}`).join("\n")}\n每一套 mode 都要写 wallpaper.image 引用它(路径一字不差照抄),并配 fit / overlay / blur;整套配色要跟这张图搭。wallpaper.image / chat.wallpaper.image 只准引用上面这些,别的图一律不存在。`
 			: "包里没有任何图片资产:不要写 wallpaper 字段,引用不存在的图会被拒收。";
+	// 字体不像壁纸那样「主人点名要的」—— 传一款字体多半只为备着,所以这里是可选,
+	// 不用壁纸那句「必须用上」的措辞。
+	const fontNote =
+		fonts.length > 0
+			? `包内字体(主人自己传的,想用就写进 fonts.asset,路径一字不差照抄):\n${fonts.map((a) => `- ${a}`).join("\n")}\nfonts.asset 只准引用上面这些。`
+			: "包里没有任何字体文件:不要写 fonts.asset —— 你没法凭空造一款字,引用不存在的字体会被拒收。要换字体只能写 fonts.body(系统里装了的家族名)。";
+	const assetNote = `${imageNote}\n${fontNote}`;
 	const intro =
 		mode === "create"
 			? "你会收到主人想要的风格,**从零设计一整套**并输出完整的 skin.json。名字(name)与一句描述(description)也由你起,要贴合风格。要求里**给了具体色值**(某部作品的代表色之类)就照它配色,别自己另起一套 —— 那些色值可能是聊天那一侧专门查来的。"
@@ -74,7 +85,7 @@ export function buildSkinAiSystemPrompt(
 
 - schemaVersion 固定 1;没被要求改的字段一律原样保留,不要顺手删改
 - colors 的可用键(只收这些,别的键会被静默忽略):${COLOR_KEY_LIST};值只收 hex / rgb() / hsl() / oklch() / transparent(禁 url()、var()、分号)
-- modes: { light?, dark? },每套里可用 colors / page.background / wallpaper(image·fit·position·overlay ${SKIN_LIMITS.wallpaperOverlay.min}~${SKIN_LIMITS.wallpaperOverlay.max}·blur ${SKIN_LIMITS.wallpaperBlur.min}~${SKIN_LIMITS.wallpaperBlur.max})/ chat(background·wallpaper 同构 —— AI 聊天页专属背景,只管背景:强调色跟随 colors.accent、玻璃件直用 glass 段,background 缺省透出整页皮肤底,通常不用写)/ glass(background·border·strongBackground·strongBorder·blur ${SKIN_LIMITS.glassBlur.min}~${SKIN_LIMITS.glassBlur.max}·strongBlur;默认装无描边,border 对只在刻意要描边风格(如暗色霓虹边)时才配,亮色/玻璃感皮肤不配)/ fonts.body(**最多 ${SKIN_LIMITS.maxFonts} 个**字体名的数组,只准字母/数字/空格/点/连字符,别加引号;拿不准就整个不写)/ radius(card ${SKIN_LIMITS.radiusCard.min}~${SKIN_LIMITS.radiusCard.max}·pill ${SKIN_LIMITS.radiusPill.min}~${SKIN_LIMITS.radiusPill.max})/ shadows(card·elev)/ css / effects
+- modes: { light?, dark? },每套里可用 colors / page.background / wallpaper(image·fit·position·overlay ${SKIN_LIMITS.wallpaperOverlay.min}~${SKIN_LIMITS.wallpaperOverlay.max}·blur ${SKIN_LIMITS.wallpaperBlur.min}~${SKIN_LIMITS.wallpaperBlur.max})/ chat(background·wallpaper 同构 —— AI 聊天页专属背景,只管背景:强调色跟随 colors.accent、玻璃件直用 glass 段,background 缺省透出整页皮肤底,通常不用写)/ glass(background·border·strongBackground·strongBorder·blur ${SKIN_LIMITS.glassBlur.min}~${SKIN_LIMITS.glassBlur.max}·strongBlur;默认装无描边,border 对只在刻意要描边风格(如暗色霓虹边)时才配,亮色/玻璃感皮肤不配)/ fonts.body(**最多 ${SKIN_LIMITS.maxFonts} 个**字体名的数组,只准字母/数字/空格/点/连字符,别加引号;拿不准就整个不写)· fonts.asset(主人自己传进包里的字体文件,见下方清单;设了就排在 fonts.body 之前)/ radius(card ${SKIN_LIMITS.radiusCard.min}~${SKIN_LIMITS.radiusCard.max}·pill ${SKIN_LIMITS.radiusPill.min}~${SKIN_LIMITS.radiusPill.max})/ shadows(card·elev)/ css / effects
 - wallpaper.overlay 是遮罩纱,纱色自动跟模式(亮=白纱/暗=黑纱);wallpaper.blur 是壁纸自身高斯模糊。亮色+高饱和壁纸的配方:overlay 0.3~0.4 + blur 8~16。卡内列表行默认全透明(内容直接画在玻璃上,别在玻璃卡里叠第二层),只有刻意要行条底/描边时才配 colors.listRow / colors.listRowBorder
 - effects 动效预设两道可选:glassShine { color? } / bokeh { colors: [1~${SKIN_LIMITS.maxBokehColors} 色] }
 - 顶层可给 texts: { headerTitle, chatPlaceholder }(≤${SKIN_LIMITS.maxTextChars} 字)与 css(明暗共用)
@@ -122,7 +133,7 @@ function tryParse(
 	}
 	const parsed = parseSkinManifest(json);
 	if (!parsed.ok) return parsed;
-	const missing = [...referencedImages(parsed.skin)].filter((image) => !assets.has(image));
+	const missing = [...referencedAssets(parsed.skin)].filter((name) => !assets.has(name));
 	if (missing.length > 0) {
 		return {
 			ok: false,
@@ -142,7 +153,7 @@ export async function runSkinAiRound(input: {
 	system: string;
 	/** 首轮的 user 消息;重试时在它后面追加错误反馈。 */
 	user: string;
-	/** 包内可用资产;manifest 引用了这之外的图 = 拒收。 */
+	/** 包内可用资产;manifest 引用了这之外的图 / 字体 = 拒收。 */
 	assets: Set<string>;
 	/**
 	 * 设计师吐字的进度。两趟**各报各的** —— 字数归零重来看着像倒退,但那正是

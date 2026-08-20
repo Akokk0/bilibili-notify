@@ -36,6 +36,23 @@ describe("buildSkinAiSystemPrompt", () => {
 		expect(p).toContain("listRow");
 	});
 
+	it("字体资产与图片资产分开讲 —— 别把 woff2 当壁纸引用", () => {
+		// listAssets 是一份全集(图 + 字体),混在同一句「必须用上、写进
+		// wallpaper.image」里,设计师就会拿 woff2 去当壁纸 —— 产物必被
+		// WALLPAPER_IMAGE_RE 拒收,白烧一趟两分半的生成。
+		const p = buildSkinAiSystemPrompt([...ASSETS, "assets/font-a1b2c3d4.woff2"]);
+		const wallpaperLine = p.split("\n").find((l) => l.includes("包内图片")) ?? "";
+		expect(wallpaperLine).not.toContain("woff2");
+		expect(p).toContain("assets/font-a1b2c3d4.woff2");
+		expect(p).toContain("fonts.asset");
+	});
+
+	it("包里没有字体 → 明说别写 fonts.asset(它不能凭空造一款字)", () => {
+		const p = buildSkinAiSystemPrompt(ASSETS);
+		expect(p).toContain("fonts.asset");
+		expect(p).toMatch(/没有.*字体|字体.*没有/);
+	});
+
 	it("动效预设两道菜都点名;已移除的动效与贴纸不许再教给内嵌 AI", () => {
 		const p = buildSkinAiSystemPrompt(ASSETS);
 		for (const k of ["glassShine", "bokeh"]) expect(p).toContain(k);

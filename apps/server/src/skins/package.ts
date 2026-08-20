@@ -7,13 +7,24 @@
  */
 
 import type { SkinManifest } from "@bilibili-notify/contract";
+import { MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
 import { strFromU8, unzipSync } from "fflate";
-import { parseSkinManifest, WALLPAPER_IMAGE_RE } from "./schema.js";
+import { parseSkinManifest, SKIN_FONT_FILE_RE, WALLPAPER_IMAGE_RE } from "./schema.js";
 
 export const MAX_PACKAGE_FILES = 16;
 export const MAX_ASSET_BYTES = 5 * 1024 * 1024;
+
+/**
+ * 包内字体的单文件上限,与卡片字体图廊**共用同一个数** —— 同一款字在两处传得进
+ * 传不进,不该看它是给卡片还是给皮肤的。
+ *
+ * 刻意比图片那条 5MB 线宽得多:一款完整中文 woff2 就有八九兆,拿 5MB 卡它等于这
+ * 功能不存在。反过来图片那条**不跟着放宽** —— 壁纸没有大到 20MB 的理由。
+ */
+export const MAX_FONT_BYTES = MAX_FONT_ASSET_BYTES;
 const MAX_MANIFEST_BYTES = 512 * 1024;
-const MAX_TOTAL_BYTES = 24 * 1024 * 1024;
+/** 解压后总量上限。够装满一款 20MB 字体 + 一包壁纸,再多就当 zip bomb 拦下。 */
+const MAX_TOTAL_BYTES = 48 * 1024 * 1024;
 
 export type OpenSkinPackageResult =
 	| { ok: true; manifest: SkinManifest; assets: Map<string, Uint8Array>; warnings: string[] }
@@ -35,6 +46,25 @@ export function referencedImages(manifest: SkinManifest): Set<string> {
 		}
 	}
 	return referenced;
+}
+
+/** manifest 各处引用的字体文件集合(每套模式一款)。 */
+export function referencedFonts(manifest: SkinManifest): Set<string> {
+	const referenced = new Set<string>();
+	for (const mode of [manifest.modes.light, manifest.modes.dark]) {
+		if (mode?.fonts?.asset) referenced.add(mode.fonts.asset);
+	}
+	return referenced;
+}
+
+/**
+ * 包里必须存在的全部资产(图 + 字体)。
+ *
+ * 与 {@link referencedImages} 分开而不是把它改宽:`chat-tool` 拿前者判「这套皮肤
+ * 真做出壁纸了吗」,混进字体之后,一套只换了字的皮肤会被报成「壁纸做好了」。
+ */
+export function referencedAssets(manifest: SkinManifest): Set<string> {
+	return new Set([...referencedImages(manifest), ...referencedFonts(manifest)]);
 }
 
 export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
@@ -80,8 +110,18 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 			} else {
 				assets.set(name, data);
 			}
+		} else if (SKIN_FONT_FILE_RE.test(name) && !name.includes("..")) {
+			if (data.byteLength > MAX_FONT_BYTES) {
+				errors.push(
+					`${name}: 字体过大(上限 ${Math.round(MAX_FONT_BYTES / 1024 / 1024)}MB)—— 同一套字转成 woff2 通常只占三分之一`,
+				);
+			} else {
+				assets.set(name, data);
+			}
 		} else {
-			errors.push(`${name}: 包里只允许 skin.json 和 assets/ 下的 webp/jpg/png`);
+			errors.push(
+				`${name}: 包里只允许 skin.json 和 assets/ 下的 webp/jpg/png 与 woff2/woff/ttf/otf`,
+			);
 		}
 	}
 	if (!manifestBytes && errors.length === 0) errors.push("包里缺少 skin.json");
@@ -96,9 +136,9 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 	const parsed = parseSkinManifest(json);
 	if (!parsed.ok) return parsed;
 
-	const referenced = referencedImages(parsed.skin);
-	for (const image of referenced) {
-		if (!assets.has(image)) errors.push(`${image}: manifest 引用了它,但包里没有这个文件`);
+	const referenced = referencedAssets(parsed.skin);
+	for (const name of referenced) {
+		if (!assets.has(name)) errors.push(`${name}: manifest 引用了它,但包里没有这个文件`);
 	}
 	if (errors.length > 0) return { ok: false, errors };
 

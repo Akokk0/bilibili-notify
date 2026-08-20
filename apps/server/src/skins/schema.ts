@@ -73,6 +73,28 @@ const SHADOW_RE = /^[a-z0-9#%.,()\s/-]{1,200}$/i;
 
 /** 只认包内 assets 一级目录下的图片文件;路径穿越连正则都进不来。zip 层复用同一把尺。 */
 export const WALLPAPER_IMAGE_RE = /^assets\/[A-Za-z0-9._-]+\.(webp|jpe?g|png)$/i;
+
+/**
+ * 包内字体文件。与 {@link WALLPAPER_IMAGE_RE} 同一个形状 —— 一级 `assets/` 目录 +
+ * 后缀白名单,`/` 与 `..` 连正则都进不来。zip 层、store 层复用同一把尺。
+ *
+ * 四种后缀跟卡片字体图廊收的一致(见 `runtime/font-assets.ts`):同一款字在两处
+ * 传得进传不进,不该看是给卡片还是给皮肤。
+ */
+export const SKIN_FONT_FILE_RE = /^assets\/[A-Za-z0-9._-]+\.(woff2|woff|ttf|otf)$/i;
+
+/**
+ * 这个名字能不能作为包内资产落盘 / 回读。图与字体的并集,外加 `..` 那道兜底。
+ *
+ * 存在的理由是**三道闸别各写各的**:`save()` 写盘、`listAssets()` 列清单、
+ * `assetPath()` 回读,漏掉哪一道的症状都不一样却同样难查 —— 字体只在写盘那道
+ * 被滤掉,就是「装上去不报错、字就是不生效,导出的包还少一个文件」。
+ */
+export function isSkinAssetName(name: string): boolean {
+	if (name.includes("..")) return false;
+	return WALLPAPER_IMAGE_RE.test(name) || SKIN_FONT_FILE_RE.test(name);
+}
+
 const WALLPAPER_FITS = new Set(["cover", "contain", "tile"]);
 const POSITION_RE = /^[a-z0-9%\s]{1,40}$/i;
 /** 字体名:任意语言文字/数字/空格/点/连字符;引号等标点进不来,合成层自己加引号。 */
@@ -301,35 +323,47 @@ function parseMode(
 
 	if (raw.fonts !== undefined) {
 		const fonts = asRecord(raw.fonts);
+		const out: NonNullable<SkinMode["fonts"]> = {};
 		if (!fonts) {
 			errors.push(`${path}.fonts: 必须是对象`);
-		} else if (fonts.body !== undefined) {
-			/**
-			 * 字体栈**宽容收**:超长截断、CSS 原文的引号剥掉,只有真出现注入字符
-			 * 才拒整包。
-			 *
-			 * 分寸在这里:一串十来个名字的中文字体栈是 AI 照 CSS 习惯写出来的格式
-			 * 毛病(真机踩过,白烧一趟两分半的生成),截到 8 个毫发无伤;而 `url(`、
-			 * 分号这类东西不是笔误是攻击信号,静默剔掉等于把它藏起来 —— 那种照旧拒。
-			 */
-			const list = Array.isArray(fonts.body) ? fonts.body : null;
-			const names = list?.every((f) => typeof f === "string")
-				? (list as string[]).map((f) =>
-						f
-							.trim()
-							.replace(/^["']|["']$/g, "")
-							.trim(),
-					)
-				: null;
-			if (!names || names.length === 0 || !names.every((f) => FONT_NAME_RE.test(f))) {
-				errors.push(`${path}.fonts.body: 必须是 1~8 个字体名(仅文字/数字/空格/点/连字符)`);
-			} else {
-				if (names.length > MAX_FONTS) {
-					warnings.push(`${path}.fonts.body: 超过 ${MAX_FONTS} 个字体名,已截断`);
+		} else {
+			if (fonts.asset !== undefined) {
+				if (typeof fonts.asset !== "string" || !SKIN_FONT_FILE_RE.test(fonts.asset)) {
+					errors.push(`${path}.fonts.asset: 只能引用包内 assets/<文件名>.woff2|woff|ttf|otf`);
+				} else {
+					out.asset = fonts.asset;
 				}
-				mode.fonts = { body: names.slice(0, MAX_FONTS) };
+			}
+			if (fonts.body !== undefined) {
+				/**
+				 * 字体栈**宽容收**:超长截断、CSS 原文的引号剥掉,只有真出现注入字符
+				 * 才拒整包。
+				 *
+				 * 分寸在这里:一串十来个名字的中文字体栈是 AI 照 CSS 习惯写出来的格式
+				 * 毛病(真机踩过,白烧一趟两分半的生成),截到 8 个毫发无伤;而 `url(`、
+				 * 分号这类东西不是笔误是攻击信号,静默剔掉等于把它藏起来 —— 那种照旧拒。
+				 */
+				const list = Array.isArray(fonts.body) ? fonts.body : null;
+				const names = list?.every((f) => typeof f === "string")
+					? (list as string[]).map((f) =>
+							f
+								.trim()
+								.replace(/^["']|["']$/g, "")
+								.trim(),
+						)
+					: null;
+				if (!names || names.length === 0 || !names.every((f) => FONT_NAME_RE.test(f))) {
+					errors.push(`${path}.fonts.body: 必须是 1~8 个字体名(仅文字/数字/空格/点/连字符)`);
+				} else {
+					if (names.length > MAX_FONTS) {
+						warnings.push(`${path}.fonts.body: 超过 ${MAX_FONTS} 个字体名,已截断`);
+					}
+					out.body = names.slice(0, MAX_FONTS);
+				}
 			}
 		}
+		// 两栏各自成立:只传了字体文件、或只写了字体栈,都算数。全空 = 与没写同构。
+		if (Object.keys(out).length > 0) mode.fonts = out;
 	}
 
 	if (raw.radius !== undefined) {

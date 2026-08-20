@@ -8,8 +8,8 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SkinListEntry, SkinManifest } from "@bilibili-notify/contract";
-import { MAX_ASSET_BYTES } from "./package.js";
-import { WALLPAPER_IMAGE_RE } from "./schema.js";
+import { MAX_ASSET_BYTES, MAX_FONT_BYTES } from "./package.js";
+import { isSkinAssetName } from "./schema.js";
 
 interface SavedSkin {
 	manifest: SkinManifest;
@@ -22,8 +22,11 @@ interface SavedSkin {
  */
 export const MAX_SKIN_ASSETS = 12;
 
-/** 包内图片的扩展名白名单,与 {@link WALLPAPER_IMAGE_RE} 同口径(无 SVG)。 */
+/** 包内图片的扩展名白名单,与 schema.ts 的 WALLPAPER_IMAGE_RE 同口径(无 SVG)。 */
 const SKIN_ASSET_EXTS = new Set(["png", "jpg", "jpeg", "webp"]);
+
+/** 包内字体的扩展名白名单,与 schema.ts 的 SKIN_FONT_FILE_RE 同口径。 */
+const SKIN_FONT_EXTS = new Set(["woff2", "woff", "ttf", "otf"]);
 
 /** 深浅色各一个槽位:浅色模式渲染 light 槽的皮肤,暗色渲染 dark 槽;槽空=默认装。 */
 export interface ActiveSlots {
@@ -97,7 +100,7 @@ export class SkinStore {
 		// 出厂快照 = 上传时的 manifest;之后编辑只动 skin.json,快照是「恢复默认」的基准。
 		await writeFile(join(tmpDir, "default.json"), JSON.stringify(pkg.manifest, null, "\t"));
 		for (const [name, data] of pkg.assets) {
-			if (!WALLPAPER_IMAGE_RE.test(name) || name.includes("..")) continue;
+			if (!isSkinAssetName(name)) continue;
 			await writeFile(join(tmpDir, "assets", name.slice("assets/".length)), data);
 		}
 		await rename(tmpDir, join(this.skinsDir, id));
@@ -121,31 +124,52 @@ export class SkinStore {
 	}
 
 	/**
-	 * 往已有皮肤里加一张图,返回它在包里的名字(`assets/<名>`)。
+	 * 往已有皮肤里加一份资产(壁纸图或自带字体),返回它在包里的名字(`assets/<名>`)。
 	 *
 	 * 名字**这边生成**,不用上传来的文件名:那是不可信输入(中文、空格、`../`),
 	 * 而它要拼进磁盘路径。扩展名过白名单 —— SVG 能带脚本,而这些图会在 dashboard
 	 * 里直接渲染,永远不收(同聊天附件那条规矩)。
+	 *
+	 * 图与字体走**两条各自的大小线**:一款完整中文 woff2 就有八九兆,拿图片那条
+	 * 5MB 卡它等于自带字体这功能不存在;而壁纸没有大到 20MB 的理由,不跟着放宽。
+	 * 名字前缀(`img-` / `font-`)只是让盘上一眼分得清,分流靠的是后缀。
 	 */
 	async addAsset(id: string, bytes: Uint8Array, ext: string): Promise<string> {
 		if (!this.index.has(id)) throw new Error("皮肤不存在或已被删除");
 		const clean = ext.toLowerCase().replace(/^\./, "");
-		if (!SKIN_ASSET_EXTS.has(clean)) {
-			throw new Error(`不支持的图片类型:${ext}(仅 PNG / JPEG / WebP)`);
+		const isFont = SKIN_FONT_EXTS.has(clean);
+		if (!isFont && !SKIN_ASSET_EXTS.has(clean)) {
+			throw new Error(
+				`不支持的文件类型:${ext}(图片仅 PNG / JPEG / WebP,字体仅 woff2 / woff / ttf / otf)`,
+			);
 		}
-		if (bytes.byteLength > MAX_ASSET_BYTES) throw new Error("图片过大(上限 5MB)");
+		const limit = isFont ? MAX_FONT_BYTES : MAX_ASSET_BYTES;
+		if (bytes.byteLength > limit) {
+			const mb = Math.round(limit / 1024 / 1024);
+			throw new Error(
+				isFont
+					? `字体过大(上限 ${mb}MB)—— 同一套字转成 woff2 通常只占三分之一`
+					: `图片过大(上限 ${mb}MB)`,
+			);
+		}
 		const existing = await this.listAssets(id);
 		if (existing.length >= MAX_SKIN_ASSETS) {
-			throw new Error(`一套皮肤最多放 ${MAX_SKIN_ASSETS} 张图,先删掉用不上的再传`);
+			throw new Error(`一套皮肤最多放 ${MAX_SKIN_ASSETS} 份资产,先删掉用不上的再传`);
 		}
-		const name = `assets/img-${randomBytes(4).toString("hex")}.${clean}`;
+		const name = `assets/${isFont ? "font" : "img"}-${randomBytes(4).toString("hex")}.${clean}`;
 		const dir = join(this.skinsDir, id, "assets");
 		await mkdir(dir, { recursive: true });
 		await writeFile(join(dir, name.slice("assets/".length)), bytes);
 		return name;
 	}
 
-	/** 包内资产清单(`assets/<名>` 形式,与 manifest 引用同构);皮肤不存在 → 空数组。 */
+	/**
+	 * 包内资产清单(`assets/<名>` 形式,与 manifest 引用同构);皮肤不存在 → 空数组。
+	 *
+	 * **图与字体一起列**,不分两个方法:四处调用方(编辑器、AI 改皮肤、保存时的
+	 * 引用完整性校验、导出 zip)要的都是「这套皮肤盘上有什么」这一份全集。分流是
+	 * 用的时候按后缀做的事 —— 编辑器那两个下拉各自筛一遍。
+	 */
 	async listAssets(id: string): Promise<string[]> {
 		if (!this.index.has(id)) return [];
 		let names: string[];
@@ -154,7 +178,7 @@ export class SkinStore {
 		} catch {
 			return [];
 		}
-		return names.map((n) => `assets/${n}`).filter((n) => WALLPAPER_IMAGE_RE.test(n));
+		return names.map((n) => `assets/${n}`).filter(isSkinAssetName);
 	}
 
 	/**
@@ -261,7 +285,7 @@ export class SkinStore {
 	/** 资产的磁盘绝对路径;名字不合白名单或文件不存在 → null。 */
 	async assetPath(id: string, name: string): Promise<string | null> {
 		if (!this.index.has(id)) return null;
-		if (!WALLPAPER_IMAGE_RE.test(name) || name.includes("..")) return null;
+		if (!isSkinAssetName(name)) return null;
 		const p = join(this.skinsDir, id, "assets", name.slice("assets/".length));
 		try {
 			await stat(p);

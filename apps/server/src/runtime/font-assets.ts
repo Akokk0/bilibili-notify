@@ -6,9 +6,7 @@
  *
  * 整体照抄 `card-assets.ts` 的形态,两处刻意不一样:
  *
- * 1. **后缀取自原始文件名,不看 mime。** 图片的 mime 各家浏览器给得准,字体不然:同一个
- *    .ttf 可能是 `font/ttf`、`application/x-font-ttf`、`application/octet-stream`、
- *    甚至空串。照 mime 判会把一堆正常字体拒在门外。
+ * 1. **后缀取自原始文件名,不看 mime**(见 `font-mime.ts`,那张表与皮肤包自带字体共用)。
  * 2. **记住原始文件名。** 背景图有缩略图可看,字体没有 —— 列表里只剩一串 hex 主人根本
  *    认不出哪个是哪个。名字存同目录的 `index.json`,而**目录才是真相**:清单丢了照样列
  *    得出字体(名字回落成 id),清单里多出盘上没有的记录则一概不列。
@@ -18,6 +16,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
+import { FONT_EXT_TO_MIME, fontExtOf } from "./font-mime.js";
 
 /**
  * 单款字体上限 —— 与前端共用一个数(`@bilibili-notify/internal/constants`),否则两边各写
@@ -28,14 +27,6 @@ import { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES } from "@bilibili-notify/in
  * 上限会把主人已经传上去的那款挡在门外。
  */
 export { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES };
-
-/** 后缀 → data URL 用的 mime(RFC 8081 的 `font/*`,Chromium 认)。 */
-const EXT_TO_MIME: Record<string, string> = {
-	woff2: "font/woff2",
-	woff: "font/woff",
-	ttf: "font/ttf",
-	otf: "font/otf",
-};
 
 /** 资产 id 严格形如 `<32 位小写 hex>.<woff2|woff|ttf|otf>` —— 排除 `..` / `/` 等穿越。 */
 const ID_RE = /^[a-f0-9]{32}\.(woff2|woff|ttf|otf)$/;
@@ -57,12 +48,6 @@ export function fontAssetDir(dataDir: string): string {
 /** id 是否合法(防穿越的唯一闸门)。 */
 export function isValidFontAssetId(id: string): boolean {
 	return ID_RE.test(id);
-}
-
-/** 原始文件名 → 后缀;认不出返回 undefined(调用方据此拒收)。 */
-function extOf(filename: string): string | undefined {
-	const ext = filename.toLowerCase().split(".").pop();
-	return ext && ext in EXT_TO_MIME ? ext : undefined;
 }
 
 /** 读名字清单;缺失 / 损坏一律当空 —— 名字没了不该让整个图廊瘫掉。 */
@@ -137,7 +122,7 @@ export async function saveFontAsset(
 	bytes: Uint8Array,
 	filename: string,
 ): Promise<string> {
-	const ext = extOf(filename);
+	const ext = fontExtOf(filename);
 	if (!ext) {
 		throw new Error(`不支持的字体格式：${filename}（仅 woff2 / woff / ttf / otf）`);
 	}
@@ -164,7 +149,7 @@ export async function readFontAsset(
 	const ext = id.split(".").pop() as string;
 	try {
 		const bytes = await readFile(join(fontAssetDir(dataDir), id));
-		return { bytes, mime: EXT_TO_MIME[ext] ?? "application/octet-stream" };
+		return { bytes, mime: FONT_EXT_TO_MIME[ext] ?? "application/octet-stream" };
 	} catch {
 		return null;
 	}

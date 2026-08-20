@@ -160,6 +160,7 @@ describe("skins route", () => {
 
 describe("POST /:id/assets(编辑器里传图)", () => {
 	const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+	const WOFF2 = new Uint8Array([0x77, 0x4f, 0x46, 0x32]);
 
 	async function postAsset(id: string, file: File): Promise<Response> {
 		const form = new FormData();
@@ -188,6 +189,43 @@ describe("POST /:id/assets(编辑器里传图)", () => {
 			new File([Buffer.from("x")], "x.svg", { type: "image/svg+xml" }),
 		);
 
+		expect(res.status).toBe(400);
+	});
+
+	it("传一款字体 → 201;**后缀取自文件名,不看 mime**", async () => {
+		// 卡片字体那边踩过并写进注释的那条:同一个 .ttf,各家浏览器给的可能是
+		// font/ttf、application/x-font-ttf、application/octet-stream、甚至空串。
+		// 照 mime 判会把一堆正常字体拒在门外 —— 这里用最刁的那个空串来钉住。
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const res = await postAsset(
+			id,
+			new File([Buffer.from(WOFF2)], "霞鹜文楷 Light.woff2", { type: "" }),
+		);
+
+		expect(res.status).toBe(201);
+		const body = (await res.json()) as any;
+		expect(body.name).toMatch(/^assets\/font-[A-Za-z0-9]+\.woff2$/);
+		const manifest = (await (await app.request(`/${id}/manifest`)).json()) as any;
+		expect(manifest.assets).toContain(body.name);
+	});
+
+	it("字体回读带对的 content-type —— 浏览器靠它决定认不认这份字体", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const { name } = (await (
+			await postAsset(id, new File([Buffer.from(WOFF2)], "f.woff2", { type: "" }))
+		).json()) as any;
+
+		const got = await app.request(`/${id}/${name}`);
+		expect(got.status).toBe(200);
+		expect(got.headers.get("content-type")).toBe("font/woff2");
+	});
+
+	it("既不是图也不是字体 → 400,别把随便什么字节都收进皮肤包", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const res = await postAsset(
+			id,
+			new File([Buffer.from("MZ")], "payload.exe", { type: "application/octet-stream" }),
+		);
 		expect(res.status).toBe(400);
 	});
 

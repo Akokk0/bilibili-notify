@@ -13,6 +13,8 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { MAX_SKIN_ASSETS, SkinStore } from "../store.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+/** woff2 魔数 `wOF2`;store 不解析内容,只看扩展名。 */
+const WOFF2 = new Uint8Array([0x77, 0x4f, 0x46, 0x32]);
 
 function makeManifest(overrides?: Partial<SkinManifest>): SkinManifest {
 	return {
@@ -162,6 +164,26 @@ describe("SkinStore", () => {
 		expect(await store.listAssets("nope")).toEqual([]);
 	});
 
+	it("包里带的字体:save 要落盘、listAssets 要列、assetPath 要给得出路径", async () => {
+		// 三道白名单闸各写各的话,漏掉哪一道都是「装上去没报错、字就是不生效」——
+		// 而且导出 zip 也会静静把它丢掉,主人拿到的包比传进去的少一个文件。
+		const { id } = await store.save({
+			manifest: makeManifest(),
+			assets: new Map([
+				["assets/bg.png", PNG],
+				["assets/font-a1b2c3d4.woff2", WOFF2],
+			]),
+		});
+		expect((await store.listAssets(id)).sort()).toEqual([
+			"assets/bg.png",
+			"assets/font-a1b2c3d4.woff2",
+		]);
+		expect(await store.assetPath(id, "assets/font-a1b2c3d4.woff2")).toContain(
+			join(id, "assets", "font-a1b2c3d4.woff2"),
+		);
+		expect(await store.assetPath(id, "assets/font-../../skin.json")).toBeNull();
+	});
+
 	it("updateManifest:落盘 + 索引即时可见,重启不丢;不存在的 id → 抛错", async () => {
 		const { id } = await store.save({
 			manifest: makeManifest(),
@@ -213,6 +235,25 @@ describe("往已有皮肤里加图(addAsset)", () => {
 
 		expect(a).not.toBe(b);
 		expect((await store.listAssets(id)).sort()).toEqual([a, b].sort());
+	});
+
+	it("字体文件同样收 —— 名字带 font- 前缀,和图分得开", async () => {
+		// 前缀不是装饰:editor 的「壁纸图片」下拉与「自带字体」下拉读的是同一份
+		// 清单,靠后缀分流;前缀只是让盘上一眼看得出哪份是哪份。
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		const name = await store.addAsset(id, WOFF2, "woff2");
+
+		expect(name).toMatch(/^assets\/font-[A-Za-z0-9]+\.woff2$/);
+		expect(await store.listAssets(id)).toEqual([name]);
+		const onDisk = await readFile(join(dir, id, name));
+		expect(new Uint8Array(onDisk)).toEqual(WOFF2);
+	});
+
+	it("字体走 20MB 那条线,图片仍旧 5MB", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		const sixMB = new Uint8Array(6 * 1024 * 1024);
+		await expect(store.addAsset(id, sixMB, "woff2")).resolves.toMatch(/\.woff2$/);
+		await expect(store.addAsset(id, sixMB, "png")).rejects.toThrow();
 	});
 
 	it("不认识的扩展名 → 抛错(SVG 能带脚本,永远不收)", async () => {

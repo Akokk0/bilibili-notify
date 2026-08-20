@@ -10,6 +10,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { openSkinPackage } from "../package.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+/** woff2 的魔数 `wOF2`;内容不解析,只要求后缀过白名单。 */
+const WOFF2 = new Uint8Array([0x77, 0x4f, 0x46, 0x32]);
 
 function makeZip(files: Record<string, Uint8Array>): Uint8Array {
 	return zipSync(files);
@@ -139,6 +141,73 @@ describe("openSkinPackage", () => {
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
 		expect(r.errors.join()).toMatch(/5\s*MB|过大/);
+	});
+
+	it("被引用的字体文件 → ok,和壁纸一样取出来", () => {
+		const zip = makeZip({
+			"skin.json": manifestJson({
+				modes: { light: { fonts: { asset: "assets/font-a1b2c3d4.woff2" } } },
+			}),
+			"assets/font-a1b2c3d4.woff2": WOFF2,
+		});
+		const r = openSkinPackage(zip);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.assets.get("assets/font-a1b2c3d4.woff2")).toEqual(WOFF2);
+	});
+
+	it("manifest 引用的字体不在包里 → 拒绝(与壁纸同一条纪律)", () => {
+		// 收下的话,装上就是「编辑器里明明选着这款字、页面却是系统字」——
+		// 本仓库反复复发的那类「选得动、存得住、就是不生效」。
+		const zip = makeZip({
+			"skin.json": manifestJson({
+				modes: { dark: { fonts: { asset: "assets/font-missing.woff2" } } },
+			}),
+		});
+		const r = openSkinPackage(zip);
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.errors.join()).toContain("assets/font-missing.woff2");
+	});
+
+	it("字体上限 20MB,图片仍旧 5MB —— 两条线各管各的", () => {
+		// 一款完整中文 woff2 就有八九兆,拿图片那条 5MB 线卡它等于这功能不存在;
+		// 反过来,别让字体放宽顺手把图片也放宽了(壁纸没有大到 20MB 的理由)。
+		const bigFont = new Uint8Array(20 * 1024 * 1024 + 1);
+		bigFont.set(WOFF2);
+		const rejected = openSkinPackage(
+			makeZip({
+				"skin.json": manifestJson({
+					modes: { light: { fonts: { asset: "assets/font-big.woff2" } } },
+				}),
+				"assets/font-big.woff2": bigFont,
+			}),
+		);
+		expect(rejected.ok).toBe(false);
+
+		const okFont = new Uint8Array(6 * 1024 * 1024);
+		okFont.set(WOFF2);
+		const accepted = openSkinPackage(
+			makeZip({
+				"skin.json": manifestJson({
+					modes: { light: { fonts: { asset: "assets/font-ok.woff2" } } },
+				}),
+				"assets/font-ok.woff2": okFont,
+			}),
+		);
+		expect(accepted.ok).toBe(true);
+
+		const bigImage = new Uint8Array(6 * 1024 * 1024);
+		bigImage.set(PNG);
+		const image = openSkinPackage(
+			makeZip({
+				"skin.json": manifestJson({
+					modes: { light: { wallpaper: { image: "assets/big.png" } } },
+				}),
+				"assets/big.png": bigImage,
+			}),
+		);
+		expect(image.ok).toBe(false);
 	});
 
 	it("文件数超上限 → 拒绝", () => {

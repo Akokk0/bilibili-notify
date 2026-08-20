@@ -11,14 +11,22 @@ import type {
 } from "@bilibili-notify/contract";
 import { strToU8, zipSync } from "fflate";
 import { Hono } from "hono";
+import { FONT_EXT_TO_MIME, fontExtOf } from "../runtime/font-mime.js";
 import { EXT_TO_MIME, MIME_TO_EXT } from "../runtime/image-mime.js";
 import { runSkinAiEdit, type SkinAiGenerator } from "../skins/ai-edit.js";
-import { MAX_ASSET_BYTES, openSkinPackage, referencedImages } from "../skins/package.js";
+import { MAX_FONT_BYTES, openSkinPackage, referencedAssets } from "../skins/package.js";
 import { parseSkinManifest } from "../skins/schema.js";
 import type { SkinStore } from "../skins/store.js";
 import { uploadBodyLimit } from "./upload-limit.js";
 
-const MAX_SKIN_ZIP_BYTES = 10 * 1024 * 1024;
+/**
+ * 皮肤包 zip 的上限。
+ *
+ * 从 10MB 抬到 30MB 是为自带字体:一款完整中文 woff2 就有八九兆,而 woff2 本身
+ * 已经压过,进 zip 几乎不缩水 —— 10MB 那条线会让一套带字体的皮肤**传不回自己的
+ * 导出**(导得出、装不回,往返闭环就断了)。
+ */
+const MAX_SKIN_ZIP_BYTES = 30 * 1024 * 1024;
 
 export function createSkinsRoute(deps: {
 	skinStore: SkinStore;
@@ -131,22 +139,39 @@ export function createSkinsRoute(deps: {
 	});
 
 	/**
-	 * 编辑器里往这套皮肤加一张图。加完就能在「壁纸图片」下拉里选中它。
+	 * 编辑器里往这套皮肤加一份资产:壁纸图,或主人自带的字体。加完就能在对应的
+	 * 下拉里选中它。
 	 *
 	 * 没有这个口子时,给一套皮肤换壁纸得导出 zip、塞图、改 JSON、再传回来 ——
 	 * 而聊天里做出来的皮肤天生零资产,那条路等于没有壁纸可言。
+	 *
+	 * **入口闸按两者中大的那条(字体 20MB)开**,真正的分类限额在 `addAsset` 里按
+	 * 类型各判各的。这道闸管的是「这次请求能往堆里塞多少」,不是「这个文件多大」;
+	 * 按图片那条 5MB 开的话,合规的字体连 parseBody 都进不来,主人收到的会是 413。
 	 */
-	app.post("/:id/assets", uploadBodyLimit(MAX_ASSET_BYTES, "图片"), async (c) => {
+	app.post("/:id/assets", uploadBodyLimit(MAX_FONT_BYTES, "文件"), async (c) => {
 		const id = c.req.param("id");
 		if (!(await skinStore.get(id))) return c.json({ ok: false, err: "皮肤不存在" }, 404);
 		const body = await c.req.parseBody().catch(() => null);
 		const file = body?.file;
 		if (!(file instanceof File)) {
-			return c.json({ ok: false, err: "缺少图片文件(multipart 字段 file)" }, 400);
+			return c.json({ ok: false, err: "缺少文件(multipart 字段 file)" }, 400);
 		}
-		// 扩展名由 mime 定,不信上传来的文件名 —— 名字是不可信输入,而它要拼进磁盘路径。
-		const ext = MIME_TO_EXT[file.type];
-		if (!ext) return c.json({ ok: false, err: "只收 PNG / JPEG / WebP 图片" }, 400);
+		/**
+		 * 图**按 mime 定扩展名**(各家浏览器给得准),字体**按文件名后缀**。
+		 *
+		 * 不是图省事:同一个 .ttf,浏览器给的可能是 `font/ttf`、`application/x-font-ttf`、
+		 * `application/octet-stream`,甚至空串 —— 照 mime 判会把一堆正常字体拒在门外
+		 * (卡片字体图廊那边踩过并写进了 `font-mime.ts`)。两条路都不把上传的文件名
+		 * 拼进磁盘路径:落盘名由 store 自己生成。
+		 */
+		const ext = MIME_TO_EXT[file.type] ?? fontExtOf(file.name);
+		if (!ext) {
+			return c.json(
+				{ ok: false, err: "只收 PNG / JPEG / WebP 图片,或 woff2 / woff / ttf / otf 字体" },
+				400,
+			);
+		}
 		try {
 			const name = await skinStore.addAsset(id, new Uint8Array(await file.arrayBuffer()), ext);
 			return c.json({ ok: true, name }, 201);
@@ -156,7 +181,7 @@ export function createSkinsRoute(deps: {
 	});
 
 	// 编辑器保存:就地更新 manifest(资产不动)。校验与 zip 上传同权威:
-	// parseSkinManifest + 「引用的图必须在包里」同一把尺(referencedImages)。
+	// parseSkinManifest + 「引用的图/字体必须在包里」同一把尺(referencedAssets)。
 	app.put("/:id/manifest", async (c) => {
 		const id = c.req.param("id");
 		if (!(await skinStore.get(id))) return c.json({ ok: false, errors: ["皮肤不存在"] }, 404);
@@ -166,7 +191,7 @@ export function createSkinsRoute(deps: {
 		if (!parsed.ok) return c.json({ ok: false, errors: parsed.errors }, 400);
 
 		const assets = new Set(await skinStore.listAssets(id));
-		const missing = [...referencedImages(parsed.skin)].filter((image) => !assets.has(image));
+		const missing = [...referencedAssets(parsed.skin)].filter((name) => !assets.has(name));
 		if (missing.length > 0) {
 			return c.json(
 				{ ok: false, errors: missing.map((m) => `${m}: manifest 引用了它,但包里没有这个文件`) },
@@ -232,7 +257,8 @@ export function createSkinsRoute(deps: {
 		const ext = path.split(".").pop()?.toLowerCase() ?? "";
 		const data = await readFile(path);
 		return c.body(new Uint8Array(data), 200, {
-			"content-type": EXT_TO_MIME[ext] ?? "application/octet-stream",
+			// 图与字体两张表都查一遍 —— 字体给错 content-type 浏览器直接不认这份 @font-face。
+			"content-type": EXT_TO_MIME[ext] ?? FONT_EXT_TO_MIME[ext] ?? "application/octet-stream",
 			// 皮肤资产内容不可变(改皮肤 = 新 id),放心长缓存。
 			"cache-control": "public, max-age=31536000, immutable",
 		});

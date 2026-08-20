@@ -257,6 +257,42 @@ describe("parseSkinManifest / glass · fonts · radius", () => {
 		expect(bad.ok).toBe(false);
 	});
 
+	it("fonts.asset 引用包内字体文件 → ok;非字体后缀 / 路径穿越 → 拒绝", () => {
+		// 字体与壁纸同构:字段里只存包内名字,拼 URL 是注入层的事。所以这把尺
+		// 与 WALLPAPER_IMAGE_RE 同一个形状 —— 一级 assets/ 目录 + 后缀白名单。
+		const ok = parseSkinManifest({
+			schemaVersion: 1,
+			name: "t",
+			modes: { light: { fonts: { asset: "assets/font-a1b2c3d4.woff2", body: ["霞鹜文楷"] } } },
+		});
+		expect(ok.ok).toBe(true);
+		if (ok.ok) expect(ok.skin.modes.light?.fonts?.asset).toBe("assets/font-a1b2c3d4.woff2");
+
+		for (const bad of [
+			"assets/../../etc/passwd",
+			"assets/evil.svg",
+			"font.woff2",
+			"assets/sub/dir/f.woff2",
+		]) {
+			const res = parseSkinManifest({
+				schemaVersion: 1,
+				name: "t",
+				modes: { light: { fonts: { asset: bad } } },
+			});
+			expect(`${bad}: ${res.ok}`).toBe(`${bad}: false`);
+		}
+	});
+
+	it("fonts 只给 asset 不给 body → 收下(上传一款字体就够了,别逼着再填字体栈)", () => {
+		const res = parseSkinManifest({
+			schemaVersion: 1,
+			name: "t",
+			modes: { light: { fonts: { asset: "assets/font-00112233.ttf" } } },
+		});
+		expect(res.ok).toBe(true);
+		if (res.ok) expect(res.skin.modes.light?.fonts).toEqual({ asset: "assets/font-00112233.ttf" });
+	});
+
 	it("fonts.body 超过 8 个 → 截到 8 个收下,不整包拒收", () => {
 		// 真机踩过(2026-08-18):AI 写了一整条中文字体栈(十来个名字),整包被拒
 		// → 白跑一趟两分半的生成。字体栈长一点是格式毛病不是安全问题,截断即可。
