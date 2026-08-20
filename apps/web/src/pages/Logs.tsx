@@ -145,8 +145,11 @@ export default function Logs() {
 									active
 										? { background: `${tone}1f`, color: tone, borderColor: `${tone}55` }
 										: {
+												// 与同页的暂停/自动滚动、以及推送历史的筛选胶囊同档:
+												// 未选中态一律 tertiary。此前这排写成 secondary,三排
+												// 长得一样的胶囊却分两个档。
 												background: "transparent",
-												color: "var(--color-bn-text-secondary)",
+												color: "var(--color-bn-text-tertiary)",
 												borderColor: "var(--color-bn-border)",
 											}
 								}

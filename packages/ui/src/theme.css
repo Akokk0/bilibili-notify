@@ -15,7 +15,13 @@
 	--color-bn-blue: #00aeec;
 	--color-bn-purple: #a29bfe;
 	--color-bn-text-primary: #18191c;
-	--color-bn-text-secondary: #999999;
+	/* 三档必须同向:亮色越往下越浅(暗色在 [data-theme="dark"] 里越往下越深),
+	   secondary 恒重于 tertiary —— 调用点是按名字语义挑档的,`text-bn-text-tertiary
+	   hover:text-bn-text-secondary` 这种「悬停变亮」的写法把顺序写死了。原值照抄
+	   `.bn-design` 设计稿(secondary=#999 / tertiary=#666)是**反的**,正文按 2.85:1
+	   渲染、悬停反而变淡,且只有亮色默认装这一套如此(暗色与全部皮肤都正确)。
+	   `theme-conformance.test.ts` 拦回归。 */
+	--color-bn-text-secondary: #4a4f57;
 	--color-bn-text-tertiary: #666666;
 	--color-bn-surface: #ffffff;
 	--color-bn-surface-strong: #ffffff;

@@ -77,6 +77,29 @@ async function listTsxFiles(dir: string): Promise<string[]> {
 	return out;
 }
 
+/** 从 theme.css 的某个块里抓出 `--color-*: value` 的映射。 */
+function readTokenBlock(css: string, blockRe: RegExp): Record<string, string> {
+	const body = css.match(blockRe)?.[1] ?? "";
+	const out: Record<string, string> = {};
+	for (const m of body.matchAll(/(--color-[a-z0-9-]+)\s*:\s*([^;]+);/g)) out[m[1]] = m[2].trim();
+	return out;
+}
+
+/** WCAG 相对亮度 —— 只认 #rrggbb(梯子上的三档与 surface 都是实色 hex)。 */
+function luminance(hex: string): number {
+	const n = hex.replace("#", "");
+	const chan = (i: number): number => {
+		const c = Number.parseInt(n.slice(i, i + 2), 16) / 255;
+		return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+	};
+	return 0.2126 * chan(0) + 0.7152 * chan(2) + 0.0722 * chan(4);
+}
+
+function contrast(fg: string, bg: string): number {
+	const [a, b] = [luminance(fg), luminance(bg)];
+	return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
 describe("theme conformance", () => {
 	it("does not reintroduce light-only neutral Tailwind utilities", async () => {
 		const findings: string[] = [];
@@ -143,5 +166,61 @@ describe("theme conformance", () => {
 		expect(html).toContain(THEME_STORAGE_KEY);
 		// <head> 内必须有同步 <script>(非 module)在 React 挂载前设置 data-theme。
 		expect(html).toMatch(/<head>[\s\S]*<script>[\s\S]*dataset\.theme[\s\S]*<\/head>/);
+	});
+
+	/**
+	 * 文字色三档在**两套主题里必须同向**:亮色越往下越浅、暗色越往下越深,
+	 * 且 secondary 永远比 tertiary 更抢眼。
+	 *
+	 * 为什么要静态守:调用点是按**名字语义**挑档的(正文/说明走 secondary,
+	 * UID/时间戳/协议行走 tertiary,`text-bn-text-tertiary hover:text-bn-text-secondary`
+	 * 这种「悬停变亮」的写法更是把顺序写死了)。可亮色默认装从 `.bn-design` 的
+	 * 设计稿原样抄来时,secondary(#999) 反而比 tertiary(#666) 浅 —— 于是同一个
+	 * className 在亮色下是「最淡的一档」、在暗色和**每一套皮肤**里都是「较重的一档」,
+	 * 层次逐主题翻转,正文按 2.85:1 渲染(AA 要 4.5:1)。
+	 *
+	 * jsdom 不算样式,这事测不出来也看不出来 —— 只能拿 token 值本身算对比度。
+	 */
+	it("亮暗两套的文字色梯子同向,secondary 恒重于 tertiary 且都过 AA", async () => {
+		const css = await readFile(join(SRC_DIR, "../../../packages/ui/src/theme.css"), "utf8");
+		const light = readTokenBlock(css, /@theme\s*\{([\s\S]*?)\n\}/);
+		const dark = readTokenBlock(css, /:root\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/);
+
+		for (const [mode, vars] of [
+			["亮色", light],
+			["暗色", dark],
+		] as const) {
+			const surface = vars["--color-bn-surface"];
+			const ramp = (["primary", "secondary", "tertiary"] as const).map((k) => ({
+				key: k,
+				hex: vars[`--color-bn-text-${k}`],
+			}));
+			for (const step of ramp) {
+				expect(`${mode} ${step.key} 已定义 ${step.hex !== undefined}`).toBe(
+					`${mode} ${step.key} 已定义 true`,
+				);
+			}
+
+			// 同向:对比度必须逐档单调下降(primary 最重 → tertiary 最轻)。
+			const ratios = ramp.map((s) => contrast(s.hex, surface));
+			expect(`${mode} 梯子单调 ${ratios.map((r) => r.toFixed(2)).join(" > ")}`).toBe(
+				`${mode} 梯子单调 ${[...ratios]
+					.sort((a, b) => b - a)
+					.map((r) => r.toFixed(2))
+					.join(" > ")}`,
+			);
+
+			// 光单调还不够:两档挨太近等于没有层次。暗色现为 1.73×,亮色 1.44×。
+			expect(`${mode} secondary/tertiary ≥ 1.25× ${ratios[1] / ratios[2] >= 1.25}`).toBe(
+				`${mode} secondary/tertiary ≥ 1.25× true`,
+			);
+
+			// secondary / tertiary 都承载可读文字(正文、说明、UID),AA 正文档 4.5:1 是底线。
+			for (const [i, step] of ramp.entries()) {
+				expect(`${mode} ${step.key} ${step.hex} 过 AA ${ratios[i] >= 4.5}`).toBe(
+					`${mode} ${step.key} ${step.hex} 过 AA true`,
+				);
+			}
+		}
 	});
 });
