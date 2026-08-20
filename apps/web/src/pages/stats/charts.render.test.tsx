@@ -12,7 +12,9 @@ import { NetBars, TrendChart } from "./charts";
 import { netFromCumulative } from "./gaps";
 
 /** 与 charts.tsx 的 ESTIMATED 同值。写死在这里,改动必须两边同时想清楚。 */
-const GREY = "var(--color-bn-text-secondary)";
+const GREY = "var(--color-bn-text-tertiary)";
+/** 正文档 —— 推断态与轴刻度都**不许**占这一档,见下方两条用例。 */
+const BODY = "var(--color-bn-text-secondary)";
 
 const strokesOf = (root: HTMLElement) =>
 	[...root.querySelectorAll("line")].map((l) => l.getAttribute("stroke"));
@@ -20,6 +22,35 @@ const strokesOf = (root: HTMLElement) =>
 afterEach(cleanup);
 
 describe("NetBars — 断档摊出来的柱子走灰色", () => {
+	/**
+	 * 推断态与轴刻度都是**附属信息**,该走辅助档(tertiary),不占正文档(secondary)。
+	 *
+	 * 这两处此前吃 secondary,而亮色默认装那时把 secondary 配成了全站最淡的一档
+	 * (#999,2.85:1)—— 于是「淡=这段是猜的」看着成立,其实是搭了个配错的顺风车。
+	 * 顺序理顺(secondary 8.24:1)后灰柱当场变重,顺风车没了,得改挑对档位。
+	 *
+	 * 注意**没有**钉「推断态比实测态轻」:亮色下 tertiary 5.74:1 仍高于涨绿 5.48、
+	 * 跌红 4.83,那条用对比度根本表达不了 —— 饱和色的抢眼程度和对比度不是一回事。
+	 * 真正管用的不变量是「灰不撞涨跌色」,由本 describe 的第一条用例守着。
+	 */
+	it("推断态走辅助档,不占正文档", () => {
+		const data = netFromCumulative([1000, null, 1200, 1250]);
+		const { container } = render(
+			<NetBars data={data} days={["d1", "d2", "d3", "d4"]} width={320} />,
+		);
+		const fills = [...container.querySelectorAll("rect")].map((r) => r.getAttribute("fill"));
+		expect(fills[0]).toBe(GREY);
+		expect(fills).not.toContain(BODY);
+	});
+
+	it("坐标轴刻度也走辅助档 —— 刻度是元信息,不该和正文一样重", () => {
+		const data = netFromCumulative([1000, 1100, 1200]);
+		const { container } = render(<NetBars data={data} days={["d1", "d2", "d3"]} width={320} />);
+		const fills = [...container.querySelectorAll("text")].map((t) => t.getAttribute("fill"));
+		expect(fills).toContain(GREY);
+		expect(fills).not.toContain(BODY);
+	});
+
 	it("摊出来的用灰,实测的用涨跌色", () => {
 		// [null, 100(摊), 100(摊), 50(实测)]
 		const data = netFromCumulative([1000, null, 1200, 1250]);

@@ -23,7 +23,8 @@ import type { RadarAxis } from "./radar.js";
  * (color-token-conformance)只管 utility class,管不到 SVG 属性。
  */
 
-const AXIS_TEXT = "var(--color-bn-text-secondary)";
+/** 坐标轴刻度 —— 元信息,走辅助档,别和正文抢分量。 */
+const AXIS_TEXT = "var(--color-bn-text-tertiary)";
 const GRID = "var(--color-bn-border-subtle)";
 const GRID_ZERO = "var(--color-bn-border)";
 const POS = "var(--color-bn-success-text)";
@@ -33,8 +34,12 @@ const NEG = "var(--color-bn-danger-text)";
  *
  * 必须与涨绿跌红拉开到一眼可辨:灰色是这套图里唯一「这段是猜的」的信号,和它
  * 撞色就等于把推断值伪装成实测值。见 gaps.ts。
+ *
+ * 走**辅助档**(tertiary)不走正文档:推断值是附属信息。此前吃 secondary,而亮色
+ * 默认装当时把 secondary 配成了全站最淡一档(#999,2.85:1),「淡=这段是猜的」
+ * 看着成立、其实是搭了配错顺序的顺风车;顺序理顺后灰柱当场变重,顺风车没了。
  */
-const ESTIMATED = "var(--color-bn-text-secondary)";
+const ESTIMATED = "var(--color-bn-text-tertiary)";
 
 /** 自适宽容器:测出像素宽再把它交给 render(w),避免 SVG 用百分比宽导致文字被拉伸。 */
 export function ResponsiveChart({
