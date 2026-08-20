@@ -224,6 +224,20 @@ describe("AiChatDock — 不在聊天页时", () => {
 		expect(screen.queryByRole("region")).toBeNull();
 	});
 
+	/**
+	 * 这颗胶囊是**全局**入口,又长着一副自成一套的样子(`.bn-ai-fab`:自带渐变、
+	 * 玻璃、流光)。不挂 hook 的话,皮肤 CSS 一个字都够不到它 —— 整站换成像素窗口,
+	 * 只有右下角这颗还是圆头紫胶囊(2026-08-20 主人真机指出)。
+	 *
+	 * 断言挂点而不是断言样式:挂上 `btn btn-primary`,皮肤 CSS 是无层 author 样式,
+	 * 压得过 `.bn-ai-fab` 所在的 `@layer components`,想接管什么就接管什么。
+	 */
+	it("挂着皮肤挂点 —— 否则皮肤够不到这颗全局胶囊", () => {
+		render(wrap(shell(), "/"));
+		const fab = screen.getByTitle("打开女仆 AI 聊天");
+		expect(fab.getAttribute("data-bn")?.split(/\s+/)).toContain("btn-primary");
+	});
+
 	it("一个请求都不发 —— 不在后台悄悄拉会话列表", async () => {
 		// 这颗胶囊在每一页都挂着,顺手起个轮询就是全站常驻的无谓流量。
 		render(wrap(shell(), "/"));

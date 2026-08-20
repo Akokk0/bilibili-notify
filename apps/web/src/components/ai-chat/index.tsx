@@ -102,7 +102,12 @@ export function AiChatDock() {
 			onPointerDown={preloadChatMarkdown}
 			onFocus={preloadChatMarkdown}
 			title="打开女仆 AI 聊天"
-			className="bn-ai-fab fixed bottom-5 right-5 z-30 flex h-12 cursor-pointer items-center gap-2.25 rounded-[26px] pl-4 pr-5 text-[13.5px] font-bold text-white shadow-[0_10px_28px_rgba(108,92,231,0.42)]"
+			// 挂皮肤挂点:这颗胶囊全站常驻,却自带一套观感(`.bn-ai-fab` 的渐变 / 玻璃 /
+			// 流光全写死在 styles.css 里)。不挂的话皮肤够不到它 —— 整站换成像素窗口,
+			// 只有右下角还是圆头紫胶囊。皮肤 CSS 是无层 author 样式,压得过 `.bn-ai-fab`
+			// 所在的 `@layer components`,所以挂上就够了,默认装的观感一个像素都不变。
+			data-bn="btn btn-primary"
+			className="bn-ai-fab fixed bottom-5 right-5 z-30 flex h-12 cursor-pointer items-center gap-2.25 rounded-bn-pill pl-4 pr-5 text-[13.5px] font-bold text-white shadow-[0_10px_28px_rgba(108,92,231,0.42)]"
 		>
 			<Icon.ai size={20} />
 			女仆 AI

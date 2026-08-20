@@ -85,7 +85,7 @@ export function LoginDialog({ variant }: { variant: "cold" | "overlay" }) {
 					e.preventDefault();
 					void doSubmit();
 				}}
-				className="bn-glass-strong w-full max-w-sm rounded-2xl px-7 py-8 shadow-bn-elev"
+				className="bn-glass-strong w-full max-w-sm rounded-bn-card px-7 py-8 shadow-bn-elev"
 			>
 				<div className="mb-1 flex items-center gap-2">
 					<img alt="Bilibili Notify" src="/logo.png" className="h-9 w-auto object-contain" />
