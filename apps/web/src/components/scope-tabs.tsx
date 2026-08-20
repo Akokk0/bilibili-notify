@@ -66,7 +66,7 @@ export function ScopeTabs({
 				全局 / 全部 UP
 			</TabButton>
 
-			{tabSubs.length > 0 ? <span className="mx-0.5 h-5.5 w-px bg-black/10" /> : null}
+			{tabSubs.length > 0 ? <span className="mx-0.5 h-5.5 w-px bg-bn-border" /> : null}
 
 			{/* per-UP tabs (仅显示已定制 + 客户端临时添加的) */}
 			{tabSubs.map((sub) => {
@@ -76,6 +76,10 @@ export function ScopeTabs({
 				return (
 					<div
 						key={sub.id}
+						// 挂点与同条 tab 条上的 TabButton 同口径 —— 此前「全局 / 全部 UP」有挂点、
+						// 紧挨着的 per-UP tab 一个都没有,皮肤改 btn 时一条 tab 里第一颗变了、
+						// 后面几颗没变,并排摆着。观感上两者仍有差(实底 vs 描边),那是另一条账。
+						data-bn={active ? "btn btn-primary" : "btn"}
 						className={`flex items-center gap-1.5 rounded-lg border py-1.5 pl-3 pr-1.5 text-[12.5px] font-bold transition ${
 							active
 								? "border-bn-pink/25 bg-bn-surface text-bn-pink shadow-bn-card"
@@ -109,6 +113,7 @@ export function ScopeTabs({
 								onRemoveSub(sub.id);
 							}}
 							title={`移除 ${displayName(sub)} 的个性化配置`}
+							data-bn="btn"
 							className={`grid h-4.5 w-4.5 place-items-center rounded-sm ${
 								active
 									? "text-bn-pink/80 hover:bg-bn-pink/10"
@@ -127,17 +132,18 @@ export function ScopeTabs({
 					type="button"
 					onClick={() => setAdding((v) => !v)}
 					title="从订阅列表添加 UP 主的个性化配置"
+					data-bn="btn"
 					className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-semibold transition ${
 						adding
 							? "border-bn-pink/40 bg-bn-pink/6 text-bn-pink"
-							: "border-dashed border-black/15 text-bn-text-tertiary hover:text-bn-text-primary"
+							: "border-dashed border-bn-border text-bn-text-tertiary hover:text-bn-text-primary"
 					}`}
 				>
 					<Icon.plus size={13} />
 					添加 UP
 				</button>
 				{adding ? (
-					<div className="absolute left-0 top-[calc(100%+6px)] z-30 min-w-60 overflow-hidden rounded-bn-sm border border-black/8 bg-bn-surface shadow-bn-elev">
+					<div className="absolute left-0 top-[calc(100%+6px)] z-30 min-w-60 overflow-hidden rounded-bn-sm border border-bn-border-subtle bg-bn-surface shadow-bn-elev">
 						<div className="border-b border-bn-border-subtle px-3 pb-1.5 pt-2 text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
 							选择要单独定制的 UP 主
 						</div>

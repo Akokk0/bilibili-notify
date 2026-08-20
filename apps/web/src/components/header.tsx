@@ -133,7 +133,10 @@ function NavEditor({ onClose }: { onClose: () => void }) {
 	return (
 		<div
 			ref={ref}
-			className="bn-glass absolute right-0 top-full z-30 mt-1 w-60 rounded-bn-card p-2 shadow-bn-card"
+			// 弹层走强玻璃档 —— `glass` 的 hook 语义是「轻玻璃卡片」,`glass-strong` 才是
+			// 「弹层、浮条、抽屉」。暗色皮肤按最佳实践把 background 调到 alpha 0.55、
+			// strongBackground 0.85,用轻档这个下拉会透出底下的导航文字。
+			className="bn-glass-strong absolute right-0 top-full z-30 mt-1 w-60 rounded-bn-card p-2 shadow-bn-card"
 		>
 			<div className="flex items-center justify-between gap-1 px-1 py-1">
 				<span className="text-[11.5px] font-bold text-bn-text-secondary">标签显示与排序</span>
@@ -180,6 +183,7 @@ function AccountChip() {
 						alt={name}
 						src={face}
 						referrerPolicy="no-referrer"
+						data-bn="avatar"
 						className="ml-2 inline-block h-5 w-5 rounded-full"
 					/>
 				) : null}
@@ -448,12 +452,16 @@ export function GlassHeader() {
 					<LogoutButton />
 				</div>
 			</div>
-			<nav className="relative flex gap-0 px-5 pt-3">
+			{/* 挂 `nav` 挂点 —— 次级导航(TabBarShell / SectionNav)都挂了,唯独这条
+			    一级导航没挂。皮肤给 nav 画底色/描边时,Rules 的作用域条、Targets 的
+			    分区列表都换装,顶栏这排纹丝不动 —— 两者常常同屏,比"全都不生效"更露馅。 */}
+			<nav data-bn="nav" className="relative flex gap-0 px-5 pt-3">
 				{shownNav.map((t) => (
 					<NavLink
 						key={t.to}
 						to={t.to}
 						end
+						data-bn="btn"
 						className={({ isActive }) =>
 							`relative flex items-center gap-1.5 px-4 py-2.5 text-[13px] transition ${
 								isActive

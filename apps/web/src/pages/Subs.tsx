@@ -248,6 +248,7 @@ function ProfilePreview({
 			<img
 				src={profile.avatar}
 				alt={profile.name}
+				data-bn="avatar"
 				className="h-12 w-12 shrink-0 rounded-full bg-bn-surface object-cover"
 				referrerPolicy="no-referrer"
 			/>
@@ -318,6 +319,7 @@ function SearchResultList({
 							<img
 								src={r.avatar}
 								alt={r.name}
+								data-bn="avatar"
 								className="h-10 w-10 shrink-0 rounded-full bg-bn-surface object-cover"
 								referrerPolicy="no-referrer"
 							/>

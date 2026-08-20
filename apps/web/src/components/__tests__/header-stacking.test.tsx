@@ -69,7 +69,12 @@ describe("吸顶顶栏的层级", () => {
 		);
 
 		const header = container.querySelector('[data-bn~="header"]');
-		const tabBar = container.querySelector('[data-bn~="nav"]');
+		// 顶栏**内部**也有一条挂 `nav` 的一级导航,所以不能拿第一个 `[data-bn~="nav"]`
+		// 了事 —— 那样量到的是顶栏自己的子元素(它没写 z-*,zOf 会得到 NaN,断言直接
+		// 失败但原因具有误导性)。这里要的是**页面级**那条,即顶栏之外的那个。
+		const tabBar = Array.from(container.querySelectorAll('[data-bn~="nav"]')).find(
+			(el) => !header?.contains(el),
+		);
 		expect(header).toBeTruthy();
 		expect(tabBar).toBeTruthy();
 		expect(zOf(header as Element)).toBeGreaterThan(zOf(tabBar as Element));

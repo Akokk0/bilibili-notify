@@ -127,10 +127,12 @@ export function ChatSidebar(props: ChatSidebarProps) {
 						src={props.userFace}
 						alt={props.userName}
 						referrerPolicy="no-referrer"
+						data-bn="avatar"
 						className="h-[30px] w-[30px] shrink-0 rounded-full object-cover"
 					/>
 				) : (
 					<div
+						data-bn="avatar"
 						className="bn-chat-accent-grad grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full text-[12.5px] font-bold text-white"
 						aria-hidden="true"
 					>

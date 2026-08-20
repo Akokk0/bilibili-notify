@@ -109,6 +109,15 @@ const DISABLED_FIELD = "disabled:cursor-not-allowed disabled:opacity-60";
 const INPUT_BASE =
 	"h-[30px] rounded-md border border-bn-border bg-bn-field px-2.5 text-[12.5px] text-bn-text-primary outline-none focus:border-bn-pink focus:ring-1 focus:ring-bn-pink/30";
 
+/**
+ * 皮肤的 `input` 挂点。库里的 `Input` 原语自己挂了,但全站只用 7 次;设置面板的
+ * 输入框走的是下面这套 T 系列 —— 87 处,此前一个挂点都没有,于是皮肤写的
+ * `[data-bn="input"]{…}` 只改到登录框和几个搜索框,System / Rules / AI / Cards /
+ * Targets 整片设置区纹丝不动。挂上是零视觉变化(属性挂点不带样式),覆盖面却是
+ * 全站输入框密度最高的那一片。
+ */
+const INPUT_HOOK = "input";
+
 export interface TInputProps {
 	value: string;
 	onChange: (next: string) => void;
@@ -142,6 +151,7 @@ export function TInput({
 			placeholder={placeholder}
 			autoComplete={secret ? "new-password" : undefined}
 			disabled={disabled}
+			data-bn={INPUT_HOOK}
 			className={`${INPUT_BASE} ${mono || secret ? "font-mono" : ""} ${full ? "min-w-0 w-full" : "w-auto"} ${DISABLED_FIELD}`}
 		/>
 	);
@@ -165,6 +175,7 @@ export function TArea({ value, onChange, placeholder, rows = 3, mono, disabled }
 			placeholder={placeholder}
 			rows={rows}
 			disabled={disabled}
+			data-bn={INPUT_HOOK}
 			className={`min-w-0 w-full resize-y rounded-md border border-bn-border bg-bn-field px-2.5 py-2 text-[12.5px] leading-relaxed text-bn-text-primary outline-none focus:border-bn-pink focus:ring-1 focus:ring-bn-pink/30 ${mono ? "font-mono" : ""} ${DISABLED_FIELD}`}
 		/>
 	);
@@ -190,6 +201,7 @@ export function TNum({ value, onChange, min, max, step = 1, suffix, width = 80 }
 				min={min}
 				max={max}
 				step={step}
+				data-bn={INPUT_HOOK}
 				className={`${INPUT_BASE} text-left font-mono`}
 				style={{ width }}
 			/>
@@ -220,6 +232,7 @@ export function TSelect<T extends string = string>({
 		<select
 			value={value}
 			onChange={(e) => onChange(e.target.value as T)}
+			data-bn={INPUT_HOOK}
 			className={`${INPUT_BASE} min-w-40 ${full ? "w-full" : "w-auto"}`}
 		>
 			{options.map((o) => (
@@ -257,10 +270,12 @@ export function TColor({ value, onChange }: TColorProps) {
 					setHex(e.target.value);
 					onChange(e.target.value);
 				}}
+				data-bn={INPUT_HOOK}
 				className="h-7.5 w-9 cursor-pointer rounded-md border border-bn-border bg-bn-field p-0"
 			/>
 			<input
 				type="text"
+				data-bn={INPUT_HOOK}
 				value={hex}
 				onChange={(e) => {
 					const next = e.target.value;
@@ -313,6 +328,7 @@ export function Picker<T extends string | number | boolean>({
 						// 选中态此前只体现在 class 上 —— 读屏软件读不出来,测试也只能去比对
 						// 样式字符串。aria-pressed 让「选的是哪个」成为可查询的事实。
 						aria-pressed={active}
+						data-bn="btn"
 						className={`rounded-sm px-3 py-1 text-[11.5px] font-semibold transition ${
 							active ? "bg-bn-surface-strong text-bn-pink shadow-sm" : "text-bn-text-tertiary"
 						}`}
@@ -349,6 +365,7 @@ export function LogLevelPicker({ value, onChange, allowInherit }: LogLevelPicker
 				<button
 					type="button"
 					onClick={() => onChange(null)}
+					data-bn="btn"
 					className={`rounded-sm px-3 py-1 text-[11.5px] font-semibold transition ${
 						value === null
 							? "bg-bn-surface text-bn-text-primary shadow-sm"
@@ -365,6 +382,7 @@ export function LogLevelPicker({ value, onChange, allowInherit }: LogLevelPicker
 						type="button"
 						key={o.v}
 						onClick={() => onChange(o.v)}
+						data-bn="btn"
 						className={`rounded-sm px-3 py-1 text-[11.5px] font-semibold transition ${active ? "bg-bn-surface-strong shadow-sm" : "text-bn-text-tertiary"}`}
 						style={active ? { color: o.color } : undefined}
 					>
@@ -398,11 +416,13 @@ export function ArrayEditor({ value, onChange, placeholder }: ArrayEditorProps) 
 							n[i] = e.target.value;
 							onChange(n);
 						}}
+						data-bn={INPUT_HOOK}
 						className={`${INPUT_BASE} flex-1 font-mono`}
 					/>
 					<button
 						type="button"
 						onClick={() => onChange(value.filter((_, j) => j !== i))}
+						data-bn="btn"
 						className="grid h-7.5 w-7.5 place-items-center rounded-md border border-bn-border bg-bn-field text-bn-text-secondary hover:text-bn-danger"
 						aria-label="移除"
 					>
@@ -413,6 +433,7 @@ export function ArrayEditor({ value, onChange, placeholder }: ArrayEditorProps) 
 			<button
 				type="button"
 				onClick={() => onChange([...value, ""])}
+				data-bn="btn"
 				className="h-7.5 rounded-md border border-dashed border-bn-border bg-bn-field/60 text-[12px] text-bn-text-secondary hover:bg-bn-surface"
 			>
 				+ 添加一行{placeholder ? `（${placeholder}）` : ""}
@@ -452,6 +473,7 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 								n[i] = { ...n[i], start: Number(e.target.value) };
 								onChange(n);
 							}}
+							data-bn={INPUT_HOOK}
 							className={`${INPUT_BASE} w-18 font-mono`}
 						>
 							{hours.map((h) => (
@@ -468,6 +490,7 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 								n[i] = { ...n[i], end: Number(e.target.value) };
 								onChange(n);
 							}}
+							data-bn={INPUT_HOOK}
 							className={`${INPUT_BASE} w-18 font-mono`}
 						>
 							{hours.map((h) => (
@@ -491,6 +514,7 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 						<button
 							type="button"
 							onClick={() => onChange(value.filter((_, j) => j !== i))}
+							data-bn="btn"
 							className="grid h-7.5 w-7.5 place-items-center rounded-md border border-bn-border bg-bn-field text-bn-text-secondary hover:text-bn-danger"
 							aria-label="移除"
 						>
@@ -502,6 +526,7 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 			<button
 				type="button"
 				onClick={() => onChange([...value, { start: 23, end: 7 }])}
+				data-bn="btn"
 				className="h-7.5 rounded-md border border-dashed border-bn-border bg-bn-field/60 text-[12px] text-bn-text-secondary hover:bg-bn-surface"
 			>
 				+ 添加免扰时段
