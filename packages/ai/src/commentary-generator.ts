@@ -104,6 +104,24 @@ const SESSION_SWEEP_INTERVAL_MS = 10 * 60 * 1000; // 10 min — 清扫过期且�
 const MAX_TOOL_ROUNDS = 8;
 
 /**
+ * 按 {@link ExtraToolResult.restrictTools} 的语义收窄工具表:**交集,只减不加**。
+ *
+ * `allowed` 不给就原样返回;写了个不在表上的名字 = 当没写 —— 这一行是「用户可写
+ * 的数据永远不能扩大能力面」这条铁律的落点,别改成并集。
+ *
+ * 住在这个文件而不是 `tools.ts`:那张表在本包里被四份测试整体 mock 掉,往它上面
+ * 加导出等于给下一个写 `vi.mock("../tools")` 的人埋一颗「No export is defined」。
+ */
+function narrowTools(
+	tools: OpenAI.ChatCompletionTool[],
+	allowed?: readonly string[],
+): OpenAI.ChatCompletionTool[] {
+	if (!allowed) return tools;
+	const keep = new Set(allowed);
+	return tools.filter((t) => keep.has(t.function.name));
+}
+
+/**
  * 出字记账:包一层回调,累计本次调用总共吐给调用方多少字。**思考也计入** ——
  * 它同样已经印在主人屏幕上了。`emitted` 决定出错时还能不能悄悄重来:一旦吐过字,
  * 静默重试会让同一段思考再播一遍、或者半句正文凭空接上另一段。chat 与 responses
@@ -420,6 +438,22 @@ export interface ChatStatelessOptions {
 	 * 注意它顶掉的是整段 —— 连「可以用 Markdown」这类约定也得自己写上。
 	 */
 	systemPrompt?: string;
+	/**
+	 * **追加**在 system 末尾的一段(女仆技能的正文走这条路)。
+	 *
+	 * 与 {@link systemPrompt} 的区别是「追加」而非「顶掉」:人格照旧在场
+	 * (ADR-0001 决策 14)。顶掉的话主人打一条斜杠命令,女仆就突然不是女仆了 ——
+	 * 而他要的只是「按这套步骤做事」。
+	 */
+	systemSuffix?: string;
+	/**
+	 * 开局就把工具表收窄到这些名字(**交集,只减不加**,同
+	 * {@link ExtraToolResult.restrictTools})。
+	 *
+	 * 给斜杠命令那条路用:主人已经点名了要哪条技能,再让模型自己调一次
+	 * 「读取技能」是白烧一轮。
+	 */
+	restrictTools?: readonly string[];
 	/**
 	 * 挂不挂内置的 B 站只读工具。默认挂;专职模式关掉之后,工具表只剩
 	 * {@link ExtraTool} 注入的那些 —— 少一个口子,就少一条把它带跑的路。
@@ -939,13 +973,15 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// 这一路的收件人是 dashboard 的聊天界面,它渲染 Markdown。**只有这里**这么传 ——
 		// 推送、koishi 群聊、点评、总结都落在缺省那一侧,继续拿到「只用纯文本」。
 		// 专职模式(opts.systemPrompt)则整段顶掉人格,连 Markdown 那句约定也由它自带。
-		const systemPrompt =
+		const baseSystem =
 			opts?.systemPrompt ??
 			this.getSystemPrompt(undefined, undefined, undefined, {
 				allowMarkdown: true,
 				withTools: true,
 				withPersona: opts?.persona ?? true,
 			});
+		// 技能正文**追加**在人格之后,不顶掉它(见 systemSuffix 的文档)。
+		const systemPrompt = opts?.systemSuffix ? `${baseSystem}\n\n${opts.systemSuffix}` : baseSystem;
 		this.logger.debug(`[chat-stateless] 历史=${messages.length} 条,实发=${trimmed.length} 条`);
 
 		// 与 chatImpl 同样的多轮口径。dashboard 目前还传不了图,所以这条路上
@@ -957,25 +993,43 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// 注入工具同样是加装。按名字建索引,调用时**先查注入的**:同名时以调用方
 		// 给的为准 —— 注入是显式意图,不该被内置表悄悄压过去。
 		const extra = new Map((opts?.extraTools ?? []).map((t) => [t.definition.function.name, t]));
-		const result = await this.callAPI(
-			systemPrompt,
-			withVisionNote(trimmed, vision),
-			{
-				tools: [
+		/**
+		 * 工具表**随这次请求现造**,而且是可变的 —— 注入的工具能在执行完之后把它
+		 * 收窄(见 {@link ExtraToolResult.restrictTools});取轮时每轮现读,所以下一轮
+		 * 即刻生效、零额外往返。工具调用之后本来就要再发一次请求把结果喂回去,那一次
+		 * 顺路带上窄化的工具表。
+		 *
+		 * 收窄只活这一次调用:下一条用户消息重新走到这里,拿回完整的那份。
+		 */
+		const toolOptions: CallToolOptions = {
+			tools: narrowTools(
+				[
 					// 专职模式不带内置只读工具;看图那道口子跟着 builtinTools 一起收,
 					// 它也是 vision.tools 的一部分(专职窗口本来就不传图)。
 					...(opts?.builtinTools === false ? [] : vision.tools),
 					...(searchExec ? [WEB_SEARCH_TOOL] : []),
 					...[...extra.values()].map((t) => t.definition),
 				],
-				onToolCall: (name, args, onProgress) => {
-					const injected = extra.get(name);
-					if (injected) return injected.execute(args, onProgress);
-					return executeTool(name, args, this.api, () => this.getSubs(), vision.ctx);
-				},
-				onToolEvent: opts?.onToolEvent,
-				...(searchExec ? { webSearch: searchExec } : {}),
+				opts?.restrictTools,
+			),
+			onToolCall: async (name, args, onProgress) => {
+				const injected = extra.get(name);
+				if (!injected) return executeTool(name, args, this.api, () => this.getSubs(), vision.ctx);
+				const out = await injected.execute(args, onProgress);
+				if (typeof out === "string") return out;
+				if (out.restrictTools) {
+					toolOptions.tools = narrowTools(toolOptions.tools, out.restrictTools);
+					this.logger.debug(`[tool] 工具面收窄至 ${toolOptions.tools.length} 把`);
+				}
+				return out.text;
 			},
+			onToolEvent: opts?.onToolEvent,
+			...(searchExec ? { webSearch: searchExec } : {}),
+		};
+		const result = await this.callAPI(
+			systemPrompt,
+			withVisionNote(trimmed, vision),
+			toolOptions,
 			vision.ctx ? undefined : this.mainModelCanSeeImages() ? opts?.imageUrls : undefined,
 			// 只带思考两项的最小 override —— 聊天的思考设置与引擎分了家。
 			opts?.thinking,
@@ -1646,16 +1700,27 @@ export class CommentaryGenerator implements CommentaryProvider {
 		});
 
 		const input: ResponsesInputItem[] = toResponsesInput(args.apiMessages);
-		// 同 chat 风味:空表不发字段(见那边的注释)。
-		const tools =
-			toolOptions && toolOptions.tools.length > 0 ? toResponsesTools(toolOptions.tools) : undefined;
-		const makeParams = (withReasoning: boolean): Record<string, unknown> => ({
-			model,
-			input,
-			...(temperature !== undefined ? { temperature } : {}),
-			...(tools ? { tools, tool_choice: "auto" } : {}),
-			...mergeExtraParams(withReasoning ? reasoningParams : {}, args.extra),
-		});
+		/**
+		 * 同 chat 风味:空表不发字段(见那边的注释),且**每轮现取**。
+		 *
+		 * 现取这件事不是顺手写的:注入的工具能在执行完之后收窄 `toolOptions.tools`
+		 * (技能的 `allowed-tools`)。这里原先是循环外算一次的,那样收窄在 responses
+		 * 这条路上会**静默**失效 —— 构建全绿、chat 那边的测试也全绿,只有真机上用
+		 * responses 协议的主人会发现技能压根没约束住工具。
+		 */
+		const makeParams = (withReasoning: boolean): Record<string, unknown> => {
+			const tools =
+				toolOptions && toolOptions.tools.length > 0
+					? toResponsesTools(toolOptions.tools)
+					: undefined;
+			return {
+				model,
+				input,
+				...(temperature !== undefined ? { temperature } : {}),
+				...(tools ? { tools, tool_choice: "auto" } : {}),
+				...mergeExtraParams(withReasoning ? reasoningParams : {}, args.extra),
+			};
+		};
 
 		// 与 chat 环同一本账:吐过字就不许悄悄重来 —— 同一份 makeAccountedEmitters。
 		const acct = makeAccountedEmitters(args.onDelta, args.onReasoning);

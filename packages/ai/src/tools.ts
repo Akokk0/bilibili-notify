@@ -136,6 +136,29 @@ function extractDynamicText(item: Record<string, any>): string {
  * `execute` 拿到的入参已被逐值 String 归一(见 `execToolCall`)—— 布尔到手是
  * `"true"` / `"false"`,数字是字符串,按字符串判。
  */
+/**
+ * 注入工具的**富返回值** —— 除了回灌给模型的文本,还能顺带收窄接下来的工具面。
+ *
+ * 直接返回字符串等价于 `{ text }`,绝大多数工具用不上这个形状。
+ */
+export interface ExtraToolResult {
+	/** 回灌给模型的文本,与直接返回字符串等价。 */
+	text: string;
+	/**
+	 * **下一轮起**把工具表收窄到这些名字。
+	 *
+	 * 语义是**交集,只减不加**:名字不在当前工具表上就当没写,凭空长不出工具来。
+	 * 这条不是口味 —— 唯一的用户是「读取技能」那把工具,而技能正文是主人(或他从
+	 * 网上抄来的一份)写的**数据**;用户可写的数据永远不能扩大能力面。
+	 *
+	 * 想让某把工具在收窄之后仍然在场(比如这把工具自己),**把它的名字一并写进来**
+	 * —— generator 不为任何工具开后门。
+	 *
+	 * 收窄只活这一次请求:工具表随请求现造,下一条用户消息拿回完整的那份。
+	 */
+	restrictTools?: readonly string[];
+}
+
 export interface ExtraTool {
 	definition: OpenAI.ChatCompletionTool;
 	/**
@@ -143,7 +166,10 @@ export interface ExtraTool {
 	 * 跟卡死长得一模一样。报的是「已经吐了多少字符」这种粗粒度进度 —— 别把工具的
 	 * 中间产物往里塞,那条路会一路流到界面上。不报也行,只是主人得干等。
 	 */
-	execute: (args: Record<string, string>, onProgress?: (chars: number) => void) => Promise<string>;
+	execute: (
+		args: Record<string, string>,
+		onProgress?: (chars: number) => void,
+	) => Promise<string | ExtraToolResult>;
 }
 
 /**
