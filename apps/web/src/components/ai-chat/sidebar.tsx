@@ -37,7 +37,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 	const groups = groupConversations(props.conversations);
 
 	return (
-		<div className="bn-glass-sheen bn-glass-panel m-3 flex w-[258px] shrink-0 flex-col rounded-3xl px-3 pb-3 pt-3.5 shadow-bn-elev">
+		<div className="bn-glass-sheen bn-glass-strong m-3 flex w-[258px] shrink-0 flex-col rounded-3xl px-3 pb-3 pt-3.5 shadow-bn-elev">
 			<div className="flex items-center gap-1.5 px-0.5 pb-4">
 				<div className="flex-1 truncate pl-2 text-[14.5px] font-bold text-bn-text-primary">
 					女仆AI · {props.aiName}
@@ -159,7 +159,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 				</button>
 
 				{settingsOpen ? (
-					<div className="bn-glass-sheen bn-glass-popover bn-anim-fade-up absolute inset-x-0 bottom-[calc(100%+8px)] z-20 rounded-2xl p-3 shadow-bn-elev">
+					<div className="bn-glass-sheen bn-glass-strong bn-anim-fade-up absolute inset-x-0 bottom-[calc(100%+8px)] z-20 rounded-2xl p-3 shadow-bn-elev">
 						{/* 主题色与玻璃质感都不在这里:四色预设已砍,玻璃族直接吃
 						    --bn-glass-* token —— 观感调整一律走皮肤包(皮肤编辑器)。
 						    弹层里只剩与皮肤无关的行为设置。 */}

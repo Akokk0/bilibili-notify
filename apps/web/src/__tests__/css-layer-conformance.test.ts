@@ -89,13 +89,30 @@ describe("聊天玻璃族与外部玻璃 token 统一", () => {
 		return css.slice(start, css.indexOf("}", start));
 	}
 
-	it("面板/弹层吃强玻璃档,胶囊吃普通档 —— 与 dashboard 的 .bn-glass(-strong) 同参", async () => {
-		const panel = await block(".bn-glass-panel,\n\t.bn-glass-popover");
-		expect(panel).toContain("var(--bn-glass-strong-bg)");
-		expect(panel).toContain("var(--bn-glass-strong-blur)");
-		const chip = await block(".bn-glass-chip");
-		expect(chip).toContain("var(--bn-glass-bg)");
-		expect(chip).toContain("var(--bn-glass-blur)");
+	/**
+	 * 聊天页**不许再有平行的玻璃类**。
+	 *
+	 * 这三个类曾经存在(`.bn-glass-panel` / `.bn-glass-popover` / `.bn-glass-chip`),
+	 * 而在「聊天玻璃族改吃共用 --bn-glass-* token」之后,它们的声明与库里那两档
+	 * 逐字相同了 —— 纯复制品。代价不是几行重复:`glass` / `glass-strong` 两个挂点
+	 * 匹配的是 `.bn-glass(-strong)`,于是皮肤的自定义 CSS 打得到整站每一块玻璃,
+	 * 唯独打不到聊天页 —— 而皮肤工坊就住在聊天页。
+	 *
+	 * 复发形态就是「顺手再给聊天玻璃起个自己的类」,所以守在类名上。
+	 */
+	it("聊天页直接用 .bn-glass / .bn-glass-strong,没有平行的复制品类", async () => {
+		const css = await readFile(STYLES, "utf8");
+		for (const dead of [".bn-glass-panel", ".bn-glass-popover", ".bn-glass-chip"]) {
+			// 注释里提到它们(讲由来)是允许的,只拦真的规则定义。
+			expect(`${dead} 规则: ${css.includes(`${dead} {`) || css.includes(`${dead},`)}`).toBe(
+				`${dead} 规则: false`,
+			);
+		}
+		const chat = await readFile(
+			fileURLToPath(new URL("../components/ai-chat/sidebar.tsx", import.meta.url)),
+			"utf8",
+		);
+		expect(chat).toContain("bn-glass-strong");
 	});
 
 	it("chat 专属玻璃变量一个不剩 —— 剩一个就是回退的种子", async () => {
@@ -111,12 +128,13 @@ describe("聊天玻璃族与外部玻璃 token 统一", () => {
 		expect(bubble).toContain("color-mix(in srgb, var(--bn-chat-dot) 14%, transparent)");
 	});
 
-	it("消息组件真的用上了这块玻璃", async () => {
+	it("消息组件把气泡建在 .bn-glass 上 —— 只有这样皮肤的 glass 挂点才够得到它", async () => {
 		const tsx = await readFile(
 			fileURLToPath(new URL("../components/ai-chat/messages.tsx", import.meta.url)),
 			"utf8",
 		);
-		expect(tsx).toContain("bn-chat-bubble-user");
+		// 顺序要紧:.bn-glass 出底/描边/模糊,.bn-chat-bubble-user 只覆盖 background。
+		expect(tsx).toContain("bn-glass bn-chat-bubble-user");
 	});
 
 	it("默认聊天主题从默认装 token 派生,不另写一套配色", async () => {

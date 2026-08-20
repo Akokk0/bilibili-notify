@@ -152,7 +152,10 @@ function UpPicker({
 				<span className="ml-auto text-xs text-bn-text-secondary">{open ? "▴" : "▾"}</span>
 			</button>
 			{open ? (
-				<div className="absolute left-0 top-[calc(100%+6px)] z-50 max-h-80 min-w-56 overflow-y-auto rounded-bn-card border border-bn-border bg-bn-surface shadow-bn-card">
+				<div
+					data-bn="glass-strong"
+					className="absolute left-0 top-[calc(100%+6px)] z-50 max-h-80 min-w-56 overflow-y-auto rounded-bn-card border border-bn-border bg-bn-surface shadow-bn-card"
+				>
 					<button
 						type="button"
 						onClick={() => {

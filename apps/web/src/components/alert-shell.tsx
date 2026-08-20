@@ -44,6 +44,7 @@ function AlertCard({ item }: { item: AlertItem }) {
 	const time = formatHms(item.receivedAt);
 	return (
 		<div
+			data-bn="glass-strong"
 			className="bn-anim-fade-in pointer-events-auto flex gap-2.5 rounded-bn-card border bg-bn-surface p-3 shadow-bn-elev"
 			style={{
 				borderColor: "var(--color-bn-danger-border)",

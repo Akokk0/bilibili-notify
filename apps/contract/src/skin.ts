@@ -94,10 +94,23 @@ export type SkinTextSlot = (typeof SKIN_TEXT_SLOTS)[number];
 export const SKIN_CSS_HOOK_MAP = {
 	/** 整页(壁纸层之上、所有内容之下的根;粒子/氛围层挂它的伪元素)。 */
 	page: "body",
-	/** 所有轻玻璃卡片。 */
-	glass: ".bn-glass",
-	/** 强玻璃面(弹窗、浮条、抽屉)。 */
-	"glass-strong": ".bn-glass-strong",
+	/**
+	 * 所有轻玻璃卡片。类与属性两条路都收 —— `.bn-glass` 是「长成玻璃」,
+	 * `[data-bn~="glass"]` 是「按玻璃换装但保持自己的观感」。
+	 *
+	 * 为什么要第二条路:其余 7 个挂点都是属性挂点,挂上零视觉变化;这两档原来只认
+	 * 类名,而加类会连带一整套底色/模糊/描边。于是实底浮层(toast、告警、各种下拉)
+	 * **没有零代价的挂法** —— 要么改观感,要么够不到。属性挂点补上这条路。
+	 *
+	 * **必须写成 `:is()`,不能写成逗号列表。** 注入时的翻译(`translateSkinCssHooks`)
+	 * 是纯字符串替换:皮肤写 `[data-bn="glass"]:hover`,逗号列表会翻成
+	 * `.bn-glass,[data-bn~="glass"]:hover` —— 伪类只贴到最后一支,静默改掉语义且
+	 * 不会红。`:is()` 的特异性取参数最大值(0-1-0),与原来的 `.bn-glass` 一致,
+	 * 层叠关系不变。
+	 */
+	glass: ':is(.bn-glass,[data-bn~="glass"])',
+	/** 强玻璃面(弹窗、浮条、抽屉)。两条路同上。 */
+	"glass-strong": ':is(.bn-glass-strong,[data-bn~="glass-strong"])',
 	/** 所有按钮。 */
 	btn: '[data-bn~="btn"]',
 	/** 主(粉色实底)按钮。 */

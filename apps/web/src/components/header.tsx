@@ -256,7 +256,10 @@ function ThemeSwitcher() {
 				主题：{current}
 			</Btn>
 			{open ? (
-				<div className="absolute right-0 top-full z-20 mt-2 w-42 rounded-lg border border-bn-border bg-bn-surface-strong p-1.5 shadow-bn-elev">
+				<div
+					data-bn="glass-strong"
+					className="absolute right-0 top-full z-20 mt-2 w-42 rounded-lg border border-bn-border bg-bn-surface-strong p-1.5 shadow-bn-elev"
+				>
 					{THEME_OPTIONS.map((o) => {
 						const active = o.value === preference;
 						return (

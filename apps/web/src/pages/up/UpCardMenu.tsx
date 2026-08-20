@@ -79,6 +79,7 @@ export function UpCardMenu({
 			ref={menuRef}
 			role="menu"
 			style={{ position: "fixed", left: x, top: y, zIndex: 60 }}
+			data-bn="glass-strong"
 			className="min-w-40 overflow-hidden rounded-lg border border-bn-border bg-bn-surface py-1 shadow-bn-elev"
 		>
 			{items.map((it) => (

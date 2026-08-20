@@ -180,6 +180,7 @@ export function Composer({
 		<div className="relative mx-auto w-full max-w-[720px]">
 			{showMenu ? (
 				<div
+					data-bn="glass-strong"
 					className="bn-anim-cmd-in absolute inset-x-1 bottom-full z-10 mb-2.5 overflow-hidden rounded-bn-card border border-bn-border bg-bn-surface-strong shadow-bn-elev"
 					role="listbox"
 					aria-label="女仆技能"
@@ -315,6 +316,7 @@ export function Composer({
 								<div
 									role="menu"
 									aria-label="更多"
+									data-bn="glass-strong"
 									className="bn-anim-cmd-in absolute bottom-full left-0 z-10 mb-2 w-44 overflow-hidden rounded-bn-card border border-bn-border bg-bn-surface-strong p-1 shadow-bn-elev"
 								>
 									<button

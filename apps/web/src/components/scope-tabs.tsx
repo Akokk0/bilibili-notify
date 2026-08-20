@@ -143,7 +143,10 @@ export function ScopeTabs({
 					添加 UP
 				</button>
 				{adding ? (
-					<div className="absolute left-0 top-[calc(100%+6px)] z-30 min-w-60 overflow-hidden rounded-bn-sm border border-bn-border-subtle bg-bn-surface shadow-bn-elev">
+					<div
+						data-bn="glass-strong"
+						className="absolute left-0 top-[calc(100%+6px)] z-30 min-w-60 overflow-hidden rounded-bn-sm border border-bn-border-subtle bg-bn-surface shadow-bn-elev"
+					>
 						<div className="border-b border-bn-border-subtle px-3 pb-1.5 pt-2 text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
 							选择要单独定制的 UP 主
 						</div>

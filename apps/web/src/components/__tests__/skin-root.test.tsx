@@ -198,7 +198,7 @@ describe("SkinRoot / 自定义 CSS 注入", () => {
 		renderRoots();
 		await waitFor(() => expect(document.getElementById("bn-skin-css")).not.toBeNull());
 		const css = document.getElementById("bn-skin-css")?.textContent ?? "";
-		expect(css).toContain(".bn-glass{border-width:2px}");
+		expect(css).toContain(':is(.bn-glass,[data-bn~="glass"]){border-width:2px}');
 		expect(css).toContain('[data-bn~="btn"]{opacity:0.9}');
 
 		useSkinStore.getState().setKillSwitch(true);

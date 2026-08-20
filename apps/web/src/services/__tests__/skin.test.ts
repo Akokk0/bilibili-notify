@@ -222,8 +222,11 @@ describe("composeSkinVars / shadows(辉光)", () => {
 
 describe("自定义 CSS:hook 翻译与合成", () => {
 	it("hook 按映射表翻译成真实选择器;未知 hook 原样保留(命中不了任何元素)", () => {
+		// 玻璃两档翻成 `:is(类, 属性)` —— 类是「长成玻璃」,属性是「按玻璃换装但
+		// 保持自己观感」。**这条同时钉住不许退回逗号列表**:逗号列表会让下面这个
+		// `:hover` 只贴到最后一支上,静默改语义、构建全绿。
 		expect(translateSkinCssHooks('[data-bn="glass"]:hover{border-width:2px}')).toBe(
-			".bn-glass:hover{border-width:2px}",
+			':is(.bn-glass,[data-bn~="glass"]):hover{border-width:2px}',
 		);
 		expect(translateSkinCssHooks('[data-bn="page"]::before{content:""}')).toBe(
 			'body::before{content:""}',
@@ -233,7 +236,9 @@ describe("自定义 CSS:hook 翻译与合成", () => {
 			'[data-bn~="btn-primary"]{opacity:0.9}',
 		);
 		// 无引号形式(css-tree 对 Identifier 值的序列化)同样认
-		expect(translateSkinCssHooks("[data-bn=glass]{opacity:1}")).toBe(".bn-glass{opacity:1}");
+		expect(translateSkinCssHooks("[data-bn=glass]{opacity:1}")).toBe(
+			':is(.bn-glass,[data-bn~="glass"]){opacity:1}',
+		);
 		expect(translateSkinCssHooks('[data-bn="nope"]{opacity:1}')).toBe(
 			'[data-bn="nope"]{opacity:1}',
 		);
@@ -269,8 +274,8 @@ describe("自定义 CSS:hook 翻译与合成", () => {
 		expect(css).toContain("pointer-events:none");
 		// 后置:必须排在皮肤自己那段**之后**,否则皮肤的 z-index 压得过它
 		expect(css.lastIndexOf("z-index:-1")).toBeGreaterThan(css.lastIndexOf("z-index:9"));
-		expect(css).toContain(".bn-glass::before");
-		expect(css).toContain(".bn-glass::after");
+		expect(css).toContain(':is(.bn-glass,[data-bn~="glass"])::before');
+		expect(css).toContain(':is(.bn-glass,[data-bn~="glass"])::after');
 	});
 
 	/**
@@ -293,7 +298,7 @@ describe("自定义 CSS:hook 翻译与合成", () => {
 			"light",
 		);
 		expect(css).toContain("@layer components{");
-		expect(css).toContain(".bn-glass{position:relative;isolation:isolate}");
+		expect(css).toContain(':is(.bn-glass,[data-bn~="glass"]){position:relative;isolation:isolate}');
 		// 没被装饰的挂点不碰 —— 凭空给它们建层叠上下文会困住里面的浮层
 		expect(css).not.toContain("body{position:relative");
 	});
@@ -377,10 +382,12 @@ describe("自定义 CSS:hook 翻译与合成", () => {
 			},
 		};
 		const light = composeSkinCss(manifest, "light");
-		expect(light).toContain(".bn-glass{border-width:1px}");
+		expect(light).toContain(':is(.bn-glass,[data-bn~="glass"]){border-width:1px}');
 		expect(light).toContain('[data-bn~="btn"]{opacity:0.9}');
 		// dark 套没有自己的 css,但顶层共用仍在
-		expect(composeSkinCss(manifest, "dark")).toBe(".bn-glass{border-width:1px}");
+		expect(composeSkinCss(manifest, "dark")).toBe(
+			':is(.bn-glass,[data-bn~="glass"]){border-width:1px}',
+		);
 		expect(composeSkinCss({ schemaVersion: 1, name: "t", modes: { light: {} } }, "light")).toBe("");
 	});
 
