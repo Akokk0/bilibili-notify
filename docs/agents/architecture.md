@@ -126,7 +126,10 @@ src/
   fans/store.ts         append-only jsonl 时序
   history/              HistoryStore(<dataDir>/history/<日期>.jsonl)+ retention
   logs/                 LogStore + retention + redact(凭据脱敏)+ sink
+  skins/                皮肤库(<dataDir>/skins/<id>/skin.json + assets/)+ CSS 白名单 + 聊天里的 create_skin
+  maid-skills/          女仆技能(<dataDir>/maid-skills/<name>/SKILL.md)+ 内置表 + 聊天里的 load_skill
   routes/               REST:auth / subs / targets / adapters / globals / history / logs / fans / live / cards / push / health
+                        / ai / skins / maid-skills
   ws/                   server(ws upgrade + 按连接 channel 过滤)+ channels + log-channel
   sink/                 NotificationSink 分发(PushTarget.id → 平台适配器)
   platforms/            OneBot v11(HTTP / ws / ws-reverse)+ Webhook + WebDashboard 适配器
@@ -147,3 +150,25 @@ src/
 ```
 
 页面级状态归 tanstack-query;WS push 帧经 `setQueryData` 打补丁,实时更新无需额外 HTTP 往返。
+
+## 女仆技能(Agent Skill)
+
+**只在独立端 dashboard 的聊天里存在。** koishi 的 `bili.chat` 与 AstrBot 拿不到 ——
+那两条路没有权限门,而技能正文是「从网上抄一份贴进来」的提示词注入面。
+
+一条技能 = 一份 `SKILL.md`(YAML frontmatter + Markdown 正文),住在
+`<dataDir>/maid-skills/<name>/`。**单文件、不带附件、不跑脚本**:这台 server 攥着
+B站 cookie、推送目标与 AI key,给它开脚本口子等于给面板开 RCE。
+
+- **名字 = 目录名 = 斜杠命令**,kebab-case ASCII。白名单里没有 `.` `/` `\`,`..` 在
+  构造上就拼不出来 —— 这条是安全闸,不是口味(皮肤库那次审计的教训)。
+- **盘是权威。** 主人可以手放一份进去,`GET /api/maid-skills` 每次现读;读不进来的
+  经 `problems` 显示给他看,不静默消失。
+- **内置那几条写在 `maid-skills/builtin.ts`**,只读、跟版本走,同名一律拒。
+  `builtin.test.ts` 钉住它们声明与提到的工具名真的存在。
+- **两条触发路**:模型读目录自选(`load_skill`,经 ExtraTool 注入,**绝不进
+  `TOOL_DEFINITIONS`**),或主人打斜杠(请求带 `skill`,服务端取正文追加进 system
+  并当场收窄工具面)。两条路都在消息流里留一枚 `load_skill` 痕迹胶囊。
+- **`allowed-tools` 只减不加。** 收窄是对现有工具表做交集(`narrowTools`),写一个
+  不存在的名字长不出工具来 —— 用户可写的数据永远不能扩大能力面。收窄只活一次请求。
+- **正文追加在人格之后**,不顶掉它:主人要的是「按这套步骤做事」,不是换个女仆。
