@@ -167,12 +167,23 @@ const DECORATION_DECLS: readonly Declaration[] = ["pointer-events:none", "z-inde
 	(text) => parse(text, { context: "declaration" }) as Declaration,
 );
 
+/** 这两句由本层说了算,块里皮肤自己写的同名声明一律先摘掉。 */
+const DECORATION_PROPS: ReadonlySet<string> = new Set(
+	DECORATION_DECLS.map((d) => d.property.toLowerCase()),
+);
+
 /**
  * 往声明块尾部塞上装饰层的两句硬规矩:`pointer-events:none` + `z-index:-1`。
  *
- * 在**过滤之后**才塞:两句都是这一层说了算 —— `pointer-events` 不在白名单里(过滤
- * 会把皮肤想抢回来的 `auto` 丢掉),`z-index` 在白名单里但皮肤写的那个值排在前面,
- * 被后到的这句压掉。
+ * 在**过滤之后**才塞,而且**先摘掉块里已有的同名声明**:两句都是这一层说了算,
+ * 皮肤写的 `z-index:99` 也好 `pointer-events:auto` 也好,一概不留。
+ *
+ * 为什么是摘掉而不是「排在它后面靠后到者赢」(原来的做法):**存盘的是清洗后的
+ * 产物**,下次保存还要再过一遍这里。`pointer-events` 不在白名单、过滤会先把上一轮
+ * 那条删掉,所以它恒为一条;而 `z-index` 在白名单里、过滤放行,于是每保存一次就
+ * 多攒一条 —— 真机上「超天酱 · 像素窗口」攒到了 84 条(12 处伪元素 × 7 轮)。
+ * CSS 行为上无害(同名后者覆盖前者,值还都一样),但文件在无限长胖,而主人翻
+ * 「本模式 CSS」看到的是一屏垃圾。摘掉之后这一层就是幂等的。
  *
  * 为什么 `z-index:-1` 也是硬规矩:装饰性伪元素带 `position:absolute` 时会画进「定位
  * 后代」那一层,也就是压在宿主所有非定位内容**之上**。真机上撞的(2026-08-19
@@ -182,6 +193,13 @@ const DECORATION_DECLS: readonly Declaration[] = ["pointer-events:none", "z-inde
 function forceDecorationBehindContent(rule: Rule): void {
 	const block = rule.block;
 	if (!block) return;
+	const stale: ListItem<CssNode>[] = [];
+	block.children.forEach((node: CssNode, item) => {
+		if (node.type === "Declaration" && DECORATION_PROPS.has(node.property.toLowerCase())) {
+			stale.push(item);
+		}
+	});
+	for (const item of stale) block.children.remove(item);
 	// 每条装饰规则都要这两句,而两句本身是常量 —— 解析一次留着,用时 clone。
 	// 直接共享节点的话,同一个 AST 对象会挂在多处子树上,谁改它就一起变。
 	for (const decl of DECORATION_DECLS) block.children.push(clone(decl));

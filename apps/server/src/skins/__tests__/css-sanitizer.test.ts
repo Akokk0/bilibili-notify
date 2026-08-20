@@ -15,6 +15,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import { sanitizeSkinCss } from "../css-sanitizer.js";
 
+/** 数一个片段出现几次 —— 「清洗完只该剩一条」这类断言全靠它。 */
+function countOf(haystack: string, needle: string): number {
+	return haystack.split(needle).length - 1;
+}
+
 function ok(css: string): { css: string; warnings: string[] } {
 	const res = sanitizeSkinCss(css);
 	expect(res.ok).toBe(true);
@@ -226,9 +231,25 @@ describe("伪元素不吃点击", () => {
 		expect(css).toContain("z-index:-1");
 	});
 
-	it("皮肤自己写 z-index 想压到内容之上 → 补的那句在它后面,压得住", () => {
+	it("皮肤自己写 z-index 想压到内容之上 → 它被摘掉,产物里只剩硬规矩那一条", () => {
+		// 原先是「补的那句排在它后面,靠后到者赢压住」。改成摘掉是因为**存盘的是
+		// 清洗后的产物**:留着尸体的话,下一轮清洗又补一条,每保存一次攒一个。
 		const { css } = ok(`[data-bn="glass"]::before{content:"";position:absolute;inset:0;z-index:5}`);
-		expect(css.lastIndexOf("z-index:5")).toBeLessThan(css.lastIndexOf("z-index:-1"));
+		expect(css).not.toContain("z-index:5");
+		expect(countOf(css, "z-index:")).toBe(1);
+		expect(css).toContain("z-index:-1");
+	});
+
+	it("反复清洗不膨胀 —— 存盘的是产物,下次保存还要再过一遍", () => {
+		// 真机上「超天酱 · 像素窗口」攒到了 **84 条** z-index:-1(12 处伪元素 × 7 轮)。
+		// pointer-events 没跟着涨,恰恰印证了这条链路:它不在白名单里,上一轮那条会被
+		// 过滤先删掉再重加,恒为 1;z-index 在白名单里、过滤放行,于是一轮攒一个。
+		const once = ok(`[data-bn="page"]::before{content:"";position:absolute;inset:0}`).css;
+		const twice = ok(once).css;
+		expect(twice).toBe(once);
+		expect(ok(twice).css).toBe(once);
+		expect(countOf(once, "z-index:-1")).toBe(1);
+		expect(countOf(once, "pointer-events:none")).toBe(1);
 	});
 
 	it("不是伪元素的规则不补 z-index —— 那是宿主自己的层级", () => {
@@ -373,7 +394,9 @@ describe("!important 一律摘掉", () => {
 			`[data-bn="glass"]::before { content: ""; position: absolute; z-index: 99 !important; }`,
 		);
 		expect(css).not.toContain("!important");
-		expect(css.lastIndexOf("z-index:-1")).toBeGreaterThan(css.indexOf("z-index:99"));
+		// 摘了 `!important` 之后它就是一条普通的 z-index,跟着被硬规矩摘掉。
+		expect(css).not.toContain("z-index:99");
+		expect(countOf(css, "z-index:")).toBe(1);
 		expect(warnings.join()).toContain("important");
 	});
 
