@@ -201,6 +201,59 @@ export function missingModeOf(manifest: SkinManifest): "light" | "dark" | null {
 	return null;
 }
 
+/** 套用范围:整套原样过去,还是只过「不分明暗」的那半。 */
+export type SyncScope = "all" | "layout";
+
+/**
+ * 把一套模式的调整套到另一套上。**单向**,源那套一个字不动。
+ *
+ * `layout` 带过去的是**天生不分明暗**的那些:壁纸参数(纱色自己跟模式走)、圆角、
+ * 字体、玻璃模糊。所有颜色留在原地 —— 把浅色的文字色盖到深色上,字就变成深色系,
+ * 在深底上直接看不见,一次点击毁掉一套。
+ *
+ * 模式专属 CSS 与动效归 `all` 一档:两者都以颜色为主(暗色霓虹边、光斑颜色是
+ * 必填的颜色列表),脱了色根本不成立,没有「只要版式」的读法。
+ *
+ * 套用是**替换不是叠加**:源没配的段,目标那边也跟着清掉,否则套完两套仍不一样,
+ * 而差在哪只能靠一段段翻。
+ */
+export function syncModeTo(
+	manifest: SkinManifest,
+	from: "light" | "dark",
+	to: "light" | "dark",
+	scope: SyncScope,
+): SkinManifest {
+	const src = manifest.modes[from];
+	const dst = manifest.modes[to];
+	// 目标那套不存在就不动 —— 一颗「同步」不该把单套皮肤变成双套。
+	if (!src || !dst) return manifest;
+
+	const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+	if (scope === "all") {
+		return { ...manifest, modes: { ...manifest.modes, [to]: clone(src) } };
+	}
+
+	const next: SkinMode = { ...dst };
+	// 整段过去的三样。源没有就删,套用是替换。
+	for (const key of ["wallpaper", "radius", "fonts"] as const) {
+		if (src[key] === undefined) delete next[key];
+		else next[key] = clone(src[key]);
+	}
+	// 玻璃只过模糊两档,底色与描边是分明暗的。
+	const glass = { ...dst.glass, blur: src.glass?.blur, strongBlur: src.glass?.strongBlur };
+	if (glass.blur === undefined) delete glass.blur;
+	if (glass.strongBlur === undefined) delete glass.strongBlur;
+	if (Object.keys(glass).length > 0) next.glass = glass;
+	else delete next.glass;
+	// 聊天段同理:只过壁纸,背景色留着。
+	const chat = { ...dst.chat, wallpaper: src.chat?.wallpaper && clone(src.chat.wallpaper) };
+	if (chat.wallpaper === undefined) delete chat.wallpaper;
+	if (Object.keys(chat).length > 0) next.chat = chat;
+	else delete next.chat;
+
+	return { ...manifest, modes: { ...manifest.modes, [to]: next } };
+}
+
 /** 把已有那套深拷贝到缺失侧(补套的起点是「和现在一样」,再由用户微调)。 */
 export function addMissingMode(manifest: SkinManifest): SkinManifest {
 	const missing = missingModeOf(manifest);

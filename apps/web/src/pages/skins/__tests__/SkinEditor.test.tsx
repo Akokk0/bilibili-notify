@@ -556,3 +556,67 @@ describe("SkinEditor", () => {
 		);
 	});
 });
+
+describe("SkinEditor / 把这一套套到另一套", () => {
+	function twoModes(): SkinManifest {
+		return {
+			schemaVersion: 1,
+			name: "双套",
+			modes: {
+				light: {
+					colors: { accent: "#fb7299" },
+					wallpaper: { image: "assets/bg.png", overlay: 0.35 },
+					radius: { card: 20 },
+				},
+				dark: { colors: { accent: "#00aeec" } },
+			},
+		};
+	}
+
+	it("单套皮肤没有这颗钮 —— 没有「另一套」可套", () => {
+		renderEditor();
+		expect(screen.queryByRole("button", { name: /同步到/ })).toBeNull();
+		expect(screen.getByText("补一套深色")).toBeTruthy();
+	});
+
+	it("整套套过去 → 另一套变得一模一样,且只进预览不落盘", async () => {
+		renderEditor({ manifest: twoModes() });
+		fireEvent.click(screen.getByRole("button", { name: "同步到深色" }));
+		fireEvent.click(screen.getByRole("button", { name: "整套套过去" }));
+
+		await waitFor(() => {
+			const m = useSkinStore.getState().preview?.manifest;
+			expect(m?.modes.dark).toEqual(m?.modes.light);
+		});
+		// 落盘永远是主人点「保存」那一下的事(与「让女仆改」「恢复默认值」同构)。
+		expect(H.putCalls).toHaveLength(0);
+	});
+
+	it("只套版式 → 壁纸圆角过去,配色留在原地", async () => {
+		renderEditor({ manifest: twoModes() });
+		fireEvent.click(screen.getByRole("button", { name: "同步到深色" }));
+		fireEvent.click(screen.getByRole("button", { name: "只套版式(不动颜色)" }));
+
+		await waitFor(() => {
+			const d = useSkinStore.getState().preview?.manifest.modes.dark;
+			expect(d?.wallpaper).toEqual({ image: "assets/bg.png", overlay: 0.35 });
+			expect(d?.radius).toEqual({ card: 20 });
+			expect(d?.colors).toEqual({ accent: "#00aeec" });
+		});
+	});
+
+	it("弹窗里取消 → 一个字都不动", async () => {
+		renderEditor({ manifest: twoModes() });
+		fireEvent.click(screen.getByRole("button", { name: "同步到深色" }));
+		// 底栏也有一颗「取消」,抽屉本身也是 role=dialog —— 从弹窗自己的钮反查它所在
+		// 的那个 dialog,别点成关抽屉那颗。
+		const dialog = screen
+			.getByRole("button", { name: "整套套过去" })
+			.closest('[role="dialog"]') as HTMLElement;
+		fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+		await waitFor(() => expect(screen.queryByRole("button", { name: "整套套过去" })).toBeNull());
+		expect(useSkinStore.getState().preview?.manifest.modes.dark).toEqual({
+			colors: { accent: "#00aeec" },
+		});
+	});
+});

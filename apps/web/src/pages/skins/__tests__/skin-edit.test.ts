@@ -15,6 +15,7 @@ import {
 	setManifestText,
 	setModeSection,
 	splitSkinAssets,
+	syncModeTo,
 	textToFonts,
 	toHex6,
 	withColorAlpha,
@@ -160,5 +161,97 @@ describe("splitSkinAssets", () => {
 
 	it("空清单 → 两个空数组", () => {
 		expect(splitSkinAssets([])).toEqual({ images: [], fonts: [] });
+	});
+});
+
+describe("syncModeTo:把一套的调整套到另一套", () => {
+	/** 浅色那套什么都配了,深色那套是另一副配色 —— 套用要么全盖、要么只盖版式。 */
+	function twoModes(): SkinManifest {
+		return {
+			schemaVersion: 1,
+			name: "双套",
+			modes: {
+				light: {
+					colors: { accent: "#fb7299", textPrimary: "#0f172a" },
+					page: { background: "#fef0f4" },
+					wallpaper: { image: "assets/bg.png", fit: "cover", overlay: 0.35, blur: 12 },
+					glass: { background: "rgba(255, 255, 255, 0.7)", blur: 18, strongBlur: 24 },
+					radius: { card: 20 },
+					fonts: { body: ["霞鹜文楷"] },
+					shadows: { card: "0 1px 2px rgba(0,0,0,0.04)" },
+					css: '[data-bn="btn"]{opacity:0.9}',
+					effects: { bokeh: { colors: ["#fb7299"] } },
+					chat: { background: "#fff5f8", wallpaper: { image: "assets/c.png", blur: 6 } },
+				},
+				dark: {
+					colors: { accent: "#00aeec", textPrimary: "#f8fafc" },
+					page: { background: "#0b1020" },
+					glass: { background: "rgba(30, 41, 59, 0.72)", blur: 4 },
+					shadows: { card: "0 1px 3px rgba(0,0,0,0.28)" },
+				},
+			},
+		};
+	}
+
+	it("整套套过去 → 另一套变得一模一样", () => {
+		const next = syncModeTo(twoModes(), "light", "dark", "all");
+		expect(next.modes.dark).toEqual(next.modes.light);
+		// 源那套一个字不动 —— 套用是单向的。
+		expect(next.modes.light).toEqual(twoModes().modes.light);
+	});
+
+	it("整套套过去 → 两边不共享引用,改一套不会牵动另一套", () => {
+		// 浅拷贝的话,之后在深色页调壁纸模糊,浅色页跟着变 —— 而 draft 看起来一切正常。
+		const next = syncModeTo(twoModes(), "light", "dark", "all");
+		expect(next.modes.dark?.wallpaper).not.toBe(next.modes.light?.wallpaper);
+		expect(next.modes.dark?.colors).not.toBe(next.modes.light?.colors);
+	});
+
+	it("只套版式 → 壁纸/圆角/字体/玻璃模糊过去", () => {
+		const next = syncModeTo(twoModes(), "light", "dark", "layout");
+		const d = next.modes.dark;
+		expect(d?.wallpaper).toEqual({ image: "assets/bg.png", fit: "cover", overlay: 0.35, blur: 12 });
+		expect(d?.radius).toEqual({ card: 20 });
+		expect(d?.fonts).toEqual({ body: ["霞鹜文楷"] });
+		expect(d?.glass?.blur).toBe(18);
+		expect(d?.glass?.strongBlur).toBe(24);
+		expect(d?.chat?.wallpaper).toEqual({ image: "assets/c.png", blur: 6 });
+	});
+
+	it("只套版式 → 颜色一类原地不动", () => {
+		// 分明暗的那半:配色、页面底、玻璃底色、阴影、聊天底。盖过去深色的字就
+		// 变成深色系,在深底上直接看不见 —— 这正是「只套版式」要躲开的。
+		const next = syncModeTo(twoModes(), "light", "dark", "layout");
+		const d = next.modes.dark;
+		expect(d?.colors).toEqual({ accent: "#00aeec", textPrimary: "#f8fafc" });
+		expect(d?.page).toEqual({ background: "#0b1020" });
+		expect(d?.glass?.background).toBe("rgba(30, 41, 59, 0.72)");
+		expect(d?.shadows).toEqual({ card: "0 1px 3px rgba(0,0,0,0.28)" });
+		expect(d?.chat?.background).toBeUndefined();
+	});
+
+	it("只套版式 → 模式专属 CSS 与动效不跟着走", () => {
+		// 两者都以颜色为主(暗色霓虹边、光斑颜色是必填的颜色列表),脱了色不成立。
+		const next = syncModeTo(twoModes(), "light", "dark", "layout");
+		expect(next.modes.dark?.css).toBeUndefined();
+		expect(next.modes.dark?.effects).toBeUndefined();
+	});
+
+	it("源那套没配的段,目标那边也要跟着清掉 —— 套用不是「叠加」", () => {
+		const base = twoModes();
+		delete base.modes.light?.wallpaper;
+		base.modes.dark = { ...base.modes.dark, wallpaper: { image: "assets/old.png" } };
+		const next = syncModeTo(base, "light", "dark", "layout");
+		expect(next.modes.dark?.wallpaper).toBeUndefined();
+	});
+
+	it("单套皮肤 → 原样返回,不凭空造出另一套", () => {
+		// 造出来的话,一颗「同步」就把单套皮肤变成了双套,而主人只是手滑点了一下。
+		const single: SkinManifest = {
+			schemaVersion: 1,
+			name: "纯浅",
+			modes: { light: { radius: { card: 8 } } },
+		};
+		expect(syncModeTo(single, "light", "dark", "all")).toBe(single);
 	});
 });

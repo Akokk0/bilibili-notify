@@ -7,7 +7,14 @@ import {
 	type SkinManifestUpdateResponse,
 	type SkinMode,
 } from "@bilibili-notify/contract";
-import { Btn, ConfirmDialog, DrawerShell, ErrorNote, Toggle } from "@bilibili-notify/ui";
+import {
+	Btn,
+	ConfirmDialog,
+	DrawerShell,
+	ErrorNote,
+	ModalShell,
+	Toggle,
+} from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { Picker } from "../../components/forms";
@@ -22,9 +29,11 @@ import {
 	fontsToText,
 	MODE_LABEL,
 	missingModeOf,
+	type SyncScope,
 	setManifestText,
 	setModeSection,
 	splitSkinAssets,
+	syncModeTo,
 	textToFonts,
 	toHex6,
 	withColorAlpha,
@@ -74,6 +83,8 @@ export function SkinEditor(props: {
 		return manifest.modes.light ? "light" : "dark";
 	});
 	const [confirmDiscard, setConfirmDiscard] = useState(false);
+	/** 「同步到另一套」的确认框开着没有 —— 覆盖是破坏性的,不该点一下就发生。 */
+	const [syncOpen, setSyncOpen] = useState(false);
 	/**
 	 * 底栏那一条反馈。**至多一条** —— 红的绿的共用一个 state,互斥由类型管着。
 	 *
@@ -190,6 +201,25 @@ export function SkinEditor(props: {
 	function requestClose(): void {
 		if (dirty) setConfirmDiscard(true);
 		else onClose();
+	}
+
+	/** 当前正编的这套之外的那一套;单套皮肤时它不存在(下面那颗钮也就不出现)。 */
+	const otherKey: "light" | "dark" = modeKey === "light" ? "dark" : "light";
+
+	/**
+	 * 把这一套的调整套到另一套上。**只进 draft**(实时预览),落盘仍是主人点保存
+	 * 那一下 —— 与「让女仆改」「恢复默认值」同一条律:抽屉里的一切都能整份丢弃。
+	 *
+	 * 不必动 bokehRaw:改的是**另一套**,当前这套一个字没变,清了反而会打断主人
+	 * 正在光斑框里敲的那串逗号。
+	 */
+	function applySync(scope: SyncScope): void {
+		setDraft((d) => syncModeTo(d, modeKey, otherKey, scope));
+		setSyncOpen(false);
+		setFeedback({
+			tone: "ok",
+			text: `已把当前调整套到${MODE_LABEL[otherKey]},满意就点保存落盘`,
+		});
 	}
 
 	/**
@@ -332,7 +362,13 @@ export function SkinEditor(props: {
 						<Btn size="sm" variant="outline" onClick={() => setDraft(addMissingMode(draft))}>
 							补一套{MODE_LABEL[missing]}
 						</Btn>
-					) : null}
+					) : (
+						// 双套时这个位置换成「同步」:一颗是造出另一套,一颗是让另一套跟这套走,
+						// 两者天然互斥 —— 缺套时无从同步,双套时无从补。
+						<Btn size="sm" variant="outline" onClick={() => setSyncOpen(true)}>
+							同步到{MODE_LABEL[otherKey]}
+						</Btn>
+					)}
 				</div>
 				<p className="text-[11px] leading-4 text-bn-text-tertiary">
 					页面正在显示哪套由右上角明暗开关决定;只有一套的皮肤会锁定该模式。
@@ -764,6 +800,15 @@ export function SkinEditor(props: {
 				</div>
 			</div>
 
+			{syncOpen ? (
+				<SyncModeDialog
+					from={modeKey}
+					to={otherKey}
+					onPick={applySync}
+					onCancel={() => setSyncOpen(false)}
+				/>
+			) : null}
+
 			{confirmDiscard ? (
 				<ConfirmDialog
 					title="丢弃修改"
@@ -881,6 +926,48 @@ function WallpaperFields(props: {
 				</>
 			) : null}
 		</>
+	);
+}
+
+/**
+ * 「同步到另一套」的三选一。ConfirmDialog 只有确认/取消两颗,这里要三颗。
+ *
+ * 每颗底下带一行小字:两种套法的差别是「配色跟不跟着走」,而这件事点下去之前
+ * 看不出来 —— 猜错了另一套的配色当场没了(只是没落盘,取消还能救回来)。
+ */
+function SyncModeDialog(props: {
+	from: "light" | "dark";
+	to: "light" | "dark";
+	onPick: (scope: SyncScope) => void;
+	onCancel: () => void;
+}) {
+	const { from, to } = props;
+	return (
+		<ModalShell onCancel={props.onCancel} width={360} bodyClassName="p-5">
+			<div className="mb-1.5 text-[14px] font-bold text-bn-text-primary">
+				把{MODE_LABEL[from]}套到{MODE_LABEL[to]}
+			</div>
+			<div className="text-[13px] leading-relaxed text-bn-text-secondary">
+				{MODE_LABEL[to]}原有的设置会被覆盖。保存前只是预览,不满意点「取消」就还原。
+			</div>
+			<div className="mt-4 flex flex-col gap-2">
+				<Btn variant="outline" onClick={() => props.onPick("layout")}>
+					只套版式(不动颜色)
+				</Btn>
+				<p className="-mt-1 px-0.5 text-[11px] leading-4 text-bn-text-tertiary">
+					壁纸、圆角、字体、玻璃模糊过去;配色、玻璃底色、阴影留在原地
+				</p>
+				<Btn variant="outline" onClick={() => props.onPick("all")}>
+					整套套过去
+				</Btn>
+				<p className="-mt-1 px-0.5 text-[11px] leading-4 text-bn-text-tertiary">
+					连配色一起,两套长得一模一样 —— {MODE_LABEL[to]}会变成{MODE_LABEL[from]}的样子
+				</p>
+				<Btn variant="outline" onClick={props.onCancel}>
+					取消
+				</Btn>
+			</div>
+		</ModalShell>
 	);
 }
 
