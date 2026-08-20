@@ -72,6 +72,12 @@
 
 ## 维护约定
 
+- **别把皮肤挡在门外**(同一个模式已复发三回:tab 条那排、Subs/History 的筛选胶囊、Toggle):
+  - **圆角走轴**。可点控件用 `rounded-bn-pill`(或 `rounded-bn-card`),**不写死 `rounded-full`** —— 写死的话皮肤把 `radius.pill` 调到 0 求一身硬直角也掰不直它。真正必须是**正圆**的(头像、状态点、光斑)照写 `rounded-full`,那是设计要求不是疏忽。
+  - **颜色走 token**,`#d8d8d8` 这种字面值皮肤搬不动。
+  - **圆角与颜色都不许落在 `style={{…}}`**:inline 压过一切 author 样式,皮肤连覆盖的机会都没有。要动态值就放 CSS 变量,`style` 里只留真正的运行时几何量(宽高、位移)。
+  - **页面里手写的 `<button>` 记得挂 `data-bn`** —— 下面那份 `skin-hooks.test.tsx` 只管库里的组件,`apps/web` 的页面在它射程之外。
+  - **Toggle 例外:不许挂 `btn`**。皮肤给按钮写的实底会盖掉轨道背景,开关的开/关当场看不出来。
 - **`data-bn` 皮肤挂点是公开 API**:皮肤自定义 CSS 只能瞄准 `SKIN_CSS_HOOK_MAP`(contract skin.ts)里的挂点。映射到 `[data-bn~=…]` 的 hook 由组件真实背着属性(Btn=`btn`/`btn-primary`、Input 外框=`input`、Avatar 根=`avatar`、ModalShell 卡=`modal`、TabBarShell 与 SectionNav 双形态=`nav`、web 顶栏=`header`),`packages/ui/src/__tests__/skin-hooks.test.tsx` 拦挂点脱落。重构组件**不许丢属性**;换真实选择器改映射表,hook 名只增不改。
 
 - **页级卡片容器一律玻璃底**:直接坐在页面背景上的卡片/容器,必须用玻璃件(`GlassPanel`/`GlassBox`/`GlassStatCard`)或裸 `.bn-glass` 类,**禁止**写实底(`bg-bn-surface`、`bg-white`)或「只有边框全透明」的容器——皮肤壁纸一开就穿帮。实底(`bg-bn-surface` 系)只许出现在玻璃容器**内部**的行/芯片上。自绘染色渐变要**叠**在玻璃底上(`background: <渐变>, var(--bn-glass-bg)`),别让渐变「渐到」玻璃底。

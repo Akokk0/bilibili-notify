@@ -8,7 +8,7 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { Btn, Input, Row, Section } from "../atoms";
+import { Btn, Input, Row, Section, Toggle } from "../atoms";
 import { ModalShell } from "../dialog";
 
 const LIGHT_ONLY_CLASS_RE =
@@ -64,5 +64,35 @@ describe("theme-aware ui atoms", () => {
 		);
 
 		expectNoLightOnlyClass(screen.getByRole("dialog"));
+	});
+});
+
+/**
+ * 开关是**全站铺得最开**的一件,而它有两处够不到皮肤:
+ *
+ * ① 关闭态的轨道写死 `#d8d8d8` —— 同一个函数里,开启态的注释已经写明「走 token
+ *    而不是字面值」,关闭态却自己破了例;
+ * ② 圆角写在 **inline style** 上。inline 压过一切 author 样式,皮肤把 radius.pill
+ *    调到 0 也掰不直它 —— 与 TabButton 那次(选中态渐变写在 inline 上)同一个模式,
+ *    这已经是第三回。
+ *
+ * 真机症状:像素风皮肤整站硬直角,唯独每一颗开关还是圆的、还是那个灰。
+ */
+describe("Toggle 够得到皮肤", () => {
+	it("轨道两态都走 token,不写死颜色", () => {
+		const { rerender } = render(<Toggle value={false} onChange={() => {}} ariaLabel="开关" />);
+		expect(screen.getByLabelText("开关").style.background).toContain("var(");
+		rerender(<Toggle value={true} onChange={() => {}} ariaLabel="开关" />);
+		expect(screen.getByLabelText("开关").style.background).toContain("var(");
+	});
+
+	it("圆角走 pill 轴的 class,不落在 inline style 上", () => {
+		render(<Toggle value={false} onChange={() => {}} ariaLabel="开关" />);
+		const track = screen.getByLabelText("开关");
+		expect(track.style.borderRadius).toBe("");
+		expect(track.className).toContain("rounded-bn-pill");
+		// 滑块同理 —— 只掰直轨道的话,方轨道里滚着个圆球。
+		const knob = track.querySelector("span");
+		expect(knob?.className ?? "").toContain("rounded-bn-pill");
 	});
 });

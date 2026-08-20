@@ -57,15 +57,19 @@ function GroupChip({
 	onClick: () => void;
 	muted?: boolean;
 }) {
+	// 圆角走皮肤的 pill 轴,别写死 rounded-full —— 像素风皮肤把 radius.pill 调到 0
+	// 求一身硬直角,写死的话唯独这排胶囊还是圆的。
 	const base =
-		"inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold transition";
+		"inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-[11.5px] font-semibold transition";
 	const cls = active
 		? "border border-bn-pink bg-bn-pink/10 text-bn-pink"
 		: muted
 			? "border border-dashed border-bn-border bg-bn-surface/60 text-bn-text-tertiary hover:text-bn-text-primary"
 			: "border border-bn-border bg-bn-surface text-bn-text-secondary hover:border-bn-pink/60 hover:text-bn-text-primary";
 	return (
-		<button type="button" onClick={onClick} className={`${base} ${cls}`}>
+		// 页面里手写的按钮不在 packages/ui 那份 skin-hooks 测试的射程内,漏挂了皮肤
+		// 就静默够不到它 —— 这一类在本仓库已犯过两回。
+		<button type="button" onClick={onClick} data-bn="btn" className={`${base} ${cls}`}>
 			<span className="max-w-35 truncate">{label}</span>
 			<span className="font-mono text-[10.5px] opacity-70">{count}</span>
 		</button>
@@ -613,6 +617,7 @@ export default function Subs() {
 								type="button"
 								key={f.id}
 								onClick={() => setFilterId(f.id)}
+								data-bn="btn"
 								className={`flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-xs font-semibold transition ${
 									active
 										? "bg-bn-surface text-bn-pink shadow-sm"
@@ -662,7 +667,10 @@ export default function Subs() {
 
 			{groupNames.length > 0 || groupCounts.ungrouped > 0 ? (
 				<div className="flex flex-wrap items-center gap-1.5">
-					<span className="text-[11px] font-semibold text-bn-text-tertiary">分组</span>
+					{/* 这个标题**直接坐在页面背景上**,没有任何底。壁纸皮肤下 tertiary 那一档
+					    只剩 2.1~2.7:1(旁边的胶囊看着清楚,是因为它们挂了 btn、拿到了皮肤给的
+					    实底),secondary 在壁纸深处也才 3.3:1 —— 无底的文字只有 primary 稳。 */}
+					<span className="text-[11px] font-semibold text-bn-text-primary">分组</span>
 					<GroupChip
 						label="全部"
 						count={subs.length}

@@ -125,7 +125,8 @@ export default function History() {
 								key={f.id}
 								type="button"
 								onClick={() => setFilterId(f.id)}
-								className="rounded-full border px-3 py-1 text-[12px] font-semibold transition"
+								data-bn="btn"
+								className="rounded-bn-pill border px-3 py-1 text-[12px] font-semibold transition"
 								style={
 									active
 										? {

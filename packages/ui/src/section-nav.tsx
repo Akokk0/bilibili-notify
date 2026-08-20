@@ -174,7 +174,11 @@ export function SectionNav({
 				className="sticky hidden h-fit min-w-0 xl:block"
 			>
 				<div className="mb-2 flex items-center justify-between px-1">
-					<span className="text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
+					{/* 这行标题**坐在页面背景上**(见下方 nav 挂点那段:它刻意留在挂点外面),
+					    所以没有任何底托着它。壁纸皮肤下 tertiary 那一档只剩 2.1~2.7:1,
+					    secondary 在壁纸深处也才 3.3:1 —— 无底的文字只有 primary 稳。
+					    卡在 nav 里的那些项不受影响,它们有皮肤给的底。 */}
+					<span className="text-[11px] font-bold uppercase tracking-wider text-bn-text-primary">
 						{heading}
 					</span>
 					{onAdd ? (
@@ -242,7 +246,7 @@ export function SectionNav({
 								type="button"
 								aria-label="向左滚动"
 								onClick={() => scrollByDir(-1)}
-								className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-bn-border-subtle bg-bn-surface text-bn-text-secondary shadow-bn-card transition hover:text-bn-pink"
+								className="grid h-7 w-7 shrink-0 place-items-center rounded-bn-pill border border-bn-border-subtle bg-bn-surface text-bn-text-secondary shadow-bn-card transition hover:text-bn-pink"
 							>
 								<Chevron dir="left" />
 							</button>
@@ -289,7 +293,7 @@ export function SectionNav({
 								type="button"
 								aria-label="向右滚动"
 								onClick={() => scrollByDir(1)}
-								className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-bn-border-subtle bg-bn-surface text-bn-text-secondary shadow-bn-card transition hover:text-bn-pink"
+								className="grid h-7 w-7 shrink-0 place-items-center rounded-bn-pill border border-bn-border-subtle bg-bn-surface text-bn-text-secondary shadow-bn-card transition hover:text-bn-pink"
 							>
 								<Chevron dir="right" />
 							</button>

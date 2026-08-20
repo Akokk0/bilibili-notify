@@ -140,7 +140,7 @@ export default function Logs() {
 								key={l}
 								type="button"
 								onClick={() => toggleLevel(l)}
-								className="rounded-full border px-3 py-1 text-[12px] font-semibold uppercase transition"
+								className="rounded-bn-pill border px-3 py-1 text-[12px] font-semibold uppercase transition"
 								style={
 									active
 										? { background: `${tone}1f`, color: tone, borderColor: `${tone}55` }
@@ -185,7 +185,7 @@ export default function Logs() {
 					<button
 						type="button"
 						onClick={() => setDay("")}
-						className="rounded-full border border-bn-pink/40 bg-bn-pink/10 px-3 py-1 text-[12px] font-semibold text-bn-pink"
+						className="rounded-bn-pill border border-bn-pink/40 bg-bn-pink/10 px-3 py-1 text-[12px] font-semibold text-bn-pink"
 					>
 						回到实时
 					</button>
@@ -193,7 +193,7 @@ export default function Logs() {
 				<button
 					type="button"
 					onClick={() => setPaused((p) => !p)}
-					className="rounded-full border px-3 py-1 text-[12px] font-semibold transition"
+					className="rounded-bn-pill border px-3 py-1 text-[12px] font-semibold transition"
 					style={
 						paused
 							? { background: "#f2a05320", color: "#f2a053", borderColor: "#f2a05355" }
@@ -209,7 +209,7 @@ export default function Logs() {
 				<button
 					type="button"
 					onClick={() => setAutoscroll((a) => !a)}
-					className="rounded-full border px-3 py-1 text-[12px] font-semibold transition"
+					className="rounded-bn-pill border px-3 py-1 text-[12px] font-semibold transition"
 					style={
 						autoscroll
 							? { background: "#00AEEC1f", color: "#00AEEC", borderColor: "#00AEEC55" }
@@ -229,7 +229,7 @@ export default function Logs() {
 							alert(`下载失败:${String((err as Error).message ?? err)}`);
 						});
 					}}
-					className="inline-flex items-center gap-1 rounded-full border border-bn-border px-3 py-1 text-[12px] font-semibold text-bn-text-secondary hover:text-bn-text-primary"
+					className="inline-flex items-center gap-1 rounded-bn-pill border border-bn-border px-3 py-1 text-[12px] font-semibold text-bn-text-secondary hover:text-bn-text-primary"
 				>
 					↓ {viewDay}.jsonl
 				</button>

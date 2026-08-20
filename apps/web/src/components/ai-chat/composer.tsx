@@ -244,7 +244,7 @@ export function Composer({
 									aria-label="移除图片"
 									title="移除"
 									onClick={() => onRemoveAttachment?.(a.id)}
-									className="-right-1.5 -top-1.5 absolute grid h-5 w-5 cursor-pointer place-items-center rounded-full border border-bn-border bg-bn-surface text-bn-text-secondary shadow-sm transition-colors hover:text-bn-text-primary"
+									className="-right-1.5 -top-1.5 absolute grid h-5 w-5 cursor-pointer place-items-center rounded-bn-pill border border-bn-border bg-bn-surface text-bn-text-secondary shadow-sm transition-colors hover:text-bn-text-primary"
 								>
 									<Icon.close size={12} />
 								</button>
@@ -315,7 +315,7 @@ export function Composer({
 								aria-haspopup="menu"
 								aria-expanded={actionsOpen}
 								onClick={() => setActionsOpen((v) => !v)}
-								className="grid h-9 w-9 cursor-pointer place-items-center rounded-full text-bn-text-secondary transition-colors hover:bg-bn-hover-muted"
+								className="grid h-9 w-9 cursor-pointer place-items-center rounded-bn-pill text-bn-text-secondary transition-colors hover:bg-bn-hover-muted"
 							>
 								<Icon.plus size={19} />
 							</button>
@@ -368,7 +368,7 @@ export function Composer({
 						aria-label="发送"
 						disabled={!canSend}
 						onClick={onSubmit}
-						className={`grid h-9 w-9 shrink-0 place-items-center rounded-full transition ${
+						className={`grid h-9 w-9 shrink-0 place-items-center rounded-bn-pill transition ${
 							canSend
 								? "bn-chat-accent-grad bn-chat-accent-glow cursor-pointer text-white"
 								: "cursor-default bg-bn-hover-muted text-bn-text-secondary"

@@ -209,11 +209,14 @@ export function Toggle({ value, onChange, size = "md", disabled, ariaLabel }: To
 	const trackStyle: CSSProperties = {
 		width: sz.w,
 		height: sz.h,
-		borderRadius: sz.h / 2,
 		// 走 token 而不是字面值 —— `--color-bn-pink` 正是皮肤 `colors.accent` 的落点。
 		// 写死 #FB7299 的后果是全站每一颗开关的「开」都还是 B 站粉,皮肤换了主强调色
 		// 也搬不动。inline style 里放 var() 完全合法,照样跟着换肤走。
-		background: value ? "var(--color-bn-pink)" : "#d8d8d8",
+		//
+		// 关闭态同理走 `textDisabled`(默认装 #d1d5db,与从前写死的 #d8d8d8 几乎同色)
+		// —— 语义正好是「这一档是关着的」,而每套皮肤都配了它。**不能挂 `btn` 挂点**:
+		// 皮肤给按钮写的实底会盖掉轨道背景,开关的开/关当场就看不出来了。
+		background: value ? "var(--color-bn-pink)" : "var(--color-bn-text-disabled)",
 	};
 	const dotStyle: CSSProperties = {
 		width: sz.dot,
@@ -234,11 +237,14 @@ export function Toggle({ value, onChange, size = "md", disabled, ariaLabel }: To
 			aria-pressed={ariaLabel ? value : undefined}
 			// 禁用态除了淡下去,指针也得跟着变 —— 只淡不换指针的话,鼠标一悬停
 			// 仍是「可点」的手型,点下去却毫无反应,像坏了而不像被禁用。
-			className="relative shrink-0 cursor-pointer border-none transition disabled:cursor-not-allowed disabled:opacity-50"
+			// 圆角走 class 上的 pill 轴,**不能写进 style** —— inline 压过一切 author
+			// 样式,皮肤把 radius.pill 调到 0 求一身硬直角也掰不直这一颗。
+			className="relative shrink-0 cursor-pointer rounded-bn-pill border-none transition disabled:cursor-not-allowed disabled:opacity-50"
 			style={trackStyle}
 		>
 			<span
-				className="absolute rounded-full bg-bn-surface shadow-[0_1px_3px_rgba(0,0,0,0.2)]"
+				// 滑块跟着轨道走:只掰直轨道的话,方轨道里滚着个圆球。
+				className="absolute rounded-bn-pill bg-bn-surface shadow-[0_1px_3px_rgba(0,0,0,0.2)]"
 				style={dotStyle}
 			/>
 		</button>

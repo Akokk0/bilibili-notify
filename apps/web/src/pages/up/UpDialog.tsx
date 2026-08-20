@@ -417,7 +417,7 @@ export function UpDialog({
 				<button
 					type="button"
 					onClick={requestClose}
-					className="absolute right-3.5 top-3.5 grid h-7 w-7 place-items-center rounded-full bg-bn-inverse-strong text-white backdrop-blur-sm"
+					className="absolute right-3.5 top-3.5 grid h-7 w-7 place-items-center rounded-bn-pill bg-bn-inverse-strong text-white backdrop-blur-sm"
 					title="关闭"
 				>
 					<Icon.close size={14} />
@@ -573,7 +573,7 @@ export function UpDialog({
 													type="button"
 													key={t.id}
 													onClick={() => attachTarget(t.id)}
-													className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-bn-border bg-bn-surface px-2.5 py-1 text-[11.5px] text-bn-text-secondary hover:border-bn-pink hover:text-bn-pink"
+													className="inline-flex items-center gap-1.5 rounded-bn-pill border border-dashed border-bn-border bg-bn-surface px-2.5 py-1 text-[11.5px] text-bn-text-secondary hover:border-bn-pink hover:text-bn-pink"
 												>
 													<Icon.plus size={11} />
 													<PlatformIcon platform={t.platform} size={11} />
@@ -611,7 +611,7 @@ export function UpDialog({
 										type="button"
 										key={id}
 										onClick={() => removeStaleId(id)}
-										className="inline-flex items-center gap-1.5 rounded-full border border-bn-danger-border bg-bn-surface px-2.5 py-1 text-[11.5px] text-bn-danger hover:bg-bn-danger/10"
+										className="inline-flex items-center gap-1.5 rounded-bn-pill border border-bn-danger-border bg-bn-surface px-2.5 py-1 text-[11.5px] text-bn-danger hover:bg-bn-danger/10"
 									>
 										{id.slice(0, 8)} ×
 									</button>
@@ -901,7 +901,7 @@ function TargetRoutingCard({
 					onClick={onDetach}
 					aria-label="移除该推送目标"
 					title="移除该推送目标"
-					className="grid h-6 w-6 place-items-center rounded-full text-bn-text-tertiary hover:bg-bn-danger/10 hover:text-bn-danger"
+					className="grid h-6 w-6 place-items-center rounded-bn-pill text-bn-text-tertiary hover:bg-bn-danger/10 hover:text-bn-danger"
 				>
 					<Icon.close size={11} />
 				</button>

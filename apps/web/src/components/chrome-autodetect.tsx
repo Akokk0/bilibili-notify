@@ -91,7 +91,7 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 					type="button"
 					onClick={detect}
 					disabled={state === "detecting"}
-					className="rounded-full border border-bn-pink/40 bg-bn-pink/10 px-3 py-1 font-semibold text-bn-pink disabled:opacity-60"
+					className="rounded-bn-pill border border-bn-pink/40 bg-bn-pink/10 px-3 py-1 font-semibold text-bn-pink disabled:opacity-60"
 				>
 					{state === "detecting" ? "探测中…" : "自动探测 Chrome"}
 				</button>
@@ -104,7 +104,7 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 							type="button"
 							onClick={enable}
 							disabled={state === "enabling"}
-							className="rounded-full border border-bn-success/50 bg-bn-success-soft px-3 py-1 font-semibold text-bn-success-text disabled:opacity-60"
+							className="rounded-bn-pill border border-bn-success/50 bg-bn-success-soft px-3 py-1 font-semibold text-bn-success-text disabled:opacity-60"
 						>
 							{state === "enabling" ? "启用中…" : "启用"}
 						</button>
@@ -132,7 +132,7 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 						type="button"
 						onClick={connectRemote}
 						disabled={state === "connecting" || !endpoint.trim()}
-						className="rounded-full border border-bn-success/50 bg-bn-success-soft px-3 py-1 font-semibold text-bn-success-text disabled:opacity-60"
+						className="rounded-bn-pill border border-bn-success/50 bg-bn-success-soft px-3 py-1 font-semibold text-bn-success-text disabled:opacity-60"
 					>
 						{state === "connecting" ? "连接中…" : "连接远程浏览器"}
 					</button>

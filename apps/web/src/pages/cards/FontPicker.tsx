@@ -184,7 +184,7 @@ export function FontPicker({
 							title="从字体库删除"
 							aria-label={`删除 ${f.name}`}
 							onClick={() => onDelete(f.id)}
-							className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-bn-text-tertiary transition hover:bg-bn-danger-soft hover:text-bn-danger-text"
+							className="grid h-5 w-5 shrink-0 place-items-center rounded-bn-pill text-bn-text-tertiary transition hover:bg-bn-danger-soft hover:text-bn-danger-text"
 						>
 							<Icon.close size={11} />
 						</button>
