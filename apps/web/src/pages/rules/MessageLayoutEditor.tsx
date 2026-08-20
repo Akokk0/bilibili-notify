@@ -133,7 +133,7 @@ function SortableBlockRow({
 							type="button"
 							title="删除分条符"
 							onClick={() => onRemove(block.id)}
-							className="grid h-5 w-5 place-items-center rounded text-bn-text-tertiary transition hover:bg-bn-danger-soft hover:text-bn-danger-text"
+							className="grid h-5 w-5 place-items-center rounded-sm text-bn-text-tertiary transition hover:bg-bn-danger-soft hover:text-bn-danger-text"
 						>
 							<Icon.close size={13} />
 						</button>

@@ -96,7 +96,7 @@ export function UpCard({
 							e.stopPropagation();
 							onToggleSelect();
 						}}
-						className={`flex h-5.5 w-5.5 cursor-pointer items-center justify-center rounded border-0 ${
+						className={`flex h-5.5 w-5.5 cursor-pointer items-center justify-center rounded-sm border-0 ${
 							selected ? "bg-bn-pink text-white" : "bg-bn-surface/90 text-bn-text-secondary"
 						}`}
 					>

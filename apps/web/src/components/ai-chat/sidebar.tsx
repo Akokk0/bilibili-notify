@@ -47,7 +47,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 					title="收起侧栏"
 					aria-label="收起侧栏"
 					onClick={props.onCollapse}
-					className="grid h-[34px] w-[34px] cursor-pointer place-items-center rounded-[9px] text-bn-text-tertiary transition-colors hover:bg-bn-hover-muted"
+					className="grid h-[34px] w-[34px] cursor-pointer place-items-center rounded-bn-sm text-bn-text-tertiary transition-colors hover:bg-bn-hover-muted"
 				>
 					<Icon.panelCollapse size={18} />
 				</button>
@@ -90,7 +90,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 								// × 会把侧栏变成一列垃圾桶。
 								<div
 									key={c.id}
-									className={`group/row flex items-center rounded-[9px] transition-colors ${
+									className={`group/row flex items-center rounded-bn-sm transition-colors ${
 										c.id === props.activeId ? "bn-chat-accent-soft" : "hover:bg-bn-code-bg"
 									}`}
 								>
@@ -107,7 +107,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 										title="删除这个对话"
 										aria-label={`删除对话「${c.title}」`}
 										onClick={() => props.onDelete(c.id)}
-										className="mr-1.5 grid h-6 w-6 shrink-0 cursor-pointer place-items-center rounded text-bn-text-secondary opacity-0 transition hover:bg-bn-hover-muted hover:text-bn-danger-text focus-visible:opacity-100 group-hover/row:opacity-100"
+										className="mr-1.5 grid h-6 w-6 shrink-0 cursor-pointer place-items-center rounded-sm text-bn-text-secondary opacity-0 transition hover:bg-bn-hover-muted hover:text-bn-danger-text focus-visible:opacity-100 group-hover/row:opacity-100"
 									>
 										<Icon.close size={13} />
 									</button>
@@ -151,7 +151,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 					aria-label="聊天设置"
 					aria-expanded={settingsOpen}
 					onClick={() => setSettingsOpen((v) => !v)}
-					className="grid h-[34px] w-[34px] cursor-pointer place-items-center rounded-[9px] text-bn-text-tertiary transition-colors hover:bg-bn-hover-muted"
+					className="grid h-[34px] w-[34px] cursor-pointer place-items-center rounded-bn-sm text-bn-text-tertiary transition-colors hover:bg-bn-hover-muted"
 				>
 					<Icon.gear size={17} />
 				</button>
@@ -185,7 +185,7 @@ function ConversationLabel({ mode, persona }: { mode: AiChatMode; persona: boole
 	return (
 		<span
 			data-conv-label={text}
-			className="shrink-0 rounded-[5px] bg-bn-hover-muted px-1.5 py-0.5 text-[9.5px] font-bold text-bn-text-secondary"
+			className="shrink-0 rounded-bn-xs bg-bn-hover-muted px-1.5 py-0.5 text-[9.5px] font-bold text-bn-text-secondary"
 		>
 			{text}
 		</span>

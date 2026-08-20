@@ -46,7 +46,7 @@ export function Field({ code, label, hint, required, full, children }: FieldProp
 				<div className="mb-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
 					<span className="text-[12.5px] font-semibold text-bn-text-primary">{effectiveLabel}</span>
 					{required ? <span className="text-[11px] text-bn-danger">*</span> : null}
-					<code className="rounded bg-bn-code-bg px-1.5 py-px font-mono text-[10.5px] text-bn-text-tertiary">
+					<code className="rounded-sm bg-bn-code-bg px-1.5 py-px font-mono text-[10.5px] text-bn-text-tertiary">
 						{code}
 					</code>
 					{reset ? (
@@ -313,7 +313,7 @@ export function Picker<T extends string | number | boolean>({
 						// 选中态此前只体现在 class 上 —— 读屏软件读不出来,测试也只能去比对
 						// 样式字符串。aria-pressed 让「选的是哪个」成为可查询的事实。
 						aria-pressed={active}
-						className={`rounded px-3 py-1 text-[11.5px] font-semibold transition ${
+						className={`rounded-sm px-3 py-1 text-[11.5px] font-semibold transition ${
 							active ? "bg-bn-surface-strong text-bn-pink shadow-sm" : "text-bn-text-tertiary"
 						}`}
 						style={active && o.color ? { color: o.color } : undefined}
@@ -349,7 +349,7 @@ export function LogLevelPicker({ value, onChange, allowInherit }: LogLevelPicker
 				<button
 					type="button"
 					onClick={() => onChange(null)}
-					className={`rounded px-3 py-1 text-[11.5px] font-semibold transition ${
+					className={`rounded-sm px-3 py-1 text-[11.5px] font-semibold transition ${
 						value === null
 							? "bg-bn-surface text-bn-text-primary shadow-sm"
 							: "text-bn-text-tertiary"
@@ -365,7 +365,7 @@ export function LogLevelPicker({ value, onChange, allowInherit }: LogLevelPicker
 						type="button"
 						key={o.v}
 						onClick={() => onChange(o.v)}
-						className={`rounded px-3 py-1 text-[11.5px] font-semibold transition ${active ? "bg-bn-surface-strong shadow-sm" : "text-bn-text-tertiary"}`}
+						className={`rounded-sm px-3 py-1 text-[11.5px] font-semibold transition ${active ? "bg-bn-surface-strong shadow-sm" : "text-bn-text-tertiary"}`}
 						style={active ? { color: o.color } : undefined}
 					>
 						L{o.v} · {o.label}

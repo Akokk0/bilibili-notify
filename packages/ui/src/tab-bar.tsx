@@ -16,7 +16,7 @@ export function TabBarShell({ children }: { children: ReactNode }) {
 	return (
 		<div
 			data-bn="nav"
-			className="relative z-30 flex flex-wrap items-center gap-1.5 rounded-[11px] border border-bn-border-subtle bg-bn-surface/70 p-1.5 backdrop-blur-sm"
+			className="relative z-30 flex flex-wrap items-center gap-1.5 rounded-bn-sm border border-bn-border-subtle bg-bn-surface/70 p-1.5 backdrop-blur-sm"
 		>
 			{children}
 		</div>
@@ -57,7 +57,7 @@ export function TabButton({ active, onClick, icon, children, code, title, role }
 			{children}
 			{code ? (
 				<span
-					className={`ml-0.5 rounded px-1.5 py-px font-mono text-[10px] font-semibold ${
+					className={`ml-0.5 rounded-sm px-1.5 py-px font-mono text-[10px] font-semibold ${
 						active ? "bg-bn-inverse-strong" : "bg-bn-code-bg"
 					}`}
 				>

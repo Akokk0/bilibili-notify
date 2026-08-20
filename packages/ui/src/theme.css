@@ -57,6 +57,35 @@
 
 	--radius-bn-card: 14px;
 	--radius-bn-pill: 999px;
+	/* 小控件的圆角阶梯,**全部从 --radius-bn-card 派生**。
+	   皮肤的 schema 只有 card / pill 两个字段(加档就要动契约 + 校验 + 编辑器滑杆
+	   + 两份 AI 提示词),而站内真正用到的圆角有六七种。写死字面值的后果真机上
+	   见过:整站换成 radius.card=0 的像素皮肤,只有这些小控件还是圆的,散成一片
+	   孤岛(2026-08-20 主人指出)。按比例派生就两头都占 —— 契约不动,阶梯跟随。
+	   系数是照现有字面值反推的:card=14 时 xs≈5、sm≈9.5、lg≈20、xl=28,
+	   与替换掉的那些值最多差 1.5px。 */
+	--radius-bn-xs: calc(var(--radius-bn-card) * 0.36);
+	--radius-bn-sm: calc(var(--radius-bn-card) * 0.68);
+	--radius-bn-lg: calc(var(--radius-bn-card) * 1.43);
+	--radius-bn-xl: calc(var(--radius-bn-card) * 2);
+
+	/* Tailwind 自带的圆角 scale 也接到同一根轴上。
+	   v4 对 radius 族是**保留 var() 引用**的(产物就是 `.rounded-lg{border-radius:
+	   var(--radius-lg)}`,与 shadow 族的编译期内联相反 —— 那条坑见下方注释),所以
+	   在这儿重定义就能让站内 149 处 `rounded-md/lg/xl/...` 全部跟着皮肤走,一行
+	   代码都不用改。系数是照 v4 默认值反推的(默认根字号 16px):算出来与原值
+	   相差不到 0.01px,没装皮肤时观感完全不动。
+	   注:`rounded`(无后缀)与 `rounded-full` 在 v4 里是**字面值**、没有 token 可换,
+	   前者已在代码里换成等值的 `rounded-sm`,后者留着 —— 「完全圆」是语义(状态灯、
+	   圆点、头像),不该被皮肤的圆角档拉直。 */
+	--radius-xs: calc(var(--radius-bn-card) * 0.143);
+	--radius-sm: calc(var(--radius-bn-card) * 0.286);
+	--radius-md: calc(var(--radius-bn-card) * 0.429);
+	--radius-lg: calc(var(--radius-bn-card) * 0.571);
+	--radius-xl: calc(var(--radius-bn-card) * 0.857);
+	--radius-2xl: calc(var(--radius-bn-card) * 1.143);
+	--radius-3xl: calc(var(--radius-bn-card) * 1.714);
+	--radius-4xl: calc(var(--radius-bn-card) * 2.286);
 }
 
 /* shadow-bn-card / shadow-bn-elev 特意不放 @theme:Tailwind v4 对 shadow 族

@@ -852,7 +852,7 @@ function GuardOverrideBox({
 								>
 									<div className="mb-1.5 text-[12px] font-bold text-bn-text-primary">
 										{label}{" "}
-										<code className="ml-1 rounded bg-bn-code-bg px-1 py-px font-mono text-[10.5px] text-bn-text-tertiary">
+										<code className="ml-1 rounded-sm bg-bn-code-bg px-1 py-px font-mono text-[10.5px] text-bn-text-tertiary">
 											{role}
 										</code>
 									</div>

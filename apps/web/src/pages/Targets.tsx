@@ -183,7 +183,7 @@ function TargetCard({
 
 	return (
 		<div
-			className="rounded-[10px] border bg-bn-surface p-3.5 transition-[border-color] duration-200"
+			className="rounded-bn-sm border bg-bn-surface p-3.5 transition-[border-color] duration-200"
 			style={{
 				borderColor: adapterMissing ? "var(--color-bn-danger-border)" : "var(--color-bn-border)",
 			}}
@@ -291,7 +291,7 @@ function AddCard({ label, hint, onClick, disabled }: AddCardProps) {
 			type="button"
 			onClick={onClick}
 			disabled={disabled}
-			className="flex h-full min-h-22 flex-col items-center justify-center rounded-[10px] border border-dashed border-bn-border bg-bn-surface px-3 py-4 text-center transition hover:border-bn-pink hover:bg-bn-pink/5 disabled:cursor-not-allowed disabled:opacity-60"
+			className="flex h-full min-h-22 flex-col items-center justify-center rounded-bn-sm border border-dashed border-bn-border bg-bn-surface px-3 py-4 text-center transition hover:border-bn-pink hover:bg-bn-pink/5 disabled:cursor-not-allowed disabled:opacity-60"
 		>
 			<span className="text-[20px] leading-none text-bn-text-tertiary">＋</span>
 			<span className="mt-1 text-[12.5px] font-semibold text-bn-text-primary">{label}</span>
@@ -1082,7 +1082,7 @@ function QQSessionPicker({
 							key={e.openid}
 							type="button"
 							onClick={() => onPick(e.openid)}
-							className="flex items-center gap-2 rounded border border-bn-border bg-bn-surface px-2 py-1 text-left transition hover:border-bn-pink"
+							className="flex items-center gap-2 rounded-sm border border-bn-border bg-bn-surface px-2 py-1 text-left transition hover:border-bn-pink"
 						>
 							<span className="truncate text-[11.5px] font-semibold text-bn-text-primary">
 								{e.displayHint ?? "(无名称)"}
@@ -1146,7 +1146,7 @@ function QQGuildPicker({
 											key={ch.channelId}
 											type="button"
 											onClick={() => onPick(g.guildId, ch.channelId)}
-											className="rounded border border-bn-border bg-bn-surface px-2 py-0.5 text-[11px] text-bn-text-primary transition hover:border-bn-pink"
+											className="rounded-sm border border-bn-border bg-bn-surface px-2 py-0.5 text-[11px] text-bn-text-primary transition hover:border-bn-pink"
 										>
 											{ch.name}
 										</button>
@@ -1300,7 +1300,7 @@ function AdapterRail({
 			onAdd={onAddClick}
 			addLabel="+ 新建"
 			emptyState={
-				<div className="rounded-[9px] border border-dashed border-bn-border bg-bn-surface/55 px-3 py-3 text-center text-[11px] text-bn-text-tertiary">
+				<div className="rounded-bn-sm border border-dashed border-bn-border bg-bn-surface/55 px-3 py-3 text-center text-[11px] text-bn-text-tertiary">
 					尚未配置任何适配器
 				</div>
 			}
@@ -1635,7 +1635,7 @@ export default function Targets() {
 				<div className="space-y-4">
 					{isLoading ? (
 						<div className="bn-glass rounded-bn-card p-6 shadow-bn-card">
-							<div className="h-20 animate-pulse rounded-[10px] bg-bn-surface-muted" />
+							<div className="h-20 animate-pulse rounded-bn-sm bg-bn-surface-muted" />
 						</div>
 					) : !selectedAdapter ? (
 						<div className="bn-glass rounded-bn-card p-8 text-center shadow-bn-card">
@@ -1772,7 +1772,7 @@ export default function Targets() {
 								</div>
 								{selectedAdapter.platform === "webhook" ? (
 									<div className="space-y-2.5">
-										<div className="rounded-[9px] border border-bn-success-border bg-bn-success-soft/70 px-3 py-2 text-[11.5px] leading-relaxed text-bn-success-text">
+										<div className="rounded-bn-sm border border-bn-success-border bg-bn-success-soft/70 px-3 py-2 text-[11.5px] leading-relaxed text-bn-success-text">
 											无需手动配置额外 PushTarget；订阅页会看到这个 Webhook，可直接选择并投递。
 										</div>
 										{selectedManagedWebhookTarget ? (
@@ -1788,7 +1788,7 @@ export default function Targets() {
 												/>
 											</div>
 										) : (
-											<div className="rounded-[9px] border border-dashed border-bn-border px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
+											<div className="rounded-bn-sm border border-dashed border-bn-border px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
 												保存 Webhook 后系统会自动创建默认投递目标。
 											</div>
 										)}

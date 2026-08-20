@@ -196,7 +196,7 @@ function NewSubDialog({
 				</Btn>
 			</div>
 			{duplicate ? (
-				<div className="mt-3 rounded border border-bn-warning-border bg-bn-warning-soft p-2 text-xs text-bn-warning-text">
+				<div className="mt-3 rounded-sm border border-bn-warning-border bg-bn-warning-soft p-2 text-xs text-bn-warning-text">
 					该 UID 已经在订阅列表中,无需重复添加
 				</div>
 			) : null}
@@ -258,7 +258,7 @@ function ProfilePreview({
 					</span>
 					<span className="font-mono text-[10.5px] text-bn-text-tertiary">UID {profile.uid}</span>
 					{subscribed ? (
-						<span className="rounded bg-bn-surface-muted px-1.5 py-0.5 text-[10px] font-semibold text-bn-text-tertiary">
+						<span className="rounded-sm bg-bn-surface-muted px-1.5 py-0.5 text-[10px] font-semibold text-bn-text-tertiary">
 							已订阅
 						</span>
 					) : null}
@@ -296,7 +296,7 @@ function SearchResultList({
 	return (
 		<div className="mt-4 flex flex-col gap-1.5">
 			{data.results.length === 0 ? (
-				<div className="rounded border border-bn-border bg-bn-surface-muted p-4 text-center text-[12px] text-bn-text-tertiary">
+				<div className="rounded-sm border border-bn-border bg-bn-surface-muted p-4 text-center text-[12px] text-bn-text-tertiary">
 					没有匹配的 UP 主
 				</div>
 			) : (
@@ -328,7 +328,7 @@ function SearchResultList({
 									</span>
 									<span className="font-mono text-[10.5px] text-bn-text-tertiary">UID {r.uid}</span>
 									{subscribed ? (
-										<span className="rounded bg-bn-surface-muted px-1.5 py-0.5 text-[10px] font-semibold text-bn-text-tertiary">
+										<span className="rounded-sm bg-bn-surface-muted px-1.5 py-0.5 text-[10px] font-semibold text-bn-text-tertiary">
 											已订阅
 										</span>
 									) : null}
@@ -611,7 +611,7 @@ export default function Subs() {
 								type="button"
 								key={f.id}
 								onClick={() => setFilterId(f.id)}
-								className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-semibold transition ${
+								className={`flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-xs font-semibold transition ${
 									active
 										? "bg-bn-surface text-bn-pink shadow-sm"
 										: "text-bn-text-tertiary hover:text-bn-text-primary"

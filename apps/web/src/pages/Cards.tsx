@@ -649,13 +649,13 @@ function PreviewContentFields({
 								placeholder="1"
 							/>
 						</Field>
-						<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
+						<div className="rounded-sm border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
 							{realDataLabel ??
 								"使用该 UP 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。"}
 						</div>
 					</>
 				) : (
-					<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
+					<div className="rounded-sm border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
 						{kind === "live"
 							? (realDataLabel ??
 								"使用该 UP 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。")
@@ -671,7 +671,7 @@ function PreviewContentFields({
 							placeholder="留空则使用示例数据"
 						/>
 					</Field>
-					<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
+					<div className="rounded-sm border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
 						需要后端账号已登录 B 站；填入后将真实拉取该直播间数据并渲染。留空则继续使用示例数据。
 					</div>
 				</>
@@ -694,7 +694,7 @@ function PreviewContentFields({
 							placeholder="1"
 						/>
 					</Field>
-					<div className="rounded border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
+					<div className="rounded-sm border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
 						需要后端账号已登录 B 站；填入后将拉取该 UP 的 space 动态列表，按 offset 选取并渲染。
 					</div>
 				</>
@@ -713,7 +713,7 @@ function PreviewContentFields({
 							placeholder="30"
 						/>
 					</Field>
-					<div className="rounded border border-dashed bg-bn-surface-muted p-2.5 text-[11px] text-bn-text-tertiary">
+					<div className="rounded-sm border border-dashed bg-bn-surface-muted p-2.5 text-[11px] text-bn-text-tertiary">
 						左侧渐变色对 SC 不生效；SC 卡片背景色由价格档位自动决定。
 					</div>
 				</>
@@ -728,7 +728,7 @@ function PreviewContentFields({
 										type="button"
 										key={g.v}
 										onClick={() => setGuard({ level: g.v })}
-										className="rounded px-3 py-1 text-[11.5px] font-semibold transition"
+										className="rounded-sm px-3 py-1 text-[11.5px] font-semibold transition"
 										style={
 											active
 												? { background: g.tone, color: "white" }
@@ -756,7 +756,7 @@ function PreviewContentFields({
 							rows={2}
 						/>
 					</Field>
-					<div className="rounded border border-dashed bg-bn-surface-muted p-2.5 text-[11px] text-bn-text-tertiary">
+					<div className="rounded-sm border border-dashed bg-bn-surface-muted p-2.5 text-[11px] text-bn-text-tertiary">
 						左侧渐变色对上舰不生效；卡片背景色与徽章图由舰长等级自动决定。
 					</div>
 				</>

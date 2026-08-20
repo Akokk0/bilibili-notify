@@ -237,7 +237,7 @@ export function SkinSection() {
 
 			<p className="mt-3 text-[11px] leading-5 text-bn-text-tertiary">
 				万一皮肤把界面弄得看不清:在地址栏加上{" "}
-				<code className="rounded bg-bn-code-bg px-1">?skin=off</code>{" "}
+				<code className="rounded-sm bg-bn-code-bg px-1">?skin=off</code>{" "}
 				访问,本次会话会强制默认装,再回这里恢复默认即可。
 			</p>
 
@@ -298,7 +298,7 @@ function SkinRow(props: {
 	onRemove: () => void;
 }) {
 	return (
-		<div className="flex items-center gap-3 rounded-[10px] border border-bn-border-subtle bg-bn-surface-muted/60 px-3 py-2.5">
+		<div className="flex items-center gap-3 rounded-bn-sm border border-bn-border-subtle bg-bn-surface-muted/60 px-3 py-2.5">
 			<div className="min-w-0 flex-1">
 				<div className="flex flex-wrap items-center gap-1.5">
 					<span className="text-[13px] font-semibold text-bn-text-primary">{props.name}</span>

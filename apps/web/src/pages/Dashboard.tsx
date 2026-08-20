@@ -536,7 +536,7 @@ function PluginMatrix({ cells }: { cells: PluginCell[] }) {
 						<div className="flex items-center gap-1.5 whitespace-nowrap text-[11px] text-bn-text-secondary">
 							日志{" "}
 							<span
-								className="rounded px-1.5 font-bold"
+								className="rounded-sm px-1.5 font-bold"
 								style={{ background: tone.bg, color: tone.fg, fontSize: 10 }}
 								title={isOverride ? "按模块覆盖" : "继承全局"}
 							>

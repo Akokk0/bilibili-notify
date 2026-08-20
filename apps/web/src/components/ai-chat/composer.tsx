@@ -180,7 +180,7 @@ export function Composer({
 		<div className="relative mx-auto w-full max-w-[720px]">
 			{showMenu ? (
 				<div
-					className="bn-anim-cmd-in absolute inset-x-1 bottom-full z-10 mb-2.5 overflow-hidden rounded-[14px] border border-bn-border bg-bn-surface-strong shadow-bn-elev"
+					className="bn-anim-cmd-in absolute inset-x-1 bottom-full z-10 mb-2.5 overflow-hidden rounded-bn-card border border-bn-border bg-bn-surface-strong shadow-bn-elev"
 					role="listbox"
 					aria-label="女仆技能"
 				>
@@ -193,7 +193,7 @@ export function Composer({
 								aria-selected={k === index}
 								onClick={() => pick(s)}
 								onMouseEnter={() => setIndex(k)}
-								className={`block w-full rounded-[9px] px-[11px] py-2 text-left transition-colors ${
+								className={`block w-full rounded-bn-sm px-[11px] py-2 text-left transition-colors ${
 									k === index ? "bn-chat-accent-soft" : "bg-transparent"
 								}`}
 							>
@@ -201,7 +201,7 @@ export function Composer({
 									<span className="bn-chat-accent font-mono text-[13px] font-semibold">
 										{s.cmd}
 									</span>
-									<span className="rounded-[5px] bg-bn-code-bg px-[7px] py-px text-[10.5px] font-semibold text-bn-text-secondary">
+									<span className="rounded-bn-xs bg-bn-code-bg px-[7px] py-px text-[10.5px] font-semibold text-bn-text-secondary">
 										女仆技能
 									</span>
 								</div>
@@ -218,7 +218,7 @@ export function Composer({
 			) : null}
 
 			<div
-				className={`rounded-[28px] border bg-bn-surface p-2 transition ${
+				className={`rounded-bn-xl border bg-bn-surface p-2 transition ${
 					focus
 						? "bn-chat-accent-focus"
 						: "border-bn-border shadow-[0_8px_22px_rgba(24,18,45,0.08)]"
@@ -231,7 +231,7 @@ export function Composer({
 								<img
 									src={a.url}
 									alt="待发送的图片"
-									className="h-16 w-16 rounded-[10px] border border-bn-border object-cover"
+									className="h-16 w-16 rounded-bn-sm border border-bn-border object-cover"
 								/>
 								<button
 									type="button"
@@ -317,7 +317,7 @@ export function Composer({
 								<div
 									role="menu"
 									aria-label="更多"
-									className="bn-anim-cmd-in absolute bottom-full left-0 z-10 mb-2 w-44 overflow-hidden rounded-[14px] border border-bn-border bg-bn-surface-strong p-1 shadow-bn-elev"
+									className="bn-anim-cmd-in absolute bottom-full left-0 z-10 mb-2 w-44 overflow-hidden rounded-bn-card border border-bn-border bg-bn-surface-strong p-1 shadow-bn-elev"
 								>
 									<button
 										type="button"
@@ -329,7 +329,7 @@ export function Composer({
 											fileRef.current?.click();
 											setActionsOpen(false);
 										}}
-										className="flex w-full cursor-pointer items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-[13px] text-bn-text-primary transition-colors hover:bg-bn-hover-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+										className="flex w-full cursor-pointer items-center gap-2.5 rounded-bn-sm px-2.5 py-2 text-left text-[13px] text-bn-text-primary transition-colors hover:bg-bn-hover-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
 									>
 										<Icon.image size={16} />
 										添加图片
@@ -345,7 +345,7 @@ export function Composer({
 											setActionsOpen(false);
 											taRef.current?.focus();
 										}}
-										className="flex w-full cursor-pointer items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-[13px] text-bn-text-primary transition-colors hover:bg-bn-hover-muted"
+										className="flex w-full cursor-pointer items-center gap-2.5 rounded-bn-sm px-2.5 py-2 text-left text-[13px] text-bn-text-primary transition-colors hover:bg-bn-hover-muted"
 									>
 										<Icon.sparkle size={16} />
 										女仆技能

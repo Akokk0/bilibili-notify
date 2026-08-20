@@ -34,7 +34,7 @@ export function ShellError({ message, onRetry }: { message: string; onRetry: () 
 				</div>
 				<div className="text-xs leading-relaxed text-bn-danger-text">
 					错误：
-					<code className="rounded bg-bn-code-bg px-1.5 py-0.5">{message}</code>
+					<code className="rounded-sm bg-bn-code-bg px-1.5 py-0.5">{message}</code>
 					<br />
 					主人，后端可能未启动，或被代理拦截了。请检查 standalone 服务是否在运行～
 				</div>

@@ -109,7 +109,7 @@ export function ScopeTabs({
 								onRemoveSub(sub.id);
 							}}
 							title={`移除 ${displayName(sub)} 的个性化配置`}
-							className={`grid h-4.5 w-4.5 place-items-center rounded ${
+							className={`grid h-4.5 w-4.5 place-items-center rounded-sm ${
 								active
 									? "text-bn-pink/80 hover:bg-bn-pink/10"
 									: "text-bn-text-tertiary/70 hover:bg-bn-hover-muted"
@@ -137,7 +137,7 @@ export function ScopeTabs({
 					添加 UP
 				</button>
 				{adding ? (
-					<div className="absolute left-0 top-[calc(100%+6px)] z-30 min-w-60 overflow-hidden rounded-[10px] border border-black/8 bg-bn-surface shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
+					<div className="absolute left-0 top-[calc(100%+6px)] z-30 min-w-60 overflow-hidden rounded-bn-sm border border-black/8 bg-bn-surface shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
 						<div className="border-b border-bn-border-subtle px-3 pb-1.5 pt-2 text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
 							选择要单独定制的 UP 主
 						</div>

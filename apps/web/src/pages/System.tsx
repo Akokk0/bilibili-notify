@@ -54,11 +54,11 @@ function QrCard({ data, msg }: { data: unknown; msg: string }) {
 			{src ? (
 				<img
 					alt="登录二维码"
-					className="h-56 w-56 rounded bg-bn-surface p-2 shadow-bn-card"
+					className="h-56 w-56 rounded-sm bg-bn-surface p-2 shadow-bn-card"
 					src={src}
 				/>
 			) : (
-				<div className="flex h-56 w-56 items-center justify-center rounded bg-bn-surface text-sm text-bn-text-tertiary">
+				<div className="flex h-56 w-56 items-center justify-center rounded-sm bg-bn-surface text-sm text-bn-text-tertiary">
 					二维码加载中…
 				</div>
 			)}
@@ -466,7 +466,7 @@ export default function System() {
 
 			<BackupSection />
 
-			<details className="rounded border border-bn-border bg-bn-surface-muted p-3 text-xs text-bn-text-secondary">
+			<details className="rounded-sm border border-bn-border bg-bn-surface-muted p-3 text-xs text-bn-text-secondary">
 				<summary className="cursor-pointer font-medium text-bn-text-primary">原始登录快照</summary>
 				<pre className="mt-2 overflow-auto leading-relaxed">
 					{JSON.stringify(snapshot ?? { hint: "等待 /api/auth/status" }, null, 2)}

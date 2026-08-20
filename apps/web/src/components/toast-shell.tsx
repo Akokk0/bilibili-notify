@@ -85,7 +85,7 @@ function ToastCard({ item }: { item: ToastItem }) {
 			<button
 				type="button"
 				onClick={() => dismiss(item.id)}
-				className="h-5 w-5 shrink-0 cursor-pointer rounded text-bn-text-tertiary hover:bg-bn-hover-muted hover:text-bn-text-primary"
+				className="h-5 w-5 shrink-0 cursor-pointer rounded-sm text-bn-text-tertiary hover:bg-bn-hover-muted hover:text-bn-text-primary"
 				aria-label="关闭"
 			>
 				<Icon.close size={11} />

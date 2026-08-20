@@ -78,7 +78,7 @@ function MarginInput({
 					const n = Number.parseInt(e.target.value, 10);
 					onChange(Number.isFinite(n) && n !== 0 ? n : undefined);
 				}}
-				className="w-9 rounded border border-bn-border-subtle bg-bn-surface px-1 py-0.5 text-center text-[11px] text-bn-text-primary"
+				className="w-9 rounded-sm border border-bn-border-subtle bg-bn-surface px-1 py-0.5 text-center text-[11px] text-bn-text-primary"
 			/>
 			px
 		</label>
@@ -160,7 +160,7 @@ function SortableRow({
 						type="button"
 						title="删除分割线"
 						onClick={() => onRemove(block.id)}
-						className="grid h-5 w-5 place-items-center rounded text-bn-text-tertiary transition hover:bg-bn-danger-soft hover:text-bn-danger-text"
+						className="grid h-5 w-5 place-items-center rounded-sm text-bn-text-tertiary transition hover:bg-bn-danger-soft hover:text-bn-danger-text"
 					>
 						<Icon.close size={13} />
 					</button>

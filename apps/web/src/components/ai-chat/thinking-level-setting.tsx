@@ -87,7 +87,7 @@ export function ThinkingLevelSetting() {
 									type="button"
 									aria-pressed={active}
 									onClick={() => save.mutate(o.value)}
-									className={`flex-1 cursor-pointer rounded-[10px] border-[1.5px] px-1 py-1.5 text-[11.5px] font-semibold transition ${
+									className={`flex-1 cursor-pointer rounded-bn-sm border-[1.5px] px-1 py-1.5 text-[11.5px] font-semibold transition ${
 										active
 											? "bn-glass-selected border-[var(--bn-chat-dot)] text-bn-text-primary"
 											: "border-transparent text-bn-text-secondary hover:bg-bn-code-bg"

@@ -470,14 +470,14 @@ export function UpDialog({
 						</BasicRow>
 						<BasicRow label="分组" sub="多个分组以英文逗号分隔">
 							<input
-								className="w-40 rounded border border-bn-border px-1.5 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-bn-pink"
+								className="w-40 rounded-sm border border-bn-border px-1.5 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-bn-pink"
 								value={draft.groups.join(",")}
 								onChange={(e) => setGroups(e.target.value)}
 							/>
 						</BasicRow>
 						<BasicRow label="备注">
 							<input
-								className="w-40 rounded border border-bn-border px-1.5 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-bn-pink"
+								className="w-40 rounded-sm border border-bn-border px-1.5 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-bn-pink"
 								value={draft.notes ?? ""}
 								onChange={(e) => setNotes(e.target.value)}
 							/>
@@ -845,7 +845,7 @@ function AtAllPerTargetToggle({
 						onClick={() => onSet(undefined)}
 						aria-label="重置为跟随订阅默认"
 						title="重置为跟随订阅默认"
-						className="grid h-4 w-4 place-items-center rounded text-bn-text-tertiary hover:bg-bn-surface-muted hover:text-bn-text-primary"
+						className="grid h-4 w-4 place-items-center rounded-sm text-bn-text-tertiary hover:bg-bn-surface-muted hover:text-bn-text-primary"
 					>
 						<Icon.refresh size={10} />
 					</button>

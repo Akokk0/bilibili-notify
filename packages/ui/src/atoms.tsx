@@ -152,7 +152,7 @@ export function Pill({
 		: { background: color, color: "white" };
 	return (
 		<span
-			className={`inline-flex items-center gap-1 whitespace-nowrap rounded font-bold tracking-wide ${sizeCls} ${className ?? ""}`}
+			className={`inline-flex items-center gap-1 whitespace-nowrap rounded-sm font-bold tracking-wide ${sizeCls} ${className ?? ""}`}
 			style={style}
 		>
 			{children}
@@ -326,7 +326,7 @@ export function CheckRow({ checked, onChange, children }: CheckRowProps) {
 				className="sr-only"
 			/>
 			<span
-				className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+				className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition ${
 					checked ? "border-bn-pink bg-bn-pink text-white" : "border-bn-border bg-bn-surface"
 				}`}
 			>

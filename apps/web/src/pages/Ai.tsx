@@ -697,7 +697,7 @@ export default function Ai() {
 						onAdd={() => setAddingProvider(true)}
 						addLabel="+ 添加"
 						emptyState={
-							<div className="rounded-[9px] border border-dashed border-bn-border px-3 py-4 text-center text-[11.5px] leading-relaxed text-bn-text-tertiary">
+							<div className="rounded-bn-sm border border-dashed border-bn-border px-3 py-4 text-center text-[11.5px] leading-relaxed text-bn-text-tertiary">
 								还没添加任何服务商
 								<br />
 								先添加一家吧

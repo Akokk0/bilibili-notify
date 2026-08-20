@@ -116,7 +116,7 @@ const COMPONENTS: Components = {
 	// pre 负责滚动与底色,code 只管字体。
 	code: ({ children, className }) => (
 		<code
-			className={`rounded-[5px] bg-bn-code-bg px-[0.35em] py-[0.1em] font-mono text-[0.88em] ${className ?? ""}`}
+			className={`rounded-bn-xs bg-bn-code-bg px-[0.35em] py-[0.1em] font-mono text-[0.88em] ${className ?? ""}`}
 		>
 			{children}
 		</code>

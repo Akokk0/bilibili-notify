@@ -138,7 +138,7 @@ export function CommandsSettings({
 								className="rounded-md border border-bn-border-subtle bg-bn-surface/60 px-2.5 py-2"
 							>
 								<div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-									<code className="rounded bg-bn-code-bg px-1.5 py-px font-mono text-[11.5px] font-bold text-bn-text-primary">
+									<code className="rounded-sm bg-bn-code-bg px-1.5 py-px font-mono text-[11.5px] font-bold text-bn-text-primary">
 										{cfg.prefix}
 										{cmd.name}
 										{cmd.usage ? ` ${cmd.usage}` : ""}

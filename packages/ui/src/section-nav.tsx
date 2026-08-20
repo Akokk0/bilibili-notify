@@ -59,7 +59,7 @@ export interface SectionNavProps {
 }
 
 const RAIL_ITEM_BASE =
-	"flex w-full min-w-0 items-start gap-2.5 rounded-[9px] border px-3 py-2.5 text-left transition";
+	"flex w-full min-w-0 items-start gap-2.5 rounded-bn-sm border px-3 py-2.5 text-left transition";
 const RAIL_ITEM_ACTIVE = "border-bn-pink/35 bg-bn-surface/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)]";
 const RAIL_ITEM_IDLE = "border-transparent hover:bg-bn-surface/55";
 
@@ -99,7 +99,7 @@ function IconBox({ icon, tint, active }: { icon: ReactNode; tint?: string; activ
 	if (tint) {
 		return (
 			<span
-				className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-[5px]"
+				className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-bn-xs"
 				style={{ background: `${tint}1f` }}
 			>
 				{icon}
@@ -233,7 +233,7 @@ export function SectionNav({
 				data-section-nav="bar"
 				data-bn="nav"
 				style={{ top: STICKY_TOP }}
-				className="sticky z-20 rounded-[11px] border border-bn-border-subtle bg-bn-surface/70 backdrop-blur-sm xl:hidden"
+				className="sticky z-20 rounded-bn-sm border border-bn-border-subtle bg-bn-surface/70 backdrop-blur-sm xl:hidden"
 			>
 				<div className="relative flex items-center">
 					{edges.left ? (

@@ -612,7 +612,7 @@ export function SkinEditor(props: {
 
 				<Fold title="自定义 CSS">
 					<p className="text-[11px] leading-4 text-bn-text-tertiary">
-						选择器只准 <code className="rounded bg-bn-code-bg px-1">[data-bn="挂点"]</code>
+						选择器只准 <code className="rounded-sm bg-bn-code-bg px-1">[data-bn="挂点"]</code>
 						(挂点见制作引导),属性走视觉白名单;违禁项保存时会被逐条丢弃并提示。
 					</p>
 					<FieldRow label="共用 CSS">
@@ -803,7 +803,7 @@ function WallpaperFields(props: {
 function Fold(props: { title: string; defaultOpen?: boolean; children: ReactNode }) {
 	const [open, setOpen] = useState(props.defaultOpen ?? false);
 	return (
-		<div className="rounded-[10px] border border-bn-border-subtle">
+		<div className="rounded-bn-sm border border-bn-border-subtle">
 			<button
 				type="button"
 				onClick={() => setOpen((o) => !o)}
@@ -984,7 +984,7 @@ function ColorField(props: {
 					type="color"
 					value={hex ?? "#ffffff"}
 					onChange={(e) => props.onChange(e.target.value)}
-					className="h-6 w-7 shrink-0 cursor-pointer rounded border border-bn-border bg-transparent p-0"
+					className="h-6 w-7 shrink-0 cursor-pointer rounded-sm border border-bn-border bg-transparent p-0"
 				/>
 				<input
 					aria-label={props.label}

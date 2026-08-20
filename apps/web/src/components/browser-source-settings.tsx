@@ -77,12 +77,14 @@ export function BrowserSourceSettings() {
 	) : status.enabled && source?.chromeEndpoint ? (
 		<span>
 			远程浏览器{" "}
-			<code className="rounded bg-bn-code-bg px-1.5 py-0.5 font-mono">{source.chromeEndpoint}</code>
+			<code className="rounded-sm bg-bn-code-bg px-1.5 py-0.5 font-mono">
+				{source.chromeEndpoint}
+			</code>
 		</span>
 	) : status.enabled && source?.chromePath ? (
 		<span>
 			本地浏览器{" "}
-			<code className="rounded bg-bn-code-bg px-1.5 py-0.5 font-mono">{source.chromePath}</code>
+			<code className="rounded-sm bg-bn-code-bg px-1.5 py-0.5 font-mono">{source.chromePath}</code>
 		</span>
 	) : (
 		<span className="text-bn-text-secondary">未启用 —— 卡片渲染当前退化为文字推送</span>
