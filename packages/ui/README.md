@@ -25,7 +25,7 @@
 | --- | --- |
 | `Avatar` | 圆头像:有 `url` 显图,没有显首字母渐变底;`status` 加 LIVE 角标或呼吸点 |
 | `Btn` | 按钮,5 变体(`primary` 粉实底 / `blue` / `ghost` / `outline` / `danger` 红字)× 3 尺寸 |
-| `Pill` | 圆角小徽章(**不可点**的 `<span>`);`subtle` = 15% 底色染色字,否则实底白字 |
+| `Pill` | 圆角小徽章(**不可点**的 `<span>`);`subtle` = 12% 底色染色字,否则实底白字 |
 | `ToneChip` | 「一排里选一个/开一个」的**可点**胶囊:选中按 `tone` 染色(底 12%/字实色/边 33%),未选中退中性描边 + 悬停变正文色。自带 `data-bn="btn"`;`tone` 收 hex **或** `var()`(内部 `color-mix`),没有开关态的纯操作钮可不填。别拿 `Pill` 套 `onClick` 顶替它 |
 | `StatusDot` | 8px 语义色状态点(`live/living` 粉+呼吸、`ok` 绿、`warn` 橙、`err` 红、`pending` 灰) |
 | `Toggle` | 开关(粉=开),`sm`/`md`;`ariaLabel` 给读屏器命名 |
@@ -76,7 +76,7 @@
 - **别把皮肤挡在门外**(同一个模式已复发三回:tab 条那排、Subs/History 的筛选胶囊、Toggle):
   - **圆角走轴**。可点控件用 `rounded-bn-pill`(或 `rounded-bn-card`),**不写死 `rounded-full`** —— 写死的话皮肤把 `radius.pill` 调到 0 求一身硬直角也掰不直它。真正必须是**正圆**的(头像、状态点、光斑)照写 `rounded-full`,那是设计要求不是疏忽。
   - **颜色走 token**,`#d8d8d8` 这种字面值皮肤搬不动。
-  - **圆角与颜色都不许落在 `style={{…}}`**:inline 压过一切 author 样式,皮肤连覆盖的机会都没有。要动态值就放 CSS 变量,`style` 里只留真正的运行时几何量(宽高、位移)。
+  - **圆角一律不许落在 `style={{…}}`**;颜色只有**逐项动态**的那一种可以(每个选项各异的语义色,如 `ToneChip` 的 `tone`、`GlassPanel` 的 `accent`、`Pill` 的 `color`)。**静态的、可换肤的颜色必须走 class** —— inline 压过一切 author 样式,皮肤连覆盖的机会都没有,而且 inline **没有 `:hover`**(`ToneChip` 初版把未选中态三色写进 inline,四颗胶囊当场集体丢了悬停反馈)。写死的动态值放 CSS 变量,`style` 里只留真正的运行时几何量(宽高、位移)。
   - **页面里手写的 `<button>` 记得挂 `data-bn`** —— 下面那份 `skin-hooks.test.tsx` 只管库里的组件,`apps/web` 的页面在它射程之外。
   - **Toggle 例外:不许挂 `btn`**。皮肤给按钮写的实底会盖掉轨道背景,开关的开/关当场看不出来。
 - **文字挑档按名字语义,别按当下看到的深浅**:`text-primary`(标题/人名)> `text-secondary`(正文、说明、区块标签)> `text-tertiary`(UID、时间戳、协议行、图标字形)> `text-disabled`(禁用/轨道底),四档在亮暗两套里**同向**。亮色默认装曾从设计稿原样抄来一份**反的**(secondary #999 比 tertiary #666 还淡),于是同一个 className 在亮色下是最淡一档、在暗色和每一套皮肤里都是较重一档,`hover:text-bn-text-secondary` 这种「悬停变亮」的写法当场变淡。`apps/web/src/__tests__/theme-conformance.test.ts` 现在按对比度拦单调性、档距(≥1.25×)与 AA 底线。

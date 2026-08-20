@@ -165,7 +165,7 @@ export function Pill({
 // ── ToneChip ────────────────────────────────────────────────────────────────
 
 export interface ToneChipProps {
-	children: React.ReactNode;
+	children: ReactNode;
 	/**
 	 * 选中态的语义色。收十六进制**或** `var(--color-bn-*)` —— 透明度用 `color-mix()`
 	 * 现调,不走 `${tone}1f` 那种十六进制 alpha 后缀(后缀只对 6 位 hex 生效,
@@ -180,8 +180,6 @@ export interface ToneChipProps {
 	disabled?: boolean;
 	/** 内容按大写渲染(日志等级那排要,类型筛选不要)。 */
 	uppercase?: boolean;
-	className?: string;
-	title?: string;
 }
 
 /**
@@ -203,8 +201,6 @@ export function ToneChip({
 	onClick,
 	disabled,
 	uppercase,
-	className,
-	title,
 }: ToneChipProps) {
 	// active 态的三色由 `tone` 现算,只能落 inline;未选中态是静态的,走 class ——
 	// inline 没有 `:hover`,写进去这颗胶囊就永远没有悬停反馈。
@@ -217,15 +213,14 @@ export function ToneChip({
 		: undefined;
 	const toneCls = active
 		? ""
-		: " bg-transparent text-bn-text-tertiary border-bn-border hover:text-bn-text-primary";
+		: "bg-transparent text-bn-text-tertiary border-bn-border hover:text-bn-text-primary";
 	return (
 		<button
 			type="button"
 			onClick={onClick}
 			disabled={disabled}
-			title={title}
 			data-bn="btn"
-			className={`inline-flex items-center gap-1 rounded-bn-pill border px-3 py-1 text-[12px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50${toneCls}${uppercase ? " uppercase" : ""}${className ? ` ${className}` : ""}`}
+			className={`inline-flex items-center gap-1 rounded-bn-pill border px-3 py-1 text-[12px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${toneCls} ${uppercase ? "uppercase" : ""}`}
 			style={style}
 		>
 			{children}

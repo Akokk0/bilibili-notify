@@ -12,7 +12,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import Logs from "../Logs";
 
@@ -33,13 +33,6 @@ function renderLogs() {
 	);
 }
 
-function chip(text: string): HTMLButtonElement {
-	const hit = screen.getAllByText(text).find((n) => n.closest("button"));
-	const btn = hit?.closest("button");
-	if (!btn) throw new Error(`没找到写着「${text}」的按钮`);
-	return btn as HTMLButtonElement;
-}
-
 beforeEach(() => {
 	// 这一页挂载后会把视口滚到底;jsdom 不带这个方法,不打桩就死在渲染里、
 	// 断言一条都跑不到(红得像挂点没挂,其实是环境缺件)。
@@ -55,11 +48,13 @@ afterEach(() => {
 });
 
 describe("运行日志 · 顶栏控制胶囊", () => {
+	// 一律按**可及名**查,不按文本 —— 日志行本身也会渲染 error / warn 字样,
+	// 文本查询一旦有日志条目就有歧义,role 查询永远没有。
 	it("等级胶囊挂 btn,且圆角走皮肤的 pill 轴", async () => {
 		renderLogs();
-		await waitFor(() => expect(screen.getAllByText("error").length).toBeGreaterThan(0));
+		await screen.findByRole("button", { name: "error" });
 		for (const label of ["error", "warn", "info"]) {
-			const el = chip(label);
+			const el = screen.getByRole("button", { name: label });
 			expect(el.getAttribute("data-bn"), label).toBe("btn");
 			expect(el.className, label).toContain("rounded-bn-pill");
 			expect(el.className, label).not.toContain("rounded-full");
@@ -68,16 +63,11 @@ describe("运行日志 · 顶栏控制胶囊", () => {
 
 	it("暂停 / 自动滚动 / 下载三颗也挂 btn —— 同一排不许半挂", async () => {
 		renderLogs();
-		await waitFor(() => expect(screen.getAllByText("自动滚动").length).toBeGreaterThan(0));
-		for (const label of ["暂停", "自动滚动"]) {
-			const el = chip(label);
-			expect(el.getAttribute("data-bn"), label).toBe("btn");
-			expect(el.className, label).toContain("rounded-bn-pill");
+		await screen.findByRole("button", { name: "自动滚动" });
+		for (const label of ["暂停", "自动滚动", /\.jsonl/]) {
+			const el = screen.getByRole("button", { name: label });
+			expect(el.getAttribute("data-bn"), String(label)).toBe("btn");
+			expect(el.className, String(label)).toContain("rounded-bn-pill");
 		}
-		const dl = screen
-			.getAllByText(/\.jsonl/)
-			.find((n) => n.closest("button"))
-			?.closest("button");
-		expect(dl?.getAttribute("data-bn")).toBe("btn");
 	});
 });

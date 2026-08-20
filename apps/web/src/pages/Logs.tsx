@@ -179,7 +179,7 @@ export default function Logs() {
 				/>
 				{!isLive && (
 					// 常亮 active:它没有未选中态 —— 一旦回到实时,这颗自己就不显示了。
-					<ToneChip tone="var(--color-bn-pink)" active onClick={() => setDay("")}>
+					<ToneChip active onClick={() => setDay("")}>
 						回到实时
 					</ToneChip>
 				)}
@@ -193,7 +193,6 @@ export default function Logs() {
 				>
 					自动滚动
 				</ToneChip>
-				{/* 纯操作钮,没有开关态 —— 恒走 ToneChip 的中性态,tone 用不上就不填。 */}
 				<ToneChip
 					onClick={() => {
 						void downloadRawLog(viewDay).catch((err) => {
