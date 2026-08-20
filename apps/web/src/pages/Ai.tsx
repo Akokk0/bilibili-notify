@@ -59,6 +59,7 @@ import { ProviderPicker } from "../components/provider-picker";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { api } from "../services/api";
 import type { AIPersona, AISettings, GlobalConfig, LogLevel } from "../types/globals";
+import { MaidSkills } from "./ai/MaidSkills";
 import {
 	addPersona,
 	addProfile,
@@ -98,19 +99,23 @@ const toPickerValue = (v: AiLogLevel): LogLevelValue | null =>
 const fromPickerValue = (v: LogLevelValue | null): AiLogLevel =>
 	v === null ? "" : NUM_TO_LOG_LEVEL[v];
 
-type TopTab = "global" | "model" | "persona";
+type TopTab = "global" | "model" | "persona" | "skills";
 
-/** 顶部三个 tab。观感与 Rules / Cards 的作用域条同源(共用 `TabBar` 原语)。 */
+/** 顶部四个 tab。观感与 Rules / Cards 的作用域条同源(共用 `TabBar` 原语)。 */
 const TOP_TABS = [
 	{ id: "global" as const, label: "全局配置", code: "global" },
 	{ id: "model" as const, label: "模型配置", code: "provider" },
 	{ id: "persona" as const, label: "女仆性格", code: "persona" },
+	// 技能不是配置(自己的一份 REST 资源),所以它的 `code` 与整页那条保存栏无关
+	// —— 这一栏底下自带保存。摆在这儿只是因为「她是谁」与「她会做什么」该挨着。
+	{ id: "skills" as const, label: "女仆技能", code: "skills" },
 ];
 
 const TAB_HINTS: Record<TopTab, string> = {
 	global: "整个 AI 子系统的设置,不分服务商也不分性格",
 	model: "每家服务商各存一套,点左栏切换",
 	persona: "备着的性格清单;平时用哪一份在「全局配置」里选",
+	skills: "主人写给女仆的做事步骤;聊天里打 / 唤起,她也会自己挑",
 };
 
 /**
@@ -498,6 +503,8 @@ export default function Ai() {
 						) : t.id === "persona" ? (
 							// 「性格」问的是**她是谁**,不是「喜不喜欢」—— 心形读作后者。
 							<Icon.user size={14} />
+						) : t.id === "skills" ? (
+							<Icon.sparkle size={14} />
 						) : (
 							<Icon.gear size={14} />
 						),
@@ -507,7 +514,9 @@ export default function Ai() {
 				hint={TAB_HINTS[tab]}
 			/>
 
-			{tab === "global" ? (
+			{tab === "skills" ? (
+				<MaidSkills />
+			) : tab === "global" ? (
 				<div className="flex flex-col gap-4">
 					{/* 全局实例选择 —— 与人格那条同一套语义:这里决定女仆**用**哪一份,
 					    「模型配置」那个 Tab 的左栏只决定**在编辑**哪一份。两件事曾经共用

@@ -7,6 +7,7 @@
  * readdir + 几份小文件,量级可以忽略。
  */
 
+import { TOOL_DEFINITIONS, WEB_SEARCH_TOOL_NAME } from "@bilibili-notify/ai";
 import type { MaidSkillsListResponse } from "@bilibili-notify/contract";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -26,6 +27,15 @@ const writeSchema = z.object({
 	body: z.string(),
 });
 
+/**
+ * 编辑器摆 `allowed-tools` 勾选框用的那份名单 —— 就是聊天里真挂着的那些。
+ *
+ * 从 `TOOL_DEFINITIONS` 现取而不是手写:抄一份到别处就等于埋一张早晚过期的表,
+ * 而过期在界面上长成「勾了一把根本不存在的工具」—— 收窄是交集,那一勾静默无效。
+ * `web_search` 不在那张表里(它按主人那颗胶囊现挂),但技能声明得着,所以补上。
+ */
+const AVAILABLE_TOOLS = [...TOOL_DEFINITIONS.map((t) => t.function.name), WEB_SEARCH_TOOL_NAME];
+
 export function createMaidSkillsRoute(deps: { skillStore: MaidSkillStore }): Hono {
 	const { skillStore } = deps;
 	const app = new Hono();
@@ -35,6 +45,7 @@ export function createMaidSkillsRoute(deps: { skillStore: MaidSkillStore }): Hon
 		const body: MaidSkillsListResponse = {
 			list: skillStore.list(),
 			problems: skillStore.problems(),
+			tools: AVAILABLE_TOOLS,
 		};
 		return c.json(body);
 	});

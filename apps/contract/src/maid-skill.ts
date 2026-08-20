@@ -53,6 +53,14 @@ export interface MaidSkillsListResponse {
 	list: MaidSkillDTO[];
 	/** 空数组 = 盘上一切正常。非空时界面要显眼地提一句,否则主人以为自己没放对地方。 */
 	problems: MaidSkillProblemDTO[];
+	/**
+	 * 现在真的存在的工具名 —— 编辑器拿它摆 `allowed-tools` 的勾选框。
+	 *
+	 * 由服务端给而不是网页自己写一份:工具表的真身在 `packages/ai`,抄一份到前端
+	 * 就等于埋一张早晚过期的表,而过期的表在界面上长成「勾了一把根本不存在的工具」
+	 * —— 收窄是交集,那一勾会静默地什么都不做。
+	 */
+	tools: string[];
 }
 
 /** 新建 / 修改的请求体。`builtin` 不收 —— 那是服务端的判定,不是主人能声明的。 */
