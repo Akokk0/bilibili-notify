@@ -22,6 +22,11 @@ import {
 	uploadChatImage,
 } from "../../services/aiChat";
 import { api } from "../../services/api";
+import {
+	listMaidSkillsSafe,
+	type MaidSkillDTO,
+	maidSkillsQueryKey,
+} from "../../services/maidSkill";
 import { syncActiveSkinToStore } from "../../services/skin-active";
 import { useAiChatStore } from "../../store/aiChat";
 import { useAuthStore } from "../../store/auth";
@@ -31,7 +36,7 @@ import { MessageList, preloadChatMarkdown, type ToolChipData } from "./messages"
 import { resolveChatPersona } from "./persona";
 import { SearchControl } from "./search-control";
 import { ChatSidebar } from "./sidebar";
-import { AI_SKILLS, resolveOutgoing, resolveSkill } from "./skills";
+import { resolveOutgoing } from "./skills";
 import { ThinkingControl } from "./thinking-control";
 import { useSessionCapsules } from "./use-session-capsules";
 
@@ -136,15 +141,18 @@ type SendVars = {
 	 * 会话级胶囊在**点发送那一刻**的状态。走 variables 而不是让 mutationFn 从
 	 * 组件闭包里读 —— 见 react-query onMutate 的时序坑:要发的东西必须随载荷走。
 	 */
-	flags: { thinking: boolean; search: boolean };
+	flags: { thinking: boolean; search: boolean; skill?: string };
 	/**
-	 * 这一问发去哪场对话。`null` = 现开一场(空态首发,或技能要的面孔与当下这场
-	 * 对不上)。同样走 variables:mutationFn 从闭包里读 activeId 会读到旧值。
+	 * 这一问发去哪场对话。`null` = 现开一场(空态首发)。同样走 variables:
+	 * mutationFn 从闭包里读 activeId 会读到旧值。
 	 */
 	conversationId: string | null;
 	/** 现开一场时用的面孔。已有对话时它不起作用 —— 面孔开局就锁死了。 */
 	face: ChatFace;
 };
+
+/** 技能还没拉到时的稳定空表 —— 每次渲染现造一个 `[]` 会让 Composer 白白重渲。 */
+const EMPTY_SKILLS: readonly MaidSkillDTO[] = [];
 
 /** 一场对话的面孔:模式 + 带不带人格。开局定死,见 contract 的 AiChatMode。 */
 type ChatFace = { mode: AiChatMode; persona: boolean };
@@ -207,6 +215,16 @@ export function ChatPage() {
 	// 没登录 / 还没拿到账号时,用人格里那个称呼顶上 —— 傲娇预设下就是「笨蛋」,
 	// 比硬写「主人」更贴合主人自己配的那套口吻。
 	const userName = card?.name?.trim() || persona.user;
+
+	/**
+	 * 斜杠菜单那份技能清单。拉不到就当没有技能(见 listMaidSkillsSafe)——
+	 * 技能是锦上添花,不该因为它取不回来就让整个聊天挂着一条红字。
+	 */
+	const skills =
+		useQuery({
+			queryKey: maidSkillsQueryKey,
+			queryFn: listMaidSkillsSafe,
+		}).data ?? EMPTY_SKILLS;
 
 	const listQuery = useQuery({
 		queryKey: conversationsQueryKey,
@@ -527,25 +545,29 @@ export function ChatPage() {
 
 	const submit = (text?: string) => {
 		const raw = text ?? input;
-		const outgoing = resolveOutgoing(raw);
+		// 斜杠命令在这里拆成「点名了哪条技能」+「主人这一问」。正文一个字都不经过
+		// 浏览器 —— 服务端拿名字去库里取,落盘的用户消息就是他真打的那几个字。
+		const outgoing = resolveOutgoing(raw, skills);
 		// 只有图、一个字没打也算数 —— 图本身就是问题。
-		if ((!outgoing && attachments.length === 0) || busy) return;
-		// 技能可以点名要哪副面孔(`/皮肤` 只在皮肤工坊里跑得动)。模式锁定之后
-		// 它不再「切」—— 面孔对不上就**另开一场**,把 conversationId 传 null。
-		// 留在只读窗口里发出去的话,女仆会答应下来然后什么也做不出来。
-		const wantMode = resolveSkill(raw)?.mode ?? activeFace.mode;
-		const reuse = activeId !== null && activeFace.mode === wantMode;
+		if ((!outgoing.text && attachments.length === 0) || busy) return;
+		// 技能不再点名面孔(它声明不了模式,见 ADR-0001 决策 11),所以这一问永远
+		// 发去当下这场;进皮肤工坊的唯一入口是侧栏那颗「新建皮肤工坊」。
+		const reuse = activeId !== null;
 		const outgoingFace: ChatFace =
-			wantMode === "skin" ? SKIN_FACE : { ...pendingFace, mode: "chat" };
+			activeFace.mode === "skin" ? SKIN_FACE : { ...pendingFace, mode: "chat" };
 		// 附件快照必须在**这里**取。`mutationFn` 是在 `onMutate` 之后才跑的
 		// (onMutate 的返回值被 await,那一让步足够 React 把重渲染 flush 掉),
 		// 那时 `setAttachments([])` 已经生效 —— 从 mutationFn 的闭包里读
 		// `attachments` 只能读到空数组,于是服务端一张图也收不到。
 		// 两颗胶囊同理随载荷走。
 		send.mutate({
-			text: outgoing,
+			text: outgoing.text,
 			attachments,
-			flags: { thinking: thinkingOn, search: searchOn },
+			flags: {
+				thinking: thinkingOn,
+				search: searchOn,
+				...(outgoing.skill ? { skill: outgoing.skill } : {}),
+			},
 			conversationId: reuse ? activeId : null,
 			face: outgoingFace,
 		});
@@ -653,6 +675,7 @@ export function ChatPage() {
 								autoFocus
 								aiName={persona.name}
 								extras={composerExtras}
+								skills={skills}
 							/>
 							{error ? (
 								<div
@@ -662,36 +685,18 @@ export function ChatPage() {
 									呜…{persona.self}出错了:{error}
 								</div>
 							) : null}
-							<div
-								className={`bn-anim-fade-up mt-4 flex-wrap justify-center gap-2 ${skinMode ? "hidden" : "flex"}`}
-							>
-								{/* 要换副面孔才跑得动的技能**不摆在这里**。胶囊发的是技能的
-								    `prompt`(一整段自然语言),而认技能靠的是「整条输入恰好等于
-								    cmd」—— `mode` 在这条路上根本传不出去,点下去就是在只读的聊天
-								    窗口里说了句「帮我做套皮肤」,女仆答应下来然后什么也做不出来。
-								    进工坊的正经入口是侧栏那颗「新建皮肤工坊」。
-
-								    这道 filter 是**有意保留**的(主人 2026-08-20 拍板),不是没人
-								    修根:把 onClick 改成 submit(s.cmd) 就能让 mode 传出去,代价是
-								    空态多一枚「做皮肤」胶囊。那是产品决定,别当清理项顺手做掉 ——
-								    chat-mode.test.tsx 里两条测试钉着这个行为。 */}
-								{AI_SKILLS.filter((s) => !s.mode).map((s) => {
-									const Glyph = Icon[s.icon];
-									return (
-										<button
-											key={s.cmd}
-											type="button"
-											onClick={() => submit(s.prompt)}
-											className="bn-glass-lift bn-glass flex cursor-pointer items-center gap-1.75 rounded-bn-lg px-3.75 py-2 text-[12.5px] font-semibold text-bn-text-tertiary shadow-bn-card hover:bg-[var(--bn-glass-strong-bg)]"
-										>
-											<span className="bn-chat-accent flex">
-												<Glyph size={14} />
-											</span>
-											{s.desc}
-										</button>
-									);
-								})}
-							</div>
+							{/* 技能胶囊那一排整个拆了(ADR-0001 决策 10):技能改成主人自己写的
+							    之后,预置几枚胶囊就成了「我们替他挑的那五条」;而斜杠菜单本身
+							    就是完整目录,打一个 `/` 全在那儿。留一句引导语指路即可。 */}
+							{!skinMode && skills.length > 0 ? (
+								<div className="bn-anim-fade-up mt-4 text-center text-[12.5px] text-bn-text-tertiary">
+									打一个&nbsp;
+									<span className="bn-chat-accent rounded-bn-xs bg-bn-code-bg px-1.5 py-px font-mono font-semibold">
+										/
+									</span>
+									&nbsp;看看{persona.self}会做的事
+								</div>
+							) : null}
 						</div>
 					</div>
 				) : (
@@ -718,6 +723,7 @@ export function ChatPage() {
 								autoFocus
 								aiName={persona.name}
 								extras={composerExtras}
+								skills={skills}
 							/>
 							<div className="mt-2 text-center text-[11px] text-bn-text-secondary">
 								{persona.name}可能会出错,请核对重要信息

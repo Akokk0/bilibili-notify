@@ -153,7 +153,26 @@ const G = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../services/api", () => ({
-	api: { get: vi.fn(async () => ({ defaults: { ai: G.ai } })) },
+	api: {
+		get: vi.fn(async (path: string) =>
+			// 技能清单与全局配置走同一个 get,按路径分流 —— 一律回 globals 的话,
+			// 斜杠菜单那份清单永远是空的,空态那句引导语也就永远不出现。
+			path.startsWith("/api/maid-skills")
+				? {
+						list: [
+							{
+								name: "weekly-report",
+								description: "评选本周鸽王",
+								disableModelInvocation: false,
+								body: "步骤",
+								builtin: true,
+							},
+						],
+						problems: [],
+					}
+				: { defaults: { ai: G.ai } },
+		),
+	},
 }));
 
 import { createConversation, retitleConversation, sendChatMessage } from "../../../services/aiChat";
@@ -288,10 +307,12 @@ describe("聊天页 — 路由开合", () => {
 		await waitFor(() => expect(screen.getByTestId("console-page")).toBeTruthy());
 	});
 
-	it("没有消息 → 空态问候页,带技能胶囊", async () => {
+	it("没有消息 → 空态问候页,带一句「打个 / 」的引导", async () => {
+		// 技能胶囊那一排整个拆了(ADR-0001 决策 10):技能改成主人自己写的之后,
+		// 预置几枚胶囊就成了「我们替他挑的那几条」;斜杠菜单本身就是完整目录。
 		render(wrap(<ChatPage />));
 		await waitFor(() => expect(screen.getByText(/今天想让小绫帮主人做点什么呢/)).toBeTruthy());
-		expect(screen.getByText("评选鸽王与勤奋 UP,毒舌锐评")).toBeTruthy();
+		await waitFor(() => expect(screen.getByText(/看看小绫会做的事/)).toBeTruthy());
 	});
 
 	it("有消息 → 切成消息流,不再显示问候页", async () => {

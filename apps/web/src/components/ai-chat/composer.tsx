@@ -1,3 +1,4 @@
+import type { MaidSkillDTO } from "@bilibili-notify/contract";
 import { Icon } from "@bilibili-notify/ui";
 import {
 	type KeyboardEvent,
@@ -8,7 +9,7 @@ import {
 	useState,
 } from "react";
 import { useSkinText } from "../../store/skin";
-import { type AiSkill, matchSkills } from "./skills";
+import { matchSkills } from "./skills";
 
 /**
  * 聊天输入框 —— 一根 textarea、一颗「+」二级菜单(添加图片 / 女仆技能)、一颗
@@ -67,6 +68,11 @@ export interface ComposerProps {
 	 * Composer 不该知道全局配置长什么样,它只管排版位置。
 	 */
 	extras?: ReactNode;
+	/**
+	 * 可用的女仆技能 —— `/` 唤起的那份菜单。缺省空数组:技能拉不到时斜杠只是
+	 * 一个普通字符,聊天照常。
+	 */
+	skills?: readonly MaidSkillDTO[];
 }
 
 export function Composer({
@@ -80,6 +86,7 @@ export function Composer({
 	onPickFiles,
 	onRemoveAttachment,
 	extras,
+	skills = [],
 }: ComposerProps) {
 	const fileRef = useRef<HTMLInputElement>(null);
 	const full = attachments.length >= MAX_ATTACHMENTS;
@@ -125,7 +132,7 @@ export function Composer({
 			el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT)}px`;
 	}, [value]);
 
-	const matches = matchSkills(value);
+	const matches = matchSkills(value, skills);
 	const showMenu = matches.length > 0 && !closed;
 	// 只有图、一个字没打也算数 —— 拖一张图进来直接回车是最自然的用法,那时
 	// 「这是什么」纯属多余,图本身就是问题。
@@ -137,9 +144,9 @@ export function Composer({
 		setIndex((i) => (i >= matches.length ? 0 : i));
 	}, [matches.length]);
 
-	const pick = (s: AiSkill) => {
+	const pick = (s: MaidSkillDTO) => {
 		// 补一个空格:选完技能光标停在命令后面,主人接着打就是追加要求。
-		onChange(`${s.cmd} `);
+		onChange(`/${s.name} `);
 		setClosed(true);
 		taRef.current?.focus();
 	};
@@ -188,7 +195,7 @@ export function Composer({
 					<div className="p-[5px]">
 						{matches.map((s, k) => (
 							<button
-								key={s.cmd}
+								key={s.name}
 								type="button"
 								role="option"
 								aria-selected={k === index}
@@ -200,13 +207,13 @@ export function Composer({
 							>
 								<div className="flex items-center gap-2">
 									<span className="bn-chat-accent font-mono text-[13px] font-semibold">
-										{s.cmd}
+										/{s.name}
 									</span>
 									<span className="rounded-bn-xs bg-bn-code-bg px-[7px] py-px text-[10.5px] font-semibold text-bn-text-secondary">
-										女仆技能
+										{s.builtin ? "内置" : "自定义"}
 									</span>
 								</div>
-								<div className="mt-0.5 truncate text-xs text-bn-text-tertiary">{s.desc}</div>
+								<div className="mt-0.5 truncate text-xs text-bn-text-tertiary">{s.description}</div>
 							</button>
 						))}
 					</div>

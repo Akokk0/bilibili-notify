@@ -153,10 +153,11 @@ export async function sendChatMessage(
 	/** 这一问带的图片资产 id(已经传好的),见 {@link uploadChatImage}。 */
 	images?: readonly string[],
 	/**
-	 * 会话级的两颗胶囊(深度思考 / 联网搜索)。它们不落盘,只在这一问的请求体里
-	 * 活着 —— 不带 = 都关。**要发的东西必须走参数**,别从组件闭包里读。
+	 * 只在这一问里活着的那几样:会话级的两颗胶囊(深度思考 / 联网搜索),以及
+	 * 主人打的斜杠命令点名的技能。都不落盘 —— 不带 = 都关 / 不点名。
+	 * **要发的东西必须走参数**,别从组件闭包里读。
 	 */
-	flags?: { thinking?: boolean; search?: boolean },
+	flags?: { thinking?: boolean; search?: boolean; skill?: string },
 ): Promise<AiChatReplyResponse> {
 	const path = `/api/ai/conversations/${encodeURIComponent(id)}/chat`;
 	const res = await fetch(path, {
@@ -167,6 +168,9 @@ export async function sendChatMessage(
 			...(images?.length ? { images: [...images] } : {}),
 			...(flags?.thinking ? { thinking: true } : {}),
 			...(flags?.search ? { search: true } : {}),
+			// 技能只传**名字**,正文由服务端从库里取 —— 落盘的用户消息就该是主人
+			// 真打的那几个字,不该被一整段技能正文顶掉。
+			...(flags?.skill ? { skill: flags.skill } : {}),
 			// 这里没有 mode:模式归会话所有(开局锁定),服务端 ChatRequestSchema 早
 			// 就不收这个字段了。别再加回来 —— 让请求体决定模式,等于把开写能力那道
 			// 口子的钥匙交给每一条消息。

@@ -107,7 +107,6 @@ vi.mock("../../../services/api", () => ({
 
 import { useAiChatStore } from "../../../store/aiChat";
 import { ChatPage } from "../index";
-import { AI_SKILLS } from "../skills";
 
 function wrap(node: ReactNode) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -219,49 +218,6 @@ describe("侧栏那两个入口决定模式", () => {
 		await screen.findByLabelText("聊天输入");
 		fireEvent.click(screen.getByRole("button", { name: /新建皮肤工坊/ }));
 		await send("做套暗色的");
-
-		await waitFor(() => expect(H.lastInit).toBeDefined());
-		expect(H.lastInit).toMatchObject({ mode: "skin" });
-	});
-});
-
-describe("聊天空态那排胶囊", () => {
-	it("不摆「做皮肤」那条 —— 它在这里点了做不到", async () => {
-		// 胶囊发的是技能的 `prompt`(一整段自然语言),而认技能靠的是「整条输入
-		// 恰好等于 cmd」。于是 `mode: "skin"` 在这条路上根本传不出去:点下去就是
-		// 在只读的聊天窗口里说了句「帮我做套皮肤」,女仆答应下来然后什么也做不出来。
-		// 进工坊的正经入口在侧栏那颗「新建皮肤工坊」。
-		mountFresh();
-		await screen.findByLabelText("聊天输入");
-		expect(screen.queryByRole("button", { name: /做一套界面皮肤/ })).toBeNull();
-		// 别的胶囊照旧在 —— 这不是把整排收掉。
-		expect(screen.queryByRole("button", { name: /鸽王/ })).not.toBeNull();
-	});
-
-	it("规矩按「要换面孔」来定,不是按名字点名", async () => {
-		// 将来再加一条带 mode 的技能,它同样传不出面孔 —— 判据写在字段上,
-		// 加人的时候不必再想起这件事。
-		mountFresh();
-		await screen.findByLabelText("聊天输入");
-		for (const s of AI_SKILLS.filter((x) => x.mode)) {
-			expect(screen.queryByRole("button", { name: new RegExp(s.desc) })).toBeNull();
-		}
-	});
-});
-
-describe("/皮肤 技能", () => {
-	it("在聊天会话里用 → 另开一场工坊会话,而不是在只读窗口里空转", async () => {
-		// 做皮肤那把工具只在工坊里挂着。以前它靠切模式解决,现在模式锁死 ——
-		// 那就得另开一场,否则女仆会答应下来然后什么也做不出来。
-		mountOngoing();
-		// 先等这场对话真的上屏 —— 详情还在路上时页面是空态,那时的面孔是「待建」
-		// 那一份,测的就不是「在已锁定的聊天会话里用技能」了。
-		await screen.findByText("在吗");
-		const ta = await screen.findByLabelText("聊天输入");
-		fireEvent.change(ta, { target: { value: "/皮肤" } });
-		// 打斜杠命令时菜单是展开的:第一下回车**选中技能**,第二下才是发送。
-		fireEvent.keyDown(ta, { key: "Enter" });
-		fireEvent.keyDown(await screen.findByLabelText("聊天输入"), { key: "Enter" });
 
 		await waitFor(() => expect(H.lastInit).toBeDefined());
 		expect(H.lastInit).toMatchObject({ mode: "skin" });

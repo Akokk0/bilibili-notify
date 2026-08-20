@@ -6,7 +6,7 @@
  * 那边加一个,这边得跟着配一句(有一条测试盯着,漏了会红)。
  */
 
-import { AI_TOOL_CREATE_SKIN } from "@bilibili-notify/contract";
+import { AI_TOOL_CREATE_SKIN, AI_TOOL_LOAD_SKILL } from "@bilibili-notify/contract";
 
 /** 入参里挑哪几个键来补上下文,按顺序取第一个有值的。 */
 interface LabelSpec {
@@ -29,6 +29,10 @@ const TOOL_LABELS: Record<string, LabelSpec> = {
 	// 做皮肤要跑一整趟嵌套生成,几十秒起步 —— 转圈那会儿写清「在做什么样的」,
 	// 主人才知道这是在忙正事,而不是卡住了。
 	[AI_TOOL_CREATE_SKIN]: { label: "制作皮肤", arg: ["brief"] },
+	// 读技能。**两条路共用这一条**:女仆自己挑的,以及主人打斜杠点名的(那一枚
+	// 痕迹是服务端手工补的)。名字一定要显示出来 —— 这枚胶囊存在的全部意义就是
+	// 交代「她为什么突然换了套说法」。
+	[AI_TOOL_LOAD_SKILL]: { label: "使用技能", arg: ["name"] },
 	subscribe_user: { label: "添加订阅", arg: ["name", "uid"] },
 	unsubscribe_user: { label: "取消订阅", arg: ["name", "uid"] },
 	update_subscription: { label: "修改订阅设置", arg: ["name", "uid"] },

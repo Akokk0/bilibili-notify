@@ -6,10 +6,19 @@
  * 这几条都是一闪而过的行为,在页面上靠肉眼很难反复验,所以钉在这里。
  */
 
+import type { MaidSkillDTO } from "@bilibili-notify/contract";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { Composer } from "../composer";
-import { AI_SKILLS } from "../skills";
+
+/** 菜单里那几条。技能现在从服务端来,所以测试自己造一份喂进去。 */
+const SKILLS: MaidSkillDTO[] = ["weekly-report", "unsub-cleanup", "up-pk"].map((name) => ({
+	name,
+	description: `${name} 干什么`,
+	disableModelInvocation: false,
+	body: "步骤",
+	builtin: true,
+}));
 
 afterEach(cleanup);
 
@@ -24,6 +33,7 @@ function renderComposer(initial = "", over: Partial<Parameters<typeof Composer>[
 			onSubmit={onSubmit}
 			busy={false}
 			aiName="小绫"
+			skills={SKILLS}
 			{...over}
 		/>,
 	);
@@ -36,6 +46,7 @@ function renderComposer(initial = "", over: Partial<Parameters<typeof Composer>[
 				onSubmit={onSubmit}
 				busy={false}
 				aiName="小绫"
+				skills={SKILLS}
 				{...over}
 			/>,
 		);
@@ -49,7 +60,7 @@ describe("Composer — 技能菜单", () => {
 		const { rerenderWith } = renderComposer();
 		rerenderWith("/");
 		expect(screen.getByRole("listbox", { name: "女仆技能" })).toBeTruthy();
-		expect(screen.getAllByRole("option")).toHaveLength(AI_SKILLS.length);
+		expect(screen.getAllByRole("option")).toHaveLength(SKILLS.length);
 	});
 
 	it("普通文字不弹菜单", () => {
