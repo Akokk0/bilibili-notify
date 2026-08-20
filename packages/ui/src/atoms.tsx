@@ -162,6 +162,77 @@ export function Pill({
 	);
 }
 
+// ── ToneChip ────────────────────────────────────────────────────────────────
+
+export interface ToneChipProps {
+	children: React.ReactNode;
+	/**
+	 * 选中态的语义色。收十六进制**或** `var(--color-bn-*)` —— 透明度用 `color-mix()`
+	 * 现调,不走 `${tone}1f` 那种十六进制 alpha 后缀(后缀只对 6 位 hex 生效,
+	 * 传 var() 会静默变成一条废样式)。
+	 *
+	 * 只在 `active` 时用得上,所以可选:没有开关态的纯操作钮不必填一个用不上的颜色。
+	 */
+	tone?: string;
+	/** 选中 / 开启。缺省 false = 中性描边态。 */
+	active?: boolean;
+	onClick?: () => void;
+	disabled?: boolean;
+	/** 内容按大写渲染(日志等级那排要,类型筛选不要)。 */
+	uppercase?: boolean;
+	className?: string;
+	title?: string;
+}
+
+/**
+ * 「一排里选一个 / 开一个」的可点胶囊 —— 选中时按 `tone` 染色(底 12% / 字实色 /
+ * 边 33%),未选中时退回中性描边。
+ *
+ * 与 {@link Pill} 的分工:Pill 是不可点的徽章(`<span>`,无描边),这个是按钮
+ * (`<button>`,挂 `data-bn="btn"` 跟着换肤走造型)。**别拿 Pill 套 onClick** ——
+ * 徽章语义混进按钮语义,挂点也就无处可挂了。
+ *
+ * `tone` 是**内容语义色**(error 红 / 直播粉 / 暂停橙),刻意不跟主强调色换肤:
+ * 换个皮肤不该把「error」染成别的颜色。皮肤能改的是造型那一半(圆角、描边样式、
+ * 阴影、字重),那半走 `btn` 挂点。
+ */
+export function ToneChip({
+	children,
+	tone = "var(--color-bn-pink)",
+	active = false,
+	onClick,
+	disabled,
+	uppercase,
+	className,
+	title,
+}: ToneChipProps) {
+	// active 态的三色由 `tone` 现算,只能落 inline;未选中态是静态的,走 class ——
+	// inline 没有 `:hover`,写进去这颗胶囊就永远没有悬停反馈。
+	const style: CSSProperties | undefined = active
+		? {
+				background: `color-mix(in srgb, ${tone} 12%, transparent)`,
+				color: tone,
+				borderColor: `color-mix(in srgb, ${tone} 33%, transparent)`,
+			}
+		: undefined;
+	const toneCls = active
+		? ""
+		: " bg-transparent text-bn-text-tertiary border-bn-border hover:text-bn-text-primary";
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			disabled={disabled}
+			title={title}
+			data-bn="btn"
+			className={`inline-flex items-center gap-1 rounded-bn-pill border px-3 py-1 text-[12px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50${toneCls}${uppercase ? " uppercase" : ""}${className ? ` ${className}` : ""}`}
+			style={style}
+		>
+			{children}
+		</button>
+	);
+}
+
 // ── StatusDot ───────────────────────────────────────────────────────────────
 
 export type StatusDotKind = "live" | "living" | "off" | "ok" | "warn" | "err" | "pending";
