@@ -76,6 +76,16 @@ describe("声明白名单", () => {
 		expect(warnings).toHaveLength(3);
 	});
 
+	it("image-rendering 放行 —— 像素风皮肤靠它关掉浏览器的平滑插值", () => {
+		const { css, warnings } = ok(
+			`[data-bn="page"] {
+				image-rendering: pixelated;
+			}`,
+		);
+		expect(css).toContain("image-rendering:pixelated");
+		expect(warnings).toHaveLength(0);
+	});
+
 	it("值里出现 url( / image-set( / element( → 该声明丢弃(外联取网面全禁)", () => {
 		const { css, warnings } = ok(
 			`[data-bn="glass"] {

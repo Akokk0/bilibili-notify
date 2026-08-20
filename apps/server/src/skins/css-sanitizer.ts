@@ -63,6 +63,10 @@ const EXACT_PROPS = new Set([
 	"backdrop-filter",
 	"-webkit-backdrop-filter",
 	"mix-blend-mode",
+	// 像素风皮肤的必需件:关掉浏览器对壁纸/头像的平滑插值,低分辨率点阵才有硬边。
+	// 是白名单里**唯一继承的**属性 —— 写在 `page`(=body)上会传给整棵子树,而那
+	// 正是它的正经用法(整站一起像素化)。不取网、不吃点击、不动布局,无安全面。
+	"image-rendering",
 	"clip-path",
 	"transform",
 	"transform-origin",
