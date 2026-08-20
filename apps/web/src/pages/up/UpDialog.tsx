@@ -407,13 +407,7 @@ export function UpDialog({
 		<ModalShell
 			onCancel={requestClose}
 			width={560}
-			bodyClassName=""
-			bodyStyle={{
-				maxHeight: "90vh",
-				display: "flex",
-				flexDirection: "column",
-				overflow: "hidden",
-			}}
+			bodyClassName="flex max-h-[90vh] flex-col overflow-hidden"
 		>
 			{/* Cover header */}
 			<div

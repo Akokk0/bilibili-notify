@@ -12,7 +12,7 @@
  * (e.g. cover gradients) can opt out.
  */
 
-import { type CSSProperties, type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Btn } from "./atoms";
 
@@ -22,17 +22,9 @@ export interface ModalShellProps {
 	width: number;
 	/** Body className override; defaults to `"p-6"`. Pass `""` to opt out. */
 	bodyClassName?: string;
-	/** Optional inline style merged onto the inner card (e.g. maxHeight). */
-	bodyStyle?: CSSProperties;
 }
 
-export function ModalShell({
-	children,
-	onCancel,
-	width,
-	bodyClassName = "p-6",
-	bodyStyle,
-}: ModalShellProps) {
+export function ModalShell({ children, onCancel, width, bodyClassName = "p-6" }: ModalShellProps) {
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape") onCancel();
@@ -56,11 +48,12 @@ export function ModalShell({
 				role="dialog"
 				aria-modal="true"
 				data-bn="modal"
+				// 这个元素就是 `modal` 挂点本身。曾经有个 `bodyStyle` prop 往这儿灌
+				// inline style,唯一的调用方(UpDialog)传的还全是编译期常量 —— 而
+				// inline 压过一切 author 样式,等于皮肤给弹窗写的 max-height / overflow
+				// 永远失效。改成让调用方走 bodyClassName,这里只留必需的 width(运行时值)。
 				className={`relative max-h-full overflow-y-auto rounded-bn-card bg-bn-surface-strong text-bn-text-primary shadow-bn-elev ${bodyClassName}`}
-				style={{
-					width,
-					...bodyStyle,
-				}}
+				style={{ width }}
 			>
 				{children}
 			</div>
