@@ -18,6 +18,28 @@ function validJson(extra?: object): string {
 }
 
 describe("buildSkinAiSystemPrompt", () => {
+	/**
+	 * 文字四档的**顺序**得写进提示词,不能指望模型自己猜。
+	 *
+	 * 亮色默认装曾把 secondary 配得比 tertiary 还淡(照抄设计稿),站内正文因此
+	 * 按 2.85:1 渲染 —— 那是人写的都会栽的坑,模型只会更容易栽。现存皮肤恰好
+	 * 都排对了,但那是运气不是保证。断言落在共用常量拼出的成品提示词上,
+	 * 两条造皮肤的路(这里与 web 的 buildSkinPrompt)各测各的,免得又漂开。
+	 */
+	it("教会 AI 文字四档的轻重顺序(secondary 恒重于 tertiary)", () => {
+		const p = buildSkinAiSystemPrompt(ASSETS);
+		// 断言绑在讲这条规则的那一行、且顺序词与两个键名同处**一句**之内。
+		// 松一档就白测:整份提示词里 textSecondary / textTertiary 各出现多次,
+		// `textSecondary[^\n]*重[^\n]*textTertiary` 会在任意组合上蒙中(实测把
+		// 「更重于」抽掉仍然绿);`textPrimary.*textSecondary.*textTertiary` 更是
+		// COLOR_KEY_LIST 的天然排列,恒真。
+		const rule = p.split("\n").find((l) => l.includes("文字四档"));
+		expect(`提示词里有讲文字四档的那条 ${rule !== undefined}`).toBe(
+			"提示词里有讲文字四档的那条 true",
+		);
+		expect(rule).toMatch(/textSecondary[^。]*更重于[^。]*textTertiary/);
+	});
+
 	it("包含 hook 名单、skin- 前缀规则、资产清单与「只输出 JSON」", () => {
 		const p = buildSkinAiSystemPrompt(ASSETS);
 		for (const hook of Object.keys(SKIN_CSS_HOOK_MAP)) {

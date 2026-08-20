@@ -189,6 +189,7 @@ export const SKIN_CSS_HOOK_NOTES: Record<SkinCssHook, string> = {
  */
 export const SKIN_BEST_PRACTICES = `- **亮色皮肤**:glass 统一 { background: "rgba(255, 255, 255, 0.85)", strongBackground: "rgba(255, 255, 255, 0.88)", blur: 12 },不配描边;**不写 shadows**(默认装的双层影就是亮色标准);**不写 effects**(流光/光斑这类特效全属暗色 —— 亮底上流光吃层次、光斑发灰),亮色的表现力靠渐变结界底 + 配色 + CSS
 - **暗色皮肤**:glass 统一透明度 —— background 取皮肤深底色相 alpha 0.55、strongBackground 取更深一档 alpha 0.85,blur: 18、strongBlur: 26;描边配霓虹细边(border alpha 0.22~0.28 / strongBorder 0.3~0.35);shadows 统一双层结构:card "0 10px 36px rgba(<深底>, 0.65), 0 0 18px rgba(<主强调>, 0.12)"、elev "0 18px 56px rgba(<深底>, 0.75), 0 0 30px rgba(<主强调>, 0.2)";**开 glassShine**(color 取主强调 alpha 0.32)+ bokeh(2~3 团霓虹色,alpha 0.4~0.75)—— 动效特效是暗色的专属语汇
+- **文字四档必须同向**:textPrimary(标题/人名)最重 > textSecondary(正文、说明、区块标签)更重于 textTertiary(UID、时间戳、协议行) > textDisabled 最轻。亮色越往下越浅、暗色越往下越深,两套一个方向。别照「次要=更淡」的直觉把 textSecondary 配得比 textTertiary 还淡 —— 站内正文走 secondary,配反了正文就成全页最淡的字,而且「tertiary → 悬停变 secondary」的控件会**越悬停越淡**。secondary 对底色至少 4.5:1(正文),且比 tertiary 再重 1.25 倍以上
 - **texts 写沉浸式世界观文案**:chatPlaceholder 用「状态确认 + 引导输入」句式(如「神经链路已接入,输入指令开始同步…」「39 频道已连线,和 Miku 酱开始今天的演出吧♪」),别写说明书腔`;
 
 /**

@@ -13,6 +13,21 @@ describe("buildSkinPrompt", () => {
 	const readVar = (name: string) =>
 		({ "--color-bn-pink": "#fb7299", "--bn-page-bg": "linear-gradient(#fff, #eee)" })[name] ?? "";
 
+	/** 与服务端 ai-edit 那条路同一个理由,见该文件同名用例。 */
+	it("教会 AI 文字四档的轻重顺序(secondary 恒重于 tertiary)", () => {
+		const p = buildSkinPrompt(readVar);
+		// 断言绑在讲这条规则的那一行、且顺序词与两个键名同处**一句**之内。
+		// 松一档就白测:整份提示词里 textSecondary / textTertiary 各出现多次,
+		// `textSecondary[^\n]*重[^\n]*textTertiary` 会在任意组合上蒙中(实测把
+		// 「更重于」抽掉仍然绿);`textPrimary.*textSecondary.*textTertiary` 更是
+		// COLOR_KEY_LIST 的天然排列,恒真。
+		const rule = p.split("\n").find((l) => l.includes("文字四档"));
+		expect(`提示词里有讲文字四档的那条 ${rule !== undefined}`).toBe(
+			"提示词里有讲文字四档的那条 true",
+		);
+		expect(rule).toMatch(/textSecondary[^。]*更重于[^。]*textTertiary/);
+	});
+
 	it("包含 schema 版本、语义键、当前值参考与「只输出 JSON」要求", () => {
 		const p = buildSkinPrompt(readVar);
 		expect(p).toContain("schemaVersion");
