@@ -53,6 +53,38 @@ describe("buildSkinAiSystemPrompt", () => {
 		expect(p).toMatch(/没有.*字体|字体.*没有/);
 	});
 
+	it("带上原文件名,并**说死了只准照抄哪一个** —— 两个字符串摆一起就有歧义", () => {
+		// 原名对设计师是有用的:提示词本来就要求「整套配色要跟这张图搭」,而
+		// assets/img-a1b2c3d4.png 这串 hex 什么也没告诉它。代价是同一行出现两个
+		// 字符串,所以必须点名 manifest 里写哪个 —— 写错就是产物被拒收、白烧一趟。
+		const p = buildSkinAiSystemPrompt(["assets/img-a1b2c3d4.png", "assets/font-a1.woff2"], "edit", {
+			"assets/img-a1b2c3d4.png": "樱花壁纸.png",
+			"assets/font-a1.woff2": "霞鹜文楷.woff2",
+		});
+		expect(p).toContain("assets/img-a1b2c3d4.png —— 原文件名「樱花壁纸.png」");
+		expect(p).toContain("assets/font-a1.woff2 —— 原文件名「霞鹜文楷.woff2」");
+		// 消歧那句必须真的在,而且要点名「原文件名不许写进 manifest」。
+		expect(p).toContain("原文件名只是让你知道");
+		expect(p).toMatch(/原文件名[^\n]*会被拒收/);
+	});
+
+	it("只有一部分登记了原名 → 没登记的那条仍是干净的一行,不留空引号", () => {
+		const p = buildSkinAiSystemPrompt(["assets/img-a1.png", "assets/img-b2.png"], "edit", {
+			"assets/img-a1.png": "樱花.png",
+		});
+		expect(p).toContain("- assets/img-a1.png —— 原文件名「樱花.png」");
+		expect(p).toContain("- assets/img-b2.png\n");
+		expect(p).not.toContain("「」");
+	});
+
+	it("一个原名都没有 → 措辞与从前一字不差,别凭空多出消歧的废话", () => {
+		// 聊天里做皮肤那条路(create)的图叫 assets/wallpaper.png,本来就认得出,
+		// 不该为此在提示词里多背一句它用不上的规矩。
+		const p = buildSkinAiSystemPrompt(ASSETS);
+		expect(p).toContain("(路径一字不差照抄)");
+		expect(p).not.toContain("原文件名");
+	});
+
 	it("动效预设两道菜都点名;已移除的动效与贴纸不许再教给内嵌 AI", () => {
 		const p = buildSkinAiSystemPrompt(ASSETS);
 		for (const k of ["glassShine", "bokeh"]) expect(p).toContain(k);

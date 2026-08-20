@@ -490,6 +490,36 @@ describe("POST /:id/ai-edit(让女仆改,不落盘)", () => {
 		expect(got.manifest.name).toBe("樱花夜");
 	});
 
+	it("设计师看得到资产原名 —— 光给一串 hex,它没法「让配色跟这张图搭」", async () => {
+		// 提示词那边有单测,这里钉的是**接线**:route 得真把 assetNames 递进去。
+		// 少这一根线,提示词的能力就是白写的,而且两边各自全绿。
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const form = new FormData();
+		form.set("file", new File([Buffer.from(PNG)], "樱花壁纸.png", { type: "image/png" }));
+		const { name } = (await (
+			await app.request(`/${id}/assets`, { method: "POST", body: form })
+		).json()) as any;
+
+		let seen = "";
+		const aiApp = new Hono().route(
+			"/",
+			createSkinsRoute({
+				skinStore: store,
+				commentary: () => ({
+					generateRaw: async (sys: string) => {
+						seen = sys;
+						return JSON.stringify({ schemaVersion: 1, name: "x", modes: { light: {} } });
+					},
+				}),
+			}),
+		);
+		await aiEdit(aiApp, id, {
+			instruction: "改个名",
+			draft: { schemaVersion: 1, name: "樱花夜", modes: { light: {} } },
+		});
+		expect(seen).toContain(`- ${name} —— 原文件名「樱花壁纸.png」`);
+	});
+
 	it("AI 未配置(commentary 为 null)→ 503;皮肤不存在 → 404;缺 instruction → 400", async () => {
 		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
 		expect((await aiEdit(appWithAi(null), id, { instruction: "x", draft: {} })).status).toBe(503);

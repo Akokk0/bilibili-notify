@@ -31,6 +31,8 @@ export interface SkinAiEditInput {
 	generateRaw: SkinAiGenerator["generateRaw"];
 	/** 包内资产清单(assets/<名>,图与字体的全集);AI 只许引用这里面的东西。 */
 	assets: string[];
+	/** 生成名 → 主人上传时的原文件名;只进提示词里的清单,manifest 仍写生成名。 */
+	assetNames?: Record<string, string>;
 	/** 当前 draft(编辑器手上的整份 manifest,可能含未保存改动)。 */
 	draft: unknown;
 	instruction: string;
@@ -55,6 +57,15 @@ export function buildSkinAiSystemPrompt(
 	assets: string[],
 	/** create = 从零建一套(聊天里「给我做套皮肤」),没有草稿可依。 */
 	mode: "edit" | "create" = "edit",
+	/**
+	 * `assets/<生成名>` → 主人上传时的原文件名。给了就附在清单每行后面。
+	 *
+	 * 有用是因为提示词本来就要求「整套配色要跟这张图搭」,而 `assets/img-a1b2c3d4.png`
+	 * 这串 hex 什么都没告诉设计师。代价是同一行出现两个字符串,所以一旦有原名,
+	 * 就得**明说 manifest 里照抄哪一个** —— 写错的产物会被资产校验拒收,而一趟生成
+	 * 是两分多钟。没有原名时这句消歧不出现:多背一句用不上的规矩只是噪音。
+	 */
+	names: Record<string, string> = {},
 ): string {
 	// 措辞是有代价的:这里原本写「包内可用图片」,真机上设计师就把它当成可选,
 	// 主人点名要的壁纸下下来了却没进 manifest(2026-08-18「樱落 · 樱泽墨」)。
@@ -63,15 +74,24 @@ export function buildSkinAiSystemPrompt(
 	// 写进 wallpaper.image」里,设计师就会拿 woff2 去当壁纸 —— 产物必被拒收。
 	const images = assets.filter((a) => WALLPAPER_IMAGE_RE.test(a));
 	const fonts = assets.filter((a) => SKIN_FONT_FILE_RE.test(a));
+	const listOf = (items: string[]): string =>
+		items.map((a) => (names[a] ? `- ${a} —— 原文件名「${names[a]}」` : `- ${a}`)).join("\n");
+	// 只在真有原名时才加这句 —— 一行只有一个字符串的时候,消歧是纯噪音。
+	const hasNames = assets.some((a) => names[a]);
+	const copyRule = hasNames
+		? "**只准照抄破折号前面那个 assets/… 路径;原文件名只是让你知道这是什么文件,写进 manifest 会被拒收**"
+		: "路径一字不差照抄";
+	/** 同理:没原名可看时,「原文件名点明了它是什么图」这句话本身就是废话。 */
+	const nameHint = hasNames ? " —— 原文件名往往就点明了它是什么图" : "";
 	const imageNote =
 		images.length > 0
-			? `包内图片(主人指定要用的,**必须用上**,别当可选):\n${images.map((a) => `- ${a}`).join("\n")}\n每一套 mode 都要写 wallpaper.image 引用它(路径一字不差照抄),并配 fit / overlay / blur;整套配色要跟这张图搭。wallpaper.image / chat.wallpaper.image 只准引用上面这些,别的图一律不存在。`
+			? `包内图片(主人指定要用的,**必须用上**,别当可选):\n${listOf(images)}\n每一套 mode 都要写 wallpaper.image 引用它(${copyRule}),并配 fit / overlay / blur;整套配色要跟这张图搭${nameHint}。wallpaper.image / chat.wallpaper.image 只准引用上面这些,别的图一律不存在。`
 			: "包里没有任何图片资产:不要写 wallpaper 字段,引用不存在的图会被拒收。";
 	// 字体不像壁纸那样「主人点名要的」—— 传一款字体多半只为备着,所以这里是可选,
 	// 不用壁纸那句「必须用上」的措辞。
 	const fontNote =
 		fonts.length > 0
-			? `包内字体(主人自己传的,想用就写进 fonts.asset,路径一字不差照抄):\n${fonts.map((a) => `- ${a}`).join("\n")}\nfonts.asset 只准引用上面这些。`
+			? `包内字体(主人自己传的,想用就写进 fonts.asset):\n${listOf(fonts)}\nfonts.asset 只准引用上面这些(${copyRule})。`
 			: "包里没有任何字体文件:不要写 fonts.asset —— 你没法凭空造一款字,引用不存在的字体会被拒收。要换字体只能写 fonts.body(系统里装了的家族名)。";
 	const assetNote = `${imageNote}\n${fontNote}`;
 	const intro =
@@ -174,7 +194,7 @@ export async function runSkinAiRound(input: {
 export async function runSkinAiEdit(input: SkinAiEditInput): Promise<SkinAiEditResult> {
 	return runSkinAiRound({
 		generateRaw: input.generateRaw,
-		system: buildSkinAiSystemPrompt(input.assets),
+		system: buildSkinAiSystemPrompt(input.assets, "edit", input.assetNames ?? {}),
 		user: `当前 skin.json 草稿:\n${JSON.stringify(input.draft, null, "\t")}\n\n修改要求:${input.instruction}`,
 		assets: new Set(input.assets),
 	});

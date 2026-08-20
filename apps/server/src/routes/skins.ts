@@ -129,6 +129,9 @@ export function createSkinsRoute(deps: {
 		const result = await runSkinAiEdit({
 			generateRaw: (s, u) => generator.generateRaw(s, u),
 			assets: await skinStore.listAssets(id),
+			// 原名只进提示词的资产清单(帮设计师看懂这是什么图);它写进 manifest 的
+			// 仍旧是生成名 —— 提示词里那句消歧就是为这件事写的。
+			assetNames: await skinStore.assetNames(id),
 			draft,
 			instruction: instruction.trim(),
 		});
