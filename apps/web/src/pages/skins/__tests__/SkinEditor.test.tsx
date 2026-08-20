@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { EMPTY_SLOTS, useSkinStore } from "../../../store/skin";
+import { useThemeStore } from "../../../store/theme";
 import { SkinEditor } from "../SkinEditor";
 
 const H = vi.hoisted(() => ({
@@ -108,6 +109,8 @@ beforeEach(() => {
 	H.getCalls = [];
 	H.uploadFails = false;
 	H.defaultManifest = { schemaVersion: 1, name: "出厂樱花", modes: { light: {} } };
+	// 编辑器默认编当前主题那一套 —— 主题是这一层的入参,每条用例都从浅色起跑。
+	useThemeStore.setState({ preference: "light", systemPrefersDark: false, resolved: "light" });
 	useSkinStore.setState({
 		active: EMPTY_SLOTS,
 		preview: null,
@@ -312,6 +315,32 @@ describe("SkinEditor", () => {
 		await waitFor(() =>
 			expect((screen.getByLabelText("光斑颜色") as HTMLInputElement).value).toBe("#123456"),
 		);
+	});
+
+	it("双套皮肤:开编辑器默认编**当前主题**那一套", async () => {
+		// 一进来就编主人正看着的那套。停在浅色的话:他要么先手动切一下,要么(因为
+		// 编哪套锁哪套)整个面板当场从暗色跳成亮色 —— 两种都不是他要的。
+		useThemeStore.setState({ preference: "dark", systemPrefersDark: true, resolved: "dark" });
+		renderEditor({
+			manifest: {
+				schemaVersion: 1,
+				name: "双套",
+				modes: { light: { glass: { blur: 4 } }, dark: { glass: { blur: 20 } } },
+			},
+		});
+		expect((screen.getByLabelText("玻璃模糊") as HTMLInputElement).value).toBe("20");
+		expect(useSkinStore.getState().preview?.mode).toBe("dark");
+	});
+
+	it("单套皮肤:当前主题那套压根没有 → 回落到它有的那一套", async () => {
+		// 「跟当前主题」只对两套都有的皮肤成立。纯浅色皮肤在暗色主题下若也跟主题走,
+		// 编辑器会停在一套不存在的模式上 —— 那是一整屏空控件。
+		useThemeStore.setState({ preference: "dark", systemPrefersDark: true, resolved: "dark" });
+		renderEditor({
+			manifest: { schemaVersion: 1, name: "纯浅", modes: { light: { glass: { blur: 4 } } } },
+		});
+		expect((screen.getByLabelText("玻璃模糊") as HTMLInputElement).value).toBe("4");
+		expect(useSkinStore.getState().preview?.mode).toBe("light");
 	});
 
 	it("底栏至多挂一条反馈 —— 传图失败要把上一条绿字顶掉", async () => {

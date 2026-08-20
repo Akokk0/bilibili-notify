@@ -27,6 +27,9 @@ export function skinAssetUrl(id: string, name: string): string {
 /**
  * 此刻生效的皮肤 + 应渲染的模式。锁模式只属于试穿:preview 是单套皮肤时锁到
  * 它有的那套看效果;active 槽皮肤永远渲染当前主题对应的槽,不锁 —— 槽空=默认装。
+ *
+ * 编辑器会在 preview 上**点名正在编哪一套**,那一套优先于当前主题并锁住主题 ——
+ * 不然双套皮肤在浅色页上改的每一笔都落进了看不见的那一套(见 {@link PreviewSkin})。
  */
 function resolveCurrent(
 	s: Pick<SkinState, "active" | "preview" | "killSwitch">,
@@ -35,6 +38,11 @@ function resolveCurrent(
 	const skin = effectiveSkin(s, resolved);
 	if (!skin) return null;
 	if (s.preview) {
+		// 点名的那套若压根不存在(刚删掉一色),当没点名 —— 回落比空白一片强。
+		const named = s.preview.mode ? skin.manifest.modes[s.preview.mode] : undefined;
+		if (named && s.preview.mode) {
+			return { skin, mode: named, theme: s.preview.mode, locked: true };
+		}
 		const r = resolveSkinMode(skin.manifest, resolved);
 		return { skin, mode: r.mode, theme: r.theme, locked: r.locked };
 	}

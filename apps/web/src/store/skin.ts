@@ -7,6 +7,17 @@ export interface ActiveSkin {
 	manifest: SkinManifest;
 }
 
+/**
+ * 试穿/预览中的皮肤。
+ *
+ * `mode` 是**编辑器点名正在编哪一套**:双套皮肤不点名时,预览按当前主题选套 ——
+ * 主人在浅色页上改的每一笔都落进了看不见的那一套(真机症状:「壁纸在,纱和糊
+ * 怎么调都不出来」,那张壁纸其实是深色那套的)。试穿不点名,照旧跟主题走。
+ */
+export interface PreviewSkin extends ActiveSkin {
+	mode?: ResolvedTheme;
+}
+
 /** 深浅色各一个启用槽;槽空 = 该模式默认装。 */
 export interface ActiveSkinSlots {
 	light: ActiveSkin | null;
@@ -19,7 +30,7 @@ export interface SkinState {
 	/** 服务端已启用的双槽皮肤(GET /api/skins/active)。 */
 	active: ActiveSkinSlots;
 	/** 试穿中的皮肤(不落盘,刷新即失);优先于 active,也无视 killSwitch —— 逃生舱下还得能挑新皮肤。 */
-	preview: ActiveSkin | null;
+	preview: PreviewSkin | null;
 	/** `?skin=off`:本次会话强制默认装。 */
 	killSwitch: boolean;
 	/** 试穿单套皮肤锁定的模式;ThemeRoot 以它覆盖用户偏好,主题切换钮据此置灰。 */
@@ -27,7 +38,7 @@ export interface SkinState {
 	/** 编辑器开着:它借 preview 通道做实时预览,试穿浮条(SkinPreviewBar)让位。 */
 	editing: boolean;
 	setActive: (active: ActiveSkinSlots) => void;
-	setPreview: (preview: ActiveSkin | null) => void;
+	setPreview: (preview: PreviewSkin | null) => void;
 	setKillSwitch: (killSwitch: boolean) => void;
 	setLockedTheme: (lockedTheme: ResolvedTheme | null) => void;
 	setEditing: (editing: boolean) => void;

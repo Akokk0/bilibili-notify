@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { THEME_STORAGE_KEY } from "../../services/theme";
+import { useSkinStore } from "../../store/skin";
 import { useThemeStore } from "../../store/theme";
 import { ThemeRoot } from "../theme-root";
 
@@ -70,6 +71,7 @@ async function renderHeader() {
 beforeEach(() => {
 	apiGet.mockClear();
 	resetThemeStore();
+	useSkinStore.setState({ lockedTheme: null, editing: false });
 	delete document.documentElement.dataset.theme;
 	document.documentElement.style.colorScheme = "";
 });
@@ -121,5 +123,19 @@ describe("GlassHeader theme switcher", () => {
 		await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
 		expect(useThemeStore.getState()).toMatchObject({ preference: "system", resolved: "light" });
 		expect(storage.setItem).toHaveBeenLastCalledWith(THEME_STORAGE_KEY, "system");
+	});
+
+	it("编辑器锁着主题时,别说成「试穿」—— 那句话指的操作在编辑器里不存在", async () => {
+		// 编辑器编哪一套就锁哪一套(双套皮肤也锁)。沿用试穿那句「应用或取消试穿即可
+		// 切换」的话,主人会去找一个抽屉里根本没有的按钮。
+		stubLocalStorage();
+		stubMatchMedia(false);
+		useSkinStore.setState({ lockedTheme: "light", editing: true });
+
+		await renderHeader();
+
+		const btn = await screen.findByRole("button", { name: /主题：浅色/ });
+		expect(btn.getAttribute("title")).toContain("编辑");
+		expect(btn.getAttribute("title")).not.toContain("试穿");
 	});
 });

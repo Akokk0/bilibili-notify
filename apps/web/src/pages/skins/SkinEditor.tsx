@@ -13,6 +13,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { Picker } from "../../components/forms";
 import { api } from "../../services/api";
 import { useSkinStore } from "../../store/skin";
+import { useThemeStore } from "../../store/theme";
 import {
 	addMissingMode,
 	COLOR_GROUPS,
@@ -58,7 +59,20 @@ export function SkinEditor(props: {
 	const { id, manifest, assets, assetNames, onClose } = props;
 	const qc = useQueryClient();
 	const [draft, setDraft] = useState<SkinManifest>(manifest);
-	const [modeKey, setModeKey] = useState<"light" | "dark">(manifest.modes.light ? "light" : "dark");
+	/**
+	 * 一进来编哪一套:**主人正看着的那一套**,皮肤有的话。
+	 *
+	 * 只对两套都有的皮肤有意义 —— 当前主题那套不存在(纯浅色皮肤 × 暗色面板)就回落到
+	 * 它有的那套,否则编辑器会停在一套不存在的模式上,那是一整屏空控件。
+	 *
+	 * 读一次就够,不订阅:抽屉开着时主题被锁在 modeKey 上(见下方 preview 那个 effect),
+	 * 主人切不动,再订阅只会绕回自己。
+	 */
+	const [modeKey, setModeKey] = useState<"light" | "dark">(() => {
+		const resolved = useThemeStore.getState().resolved;
+		if (manifest.modes[resolved]) return resolved;
+		return manifest.modes.light ? "light" : "dark";
+	});
 	const [confirmDiscard, setConfirmDiscard] = useState(false);
 	/**
 	 * 底栏那一条反馈。**至多一条** —— 红的绿的共用一个 state,互斥由类型管着。
@@ -95,9 +109,11 @@ export function SkinEditor(props: {
 	}, []);
 
 	// 实时预览:draft 每变一次就走一遍与试穿完全相同的合成注入路径。
+	// **modeKey 一并点名**:双套皮肤不说明在编哪一套,预览就按当前主题选,主人在
+	// 浅色页上改的每一笔都进了看不见的那一套(见 PreviewSkin.mode)。
 	useEffect(() => {
-		useSkinStore.getState().setPreview({ id, manifest: draft });
-	}, [id, draft]);
+		useSkinStore.getState().setPreview({ id, manifest: draft, mode: modeKey });
+	}, [id, draft, modeKey]);
 
 	const save = useMutation({
 		// 要发的东西必须走 variables(react-query 回调时序下闭包靠不住)。

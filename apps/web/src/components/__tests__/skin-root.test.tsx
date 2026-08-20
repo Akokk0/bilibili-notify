@@ -162,6 +162,28 @@ describe("SkinRoot", () => {
 		await waitFor(() => expect(useSkinStore.getState().lockedTheme).toBeNull());
 	});
 
+	it("编辑器点名在编哪一套 → 就渲染哪一套,不跟当前主题走", async () => {
+		// 双套皮肤 + 编辑器停在浅色页 + 主人的 dashboard 是暗色:不点名的话预览
+		// 按当前主题选到**深色**那套,于是他在浅色页上改的每一笔都石沉大海 ——
+		// 真机症状是「壁纸在(那是深色那套的),纱和糊怎么调都不出来」。
+		renderRoots();
+		// 切主题必须在挂载**之后** —— ThemeRoot 挂载时从 localStorage 水合一次偏好,
+		// 会把 render 之前设的那个盖掉(现有「深浅槽各挂一套」那条也是这个顺序)。
+		useThemeStore.getState().setPreference("dark");
+		await waitFor(() => expect(document.documentElement.dataset.theme).toBe("dark"));
+		useSkinStore.getState().setPreview({
+			...makeSkin(
+				{ light: { colors: { accent: "#111111" } }, dark: { colors: { accent: "#222222" } } },
+				"p1",
+			),
+			mode: "light",
+		});
+		await waitFor(() => expect(rootVar("--color-bn-pink")).toBe("#111111"));
+		// 编哪套就按哪套的主题渲染整页,否则浅色皮肤画在暗色底上,看到的仍不是成品。
+		expect(document.documentElement.dataset.theme).toBe("light");
+		expect(useSkinStore.getState().lockedTheme).toBe("light");
+	});
+
 	it("双套皮肤占两槽:主题跟随用户,两模式各取所配", async () => {
 		H.activeResponse = {
 			active: slotsOf(

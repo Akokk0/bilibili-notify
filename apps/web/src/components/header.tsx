@@ -212,9 +212,12 @@ function ThemeSwitcher() {
 	const preference = useThemeStore((s) => s.preference);
 	const resolved = useThemeStore((s) => s.resolved);
 	const setPreference = useThemeStore((s) => s.setPreference);
-	// 试穿单套皮肤时锁模式:锁住时切换无效,按钮置灰说明原因,而不是让用户点了没反应。
-	// (已启用的皮肤按深浅槽各自生效,不锁 —— 锁只发生在试穿。)
+	// 锁模式时切换无效,按钮置灰说明原因,而不是让用户点了没反应。
+	// (已启用的皮肤按深浅槽各自生效,不锁 —— 锁只发生在试穿与编辑器里。)
 	const lockedTheme = useSkinStore((s) => s.lockedTheme);
+	// 两种锁法要说两句话:试穿是「这皮肤只有一套」,编辑器是「你正在编这一套」。
+	// 编辑器抽屉里没有「应用/取消试穿」那两颗钮,照搬那句会让主人去找一个不存在的东西。
+	const editing = useSkinStore((s) => s.editing);
 	const [open, setOpen] = useState(false);
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const current = themeLabel(preference);
@@ -236,9 +239,13 @@ function ThemeSwitcher() {
 				variant="outline"
 				size="sm"
 				disabled
-				title={`试穿中的皮肤只有${themeLabel(lockedTheme)}一套,应用或取消试穿即可切换`}
+				title={
+					editing
+						? `正在编辑这套皮肤的${themeLabel(lockedTheme)},抽屉顶部换一套即可切换`
+						: `试穿中的皮肤只有${themeLabel(lockedTheme)}一套,应用或取消试穿即可切换`
+				}
 			>
-				主题：{themeLabel(lockedTheme)}(试穿锁定)
+				主题：{themeLabel(lockedTheme)}({editing ? "编辑中" : "试穿锁定"})
 			</Btn>
 		);
 	}
