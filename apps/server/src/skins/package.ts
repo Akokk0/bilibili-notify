@@ -9,7 +9,13 @@
 import type { SkinManifest } from "@bilibili-notify/contract";
 import { MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
 import { strFromU8, unzipSync } from "fflate";
-import { parseSkinManifest, SKIN_FONT_FILE_RE, WALLPAPER_IMAGE_RE } from "./schema.js";
+import { ASSET_NAMES_FILE, parseAssetNames } from "./asset-names.js";
+import {
+	isSkinAssetName,
+	parseSkinManifest,
+	SKIN_FONT_FILE_RE,
+	WALLPAPER_IMAGE_RE,
+} from "./schema.js";
 
 export const MAX_PACKAGE_FILES = 16;
 export const MAX_ASSET_BYTES = 5 * 1024 * 1024;
@@ -27,7 +33,14 @@ const MAX_MANIFEST_BYTES = 512 * 1024;
 const MAX_TOTAL_BYTES = 48 * 1024 * 1024;
 
 export type OpenSkinPackageResult =
-	| { ok: true; manifest: SkinManifest; assets: Map<string, Uint8Array>; warnings: string[] }
+	| {
+			ok: true;
+			manifest: SkinManifest;
+			assets: Map<string, Uint8Array>;
+			/** 资产原名清单;只做显示,缺失 / 坏掉一律空表(见 asset-names.ts)。 */
+			names: Record<string, string>;
+			warnings: string[];
+	  }
 	| { ok: false; errors: string[] };
 
 function isJunk(name: string): boolean {
@@ -96,9 +109,14 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 
 	const errors: string[] = [];
 	let manifestBytes: Uint8Array | null = null;
+	let namesBytes: Uint8Array | null = null;
 	const assets = new Map<string, Uint8Array>();
 	for (const [name, data] of Object.entries(entries)) {
-		if (name === "skin.json") {
+		if (name === ASSET_NAMES_FILE) {
+			// 原名清单**不进 assets** —— 进了就会被当成一份资产落盘、列出、serve 出去。
+			// 大小按 manifest 那条限:它顶天也就几十个文件名。
+			if (data.byteLength <= MAX_MANIFEST_BYTES) namesBytes = data;
+		} else if (name === "skin.json") {
 			if (data.byteLength > MAX_MANIFEST_BYTES) {
 				errors.push("skin.json 过大(上限 512KB)");
 			} else {
@@ -146,5 +164,14 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 	for (const name of assets.keys()) {
 		if (!referenced.has(name)) warnings.push(`${name}: 包里带了但 manifest 没引用,不会被使用`);
 	}
-	return { ok: true, manifest: parsed.skin, assets, warnings };
+	// 清单读不懂就当没有 —— 名字是锦上添花,不该让一整套皮肤装不进去。
+	let names: Record<string, string> = {};
+	if (namesBytes) {
+		try {
+			names = parseAssetNames(JSON.parse(strFromU8(namesBytes)), isSkinAssetName);
+		} catch {
+			names = {};
+		}
+	}
+	return { ok: true, manifest: parsed.skin, assets, names, warnings };
 }

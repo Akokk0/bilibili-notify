@@ -46,9 +46,16 @@ export function SkinEditor(props: {
 	manifest: SkinManifest;
 	/** 包内资产清单(assets/<名>),图片字段的全部可选项 —— 换图走重新上传组包。 */
 	assets: string[];
+	/**
+	 * `assets/<生成名>` → 主人上传时那个文件叫什么,给两个下拉当标签。
+	 *
+	 * 盘上的名字是随机 hex(**那是安全边界**:原名不进路径 / URL / CSS 的 url()),
+	 * 所以「认得出是哪个文件」这件事只能在界面这一层做。没登记的回落成生成名。
+	 */
+	assetNames: Record<string, string>;
 	onClose: () => void;
 }) {
-	const { id, manifest, assets, onClose } = props;
+	const { id, manifest, assets, assetNames, onClose } = props;
 	const qc = useQueryClient();
 	const [draft, setDraft] = useState<SkinManifest>(manifest);
 	const [modeKey, setModeKey] = useState<"light" | "dark">(manifest.modes.light ? "light" : "dark");
@@ -64,6 +71,8 @@ export function SkinEditor(props: {
 	const [aiWarnings, setAiWarnings] = useState<string[]>([]);
 	/** 包内资产 —— props 是打开那一刻的快照,传了新图就在这儿接着长。 */
 	const [assetList, setAssetList] = useState<string[]>(assets);
+	/** 同上,原名表。传完当场记上,不用等重开抽屉才认得出刚传的那个。 */
+	const [nameMap, setNameMap] = useState<Record<string, string>>(assetNames);
 	const [uploading, setUploading] = useState(false);
 	/**
 	 * 光斑颜色框里主人正在敲的原文;null = 没在敲,显示值从 draft 派生。
@@ -186,6 +195,8 @@ export function SkinEditor(props: {
 			form.set("file", file);
 			const res = await api.upload<{ name: string }>(`/api/skins/${id}/assets`, form);
 			setAssetList((prev) => (prev.includes(res.name) ? prev : [...prev, res.name]));
+			// 服务端也记了一份(过了清洗),下次打开抽屉以那份为准;这里是乐观回填。
+			setNameMap((prev) => ({ ...prev, [res.name]: file.name }));
 			const isFont = splitSkinAssets([res.name]).fonts.length > 0;
 			if (isFont) {
 				// 字体栈原样留着:自带字体排在它前面,拉不下来时还有家族名兜底。
@@ -203,6 +214,8 @@ export function SkinEditor(props: {
 	const mode: SkinMode = draft.modes[modeKey] ?? {};
 	// 两个下拉各取各的:资产清单是图与字体的全集,不分流「壁纸图片」里就会冒出 woff2。
 	const { images: imageAssets, fonts: fontAssets } = splitSkinAssets(assetList);
+	/** 下拉里显示什么。原名没登记(手工压的包、老皮肤)就回落成生成名,不留空。 */
+	const assetLabel = (name: string): string => nameMap[name] ?? name;
 	const bokehText = bokehRaw ?? (mode.effects?.bokeh?.colors ?? []).join(", ");
 	function setSection<K extends keyof SkinMode>(section: K, value: SkinMode[K] | undefined): void {
 		setDraft((d) => setModeSection(d, modeKey, section, value));
@@ -363,6 +376,7 @@ export function SkinEditor(props: {
 						wp={wp}
 						def={dm.wallpaper}
 						assets={imageAssets}
+						assetLabel={assetLabel}
 						isDef={isDef}
 						onChange={(next) => setSection("wallpaper", next)}
 						afterImage={
@@ -528,6 +542,7 @@ export function SkinEditor(props: {
 						wp={chatWp}
 						def={dm.chat?.wallpaper}
 						assets={imageAssets}
+						assetLabel={assetLabel}
 						isDef={isDef}
 						onChange={(next) => setChat({ wallpaper: next })}
 					/>
@@ -582,7 +597,7 @@ export function SkinEditor(props: {
 						}
 						options={[
 							{ value: "", label: "(不用自带字体)" },
-							...fontAssets.map((a) => ({ value: a, label: a })),
+							...fontAssets.map((a) => ({ value: a, label: assetLabel(a) })),
 						]}
 					/>
 					<FieldRow label="上传字体">
@@ -790,10 +805,12 @@ function WallpaperFields(props: {
 	isDef: (cur: string | number | undefined, def: string | number | undefined) => boolean;
 	/** 改完的整段 wallpaper(已 clean);undefined = 这套不要壁纸。 */
 	onChange: (next: SkinMode["wallpaper"]) => void;
+	/** 生成名 → 显示名(主人上传时的原文件名);没登记就回落成生成名。 */
+	assetLabel: (name: string) => string;
 	/** 图片下拉之后插一段 —— 整页那边是「上传图片」那一行。 */
 	afterImage?: ReactNode;
 }) {
-	const { imageLabel, prefix, wp, def, assets, isDef, onChange, afterImage } = props;
+	const { imageLabel, prefix, wp, def, assets, assetLabel, isDef, onChange, afterImage } = props;
 	return (
 		<>
 			<SelectField
@@ -803,7 +820,7 @@ function WallpaperFields(props: {
 				onChange={(v) => onChange(v === "" ? undefined : { ...wp, image: v })}
 				options={[
 					{ value: "", label: "(不用壁纸)" },
-					...assets.map((a) => ({ value: a, label: a })),
+					...assets.map((a) => ({ value: a, label: assetLabel(a) })),
 				]}
 			/>
 			{afterImage}

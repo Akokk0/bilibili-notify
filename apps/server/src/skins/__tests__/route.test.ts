@@ -286,6 +286,53 @@ describe("GET /:id/export(导出皮肤包)", () => {
 	});
 });
 
+describe("资产原名(只做显示,盘上仍是生成名)", () => {
+	const WOFF2 = new Uint8Array([0x77, 0x4f, 0x46, 0x32]);
+
+	it("传上来的文件名记进清单,manifest 接口带回去给下拉当标签", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const form = new FormData();
+		form.set("file", new File([Buffer.from(WOFF2)], "霞鹜文楷 Light.woff2", { type: "" }));
+		const { name } = (await (
+			await app.request(`/${id}/assets`, { method: "POST", body: form })
+		).json()) as any;
+
+		const body = (await (await app.request(`/${id}/manifest`)).json()) as any;
+		// 盘上的名字仍旧是生成的 —— 原名一个字都没进路径。
+		expect(name).toMatch(/^assets\/font-[A-Za-z0-9]+\.woff2$/);
+		expect(body.assetNames).toEqual({ [name]: "霞鹜文楷 Light.woff2" });
+	});
+
+	it("原名随导出的 zip 走,再装回来还认得出", async () => {
+		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
+		const form = new FormData();
+		form.set("file", new File([Buffer.from(PNG)], "樱花壁纸.png", { type: "image/png" }));
+		const { name } = (await (
+			await app.request(`/${id}/assets`, { method: "POST", body: form })
+		).json()) as any;
+
+		const zip = await app.request(`/${id}/export`);
+		const { unzipSync } = await import("fflate");
+		const files = unzipSync(new Uint8Array(await zip.arrayBuffer()));
+		expect(Object.keys(files)).toContain("assets/index.json");
+
+		const again = await upload(
+			app,
+			new File([Buffer.from(zipSync(files))], "skin.zip", { type: "application/zip" }),
+		);
+		expect(again.status).toBe(201);
+		const reborn = (await again.json()) as any;
+		const back = (await (await app.request(`/${reborn.id}/manifest`)).json()) as any;
+		expect(back.assetNames).toEqual({ [name]: "樱花壁纸.png" });
+	});
+
+	it("没有原名可记的包 → assetNames 是空表,不是缺字段", async () => {
+		const { id } = (await (await upload(app, makeZipFile(true))).json()) as any;
+		const body = (await (await app.request(`/${id}/manifest`)).json()) as any;
+		expect(body.assetNames).toEqual({});
+	});
+});
+
 describe("自带字体的整条路(传 → 存 → 导出 → 再装回去)", () => {
 	const WOFF2 = new Uint8Array([0x77, 0x4f, 0x46, 0x32]);
 
@@ -317,7 +364,8 @@ describe("自带字体的整条路(传 → 存 → 导出 → 再装回去)", ()
 		const zip = await app.request(`/${id}/export`);
 		const { unzipSync, strFromU8 } = await import("fflate");
 		const files = unzipSync(new Uint8Array(await zip.arrayBuffer()));
-		expect(Object.keys(files).sort()).toEqual([name, "skin.json"].sort());
+		// index.json = 原名清单(主人传的时候叫「霞鹜文楷.woff2」),纯显示用。
+		expect(Object.keys(files).sort()).toEqual([name, "assets/index.json", "skin.json"].sort());
 		expect(new Uint8Array(files[name] as Uint8Array)).toEqual(WOFF2);
 		expect(JSON.parse(strFromU8(files["skin.json"] as Uint8Array)).modes.light.fonts).toEqual({
 			asset: name,

@@ -212,6 +212,70 @@ describe("SkinStore", () => {
 	});
 });
 
+describe("资产原名清单(assetNames)", () => {
+	/**
+	 * 盘上的名字是随机生成的,主人在下拉里只看得到一串 hex。原名另存一份清单,
+	 * 而**目录才是真相** —— 与卡片字体图廊同一条纪律。
+	 */
+	it("传的时候带上原名 → assetNames 里查得到", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		const name = await store.addAsset(id, WOFF2, "woff2", "霞鹜文楷 Light.woff2");
+		expect(await store.assetNames(id)).toEqual({ [name]: "霞鹜文楷 Light.woff2" });
+	});
+
+	it("不带原名 → 清单里就没这条(前端回落成生成名)", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		await store.addAsset(id, PNG, "png");
+		expect(await store.assetNames(id)).toEqual({});
+	});
+
+	it("两次上传各记各的,不会互相顶掉", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		const a = await store.addAsset(id, PNG, "png", "樱花.png");
+		const b = await store.addAsset(id, WOFF2, "woff2", "文楷.woff2");
+		expect(await store.assetNames(id)).toEqual({ [a]: "樱花.png", [b]: "文楷.woff2" });
+	});
+
+	it("包里带的清单随 save 落盘", async () => {
+		const { id } = await store.save({
+			manifest: makeManifest(),
+			assets: new Map([["assets/bg.png", PNG]]),
+			names: { "assets/bg.png": "主人的壁纸.png" },
+		});
+		expect(await store.assetNames(id)).toEqual({ "assets/bg.png": "主人的壁纸.png" });
+	});
+
+	it("清单里记着盘上没有的文件 → 不列出来(目录才是真相)", async () => {
+		const { id } = await store.save({
+			manifest: makeManifest(),
+			assets: new Map([["assets/bg.png", PNG]]),
+			names: { "assets/bg.png": "在.png", "assets/gone.png": "不在.png" },
+		});
+		expect(await store.assetNames(id)).toEqual({ "assets/bg.png": "在.png" });
+	});
+
+	it("清单文件损坏 / 不存在 → 空表,资产照列(名字丢了不该让图廊瘫掉)", async () => {
+		const { id } = await store.save({
+			manifest: makeManifest(),
+			assets: new Map([["assets/bg.png", PNG]]),
+		});
+		await writeFile(join(dir, id, "assets", "index.json"), "{坏掉的 JSON");
+		expect(await store.assetNames(id)).toEqual({});
+		expect(await store.listAssets(id)).toEqual(["assets/bg.png"]);
+	});
+
+	it("清单文件自己不算一份资产 —— .json 不在白名单上,列不出也 serve 不了", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		await store.addAsset(id, PNG, "png", "樱花.png");
+		expect(await store.listAssets(id)).toHaveLength(1);
+		expect(await store.assetPath(id, "assets/index.json")).toBeNull();
+	});
+
+	it("皮肤不存在 → 空表", async () => {
+		expect(await store.assetNames("nope")).toEqual({});
+	});
+});
+
 describe("往已有皮肤里加图(addAsset)", () => {
 	/**
 	 * 编辑器里那个「传图」入口的落点。皮肤包做出来之后想换张壁纸,原先只能

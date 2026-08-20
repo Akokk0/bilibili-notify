@@ -8,12 +8,15 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SkinListEntry, SkinManifest } from "@bilibili-notify/contract";
+import { ASSET_NAMES_FILE, parseAssetNames, sanitizeAssetLabel } from "./asset-names.js";
 import { MAX_ASSET_BYTES, MAX_FONT_BYTES } from "./package.js";
 import { isSkinAssetName } from "./schema.js";
 
 interface SavedSkin {
 	manifest: SkinManifest;
 	assets: Map<string, Uint8Array>;
+	/** 资产原名清单(`assets/<生成名>` → 主人上传时叫什么);只做显示,见 asset-names.ts。 */
+	names?: Record<string, string>;
 }
 
 /**
@@ -103,6 +106,10 @@ export class SkinStore {
 			if (!isSkinAssetName(name)) continue;
 			await writeFile(join(tmpDir, "assets", name.slice("assets/".length)), data);
 		}
+		// 空清单不落文件 —— 没有原名可记的包(聊天里生成的、手工压的)不该多带一个空壳。
+		if (pkg.names && Object.keys(pkg.names).length > 0) {
+			await writeFile(join(tmpDir, ASSET_NAMES_FILE), JSON.stringify(pkg.names, null, "\t"));
+		}
 		await rename(tmpDir, join(this.skinsDir, id));
 		this.index.set(id, pkg.manifest);
 		return { id };
@@ -134,7 +141,13 @@ export class SkinStore {
 	 * 5MB 卡它等于自带字体这功能不存在;而壁纸没有大到 20MB 的理由,不跟着放宽。
 	 * 名字前缀(`img-` / `font-`)只是让盘上一眼分得清,分流靠的是后缀。
 	 */
-	async addAsset(id: string, bytes: Uint8Array, ext: string): Promise<string> {
+	async addAsset(
+		id: string,
+		bytes: Uint8Array,
+		ext: string,
+		/** 主人上传时这个文件叫什么;只做显示,过 sanitizeAssetLabel 后记进原名清单。 */
+		originalName?: string,
+	): Promise<string> {
 		if (!this.index.has(id)) throw new Error("皮肤不存在或已被删除");
 		const clean = ext.toLowerCase().replace(/^\./, "");
 		const isFont = SKIN_FONT_EXTS.has(clean);
@@ -160,7 +173,49 @@ export class SkinStore {
 		const dir = join(this.skinsDir, id, "assets");
 		await mkdir(dir, { recursive: true });
 		await writeFile(join(dir, name.slice("assets/".length)), bytes);
+		const label = sanitizeAssetLabel(originalName);
+		if (label !== null) {
+			// 先读后写:清单里已有的几条不能被这一次上传顶掉。
+			await this.writeAssetNames(id, { ...(await this.readAssetNames(id)), [name]: label });
+		}
 		return name;
+	}
+
+	/**
+	 * 资产原名清单(`assets/<生成名>` → 主人上传时叫什么)。**以目录为真相**:
+	 * 盘上没有的记录一概不给,清单缺失 / 损坏一律当空 —— 名字没了不该让图廊瘫掉。
+	 */
+	async assetNames(id: string): Promise<Record<string, string>> {
+		const names = await this.readAssetNames(id);
+		if (Object.keys(names).length === 0) return names;
+		const onDisk = new Set(await this.listAssets(id));
+		const out: Record<string, string> = {};
+		for (const [key, label] of Object.entries(names)) {
+			if (onDisk.has(key)) out[key] = label;
+		}
+		return out;
+	}
+
+	/** 裸读清单文件(不与目录对账);缺失 / 损坏 / 皮肤不存在一律回空表。 */
+	private async readAssetNames(id: string): Promise<Record<string, string>> {
+		if (!this.index.has(id)) return {};
+		try {
+			const raw: unknown = JSON.parse(
+				await readFile(join(this.skinsDir, id, ASSET_NAMES_FILE), "utf8"),
+			);
+			return parseAssetNames(raw, isSkinAssetName);
+		} catch {
+			return {};
+		}
+	}
+
+	private async writeAssetNames(id: string, names: Record<string, string>): Promise<void> {
+		const dir = join(this.skinsDir, id, "assets");
+		await mkdir(dir, { recursive: true });
+		await this.writeAtomic(
+			join(this.skinsDir, id, ASSET_NAMES_FILE),
+			JSON.stringify(names, null, "\t"),
+		);
 	}
 
 	/**

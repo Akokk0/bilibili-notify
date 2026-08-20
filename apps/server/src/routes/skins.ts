@@ -7,6 +7,7 @@ import { readFile } from "node:fs/promises";
 import type {
 	ActiveSkinResponse,
 	SkinDefaultResponse,
+	SkinManifestResponse,
 	SkinsListResponse,
 } from "@bilibili-notify/contract";
 import { strToU8, zipSync } from "fflate";
@@ -14,6 +15,7 @@ import { Hono } from "hono";
 import { FONT_EXT_TO_MIME, fontExtOf } from "../runtime/font-mime.js";
 import { EXT_TO_MIME, MIME_TO_EXT } from "../runtime/image-mime.js";
 import { runSkinAiEdit, type SkinAiGenerator } from "../skins/ai-edit.js";
+import { ASSET_NAMES_FILE } from "../skins/asset-names.js";
 import { MAX_FONT_BYTES, openSkinPackage, referencedAssets } from "../skins/package.js";
 import { parseSkinManifest } from "../skins/schema.js";
 import type { SkinStore } from "../skins/store.js";
@@ -60,7 +62,11 @@ export function createSkinsRoute(deps: {
 		const bytes = new Uint8Array(await file.arrayBuffer());
 		const opened = openSkinPackage(bytes);
 		if (!opened.ok) return c.json({ ok: false, errors: opened.errors }, 400);
-		const { id } = await skinStore.save({ manifest: opened.manifest, assets: opened.assets });
+		const { id } = await skinStore.save({
+			manifest: opened.manifest,
+			assets: opened.assets,
+			names: opened.names,
+		});
 		return c.json({ ok: true, id, warnings: opened.warnings }, 201);
 	});
 
@@ -134,8 +140,14 @@ export function createSkinsRoute(deps: {
 		const id = c.req.param("id");
 		const manifest = await skinStore.get(id);
 		if (!manifest) return c.json({ ok: false, err: "皮肤不存在" }, 404);
-		// assets 给编辑器画图片下拉;试穿路径拿到也无害。
-		return c.json({ manifest, assets: await skinStore.listAssets(id) });
+		// assets 给编辑器画两个下拉,assetNames 给它们当标签(盘上是生成名,
+		// 光有 hex 主人认不出哪个是哪个)。试穿路径拿到也无害。
+		const body: SkinManifestResponse = {
+			manifest,
+			assets: await skinStore.listAssets(id),
+			assetNames: await skinStore.assetNames(id),
+		};
+		return c.json(body);
 	});
 
 	/**
@@ -173,7 +185,13 @@ export function createSkinsRoute(deps: {
 			);
 		}
 		try {
-			const name = await skinStore.addAsset(id, new Uint8Array(await file.arrayBuffer()), ext);
+			// 原始文件名只进原名清单(纯显示),**绝不进磁盘路径 / URL / CSS**。
+			const name = await skinStore.addAsset(
+				id,
+				new Uint8Array(await file.arrayBuffer()),
+				ext,
+				file.name,
+			);
 			return c.json({ ok: true, name }, 201);
 		} catch (e) {
 			return c.json({ ok: false, err: e instanceof Error ? e.message : String(e) }, 400);
@@ -229,6 +247,11 @@ export function createSkinsRoute(deps: {
 		const files: Record<string, Uint8Array> = {
 			"skin.json": strToU8(JSON.stringify(manifest, null, "\t")),
 		};
+		// 原名清单随包走 —— 否则主人把皮肤发给别人,那边下拉里又只剩一串 hex。
+		const names = await skinStore.assetNames(id);
+		if (Object.keys(names).length > 0) {
+			files[ASSET_NAMES_FILE] = strToU8(JSON.stringify(names, null, "\t"));
+		}
 		// 各张资产之间没有先后关系,一张最大 5MB、最多 12 张 —— 串行读等于把
 		// 24 次系统调用排成一条队,而主人在等一个 zip。
 		const assets = await Promise.all(

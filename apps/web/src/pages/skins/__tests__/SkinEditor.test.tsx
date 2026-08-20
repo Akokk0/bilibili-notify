@@ -72,13 +72,19 @@ function makeManifest(): SkinManifest {
 }
 
 const ASSETS = ["assets/bg.png", "assets/deco.webp", "assets/font-a1b2c3d4.woff2"];
+/** 只覆盖一部分 —— 没登记的那两个必须回落成生成名,不能空着。 */
+const ASSET_NAMES = { "assets/font-a1b2c3d4.woff2": "霞鹜文楷 Light.woff2" };
 
 /** 「字体」是折叠段,收起时子节点根本不进 DOM —— 查控件之前先摊开。 */
 function openFontFold(): void {
 	fireEvent.click(screen.getByText("字体").closest("button") as HTMLButtonElement);
 }
 
-function renderEditor(overrides?: { manifest?: SkinManifest; onClose?: () => void }) {
+function renderEditor(overrides?: {
+	manifest?: SkinManifest;
+	assetNames?: Record<string, string>;
+	onClose?: () => void;
+}) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const onClose = overrides?.onClose ?? vi.fn();
 	const utils = render(
@@ -87,6 +93,7 @@ function renderEditor(overrides?: { manifest?: SkinManifest; onClose?: () => voi
 				id="s1"
 				manifest={overrides?.manifest ?? makeManifest()}
 				assets={ASSETS}
+				assetNames={overrides?.assetNames ?? ASSET_NAMES}
 				onClose={onClose}
 			/>
 		</QueryClientProvider>,
@@ -348,6 +355,34 @@ describe("SkinEditor", () => {
 		await waitFor(() =>
 			expect(useSkinStore.getState().preview?.manifest.modes.light?.fonts?.asset).toBeUndefined(),
 		);
+	});
+
+	it("下拉显示主人上传时的原名,没登记的回落成生成名", async () => {
+		// 盘上是随机 hex(那是安全边界:名字不进路径/URL/CSS),所以界面这一层
+		// 必须把原名端出来 —— 否则主人看到的只有一串认不出的 font-a1b2c3d4。
+		renderEditor();
+		openFontFold();
+		const font = [...(screen.getByLabelText("自带字体") as HTMLSelectElement).options];
+		expect(font.find((o) => o.value === "assets/font-a1b2c3d4.woff2")?.textContent).toBe(
+			"霞鹜文楷 Light.woff2",
+		);
+
+		const image = [...(screen.getByLabelText("壁纸图片") as HTMLSelectElement).options];
+		expect(image.find((o) => o.value === "assets/bg.png")?.textContent).toBe("assets/bg.png");
+	});
+
+	it("传完之后下拉上立刻是刚传那个文件的名字,不用等重开抽屉", async () => {
+		renderEditor();
+		openFontFold();
+		fireEvent.change(screen.getByLabelText("上传字体"), {
+			target: { files: [new File([new Uint8Array([1])], "思源宋体.woff2", { type: "" })] },
+		});
+		await waitFor(() => {
+			const opts = [...(screen.getByLabelText("自带字体") as HTMLSelectElement).options];
+			expect(opts.find((o) => o.value === "assets/font-99887766.woff2")?.textContent).toBe(
+				"思源宋体.woff2",
+			);
+		});
 	});
 
 	it("传一款字体 → 立刻选成自带字体(会来传字体的人正是想换字体)", async () => {

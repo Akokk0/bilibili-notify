@@ -50,6 +50,8 @@ export function SkinSection() {
 		id: string;
 		manifest: SkinManifest;
 		assets: string[];
+		/** 生成名 → 主人上传时的原文件名,给抽屉里两个下拉当标签。 */
+		assetNames: Record<string, string>;
 	} | null>(null);
 	const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -113,11 +115,16 @@ export function SkinSection() {
 		}
 	}
 
-	/** 打开调整抽屉:拉 manifest + 包内资产清单(图片字段的可选项)。 */
+	/** 打开调整抽屉:拉 manifest + 包内资产清单(两个下拉的可选项)与它们的原名。 */
 	async function openEditor(id: string): Promise<void> {
 		try {
 			const res = await api.get<SkinManifestResponse>(`/api/skins/${id}/manifest`);
-			setEditing({ id, manifest: res.manifest, assets: res.assets ?? [] });
+			setEditing({
+				id,
+				manifest: res.manifest,
+				assets: res.assets ?? [],
+				assetNames: res.assetNames ?? {},
+			});
 			setError(null);
 		} catch (e) {
 			setError(String((e as Error).message));
@@ -270,6 +277,7 @@ export function SkinSection() {
 					id={editing.id}
 					manifest={editing.manifest}
 					assets={editing.assets}
+					assetNames={editing.assetNames}
 					onClose={() => setEditing(null)}
 				/>
 			) : null}

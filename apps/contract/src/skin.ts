@@ -334,6 +334,13 @@ export interface ActiveSkinResponse {
 export interface SkinManifestResponse {
 	manifest: SkinManifest;
 	assets: string[];
+	/**
+	 * `assets/<生成名>` → 主人上传时那个文件叫什么。**只做显示** —— 盘上、URL 里、
+	 * CSS 的 `url()` 里用的永远是生成名,原名唯一的去处是界面上的一段文本。
+	 *
+	 * 清单里没有的资产回落成生成名,所以这张表可以是空的、也可以只覆盖一部分。
+	 */
+	assetNames: Record<string, string>;
 }
 
 /** PUT /api/skins/:id/manifest(编辑器就地保存,资产不变)。 */

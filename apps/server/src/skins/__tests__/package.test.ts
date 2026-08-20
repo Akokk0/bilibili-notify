@@ -210,6 +210,48 @@ describe("openSkinPackage", () => {
 		expect(image.ok).toBe(false);
 	});
 
+	it("包里的原名清单被解析出来,而它自己不算一份资产", () => {
+		const zip = makeZip({
+			"skin.json": manifestJson({
+				modes: { light: { wallpaper: { image: "assets/img-a1.png" } } },
+			}),
+			"assets/img-a1.png": PNG,
+			"assets/index.json": strToU8(JSON.stringify({ "assets/img-a1.png": "樱花壁纸.png" })),
+		});
+		const r = openSkinPackage(zip);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.names).toEqual({ "assets/img-a1.png": "樱花壁纸.png" });
+		// 不进 assets:进了就会被当成一份资产落盘、列出、甚至 serve 出去。
+		expect(r.assets.has("assets/index.json")).toBe(false);
+		// 也不该被当成「带了但没引用的多余资产」告警。
+		expect(r.warnings.join()).not.toContain("index.json");
+	});
+
+	it("清单坏掉 → 照收这个包,只是没名字(名字不是包的必要成分)", () => {
+		const zip = makeZip({
+			"skin.json": manifestJson(),
+			"assets/index.json": strToU8("{这不是 JSON"),
+		});
+		const r = openSkinPackage(zip);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.names).toEqual({});
+	});
+
+	it("清单里的键不是合法资产名 → 丢掉那条", () => {
+		const zip = makeZip({
+			"skin.json": manifestJson(),
+			"assets/index.json": strToU8(
+				JSON.stringify({ "../../etc/passwd": "坏", "assets/ok.png": "好.png" }),
+			),
+		});
+		const r = openSkinPackage(zip);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.names).toEqual({ "assets/ok.png": "好.png" });
+	});
+
 	it("文件数超上限 → 拒绝", () => {
 		const files: Record<string, Uint8Array> = { "skin.json": manifestJson() };
 		for (let i = 0; i < 20; i++) files[`assets/a${i}.png`] = PNG;
