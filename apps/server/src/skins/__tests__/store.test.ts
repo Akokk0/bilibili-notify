@@ -5,7 +5,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SkinManifest } from "@bilibili-notify/contract";
@@ -424,5 +424,109 @@ describe("ensureReady:一份两处用,谁先来谁补上", () => {
 		const fresh = new SkinStore({ skinsDir: dir });
 		await Promise.all([fresh.ensureReady(), fresh.ensureReady()]);
 		expect(fresh.getActive()).toEqual({ light: null, dark: null });
+	});
+});
+
+describe("removeMode —— 只删一色", () => {
+	/** 建一套深浅都有的皮肤,返回 id。 */
+	async function makeDual(): Promise<string> {
+		const { id } = await store.save({
+			manifest: makeManifest({
+				modes: {
+					light: { colors: { accent: "#fb7299" } },
+					dark: { colors: { accent: "#00e5ff" } },
+				},
+			}),
+			assets: new Map(),
+		});
+		return id;
+	}
+
+	it("删掉那一色,另一色一字不动", async () => {
+		const id = await makeDual();
+		await store.removeMode(id, "light");
+		const m = await store.get(id);
+		expect(m?.modes.light).toBeUndefined();
+		expect(m?.modes.dark).toEqual({ colors: { accent: "#00e5ff" } });
+	});
+
+	it("落的是盘,重开一家店照样只剩一色", async () => {
+		const id = await makeDual();
+		await store.removeMode(id, "dark");
+		const reopened = new SkinStore({ skinsDir: dir });
+		await reopened.init();
+		expect((await reopened.get(id))?.modes.dark).toBeUndefined();
+		expect((await reopened.get(id))?.modes.light).toBeDefined();
+	});
+
+	it("出厂快照里也一并删 —— 否则「恢复默认值」会把它悄悄带回来", async () => {
+		// 主人明明删了浅色,一点「恢复默认值」它又回来了 —— 这件事界面上没地方
+		// 交代,看起来就是个 bug。主人 2026-08-20 拍板:删了就是删了。
+		const id = await makeDual();
+		await store.setDefault(id);
+		await store.removeMode(id, "light");
+		const snap = await store.getDefault(id);
+		expect(snap?.modes.light).toBeUndefined();
+		expect(snap?.modes.dark).toBeDefined();
+	});
+
+	it("盘上没有快照(存量目录)→ 照删不误,不因为缺一份快照就失败", async () => {
+		// `save()` 本来就会写 default.json,所以这个场景只出现在旧版留下的目录上。
+		const id = await makeDual();
+		await rm(join(dir, id, "default.json"));
+		await store.removeMode(id, "light");
+		expect((await store.get(id))?.modes.light).toBeUndefined();
+		expect(await store.getDefault(id)).toBeNull();
+	});
+
+	it("那一色正被启用 → 顺手把那个槽卸下来", async () => {
+		// 不卸的话,active.light 指着一套没有 light 的皮肤 —— setActiveSlot 明明
+		// 拦着这种状态(「纯暗皮肤进不了亮槽」),从这条路却能绕出来。
+		const id = await makeDual();
+		await store.activate(id);
+		expect(await store.getActive()).toEqual({ light: id, dark: id });
+		await store.removeMode(id, "light");
+		expect(await store.getActive()).toEqual({ light: null, dark: id });
+	});
+
+	it("别人占着的槽不受牵连", async () => {
+		const id = await makeDual();
+		const other = (await store.save({ manifest: makeManifest(), assets: new Map() })).id;
+		await store.setActiveSlot("dark", id);
+		await store.setActiveSlot("light", other);
+		await store.removeMode(id, "dark");
+		expect(await store.getActive()).toEqual({ light: other, dark: null });
+	});
+
+	it("最后一套模式删不得 —— 那等于删掉整套皮肤", async () => {
+		// schema 要求「至少给一套」。真让它删空,盘上就躺着一套永远装不上、
+		// 也编辑不了的皮肤 —— 该走「删除」那条路。
+		const id = await makeDual();
+		await store.removeMode(id, "light");
+		await expect(store.removeMode(id, "dark")).rejects.toThrow(/最后/);
+		expect((await store.get(id))?.modes.dark).toBeDefined();
+	});
+
+	it("本来就没有那一色 → 拒,别装作删过了", async () => {
+		const { id } = await store.save({ manifest: makeManifest(), assets: new Map() });
+		await expect(store.removeMode(id, "dark")).rejects.toThrow(/没有/);
+	});
+
+	it("不认识的 id 一律拒 —— 这道闸与 remove 同一条纪律", async () => {
+		// `%2e%2e%2f` 这种写法 Hono 会解码,而这里干的是写盘。
+		for (const bad of ["../evil", "nope"]) {
+			await expect(store.removeMode(bad, "light")).rejects.toThrow();
+		}
+	});
+
+	it("资产一张不动 —— 那一色用的图,另一色可能马上要接着用", async () => {
+		const { id } = await store.save({
+			manifest: makeManifest({
+				modes: { light: { wallpaper: { image: "assets/bg.png" } }, dark: {} },
+			}),
+			assets: new Map([["assets/bg.png", PNG]]),
+		});
+		await store.removeMode(id, "light");
+		expect(await store.listAssets(id)).toEqual(["assets/bg.png"]);
 	});
 });

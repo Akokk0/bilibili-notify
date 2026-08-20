@@ -44,7 +44,12 @@ export function SkinSection() {
 	const qc = useQueryClient();
 	const [error, setError] = useState<string | null>(null);
 	const [warnings, setWarnings] = useState<string[]>([]);
-	const [confirmRemove, setConfirmRemove] = useState<{ id: string; name: string } | null>(null);
+	/** 待确认删除的那套。带上 `modes` —— 双色皮肤要给「只删一色」的选项。 */
+	const [confirmRemove, setConfirmRemove] = useState<{
+		id: string;
+		name: string;
+		modes: Array<"light" | "dark">;
+	} | null>(null);
 	const [guideOpen, setGuideOpen] = useState(false);
 	const [editing, setEditing] = useState<{
 		id: string;
@@ -80,6 +85,21 @@ export function SkinSection() {
 
 	const remove = useMutation({
 		mutationFn: (id: string) => api.delete<{ ok: boolean }>(`/api/skins/${id}`),
+		onSuccess: async () => {
+			setError(null);
+			await syncActiveSkinToStore();
+			refresh();
+		},
+		onError: (e) => setError(String((e as Error).message)),
+	});
+
+	/**
+	 * 只删一色。服务端会顺手把指着这一色的启用槽卸下来,所以这里同样要
+	 * `syncActiveSkinToStore()` —— 不同步的话页面上还穿着一套已经没了的模式。
+	 */
+	const removeMode = useMutation({
+		mutationFn: (req: { id: string; theme: "light" | "dark" }) =>
+			api.delete<{ ok: boolean }>(`/api/skins/${req.id}/modes/${req.theme}`),
 		onSuccess: async () => {
 			setError(null);
 			await syncActiveSkinToStore();
@@ -235,8 +255,10 @@ export function SkinSection() {
 							onTryOn={() => void tryOn(entry.id)}
 							onEdit={() => void openEditor(entry.id)}
 							onExport={() => downloadSkin(entry)}
-							onRemove={() => setConfirmRemove({ id: entry.id, name: entry.name })}
-							busy={remove.isPending}
+							onRemove={() =>
+								setConfirmRemove({ id: entry.id, name: entry.name, modes: entry.modes })
+							}
+							busy={remove.isPending || removeMode.isPending}
 						/>
 					);
 				})}
@@ -249,17 +271,34 @@ export function SkinSection() {
 			</p>
 
 			{confirmRemove ? (
-				<ConfirmDialog
-					title="删除皮肤"
-					message={`确定删除「${confirmRemove.name}」吗?删除后不可恢复。`}
-					danger
-					confirmLabel="删除"
-					onConfirm={() => {
-						remove.mutate(confirmRemove.id);
-						setConfirmRemove(null);
-					}}
-					onCancel={() => setConfirmRemove(null)}
-				/>
+				confirmRemove.modes.length > 1 ? (
+					<RemoveSkinDialog
+						name={confirmRemove.name}
+						onPickMode={(theme) => {
+							removeMode.mutate({ id: confirmRemove.id, theme });
+							setConfirmRemove(null);
+						}}
+						onRemoveAll={() => {
+							remove.mutate(confirmRemove.id);
+							setConfirmRemove(null);
+						}}
+						onCancel={() => setConfirmRemove(null)}
+					/>
+				) : (
+					// 只有一色时「只删这一色」就等于「删整套」,摆出来只会让人犹豫
+					// 该点哪个 —— 那时照旧是一句「确定删除吗」。
+					<ConfirmDialog
+						title="删除皮肤"
+						message={`确定删除「${confirmRemove.name}」吗?删除后不可恢复。`}
+						danger
+						confirmLabel="删除"
+						onConfirm={() => {
+							remove.mutate(confirmRemove.id);
+							setConfirmRemove(null);
+						}}
+						onCancel={() => setConfirmRemove(null)}
+					/>
+				)
 			) : null}
 
 			{guideOpen ? (
@@ -291,6 +330,43 @@ function downloadSkin(entry: SkinListEntry): void {
 	a.href = `/api/skins/${entry.id}/export`;
 	a.download = `${entry.name}.zip`;
 	a.click();
+}
+
+/**
+ * 双色皮肤的删除对话框:删整套,还是只删其中一色。
+ *
+ * 不复用 `ConfirmDialog` —— 那是「确认 / 取消」两颗钮的原语,这里要三选一。
+ * 两条排版上的取舍:**「只删一色」摆在上面、用 outline**,「删除整套」在下面、
+ * 用 danger 红 —— 主人点开这个窗多半是冲着「留一色」来的(冲着删整套来的从前
+ * 一路就有),破坏力最大的那颗不该是最顺手的那颗。
+ */
+function RemoveSkinDialog(props: {
+	name: string;
+	onPickMode: (theme: "light" | "dark") => void;
+	onRemoveAll: () => void;
+	onCancel: () => void;
+}) {
+	return (
+		<ModalShell onCancel={props.onCancel} width={340} bodyClassName="p-5">
+			<div className="mb-1.5 text-[14px] font-bold text-bn-text-primary">删除皮肤</div>
+			<div className="text-[13px] leading-relaxed text-bn-text-secondary">
+				「{props.name}」有浅色和暗色两套。要删哪一部分?删除后不可恢复。
+			</div>
+			<div className="mt-4 flex flex-col gap-2">
+				{(["light", "dark"] as const).map((theme) => (
+					<Btn key={theme} variant="outline" size="sm" onClick={() => props.onPickMode(theme)}>
+						只删{MODE_LABEL[theme]}(留下{MODE_LABEL[theme === "light" ? "dark" : "light"]})
+					</Btn>
+				))}
+				<Btn variant="danger" size="sm" onClick={props.onRemoveAll}>
+					删除整套
+				</Btn>
+				<Btn variant="ghost" size="sm" onClick={props.onCancel}>
+					取消
+				</Btn>
+			</div>
+		</ModalShell>
+	);
 }
 
 function SkinRow(props: {

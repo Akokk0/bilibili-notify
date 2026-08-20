@@ -277,6 +277,29 @@ export function createSkinsRoute(deps: {
 		return c.json({ ok: true });
 	});
 
+	/**
+	 * 只删一套皮肤的**其中一色**。深浅双色皮肤里主人只想留一套时走这条路 ——
+	 * 从前只有「删整套」,想扔掉其中一色得整套删了重做。
+	 *
+	 * 三种失败分开报,主人一眼看得出是哪一种:没这套皮肤(404)、`:theme` 不是那
+	 * 两个字(400)、以及 store 那边的两条业务规则(没有该模式 / 这是最后一套,400)。
+	 */
+	app.delete("/:id/modes/:theme", async (c) => {
+		const id = c.req.param("id");
+		const theme = c.req.param("theme");
+		// 先卡形状再碰 store:`:theme` 从 URL 来,而它下一步要当对象键用。
+		if (theme !== "light" && theme !== "dark") {
+			return c.json({ ok: false, err: "模式只能是 light 或 dark" }, 400);
+		}
+		if (!(await skinStore.get(id))) return c.json({ ok: false, err: "皮肤不存在" }, 404);
+		try {
+			await skinStore.removeMode(id, theme);
+		} catch (err) {
+			return c.json({ ok: false, err: (err as Error).message }, 400);
+		}
+		return c.json({ ok: true });
+	});
+
 	app.get("/:id/assets/:name", async (c) => {
 		const path = await skinStore.assetPath(c.req.param("id"), `assets/${c.req.param("name")}`);
 		if (!path) return c.json({ ok: false, err: "资产不存在" }, 404);

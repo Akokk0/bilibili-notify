@@ -9,6 +9,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { api } from "../../../services/api";
 import { EMPTY_SLOTS, useSkinStore } from "../../../store/skin";
 import { SkinSection } from "../SkinSection";
 
@@ -204,5 +205,53 @@ describe("SkinSection", () => {
 		expect(
 			within(pickerGroup("深色模式皮肤")).getByText("樱花夜").getAttribute("aria-pressed"),
 		).toBe("true");
+	});
+});
+
+describe("删除 —— 双色皮肤可以只删一色", () => {
+	const del = () => vi.mocked(api.delete);
+
+	async function openDeleteDialog() {
+		renderSection();
+		await waitFor(() => expect(screen.getAllByText("樱花夜").length).toBeGreaterThan(0));
+		del().mockClear();
+		fireEvent.click(screen.getByRole("button", { name: "删除" }));
+	}
+
+	it("双色皮肤 → 弹窗给三选一,而不是一句「确定删除吗」", async () => {
+		// 从前只有「删整套」:想扔掉其中一色,得整套删了重做。
+		await openDeleteDialog();
+		expect(await screen.findByRole("button", { name: /只删浅色/ })).toBeTruthy();
+		expect(screen.getByRole("button", { name: /只删深色/ })).toBeTruthy();
+		expect(screen.getByRole("button", { name: /删除整套/ })).toBeTruthy();
+	});
+
+	it("只删浅色 → 打到那一色的端点上,不是整套那条", async () => {
+		await openDeleteDialog();
+		fireEvent.click(await screen.findByRole("button", { name: /只删浅色/ }));
+		await waitFor(() => expect(del()).toHaveBeenCalled());
+		expect(del().mock.calls[0]?.[0]).toBe("/api/skins/s1/modes/light");
+	});
+
+	it("只删深色 → 同上,主人挑哪色就发哪色", async () => {
+		await openDeleteDialog();
+		fireEvent.click(await screen.findByRole("button", { name: /只删深色/ }));
+		await waitFor(() => expect(del()).toHaveBeenCalled());
+		expect(del().mock.calls[0]?.[0]).toBe("/api/skins/s1/modes/dark");
+	});
+
+	it("删除整套 → 还是老那条路", async () => {
+		await openDeleteDialog();
+		fireEvent.click(await screen.findByRole("button", { name: /删除整套/ }));
+		await waitFor(() => expect(del()).toHaveBeenCalled());
+		expect(del().mock.calls[0]?.[0]).toBe("/api/skins/s1");
+	});
+
+	it("单色皮肤 → 照旧是一句「确定删除吗」,不摆一排选不动的按钮", async () => {
+		// 只有一色时「只删这一色」等于「删整套」,摆出来只会让人犹豫该点哪个。
+		H.list.list[0].modes = ["dark"];
+		await openDeleteDialog();
+		expect(await screen.findByText(/确定删除/)).toBeTruthy();
+		expect(screen.queryByRole("button", { name: /只删/ })).toBeNull();
 	});
 });

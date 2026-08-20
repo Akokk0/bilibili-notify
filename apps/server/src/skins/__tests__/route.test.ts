@@ -585,3 +585,72 @@ describe("出厂快照 API", () => {
 		expect(((await res.json()) as any).err).toContain("默认值");
 	});
 });
+
+describe("DELETE /:id/modes/:theme —— 只删一色", () => {
+	/** 传一套深浅都有的皮肤,返回 id。 */
+	async function uploadDual(): Promise<string> {
+		const res = await upload(
+			app,
+			makeZipFile(false, {
+				light: { colors: { accent: "#fb7299" } },
+				dark: { colors: { accent: "#00e5ff" } },
+			}),
+		);
+		return ((await res.json()) as any).id as string;
+	}
+
+	const del = (id: string, theme: string) =>
+		app.request(`/${id}/modes/${theme}`, { method: "DELETE" });
+
+	it("删一色 → 200,列表里那套只剩另一色", async () => {
+		const id = await uploadDual();
+		expect((await del(id, "light")).status).toBe(200);
+		const body = (await (await app.request("/")).json()) as any;
+		expect(body.list.find((e: any) => e.id === id).modes).toEqual(["dark"]);
+	});
+
+	it("那一色正被启用 → 顺手卸下那个槽,另一个槽不动", async () => {
+		const id = await uploadDual();
+		// PUT /active 收的是 { id, theme? } —— 不带 theme = 整套启用(双槽都占)。
+		await putActive(app, { id });
+		await del(id, "light");
+		const body = (await (await app.request("/")).json()) as any;
+		expect(body.active).toEqual({ light: null, dark: id });
+	});
+
+	it("最后一套模式 → 400,并指路去「删除」", async () => {
+		const id = await uploadDual();
+		await del(id, "light");
+		const res = await del(id, "dark");
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as any).err).toContain("删除");
+		// 皮肤还在,没被顺手删掉。
+		const after = (await (await app.request("/")).json()) as any;
+		expect(after.list).toHaveLength(1);
+	});
+
+	it("本来就没有那一色 → 400", async () => {
+		const res = await upload(app, makeZipFile());
+		const id = ((await res.json()) as any).id as string;
+		expect((await del(id, "dark")).status).toBe(400);
+	});
+
+	it("theme 不是 light / dark → 400,压根不进 store", async () => {
+		const id = await uploadDual();
+		for (const bad of ["blue", "LIGHT", ""]) {
+			expect((await del(id, bad)).status).not.toBe(200);
+		}
+		// 一色都没少。
+		const body = (await (await app.request("/")).json()) as any;
+		expect(body.list.find((e: any) => e.id === id).modes).toHaveLength(2);
+	});
+
+	it("不认识的 id → 404", async () => {
+		expect((await del("nope", "light")).status).toBe(404);
+	});
+
+	it("id 带路径穿越 → 不给 200", async () => {
+		// 与 DELETE /:id 同一条纪律:这条路同样要写盘。
+		expect((await del("%2e%2e%2fconversations", "light")).status).not.toBe(200);
+	});
+});

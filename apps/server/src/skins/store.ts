@@ -31,6 +31,13 @@ const SKIN_ASSET_EXTS = new Set(["png", "jpg", "jpeg", "webp"]);
 /** 包内字体的扩展名白名单,与 schema.ts 的 SKIN_FONT_FILE_RE 同口径。 */
 const SKIN_FONT_EXTS = new Set(["woff2", "woff", "ttf", "otf"]);
 
+/**
+ * 报错文案用的模式名。跟**界面**的说法走(`apps/web` 的 skin-edit.ts 写的是
+ * 「深色」),不跟 chat-tool.ts 走 —— 那份是说给模型听的,这一句会原样显示给主人,
+ * 与同一页上的其它字对不上就成了两套黑话。
+ */
+const MODE_LABEL = { light: "浅色", dark: "深色" } as const;
+
 /** 深浅色各一个槽位:浅色模式渲染 light 槽的皮肤,暗色渲染 dark 槽;槽空=默认装。 */
 export interface ActiveSlots {
 	light: string | null;
@@ -248,6 +255,50 @@ export class SkinStore {
 			JSON.stringify(manifest, null, "\t"),
 		);
 		this.index.set(id, manifest);
+	}
+
+	/**
+	 * 只删一套皮肤的**其中一色**(深浅双色皮肤的「只删浅色 / 只删暗色」)。
+	 *
+	 * 三件事一起做,少一件就留下一个说不通的状态:
+	 * 1. **skin.json 去掉那一色。**
+	 * 2. **出厂快照跟着去掉。** 不然主人明明删了浅色,一点编辑器里的「恢复默认值」
+	 *    它又回来了 —— 这件事界面上没地方交代,看起来就是个 bug(主人 2026-08-20
+	 *    拍板:删了就是删了)。存量目录没有快照,跳过即可,不该因此整件事失败。
+	 * 3. **正占着那个槽就把槽卸下来。** 否则 `active.light` 指着一套没有 light 的
+	 *    皮肤 —— 而 {@link setActiveSlot} 明明拦着这种状态(「纯暗皮肤进不了亮槽」),
+	 *    从这条路却能绕出来。另一个槽不受牵连。
+	 *
+	 * **最后一套模式删不得**:schema 要求「至少给一套」,真删空了盘上就躺着一套
+	 * 永远装不上、也编辑不了的皮肤。那是「删除整套」该干的事,让调用方走那条路。
+	 *
+	 * **资产一张不动**:那一色用的图,另一色可能马上就要接着用;而资产 URL 的
+	 * immutable 长缓存契约也不该为一次删色破例。
+	 */
+	async removeMode(id: string, theme: keyof ActiveSlots): Promise<void> {
+		const manifest = this.index.get(id);
+		// 不认识的 id 一律不动手 —— 与 remove 同一条纪律,这里同样要写盘。
+		if (!manifest) throw new Error(`皮肤不存在: ${id}`);
+		if (!manifest.modes[theme]) throw new Error(`这套皮肤没有${MODE_LABEL[theme]}模式`);
+		const other = theme === "light" ? "dark" : "light";
+		if (!manifest.modes[other]) {
+			throw new Error(`这是最后一套模式,删了就等于删掉整套皮肤 —— 请改用「删除」`);
+		}
+
+		const next: SkinManifest = { ...manifest, modes: { [other]: manifest.modes[other] } };
+		await this.updateManifest(id, next);
+
+		const snapshot = await this.getDefault(id);
+		if (snapshot?.modes[theme]) {
+			const trimmed: SkinManifest = { ...snapshot, modes: {} };
+			if (snapshot.modes[other]) trimmed.modes[other] = snapshot.modes[other];
+			await this.writeAtomic(
+				join(this.skinsDir, id, "default.json"),
+				JSON.stringify(trimmed, null, "\t"),
+			);
+		}
+
+		if (this.active[theme] === id) await this.writeActive({ ...this.active, [theme]: null });
 	}
 
 	/** 把当前 manifest 钉成出厂快照(「设为默认值」);皮肤不存在 → 抛错。 */
