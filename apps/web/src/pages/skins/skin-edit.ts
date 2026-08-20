@@ -61,10 +61,7 @@ export const COLOR_GROUPS: ReadonlyArray<{
 		label: "主色",
 		keys: [
 			{ key: "accent", label: "主强调色" },
-			{ key: "accentSoft", label: "主强调·柔" },
 			{ key: "accentAlt", label: "副强调色" },
-			{ key: "accentAltSoft", label: "副强调·柔" },
-			{ key: "accentAltBright", label: "副强调·亮" },
 			{ key: "highlight", label: "高亮点缀" },
 		],
 	},

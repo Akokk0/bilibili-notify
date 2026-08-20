@@ -15,10 +15,7 @@ export const SKIN_SCHEMA_VERSION = 1;
  */
 export const SKIN_COLOR_TOKEN_MAP = {
 	accent: "--color-bn-pink",
-	accentSoft: "--color-bn-pink-soft",
 	accentAlt: "--color-bn-blue",
-	accentAltSoft: "--color-bn-blue-soft",
-	accentAltBright: "--color-bn-blue-light",
 	highlight: "--color-bn-purple",
 	textPrimary: "--color-bn-text-primary",
 	textSecondary: "--color-bn-text-secondary",

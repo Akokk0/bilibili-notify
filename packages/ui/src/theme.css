@@ -12,10 +12,7 @@
 
 @theme {
 	--color-bn-pink: #fb7299;
-	--color-bn-pink-soft: #fde1ea;
 	--color-bn-blue: #00aeec;
-	--color-bn-blue-soft: #e3f4fd;
-	--color-bn-blue-light: #4ebcec;
 	--color-bn-purple: #a29bfe;
 	--color-bn-text-primary: #18191c;
 	--color-bn-text-secondary: #999999;
@@ -154,9 +151,6 @@
 }
 
 :root[data-theme="dark"] {
-	--color-bn-pink-soft: rgba(251, 114, 153, 0.18);
-	--color-bn-blue-soft: rgba(0, 174, 236, 0.16);
-	--color-bn-blue-light: #7dd3fc;
 	--color-bn-text-primary: #f8fafc;
 	--color-bn-text-secondary: #cbd5e1;
 	--color-bn-text-tertiary: #94a3b8;

@@ -61,7 +61,7 @@ describe("parseSkinManifest / colors 值校验(注入面)", () => {
 		const r = parseSkinManifest(
 			withColors({
 				accent: "#fb7299",
-				accentSoft: "#fde1ea80",
+				accentAlt: "#00aeec80",
 				surface: "rgb(255 255 255)",
 				border: "rgba(0, 0, 0, 0.35)",
 				textPrimary: "hsl(220 30% 10% / 0.9)",
