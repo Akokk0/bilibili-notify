@@ -156,6 +156,15 @@ export const SKIN_BEST_PRACTICES = `- **亮色皮肤**:glass 统一 { background
 - **texts 写沉浸式世界观文案**:chatPlaceholder 用「状态确认 + 引导输入」句式(如「神经链路已接入,输入指令开始同步…」「39 频道已连线,和 Miku 酱开始今天的演出吧♪」),别写说明书腔`;
 
 /**
+ * CSS 属性白名单在两份提示词里的说法 —— 与 {@link SKIN_BEST_PRACTICES} 同一个理由:
+ * 服务端的 ai-edit 与 web 的 skin-pack 此前各存一份,措辞已经漂开(一份列了
+ * outline/text-shadow,另一份没有)。漏改一边不会红,只会让两条造皮肤的路教出
+ * 两套规格的 AI —— 白名单加一个属性时尤其明显,那正是这次收口的由头。
+ */
+export const SKIN_CSS_PROP_NOTES = `- 属性走视觉白名单:background/border/outline/box-shadow/text-shadow/color/opacity/filter/backdrop-filter/mix-blend-mode/transform/transition/animation/border-radius/clip-path/image-rendering/inset/width/height/z-index 等;**display、pointer-events、visibility 会被丢弃**
+- 做**像素风**就在 page 挂点写 image-rendering:pixelated —— 白名单里唯一继承的属性,写一处整站关掉平滑插值,壁纸与头像才有硬点阵边`;
+
+/**
  * 动效预设(每套 mode 独立;全部自动尊重 prefers-reduced-motion)。
  * 有对象即开启;字段缺省走各自默认。
  * 注:曾有 backgroundFlow(页面背景流动,整页重绘卡顿)与 particles(粒子飘落,

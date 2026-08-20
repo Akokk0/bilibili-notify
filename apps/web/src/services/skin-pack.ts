@@ -7,6 +7,7 @@ import {
 	SKIN_BEST_PRACTICES,
 	SKIN_COLOR_TOKEN_MAP,
 	SKIN_CSS_HOOK_NOTES,
+	SKIN_CSS_PROP_NOTES,
 	SKIN_LIMITS,
 } from "@bilibili-notify/contract";
 import { strToU8, zipSync } from "fflate";
@@ -64,7 +65,7 @@ ${Object.values(SKIN_CSS_HOOK_NOTES)
 	.map((note) => `  - ${note}`)
 	.join("\n")}
 - **胶囊/正圆圆角(border-radius 999px、50%)只准给按钮、头像这类矮元素**;容器类挂点(page / glass / glass-strong / nav / header / modal)圆角别超过 24px —— 容器有高瘦形态,套上 999px 会鼓成一个大椭圆
-- 属性走视觉白名单:background/border/outline/box-shadow/text-shadow/color/opacity/filter/backdrop-filter/transform/transition/animation/border-radius/clip-path/inset/width/height/z-index 等;**display、pointer-events、visibility 会被丢弃**
+${SKIN_CSS_PROP_NOTES}
 - **禁 url()**(以及 image-set/element/src)—— 图片一律走 wallpaper 字段,CSS 里写了会被逐条剔除
 - position 只准 static/relative/absolute;伪元素 content 只准 "" 或 none
 - 动画用 @keyframes,**名字必须以 skin- 开头**(如 @keyframes skin-float),再在 animation 里引用;可用 @media (prefers-reduced-motion) 做无动效降级
