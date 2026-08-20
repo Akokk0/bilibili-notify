@@ -39,6 +39,7 @@ import {
 	TInput,
 } from "../components/forms";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
+import { PUSH_TONE } from "../config/push-kinds";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
 import type { CardLayoutFull, PushTarget, Subscription } from "../types/domain";
@@ -104,10 +105,10 @@ const GUARD_LEVELS: { v: 1 | 2 | 3; label: string; tone: string }[] = [
 ];
 
 const KIND_LABELS: Record<CardKind, { label: string; tone: string; icon: IconName }> = {
-	live: { label: "直播开播", tone: "#FF6699", icon: "live" },
-	dyn: { label: "动态发布", tone: "#00AEEC", icon: "dyn" },
-	sc: { label: "SC 提醒", tone: "#fdcb6e", icon: "sc" },
-	guard: { label: "上舰提醒", tone: "#f2a053", icon: "guard" },
+	live: { label: "直播开播", tone: PUSH_TONE.live, icon: "live" },
+	dyn: { label: "动态发布", tone: PUSH_TONE.dynamic, icon: "dyn" },
+	sc: { label: "SC 提醒", tone: PUSH_TONE.sc, icon: "sc" },
+	guard: { label: "上舰提醒", tone: PUSH_TONE.guard, icon: "guard" },
 };
 
 /** 左侧类型导航的副标题(对齐 Rules 左栏的「label + desc」观感)。 */

@@ -12,6 +12,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { familyTone, PUSH_KIND_META, PUSH_TONE } from "../config/push-kinds";
 import {
 	HEALTH_QUERY_KEY,
 	HEALTH_QUERY_OPTIONS,
@@ -102,7 +103,7 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 	);
 	return (
 		<GlassPanel
-			accent="#fb7299"
+			accent="var(--color-bn-pink)"
 			title="正在直播"
 			subtitle="实时刷新"
 			right={
@@ -162,7 +163,7 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 									<div className="mb-0.5 flex items-center gap-2">
 										<span className="text-[13.5px] font-bold text-bn-text-primary">{name}</span>
 										{r.areaName ? (
-											<Pill color="#FB7299" subtle size="sm">
+											<Pill color="var(--color-bn-pink)" subtle size="sm">
 												{r.areaName}
 											</Pill>
 										) : null}
@@ -200,16 +201,16 @@ function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
 	}, [daily]);
 	const total = daily.reduce((sum, day) => sum + day.total, 0);
 	return (
-		<GlassPanel title="本周推送趋势" subtitle="按推送类型分布" accent="#00aeec">
+		<GlassPanel title="本周推送趋势" subtitle="按推送类型分布" accent="var(--color-bn-blue)">
 			{/* TimelinePanel 6 条 history × 单行 ~50px + padding ≈ 320px;StatsBar 抬高
 			    到 280 让同行 TrendPanel 视觉对齐,不至于半空。 */}
 			<StatsBar data={data} height={280} />
 			<div className="mt-3.5 flex flex-wrap items-center gap-3 text-[11px] text-bn-text-tertiary">
 				{[
-					["直播", "#FB7299"],
-					["动态", "#00AEEC"],
-					["SC", "#fdcb6e"],
-					["舰长", "#f2a053"],
+					["直播", PUSH_TONE.live],
+					["动态", PUSH_TONE.dynamic],
+					["SC", PUSH_TONE.sc],
+					["舰长", PUSH_TONE.guard],
 				].map(([label, c]) => (
 					<span key={label} className="inline-flex items-center gap-1.5">
 						<span className="block h-2 w-2 rounded-sm" style={{ background: c }} />
@@ -240,25 +241,6 @@ function AiInsightStrip({ tip }: { tip: React.ReactNode }) {
 		</div>
 	);
 }
-
-const TIMELINE_TONE: Record<string, string> = {
-	live: "#FB7299",
-	"live-summary": "#FB7299",
-	"special-enter": "#FB7299",
-	"special-danmaku": "#FB7299",
-	dynamic: "#00AEEC",
-	sc: "#fdcb6e",
-	guard: "#f2a053",
-};
-const TIMELINE_LABEL: Record<string, string> = {
-	live: "直播",
-	"live-summary": "总结",
-	"special-enter": "进房",
-	"special-danmaku": "弹幕",
-	dynamic: "动态",
-	sc: "SC",
-	guard: "舰长",
-};
 
 function TimelinePanel({
 	entries,
@@ -305,7 +287,8 @@ function TimelinePanel({
 					<div
 						className="absolute left-15 top-2 bottom-2 w-0.5 opacity-25"
 						style={{
-							background: "linear-gradient(to bottom, #FB7299, #00AEEC, transparent)",
+							background:
+								"linear-gradient(to bottom, var(--color-bn-pink), var(--color-bn-blue), transparent)",
 						}}
 					/>
 					{recent.map((h) => {
@@ -314,7 +297,7 @@ function TimelinePanel({
 						const name = h.unameSnapshot ?? (sub ? displayName(sub) : `UID ${h.uid}`);
 						const avatar = h.uavatarSnapshot ?? sub?.cachedProfile?.avatar;
 						const color = colorFromUid(h.uid);
-						const tone = TIMELINE_TONE[h.source] ?? "#999";
+						const tone = familyTone(h.source);
 						const targetNames = h.targetIds
 							.map((id) => targetById.get(id)?.name ?? id.slice(0, 6))
 							.join(" / ");
@@ -337,7 +320,7 @@ function TimelinePanel({
 								>
 									<Avatar name={name} color={color} size={24} url={avatar} />
 									<Pill color={tone} subtle size="sm">
-										{TIMELINE_LABEL[h.source] ?? h.source}
+										{PUSH_KIND_META[h.source].label}
 									</Pill>
 									<div className="min-w-0 flex-1 truncate text-bn-text-tertiary">
 										<span className="font-bold text-bn-text-primary">{name}</span>
@@ -418,9 +401,9 @@ function FansPanel({ subs }: { subs: Subscription[] }) {
 		<GlassPanel
 			title="粉丝数变化"
 			subtitle="自订阅起点 / 近 24h / 近 7d"
-			accent="#fb7299"
+			accent="var(--color-bn-pink)"
 			right={
-				<Pill color="#FB7299" size="sm">
+				<Pill color="var(--color-bn-pink)" size="sm">
 					● {entries.length} 位订阅
 				</Pill>
 			}
@@ -729,14 +712,14 @@ export default function Dashboard() {
 					label="正在直播"
 					value={live.length}
 					suffix={`/ ${subs.length}`}
-					color="#FB7299"
+					color="var(--color-bn-pink)"
 					pulse={live.length > 0}
 				/>
 				<GlassStatCard
 					label="已启用订阅"
 					value={enabledSubs}
 					suffix={`/ ${subs.length}`}
-					color="#00AEEC"
+					color="var(--color-bn-blue)"
 				/>
 				<GlassStatCard label="今日推送" value={todayPushes} suffix="次" color="#a29bfe" />
 				<GlassStatCard

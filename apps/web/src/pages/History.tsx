@@ -1,6 +1,7 @@
 import { Avatar, ErrorNote, Icon, Input, LoadingBlock, Pill } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { PUSH_KIND_META, PUSH_TONE } from "../config/push-kinds";
 import { api } from "../services/api";
 import {
 	type HistoryEntryView,
@@ -40,29 +41,12 @@ const FAMILY: Record<HistorySource, Exclude<FilterId, "all">> = {
 	guard: "guard",
 };
 
-const SOURCE_LABEL: Record<HistorySource, string> = {
-	dynamic: "动态",
-	live: "直播",
-	sc: "SC",
-	guard: "舰长",
-	"special-danmaku": "弹幕",
-	"special-enter": "入场",
-	"live-summary": "总结",
-};
-
-const FAMILY_TONE: Record<Exclude<FilterId, "all">, string> = {
-	live: "#FB7299",
-	dynamic: "#00AEEC",
-	sc: "#fdcb6e",
-	guard: "#f2a053",
-};
-
 const FILTERS: ReadonlyArray<{ id: FilterId; label: string; tone: string }> = [
 	{ id: "all", label: "全部", tone: "#666" },
-	{ id: "live", label: "直播", tone: FAMILY_TONE.live },
-	{ id: "dynamic", label: "动态", tone: FAMILY_TONE.dynamic },
-	{ id: "sc", label: "SC", tone: FAMILY_TONE.sc },
-	{ id: "guard", label: "舰长", tone: FAMILY_TONE.guard },
+	{ id: "live", label: "直播", tone: PUSH_TONE.live },
+	{ id: "dynamic", label: "动态", tone: PUSH_TONE.dynamic },
+	{ id: "sc", label: "SC", tone: PUSH_TONE.sc },
+	{ id: "guard", label: "舰长", tone: PUSH_TONE.guard },
 ];
 
 export default function History() {
@@ -234,7 +218,7 @@ function HistoryRow({
 	isLast: boolean;
 }) {
 	const family = FAMILY[entry.source];
-	const tone = FAMILY_TONE[family];
+	const tone = PUSH_TONE[family];
 	// 优先 entry 写入期的 snapshot,订阅事后被删也能稳定显示。
 	const upName = entry.unameSnapshot ?? (sub ? displayName(sub) : entry.uid || "未知");
 	const upAvatar = entry.uavatarSnapshot ?? sub?.cachedProfile?.avatar;
@@ -258,7 +242,7 @@ function HistoryRow({
 			</span>
 			<Avatar name={upName} color={upColor} size={24} url={upAvatar} />
 			<Pill color={tone} subtle size="sm">
-				{SOURCE_LABEL[entry.source]}
+				{PUSH_KIND_META[entry.source].label}
 			</Pill>
 			<div className="min-w-0 truncate" title={entry.text}>
 				<span className="font-bold text-bn-text-primary">{upName}</span>

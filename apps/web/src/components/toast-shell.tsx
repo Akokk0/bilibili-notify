@@ -1,12 +1,8 @@
-import { Icon, type IconName } from "@bilibili-notify/ui";
+import { Icon } from "@bilibili-notify/ui";
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import {
-	AUTO_DISMISS_MS,
-	type PushEventSource,
-	type ToastItem,
-	useToastStore,
-} from "../store/notifications";
+import { PUSH_KIND_META } from "../config/push-kinds";
+import { AUTO_DISMISS_MS, type ToastItem, useToastStore } from "../store/notifications";
 
 /**
  * Notification-center toast surface. Rendered into a portal so the fixed
@@ -16,15 +12,6 @@ import {
  *
  * Mounted once at App root.
  */
-const SOURCE_META: Record<PushEventSource, { icon: IconName; tint: string; label: string }> = {
-	dynamic: { icon: "dyn", tint: "#00AEEC", label: "动态" },
-	live: { icon: "live", tint: "#FB7299", label: "开播" },
-	sc: { icon: "sc", tint: "#FFB454", label: "SC" },
-	guard: { icon: "guard", tint: "#7A5AF8", label: "上舰" },
-	"special-danmaku": { icon: "mic", tint: "#10B981", label: "特别弹幕" },
-	"special-enter": { icon: "user", tint: "#06B6D4", label: "特别进房" },
-	"live-summary": { icon: "sparkle", tint: "#F472B6", label: "直播总结" },
-};
 
 export function ToastShell(): React.ReactElement | null {
 	const items = useToastStore((s) => s.items);
@@ -49,7 +36,7 @@ function ToastCard({ item }: { item: ToastItem }) {
 		return () => clearTimeout(t);
 	}, [item.id, dismiss]);
 
-	const meta = SOURCE_META[item.source];
+	const meta = PUSH_KIND_META[item.source];
 	const IconCmp = Icon[meta.icon];
 	const time = formatHm(item.ts);
 	return (
@@ -60,14 +47,17 @@ function ToastCard({ item }: { item: ToastItem }) {
 		>
 			<div
 				className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-				style={{ background: `${meta.tint}1f`, color: meta.tint }}
+				style={{
+					background: `color-mix(in srgb, ${meta.tone} 12%, transparent)`,
+					color: meta.tone,
+				}}
 			>
 				<IconCmp size={16} />
 			</div>
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center justify-between gap-2">
 					<span className="text-[12.5px] font-bold text-bn-text-primary">
-						{meta.label}
+						{meta.eventLabel}
 						{item.ok ? null : (
 							<span className="ml-1.5 text-[10.5px] font-semibold text-bn-danger">推送失败</span>
 						)}

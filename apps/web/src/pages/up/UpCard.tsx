@@ -1,19 +1,25 @@
 import { Avatar, Icon, Pill, Toggle } from "@bilibili-notify/ui";
 import { useState } from "react";
+import { PUSH_TONE } from "../../config/push-kinds";
 import { useLongPress } from "../../hooks/useLongPress";
 import { FEATURE_LABELS, type Subscription } from "../../types/domain";
 import { colorFromUid, displayName, relativeTime, subscribedFeatures } from "./helpers";
 
+/**
+ * 订阅功能开关的胶囊色。键空间是 FeatureKey(与推送事件的 HistorySource 不同 ——
+ * 多了 liveEnd / wordcloud),但用的是同一套家族色,所以借 PUSH_TONE 而不是再抄
+ * 一份十六进制。四档衍生能力(词云/总结/特别弹幕/特别进房)统一走 derived。
+ */
 const FEATURE_TONE: Record<string, string> = {
-	dynamic: "#00AEEC",
-	live: "#FB7299",
-	liveEnd: "#FB7299",
-	liveGuardBuy: "#f2a053",
-	superchat: "#fdcb6e",
-	wordcloud: "#a29bfe",
-	liveSummary: "#a29bfe",
-	specialDanmaku: "#a29bfe",
-	specialUserEnter: "#a29bfe",
+	dynamic: PUSH_TONE.dynamic,
+	live: PUSH_TONE.live,
+	liveEnd: PUSH_TONE.live,
+	liveGuardBuy: PUSH_TONE.guard,
+	superchat: PUSH_TONE.sc,
+	wordcloud: PUSH_TONE.derived,
+	liveSummary: PUSH_TONE.derived,
+	specialDanmaku: PUSH_TONE.derived,
+	specialUserEnter: PUSH_TONE.derived,
 };
 
 export interface UpCardProps {
