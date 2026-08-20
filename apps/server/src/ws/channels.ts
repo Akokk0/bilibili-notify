@@ -22,51 +22,53 @@ export interface ChannelWiringDeps {
 	publish: ChannelPublisher;
 }
 
-/** Compute a fresh `state/hydrate` envelope. The dashboard receives one of these immediately on subscribe. */
-export function buildStateHydrate(store: ConfigStore): ServerEventEnvelope<{
-	globals: ReturnType<ConfigStore["getGlobals"]>;
-	subscriptions: ReturnType<ConfigStore["getSubscriptions"]>;
-	targets: ReturnType<ConfigStore["getTargets"]>;
-}> {
+/**
+ * Compute a `state/hydrate` envelope. The dashboard receives one of these on
+ * subscribe and after every reconnect.
+ *
+ * **It carries no payload, on purpose.** The original design (ba25f2a, stage
+ * 2.3) packed `{ globals, subscriptions, targets }` in here "so the UI can
+ * render without a separate REST round-trip" — written before the dashboard
+ * existed. The dashboard that got built runs on react-query and fetches over
+ * REST; `handleStateEnvelope` reads nothing from this frame, it only
+ * invalidates the three queries. That intent was never realised.
+ *
+ * Meanwhile 25e4210 (`fix(security)`) closed the plaintext-apiKey leak on
+ * `GET /api/globals` and in the DOM, naming the threat model exactly:
+ * "devtools 直接可见,屏幕共享/截图也会泄漏". It missed this path — so every
+ * subscribe and every reconnect shipped unredacted provider keys and search
+ * keys over the wire, straight into the browser's Network panel, for a
+ * consumer that discards them.
+ *
+ * If the round-trip saving is ever wanted, the client must read a **redacted**
+ * snapshot (see `redactGlobals` in routes/globals.ts) — never `getGlobals()`.
+ */
+export function buildStateHydrate(): ServerEventEnvelope<null> {
 	return {
 		type: "state",
 		event: "hydrate",
 		ts: new Date().toISOString(),
-		data: {
-			globals: store.getGlobals(),
-			subscriptions: store.getSubscriptions(),
-			targets: store.getTargets(),
-		},
+		data: null,
 	};
 }
 
-/** Build a `state/config-changed` envelope including the fresh snapshot for that scope. */
+/**
+ * Build a `state/config-changed` envelope. Carries the scope marker only.
+ *
+ * Same reasoning as {@link buildStateHydrate}: the client reads `.scope` and
+ * nothing else, and the `globals` scope would otherwise put plaintext keys on
+ * the wire on every config write. The `secrets` scope was already exempted
+ * when this was first written — the other scopes just never got the same
+ * treatment once redaction landed.
+ */
 function buildConfigChangedEnvelope(
-	store: ConfigStore,
 	scope: ConfigScope,
-): ServerEventEnvelope<{ scope: ConfigScope; snapshot: unknown }> {
-	let snapshot: unknown;
-	switch (scope) {
-		case "globals":
-			snapshot = store.getGlobals();
-			break;
-		case "subscriptions":
-			snapshot = store.getSubscriptions();
-			break;
-		case "targets":
-			snapshot = store.getTargets();
-			break;
-		case "secrets":
-			// Secrets snapshots are NOT pushed over WS — clients must hit a dedicated
-			// REST endpoint that does the redacted shape. Send only the scope marker.
-			snapshot = null;
-			break;
-	}
+): ServerEventEnvelope<{ scope: ConfigScope }> {
 	return {
 		type: "state",
 		event: "config-changed",
 		ts: new Date().toISOString(),
-		data: { scope, snapshot },
+		data: { scope },
 	};
 }
 
@@ -193,9 +195,7 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 
 	// state channel ---------------------------------------------------------
 	subs.push(
-		deps.bus.on("config-changed", (scope) =>
-			deps.publish(buildConfigChangedEnvelope(deps.store, scope)),
-		),
+		deps.bus.on("config-changed", (scope) => deps.publish(buildConfigChangedEnvelope(scope))),
 	);
 
 	return {

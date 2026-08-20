@@ -371,7 +371,7 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 				});
 				// Hydrate `state` immediately so the dashboard can render.
 				if (added.includes("state")) {
-					sendRaw(client, buildStateHydrate(opts.store));
+					sendRaw(client, buildStateHydrate());
 				}
 				break;
 			}

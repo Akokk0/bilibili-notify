@@ -54,12 +54,22 @@ function wire(): Harness {
 }
 
 describe("buildStateHydrate", () => {
-	it("从 store 三视图组装 state/hydrate 信封", () => {
-		const env = buildStateHydrate(makeStore());
+	/**
+	 * 这条钉的是「**不带载荷**」。
+	 *
+	 * 原来它打包 { globals, subscriptions, targets },而 globals 里有各家 AI 的
+	 * 明文 apiKey 与联网搜索 key —— `GET /api/globals` 早就走 redactGlobals 脱敏了
+	 * (25e4210),WS 这条路漏了。客户端 handleStateEnvelope 又一个字节都不读,
+	 * 只 invalidate 三个 query,所以明文一路传过去然后进垃圾。
+	 *
+	 * 谁要是想把载荷加回来省一次 REST 往返:先过 redactGlobals,别直接 getGlobals()。
+	 */
+	it("state/hydrate 不带载荷 —— 明文 key 不上线", () => {
+		const env = buildStateHydrate();
 		expect(env.type).toBe("state");
 		expect(env.event).toBe("hydrate");
 		expect(typeof env.ts).toBe("string");
-		expect(env.data).toEqual({ globals: GLOBALS, subscriptions: SUBS, targets: TARGETS });
+		expect(env.data).toBeNull();
 	});
 
 	it("ALL_CHANNELS 即四频道注册表", () => {
@@ -187,19 +197,17 @@ describe("attachChannelWiring — config-changed 按 scope 带快照", () => {
 		h = wire();
 	});
 
-	it("globals / subscriptions / targets 带对应快照", () => {
-		h.bus.emit("config-changed", "globals");
-		expect(h.last()).toMatchObject({ type: "state", event: "config-changed" });
-		expect(h.last().data).toEqual({ scope: "globals", snapshot: GLOBALS });
-		h.bus.emit("config-changed", "subscriptions");
-		expect(h.last().data).toEqual({ scope: "subscriptions", snapshot: SUBS });
-		h.bus.emit("config-changed", "targets");
-		expect(h.last().data).toEqual({ scope: "targets", snapshot: TARGETS });
-	});
-
-	it("secrets scope:snapshot=null(绝不经 WS 推 secrets)", () => {
-		h.bus.emit("config-changed", "secrets");
-		expect(h.last().data).toEqual({ scope: "secrets", snapshot: null });
+	/**
+	 * 四个 scope 一律**只带 scope 标记**。secrets 从第一天起就是这样(注释写着
+	 * 「绝不经 WS 推 secrets」),其余三个是在脱敏纪律落地后才补齐的 —— globals
+	 * 那份快照里有明文 apiKey,而客户端只读 .scope。
+	 */
+	it("四个 scope 都只带 scope 标记,不带快照", () => {
+		for (const scope of ["globals", "subscriptions", "targets", "secrets"] as const) {
+			h.bus.emit("config-changed", scope);
+			expect(h.last()).toMatchObject({ type: "state", event: "config-changed" });
+			expect(h.last().data).toEqual({ scope });
+		}
 	});
 });
 

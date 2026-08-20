@@ -3,14 +3,12 @@ import { createServer, type Server as HttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	type ConfigScope,
-	type Disposable,
-	type GlobalConfig,
-	type MessageBus,
-	makeDefaultGlobalConfig,
-	type PushTarget,
-	type Subscription,
+import type {
+	ConfigScope,
+	Disposable,
+	MessageBus,
+	PushTarget,
+	Subscription,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
@@ -170,10 +168,10 @@ describe("WS server", () => {
 		const ack = await c.waitFor((m) => m?.type === "subscribed");
 		expect(ack.channels).toContain("state");
 
+		// 载荷为空是有意的 —— 见 buildStateHydrate 的注释(明文 apiKey 不上线,
+		// 而客户端本来就只拿它当"该重新 fetch 了"的信号)。
 		const hydrate = await c.waitFor((m) => m?.type === "state" && m?.event === "hydrate");
-		expect(dataOf(hydrate).globals).toEqual(makeDefaultGlobalConfig());
-		expect(dataOf(hydrate).subscriptions).toEqual([]);
-		expect(dataOf(hydrate).targets).toEqual([]);
+		expect(hydrate.data).toBeNull();
 		ws.close();
 	});
 
@@ -256,7 +254,7 @@ describe("WS server", () => {
 		ws.close();
 	});
 
-	it("config-changed on state channel includes scope + fresh snapshot", async () => {
+	it("config-changed on state channel carries the scope marker only", async () => {
 		const ws = await connect(port);
 		const c = collect(ws);
 		send(ws, { type: "subscribe", channels: ["state"] });
@@ -264,8 +262,7 @@ describe("WS server", () => {
 
 		await store.patchGlobals({ app: { dynamicCron: "*/15 * * * *" } });
 		const evt = await c.waitFor((m) => m?.type === "state" && m?.event === "config-changed");
-		expect(dataOf(evt).scope).toBe("globals");
-		expect((dataOf(evt).snapshot as GlobalConfig).app.dynamicCron).toBe("*/15 * * * *");
+		expect(dataOf(evt)).toEqual({ scope: "globals" });
 		ws.close();
 	});
 
