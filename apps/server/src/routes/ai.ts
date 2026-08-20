@@ -9,6 +9,7 @@ import type {
 	AiTestPushResponse,
 	AiToolTraceDTO,
 } from "@bilibili-notify/contract";
+import { AI_TOOL_LOAD_SKILL } from "@bilibili-notify/contract";
 import {
 	type AISettings,
 	AISettingsSchema,
@@ -21,6 +22,8 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { Conversation, ConversationMeta } from "../ai/conversation-store.js";
+import { createSkillChatTool } from "../maid-skills/chat-tool.js";
+import type { MaidSkillEntry, MaidSkillStore } from "../maid-skills/store.js";
 import { toGeneratorConfig } from "../runtime/ai-config.js";
 import {
 	deleteChatImage,
@@ -64,6 +67,11 @@ export function createAiRoute(
 		 * 工具,不该因为「某处装配忘了传」而以别的形式凭空出现。
 		 */
 		skinStore?: SkinStore;
+		/**
+		 * 女仆技能库。给了才有 `load_skill`(女仆自选)与斜杠命令那条路;
+		 * 不给就当这个部署没装技能,聊天照旧。
+		 */
+		skillStore?: MaidSkillStore;
 	},
 ): Hono {
 	const app = new Hono();
@@ -391,6 +399,31 @@ export function createAiRoute(
 					})
 				: undefined;
 
+		/**
+		 * 女仆技能。**皮肤工坊里一条都不挂** —— 那是专职窗口(人格不带、B 站只读
+		 * 工具也不带),技能正文串进去只会跟工坊自己的 system 打架。
+		 *
+		 * 每个请求现读盘:主人刚在编辑器里改完一条,下一句话就该用上新的;更要紧的是
+		 * 他可能刚往 dataDir 里手放了一份(ADR 决策 3)。
+		 */
+		let skillTool: ReturnType<typeof createSkillChatTool> = null;
+		let pickedSkill: MaidSkillEntry | undefined;
+		if (!skinMode && opts?.skillStore) {
+			await opts.skillStore.reload();
+			const named = parsed.data.skill;
+			if (named !== undefined) {
+				pickedSkill = opts.skillStore.get(named);
+				// 认不得就当场拒。静默发出去的话,主人以为在用技能、其实在跟模型说
+				// 一句它不认识的暗号 —— 老 `/锐评 只看这三个人` 栽的正是这个坑。
+				// 这一步在 markBusy 之前,所以没有账要销。
+				if (!pickedSkill) return c.json({ err: `没有叫「${named}」的技能` }, 400);
+			} else {
+				// 主人自己点名了就不必再挂「读技能」那把工具 —— 正文这一轮已经在
+				// system 里了,再让模型去调一次是白烧一轮。
+				skillTool = createSkillChatTool(opts.skillStore.list());
+			}
+		}
+
 		// 这一轮开跑。期间盘上仍是零消息(消息「拿到回复之后才落盘」,见上面那段),
 		// 不标一下的话 list() 会把主人正聊着的这一场当空壳藏起来 —— 皮肤生成要几
 		// 分钟,侧栏里却没有「我正在聊的那条」。
@@ -412,6 +445,29 @@ export function createAiRoute(
 					sources?: Array<{ title: string; url: string; siteName?: string }>;
 				}> = [];
 				const byId = new Map<string, (typeof slots)[number]>();
+
+				/**
+				 * 斜杠命令那条路的痕迹。
+				 *
+				 * 技能是主人点名的,没有真的走一趟工具环,但**界面上要一样看得见**
+				 * (ADR 决策 9):不留痕的话,女仆突然换了套说法而消息流里毫无交代。
+				 * 所以手工补一枚,与模型自选那条路长得一模一样 —— 它先冒出来、
+				 * 排在所有真工具之前,那正是它发生的时刻。
+				 */
+				if (pickedSkill) {
+					const args = { name: pickedSkill.name };
+					const ev = { name: AI_TOOL_LOAD_SKILL, args };
+					slots.push({ ...ev, ok: true });
+					await sse.writeSSE({
+						event: "tool",
+						data: JSON.stringify({ phase: "start", id: "skill", ...ev }),
+					});
+					await sse.writeSSE({
+						event: "tool",
+						data: JSON.stringify({ phase: "end", id: "skill", ...ev, ok: true }),
+					});
+				}
+
 				// 思考流的账本。分片原样拼接 —— 引擎那边多轮(工具轮)的思考也走同一个
 				// 回调,这里不感知轮次边界。
 				let reasoning = "";
@@ -437,6 +493,15 @@ export function createAiRoute(
 						// 人格同样归会话所有。皮肤工坊那条路整段顶掉 system,人格本来就
 						// 不在场 —— 这个字段只对日常聊天起作用。
 						persona: conv.persona,
+						// 主人点名的那条技能:正文**追加**在人格之后(ADR 决策 14),工具面
+						// 开局就按它的 allowed-tools 收窄。
+						...(pickedSkill
+							? {
+									systemSuffix: `以下是技能「${pickedSkill.name}」的做法,照着做:\n\n${pickedSkill.body}`,
+									...(pickedSkill.allowedTools ? { restrictTools: pickedSkill.allowedTools } : {}),
+								}
+							: {}),
+						...(skillTool ? { extraTools: [skillTool] } : {}),
 						...(skinTools
 							? {
 									extraTools: skinTools,
@@ -540,6 +605,15 @@ const ChatRequestSchema = z.object({
 	thinking: z.boolean().optional(),
 	/** 这一问允不允许联网搜索。同上,会话级;不带 = 不开(默认不烧钱)。 */
 	search: z.boolean().optional(),
+	/**
+	 * 主人打的斜杠命令点名的那条技能。
+	 *
+	 * 走这条路时**服务端**去库里取正文,而不是让网页把正文塞进消息里:落盘的用户
+	 * 消息就该是主人真打的那几个字。名字不认得一律 400 —— 静默当普通消息发出去的话,
+	 * 主人以为在用技能、其实在跟模型说一句它不认识的暗号(老 `/锐评 只看这三个人`
+	 * 栽的正是这个坑)。
+	 */
+	skill: z.string().optional(),
 });
 
 /**

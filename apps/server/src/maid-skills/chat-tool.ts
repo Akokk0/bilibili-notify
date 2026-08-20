@@ -1,0 +1,75 @@
+/**
+ * 聊天里的 `load_skill` —— 女仆自己挑一条技能来用的那条路(ADR-0001 决策 7)。
+ *
+ * 与 `create_skin` 同一条注入路(dashboard 聊天的 ExtraTool),**绝不进
+ * `TOOL_DEFINITIONS`** —— 那张表三端共享,而 koishi 的 `bili.chat` 没有权限门,
+ * 群里任何人都能触发主人写的技能正文。
+ *
+ * 常驻成本就是下面这份目录:每一条可自选技能的 `name` + `description`。正文只在
+ * 真被读取那一轮才进上下文 —— 这正是「技能」比「一句预置提问」省的地方。
+ */
+
+import type { ExtraTool } from "@bilibili-notify/ai";
+import { AI_TOOL_LOAD_SKILL } from "@bilibili-notify/contract";
+import type { MaidSkillEntry } from "./store.js";
+
+/**
+ * 建一把 `load_skill`;一条可自选的技能都没有就返回 `null`。
+ *
+ * 返回 null 而不是一把空工具:挂上去只会让模型调它、拿回一句「一条都没有」,
+ * 白烧一整轮。
+ *
+ * 收的是**快照**而不是 store:目录要写进工具定义,建的那一刻就得知道有哪些。
+ * 调用方负责在建之前把盘读新(`reload()`)。
+ */
+export function createSkillChatTool(skills: readonly MaidSkillEntry[]): ExtraTool | null {
+	// `disable-model-invocation` 的退出自选 —— 那是「只许主人打斜杠」的意思。
+	const pickable = skills.filter((s) => !s.disableModelInvocation);
+	if (pickable.length === 0) return null;
+
+	const catalog = pickable.map((s) => `- ${s.name}:${s.description}`).join("\n");
+	const byName = new Map(pickable.map((s) => [s.name, s]));
+
+	return {
+		definition: {
+			type: "function",
+			function: {
+				name: AI_TOOL_LOAD_SKILL,
+				description: [
+					"读取一条「技能」——— 主人预先写好的做事步骤。手上的活儿对得上某一条时,先读它再动手;",
+					"读回来的是一段指令,照着做即可。可用的技能:",
+					catalog,
+				].join("\n"),
+				parameters: {
+					type: "object",
+					properties: {
+						name: {
+							type: "string",
+							// 枚举住:模型编一个名字出来,换回的只是一次白跑的工具轮。
+							enum: pickable.map((s) => s.name),
+							description: "要读取的技能名",
+						},
+					},
+					required: ["name"],
+				},
+			},
+		},
+		execute: async (args) => {
+			const skill = byName.get(args.name ?? "");
+			if (!skill) {
+				// 说清读不到,而不是抛:抛出去只是界面上一个叉,女仆不知道该改口读哪条。
+				return `没有叫「${args.name ?? ""}」的技能。现在有这些:\n${catalog}`;
+			}
+			const text = `以下是技能「${skill.name}」的做法,照着做:\n\n${skill.body}`;
+			if (!skill.allowedTools) return text;
+			return {
+				text,
+				/**
+				 * 把自己一并带上。收窄永远只会更窄(交集),所以留着这把工具扩大不了
+				 * 任何东西 —— 但挑错技能时,女仆还有一次改口的机会。
+				 */
+				restrictTools: [...skill.allowedTools, AI_TOOL_LOAD_SKILL],
+			};
+		},
+	};
+}

@@ -275,7 +275,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 		dir: joinPath(runtime.bootstrap.dataDir, "maid-skills"),
 	});
 	app.route("/api/maid-skills", createMaidSkillsRoute({ skillStore }));
-	app.route("/api/ai", createAiRoute(deps, { skinStore }));
+	app.route("/api/ai", createAiRoute(deps, { skinStore, skillStore }));
 	app.route("/api/fans", createFansRoute(deps));
 	const statsRoute = createStatsRoute(deps, {
 		...(options.runRoastNow ? { runRoastNow: options.runRoastNow } : {}),
