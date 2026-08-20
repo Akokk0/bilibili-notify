@@ -226,22 +226,8 @@ function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
 
 function AiInsightStrip({ tip }: { tip: React.ReactNode }) {
 	return (
-		<div
-			// 渐变叠在玻璃底上(.bn-glass 供底色+blur),否则皮肤壁纸下整条近乎全透明
-			className="bn-glass flex items-center gap-3.5 rounded-bn-card p-4 shadow-bn-card"
-			style={{
-				background:
-					"linear-gradient(135deg, rgba(162,155,254,0.18), rgba(0,174,236,0.08)), var(--bn-glass-bg)",
-				borderColor: "rgba(162,155,254,0.3)",
-			}}
-		>
-			<div
-				className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-white"
-				style={{
-					background: "linear-gradient(135deg, #a29bfe, #6c5ce7)",
-					boxShadow: "0 6px 18px rgba(108,92,231,0.35)",
-				}}
-			>
+		<div className="bn-glass bn-hero-tint flex items-center gap-3.5 rounded-bn-card p-4 shadow-bn-card">
+			<div className="bn-hero-badge grid h-10 w-10 shrink-0 place-items-center rounded-xl text-white">
 				<Icon.ai size={20} />
 			</div>
 			<div className="flex-1 text-[12.5px] leading-relaxed text-bn-text-tertiary">
@@ -347,7 +333,7 @@ function TimelinePanel({
 									className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg border border-bn-list-row-border bg-bn-list-row px-3 py-2 text-[12.5px]"
 									// 失败标记用 inset 阴影而非 border-left:不占 box 宽度,内容不被挤右、与其它行对齐,
 									// 且被 rounded-lg 圆角裁成左侧细红条,比硬边框精致。
-									style={!h.ok ? { boxShadow: "inset 3px 0 0 #ef4444" } : undefined}
+									style={!h.ok ? { boxShadow: "inset 3px 0 0 var(--color-bn-danger)" } : undefined}
 								>
 									<Avatar name={name} color={color} size={24} url={avatar} />
 									<Pill color={tone} subtle size="sm">

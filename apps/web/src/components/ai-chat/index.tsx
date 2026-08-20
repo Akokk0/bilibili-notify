@@ -107,7 +107,7 @@ export function AiChatDock() {
 			// 只有右下角还是圆头紫胶囊。皮肤 CSS 是无层 author 样式,压得过 `.bn-ai-fab`
 			// 所在的 `@layer components`,所以挂上就够了,默认装的观感一个像素都不变。
 			data-bn="btn btn-primary"
-			className="bn-ai-fab fixed bottom-5 right-5 z-30 flex h-12 cursor-pointer items-center gap-2.25 rounded-bn-pill pl-4 pr-5 text-[13.5px] font-bold text-white shadow-[0_10px_28px_rgba(108,92,231,0.42)]"
+			className="bn-ai-fab fixed bottom-5 right-5 z-30 flex h-12 cursor-pointer items-center gap-2.25 rounded-bn-pill pl-4 pr-5 text-[13.5px] font-bold text-white shadow-bn-ai transition-shadow hover:shadow-bn-ai-lg"
 		>
 			<Icon.ai size={20} />
 			女仆 AI
@@ -605,7 +605,7 @@ export function ChatPage() {
 						title="打开侧栏"
 						aria-label="打开侧栏"
 						onClick={() => setRail(true)}
-						className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass-chip absolute left-4 top-4 z-10 grid h-8.5 w-8.5 cursor-pointer place-items-center rounded-bn-sm text-bn-text-tertiary shadow-bn-card"
+						className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass-chip absolute left-4 top-4 z-10 grid h-8.5 w-8.5 cursor-pointer place-items-center rounded-bn-sm text-bn-text-tertiary shadow-bn-card hover:shadow-bn-elev"
 					>
 						<Icon.panelExpand size={18} />
 					</button>
@@ -614,7 +614,7 @@ export function ChatPage() {
 				<button
 					type="button"
 					onClick={onClose}
-					className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass-chip absolute right-4 top-4 z-10 flex h-9.5 cursor-pointer items-center gap-1.75 rounded-bn-lg px-4 text-[12.5px] font-semibold text-bn-text-tertiary shadow-bn-card"
+					className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass-chip absolute right-4 top-4 z-10 flex h-9.5 cursor-pointer items-center gap-1.75 rounded-bn-lg px-4 text-[12.5px] font-semibold text-bn-text-tertiary shadow-bn-card hover:shadow-bn-elev"
 				>
 					<Icon.arrowLeft size={15} />
 					返回控制台
@@ -682,7 +682,7 @@ export function ChatPage() {
 											key={s.cmd}
 											type="button"
 											onClick={() => submit(s.prompt)}
-											className="bn-glass-lift bn-nohl bn-glass-chip flex cursor-pointer items-center gap-1.75 rounded-bn-lg px-3.75 py-2 text-[12.5px] font-semibold text-bn-text-tertiary shadow-bn-card"
+											className="bn-glass-lift bn-glass-chip flex cursor-pointer items-center gap-1.75 rounded-bn-lg px-3.75 py-2 text-[12.5px] font-semibold text-bn-text-tertiary shadow-bn-card"
 										>
 											<span className="bn-chat-accent flex">
 												<Glyph size={14} />

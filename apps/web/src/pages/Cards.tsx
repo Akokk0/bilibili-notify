@@ -1130,25 +1130,9 @@ export default function Cards() {
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
 			{/* Hero strip — 全局插件信息 + (仅全局作用域)总开关 */}
-			<div
-				// 渐变叠在玻璃底上(.bn-glass 供底色+blur),否则皮肤壁纸下整条近乎全透明
-				className="bn-glass relative rounded-bn-card p-5 shadow-bn-card"
-				style={{
-					background:
-						"linear-gradient(135deg, rgba(162,155,254,0.18), rgba(0,174,236,0.08)), var(--bn-glass-bg)",
-					borderColor: "rgba(162,155,254,0.25)",
-				}}
-			>
+			<div className="bn-glass bn-hero-tint relative rounded-bn-card p-5 shadow-bn-card">
 				<div className="flex items-center gap-3.5">
-					<div
-						className="grid shrink-0 place-items-center rounded-2xl text-white"
-						style={{
-							background: "linear-gradient(135deg, #a29bfe, #00AEEC)",
-							boxShadow: "0 6px 18px rgba(108,92,231,0.35)",
-							width: 52,
-							height: 52,
-						}}
-					>
+					<div className="bn-hero-badge grid h-13 w-13 shrink-0 place-items-center rounded-2xl text-white">
 						<Icon.eye size={26} />
 					</div>
 					<div className="flex-1">

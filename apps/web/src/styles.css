@@ -8,6 +8,28 @@
    utilities(bg-bn-pink 等)不会生成。 */
 @source "../../../packages/ui/src";
 
+/* 「女仆 AI」紫光两档。必须写成 `@utility` 而不是塞进 `@layer components` 的
+   `.bn-ai-fab` 里 —— 那正是这两档此前失效的原因:元素上带着 `shadow-[…]` 工具类
+   (`@layer utilities`),而 utilities 恒压过 components,于是 `.bn-ai-fab:hover`
+   里那句 `box-shadow: 0 14px 40px rgba(108,92,231,.55)` 从写下那天起一次都没渲染过。
+   产物字节偏移实测:components 段 8871–16865,`.bn-ai-fab:hover` 在 12950,
+   那条 shadow 工具类在 57868。
+   保留 --tw-* 合成链的理由同 theme.css 里 shadow-bn-card 那几条:ring 也走
+   box-shadow,不合成会互踩。 */
+@utility shadow-bn-ai {
+	--tw-shadow: 0 10px 28px color-mix(in srgb, var(--bn-ai-purple) 42%, transparent);
+	box-shadow:
+		var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+		var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+
+@utility shadow-bn-ai-lg {
+	--tw-shadow: 0 14px 40px color-mix(in srgb, var(--bn-ai-purple) 55%, transparent);
+	box-shadow:
+		var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+		var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+
 /* 灵动岛 diff 行 click 跳转后短暂高亮目标 Field —— 粉色 ring 闪 1s。 */
 @keyframes bn-highlight {
 	0%,
@@ -18,13 +40,14 @@
 	20%,
 	60% {
 		box-shadow: 0 0 0 2px var(--color-bn-pink);
-		background-color: rgba(251, 114, 153, 0.08);
+		background-color: color-mix(in srgb, var(--color-bn-pink) 8%, transparent);
 	}
 }
 
 .bn-anim-highlight {
 	animation: bn-highlight 1s ease-in-out;
-	border-radius: 8px;
+	/* 接皮肤的圆角轴 —— card=14 时算出来 7.99px,与原来写死的 8px 差 0.01px。 */
+	border-radius: var(--radius-lg);
 }
 
 /* 灵动岛 dirty 态外圈流光线(grill-me 二轮校准:单色流动 + 砍 pulse)。
@@ -79,7 +102,8 @@
 			linear-gradient(#000 0 0) content-box,
 			linear-gradient(#000 0 0);
 		mask-composite: exclude;
-		filter: drop-shadow(0 0 1px rgba(251, 114, 153, 0.55)) saturate(1.2);
+		filter: drop-shadow(0 0 1px color-mix(in srgb, var(--color-bn-pink) 55%, transparent))
+			saturate(1.2);
 		animation:
 			bn-aura-spin var(--bn-aura-spin-dur, 2.4s) linear infinite,
 			bn-aura-fade-in 250ms ease-out both;
@@ -253,22 +277,50 @@
 		}
 	}
 
+	/* 页头 hero 条(Dashboard / AI / Cards 三处)。此前是**逐字复制的三份 inline
+	   style** —— 连 `// 渐变叠在玻璃底上` 那行注释都一模一样。两个毛病:
+	   ① inline 压过一切 author 样式,而这三条都带 `.bn-glass`,于是皮肤写的
+	      `[data-bn="glass"]{…}` 能改全站每一块玻璃,唯独改不动这三条最显眼的;
+	   ② 三份各自漂了(第二色标 blue/紫、描边 0.25/0.3),改一处配色要翻三个文件。
+	   渐变叠在玻璃底之上而不是「渐到」玻璃底 —— 后者会让起点侧近乎全透明,
+	   花壁纸一透进来文字就没法读(这条是原注释的意思,保留)。 */
+	.bn-hero-tint {
+		background:
+			linear-gradient(
+				135deg,
+				color-mix(in srgb, var(--color-bn-purple) 18%, transparent),
+				color-mix(in srgb, var(--color-bn-blue) 8%, transparent)
+			),
+			var(--bn-glass-bg);
+		border-color: color-mix(in srgb, var(--color-bn-purple) 28%, transparent);
+	}
+
+	/* hero 条左侧那枚圆章。紫是「女仆 AI」的品牌色,不跟主强调色走(与右下角
+	   胶囊同一个决定),但深色那一档收进 --bn-ai-purple,不再在三个文件里各写一遍。 */
+	.bn-hero-badge {
+		background: linear-gradient(135deg, var(--color-bn-purple), var(--bn-ai-purple));
+		box-shadow: 0 6px 18px color-mix(in srgb, var(--bn-ai-purple) 35%, transparent);
+	}
+
 	.bn-glass-lift {
 		transition:
 			transform 0.5s cubic-bezier(0.34, 1.7, 0.42, 1),
 			box-shadow 0.3s ease;
 	}
+	/* 只管抬起,不管阴影 —— 加深交给调用方写 `hover:shadow-bn-elev`。
+	   由来:这里原本写着 `box-shadow: 0 20px 52px rgba(42,30,72,.24)`,而三个调用方
+	   都带 `shadow-bn-card`。`@utility` 生成的类落在 `@layer utilities`,本块在
+	   `@layer components`,**utilities 恒压过 components**(与特异性无关)——
+	   于是那条 hover 阴影从写下那天起就没渲染过一次,是死 CSS。产物字节偏移实测:
+	   components 段 8871–16865,`.bn-glass-lift:hover` 在 12086,`.shadow-bn-card`
+	   在 59131。同理作废的还有 `.bn-glass-lift.bn-nohl:hover`,那个类整条已删。
+	   改走 utility 还顺带解决换肤:`shadow-bn-elev` 引用 var(--shadow-bn-elev),
+	   皮肤的 shadows.elev 直接生效,写死的 rgba 则永远够不着。 */
 	.bn-glass-lift:hover {
 		transform: translateY(-4px) scale(1.035);
-		box-shadow: 0 20px 52px rgba(42, 30, 72, 0.24);
 	}
 	.bn-glass-lift:active {
 		animation: bn-jelly 0.55s cubic-bezier(0.34, 1.6, 0.5, 1) both;
-	}
-	/* 抬起但不加深阴影 —— 一排并列的胶囊各自加深会让整行看着脏。
-   复合选择器压过 .bn-glass-lift:hover 的阴影,同上,不用 !important。 */
-	.bn-glass-lift.bn-nohl:hover {
-		box-shadow: 0 16px 40px rgba(42, 30, 72, 0.2);
 	}
 
 	/* 右下角的「女仆 AI」胶囊。::after 是一道斜向扫光,hover 时扫过去。 */
@@ -276,9 +328,15 @@
 		position: relative;
 		overflow: hidden;
 		isolation: isolate;
-		background: linear-gradient(135deg, rgba(162, 155, 254, 0.9), rgba(108, 92, 231, 0.92));
-		backdrop-filter: blur(10px) saturate(1.5);
-		-webkit-backdrop-filter: blur(10px) saturate(1.5);
+		background: linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--color-bn-purple) 90%, transparent),
+			color-mix(in srgb, var(--bn-ai-purple) 92%, transparent)
+		);
+		/* 磨砂强度跟皮肤的 glass.blur 走(默认 12px)。写死 10px 的话,装了
+		   radius/blur 全零的像素皮肤,整站都硬边了只有这颗还糊着一圈。 */
+		backdrop-filter: blur(var(--bn-glass-blur)) saturate(1.5);
+		-webkit-backdrop-filter: blur(var(--bn-glass-blur)) saturate(1.5);
 		border: 1px solid rgba(255, 255, 255, 0.4);
 		transition:
 			box-shadow 0.35s ease,
@@ -309,9 +367,10 @@
 		transform: skewX(-20deg) translateX(-160%);
 		transition: transform 0.6s ease;
 	}
+	/* 只留形变 —— 光晕改由调用方的 `hover:shadow-bn-ai-lg` 出,原因见文件顶部
+	   那两条 @utility 的注释(components 压不过 utilities,原来那句从没渲染过)。 */
 	.bn-ai-fab:hover {
 		animation: bn-jelly 0.6s both;
-		box-shadow: 0 14px 40px rgba(108, 92, 231, 0.55);
 	}
 	.bn-ai-fab:hover::after {
 		transform: skewX(-20deg) translateX(420%);
@@ -398,9 +457,6 @@
 	.bn-anim-typing {
 		animation: bn-typing 1.2s infinite;
 	}
-	.bn-anim-caret {
-		animation: bn-caret 1s steps(1) infinite;
-	}
 	/* 流式光标,挂在 Markdown 最后一个块的尾巴上。
 	   为什么不是一个真节点:正文一经 Markdown 渲染就变成 <p>/<ul>/<pre> 这些**块**元素,
 	   一个跟在它们后面的 <span> 会自己掉到下一行去,而光标必须紧贴最后一个字。
@@ -471,6 +527,12 @@
    glow(空态大标题背后那团光)从强调色 color-mix 合成,浓度两套跟模式走 ——
    暗色下同浓度的光会盖过深底,得收敛。 */
 	:root {
+		/* 「女仆 AI」的深紫。它不在 @theme 的语义色里 —— 那些是随皮肤换装的,
+		   而这抹紫是 AI 相关件(右下角胶囊、三条 hero 圆章)的固定品牌色。
+		   此前以 `#6c5ce7` 字面量散在 9 处(styles.css 3 处 + 两张 Roast 卡的
+		   ROAST_PURPLE + hero 三胞胎)。JS 侧那两处还搬不过来 —— GlassPanel 的
+		   `accent` 要拼 `${accent}1f` 造 alpha,只收十六进制字面量。 */
+		--bn-ai-purple: #6c5ce7;
 		--bn-chat-dot: var(--color-bn-pink);
 		--bn-chat-accent-2: var(--color-bn-pink);
 		--bn-chat-bg: var(--bn-page-bg);
@@ -508,7 +570,6 @@
 		.bn-anim-cmd-in,
 		.bn-anim-fade-up,
 		.bn-anim-typing,
-		.bn-anim-caret,
 		.bn-chat-md-caret > *:last-child::after {
 			animation: none;
 		}

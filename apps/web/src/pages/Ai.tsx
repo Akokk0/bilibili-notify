@@ -448,25 +448,11 @@ export default function Ai() {
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
 			{/* Hero strip。总开关是页面级的 —— 它既不属于某一家服务商,也不属于某一份人格。 */}
-			<div
-				// 渐变叠在玻璃底上(.bn-glass 供底色+blur),否则皮肤壁纸下整条近乎全透明
-				className="bn-glass relative rounded-bn-card p-5 shadow-bn-card"
-				style={{
-					background:
-						"linear-gradient(135deg, rgba(162,155,254,0.18), rgba(108,92,231,0.08)), var(--bn-glass-bg)",
-					borderColor: "rgba(108,92,231,0.25)",
-				}}
-			>
+			<div className="bn-glass bn-hero-tint relative rounded-bn-card p-5 shadow-bn-card">
 				<div className="flex items-center gap-3.5">
-					<div
-						className="grid h-13 w-13 shrink-0 place-items-center rounded-2xl text-white"
-						style={{
-							background: "linear-gradient(135deg, #a29bfe, #6c5ce7)",
-							boxShadow: "0 6px 18px rgba(108,92,231,0.35)",
-							width: 52,
-							height: 52,
-						}}
-					>
+					{/* h-13/w-13 = 52px。此前 class 与 inline 的 width/height 把同一个尺寸
+					    写了两遍(inline 那份赢),留 class 这一份就够。 */}
+					<div className="bn-hero-badge grid h-13 w-13 shrink-0 place-items-center rounded-2xl text-white">
 						<Icon.ai size={26} />
 					</div>
 					<div className="flex-1">
