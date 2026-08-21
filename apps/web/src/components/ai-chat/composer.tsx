@@ -244,7 +244,7 @@ export function Composer({
 									label="移除图片"
 									title="移除"
 									shape="pill"
-									filled
+									surface="filled"
 									className="-right-1.5 -top-1.5 absolute"
 									onClick={() => onRemoveAttachment?.(a.id)}
 								/>

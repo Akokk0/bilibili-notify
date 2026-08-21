@@ -420,15 +420,15 @@ export function UpDialog({
 					background: `linear-gradient(135deg, ${color}, color-mix(in srgb, ${color} 67%, transparent))`,
 				}}
 			>
-				<button
-					type="button"
+				<IconButton
+					icon={<Icon.close size={14} />}
+					label="关闭"
 					onClick={requestClose}
-					data-bn="btn"
-					className="absolute right-3.5 top-3.5 grid h-7 w-7 place-items-center rounded-bn-pill bg-bn-inverse-strong text-bn-on-solid backdrop-blur-sm"
-					title="关闭"
-				>
-					<Icon.close size={14} />
-				</button>
+					size="lg"
+					shape="pill"
+					surface="scrim"
+					className="absolute right-3.5 top-3.5"
+				/>
 				<div className="absolute -bottom-7 left-5 flex items-end gap-3">
 					<Avatar
 						name={displayName(draft)}

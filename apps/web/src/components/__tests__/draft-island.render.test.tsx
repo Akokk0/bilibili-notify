@@ -143,7 +143,8 @@ describe("DraftIsland chip 5 态渲染", () => {
 			errorMessage: "网络异常",
 		});
 		const { container } = render(<DraftIsland />);
-		const badge = container.querySelector(".bg-bn-danger");
+		// 语义色走 12% 染底 + 语义字色,不用实心底(同 Toast 立的那条规矩)。
+		const badge = container.querySelector(".bg-bn-danger-soft");
 		expect(badge).toBeTruthy();
 		expect(badge?.querySelector("svg")).toBeTruthy();
 		expect(badge?.textContent).toBe("");

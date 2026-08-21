@@ -126,11 +126,30 @@ describe("IconButton", () => {
 	});
 
 	/** 描边+底色那一档:section-nav 的滚动箭头、附件的移除角标都是这个样子。 */
-	it("filled 加一圈描边与面底色", () => {
-		render(<IconButton icon={<Icon.close size={13} />} label="x" filled onClick={() => {}} />);
+	it("surface=filled 加一圈描边与面底色", () => {
+		render(
+			<IconButton icon={<Icon.close size={13} />} label="x" surface="filled" onClick={() => {}} />,
+		);
 		const cls = btn().className;
 		expect(cls).toContain("border");
 		expect(cls).toContain("bg-bn-surface");
+	});
+
+	/**
+	 * 遮罩那一档:压在图片 / 渐变上的钮(UP 弹窗封面的关闭、壁纸缩略图的删除)。
+	 *
+	 * 它**必须连静态字色一起换掉** —— 底下是任意内容,常规的 tertiary 灰不可读。
+	 * 而仓库没装 tailwind-merge:两个 `text-*` 同时出现时谁赢由样式表生成顺序定,
+	 * 不是由 class 串的先后定。所以这一档不能只是「在 tone 之上再叠一个字色」。
+	 */
+	it("surface=scrim 走遮罩 + 实底前景色,且不带 tone 那份 tertiary 字色", () => {
+		render(
+			<IconButton icon={<Icon.close size={13} />} label="x" surface="scrim" onClick={() => {}} />,
+		);
+		const cls = btn().className;
+		expect(cls).toContain("bg-bn-overlay");
+		expect(cls).toContain("text-bn-on-solid");
+		expect(cls).not.toContain("text-bn-text-tertiary");
 	});
 
 	it("className 只追加定位这类不冲突的工具类,接在本体之后", () => {

@@ -4,7 +4,7 @@
  * 1 = 单张,>1 = 轮换。删被引用的图被服务端 409 拦截,这里把 referencedBy 提示出来。
  */
 
-import { Icon } from "@bilibili-notify/ui";
+import { Icon, IconButton } from "@bilibili-notify/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { ApiError, api } from "../../services/api";
@@ -71,16 +71,16 @@ function Thumb({
 				)}
 			</button>
 			{selected ? <OrderBadge tone="pink">{order + 1}</OrderBadge> : null}
-			<button
-				type="button"
-				title="从图廊删除"
-				aria-label="从图廊删除"
+			<IconButton
+				icon={<Icon.close size={10} />}
+				label="从图廊删除"
 				onClick={onDelete}
-				data-bn="btn"
-				className="absolute right-1 top-1 hidden h-4 w-4 place-items-center rounded-bn-pill bg-black/55 text-bn-on-solid transition hover:bg-bn-danger-text group-hover:grid"
-			>
-				<Icon.close size={10} />
-			</button>
+				size="xs"
+				shape="pill"
+				tone="danger"
+				surface="scrim"
+				className="absolute right-1 top-1 opacity-0 group-hover:opacity-100"
+			/>
 		</div>
 	);
 }
@@ -181,16 +181,16 @@ export function GalleryPicker({
 					>
 						<OrderBadge tone="danger">{value.indexOf(id) + 1}</OrderBadge>
 						<span className="text-[10px] text-bn-danger-text">已失效</span>
-						<button
-							type="button"
-							title="移除失效引用"
-							aria-label="移除失效引用"
+						<IconButton
+							icon={<Icon.close size={10} />}
+							label="移除失效引用"
 							onClick={() => onChange(removeFromGallery(value, id))}
-							data-bn="btn"
-							className="absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-bn-pill bg-black/55 text-bn-on-solid transition hover:bg-bn-danger-text"
-						>
-							<Icon.close size={10} />
-						</button>
+							size="xs"
+							shape="pill"
+							tone="danger"
+							surface="scrim"
+							className="absolute right-1 top-1"
+						/>
 					</div>
 				))}
 				<label className="grid aspect-[16/10] w-24 shrink-0 cursor-pointer place-items-center rounded-lg border border-dashed border-bn-border text-[11px] text-bn-text-tertiary transition hover:border-bn-pink hover:text-bn-pink">

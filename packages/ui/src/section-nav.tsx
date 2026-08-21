@@ -245,7 +245,7 @@ export function SectionNav({
 								size="lg"
 								tone="accent"
 								shape="pill"
-								filled
+								surface="filled"
 								onClick={() => scrollByDir(-1)}
 							/>
 						</div>
@@ -290,7 +290,7 @@ export function SectionNav({
 								size="lg"
 								tone="accent"
 								shape="pill"
-								filled
+								surface="filled"
 								onClick={() => scrollByDir(1)}
 							/>
 						</div>

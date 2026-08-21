@@ -168,8 +168,16 @@ export interface IconButtonProps {
 	tone?: IconButtonTone;
 	/** 默认小方角;`pill` 给正圆那一档(翻页箭头、头像角标)。 */
 	shape?: "square" | "pill";
-	/** 加一圈描边与面底色 —— 需要从背景里「浮」出来时用(滚动箭头、附件角标)。 */
-	filled?: boolean;
+	/**
+	 * 背景处理。缺省无底,只在悬停时染一下。
+	 *
+	 * - `filled` —— 描边 + 面底色,需要从背景里「浮」出来时用(滚动箭头、附件角标)。
+	 * - `scrim` —— 半透明遮罩 + 磨砂 + 实底上的前景色,给**压在图片 / 渐变上**的那种
+	 *   (UP 弹窗封面上的关闭钮、壁纸缩略图上的删除钮)。那底下是任意内容,常规的
+	 *   `text-tertiary` 字色一律不可读,所以这一档连静态字色一起换掉 —— 仓库没装
+	 *   tailwind-merge,两个 `text-*` 同时出现只会由生成顺序决定谁赢。
+	 */
+	surface?: "filled" | "scrim";
 	disabled?: boolean;
 	/** 下拉/弹层触发器的无障碍标注,同 {@link BtnProps}。 */
 	ariaHasPopup?: boolean;
@@ -191,6 +199,18 @@ const ICON_BUTTON_TONE: Record<IconButtonTone, string> = {
 	accent: "text-bn-text-tertiary hover:bg-bn-pink/10 hover:text-bn-pink",
 };
 
+const ICON_BUTTON_SURFACE = {
+	filled: "border border-bn-border-subtle bg-bn-surface shadow-bn-card",
+	scrim: "bg-bn-overlay text-bn-on-solid backdrop-blur-sm",
+} as const;
+
+/** `scrim` 档的 hover —— 静态字色由遮罩那一档定死,这里只管悬停反馈。 */
+const ICON_BUTTON_SCRIM_TONE: Record<IconButtonTone, string> = {
+	neutral: "hover:opacity-80",
+	danger: "hover:bg-bn-danger-text",
+	accent: "hover:bg-bn-pink",
+};
+
 export function IconButton({
 	icon,
 	label,
@@ -199,7 +219,7 @@ export function IconButton({
 	size = "sm",
 	tone = "neutral",
 	shape = "square",
-	filled = false,
+	surface,
 	disabled,
 	ariaHasPopup,
 	ariaExpanded,
@@ -217,9 +237,9 @@ export function IconButton({
 			data-bn="btn"
 			className={`grid shrink-0 cursor-pointer place-items-center transition disabled:cursor-not-allowed disabled:opacity-50 ${
 				shape === "pill" ? "rounded-bn-pill" : "rounded-bn-xs"
-			} ${ICON_BUTTON_SIZE[size]} ${ICON_BUTTON_TONE[tone]} ${
-				filled ? "border border-bn-border-subtle bg-bn-surface shadow-bn-card" : ""
-			} ${className ?? ""}`}
+			} ${ICON_BUTTON_SIZE[size]} ${
+				surface === "scrim" ? ICON_BUTTON_SCRIM_TONE[tone] : ICON_BUTTON_TONE[tone]
+			} ${surface ? ICON_BUTTON_SURFACE[surface] : ""} ${className ?? ""}`}
 		>
 			{icon}
 		</button>
