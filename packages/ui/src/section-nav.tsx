@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { IconButton } from "./atoms";
 
 /**
  * SectionNav —— Rules / Targets / Logs 三页共用的「分区/Tab 导航」。
@@ -244,15 +245,15 @@ export function SectionNav({
 				<div className="relative flex items-center">
 					{edges.left ? (
 						<div className="absolute inset-y-0 left-0 z-10 flex items-center rounded-l-[11px] bg-linear-to-r from-bn-surface via-bn-surface/85 to-transparent pr-6 pl-1">
-							<button
-								type="button"
-								aria-label="向左滚动"
+							<IconButton
+								icon={<Chevron dir="left" />}
+								label="向左滚动"
+								size="lg"
+								tone="accent"
+								shape="pill"
+								filled
 								onClick={() => scrollByDir(-1)}
-								data-bn="btn"
-								className="grid h-7 w-7 shrink-0 place-items-center rounded-bn-pill border border-bn-border-subtle bg-bn-surface text-bn-text-secondary shadow-bn-card transition hover:text-bn-pink"
-							>
-								<Chevron dir="left" />
-							</button>
+							/>
 						</div>
 					) : null}
 
@@ -294,15 +295,15 @@ export function SectionNav({
 
 					{edges.right ? (
 						<div className="absolute inset-y-0 right-0 z-10 flex items-center rounded-r-[11px] bg-linear-to-l from-bn-surface via-bn-surface/85 to-transparent pr-1 pl-6">
-							<button
-								type="button"
-								aria-label="向右滚动"
+							<IconButton
+								icon={<Chevron dir="right" />}
+								label="向右滚动"
+								size="lg"
+								tone="accent"
+								shape="pill"
+								filled
 								onClick={() => scrollByDir(1)}
-								data-bn="btn"
-								className="grid h-7 w-7 shrink-0 place-items-center rounded-bn-pill border border-bn-border-subtle bg-bn-surface text-bn-text-secondary shadow-bn-card transition hover:text-bn-pink"
-							>
-								<Chevron dir="right" />
-							</button>
+							/>
 						</div>
 					) : null}
 				</div>

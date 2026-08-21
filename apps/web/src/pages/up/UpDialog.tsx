@@ -4,6 +4,7 @@ import {
 	ConfirmDialog,
 	EmptyNote,
 	Icon,
+	IconButton,
 	ModalShell,
 	PlatformIcon,
 	Toggle,
@@ -837,16 +838,12 @@ function AtAllPerTargetToggle({
 					+ @全体
 				</span>
 				{isExplicit && parentOn && !unsupported ? (
-					<button
-						type="button"
+					<IconButton
+						icon={<Icon.refresh size={10} />}
+						label="重置为跟随订阅默认"
+						size="xs"
 						onClick={() => onSet(undefined)}
-						aria-label="重置为跟随订阅默认"
-						title="重置为跟随订阅默认"
-						data-bn="btn"
-						className="grid h-4 w-4 place-items-center rounded-sm text-bn-text-tertiary hover:bg-bn-surface-muted hover:text-bn-text-primary"
-					>
-						<Icon.refresh size={10} />
-					</button>
+					/>
 				) : null}
 			</div>
 			{unsupported && parentOn ? (
@@ -900,16 +897,14 @@ function TargetRoutingCard({
 					</span>
 				) : null}
 				<Toggle value={isCustom} onChange={onToggleMode} size="sm" />
-				<button
-					type="button"
+				<IconButton
+					icon={<Icon.close size={11} />}
+					label="移除该推送目标"
+					size="md"
+					tone="danger"
+					shape="pill"
 					onClick={onDetach}
-					aria-label="移除该推送目标"
-					title="移除该推送目标"
-					data-bn="btn"
-					className="grid h-6 w-6 place-items-center rounded-bn-pill text-bn-text-tertiary hover:bg-bn-danger/10 hover:text-bn-danger"
-				>
-					<Icon.close size={11} />
-				</button>
+				/>
 			</div>
 
 			{/* Detail (only when custom) */}

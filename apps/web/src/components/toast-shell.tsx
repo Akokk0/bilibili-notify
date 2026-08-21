@@ -1,4 +1,4 @@
-import { Icon } from "@bilibili-notify/ui";
+import { Icon, IconButton } from "@bilibili-notify/ui";
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { PUSH_KIND_META } from "../config/push-kinds";
@@ -73,15 +73,7 @@ function ToastCard({ item }: { item: ToastItem }) {
 					</div>
 				) : null}
 			</div>
-			<button
-				type="button"
-				onClick={() => dismiss(item.id)}
-				data-bn="btn"
-				className="h-5 w-5 shrink-0 cursor-pointer rounded-sm text-bn-text-tertiary hover:bg-bn-hover-muted hover:text-bn-text-primary"
-				aria-label="关闭"
-			>
-				<Icon.close size={11} />
-			</button>
+			<IconButton icon={<Icon.close size={11} />} label="关闭" onClick={() => dismiss(item.id)} />
 		</div>
 	);
 }

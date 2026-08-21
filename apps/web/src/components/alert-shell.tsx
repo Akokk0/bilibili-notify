@@ -1,4 +1,4 @@
-import { Icon } from "@bilibili-notify/ui";
+import { Icon, IconButton } from "@bilibili-notify/ui";
 import { createPortal } from "react-dom";
 import { type AlertItem, useAlertStore } from "../store/alerts";
 
@@ -65,15 +65,7 @@ function AlertCard({ item }: { item: AlertItem }) {
 				</div>
 				<div className="mt-1 text-[11.5px] leading-snug text-bn-text-primary">{item.message}</div>
 			</div>
-			<button
-				type="button"
-				onClick={() => dismiss(item.id)}
-				data-bn="btn"
-				className="h-5 w-5 shrink-0 cursor-pointer rounded-sm text-bn-text-tertiary hover:bg-bn-hover-muted hover:text-bn-text-primary"
-				aria-label="关闭"
-			>
-				<Icon.close size={11} />
-			</button>
+			<IconButton icon={<Icon.close size={11} />} label="关闭" onClick={() => dismiss(item.id)} />
 		</div>
 	);
 }

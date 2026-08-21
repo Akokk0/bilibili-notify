@@ -6,7 +6,7 @@
  * 全局绑 defaults.templates,per-UP 绑 overrides.templates,由调用方组合)。
  */
 
-import { Icon, Toggle, WarnNote } from "@bilibili-notify/ui";
+import { Icon, IconButton, Toggle, WarnNote } from "@bilibili-notify/ui";
 import {
 	closestCenter,
 	DndContext,
@@ -124,15 +124,12 @@ function SortableBlockRow({
 				</span>
 				<div className="flex w-7 shrink-0 justify-end">
 					{isSplit ? (
-						<button
-							type="button"
-							title="删除分条符"
+						<IconButton
+							icon={<Icon.close size={13} />}
+							label="删除分条符"
+							tone="danger"
 							onClick={() => onRemove(block.id)}
-							data-bn="btn"
-							className="grid h-5 w-5 place-items-center rounded-sm text-bn-text-tertiary transition hover:bg-bn-danger-soft hover:text-bn-danger-text"
-						>
-							<Icon.close size={13} />
-						</button>
+						/>
 					) : (
 						<Toggle value={block.visible} size="sm" onChange={(v) => onToggle(block.id, v)} />
 					)}

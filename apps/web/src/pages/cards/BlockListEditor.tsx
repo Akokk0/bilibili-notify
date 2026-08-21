@@ -8,7 +8,7 @@
  * 正常。拖拽手柄只绑在 ⠿ 上 —— 开关 / 边距输入 / 删除按钮仍可正常点击。
  */
 
-import { Icon, Toggle } from "@bilibili-notify/ui";
+import { Icon, IconButton, Toggle } from "@bilibili-notify/ui";
 import {
 	closestCenter,
 	DndContext,
@@ -151,15 +151,12 @@ function SortableRow({
 			{/* 固定宽度槽位 —— 让删除按钮与 Toggle 占同宽,上下行的边距输入对齐。 */}
 			<div className="flex w-7 shrink-0 justify-end">
 				{isDivider ? (
-					<button
-						type="button"
-						title="删除分割线"
+					<IconButton
+						icon={<Icon.close size={13} />}
+						label="删除分割线"
+						tone="danger"
 						onClick={() => onRemove(block.id)}
-						data-bn="btn"
-						className="grid h-5 w-5 place-items-center rounded-sm text-bn-text-tertiary transition hover:bg-bn-danger-soft hover:text-bn-danger-text"
-					>
-						<Icon.close size={13} />
-					</button>
+					/>
 				) : (
 					<Toggle value={block.visible} size="sm" onChange={() => onToggle(block.id)} />
 				)}

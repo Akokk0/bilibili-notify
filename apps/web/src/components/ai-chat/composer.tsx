@@ -1,5 +1,5 @@
 import type { MaidSkillDTO } from "@bilibili-notify/contract";
-import { Icon } from "@bilibili-notify/ui";
+import { Icon, IconButton } from "@bilibili-notify/ui";
 import {
 	type KeyboardEvent,
 	type ReactNode,
@@ -239,16 +239,15 @@ export function Composer({
 									alt="待发送的图片"
 									className="h-16 w-16 rounded-bn-sm border border-bn-border object-cover"
 								/>
-								<button
-									type="button"
-									aria-label="移除图片"
+								<IconButton
+									icon={<Icon.close size={12} />}
+									label="移除图片"
 									title="移除"
+									shape="pill"
+									filled
+									className="-right-1.5 -top-1.5 absolute"
 									onClick={() => onRemoveAttachment?.(a.id)}
-									data-bn="btn"
-									className="-right-1.5 -top-1.5 absolute grid h-5 w-5 cursor-pointer place-items-center rounded-bn-pill border border-bn-border bg-bn-surface text-bn-text-secondary shadow-sm transition-colors hover:text-bn-text-primary"
-								>
-									<Icon.close size={12} />
-								</button>
+								/>
 							</div>
 						))}
 					</div>
@@ -309,18 +308,16 @@ export function Composer({
 							}}
 						/>
 						<div className="relative shrink-0" ref={actionsRef}>
-							<button
-								type="button"
+							<IconButton
+								icon={<Icon.plus size={19} />}
+								label="添加"
 								title="添加图片或唤起女仆技能"
-								aria-label="添加"
-								aria-haspopup="menu"
-								aria-expanded={actionsOpen}
+								size="xl"
+								shape="pill"
+								ariaHasPopup
+								ariaExpanded={actionsOpen}
 								onClick={() => setActionsOpen((v) => !v)}
-								data-bn="btn"
-								className="grid h-9 w-9 cursor-pointer place-items-center rounded-bn-pill text-bn-text-secondary transition-colors hover:bg-bn-hover-muted"
-							>
-								<Icon.plus size={19} />
-							</button>
+							/>
 							{actionsOpen ? (
 								<div
 									role="menu"

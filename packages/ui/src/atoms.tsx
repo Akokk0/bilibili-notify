@@ -130,6 +130,104 @@ export function Btn({
 	);
 }
 
+// ── IconButton ──────────────────────────────────────────────────────────────
+
+/**
+ * 只装一枚图标的方钮/圆钮 —— 关闭、移除、展开、翻页箭头那一类。
+ *
+ * 收编前站内手写了 23 处,高度漂成 `h-4 / 4.5 / 5 / 5.5 / 6 / 7 / 7.5 / 8.5 / 9 /
+ * [34px]` **十档**,而真正的语义只有五档;hover 六种写法、语义只有四种;挂点更是
+ * 各挂各的、大半没挂。这十档不是设计,是一路 copy-paste 时各改各的。
+ *
+ * `size` 收命名档而不是像 {@link Avatar} 那样收数字:数字只是把漂移换个地方放。
+ * 真要一个档位表里没有的尺寸,先问是不是该有第六档。
+ *
+ * `tone` 只管 **hover 语义**,静态字色一律 `text-bn-text-tertiary` —— 图标钮平时
+ * 就该是安静的,红/粉只在指上去时出现。这跟 {@link ToneChip} 是同一条道理:让
+ * 颜色去承担静态可读性,亮色下红字图标只有 3 点几的对比度。
+ *
+ * `className` 只收**定位这类不冲突的**工具类(`absolute right-1 top-1`、
+ * `opacity-0 group-hover:opacity-100`)。仓库没装 tailwind-merge,同名工具类谁赢
+ * 由生成顺序定,想覆盖本体样式是覆盖不住的 —— 要改本体就加档,别在调用点硬掰。
+ */
+
+type IconButtonSize = "xs" | "sm" | "md" | "lg" | "xl";
+type IconButtonTone = "neutral" | "danger" | "accent" | "inverse";
+
+export interface IconButtonProps {
+	icon: ReactNode;
+	/** 读屏器名字。图标本身没有文字,这个必填。 */
+	label: string;
+	/**
+	 * tooltip。不给就跟着 `label` —— 两者**刻意可以不同**:侧栏删除钮的 tooltip
+	 * 只写「删除这个对话」,读屏器那句要念出是哪个对话。
+	 */
+	title?: string;
+	onClick?: MouseEventHandler<HTMLButtonElement>;
+	size?: IconButtonSize;
+	tone?: IconButtonTone;
+	/** 默认小方角;`pill` 给正圆那一档(翻页箭头、头像角标)。 */
+	shape?: "square" | "pill";
+	/** 加一圈描边与面底色 —— 需要从背景里「浮」出来时用(滚动箭头、附件角标)。 */
+	filled?: boolean;
+	disabled?: boolean;
+	/** 下拉/弹层触发器的无障碍标注,同 {@link BtnProps}。 */
+	ariaHasPopup?: boolean;
+	ariaExpanded?: boolean;
+	className?: string;
+}
+
+const ICON_BUTTON_SIZE: Record<IconButtonSize, string> = {
+	xs: "h-4 w-4",
+	sm: "h-5 w-5",
+	md: "h-6 w-6",
+	lg: "h-7 w-7",
+	xl: "h-9 w-9",
+};
+
+const ICON_BUTTON_TONE: Record<IconButtonTone, string> = {
+	neutral: "text-bn-text-tertiary hover:bg-bn-hover-muted hover:text-bn-text-primary",
+	danger: "text-bn-text-tertiary hover:bg-bn-danger-soft hover:text-bn-danger-text",
+	accent: "text-bn-text-tertiary hover:bg-bn-pink/10 hover:text-bn-pink",
+	// 深色浮层(草稿岛、封面渐变)上的那一档 —— 底是暗的,中性色会糊进去。
+	inverse: "text-white/70 hover:bg-bn-inverse-hover hover:text-white",
+};
+
+export function IconButton({
+	icon,
+	label,
+	title,
+	onClick,
+	size = "sm",
+	tone = "neutral",
+	shape = "square",
+	filled = false,
+	disabled,
+	ariaHasPopup,
+	ariaExpanded,
+	className,
+}: IconButtonProps) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			disabled={disabled}
+			title={title ?? label}
+			aria-label={label}
+			aria-haspopup={ariaHasPopup}
+			aria-expanded={ariaExpanded}
+			data-bn="btn"
+			className={`grid shrink-0 cursor-pointer place-items-center transition disabled:cursor-not-allowed disabled:opacity-50 ${
+				shape === "pill" ? "rounded-bn-pill" : "rounded-bn-xs"
+			} ${ICON_BUTTON_SIZE[size]} ${ICON_BUTTON_TONE[tone]} ${
+				filled ? "border border-bn-border-subtle bg-bn-surface shadow-bn-card" : ""
+			} ${className ?? ""}`}
+		>
+			{icon}
+		</button>
+	);
+}
+
 // ── Pill ────────────────────────────────────────────────────────────────────
 
 export interface PillProps {

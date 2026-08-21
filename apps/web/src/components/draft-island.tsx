@@ -19,7 +19,7 @@
  * ToastShell(z-200)与 Dialog(z-300)— toast/dialog 弹出时不被遮挡。
  */
 
-import { Icon } from "@bilibili-notify/ui";
+import { Icon, IconButton } from "@bilibili-notify/ui";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { DraftRegistration, DraftUiState } from "../store/draft";
@@ -284,15 +284,13 @@ function ErrorContent({ message }: { message: string | null }) {
 			<span className="max-w-65 truncate text-[12px]" title={message ?? undefined}>
 				{message ?? "保存失败"}
 			</span>
-			<button
-				type="button"
+			<IconButton
+				icon={<Icon.close size={12} />}
+				label="关闭"
+				tone="inverse"
+				shape="pill"
 				onClick={() => setUiState("dirty")}
-				aria-label="关闭"
-				data-bn="btn"
-				className="grid h-5 w-5 place-items-center rounded-bn-pill text-white/70 transition hover:bg-bn-inverse-hover hover:text-white"
-			>
-				<Icon.close size={12} />
-			</button>
+			/>
 		</ChipShell>
 	);
 }

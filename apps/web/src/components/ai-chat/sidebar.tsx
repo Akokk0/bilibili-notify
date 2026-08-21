@@ -1,5 +1,5 @@
 import type { AiChatMode } from "@bilibili-notify/contract";
-import { Icon } from "@bilibili-notify/ui";
+import { Icon, IconButton } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { type AiConversationMetaDTO, groupConversations } from "../../services/aiChat";
 import { ThinkingLevelSetting } from "./thinking-level-setting";
@@ -42,16 +42,12 @@ export function ChatSidebar(props: ChatSidebarProps) {
 				<div className="flex-1 truncate pl-2 text-[14.5px] font-bold text-bn-text-primary">
 					女仆AI · {props.aiName}
 				</div>
-				<button
-					type="button"
-					title="收起侧栏"
-					aria-label="收起侧栏"
+				<IconButton
+					icon={<Icon.panelCollapse size={18} />}
+					label="收起侧栏"
+					size="xl"
 					onClick={props.onCollapse}
-					data-bn="btn"
-					className="grid h-[34px] w-[34px] cursor-pointer place-items-center rounded-bn-sm text-bn-text-tertiary transition-colors hover:bg-bn-hover-muted"
-				>
-					<Icon.panelCollapse size={18} />
-				</button>
+				/>
 			</div>
 
 			{/* 两个入口 = 两种面孔。工坊那颗矮一档、字小一号:它是偏门的那一个,
@@ -103,16 +99,15 @@ export function ChatSidebar(props: ChatSidebarProps) {
 										<span className="min-w-0 flex-1 truncate">{c.title}</span>
 										<ConversationLabel mode={c.mode} persona={c.persona} />
 									</button>
-									<button
-										type="button"
+									<IconButton
+										icon={<Icon.close size={13} />}
+										label={`删除对话「${c.title}」`}
 										title="删除这个对话"
-										aria-label={`删除对话「${c.title}」`}
+										size="md"
+										tone="danger"
+										className="mr-1.5 opacity-0 focus-visible:opacity-100 group-hover/row:opacity-100"
 										onClick={() => props.onDelete(c.id)}
-										data-bn="btn"
-										className="mr-1.5 grid h-6 w-6 shrink-0 cursor-pointer place-items-center rounded-sm text-bn-text-secondary opacity-0 transition hover:bg-bn-hover-muted hover:text-bn-danger-text focus-visible:opacity-100 group-hover/row:opacity-100"
-									>
-										<Icon.close size={13} />
-									</button>
+									/>
 								</div>
 							))}
 						</div>
@@ -149,17 +144,14 @@ export function ChatSidebar(props: ChatSidebarProps) {
 						{props.modelName || "尚未配置模型"}
 					</div>
 				</div>
-				<button
-					type="button"
+				<IconButton
+					icon={<Icon.gear size={17} />}
+					label="聊天设置"
 					title="设置"
-					aria-label="聊天设置"
-					aria-expanded={settingsOpen}
+					size="xl"
+					ariaExpanded={settingsOpen}
 					onClick={() => setSettingsOpen((v) => !v)}
-					data-bn="btn"
-					className="grid h-[34px] w-[34px] cursor-pointer place-items-center rounded-bn-sm text-bn-text-tertiary transition-colors hover:bg-bn-hover-muted"
-				>
-					<Icon.gear size={17} />
-				</button>
+				/>
 
 				{settingsOpen ? (
 					<div className="bn-glass-sheen bn-glass-strong bn-anim-fade-up absolute inset-x-0 bottom-[calc(100%+8px)] z-20 rounded-2xl p-3 shadow-bn-elev">

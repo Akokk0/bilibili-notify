@@ -14,7 +14,7 @@
  */
 
 import { MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
-import { Icon } from "@bilibili-notify/ui";
+import { Icon, IconButton } from "@bilibili-notify/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, api } from "../../services/api";
@@ -179,16 +179,14 @@ export function FontPicker({
 					hint="主人自己传的"
 					onPick={() => onChange(pickUploadedFont(value, f.id))}
 					right={
-						<button
-							type="button"
+						<IconButton
+							icon={<Icon.close size={11} />}
+							label={`删除 ${f.name}`}
 							title="从字体库删除"
-							aria-label={`删除 ${f.name}`}
+							tone="danger"
+							shape="pill"
 							onClick={() => onDelete(f.id)}
-							data-bn="btn"
-							className="grid h-5 w-5 shrink-0 place-items-center rounded-bn-pill text-bn-text-tertiary transition hover:bg-bn-danger-soft hover:text-bn-danger-text"
-						>
-							<Icon.close size={11} />
-						</button>
+						/>
 					}
 				/>
 			))}
