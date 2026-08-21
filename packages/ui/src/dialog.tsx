@@ -51,7 +51,7 @@ export function ModalShell({
 	if (typeof document === "undefined") return null;
 	return createPortal(
 		<div
-			className="bn-anim-fade-in fixed inset-0 z-300 flex items-center justify-center bg-bn-overlay px-4 pb-4 pt-22 backdrop-blur-xs"
+			className="bn-anim-fade-in fixed inset-0 z-bn-modal flex items-center justify-center bg-bn-overlay px-4 pb-4 pt-22 backdrop-blur-xs"
 			role="presentation"
 		>
 			<button

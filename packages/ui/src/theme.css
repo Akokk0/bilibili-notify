@@ -119,6 +119,70 @@
 	--radius-4xl: calc(var(--radius-bn-card) * 2.286);
 }
 
+/* ── 叠放层级 ───────────────────────────────────────────────────────────────
+   **一张表定死谁盖谁。** 收编前 12 个层级散在十来个文件里,加一层浮层只能翻别处
+   的 className 猜一个不撞的数字;`header.tsx` 与 `draft-island.tsx` 的注释里各存
+   了半张手写的对照表,还得靠 `header-stacking.test.tsx` 拦着别漂。
+
+   **数值一个没动** —— 这次只是给现有层级起名字。叠放顺序是已经调好的事实,
+   `header-stacking.test.tsx` 钉着它,归并数字等于拿视觉换整齐。
+
+   层级不进皮肤词表:皮肤重排叠放顺序只会把弹窗压到遮罩底下去。
+
+   z-index 没有 Tailwind theme namespace(不像 --color-* / --text-* / --radius-*),
+   所以和 shadow 族一样手写 @utility。 */
+:root {
+	--z-bn-raised: 10; /* 卡内抬升:时间轴圆点、拖拽中的行、边缘渐隐、就地浮钮 */
+	--z-bn-local: 20; /* 局部弹层:卡内下拉、侧栏浮层、吸顶的分区导航 */
+	--z-bn-nav: 30; /* 页面级导航:tab 条、AI 悬浮球、页头下拉 */
+	--z-bn-header: 35; /* 全站吸顶栏 —— 压得住页面内容,让开一切浮层 */
+	--z-bn-scrim: 40; /* 整页遮罩:AI 抽屉、草稿岛展开态 */
+	--z-bn-overlay: 50; /* 压在遮罩之上的弹层:登录框、统计页下拉 */
+	--z-bn-menu: 60; /* 贴着目标定位的右键菜单 */
+	--z-bn-toast-base: 80; /* Toast 组件默认档(调用方可覆盖) */
+	--z-bn-island: 100; /* 草稿岛 */
+	--z-bn-notify: 200; /* toast 那一摞与组件告警条 */
+	--z-bn-modal: 300; /* 弹窗与抽屉 */
+	--z-bn-preview: 500; /* 皮肤预览条 —— 试穿时它必须始终看得见 */
+}
+
+@utility z-bn-raised {
+	z-index: var(--z-bn-raised);
+}
+@utility z-bn-local {
+	z-index: var(--z-bn-local);
+}
+@utility z-bn-nav {
+	z-index: var(--z-bn-nav);
+}
+@utility z-bn-header {
+	z-index: var(--z-bn-header);
+}
+@utility z-bn-scrim {
+	z-index: var(--z-bn-scrim);
+}
+@utility z-bn-overlay {
+	z-index: var(--z-bn-overlay);
+}
+@utility z-bn-menu {
+	z-index: var(--z-bn-menu);
+}
+@utility z-bn-toast-base {
+	z-index: var(--z-bn-toast-base);
+}
+@utility z-bn-island {
+	z-index: var(--z-bn-island);
+}
+@utility z-bn-notify {
+	z-index: var(--z-bn-notify);
+}
+@utility z-bn-modal {
+	z-index: var(--z-bn-modal);
+}
+@utility z-bn-preview {
+	z-index: var(--z-bn-preview);
+}
+
 /* shadow-bn-card / shadow-bn-elev 特意不放 @theme:Tailwind v4 对 shadow 族
    token 是编译期内联 —— utility 产物里只有拆好的字面值(颜色替换成
    var(--tw-shadow-color, #…) 以支持 shadow-color 修饰符),没有

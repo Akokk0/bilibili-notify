@@ -19,7 +19,7 @@ export function AlertShell(): React.ReactElement | null {
 	return createPortal(
 		<div
 			aria-live="assertive"
-			className="pointer-events-none fixed right-4 top-4 z-200 flex w-96 flex-col gap-2"
+			className="pointer-events-none fixed right-4 top-4 z-bn-notify flex w-96 flex-col gap-2"
 		>
 			<div className="bn-anim-fade-in pointer-events-auto flex items-center justify-between rounded-bn-card border border-bn-danger-border bg-bn-danger-soft px-3 py-1.5 text-[11.5px] font-bold text-bn-danger-text shadow-bn-elev backdrop-blur-sm">
 				<span>组件告警 ({items.length})</span>

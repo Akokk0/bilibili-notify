@@ -106,7 +106,7 @@ function SkinEffectsLayer() {
 		<div
 			data-skin-effects
 			aria-hidden
-			className="pointer-events-none fixed inset-0 z-20 overflow-hidden"
+			className="pointer-events-none fixed inset-0 z-bn-local overflow-hidden"
 		>
 			<BokehField colors={fx.bokeh.colors} />
 		</div>

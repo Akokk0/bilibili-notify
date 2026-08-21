@@ -361,3 +361,51 @@ describe("颜色一律走 token", () => {
 		expect(findings).toEqual([]);
 	});
 });
+
+/**
+ * **叠放层级走分层表,不写裸数字。**
+ *
+ * 收编前 12 个层级散在十来个文件里,加一层浮层只能翻别处的 className 猜一个不撞的
+ * 数字 —— `header.tsx` 与 `draft-island.tsx` 的注释里各存了半张手写的对照表,正是
+ * 因为源码里读不出顺序。表在 `theme.css`,数值一个没动。
+ *
+ * `z-index` 没有 Tailwind theme namespace,所以那一族是手写 `@utility`(同 shadow)。
+ */
+describe("叠放层级走分层表", () => {
+	/** `z-10` 这类裸档,以及 inline 的 `zIndex: 60`。`z-bn-*` 不在网内。 */
+	const Z_RE = /\bz-\d+\b|\bz-\[[^\]]+\]|\bzIndex\s*:\s*\d+/g;
+	const ROOTS = [
+		[SRC_DIR, "apps/web/src"],
+		[UI_SRC_DIR, "packages/ui/src"],
+		[join(SRC_DIR, "../../desktop/src"), "apps/desktop/src"],
+	] as const;
+
+	it("三个端里都没有裸 z-index", () => {
+		const findings: string[] = [];
+		for (const [root, label] of ROOTS) {
+			for (const file of listTsxRecursive(root)) {
+				if (/__tests__|\.test\./.test(file)) continue;
+				const src = readFileSync(file, "utf8")
+					.replace(/\/\*[\s\S]*?\*\//g, "")
+					.replace(/\/\/.*$/gm, "");
+				const hits = [...new Set([...src.matchAll(Z_RE)].map((m) => m[0]))];
+				if (hits.length > 0) {
+					findings.push(`${label}/${file.slice(root.length + 1)}: ${hits.join(" ")}`);
+				}
+			}
+		}
+		expect(findings).toEqual([]);
+	});
+
+	it("每个 z-bn-* utility 在 theme.css 里都有定义 —— 拼错了 Tailwind 是静默丢弃的", () => {
+		const css = readFileSync(UI_THEME, "utf8");
+		const defined = new Set([...css.matchAll(/@utility\s+(z-bn-[a-z-]+)\s*\{/g)].map((m) => m[1]));
+		const used = new Set<string>();
+		for (const [root] of ROOTS) {
+			for (const file of listTsxRecursive(root)) {
+				for (const m of readFileSync(file, "utf8").matchAll(/\bz-bn-[a-z-]+/g)) used.add(m[0]);
+			}
+		}
+		expect([...used].filter((u) => !defined.has(u))).toEqual([]);
+	});
+});

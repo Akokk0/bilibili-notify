@@ -32,7 +32,7 @@ export function DrawerShell({ children, onClose, width, ariaLabel }: DrawerShell
 		<div
 			role="dialog"
 			aria-label={ariaLabel}
-			className="bn-anim-drawer-in bn-glass-strong fixed inset-y-0 right-0 z-300 flex max-w-full flex-col overflow-y-auto rounded-l-2xl border-y-0 border-r-0 text-bn-text-primary shadow-bn-elev"
+			className="bn-anim-drawer-in bn-glass-strong fixed inset-y-0 right-0 z-bn-modal flex max-w-full flex-col overflow-y-auto rounded-l-2xl border-y-0 border-r-0 text-bn-text-primary shadow-bn-elev"
 			style={{ width }}
 		>
 			{children}

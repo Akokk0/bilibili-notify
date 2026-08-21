@@ -154,7 +154,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 				/>
 
 				{settingsOpen ? (
-					<div className="bn-glass-sheen bn-glass-strong bn-anim-fade-up absolute inset-x-0 bottom-[calc(100%+8px)] z-20 rounded-2xl p-3 shadow-bn-elev">
+					<div className="bn-glass-sheen bn-glass-strong bn-anim-fade-up absolute inset-x-0 bottom-[calc(100%+8px)] z-bn-local rounded-2xl p-3 shadow-bn-elev">
 						{/* 主题色与玻璃质感都不在这里:四色预设已砍,玻璃族直接吃
 						    --bn-glass-* token —— 观感调整一律走皮肤包(皮肤编辑器)。
 						    弹层里只剩与皮肤无关的行为设置。 */}

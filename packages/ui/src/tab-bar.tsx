@@ -11,12 +11,12 @@
 
 import type { ReactNode } from "react";
 
-/** tab 条的容器。`z-30` 是给 ScopeTabs 的「添加 UP」下拉留的层级。 */
+/** tab 条的容器。`z-bn-nav` 是给 ScopeTabs 的「添加 UP」下拉留的层级。 */
 export function TabBarShell({ children }: { children: ReactNode }) {
 	return (
 		<div
 			data-bn="nav"
-			className="relative z-30 flex flex-wrap items-center gap-1.5 rounded-bn-sm border border-bn-border-subtle bg-bn-surface/70 p-1.5 backdrop-blur-sm"
+			className="relative z-bn-nav flex flex-wrap items-center gap-1.5 rounded-bn-sm border border-bn-border-subtle bg-bn-surface/70 p-1.5 backdrop-blur-sm"
 		>
 			{children}
 		</div>

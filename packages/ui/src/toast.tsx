@@ -34,15 +34,12 @@ export interface ToastProps {
 	children: ReactNode;
 	/** 语义。只换描边色,底与字色不动。 */
 	tone?: ToastTone;
-	/**
-	 * 叠放层级。默认 80 —— 压得住页面内容,但让开弹窗(z-300)与皮肤预览条(z-500)。
-	 * 极少需要改;要改先想清楚是不是该让开的那一层。
-	 */
-	z?: number;
 }
 
-export function Toast({ children, tone = "neutral", z = 80 }: ToastProps) {
-	const style: CSSProperties = { zIndex: z };
+export function Toast({ children, tone = "neutral" }: ToastProps) {
+	// 层级走 `z-bn-toast-base`(压得住页面内容,让开弹窗与皮肤预览条)。此前它是个
+	// `z?: number` prop,一个调用方都没有 —— 那只是给了一个绕过分层表的口子。
+	const style: CSSProperties = {};
 	const border = TONE_BORDER[tone];
 	if (border) style.borderColor = border;
 	return (
@@ -52,7 +49,7 @@ export function Toast({ children, tone = "neutral", z = 80 }: ToastProps) {
 			aria-live="polite"
 			data-bn="glass-strong"
 			style={style}
-			className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-md border border-bn-border bg-bn-surface-strong px-3 py-1.5 text-[12px] font-medium text-bn-text-primary shadow-bn-elev"
+			className="fixed bottom-5 left-1/2 z-bn-toast-base -translate-x-1/2 rounded-md border border-bn-border bg-bn-surface-strong px-3 py-1.5 text-[12px] font-medium text-bn-text-primary shadow-bn-elev"
 		>
 			{children}
 		</div>

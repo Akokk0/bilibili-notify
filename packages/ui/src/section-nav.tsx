@@ -234,11 +234,11 @@ export function SectionNav({
 				data-section-nav="bar"
 				data-bn="nav"
 				style={{ top: STICKY_TOP }}
-				className="sticky z-20 rounded-bn-sm border border-bn-border-subtle bg-bn-surface/70 backdrop-blur-sm xl:hidden"
+				className="sticky z-bn-local rounded-bn-sm border border-bn-border-subtle bg-bn-surface/70 backdrop-blur-sm xl:hidden"
 			>
 				<div className="relative flex items-center">
 					{edges.left ? (
-						<div className="absolute inset-y-0 left-0 z-10 flex items-center rounded-l-[11px] bg-linear-to-r from-bn-surface via-bn-surface/85 to-transparent pr-6 pl-1">
+						<div className="absolute inset-y-0 left-0 z-bn-raised flex items-center rounded-l-[11px] bg-linear-to-r from-bn-surface via-bn-surface/85 to-transparent pr-6 pl-1">
 							<IconButton
 								icon={<Chevron dir="left" />}
 								label="向左滚动"
@@ -283,7 +283,7 @@ export function SectionNav({
 					</div>
 
 					{edges.right ? (
-						<div className="absolute inset-y-0 right-0 z-10 flex items-center rounded-r-[11px] bg-linear-to-l from-bn-surface via-bn-surface/85 to-transparent pr-1 pl-6">
+						<div className="absolute inset-y-0 right-0 z-bn-raised flex items-center rounded-r-[11px] bg-linear-to-l from-bn-surface via-bn-surface/85 to-transparent pr-1 pl-6">
 							<IconButton
 								icon={<Chevron dir="right" />}
 								label="向右滚动"

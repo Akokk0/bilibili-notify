@@ -319,7 +319,7 @@ function TimelinePanel({
 								<div className="w-11 text-right font-mono text-[11px] text-bn-text-secondary">
 									{relativeTimeFromNow(h.ts)}
 								</div>
-								<div className="relative z-10">
+								<div className="relative z-bn-raised">
 									<span
 										className="block h-3 w-3 rounded-full border-[2.5px] border-bn-surface"
 										style={{ background: tone, boxShadow: "0 0 0 1.5px rgba(0,0,0,0.04)" }}

@@ -78,9 +78,10 @@ export function UpCardMenu({
 		<div
 			ref={menuRef}
 			role="menu"
-			style={{ position: "fixed", left: x, top: y, zIndex: 60 }}
+			// inline 只留运行时坐标 —— 层级归分层表管。
+			style={{ position: "fixed", left: x, top: y }}
 			data-bn="glass-strong"
-			className="min-w-40 overflow-hidden rounded-lg border border-bn-border bg-bn-surface py-1 shadow-bn-elev"
+			className="z-bn-menu min-w-40 overflow-hidden rounded-lg border border-bn-border bg-bn-surface py-1 shadow-bn-elev"
 		>
 			{items.map((it) => (
 				<MenuItem

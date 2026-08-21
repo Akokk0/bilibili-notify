@@ -112,7 +112,7 @@ export function AiChatDock() {
 			// 只有右下角还是圆头紫胶囊。皮肤 CSS 是无层 author 样式,压得过 `.bn-ai-fab`
 			// 所在的 `@layer components`,所以挂上就够了,默认装的观感一个像素都不变。
 			data-bn="btn btn-primary"
-			className="bn-ai-fab fixed bottom-5 right-5 z-30 flex h-12 cursor-pointer items-center gap-2.25 rounded-bn-pill pl-4 pr-5 text-[13.5px] font-bold text-bn-on-solid shadow-bn-ai transition-shadow hover:shadow-bn-ai-lg"
+			className="bn-ai-fab fixed bottom-5 right-5 z-bn-nav flex h-12 cursor-pointer items-center gap-2.25 rounded-bn-pill pl-4 pr-5 text-[13.5px] font-bold text-bn-on-solid shadow-bn-ai transition-shadow hover:shadow-bn-ai-lg"
 		>
 			<Icon.ai size={20} />
 			女仆 AI
@@ -594,7 +594,7 @@ export function ChatPage() {
 			// 玻璃质感同理不再有 chat 专属参数 —— 玻璃族直接吃 --bn-glass-* token,
 			// 调玻璃去皮肤编辑器。data-bn-chat-root 给 chat 专属壁纸寻址。
 			data-bn-chat-root=""
-			className="bn-anim-chat-in fixed inset-0 z-40 flex"
+			className="bn-anim-chat-in fixed inset-0 z-bn-scrim flex"
 			style={{ background: "var(--bn-chat-bg)" }}
 			// overlay 时代这里是 div + role="dialog"。成了路由页之后它不再是「盖在
 			// 页面上的对话框」,对屏幕阅读器自称 dialog 会让人找「关闭」而不是「返回」。
@@ -627,7 +627,7 @@ export function ChatPage() {
 						title="打开侧栏"
 						aria-label="打开侧栏"
 						onClick={() => setRail(true)}
-						className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass absolute left-4 top-4 z-10 grid h-8.5 w-8.5 cursor-pointer place-items-center rounded-bn-sm text-bn-text-tertiary shadow-bn-card hover:bg-(--bn-glass-strong-bg) hover:shadow-bn-elev"
+						className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass absolute left-4 top-4 z-bn-raised grid h-8.5 w-8.5 cursor-pointer place-items-center rounded-bn-sm text-bn-text-tertiary shadow-bn-card hover:bg-(--bn-glass-strong-bg) hover:shadow-bn-elev"
 					>
 						<Icon.panelExpand size={18} />
 					</button>
@@ -636,7 +636,7 @@ export function ChatPage() {
 				<button
 					type="button"
 					onClick={onClose}
-					className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass absolute right-4 top-4 z-10 flex h-9.5 cursor-pointer items-center gap-1.75 rounded-bn-lg px-4 text-[12.5px] font-semibold text-bn-text-tertiary shadow-bn-card hover:bg-(--bn-glass-strong-bg) hover:shadow-bn-elev"
+					className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass absolute right-4 top-4 z-bn-raised flex h-9.5 cursor-pointer items-center gap-1.75 rounded-bn-lg px-4 text-[12.5px] font-semibold text-bn-text-tertiary shadow-bn-card hover:bg-(--bn-glass-strong-bg) hover:shadow-bn-elev"
 				>
 					<Icon.arrowLeft size={15} />
 					返回控制台

@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { TabBarShell } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render } from "@testing-library/react";
@@ -18,10 +21,26 @@ const apiGet = vi.hoisted(() =>
 
 vi.mock("../../services/api", () => ({ api: { get: apiGet } }));
 
-/** 从 Tailwind 类名里读出层级数字。没写 z-* → NaN,任何比较都会失败,正是想要的。 */
+/**
+ * 从类名里读出层级值。
+ *
+ * 类名现在是 `z-bn-header` 这样的名字,数字在 `theme.css` 的分层表里 —— jsdom 不加载
+ * 那份 CSS,所以直接解析文件。没写 `z-bn-*`、或名字表里查无此项 → NaN,任何比较都会
+ * 失败,正是想要的(拼错的 utility Tailwind 是静默丢弃的,一个 NaN 比一条假绿好)。
+ */
+const Z_TABLE = (() => {
+	const css = readFileSync(
+		join(dirname(fileURLToPath(import.meta.url)), "../../../../../packages/ui/src/theme.css"),
+		"utf8",
+	);
+	return new Map(
+		[...css.matchAll(/--(z-bn-[a-z-]+):\s*(\d+)/g)].map(([, name, v]) => [name, Number(v)]),
+	);
+})();
+
 function zOf(el: Element): number {
-	const m = /(?:^|\s)z-(\d+)(?:\s|$)/.exec(el.className.toString());
-	return m ? Number(m[1]) : Number.NaN;
+	const m = /(?:^|\s)(z-bn-[a-z-]+)(?:\s|$)/.exec(el.className.toString());
+	return m ? (Z_TABLE.get(m[1]) ?? Number.NaN) : Number.NaN;
 }
 
 beforeEach(() => {

@@ -15,8 +15,8 @@
  * - panel 内字段级 diff list(按 section 分组),单行 click 跳转对应 Field
  * - 左下「丢弃全部更改」按钮
  *
- * 位置 / 层级:fixed 居中底部,bottom = 1rem + safe-area。z-100 故意低于
- * ToastShell(z-200)与 Dialog(z-300)— toast/dialog 弹出时不被遮挡。
+ * 位置 / 层级:fixed 居中底部,bottom = 1rem + safe-area。z-bn-island 故意低于
+ * ToastShell(z-bn-notify)与 Dialog(z-bn-modal)— toast/dialog 弹出时不被遮挡。
  */
 
 import { Icon, IconButton } from "@bilibili-notify/ui";
@@ -35,7 +35,7 @@ const PANEL_SPRING = { type: "spring" as const, stiffness: 320, damping: 30 };
  * 曾经这里有一段「跟 FloatingAiBar 垂直堆叠避让」的位移(上移 64px)。
  * 那条 AI 建议条是**贴底全宽**的,不让位就会跟灵动岛叠在一起;换成现在的
  * AiChatDock 之后,收起态只是右下角一颗胶囊,与居中的灵动岛井水不犯河水,
- * 展开态则是整页覆盖层(z-40 在灵动岛之下也无所谓 —— 那时看不到页面了)。
+ * 展开态则是整页覆盖层(z-bn-scrim 在灵动岛之下也无所谓 —— 那时看不到页面了)。
  * 所以避让连同它依赖的 aiBar store 一起删掉,而不是留个恒为 0 的位移。
  */
 
@@ -124,7 +124,7 @@ export function DraftIsland(): ReactNode {
 			aria-label="草稿状态"
 			aria-live="polite"
 			data-testid="draft-island"
-			className="pointer-events-none fixed left-1/2 z-100 flex -translate-x-1/2 flex-col items-center"
+			className="pointer-events-none fixed left-1/2 z-bn-island flex -translate-x-1/2 flex-col items-center"
 			style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}
 			onMouseEnter={handleMouseEnter}
 			onMouseLeave={handleMouseLeave}

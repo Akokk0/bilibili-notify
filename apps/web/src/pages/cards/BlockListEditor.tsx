@@ -122,7 +122,7 @@ function SortableRow({
 			style={style}
 			className={`relative flex items-center gap-2 rounded-lg border px-2.5 py-2 ${
 				isDragging
-					? "z-10 border-bn-pink/60 bg-bn-surface opacity-90 shadow-bn-elev"
+					? "z-bn-raised border-bn-pink/60 bg-bn-surface opacity-90 shadow-bn-elev"
 					: "border-bn-border-subtle bg-bn-surface/60"
 			}`}
 		>
