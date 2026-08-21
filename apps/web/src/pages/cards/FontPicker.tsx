@@ -14,7 +14,7 @@
  */
 
 import { MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
-import { ErrorNote, Icon, IconButton, WarnNote } from "@bilibili-notify/ui";
+import { Btn, ErrorNote, Icon, IconButton, WarnNote } from "@bilibili-notify/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { TInput } from "../../components/forms";
@@ -184,14 +184,9 @@ export function FontPicker({
 					<span className="flex-1 text-[11.5px] text-bn-danger-text">
 						选中的字体文件已不在字体库里,当前实际用的是兜底字体
 					</span>
-					<button
-						type="button"
-						onClick={() => onChange(pickDefaultFont(value))}
-						data-bn="btn"
-						className="shrink-0 rounded-md border border-bn-danger-border px-2 py-0.5 text-[11px] font-bold text-bn-danger-text transition hover:bg-bn-surface"
-					>
+					<Btn variant="danger-outline" size="sm" onClick={() => onChange(pickDefaultFont(value))}>
 						清除
-					</button>
+					</Btn>
 				</div>
 			) : null}
 

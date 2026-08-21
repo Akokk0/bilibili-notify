@@ -68,7 +68,7 @@ export function Avatar({ name, color, size = 44, ring = false, status, url }: Av
 
 // ── Btn ─────────────────────────────────────────────────────────────────────
 
-type BtnVariant = "primary" | "ghost" | "outline" | "danger" | "blue";
+type BtnVariant = "primary" | "ghost" | "outline" | "danger" | "danger-outline" | "blue";
 type BtnSize = "sm" | "md" | "lg";
 
 export interface BtnProps {
@@ -92,6 +92,15 @@ const VARIANT_CLS: Record<BtnVariant, string> = {
 	ghost: "bg-transparent text-bn-text-tertiary border-transparent hover:bg-bn-hover-muted",
 	outline: "bg-bn-surface text-bn-text-primary border-bn-border hover:bg-bn-surface-muted",
 	danger: "bg-transparent text-bn-danger border-transparent hover:bg-bn-danger/10",
+	/**
+	 * `outline` 的危险语义兄弟 —— 带红描边的小钮(删除服务商 / 清除失效字体)。
+	 *
+	 * 与 `danger` 的区别只在**那圈边**:纯红字钮在一行文字里认不出是可点的,而这两处
+	 * 都紧挨着说明文字。底仍是透明的,不做实心红 —— 实心语义底会逼出白字,那条规矩
+	 * 记在 `Toast` 的注释里。
+	 */
+	"danger-outline":
+		"bg-transparent text-bn-danger-text border-bn-danger-border hover:bg-bn-danger-soft",
 };
 
 const SIZE_CLS: Record<BtnSize, string> = {

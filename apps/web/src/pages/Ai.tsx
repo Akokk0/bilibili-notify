@@ -34,6 +34,7 @@ import {
 } from "@bilibili-notify/internal/constants";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import {
+	Btn,
 	EmptyNote,
 	GlassBox,
 	Icon,
@@ -205,23 +206,9 @@ function FieldNote({ children }: { children: React.ReactNode }) {
 	);
 }
 
-/** 危险动作的小按钮(删除服务商 / 删除性格)。 */
-function DangerButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			data-bn="btn"
-			className="rounded-md border border-dashed border-bn-danger-border px-2.5 py-1 text-[11.5px] font-bold text-bn-danger-text transition hover:border-bn-danger-text hover:bg-bn-danger-soft"
-		>
-			{children}
-		</button>
-	);
-}
-
 /**
- * 中性的小按钮(新建空白性格 / 设为默认 / 从内置恢复)。危险那一档见
- * {@link DangerButton}。
+ * 中性的小按钮(新建空白性格 / 设为默认 / 从内置恢复)。危险那一档走库里的
+ * `Btn variant="danger-outline"`。
  *
  * `inline-flex` 是给带图标的用法留的 —— 「从内置恢复」那排每颗前面顶一枚人格
  * 图标。纯文字的用法看不出区别:按钮本来就是收缩宽度,`justify-center` 与 UA
@@ -764,13 +751,15 @@ export default function Ai() {
 													设为默认
 												</GhostButton>
 											)}
-											<DangerButton
+											<Btn
+												variant="danger-outline"
+												size="sm"
 												onClick={() =>
 													setDraft((d) => (d && editing !== null ? removeProfile(d, editing) : d))
 												}
 											>
 												删除 {editingLabel}
-											</DangerButton>
+											</Btn>
 										</div>
 									}
 								>
@@ -1135,14 +1124,16 @@ export default function Ai() {
 										{/* 最后一份删不掉 —— AI 总得有一份人格。按钮直接不摆,
 									    好过摆一个点了没反应的。 */}
 										{draft.presets.length > 1 ? (
-											<DangerButton
+											<Btn
+												variant="danger-outline"
+												size="sm"
 												onClick={() => {
 													setDraft((d) => (d ? removePersona(d, activePersonaId) : d));
 													setPersonaRailId("");
 												}}
 											>
 												删除
-											</DangerButton>
+											</Btn>
 										) : null}
 									</div>
 								}
