@@ -432,7 +432,7 @@ function CollapsibleNote({
 				type="button"
 				aria-expanded={open}
 				onClick={() => setOpen((v) => !v)}
-				className="bn-glass flex w-fit cursor-pointer items-center gap-1.5 rounded-bn-card px-2.25 py-0.75 text-[11.5px] font-semibold text-bn-text-tertiary transition-colors hover:bg-[var(--bn-glass-strong-bg)] hover:text-bn-text-secondary"
+				className="bn-glass flex w-fit cursor-pointer items-center gap-1.5 rounded-bn-card px-2.25 py-0.75 text-[11.5px] font-semibold text-bn-text-tertiary transition-colors hover:bg-(--bn-glass-strong-bg) hover:text-bn-text-secondary"
 			>
 				{icon}
 				{label}
@@ -557,7 +557,7 @@ function ToolChips({
 						: null;
 				const key = toolArgKey(t.name, argText);
 				const open = openKeys.has(key);
-				const chipClass = `bn-glass hover:bg-[var(--bn-glass-strong-bg)] flex max-w-full items-center gap-1.5 rounded-bn-card px-2.25 py-0.75 text-[11.5px] text-bn-text-tertiary${clipped ? " cursor-pointer transition-colors hover:text-bn-text-secondary" : ""}`;
+				const chipClass = `bn-glass hover:bg-(--bn-glass-strong-bg) flex max-w-full items-center gap-1.5 rounded-bn-card px-2.25 py-0.75 text-[11.5px] text-bn-text-tertiary${clipped ? " cursor-pointer transition-colors hover:text-bn-text-secondary" : ""}`;
 				// 两条分支只差 button/span 这一个壳,属性一份就够 —— 分开抄的话,
 				// 加一个属性要记得加两处。
 				const chipProps = {

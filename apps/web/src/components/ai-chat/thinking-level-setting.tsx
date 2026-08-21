@@ -90,7 +90,7 @@ export function ThinkingLevelSetting() {
 									data-bn="btn"
 									className={`flex-1 cursor-pointer rounded-bn-sm border-[1.5px] px-1 py-1.5 text-[11.5px] font-semibold transition ${
 										active
-											? "bg-[var(--bn-glass-strong-bg)] border-[var(--bn-chat-dot)] text-bn-text-primary"
+											? "bg-(--bn-glass-strong-bg) border-(--bn-chat-dot) text-bn-text-primary"
 											: "border-transparent text-bn-text-secondary hover:bg-bn-code-bg"
 									}`}
 								>

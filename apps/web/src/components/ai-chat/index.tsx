@@ -627,7 +627,7 @@ export function ChatPage() {
 						title="打开侧栏"
 						aria-label="打开侧栏"
 						onClick={() => setRail(true)}
-						className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass absolute left-4 top-4 z-10 grid h-8.5 w-8.5 cursor-pointer place-items-center rounded-bn-sm text-bn-text-tertiary shadow-bn-card hover:bg-[var(--bn-glass-strong-bg)] hover:shadow-bn-elev"
+						className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass absolute left-4 top-4 z-10 grid h-8.5 w-8.5 cursor-pointer place-items-center rounded-bn-sm text-bn-text-tertiary shadow-bn-card hover:bg-(--bn-glass-strong-bg) hover:shadow-bn-elev"
 					>
 						<Icon.panelExpand size={18} />
 					</button>
@@ -636,7 +636,7 @@ export function ChatPage() {
 				<button
 					type="button"
 					onClick={onClose}
-					className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass absolute right-4 top-4 z-10 flex h-9.5 cursor-pointer items-center gap-1.75 rounded-bn-lg px-4 text-[12.5px] font-semibold text-bn-text-tertiary shadow-bn-card hover:bg-[var(--bn-glass-strong-bg)] hover:shadow-bn-elev"
+					className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass absolute right-4 top-4 z-10 flex h-9.5 cursor-pointer items-center gap-1.75 rounded-bn-lg px-4 text-[12.5px] font-semibold text-bn-text-tertiary shadow-bn-card hover:bg-(--bn-glass-strong-bg) hover:shadow-bn-elev"
 				>
 					<Icon.arrowLeft size={15} />
 					返回控制台

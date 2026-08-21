@@ -235,7 +235,7 @@ function AiInsightStrip({ tip }: { tip: React.ReactNode }) {
 				<Icon.ai size={20} />
 			</div>
 			<div className="flex-1 text-[12.5px] leading-relaxed text-bn-text-tertiary">
-				<span className="font-bold text-[var(--bn-ai-purple)]">AI 直播洞察 · </span>
+				<span className="font-bold text-(--bn-ai-purple)">AI 直播洞察 · </span>
 				{tip}
 			</div>
 			<Btn size="sm" variant="ghost">
