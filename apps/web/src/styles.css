@@ -511,10 +511,12 @@
    暗色下同浓度的光会盖过深底,得收敛。 */
 	:root {
 		/* 「女仆 AI」的深紫。它不在 @theme 的语义色里 —— 那些是随皮肤换装的,
-		   而这抹紫是 AI 相关件(右下角胶囊、三条 hero 圆章)的固定品牌色。
-		   此前以 `#6c5ce7` 字面量散在 9 处(styles.css 3 处 + 两张 Roast 卡的
-		   ROAST_PURPLE + hero 三胞胎)。JS 侧那两处还搬不过来 —— GlassPanel 的
-		   `accent` 要拼 `${accent}1f` 造 alpha,只收十六进制字面量。 */
+		   而这抹紫是 AI 相关件(右下角胶囊、三条 hero 圆章、锐评卡)的固定品牌色。
+		   此前以 `#6c5ce7` 字面量散在 9 处;这里曾记着「JS 侧那两处还搬不过来 ——
+		   GlassPanel 的 `accent` 要拼 `${accent}1f` 造 alpha,只收十六进制字面量」,
+		   **那个约束已经没了**(玻璃件改走 `color-mix()`,hex 与 var() 都收,见
+		   glass.tsx 的注释)。JS 侧现在统一引 `config/colors.ts` 的 `AI_PURPLE`,
+		   `theme-conformance.test.ts` 拦字面量回流。 */
 		--bn-ai-purple: #6c5ce7;
 		--bn-chat-dot: var(--color-bn-pink);
 		--bn-chat-accent-2: var(--color-bn-pink);

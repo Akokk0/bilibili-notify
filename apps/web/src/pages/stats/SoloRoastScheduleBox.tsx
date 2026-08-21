@@ -1,12 +1,12 @@
 import { GlassPanel, Icon, Toggle } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
+import { AI_PURPLE } from "../../config/colors";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
 import type { PushTarget, Subscription } from "../../types/domain";
 import { RoastRunNowBox } from "./RoastRunNowBox";
 import { RoastScheduleFields, useApprovalReachability } from "./RoastScheduleFields";
-import { ROAST_PURPLE } from "./RoastShell";
 
 /**
  * 这位 UP 的定时锐评。
@@ -74,7 +74,7 @@ export function SoloRoastScheduleBox({ uid, name }: { uid: string; name: string 
 		<GlassPanel
 			title="定时锐评"
 			subtitle={`到点自动点评 ${name} 并发到指定的群`}
-			accent={ROAST_PURPLE}
+			accent={AI_PURPLE}
 			icon={<Icon.bell width={15} height={15} />}
 			right={
 				<Toggle

@@ -145,6 +145,28 @@ describe("theme conformance", () => {
 		expect(findings).toEqual([]);
 	});
 
+	/**
+	 * 「女仆 AI」那抹深紫**刻意不随皮肤换装**(AI 件的固定品牌色),但它仍该只有
+	 * 一个正主:`styles.css` 的 `--bn-ai-purple`,JS 侧引 `config/colors.ts` 的
+	 * `AI_PURPLE`。
+	 *
+	 * styles.css 那条注释曾记着搬不过来的理由 ——「GlassPanel 的 accent 要拼
+	 * `${accent}1f` 造 alpha,只收十六进制字面量」。那条约束早就随玻璃件改用
+	 * `color-mix()` 而失效了,注释却还在,于是六处字面量一直留着。这条守着它
+	 * 不再回流。
+	 */
+	it("--bn-ai-purple 只有一个正主 —— JS 侧不许再写 #6c5ce7", async () => {
+		const findings: string[] = [];
+		for (const file of await listTsxFiles(SRC_DIR)) {
+			const source = await readFile(file, "utf8");
+			for (const match of source.matchAll(/#6c5ce7/gi)) {
+				const line = source.slice(0, match.index).split("\n").length;
+				findings.push(`${relative(SRC_DIR, file)}:${line}`);
+			}
+		}
+		expect(findings).toEqual([]);
+	});
+
 	it("默认聊天主题在 :root 上备齐强调色形态;四色预设已砍干净", async () => {
 		// 实色(色点 / 光标)与渐变副色;半透明纱一律 color-mix 从 --bn-chat-dot 现调,
 		// 不再维护 rgb 分量副本。缺任何一个就有一处悄悄回落到 var() 的兜底值。

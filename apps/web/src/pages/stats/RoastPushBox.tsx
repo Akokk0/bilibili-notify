@@ -6,9 +6,9 @@ import type {
 import { Btn, PlatformIcon } from "@bilibili-notify/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { AI_PURPLE } from "../../config/colors";
 import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";
-import { ROAST_PURPLE } from "./RoastShell";
 
 /**
  * 「可推送周报」那一块 —— 显示女仆写的推送文案,并把它真发出去。
@@ -65,7 +65,7 @@ export function RoastPushBox({
 
 	return (
 		<div className="rounded-bn-card border border-bn-border-subtle bg-bn-surface-muted p-3">
-			<div className="mb-1.5 text-[10.5px] font-bold tracking-wide" style={{ color: ROAST_PURPLE }}>
+			<div className="mb-1.5 text-[10.5px] font-bold tracking-wide" style={{ color: AI_PURPLE }}>
 				{label}
 			</div>
 			<div className="text-xs leading-relaxed text-bn-text-tertiary">{text}</div>

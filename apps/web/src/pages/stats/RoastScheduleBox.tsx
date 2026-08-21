@@ -2,13 +2,13 @@ import { buildPatch } from "@bilibili-notify/internal/patch";
 import { GlassPanel, Icon, Toggle } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
+import { AI_PURPLE } from "../../config/colors";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 import { RoastRunNowBox } from "./RoastRunNowBox";
 import { RoastScheduleFields, useApprovalReachability } from "./RoastScheduleFields";
-import { ROAST_PURPLE } from "./RoastShell";
 
 /**
  * 全局那条榜单周报的配置。
@@ -74,7 +74,7 @@ export function RoastScheduleBox() {
 		<GlassPanel
 			title="定时周报"
 			subtitle="到点自动生成榜单并发到指定的群"
-			accent={ROAST_PURPLE}
+			accent={AI_PURPLE}
 			icon={<Icon.bell width={15} height={15} />}
 			right={
 				<Toggle

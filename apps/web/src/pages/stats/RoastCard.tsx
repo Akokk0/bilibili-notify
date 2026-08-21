@@ -2,10 +2,11 @@ import type { StatsRoastResponse, StatsRoastResult } from "@bilibili-notify/cont
 import { Avatar, Icon } from "@bilibili-notify/ui";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { AI_PURPLE } from "../../config/colors";
 import { api } from "../../services/api";
 import { localTzOffset } from "../../services/stats";
 import { RoastPushBox } from "./RoastPushBox";
-import { ROAST_PURPLE, RoastShell, roastError } from "./RoastShell";
+import { RoastShell, roastError } from "./RoastShell";
 
 interface UpMeta {
 	name: string;
@@ -37,7 +38,7 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 	const result: StatsRoastResult | undefined = roast.data?.ok ? roast.data.result : undefined;
 
 	const nameOf = (uid: string) => meta.get(uid)?.name ?? `UID ${uid}`;
-	const colorOf = (uid: string) => meta.get(uid)?.color ?? ROAST_PURPLE;
+	const colorOf = (uid: string) => meta.get(uid)?.color ?? AI_PURPLE;
 	const avatarOf = (uid: string) => meta.get(uid)?.avatar;
 
 	return (

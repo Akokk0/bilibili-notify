@@ -1,5 +1,6 @@
 import { Btn, GlassPanel, Icon } from "@bilibili-notify/ui";
 import type { ReactNode } from "react";
+import { AI_PURPLE } from "../../config/colors";
 
 /**
  * 两张 AI 锐评卡(榜单版 / 单人版)共用的外壳。
@@ -11,7 +12,6 @@ import type { ReactNode } from "react";
  */
 
 // 十六进制字面量,不能用 var() —— GlassPanel 要拼 `${accent}1f` 造光晕。
-export const ROAST_PURPLE = "#6c5ce7";
 
 export interface RoastShellProps {
 	title: string;
@@ -40,7 +40,7 @@ export function RoastShell({
 		<GlassPanel
 			title={title}
 			subtitle={subtitle}
-			accent={ROAST_PURPLE}
+			accent={AI_PURPLE}
 			icon={<Icon.ai width={15} height={15} />}
 			right={
 				children ? (
@@ -54,7 +54,7 @@ export function RoastShell({
 				<div className="flex h-full flex-col items-center justify-center gap-3 py-7">
 					<div
 						className="h-8 w-8 animate-spin rounded-full border-4 border-bn-border"
-						style={{ borderTopColor: ROAST_PURPLE }}
+						style={{ borderTopColor: AI_PURPLE }}
 					/>
 					<div className="text-xs text-bn-text-tertiary">{pendingText}</div>
 				</div>

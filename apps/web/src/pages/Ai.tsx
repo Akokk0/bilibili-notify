@@ -56,6 +56,7 @@ import {
 } from "../components/forms";
 import { PROVIDER_BRANDS, ProviderLogo } from "../components/provider-logos";
 import { ProviderPicker } from "../components/provider-picker";
+import { AI_PURPLE } from "../config/colors";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { api } from "../services/api";
 import type { AIPersona, AISettings, GlobalConfig, LogLevel } from "../types/globals";
@@ -487,7 +488,7 @@ export default function Ai() {
 						value={draft.enabled}
 						onChange={(v) => setAi("enabled", v)}
 						options={[
-							{ value: true, label: "启用", color: "#6c5ce7" },
+							{ value: true, label: "启用", color: AI_PURPLE },
 							{ value: false, label: "停用", color: "#94a3b8" },
 						]}
 					/>
@@ -534,7 +535,7 @@ export default function Ai() {
 					<GlassBox
 						title="全局服务商 · profile"
 						subtitle="女仆平时用哪一份 · ai.activeProfile"
-						accent="#6c5ce7"
+						accent={AI_PURPLE}
 						icon={<Icon.link size={14} />}
 						badge="profile"
 					>
@@ -715,7 +716,7 @@ export default function Ai() {
 							<GlassBox
 								title="添加服务商"
 								subtitle="每份实例各存一套自己的配置 · ai.providers"
-								accent="#6c5ce7"
+								accent={AI_PURPLE}
 								icon={<Icon.link size={14} />}
 								badge="add"
 							>
@@ -747,7 +748,7 @@ export default function Ai() {
 								<GlassBox
 									title="模型连接"
 									subtitle="OpenAI 兼容 API · ai.providers.<实例>.{label,baseUrl,apiKey,model,apiFlavor}"
-									accent="#6c5ce7"
+									accent={AI_PURPLE}
 									icon={<Icon.link size={14} />}
 									badge="connection"
 									right={

@@ -6,10 +6,11 @@ import {
 import { PlatformIcon, Toggle, ToneChip } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Field, Picker, TInput } from "../../components/forms";
+import { AI_PURPLE } from "../../config/colors";
 import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
-import { ROAST_PURPLE } from "./RoastShell";
+
 import { STATS_RANGES } from "./ranges";
 
 /**
@@ -82,10 +83,10 @@ export function RoastScheduleFields({
 	// 三档预设与统计页头的范围切换同源。若配置里存的是别的天数(手改过配置文件),
 	// 就临时补一档把它显示出来 —— 不然那格是空的,看不出现在到底统计几天,随手
 	// 点一下就把原值悄悄换掉了。
-	const presets = STATS_RANGES.map((r) => ({ value: r.days, label: r.label, color: ROAST_PURPLE }));
+	const presets = STATS_RANGES.map((r) => ({ value: r.days, label: r.label, color: AI_PURPLE }));
 	const dayOptions = presets.some((o) => o.value === value.days)
 		? presets
-		: [...presets, { value: value.days, label: `近${value.days}日`, color: ROAST_PURPLE }];
+		: [...presets, { value: value.days, label: `近${value.days}日`, color: AI_PURPLE }];
 
 	return (
 		<>
@@ -122,12 +123,7 @@ export function RoastScheduleFields({
 					{targets.map((t) => {
 						const on = value.targets.includes(t.id);
 						return (
-							<ToneChip
-								key={t.id}
-								tone={ROAST_PURPLE}
-								active={on}
-								onClick={() => toggleTarget(t.id)}
-							>
+							<ToneChip key={t.id} tone={AI_PURPLE} active={on} onClick={() => toggleTarget(t.id)}>
 								<PlatformIcon platform={t.platform} size={13} />
 								{t.name}
 							</ToneChip>

@@ -23,6 +23,7 @@ import {
 	TInput,
 	TNum,
 } from "../../components/forms";
+import { AI_PURPLE } from "../../config/colors";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
 import type {
@@ -1069,7 +1070,7 @@ function AiOverrideBox({
 		<GlassBox
 			title="AI 人格"
 			subtitle="给这个 UP 单挑一份人格 · 关 = 跟着全局那份走"
-			accent="#6c5ce7"
+			accent={AI_PURPLE}
 			icon={<Icon.ai size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
 			right={
