@@ -58,6 +58,7 @@ import {
 import { PROVIDER_BRANDS, ProviderLogo } from "../components/provider-logos";
 import { ProviderPicker } from "../components/provider-picker";
 import { AI_PURPLE } from "../config/colors";
+import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { api } from "../services/api";
 import type { AIPersona, AISettings, GlobalConfig, LogLevel } from "../types/globals";
@@ -576,7 +577,7 @@ export default function Ai() {
 					<GlassBox
 						title="联网搜索"
 						subtitle="web_search 工具的执行后端与引擎开关 · ai.search"
-						accent="#00b894"
+						accent={SECTION_ACCENT.capability}
 						icon={<Icon.search size={14} />}
 						badge="search"
 					>
@@ -631,7 +632,7 @@ export default function Ai() {
 					<GlassBox
 						title="全局人格 · persona"
 						subtitle="女仆平时用哪一份性格 · ai.activePreset"
-						accent="#fdcb6e"
+						accent={SECTION_ACCENT.persona}
 						icon={<Icon.heart size={14} />}
 						badge="persona"
 					>
@@ -660,7 +661,7 @@ export default function Ai() {
 					<GlassBox
 						title="诊断 · logging"
 						subtitle="只影响日志详略，不影响生成 · app.logLevels.ai"
-						accent="#94a3b8"
+						accent={SECTION_ACCENT.diagnostic}
 						icon={<Icon.list size={14} />}
 						badge="logging"
 					>
@@ -854,7 +855,7 @@ export default function Ai() {
 								<GlassBox
 									title="图片理解"
 									subtitle="两条路二选一 · ai.providers.<实例>.{enableVision,vision}"
-									accent="#00b894"
+									accent={SECTION_ACCENT.capability}
 									icon={<Icon.image size={14} />}
 									badge="vision"
 								>
@@ -1052,7 +1053,7 @@ export default function Ai() {
 							<GlassBox
 								title="添加性格"
 								subtitle="新建一份,或把删掉的内置那份找回来 · ai.presets[]"
-								accent="#fdcb6e"
+								accent={SECTION_ACCENT.persona}
 								icon={<Icon.plus size={14} />}
 								badge="add"
 							>
@@ -1105,7 +1106,7 @@ export default function Ai() {
 							<GlassBox
 								title="人格塑造 · persona"
 								subtitle="这一份的口吻与称呼 · ai.presets[]"
-								accent="#fdcb6e"
+								accent={SECTION_ACCENT.persona}
 								icon={<ActivePersonaGlyph size={14} />}
 								badge="persona"
 								right={

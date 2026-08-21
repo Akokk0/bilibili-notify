@@ -104,4 +104,29 @@ describe("没有第二份 kind 色表", () => {
 			"push-kinds.ts",
 		]);
 	});
+
+	/**
+	 * 分区装饰色表(`section-accents.ts`)是**另一件事** —— 它按「这一屏讲哪件事」上色,
+	 * 与 kind 无关,所以名字里刻意避开 `tone` 那个词(本仓库里 tone 特指推送家族色)。
+	 *
+	 * 但它确实有条把两者混起来的路:往里塞一整套家族色,于是又成了第二张 kind 表。
+	 * 判据同上面那条 —— 四个家族色凑齐三个以上才算,单独撞一个不算:`persona` 那抹
+	 * 暖黄与 `PUSH_TONE.sc` **恰好同值而不同义**(特别关注弹幕自己的推送色是绿的),
+	 * 那是巧合,已在表里写明「SC 调色时这里不跟着动」。
+	 *
+	 * `guard` 那档反过来 —— 它讲的**就是**上舰,所以直接引用 `PUSH_TONE.guard`,
+	 * 不另抄字面量。
+	 */
+	it("分区装饰色表里不许出现成套的家族色", async () => {
+		const raw = await readFile(join(SRC_DIR, "config/section-accents.ts"), "utf8");
+		// 注释先抹掉:那份文档正在**举例说明**旧写法长什么样(「`#FB7299` 配 `#b8425d`」),
+		// 连注释一起扫的话,写得越清楚越容易被自己的守卫判成违规(实测当场误报)。
+		const src = raw
+			.replace(/\/\*[\s\S]*?\*\//g, "")
+			.replace(/\/\/.*$/gm, "")
+			.toLowerCase();
+		const hexes = [PUSH_TONE.live, PUSH_TONE.dynamic, PUSH_TONE.sc, PUSH_TONE.guard];
+		const hit = hexes.filter((h) => src.includes(h.toLowerCase()));
+		expect(hit.length < 3, `凑齐了 ${hit.join(" ")} —— 这已经是一张 kind 色表了`).toBe(true);
+	});
 });

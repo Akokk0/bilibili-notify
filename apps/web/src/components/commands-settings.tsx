@@ -12,6 +12,7 @@
 import { Btn, GlassBox, Icon, Toggle } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { SECTION_ACCENT } from "../config/section-accents";
 import { api } from "../services/api";
 import type { GlobalConfig, GlobalConfigPatch } from "../types/globals";
 import { Field, TInput } from "./forms";
@@ -102,7 +103,7 @@ export function CommandsSettings({
 		<GlassBox
 			title="Core · 私聊指令"
 			subtitle="主人在 IM 私聊里能敲的那几条 · globals.commands"
-			accent="#8b5cf6"
+			accent={SECTION_ACCENT.system}
 			icon={<Icon.chat size={14} />}
 			badge={cfg.enabled ? `前缀 ${cfg.prefix || "(空)"}` : "已关闭"}
 		>

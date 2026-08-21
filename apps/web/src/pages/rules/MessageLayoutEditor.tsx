@@ -26,6 +26,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { ReactNode } from "react";
 import { DragHandle } from "../../components/drag-handle";
 import { Field, TInput } from "../../components/forms";
+import { SECTION_ACCENT } from "../../config/section-accents";
 import type { MessageBlockFull, MessageKindLayoutFull } from "../../types/domain";
 import {
 	decodeSeparator,
@@ -153,7 +154,7 @@ export function MessageLayoutEditor({
 	onChange,
 	separatorCode,
 	textSlot,
-	accent = "#9b6dff",
+	accent = SECTION_ACCENT.message,
 }: {
 	value: MessageKindLayoutFull;
 	onChange: (next: MessageKindLayoutFull) => void;

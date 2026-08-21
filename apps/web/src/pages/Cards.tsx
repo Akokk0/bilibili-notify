@@ -41,6 +41,7 @@ import {
 } from "../components/forms";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { PUSH_TONE } from "../config/push-kinds";
+import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
 import type { CardLayoutFull, PushTarget, Subscription } from "../types/domain";
@@ -307,7 +308,7 @@ function TestPushCard({
 		<GlassBox
 			title="预览内容 · 测试推送"
 			subtitle="编辑该类型预览内容,并把当前预览卡片(草稿样式)推送到所选目标"
-			accent="#00b894"
+			accent={SECTION_ACCENT.capability}
 			icon={<Icon.bell size={14} />}
 			badge="test-push"
 		>

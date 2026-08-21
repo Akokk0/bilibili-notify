@@ -1,6 +1,7 @@
 import { Btn, ConfirmDialog, ErrorNote, GlassBox, Icon } from "@bilibili-notify/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { SECTION_ACCENT } from "../../config/section-accents";
 import { ApiError, api } from "../../services/api";
 import { BackupExportDialog } from "./BackupExportDialog";
 import { BackupImportDialog } from "./BackupImportDialog";
@@ -125,7 +126,7 @@ export function BackupSection() {
 		<GlassBox
 			title="备份与恢复 · backup"
 			subtitle="一键导出订阅 / 目标 / 适配器 / 全局设置 · 完整备份另含 B 站登录与密钥"
-			accent="#8b5cf6"
+			accent={SECTION_ACCENT.system}
 			icon={<Icon.download size={14} />}
 			badge="导出 / 导入"
 		>

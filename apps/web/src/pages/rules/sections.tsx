@@ -16,6 +16,7 @@ import {
 	TInput,
 	TNum,
 } from "../../components/forms";
+import { SECTION_ACCENT, sectionTitleColor } from "../../config/section-accents";
 import type { MessageKindLayoutFull } from "../../types/domain";
 import type {
 	ContentFilters,
@@ -514,21 +515,23 @@ const SPECIAL_ENTER_VARS: VarSpec[] = [
 ];
 
 /**
- * Single visual style for variable cheat-sheet panels above a template
- * editor. `accent` controls the chip color; defaults to the 紫 used by
- * the original SummaryVariableHints for backward compatibility.
+ * 模板编辑器上方那条「可用变量」提示。`accent` 决定描边、底色与标题字的色相;
+ * 缺省是 `SummaryVariableHints` 当年那抹紫,现在走 token,跟皮肤换装。
+ *
+ * **标题字不再单独传** —— 它从 `accent` 现算(见 `sectionTitleColor`)。此前是手调
+ * 死的第二个字面量,强调色一跟皮肤走它就脱节,而且那几个值在暗色主题下压在同样
+ * 深的底上几乎看不见。
  */
 function VariableHints({
 	vars,
-	accent = "#a29bfe",
-	titleColor = "#5b4fcc",
+	accent = "var(--color-bn-purple)",
 }: {
 	vars: ReadonlyArray<VarSpec>;
 	accent?: string;
-	titleColor?: string;
 }) {
 	const accentBorder = `color-mix(in srgb, ${accent} 40%, transparent)`;
 	const accentBg = `color-mix(in srgb, ${accent} 10%, transparent)`;
+	const titleColor = sectionTitleColor(accent);
 	return (
 		<div
 			className="mb-2 rounded-lg border px-3 py-2 text-[11.5px] leading-7 text-bn-text-secondary"
@@ -555,23 +558,23 @@ export function SummaryVariableHints() {
 }
 
 export function LiveMsgVariableHints() {
-	return <VariableHints vars={LIVE_MSG_VARS} accent="#FB7299" titleColor="#b8425d" />;
+	return <VariableHints vars={LIVE_MSG_VARS} accent="var(--color-bn-pink)" />;
 }
 
 export function DynamicMsgVariableHints() {
-	return <VariableHints vars={DYNAMIC_MSG_VARS} accent="#9b6dff" titleColor="#6b46c1" />;
+	return <VariableHints vars={DYNAMIC_MSG_VARS} accent={SECTION_ACCENT.message} />;
 }
 
 export function GuardVariableHints() {
-	return <VariableHints vars={GUARD_VARS} accent="#f2a053" titleColor="#a86120" />;
+	return <VariableHints vars={GUARD_VARS} accent={SECTION_ACCENT.guard} />;
 }
 
 export function SpecialDanmakuVariableHints() {
-	return <VariableHints vars={SPECIAL_DANMAKU_VARS} accent="#fdcb6e" titleColor="#946800" />;
+	return <VariableHints vars={SPECIAL_DANMAKU_VARS} accent={SECTION_ACCENT.persona} />;
 }
 
 export function SpecialEnterVariableHints() {
-	return <VariableHints vars={SPECIAL_ENTER_VARS} accent="#00AEEC" titleColor="#076e94" />;
+	return <VariableHints vars={SPECIAL_ENTER_VARS} accent="var(--color-bn-blue)" />;
 }
 
 // ── 4. Live message templates ────────────────────────────────────────────────
@@ -617,7 +620,7 @@ export function LiveMsgSection({
 								options={LIVE_TEMPLATE_TABS.map((t) => ({ value: t.key, label: t.label }))}
 							/>
 						</div>
-						<VariableHints vars={active.vars} accent="#FB7299" titleColor="#b8425d" />
+						<VariableHints vars={active.vars} accent="var(--color-bn-pink)" />
 						<FieldRow code={active.code} full>
 							<TArea
 								key={active.key}
@@ -659,14 +662,14 @@ export function DynamicMsgSection({
 		<GlassBox
 			title="动态消息版式"
 			subtitle="动态推送的部件排列 / 分条;文本内容按 动态 / 视频投稿 切换编辑"
-			accent="#9b6dff"
+			accent={SECTION_ACCENT.message}
 			icon={<Icon.chat size={14} />}
 		>
 			<MessageLayoutEditor
 				value={layout}
 				onChange={(next) => onPatch({ defaults: { messageLayout: { dynamic: next } } })}
 				separatorCode="messageLayout.dynamic.separator"
-				accent="#9b6dff"
+				accent={SECTION_ACCENT.message}
 				textSlot={
 					<>
 						<div className="mb-2">
@@ -717,7 +720,7 @@ export function GuardSection({
 		<GlassBox
 			title="上舰提示"
 			subtitle="默认走 B 站官方上舰图;启用后改用自定义文案与图片"
-			accent="#f2a053"
+			accent={SECTION_ACCENT.guard}
 			icon={<Icon.anchor size={14} />}
 			badge={enabled ? "已启用" : "未启用"}
 			right={<Toggle value={enabled} onChange={(v) => setG("enable", v)} />}

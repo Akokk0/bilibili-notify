@@ -24,6 +24,7 @@ import {
 	TNum,
 } from "../../components/forms";
 import { AI_PURPLE } from "../../config/colors";
+import { SECTION_ACCENT } from "../../config/section-accents";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
 import type {
@@ -249,7 +250,7 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 					kind="danmaku"
 					title="特别关注弹幕"
 					subtitle="UID 进入直播间时弹幕高亮 · specialUsers + overrides.templates.specialDanmaku"
-					accent="#fdcb6e"
+					accent={SECTION_ACCENT.persona}
 					icon={<Icon.star size={14} />}
 					users={draft.specialUsers}
 					onUsersChange={setSpecialUsers}
@@ -713,7 +714,7 @@ function DynamicMsgOverrideBox({
 		<GlassBox
 			title="动态消息覆盖"
 			subtitle="开 = 该 UP 使用自定义动态 / 视频投稿文案;关 = 继承全局"
-			accent="#9b6dff"
+			accent={SECTION_ACCENT.message}
 			icon={<Icon.chat size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
 			right={<Toggle value={enabled} onChange={toggle} />}
@@ -762,7 +763,7 @@ function MessageLayoutOverrideBox({
 		<GlassBox
 			title="消息版式覆盖"
 			subtitle="开 = 该 UP 使用自定义部件排列 / 分条 / 分隔符(动态 + 直播两套);关 = 继承全局"
-			accent="#9b6dff"
+			accent={SECTION_ACCENT.message}
 			icon={<Icon.list size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
 			right={
@@ -779,7 +780,7 @@ function MessageLayoutOverrideBox({
 						value={cur.dynamic}
 						onChange={(next) => onChange({ ...cur, dynamic: next })}
 						separatorCode="messageLayout.dynamic.separator"
-						accent="#9b6dff"
+						accent={SECTION_ACCENT.message}
 					/>
 					<div className="my-3 border-t border-bn-border-subtle" />
 					<div className="mb-2 text-[12.5px] font-bold text-bn-text-primary">直播消息版式</div>
@@ -834,7 +835,7 @@ function GuardOverrideBox({
 		<GlassBox
 			title="上舰提示覆盖"
 			subtitle="开 = 该 UP 强制使用自定义文案 / 图片;关 = 继承全局(默认 B 站官方上舰图)"
-			accent="#f2a053"
+			accent={SECTION_ACCENT.guard}
 			icon={<Icon.anchor size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
 			right={<Toggle value={enabled} onChange={toggle} />}

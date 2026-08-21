@@ -215,12 +215,7 @@ describe("强调色属性走 token,不写同值 hex", () => {
 	 * 同 `input-hook-coverage` 那张表的规矩:只填数字等于没说清,而且写了却已经改完的
 	 * 文件也要报 —— 否则豁免条目会一直挂着骗人。
 	 */
-	const KEPT: Record<string, { count: number; why: string }> = {
-		"apps/web/src/pages/rules/sections.tsx": {
-			count: 4,
-			why: "VariableHints 的 accent —— 它和同一行的 titleColor 是绑死的一对(标题字是 accent 手工调深的一档,#FB7299 配 #b8425d)。只转 accent 的话,装了皮肤后边框底色跟着换、标题字还钉在原来的深红,比两个都不转更难看。titleColor 该跟皮肤(color-mix 派生)还是该独立成一张固定分区色表,连同 Rules 页那 6 种没有 token 的分区装饰色一起,是待拍板的设计问题,不在这一刀的范围里。",
-		},
-	};
+	const KEPT: Record<string, { count: number; why: string }> = {};
 
 	/** 亮色调色板:`#fb7299` → `--color-bn-pink`。 */
 	function lightPalette(): Map<string, string> {
