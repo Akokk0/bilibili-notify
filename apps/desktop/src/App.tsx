@@ -128,7 +128,7 @@ export function App({
 		<main className="flex min-h-screen items-center justify-center px-6 py-12">
 			<section className="bn-glass w-[min(720px,100%)] rounded-bn-card p-8 shadow-bn-elev">
 				<div className="mb-6 flex items-center gap-2.5">
-					<Pill color="#FB7299" subtle>
+					<Pill color="var(--color-bn-pink)" subtle>
 						<StatusDot kind={dotKind} />
 						{statusLabel}
 					</Pill>

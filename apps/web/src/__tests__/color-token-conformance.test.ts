@@ -213,7 +213,13 @@ describe("透明度走 color-mix,不拼 hex alpha 后缀", () => {
  * 误伤一批本来就没有 token 的分区装饰色。
  */
 describe("强调色属性走 token,不写同值 hex", () => {
-	const ROOTS = [join(SRC_DIR, "pages"), join(SRC_DIR, "components"), UI_SRC_DIR];
+	/**
+	 * 三个端整棵扫。此前这里是 `[web/pages, web/components, packages/ui]` 的白名单,
+	 * 于是 desktop 落在网外 —— 它那颗状态胶囊写着 `color="#FB7299"`,正是
+	 * `--color-bn-pink` 的值,皮肤换了主强调色它还钉在 B 站粉。白名单漏掉一个目录
+	 * 是这份守卫犯过的第二次(第一次是家族色守卫没看 `packages/ui`)。
+	 */
+	const ROOTS = [SRC_DIR, UI_SRC_DIR, join(SRC_DIR, "../../desktop/src")];
 	const COLOR_PROPS = ["accent", "color", "tone", "titleColor"];
 	/**
 	 * 属性值两种写法都要抓:`accent="#FB7299"` 与 `accent={a ? "#ef4444" : "#22c55e"}`。
