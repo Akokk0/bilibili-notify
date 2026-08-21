@@ -215,12 +215,20 @@ function DangerButton({ onClick, children }: { onClick: () => void; children: Re
 	);
 }
 
+/**
+ * 中性的小按钮(新建空白性格 / 设为默认 / 从内置恢复)。危险那一档见
+ * {@link DangerButton}。
+ *
+ * `inline-flex` 是给带图标的用法留的 —— 「从内置恢复」那排每颗前面顶一枚人格
+ * 图标。纯文字的用法看不出区别:按钮本来就是收缩宽度,`justify-center` 与 UA
+ * 的 `text-align:center` 落在同一处。
+ */
 function GhostButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
 	return (
 		<button
 			type="button"
 			onClick={onClick}
-			className="rounded-md border border-bn-border px-2.5 py-1 text-[11.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
+			className="inline-flex items-center justify-center gap-1.5 rounded-md border border-bn-border px-2.5 py-1 text-[11.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
 		>
 			{children}
 		</button>
@@ -1069,8 +1077,7 @@ export default function Ai() {
 											{restorable.map((b) => {
 												const Glyph = Icon[personaIconKey(b.id)];
 												return (
-													<button
-														type="button"
+													<GhostButton
 														key={b.id}
 														onClick={() => {
 															const next = restoreBuiltinPersona(draft, b.id);
@@ -1078,11 +1085,10 @@ export default function Ai() {
 															setPersonaRailId(next.railId);
 															setAddingPersona(false);
 														}}
-														className="flex items-center gap-1.5 rounded-md border border-bn-border px-2.5 py-1 text-[11.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
 													>
 														<Glyph size={13} />
 														{b.label}
-													</button>
+													</GhostButton>
 												);
 											})}
 										</div>
