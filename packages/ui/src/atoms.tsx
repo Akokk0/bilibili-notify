@@ -663,16 +663,55 @@ export function CheckRow({ checked, onChange, children }: CheckRowProps) {
 
 // ── ErrorNote ───────────────────────────────────────────────────────────────
 
+export interface ErrorNoteProps {
+	children: ReactNode;
+	/**
+	 * 左侧图标(通常是 `Icon.warning`)。给了才排成两列,不给就不套 flex 壳 ——
+	 * 一行字塞进两列布局只会白白多一层。
+	 */
+	icon?: ReactNode;
+	/**
+	 * 同 {@link EmptyNote},**三档不是可选项而是三种位置**:
+	 * `sm` 挤在密集卡片里(UpCard 整张卡的字号只有 10~11px,12px 的错误行会成为
+	 * 全卡最大的字),`md`(默认)给表单与面板,`lg` 给整条消息流里的横幅
+	 * (AI 聊天的正文是 13px,内边距也对齐气泡)。除此之外别再加档。
+	 */
+	size?: "sm" | "md" | "lg";
+	className?: string;
+}
+
+const ERROR_NOTE_SIZE = {
+	sm: "rounded-md px-2 py-1.5 text-[10.5px] leading-snug",
+	md: "rounded-md p-2.5 text-xs leading-relaxed",
+	lg: "rounded-xl px-4 py-3 text-[13px] leading-relaxed",
+} as const;
+
+/** 图标与首行文字的基线对齐量,随字号走。 */
+const ERROR_NOTE_ICON_NUDGE = { sm: "mt-px", md: "mt-0.5", lg: "mt-0.5" } as const;
+
 /**
  * 错误/失败提示盒 —— 「XX 失败:…」这类红字盒子的唯一写法。
  * 外边距(mt-3 / mb-3 …)交给调用方 className,盒子本体样式不许各处漂。
+ *
+ * `role="alert"` 是**恒定**的,不做成开关:21 个调用点无一例外都是「出错了才渲染」,
+ * 而这正是 alert 的定义。收编前只有 AI 聊天手写的那两份带了 role,库件反而没有,
+ * 于是其余 19 处的失败对读屏器完全不存在。
  */
-export function ErrorNote({ children, className }: { children: ReactNode; className?: string }) {
+export function ErrorNote({ children, icon, size = "md", className }: ErrorNoteProps) {
+	const base = `border border-bn-danger-border bg-bn-danger-soft text-bn-danger-text ${ERROR_NOTE_SIZE[size]}`;
+	if (!icon) {
+		return (
+			<div role="alert" className={`${base} ${className ?? ""}`}>
+				{children}
+			</div>
+		);
+	}
 	return (
-		<div
-			className={`rounded-md border border-bn-danger-border bg-bn-danger-soft p-2.5 text-xs leading-relaxed text-bn-danger-text ${className ?? ""}`}
-		>
-			{children}
+		<div role="alert" className={`flex items-start gap-1.5 ${base} ${className ?? ""}`}>
+			<span className={`${ERROR_NOTE_ICON_NUDGE[size]} shrink-0`} aria-hidden="true">
+				{icon}
+			</span>
+			<span>{children}</span>
 		</div>
 	);
 }

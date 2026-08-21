@@ -5,7 +5,7 @@ import {
 } from "@bilibili-notify/contract";
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { resolveActivePersona, resolveAIProfile } from "@bilibili-notify/internal/constants";
-import { Icon, TabBar } from "@bilibili-notify/ui";
+import { ErrorNote, Icon, TabBar } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -678,12 +678,9 @@ export function ChatPage() {
 								skills={skinMode ? EMPTY_SKILLS : skills}
 							/>
 							{error ? (
-								<div
-									role="alert"
-									className="mx-auto mt-3 max-w-180 rounded-xl border border-bn-danger-border bg-bn-danger-soft px-4 py-3 text-[13px] leading-relaxed text-bn-danger-text"
-								>
+								<ErrorNote size="lg" className="mx-auto mt-3 max-w-180">
 									呜…{persona.self}出错了:{error}
-								</div>
+								</ErrorNote>
 							) : null}
 							{/* 技能胶囊那一排整个拆了(ADR-0001 决策 10):技能改成主人自己写的
 							    之后,预置几枚胶囊就成了「我们替他挑的那五条」;而斜杠菜单本身

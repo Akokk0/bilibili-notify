@@ -42,6 +42,17 @@ function rel(file: string): string {
 	return file.replace(/^.*?((apps|packages)\/)/, "$1");
 }
 
+/**
+ * 去掉变体前缀的类名集合 —— `hover:bg-bn-danger-soft` 不算「这个元素是红底」,
+ * 它只是**悬停时**变红。不剥的话红字小按钮会被当成手搓的红盒子(实测误报过)。
+ */
+function staticClasses(code: string): string {
+	return code
+		.split(/[\s"'`{}]+/)
+		.filter((t) => t.length > 0 && !t.includes(":"))
+		.join(" ");
+}
+
 /** 扫 web + ui 全部产品 .tsx,逐行套 `hit`,命中的报 `文件:行`。 */
 function scan(hit: (code: string) => boolean, skipFiles: string[] = []): string[] {
 	const found: string[] = [];
@@ -57,6 +68,53 @@ function scan(hit: (code: string) => boolean, skipFiles: string[] = []): string[
 	}
 	return found;
 }
+
+/**
+ * 刻意留着的,连**为什么**一起记(≥20 字,下面有条测试钉着)。写了却已经改完的
+ * 也要报 —— 否则豁免条目会一直挂着骗人。
+ */
+function checkKept(found: string[], kept: Record<string, string>): string[] {
+	const fileOf = (hit: string) => hit.slice(0, hit.lastIndexOf(":"));
+	const offenders = found.filter((hit) => !kept[fileOf(hit)]);
+	const hitFiles = new Set(found.map(fileOf));
+	for (const file of Object.keys(kept)) {
+		if (!hitFiles.has(file)) offenders.push(`${file}: 已经改完了,请从豁免表删掉`);
+	}
+	return offenders;
+}
+
+describe("红字提示盒只有 ErrorNote 那一份", () => {
+	/**
+	 * 判据是**红三件套同时出现在一个 class 串里** —— 边 + 底 + 字。单独一个不算:
+	 * 只写 `text-bn-danger-text` 的红字行、只写 `border-bn-danger-border` 的红框输入,
+	 * 那都是别的东西。三个凑齐了就是在手搓这个盒子。
+	 */
+	function isDangerBox(code: string): boolean {
+		const cls = staticClasses(code);
+		return (
+			cls.includes("border-bn-danger-border") &&
+			cls.includes("bg-bn-danger-soft") &&
+			cls.includes("text-bn-danger-text")
+		);
+	}
+
+	const KEPT: Record<string, string> = {
+		"apps/web/src/components/alert-shell.tsx":
+			"组件告警条不是内联提示盒:portal 到 body、fixed 在右上角、带 aria-live=assertive 与「全部清除」钮。它是 Toast 那一族的东西(只是语义为红),塞进 ErrorNote 要给库件加 fixed 定位与关闭钮两个它不该有的能力。",
+		"apps/web/src/pages/cards/FontPicker.tsx":
+			"局部的 Notice 是 danger / warning **双色同形**的一对,靠的就是两种 tone 除颜色外一模一样。而库里 ErrorNote(12px / rounded-md)与 WarnNote(11.5px / rounded-lg)本身尺寸就不齐 —— 换过去这一对当场一大一小。把 note 三兄弟的尺寸对齐是设计决定,不在这一刀范围里。",
+	};
+
+	it("没有哪个页面自己拼红边 + 红底 + 红字", () => {
+		// 收编前四份手写在三种圆角(xl / lg / md)三种字号(13 / 12 / 10.5px)之间漂,
+		// 其中 AI 聊天那两份逐字符一致。库件的 icon 槽与 sm/md/lg 三档就是为它们补的。
+		expect(checkKept(scan(isDangerBox, ["atoms.tsx"]), KEPT).join("\n")).toBe("");
+	});
+
+	it("豁免表每一条都写了理由 —— 只填文件名等于没说清", () => {
+		expect(Object.entries(KEPT).filter(([, why]) => why.trim().length < 20)).toEqual([]);
+	});
+});
 
 describe("转圈只有库里那一份", () => {
 	it("没有哪个页面自己拿 animate-spin 画转圈", () => {

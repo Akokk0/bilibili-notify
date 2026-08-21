@@ -1,4 +1,4 @@
-import { Icon } from "@bilibili-notify/ui";
+import { ErrorNote, Icon } from "@bilibili-notify/ui";
 import { Fragment, type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 import { type AiChatMessageDTO, chatImageUrl } from "../../services/aiChat";
 import { describeTool } from "./tools";
@@ -260,12 +260,9 @@ export function MessageList({
 			{error ? (
 				// 错误不进消息流的原因:那一轮问答根本没落盘(见服务端「整轮成败一致」),
 				// 把它画成一条助手消息,刷新后凭空消失,像是被谁偷偷删了。
-				<div
-					role="alert"
-					className="rounded-xl border border-bn-danger-border bg-bn-danger-soft px-4 py-3 text-[13px] leading-relaxed text-bn-danger-text"
-				>
+				<ErrorNote size="lg">
 					呜…{aiSelf}出错了:{error}
-				</div>
+				</ErrorNote>
 			) : null}
 		</div>
 	);

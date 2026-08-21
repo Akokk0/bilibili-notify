@@ -1,4 +1,4 @@
-import { Avatar, Icon, Pill, Toggle } from "@bilibili-notify/ui";
+import { Avatar, ErrorNote, Icon, Pill, Toggle } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { PUSH_TONE } from "../../config/push-kinds";
 import { useLongPress } from "../../hooks/useLongPress";
@@ -157,13 +157,10 @@ export function UpCard({
 				 * 那不等于「未关注」,别凭空吓人。
 				 */}
 				{sub.followed === false ? (
-					<div className="mb-2.5 flex items-start gap-1 rounded-md border border-bn-danger-border bg-bn-danger-soft px-2 py-1.5 text-[10.5px] leading-snug text-bn-danger-text">
-						<Icon.warning size={12} className="mt-px shrink-0" />
-						<span>
-							未关注该 UP —— 收不到动态
-							{sub.followError ? <span className="opacity-80">（{sub.followError}）</span> : null}
-						</span>
-					</div>
+					<ErrorNote size="sm" icon={<Icon.warning size={12} />} className="mb-2.5">
+						未关注该 UP —— 收不到动态
+						{sub.followError ? <span className="opacity-80">（{sub.followError}）</span> : null}
+					</ErrorNote>
 				) : null}
 				<div className="mb-2.5 flex flex-wrap gap-1">
 					{features.length === 0 ? (
