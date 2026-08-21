@@ -128,6 +128,33 @@ describe("没有第二份 kind 色表", () => {
 		expect(findings).toEqual([]);
 	});
 
+	/**
+	 * **点名过的漂移值,一个都不许再出现。**
+	 *
+	 * `push-kinds.ts` 的文档抬头列了收表时清掉的三个近亲:`#FF6699`(live 粉漂了一档)、
+	 * `#7A5AF8`(guard 在 toast 里变成紫)、`#FFB454`(sc 黄漂了一档)。它们与正主肉眼
+	 * 难分,所以上面那条「凑齐三个」的判据放它们过去 —— `System.tsx` 的模块色表就靠这
+	 * 个空子留了 `#FF6699` 一整轮,和同表里 core 那格的 `#FB7299` 并排放着,谁也看不出
+	 * 是两个色。
+	 *
+	 * 这条不数个数:出现一个就报。这三个值本身就是错的,没有「只用一个所以没关系」。
+	 */
+	it("点名过的漂移色一个都不许再出现", async () => {
+		const DRIFT = ["#FF6699", "#7A5AF8", "#FFB454"];
+		const findings: string[] = [];
+		for (const [root, label] of ROOTS) {
+			for (const rel of await sources(root)) {
+				const src = (await readFile(join(root, rel), "utf8"))
+					.replace(/\/\*[\s\S]*?\*\//g, "")
+					.replace(/\/\/.*$/gm, "")
+					.toLowerCase();
+				const hit = DRIFT.filter((h) => src.includes(h.toLowerCase()));
+				if (hit.length > 0) findings.push(`${label}/${rel}: ${hit.join(" ")}`);
+			}
+		}
+		expect(findings).toEqual([]);
+	});
+
 	it("push-kinds 自己是唯一出处 —— config/ 下没有第二张", async () => {
 		const files = await readdir(join(SRC_DIR, "config"));
 		expect(files.filter((f) => /kind|tone|source/i.test(f) && f.endsWith(".ts"))).toEqual([

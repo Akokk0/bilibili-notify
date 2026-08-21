@@ -1174,8 +1174,8 @@ export default function Cards() {
 							value={gStyle.enabled}
 							onChange={(v) => setGStyle((d) => (d ? { ...d, enabled: v } : d))}
 							options={[
-								{ value: true, label: "启用", color: "#a29bfe" },
-								{ value: false, label: "停用", color: "#94a3b8" },
+								{ value: true, label: "启用", color: "var(--color-bn-purple)" },
+								{ value: false, label: "停用", color: "var(--color-bn-inactive)" },
 							]}
 						/>
 					) : (

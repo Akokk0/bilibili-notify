@@ -42,7 +42,7 @@ const FAMILY: Record<HistorySource, Exclude<FilterId, "all">> = {
 };
 
 const FILTERS: ReadonlyArray<{ id: FilterId; label: string; tone: string }> = [
-	{ id: "all", label: "全部", tone: "#666" },
+	{ id: "all", label: "全部", tone: "var(--color-bn-inactive)" },
 	{ id: "live", label: "直播", tone: PUSH_TONE.live },
 	{ id: "dynamic", label: "动态", tone: PUSH_TONE.dynamic },
 	{ id: "sc", label: "SC", tone: PUSH_TONE.sc },

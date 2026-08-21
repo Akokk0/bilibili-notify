@@ -167,7 +167,7 @@ export function UpCard({
 						<span className="text-[10px] text-bn-text-secondary">未配置任何推送特性</span>
 					) : (
 						features.map((f) => (
-							<Pill key={f} color={FEATURE_TONE[f] ?? "#999"} subtle size="sm">
+							<Pill key={f} color={FEATURE_TONE[f] ?? "var(--color-bn-inactive)"} subtle size="sm">
 								{FEATURE_LABELS[f]}
 							</Pill>
 						))

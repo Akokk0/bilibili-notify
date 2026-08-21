@@ -478,7 +478,7 @@ export default function Ai() {
 						onChange={(v) => setAi("enabled", v)}
 						options={[
 							{ value: true, label: "启用", color: AI_PURPLE },
-							{ value: false, label: "停用", color: "#94a3b8" },
+							{ value: false, label: "停用", color: "var(--color-bn-inactive)" },
 						]}
 					/>
 				</div>

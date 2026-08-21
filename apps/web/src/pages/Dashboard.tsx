@@ -377,7 +377,13 @@ function formatDeltaNumber(n: number): string {
 function FansDeltaCol({ label, value }: { label: string; value: number | null }) {
 	const isNull = value == null;
 	const text = isNull ? "—" : value === 0 ? "±0" : formatDeltaNumber(value);
-	const color = isNull ? "#94a3b8" : value === 0 ? "#94a3b8" : value > 0 ? "#22c55e" : "#ef4444";
+	// 无数据与持平共用静默档 —— 两者都是「这里没有变化可看」。
+	const color =
+		isNull || value === 0
+			? "var(--color-bn-inactive)"
+			: value > 0
+				? "var(--color-bn-success)"
+				: "var(--color-bn-danger)";
 	return (
 		<div className="w-16 text-right">
 			<div className="font-mono text-[13px] font-bold" style={{ color }}>
@@ -506,7 +512,9 @@ function PluginMatrix({ cells }: { cells: PluginCell[] }) {
 							<span className="text-[12.5px] font-bold text-bn-text-primary">{c.label}</span>
 							<span
 								className="inline-block h-1.5 w-1.5 rounded-full"
-								style={{ background: c.enabled ? "#22c55e" : "#cbd5e1" }}
+								style={{
+									background: c.enabled ? "var(--color-bn-success)" : "var(--color-bn-inactive)",
+								}}
 							/>
 						</div>
 						<div className="flex items-center gap-1.5 whitespace-nowrap text-[11px] text-bn-text-secondary">

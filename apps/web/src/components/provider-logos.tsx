@@ -90,7 +90,8 @@ export const PROVIDER_BRANDS: Record<AIProviderId, ProviderBrand> = {
 	},
 	// 兜底:一组可自由拨动的滑杆。
 	custom: {
-		color: "#94a3b8",
+		// 「没有厂商」不是一个品牌色 —— 同表里其余几格是各家的真 logo 色,这一格是兜底。
+		color: "var(--color-bn-inactive)",
 		glyph: (
 			<>
 				<path {...stroke} d="M5 7h14M5 12h14M5 17h14" />

@@ -12,6 +12,8 @@ import {
 	TNum,
 	TSelect,
 } from "../components/forms";
+import { PUSH_TONE } from "../config/push-kinds";
+import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
 import { useAuthStore } from "../store/auth";
@@ -39,12 +41,12 @@ const STATUS_LABELS: Record<BiliLoginStatusValue, string> = {
  * 才作小字注脚。
  */
 const STATUS_ACCENT: Record<BiliLoginStatusValue, string> = {
-	[BiliLoginStatus.NOT_LOGIN]: "#94a3b8",
-	[BiliLoginStatus.LOADING_LOGIN_INFO]: "#3b82f6",
-	[BiliLoginStatus.LOGIN_QR]: "#f59e0b",
-	[BiliLoginStatus.LOGGING_QR]: "#f59e0b",
-	[BiliLoginStatus.LOGGED_IN]: "#22c55e",
-	[BiliLoginStatus.LOGIN_FAILED]: "#ef4444",
+	[BiliLoginStatus.NOT_LOGIN]: "var(--color-bn-inactive)",
+	[BiliLoginStatus.LOADING_LOGIN_INFO]: "var(--color-bn-blue)",
+	[BiliLoginStatus.LOGIN_QR]: "var(--color-bn-warning)",
+	[BiliLoginStatus.LOGGING_QR]: "var(--color-bn-warning)",
+	[BiliLoginStatus.LOGGED_IN]: "var(--color-bn-success)",
+	[BiliLoginStatus.LOGIN_FAILED]: "var(--color-bn-danger)",
 };
 
 function QrCard({ data, msg }: { data: unknown; msg: string }) {
@@ -81,9 +83,12 @@ const SYSTEM_MODULES: ReadonlyArray<{
 	label: string;
 	tone: string;
 }> = [
-	{ id: "core", label: "core 核心", tone: "#FB7299" },
-	{ id: "dynamic", label: "dynamic 动态", tone: "#00AEEC" },
-	{ id: "live", label: "live 直播", tone: "#FF6699" },
+	// dynamic / live 两格**就是**推送里那两族,直接引家族色,不另抄一份。core 不属于
+	// 任何一族,给它 System 这一屏自己的角光色 —— 此前它借的是 live 粉,而 live 那格
+	// 用的是漂了一档的 `#FF6699`,两格并排放着肉眼分不出是两个色。
+	{ id: "core", label: "core 核心", tone: SECTION_ACCENT.system },
+	{ id: "dynamic", label: "dynamic 动态", tone: PUSH_TONE.dynamic },
+	{ id: "live", label: "live 直播", tone: PUSH_TONE.live },
 ];
 
 const LOG_LEVEL_NUM: Record<LogLevel, LogLevelValue> = { error: 1, warn: 2, info: 3, debug: 4 };

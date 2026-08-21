@@ -208,7 +208,7 @@ function TargetCard({
 						testStatus.ok
 							? {
 									background: "var(--color-bn-success-soft)",
-									borderLeftColor: "#22c55e",
+									borderLeftColor: "var(--color-bn-success)",
 									color: "var(--color-bn-success-text)",
 								}
 							: {
@@ -228,7 +228,7 @@ function TargetCard({
 				<span className="truncate">
 					{scopeLabel(target.scope)}
 					{" · "}
-					<span style={{ color: adapterMissing ? "#dc2626" : undefined }}>
+					<span style={{ color: adapterMissing ? "var(--color-bn-danger-text)" : undefined }}>
 						{adapterMissing ? "适配器缺失" : `适配器: ${adapter.name}`}
 					</span>
 					{target.enabled ? null : <span className="ml-1.5 text-bn-text-tertiary">(已停用)</span>}
@@ -1631,12 +1631,12 @@ export default function Targets() {
 													selectedAdapterTestStatus.ok
 														? {
 																background: "var(--color-bn-success-soft)",
-																borderLeftColor: "#22c55e",
+																borderLeftColor: "var(--color-bn-success)",
 																color: "var(--color-bn-success-text)",
 															}
 														: {
 																background: "var(--color-bn-warning-soft)",
-																borderLeftColor: "#f59e0b",
+																borderLeftColor: "var(--color-bn-warning)",
 																color: "var(--color-bn-warning-text)",
 															}
 												}

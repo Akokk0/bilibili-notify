@@ -96,7 +96,7 @@ function SortableBlockRow({
 				/>
 				<span
 					className="inline-block h-1.5 w-1.5 rounded-full"
-					style={{ background: isSplit ? "#adb5bd" : accent }}
+					style={{ background: isSplit ? "var(--color-bn-inactive)" : accent }}
 				/>
 				<span
 					className={`flex-1 text-[12.5px] font-bold ${
