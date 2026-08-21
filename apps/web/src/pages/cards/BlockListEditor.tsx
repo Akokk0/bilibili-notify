@@ -79,7 +79,8 @@ function MarginInput({
 					const n = Number.parseInt(e.target.value, 10);
 					onChange(Number.isFinite(n) && n !== 0 ? n : undefined);
 				}}
-				className="w-9 rounded-sm border border-bn-border-subtle bg-bn-surface px-1 py-0.5 text-center text-[11px] text-bn-text-primary"
+				data-bn="input"
+				className="w-9 rounded-sm border border-bn-border-subtle bg-bn-field px-1 py-0.5 text-center text-[11px] text-bn-text-primary"
 			/>
 			px
 		</label>

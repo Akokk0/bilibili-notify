@@ -151,7 +151,7 @@ export default function Logs() {
 					value={source}
 					onChange={(e) => setSource(e.target.value)}
 					data-bn="input"
-					className="rounded-lg border border-bn-border bg-bn-surface px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
+					className="rounded-lg border border-bn-border bg-bn-field px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
 				>
 					<option value="">全部来源</option>
 					{sources.map((s) => (
@@ -169,7 +169,7 @@ export default function Logs() {
 					max={todayStr()}
 					onChange={(e) => setDay(e.target.value)}
 					data-bn="input"
-					className="rounded-lg border border-bn-border bg-bn-surface px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
+					className="rounded-lg border border-bn-border bg-bn-field px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
 				/>
 				{!isLive && (
 					// 常亮 active:它没有未选中态 —— 一旦回到实时,这颗自己就不显示了。

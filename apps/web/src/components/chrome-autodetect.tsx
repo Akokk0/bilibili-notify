@@ -150,6 +150,7 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 						value={endpoint}
 						onChange={(e) => setEndpoint(e.target.value)}
 						placeholder="ws://browser:3000?token=… 或 http://host:9222"
+						data-bn="input"
 						className="min-w-56 flex-1 rounded-sm border border-bn-warning-border bg-bn-code-bg px-2 py-1 font-mono text-bn-warning-text placeholder:opacity-50"
 					/>
 					<ActionPill

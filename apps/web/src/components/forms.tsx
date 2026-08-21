@@ -326,7 +326,7 @@ export function TColor({ value, onChange }: TColorProps) {
 				}}
 				placeholder="#rrggbb"
 				spellCheck={false}
-				className={`w-22 rounded-md border bg-bn-surface px-2 py-1 font-mono text-[11.5px] outline-none transition-colors ${
+				className={`w-22 rounded-md border bg-bn-field px-2 py-1 font-mono text-[11.5px] outline-none transition-colors ${
 					valid
 						? "border-bn-border text-bn-text-primary focus:border-bn-pink"
 						: "border-bn-danger-border text-bn-danger-text focus:border-bn-danger-text"

@@ -51,7 +51,8 @@ export function PinField({
 				value={value}
 				onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 6))}
 				placeholder={placeholder}
-				className="w-full rounded-md border border-bn-border bg-bn-surface px-3 py-2 text-[13px] tracking-[0.4em] text-bn-text-primary outline-none focus:border-bn-pink"
+				data-bn="input"
+				className="w-full rounded-md border border-bn-border bg-bn-field px-3 py-2 text-[13px] tracking-[0.4em] text-bn-text-primary outline-none focus:border-bn-pink"
 			/>
 		</label>
 	);
