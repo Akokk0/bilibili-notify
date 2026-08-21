@@ -25,6 +25,31 @@ describe("ChromeAutoDetect", () => {
 		expect(screen.getByRole("button", { name: /自动探测/ })).toBeTruthy();
 	});
 
+	/**
+	 * 三颗药丸钮收成一份之后的不变量。绿的那两颗此前逐字相同,谁在其中一处
+	 * fork 一份改样式,这里就红;`data-bn` 是皮肤唯一能瞄准它们的口子。
+	 */
+	it("三颗药丸钮同一副骨架,绿的两颗完全一致,且都挂了皮肤挂点", async () => {
+		getMock.mockResolvedValue({ path: "/usr/bin/google-chrome" });
+		render(<ChromeAutoDetect onEnabled={() => {}} />);
+		fireEvent.click(screen.getByRole("button", { name: /自动探测/ }));
+		await waitFor(() => screen.getByRole("button", { name: "启用" }));
+
+		const pills = {
+			detect: screen.getByRole("button", { name: /自动探测/ }),
+			enable: screen.getByRole("button", { name: "启用" }),
+			remote: screen.getByRole("button", { name: /连接远程浏览器/ }),
+		};
+		for (const el of Object.values(pills)) {
+			expect(el.getAttribute("data-bn")).toBe("btn");
+			for (const c of ["rounded-bn-pill", "border", "px-3", "py-1", "disabled:opacity-60"]) {
+				expect([c, el.className.split(/\s+/).includes(c)]).toEqual([c, true]);
+			}
+		}
+		expect(pills.enable.className).toBe(pills.remote.className);
+		expect(pills.detect.className).not.toBe(pills.enable.className);
+	});
+
 	it("探测命中 → 展示路径 + 启用按钮", async () => {
 		getMock.mockResolvedValue({ path: "/usr/bin/google-chrome" });
 		render(<ChromeAutoDetect onEnabled={() => {}} />);
