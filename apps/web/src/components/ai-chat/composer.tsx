@@ -362,7 +362,7 @@ export function Composer({
 						data-bn="btn"
 						className={`grid h-9 w-9 shrink-0 place-items-center rounded-bn-pill transition ${
 							canSend
-								? "bn-chat-accent-grad bn-chat-accent-glow cursor-pointer text-white"
+								? "bn-chat-accent-grad bn-chat-accent-glow cursor-pointer text-bn-on-solid"
 								: "cursor-default bg-bn-hover-muted text-bn-text-secondary"
 						}`}
 					>

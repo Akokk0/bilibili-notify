@@ -1183,7 +1183,7 @@ function DeleteModal({
 					onClick={onConfirm}
 					disabled={deleting}
 					data-bn="btn"
-					className="inline-flex h-7.5 items-center justify-center rounded-md border border-transparent bg-bn-danger px-3.5 text-[13px] font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+					className="inline-flex h-7.5 items-center justify-center rounded-md border border-transparent bg-bn-danger px-3.5 text-[13px] font-bold text-bn-on-solid transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{deleting ? "移除中…" : "确认移除"}
 				</button>

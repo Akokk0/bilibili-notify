@@ -173,7 +173,7 @@ function SponsorPanel() {
 				 * 而不是「用什么标签写的」。
 				 *
 				 * **`btn btn-primary` 两个都要写,少一个就是白底白字**:实心底那半随皮肤走,
-				 * 而 `text-white` 是写死的类,皮肤改不动。皮肤惯常写的是 `[data-bn="btn"]`
+				 * 而当时的字色是写死的 `text-white`(现已改走 `on-solid` token)。皮肤惯常写 `[data-bn="btn"]`
 				 * (精确匹配),它碰不到库里 `data-bn="btn btn-primary"` 的主按钮 —— 只写
 				 * `"btn"` 的话,这颗就成了全站唯一被中性底刷中的主按钮,字还是白的。
 				 * 真机上栽过一次(2026-08-21)。
@@ -188,7 +188,7 @@ function SponsorPanel() {
 						rel="noreferrer"
 						onClick={externalLinkClick(AFDIAN_URL)}
 						data-bn="btn btn-primary"
-						className="inline-flex items-center gap-2 rounded-bn-pill bg-bn-pink px-5 py-2.5 text-[13px] font-bold text-white shadow-bn-accent-lg transition hover:opacity-90"
+						className="inline-flex items-center gap-2 rounded-bn-pill bg-bn-pink px-5 py-2.5 text-[13px] font-bold text-bn-on-solid shadow-bn-accent-lg transition hover:opacity-90"
 					>
 						<Icon.heart size={15} />
 						前往爱发电支持

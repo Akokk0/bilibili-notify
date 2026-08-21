@@ -37,6 +37,15 @@
 	--color-bn-hover-muted: #f8fafc;
 	--color-bn-code-bg: rgba(0, 0, 0, 0.05);
 	--color-bn-overlay: rgba(0, 0, 0, 0.35);
+	/* 压在**饱和实底 / 渐变**上的前景色 —— 主按钮的字、徽章里的数字、hero 图标、
+	   状态圆点里的勾。这些位置此前一律写死 `text-white`,而它们脚下的底(accent /
+	   danger / success / 各种渐变)全都是皮肤改得动的:底能变、字不能变,皮肤把
+	   accent 调浅一档,上面的字就整片消失。给它一个键,底与字才是可以一起调的。
+
+	   刻意只给**一个**键而不是 onAccent / onDanger / onSuccess 各来一个:站里这些
+	   底清一色是饱和语义色,白字是它们共同的解;真出现某一档需要单独反色,再拆不迟。 */
+	--color-bn-on-solid: #ffffff;
+
 	/* 反色浮岛(灵动岛式的深色药丸)的**成对** token:底与字必须一起改。
 	   拆开是有前科的 —— 底写 `bg-black/85`、字写死 `text-white` 时,底那一半能被
 	   皮肤重绘而字那一半不能,于是这块浮层要么整个够不着皮肤,要么一改就白底白字。
@@ -183,6 +192,8 @@
 	--color-bn-text-disabled: rgba(148, 163, 184, 0.45);
 	--color-bn-code-bg: rgba(255, 255, 255, 0.08);
 	--color-bn-overlay: rgba(2, 6, 23, 0.62);
+	/* 同亮色:实底上的前景不随深浅切换 —— 底本身就是饱和色,不是主题背景。 */
+	--color-bn-on-solid: #ffffff;
 	/* 同亮色:反色浮岛不随深浅切换,见上方那段。 */
 	--color-bn-inverse-surface: #000000;
 	--color-bn-inverse-text: #ffffff;

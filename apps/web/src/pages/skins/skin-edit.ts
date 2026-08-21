@@ -94,6 +94,9 @@ export const COLOR_GROUPS: ReadonlyArray<{
 			{ key: "listRowBorder", label: "行条描边" },
 			{ key: "codeBg", label: "代码底" },
 			{ key: "overlay", label: "遮罩" },
+			// 主强调色 / 状态色的实底上压着的字。调深了强调色就该跟着调它,
+			// 否则主按钮上的字会整片消失。
+			{ key: "onSolid", label: "实底上的字" },
 			// 这两个必须挨着摆:它们是一对,底改了字没改就是白底白字。分开放的话,
 			// 主人在编辑器里改完底、翻不到字,浮岛上的字就消失了。
 			{ key: "inverseSurface", label: "反色浮岛·底" },

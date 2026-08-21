@@ -37,7 +37,7 @@ export function Avatar({ name, color, size = 44, ring = false, status, url }: Av
 			    挂外层方形定位容器会画出方框(踩过)。 */}
 			<div
 				data-bn="avatar"
-				className="flex items-center justify-center overflow-hidden rounded-full font-bold text-white shadow-bn-card"
+				className="flex items-center justify-center overflow-hidden rounded-full font-bold text-bn-on-solid shadow-bn-card"
 				style={inner}
 			>
 				{url ? (
@@ -53,7 +53,7 @@ export function Avatar({ name, color, size = 44, ring = false, status, url }: Av
 			</div>
 			{status === "live" ? (
 				<span
-					className="absolute -bottom-0.5 -right-0.5 rounded-md border-2 border-white bg-bn-pink px-1 text-[9px] font-bold tracking-wider text-white"
+					className="absolute -bottom-0.5 -right-0.5 rounded-md border-2 border-white bg-bn-pink px-1 text-[9px] font-bold tracking-wider text-bn-on-solid"
 					style={{ lineHeight: 1 }}
 				>
 					LIVE
@@ -87,8 +87,8 @@ export interface BtnProps {
 }
 
 const VARIANT_CLS: Record<BtnVariant, string> = {
-	primary: "bg-bn-pink text-white border-transparent hover:opacity-90",
-	blue: "bg-bn-blue text-white border-transparent hover:opacity-90",
+	primary: "bg-bn-pink text-bn-on-solid border-transparent hover:opacity-90",
+	blue: "bg-bn-blue text-bn-on-solid border-transparent hover:opacity-90",
 	ghost: "bg-transparent text-bn-text-tertiary border-transparent hover:bg-bn-hover-muted",
 	outline: "bg-bn-surface text-bn-text-primary border-bn-border hover:bg-bn-surface-muted",
 	danger: "bg-transparent text-bn-danger border-transparent hover:bg-bn-danger/10",
@@ -395,7 +395,7 @@ export function Pill({
 		size === "sm" ? "text-[10px] px-1.5 leading-4" : "text-[11px] px-2 leading-[18px]";
 	const style: CSSProperties = subtle
 		? { background: `color-mix(in srgb, ${color} 12%, transparent)`, color }
-		: { background: color, color: "white" };
+		: { background: color, color: "var(--color-bn-on-solid)" };
 	return (
 		<span
 			className={`inline-flex items-center gap-1 whitespace-nowrap rounded-sm font-bold tracking-wide ${sizeCls} ${className ?? ""}`}
@@ -655,7 +655,7 @@ export function CheckRow({ checked, onChange, children }: CheckRowProps) {
 			/>
 			<span
 				className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition ${
-					checked ? "border-bn-pink bg-bn-pink text-white" : "border-bn-border bg-bn-surface"
+					checked ? "border-bn-pink bg-bn-pink text-bn-on-solid" : "border-bn-border bg-bn-surface"
 				}`}
 			>
 				{checked ? <Icon.check size={11} /> : null}
@@ -754,7 +754,7 @@ export function PlatformIcon({ platform, size = 16 }: { platform: string; size?:
 	};
 	return (
 		<span
-			className="inline-flex shrink-0 items-center justify-center font-extrabold tracking-tighter text-white"
+			className="inline-flex shrink-0 items-center justify-center font-extrabold tracking-tighter text-bn-on-solid"
 			style={badgeStyle}
 		>
 			{label[0]}

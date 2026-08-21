@@ -112,7 +112,7 @@ export function AiChatDock() {
 			// 只有右下角还是圆头紫胶囊。皮肤 CSS 是无层 author 样式,压得过 `.bn-ai-fab`
 			// 所在的 `@layer components`,所以挂上就够了,默认装的观感一个像素都不变。
 			data-bn="btn btn-primary"
-			className="bn-ai-fab fixed bottom-5 right-5 z-30 flex h-12 cursor-pointer items-center gap-2.25 rounded-bn-pill pl-4 pr-5 text-[13.5px] font-bold text-white shadow-bn-ai transition-shadow hover:shadow-bn-ai-lg"
+			className="bn-ai-fab fixed bottom-5 right-5 z-30 flex h-12 cursor-pointer items-center gap-2.25 rounded-bn-pill pl-4 pr-5 text-[13.5px] font-bold text-bn-on-solid shadow-bn-ai transition-shadow hover:shadow-bn-ai-lg"
 		>
 			<Icon.ai size={20} />
 			女仆 AI

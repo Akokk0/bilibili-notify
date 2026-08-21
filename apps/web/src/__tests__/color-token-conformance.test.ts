@@ -95,38 +95,40 @@ describe("颜色 token conformance", () => {
 });
 
 /**
- * 反色浮岛(草稿岛)的底与字必须走**成对 token**,不许写死 `bg-black` / `text-white`。
+ * 全站不许写死白字。
  *
- * 写死的那一半是没法被皮肤改的:底 `bg-black/85` 能被重绘、字 `text-white` 不能,
- * 两者一起就是「皮肤把底调亮,字全没了」。所以在补上 inverseSurface / inverseText
- * 这对键之前,整块浮岛是全站唯一皮肤完全够不着的浮层 —— 不是因为它特殊,是因为
- * 挂上去必翻车。
+ * 这些白字脚下的底 —— accent / danger / success / 各种渐变 —— **全都是皮肤改得动的**,
+ * 而写死的 `text-white` 不是。底能变、字不能变,皮肤把 accent 调浅一档,主按钮上的字
+ * 就整片消失。2026-08-21 真机上就这么翻过一次(About 那颗赞助钮)。
  *
- * 岛里那两颗状态圆点(`bg-bn-success` / `bg-bn-danger` 上的白勾)不在此列:那是
- * 「白字压语义实底」,全站还有别处这么写(如 Pill 的实底档),是另一个议题。
+ * 改走 `on-solid` token 之后,底与字才是能一起调的一对。
  */
-describe("反色浮岛走成对 token", () => {
-	const ISLAND = join(SRC_DIR, "components/draft-island.tsx");
+describe("实底上的前景走 on-solid token", () => {
+	const ROOTS = [join(SRC_DIR, "pages"), join(SRC_DIR, "components"), UI_SRC_DIR];
 
-	it("不写死 bg-black —— 底得能被皮肤改", () => {
-		expect(/\bbg-black\b/.test(readFileSync(ISLAND, "utf8"))).toBe(false);
+	it('没有哪个 .tsx 还写死 text-white / color:"white"', () => {
+		const offenders: string[] = [];
+		for (const root of ROOTS) {
+			for (const file of listTsxRecursive(root)) {
+				// 测试文件里的 `text-white` 是断言「没有白字」用的,不是产品代码。
+				if (file.includes("__tests__")) continue;
+				const src = readFileSync(file, "utf8");
+				src.split("\n").forEach((line, i) => {
+					// 注释里引述历史写法不算数(讲的就是「以前写死白字」这件事)。
+					const code = line.replace(/\/\/.*$/, "").replace(/^\s*\*.*$/, "");
+					if (/\btext-white\b/.test(code) || /color:\s*"white"/.test(code)) {
+						// UI 库与 web 不同根,统一按包名往前截,免得打出 `rc/…` 这种半截路径。
+						const rel = file.replace(/^.*?((apps|packages)\/)/, "$1");
+						offenders.push(`${rel}:${i + 1}`);
+					}
+				});
+			}
+		}
+		expect(offenders.join("\n")).toBe("");
 	});
 
-	it("除两颗语义圆点外不写死 text-white —— 字得跟着底一起被皮肤改", () => {
-		const stray = readFileSync(ISLAND, "utf8")
-			.split("\n")
-			.map((line, i) => ({ line, n: i + 1 }))
-			.filter(({ line }) => /\btext-white\b/.test(line))
-			.filter(({ line }) => !line.includes("bg-bn-success") && !line.includes("bg-bn-danger"))
-			.map(({ n }) => `draft-island.tsx:${n}`);
-		expect(stray).toEqual([]);
-	});
-
-	it("这对键在皮肤契约里都在 —— 只落地 CSS 变量的话皮肤编辑器里根本看不见它们", async () => {
+	it("这个键在皮肤契约里 —— 只落地 CSS 变量的话皮肤编辑器里根本看不见它", async () => {
 		const { SKIN_COLOR_TOKEN_MAP } = await import("@bilibili-notify/contract");
-		expect([
-			"inverseSurface" in SKIN_COLOR_TOKEN_MAP,
-			"inverseText" in SKIN_COLOR_TOKEN_MAP,
-		]).toEqual([true, true]);
+		expect("onSolid" in SKIN_COLOR_TOKEN_MAP).toBe(true);
 	});
 });

@@ -422,7 +422,7 @@ export function UpDialog({
 					type="button"
 					onClick={requestClose}
 					data-bn="btn"
-					className="absolute right-3.5 top-3.5 grid h-7 w-7 place-items-center rounded-bn-pill bg-bn-inverse-strong text-white backdrop-blur-sm"
+					className="absolute right-3.5 top-3.5 grid h-7 w-7 place-items-center rounded-bn-pill bg-bn-inverse-strong text-bn-on-solid backdrop-blur-sm"
 					title="关闭"
 				>
 					<Icon.close size={14} />
@@ -435,7 +435,10 @@ export function UpDialog({
 						url={draft.cachedProfile?.avatar}
 						ring
 					/>
-					<div className="pb-2 text-white" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.45)" }}>
+					<div
+						className="pb-2 text-bn-on-solid"
+						style={{ textShadow: "0 1px 4px rgba(0,0,0,0.45)" }}
+					>
 						<div className="text-base font-bold">{displayName(draft)}</div>
 						<div
 							className="mt-0.5 text-[11px] font-semibold"

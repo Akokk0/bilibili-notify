@@ -57,7 +57,7 @@ export function GlassPanel({
 				<div className="relative mb-3 flex items-center gap-2.5">
 					{icon && accent ? (
 						<div
-							className="flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-bn-card text-white"
+							className="flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-bn-card text-bn-on-solid"
 							style={{
 								background: `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} 80%, transparent))`,
 								boxShadow: `0 4px 12px color-mix(in srgb, ${accent} 33%, transparent)`,

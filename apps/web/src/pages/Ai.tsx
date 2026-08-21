@@ -468,7 +468,7 @@ export default function Ai() {
 				<div className="flex items-center gap-3.5">
 					{/* h-13/w-13 = 52px。此前 class 与 inline 的 width/height 把同一个尺寸
 					    写了两遍(inline 那份赢),留 class 这一份就够。 */}
-					<div className="bn-hero-badge grid h-13 w-13 shrink-0 place-items-center rounded-2xl text-white">
+					<div className="bn-hero-badge grid h-13 w-13 shrink-0 place-items-center rounded-2xl text-bn-on-solid">
 						<Icon.ai size={26} />
 					</div>
 					<div className="flex-1">

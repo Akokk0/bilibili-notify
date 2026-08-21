@@ -130,7 +130,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 				) : (
 					<div
 						data-bn="avatar"
-						className="bn-chat-accent-grad grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full text-[12.5px] font-bold text-white"
+						className="bn-chat-accent-grad grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full text-[12.5px] font-bold text-bn-on-solid"
 						aria-hidden="true"
 					>
 						{props.userName.slice(0, 1)}

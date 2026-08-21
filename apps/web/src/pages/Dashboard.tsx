@@ -231,7 +231,7 @@ function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
 function AiInsightStrip({ tip }: { tip: React.ReactNode }) {
 	return (
 		<div className="bn-glass bn-hero-tint flex items-center gap-3.5 rounded-bn-card p-4 shadow-bn-card">
-			<div className="bn-hero-badge grid h-10 w-10 shrink-0 place-items-center rounded-xl text-white">
+			<div className="bn-hero-badge grid h-10 w-10 shrink-0 place-items-center rounded-xl text-bn-on-solid">
 				<Icon.ai size={20} />
 			</div>
 			<div className="flex-1 text-[12.5px] leading-relaxed text-bn-text-tertiary">

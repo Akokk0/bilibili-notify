@@ -51,7 +51,7 @@ export function TabButton({ active, onClick, icon, children, code, title, role }
 			data-bn={active ? "btn btn-primary" : "btn"}
 			className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12.5px] font-bold transition ${
 				active
-					? "bg-bn-pink text-white shadow-bn-accent"
+					? "bg-bn-pink text-bn-on-solid shadow-bn-accent"
 					: "text-bn-text-tertiary hover:text-bn-text-primary"
 			}`}
 		>

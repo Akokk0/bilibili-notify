@@ -742,7 +742,7 @@ function PreviewContentFields({
 										className="rounded-sm px-3 py-1 text-[11.5px] font-semibold transition"
 										style={
 											active
-												? { background: g.tone, color: "white" }
+												? { background: g.tone, color: "var(--color-bn-on-solid)" }
 												: {
 														background: "var(--color-bn-hover-muted)",
 														color: "var(--color-bn-text-tertiary)",
@@ -1143,7 +1143,7 @@ export default function Cards() {
 			{/* Hero strip — 全局插件信息 + (仅全局作用域)总开关 */}
 			<div className="bn-glass bn-hero-tint relative rounded-bn-card p-5 shadow-bn-card">
 				<div className="flex items-center gap-3.5">
-					<div className="bn-hero-badge grid h-13 w-13 shrink-0 place-items-center rounded-2xl text-white">
+					<div className="bn-hero-badge grid h-13 w-13 shrink-0 place-items-center rounded-2xl text-bn-on-solid">
 						<Icon.eye size={26} />
 					</div>
 					<div className="flex-1">

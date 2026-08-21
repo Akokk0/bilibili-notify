@@ -112,7 +112,7 @@ export function UpCard({
 							onToggleSelect();
 						}}
 						className={`flex h-5.5 w-5.5 cursor-pointer items-center justify-center rounded-sm border-0 ${
-							selected ? "bg-bn-pink text-white" : "bg-bn-surface/90 text-bn-text-secondary"
+							selected ? "bg-bn-pink text-bn-on-solid" : "bg-bn-surface/90 text-bn-text-secondary"
 						}`}
 					>
 						{selected ? <Icon.check size={12} /> : <Icon.square size={12} />}

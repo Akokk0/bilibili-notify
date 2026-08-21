@@ -11,7 +11,7 @@ import type { CSSProperties, ReactNode } from "react";
  *
  * **字色恒走 `text-bn-text-primary`,不写死白字。** 底色是可以被皮肤重绘的,写死的
  * 字色不能 —— 两者一起就是「皮肤刷了底,字消失了」。收编前 Targets 那个正是
- * `bg-bn-success` + `text-white`,于是它整个挂不上挂点(挂上必白底白字),皮肤永远
+ * `bg-bn-success` + 写死的 `text-white`,于是它整个挂不上挂点(挂上必白底白字),皮肤永远
  * 够不着它。
  *
  * **语义走描边,不走实心底。** 同 `ToneChip` 的道理:底恒定,tone 只换 borderColor。

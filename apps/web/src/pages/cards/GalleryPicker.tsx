@@ -27,7 +27,7 @@ interface GalleryListResponse {
 function OrderBadge({ tone, children }: { tone: "pink" | "danger"; children: ReactNode }) {
 	return (
 		<span
-			className={`absolute left-1 top-1 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[9px] font-bold text-white ${
+			className={`absolute left-1 top-1 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[9px] font-bold text-bn-on-solid ${
 				tone === "pink" ? "bg-bn-pink" : "bg-bn-danger-text"
 			}`}
 		>
@@ -77,7 +77,7 @@ function Thumb({
 				aria-label="从图廊删除"
 				onClick={onDelete}
 				data-bn="btn"
-				className="absolute right-1 top-1 hidden h-4 w-4 place-items-center rounded-bn-pill bg-black/55 text-white transition hover:bg-bn-danger-text group-hover:grid"
+				className="absolute right-1 top-1 hidden h-4 w-4 place-items-center rounded-bn-pill bg-black/55 text-bn-on-solid transition hover:bg-bn-danger-text group-hover:grid"
 			>
 				<Icon.close size={10} />
 			</button>
@@ -187,7 +187,7 @@ export function GalleryPicker({
 							aria-label="移除失效引用"
 							onClick={() => onChange(removeFromGallery(value, id))}
 							data-bn="btn"
-							className="absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-bn-pill bg-black/55 text-white transition hover:bg-bn-danger-text"
+							className="absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-bn-pill bg-black/55 text-bn-on-solid transition hover:bg-bn-danger-text"
 						>
 							<Icon.close size={10} />
 						</button>

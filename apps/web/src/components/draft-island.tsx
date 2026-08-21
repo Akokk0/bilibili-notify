@@ -238,7 +238,7 @@ function SavedContent() {
 				initial={{ scale: 0.4, opacity: 0 }}
 				animate={{ scale: 1, opacity: 1 }}
 				transition={{ type: "spring", stiffness: 500, damping: 18 }}
-				className="grid h-4 w-4 place-items-center rounded-full bg-bn-success text-white"
+				className="grid h-4 w-4 place-items-center rounded-full bg-bn-success text-bn-on-solid"
 				aria-hidden
 			>
 				<Icon.check size={11} />
@@ -276,7 +276,7 @@ function ErrorContent({ message }: { message: string | null }) {
 		>
 			{/* 圆底徽章里必须放 SVG,不能放文本 `!` —— 理由见 Icon.exclaim 的注释。 */}
 			<span
-				className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-bn-danger text-white"
+				className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-bn-danger text-bn-on-solid"
 				aria-hidden
 			>
 				<Icon.exclaim size={12} />

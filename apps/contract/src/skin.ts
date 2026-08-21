@@ -34,6 +34,12 @@ export const SKIN_COLOR_TOKEN_MAP = {
 	codeBg: "--color-bn-code-bg",
 	overlay: "--color-bn-overlay",
 	/**
+	 * 压在饱和实底 / 渐变上的前景色(主按钮的字、徽章数字、hero 图标)。底是
+	 * accent / danger / success 这些**皮肤改得动**的色,所以字也必须能改 ——
+	 * 底调浅一档而字还写死是白的,那片字就没了。
+	 */
+	onSolid: "--color-bn-on-solid",
+	/**
 	 * 反色浮岛(灵动岛式深色药丸)的底与字。**成对**,别只改一个 —— 底改了字没改
 	 * 就是白底白字,而这块浮层上除了这两键没有别的可读性来源。它不随深浅色切换。
 	 */
