@@ -151,8 +151,8 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 								to="/subs"
 								className="flex items-center gap-3 rounded-xl border p-2.5"
 								style={{
-									background: `linear-gradient(135deg, ${color}1f, ${color}0a)`,
-									borderColor: `${color}33`,
+									background: `linear-gradient(135deg, color-mix(in srgb, ${color} 12%, transparent), color-mix(in srgb, ${color} 4%, transparent))`,
+									borderColor: `color-mix(in srgb, ${color} 20%, transparent)`,
 								}}
 							>
 								<Avatar

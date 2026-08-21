@@ -11,8 +11,6 @@ import { AI_PURPLE } from "../../config/colors";
  * 结果本身的版式两张卡差得很远,交给 children。
  */
 
-// 十六进制字面量,不能用 var() —— GlassPanel 要拼 `${accent}1f` 造光晕。
-
 export interface RoastShellProps {
 	title: string;
 	subtitle: string;

@@ -173,8 +173,8 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 			<div
 				className="bn-glass flex items-center gap-3 rounded-bn-card p-4 shadow-bn-card"
 				style={{
-					background: `linear-gradient(135deg, ${color}22, var(--bn-glass-bg))`,
-					borderColor: `${color}33`,
+					background: `linear-gradient(135deg, color-mix(in srgb, ${color} 13%, transparent), var(--bn-glass-bg))`,
+					borderColor: `color-mix(in srgb, ${color} 20%, transparent)`,
 				}}
 			>
 				<Avatar

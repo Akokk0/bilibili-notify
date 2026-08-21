@@ -47,7 +47,8 @@ export interface ColumnPalette {
 
 /**
  * 组装列定义。`days` 进来只为拼「近N日粉丝」的表头,`palette` 由页面注入 ——
- * 颜色常量必须是十六进制字面量(见 Stats.tsx 的说明),不在这里重复定义。
+ * 颜色是页面的事(那三档现在走 token,跟皮肤换装,见 Stats.tsx 的说明),
+ * 不在这里重复定义。
  */
 export function buildStatColumns(
 	days: number,

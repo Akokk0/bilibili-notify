@@ -527,8 +527,8 @@ function VariableHints({
 	accent?: string;
 	titleColor?: string;
 }) {
-	const accentBorder = `${accent}66`;
-	const accentBg = `${accent}1a`;
+	const accentBorder = `color-mix(in srgb, ${accent} 40%, transparent)`;
+	const accentBg = `color-mix(in srgb, ${accent} 10%, transparent)`;
 	return (
 		<div
 			className="mb-2 rounded-lg border px-3 py-2 text-[11.5px] leading-7 text-bn-text-secondary"
@@ -731,7 +731,10 @@ export function GuardSection({
 							<div
 								key={key}
 								className="mt-2.5 rounded-lg border p-3 first:mt-0"
-								style={{ background: `${tone}0a`, borderColor: `${tone}33` }}
+								style={{
+									background: `color-mix(in srgb, ${tone} 4%, transparent)`,
+									borderColor: `color-mix(in srgb, ${tone} 20%, transparent)`,
+								}}
 							>
 								<div className="mb-2 flex items-center gap-2">
 									<span className="block h-2 w-2 rounded-sm" style={{ background: tone }} />

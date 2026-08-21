@@ -95,7 +95,7 @@ export function UpCard({
 			<div
 				className="relative h-14"
 				style={{
-					background: `linear-gradient(135deg, ${color}66, ${color}33)`,
+					background: `linear-gradient(135deg, color-mix(in srgb, ${color} 40%, transparent), color-mix(in srgb, ${color} 20%, transparent))`,
 				}}
 			>
 				<div

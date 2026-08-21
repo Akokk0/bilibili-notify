@@ -39,7 +39,10 @@ export function ProviderPicker({ value, onChange, only }: ProviderPickerProps) {
 						}`}
 						style={
 							active
-								? { backgroundColor: `${brand.color}1a`, boxShadow: `0 0 0 2px ${brand.color}` }
+								? {
+										backgroundColor: `color-mix(in srgb, ${brand.color} 10%, transparent)`,
+										boxShadow: `0 0 0 2px ${brand.color}`,
+									}
 								: undefined
 						}
 					>

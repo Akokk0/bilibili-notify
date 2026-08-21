@@ -195,7 +195,7 @@ function TargetCard({
 			<div className="mb-2.5 flex items-center gap-2.5">
 				<div
 					className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-					style={{ background: `${tint}1a` }}
+					style={{ background: `color-mix(in srgb, ${tint} 10%, transparent)` }}
 				>
 					<PlatformIcon platform={target.platform} size={18} />
 				</div>
@@ -753,8 +753,8 @@ function TargetEditorModal({
 										style={
 											active
 												? {
-														background: `${aTint}10`,
-														borderColor: `${aTint}55`,
+														background: `color-mix(in srgb, ${aTint} 6%, transparent)`,
+														borderColor: `color-mix(in srgb, ${aTint} 33%, transparent)`,
 													}
 												: {
 														background: "var(--color-bn-surface)",
@@ -1124,7 +1124,10 @@ function SectionBox({
 	return (
 		<div
 			className="rounded-xl border px-3 py-2.5"
-			style={{ borderColor: `${accent}33`, background: `${accent}06` }}
+			style={{
+				borderColor: `color-mix(in srgb, ${accent} 20%, transparent)`,
+				background: `color-mix(in srgb, ${accent} 2%, transparent)`,
+			}}
 		>
 			<div className="mb-1 flex items-baseline gap-2">
 				<span className="text-[12px] font-bold" style={{ color: accent }}>
@@ -1610,7 +1613,9 @@ export default function Targets() {
 								<div className="flex items-start gap-3">
 									<div
 										className="grid h-11 w-11 shrink-0 place-items-center rounded-lg"
-										style={{ background: `${tintFor(selectedAdapter.platform)}1f` }}
+										style={{
+											background: `color-mix(in srgb, ${tintFor(selectedAdapter.platform)} 12%, transparent)`,
+										}}
 									>
 										<PlatformIcon platform={selectedAdapter.platform} size={22} />
 									</div>

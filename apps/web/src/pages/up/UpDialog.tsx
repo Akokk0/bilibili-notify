@@ -416,7 +416,9 @@ export function UpDialog({
 			{/* Cover header */}
 			<div
 				className="relative h-35 px-5 pb-4 pt-4"
-				style={{ background: `linear-gradient(135deg, ${color}, ${color}aa)` }}
+				style={{
+					background: `linear-gradient(135deg, ${color}, color-mix(in srgb, ${color} 67%, transparent))`,
+				}}
 			>
 				<button
 					type="button"

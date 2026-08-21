@@ -20,7 +20,10 @@ export interface SectionNavItem {
 	desc?: string;
 	/** 已渲染的图标 glyph(调用方控制大小/字重)。 */
 	icon?: ReactNode;
-	/** 图标底色 tint(hex);给则把图标包进一个 tinted 圆角盒(Targets 平台色)。 */
+	/**
+	 * 图标底色 tint;给则把图标包进一个 tinted 圆角盒(Targets 平台色)。
+	 * 十六进制与 `var(--color-bn-*)` 都收 —— 透明度走 `color-mix()` 现调。
+	 */
 	iconTint?: string;
 	/** 标题旁内联角标(Rules 覆盖点 / Targets「(停用)」)。 */
 	badge?: ReactNode;
@@ -101,7 +104,7 @@ function IconBox({ icon, tint, active }: { icon: ReactNode; tint?: string; activ
 		return (
 			<span
 				className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-bn-xs"
-				style={{ background: `${tint}1f` }}
+				style={{ background: `color-mix(in srgb, ${tint} 12%, transparent)` }}
 			>
 				{icon}
 			</span>

@@ -138,7 +138,7 @@ function SortableBlockRow({
 			{slot ? (
 				<div
 					className="mt-2 border-l-2 pl-3"
-					style={{ borderColor: `${accent}44` }}
+					style={{ borderColor: `color-mix(in srgb, ${accent} 27%, transparent)` }}
 					// 编辑区在可拖拽行内部:拖拽手柄只绑 ⠿,这里的输入交互不会触发拖动。
 				>
 					{slot}
@@ -232,7 +232,10 @@ export function MessageLayoutEditor({
 
 			<div
 				className="rounded-lg border px-3 py-2 text-[11.5px] leading-6 text-bn-text-secondary"
-				style={{ borderColor: `${accent}44`, background: `${accent}10` }}
+				style={{
+					borderColor: `color-mix(in srgb, ${accent} 27%, transparent)`,
+					background: `color-mix(in srgb, ${accent} 6%, transparent)`,
+				}}
 			>
 				<span className="font-bold" style={{ color: accent }}>
 					发送预览:

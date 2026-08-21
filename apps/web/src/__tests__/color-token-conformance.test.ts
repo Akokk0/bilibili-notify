@@ -132,3 +132,45 @@ describe("实底上的前景走 on-solid token", () => {
 		expect("onSolid" in SKIN_COLOR_TOKEN_MAP).toBe(true);
 	});
 });
+
+/**
+ * 透明度用 `color-mix()` 现调,不许把 alpha 拼成十六进制后缀。
+ *
+ * `` `${accent}44` `` 这种写法有**两个**独立的坑,而且都是静默的:
+ *
+ * ① **传进来的是 `var()` 就废了** —— 拼出 `var(--color-bn-pink)44`,非法值、浏览器
+ *    直接丢弃,那条边框/底色当场消失。于是它反过来把「这个属性只能收十六进制」的
+ *    限制强加给所有调用方,颜色也就跟不了皮肤。`glass.tsx` / `atoms.tsx` 的注释都
+ *    记着这条:限制在项目用上 `color-mix()` 之后就该没了,只是没人回来改。
+ *
+ * ② **传进来是 3 位 hex 也废了** —— `#888` + `1f` = `#8881f`,五位,同样非法同样静默。
+ *    `Targets.tsx` 的 `tintFor()` 兜底返回的正是 `#888`,所以未知平台的图标底色框
+ *    一直是没有背景的。构建绿、类型绿、肉眼要恰好碰上那条兜底路径才看得见。
+ *
+ * `color-mix(in srgb, X N%, transparent)` 两个坑都没有:收 hex(3 位 6 位都行)、收
+ * `var()`、收 `color-mix()` 自身。
+ */
+describe("透明度走 color-mix,不拼 hex alpha 后缀", () => {
+	const ROOTS = [join(SRC_DIR, "pages"), join(SRC_DIR, "components"), UI_SRC_DIR];
+	/** `${accent}44` —— 模板插值紧跟两个十六进制位,后面不再有第三位。 */
+	const ALPHA_SUFFIX_RE = /\$\{[^}]+\}[0-9a-fA-F]{2}(?![0-9a-fA-F])/g;
+
+	it("没有哪个 .tsx 还在拼 alpha 后缀", () => {
+		const offenders: string[] = [];
+		for (const root of ROOTS) {
+			for (const file of listTsxRecursive(root)) {
+				if (file.includes("__tests__")) continue;
+				const src = readFileSync(file, "utf8");
+				src.split("\n").forEach((line, i) => {
+					// 注释里引述的正是「以前这么拼」这件事,不算数。
+					const code = line.replace(/\/\/.*$/, "").replace(/^\s*\*.*$/, "");
+					for (const m of code.matchAll(ALPHA_SUFFIX_RE)) {
+						const rel = file.replace(/^.*?((apps|packages)\/)/, "$1");
+						offenders.push(`${rel}:${i + 1}  ${m[0]}`);
+					}
+				});
+			}
+		}
+		expect(offenders.join("\n")).toBe("");
+	});
+});
