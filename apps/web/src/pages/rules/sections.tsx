@@ -442,16 +442,10 @@ export function SummarySection({
  */
 export function StopWordsHint() {
 	return (
-		<div
-			className="mb-2 rounded-lg border px-3 py-2 text-[11.5px] leading-6 text-bn-text-secondary"
-			style={{ borderColor: "#00AEEC66", background: "#00AEEC1a" }}
-		>
-			<span className="font-bold" style={{ color: "#076e94" }}>
-				弹幕词云停用词:
-			</span>{" "}
+		<HintBar accent="var(--color-bn-blue)" title="弹幕词云停用词:" leading="leading-6">
 			用<b>英文逗号</b>分隔,这些词会在生成词云时被过滤掉。
 			<b>追加</b>到内置中文停用词表之上,不影响弹幕条数 / 发言人数等统计。
-		</div>
+		</HintBar>
 	);
 }
 
@@ -522,6 +516,43 @@ const SPECIAL_ENTER_VARS: VarSpec[] = [
  * 死的第二个字面量,强调色一跟皮肤走它就脱节,而且那几个值在暗色主题下压在同样
  * 深的底上几乎看不见。
  */
+/**
+ * 字段上方那条「浅色染底 + 粗体前缀 + 一段说明」的提示条。
+ *
+ * **三处颜色全从 `accent` 派生**,一个都不许手挑:边 40%、底 10%、标题走
+ * `sectionTitleColor()` 往正文色里调 70%。最后那步是暗色模式的命门 —— 底是半透明的,
+ * 暗色下挡不住黑页面,写死的深色标题会直接糊进背景(`#076e94` 与 `#946800` 都栽过)。
+ * 派生式亮色往黑里调、暗色往白里调,accent 换成什么都跟得住。
+ *
+ * `leading` 是唯一开的口子:变量速查条里嵌着 `<code>` 芯片要 7,纯文字条 6 就够。
+ */
+function HintBar({
+	accent,
+	title,
+	leading = "leading-7",
+	children,
+}: {
+	accent: string;
+	title: string;
+	leading?: string;
+	children: ReactNode;
+}) {
+	return (
+		<div
+			className={`mb-2 rounded-lg border px-3 py-2 text-[11.5px] ${leading} text-bn-text-secondary`}
+			style={{
+				borderColor: `color-mix(in srgb, ${accent} 40%, transparent)`,
+				background: `color-mix(in srgb, ${accent} 10%, transparent)`,
+			}}
+		>
+			<span className="font-bold" style={{ color: sectionTitleColor(accent) }}>
+				{title}
+			</span>{" "}
+			{children}
+		</div>
+	);
+}
+
 function VariableHints({
 	vars,
 	accent = "var(--color-bn-purple)",
@@ -529,17 +560,8 @@ function VariableHints({
 	vars: ReadonlyArray<VarSpec>;
 	accent?: string;
 }) {
-	const accentBorder = `color-mix(in srgb, ${accent} 40%, transparent)`;
-	const accentBg = `color-mix(in srgb, ${accent} 10%, transparent)`;
-	const titleColor = sectionTitleColor(accent);
 	return (
-		<div
-			className="mb-2 rounded-lg border px-3 py-2 text-[11.5px] leading-7 text-bn-text-secondary"
-			style={{ borderColor: accentBorder, background: accentBg }}
-		>
-			<span className="font-bold" style={{ color: titleColor }}>
-				可用变量:
-			</span>{" "}
+		<HintBar accent={accent} title="可用变量:">
 			{vars.map((v, i) => (
 				<span key={v.code}>
 					<code className="mx-0.5 rounded-sm bg-bn-surface/70 px-1.5 py-px font-mono text-[11px]">
@@ -549,7 +571,7 @@ function VariableHints({
 					{i < vars.length - 1 ? " · " : ""}
 				</span>
 			))}
-		</div>
+		</HintBar>
 	);
 }
 
