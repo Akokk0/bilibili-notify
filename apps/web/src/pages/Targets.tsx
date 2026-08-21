@@ -13,6 +13,7 @@ import {
 	ModalShell,
 	PlatformIcon,
 	platformLabel,
+	platformTint,
 	SectionNav,
 	StatusDot,
 	Toast,
@@ -86,16 +87,6 @@ function scopesFor(platform: PushTarget["platform"]): ReadonlyArray<{
 }
 
 type TestState = "pending" | "ok" | "fail";
-
-const PLATFORM_TINT: Record<string, string> = {
-	onebot: "#3b82f6",
-	"qq-official": "#14b8a6",
-	webhook: "#22c55e",
-};
-
-function tintFor(platform: string): string {
-	return PLATFORM_TINT[platform] ?? "#888";
-}
 
 function scopeLabel(s: PushTargetScope): string {
 	return SCOPES.find((x) => x.value === s)?.label ?? s;
@@ -180,7 +171,7 @@ function TargetCard({
 	testing,
 	readOnly,
 }: TargetCardProps) {
-	const tint = tintFor(target.platform);
+	const tint = platformTint(target.platform);
 	const adapterMissing = !adapter;
 	const status = targetStatusFor(target);
 	const testStatus = target.testStatus;
@@ -302,7 +293,7 @@ function AdapterEditorModal({
 	error,
 }: AdapterEditorProps) {
 	const valid = value.name.trim().length > 0;
-	const tint = tintFor(value.platform);
+	const tint = platformTint(value.platform);
 	return (
 		<ModalShell
 			onCancel={onCancel}
@@ -315,7 +306,7 @@ function AdapterEditorModal({
 						<div className="flex flex-wrap gap-1.5">
 							{KNOWN_PLATFORMS.map((p) => {
 								const active = value.platform === p.value;
-								const pTint = tintFor(p.value);
+								const pTint = platformTint(p.value);
 								return (
 									<ToneChip
 										key={p.value}
@@ -390,7 +381,7 @@ function AdapterConnectionFields({
 							return (
 								<ToneChip
 									key={t.value}
-									tone={tintFor("onebot")}
+									tone={platformTint("onebot")}
 									active={active}
 									onClick={() => setCfg(switchOnebotTransport(cfg, t.value))}
 								>
@@ -715,7 +706,7 @@ function TargetEditorModal({
 	error,
 }: TargetEditorProps) {
 	const valid = value.name.trim().length > 0 && Boolean(value.adapterId);
-	const tint = tintFor(value.platform);
+	const tint = platformTint(value.platform);
 	// Webhook target 由 adapter 自动托管，不能从手动 target 弹窗创建 / 改挂。
 	const eligibleAdapters = adapters.filter((a) => a.platform !== "webhook");
 	return (
@@ -738,7 +729,7 @@ function TargetEditorModal({
 						<div className="space-y-1.5">
 							{eligibleAdapters.map((a) => {
 								const active = value.adapterId === a.id;
-								const aTint = tintFor(a.platform);
+								const aTint = platformTint(a.platform);
 								return (
 									<button
 										key={a.id}
@@ -1270,7 +1261,7 @@ function AdapterRail({
 					label: a.name || "（未命名）",
 					desc: `${platformLabel(a.platform)} · ${a.platform === "webhook" ? "单向投递" : `${count} 个目标`}`,
 					icon: <PlatformIcon platform={a.platform} size={12} />,
-					iconTint: tintFor(a.platform),
+					iconTint: platformTint(a.platform),
 					badge: !a.enabled ? (
 						<span className="shrink-0 text-[10px] text-bn-text-tertiary">(停用)</span>
 					) : undefined,
@@ -1614,7 +1605,7 @@ export default function Targets() {
 									<div
 										className="grid h-11 w-11 shrink-0 place-items-center rounded-lg"
 										style={{
-											background: `color-mix(in srgb, ${tintFor(selectedAdapter.platform)} 12%, transparent)`,
+											background: `color-mix(in srgb, ${platformTint(selectedAdapter.platform)} 12%, transparent)`,
 										}}
 									>
 										<PlatformIcon platform={selectedAdapter.platform} size={22} />

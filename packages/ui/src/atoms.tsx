@@ -850,9 +850,19 @@ const PLATFORM_META: Record<string, { color: string; label: string; icon?: IconN
 	webhook: { color: "#22c55e", label: "Webhook" },
 };
 
+/**
+ * 平台的标识色。**认不出的平台退静默档** —— 「不认识」正是那个 token 的意思。
+ *
+ * 导出它是为了让 Targets 的平台胶囊别再照着 `PLATFORM_META` 抄第二份:那份副本连
+ * 兜底的 `#888` 都一字不差,而站里同义的灰正在往 `--color-bn-inactive` 上收。
+ */
+export function platformTint(platform: string): string {
+	return PLATFORM_META[platform]?.color ?? "var(--color-bn-inactive)";
+}
+
 export function PlatformIcon({ platform, size = 16 }: { platform: string; size?: number }) {
 	const meta = PLATFORM_META[platform];
-	const color = meta?.color ?? "#888";
+	const color = platformTint(platform);
 	const I = meta?.icon ? Icon[meta.icon] : null;
 	if (I) return <I size={size} style={{ color }} />;
 	const label = meta?.label ?? platform;
