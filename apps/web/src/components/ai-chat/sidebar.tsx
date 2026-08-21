@@ -47,6 +47,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 					title="收起侧栏"
 					aria-label="收起侧栏"
 					onClick={props.onCollapse}
+					data-bn="btn"
 					className="grid h-[34px] w-[34px] cursor-pointer place-items-center rounded-bn-sm text-bn-text-tertiary transition-colors hover:bg-bn-hover-muted"
 				>
 					<Icon.panelCollapse size={18} />
@@ -107,6 +108,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 										title="删除这个对话"
 										aria-label={`删除对话「${c.title}」`}
 										onClick={() => props.onDelete(c.id)}
+										data-bn="btn"
 										className="mr-1.5 grid h-6 w-6 shrink-0 cursor-pointer place-items-center rounded-sm text-bn-text-secondary opacity-0 transition hover:bg-bn-hover-muted hover:text-bn-danger-text focus-visible:opacity-100 group-hover/row:opacity-100"
 									>
 										<Icon.close size={13} />
@@ -153,6 +155,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 					aria-label="聊天设置"
 					aria-expanded={settingsOpen}
 					onClick={() => setSettingsOpen((v) => !v)}
+					data-bn="btn"
 					className="grid h-[34px] w-[34px] cursor-pointer place-items-center rounded-bn-sm text-bn-text-tertiary transition-colors hover:bg-bn-hover-muted"
 				>
 					<Icon.gear size={17} />

@@ -14,6 +14,7 @@ export function ChoiceCard(props: {
 		<button
 			type="button"
 			onClick={props.onClick}
+			data-bn="btn"
 			className={`rounded-lg border px-3 py-2.5 text-left transition ${
 				props.active
 					? "border-bn-pink/60 bg-bn-pink/10"

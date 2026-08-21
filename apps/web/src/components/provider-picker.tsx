@@ -31,6 +31,7 @@ export function ProviderPicker({ value, onChange, only }: ProviderPickerProps) {
 						onClick={() => onChange(p.id)}
 						aria-pressed={active}
 						title={p.baseUrlHint}
+						data-bn="btn"
 						className={`flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 transition ${
 							active
 								? "border-transparent shadow-sm ring-2"

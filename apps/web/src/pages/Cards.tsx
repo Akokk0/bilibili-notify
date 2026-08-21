@@ -742,6 +742,7 @@ function PreviewContentFields({
 										type="button"
 										key={g.v}
 										onClick={() => setGuard({ level: g.v })}
+										data-bn="btn"
 										className="rounded-sm px-3 py-1 text-[11.5px] font-semibold transition"
 										style={
 											active

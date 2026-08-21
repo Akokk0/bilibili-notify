@@ -26,6 +26,7 @@ export function AlertShell(): React.ReactElement | null {
 				<button
 					type="button"
 					onClick={clear}
+					data-bn="btn"
 					className="cursor-pointer rounded-sm px-2 py-0.5 text-[10.5px] font-semibold text-bn-danger-text hover:bg-bn-danger/10"
 				>
 					全部清除
@@ -67,6 +68,7 @@ function AlertCard({ item }: { item: AlertItem }) {
 			<button
 				type="button"
 				onClick={() => dismiss(item.id)}
+				data-bn="btn"
 				className="h-5 w-5 shrink-0 cursor-pointer rounded-sm text-bn-text-tertiary hover:bg-bn-hover-muted hover:text-bn-text-primary"
 				aria-label="关闭"
 			>

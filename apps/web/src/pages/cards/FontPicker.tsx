@@ -184,6 +184,7 @@ export function FontPicker({
 							title="从字体库删除"
 							aria-label={`删除 ${f.name}`}
 							onClick={() => onDelete(f.id)}
+							data-bn="btn"
 							className="grid h-5 w-5 shrink-0 place-items-center rounded-bn-pill text-bn-text-tertiary transition hover:bg-bn-danger-soft hover:text-bn-danger-text"
 						>
 							<Icon.close size={11} />
@@ -202,6 +203,7 @@ export function FontPicker({
 					<button
 						type="button"
 						onClick={() => onChange(pickDefaultFont(value))}
+						data-bn="btn"
 						className="shrink-0 rounded-md border border-bn-danger-border px-2 py-0.5 text-[11px] font-bold text-bn-danger-text transition hover:bg-bn-surface"
 					>
 						清除

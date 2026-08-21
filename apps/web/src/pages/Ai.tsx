@@ -208,6 +208,7 @@ function DangerButton({ onClick, children }: { onClick: () => void; children: Re
 		<button
 			type="button"
 			onClick={onClick}
+			data-bn="btn"
 			className="rounded-md border border-dashed border-bn-danger-border px-2.5 py-1 text-[11.5px] font-bold text-bn-danger-text transition hover:border-bn-danger-text hover:bg-bn-danger-soft"
 		>
 			{children}
@@ -228,6 +229,7 @@ function GhostButton({ onClick, children }: { onClick: () => void; children: Rea
 		<button
 			type="button"
 			onClick={onClick}
+			data-bn="btn"
 			className="inline-flex items-center justify-center gap-1.5 rounded-md border border-bn-border px-2.5 py-1 text-[11.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
 		>
 			{children}

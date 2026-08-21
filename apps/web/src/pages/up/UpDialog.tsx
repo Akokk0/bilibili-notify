@@ -418,6 +418,7 @@ export function UpDialog({
 				<button
 					type="button"
 					onClick={requestClose}
+					data-bn="btn"
 					className="absolute right-3.5 top-3.5 grid h-7 w-7 place-items-center rounded-bn-pill bg-bn-inverse-strong text-white backdrop-blur-sm"
 					title="关闭"
 				>
@@ -572,6 +573,7 @@ export function UpDialog({
 													type="button"
 													key={t.id}
 													onClick={() => attachTarget(t.id)}
+													data-bn="btn"
 													className="inline-flex items-center gap-1.5 rounded-bn-pill border border-dashed border-bn-border bg-bn-surface px-2.5 py-1 text-[11.5px] text-bn-text-secondary hover:border-bn-pink hover:text-bn-pink"
 												>
 													<Icon.plus size={11} />
@@ -585,6 +587,7 @@ export function UpDialog({
 									<button
 										type="button"
 										onClick={() => setShowPicker(true)}
+										data-bn="btn"
 										className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-bn-border bg-transparent px-3 py-2.5 text-[12px] text-bn-text-secondary hover:border-bn-pink hover:text-bn-pink"
 									>
 										<Icon.plus size={12} />
@@ -610,6 +613,7 @@ export function UpDialog({
 										type="button"
 										key={id}
 										onClick={() => removeStaleId(id)}
+										data-bn="btn"
 										className="inline-flex items-center gap-1.5 rounded-bn-pill border border-bn-danger-border bg-bn-surface px-2.5 py-1 text-[11.5px] text-bn-danger hover:bg-bn-danger/10"
 									>
 										{id.slice(0, 8)} ×
@@ -838,6 +842,7 @@ function AtAllPerTargetToggle({
 						onClick={() => onSet(undefined)}
 						aria-label="重置为跟随订阅默认"
 						title="重置为跟随订阅默认"
+						data-bn="btn"
 						className="grid h-4 w-4 place-items-center rounded-sm text-bn-text-tertiary hover:bg-bn-surface-muted hover:text-bn-text-primary"
 					>
 						<Icon.refresh size={10} />
@@ -900,6 +905,7 @@ function TargetRoutingCard({
 					onClick={onDetach}
 					aria-label="移除该推送目标"
 					title="移除该推送目标"
+					data-bn="btn"
 					className="grid h-6 w-6 place-items-center rounded-bn-pill text-bn-text-tertiary hover:bg-bn-danger/10 hover:text-bn-danger"
 				>
 					<Icon.close size={11} />

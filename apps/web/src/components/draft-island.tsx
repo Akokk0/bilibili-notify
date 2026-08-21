@@ -202,6 +202,7 @@ function DirtyContent({ current }: { current: DraftRegistration }) {
 					e.stopPropagation();
 					current.onSave();
 				}}
+				data-bn="btn"
 				className="rounded-bn-pill bg-white px-3 py-1 text-[11.5px] font-bold text-black transition hover:bg-white/90 active:scale-95"
 			>
 				保存
@@ -287,6 +288,7 @@ function ErrorContent({ message }: { message: string | null }) {
 				type="button"
 				onClick={() => setUiState("dirty")}
 				aria-label="关闭"
+				data-bn="btn"
 				className="grid h-5 w-5 place-items-center rounded-bn-pill text-white/70 transition hover:bg-bn-inverse-hover hover:text-white"
 			>
 				<Icon.close size={12} />
@@ -407,6 +409,7 @@ function PanelFooter({ onDiscard }: { onDiscard: () => void }) {
 			<button
 				type="button"
 				onClick={onDiscard}
+				data-bn="btn"
 				className="rounded-bn-pill px-2.5 py-1 text-[11px] text-white/60 transition hover:bg-bn-inverse-hover hover:text-white"
 			>
 				丢弃全部更改

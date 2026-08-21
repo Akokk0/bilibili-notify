@@ -292,6 +292,7 @@ function AddCard({ label, hint, onClick, disabled }: AddCardProps) {
 			type="button"
 			onClick={onClick}
 			disabled={disabled}
+			data-bn="btn"
 			className="flex h-full min-h-22 flex-col items-center justify-center rounded-bn-sm border border-dashed border-bn-border bg-bn-surface px-3 py-4 text-center transition hover:border-bn-pink hover:bg-bn-pink/5 disabled:cursor-not-allowed disabled:opacity-60"
 		>
 			<span className="text-[20px] leading-none text-bn-text-tertiary">＋</span>
@@ -342,6 +343,7 @@ function AdapterEditorModal({
 										key={p.value}
 										type="button"
 										onClick={() => onChange(makeEmptyAdapter(p.value, value.name))}
+										data-bn="btn"
 										className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[12px] font-bold transition"
 										style={
 											active
@@ -426,6 +428,7 @@ function AdapterConnectionFields({
 									key={t.value}
 									type="button"
 									onClick={() => setCfg(switchOnebotTransport(cfg, t.value))}
+									data-bn="btn"
 									className="rounded-md border px-2.5 py-1 text-[12px] font-bold transition"
 									style={
 										active
@@ -791,6 +794,7 @@ function TargetEditorModal({
 											// preserve user-typed identity if any
 											onChange({ ...next, id: value.id, enabled: value.enabled });
 										}}
+										data-bn="btn"
 										className="flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition"
 										style={
 											active
@@ -852,6 +856,7 @@ function TargetEditorModal({
 												onChange({ ...value, scope: s.value });
 											}
 										}}
+										data-bn="btn"
 										className="rounded-md border px-3 py-1 text-[12px] font-bold transition"
 										style={
 											active
@@ -1083,6 +1088,7 @@ function QQSessionPicker({
 							key={e.openid}
 							type="button"
 							onClick={() => onPick(e.openid)}
+							data-bn="btn"
 							className="flex items-center gap-2 rounded-sm border border-bn-border bg-bn-surface px-2 py-1 text-left transition hover:border-bn-pink"
 						>
 							<span className="truncate text-[11.5px] font-semibold text-bn-text-primary">
@@ -1147,6 +1153,7 @@ function QQGuildPicker({
 											key={ch.channelId}
 											type="button"
 											onClick={() => onPick(g.guildId, ch.channelId)}
+											data-bn="btn"
 											className="rounded-sm border border-bn-border bg-bn-surface px-2 py-0.5 text-[11px] text-bn-text-primary transition hover:border-bn-pink"
 										>
 											{ch.name}
@@ -1236,6 +1243,7 @@ function DeleteModal({
 					type="button"
 					onClick={onConfirm}
 					disabled={deleting}
+					data-bn="btn"
 					className="inline-flex h-7.5 items-center justify-center rounded-md border border-transparent bg-bn-danger px-3.5 text-[13px] font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{deleting ? "移除中…" : "确认移除"}

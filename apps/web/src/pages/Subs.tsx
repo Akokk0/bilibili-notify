@@ -745,6 +745,7 @@ export default function Subs() {
 					<button
 						type="button"
 						onClick={() => setShowNewDialog(true)}
+						data-bn="btn"
 						className={`flex ${UP_CARD_MIN_H} flex-col items-center justify-center rounded-xl border border-dashed border-bn-border px-4 py-5 text-center transition hover:border-bn-pink focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink`}
 					>
 						<span className="text-[28px] leading-none text-bn-text-tertiary">＋</span>

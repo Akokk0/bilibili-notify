@@ -128,6 +128,7 @@ function SortableBlockRow({
 							type="button"
 							title="删除分条符"
 							onClick={() => onRemove(block.id)}
+							data-bn="btn"
 							className="grid h-5 w-5 place-items-center rounded-sm text-bn-text-tertiary transition hover:bg-bn-danger-soft hover:text-bn-danger-text"
 						>
 							<Icon.close size={13} />
@@ -214,6 +215,7 @@ export function MessageLayoutEditor({
 				<button
 					type="button"
 					onClick={() => setBlocks(insertSplit(value.blocks))}
+					data-bn="btn"
 					className="flex items-center gap-1 rounded-lg border border-dashed border-bn-border-subtle px-2.5 py-1.5 text-[12px] font-medium text-bn-text-tertiary transition hover:border-bn-pink/60 hover:text-bn-text-primary"
 				>
 					<Icon.plus size={13} />

@@ -185,6 +185,7 @@ export function SectionNav({
 						<button
 							type="button"
 							onClick={onAdd}
+							data-bn="btn"
 							className="rounded-md border border-dashed border-bn-border px-2 py-0.5 text-[10.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
 						>
 							{addLabel}
@@ -207,6 +208,7 @@ export function SectionNav({
 										key={item.id}
 										onClick={() => onPick(item.id)}
 										aria-current={active ? "true" : undefined}
+										data-bn="btn"
 										className={`${RAIL_ITEM_BASE} ${active ? RAIL_ITEM_ACTIVE : RAIL_ITEM_IDLE}`}
 									>
 										<IconBox icon={item.icon} tint={item.iconTint} active={active} />
@@ -246,6 +248,7 @@ export function SectionNav({
 								type="button"
 								aria-label="向左滚动"
 								onClick={() => scrollByDir(-1)}
+								data-bn="btn"
 								className="grid h-7 w-7 shrink-0 place-items-center rounded-bn-pill border border-bn-border-subtle bg-bn-surface text-bn-text-secondary shadow-bn-card transition hover:text-bn-pink"
 							>
 								<Chevron dir="left" />
@@ -266,6 +269,7 @@ export function SectionNav({
 									key={item.id}
 									onClick={() => onPick(item.id)}
 									aria-current={active ? "true" : undefined}
+									data-bn="btn"
 									className={`${CHIP_BASE} ${active ? CHIP_ACTIVE : CHIP_IDLE}`}
 								>
 									{item.icon != null ? (
@@ -280,6 +284,7 @@ export function SectionNav({
 							<button
 								type="button"
 								onClick={onAdd}
+								data-bn="btn"
 								className="flex shrink-0 items-center gap-1 rounded-lg border border-dashed border-bn-border px-3 py-1.5 text-[12.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
 							>
 								{addLabel}
@@ -293,6 +298,7 @@ export function SectionNav({
 								type="button"
 								aria-label="向右滚动"
 								onClick={() => scrollByDir(1)}
+								data-bn="btn"
 								className="grid h-7 w-7 shrink-0 place-items-center rounded-bn-pill border border-bn-border-subtle bg-bn-surface text-bn-text-secondary shadow-bn-card transition hover:text-bn-pink"
 							>
 								<Chevron dir="right" />

@@ -143,6 +143,7 @@ function UpPicker({
 			<button
 				type="button"
 				onClick={() => setOpen(!open)}
+				data-bn="btn"
 				className="flex h-9 min-w-40 items-center gap-2 rounded-bn-card border border-bn-border bg-bn-surface px-2.5 text-left"
 			>
 				{/* 「全部 UP 主」不配头像 —— 汇总视图没有「一个人」可代表,
@@ -526,6 +527,7 @@ export default function Stats() {
 								key={r.days}
 								type="button"
 								onClick={() => setDays(r.days)}
+								data-bn="btn"
 								className="rounded-md px-3 py-1.5 text-xs font-semibold"
 								style={{
 									background: days === r.days ? "var(--color-bn-surface-muted)" : "transparent",
