@@ -41,9 +41,7 @@ export function BackupExportDialog({ onCancel, onExport, busy }: BackupExportDia
 	}
 
 	return (
-		<ModalShell onCancel={onCancel} width={400} bodyClassName="p-5">
-			<div className="mb-3 text-base font-bold text-bn-text-primary">导出备份</div>
-
+		<ModalShell onCancel={onCancel} width={400} bodyClassName="p-5" title="导出备份">
 			<div className="mb-4 grid grid-cols-2 gap-2">
 				<ChoiceCard
 					active={kind === "full"}

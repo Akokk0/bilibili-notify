@@ -347,12 +347,14 @@ function RemoveSkinDialog(props: {
 	onCancel: () => void;
 }) {
 	return (
-		<ModalShell onCancel={props.onCancel} width={340} bodyClassName="p-5">
-			<div className="mb-1.5 text-[14px] font-bold text-bn-text-primary">删除皮肤</div>
-			<div className="text-[13px] leading-relaxed text-bn-text-secondary">
-				「{props.name}」有浅色和深色两套。要删哪一部分?删除后不可恢复。
-			</div>
-			<div className="mt-4 flex flex-col gap-2">
+		<ModalShell
+			onCancel={props.onCancel}
+			width={340}
+			bodyClassName="p-5"
+			title="删除皮肤"
+			description={`「${props.name}」有浅色和深色两套。要删哪一部分?删除后不可恢复。`}
+		>
+			<div className="flex flex-col gap-2">
 				{(["light", "dark"] as const).map((theme) => (
 					<Btn key={theme} variant="outline" size="sm" onClick={() => props.onPickMode(theme)}>
 						只删{MODE_LABEL[theme]}(留下{MODE_LABEL[theme === "light" ? "dark" : "light"]})
@@ -472,9 +474,8 @@ function SkinGuideModal({ onClose }: { onClose: (warnings?: string[]) => void })
 
 	return (
 		// onCancel 被 ModalShell 拿去当遮罩的 onClick,裸传会把 MouseEvent 灌进 warnings。
-		<ModalShell onCancel={() => onClose()} width={520}>
+		<ModalShell onCancel={() => onClose()} width={520} title="制作皮肤">
 			<div className="space-y-3 text-[12.5px] leading-6 text-bn-text-primary">
-				<div className="text-[15px] font-bold">制作皮肤</div>
 				{/*
 				  这条路(找外部 AI + 粘 JSON)不再是唯一的了 —— 女仆自己就能做。
 				  但那个入口在聊天页,主人站在这个弹窗前是看不见的,所以在这儿指一下路。

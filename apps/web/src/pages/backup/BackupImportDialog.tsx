@@ -48,9 +48,7 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 	}
 
 	return (
-		<ModalShell onCancel={onCancel} width={400} bodyClassName="p-5">
-			<div className="mb-3 text-base font-bold text-bn-text-primary">导入 / 恢复备份</div>
-
+		<ModalShell onCancel={onCancel} width={400} bodyClassName="p-5" title="导入 / 恢复备份">
 			<label className="mb-3 flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-bn-border bg-bn-surface px-3 py-4 text-[13px] text-bn-text-secondary transition hover:border-bn-pink/50 hover:text-bn-text-primary">
 				<span>选择备份文件（.bnbackup / .json）…</span>
 				<input

@@ -182,11 +182,13 @@ function NewSubDialog({
 		: 1;
 
 	return (
-		<ModalShell onCancel={onCancel} width={420} bodyClassName="p-5">
-			<div className="mb-1 text-base font-bold text-bn-text-primary">添加 UP 主</div>
-			<div className="mb-4 text-[12px] text-bn-text-secondary">
-				输入纯数字走 UID 精确查询; 输入名字走搜索,选定后进入配置表单
-			</div>
+		<ModalShell
+			onCancel={onCancel}
+			width={420}
+			bodyClassName="p-5"
+			title="添加 UP 主"
+			description="输入纯数字走 UID 精确查询; 输入名字走搜索,选定后进入配置表单"
+		>
 			<div className="flex gap-2">
 				<Input
 					full

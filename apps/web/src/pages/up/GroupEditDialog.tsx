@@ -30,8 +30,7 @@ export function GroupEditDialog({
 	}
 
 	return (
-		<ModalShell onCancel={onCancel} width={360} bodyClassName="p-5">
-			<div className="mb-3 text-base font-bold text-bn-text-primary">编辑所属分组</div>
+		<ModalShell onCancel={onCancel} width={360} bodyClassName="p-5" title="编辑所属分组">
 			<div className="flex max-h-60 flex-col gap-1.5 overflow-y-auto">
 				{options.length === 0 ? (
 					<div className="text-[12px] text-bn-text-tertiary">还没有任何分组,在下方新建一个吧</div>

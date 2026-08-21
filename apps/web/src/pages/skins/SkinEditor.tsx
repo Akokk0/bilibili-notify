@@ -943,14 +943,14 @@ function SyncModeDialog(props: {
 }) {
 	const { from, to } = props;
 	return (
-		<ModalShell onCancel={props.onCancel} width={360} bodyClassName="p-5">
-			<div className="mb-1.5 text-[14px] font-bold text-bn-text-primary">
-				把{MODE_LABEL[from]}套到{MODE_LABEL[to]}
-			</div>
-			<div className="text-[13px] leading-relaxed text-bn-text-secondary">
-				{MODE_LABEL[to]}原有的设置会被覆盖。保存前只是预览,不满意点「取消」就还原。
-			</div>
-			<div className="mt-4 flex flex-col gap-2">
+		<ModalShell
+			onCancel={props.onCancel}
+			width={360}
+			bodyClassName="p-5"
+			title={`把${MODE_LABEL[from]}套到${MODE_LABEL[to]}`}
+			description={`${MODE_LABEL[to]}原有的设置会被覆盖。保存前只是预览,不满意点「取消」就还原。`}
+		>
+			<div className="flex flex-col gap-2">
 				<Btn variant="outline" onClick={() => props.onPick("layout")}>
 					只套版式(不动颜色)
 				</Btn>

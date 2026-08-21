@@ -325,11 +325,11 @@ function AdapterEditorModal({
 	const valid = value.name.trim().length > 0;
 	const tint = tintFor(value.platform);
 	return (
-		<ModalShell onCancel={onCancel} width={500}>
-			<div className="mb-3 text-[15px] font-bold text-bn-text-primary">
-				{mode === "add" ? "新建适配器" : "配置适配器"}
-			</div>
-
+		<ModalShell
+			onCancel={onCancel}
+			width={500}
+			title={mode === "add" ? "新建适配器" : "配置适配器"}
+		>
 			<div className="space-y-2.5">
 				<SectionBox title="基本" subtitle="适配器代表一个连接实例,可被多个目标共享" accent={tint}>
 					<Field label="平台" code="adapter.platform" required>
@@ -762,11 +762,11 @@ function TargetEditorModal({
 	// Webhook target 由 adapter 自动托管，不能从手动 target 弹窗创建 / 改挂。
 	const eligibleAdapters = adapters.filter((a) => a.platform !== "webhook");
 	return (
-		<ModalShell onCancel={onCancel} width={500}>
-			<div className="mb-3 text-[15px] font-bold text-bn-text-primary">
-				{mode === "add" ? "新建推送目标" : "配置推送目标"}
-			</div>
-
+		<ModalShell
+			onCancel={onCancel}
+			width={500}
+			title={mode === "add" ? "新建推送目标" : "配置推送目标"}
+		>
 			<div className="space-y-2.5">
 				<SectionBox
 					title="选择适配器"
@@ -1211,19 +1211,22 @@ function DeleteModal({
 	error: string | null;
 }) {
 	return (
-		<ModalShell onCancel={onCancel} width={420}>
-			<div className="mb-2 text-[15px] font-bold text-bn-text-primary">
-				{subjectKind === "adapter" ? "删除适配器" : "删除推送目标"}
-			</div>
-			<div className="mb-5 text-[13px] leading-relaxed text-bn-text-secondary">
-				确定要移除 <b className="text-bn-text-primary">{subjectName}</b> 吗？
-				{hint ? (
-					<>
-						<br />
-						{hint}
-					</>
-				) : null}
-			</div>
+		<ModalShell
+			onCancel={onCancel}
+			width={420}
+			title={subjectKind === "adapter" ? "删除适配器" : "删除推送目标"}
+			description={
+				<>
+					确定要移除 <b className="text-bn-text-primary">{subjectName}</b> 吗？
+					{hint ? (
+						<>
+							<br />
+							{hint}
+						</>
+					) : null}
+				</>
+			}
+		>
 			{error ? <ErrorNote className="mb-3">{error}</ErrorNote> : null}
 			<div className="flex justify-end gap-2">
 				<Btn variant="outline" onClick={onCancel} disabled={deleting}>
@@ -1256,16 +1259,21 @@ function TestConfirmModal({
 	onConfirm: () => void;
 }) {
 	return (
-		<ModalShell onCancel={onCancel} width={420}>
-			<div className="mb-2 text-[15px] font-bold text-bn-text-primary">发送测试推送?</div>
-			<div className="mb-4 text-[13px] leading-relaxed text-bn-text-secondary">
-				将通过 <b className="text-bn-text-primary">{adapter?.name ?? "(未知适配器)"}</b> 向{" "}
-				<b className="text-bn-text-primary">{target.name}</b> 真实发送一条测试消息。
-				<br />
-				<span className="font-mono text-[11.5px] text-bn-text-tertiary">
-					[bilibili-notify] 测试推送已送达 ✓
-				</span>
-			</div>
+		<ModalShell
+			onCancel={onCancel}
+			width={420}
+			title="发送测试推送?"
+			description={
+				<>
+					将通过 <b className="text-bn-text-primary">{adapter?.name ?? "(未知适配器)"}</b> 向{" "}
+					<b className="text-bn-text-primary">{target.name}</b> 真实发送一条测试消息。
+					<br />
+					<span className="font-mono text-[11.5px] text-bn-text-tertiary">
+						[bilibili-notify] 测试推送已送达 ✓
+					</span>
+				</>
+			}
+		>
 			<div className="flex justify-end gap-2">
 				<Btn variant="outline" onClick={onCancel}>
 					取消

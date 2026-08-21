@@ -20,11 +20,27 @@ export interface ModalShellProps {
 	children: ReactNode;
 	onCancel: () => void;
 	width: number;
+	/**
+	 * 弹窗标题。**间距与字号一律由壳子出,不给调用方留口子** —— 全站 11 个弹窗
+	 * 各写各的标题行,漂成 14 / 15 / 16px 三种字号、mb-1 / 1.5 / 2 / 3 四种下边距,
+	 * 而它们本来是同一件东西。要自绘表头(如 UpDialog 的封面渐变)就不传 title,
+	 * 连同 `bodyClassName=""` 一起走完全自定义那条路。
+	 */
+	title?: ReactNode;
+	/** 标题下那行说明。可以单独给(ConfirmDialog 省标题时就只有它)。 */
+	description?: ReactNode;
 	/** Body className override; defaults to `"p-6"`. Pass `""` to opt out. */
 	bodyClassName?: string;
 }
 
-export function ModalShell({ children, onCancel, width, bodyClassName = "p-6" }: ModalShellProps) {
+export function ModalShell({
+	children,
+	onCancel,
+	width,
+	title,
+	description,
+	bodyClassName = "p-6",
+}: ModalShellProps) {
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape") onCancel();
@@ -55,6 +71,22 @@ export function ModalShell({ children, onCancel, width, bodyClassName = "p-6" }:
 				className={`relative max-h-full overflow-y-auto rounded-bn-card bg-bn-surface-strong text-bn-text-primary shadow-bn-elev ${bodyClassName}`}
 				style={{ width }}
 			>
+				{title || description ? (
+					// 有说明时整块留 mb-4、标题与说明之间只留 mt-1.5:说明是标题的下半句,
+					// 该贴着它,而不是与下面的正文等距。
+					<div className={description ? "mb-4" : "mb-3"}>
+						{title ? (
+							<div className="text-[15px] font-bold text-bn-text-primary">{title}</div>
+						) : null}
+						{description ? (
+							<div
+								className={`text-[13px] leading-relaxed text-bn-text-secondary ${title ? "mt-1.5" : ""}`}
+							>
+								{description}
+							</div>
+						) : null}
+					</div>
+				) : null}
 				{children}
 			</div>
 		</div>,
@@ -90,12 +122,14 @@ export function ConfirmDialog({
 	onCancel,
 }: ConfirmDialogProps) {
 	return (
-		<ModalShell onCancel={onCancel} width={340} bodyClassName="p-5">
-			{title ? (
-				<div className="mb-1.5 text-[14px] font-bold text-bn-text-primary">{title}</div>
-			) : null}
-			<div className="text-[13px] leading-relaxed text-bn-text-secondary">{message}</div>
-			<div className="mt-4 flex justify-end gap-2">
+		<ModalShell
+			onCancel={onCancel}
+			width={340}
+			bodyClassName="p-5"
+			title={title}
+			description={message}
+		>
+			<div className="flex justify-end gap-2">
 				<Btn variant="outline" size="sm" onClick={onCancel}>
 					{cancelLabel}
 				</Btn>
