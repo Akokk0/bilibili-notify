@@ -53,6 +53,57 @@ function staticClasses(code: string): string {
 		.join(" ");
 }
 
+/**
+ * 注释整段抹成等长空白 —— 保住行号,同时不让注释里举的例子算数。
+ *
+ * **必须整段扫,不能逐行 `codeOf`**:逐行的话 JSDoc 的收尾行(星号加斜杠)会被
+ * 「以星号开头」那条先抹掉,于是块注释的开头再也找不到自己的结尾,一路向前吃到
+ * 下一个收尾符,把中间的真代码整段吞掉。守卫就此安静地漏检 —— 变异测试抓出来的
+ * 正是这个。
+ */
+function blankComments(src: string): string {
+	const out: string[] = [];
+	for (let i = 0; i < src.length; ) {
+		if (src.startsWith("/*", i)) {
+			const end = src.indexOf("*/", i);
+			const stop = end === -1 ? src.length : end + 2;
+			out.push(src.slice(i, stop).replace(/[^\n]/g, " "));
+			i = stop;
+		} else if (src.startsWith("//", i)) {
+			const end = src.indexOf("\n", i);
+			const stop = end === -1 ? src.length : end;
+			out.push(" ".repeat(stop - i));
+			i = stop;
+		} else {
+			out.push(src[i] as string);
+			i += 1;
+		}
+	}
+	return out.join("");
+}
+
+/**
+ * 抠出每个元素的**开标签**。属性里嵌着 `{}` 表达式,得配对着数才知道 `>` 是标签
+ * 收尾还是箭头函数的一半。
+ */
+function openTags(raw: string): Array<{ line: number; attrs: string }> {
+	const src = blankComments(raw);
+	const out: Array<{ line: number; attrs: string }> = [];
+	for (const m of src.matchAll(/<[a-zA-Z][\w.]*[\s\n]/g)) {
+		const start = m.index;
+		let depth = 0;
+		let k = start + m[0].length - 1;
+		for (; k < src.length; k += 1) {
+			const c = src[k];
+			if (c === "{") depth += 1;
+			else if (c === "}") depth -= 1;
+			else if (c === ">" && depth === 0) break;
+		}
+		out.push({ line: src.slice(0, start).split("\n").length, attrs: src.slice(start, k + 1) });
+	}
+	return out;
+}
+
 /** 扫 web + ui 全部产品 .tsx,逐行套 `hit`,命中的报 `文件:行`。 */
 function scan(hit: (code: string) => boolean, skipFiles: string[] = []): string[] {
 	const found: string[] = [];
@@ -82,6 +133,67 @@ function checkKept(found: string[], kept: Record<string, string>): string[] {
 	}
 	return offenders;
 }
+
+/**
+ * 画了边框就得给边框颜色。
+ *
+ * Tailwind v4 的 `.border` **只出宽度与线型**(产物就是 `border-style` +
+ * `border-width`,自己去 `apps/web/dist/assets/*.css` 里查),颜色留给 CSS 的初始值
+ * —— 也就是 `currentColor`。于是 `border border-dashed` 不是「默认灰边」而是
+ * **「跟着字色走的边」**:在 `text-bn-text-tertiary` 的盒子上它是灰的,看着像对的;
+ * 在 `text-bn-success-text` 的盒子上它就是一圈绿虚线,和全站 `border-bn-*` 那套
+ * 完全脱钩,而且皮肤一改字色边框跟着变。Cards 页三处正是这么长出来的。
+ *
+ * 只查**静态字符串** className:那里没有分支,「有没有给颜色」是确定的。
+ * 模板字面量里颜色常在三元的某一支上,跨行判断会误报(试过)。
+ */
+describe("画了边框就给边框颜色", () => {
+	it("没有哪个静态 className 只写了 border 而不给颜色", () => {
+		const offenders: string[] = [];
+		for (const root of [join(SRC_DIR, "pages"), join(SRC_DIR, "components"), UI_SRC_DIR]) {
+			for (const file of listTsxRecursive(root)) {
+				for (const tag of openTags(readFileSync(file, "utf8"))) {
+					const m = /className="([^"]*)"/.exec(tag.attrs);
+					if (!m) continue;
+					const tokens = (m[1] as string).split(/\s+/).filter((t) => !t.includes(":"));
+					// `border-0` 是**零宽度**,压根没有边可上色 —— 那是「明确不要边框」的写法。
+					const hasWidth = tokens.some((t) => t === "border" || /^border-[1-9][\d.]*$/.test(t));
+					// `border-dashed` / `border-solid` 是线型不是颜色,不算数。
+					const hasColor = tokens.some((t) => /^border-(bn-|transparent$|current$|\[)/.test(t));
+					// 颜色也可以落在 inline style 上:要么就写在这个标签里,要么 style 是个
+					// 在上面算好的变量(`style={style}`)—— 后者查不到,但它是刻意算出来的,
+					// 不是忘了给色。真正要抓的是「只有 className、里头没有颜色」那一种。
+					const styled =
+						/border(Color|Top|Right|Bottom|Left)?\s*:/.test(tag.attrs) ||
+						/style=\{[a-zA-Z_$][\w$]*\}/.test(tag.attrs);
+					if (hasWidth && !hasColor && !styled) offenders.push(`${rel(file)}:${tag.line}`);
+				}
+			}
+		}
+		expect(offenders.join("\n")).toBe("");
+	});
+});
+
+/**
+ * 条状物的圆角走 `rounded-bn-pill`,不写死 `rounded-full`。
+ *
+ * 清单的「圆角走轴」那条:`rounded-full` 是**写死的 999px**,皮肤把 `radius.pill`
+ * 调到 0 求一身硬直角也掰不直它。真正必须是**正圆**的(头像、状态点、光斑)照写
+ * `rounded-full` —— 那是设计要求不是疏忽。
+ *
+ * 判据用**横向内边距**分开两者:正圆物件靠 `h-N w-N` 定尺寸,不会有 `px-*`;
+ * 一有 `px-*` 就说明它的宽度跟着内容走,那就是条状物、就该跟着皮肤的胶囊轴。
+ */
+describe("胶囊圆角走轴,不写死 rounded-full", () => {
+	function isHardcodedPill(code: string): boolean {
+		const cls = staticClasses(code);
+		return cls.includes("rounded-full") && /(^|\s)px-[\d.]/.test(cls);
+	}
+
+	it("没有哪个带横向内边距的元素还写死 rounded-full", () => {
+		expect(scan(isHardcodedPill).join("\n")).toBe("");
+	});
+});
 
 describe("空态盒只有 EmptyNote 那一份", () => {
 	/**

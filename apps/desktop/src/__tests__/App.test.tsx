@@ -95,20 +95,19 @@ describe("App — 状态点对 Rust 真实状态串的映射", () => {
 		return dot.style.background;
 	}
 
+	// 断言的是**语义 token** 而不是具体色值:StatusDot 的七档已改走 `--color-bn-*`
+	// (写死十六进制的话皮肤够不着那排点)。要钉死的东西没变 —— 掉进灰色兜底
+	// (`--color-bn-text-tertiary`)照样红。
 	it("failed → 红点", async () => {
-		expect(await dotBackground("failed", "后端服务启动失败")).toMatch(
-			/#ef4444|rgb\(239, 68, 68\)/i,
-		);
+		expect(await dotBackground("failed", "后端服务启动失败")).toBe("var(--color-bn-danger)");
 	});
 
 	it("crashed → 红点", async () => {
-		expect(await dotBackground("crashed", "后端服务已崩溃")).toMatch(/#ef4444|rgb\(239, 68, 68\)/i);
+		expect(await dotBackground("crashed", "后端服务已崩溃")).toBe("var(--color-bn-danger)");
 	});
 
 	it("stopped → 橙点", async () => {
-		expect(await dotBackground("stopped", "后端服务已停止")).toMatch(
-			/#f59e0b|rgb\(245, 158, 11\)/i,
-		);
+		expect(await dotBackground("stopped", "后端服务已停止")).toBe("var(--color-bn-warning)");
 	});
 });
 

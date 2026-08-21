@@ -371,7 +371,7 @@ function ReachBadge({
 			: { box: "bg-bn-danger-soft text-bn-danger-text", dot: "bg-bn-danger" };
 	return (
 		<span
-			className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold ${cls.box}`}
+			className={`inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-[11.5px] font-semibold ${cls.box}`}
 			title={title}
 		>
 			<span className={`h-1.5 w-1.5 rounded-full ${cls.dot}`} />

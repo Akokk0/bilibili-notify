@@ -345,7 +345,7 @@ function ChangelogPanel() {
 					</div>
 					<p className="mt-1 text-[12px] text-bn-text-tertiary">独立端版本变更记录</p>
 				</div>
-				<span className="rounded-full border border-bn-pink/25 bg-bn-pink/8 px-3 py-1 font-mono text-[11px] font-semibold text-bn-pink">
+				<span className="rounded-bn-pill border border-bn-pink/25 bg-bn-pink/8 px-3 py-1 font-mono text-[11px] font-semibold text-bn-pink">
 					apps/CHANGELOG.md
 				</span>
 			</div>

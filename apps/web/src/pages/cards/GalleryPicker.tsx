@@ -27,7 +27,7 @@ interface GalleryListResponse {
 function OrderBadge({ tone, children }: { tone: "pink" | "danger"; children: ReactNode }) {
 	return (
 		<span
-			className={`absolute left-1 top-1 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[9px] font-bold text-bn-on-solid ${
+			className={`absolute left-1 top-1 grid h-4 min-w-4 place-items-center rounded-bn-pill px-1 text-[9px] font-bold text-bn-on-solid ${
 				tone === "pink" ? "bg-bn-pink" : "bg-bn-danger-text"
 			}`}
 		>

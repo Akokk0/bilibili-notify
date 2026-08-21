@@ -714,7 +714,7 @@ export default function Stats() {
 					icon={<Icon.heart width={15} height={15} />}
 					right={
 						<span
-							className="rounded-full px-2 py-0.5 text-[11px] font-bold"
+							className="rounded-bn-pill px-2 py-0.5 text-[11px] font-bold"
 							style={{
 								// 三档,不是两档:`(x ?? 0) >= 0` 会把「没有记录」归零后判成非负,
 								// 于是粉丝还没采到样本时徽章是绿的 —— 数值那侧显示 `—`,颜色却在

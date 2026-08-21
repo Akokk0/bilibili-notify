@@ -612,7 +612,22 @@ function PerUpDataSection({
  */
 function RealDataNote({ children }: { children: React.ReactNode }) {
 	return (
-		<div className="rounded-sm border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
+		<div className="rounded-sm border border-dashed border-bn-success-border bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
+			{/* 描边色不能省。Tailwind v4 的 `border` 只出宽度与线型,颜色留给 CSS 的初始值
+			    —— 也就是 `currentColor`。省掉的话这圈虚线会跟着字色走,与全站
+			    `border-bn-*` 那套完全脱钩,而且皮肤改字色时边框跟着一起变。 */}
+			{children}
+		</div>
+	);
+}
+
+/**
+ * 「这一档的某些样式不归你管」的中性说明条 —— SC 与上舰各一条,收编前是逐字符
+ * 相同的两份。同 {@link RealDataNote} 的道理,只是它不报喜也不报忧,走中性描边。
+ */
+function KindHintNote({ children }: { children: React.ReactNode }) {
+	return (
+		<div className="rounded-sm border border-dashed border-bn-border bg-bn-surface-muted p-2.5 text-[11px] text-bn-text-tertiary">
 			{children}
 		</div>
 	);
@@ -726,9 +741,7 @@ function PreviewContentFields({
 							placeholder="30"
 						/>
 					</Field>
-					<div className="rounded-sm border border-dashed bg-bn-surface-muted p-2.5 text-[11px] text-bn-text-tertiary">
-						左侧渐变色对 SC 不生效；SC 卡片背景色由价格档位自动决定。
-					</div>
+					<KindHintNote>左侧渐变色对 SC 不生效；SC 卡片背景色由价格档位自动决定。</KindHintNote>
 				</>
 			) : (
 				<>
@@ -770,9 +783,9 @@ function PreviewContentFields({
 							rows={2}
 						/>
 					</Field>
-					<div className="rounded-sm border border-dashed bg-bn-surface-muted p-2.5 text-[11px] text-bn-text-tertiary">
+					<KindHintNote>
 						左侧渐变色对上舰不生效；卡片背景色与徽章图由舰长等级自动决定。
-					</div>
+					</KindHintNote>
 				</>
 			)}
 		</>

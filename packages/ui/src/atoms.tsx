@@ -53,14 +53,14 @@ export function Avatar({ name, color, size = 44, ring = false, status, url }: Av
 			</div>
 			{status === "live" ? (
 				<span
-					className="absolute -bottom-0.5 -right-0.5 rounded-md border-2 border-white bg-bn-pink px-1 text-[9px] font-bold tracking-wider text-bn-on-solid"
+					className="absolute -bottom-0.5 -right-0.5 rounded-md border-2 border-bn-surface bg-bn-pink px-1 text-[9px] font-bold tracking-wider text-bn-on-solid"
 					style={{ lineHeight: 1 }}
 				>
 					LIVE
 				</span>
 			) : null}
 			{status === "living" ? (
-				<span className="bn-anim-pulse absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-bn-pink" />
+				<span className="bn-anim-pulse absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-bn-surface bg-bn-pink" />
 			) : null}
 		</div>
 	);
@@ -479,21 +479,36 @@ export function ToneChip({
 
 export type StatusDotKind = "live" | "living" | "off" | "ok" | "warn" | "err" | "pending";
 
+/**
+ * 七档语义色。**全部走 token** —— 同 {@link Toggle} 那条:写死的话皮肤配了
+ * accent / success / warning / danger 四把刷子也刷不到这颗点上,整站换装后
+ * 只有这一排小点还是原来的配色。
+ *
+ * 收编前那七个字面量还和语义 token 对不齐:`ok` 是 green-500 而 success 是
+ * emerald-500、`warn` 是 amber-500 而 warning 是更深的 amber-600、`live` 是
+ * `#FF6699`(`push-kinds.ts` 点名过的那条粉色漂移,正主是 `#fb7299`)。
+ *
+ * 两档灰**不能并成一个**:`off` 走 textDisabled(浅)、`pending` 走 textTertiary
+ * (深),原本是 `#cccccc` / `#94a3b8` 的深浅关系,靠它分「关着的」与「等着的」。
+ */
 const STATUS_COLORS: Record<StatusDotKind, string> = {
-	live: "#FF6699",
-	living: "#FF6699",
-	off: "#cccccc",
-	ok: "#22c55e",
-	warn: "#f59e0b",
-	err: "#ef4444",
-	pending: "#94a3b8",
+	live: "var(--color-bn-pink)",
+	living: "var(--color-bn-pink)",
+	off: "var(--color-bn-text-disabled)",
+	ok: "var(--color-bn-success)",
+	warn: "var(--color-bn-warning)",
+	err: "var(--color-bn-danger)",
+	pending: "var(--color-bn-text-tertiary)",
 };
 
 export function StatusDot({ kind }: { kind: StatusDotKind }) {
 	const blink = kind === "live" || kind === "living";
 	const style: CSSProperties = {
 		background: STATUS_COLORS[kind],
-		boxShadow: blink ? "0 0 0 3px rgba(255,102,153,0.18)" : undefined,
+		// 光晕从强调色现调,别写死那圈粉 rgba —— 点变了色而光晕没变,是最难看的一种脱节。
+		boxShadow: blink
+			? "0 0 0 3px color-mix(in srgb, var(--color-bn-pink) 18%, transparent)"
+			: undefined,
 	};
 	return (
 		<span

@@ -191,7 +191,7 @@ function DirtyContent({ current }: { current: DraftRegistration }) {
 				initial={{ scale: 0.6, opacity: 0 }}
 				animate={{ scale: 1, opacity: 1 }}
 				transition={{ type: "spring", stiffness: 500, damping: 22 }}
-				className="rounded-full bg-bn-pink px-1.5 py-px text-[10.5px] font-bold leading-3.5"
+				className="rounded-bn-pill bg-bn-pink px-1.5 py-px text-[10.5px] font-bold leading-3.5"
 				aria-label={`${current.diff.length} 项未保存`}
 			>
 				{current.diff.length}
