@@ -25,6 +25,7 @@ import {
 	verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { DragHandle } from "../../components/drag-handle";
 import type { CardBlockFull } from "../../types/domain";
 import { DIVIDER_LABEL } from "./block-labels";
 import {
@@ -124,17 +125,11 @@ function SortableRow({
 					: "border-bn-border-subtle bg-bn-surface/60"
 			}`}
 		>
-			<button
-				type="button"
-				ref={setActivatorNodeRef}
-				{...attributes}
-				{...listeners}
-				title="拖动排序"
-				aria-label="拖动排序"
-				className="cursor-grab touch-none select-none text-[15px] leading-none text-bn-text-tertiary active:cursor-grabbing"
-			>
-				⠿
-			</button>
+			<DragHandle
+				attributes={attributes}
+				listeners={listeners}
+				setActivatorNodeRef={setActivatorNodeRef}
+			/>
 			<span
 				className={`flex-1 text-[13px] font-medium ${
 					isDivider

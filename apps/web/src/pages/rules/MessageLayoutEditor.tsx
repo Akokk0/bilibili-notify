@@ -24,6 +24,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ReactNode } from "react";
+import { DragHandle } from "../../components/drag-handle";
 import { Field, TInput } from "../../components/forms";
 import type { MessageBlockFull, MessageKindLayoutFull } from "../../types/domain";
 import {
@@ -87,17 +88,11 @@ function SortableBlockRow({
 			}`}
 		>
 			<div className="flex items-center gap-2">
-				<button
-					type="button"
-					ref={setActivatorNodeRef}
-					{...attributes}
-					{...listeners}
-					title="拖动排序"
-					aria-label="拖动排序"
-					className="cursor-grab touch-none select-none text-[15px] leading-none text-bn-text-tertiary active:cursor-grabbing"
-				>
-					⠿
-				</button>
+				<DragHandle
+					attributes={attributes}
+					listeners={listeners}
+					setActivatorNodeRef={setActivatorNodeRef}
+				/>
 				<span
 					className="inline-block h-1.5 w-1.5 rounded-full"
 					style={{ background: isSplit ? "#adb5bd" : accent }}

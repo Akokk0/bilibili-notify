@@ -29,6 +29,7 @@ import { useSkinStore, useSkinText } from "../store/skin";
 import { type ThemePreference, useThemeStore } from "../store/theme";
 import { BiliLoginStatus } from "../types/auth";
 import type { PushTarget, Subscription } from "../types/domain";
+import { DragHandle } from "./drag-handle";
 
 interface UserCardData {
 	card?: {
@@ -55,17 +56,12 @@ function NavEditorRow({ item, shown, locked }: { item: NavItem; shown: boolean; 
 			style={{ transform: CSS.Transform.toString(transform), transition }}
 			className="flex items-center gap-1.5 rounded-md px-1 py-1 hover:bg-bn-surface-muted"
 		>
-			<button
-				type="button"
-				ref={setActivatorNodeRef}
-				{...attributes}
-				{...listeners}
-				title="拖动排序"
-				aria-label={`拖动排序 ${item.label}`}
-				className="cursor-grab touch-none select-none px-0.5 text-[14px] leading-none text-bn-text-tertiary active:cursor-grabbing"
-			>
-				⠿
-			</button>
+			<DragHandle
+				attributes={attributes}
+				listeners={listeners}
+				setActivatorNodeRef={setActivatorNodeRef}
+				label={item.label}
+			/>
 			<label
 				className={`flex flex-1 items-center gap-2 text-[12.5px] ${
 					locked
