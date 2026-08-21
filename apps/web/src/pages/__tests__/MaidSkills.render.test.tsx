@@ -62,7 +62,7 @@ const pick = (label: string | RegExp) =>
 
 const nameBox = () => screen.getByPlaceholderText("weekly-report") as HTMLInputElement;
 const descBox = () => screen.getByPlaceholderText("一句话说清这条技能干什么") as HTMLInputElement;
-const bodyBox = () => screen.getByLabelText("技能正文") as HTMLTextAreaElement;
+const bodyBox = () => screen.getByLabelText("正文 · 做事的步骤") as HTMLTextAreaElement;
 
 beforeEach(() => {
 	H.list = [
@@ -76,6 +76,25 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
+
+describe("三个编辑框的无障碍名", () => {
+	it("按可见标题就能精确取到 —— 不是「标题+整段提示」的拼接", async () => {
+		mount();
+		await waitFor(() => expect(nameBox().value).toBe("weekly-report"));
+
+		// 这三个此前包在 <label> 里,而 label 除标题外还含一整段提示文字:HTML-AAM 下
+		// 无障碍名 = label 的全部 textContent,且**span 之间没有分隔**。实测念出来的是
+		// 「名字 · 也是斜杠命令小写字母 / 数字 / 单个连字符。它同时是……」。
+		// 精确匹配(非正则)取得到,就说明名字只剩标题本身。
+		for (const [title, tag] of [
+			["名字 · 也是斜杠命令", "INPUT"],
+			["description · 女仆靠它决定要不要用", "INPUT"],
+			["正文 · 做事的步骤", "TEXTAREA"],
+		] as const) {
+			expect(`${title}=${screen.getByLabelText(title).tagName}`).toBe(`${title}=${tag}`);
+		}
+	});
+});
 
 describe("内置技能", () => {
 	it("摊开给主人看,但一个字都改不动、也删不掉", async () => {

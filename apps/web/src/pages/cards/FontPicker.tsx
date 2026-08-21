@@ -17,6 +17,7 @@ import { MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
 import { Icon, IconButton } from "@bilibili-notify/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { TInput } from "../../components/forms";
 import { ApiError, api } from "../../services/api";
 import {
 	type FontChoice,
@@ -244,13 +245,11 @@ export function FontPicker({
 					手填字体名（高级）
 				</summary>
 				<div className="mt-1.5 flex flex-col gap-1">
-					<input
-						type="text"
-						aria-label="手填字体名"
+					<TInput
+						ariaLabel="手填字体名"
 						value={sel.kind === "custom" ? sel.family : ""}
 						placeholder="例如 PingFang SC"
-						onChange={(e) => onChange(pickFamilyFont(value, e.target.value))}
-						className="w-full rounded-md border border-bn-border bg-bn-surface px-2 py-1 text-[12px] text-bn-text-primary outline-none transition-colors focus:border-bn-pink"
+						onChange={(v) => onChange(pickFamilyFont(value, v))}
 					/>
 					{/* 长句走字符串表达式:留成 JSX 文本的话,格式化器会按宽度折行,而 JSX 把
 					    行首尾的换行连同缩进一并吃掉 —— 「Docker 容器」正好断在那儿就会粘成

@@ -11,6 +11,7 @@ import {
 	Toggle,
 } from "@bilibili-notify/ui";
 import { useEffect, useMemo, useState } from "react";
+import { TInput } from "../../components/forms";
 import {
 	DEFAULT_FEATURE_FLAGS,
 	FEATURE_KEYS,
@@ -467,18 +468,15 @@ export function UpDialog({
 							<Toggle value={draft.enabled} onChange={setEnabled} size="sm" />
 						</BasicRow>
 						<BasicRow label="分组" sub="多个分组以英文逗号分隔">
-							<input
-								className="w-40 rounded-sm border border-bn-border px-1.5 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-bn-pink"
+							<TInput
+								ariaLabel="分组"
+								width={160}
 								value={draft.groups.join(",")}
-								onChange={(e) => setGroups(e.target.value)}
+								onChange={setGroups}
 							/>
 						</BasicRow>
 						<BasicRow label="备注">
-							<input
-								className="w-40 rounded-sm border border-bn-border px-1.5 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-bn-pink"
-								value={draft.notes ?? ""}
-								onChange={(e) => setNotes(e.target.value)}
-							/>
+							<TInput ariaLabel="备注" width={160} value={draft.notes ?? ""} onChange={setNotes} />
 						</BasicRow>
 					</div>
 				</section>

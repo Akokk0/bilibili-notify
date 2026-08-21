@@ -24,6 +24,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { TArea, TInput } from "../../components/forms";
 import {
 	createMaidSkill,
 	deleteMaidSkill,
@@ -31,9 +32,6 @@ import {
 	maidSkillsQueryKey,
 	updateMaidSkill,
 } from "../../services/maidSkill";
-
-const inputCls =
-	"w-full rounded-lg border border-bn-border bg-bn-field px-2.5 py-1.5 text-[12.5px] text-bn-text-primary outline-none focus:border-bn-pink disabled:opacity-60";
 
 /** 新建时右侧那份空白草稿。 */
 const BLANK: MaidSkillWriteRequest = {
@@ -197,56 +195,64 @@ export function MaidSkills() {
 					badge={readOnly ? "builtin" : "skill"}
 				>
 					<div className="flex flex-col gap-3.5 p-1">
-						<label className="flex flex-col gap-1.5">
+						{/* 用 div 而不是 <label> 包:label 一旦除标题外还含提示文字,读屏器念的
+						    无障碍名就是**整段无分隔拼接**(实测「名字 · 也是斜杠命令小写字母 / 数字
+						    / 单个连字符。它同时是……」)。名字改由控件自己的 ariaLabel 给,取可见
+						    标题原文 —— WCAG 2.5.3 要求无障碍名包含可见标签。 */}
+						<div className="flex flex-col gap-1.5">
 							<span className="text-[12px] font-semibold text-bn-text-secondary">
 								名字 · 也是斜杠命令
 							</span>
-							<input
-								className={`${inputCls} font-mono`}
+							<TInput
+								ariaLabel="名字 · 也是斜杠命令"
+								mono
 								value={draft.name}
 								disabled={readOnly}
 								placeholder="weekly-report"
-								onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+								onChange={(v) => setDraft({ ...draft, name: v })}
 							/>
 							<span className="text-[11px] text-bn-text-tertiary">
 								小写字母 / 数字 / 单个连字符。它同时是磁盘上的目录名,所以卡得比较死。 聊天里打{" "}
 								<span className="font-mono">/{draft.name || "名字"}</span> 就是用它。
 							</span>
-						</label>
+						</div>
 
-						<label className="flex flex-col gap-1.5">
+						<div className="flex flex-col gap-1.5">
 							<span className="text-[12px] font-semibold text-bn-text-secondary">
 								description · 女仆靠它决定要不要用
 							</span>
-							<input
-								className={inputCls}
+							<TInput
+								ariaLabel="description · 女仆靠它决定要不要用"
 								value={draft.description}
 								disabled={readOnly}
 								placeholder="一句话说清这条技能干什么"
-								onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+								onChange={(v) => setDraft({ ...draft, description: v })}
 							/>
 							<span className="text-[11px] text-bn-text-tertiary">
 								{draft.description.length} / {MAID_SKILL_LIMITS.descChars} 字。这一句每轮对话都带着,
 								所以有上限。
 							</span>
-						</label>
+						</div>
 
-						<label className="flex flex-col gap-1.5">
+						<div className="flex flex-col gap-1.5">
 							<span className="text-[12px] font-semibold text-bn-text-secondary">
 								正文 · 做事的步骤
 							</span>
-							<textarea
-								aria-label="技能正文"
-								className={`${inputCls} min-h-60 resize-y font-mono leading-relaxed`}
+							{/* rows 而不是 min-h-*:TArea 的高度口子就是 rows,11 行 ≈ 原先那个
+							    min-h-60(240px);拖动改高由 TArea 自带的 resize-y 提供。 */}
+							<TArea
+								ariaLabel="正文 · 做事的步骤"
+								rows={11}
+								mono
 								value={draft.body}
 								disabled={readOnly}
 								placeholder={"## 步骤\n\n1. 先……\n2. 再……\n\n## 输出\n\n……"}
-								onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+								onChange={(v) => setDraft({ ...draft, body: v })}
 							/>
 							<span className="text-[11px] text-bn-text-tertiary">
 								Markdown。这段会追加在女仆人格之后 —— 不必重新交代她是谁,只讲这件事怎么做。
 							</span>
-						</label>
+						</div>
 
 						<div className="flex flex-col gap-1.5">
 							<span className="text-[12px] font-semibold text-bn-text-secondary">

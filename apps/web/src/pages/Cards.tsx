@@ -37,6 +37,7 @@ import {
 	TArea,
 	TColor,
 	TInput,
+	TSelect,
 } from "../components/forms";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { PUSH_TONE } from "../config/push-kinds";
@@ -316,22 +317,17 @@ function TestPushCard({
 			/>
 			<div className="my-3 border-t border-bn-border-subtle" />
 			<Field code="targetId" full>
-				<select
+				<TSelect
+					full
 					value={targetId}
-					onChange={(e) => setTargetId(e.target.value)}
+					onChange={setTargetId}
 					disabled={targets.length === 0}
-					className="w-full rounded-md border border-bn-border bg-bn-surface px-2.5 py-2 text-[12.5px] text-bn-text-primary outline-none focus:border-bn-pink disabled:opacity-50"
-				>
-					{targets.length === 0 ? (
-						<option value="">无可用推送目标</option>
-					) : (
-						targets.map((t) => (
-							<option key={t.id} value={t.id}>
-								{t.name}
-							</option>
-						))
-					)}
-				</select>
+					options={
+						targets.length === 0
+							? [{ value: "", label: "无可用推送目标" }]
+							: targets.map((t) => ({ value: t.id, label: t.name }))
+					}
+				/>
 			</Field>
 			<div className="pt-2.5">
 				<Btn

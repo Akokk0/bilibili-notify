@@ -119,7 +119,24 @@ const INPUT_BASE =
  */
 const INPUT_HOOK = "input";
 
-export interface TInputProps {
+/**
+ * 无障碍名。**不是可选的装饰** —— 调用方常把控件包进一个 `<label>`,而那个 label
+ * 里除了标题往往还有一整段提示文字;此时读屏器念出来的名字是**整段拼接**(「正文 ·
+ * 做事的步骤 Markdown。这段会追加在女仆人格之后……」)。给了 `ariaLabel` 才只念标题。
+ *
+ * 走 prop 而不是让调用方在外面套 —— 属性得落在**控件本身**上,套在包装层等于没写。
+ */
+type Labelled = { ariaLabel?: string };
+
+/**
+ * 定宽。走 inline style 的**数字**而不是 `w-*` 类名:本仓没装 tailwind-merge,
+ * 传进来的 `w-40` 压不掉基线里的 `w-full`/`w-auto`(同层同属性,胜负由样式表里的
+ * 先后决定,不由 class 串的顺序),给出来的是个随构建漂移的结果。`TNum` 早就是
+ * 这么解的,这里照抄。
+ */
+type Sized = { width?: number };
+
+export interface TInputProps extends Labelled, Sized {
 	value: string;
 	onChange: (next: string) => void;
 	placeholder?: string;
@@ -140,6 +157,8 @@ export function TInput({
 	full = true,
 	type = "text",
 	disabled,
+	ariaLabel,
+	width,
 }: TInputProps) {
 	// secret=true 时使用 <input type="password">,DOM value 不在 devtools 树展示明文,
 	// 也阻止屏幕共享/截图泄漏。
@@ -152,13 +171,17 @@ export function TInput({
 			placeholder={placeholder}
 			autoComplete={secret ? "new-password" : undefined}
 			disabled={disabled}
+			aria-label={ariaLabel}
 			data-bn={INPUT_HOOK}
-			className={`${INPUT_BASE} ${mono || secret ? "font-mono" : ""} ${full ? "min-w-0 w-full" : "w-auto"} ${DISABLED_FIELD}`}
+			style={width === undefined ? undefined : { width }}
+			className={`${INPUT_BASE} ${mono || secret ? "font-mono" : ""} ${
+				width !== undefined ? "" : full ? "min-w-0 w-full" : "w-auto"
+			} ${DISABLED_FIELD}`}
 		/>
 	);
 }
 
-export interface TAreaProps {
+export interface TAreaProps extends Labelled {
 	value: string;
 	onChange: (next: string) => void;
 	placeholder?: string;
@@ -168,7 +191,15 @@ export interface TAreaProps {
 	disabled?: boolean;
 }
 
-export function TArea({ value, onChange, placeholder, rows = 3, mono, disabled }: TAreaProps) {
+export function TArea({
+	value,
+	onChange,
+	placeholder,
+	rows = 3,
+	mono,
+	disabled,
+	ariaLabel,
+}: TAreaProps) {
 	return (
 		<textarea
 			value={value}
@@ -176,6 +207,7 @@ export function TArea({ value, onChange, placeholder, rows = 3, mono, disabled }
 			placeholder={placeholder}
 			rows={rows}
 			disabled={disabled}
+			aria-label={ariaLabel}
 			data-bn={INPUT_HOOK}
 			className={`min-w-0 w-full resize-y rounded-md border border-bn-border bg-bn-field px-2.5 py-2 text-[12.5px] leading-relaxed text-bn-text-primary outline-none focus:border-bn-pink focus:ring-1 focus:ring-bn-pink/30 ${mono ? "font-mono" : ""} ${DISABLED_FIELD}`}
 		/>
@@ -216,11 +248,13 @@ interface TSelectOption<T extends string = string> {
 	label: string;
 }
 
-export interface TSelectProps<T extends string = string> {
+export interface TSelectProps<T extends string = string> extends Labelled {
 	value: T;
 	onChange: (next: T) => void;
 	options: TSelectOption<T>[];
 	full?: boolean;
+	/** 只读态,同 {@link TInputProps.disabled}。四件 T 里只有它此前漏了。 */
+	disabled?: boolean;
 }
 
 export function TSelect<T extends string = string>({
@@ -228,13 +262,17 @@ export function TSelect<T extends string = string>({
 	onChange,
 	options,
 	full,
+	disabled,
+	ariaLabel,
 }: TSelectProps<T>) {
 	return (
 		<select
 			value={value}
 			onChange={(e) => onChange(e.target.value as T)}
+			disabled={disabled}
+			aria-label={ariaLabel}
 			data-bn={INPUT_HOOK}
-			className={`${INPUT_BASE} min-w-40 ${full ? "w-full" : "w-auto"}`}
+			className={`${INPUT_BASE} min-w-40 ${full ? "w-full" : "w-auto"} ${DISABLED_FIELD}`}
 		>
 			{options.map((o) => (
 				<option key={o.value} value={o.value}>
