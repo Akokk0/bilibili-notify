@@ -395,6 +395,76 @@ export function LogLevelPicker({ value, onChange, allowInherit }: LogLevelPicker
 	);
 }
 
+/**
+ * ── 行编辑器的共用装饰 ──────────────────────────────────────────────────────
+ *
+ * ArrayEditor 与 QuietHoursEditor 是同一种控件的两个特化(一列可增删的行),
+ * 行号徽标 / 移除钮 / 添加钮此前在两处逐字抄了一遍。抄的东西一旦漂开,同一页
+ * 上两个编辑器就会一个 h-7.5 一个不是 —— 所以这三件收成局部件,不导出:它们
+ * 是这两个编辑器的实现细节,不是给页面用的原语。
+ */
+
+/** 行号徽标。宽度固定,好让两个编辑器的行首在同一条竖线上对齐。 */
+function RowIndex({ n }: { n: number }) {
+	return (
+		<span className="grid h-7.5 w-5.5 place-items-center font-mono text-[11px] text-bn-text-secondary">
+			{n}
+		</span>
+	);
+}
+
+/** 行尾的移除钮。`aria-label` 是测试与读屏器认它的唯一凭据,别改成纯 × 文本。 */
+function RemoveRowButton({ onClick }: { onClick: () => void }) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			data-bn="btn"
+			className="grid h-7.5 w-7.5 place-items-center rounded-md border border-bn-border bg-bn-field text-bn-text-secondary hover:text-bn-danger"
+			aria-label="移除"
+		>
+			×
+		</button>
+	);
+}
+
+/** 列表末尾那条虚线添加钮。文案各编辑器自己给。 */
+function AddRowButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			data-bn="btn"
+			className="h-7.5 rounded-md border border-dashed border-bn-border bg-bn-field/60 text-[12px] text-bn-text-secondary hover:bg-bn-surface"
+		>
+			{children}
+		</button>
+	);
+}
+
+/**
+ * 0–23 的整点下拉。免扰时段每行两个,起点与终点只差写回哪个字段。
+ * 24 个选项是常量,提到模块作用域 —— 原先每次 render 都现造一遍数组。
+ */
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+
+function HourSelect({ value, onChange }: { value: number; onChange: (next: number) => void }) {
+	return (
+		<select
+			value={value}
+			onChange={(e) => onChange(Number(e.target.value))}
+			data-bn={INPUT_HOOK}
+			className={`${INPUT_BASE} w-18 font-mono`}
+		>
+			{HOURS.map((h) => (
+				<option key={h} value={h}>
+					{String(h).padStart(2, "0")}:00
+				</option>
+			))}
+		</select>
+	);
+}
+
 export interface ArrayEditorProps {
 	value: string[];
 	onChange: (next: string[]) => void;
@@ -407,9 +477,7 @@ export function ArrayEditor({ value, onChange, placeholder }: ArrayEditorProps) 
 			{value.map((v, i) => (
 				// biome-ignore lint/suspicious/noArrayIndexKey: index is the stable identity here — entries are positional and the row exposes it as the line number anyway
 				<div key={i} className="flex gap-1.5">
-					<span className="grid h-7.5 w-5.5 place-items-center font-mono text-[11px] text-bn-text-secondary">
-						{i + 1}
-					</span>
+					<RowIndex n={i + 1} />
 					<input
 						value={v}
 						onChange={(e) => {
@@ -420,25 +488,12 @@ export function ArrayEditor({ value, onChange, placeholder }: ArrayEditorProps) 
 						data-bn={INPUT_HOOK}
 						className={`${INPUT_BASE} flex-1 font-mono`}
 					/>
-					<button
-						type="button"
-						onClick={() => onChange(value.filter((_, j) => j !== i))}
-						data-bn="btn"
-						className="grid h-7.5 w-7.5 place-items-center rounded-md border border-bn-border bg-bn-field text-bn-text-secondary hover:text-bn-danger"
-						aria-label="移除"
-					>
-						×
-					</button>
+					<RemoveRowButton onClick={() => onChange(value.filter((_, j) => j !== i))} />
 				</div>
 			))}
-			<button
-				type="button"
-				onClick={() => onChange([...value, ""])}
-				data-bn="btn"
-				className="h-7.5 rounded-md border border-dashed border-bn-border bg-bn-field/60 text-[12px] text-bn-text-secondary hover:bg-bn-surface"
-			>
+			<AddRowButton onClick={() => onChange([...value, ""])}>
 				+ 添加一行{placeholder ? `（${placeholder}）` : ""}
-			</button>
+			</AddRowButton>
 		</div>
 	);
 }
@@ -456,7 +511,6 @@ export interface QuietHoursEditorProps {
 }
 
 export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
-	const hours = Array.from({ length: 24 }, (_, i) => i);
 	return (
 		<div className="flex w-full flex-col gap-1">
 			{value.map((r, i) => {
@@ -464,42 +518,24 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 				return (
 					// biome-ignore lint/suspicious/noArrayIndexKey: positional row identity
 					<div key={i} className="flex items-center gap-1.5">
-						<span className="grid h-7.5 w-5.5 place-items-center font-mono text-[11px] text-bn-text-secondary">
-							{i + 1}
-						</span>
-						<select
+						<RowIndex n={i + 1} />
+						<HourSelect
 							value={r.start}
-							onChange={(e) => {
+							onChange={(h) => {
 								const n = [...value];
-								n[i] = { ...n[i], start: Number(e.target.value) };
+								n[i] = { ...n[i], start: h };
 								onChange(n);
 							}}
-							data-bn={INPUT_HOOK}
-							className={`${INPUT_BASE} w-18 font-mono`}
-						>
-							{hours.map((h) => (
-								<option key={h} value={h}>
-									{String(h).padStart(2, "0")}:00
-								</option>
-							))}
-						</select>
+						/>
 						<span className="text-[11px] text-bn-text-tertiary">至</span>
-						<select
+						<HourSelect
 							value={r.end}
-							onChange={(e) => {
+							onChange={(h) => {
 								const n = [...value];
-								n[i] = { ...n[i], end: Number(e.target.value) };
+								n[i] = { ...n[i], end: h };
 								onChange(n);
 							}}
-							data-bn={INPUT_HOOK}
-							className={`${INPUT_BASE} w-18 font-mono`}
-						>
-							{hours.map((h) => (
-								<option key={h} value={h}>
-									{String(h).padStart(2, "0")}:00
-								</option>
-							))}
-						</select>
+						/>
 						<span className="flex items-center gap-1 text-[10.5px] text-bn-text-tertiary">
 							{crossMidnight ? (
 								"(跨次日)"
@@ -512,26 +548,13 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 								""
 							)}
 						</span>
-						<button
-							type="button"
-							onClick={() => onChange(value.filter((_, j) => j !== i))}
-							data-bn="btn"
-							className="grid h-7.5 w-7.5 place-items-center rounded-md border border-bn-border bg-bn-field text-bn-text-secondary hover:text-bn-danger"
-							aria-label="移除"
-						>
-							×
-						</button>
+						<RemoveRowButton onClick={() => onChange(value.filter((_, j) => j !== i))} />
 					</div>
 				);
 			})}
-			<button
-				type="button"
-				onClick={() => onChange([...value, { start: 23, end: 7 }])}
-				data-bn="btn"
-				className="h-7.5 rounded-md border border-dashed border-bn-border bg-bn-field/60 text-[12px] text-bn-text-secondary hover:bg-bn-surface"
-			>
+			<AddRowButton onClick={() => onChange([...value, { start: 23, end: 7 }])}>
 				+ 添加免扰时段
-			</button>
+			</AddRowButton>
 		</div>
 	);
 }
