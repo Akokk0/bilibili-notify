@@ -207,7 +207,17 @@ function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
 		<GlassPanel title="本周推送趋势" subtitle="按推送类型分布" accent="var(--color-bn-blue)">
 			{/* TimelinePanel 6 条 history × 单行 ~50px + padding ≈ 320px;StatsBar 抬高
 			    到 280 让同行 TrendPanel 视觉对齐,不至于半空。 */}
-			<StatsBar data={data} height={280} />
+			{/* 柱子与下面的图例走同一份家族色 —— 此前柱子在库里写死,和图例只是碰巧同色。 */}
+			<StatsBar
+				data={data}
+				height={280}
+				colors={{
+					live: PUSH_TONE.live,
+					dyn: PUSH_TONE.dynamic,
+					sc: PUSH_TONE.sc,
+					guard: PUSH_TONE.guard,
+				}}
+			/>
 			<div className="mt-3.5 flex flex-wrap items-center gap-3 text-[11px] text-bn-text-tertiary">
 				{[
 					["直播", PUSH_TONE.live],

@@ -887,7 +887,29 @@ export interface StatsBarDatum {
 	guard: number;
 }
 
-export function StatsBar({ data, height = 80 }: { data: StatsBarDatum[]; height?: number }) {
+/** 四段的颜色。键与 `StatsBarDatum` 的四个计数字段一一对应。 */
+export type StatsBarColors = Record<"live" | "dyn" | "sc" | "guard", string>;
+
+/** 由高到低堆叠 —— 上舰在最上,直播在最下。 */
+const STATS_BAR_SEGMENTS = ["guard", "sc", "dyn", "live"] as const;
+
+/**
+ * 迷你堆叠柱状图。
+ *
+ * **`colors` 必填,库里不留默认值。** 这四段是推送家族色,而家族色的唯一出处
+ * (`push-kinds.ts`)是业务侧的东西,平台中立的库取不到 —— 于是「就地抄一份」曾经是
+ * 这儿最省事的写法,四个值也就真在这里躺了一整轮:调色板改了它不动,而守卫当时只扫
+ * 站点源码,连这个目录都没看过。给个默认值等于把那份副本原样留下,所以不给。
+ */
+export function StatsBar({
+	data,
+	colors,
+	height = 80,
+}: {
+	data: StatsBarDatum[];
+	colors: StatsBarColors;
+	height?: number;
+}) {
 	const max = Math.max(1, ...data.map((d) => d.live + d.dyn + d.sc + d.guard));
 	return (
 		<div className="relative flex items-end gap-2.5 pb-4.5" style={{ height }}>
@@ -900,18 +922,14 @@ export function StatsBar({ data, height = 80 }: { data: StatsBarDatum[]; height?
 							className="flex w-full flex-col justify-end overflow-hidden rounded-t"
 							style={{ height: h }}
 						>
-							{d.guard > 0 ? (
-								<div style={{ background: "#f2a053", height: `${(d.guard / total) * 100}%` }} />
-							) : null}
-							{d.sc > 0 ? (
-								<div style={{ background: "#fdcb6e", height: `${(d.sc / total) * 100}%` }} />
-							) : null}
-							{d.dyn > 0 ? (
-								<div style={{ background: "#00AEEC", height: `${(d.dyn / total) * 100}%` }} />
-							) : null}
-							{d.live > 0 ? (
-								<div style={{ background: "#FB7299", height: `${(d.live / total) * 100}%` }} />
-							) : null}
+							{STATS_BAR_SEGMENTS.map((seg) =>
+								d[seg] > 0 ? (
+									<div
+										key={seg}
+										style={{ background: colors[seg], height: `${(d[seg] / total) * 100}%` }}
+									/>
+								) : null,
+							)}
 						</div>
 						<div className="absolute bottom-0 text-[10px] text-bn-text-secondary">{d.d}</div>
 					</div>

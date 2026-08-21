@@ -8,7 +8,7 @@
  */
 
 import { readdir, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { familyTone, PUSH_KIND_META, PUSH_TONE } from "../push-kinds";
@@ -60,6 +60,21 @@ describe("PUSH_KIND_META", () => {
 	});
 });
 
+/** 扫描范围:站点源码 + 平台中立组件库。库那份最容易漏,它取不到 `push-kinds`。 */
+const ROOTS: ReadonlyArray<readonly [string, string]> = [
+	[SRC_DIR, "apps/web/src"],
+	[join(SRC_DIR, "../../../packages/ui/src"), "packages/ui/src"],
+];
+
+/** 目录下所有 `.ts` / `.tsx`,跳过测试与色表本尊。 */
+async function sources(root: string): Promise<string[]> {
+	const all = await readdir(root, { recursive: true, withFileTypes: true });
+	return all
+		.filter((e) => e.isFile() && /\.tsx?$/.test(e.name))
+		.map((e) => relative(root, join(e.parentPath, e.name)))
+		.filter((rel) => !/__tests__|\.test\.|push-kinds\.ts$/.test(rel));
+}
+
 describe("没有第二份 kind 色表", () => {
 	/**
 	 * 复发形态是「在页面里再手搓一张 `Record<HistorySource, string>`」。这里扫的是
@@ -87,13 +102,28 @@ describe("没有第二份 kind 色表", () => {
 	 *
 	 * 这条真抓到过东西:收表时先漏了 Dashboard 趋势图的图例(第六份副本)。
 	 */
-	it("这五个文件里不再出现成套的家族色字面量", async () => {
+	/**
+	 * **扫全目录,不扫白名单。** 上一版这里钉的是上面那五个文件,于是白名单外的第六份
+	 * 副本可以安安稳稳躺着 —— `packages/ui` 的 `StatsBar` 就那么躺了一整轮:四个家族色
+	 * 分毫不差地写死在堆叠柱里,而守卫连 `packages/ui` 这个目录都没看过。
+	 *
+	 * 现在两个目录整棵扫。库那边尤其要扫:它是平台中立的,取不到 `push-kinds`,所以
+	 * 「就地抄一份」在那儿是最省事的选择,也就最容易复发。
+	 */
+	it("两个目录里都不再出现成套的家族色字面量", async () => {
 		const hexes = [PUSH_TONE.live, PUSH_TONE.dynamic, PUSH_TONE.sc, PUSH_TONE.guard];
 		const findings: string[] = [];
-		for (const rel of CONSUMERS) {
-			const src = (await readFile(join(SRC_DIR, rel), "utf8")).toLowerCase();
-			const hit = hexes.filter((h) => src.includes(h.toLowerCase()));
-			if (hit.length >= 3) findings.push(`${rel}: ${hit.join(" ")}`);
+		for (const [root, label] of ROOTS) {
+			for (const rel of await sources(root)) {
+				const raw = await readFile(join(root, rel), "utf8");
+				// 注释抹掉:好几处文档正**举例说明**旧写法长什么样,那不是又抄了一张表。
+				const src = raw
+					.replace(/\/\*[\s\S]*?\*\//g, "")
+					.replace(/\/\/.*$/gm, "")
+					.toLowerCase();
+				const hit = hexes.filter((h) => src.includes(h.toLowerCase()));
+				if (hit.length >= 3) findings.push(`${label}/${rel}: ${hit.join(" ")}`);
+			}
 		}
 		expect(findings).toEqual([]);
 	});
