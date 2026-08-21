@@ -84,14 +84,14 @@ export function AiTestPanel({ draft }: { draft: AISettings }) {
 					{test.isPending ? "女仆思考中…" : "试一句"}
 				</Btn>
 				{test.isSuccess && reply !== null && (
-					<span className="text-[11px] text-bn-text-tertiary">
+					<span className="text-bn-xs text-bn-text-tertiary">
 						已送达 · {test.data?.latencyMs}ms
 					</span>
 				)}
 			</div>
 
 			{reply !== null && (
-				<div className="mt-2 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 text-[13px] leading-relaxed text-bn-text-primary">
+				<div className="mt-2 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 text-bn-base leading-relaxed text-bn-text-primary">
 					{reply}
 				</div>
 			)}

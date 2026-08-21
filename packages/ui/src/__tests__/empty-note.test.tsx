@@ -24,7 +24,7 @@ describe("EmptyNote", () => {
 		render(<EmptyNote>当前没有订阅 UP 主在直播</EmptyNote>);
 		const el = screen.getByText("当前没有订阅 UP 主在直播");
 		const cls = el.className.split(/\s+/);
-		for (const c of [...SHARED, "rounded-lg", "p-6", "text-[12.5px]", "text-bn-text-secondary"]) {
+		for (const c of [...SHARED, "rounded-lg", "p-6", "text-bn-sm", "text-bn-text-secondary"]) {
 			expect([c, cls.includes(c)]).toEqual([c, true]);
 		}
 	});
@@ -38,7 +38,7 @@ describe("EmptyNote", () => {
 			"rounded-md",
 			"px-3",
 			"py-3",
-			"text-[11.5px]",
+			"text-bn-xs",
 			"text-bn-text-secondary",
 		]) {
 			expect([c, cls.includes(c)]).toEqual([c, true]);

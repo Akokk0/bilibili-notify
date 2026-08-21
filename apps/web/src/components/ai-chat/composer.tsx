@@ -206,10 +206,10 @@ export function Composer({
 								}`}
 							>
 								<div className="flex items-center gap-2">
-									<span className="bn-chat-accent font-mono text-[13px] font-semibold">
+									<span className="bn-chat-accent font-mono text-bn-base font-semibold">
 										/{s.name}
 									</span>
-									<span className="rounded-bn-xs bg-bn-code-bg px-[7px] py-px text-[10.5px] font-semibold text-bn-text-secondary">
+									<span className="rounded-bn-xs bg-bn-code-bg px-[7px] py-px text-bn-2xs font-semibold text-bn-text-secondary">
 										{s.builtin ? "内置" : "自定义"}
 									</span>
 								</div>
@@ -217,7 +217,7 @@ export function Composer({
 							</button>
 						))}
 					</div>
-					<div className="flex gap-3.5 border-t border-bn-border-subtle px-[13px] py-[7px] text-[11px] text-bn-text-secondary">
+					<div className="flex gap-3.5 border-t border-bn-border-subtle px-[13px] py-[7px] text-bn-xs text-bn-text-secondary">
 						<span>↑↓ 选择</span>
 						<span>Enter 确认</span>
 						<span>Esc 关闭</span>
@@ -290,7 +290,7 @@ export function Composer({
 					onBlur={() => setTimeout(() => setFocus(false), 120)}
 					placeholder={skinPlaceholder ?? `给${aiName}发消息,输入 / 唤起技能`}
 					aria-label="聊天输入"
-					className="w-full resize-none overflow-y-auto border-none bg-transparent px-2 pt-1.5 pb-1 text-[16.5px] leading-relaxed text-bn-text-primary outline-none placeholder:text-bn-text-secondary"
+					className="w-full resize-none overflow-y-auto border-none bg-transparent px-2 pt-1.5 pb-1 text-bn-lg leading-relaxed text-bn-text-primary outline-none placeholder:text-bn-text-secondary"
 				/>
 
 				<div className="flex items-center justify-between gap-2 px-1 pt-1 pb-0.5">

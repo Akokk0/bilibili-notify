@@ -27,7 +27,7 @@ interface GalleryListResponse {
 function OrderBadge({ tone, children }: { tone: "pink" | "danger"; children: ReactNode }) {
 	return (
 		<span
-			className={`absolute left-1 top-1 grid h-4 min-w-4 place-items-center rounded-bn-pill px-1 text-[9px] font-bold text-bn-on-solid ${
+			className={`absolute left-1 top-1 grid h-4 min-w-4 place-items-center rounded-bn-pill px-1 text-bn-micro font-bold text-bn-on-solid ${
 				tone === "pink" ? "bg-bn-pink" : "bg-bn-danger-text"
 			}`}
 		>
@@ -65,7 +65,7 @@ function Thumb({
 				{url ? (
 					<img src={url} alt="背景图" className="h-full w-full object-cover" />
 				) : (
-					<span className="grid h-full w-full place-items-center bg-bn-surface-muted text-[10px] text-bn-text-tertiary">
+					<span className="grid h-full w-full place-items-center bg-bn-surface-muted text-bn-2xs text-bn-text-tertiary">
 						…
 					</span>
 				)}
@@ -180,7 +180,7 @@ export function GalleryPicker({
 						className="relative grid aspect-[16/10] w-24 shrink-0 place-items-center overflow-hidden rounded-lg border border-dashed border-bn-danger-text/50 bg-bn-surface-muted"
 					>
 						<OrderBadge tone="danger">{value.indexOf(id) + 1}</OrderBadge>
-						<span className="text-[10px] text-bn-danger-text">已失效</span>
+						<span className="text-bn-2xs text-bn-danger-text">已失效</span>
 						<IconButton
 							icon={<Icon.close size={10} />}
 							label="移除失效引用"
@@ -193,7 +193,7 @@ export function GalleryPicker({
 						/>
 					</div>
 				))}
-				<label className="grid aspect-[16/10] w-24 shrink-0 cursor-pointer place-items-center rounded-lg border border-dashed border-bn-border text-[11px] text-bn-text-tertiary transition hover:border-bn-pink hover:text-bn-pink">
+				<label className="grid aspect-[16/10] w-24 shrink-0 cursor-pointer place-items-center rounded-lg border border-dashed border-bn-border text-bn-xs text-bn-text-tertiary transition hover:border-bn-pink hover:text-bn-pink">
 					{uploading ? (
 						"上传中…"
 					) : (
@@ -211,7 +211,7 @@ export function GalleryPicker({
 					/>
 				</label>
 			</div>
-			<div className="flex items-center justify-between text-[11px]">
+			<div className="flex items-center justify-between text-bn-xs">
 				<span className="text-bn-text-tertiary">
 					{value.length === 0
 						? (emptyHint ?? "未选择(用渐变背景)")

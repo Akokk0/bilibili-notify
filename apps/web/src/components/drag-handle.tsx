@@ -34,7 +34,7 @@ export function DragHandle({ attributes, listeners, setActivatorNodeRef, label }
 			{...listeners}
 			title="拖动排序"
 			aria-label={label ? `拖动排序 ${label}` : "拖动排序"}
-			className="cursor-grab touch-none select-none text-[15px] leading-none text-bn-text-tertiary active:cursor-grabbing"
+			className="cursor-grab touch-none select-none text-bn-md leading-none text-bn-text-tertiary active:cursor-grabbing"
 		>
 			⠿
 		</button>

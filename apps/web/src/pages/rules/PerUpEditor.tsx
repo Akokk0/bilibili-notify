@@ -187,7 +187,7 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 				/>
 				<div className="min-w-0 flex-1">
 					<div className="text-base font-bold text-bn-text-primary">{displayName(sub)}</div>
-					<div className="text-[12px] text-bn-text-secondary">
+					<div className="text-bn-sm text-bn-text-secondary">
 						UID {sub.uid} · 关闭一个分组 = 恢复继承全局默认
 					</div>
 				</div>
@@ -298,7 +298,7 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
  */
 function InheritHint({ children }: { children: React.ReactNode }) {
 	return (
-		<div className="py-5 text-center text-[12px] text-bn-text-tertiary">未启用 · {children}</div>
+		<div className="py-5 text-center text-bn-sm text-bn-text-tertiary">未启用 · {children}</div>
 	);
 }
 
@@ -775,7 +775,7 @@ function MessageLayoutOverrideBox({
 		>
 			{enabled ? (
 				<>
-					<div className="mb-2 text-[12.5px] font-bold text-bn-text-primary">动态消息版式</div>
+					<div className="mb-2 text-bn-sm font-bold text-bn-text-primary">动态消息版式</div>
 					<MessageLayoutEditor
 						value={cur.dynamic}
 						onChange={(next) => onChange({ ...cur, dynamic: next })}
@@ -783,14 +783,14 @@ function MessageLayoutOverrideBox({
 						accent={SECTION_ACCENT.message}
 					/>
 					<div className="my-3 border-t border-bn-border-subtle" />
-					<div className="mb-2 text-[12.5px] font-bold text-bn-text-primary">直播消息版式</div>
+					<div className="mb-2 text-bn-sm font-bold text-bn-text-primary">直播消息版式</div>
 					<MessageLayoutEditor
 						value={cur.live}
 						onChange={(next) => onChange({ ...cur, live: next })}
 						separatorCode="messageLayout.live.separator"
 						accent="var(--color-bn-pink)"
 					/>
-					<div className="mt-2 text-[11px] text-bn-text-tertiary">
+					<div className="mt-2 text-bn-xs text-bn-text-tertiary">
 						文案模板的 per-UP 覆盖在「动态消息」/「直播消息」分类;此处只覆盖结构。
 					</div>
 				</>
@@ -852,9 +852,9 @@ function GuardOverrideBox({
 									key={role}
 									className="rounded-lg border border-bn-border bg-bn-surface/70 p-2.5"
 								>
-									<div className="mb-1.5 text-[12px] font-bold text-bn-text-primary">
+									<div className="mb-1.5 text-bn-sm font-bold text-bn-text-primary">
 										{label}{" "}
-										<code className="ml-1 rounded-sm bg-bn-code-bg px-1 py-px font-mono text-[10.5px] text-bn-text-tertiary">
+										<code className="ml-1 rounded-sm bg-bn-code-bg px-1 py-px font-mono text-bn-2xs text-bn-text-tertiary">
 											{role}
 										</code>
 									</div>
@@ -1007,7 +1007,7 @@ function SpecialUserBox({
 							<button
 								type="button"
 								onClick={() => setTemplate(undefined)}
-								className="mt-1 text-[11px] text-bn-text-tertiary underline-offset-2 hover:text-bn-pink hover:underline"
+								className="mt-1 text-bn-xs text-bn-text-tertiary underline-offset-2 hover:text-bn-pink hover:underline"
 							>
 								恢复继承全局模板
 							</button>
@@ -1093,7 +1093,7 @@ function AiOverrideBox({
 						/>
 					</Field>
 
-					<div className="rounded-lg border border-bn-purple/30 bg-bn-purple/8 px-3 py-2 text-[11.5px] text-bn-text-secondary">
+					<div className="rounded-lg border border-bn-purple/30 bg-bn-purple/8 px-3 py-2 text-bn-xs text-bn-text-secondary">
 						这个 UP 用「{activePreset.label}」 · 名字 {activePreset.persona.name} · 称呼你{" "}
 						{activePreset.persona.addressUser} ·
 						提示词随这份走。想改内容或另起一份，都到「智能女仆」页

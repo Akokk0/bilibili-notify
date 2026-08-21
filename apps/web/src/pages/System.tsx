@@ -64,8 +64,8 @@ function QrCard({ data, msg }: { data: unknown; msg: string }) {
 					二维码加载中…
 				</div>
 			)}
-			<div className="text-[12.5px] text-bn-text-secondary">使用 Bilibili 手机客户端扫码登录</div>
-			{msg ? <div className="text-[11px] text-bn-text-tertiary">{msg}</div> : null}
+			<div className="text-bn-sm text-bn-text-secondary">使用 Bilibili 手机客户端扫码登录</div>
+			{msg ? <div className="text-bn-xs text-bn-text-tertiary">{msg}</div> : null}
 		</div>
 	);
 }
@@ -190,7 +190,7 @@ function SystemSettingsSection({
 								key={m.id}
 								className="flex items-center justify-between gap-2 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-2.5 py-1.5"
 							>
-								<span className="flex items-center gap-1.5 text-[12px] font-bold text-bn-text-primary">
+								<span className="flex items-center gap-1.5 text-bn-sm font-bold text-bn-text-primary">
 									<span
 										className="inline-block h-1.5 w-1.5 rounded-full"
 										style={{ background: m.tone }}
@@ -239,10 +239,8 @@ function SystemSettingsSection({
 
 			<div className="mt-3 rounded-lg border border-bn-pink/20 bg-linear-to-br from-bn-pink/8 to-transparent p-3">
 				<div className="mb-1.5 flex items-center justify-between">
-					<span className="text-[12.5px] font-bold text-bn-text-primary">主人账号 · master</span>
-					<span className="text-[10.5px] text-bn-text-tertiary">
-						插件遇错误会私聊报告给这个目标
-					</span>
+					<span className="text-bn-sm font-bold text-bn-text-primary">主人账号 · master</span>
+					<span className="text-bn-2xs text-bn-text-tertiary">插件遇错误会私聊报告给这个目标</span>
 				</div>
 				<Field code="master.targetId">
 					<TSelect
@@ -254,7 +252,7 @@ function SystemSettingsSection({
 						]}
 					/>
 				</Field>
-				<div className="mt-1.5 text-[11px] text-bn-text-secondary">{masterStatus}</div>
+				<div className="mt-1.5 text-bn-xs text-bn-text-secondary">{masterStatus}</div>
 			</div>
 		</GlassBox>
 	);
@@ -391,14 +389,14 @@ export default function System() {
 							url={accountFace}
 						/>
 						<div className="min-w-0 flex-1">
-							<div className="truncate text-[14px] font-bold text-bn-text-primary">
+							<div className="truncate text-bn-md font-bold text-bn-text-primary">
 								{accountName ?? "已登录账号"}
 							</div>
-							<div className="mt-0.5 text-[11.5px] text-bn-text-secondary">
+							<div className="mt-0.5 text-bn-xs text-bn-text-secondary">
 								业务核心可正常拉取动态 / 直播 / WBI 签名
 							</div>
 							{cookiesRefreshedAt ? (
-								<div className="mt-0.5 text-[10.5px] text-bn-text-tertiary">
+								<div className="mt-0.5 text-bn-2xs text-bn-text-tertiary">
 									最近 Cookie 刷新：{new Date(cookiesRefreshedAt).toLocaleString()}
 								</div>
 							) : null}
@@ -407,14 +405,14 @@ export default function System() {
 				) : isQrPhase ? (
 					<QrCard data={snapshot?.data} msg={msg} />
 				) : (
-					<div className="text-[12px] text-bn-text-secondary">
+					<div className="text-bn-sm text-bn-text-secondary">
 						{status === BiliLoginStatus.NOT_LOGIN
 							? "尚未登录 B 站账号,点下方「发起扫码登录」开始。"
 							: STATUS_LABELS[status]}
 					</div>
 				)}
 
-				{extraMsg ? <div className="mt-2 text-[11px] text-bn-warning">{extraMsg}</div> : null}
+				{extraMsg ? <div className="mt-2 text-bn-xs text-bn-warning">{extraMsg}</div> : null}
 
 				{status === BiliLoginStatus.LOGIN_FAILED ? (
 					<ErrorNote className="mt-2.5">{msg || "登录失败，可重试。"}</ErrorNote>

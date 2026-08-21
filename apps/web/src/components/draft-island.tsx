@@ -184,14 +184,14 @@ function DirtyContent({ current }: { current: DraftRegistration }) {
 	return (
 		<ChipShell onClick={handleChipClick} className="cursor-pointer select-none" aura>
 			<span className="block h-1.5 w-1.5 rounded-full bg-bn-pink" aria-hidden />
-			<span className="text-[12px] font-medium">{current.pageLabel}</span>
+			<span className="text-bn-sm font-medium">{current.pageLabel}</span>
 			{/* 数字徽章:diff.length 变化时通过 key 强制重 mount,触发 initial→animate 的 pop。 */}
 			<motion.span
 				key={current.diff.length}
 				initial={{ scale: 0.6, opacity: 0 }}
 				animate={{ scale: 1, opacity: 1 }}
 				transition={{ type: "spring", stiffness: 500, damping: 22 }}
-				className="rounded-bn-pill bg-bn-pink px-1.5 py-px text-[10.5px] font-bold leading-3.5"
+				className="rounded-bn-pill bg-bn-pink px-1.5 py-px text-bn-2xs font-bold leading-3.5"
 				aria-label={`${current.diff.length} 项未保存`}
 			>
 				{current.diff.length}
@@ -205,7 +205,7 @@ function DirtyContent({ current }: { current: DraftRegistration }) {
 				}}
 				data-bn="btn"
 				// 实心面压在玻璃胶囊上 —— 对比来自「实 vs 半透明」,不来自写死的白。
-				className="rounded-bn-pill bg-bn-surface px-3 py-1 text-[11.5px] font-bold text-bn-text-primary transition hover:bg-bn-hover-muted active:scale-95"
+				className="rounded-bn-pill bg-bn-surface px-3 py-1 text-bn-xs font-bold text-bn-text-primary transition hover:bg-bn-hover-muted active:scale-95"
 			>
 				保存
 			</button>
@@ -226,7 +226,7 @@ function SavingContent() {
 			>
 				<Icon.refresh size={14} />
 			</motion.span>
-			<span className="text-[12px]">保存中…</span>
+			<span className="text-bn-sm">保存中…</span>
 		</ChipShell>
 	);
 }
@@ -245,7 +245,7 @@ function SavedContent() {
 			>
 				<Icon.check size={11} />
 			</motion.span>
-			<span className="text-[12px]">已保存</span>
+			<span className="text-bn-sm">已保存</span>
 		</ChipShell>
 	);
 }
@@ -283,7 +283,7 @@ function ErrorContent({ message }: { message: string | null }) {
 			>
 				<Icon.exclaim size={12} />
 			</span>
-			<span className="max-w-65 truncate text-[12px]" title={message ?? undefined}>
+			<span className="max-w-65 truncate text-bn-sm" title={message ?? undefined}>
 				{message ?? "保存失败"}
 			</span>
 			<IconButton
@@ -331,14 +331,12 @@ function ExpandPanel({ current }: { current: DraftRegistration }) {
 			className="bn-glass-strong pointer-events-auto mb-2 w-105 max-w-[calc(100vw-2rem)] overflow-hidden rounded-bn-card text-bn-text-primary shadow-bn-elev"
 		>
 			<div className="flex max-h-[60vh] flex-col">
-				<div className="border-b border-bn-border px-4 py-2.5 text-[11.5px] font-semibold tracking-wide text-bn-text-secondary">
+				<div className="border-b border-bn-border px-4 py-2.5 text-bn-xs font-semibold tracking-wide text-bn-text-secondary">
 					{current.pageLabel} · {current.diff.length} 项未保存
 				</div>
 				<div className="flex-1 overflow-y-auto px-2 py-2">
 					{sections.length === 0 ? (
-						<div className="px-2 py-4 text-center text-[12px] text-bn-text-tertiary">
-							无字段变更
-						</div>
+						<div className="px-2 py-4 text-center text-bn-sm text-bn-text-tertiary">无字段变更</div>
 					) : (
 						sections.map((s) => <DiffSectionView key={s.section} section={s} />)
 					)}
@@ -352,7 +350,7 @@ function ExpandPanel({ current }: { current: DraftRegistration }) {
 function DiffSectionView({ section }: { section: DiffSection }) {
 	return (
 		<div className="mb-1.5 last:mb-0">
-			<div className="px-2 pb-1 pt-1.5 text-[10.5px] font-bold uppercase tracking-wider text-bn-text-tertiary">
+			<div className="px-2 pb-1 pt-1.5 text-bn-2xs font-bold uppercase tracking-wider text-bn-text-tertiary">
 				{section.label}
 			</div>
 			<div className="flex flex-col gap-0.5">
@@ -374,8 +372,8 @@ function DiffRow({ row }: { row: FieldDiff }) {
 			className="flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition hover:bg-bn-hover-muted"
 			title={`跳转到 ${row.code}`}
 		>
-			<code className="font-mono text-[10.5px] text-bn-text-tertiary">{row.code}</code>
-			<div className="flex items-center gap-1.5 text-[12px]">
+			<code className="font-mono text-bn-2xs text-bn-text-tertiary">{row.code}</code>
+			<div className="flex items-center gap-1.5 text-bn-sm">
 				<ValueChip value={before} muted />
 				<span className="text-bn-text-tertiary">→</span>
 				<ValueChip value={after} />
@@ -401,7 +399,7 @@ function ValueChip({
 					aria-hidden
 				/>
 			) : null}
-			<span className="truncate font-mono text-[11.5px]">{value.display}</span>
+			<span className="truncate font-mono text-bn-xs">{value.display}</span>
 		</span>
 	);
 }
@@ -413,11 +411,11 @@ function PanelFooter({ onDiscard }: { onDiscard: () => void }) {
 				type="button"
 				onClick={onDiscard}
 				data-bn="btn"
-				className="rounded-bn-pill px-2.5 py-1 text-[11px] text-bn-text-secondary transition hover:bg-bn-hover-muted hover:text-bn-text-primary"
+				className="rounded-bn-pill px-2.5 py-1 text-bn-xs text-bn-text-secondary transition hover:bg-bn-hover-muted hover:text-bn-text-primary"
 			>
 				丢弃全部更改
 			</button>
-			<span className="text-[10.5px] text-bn-text-tertiary">click 行跳转字段</span>
+			<span className="text-bn-2xs text-bn-text-tertiary">click 行跳转字段</span>
 		</div>
 	);
 }

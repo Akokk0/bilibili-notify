@@ -33,11 +33,11 @@ export function SkinPreviewBar() {
 	return (
 		<div className="fixed inset-x-0 top-3 z-bn-preview flex justify-center px-4">
 			<div className="bn-glass-strong flex items-center gap-3 rounded-bn-pill px-4 py-2 shadow-bn-elev">
-				<span className="text-[12.5px] text-bn-text-primary">
+				<span className="text-bn-sm text-bn-text-primary">
 					正在试穿<b>「{preview.manifest.name}」</b>
 					<span className="ml-1 text-bn-text-secondary">仅本页生效,刷新即还原</span>
 				</span>
-				{error ? <span className="text-[12px] text-bn-danger">{error}</span> : null}
+				{error ? <span className="text-bn-sm text-bn-danger">{error}</span> : null}
 				<Btn size="sm" onClick={() => apply.mutate(preview.id)} disabled={apply.isPending}>
 					{apply.isPending ? "应用中…" : "应用"}
 				</Btn>

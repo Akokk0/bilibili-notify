@@ -200,7 +200,7 @@ export function MaidSkills() {
 						    / 单个连字符。它同时是……」)。名字改由控件自己的 ariaLabel 给,取可见
 						    标题原文 —— WCAG 2.5.3 要求无障碍名包含可见标签。 */}
 						<div className="flex flex-col gap-1.5">
-							<span className="text-[12px] font-semibold text-bn-text-secondary">
+							<span className="text-bn-sm font-semibold text-bn-text-secondary">
 								名字 · 也是斜杠命令
 							</span>
 							<TInput
@@ -211,14 +211,14 @@ export function MaidSkills() {
 								placeholder="weekly-report"
 								onChange={(v) => setDraft({ ...draft, name: v })}
 							/>
-							<span className="text-[11px] text-bn-text-tertiary">
+							<span className="text-bn-xs text-bn-text-tertiary">
 								小写字母 / 数字 / 单个连字符。它同时是磁盘上的目录名,所以卡得比较死。 聊天里打{" "}
 								<span className="font-mono">/{draft.name || "名字"}</span> 就是用它。
 							</span>
 						</div>
 
 						<div className="flex flex-col gap-1.5">
-							<span className="text-[12px] font-semibold text-bn-text-secondary">
+							<span className="text-bn-sm font-semibold text-bn-text-secondary">
 								description · 女仆靠它决定要不要用
 							</span>
 							<TInput
@@ -228,14 +228,14 @@ export function MaidSkills() {
 								placeholder="一句话说清这条技能干什么"
 								onChange={(v) => setDraft({ ...draft, description: v })}
 							/>
-							<span className="text-[11px] text-bn-text-tertiary">
+							<span className="text-bn-xs text-bn-text-tertiary">
 								{draft.description.length} / {MAID_SKILL_LIMITS.descChars} 字。这一句每轮对话都带着,
 								所以有上限。
 							</span>
 						</div>
 
 						<div className="flex flex-col gap-1.5">
-							<span className="text-[12px] font-semibold text-bn-text-secondary">
+							<span className="text-bn-sm font-semibold text-bn-text-secondary">
 								正文 · 做事的步骤
 							</span>
 							{/* rows 而不是 min-h-*:TArea 的高度口子就是 rows,11 行 ≈ 原先那个
@@ -249,16 +249,16 @@ export function MaidSkills() {
 								placeholder={"## 步骤\n\n1. 先……\n2. 再……\n\n## 输出\n\n……"}
 								onChange={(v) => setDraft({ ...draft, body: v })}
 							/>
-							<span className="text-[11px] text-bn-text-tertiary">
+							<span className="text-bn-xs text-bn-text-tertiary">
 								Markdown。这段会追加在女仆人格之后 —— 不必重新交代她是谁,只讲这件事怎么做。
 							</span>
 						</div>
 
 						<div className="flex flex-col gap-1.5">
-							<span className="text-[12px] font-semibold text-bn-text-secondary">
+							<span className="text-bn-sm font-semibold text-bn-text-secondary">
 								allowed-tools · 这条技能用得着哪几把
 							</span>
-							<span className="text-[11px] text-bn-text-tertiary">
+							<span className="text-bn-xs text-bn-text-tertiary">
 								一把都不勾 = 不限。勾了就只减不加:从这条技能被用上那一刻起,女仆手上只剩勾中的这些。
 							</span>
 							{/* CheckRow 没有 disabled(见 packages/ui 清单),内置那几条就整块
@@ -273,7 +273,7 @@ export function MaidSkills() {
 										checked={draft.allowedTools?.includes(t) ?? false}
 										onChange={(on) => toggleTool(t, on)}
 									>
-										<span className="font-mono text-[12px]">{t}</span>
+										<span className="font-mono text-bn-sm">{t}</span>
 									</CheckRow>
 								))}
 							</div>

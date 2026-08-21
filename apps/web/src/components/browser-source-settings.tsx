@@ -97,14 +97,11 @@ export function BrowserSourceSettings() {
 			accent={status?.enabled ? "var(--color-bn-success)" : "var(--color-bn-inactive)"}
 			badge={status ? (status.enabled ? "已启用" : "未启用") : undefined}
 		>
-			<div
-				data-testid="browser-source-current"
-				className="py-2.5 text-[12.5px] text-bn-text-primary"
-			>
+			<div data-testid="browser-source-current" className="py-2.5 text-bn-sm text-bn-text-primary">
 				{current}
 			</div>
 			{status && !status.persistable ? (
-				<div className="pb-2 text-[11px] text-bn-warning-text">
+				<div className="pb-2 text-bn-xs text-bn-warning-text">
 					当前部署没有可写的配置文件:切换即时生效,但重启后不保留(请改用环境变量 / yaml)。
 				</div>
 			) : null}
@@ -148,12 +145,12 @@ export function BrowserSourceSettings() {
 				</div>
 			</Field>
 			{detectMiss ? (
-				<div className="pt-1.5 text-[11px] text-bn-warning-text">
+				<div className="pt-1.5 text-bn-xs text-bn-warning-text">
 					未在常见位置找到 Chrome / Chromium,请手动填写路径。
 				</div>
 			) : null}
-			{okMsg ? <div className="pt-1.5 text-[11px] text-bn-success-text">✓ {okMsg}</div> : null}
-			{err ? <div className="pt-1.5 text-[11px] text-bn-danger-text">{err}</div> : null}
+			{okMsg ? <div className="pt-1.5 text-bn-xs text-bn-success-text">✓ {okMsg}</div> : null}
+			{err ? <div className="pt-1.5 text-bn-xs text-bn-danger-text">{err}</div> : null}
 		</GlassBox>
 	);
 }

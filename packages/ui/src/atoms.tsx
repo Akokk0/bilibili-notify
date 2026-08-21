@@ -53,7 +53,7 @@ export function Avatar({ name, color, size = 44, ring = false, status, url }: Av
 			</div>
 			{status === "live" ? (
 				<span
-					className="absolute -bottom-0.5 -right-0.5 rounded-md border-2 border-bn-surface bg-bn-pink px-1 text-[9px] font-bold tracking-wider text-bn-on-solid"
+					className="absolute -bottom-0.5 -right-0.5 rounded-md border-2 border-bn-surface bg-bn-pink px-1 text-bn-micro font-bold tracking-wider text-bn-on-solid"
 					style={{ lineHeight: 1 }}
 				>
 					LIVE
@@ -105,7 +105,7 @@ const VARIANT_CLS: Record<BtnVariant, string> = {
 
 const SIZE_CLS: Record<BtnSize, string> = {
 	sm: "h-[26px] px-2.5 text-xs",
-	md: "h-[30px] px-3.5 text-[13px]",
+	md: "h-[30px] px-3.5 text-bn-base",
 	lg: "h-9 px-4 text-sm",
 };
 
@@ -284,8 +284,8 @@ export function AddButton({ children, onClick, block, disabled, className }: Add
 	// 行内走药丸(跟同排的 Pill / ToneChip 一个形状),占整行的走卡片圆角 ——
 	// 一条横贯整行的药丸不像按钮,像进度条。
 	const shape = block
-		? "flex w-full items-center justify-center rounded-lg px-3 py-2 text-[12px]"
-		: "inline-flex items-center rounded-bn-pill px-2.5 py-1 text-[11.5px]";
+		? "flex w-full items-center justify-center rounded-lg px-3 py-2 text-bn-sm"
+		: "inline-flex items-center rounded-bn-pill px-2.5 py-1 text-bn-xs";
 	return (
 		<button
 			type="button"
@@ -323,9 +323,9 @@ export function AddCard({ label, hint, onClick, disabled, className }: AddCardPr
 			data-bn="btn"
 			className={`flex h-full flex-col items-center justify-center rounded-xl px-4 py-5 text-center hover:bg-bn-pink/5 ${ADD_LANGUAGE} ${className ?? ""}`}
 		>
-			<span className="text-[20px] leading-none text-bn-text-tertiary">＋</span>
-			<span className="mt-1 text-[12.5px] font-semibold text-bn-text-primary">{label}</span>
-			<span className="mt-0.5 text-[10.5px] text-bn-text-tertiary">{hint}</span>
+			<span className="text-bn-xl leading-none text-bn-text-tertiary">＋</span>
+			<span className="mt-1 text-bn-sm font-semibold text-bn-text-primary">{label}</span>
+			<span className="mt-0.5 text-bn-2xs text-bn-text-tertiary">{hint}</span>
 		</button>
 	);
 }
@@ -387,7 +387,7 @@ export function MenuItem({
 			aria-label={ariaLabel}
 			onClick={onClick}
 			disabled={disabled}
-			className={`flex w-full cursor-pointer items-center gap-2.5 rounded-bn-xs px-3 py-2 text-left text-[13px] transition disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent ${state}`}
+			className={`flex w-full cursor-pointer items-center gap-2.5 rounded-bn-xs px-3 py-2 text-left text-bn-base transition disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent ${state}`}
 		>
 			{icon ? (
 				<span className={`shrink-0 ${danger ? "text-bn-danger-text" : "text-bn-text-secondary"}`}>
@@ -416,8 +416,7 @@ export function Pill({
 	size = "md",
 	className,
 }: PillProps) {
-	const sizeCls =
-		size === "sm" ? "text-[10px] px-1.5 leading-4" : "text-[11px] px-2 leading-[18px]";
+	const sizeCls = size === "sm" ? "text-bn-2xs px-1.5 leading-4" : "text-bn-xs px-2 leading-[18px]";
 	const style: CSSProperties = subtle
 		? { background: `color-mix(in srgb, ${color} 12%, transparent)`, color }
 		: { background: color, color: "var(--color-bn-on-solid)" };
@@ -496,7 +495,7 @@ export function ToneChip({
 			onClick={onClick}
 			disabled={disabled}
 			data-bn="btn"
-			className={`inline-flex items-center gap-1 rounded-bn-pill border px-3 py-1 text-[12px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${toneCls} ${uppercase ? "uppercase" : ""}`}
+			className={`inline-flex items-center gap-1 rounded-bn-pill border px-3 py-1 text-bn-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${toneCls} ${uppercase ? "uppercase" : ""}`}
 			style={style}
 		>
 			{children}
@@ -629,7 +628,7 @@ export function Input({
 	full = false,
 	type = "text",
 }: InputProps) {
-	const sz = size === "sm" ? "h-7 text-xs" : "h-8 text-[13px]";
+	const sz = size === "sm" ? "h-7 text-xs" : "h-8 text-bn-base";
 	return (
 		<div
 			data-bn="input"
@@ -681,7 +680,7 @@ export interface CheckRowProps {
 export function CheckRow({ checked, onChange, children }: CheckRowProps) {
 	return (
 		<label
-			className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 py-2 text-[13px] transition ${
+			className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 py-2 text-bn-base transition ${
 				checked
 					? "border-bn-pink/60 bg-bn-pink/10 font-semibold text-bn-text-primary"
 					: "border-bn-border bg-bn-surface text-bn-text-secondary hover:border-bn-pink/40 hover:bg-bn-surface-muted"
@@ -735,9 +734,9 @@ export interface ErrorNoteProps {
  * 字段之间,那是位置决定的,不是漂移,各组件自己配。
  */
 const NOTE_SIZE = {
-	sm: "rounded-md text-[11.5px]",
-	md: "rounded-lg text-[12.5px]",
-	lg: "rounded-xl text-[13px]",
+	sm: "rounded-md text-bn-xs",
+	md: "rounded-lg text-bn-sm",
+	lg: "rounded-xl text-bn-base",
 } as const;
 
 const ERROR_NOTE_SIZE = {
@@ -941,7 +940,7 @@ export function StatsBar({
 								) : null,
 							)}
 						</div>
-						<div className="absolute bottom-0 text-[10px] text-bn-text-secondary">{d.d}</div>
+						<div className="absolute bottom-0 text-bn-2xs text-bn-text-secondary">{d.d}</div>
 					</div>
 				);
 			})}
@@ -954,7 +953,7 @@ export function StatsBar({
 export function Section({ label, children }: { label: string; children: ReactNode }) {
 	return (
 		<div>
-			<div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-bn-text-secondary">
+			<div className="mb-2 text-bn-xs font-bold uppercase tracking-wider text-bn-text-secondary">
 				{label}
 			</div>
 			<div className="rounded-lg border border-bn-border bg-bn-surface-muted/80">{children}</div>
@@ -977,8 +976,8 @@ export function Row({
 		<div className="flex items-center gap-2.5 border-b border-bn-border-subtle px-3 py-2.5 last:border-b-0">
 			{icon ? <span className="shrink-0">{icon}</span> : null}
 			<div className="min-w-0 flex-1">
-				<div className="text-[12.5px] font-semibold text-bn-text-primary">{label}</div>
-				{sub ? <div className="mt-0.5 text-[11px] text-bn-text-secondary">{sub}</div> : null}
+				<div className="text-bn-sm font-semibold text-bn-text-primary">{label}</div>
+				{sub ? <div className="mt-0.5 text-bn-xs text-bn-text-secondary">{sub}</div> : null}
 			</div>
 			{children}
 		</div>

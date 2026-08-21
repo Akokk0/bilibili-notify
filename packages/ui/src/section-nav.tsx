@@ -74,7 +74,7 @@ const RAIL_ITEM_IDLE = "border-transparent hover:bg-bn-surface/55";
 const STICKY_TOP = "calc(var(--bn-header-h, 7.5rem) + 1.5rem)";
 
 const CHIP_BASE =
-	"flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-bold transition";
+	"flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-bn-sm font-bold transition";
 const CHIP_ACTIVE = "border-bn-pink/40 bg-bn-pink/10 text-bn-pink";
 const CHIP_IDLE =
 	"border-transparent text-bn-text-secondary hover:bg-bn-surface/70 hover:text-bn-text-primary";
@@ -182,7 +182,7 @@ export function SectionNav({
 					    所以没有任何底托着它。壁纸皮肤下 tertiary 那一档只剩 2.1~2.7:1,
 					    secondary 在壁纸深处也才 3.3:1 —— 无底的文字只有 primary 稳。
 					    卡在 nav 里的那些项不受影响,它们有皮肤给的底。 */}
-					<span className="text-[11px] font-bold uppercase tracking-wider text-bn-text-primary">
+					<span className="text-bn-xs font-bold uppercase tracking-wider text-bn-text-primary">
 						{heading}
 					</span>
 					{onAdd ? <AddButton onClick={onAdd}>{addLabel}</AddButton> : null}
@@ -209,7 +209,7 @@ export function SectionNav({
 										<IconBox icon={item.icon} tint={item.iconTint} active={active} />
 										<span className="block min-w-0 flex-1">
 											<span
-												className={`flex items-center gap-1.5 text-[12.5px] font-bold ${
+												className={`flex items-center gap-1.5 text-bn-sm font-bold ${
 													active ? "text-bn-pink" : "text-bn-text-primary"
 												}`}
 											>
@@ -217,7 +217,7 @@ export function SectionNav({
 												{item.badge}
 											</span>
 											{item.desc ? (
-												<span className="mt-0.5 block wrap-break-word text-[10.5px] leading-snug text-bn-text-tertiary">
+												<span className="mt-0.5 block wrap-break-word text-bn-2xs leading-snug text-bn-text-tertiary">
 													{item.desc}
 												</span>
 											) : null}

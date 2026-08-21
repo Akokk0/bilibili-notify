@@ -540,7 +540,7 @@ function HintBar({
 }) {
 	return (
 		<div
-			className={`mb-2 rounded-lg border px-3 py-2 text-[11.5px] ${leading} text-bn-text-secondary`}
+			className={`mb-2 rounded-lg border px-3 py-2 text-bn-xs ${leading} text-bn-text-secondary`}
 			style={{
 				borderColor: `color-mix(in srgb, ${accent} 40%, transparent)`,
 				background: `color-mix(in srgb, ${accent} 10%, transparent)`,
@@ -565,7 +565,7 @@ function VariableHints({
 		<HintBar accent={accent} title="可用变量:">
 			{vars.map((v, i) => (
 				<span key={v.code}>
-					<code className="mx-0.5 rounded-sm bg-bn-surface/70 px-1.5 py-px font-mono text-[11px]">
+					<code className="mx-0.5 rounded-sm bg-bn-surface/70 px-1.5 py-px font-mono text-bn-xs">
 						{v.code}
 					</code>{" "}
 					{v.desc}
@@ -760,8 +760,8 @@ export function GuardSection({
 							>
 								<div className="mb-2 flex items-center gap-2">
 									<span className="block h-2 w-2 rounded-sm" style={{ background: color }} />
-									<span className="text-[12.5px] font-bold text-bn-text-primary">{label}</span>
-									<code className="ml-1 rounded-sm bg-bn-code-bg px-1.5 py-px font-mono text-[10.5px] text-bn-text-tertiary">
+									<span className="text-bn-sm font-bold text-bn-text-primary">{label}</span>
+									<code className="ml-1 rounded-sm bg-bn-code-bg px-1.5 py-px font-mono text-bn-2xs text-bn-text-tertiary">
 										{key}
 									</code>
 								</div>
@@ -785,7 +785,7 @@ export function GuardSection({
 					})}
 				</>
 			) : (
-				<div className="py-5 text-center text-[12px] text-bn-text-tertiary">
+				<div className="py-5 text-center text-bn-sm text-bn-text-tertiary">
 					未启用 · 引擎将默认推送 B 站官方上舰图(舰长 / 提督 / 总督)
 				</div>
 			)}

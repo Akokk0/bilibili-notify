@@ -49,7 +49,7 @@ export function Toast({ children, tone = "neutral" }: ToastProps) {
 			aria-live="polite"
 			data-bn="glass-strong"
 			style={style}
-			className="fixed bottom-5 left-1/2 z-bn-toast-base -translate-x-1/2 rounded-md border border-bn-border bg-bn-surface-strong px-3 py-1.5 text-[12px] font-medium text-bn-text-primary shadow-bn-elev"
+			className="fixed bottom-5 left-1/2 z-bn-toast-base -translate-x-1/2 rounded-md border border-bn-border bg-bn-surface-strong px-3 py-1.5 text-bn-sm font-medium text-bn-text-primary shadow-bn-elev"
 		>
 			{children}
 		</div>

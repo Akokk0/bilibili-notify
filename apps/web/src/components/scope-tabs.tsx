@@ -80,7 +80,7 @@ export function ScopeTabs({
 						// 紧挨着的 per-UP tab 一个都没有,皮肤改 btn 时一条 tab 里第一颗变了、
 						// 后面几颗没变,并排摆着。观感上两者仍有差(实底 vs 描边),那是另一条账。
 						data-bn={active ? "btn btn-primary" : "btn"}
-						className={`flex items-center gap-1.5 rounded-lg border py-1.5 pl-3 pr-1.5 text-[12.5px] font-bold transition ${
+						className={`flex items-center gap-1.5 rounded-lg border py-1.5 pl-3 pr-1.5 text-bn-sm font-bold transition ${
 							active
 								? "border-bn-pink/25 bg-bn-surface text-bn-pink shadow-bn-card"
 								: "border-transparent text-bn-text-tertiary hover:text-bn-text-primary"
@@ -137,7 +137,7 @@ export function ScopeTabs({
 					onClick={() => setAdding((v) => !v)}
 					title="从订阅列表添加 UP 主的个性化配置"
 					data-bn="btn"
-					className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-semibold transition ${
+					className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-bn-sm font-semibold transition ${
 						adding
 							? "border-bn-pink/40 bg-bn-pink/6 text-bn-pink"
 							: "border-dashed border-bn-border text-bn-text-tertiary hover:text-bn-text-primary"
@@ -151,11 +151,11 @@ export function ScopeTabs({
 						data-bn="glass-strong"
 						className="absolute left-0 top-[calc(100%+6px)] z-bn-nav min-w-60 overflow-hidden rounded-bn-sm border border-bn-border-subtle bg-bn-surface shadow-bn-elev"
 					>
-						<div className="border-b border-bn-border-subtle px-3 pb-1.5 pt-2 text-[11px] font-bold uppercase tracking-wider text-bn-text-tertiary">
+						<div className="border-b border-bn-border-subtle px-3 pb-1.5 pt-2 text-bn-xs font-bold uppercase tracking-wider text-bn-text-tertiary">
 							选择要单独定制的 UP 主
 						</div>
 						{availableSubs.length === 0 ? (
-							<div className="px-3 py-4 text-center text-[12px] text-bn-text-tertiary">
+							<div className="px-3 py-4 text-center text-bn-sm text-bn-text-tertiary">
 								所有已订阅的 UP 主都已添加
 							</div>
 						) : (
@@ -177,10 +177,10 @@ export function ScopeTabs({
 												url={sub.cachedProfile?.avatar}
 											/>
 											<div className="min-w-0 flex-1">
-												<div className="truncate text-[12.5px] font-bold text-bn-text-primary">
+												<div className="truncate text-bn-sm font-bold text-bn-text-primary">
 													{displayName(sub)}
 												</div>
-												<div className="text-[10.5px] text-bn-text-tertiary">UID {sub.uid}</div>
+												<div className="text-bn-2xs text-bn-text-tertiary">UID {sub.uid}</div>
 											</div>
 											{sub.state.liveStatus === "live" ? (
 												<Pill color="var(--color-bn-pink)" subtle size="sm">
@@ -195,7 +195,7 @@ export function ScopeTabs({
 						<button
 							type="button"
 							onClick={() => setAdding(false)}
-							className="block w-full border-t border-bn-border-subtle py-2 text-center text-[11px] text-bn-text-tertiary hover:text-bn-text-primary"
+							className="block w-full border-t border-bn-border-subtle py-2 text-center text-bn-xs text-bn-text-tertiary hover:text-bn-text-primary"
 						>
 							取消
 						</button>
@@ -204,7 +204,7 @@ export function ScopeTabs({
 			</div>
 
 			<div className="flex-1" />
-			<div className="px-2 text-[11px] text-bn-text-tertiary">
+			<div className="px-2 text-bn-xs text-bn-text-tertiary">
 				{isGlobal ? (
 					(globalHint ?? "此处为全部 UP 默认设置")
 				) : perUpHint ? (

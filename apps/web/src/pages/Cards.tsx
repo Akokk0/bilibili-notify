@@ -182,11 +182,11 @@ function PreviewImage({
 			className="w-full max-w-95 rounded-bn-card bg-bn-surface/70"
 		/>
 	) : query.error ? (
-		<div className="w-full max-w-95 rounded-xl bg-bn-surface p-4 text-[12px]">
+		<div className="w-full max-w-95 rounded-xl bg-bn-surface p-4 text-bn-sm">
 			<div className="mb-1 font-bold text-bn-danger-text">{previewErrorTitle(status)}</div>
 			<div className="text-bn-text-secondary">{apiErr?.message ?? "未知错误"}</div>
 			{previewErrorHint(status) ? (
-				<div className="mt-2 text-[11px] text-bn-text-tertiary">{previewErrorHint(status)}</div>
+				<div className="mt-2 text-bn-xs text-bn-text-tertiary">{previewErrorHint(status)}</div>
 			) : null}
 			{status === 503 ? <ChromeAutoDetect onEnabled={() => query.refetch()} /> : null}
 		</div>
@@ -339,11 +339,11 @@ function TestPushCard({
 					{push.isPending ? "推送中…" : "测试推送"}
 				</Btn>
 				{push.isError ? (
-					<div className="mt-2 text-[11px] text-bn-danger-text">
+					<div className="mt-2 text-bn-xs text-bn-danger-text">
 						推送失败:{(push.error as ApiError)?.message ?? "未知错误"}
 					</div>
 				) : push.isSuccess ? (
-					<div className="mt-2 text-[11px] text-bn-success-text">
+					<div className="mt-2 text-bn-xs text-bn-success-text">
 						已送达 · {push.data.latencyMs}ms
 					</div>
 				) : null}
@@ -421,18 +421,18 @@ export function CardStyleFields({
 									onChange={(e) => set("glassOpacity", Number(e.target.value))}
 									className="flex-1 accent-bn-pink"
 								/>
-								<span className="w-9 shrink-0 text-right font-mono text-[11px] text-bn-text-secondary">
+								<span className="w-9 shrink-0 text-right font-mono text-bn-xs text-bn-text-secondary">
 									{style.glassOpacity.toFixed(2)}
 								</span>
 							</>
 						) : (
-							<span className="text-[11px] text-bn-text-tertiary">
+							<span className="text-bn-xs text-bn-text-tertiary">
 								{style.glassClear ? "已开启完全透明" : "默认（各卡内置基线）"}
 							</span>
 						)}
 					</div>
 					{/* 子选项:完全透明(去磨砂模糊),与上方透明度二选一。 */}
-					<div className="flex items-center gap-2 text-[11px] text-bn-text-secondary">
+					<div className="flex items-center gap-2 text-bn-xs text-bn-text-secondary">
 						<Toggle
 							size="sm"
 							value={style.glassClear}
@@ -608,7 +608,7 @@ function PerUpDataSection({
  */
 function RealDataNote({ children }: { children: React.ReactNode }) {
 	return (
-		<div className="rounded-sm border border-dashed border-bn-success-border bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
+		<div className="rounded-sm border border-dashed border-bn-success-border bg-bn-success-soft/60 p-2.5 text-bn-xs text-bn-success-text">
 			{/* 描边色不能省。Tailwind v4 的 `border` 只出宽度与线型,颜色留给 CSS 的初始值
 			    —— 也就是 `currentColor`。省掉的话这圈虚线会跟着字色走,与全站
 			    `border-bn-*` 那套完全脱钩,而且皮肤改字色时边框跟着一起变。 */}
@@ -623,7 +623,7 @@ function RealDataNote({ children }: { children: React.ReactNode }) {
  */
 function KindHintNote({ children }: { children: React.ReactNode }) {
 	return (
-		<div className="rounded-sm border border-dashed border-bn-border bg-bn-surface-muted p-2.5 text-[11px] text-bn-text-tertiary">
+		<div className="rounded-sm border border-dashed border-bn-border bg-bn-surface-muted p-2.5 text-bn-xs text-bn-text-tertiary">
 			{children}
 		</div>
 	);
@@ -751,7 +751,7 @@ function PreviewContentFields({
 										key={g.level}
 										onClick={() => setGuard({ level: g.level })}
 										data-bn="btn"
-										className="rounded-sm px-3 py-1 text-[11.5px] font-semibold transition"
+										className="rounded-sm px-3 py-1 text-bn-xs font-semibold transition"
 										style={
 											active
 												? { background: g.color, color: "var(--color-bn-on-solid)" }
@@ -791,7 +791,7 @@ function PreviewContentFields({
 /** 关闭态下方一行说明文字。 */
 function InheritNote({ children }: { children: React.ReactNode }) {
 	return (
-		<div className="py-6 text-center text-[12px] text-bn-text-tertiary">未启用 · {children}</div>
+		<div className="py-6 text-center text-bn-sm text-bn-text-tertiary">未启用 · {children}</div>
 	);
 }
 
@@ -1159,7 +1159,7 @@ export default function Cards() {
 						<Icon.eye size={26} />
 					</div>
 					<div className="flex-1">
-						<div className="flex items-center gap-2 text-[15.5px] font-bold text-bn-text-primary">
+						<div className="flex items-center gap-2 text-bn-md font-bold text-bn-text-primary">
 							卡片渲染
 							<Pill color="var(--color-bn-purple)" subtle size="sm">
 								image
@@ -1179,7 +1179,7 @@ export default function Cards() {
 							]}
 						/>
 					) : (
-						<span className="rounded-md border border-bn-border-subtle bg-bn-surface/70 px-2.5 py-1 text-[11px] text-bn-text-tertiary">
+						<span className="rounded-md border border-bn-border-subtle bg-bn-surface/70 px-2.5 py-1 text-bn-xs text-bn-text-tertiary">
 							总开关在全局作用域
 						</span>
 					)}
@@ -1498,11 +1498,11 @@ export default function Cards() {
 				<div className="flex flex-col gap-2.5">
 					{isGlobalTab ? (
 						<>
-							<div className="flex items-center justify-between text-[13px] text-bn-text-primary">
+							<div className="flex items-center justify-between text-bn-base text-bn-text-primary">
 								<span className="font-bold">
 									卡片全家福 · 实时反映{isGlobalScope ? "全局" : "该 UP"}配置
 								</span>
-								<span className="text-[11px] font-normal text-bn-text-secondary">
+								<span className="text-bn-xs font-normal text-bn-text-secondary">
 									四种卡片各自生效样式 · puppeteer 真实渲染
 								</span>
 							</div>
@@ -1517,7 +1517,7 @@ export default function Cards() {
 											(isGlobalScope ? gByKind : puByKind)[toStyleKind(fk)] !== undefined;
 										return (
 											<div key={fk} className="flex min-h-0 flex-col gap-1">
-												<div className="flex items-center gap-1 text-[11px] font-bold text-bn-text-tertiary">
+												<div className="flex items-center gap-1 text-bn-xs font-bold text-bn-text-tertiary">
 													<FkIcon size={11} />
 													{KIND_LABELS[fk].label}
 													{overridden ? (
@@ -1541,7 +1541,7 @@ export default function Cards() {
 									})}
 								</div>
 							</div>
-							<div className="rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 text-[11px] italic text-bn-text-secondary">
+							<div className="rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 text-bn-xs italic text-bn-text-secondary">
 								{isGlobalScope
 									? "全局基准应用到四种卡片;要单独调某张卡,点左侧对应类型标签。"
 									: focusedSub
@@ -1551,11 +1551,11 @@ export default function Cards() {
 						</>
 					) : (
 						<>
-							<div className="flex items-center justify-between text-[13px] text-bn-text-primary">
+							<div className="flex items-center justify-between text-bn-base text-bn-text-primary">
 								<span className="font-bold">
 									卡片预览 · 实时反映{isGlobalScope ? "全局" : "该 UP"}配置
 								</span>
-								<span className="text-[11px] font-normal text-bn-text-secondary">
+								<span className="text-bn-xs font-normal text-bn-text-secondary">
 									puppeteer 真实渲染 · 渲染宽度
 									{kind === "sc" ? " 280" : kind === "guard" ? " 430" : " 600"}px
 								</span>
@@ -1569,7 +1569,7 @@ export default function Cards() {
 							/>
 
 							{/* Effective style readout */}
-							<div className="flex flex-wrap gap-3.5 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 font-mono text-[10.5px] text-bn-text-tertiary">
+							<div className="flex flex-wrap gap-3.5 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 font-mono text-bn-2xs text-bn-text-tertiary">
 								<span>
 									cardColorStart: <b className="text-bn-text-primary">{effStyle.cardColorStart}</b>
 								</span>

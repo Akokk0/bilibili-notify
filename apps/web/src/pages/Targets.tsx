@@ -191,10 +191,10 @@ function TargetCard({
 					<PlatformIcon platform={target.platform} size={18} />
 				</div>
 				<div className="min-w-0 flex-1">
-					<div className="truncate text-[13px] font-bold text-bn-text-primary">
+					<div className="truncate text-bn-base font-bold text-bn-text-primary">
 						{target.name || "（未命名）"}
 					</div>
-					<div className="truncate font-mono text-[11px] text-bn-text-tertiary">
+					<div className="truncate font-mono text-bn-xs text-bn-text-tertiary">
 						{targetSessionSummary(target)}
 					</div>
 				</div>
@@ -203,7 +203,7 @@ function TargetCard({
 
 			{testStatus ? (
 				<div
-					className="mb-2 rounded-sm border-l-[3px] px-2 py-0.5 text-[10.5px]"
+					className="mb-2 rounded-sm border-l-[3px] px-2 py-0.5 text-bn-2xs"
 					style={
 						testStatus.ok
 							? {
@@ -224,7 +224,7 @@ function TargetCard({
 				</div>
 			) : null}
 
-			<div className="flex items-center justify-between text-[11.5px] text-bn-text-secondary">
+			<div className="flex items-center justify-between text-bn-xs text-bn-text-secondary">
 				<span className="truncate">
 					{scopeLabel(target.scope)}
 					{" · "}
@@ -755,15 +755,15 @@ function TargetEditorModal({
 									>
 										<PlatformIcon platform={a.platform} size={16} />
 										<div className="min-w-0 flex-1">
-											<div className="truncate text-[12px] font-semibold text-bn-text-primary">
+											<div className="truncate text-bn-sm font-semibold text-bn-text-primary">
 												{a.name}
 											</div>
-											<div className="truncate font-mono text-[10.5px] text-bn-text-tertiary">
+											<div className="truncate font-mono text-bn-2xs text-bn-text-tertiary">
 												{platformLabel(a.platform)} · {adapterEndpointSummary(a)}
 											</div>
 										</div>
 										{active ? (
-											<span className="text-[11px] font-bold" style={{ color: aTint }}>
+											<span className="text-bn-xs font-bold" style={{ color: aTint }}>
 												已选
 											</span>
 										) : null}
@@ -996,17 +996,17 @@ function QQSessionPicker({
 	return (
 		<div className="mt-1.5 rounded-md border border-dashed border-bn-border px-2.5 py-2">
 			<div className="mb-1 flex items-center justify-between">
-				<span className="text-[11px] font-bold text-bn-text-secondary">发现的{label}会话</span>
+				<span className="text-bn-xs font-bold text-bn-text-secondary">发现的{label}会话</span>
 				<Btn variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching}>
 					{isFetching ? "刷新中…" : "刷新"}
 				</Btn>
 			</div>
 			{isLoading ? (
-				<div className="text-[11px] text-bn-text-tertiary">加载中…</div>
+				<div className="text-bn-xs text-bn-text-tertiary">加载中…</div>
 			) : isError ? (
-				<div className="text-[11px] text-bn-danger">拉取失败(适配器是否已保存并连上网关?)</div>
+				<div className="text-bn-xs text-bn-danger">拉取失败(适配器是否已保存并连上网关?)</div>
 			) : list.length === 0 ? (
-				<div className="text-[11px] leading-relaxed text-bn-text-tertiary">
+				<div className="text-bn-xs leading-relaxed text-bn-text-tertiary">
 					暂无发现的{label}会话 —— 先让机器人在目标
 					{scope === "group" ? "群里被 @ 一次" : "处收到一条 C2C 消息"}
 					,再点刷新。
@@ -1021,10 +1021,10 @@ function QQSessionPicker({
 							data-bn="btn"
 							className="flex items-center gap-2 rounded-sm border border-bn-border bg-bn-surface px-2 py-1 text-left transition hover:border-bn-pink"
 						>
-							<span className="truncate text-[11.5px] font-semibold text-bn-text-primary">
+							<span className="truncate text-bn-xs font-semibold text-bn-text-primary">
 								{e.displayHint ?? "(无名称)"}
 							</span>
-							<span className="truncate font-mono text-[10px] text-bn-text-tertiary">
+							<span className="truncate font-mono text-bn-2xs text-bn-text-tertiary">
 								{e.openid}
 							</span>
 						</button>
@@ -1056,27 +1056,27 @@ function QQGuildPicker({
 	return (
 		<div className="mt-1.5 rounded-md border border-dashed border-bn-border px-2.5 py-2">
 			<div className="mb-1 flex items-center justify-between">
-				<span className="text-[11px] font-bold text-bn-text-secondary">频道子频道列表</span>
+				<span className="text-bn-xs font-bold text-bn-text-secondary">频道子频道列表</span>
 				<Btn variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching}>
 					{isFetching ? "拉取中…" : "拉取频道"}
 				</Btn>
 			</div>
 			{isError ? (
-				<div className="text-[11px] text-bn-danger">拉取失败(适配器是否已保存且凭据正确?)</div>
+				<div className="text-bn-xs text-bn-danger">拉取失败(适配器是否已保存且凭据正确?)</div>
 			) : !fetched ? (
-				<div className="text-[11px] text-bn-text-tertiary">点「拉取频道」从 QQ 实时枚举。</div>
+				<div className="text-bn-xs text-bn-text-tertiary">点「拉取频道」从 QQ 实时枚举。</div>
 			) : guilds.length === 0 ? (
-				<div className="text-[11px] text-bn-text-tertiary">未发现任何频道服务器。</div>
+				<div className="text-bn-xs text-bn-text-tertiary">未发现任何频道服务器。</div>
 			) : (
 				<div className="flex flex-col gap-1.5">
 					{guilds.map((g) => (
 						<div key={g.guildId}>
-							<div className="truncate text-[11px] font-semibold text-bn-text-secondary">
+							<div className="truncate text-bn-xs font-semibold text-bn-text-secondary">
 								{g.name}
 							</div>
 							<div className="mt-0.5 flex flex-wrap gap-1">
 								{g.channels.length === 0 ? (
-									<span className="text-[10px] text-bn-text-tertiary">(无文字子频道)</span>
+									<span className="text-bn-2xs text-bn-text-tertiary">(无文字子频道)</span>
 								) : (
 									g.channels.map((ch) => (
 										<button
@@ -1084,7 +1084,7 @@ function QQGuildPicker({
 											type="button"
 											onClick={() => onPick(g.guildId, ch.channelId)}
 											data-bn="btn"
-											className="rounded-sm border border-bn-border bg-bn-surface px-2 py-0.5 text-[11px] text-bn-text-primary transition hover:border-bn-pink"
+											className="rounded-sm border border-bn-border bg-bn-surface px-2 py-0.5 text-bn-xs text-bn-text-primary transition hover:border-bn-pink"
 										>
 											{ch.name}
 										</button>
@@ -1121,10 +1121,10 @@ function SectionBox({
 			}}
 		>
 			<div className="mb-1 flex items-baseline gap-2">
-				<span className="text-[12px] font-bold" style={{ color: accent }}>
+				<span className="text-bn-sm font-bold" style={{ color: accent }}>
 					{title}
 				</span>
-				{subtitle ? <span className="text-[10.5px] text-bn-text-tertiary">{subtitle}</span> : null}
+				{subtitle ? <span className="text-bn-2xs text-bn-text-tertiary">{subtitle}</span> : null}
 			</div>
 			<div>{children}</div>
 		</div>
@@ -1177,7 +1177,7 @@ function DeleteModal({
 					onClick={onConfirm}
 					disabled={deleting}
 					data-bn="btn"
-					className="inline-flex h-7.5 items-center justify-center rounded-md border border-transparent bg-bn-danger px-3.5 text-[13px] font-bold text-bn-on-solid transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+					className="inline-flex h-7.5 items-center justify-center rounded-md border border-transparent bg-bn-danger px-3.5 text-bn-base font-bold text-bn-on-solid transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{deleting ? "移除中…" : "确认移除"}
 				</button>
@@ -1209,7 +1209,7 @@ function TestConfirmModal({
 					将通过 <b className="text-bn-text-primary">{adapter?.name ?? "(未知适配器)"}</b> 向{" "}
 					<b className="text-bn-text-primary">{target.name}</b> 真实发送一条测试消息。
 					<br />
-					<span className="font-mono text-[11.5px] text-bn-text-tertiary">
+					<span className="font-mono text-bn-xs text-bn-text-tertiary">
 						[bilibili-notify] 测试推送已送达 ✓
 					</span>
 				</>
@@ -1263,7 +1263,7 @@ function AdapterRail({
 					icon: <PlatformIcon platform={a.platform} size={12} />,
 					iconTint: platformTint(a.platform),
 					badge: !a.enabled ? (
-						<span className="shrink-0 text-[10px] text-bn-text-tertiary">(停用)</span>
+						<span className="shrink-0 text-bn-2xs text-bn-text-tertiary">(停用)</span>
 					) : undefined,
 				};
 			})}
@@ -1589,8 +1589,8 @@ export default function Targets() {
 						</div>
 					) : !selectedAdapter ? (
 						<div className="bn-glass rounded-bn-card p-8 text-center shadow-bn-card">
-							<div className="mb-1 text-[14px] font-bold text-bn-text-primary">还没有适配器</div>
-							<div className="mb-4 text-[11.5px] text-bn-text-tertiary">
+							<div className="mb-1 text-bn-md font-bold text-bn-text-primary">还没有适配器</div>
+							<div className="mb-4 text-bn-xs text-bn-text-tertiary">
 								先在左侧新建一个适配器(OneBot HTTP / Webhook),再为它配置推送目标。
 							</div>
 							<Btn variant="primary" size="sm" onClick={startNewAdapter}>
@@ -1612,21 +1612,21 @@ export default function Targets() {
 									</div>
 									<div className="min-w-0 flex-1">
 										<div className="flex items-center gap-2">
-											<span className="truncate text-[14.5px] font-bold text-bn-text-primary">
+											<span className="truncate text-bn-md font-bold text-bn-text-primary">
 												{selectedAdapter.name || "（未命名）"}
 											</span>
 											<StatusDot kind={selectedAdapterStatus} />
 											{!selectedAdapter.enabled ? (
-												<span className="text-[10.5px] text-bn-text-tertiary">(已停用)</span>
+												<span className="text-bn-2xs text-bn-text-tertiary">(已停用)</span>
 											) : null}
 										</div>
-										<div className="mt-0.5 truncate font-mono text-[11.5px] text-bn-text-tertiary">
+										<div className="mt-0.5 truncate font-mono text-bn-xs text-bn-text-tertiary">
 											{platformLabel(selectedAdapter.platform)} ·{" "}
 											{adapterEndpointSummary(selectedAdapter)}
 										</div>
 										{selectedAdapterTestStatus ? (
 											<div
-												className="mt-2 inline-block rounded-sm border-l-[3px] px-2 py-0.5 text-[11px]"
+												className="mt-2 inline-block rounded-sm border-l-[3px] px-2 py-0.5 text-bn-xs"
 												style={
 													selectedAdapterTestStatus.ok
 														? {
@@ -1703,10 +1703,10 @@ export default function Targets() {
 							<div className="bn-glass rounded-bn-card p-4 shadow-bn-card">
 								<div className="mb-3 flex items-baseline justify-between">
 									<div>
-										<div className="text-[14px] font-bold text-bn-text-primary">
+										<div className="text-bn-md font-bold text-bn-text-primary">
 											{selectedAdapter.platform === "webhook" ? "Webhook 投递目标" : "推送目标"}
 										</div>
-										<div className="text-[11.5px] text-bn-text-tertiary">
+										<div className="text-bn-xs text-bn-text-tertiary">
 											{selectedAdapter.platform === "webhook"
 												? "Webhook 是单向投递终点，保存 URL 后系统会自动创建默认投递目标。"
 												: "本适配器下的会话:群号 / 用户 ID 等。"}
@@ -1724,7 +1724,7 @@ export default function Targets() {
 								</div>
 								{selectedAdapter.platform === "webhook" ? (
 									<div className="space-y-2.5">
-										<div className="rounded-bn-sm border border-bn-success-border bg-bn-success-soft/70 px-3 py-2 text-[11.5px] leading-relaxed text-bn-success-text">
+										<div className="rounded-bn-sm border border-bn-success-border bg-bn-success-soft/70 px-3 py-2 text-bn-xs leading-relaxed text-bn-success-text">
 											无需手动配置额外 PushTarget；订阅页会看到这个 Webhook，可直接选择并投递。
 										</div>
 										{selectedManagedWebhookTarget ? (

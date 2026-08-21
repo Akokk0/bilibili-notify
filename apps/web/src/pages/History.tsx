@@ -130,7 +130,7 @@ export default function History() {
 					))}
 				</div>
 				<div className="flex-1" />
-				<span className="text-[11px] text-bn-text-tertiary">
+				<span className="text-bn-xs text-bn-text-tertiary">
 					共 {filtered.length} 条{retentionDays != null ? ` · 保留近 ${retentionDays} 天` : ""}
 				</span>
 			</div>
@@ -158,7 +158,7 @@ function HistoryTable({
 	return (
 		<div className="bn-glass overflow-hidden rounded-bn-sm shadow-bn-card">
 			<div
-				className="grid items-center gap-2.5 border-b border-bn-border-subtle bg-bn-surface-muted/70 px-4 py-2.5 text-[11px] font-bold tracking-wide text-bn-text-tertiary"
+				className="grid items-center gap-2.5 border-b border-bn-border-subtle bg-bn-surface-muted/70 px-4 py-2.5 text-bn-xs font-bold tracking-wide text-bn-text-tertiary"
 				style={{ gridTemplateColumns: HISTORY_GRID }}
 			>
 				<span>时间</span>
@@ -170,7 +170,7 @@ function HistoryTable({
 			</div>
 
 			{entries.length === 0 ? (
-				<div className="px-4 py-10 text-center text-[12.5px] text-bn-text-tertiary">
+				<div className="px-4 py-10 text-center text-bn-sm text-bn-text-tertiary">
 					没有符合条件的推送记录
 				</div>
 			) : (
@@ -216,14 +216,12 @@ function HistoryRow({
 
 	return (
 		<div
-			className={`grid items-center gap-2.5 px-4 py-3 text-[12.5px] ${
+			className={`grid items-center gap-2.5 px-4 py-3 text-bn-sm ${
 				isLast ? "" : "border-b border-bn-border-subtle"
 			}`}
 			style={{ gridTemplateColumns: HISTORY_GRID }}
 		>
-			<span className="font-mono text-[11.5px] text-bn-text-tertiary">
-				{relativeTime(entry.ts)}
-			</span>
+			<span className="font-mono text-bn-xs text-bn-text-tertiary">{relativeTime(entry.ts)}</span>
 			<Avatar name={upName} color={upColor} size={24} url={upAvatar} />
 			<Pill color={tone} subtle size="sm">
 				{PUSH_KIND_META[entry.source].label}
@@ -237,7 +235,7 @@ function HistoryRow({
 				)}
 			</div>
 			<span
-				className="truncate text-[11.5px] text-bn-text-secondary"
+				className="truncate text-bn-xs text-bn-text-secondary"
 				title={targets.map((t) => t.name).join(", ")}
 			>
 				→ {targetLabel}

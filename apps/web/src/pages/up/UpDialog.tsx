@@ -443,7 +443,7 @@ export function UpDialog({
 					>
 						<div className="text-base font-bold">{displayName(draft)}</div>
 						<div
-							className="mt-0.5 text-[11px] font-semibold"
+							className="mt-0.5 text-bn-xs font-semibold"
 							style={{ color, textShadow: "0 1px 4px rgba(255,255,255,0.4)" }}
 						>
 							<span className="font-mono">UID {draft.uid}</span>
@@ -489,7 +489,7 @@ export function UpDialog({
 				{/* 订阅项总开关 */}
 				<section>
 					<SectionHeader label="订阅项 · 默认推送内容" />
-					<p className="mb-2 text-[11px] text-bn-text-secondary">
+					<p className="mb-2 text-bn-xs text-bn-text-secondary">
 						这是该 UP 的"默认推送内容"。下方的推送目标若未单独自定义,会跟随这里的设置。
 					</p>
 					<div className="space-y-2">
@@ -498,7 +498,7 @@ export function UpDialog({
 								key={g.label}
 								className="overflow-hidden rounded-lg border border-bn-border bg-bn-surface"
 							>
-								<div className="border-b border-bn-border-subtle bg-bn-surface-muted px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-bn-text-tertiary">
+								<div className="border-b border-bn-border-subtle bg-bn-surface-muted px-3 py-1.5 text-bn-2xs font-bold uppercase tracking-wider text-bn-text-tertiary">
 									{g.label}
 								</div>
 								<div className="grid grid-cols-2 gap-x-4 gap-y-2 px-3 py-2">
@@ -561,13 +561,13 @@ export function UpDialog({
 								showPicker ? (
 									<div className="rounded-lg border border-bn-border bg-bn-surface p-3">
 										<div className="mb-1.5 flex items-center justify-between">
-											<span className="text-[11.5px] font-semibold text-bn-text-primary">
+											<span className="text-bn-xs font-semibold text-bn-text-primary">
 												选择要添加的推送目标
 											</span>
 											<button
 												type="button"
 												onClick={() => setShowPicker(false)}
-												className="text-[11px] text-bn-text-tertiary hover:text-bn-text-primary"
+												className="text-bn-xs text-bn-text-tertiary hover:text-bn-text-primary"
 											>
 												取消
 											</button>
@@ -602,7 +602,7 @@ export function UpDialog({
 					<section>
 						<SectionHeader label="已失效的引用" />
 						<div className="rounded-md border border-dashed border-bn-danger-border bg-bn-danger-soft px-3 py-2">
-							<div className="mb-1.5 text-[11px] text-bn-danger-text">
+							<div className="mb-1.5 text-bn-xs text-bn-danger-text">
 								下列推送目标已被删除,但路由中仍有引用 · 点击移除
 							</div>
 							<div className="flex flex-wrap gap-1.5">
@@ -612,7 +612,7 @@ export function UpDialog({
 										key={id}
 										onClick={() => removeStaleId(id)}
 										data-bn="btn"
-										className="inline-flex items-center gap-1.5 rounded-bn-pill border border-bn-danger-border bg-bn-surface px-2.5 py-1 text-[11.5px] text-bn-danger hover:bg-bn-danger/10"
+										className="inline-flex items-center gap-1.5 rounded-bn-pill border border-bn-danger-border bg-bn-surface px-2.5 py-1 text-bn-xs text-bn-danger hover:bg-bn-danger/10"
 									>
 										{id.slice(0, 8)} ×
 									</button>
@@ -626,7 +626,7 @@ export function UpDialog({
 			{/* Footer */}
 			<div className="flex flex-col gap-1.5 border-t border-bn-border px-3.5 py-3">
 				{attachedTargets.length === 0 && targets.length > 0 ? (
-					<div className="flex items-start gap-1.5 rounded-md border border-bn-warning-border bg-bn-warning-soft px-2.5 py-1.5 text-[11px] text-bn-warning-text">
+					<div className="flex items-start gap-1.5 rounded-md border border-bn-warning-border bg-bn-warning-soft px-2.5 py-1.5 text-bn-xs text-bn-warning-text">
 						<Icon.warning size={12} className="mt-0.5 shrink-0" />
 						<span>未选中任何推送目标,保存后该订阅不会向任何地方推送消息</span>
 					</div>
@@ -688,7 +688,7 @@ export function UpDialog({
 
 function SectionHeader({ label }: { label: string }) {
 	return (
-		<div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-bn-text-tertiary">
+		<div className="mb-1.5 text-bn-2xs font-bold uppercase tracking-wider text-bn-text-tertiary">
 			{label}
 		</div>
 	);
@@ -706,8 +706,8 @@ function BasicRow({
 	return (
 		<div className="flex items-center gap-3 border-b border-bn-border-subtle px-3 py-2.5 last:border-b-0">
 			<div className="min-w-0 flex-1">
-				<div className="text-[12.5px] font-semibold text-bn-text-primary">{label}</div>
-				{sub ? <div className="mt-0.5 text-[11px] text-bn-text-secondary">{sub}</div> : null}
+				<div className="text-bn-sm font-semibold text-bn-text-primary">{label}</div>
+				{sub ? <div className="mt-0.5 text-bn-xs text-bn-text-secondary">{sub}</div> : null}
 			</div>
 			{children}
 		</div>
@@ -732,14 +732,14 @@ function FeatureToggleRow({
 			<Toggle value={value} onChange={onChange} size="sm" />
 			<div className="min-w-0 flex-1">
 				<div
-					className={`text-[12px] font-semibold ${
+					className={`text-bn-sm font-semibold ${
 						value ? "text-bn-text-primary" : "text-bn-text-secondary"
 					}`}
 				>
 					{label}
 				</div>
 				{sub ? (
-					<div className="mt-0.5 truncate text-[10.5px] text-bn-text-secondary">{sub}</div>
+					<div className="mt-0.5 truncate text-bn-2xs text-bn-text-secondary">{sub}</div>
 				) : null}
 			</div>
 		</div>
@@ -769,7 +769,7 @@ function AtAllInlineToggle({
 			: "动态推送时附加 @全体";
 	return (
 		<div
-			className={`mt-0.5 ml-9 flex items-center gap-1.5 text-[11px] ${parentOn ? "text-bn-text-secondary" : "text-bn-text-disabled"}`}
+			className={`mt-0.5 ml-9 flex items-center gap-1.5 text-bn-xs ${parentOn ? "text-bn-text-secondary" : "text-bn-text-disabled"}`}
 			title={parentOn ? hint : "需先开启父订阅项才能 @全体"}
 		>
 			<Toggle
@@ -822,7 +822,7 @@ function AtAllPerTargetToggle({
 	return (
 		<div className="mt-0.5 ml-9">
 			<div
-				className={`flex items-center gap-1.5 text-[11px] ${blocked ? "text-bn-text-disabled" : "text-bn-text-secondary"}`}
+				className={`flex items-center gap-1.5 text-bn-xs ${blocked ? "text-bn-text-disabled" : "text-bn-text-secondary"}`}
 				title={hint}
 			>
 				<Toggle
@@ -844,7 +844,7 @@ function AtAllPerTargetToggle({
 				) : null}
 			</div>
 			{unsupported && parentOn ? (
-				<div className="mt-0.5 text-[10.5px] text-bn-text-tertiary">
+				<div className="mt-0.5 text-bn-2xs text-bn-text-tertiary">
 					QQ 官方机器人不支持 @全体,发送时会自动跳过
 				</div>
 			) : null}
@@ -881,15 +881,15 @@ function TargetRoutingCard({
 			<div className="flex items-center gap-2.5 px-3 py-2.5">
 				<PlatformIcon platform={target.platform} size={16} />
 				<div className="min-w-0 flex-1">
-					<div className="truncate text-[12.5px] font-semibold text-bn-text-primary">
+					<div className="truncate text-bn-sm font-semibold text-bn-text-primary">
 						{target.name || "（未命名）"}
 					</div>
-					<div className="mt-0.5 text-[11px] text-bn-text-secondary">
+					<div className="mt-0.5 text-bn-xs text-bn-text-secondary">
 						{isCustom ? "自定义推送内容" : `跟随订阅项 · ${enabledCount} 项已开启`}
 					</div>
 				</div>
 				{isCustom ? (
-					<span className="font-mono text-[10.5px] text-bn-text-tertiary">
+					<span className="font-mono text-bn-2xs text-bn-text-tertiary">
 						{enabledCount}/{FEATURE_KEYS.length}
 					</span>
 				) : null}
@@ -912,7 +912,7 @@ function TargetRoutingCard({
 							key={g.label}
 							className="border-b border-bn-border-subtle px-3 py-2 last:border-b-0"
 						>
-							<div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-bn-text-tertiary">
+							<div className="mb-1.5 text-bn-2xs font-bold uppercase tracking-wider text-bn-text-tertiary">
 								{g.label}
 							</div>
 							<div className="grid grid-cols-2 gap-x-4 gap-y-1.5">

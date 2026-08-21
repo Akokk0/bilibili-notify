@@ -566,7 +566,7 @@ export function Heatmap({
 			{/* 底部时间刻度 —— 没有它就看不出热力图横轴跨了多久。 */}
 			<div className="mt-2.5 flex shrink-0">
 				<div className="w-20 shrink-0" />
-				<div className="flex flex-1 justify-between font-mono text-[9.5px] text-bn-text-secondary">
+				<div className="flex flex-1 justify-between font-mono text-bn-micro text-bn-text-secondary">
 					{heatAxisLabels(days.length).map((label, i) => (
 						// biome-ignore lint/suspicious/noArrayIndexKey: 固定 4 个刻度,位置即身份
 						<span key={i}>{label}</span>

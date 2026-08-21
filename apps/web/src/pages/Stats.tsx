@@ -188,7 +188,7 @@ function UpPicker({
 									<span className="block truncate text-xs font-bold text-bn-text-primary">
 										{m?.name ?? `UID ${r.uid}`}
 									</span>
-									<span className="block text-[10.5px] text-bn-text-secondary">
+									<span className="block text-bn-2xs text-bn-text-secondary">
 										{num(r.fans)} · {sinceText(r.lastActivityAt)}
 									</span>
 								</span>
@@ -238,19 +238,19 @@ function CompareTable({
 			<table className="w-full border-collapse text-xs">
 				<thead>
 					<tr className="border-b border-bn-border">
-						<th className="px-2.5 py-2 text-left text-[11px] font-bold text-bn-text-secondary">
+						<th className="px-2.5 py-2 text-left text-bn-xs font-bold text-bn-text-secondary">
 							UP 主
 						</th>
-						<th className="px-2.5 py-2 text-right text-[11px] font-bold text-bn-text-secondary">
+						<th className="px-2.5 py-2 text-right text-bn-xs font-bold text-bn-text-secondary">
 							粉丝数
 						</th>
-						<th className="px-2.5 py-2 text-center text-[11px] font-bold text-bn-text-secondary">
+						<th className="px-2.5 py-2 text-center text-bn-xs font-bold text-bn-text-secondary">
 							近期走势
 						</th>
 						{cols.map((c) => (
 							<th
 								key={c.id}
-								className="whitespace-nowrap px-2.5 py-2 text-right text-[11px] font-bold"
+								className="whitespace-nowrap px-2.5 py-2 text-right text-bn-xs font-bold"
 								style={{ color: sort === c.id ? PINK : "var(--color-bn-text-secondary)" }}
 							>
 								<button type="button" onClick={() => setSort(c.id)}>
@@ -284,7 +284,7 @@ function CompareTable({
 											<div className="truncate text-xs font-bold text-bn-text-primary">
 												{m?.name ?? `UID ${r.uid}`}
 											</div>
-											<div className="text-[10.5px] text-bn-text-secondary">
+											<div className="text-bn-2xs text-bn-text-secondary">
 												{sinceText(r.lastActivityAt)}
 												{r.live ? " · 直播中" : ""}
 											</div>
@@ -376,16 +376,16 @@ function ContentMix({
 					label={
 						<div className="text-center">
 							<div className="text-xl font-bold text-bn-text-primary">{total}</div>
-							<div className="text-[9.5px] text-bn-text-secondary">总活动</div>
+							<div className="text-bn-micro text-bn-text-secondary">总活动</div>
 						</div>
 					}
 				/>
 				<div className="flex flex-col gap-1">
-					<div className="text-[11px] text-bn-text-secondary">日均活动</div>
+					<div className="text-bn-xs text-bn-text-secondary">日均活动</div>
 					<div className="font-mono text-2xl font-bold leading-none" style={{ color: PURPLE }}>
 						{coveredDays > 0 ? (coveredTotal / coveredDays).toFixed(1) : "—"}
 					</div>
-					<div className="text-[10.5px] text-bn-text-secondary">
+					<div className="text-bn-2xs text-bn-text-secondary">
 						次 / 天 · {coveredDays < days ? `已记录${coveredDays}日` : `近${days}日`}
 					</div>
 				</div>
@@ -549,7 +549,7 @@ export default function Stats() {
 							footer={
 								<>
 									<DeltaTag v={focused.net7d} size={11.5} />
-									<span className="text-[10.5px] text-bn-text-secondary">近7日</span>
+									<span className="text-bn-2xs text-bn-text-secondary">近7日</span>
 									<span className="ml-auto">
 										<Sparkline
 											data={focused.series.slice(-14)}
@@ -594,7 +594,7 @@ export default function Stats() {
 							footer={
 								<>
 									<DeltaTag v={totals?.net7d ?? null} size={11.5} />
-									<span className="text-[10.5px] text-bn-text-secondary">近7日</span>
+									<span className="text-bn-2xs text-bn-text-secondary">近7日</span>
 									<span className="ml-auto">
 										<Sparkline
 											data={(totals?.series ?? []).slice(-14)}
@@ -714,7 +714,7 @@ export default function Stats() {
 					icon={<Icon.heart width={15} height={15} />}
 					right={
 						<span
-							className="rounded-bn-pill px-2 py-0.5 text-[11px] font-bold"
+							className="rounded-bn-pill px-2 py-0.5 text-bn-xs font-bold"
 							style={{
 								// 三档,不是两档:`(x ?? 0) >= 0` 会把「没有记录」归零后判成非负,
 								// 于是粉丝还没采到样本时徽章是绿的 —— 数值那侧显示 `—`,颜色却在
@@ -806,7 +806,7 @@ export default function Stats() {
 									key={label}
 									className="rounded-bn-card border border-bn-border-subtle bg-bn-surface-muted px-2.5 py-2"
 								>
-									<div className="mb-1 text-[10.5px] font-semibold text-bn-text-secondary">
+									<div className="mb-1 text-bn-2xs font-semibold text-bn-text-secondary">
 										{label}
 									</div>
 									<div className="flex items-baseline gap-1">
@@ -814,7 +814,7 @@ export default function Stats() {
 											{v}
 										</span>
 										{unit ? (
-											<span className="text-[10.5px] text-bn-text-secondary">{unit}</span>
+											<span className="text-bn-2xs text-bn-text-secondary">{unit}</span>
 										) : null}
 									</div>
 								</div>

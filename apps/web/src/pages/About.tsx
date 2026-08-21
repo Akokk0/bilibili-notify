@@ -43,37 +43,37 @@ async function loadChangelogMarkdown(): Promise<string> {
 
 const MARKDOWN_COMPONENTS: Components = {
 	h1: ({ children }) => (
-		<h1 className="mt-0 mb-4 border-b border-bn-border-subtle pb-3 text-[24px] font-extrabold tracking-tight text-bn-text-primary">
+		<h1 className="mt-0 mb-4 border-b border-bn-border-subtle pb-3 text-bn-hero font-extrabold tracking-tight text-bn-text-primary">
 			{children}
 		</h1>
 	),
 	h2: ({ children }) => (
-		<h2 className="mt-7 mb-3 text-[18px] font-extrabold tracking-tight text-bn-text-primary">
+		<h2 className="mt-7 mb-3 text-bn-xl font-extrabold tracking-tight text-bn-text-primary">
 			{children}
 		</h2>
 	),
 	h3: ({ children }) => (
-		<h3 className="mt-5 mb-2 text-[14px] font-bold uppercase tracking-wide text-bn-pink">
+		<h3 className="mt-5 mb-2 text-bn-md font-bold uppercase tracking-wide text-bn-pink">
 			{children}
 		</h3>
 	),
 	p: ({ children }) => (
-		<p className="my-2 text-[13px] leading-7 text-bn-text-secondary">{children}</p>
+		<p className="my-2 text-bn-base leading-7 text-bn-text-secondary">{children}</p>
 	),
 	ul: ({ children }) => (
-		<ul className="my-2 space-y-1.5 pl-5 text-[13px] text-bn-text-secondary">{children}</ul>
+		<ul className="my-2 space-y-1.5 pl-5 text-bn-base text-bn-text-secondary">{children}</ul>
 	),
 	li: ({ children }) => <li className="list-disc leading-7 marker:text-bn-pink/70">{children}</li>,
 	code: ({ node: _node, className, children, ...props }) => (
 		<code
-			className={`rounded-md bg-bn-code-bg px-1.5 py-0.5 font-mono text-[12px] text-bn-text-primary ${className ?? ""}`}
+			className={`rounded-md bg-bn-code-bg px-1.5 py-0.5 font-mono text-bn-sm text-bn-text-primary ${className ?? ""}`}
 			{...props}
 		>
 			{children}
 		</code>
 	),
 	pre: ({ children }) => (
-		<pre className="my-3 overflow-x-auto rounded-bn-sm border border-bn-border-subtle bg-bn-console-bg p-3 text-[12px] leading-relaxed text-bn-console-text">
+		<pre className="my-3 overflow-x-auto rounded-bn-sm border border-bn-border-subtle bg-bn-console-bg p-3 text-bn-sm leading-relaxed text-bn-console-text">
 			{children}
 		</pre>
 	),
@@ -156,14 +156,14 @@ function SponsorPanel() {
 			<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
 				<div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-bn-border-subtle pb-4">
 					<div>
-						<div className="flex items-center gap-2 text-[15px] font-extrabold text-bn-text-primary">
+						<div className="flex items-center gap-2 text-bn-md font-extrabold text-bn-text-primary">
 							<Icon.heart size={16} />
 							支持项目
 						</div>
-						<p className="mt-1 text-[12px] text-bn-text-tertiary">用爱发电,让女仆值班室持续运转</p>
+						<p className="mt-1 text-bn-sm text-bn-text-tertiary">用爱发电,让女仆值班室持续运转</p>
 					</div>
 				</div>
-				<p className="text-[13px] leading-7 text-bn-text-secondary">
+				<p className="text-bn-base leading-7 text-bn-text-secondary">
 					Bilibili Notify 是 MIT 开源、永久免费的项目。服务器、测试设备与持续开发都需要成本,
 					如果它帮到了你,欢迎在爱发电请女仆喝杯奶茶 —— 每一份心意,都会化作新功能与更少的 bug。
 				</p>
@@ -188,7 +188,7 @@ function SponsorPanel() {
 						rel="noreferrer"
 						onClick={externalLinkClick(AFDIAN_URL)}
 						data-bn="btn btn-primary"
-						className="inline-flex items-center gap-2 rounded-bn-pill bg-bn-pink px-5 py-2.5 text-[13px] font-bold text-bn-on-solid shadow-bn-accent-lg transition hover:opacity-90"
+						className="inline-flex items-center gap-2 rounded-bn-pill bg-bn-pink px-5 py-2.5 text-bn-base font-bold text-bn-on-solid shadow-bn-accent-lg transition hover:opacity-90"
 					>
 						<Icon.heart size={15} />
 						前往爱发电支持
@@ -197,12 +197,12 @@ function SponsorPanel() {
 			</div>
 
 			<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
-				<div className="mb-3 flex items-center gap-2 text-[14px] font-extrabold text-bn-text-primary">
+				<div className="mb-3 flex items-center gap-2 text-bn-md font-extrabold text-bn-text-primary">
 					<Icon.gift size={15} />
 					赞助者名单
 				</div>
 				{sponsors.length === 0 ? (
-					<p className="py-6 text-center text-[12.5px] text-bn-text-tertiary">
+					<p className="py-6 text-center text-bn-sm text-bn-text-tertiary">
 						还没有人发电,期待第一位供电的主人～
 					</p>
 				) : (
@@ -210,7 +210,7 @@ function SponsorPanel() {
 						{sponsors.map((s) => (
 							<span
 								key={s.name}
-								className="flex items-center gap-1.5 rounded-full border border-bn-pink/25 bg-bn-pink/8 py-1 pr-3 pl-1 text-[12.5px] font-semibold text-bn-pink"
+								className="flex items-center gap-1.5 rounded-full border border-bn-pink/25 bg-bn-pink/8 py-1 pr-3 pl-1 text-bn-sm font-semibold text-bn-pink"
 							>
 								{s.avatar ? (
 									<img
@@ -224,7 +224,7 @@ function SponsorPanel() {
 										}}
 									/>
 								) : (
-									<span className="grid h-5 w-5 place-items-center rounded-full bg-bn-pink/15 text-[10px]">
+									<span className="grid h-5 w-5 place-items-center rounded-full bg-bn-pink/15 text-bn-2xs">
 										{s.name.slice(0, 1)}
 									</span>
 								)}
@@ -233,7 +233,7 @@ function SponsorPanel() {
 						))}
 					</div>
 				)}
-				<p className="mt-3 text-[11px] text-bn-text-tertiary">
+				<p className="mt-3 text-bn-xs text-bn-text-tertiary">
 					感谢每一位主人的供电
 					<Icon.heart size={10} className="mx-1 inline-block align-[-1px] text-bn-pink" />
 					名单在每次发布新版本时同步自爱发电。
@@ -257,11 +257,11 @@ function AboutPanel() {
 
 	return (
 		<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
-			<div className="mb-4 flex items-center gap-2 border-b border-bn-border-subtle pb-4 text-[15px] font-extrabold text-bn-text-primary">
+			<div className="mb-4 flex items-center gap-2 border-b border-bn-border-subtle pb-4 text-bn-md font-extrabold text-bn-text-primary">
 				<Icon.star size={16} />
 				关于本项目
 			</div>
-			<p className="text-[13px] leading-7 text-bn-text-secondary">
+			<p className="text-bn-base leading-7 text-bn-text-secondary">
 				Bilibili Notify —— 监听 B 站 UP 主动态 / 直播,渲染成卡片图片推送到 QQ 群等渠道。
 				一套业务核心、两种形态:Koishi 插件 与 独立 Web Dashboard。MIT 开源。
 			</p>
@@ -270,7 +270,7 @@ function AboutPanel() {
 					<LinkRow key={l.label} {...l} />
 				))}
 			</div>
-			<p className="mt-4 text-[11px] text-bn-text-tertiary">协议 · MIT License</p>
+			<p className="mt-4 text-bn-xs text-bn-text-tertiary">协议 · MIT License</p>
 		</div>
 	);
 }
@@ -293,8 +293,8 @@ function LinkRow({
 				<LinkIcon size={15} />
 			</span>
 			<span className="min-w-0 flex-1">
-				<span className="block text-[12.5px] font-bold text-bn-text-primary">{label}</span>
-				<span className="block truncate text-[11.5px] text-bn-text-tertiary">{value}</span>
+				<span className="block text-bn-sm font-bold text-bn-text-primary">{label}</span>
+				<span className="block truncate text-bn-xs text-bn-text-tertiary">{value}</span>
 			</span>
 			{href ? <Icon.link size={13} /> : null}
 		</div>
@@ -339,19 +339,19 @@ function ChangelogPanel() {
 		<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
 			<div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-bn-border-subtle pb-4">
 				<div>
-					<div className="flex items-center gap-2 text-[15px] font-extrabold text-bn-text-primary">
+					<div className="flex items-center gap-2 text-bn-md font-extrabold text-bn-text-primary">
 						<Icon.sparkle size={16} />
 						更新日志
 					</div>
-					<p className="mt-1 text-[12px] text-bn-text-tertiary">独立端版本变更记录</p>
+					<p className="mt-1 text-bn-sm text-bn-text-tertiary">独立端版本变更记录</p>
 				</div>
-				<span className="rounded-bn-pill border border-bn-pink/25 bg-bn-pink/8 px-3 py-1 font-mono text-[11px] font-semibold text-bn-pink">
+				<span className="rounded-bn-pill border border-bn-pink/25 bg-bn-pink/8 px-3 py-1 font-mono text-bn-xs font-semibold text-bn-pink">
 					apps/CHANGELOG.md
 				</span>
 			</div>
 			<div className="max-w-none">
 				{loadError ? (
-					<div className="py-8 text-center text-[12px] text-bn-danger">
+					<div className="py-8 text-center text-bn-sm text-bn-danger">
 						更新日志加载失败: {loadError}
 					</div>
 				) : markdown == null ? (

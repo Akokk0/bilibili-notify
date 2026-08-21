@@ -34,7 +34,7 @@ export function ComposerPill({
 			title={title}
 			onClick={() => onToggle(!on)}
 			data-bn="btn"
-			className={`flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-bn-pill border px-3 text-[12.5px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+			className={`flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-bn-pill border px-3 text-bn-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
 				lit
 					? "bn-chat-accent bn-chat-accent-soft border-transparent"
 					: "border-bn-border text-bn-text-secondary hover:bg-bn-hover-muted"

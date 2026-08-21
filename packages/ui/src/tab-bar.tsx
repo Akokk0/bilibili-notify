@@ -49,7 +49,7 @@ export function TabButton({ active, onClick, icon, children, code, title, role }
 			// 挂点跟 Btn 同口径 —— 这排按钮此前一个 hook 都没有,选中态的粉还写在
 			// inline style 上,而 inline 压过一切 author 样式,皮肤连覆盖的机会都没有。
 			data-bn={active ? "btn btn-primary" : "btn"}
-			className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12.5px] font-bold transition ${
+			className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-bn-sm font-bold transition ${
 				active
 					? "bg-bn-pink text-bn-on-solid shadow-bn-accent"
 					: "text-bn-text-tertiary hover:text-bn-text-primary"
@@ -59,7 +59,7 @@ export function TabButton({ active, onClick, icon, children, code, title, role }
 			{children}
 			{code ? (
 				<span
-					className={`ml-0.5 rounded-sm px-1.5 py-px font-mono text-[10px] font-semibold ${
+					className={`ml-0.5 rounded-sm px-1.5 py-px font-mono text-bn-2xs font-semibold ${
 						active ? "bg-bn-inverse-strong" : "bg-bn-code-bg"
 					}`}
 				>
@@ -106,7 +106,7 @@ export function TabBar<T extends string>({ items, value, onChange, hint }: TabBa
 			{hint ? (
 				<>
 					<div className="flex-1" />
-					<div className="px-2 text-[11px] text-bn-text-tertiary">{hint}</div>
+					<div className="px-2 text-bn-xs text-bn-text-tertiary">{hint}</div>
 				</>
 			) : null}
 		</TabBarShell>

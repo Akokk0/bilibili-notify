@@ -73,7 +73,7 @@ export function RoastRunNowBox({
 				>
 					{run.isPending ? "跑一轮中…" : "试一次"}
 				</Btn>
-				<span className="text-[11px] text-bn-text-tertiary">
+				<span className="text-bn-xs text-bn-text-tertiary">
 					{targetCount === 0
 						? "先选一个发送目标"
 						: "按现在保存好的配置立刻跑一轮，和到点自动跑走的是同一条路"}
@@ -81,13 +81,13 @@ export function RoastRunNowBox({
 			</div>
 
 			{dirty ? (
-				<div className="mt-1.5 text-[11px] text-bn-warning-text">
+				<div className="mt-1.5 text-bn-xs text-bn-warning-text">
 					有还没保存的改动 —— 这一轮跑的是<b>已保存</b>的那份配置，先存一下再试。
 				</div>
 			) : null}
 
 			{err ? (
-				<div className="mt-2 text-[11px] text-bn-danger-text">跑不起来:{err}</div>
+				<div className="mt-2 text-bn-xs text-bn-danger-text">跑不起来:{err}</div>
 			) : run.data?.ok && run.data.outcome ? (
 				<OutcomeLine outcome={run.data.outcome} targetName={targetName} />
 			) : null}
@@ -125,15 +125,15 @@ function OutcomeLine({
 }) {
 	if (outcome.kind === "no-targets") {
 		return (
-			<div className="mt-2 text-[11px] text-bn-danger-text">没有配置推送目标，这一轮跳过了</div>
+			<div className="mt-2 text-bn-xs text-bn-danger-text">没有配置推送目标，这一轮跳过了</div>
 		);
 	}
 	if (outcome.kind === "gen-failed") {
-		return <div className="mt-2 text-[11px] text-bn-danger-text">没生成出来:{outcome.why}</div>;
+		return <div className="mt-2 text-bn-xs text-bn-danger-text">没生成出来:{outcome.why}</div>;
 	}
 	if (outcome.kind === "pending-approval") {
 		return (
-			<div className="mt-2 text-[11px] text-bn-success-text">
+			<div className="mt-2 text-bn-xs text-bn-success-text">
 				✓ 已生成并私聊给主人了，回一句「y {outcome.draftId}」就发出去（群里还没发）
 			</div>
 		);
@@ -141,14 +141,14 @@ function OutcomeLine({
 	const mode = outcome.mode === "image" ? "卡片图" : "文字";
 	if (outcome.failed.length > 0) {
 		return (
-			<div className="mt-2 text-[11px] text-bn-warning-text">
+			<div className="mt-2 text-bn-xs text-bn-warning-text">
 				{outcome.sent} 个目标成功、{outcome.failed.length} 个失败（{mode}）：
 				{outcome.failed.map((f) => `${targetName(f.targetId)} ${f.err}`).join("；")}
 			</div>
 		);
 	}
 	return (
-		<div className="mt-2 text-[11px] text-bn-success-text">
+		<div className="mt-2 text-bn-xs text-bn-success-text">
 			✓ 已发送到 {outcome.sent} 个目标（{mode}）
 		</div>
 	);

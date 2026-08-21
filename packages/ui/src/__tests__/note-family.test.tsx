@@ -18,12 +18,27 @@ import { EmptyNote, ErrorNote, WarnNote } from "../atoms";
 
 afterEach(cleanup);
 
+/**
+ * 字号阶梯的九档,抄自 `theme.css` 的 `--text-bn-*`。
+ *
+ * 不能拿 `text-bn-` 前缀了事 —— 颜色类也长这样(`text-bn-text-primary`),前缀匹配
+ * 会把字色当成字号挑走。
+ *
+ * 这份名单是**抄**的不是**读**的:本包 tsconfig 写着 `"types": []`,平台中立的展示件
+ * 库不碰 Node API,测试也不例外。名单落后于表也不会漏守 —— 三兄弟改用了名单外的新档,
+ * `size` 就是 undefined,下面第一条断言当场红,提示的正是「该更新名单了」。跨端的
+ * 「用的档在表里真有定义」由 `color-token-conformance.test.ts` 兜。
+ */
+const SIZE_CLASSES = new Set(
+	["micro", "2xs", "xs", "sm", "base", "md", "lg", "xl", "hero"].map((n) => `text-bn-${n}`),
+);
+
 /** 从 class 串里挑出圆角与字号这两样 —— 阶梯就是由它们组成的。 */
 function shape(cls: string): { radius?: string; size?: string } {
 	const tokens = cls.split(/\s+/);
 	return {
 		radius: tokens.find((t) => t.startsWith("rounded-")),
-		size: tokens.find((t) => t.startsWith("text-[") || t === "text-xs" || t === "text-sm"),
+		size: tokens.find((t) => SIZE_CLASSES.has(t)),
 	};
 }
 

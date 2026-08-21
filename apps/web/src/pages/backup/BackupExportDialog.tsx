@@ -68,7 +68,7 @@ export function BackupExportDialog({ onCancel, onExport, busy }: BackupExportDia
 				<PinField className="mb-4" value={pin} onChange={setPin} placeholder="设置 6 位数字 PIN" />
 			) : null}
 
-			<div className="mb-1 text-[12px] font-semibold text-bn-text-secondary">备份内容</div>
+			<div className="mb-1 text-bn-sm font-semibold text-bn-text-secondary">备份内容</div>
 			<div className="flex flex-col gap-1.5">
 				{SECTIONS.map(({ key, label }) => (
 					<CheckRow key={key} checked={sections[key]} onChange={() => toggle(key)}>

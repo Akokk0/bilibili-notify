@@ -118,7 +118,7 @@ export function RoastScheduleFields({
 			>
 				<div className="flex flex-wrap gap-2">
 					{targets.length === 0 && (
-						<div className="text-[12px] opacity-60">还没有可用的推送目标</div>
+						<div className="text-bn-sm opacity-60">还没有可用的推送目标</div>
 					)}
 					{targets.map((t) => {
 						const on = value.targets.includes(t.id);
@@ -170,8 +170,8 @@ export function SwitchRow({
 			style={{ opacity: disabled ? 0.55 : 1 }}
 		>
 			<div>
-				<div className="text-[13px]">{label}</div>
-				{hint && <div className="text-[12px] opacity-60">{hint}</div>}
+				<div className="text-bn-base">{label}</div>
+				{hint && <div className="text-bn-sm opacity-60">{hint}</div>}
 			</div>
 			<Toggle value={value} onChange={onChange} disabled={disabled} ariaLabel={label} />
 		</div>

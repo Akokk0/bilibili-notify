@@ -73,7 +73,7 @@ export function ThinkingLevelSetting() {
 
 	return (
 		<>
-			<div className="mb-2 mt-3.5 pl-0.5 text-[11px] font-bold tracking-wide text-bn-text-secondary">
+			<div className="mb-2 mt-3.5 pl-0.5 text-bn-xs font-bold tracking-wide text-bn-text-secondary">
 				思考深度
 			</div>
 			{canThink ? (
@@ -88,7 +88,7 @@ export function ThinkingLevelSetting() {
 									aria-pressed={active}
 									onClick={() => save.mutate(o.value)}
 									data-bn="btn"
-									className={`flex-1 cursor-pointer rounded-bn-sm border-[1.5px] px-1 py-1.5 text-[11.5px] font-semibold transition ${
+									className={`flex-1 cursor-pointer rounded-bn-sm border-[1.5px] px-1 py-1.5 text-bn-xs font-semibold transition ${
 										active
 											? "bg-(--bn-glass-strong-bg) border-(--bn-chat-dot) text-bn-text-primary"
 											: "border-transparent text-bn-text-secondary hover:bg-bn-code-bg"
@@ -99,12 +99,12 @@ export function ThinkingLevelSetting() {
 							);
 						})}
 					</div>
-					<div className="mt-1.5 px-0.5 text-[10.5px] leading-relaxed text-bn-text-secondary">
+					<div className="mt-1.5 px-0.5 text-bn-2xs leading-relaxed text-bn-text-secondary">
 						管的是 ✦ 胶囊点亮后想多深；初始跟随所选实例的等级，调过就分家
 					</div>
 				</>
 			) : (
-				<div className="px-0.5 text-[10.5px] leading-relaxed text-bn-text-secondary">
+				<div className="px-0.5 text-bn-2xs leading-relaxed text-bn-text-secondary">
 					当前实例是自定义服务商，女仆不会自作主张发思考参数 ——
 					需要的话写进那份实例的「额外请求参数」里
 				</div>

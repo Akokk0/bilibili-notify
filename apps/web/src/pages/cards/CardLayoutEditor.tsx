@@ -23,7 +23,7 @@ export function CardLayoutEditor({ kind, layout, onChange }: CardLayoutEditorPro
 		return (
 			<div className="flex flex-col gap-3">
 				<div className="flex items-center gap-2.5">
-					<span className="text-[12.5px] font-medium text-bn-text-secondary">徽章（舰长大图）</span>
+					<span className="text-bn-sm font-medium text-bn-text-secondary">徽章（舰长大图）</span>
 					<Picker
 						value={guard.badgeSide}
 						onChange={(badgeSide) => onChange({ ...layout, guard: { ...guard, badgeSide } })}

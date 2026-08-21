@@ -207,7 +207,7 @@ export function SkinSection() {
 						aria-label={`${MODE_LABEL[theme]}模式皮肤`}
 						className="flex flex-wrap items-center gap-2"
 					>
-						<span className="w-14 shrink-0 text-[12px] font-semibold text-bn-text-secondary">
+						<span className="w-14 shrink-0 text-bn-sm font-semibold text-bn-text-secondary">
 							{MODE_LABEL[theme]}模式
 						</span>
 						<Picker
@@ -264,7 +264,7 @@ export function SkinSection() {
 				})}
 			</div>
 
-			<p className="mt-3 text-[11px] leading-5 text-bn-text-tertiary">
+			<p className="mt-3 text-bn-xs leading-5 text-bn-text-tertiary">
 				万一皮肤把界面弄得看不清:在地址栏加上{" "}
 				<code className="rounded-sm bg-bn-code-bg px-1">?skin=off</code>{" "}
 				访问,本次会话会强制默认装,再回这里恢复默认即可。
@@ -387,7 +387,7 @@ function SkinRow(props: {
 		<div className="flex items-center gap-3 rounded-bn-sm border border-bn-border-subtle bg-bn-surface-muted/60 px-3 py-2.5">
 			<div className="min-w-0 flex-1">
 				<div className="flex flex-wrap items-center gap-1.5">
-					<span className="text-[13px] font-semibold text-bn-text-primary">{props.name}</span>
+					<span className="text-bn-base font-semibold text-bn-text-primary">{props.name}</span>
 					{props.tags}
 					{props.usage.length > 0 ? (
 						<Pill color="var(--color-bn-pink)">
@@ -396,7 +396,7 @@ function SkinRow(props: {
 					) : null}
 				</div>
 				{props.desc ? (
-					<div className="mt-0.5 truncate text-[11px] text-bn-text-secondary">{props.desc}</div>
+					<div className="mt-0.5 truncate text-bn-xs text-bn-text-secondary">{props.desc}</div>
 				) : null}
 			</div>
 			<div className="flex shrink-0 items-center gap-1.5">
@@ -475,7 +475,7 @@ function SkinGuideModal({ onClose }: { onClose: (warnings?: string[]) => void })
 	return (
 		// onCancel 被 ModalShell 拿去当遮罩的 onClick,裸传会把 MouseEvent 灌进 warnings。
 		<ModalShell onCancel={() => onClose()} width={520} title="制作皮肤">
-			<div className="space-y-3 text-[12.5px] leading-6 text-bn-text-primary">
+			<div className="space-y-3 text-bn-sm leading-6 text-bn-text-primary">
 				{/*
 				  这条路(找外部 AI + 粘 JSON)不再是唯一的了 —— 女仆自己就能做。
 				  但那个入口在聊天页,主人站在这个弹窗前是看不见的,所以在这儿指一下路。
@@ -501,9 +501,9 @@ function SkinGuideModal({ onClose }: { onClose: (warnings?: string[]) => void })
 					value={json}
 					onChange={(e) => setJson(e.target.value)}
 					placeholder='把 AI 给的 skin.json 粘到这里,形如 {"schemaVersion":1,...}'
-					className="h-40 w-full resize-y rounded-lg border border-bn-border bg-bn-field p-2.5 font-mono text-[11.5px] text-bn-text-primary outline-none focus:border-bn-pink"
+					className="h-40 w-full resize-y rounded-lg border border-bn-border bg-bn-field p-2.5 font-mono text-bn-xs text-bn-text-primary outline-none focus:border-bn-pink"
 				/>
-				<label className="flex items-center gap-2 text-[12px] text-bn-text-secondary">
+				<label className="flex items-center gap-2 text-bn-sm text-bn-text-secondary">
 					<span className="shrink-0">壁纸(可选):</span>
 					<input
 						type="file"

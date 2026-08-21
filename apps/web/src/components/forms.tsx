@@ -45,9 +45,9 @@ export function Field({ code, label, hint, required, full, children }: FieldProp
 		>
 			<div className={`pt-1 ${full ? "flex-none" : "flex-none basis-50"}`}>
 				<div className="mb-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-					<span className="text-[12.5px] font-semibold text-bn-text-primary">{effectiveLabel}</span>
-					{required ? <span className="text-[11px] text-bn-danger">*</span> : null}
-					<code className="rounded-sm bg-bn-code-bg px-1.5 py-px font-mono text-[10.5px] text-bn-text-tertiary">
+					<span className="text-bn-sm font-semibold text-bn-text-primary">{effectiveLabel}</span>
+					{required ? <span className="text-bn-xs text-bn-danger">*</span> : null}
+					<code className="rounded-sm bg-bn-code-bg px-1.5 py-px font-mono text-bn-2xs text-bn-text-tertiary">
 						{code}
 					</code>
 					{reset ? (
@@ -59,7 +59,7 @@ export function Field({ code, label, hint, required, full, children }: FieldProp
 					) : null}
 				</div>
 				{effectiveHint ? (
-					<div className="text-[11px] leading-snug text-bn-text-secondary">{effectiveHint}</div>
+					<div className="text-bn-xs leading-snug text-bn-text-secondary">{effectiveHint}</div>
 				) : null}
 			</div>
 			<div className="flex min-w-0 flex-1 flex-col items-stretch gap-1.5">
@@ -83,11 +83,11 @@ function DefaultUpdateNotice({ update }: { update: FieldUpdate }) {
 			data-template-update
 			className="rounded-bn-card border border-bn-warning-border bg-bn-warning-soft px-2.5 py-2"
 		>
-			<div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold text-bn-warning-text">
+			<div className="mb-1.5 flex items-center gap-1.5 text-bn-xs font-bold text-bn-warning-text">
 				<Icon.sparkle className="h-3 w-3" />
 				默认文案有更新
 			</div>
-			<pre className="mb-2 max-h-24 overflow-auto whitespace-pre-wrap break-all rounded-md bg-bn-code-bg px-2 py-1.5 font-mono text-[10.5px] leading-relaxed text-bn-text-secondary">
+			<pre className="mb-2 max-h-24 overflow-auto whitespace-pre-wrap break-all rounded-md bg-bn-code-bg px-2 py-1.5 font-mono text-bn-2xs leading-relaxed text-bn-text-secondary">
 				{update.preview}
 			</pre>
 			<div className="flex flex-wrap gap-2">
@@ -108,7 +108,7 @@ function DefaultUpdateNotice({ update }: { update: FieldUpdate }) {
 const DISABLED_FIELD = "disabled:cursor-not-allowed disabled:opacity-60";
 
 const INPUT_BASE =
-	"h-[30px] rounded-md border border-bn-border bg-bn-field px-2.5 text-[12.5px] text-bn-text-primary outline-none focus:border-bn-pink focus:ring-1 focus:ring-bn-pink/30";
+	"h-[30px] rounded-md border border-bn-border bg-bn-field px-2.5 text-bn-sm text-bn-text-primary outline-none focus:border-bn-pink focus:ring-1 focus:ring-bn-pink/30";
 
 /**
  * 皮肤的 `input` 挂点。库里的 `Input` 原语自己挂了,但全站只用 7 次;设置面板的
@@ -209,7 +209,7 @@ export function TArea({
 			disabled={disabled}
 			aria-label={ariaLabel}
 			data-bn={INPUT_HOOK}
-			className={`min-w-0 w-full resize-y rounded-md border border-bn-border bg-bn-field px-2.5 py-2 text-[12.5px] leading-relaxed text-bn-text-primary outline-none focus:border-bn-pink focus:ring-1 focus:ring-bn-pink/30 ${mono ? "font-mono" : ""} ${DISABLED_FIELD}`}
+			className={`min-w-0 w-full resize-y rounded-md border border-bn-border bg-bn-field px-2.5 py-2 text-bn-sm leading-relaxed text-bn-text-primary outline-none focus:border-bn-pink focus:ring-1 focus:ring-bn-pink/30 ${mono ? "font-mono" : ""} ${DISABLED_FIELD}`}
 		/>
 	);
 }
@@ -238,7 +238,7 @@ export function TNum({ value, onChange, min, max, step = 1, suffix, width = 80 }
 				className={`${INPUT_BASE} text-left font-mono`}
 				style={{ width }}
 			/>
-			{suffix ? <span className="text-[11.5px] text-bn-text-secondary">{suffix}</span> : null}
+			{suffix ? <span className="text-bn-xs text-bn-text-secondary">{suffix}</span> : null}
 		</div>
 	);
 }
@@ -326,7 +326,7 @@ export function TColor({ value, onChange }: TColorProps) {
 				}}
 				placeholder="#rrggbb"
 				spellCheck={false}
-				className={`w-22 rounded-md border bg-bn-field px-2 py-1 font-mono text-[11.5px] outline-none transition-colors ${
+				className={`w-22 rounded-md border bg-bn-field px-2 py-1 font-mono text-bn-xs outline-none transition-colors ${
 					valid
 						? "border-bn-border text-bn-text-primary focus:border-bn-pink"
 						: "border-bn-danger-border text-bn-danger-text focus:border-bn-danger-text"
@@ -368,7 +368,7 @@ export function Picker<T extends string | number | boolean>({
 						// 样式字符串。aria-pressed 让「选的是哪个」成为可查询的事实。
 						aria-pressed={active}
 						data-bn="btn"
-						className={`rounded-sm px-3 py-1 text-[11.5px] font-semibold transition ${
+						className={`rounded-sm px-3 py-1 text-bn-xs font-semibold transition ${
 							active ? "bg-bn-surface-strong text-bn-pink shadow-sm" : "text-bn-text-tertiary"
 						}`}
 						style={active && o.color ? { color: o.color } : undefined}
@@ -438,7 +438,7 @@ export function LogLevelPicker({ value, onChange, allowInherit }: LogLevelPicker
 /** 行号徽标。宽度固定,好让两个编辑器的行首在同一条竖线上对齐。 */
 function RowIndex({ n }: { n: number }) {
 	return (
-		<span className="grid h-7.5 w-5.5 place-items-center font-mono text-[11px] text-bn-text-secondary">
+		<span className="grid h-7.5 w-5.5 place-items-center font-mono text-bn-xs text-bn-text-secondary">
 			{n}
 		</span>
 	);
@@ -466,7 +466,7 @@ function AddRowButton({ onClick, children }: { onClick: () => void; children: Re
 			type="button"
 			onClick={onClick}
 			data-bn="btn"
-			className="h-7.5 rounded-md border border-dashed border-bn-border bg-bn-field/60 text-[12px] text-bn-text-secondary hover:bg-bn-surface"
+			className="h-7.5 rounded-md border border-dashed border-bn-border bg-bn-field/60 text-bn-sm text-bn-text-secondary hover:bg-bn-surface"
 		>
 			{children}
 		</button>
@@ -558,7 +558,7 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 								onChange(n);
 							}}
 						/>
-						<span className="text-[11px] text-bn-text-tertiary">至</span>
+						<span className="text-bn-xs text-bn-text-tertiary">至</span>
 						<HourSelect
 							value={r.end}
 							onChange={(h) => {
@@ -567,7 +567,7 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 								onChange(n);
 							}}
 						/>
-						<span className="flex items-center gap-1 text-[10.5px] text-bn-text-tertiary">
+						<span className="flex items-center gap-1 text-bn-2xs text-bn-text-tertiary">
 							{crossMidnight ? (
 								"(跨次日)"
 							) : r.start === r.end ? (

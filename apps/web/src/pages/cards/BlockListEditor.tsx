@@ -64,13 +64,13 @@ function MarginInput({
 }) {
 	if (locked) {
 		return (
-			<span className="text-[10px] text-bn-text-tertiary" title="第一个模块的上边距由卡片框架固定">
+			<span className="text-bn-2xs text-bn-text-tertiary" title="第一个模块的上边距由卡片框架固定">
 				上边距 固定
 			</span>
 		);
 	}
 	return (
-		<label className="flex items-center gap-0.5 text-[10px] text-bn-text-tertiary">
+		<label className="flex items-center gap-0.5 text-bn-2xs text-bn-text-tertiary">
 			上边距
 			<input
 				type="number"
@@ -80,7 +80,7 @@ function MarginInput({
 					onChange(Number.isFinite(n) && n !== 0 ? n : undefined);
 				}}
 				data-bn="input"
-				className="w-9 rounded-sm border border-bn-border-subtle bg-bn-field px-1 py-0.5 text-center text-[11px] text-bn-text-primary"
+				className="w-9 rounded-sm border border-bn-border-subtle bg-bn-field px-1 py-0.5 text-center text-bn-xs text-bn-text-primary"
 			/>
 			px
 		</label>
@@ -132,7 +132,7 @@ function SortableRow({
 				setActivatorNodeRef={setActivatorNodeRef}
 			/>
 			<span
-				className={`flex-1 text-[13px] font-medium ${
+				className={`flex-1 text-bn-base font-medium ${
 					isDivider
 						? "italic text-bn-text-tertiary"
 						: block.visible

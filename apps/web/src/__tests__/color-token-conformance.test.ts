@@ -45,9 +45,9 @@ const COLOR_PREFIXES = [
 	"placeholder",
 ] as const;
 
-// `hover:border-bn-accent/60` → 捕获 `bn-accent`(前缀修饰符无所谓;`/60` 透明度后缀
-// 因为 `/` 不在字符集里会自然截断)。
-const USAGE_RE = new RegExp(`\\b(?:${COLOR_PREFIXES.join("|")})-(bn-[a-z0-9-]+)`, "g");
+// `hover:border-bn-accent/60` → 捕获前缀 `border` 与 token `bn-accent`(前缀修饰符
+// 无所谓;`/60` 透明度后缀因为 `/` 不在字符集里会自然截断)。
+const USAGE_RE = new RegExp(`\\b(${COLOR_PREFIXES.join("|")})-(bn-[a-z0-9-]+)`, "g");
 
 function listTsxRecursive(dir: string): string[] {
 	const acc: string[] = [];
@@ -66,12 +66,28 @@ function definedColorTokens(): Set<string> {
 	return new Set(found.map((m) => m.replace(/--color-|\s*:/g, "")));
 }
 
+/**
+ * 已定义的**字号** token(`--text-bn-xs` → `bn-xs`)。
+ *
+ * `text-` 这一个前缀横跨两个 namespace:`text-bn-text-primary` 是颜色
+ * (`--color-bn-*`)、`text-bn-xs` 是字号(`--text-bn-*`)。守卫要是只认颜色那一半,
+ * 字号阶梯一落地就会被整片报成「token 未定义」。其余前缀(bg / border / ring …)
+ * 没有这个歧义,只查颜色。
+ */
+function definedSizeTokens(): Set<string> {
+	const css = readFileSync(UI_THEME, "utf8");
+	const found = css.match(/--text-(bn-[a-z0-9-]+)\s*:/g) ?? [];
+	return new Set(found.map((m) => m.replace(/--text-|\s*:/g, "")));
+}
+
 describe("颜色 token conformance", () => {
 	it("所有 bn-* 颜色类都引用 styles.css 里真实定义的 token", () => {
 		const defined = definedColorTokens();
+		const sizes = definedSizeTokens();
 		// 定义集自身得先是像样的 —— 否则正则一改就悄悄退化成「空集,人人合格」。
 		expect(defined.size).toBeGreaterThan(10);
 		expect(defined.has("bn-pink")).toBe(true);
+		expect(sizes.has("bn-xs")).toBe(true);
 
 		const offenders: Array<{ token: string; file: string }> = [];
 		for (const file of [
@@ -82,7 +98,8 @@ describe("颜色 token conformance", () => {
 		]) {
 			const src = readFileSync(file, "utf8");
 			for (const m of src.matchAll(USAGE_RE)) {
-				const token = m[1];
+				const [, prefix, token] = m;
+				if (prefix === "text" && token && sizes.has(token)) continue;
 				if (token && !defined.has(token)) {
 					offenders.push({ token, file: file.slice(SRC_DIR.length + 1) });
 				}
@@ -407,5 +424,56 @@ describe("叠放层级走分层表", () => {
 			}
 		}
 		expect([...used].filter((u) => !defined.has(u))).toEqual([]);
+	});
+});
+
+/**
+ * **字号走阶梯,不写 `text-[Npx]`。**
+ *
+ * 收编前站里 454 处写死的字号漂成 21 个值,从 9px 到 32px,半档遍地:同样是配
+ * `text-bn-text-tertiary` 的小字注脚,10 / 10.5 / 11 / 11.5 四个档都有人用,肉眼
+ * 分不出却各写各的。归并成 9 档之后字号进了 `@theme`,皮肤也才有的可调。
+ *
+ * 只拦**绝对像素**。`text-[0.88em]` 那种相对单位是另一回事 —— 它说的是「比父级
+ * 小一点」(markdown 里的行内 code),跟阶梯不冲突,换个阶梯档反而会写死死。
+ *
+ * `packages/image` 不在扫描范围:那是 SSR 卡片渲染器,自带一套样式正本
+ * (`packages/image/src/styles.ts`),跟前端的 theme.css 无关。
+ */
+describe("字号走阶梯", () => {
+	const PX_RE = /\btext-\[[0-9.]+px\]/g;
+	const ROOTS = [
+		[SRC_DIR, "apps/web/src"],
+		[UI_SRC_DIR, "packages/ui/src"],
+		[join(SRC_DIR, "../../desktop/src"), "apps/desktop/src"],
+	] as const;
+
+	it("三个端里都没有写死的像素字号", () => {
+		const findings: string[] = [];
+		for (const [root, label] of ROOTS) {
+			for (const file of listTsxRecursive(root)) {
+				const src = readFileSync(file, "utf8")
+					.replace(/\/\*[\s\S]*?\*\//g, "")
+					.replace(/\/\/.*$/gm, "");
+				const hits = [...new Set([...src.matchAll(PX_RE)].map((m) => m[0]))];
+				if (hits.length > 0) {
+					findings.push(`${label}/${file.slice(root.length + 1)}: ${hits.join(" ")}`);
+				}
+			}
+		}
+		expect(findings).toEqual([]);
+	});
+
+	it("阶梯是**单调**的 —— 档名排下来字号必须一档比一档大", () => {
+		const css = readFileSync(UI_THEME, "utf8");
+		const ORDER = ["micro", "2xs", "xs", "sm", "base", "md", "lg", "xl", "hero"];
+		const px = ORDER.map((name) => {
+			const m = new RegExp(`--text-bn-${name}:\\s*([0-9.]+)px`).exec(css);
+			return m ? Number(m[1]) : Number.NaN;
+		});
+		// 每一档都得真在表里 —— 否则 NaN 会让下面的比较静默放行。
+		expect(px.filter(Number.isNaN)).toEqual([]);
+		expect(px).toEqual([...px].sort((a, b) => a - b));
+		expect(new Set(px).size).toBe(px.length);
 	});
 });

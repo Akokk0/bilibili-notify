@@ -139,12 +139,12 @@ export function CommandsSettings({
 								className="rounded-md border border-bn-border-subtle bg-bn-surface/60 px-2.5 py-2"
 							>
 								<div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-									<code className="rounded-sm bg-bn-code-bg px-1.5 py-px font-mono text-[11.5px] font-bold text-bn-text-primary">
+									<code className="rounded-sm bg-bn-code-bg px-1.5 py-px font-mono text-bn-xs font-bold text-bn-text-primary">
 										{cfg.prefix}
 										{cmd.name}
 										{cmd.usage ? ` ${cmd.usage}` : ""}
 									</code>
-									<span className="text-[11.5px] text-bn-text-tertiary">{cmd.description}</span>
+									<span className="text-bn-xs text-bn-text-tertiary">{cmd.description}</span>
 									{isOverridden(cmd) ? (
 										<Btn
 											variant="ghost"
@@ -162,13 +162,13 @@ export function CommandsSettings({
 									placeholder="别名,用空格分隔;留空则只认主名"
 								/>
 								{cmd.example ? (
-									<div className="mt-1 font-mono text-[11px] text-bn-text-tertiary">
+									<div className="mt-1 font-mono text-bn-xs text-bn-text-tertiary">
 										例：{cfg.prefix}
 										{cmd.name} {cmd.example}
 									</div>
 								) : null}
 								{cmd.details ? (
-									<div className="mt-1 text-[11px] text-bn-text-tertiary">{cmd.details}</div>
+									<div className="mt-1 text-bn-xs text-bn-text-tertiary">{cmd.details}</div>
 								) : null}
 							</div>
 						))}

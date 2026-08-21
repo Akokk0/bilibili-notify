@@ -76,11 +76,11 @@ export function ModalShell({
 					// 该贴着它,而不是与下面的正文等距。
 					<div className={description ? "mb-4" : "mb-3"}>
 						{title ? (
-							<div className="text-[15px] font-bold text-bn-text-primary">{title}</div>
+							<div className="text-bn-md font-bold text-bn-text-primary">{title}</div>
 						) : null}
 						{description ? (
 							<div
-								className={`text-[13px] leading-relaxed text-bn-text-secondary ${title ? "mt-1.5" : ""}`}
+								className={`text-bn-base leading-relaxed text-bn-text-secondary ${title ? "mt-1.5" : ""}`}
 							>
 								{description}
 							</div>

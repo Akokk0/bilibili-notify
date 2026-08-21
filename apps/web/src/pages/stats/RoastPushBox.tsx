@@ -65,14 +65,14 @@ export function RoastPushBox({
 
 	return (
 		<div className="rounded-bn-card border border-bn-border-subtle bg-bn-surface-muted p-3">
-			<div className="mb-1.5 text-[10.5px] font-bold tracking-wide" style={{ color: AI_PURPLE }}>
+			<div className="mb-1.5 text-bn-2xs font-bold tracking-wide" style={{ color: AI_PURPLE }}>
 				{label}
 			</div>
 			<div className="text-xs leading-relaxed text-bn-text-tertiary">{text}</div>
 
 			<div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-bn-border-subtle pt-2.5">
 				{targets.length === 0 ? (
-					<span className="text-[11px] text-bn-text-tertiary">
+					<span className="text-bn-xs text-bn-text-tertiary">
 						{targetsQuery.isPending ? "正在读取推送目标…" : "还没有启用的推送目标"}
 					</span>
 				) : (
@@ -82,7 +82,7 @@ export function RoastPushBox({
 							value={targetId}
 							onChange={(e) => onPick(e.target.value)}
 							data-bn="input"
-							className="min-w-40 rounded-lg border border-bn-border bg-bn-field px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
+							className="min-w-40 rounded-lg border border-bn-border bg-bn-field px-2.5 py-1.5 text-bn-sm text-bn-text-secondary"
 						>
 							{targets.map((t) => (
 								<option key={t.id} value={t.id}>
@@ -102,9 +102,9 @@ export function RoastPushBox({
 				)}
 
 				{err ? (
-					<span className="text-[11px] text-bn-danger-text">推送失败:{err}</span>
+					<span className="text-bn-xs text-bn-danger-text">推送失败:{err}</span>
 				) : push.data?.ok ? (
-					<span className="text-[11px] text-bn-success-text">
+					<span className="text-bn-xs text-bn-success-text">
 						✓ 已推送（{push.data.mode === "image" ? "卡片图" : "文字"}）
 					</span>
 				) : null}

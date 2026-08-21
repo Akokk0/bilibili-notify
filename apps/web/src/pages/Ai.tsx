@@ -200,7 +200,7 @@ function packIsland(ai: AISettings, levelOverride: AiLogLevel, providerKeys: rea
  */
 function FieldNote({ children }: { children: React.ReactNode }) {
 	return (
-		<div className="rounded-lg border border-bn-border-subtle bg-bn-surface-muted px-3 py-2 text-[11.5px] leading-relaxed text-bn-text-secondary">
+		<div className="rounded-lg border border-bn-border-subtle bg-bn-surface-muted px-3 py-2 text-bn-xs leading-relaxed text-bn-text-secondary">
 			{children}
 		</div>
 	);
@@ -220,7 +220,7 @@ function GhostButton({ onClick, children }: { onClick: () => void; children: Rea
 			type="button"
 			onClick={onClick}
 			data-bn="btn"
-			className="inline-flex items-center justify-center gap-1.5 rounded-md border border-bn-border px-2.5 py-1 text-[11.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
+			className="inline-flex items-center justify-center gap-1.5 rounded-md border border-bn-border px-2.5 py-1 text-bn-xs font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
 		>
 			{children}
 		</button>
@@ -461,7 +461,7 @@ export default function Ai() {
 						<Icon.ai size={26} />
 					</div>
 					<div className="flex-1">
-						<div className="flex items-center gap-2 text-[15.5px] font-bold text-bn-text-primary">
+						<div className="flex items-center gap-2 text-bn-md font-bold text-bn-text-primary">
 							智能女仆 · {globalPersona.name || "女仆"}
 							<span data-hero-model>
 								<Pill color="var(--color-bn-purple)" subtle size="sm">
@@ -488,7 +488,7 @@ export default function Ai() {
 			    引擎不会创建实例、发图与点评一律回 400。不偷偷替主人把开关关掉
 			    (那是改主人存过的值),也不做点不动的置灰开关,只把话说明白。 */}
 			{draft.enabled && rail.length === 0 ? (
-				<div className="rounded-bn-card border border-bn-warning-border bg-bn-warning-soft px-4 py-3 text-[12.5px] leading-relaxed text-bn-warning-text">
+				<div className="rounded-bn-card border border-bn-warning-border bg-bn-warning-soft px-4 py-3 text-bn-sm leading-relaxed text-bn-warning-text">
 					AI 总开关是开着的，但<strong>一家服务商都还没添加</strong>
 					，所以女仆此刻并不会真的写点评。到下面添加一家、填好模型与密钥就好了
 				</div>

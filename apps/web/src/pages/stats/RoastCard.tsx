@@ -74,7 +74,7 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 									className="rounded-bn-card border border-bn-border-subtle bg-bn-surface-muted px-3 py-2.5"
 								>
 									<div
-										className="mb-1.5 flex items-center gap-1 text-[10.5px] font-bold"
+										className="mb-1.5 flex items-center gap-1 text-bn-2xs font-bold"
 										style={{ color }}
 									>
 										<Glyph size={12} />
@@ -91,7 +91,7 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 											{nameOf(who.uid)}
 										</span>
 									</div>
-									<div className="text-[11.5px] leading-relaxed text-bn-text-tertiary">
+									<div className="text-bn-xs leading-relaxed text-bn-text-tertiary">
 										{who.reason}
 									</div>
 								</div>
@@ -125,14 +125,14 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 
 					<div className="rounded-bn-card border border-bn-border-subtle p-3.5">
 						<div className="text-xs font-bold text-bn-text-primary">综合勤奋度评分</div>
-						<div className="mb-3 text-[10.5px] text-bn-text-secondary">
+						<div className="mb-3 text-bn-2xs text-bn-text-secondary">
 							由女仆依据本期数据评分 · 0–100
 						</div>
 						<div className="flex flex-col gap-2.5">
 							{[...result.scores]
 								.sort((a, b) => b.score - a.score)
 								.map((s) => (
-									<div key={s.uid} className="flex items-center gap-2 text-[11.5px]">
+									<div key={s.uid} className="flex items-center gap-2 text-bn-xs">
 										<span className="w-16 truncate font-semibold text-bn-text-primary">
 											{nameOf(s.uid)}
 										</span>

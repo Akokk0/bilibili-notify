@@ -99,7 +99,7 @@ function SortableBlockRow({
 					style={{ background: isSplit ? "var(--color-bn-inactive)" : accent }}
 				/>
 				<span
-					className={`flex-1 text-[12.5px] font-bold ${
+					className={`flex-1 text-bn-sm font-bold ${
 						isSplit
 							? "italic text-bn-text-tertiary"
 							: block.visible
@@ -118,7 +118,7 @@ function SortableBlockRow({
 						(PART_LABELS[block.type] ?? block.type)
 					)}
 					{!isSplit && PART_HINTS[block.type] ? (
-						<span className="ml-2 text-[11px] font-normal text-bn-text-tertiary">
+						<span className="ml-2 text-bn-xs font-normal text-bn-text-tertiary">
 							{PART_HINTS[block.type]}
 						</span>
 					) : null}
@@ -214,7 +214,7 @@ export function MessageLayoutEditor({
 					<Icon.plus size={13} />
 					插入分条符
 				</AddButton>
-				<span className="text-[11px] text-bn-text-tertiary">
+				<span className="text-bn-xs text-bn-text-tertiary">
 					分条符把一次推送切成多条消息;某条发送失败时,该目标的后续条会中止
 				</span>
 			</div>
@@ -232,7 +232,7 @@ export function MessageLayoutEditor({
 			</Field>
 
 			<div
-				className="rounded-lg border px-3 py-2 text-[11.5px] leading-6 text-bn-text-secondary"
+				className="rounded-lg border px-3 py-2 text-bn-xs leading-6 text-bn-text-secondary"
 				style={{
 					borderColor: `color-mix(in srgb, ${accent} 27%, transparent)`,
 					background: `color-mix(in srgb, ${accent} 6%, transparent)`,

@@ -279,7 +279,7 @@ export function MessageList({
  * 主人那半边的一条消息。**在途副本与落盘真身共用它** —— 样式一致才能在 done
  * 到达、真身替换上来的那一刻毫无痕迹地交接。
  *
- * (从前这里是复制的两份 className,其中一份还漏了个空格、把 `text-[15px]` 粘成
+ * (从前这里是复制的两份 className,其中一份还漏了个空格、把 `text-bn-md` 粘成
  * 了 `py-2.75ext-[15px]`,于是真身接手时字号会跳一下。现在由构造本身保证一致。)
  */
 function UserTurn({
@@ -307,7 +307,7 @@ function UserTurn({
 			) : null}
 			{/* 只有图没有字时不画空气泡 —— 那会是一小块突兀的色块。 */}
 			{text ? (
-				<div className="bn-glass bn-chat-bubble-user max-w-[74%] whitespace-pre-wrap wrap-break-word rounded-bn-lg rounded-br-[7px] px-4.25 py-2.75 text-[15px] leading-relaxed text-bn-text-primary">
+				<div className="bn-glass bn-chat-bubble-user max-w-[74%] whitespace-pre-wrap wrap-break-word rounded-bn-lg rounded-br-[7px] px-4.25 py-2.75 text-bn-md leading-relaxed text-bn-text-primary">
 					{text}
 				</div>
 			) : null}
@@ -376,7 +376,7 @@ function AssistantTurn({
 			    Markdown 渲染出来的是块元素,跟在它们后面的 span 会掉到下一行去。 */}
 			{text ? (
 				<div
-					className={`wrap-break-word text-[15px] leading-[1.78] text-bn-text-primary ${
+					className={`wrap-break-word text-bn-md leading-[1.78] text-bn-text-primary ${
 						caret ? "bn-chat-md-caret" : ""
 					}`}
 				>
@@ -429,11 +429,11 @@ function CollapsibleNote({
 				type="button"
 				aria-expanded={open}
 				onClick={() => setOpen((v) => !v)}
-				className="bn-glass flex w-fit cursor-pointer items-center gap-1.5 rounded-bn-card px-2.25 py-0.75 text-[11.5px] font-semibold text-bn-text-tertiary transition-colors hover:bg-(--bn-glass-strong-bg) hover:text-bn-text-secondary"
+				className="bn-glass flex w-fit cursor-pointer items-center gap-1.5 rounded-bn-card px-2.25 py-0.75 text-bn-xs font-semibold text-bn-text-tertiary transition-colors hover:bg-(--bn-glass-strong-bg) hover:text-bn-text-secondary"
 			>
 				{icon}
 				{label}
-				<span aria-hidden="true" className="text-[9px] opacity-70">
+				<span aria-hidden="true" className="text-bn-micro opacity-70">
 					{open ? "▾" : "▸"}
 				</span>
 			</button>
@@ -465,7 +465,7 @@ function ThinkingBlock({
 			{/* 草稿要**一眼让位给正文**:比正文小两号(12px vs 15px)、行距收紧、
 			    颜色再退半档(opacity),配一条安静的左线 —— 引用式排版本身就在说
 			    「这不是回答」。截图反馈过的问题正是它和正文长得太像、喧宾夺主。 */}
-			<div className="whitespace-pre-wrap wrap-break-word border-l-2 border-bn-border pl-3.5 text-[12px] leading-[1.7] text-bn-text-tertiary opacity-[0.88]">
+			<div className="whitespace-pre-wrap wrap-break-word border-l-2 border-bn-border pl-3.5 text-bn-sm leading-[1.7] text-bn-text-tertiary opacity-[0.88]">
 				{text}
 			</div>
 		</CollapsibleNote>
@@ -493,7 +493,7 @@ function SourcesBlock({
 			}
 			label={<>来源 · {sources.length}</>}
 		>
-			<ol className="flex list-none flex-col gap-1 border-l-2 border-bn-border pl-3.5 text-[12px] leading-[1.7]">
+			<ol className="flex list-none flex-col gap-1 border-l-2 border-bn-border pl-3.5 text-bn-sm leading-[1.7]">
 				{sources.map((s, i) => (
 					<li key={s.url} className="truncate">
 						<span className="text-bn-text-tertiary">{i + 1}. </span>
@@ -554,7 +554,7 @@ function ToolChips({
 						: null;
 				const key = toolArgKey(t.name, argText);
 				const open = openKeys.has(key);
-				const chipClass = `bn-glass hover:bg-(--bn-glass-strong-bg) flex max-w-full items-center gap-1.5 rounded-bn-card px-2.25 py-0.75 text-[11.5px] text-bn-text-tertiary${clipped ? " cursor-pointer transition-colors hover:text-bn-text-secondary" : ""}`;
+				const chipClass = `bn-glass hover:bg-(--bn-glass-strong-bg) flex max-w-full items-center gap-1.5 rounded-bn-card px-2.25 py-0.75 text-bn-xs text-bn-text-tertiary${clipped ? " cursor-pointer transition-colors hover:text-bn-text-secondary" : ""}`;
 				// 两条分支只差 button/span 这一个壳,属性一份就够 —— 分开抄的话,
 				// 加一个属性要记得加两处。
 				const chipProps = {
@@ -584,7 +584,7 @@ function ToolChips({
 						    活着」这个信号挤掉不行。 */}
 						{progress ? <span className="shrink-0 tabular-nums opacity-70">{progress}</span> : null}
 						{clipped ? (
-							<span aria-hidden="true" className="shrink-0 text-[9px] opacity-70">
+							<span aria-hidden="true" className="shrink-0 text-bn-micro opacity-70">
 								{open ? "▾" : "▸"}
 							</span>
 						) : null}
@@ -610,7 +610,7 @@ function ToolChips({
 						    小条拆成两层布局。排版照思考块的引用式来 —— 这是**她收到的
 						    需求原文**,不是回答;也刻意不给底色,免得玻璃叠玻璃。 */}
 						{open ? (
-							<p className="w-full whitespace-pre-wrap wrap-break-word border-bn-border border-l-2 pl-3 text-[11.5px] text-bn-text-tertiary leading-[1.7]">
+							<p className="w-full whitespace-pre-wrap wrap-break-word border-bn-border border-l-2 pl-3 text-bn-xs text-bn-text-tertiary leading-[1.7]">
 								{argText}
 							</p>
 						) : null}

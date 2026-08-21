@@ -56,19 +56,19 @@ function ToastCard({ item }: { item: ToastItem }) {
 			</div>
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center justify-between gap-2">
-					<span className="text-[12.5px] font-bold text-bn-text-primary">
+					<span className="text-bn-sm font-bold text-bn-text-primary">
 						{meta.eventLabel}
 						{item.ok ? null : (
-							<span className="ml-1.5 text-[10.5px] font-semibold text-bn-danger">推送失败</span>
+							<span className="ml-1.5 text-bn-2xs font-semibold text-bn-danger">推送失败</span>
 						)}
 					</span>
-					<span className="font-mono text-[10.5px] text-bn-text-tertiary">{time}</span>
+					<span className="font-mono text-bn-2xs text-bn-text-tertiary">{time}</span>
 				</div>
-				<div className="mt-0.5 text-[11px] text-bn-text-secondary">
+				<div className="mt-0.5 text-bn-xs text-bn-text-secondary">
 					<span className="font-mono">UID {item.uid}</span>
 				</div>
 				{item.text ? (
-					<div className="mt-1 line-clamp-2 text-[11.5px] leading-snug text-bn-text-primary">
+					<div className="mt-1 line-clamp-2 text-bn-xs leading-snug text-bn-text-primary">
 						{item.text}
 					</div>
 				) : null}

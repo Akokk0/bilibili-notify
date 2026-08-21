@@ -130,7 +130,7 @@ export function BackupSection() {
 			icon={<Icon.download size={14} />}
 			badge="导出 / 导入"
 		>
-			<div className="text-[12px] leading-relaxed text-bn-text-secondary">
+			<div className="text-bn-sm leading-relaxed text-bn-text-secondary">
 				<span className="font-semibold text-bn-text-primary">完整备份</span>
 				：含机密（B 站 Cookie、AI Key、适配器凭据），用 6 位 PIN 加密，用于换机 / 灾备还原。
 				<br />

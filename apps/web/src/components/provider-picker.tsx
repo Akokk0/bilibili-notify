@@ -48,7 +48,7 @@ export function ProviderPicker({ value, onChange, only }: ProviderPickerProps) {
 					>
 						<ProviderLogo id={p.id} />
 						<span
-							className={`text-[11.5px] font-semibold ${active ? "" : "text-bn-text-tertiary"}`}
+							className={`text-bn-xs font-semibold ${active ? "" : "text-bn-text-tertiary"}`}
 							style={active ? { color: brand.color } : undefined}
 						>
 							{p.label}

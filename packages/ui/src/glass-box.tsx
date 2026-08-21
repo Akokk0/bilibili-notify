@@ -54,7 +54,7 @@ export function GlassBox({
 				) : null}
 				<div className="min-w-0 flex-1">
 					<div className="flex items-center gap-2">
-						<span className="text-[13.5px] font-bold tracking-tight text-bn-text-primary">
+						<span className="text-bn-base font-bold tracking-tight text-bn-text-primary">
 							{title}
 						</span>
 						{badge ? (
@@ -64,7 +64,7 @@ export function GlassBox({
 						) : null}
 					</div>
 					{subtitle ? (
-						<div className="mt-0.5 text-[11px] text-bn-text-secondary">{subtitle}</div>
+						<div className="mt-0.5 text-bn-xs text-bn-text-secondary">{subtitle}</div>
 					) : null}
 				</div>
 				{right}
@@ -101,7 +101,7 @@ export function CollapseBlock({
 		<div className="mt-2.5 rounded-lg border px-3 py-2.5" style={style}>
 			<div className="flex items-center justify-between">
 				<span
-					className={`text-[12.5px] font-bold ${enabled ? "text-bn-text-primary" : "text-bn-text-secondary"}`}
+					className={`text-bn-sm font-bold ${enabled ? "text-bn-text-primary" : "text-bn-text-secondary"}`}
 				>
 					{label}
 				</span>

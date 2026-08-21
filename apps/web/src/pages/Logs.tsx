@@ -151,7 +151,7 @@ export default function Logs() {
 					value={source}
 					onChange={(e) => setSource(e.target.value)}
 					data-bn="input"
-					className="rounded-lg border border-bn-border bg-bn-field px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
+					className="rounded-lg border border-bn-border bg-bn-field px-2.5 py-1.5 text-bn-sm text-bn-text-secondary"
 				>
 					<option value="">全部来源</option>
 					{sources.map((s) => (
@@ -169,7 +169,7 @@ export default function Logs() {
 					max={todayStr()}
 					onChange={(e) => setDay(e.target.value)}
 					data-bn="input"
-					className="rounded-lg border border-bn-border bg-bn-field px-2.5 py-1.5 text-[12px] text-bn-text-secondary"
+					className="rounded-lg border border-bn-border bg-bn-field px-2.5 py-1.5 text-bn-sm text-bn-text-secondary"
 				/>
 				{!isLive && (
 					// 常亮 active:它没有未选中态 —— 一旦回到实时,这颗自己就不显示了。
@@ -198,7 +198,7 @@ export default function Logs() {
 				</ToneChip>
 			</div>
 
-			<div className="flex items-center justify-between px-1 text-[11px] text-bn-text-tertiary">
+			<div className="flex items-center justify-between px-1 text-bn-xs text-bn-text-tertiary">
 				<span>
 					{isLive ? "实时" : `归档 · ${day}`} · 显示 {displayed.length} 行
 					{paused ? " · 已冻结" : ""}
@@ -206,15 +206,13 @@ export default function Logs() {
 				{logsQuery.isLoading ? <span>加载中…</span> : null}
 			</div>
 
-			<div className="rounded-bn-sm border border-bn-border-subtle bg-bn-console-bg px-3 py-2.5 font-mono text-[12px] leading-relaxed">
+			<div className="rounded-bn-sm border border-bn-border-subtle bg-bn-console-bg px-3 py-2.5 font-mono text-bn-sm leading-relaxed">
 				{logsQuery.error ? (
 					<div className="text-bn-console-danger">
 						加载失败:{String((logsQuery.error as Error).message)}
 					</div>
 				) : displayed.length === 0 ? (
-					<div className="py-10 text-center text-[12px] text-bn-console-dim">
-						没有符合条件的日志
-					</div>
+					<div className="py-10 text-center text-bn-sm text-bn-console-dim">没有符合条件的日志</div>
 				) : (
 					// biome-ignore lint/suspicious/noArrayIndexKey: 日志行无稳定 id;append-only tail 视图,行不会原地重排,index 复用无状态副作用
 					displayed.map((e, i) => <LogRow key={`${e.ts}-${i}`} entry={e} />)

@@ -63,7 +63,7 @@ function NavEditorRow({ item, shown, locked }: { item: NavItem; shown: boolean; 
 				label={item.label}
 			/>
 			<label
-				className={`flex flex-1 items-center gap-2 text-[12.5px] ${
+				className={`flex flex-1 items-center gap-2 text-bn-sm ${
 					locked
 						? "cursor-not-allowed text-bn-text-tertiary"
 						: "cursor-pointer text-bn-text-primary"
@@ -135,7 +135,7 @@ function NavEditor({ onClose }: { onClose: () => void }) {
 			className="bn-glass-strong absolute right-0 top-full z-bn-nav mt-1 w-60 rounded-bn-card p-2 shadow-bn-card"
 		>
 			<div className="flex items-center justify-between gap-1 px-1 py-1">
-				<span className="text-[11.5px] font-bold text-bn-text-secondary">标签显示与排序</span>
+				<span className="text-bn-xs font-bold text-bn-text-secondary">标签显示与排序</span>
 				<div className="flex items-center gap-0.5">
 					<Btn variant="ghost" size="sm" onClick={showAll}>
 						全部显示
@@ -276,7 +276,7 @@ function ThemeSwitcher() {
 								}}
 							>
 								<span className="block">{o.label}</span>
-								<span className="block text-[10.5px] font-normal text-bn-text-secondary">
+								<span className="block text-bn-2xs font-normal text-bn-text-secondary">
 									{o.hint}
 								</span>
 							</MenuItem>
@@ -371,7 +371,7 @@ function ReachBadge({
 			: { box: "bg-bn-danger-soft text-bn-danger-text", dot: "bg-bn-danger" };
 	return (
 		<span
-			className={`inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-[11.5px] font-semibold ${cls.box}`}
+			className={`inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-bn-xs font-semibold ${cls.box}`}
 			title={title}
 		>
 			<span className={`h-1.5 w-1.5 rounded-full ${cls.dot}`} />
@@ -446,10 +446,10 @@ export function GlassHeader() {
 						<img alt="Bilibili Notify" src="/logo.png" className="h-13 w-auto object-contain" />
 					</div>
 					<div className="min-w-0">
-						<div className="text-[17px] font-bold tracking-tight text-bn-text-primary">
+						<div className="text-bn-lg font-bold tracking-tight text-bn-text-primary">
 							{headerTitle}
 						</div>
-						<div className="mt-0.5 truncate text-[11.5px] text-bn-text-secondary">
+						<div className="mt-0.5 truncate text-bn-xs text-bn-text-secondary">
 							<AccountChip />
 						</div>
 					</div>
@@ -493,7 +493,7 @@ export function GlassHeader() {
 						end
 						data-bn="btn"
 						className={({ isActive }) =>
-							`relative flex items-center gap-1.5 px-4 py-2.5 text-[13px] transition ${
+							`relative flex items-center gap-1.5 px-4 py-2.5 text-bn-base transition ${
 								isActive
 									? "font-bold text-bn-pink"
 									: "font-medium text-bn-text-tertiary hover:text-bn-text-primary"
@@ -505,7 +505,7 @@ export function GlassHeader() {
 								{t.label}
 								{t.countKey ? (
 									<span
-										className={`rounded-lg px-1.5 py-px text-[10px] font-bold ${
+										className={`rounded-lg px-1.5 py-px text-bn-2xs font-bold ${
 											isActive
 												? "bg-bn-pink/15 text-bn-pink"
 												: "bg-bn-code-bg text-bn-text-secondary"

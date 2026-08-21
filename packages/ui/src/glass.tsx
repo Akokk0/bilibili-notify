@@ -169,8 +169,8 @@ export function LoadingBlock({ label, hint, variant = "card", className }: Loadi
 			className={`flex flex-col items-center justify-center gap-3 text-center ${shell} ${className ?? ""}`}
 		>
 			<Spinner size={30} thickness={3} />
-			<div className="text-[13px] font-bold text-bn-text-secondary">{label}…</div>
-			{hint ? <div className="text-[11px] text-bn-text-tertiary">{hint}</div> : null}
+			<div className="text-bn-base font-bold text-bn-text-secondary">{label}…</div>
+			{hint ? <div className="text-bn-xs text-bn-text-tertiary">{hint}</div> : null}
 		</div>
 	);
 }

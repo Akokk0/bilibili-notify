@@ -29,7 +29,7 @@ describe("ModalShell 的标题槽", () => {
 		shell({ title: "新建适配器" });
 		const t = screen.getByText("新建适配器");
 		const cls = t.className.split(/\s+/);
-		for (const c of ["text-[15px]", "font-bold", "text-bn-text-primary"]) {
+		for (const c of ["text-bn-md", "font-bold", "text-bn-text-primary"]) {
 			expect([c, cls.includes(c)]).toEqual([c, true]);
 		}
 		expect(header()?.className).toContain("mb-3");
@@ -39,7 +39,7 @@ describe("ModalShell 的标题槽", () => {
 		shell({ title: "删除皮肤", description: "删除后不可恢复。" });
 		const d = screen.getByText("删除后不可恢复。");
 		const cls = d.className.split(/\s+/);
-		for (const c of ["mt-1.5", "text-[13px]", "leading-relaxed", "text-bn-text-secondary"]) {
+		for (const c of ["mt-1.5", "text-bn-base", "leading-relaxed", "text-bn-text-secondary"]) {
 			expect([c, cls.includes(c)]).toEqual([c, true]);
 		}
 		expect(header()?.className).toContain("mb-4");
@@ -77,9 +77,9 @@ describe("ConfirmDialog 走同一套标题槽", () => {
 				onCancel={() => {}}
 			/>,
 		);
-		expect(screen.getByText("丢弃修改").className).toContain("text-[15px]");
+		expect(screen.getByText("丢弃修改").className).toContain("text-bn-md");
 		const desc = screen.getByText("改动还没保存,确定要离开吗?");
-		expect(desc.className).toContain("text-[13px]");
+		expect(desc.className).toContain("text-bn-base");
 		expect(desc.className).toContain("text-bn-text-secondary");
 	});
 

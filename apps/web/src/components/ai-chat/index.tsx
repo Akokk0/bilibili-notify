@@ -112,7 +112,7 @@ export function AiChatDock() {
 			// 只有右下角还是圆头紫胶囊。皮肤 CSS 是无层 author 样式,压得过 `.bn-ai-fab`
 			// 所在的 `@layer components`,所以挂上就够了,默认装的观感一个像素都不变。
 			data-bn="btn btn-primary"
-			className="bn-ai-fab fixed bottom-5 right-5 z-bn-nav flex h-12 cursor-pointer items-center gap-2.25 rounded-bn-pill pl-4 pr-5 text-[13.5px] font-bold text-bn-on-solid shadow-bn-ai transition-shadow hover:shadow-bn-ai-lg"
+			className="bn-ai-fab fixed bottom-5 right-5 z-bn-nav flex h-12 cursor-pointer items-center gap-2.25 rounded-bn-pill pl-4 pr-5 text-bn-base font-bold text-bn-on-solid shadow-bn-ai transition-shadow hover:shadow-bn-ai-lg"
 		>
 			<Icon.ai size={20} />
 			女仆 AI
@@ -636,7 +636,7 @@ export function ChatPage() {
 				<button
 					type="button"
 					onClick={onClose}
-					className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass absolute right-4 top-4 z-bn-raised flex h-9.5 cursor-pointer items-center gap-1.75 rounded-bn-lg px-4 text-[12.5px] font-semibold text-bn-text-tertiary shadow-bn-card hover:bg-(--bn-glass-strong-bg) hover:shadow-bn-elev"
+					className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass absolute right-4 top-4 z-bn-raised flex h-9.5 cursor-pointer items-center gap-1.75 rounded-bn-lg px-4 text-bn-sm font-semibold text-bn-text-tertiary shadow-bn-card hover:bg-(--bn-glass-strong-bg) hover:shadow-bn-elev"
 				>
 					<Icon.arrowLeft size={15} />
 					返回控制台
@@ -651,13 +651,13 @@ export function ChatPage() {
 						/>
 						<div className="relative mx-auto w-full max-w-180">
 							<div className="bn-anim-fade-up mb-7.5 text-center">
-								<h1 className="mb-1.5 text-[32px] font-bold leading-tight tracking-tight text-bn-text-primary">
+								<h1 className="mb-1.5 text-bn-hero font-bold leading-tight tracking-tight text-bn-text-primary">
 									{greeting()}
 									<span className="bn-chat-accent-grad-x bg-clip-text text-transparent">
 										{userName}
 									</span>
 								</h1>
-								<div className="text-[15.5px] text-bn-text-secondary">
+								<div className="text-bn-md text-bn-text-secondary">
 									{skinMode
 										? "说说想要什么样的界面皮肤吧 —— 氛围、主色、深浅都可以聊;想要壁纸就把图发过来,她自己找不了图"
 										: `今天想让${persona.self}帮${persona.user}做点什么呢?`}
@@ -686,7 +686,7 @@ export function ChatPage() {
 							    之后,预置几枚胶囊就成了「我们替他挑的那五条」;而斜杠菜单本身
 							    就是完整目录,打一个 `/` 全在那儿。留一句引导语指路即可。 */}
 							{!skinMode && skills.length > 0 ? (
-								<div className="bn-anim-fade-up mt-4 text-center text-[12.5px] text-bn-text-tertiary">
+								<div className="bn-anim-fade-up mt-4 text-center text-bn-sm text-bn-text-tertiary">
 									打一个&nbsp;
 									<span className="bn-chat-accent rounded-bn-xs bg-bn-code-bg px-1.5 py-px font-mono font-semibold">
 										/
@@ -722,7 +722,7 @@ export function ChatPage() {
 								extras={composerExtras}
 								skills={skinMode ? EMPTY_SKILLS : skills}
 							/>
-							<div className="mt-2 text-center text-[11px] text-bn-text-secondary">
+							<div className="mt-2 text-center text-bn-xs text-bn-text-secondary">
 								{persona.name}可能会出错,请核对重要信息
 							</div>
 						</div>

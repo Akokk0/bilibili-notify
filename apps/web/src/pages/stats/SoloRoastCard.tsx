@@ -99,7 +99,7 @@ export function SoloRoastCard({
 
 					<div className="flex flex-col justify-center rounded-bn-card border border-bn-border-subtle p-4">
 						<div className="text-xs font-bold text-bn-text-primary">综合勤奋度评分</div>
-						<div className="mb-3 text-[10.5px] text-bn-text-secondary">
+						<div className="mb-3 text-bn-2xs text-bn-text-secondary">
 							由女仆依据近{days}日数据评分 · 0–100
 						</div>
 						<div className="mb-2 flex items-baseline gap-1.5">

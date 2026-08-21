@@ -49,7 +49,7 @@ import {
  */
 
 const inputCls =
-	"w-full rounded-lg border border-bn-border bg-bn-field px-2 py-1 text-[12px] text-bn-text-primary outline-none focus:border-bn-pink";
+	"w-full rounded-lg border border-bn-border bg-bn-field px-2 py-1 text-bn-sm text-bn-text-primary outline-none focus:border-bn-pink";
 
 export function SkinEditor(props: {
 	id: string;
@@ -309,8 +309,8 @@ export function SkinEditor(props: {
 		<DrawerShell onClose={requestClose} width={420} ariaLabel="皮肤调整">
 			<div className="flex items-center justify-between gap-2 border-b border-bn-border-subtle px-4 py-3">
 				<div>
-					<div className="text-[14px] font-bold">调整皮肤</div>
-					<div className="text-[11px] text-bn-text-secondary">
+					<div className="text-bn-md font-bold">调整皮肤</div>
+					<div className="text-bn-xs text-bn-text-secondary">
 						每一项改动整页立即生效;保存前只是预览
 					</div>
 				</div>
@@ -328,11 +328,11 @@ export function SkinEditor(props: {
 				/>
 				<div className="flex items-start justify-between gap-2">
 					{aiWarnings.length > 0 ? (
-						<span className="min-w-0 flex-1 text-[11px] leading-4 text-bn-warning">
+						<span className="min-w-0 flex-1 text-bn-xs leading-4 text-bn-warning">
 							{aiWarnings.join(";")}
 						</span>
 					) : (
-						<span className="text-[11px] text-bn-text-tertiary">改完直接上身预览,不满意再改</span>
+						<span className="text-bn-xs text-bn-text-tertiary">改完直接上身预览,不满意再改</span>
 					)}
 					<Btn
 						size="sm"
@@ -371,7 +371,7 @@ export function SkinEditor(props: {
 						</Btn>
 					)}
 				</div>
-				<p className="text-[11px] leading-4 text-bn-text-tertiary">
+				<p className="text-bn-xs leading-4 text-bn-text-tertiary">
 					页面正在显示哪套由右上角明暗开关决定;只有一套的皮肤会锁定该模式。
 				</p>
 
@@ -421,7 +421,7 @@ export function SkinEditor(props: {
 							}
 							placeholder="纯色或渐变;留空回默认(有壁纸时被壁纸盖住)"
 							rows={2}
-							className={`${inputCls} resize-y font-mono text-[11px]`}
+							className={`${inputCls} resize-y font-mono text-bn-xs`}
 						/>
 					</FieldRow>
 					<WallpaperFields
@@ -447,10 +447,10 @@ export function SkinEditor(props: {
 											e.target.value = "";
 											if (file) uploadAsset(file);
 										}}
-										className="w-full text-[11px] text-bn-text-secondary file:mr-2 file:rounded-md file:border-0 file:bg-bn-surface-muted file:px-2 file:py-1 file:text-[11px] file:text-bn-text-primary"
+										className="w-full text-bn-xs text-bn-text-secondary file:mr-2 file:rounded-md file:border-0 file:bg-bn-surface-muted file:px-2 file:py-1 file:text-bn-xs file:text-bn-text-primary"
 									/>
 									{uploading ? (
-										<span className="shrink-0 text-[11px] text-bn-text-secondary">上传中…</span>
+										<span className="shrink-0 text-bn-xs text-bn-text-secondary">上传中…</span>
 									) : null}
 								</div>
 							</FieldRow>
@@ -559,7 +559,7 @@ export function SkinEditor(props: {
 				<Fold title="语义颜色">
 					{COLOR_GROUPS.map((group) => (
 						<div key={group.label} className="space-y-1.5">
-							<div className="pt-1 text-[11px] font-semibold text-bn-text-tertiary">
+							<div className="pt-1 text-bn-xs font-semibold text-bn-text-tertiary">
 								{group.label}
 							</div>
 							{group.keys.map(({ key, label }) => (
@@ -576,7 +576,7 @@ export function SkinEditor(props: {
 				</Fold>
 
 				<Fold title="AI 聊天">
-					<p className="text-[11px] leading-4 text-bn-text-tertiary">
+					<p className="text-bn-xs leading-4 text-bn-text-tertiary">
 						皮肤生效时聊天页整体换装(默认四色预设隐藏):强调色跟随「主强调色」,
 						玻璃件直接用上面「玻璃」一节的参数 —— 这里只管聊天页自己的背景。
 					</p>
@@ -588,7 +588,7 @@ export function SkinEditor(props: {
 							onChange={(e) => setChat({ background: e.target.value || undefined })}
 							placeholder="纯色或渐变;留空透出整页皮肤背景"
 							rows={2}
-							className={`${inputCls} resize-y font-mono text-[11px]`}
+							className={`${inputCls} resize-y font-mono text-bn-xs`}
 						/>
 					</FieldRow>
 					<WallpaperFields
@@ -668,10 +668,10 @@ export function SkinEditor(props: {
 									e.target.value = "";
 									if (file) uploadAsset(file);
 								}}
-								className="w-full text-[11px] text-bn-text-secondary file:mr-2 file:rounded-md file:border-0 file:bg-bn-surface-muted file:px-2 file:py-1 file:text-[11px] file:text-bn-text-primary"
+								className="w-full text-bn-xs text-bn-text-secondary file:mr-2 file:rounded-md file:border-0 file:bg-bn-surface-muted file:px-2 file:py-1 file:text-bn-xs file:text-bn-text-primary"
 							/>
 							{uploading ? (
-								<span className="shrink-0 text-[11px] text-bn-text-secondary">上传中…</span>
+								<span className="shrink-0 text-bn-xs text-bn-text-secondary">上传中…</span>
 							) : null}
 						</div>
 					</FieldRow>
@@ -687,7 +687,7 @@ export function SkinEditor(props: {
 							setSection("fonts", cleanSection({ ...mode.fonts, body }));
 						}}
 					/>
-					<p className="text-[11px] leading-4 text-bn-text-tertiary">
+					<p className="text-bn-xs leading-4 text-bn-text-tertiary">
 						自带字体排在字体栈**之前**;文件拉不下来时自动退到后面的家族名。
 						一款完整中文字库有八九兆,转成 woff2 通常只占三分之一,主人和访客都省。
 					</p>
@@ -726,13 +726,13 @@ export function SkinEditor(props: {
 							setEffects({ bokeh: colors.length > 0 ? { colors } : undefined });
 						}}
 					/>
-					<p className="text-[11px] leading-4 text-bn-text-tertiary">
+					<p className="text-bn-xs leading-4 text-bn-text-tertiary">
 						所有动效自动尊重系统「减少动态效果」设置。
 					</p>
 				</Fold>
 
 				<Fold title="自定义 CSS">
-					<p className="text-[11px] leading-4 text-bn-text-tertiary">
+					<p className="text-bn-xs leading-4 text-bn-text-tertiary">
 						选择器只准 <code className="rounded-sm bg-bn-code-bg px-1">[data-bn="挂点"]</code>
 						(挂点见制作引导),属性走视觉白名单;违禁项保存时会被逐条丢弃并提示。
 					</p>
@@ -744,7 +744,7 @@ export function SkinEditor(props: {
 							onChange={(e) => setDraft(withOptional(draft, "css", e.target.value))}
 							placeholder='如 [data-bn="glass"]:hover { box-shadow: 0 0 24px rgba(251,114,153,0.4); }'
 							rows={6}
-							className={`${inputCls} resize-y font-mono text-[11px]`}
+							className={`${inputCls} resize-y font-mono text-bn-xs`}
 						/>
 					</FieldRow>
 					<FieldRow label="本模式 CSS">
@@ -755,7 +755,7 @@ export function SkinEditor(props: {
 							onChange={(e) => setSection("css", e.target.value || undefined)}
 							placeholder="只在当前明/暗套生效,叠在共用 CSS 之后"
 							rows={4}
-							className={`${inputCls} resize-y font-mono text-[11px]`}
+							className={`${inputCls} resize-y font-mono text-bn-xs`}
 						/>
 					</FieldRow>
 				</Fold>
@@ -764,7 +764,7 @@ export function SkinEditor(props: {
 			<div className="sticky bottom-0 space-y-2 border-t border-bn-border-subtle bg-bn-surface-strong/80 px-4 py-3 backdrop-blur-sm">
 				{feedback?.tone === "err" ? <ErrorNote>操作失败:{feedback.text}</ErrorNote> : null}
 				{feedback?.tone === "ok" ? (
-					<p className="text-[11px] text-bn-success-text">{feedback.text}</p>
+					<p className="text-bn-xs text-bn-success-text">{feedback.text}</p>
 				) : null}
 				<div className="flex items-center justify-between gap-2">
 					<div className="flex gap-2">
@@ -959,13 +959,13 @@ function SyncModeDialog(props: {
 				<Btn variant="outline" onClick={() => props.onPick("layout")}>
 					只套版式(不动颜色)
 				</Btn>
-				<p className="-mt-1 px-0.5 text-[11px] leading-4 text-bn-text-tertiary">
+				<p className="-mt-1 px-0.5 text-bn-xs leading-4 text-bn-text-tertiary">
 					壁纸、圆角、字体、玻璃模糊过去;配色、玻璃底色、阴影留在原地
 				</p>
 				<Btn variant="outline" onClick={() => props.onPick("all")}>
 					整套套过去
 				</Btn>
-				<p className="-mt-1 px-0.5 text-[11px] leading-4 text-bn-text-tertiary">
+				<p className="-mt-1 px-0.5 text-bn-xs leading-4 text-bn-text-tertiary">
 					连配色一起,两套长得一模一样 —— {MODE_LABEL[to]}会变成{MODE_LABEL[from]}的样子
 				</p>
 				<Btn variant="outline" onClick={props.onCancel}>
@@ -983,7 +983,7 @@ function Fold(props: { title: string; defaultOpen?: boolean; children: ReactNode
 			<button
 				type="button"
 				onClick={() => setOpen((o) => !o)}
-				className="flex w-full items-center justify-between px-3 py-2 text-[12.5px] font-semibold text-bn-text-primary"
+				className="flex w-full items-center justify-between px-3 py-2 text-bn-sm font-semibold text-bn-text-primary"
 			>
 				<span>{props.title}</span>
 				<span className="text-bn-text-tertiary">{open ? "−" : "+"}</span>
@@ -999,12 +999,12 @@ function Fold(props: { title: string; defaultOpen?: boolean; children: ReactNode
  * 尾标不带括号,直接写「默认」—— 孤立的括号形态看着乱。
  */
 function DefaultTag() {
-	return <span className="shrink-0 text-[10.5px] text-bn-text-tertiary">默认</span>;
+	return <span className="shrink-0 text-bn-2xs text-bn-text-tertiary">默认</span>;
 }
 
 function FieldRow(props: { label: string; children: ReactNode }) {
 	return (
-		<div className="flex items-center gap-2 text-[12px] text-bn-text-secondary">
+		<div className="flex items-center gap-2 text-bn-sm text-bn-text-secondary">
 			<span className="w-20 shrink-0">{props.label}</span>
 			<div className="min-w-0 flex-1">{props.children}</div>
 		</div>
@@ -1028,7 +1028,7 @@ function TextField(props: {
 					value={props.value}
 					onChange={(e) => props.onChange(e.target.value)}
 					placeholder={props.placeholder}
-					className={`${inputCls}${props.mono ? " font-mono text-[11px]" : ""}`}
+					className={`${inputCls}${props.mono ? " font-mono text-bn-xs" : ""}`}
 				/>
 				{props.isDefault ? <DefaultTag /> : null}
 			</div>
@@ -1099,7 +1099,7 @@ function RangeField(props: {
 					onChange={(e) => props.onChange(Number(e.target.value))}
 					className="min-w-0 flex-1 accent-bn-pink disabled:opacity-40"
 				/>
-				<span className="min-w-13 shrink-0 text-right text-[11px] tabular-nums text-bn-text-tertiary">
+				<span className="min-w-13 shrink-0 text-right text-bn-xs tabular-nums text-bn-text-tertiary">
 					{props.value !== undefined
 						? `${props.value}${props.unit ?? ""}${props.isDefault ? "(默认)" : ""}`
 						: `${props.fallback}${props.unit ?? ""}(默认)`}
@@ -1109,7 +1109,7 @@ function RangeField(props: {
 						type="button"
 						aria-label={`清除${props.label}`}
 						onClick={() => props.onChange(undefined)}
-						className="shrink-0 text-[12px] text-bn-text-tertiary hover:text-bn-text-primary"
+						className="shrink-0 text-bn-sm text-bn-text-tertiary hover:text-bn-text-primary"
 					>
 						×
 					</button>
@@ -1172,7 +1172,7 @@ function ColorField(props: {
 					value={props.value ?? ""}
 					onChange={(e) => props.onChange(e.target.value)}
 					placeholder="默认"
-					className={`${inputCls} font-mono text-[11px]`}
+					className={`${inputCls} font-mono text-bn-xs`}
 				/>
 				{props.isDefault ? <DefaultTag /> : null}
 			</div>

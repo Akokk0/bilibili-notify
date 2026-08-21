@@ -39,7 +39,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 	return (
 		<div className="bn-glass-sheen bn-glass-strong m-3 flex w-[258px] shrink-0 flex-col rounded-3xl px-3 pb-3 pt-3.5 shadow-bn-elev">
 			<div className="flex items-center gap-1.5 px-0.5 pb-4">
-				<div className="flex-1 truncate pl-2 text-[14.5px] font-bold text-bn-text-primary">
+				<div className="flex-1 truncate pl-2 text-bn-md font-bold text-bn-text-primary">
 					女仆AI · {props.aiName}
 				</div>
 				<IconButton
@@ -56,14 +56,14 @@ export function ChatSidebar(props: ChatSidebarProps) {
 				<button
 					type="button"
 					onClick={() => props.onNew("chat")}
-					className="flex w-full cursor-pointer items-center gap-2 rounded-xl bg-bn-code-bg px-3 py-2.5 text-[13px] font-semibold text-bn-text-tertiary bn-chat-accent-soft-hover transition-colors"
+					className="flex w-full cursor-pointer items-center gap-2 rounded-xl bg-bn-code-bg px-3 py-2.5 text-bn-base font-semibold text-bn-text-tertiary bn-chat-accent-soft-hover transition-colors"
 				>
 					<Icon.plus size={16} /> 开启新对话
 				</button>
 				<button
 					type="button"
 					onClick={() => props.onNew("skin")}
-					className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-[12px] font-semibold text-bn-text-secondary bn-chat-accent-soft-hover transition-colors"
+					className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-bn-sm font-semibold text-bn-text-secondary bn-chat-accent-soft-hover transition-colors"
 				>
 					<Icon.palette size={15} /> 新建皮肤工坊
 				</button>
@@ -79,7 +79,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 				) : (
 					groups.map((g) => (
 						<div key={g.label} className="mb-1">
-							<div className="px-3 pb-[7px] pt-0.5 text-[10.5px] font-bold tracking-wider text-bn-text-secondary">
+							<div className="px-3 pb-[7px] pt-0.5 text-bn-2xs font-bold tracking-wider text-bn-text-secondary">
 								{g.label}
 							</div>
 							{g.items.map((c) => (
@@ -94,7 +94,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 									<button
 										type="button"
 										onClick={() => props.onSelect(c.id)}
-										className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 px-3 py-2.5 text-left text-[12.5px] text-bn-text-tertiary"
+										className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 px-3 py-2.5 text-left text-bn-sm text-bn-text-tertiary"
 									>
 										<span className="min-w-0 flex-1 truncate">{c.title}</span>
 										<ConversationLabel mode={c.mode} persona={c.persona} />
@@ -130,17 +130,17 @@ export function ChatSidebar(props: ChatSidebarProps) {
 				) : (
 					<div
 						data-bn="avatar"
-						className="bn-chat-accent-grad grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full text-[12.5px] font-bold text-bn-on-solid"
+						className="bn-chat-accent-grad grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full text-bn-sm font-bold text-bn-on-solid"
 						aria-hidden="true"
 					>
 						{props.userName.slice(0, 1)}
 					</div>
 				)}
 				<div className="min-w-0 flex-1">
-					<div className="truncate text-[12.5px] font-semibold text-bn-text-primary">
+					<div className="truncate text-bn-sm font-semibold text-bn-text-primary">
 						{props.userName}
 					</div>
-					<div className="truncate text-[10.5px] text-bn-text-secondary">
+					<div className="truncate text-bn-2xs text-bn-text-secondary">
 						{props.modelName || "尚未配置模型"}
 					</div>
 				</div>
@@ -182,7 +182,7 @@ function ConversationLabel({ mode, persona }: { mode: AiChatMode; persona: boole
 	return (
 		<span
 			data-conv-label={text}
-			className="shrink-0 rounded-bn-xs bg-bn-hover-muted px-1.5 py-0.5 text-[9.5px] font-bold text-bn-text-secondary"
+			className="shrink-0 rounded-bn-xs bg-bn-hover-muted px-1.5 py-0.5 text-bn-micro font-bold text-bn-text-secondary"
 		>
 			{text}
 		</span>

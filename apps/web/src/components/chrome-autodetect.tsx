@@ -108,14 +108,14 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 
 	if (state === "enabled") {
 		return (
-			<div className="mt-2 rounded-sm border border-bn-success-border bg-bn-success-soft p-2 text-[11px] font-semibold text-bn-success-text">
+			<div className="mt-2 rounded-sm border border-bn-success-border bg-bn-success-soft p-2 text-bn-xs font-semibold text-bn-success-text">
 				✓ 卡片渲染已启用 · 已写回配置,重启仍生效
 			</div>
 		);
 	}
 
 	return (
-		<div className="mt-2 rounded-sm border border-bn-warning-border bg-bn-warning-soft p-2 text-[11px] text-bn-warning-text">
+		<div className="mt-2 rounded-sm border border-bn-warning-border bg-bn-warning-soft p-2 text-bn-xs text-bn-warning-text">
 			<div className="mb-1.5">
 				设置 <code className="font-mono">BN_CHROME_PATH</code> 环境变量或 yaml{" "}
 				<code className="font-mono">chromePath</code>,或一键自动探测本机浏览器:

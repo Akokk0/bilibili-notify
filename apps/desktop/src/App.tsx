@@ -135,10 +135,10 @@ export function App({
 					{busy ? <Spinner size={16} /> : null}
 				</div>
 
-				<h1 className="mb-3 text-[28px] font-extrabold tracking-tight text-bn-text-primary">
+				<h1 className="mb-3 text-bn-hero font-extrabold tracking-tight text-bn-text-primary">
 					Bilibili Notify 桌面版
 				</h1>
-				<p className="text-[13.5px] leading-relaxed text-bn-text-secondary">{message}</p>
+				<p className="text-bn-base leading-relaxed text-bn-text-secondary">{message}</p>
 
 				<div className="mt-7 flex flex-wrap gap-2">
 					<Btn variant="primary" disabled={busy} onClick={() => void retry()}>
@@ -174,7 +174,7 @@ export function App({
 				</div>
 
 				{detail ? (
-					<pre className="mt-5 whitespace-pre-wrap rounded-lg bg-bn-code-bg p-4 font-mono text-[12.5px] leading-relaxed text-bn-text-secondary">
+					<pre className="mt-5 whitespace-pre-wrap rounded-lg bg-bn-code-bg p-4 font-mono text-bn-sm leading-relaxed text-bn-text-secondary">
 						{detail}
 					</pre>
 				) : null}

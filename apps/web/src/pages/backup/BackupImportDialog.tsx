@@ -49,7 +49,7 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 
 	return (
 		<ModalShell onCancel={onCancel} width={400} bodyClassName="p-5" title="导入 / 恢复备份">
-			<label className="mb-3 flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-bn-border bg-bn-surface px-3 py-4 text-[13px] text-bn-text-secondary transition hover:border-bn-pink/50 hover:text-bn-text-primary">
+			<label className="mb-3 flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-bn-border bg-bn-surface px-3 py-4 text-bn-base text-bn-text-secondary transition hover:border-bn-pink/50 hover:text-bn-text-primary">
 				<span>选择备份文件（.bnbackup / .json）…</span>
 				<input
 					aria-label="选择备份文件"
@@ -64,12 +64,12 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 
 			{backup ? (
 				<>
-					<div className="mb-3 text-[12px] text-bn-text-secondary">
+					<div className="mb-3 text-bn-sm text-bn-text-secondary">
 						检测到：{isFull ? "完整备份（含机密）" : "脱敏导出（无机密）"}
 						{backup.createdAt ? ` · ${backup.createdAt.slice(0, 10)}` : ""}
 					</div>
 
-					<div className="mb-1 text-[12px] font-semibold text-bn-text-secondary">落地方式</div>
+					<div className="mb-1 text-bn-sm font-semibold text-bn-text-secondary">落地方式</div>
 					<div className="mb-3 grid grid-cols-2 gap-2">
 						<ChoiceCard
 							active={mode === "overwrite"}

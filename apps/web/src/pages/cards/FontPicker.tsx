@@ -63,13 +63,13 @@ function Row({
 				className="flex min-w-0 flex-1 flex-col items-start text-left"
 			>
 				<span
-					className={`truncate text-[12.5px] font-bold ${
+					className={`truncate text-bn-sm font-bold ${
 						active ? "text-bn-pink" : "text-bn-text-primary"
 					}`}
 				>
 					{label}
 				</span>
-				{hint ? <span className="text-[10.5px] text-bn-text-tertiary">{hint}</span> : null}
+				{hint ? <span className="text-bn-2xs text-bn-text-tertiary">{hint}</span> : null}
 			</button>
 			{right}
 		</div>
@@ -181,7 +181,7 @@ export function FontPicker({
 			    觉得「我选的字体自己变回去了」,而界面上没有任何线索。 */}
 			{sel.kind === "missing" ? (
 				<div className="flex items-center gap-2 rounded-lg border border-dashed border-bn-danger-border bg-bn-danger-soft px-2.5 py-1.5">
-					<span className="flex-1 text-[11.5px] text-bn-danger-text">
+					<span className="flex-1 text-bn-xs text-bn-danger-text">
 						选中的字体文件已不在字体库里,当前实际用的是兜底字体
 					</span>
 					<Btn variant="danger-outline" size="sm" onClick={() => onChange(pickDefaultFont(value))}>
@@ -191,7 +191,7 @@ export function FontPicker({
 			) : null}
 
 			<div className="flex items-center gap-2">
-				<label className="flex cursor-pointer items-center gap-1 rounded-lg border border-dashed border-bn-border px-2.5 py-1.5 text-[11.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink">
+				<label className="flex cursor-pointer items-center gap-1 rounded-lg border border-dashed border-bn-border px-2.5 py-1.5 text-bn-xs font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink">
 					{uploading ? (
 						"上传中…"
 					) : (
@@ -210,7 +210,7 @@ export function FontPicker({
 				</label>
 				{/* 上限从共享常量算,别硬写:写死的话调了 MAX_FONT_ASSET_BYTES 这句话还在
 				    说旧数字,主人等完一次上传才被告知一个跟按钮旁边写的不一样的上限。 */}
-				<span className="text-[10.5px] text-bn-text-tertiary">
+				<span className="text-bn-2xs text-bn-text-tertiary">
 					{`woff2 / woff / ttf / otf，单款 ${Math.round(MAX_FONT_ASSET_BYTES / 1024 / 1024)}MB 以内 —— 优先用 woff2，同一套字通常只占 ttf 的三分之一`}
 				</span>
 			</div>
@@ -221,7 +221,7 @@ export function FontPicker({
 				className="rounded-lg border border-bn-border-subtle px-2.5 py-1.5"
 				open={sel.kind === "custom"}
 			>
-				<summary className="cursor-pointer text-[11.5px] font-bold text-bn-text-secondary">
+				<summary className="cursor-pointer text-bn-xs font-bold text-bn-text-secondary">
 					手填字体名（高级）
 				</summary>
 				<div className="mt-1.5 flex flex-col gap-1">
@@ -234,7 +234,7 @@ export function FontPicker({
 					{/* 长句走字符串表达式:留成 JSX 文本的话,格式化器会按宽度折行,而 JSX 把
 					    行首尾的换行连同缩进一并吃掉 —— 「Docker 容器」正好断在那儿就会粘成
 					    「Docker容器」。 */}
-					<span className="text-[10.5px] text-bn-text-tertiary">
+					<span className="text-bn-2xs text-bn-text-tertiary">
 						要<strong>渲染那台机器</strong>
 						{
 							"上装过这个字体才作数：桌面版填系统自带的（苹方、微软雅黑）就行；Docker 容器里只装了思源黑体 / 思源宋体（Noto CJK），填别的不会生效 —— 那种情况请把字体文件传上来"

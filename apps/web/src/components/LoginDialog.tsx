@@ -96,11 +96,11 @@ export function LoginDialog({ variant }: { variant: "cold" | "overlay" }) {
 			>
 				<div className="mb-1 flex items-center gap-2">
 					<img alt="Bilibili Notify" src="/logo.png" className="h-9 w-auto object-contain" />
-					<div className="text-[17px] font-bold tracking-tight text-bn-text-primary">
+					<div className="text-bn-lg font-bold tracking-tight text-bn-text-primary">
 						女仆值班室登录
 					</div>
 				</div>
-				<div className="mb-6 text-[12px] text-bn-text-secondary">
+				<div className="mb-6 text-bn-sm text-bn-text-secondary">
 					{expired ? "会话已过期,请重新登录以继续。" : "请输入管理凭证进入控制台。"}
 				</div>
 
@@ -110,7 +110,7 @@ export function LoginDialog({ variant }: { variant: "cold" | "overlay" }) {
 				</div>
 
 				{error ? (
-					<div className="mt-3 rounded-md bg-bn-danger-soft px-3 py-2 text-[12px] font-medium text-bn-danger-text">
+					<div className="mt-3 rounded-md bg-bn-danger-soft px-3 py-2 text-bn-sm font-medium text-bn-danger-text">
 						{lockSec > 0 ? `登录尝试过多,请 ${lockSec} 秒后再试` : error}
 					</div>
 				) : null}

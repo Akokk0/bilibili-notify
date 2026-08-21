@@ -63,7 +63,7 @@ function GroupChip({
 	// 圆角走皮肤的 pill 轴,别写死 rounded-full —— 像素风皮肤把 radius.pill 调到 0
 	// 求一身硬直角,写死的话唯独这排胶囊还是圆的。
 	const base =
-		"inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-[11.5px] font-semibold transition";
+		"inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-bn-xs font-semibold transition";
 	const cls = active
 		? "border border-bn-pink bg-bn-pink/10 text-bn-pink"
 		: muted
@@ -74,7 +74,7 @@ function GroupChip({
 		// 就静默够不到它 —— 这一类在本仓库已犯过两回。
 		<button type="button" onClick={onClick} data-bn="btn" className={`${base} ${cls}`}>
 			<span className="max-w-35 truncate">{label}</span>
-			<span className="font-mono text-[10.5px] opacity-70">{count}</span>
+			<span className="font-mono text-bn-2xs opacity-70">{count}</span>
 		</button>
 	);
 }
@@ -263,19 +263,19 @@ function ProfilePreview({
 			/>
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-2">
-					<span className="truncate text-[13px] font-bold text-bn-text-primary">
+					<span className="truncate text-bn-base font-bold text-bn-text-primary">
 						{profile.name}
 					</span>
-					<span className="font-mono text-[10.5px] text-bn-text-tertiary">UID {profile.uid}</span>
+					<span className="font-mono text-bn-2xs text-bn-text-tertiary">UID {profile.uid}</span>
 					{subscribed ? (
-						<span className="rounded-sm bg-bn-surface-muted px-1.5 py-0.5 text-[10px] font-semibold text-bn-text-tertiary">
+						<span className="rounded-sm bg-bn-surface-muted px-1.5 py-0.5 text-bn-2xs font-semibold text-bn-text-tertiary">
 							已订阅
 						</span>
 					) : null}
 				</div>
-				<div className="mt-0.5 text-[11px] text-bn-text-secondary">{fansLabel(profile.fans)}</div>
+				<div className="mt-0.5 text-bn-xs text-bn-text-secondary">{fansLabel(profile.fans)}</div>
 				{profile.sign ? (
-					<div className="mt-1 line-clamp-2 text-[11px] text-bn-text-tertiary" title={profile.sign}>
+					<div className="mt-1 line-clamp-2 text-bn-xs text-bn-text-tertiary" title={profile.sign}>
 						{profile.sign}
 					</div>
 				) : null}
@@ -306,7 +306,7 @@ function SearchResultList({
 	return (
 		<div className="mt-4 flex flex-col gap-1.5">
 			{data.results.length === 0 ? (
-				<div className="rounded-sm border border-bn-border bg-bn-surface-muted p-4 text-center text-[12px] text-bn-text-tertiary">
+				<div className="rounded-sm border border-bn-border bg-bn-surface-muted p-4 text-center text-bn-sm text-bn-text-tertiary">
 					没有匹配的 UP 主
 				</div>
 			) : (
@@ -334,17 +334,17 @@ function SearchResultList({
 							/>
 							<div className="min-w-0 flex-1">
 								<div className="flex items-center gap-1.5">
-									<span className="truncate text-[12.5px] font-bold text-bn-text-primary">
+									<span className="truncate text-bn-sm font-bold text-bn-text-primary">
 										{r.name}
 									</span>
-									<span className="font-mono text-[10.5px] text-bn-text-tertiary">UID {r.uid}</span>
+									<span className="font-mono text-bn-2xs text-bn-text-tertiary">UID {r.uid}</span>
 									{subscribed ? (
-										<span className="rounded-sm bg-bn-surface-muted px-1.5 py-0.5 text-[10px] font-semibold text-bn-text-tertiary">
+										<span className="rounded-sm bg-bn-surface-muted px-1.5 py-0.5 text-bn-2xs font-semibold text-bn-text-tertiary">
 											已订阅
 										</span>
 									) : null}
 								</div>
-								<div className="mt-0.5 text-[10.5px] text-bn-text-secondary">
+								<div className="mt-0.5 text-bn-2xs text-bn-text-secondary">
 									{fansLabel(r.fans)}
 									{r.sign ? (
 										<span className="ml-2 text-bn-text-tertiary" title={r.sign}>
@@ -357,7 +357,7 @@ function SearchResultList({
 					);
 				})
 			)}
-			<div className="mt-1 flex items-center justify-between text-[11px] text-bn-text-tertiary">
+			<div className="mt-1 flex items-center justify-between text-bn-xs text-bn-text-tertiary">
 				<span>
 					第 {data.page} 页 / 共 {totalPages} 页 · 总 {data.total} 条
 				</span>
@@ -631,7 +631,7 @@ export default function Subs() {
 							>
 								{f.label}
 								<span
-									className={`text-[10px] font-bold ${
+									className={`text-bn-2xs font-bold ${
 										active ? "text-bn-pink" : "text-bn-text-secondary"
 									}`}
 								>
@@ -675,7 +675,7 @@ export default function Subs() {
 					{/* 这个标题**直接坐在页面背景上**,没有任何底。壁纸皮肤下 tertiary 那一档
 					    只剩 2.1~2.7:1(旁边的胶囊看着清楚,是因为它们挂了 btn、拿到了皮肤给的
 					    实底),secondary 在壁纸深处也才 3.3:1 —— 无底的文字只有 primary 稳。 */}
-					<span className="text-[11px] font-semibold text-bn-text-primary">分组</span>
+					<span className="text-bn-xs font-semibold text-bn-text-primary">分组</span>
 					<GroupChip
 						label="全部"
 						count={subs.length}

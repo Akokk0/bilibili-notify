@@ -124,7 +124,7 @@ const COMPONENTS: Components = {
 	// 代码块:横向滚动而不是换行 —— 一行长命令折成五行比滚动更难读。
 	// 里头那个 code 的底色和内边距要压掉,否则块里再套一层浅底。
 	pre: ({ children }) => (
-		<pre className="my-[0.6em] overflow-x-auto rounded-lg bg-bn-code-bg p-3 text-[13px] leading-[1.6] first:mt-0 last:mb-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-[13px]">
+		<pre className="my-[0.6em] overflow-x-auto rounded-lg bg-bn-code-bg p-3 text-bn-base leading-[1.6] first:mt-0 last:mb-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-bn-base">
 			{children}
 		</pre>
 	),
@@ -132,7 +132,7 @@ const COMPONENTS: Components = {
 	// 表格自己会撑宽,套一层滚动容器把它关住 —— 否则整页跟着横向滚。
 	table: ({ children }) => (
 		<div className="my-[0.6em] overflow-x-auto first:mt-0 last:mb-0">
-			<table className="w-full border-collapse text-[13px]">{children}</table>
+			<table className="w-full border-collapse text-bn-base">{children}</table>
 		</div>
 	),
 	th: ({ children }) => (

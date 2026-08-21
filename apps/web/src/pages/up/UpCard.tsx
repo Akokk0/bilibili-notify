@@ -145,7 +145,7 @@ export function UpCard({
 						disabled={togglePending}
 					/>
 				</div>
-				<div className="mb-2.5 flex items-center gap-1.5 text-[11px] text-bn-text-secondary">
+				<div className="mb-2.5 flex items-center gap-1.5 text-bn-xs text-bn-text-secondary">
 					<span>UID {sub.uid}</span>
 					<span>·</span>
 					<span>{fansLabel}</span>
@@ -164,7 +164,7 @@ export function UpCard({
 				) : null}
 				<div className="mb-2.5 flex flex-wrap gap-1">
 					{features.length === 0 ? (
-						<span className="text-[10px] text-bn-text-secondary">未配置任何推送特性</span>
+						<span className="text-bn-2xs text-bn-text-secondary">未配置任何推送特性</span>
 					) : (
 						features.map((f) => (
 							<Pill key={f} color={FEATURE_TONE[f] ?? "var(--color-bn-inactive)"} subtle size="sm">
@@ -174,14 +174,11 @@ export function UpCard({
 					)}
 				</div>
 				{sub.notes ? (
-					<div
-						className="mb-2 truncate text-[11px] italic text-bn-text-secondary"
-						title={sub.notes}
-					>
+					<div className="mb-2 truncate text-bn-xs italic text-bn-text-secondary" title={sub.notes}>
 						{sub.notes}
 					</div>
 				) : null}
-				<div className="flex items-center justify-between text-[11px] text-bn-text-secondary">
+				<div className="flex items-center justify-between text-bn-xs text-bn-text-secondary">
 					<span>
 						分组：
 						<span className="text-bn-text-tertiary">{sub.groups[0] ?? "默认"}</span>

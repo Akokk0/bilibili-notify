@@ -119,7 +119,7 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 				<EmptyNote>
 					当前没有订阅 UP 主在直播
 					<br />
-					<span className="text-[11px] text-bn-text-secondary/80">
+					<span className="text-bn-xs text-bn-text-secondary/80">
 						女仆会在直播开始时第一时间推送 (｡•̀ᴗ-)✧
 					</span>
 					{unmonitoredCount > 0 ? (
@@ -127,7 +127,7 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 							<br />
 							<Link
 								to="/subs"
-								className="mt-1 inline-block text-[11px] text-bn-pink underline-offset-2 hover:underline"
+								className="mt-1 inline-block text-bn-xs text-bn-pink underline-offset-2 hover:underline"
 							>
 								有 {unmonitoredCount} 位订阅未配置直播推送目标,他们不会被监听 →
 							</Link>
@@ -164,7 +164,7 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 								/>
 								<div className="min-w-0 flex-1">
 									<div className="mb-0.5 flex items-center gap-2">
-										<span className="text-[13.5px] font-bold text-bn-text-primary">{name}</span>
+										<span className="text-bn-base font-bold text-bn-text-primary">{name}</span>
 										{r.areaName ? (
 											<Pill color="var(--color-bn-pink)" subtle size="sm">
 												{r.areaName}
@@ -176,7 +176,7 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 									</div>
 								</div>
 								<div className="flex flex-col items-end gap-1">
-									<span className="inline-flex items-center gap-1 text-[11px] font-bold text-bn-pink">
+									<span className="inline-flex items-center gap-1 text-bn-xs font-bold text-bn-pink">
 										<Icon.eye size={11} />
 										{formatViewers(r.viewers)}
 									</span>
@@ -218,7 +218,7 @@ function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
 					guard: PUSH_TONE.guard,
 				}}
 			/>
-			<div className="mt-3.5 flex flex-wrap items-center gap-3 text-[11px] text-bn-text-tertiary">
+			<div className="mt-3.5 flex flex-wrap items-center gap-3 text-bn-xs text-bn-text-tertiary">
 				{[
 					["直播", PUSH_TONE.live],
 					["动态", PUSH_TONE.dynamic],
@@ -230,7 +230,7 @@ function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
 						{label}
 					</span>
 				))}
-				<span className="ml-auto font-mono text-[11px] text-bn-text-secondary">
+				<span className="ml-auto font-mono text-bn-xs text-bn-text-secondary">
 					近 7 天共 {total} 次
 				</span>
 			</div>
@@ -244,7 +244,7 @@ function AiInsightStrip({ tip }: { tip: React.ReactNode }) {
 			<div className="bn-hero-badge grid h-10 w-10 shrink-0 place-items-center rounded-xl text-bn-on-solid">
 				<Icon.ai size={20} />
 			</div>
-			<div className="flex-1 text-[12.5px] leading-relaxed text-bn-text-tertiary">
+			<div className="flex-1 text-bn-sm leading-relaxed text-bn-text-tertiary">
 				<span className="font-bold text-(--bn-ai-purple)">AI 直播洞察 · </span>
 				{tip}
 			</div>
@@ -291,7 +291,7 @@ function TimelinePanel({
 				<EmptyNote>
 					还没有推送活动
 					<br />
-					<span className="text-[11px] text-bn-text-secondary/80">
+					<span className="text-bn-xs text-bn-text-secondary/80">
 						先去「推送目标」配置好通道，订阅 UP 主以后就会出现在这里 ~
 					</span>
 				</EmptyNote>
@@ -316,7 +316,7 @@ function TimelinePanel({
 							.join(" / ");
 						return (
 							<div key={h.id} className="mb-2.5 flex items-center gap-3">
-								<div className="w-11 text-right font-mono text-[11px] text-bn-text-secondary">
+								<div className="w-11 text-right font-mono text-bn-xs text-bn-text-secondary">
 									{relativeTimeFromNow(h.ts)}
 								</div>
 								<div className="relative z-bn-raised">
@@ -326,7 +326,7 @@ function TimelinePanel({
 									/>
 								</div>
 								<div
-									className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg border border-bn-list-row-border bg-bn-list-row px-3 py-2 text-[12.5px]"
+									className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg border border-bn-list-row-border bg-bn-list-row px-3 py-2 text-bn-sm"
 									// 失败标记用 inset 阴影而非 border-left:不占 box 宽度,内容不被挤右、与其它行对齐,
 									// 且被 rounded-lg 圆角裁成左侧细红条,比硬边框精致。
 									style={!h.ok ? { boxShadow: "inset 3px 0 0 var(--color-bn-danger)" } : undefined}
@@ -339,7 +339,7 @@ function TimelinePanel({
 										<span className="font-bold text-bn-text-primary">{name}</span>
 										{h.text ? ` · ${h.text}` : ""}
 									</div>
-									<span className="text-[11px] text-bn-text-secondary">→ {targetNames}</span>
+									<span className="text-bn-xs text-bn-text-secondary">→ {targetNames}</span>
 									{h.ok ? (
 										<Pill color="var(--color-bn-success)" subtle size="sm">
 											已送达
@@ -386,10 +386,10 @@ function FansDeltaCol({ label, value }: { label: string; value: number | null })
 				: "var(--color-bn-danger)";
 	return (
 		<div className="w-16 text-right">
-			<div className="font-mono text-[13px] font-bold" style={{ color }}>
+			<div className="font-mono text-bn-base font-bold" style={{ color }}>
 				{text}
 			</div>
-			<div className="font-mono text-[10px] text-bn-text-tertiary">{label}</div>
+			<div className="font-mono text-bn-2xs text-bn-text-tertiary">{label}</div>
 		</div>
 	);
 }
@@ -431,7 +431,7 @@ function FansPanel({ subs }: { subs: Subscription[] }) {
 				<EmptyNote>
 					采样中…
 					<br />
-					<span className="text-[11px] text-bn-text-secondary/80">
+					<span className="text-bn-xs text-bn-text-secondary/80">
 						FansPoller 第一轮 cron tick 完成后会填充(约 1–2 分钟)
 					</span>
 				</EmptyNote>
@@ -447,12 +447,12 @@ function FansPanel({ subs }: { subs: Subscription[] }) {
 						return (
 							<div
 								key={e.uid}
-								className="flex items-center gap-3 rounded-lg border border-bn-list-row-border bg-bn-list-row px-3 py-2.5 text-[12.5px]"
+								className="flex items-center gap-3 rounded-lg border border-bn-list-row-border bg-bn-list-row px-3 py-2.5 text-bn-sm"
 							>
 								<Avatar name={name} color={color} size={32} url={sub?.cachedProfile?.avatar} />
 								<div className="min-w-0 flex-1">
 									<div className="truncate font-bold text-bn-text-primary">{name}</div>
-									<div className="font-mono text-[11px] text-bn-text-tertiary">
+									<div className="font-mono text-bn-xs text-bn-text-tertiary">
 										{formatFans(e.current)} 粉丝
 									</div>
 								</div>
@@ -509,7 +509,7 @@ function PluginMatrix({ cells }: { cells: PluginCell[] }) {
 				return (
 					<div key={c.id} className="rounded-lg px-3 py-2.5">
 						<div className="mb-1.5 flex items-center justify-between">
-							<span className="text-[12.5px] font-bold text-bn-text-primary">{c.label}</span>
+							<span className="text-bn-sm font-bold text-bn-text-primary">{c.label}</span>
 							<span
 								className="inline-block h-1.5 w-1.5 rounded-full"
 								style={{
@@ -517,7 +517,7 @@ function PluginMatrix({ cells }: { cells: PluginCell[] }) {
 								}}
 							/>
 						</div>
-						<div className="flex items-center gap-1.5 whitespace-nowrap text-[11px] text-bn-text-secondary">
+						<div className="flex items-center gap-1.5 whitespace-nowrap text-bn-xs text-bn-text-secondary">
 							日志{" "}
 							<span
 								className="rounded-sm px-1.5 font-bold"
@@ -527,7 +527,7 @@ function PluginMatrix({ cells }: { cells: PluginCell[] }) {
 								{levelLabel}
 								{isOverride ? "*" : ""}
 							</span>
-							{c.sub ? <span className="ml-auto text-[10.5px]">{c.sub}</span> : null}
+							{c.sub ? <span className="ml-auto text-bn-2xs">{c.sub}</span> : null}
 						</div>
 					</div>
 				);
@@ -614,12 +614,12 @@ function SystemHealthCard({
 			subtitle={
 				<span className="inline-flex items-center gap-1.5">
 					<span>核心</span>
-					<span className="inline-block rounded-md bg-bn-code-bg px-1.5 py-px text-[10.5px] font-semibold tabular-nums tracking-tight text-bn-text-primary">
+					<span className="inline-block rounded-md bg-bn-code-bg px-1.5 py-px text-bn-2xs font-semibold tabular-nums tracking-tight text-bn-text-primary">
 						{health?.version ?? "—"}
 					</span>
 					<span className="opacity-40">·</span>
 					<span>面板</span>
-					<span className="inline-block rounded-md bg-bn-code-bg px-1.5 py-px text-[10.5px] font-semibold tabular-nums tracking-tight text-bn-text-primary">
+					<span className="inline-block rounded-md bg-bn-code-bg px-1.5 py-px text-bn-2xs font-semibold tabular-nums tracking-tight text-bn-text-primary">
 						{__WEB_VERSION__}
 					</span>
 				</span>

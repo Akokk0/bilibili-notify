@@ -32,7 +32,7 @@ export function ShellError({ message, onRetry }: { message: string; onRetry: () 
 					borderLeft: "3px solid var(--color-bn-danger)",
 				}}
 			>
-				<div className="mb-1 text-[13px] font-bold text-bn-danger-text">
+				<div className="mb-1 text-bn-base font-bold text-bn-danger-text">
 					无法连接到 Bilibili Notify 后端
 				</div>
 				<div className="text-xs leading-relaxed text-bn-danger-text">
