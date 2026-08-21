@@ -16,6 +16,7 @@ import {
 	SectionNav,
 	StatusDot,
 	Toggle,
+	ToneChip,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -315,29 +316,15 @@ function AdapterEditorModal({
 								const active = value.platform === p.value;
 								const pTint = tintFor(p.value);
 								return (
-									<button
+									<ToneChip
 										key={p.value}
-										type="button"
+										tone={pTint}
+										active={active}
 										onClick={() => onChange(makeEmptyAdapter(p.value, value.name))}
-										data-bn="btn"
-										className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[12px] font-bold transition"
-										style={
-											active
-												? {
-														background: `${pTint}18`,
-														color: pTint,
-														borderColor: `${pTint}55`,
-													}
-												: {
-														background: "var(--color-bn-surface-muted)",
-														color: "var(--color-bn-text-tertiary)",
-														borderColor: "var(--color-bn-border)",
-													}
-										}
 									>
 										<PlatformIcon platform={p.value} size={13} />
 										{p.label}
-									</button>
+									</ToneChip>
 								);
 							})}
 						</div>
@@ -400,24 +387,14 @@ function AdapterConnectionFields({
 						{ONEBOT_TRANSPORTS.map((t) => {
 							const active = cfg.transport === t.value;
 							return (
-								<button
+								<ToneChip
 									key={t.value}
-									type="button"
+									tone={tintFor("onebot")}
+									active={active}
 									onClick={() => setCfg(switchOnebotTransport(cfg, t.value))}
-									data-bn="btn"
-									className="rounded-md border px-2.5 py-1 text-[12px] font-bold transition"
-									style={
-										active
-											? { background: "#3b82f618", color: "#3b82f6", borderColor: "#3b82f655" }
-											: {
-													background: "var(--color-bn-surface-muted)",
-													color: "var(--color-bn-text-tertiary)",
-													borderColor: "var(--color-bn-border)",
-												}
-									}
 								>
 									{t.label}
-								</button>
+								</ToneChip>
 							);
 						})}
 					</div>
@@ -818,9 +795,9 @@ function TargetEditorModal({
 							{scopesFor(value.platform).map((s) => {
 								const active = value.scope === s.value;
 								return (
-									<button
+									<ToneChip
 										key={s.value}
-										type="button"
+										active={active}
 										onClick={() => {
 											if (value.platform === "onebot") {
 												// OneBot group/private are mutually exclusive — drop the other field
@@ -832,24 +809,9 @@ function TargetEditorModal({
 												onChange({ ...value, scope: s.value });
 											}
 										}}
-										data-bn="btn"
-										className="rounded-md border px-3 py-1 text-[12px] font-bold transition"
-										style={
-											active
-												? {
-														background: "#FB72991f",
-														color: "#FB7299",
-														borderColor: "#FB729955",
-													}
-												: {
-														background: "var(--color-bn-surface-muted)",
-														color: "var(--color-bn-text-tertiary)",
-														borderColor: "var(--color-bn-border)",
-													}
-										}
 									>
 										{s.label}
-									</button>
+									</ToneChip>
 								);
 							})}
 						</div>
