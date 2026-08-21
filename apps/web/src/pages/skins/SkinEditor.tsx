@@ -318,6 +318,7 @@ export function SkinEditor(props: {
 
 			<div className="space-y-1.5 border-b border-bn-border-subtle px-4 py-3">
 				<textarea
+					data-bn="input"
 					aria-label="修改要求"
 					value={aiInstruction}
 					onChange={(e) => setAiInstruction(e.target.value)}
@@ -412,6 +413,7 @@ export function SkinEditor(props: {
 				<Fold title="背景与壁纸" defaultOpen>
 					<FieldRow label="页面背景">
 						<textarea
+							data-bn="input"
 							aria-label="页面背景"
 							value={mode.page?.background ?? ""}
 							onChange={(e) =>
@@ -580,6 +582,7 @@ export function SkinEditor(props: {
 					</p>
 					<FieldRow label="聊天页背景">
 						<textarea
+							data-bn="input"
 							aria-label="聊天页背景"
 							value={chat.background ?? ""}
 							onChange={(e) => setChat({ background: e.target.value || undefined })}
@@ -735,6 +738,7 @@ export function SkinEditor(props: {
 					</p>
 					<FieldRow label="共用 CSS">
 						<textarea
+							data-bn="input"
 							aria-label="共用 CSS"
 							value={draft.css ?? ""}
 							onChange={(e) => setDraft(withOptional(draft, "css", e.target.value))}
@@ -745,6 +749,7 @@ export function SkinEditor(props: {
 					</FieldRow>
 					<FieldRow label="本模式 CSS">
 						<textarea
+							data-bn="input"
 							aria-label="本模式 CSS"
 							value={mode.css ?? ""}
 							onChange={(e) => setSection("css", e.target.value || undefined)}
@@ -1018,6 +1023,7 @@ function TextField(props: {
 		<FieldRow label={props.label}>
 			<div className="flex items-center gap-1.5">
 				<input
+					data-bn="input"
 					aria-label={props.label}
 					value={props.value}
 					onChange={(e) => props.onChange(e.target.value)}
@@ -1043,6 +1049,7 @@ function NumberField(props: {
 		<FieldRow label={props.label}>
 			<div className="flex items-center gap-1.5">
 				<input
+					data-bn="input"
 					aria-label={props.label}
 					type="number"
 					value={props.value ?? ""}
@@ -1123,6 +1130,7 @@ function SelectField(props: {
 		<FieldRow label={props.label}>
 			<div className="flex items-center gap-1.5">
 				<select
+					data-bn="input"
 					aria-label={props.label}
 					value={props.value}
 					onChange={(e) => props.onChange(e.target.value)}
@@ -1151,6 +1159,7 @@ function ColorField(props: {
 		<FieldRow label={props.label}>
 			<div className="flex items-center gap-1.5">
 				<input
+					data-bn="input"
 					aria-label={`${props.label}取色`}
 					type="color"
 					value={hex ?? "#ffffff"}
@@ -1158,6 +1167,7 @@ function ColorField(props: {
 					className="h-6 w-7 shrink-0 cursor-pointer rounded-sm border border-bn-border bg-transparent p-0"
 				/>
 				<input
+					data-bn="input"
 					aria-label={props.label}
 					value={props.value ?? ""}
 					onChange={(e) => props.onChange(e.target.value)}

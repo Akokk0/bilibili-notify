@@ -497,6 +497,7 @@ function SkinGuideModal({ onClose }: { onClose: (warnings?: string[]) => void })
 					</Btn>
 				</div>
 				<textarea
+					data-bn="input"
 					value={json}
 					onChange={(e) => setJson(e.target.value)}
 					placeholder='把 AI 给的 skin.json 粘到这里,形如 {"schemaVersion":1,...}'

@@ -120,17 +120,9 @@ const UNHOOKED: Record<string, { count: number; why: string }> = {
 		count: 1,
 		why: "Input 原语的内层 <input>。边框与底色在外层那个 div 上,挂点也在那儿;内层再挂一次,皮肤的边框底色会套两层。",
 	},
-	// ── 以下待主人拍板:皮肤编辑器自己要不要能被皮肤改 ──
-	// 挂上 = 皮肤能改皮肤编辑器自己;不挂 = 写坏了的皮肤还留着一个改得回来的逃生舱。
-	// 翻过 git log -S 'data-bn' -- apps/web/src/pages/skins/,两个提交里都没记过理由,
-	// 所以这是「一直没挂」而不是「决定不挂」。定了再动。
 	"apps/web/src/pages/skins/SkinEditor.tsx": {
-		count: 11,
-		why: "待定 —— 皮肤编辑器的逃生舱问题,见上方注释。",
-	},
-	"apps/web/src/pages/skins/SkinSection.tsx": {
 		count: 1,
-		why: "皮肤页自带的自定义 CSS 输入框,与 SkinEditor 同属一块 —— 逃生舱问题一起定,别一半挂一半不挂。",
+		why: "圆角 / 透明度那几根滑杆(type=range)。同 Cards —— 滑轨不是输入面。这里其余 10 个已挂:曾经整块留白当「写坏的皮肤还能改回来」的逃生舱,但皮肤页本来就挂着 glass 与 btn,玻璃卡、按钮、页面底、导航全都改得动,逃生舱早不存在了 —— 只剩输入框不挂,换来的仅仅是装了皮肤后这一页和全站长得不一样。",
 	},
 };
 
