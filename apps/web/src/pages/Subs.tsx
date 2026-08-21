@@ -2,6 +2,7 @@ import {
 	AddCard,
 	Btn,
 	ConfirmDialog,
+	EmptyNote,
 	ErrorNote,
 	Icon,
 	Input,
@@ -713,10 +714,10 @@ export default function Subs() {
 			{subsQuery.data &&
 			filtered.length === 0 &&
 			(q.trim() || filterId !== "all" || groupFilter) ? (
-				<div className="rounded-bn-card border border-dashed border-bn-border bg-bn-surface/60 p-10 text-center">
+				<EmptyNote className="bg-bn-surface/60">
 					<div className="mb-1 text-sm font-bold text-bn-text-primary">没有匹配的订阅</div>
-					<div className="text-[12px] text-bn-text-secondary">试试换个关键词或筛选条件</div>
-				</div>
+					<div>试试换个关键词或筛选条件</div>
+				</EmptyNote>
 			) : null}
 
 			<div

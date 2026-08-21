@@ -1259,9 +1259,9 @@ function AdapterRail({
 			onAdd={onAddClick}
 			addLabel="+ 新建"
 			emptyState={
-				<div className="rounded-bn-sm border border-dashed border-bn-border bg-bn-surface/55 px-3 py-3 text-center text-[11px] text-bn-text-tertiary">
+				<EmptyNote size="sm" className="bg-bn-surface/55">
 					尚未配置任何适配器
-				</div>
+				</EmptyNote>
 			}
 			items={adapters.map((a) => {
 				const count = targetCountByAdapter.get(a.id) ?? 0;
@@ -1749,9 +1749,7 @@ export default function Targets() {
 												/>
 											</div>
 										) : (
-											<div className="rounded-bn-sm border border-dashed border-bn-border px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
-												保存 Webhook 后系统会自动创建默认投递目标。
-											</div>
+											<EmptyNote size="sm">保存 Webhook 后系统会自动创建默认投递目标。</EmptyNote>
 										)}
 									</div>
 								) : selectedTargets.length === 0 ? (

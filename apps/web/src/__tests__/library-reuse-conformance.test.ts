@@ -83,6 +83,27 @@ function checkKept(found: string[], kept: Record<string, string>): string[] {
 	return offenders;
 }
 
+describe("空态盒只有 EmptyNote 那一份", () => {
+	/**
+	 * 判据:中性虚线框 + 居中文字。虚线本身不够 —— `AddButton` / `AddCard` 那套
+	 * 「这里还能再加一个」也是虚线,拖拽落点、上传区同理,它们都不是空态。
+	 */
+	function isEmptyBox(code: string): boolean {
+		const cls = staticClasses(code);
+		return (
+			cls.includes("border-dashed") &&
+			cls.includes("border-bn-border") &&
+			cls.includes("text-center")
+		);
+	}
+
+	it("没有哪个页面自己拼中性虚线框 + 居中文字", () => {
+		// EmptyNote 的注释里记着收编前手写过九份、在四种圆角三种字号之间漂。
+		// 没有护栏,于是又漂出了第二波 —— 这条就是补上的护栏。
+		expect(scan(isEmptyBox, ["atoms.tsx"]).join("\n")).toBe("");
+	});
+});
+
 describe("红字提示盒只有 ErrorNote 那一份", () => {
 	/**
 	 * 判据是**红三件套同时出现在一个 class 串里** —— 边 + 底 + 字。单独一个不算:
