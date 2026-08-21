@@ -70,4 +70,14 @@ describe("About page", () => {
 		expect(screen.getByAltText("Alice").getAttribute("src")).toBe("https://cdn/a.png");
 		expect(screen.queryByAltText("Bob")).toBeNull();
 	});
+	it("赞助链接是颗按钮 —— 挂 btn,圆角走 pill token", () => {
+		render(<About />);
+		const a = screen.getByRole("link", { name: /前往爱发电支持/ });
+		// 挂点认「这是什么」,不认标签:它长得就是主按钮,皮肤重绘按钮时得够得着它。
+		expect(a.getAttribute("data-bn")).toBe("btn");
+		// rounded-full 是写死的 9999px,皮肤的 radius.pill 压不平;必须走 token 类。
+		expect([a.className.includes("rounded-bn-pill"), a.className.includes("rounded-full")]).toEqual(
+			[true, false],
+		);
+	});
 });

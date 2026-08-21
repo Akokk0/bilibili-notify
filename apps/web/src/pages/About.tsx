@@ -173,7 +173,12 @@ function SponsorPanel() {
 						target="_blank"
 						rel="noreferrer"
 						onClick={externalLinkClick(AFDIAN_URL)}
-						className="inline-flex items-center gap-2 rounded-full bg-bn-pink px-5 py-2.5 text-[13px] font-bold text-white shadow-bn-accent-lg transition hover:opacity-90"
+						// 它长得就是一颗实心粉主按钮,只是行为上是条外链,所以留 <a> 没换成 Btn ——
+						// Btn 只渲染 <button>,为一处调用给它开 href 分支不值当。挂 btn 是因为挂点
+						// 认的是「这是什么」而不是「用什么标签写的」;圆角改 rounded-bn-pill,
+						// rounded-full 是写死的 9999px,皮肤的 radius.pill 压不平它。
+						data-bn="btn"
+						className="inline-flex items-center gap-2 rounded-bn-pill bg-bn-pink px-5 py-2.5 text-[13px] font-bold text-white shadow-bn-accent-lg transition hover:opacity-90"
 					>
 						<Icon.heart size={15} />
 						前往爱发电支持
