@@ -33,6 +33,12 @@ export const SKIN_COLOR_TOKEN_MAP = {
 	listRowBorder: "--color-bn-list-row-border",
 	codeBg: "--color-bn-code-bg",
 	overlay: "--color-bn-overlay",
+	/**
+	 * 反色浮岛(灵动岛式深色药丸)的底与字。**成对**,别只改一个 —— 底改了字没改
+	 * 就是白底白字,而这块浮层上除了这两键没有别的可读性来源。它不随深浅色切换。
+	 */
+	inverseSurface: "--color-bn-inverse-surface",
+	inverseText: "--color-bn-inverse-text",
 	danger: "--color-bn-danger",
 	dangerSoft: "--color-bn-danger-soft",
 	dangerText: "--color-bn-danger-text",

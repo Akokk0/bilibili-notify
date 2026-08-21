@@ -93,3 +93,40 @@ describe("颜色 token conformance", () => {
 		expect(offenders, `styles.css 里没有定义以下颜色 token:\n${detail}`).toEqual([]);
 	});
 });
+
+/**
+ * 反色浮岛(草稿岛)的底与字必须走**成对 token**,不许写死 `bg-black` / `text-white`。
+ *
+ * 写死的那一半是没法被皮肤改的:底 `bg-black/85` 能被重绘、字 `text-white` 不能,
+ * 两者一起就是「皮肤把底调亮,字全没了」。所以在补上 inverseSurface / inverseText
+ * 这对键之前,整块浮岛是全站唯一皮肤完全够不着的浮层 —— 不是因为它特殊,是因为
+ * 挂上去必翻车。
+ *
+ * 岛里那两颗状态圆点(`bg-bn-success` / `bg-bn-danger` 上的白勾)不在此列:那是
+ * 「白字压语义实底」,全站还有别处这么写(如 Pill 的实底档),是另一个议题。
+ */
+describe("反色浮岛走成对 token", () => {
+	const ISLAND = join(SRC_DIR, "components/draft-island.tsx");
+
+	it("不写死 bg-black —— 底得能被皮肤改", () => {
+		expect(/\bbg-black\b/.test(readFileSync(ISLAND, "utf8"))).toBe(false);
+	});
+
+	it("除两颗语义圆点外不写死 text-white —— 字得跟着底一起被皮肤改", () => {
+		const stray = readFileSync(ISLAND, "utf8")
+			.split("\n")
+			.map((line, i) => ({ line, n: i + 1 }))
+			.filter(({ line }) => /\btext-white\b/.test(line))
+			.filter(({ line }) => !line.includes("bg-bn-success") && !line.includes("bg-bn-danger"))
+			.map(({ n }) => `draft-island.tsx:${n}`);
+		expect(stray).toEqual([]);
+	});
+
+	it("这对键在皮肤契约里都在 —— 只落地 CSS 变量的话皮肤编辑器里根本看不见它们", async () => {
+		const { SKIN_COLOR_TOKEN_MAP } = await import("@bilibili-notify/contract");
+		expect([
+			"inverseSurface" in SKIN_COLOR_TOKEN_MAP,
+			"inverseText" in SKIN_COLOR_TOKEN_MAP,
+		]).toEqual([true, true]);
+	});
+});

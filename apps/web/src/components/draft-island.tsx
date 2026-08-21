@@ -161,7 +161,7 @@ function ChipShell({
 			exit={{ opacity: 0, y: 16, scale: 0.92 }}
 			transition={SHELL_SPRING}
 			onClick={onClick}
-			className={`pointer-events-auto relative flex items-center gap-2.5 rounded-full bg-black/85 px-4 py-2 text-white shadow-[0_8px_24px_rgba(0,0,0,0.3)] backdrop-blur-xl ${className}`}
+			className={`pointer-events-auto relative flex items-center gap-2.5 rounded-full bg-bn-inverse-surface/85 px-4 py-2 text-bn-inverse-text shadow-[0_8px_24px_rgba(0,0,0,0.3)] backdrop-blur-xl ${className}`}
 		>
 			{aura ? <span aria-hidden className="bn-anim-aura" data-testid="draft-island-aura" /> : null}
 			{children}
@@ -325,15 +325,17 @@ function ExpandPanel({ current }: { current: DraftRegistration }) {
 			animate={{ opacity: 1, y: 0, scale: 1 }}
 			exit={{ opacity: 0, y: 12, scale: 0.96 }}
 			transition={PANEL_SPRING}
-			className="pointer-events-auto mb-2 w-105 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-white/10 bg-black/85 text-white shadow-[0_12px_36px_rgba(0,0,0,0.4)] backdrop-blur-xl"
+			className="pointer-events-auto mb-2 w-105 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-bn-inverse-hover bg-bn-inverse-surface/85 text-bn-inverse-text shadow-[0_12px_36px_rgba(0,0,0,0.4)] backdrop-blur-xl"
 		>
 			<div className="flex max-h-[60vh] flex-col">
-				<div className="border-b border-white/10 px-4 py-2.5 text-[11.5px] font-semibold tracking-wide text-white/70">
+				<div className="border-b border-bn-inverse-hover px-4 py-2.5 text-[11.5px] font-semibold tracking-wide text-bn-inverse-text/70">
 					{current.pageLabel} · {current.diff.length} 项未保存
 				</div>
 				<div className="flex-1 overflow-y-auto px-2 py-2">
 					{sections.length === 0 ? (
-						<div className="px-2 py-4 text-center text-[12px] text-white/50">无字段变更</div>
+						<div className="px-2 py-4 text-center text-[12px] text-bn-inverse-text/50">
+							无字段变更
+						</div>
 					) : (
 						sections.map((s) => <DiffSectionView key={s.section} section={s} />)
 					)}
@@ -347,7 +349,7 @@ function ExpandPanel({ current }: { current: DraftRegistration }) {
 function DiffSectionView({ section }: { section: DiffSection }) {
 	return (
 		<div className="mb-1.5 last:mb-0">
-			<div className="px-2 pb-1 pt-1.5 text-[10.5px] font-bold uppercase tracking-wider text-white/40">
+			<div className="px-2 pb-1 pt-1.5 text-[10.5px] font-bold uppercase tracking-wider text-bn-inverse-text/40">
 				{section.label}
 			</div>
 			<div className="flex flex-col gap-0.5">
@@ -369,10 +371,10 @@ function DiffRow({ row }: { row: FieldDiff }) {
 			className="flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition hover:bg-bn-inverse-muted"
 			title={`跳转到 ${row.code}`}
 		>
-			<code className="font-mono text-[10.5px] text-white/50">{row.code}</code>
+			<code className="font-mono text-[10.5px] text-bn-inverse-text/50">{row.code}</code>
 			<div className="flex items-center gap-1.5 text-[12px]">
 				<ValueChip value={before} muted />
-				<span className="text-white/40">→</span>
+				<span className="text-bn-inverse-text/40">→</span>
 				<ValueChip value={after} />
 			</div>
 		</button>
@@ -386,7 +388,7 @@ function ValueChip({
 	value: { display: string; swatch?: string };
 	muted?: boolean;
 }) {
-	const tone = muted ? "text-white/60" : "text-white";
+	const tone = muted ? "text-bn-inverse-text/60" : "text-bn-inverse-text";
 	return (
 		<span className={`inline-flex min-w-0 items-center gap-1 ${tone}`}>
 			{value.swatch ? (
@@ -403,16 +405,16 @@ function ValueChip({
 
 function PanelFooter({ onDiscard }: { onDiscard: () => void }) {
 	return (
-		<div className="flex items-center justify-between border-t border-white/10 px-4 py-2">
+		<div className="flex items-center justify-between border-t border-bn-inverse-hover px-4 py-2">
 			<button
 				type="button"
 				onClick={onDiscard}
 				data-bn="btn"
-				className="rounded-bn-pill px-2.5 py-1 text-[11px] text-white/60 transition hover:bg-bn-inverse-hover hover:text-white"
+				className="rounded-bn-pill px-2.5 py-1 text-[11px] text-bn-inverse-text/60 transition hover:bg-bn-inverse-hover hover:text-bn-inverse-text"
 			>
 				丢弃全部更改
 			</button>
-			<span className="text-[10.5px] text-white/40">click 行跳转字段</span>
+			<span className="text-[10.5px] text-bn-inverse-text/40">click 行跳转字段</span>
 		</div>
 	);
 }

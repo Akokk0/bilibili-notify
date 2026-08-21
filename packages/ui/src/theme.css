@@ -37,6 +37,14 @@
 	--color-bn-hover-muted: #f8fafc;
 	--color-bn-code-bg: rgba(0, 0, 0, 0.05);
 	--color-bn-overlay: rgba(0, 0, 0, 0.35);
+	/* 反色浮岛(灵动岛式的深色药丸)的**成对** token:底与字必须一起改。
+	   拆开是有前科的 —— 底写 `bg-black/85`、字写死 `text-white` 时,底那一半能被
+	   皮肤重绘而字那一半不能,于是这块浮层要么整个够不着皮肤,要么一改就白底白字。
+	   成对暴露给皮肤编辑器,改一个就会看见另一个。
+	   两档不随深浅色切换 —— 这块本来就是刻意反色的,亮色下也是深底。
+	   下面三档是它内部的白色叠层(悬停底、分隔线),跟着字色一起算前景。 */
+	--color-bn-inverse-surface: #000000;
+	--color-bn-inverse-text: #ffffff;
 	--color-bn-inverse-muted: rgba(255, 255, 255, 0.05);
 	--color-bn-inverse-hover: rgba(255, 255, 255, 0.1);
 	--color-bn-inverse-strong: rgba(255, 255, 255, 0.25);
@@ -175,6 +183,9 @@
 	--color-bn-text-disabled: rgba(148, 163, 184, 0.45);
 	--color-bn-code-bg: rgba(255, 255, 255, 0.08);
 	--color-bn-overlay: rgba(2, 6, 23, 0.62);
+	/* 同亮色:反色浮岛不随深浅切换,见上方那段。 */
+	--color-bn-inverse-surface: #000000;
+	--color-bn-inverse-text: #ffffff;
 	--color-bn-inverse-muted: rgba(255, 255, 255, 0.05);
 	--color-bn-inverse-hover: rgba(255, 255, 255, 0.1);
 	--color-bn-inverse-strong: rgba(255, 255, 255, 0.25);
