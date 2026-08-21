@@ -73,8 +73,9 @@ describe("About page", () => {
 	it("赞助链接是颗按钮 —— 挂 btn,圆角走 pill token", () => {
 		render(<About />);
 		const a = screen.getByRole("link", { name: /前往爱发电支持/ });
-		// 挂点认「这是什么」,不认标签:它长得就是主按钮,皮肤重绘按钮时得够得着它。
-		expect(a.getAttribute("data-bn")).toBe("btn");
+		// 两个挂点都得有。只挂 `btn` 的话,皮肤惯写的 `[data-bn="btn"]` 精确匹配会把
+		// 这颗刷成中性底,而 text-white 是写死的类 —— 真机上就这么白底白字过一次。
+		expect(a.getAttribute("data-bn")).toBe("btn btn-primary");
 		// rounded-full 是写死的 9999px,皮肤的 radius.pill 压不平;必须走 token 类。
 		expect([a.className.includes("rounded-bn-pill"), a.className.includes("rounded-full")]).toEqual(
 			[true, false],

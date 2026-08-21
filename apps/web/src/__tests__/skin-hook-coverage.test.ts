@@ -92,6 +92,31 @@ function listTsx(dir: string): string[] {
 	return acc;
 }
 
+/**
+ * 抠出每个 `<button>` / `<a>` 的**开标签**。属性里含 `{}` 表达式,得配对着数,
+ * 不能见到第一个 `>` 就停。
+ */
+function openTags(src: string): { tag: string; line: number; attrs: string }[] {
+	const out: { tag: string; line: number; attrs: string }[] = [];
+	for (const m of src.matchAll(/<(button|a)[\s\n]/g)) {
+		const start = m.index as number;
+		let depth = 0;
+		let k = start + m[0].length - 1;
+		for (; k < src.length; k += 1) {
+			const c = src[k];
+			if (c === "{") depth += 1;
+			else if (c === "}") depth -= 1;
+			else if (c === ">" && depth === 0) break;
+		}
+		out.push({
+			tag: m[1] as string,
+			line: src.slice(0, start).split("\n").length,
+			attrs: src.slice(start, k + 1),
+		});
+	}
+	return out;
+}
+
 function countUnhooked(): Record<string, number> {
 	const acc: Record<string, number> = {};
 	for (const root of SCAN_ROOTS) {
@@ -122,5 +147,37 @@ describe("皮肤按钮挂点覆盖", () => {
 		for (const [file, { why }] of Object.entries(UNHOOKED)) {
 			expect([file, why.length > 4]).toEqual([file, true]);
 		}
+	});
+});
+
+/**
+ * 实心强调底 + 写死白字的按钮,`btn` 与 `btn-primary` **两个挂点都得挂**。
+ *
+ * 少挂 `btn-primary` 不是「少一档可调」,是**白底白字**:底那半随皮肤走,而
+ * `text-white` 是写死的类,皮肤改不动。皮肤惯常写 `[data-bn="btn"]` —— 精确匹配,
+ * 碰不到 `data-bn="btn btn-primary"` 的主按钮,却正好把只写了 `"btn"` 的那颗刷成
+ * 中性底。于是全站主按钮里**只有它**变成白底白字,而这在默认装下完全看不出来。
+ *
+ * 2026-08-21 真机上就是这么翻的车:About 的爱发电按钮。
+ */
+describe("主按钮的挂点写全", () => {
+	it("实心强调底 + text-white 的按钮不能只挂通用 btn", () => {
+		const bad: string[] = [];
+		for (const root of SCAN_ROOTS) {
+			for (const file of listTsx(root)) {
+				const src = blankComments(readFileSync(file, "utf8"));
+				for (const t of openTags(src)) {
+					if (!/\sdata-bn=/.test(t.attrs)) continue;
+					const solid = /bg-bn-(pink|blue)\b/.test(t.attrs) && t.attrs.includes("text-white");
+					if (!solid) continue;
+					if (t.attrs.includes("btn-primary")) continue;
+					bad.push(
+						`${relative(REPO, file).split(sep).join("/")}:${t.line} <${t.tag}> 是实心主按钮,` +
+							`却没挂 btn-primary —— 皮肤刷了底,白字会消失`,
+					);
+				}
+			}
+		}
+		expect(bad.join("\n")).toBe("");
 	});
 });

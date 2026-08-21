@@ -167,17 +167,27 @@ function SponsorPanel() {
 					Bilibili Notify 是 MIT 开源、永久免费的项目。服务器、测试设备与持续开发都需要成本,
 					如果它帮到了你,欢迎在爱发电请女仆喝杯奶茶 —— 每一份心意,都会化作新功能与更少的 bug。
 				</p>
+				{/*
+				 * 它长得就是一颗实心粉主按钮,只是行为上是条外链,所以留 a 标签没换成 Btn ——
+				 * Btn 只渲染 button,为一处调用给它开 href 分支不值当。挂点认的是「这是什么」
+				 * 而不是「用什么标签写的」。
+				 *
+				 * **`btn btn-primary` 两个都要写,少一个就是白底白字**:实心底那半随皮肤走,
+				 * 而 `text-white` 是写死的类,皮肤改不动。皮肤惯常写的是 `[data-bn="btn"]`
+				 * (精确匹配),它碰不到库里 `data-bn="btn btn-primary"` 的主按钮 —— 只写
+				 * `"btn"` 的话,这颗就成了全站唯一被中性底刷中的主按钮,字还是白的。
+				 * 真机上栽过一次(2026-08-21)。
+				 *
+				 * 圆角走 rounded-bn-pill 而非 rounded-full:后者是写死的 9999px,
+				 * 皮肤的 radius.pill 压不平它。
+				 */}
 				<div className="mt-4">
 					<a
 						href={AFDIAN_URL}
 						target="_blank"
 						rel="noreferrer"
 						onClick={externalLinkClick(AFDIAN_URL)}
-						// 它长得就是一颗实心粉主按钮,只是行为上是条外链,所以留 <a> 没换成 Btn ——
-						// Btn 只渲染 <button>,为一处调用给它开 href 分支不值当。挂 btn 是因为挂点
-						// 认的是「这是什么」而不是「用什么标签写的」;圆角改 rounded-bn-pill,
-						// rounded-full 是写死的 9999px,皮肤的 radius.pill 压不平它。
-						data-bn="btn"
+						data-bn="btn btn-primary"
 						className="inline-flex items-center gap-2 rounded-bn-pill bg-bn-pink px-5 py-2.5 text-[13px] font-bold text-white shadow-bn-accent-lg transition hover:opacity-90"
 					>
 						<Icon.heart size={15} />
