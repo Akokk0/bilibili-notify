@@ -353,45 +353,38 @@ export interface LogLevelPickerProps {
 	allowInherit?: boolean;
 }
 
+/** `null`(跟随全局)在 Picker 里的替身 —— Picker 的 value 不收 null。 */
+const INHERIT = "inherit" as const;
+
+const LOG_LEVELS: { v: LogLevelValue; label: string; color: string }[] = [
+	{ v: 1, label: "错误", color: LOG_LEVEL_TONE.error },
+	{ v: 2, label: "告警", color: LOG_LEVEL_TONE.warn },
+	{ v: 3, label: "信息", color: LOG_LEVEL_TONE.info },
+	{ v: 4, label: "调试", color: LOG_LEVEL_TONE.debug },
+];
+
+/**
+ * 四档日志等级 + 可选的「跟随全局」。它就是一个 {@link Picker},此前把外壳与
+ * 按钮又抄了一份 —— 抄的那份漏了 `aria-pressed`,于是这四颗对读屏器和测试都
+ * 没有「选中」这回事。
+ *
+ * 「跟随全局」的语义色取正文色:它不是某一档等级,不该染成粉的。收编后它选中
+ * 时的底色从 `bn-surface` 变成与四档一致的 `bn-surface-strong`(亮色下两个
+ * token 同为 #fff,只有暗色看得出来 —— 它此前比同排的兄弟暗一档)。
+ */
 export function LogLevelPicker({ value, onChange, allowInherit }: LogLevelPickerProps) {
-	const opts: { v: LogLevelValue; label: string; color: string }[] = [
-		{ v: 1, label: "错误", color: LOG_LEVEL_TONE.error },
-		{ v: 2, label: "告警", color: LOG_LEVEL_TONE.warn },
-		{ v: 3, label: "信息", color: LOG_LEVEL_TONE.info },
-		{ v: 4, label: "调试", color: LOG_LEVEL_TONE.debug },
+	const options = [
+		...(allowInherit
+			? [{ value: INHERIT, label: "跟随全局", color: "var(--color-bn-text-primary)" }]
+			: []),
+		...LOG_LEVELS.map((o) => ({ value: o.v, label: `L${o.v} · ${o.label}`, color: o.color })),
 	];
 	return (
-		<div className="inline-flex flex-wrap gap-1 rounded-md bg-bn-surface-muted p-0.75">
-			{allowInherit ? (
-				<button
-					type="button"
-					onClick={() => onChange(null)}
-					data-bn="btn"
-					className={`rounded-sm px-3 py-1 text-[11.5px] font-semibold transition ${
-						value === null
-							? "bg-bn-surface text-bn-text-primary shadow-sm"
-							: "text-bn-text-tertiary"
-					}`}
-				>
-					跟随全局
-				</button>
-			) : null}
-			{opts.map((o) => {
-				const active = value === o.v;
-				return (
-					<button
-						type="button"
-						key={o.v}
-						onClick={() => onChange(o.v)}
-						data-bn="btn"
-						className={`rounded-sm px-3 py-1 text-[11.5px] font-semibold transition ${active ? "bg-bn-surface-strong shadow-sm" : "text-bn-text-tertiary"}`}
-						style={active ? { color: o.color } : undefined}
-					>
-						L{o.v} · {o.label}
-					</button>
-				);
-			})}
-		</div>
+		<Picker<LogLevelValue | typeof INHERIT>
+			value={value ?? INHERIT}
+			onChange={(next) => onChange(next === INHERIT ? null : next)}
+			options={options}
+		/>
 	);
 }
 
