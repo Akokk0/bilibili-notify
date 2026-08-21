@@ -36,12 +36,14 @@
 | `Input` | 带可选前置 icon 的单行输入框 |
 | `CheckRow` | 多选列表的选项行:粉勾选方块 + 文本,checkbox 本体 sr-only |
 | `ErrorNote` | 「XX 失败:…」红字提示盒的唯一写法。恒 `role="alert"`(21 个调用点无一例外都是「出错了才渲染」)。可选 `icon` 左槽;`size` 三档**是三种位置**不是口味:`sm` 密集卡片内(UpCard 整卡只有 10~11px)、`md` 默认给表单面板、`lg` 给消息流里的横幅(AI 聊天正文 13px)。外边距走 `className` |
-| `WarnNote` | 「做完了但有几处没照办」黄字提示盒的唯一写法;**行高与外边距走 `className`** |
+| `WarnNote` | 「做完了但有几处没照办」黄字提示盒的唯一写法;`size` 两档与 `ErrorNote` 对齐(有了它「红/黄双色同形」的一对才写得出来);**行高与外边距走 `className`** |
 | `EmptyNote` | 「这里还什么都没有」中性虚线框的唯一写法;`md`(默认)给整块面板的空态、`sm` 给表单小节里内嵌的一行。**只此两档** —— 收编前站内九份手写在四种圆角三种字号之间漂 |
 | `Spinner` | 品牌色圆环加载指示(淡粉底环 + 粉顶弧) |
 | `PlatformIcon` / `platformLabel` | 推送平台图标与显示名(onebot / qq-official / webhook) |
 | `StatsBar` | 迷你堆叠柱状图(live/dyn/sc/guard 四色) |
 | `Section` / `Row` | 抽屉与面板里的「小节标题 + 行列表」骨架 |
+
+**提示盒三兄弟(`ErrorNote` / `WarnNote` / `EmptyNote`)共用一套尺寸阶梯** —— `sm` = `rounded-md` 11.5px、`md` = `rounded-lg` 12.5px、`lg` = `rounded-xl` 13px。它们说的是同一类话,只该差颜色不该差形状;此前三个各写各的,同一个弹窗里「保存失败」与「有几处没照办」长成两种控件。阶梯**只管圆角与字号**,内边距各归各的(空态盒撑满面板留白、红盒挤在字段之间,那是位置不是漂移)。`packages/ui/src/__tests__/note-family.test.tsx` 钉着这条。
 
 ### 玻璃卡
 

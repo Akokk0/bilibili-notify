@@ -695,10 +695,26 @@ export interface ErrorNoteProps {
 	className?: string;
 }
 
+/**
+ * 提示盒三兄弟(`ErrorNote` / `WarnNote` / `EmptyNote`)**共用**的尺寸阶梯。
+ *
+ * 它们说的是同一类话,所以只该差颜色、不该差形状。收编前三个各写各的:红盒
+ * `rounded-md` 12px、黄盒 `rounded-lg` 11.5px、空态盒又是另外两档 —— 同一个弹窗里
+ * 「保存失败」与「有几处没照办」当场长成两种控件。`note-family.test.tsx` 钉着这条。
+ *
+ * **只管圆角与字号**。内边距不在这儿:空态盒要撑满整块面板的留白、红盒挤在表单
+ * 字段之间,那是位置决定的,不是漂移,各组件自己配。
+ */
+const NOTE_SIZE = {
+	sm: "rounded-md text-[11.5px]",
+	md: "rounded-lg text-[12.5px]",
+	lg: "rounded-xl text-[13px]",
+} as const;
+
 const ERROR_NOTE_SIZE = {
-	sm: "rounded-md px-2 py-1.5 text-[10.5px] leading-snug",
-	md: "rounded-md p-2.5 text-xs leading-relaxed",
-	lg: "rounded-xl px-4 py-3 text-[13px] leading-relaxed",
+	sm: `${NOTE_SIZE.sm} px-2 py-1.5 leading-snug`,
+	md: `${NOTE_SIZE.md} p-2.5 leading-relaxed`,
+	lg: `${NOTE_SIZE.lg} px-4 py-3 leading-relaxed`,
 } as const;
 
 /** 图标与首行文字的基线对齐量,随字号走。 */
@@ -731,17 +747,33 @@ export function ErrorNote({ children, icon, size = "md", className }: ErrorNoteP
 	);
 }
 
+const WARN_NOTE_SIZE = {
+	sm: `${NOTE_SIZE.sm} px-2 py-1.5`,
+	md: `${NOTE_SIZE.md} px-3 py-2`,
+} as const;
+
 /**
  * 黄字提示盒 —— 「做完了,但有几处没照办」这一档。红字那档见 {@link ErrorNote}。
  *
  * 行高**刻意不给**:两处用它的地方(皮肤上传警告、消息排版提示)一个是短句列表、
  * 一个是整段说明,行高各要各的。同名工具类在一个 class 串里谁赢由生成顺序定,
  * 靠调用方覆盖不住,所以基础样式里干脆不放。
+ *
+ * `size` 两档与 {@link ErrorNote} 对齐 —— 有了它,「红 / 黄双色同形」的一对才写得出来
+ * (FontPicker 那处此前正是因为库里两兄弟一大一小,只能自己手搓一份)。
  */
-export function WarnNote({ children, className }: { children: ReactNode; className?: string }) {
+export function WarnNote({
+	children,
+	size = "md",
+	className,
+}: {
+	children: ReactNode;
+	size?: "sm" | "md";
+	className?: string;
+}) {
 	return (
 		<div
-			className={`rounded-lg border border-bn-warning/40 bg-bn-warning/10 px-3 py-2 text-[11.5px] text-bn-warning ${className ?? ""}`}
+			className={`border border-bn-warning/40 bg-bn-warning/10 text-bn-warning ${WARN_NOTE_SIZE[size]} ${className ?? ""}`}
 		>
 			{children}
 		</div>
@@ -767,8 +799,8 @@ export interface EmptyNoteProps {
 }
 
 const EMPTY_NOTE_SIZE = {
-	sm: "rounded-md px-3 py-3 text-[11.5px]",
-	md: "rounded-lg p-6 text-[12.5px]",
+	sm: `${NOTE_SIZE.sm} px-3 py-3`,
+	md: `${NOTE_SIZE.md} p-6`,
 } as const;
 
 export function EmptyNote({ children, size = "md", className }: EmptyNoteProps) {

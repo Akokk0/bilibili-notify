@@ -218,24 +218,27 @@ describe("空态盒只有 EmptyNote 那一份", () => {
 
 describe("红字提示盒只有 ErrorNote 那一份", () => {
 	/**
-	 * 判据是**红三件套同时出现在一个 class 串里** —— 边 + 底 + 字。单独一个不算:
-	 * 只写 `text-bn-danger-text` 的红字行、只写 `border-bn-danger-border` 的红框输入,
-	 * 那都是别的东西。三个凑齐了就是在手搓这个盒子。
+	 * 判据是**红边 + 红底**同时出现在一个 class 串里。
+	 *
+	 * 曾经还要求第三样(红字),结果漏了两处:「红边红底在外层 div、红字在里面的
+	 * 子元素上」的写法,逐个元素看时外层没有红字、内层没有红底,两层都不满足。
+	 * 边与底凑齐就已经是「在画一个红盒子」了 —— 字色在哪层不影响这个判断。
+	 *
+	 * 单独一样不算:只写 `text-bn-danger-text` 的红字行、只写
+	 * `border-bn-danger-border` 的红框输入,那都是别的东西。
 	 */
 	function isDangerBox(code: string): boolean {
 		const cls = staticClasses(code);
-		return (
-			cls.includes("border-bn-danger-border") &&
-			cls.includes("bg-bn-danger-soft") &&
-			cls.includes("text-bn-danger-text")
-		);
+		return cls.includes("border-bn-danger-border") && cls.includes("bg-bn-danger-soft");
 	}
 
 	const KEPT: Record<string, string> = {
 		"apps/web/src/components/alert-shell.tsx":
 			"组件告警条不是内联提示盒:portal 到 body、fixed 在右上角、带 aria-live=assertive 与「全部清除」钮。它是 Toast 那一族的东西(只是语义为红),塞进 ErrorNote 要给库件加 fixed 定位与关闭钮两个它不该有的能力。",
+		"apps/web/src/pages/up/UpDialog.tsx":
+			"「已失效的引用」那块是个**红色容器**,里面装着一行说明加一排可点的移除 chip。ErrorNote 是纯文字盒,装不下可交互子元素;硬塞的话得给库件开一个「任意 children + 不管排版」的口子,那等于没有组件。",
 		"apps/web/src/pages/cards/FontPicker.tsx":
-			"局部的 Notice 是 danger / warning **双色同形**的一对,靠的就是两种 tone 除颜色外一模一样。而库里 ErrorNote(12px / rounded-md)与 WarnNote(11.5px / rounded-lg)本身尺寸就不齐 —— 换过去这一对当场一大一小。把 note 三兄弟的尺寸对齐是设计决定,不在这一刀范围里。",
+			"「选中的字体已不在库里」那行同上 —— 红底容器里并排放着说明文字与「清除」钮。它下方的 err / warn 两条提示已经收编成 ErrorNote / WarnNote 的 sm 档了,留下的只有这个带按钮的容器。",
 	};
 
 	it("没有哪个页面自己拼红边 + 红底 + 红字", () => {

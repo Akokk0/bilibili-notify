@@ -41,10 +41,11 @@ describe("ErrorNote", () => {
 			expect(c).toContain("bg-bn-danger-soft");
 			expect(c).toContain("text-bn-danger-text");
 		}
-		// 字号真的分三档 —— 只换圆角/内边距不算「尺寸」。
+		// 字号真的分三档 —— 只换圆角/内边距不算「尺寸」。具体三档取自三兄弟共用的
+		// 阶梯(见 `note-family.test.tsx`),这里只钉「确实是三个不同的字号」。
 		expect([
-			cls[0]?.includes("text-[10.5px]"),
-			cls[1]?.includes("text-xs"),
+			cls[0]?.includes("text-[11.5px]"),
+			cls[1]?.includes("text-[12.5px]"),
 			cls[2]?.includes("text-[13px]"),
 		]).toEqual([true, true, true]);
 	});
