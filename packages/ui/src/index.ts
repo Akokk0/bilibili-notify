@@ -16,6 +16,7 @@ export * from "./field-updates";
 export * from "./glass";
 export * from "./glass-box";
 export * from "./icons";
+export * from "./popover";
 export * from "./section-nav";
 export * from "./tab-bar";
 export * from "./toast";

@@ -1,4 +1,4 @@
-import { Btn, Icon, MenuItem } from "@bilibili-notify/ui";
+import { Btn, Icon, MenuItem, PopoverShell } from "@bilibili-notify/ui";
 import {
 	closestCenter,
 	DndContext,
@@ -127,12 +127,13 @@ function NavEditor({ onClose }: { onClose: () => void }) {
 	}
 
 	return (
-		<div
+		<PopoverShell
 			ref={ref}
-			// 弹层走强玻璃档 —— `glass` 的 hook 语义是「轻玻璃卡片」,`glass-strong` 才是
-			// 「弹层、浮条、抽屉」。暗色皮肤按最佳实践把 background 调到 alpha 0.55、
-			// strongBackground 0.85,用轻档这个下拉会透出底下的导航文字。
-			className="bn-glass-strong absolute right-0 top-full z-bn-nav mt-1 w-60 rounded-bn-card p-2 shadow-bn-card"
+			align="right"
+			variant="panel"
+			layer="nav"
+			surface="glass"
+			className="w-60"
 		>
 			<div className="flex items-center justify-between gap-1 px-1 py-1">
 				<span className="text-bn-xs font-bold text-bn-text-secondary">标签显示与排序</span>
@@ -160,7 +161,7 @@ function NavEditor({ onClose }: { onClose: () => void }) {
 					})}
 				</SortableContext>
 			</DndContext>
-		</div>
+		</PopoverShell>
 	);
 }
 
@@ -259,10 +260,7 @@ function ThemeSwitcher() {
 				主题：{current}
 			</Btn>
 			{open ? (
-				<div
-					data-bn="glass-strong"
-					className="absolute right-0 top-full z-bn-local mt-2 w-42 rounded-lg border border-bn-border bg-bn-surface-strong p-1.5 shadow-bn-elev"
-				>
+				<PopoverShell align="right" className="w-42">
 					{THEME_OPTIONS.map((o) => {
 						const active = o.value === preference;
 						return (
@@ -282,7 +280,7 @@ function ThemeSwitcher() {
 							</MenuItem>
 						);
 					})}
-				</div>
+				</PopoverShell>
 			) : null}
 		</div>
 	);

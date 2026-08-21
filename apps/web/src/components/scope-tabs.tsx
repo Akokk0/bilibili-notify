@@ -7,7 +7,15 @@
  * 计数,从而在同一 Subscription.overrides 上各管各的切片。
  */
 
-import { Avatar, Icon, MenuItem, Pill, TabBarShell, TabButton } from "@bilibili-notify/ui";
+import {
+	Avatar,
+	Icon,
+	MenuItem,
+	Pill,
+	PopoverShell,
+	TabBarShell,
+	TabButton,
+} from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
 import { colorFromUid, displayName } from "../pages/up/helpers";
 import type { Subscription } from "../types/domain";
@@ -147,10 +155,7 @@ export function ScopeTabs({
 					添加 UP
 				</button>
 				{adding ? (
-					<div
-						data-bn="glass-strong"
-						className="absolute left-0 top-[calc(100%+6px)] z-bn-nav min-w-60 overflow-hidden rounded-bn-sm border border-bn-border-subtle bg-bn-surface shadow-bn-elev"
-					>
+					<PopoverShell layer="nav" variant="flush" className="min-w-60">
 						<div className="border-b border-bn-border-subtle px-3 pb-1.5 pt-2 text-bn-xs font-bold uppercase tracking-wider text-bn-text-tertiary">
 							选择要单独定制的 UP 主
 						</div>
@@ -199,7 +204,7 @@ export function ScopeTabs({
 						>
 							取消
 						</button>
-					</div>
+					</PopoverShell>
 				) : null}
 			</div>
 

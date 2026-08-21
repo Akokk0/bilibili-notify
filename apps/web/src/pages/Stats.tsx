@@ -8,6 +8,7 @@ import {
 	Icon,
 	LoadingBlock,
 	MenuItem,
+	PopoverShell,
 } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -154,10 +155,7 @@ function UpPicker({
 				<span className="ml-auto text-xs text-bn-text-secondary">{open ? "▴" : "▾"}</span>
 			</button>
 			{open ? (
-				<div
-					data-bn="glass-strong"
-					className="absolute left-0 top-[calc(100%+6px)] z-bn-overlay max-h-80 min-w-56 overflow-y-auto rounded-bn-card border border-bn-border bg-bn-surface shadow-bn-card"
-				>
+				<PopoverShell layer="overlay" className="max-h-80 min-w-56 overflow-y-auto">
 					<MenuItem
 						onClick={() => {
 							onChange(null);
@@ -196,7 +194,7 @@ function UpPicker({
 							</MenuItem>
 						);
 					})}
-				</div>
+				</PopoverShell>
 			) : null}
 		</div>
 	);
