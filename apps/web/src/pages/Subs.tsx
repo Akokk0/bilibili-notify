@@ -7,6 +7,7 @@ import {
 	Input,
 	LoadingBlock,
 	ModalShell,
+	Toast,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -844,14 +845,7 @@ export default function Subs() {
 				/>
 			) : null}
 
-			{copyMsg ? (
-				<div
-					data-bn="glass-strong"
-					className="fixed bottom-5 left-1/2 z-80 -translate-x-1/2 rounded-md bg-bn-surface-strong px-3 py-1.5 text-[12px] font-medium text-bn-text-primary shadow-bn-elev"
-				>
-					{copyMsg}
-				</div>
-			) : null}
+			{copyMsg ? <Toast>{copyMsg}</Toast> : null}
 		</div>
 	);
 }
