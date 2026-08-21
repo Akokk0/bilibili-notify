@@ -73,7 +73,7 @@ const MARKDOWN_COMPONENTS: Components = {
 		</code>
 	),
 	pre: ({ children }) => (
-		<pre className="my-3 overflow-x-auto rounded-xl border border-bn-border-subtle bg-[#0f1115] p-3 text-[12px] leading-relaxed text-gray-200">
+		<pre className="my-3 overflow-x-auto rounded-bn-sm border border-bn-border-subtle bg-bn-console-bg p-3 text-[12px] leading-relaxed text-bn-console-text">
 			{children}
 		</pre>
 	),

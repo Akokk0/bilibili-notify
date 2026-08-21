@@ -52,6 +52,18 @@
 	   UP 弹窗封面上那颗关闭钮已收编成 IconButton 的 `scrim` 档 —— 那一档走
 	   `--color-bn-overlay` 的深纱,压在任意图片上都读得出来,白纱只在深色底上成立。) */
 	--color-bn-inverse-strong: rgba(255, 255, 255, 0.25);
+	/* ── 控制台面 ────────────────────────────────────────────────────────────
+	   日志流与代码块那块**恒暗**的终端面。四个值在深浅两色下都不变,也**不进皮肤词表**
+	   —— 行内三档字色是照着这个底配出来的,皮肤把底调亮,日志就没法读了。
+
+	   恒定 ≠ 写死:收编前 `Logs.tsx` 与 `About.tsx` 各写死一份 `bg-[#0f1115]`,圆角
+	   一个 sm 一个 xl,正文一个 gray-300 一个 gray-200 —— 同一个面漂成两副样子。
+	   `danger` 单独一档是因为亮色主题下 `--color-bn-danger-text` 是深红,压在这个底上
+	   读不出来;这一档挑的是暗底上够亮的那一支。 */
+	--color-bn-console-bg: #0f1115;
+	--color-bn-console-text: #d1d5db;
+	--color-bn-console-dim: #6b7280;
+	--color-bn-console-danger: #f87171;
 	--color-bn-danger: #ef4444;
 	--color-bn-success: #10b981;
 	--color-bn-warning: #d97706;

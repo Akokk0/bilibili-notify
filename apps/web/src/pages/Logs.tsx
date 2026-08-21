@@ -206,11 +206,15 @@ export default function Logs() {
 				{logsQuery.isLoading ? <span>加载中…</span> : null}
 			</div>
 
-			<div className="rounded-bn-sm border border-bn-border-subtle bg-[#0f1115] px-3 py-2.5 font-mono text-[12px] leading-relaxed">
+			<div className="rounded-bn-sm border border-bn-border-subtle bg-bn-console-bg px-3 py-2.5 font-mono text-[12px] leading-relaxed">
 				{logsQuery.error ? (
-					<div className="text-red-400">加载失败:{String((logsQuery.error as Error).message)}</div>
+					<div className="text-bn-console-danger">
+						加载失败:{String((logsQuery.error as Error).message)}
+					</div>
 				) : displayed.length === 0 ? (
-					<div className="py-10 text-center text-[12px] text-gray-500">没有符合条件的日志</div>
+					<div className="py-10 text-center text-[12px] text-bn-console-dim">
+						没有符合条件的日志
+					</div>
 				) : (
 					// biome-ignore lint/suspicious/noArrayIndexKey: 日志行无稳定 id;append-only tail 视图,行不会原地重排,index 复用无状态副作用
 					displayed.map((e, i) => <LogRow key={`${e.ts}-${i}`} entry={e} />)
@@ -241,16 +245,16 @@ function LogRow({ entry }: { entry: LogLineView }) {
 	const tone = LOG_LEVEL_TONE[entry.level];
 	const time = formatLocalTime(entry.ts); // yyyy-MM-dd HH:MM:SS.sss(浏览器本地时区)
 	return (
-		<div className="flex gap-2 whitespace-pre-wrap break-all py-0.5 text-gray-300">
-			<span className="shrink-0 text-gray-500">{time}</span>
+		<div className="flex gap-2 whitespace-pre-wrap break-all py-0.5 text-bn-console-text">
+			<span className="shrink-0 text-bn-console-dim">{time}</span>
 			<span className="shrink-0 font-bold uppercase" style={{ color: tone }}>
 				{entry.level}
 			</span>
-			{entry.name ? <span className="shrink-0 text-gray-500">[{entry.name}]</span> : null}
+			{entry.name ? <span className="shrink-0 text-bn-console-dim">[{entry.name}]</span> : null}
 			<span className="min-w-0">
 				{entry.msg}
 				{entry.args && entry.args.length > 0 ? (
-					<span className="text-gray-500"> {JSON.stringify(entry.args)}</span>
+					<span className="text-bn-console-dim"> {JSON.stringify(entry.args)}</span>
 				) : null}
 			</span>
 		</div>

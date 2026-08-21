@@ -311,3 +311,53 @@ describe("平台标识色只有库里那一份", () => {
 		expect(findings).toEqual([]);
 	});
 });
+
+/**
+ * **颜色一律走 token,不用 Tailwind 自带调色板、也不写任意值 hex。**
+ *
+ * `text-gray-500` / `bg-white` / `bg-[#0f1115]` 这三种写法都跳得出皮肤 —— 它们编译成
+ * 固定的色值,`--color-bn-*` 那一层根本不经过。默认装看着没事,换个皮肤就露:玻璃调暗了
+ * 而钮还是白底,面色调深了而时间轴圆点还箍着一圈白边。
+ *
+ * 收尾这一轮清的就是最后四个文件:Logs 的控制台、About 的代码块、草稿岛的保存钮、
+ * Dashboard 时间轴的圆点。控制台那两块**确实**该恒暗,但恒暗不等于写死 —— 现在走
+ * `--color-bn-console-*`,值仍然固定,只是集中到一处、两边不会再各飘各的。
+ *
+ * 扫三个端的源码,不留白名单 —— 白名单正是家族色守卫漏掉 `StatsBar` 的原因。
+ */
+describe("颜色一律走 token", () => {
+	const PALETTE = [
+		"gray|slate|zinc|neutral|stone",
+		"red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky",
+		"blue|indigo|violet|purple|fuchsia|pink|rose",
+		"black|white",
+	].join("|");
+	const PREFIX = "text|bg|border|from|via|to|ring|fill|stroke|divide|outline|decoration";
+	const RAW_RE = new RegExp(
+		`\\b(?:${PREFIX})-(?:${PALETTE})(?:-\\d{2,3})?\\b|\\b(?:${PREFIX})-\\[#[0-9a-fA-F]{3,8}\\]`,
+		"g",
+	);
+
+	const ROOTS = [
+		[SRC_DIR, "apps/web/src"],
+		[UI_SRC_DIR, "packages/ui/src"],
+		[join(SRC_DIR, "../../desktop/src"), "apps/desktop/src"],
+	] as const;
+
+	it("三个端里都没有原生调色板类,也没有任意值 hex 类", () => {
+		const findings: string[] = [];
+		for (const [root, label] of ROOTS) {
+			for (const file of listTsxRecursive(root)) {
+				if (/__tests__|\.test\./.test(file)) continue;
+				const src = readFileSync(file, "utf8")
+					.replace(/\/\*[\s\S]*?\*\//g, "")
+					.replace(/\/\/.*$/gm, "");
+				const hits = [...new Set([...src.matchAll(RAW_RE)].map((m) => m[0]))];
+				if (hits.length > 0) {
+					findings.push(`${label}/${file.slice(root.length + 1)}: ${hits.join(" ")}`);
+				}
+			}
+		}
+		expect(findings).toEqual([]);
+	});
+});

@@ -204,7 +204,8 @@ function DirtyContent({ current }: { current: DraftRegistration }) {
 					current.onSave();
 				}}
 				data-bn="btn"
-				className="rounded-bn-pill bg-white px-3 py-1 text-[11.5px] font-bold text-black transition hover:bg-white/90 active:scale-95"
+				// 实心面压在玻璃胶囊上 —— 对比来自「实 vs 半透明」,不来自写死的白。
+				className="rounded-bn-pill bg-bn-surface px-3 py-1 text-[11.5px] font-bold text-bn-text-primary transition hover:bg-bn-hover-muted active:scale-95"
 			>
 				保存
 			</button>
