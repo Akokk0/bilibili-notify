@@ -40,6 +40,7 @@ import {
 	TSelect,
 } from "../components/forms";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
+import { GUARD_LEVELS } from "../config/guard-levels";
 import { PUSH_TONE } from "../config/push-kinds";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
@@ -99,12 +100,6 @@ const DEFAULT_PREVIEW_CONTENT: PreviewContent = {
 	// nobody is logged in.
 	guard: { text: "", level: 3 },
 };
-
-const GUARD_LEVELS: { v: 1 | 2 | 3; label: string; tone: string }[] = [
-	{ v: 1, label: "总督", tone: "#e84393" },
-	{ v: 2, label: "提督", tone: "#a29bfe" },
-	{ v: 3, label: "舰长", tone: "#74b9ff" },
-];
 
 const KIND_LABELS: Record<CardKind, { label: string; tone: string; icon: IconName }> = {
 	live: { label: "直播开播", tone: PUSH_TONE.live, icon: "live" },
@@ -749,17 +744,17 @@ function PreviewContentFields({
 					<Field code="level">
 						<div className="flex flex-wrap gap-1.5">
 							{GUARD_LEVELS.map((g) => {
-								const active = content.guard.level === g.v;
+								const active = content.guard.level === g.level;
 								return (
 									<button
 										type="button"
-										key={g.v}
-										onClick={() => setGuard({ level: g.v })}
+										key={g.level}
+										onClick={() => setGuard({ level: g.level })}
 										data-bn="btn"
 										className="rounded-sm px-3 py-1 text-[11.5px] font-semibold transition"
 										style={
 											active
-												? { background: g.tone, color: "var(--color-bn-on-solid)" }
+												? { background: g.color, color: "var(--color-bn-on-solid)" }
 												: {
 														background: "var(--color-bn-hover-muted)",
 														color: "var(--color-bn-text-tertiary)",

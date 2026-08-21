@@ -16,6 +16,7 @@ import {
 	TInput,
 	TNum,
 } from "../../components/forms";
+import { GUARD_LEVELS } from "../../config/guard-levels";
 import { SECTION_ACCENT, sectionTitleColor } from "../../config/section-accents";
 import type { MessageKindLayoutFull } from "../../types/domain";
 import type {
@@ -732,12 +733,8 @@ export function GuardSection({
 			defaults: { templates: { guardBuy: { [role]: v } as Partial<GuardBundle> } },
 		});
 	const enabled = templates.guardBuy.enable;
-	type GuardRoleKey = "captain" | "commander" | "governor";
-	const ROLES: { key: GuardRoleKey; label: string; tone: string }[] = [
-		{ key: "captain", label: "舰长", tone: "#4ebcec" },
-		{ key: "commander", label: "提督", tone: "#d8a0e6" },
-		{ key: "governor", label: "总督", tone: "#f2a053" },
-	];
+	// 表按 guard_level 升序(总督在前),这一屏历来是舰长打头、由低到高排。
+	const ROLES = [...GUARD_LEVELS].reverse();
 	return (
 		<GlassBox
 			title="上舰提示"
@@ -750,19 +747,19 @@ export function GuardSection({
 			{enabled ? (
 				<>
 					<GuardVariableHints />
-					{ROLES.map(({ key, label, tone }) => {
+					{ROLES.map(({ key, label, color }) => {
 						const entry = templates.guardBuy[key];
 						return (
 							<div
 								key={key}
 								className="mt-2.5 rounded-lg border p-3 first:mt-0"
 								style={{
-									background: `color-mix(in srgb, ${tone} 4%, transparent)`,
-									borderColor: `color-mix(in srgb, ${tone} 20%, transparent)`,
+									background: `color-mix(in srgb, ${color} 4%, transparent)`,
+									borderColor: `color-mix(in srgb, ${color} 20%, transparent)`,
 								}}
 							>
 								<div className="mb-2 flex items-center gap-2">
-									<span className="block h-2 w-2 rounded-sm" style={{ background: tone }} />
+									<span className="block h-2 w-2 rounded-sm" style={{ background: color }} />
 									<span className="text-[12.5px] font-bold text-bn-text-primary">{label}</span>
 									<code className="ml-1 rounded-sm bg-bn-code-bg px-1.5 py-px font-mono text-[10.5px] text-bn-text-tertiary">
 										{key}
