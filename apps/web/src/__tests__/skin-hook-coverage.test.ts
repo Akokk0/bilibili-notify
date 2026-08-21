@@ -34,17 +34,19 @@ const SCAN_ROOTS = [join(REPO, "apps/web/src"), join(REPO, "packages/ui/src")];
  */
 const UNHOOKED: Record<string, { count: number; why: string }> = {
 	"packages/ui/src/atoms.tsx": {
-		count: 1,
-		why: "Toggle 轨道:皮肤实底会盖掉轨道底,开/关当场看不出来",
+		count: 2,
+		why: "Toggle 轨道(皮肤实底会盖掉轨道底,开/关看不出来)+ MenuItem(菜单行不该吃按钮的实底,词表里也没有 menu-item 这一档)",
 	},
 	"apps/web/src/components/drag-handle.tsx": {
 		count: 1,
 		why: "裸 ⠿ 字形,挂上会被皮肤画成一个方块",
 	},
-	"apps/web/src/components/header.tsx": { count: 1, why: "顶栏下拉的菜单行" },
-	"apps/web/src/components/scope-tabs.tsx": { count: 3, why: "无外观的触发器 + 两条下拉菜单行" },
+	"apps/web/src/components/scope-tabs.tsx": {
+		count: 2,
+		why: "无外观的触发器 + 弹层底部的「取消」条(它是一条分隔线下的收尾,不是按钮)",
+	},
 	"apps/web/src/components/draft-island.tsx": { count: 1, why: "岛内草稿列表的行" },
-	"apps/web/src/components/ai-chat/composer.tsx": { count: 3, why: "命令面板行 + 两条附件菜单行" },
+	"apps/web/src/components/ai-chat/composer.tsx": { count: 1, why: "命令面板的候选行" },
 	"apps/web/src/components/ai-chat/index.tsx": {
 		count: 2,
 		why: "两颗浮钮已是玻璃件,走 glass 挂点",
@@ -54,16 +56,23 @@ const UNHOOKED: Record<string, { count: number; why: string }> = {
 		why: "玻璃展开条走 glass 挂点 + 一个无样式包裹",
 	},
 	"apps/web/src/components/ai-chat/sidebar.tsx": { count: 3, why: "会话列表的行,不是按钮" },
-	"apps/web/src/pages/Stats.tsx": { count: 3, why: "两条下拉菜单行 + 一个无样式包裹" },
+	"apps/web/src/pages/Stats.tsx": { count: 1, why: "一个无样式包裹" },
 	"apps/web/src/pages/cards/FontPicker.tsx": { count: 1, why: "字体行的主体" },
-	"apps/web/src/pages/cards/GalleryPicker.tsx": { count: 1, why: "盖在图片上的透明选取层" },
-	"apps/web/src/pages/skins/SkinEditor.tsx": { count: 2, why: "折叠小节的表头行 + 一条纯文字链接" },
+	"apps/web/src/pages/cards/GalleryPicker.tsx": {
+		count: 1,
+		why: "盖在图片上的透明选取层",
+	},
+	"apps/web/src/pages/skins/SkinEditor.tsx": {
+		count: 2,
+		why: "折叠小节的表头行 + 一条纯文字链接",
+	},
 	"apps/web/src/pages/rules/PerUpEditor.tsx": { count: 1, why: "纯文字链接(带下划线的那种)" },
-	"apps/web/src/pages/up/UpCard.tsx": { count: 1, why: "多选勾选方块:二元开关,同 Toggle 那条" },
-	"apps/web/src/pages/up/UpCardMenu.tsx": { count: 1, why: "右键菜单行" },
+	"apps/web/src/pages/up/UpCard.tsx": {
+		count: 1,
+		why: "多选勾选方块:二元开关,同 Toggle 那条",
+	},
 	"apps/web/src/pages/up/UpDialog.tsx": { count: 1, why: "纯文字链接" },
 };
-
 /** 注释里出现的 `<button>` 不算数,但行号要保住 —— 用等长空白填掉注释。 */
 function blankComments(src: string): string {
 	const pad = (m: string) => m.replace(/[^\n]/g, " ");

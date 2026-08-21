@@ -1,4 +1,4 @@
-import { Icon } from "@bilibili-notify/ui";
+import { Icon, MenuItem } from "@bilibili-notify/ui";
 import { type ReactNode, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
@@ -83,23 +83,18 @@ export function UpCardMenu({
 			className="min-w-40 overflow-hidden rounded-lg border border-bn-border bg-bn-surface py-1 shadow-bn-elev"
 		>
 			{items.map((it) => (
-				<button
+				<MenuItem
 					key={it.key}
-					type="button"
 					role="menuitem"
+					danger={it.danger}
+					icon={it.icon}
 					onClick={() => {
 						it.onSelect();
 						onClose();
 					}}
-					className={`flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-1.5 text-left text-[13px] transition hover:bg-bn-surface-muted ${
-						it.danger ? "text-bn-danger-text" : "text-bn-text-primary"
-					}`}
 				>
-					<span className={it.danger ? "text-bn-danger-text" : "text-bn-text-secondary"}>
-						{it.icon}
-					</span>
 					{it.label}
-				</button>
+				</MenuItem>
 			))}
 		</div>,
 		document.body,

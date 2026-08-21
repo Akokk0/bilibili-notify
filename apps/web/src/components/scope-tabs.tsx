@@ -7,7 +7,7 @@
  * 计数,从而在同一 Subscription.overrides 上各管各的切片。
  */
 
-import { Avatar, Icon, Pill, TabBarShell, TabButton } from "@bilibili-notify/ui";
+import { Avatar, Icon, MenuItem, Pill, TabBarShell, TabButton } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
 import { colorFromUid, displayName } from "../pages/up/helpers";
 import type { Subscription } from "../types/domain";
@@ -159,14 +159,12 @@ export function ScopeTabs({
 								{availableSubs.map((sub) => {
 									const color = colorFromUid(sub.uid);
 									return (
-										<button
-											type="button"
+										<MenuItem
 											key={sub.id}
 											onClick={() => {
 												onAddSub(sub.id);
 												setAdding(false);
 											}}
-											className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition hover:bg-bn-pink/5"
 										>
 											<Avatar
 												name={displayName(sub)}
@@ -185,7 +183,7 @@ export function ScopeTabs({
 													播
 												</Pill>
 											) : null}
-										</button>
+										</MenuItem>
 									);
 								})}
 							</div>

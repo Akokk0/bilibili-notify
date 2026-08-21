@@ -1,5 +1,5 @@
 import type { MaidSkillDTO } from "@bilibili-notify/contract";
-import { Icon, IconButton } from "@bilibili-notify/ui";
+import { Icon, IconButton, MenuItem } from "@bilibili-notify/ui";
 import {
 	type KeyboardEvent,
 	type ReactNode,
@@ -325,37 +325,29 @@ export function Composer({
 									data-bn="glass-strong"
 									className="bn-anim-cmd-in absolute bottom-full left-0 z-10 mb-2 w-44 overflow-hidden rounded-bn-card border border-bn-border bg-bn-surface-strong p-1 shadow-bn-elev"
 								>
-									<button
-										type="button"
+									<MenuItem
 										role="menuitem"
-										title={full ? `最多 ${MAX_ATTACHMENTS} 张` : "添加图片"}
-										aria-label="添加图片"
+										icon={<Icon.image size={16} />}
 										disabled={full}
 										onClick={() => {
 											fileRef.current?.click();
 											setActionsOpen(false);
 										}}
-										className="flex w-full cursor-pointer items-center gap-2.5 rounded-bn-sm px-2.5 py-2 text-left text-[13px] text-bn-text-primary transition-colors hover:bg-bn-hover-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
 									>
-										<Icon.image size={16} />
 										添加图片
-									</button>
-									<button
-										type="button"
+									</MenuItem>
+									<MenuItem
 										role="menuitem"
-										title="女仆技能"
-										aria-label="女仆技能"
+										icon={<Icon.sparkle size={16} />}
 										onClick={() => {
 											onChange("/");
 											setClosed(false);
 											setActionsOpen(false);
 											taRef.current?.focus();
 										}}
-										className="flex w-full cursor-pointer items-center gap-2.5 rounded-bn-sm px-2.5 py-2 text-left text-[13px] text-bn-text-primary transition-colors hover:bg-bn-hover-muted"
 									>
-										<Icon.sparkle size={16} />
 										女仆技能
-									</button>
+									</MenuItem>
 								</div>
 							) : null}
 						</div>

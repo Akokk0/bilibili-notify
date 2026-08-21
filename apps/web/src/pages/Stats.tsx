@@ -7,6 +7,7 @@ import {
 	GlassStatCard,
 	Icon,
 	LoadingBlock,
+	MenuItem,
 } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -157,28 +158,24 @@ function UpPicker({
 					data-bn="glass-strong"
 					className="absolute left-0 top-[calc(100%+6px)] z-50 max-h-80 min-w-56 overflow-y-auto rounded-bn-card border border-bn-border bg-bn-surface shadow-bn-card"
 				>
-					<button
-						type="button"
+					<MenuItem
 						onClick={() => {
 							onChange(null);
 							setOpen(false);
 						}}
-						className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-bn-hover-muted"
 					>
 						<span className="text-xs font-bold text-bn-text-primary">全部 UP 主</span>
 						<span className="ml-auto text-xs text-bn-text-secondary">汇总</span>
-					</button>
+					</MenuItem>
 					{rows.map((r) => {
 						const m = meta.get(r.uid);
 						return (
-							<button
+							<MenuItem
 								key={r.uid}
-								type="button"
 								onClick={() => {
 									onChange(r.uid);
 									setOpen(false);
 								}}
-								className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-bn-hover-muted"
 							>
 								<Avatar
 									name={m?.name ?? r.uid}
@@ -196,7 +193,7 @@ function UpPicker({
 									</span>
 								</span>
 								<DeltaTag v={r.net7d} size={10.5} />
-							</button>
+							</MenuItem>
 						);
 					})}
 				</div>

@@ -303,6 +303,75 @@ export function AddCard({ label, hint, onClick, disabled, className }: AddCardPr
 	);
 }
 
+// ── MenuItem ────────────────────────────────────────────────────────────────
+
+/**
+ * 弹层(下拉、右键菜单、附件菜单)里的一整行。
+ *
+ * 收编前站内七行手写:padding 四种、gap 两种、圆角三种、hover 三种、字号三种,
+ * 而它们说的都是「一个浮层里、占满宽、指上去有底色的一行」。选中态只有主题下拉
+ * 写了、danger 只有右键菜单写了 —— 收成一份之后这两种态对所有菜单都在。
+ *
+ * **刻意不挂 `data-bn="btn"`**:皮肤给按钮写的实底落到每一行菜单上会很难看,而
+ * 挂点词表里没有 `menu-item` 这一档。浮层本体自己挂了 `glass-strong`,皮肤能改
+ * 的是那层。给菜单行开新挂点是产品决定,不该顺手塞进重构里。
+ */
+
+type MenuItemRole = "menuitem" | undefined;
+
+export interface MenuItemProps {
+	children: ReactNode;
+	/** 行首图标。**不给就不留空槽** —— 留了的话没图标那几行的文字会莫名缩进。 */
+	icon?: ReactNode;
+	onClick?: MouseEventHandler<HTMLButtonElement>;
+	/** 当前项(主题下拉那种「现在用的是这个」)。 */
+	active?: boolean;
+	/** 销毁性动作,整行连图标一起转红。 */
+	danger?: boolean;
+	disabled?: boolean;
+	/** 容器真的是 `role="menu"` 时传 `"menuitem"`,否则留空走默认的 button。 */
+	role?: MenuItemRole;
+	/**
+	 * 行内有副标题时**必须给** —— 读屏器默认把整行的文字连起来念,「浅色」加上
+	 * 那行小字会变成「浅色 一直亮着」。只有一段文字的行不用管。
+	 */
+	ariaLabel?: string;
+}
+
+export function MenuItem({
+	children,
+	icon,
+	onClick,
+	active = false,
+	danger = false,
+	disabled,
+	role,
+	ariaLabel,
+}: MenuItemProps) {
+	const state = danger
+		? "text-bn-danger-text hover:bg-bn-danger-soft"
+		: active
+			? "bg-bn-pink/12 font-bold text-bn-pink"
+			: "text-bn-text-primary hover:bg-bn-hover-muted";
+	return (
+		<button
+			type="button"
+			role={role}
+			aria-label={ariaLabel}
+			onClick={onClick}
+			disabled={disabled}
+			className={`flex w-full cursor-pointer items-center gap-2.5 rounded-bn-xs px-3 py-2 text-left text-[13px] transition disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent ${state}`}
+		>
+			{icon ? (
+				<span className={`shrink-0 ${danger ? "text-bn-danger-text" : "text-bn-text-secondary"}`}>
+					{icon}
+				</span>
+			) : null}
+			{children}
+		</button>
+	);
+}
+
 // ── Pill ────────────────────────────────────────────────────────────────────
 
 export interface PillProps {

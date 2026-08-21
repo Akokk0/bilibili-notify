@@ -1,4 +1,4 @@
-import { Btn, Icon } from "@bilibili-notify/ui";
+import { Btn, Icon, MenuItem } from "@bilibili-notify/ui";
 import {
 	closestCenter,
 	DndContext,
@@ -266,25 +266,20 @@ function ThemeSwitcher() {
 					{THEME_OPTIONS.map((o) => {
 						const active = o.value === preference;
 						return (
-							<button
-								type="button"
+							<MenuItem
 								key={o.value}
-								aria-label={o.label}
+								ariaLabel={o.label}
+								active={active}
 								onClick={() => {
 									setPreference(o.value);
 									setOpen(false);
 								}}
-								className={`block w-full rounded-md px-2.5 py-1.5 text-left text-[12px] transition ${
-									active
-										? "bg-bn-pink/12 font-bold text-bn-pink"
-										: "text-bn-text-primary hover:bg-bn-hover-muted"
-								}`}
 							>
 								<span className="block">{o.label}</span>
 								<span className="block text-[10.5px] font-normal text-bn-text-secondary">
 									{o.hint}
 								</span>
-							</button>
+							</MenuItem>
 						);
 					})}
 				</div>
