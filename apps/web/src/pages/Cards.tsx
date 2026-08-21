@@ -607,6 +607,23 @@ function PerUpDataSection({
 }
 
 /**
+ * 「这条预览用的是真实数据」的绿色说明条。四个 kind 分支各自写了一遍,连
+ * `realDataLabel` 缺省时的那句兜底也抄了两份 —— 抄的东西一漂,同一个弹窗里
+ * 两条说明就会一条圆一条方。
+ */
+function RealDataNote({ children }: { children: React.ReactNode }) {
+	return (
+		<div className="rounded-sm border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
+			{children}
+		</div>
+	);
+}
+
+/** per-UP 作用域没给 `realDataLabel` 时的兜底说明。 */
+const REAL_DATA_FALLBACK =
+	"使用该 UP 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。";
+
+/**
  * 「预览内容」框 —— 卡片类型切换 + 各类型的 mock/真实内容字段。与作用域无关
  * (预览的是哪类卡片、用什么内容,跟改谁的样式独立)。
  */
@@ -650,18 +667,14 @@ function PreviewContentFields({
 								placeholder="1"
 							/>
 						</Field>
-						<div className="rounded-sm border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
-							{realDataLabel ??
-								"使用该 UP 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。"}
-						</div>
+						<RealDataNote>{realDataLabel ?? REAL_DATA_FALLBACK}</RealDataNote>
 					</>
 				) : (
-					<div className="rounded-sm border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
+					<RealDataNote>
 						{kind === "live"
-							? (realDataLabel ??
-								"使用该 UP 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。")
+							? (realDataLabel ?? REAL_DATA_FALLBACK)
 							: "SC / 上舰:接收方为该 UP(真实名字 / 头像),发送者 / 新舰长取当前登录账号;解析失败回退示例。"}
-					</div>
+					</RealDataNote>
 				)
 			) : kind === "live" ? (
 				<>
@@ -672,9 +685,9 @@ function PreviewContentFields({
 							placeholder="留空则使用示例数据"
 						/>
 					</Field>
-					<div className="rounded-sm border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
+					<RealDataNote>
 						需要后端账号已登录 B 站；填入后将真实拉取该直播间数据并渲染。留空则继续使用示例数据。
-					</div>
+					</RealDataNote>
 				</>
 			) : kind === "dyn" ? (
 				<>
@@ -695,9 +708,9 @@ function PreviewContentFields({
 							placeholder="1"
 						/>
 					</Field>
-					<div className="rounded-sm border border-dashed bg-bn-success-soft/60 p-2.5 text-[11px] text-bn-success-text">
+					<RealDataNote>
 						需要后端账号已登录 B 站；填入后将拉取该 UP 的 space 动态列表，按 offset 选取并渲染。
-					</div>
+					</RealDataNote>
 				</>
 			) : kind === "sc" ? (
 				<>
