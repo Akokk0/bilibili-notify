@@ -30,6 +30,15 @@ const TONE_BORDER: Record<ToastTone, string | undefined> = {
 	err: "var(--color-bn-danger-border)",
 };
 
+/**
+ * 一句话提示该停多久(毫秒)。
+ *
+ * `Toast` **自己不计时**(挂上撤下由调用方管),于是三个调用方各拍了一个数:2000 /
+ * 2000 / 2400。2400 那个没有注释也没有专门的改动记录,就是随手写的。计时留在调用方
+ * 是既有决定(生命周期归它管),但「停多久」不该跟着一起分家。
+ */
+export const TOAST_DURATION_MS = 2000;
+
 export interface ToastProps {
 	children: ReactNode;
 	/** 语义。只换描边色,底与字色不动。 */

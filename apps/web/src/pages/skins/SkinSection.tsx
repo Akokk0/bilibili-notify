@@ -12,6 +12,7 @@ import {
 	Icon,
 	ModalShell,
 	Pill,
+	TOAST_DURATION_MS,
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -437,7 +438,7 @@ function SkinGuideModal({ onClose }: { onClose: (warnings?: string[]) => void })
 		const readVar = (name: string) => cs.getPropertyValue(name);
 		await navigator.clipboard.writeText(buildSkinPrompt(readVar));
 		setCopied(true);
-		setTimeout(() => setCopied(false), 2000);
+		setTimeout(() => setCopied(false), TOAST_DURATION_MS);
 	}
 
 	const submit = useMutation({

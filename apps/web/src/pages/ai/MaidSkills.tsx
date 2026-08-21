@@ -148,7 +148,7 @@ export function MaidSkills() {
 	if (query.isLoading) return <LoadingBlock label="正在读取技能" />;
 
 	return (
-		<div className="grid gap-4 xl:grid-cols-[220px_1fr]">
+		<div className="grid gap-4 xl:grid-bn-rail">
 			<SectionNav
 				heading="技能"
 				items={[

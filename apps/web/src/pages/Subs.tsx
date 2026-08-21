@@ -8,6 +8,7 @@ import {
 	Input,
 	LoadingBlock,
 	ModalShell,
+	TOAST_DURATION_MS,
 	Toast,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -428,7 +429,7 @@ export default function Subs() {
 
 	useEffect(() => {
 		if (!copyMsg) return;
-		const t = window.setTimeout(() => setCopyMsg(null), 2000);
+		const t = window.setTimeout(() => setCopyMsg(null), TOAST_DURATION_MS);
 		return () => window.clearTimeout(t);
 	}, [copyMsg]);
 	const [showNewDialog, setShowNewDialog] = useState(false);

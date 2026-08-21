@@ -426,7 +426,7 @@ export default function Rules() {
 				overridesCountFor={(s) => overrideKeysOf(s).size + (s.specialUsers.length > 0 ? 1 : 0)}
 			/>
 
-			<div className="grid gap-4 xl:grid-cols-[220px_1fr]">
+			<div className="grid gap-4 xl:grid-bn-rail">
 				<SectionList
 					sections={sections}
 					current={section}

@@ -2,7 +2,7 @@
  * AI page (智能女仆)。
  *
  * 两层 Tab,与 `Cards.tsx` 同一套双层结构(顶部 tab 条 + 左侧 `SectionNav`,
- * 外层 `grid xl:grid-cols-[220px_1fr]`):
+ * 外层 `grid xl:grid-bn-rail`):
  *
  * - **模型配置** —— 左栏列**已添加的服务商实例**(点添加才出现;同一家可以有多份,
  *   比如两个 DeepSeek 号)。点一项 = 切换**我在编辑谁**,不是「换用这一份」—— 后者是
@@ -665,7 +665,7 @@ export default function Ai() {
 					<AiTestPanel draft={draft} />
 				</div>
 			) : tab === "model" ? (
-				<div className="grid gap-4 xl:grid-cols-[220px_1fr]">
+				<div className="grid gap-4 xl:grid-bn-rail">
 					<SectionNav
 						heading="服务商"
 						items={rail.map((item) => {
@@ -1009,7 +1009,7 @@ export default function Ai() {
 					</div>
 				</div>
 			) : (
-				<div className="grid gap-4 xl:grid-cols-[220px_1fr]">
+				<div className="grid gap-4 xl:grid-bn-rail">
 					<SectionNav
 						heading="性格"
 						items={personaRailItems(draft).map((item) => {

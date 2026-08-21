@@ -108,7 +108,7 @@ export default function About() {
 
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
-			<div className="grid gap-4 xl:grid-cols-[220px_1fr]">
+			<div className="grid gap-4 xl:grid-bn-rail">
 				<SectionNav
 					heading="关于"
 					activeId={section}

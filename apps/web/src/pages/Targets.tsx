@@ -16,6 +16,7 @@ import {
 	platformTint,
 	SectionNav,
 	StatusDot,
+	TOAST_DURATION_MS,
 	Toast,
 	Toggle,
 	ToneChip,
@@ -1345,7 +1346,7 @@ export default function Targets() {
 	const showToast = (msg: string, ok = true): void => {
 		setToast({ msg, ok });
 		if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
-		toastTimer.current = window.setTimeout(() => setToast(null), 2400);
+		toastTimer.current = window.setTimeout(() => setToast(null), TOAST_DURATION_MS);
 	};
 
 	const upsertAdapter = useMutation({
@@ -1573,7 +1574,7 @@ export default function Targets() {
 
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
-			<div className="grid gap-4 xl:grid-cols-[220px_1fr]">
+			<div className="grid gap-4 xl:grid-bn-rail">
 				<AdapterRail
 					adapters={adapters}
 					selectedId={selectedAdapterId}

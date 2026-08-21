@@ -4,7 +4,7 @@ import { AddButton, IconButton } from "./atoms";
 /**
  * SectionNav —— Rules / Targets / Logs 三页共用的「分区/Tab 导航」。
  *
- * 双形态(断点 xl=1280,与页面级 `grid xl:grid-cols-[220px_1fr]` 对齐):
+ * 双形态(断点 xl=1280,与页面级 `grid xl:grid-bn-rail` 对齐):
  * - xl 以上(桌面):左侧竖向 `aside` 富列表,保持各页原观感。
  * - xl 以下(iPad 等窄视口):顶部横向可滚 chip 条。
  *
@@ -166,7 +166,7 @@ export function SectionNav({
 	};
 
 	return (
-		// 单根:xl 下是 block,在 `grid xl:grid-cols-[220px_1fr]` 里占左列 col1。
+		// 单根:xl 下是 block,在 `grid xl:grid-bn-rail` 里占左列 col1。
 		// xl 以下用 `contents`(不生成盒子),让横向条直接成为 grid 子项 —— 否则它的包含块
 		// 只有「自身高度的矮格子」,sticky 无吸附空间,长内容页一滚就被矮格子拖走。
 		// contents 后包含块变成整个 grid(与内容等高),sticky 才能真正吸顶整段滚动。

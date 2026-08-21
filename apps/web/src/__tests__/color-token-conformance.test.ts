@@ -477,3 +477,36 @@ describe("字号走阶梯", () => {
 		expect(new Set(px).size).toBe(px.length);
 	});
 });
+
+/**
+ * **两栏骨架只有一份。**
+ *
+ * `SectionNav` 那五页共用「左侧竖栏 + 右侧内容」,收编前每页各写一遍
+ * `xl:grid-cols-[220px_1fr]`,六处逐字节相同 —— `section-nav.tsx` 的注释里还得三次
+ * 把这串类名抄出来解释自己跟谁配对。现在栏宽在 `--bn-rail-width`,类名是
+ * `grid-bn-rail`,改一次五页跟着动。
+ */
+describe("两栏骨架只有一份", () => {
+	const ROOTS = [
+		[SRC_DIR, "apps/web/src"],
+		[UI_SRC_DIR, "packages/ui/src"],
+	] as const;
+
+	it("没有哪一页再手写栏宽", () => {
+		const findings: string[] = [];
+		for (const [root, label] of ROOTS) {
+			for (const file of listTsxRecursive(root)) {
+				const src = readFileSync(file, "utf8");
+				if (/grid-cols-\[\d+px_1fr\]/.test(src))
+					findings.push(`${label}/${file.slice(root.length + 1)}`);
+			}
+		}
+		expect(findings).toEqual([]);
+	});
+
+	it("栏宽变量与 utility 都真的在表里", () => {
+		const css = readFileSync(UI_THEME, "utf8");
+		expect(/--bn-rail-width:\s*\d+px/.test(css)).toBe(true);
+		expect(/@utility\s+grid-bn-rail\s*\{/.test(css)).toBe(true);
+	});
+});
