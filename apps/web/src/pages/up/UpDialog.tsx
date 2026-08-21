@@ -2,6 +2,7 @@ import {
 	Avatar,
 	Btn,
 	ConfirmDialog,
+	EmptyNote,
 	Icon,
 	ModalShell,
 	PlatformIcon,
@@ -527,15 +528,13 @@ export function UpDialog({
 				<section>
 					<SectionHeader label="推送目标" />
 					{targets.length === 0 ? (
-						<div className="rounded-md border border-dashed border-bn-border px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
-							尚未配置任何推送目标 · 请先到「推送目标」页面创建
-						</div>
+						<EmptyNote size="sm">尚未配置任何推送目标 · 请先到「推送目标」页面创建</EmptyNote>
 					) : (
 						<div className="space-y-2">
 							{attachedTargets.length === 0 ? (
-								<div className="rounded-md border border-dashed border-bn-border px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
+								<EmptyNote size="sm">
 									该订阅尚未指定推送目标 · 点击下方「添加推送目标」选择
-								</div>
+								</EmptyNote>
 							) : (
 								attachedTargets.map((t) => (
 									<TargetRoutingCard

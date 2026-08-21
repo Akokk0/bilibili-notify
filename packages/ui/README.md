@@ -33,6 +33,7 @@
 | `CheckRow` | 多选列表的选项行:粉勾选方块 + 文本,checkbox 本体 sr-only |
 | `ErrorNote` | 「XX 失败:…」红字提示盒的唯一写法;外边距走 `className` |
 | `WarnNote` | 「做完了但有几处没照办」黄字提示盒的唯一写法;**行高与外边距走 `className`** |
+| `EmptyNote` | 「这里还什么都没有」中性虚线框的唯一写法;`md`(默认)给整块面板的空态、`sm` 给表单小节里内嵌的一行。**只此两档** —— 收编前站内九份手写在四种圆角三种字号之间漂 |
 | `Spinner` | 品牌色圆环加载指示(淡粉底环 + 粉顶弧) |
 | `PlatformIcon` / `platformLabel` | 推送平台图标与显示名(onebot / qq-official / webhook) |
 | `StatsBar` | 迷你堆叠柱状图(live/dyn/sc/guard 四色) |

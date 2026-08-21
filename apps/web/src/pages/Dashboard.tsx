@@ -2,6 +2,7 @@ import type { LogLevel } from "@bilibili-notify/contract";
 import {
 	Avatar,
 	Btn,
+	EmptyNote,
 	ErrorNote,
 	GlassBox,
 	GlassPanel,
@@ -115,7 +116,7 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 			}
 		>
 			{live.length === 0 ? (
-				<div className="rounded-lg border border-dashed border-bn-border p-6 text-center text-[12.5px] text-bn-text-secondary">
+				<EmptyNote>
 					当前没有订阅 UP 主在直播
 					<br />
 					<span className="text-[11px] text-bn-text-secondary/80">
@@ -132,7 +133,7 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 							</Link>
 						</>
 					) : null}
-				</div>
+				</EmptyNote>
 			) : (
 				// auto-fit grid + max-h 上限 ≈ 3 行 chip(每 chip ~70px + 10px gap)。
 				// chip 少时高度自然撑;chip ≥4 时超出部分被 overflow-hidden 裁掉,
@@ -277,13 +278,13 @@ function TimelinePanel({
 			}
 		>
 			{recent.length === 0 ? (
-				<div className="rounded-lg border border-dashed border-bn-border p-6 text-center text-[12.5px] text-bn-text-secondary">
+				<EmptyNote>
 					还没有推送活动
 					<br />
 					<span className="text-[11px] text-bn-text-secondary/80">
 						先去「推送目标」配置好通道，订阅 UP 主以后就会出现在这里 ~
 					</span>
-				</div>
+				</EmptyNote>
 			) : (
 				<div className="relative pl-1">
 					<div
@@ -411,13 +412,13 @@ function FansPanel({ subs }: { subs: Subscription[] }) {
 			}
 		>
 			{entries.length === 0 ? (
-				<div className="rounded-lg border border-dashed border-bn-border p-6 text-center text-[12.5px] text-bn-text-secondary">
+				<EmptyNote>
 					采样中…
 					<br />
 					<span className="text-[11px] text-bn-text-secondary/80">
 						FansPoller 第一轮 cron tick 完成后会填充(约 1–2 分钟)
 					</span>
-				</div>
+				</EmptyNote>
 			) : (
 				// 单列布局,max-h 上限 ≈ 3 行行卡(每行 ~62px + 8px gap);N 多时走
 				// 内滚动,bn-no-scrollbar 隐藏滚动条不破坏卡片视觉。N 少时高度自然撑,

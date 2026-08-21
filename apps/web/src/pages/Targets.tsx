@@ -6,6 +6,7 @@ import {
 } from "@bilibili-notify/internal/constants";
 import {
 	Btn,
+	EmptyNote,
 	ErrorNote,
 	Icon,
 	ModalShell,
@@ -773,9 +774,9 @@ function TargetEditorModal({
 					accent={tint}
 				>
 					{eligibleAdapters.length === 0 ? (
-						<div className="rounded-md border border-dashed border-bn-border px-3 py-3 text-center text-[11.5px] text-bn-text-secondary">
+						<EmptyNote size="sm">
 							尚未配置任何可手动绑定的适配器 · Webhook 目标由系统自动托管
-						</div>
+						</EmptyNote>
 					) : (
 						<div className="space-y-1.5">
 							{eligibleAdapters.map((a) => {

@@ -454,6 +454,39 @@ export function WarnNote({ children, className }: { children: ReactNode; classNa
 	);
 }
 
+/**
+ * 空状态提示盒 —— 「这里还什么都没有」那一档中性虚线框,与 {@link ErrorNote}(红)、
+ * {@link WarnNote}(黄)同族,只是它不报警,所以走中性边与正文次级字色。
+ *
+ * **两档尺寸不是可选项而是两种位置**:`md` 给整块面板的空态(Dashboard 那几张卡,
+ * 盒子要撑满卡片留白),`sm` 给表单小节里内嵌的一行空态(挤在字段之间,撑大就顶跑
+ * 下面的控件)。除此之外别再加档 —— 收编前站内手写了九份,同一个意思在四种圆角
+ * (`rounded-md` 6px / `rounded-bn-sm` 9.5px / `rounded-lg` 8px / `rounded-bn-card`
+ * 14px)和三种字号之间漂,看着像四种不同的控件。
+ *
+ * 外边距(mt-3 / mb-2 …)交给调用方 `className`,盒子本体样式不许各处漂。
+ */
+export interface EmptyNoteProps {
+	children: ReactNode;
+	size?: "sm" | "md";
+	className?: string;
+}
+
+const EMPTY_NOTE_SIZE = {
+	sm: "rounded-md px-3 py-3 text-[11.5px]",
+	md: "rounded-lg p-6 text-[12.5px]",
+} as const;
+
+export function EmptyNote({ children, size = "md", className }: EmptyNoteProps) {
+	return (
+		<div
+			className={`border border-dashed border-bn-border text-center text-bn-text-secondary ${EMPTY_NOTE_SIZE[size]} ${className ?? ""}`}
+		>
+			{children}
+		</div>
+	);
+}
+
 // ── PlatformIcon ────────────────────────────────────────────────────────────
 
 const PLATFORM_META: Record<string, { color: string; label: string; icon?: IconName }> = {
