@@ -101,7 +101,11 @@ export function ScopeTabs({
 								{displayName(sub)}
 							</span>
 							{count > 0 ? (
-								<Pill color={active ? "var(--color-bn-pink)" : "#888"} subtle size="sm">
+								<Pill
+									color={active ? "var(--color-bn-pink)" : "var(--color-bn-inactive)"}
+									subtle
+									size="sm"
+								>
 									{count}
 								</Pill>
 							) : null}

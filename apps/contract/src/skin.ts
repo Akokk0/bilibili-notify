@@ -21,6 +21,8 @@ export const SKIN_COLOR_TOKEN_MAP = {
 	textSecondary: "--color-bn-text-secondary",
 	textTertiary: "--color-bn-text-tertiary",
 	textDisabled: "--color-bn-text-disabled",
+	/** 「关着的 / 未选中」那一档灰,用在强调色位上(未选中胶囊、未启用分区的角光)。 */
+	inactive: "--color-bn-inactive",
 	surface: "--color-bn-surface",
 	surfaceStrong: "--color-bn-surface-strong",
 	surfaceMuted: "--color-bn-surface-muted",

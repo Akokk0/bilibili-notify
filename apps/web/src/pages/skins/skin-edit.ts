@@ -78,6 +78,7 @@ export const COLOR_GROUPS: ReadonlyArray<{
 			{ key: "textSecondary", label: "次要" },
 			{ key: "textTertiary", label: "辅助" },
 			{ key: "textDisabled", label: "禁用" },
+			{ key: "inactive", label: "静默档" },
 		],
 	},
 	{
