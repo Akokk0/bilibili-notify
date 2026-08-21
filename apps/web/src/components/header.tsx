@@ -16,7 +16,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { canHideNav, NAV_ITEMS, type NavItem, orderedNav, resolveNav } from "../config/nav";
 import { useBackendReachable } from "../hooks/useBackendReachable";
@@ -347,6 +347,39 @@ function LogoutButton() {
 	);
 }
 
+/**
+ * 那枚「服务器通不通」的徽章。两个分支此前各写一遍,共用一串 60 字符的类名 ——
+ * 谁改了其中一边的内边距,页面就会在后端掉线的瞬间换个形状,而那正是最难复现的
+ * 时刻。收成一处,两态就只剩 tone 一个差异。
+ *
+ * 不走库里的 `Pill`:那个是 `rounded-sm` 的实底/淡底徽章,这枚是带前导圆点的
+ * 圆头状态条。也不走 `StatusDot` 当圆点:它是 2×2 的**写死 hex**,换过去等于把
+ * 这里的 `bg-bn-success` / `bg-bn-danger` token 降级成不跟主题走的颜色。
+ */
+function ReachBadge({
+	tone,
+	title,
+	children,
+}: {
+	tone: "success" | "danger";
+	title?: string;
+	children: ReactNode;
+}) {
+	const cls =
+		tone === "success"
+			? { box: "bg-bn-success-soft text-bn-success-text", dot: "bg-bn-success" }
+			: { box: "bg-bn-danger-soft text-bn-danger-text", dot: "bg-bn-danger" };
+	return (
+		<span
+			className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold ${cls.box}`}
+			title={title}
+		>
+			<span className={`h-1.5 w-1.5 rounded-full ${cls.dot}`} />
+			{children}
+		</span>
+	);
+}
+
 export function GlassHeader() {
 	const qc = useQueryClient();
 	const reachable = useBackendReachable();
@@ -428,18 +461,14 @@ export function GlassHeader() {
 					 * 是每位 UP 各自的 features,跟这里毫无关系。措辞必须落在「服务器」上。
 					 */}
 					{reachable ? (
-						<span
-							className="inline-flex items-center gap-1.5 rounded-full bg-bn-success-soft px-2.5 py-1 text-[11.5px] font-semibold text-bn-success-text"
+						<ReachBadge
+							tone="success"
 							title="后端服务可访问。与推送开关无关 —— 推送是否启用见各 UP 的规则设置。"
 						>
-							<span className="h-1.5 w-1.5 rounded-full bg-bn-success" />
 							服务器运行中
-						</span>
+						</ReachBadge>
 					) : (
-						<span className="inline-flex items-center gap-1.5 rounded-full bg-bn-danger-soft px-2.5 py-1 text-[11.5px] font-semibold text-bn-danger-text">
-							<span className="h-1.5 w-1.5 rounded-full bg-bn-danger" />
-							服务器失联
-						</span>
+						<ReachBadge tone="danger">服务器失联</ReachBadge>
 					)}
 					<ThemeSwitcher />
 					<Btn variant="outline" size="sm" icon={<Icon.refresh size={14} />} onClick={refreshAll}>

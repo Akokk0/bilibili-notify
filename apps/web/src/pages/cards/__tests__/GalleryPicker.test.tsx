@@ -45,6 +45,18 @@ describe("GalleryPicker", () => {
 		expect(ghost.textContent).toContain("1"); // 幽灵占轮换第 1 位
 	});
 
+	it("两态角标只差底色 —— 失效那颗是红的,不能跟正常的串成一样", async () => {
+		// 两个分支此前各写一遍同一串 90 字符类名。收成 OrderBadge 后,这条钉住
+		// 「合并没把两态染成同一个色」——真串了的话页面上分不出哪张图已经失效。
+		renderWithQuery(<GalleryPicker value={[GHOST, REAL]} onChange={() => {}} />);
+		const ghost = await screen.findByTestId("gallery-ghost");
+		const badge = ghost.querySelector("span.absolute") as HTMLElement;
+		expect([
+			badge.className.includes("bg-bn-danger-text"),
+			badge.className.includes("bg-bn-pink"),
+		]).toEqual([true, false]);
+	});
+
 	it("点失效占位块的移除按钮 → 从选择里剔除该 id", async () => {
 		const onChange = vi.fn();
 		renderWithQuery(<GalleryPicker value={[GHOST, REAL]} onChange={onChange} />);

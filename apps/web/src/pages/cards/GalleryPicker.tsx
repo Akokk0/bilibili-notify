@@ -6,7 +6,7 @@
 
 import { Icon } from "@bilibili-notify/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { ApiError, api } from "../../services/api";
 import { removeFromGallery, toggleSelected } from "./gallery-ops";
 import { useAssetObjectUrl } from "./useAssetObjectUrl";
@@ -17,6 +17,25 @@ interface GalleryListResponse {
 }
 
 /** 单张缩略图:点击切换选中(角标显示轮换序号),hover 出现删盘按钮。 */
+/**
+ * 缩略图左上角那个序号角标。选中态与「已失效」态此前各写一遍,共用一串 90 字符
+ * 的类名 —— 两边只差一个底色,却是两份会各自漂的定位与字号。
+ *
+ * 不进组件库:全站只有这一处用得上「绝对定位的方形序号角标」,库里 `Pill` 管的是
+ * 行内徽章,两者不是一回事。
+ */
+function OrderBadge({ tone, children }: { tone: "pink" | "danger"; children: ReactNode }) {
+	return (
+		<span
+			className={`absolute left-1 top-1 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[9px] font-bold text-white ${
+				tone === "pink" ? "bg-bn-pink" : "bg-bn-danger-text"
+			}`}
+		>
+			{children}
+		</span>
+	);
+}
+
 function Thumb({
 	id,
 	order,
@@ -51,11 +70,7 @@ function Thumb({
 					</span>
 				)}
 			</button>
-			{selected ? (
-				<span className="absolute left-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-bn-pink px-1 text-[9px] font-bold text-white">
-					{order + 1}
-				</span>
-			) : null}
+			{selected ? <OrderBadge tone="pink">{order + 1}</OrderBadge> : null}
 			<button
 				type="button"
 				title="从图廊删除"
@@ -164,9 +179,7 @@ export function GalleryPicker({
 						title="引用的图片文件已被删除,点 × 从选择中移除"
 						className="relative grid aspect-[16/10] w-24 shrink-0 place-items-center overflow-hidden rounded-lg border border-dashed border-bn-danger-text/50 bg-bn-surface-muted"
 					>
-						<span className="absolute left-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-bn-danger-text px-1 text-[9px] font-bold text-white">
-							{value.indexOf(id) + 1}
-						</span>
+						<OrderBadge tone="danger">{value.indexOf(id) + 1}</OrderBadge>
 						<span className="text-[10px] text-bn-danger-text">已失效</span>
 						<button
 							type="button"
