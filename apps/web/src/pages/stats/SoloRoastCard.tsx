@@ -48,7 +48,7 @@ export function SoloRoastCard({
 		<RoastShell
 			title={`AI 锐评 · ${name}`}
 			subtitle={`把这位 UP 主近${days}日的数据交给智能女仆,单独点评`}
-			pendingText="女仆正在阅读数据并撰写锐评…"
+			pendingText="女仆正在阅读数据并撰写锐评"
 			isPending={roast.isPending}
 			err={roastError(roast)}
 			onRun={() => roast.mutate()}

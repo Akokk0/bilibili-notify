@@ -21,9 +21,9 @@ import {
 	GlassBox,
 	Icon,
 	type IconName,
+	LoadingBlock,
 	Pill,
 	SectionNav,
-	Spinner,
 	Toggle,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -178,10 +178,13 @@ function PreviewImage({
 	const status = apiErr?.status;
 
 	const body = showSkeleton ? (
-		<div className="flex w-full max-w-95 flex-col items-center gap-3 rounded-xl bg-bn-surface/70 p-6">
-			<Spinner />
-			<div className="text-[12px] font-bold text-bn-text-secondary">puppeteer 渲染中…</div>
-		</div>
+		/* `inset` + 自带外壳:这块占的是预览图的位置,底与宽度要跟着预览框走,
+		   `card` 变体那层玻璃会和外面的预览区叠成玻璃叠玻璃。 */
+		<LoadingBlock
+			label="puppeteer 渲染中"
+			variant="inset"
+			className="w-full max-w-95 rounded-bn-card bg-bn-surface/70"
+		/>
 	) : query.error ? (
 		<div className="w-full max-w-95 rounded-xl bg-bn-surface p-4 text-[12px]">
 			<div className="mb-1 font-bold text-bn-danger-text">{previewErrorTitle(status)}</div>

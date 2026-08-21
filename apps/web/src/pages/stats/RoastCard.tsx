@@ -45,7 +45,7 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 		<RoastShell
 			title="AI 锐评 · 鸽王 vs 勤奋 UP"
 			subtitle="把统计数据交给智能女仆,自动评榜并生成可推送的周报"
-			pendingText="女仆正在阅读数据并撰写锐评…"
+			pendingText="女仆正在阅读数据并撰写锐评"
 			isPending={roast.isPending}
 			err={roastError(roast)}
 			onRun={() => roast.mutate()}

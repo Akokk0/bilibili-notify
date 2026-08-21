@@ -1,4 +1,4 @@
-import { Btn, GlassPanel, Icon } from "@bilibili-notify/ui";
+import { Btn, GlassPanel, Icon, LoadingBlock } from "@bilibili-notify/ui";
 import type { ReactNode } from "react";
 import { AI_PURPLE } from "../../config/colors";
 
@@ -16,6 +16,7 @@ export interface RoastShellProps {
 	subtitle: string;
 	/** 未生成时展示的邀请文案。 */
 	idle: ReactNode;
+	/** 生成中的提示语。**别自带省略号** —— 走 `LoadingBlock`,它统一补。 */
 	pendingText: string;
 	isPending: boolean;
 	err?: string;
@@ -49,13 +50,9 @@ export function RoastShell({
 			}
 		>
 			{isPending ? (
-				<div className="flex h-full flex-col items-center justify-center gap-3 py-7">
-					<div
-						className="h-8 w-8 animate-spin rounded-full border-4 border-bn-border"
-						style={{ borderTopColor: AI_PURPLE }}
-					/>
-					<div className="text-xs text-bn-text-tertiary">{pendingText}</div>
-				</div>
+				/* `inset`:已经在 GlassPanel 里了,`card` 会再叠一层玻璃。`h-full` 同下方
+				   邀请态 —— 栅格把这张卡拉到与定时周报等高,不撑满的话转圈吊在顶上。 */
+				<LoadingBlock label={pendingText} variant="inset" className="h-full" />
 			) : children ? (
 				children
 			) : (
