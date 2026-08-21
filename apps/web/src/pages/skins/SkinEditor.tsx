@@ -603,7 +603,7 @@ export function SkinEditor(props: {
 					/>
 				</Fold>
 
-				<Fold title="圆角与阴影">
+				<Fold title="圆角 · 阴影 · 版式">
 					<RangeField
 						label="卡片圆角"
 						min={SKIN_LIMITS.radiusCard.min}
@@ -623,6 +623,17 @@ export function SkinEditor(props: {
 						min={SKIN_LIMITS.radiusPill.min}
 						max={SKIN_LIMITS.radiusPill.max}
 						onChange={(v) => setSection("radius", cleanSection({ ...radius, pill: v }))}
+					/>
+					<RangeField
+						label="左栏宽度"
+						min={SKIN_LIMITS.railWidth.min}
+						max={SKIN_LIMITS.railWidth.max}
+						step={4}
+						unit="px"
+						value={mode.railWidth}
+						fallback={220}
+						isDefault={isDef(mode.railWidth, dm.railWidth)}
+						onChange={(v) => setSection("railWidth", v)}
 					/>
 					<TextField
 						label="卡片阴影"

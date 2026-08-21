@@ -516,3 +516,33 @@ describe("两栏骨架只有一份", () => {
 		expect(/@utility\s+grid-bn-rail\s*\{/.test(css)).toBe(true);
 	});
 });
+
+/**
+ * **字号阶梯刻意不进皮肤词表。**
+ *
+ * 九档是变量,`theme.css` 里改一处全站跟着走 —— 但这是给维护者的口子,不是给皮肤作者的。
+ * 开给皮肤就是「大字模式」,而那件事主人明确不要,理由也站得住:九档**不是等比的**
+ * (下半段 10→11→12→13 是 +1 密排、上半段 13→15→17→20→28 越拉越开),没法像圆角那样
+ * 用一根系数整体缩放;逐档开九个键的话,只要有人把 `xs` 调得比 `sm` 大,版式的主次关系
+ * 当场反过来,而那种坏法在编辑器里看不出来 —— 得回到每一页去发现。
+ *
+ * 这条守卫拦的是「日后有人顺手把它加进词表」。要开的话先想清怎么防住逆序,别只加键。
+ *
+ * 栏宽是反例:它**开了**(`SKIN_LIMITS.railWidth`)—— 单个数字、两头夹死、调坏了最多是
+ * 左栏胖瘦,不会让版式的层级关系失效。
+ */
+describe("字号阶梯不进皮肤词表", () => {
+	it("皮肤契约里没有任何 --text-bn-* 的键", () => {
+		const contract = readFileSync(join(SRC_DIR, "../../contract/src/skin.ts"), "utf8");
+		expect(contract).not.toContain("--text-bn-");
+		// 反面对照:别的 token 族确实在词表里,免得这条退化成「扫了个空文件」。
+		expect(contract).toContain("--color-bn-");
+		expect(contract).toContain("railWidth");
+	});
+
+	it("皮肤注入端也不写字号变量", () => {
+		const inject = readFileSync(join(SRC_DIR, "services/skin.ts"), "utf8");
+		expect(inject).not.toContain("--text-bn-");
+		expect(inject).toContain("--radius-bn-card");
+	});
+});

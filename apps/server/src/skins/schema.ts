@@ -63,6 +63,7 @@ const KNOWN_MODE_KEYS = new Set([
 	"glass",
 	"fonts",
 	"radius",
+	"railWidth",
 	"shadows",
 	"css",
 	"effects",
@@ -395,6 +396,18 @@ function parseMode(
 			if (Object.keys(out).length > 0) mode.radius = out;
 		}
 	}
+
+	// 栏宽是个裸数字,不像 radius 那样成组 —— 只有这一个布局量,不为它造一层对象。
+	const railWidth = takeNumber(
+		raw,
+		"railWidth",
+		L.railWidth.min,
+		L.railWidth.max,
+		path,
+		"(px)",
+		errors,
+	);
+	if (railWidth !== undefined) mode.railWidth = railWidth;
 
 	// decorations(贴纸装饰层)已下线(主人真机验收后砍掉):存量皮肤里的它
 	// 走 KNOWN_MODE_KEYS 的未知字段告警 + 忽略,优雅降级。

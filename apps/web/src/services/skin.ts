@@ -109,6 +109,7 @@ export function composeSkinVars(
 
 	if (mode.radius?.card !== undefined) vars["--radius-bn-card"] = `${mode.radius.card}px`;
 	if (mode.radius?.pill !== undefined) vars["--radius-bn-pill"] = `${mode.radius.pill}px`;
+	if (mode.railWidth !== undefined) vars["--bn-rail-width"] = `${mode.railWidth}px`;
 
 	if (mode.shadows?.card) vars["--shadow-bn-card"] = mode.shadows.card;
 	if (mode.shadows?.elev) vars["--shadow-bn-elev"] = mode.shadows.elev;

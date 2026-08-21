@@ -75,6 +75,13 @@ export const SKIN_LIMITS = {
 	radiusCard: { min: 0, max: 32 },
 	/** 胶囊圆角(px);999 就是两端画圆。 */
 	radiusPill: { min: 0, max: 999 },
+	/**
+	 * `SectionNav` 五页左栏的宽度(px)。默认装 220。
+	 *
+	 * 两头都收得比「技术上能填的」窄:低于 160 放不下分区名(「弹幕词云停用词」这种),
+	 * 高于 320 内容区被挤成一条缝 —— 两头都是坏掉的版式,不是风格选择。
+	 */
+	railWidth: { min: 160, max: 320 },
 	/** 字体栈最多收几个名字,超出截断(不拒包)。 */
 	maxFonts: 8,
 	/** 光斑最多几色。 */
@@ -282,6 +289,12 @@ export interface SkinMode {
 		/** 胶囊圆角 px,0~999。 */
 		pill?: number;
 	};
+	/**
+	 * `SectionNav` 五页左栏的宽度 px,160~320。
+	 *
+	 * 只在 xl(1280) 以上生效 —— 窄屏那条栏会变成顶部横向 chip 条,宽度没有意义。
+	 */
+	railWidth?: number;
 	/** 卡片/悬浮两档阴影 —— 有色 glow 即霓虹感。 */
 	shadows?: { card?: string; elev?: string };
 	/**
