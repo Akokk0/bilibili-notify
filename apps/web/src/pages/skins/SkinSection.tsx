@@ -163,7 +163,7 @@ export function SkinSection() {
 		<GlassBox
 			title="界面皮肤 · skins"
 			subtitle="给面板换装 —— 上传皮肤包,或让任意 AI 帮你做一套"
-			accent="#a29bfe"
+			accent="var(--color-bn-purple)"
 			icon={<Icon.palette size={14} />}
 			badge={activeIds.light || activeIds.dark ? "已换装" : "原生外观"}
 			right={
@@ -240,12 +240,12 @@ export function SkinSection() {
 							tags={
 								<>
 									{entry.modes.map((m) => (
-										<Pill key={m} subtle color="#00aeec">
+										<Pill key={m} subtle color="var(--color-bn-blue)">
 											{MODE_LABEL[m]}
 										</Pill>
 									))}
 									{entry.hasWallpaper ? (
-										<Pill subtle color="#a29bfe">
+										<Pill subtle color="var(--color-bn-purple)">
 											壁纸
 										</Pill>
 									) : null}
@@ -390,7 +390,7 @@ function SkinRow(props: {
 					<span className="text-[13px] font-semibold text-bn-text-primary">{props.name}</span>
 					{props.tags}
 					{props.usage.length > 0 ? (
-						<Pill color="#fb7299">
+						<Pill color="var(--color-bn-pink)">
 							{props.usage.length === 2 ? "使用中" : `${MODE_LABEL[props.usage[0]]}·使用中`}
 						</Pill>
 					) : null}

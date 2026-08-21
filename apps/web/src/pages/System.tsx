@@ -161,7 +161,7 @@ function SystemSettingsSection({
 		<GlassBox
 			title="Core · 应用"
 			subtitle="后端运行参数 + Master 主人账号 · globals.app / globals.master"
-			accent="#FB7299"
+			accent="var(--color-bn-pink)"
 			icon={<Icon.sliders size={14} />}
 			badge="app + master"
 		>

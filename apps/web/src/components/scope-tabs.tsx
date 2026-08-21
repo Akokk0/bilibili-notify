@@ -101,7 +101,7 @@ export function ScopeTabs({
 								{displayName(sub)}
 							</span>
 							{count > 0 ? (
-								<Pill color={active ? "#FB7299" : "#888"} subtle size="sm">
+								<Pill color={active ? "var(--color-bn-pink)" : "#888"} subtle size="sm">
 									{count}
 								</Pill>
 							) : null}
@@ -179,7 +179,7 @@ export function ScopeTabs({
 												<div className="text-[10.5px] text-bn-text-tertiary">UID {sub.uid}</div>
 											</div>
 											{sub.state.liveStatus === "live" ? (
-												<Pill color="#FB7299" subtle size="sm">
+												<Pill color="var(--color-bn-pink)" subtle size="sm">
 													播
 												</Pill>
 											) : null}

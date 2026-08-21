@@ -475,7 +475,7 @@ export default function Ai() {
 						<div className="flex items-center gap-2 text-[15.5px] font-bold text-bn-text-primary">
 							智能女仆 · {globalPersona.name || "女仆"}
 							<span data-hero-model>
-								<Pill color="#a29bfe" subtle size="sm">
+								<Pill color="var(--color-bn-purple)" subtle size="sm">
 									{globalProfile.model || "未配置"}
 								</Pill>
 							</span>
@@ -929,7 +929,7 @@ export default function Ai() {
 								<GlassBox
 									title="生成参数"
 									subtitle="temperature / 深度思考 · ai.{temperature,enableThinking,thinkingLevel,extraParams}"
-									accent="#a29bfe"
+									accent="var(--color-bn-purple)"
 									icon={<Icon.sparkle size={14} />}
 									badge="generation"
 								>

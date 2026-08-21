@@ -205,7 +205,7 @@ export function FilterSection({
 		<GlassBox
 			title="动态过滤规则"
 			subtitle="filters · 屏蔽不想推送的动态"
-			accent="#FB7299"
+			accent="var(--color-bn-pink)"
 			icon={<Icon.filter size={14} />}
 			badge="filters"
 		>
@@ -249,7 +249,7 @@ export function FilterSection({
 				label="启用白名单 · 仅推送命中条目"
 				enabled={whitelistEnabled}
 				onToggle={toggleWhitelist}
-				accent="#FB7299"
+				accent="var(--color-bn-pink)"
 			>
 				<FieldRow code="whitelistKeywords" full>
 					<ArrayEditor
@@ -281,7 +281,7 @@ export function ImageGroupSection({
 		<GlassBox
 			title="动态图集"
 			subtitle="imageGroup · 图集类动态附图与推送形态"
-			accent="#FB7299"
+			accent="var(--color-bn-pink)"
 			icon={<Icon.dyn size={14} />}
 			badge="imageGroup"
 		>
@@ -318,7 +318,7 @@ export function LiveThresholdsSection({
 		<GlassBox
 			title="直播推送阈值"
 			subtitle="filters / schedule · 控制 SC 金额 / 上舰等级 / 推送频率"
-			accent="#00AEEC"
+			accent="var(--color-bn-blue)"
 			icon={<Icon.mic size={14} />}
 			badge="live"
 		>
@@ -407,7 +407,7 @@ export function SummarySection({
 		<GlassBox
 			title="直播总结"
 			subtitle="弹幕词云停用词 + 直播总结模板"
-			accent="#a29bfe"
+			accent="var(--color-bn-purple)"
 			icon={<Icon.list size={14} />}
 			badge="liveSummary"
 		>
@@ -600,14 +600,14 @@ export function LiveMsgSection({
 		<GlassBox
 			title="直播消息版式"
 			subtitle="开播 / 直播中 / 下播共用的部件排列 / 分条;文本内容按 开播 / 直播中 / 下播 切换编辑"
-			accent="#FB7299"
+			accent="var(--color-bn-pink)"
 			icon={<Icon.chat size={14} />}
 		>
 			<MessageLayoutEditor
 				value={layout}
 				onChange={(next) => onPatch({ defaults: { messageLayout: { live: next } } })}
 				separatorCode="messageLayout.live.separator"
-				accent="#FB7299"
+				accent="var(--color-bn-pink)"
 				textSlot={
 					<>
 						<div className="mb-2">

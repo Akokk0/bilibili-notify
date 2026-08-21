@@ -94,7 +94,7 @@ export function BrowserSourceSettings() {
 		<GlassBox
 			title="卡片渲染 · 浏览器"
 			subtitle="chromePath / chromeEndpoint · 应用即热切换,先探测连通再生效"
-			accent={status?.enabled ? "#22c55e" : "#94a3b8"}
+			accent={status?.enabled ? "var(--color-bn-success)" : "#94a3b8"}
 			badge={status ? (status.enabled ? "已启用" : "未启用") : undefined}
 		>
 			<div

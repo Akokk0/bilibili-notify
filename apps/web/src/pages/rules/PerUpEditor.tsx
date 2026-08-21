@@ -264,7 +264,7 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 					kind="enter"
 					title="特别关注进房"
 					subtitle="特定 UID 进入直播间时单独提醒 · specialUsers + overrides.templates.specialUserEnter"
-					accent="#00AEEC"
+					accent="var(--color-bn-blue)"
 					icon={<Icon.user size={14} />}
 					users={draft.specialUsers}
 					onUsersChange={setSpecialUsers}
@@ -342,7 +342,7 @@ function FilterOverrideBox({
 		<GlassBox
 			title="动态过滤覆盖"
 			subtitle="开 = 该 UP 使用自定义关键词 / 正则 / 屏蔽开关;关 = 继承全局过滤"
-			accent="#FB7299"
+			accent="var(--color-bn-pink)"
 			icon={<Icon.filter size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
 			right={<Toggle value={enabled} onChange={toggle} />}
@@ -438,7 +438,7 @@ function LiveOverrideBox({
 		<GlassBox
 			title="直播阈值覆盖"
 			subtitle="开 = 该 UP 使用自定义 SC / 上舰 / 推送频率;关 = 继承全局直播阈值"
-			accent="#FF6699"
+			accent="var(--color-bn-pink)"
 			icon={<Icon.mic size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
 			right={<Toggle value={enabled} onChange={toggle} />}
@@ -561,7 +561,7 @@ function SummaryOverrideBox({
 		<GlassBox
 			title="直播总结覆盖"
 			subtitle="开 = 该 UP 自定义弹幕词云停用词;总结正文由内部二级开关控制;关 = 全部继承全局"
-			accent="#a29bfe"
+			accent="var(--color-bn-purple)"
 			icon={<Icon.list size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
 			right={<Toggle value={enabled} onChange={toggle} />}
@@ -583,7 +583,7 @@ function SummaryOverrideBox({
 						label="自定义直播总结正文 · 仅本 UP"
 						enabled={summaryOn}
 						onToggle={toggleSummary}
-						accent="#a29bfe"
+						accent="var(--color-bn-purple)"
 					>
 						<SummaryVariableHints />
 						<Field code="templates.liveSummary" full>
@@ -640,7 +640,7 @@ function MsgOverrideBox({
 		<GlassBox
 			title="直播消息覆盖"
 			subtitle="开 = 该 UP 使用自定义开播 / 直播中 / 下播文案;关 = 继承全局"
-			accent="#FB7299"
+			accent="var(--color-bn-pink)"
 			icon={<Icon.chat size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
 			right={<Toggle value={enabled} onChange={toggle} />}
@@ -787,7 +787,7 @@ function MessageLayoutOverrideBox({
 						value={cur.live}
 						onChange={(next) => onChange({ ...cur, live: next })}
 						separatorCode="messageLayout.live.separator"
-						accent="#FB7299"
+						accent="var(--color-bn-pink)"
 					/>
 					<div className="mt-2 text-[11px] text-bn-text-tertiary">
 						文案模板的 per-UP 覆盖在「动态消息」/「直播消息」分类;此处只覆盖结构。
@@ -1140,7 +1140,7 @@ function ImageGroupOverrideBox({
 		<GlassBox
 			title="动态图集覆盖"
 			subtitle="开 = 该 UP 使用自定义图集策略;关 = 继承全局"
-			accent="#FB7299"
+			accent="var(--color-bn-pink)"
 			icon={<Icon.dyn size={14} />}
 			badge={enabled ? "覆盖中" : "继承"}
 			right={

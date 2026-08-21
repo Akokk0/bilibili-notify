@@ -243,11 +243,11 @@ function HistoryRow({
 				→ {targetLabel}
 			</span>
 			{entry.ok ? (
-				<Pill color="#22c55e" subtle size="sm">
+				<Pill color="var(--color-bn-success)" subtle size="sm">
 					已送达
 				</Pill>
 			) : (
-				<Pill color="#ef4444" subtle size="sm">
+				<Pill color="var(--color-bn-danger)" subtle size="sm">
 					失败
 				</Pill>
 			)}

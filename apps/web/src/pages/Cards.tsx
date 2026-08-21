@@ -1149,7 +1149,7 @@ export default function Cards() {
 					<div className="flex-1">
 						<div className="flex items-center gap-2 text-[15.5px] font-bold text-bn-text-primary">
 							卡片渲染
-							<Pill color="#a29bfe" subtle size="sm">
+							<Pill color="var(--color-bn-purple)" subtle size="sm">
 								image
 							</Pill>
 						</div>
@@ -1226,7 +1226,7 @@ export default function Cards() {
 							<GlassBox
 								title="卡片渲染样式 · 全局通用"
 								subtitle="image plugin · 所有卡片的基准渐变 / 字体 / 玻璃片 / 背景;各类型可在对应标签单独覆盖"
-								accent="#a29bfe"
+								accent="var(--color-bn-purple)"
 								icon={<Icon.edit size={14} />}
 								badge="cardStyle"
 							>
@@ -1248,7 +1248,7 @@ export default function Cards() {
 							<GlassBox
 								title="卡片样式覆盖"
 								subtitle="开 = 该 UP 用自定义渐变 / 字体 / 玻璃片 / 背景;关 = 继承全局样式"
-								accent="#a29bfe"
+								accent="var(--color-bn-purple)"
 								icon={<Icon.edit size={14} />}
 								badge={puStyle ? "覆盖中" : "继承"}
 								right={

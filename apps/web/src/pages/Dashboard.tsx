@@ -110,7 +110,7 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 			title="正在直播"
 			subtitle="实时刷新"
 			right={
-				<Pill color="#FF6699" size="sm">
+				<Pill color="var(--color-bn-pink)" size="sm">
 					● {live.length} 人在播
 				</Pill>
 			}
@@ -331,11 +331,11 @@ function TimelinePanel({
 									</div>
 									<span className="text-[11px] text-bn-text-secondary">→ {targetNames}</span>
 									{h.ok ? (
-										<Pill color="#22c55e" subtle size="sm">
+										<Pill color="var(--color-bn-success)" subtle size="sm">
 											已送达
 										</Pill>
 									) : (
-										<Pill color="#ef4444" subtle size="sm">
+										<Pill color="var(--color-bn-danger)" subtle size="sm">
 											失败
 										</Pill>
 									)}
@@ -606,7 +606,7 @@ function SystemHealthCard({
 					</span>
 				</span>
 			}
-			accent={reachable ? "#22c55e" : "#ef4444"}
+			accent={reachable ? "var(--color-bn-success)" : "var(--color-bn-danger)"}
 			icon={<Icon.check size={14} />}
 			badge={!reachable ? "失联" : health?.status === "ok" ? "健康" : "—"}
 			dense
@@ -718,12 +718,17 @@ export default function Dashboard() {
 					suffix={`/ ${subs.length}`}
 					color="var(--color-bn-blue)"
 				/>
-				<GlassStatCard label="今日推送" value={todayPushes} suffix="次" color="#a29bfe" />
+				<GlassStatCard
+					label="今日推送"
+					value={todayPushes}
+					suffix="次"
+					color="var(--color-bn-purple)"
+				/>
 				<GlassStatCard
 					label="今日失败"
 					value={todayFailed}
 					suffix="次"
-					color={todayFailed > 0 ? "#ef4444" : "#22c55e"}
+					color={todayFailed > 0 ? "var(--color-bn-danger)" : "var(--color-bn-success)"}
 					pulse={todayFailed > 0}
 				/>
 			</div>

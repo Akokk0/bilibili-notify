@@ -58,7 +58,7 @@ export function AiTestPanel({ draft }: { draft: AISettings }) {
 		<GlassBox
 			title="试一句"
 			subtitle="拿当前人格(含未保存的改动)问女仆一句 · 回复会真实推到选定目标"
-			accent="#FB7299"
+			accent="var(--color-bn-pink)"
 			icon={<Icon.sparkle size={14} />}
 			badge="test-push"
 		>

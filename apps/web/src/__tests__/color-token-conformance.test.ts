@@ -174,3 +174,117 @@ describe("透明度走 color-mix,不拼 hex alpha 后缀", () => {
 		expect(offenders.join("\n")).toBe("");
 	});
 });
+
+/**
+ * 强调色属性(`accent` / `color` / `tone` / `titleColor`)不许写与 token **同值**的
+ * 十六进制字面量。
+ *
+ * 上面那条管的是 class 串,这条管的是**属性**。玻璃件的 `accent`、`Pill` 的 `color`
+ * 都同时收 hex 与 `var()`(内部 `color-mix()`,见 glass.tsx),于是写 `#FB7299` 和写
+ * `var(--color-bn-pink)` 在默认装下**像素级一致** —— 差别只在装了皮肤之后:后者跟着
+ * 强调色换装,前者永远钉在 B 站粉。整页都赛博朋克了,Rules 那一排分区的角光还是粉的。
+ *
+ * 和 class 那条是同一种失败模式:门禁全绿、开发机上看不出来,只有真机装皮肤才露馅。
+ *
+ * **判据是「与已定义 token 同值」而不是「是个 hex」** —— 站里有一批**刻意**不跟皮肤的
+ * 产品语言色(`config/push-kinds.ts`:「直播是粉的、动态是蓝的」,皮肤重上色会让两种
+ * kind 撞成一个颜色)。那些走常量表引用,不是字面量,天然不落进这张网;要引用它们就
+ * 写 `color={PUSH_TONE.live}`,这条守卫就管不着,正是想要的效果。
+ *
+ * 取值只读**亮色**那两块(`@theme` + `:root`),不读 `[data-theme="dark"]` 的重定义:
+ * 亮色块才是调色板正本,暗色块里像 `#94a3b8` 这种值在亮色下是另一个 token,一起收会
+ * 误伤一批本来就没有 token 的分区装饰色。
+ */
+describe("强调色属性走 token,不写同值 hex", () => {
+	const ROOTS = [join(SRC_DIR, "pages"), join(SRC_DIR, "components"), UI_SRC_DIR];
+	const COLOR_PROPS = ["accent", "color", "tone", "titleColor"];
+	/**
+	 * 属性值两种写法都要抓:`accent="#FB7299"` 与 `accent={a ? "#ef4444" : "#22c55e"}`。
+	 * 只认 `=`(JSX 属性),**不认 `:`** —— `{ tone: "#FB7299" }` 那是常量色表的写法,
+	 * 站里有一批刻意不跟皮肤的产品语言色正住在那种表里(见上方注释)。
+	 */
+	const PROP_RE = new RegExp(
+		`\\b(?:${COLOR_PROPS.join("|")})\\s*=\\s*(?:"(#[0-9a-fA-F]{3,8})"|\\{[^{}]*\\})`,
+		"g",
+	);
+	const HEX_RE = /#[0-9a-fA-F]{3,8}\b/g;
+
+	/**
+	 * 刻意还没转的,连**为什么**一起记。数字是该文件里刻意留下的**个数**。
+	 *
+	 * 同 `input-hook-coverage` 那张表的规矩:只填数字等于没说清,而且写了却已经改完的
+	 * 文件也要报 —— 否则豁免条目会一直挂着骗人。
+	 */
+	const KEPT: Record<string, { count: number; why: string }> = {
+		"apps/web/src/pages/rules/sections.tsx": {
+			count: 4,
+			why: "VariableHints 的 accent —— 它和同一行的 titleColor 是绑死的一对(标题字是 accent 手工调深的一档,#FB7299 配 #b8425d)。只转 accent 的话,装了皮肤后边框底色跟着换、标题字还钉在原来的深红,比两个都不转更难看。titleColor 该跟皮肤(color-mix 派生)还是该独立成一张固定分区色表,连同 Rules 页那 6 种没有 token 的分区装饰色一起,是待拍板的设计问题,不在这一刀的范围里。",
+		},
+	};
+
+	/** 亮色调色板:`#fb7299` → `--color-bn-pink`。 */
+	function lightPalette(): Map<string, string> {
+		const css = readFileSync(UI_THEME, "utf8");
+		const light = css.slice(0, css.indexOf(':root[data-theme="dark"]'));
+		const map = new Map<string, string>();
+		for (const m of light.matchAll(/(--color-bn-[a-z0-9-]+)\s*:\s*(#[0-9a-fA-F]{3,8})\s*;/g)) {
+			// 同一个色值可能挂多个 token(surface / surface-strong 都是 #ffffff),留第一个报出来就够。
+			if (!map.has((m[2] as string).toLowerCase()))
+				map.set((m[2] as string).toLowerCase(), m[1] as string);
+		}
+		return map;
+	}
+
+	it("没有哪个 accent / color 属性写死了 token 的色值", () => {
+		const palette = lightPalette();
+		// 调色板自身得先像样 —— 正则一改就悄悄退化成「空集,人人合格」。
+		expect(palette.get("#fb7299")).toBe("--color-bn-pink");
+		expect(palette.size).toBeGreaterThan(10);
+
+		const found: string[] = [];
+		for (const root of ROOTS) {
+			for (const file of listTsxRecursive(root)) {
+				if (file.includes("__tests__")) continue;
+				const src = readFileSync(file, "utf8");
+				src.split("\n").forEach((line, i) => {
+					const code = line.replace(/\/\/.*$/, "").replace(/^\s*\*.*$/, "");
+					for (const m of code.matchAll(PROP_RE)) {
+						for (const hex of (m[0] as string).match(HEX_RE) ?? []) {
+							const token = palette.get(hex.toLowerCase());
+							if (!token) continue;
+							const rel = file.replace(/^.*?((apps|packages)\/)/, "$1");
+							found.push(`${rel}:${i + 1}  ${hex} → 改写成 var(${token})`);
+						}
+					}
+				});
+			}
+		}
+
+		const perFile = new Map<string, string[]>();
+		for (const f of found) {
+			const file = (f.split(":")[0] as string).trim();
+			perFile.set(file, [...(perFile.get(file) ?? []), f]);
+		}
+
+		const offenders: string[] = [];
+		for (const [file, hits] of perFile) {
+			const kept = KEPT[file];
+			if (!kept) offenders.push(...hits);
+			else if (hits.length !== kept.count) {
+				offenders.push(`${file}: 实际 ${hits.length} 处,豁免表写的是 ${kept.count}`, ...hits);
+			}
+		}
+		// 豁免表里写了、实际却已经改完的文件也要报 —— 否则它会一直挂着骗人。
+		for (const file of Object.keys(KEPT)) {
+			if (!perFile.has(file)) offenders.push(`${file}: 已经全部转完,请从豁免表删掉`);
+		}
+		expect(offenders.join("\n")).toBe("");
+	});
+
+	it("豁免表每一条都写了理由 —— 只填数字等于没说清", () => {
+		const naked = Object.entries(KEPT)
+			.filter(([, v]) => v.why.trim().length < 20)
+			.map(([k]) => k);
+		expect(naked).toEqual([]);
+	});
+});
