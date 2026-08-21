@@ -161,7 +161,8 @@ function ChipShell({
 			exit={{ opacity: 0, y: 16, scale: 0.92 }}
 			transition={SHELL_SPRING}
 			onClick={onClick}
-			className={`pointer-events-auto relative flex items-center gap-2.5 rounded-full bg-bn-inverse-surface/85 px-4 py-2 text-bn-inverse-text shadow-[0_8px_24px_rgba(0,0,0,0.3)] backdrop-blur-xl ${className}`}
+			data-bn="glass-strong"
+			className={`bn-glass-strong pointer-events-auto relative flex items-center gap-2.5 rounded-bn-pill px-4 py-2 text-bn-text-primary shadow-bn-elev ${className}`}
 		>
 			{aura ? <span aria-hidden className="bn-anim-aura" data-testid="draft-island-aura" /> : null}
 			{children}
@@ -287,7 +288,7 @@ function ErrorContent({ message }: { message: string | null }) {
 			<IconButton
 				icon={<Icon.close size={12} />}
 				label="关闭"
-				tone="inverse"
+				tone="neutral"
 				shape="pill"
 				onClick={() => setUiState("dirty")}
 			/>
@@ -325,15 +326,16 @@ function ExpandPanel({ current }: { current: DraftRegistration }) {
 			animate={{ opacity: 1, y: 0, scale: 1 }}
 			exit={{ opacity: 0, y: 12, scale: 0.96 }}
 			transition={PANEL_SPRING}
-			className="pointer-events-auto mb-2 w-105 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-bn-inverse-hover bg-bn-inverse-surface/85 text-bn-inverse-text shadow-[0_12px_36px_rgba(0,0,0,0.4)] backdrop-blur-xl"
+			data-bn="glass-strong"
+			className="bn-glass-strong pointer-events-auto mb-2 w-105 max-w-[calc(100vw-2rem)] overflow-hidden rounded-bn-card text-bn-text-primary shadow-bn-elev"
 		>
 			<div className="flex max-h-[60vh] flex-col">
-				<div className="border-b border-bn-inverse-hover px-4 py-2.5 text-[11.5px] font-semibold tracking-wide text-bn-inverse-text/70">
+				<div className="border-b border-bn-border px-4 py-2.5 text-[11.5px] font-semibold tracking-wide text-bn-text-secondary">
 					{current.pageLabel} · {current.diff.length} 项未保存
 				</div>
 				<div className="flex-1 overflow-y-auto px-2 py-2">
 					{sections.length === 0 ? (
-						<div className="px-2 py-4 text-center text-[12px] text-bn-inverse-text/50">
+						<div className="px-2 py-4 text-center text-[12px] text-bn-text-tertiary">
 							无字段变更
 						</div>
 					) : (
@@ -349,7 +351,7 @@ function ExpandPanel({ current }: { current: DraftRegistration }) {
 function DiffSectionView({ section }: { section: DiffSection }) {
 	return (
 		<div className="mb-1.5 last:mb-0">
-			<div className="px-2 pb-1 pt-1.5 text-[10.5px] font-bold uppercase tracking-wider text-bn-inverse-text/40">
+			<div className="px-2 pb-1 pt-1.5 text-[10.5px] font-bold uppercase tracking-wider text-bn-text-tertiary">
 				{section.label}
 			</div>
 			<div className="flex flex-col gap-0.5">
@@ -368,13 +370,13 @@ function DiffRow({ row }: { row: FieldDiff }) {
 		<button
 			type="button"
 			onClick={() => scrollToFieldByCode(row.code)}
-			className="flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition hover:bg-bn-inverse-muted"
+			className="flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition hover:bg-bn-hover-muted"
 			title={`跳转到 ${row.code}`}
 		>
-			<code className="font-mono text-[10.5px] text-bn-inverse-text/50">{row.code}</code>
+			<code className="font-mono text-[10.5px] text-bn-text-tertiary">{row.code}</code>
 			<div className="flex items-center gap-1.5 text-[12px]">
 				<ValueChip value={before} muted />
-				<span className="text-bn-inverse-text/40">→</span>
+				<span className="text-bn-text-tertiary">→</span>
 				<ValueChip value={after} />
 			</div>
 		</button>
@@ -388,12 +390,12 @@ function ValueChip({
 	value: { display: string; swatch?: string };
 	muted?: boolean;
 }) {
-	const tone = muted ? "text-bn-inverse-text/60" : "text-bn-inverse-text";
+	const tone = muted ? "text-bn-text-secondary" : "text-bn-text-primary";
 	return (
 		<span className={`inline-flex min-w-0 items-center gap-1 ${tone}`}>
 			{value.swatch ? (
 				<span
-					className="inline-block h-3 w-3 shrink-0 rounded-sm border border-white/30"
+					className="inline-block h-3 w-3 shrink-0 rounded-sm border border-bn-border"
 					style={{ backgroundColor: value.swatch }}
 					aria-hidden
 				/>
@@ -405,16 +407,16 @@ function ValueChip({
 
 function PanelFooter({ onDiscard }: { onDiscard: () => void }) {
 	return (
-		<div className="flex items-center justify-between border-t border-bn-inverse-hover px-4 py-2">
+		<div className="flex items-center justify-between border-t border-bn-border px-4 py-2">
 			<button
 				type="button"
 				onClick={onDiscard}
 				data-bn="btn"
-				className="rounded-bn-pill px-2.5 py-1 text-[11px] text-bn-inverse-text/60 transition hover:bg-bn-inverse-hover hover:text-bn-inverse-text"
+				className="rounded-bn-pill px-2.5 py-1 text-[11px] text-bn-text-secondary transition hover:bg-bn-hover-muted hover:text-bn-text-primary"
 			>
 				丢弃全部更改
 			</button>
-			<span className="text-[10.5px] text-bn-inverse-text/40">click 行跳转字段</span>
+			<span className="text-[10.5px] text-bn-text-tertiary">click 行跳转字段</span>
 		</div>
 	);
 }

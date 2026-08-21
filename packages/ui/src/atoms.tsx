@@ -152,7 +152,7 @@ export function Btn({
  */
 
 type IconButtonSize = "xs" | "sm" | "md" | "lg" | "xl";
-type IconButtonTone = "neutral" | "danger" | "accent" | "inverse";
+type IconButtonTone = "neutral" | "danger" | "accent";
 
 export interface IconButtonProps {
 	icon: ReactNode;
@@ -189,10 +189,6 @@ const ICON_BUTTON_TONE: Record<IconButtonTone, string> = {
 	neutral: "text-bn-text-tertiary hover:bg-bn-hover-muted hover:text-bn-text-primary",
 	danger: "text-bn-text-tertiary hover:bg-bn-danger-soft hover:text-bn-danger-text",
 	accent: "text-bn-text-tertiary hover:bg-bn-pink/10 hover:text-bn-pink",
-	// 反色浮岛(草稿岛)上的那一档 —— 底是暗的,中性色会糊进去。字走 inverse-text
-	// 而不是写死的白:那块底是可以被皮肤改的(inverseSurface / inverseText 成对),
-	// 字写死的话皮肤把底调亮就只剩一片空白。
-	inverse: "text-bn-inverse-text/70 hover:bg-bn-inverse-hover hover:text-bn-inverse-text",
 };
 
 export function IconButton({

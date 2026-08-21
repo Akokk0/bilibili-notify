@@ -158,15 +158,4 @@ describe("IconButton", () => {
 		fireEvent.click(btn());
 		expect(onClick).toHaveBeenCalledTimes(1);
 	});
-	it("inverse 档的字走 inverse-text token,不写死白字", () => {
-		// 这一档只用在反色浮岛上,而那块底是皮肤改得动的(inverseSurface / inverseText
-		// 成对)。字写死白色的话,皮肤把底调亮,这颗钮就整个消失 —— 与 About 那颗
-		// 按钮同一类缺陷。
-		render(<IconButton icon={<Icon.close size={13} />} label="x" tone="inverse" />);
-		const cls = btn().className;
-		expect([cls.includes("text-bn-inverse-text/70"), cls.includes("text-white")]).toEqual([
-			true,
-			false,
-		]);
-	});
 });

@@ -39,12 +39,6 @@ export const SKIN_COLOR_TOKEN_MAP = {
 	 * 底调浅一档而字还写死是白的,那片字就没了。
 	 */
 	onSolid: "--color-bn-on-solid",
-	/**
-	 * 反色浮岛(灵动岛式深色药丸)的底与字。**成对**,别只改一个 —— 底改了字没改
-	 * 就是白底白字,而这块浮层上除了这两键没有别的可读性来源。它不随深浅色切换。
-	 */
-	inverseSurface: "--color-bn-inverse-surface",
-	inverseText: "--color-bn-inverse-text",
 	danger: "--color-bn-danger",
 	dangerSoft: "--color-bn-danger-soft",
 	dangerText: "--color-bn-danger-text",

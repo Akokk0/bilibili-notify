@@ -57,6 +57,42 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
+/**
+ * 草稿岛跟着皮肤走。
+ *
+ * 它原本是照抄 iOS 灵动岛的纯黑药丸(`bg-black/85` + 写死白字),而站里其余浮层
+ * 全是跟随主题的强玻璃。装上皮肤后真机上就是一块突兀的黑砖 —— **更难看的是**,
+ * 岛上的按钮挂了 `btn`、被皮肤刷成了亮底,于是同一个组件一半跟着皮肤一半不跟。
+ *
+ * 黑底不是谁定下的:翻 `git log -S 'bg-black/85'`,它随 `eb239bd chip 5 态视觉`
+ * 一把写进来,没有注释也没有提交说明讲过为什么必须是黑的。
+ */
+describe("草稿岛跟着皮肤走", () => {
+	it("药丸与面板都挂 glass-strong,且走玻璃类 —— 与站里其余浮层同一套语汇", () => {
+		useDraftStore.setState({ current: makeReg(), uiState: "dirty", panelLocked: true });
+		const { container } = render(<DraftIsland />);
+		const hooked = Array.from(container.querySelectorAll('[data-bn="glass-strong"]'));
+		// 两个:药丸本体 + 展开面板。少一个就是「一半跟皮肤一半不跟」的老毛病。
+		expect(hooked.length).toBe(2);
+		for (const el of hooked) expect(el.className).toContain("bn-glass-strong");
+	});
+
+	it("不再有写死的黑底与白字 —— 那两样皮肤都够不着", () => {
+		useDraftStore.setState({ current: makeReg(), uiState: "dirty", panelLocked: true });
+		const { container } = render(<DraftIsland />);
+		const html = container.innerHTML;
+		for (const dead of ["bg-black", "text-white", "bn-inverse-surface", "bn-inverse-text"]) {
+			expect(`${dead}=${html.includes(dead)}`).toBe(`${dead}=false`);
+		}
+	});
+
+	it("字色走常规主题档 —— 底跟着皮肤变亮时,字也得跟着变深", () => {
+		useDraftStore.setState({ current: makeReg(), uiState: "dirty", panelLocked: true });
+		const { container } = render(<DraftIsland />);
+		expect(container.innerHTML).toContain("text-bn-text-primary");
+	});
+});
+
 describe("DraftIsland chip 5 态渲染", () => {
 	it("idle → 不渲染任何 chip(section 容器空)", () => {
 		render(<DraftIsland />);

@@ -46,16 +46,9 @@
 	   底清一色是饱和语义色,白字是它们共同的解;真出现某一档需要单独反色,再拆不迟。 */
 	--color-bn-on-solid: #ffffff;
 
-	/* 反色浮岛(灵动岛式的深色药丸)的**成对** token:底与字必须一起改。
-	   拆开是有前科的 —— 底写 `bg-black/85`、字写死 `text-white` 时,底那一半能被
-	   皮肤重绘而字那一半不能,于是这块浮层要么整个够不着皮肤,要么一改就白底白字。
-	   成对暴露给皮肤编辑器,改一个就会看见另一个。
-	   两档不随深浅色切换 —— 这块本来就是刻意反色的,亮色下也是深底。
-	   下面三档是它内部的白色叠层(悬停底、分隔线),跟着字色一起算前景。 */
-	--color-bn-inverse-surface: #000000;
-	--color-bn-inverse-text: #ffffff;
-	--color-bn-inverse-muted: rgba(255, 255, 255, 0.05);
-	--color-bn-inverse-hover: rgba(255, 255, 255, 0.1);
+	/* 压在饱和实底上的白纱一档 —— tab 条选中项里的快捷键徽章、UP 弹窗压在封面
+	   渐变上的关闭钮。它不是「主题表面」,所以不随深浅色切换。
+	   (同族的 muted / hover 两档随草稿岛改成跟随主题的玻璃浮层一起没了用户,已删。) */
 	--color-bn-inverse-strong: rgba(255, 255, 255, 0.25);
 	--color-bn-danger: #ef4444;
 	--color-bn-success: #10b981;
@@ -194,11 +187,6 @@
 	--color-bn-overlay: rgba(2, 6, 23, 0.62);
 	/* 同亮色:实底上的前景不随深浅切换 —— 底本身就是饱和色,不是主题背景。 */
 	--color-bn-on-solid: #ffffff;
-	/* 同亮色:反色浮岛不随深浅切换,见上方那段。 */
-	--color-bn-inverse-surface: #000000;
-	--color-bn-inverse-text: #ffffff;
-	--color-bn-inverse-muted: rgba(255, 255, 255, 0.05);
-	--color-bn-inverse-hover: rgba(255, 255, 255, 0.1);
 	--color-bn-inverse-strong: rgba(255, 255, 255, 0.25);
 	--color-bn-success-soft: rgba(34, 197, 94, 0.14);
 	--color-bn-success-text: #86efac;

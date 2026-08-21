@@ -26,7 +26,7 @@
 | `Avatar` | 圆头像:有 `url` 显图,没有显首字母渐变底;`status` 加 LIVE 角标或呼吸点 |
 | `Btn` | 按钮,5 变体(`primary` 粉实底 / `blue` / `ghost` / `outline` / `danger` 红字)× 3 尺寸 |
 | `Pill` | 圆角小徽章(**不可点**的 `<span>`);`subtle` = 12% 底色染色字,否则实底白字 |
-| `IconButton` | 只装一枚图标的方钮/圆钮(关闭 / 移除 / 箭头)。五档 `size`(xs 16 → xl 36)、四档 `tone`(**只管 hover 语义**,静态字色一律 tertiary;`inverse` 那档例外 —— 它只用在反色浮岛上,字走 `inverse-text` token 而**不写死白色**,底是皮肤改得动的)、`shape=pill`、`filled` 加描边面底。`label` 必填(图标没文字),tooltip 要另写才给 `title`。`className` **只收定位这类不冲突的**工具类(`absolute`/`opacity-0 group-hover:*`),覆盖本体是覆盖不住的 —— 要改本体就加档 |
+| `IconButton` | 只装一枚图标的方钮/圆钮(关闭 / 移除 / 箭头)。五档 `size`(xs 16 → xl 36)、三档 `tone`(**只管 hover 语义**,静态字色一律 tertiary)、`shape=pill`、`filled` 加描边面底。`label` 必填(图标没文字),tooltip 要另写才给 `title`。`className` **只收定位这类不冲突的**工具类(`absolute`/`opacity-0 group-hover:*`),覆盖本体是覆盖不住的 —— 要改本体就加档 |
 | `AddButton` / `AddCard` | 「这里还能再加一个」的虚线语汇(虚线=空位,指上去变粉=点我)。`AddButton` 行内走药丸、`block` 占整行走卡片圆角;`AddCard` 是网格里的一格,＋/标题/副标题**由组件出**,调用方只给文字。两者共用一份 `ADD_LANGUAGE`,底色/最小高度/焦点环走 `className` |
 | `MenuItem` | 弹层(下拉 / 右键菜单 / 附件菜单)里的一整行:图标槽 + 内容,`active` 染粉加粗、`danger` 整行连图标转红。行内有副标题时**必须给 `ariaLabel`**,否则读屏器把标题和小字连起来念。**刻意不挂 `data-bn`** —— 皮肤给按钮写的实底落到每行菜单上很难看,而词表里没有 `menu-item` 这一档;浮层本体自己挂了 `glass-strong` |
 | `ToneChip` | 「一排里选一个/开一个」的**可点**胶囊:选中 = 12% `tone` 底 + **实色 `tone` 边** + 正文色字,未选中退中性描边 + 悬停变正文色。**`tone` 不承担可读性**(当字色时字底同色相,亮色下 warn 只有 1.90:1),色彩识别交给实色边框。自带 `data-bn="btn"`;`tone` 收 hex **或** `var()`(内部 `color-mix`),纯操作钮可不填。别拿 `Pill` 套 `onClick` 顶替它 |
