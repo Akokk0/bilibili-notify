@@ -85,6 +85,13 @@ export function LoginDialog({ variant }: { variant: "cold" | "overlay" }) {
 					e.preventDefault();
 					void doSubmit();
 				}}
+				// 这张卡是弹窗卡片本体,所以 `modal` 挂点跟 ModalShell 那 9 个弹窗一样要挂。
+				// 只有 `.bn-glass-strong` 的话,皮肤给弹窗定的圆角 / 描边 / 阴影会落到那 9 个
+				// 身上、独独绕过登录卡 —— 而这是主人见到的第一屏。
+				//
+				// 登录页也吃皮肤(SkinRoot 在 main.tsx,包着 AuthGate),但不必为此留一块不挂当
+				// 逃生舱:真的逃生口是 `?skin=off`(services/skin.ts 的 skinKillSwitchActive)。
+				data-bn="modal"
 				className="bn-glass-strong w-full max-w-sm rounded-bn-card px-7 py-8 shadow-bn-elev"
 			>
 				<div className="mb-1 flex items-center gap-2">
