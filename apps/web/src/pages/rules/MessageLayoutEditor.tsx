@@ -6,7 +6,7 @@
  * 全局绑 defaults.templates,per-UP 绑 overrides.templates,由调用方组合)。
  */
 
-import { Icon, IconButton, Toggle, WarnNote } from "@bilibili-notify/ui";
+import { AddButton, Icon, IconButton, Toggle, WarnNote } from "@bilibili-notify/ui";
 import {
 	closestCenter,
 	DndContext,
@@ -209,15 +209,10 @@ export function MessageLayoutEditor({
 			</DndContext>
 
 			<div className="flex items-center gap-2">
-				<button
-					type="button"
-					onClick={() => setBlocks(insertSplit(value.blocks))}
-					data-bn="btn"
-					className="flex items-center gap-1 rounded-lg border border-dashed border-bn-border-subtle px-2.5 py-1.5 text-[12px] font-medium text-bn-text-tertiary transition hover:border-bn-pink/60 hover:text-bn-text-primary"
-				>
+				<AddButton onClick={() => setBlocks(insertSplit(value.blocks))}>
 					<Icon.plus size={13} />
 					插入分条符
-				</button>
+				</AddButton>
 				<span className="text-[11px] text-bn-text-tertiary">
 					分条符把一次推送切成多条消息;某条发送失败时,该目标的后续条会中止
 				</span>

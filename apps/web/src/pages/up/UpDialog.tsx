@@ -1,4 +1,5 @@
 import {
+	AddButton,
 	Avatar,
 	Btn,
 	ConfirmDialog,
@@ -570,30 +571,23 @@ export function UpDialog({
 										</div>
 										<div className="flex flex-wrap gap-1.5">
 											{unattachedTargets.map((t) => (
-												<button
-													type="button"
+												<AddButton
 													key={t.id}
+													className="bg-bn-surface"
 													onClick={() => attachTarget(t.id)}
-													data-bn="btn"
-													className="inline-flex items-center gap-1.5 rounded-bn-pill border border-dashed border-bn-border bg-bn-surface px-2.5 py-1 text-[11.5px] text-bn-text-secondary hover:border-bn-pink hover:text-bn-pink"
 												>
 													<Icon.plus size={11} />
 													<PlatformIcon platform={t.platform} size={11} />
 													<span className="max-w-35 truncate">{t.name}</span>
-												</button>
+												</AddButton>
 											))}
 										</div>
 									</div>
 								) : (
-									<button
-										type="button"
-										onClick={() => setShowPicker(true)}
-										data-bn="btn"
-										className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-bn-border bg-transparent px-3 py-2.5 text-[12px] text-bn-text-secondary hover:border-bn-pink hover:text-bn-pink"
-									>
+									<AddButton block onClick={() => setShowPicker(true)}>
 										<Icon.plus size={12} />
 										添加推送目标 · 还有 {unattachedTargets.length} 个未添加
-									</button>
+									</AddButton>
 								)
 							) : null}
 						</div>

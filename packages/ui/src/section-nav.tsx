@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { IconButton } from "./atoms";
+import { AddButton, IconButton } from "./atoms";
 
 /**
  * SectionNav —— Rules / Targets / Logs 三页共用的「分区/Tab 导航」。
@@ -182,16 +182,7 @@ export function SectionNav({
 					<span className="text-[11px] font-bold uppercase tracking-wider text-bn-text-primary">
 						{heading}
 					</span>
-					{onAdd ? (
-						<button
-							type="button"
-							onClick={onAdd}
-							data-bn="btn"
-							className="rounded-md border border-dashed border-bn-border px-2 py-0.5 text-[10.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
-						>
-							{addLabel}
-						</button>
-					) : null}
+					{onAdd ? <AddButton onClick={onAdd}>{addLabel}</AddButton> : null}
 				</div>
 				{/* nav 挂点只裹 tab 列表本身 —— 上面那行 heading 留在外面,否则皮肤给 nav
 				    画的底色/描边会把小标题一起罩进去,看着像标题掉进了 tab 卡里。
@@ -282,14 +273,9 @@ export function SectionNav({
 							);
 						})}
 						{onAdd ? (
-							<button
-								type="button"
-								onClick={onAdd}
-								data-bn="btn"
-								className="flex shrink-0 items-center gap-1 rounded-lg border border-dashed border-bn-border px-3 py-1.5 text-[12.5px] font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
-							>
+							<AddButton className="shrink-0" onClick={onAdd}>
 								{addLabel}
-							</button>
+							</AddButton>
 						) : null}
 					</div>
 

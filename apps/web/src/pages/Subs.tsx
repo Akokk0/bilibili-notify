@@ -1,4 +1,5 @@
 import {
+	AddCard,
 	Btn,
 	ConfirmDialog,
 	ErrorNote,
@@ -742,16 +743,12 @@ export default function Subs() {
 				    最小高度**必须与 UpCard 引同一个常量**:grid 同行的高度取最高那张卡,
 				    这个值从前只写在这儿,于是它一被筛掉,整排 UP 卡就矮一截(真机 220→199)。 */}
 				{!q.trim() && filterId === "all" && !groupFilter ? (
-					<button
-						type="button"
+					<AddCard
+						label="添加 UP 主"
+						hint="UID / 名称搜索"
+						className={`${UP_CARD_MIN_H} focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink`}
 						onClick={() => setShowNewDialog(true)}
-						data-bn="btn"
-						className={`flex ${UP_CARD_MIN_H} flex-col items-center justify-center rounded-xl border border-dashed border-bn-border px-4 py-5 text-center transition hover:border-bn-pink focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink`}
-					>
-						<span className="text-[28px] leading-none text-bn-text-tertiary">＋</span>
-						<span className="mt-2 text-[13px] font-semibold text-bn-text-primary">添加 UP 主</span>
-						<span className="mt-0.5 text-[11px] text-bn-text-tertiary">UID / 名称搜索</span>
-					</button>
+					/>
 				) : null}
 			</div>
 

@@ -27,6 +27,7 @@
 | `Btn` | 按钮,5 变体(`primary` 粉实底 / `blue` / `ghost` / `outline` / `danger` 红字)× 3 尺寸 |
 | `Pill` | 圆角小徽章(**不可点**的 `<span>`);`subtle` = 12% 底色染色字,否则实底白字 |
 | `IconButton` | 只装一枚图标的方钮/圆钮(关闭 / 移除 / 箭头)。五档 `size`(xs 16 → xl 36)、四档 `tone`(**只管 hover 语义**,静态字色一律 tertiary)、`shape=pill`、`filled` 加描边面底。`label` 必填(图标没文字),tooltip 要另写才给 `title`。`className` **只收定位这类不冲突的**工具类(`absolute`/`opacity-0 group-hover:*`),覆盖本体是覆盖不住的 —— 要改本体就加档 |
+| `AddButton` / `AddCard` | 「这里还能再加一个」的虚线语汇(虚线=空位,指上去变粉=点我)。`AddButton` 行内走药丸、`block` 占整行走卡片圆角;`AddCard` 是网格里的一格,＋/标题/副标题**由组件出**,调用方只给文字。两者共用一份 `ADD_LANGUAGE`,底色/最小高度/焦点环走 `className` |
 | `ToneChip` | 「一排里选一个/开一个」的**可点**胶囊:选中 = 12% `tone` 底 + **实色 `tone` 边** + 正文色字,未选中退中性描边 + 悬停变正文色。**`tone` 不承担可读性**(当字色时字底同色相,亮色下 warn 只有 1.90:1),色彩识别交给实色边框。自带 `data-bn="btn"`;`tone` 收 hex **或** `var()`(内部 `color-mix`),纯操作钮可不填。别拿 `Pill` 套 `onClick` 顶替它 |
 | `StatusDot` | 8px 语义色状态点(`live/living` 粉+呼吸、`ok` 绿、`warn` 橙、`err` 红、`pending` 灰) |
 | `Toggle` | 开关(粉=开),`sm`/`md`;`ariaLabel` 给读屏器命名 |

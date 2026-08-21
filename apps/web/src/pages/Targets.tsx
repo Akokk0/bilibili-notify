@@ -5,6 +5,7 @@ import {
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 } from "@bilibili-notify/internal/constants";
 import {
+	AddCard,
 	Btn,
 	EmptyNote,
 	ErrorNote,
@@ -274,31 +275,6 @@ function TargetCard({
 				</div>
 			</div>
 		</div>
-	);
-}
-
-// ── Add card (dashed) ───────────────────────────────────────────────────────
-
-interface AddCardProps {
-	label: string;
-	hint: string;
-	onClick: () => void;
-	disabled?: boolean;
-}
-
-function AddCard({ label, hint, onClick, disabled }: AddCardProps) {
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			disabled={disabled}
-			data-bn="btn"
-			className="flex h-full min-h-22 flex-col items-center justify-center rounded-bn-sm border border-dashed border-bn-border bg-bn-surface px-3 py-4 text-center transition hover:border-bn-pink hover:bg-bn-pink/5 disabled:cursor-not-allowed disabled:opacity-60"
-		>
-			<span className="text-[20px] leading-none text-bn-text-tertiary">＋</span>
-			<span className="mt-1 text-[12.5px] font-semibold text-bn-text-primary">{label}</span>
-			<span className="mt-0.5 text-[10.5px] text-bn-text-tertiary">{hint}</span>
-		</button>
 	);
 }
 
@@ -1815,6 +1791,7 @@ export default function Targets() {
 										<AddCard
 											label="新建推送目标"
 											hint="绑定到当前适配器"
+											className="min-h-22 bg-bn-surface"
 											onClick={() => startNewTarget(selectedAdapter)}
 										/>
 									</div>
@@ -1838,6 +1815,7 @@ export default function Targets() {
 										<AddCard
 											label="新建推送目标"
 											hint="绑定到当前适配器"
+											className="min-h-22 bg-bn-surface"
 											onClick={() => startNewTarget(selectedAdapter)}
 										/>
 									</div>

@@ -8,7 +8,7 @@
  * 正常。拖拽手柄只绑在 ⠿ 上 —— 开关 / 边距输入 / 删除按钮仍可正常点击。
  */
 
-import { Icon, IconButton, Toggle } from "@bilibili-notify/ui";
+import { AddButton, Icon, IconButton, Toggle } from "@bilibili-notify/ui";
 import {
 	closestCenter,
 	DndContext,
@@ -206,15 +206,10 @@ export function BlockListEditor({
 					</ul>
 				</SortableContext>
 			</DndContext>
-			<button
-				type="button"
-				onClick={() => onChange(addDivider(blocks))}
-				data-bn="btn"
-				className="flex items-center justify-center gap-1 rounded-lg border border-dashed border-bn-border-subtle py-1.5 text-[12px] font-medium text-bn-text-tertiary transition hover:border-bn-pink/60 hover:text-bn-text-primary"
-			>
+			<AddButton block onClick={() => onChange(addDivider(blocks))}>
 				<Icon.plus size={13} />
 				添加分割线
-			</button>
+			</AddButton>
 		</div>
 	);
 }

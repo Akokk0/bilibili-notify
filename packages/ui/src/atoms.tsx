@@ -228,6 +228,81 @@ export function IconButton({
 	);
 }
 
+// ── AddButton / AddCard ─────────────────────────────────────────────────────
+
+/**
+ * 「这里还能再加一个」的虚线语汇 —— 虚线边=空位,指上去变粉=点我。
+ *
+ * 收编前站内九处手写,圆角在 `rounded-md / lg / xl / bn-sm / bn-pill` **五种**
+ * 之间漂、字号四种、字重三种、hover 五种写法,而它们说的是同一件事。
+ *
+ * 拆成两个组件而不是一个带 `variant` 的:{@link AddCard} 连内部结构(＋ / 标题 /
+ * 副标题)一起给,这里收自由 children,塞进同一个壳只会得到一个两幅面孔的东西。
+ */
+
+/** 两者共用的虚线语汇。改这里等于同时改两个组件 —— 它们本来就该一起动。 */
+const ADD_LANGUAGE =
+	"border border-dashed border-bn-border text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink disabled:cursor-not-allowed disabled:opacity-60";
+
+export interface AddButtonProps {
+	children: ReactNode;
+	onClick?: MouseEventHandler<HTMLButtonElement>;
+	/** 占满一整行(列表末尾那种)。默认是行内短钮。 */
+	block?: boolean;
+	disabled?: boolean;
+	className?: string;
+}
+
+export function AddButton({ children, onClick, block, disabled, className }: AddButtonProps) {
+	// 行内走药丸(跟同排的 Pill / ToneChip 一个形状),占整行的走卡片圆角 ——
+	// 一条横贯整行的药丸不像按钮,像进度条。
+	const shape = block
+		? "flex w-full items-center justify-center rounded-lg px-3 py-2 text-[12px]"
+		: "inline-flex items-center rounded-bn-pill px-2.5 py-1 text-[11.5px]";
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			disabled={disabled}
+			data-bn="btn"
+			className={`gap-1.5 font-semibold ${shape} ${ADD_LANGUAGE} ${className ?? ""}`}
+		>
+			{children}
+		</button>
+	);
+}
+
+export interface AddCardProps {
+	/** 卡片中间那行标题(「添加 UP 主」)。 */
+	label: string;
+	/** 标题下的一行小字(「UID / 名称搜索」)。 */
+	hint: string;
+	onClick?: MouseEventHandler<HTMLButtonElement>;
+	disabled?: boolean;
+	/** 只收**不冲突**的追加项:底色、最小高度、焦点环。覆盖本体是覆盖不住的。 */
+	className?: string;
+}
+
+/**
+ * 网格里的「再加一格」卡片。`h-full` 是要紧的:栅格同行取最高那张卡,不撑满的话
+ * 这一格会比同排的矮一截。
+ */
+export function AddCard({ label, hint, onClick, disabled, className }: AddCardProps) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			disabled={disabled}
+			data-bn="btn"
+			className={`flex h-full flex-col items-center justify-center rounded-xl px-4 py-5 text-center hover:bg-bn-pink/5 ${ADD_LANGUAGE} ${className ?? ""}`}
+		>
+			<span className="text-[20px] leading-none text-bn-text-tertiary">＋</span>
+			<span className="mt-1 text-[12.5px] font-semibold text-bn-text-primary">{label}</span>
+			<span className="mt-0.5 text-[10.5px] text-bn-text-tertiary">{hint}</span>
+		</button>
+	);
+}
+
 // ── Pill ────────────────────────────────────────────────────────────────────
 
 export interface PillProps {
