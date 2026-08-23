@@ -58,6 +58,16 @@ import {
 const inputCls =
 	"w-full rounded-lg border border-bn-border bg-bn-field px-2 py-1 text-bn-sm text-bn-text-primary outline-none focus:border-bn-pink";
 
+/**
+ * 值是**对象**的那些段 —— `patchSection` 只对它们成立。
+ *
+ * `railWidth`(数字)与 `css`(字符串)整个替换就行,没有「合并几个键」这回事;
+ * 靠类型把它们挡在外面,而不是靠调用方记得。
+ */
+type ObjectSection = {
+	[K in keyof SkinMode]-?: NonNullable<SkinMode[K]> extends object ? K : never;
+}[keyof SkinMode];
+
 export function SkinEditor(props: {
 	id: string;
 	manifest: SkinManifest;
@@ -318,15 +328,28 @@ export function SkinEditor(props: {
 	const effects = mode.effects ?? {};
 	const missing = missingModeOf(draft);
 
-	/** 动效字段:patch 值为 undefined 即删该道;全关后 effects 整个消失。 */
-	function setEffects(patch: Partial<SkinEffects>): void {
-		setSection("effects", cleanSection({ ...effects, ...patch }));
+	/**
+	 * 往一段里合并几个字段:值为 undefined / 空串的键即删,整段空了字段本身消失
+	 * (`cleanSection` 的律)。
+	 *
+	 * 这段话此前只有 effects 与 chat 两段有简写,另外五段把
+	 * `setSection(X, cleanSection({ ...X, k: v }))` 原样写了十二遍 —— 同一个动作两种
+	 * 写法,而这个抽屉的原则是「编辑器 = 能力全集」,字段只会越加越多。
+	 */
+	function patchSection<K extends ObjectSection>(
+		section: K,
+		patch: Partial<NonNullable<SkinMode[K]>>,
+	): void {
+		const prev = (mode[section] ?? {}) as Record<string, unknown>;
+		setSection(section, cleanSection({ ...prev, ...patch }) as SkinMode[K]);
 	}
 
-	/** chat 段:同 setEffects 律 —— 空值键即删,整段空了字段消失。 */
-	function setChat(patch: Partial<NonNullable<SkinMode["chat"]>>): void {
-		setSection("chat", cleanSection({ ...chat, ...patch }));
-	}
+	/** 动效字段。 */
+	const setEffects = (patch: Partial<SkinEffects>): void => patchSection("effects", patch);
+
+	/** chat 段。 */
+	const setChat = (patch: Partial<NonNullable<SkinMode["chat"]>>): void =>
+		patchSection("chat", patch);
 
 	return (
 		<DrawerShell onClose={requestClose} width={420} ariaLabel="皮肤调整">
@@ -457,26 +480,12 @@ export function SkinEditor(props: {
 						isDef={isDef}
 						onChange={(next) => setSection("wallpaper", next)}
 						afterImage={
-							<FieldRow label="上传图片">
-								<div className="flex items-center gap-2">
-									<input
-										aria-label="上传图片"
-										type="file"
-										accept="image/png,image/jpeg,image/webp"
-										disabled={uploading}
-										onChange={(e) => {
-											const file = e.target.files?.[0];
-											// 输入框清空:同一张图连传两次时 change 不会再触发。
-											e.target.value = "";
-											if (file) uploadAsset(file);
-										}}
-										className="w-full text-bn-xs text-bn-text-secondary file:mr-2 file:rounded-md file:border-0 file:bg-bn-surface-muted file:px-2 file:py-1 file:text-bn-xs file:text-bn-text-primary"
-									/>
-									{uploading ? (
-										<span className="shrink-0 text-bn-xs text-bn-text-secondary">上传中…</span>
-									) : null}
-								</div>
-							</FieldRow>
+							<UploadRow
+								label="上传图片"
+								accept="image/png,image/jpeg,image/webp"
+								uploading={uploading}
+								onFile={uploadAsset}
+							/>
 						}
 					/>
 				</Fold>
@@ -535,25 +544,25 @@ export function SkinEditor(props: {
 						label="玻璃底色"
 						value={glass.background}
 						isDefault={isDef(glass.background, dm.glass?.background)}
-						onChange={(v) => setSection("glass", cleanSection({ ...glass, background: v }))}
+						onChange={(v) => patchSection("glass", { background: v })}
 					/>
 					<ColorField
 						label="玻璃描边"
 						value={glass.border}
 						isDefault={isDef(glass.border, dm.glass?.border)}
-						onChange={(v) => setSection("glass", cleanSection({ ...glass, border: v }))}
+						onChange={(v) => patchSection("glass", { border: v })}
 					/>
 					<ColorField
 						label="强玻璃底色"
 						value={glass.strongBackground}
 						isDefault={isDef(glass.strongBackground, dm.glass?.strongBackground)}
-						onChange={(v) => setSection("glass", cleanSection({ ...glass, strongBackground: v }))}
+						onChange={(v) => patchSection("glass", { strongBackground: v })}
 					/>
 					<ColorField
 						label="强玻璃描边"
 						value={glass.strongBorder}
 						isDefault={isDef(glass.strongBorder, dm.glass?.strongBorder)}
-						onChange={(v) => setSection("glass", cleanSection({ ...glass, strongBorder: v }))}
+						onChange={(v) => patchSection("glass", { strongBorder: v })}
 					/>
 					<RangeField
 						label="玻璃模糊"
@@ -564,7 +573,7 @@ export function SkinEditor(props: {
 						value={glass.blur}
 						fallback={12}
 						isDefault={isDef(glass.blur, dm.glass?.blur)}
-						onChange={(v) => setSection("glass", cleanSection({ ...glass, blur: v }))}
+						onChange={(v) => patchSection("glass", { blur: v })}
 					/>
 					<RangeField
 						label="强玻璃模糊"
@@ -575,7 +584,7 @@ export function SkinEditor(props: {
 						value={glass.strongBlur}
 						fallback={16}
 						isDefault={isDef(glass.strongBlur, dm.glass?.strongBlur)}
-						onChange={(v) => setSection("glass", cleanSection({ ...glass, strongBlur: v }))}
+						onChange={(v) => patchSection("glass", { strongBlur: v })}
 					/>
 				</Fold>
 
@@ -591,7 +600,7 @@ export function SkinEditor(props: {
 									label={label}
 									value={colors[key]}
 									isDefault={isDef(colors[key], dm.colors?.[key])}
-									onChange={(v) => setSection("colors", cleanSection({ ...colors, [key]: v }))}
+									onChange={(v) => patchSection("colors", { [key]: v })}
 								/>
 							))}
 						</div>
@@ -636,7 +645,7 @@ export function SkinEditor(props: {
 						value={radius.card}
 						fallback={14}
 						isDefault={isDef(radius.card, dm.radius?.card)}
-						onChange={(v) => setSection("radius", cleanSection({ ...radius, card: v }))}
+						onChange={(v) => patchSection("radius", { card: v })}
 					/>
 					<NumberField
 						label="胶囊圆角"
@@ -645,7 +654,7 @@ export function SkinEditor(props: {
 						placeholder={`默认;${SKIN_LIMITS.radiusPill.min}~${SKIN_LIMITS.radiusPill.max} px`}
 						min={SKIN_LIMITS.radiusPill.min}
 						max={SKIN_LIMITS.radiusPill.max}
-						onChange={(v) => setSection("radius", cleanSection({ ...radius, pill: v }))}
+						onChange={(v) => patchSection("radius", { pill: v })}
 					/>
 					<RangeField
 						label="左栏宽度"
@@ -664,7 +673,7 @@ export function SkinEditor(props: {
 						value={shadows.card ?? ""}
 						isDefault={isDef(shadows.card, dm.shadows?.card)}
 						placeholder="如 0 10px 30px rgba(57,197,187,0.25)"
-						onChange={(v) => setSection("shadows", cleanSection({ ...shadows, card: v }))}
+						onChange={(v) => patchSection("shadows", { card: v })}
 					/>
 					<TextField
 						label="悬浮阴影"
@@ -672,7 +681,7 @@ export function SkinEditor(props: {
 						value={shadows.elev ?? ""}
 						isDefault={isDef(shadows.elev, dm.shadows?.elev)}
 						placeholder="悬停/浮层那一档"
-						onChange={(v) => setSection("shadows", cleanSection({ ...shadows, elev: v }))}
+						onChange={(v) => patchSection("shadows", { elev: v })}
 					/>
 				</Fold>
 
@@ -681,34 +690,18 @@ export function SkinEditor(props: {
 						label="自带字体"
 						value={mode.fonts?.asset ?? ""}
 						isDefault={isDef(mode.fonts?.asset, dm.fonts?.asset)}
-						onChange={(v) =>
-							setSection("fonts", cleanSection({ ...mode.fonts, asset: v || undefined }))
-						}
+						onChange={(v) => patchSection("fonts", { asset: v || undefined })}
 						options={[
 							{ value: "", label: "(不用自带字体)" },
 							...fontAssets.map((a) => ({ value: a, label: assetLabel(a) })),
 						]}
 					/>
-					<FieldRow label="上传字体">
-						<div className="flex items-center gap-2">
-							<input
-								aria-label="上传字体"
-								type="file"
-								accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf"
-								disabled={uploading}
-								onChange={(e) => {
-									const file = e.target.files?.[0];
-									// 输入框清空:同一份文件连传两次时 change 不会再触发。
-									e.target.value = "";
-									if (file) uploadAsset(file);
-								}}
-								className="w-full text-bn-xs text-bn-text-secondary file:mr-2 file:rounded-md file:border-0 file:bg-bn-surface-muted file:px-2 file:py-1 file:text-bn-xs file:text-bn-text-primary"
-							/>
-							{uploading ? (
-								<span className="shrink-0 text-bn-xs text-bn-text-secondary">上传中…</span>
-							) : null}
-						</div>
-					</FieldRow>
+					<UploadRow
+						label="上传字体"
+						accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf"
+						uploading={uploading}
+						onFile={uploadAsset}
+					/>
 					<TextField
 						label="正文字体栈"
 						value={fontsToText(mode.fonts?.body)}
@@ -718,7 +711,7 @@ export function SkinEditor(props: {
 							// 自带字体那一栏**不能被顺手清掉** —— 两栏是「先用文件、拉不下来
 							// 再退到家族名」的一对,改字体栈不该把主人传的那款字弄没。
 							const body = textToFonts(v);
-							setSection("fonts", cleanSection({ ...mode.fonts, body }));
+							patchSection("fonts", { body });
 						}}
 					/>
 					<p className="text-bn-xs leading-4 text-bn-text-tertiary">
@@ -885,6 +878,43 @@ const WALLPAPER_FIT_OPTIONS = [
 	{ value: "contain", label: "contain 完整显示" },
 	{ value: "tile", label: "tile 平铺" },
 ];
+
+/**
+ * 传一份文件进来的那一行。图与字体两处只差三样:标签、`accept`、无障碍名。
+ *
+ * **不用 `packages/ui` 的 `AddFileButton`**:那件把 input 藏进虚线 `<label>` 里做
+ * 「空位卡片」的样子,也不重置 `value` —— 这两行要的是抽屉里紧挨着下拉的一条窄行。
+ */
+function UploadRow(props: {
+	label: string;
+	accept: string;
+	uploading: boolean;
+	onFile: (file: File) => void;
+}) {
+	const { label, accept, uploading, onFile } = props;
+	return (
+		<FieldRow label={label}>
+			<div className="flex items-center gap-2">
+				<input
+					aria-label={label}
+					type="file"
+					accept={accept}
+					disabled={uploading}
+					onChange={(e) => {
+						const file = e.target.files?.[0];
+						// 输入框清空:同一份文件连传两次时 change 不会再触发。
+						e.target.value = "";
+						if (file) onFile(file);
+					}}
+					className="w-full text-bn-xs text-bn-text-secondary file:mr-2 file:rounded-md file:border-0 file:bg-bn-surface-muted file:px-2 file:py-1 file:text-bn-xs file:text-bn-text-primary"
+				/>
+				{uploading ? (
+					<span className="shrink-0 text-bn-xs text-bn-text-secondary">上传中…</span>
+				) : null}
+			</div>
+		</FieldRow>
+	);
+}
 
 /**
  * 一组壁纸字段:图片 + (选了图才出现的)铺法 / 位置 / 遮罩 / 模糊。
