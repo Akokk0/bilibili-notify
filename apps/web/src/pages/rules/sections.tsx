@@ -336,11 +336,8 @@ export function LiveThresholdsSection({
 					<Picker<1 | 2 | 3>
 						value={filters.minGuardLevel}
 						onChange={(v) => setF("minGuardLevel", v)}
-						options={[
-							{ value: 3, label: "舰长" },
-							{ value: 2, label: "提督" },
-							{ value: 1, label: "总督" },
-						]}
+						// 由低到高,与这一屏别处同序(见 GuardSection 的 ROLES)。
+						options={[...GUARD_LEVELS].reverse().map((g) => ({ value: g.level, label: g.label }))}
 					/>
 				</Field>
 				<Field code="schedule.pushTime">

@@ -26,6 +26,7 @@ import {
 import { InheritNote } from "../../components/inherit-note";
 import { OverrideBox } from "../../components/override-box";
 import { AI_PURPLE } from "../../config/colors";
+import { GUARD_LEVELS } from "../../config/guard-levels";
 import { SECTION_ACCENT } from "../../config/section-accents";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
@@ -446,11 +447,8 @@ function LiveOverrideBox({
 					<Picker<1 | 2 | 3>
 						value={fCur.minGuardLevel ?? baselineFilters.minGuardLevel}
 						onChange={(v) => onFilters({ ...fCur, minGuardLevel: v })}
-						options={[
-							{ value: 3, label: "舰长" },
-							{ value: 2, label: "提督" },
-							{ value: 1, label: "总督" },
-						]}
+						// 由低到高,与规则页那一屏同序。
+						options={[...GUARD_LEVELS].reverse().map((g) => ({ value: g.level, label: g.label }))}
 					/>
 				</Field>
 				<Field code="schedule.pushTime">
@@ -803,9 +801,9 @@ function GuardOverrideBox({
 		>
 			<GuardVariableHints />
 			<div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
-				{(["captain", "commander", "governor"] as const).map((role) => {
+				{/* 由低到高 —— 表本身是升序(总督在前),这一屏历来舰长打头。 */}
+				{[...GUARD_LEVELS].reverse().map(({ key: role, label }) => {
 					const e = guardOf(role);
-					const label = role === "captain" ? "舰长" : role === "commander" ? "提督" : "总督";
 					return (
 						<div key={role} className="rounded-lg border border-bn-border bg-bn-surface/70 p-2.5">
 							<div className="mb-1.5 text-bn-sm font-bold text-bn-text-primary">
