@@ -9,6 +9,7 @@
 
 import {
 	SKIN_LIMITS as L,
+	SKIN_COLOR_FUNCTIONS,
 	SKIN_COLOR_TOKEN_MAP,
 	SKIN_SCHEMA_VERSION,
 	SKIN_TEXT_SLOTS,
@@ -28,7 +29,11 @@ export type ParseSkinResult =
 const FORBIDDEN_SUBSTRINGS = ["url(", "var(", "expression", ";", "{", "}", "@", "\\", "/*"];
 
 const HEX_RE = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
-const COLOR_FN_RE = /^(rgb|rgba|hsl|hsla|oklch|oklab)\(\s*[0-9a-z%.,\s/-]*\)$/i;
+/** 函数名走契约那份共用名单;括号内容的判据是这一头自己的事。 */
+const COLOR_FN_RE = new RegExp(
+	`^(${SKIN_COLOR_FUNCTIONS.join("|")})\\(\\s*[0-9a-z%.,\\s/-]*\\)$`,
+	"i",
+);
 const GRADIENT_HEAD_RE = /^(repeating-)?(linear|radial|conic)-gradient\(/i;
 const GRADIENT_BODY_RE = /^[a-z0-9#%.,()\s/-]+$/i;
 

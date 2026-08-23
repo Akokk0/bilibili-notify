@@ -5,6 +5,7 @@
  */
 
 import {
+	SKIN_COLOR_FUNCTIONS,
 	SKIN_FONT_FORMATS,
 	type SkinColorKey,
 	type SkinManifest,
@@ -132,14 +133,14 @@ export function toHex6(value: string): string | null {
 const HEX_ALPHA_RE = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i;
 
 /**
- * 服务端 `isColor` 放行的函数色,一个不少(见 skins/schema.ts 的 COLOR_FN_RE)。
+ * 服务端放行的函数色,一个不少 —— 名单直接读契约那份,不再手抄。
  *
- * **这一头必须认得全。** 认不出的下场不是「滑杆退化成不可调」,而是 {@link withColorAlpha}
- * 落到兜底色相上 —— 主人拖一下透明度,整块玻璃的颜色就被换成了那管灰。而
- * 「保色相只换 alpha」正是这对控件立项时写下的话(87b2a9e:hue preserved)。
- * 这张表跟着服务端那条正则走,那边放宽了这边就得跟。
+ * **这一头必须认得全。** 认不出的下场不是「滑杆退化成不可调」,而是
+ * {@link withColorAlpha} 落到兜底色相上 —— 主人拖一下透明度,整块玻璃的颜色就被
+ * 换成了那管灰。而「保色相只换 alpha」正是这对控件立项时写下的话
+ * (87b2a9e:hue preserved)。共用名单之后,那边放宽这边自动跟上。
  */
-const COLOR_FN_RE = /^(rgba?|hsla?|oklch|oklab)\(([^()]*)\)$/i;
+const COLOR_FN_RE = new RegExp(`^(${SKIN_COLOR_FUNCTIONS.join("|")})\\(([^()]*)\\)$`, "i");
 
 /** alpha 字面值:`0.5` / `.5` / `50%`。认不出 → null。 */
 function parseAlpha(raw: string): number | null {

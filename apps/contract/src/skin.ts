@@ -120,6 +120,19 @@ export const SKIN_FONT_FORMATS: Record<string, string> = {
 	otf: "opentype",
 };
 
+/**
+ * 皮肤里能写的颜色函数,**两端共用这一份名单**。
+ *
+ * 服务端拿它拼「收不收这个值」的正则,web 的玻璃透明度滑杆拿它拼「认不认得这个
+ * 色」的正则 —— 两处的括号内容判据本就不同(一个验合法性、一个要拆出 alpha),
+ * 共享的只是函数名。
+ *
+ * 分着写的代价不对称:服务端哪天放行 `lab()`,web 认不出就不是「滑杆变灰」,而是
+ * 换 alpha 时落到兜底色相上 —— 主人拖一下透明度,整块玻璃的颜色被换掉,而
+ * 「保色相只换 alpha」正是那对控件立项时写下要保住的东西。
+ */
+export const SKIN_COLOR_FUNCTIONS = ["rgb", "rgba", "hsl", "hsla", "oklch", "oklab"] as const;
+
 /** 主题文案槽位白名单;加新槽位只增不改。 */
 export const SKIN_TEXT_SLOTS = ["headerTitle", "chatPlaceholder"] as const;
 export type SkinTextSlot = (typeof SKIN_TEXT_SLOTS)[number];
@@ -206,28 +219,28 @@ export type SkinCssHook = keyof typeof SKIN_CSS_HOOK_MAP;
  * 外部 AI 的那份提示词。只教一边的话,另一边会把同一个坑再踩一次。
  */
 export const SKIN_CSS_HOOK_NOTES: Record<SkinCssHook, string> = {
-	page: '"page"=整页根(壁纸之上、内容之下;氛围层挂它的伪元素)',
-	glass: '"glass"=所有轻玻璃卡片(小到一行数据卡,大到整块面板)',
-	"glass-strong": '"glass-strong"=强玻璃面(弹层、浮条、抽屉)',
-	btn: '"btn"=所有按钮(矮元素,胶囊圆角安全)',
-	"btn-primary": '"btn-primary"=主按钮(粉色实底那种)',
-	input: '"input"=输入框(单行输入、多行文本域、下拉选择框都挂它)',
-	header: '"header"=顶栏(横向长条)',
-	nav: '"nav"=页面级导航容器 —— 横向 tab 条和**竖向的分区列表**都挂它,别当成横条设形状',
-	avatar: '"avatar"=圆头像(本身已经是圆的)',
-	modal: '"modal"=弹窗卡片本体',
+	page: "整页根(壁纸之上、内容之下;氛围层挂它的伪元素)",
+	glass: "所有轻玻璃卡片(小到一行数据卡,大到整块面板)",
+	"glass-strong": "强玻璃面(弹层、浮条、抽屉)",
+	btn: "所有按钮(矮元素,胶囊圆角安全)",
+	"btn-primary": "主按钮(粉色实底那种)",
+	input: "输入框(单行输入、多行文本域、下拉选择框都挂它)",
+	header: "顶栏(横向长条)",
+	nav: "页面级导航容器 —— 横向 tab 条和**竖向的分区列表**都挂它,别当成横条设形状",
+	avatar: "圆头像(本身已经是圆的)",
+	modal: "弹窗卡片本体",
 	badge:
-		'"badge"=状态徽章(顶栏「服务器运行中」那类圆点+短文字小胶囊;**非交互**,别写 hover;底色是语义色 soft 底,通常只描边加影、别盖 background)',
+		"状态徽章(顶栏「服务器运行中」那类圆点+短文字小胶囊;**非交互**,别写 hover;底色是语义色 soft 底,通常只描边加影、别盖 background)",
 	"nav-item":
-		'"nav-item"=分区导航项 —— 宽视口是**竖栏里图标+标题+描述的多行卡**,窄视口是横条里的胶囊 chip,同一挂点两种形态,别按单一形态设形状;不写规则时默认装是「透明行、选中淡染」,想要选中项突出写 nav-item-active',
+		"分区导航项 —— 宽视口是**竖栏里图标+标题+描述的多行卡**,窄视口是横条里的胶囊 chip,同一挂点两种形态,别按单一形态设形状;不写规则时默认装是「透明行、选中淡染」,想要选中项突出写 nav-item-active",
 	"nav-item-active":
-		'"nav-item-active"=选中的那一项额外挂它(与 nav-item 同挂);选中态样式写在这儿,别写在 nav-item 上让整栏全亮',
-	tab: '"tab"=横向 tab 条里的一格(顶栏一级导航、页面内 TabBar、作用域条都是);矮元素,胶囊圆角安全;不写规则时默认装是「透明字 tab、选中实底/下划线」',
+		"选中的那一项额外挂它(与 nav-item 同挂);选中态样式写在这儿,别写在 nav-item 上让整栏全亮",
+	tab: "横向 tab 条里的一格(顶栏一级导航、页面内 TabBar、作用域条都是);矮元素,胶囊圆角安全;不写规则时默认装是「透明字 tab、选中实底/下划线」",
 	"tab-active":
-		'"tab-active"=选中的那个 tab 额外挂它(与 tab 同挂);注意有的 tab 默认装选中是强调色实底白字 —— 盖 background 时把 color 一起写了,别留白底白字',
-	chip: '"chip"=筛选/档位/开关的小胶囊(改的是值,不换视图 —— 换视图的是 tab);多形态且常挤在小容器里,别加占布局的 border,描边用 outline+负 offset',
+		"选中的那个 tab 额外挂它(与 tab 同挂);注意有的 tab 默认装选中是强调色实底白字 —— 盖 background 时把 color 一起写了,别留白底白字",
+	chip: "筛选/档位/开关的小胶囊(改的是值,不换视图 —— 换视图的是 tab);多形态且常挤在小容器里,别加占布局的 border,描边用 outline+负 offset",
 	"chip-active":
-		'"chip-active"=选中/点亮的那颗 chip 额外挂它(与 chip 同挂);很多 chip 的选中色是行内样式的品牌/语义色,皮肤盖不动 background —— 只描边加影最稳',
+		"选中/点亮的那颗 chip 额外挂它(与 chip 同挂);很多 chip 的选中色是行内样式的品牌/语义色,皮肤盖不动 background —— 只描边加影最稳",
 };
 
 /**
