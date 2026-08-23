@@ -24,6 +24,7 @@ import {
 	TNum,
 } from "../../components/forms";
 import { InheritNote } from "../../components/inherit-note";
+import { OverrideBox } from "../../components/override-box";
 import { AI_PURPLE } from "../../config/colors";
 import { SECTION_ACCENT } from "../../config/section-accents";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
@@ -332,63 +333,58 @@ function FilterOverrideBox({
 		}
 	}
 	return (
-		<GlassBox
+		<OverrideBox
 			title="动态过滤覆盖"
 			subtitle="开 = 该 UP 使用自定义关键词 / 正则 / 屏蔽开关;关 = 继承全局过滤"
 			accent="var(--color-bn-pink)"
 			icon={<Icon.filter size={14} />}
-			badge={enabled ? "覆盖中" : "继承"}
-			right={<Toggle value={enabled} onChange={toggle} />}
+			enabled={enabled}
+			onToggle={toggle}
+			inheritNote="该 UP 将继承全局动态过滤规则"
 		>
-			{enabled ? (
-				<>
-					<Field code="blockKeywords" full>
-						<ArrayEditor value={get("blockKeywords")} onChange={(n) => set("blockKeywords", n)} />
-					</Field>
-					<Field code="blockRegex" full>
-						<ArrayEditor value={get("blockRegex")} onChange={(n) => set("blockRegex", n)} />
-					</Field>
-					<Field code="whitelistKeywords" full>
-						<ArrayEditor
-							value={get("whitelistKeywords")}
-							onChange={(n) => set("whitelistKeywords", n)}
+			<Field code="blockKeywords" full>
+				<ArrayEditor value={get("blockKeywords")} onChange={(n) => set("blockKeywords", n)} />
+			</Field>
+			<Field code="blockRegex" full>
+				<ArrayEditor value={get("blockRegex")} onChange={(n) => set("blockRegex", n)} />
+			</Field>
+			<Field code="whitelistKeywords" full>
+				<ArrayEditor
+					value={get("whitelistKeywords")}
+					onChange={(n) => set("whitelistKeywords", n)}
+				/>
+			</Field>
+			<div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+				<Field code="blockForward">
+					<div className="flex h-7.5 items-center">
+						<Toggle
+							value={get("blockForward")}
+							onChange={(v) => set("blockForward", v)}
+							size="sm"
 						/>
-					</Field>
-					<div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
-						<Field code="blockForward">
-							<div className="flex h-7.5 items-center">
-								<Toggle
-									value={get("blockForward")}
-									onChange={(v) => set("blockForward", v)}
-									size="sm"
-								/>
-							</div>
-						</Field>
-						<Field code="blockArticle">
-							<div className="flex h-7.5 items-center">
-								<Toggle
-									value={get("blockArticle")}
-									onChange={(v) => set("blockArticle", v)}
-									size="sm"
-								/>
-							</div>
-						</Field>
-						<Field code="blockDraw">
-							<div className="flex h-7.5 items-center">
-								<Toggle value={get("blockDraw")} onChange={(v) => set("blockDraw", v)} size="sm" />
-							</div>
-						</Field>
-						<Field code="blockAv">
-							<div className="flex h-7.5 items-center">
-								<Toggle value={get("blockAv")} onChange={(v) => set("blockAv", v)} size="sm" />
-							</div>
-						</Field>
 					</div>
-				</>
-			) : (
-				<InheritNote>该 UP 将继承全局动态过滤规则</InheritNote>
-			)}
-		</GlassBox>
+				</Field>
+				<Field code="blockArticle">
+					<div className="flex h-7.5 items-center">
+						<Toggle
+							value={get("blockArticle")}
+							onChange={(v) => set("blockArticle", v)}
+							size="sm"
+						/>
+					</div>
+				</Field>
+				<Field code="blockDraw">
+					<div className="flex h-7.5 items-center">
+						<Toggle value={get("blockDraw")} onChange={(v) => set("blockDraw", v)} size="sm" />
+					</div>
+				</Field>
+				<Field code="blockAv">
+					<div className="flex h-7.5 items-center">
+						<Toggle value={get("blockAv")} onChange={(v) => set("blockAv", v)} size="sm" />
+					</div>
+				</Field>
+			</div>
+		</OverrideBox>
 	);
 }
 
@@ -428,84 +424,81 @@ function LiveOverrideBox({
 		}
 	}
 	return (
-		<GlassBox
+		<OverrideBox
 			title="直播阈值覆盖"
 			subtitle="开 = 该 UP 使用自定义 SC / 上舰 / 推送频率;关 = 继承全局直播阈值"
 			accent="var(--color-bn-pink)"
 			icon={<Icon.mic size={14} />}
-			badge={enabled ? "覆盖中" : "继承"}
-			right={<Toggle value={enabled} onChange={toggle} />}
+			enabled={enabled}
+			onToggle={toggle}
+			inheritNote="该 UP 将继承全局直播阈值与调度"
 		>
-			{enabled ? (
-				<div className="grid grid-cols-1 gap-0 sm:grid-cols-2">
-					<Field code="minScPrice">
+			<div className="grid grid-cols-1 gap-0 sm:grid-cols-2">
+				<Field code="minScPrice">
+					<TNum
+						value={fCur.minScPrice ?? baselineFilters.minScPrice}
+						onChange={(v) => onFilters({ ...fCur, minScPrice: v })}
+						min={0}
+						suffix="元"
+					/>
+				</Field>
+				<Field code="minGuardLevel">
+					<Picker<1 | 2 | 3>
+						value={fCur.minGuardLevel ?? baselineFilters.minGuardLevel}
+						onChange={(v) => onFilters({ ...fCur, minGuardLevel: v })}
+						options={[
+							{ value: 3, label: "舰长" },
+							{ value: 2, label: "提督" },
+							{ value: 1, label: "总督" },
+						]}
+					/>
+				</Field>
+				<Field code="schedule.pushTime">
+					<TNum
+						value={sCur.pushTime ?? baselineSchedule.pushTime}
+						onChange={(v) => onSchedule({ ...sCur, pushTime: v })}
+						min={0}
+						max={23}
+						suffix="小时"
+					/>
+				</Field>
+				<Field code="schedule.restartPush">
+					<div className="flex h-7.5 items-center">
+						<Toggle
+							value={sCur.restartPush ?? baselineSchedule.restartPush}
+							onChange={(v) => onSchedule({ ...sCur, restartPush: v })}
+							size="sm"
+						/>
+					</div>
+				</Field>
+				<Field code="schedule.liveEndGrace" hint="覆盖断流接续:下播先延迟判定">
+					<div className="flex h-7.5 items-center">
+						<Toggle
+							value={sCur.liveEndGrace ?? baselineSchedule.liveEndGrace}
+							onChange={(v) => onSchedule({ ...sCur, liveEndGrace: v })}
+							size="sm"
+						/>
+					</div>
+				</Field>
+				{(sCur.liveEndGrace ?? baselineSchedule.liveEndGrace) ? (
+					<Field code="schedule.liveEndGraceMinutes">
 						<TNum
-							value={fCur.minScPrice ?? baselineFilters.minScPrice}
-							onChange={(v) => onFilters({ ...fCur, minScPrice: v })}
-							min={0}
-							suffix="元"
+							value={sCur.liveEndGraceMinutes ?? baselineSchedule.liveEndGraceMinutes}
+							onChange={(v) => onSchedule({ ...sCur, liveEndGraceMinutes: v })}
+							min={1}
+							max={10}
+							suffix="分钟"
 						/>
 					</Field>
-					<Field code="minGuardLevel">
-						<Picker<1 | 2 | 3>
-							value={fCur.minGuardLevel ?? baselineFilters.minGuardLevel}
-							onChange={(v) => onFilters({ ...fCur, minGuardLevel: v })}
-							options={[
-								{ value: 3, label: "舰长" },
-								{ value: 2, label: "提督" },
-								{ value: 1, label: "总督" },
-							]}
-						/>
-					</Field>
-					<Field code="schedule.pushTime">
-						<TNum
-							value={sCur.pushTime ?? baselineSchedule.pushTime}
-							onChange={(v) => onSchedule({ ...sCur, pushTime: v })}
-							min={0}
-							max={23}
-							suffix="小时"
-						/>
-					</Field>
-					<Field code="schedule.restartPush">
-						<div className="flex h-7.5 items-center">
-							<Toggle
-								value={sCur.restartPush ?? baselineSchedule.restartPush}
-								onChange={(v) => onSchedule({ ...sCur, restartPush: v })}
-								size="sm"
-							/>
-						</div>
-					</Field>
-					<Field code="schedule.liveEndGrace" hint="覆盖断流接续:下播先延迟判定">
-						<div className="flex h-7.5 items-center">
-							<Toggle
-								value={sCur.liveEndGrace ?? baselineSchedule.liveEndGrace}
-								onChange={(v) => onSchedule({ ...sCur, liveEndGrace: v })}
-								size="sm"
-							/>
-						</div>
-					</Field>
-					{(sCur.liveEndGrace ?? baselineSchedule.liveEndGrace) ? (
-						<Field code="schedule.liveEndGraceMinutes">
-							<TNum
-								value={sCur.liveEndGraceMinutes ?? baselineSchedule.liveEndGraceMinutes}
-								onChange={(v) => onSchedule({ ...sCur, liveEndGraceMinutes: v })}
-								min={1}
-								max={10}
-								suffix="分钟"
-							/>
-						</Field>
-					) : null}
-					<Field code="schedule.quietHours" hint="该 UP 在此区间内的推送一律丢弃(覆盖全局)" full>
-						<QuietHoursEditor
-							value={sCur.quietHours ?? baselineSchedule.quietHours}
-							onChange={(v) => onSchedule({ ...sCur, quietHours: v })}
-						/>
-					</Field>
-				</div>
-			) : (
-				<InheritNote>该 UP 将继承全局直播阈值与调度</InheritNote>
-			)}
-		</GlassBox>
+				) : null}
+				<Field code="schedule.quietHours" hint="该 UP 在此区间内的推送一律丢弃(覆盖全局)" full>
+					<QuietHoursEditor
+						value={sCur.quietHours ?? baselineSchedule.quietHours}
+						onChange={(v) => onSchedule({ ...sCur, quietHours: v })}
+					/>
+				</Field>
+			</div>
+		</OverrideBox>
 	);
 }
 
@@ -551,48 +544,43 @@ function SummaryOverrideBox({
 	}
 
 	return (
-		<GlassBox
+		<OverrideBox
 			title="直播总结覆盖"
 			subtitle="开 = 该 UP 自定义弹幕词云停用词;总结正文由内部二级开关控制;关 = 全部继承全局"
 			accent="var(--color-bn-purple)"
 			icon={<Icon.list size={14} />}
-			badge={enabled ? "覆盖中" : "继承"}
-			right={<Toggle value={enabled} onChange={toggle} />}
+			enabled={enabled}
+			onToggle={toggle}
+			inheritNote="该 UP 将继承全局弹幕词云停用词与直播总结模板"
 		>
-			{enabled ? (
-				<>
-					<StopWordsHint />
-					<Field code="templates.wordcloudStopWords" full>
-						<TArea
-							value={cur.wordcloudStopWords ?? baseline.wordcloudStopWords}
-							onChange={(v) => onChange({ ...cur, wordcloudStopWords: v })}
-							rows={2}
-							mono
-							placeholder="例如：哈哈,2333,前面的"
-						/>
-					</Field>
-					<div className="my-3 border-t border-bn-border-subtle" />
-					<CollapseBlock
-						label="自定义直播总结正文 · 仅本 UP"
-						enabled={summaryOn}
-						onToggle={toggleSummary}
-						accent="var(--color-bn-purple)"
-					>
-						<SummaryVariableHints />
-						<Field code="templates.liveSummary" full>
-							<TArea
-								value={cur.liveSummary ?? baseline.liveSummary}
-								onChange={(v) => onChange({ ...cur, liveSummary: v })}
-								rows={8}
-								mono
-							/>
-						</Field>
-					</CollapseBlock>
-				</>
-			) : (
-				<InheritNote>该 UP 将继承全局弹幕词云停用词与直播总结模板</InheritNote>
-			)}
-		</GlassBox>
+			<StopWordsHint />
+			<Field code="templates.wordcloudStopWords" full>
+				<TArea
+					value={cur.wordcloudStopWords ?? baseline.wordcloudStopWords}
+					onChange={(v) => onChange({ ...cur, wordcloudStopWords: v })}
+					rows={2}
+					mono
+					placeholder="例如：哈哈,2333,前面的"
+				/>
+			</Field>
+			<div className="my-3 border-t border-bn-border-subtle" />
+			<CollapseBlock
+				label="自定义直播总结正文 · 仅本 UP"
+				enabled={summaryOn}
+				onToggle={toggleSummary}
+				accent="var(--color-bn-purple)"
+			>
+				<SummaryVariableHints />
+				<Field code="templates.liveSummary" full>
+					<TArea
+						value={cur.liveSummary ?? baseline.liveSummary}
+						onChange={(v) => onChange({ ...cur, liveSummary: v })}
+						rows={8}
+						mono
+					/>
+				</Field>
+			</CollapseBlock>
+		</OverrideBox>
 	);
 }
 
@@ -630,46 +618,41 @@ function MsgOverrideBox({
 		}
 	}
 	return (
-		<GlassBox
+		<OverrideBox
 			title="直播消息覆盖"
 			subtitle="开 = 该 UP 使用自定义开播 / 直播中 / 下播文案;关 = 继承全局"
 			accent="var(--color-bn-pink)"
 			icon={<Icon.chat size={14} />}
-			badge={enabled ? "覆盖中" : "继承"}
-			right={<Toggle value={enabled} onChange={toggle} />}
+			enabled={enabled}
+			onToggle={toggle}
+			inheritNote="该 UP 将继承全局直播消息模板"
 		>
-			{enabled ? (
-				<>
-					<LiveMsgVariableHints />
-					<Field code="templates.liveStart" full>
-						<TArea
-							value={cur.liveStart ?? baseline.liveStart}
-							onChange={(v) => set("liveStart", v)}
-							rows={3}
-							mono
-						/>
-					</Field>
-					<Field code="templates.liveOngoing" full>
-						<TArea
-							value={cur.liveOngoing ?? baseline.liveOngoing}
-							onChange={(v) => set("liveOngoing", v)}
-							rows={3}
-							mono
-						/>
-					</Field>
-					<Field code="templates.liveEnd" full>
-						<TArea
-							value={cur.liveEnd ?? baseline.liveEnd}
-							onChange={(v) => set("liveEnd", v)}
-							rows={2}
-							mono
-						/>
-					</Field>
-				</>
-			) : (
-				<InheritNote>该 UP 将继承全局直播消息模板</InheritNote>
-			)}
-		</GlassBox>
+			<LiveMsgVariableHints />
+			<Field code="templates.liveStart" full>
+				<TArea
+					value={cur.liveStart ?? baseline.liveStart}
+					onChange={(v) => set("liveStart", v)}
+					rows={3}
+					mono
+				/>
+			</Field>
+			<Field code="templates.liveOngoing" full>
+				<TArea
+					value={cur.liveOngoing ?? baseline.liveOngoing}
+					onChange={(v) => set("liveOngoing", v)}
+					rows={3}
+					mono
+				/>
+			</Field>
+			<Field code="templates.liveEnd" full>
+				<TArea
+					value={cur.liveEnd ?? baseline.liveEnd}
+					onChange={(v) => set("liveEnd", v)}
+					rows={2}
+					mono
+				/>
+			</Field>
+		</OverrideBox>
 	);
 }
 
@@ -703,38 +686,33 @@ function DynamicMsgOverrideBox({
 		}
 	}
 	return (
-		<GlassBox
+		<OverrideBox
 			title="动态消息覆盖"
 			subtitle="开 = 该 UP 使用自定义动态 / 视频投稿文案;关 = 继承全局"
 			accent={SECTION_ACCENT.message}
 			icon={<Icon.chat size={14} />}
-			badge={enabled ? "覆盖中" : "继承"}
-			right={<Toggle value={enabled} onChange={toggle} />}
+			enabled={enabled}
+			onToggle={toggle}
+			inheritNote="该 UP 将继承全局动态消息模板"
 		>
-			{enabled ? (
-				<>
-					<DynamicMsgVariableHints />
-					<Field code="templates.dynamic" full>
-						<TArea
-							value={cur.dynamic ?? baseline.dynamic}
-							onChange={(v) => set("dynamic", v)}
-							rows={2}
-							mono
-						/>
-					</Field>
-					<Field code="templates.dynamicVideo" full>
-						<TArea
-							value={cur.dynamicVideo ?? baseline.dynamicVideo}
-							onChange={(v) => set("dynamicVideo", v)}
-							rows={2}
-							mono
-						/>
-					</Field>
-				</>
-			) : (
-				<InheritNote>该 UP 将继承全局动态消息模板</InheritNote>
-			)}
-		</GlassBox>
+			<DynamicMsgVariableHints />
+			<Field code="templates.dynamic" full>
+				<TArea
+					value={cur.dynamic ?? baseline.dynamic}
+					onChange={(v) => set("dynamic", v)}
+					rows={2}
+					mono
+				/>
+			</Field>
+			<Field code="templates.dynamicVideo" full>
+				<TArea
+					value={cur.dynamicVideo ?? baseline.dynamicVideo}
+					onChange={(v) => set("dynamicVideo", v)}
+					rows={2}
+					mono
+				/>
+			</Field>
+		</OverrideBox>
 	);
 }
 
@@ -752,44 +730,34 @@ function MessageLayoutOverrideBox({
 	const enabled = value !== undefined;
 	const cur = value ?? baseline;
 	return (
-		<GlassBox
+		<OverrideBox
 			title="消息版式覆盖"
 			subtitle="开 = 该 UP 使用自定义部件排列 / 分条 / 分隔符(动态 + 直播两套);关 = 继承全局"
 			accent={SECTION_ACCENT.message}
 			icon={<Icon.list size={14} />}
-			badge={enabled ? "覆盖中" : "继承"}
-			right={
-				<Toggle
-					value={enabled}
-					onChange={(on) => onChange(on ? structuredClone(baseline) : undefined)}
-				/>
-			}
+			enabled={enabled}
+			onToggle={(on) => onChange(on ? structuredClone(baseline) : undefined)}
+			inheritNote="该 UP 将继承全局消息版式(部件排列 / 分条 / 分隔符)"
 		>
-			{enabled ? (
-				<>
-					<div className="mb-2 text-bn-sm font-bold text-bn-text-primary">动态消息版式</div>
-					<MessageLayoutEditor
-						value={cur.dynamic}
-						onChange={(next) => onChange({ ...cur, dynamic: next })}
-						separatorCode="messageLayout.dynamic.separator"
-						accent={SECTION_ACCENT.message}
-					/>
-					<div className="my-3 border-t border-bn-border-subtle" />
-					<div className="mb-2 text-bn-sm font-bold text-bn-text-primary">直播消息版式</div>
-					<MessageLayoutEditor
-						value={cur.live}
-						onChange={(next) => onChange({ ...cur, live: next })}
-						separatorCode="messageLayout.live.separator"
-						accent="var(--color-bn-pink)"
-					/>
-					<div className="mt-2 text-bn-xs text-bn-text-tertiary">
-						文案模板的 per-UP 覆盖在「动态消息」/「直播消息」分类;此处只覆盖结构。
-					</div>
-				</>
-			) : (
-				<InheritNote>该 UP 将继承全局消息版式(部件排列 / 分条 / 分隔符)</InheritNote>
-			)}
-		</GlassBox>
+			<div className="mb-2 text-bn-sm font-bold text-bn-text-primary">动态消息版式</div>
+			<MessageLayoutEditor
+				value={cur.dynamic}
+				onChange={(next) => onChange({ ...cur, dynamic: next })}
+				separatorCode="messageLayout.dynamic.separator"
+				accent={SECTION_ACCENT.message}
+			/>
+			<div className="my-3 border-t border-bn-border-subtle" />
+			<div className="mb-2 text-bn-sm font-bold text-bn-text-primary">直播消息版式</div>
+			<MessageLayoutEditor
+				value={cur.live}
+				onChange={(next) => onChange({ ...cur, live: next })}
+				separatorCode="messageLayout.live.separator"
+				accent="var(--color-bn-pink)"
+			/>
+			<div className="mt-2 text-bn-xs text-bn-text-tertiary">
+				文案模板的 per-UP 覆盖在「动态消息」/「直播消息」分类;此处只覆盖结构。
+			</div>
+		</OverrideBox>
 	);
 }
 
@@ -824,53 +792,45 @@ function GuardOverrideBox({
 		}
 	}
 	return (
-		<GlassBox
+		<OverrideBox
 			title="上舰提示覆盖"
 			subtitle="开 = 该 UP 强制使用自定义文案 / 图片;关 = 继承全局(默认 B 站官方上舰图)"
 			accent={SECTION_ACCENT.guard}
 			icon={<Icon.anchor size={14} />}
-			badge={enabled ? "覆盖中" : "继承"}
-			right={<Toggle value={enabled} onChange={toggle} />}
+			enabled={enabled}
+			onToggle={toggle}
+			inheritNote="该 UP 将继承全局上舰提示设置"
 		>
-			{enabled ? (
-				<>
-					<GuardVariableHints />
-					<div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
-						{(["captain", "commander", "governor"] as const).map((role) => {
-							const e = guardOf(role);
-							const label = role === "captain" ? "舰长" : role === "commander" ? "提督" : "总督";
-							return (
-								<div
-									key={role}
-									className="rounded-lg border border-bn-border bg-bn-surface/70 p-2.5"
-								>
-									<div className="mb-1.5 text-bn-sm font-bold text-bn-text-primary">
-										{label}{" "}
-										<code className="ml-1 rounded-sm bg-bn-code-bg px-1 py-px font-mono text-bn-2xs text-bn-text-tertiary">
-											{role}
-										</code>
-									</div>
-									<TInput
-										value={e.template}
-										onChange={(v) => setGuard(role, { ...e, template: v })}
-										mono
-									/>
-									<div className="h-1" />
-									<TInput
-										value={e.imageUrl}
-										onChange={(v) => setGuard(role, { ...e, imageUrl: v })}
-										mono
-										placeholder="image url"
-									/>
-								</div>
-							);
-						})}
-					</div>
-				</>
-			) : (
-				<InheritNote>该 UP 将继承全局上舰提示设置</InheritNote>
-			)}
-		</GlassBox>
+			<GuardVariableHints />
+			<div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
+				{(["captain", "commander", "governor"] as const).map((role) => {
+					const e = guardOf(role);
+					const label = role === "captain" ? "舰长" : role === "commander" ? "提督" : "总督";
+					return (
+						<div key={role} className="rounded-lg border border-bn-border bg-bn-surface/70 p-2.5">
+							<div className="mb-1.5 text-bn-sm font-bold text-bn-text-primary">
+								{label}{" "}
+								<code className="ml-1 rounded-sm bg-bn-code-bg px-1 py-px font-mono text-bn-2xs text-bn-text-tertiary">
+									{role}
+								</code>
+							</div>
+							<TInput
+								value={e.template}
+								onChange={(v) => setGuard(role, { ...e, template: v })}
+								mono
+							/>
+							<div className="h-1" />
+							<TInput
+								value={e.imageUrl}
+								onChange={(v) => setGuard(role, { ...e, imageUrl: v })}
+								mono
+								placeholder="image url"
+							/>
+						</div>
+					);
+				})}
+			</div>
+		</OverrideBox>
 	);
 }
 
@@ -1060,22 +1020,19 @@ function AiOverrideBox({
 	const firstPresetId = baseline.presets[0]?.id ?? "";
 
 	return (
-		<GlassBox
+		<OverrideBox
 			title="AI 人格"
 			subtitle="给这个 UP 单挑一份人格 · 关 = 跟着全局那份走"
 			accent={AI_PURPLE}
 			icon={<Icon.ai size={14} />}
-			badge={enabled ? "覆盖中" : "继承"}
-			right={
-				<Toggle
-					value={enabled}
-					// 开:落到第一份人格。关:整个 override 拿掉 —— 那才是「继承全局」,
-					// 不必再往里塞一个表示同一件事的值。
-					onChange={(on) => onChange(on ? pickAiOverride(value, firstPresetId) : undefined)}
-				/>
-			}
+			enabled={enabled}
+			// 开:落到第一份人格。关:整个 override 拿掉 —— 那才是「继承全局」,
+			// 不必再往里塞一个表示同一件事的值。
+			onToggle={(on) => onChange(on ? pickAiOverride(value, firstPresetId) : undefined)}
+			inheritNote="该 UP 将跟着全局那份人格走"
 		>
-			{enabled && activePreset ? (
+			{/* 开着却索引不到预设(理论不可达)时沿用继承文案兜底 —— 与收编前行为一致。 */}
+			{activePreset ? (
 				<>
 					<Field code="ai.preset" full>
 						<Picker
@@ -1107,7 +1064,7 @@ function AiOverrideBox({
 			) : (
 				<InheritNote>该 UP 将跟着全局那份人格走</InheritNote>
 			)}
-		</GlassBox>
+		</OverrideBox>
 	);
 }
 
@@ -1130,33 +1087,23 @@ function ImageGroupOverrideBox({
 		onChange({ ...cur, [k]: v });
 	}
 	return (
-		<GlassBox
+		<OverrideBox
 			title="动态图集覆盖"
 			subtitle="开 = 该 UP 使用自定义图集策略;关 = 继承全局"
 			accent="var(--color-bn-pink)"
 			icon={<Icon.dyn size={14} />}
-			badge={enabled ? "覆盖中" : "继承"}
-			right={
-				<Toggle
-					value={enabled}
-					onChange={(on) =>
-						onChange(on ? { enable: baseline.enable, forward: baseline.forward } : undefined)
-					}
-				/>
+			enabled={enabled}
+			onToggle={(on) =>
+				onChange(on ? { enable: baseline.enable, forward: baseline.forward } : undefined)
 			}
+			inheritNote="该 UP 将继承全局动态图集策略"
 		>
-			{enabled ? (
-				<>
-					<Field code="enable">
-						<Toggle value={effEnable} onChange={(v) => set("enable", v)} />
-					</Field>
-					<Field code="forward">
-						<Toggle value={effForward} onChange={(v) => set("forward", v)} disabled={!effEnable} />
-					</Field>
-				</>
-			) : (
-				<InheritNote>该 UP 将继承全局动态图集策略</InheritNote>
-			)}
-		</GlassBox>
+			<Field code="enable">
+				<Toggle value={effEnable} onChange={(v) => set("enable", v)} />
+			</Field>
+			<Field code="forward">
+				<Toggle value={effForward} onChange={(v) => set("forward", v)} disabled={!effEnable} />
+			</Field>
+		</OverrideBox>
 	);
 }

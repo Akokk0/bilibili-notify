@@ -41,6 +41,7 @@ import {
 } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
 import { InheritNote } from "../components/inherit-note";
+import { OverrideBox } from "../components/override-box";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { GUARD_LEVELS } from "../config/guard-levels";
 import { PUSH_TONE } from "../config/push-kinds";
@@ -1217,18 +1218,14 @@ export default function Cards() {
 							</GlassBox>
 						) : (
 							// 「全局」tab · per-UP:该 UP 的样式覆盖(一套管该 UP 全部卡片)。
-							<GlassBox
+							<OverrideBox
 								title="卡片样式覆盖"
 								subtitle="开 = 该 UP 用自定义渐变 / 字体 / 玻璃片 / 背景;关 = 继承全局样式"
 								accent="var(--color-bn-purple)"
 								icon={<Icon.edit size={14} />}
-								badge={puStyle ? "覆盖中" : "继承"}
-								right={
-									<Toggle
-										value={puStyle !== undefined}
-										onChange={(on) => setPuStyle(on ? { ...gStyle } : undefined)}
-									/>
-								}
+								enabled={puStyle !== undefined}
+								onToggle={(on) => setPuStyle(on ? { ...gStyle } : undefined)}
+								inheritNote="该 UP 继承全局卡片样式"
 							>
 								{puStyle ? (
 									<CardStyleFields
@@ -1236,10 +1233,8 @@ export default function Cards() {
 										onChange={(n) => setPuStyle(n)}
 										onAssetDeleted={sweepDeletedAsset}
 									/>
-								) : (
-									<InheritNote>该 UP 继承全局卡片样式</InheritNote>
-								)}
-							</GlassBox>
+								) : null}
+							</OverrideBox>
 						)
 					) : isGlobalScope ? (
 						// 类型 tab · 全局作用域:该卡片单独样式开关,打开才展开覆盖。
@@ -1411,27 +1406,21 @@ export default function Cards() {
 								</GlassBox>
 							) : null
 						) : (
-							<GlassBox
+							<OverrideBox
 								title="卡片版式覆盖"
 								subtitle="开 = 该 UP 用自定义版式(整份复制全局后编辑);关 = 继承全局版式"
 								accent={KIND_LABELS[kind].tone}
 								icon={<KindIcon size={14} />}
-								badge={puLayout ? "覆盖中" : "继承"}
-								right={
-									<Toggle
-										value={puLayout !== undefined}
-										onChange={(on) =>
-											setPuLayout(on ? structuredClone(gLayout ?? serverGlobalLayout) : undefined)
-										}
-									/>
+								enabled={puLayout !== undefined}
+								onToggle={(on) =>
+									setPuLayout(on ? structuredClone(gLayout ?? serverGlobalLayout) : undefined)
 								}
+								inheritNote="该 UP 继承全局卡片版式"
 							>
 								{puLayout ? (
 									<CardLayoutEditor kind={kind} layout={puLayout} onChange={setPuLayout} />
-								) : (
-									<InheritNote>该 UP 继承全局卡片版式</InheritNote>
-								)}
-							</GlassBox>
+								) : null}
+							</OverrideBox>
 						))}
 
 					{/* 测试推送 + 预览内容编辑 —— 仅「类型」tab(全局只看四卡全家福,不带测试推送)。 */}
