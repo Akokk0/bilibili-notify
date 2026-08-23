@@ -1,12 +1,9 @@
-import { GlassPanel, Icon, Toggle } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
-import { AI_PURPLE } from "../../config/colors";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
 import type { PushTarget, Subscription } from "../../types/domain";
-import { RoastRunNowBox } from "./RoastRunNowBox";
-import { RoastScheduleFields, useApprovalReachability } from "./RoastScheduleFields";
+import { RoastScheduleCard, useApprovalReachability } from "./RoastScheduleFields";
 
 /**
  * 这位 UP 的定时锐评。
@@ -71,28 +68,17 @@ export function SoloRoastScheduleBox({ uid, name }: { uid: string; name: string 
 	if (!sub || !draft) return null;
 
 	return (
-		<GlassPanel
+		<RoastScheduleCard
 			title="定时锐评"
 			subtitle={`到点自动点评 ${name} 并发到指定的群`}
-			accent={AI_PURPLE}
-			icon={<Icon.bell width={15} height={15} />}
-			right={
-				<Toggle
-					value={draft.enabled}
-					onChange={(v) => setDraft({ ...draft, enabled: v })}
-					ariaLabel={`启用 ${name} 的定时锐评`}
-				/>
-			}
-		>
-			<RoastScheduleFields value={draft} onChange={setDraft} noun="锐评" />
-
-			<RoastRunNowBox
-				uid={uid}
-				approval={draft.approval && canApprove}
-				targetCount={draft.targets.length}
-				dirty={JSON.stringify(draft) !== JSON.stringify(baseline)}
-				targetName={(id) => (targetsQuery.data ?? []).find((t) => t.id === id)?.name ?? id}
-			/>
-		</GlassPanel>
+			toggleAriaLabel={`启用 ${name} 的定时锐评`}
+			noun="锐评"
+			uid={uid}
+			draft={draft}
+			baseline={baseline}
+			onChange={setDraft}
+			canApprove={canApprove}
+			targetName={(id) => (targetsQuery.data ?? []).find((t) => t.id === id)?.name ?? id}
+		/>
 	);
 }

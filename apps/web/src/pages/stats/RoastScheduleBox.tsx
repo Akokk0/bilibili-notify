@@ -1,14 +1,11 @@
 import { buildPatch } from "@bilibili-notify/internal/patch";
-import { GlassPanel, Icon, Toggle } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
-import { AI_PURPLE } from "../../config/colors";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
-import { RoastRunNowBox } from "./RoastRunNowBox";
-import { RoastScheduleFields, useApprovalReachability } from "./RoastScheduleFields";
+import { RoastScheduleCard, useApprovalReachability } from "./RoastScheduleFields";
 
 /**
  * 全局那条榜单周报的配置。
@@ -71,29 +68,16 @@ export function RoastScheduleBox() {
 	if (!draft) return null;
 
 	return (
-		<GlassPanel
+		<RoastScheduleCard
 			title="定时周报"
 			subtitle="到点自动生成榜单并发到指定的群"
-			accent={AI_PURPLE}
-			icon={<Icon.bell width={15} height={15} />}
-			right={
-				<Toggle
-					value={draft.enabled}
-					onChange={(v) => setDraft({ ...draft, enabled: v })}
-					ariaLabel="启用定时周报"
-				/>
-			}
-		>
-			<RoastScheduleFields value={draft} onChange={setDraft} noun="周报" />
-
-			{/* 「试一次」读的是**已保存**的那份配置,所以要把「面板上还有没存的改动」
-			    告诉它。脏判据用的是灵动岛同一对值(draft / baseline),不另立一套。 */}
-			<RoastRunNowBox
-				approval={draft.approval && canApprove}
-				targetCount={draft.targets.length}
-				dirty={JSON.stringify(draft) !== JSON.stringify(baseline)}
-				targetName={(id) => (targetsQuery.data ?? []).find((t) => t.id === id)?.name ?? id}
-			/>
-		</GlassPanel>
+			toggleAriaLabel="启用定时周报"
+			noun="周报"
+			draft={draft}
+			baseline={baseline}
+			onChange={setDraft}
+			canApprove={canApprove}
+			targetName={(id) => (targetsQuery.data ?? []).find((t) => t.id === id)?.name ?? id}
+		/>
 	);
 }

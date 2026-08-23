@@ -3,7 +3,7 @@ import {
 	inboundGapReason,
 	platformCanReceiveReply,
 } from "@bilibili-notify/internal/constants";
-import { EmptyNote, PlatformIcon, Toggle, ToneChip } from "@bilibili-notify/ui";
+import { EmptyNote, GlassPanel, Icon, PlatformIcon, Toggle, ToneChip } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Field, Picker, TInput } from "../../components/forms";
 import { AI_PURPLE } from "../../config/colors";
@@ -11,6 +11,7 @@ import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 
+import { RoastRunNowBox } from "./RoastRunNowBox";
 import { STATS_RANGES } from "./ranges";
 
 /**
@@ -30,6 +31,66 @@ import { STATS_RANGES } from "./ranges";
  */
 
 export type RoastScheduleValue = GlobalConfig["roastSchedule"];
+
+/**
+ * 排程卡的**渲染半** —— GlassPanel 壳 + 右上启用开关 + 表单 + 「试一次」的拼装。
+ * 全局周报与 per-UP 锐评两张卡此前各拼一份,逐字符相同;数据半(取数、保存策略、
+ * 灵动岛挂载)**刻意留在各自文件里** —— buildPatch diff 与整份回传的分歧各有注释
+ * 写明的理由,塞进一个组件只会把决定藏进回调。
+ */
+export function RoastScheduleCard({
+	title,
+	subtitle,
+	toggleAriaLabel,
+	noun,
+	uid,
+	draft,
+	baseline,
+	onChange,
+	canApprove,
+	targetName,
+}: {
+	title: string;
+	subtitle: string;
+	toggleAriaLabel: string;
+	/** 措辞(「周报」/「锐评」),透传给 {@link RoastScheduleFields}。 */
+	noun: string;
+	/** per-UP 卡传 uid,「试一次」就走单人接口;全局卡不传。 */
+	uid?: string;
+	draft: RoastScheduleValue;
+	baseline: RoastScheduleValue | null;
+	onChange: (next: RoastScheduleValue) => void;
+	canApprove: boolean;
+	targetName: (id: string) => string;
+}) {
+	return (
+		<GlassPanel
+			title={title}
+			subtitle={subtitle}
+			accent={AI_PURPLE}
+			icon={<Icon.bell width={15} height={15} />}
+			right={
+				<Toggle
+					value={draft.enabled}
+					onChange={(v) => onChange({ ...draft, enabled: v })}
+					ariaLabel={toggleAriaLabel}
+				/>
+			}
+		>
+			<RoastScheduleFields value={draft} onChange={onChange} noun={noun} />
+
+			{/* 「试一次」读的是**已保存**的那份配置,所以要把「面板上还有没存的改动」
+			    告诉它。脏判据用的是灵动岛同一对值(draft / baseline),不另立一套。 */}
+			<RoastRunNowBox
+				uid={uid}
+				approval={draft.approval && canApprove}
+				targetCount={draft.targets.length}
+				dirty={JSON.stringify(draft) !== JSON.stringify(baseline)}
+				targetName={targetName}
+			/>
+		</GlassPanel>
+	);
+}
 
 /**
  * 审批能不能开,以及开不了时那句理由。
