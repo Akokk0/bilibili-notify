@@ -23,6 +23,8 @@ const H = vi.hoisted(() => ({
 	defaultManifest: null as unknown,
 	/** 下一次传图要不要失败。 */
 	uploadFails: false,
+	/** 挂住上传用的闸:不为 null 时 upload 要等它开了才返回(仿真实网络的那几秒)。 */
+	uploadGate: null as Promise<void> | null,
 }));
 
 vi.mock("../../../services/api", () => ({
@@ -49,6 +51,7 @@ vi.mock("../../../services/api", () => ({
 		}),
 		upload: vi.fn(async (path: string, form: FormData) => {
 			H.uploadCalls.push({ path, name: (form.get("file") as File | null)?.name ?? "" });
+			if (H.uploadGate) await H.uploadGate;
 			if (H.uploadFails) throw new Error("图片过大(上限 5MB)");
 			// 落盘名由服务端按类型生成(img- / font- 前缀),这里照着仿。
 			const name = (form.get("file") as File | null)?.name ?? "";
@@ -108,6 +111,7 @@ beforeEach(() => {
 	H.uploadCalls = [];
 	H.getCalls = [];
 	H.uploadFails = false;
+	H.uploadGate = null;
 	H.defaultManifest = { schemaVersion: 1, name: "出厂樱花", modes: { light: {} } };
 	// 编辑器默认编当前主题那一套 —— 主题是这一层的入参,每条用例都从浅色起跑。
 	useThemeStore.setState({ preference: "light", systemPrefersDark: false, resolved: "light" });
@@ -533,6 +537,36 @@ describe("SkinEditor", () => {
 		);
 		const options = within(screen.getByLabelText("壁纸图片")).getAllByRole("option");
 		expect(options.map((o) => o.getAttribute("value"))).toContain("assets/img-abcd1234.png");
+	});
+
+	it("上传那几秒里改的字段不许被回滚 —— 传完只是补个 image,不是把整段按回去", async () => {
+		// 20MB 字体、5MB 壁纸传起来是要几秒的,主人当然会一边等一边接着调。
+		// 传完那一下若拿**渲染闭包里的** draft 去拼整段 wallpaper,他这几秒调的
+		// 全被按回旧值 —— 和 react-query 那条「要发的东西必须走 variables」同源。
+		let release!: () => void;
+		H.uploadGate = new Promise<void>((r) => {
+			release = () => r();
+		});
+		renderEditor();
+		fireEvent.change(screen.getByLabelText("上传图片"), {
+			target: { files: [new File([new Uint8Array([1])], "rem.png", { type: "image/png" })] },
+		});
+		await waitFor(() => expect(H.uploadCalls).toHaveLength(1));
+
+		// 还挂在网上,主人顺手把遮罩调深了
+		fireEvent.change(screen.getByLabelText("壁纸遮罩"), { target: { value: "0.6" } });
+		await waitFor(() =>
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.wallpaper?.overlay).toBe(0.6),
+		);
+
+		release();
+		await waitFor(() =>
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.wallpaper?.image).toBe(
+				"assets/img-abcd1234.png",
+			),
+		);
+		// 这一句才是要钉的:传完之后,那几秒的调整还在。
+		expect(useSkinStore.getState().preview?.manifest.modes.light?.wallpaper?.overlay).toBe(0.6);
 	});
 
 	it("「AI 聊天」节只管背景(能力全集=schema 全集):改背景/壁纸落 draft,没有强调色入口", async () => {

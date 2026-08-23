@@ -253,9 +253,9 @@ export function SkinEditor(props: {
 			const isFont = splitSkinAssets([res.name]).fonts.length > 0;
 			if (isFont) {
 				// 字体栈原样留着:自带字体排在它前面,拉不下来时还有家族名兜底。
-				setSection("fonts", { ...(draft.modes[modeKey]?.fonts ?? {}), asset: res.name });
+				updateSection("fonts", (prev) => ({ ...(prev ?? {}), asset: res.name }));
 			} else {
-				setSection("wallpaper", { ...(draft.modes[modeKey]?.wallpaper ?? {}), image: res.name });
+				updateSection("wallpaper", (prev) => ({ ...(prev ?? {}), image: res.name }));
 			}
 		} catch (e) {
 			setFeedback({ tone: "err", text: e instanceof Error ? e.message : String(e) });
@@ -272,6 +272,22 @@ export function SkinEditor(props: {
 	const bokehText = bokehRaw ?? (mode.effects?.bokeh?.colors ?? []).join(", ");
 	function setSection<K extends keyof SkinMode>(section: K, value: SkinMode[K] | undefined): void {
 		setDraft((d) => setModeSection(d, modeKey, section, value));
+	}
+
+	/**
+	 * 同上,但那一段的旧值是从**此刻的** draft 里取的。
+	 *
+	 * `await` 之后再改 draft 的调用方必须走这条。渲染闭包里的 `draft` 是那一帧的
+	 * 快照,而传一份 20MB 字体要好几秒 —— 主人当然会一边等一边接着调。拿快照去拼
+	 * 整段,他这几秒的调整就被按回了旧值(与 react-query 那条「要发的东西必须走
+	 * variables」同源)。`modeKey` 反过来该用闭包里的那个:主人是在**那一套**里点的
+	 * 上传,传完就该落在那一套上,哪怕他这会儿已经切去看另一套了。
+	 */
+	function updateSection<K extends keyof SkinMode>(
+		section: K,
+		update: (prev: SkinMode[K]) => SkinMode[K] | undefined,
+	): void {
+		setDraft((d) => setModeSection(d, modeKey, section, update(d.modes[modeKey]?.[section])));
 	}
 
 	// 「(默认)」标注的比较基准:出厂快照里同一套模式的对应字段。
