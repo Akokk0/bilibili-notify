@@ -10,7 +10,7 @@
  * {@link MaidSkillStore.problems},交给界面显示。
  */
 
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BUILTIN_SKILL_NAMES, BUILTIN_SKILLS } from "./builtin.js";
 import { formatSkillFile, isValidSkillName, type ParsedSkill, parseSkillFile } from "./parse.js";
@@ -127,7 +127,7 @@ export class MaidSkillStore {
 
 	async create(skill: ParsedSkill): Promise<void> {
 		const clean = this.validate(skill);
-		this.assertFree(clean.name);
+		await this.assertFree(clean.name);
 		await this.writeSkill(clean);
 		this.user.set(clean.name, clean);
 	}
@@ -136,7 +136,7 @@ export class MaidSkillStore {
 		this.assertEditable(name);
 		if (!this.user.has(name)) throw new Error(`技能不存在:${name}`);
 		const clean = this.validate(next);
-		if (clean.name !== name) this.assertFree(clean.name);
+		if (clean.name !== name) await this.assertFree(clean.name);
 		await this.writeSkill(clean);
 		if (clean.name !== name) {
 			// 改名 = 换目录。旧的不留在盘上,否则下次读盘会冒出一条僵尸。
@@ -164,10 +164,27 @@ export class MaidSkillStore {
 		return res.skill;
 	}
 
-	/** 这个名字还空着吗 —— 内置与主人自己的都算占用。 */
-	private assertFree(name: string): void {
+	/**
+	 * 这个名字还空着吗 —— 内置、索引里、**以及盘上**都算占用。
+	 *
+	 * 盘那一问不能省。索引只是读缓存,主人手放的那份在下一次读盘之前从没进过它
+	 * (ADR-0001 决策 3:真文件、可手放),而 {@link writeSkill} 是照着名字直接盖的。
+	 * 只问索引会漏成两种真事故:冷启动第一发就是写请求(陈旧标签页、脚本、先挂后
+	 * 拉列表的页面),以及索引热过之后才放进来的那份 —— 两种都是 200 OK 把主人手写
+	 * 的正文抹掉,界面上连个响都没有。缓存怎么调都堵不住,只能问盘。
+	 */
+	private async assertFree(name: string): Promise<void> {
 		if (BUILTIN_SKILL_NAMES.has(name)) throw new Error(`「${name}」已被内置技能占用,换个名字吧`);
 		if (this.user.has(name)) throw new Error(`「${name}」已经有了`);
+		if (await this.fileExists(name)) throw new Error(`「${name}」已经有了`);
+	}
+
+	/** 盘上有没有这个名字的 SKILL.md。空目录 / `.tmp` 残留不算占用 —— 那儿没有主人的东西可丢。 */
+	private async fileExists(name: string): Promise<boolean> {
+		return await stat(join(this.dir, name, SKILL_FILE)).then(
+			() => true,
+			() => false,
+		);
 	}
 
 	/** 改 / 删的前置:名字合法(它要拼进路径)且不是内置。 */

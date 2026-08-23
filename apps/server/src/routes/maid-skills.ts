@@ -53,6 +53,9 @@ export function createMaidSkillsRoute(deps: { skillStore: MaidSkillStore }): Hon
 	app.post("/", async (c) => {
 		const parsed = writeSchema.safeParse(await c.req.json().catch(() => null));
 		if (!parsed.success) return c.json({ err: "请求体不是一条技能的形状" }, 400);
+		// 与 PUT / DELETE 同待遇。名字占用那道闸自己会问盘(见 store.assertFree),
+		// 所以这句不是防线 —— 它只是别让 create 把一份残缺索引当成全库。
+		await skillStore.ensureReady();
 		try {
 			await skillStore.create({ disableModelInvocation: false, ...parsed.data });
 		} catch (err) {

@@ -13,7 +13,7 @@
 
 // biome-ignore-all lint/suspicious/noExplicitAny: 断言 JSON 响应体,不为测试再造一遍 wire 类型
 
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -58,6 +58,16 @@ const put = (name: string, body: unknown) =>
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(body),
 	});
+
+/** 主人绕过界面、直接往库里手放的一份 —— 从没进过内存索引。 */
+const HAND_MADE = "---\nname: hand-made\ndescription: 手放的\n---\n\n主人亲手写的正文\n";
+
+async function handPlace(): Promise<string> {
+	const file = join(dir, "hand-made", "SKILL.md");
+	await mkdir(join(dir, "hand-made"), { recursive: true });
+	await writeFile(file, HAND_MADE, "utf-8");
+	return file;
+}
 
 describe("GET /", () => {
 	it("列出内置那几条,problems 是空的", async () => {
@@ -119,6 +129,17 @@ describe("POST /", () => {
 			expect((await post(bad)).status).toBe(400);
 		}
 	});
+
+	it("与盘上手放的同名 → 400,那份文件一个字都不动", async () => {
+		// **一次 GET 都没发过** —— 这正是要钉的场景:内存索引还是空的。界面正常
+		// 流程会先拉列表把它热上,可陈旧标签页、脚本、以及先挂后拉的页面不会。
+		// 索引空 → 占用检查查了个寂寞 → 主人手写的那份被 200 OK 悄悄盖掉。
+		const file = await handPlace();
+		const res = await post({ ...sample, name: "hand-made" });
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as any).err).toContain("已经有了");
+		expect(await readFile(file, "utf-8")).toBe(HAND_MADE);
+	});
 });
 
 describe("PUT /:name", () => {
@@ -138,6 +159,20 @@ describe("PUT /:name", () => {
 
 	it("改不存在的 → 404", async () => {
 		expect((await put("nope", sample)).status).toBe(404);
+	});
+
+	it("改名撞上盘上手放的那份 → 400,那份文件一个字都不动", async () => {
+		// 与 POST 那条同源:改名走的也是「这个名字空着吗」那道闸。索引热过之后
+		// 手放的那份就再没进过它 —— 闸看不见,改名等于覆盖。
+		//
+		// 中间这次 PUT 不是凑数:`ensureReady` 只读一次盘,得先有人把它触发掉,
+		// 后面那次才是真正跑在陈旧索引上。**别删。**
+		await post(sample);
+		await put("my-skill", { ...sample, body: "先改一次,把索引热上" });
+		const file = await handPlace();
+		const res = await put("my-skill", { ...sample, name: "hand-made" });
+		expect(res.status).toBe(400);
+		expect(await readFile(file, "utf-8")).toBe(HAND_MADE);
 	});
 });
 
