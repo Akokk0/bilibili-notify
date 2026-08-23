@@ -312,9 +312,7 @@ function SearchResultList({
 	return (
 		<div className="mt-4 flex flex-col gap-1.5">
 			{data.results.length === 0 ? (
-				<div className="rounded-sm border border-bn-border bg-bn-surface-muted p-4 text-center text-bn-sm text-bn-text-tertiary">
-					没有匹配的 UP 主
-				</div>
+				<EmptyNote>没有匹配的 UP 主</EmptyNote>
 			) : (
 				data.results.map((r) => {
 					const subscribed = existingUids.has(r.uid);

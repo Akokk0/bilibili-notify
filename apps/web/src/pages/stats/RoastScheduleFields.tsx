@@ -3,7 +3,7 @@ import {
 	inboundGapReason,
 	platformCanReceiveReply,
 } from "@bilibili-notify/internal/constants";
-import { PlatformIcon, Toggle, ToneChip } from "@bilibili-notify/ui";
+import { EmptyNote, PlatformIcon, Toggle, ToneChip } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Field, Picker, TInput } from "../../components/forms";
 import { AI_PURPLE } from "../../config/colors";
@@ -118,7 +118,9 @@ export function RoastScheduleFields({
 			>
 				<div className="flex flex-wrap gap-2">
 					{targets.length === 0 && (
-						<div className="text-bn-sm opacity-60">还没有可用的推送目标</div>
+						<EmptyNote size="sm" className="w-full">
+							还没有可用的推送目标
+						</EmptyNote>
 					)}
 					{targets.map((t) => {
 						const on = value.targets.includes(t.id);

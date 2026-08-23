@@ -1,4 +1,4 @@
-import { Icon, LoadingBlock, SectionNav } from "@bilibili-notify/ui";
+import { EmptyNote, Icon, LoadingBlock, SectionNav } from "@bilibili-notify/ui";
 import { lazy, Suspense, useEffect, useState } from "react";
 import type { Components } from "react-markdown";
 import { externalLinkClick } from "../utils/externalLink";
@@ -202,9 +202,7 @@ function SponsorPanel() {
 					赞助者名单
 				</div>
 				{sponsors.length === 0 ? (
-					<p className="py-6 text-center text-bn-sm text-bn-text-tertiary">
-						还没有人发电,期待第一位供电的主人～
-					</p>
+					<EmptyNote>还没有人发电,期待第一位供电的主人～</EmptyNote>
 				) : (
 					<div className="flex flex-wrap gap-2">
 						{sponsors.map((s) => (

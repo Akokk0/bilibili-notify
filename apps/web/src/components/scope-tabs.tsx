@@ -9,6 +9,7 @@
 
 import {
 	Avatar,
+	EmptyNote,
 	Icon,
 	MenuItem,
 	Pill,
@@ -161,9 +162,9 @@ export function ScopeTabs({
 							选择要单独定制的 UP 主
 						</div>
 						{availableSubs.length === 0 ? (
-							<div className="px-3 py-4 text-center text-bn-sm text-bn-text-tertiary">
+							<EmptyNote size="sm" className="m-2">
 								所有已订阅的 UP 主都已添加
-							</div>
+							</EmptyNote>
 						) : (
 							<div className="max-h-72 overflow-y-auto py-1">
 								{availableSubs.map((sub) => {

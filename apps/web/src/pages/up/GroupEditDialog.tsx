@@ -1,4 +1,4 @@
-import { Btn, CheckRow, Input, ModalShell } from "@bilibili-notify/ui";
+import { Btn, CheckRow, EmptyNote, Input, ModalShell } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { addGroupName, toggleGroup } from "./group-edit";
 
@@ -33,7 +33,7 @@ export function GroupEditDialog({
 		<ModalShell onCancel={onCancel} width={360} bodyClassName="p-5" title="编辑所属分组">
 			<div className="flex max-h-60 flex-col gap-1.5 overflow-y-auto">
 				{options.length === 0 ? (
-					<div className="text-bn-sm text-bn-text-tertiary">还没有任何分组,在下方新建一个吧</div>
+					<EmptyNote size="sm">还没有任何分组,在下方新建一个吧</EmptyNote>
 				) : (
 					options.map((g) => (
 						<CheckRow

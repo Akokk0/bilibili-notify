@@ -1,5 +1,5 @@
 import type { AiChatMode } from "@bilibili-notify/contract";
-import { Icon, IconButton } from "@bilibili-notify/ui";
+import { EmptyNote, Icon, IconButton } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { type AiConversationMetaDTO, groupConversations } from "../../services/aiChat";
 import { ThinkingLevelSetting } from "./thinking-level-setting";
@@ -71,11 +71,11 @@ export function ChatSidebar(props: ChatSidebarProps) {
 
 			<div className="flex-1 overflow-y-auto">
 				{groups.length === 0 ? (
-					<div className="px-3 py-2 text-xs leading-relaxed text-bn-text-secondary">
+					<EmptyNote size="sm" className="mx-3 my-2 leading-relaxed">
 						还没有聊过天呢～
 						<br />
 						点上面那颗按钮开个新对话吧
-					</div>
+					</EmptyNote>
 				) : (
 					groups.map((g) => (
 						<div key={g.label} className="mb-1">
