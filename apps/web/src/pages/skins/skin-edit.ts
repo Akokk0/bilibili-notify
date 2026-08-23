@@ -129,24 +129,72 @@ export function toHex6(value: string): string | null {
 	return null;
 }
 
-const RGBA_RE = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*([0-9.]+)\s*)?\)$/i;
 const HEX_ALPHA_RE = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i;
 
 /**
+ * 服务端 `isColor` 放行的函数色,一个不少(见 skins/schema.ts 的 COLOR_FN_RE)。
+ *
+ * **这一头必须认得全。** 认不出的下场不是「滑杆退化成不可调」,而是 {@link withColorAlpha}
+ * 落到兜底色相上 —— 主人拖一下透明度,整块玻璃的颜色就被换成了那管灰。而
+ * 「保色相只换 alpha」正是这对控件立项时写下的话(87b2a9e:hue preserved)。
+ * 这张表跟着服务端那条正则走,那边放宽了这边就得跟。
+ */
+const COLOR_FN_RE = /^(rgba?|hsla?|oklch|oklab)\(([^()]*)\)$/i;
+
+/** alpha 字面值:`0.5` / `.5` / `50%`。认不出 → null。 */
+function parseAlpha(raw: string): number | null {
+	const t = raw.trim();
+	if (t === "") return null;
+	const pct = t.endsWith("%");
+	const n = Number(pct ? t.slice(0, -1) : t);
+	if (!Number.isFinite(n)) return null;
+	const a = pct ? n / 100 : n;
+	return a >= 0 && a <= 1 ? a : null;
+}
+
+/**
+ * 函数色的括号内容 → 坐标段 + alpha + 是不是逗号语法。
+ *
+ * 两套语法都得认:老的逗号版 `rgb(a, b, c[, α])`,和现代的空格版
+ * `oklch(l c h[ / α])` —— 后者是 AI 皮肤设计师提示词里明写着可以用的写法。
+ * 没写 alpha 就是不透明(1),这是 CSS 自己的口径。
+ */
+function splitColorBody(body: string): { coords: string; alpha: number | null; comma: boolean } {
+	const slash = body.indexOf("/");
+	if (slash >= 0) {
+		return {
+			coords: body.slice(0, slash).trim(),
+			alpha: parseAlpha(body.slice(slash + 1)),
+			comma: false,
+		};
+	}
+	if (body.includes(",")) {
+		const parts = body.split(",").map((s) => s.trim());
+		const alpha = parts.length > 3 ? parseAlpha(parts[3] ?? "") : 1;
+		return { coords: parts.slice(0, 3).join(", "), alpha, comma: true };
+	}
+	return { coords: body.trim(), alpha: 1, comma: false };
+}
+
+/**
  * 颜色的 alpha 通道 ——「玻璃片透明度」滑杆(与推送卡片/AI 聊天那对同名同义)
- * 的读端。支持 rgb()/rgba()/#rrggbb(aa);hsl/oklch 等认不出 → null。
+ * 的读端。支持 #rrggbb(aa) 与 {@link COLOR_FN_RE} 那几个函数色的两套语法;
+ * 别的写法(如 color-mix)认不出 → null。
  */
 export function colorAlphaOf(color: string | undefined): number | null {
 	if (!color) return null;
 	const t = color.trim();
-	const m = RGBA_RE.exec(t);
-	if (m) return m[4] !== undefined ? Number(m[4]) : 1;
 	const h = HEX_ALPHA_RE.exec(t);
 	if (h) return h[2] !== undefined ? Number.parseInt(h[2], 16) / 255 : 1;
+	const fn = COLOR_FN_RE.exec(t);
+	if (fn) return splitColorBody(fn[2] ?? "").alpha;
 	return null;
 }
 
-/** 保色相只换 alpha,统一产 rgba();色相解析不出时用 fallbackRgb("r, g, b")。 */
+/**
+ * 保色相只换 alpha。**原样式的颜色空间原样留着** —— oklch 进去还是 oklch 出来,
+ * 别把主人挑的广色域颜色悄悄压回 sRGB。色相实在解析不出才用 fallbackRgb("r, g, b")。
+ */
 export function withColorAlpha(
 	color: string | undefined,
 	alpha: number,
@@ -154,12 +202,22 @@ export function withColorAlpha(
 ): string {
 	const a = Math.round(alpha * 100) / 100;
 	const t = color?.trim() ?? "";
-	const m = RGBA_RE.exec(t);
-	if (m) return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${a})`;
 	const h = HEX_ALPHA_RE.exec(t);
 	if (h) {
-		const n = Number.parseInt(h[1], 16);
+		const n = Number.parseInt(h[1] ?? "0", 16);
 		return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+	}
+	const fn = COLOR_FN_RE.exec(t);
+	if (fn) {
+		const name = (fn[1] ?? "").toLowerCase();
+		const { coords, comma } = splitColorBody(fn[2] ?? "");
+		if (coords !== "") {
+			// 逗号语法只有 rgb / hsl 两族有,而带 alpha 的那一支得写成 -a 版:
+			// `rgb(a, b, c, α)` 虽然现代浏览器认,但 hsl 那边的老式写法是 hsla()。
+			// 统一收到 -a 版最省心,也跟服务端白名单对得上。
+			if (comma) return `${name.startsWith("hsl") ? "hsla" : "rgba"}(${coords}, ${a})`;
+			return `${name}(${coords} / ${a})`;
+		}
 	}
 	return `rgba(${fallbackRgb}, ${a})`;
 }

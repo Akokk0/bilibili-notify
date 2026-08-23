@@ -35,7 +35,7 @@ describe("colorAlphaOf / withColorAlpha(玻璃片透明度滑杆的解析层)", 
 		expect(colorAlphaOf("rgb(10, 20, 30)")).toBe(1);
 		expect(colorAlphaOf("#39c5bb")).toBe(1);
 		expect(colorAlphaOf("#39c5bb80")).toBeCloseTo(0.5, 1);
-		expect(colorAlphaOf("oklch(0.7 0.1 200)")).toBeNull();
+		expect(colorAlphaOf("color-mix(in oklab, #fff, #000)")).toBeNull();
 		expect(colorAlphaOf(undefined)).toBeNull();
 	});
 
@@ -45,7 +45,43 @@ describe("colorAlphaOf / withColorAlpha(玻璃片透明度滑杆的解析层)", 
 		);
 		expect(withColorAlpha("#39c5bb", 0.5, "255, 255, 255")).toBe("rgba(57, 197, 187, 0.5)");
 		expect(withColorAlpha(undefined, 0.4, "255, 255, 255")).toBe("rgba(255, 255, 255, 0.4)");
-		expect(withColorAlpha("oklch(0.7 0.1 200)", 0.4, "30, 41, 59")).toBe("rgba(30, 41, 59, 0.4)");
+		expect(withColorAlpha("color-mix(in oklab, #fff, #000)", 0.4, "30, 41, 59")).toBe(
+			"rgba(30, 41, 59, 0.4)",
+		);
+	});
+
+	/**
+	 * 「保色相只换 alpha」是这对控件立项时的原话(87b2a9e:hue preserved)。可解析层
+	 * 当初只认逗号版 rgb/rgba 与 hex —— 而服务端的 `isColor` 放行的是
+	 * `rgb|rgba|hsl|hsla|oklch|oklab` 六个函数,空格语法与 `/ alpha` 也都合法,
+	 * AI 皮肤设计师的提示词里还明写着可以用 oklch。
+	 *
+	 * 于是一套 `oklch(...)` 的玻璃,滑杆读出来是空的,**拖一下就把色相换成了兜底灰**。
+	 * 服务端准写的每一种形状,这一头都得认得 —— 认不出就等于毁色,不是「退化」。
+	 */
+	it("服务端准写的每种颜色形状,拖滑杆都保色相 —— 认不出就等于毁色", () => {
+		const cases: [input: string, alpha: number, expected: string][] = [
+			// 现代空格语法 + 斜杠 alpha
+			["oklch(0.28 0.03 250 / 0.55)", 0.3, "oklch(0.28 0.03 250 / 0.3)"],
+			["oklch(0.7 0.1 200)", 0.4, "oklch(0.7 0.1 200 / 0.4)"],
+			["oklab(0.5 -0.1 0.1)", 0.25, "oklab(0.5 -0.1 0.1 / 0.25)"],
+			["rgb(30 41 59 / 0.55)", 0.8, "rgb(30 41 59 / 0.8)"],
+			["hsl(210 40% 20%)", 0.5, "hsl(210 40% 20% / 0.5)"],
+			// 逗号语法:统一收成带 alpha 的那一支
+			["hsl(210, 40%, 20%)", 0.5, "hsla(210, 40%, 20%, 0.5)"],
+			["hsla(210, 40%, 20%, 0.9)", 0.5, "hsla(210, 40%, 20%, 0.5)"],
+		];
+		for (const [input, alpha, expected] of cases) {
+			expect(withColorAlpha(input, alpha, "30, 41, 59")).toBe(expected);
+		}
+	});
+
+	it("colorAlphaOf 也认得那些形状 —— 否则滑杆一直显示空", () => {
+		expect(colorAlphaOf("oklch(0.28 0.03 250 / 0.55)")).toBeCloseTo(0.55, 2);
+		expect(colorAlphaOf("oklch(0.7 0.1 200)")).toBe(1);
+		expect(colorAlphaOf("rgb(30 41 59 / 50%)")).toBeCloseTo(0.5, 2);
+		expect(colorAlphaOf("hsla(210, 40%, 20%, 0.9)")).toBeCloseTo(0.9, 2);
+		expect(colorAlphaOf("hsl(210 40% 20%)")).toBe(1);
 	});
 });
 
