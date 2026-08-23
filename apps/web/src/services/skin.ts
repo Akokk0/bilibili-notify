@@ -158,19 +158,39 @@ export function resolveSkinMode(skin: SkinManifest, requested: ResolvedTheme): R
 	return { mode: {}, theme: requested, locked: false };
 }
 
-/** 上次注入过的键,换皮肤/清皮肤时按这份清单移除 —— 别让残留变量叠在新皮肤上。 */
-const injected = new WeakMap<HTMLElement, string[]>();
+/**
+ * 上次注入过的**键与值**,换皮肤/清皮肤时按这份清单移除 —— 别让残留变量叠在新皮肤上。
+ *
+ * 连值一起记是为了下面那条短路。
+ */
+const injected = new WeakMap<HTMLElement, SkinVars>();
 
 export function applySkinVars(el: HTMLElement, vars: SkinVars): void {
-	clearSkinVars(el);
-	for (const [key, value] of Object.entries(vars)) {
-		el.style.setProperty(key, value);
+	const prev = injected.get(el);
+	// 与上次一模一样就别碰 —— 跟隔壁 applySkinCss 同一条纪律。编辑器每敲一个键
+	// 都会重跑这条 effect,而绝大多数按键(皮肤名、作者、自定义 CSS…)一个变量都
+	// 不影响;无条件「全清 40 个再全填 40 个」等于每次输入都让整份文档的继承变量
+	// 失效、走一遍全量样式重算。
+	if (prev && sameVars(prev, vars)) return;
+	// 只摘这次真的消失了的键。先清空再重填会让所有变量瞬时失值,期间的那一帧
+	// 是没有皮肤的样子。
+	for (const key of Object.keys(prev ?? {})) {
+		if (!(key in vars)) el.style.removeProperty(key);
 	}
-	injected.set(el, Object.keys(vars));
+	for (const [key, value] of Object.entries(vars)) {
+		if (prev?.[key] !== value) el.style.setProperty(key, value);
+	}
+	injected.set(el, { ...vars });
+}
+
+function sameVars(a: SkinVars, b: SkinVars): boolean {
+	const ka = Object.keys(a);
+	if (ka.length !== Object.keys(b).length) return false;
+	return ka.every((k) => a[k] === b[k]);
 }
 
 export function clearSkinVars(el: HTMLElement): void {
-	for (const key of injected.get(el) ?? []) {
+	for (const key of Object.keys(injected.get(el) ?? {})) {
 		el.style.removeProperty(key);
 	}
 	injected.delete(el);
@@ -269,14 +289,36 @@ function stripImportant(css: string): string {
 	return css.replace(/!\s*important(?=\s*[;}])/gi, "");
 }
 
+/**
+ * 上一次的入参与产物 —— 单槽,因为这条路上只有「当前这套皮肤」一个调用者。
+ *
+ * 编辑器每敲一个键都会重跑一趟 composeSkinCss(`DECORATION_RES` 上方那段注释
+ * 点的就是这件事,当时只把正则提到了模块级、没管重复执行)。而一趟里有两次
+ * 全文 replace 加十几次整份 CSS 的 `.test()`,输入上限 64KB —— 改颜色滑杆、
+ * 改皮肤名时那两段 css 一个字都没动,这些全是白跑。
+ */
+let cssCache: { manifestCss?: string; modeCss?: string; mode: string; out: string } | null = null;
+
 /** 顶层共用 + 当前模式追加(后到的覆盖先到的),输出已完成 hook 翻译。 */
 export function composeSkinCss(manifest: SkinManifest, mode: "light" | "dark"): string {
-	const parts = [manifest.css, manifest.modes[mode]?.css].filter(
+	const manifestCss = manifest.css;
+	const modeCss = manifest.modes[mode]?.css;
+	if (
+		cssCache &&
+		cssCache.manifestCss === manifestCss &&
+		cssCache.modeCss === modeCss &&
+		cssCache.mode === mode
+	) {
+		return cssCache.out;
+	}
+	const parts = [manifestCss, modeCss].filter(
 		(s): s is string => typeof s === "string" && s !== "",
 	);
 	const css = stripImportant(translateSkinCssHooks(parts.join("\n")));
 	const guard = decorationGuardCss(css);
-	return guard === "" ? css : `${css}\n${guard}`;
+	const out = guard === "" ? css : `${css}\n${guard}`;
+	cssCache = { manifestCss, modeCss, mode, out };
+	return out;
 }
 
 /**
