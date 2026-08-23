@@ -146,6 +146,32 @@ function PinkPill({ className, children }: { className?: string; children: React
 	);
 }
 
+/** About 页玻璃面板的头行:图标 + 粗标题(可带副行 / 右槽),下缘细分隔线 —— 三块面板此前各抄一份。 */
+function PanelHead({
+	icon,
+	title,
+	sub,
+	right,
+}: {
+	icon: ReactNode;
+	title: ReactNode;
+	sub?: ReactNode;
+	right?: ReactNode;
+}) {
+	return (
+		<div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-bn-border-subtle pb-4">
+			<div>
+				<div className="flex items-center gap-2 text-bn-md font-extrabold text-bn-text-primary">
+					{icon}
+					{title}
+				</div>
+				{sub ? <p className="mt-1 text-bn-sm text-bn-text-tertiary">{sub}</p> : null}
+			</div>
+			{right}
+		</div>
+	);
+}
+
 function SponsorPanel() {
 	const [sponsors, setSponsors] = useState<Sponsor[]>([]);
 
@@ -168,15 +194,11 @@ function SponsorPanel() {
 	return (
 		<div className="space-y-4">
 			<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
-				<div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-bn-border-subtle pb-4">
-					<div>
-						<div className="flex items-center gap-2 text-bn-md font-extrabold text-bn-text-primary">
-							<Icon.heart size={16} />
-							支持项目
-						</div>
-						<p className="mt-1 text-bn-sm text-bn-text-tertiary">用爱发电,让女仆值班室持续运转</p>
-					</div>
-				</div>
+				<PanelHead
+					icon={<Icon.heart size={16} />}
+					title="支持项目"
+					sub="用爱发电,让女仆值班室持续运转"
+				/>
 				<p className="text-bn-base leading-7 text-bn-text-secondary">
 					Bilibili Notify 是 MIT 开源、永久免费的项目。服务器、测试设备与持续开发都需要成本,
 					如果它帮到了你,欢迎在爱发电请女仆喝杯奶茶 —— 每一份心意,都会化作新功能与更少的 bug。
@@ -266,10 +288,7 @@ function AboutPanel() {
 
 	return (
 		<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
-			<div className="mb-4 flex items-center gap-2 border-b border-bn-border-subtle pb-4 text-bn-md font-extrabold text-bn-text-primary">
-				<Icon.star size={16} />
-				关于本项目
-			</div>
+			<PanelHead icon={<Icon.star size={16} />} title="关于本项目" />
 			<p className="text-bn-base leading-7 text-bn-text-secondary">
 				Bilibili Notify —— 监听 B 站 UP 主动态 / 直播,渲染成卡片图片推送到 QQ 群等渠道。
 				一套业务核心、两种形态:Koishi 插件 与 独立 Web Dashboard。MIT 开源。
@@ -346,16 +365,12 @@ function ChangelogPanel() {
 
 	return (
 		<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
-			<div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-bn-border-subtle pb-4">
-				<div>
-					<div className="flex items-center gap-2 text-bn-md font-extrabold text-bn-text-primary">
-						<Icon.sparkle size={16} />
-						更新日志
-					</div>
-					<p className="mt-1 text-bn-sm text-bn-text-tertiary">独立端版本变更记录</p>
-				</div>
-				<PinkPill className="px-3 py-1 font-mono text-bn-xs">apps/CHANGELOG.md</PinkPill>
-			</div>
+			<PanelHead
+				icon={<Icon.sparkle size={16} />}
+				title="更新日志"
+				sub="独立端版本变更记录"
+				right={<PinkPill className="px-3 py-1 font-mono text-bn-xs">apps/CHANGELOG.md</PinkPill>}
+			/>
 			<div className="max-w-none">
 				{loadError ? (
 					<div className="py-8 text-center text-bn-sm text-bn-danger">

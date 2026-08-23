@@ -68,8 +68,8 @@ const UNHOOKED: Record<string, { count: number; why: string }> = {
 	"apps/web/src/components/draft-island.tsx": { count: 1, why: "岛内草稿列表的行" },
 	"apps/web/src/components/ai-chat/composer.tsx": { count: 1, why: "命令面板的候选行" },
 	"apps/web/src/components/ai-chat/index.tsx": {
-		count: 2,
-		why: "两颗浮钮已是玻璃件,走 glass 挂点",
+		count: 1,
+		why: "浮钮已是玻璃件,走 glass 挂点(两颗收编进 FloatGlassButton 后只剩一处 <button>)",
 	},
 	"apps/web/src/components/ai-chat/messages.tsx": {
 		count: 2,

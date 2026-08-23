@@ -174,6 +174,38 @@ const PERSONA_TABS = [
 ];
 
 /** /chat 路由页。除了「返回控制台」的去向,不感知路由 —— 其余全是聊天自己的事。 */
+/**
+ * 聊天页顶层的玻璃浮钮 —— 展开侧栏 / 返回控制台两颗共用的观感皮(sheen + soft +
+ * lift + 玻璃底 + hover 强化),此前那串 class 各抄一份。形状(方格 / 药丸)与
+ * 摆位由 className 给。玻璃件走 glass 挂点语义,刻意不挂 `data-bn="btn"`
+ * (coverage 豁免名单里记着这条)。
+ */
+function FloatGlassButton({
+	title,
+	ariaLabel,
+	onClick,
+	className,
+	children,
+}: {
+	title?: string;
+	ariaLabel?: string;
+	onClick: () => void;
+	className: string;
+	children: React.ReactNode;
+}) {
+	return (
+		<button
+			type="button"
+			title={title}
+			aria-label={ariaLabel}
+			onClick={onClick}
+			className={`bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass absolute top-4 z-bn-raised cursor-pointer text-bn-text-tertiary shadow-bn-card hover:bg-(--bn-glass-strong-bg) hover:shadow-bn-elev ${className}`}
+		>
+			{children}
+		</button>
+	);
+}
+
 export function ChatPage() {
 	const navigate = useNavigate();
 	const location = useLocation();
@@ -622,25 +654,23 @@ export function ChatPage() {
 
 			<div className="relative flex min-w-0 flex-1 flex-col">
 				{!rail ? (
-					<button
-						type="button"
+					<FloatGlassButton
 						title="打开侧栏"
-						aria-label="打开侧栏"
+						ariaLabel="打开侧栏"
 						onClick={() => setRail(true)}
-						className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass absolute left-4 top-4 z-bn-raised grid h-8.5 w-8.5 cursor-pointer place-items-center rounded-bn-sm text-bn-text-tertiary shadow-bn-card hover:bg-(--bn-glass-strong-bg) hover:shadow-bn-elev"
+						className="left-4 grid h-8.5 w-8.5 place-items-center rounded-bn-sm"
 					>
 						<Icon.panelExpand size={18} />
-					</button>
+					</FloatGlassButton>
 				) : null}
 
-				<button
-					type="button"
+				<FloatGlassButton
 					onClick={onClose}
-					className="bn-glass-sheen bn-glass-soft bn-glass-lift bn-glass absolute right-4 top-4 z-bn-raised flex h-9.5 cursor-pointer items-center gap-1.75 rounded-bn-lg px-4 text-bn-sm font-semibold text-bn-text-tertiary shadow-bn-card hover:bg-(--bn-glass-strong-bg) hover:shadow-bn-elev"
+					className="right-4 flex h-9.5 items-center gap-1.75 rounded-bn-lg px-4 text-bn-sm font-semibold"
 				>
 					<Icon.arrowLeft size={15} />
 					返回控制台
-				</button>
+				</FloatGlassButton>
 
 				{empty ? (
 					<div className="relative flex flex-1 flex-col justify-center overflow-y-auto p-6">

@@ -764,6 +764,16 @@ function PreviewContentFields({
 	);
 }
 
+/** 预览列的头行:左粗标题 + 右小字说明 —— 全家福与单卡两分支此前各抄一份。 */
+function PreviewHead({ title, note }: { title: React.ReactNode; note: React.ReactNode }) {
+	return (
+		<div className="flex items-center justify-between text-bn-base text-bn-text-primary">
+			<span className="font-bold">{title}</span>
+			<span className="text-bn-xs font-normal text-bn-text-secondary">{note}</span>
+		</div>
+	);
+}
+
 /** 该 UP 是否设了「按类型」样式覆盖(非空才算)。 */
 function hasCardStyleByKind(sub: Subscription): boolean {
 	const bk = sub.overrides.cardStyleByKind;
@@ -1447,14 +1457,10 @@ export default function Cards() {
 				<div className="flex flex-col gap-2.5">
 					{isGlobalTab ? (
 						<>
-							<div className="flex items-center justify-between text-bn-base text-bn-text-primary">
-								<span className="font-bold">
-									卡片全家福 · 实时反映{isGlobalScope ? "全局" : "该 UP"}配置
-								</span>
-								<span className="text-bn-xs font-normal text-bn-text-secondary">
-									四种卡片各自生效样式 · puppeteer 真实渲染
-								</span>
-							</div>
+							<PreviewHead
+								title={<>卡片全家福 · 实时反映{isGlobalScope ? "全局" : "该 UP"}配置</>}
+								note="四种卡片各自生效样式 · puppeteer 真实渲染"
+							/>
 							{/* 一个框装四张卡:2×2 四宫格。固定高度(参考选项卡片满展开时的观感取值,不跟随它),
 							    四格 grid-rows-2 等分该高度,卡片 object-contain 缩放填格。 */}
 							<div className="flex h-180 flex-col rounded-bn-card border border-bn-border p-4">
@@ -1500,15 +1506,15 @@ export default function Cards() {
 						</>
 					) : (
 						<>
-							<div className="flex items-center justify-between text-bn-base text-bn-text-primary">
-								<span className="font-bold">
-									卡片预览 · 实时反映{isGlobalScope ? "全局" : "该 UP"}配置
-								</span>
-								<span className="text-bn-xs font-normal text-bn-text-secondary">
-									puppeteer 真实渲染 · 渲染宽度
-									{kind === "sc" ? " 280" : kind === "guard" ? " 430" : " 600"}px
-								</span>
-							</div>
+							<PreviewHead
+								title={<>卡片预览 · 实时反映{isGlobalScope ? "全局" : "该 UP"}配置</>}
+								note={
+									<>
+										puppeteer 真实渲染 · 渲染宽度
+										{kind === "sc" ? " 280" : kind === "guard" ? " 430" : " 600"}px
+									</>
+								}
+							/>
 							<PreviewImage
 								kind={kind}
 								style={effStyle}
