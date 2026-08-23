@@ -273,9 +273,13 @@ function ThemeSwitcher() {
 									setOpen(false);
 								}}
 							>
-								<span className="block">{o.label}</span>
-								<span className="block text-bn-2xs font-normal text-bn-text-secondary">
-									{o.hint}
+								{/* MenuItem 本体是横向 flex,两个兄弟 span 会被摆成左右两列互相挤 ——
+								    标签和小字必须包进同一个块里才是上下两行。 */}
+								<span className="block min-w-0">
+									<span className="block">{o.label}</span>
+									<span className="block text-bn-2xs font-normal text-bn-text-secondary">
+										{o.hint}
+									</span>
 								</span>
 							</MenuItem>
 						);
