@@ -580,6 +580,44 @@ describe("正在进行的那一轮不算空壳", () => {
 		expect((await store.list()).map((c) => c.id)).not.toContain(conv.id);
 	});
 
+	it("在途那一轮跑过了半小时,也不许被回收 —— TTL 不是它的死线", async () => {
+		// 「凉透」这把尺子只对**没人用的**壳成立。工坊那种活儿是真能跑过 TTL 的:
+		// 一次结构化调用就 300s,还要重试、嵌套生成、最多八轮工具。列表那头早就
+		// 认了 busy 这本账,回收这头却只看时间 —— 于是另开一个对话就能把主人正
+		// 等着的那一轮连文件一起删掉,几分钟的生成血本无归,回来只见「会话不存在」。
+		useClock();
+		const s = createConversationStore({ dataDir, logger });
+		const inflight = await s.create();
+		const done = s.markBusy(inflight.id);
+		try {
+			vi.advanceTimersByTime(60 * 60 * 1000); // 比 TTL 还久
+			await s.create(); // 另一个标签页点了「新对话」
+			expect(await s.get(inflight.id)).toBeTruthy();
+		} finally {
+			done();
+		}
+	});
+
+	it("数量修剪也绕开在途那一场 —— 换个入口的同一起事故", async () => {
+		// 它跑得越久 updatedAt 越沉,主人在别处多开几个对话就把它压成了「最旧」。
+		// 回收那道闸放它过去了,数量这道闸照样能删掉它。
+		const tick = useClock();
+		const s = createConversationStore({ dataDir, logger, maxConversations: 2 });
+		const inflight = await s.create();
+		const done = s.markBusy(inflight.id);
+		try {
+			tick();
+			const a = await s.create();
+			await s.appendMessages(a.id, [{ role: "user", content: "别处聊的一" }]);
+			tick();
+			const b = await s.create();
+			await s.appendMessages(b.id, [{ role: "user", content: "别处聊的二" }]);
+			expect(await s.get(inflight.id)).toBeTruthy();
+		} finally {
+			done();
+		}
+	});
+
 	it("释放两次不会把别人的账也销掉", async () => {
 		const conv = await store.create();
 		const done = store.markBusy(conv.id);

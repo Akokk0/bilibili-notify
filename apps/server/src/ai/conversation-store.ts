@@ -326,10 +326,16 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 				// 「凉透」这个条件不能省:此刻正在发送的那一轮,盘上也是零消息 ——
 				// 皮肤生成一趟就要几分钟,中途另开一个对话把它清掉,主人回来会发现
 				// 刚才那轮凭空没了。
+				//
+				// 而光有时间还不够 —— **在途的一律不动**,跑多久都一样。TTL 是给
+				// 「没人用的壳」估的一个宽界,不是在途轮次的死线:工坊一次结构化调用
+				// 就 300s,还要重试、嵌套生成、最多八轮工具,真能跑过半小时。列表那头
+				// (见 list)早就认了 busy 这本账,回收这头也得认,否则删掉的是主人正
+				// 等着的那一场,几分钟的生成连同文件一起没。
 				const cutoff = Date.now() - EMPTY_CONVERSATION_TTL_MS;
 				const alive: Conversation[] = [];
 				for (const c of others) {
-					if (c.messages.length === 0 && Date.parse(c.createdAt) < cutoff) {
+					if (c.messages.length === 0 && !busy.has(c.id) && Date.parse(c.createdAt) < cutoff) {
 						await unlink(fileOf(c.id)).catch(() => {});
 						logger.debug(`[ai-chat] 回收没发出去的空会话 ${c.id}`);
 						continue;
@@ -337,7 +343,12 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 					alive.push(c);
 				}
 
+				// 数量修剪也得认同一本账。在途的那场跑得够久,主人又在别处开过几个
+				// 对话,它的 updatedAt 就沉到底部 —— 被当成「最旧」删掉,跟上面那条
+				// 是同一个事故换了个入口。宁可暂时多留一条:它一收工,下次 create
+				// 就照常把它算进去。
 				for (const stale of alive.slice(Math.max(0, maxConversations - 1))) {
+					if (busy.has(stale.id)) continue;
 					await unlink(fileOf(stale.id)).catch(() => {});
 					logger.debug(`[ai-chat] 会话数超上限,删除最旧的 ${stale.id}`);
 				}
