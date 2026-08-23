@@ -166,6 +166,23 @@ export const SKIN_CSS_HOOK_MAP = {
 	avatar: '[data-bn~="avatar"]',
 	/** 弹窗卡片本体。 */
 	modal: '[data-bn~="modal"]',
+	/** 状态徽章(顶栏「服务器运行中」那类圆点+短文字的小胶囊)。 */
+	badge: '[data-bn~="badge"]',
+	/**
+	 * 分区导航项(SectionNav 的行/chip)。此前偷懒挂 `btn`,皮肤的按钮实底把
+	 * 竖栏每一行都画成一颗按钮 —— 导航行不是按钮,给它自己的词。选中项额外挂
+	 * `nav-item-active`(清洗层不放行属性选择器,选中态只能走多挂点,同 btn-primary)。
+	 */
+	"nav-item": '[data-bn~="nav-item"]',
+	/** 分区导航项的选中态(与 nav-item 同挂在选中的那一项上)。 */
+	"nav-item-active": '[data-bn~="nav-item-active"]',
+	/**
+	 * 横向 tab 条里的一格(顶栏一级导航 / TabBar 家族)。此前挂 btn(选中挂
+	 * btn-primary),皮肤的按钮实底把整排 tab 画成一排按钮 —— tab 有自己的词。
+	 */
+	tab: '[data-bn~="tab"]',
+	/** 选中的那个 tab 额外挂它(同 nav-item-active 的多挂点模式)。 */
+	"tab-active": '[data-bn~="tab-active"]',
 } as const;
 
 export type SkinCssHook = keyof typeof SKIN_CSS_HOOK_MAP;
@@ -192,6 +209,15 @@ export const SKIN_CSS_HOOK_NOTES: Record<SkinCssHook, string> = {
 	nav: '"nav"=页面级导航容器 —— 横向 tab 条和**竖向的分区列表**都挂它,别当成横条设形状',
 	avatar: '"avatar"=圆头像(本身已经是圆的)',
 	modal: '"modal"=弹窗卡片本体',
+	badge:
+		'"badge"=状态徽章(顶栏「服务器运行中」那类圆点+短文字小胶囊;**非交互**,别写 hover;底色是语义色 soft 底,通常只描边加影、别盖 background)',
+	"nav-item":
+		'"nav-item"=分区导航项 —— 宽视口是**竖栏里图标+标题+描述的多行卡**,窄视口是横条里的胶囊 chip,同一挂点两种形态,别按单一形态设形状;不写规则时默认装是「透明行、选中淡染」,想要选中项突出写 nav-item-active',
+	"nav-item-active":
+		'"nav-item-active"=选中的那一项额外挂它(与 nav-item 同挂);选中态样式写在这儿,别写在 nav-item 上让整栏全亮',
+	tab: '"tab"=横向 tab 条里的一格(顶栏一级导航、页面内 TabBar、作用域条都是);矮元素,胶囊圆角安全;不写规则时默认装是「透明字 tab、选中实底/下划线」',
+	"tab-active":
+		'"tab-active"=选中的那个 tab 额外挂它(与 tab 同挂);注意有的 tab 默认装选中是强调色实底白字 —— 盖 background 时把 color 一起写了,别留白底白字',
 };
 
 /**

@@ -459,13 +459,13 @@ function RemoveRowButton({ onClick }: { onClick: () => void }) {
 	);
 }
 
-/** 列表末尾那条虚线添加钮。文案各编辑器自己给。 */
+/** 列表末尾那条虚线添加钮。文案各编辑器自己给。虚线=空位是它的语义,
+ *  不挂 `data-bn="btn"` —— 皮肤的按钮实底会把空位画成一颗真按钮(同 ui 库 AddButton)。 */
 function AddRowButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
 	return (
 		<button
 			type="button"
 			onClick={onClick}
-			data-bn="btn"
 			className="h-7.5 rounded-md border border-dashed border-bn-border bg-bn-field/60 text-bn-sm text-bn-text-secondary hover:bg-bn-surface"
 		>
 			{children}

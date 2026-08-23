@@ -265,6 +265,11 @@ export function IconButton({
  *
  * 拆成两个组件而不是一个带 `variant` 的:{@link AddCard} 连内部结构(＋ / 标题 /
  * 副标题)一起给,这里收自由 children,塞进同一个壳只会得到一个两幅面孔的东西。
+ *
+ * **刻意不挂 `data-bn="btn"`**(同 MenuItem 的理由):虚线边**就是**这对组件的
+ * 语义 —— 「这里是个空位」。皮肤给按钮写的实底描边 + 底色一落上来,空位就长成了
+ * 一颗按钮,和真按钮再分不出来(2026-08-23 主人真机指出「新建推送目标」整个变实框)。
+ * 挂点词表里也没有「空位」这一档;虚线语汇对所有皮肤保持原样,像 avatar 永远是圆的一样。
  */
 
 /** 两者共用的虚线语汇。改这里等于同时改两个组件 —— 它们本来就该一起动。 */
@@ -291,7 +296,6 @@ export function AddButton({ children, onClick, block, disabled, className }: Add
 			type="button"
 			onClick={onClick}
 			disabled={disabled}
-			data-bn="btn"
 			className={`gap-1.5 font-semibold ${shape} ${ADD_LANGUAGE} ${className ?? ""}`}
 		>
 			{children}
@@ -320,7 +324,6 @@ export function AddCard({ label, hint, onClick, disabled, className }: AddCardPr
 			type="button"
 			onClick={onClick}
 			disabled={disabled}
-			data-bn="btn"
 			className={`flex h-full flex-col items-center justify-center rounded-xl px-4 py-5 text-center hover:bg-bn-pink/5 ${ADD_LANGUAGE} ${className ?? ""}`}
 		>
 			<span className="text-bn-xl leading-none text-bn-text-tertiary">＋</span>

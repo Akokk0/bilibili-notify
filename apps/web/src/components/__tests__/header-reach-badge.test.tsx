@@ -73,6 +73,8 @@ describe("服务器可达徽章", () => {
 		]).toEqual([true, false]);
 		// 前导圆点跟着同一档色走,不能一个绿一个红。
 		expect((badge.firstElementChild as HTMLElement).className).toContain("bg-bn-success");
+		// 皮肤挂点 —— 掉了皮肤就静默够不到这枚徽章(2026-08-23 主人真机指出后补的词表项)。
+		expect(badge.getAttribute("data-bn")).toBe("badge");
 	});
 
 	it("失联的时候是红的 —— 两态合并后仍然分得开", async () => {

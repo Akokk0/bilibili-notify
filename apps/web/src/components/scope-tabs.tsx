@@ -84,10 +84,11 @@ export function ScopeTabs({
 				return (
 					<div
 						key={sub.id}
-						// 挂点与同条 tab 条上的 TabButton 同口径 —— 此前「全局 / 全部 UP」有挂点、
-						// 紧挨着的 per-UP tab 一个都没有,皮肤改 btn 时一条 tab 里第一颗变了、
-						// 后面几颗没变,并排摆着。观感上两者仍有差(实底 vs 描边),那是另一条账。
-						data-bn={active ? "btn btn-primary" : "btn"}
+						// 挂点与同条 tab 条上的 TabButton 同口径(tab 家族,曾是 btn)——此前
+						// 「全局 / 全部 UP」有挂点、紧挨着的 per-UP tab 一个都没有,皮肤改样式
+						// 时一条 tab 里第一颗变了、后面几颗没变,并排摆着。观感上两者仍有差
+						// (实底 vs 描边),那是另一条账。
+						data-bn={active ? "tab tab-active" : "tab"}
 						className={`flex items-center gap-1.5 rounded-lg border py-1.5 pl-3 pr-1.5 text-bn-sm font-bold transition ${
 							active
 								? "border-bn-pink/25 bg-bn-surface text-bn-pink shadow-bn-card"
@@ -138,13 +139,13 @@ export function ScopeTabs({
 				);
 			})}
 
-			{/* 添加 UP 按钮 + 下拉 */}
+			{/* 添加 UP 按钮 + 下拉。虚线=空位语汇,不挂 `data-bn="btn"` ——
+			    皮肤的按钮实底会把「还能再加一个」画成真按钮(同 ui 库 AddButton 的理由)。 */}
 			<div className="relative" ref={dropdownRef}>
 				<button
 					type="button"
 					onClick={() => setAdding((v) => !v)}
 					title="从订阅列表添加 UP 主的个性化配置"
-					data-bn="btn"
 					className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-bn-sm font-semibold transition ${
 						adding
 							? "border-bn-pink/40 bg-bn-pink/6 text-bn-pink"

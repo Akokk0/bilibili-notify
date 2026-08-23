@@ -82,6 +82,28 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
+describe("GlassHeader 一级导航挂点", () => {
+	// 挂点掉了皮肤只会静默失效(此类已复发多回),钉住:一级导航走 tab 家族,
+	// 当前路由那格额外挂 tab-active(data-bn 是静态属性,选中态由 useLocation 手算)。
+	it("一级导航挂 tab,当前路由的那格额外挂 tab-active", async () => {
+		stubLocalStorage();
+		stubMatchMedia(false);
+
+		await renderHeader();
+
+		const nav = document.querySelector('nav[data-bn~="nav"]');
+		expect(nav).toBeTruthy();
+		const tabs = [...(nav as Element).querySelectorAll('[data-bn~="tab"]')];
+		expect(tabs.length).toBeGreaterThan(0);
+		for (const el of tabs) expect(el.getAttribute("data-bn")).not.toContain("btn");
+		// MemoryRouter 初始路由是 "/" —— 只有「概览」是选中态。
+		const actives = tabs.filter((el) =>
+			(el.getAttribute("data-bn") ?? "").split(/\s+/).includes("tab-active"),
+		);
+		expect(actives.map((el) => el.textContent)).toEqual(["概览"]);
+	});
+});
+
 describe("GlassHeader theme switcher", () => {
 	it("shows the theme entry and three choices", async () => {
 		stubLocalStorage();

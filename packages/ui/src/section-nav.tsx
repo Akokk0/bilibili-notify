@@ -203,7 +203,10 @@ export function SectionNav({
 										key={item.id}
 										onClick={() => onPick(item.id)}
 										aria-current={active ? "true" : undefined}
-										data-bn="btn"
+										// 导航行不是按钮 —— 挂 btn 会让皮肤的按钮实底把每一行画成一颗
+										// 按钮(2026-08-23 主人真机指出)。选中态走多挂点:清洗层不放行
+										// 属性选择器,皮肤够不到 aria-current。
+										data-bn={active ? "nav-item nav-item-active" : "nav-item"}
 										className={`${RAIL_ITEM_BASE} ${active ? RAIL_ITEM_ACTIVE : RAIL_ITEM_IDLE}`}
 									>
 										<IconBox icon={item.icon} tint={item.iconTint} active={active} />
@@ -264,7 +267,8 @@ export function SectionNav({
 									key={item.id}
 									onClick={() => onPick(item.id)}
 									aria-current={active ? "true" : undefined}
-									data-bn="btn"
+									// 与竖栏同词:同一批分区在两种视口下必须吃同一套皮肤规则。
+									data-bn={active ? "nav-item nav-item-active" : "nav-item"}
 									className={`${CHIP_BASE} ${active ? CHIP_ACTIVE : CHIP_IDLE}`}
 								>
 									{item.icon != null ? (

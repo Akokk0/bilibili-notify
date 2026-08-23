@@ -17,7 +17,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { canHideNav, NAV_ITEMS, type NavItem, orderedNav, resolveNav } from "../config/nav";
 import { useBackendReachable } from "../hooks/useBackendReachable";
 import { api } from "../services/api";
@@ -373,6 +373,7 @@ function ReachBadge({
 			: { box: "bg-bn-danger-soft text-bn-danger-text", dot: "bg-bn-danger" };
 	return (
 		<span
+			data-bn="badge"
 			className={`inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-bn-xs font-semibold ${cls.box}`}
 			title={title}
 		>
@@ -400,6 +401,8 @@ export function GlassHeader() {
 		targets: targets.data?.length ?? 0,
 	};
 
+	// 一级导航的选中态判定(见下方 navActive)。
+	const { pathname } = useLocation();
 	// 导航条显哪几项、按什么顺序 —— 纯本地偏好,见 config/nav.ts。
 	const hiddenNav = useNavStore((s) => s.hidden);
 	const navOrder = useNavStore((s) => s.order);
@@ -488,43 +491,43 @@ export function GlassHeader() {
 			    一级导航没挂。皮肤给 nav 画底色/描边时,Rules 的作用域条、Targets 的
 			    分区列表都换装,顶栏这排纹丝不动 —— 两者常常同屏,比"全都不生效"更露馅。 */}
 			<nav data-bn="nav" className="relative flex gap-0 px-5 pt-3">
-				{shownNav.map((t) => (
-					<NavLink
-						key={t.to}
-						to={t.to}
-						end
-						data-bn="btn"
-						className={({ isActive }) =>
-							`relative flex items-center gap-1.5 px-4 py-2.5 text-bn-base transition ${
-								isActive
+				{shownNav.map((t) => {
+					// data-bn 是静态属性,NavLink 的 isActive 回调塞不进去 —— 选中态自己算。
+					// `end` 语义 = 精确匹配,NAV_ITEMS 的 to 都是静态顶级路径,直接比对等价。
+					const navActive = pathname === t.to;
+					return (
+						<NavLink
+							key={t.to}
+							to={t.to}
+							end
+							// tab 家族挂点(曾挂 btn,皮肤按钮实底把整排一级导航画成一排按钮)。
+							data-bn={navActive ? "tab tab-active" : "tab"}
+							className={`relative flex items-center gap-1.5 px-4 py-2.5 text-bn-base transition ${
+								navActive
 									? "font-bold text-bn-pink"
 									: "font-medium text-bn-text-tertiary hover:text-bn-text-primary"
-							}`
-						}
-					>
-						{({ isActive }) => (
-							<>
-								{t.label}
-								{t.countKey ? (
-									<span
-										className={`rounded-lg px-1.5 py-px text-bn-2xs font-bold ${
-											isActive
-												? "bg-bn-pink/15 text-bn-pink"
-												: "bg-bn-code-bg text-bn-text-secondary"
-										}`}
-									>
-										{counts[t.countKey]}
-									</span>
-								) : null}
+							}`}
+						>
+							{t.label}
+							{t.countKey ? (
 								<span
-									className={`absolute inset-x-2 -bottom-px h-0.5 rounded-full transition ${
-										isActive ? "bg-bn-pink" : "bg-transparent"
+									className={`rounded-lg px-1.5 py-px text-bn-2xs font-bold ${
+										navActive
+											? "bg-bn-pink/15 text-bn-pink"
+											: "bg-bn-code-bg text-bn-text-secondary"
 									}`}
-								/>
-							</>
-						)}
-					</NavLink>
-				))}
+								>
+									{counts[t.countKey]}
+								</span>
+							) : null}
+							<span
+								className={`absolute inset-x-2 -bottom-px h-0.5 rounded-full transition ${
+									navActive ? "bg-bn-pink" : "bg-transparent"
+								}`}
+							/>
+						</NavLink>
+					);
+				})}
 				{/* 挑标签的入口。贴在导航条右端 —— 它讲的就是这一条的事,摆在别处得先
 				    让人找。图标按钮而非文字,免得这个「让界面别那么满」的功能自己先占一格。 */}
 				<div className="relative ml-auto self-center">

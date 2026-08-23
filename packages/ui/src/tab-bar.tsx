@@ -46,9 +46,10 @@ export function TabButton({ active, onClick, icon, children, code, title, role }
 			onClick={onClick}
 			title={title}
 			{...tabRole}
-			// 挂点跟 Btn 同口径 —— 这排按钮此前一个 hook 都没有,选中态的粉还写在
-			// inline style 上,而 inline 压过一切 author 样式,皮肤连覆盖的机会都没有。
-			data-bn={active ? "btn btn-primary" : "btn"}
+			// 挂点走 tab 家族(曾挂 btn/btn-primary,皮肤的按钮实底把整排 tab 画成
+			// 一排按钮 —— 2026-08-23 主人真机指出)。挂点本身不能少:这排按钮更早
+			// 连 hook 都没有,选中态的粉还写在 inline style 上,皮肤连覆盖的机会都没有。
+			data-bn={active ? "tab tab-active" : "tab"}
 			className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-bn-sm font-bold transition ${
 				active
 					? "bg-bn-pink text-bn-on-solid shadow-bn-accent"

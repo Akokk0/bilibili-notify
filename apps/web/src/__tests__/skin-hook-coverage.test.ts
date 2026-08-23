@@ -34,16 +34,20 @@ const SCAN_ROOTS = [join(REPO, "apps/web/src"), join(REPO, "packages/ui/src")];
  */
 const UNHOOKED: Record<string, { count: number; why: string }> = {
 	"packages/ui/src/atoms.tsx": {
-		count: 2,
-		why: "Toggle 轨道(皮肤实底会盖掉轨道底,开/关看不出来)+ MenuItem(菜单行不该吃按钮的实底,词表里也没有 menu-item 这一档)",
+		count: 4,
+		why: "Toggle 轨道(皮肤实底会盖掉轨道底,开/关看不出来)+ MenuItem(菜单行不该吃按钮的实底,词表里也没有 menu-item 这一档)+ AddButton/AddCard(虚线=空位是语义本体,皮肤实底会把空位画成真按钮 —— 2026-08-23 主人真机指出后定案)",
 	},
 	"apps/web/src/components/drag-handle.tsx": {
 		count: 1,
 		why: "裸 ⠿ 字形,挂上会被皮肤画成一个方块",
 	},
 	"apps/web/src/components/scope-tabs.tsx": {
-		count: 2,
-		why: "无外观的触发器 + 弹层底部的「取消」条(它是一条分隔线下的收尾,不是按钮)",
+		count: 3,
+		why: "无外观的触发器 + 弹层底部的「取消」条(它是一条分隔线下的收尾,不是按钮)+ 「添加 UP」虚线 chip(虚线=空位,同 AddButton 那条)",
+	},
+	"apps/web/src/components/forms.tsx": {
+		count: 1,
+		why: "AddRowButton 列表末尾的虚线添加行(虚线=空位,同 AddButton 那条)",
 	},
 	"apps/web/src/components/draft-island.tsx": { count: 1, why: "岛内草稿列表的行" },
 	"apps/web/src/components/ai-chat/composer.tsx": { count: 1, why: "命令面板的候选行" },
