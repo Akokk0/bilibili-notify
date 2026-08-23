@@ -13,6 +13,8 @@ import {
 	SKIN_CSS_HOOK_NOTES,
 	SKIN_CSS_PROP_NOTES,
 	SKIN_LIMITS,
+	SKIN_PSEUDO_NOTES,
+	SKIN_RADIUS_NOTES,
 	type SkinManifest,
 } from "@bilibili-notify/contract";
 import { referencedAssets } from "./package.js";
@@ -119,10 +121,10 @@ ${SKIN_BEST_PRACTICES}
 
 - 选择器只准 [data-bn="<挂点>"] 配伪类/伪元素/组合器。挂点就这些,各自长这样:
 ${HOOK_LIST}
-- **胶囊/正圆圆角(border-radius 999px、50%)只准给按钮、头像这类矮元素**;容器类挂点(page / glass / glass-strong / nav / header / modal)圆角别超过 24px —— 容器有高瘦形态,套上 999px 会鼓成一个大椭圆
+${SKIN_RADIUS_NOTES}
 ${SKIN_CSS_PROP_NOTES}
-- 禁 url()(图走字段,CSS 里写了会被剔除);position **只准写在伪元素上**(值限 static/relative/absolute)—— 宿主本身的 position 归站内布局管,写了会被剔除(站内顶栏靠 sticky 吸顶,被顶掉就散架);伪元素 content 只准 "" 或 none
-- 伪元素只管装饰,三件事**不用你操心**:pointer-events、z-index、宿主的定位与层叠上下文。清洗层一律替你补 pointer-events:none + z-index:-1 —— 装饰永远在宿主内容**之下**:压在上面会吃掉点击(整页按钮点不动)、也会把文字按钮糊成一片发虚。宿主那边该有的 position:relative 也自动给。别浪费声明去写它们
+- 禁 url()(图走字段,CSS 里写了会被剔除)
+${SKIN_PSEUDO_NOTES}
 - @keyframes 名必须以 skin- 开头;可用 @media (prefers-reduced-motion) 做降级
 
 只输出 skin.json 的 JSON 内容,不要解释,不要代码块围栏。`;

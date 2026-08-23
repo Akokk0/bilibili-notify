@@ -9,6 +9,8 @@ import {
 	SKIN_CSS_HOOK_NOTES,
 	SKIN_CSS_PROP_NOTES,
 	SKIN_LIMITS,
+	SKIN_PSEUDO_NOTES,
+	SKIN_RADIUS_NOTES,
 } from "@bilibili-notify/contract";
 import { strToU8, zipSync } from "fflate";
 
@@ -47,8 +49,10 @@ ${colorLines}
   —— 亮色 + 艳壁纸的经典配方:overlay 0.3~0.4 + blur 8~16。卡内列表行**默认全透明**(内容直接画在玻璃上,区块玻璃卡是唯一一层,别叠第二层),只有刻意要行条底/描边时才配 colors.listRow / colors.listRowBorder
 - glass: { background, border, strongBackground, strongBorder, blur: ${SKIN_LIMITS.glassBlur.min}~${SKIN_LIMITS.glassBlur.max}, strongBlur: ${SKIN_LIMITS.glassBlur.min}~${SKIN_LIMITS.glassBlur.max} } —— 玻璃面板的底色(带透明度的颜色)与模糊度;默认装玻璃卡**无描边**(卡片风,层次靠 shadows),border 对只在刻意要描边风格(如暗色霓虹边)时才配 —— 亮色/玻璃感皮肤一律不配描边
 - chat: { background, wallpaper } —— AI 聊天页专属背景。皮肤生效时聊天页整体换装(默认四色预设隐藏):强调色自动跟随 colors.accent、玻璃件直接用 glass 段参数,chat 段**只管背景**且缺省透出整页皮肤底,所以**通常不用写这段**;只在聊天页想要独立底色/独立壁纸时才配。wallpaper 与整页壁纸同构(image/fit/position/overlay/blur),image 同样只准引用包内 assets
-- fonts.body: 字体名数组(1~${SKIN_LIMITS.maxFonts} 个)
+- fonts.body: 字体名数组(1~${SKIN_LIMITS.maxFonts} 个),只准字母/数字/空格/点/连字符,别加引号;拿不准就整个不写
+- fonts.asset: 用户自己传进包里的字体文件(assets/ 下的 woff2/woff/ttf/otf);设了就排在 fonts.body 之前
 - radius: { card: ${SKIN_LIMITS.radiusCard.min}~${SKIN_LIMITS.radiusCard.max}, pill: ${SKIN_LIMITS.radiusPill.min}~${SKIN_LIMITS.radiusPill.max} }
+- railWidth: ${SKIN_LIMITS.railWidth.min}~${SKIN_LIMITS.railWidth.max} px —— 五个带左侧分区栏的页面那条栏有多宽;窄屏那条栏会变成横条,写了也不生效,没特别理由就别写
 - shadows: { card, elev } —— 卡片/悬浮两档阴影,值如 "0 10px 30px rgba(57, 197, 187, 0.25)";用带颜色的阴影能做出霓虹辉光感
 - effects: 动效预设(自动尊重系统减少动效设置),两道可选:
   - glassShine: { color? } —— 玻璃卡辉光呼吸游走,默认主强调色
@@ -64,10 +68,10 @@ ${colorLines}
 ${Object.values(SKIN_CSS_HOOK_NOTES)
 	.map((note) => `  - ${note}`)
 	.join("\n")}
-- **胶囊/正圆圆角(border-radius 999px、50%)只准给按钮、头像这类矮元素**;容器类挂点(page / glass / glass-strong / nav / header / modal)圆角别超过 24px —— 容器有高瘦形态,套上 999px 会鼓成一个大椭圆
+${SKIN_RADIUS_NOTES}
 ${SKIN_CSS_PROP_NOTES}
 - **禁 url()**(以及 image-set/element/src)—— 图片一律走 wallpaper 字段,CSS 里写了会被逐条剔除
-- position 只准 static/relative/absolute;伪元素 content 只准 "" 或 none
+${SKIN_PSEUDO_NOTES}
 - 动画用 @keyframes,**名字必须以 skin- 开头**(如 @keyframes skin-float),再在 animation 里引用;可用 @media (prefers-reduced-motion) 做无动效降级
 - 违禁项不会导致整包被拒,但会被逐条静默丢弃 —— 别浪费笔墨写白名单外的东西
 

@@ -253,6 +253,26 @@ export const SKIN_CSS_PROP_NOTES = `- 属性走视觉白名单:background/border
 - 做**像素风**就在 page 挂点写 image-rendering:pixelated —— 白名单里唯一继承的属性,写一处整站关掉平滑插值,壁纸与头像才有硬点阵边`;
 
 /**
+ * 圆角的挂点分寸 —— 同上一条的理由,两份提示词里此前逐字节各存一份。
+ *
+ * 这条是**真机验收得来的**(2026-08-18 首次实测:nav 挂点写 999px,那条竖栏鼓成
+ * 一个大椭圆),不是审美偏好 —— 所以它属于「硬事实」那一类,两条造皮肤的路都得教。
+ */
+export const SKIN_RADIUS_NOTES = `- **胶囊/正圆圆角(border-radius 999px、50%)只准给按钮、头像这类矮元素**;容器类挂点(page / glass / glass-strong / nav / header / modal)圆角别超过 24px —— 容器有高瘦形态,套上 999px 会鼓成一个大椭圆`;
+
+/**
+ * 宿主与伪元素的分工 —— 同上一条的理由,而这一条**已经漂坏过**:服务端讲的是
+ * 「position 只准写在伪元素上」,web 那份还停在更早的「只准 static/relative/absolute」,
+ * 于是从「粘贴到任意 AI」那条路造出来的皮肤会理直气壮地给宿主写 position,
+ * 而清洗层一句不留地剔掉它(顶栏靠 sticky 吸顶,被顶掉就散架 —— 那正是这道闸的由来)。
+ * 「伪元素三件事不用操心」那段更是只有服务端有,web 那条路的 AI 一直在浪费声明。
+ *
+ * 两处的差别不会让任何测试变红,只会让主人拿到一套「写了却不生效」的皮肤。
+ */
+export const SKIN_PSEUDO_NOTES = `- position **只准写在伪元素上**(值限 static/relative/absolute)—— 宿主本身的 position 归站内布局管,写了会被剔除(站内顶栏靠 sticky 吸顶,被顶掉就散架);伪元素 content 只准 "" 或 none
+- 伪元素只管装饰,三件事**不用你操心**:pointer-events、z-index、宿主的定位与层叠上下文。清洗层一律替你补 pointer-events:none + z-index:-1 —— 装饰永远在宿主内容**之下**:压在上面会吃掉点击(整页按钮点不动)、也会把文字按钮糊成一片发虚。宿主那边该有的 position:relative 也自动给。别浪费声明去写它们`;
+
+/**
  * 动效预设(每套 mode 独立;全部自动尊重 prefers-reduced-motion)。
  * 有对象即开启;字段缺省走各自默认。
  * 注:曾有 backgroundFlow(页面背景流动,整页重绘卡顿)与 particles(粒子飘落,
