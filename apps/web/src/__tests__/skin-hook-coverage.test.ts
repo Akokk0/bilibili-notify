@@ -45,9 +45,9 @@ const UNHOOKED: Record<string, { count: number; why: string }> = {
 		count: 3,
 		why: "无外观的触发器 + 弹层底部的「取消」条(它是一条分隔线下的收尾,不是按钮)+ 「添加 UP」虚线 chip(虚线=空位,同 AddButton 那条)",
 	},
-	"apps/web/src/components/forms.tsx": {
+	"packages/ui/src/form-controls.tsx": {
 		count: 1,
-		why: "AddRowButton 列表末尾的虚线添加行(虚线=空位,同 AddButton 那条)",
+		why: "AddRowButton 列表末尾的虚线添加行(虚线=空位,同 AddButton 那条;随 T 系列升库从 forms.tsx 搬来)",
 	},
 	"apps/web/src/components/provider-picker.tsx": {
 		count: 1,

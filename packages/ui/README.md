@@ -46,6 +46,16 @@
 
 **提示盒三兄弟(`ErrorNote` / `WarnNote` / `EmptyNote`)共用一套尺寸阶梯** —— `sm` = `rounded-md` 11.5px、`md` = `rounded-lg` 12.5px、`lg` = `rounded-xl` 13px。它们说的是同一类话,只该差颜色不该差形状;此前三个各写各的,同一个弹窗里「保存失败」与「有几处没照办」长成两种控件。阶梯**只管圆角与字号**,内边距各归各的(空态盒撑满面板留白、红盒挤在字段之间,那是位置不是漂移)。`packages/ui/src/__tests__/note-family.test.tsx` 钉着这条。
 
+### 表单受控件(form-controls)
+
+| 组件 | 干什么 / 长什么样 |
+| --- | --- |
+| `TInput` / `TArea` / `TNum` / `TSelect` / `TColor` | 设置表单的 T 系列受控件:全部自带 `data-bn="input"` 挂点与 `bg-bn-field` 底;`secret` 走 password 型防明文;`ariaLabel` **不是装饰**(label 包裹场景读屏器会念整段提示);定宽走 `width` 数字(没装 tailwind-merge,`w-*` 类压不掉基线)。与 `Input` 的分工:`Input` 是带图标槽的搜索框原语,T 系列是设置表单家族 |
+| `Picker` | 通用段选钮组(选项 ≤ ~5 用它别用 TSelect):挂 chip/chip-active、带 `aria-pressed`;`color` 是逐项语义色 |
+| `ArrayEditor` / `QuietHoursEditor` | 「一列可增删的行」的两个特化:字符串行 / 免扰时段(0-23 整点对,跨午夜 start>end)。行号徽标 / 移除钮 / 虚线添加钮是**不导出**的实现细节 |
+
+缠业务字典的两件**刻意不在库里**:`Field`(FIELD_LABELS code 体系 + data-code 灵动岛锚点)与 `LogLevelPicker`(LOG_LEVEL_TONE 色表)住 `apps/web/src/components/forms.tsx`,那边同时转口本节全部导出。
+
 ### 玻璃卡
 
 | 组件 | 干什么 / 长什么样 |
