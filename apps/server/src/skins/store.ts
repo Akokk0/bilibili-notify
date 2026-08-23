@@ -8,6 +8,8 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SkinListEntry, SkinManifest } from "@bilibili-notify/contract";
+import { FONT_EXT_TO_MIME } from "../runtime/font-mime.js";
+import { EXT_TO_MIME } from "../runtime/image-mime.js";
 import { ASSET_NAMES_FILE, parseAssetNames, sanitizeAssetLabel } from "./asset-names.js";
 import { MAX_ASSET_BYTES, MAX_FONT_BYTES, MAX_SKIN_ASSETS } from "./package.js";
 import { isSkinAssetName } from "./schema.js";
@@ -28,11 +30,16 @@ interface SavedSkin {
  */
 export { MAX_SKIN_ASSETS };
 
-/** 包内图片的扩展名白名单,与 schema.ts 的 WALLPAPER_IMAGE_RE 同口径(无 SVG)。 */
-const SKIN_ASSET_EXTS = new Set(["png", "jpg", "jpeg", "webp"]);
-
-/** 包内字体的扩展名白名单,与 schema.ts 的 SKIN_FONT_FILE_RE 同口径。 */
-const SKIN_FONT_EXTS = new Set(["woff2", "woff", "ttf", "otf"]);
+/**
+ * 包内资产的扩展名白名单 —— **从两张 mime 表现取**,不再手抄一份。
+ *
+ * 那两张表是回读时定 content-type 的依据(`routes/skins.ts` 就是拿它们判的),
+ * 各自都在文件头声明自己是唯一一份。这儿再抄一遍的话,加一种格式(比如 avif)
+ * 就得改两处,而漏掉这一处的症状很别扭:**路由收下了上传,`addAsset` 转头抛
+ * 「不支持的文件类型」** —— 一个 400,却没有半个字提示是两张表不同意。
+ */
+const SKIN_ASSET_EXTS = new Set(Object.keys(EXT_TO_MIME));
+const SKIN_FONT_EXTS = new Set(Object.keys(FONT_EXT_TO_MIME));
 
 /**
  * 报错文案用的模式名。跟**界面**的说法走(`apps/web` 的 skin-edit.ts 写的是
