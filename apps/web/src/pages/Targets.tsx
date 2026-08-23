@@ -1022,13 +1022,13 @@ function QQSessionPicker({
 	const list = (data ?? []).filter((e) => e.scope === scope);
 	const label = scope === "group" ? "群" : "用户";
 	return (
-		<div className="mt-1.5 rounded-md border border-dashed border-bn-border px-2.5 py-2">
-			<div className="mb-1 flex items-center justify-between">
-				<span className="text-bn-xs font-bold text-bn-text-secondary">发现的{label}会话</span>
-				<Btn variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching}>
-					{isFetching ? "刷新中…" : "刷新"}
-				</Btn>
-			</div>
+		<CandidateBox
+			title={`发现的${label}会话`}
+			actionLabel="刷新"
+			pendingLabel="刷新中…"
+			pending={isFetching}
+			onAction={() => refetch()}
+		>
 			{isLoading ? (
 				<div className="text-bn-xs text-bn-text-tertiary">加载中…</div>
 			) : isError ? (
@@ -1059,7 +1059,7 @@ function QQSessionPicker({
 					))}
 				</div>
 			)}
-		</div>
+		</CandidateBox>
 	);
 }
 
@@ -1082,13 +1082,13 @@ function QQGuildPicker({
 	const guilds = data ?? [];
 	const fetched = fetchStatus === "idle" && data !== undefined;
 	return (
-		<div className="mt-1.5 rounded-md border border-dashed border-bn-border px-2.5 py-2">
-			<div className="mb-1 flex items-center justify-between">
-				<span className="text-bn-xs font-bold text-bn-text-secondary">频道子频道列表</span>
-				<Btn variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching}>
-					{isFetching ? "拉取中…" : "拉取频道"}
-				</Btn>
-			</div>
+		<CandidateBox
+			title="频道子频道列表"
+			actionLabel="拉取频道"
+			pendingLabel="拉取中…"
+			pending={isFetching}
+			onAction={() => refetch()}
+		>
 			{isError ? (
 				<div className="text-bn-xs text-bn-danger">拉取失败(适配器是否已保存且凭据正确?)</div>
 			) : !fetched ? (
@@ -1123,6 +1123,38 @@ function QQGuildPicker({
 					))}
 				</div>
 			)}
+		</CandidateBox>
+	);
+}
+
+/**
+ * 候选拉取盒 —— 虚线盒 + 「标题 + ghost 触发钮」头行。QQ 会话与频道两个选择器
+ * 此前各抄一份,连 mb-1 的头行都逐字符相同;拉取状态与候选列表由调用方摆。
+ */
+function CandidateBox({
+	title,
+	actionLabel,
+	pendingLabel,
+	pending,
+	onAction,
+	children,
+}: {
+	title: string;
+	actionLabel: string;
+	pendingLabel: string;
+	pending: boolean;
+	onAction: () => void;
+	children: ReactNode;
+}) {
+	return (
+		<div className="mt-1.5 rounded-md border border-dashed border-bn-border px-2.5 py-2">
+			<div className="mb-1 flex items-center justify-between">
+				<span className="text-bn-xs font-bold text-bn-text-secondary">{title}</span>
+				<Btn variant="ghost" size="sm" onClick={onAction} disabled={pending}>
+					{pending ? pendingLabel : actionLabel}
+				</Btn>
+			</div>
+			{children}
 		</div>
 	);
 }
