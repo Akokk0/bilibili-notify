@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { sanitizeSkinCss } from "../css-sanitizer.js";
+import { MAX_SKIN_CSS_BYTES, sanitizeSkinCss } from "../css-sanitizer.js";
 
 /** 数一个片段出现几次 —— 「清洗完只该剩一条」这类断言全靠它。 */
 function countOf(haystack: string, needle: string): number {
@@ -286,6 +286,25 @@ describe("宿主的 position 不归皮肤管", () => {
 		expect(css).toContain("position:absolute");
 	});
 
+	/**
+	 * keyframe 块被整体按「伪元素」记账(`{ pseudo: true }`),好让装饰层的动画照旧
+	 * 能动 position。可动画是**挂得到宿主身上**的:一句 `animation:skin-x 1s` 写在
+	 * `[data-bn="header"]` 上,那段 keyframes 里的 position 就落在顶栏本人身上,
+	 * 而动画来源的声明优先级**高于**普通作者声明 —— `position:sticky` 照样被顶掉,
+	 * 正是这道闸要拦的「顶栏散架」。opacity 那两条早就为此把 keyframes 排除在
+	 * 「装饰」之外了,position 这条漏了。
+	 */
+	it("keyframes 里的 position 一样拒收 —— 那段动画挂得到宿主身上", () => {
+		const { css, warnings } = ok(
+			`@keyframes skin-x{0%{position:relative}100%{position:relative}}` +
+				`[data-bn="header"]{animation:skin-x 1s infinite}`,
+		);
+		expect(css).not.toContain("position");
+		expect(warnings.some((w) => w.includes("position"))).toBe(true);
+		// 动画本身不是罪 —— 拒的只是那一句 position。
+		expect(css).toContain("animation:skin-x 1s infinite");
+	});
+
 	it("不再往产物里塞宿主定位那条规则(那活儿搬去注入层了)", () => {
 		const { css } = ok(`[data-bn="glass"]::before{content:"";position:absolute;inset:0}`);
 		expect(css).not.toContain("{position:relative}");
@@ -378,6 +397,31 @@ describe("hook 白名单不许绕开", () => {
 		const { css } = ok(`[data-bn="glass"]:hover { background: #000; }`);
 		expect(css).toContain('[data-bn="glass"]:hover');
 	});
+
+	/**
+	 * 上面那三条只验了**没有** hook 的形状,于是「至少有一个 hook」这个判据看着够用。
+	 * 可 hook 管的是它自己那一段 —— 后代组合器一跨,后面那段就自由了:
+	 * `[data-bn="page"] :hover` 挂着 hook、每个件都在白名单里、`hooks > 0` 通过,
+	 * 而 `page` 映射到 `body`,这条选中的是**页面上每一个元素**,跟裸 `:hover` 一模
+	 * 一样。判据得改成「每一段都得有 hook」。
+	 */
+	it("组合器后面那段光秃秃 → 整条丢弃,别让 hook 只管住第一段", () => {
+		for (const evil of [
+			`[data-bn="page"] :hover { background: #f00; }`,
+			`[data-bn="page"] :nth-child(n) { background: #f00; }`,
+			`[data-bn="page"]>:hover { background: #f00; }`,
+			`[data-bn="page"] ::before { content: ""; }`,
+		]) {
+			const { css, warnings } = ok(evil);
+			expect(css).toBe("");
+			expect(warnings.join()).toContain("不在 hook 白名单");
+		}
+	});
+
+	it("每段都挂着 hook 的后代选择器照旧放行", () => {
+		const { css } = ok(`[data-bn="glass"] [data-bn="btn"]:hover { background: #000; }`);
+		expect(css).toContain('[data-bn="btn"]');
+	});
 });
 
 describe("!important 一律摘掉", () => {
@@ -422,5 +466,43 @@ describe("宿主不许隐身 —— 补漏", () => {
 		const { css, warnings } = ok(`[data-bn="glass"] { filter: opacity(0.9) opacity(0.8); }`);
 		expect(css).toContain("filter:opacity(0.9) opacity(0.8)");
 		expect(warnings).toEqual([]);
+	});
+});
+
+/**
+ * 上限这道闸只量了**输入**,而清洗器自己会往产物里加东西:每条装饰规则都补上
+ * 「压在内容之下」那两句。存盘的又是**清洗后的产物**(这一层的口径),于是它下一次
+ * 提交时量的是长出来的那份 —— 一套写得够满的皮肤能存进去,却再也改不动、
+ * 连自己导出的 zip 都传不回来。
+ *
+ * 判据因此得落在产物上:**存得进去的,一定还能再存一次。**
+ */
+describe("上限量的是存盘那份", () => {
+	/** 装饰规则,每条 44 字节;清洗后每条还要补上 pointer-events / z-index 两句。 */
+	function decorations(count: number): string {
+		return Array.from(
+			{ length: count },
+			(_, i) => `[data-bn="glass"]::before{content:"";inset:${i}px}`,
+		).join("");
+	}
+
+	it("原文没超、清洗后超了 → 拒收,并说清超的是清洗后那份", () => {
+		const input = decorations(1200);
+		expect(Buffer.byteLength(input, "utf8")).toBeLessThan(MAX_SKIN_CSS_BYTES);
+		const res = sanitizeSkinCss(input);
+		expect(res.ok).toBe(false);
+		if (res.ok) return;
+		expect(res.errors.join()).toContain("清洗后");
+	});
+
+	it("放行的产物再清洗一遍还是原样 —— 存进去的就一定还能再存一次", () => {
+		const first = sanitizeSkinCss(decorations(400));
+		expect(first.ok).toBe(true);
+		if (!first.ok) return;
+		expect(Buffer.byteLength(first.css, "utf8")).toBeLessThanOrEqual(MAX_SKIN_CSS_BYTES);
+		const second = sanitizeSkinCss(first.css);
+		expect(second.ok).toBe(true);
+		if (!second.ok) return;
+		expect(second.css).toBe(first.css);
 	});
 });

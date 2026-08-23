@@ -206,17 +206,27 @@ function forceDecorationBehindContent(rule: Rule): void {
 }
 
 /**
- * 单个 Selector(逗号列表的一支)是否全由白名单件组成,**且真的挂着 hook**。
+ * 单个 Selector(逗号列表的一支)是否全由白名单件组成,**且每一段都挂着 hook**。
  *
- * 后半句是硬要求:光问「每个节点是不是白名单里的件」的话,`:hover` / `::before`
- * 这种一个 hook 都没有的选择器会全票通过 —— 而它命中的是页面上**每一个**元素,
- * 整个 hook 契约当场绕开(2026-08-19 审计实测放行)。
+ * 后半句是硬要求,而且「每一段」这三个字是要紧的:
+ *
+ * - 光问「每个节点是不是白名单里的件」的话,`:hover` / `::before` 这种一个 hook
+ *   都没有的选择器会全票通过 —— 它命中的是页面上**每一个**元素(2026-08-19 审计
+ *   实测放行)。
+ * - 只问「整支里有没有 hook」也不够:hook 管的只是它自己那一段,组合器一跨,后面
+ *   那段就自由了。`[data-bn="page"] :hover` 有 hook、件件白名单,而 `page` 映射
+ *   到 `body` —— 这条同样命中每一个元素,跟裸 `:hover` 一模一样(2026-08-24 审计
+ *   实测放行)。
+ *
+ * 所以判据是**逐段**问:每个复合段(组合器切开的那一截)里都得有至少一个 hook。
  */
 function isAllowedSelector(selector: CssNode): boolean {
 	if (selector.type !== "Selector") return false;
 	let ok = true;
 	let parts = 0;
-	let hooks = 0;
+	/** 当前这一段(上一个组合器之后)里数到的 hook 数。 */
+	let hooksHere = 0;
+	let everySegmentHooked = true;
 	selector.children.forEach((node: CssNode) => {
 		parts += 1;
 		switch (node.type) {
@@ -230,7 +240,7 @@ function isAllowedSelector(selector: CssNode): boolean {
 				) {
 					ok = false;
 				} else {
-					hooks += 1;
+					hooksHere += 1;
 				}
 				break;
 			}
@@ -241,19 +251,24 @@ function isAllowedSelector(selector: CssNode): boolean {
 				if (!PSEUDO_ELEMENTS.has(node.name.toLowerCase())) ok = false;
 				break;
 			case "Combinator":
+				// 一段到此为止 —— 结账,重新开一段。
+				if (hooksHere === 0) everySegmentHooked = false;
+				hooksHere = 0;
 				break;
 			default:
 				ok = false;
 		}
 	});
-	return ok && parts > 0 && hooks > 0;
+	if (hooksHere === 0) everySegmentHooked = false; // 最后一段
+	return ok && parts > 0 && everySegmentHooked;
 }
 
 /**
  * 声明级过滤;返回 null = 放行,字符串 = 丢弃原因。
  *
- * `scope.pseudo` = 这条规则瞄的是伪元素。宿主的 `position` 一律拒收(理由见
- * {@link filterRuleList} 上方那段),伪元素自己的照旧放行。
+ * `scope.pseudo` = 这条规则瞄的是伪元素,`scope.keyframes` = 它在 @keyframes 里。
+ * 「装饰」= 伪元素**且不在** keyframes 里;宿主的 `position` 与低 `opacity` 一律
+ * 拒收(理由见 {@link filterRuleList} 上方那段),装饰自己的照旧放行。
  */
 function rejectDeclaration(decl: Declaration, scope: DeclScope): string | null {
 	const prop = decl.property.toLowerCase();
@@ -266,9 +281,16 @@ function rejectDeclaration(decl: Declaration, scope: DeclScope): string | null {
 	for (const bad of FORBIDDEN_VALUE) {
 		if (value.includes(bad)) return `属性 ${prop} 的值含 ${bad.slice(0, -1)}()`;
 	}
-	// 装饰层随便淡 —— 它 pointer-events:none 且压在内容之下,淡到看不见也骗不到人。
-	// keyframes 不算装饰:同一段动画挂得到宿主身上。
-	if (!(scope.pseudo && !scope.keyframes)) {
+	// **谁算「装饰」,只准有这一处口径。** 装饰层随便淡、随便定位 —— 它
+	// pointer-events:none 且压在内容之下,骗不到人。keyframes 不算装饰:同一段
+	// 动画挂得到宿主身上,而动画来源的声明优先级还压着普通作者声明。
+	//
+	// 这个判断以前在下面 position 那支被抄成了 `!scope.pseudo`(漏掉 keyframes),
+	// 于是 `@keyframes skin-x{0%{position:relative}}` + 挂到 header 上,顶栏的
+	// `position:sticky` 照样被顶掉 —— 正是这道闸要拦的那件事。抄第二遍就是它破的
+	// 方式,所以收成一个变量。
+	const decoration = scope.pseudo && !scope.keyframes;
+	if (!decoration) {
 		if (prop === "opacity") {
 			const n = literalOpacity(value);
 			if (n === null || n < HOST_OPACITY_FLOOR) {
@@ -288,7 +310,11 @@ function rejectDeclaration(decl: Declaration, scope: DeclScope): string | null {
 		}
 	}
 	if (prop === "position") {
-		if (!scope.pseudo) return `position 只归宿主本身的布局管,皮肤改不了(装饰层写在伪元素上)`;
+		if (!decoration) {
+			return scope.keyframes
+				? `position 不准写进 @keyframes —— 那段动画挂得到宿主身上,会顶掉它的布局`
+				: `position 只归宿主本身的布局管,皮肤改不了(装饰层写在伪元素上)`;
+		}
 		if (!POSITION_VALUES.has(value.trim())) return `position 只准 static/relative/absolute`;
 	}
 	if (prop === "content") {
@@ -340,7 +366,9 @@ function filterBlock(
 /** keyframes 内部:每个 keyframe 块只过声明白名单(from/to/百分比选择器无风险)。 */
 function filterKeyframes(atrule: Atrule, path: string, warnings: string[]): void {
 	atrule.block?.children.forEach((node: CssNode) => {
-		// keyframe 块里没有宿主/装饰之分,position 照旧只按值域判。
+		// `pseudo: true` 只是免掉「这条瞄的是谁」那一问(keyframe 块没有选择器);
+		// 一并带上 `keyframes: true`,它才是决定「不算装饰」的那一位 —— 这段动画
+		// 挂得到宿主身上,宿主那几条闸一条都不能松。
 		if (node.type === "Rule") filterBlock(node, path, warnings, { pseudo: true, keyframes: true });
 	});
 }
@@ -422,5 +450,20 @@ export function sanitizeSkinCss(input: string): SanitizeCssResult {
 
 	const warnings: string[] = [];
 	filterRuleList(ast, warnings);
-	return { ok: true, css: generate(ast), warnings };
+	const css = generate(ast);
+	// **上限量的是存盘那份。** 入口那道只是粗筛(别把超大输入送进解析器);真正
+	// 要守的是产物 —— 装饰规则会被补上「压在内容之下」那两句,产物比原文长。
+	// 存盘的又正是产物,只量输入的话,一套写得够满的皮肤存得进去、下一次提交
+	// (或者重新导入它自己导出的 zip)就被这道闸拒收,从此改不动也传不回来。
+	//
+	// 清洗是幂等的(那两句先删后加),所以「产物不超」就等于「它一定还能再存一次」。
+	if (Buffer.byteLength(css, "utf8") > MAX_SKIN_CSS_BYTES) {
+		return {
+			ok: false,
+			errors: [
+				`清洗后的 CSS 超过 ${MAX_SKIN_CSS_BYTES / 1024}KB 上限(装饰规则会补上压在内容之下的两句,产物比原文长一些)`,
+			],
+		};
+	}
+	return { ok: true, css, warnings };
 }
