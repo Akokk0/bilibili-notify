@@ -93,12 +93,24 @@ export interface BtnProps {
 	ariaExpanded?: boolean;
 }
 
-const VARIANT_CLS: Record<BtnVariant, string> = {
-	primary: "bg-bn-pink text-bn-on-solid border-transparent hover:opacity-90",
-	blue: "bg-bn-blue text-bn-on-solid border-transparent hover:opacity-90",
-	ghost: "bg-transparent text-bn-text-tertiary border-transparent hover:bg-bn-hover-muted",
-	outline: "bg-bn-surface text-bn-text-primary border-bn-border hover:bg-bn-surface-muted",
-	danger: "bg-transparent text-bn-danger border-transparent hover:bg-bn-danger/10",
+/**
+ * 每档的皮肤与外观。
+ *
+ * `solid` 与 `cls` **必须住在一起** —— 它就是「这档有没有实心语义底」这一件事,
+ * 而实心底决定 `data-bn` 挂不挂 `btn-primary`(理由见下面那段)。分成两张表时,
+ * 加一档要记得改两处,漏掉第二处的症状是**按钮在皮肤下整个隐形、而构建全绿** ——
+ * 那正是 About 爱发电按钮当年的车祸。同一张表就没有漏的余地。
+ */
+const VARIANTS: Record<BtnVariant, { cls: string; solid?: true }> = {
+	primary: { cls: "bg-bn-pink text-bn-on-solid border-transparent hover:opacity-90", solid: true },
+	blue: { cls: "bg-bn-blue text-bn-on-solid border-transparent hover:opacity-90", solid: true },
+	ghost: {
+		cls: "bg-transparent text-bn-text-tertiary border-transparent hover:bg-bn-hover-muted",
+	},
+	outline: {
+		cls: "bg-bn-surface text-bn-text-primary border-bn-border hover:bg-bn-surface-muted",
+	},
+	danger: { cls: "bg-transparent text-bn-danger border-transparent hover:bg-bn-danger/10" },
 	/**
 	 * `outline` 的危险语义兄弟 —— 带红描边的小钮(删除服务商 / 清除失效字体)。
 	 *
@@ -106,26 +118,23 @@ const VARIANT_CLS: Record<BtnVariant, string> = {
 	 * 都紧挨着说明文字。底仍是透明的 —— 行内小钮不该有实心底的分量;要实心红去用
 	 * `danger-solid`。
 	 */
-	"danger-outline":
-		"bg-transparent text-bn-danger-text border-bn-danger-border hover:bg-bn-danger-soft",
+	"danger-outline": {
+		cls: "bg-transparent text-bn-danger-text border-bn-danger-border hover:bg-bn-danger-soft",
+	},
 	/**
 	 * 确认弹窗里的「确认销毁」主钮 —— 实心红底,分量与 `primary` 对等。
 	 *
 	 * 实心语义底曾是禁区(会逼出皮肤够不着的写死白字,规矩记在 `Toast`),两个前提
 	 * 变了才放行:① 前景走 `--color-bn-on-solid` token,皮肤管得着;② 实心档一律入
-	 * 主按钮池(挂 `btn-primary`,见下方 SOLID_VARIANTS),皮肤会把强调实底盖回来,
-	 * 不会落进「中性浅底 + 实底前景」的隐形组合。行内小删除钮别用它,那是
-	 * `danger` / `danger-outline` 的地盘。
+	 * 主按钮池(`solid: true` → 挂 `btn-primary`),皮肤会把强调实底盖回来,不会落进
+	 * 「中性浅底 + 实底前景」的隐形组合。行内小删除钮别用它,那是 `danger` /
+	 * `danger-outline` 的地盘。
 	 */
-	"danger-solid": "bg-bn-danger text-bn-on-solid border-transparent hover:opacity-90",
+	"danger-solid": {
+		cls: "bg-bn-danger text-bn-on-solid border-transparent hover:opacity-90",
+		solid: true,
+	},
 };
-
-/**
- * 实心语义底的档 —— `data-bn` 要挂 `btn btn-primary` 双挂点。皮肤给 `btn` 刷中性底,
- * 只有 `btn-primary` 档会把强调实底盖回来;单挂 `btn` 的实心钮在皮肤下就是当年
- * About 爱发电按钮的隐形车(apps/web 的 skin-hook-coverage 测试盯着同一条规矩)。
- */
-const SOLID_VARIANTS: ReadonlySet<BtnVariant> = new Set(["primary", "blue", "danger-solid"]);
 
 const SIZE_CLS: Record<BtnSize, string> = {
 	sm: "h-[26px] px-2.5 text-xs",
@@ -154,8 +163,11 @@ export function Btn({
 			title={title}
 			aria-haspopup={ariaHasPopup}
 			aria-expanded={ariaExpanded}
-			data-bn={SOLID_VARIANTS.has(variant) ? "btn btn-primary" : "btn"}
-			className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${SIZE_CLS[size]} ${VARIANT_CLS[variant]} ${full ? "w-full" : "w-auto"}`}
+			// 实心语义底一律双挂 `btn btn-primary`:皮肤给 `btn` 刷中性底,只有
+			// `btn-primary` 档会把强调实底盖回来 —— 单挂 `btn` 的实心钮在皮肤下就是
+			// 当年 About 爱发电按钮那辆隐形车(skin-hook-coverage 盯着同一条规矩)。
+			data-bn={VARIANTS[variant].solid ? "btn btn-primary" : "btn"}
+			className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${SIZE_CLS[size]} ${VARIANTS[variant].cls} ${full ? "w-full" : "w-auto"}`}
 		>
 			{icon ? <span className="inline-flex shrink-0">{icon}</span> : null}
 			{children}
