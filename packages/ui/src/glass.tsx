@@ -7,6 +7,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 
+import { accentChip, accentRadial } from "./accent-surface";
 import { Spinner } from "./atoms";
 
 export interface GlassPanelProps {
@@ -38,11 +39,7 @@ export function GlassPanel({
 	children,
 	className,
 }: GlassPanelProps) {
-	const accentStyle: CSSProperties | undefined = accent
-		? {
-				background: `radial-gradient(circle at top right, color-mix(in srgb, ${accent} 12%, transparent), transparent 70%)`,
-			}
-		: undefined;
+	const accentStyle: CSSProperties | undefined = accent ? accentRadial(accent) : undefined;
 	return (
 		// flex-col + 下面 body 的 flex-1:让面板正文吃满卡片高度。栅格里的卡片会被
 		// 拉到与最高的兄弟等高,若正文只按内容高度排,矮内容(如热力图)下方就留一大片空白。
@@ -58,10 +55,7 @@ export function GlassPanel({
 					{icon && accent ? (
 						<div
 							className="flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-bn-card text-bn-on-solid"
-							style={{
-								background: `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} 80%, transparent))`,
-								boxShadow: `0 4px 12px color-mix(in srgb, ${accent} 33%, transparent)`,
-							}}
+							style={accentChip(accent)}
 						>
 							{icon}
 						</div>

@@ -6,6 +6,7 @@
  */
 
 import type { CSSProperties, ReactNode } from "react";
+import { accentChip, accentRadial } from "./accent-surface";
 import { Pill, Toggle } from "./atoms";
 
 export interface GlassBoxProps {
@@ -31,18 +32,13 @@ export function GlassBox({
 	children,
 	className,
 }: GlassBoxProps) {
-	const accentRadial: CSSProperties = {
-		background: `radial-gradient(circle at top right, color-mix(in srgb, ${accent} 12%, transparent), transparent 70%)`,
-	};
-	const iconChip: CSSProperties = {
-		background: `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} 80%, transparent))`,
-		boxShadow: `0 4px 12px color-mix(in srgb, ${accent} 33%, transparent)`,
-	};
+	const radial = accentRadial(accent);
+	const iconChip = accentChip(accent);
 	return (
 		<div
 			className={`bn-glass relative overflow-hidden rounded-bn-card shadow-bn-card ${className ?? ""}`}
 		>
-			<div className="pointer-events-none absolute right-0 top-0 h-40 w-40" style={accentRadial} />
+			<div className="pointer-events-none absolute right-0 top-0 h-40 w-40" style={radial} />
 			<div className="relative flex items-center gap-3 border-b border-bn-border-subtle px-[18px] pb-3 pt-3.5">
 				{icon ? (
 					<div
