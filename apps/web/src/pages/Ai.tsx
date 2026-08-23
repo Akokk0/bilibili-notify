@@ -56,6 +56,7 @@ import {
 	TInput,
 	TNum,
 } from "../components/forms";
+import { HeroStrip } from "../components/hero-strip";
 import { PROVIDER_BRANDS, ProviderLogo } from "../components/provider-logos";
 import { ProviderPicker } from "../components/provider-picker";
 import { AI_PURPLE } from "../config/colors";
@@ -453,26 +454,20 @@ export default function Ai() {
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
 			{/* Hero strip。总开关是页面级的 —— 它既不属于某一家服务商,也不属于某一份人格。 */}
-			<div className="bn-glass bn-hero-tint relative rounded-bn-card p-5 shadow-bn-card">
-				<div className="flex items-center gap-3.5">
-					{/* h-13/w-13 = 52px。此前 class 与 inline 的 width/height 把同一个尺寸
-					    写了两遍(inline 那份赢),留 class 这一份就够。 */}
-					<div className="bn-hero-badge grid h-13 w-13 shrink-0 place-items-center rounded-2xl text-bn-on-solid">
-						<Icon.ai size={26} />
-					</div>
-					<div className="flex-1">
-						<div className="flex items-center gap-2 text-bn-md font-bold text-bn-text-primary">
-							智能女仆 · {globalPersona.name || "女仆"}
-							<span data-hero-model>
-								<Pill color="var(--color-bn-purple)" subtle size="sm">
-									{globalProfile.model || "未配置"}
-								</Pill>
-							</span>
-						</div>
-						<div className="mt-1 text-xs text-bn-text-tertiary">
-							会写动态点评、直播总结，支持 OpenAI 兼容的任意 base URL (｡•̀ᴗ-)✧
-						</div>
-					</div>
+			<HeroStrip
+				icon={<Icon.ai size={26} />}
+				title={
+					<>
+						智能女仆 · {globalPersona.name || "女仆"}
+						<span data-hero-model>
+							<Pill color="var(--color-bn-purple)" subtle size="sm">
+								{globalProfile.model || "未配置"}
+							</Pill>
+						</span>
+					</>
+				}
+				subtitle="会写动态点评、直播总结，支持 OpenAI 兼容的任意 base URL (｡•̀ᴗ-)✧"
+				right={
 					<Picker
 						value={draft.enabled}
 						onChange={(v) => setAi("enabled", v)}
@@ -481,8 +476,8 @@ export default function Ai() {
 							{ value: false, label: "停用", color: "var(--color-bn-inactive)" },
 						]}
 					/>
-				</div>
-			</div>
+				}
+			/>
 
 			{/* 开着总开关却一家都没配 —— 这不是「还没填完」而是**此刻确实不工作**:
 			    引擎不会创建实例、发图与点评一律回 400。不偷偷替主人把开关关掉

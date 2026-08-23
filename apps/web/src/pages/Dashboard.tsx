@@ -15,6 +15,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo } from "react";
 import { Link } from "react-router-dom";
+import { HeroStrip } from "../components/hero-strip";
 import { LOG_LEVEL_TONE, logLevelTint } from "../config/log-levels";
 import { familyTone, PUSH_KIND_META, PUSH_TONE } from "../config/push-kinds";
 import {
@@ -241,18 +242,20 @@ function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
 
 function AiInsightStrip({ tip }: { tip: React.ReactNode }) {
 	return (
-		<div className="bn-glass bn-hero-tint flex items-center gap-3.5 rounded-bn-card p-4 shadow-bn-card">
-			<div className="bn-hero-badge grid h-10 w-10 shrink-0 place-items-center rounded-xl text-bn-on-solid">
-				<Icon.ai size={20} />
-			</div>
-			<div className="flex-1 text-bn-sm leading-relaxed text-bn-text-tertiary">
+		<HeroStrip
+			compact
+			icon={<Icon.ai size={20} />}
+			right={
+				<Btn size="sm" variant="ghost">
+					查看完整总结 →
+				</Btn>
+			}
+		>
+			<div className="text-bn-sm leading-relaxed text-bn-text-tertiary">
 				<span className="font-bold text-(--bn-ai-purple)">AI 直播洞察 · </span>
 				{tip}
 			</div>
-			<Btn size="sm" variant="ghost">
-				查看完整总结 →
-			</Btn>
-		</div>
+		</HeroStrip>
 	);
 }
 

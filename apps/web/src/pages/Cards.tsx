@@ -39,6 +39,7 @@ import {
 	TInput,
 	TSelect,
 } from "../components/forms";
+import { HeroStrip } from "../components/hero-strip";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { GUARD_LEVELS } from "../config/guard-levels";
 import { PUSH_TONE } from "../config/push-kinds";
@@ -1122,23 +1123,19 @@ export default function Cards() {
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
 			{/* Hero strip — 全局插件信息 + (仅全局作用域)总开关 */}
-			<div className="bn-glass bn-hero-tint relative rounded-bn-card p-5 shadow-bn-card">
-				<div className="flex items-center gap-3.5">
-					<div className="bn-hero-badge grid h-13 w-13 shrink-0 place-items-center rounded-2xl text-bn-on-solid">
-						<Icon.eye size={26} />
-					</div>
-					<div className="flex-1">
-						<div className="flex items-center gap-2 text-bn-md font-bold text-bn-text-primary">
-							卡片渲染
-							<Pill color="var(--color-bn-purple)" subtle size="sm">
-								image
-							</Pill>
-						</div>
-						<div className="mt-1 text-xs text-bn-text-tertiary">
-							puppeteer-core 把 Vue/UnoCSS 模板渲染成 PNG;关闭后 push 流程仅发送文本回退。
-						</div>
-					</div>
-					{isGlobalScope ? (
+			<HeroStrip
+				icon={<Icon.eye size={26} />}
+				title={
+					<>
+						卡片渲染
+						<Pill color="var(--color-bn-purple)" subtle size="sm">
+							image
+						</Pill>
+					</>
+				}
+				subtitle="puppeteer-core 把 Vue/UnoCSS 模板渲染成 PNG;关闭后 push 流程仅发送文本回退。"
+				right={
+					isGlobalScope ? (
 						<Picker
 							value={gStyle.enabled}
 							onChange={(v) => setGStyle((d) => (d ? { ...d, enabled: v } : d))}
@@ -1151,9 +1148,9 @@ export default function Cards() {
 						<span className="rounded-md border border-bn-border-subtle bg-bn-surface/70 px-2.5 py-1 text-bn-xs text-bn-text-tertiary">
 							总开关在全局作用域
 						</span>
-					)}
-				</div>
-			</div>
+					)
+				}
+			/>
 
 			{/* 作用域切换 */}
 			<ScopeTabs
