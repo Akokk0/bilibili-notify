@@ -9,7 +9,7 @@ import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/p
 import { join } from "node:path";
 import type { SkinListEntry, SkinManifest } from "@bilibili-notify/contract";
 import { ASSET_NAMES_FILE, parseAssetNames, sanitizeAssetLabel } from "./asset-names.js";
-import { MAX_ASSET_BYTES, MAX_FONT_BYTES } from "./package.js";
+import { MAX_ASSET_BYTES, MAX_FONT_BYTES, MAX_SKIN_ASSETS } from "./package.js";
 import { isSkinAssetName } from "./schema.js";
 
 interface SavedSkin {
@@ -20,10 +20,13 @@ interface SavedSkin {
 }
 
 /**
- * 一套皮肤最多放几张图。留在 zip 那道闸(MAX_PACKAGE_FILES)之内 —— 传到超过
- * 上限的包会连自己的导出都传不回来。
+ * 一套皮肤最多放几份资产 —— 与 zip 那道闸**同一个数**,定义在 package.ts。
+ *
+ * 两边各写各的时它们悄悄错开过(16 的文件数闸放得进 14 份资产,而这边只准 12):
+ * 手搓的超量包整份存了进去,主人却在编辑器里一份也加不了。这里只是转出去,
+ * 免得调用方还得知道它住在哪。
  */
-export const MAX_SKIN_ASSETS = 12;
+export { MAX_SKIN_ASSETS };
 
 /** 包内图片的扩展名白名单,与 schema.ts 的 WALLPAPER_IMAGE_RE 同口径(无 SVG)。 */
 const SKIN_ASSET_EXTS = new Set(["png", "jpg", "jpeg", "webp"]);

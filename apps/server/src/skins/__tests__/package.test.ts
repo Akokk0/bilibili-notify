@@ -7,7 +7,7 @@
 
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vite-plus/test";
-import { openSkinPackage } from "../package.js";
+import { MAX_SKIN_ASSETS, openSkinPackage } from "../package.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 /** woff2 的魔数 `wOF2`;内容不解析,只要求后缀过白名单。 */
@@ -273,5 +273,38 @@ describe("openSkinPackage / decorations 已下线", () => {
 		if (!r.ok) return;
 		expect(r.warnings.some((w) => w.includes("decorations"))).toBe(true);
 		expect(r.warnings.some((w) => w.includes("assets/chara.png"))).toBe(true);
+	});
+});
+
+/**
+ * 「一套皮肤最多放 N 份资产」这条线,编辑器那头(`addAsset`)一直守着,zip 这头却
+ * 只数**文件总数**。两个数对不上时,一个手搓的超量包能整份存进去 —— 然后编辑器
+ * 里再传一份就被拒,而资产列表早已越过它自己声称的上限,删到 N 以下才动得了。
+ *
+ * `MAX_SKIN_ASSETS` 那句注释写的正是这条不变式:「留在 zip 那道闸之内 —— 传到
+ * 超过上限的包会连自己的导出都传不回来」。测它。
+ */
+describe("资产数上限:zip 这头与编辑器那头同一把尺", () => {
+	function packWithAssets(n: number, extra: Record<string, Uint8Array> = {}): Uint8Array {
+		const files: Record<string, Uint8Array> = { "skin.json": manifestJson(), ...extra };
+		for (let i = 0; i < n; i++) files[`assets/img-${i}.png`] = PNG;
+		return makeZip(files);
+	}
+
+	it("装满 MAX_SKIN_ASSETS 份 + 原名清单 → 照旧收下(导出的满包必须传得回来)", () => {
+		const zip = packWithAssets(MAX_SKIN_ASSETS, {
+			"assets/index.json": strToU8(JSON.stringify({ "assets/img-0.png": "壁纸.png" })),
+		});
+		const r = openSkinPackage(zip);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.assets.size).toBe(MAX_SKIN_ASSETS);
+	});
+
+	it("超过一份就拒 —— 别让它存进来之后卡在改不动的状态", () => {
+		const r = openSkinPackage(packWithAssets(MAX_SKIN_ASSETS + 1));
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.errors.join()).toContain(String(MAX_SKIN_ASSETS));
 	});
 });

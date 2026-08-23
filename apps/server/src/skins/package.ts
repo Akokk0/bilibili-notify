@@ -17,7 +17,22 @@ import {
 	WALLPAPER_IMAGE_RE,
 } from "./schema.js";
 
-export const MAX_PACKAGE_FILES = 16;
+/**
+ * 一套皮肤最多放几份资产(图 + 字体)。**编辑器那头(`SkinStore.addAsset`)与 zip
+ * 这头共用这一个数** —— 两边各写各的时,手搓一个超量包能整份存进去,然后编辑器
+ * 里再传一份就被拒,而资产列表早已越过它自己声称的上限:主人得先删到线下才动得了,
+ * 而那条错误信息一个字都没提这件事。
+ */
+export const MAX_SKIN_ASSETS = 12;
+
+/**
+ * 包内文件数的粗筛(zip bomb 的第一道)。
+ *
+ * 恰好是「装满资产的那份导出」:{@link MAX_SKIN_ASSETS} 份资产 + `skin.json`
+ * + 原名清单 `assets/index.json`。这两样是包里仅有的非资产文件(见下面那张白名单),
+ * 所以 +2 不是留富余,是**正好装得下自己导出的满包**。
+ */
+export const MAX_PACKAGE_FILES = MAX_SKIN_ASSETS + 2;
 export const MAX_ASSET_BYTES = 5 * 1024 * 1024;
 
 /**
@@ -141,6 +156,11 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 				`${name}: 包里只允许 skin.json 和 assets/ 下的 webp/jpg/png 与 woff2/woff/ttf/otf`,
 			);
 		}
+	}
+	// 文件数那道是粗筛(它连 skin.json 一起数);资产数得单独问一句 —— 一个不带
+	// 原名清单的包能在文件数之内塞进多一份资产,而落盘之后编辑器就再也加不进东西。
+	if (assets.size > MAX_SKIN_ASSETS) {
+		errors.push(`包里的资产太多(${assets.size} 份,上限 ${MAX_SKIN_ASSETS} 份),删掉用不上的再传`);
 	}
 	if (!manifestBytes && errors.length === 0) errors.push("包里缺少 skin.json");
 	if (errors.length > 0 || !manifestBytes) return { ok: false, errors };
