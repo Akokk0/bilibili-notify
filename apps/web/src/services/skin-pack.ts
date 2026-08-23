@@ -117,13 +117,23 @@ export function makeSkinZip(manifestJson: string, wallpaper?: WallpaperInput): M
 			? (manifest.modes as Record<string, unknown>)
 			: {};
 	const wallpaperRefs: Array<Record<string, unknown>> = [];
-	for (const key of ["light", "dark"]) {
-		const mode = modes[key];
-		if (typeof mode !== "object" || mode === null) continue;
-		const wp = (mode as Record<string, unknown>).wallpaper;
+	/** 一处「有 image 的 wallpaper 对象」→ 收进待改名清单。 */
+	const collectWallpaper = (holder: unknown): void => {
+		if (typeof holder !== "object" || holder === null) return;
+		const wp = (holder as Record<string, unknown>).wallpaper;
 		if (typeof wp === "object" && wp !== null && "image" in wp) {
 			wallpaperRefs.push(wp as Record<string, unknown>);
 		}
+	};
+	for (const key of ["light", "dark"]) {
+		const mode = modes[key];
+		if (typeof mode !== "object" || mode === null) continue;
+		collectWallpaper(mode);
+		// 聊天页那张也算。`chat.wallpaper` 与整页 wallpaper 是**同构共用**的一把尺
+		// (schema 那头就是同一个解析器),提示词里也明写着 chat 段能有壁纸、image
+		// 同样只准引用包内 assets。漏收的下场不是「少改一个名字」,而是这类包**必然**
+		// 在上传时被引用校验打回,报错还只说「包里没有这个文件」。
+		collectWallpaper((mode as Record<string, unknown>).chat);
 	}
 
 	const files: Record<string, Uint8Array> = {};

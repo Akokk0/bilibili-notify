@@ -107,4 +107,38 @@ describe("makeSkinZip", () => {
 		const r = makeSkinZip("{oops");
 		expect(r.ok).toBe(false);
 	});
+
+	/**
+	 * `chat.wallpaper` 与整页 wallpaper 是**同构共用**的一把尺(schema.ts 那句注释),
+	 * 提示词里也明写着 chat 段可以有 wallpaper、image 同样只准引用包内 assets。
+	 * 收集引用时却只走了 `modes.*.wallpaper` —— 于是 AI 老老实实产出的聊天壁纸皮肤,
+	 * 拖进来的图不会被改成它引的名字,包必然在上传时被 `referencedAssets` 打回,
+	 * 而报错只说「manifest 引用了它,包里没有」,不说是哪个 wallpaper 字段。
+	 */
+	const chatManifest = JSON.stringify({
+		schemaVersion: 1,
+		name: "t",
+		modes: {
+			dark: { chat: { wallpaper: { image: "assets/wallpaper.webp", overlay: 0.4 } } },
+		},
+	});
+
+	it("chat.wallpaper 的引用一样要跟着改名 —— 它和整页壁纸是同一把尺", () => {
+		const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+		const r = makeSkinZip(chatManifest, { ext: "png", data: png });
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		const files = unzipSync(r.zip);
+		expect(files["assets/wallpaper.png"]).toEqual(png);
+		const packed = JSON.parse(strFromU8(files["skin.json"] as Uint8Array));
+		expect(packed.modes.dark.chat.wallpaper.image).toBe("assets/wallpaper.png");
+		expect(r.warnings).toEqual([]);
+	});
+
+	it("只有 chat.wallpaper 却没拖图 → 照样提示缺图,别等服务端拒收才说", () => {
+		const r = makeSkinZip(chatManifest);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.warnings.join()).toMatch(/壁纸|图片/);
+	});
 });
