@@ -8,6 +8,7 @@ import {
 	Input,
 	LoadingBlock,
 	ModalShell,
+	Pill,
 	TOAST_DURATION_MS,
 	Toast,
 } from "@bilibili-notify/ui";
@@ -251,6 +252,52 @@ function NewSubDialog({
 	);
 }
 
+/**
+ * UP 资料的「头像 + 名字/UID/已订阅」身份行 —— UID 预览卡与搜索结果行共用这一份。
+ * 收编前两处各抄一遍,连「已订阅」灰标都逐字符相同;第二行内容(粉丝 / 签名的
+ * 排法)两处确实不同,走 children。外层容器(卡片 / 可点行)由调用方出。
+ */
+function UpProfileSummary({
+	profile,
+	subscribed,
+	size,
+	children,
+}: {
+	profile: UpProfileLookup;
+	subscribed: boolean;
+	/** `md` 给预览卡(48px 头像),`sm` 给搜索结果行(40px)。 */
+	size: "sm" | "md";
+	children: React.ReactNode;
+}) {
+	return (
+		<>
+			<img
+				src={profile.avatar}
+				alt={profile.name}
+				data-bn="avatar"
+				className={`${size === "md" ? "h-12 w-12" : "h-10 w-10"} shrink-0 rounded-full bg-bn-surface object-cover`}
+				referrerPolicy="no-referrer"
+			/>
+			<div className="min-w-0 flex-1">
+				<div className="flex items-center gap-2">
+					<span
+						className={`truncate font-bold text-bn-text-primary ${size === "md" ? "text-bn-base" : "text-bn-sm"}`}
+					>
+						{profile.name}
+					</span>
+					<span className="font-mono text-bn-2xs text-bn-text-tertiary">UID {profile.uid}</span>
+					{subscribed ? (
+						<Pill size="sm" subtle color="var(--color-bn-text-tertiary)">
+							已订阅
+						</Pill>
+					) : null}
+				</div>
+				{children}
+			</div>
+		</>
+	);
+}
+
 function ProfilePreview({
 	profile,
 	subscribed,
@@ -260,32 +307,14 @@ function ProfilePreview({
 }) {
 	return (
 		<div className="mt-4 flex items-center gap-3 rounded-lg border border-bn-border bg-bn-surface-muted p-3">
-			<img
-				src={profile.avatar}
-				alt={profile.name}
-				data-bn="avatar"
-				className="h-12 w-12 shrink-0 rounded-full bg-bn-surface object-cover"
-				referrerPolicy="no-referrer"
-			/>
-			<div className="min-w-0 flex-1">
-				<div className="flex items-center gap-2">
-					<span className="truncate text-bn-base font-bold text-bn-text-primary">
-						{profile.name}
-					</span>
-					<span className="font-mono text-bn-2xs text-bn-text-tertiary">UID {profile.uid}</span>
-					{subscribed ? (
-						<span className="rounded-sm bg-bn-surface-muted px-1.5 py-0.5 text-bn-2xs font-semibold text-bn-text-tertiary">
-							已订阅
-						</span>
-					) : null}
-				</div>
+			<UpProfileSummary profile={profile} subscribed={subscribed} size="md">
 				<div className="mt-0.5 text-bn-xs text-bn-text-secondary">{fansLabel(profile.fans)}</div>
 				{profile.sign ? (
 					<div className="mt-1 line-clamp-2 text-bn-xs text-bn-text-tertiary" title={profile.sign}>
 						{profile.sign}
 					</div>
 				) : null}
-			</div>
+			</UpProfileSummary>
 		</div>
 	);
 }
@@ -329,25 +358,7 @@ function SearchResultList({
 									: "border-bn-border bg-bn-surface hover:border-bn-pink/60 hover:bg-bn-pink/5"
 							}`}
 						>
-							<img
-								src={r.avatar}
-								alt={r.name}
-								data-bn="avatar"
-								className="h-10 w-10 shrink-0 rounded-full bg-bn-surface object-cover"
-								referrerPolicy="no-referrer"
-							/>
-							<div className="min-w-0 flex-1">
-								<div className="flex items-center gap-1.5">
-									<span className="truncate text-bn-sm font-bold text-bn-text-primary">
-										{r.name}
-									</span>
-									<span className="font-mono text-bn-2xs text-bn-text-tertiary">UID {r.uid}</span>
-									{subscribed ? (
-										<span className="rounded-sm bg-bn-surface-muted px-1.5 py-0.5 text-bn-2xs font-semibold text-bn-text-tertiary">
-											已订阅
-										</span>
-									) : null}
-								</div>
+							<UpProfileSummary profile={r} subscribed={subscribed} size="sm">
 								<div className="mt-0.5 text-bn-2xs text-bn-text-secondary">
 									{fansLabel(r.fans)}
 									{r.sign ? (
@@ -356,7 +367,7 @@ function SearchResultList({
 										</span>
 									) : null}
 								</div>
-							</div>
+							</UpProfileSummary>
 						</button>
 					);
 				})

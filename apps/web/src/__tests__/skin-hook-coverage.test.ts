@@ -61,6 +61,10 @@ const UNHOOKED: Record<string, { count: number; why: string }> = {
 		count: 3,
 		why: "适配器候选行 + QQ 候选行 + 频道候选 chip(都是「从候选里挑一个」,同 MenuItem)",
 	},
+	"apps/web/src/pages/Subs.tsx": {
+		count: 1,
+		why: "搜索结果候选行(「从候选里挑一个」,同 MenuItem)。此前按钮内嵌头像的 data-bn=avatar 让本守卫误计为已挂,头像收编进 UpProfileSummary 后才暴露 —— 它一直没挂过自己的挂点",
+	},
 	"apps/web/src/components/draft-island.tsx": { count: 1, why: "岛内草稿列表的行" },
 	"apps/web/src/components/ai-chat/composer.tsx": { count: 1, why: "命令面板的候选行" },
 	"apps/web/src/components/ai-chat/index.tsx": {
