@@ -19,13 +19,11 @@ import {
 import {
 	SortableContext,
 	sortableKeyboardCoordinates,
-	useSortable,
 	verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import type { ReactNode } from "react";
-import { DragHandle } from "../../components/drag-handle";
 import { Field, TInput } from "../../components/forms";
+import { SortableRow, SortableRowEnd, sortableLabelTone } from "../../components/sortable-row";
 import { SECTION_ACCENT } from "../../config/section-accents";
 import type { MessageBlockFull, MessageKindLayoutFull } from "../../types/domain";
 import {
@@ -47,7 +45,7 @@ const PART_HINTS: Record<string, string> = {
 };
 
 /**
- * 单个可排序块行。useSortable 必须 per-item,故抽成组件;拖拽手柄仅 ⠿。
+ * 单个可排序块行 —— 壳子(useSortable/拖拽态/手柄)在 components/sortable-row。
  * `slot`(文本块的模板编辑区)内嵌在行内、随块一起拖动;块隐藏时由调用方收起。
  */
 function SortableBlockRow({
@@ -63,86 +61,56 @@ function SortableBlockRow({
 	onRemove: (id: string) => void;
 	slot?: ReactNode;
 }) {
-	const {
-		attributes,
-		listeners,
-		setNodeRef,
-		setActivatorNodeRef,
-		transform,
-		transition,
-		isDragging,
-	} = useSortable({ id: block.id });
 	const isSplit = block.type === MESSAGE_SPLIT_TYPE;
-	// 用 Translate 而非 Transform:本编辑器「文本」块内嵌模板编辑区,行高与其他块差异很大,
-	// dnd-kit 默认会算 scaleX/scaleY 把被拖行视觉缩放去匹配目标槽位高度,导致拖动时肉眼可见的膨胀/压缩畸变。
-	const style = { transform: CSS.Translate.toString(transform), transition };
 	return (
-		<li
-			ref={setNodeRef}
-			style={style}
-			className={`relative rounded-lg border px-2.5 py-2 ${
-				isDragging
-					? "z-bn-raised border-bn-pink/60 bg-bn-surface opacity-90 shadow-bn-elev"
-					: isSplit
-						? "border-dashed border-bn-border bg-bn-surface/40"
-						: "border-bn-border-subtle bg-bn-surface/60"
-			}`}
+		<SortableRow
+			id={block.id}
+			// 「文本」块内嵌模板编辑区,行高与其他块差异很大 —— 走 Translate 避免拖动畸变。
+			translate
+			restClassName={isSplit ? "border-dashed border-bn-border bg-bn-surface/40" : undefined}
+			below={
+				slot ? (
+					<div
+						className="mt-2 border-l-2 pl-3"
+						style={{ borderColor: `color-mix(in srgb, ${accent} 27%, transparent)` }}
+						// 编辑区在可拖拽行内部:拖拽手柄只绑 ⠿,这里的输入交互不会触发拖动。
+					>
+						{slot}
+					</div>
+				) : undefined
+			}
 		>
-			<div className="flex items-center gap-2">
-				<DragHandle
-					attributes={attributes}
-					listeners={listeners}
-					setActivatorNodeRef={setActivatorNodeRef}
-				/>
-				<StatusDot size="sm" color={isSplit ? "var(--color-bn-inactive)" : accent} />
-				<span
-					className={`flex-1 text-bn-sm font-bold ${
-						isSplit
-							? "italic text-bn-text-tertiary"
-							: block.visible
-								? "text-bn-text-primary"
-								: "text-bn-text-tertiary line-through"
-					}`}
-				>
-					{isSplit ? (
-						<>
-							{/* 行内图标:父 span 是文本流(还带 italic),用 align 微调基线而不是改成 flex
-							    —— 非分条符那支还要跟后面的 PART_HINTS 并排。 */}
-							<Icon.scissors size={11} className="mr-1 inline-block align-[-1px]" />
-							分条符 · 上下切成两条消息
-						</>
-					) : (
-						(PART_LABELS[block.type] ?? block.type)
-					)}
-					{!isSplit && PART_HINTS[block.type] ? (
-						<span className="ml-2 text-bn-xs font-normal text-bn-text-tertiary">
-							{PART_HINTS[block.type]}
-						</span>
-					) : null}
-				</span>
-				<div className="flex w-7 shrink-0 justify-end">
-					{isSplit ? (
-						<IconButton
-							icon={<Icon.close size={13} />}
-							label="删除分条符"
-							tone="danger"
-							onClick={() => onRemove(block.id)}
-						/>
-					) : (
-						<Toggle value={block.visible} size="sm" onChange={(v) => onToggle(block.id, v)} />
-					)}
-				</div>
-			</div>
-			{slot ? (
-				<div
-					className="mt-2 border-l-2 pl-3"
-					style={{ borderColor: `color-mix(in srgb, ${accent} 27%, transparent)` }}
-					// 编辑区在可拖拽行内部:拖拽手柄只绑 ⠿,这里的输入交互不会触发拖动。
-				>
-					{slot}
-				</div>
-			) : null}
-		</li>
+			<StatusDot size="sm" color={isSplit ? "var(--color-bn-inactive)" : accent} />
+			<span className={`flex-1 text-bn-sm font-bold ${sortableLabelTone(isSplit, block.visible)}`}>
+				{isSplit ? (
+					<>
+						{/* 行内图标:父 span 是文本流(还带 italic),用 align 微调基线而不是改成 flex
+						    —— 非分条符那支还要跟后面的 PART_HINTS 并排。 */}
+						<Icon.scissors size={11} className="mr-1 inline-block align-[-1px]" />
+						分条符 · 上下切成两条消息
+					</>
+				) : (
+					(PART_LABELS[block.type] ?? block.type)
+				)}
+				{!isSplit && PART_HINTS[block.type] ? (
+					<span className="ml-2 text-bn-xs font-normal text-bn-text-tertiary">
+						{PART_HINTS[block.type]}
+					</span>
+				) : null}
+			</span>
+			<SortableRowEnd>
+				{isSplit ? (
+					<IconButton
+						icon={<Icon.close size={13} />}
+						label="删除分条符"
+						tone="danger"
+						onClick={() => onRemove(block.id)}
+					/>
+				) : (
+					<Toggle value={block.visible} size="sm" onChange={(v) => onToggle(block.id, v)} />
+				)}
+			</SortableRowEnd>
+		</SortableRow>
 	);
 }
 

@@ -21,11 +21,9 @@ import {
 import {
 	SortableContext,
 	sortableKeyboardCoordinates,
-	useSortable,
 	verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { DragHandle } from "../../components/drag-handle";
+import { SortableRow, SortableRowEnd, sortableLabelTone } from "../../components/sortable-row";
 import type { CardBlockFull } from "../../types/domain";
 import { DIVIDER_LABEL } from "./block-labels";
 import {
@@ -87,8 +85,8 @@ function MarginInput({
 	);
 }
 
-/** 单个可排序行 —— useSortable 必须 per-item,故抽成组件。拖拽手柄仅 ⠿。 */
-function SortableRow({
+/** 单个可排序行 —— 壳子(useSortable/拖拽态/手柄)在 components/sortable-row,这里只摆内容。 */
+function BlockRow({
 	block,
 	locked,
 	labels,
@@ -105,40 +103,11 @@ function SortableRow({
 	onRemove: (id: string) => void;
 	onMargin: (id: string, v: number | undefined) => void;
 }) {
-	const {
-		attributes,
-		listeners,
-		setNodeRef,
-		setActivatorNodeRef,
-		transform,
-		transition,
-		isDragging,
-	} = useSortable({ id: block.id });
 	const isDivider = block.type === DIVIDER_TYPE;
-	const style = { transform: CSS.Transform.toString(transform), transition };
 	return (
-		<li
-			ref={setNodeRef}
-			style={style}
-			className={`relative flex items-center gap-2 rounded-lg border px-2.5 py-2 ${
-				isDragging
-					? "z-bn-raised border-bn-pink/60 bg-bn-surface opacity-90 shadow-bn-elev"
-					: "border-bn-border-subtle bg-bn-surface/60"
-			}`}
-		>
-			<DragHandle
-				attributes={attributes}
-				listeners={listeners}
-				setActivatorNodeRef={setActivatorNodeRef}
-			/>
+		<SortableRow id={block.id}>
 			<span
-				className={`flex-1 text-bn-base font-medium ${
-					isDivider
-						? "italic text-bn-text-tertiary"
-						: block.visible
-							? "text-bn-text-primary"
-							: "text-bn-text-tertiary line-through"
-				}`}
+				className={`flex-1 text-bn-base font-medium ${sortableLabelTone(isDivider, block.visible)}`}
 			>
 				{isDivider ? DIVIDER_LABEL : (labels[block.type] ?? block.type)}
 			</span>
@@ -149,8 +118,7 @@ function SortableRow({
 					onChange={(v) => onMargin(block.id, v)}
 				/>
 			)}
-			{/* 固定宽度槽位 —— 让删除按钮与 Toggle 占同宽,上下行的边距输入对齐。 */}
-			<div className="flex w-7 shrink-0 justify-end">
+			<SortableRowEnd>
 				{isDivider ? (
 					<IconButton
 						icon={<Icon.close size={13} />}
@@ -161,8 +129,8 @@ function SortableRow({
 				) : (
 					<Toggle value={block.visible} size="sm" onChange={() => onToggle(block.id)} />
 				)}
-			</div>
-		</li>
+			</SortableRowEnd>
+		</SortableRow>
 	);
 }
 
@@ -193,7 +161,7 @@ export function BlockListEditor({
 				<SortableContext items={blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
 					<ul className="flex flex-col gap-1.5">
 						{blocks.map((b, i) => (
-							<SortableRow
+							<BlockRow
 								key={b.id}
 								block={b}
 								locked={i === 0}
