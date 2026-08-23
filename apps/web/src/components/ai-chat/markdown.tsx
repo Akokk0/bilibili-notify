@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -159,10 +159,18 @@ function headingsAsBoldLine(): Components {
  */
 const PLUGINS = [remarkGfm, remarkBreaks];
 
-export function ChatMarkdown({ text }: { text: string }) {
+/**
+ * `memo` 不是锦上添花 —— 流式回复每来一个分片就 `setPending` 一次,整个 `MessageList`
+ * 跟着重渲,于是**每一条早已落盘的助手消息**都被 react-markdown 从头解析一遍
+ * (它自己没有记忆化,每次都要走一整趟 remark 的 mdast→hast→元素构建)。
+ * 一场几十条的对话、每秒十几片,就是每秒几百次产出与上一帧逐字节相同的完整解析。
+ *
+ * 唯一的 prop 是字符串,默认浅比较就够。
+ */
+export const ChatMarkdown = memo(function ChatMarkdown({ text }: { text: string }) {
 	return (
 		<ReactMarkdown remarkPlugins={PLUGINS} components={COMPONENTS}>
 			{text}
 		</ReactMarkdown>
 	);
-}
+});

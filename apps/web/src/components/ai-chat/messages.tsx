@@ -1,5 +1,12 @@
 import { ErrorNote, Icon } from "@bilibili-notify/ui";
-import { Fragment, type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
+import {
+	Fragment,
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import { type AiChatMessageDTO, chatImageUrl } from "../../services/aiChat";
 import { describeTool } from "./tools";
 
@@ -173,12 +180,15 @@ export function MessageList({
 	 * 消息进列表而挪位。同名同参的两条会一起开合 —— 那两条本来就一模一样,无害。
 	 */
 	const [openArgs, setOpenArgs] = useState<ReadonlySet<string>>(() => new Set());
-	const toggleArgs = (key: string) =>
+	// 身份必须稳:它一路往下传,每帧换一个新函数的话,下面那些 memo 全部落空
+	// (`ChatMarkdown` 的记忆化就指着这个)。函数式更新 → 依赖为空。
+	const toggleArgs = useCallback((key: string) => {
 		setOpenArgs((prev) => {
 			const next = new Set(prev);
 			if (!next.delete(key)) next.add(key);
 			return next;
 		});
+	}, []);
 	return (
 		// testid 不是随手加的:输入框里的字、侧栏底部的用户名都会被 getByText 命中
 		// (受控 textarea 在 DOM 里也有同样的 textContent),不圈定范围的话,
