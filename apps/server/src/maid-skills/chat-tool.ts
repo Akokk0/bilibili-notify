@@ -22,6 +22,18 @@ import type { MaidSkillEntry } from "./store.js";
  * 收的是**快照**而不是 store:目录要写进工具定义,建的那一刻就得知道有哪些。
  * 调用方负责在建之前把盘读新(`reload()`)。
  */
+/**
+ * 一条技能正文交给模型时的说法。
+ *
+ * 两条路共用:女仆自己 `load_skill` 挑的,和主人打斜杠点名的(routes/ai.ts 把它
+ * 当 `systemSuffix`)。ADR 决策 14 要求两条路把同一段正文以**同样方式**追加在
+ * 人格之后 —— 各写一句的话,改了措辞而另一处不动,两条路就在教模型不同的东西,
+ * 而这件事没有任何类型或测试会红,只能靠真机上分别触发两次去比对。
+ */
+export function skillInstruction(skill: Pick<MaidSkillEntry, "name" | "body">): string {
+	return `以下是技能「${skill.name}」的做法,照着做:\n\n${skill.body}`;
+}
+
 export function createSkillChatTool(skills: readonly MaidSkillEntry[]): ExtraTool | null {
 	// `disable-model-invocation` 的退出自选 —— 那是「只许主人打斜杠」的意思。
 	const pickable = skills.filter((s) => !s.disableModelInvocation);
@@ -60,7 +72,7 @@ export function createSkillChatTool(skills: readonly MaidSkillEntry[]): ExtraToo
 				// 说清读不到,而不是抛:抛出去只是界面上一个叉,女仆不知道该改口读哪条。
 				return `没有叫「${args.name ?? ""}」的技能。现在有这些:\n${catalog}`;
 			}
-			const text = `以下是技能「${skill.name}」的做法,照着做:\n\n${skill.body}`;
+			const text = skillInstruction(skill);
 			if (!skill.allowedTools) return text;
 			return {
 				text,

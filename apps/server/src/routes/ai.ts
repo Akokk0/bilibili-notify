@@ -22,7 +22,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { Conversation, ConversationMeta } from "../ai/conversation-store.js";
-import { createSkillChatTool } from "../maid-skills/chat-tool.js";
+import { createSkillChatTool, skillInstruction } from "../maid-skills/chat-tool.js";
 import type { MaidSkillEntry, MaidSkillStore } from "../maid-skills/store.js";
 import { toGeneratorConfig } from "../runtime/ai-config.js";
 import {
@@ -503,7 +503,7 @@ export function createAiRoute(
 						// 开局就按它的 allowed-tools 收窄。
 						...(pickedSkill
 							? {
-									systemSuffix: `以下是技能「${pickedSkill.name}」的做法,照着做:\n\n${pickedSkill.body}`,
+									systemSuffix: skillInstruction(pickedSkill),
 									...(pickedSkill.allowedTools ? { restrictTools: pickedSkill.allowedTools } : {}),
 								}
 							: {}),
