@@ -14,7 +14,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { SKIN_LIMITS } from "@bilibili-notify/contract";
+import { SKIN_LIMITS, type SkinMode } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import { parseSkinManifest } from "../schema";
 
@@ -65,30 +65,75 @@ describe("皮肤的左栏宽度", () => {
 });
 
 /**
- * 「编辑器 = 能力全集」是这套皮肤的硬性原则:契约里能配的,盘上就得有控件,AI 提示词
- * 里也得写 —— 否则那一项等于只有会手写 skin.json 的人够得着。
+ * 「编辑器 = 能力全集」是这套皮肤的硬性原则:契约里能配的,盘上就得有控件,
+ * **两份** AI 提示词里也都得写 —— 否则那一项等于只有会手写 skin.json 的人够得着。
+ *
+ * 这组测试原本叫「栏宽在三处都露面」,一个字段一条手写用例。它漏掉了第四处
+ * (web 那份「粘贴给任意 AI」的提示词),而 `railWidth` 恰恰就是从那儿漏出去的:
+ * 服务端提示词里有,web 那份 0 次;`fonts.asset` 同样。手写用例只守得住写它那天
+ * 想得起来的字段与去处,所以改成**遍历**。
+ *
+ * 表由 `satisfies Record<keyof SkinMode, ...>` 钉着:`SkinMode` 加一个字段而这张表
+ * 没跟上,这个文件**直接编译不过** —— 比测试变红更早一步。
  */
-describe("栏宽在三处都露面", () => {
+describe("每个模式字段都在四处露面", () => {
 	const read = (rel: string) =>
 		readFileSync(join(dirname(fileURLToPath(import.meta.url)), rel), "utf8");
 
+	/**
+	 * 字段 → 在源码里的探针,就是字段名本身。
+	 *
+	 * 只问「**露没露面**」,不问措辞、也不问二级字段:四处的写法本来就不同(注入端
+	 * 写 `mode.fonts?.body`、提示词写 `fonts.body`、编辑器是个控件),把探针定成
+	 * 具体措辞只会让这条守卫变脆,然后被人改宽或删掉。
+	 *
+	 * 换来的代价是宽松:字段名若碰巧因别的原因出现在某个文件里,这一处就假绿。
+	 * 认这个代价 —— 它要拦的是「加了新字段却忘了某一处」,而新字段名(`railWidth`
+	 * 就是个例子)几乎不会碰巧撞上。
+	 */
+	const PROBE = {
+		colors: "colors",
+		page: "page",
+		wallpaper: "wallpaper",
+		glass: "glass",
+		chat: "chat",
+		fonts: "fonts",
+		radius: "radius",
+		railWidth: "railWidth",
+		shadows: "shadows",
+		css: "css",
+		effects: "effects",
+	} satisfies Record<keyof SkinMode, string>;
+
+	/** 造皮肤的四条路。少一条,那条路上的 AI 与主人就够不着这个字段。 */
+	const SURFACES: ReadonlyArray<{ what: string; rel: string }> = [
+		{ what: "注入端", rel: "../../../../web/src/services/skin.ts" },
+		{ what: "编辑器", rel: "../../../../web/src/pages/skins/SkinEditor.tsx" },
+		{ what: "服务端提示词", rel: "../ai-edit.ts" },
+		{ what: "粘贴给任意 AI 的提示词", rel: "../../../../web/src/services/skin-pack.ts" },
+	];
+
+	for (const { what, rel } of SURFACES) {
+		it(`${what}把每个字段都提到了`, () => {
+			const src = read(rel);
+			const missing = Object.values(PROBE).filter((probe) => !src.includes(probe));
+			expect(missing, `${what}少了这些字段`).toEqual([]);
+		});
+	}
+
+	it("栏宽的取值域三处都读契约那张表,不硬编码", () => {
+		// 硬编码 160/320 会和契约悄悄分家 —— 放宽取值域时滑杆拉不到新范围,
+		// 而提示词还在教 AI 那个旧上限。
+		for (const rel of [
+			"../../../../web/src/pages/skins/SkinEditor.tsx",
+			"../ai-edit.ts",
+			"../../../../web/src/services/skin-pack.ts",
+		]) {
+			expect(read(rel), rel).toContain("SKIN_LIMITS.railWidth.min");
+		}
+	});
+
 	it("注入端把它写成 --bn-rail-width", () => {
-		const src = read("../../../../web/src/services/skin.ts");
-		expect(src).toContain("--bn-rail-width");
-		expect(src).toContain("railWidth");
-	});
-
-	it("编辑器上有控件,且取值域读的是契约那张表", () => {
-		const src = read("../../../../web/src/pages/skins/SkinEditor.tsx");
-		expect(src).toContain("railWidth");
-		// 硬编码 160/320 会和契约悄悄分家 —— 放宽取值域时滑杆就拉不到新范围了。
-		expect(src).toContain("SKIN_LIMITS.railWidth.min");
-		expect(src).toContain("SKIN_LIMITS.railWidth.max");
-	});
-
-	it("AI 提示词里写了它,取值域同样读表", () => {
-		const src = read("../ai-edit.ts");
-		expect(src).toContain("railWidth");
-		expect(src).toContain("SKIN_LIMITS.railWidth.min");
+		expect(read("../../../../web/src/services/skin.ts")).toContain("--bn-rail-width");
 	});
 });
