@@ -171,24 +171,32 @@ describe("皮肤按钮挂点覆盖", () => {
 });
 
 /**
- * 实心强调底 + 写死白字的按钮,`btn` 与 `btn-primary` **两个挂点都得挂**。
+ * 实心语义底的按钮,`btn` 与 `btn-primary` **两个挂点都得挂**。
  *
- * 少挂 `btn-primary` 不是「少一档可调」,是**白底白字**:底那半随皮肤走,而
- * `text-white` 是写死的类,皮肤改不动。皮肤惯常写 `[data-bn="btn"]` —— 精确匹配,
- * 碰不到 `data-bn="btn btn-primary"` 的主按钮,却正好把只写了 `"btn"` 的那颗刷成
- * 中性底。于是全站主按钮里**只有它**变成白底白字,而这在默认装下完全看不出来。
+ * 少挂 `btn-primary` 不是「少一档可调」,是**隐形**:皮肤给 `btn` 档刷的是中性底,
+ * 只有 `btn-primary` 档会把强调实底盖回来。单挂 `btn` 的实心钮在皮肤下变成
+ * 「中性浅底 + 实底前景」—— 写死的 `text-white` 皮肤根本改不动,`text-bn-on-solid`
+ * 虽是 token 但皮肤给它配的是**自家实底**的对色,浮到中性浅底上一样看不清。
+ * 而这在默认装下完全看不出来。
  *
- * 2026-08-21 真机上就是这么翻的车:About 的爱发电按钮。
+ * 2026-08-21 真机上就是这么翻的车:About 的爱发电按钮(当时还是写死白字)。
+ * 2026-08-23 主人拍板 Btn 补 danger-solid 档后,网扩到 danger 底与 on-solid 前景。
  */
 describe("主按钮的挂点写全", () => {
-	it("实心强调底 + text-white 的按钮不能只挂通用 btn", () => {
+	it("实心语义底 + 实底前景的按钮不能只挂通用 btn", () => {
 		const bad: string[] = [];
 		for (const root of SCAN_ROOTS) {
 			for (const file of listTsx(root)) {
 				const src = blankComments(readFileSync(file, "utf8"));
 				for (const t of openTags(src)) {
 					if (!/\sdata-bn=/.test(t.attrs)) continue;
-					const solid = /bg-bn-(pink|blue)\b/.test(t.attrs) && t.attrs.includes("text-white");
+					// 只管 btn 家族。tab / chip / nav-item 各有自己的选中档(tab-active…)
+					// 承载实心态,硬塞 btn-primary 反而会招来皮肤的主按钮实底 —— tab 当年
+					// 正是因此迁出 btn 家族的。(`(?!-)` 挡住 btn-primary 自己算作 btn 词)
+					if (!/\bbtn(?!-)/.test(t.attrs)) continue;
+					const solid =
+						/bg-bn-(pink|blue|danger)(?![\w/-])/.test(t.attrs) &&
+						(t.attrs.includes("text-white") || t.attrs.includes("text-bn-on-solid"));
 					if (!solid) continue;
 					if (t.attrs.includes("btn-primary")) continue;
 					bad.push(

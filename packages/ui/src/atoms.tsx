@@ -68,7 +68,14 @@ export function Avatar({ name, color, size = 44, ring = false, status, url }: Av
 
 // ── Btn ─────────────────────────────────────────────────────────────────────
 
-type BtnVariant = "primary" | "ghost" | "outline" | "danger" | "danger-outline" | "blue";
+type BtnVariant =
+	| "primary"
+	| "ghost"
+	| "outline"
+	| "danger"
+	| "danger-outline"
+	| "danger-solid"
+	| "blue";
 type BtnSize = "sm" | "md" | "lg";
 
 export interface BtnProps {
@@ -96,12 +103,29 @@ const VARIANT_CLS: Record<BtnVariant, string> = {
 	 * `outline` 的危险语义兄弟 —— 带红描边的小钮(删除服务商 / 清除失效字体)。
 	 *
 	 * 与 `danger` 的区别只在**那圈边**:纯红字钮在一行文字里认不出是可点的,而这两处
-	 * 都紧挨着说明文字。底仍是透明的,不做实心红 —— 实心语义底会逼出白字,那条规矩
-	 * 记在 `Toast` 的注释里。
+	 * 都紧挨着说明文字。底仍是透明的 —— 行内小钮不该有实心底的分量;要实心红去用
+	 * `danger-solid`。
 	 */
 	"danger-outline":
 		"bg-transparent text-bn-danger-text border-bn-danger-border hover:bg-bn-danger-soft",
+	/**
+	 * 确认弹窗里的「确认销毁」主钮 —— 实心红底,分量与 `primary` 对等。
+	 *
+	 * 实心语义底曾是禁区(会逼出皮肤够不着的写死白字,规矩记在 `Toast`),两个前提
+	 * 变了才放行:① 前景走 `--color-bn-on-solid` token,皮肤管得着;② 实心档一律入
+	 * 主按钮池(挂 `btn-primary`,见下方 SOLID_VARIANTS),皮肤会把强调实底盖回来,
+	 * 不会落进「中性浅底 + 实底前景」的隐形组合。行内小删除钮别用它,那是
+	 * `danger` / `danger-outline` 的地盘。
+	 */
+	"danger-solid": "bg-bn-danger text-bn-on-solid border-transparent hover:opacity-90",
 };
+
+/**
+ * 实心语义底的档 —— `data-bn` 要挂 `btn btn-primary` 双挂点。皮肤给 `btn` 刷中性底,
+ * 只有 `btn-primary` 档会把强调实底盖回来;单挂 `btn` 的实心钮在皮肤下就是当年
+ * About 爱发电按钮的隐形车(apps/web 的 skin-hook-coverage 测试盯着同一条规矩)。
+ */
+const SOLID_VARIANTS: ReadonlySet<BtnVariant> = new Set(["primary", "blue", "danger-solid"]);
 
 const SIZE_CLS: Record<BtnSize, string> = {
 	sm: "h-[26px] px-2.5 text-xs",
@@ -130,7 +154,7 @@ export function Btn({
 			title={title}
 			aria-haspopup={ariaHasPopup}
 			aria-expanded={ariaExpanded}
-			data-bn={variant === "primary" ? "btn btn-primary" : "btn"}
+			data-bn={SOLID_VARIANTS.has(variant) ? "btn btn-primary" : "btn"}
 			className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${SIZE_CLS[size]} ${VARIANT_CLS[variant]} ${full ? "w-full" : "w-auto"}`}
 		>
 			{icon ? <span className="inline-flex shrink-0">{icon}</span> : null}

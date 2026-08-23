@@ -31,7 +31,7 @@ describe("Btn danger-outline", () => {
 		expect(cls("纯红字")).toContain("border-transparent");
 	});
 
-	it("底是透明的,不是实心红 —— 实心语义底会逼出白字(同 Toast 立的规矩)", () => {
+	it("底是透明的,不是实心红 —— 行内小钮不该有实心底的分量(实心红是 danger-solid 的档)", () => {
 		render(<Btn variant="danger-outline">删除</Btn>);
 		const c = cls("删除");
 		expect(c).toContain("bg-transparent");

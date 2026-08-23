@@ -24,7 +24,7 @@
 | 组件 | 干什么 / 长什么样 |
 | --- | --- |
 | `Avatar` | 圆头像:有 `url` 显图,没有显首字母渐变底;`status` 加 LIVE 角标或呼吸点 |
-| `Btn` | 按钮,6 变体(`primary` 粉实底 / `blue` / `ghost` / `outline` 中性描边 / `danger` 纯红字 / `danger-outline` 红描边)× 3 尺寸。**`danger` 与 `danger-outline` 的区别只在那圈边**:纯红字钮夹在一行说明文字里认不出是可点的;两者的底都保持透明,不做实心语义底(会逼出白字,规矩记在 `Toast`) |
+| `Btn` | 按钮,7 变体(`primary` 粉实底 / `blue` 蓝实底 / `ghost` / `outline` 中性描边 / `danger` 纯红字 / `danger-outline` 红描边 / `danger-solid` 红实底)× 3 尺寸。**`danger` 与 `danger-outline` 的区别只在那圈边**(纯红字钮夹在说明文字里认不出可点),行内小钮的底保持透明;`danger-solid` 是确认弹窗「确认销毁」那一档,分量与 `primary` 对等。**实心底档(primary/blue/danger-solid)一律挂 `btn btn-primary` 双挂点、前景走 `on-solid` token** —— 单挂 `btn` 会被皮肤刷成中性底,实底前景浮上去就隐形(爱发电按钮的车;守卫在 web 的 skin-hook-coverage 测试) |
 | `Pill` | 圆角小徽章(**不可点**的 `<span>`);`subtle` = 12% 底色染色字,否则实底白字 |
 | `IconButton` | 只装一枚图标的方钮/圆钮(关闭 / 移除 / 箭头)。五档 `size`(xs 16 → xl 36)、三档 `tone`(**只管 hover 语义**,静态字色一律 tertiary)、`shape=pill`、`surface` 两档:`filled` 描边面底(要从背景里浮出来),`scrim` 遮罩 + 磨砂 + on-solid 字色(**压在图片 / 渐变上**的那种,底下是任意内容,tertiary 灰不可读 —— 这一档连静态字色一起换,不能只叠一层)。`label` 必填(图标没文字),tooltip 要另写才给 `title`。`className` **只收定位这类不冲突的**工具类(`absolute`/`opacity-0 group-hover:*`),覆盖本体是覆盖不住的 —— 要改本体就加档 |
 | `AddButton` / `AddCard` / `AddFileButton` | 「这里还能再加一个」的虚线语汇(虚线=空位,指上去变粉=点我)。`AddButton` 行内走药丸、`block` 占整行走卡片圆角;`AddCard` 是网格里的一格,＋/标题/副标题**由组件出**,调用方只给文字;`AddFileButton` 是 file-input 变体(`<label>` 裹隐藏 input,上传中换句提示并禁用),形状/字号走 `className`。三者共用一份 `ADD_LANGUAGE` |
