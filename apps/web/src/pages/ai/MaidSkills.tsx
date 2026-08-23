@@ -23,7 +23,7 @@ import {
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { TArea, TInput } from "../../components/forms";
 import {
 	createMaidSkill,
@@ -69,6 +69,33 @@ function localComplaint(d: MaidSkillWriteRequest): string | null {
 		return `正文超长(上限 ${MAID_SKILL_LIMITS.bodyChars} 字)`;
 	}
 	return null;
+}
+
+/**
+ * 一行「标题 + 控件 + 说明」。
+ *
+ * **标题只准写一次。** 用 div 而不是 `<label>` 包:label 一旦除标题外还含提示文字,
+ * 读屏器念出的无障碍名就是**整段无分隔拼接**(实测「名字 · 也是斜杠命令小写字母 /
+ * 数字 / 单个连字符。它同时是……」)。名字改由控件自己的 ariaLabel 给 —— 而 WCAG
+ * 2.5.3 要求无障碍名**包含可见标签**,所以那两个字符串必须一字不差。
+ *
+ * 此前四个字段各把自己的标题手打了两遍(可见一份、ariaLabel 一份),八份手抄。
+ * 改错一处不会红,只会让读屏器和眼睛看到的对不上 —— 一个没人会发现的 a11y 回归。
+ * children 收一个函数,标题作为参数传下去,想漂也漂不了。
+ */
+function LabeledField(props: {
+	label: string;
+	hint?: ReactNode;
+	children: (ariaLabel: string) => ReactNode;
+}) {
+	const { label, hint, children } = props;
+	return (
+		<div className="flex flex-col gap-1.5">
+			<span className="text-bn-sm font-semibold text-bn-text-secondary">{label}</span>
+			{children(label)}
+			{hint ? <span className="text-bn-xs text-bn-text-tertiary">{hint}</span> : null}
+		</div>
+	);
 }
 
 export function MaidSkills() {
@@ -195,64 +222,60 @@ export function MaidSkills() {
 					badge={readOnly ? "builtin" : "skill"}
 				>
 					<div className="flex flex-col gap-3.5 p-1">
-						{/* 用 div 而不是 <label> 包:label 一旦除标题外还含提示文字,读屏器念的
-						    无障碍名就是**整段无分隔拼接**(实测「名字 · 也是斜杠命令小写字母 / 数字
-						    / 单个连字符。它同时是……」)。名字改由控件自己的 ariaLabel 给,取可见
-						    标题原文 —— WCAG 2.5.3 要求无障碍名包含可见标签。 */}
-						<div className="flex flex-col gap-1.5">
-							<span className="text-bn-sm font-semibold text-bn-text-secondary">
-								名字 · 也是斜杠命令
-							</span>
-							<TInput
-								ariaLabel="名字 · 也是斜杠命令"
-								mono
-								value={draft.name}
-								disabled={readOnly}
-								placeholder="weekly-report"
-								onChange={(v) => setDraft({ ...draft, name: v })}
-							/>
-							<span className="text-bn-xs text-bn-text-tertiary">
-								小写字母 / 数字 / 单个连字符。它同时是磁盘上的目录名,所以卡得比较死。 聊天里打{" "}
-								<span className="font-mono">/{draft.name || "名字"}</span> 就是用它。
-							</span>
-						</div>
+						<LabeledField
+							label="名字 · 也是斜杠命令"
+							hint={
+								<>
+									小写字母 / 数字 / 单个连字符。它同时是磁盘上的目录名,所以卡得比较死。 聊天里打{" "}
+									<span className="font-mono">/{draft.name || "名字"}</span> 就是用它。
+								</>
+							}
+						>
+							{(aria) => (
+								<TInput
+									ariaLabel={aria}
+									mono
+									value={draft.name}
+									disabled={readOnly}
+									placeholder="weekly-report"
+									onChange={(v) => setDraft({ ...draft, name: v })}
+								/>
+							)}
+						</LabeledField>
 
-						<div className="flex flex-col gap-1.5">
-							<span className="text-bn-sm font-semibold text-bn-text-secondary">
-								description · 女仆靠它决定要不要用
-							</span>
-							<TInput
-								ariaLabel="description · 女仆靠它决定要不要用"
-								value={draft.description}
-								disabled={readOnly}
-								placeholder="一句话说清这条技能干什么"
-								onChange={(v) => setDraft({ ...draft, description: v })}
-							/>
-							<span className="text-bn-xs text-bn-text-tertiary">
-								{draft.description.length} / {MAID_SKILL_LIMITS.descChars} 字。这一句每轮对话都带着,
-								所以有上限。
-							</span>
-						</div>
+						<LabeledField
+							label="description · 女仆靠它决定要不要用"
+							hint={`${draft.description.length} / ${MAID_SKILL_LIMITS.descChars} 字。这一句每轮对话都带着,所以有上限。`}
+						>
+							{(aria) => (
+								<TInput
+									ariaLabel={aria}
+									value={draft.description}
+									disabled={readOnly}
+									placeholder="一句话说清这条技能干什么"
+									onChange={(v) => setDraft({ ...draft, description: v })}
+								/>
+							)}
+						</LabeledField>
 
-						<div className="flex flex-col gap-1.5">
-							<span className="text-bn-sm font-semibold text-bn-text-secondary">
-								正文 · 做事的步骤
-							</span>
-							{/* rows 而不是 min-h-*:TArea 的高度口子就是 rows,11 行 ≈ 原先那个
-							    min-h-60(240px);拖动改高由 TArea 自带的 resize-y 提供。 */}
-							<TArea
-								ariaLabel="正文 · 做事的步骤"
-								rows={11}
-								mono
-								value={draft.body}
-								disabled={readOnly}
-								placeholder={"## 步骤\n\n1. 先……\n2. 再……\n\n## 输出\n\n……"}
-								onChange={(v) => setDraft({ ...draft, body: v })}
-							/>
-							<span className="text-bn-xs text-bn-text-tertiary">
-								Markdown。这段会追加在女仆人格之后 —— 不必重新交代她是谁,只讲这件事怎么做。
-							</span>
-						</div>
+						<LabeledField
+							label="正文 · 做事的步骤"
+							hint="Markdown。这段会追加在女仆人格之后 —— 不必重新交代她是谁,只讲这件事怎么做。"
+						>
+							{(aria) => (
+								// rows 而不是 min-h-*:TArea 的高度口子就是 rows,11 行 ≈ 原先那个
+								// min-h-60(240px);拖动改高由 TArea 自带的 resize-y 提供。
+								<TArea
+									ariaLabel={aria}
+									rows={11}
+									mono
+									value={draft.body}
+									disabled={readOnly}
+									placeholder={"## 步骤\n\n1. 先……\n2. 再……\n\n## 输出\n\n……"}
+									onChange={(v) => setDraft({ ...draft, body: v })}
+								/>
+							)}
+						</LabeledField>
 
 						<div className="flex flex-col gap-1.5">
 							<span className="text-bn-sm font-semibold text-bn-text-secondary">
