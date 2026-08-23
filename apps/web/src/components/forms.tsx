@@ -367,7 +367,8 @@ export function Picker<T extends string | number | boolean>({
 						// 选中态此前只体现在 class 上 —— 读屏软件读不出来,测试也只能去比对
 						// 样式字符串。aria-pressed 让「选的是哪个」成为可查询的事实。
 						aria-pressed={active}
-						data-bn="btn"
+						// 段选改的是值,不是动作 —— chip 家族,别挂回 btn。
+						data-bn={active ? "chip chip-active" : "chip"}
 						className={`rounded-sm px-3 py-1 text-bn-xs font-semibold transition ${
 							active ? "bg-bn-surface-strong text-bn-pink shadow-sm" : "text-bn-text-tertiary"
 						}`}

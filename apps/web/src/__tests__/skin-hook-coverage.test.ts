@@ -49,6 +49,18 @@ const UNHOOKED: Record<string, { count: number; why: string }> = {
 		count: 1,
 		why: "AddRowButton 列表末尾的虚线添加行(虚线=空位,同 AddButton 那条)",
 	},
+	"apps/web/src/components/provider-picker.tsx": {
+		count: 1,
+		why: "服务商候选卡(同 MenuItem:选中靠品牌色行内样式,皮肤实底会抹平选中/未选中)",
+	},
+	"apps/web/src/pages/backup/dialog-bits.tsx": {
+		count: 1,
+		why: "备份模式候选卡(同 MenuItem,选中靠自身描边/淡底 token)",
+	},
+	"apps/web/src/pages/Targets.tsx": {
+		count: 3,
+		why: "适配器候选行 + QQ 候选行 + 频道候选 chip(都是「从候选里挑一个」,同 MenuItem)",
+	},
 	"apps/web/src/components/draft-island.tsx": { count: 1, why: "岛内草稿列表的行" },
 	"apps/web/src/components/ai-chat/composer.tsx": { count: 1, why: "命令面板的候选行" },
 	"apps/web/src/components/ai-chat/index.tsx": {

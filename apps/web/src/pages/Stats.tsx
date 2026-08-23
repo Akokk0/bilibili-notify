@@ -145,7 +145,9 @@ function UpPicker({
 			<button
 				type="button"
 				onClick={() => setOpen(!open)}
-				data-bn="btn"
+				// 它与 TSelect 同语义:显示当前值、点开挑候选 —— 挂 input 不挂 btn,
+				// 与库里下拉触发器的口径一致。
+				data-bn="input"
 				className="flex h-9 min-w-40 items-center gap-2 rounded-bn-card border border-bn-border bg-bn-surface px-2.5 text-left"
 			>
 				{/* 「全部 UP 主」不配头像 —— 汇总视图没有「一个人」可代表,
@@ -522,7 +524,7 @@ export default function Stats() {
 								key={r.days}
 								type="button"
 								onClick={() => setDays(r.days)}
-								data-bn="btn"
+								data-bn={days === r.days ? "chip chip-active" : "chip"}
 								className="rounded-md px-3 py-1.5 text-xs font-semibold"
 								style={{
 									background: days === r.days ? "var(--color-bn-surface-muted)" : "transparent",

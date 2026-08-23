@@ -750,7 +750,7 @@ function PreviewContentFields({
 										type="button"
 										key={g.level}
 										onClick={() => setGuard({ level: g.level })}
-										data-bn="btn"
+										data-bn={active ? "chip chip-active" : "chip"}
 										className="rounded-sm px-3 py-1 text-bn-xs font-semibold transition"
 										style={
 											active

@@ -33,7 +33,8 @@ export function ComposerPill({
 			disabled={disabled}
 			title={title}
 			onClick={() => onToggle(!on)}
-			data-bn="btn"
+			// 开关胶囊改的是值(联网/思考开没开),不是动作 —— chip 家族。
+			data-bn={lit ? "chip chip-active" : "chip"}
 			className={`flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-bn-pill border px-3 text-bn-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
 				lit
 					? "bn-chat-accent bn-chat-accent-soft border-transparent"

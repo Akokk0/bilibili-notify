@@ -71,9 +71,14 @@ function GroupChip({
 			? "border border-dashed border-bn-border bg-bn-surface/60 text-bn-text-tertiary hover:text-bn-text-primary"
 			: "border border-bn-border bg-bn-surface text-bn-text-secondary hover:border-bn-pink/60 hover:text-bn-text-primary";
 	return (
-		// 页面里手写的按钮不在 packages/ui 那份 skin-hooks 测试的射程内,漏挂了皮肤
-		// 就静默够不到它 —— 这一类在本仓库已犯过两回。
-		<button type="button" onClick={onClick} data-bn="btn" className={`${base} ${cls}`}>
+		// 页面里手写的控件不在 packages/ui 那份 skin-hooks 测试的射程内,漏挂了皮肤
+		// 就静默够不到它 —— 这一类在本仓库已犯过两回。分组筛选改的是值,挂 chip。
+		<button
+			type="button"
+			onClick={onClick}
+			data-bn={active ? "chip chip-active" : "chip"}
+			className={`${base} ${cls}`}
+		>
 			<span className="max-w-35 truncate">{label}</span>
 			<span className="font-mono text-bn-2xs opacity-70">{count}</span>
 		</button>
@@ -623,7 +628,7 @@ export default function Subs() {
 								type="button"
 								key={f.id}
 								onClick={() => setFilterId(f.id)}
-								data-bn="btn"
+								data-bn={active ? "chip chip-active" : "chip"}
 								className={`flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-xs font-semibold transition ${
 									active
 										? "bg-bn-surface text-bn-pink shadow-sm"

@@ -457,9 +457,10 @@ export interface ToneChipProps {
  * 「一排里选一个 / 开一个」的可点胶囊 —— 选中时 `tone` 上底(12%)与描边(实色)、
  * 字走正文色,未选中时退回中性描边。
  *
- * 与 {@link Pill} 的分工:Pill 是不可点的徽章(`<span>`,无描边),这个是按钮
- * (`<button>`,挂 `data-bn="btn"` 跟着换肤走造型)。**别拿 Pill 套 onClick** ——
- * 徽章语义混进按钮语义,挂点也就无处可挂了。
+ * 与 {@link Pill} 的分工:Pill 是不可点的徽章(`<span>`,无描边),这个是可点的
+ * 胶囊(`<button>`,挂 `data-bn="chip"` 跟着换肤走造型 —— 它改的是某个值,不是
+ * 执行动作,所以不挂 btn)。**别拿 Pill 套 onClick** —— 徽章语义混进胶囊语义,
+ * 挂点也就无处可挂了。
  *
  * `tone` 是**内容语义色**(error 红 / 直播粉 / 暂停橙),刻意不跟主强调色换肤:
  * 换个皮肤不该把「error」染成别的颜色。皮肤能改的是造型那一半(圆角、描边样式、
@@ -468,6 +469,9 @@ export interface ToneChipProps {
  * **tone 不承担可读性** —— 它只上底与边,文字恒走正文色 token。让 tone 当字色
  * 时,字与底同色相,对比度受限于 tone 与主题背景的明度差:亮色下 warn 1.90:1、
  * info 2.22:1,暗色下深调的紫 2.84:1、灰 2.45:1,七档里过不了 AA 的有五档 / 两档。
+ *
+ * 皮肤能改的是造型那一半(圆角、描边样式、阴影、字重),走 `chip` 挂点;
+ * 选中态额外挂 `chip-active` —— 但选中的底与边是 tone 的行内样式,皮肤盖不动。
  */
 export function ToneChip({
 	children,
@@ -497,7 +501,7 @@ export function ToneChip({
 			type="button"
 			onClick={onClick}
 			disabled={disabled}
-			data-bn="btn"
+			data-bn={active ? "chip chip-active" : "chip"}
 			className={`inline-flex items-center gap-1 rounded-bn-pill border px-3 py-1 text-bn-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${toneCls} ${uppercase ? "uppercase" : ""}`}
 			style={style}
 		>

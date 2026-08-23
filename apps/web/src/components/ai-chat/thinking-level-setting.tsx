@@ -87,7 +87,7 @@ export function ThinkingLevelSetting() {
 									type="button"
 									aria-pressed={active}
 									onClick={() => save.mutate(o.value)}
-									data-bn="btn"
+									data-bn={active ? "chip chip-active" : "chip"}
 									className={`flex-1 cursor-pointer rounded-bn-sm border-[1.5px] px-1 py-1.5 text-bn-xs font-semibold transition ${
 										active
 											? "bg-(--bn-glass-strong-bg) border-(--bn-chat-dot) text-bn-text-primary"

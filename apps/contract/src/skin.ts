@@ -183,6 +183,13 @@ export const SKIN_CSS_HOOK_MAP = {
 	tab: '[data-bn~="tab"]',
 	/** 选中的那个 tab 额外挂它(同 nav-item-active 的多挂点模式)。 */
 	"tab-active": '[data-bn~="tab-active"]',
+	/**
+	 * 筛选/档位/开关的小胶囊(日志等级、时间范围、思考深度、联网开关…)。
+	 * 与 tab 的分界:tab 换的是**看哪块内容**,chip 改的是**某个值**。
+	 */
+	chip: '[data-bn~="chip"]',
+	/** 选中/点亮的那颗 chip 额外挂它(同 tab-active 的多挂点模式)。 */
+	"chip-active": '[data-bn~="chip-active"]',
 } as const;
 
 export type SkinCssHook = keyof typeof SKIN_CSS_HOOK_MAP;
@@ -204,7 +211,7 @@ export const SKIN_CSS_HOOK_NOTES: Record<SkinCssHook, string> = {
 	"glass-strong": '"glass-strong"=强玻璃面(弹层、浮条、抽屉)',
 	btn: '"btn"=所有按钮(矮元素,胶囊圆角安全)',
 	"btn-primary": '"btn-primary"=主按钮(粉色实底那种)',
-	input: '"input"=单行输入框',
+	input: '"input"=输入框(单行输入、多行文本域、下拉选择框都挂它)',
 	header: '"header"=顶栏(横向长条)',
 	nav: '"nav"=页面级导航容器 —— 横向 tab 条和**竖向的分区列表**都挂它,别当成横条设形状',
 	avatar: '"avatar"=圆头像(本身已经是圆的)',
@@ -218,6 +225,9 @@ export const SKIN_CSS_HOOK_NOTES: Record<SkinCssHook, string> = {
 	tab: '"tab"=横向 tab 条里的一格(顶栏一级导航、页面内 TabBar、作用域条都是);矮元素,胶囊圆角安全;不写规则时默认装是「透明字 tab、选中实底/下划线」',
 	"tab-active":
 		'"tab-active"=选中的那个 tab 额外挂它(与 tab 同挂);注意有的 tab 默认装选中是强调色实底白字 —— 盖 background 时把 color 一起写了,别留白底白字',
+	chip: '"chip"=筛选/档位/开关的小胶囊(改的是值,不换视图 —— 换视图的是 tab);多形态且常挤在小容器里,别加占布局的 border,描边用 outline+负 offset',
+	"chip-active":
+		'"chip-active"=选中/点亮的那颗 chip 额外挂它(与 chip 同挂);很多 chip 的选中色是行内样式的品牌/语义色,皮肤盖不动 background —— 只描边加影最稳',
 };
 
 /**

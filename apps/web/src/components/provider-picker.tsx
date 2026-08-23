@@ -31,7 +31,9 @@ export function ProviderPicker({ value, onChange, only }: ProviderPickerProps) {
 						onClick={() => onChange(p.id)}
 						aria-pressed={active}
 						title={p.baseUrlHint}
-						data-bn="btn"
+						// 刻意不挂皮肤挂点(同 MenuItem 的理由):候选卡的选中语义靠品牌色
+						// 行内样式,皮肤按钮实底一落上来选中/未选中就分不开了;词表里也
+						// 没有「候选项」这一档。
 						className={`flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 transition ${
 							active
 								? "border-transparent shadow-sm ring-2"

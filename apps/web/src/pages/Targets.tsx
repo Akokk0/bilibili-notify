@@ -740,7 +740,8 @@ function TargetEditorModal({
 											// preserve user-typed identity if any
 											onChange({ ...next, id: value.id, enabled: value.enabled });
 										}}
-										data-bn="btn"
+										// 刻意不挂皮肤挂点(同 MenuItem):候选行的选中态靠 tint 行内
+										// 染色,皮肤按钮实底会把它盖成一排按钮。
 										className="flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition"
 										style={
 											active
@@ -1014,12 +1015,12 @@ function QQSessionPicker({
 				</div>
 			) : (
 				<div className="flex flex-col gap-1">
+					{/* 候选行不挂皮肤挂点(同 MenuItem):从列表里挑一个,不是执行动作。 */}
 					{list.map((e) => (
 						<button
 							key={e.openid}
 							type="button"
 							onClick={() => onPick(e.openid)}
-							data-bn="btn"
 							className="flex items-center gap-2 rounded-sm border border-bn-border bg-bn-surface px-2 py-1 text-left transition hover:border-bn-pink"
 						>
 							<span className="truncate text-bn-xs font-semibold text-bn-text-primary">
@@ -1079,12 +1080,12 @@ function QQGuildPicker({
 								{g.channels.length === 0 ? (
 									<span className="text-bn-2xs text-bn-text-tertiary">(无文字子频道)</span>
 								) : (
+									// 候选 chip 不挂皮肤挂点(同 MenuItem):挑频道,不是执行动作。
 									g.channels.map((ch) => (
 										<button
 											key={ch.channelId}
 											type="button"
 											onClick={() => onPick(g.guildId, ch.channelId)}
-											data-bn="btn"
 											className="rounded-sm border border-bn-border bg-bn-surface px-2 py-0.5 text-bn-xs text-bn-text-primary transition hover:border-bn-pink"
 										>
 											{ch.name}

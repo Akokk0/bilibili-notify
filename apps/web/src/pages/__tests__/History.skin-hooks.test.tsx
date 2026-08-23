@@ -49,12 +49,14 @@ afterEach(() => {
 });
 
 describe("推送历史 · 类型筛选胶囊", () => {
-	it("挂 btn,且圆角走皮肤的 pill 轴", async () => {
+	it("挂 chip(不再挂 btn),且圆角走皮肤的 pill 轴", async () => {
 		renderHistory();
 		await waitFor(() => expect(screen.getAllByText("直播").length).toBeGreaterThan(0));
 		for (const label of ["全部", "直播", "动态"]) {
 			const el = chip(label);
-			expect(el.getAttribute("data-bn"), label).toBe("btn");
+			const hooks = (el.getAttribute("data-bn") ?? "").split(/\s+/);
+			expect(hooks, label).toContain("chip");
+			expect(hooks, label).not.toContain("btn");
 			expect(el.className, label).toContain("rounded-bn-pill");
 			expect(el.className, label).not.toContain("rounded-full");
 		}

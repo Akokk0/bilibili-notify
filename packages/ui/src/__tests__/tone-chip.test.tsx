@@ -69,11 +69,20 @@ describe("ToneChip", () => {
 		expect(s.borderColor).toBe("var(--color-bn-pink)");
 	});
 
-	it("挂 btn 皮肤挂点,圆角走 pill 轴而不是写死 rounded-full", () => {
-		render(<ToneChip tone="#f2a053">暂停</ToneChip>);
-		expect(chip().getAttribute("data-bn")).toBe("btn");
+	// 它改的是某个值(筛选/开关),不是执行动作 —— 挂 chip 不挂 btn,免得皮肤的
+	// 按钮实底把整排筛选胶囊画成一排按钮(2026-08-23 挂点语义分家)。
+	it("挂 chip 皮肤挂点(选中额外挂 chip-active),圆角走 pill 轴而不是写死 rounded-full", () => {
+		const { unmount } = render(<ToneChip tone="#f2a053">暂停</ToneChip>);
+		expect(chip().getAttribute("data-bn")).toBe("chip");
 		expect(chip().className).toContain("rounded-bn-pill");
 		expect(chip().className).not.toContain("rounded-full");
+		unmount();
+		render(
+			<ToneChip tone="#f2a053" active>
+				暂停
+			</ToneChip>,
+		);
+		expect(chip().getAttribute("data-bn")).toBe("chip chip-active");
 	});
 
 	it("点得动,且 disabled 时不触发", () => {

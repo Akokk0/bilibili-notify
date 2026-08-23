@@ -72,18 +72,18 @@ afterEach(() => {
 });
 
 describe("Subs 筛选胶囊 × 皮肤挂点", () => {
-	it("状态筛选那排(全部/已启用/已禁用)挂 btn", async () => {
+	it("状态筛选那排(全部/已启用/已禁用)挂 chip —— 筛选改值不执行动作", async () => {
 		renderSubs();
 		await screen.findByText("UP甲");
 		for (const label of ["已启用", "已禁用"]) {
-			expect(hooksOf(chipByText(label)), label).toContain("btn");
+			expect(hooksOf(chipByText(label)), label).toContain("chip");
 		}
 	});
 
-	it("分组胶囊挂 btn", async () => {
+	it("分组胶囊挂 chip", async () => {
 		renderSubs();
 		await waitFor(() => expect(screen.getByText("未分组")).toBeTruthy());
-		expect(hooksOf(chipByText("未分组"))).toContain("btn");
+		expect(hooksOf(chipByText("未分组"))).toContain("chip");
 	});
 
 	it("分组胶囊的圆角走皮肤的 pill 轴,不写死", async () => {

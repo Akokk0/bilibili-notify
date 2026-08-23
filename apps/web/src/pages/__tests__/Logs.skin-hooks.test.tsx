@@ -50,23 +50,27 @@ afterEach(() => {
 describe("运行日志 · 顶栏控制胶囊", () => {
 	// 一律按**可及名**查,不按文本 —— 日志行本身也会渲染 error / warn 字样,
 	// 文本查询一旦有日志条目就有歧义,role 查询永远没有。
-	it("等级胶囊挂 btn,且圆角走皮肤的 pill 轴", async () => {
+	it("等级胶囊挂 chip,且圆角走皮肤的 pill 轴", async () => {
 		renderLogs();
 		await screen.findByRole("button", { name: "error" });
 		for (const label of ["error", "warn", "info"]) {
 			const el = screen.getByRole("button", { name: label });
-			expect(el.getAttribute("data-bn"), label).toBe("btn");
+			const hooks = (el.getAttribute("data-bn") ?? "").split(/\s+/);
+			expect(hooks, label).toContain("chip");
+			expect(hooks, label).not.toContain("btn");
 			expect(el.className, label).toContain("rounded-bn-pill");
 			expect(el.className, label).not.toContain("rounded-full");
 		}
 	});
 
-	it("暂停 / 自动滚动 / 下载三颗也挂 btn —— 同一排不许半挂", async () => {
+	it("暂停 / 自动滚动 / 下载三颗也挂 chip —— 同一排不许半挂", async () => {
 		renderLogs();
 		await screen.findByRole("button", { name: "自动滚动" });
 		for (const label of ["暂停", "自动滚动", /\.jsonl/]) {
 			const el = screen.getByRole("button", { name: label });
-			expect(el.getAttribute("data-bn"), String(label)).toBe("btn");
+			const hooks = (el.getAttribute("data-bn") ?? "").split(/\s+/);
+			expect(hooks, String(label)).toContain("chip");
+			expect(hooks, String(label)).not.toContain("btn");
 			expect(el.className, String(label)).toContain("rounded-bn-pill");
 		}
 	});
