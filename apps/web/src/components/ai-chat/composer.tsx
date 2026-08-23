@@ -1,5 +1,5 @@
 import type { MaidSkillDTO } from "@bilibili-notify/contract";
-import { Icon, IconButton, MenuItem, useDismiss } from "@bilibili-notify/ui";
+import { Icon, IconButton, MenuItem, PopoverShell, useDismiss } from "@bilibili-notify/ui";
 import {
 	type KeyboardEvent,
 	type ReactNode,
@@ -171,11 +171,15 @@ export function Composer({
 	return (
 		<div className="relative mx-auto w-full max-w-[720px]">
 			{showMenu ? (
-				<div
-					data-bn="glass-strong"
-					className="bn-anim-cmd-in absolute inset-x-1 bottom-full z-bn-raised mb-2.5 overflow-hidden rounded-bn-card border border-bn-border bg-bn-surface-strong shadow-bn-elev"
+				<PopoverShell
+					side="top"
+					align="stretch"
+					layer="raised"
+					surface="solid-strong"
+					variant="flush"
 					role="listbox"
-					aria-label="女仆技能"
+					ariaLabel="女仆技能"
+					className="bn-anim-cmd-in"
 				>
 					<div className="p-[5px]">
 						{matches.map((s, k) => (
@@ -207,7 +211,7 @@ export function Composer({
 						<span>Enter 确认</span>
 						<span>Esc 关闭</span>
 					</div>
-				</div>
+				</PopoverShell>
 			) : null}
 
 			<div
@@ -304,11 +308,13 @@ export function Composer({
 								onClick={() => setActionsOpen((v) => !v)}
 							/>
 							{actionsOpen ? (
-								<div
+								<PopoverShell
+									side="top"
+									layer="raised"
+									surface="solid-strong"
 									role="menu"
-									aria-label="更多"
-									data-bn="glass-strong"
-									className="bn-anim-cmd-in absolute bottom-full left-0 z-bn-raised mb-2 w-44 overflow-hidden rounded-bn-card border border-bn-border bg-bn-surface-strong p-1 shadow-bn-elev"
+									ariaLabel="更多"
+									className="bn-anim-cmd-in w-44"
 								>
 									<MenuItem
 										role="menuitem"
@@ -333,7 +339,7 @@ export function Composer({
 									>
 										女仆技能
 									</MenuItem>
-								</div>
+								</PopoverShell>
 							) : null}
 						</div>
 						{extras}

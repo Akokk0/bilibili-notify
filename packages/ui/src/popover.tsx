@@ -53,18 +53,33 @@ export function useDismiss(
  * **定位靠调用方**:壳子只出 `absolute` 与贴边方向,`relative` 的那个包裹由调用方给
  * (触发器与浮层的相对关系只有它知道)。
  *
- * 开口只有三样,每一样都对应真实的调用方分歧:
+ * 开口每一样都对应真实的调用方分歧:
  * - `align` 贴左还是贴右
+ * - `side` 朝下开还是朝上开
  * - `variant` 内容要不要留呼吸位
  * - `layer` 压在第几层
+ * - `surface` 底是实的、更实的,还是玻璃的
  *
  * `className` 按库里的老规矩,**只收不冲突的**(宽度、最大高度、滚动),覆盖本体是覆盖
  * 不住的 —— 没有 tailwind-merge,同属性两条 utility 谁赢由样式表顺序决定,不由类名
  * 串顺序决定。要改本体就加档。
  */
 
-/** 与触发器的贴边方向。 */
-export type PopoverAlign = "left" | "right";
+/**
+ * 与触发器的贴边方向。
+ *
+ * `stretch` 是两边都贴 —— 输入框上方那种与输入区同宽的浮层,不是靠一侧对齐的。
+ */
+export type PopoverAlign = "left" | "right" | "stretch";
+
+/**
+ * 朝上开还是朝下开。
+ *
+ * 收编那一轮漏掉了聊天输入区的两个下拉(技能列表、「+」菜单),就因为它们**朝上**开
+ * —— 于是站里最后两处手写的那串 class 就留在了那儿。间距上下不同是实的:向下 6px
+ * 贴着触发器下沿,向上留 8px,底下那颗触发器通常更高一些。
+ */
+export type PopoverSide = "bottom" | "top";
 
 /**
  * 内容的呼吸位。
@@ -82,7 +97,7 @@ export type PopoverVariant = "inset" | "flush" | "panel";
  * 没查清 —— 一个弹层要压过什么,取决于它开在哪、下面铺着什么。原样搬过来,至少现在
  * 这个选择是显式的、在调用点看得见的。
  */
-export type PopoverLayer = "local" | "nav" | "overlay";
+export type PopoverLayer = "local" | "raised" | "nav" | "overlay";
 
 /**
  * 底是实的还是玻璃的。
@@ -95,11 +110,13 @@ export type PopoverLayer = "local" | "nav" | "overlay";
  * 注意 `glass` 换的是**底本身**(`.bn-glass-strong` 带 `backdrop-filter`),不是
  * `data-bn="glass-strong"` 那个皮肤挂点 —— 两档都挂那个点。
  */
-export type PopoverSurface = "solid" | "glass";
+export type PopoverSurface = "solid" | "solid-strong" | "glass";
 
 const ALIGN: Record<PopoverAlign, string> = {
 	left: "left-0",
 	right: "right-0",
+	// inset-x 而不是 left-0 right-0:留一点边距,免得浮层的圆角贴死在输入框两侧。
+	stretch: "inset-x-1",
 };
 
 const VARIANT: Record<PopoverVariant, string> = {
@@ -112,10 +129,20 @@ const SURFACE: Record<PopoverSurface, string> = {
 	solid: "border border-bn-border bg-bn-surface",
 	// 玻璃档的底与边都由 `.bn-glass-strong` 出,再叠一层 border 会画出双边。
 	glass: "bn-glass-strong",
+	// 实底但更实一档 —— 聊天输入区那两个下拉压在消息流之上,轻底会透出文字。
+	"solid-strong": "border border-bn-border bg-bn-surface-strong",
+};
+
+// `top-[calc(100%+6px)]`:贴着触发器下沿再让开 6px。收编前是 `top-full mt-1` /
+// `top-full mt-2` / `top-[calc(100%+6px)]` 三种写法两种间距。
+const SIDE: Record<PopoverSide, string> = {
+	bottom: "top-[calc(100%+6px)]",
+	top: "bottom-[calc(100%+8px)]",
 };
 
 const LAYER: Record<PopoverLayer, string> = {
 	local: "z-bn-local",
+	raised: "z-bn-raised",
 	nav: "z-bn-nav",
 	overlay: "z-bn-overlay",
 };
@@ -123,11 +150,18 @@ const LAYER: Record<PopoverLayer, string> = {
 export interface PopoverShellProps {
 	children: ReactNode;
 	align?: PopoverAlign;
+	side?: PopoverSide;
 	variant?: PopoverVariant;
 	layer?: PopoverLayer;
 	surface?: PopoverSurface;
 	/** 宽度 / 最大高度 / 滚动这类调用方真的不同的东西。 */
 	className?: string;
+	/**
+	 * 浮层的语义角色与名字。**不是外观档** —— 菜单是 `menu`、候选列表是 `listbox`,
+	 * 读屏器靠它判断里面装的是什么;没有透传口的话,这两类浮层就只能绕开这个壳自己写。
+	 */
+	role?: string;
+	ariaLabel?: string;
 	/**
 	 * 浮层根节点。**几乎每个调用方都要**:「点到外面就关掉」得先知道点的是不是自己。
 	 * React 19 起 ref 就是个普通 prop,不用 forwardRef。
@@ -138,22 +172,26 @@ export interface PopoverShellProps {
 export function PopoverShell({
 	children,
 	align = "left",
+	side = "bottom",
 	variant = "inset",
 	layer = "local",
 	surface = "solid",
 	className,
+	role,
+	ariaLabel,
 	ref,
 }: PopoverShellProps) {
 	return (
 		<div
 			ref={ref}
+			// 两个一起给或都不给:`aria-label` 挂在没有 role 的裸 div(generic 角色)上
+			// 是无效属性 —— 读屏器不会念,而写的人以为自己标注过了。
+			{...(role ? { role, "aria-label": ariaLabel } : {})}
 			// 弹层走**强**玻璃档:`glass` 的 hook 语义是「轻玻璃卡片」,`glass-strong` 才是
 			// 「弹层、浮条、抽屉」。暗色皮肤按最佳实践把 background 调到 alpha 0.55、
 			// strongBackground 0.85,用轻档会透出底下的文字。
 			data-bn="glass-strong"
-			// `top-[calc(100%+6px)]`:贴着触发器下沿再让开 6px。收编前是 `top-full mt-1` /
-			// `top-full mt-2` / `top-[calc(100%+6px)]` 三种写法两种间距。
-			className={`absolute top-[calc(100%+6px)] ${ALIGN[align]} ${LAYER[layer]} overflow-hidden rounded-bn-card shadow-bn-elev ${SURFACE[surface]} ${VARIANT[variant]} ${className ?? ""}`}
+			className={`absolute ${SIDE[side]} ${ALIGN[align]} ${LAYER[layer]} overflow-hidden rounded-bn-card shadow-bn-elev ${SURFACE[surface]} ${VARIANT[variant]} ${className ?? ""}`}
 		>
 			{children}
 		</div>
