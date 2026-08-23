@@ -912,9 +912,7 @@ function TargetRoutingCard({
 							key={g.label}
 							className="border-b border-bn-border-subtle px-3 py-2 last:border-b-0"
 						>
-							<div className="mb-1.5 text-bn-2xs font-bold uppercase tracking-wider text-bn-text-tertiary">
-								{g.label}
-							</div>
+							<SectionHeader label={g.label} />
 							<div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
 								{g.keys.map(({ key, sub: featSub }) => {
 									// 仅 dynamic / live 行下方挂 "+ @全体" 子开关(tristate:explicit / inherit)。

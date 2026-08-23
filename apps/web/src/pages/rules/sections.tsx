@@ -9,7 +9,6 @@ import { type ReactNode, useState } from "react";
 import {
 	ArrayEditor,
 	Field,
-	type FieldProps,
 	Picker,
 	QuietHoursEditor,
 	TArea,
@@ -176,8 +175,6 @@ export const PERUP_SECTIONS: SectionMeta[] = [
 	},
 ];
 
-const FieldRow = (props: FieldProps) => <Field {...props} />;
-
 // ── 1. Filter section ────────────────────────────────────────────────────────
 
 export function FilterSection({
@@ -211,41 +208,41 @@ export function FilterSection({
 			icon={<Icon.filter size={14} />}
 			badge="filters"
 		>
-			<FieldRow code="blockKeywords" full>
+			<Field code="blockKeywords" full>
 				<ArrayEditor
 					value={value.blockKeywords}
 					onChange={(n) => set("blockKeywords", n)}
 					placeholder="关键词"
 				/>
-			</FieldRow>
-			<FieldRow code="blockRegex" full>
+			</Field>
+			<Field code="blockRegex" full>
 				<ArrayEditor
 					value={value.blockRegex}
 					onChange={(n) => set("blockRegex", n)}
 					placeholder="例如:^广告.*"
 				/>
-			</FieldRow>
+			</Field>
 			<div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
-				<FieldRow code="blockForward">
+				<Field code="blockForward">
 					<div className="flex h-7.5 items-center">
 						<Toggle value={value.blockForward} onChange={(v) => set("blockForward", v)} size="sm" />
 					</div>
-				</FieldRow>
-				<FieldRow code="blockArticle">
+				</Field>
+				<Field code="blockArticle">
 					<div className="flex h-7.5 items-center">
 						<Toggle value={value.blockArticle} onChange={(v) => set("blockArticle", v)} size="sm" />
 					</div>
-				</FieldRow>
-				<FieldRow code="blockDraw">
+				</Field>
+				<Field code="blockDraw">
 					<div className="flex h-7.5 items-center">
 						<Toggle value={value.blockDraw} onChange={(v) => set("blockDraw", v)} size="sm" />
 					</div>
-				</FieldRow>
-				<FieldRow code="blockAv">
+				</Field>
+				<Field code="blockAv">
 					<div className="flex h-7.5 items-center">
 						<Toggle value={value.blockAv} onChange={(v) => set("blockAv", v)} size="sm" />
 					</div>
-				</FieldRow>
+				</Field>
 			</div>
 			<CollapseBlock
 				label="启用白名单 · 仅推送命中条目"
@@ -253,15 +250,15 @@ export function FilterSection({
 				onToggle={toggleWhitelist}
 				accent="var(--color-bn-pink)"
 			>
-				<FieldRow code="whitelistKeywords" full>
+				<Field code="whitelistKeywords" full>
 					<ArrayEditor
 						value={value.whitelistKeywords}
 						onChange={(n) => set("whitelistKeywords", n)}
 					/>
-				</FieldRow>
-				<FieldRow code="whitelistRegex" full>
+				</Field>
+				<Field code="whitelistRegex" full>
 					<ArrayEditor value={value.whitelistRegex} onChange={(n) => set("whitelistRegex", n)} />
-				</FieldRow>
+				</Field>
 			</CollapseBlock>
 		</GlassBox>
 	);
@@ -287,16 +284,16 @@ export function ImageGroupSection({
 			icon={<Icon.dyn size={14} />}
 			badge="imageGroup"
 		>
-			<FieldRow code="enable">
+			<Field code="enable">
 				<Toggle value={value.enable} onChange={(v) => set("enable", v)} />
-			</FieldRow>
-			<FieldRow code="forward">
+			</Field>
+			<Field code="forward">
 				<Toggle
 					value={value.forward}
 					onChange={(v) => set("forward", v)}
 					disabled={!value.enable}
 				/>
-			</FieldRow>
+			</Field>
 		</GlassBox>
 	);
 }
@@ -325,7 +322,7 @@ export function LiveThresholdsSection({
 			badge="live"
 		>
 			<div className="grid grid-cols-1 gap-0 sm:grid-cols-2">
-				<FieldRow code="minScPrice">
+				<Field code="minScPrice">
 					<TNum
 						value={filters.minScPrice}
 						onChange={(v) => setF("minScPrice", v)}
@@ -333,8 +330,8 @@ export function LiveThresholdsSection({
 						max={9999}
 						suffix="元"
 					/>
-				</FieldRow>
-				<FieldRow code="minGuardLevel">
+				</Field>
+				<Field code="minGuardLevel">
 					<Picker<1 | 2 | 3>
 						value={filters.minGuardLevel}
 						onChange={(v) => setF("minGuardLevel", v)}
@@ -344,8 +341,8 @@ export function LiveThresholdsSection({
 							{ value: 1, label: "总督" },
 						]}
 					/>
-				</FieldRow>
-				<FieldRow code="schedule.pushTime">
+				</Field>
+				<Field code="schedule.pushTime">
 					<TNum
 						value={schedule.pushTime}
 						onChange={(v) => setS("pushTime", v)}
@@ -353,8 +350,8 @@ export function LiveThresholdsSection({
 						max={23}
 						suffix="小时"
 					/>
-				</FieldRow>
-				<FieldRow code="restartPush">
+				</Field>
+				<Field code="restartPush">
 					<div className="flex h-7.5 items-center">
 						<Toggle
 							value={schedule.restartPush}
@@ -362,8 +359,8 @@ export function LiveThresholdsSection({
 							size="sm"
 						/>
 					</div>
-				</FieldRow>
-				<FieldRow
+				</Field>
+				<Field
 					code="schedule.liveEndGrace"
 					hint="开启后下播先等待,期间重新开播即接续为同一场(防网络抖动 / 超管掐流误报)"
 				>
@@ -374,9 +371,9 @@ export function LiveThresholdsSection({
 							size="sm"
 						/>
 					</div>
-				</FieldRow>
+				</Field>
 				{schedule.liveEndGrace ? (
-					<FieldRow code="schedule.liveEndGraceMinutes" hint="下播到重开超过此时长才判定真下播">
+					<Field code="schedule.liveEndGraceMinutes" hint="下播到重开超过此时长才判定真下播">
 						<TNum
 							value={schedule.liveEndGraceMinutes}
 							onChange={(v) => setS("liveEndGraceMinutes", v)}
@@ -384,11 +381,11 @@ export function LiveThresholdsSection({
 							max={10}
 							suffix="分钟"
 						/>
-					</FieldRow>
+					</Field>
 				) : null}
-				<FieldRow code="schedule.quietHours" full>
+				<Field code="schedule.quietHours" full>
 					<QuietHoursEditor value={schedule.quietHours} onChange={(v) => setS("quietHours", v)} />
-				</FieldRow>
+				</Field>
 			</div>
 		</GlassBox>
 	);
@@ -414,7 +411,7 @@ export function SummarySection({
 			badge="liveSummary"
 		>
 			<StopWordsHint />
-			<FieldRow code="templates.wordcloudStopWords" full>
+			<Field code="templates.wordcloudStopWords" full>
 				<TArea
 					value={templates.wordcloudStopWords}
 					onChange={(v) => setT("wordcloudStopWords", v)}
@@ -422,17 +419,17 @@ export function SummarySection({
 					mono
 					placeholder="例如：哈哈,2333,前面的,主播"
 				/>
-			</FieldRow>
+			</Field>
 			<div className="my-3 border-t border-bn-border-subtle" />
 			<SummaryVariableHints />
-			<FieldRow code="templates.liveSummary" full>
+			<Field code="templates.liveSummary" full>
 				<TArea
 					value={templates.liveSummary}
 					onChange={(v) => setT("liveSummary", v)}
 					rows={8}
 					mono
 				/>
-			</FieldRow>
+			</Field>
 		</GlassBox>
 	);
 }
@@ -644,7 +641,7 @@ export function LiveMsgSection({
 							/>
 						</div>
 						<VariableHints vars={active.vars} accent="var(--color-bn-pink)" />
-						<FieldRow code={active.code} full>
+						<Field code={active.code} full>
 							<TArea
 								key={active.key}
 								value={templates[active.key]}
@@ -652,7 +649,7 @@ export function LiveMsgSection({
 								rows={3}
 								mono
 							/>
-						</FieldRow>
+						</Field>
 					</>
 				}
 			/>
@@ -703,7 +700,7 @@ export function DynamicMsgSection({
 							/>
 						</div>
 						<DynamicMsgVariableHints />
-						<FieldRow code={active.code} full>
+						<Field code={active.code} full>
 							<TArea
 								key={active.key}
 								value={templates[active.key]}
@@ -711,7 +708,7 @@ export function DynamicMsgSection({
 								rows={2}
 								mono
 							/>
-						</FieldRow>
+						</Field>
 					</>
 				}
 			/>
@@ -765,21 +762,21 @@ export function GuardSection({
 										{key}
 									</code>
 								</div>
-								<FieldRow code="template" full>
+								<Field code="template" full>
 									<TInput
 										value={entry.template}
 										onChange={(v) => setG(key, { ...entry, template: v })}
 										mono
 									/>
-								</FieldRow>
-								<FieldRow code="imageUrl" full>
+								</Field>
+								<Field code="imageUrl" full>
 									<TInput
 										value={entry.imageUrl}
 										onChange={(v) => setG(key, { ...entry, imageUrl: v })}
 										mono
 										placeholder="https://..."
 									/>
-								</FieldRow>
+								</Field>
 							</div>
 						);
 					})}

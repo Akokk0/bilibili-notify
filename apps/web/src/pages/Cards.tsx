@@ -214,33 +214,6 @@ function PreviewImage({
 	);
 }
 
-function CardPreview({
-	kind,
-	style,
-	content,
-	layout,
-	fallback,
-	frame,
-}: {
-	kind: CardKind;
-	style: CardStyle;
-	content: Record<string, unknown>;
-	layout: CardLayoutFull | null;
-	fallback: boolean;
-	frame?: boolean;
-}) {
-	return (
-		<PreviewImage
-			kind={kind}
-			style={style}
-			content={content}
-			layout={layout}
-			fallback={fallback}
-			frame={frame}
-		/>
-	);
-}
-
 /**
  * 预览内容 + 测试推送(合并卡)—— 上半编辑该类型的预览内容(全局可改 mock,per-UP 用真实
  * 数据),下半把当前预览卡片(草稿样式 + 类型 + 内容)渲染成图片推给所选 PushTarget。
@@ -1523,7 +1496,7 @@ export default function Cards() {
 													) : null}
 												</div>
 												<div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
-													<CardPreview
+													<PreviewImage
 														kind={fk}
 														style={style}
 														content={fcontent}
@@ -1556,7 +1529,7 @@ export default function Cards() {
 									{kind === "sc" ? " 280" : kind === "guard" ? " 430" : " 600"}px
 								</span>
 							</div>
-							<CardPreview
+							<PreviewImage
 								kind={kind}
 								style={effStyle}
 								content={previewContent}
