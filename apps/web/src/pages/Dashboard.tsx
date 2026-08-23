@@ -10,6 +10,7 @@ import {
 	Icon,
 	Pill,
 	StatsBar,
+	StatusDot,
 } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
@@ -510,12 +511,7 @@ function PluginMatrix({ cells }: { cells: PluginCell[] }) {
 					<div key={c.id} className="rounded-lg px-3 py-2.5">
 						<div className="mb-1.5 flex items-center justify-between">
 							<span className="text-bn-sm font-bold text-bn-text-primary">{c.label}</span>
-							<span
-								className="inline-block h-1.5 w-1.5 rounded-full"
-								style={{
-									background: c.enabled ? "var(--color-bn-success)" : "var(--color-bn-inactive)",
-								}}
-							/>
+							<StatusDot size="sm" kind={c.enabled ? "ok" : "off"} />
 						</div>
 						<div className="flex items-center gap-1.5 whitespace-nowrap text-bn-xs text-bn-text-secondary">
 							日志{" "}

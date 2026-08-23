@@ -536,10 +536,28 @@ const STATUS_COLORS: Record<StatusDotKind, string> = {
 	pending: "var(--color-bn-text-tertiary)",
 };
 
-export function StatusDot({ kind }: { kind: StatusDotKind }) {
+export type StatusDotProps = (
+	| { kind: StatusDotKind; color?: undefined }
+	| {
+			kind?: undefined;
+			/**
+			 * 逐项动态的图例色(模块 tone、版式 accent、锐评亮点色)—— 与 `kind` 二选一。
+			 * 同 {@link ToneChip} 的 `tone`:内容语义色走行内是站规允许的那一种动态,
+			 * 但**能用语义档就用 `kind`**,color 只给档位表说不出来的逐项色。
+			 */
+			color: string;
+	  }
+) & {
+	/** `md`(默认)= 8px 状态点;`sm` = 6px,给行内图例(模块色标、版式圆点)那一档。 */
+	size?: "sm" | "md";
+	/** 只收定位/外边距这类不冲突的工具类(`mt-1.5` 对齐行首之类),覆盖本体是覆盖不住的。 */
+	className?: string;
+};
+
+export function StatusDot({ kind, color, size = "md", className }: StatusDotProps) {
 	const blink = kind === "live" || kind === "living";
 	const style: CSSProperties = {
-		background: STATUS_COLORS[kind],
+		background: color ?? (kind ? STATUS_COLORS[kind] : undefined),
 		// 光晕从强调色现调,别写死那圈粉 rgba —— 点变了色而光晕没变,是最难看的一种脱节。
 		boxShadow: blink
 			? "0 0 0 3px color-mix(in srgb, var(--color-bn-pink) 18%, transparent)"
@@ -547,7 +565,7 @@ export function StatusDot({ kind }: { kind: StatusDotKind }) {
 	};
 	return (
 		<span
-			className={`inline-block h-2 w-2 shrink-0 rounded-full ${blink ? "bn-anim-pulse" : ""}`}
+			className={`inline-block shrink-0 rounded-full ${size === "sm" ? "h-1.5 w-1.5" : "h-2 w-2"} ${blink ? "bn-anim-pulse" : ""} ${className ?? ""}`}
 			style={style}
 		/>
 	);

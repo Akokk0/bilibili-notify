@@ -49,6 +49,23 @@ describe("StatusDot", () => {
 		}
 	});
 
+	it("color 口盖过档位色 —— 逐项动态图例(模块 tone / 版式 accent)走这里", () => {
+		// 收编前站内手写了四颗 6px 小圆点,className 逐字符相同、只有 background
+		// 表达式各异 —— 那正是「逐项动态色」该由组件收口的形态。
+		const { container } = render(<StatusDot color="var(--color-bn-blue)" />);
+		const el = container.firstElementChild as HTMLElement;
+		expect(el.style.background).toBe("var(--color-bn-blue)");
+		expect(el.className).not.toContain("bn-anim-pulse");
+	});
+
+	it("size=sm 是 6px 图例档,md(默认)保持 8px", () => {
+		const { container: sm } = render(<StatusDot kind="ok" size="sm" />);
+		expect((sm.firstElementChild as HTMLElement).className).toContain("h-1.5 w-1.5");
+		cleanup();
+		const { container: md } = render(<StatusDot kind="ok" />);
+		expect((md.firstElementChild as HTMLElement).className).toContain("h-2 w-2");
+	});
+
 	it("off 比 pending 浅 —— 两档都是灰,靠深浅分「关着的」和「等着的」", () => {
 		// 收编前是 #cccccc vs #94a3b8。换成 token 之后这层次不能丢,否则两个状态
 		// 在界面上就成了同一颗点。

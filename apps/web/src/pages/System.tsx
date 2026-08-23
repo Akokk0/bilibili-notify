@@ -1,5 +1,13 @@
 import { buildPatch } from "@bilibili-notify/internal/patch";
-import { Avatar, Btn, ErrorNote, GlassBox, Icon, LoadingBlock } from "@bilibili-notify/ui";
+import {
+	Avatar,
+	Btn,
+	ErrorNote,
+	GlassBox,
+	Icon,
+	LoadingBlock,
+	StatusDot,
+} from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { BrowserSourceSettings } from "../components/browser-source-settings";
@@ -191,10 +199,7 @@ function SystemSettingsSection({
 								className="flex items-center justify-between gap-2 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-2.5 py-1.5"
 							>
 								<span className="flex items-center gap-1.5 text-bn-sm font-bold text-bn-text-primary">
-									<span
-										className="inline-block h-1.5 w-1.5 rounded-full"
-										style={{ background: m.tone }}
-									/>
+									<StatusDot size="sm" color={m.tone} />
 									{m.label}
 								</span>
 								<LogLevelPicker

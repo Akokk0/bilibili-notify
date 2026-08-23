@@ -1,5 +1,5 @@
 import type { StatsSoloRoastResponse, StatsSoloRoastResult } from "@bilibili-notify/contract";
-import { Avatar } from "@bilibili-notify/ui";
+import { Avatar, StatusDot } from "@bilibili-notify/ui";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { api } from "../../services/api";
@@ -75,10 +75,7 @@ export function SoloRoastCard({
 							<div className="flex flex-col gap-1.5">
 								{result.highlights.map((h) => (
 									<div key={h.label} className="flex gap-2 text-xs leading-relaxed">
-										<span
-											className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
-											style={{ background: color }}
-										/>
+										<StatusDot size="sm" color={color} className="mt-1.5" />
 										<div>
 											<b className="text-bn-text-primary">{h.label}</b>{" "}
 											<span className="text-bn-text-tertiary">{h.comment}</span>

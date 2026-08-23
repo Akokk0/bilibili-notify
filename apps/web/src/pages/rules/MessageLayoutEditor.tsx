@@ -6,7 +6,7 @@
  * 全局绑 defaults.templates,per-UP 绑 overrides.templates,由调用方组合)。
  */
 
-import { AddButton, Icon, IconButton, Toggle, WarnNote } from "@bilibili-notify/ui";
+import { AddButton, Icon, IconButton, StatusDot, Toggle, WarnNote } from "@bilibili-notify/ui";
 import {
 	closestCenter,
 	DndContext,
@@ -94,10 +94,7 @@ function SortableBlockRow({
 					listeners={listeners}
 					setActivatorNodeRef={setActivatorNodeRef}
 				/>
-				<span
-					className="inline-block h-1.5 w-1.5 rounded-full"
-					style={{ background: isSplit ? "var(--color-bn-inactive)" : accent }}
-				/>
+				<StatusDot size="sm" color={isSplit ? "var(--color-bn-inactive)" : accent} />
 				<span
 					className={`flex-1 text-bn-sm font-bold ${
 						isSplit
