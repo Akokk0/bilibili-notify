@@ -40,6 +40,7 @@ import {
 	TSelect,
 } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
+import { InheritNote } from "../components/inherit-note";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { GUARD_LEVELS } from "../config/guard-levels";
 import { PUSH_TONE } from "../config/push-kinds";
@@ -759,13 +760,6 @@ function PreviewContentFields({
 				</>
 			)}
 		</>
-	);
-}
-
-/** 关闭态下方一行说明文字。 */
-function InheritNote({ children }: { children: React.ReactNode }) {
-	return (
-		<div className="py-6 text-center text-bn-sm text-bn-text-tertiary">未启用 · {children}</div>
 	);
 }
 

@@ -23,6 +23,7 @@ import {
 	TInput,
 	TNum,
 } from "../../components/forms";
+import { InheritNote } from "../../components/inherit-note";
 import { AI_PURPLE } from "../../config/colors";
 import { SECTION_ACCENT } from "../../config/section-accents";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
@@ -293,15 +294,6 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 	);
 }
 
-/**
- * 关闭态下方一行说明文字 —— 与设计稿"未启用 · xx 将继承全局 xx 规则"一致。
- */
-function InheritHint({ children }: { children: React.ReactNode }) {
-	return (
-		<div className="py-5 text-center text-bn-sm text-bn-text-tertiary">未启用 · {children}</div>
-	);
-}
-
 /* -------- Filters --------------------------------------------------------- */
 
 function FilterOverrideBox({
@@ -394,7 +386,7 @@ function FilterOverrideBox({
 					</div>
 				</>
 			) : (
-				<InheritHint>该 UP 将继承全局动态过滤规则</InheritHint>
+				<InheritNote>该 UP 将继承全局动态过滤规则</InheritNote>
 			)}
 		</GlassBox>
 	);
@@ -511,7 +503,7 @@ function LiveOverrideBox({
 					</Field>
 				</div>
 			) : (
-				<InheritHint>该 UP 将继承全局直播阈值与调度</InheritHint>
+				<InheritNote>该 UP 将继承全局直播阈值与调度</InheritNote>
 			)}
 		</GlassBox>
 	);
@@ -598,7 +590,7 @@ function SummaryOverrideBox({
 					</CollapseBlock>
 				</>
 			) : (
-				<InheritHint>该 UP 将继承全局弹幕词云停用词与直播总结模板</InheritHint>
+				<InheritNote>该 UP 将继承全局弹幕词云停用词与直播总结模板</InheritNote>
 			)}
 		</GlassBox>
 	);
@@ -675,7 +667,7 @@ function MsgOverrideBox({
 					</Field>
 				</>
 			) : (
-				<InheritHint>该 UP 将继承全局直播消息模板</InheritHint>
+				<InheritNote>该 UP 将继承全局直播消息模板</InheritNote>
 			)}
 		</GlassBox>
 	);
@@ -740,7 +732,7 @@ function DynamicMsgOverrideBox({
 					</Field>
 				</>
 			) : (
-				<InheritHint>该 UP 将继承全局动态消息模板</InheritHint>
+				<InheritNote>该 UP 将继承全局动态消息模板</InheritNote>
 			)}
 		</GlassBox>
 	);
@@ -795,7 +787,7 @@ function MessageLayoutOverrideBox({
 					</div>
 				</>
 			) : (
-				<InheritHint>该 UP 将继承全局消息版式(部件排列 / 分条 / 分隔符)</InheritHint>
+				<InheritNote>该 UP 将继承全局消息版式(部件排列 / 分条 / 分隔符)</InheritNote>
 			)}
 		</GlassBox>
 	);
@@ -876,7 +868,7 @@ function GuardOverrideBox({
 					</div>
 				</>
 			) : (
-				<InheritHint>该 UP 将继承全局上舰提示设置</InheritHint>
+				<InheritNote>该 UP 将继承全局上舰提示设置</InheritNote>
 			)}
 		</GlassBox>
 	);
@@ -1015,7 +1007,7 @@ function SpecialUserBox({
 					</Field>
 				</>
 			) : (
-				<InheritHint>该 UP 将继承全局{inheritLabel}</InheritHint>
+				<InheritNote>该 UP 将继承全局{inheritLabel}</InheritNote>
 			)}
 		</GlassBox>
 	);
@@ -1113,7 +1105,7 @@ function AiOverrideBox({
 					</Field>
 				</>
 			) : (
-				<InheritHint>该 UP 将跟着全局那份人格走</InheritHint>
+				<InheritNote>该 UP 将跟着全局那份人格走</InheritNote>
 			)}
 		</GlassBox>
 	);
@@ -1163,7 +1155,7 @@ function ImageGroupOverrideBox({
 					</Field>
 				</>
 			) : (
-				<InheritHint>该 UP 将继承全局动态图集策略</InheritHint>
+				<InheritNote>该 UP 将继承全局动态图集策略</InheritNote>
 			)}
 		</GlassBox>
 	);

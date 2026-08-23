@@ -15,6 +15,7 @@ import {
 	TInput,
 	TNum,
 } from "../../components/forms";
+import { InheritNote } from "../../components/inherit-note";
 import { GUARD_LEVELS } from "../../config/guard-levels";
 import { SECTION_ACCENT, sectionTitleColor } from "../../config/section-accents";
 import type { MessageKindLayoutFull } from "../../types/domain";
@@ -782,9 +783,7 @@ export function GuardSection({
 					})}
 				</>
 			) : (
-				<div className="py-5 text-center text-bn-sm text-bn-text-tertiary">
-					未启用 · 引擎将默认推送 B 站官方上舰图(舰长 / 提督 / 总督)
-				</div>
+				<InheritNote>引擎将默认推送 B 站官方上舰图(舰长 / 提督 / 总督)</InheritNote>
 			)}
 		</GlassBox>
 	);
