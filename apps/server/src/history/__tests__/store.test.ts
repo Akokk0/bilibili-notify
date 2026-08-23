@@ -264,6 +264,33 @@ describe("query — 排序 / 过滤 / 容错", () => {
 		);
 	});
 
+	it("尾巴里混了坏行 → 拿当天更早那几条补上,不是跳去前一天", async () => {
+		// 取尾巴那条快路数的是**行**,可返回的是**能解析回来的条目**。尾窗里只要有
+		// 读不回来的行(进程崩在写一半、旧 schema 留下的行),这一份就少给几条,
+		// 而调用方拿这个短数去更早的日文件里补 —— 夹在中间那些完好的记录于是
+		// 从历史页上彻底消失,连翻页都翻不到。
+		const base = await store.append(baseInput());
+		const today = Array.from({ length: 10 }, (_, i) =>
+			clone(base, {
+				id: randomUUID(),
+				ts: `2026-05-10T00:${String(i).padStart(2, "0")}:00.000Z`,
+			}),
+		);
+		await writeDay("2026-05-10", today, ["{truncated", JSON.stringify({ bogus: true }), "{}"]);
+		const older = clone(base, { id: randomUUID(), ts: "2026-05-09T00:00:00.000Z" });
+		await writeDay("2026-05-09", [older]);
+
+		const got = await store.query({ limit: 6 });
+		expect(got[0]?.id).toBe(base.id); // 今日 seed 永远最前,单独占一格
+		expect(got.slice(1).map((e) => e.id)).toEqual(
+			today
+				.slice(-5)
+				.reverse()
+				.map((e) => e.id),
+		);
+		expect(got.map((e) => e.id)).not.toContain(older.id);
+	});
+
 	it("since 过滤:ts <= since 的丢弃", async () => {
 		const base = await store.append(baseInput());
 		const oldId = randomUUID();

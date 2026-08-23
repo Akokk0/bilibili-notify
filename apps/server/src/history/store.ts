@@ -327,10 +327,22 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			// missing file is fine
 			return [];
 		}
-		if (seen <= limit) return parseLines(ring.slice(0, seen));
 		// 绕过一圈以上:最旧的那行在 seen % limit 处,从那儿接回去才是时序。
 		const head = seen % limit;
-		return parseLines([...ring.slice(head), ...ring.slice(0, head)]);
+		const kept =
+			seen <= limit ? ring.slice(0, seen) : [...ring.slice(head), ...ring.slice(0, head)];
+		const entries = parseLines(kept);
+		// **窗口按行取,结果按条算 —— 中间差的那几条不能靠更早的日文件来填。**
+		// 尾窗里混进读不回来的行(崩在写一半的最后一行、旧 schema 的行)时,这一份
+		// 就少给几条;调用方看见没凑够 limit,转头去前一天的文件里补 —— 夹在中间
+		// 那些完好的记录于是从历史页上彻底消失,连翻页都翻不到。
+		//
+		// 坏行本就罕见,遇上了就把这一份老老实实全读一遍:慢一次(且只慢这一份),
+		// 换的是「给出来的一定是连着的最新几条」。
+		if (entries.length < kept.length && seen > limit) {
+			return (await readJsonl(path)).slice(-limit);
+		}
+		return entries;
 	}
 
 	async function readJsonl(path: string): Promise<HistoryEntry[]> {
