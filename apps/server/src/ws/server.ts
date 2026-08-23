@@ -5,7 +5,6 @@ import { type RawData, WebSocket, WebSocketServer } from "ws";
 import { isDesktopWsTokenAllowed } from "../auth/desktop-token.js";
 import { isOriginAllowed, normalizeAllowedOrigins } from "../auth/origin.js";
 import type { WsTicketStore } from "../auth/ws-ticket.js";
-import type { ConfigStore } from "../config/store.js";
 import type { NodeServiceContext } from "../runtime/service-context.js";
 import { attachChannelWiring, buildStateHydrate } from "./channels.js";
 import { createLogChannel, type LogChannel } from "./log-channel.js";
@@ -25,7 +24,6 @@ import {
 export interface CreateWsServerOptions {
 	httpServer: HttpServer;
 	bus: MessageBus;
-	store: ConfigStore;
 	serviceCtx: NodeServiceContext;
 	/** Path the upgrade handler matches. Defaults to '/ws'. */
 	path?: string;
@@ -226,7 +224,6 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 	// ---------------- Channel wiring (single bus subscription set) -------------
 	const wiring = attachChannelWiring({
 		bus: opts.bus,
-		store: opts.store,
 		log: logChannel,
 		publish: broadcast,
 	});

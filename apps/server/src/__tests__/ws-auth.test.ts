@@ -173,7 +173,6 @@ describe("WS upgrade gate", () => {
 		wsServer = createWsServer({
 			httpServer,
 			bus,
-			store,
 			serviceCtx,
 			heartbeatIntervalMs: 0,
 			heartbeatTimeoutMs: 0,
@@ -189,7 +188,6 @@ describe("WS upgrade gate", () => {
 		wsServer = createWsServer({
 			httpServer,
 			bus,
-			store,
 			serviceCtx,
 			heartbeatIntervalMs: 0,
 			heartbeatTimeoutMs: 0,
@@ -207,7 +205,6 @@ describe("WS upgrade gate", () => {
 		wsServer = createWsServer({
 			httpServer,
 			bus,
-			store,
 			serviceCtx,
 			heartbeatIntervalMs: 0,
 			heartbeatTimeoutMs: 0,
@@ -224,7 +221,6 @@ describe("WS upgrade gate", () => {
 		wsServer = createWsServer({
 			httpServer,
 			bus,
-			store,
 			serviceCtx,
 			heartbeatIntervalMs: 0,
 			heartbeatTimeoutMs: 0,
@@ -247,7 +243,6 @@ describe("WS upgrade gate", () => {
 		wsServer = createWsServer({
 			httpServer,
 			bus,
-			store,
 			serviceCtx,
 			heartbeatIntervalMs: 0,
 			heartbeatTimeoutMs: 0,
@@ -264,7 +259,6 @@ describe("WS upgrade gate", () => {
 		wsServer = createWsServer({
 			httpServer,
 			bus,
-			store,
 			serviceCtx,
 			heartbeatIntervalMs: 0,
 			heartbeatTimeoutMs: 0,
@@ -279,7 +273,6 @@ describe("WS upgrade gate", () => {
 		wsServer = createWsServer({
 			httpServer,
 			bus,
-			store,
 			serviceCtx,
 			heartbeatIntervalMs: 0,
 			heartbeatTimeoutMs: 0,
@@ -301,7 +294,6 @@ describe("WS upgrade gate", () => {
 		wsServer = createWsServer({
 			httpServer,
 			bus,
-			store,
 			serviceCtx,
 			heartbeatIntervalMs: 0,
 			heartbeatTimeoutMs: 0,
@@ -331,7 +323,6 @@ describe("WS upgrade gate", () => {
 		wsServer = createWsServer({
 			httpServer,
 			bus,
-			store,
 			serviceCtx,
 			heartbeatIntervalMs: 0,
 			heartbeatTimeoutMs: 0,
@@ -351,7 +342,6 @@ describe("WS upgrade gate", () => {
 		wsServer = createWsServer({
 			httpServer,
 			bus,
-			store,
 			serviceCtx,
 			heartbeatIntervalMs: 0,
 			heartbeatTimeoutMs: 0,
@@ -382,7 +372,6 @@ describe("WS upgrade gate", () => {
 		wsServer = createWsServer({
 			httpServer,
 			bus,
-			store,
 			serviceCtx,
 			heartbeatIntervalMs: 0,
 			heartbeatTimeoutMs: 0,
@@ -419,7 +408,6 @@ describe("WS cookies-refreshed redaction", () => {
 		wsServer = createWsServer({
 			httpServer,
 			bus,
-			store,
 			serviceCtx,
 			heartbeatIntervalMs: 0,
 			heartbeatTimeoutMs: 0,

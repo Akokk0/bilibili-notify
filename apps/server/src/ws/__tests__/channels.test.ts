@@ -11,23 +11,10 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { ConfigStore } from "../../config/store.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { ALL_CHANNELS, attachChannelWiring, buildStateHydrate } from "../channels.js";
 import { createLogChannel } from "../log-channel.js";
 import type { ServerEventEnvelope } from "../types.js";
-
-const GLOBALS = { app: { logLevel: "info" } };
-const SUBS = [{ id: "s1" }];
-const TARGETS = [{ id: "t1" }];
-
-function makeStore(): ConfigStore {
-	return {
-		getGlobals: () => GLOBALS,
-		getSubscriptions: () => SUBS,
-		getTargets: () => TARGETS,
-	} as unknown as ConfigStore;
-}
 
 interface Harness {
 	bus: ReturnType<typeof createNodeMessageBus>;
@@ -42,7 +29,7 @@ function wire(): Harness {
 	const bus = createNodeMessageBus();
 	const log = createLogChannel();
 	const publish = vi.fn();
-	const handle = attachChannelWiring({ bus, store: makeStore(), log, publish });
+	const handle = attachChannelWiring({ bus, log, publish });
 	return {
 		bus,
 		log,

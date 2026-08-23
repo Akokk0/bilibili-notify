@@ -586,7 +586,6 @@ export async function startStandaloneServer(
 		wsServer = createWsServer({
 			httpServer,
 			bus: runtime.bus,
-			store: runtime.configStore,
 			serviceCtx: runtime.serviceCtx,
 			authRequired: !!basicAuthCredentials,
 			wsTicketStore,

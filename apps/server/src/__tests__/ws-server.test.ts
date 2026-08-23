@@ -142,7 +142,6 @@ describe("WS server", () => {
 		wsServer = createWsServer({
 			httpServer,
 			bus,
-			store,
 			serviceCtx,
 			// Fast heartbeat for the heartbeat test; 0 disables for tests that don't need it.
 			heartbeatIntervalMs: 0,
@@ -309,7 +308,6 @@ describe("WS server heartbeat", () => {
 		const wsServer = createWsServer({
 			httpServer: server,
 			bus,
-			store,
 			serviceCtx,
 			heartbeatIntervalMs: 200,
 			heartbeatTimeoutMs: 500,
@@ -347,7 +345,6 @@ describe("WS server heartbeat", () => {
 		const wsServer = createWsServer({
 			httpServer: server,
 			bus,
-			store,
 			serviceCtx,
 			heartbeatIntervalMs: 100,
 			heartbeatTimeoutMs: 300,

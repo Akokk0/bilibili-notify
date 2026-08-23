@@ -1,5 +1,4 @@
 import type { BiliEvents, ConfigScope, Disposable, MessageBus } from "@bilibili-notify/internal";
-import type { ConfigStore } from "../config/store.js";
 import type { LogChannel } from "./log-channel.js";
 import { CHANNELS, type ChannelName, type LogEntry, type ServerEventEnvelope } from "./types.js";
 
@@ -16,7 +15,6 @@ type ChannelPublisher = (envelope: ServerEventEnvelope) => void;
 
 export interface ChannelWiringDeps {
 	bus: MessageBus;
-	store: ConfigStore;
 	log: LogChannel;
 	/** Called once per server-pushed event with a fully built envelope. */
 	publish: ChannelPublisher;
