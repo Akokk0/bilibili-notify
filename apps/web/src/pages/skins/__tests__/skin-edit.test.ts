@@ -213,6 +213,7 @@ describe("syncModeTo:把一套的调整套到另一套", () => {
 					wallpaper: { image: "assets/bg.png", fit: "cover", overlay: 0.35, blur: 12 },
 					glass: { background: "rgba(255, 255, 255, 0.7)", blur: 18, strongBlur: 24 },
 					radius: { card: 20 },
+					railWidth: 280,
 					fonts: { body: ["霞鹜文楷"] },
 					shadows: { card: "0 1px 2px rgba(0,0,0,0.04)" },
 					css: '[data-bn="btn"]{opacity:0.9}',
@@ -248,6 +249,11 @@ describe("syncModeTo:把一套的调整套到另一套", () => {
 		const d = next.modes.dark;
 		expect(d?.wallpaper).toEqual({ image: "assets/bg.png", fit: "cover", overlay: 0.35, blur: 12 });
 		expect(d?.radius).toEqual({ card: 20 });
+		// 左栏宽度是纯版式的一个数,没有明暗之分 —— 它比这颗钮晚落地(76d379f),
+		// schema、编辑器、注入层都接上了,唯独这里漏了。漏的症状很静:「只要版式」
+		// 之后两套模式在这一个数上永远对不上,而 `all` 那档(整份克隆)是对的,
+		// 于是主人更难发现是哪儿在作怪。
+		expect(d?.railWidth).toBe(280);
 		expect(d?.fonts).toEqual({ body: ["霞鹜文楷"] });
 		expect(d?.glass?.blur).toBe(18);
 		expect(d?.glass?.strongBlur).toBe(24);

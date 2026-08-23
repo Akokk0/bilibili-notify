@@ -301,6 +301,11 @@ export function syncModeTo(
 		if (src[key] === undefined) delete next[key];
 		else next[key] = clone(src[key]);
 	}
+	// 左栏宽度归属同理 —— 一个纯数字,天生不分明暗(窄屏那条栏根本不用它)。
+	// 漏了它,「只要版式」之后两套模式就在这一个数上永远对不上,而 `all` 那档
+	// (整份克隆)是对的,于是更难看出是哪儿在作怪。
+	if (src.railWidth === undefined) delete next.railWidth;
+	else next.railWidth = src.railWidth;
 	// 玻璃只过模糊两档,底色与描边是分明暗的。
 	const glass = { ...dst.glass, blur: src.glass?.blur, strongBlur: src.glass?.strongBlur };
 	if (glass.blur === undefined) delete glass.blur;
