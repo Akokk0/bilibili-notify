@@ -18,10 +18,8 @@ import { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../../types/domain";
  * (编译后擦除),见 `types/domain.ts` 开头那段。
  */
 export { colorFromUid, UP_COLORS } from "@bilibili-notify/internal/constants";
-
-export function displayName(sub: Subscription): string {
-	return sub.cachedProfile?.name?.trim() || `UID ${sub.uid}`;
-}
+// displayName 真身在 utils/up-display(组件层也要用,不能反向 import 页面层),这里转口。
+export { displayName } from "../../utils/up-display";
 
 /**
  * 该平台是否支持「@全体成员」。QQ 官方机器人在群聊 @全体需特殊权限,后端适配器对

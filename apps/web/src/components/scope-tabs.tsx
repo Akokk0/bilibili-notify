@@ -7,6 +7,8 @@
  * 计数,从而在同一 Subscription.overrides 上各管各的切片。
  */
 
+// 不走 pages/up/helpers —— 组件层反向 import 页面层是圈套;色板直取 internal 正身。
+import { colorFromUid } from "@bilibili-notify/internal/constants";
 import {
 	Avatar,
 	EmptyNote,
@@ -19,8 +21,8 @@ import {
 	useDismiss,
 } from "@bilibili-notify/ui";
 import { useRef, useState } from "react";
-import { colorFromUid, displayName } from "../pages/up/helpers";
 import type { Subscription } from "../types/domain";
+import { displayName } from "../utils/up-display";
 
 /** "__global" = 全局默认;其余 = subscription.id。 */
 export type Scope = "__global" | string;
