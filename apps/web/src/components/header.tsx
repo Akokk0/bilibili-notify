@@ -1,4 +1,4 @@
-import { Btn, Icon, MenuItem, PopoverShell, useDismiss } from "@bilibili-notify/ui";
+import { Btn, Icon, MenuItem, PopoverShell, StatusDot, useDismiss } from "@bilibili-notify/ui";
 import {
 	closestCenter,
 	DndContext,
@@ -353,17 +353,19 @@ function ReachBadge({
 	title?: string;
 	children: ReactNode;
 }) {
-	const cls =
+	const box =
 		tone === "success"
-			? { box: "bg-bn-success-soft text-bn-success-text", dot: "bg-bn-success" }
-			: { box: "bg-bn-danger-soft text-bn-danger-text", dot: "bg-bn-danger" };
+			? "bg-bn-success-soft text-bn-success-text"
+			: "bg-bn-danger-soft text-bn-danger-text";
 	return (
 		<span
 			data-bn="badge"
-			className={`inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-bn-xs font-semibold ${cls.box}`}
+			className={`inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-bn-xs font-semibold ${box}`}
 			title={title}
 		>
-			<span className={`h-1.5 w-1.5 rounded-full ${cls.dot}`} />
+			{/* 那颗点用库里的 —— 尺寸阶梯与档位色都归 StatusDot 管,手画一颗就等着
+			    它哪天改了阶梯而这里原地不动。 */}
+			<StatusDot size="sm" kind={tone === "success" ? "ok" : "err"} />
 			{children}
 		</span>
 	);

@@ -71,8 +71,11 @@ describe("服务器可达徽章", () => {
 			badge.className.includes("bg-bn-success-soft"),
 			badge.className.includes("bg-bn-danger-soft"),
 		]).toEqual([true, false]);
-		// 前导圆点跟着同一档色走,不能一个绿一个红。
-		expect((badge.firstElementChild as HTMLElement).className).toContain("bg-bn-success");
+		// 前导圆点跟着同一档色走,不能一个绿一个红。点子本身是库里的 StatusDot,
+		// 档位色走 inline style 里的 token(不是 class)—— 断言认那个变量名。
+		expect((badge.firstElementChild as HTMLElement).style.background).toContain(
+			"--color-bn-success",
+		);
 		// 皮肤挂点 —— 掉了皮肤就静默够不到这枚徽章(2026-08-23 主人真机指出后补的词表项)。
 		expect(badge.getAttribute("data-bn")).toBe("badge");
 	});
@@ -84,6 +87,8 @@ describe("服务器可达徽章", () => {
 			badge.className.includes("bg-bn-danger-soft"),
 			badge.className.includes("bg-bn-success-soft"),
 		]).toEqual([true, false]);
-		expect((badge.firstElementChild as HTMLElement).className).toContain("bg-bn-danger");
+		expect((badge.firstElementChild as HTMLElement).style.background).toContain(
+			"--color-bn-danger",
+		);
 	});
 });
