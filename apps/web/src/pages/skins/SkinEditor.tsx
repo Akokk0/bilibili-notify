@@ -48,6 +48,13 @@ import {
  * 有的字段,这里必须有编辑口;给 schema 加字段时同步加控件,砍能力时同步撤。
  */
 
+/**
+ * 抽屉紧凑输入的样式。**刻意不并进 components/forms 的 T 系列**(2026-08-23 全仓
+ * 组件审计核过):那套是「字典 code 驱动」体系(data-code 灵动岛锚点、code 徽章、
+ * 默认值更新账本),而皮肤 manifest 字段不在 FIELD_LABELS 字典里;这边还要
+ * 「(默认)」出厂快照标注与滑杆控件。硬并等于把皮肤抽屉耦合进配置字典。
+ * token 纪律(bg-bn-field + input 挂点)由 input-hook-coverage 两套一起钉。
+ */
 const inputCls =
 	"w-full rounded-lg border border-bn-border bg-bn-field px-2 py-1 text-bn-sm text-bn-text-primary outline-none focus:border-bn-pink";
 
