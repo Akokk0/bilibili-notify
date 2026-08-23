@@ -9,7 +9,7 @@
  * 得先知道有这么些东西可敲。
  */
 
-import { Btn, GlassBox, Icon, Toggle } from "@bilibili-notify/ui";
+import { Btn, GlassBox, Icon, LoadingBlock, Toggle } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { SECTION_ACCENT } from "../config/section-accents";
@@ -126,7 +126,7 @@ export function CommandsSettings({
 
 			<Field code="commands.aliases" full>
 				{registry.isLoading ? (
-					<div className="text-xs text-bn-text-tertiary">加载指令表中…</div>
+					<LoadingBlock variant="inset" label="加载指令表中" />
 				) : registry.error ? (
 					<div className="text-xs text-bn-danger-text">
 						拉取指令表失败：{String((registry.error as Error).message)}

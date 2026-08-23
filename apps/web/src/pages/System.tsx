@@ -60,8 +60,8 @@ function QrCard({ data, msg }: { data: unknown; msg: string }) {
 					src={src}
 				/>
 			) : (
-				<div className="flex h-56 w-56 items-center justify-center rounded-sm bg-bn-surface text-sm text-bn-text-tertiary">
-					二维码加载中…
+				<div className="flex h-56 w-56 items-center justify-center rounded-sm bg-bn-surface">
+					<LoadingBlock variant="inset" label="二维码加载中" />
 				</div>
 			)}
 			<div className="text-bn-sm text-bn-text-secondary">使用 Bilibili 手机客户端扫码登录</div>

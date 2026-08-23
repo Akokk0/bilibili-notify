@@ -1107,11 +1107,7 @@ export default function Cards() {
 	});
 
 	if (!gStyle) {
-		return (
-			<div className="bn-glass rounded-bn-card p-10 text-center text-sm text-bn-text-secondary shadow-bn-card">
-				加载卡片样式中…
-			</div>
-		);
+		return <LoadingBlock label="加载卡片样式中" />;
 	}
 
 	// 按 kind 求「生效样式」:全局作用域 = 全局基准 + 该类型覆盖;per-UP = 再叠该 UP 基准 /
