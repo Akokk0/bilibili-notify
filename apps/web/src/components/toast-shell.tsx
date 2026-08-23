@@ -1,31 +1,23 @@
-import { Icon, IconButton } from "@bilibili-notify/ui";
+import { Icon, NoticeCard, NoticeStack } from "@bilibili-notify/ui";
 import { useEffect } from "react";
-import { createPortal } from "react-dom";
 import { PUSH_KIND_META } from "../config/push-kinds";
 import { AUTO_DISMISS_MS, type ToastItem, useToastStore } from "../store/notifications";
 
 /**
- * Notification-center toast surface. Rendered into a portal so the fixed
- * stack lives at the viewport regardless of any transformed page-level
- * ancestor (same gotcha that bit ModalShell). Items are pulled from
- * {@link useToastStore}; each auto-dismisses after {@link AUTO_DISMISS_MS}.
+ * 推送 toast 层(右下角)。卡与栈的壳子在 ui 的 NoticeCard / NoticeStack;
+ * 这里只管从 {@link useToastStore} 取数、逐 kind 染色与 {@link AUTO_DISMISS_MS} 计时。
  *
  * Mounted once at App root.
  */
 
 export function ToastShell(): React.ReactElement | null {
 	const items = useToastStore((s) => s.items);
-	if (typeof document === "undefined") return null;
-	return createPortal(
-		<div
-			aria-live="polite"
-			className="pointer-events-none fixed bottom-4 right-4 z-bn-notify flex w-80 flex-col gap-2"
-		>
+	return (
+		<NoticeStack corner="bottom-right" ariaLive="polite" className="w-80">
 			{items.map((item) => (
 				<ToastCard key={item.id} item={item} />
 			))}
-		</div>,
-		document.body,
+		</NoticeStack>
 	);
 }
 
@@ -38,46 +30,39 @@ function ToastCard({ item }: { item: ToastItem }) {
 
 	const meta = PUSH_KIND_META[item.source];
 	const IconCmp = Icon[meta.icon];
-	const time = formatHm(item.ts);
 	return (
-		<div
-			data-bn="glass-strong"
-			className="bn-anim-fade-in pointer-events-auto flex gap-2.5 rounded-bn-card border border-bn-border bg-bn-surface p-3 shadow-bn-elev"
+		<NoticeCard
+			icon={<IconCmp size={16} />}
+			// 推送家族色是逐 kind 的内容语义色,动态染色走 style(站规允许的那一种)。
+			tileStyle={{
+				background: `color-mix(in srgb, ${meta.tone} 12%, transparent)`,
+				color: meta.tone,
+			}}
+			title={
+				<>
+					{meta.eventLabel}
+					{item.ok ? null : (
+						<span className="ml-1.5 text-bn-2xs font-semibold text-bn-danger">推送失败</span>
+					)}
+				</>
+			}
+			time={formatHm(item.ts)}
+			onClose={() => dismiss(item.id)}
 			style={item.ok ? undefined : { borderColor: "var(--color-bn-danger-border)" }}
 		>
-			<div
-				className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-				style={{
-					background: `color-mix(in srgb, ${meta.tone} 12%, transparent)`,
-					color: meta.tone,
-				}}
-			>
-				<IconCmp size={16} />
+			<div className="mt-0.5 text-bn-xs text-bn-text-secondary">
+				<span className="font-mono">UID {item.uid}</span>
 			</div>
-			<div className="min-w-0 flex-1">
-				<div className="flex items-center justify-between gap-2">
-					<span className="text-bn-sm font-bold text-bn-text-primary">
-						{meta.eventLabel}
-						{item.ok ? null : (
-							<span className="ml-1.5 text-bn-2xs font-semibold text-bn-danger">推送失败</span>
-						)}
-					</span>
-					<span className="font-mono text-bn-2xs text-bn-text-tertiary">{time}</span>
+			{item.text ? (
+				<div className="mt-1 line-clamp-2 text-bn-xs leading-snug text-bn-text-primary">
+					{item.text}
 				</div>
-				<div className="mt-0.5 text-bn-xs text-bn-text-secondary">
-					<span className="font-mono">UID {item.uid}</span>
-				</div>
-				{item.text ? (
-					<div className="mt-1 line-clamp-2 text-bn-xs leading-snug text-bn-text-primary">
-						{item.text}
-					</div>
-				) : null}
-			</div>
-			<IconButton icon={<Icon.close size={11} />} label="关闭" onClick={() => dismiss(item.id)} />
-		</div>
+			) : null}
+		</NoticeCard>
 	);
 }
 
+/** toast 只到分 —— 告警那边到秒,精度差异是语义(错误要能对时序),不是漂移。 */
 function formatHm(iso: string): string {
 	const d = new Date(iso);
 	if (Number.isNaN(d.getTime())) return "";

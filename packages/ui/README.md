@@ -42,6 +42,7 @@
 | `PlatformIcon` / `platformLabel` / `platformTint` | 推送平台图标、显示名与**标识色**(onebot / qq-official / webhook)。三者同一张表 —— 色也导出,是因为不导出就只能在页面里照抄一份(Targets 就抄过,连兜底的灰都一字不差);认不出的平台退 `--color-bn-inactive` |
 | `StatsBar` | 迷你堆叠柱状图(live/dyn/sc/guard 四段,由高到低堆)。**`colors` 必填,库里不留默认值** —— 那四段是推送家族色,唯一出处 `push-kinds.ts` 在业务侧,平台中立的库取不到;给默认值等于把此前那份写死的副本原样留下 |
 | `Section` / `Row` | 抽屉与面板里的「小节标题 + 行列表」骨架 |
+| `NoticeStack` / `NoticeCard` | 角落通知栈(portal + fixed 角落 + aria-live)与富通知卡(图标片 + 标题/时间行 + 正文 + 关闭钮,挂 `glass-strong`)。推送 toast(右下 polite)与组件告警(右上 assertive)共用;**颜色语义全留调用方** —— 逐 kind 染色走 `tileStyle`、静态语义配色走 `tileClassName`/`titleClassName`/`style`。`time` 收**预格式化**字符串(toast 到分、告警到秒,精度是语义)。一句话瞬时提示别用它,那是 `Toast` 的活 |
 
 **提示盒三兄弟(`ErrorNote` / `WarnNote` / `EmptyNote`)共用一套尺寸阶梯** —— `sm` = `rounded-md` 11.5px、`md` = `rounded-lg` 12.5px、`lg` = `rounded-xl` 13px。它们说的是同一类话,只该差颜色不该差形状;此前三个各写各的,同一个弹窗里「保存失败」与「有几处没照办」长成两种控件。阶梯**只管圆角与字号**,内边距各归各的(空态盒撑满面板留白、红盒挤在字段之间,那是位置不是漂移)。`packages/ui/src/__tests__/note-family.test.tsx` 钉着这条。
 
