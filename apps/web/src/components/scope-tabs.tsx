@@ -16,8 +16,9 @@ import {
 	PopoverShell,
 	TabBarShell,
 	TabButton,
+	useDismiss,
 } from "@bilibili-notify/ui";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { colorFromUid, displayName } from "../pages/up/helpers";
 import type { Subscription } from "../types/domain";
 
@@ -51,15 +52,7 @@ export function ScopeTabs({
 	const [adding, setAdding] = useState(false);
 	const dropdownRef = useRef<HTMLDivElement | null>(null);
 
-	useEffect(() => {
-		if (!adding) return;
-		function handleDocClick(e: MouseEvent) {
-			if (!dropdownRef.current) return;
-			if (!dropdownRef.current.contains(e.target as Node)) setAdding(false);
-		}
-		document.addEventListener("mousedown", handleDocClick);
-		return () => document.removeEventListener("mousedown", handleDocClick);
-	}, [adding]);
+	useDismiss(dropdownRef, () => setAdding(false), { enabled: adding });
 
 	const isGlobal = scope === "__global";
 

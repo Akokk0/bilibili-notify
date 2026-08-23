@@ -1,4 +1,47 @@
-import type { ReactNode, Ref } from "react";
+import { type ReactNode, type Ref, type RefObject, useEffect, useRef } from "react";
+
+/**
+ * 「点外面关掉」—— 浮层人人要的那一段监听。收编前站内抄了五份,行为还不一致:
+ * 只有一份处理 Escape、只有一份用 pointerdown,其余三份 mousedown 无键盘,而这些
+ * 差异没有一处写过理由。收成一个 hook 后差异变成显式的选项,留在调用点看得见。
+ *
+ * `onDismiss` 经 ref 转接:调用方传行内闭包也不会每次 render 重挂 document 监听。
+ */
+export interface UseDismissOptions {
+	/** 只在浮层开着时挂监听(减少全局事件流量)。缺省 true —— 组件本身按需挂载时用不到它。 */
+	enabled?: boolean;
+	/** Escape 也关。 */
+	escape?: boolean;
+	/** 按下事件的种类。`pointerdown` 连触屏 / 笔一起管;`mousedown` 是收编前多数处的旧默认。 */
+	event?: "mousedown" | "pointerdown";
+}
+
+export function useDismiss(
+	ref: RefObject<HTMLElement | null>,
+	onDismiss: () => void,
+	{ enabled = true, escape: escToClose = false, event = "mousedown" }: UseDismissOptions = {},
+): void {
+	const cbRef = useRef(onDismiss);
+	useEffect(() => {
+		cbRef.current = onDismiss;
+	});
+	useEffect(() => {
+		if (!enabled) return;
+		const onDown = (e: Event): void => {
+			const node = ref.current;
+			if (node && e.target instanceof Node && !node.contains(e.target)) cbRef.current();
+		};
+		const onKey = (e: KeyboardEvent): void => {
+			if (e.key === "Escape") cbRef.current();
+		};
+		document.addEventListener(event, onDown);
+		if (escToClose) document.addEventListener("keydown", onKey);
+		return () => {
+			document.removeEventListener(event, onDown);
+			if (escToClose) document.removeEventListener("keydown", onKey);
+		};
+	}, [enabled, escToClose, event, ref]);
+}
 
 /**
  * PopoverShell —— 贴着触发器弹出的浮层面板。

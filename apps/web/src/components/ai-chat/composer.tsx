@@ -1,5 +1,5 @@
 import type { MaidSkillDTO } from "@bilibili-notify/contract";
-import { Icon, IconButton, MenuItem } from "@bilibili-notify/ui";
+import { Icon, IconButton, MenuItem, useDismiss } from "@bilibili-notify/ui";
 import {
 	type KeyboardEvent,
 	type ReactNode,
@@ -101,23 +101,8 @@ export function Composer({
 	const actionsRef = useRef<HTMLDivElement>(null);
 	const taRef = useRef<HTMLTextAreaElement>(null);
 
-	// 「+」菜单开着时:点外部 / 按 Esc 关闭。只在展开时挂监听,与 header 的
-	// 主题下拉同一套写法。
-	useEffect(() => {
-		if (!actionsOpen) return;
-		const onDocClick = (e: MouseEvent) => {
-			if (!actionsRef.current?.contains(e.target as Node)) setActionsOpen(false);
-		};
-		const onKey = (e: KeyboardEvent | globalThis.KeyboardEvent) => {
-			if (e.key === "Escape") setActionsOpen(false);
-		};
-		document.addEventListener("mousedown", onDocClick);
-		document.addEventListener("keydown", onKey as (e: globalThis.KeyboardEvent) => void);
-		return () => {
-			document.removeEventListener("mousedown", onDocClick);
-			document.removeEventListener("keydown", onKey as (e: globalThis.KeyboardEvent) => void);
-		};
-	}, [actionsOpen]);
+	// 「+」菜单开着时:点外部 / 按 Esc 关闭。
+	useDismiss(actionsRef, () => setActionsOpen(false), { enabled: actionsOpen, escape: true });
 
 	// 内容长到这儿就不再长高,改成自己滚 —— 再长下去输入框会把整页吃掉。
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 只按 value 重算,函数体里不读别的

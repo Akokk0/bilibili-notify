@@ -19,7 +19,7 @@
  * ToastShell(z-bn-notify)与 Dialog(z-bn-modal)— toast/dialog 弹出时不被遮挡。
  */
 
-import { EmptyNote, Icon, IconButton } from "@bilibili-notify/ui";
+import { EmptyNote, Icon, IconButton, useDismiss } from "@bilibili-notify/ui";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { DraftRegistration, DraftUiState } from "../store/draft";
@@ -64,19 +64,8 @@ export function DraftIsland(): ReactNode {
 	const containerRef = useRef<HTMLElement>(null);
 	const leaveTimerRef = useRef<number | null>(null);
 
-	// 外部 click → 关闭 locked panel。仅 panelLocked 为 true 时才挂监听,
-	// 减少全局事件流量。
-	useEffect(() => {
-		if (!panelLocked) return;
-		function handleOutsideClick(e: MouseEvent) {
-			const node = containerRef.current;
-			if (node !== null && e.target instanceof Node && !node.contains(e.target)) {
-				togglePanelLocked(false);
-			}
-		}
-		document.addEventListener("mousedown", handleOutsideClick);
-		return () => document.removeEventListener("mousedown", handleOutsideClick);
-	}, [panelLocked, togglePanelLocked]);
+	// 外部 click → 关闭 locked panel。
+	useDismiss(containerRef, () => togglePanelLocked(false), { enabled: panelLocked });
 
 	// 鼠标从 chip 跨 panel 的 8px gap 时,motion.section 会瞬间触发 mouseleave
 	// → setHovered(false) → panel 退场 → 鼠标到 panel 又 mouseenter → 入场,

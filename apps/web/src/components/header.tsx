@@ -1,4 +1,4 @@
-import { Btn, Icon, MenuItem, PopoverShell } from "@bilibili-notify/ui";
+import { Btn, Icon, MenuItem, PopoverShell, useDismiss } from "@bilibili-notify/ui";
 import {
 	closestCenter,
 	DndContext,
@@ -110,13 +110,7 @@ function NavEditor({ onClose }: { onClose: () => void }) {
 	);
 
 	// 点外面就收起来。面板本身不拦点击 —— 勾完一项还想勾下一项,不该每次都重新展开。
-	useEffect(() => {
-		function onDocPointerDown(e: PointerEvent): void {
-			if (!ref.current?.contains(e.target as Node)) onClose();
-		}
-		document.addEventListener("pointerdown", onDocPointerDown);
-		return () => document.removeEventListener("pointerdown", onDocPointerDown);
-	}, [onClose]);
+	useDismiss(ref, onClose, { event: "pointerdown" });
 
 	const rows = orderedNav(NAV_ITEMS, order);
 
@@ -220,15 +214,7 @@ function ThemeSwitcher() {
 	const current = themeLabel(preference);
 
 	// 点击下拉外部时关闭(与 Rules/draft-island 的下拉一致),仅在展开时挂监听。
-	useEffect(() => {
-		if (!open) return;
-		function handleDocClick(e: MouseEvent) {
-			if (!containerRef.current) return;
-			if (!containerRef.current.contains(e.target as Node)) setOpen(false);
-		}
-		document.addEventListener("mousedown", handleDocClick);
-		return () => document.removeEventListener("mousedown", handleDocClick);
-	}, [open]);
+	useDismiss(containerRef, () => setOpen(false), { enabled: open });
 
 	if (lockedTheme) {
 		return (
