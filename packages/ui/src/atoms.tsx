@@ -333,6 +333,44 @@ export function AddCard({ label, hint, onClick, disabled, className }: AddCardPr
 	);
 }
 
+export interface AddFileButtonProps {
+	/** `<input type="file">` 的 accept 串。 */
+	accept: string;
+	uploading?: boolean;
+	uploadingLabel?: string;
+	onFile: (file: File | undefined) => void;
+	/** 形状(图格 aspect / 行内钮 padding / 字号字重)由摆放处给 —— 布局不同不是漂移。 */
+	className?: string;
+	children: ReactNode;
+}
+
+/**
+ * 「点这里挑个文件上传」—— {@link AddButton} 的 file-input 变体:同一份虚线空位
+ * 语汇,壳是 `<label>` 裹一个隐藏的 `<input type="file">`。收编前图库格与字体钮
+ * 各手写一份,hover 组合逐字符相同。上传中把内容换成一句话,input 同时禁用。
+ */
+export function AddFileButton({
+	accept,
+	uploading,
+	uploadingLabel = "上传中…",
+	onFile,
+	className,
+	children,
+}: AddFileButtonProps) {
+	return (
+		<label className={`cursor-pointer ${ADD_LANGUAGE} ${className ?? ""}`}>
+			{uploading ? uploadingLabel : children}
+			<input
+				type="file"
+				accept={accept}
+				className="hidden"
+				disabled={uploading}
+				onChange={(e) => onFile(e.target.files?.[0] ?? undefined)}
+			/>
+		</label>
+	);
+}
+
 // ── MenuItem ────────────────────────────────────────────────────────────────
 
 /**

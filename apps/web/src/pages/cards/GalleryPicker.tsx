@@ -4,7 +4,7 @@
  * 1 = 单张,>1 = 轮换。删被引用的图被服务端 409 拦截,这里把 referencedBy 提示出来。
  */
 
-import { Icon, IconButton } from "@bilibili-notify/ui";
+import { AddFileButton, Icon, IconButton } from "@bilibili-notify/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { ApiError, api } from "../../services/api";
@@ -193,23 +193,17 @@ export function GalleryPicker({
 						/>
 					</div>
 				))}
-				<label className="grid aspect-[16/10] w-24 shrink-0 cursor-pointer place-items-center rounded-lg border border-dashed border-bn-border text-bn-xs text-bn-text-tertiary transition hover:border-bn-pink hover:text-bn-pink">
-					{uploading ? (
-						"上传中…"
-					) : (
-						<span className="flex flex-col items-center gap-0.5">
-							<Icon.plus size={16} />
-							<span>上传</span>
-						</span>
-					)}
-					<input
-						type="file"
-						accept="image/png,image/jpeg,image/webp"
-						className="hidden"
-						disabled={uploading}
-						onChange={(e) => onFile(e.target.files?.[0])}
-					/>
-				</label>
+				<AddFileButton
+					accept="image/png,image/jpeg,image/webp"
+					uploading={uploading}
+					onFile={onFile}
+					className="grid aspect-[16/10] w-24 shrink-0 place-items-center rounded-lg text-bn-xs"
+				>
+					<span className="flex flex-col items-center gap-0.5">
+						<Icon.plus size={16} />
+						<span>上传</span>
+					</span>
+				</AddFileButton>
 			</div>
 			<div className="flex items-center justify-between text-bn-xs">
 				<span className="text-bn-text-tertiary">

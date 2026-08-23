@@ -14,7 +14,7 @@
  */
 
 import { MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
-import { Btn, ErrorNote, Icon, IconButton, WarnNote } from "@bilibili-notify/ui";
+import { AddFileButton, Btn, ErrorNote, Icon, IconButton, WarnNote } from "@bilibili-notify/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { TInput } from "../../components/forms";
@@ -191,23 +191,15 @@ export function FontPicker({
 			) : null}
 
 			<div className="flex items-center gap-2">
-				<label className="flex cursor-pointer items-center gap-1 rounded-lg border border-dashed border-bn-border px-2.5 py-1.5 text-bn-xs font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink">
-					{uploading ? (
-						"上传中…"
-					) : (
-						<>
-							<Icon.plus size={13} />
-							上传字体
-						</>
-					)}
-					<input
-						type="file"
-						accept=".woff2,.woff,.ttf,.otf"
-						className="hidden"
-						disabled={uploading}
-						onChange={(e) => onFile(e.target.files?.[0])}
-					/>
-				</label>
+				<AddFileButton
+					accept=".woff2,.woff,.ttf,.otf"
+					uploading={uploading}
+					onFile={onFile}
+					className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-bn-xs font-bold"
+				>
+					<Icon.plus size={13} />
+					上传字体
+				</AddFileButton>
 				{/* 上限从共享常量算,别硬写:写死的话调了 MAX_FONT_ASSET_BYTES 这句话还在
 				    说旧数字,主人等完一次上传才被告知一个跟按钮旁边写的不一样的上限。 */}
 				<span className="text-bn-2xs text-bn-text-tertiary">
