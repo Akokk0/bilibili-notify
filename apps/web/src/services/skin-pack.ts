@@ -65,8 +65,8 @@ ${colorLines}
 ## 自定义 CSS(组件级造型与动效都靠它)
 
 - 选择器**只准**写 \`[data-bn="<挂点>"]\`,可配伪类(:hover 等)/伪元素(::before/::after)/组合器;class、id、标签名选择器一律会被丢弃。可用挂点:
-${Object.values(SKIN_CSS_HOOK_NOTES)
-	.map((note) => `  - ${note}`)
+${Object.entries(SKIN_CSS_HOOK_NOTES)
+	.map(([hook, note]) => `  - "${hook}"=${note}`)
 	.join("\n")}
 ${SKIN_RADIUS_NOTES}
 ${SKIN_CSS_PROP_NOTES}

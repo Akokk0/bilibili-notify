@@ -44,8 +44,10 @@ export type SkinAiEditResult =
 	| { ok: true; manifest: SkinManifest; warnings: string[] }
 	| { ok: false; errors: string[] };
 
-const HOOK_LIST = Object.values(SKIN_CSS_HOOK_NOTES)
-	.map((n) => `  ${n}`)
+// 挂点名由这一头拼,不写进 note 正文 —— 正文里再打一遍键名的话,那个名字就是
+// 全靠手打的第二份,打错了两条提示词都会教 AI 一个不存在的挂点,而一切照绿。
+const HOOK_LIST = Object.entries(SKIN_CSS_HOOK_NOTES)
+	.map(([hook, note]) => `  "${hook}"=${note}`)
 	.join("\n");
 
 /**

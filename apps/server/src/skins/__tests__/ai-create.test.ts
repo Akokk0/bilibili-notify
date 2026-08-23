@@ -162,6 +162,13 @@ describe("runSkinAiCreate", () => {
 		for (const hook of Object.keys(SKIN_CSS_HOOK_MAP)) {
 			expect(Object.keys(SKIN_CSS_HOOK_NOTES)).toContain(hook);
 			expect(system).toContain(SKIN_CSS_HOOK_NOTES[hook as SkinCssHook]);
+			// 名字得跟着说明一起进提示词 —— 只有说明没有挂点名,AI 认不出在讲谁。
+			expect(system).toContain(`"${hook}"=`);
+		}
+		// 说明正文里**不许**再打一遍自己的键名:那是全靠手打的第二份,打错了两条
+		// 提示词会一起教出一个不存在的挂点,而一切照绿。名字由渲染层拼。
+		for (const [hook, note] of Object.entries(SKIN_CSS_HOOK_NOTES)) {
+			expect(note, `${hook} 的说明里不该再写一遍键名`).not.toContain(`"${hook}"=`);
 		}
 	});
 
