@@ -163,6 +163,47 @@ interface TargetCardProps {
 	readOnly?: boolean;
 }
 
+/** 左竖条色标的一行小状态(「上次推送/测试 OK · 12ms」)。三色查表,别在调用点拼 token 名。 */
+const EDGE_BADGE_TONES = {
+	success: {
+		background: "var(--color-bn-success-soft)",
+		borderLeftColor: "var(--color-bn-success)",
+		color: "var(--color-bn-success-text)",
+	},
+	warning: {
+		background: "var(--color-bn-warning-soft)",
+		borderLeftColor: "var(--color-bn-warning)",
+		color: "var(--color-bn-warning-text)",
+	},
+	danger: {
+		background: "var(--color-bn-danger-soft)",
+		borderLeftColor: "var(--color-bn-danger)",
+		color: "var(--color-bn-danger-text)",
+	},
+} as const;
+
+function EdgeBadge({
+	tone,
+	size = "2xs",
+	className,
+	children,
+}: {
+	tone: keyof typeof EDGE_BADGE_TONES;
+	size?: "2xs" | "xs";
+	/** 外边距与 display(`mb-2` / `mt-2 inline-block`)由摆放处给。 */
+	className?: string;
+	children: ReactNode;
+}) {
+	return (
+		<div
+			className={`rounded-sm border-l-[3px] px-2 py-0.5 ${size === "xs" ? "text-bn-xs" : "text-bn-2xs"} ${className ?? ""}`}
+			style={EDGE_BADGE_TONES[tone]}
+		>
+			{children}
+		</div>
+	);
+}
+
 function TargetCard({
 	target,
 	adapter,
@@ -203,26 +244,11 @@ function TargetCard({
 			</div>
 
 			{testStatus ? (
-				<div
-					className="mb-2 rounded-sm border-l-[3px] px-2 py-0.5 text-bn-2xs"
-					style={
-						testStatus.ok
-							? {
-									background: "var(--color-bn-success-soft)",
-									borderLeftColor: "var(--color-bn-success)",
-									color: "var(--color-bn-success-text)",
-								}
-							: {
-									background: "var(--color-bn-danger-soft)",
-									borderLeftColor: "var(--color-bn-danger)",
-									color: "var(--color-bn-danger-text)",
-								}
-					}
-				>
+				<EdgeBadge tone={testStatus.ok ? "success" : "danger"} className="mb-2">
 					{testStatus.ok
 						? `上次推送 OK${testStatus.latencyMs != null ? ` · ${testStatus.latencyMs}ms` : ""}`
 						: `上次推送失败${testStatus.err ? ` — ${testStatus.err}` : ""}`}
-				</div>
+				</EdgeBadge>
 			) : null}
 
 			<div className="flex items-center justify-between text-bn-xs text-bn-text-secondary">
@@ -1627,21 +1653,10 @@ export default function Targets() {
 											{adapterEndpointSummary(selectedAdapter)}
 										</div>
 										{selectedAdapterTestStatus ? (
-											<div
-												className="mt-2 inline-block rounded-sm border-l-[3px] px-2 py-0.5 text-bn-xs"
-												style={
-													selectedAdapterTestStatus.ok
-														? {
-																background: "var(--color-bn-success-soft)",
-																borderLeftColor: "var(--color-bn-success)",
-																color: "var(--color-bn-success-text)",
-															}
-														: {
-																background: "var(--color-bn-warning-soft)",
-																borderLeftColor: "var(--color-bn-warning)",
-																color: "var(--color-bn-warning-text)",
-															}
-												}
+											<EdgeBadge
+												tone={selectedAdapterTestStatus.ok ? "success" : "warning"}
+												size="xs"
+												className="mt-2 inline-block"
 											>
 												{selectedAdapterTestStatus.ok
 													? `上次测试 OK${
@@ -1654,7 +1669,7 @@ export default function Targets() {
 																? ` — ${selectedAdapterTestStatus.err}`
 																: ""
 														}`}
-											</div>
+											</EdgeBadge>
 										) : null}
 									</div>
 									<div className="flex shrink-0 gap-1">

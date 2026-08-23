@@ -13,7 +13,7 @@ import {
 	StatusDot,
 } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { type ReactNode, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { LOG_LEVEL_TONE, logLevelTint } from "../config/log-levels";
 import { familyTone, PUSH_KIND_META, PUSH_TONE } from "../config/push-kinds";
@@ -495,6 +495,15 @@ function pickLogTone(level: string | undefined): { fg: string; bg: string } {
 	return { fg: LOG_LEVEL_TONE[key], bg: logLevelTint(key) };
 }
 
+/** 等宽数字的版本小徽章(核心 / 面板)—— 收编前同一串 className 在 subtitle 里抄了两份。 */
+function VersionBadge({ children }: { children: ReactNode }) {
+	return (
+		<span className="inline-block rounded-md bg-bn-code-bg px-1.5 py-px text-bn-2xs font-semibold tabular-nums tracking-tight text-bn-text-primary">
+			{children}
+		</span>
+	);
+}
+
 function PluginMatrix({ cells }: { cells: PluginCell[] }) {
 	return (
 		<div
@@ -516,8 +525,8 @@ function PluginMatrix({ cells }: { cells: PluginCell[] }) {
 						<div className="flex items-center gap-1.5 whitespace-nowrap text-bn-xs text-bn-text-secondary">
 							日志{" "}
 							<span
-								className="rounded-sm px-1.5 font-bold"
-								style={{ background: tone.bg, color: tone.fg, fontSize: 10 }}
+								className="rounded-sm px-1.5 text-bn-2xs font-bold"
+								style={{ background: tone.bg, color: tone.fg }}
 								title={isOverride ? "按模块覆盖" : "继承全局"}
 							>
 								{levelLabel}
@@ -610,14 +619,10 @@ function SystemHealthCard({
 			subtitle={
 				<span className="inline-flex items-center gap-1.5">
 					<span>核心</span>
-					<span className="inline-block rounded-md bg-bn-code-bg px-1.5 py-px text-bn-2xs font-semibold tabular-nums tracking-tight text-bn-text-primary">
-						{health?.version ?? "—"}
-					</span>
+					<VersionBadge>{health?.version ?? "—"}</VersionBadge>
 					<span className="opacity-40">·</span>
 					<span>面板</span>
-					<span className="inline-block rounded-md bg-bn-code-bg px-1.5 py-px text-bn-2xs font-semibold tabular-nums tracking-tight text-bn-text-primary">
-						{__WEB_VERSION__}
-					</span>
+					<VersionBadge>{__WEB_VERSION__}</VersionBadge>
 				</span>
 			}
 			accent={reachable ? "var(--color-bn-success)" : "var(--color-bn-danger)"}

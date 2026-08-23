@@ -1,5 +1,5 @@
 import { EmptyNote, Icon, LoadingBlock, SectionNav } from "@bilibili-notify/ui";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, type ReactNode, Suspense, useEffect, useState } from "react";
 import type { Components } from "react-markdown";
 import { externalLinkClick } from "../utils/externalLink";
 
@@ -132,6 +132,20 @@ export default function About() {
 	);
 }
 
+/**
+ * 粉描边淡底的胶囊(赞助者名牌 / CHANGELOG 文件名标)。padding 与字号由摆放处给 ——
+ * 名牌左边贴着圆头像要 pl-1,文件名标是等宽小字,两处天生不同,不算漂移。
+ */
+function PinkPill({ className, children }: { className?: string; children: ReactNode }) {
+	return (
+		<span
+			className={`inline-flex items-center gap-1.5 rounded-bn-pill border border-bn-pink/25 bg-bn-pink/8 font-semibold text-bn-pink ${className ?? ""}`}
+		>
+			{children}
+		</span>
+	);
+}
+
 function SponsorPanel() {
 	const [sponsors, setSponsors] = useState<Sponsor[]>([]);
 
@@ -206,10 +220,7 @@ function SponsorPanel() {
 				) : (
 					<div className="flex flex-wrap gap-2">
 						{sponsors.map((s) => (
-							<span
-								key={s.name}
-								className="flex items-center gap-1.5 rounded-full border border-bn-pink/25 bg-bn-pink/8 py-1 pr-3 pl-1 text-bn-sm font-semibold text-bn-pink"
-							>
+							<PinkPill key={s.name} className="py-1 pr-3 pl-1 text-bn-sm">
 								{s.avatar ? (
 									<img
 										src={s.avatar}
@@ -227,7 +238,7 @@ function SponsorPanel() {
 									</span>
 								)}
 								{s.name}
-							</span>
+							</PinkPill>
 						))}
 					</div>
 				)}
@@ -343,9 +354,7 @@ function ChangelogPanel() {
 					</div>
 					<p className="mt-1 text-bn-sm text-bn-text-tertiary">独立端版本变更记录</p>
 				</div>
-				<span className="rounded-bn-pill border border-bn-pink/25 bg-bn-pink/8 px-3 py-1 font-mono text-bn-xs font-semibold text-bn-pink">
-					apps/CHANGELOG.md
-				</span>
+				<PinkPill className="px-3 py-1 font-mono text-bn-xs">apps/CHANGELOG.md</PinkPill>
 			</div>
 			<div className="max-w-none">
 				{loadError ? (
