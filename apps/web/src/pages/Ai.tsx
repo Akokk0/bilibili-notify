@@ -207,27 +207,6 @@ function FieldNote({ children }: { children: React.ReactNode }) {
 	);
 }
 
-/**
- * 中性的小按钮(新建空白性格 / 设为默认 / 从内置恢复)。危险那一档走库里的
- * `Btn variant="danger-outline"`。
- *
- * `inline-flex` 是给带图标的用法留的 —— 「从内置恢复」那排每颗前面顶一枚人格
- * 图标。纯文字的用法看不出区别:按钮本来就是收缩宽度,`justify-center` 与 UA
- * 的 `text-align:center` 落在同一处。
- */
-function GhostButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			data-bn="btn"
-			className="inline-flex items-center justify-center gap-1.5 rounded-md border border-bn-border px-2.5 py-1 text-bn-xs font-bold text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink"
-		>
-			{children}
-		</button>
-	);
-}
-
 export default function Ai() {
 	const qc = useQueryClient();
 	const globalsQuery = useQuery({
@@ -740,11 +719,13 @@ export default function Ai() {
 											{/* 「在看这份」不等于「在用这份」。要换用得明确点一下 —— 与人格
 											    那半边的「设为默认」同一个动作、同一句话。 */}
 											{isActiveProfile || editing === null ? null : (
-												<GhostButton
+												<Btn
+													variant="outline"
+													size="sm"
 													onClick={() => setDraft((d) => (d ? setActiveProfile(d, editing) : d))}
 												>
 													设为默认
-												</GhostButton>
+												</Btn>
 											)}
 											<Btn
 												variant="danger-outline"
@@ -1042,7 +1023,9 @@ export default function Ai() {
 								badge="add"
 							>
 								<Field code="presets" label="新建" full>
-									<GhostButton
+									<Btn
+										variant="outline"
+										size="sm"
 										onClick={() => {
 											// 新建即切过去 —— 否则左栏多一项、右侧还停在原来那份,像没反应。
 											const next = draft ? addPersona(draft) : null;
@@ -1053,7 +1036,7 @@ export default function Ai() {
 										}}
 									>
 										+ 空白性格
-									</GhostButton>
+									</Btn>
 								</Field>
 								{restorable.length > 0 ? (
 									<Field
@@ -1066,7 +1049,9 @@ export default function Ai() {
 											{restorable.map((b) => {
 												const Glyph = Icon[personaIconKey(b.id)];
 												return (
-													<GhostButton
+													<Btn
+														variant="outline"
+														size="sm"
 														key={b.id}
 														onClick={() => {
 															const next = restoreBuiltinPersona(draft, b.id);
@@ -1077,7 +1062,7 @@ export default function Ai() {
 													>
 														<Glyph size={13} />
 														{b.label}
-													</GhostButton>
+													</Btn>
 												);
 											})}
 										</div>
@@ -1097,7 +1082,9 @@ export default function Ai() {
 									<div className="flex items-center gap-1.5">
 										{/* 内置那份改不动 —— 给一条出路:以它为蓝本另存一份可改的。 */}
 										{personaLocked ? (
-											<GhostButton
+											<Btn
+												variant="outline"
+												size="sm"
 												onClick={() => {
 													const next = duplicatePersona(draft, activePersonaId);
 													setDraft(next.ai);
@@ -1105,16 +1092,18 @@ export default function Ai() {
 												}}
 											>
 												从内置修改
-											</GhostButton>
+											</Btn>
 										) : null}
 										{isGlobalPersona ? null : (
-											<GhostButton
+											<Btn
+												variant="outline"
+												size="sm"
 												onClick={() =>
 													setDraft((d) => (d ? setGlobalPersona(d, activePersonaId) : d))
 												}
 											>
 												设为默认
-											</GhostButton>
+											</Btn>
 										)}
 										{/* 最后一份删不掉 —— AI 总得有一份人格。按钮直接不摆,
 									    好过摆一个点了没反应的。 */}
