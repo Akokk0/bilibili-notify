@@ -309,18 +309,9 @@ export function createAiRoute(
 				);
 			}
 		}
-		// id → data URL。视觉服务商在公网,拉不到主人本地的
-		// `http://localhost:9000/api/ai/assets/xxx` —— 只能把字节本身带过去。
-		// 这与 B 站动态里的图不同,那些本来就是公网可达的,所以那条路直接传 URL。
-		const resolved: Array<{ id: string; url: string }> = [];
-		if (attached.length > 0) {
-			const dataDir = deps.store.bootstrap.dataDir;
-			for (const id of attached) {
-				const url = await readChatImageDataUrl(dataDir, id);
-				// 非法 id(穿越尝试)与盘上已经没了的 id 一律跳过,不让它们混进去。
-				if (url) resolved.push({ id, url });
-			}
-		}
+		// 主人这一问贴的图(见 readImageUrls:为什么带字节而不是地址)。
+		const resolved =
+			attached.length > 0 ? await readImageUrls(deps.store.bootstrap.dataDir, attached) : [];
 
 		/**
 		 * 这一问自己没带图时,**捎上最近那一次的**。
@@ -333,19 +324,27 @@ export function createAiRoute(
 		 * 旧的一并端上去只会分散注意力,还要多付一份钱。捎来的图**不进落盘的 images**
 		 * —— 那一问并没有真的带图,记错了会连累删会话时的图片回收与重开会话的缩略图。
 		 */
-		const carried: Array<{ id: string; url: string }> = [];
+		let carried: Array<{ id: string; url: string }> = [];
 		if (resolved.length === 0) {
 			// 先找有没有这么一条,再去碰磁盘 —— 一句话都不带图的普通聊天(绝大多数)
 			// 不该为这个功能多走一步,更不该去读它本来用不着的 dataDir。
 			const recent = [...conv.messages].reverse().find((m) => m.images?.length);
 			if (recent?.images?.length) {
-				const dataDir = deps.store.bootstrap.dataDir;
-				for (const id of recent.images) {
-					const url = await readChatImageDataUrl(dataDir, id);
-					if (url) carried.push({ id, url });
-				}
+				carried = await readImageUrls(deps.store.bootstrap.dataDir, recent.images);
 			}
 		}
+
+		/**
+		 * 这一轮女仆**看得见**的那批图:主人这一问贴的,空手时是捎来的最近那一批。
+		 *
+		 * 算一次并起个名字 —— 从前「有 resolved 用 resolved,否则用 carried」在下面
+		 * 两处各推导一遍(喂给视觉模型的、做壁纸取的),而这两处**必须选同一批**:
+		 * 女仆描述得出的图就得是她做得出壁纸的图,否则主人贴完图聊两句再说「用刚才
+		 * 那张当背景」,会撞上「她说得出那张图长什么样、一动手却说你没贴图」。
+		 *
+		 * 落盘那一处**刻意不用它**:捎来的图不算这一问带的图(见 carried 的文档)。
+		 */
+		const visible = resolved.length > 0 ? resolved : carried;
 
 		// 先在内存里拼出「历史 + 这一问」交给女仆,**拿到回复之后才落盘**。
 		// 反过来先写用户消息的话,AI 那一跳一失败,磁盘上就留下一个没人回答的
@@ -390,7 +389,7 @@ export function createAiRoute(
 						attachedImage: async (): Promise<ChatSkinImage | null> => {
 							const dataDir = deps.store.bootstrap.dataDir;
 							// 读到一张就收手:壁纸只要一张,后面那几张(每张上限 5MB)读进来也是扔。
-							for (const { id } of resolved.length > 0 ? resolved : carried) {
+							for (const { id } of visible) {
 								const img = await readChatImage(dataDir, id);
 								if (img) return { bytes: img.bytes, ext: id.split(".").pop() ?? "png" };
 							}
@@ -483,11 +482,7 @@ export function createAiRoute(
 					// 聊天的思考设置与引擎(点评/总结)分了家。开关是会话级的,按消息走
 					// 请求体,不带 = 关(配置里已经没有它的位置);等级始终从配置读。
 					reply = await commentary.chatStatelessStream(history, {
-						imageUrls: resolved.length
-							? resolved.map((r) => r.url)
-							: carried.length
-								? carried.map((c) => c.url)
-								: undefined,
+						imageUrls: visible.length > 0 ? visible.map((v) => v.url) : undefined,
 						thinking: {
 							enableThinking: parsed.data.thinking ?? false,
 							thinkingLevel: resolveChatThinkingLevel(deps.store.getGlobals().defaults.ai),
@@ -682,6 +677,28 @@ function toDetail(conv: Conversation): AiConversationDTO {
 export function resolveDraftApiKey(draft: string | undefined, stored: string | undefined): string {
 	if (draft === REDACTED_API_KEY) return stored ?? "";
 	return draft ?? "";
+}
+
+/**
+ * 一批附件 id → 能读出来的那些(id + data URL)。
+ *
+ * 非法 id(穿越尝试)与盘上已经没了的一律**跳过**,不让它们混进去 —— 混进去的话
+ * 视觉模型收到一个读不动的地址,而主人只看到女仆说「这张图我看不清」。
+ *
+ * 视觉服务商在公网,拉不到主人本地的 `http://localhost:9000/api/ai/assets/xxx`,
+ * 只能把字节本身带过去。这与 B 站动态里的图不同 —— 那些本来就是公网可达的,
+ * 所以那条路直接传 URL。
+ */
+async function readImageUrls(
+	dataDir: string,
+	ids: readonly string[],
+): Promise<Array<{ id: string; url: string }>> {
+	const out: Array<{ id: string; url: string }> = [];
+	for (const id of ids) {
+		const url = await readChatImageDataUrl(dataDir, id);
+		if (url) out.push({ id, url });
+	}
+	return out;
 }
 
 /**
