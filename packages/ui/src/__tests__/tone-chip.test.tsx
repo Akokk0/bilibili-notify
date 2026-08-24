@@ -41,6 +41,32 @@ describe("ToneChip", () => {
 	});
 
 	/**
+	 * 选中的底与边**刻意留在 inline** —— 皮肤盖不动是设计,不是遗漏。
+	 *
+	 * 站里同期把服务商卡与适配器行的品牌色底拆成了 `--bn-tint` + @utility,好让
+	 * `option-active` 那一档真的盖得动(7e8a00e)。这排胶囊**不跟**,因为它能
+	 * 同时亮好几颗:日志页的等级筛选是多选,DEBUG/INFO/WARN/ERROR 四档可以一起
+	 * 选中。底挪出 inline 之后,皮肤一句 `chip-active{background:…}` 就把四档抹成
+	 * 同一个颜色 —— 而「严重度是产品语言」正是 `config/log-levels.ts` 那张色表
+	 * 立的规矩(它自己也刻意不进皮肤词表)。
+	 *
+	 * 所以这条测试钉的不是「现在恰好是 inline」,是**别顺手把它拆了**。
+	 */
+	it("选中的底与边刻意留在 inline —— 多选时皮肤一句话能把四档严重度抹成一色", () => {
+		render(
+			<ToneChip tone="#ef4444" active onClick={() => {}}>
+				error
+			</ToneChip>,
+		);
+		const el = chip();
+		expect(el.style.background).not.toBe("");
+		expect(el.style.borderColor).not.toBe("");
+		// 也别改走那条 tint 工具类 —— 它落在 @layer utilities,皮肤(无层)压得过。
+		expect(el.className).not.toContain("bn-tint-");
+		expect(el.style.getPropertyValue("--bn-tint")).toBe("");
+	});
+
+	/**
 	 * 未选中态的三个颜色是**静态**的,必须走 class 不走 inline `style` ——
 	 * inline 没有 `:hover`,写进去这颗胶囊就永远没有悬停反馈(抽取时正是这么写的,
 	 * 四颗胶囊一起丢了 hover)。只有 active 态的 `tone` 是动态值,才该落 inline。

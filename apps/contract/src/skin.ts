@@ -291,7 +291,7 @@ export const SKIN_CSS_HOOK_NOTES: Record<SkinCssHook, string> = {
 		"轨道里那颗滑块(圆点)。轨道掰成直角时把它一起掰,不然方轨道里滚着个圆球;**别写 left/top/width/height**,那几个是行内的运动学量,写了也压不过去",
 	chip: "筛选/档位/开关的小胶囊(改的是值,不换视图 —— 换视图的是 tab);多形态且常挤在小容器里,别加占布局的 border,描边用 outline+负 offset",
 	"chip-active":
-		"选中/点亮的那颗 chip 额外挂它(与 chip 同挂);很多 chip 的选中色是行内样式的品牌/语义色,皮肤盖不动 background —— 只描边加影最稳",
+		"选中/点亮的那颗 chip 额外挂它(与 chip 同挂)。**这一档只买得到造型**(圆角、描边样式、阴影、字重)—— 选中的底与边是行内的语义色,盖不动,而且是**刻意**盖不动:这排胶囊能同时亮好几颗(日志等级是多选),底一旦可盖,一句话就能把 debug/info/warn/error 四档抹成一个颜色。别在这儿写 background,写了也不会生效",
 };
 
 /**
