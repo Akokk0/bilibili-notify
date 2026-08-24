@@ -12,6 +12,11 @@
  * - 输出是重新序列化的产物 —— 存盘的永远是清洗后的 CSS,保留 hook 形式不翻译
  */
 
+import {
+	SKIN_CSS_EXACT_PROPS,
+	SKIN_CSS_PROP_NOTES,
+	SKIN_CSS_PROP_PREFIXES,
+} from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import { MAX_SKIN_CSS_BYTES, sanitizeSkinCss } from "../css-sanitizer.js";
 
@@ -504,5 +509,40 @@ describe("上限量的是存盘那份", () => {
 		expect(second.ok).toBe(true);
 		if (!second.ok) return;
 		expect(second.css).toBe(first.css);
+	});
+});
+
+/**
+ * 白名单是**放行的那一份**,提示词是**教 AI 的那一份** —— 从前后者是手抄的一小半,
+ * 靠一个「等」字兜住剩下的,于是 transform-origin、rotate、top/left、content 这些
+ * 收得进去的属性,两条造皮肤的路谁都没教过。
+ *
+ * 现在提示词从名单生成,这一组盯着别再退回手写:清洗层真放行的,提示词必须讲得出。
+ */
+describe("提示词与白名单同源", () => {
+	it("名单里每一个属性都真的放行", () => {
+		for (const prop of SKIN_CSS_EXACT_PROPS) {
+			// position 有自己的值域闸,给它一个合法值;其余给个能过语法的值即可。
+			const value = prop === "position" ? "relative" : prop === "content" ? '""' : "inherit";
+			const res = ok(`[data-bn~="glass"]::after { ${prop}: ${value} }`);
+			expect(res.css, prop).toContain(prop);
+		}
+	});
+
+	it("提示词把名单逐条讲了出来,不再是抄一小半加个「等」", () => {
+		for (const prop of SKIN_CSS_EXACT_PROPS) {
+			expect(SKIN_CSS_PROP_NOTES, prop).toContain(prop);
+		}
+		for (const prefix of SKIN_CSS_PROP_PREFIXES) {
+			expect(SKIN_CSS_PROP_NOTES, prefix).toContain(`${prefix}*`);
+		}
+	});
+
+	it("提示词点名的三个「会被丢弃」的属性,清洗层确实丢", () => {
+		for (const prop of ["display", "pointer-events", "visibility"]) {
+			expect(SKIN_CSS_PROP_NOTES).toContain(prop);
+			const res = ok(`[data-bn~="glass"] { ${prop}: none }`);
+			expect(res.css, prop).not.toContain(prop);
+		}
 	});
 });

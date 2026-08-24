@@ -18,7 +18,12 @@
  * 且保留 hook 形式不翻译(翻译在 web 注入层做,内部选择器重构不固化进存量皮肤)。
  */
 
-import { SKIN_CSS_HOOK_MAP, SKIN_LIMITS } from "@bilibili-notify/contract";
+import {
+	SKIN_CSS_EXACT_PROPS,
+	SKIN_CSS_HOOK_MAP,
+	SKIN_CSS_PROP_PREFIXES,
+	SKIN_LIMITS,
+} from "@bilibili-notify/contract";
 import type { Atrule, CssNode, Declaration, List, ListItem, Rule } from "css-tree";
 // 走自包含 dist bundle,不走默认入口:默认入口的 lexer 数据层在运行时
 // require('../data/patch.json') 读包内文件,内联进 server bundle 后必炸
@@ -52,49 +57,11 @@ const PSEUDO_CLASSES = new Set([
 ]);
 const PSEUDO_ELEMENTS = new Set(["before", "after"]);
 
-/** 精确属性白名单(视觉层)。 */
-const EXACT_PROPS = new Set([
-	"background",
-	"color",
-	"opacity",
-	"box-shadow",
-	"text-shadow",
-	"filter",
-	"backdrop-filter",
-	"-webkit-backdrop-filter",
-	"mix-blend-mode",
-	// 像素风皮肤的必需件:关掉浏览器对壁纸/头像的平滑插值,低分辨率点阵才有硬边。
-	// 是白名单里**唯一继承的**属性 —— 写在 `page`(=body)上会传给整棵子树,而那
-	// 正是它的正经用法(整站一起像素化)。不取网、不吃点击、不动布局,无安全面。
-	"image-rendering",
-	"clip-path",
-	"transform",
-	"transform-origin",
-	"rotate",
-	"scale",
-	"translate",
-	"inset",
-	"top",
-	"right",
-	"bottom",
-	"left",
-	"width",
-	"height",
-	"min-width",
-	"min-height",
-	"max-width",
-	"max-height",
-	"position",
-	"z-index",
-	"content",
-	"transition",
-	"animation",
-	"border",
-	"outline",
-	"border-radius",
-]);
-/** 家族前缀白名单(border-* / background-* / …)。 */
-const PROP_PREFIXES = ["background-", "border-", "outline-", "transition-", "animation-"];
+/**
+ * 属性白名单查表用的 Set —— 名单本身在契约里({@link SKIN_CSS_EXACT_PROPS}),
+ * 两份造皮肤的提示词照同一份数据生成说明。这里只是把它转成 O(1) 的形状。
+ */
+const EXACT_PROPS = new Set<string>(SKIN_CSS_EXACT_PROPS);
 
 /** 值里的取网/执行面函数 —— 出现即丢该声明。 */
 const FORBIDDEN_VALUE = ["url(", "image-set(", "element(", "expression(", "src("];
@@ -136,7 +103,7 @@ interface DeclScope {
 
 function isAllowedProp(prop: string): boolean {
 	const p = prop.toLowerCase();
-	return EXACT_PROPS.has(p) || PROP_PREFIXES.some((prefix) => p.startsWith(prefix));
+	return EXACT_PROPS.has(p) || SKIN_CSS_PROP_PREFIXES.some((prefix) => p.startsWith(prefix));
 }
 
 function valueOfAttr(value: CssNode | null): string | null {

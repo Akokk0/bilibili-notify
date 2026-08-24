@@ -257,12 +257,76 @@ export const SKIN_BEST_PRACTICES = `- **亮色皮肤**:glass 统一 { background
 - **texts 写沉浸式世界观文案**:chatPlaceholder 用「状态确认 + 引导输入」句式(如「神经链路已接入,输入指令开始同步…」「39 频道已连线,和 Miku 酱开始今天的演出吧♪」),别写说明书腔`;
 
 /**
+ * 皮肤 CSS 的**属性白名单**(视觉层)。清洗层照这份放行,两份提示词照这份讲。
+ *
+ * 从前它只住在服务端的清洗层里,提示词那句「属性走视觉白名单:background/border/…
+ * 等」是手抄的一小半,靠一个「等」字兜住剩下的 —— 于是 transform-origin、rotate、
+ * top/left、content 这些**收得进去的**属性,两条造皮肤的路都没教过 AI。数据搬上来
+ * 之后,加一个属性只改这一处,两份提示词跟着变。
+ */
+export const SKIN_CSS_EXACT_PROPS = [
+	"background",
+	"color",
+	"opacity",
+	"box-shadow",
+	"text-shadow",
+	"filter",
+	"backdrop-filter",
+	"-webkit-backdrop-filter",
+	"mix-blend-mode",
+	// 像素风皮肤的必需件:关掉浏览器对壁纸/头像的平滑插值,低分辨率点阵才有硬边。
+	// 是白名单里**唯一继承的**属性 —— 写在 `page`(=body)上会传给整棵子树,而那
+	// 正是它的正经用法(整站一起像素化)。不取网、不吃点击、不动布局,无安全面。
+	"image-rendering",
+	"clip-path",
+	"transform",
+	"transform-origin",
+	"rotate",
+	"scale",
+	"translate",
+	"inset",
+	"top",
+	"right",
+	"bottom",
+	"left",
+	"width",
+	"height",
+	"min-width",
+	"min-height",
+	"max-width",
+	"max-height",
+	"position",
+	"z-index",
+	"content",
+	"transition",
+	"animation",
+	"border",
+	"outline",
+	"border-radius",
+] as const;
+
+/** 家族前缀白名单(border-* / background-* / …),与 {@link SKIN_CSS_EXACT_PROPS} 同源。 */
+export const SKIN_CSS_PROP_PREFIXES = [
+	"background-",
+	"border-",
+	"outline-",
+	"transition-",
+	"animation-",
+] as const;
+
+/**
  * CSS 属性白名单在两份提示词里的说法 —— 与 {@link SKIN_BEST_PRACTICES} 同一个理由:
  * 服务端的 ai-edit 与 web 的 skin-pack 此前各存一份,措辞已经漂开(一份列了
  * outline/text-shadow,另一份没有)。漏改一边不会红,只会让两条造皮肤的路教出
  * 两套规格的 AI —— 白名单加一个属性时尤其明显,那正是这次收口的由头。
+ *
+ * 清单**从白名单本身生成**:誊抄的那半份连「哪些能用」都说不全,而这一条正是
+ * AI 唯一能据以判断「这句写了会不会被丢掉」的依据。
  */
-export const SKIN_CSS_PROP_NOTES = `- 属性走视觉白名单:background/border/outline/box-shadow/text-shadow/color/opacity/filter/backdrop-filter/mix-blend-mode/transform/transition/animation/border-radius/clip-path/image-rendering/inset/width/height/z-index 等;**display、pointer-events、visibility 会被丢弃**
+export const SKIN_CSS_PROP_NOTES = `- 属性走视觉白名单,收得进去的就这些:${[
+	...SKIN_CSS_EXACT_PROPS,
+	...SKIN_CSS_PROP_PREFIXES.map((p) => `${p}*`),
+].join(" / ")};**其余一律丢弃**(display、pointer-events、visibility 都在此列)
 - 做**像素风**就在 page 挂点写 image-rendering:pixelated —— 白名单里唯一继承的属性,写一处整站关掉平滑插值,壁纸与头像才有硬点阵边`;
 
 /**
