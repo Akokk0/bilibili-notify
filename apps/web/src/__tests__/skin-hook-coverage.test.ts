@@ -34,8 +34,8 @@ const SCAN_ROOTS = [join(REPO, "apps/web/src"), join(REPO, "packages/ui/src")];
  */
 const UNHOOKED: Record<string, { count: number; why: string }> = {
 	"packages/ui/src/atoms.tsx": {
-		count: 4,
-		why: "Toggle 轨道(皮肤实底会盖掉轨道底,开/关看不出来)+ MenuItem(菜单行不该吃按钮的实底,词表里也没有 menu-item 这一档)+ AddButton/AddCard(虚线=空位是语义本体,皮肤实底会把空位画成真按钮 —— 2026-08-23 主人真机指出后定案)",
+		count: 3,
+		why: "Toggle 轨道(皮肤实底会盖掉轨道底,开/关看不出来)+ AddButton/AddCard(虚线=空位是语义本体,皮肤实底会把空位画成真按钮 —— 2026-08-23 主人真机指出后定案)。**MenuItem 已经不在这儿了**:它挂上了 `option`(候选行),当初豁免的理由是「词表里没有它这一档」,那一档现在有了",
 	},
 	"apps/web/src/components/drag-handle.tsx": {
 		count: 1,

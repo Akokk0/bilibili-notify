@@ -8,7 +8,7 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { Avatar, Btn, EmptyNote, ErrorNote, Input, WarnNote } from "../atoms";
+import { Avatar, Btn, EmptyNote, ErrorNote, Input, MenuItem, Pill, WarnNote } from "../atoms";
 import { ModalShell } from "../dialog";
 import { SectionNav } from "../section-nav";
 import { TabBarShell, TabButton } from "../tab-bar";
@@ -212,5 +212,66 @@ describe("提示盒挂点", () => {
 		expect(hooksOf(box)).toEqual(["note", "note-danger"]);
 		// 挂在报警的那个盒子上,不是套在图标或文字外面的某一层
 		expect(box?.getAttribute("role")).toBe("alert");
+	});
+});
+
+/**
+ * Pill —— 不可点的小徽章(`<span>`),站里 23 处。与顶栏那个状态胶囊同族,
+ * 所以**共用 `badge`,不新造词**。
+ *
+ * 挂点只买到造型:Pill 的底色与字色是**行内样式**(`color` 由调用方传的语义色 ——
+ * 平台色、推送类型色),皮肤盖不动。那正好是对的,改掉等于让徽章说谎,同 StatsBar
+ * 那条。
+ *
+ * 同一挂点**两种形态**:顶栏那个有 `px-2.5 py-1` 撑着,Pill 靠 line-height 定高、
+ * 没有 py —— 皮肤写 border 会把它上下撑高 2px 顶开整行。NOTES 里嘱咐走 outline。
+ */
+describe("Pill 挂 badge(与顶栏状态胶囊同族)", () => {
+	it("Pill 挂 badge", () => {
+		render(<Pill>3</Pill>);
+		expect(hooksOf(screen.getByText("3"))).toEqual(["badge"]);
+	});
+
+	it("subtle 档也挂 —— 两档是同一个徽章的深浅,不是两种东西", () => {
+		render(<Pill subtle>已暂停</Pill>);
+		expect(hooksOf(screen.getByText("已暂停"))).toEqual(["badge"]);
+	});
+});
+
+/**
+ * 候选行 —— 「从一列里挑一个」的那种行:下拉菜单的每一行、命令面板的候选、
+ * 会话/草稿列表的行、字体列表、搜索结果。站里这一族此前**一个挂点都没有**,
+ * 豁免名单里 8 个文件写的是同一条理由:「同 MenuItem:皮肤实底会抹平选中/未选中」。
+ *
+ * 那条理由针对的是**挂 `btn`** —— 给它自己的词就不成立了,同当初 `nav-item`
+ * 从 btn 里拆出来。它是 `<button>` 元素,但不是按钮:一行候选吃上按钮的实底,
+ * 一屏菜单就成了一摞按钮。
+ */
+describe("候选行挂 option", () => {
+	it("MenuItem 挂 option(不再是零挂点),选中项额外挂 option-active", () => {
+		render(
+			<>
+				<MenuItem onClick={() => {}}>普通一行</MenuItem>
+				<MenuItem active onClick={() => {}}>
+					选中这行
+				</MenuItem>
+			</>,
+		);
+		expect(hooksOf(screen.getByText("普通一行"))).toEqual(["option"]);
+		expect(hooksOf(screen.getByText("选中这行"))).toEqual(["option", "option-active"]);
+	});
+
+	it("danger 行也挂 option —— 它是「删除」那一行,不是一颗红按钮", () => {
+		render(
+			<MenuItem danger onClick={() => {}}>
+				删掉
+			</MenuItem>,
+		);
+		expect(hooksOf(screen.getByText("删掉"))).toEqual(["option"]);
+	});
+
+	it("不挂 btn —— 挂了皮肤的按钮实底会把整屏菜单画成一摞按钮", () => {
+		render(<MenuItem onClick={() => {}}>某一行</MenuItem>);
+		expect(hooksOf(screen.getByText("某一行"))).not.toContain("btn");
 	});
 });

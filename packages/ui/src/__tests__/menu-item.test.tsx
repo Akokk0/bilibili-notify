@@ -31,7 +31,12 @@ describe("MenuItem", () => {
 
 	it("不挂按钮挂点 —— 菜单行不该吃皮肤给按钮写的实底", () => {
 		render(<MenuItem onClick={() => {}}>浅色</MenuItem>);
-		expect(row().getAttribute("data-bn")).toBeNull();
+		// 它现在有自己的词(`option`,候选行),但**不许**是 btn 家族 —— 皮肤给按钮
+		// 写的实底落到每一行菜单上,一屏就成了一摞按钮。这条测试的名字守的一直是
+		// 这件事,断言从前写成了「一个挂点都没有」,比名字更死。
+		const hooks = (row().getAttribute("data-bn") ?? "").split(/\s+/);
+		expect(hooks).not.toContain("btn");
+		expect(hooks).not.toContain("btn-primary");
 	});
 
 	it("选中态染粉加粗,未选中走正文色", () => {

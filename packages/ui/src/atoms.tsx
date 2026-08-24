@@ -464,6 +464,9 @@ export function MenuItem({
 			aria-label={ariaLabel}
 			onClick={onClick}
 			disabled={disabled}
+			// 候选行的词。**不挂 btn** —— 皮肤给按钮写的实底落到每一行菜单上,一屏
+			// 就成了一摞按钮(这正是这一族从前宁可零挂点的原因)。
+			data-bn={active ? "option option-active" : "option"}
 			className={`flex w-full cursor-pointer items-center gap-2.5 rounded-bn-xs px-3 py-2 text-left text-bn-base transition disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent ${state}`}
 		>
 			{icon ? (
@@ -499,6 +502,10 @@ export function Pill({
 		: { background: color, color: "var(--color-bn-on-solid)" };
 	return (
 		<span
+			// 与顶栏那个状态胶囊同族,共用 `badge` 挂点 —— 皮肤买到的只是造型:底色与
+			// 字色走行内样式(`color` 是调用方传的语义色:平台色、推送类型色),盖不动。
+			// 那正是想要的,改掉等于让徽章说谎。
+			data-bn="badge"
 			className={`inline-flex items-center gap-1 whitespace-nowrap rounded-sm font-bold tracking-wide ${sizeCls} ${className ?? ""}`}
 			style={style}
 		>
