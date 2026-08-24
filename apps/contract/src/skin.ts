@@ -397,6 +397,21 @@ export const SKIN_RADIUS_NOTES = `- **胶囊/正圆圆角(border-radius 999px、
  *
  * 两处的差别不会让任何测试变红,只会让主人拿到一套「写了却不生效」的皮肤。
  */
+/**
+ * 「选中的那一档」怎么写 —— 两条都是真机上翻过的车。
+ *
+ * 挂点是**多挂点**模式:选中那颗身上同时挂着基础词与 -active 词。于是给基础词写
+ * `:hover` 会**连选中那颗一起打**,而 `:not()` 在清洗层是丢弃的,写不出「除了选中
+ * 那颗」。2026-08-24 主人真机指出:鼠标一指上去,推送历史那排选中的段就塌回轨道
+ * 里 —— 皮肤的 `chip:hover` 背景盖掉了站内给它的那层抬起底色。
+ *
+ * 叠两个挂点是唯一的出路,而且它比「靠书写顺序压过去」稳:皮肤 CSS 每次保存都会
+ * 重新序列化,顺序会漂,特异性不会。
+ */
+export const SKIN_STATE_NOTES = `- **\`:hover\` 写在基础词上会连选中那颗一起打** —— 选中的元素身上同时挂着两个词(chip + chip-active、tab + tab-active、option + option-active、nav-item + nav-item-active)。而 \`:not()\` 会被丢弃,写不出「除了选中那颗」
+- 要让选中那颗不吃这个 hover,把两个词**叠在同一段选择器里**:\`[data-bn="chip"][data-bn="chip-active"]:hover{...}\` —— 它的特异性压得过 \`[data-bn="chip"]:hover\`,与写在前写在后无关(存盘会重新序列化,顺序靠不住)
+- 顺带记住**选中态本来就到站了**:给它写悬停预览没有意义,而一旦盖了 background,站内标记「这颗是选中的」那层底色就没了`;
+
 export const SKIN_PSEUDO_NOTES = `- position **只准写在伪元素上**(值限 static/relative/absolute)—— 宿主本身的 position 归站内布局管,写了会被剔除(站内顶栏靠 sticky 吸顶,被顶掉就散架);伪元素 content 只准 "" 或 none
 - 伪元素只管装饰,三件事**不用你操心**:pointer-events、z-index、宿主的定位与层叠上下文。清洗层一律替你补 pointer-events:none + z-index:-1 —— 装饰永远在宿主内容**之下**:压在上面会吃掉点击(整页按钮点不动)、也会把文字按钮糊成一片发虚。宿主那边该有的 position:relative 也自动给。别浪费声明去写它们`;
 

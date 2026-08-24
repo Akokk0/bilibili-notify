@@ -109,6 +109,28 @@ describe("声明白名单", () => {
 		expect(warnings).toHaveLength(0);
 	});
 
+	/**
+	 * 叠挂点的写法必须活着出来 —— `SKIN_STATE_NOTES` 就是教皮肤这么写的。
+	 *
+	 * 挂点是多挂点模式(选中那颗同时挂着 chip 与 chip-active),所以给基础词写
+	 * `:hover` 会连选中那颗一起打,而 `:not()` 在这一层是丢弃的(下一条钉住)。
+	 * 唯一的出路就是把两个词叠进同一段选择器 —— 它一旦被丢,主人会看到的正是
+	 * 2026-08-24 那个症状:鼠标指上去,选中那段塌回轨道里。
+	 */
+	it("同一段里叠两个挂点放行 —— 这是「只管选中那颗」的唯一写法", () => {
+		const { css, warnings } = ok('[data-bn="chip"][data-bn="chip-active"]:hover{background:#fff}');
+		expect(css).toContain('[data-bn="chip"][data-bn="chip-active"]:hover');
+		expect(warnings).toHaveLength(0);
+	});
+
+	it(":not() 丢弃 —— 所以「除了选中那颗」写不出来,只能靠叠挂点", () => {
+		// 这条不是遗憾,是现状的记录:提示词里那句「:not() 会被丢弃」得有东西钉着,
+		// 否则哪天清洗层放行了,文档就开始骗人。
+		const { css, warnings } = ok('[data-bn="chip"]:not([data-bn="chip-active"]):hover{color:red}');
+		expect(css).toBe("");
+		expect(warnings).toHaveLength(1);
+	});
+
 	it("image-rendering 放行 —— 像素风皮肤靠它关掉浏览器的平滑插值", () => {
 		const { css, warnings } = ok(
 			`[data-bn="page"] {

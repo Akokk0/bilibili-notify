@@ -15,6 +15,7 @@ import {
 	SKIN_LIMITS,
 	SKIN_PSEUDO_NOTES,
 	SKIN_RADIUS_NOTES,
+	SKIN_STATE_NOTES,
 	type SkinManifest,
 } from "@bilibili-notify/contract";
 import { referencedAssets } from "./package.js";
@@ -126,6 +127,7 @@ ${HOOK_LIST}
 ${SKIN_RADIUS_NOTES}
 ${SKIN_CSS_PROP_NOTES}
 - 禁 url()(图走字段,CSS 里写了会被剔除)
+${SKIN_STATE_NOTES}
 ${SKIN_PSEUDO_NOTES}
 - @keyframes 名必须以 skin- 开头;可用 @media (prefers-reduced-motion) 做降级
 

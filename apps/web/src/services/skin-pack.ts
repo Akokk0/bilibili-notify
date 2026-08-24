@@ -11,6 +11,7 @@ import {
 	SKIN_LIMITS,
 	SKIN_PSEUDO_NOTES,
 	SKIN_RADIUS_NOTES,
+	SKIN_STATE_NOTES,
 } from "@bilibili-notify/contract";
 import { strToU8, zipSync } from "fflate";
 
@@ -71,6 +72,7 @@ ${Object.entries(SKIN_CSS_HOOK_NOTES)
 ${SKIN_RADIUS_NOTES}
 ${SKIN_CSS_PROP_NOTES}
 - **禁 url()**(以及 image-set/element/src)—— 图片一律走 wallpaper 字段,CSS 里写了会被逐条剔除
+${SKIN_STATE_NOTES}
 ${SKIN_PSEUDO_NOTES}
 - 动画用 @keyframes,**名字必须以 skin- 开头**(如 @keyframes skin-float),再在 animation 里引用;可用 @media (prefers-reduced-motion) 做无动效降级
 - 违禁项不会导致整包被拒,但会被逐条静默丢弃 —— 别浪费笔墨写白名单外的东西
