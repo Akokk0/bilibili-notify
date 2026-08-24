@@ -249,7 +249,14 @@ const ICON_BUTTON_SURFACE = {
 	scrim: "bg-bn-overlay text-bn-on-solid backdrop-blur-sm",
 } as const;
 
-/** `scrim` 档的 hover —— 静态字色由遮罩那一档定死,这里只管悬停反馈。 */
+/**
+ * `scrim` 档的 hover —— 静态字色由遮罩那一档定死,这里只管悬停反馈。
+ *
+ * `accent` 目前**没有调用点**(站里三处 `surface="scrim"` 都是 neutral),但它
+ * 不是死码:类型是 `Record<IconButtonTone, …>`,三档必须齐 —— 这一条是「万一
+ * 有人写 accent + scrim,该长什么样」的**预先回答**。删掉就得把类型改成
+ * `Partial`,那是拿一个编译期保证换一个静默的空档(悬停毫无反馈,而且不会红)。
+ */
 const ICON_BUTTON_SCRIM_TONE: Record<IconButtonTone, string> = {
 	neutral: "hover:opacity-80",
 	danger: "hover:bg-bn-danger-text",
