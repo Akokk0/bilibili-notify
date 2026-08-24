@@ -143,6 +143,28 @@ function asRecord(v: unknown): Record<string, unknown> | null {
 }
 
 /**
+ * 「这个段必须是对象」—— parseMode 里九个段落各手写过一遍的同一段前奏。
+ *
+ * 与 takeNumber 同规矩:**缺字段回 null 且不报错**(没写 ≠ 写错),写了但不是对象
+ * 才记一条。调用方拿到 null 就整段跳过 —— 这也是为什么它不能早退:一个 mode 里
+ * 几个段同时写错,要各报各的。
+ */
+function takeRecord(
+	src: Record<string, unknown>,
+	key: string,
+	path: string,
+	errors: string[],
+	note = "",
+): Record<string, unknown> | null {
+	const v = src[key];
+	if (v === undefined) return null;
+	const rec = asRecord(v);
+	// path 为空 = 顶层字段(texts),别给它拼出个前导点。
+	if (!rec) errors.push(`${path ? `${path}.` : ""}${key}: 必须是对象${note}`);
+	return rec;
+}
+
+/**
  * 「可选数值字段 + 范围校验 + 越界记一条错」—— 壁纸、玻璃、圆角里都是同一套。
  *
  * 缺字段与越界都回 `undefined`,调用方只在有值时才写进 out:这几个 out 都用
@@ -234,37 +256,29 @@ function parseMode(
 ): SkinMode {
 	const mode: SkinMode = {};
 
-	if (raw.colors !== undefined) {
-		const rawColors = asRecord(raw.colors);
-		if (!rawColors) {
-			errors.push(`${path}.colors: 必须是对象`);
-		} else {
-			const colors: Record<string, string> = {};
-			for (const [key, value] of Object.entries(rawColors)) {
-				if (!KNOWN_COLOR_KEYS.has(key)) {
-					warnings.push(`${path}.colors.${key}: 不认识的颜色键,已忽略`);
-					continue;
-				}
-				if (typeof value !== "string" || !isColor(value)) {
-					errors.push(`${path}.colors.${key}: 不是合法颜色值(hex/rgb/hsl/oklch/transparent)`);
-					continue;
-				}
-				colors[key] = value.trim();
+	const rawColors = takeRecord(raw, "colors", path, errors);
+	if (rawColors) {
+		const colors: Record<string, string> = {};
+		for (const [key, value] of Object.entries(rawColors)) {
+			if (!KNOWN_COLOR_KEYS.has(key)) {
+				warnings.push(`${path}.colors.${key}: 不认识的颜色键,已忽略`);
+				continue;
 			}
-			if (Object.keys(colors).length > 0) mode.colors = colors as SkinMode["colors"];
+			if (typeof value !== "string" || !isColor(value)) {
+				errors.push(`${path}.colors.${key}: 不是合法颜色值(hex/rgb/hsl/oklch/transparent)`);
+				continue;
+			}
+			colors[key] = value.trim();
 		}
+		if (Object.keys(colors).length > 0) mode.colors = colors as SkinMode["colors"];
 	}
 
-	if (raw.page !== undefined) {
-		const page = asRecord(raw.page);
-		if (!page) {
-			errors.push(`${path}.page: 必须是对象`);
-		} else if (page.background !== undefined) {
-			if (typeof page.background !== "string" || !isBackground(page.background)) {
-				errors.push(`${path}.page.background: 不是合法背景值(纯色或渐变)`);
-			} else {
-				mode.page = { background: page.background.trim() };
-			}
+	const page = takeRecord(raw, "page", path, errors);
+	if (page?.background !== undefined) {
+		if (typeof page.background !== "string" || !isBackground(page.background)) {
+			errors.push(`${path}.page.background: 不是合法背景值(纯色或渐变)`);
+		} else {
+			mode.page = { background: page.background.trim() };
 		}
 	}
 
@@ -273,133 +287,105 @@ function parseMode(
 		if (wp) mode.wallpaper = wp;
 	}
 
-	if (raw.chat !== undefined) {
-		const chat = asRecord(raw.chat);
-		if (!chat) {
-			errors.push(`${path}.chat: 必须是对象`);
-		} else {
-			// chat 段只管背景:强调色派生自 colors.accent、玻璃件直用 glass 段,
-			// 不另设一套参数。老包里的 accent/accentSecondary 静默忽略。
-			const out: NonNullable<SkinMode["chat"]> = {};
-			if (chat.background !== undefined) {
-				if (typeof chat.background !== "string" || !isBackground(chat.background)) {
-					errors.push(`${path}.chat.background: 不是合法背景值(纯色或渐变)`);
-				} else {
-					out.background = chat.background.trim();
-				}
+	const chat = takeRecord(raw, "chat", path, errors);
+	if (chat) {
+		// chat 段只管背景:强调色派生自 colors.accent、玻璃件直用 glass 段,
+		// 不另设一套参数。老包里的 accent/accentSecondary 静默忽略。
+		const out: NonNullable<SkinMode["chat"]> = {};
+		if (chat.background !== undefined) {
+			if (typeof chat.background !== "string" || !isBackground(chat.background)) {
+				errors.push(`${path}.chat.background: 不是合法背景值(纯色或渐变)`);
+			} else {
+				out.background = chat.background.trim();
 			}
-			if (chat.wallpaper !== undefined) {
-				const wp = parseWallpaper(chat.wallpaper, `${path}.chat.wallpaper`, errors);
-				if (wp) out.wallpaper = wp;
-			}
-			if (Object.keys(out).length > 0) mode.chat = out;
 		}
+		if (chat.wallpaper !== undefined) {
+			const wp = parseWallpaper(chat.wallpaper, `${path}.chat.wallpaper`, errors);
+			if (wp) out.wallpaper = wp;
+		}
+		if (Object.keys(out).length > 0) mode.chat = out;
 	}
 
-	if (raw.glass !== undefined) {
-		const glass = asRecord(raw.glass);
-		if (!glass) {
-			errors.push(`${path}.glass: 必须是对象`);
-		} else {
-			const out: NonNullable<SkinMode["glass"]> = {};
-			for (const key of ["background", "border", "strongBackground", "strongBorder"] as const) {
-				const v = glass[key];
-				if (v === undefined) continue;
-				if (typeof v !== "string" || !isColor(v)) {
-					errors.push(`${path}.glass.${key}: 不是合法颜色值`);
-				} else {
-					out[key] = v.trim();
-				}
+	const glass = takeRecord(raw, "glass", path, errors);
+	if (glass) {
+		const out: NonNullable<SkinMode["glass"]> = {};
+		for (const key of ["background", "border", "strongBackground", "strongBorder"] as const) {
+			const v = glass[key];
+			if (v === undefined) continue;
+			if (typeof v !== "string" || !isColor(v)) {
+				errors.push(`${path}.glass.${key}: 不是合法颜色值`);
+			} else {
+				out[key] = v.trim();
 			}
-			for (const key of ["blur", "strongBlur"] as const) {
-				const v = takeNumber(
-					glass,
-					key,
-					L.glassBlur.min,
-					L.glassBlur.max,
-					`${path}.glass`,
-					"(px)",
-					errors,
-				);
-				if (v !== undefined) out[key] = v;
-			}
-			if (Object.keys(out).length > 0) mode.glass = out;
 		}
+		for (const key of ["blur", "strongBlur"] as const) {
+			const v = takeNumber(
+				glass,
+				key,
+				L.glassBlur.min,
+				L.glassBlur.max,
+				`${path}.glass`,
+				"(px)",
+				errors,
+			);
+			if (v !== undefined) out[key] = v;
+		}
+		if (Object.keys(out).length > 0) mode.glass = out;
 	}
 
-	if (raw.fonts !== undefined) {
-		const fonts = asRecord(raw.fonts);
+	const fonts = takeRecord(raw, "fonts", path, errors);
+	if (fonts) {
 		const out: NonNullable<SkinMode["fonts"]> = {};
-		if (!fonts) {
-			errors.push(`${path}.fonts: 必须是对象`);
-		} else {
-			if (fonts.asset !== undefined) {
-				if (typeof fonts.asset !== "string" || !SKIN_FONT_FILE_RE.test(fonts.asset)) {
-					errors.push(`${path}.fonts.asset: 只能引用包内 assets/<文件名>.woff2|woff|ttf|otf`);
-				} else {
-					out.asset = fonts.asset;
-				}
+		if (fonts.asset !== undefined) {
+			if (typeof fonts.asset !== "string" || !SKIN_FONT_FILE_RE.test(fonts.asset)) {
+				errors.push(`${path}.fonts.asset: 只能引用包内 assets/<文件名>.woff2|woff|ttf|otf`);
+			} else {
+				out.asset = fonts.asset;
 			}
-			if (fonts.body !== undefined) {
-				/**
-				 * 字体栈**宽容收**:超长截断、CSS 原文的引号剥掉,只有真出现注入字符
-				 * 才拒整包。
-				 *
-				 * 分寸在这里:一串十来个名字的中文字体栈是 AI 照 CSS 习惯写出来的格式
-				 * 毛病(真机踩过,白烧一趟两分半的生成),截到 8 个毫发无伤;而 `url(`、
-				 * 分号这类东西不是笔误是攻击信号,静默剔掉等于把它藏起来 —— 那种照旧拒。
-				 */
-				const list = Array.isArray(fonts.body) ? fonts.body : null;
-				const names = list?.every((f) => typeof f === "string")
-					? (list as string[]).map((f) =>
-							f
-								.trim()
-								.replace(/^["']|["']$/g, "")
-								.trim(),
-						)
-					: null;
-				if (!names || names.length === 0 || !names.every((f) => FONT_NAME_RE.test(f))) {
-					errors.push(`${path}.fonts.body: 必须是 1~8 个字体名(仅文字/数字/空格/点/连字符)`);
-				} else {
-					if (names.length > MAX_FONTS) {
-						warnings.push(`${path}.fonts.body: 超过 ${MAX_FONTS} 个字体名,已截断`);
-					}
-					out.body = names.slice(0, MAX_FONTS);
+		}
+		if (fonts.body !== undefined) {
+			/**
+			 * 字体栈**宽容收**:超长截断、CSS 原文的引号剥掉,只有真出现注入字符
+			 * 才拒整包。
+			 *
+			 * 分寸在这里:一串十来个名字的中文字体栈是 AI 照 CSS 习惯写出来的格式
+			 * 毛病(真机踩过,白烧一趟两分半的生成),截到 8 个毫发无伤;而 `url(`、
+			 * 分号这类东西不是笔误是攻击信号,静默剔掉等于把它藏起来 —— 那种照旧拒。
+			 */
+			const list = Array.isArray(fonts.body) ? fonts.body : null;
+			const names = list?.every((f) => typeof f === "string")
+				? (list as string[]).map((f) =>
+						f
+							.trim()
+							.replace(/^["']|["']$/g, "")
+							.trim(),
+					)
+				: null;
+			if (!names || names.length === 0 || !names.every((f) => FONT_NAME_RE.test(f))) {
+				errors.push(`${path}.fonts.body: 必须是 1~8 个字体名(仅文字/数字/空格/点/连字符)`);
+			} else {
+				if (names.length > MAX_FONTS) {
+					warnings.push(`${path}.fonts.body: 超过 ${MAX_FONTS} 个字体名,已截断`);
 				}
+				out.body = names.slice(0, MAX_FONTS);
 			}
 		}
 		// 两栏各自成立:只传了字体文件、或只写了字体栈,都算数。全空 = 与没写同构。
 		if (Object.keys(out).length > 0) mode.fonts = out;
 	}
 
-	if (raw.radius !== undefined) {
-		const radius = asRecord(raw.radius);
-		if (!radius) {
-			errors.push(`${path}.radius: 必须是对象`);
-		} else {
-			const out: NonNullable<SkinMode["radius"]> = {};
-			const card = takeNumber(
-				radius,
-				"card",
-				L.radiusCard.min,
-				L.radiusCard.max,
-				`${path}.radius`,
-				"(px)",
-				errors,
-			);
-			if (card !== undefined) out.card = card;
-			const pill = takeNumber(
-				radius,
-				"pill",
-				L.radiusPill.min,
-				L.radiusPill.max,
-				`${path}.radius`,
-				"(px)",
-				errors,
-			);
-			if (pill !== undefined) out.pill = pill;
-			if (Object.keys(out).length > 0) mode.radius = out;
+	const radius = takeRecord(raw, "radius", path, errors);
+	if (radius) {
+		const out: NonNullable<SkinMode["radius"]> = {};
+		// 与 glass 段同形,只是两档圆角各有各的范围 —— 范围跟着键一起走在表里。
+		for (const [key, range] of [
+			["card", L.radiusCard],
+			["pill", L.radiusPill],
+		] as const) {
+			const v = takeNumber(radius, key, range.min, range.max, `${path}.radius`, "(px)", errors);
+			if (v !== undefined) out[key] = v;
 		}
+		if (Object.keys(out).length > 0) mode.radius = out;
 	}
 
 	// 栏宽是个裸数字,不像 radius 那样成组 —— 只有这一个布局量,不为它造一层对象。
@@ -417,23 +403,19 @@ function parseMode(
 	// decorations(贴纸装饰层)已下线(主人真机验收后砍掉):存量皮肤里的它
 	// 走 KNOWN_MODE_KEYS 的未知字段告警 + 忽略,优雅降级。
 
-	if (raw.shadows !== undefined) {
-		const shadows = asRecord(raw.shadows);
-		if (!shadows) {
-			errors.push(`${path}.shadows: 必须是对象`);
-		} else {
-			const out: NonNullable<SkinMode["shadows"]> = {};
-			for (const key of ["card", "elev"] as const) {
-				const v = shadows[key];
-				if (v === undefined) continue;
-				if (typeof v !== "string" || hasForbidden(v) || !SHADOW_RE.test(v)) {
-					errors.push(`${path}.shadows.${key}: 不是合法阴影值`);
-				} else {
-					out[key] = v.trim();
-				}
+	const shadows = takeRecord(raw, "shadows", path, errors);
+	if (shadows) {
+		const out: NonNullable<SkinMode["shadows"]> = {};
+		for (const key of ["card", "elev"] as const) {
+			const v = shadows[key];
+			if (v === undefined) continue;
+			if (typeof v !== "string" || hasForbidden(v) || !SHADOW_RE.test(v)) {
+				errors.push(`${path}.shadows.${key}: 不是合法阴影值`);
+			} else {
+				out[key] = v.trim();
 			}
-			if (Object.keys(out).length > 0) mode.shadows = out;
 		}
+		if (Object.keys(out).length > 0) mode.shadows = out;
 	}
 
 	// banner(首页 hero 横幅)已下线(主人拍板不要这个入口):存量皮肤里的它
@@ -444,48 +426,42 @@ function parseMode(
 		if (css !== undefined) mode.css = css;
 	}
 
-	if (raw.effects !== undefined) {
-		const fx = asRecord(raw.effects);
-		if (!fx) {
-			errors.push(`${path}.effects: 必须是对象`);
-		} else {
-			const out: SkinEffects = {};
+	const fx = takeRecord(raw, "effects", path, errors);
+	if (fx) {
+		const out: SkinEffects = {};
 
-			if (fx.glassShine !== undefined) {
-				const g = asRecord(fx.glassShine);
-				if (!g) {
-					errors.push(`${path}.effects.glassShine: 必须是对象(可为空对象)`);
-				} else if (g.color !== undefined && (typeof g.color !== "string" || !isColor(g.color))) {
-					errors.push(`${path}.effects.glassShine.color: 不是合法颜色值`);
-				} else {
-					out.glassShine = g.color !== undefined ? { color: (g.color as string).trim() } : {};
-				}
+		const g = takeRecord(fx, "glassShine", `${path}.effects`, errors, "(可为空对象)");
+		if (g) {
+			if (g.color !== undefined && (typeof g.color !== "string" || !isColor(g.color))) {
+				errors.push(`${path}.effects.glassShine.color: 不是合法颜色值`);
+			} else {
+				out.glassShine = g.color !== undefined ? { color: (g.color as string).trim() } : {};
 			}
-
-			if (fx.bokeh !== undefined) {
-				const b = asRecord(fx.bokeh);
-				if (
-					!b ||
-					!Array.isArray(b.colors) ||
-					b.colors.length === 0 ||
-					b.colors.length > MAX_BOKEH_COLORS ||
-					!b.colors.every((c) => typeof c === "string" && isColor(c))
-				) {
-					errors.push(`${path}.effects.bokeh.colors: 必须是 1~${MAX_BOKEH_COLORS} 个合法颜色`);
-				} else {
-					out.bokeh = { colors: b.colors.map((c) => (c as string).trim()) };
-				}
-			}
-
-			for (const key of Object.keys(fx)) {
-				// backgroundFlow(卡顿)与 particles(主人砍掉)均已移除:存量皮肤里的它们
-				// 走这里的未知字段告警 + 忽略,优雅降级。
-				if (!["glassShine", "bokeh"].includes(key)) {
-					warnings.push(`${path}.effects.${key}: 不认识的字段,已忽略`);
-				}
-			}
-			if (Object.keys(out).length > 0) mode.effects = out;
 		}
+
+		if (fx.bokeh !== undefined) {
+			const b = asRecord(fx.bokeh);
+			if (
+				!b ||
+				!Array.isArray(b.colors) ||
+				b.colors.length === 0 ||
+				b.colors.length > MAX_BOKEH_COLORS ||
+				!b.colors.every((c) => typeof c === "string" && isColor(c))
+			) {
+				errors.push(`${path}.effects.bokeh.colors: 必须是 1~${MAX_BOKEH_COLORS} 个合法颜色`);
+			} else {
+				out.bokeh = { colors: b.colors.map((c) => (c as string).trim()) };
+			}
+		}
+
+		for (const key of Object.keys(fx)) {
+			// backgroundFlow(卡顿)与 particles(主人砍掉)均已移除:存量皮肤里的它们
+			// 走这里的未知字段告警 + 忽略,优雅降级。
+			if (!["glassShine", "bokeh"].includes(key)) {
+				warnings.push(`${path}.effects.${key}: 不认识的字段,已忽略`);
+			}
+		}
+		if (Object.keys(out).length > 0) mode.effects = out;
 	}
 
 	for (const key of Object.keys(raw)) {
@@ -544,26 +520,21 @@ export function parseSkinManifest(input: unknown): ParseSkinResult {
 	}
 
 	let texts: SkinManifest["texts"];
-	const rawTexts = (input as Record<string, unknown>).texts;
-	if (rawTexts !== undefined) {
-		const rec = asRecord(rawTexts);
-		if (!rec) {
-			errors.push("texts: 必须是对象");
-		} else {
-			const out: Record<string, string> = {};
-			for (const [slot, value] of Object.entries(rec)) {
-				if (!(SKIN_TEXT_SLOTS as readonly string[]).includes(slot)) {
-					warnings.push(`texts.${slot}: 不认识的文案槽位,已忽略`);
-					continue;
-				}
-				if (typeof value !== "string" || value.length === 0 || value.length > L.maxTextChars) {
-					errors.push(`texts.${slot}: 必须是 1~60 字的字符串`);
-					continue;
-				}
-				out[slot] = value;
+	const rec = takeRecord(input as Record<string, unknown>, "texts", "", errors);
+	if (rec) {
+		const out: Record<string, string> = {};
+		for (const [slot, value] of Object.entries(rec)) {
+			if (!(SKIN_TEXT_SLOTS as readonly string[]).includes(slot)) {
+				warnings.push(`texts.${slot}: 不认识的文案槽位,已忽略`);
+				continue;
 			}
-			if (Object.keys(out).length > 0) texts = out as SkinManifest["texts"];
+			if (typeof value !== "string" || value.length === 0 || value.length > L.maxTextChars) {
+				errors.push(`texts.${slot}: 必须是 1~60 字的字符串`);
+				continue;
+			}
+			out[slot] = value;
 		}
+		if (Object.keys(out).length > 0) texts = out as SkinManifest["texts"];
 	}
 
 	let css: string | undefined;

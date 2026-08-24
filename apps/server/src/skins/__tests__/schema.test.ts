@@ -622,3 +622,69 @@ describe("parseSkinManifest / chat(AI 聊天页专属外观)", () => {
 		expect(r.skin.modes.light?.chat).toBeUndefined();
 	});
 });
+
+/**
+ * 「这个段必须是对象」是 parseMode 里手写了九遍的同一段前奏,却一条测试都没有 ——
+ * 抽公共 helper 之前先把行为钉住:路径要准、每段各报各的、缺字段不算错、数组和
+ * null 都不是对象。
+ */
+describe("parseSkinManifest / 段必须是对象", () => {
+	/** mode 里每个对象段,配它该报出来的路径。 */
+	const OBJECT_SECTIONS = [
+		"colors",
+		"page",
+		"chat",
+		"glass",
+		"fonts",
+		"radius",
+		"shadows",
+		"effects",
+		"wallpaper",
+	] as const;
+
+	it.each(OBJECT_SECTIONS)("modes.light.%s 收到非对象 → 拒绝,错误带该段路径", (section) => {
+		for (const bad of ["字符串", 42, true, [], null]) {
+			const r = parseSkinManifest({ ...minimal(), modes: { light: { [section]: bad } } });
+			expect(r.ok, `${section} = ${JSON.stringify(bad)}`).toBe(false);
+			if (r.ok) return;
+			expect(r.errors.join("\n")).toContain(`modes.light.${section}`);
+		}
+	});
+
+	it("多个段同时非对象 → 每段各报一条,不是遇错就停", () => {
+		const r = parseSkinManifest({
+			...minimal(),
+			modes: { light: { colors: 1, glass: 2, radius: 3, shadows: 4 } },
+		});
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		for (const section of ["colors", "glass", "radius", "shadows"]) {
+			expect(r.errors.join("\n")).toContain(`modes.light.${section}`);
+		}
+	});
+
+	it("段缺失(undefined)不算错 —— 只有写了才校验", () => {
+		const light: Record<string, unknown> = {};
+		for (const section of OBJECT_SECTIONS) light[section] = undefined;
+		const r = parseSkinManifest({ ...minimal(), modes: { light } });
+		expect(r.ok).toBe(true);
+	});
+
+	it("effects.glassShine 非对象 → 报的是它自己的路径,文案点明可为空对象", () => {
+		const r = parseSkinManifest({
+			...minimal(),
+			modes: { light: { effects: { glassShine: "亮" } } },
+		});
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.errors.join("\n")).toContain("modes.light.effects.glassShine");
+		expect(r.errors.join("\n")).toContain("可为空对象");
+	});
+
+	it("顶层 texts 非对象 → 拒绝,路径不带前缀点", () => {
+		const r = parseSkinManifest({ ...minimal(), texts: ["首页"] });
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.errors.some((e) => e.startsWith("texts:"))).toBe(true);
+	});
+});
