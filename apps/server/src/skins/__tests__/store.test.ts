@@ -530,3 +530,49 @@ describe("removeMode —— 只删一色", () => {
 		expect(await store.listAssets(id)).toEqual(["assets/bg.png"]);
 	});
 });
+
+/**
+ * 存量烙印的读盘迁移。v0.7.0 及之前清洗层把 `pointer-events:none` / `z-index:-1`
+ * 烙进存盘的 css 字段;硬规矩挪去注入层之后,盘里那批要在 init 读进索引时摘掉 ——
+ * 否则编辑器展示、导出 zip、下一次保存全都带着旧烙印,保存还会对它刷警告。
+ */
+describe("读盘时摘掉旧版烙印", () => {
+	const RESIDUE = '[data-bn="page"]::before{content:"";inset:0;pointer-events:none;z-index:-1}';
+
+	it("init 进索引的 manifest 三个 css 字段都干净;磁盘不主动回写", async () => {
+		const m = makeManifest({
+			css: RESIDUE,
+			modes: {
+				light: { colors: { accent: "#fb7299" }, css: RESIDUE },
+				dark: { colors: { accent: "#8ab4ff" }, css: RESIDUE },
+			},
+		});
+		await mkdir(join(dir, "legacy-1"), { recursive: true });
+		await writeFile(join(dir, "legacy-1", "skin.json"), JSON.stringify(m));
+
+		const reborn = new SkinStore({ skinsDir: dir });
+		await reborn.init();
+		const got = await reborn.get("legacy-1");
+
+		expect(got?.css).not.toContain("pointer-events");
+		expect(got?.modes.light?.css).not.toContain("pointer-events");
+		expect(got?.modes.dark?.css).not.toContain("z-index");
+		expect(got?.css).toContain("inset:0");
+		// 与 active.json 旧格式迁移同一套哲学:读盘完成迁移语义,不回写文件。
+		expect(await readFile(join(dir, "legacy-1", "skin.json"), "utf8")).toContain("pointer-events");
+	});
+
+	it("出厂快照(default.json)同样摘 —— 恢复默认值不该把烙印灌回草稿", async () => {
+		const m = makeManifest({ css: RESIDUE });
+		await mkdir(join(dir, "legacy-2"), { recursive: true });
+		await writeFile(join(dir, "legacy-2", "skin.json"), JSON.stringify(makeManifest()));
+		await writeFile(join(dir, "legacy-2", "default.json"), JSON.stringify(m));
+
+		const reborn = new SkinStore({ skinsDir: dir });
+		await reborn.init();
+		const snap = await reborn.getDefault("legacy-2");
+
+		expect(snap?.css).not.toContain("pointer-events");
+		expect(snap?.css).toContain("inset:0");
+	});
+});

@@ -18,12 +18,7 @@ import {
 	SKIN_CSS_PROP_PREFIXES,
 } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
-import { MAX_SKIN_CSS_BYTES, sanitizeSkinCss } from "../css-sanitizer.js";
-
-/** 数一个片段出现几次 —— 「清洗完只该剩一条」这类断言全靠它。 */
-function countOf(haystack: string, needle: string): number {
-	return haystack.split(needle).length - 1;
-}
+import { MAX_SKIN_CSS_BYTES, sanitizeSkinCss, stripDecorationResidue } from "../css-sanitizer.js";
 
 function ok(css: string): { css: string; warnings: string[] } {
 	const res = sanitizeSkinCss(css);
@@ -238,73 +233,50 @@ describe("硬失败与体积", () => {
 });
 
 /**
- * 装饰性伪元素**永远不许吃点击**。
+ * 卡面高光那类覆盖层(`::before` + `position:absolute` + `inset:0` + 渐变)要能安全
+ * 存在,靠两句硬规矩:`pointer-events:none` + `z-index:-1`。这两句**不归清洗层补**——
+ * 补进产物,存盘/导出的 CSS 里就躺着一句白名单外的声明,下一轮清洗(编辑器保存、
+ * 导出 zip 再导入)必然对着自己上一轮的笔迹刷「不在白名单,已丢弃」(2026-08-25
+ * 主人导入自家导出的包,一口气 12 条)。
  *
- * 真机上撞的(2026-08-19,「樱墨 · Sakura Ink」):设计师写了一层再标准不过的
- * 卡面高光 —— `[data-bn="glass"]::before{content:"";position:absolute;inset:0;
- * background:linear-gradient(...)}`。放到任何前端项目里,这段都得配一句
- * `pointer-events:none`;而 `pointer-events` **在我们的白名单外**(它是欺骗面,
- * 刻意不开)。于是设计师写不出正确的覆盖层,也没法补救 —— 主人拿到的是一整页
- * 点不动的按钮。
- *
- * 所以这件事不能求设计师做对,得由这一层**替它做掉**:凡是伪元素规则,一律补上
- * `pointer-events:none`。它写不了(属性被禁)、也覆盖不掉(同样被禁),结构上就没有
- * 出错的余地。
+ * 硬规矩由**注入层**独挑(web `decorationGuardCss`,带 !important,连清洗层从未
+ * 见过的存量皮肤也压得住)。清洗层对 `pointer-events` 只有一件事:照实报警丢弃 ——
+ * 存盘产物里**永远不出现**这个词,警告于是永远指向作者真写了的东西。
  */
-describe("伪元素不吃点击", () => {
-	it("伪元素规则一律补 pointer-events:none", () => {
+describe("伪元素守卫不归清洗层", () => {
+	it("清洗产物不含 pointer-events —— 硬规矩在注入层,不在盘里", () => {
 		const { css } = ok(`[data-bn="glass"]::before{content:"";position:absolute;inset:0}`);
-		expect(css).toContain("pointer-events:none");
-	});
-
-	it("::after 同样补", () => {
-		const { css } = ok(`[data-bn="page"]::after{content:"";position:absolute;inset:0}`);
-		expect(css).toContain("pointer-events:none");
-	});
-
-	it("不是伪元素的规则不碰 —— 给按钮补这句会把按钮本身点死", () => {
-		const { css } = ok(`[data-bn="btn"]:hover{opacity:0.9}`);
 		expect(css).not.toContain("pointer-events");
 	});
 
-	it("皮肤自己写 pointer-events:auto 想抢回来 → 丢弃,补的那句照旧", () => {
-		const { css, warnings } = ok(
-			`[data-bn="glass"]::before{content:"";position:absolute;inset:0;pointer-events:auto}`,
-		);
+	it("round-trip 零警告且逐字稳定:产物再洗一遍,没有可举报的东西", () => {
+		const first = ok(`[data-bn="page"]::before{content:"";position:absolute;inset:0}`);
+		const second = ok(first.css);
+		expect(second.warnings).toEqual([]);
+		expect(second.css).toBe(first.css);
+	});
+
+	it("装饰规则写 pointer-events —— 不管什么值,一律警告丢弃", () => {
+		for (const v of ["none", "auto"]) {
+			const { css, warnings } = ok(
+				`[data-bn="page"]::before{content:"";position:absolute;inset:0;pointer-events:${v}}`,
+			);
+			expect(warnings.some((w) => w.includes("pointer-events"))).toBe(true);
+			expect(css).not.toContain("pointer-events");
+		}
+	});
+
+	it("宿主(非伪元素)写 pointer-events 同样警告 —— 那是能把按钮点死的欺骗面", () => {
+		const { warnings } = ok(`[data-bn="btn"]{pointer-events:none}`);
 		expect(warnings.some((w) => w.includes("pointer-events"))).toBe(true);
-		expect(css).toContain("pointer-events:none");
-		expect(css).not.toContain("pointer-events:auto");
 	});
 
-	it("伪元素规则一律补 z-index:-1 —— 装饰永远画在宿主内容之下", () => {
-		const { css } = ok(`[data-bn="glass"]::before{content:"";position:absolute;inset:0}`);
-		expect(css).toContain("z-index:-1");
-	});
-
-	it("皮肤自己写 z-index 想压到内容之上 → 它被摘掉,产物里只剩硬规矩那一条", () => {
-		// 原先是「补的那句排在它后面,靠后到者赢压住」。改成摘掉是因为**存盘的是
-		// 清洗后的产物**:留着尸体的话,下一轮清洗又补一条,每保存一次攒一个。
-		const { css } = ok(`[data-bn="glass"]::before{content:"";position:absolute;inset:0;z-index:5}`);
-		expect(css).not.toContain("z-index:5");
-		expect(countOf(css, "z-index:")).toBe(1);
-		expect(css).toContain("z-index:-1");
-	});
-
-	it("反复清洗不膨胀 —— 存盘的是产物,下次保存还要再过一遍", () => {
-		// 真机上「超天酱 · 像素窗口」攒到了 **84 条** z-index:-1(12 处伪元素 × 7 轮)。
-		// pointer-events 没跟着涨,恰恰印证了这条链路:它不在白名单里,上一轮那条会被
-		// 过滤先删掉再重加,恒为 1;z-index 在白名单里、过滤放行,于是一轮攒一个。
-		const once = ok(`[data-bn="page"]::before{content:"";position:absolute;inset:0}`).css;
-		const twice = ok(once).css;
-		expect(twice).toBe(once);
-		expect(ok(twice).css).toBe(once);
-		expect(countOf(once, "z-index:-1")).toBe(1);
-		expect(countOf(once, "pointer-events:none")).toBe(1);
-	});
-
-	it("不是伪元素的规则不补 z-index —— 那是宿主自己的层级", () => {
-		const { css } = ok(`[data-bn="glass"]{opacity:0.9}`);
-		expect(css).not.toContain("z-index");
+	it("装饰里皮肤写的 z-index 放行保留 —— 白名单内;压不压得住由注入层的 !important 说了算", () => {
+		const { css, warnings } = ok(
+			`[data-bn="page"]::before{content:"";position:absolute;inset:0;z-index:5}`,
+		);
+		expect(warnings).toEqual([]);
+		expect(css).toContain("z-index:5");
 	});
 });
 
@@ -476,21 +448,18 @@ describe("hook 白名单不许绕开", () => {
 
 describe("!important 一律摘掉", () => {
 	/**
-	 * 装饰层那两句硬规矩(pointer-events:none / z-index:-1)是**追加**在声明块尾部的,
-	 * 靠「后到者赢」压过皮肤自己写的值 —— 而 `!important` 不吃这一套。
-	 *
-	 * 实测(2026-08-19 审计):`z-index:99 !important` 原样留在产物里,后面那句
-	 * `z-index:-1` 完全无效,装饰照旧糊在内容之上(正是「樱墨」那次的症状)。
-	 * 皮肤 CSS 本来就是 author 层、本来就生效,`!important` 在这里没有正当用途。
+	 * 注入层的硬规矩(`z-index:-1!important`)要压得住皮肤,前提是皮肤自己**没有**
+	 * `!important` —— 同为 important 时层序反转,author 层反而赢(2026-08-19 审计
+	 * 实测:`z-index:99 !important` 让守卫完全失效,装饰糊在内容之上,「樱墨」的
+	 * 症状)。皮肤 CSS 本来就是 author 层、本来就生效,`!important` 没有正当用途。
 	 */
-	it("摘掉之后追加的硬规矩才压得住", () => {
+	it("摘成普通声明 —— 值保留,压它的是注入层的 !important", () => {
 		const { css, warnings } = ok(
 			`[data-bn="glass"]::before { content: ""; position: absolute; z-index: 99 !important; }`,
 		);
 		expect(css).not.toContain("!important");
-		// 摘了 `!important` 之后它就是一条普通的 z-index,跟着被硬规矩摘掉。
-		expect(css).not.toContain("z-index:99");
-		expect(countOf(css, "z-index:")).toBe(1);
+		// 值本身在白名单内,保留;装饰上它赢不了注入层那句 important。
+		expect(css).toContain("z-index:99");
 		expect(warnings.join()).toContain("important");
 	});
 
@@ -528,7 +497,7 @@ describe("宿主不许隐身 —— 补漏", () => {
  * 判据因此得落在产物上:**存得进去的,一定还能再存一次。**
  */
 describe("上限量的是存盘那份", () => {
-	/** 装饰规则,每条 44 字节;清洗后每条还要补上 pointer-events / z-index 两句。 */
+	/** 装饰规则,每条 44 字节。 */
 	function decorations(count: number): string {
 		return Array.from(
 			{ length: count },
@@ -536,13 +505,18 @@ describe("上限量的是存盘那份", () => {
 		).join("");
 	}
 
-	it("原文没超、清洗后超了 → 拒收,并说清超的是清洗后那份", () => {
+	it("清洗不再长胖 —— 产物字节数不超过原文(硬规矩不落盘之后,没有追加项)", () => {
+		// 曾经这段输入会被清洗**撑爆**上限:每条装饰规则被追加 pointer-events/z-index
+		// 两句,1200 条 × ~30 字节一路胀过 64K,于是需要「清洗后超了」这条独立报错。
+		// 硬规矩挪去注入层之后清洗只删不加,这个膨胀面整个消失。
 		const input = decorations(1200);
 		expect(Buffer.byteLength(input, "utf8")).toBeLessThan(MAX_SKIN_CSS_BYTES);
 		const res = sanitizeSkinCss(input);
-		expect(res.ok).toBe(false);
-		if (res.ok) return;
-		expect(res.errors.join()).toContain("清洗后");
+		expect(res.ok).toBe(true);
+		if (!res.ok) return;
+		expect(Buffer.byteLength(res.css, "utf8")).toBeLessThanOrEqual(
+			Buffer.byteLength(input, "utf8"),
+		);
 	});
 
 	it("放行的产物再清洗一遍还是原样 —— 存进去的就一定还能再存一次", () => {
@@ -589,5 +563,42 @@ describe("提示词与白名单同源", () => {
 			const res = ok(`[data-bn~="glass"] { ${prop}: none }`);
 			expect(res.css, prop).not.toContain(prop);
 		}
+	});
+});
+
+/**
+ * 存量烙印的清洁工。v0.7.0 及之前清洗层把两句硬规矩烙进了存盘产物;它们如今由
+ * 注入层独挑,盘里那批要在读盘时摘掉 —— 否则下一次保存,清洗层会对着旧烙印刷
+ * 「不在白名单,已丢弃」,主人以为自己的皮肤写坏了。
+ */
+describe("stripDecorationResidue", () => {
+	it("摘掉装饰规则里的 pointer-events:none 与 z-index:-1", () => {
+		const out = stripDecorationResidue(
+			'[data-bn="page"]::before{content:"";inset:0;pointer-events:none;z-index:-1}',
+		);
+		expect(out).not.toContain("pointer-events");
+		expect(out).not.toContain("z-index");
+		expect(out).toContain("inset:0");
+	});
+
+	it("只认烙印的签名 —— 作者写的 z-index:5 一个字不动", () => {
+		const css = '[data-bn="page"]::before{content:"";z-index:5}';
+		expect(stripDecorationResidue(css)).toBe(css);
+	});
+
+	it("宿主规则不碰 —— 烙印只落过装饰", () => {
+		// 宿主上的 z-index:-1 是作者自己的选择(白名单内),不是我们的笔迹。
+		const css = '[data-bn="badge"]{z-index:-1}';
+		expect(stripDecorationResidue(css)).toBe(css);
+	});
+
+	it("没有烙印就原样返回 —— 不重排、不重新序列化别人的字", () => {
+		const css = '[data-bn="btn"] { background: #123456; }';
+		expect(stripDecorationResidue(css)).toBe(css);
+	});
+
+	it("解析不动的输入原样返回 —— 这是清洁工,不是守门员", () => {
+		const css = "not-css at all {{{";
+		expect(stripDecorationResidue(css)).toBe(css);
 	});
 });

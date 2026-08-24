@@ -423,7 +423,7 @@ export const SKIN_STATE_NOTES = `- **\`:hover\` 写在基础词上会连选中�
 - 顺带记住**选中态本来就到站了**:给它写悬停预览没有意义,而一旦盖了 background,站内标记「这颗是选中的」那层底色就没了`;
 
 export const SKIN_PSEUDO_NOTES = `- position **只准写在伪元素上**(值限 static/relative/absolute)—— 宿主本身的 position 归站内布局管,写了会被剔除(站内顶栏靠 sticky 吸顶,被顶掉就散架);伪元素 content 只准 "" 或 none
-- 伪元素只管装饰,三件事**不用你操心**:pointer-events、z-index、宿主的定位与层叠上下文。清洗层一律替你补 pointer-events:none + z-index:-1 —— 装饰永远在宿主内容**之下**:压在上面会吃掉点击(整页按钮点不动)、也会把文字按钮糊成一片发虚。宿主那边该有的 position:relative 也自动给。别浪费声明去写它们`;
+- 伪元素只管装饰,三件事**不用你操心**:pointer-events、z-index、宿主的定位与层叠上下文。注入时系统一律替你补 pointer-events:none + z-index:-1 —— 装饰永远在宿主内容**之下**:压在上面会吃掉点击(整页按钮点不动)、也会把文字按钮糊成一片发虚。宿主那边该有的 position:relative 也自动给。别浪费声明去写它们`;
 
 /**
  * 动效预设(每套 mode 独立;全部自动尊重 prefers-reduced-motion)。

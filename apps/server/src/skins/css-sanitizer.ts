@@ -28,7 +28,7 @@ import type { Atrule, CssNode, Declaration, List, ListItem, Rule } from "css-tre
 // 走自包含 dist bundle,不走默认入口:默认入口的 lexer 数据层在运行时
 // require('../data/patch.json') 读包内文件,内联进 server bundle 后必炸
 // (assemble-server-bundle.test 拦到的正是它);dist 版数据全内联,无此雷。
-import { clone, generate, parse } from "css-tree/dist/csstree.esm";
+import { generate, parse } from "css-tree/dist/csstree.esm";
 
 /**
  * 自定义 CSS 的上限,**按 UTF-8 字节算**。
@@ -116,8 +116,8 @@ function valueOfAttr(value: CssNode | null): string | null {
 /**
  * 这一支选择器瞄的是伪元素吗。
  *
- * 装饰性伪元素永远在内容之下、永远不吃点击(见 {@link forceDecorationBehindContent}),这个
- * 判断是那道保险的触发条件。
+ * 「装饰」的判定(能不能淡、能不能定位、pointer-events 怎么处置)都从这里起步;
+ * 压在内容之下、不吃点击那两句硬规矩由注入层补(web `decorationGuardCss`),不落盘。
  */
 function targetsPseudoElement(selector: CssNode): boolean {
 	if (selector.type !== "Selector") return false;
@@ -127,49 +127,6 @@ function targetsPseudoElement(selector: CssNode): boolean {
 /** css-tree 的 List 只有 `some`,没有 `every` —— 反着用一次,别在调用处铺双重否定。 */
 function everyChild(list: List<CssNode>, pred: (node: CssNode) => boolean): boolean {
 	return !list.some((node: CssNode) => !pred(node));
-}
-
-/** 装饰层那两句硬规矩的 AST —— 解析结果恒定,没必要每条规则重跑一遍 parser。 */
-const DECORATION_DECLS: readonly Declaration[] = ["pointer-events:none", "z-index:-1"].map(
-	(text) => parse(text, { context: "declaration" }) as Declaration,
-);
-
-/** 这两句由本层说了算,块里皮肤自己写的同名声明一律先摘掉。 */
-const DECORATION_PROPS: ReadonlySet<string> = new Set(
-	DECORATION_DECLS.map((d) => d.property.toLowerCase()),
-);
-
-/**
- * 往声明块尾部塞上装饰层的两句硬规矩:`pointer-events:none` + `z-index:-1`。
- *
- * 在**过滤之后**才塞,而且**先摘掉块里已有的同名声明**:两句都是这一层说了算,
- * 皮肤写的 `z-index:99` 也好 `pointer-events:auto` 也好,一概不留。
- *
- * 为什么是摘掉而不是「排在它后面靠后到者赢」(原来的做法):**存盘的是清洗后的
- * 产物**,下次保存还要再过一遍这里。`pointer-events` 不在白名单、过滤会先把上一轮
- * 那条删掉,所以它恒为一条;而 `z-index` 在白名单里、过滤放行,于是每保存一次就
- * 多攒一条 —— 真机上「超天酱 · 像素窗口」攒到了 84 条(12 处伪元素 × 7 轮)。
- * CSS 行为上无害(同名后者覆盖前者,值还都一样),但文件在无限长胖,而主人翻
- * 「本模式 CSS」看到的是一屏垃圾。摘掉之后这一层就是幂等的。
- *
- * 为什么 `z-index:-1` 也是硬规矩:装饰性伪元素带 `position:absolute` 时会画进「定位
- * 后代」那一层,也就是压在宿主所有非定位内容**之上**。真机上撞的(2026-08-19
- * 「樱墨 · Sakura Ink」):一层再标准不过的卡面高光糊住了顶栏和每张卡的文字与按钮,
- * 主人看到的是「像蒙了一层,很虚」。装饰就该在内容之下,这不是设计选择。
- */
-function forceDecorationBehindContent(rule: Rule): void {
-	const block = rule.block;
-	if (!block) return;
-	const stale: ListItem<CssNode>[] = [];
-	block.children.forEach((node: CssNode, item) => {
-		if (node.type === "Declaration" && DECORATION_PROPS.has(node.property.toLowerCase())) {
-			stale.push(item);
-		}
-	});
-	for (const item of stale) block.children.remove(item);
-	// 每条装饰规则都要这两句,而两句本身是常量 —— 解析一次留着,用时 clone。
-	// 直接共享节点的话,同一个 AST 对象会挂在多处子树上,谁改它就一起变。
-	for (const decl of DECORATION_DECLS) block.children.push(clone(decl));
 }
 
 /**
@@ -239,6 +196,14 @@ function isAllowedSelector(selector: CssNode): boolean {
  */
 function rejectDeclaration(decl: Declaration, scope: DeclScope): string | null {
 	const prop = decl.property.toLowerCase();
+	// **谁算「装饰」,只准有这一处口径**(下方 position/opacity 那几支同用;来历见
+	// 那边的注释 —— 抄第二遍就是它破的方式)。
+	const decoration = scope.pseudo && !scope.keyframes;
+	// `pointer-events` 恒在白名单外,**这一层也不替装饰补它**:硬规矩(none + z-index:-1)
+	// 由注入层独挑(web `decorationGuardCss`,带 !important,存量皮肤也压得住)。曾经
+	// 是清洗时补进产物 —— 于是存盘/导出的 CSS 里躺着一句白名单外的声明,下一轮清洗
+	// 对着自己上一轮的笔迹刷「已丢弃」(2026-08-25 主人导入自家导出的包,12 条)。
+	// 不落盘,警告才永远指向作者真写了的东西。
 	if (!isAllowedProp(prop)) return `属性 ${prop} 不在白名单`;
 	const value = generate(decl.value).toLowerCase();
 	// 反斜杠 = CSS 转义,而转义在 tokenizer 里**先于**ident 判定解开:`\75 rl(` 到
@@ -248,7 +213,7 @@ function rejectDeclaration(decl: Declaration, scope: DeclScope): string | null {
 	for (const bad of FORBIDDEN_VALUE) {
 		if (value.includes(bad)) return `属性 ${prop} 的值含 ${bad.slice(0, -1)}()`;
 	}
-	// **谁算「装饰」,只准有这一处口径。** 装饰层随便淡、随便定位 —— 它
+	// 「装饰」的判定在函数顶部(唯一口径)。装饰层随便淡、随便定位 —— 它
 	// pointer-events:none 且压在内容之下,骗不到人。keyframes 不算装饰:同一段
 	// 动画挂得到宿主身上,而动画来源的声明优先级还压着普通作者声明。
 	//
@@ -256,7 +221,6 @@ function rejectDeclaration(decl: Declaration, scope: DeclScope): string | null {
 	// 于是 `@keyframes skin-x{0%{position:relative}}` + 挂到 header 上,顶栏的
 	// `position:sticky` 照样被顶掉 —— 正是这道闸要拦的那件事。抄第二遍就是它破的
 	// 方式,所以收成一个变量。
-	const decoration = scope.pseudo && !scope.keyframes;
 	if (!decoration) {
 		if (prop === "opacity") {
 			const n = literalOpacity(value);
@@ -369,7 +333,6 @@ function filterRuleList(parent: { children: List<CssNode> }, warnings: string[])
 				drop.push(item);
 				return;
 			}
-			if (pseudo) forceDecorationBehindContent(node);
 			return;
 		}
 		if (node.type === "Atrule") {
@@ -418,19 +381,70 @@ export function sanitizeSkinCss(input: string): SanitizeCssResult {
 	const warnings: string[] = [];
 	filterRuleList(ast, warnings);
 	const css = generate(ast);
-	// **上限量的是存盘那份。** 入口那道只是粗筛(别把超大输入送进解析器);真正
-	// 要守的是产物 —— 装饰规则会被补上「压在内容之下」那两句,产物比原文长。
-	// 存盘的又正是产物,只量输入的话,一套写得够满的皮肤存得进去、下一次提交
-	// (或者重新导入它自己导出的 zip)就被这道闸拒收,从此改不动也传不回来。
-	//
-	// 清洗是幂等的(那两句先删后加),所以「产物不超」就等于「它一定还能再存一次」。
+	// **上限量的是存盘那份。** 入口那道只是粗筛(别把超大输入送进解析器);存盘的
+	// 是产物。清洗如今只删不加(硬规矩不落盘),产物不会比原文长 —— 这道闸于是
+	// 只防御「未来某个变换会膨胀」,常态下入口过了这里必过。
 	if (Buffer.byteLength(css, "utf8") > MAX_SKIN_CSS_BYTES) {
 		return {
 			ok: false,
-			errors: [
-				`清洗后的 CSS 超过 ${MAX_SKIN_CSS_BYTES / 1024}KB 上限(装饰规则会补上压在内容之下的两句,产物比原文长一些)`,
-			],
+			errors: [`清洗后的 CSS 超过 ${MAX_SKIN_CSS_BYTES / 1024}KB 上限`],
 		};
 	}
 	return { ok: true, css, warnings };
+}
+
+/**
+ * 摘掉清洗层旧版烙进存盘产物的两句硬规矩(`pointer-events:none` / `z-index:-1`,
+ * 只认装饰规则里**恰好这两个值**的 —— 这是烙印的签名;作者写得进的别的 z-index
+ * 一律不碰)。
+ *
+ * v0.7.0 及之前,这两句由清洗层补进产物再落盘;它们在白名单外(pointer-events),
+ * 于是每次再清洗都对着自己上一轮的笔迹刷「已丢弃」警告。硬规矩挪去注入层之后,
+ * 存量文件里的烙印靠这里在**读盘进索引时**摘掉 —— 内存与导出立即干净,磁盘在
+ * 下一次保存时自然升级,不主动回写(与 active.json 旧格式迁移同一套哲学)。
+ *
+ * 摘不动(解析失败等)就原样返回:这是清洁工,不是守门员 —— 拦截是清洗层的事。
+ */
+export function stripDecorationResidue(css: string): string {
+	if (!css.includes("pointer-events") && !css.includes("z-index")) return css;
+	let ast: CssNode;
+	try {
+		ast = parse(css, { parseCustomProperty: false });
+	} catch {
+		return css;
+	}
+	if (ast.type !== "StyleSheet") return css;
+	let changed = false;
+	const stripIn = (list: List<CssNode>, inKeyframes: boolean): void => {
+		list.forEach((node: CssNode) => {
+			if (node.type === "Atrule") {
+				const block = node.block;
+				if (block) stripIn(block.children, node.name.toLowerCase() === "keyframes");
+				return;
+			}
+			if (node.type !== "Rule" || inKeyframes) return;
+			const prelude = node.prelude;
+			// 与过滤层同一口径(everyChild + targetsPseudoElement):烙印当年就是按这个
+			// 判定落进去的,摘的时候差一个字就漏。
+			const pseudo =
+				prelude.type === "SelectorList" && everyChild(prelude.children, targetsPseudoElement);
+			if (!pseudo || !node.block) return;
+			const drop: ListItem<CssNode>[] = [];
+			node.block.children.forEach((decl: CssNode, item) => {
+				if (decl.type !== "Declaration") return;
+				const prop = decl.property.toLowerCase();
+				const value = generate(decl.value).trim().toLowerCase();
+				if (
+					(prop === "pointer-events" && value === "none") ||
+					(prop === "z-index" && value === "-1")
+				) {
+					drop.push(item);
+				}
+			});
+			for (const item of drop) node.block.children.remove(item);
+			if (drop.length > 0) changed = true;
+		});
+	};
+	stripIn((ast as CssNode & { children: List<CssNode> }).children, false);
+	return changed ? generate(ast) : css;
 }

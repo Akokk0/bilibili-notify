@@ -12,8 +12,23 @@ import { parseAssetNames, sanitizeAssetLabel } from "../runtime/asset-labels.js"
 import { FONT_EXT_TO_MIME } from "../runtime/font-mime.js";
 import { EXT_TO_MIME } from "../runtime/image-mime.js";
 import { ASSET_NAMES_FILE } from "./asset-names.js";
+import { stripDecorationResidue } from "./css-sanitizer.js";
 import { MAX_ASSET_BYTES, MAX_FONT_BYTES, MAX_SKIN_ASSETS } from "./package.js";
 import { isSkinAssetName } from "./schema.js";
+
+/**
+ * 读盘迁移:摘掉旧版清洗层烙进 css 字段的两句硬规矩(详见 stripDecorationResidue)。
+ * 只改内存里的这份 —— 编辑器、导出、注入立即干净;磁盘在下一次保存时自然升级,
+ * 不主动回写(与 init 里 active.json 旧格式迁移同一套哲学)。
+ */
+function stripManifestResidue(m: SkinManifest): SkinManifest {
+	if (m.css) m.css = stripDecorationResidue(m.css);
+	for (const theme of ["light", "dark"] as const) {
+		const mode = m.modes[theme];
+		if (mode?.css) mode.css = stripDecorationResidue(mode.css);
+	}
+	return m;
+}
 
 interface SavedSkin {
 	manifest: SkinManifest;
@@ -88,7 +103,7 @@ export class SkinStore {
 			if (!entry.isDirectory() || entry.name.endsWith(".tmp")) continue;
 			try {
 				const raw = await readFile(join(this.skinsDir, entry.name, "skin.json"), "utf8");
-				this.index.set(entry.name, JSON.parse(raw) as SkinManifest);
+				this.index.set(entry.name, stripManifestResidue(JSON.parse(raw) as SkinManifest));
 			} catch {
 				// 残缺目录(写入中断等)不进索引,也不动它 —— 交给人查,别静默删数据。
 			}
@@ -327,7 +342,9 @@ export class SkinStore {
 		if (!this.index.has(id)) return null;
 		try {
 			const raw = await readFile(join(this.skinsDir, id, "default.json"), "utf8");
-			return JSON.parse(raw) as SkinManifest;
+			// 出厂快照同样可能带着旧烙印 —— 「恢复默认值」会把它灌回草稿再保存,
+			// 不摘的话恢复一次就又刷一排警告。
+			return stripManifestResidue(JSON.parse(raw) as SkinManifest);
 		} catch {
 			return null;
 		}
