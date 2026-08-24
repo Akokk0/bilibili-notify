@@ -7,6 +7,7 @@
  */
 
 import { AI_PROVIDERS, type AIProviderId } from "@bilibili-notify/internal/constants";
+import type { CSSProperties } from "react";
 import { PROVIDER_BRANDS, ProviderLogo } from "./provider-logos";
 
 export interface ProviderPickerProps {
@@ -31,25 +32,20 @@ export function ProviderPicker({ value, onChange, only }: ProviderPickerProps) {
 						onClick={() => onChange(p.id)}
 						aria-pressed={active}
 						title={p.baseUrlHint}
-						// 刻意不挂皮肤挂点(同 MenuItem 的理由):候选卡的选中语义靠品牌色
-						// 行内样式,皮肤按钮实底一落上来选中/未选中就分不开了;词表里也
-						// 候选卡走 option。**选中态只买到一半**:那一档的底与环是行内样式
-						// (品牌色),皮肤改得到圆角与未选中态,改不动选中那颗的底 ——
-						// 同 Targets 的适配器行,`option-active` 的 NOTES 里预告了。
+						// 候选卡走 option。选中态曾经**只买到一半** —— 底与环写在 `style` 里
+						// (品牌色),inline 压过一切 author 样式,挂着 option-active 也白挂。
+						// 现在 inline 只剩 `--bn-tint` 一个值,涂法在 `bn-tint-ring` 那条
+						// @utility 里,皮肤重画得动。品牌色本身仍是逐家不同的行内值 ——
+						// 抹成统一 token 等于让卡片说谎(同 Pill / StatsBar 那条)。
 						data-bn={active ? "option option-active" : "option"}
 						className={`flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 transition ${
 							active
-								? "border-transparent shadow-sm ring-2"
+								? "border-transparent bn-tint-ring"
 								: "border-bn-border bg-bn-surface-muted hover:bg-bn-surface-strong"
 						}`}
-						style={
-							active
-								? {
-										backgroundColor: `color-mix(in srgb, ${brand.color} 10%, transparent)`,
-										boxShadow: `0 0 0 2px ${brand.color}`,
-									}
-								: undefined
-						}
+						// 顺带清掉两个**从来没渲染过**的类:选中档原本还带着 `shadow-sm ring-2`,
+						// 而 inline 的 boxShadow 把整条合成影覆盖掉了,那两个类一天都没生效。
+						style={{ "--bn-tint": brand.color } as CSSProperties}
 					>
 						<ProviderLogo id={p.id} />
 						<span

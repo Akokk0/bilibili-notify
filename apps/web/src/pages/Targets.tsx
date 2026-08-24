@@ -22,7 +22,7 @@ import {
 	ToneChip,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { Field, Picker, TInput, TNum, TSelect } from "../components/forms";
 import { ApiError, api } from "../services/api";
 import {
@@ -766,23 +766,16 @@ function TargetEditorModal({
 											// preserve user-typed identity if any
 											onChange({ ...next, id: value.id, enabled: value.enabled });
 										}}
-										// 候选行走 option。**选中态只买到一半**:那一档的底色与边色是
-										// 行内样式(平台 tint 染色),行内压过一切 author 样式,而清洗层
-										// 会摘掉 !important —— 皮肤改得到圆角、阴影、未选中态,改不动
-										// 选中那一行的底。`option-active` 的 NOTES 里预告了这件事。
+										// 候选行走 option。选中态曾经**只买到一半** —— 底与边写在 `style`
+										// 里(平台 tint),inline 压过一切 author 样式,挂着 option-active
+										// 也白挂;未选中那一档更亏,两个静态 token 也一起锁在了 inline 上。
+										// 现在 inline 只剩 `--bn-tint` 一个值,涂法在 `bn-tint-row` 那条
+										// @utility 里,两态皮肤都盖得动。
 										data-bn={active ? "option option-active" : "option"}
-										className="flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition"
-										style={
-											active
-												? {
-														background: `color-mix(in srgb, ${aTint} 6%, transparent)`,
-														borderColor: `color-mix(in srgb, ${aTint} 33%, transparent)`,
-													}
-												: {
-														background: "var(--color-bn-surface)",
-														borderColor: "var(--color-bn-border)",
-													}
-										}
+										className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition ${
+											active ? "bn-tint-row" : "border-bn-border bg-bn-surface"
+										}`}
+										style={{ "--bn-tint": aTint } as CSSProperties}
 									>
 										<PlatformIcon platform={a.platform} size={16} />
 										<div className="min-w-0 flex-1">

@@ -30,6 +30,34 @@
 		var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
 }
 
+/* 「选中的候选行/候选卡」的品牌色染底。**颜色与涂法拆开**:颜色由调用点 inline
+   的 `--bn-tint` 供(平台 tint / 服务商品牌色,逐项不同),涂法留在这儿。
+
+   拆开的理由是皮肤够不着:这两处此前把整条 `background` / `box-shadow` 写在
+   `style` 上,而 inline 压过一切 author 样式、清洗层又会摘掉皮肤写的
+   `!important` —— 挂着 `option-active` 也白挂,选中那一行/那一颗永远是原来那个
+   品牌色。挪进 `@utility` 之后落在 `@layer utilities`,而皮肤 CSS 是**无层**的
+   (composeSkinCss 只给装饰伪元素的宿主句包 @layer),无层恒压过任何分层 ——
+   皮肤想重画就画得动,不写规则就仍是品牌色。
+
+   染色量两处刻意不同(行 6% / 卡 10%),是各自原样搬过来的,别顺手统一。 */
+@utility bn-tint-row {
+	background: color-mix(in srgb, var(--bn-tint) 6%, transparent);
+	border-color: color-mix(in srgb, var(--bn-tint) 33%, transparent);
+}
+
+/* 底 + 一圈 2px 品牌色实环。ring 走 `--tw-ring-shadow` 合成链而不是硬写
+   `box-shadow`,理由同上面 shadow-bn-ai 那两条:硬写会把同元素上别的阴影工具类
+   顶掉,而那正是「写了没渲染」这类哑火的来源。 */
+@utility bn-tint-ring {
+	background: color-mix(in srgb, var(--bn-tint) 10%, transparent);
+	--tw-ring-shadow: 0 0 0 2px var(--bn-tint);
+	box-shadow:
+		var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+		var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+		var(--tw-shadow, 0 0 #0000);
+}
+
 /* 灵动岛 diff 行 click 跳转后短暂高亮目标 Field —— 粉色 ring 闪 1s。 */
 @keyframes bn-highlight {
 	0%,
