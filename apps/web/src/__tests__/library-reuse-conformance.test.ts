@@ -14,24 +14,18 @@
  * 一直挂着骗人。
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
+import { listSources } from "./walk.js";
+
+/** 只看会发出去的源码 —— 测试文件里手搓一个 EmptyNote 不算违规。 */
+const listTsx = (dir: string) => listSources(dir, { skipTestDirs: true });
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const SRC_DIR = join(TEST_DIR, "..");
 const UI_SRC_DIR = join(SRC_DIR, "../../../packages/ui/src");
-
-function listTsxRecursive(dir: string): string[] {
-	const acc: string[] = [];
-	for (const entry of readdirSync(dir)) {
-		const full = join(dir, entry);
-		if (statSync(full).isDirectory()) acc.push(...listTsxRecursive(full));
-		else if (full.endsWith(".tsx") && !full.includes("__tests__")) acc.push(full);
-	}
-	return acc;
-}
 
 /** 注释行不算数 —— 讲的往往正是「以前手搓成什么样」。 */
 function codeOf(line: string): string {
@@ -108,7 +102,7 @@ function openTags(raw: string): Array<{ line: number; attrs: string }> {
 function scan(hit: (code: string) => boolean, skipFiles: string[] = []): string[] {
 	const found: string[] = [];
 	for (const root of [join(SRC_DIR, "pages"), join(SRC_DIR, "components"), UI_SRC_DIR]) {
-		for (const file of listTsxRecursive(root)) {
+		for (const file of listTsx(root)) {
 			if (skipFiles.some((s) => file.endsWith(s))) continue;
 			readFileSync(file, "utf8")
 				.split("\n")
@@ -151,7 +145,7 @@ describe("画了边框就给边框颜色", () => {
 	it("没有哪个静态 className 只写了 border 而不给颜色", () => {
 		const offenders: string[] = [];
 		for (const root of [join(SRC_DIR, "pages"), join(SRC_DIR, "components"), UI_SRC_DIR]) {
-			for (const file of listTsxRecursive(root)) {
+			for (const file of listTsx(root)) {
 				for (const tag of openTags(readFileSync(file, "utf8"))) {
 					const m = /className="([^"]*)"/.exec(tag.attrs);
 					if (!m) continue;

@@ -16,9 +16,13 @@
  * 谁新加了一个没挂的框时才动。
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
+import { listSources } from "./walk.js";
+
+/** ROOTS 是仓库相对路径,底下可能真有 node_modules,顺带跳掉。 */
+const listTsx = (dir: string) =>
+	listSources(dir, { skipTestDirs: true, skipDirs: ["node_modules"] });
 
 const ROOTS = ["apps/web/src", "packages/ui/src"];
 
@@ -44,18 +48,6 @@ function blankComments(src: string): string {
 	return out.join("");
 }
 
-function walk(dir: string, acc: string[] = []): string[] {
-	for (const name of readdirSync(dir)) {
-		const full = join(dir, name);
-		if (statSync(full).isDirectory()) {
-			if (name !== "__tests__" && name !== "node_modules") walk(full, acc);
-		} else if (name.endsWith(".tsx")) {
-			acc.push(full);
-		}
-	}
-	return acc;
-}
-
 interface Field {
 	file: string;
 	line: number;
@@ -67,7 +59,7 @@ interface Field {
 function fields(): Field[] {
 	const found: Field[] = [];
 	for (const root of ROOTS) {
-		for (const file of walk(root)) {
+		for (const file of listTsx(root)) {
 			const src = blankComments(readFileSync(file, "utf8"));
 			for (const m of src.matchAll(/<(input|select|textarea)[\s\n]/g)) {
 				const start = m.index as number;

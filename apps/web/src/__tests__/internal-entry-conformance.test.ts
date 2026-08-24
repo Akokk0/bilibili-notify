@@ -18,10 +18,16 @@
  * 值走 `/constants`)。测试留在 web 是因为这里的引用点最多、最容易顺手写错。
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
+import { listSources } from "./walk.js";
+
+/** 连 `.ts` 一起收:从根入口取值的写法在纯逻辑文件里一样会把 zod 拖进 bundle。
+ *  测试自己可以从根入口拿值 —— 它们不进 bundle。 */
+const listTsx = (dir: string) =>
+	listSources(dir, { skipTestDirs: true, skipTestFiles: true, exts: [".ts", ".tsx"] });
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const SRC_DIR = join(TEST_DIR, "..");
@@ -39,23 +45,6 @@ const STATEMENT_RE = /^\s*(import|export)\b([\s\S]*?)\bfrom\s+"@bilibili-notify\
 /** 剥掉块注释与行注释。`[^:]` 那一手是为了别把 `https://` 当行注释切了。 */
 function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
-
-function listSourcesRecursive(dir: string): string[] {
-	const acc: string[] = [];
-	for (const entry of readdirSync(dir)) {
-		const full = join(dir, entry);
-		if (statSync(full).isDirectory()) {
-			// 测试自己可以从根入口拿值 —— 它们不进 bundle。
-			if (entry === "__tests__") continue;
-			acc.push(...listSourcesRecursive(full));
-			continue;
-		}
-		if (!/\.tsx?$/.test(full)) continue;
-		if (/\.test\.tsx?$/.test(full)) continue;
-		acc.push(full);
-	}
-	return acc;
 }
 
 /**
@@ -80,7 +69,7 @@ function isTypeOnly(clause: string): boolean {
 describe("apps/web 不得从 internal 根入口拿值", () => {
 	it("对根入口的引用一律 import type / export type —— 否则 zod 进 bundle", () => {
 		const offenders: string[] = [];
-		for (const file of listSourcesRecursive(SRC_DIR)) {
+		for (const file of listTsx(SRC_DIR)) {
 			for (const chunk of stripComments(readFileSync(file, "utf8")).split(";")) {
 				const m = chunk.match(STATEMENT_RE);
 				if (!m || isTypeOnly(m[2] ?? "")) continue;

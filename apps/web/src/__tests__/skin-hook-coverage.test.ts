@@ -12,10 +12,14 @@
  * 不挂点的按钮时才动,那时正该停下来想一想。名单里没有的文件必须挂满。
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
+import { listSources } from "./walk.js";
+
+/** 只看会发出去的源码 —— 测试里手写的 `<button>` 用户看不到。 */
+const listTsx = (dir: string) => listSources(dir, { skipTestDirs: true });
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO = join(TEST_DIR, "../../../..");
@@ -88,17 +92,6 @@ function blankComments(src: string): string {
 }
 
 const BUTTON_RE = /<button\b(?:(?!<\/button>)[\s\S])*?<\/button>/g;
-
-function listTsx(dir: string): string[] {
-	const acc: string[] = [];
-	for (const entry of readdirSync(dir)) {
-		const full = join(dir, entry);
-		if (statSync(full).isDirectory()) {
-			if (entry !== "__tests__") acc.push(...listTsx(full));
-		} else if (full.endsWith(".tsx")) acc.push(full);
-	}
-	return acc;
-}
 
 /**
  * 抠出每个 `<button>` / `<a>` 的**开标签**。属性里含 `{}` 表达式,得配对着数,

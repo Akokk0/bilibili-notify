@@ -12,29 +12,21 @@
  * 兜底。
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { FIELD_LABELS } from "../config/field-labels.js";
+import { listSources } from "./walk.js";
+
+/**
+ * **连测试文件一起扫**(`skipTests: false`)—— 这不是疏忽:页面测试里也写
+ * `<Field code="...">`,引用了一个字典里没有的字段码同样是错,只是它错在测试里。
+ */
+const listTsx = (dir: string) => listSources(dir, { skipTestDirs: false });
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const PAGES_DIR = join(TEST_DIR, "..", "pages");
-
-/** 递归列出目录下所有 .tsx 文件绝对路径。 */
-function listTsxRecursive(dir: string): string[] {
-	const acc: string[] = [];
-	for (const entry of readdirSync(dir)) {
-		const full = join(dir, entry);
-		const st = statSync(full);
-		if (st.isDirectory()) {
-			acc.push(...listTsxRecursive(full));
-		} else if (st.isFile() && full.endsWith(".tsx")) {
-			acc.push(full);
-		}
-	}
-	return acc;
-}
 
 /**
  * 匹配 `<Field` 或 `<FieldRow` 开标签内的字面量 `code="..."` 属性。multi-line
@@ -53,7 +45,7 @@ function extractCodes(file: string): { file: string; code: string }[] {
 }
 
 describe("Field 字典 conformance", () => {
-	const tsxFiles = listTsxRecursive(PAGES_DIR);
+	const tsxFiles = listTsx(PAGES_DIR);
 	const allUsages = tsxFiles.flatMap(extractCodes);
 
 	it("扫描到至少 80 个 <Field code=...> 字面量用法(防 regex 静默丢)", () => {

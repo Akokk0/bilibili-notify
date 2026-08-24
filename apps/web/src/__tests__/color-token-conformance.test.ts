@@ -15,10 +15,17 @@
  * (--shadow-bn-*)、`bn-anim-fade-in`(纯 CSS class)都不是颜色 token,不在此列。
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
+import { listSources } from "./walk.js";
+
+/**
+ * **不在这一层跳测试**(`skipTests: false`)—— 下面十几道断言里,该跳的各自
+ * `continue`,不该跳的(如 token 定义是否存在)本来就要连测试一起看。
+ */
+const listTsx = (dir: string) => listSources(dir, { skipTestDirs: false });
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const SRC_DIR = join(TEST_DIR, "..");
@@ -48,16 +55,6 @@ const COLOR_PREFIXES = [
 // `hover:border-bn-accent/60` → 捕获前缀 `border` 与 token `bn-accent`(前缀修饰符
 // 无所谓;`/60` 透明度后缀因为 `/` 不在字符集里会自然截断)。
 const USAGE_RE = new RegExp(`\\b(${COLOR_PREFIXES.join("|")})-(bn-[a-z0-9-]+)`, "g");
-
-function listTsxRecursive(dir: string): string[] {
-	const acc: string[] = [];
-	for (const entry of readdirSync(dir)) {
-		const full = join(dir, entry);
-		if (statSync(full).isDirectory()) acc.push(...listTsxRecursive(full));
-		else if (full.endsWith(".tsx")) acc.push(full);
-	}
-	return acc;
-}
 
 /** 已定义的颜色 token(`--color-bn-pink` → `bn-pink`),ui 包 theme.css + web styles.css 合并。 */
 function definedColorTokens(): Set<string> {
@@ -91,10 +88,10 @@ describe("颜色 token conformance", () => {
 
 		const offenders: Array<{ token: string; file: string }> = [];
 		for (const file of [
-			...listTsxRecursive(join(SRC_DIR, "pages")),
-			...listTsxRecursive(join(SRC_DIR, "components")),
+			...listTsx(join(SRC_DIR, "pages")),
+			...listTsx(join(SRC_DIR, "components")),
 			// 库里的纯展示件同样受此约束 —— 它们的 class 也靠这两份 css 的 token 兑现。
-			...listTsxRecursive(UI_SRC_DIR),
+			...listTsx(UI_SRC_DIR),
 		]) {
 			const src = readFileSync(file, "utf8");
 			for (const m of src.matchAll(USAGE_RE)) {
@@ -126,7 +123,7 @@ describe("实底上的前景走 on-solid token", () => {
 	it('没有哪个 .tsx 还写死 text-white / color:"white"', () => {
 		const offenders: string[] = [];
 		for (const root of ROOTS) {
-			for (const file of listTsxRecursive(root)) {
+			for (const file of listTsx(root)) {
 				// 测试文件里的 `text-white` 是断言「没有白字」用的,不是产品代码。
 				if (file.includes("__tests__")) continue;
 				const src = readFileSync(file, "utf8");
@@ -175,7 +172,7 @@ describe("透明度走 color-mix,不拼 hex alpha 后缀", () => {
 	it("没有哪个 .tsx 还在拼 alpha 后缀", () => {
 		const offenders: string[] = [];
 		for (const root of ROOTS) {
-			for (const file of listTsxRecursive(root)) {
+			for (const file of listTsx(root)) {
 				if (file.includes("__tests__")) continue;
 				const src = readFileSync(file, "utf8");
 				src.split("\n").forEach((line, i) => {
@@ -261,7 +258,7 @@ describe("强调色属性走 token,不写同值 hex", () => {
 
 		const found: string[] = [];
 		for (const root of ROOTS) {
-			for (const file of listTsxRecursive(root)) {
+			for (const file of listTsx(root)) {
 				if (file.includes("__tests__")) continue;
 				const src = readFileSync(file, "utf8");
 				src.split("\n").forEach((line, i) => {
@@ -322,7 +319,7 @@ describe("平台标识色只有库里那一份", () => {
 
 	it("站点源码里不再出现成套的平台色", () => {
 		const findings: string[] = [];
-		for (const file of listTsxRecursive(SRC_DIR)) {
+		for (const file of listTsx(SRC_DIR)) {
 			if (/__tests__|\.test\./.test(file)) continue;
 			const src = readFileSync(file, "utf8")
 				.replace(/\/\*[\s\S]*?\*\//g, "")
@@ -370,7 +367,7 @@ describe("颜色一律走 token", () => {
 	it("三个端里都没有原生调色板类,也没有任意值 hex 类", () => {
 		const findings: string[] = [];
 		for (const [root, label] of ROOTS) {
-			for (const file of listTsxRecursive(root)) {
+			for (const file of listTsx(root)) {
 				if (/__tests__|\.test\./.test(file)) continue;
 				const src = readFileSync(file, "utf8")
 					.replace(/\/\*[\s\S]*?\*\//g, "")
@@ -406,7 +403,7 @@ describe("叠放层级走分层表", () => {
 	it("三个端里都没有裸 z-index", () => {
 		const findings: string[] = [];
 		for (const [root, label] of ROOTS) {
-			for (const file of listTsxRecursive(root)) {
+			for (const file of listTsx(root)) {
 				if (/__tests__|\.test\./.test(file)) continue;
 				const src = readFileSync(file, "utf8")
 					.replace(/\/\*[\s\S]*?\*\//g, "")
@@ -425,7 +422,7 @@ describe("叠放层级走分层表", () => {
 		const defined = new Set([...css.matchAll(/@utility\s+(z-bn-[a-z-]+)\s*\{/g)].map((m) => m[1]));
 		const used = new Set<string>();
 		for (const [root] of ROOTS) {
-			for (const file of listTsxRecursive(root)) {
+			for (const file of listTsx(root)) {
 				for (const m of readFileSync(file, "utf8").matchAll(/\bz-bn-[a-z-]+/g)) used.add(m[0]);
 			}
 		}
@@ -457,7 +454,7 @@ describe("字号走阶梯", () => {
 	it("三个端里都没有写死的像素字号", () => {
 		const findings: string[] = [];
 		for (const [root, label] of ROOTS) {
-			for (const file of listTsxRecursive(root)) {
+			for (const file of listTsx(root)) {
 				const src = readFileSync(file, "utf8")
 					.replace(/\/\*[\s\S]*?\*\//g, "")
 					.replace(/\/\/.*$/gm, "");
@@ -501,7 +498,7 @@ describe("两栏骨架只有一份", () => {
 	it("没有哪一页再手写栏宽", () => {
 		const findings: string[] = [];
 		for (const [root, label] of ROOTS) {
-			for (const file of listTsxRecursive(root)) {
+			for (const file of listTsx(root)) {
 				const src = readFileSync(file, "utf8");
 				if (/grid-cols-\[\d+px_1fr\]/.test(src))
 					findings.push(`${label}/${file.slice(root.length + 1)}`);
