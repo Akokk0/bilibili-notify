@@ -18,6 +18,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
+import { blankComments } from "./source-text.js";
 import { listSources } from "./walk.js";
 
 /** ROOTS 是仓库相对路径,底下可能真有 node_modules,顺带跳掉。 */
@@ -25,28 +26,6 @@ const listTsx = (dir: string) =>
 	listSources(dir, { skipTestDirs: true, skipDirs: ["node_modules"] });
 
 const ROOTS = ["apps/web/src", "packages/ui/src"];
-
-/** 注释整段抹成等长空白 —— 保住行号,同时不让注释里的示例代码算数。 */
-function blankComments(src: string): string {
-	const out: string[] = [];
-	for (let i = 0; i < src.length; ) {
-		if (src.startsWith("/*", i)) {
-			const end = src.indexOf("*/", i);
-			const stop = end === -1 ? src.length : end + 2;
-			out.push(src.slice(i, stop).replace(/[^\n]/g, " "));
-			i = stop;
-		} else if (src.startsWith("//", i)) {
-			const end = src.indexOf("\n", i);
-			const stop = end === -1 ? src.length : end;
-			out.push(" ".repeat(stop - i));
-			i = stop;
-		} else {
-			out.push(src[i] as string);
-			i += 1;
-		}
-	}
-	return out.join("");
-}
 
 interface Field {
 	file: string;

@@ -16,9 +16,9 @@ import { readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
+import { blankComments } from "./source-text.js";
 import { listSources } from "./walk.js";
 
-/** 只看会发出去的源码 —— 测试里手写的 `<button>` 用户看不到。 */
 const listTsx = (dir: string) => listSources(dir, { skipTestDirs: true });
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
@@ -85,11 +85,6 @@ const UNHOOKED: Record<string, { count: number; why: string }> = {
 	},
 	"apps/web/src/pages/up/UpDialog.tsx": { count: 1, why: "纯文字链接" },
 };
-/** 注释里出现的 `<button>` 不算数,但行号要保住 —— 用等长空白填掉注释。 */
-function blankComments(src: string): string {
-	const pad = (m: string) => m.replace(/[^\n]/g, " ");
-	return src.replace(/\/\*[\s\S]*?\*\//g, pad).replace(/\/\/[^\n]*/g, pad);
-}
 
 const BUTTON_RE = /<button\b(?:(?!<\/button>)[\s\S])*?<\/button>/g;
 

@@ -18,6 +18,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
+import { blankComments } from "./source-text.js";
 import { listSources } from "./walk.js";
 
 /** 只看会发出去的源码 —— 测试文件里手搓一个 EmptyNote 不算违规。 */
@@ -45,35 +46,6 @@ function staticClasses(code: string): string {
 		.split(/[\s"'`{}]+/)
 		.filter((t) => t.length > 0 && !t.includes(":"))
 		.join(" ");
-}
-
-/**
- * 注释整段抹成等长空白 —— 保住行号,同时不让注释里举的例子算数。
- *
- * **必须整段扫,不能逐行 `codeOf`**:逐行的话 JSDoc 的收尾行(星号加斜杠)会被
- * 「以星号开头」那条先抹掉,于是块注释的开头再也找不到自己的结尾,一路向前吃到
- * 下一个收尾符,把中间的真代码整段吞掉。守卫就此安静地漏检 —— 变异测试抓出来的
- * 正是这个。
- */
-function blankComments(src: string): string {
-	const out: string[] = [];
-	for (let i = 0; i < src.length; ) {
-		if (src.startsWith("/*", i)) {
-			const end = src.indexOf("*/", i);
-			const stop = end === -1 ? src.length : end + 2;
-			out.push(src.slice(i, stop).replace(/[^\n]/g, " "));
-			i = stop;
-		} else if (src.startsWith("//", i)) {
-			const end = src.indexOf("\n", i);
-			const stop = end === -1 ? src.length : end;
-			out.push(" ".repeat(stop - i));
-			i = stop;
-		} else {
-			out.push(src[i] as string);
-			i += 1;
-		}
-	}
-	return out.join("");
 }
 
 /**
