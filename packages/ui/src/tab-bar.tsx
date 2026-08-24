@@ -60,8 +60,16 @@ export function TabButton({ active, onClick, icon, children, code, title, role }
 			{children}
 			{code ? (
 				<span
+					// 选中态**不给底**。这颗小码的字是继承来的,所以它的可读性顶多等于旁边
+					// 的标签 —— 底只要偏离父底,就一定有一边被拉低。原先那层 25% 白纱正是
+					// 往错的方向偏:选中块是中等亮度的强调色,叠白只会把底推向白字那边。
+					// 实测(默认粉底):旁边的标签 2.64:1,这颗小码 2.08:1 —— 反而是整条
+					// tab 上最难认的东西。皮肤把字色改深时白纱又碰巧帮上忙(5.4:1),所以
+					// 任何固定方向的纱都只是在两种装扮之间挑一个牺牲。
+					// 去掉之后两边都回到「和旁边标签一样」:默认 2.64、深字皮肤 4.27。
+					// 形状留着(圆角与内距在无底时不显形),等宽字仍把小码与标签分得开。
 					className={`ml-0.5 rounded-sm px-1.5 py-px font-mono text-bn-2xs font-semibold ${
-						active ? "bg-bn-inverse-strong" : "bg-bn-code-bg"
+						active ? "" : "bg-bn-code-bg"
 					}`}
 				>
 					{code}
