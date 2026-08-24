@@ -859,13 +859,17 @@ export function ErrorNote({ children, icon, size = "md", className }: ErrorNoteP
 	const base = `border border-bn-danger-border bg-bn-danger-soft text-bn-danger-text ${ERROR_NOTE_SIZE[size]}`;
 	if (!icon) {
 		return (
-			<div role="alert" className={`${base} ${className ?? ""}`}>
+			<div role="alert" data-bn="note note-danger" className={`${base} ${className ?? ""}`}>
 				{children}
 			</div>
 		);
 	}
 	return (
-		<div role="alert" className={`flex items-start gap-1.5 ${base} ${className ?? ""}`}>
+		<div
+			role="alert"
+			data-bn="note note-danger"
+			className={`flex items-start gap-1.5 ${base} ${className ?? ""}`}
+		>
 			<span className={`${ERROR_NOTE_ICON_NUDGE[size]} shrink-0`} aria-hidden="true">
 				{icon}
 			</span>
@@ -900,6 +904,7 @@ export function WarnNote({
 }) {
 	return (
 		<div
+			data-bn="note note-warn"
 			className={`border border-bn-warning/40 bg-bn-warning/10 text-bn-warning ${WARN_NOTE_SIZE[size]} ${className ?? ""}`}
 		>
 			{children}
@@ -933,6 +938,7 @@ const EMPTY_NOTE_SIZE = {
 export function EmptyNote({ children, size = "md", className }: EmptyNoteProps) {
 	return (
 		<div
+			data-bn="note note-empty"
 			className={`border border-dashed border-bn-border text-center text-bn-text-secondary ${EMPTY_NOTE_SIZE[size]} ${className ?? ""}`}
 		>
 			{children}

@@ -197,6 +197,21 @@ export const SKIN_CSS_HOOK_MAP = {
 	/** 选中的那个 tab 额外挂它(同 nav-item-active 的多挂点模式)。 */
 	"tab-active": '[data-bn~="tab-active"]',
 	/**
+	 * 提示盒三件套的**共同底**(「XX 失败」红盒 / 「做完了但有几处没照办」黄盒 /
+	 * 「这里还什么都没有」空态框)。造型写这儿,颜色写各自那一档。
+	 *
+	 * 加它是为了**造型**,不是颜色:三者的底/边/字一直走 `danger*` / `warning*` /
+	 * `border` 那几个色板 token,皮肤改 colors 段本来就够得到。够不到的是盒子长
+	 * 什么样 —— 像素风皮肤整站硬边加硬影,只有这些盒子还是圆角软边。
+	 */
+	note: '[data-bn~="note"]',
+	/** 「XX 失败:…」红字提示盒(与 note 同挂)。 */
+	"note-danger": '[data-bn~="note-danger"]',
+	/** 「做完了但有几处没照办」黄字提示盒(与 note 同挂)。 */
+	"note-warn": '[data-bn~="note-warn"]',
+	/** 「这里还什么都没有」空态框(与 note 同挂)。 */
+	"note-empty": '[data-bn~="note-empty"]',
+	/**
 	 * 筛选/档位/开关的小胶囊(日志等级、时间范围、思考深度、联网开关…)。
 	 * 与 tab 的分界:tab 换的是**看哪块内容**,chip 改的是**某个值**。
 	 */
@@ -238,6 +253,13 @@ export const SKIN_CSS_HOOK_NOTES: Record<SkinCssHook, string> = {
 	tab: "横向 tab 条里的一格(顶栏一级导航、页面内 TabBar、作用域条都是);矮元素,胶囊圆角安全;不写规则时默认装是「透明字 tab、选中实底/下划线」",
 	"tab-active":
 		"选中的那个 tab 额外挂它(与 tab 同挂);注意有的 tab 默认装选中是强调色实底白字 —— 盖 background 时把 color 一起写了,别留白底白字",
+	note: "提示盒三件套的共同底(红「失败」/ 黄「有几处没照办」/ 空态框)。**这一档管造型**——圆角、描边、阴影;三者的颜色本来就跟着色板的 danger*/warning*/border 走,不必在这儿重写一遍",
+	"note-danger":
+		"「XX 失败」红字提示盒额外挂它(与 note 同挂);它是**出错才出现**的东西,别把它调得比正文还安静",
+	"note-warn":
+		"「做完了但有几处没照办」黄字提示盒额外挂它(与 note 同挂);要与 note-danger 一眼能分开——两者撞色等于没有分档",
+	"note-empty":
+		"「这里还什么都没有」空态框额外挂它(与 note 同挂);**虚线就是它的话**(「这儿是空的」),改成实线会让空态看着像一张真卡片",
 	chip: "筛选/档位/开关的小胶囊(改的是值,不换视图 —— 换视图的是 tab);多形态且常挤在小容器里,别加占布局的 border,描边用 outline+负 offset",
 	"chip-active":
 		"选中/点亮的那颗 chip 额外挂它(与 chip 同挂);很多 chip 的选中色是行内样式的品牌/语义色,皮肤盖不动 background —— 只描边加影最稳",

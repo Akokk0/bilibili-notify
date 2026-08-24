@@ -8,7 +8,7 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { Avatar, Btn, Input } from "../atoms";
+import { Avatar, Btn, EmptyNote, ErrorNote, Input, WarnNote } from "../atoms";
 import { ModalShell } from "../dialog";
 import { SectionNav } from "../section-nav";
 import { TabBarShell, TabButton } from "../tab-bar";
@@ -161,5 +161,56 @@ describe("skin css hooks", () => {
 				expect(cls, `子元素写死了颜色: ${cls}`).not.toMatch(/text-bn-(pink|text-primary)\b/);
 			}
 		}
+	});
+});
+
+/**
+ * 提示盒三件套 —— 「XX 失败」红盒、「做完了但有几处没照办」黄盒、「这里还什么都
+ * 没有」中性虚线框,站里共 66 处。
+ *
+ * **加的是造型不是颜色**:三者的底/边/字本来就走 `danger*` / `warning*` / border
+ * 那几个色板 token,皮肤改 `colors` 段一直改得到。够不到的是**盒子长什么样** ——
+ * 圆角、描边宽度与样式、阴影、装饰伪元素。像素风皮肤里整站都是硬边加 3px 硬影,
+ * 只有这些盒子还是圆角软边(2026-08-24 主人点名)。
+ *
+ * 基底 + 分档的双挂点,同 `btn`/`btn-primary`:`note` 一次给三种定造型,
+ * `note-danger` / `note-warn` / `note-empty` 各自调色。
+ *
+ * 这三个是 `<div>`,**web 那份 coverage 守卫扫不到**(它只认 `<button>` / `<a>`),
+ * 所以挂点掉了只有这里会红。
+ */
+describe("提示盒挂点", () => {
+	/**
+	 * 从那句文字往上找到挂点所在的盒子 —— 带图标时文字被包进内层 span,直接对
+	 * `getByText` 的结果断言会拿到那个 span。挂点没挂时 `closest` 回 null,
+	 * 断言照样红。
+	 */
+	function boxOf(text: string): Element | null {
+		return screen.getByText(text).closest("[data-bn]");
+	}
+
+	it("ErrorNote 挂 note note-danger", () => {
+		render(<ErrorNote>崩了</ErrorNote>);
+		expect(hooksOf(boxOf("崩了"))).toEqual(["note", "note-danger"]);
+	});
+
+	it("WarnNote 挂 note note-warn", () => {
+		render(<WarnNote>有几处没照办</WarnNote>);
+		expect(hooksOf(boxOf("有几处没照办"))).toEqual(["note", "note-warn"]);
+	});
+
+	it("EmptyNote 挂 note note-empty", () => {
+		render(<EmptyNote>还什么都没有</EmptyNote>);
+		expect(hooksOf(boxOf("还什么都没有"))).toEqual(["note", "note-empty"]);
+	});
+
+	it("带图标的 ErrorNote 也挂在盒子本身上,不是挂到图标那一格", () => {
+		// 有 icon 时组件走的是**另一条渲染分支** —— 两条都得挂,否则一半调用点换得了
+		// 装、一半换不了,而这正是挂点类缺陷最难被发现的形态。
+		render(<ErrorNote icon={<i />}>带图标也崩了</ErrorNote>);
+		const box = boxOf("带图标也崩了");
+		expect(hooksOf(box)).toEqual(["note", "note-danger"]);
+		// 挂在报警的那个盒子上,不是套在图标或文字外面的某一层
+		expect(box?.getAttribute("role")).toBe("alert");
 	});
 });

@@ -35,9 +35,9 @@
 | `Toggle` | 开关(粉=开),`sm`/`md`;`ariaLabel` 给读屏器命名 |
 | `Input` | 带可选前置 icon 的单行输入框 |
 | `CheckRow` | 多选列表的选项行:粉勾选方块 + 文本,checkbox 本体 sr-only |
-| `ErrorNote` | 「XX 失败:…」红字提示盒的唯一写法。恒 `role="alert"`(21 个调用点无一例外都是「出错了才渲染」)。可选 `icon` 左槽;`size` 三档**是三种位置**不是口味:`sm` 密集卡片内(UpCard 整卡只有 10~11px)、`md` 默认给表单面板、`lg` 给消息流里的横幅(AI 聊天正文 13px)。外边距走 `className` |
-| `WarnNote` | 「做完了但有几处没照办」黄字提示盒的唯一写法;`size` 两档与 `ErrorNote` 对齐(有了它「红/黄双色同形」的一对才写得出来);**行高与外边距走 `className`** |
-| `EmptyNote` | 「这里还什么都没有」中性虚线框的唯一写法;`md`(默认)给整块面板的空态、`sm` 给表单小节里内嵌的一行。**只此两档** —— 收编前站内九份手写在四种圆角三种字号之间漂 |
+| `ErrorNote` | 「XX 失败:…」红字提示盒的唯一写法。恒 `role="alert"`(21 个调用点无一例外都是「出错了才渲染」)。可选 `icon` 左槽;`size` 三档**是三种位置**不是口味:`sm` 密集卡片内(UpCard 整卡只有 10~11px)、`md` 默认给表单面板、`lg` 给消息流里的横幅(AI 聊天正文 13px)。外边距走 `className`。自带 `data-bn="note note-danger"` |
+| `WarnNote` | 「做完了但有几处没照办」黄字提示盒的唯一写法;`size` 两档与 `ErrorNote` 对齐(有了它「红/黄双色同形」的一对才写得出来);**行高与外边距走 `className`**。自带 `data-bn="note note-warn"` |
+| `EmptyNote` | 「这里还什么都没有」中性虚线框的唯一写法;`md`(默认)给整块面板的空态、`sm` 给表单小节里内嵌的一行。**只此两档** —— 收编前站内九份手写在四种圆角三种字号之间漂。自带 `data-bn="note note-empty"`(**虚线是它的语义**,皮肤那头的 NOTES 也这么嘱咐) |
 | `Spinner` | 品牌色圆环加载指示(淡粉底环 + 粉顶弧) |
 | `PlatformIcon` / `platformLabel` / `platformTint` | 推送平台图标、显示名与**标识色**(onebot / qq-official / webhook)。三者同一张表 —— 色也导出,是因为不导出就只能在页面里照抄一份(Targets 就抄过,连兜底的灰都一字不差);认不出的平台退 `--color-bn-inactive` |
 | `StatsBar` | 迷你堆叠柱状图(live/dyn/sc/guard 四段,由高到低堆)。**`colors` 必填,库里不留默认值** —— 那四段是推送家族色,唯一出处 `push-kinds.ts` 在业务侧,平台中立的库取不到;给默认值等于把此前那份写死的副本原样留下 |
