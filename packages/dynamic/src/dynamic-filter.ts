@@ -40,8 +40,11 @@ function safeRegexTest(pattern: string | undefined, text: string, logger?: Logge
 		return false;
 	}
 	try {
-		// 仅对前 N 字符求值,封顶最坏输入规模(多项式回溯的输入侧上限;指数类
-		// 嵌套量词∪交替重叠已在上面 checkUserRegex 拦掉)。
+		// 仅对前 N 字符求值,封顶最坏输入规模 —— **只对多项式回溯有用**。
+		// 指数类不吃这一套:`(a{0,30}){0,30}` 配 34 个字符就够把这条同步调用钉死
+		// (2026-08-25 实测跑满 30 秒),离这里的一万字远得很。也就是说,指数类全靠
+		// 上面那道 checkUserRegex 挡,它漏一个,这里就是整个进程挂死的地方 ——
+		// 这条调用是同步的,没有超时隔离。
 		const subject =
 			text.length > MAX_REGEX_TEST_TEXT_LEN ? text.slice(0, MAX_REGEX_TEST_TEXT_LEN) : text;
 		return new RegExp(pattern).test(subject);
