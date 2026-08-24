@@ -134,6 +134,69 @@ describe("列表带得出原始文件名", () => {
 	});
 });
 
+/**
+ * 名字是**不可信输入**:上传时那一串来自浏览器,清单文件本身也可能被手改或从别处
+ * 拷来。皮肤包的原名清单早就按这条线加固过(`skins/asset-names.ts`,当初正是照着
+ * 这里的图廊写的),只是没回喂 —— 这一组把两处对齐。
+ *
+ * 名字唯一的去处是 React 里的一段文本,不进路径也不进 URL,所以这不是注入面;
+ * 它守的是**这个功能存在的理由**:让主人认得出哪个是哪个。
+ */
+describe("清单里的名字是不可信输入", () => {
+	it("双向覆盖符剥掉 —— 不然 gnp.exe 能显示成 exe.png", async () => {
+		const fresh = await mkdtemp(join(tmpdir(), "font-bidi-"));
+		const id = await saveFontAsset(fresh, WOFF2, "bad\u202E2ffow.ttf");
+		const [listed] = await listFontAssets(fresh);
+		expect(listed?.name).not.toMatch(/[\u202a-\u202e\u2066-\u2069]/);
+		expect(listed?.id).toBe(id);
+		await rm(fresh, { recursive: true, force: true });
+	});
+
+	it("控制字符剥掉", async () => {
+		const fresh = await mkdtemp(join(tmpdir(), "font-ctrl-"));
+		await saveFontAsset(fresh, WOFF2, "a\u0000b\nc.ttf");
+		const [listed] = await listFontAssets(fresh);
+		expect(listed?.name).toBe("abc.ttf");
+		await rm(fresh, { recursive: true, force: true });
+	});
+
+	it("整条路径只留最后一截 —— 主人要看的是文件名,不是他的桌面路径", async () => {
+		const fresh = await mkdtemp(join(tmpdir(), "font-path-"));
+		await saveFontAsset(fresh, WOFF2, "C:\\Users\\akokko\\Desktop\\wenkai.ttf");
+		const [listed] = await listFontAssets(fresh);
+		expect(listed?.name).toBe("wenkai.ttf");
+		await rm(fresh, { recursive: true, force: true });
+	});
+
+	it("超长名字截断 —— 下拉框里没人读得完一百多个字", async () => {
+		const fresh = await mkdtemp(join(tmpdir(), "font-long-"));
+		await saveFontAsset(fresh, WOFF2, `${"字".repeat(300)}.ttf`);
+		const [listed] = await listFontAssets(fresh);
+		expect(listed?.name.length).toBeLessThanOrEqual(120);
+		await rm(fresh, { recursive: true, force: true });
+	});
+
+	it("清单里的值不是字符串 → 丢掉那条,名字回落成 id(而不是让 name 撒谎)", async () => {
+		const fresh = await mkdtemp(join(tmpdir(), "font-badval-"));
+		const id = await saveFontAsset(fresh, WOFF2, "好.ttf");
+		await writeFile(join(fontAssetDir(fresh), "index.json"), JSON.stringify({ [id]: 42 }));
+		const [listed] = await listFontAssets(fresh);
+		expect(listed?.name).toBe(id);
+		await rm(fresh, { recursive: true, force: true });
+	});
+
+	it("清单是数组 / 是标量 → 当空表,不抛", async () => {
+		for (const bad of ["[]", '"x"', "42", "null"]) {
+			const fresh = await mkdtemp(join(tmpdir(), "font-badman-"));
+			const id = await saveFontAsset(fresh, WOFF2, "好.ttf");
+			await writeFile(join(fontAssetDir(fresh), "index.json"), bad);
+			const [listed] = await listFontAssets(fresh);
+			expect(listed?.name, bad).toBe(id);
+			await rm(fresh, { recursive: true, force: true });
+		}
+	});
+});
+
 describe("删除", () => {
 	it("删掉之后文件、列表、清单里都不剩", async () => {
 		const fresh = await mkdtemp(join(tmpdir(), "font-del-"));

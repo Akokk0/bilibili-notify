@@ -8,9 +8,10 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SkinListEntry, SkinManifest } from "@bilibili-notify/contract";
+import { parseAssetNames, sanitizeAssetLabel } from "../runtime/asset-labels.js";
 import { FONT_EXT_TO_MIME } from "../runtime/font-mime.js";
 import { EXT_TO_MIME } from "../runtime/image-mime.js";
-import { ASSET_NAMES_FILE, parseAssetNames, sanitizeAssetLabel } from "./asset-names.js";
+import { ASSET_NAMES_FILE } from "./asset-names.js";
 import { MAX_ASSET_BYTES, MAX_FONT_BYTES, MAX_SKIN_ASSETS } from "./package.js";
 import { isSkinAssetName } from "./schema.js";
 

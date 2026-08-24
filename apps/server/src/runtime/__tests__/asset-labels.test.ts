@@ -1,5 +1,5 @@
 /**
- * 包内资产的**原名清单**:`assets/<生成名>` → 主人上传时那个文件叫什么。
+ * 资产显示名的清洗尺 —— 皮肤包的原名清单与字体图廊共用这一把。
  *
  * 为什么不直接拿原名当文件名(主人问过,2026-08-20 定案):那个名字会流进三个
  * sink —— 磁盘路径、URL 路径、以及拼进受信任 <style> 的 `url("…")`。现在盘上的名字
@@ -11,8 +11,8 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { parseAssetNames, sanitizeAssetLabel } from "../asset-names.js";
-import { isSkinAssetName } from "../schema.js";
+import { isSkinAssetName } from "../../skins/schema.js";
+import { parseAssetNames, sanitizeAssetLabel } from "../asset-labels.js";
 
 describe("sanitizeAssetLabel", () => {
 	it("普通名字原样收,中文/空格/括号都不用怕 —— 它只会被当文本渲染", () => {

@@ -16,6 +16,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
+import { parseAssetNames, sanitizeAssetLabel } from "./asset-labels.js";
 import { FONT_EXT_TO_MIME, fontExtOf } from "./font-mime.js";
 
 /**
@@ -50,15 +51,19 @@ export function isValidFontAssetId(id: string): boolean {
 	return ID_RE.test(id);
 }
 
-/** 读名字清单;缺失 / 损坏一律当空 —— 名字没了不该让整个图廊瘫掉。 */
+/**
+ * 读名字清单;缺失 / 损坏一律当空 —— 名字没了不该让整个图廊瘫掉。
+ *
+ * 内容过 {@link parseAssetNames}:键得是合法字体 id、值得清洗得出一个能显示的标签,
+ * 不合格的只丢那一条。清单文件是盘上的普通 JSON,能被手改、能从别处拷来,不该因为
+ * 它写着 `{"x": 42}` 就让 `name` 撒谎说自己是字符串。
+ */
 async function readManifest(dataDir: string): Promise<Record<string, string>> {
 	try {
 		const parsed: unknown = JSON.parse(
 			await readFile(join(fontAssetDir(dataDir), MANIFEST), "utf8"),
 		);
-		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-			? (parsed as Record<string, string>)
-			: {};
+		return parseAssetNames(parsed, isValidFontAssetId);
 	} catch {
 		return {};
 	}
@@ -136,7 +141,13 @@ export async function saveFontAsset(
 	const dir = fontAssetDir(dataDir);
 	await mkdir(dir, { recursive: true });
 	await writeFile(join(dir, id), bytes);
-	await writeManifest(dataDir, { ...(await readManifest(dataDir)), [id]: filename });
+	// 存进去的就先洗一遍(读出来那头也洗):浏览器给的这一串可能是整条桌面路径,
+	// 也可能带着双向覆盖符 —— 让它显示成别的文件名,就把这个功能反过来用了。
+	const label = sanitizeAssetLabel(filename);
+	await writeManifest(dataDir, {
+		...(await readManifest(dataDir)),
+		...(label ? { [id]: label } : {}),
+	});
 	return id;
 }
 

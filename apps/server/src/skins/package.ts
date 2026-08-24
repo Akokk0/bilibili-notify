@@ -9,7 +9,8 @@
 import type { SkinManifest } from "@bilibili-notify/contract";
 import { MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
 import { strFromU8, unzipSync } from "fflate";
-import { ASSET_NAMES_FILE, parseAssetNames } from "./asset-names.js";
+import { parseAssetNames } from "../runtime/asset-labels.js";
+import { ASSET_NAMES_FILE } from "./asset-names.js";
 import {
 	isSkinAssetName,
 	parseSkinManifest,
