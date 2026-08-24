@@ -1,4 +1,4 @@
-import { Avatar, ErrorNote, Icon, Input, LoadingBlock, Pill, ToneChip } from "@bilibili-notify/ui";
+import { Avatar, ErrorNote, Icon, Input, LoadingBlock, Picker, Pill } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { PUSH_KIND_META, PUSH_TONE } from "../config/push-kinds";
@@ -117,18 +117,16 @@ export default function History() {
 					placeholder="按 UP 主、内容、目标搜索..."
 					icon={<Icon.search size={14} />}
 				/>
-				<div className="flex gap-1">
-					{FILTERS.map((f) => (
-						<ToneChip
-							key={f.id}
-							tone={f.tone}
-							active={filterId === f.id}
-							onClick={() => setFilterId(f.id)}
-						>
-							{f.label}
-						</ToneChip>
-					))}
-				</div>
+				{/*
+				 * 段选而不是一排散胶囊(2026-08-24 主人真机指出「都看不清」):描边胶囊
+				 * 浮在页面背景上,而背景是皮肤说了算的 —— 花底一铺,组和选中态就都读不出来。
+				 * Picker 自带实底轨道,选中那段抬起来,不吃背景的亏。
+				 */}
+				<Picker<FilterId>
+					value={filterId}
+					onChange={setFilterId}
+					options={FILTERS.map((f) => ({ value: f.id, label: f.label, color: f.tone }))}
+				/>
 				<div className="flex-1" />
 				<span className="text-bn-xs text-bn-text-tertiary">
 					共 {filtered.length} 条{retentionDays != null ? ` · 保留近 ${retentionDays} 天` : ""}
