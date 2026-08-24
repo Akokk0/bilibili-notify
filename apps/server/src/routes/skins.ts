@@ -11,7 +11,7 @@ import type {
 	SkinsListResponse,
 } from "@bilibili-notify/contract";
 import { strToU8, zipSync } from "fflate";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { FONT_EXT_TO_MIME, fontExtOf } from "../runtime/font-mime.js";
 import { EXT_TO_MIME, MIME_TO_EXT } from "../runtime/image-mime.js";
 import { runSkinAiEdit, type SkinAiGenerator } from "../skins/ai-edit.js";
@@ -29,6 +29,20 @@ import { uploadBodyLimit } from "./upload-limit.js";
  * 导出**(导得出、装不回,往返闭环就断了)。
  */
 const MAX_SKIN_ZIP_BYTES = 30 * 1024 * 1024;
+
+/**
+ * 「这个 id 没有皮肤」—— 九个 handler 的同一句开场白。
+ *
+ * **两种响应体形状都是契约要的**,不是历史遗留:多数端点回 `{ ok, err }`,
+ * 而 ai-edit 与 PUT manifest 的成功路径本来就带着一串校验意见(`warnings` /
+ * `errors`),它们的契约类型写死了 `{ ok: false; errors: string[] }` ——
+ * 那两处回 `err` 的话前端拿到的是 undefined,界面上只会空一块。
+ */
+function skinNotFound(c: Context, shape: "err" | "errors" = "err") {
+	return shape === "errors"
+		? c.json({ ok: false, errors: ["皮肤不存在"] }, 404)
+		: c.json({ ok: false, err: "皮肤不存在" }, 404);
+}
 
 export function createSkinsRoute(deps: {
 	skinStore: SkinStore;
@@ -94,7 +108,7 @@ export function createSkinsRoute(deps: {
 			return c.json({ ok: false, err: "theme 只能是 light 或 dark" }, 400);
 		}
 		if (id !== null && !(await skinStore.get(id))) {
-			return c.json({ ok: false, err: "皮肤不存在" }, 404);
+			return skinNotFound(c);
 		}
 		try {
 			if (theme === undefined) await skinStore.activate(id);
@@ -108,7 +122,7 @@ export function createSkinsRoute(deps: {
 	// 「让女仆改」:AI 产物只回编辑器 draft 做实时预览,**不落盘** —— 保存永远主人点。
 	app.post("/:id/ai-edit", async (c) => {
 		const id = c.req.param("id");
-		if (!(await skinStore.get(id))) return c.json({ ok: false, errors: ["皮肤不存在"] }, 404);
+		if (!(await skinStore.get(id))) return skinNotFound(c, "errors");
 		const generator = deps.commentary?.() ?? null;
 		if (!generator) {
 			return c.json(
@@ -142,7 +156,7 @@ export function createSkinsRoute(deps: {
 	app.get("/:id/manifest", async (c) => {
 		const id = c.req.param("id");
 		const manifest = await skinStore.get(id);
-		if (!manifest) return c.json({ ok: false, err: "皮肤不存在" }, 404);
+		if (!manifest) return skinNotFound(c);
 		// assets 给编辑器画两个下拉,assetNames 给它们当标签(盘上是生成名,
 		// 光有 hex 主人认不出哪个是哪个)。试穿路径拿到也无害。
 		const body: SkinManifestResponse = {
@@ -166,7 +180,7 @@ export function createSkinsRoute(deps: {
 	 */
 	app.post("/:id/assets", uploadBodyLimit(MAX_FONT_BYTES, "文件"), async (c) => {
 		const id = c.req.param("id");
-		if (!(await skinStore.get(id))) return c.json({ ok: false, err: "皮肤不存在" }, 404);
+		if (!(await skinStore.get(id))) return skinNotFound(c);
 		const body = await c.req.parseBody().catch(() => null);
 		const file = body?.file;
 		if (!(file instanceof File)) {
@@ -205,7 +219,7 @@ export function createSkinsRoute(deps: {
 	// parseSkinManifest + 「引用的图/字体必须在包里」同一把尺(referencedAssets)。
 	app.put("/:id/manifest", async (c) => {
 		const id = c.req.param("id");
-		if (!(await skinStore.get(id))) return c.json({ ok: false, errors: ["皮肤不存在"] }, 404);
+		if (!(await skinStore.get(id))) return skinNotFound(c, "errors");
 		const body = await c.req.json().catch(() => null);
 		if (body === null) return c.json({ ok: false, errors: ["请求体不是合法 JSON"] }, 400);
 		const parsed = parseSkinManifest(body);
@@ -228,7 +242,7 @@ export function createSkinsRoute(deps: {
 	// 上传时快照自动 = 上传内容;存量皮肤(无快照)GET 404,先 PUT 补钉。
 	app.get("/:id/default", async (c) => {
 		const id = c.req.param("id");
-		if (!(await skinStore.get(id))) return c.json({ ok: false, err: "皮肤不存在" }, 404);
+		if (!(await skinStore.get(id))) return skinNotFound(c);
 		const manifest = await skinStore.getDefault(id);
 		if (!manifest) return c.json({ ok: false, err: "该皮肤还没有钉过默认值" }, 404);
 		const body: SkinDefaultResponse = { manifest };
@@ -237,7 +251,7 @@ export function createSkinsRoute(deps: {
 
 	app.put("/:id/default", async (c) => {
 		const id = c.req.param("id");
-		if (!(await skinStore.get(id))) return c.json({ ok: false, err: "皮肤不存在" }, 404);
+		if (!(await skinStore.get(id))) return skinNotFound(c);
 		await skinStore.setDefault(id);
 		return c.json({ ok: true });
 	});
@@ -246,7 +260,7 @@ export function createSkinsRoute(deps: {
 	app.get("/:id/export", async (c) => {
 		const id = c.req.param("id");
 		const manifest = await skinStore.get(id);
-		if (!manifest) return c.json({ ok: false, err: "皮肤不存在" }, 404);
+		if (!manifest) return skinNotFound(c);
 		const files: Record<string, Uint8Array> = {
 			"skin.json": strToU8(JSON.stringify(manifest, null, "\t")),
 		};
@@ -291,7 +305,7 @@ export function createSkinsRoute(deps: {
 		if (theme !== "light" && theme !== "dark") {
 			return c.json({ ok: false, err: "模式只能是 light 或 dark" }, 400);
 		}
-		if (!(await skinStore.get(id))) return c.json({ ok: false, err: "皮肤不存在" }, 404);
+		if (!(await skinStore.get(id))) return skinNotFound(c);
 		try {
 			await skinStore.removeMode(id, theme);
 		} catch (err) {
