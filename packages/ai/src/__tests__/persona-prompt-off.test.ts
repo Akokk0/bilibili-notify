@@ -10,11 +10,10 @@
  * 一字不变,这是三端共享这个包的前提。
  */
 
-import type { BilibiliAPI } from "@bilibili-notify/api";
-import type { ServiceContext } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
+import type { CommentaryGenerator } from "../commentary-generator";
 import { buildSystemPrompt } from "../persona-presets";
+import { makeGen as baseGen } from "./harness";
 
 const oai = vi.hoisted(() => {
 	const create = vi.fn();
@@ -74,28 +73,17 @@ describe("buildSystemPrompt 的 withPersona", () => {
 // 接线:dashboard 聊天那条路真的把开关传下去了吗
 // ---------------------------------------------------------------------------
 
+/**
+ * 这个文件测的是「关掉人格之后还剩什么」,所以人设**必须**是自家那条 custom;
+ * 场景提示词留空,免得断言把场景那两段也算进来。其余吃公共底。
+ */
 function makeGen(): CommentaryGenerator {
-	const ctx: ServiceContext = {
-		logger: { info() {}, warn() {}, error() {}, debug() {} },
-		setInterval: () => ({ dispose() {} }),
-		setTimeout: () => ({ dispose() {} }),
-		onDispose: () => {},
-	};
-	const config: CommentaryGeneratorConfig = {
-		apiKey: "sk-test",
-		baseURL: "https://api.test/v1",
-		model: "gpt-test",
+	return baseGen({
 		persona: { preset: "custom", customBase: "你是一个超级元气的助手!" },
 		dynamicPrompt: "",
 		liveSummaryPrompt: "",
 		enableConversation: false,
-		maxHistory: 5,
-		provider: "custom",
-		enableThinking: false,
-		thinkingLevel: "high",
-		enableVision: false,
-	};
-	return new CommentaryGenerator({ serviceCtx: ctx, api: {} as BilibiliAPI, config });
+	});
 }
 
 function sentSystemPrompt(): string {

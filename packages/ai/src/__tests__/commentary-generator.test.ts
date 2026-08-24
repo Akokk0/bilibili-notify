@@ -19,6 +19,7 @@ import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
+import { aiConfig, fakeServiceCtx, streamOf, textChunk } from "./harness";
 
 // ---------------------------------------------------------------------------
 // mocks
@@ -53,35 +54,24 @@ vi.mock("../tools", () => ({
 // helpers
 // ---------------------------------------------------------------------------
 
+/** 场景提示词取两个好认的哨兵串 —— 断言靠它们分辨这一段有没有拼进 prompt。 */
 function makeConfig(over: Partial<CommentaryGeneratorConfig> = {}): CommentaryGeneratorConfig {
-	return {
-		apiKey: "sk-test",
-		baseURL: "https://api.test/v1",
-		model: "gpt-test",
-		persona: { preset: "assistant" },
+	return aiConfig({
 		dynamicPrompt: "DYN_SCENE_PROMPT",
 		liveSummaryPrompt: "LIVE_SCENE_PROMPT",
-		enableConversation: true,
-		maxHistory: 5,
-		provider: "custom",
-		enableThinking: false,
-		thinkingLevel: "high",
-		enableVision: false,
 		...over,
-	};
+	});
 }
 
+/** 这个文件的调用点全都解构 `{ gen }` —— 保留这层壳,免得为改形状动上百处。 */
 function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): {
 	gen: CommentaryGenerator;
 } {
-	const ctx: ServiceContext = {
-		logger: { info() {}, warn() {}, error() {}, debug() {} },
-		setInterval: () => ({ dispose() {} }),
-		setTimeout: () => ({ dispose() {} }),
-		onDispose: () => {},
-	};
-	const api = {} as BilibiliAPI;
-	const gen = new CommentaryGenerator({ serviceCtx: ctx, api, config: makeConfig(over) });
+	const gen = new CommentaryGenerator({
+		serviceCtx: fakeServiceCtx(),
+		api: {} as BilibiliAPI,
+		config: makeConfig(over),
+	});
 	return { gen };
 }
 
@@ -563,14 +553,6 @@ describe("CommentaryGenerator.chatStateless — 调用方自带历史", () => {
 // ---------------------------------------------------------------------------
 
 /** 造一个 SDK 风格的流:async iterable of chunks。 */
-function streamOf(chunks: unknown[]): AsyncIterable<unknown> {
-	return {
-		async *[Symbol.asyncIterator]() {
-			for (const c of chunks) yield c;
-		},
-	};
-}
-const textChunk = (text: string) => ({ choices: [{ delta: { content: text } }] });
 /** tool_call 的分片:name / arguments 都是一段段来的,靠 index 归位。 */
 const toolChunk = (index: number, part: Record<string, unknown>) => ({
 	choices: [{ delta: { tool_calls: [{ index, ...part }] } }],

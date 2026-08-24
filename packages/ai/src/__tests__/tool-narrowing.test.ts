@@ -15,11 +15,9 @@
  * 收窄**只活一轮对话**:`toolOptions` 每次请求现造,下一条用户消息拿回完整工具面。
  */
 
-import type { BilibiliAPI } from "@bilibili-notify/api";
-import type { ServiceContext } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
 import type { ExtraTool } from "../tools";
+import { makeGen, streamOf, textChunk } from "./harness";
 
 const oai = vi.hoisted(() => {
 	const chatCreate = vi.fn();
@@ -33,34 +31,6 @@ const oai = vi.hoisted(() => {
 	return { chatCreate, responsesCreate, FakeOpenAI };
 });
 vi.mock("openai", () => ({ default: oai.FakeOpenAI }));
-
-function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): CommentaryGenerator {
-	const ctx: ServiceContext = {
-		logger: { info() {}, warn() {}, error() {}, debug() {} },
-		setInterval: () => ({ dispose() {} }),
-		setTimeout: () => ({ dispose() {} }),
-		onDispose: () => {},
-	};
-	return new CommentaryGenerator({
-		serviceCtx: ctx,
-		api: {} as BilibiliAPI,
-		config: {
-			apiKey: "sk-test",
-			baseURL: "https://api.test/v1",
-			model: "gpt-test",
-			persona: { preset: "assistant" },
-			dynamicPrompt: "DYN",
-			liveSummaryPrompt: "LIVE",
-			enableConversation: true,
-			maxHistory: 5,
-			provider: "custom",
-			enableThinking: false,
-			thinkingLevel: "high",
-			enableVision: false,
-			...over,
-		},
-	});
-}
 
 /** 「读一条技能」那把工具的替身。给了 restrictTools 就在返回值里捎上收窄意图。 */
 function makeLoader(restrictTools?: readonly string[]): ExtraTool {
@@ -81,16 +51,7 @@ function makeLoader(restrictTools?: readonly string[]): ExtraTool {
 	};
 }
 
-function streamOf(chunks: unknown[]): AsyncIterable<unknown> {
-	return {
-		async *[Symbol.asyncIterator]() {
-			for (const c of chunks) yield c;
-		},
-	};
-}
-
 // --- chat 风味 ---
-const textChunk = (text: string) => ({ choices: [{ delta: { content: text } }] });
 const callChunk = (name: string, args: object) => ({
 	choices: [
 		{

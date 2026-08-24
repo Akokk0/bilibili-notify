@@ -11,10 +11,9 @@
  *   - 没配副模型但主模型自己看得见 → 图以 image_url 直接下挂
  */
 
-import type { BilibiliAPI } from "@bilibili-notify/api";
-import type { ServiceContext } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
+import type { CommentaryGenerator, CommentaryGeneratorConfig } from "../commentary-generator";
+import { makeGen as baseGen } from "./harness";
 
 const oai = vi.hoisted(() => {
 	const create = vi.fn();
@@ -53,31 +52,19 @@ async function* streamOf(text: string) {
 	yield { choices: [{ delta: { content: text } }] };
 }
 
-function makeGen(over: Partial<CommentaryGeneratorConfig> = {}) {
-	const ctx: ServiceContext = {
-		logger: { info() {}, warn() {}, error() {}, debug() {} },
-		setInterval: () => ({ dispose() {} }),
-		setTimeout: () => ({ dispose() {} }),
-		onDispose: () => {},
-	};
-	return new CommentaryGenerator({
-		serviceCtx: ctx,
-		api: {} as BilibiliAPI,
-		config: {
-			apiKey: "sk-main",
-			baseURL: "https://main.test/v1",
-			model: "deepseek-v4",
-			persona: { preset: "assistant" },
-			dynamicPrompt: "DYN",
-			liveSummaryPrompt: "LIVE",
-			enableConversation: false,
-			maxHistory: 6,
-			provider: "custom",
-			enableThinking: false,
-			thinkingLevel: "medium",
-			enableVision: false,
-			...over,
-		},
+/**
+ * 主模型的 key / baseURL / 模型名**必须**是自己的一套:这个文件靠「哪个 model
+ * 被调用了」来分辨主模型与看图副模型两次请求(见下面 mainCall)。其余吃公共底。
+ */
+function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): CommentaryGenerator {
+	return baseGen({
+		apiKey: "sk-main",
+		baseURL: "https://main.test/v1",
+		model: "deepseek-v4",
+		enableConversation: false,
+		maxHistory: 6,
+		thinkingLevel: "medium",
+		...over,
 	});
 }
 

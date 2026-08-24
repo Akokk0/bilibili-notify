@@ -13,12 +13,14 @@
  *     换协议只会把「没配对」演成「有时灵有时不灵」。
  */
 
-import type { BilibiliAPI } from "@bilibili-notify/api";
-import type { ServiceContext } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { ToolTraceEvent } from "../commentary-generator";
-import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
+import type {
+	CommentaryGenerator,
+	CommentaryGeneratorConfig,
+	ToolTraceEvent,
+} from "../commentary-generator";
 import type { WebSearchResult } from "../web-search";
+import { makeGen as baseGen, streamOf } from "./harness";
 
 // ---------------------------------------------------------------------------
 // mocks
@@ -54,41 +56,19 @@ vi.mock("../tools", () => ({
 // helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * 这个文件专测 responses 风味,所以那几项**必须**是自己的:方言走 deepseek、
+ * apiFlavor 钉死 responses。其余全吃公共底。
+ */
 function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): CommentaryGenerator {
-	const ctx: ServiceContext = {
-		logger: { info() {}, warn() {}, error() {}, debug() {} },
-		setInterval: () => ({ dispose() {} }),
-		setTimeout: () => ({ dispose() {} }),
-		onDispose: () => {},
-	};
-	return new CommentaryGenerator({
-		serviceCtx: ctx,
-		api: {} as BilibiliAPI,
-		config: {
-			apiKey: "sk-test",
-			baseURL: "https://api.test",
-			model: "ds-test",
-			persona: { preset: "assistant" },
-			dynamicPrompt: "DYN",
-			liveSummaryPrompt: "LIVE",
-			enableConversation: true,
-			maxHistory: 5,
-			provider: "deepseek",
-			enableThinking: false,
-			thinkingLevel: "medium",
-			enableVision: false,
-			apiFlavor: "responses",
-			...over,
-		},
+	return baseGen({
+		baseURL: "https://api.test",
+		model: "ds-test",
+		provider: "deepseek",
+		thinkingLevel: "medium",
+		apiFlavor: "responses",
+		...over,
 	});
-}
-
-function streamOf(events: unknown[]): AsyncIterable<unknown> {
-	return {
-		async *[Symbol.asyncIterator]() {
-			for (const e of events) yield e;
-		},
-	};
 }
 
 const textDelta = (t: string) => ({ type: "response.output_text.delta", delta: t });

@@ -10,11 +10,9 @@
  * dashboard 的 `chatStatelessStream`(cookie session 后面,只有主人本人)。
  */
 
-import type { BilibiliAPI } from "@bilibili-notify/api";
-import type { ServiceContext } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
 import type { ExtraTool } from "../tools";
+import { makeGen, streamOf, textChunk } from "./harness";
 
 const oai = vi.hoisted(() => {
 	const create = vi.fn();
@@ -24,34 +22,6 @@ const oai = vi.hoisted(() => {
 	return { create, FakeOpenAI };
 });
 vi.mock("openai", () => ({ default: oai.FakeOpenAI }));
-
-function makeConfig(over: Partial<CommentaryGeneratorConfig> = {}): CommentaryGeneratorConfig {
-	return {
-		apiKey: "sk-test",
-		baseURL: "https://api.test/v1",
-		model: "gpt-test",
-		persona: { preset: "assistant" },
-		dynamicPrompt: "DYN",
-		liveSummaryPrompt: "LIVE",
-		enableConversation: true,
-		maxHistory: 5,
-		provider: "custom",
-		enableThinking: false,
-		thinkingLevel: "high",
-		enableVision: false,
-		...over,
-	};
-}
-
-function makeGen(): CommentaryGenerator {
-	const ctx: ServiceContext = {
-		logger: { info() {}, warn() {}, error() {}, debug() {} },
-		setInterval: () => ({ dispose() {} }),
-		setTimeout: () => ({ dispose() {} }),
-		onDispose: () => {},
-	};
-	return new CommentaryGenerator({ serviceCtx: ctx, api: {} as BilibiliAPI, config: makeConfig() });
-}
 
 function makeTool(
 	over: Partial<ExtraTool> = {},
@@ -74,14 +44,6 @@ function makeTool(
 	} as ExtraTool & { execute: ReturnType<typeof vi.fn> };
 }
 
-function streamOf(chunks: unknown[]): AsyncIterable<unknown> {
-	return {
-		async *[Symbol.asyncIterator]() {
-			for (const c of chunks) yield c;
-		},
-	};
-}
-const textChunk = (text: string) => ({ choices: [{ delta: { content: text } }] });
 const callChunk = (args: object, id = "call_1", name = "make_thing") => ({
 	choices: [
 		{

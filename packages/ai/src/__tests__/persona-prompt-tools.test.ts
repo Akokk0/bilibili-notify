@@ -14,11 +14,10 @@
  * 聊天),其余场景要明确告诉它:这一次没有工具,直接回应。
  */
 
-import type { BilibiliAPI } from "@bilibili-notify/api";
-import type { ServiceContext } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
+import type { CommentaryGenerator } from "../commentary-generator";
 import { buildSystemPrompt } from "../persona-presets";
+import { makeGen as baseGen } from "./harness";
 
 const oai = vi.hoisted(() => {
 	const create = vi.fn();
@@ -104,30 +103,18 @@ describe("buildSystemPrompt — 工具铁律的作用域", () => {
 // 接线:哪条路真的拿得到工具
 // ---------------------------------------------------------------------------
 
+/**
+ * 报障者用的是内置「元气少女」改的 —— 人设库条目下发到引擎时 preset 恒为
+ * "custom"、内容进 customBase(见 apps/server/src/runtime/ai-config.ts)。
+ * 场景提示词取两个好认的哨兵串,断言靠它们分辨这一段有没有拼进去。
+ */
 function makeGen(): CommentaryGenerator {
-	const ctx: ServiceContext = {
-		logger: { info() {}, warn() {}, error() {}, debug() {} },
-		setInterval: () => ({ dispose() {} }),
-		setTimeout: () => ({ dispose() {} }),
-		onDispose: () => {},
-	};
-	const config: CommentaryGeneratorConfig = {
-		apiKey: "sk-test",
-		baseURL: "https://api.test/v1",
-		model: "gpt-test",
-		// 报障者用的是内置「元气少女」改的 —— 人设库条目下发到引擎时 preset 恒为
-		// "custom"、内容进 customBase(见 apps/server/src/runtime/ai-config.ts)。
+	return baseGen({
 		persona: { preset: "custom", customBase: "你是一个超级元气的助手，充满活力！" },
 		dynamicPrompt: "DYN_SCENE_PROMPT",
 		liveSummaryPrompt: "LIVE_SCENE_PROMPT",
 		enableConversation: false,
-		maxHistory: 5,
-		provider: "custom",
-		enableThinking: false,
-		thinkingLevel: "high",
-		enableVision: false,
-	};
-	return new CommentaryGenerator({ serviceCtx: ctx, api: {} as BilibiliAPI, config });
+	});
 }
 
 /** 读第 n 次 create() 实际发出去的 system prompt。 */
