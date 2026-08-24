@@ -132,4 +132,34 @@ describe("skin css hooks", () => {
 		expect(actives).toHaveLength(2);
 		for (const el of actives) expect(el.getAttribute("aria-current")).toBe("true");
 	});
+
+	/**
+	 * 挂点在场还不够 —— 皮肤只够得到**挂着 data-bn 的那一层**:清洗层要求复合选择器
+	 * 每一段都带 hook,`[data-bn~="nav-item-active"] span` 压根进不来。
+	 *
+	 * 所以选中态的前景色必须写在挂点元素上、由子元素继承。写死在子 span 上时,皮肤
+	 * 把选中项画成实底就得到粉底粉字,一个字都看不见(2026-08-24 主人要「选中项变成
+	 * 粉色按钮」时撞的)。这条盯着它别漂回去 —— 漂回去构建全绿,只有真机上看得出。
+	 */
+	it("SectionNav 选中项的前景色写在挂点元素上,子元素不写死", () => {
+		const { container } = render(
+			<SectionNav
+				heading="H"
+				items={[{ id: "a", label: "标题甲", desc: "说明甲", icon: <i data-testid="ic" /> }]}
+				activeId="a"
+				onPick={() => {}}
+			/>,
+		);
+		for (const el of container.querySelectorAll('[data-bn~="nav-item-active"]')) {
+			expect(el.className, "挂点元素得自己带上选中色").toContain("text-bn-pink");
+			// 图标与标题不许自带颜色类 —— 带了就盖掉皮肤给挂点的那一份。
+			for (const child of el.querySelectorAll("span")) {
+				const cls = child.className;
+				if (typeof cls !== "string") continue;
+				// 描述行是另一档(默认装里它选中态也是 tertiary),不在这条管辖内。
+				if (cls.includes("text-bn-2xs")) continue;
+				expect(cls, `子元素写死了颜色: ${cls}`).not.toMatch(/text-bn-(pink|text-primary)\b/);
+			}
+		}
+	});
 });

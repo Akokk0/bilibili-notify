@@ -64,7 +64,18 @@ export interface SectionNavProps {
 
 const RAIL_ITEM_BASE =
 	"flex w-full min-w-0 items-start gap-2.5 rounded-bn-sm border px-3 py-2.5 text-left transition";
-const RAIL_ITEM_ACTIVE = "border-bn-pink/35 bg-bn-surface/90 shadow-bn-card";
+/**
+ * 选中态的前景色写在**挂点元素**上,图标与标题继承 —— 别写死在子元素里。
+ *
+ * 皮肤只够得到挂着 `data-bn` 的那一层:清洗层要求复合选择器每一段都带 hook,
+ * `[data-bn~="nav-item-active"] span` 这种压根进不来。颜色写死在子 span 上的话,
+ * 皮肤把选中项画成实底也改不了字色 —— 2026-08-24 主人要「选中项变成粉色按钮」,
+ * 而那会得到粉底粉字,一个字都看不见。
+ *
+ * chip 形态(窄视口)一直是这么写的,这一行是让竖栏跟上。外观不变:图标与标题选中态
+ * 本来都是 `text-bn-pink`。
+ */
+const RAIL_ITEM_ACTIVE = "border-bn-pink/35 bg-bn-surface/90 text-bn-pink shadow-bn-card";
 const RAIL_ITEM_IDLE = "border-transparent hover:bg-bn-surface/55";
 
 // 吸顶位置 = header 实测高(`--bn-header-h`,由 GlassHeader 用 ResizeObserver 发布) + 1.5rem 间隔。
@@ -112,8 +123,10 @@ function IconBox({ icon, tint, active }: { icon: ReactNode; tint?: string; activ
 	}
 	return (
 		<span
+			// 选中态**不写色**:继承挂点元素那一层(见 RAIL_ITEM_ACTIVE)。未选中态两者
+			// 不同色(图标 secondary、标题 primary),所以只有选中态能统一继承。
 			className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center ${
-				active ? "text-bn-pink" : "text-bn-text-secondary"
+				active ? "" : "text-bn-text-secondary"
 			}`}
 		>
 			{icon}
@@ -212,8 +225,9 @@ export function SectionNav({
 										<IconBox icon={item.icon} tint={item.iconTint} active={active} />
 										<span className="block min-w-0 flex-1">
 											<span
+												// 选中态继承挂点那一层,同 IconBox。
 												className={`flex items-center gap-1.5 text-bn-sm font-bold ${
-													active ? "text-bn-pink" : "text-bn-text-primary"
+													active ? "" : "text-bn-text-primary"
 												}`}
 											>
 												<span className="truncate">{item.label}</span>
