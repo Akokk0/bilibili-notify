@@ -507,14 +507,24 @@ export function createAiRoute(
 									...(pickedSkill.allowedTools ? { restrictTools: pickedSkill.allowedTools } : {}),
 								}
 							: {}),
-						...(skillTool ? { extraTools: [skillTool] } : {}),
+						/**
+						 * 工坊与技能是**互斥**的两套装配,而这里从前是各展开一个
+						 * `extraTools`,靠这两行的先后让工坊赢。真正保证互斥的是上面那句
+						 * `!skinMode && opts?.skillStore`(工坊里 skillTool 必为 null),
+						 * 所以顺序只是条冗余的保险 —— 但它不显眼:哪天上游那个条件松一松
+						 * (比如想让工坊也用技能),谁赢就由这两行的排列静默决定,而工坊的
+						 * systemPrompt 与 builtinTools 只挂在它自己那支上,顶掉就没了。
+						 * 写成一个三元,互斥这件事就在一处看得见。
+						 */
 						...(skinTools
 							? {
 									extraTools: skinTools,
 									systemPrompt: SKIN_MODE_SYSTEM_PROMPT,
 									builtinTools: false,
 								}
-							: {}),
+							: skillTool
+								? { extraTools: [skillTool] }
+								: {}),
 						onDelta: (text) => {
 							// 不 await:回调是同步的,这里排一次写就行。真要背压也轮不到
 							// 这一层管 —— SSE 的写在内存里排队,量级是几十 KB。
