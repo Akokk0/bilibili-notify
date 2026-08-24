@@ -169,6 +169,12 @@ export const SKIN_CSS_HOOK_MAP = {
 	btn: '[data-bn~="btn"]',
 	/** 主(粉色实底)按钮。 */
 	"btn-primary": '[data-bn~="btn-primary"]',
+	/**
+	 * 危险动作的按钮(删除 / 销毁)。与 btn 同挂,实心那档还同时挂着 btn-primary ——
+	 * **加挂而不是顶掉**:不认识这个词的皮肤照旧把它当主按钮画(看得见),认识的才
+	 * 把红补回来。顶掉的话实心红钮会落回「中性浅底 + 实底前景」那个隐形组合。
+	 */
+	"btn-danger": '[data-bn~="btn-danger"]',
 	/** 单行输入框。 */
 	input: '[data-bn~="input"]',
 	/** 顶栏。 */
@@ -259,7 +265,10 @@ export const SKIN_CSS_HOOK_NOTES: Record<SkinCssHook, string> = {
 	"glass-strong": "强玻璃面(弹层、浮条、抽屉);内环同 glass 那条 —— 走 outline,别走 inset 影",
 	btn: "所有按钮(矮元素,胶囊圆角安全)",
 	"btn-primary": "主按钮(粉色实底那种)",
-	input: "输入框(单行输入、多行文本域、下拉选择框都挂它)",
+	"btn-danger":
+		"危险动作的按钮(删除 / 销毁),与 btn 同挂。**不写它的后果是「确认销毁」和「确认」长得一模一样** —— 实心那档同时挂着 btn-primary,你给主按钮刷什么色它就是什么色,红色这个信号整个没了;另外两档的红在字与边上,而你给 btn 写的边会把它盖掉。一句 background/border/color 就够,别做得比主按钮还醒目 —— 它是要人**慢一秒**的东西,不是要人点的",
+	input:
+		"输入框(单行输入、多行文本域、下拉选择框都挂它)。**聚焦态写 `:focus-within`,别写 `:focus`** —— 单行输入那一档挂点在**包壳 div** 上,div 不可聚焦,`:focus` 一辈子不触发(写了不会红、不会丢,只是永远不生效);而裸的 textarea / select 自己也匹配 `:focus-within`,一条就够两种形态",
 	header: "顶栏(横向长条)",
 	nav: "页面级导航容器 —— 横向 tab 条和**竖向的分区列表**都挂它,别当成横条设形状",
 	avatar: "圆头像(本身已经是圆的)",

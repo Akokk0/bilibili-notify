@@ -31,6 +31,42 @@ function hooksOf(el: Element | null): string[] {
 }
 
 describe("skin css hooks", () => {
+	/**
+	 * 危险档**额外挂 `btn-danger`** —— 加挂,不是改挂。
+	 *
+	 * 审皮肤时算出来的(2026-08-24):`danger-solid` 按站规入主按钮池挂 `btn-primary`,
+	 * 于是皮肤给主按钮刷什么色,「确认销毁」就是什么色 —— 像素风那套下它和「确认」
+	 * 长得一模一样,红色这个信号整个没了。三档危险钮同理:`danger` / `danger-outline`
+	 * 的红在字与边上,而皮肤的 `btn` 规则会把边一起改掉。
+	 *
+	 * **不能拿 `btn-danger` 顶掉 `btn-primary`**:不认识新词的皮肤会让实心红钮落回
+	 * 「中性浅底 + 实底前景」那个隐形组合 —— 正是下面那条守卫存在的理由。加挂的话,
+	 * 旧皮肤照旧看到主按钮实底,认识新词的才把红补回来。
+	 */
+	it("三档危险钮额外挂 btn-danger;实心那档仍在主按钮池里", () => {
+		render(
+			<>
+				<Btn variant="danger">删</Btn>
+				<Btn variant="danger-outline">移除</Btn>
+				<Btn variant="danger-solid">确认销毁</Btn>
+			</>,
+		);
+		expect(hooksOf(screen.getByText("删"))).toEqual(["btn", "btn-danger"]);
+		expect(hooksOf(screen.getByText("移除"))).toEqual(["btn", "btn-danger"]);
+		expect(hooksOf(screen.getByText("确认销毁"))).toEqual(["btn", "btn-primary", "btn-danger"]);
+	});
+
+	it("不危险的档不挂它 —— 挂满了就等于没分档", () => {
+		render(
+			<>
+				<Btn>主</Btn>
+				<Btn variant="outline">次</Btn>
+			</>,
+		);
+		expect(hooksOf(screen.getByText("主"))).not.toContain("btn-danger");
+		expect(hooksOf(screen.getByText("次"))).not.toContain("btn-danger");
+	});
+
 	it("Btn 挂 btn;primary 变体额外挂 btn-primary", () => {
 		render(
 			<>

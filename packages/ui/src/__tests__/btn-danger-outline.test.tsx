@@ -41,6 +41,12 @@ describe("Btn danger-outline", () => {
 
 	it("照样挂 btn 挂点,且不是主按钮", () => {
 		render(<Btn variant="danger-outline">删除</Btn>);
-		expect(screen.getByRole("button", { name: "删除" }).getAttribute("data-bn")).toBe("btn");
+		// 钉的是**在不在主按钮池里**,不是整串挂点长什么样 —— 2026-08-24 危险档
+		// 加挂 `btn-danger` 之后,整串比对就红了,而红的是写法不是这条的意图。
+		const hooks = (screen.getByRole("button", { name: "删除" }).getAttribute("data-bn") ?? "")
+			.split(/\s+/)
+			.filter(Boolean);
+		expect(hooks).toContain("btn");
+		expect(hooks).not.toContain("btn-primary");
 	});
 });

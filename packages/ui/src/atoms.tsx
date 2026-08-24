@@ -101,7 +101,7 @@ export interface BtnProps {
  * 加一档要记得改两处,漏掉第二处的症状是**按钮在皮肤下整个隐形、而构建全绿** ——
  * 那正是 About 爱发电按钮当年的车祸。同一张表就没有漏的余地。
  */
-const VARIANTS: Record<BtnVariant, { cls: string; solid?: true }> = {
+const VARIANTS: Record<BtnVariant, { cls: string; solid?: true; danger?: true }> = {
 	primary: { cls: "bg-bn-pink text-bn-on-solid border-transparent hover:opacity-90", solid: true },
 	blue: { cls: "bg-bn-blue text-bn-on-solid border-transparent hover:opacity-90", solid: true },
 	ghost: {
@@ -110,7 +110,10 @@ const VARIANTS: Record<BtnVariant, { cls: string; solid?: true }> = {
 	outline: {
 		cls: "bg-bn-surface text-bn-text-primary border-bn-border hover:bg-bn-surface-muted",
 	},
-	danger: { cls: "bg-transparent text-bn-danger border-transparent hover:bg-bn-danger/10" },
+	danger: {
+		cls: "bg-transparent text-bn-danger border-transparent hover:bg-bn-danger/10",
+		danger: true,
+	},
 	/**
 	 * `outline` 的危险语义兄弟 —— 带红描边的小钮(删除服务商 / 清除失效字体)。
 	 *
@@ -120,6 +123,7 @@ const VARIANTS: Record<BtnVariant, { cls: string; solid?: true }> = {
 	 */
 	"danger-outline": {
 		cls: "bg-transparent text-bn-danger-text border-bn-danger-border hover:bg-bn-danger-soft",
+		danger: true,
 	},
 	/**
 	 * 确认弹窗里的「确认销毁」主钮 —— 实心红底,分量与 `primary` 对等。
@@ -133,6 +137,7 @@ const VARIANTS: Record<BtnVariant, { cls: string; solid?: true }> = {
 	"danger-solid": {
 		cls: "bg-bn-danger text-bn-on-solid border-transparent hover:opacity-90",
 		solid: true,
+		danger: true,
 	},
 };
 
@@ -163,10 +168,20 @@ export function Btn({
 			title={title}
 			aria-haspopup={ariaHasPopup}
 			aria-expanded={ariaExpanded}
+			// 危险档**再加挂** `btn-danger`。加挂而不是顶掉 `btn-primary`:不认识这个
+			// 词的皮肤照旧看到主按钮实底(可见),认识的才把红补回来。顶掉的话实心红钮
+			// 会落回下面那句说的隐形组合。
+			//
 			// 实心语义底一律双挂 `btn btn-primary`:皮肤给 `btn` 刷中性底,只有
 			// `btn-primary` 档会把强调实底盖回来 —— 单挂 `btn` 的实心钮在皮肤下就是
 			// 当年 About 爱发电按钮那辆隐形车(skin-hook-coverage 盯着同一条规矩)。
-			data-bn={VARIANTS[variant].solid ? "btn btn-primary" : "btn"}
+			data-bn={[
+				"btn",
+				VARIANTS[variant].solid ? "btn-primary" : "",
+				VARIANTS[variant].danger ? "btn-danger" : "",
+			]
+				.filter(Boolean)
+				.join(" ")}
 			className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${SIZE_CLS[size]} ${VARIANTS[variant].cls} ${full ? "w-full" : "w-auto"}`}
 		>
 			{icon ? <span className="inline-flex shrink-0">{icon}</span> : null}
@@ -286,7 +301,12 @@ export function IconButton({
 			aria-label={label}
 			aria-haspopup={ariaHasPopup}
 			aria-expanded={ariaExpanded}
-			data-bn="btn"
+			// **scrim 档不挂** —— 那一档是压在任意图片上的一层深纱 + 白图标,而皮肤给
+			// `btn` 刷的实底会把纱盖掉,白图标就压在实底上没了(亮色下实测:某皮肤的
+			// btn 底 #FCFEFF 对 `--color-bn-on-solid` #ffffff)。皮肤没有别的出路 ——
+			// 纱与图标色都是 class,想救只能给 btn 写 color,那又会连 danger 红一起抹平。
+			// 同豁免名单里「盖在图片上的透明选取层」那条口径:浮在图片上的东西不吃按钮的皮。
+			data-bn={surface === "scrim" ? undefined : "btn"}
 			className={`grid shrink-0 cursor-pointer place-items-center transition disabled:cursor-not-allowed disabled:opacity-50 ${
 				shape === "pill" ? "rounded-bn-pill" : "rounded-bn-xs"
 			} ${ICON_BUTTON_SIZE[size]} ${

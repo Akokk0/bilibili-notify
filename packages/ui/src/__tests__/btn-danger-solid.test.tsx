@@ -20,6 +20,11 @@ afterEach(cleanup);
 
 const btn = (name: string) => screen.getByRole("button", { name });
 
+/** 挂点拆成词 —— 断言只关心「有没有那个词」,不关心整串怎么排。 */
+function hooksOf(name: string): string[] {
+	return (btn(name).getAttribute("data-bn") ?? "").split(/\s+/).filter(Boolean);
+}
+
 describe("Btn danger-solid", () => {
 	it("实心红底 + on-solid 前景 token,不写死白字", () => {
 		render(<Btn variant="danger-solid">确认移除</Btn>);
@@ -29,14 +34,17 @@ describe("Btn danger-solid", () => {
 		expect(c).not.toContain("text-white");
 	});
 
-	it("入主按钮池:挂 btn btn-primary 双挂点", () => {
+	it("入主按钮池:btn 与 btn-primary 都挂着", () => {
 		render(<Btn variant="danger-solid">确认移除</Btn>);
-		expect(btn("确认移除").getAttribute("data-bn")).toBe("btn btn-primary");
+		// 钉「在池里」而不是整串 —— 危险档 2026-08-24 起还额外挂着 `btn-danger`,
+		// 那是另一条测试的事(见 skin-hooks 里那条)。这条只管别掉出主按钮池。
+		expect(hooksOf("确认移除")).toContain("btn");
+		expect(hooksOf("确认移除")).toContain("btn-primary");
 	});
 
 	it("blue 也是实心底,同池同挂法", () => {
 		render(<Btn variant="blue">实心蓝</Btn>);
-		expect(btn("实心蓝").getAttribute("data-bn")).toBe("btn btn-primary");
+		expect(hooksOf("实心蓝")).toEqual(["btn", "btn-primary"]);
 	});
 
 	it("对照:透明底的档不进主按钮池", () => {
@@ -48,7 +56,8 @@ describe("Btn danger-solid", () => {
 			</>,
 		);
 		for (const name of ["纯红字", "红描边", "中性描边"]) {
-			expect(btn(name).getAttribute("data-bn")).toBe("btn");
+			expect([name, hooksOf(name).includes("btn-primary")]).toEqual([name, false]);
+			expect([name, hooksOf(name).includes("btn")]).toEqual([name, true]);
 		}
 	});
 });

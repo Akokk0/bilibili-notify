@@ -178,3 +178,36 @@ describe("IconButton", () => {
 		expect(onClick).toHaveBeenCalledTimes(1);
 	});
 });
+
+/**
+ * `scrim` 档**不挂 `btn`** —— 它是压在任意图片上的一层深纱 + 白图标,而皮肤给
+ * `btn` 刷的实底会把纱盖掉,白图标当场压在近白的底上看不见了(2026-08-24 审这套
+ * 像素风皮肤时算出来的:亮色 `btn` 底 #FCFEFF,而 `--color-bn-on-solid` 是 #ffffff)。
+ *
+ * 皮肤没有别的出路:纱与白图标都是 class,`on-solid` 也不是可配键 —— 想救它只能
+ * 给 `btn` 写 `color`,而那会连 IconButton 的 danger 红一起抹平。
+ *
+ * 这与豁免名单里「盖在图片上的透明选取层」是同一条口径:**浮在图片上的东西不吃
+ * 按钮的皮**。它损失的只是皮肤造型,而那本来就该由纱说了算。
+ */
+describe("scrim 档不吃按钮的皮", () => {
+	it("surface=scrim 时不挂 btn —— 皮肤实底会把深纱盖掉,白图标就没了", () => {
+		render(<IconButton icon={<i />} label="关闭" surface="scrim" onClick={() => {}} />);
+		const el = screen.getByLabelText("关闭");
+		expect(el.getAttribute("data-bn")).toBe(null);
+		// 纱与白图标都还在 —— 丢的只是挂点。
+		expect(el.className).toContain("bg-bn-overlay");
+		expect(el.className).toContain("text-bn-on-solid");
+	});
+
+	it("其他档照旧挂 btn —— 只有 scrim 这一档特殊", () => {
+		render(
+			<>
+				<IconButton icon={<i />} label="填充" surface="filled" onClick={() => {}} />
+				<IconButton icon={<i />} label="裸的" onClick={() => {}} />
+			</>,
+		);
+		expect(screen.getByLabelText("填充").getAttribute("data-bn")).toBe("btn");
+		expect(screen.getByLabelText("裸的").getAttribute("data-bn")).toBe("btn");
+	});
+});
