@@ -360,6 +360,8 @@ function DiffRow({ row }: { row: FieldDiff }) {
 		<button
 			type="button"
 			onClick={() => scrollToFieldByCode(row.code)}
+			// 候选行:点一行跳到那个字段。不是按钮 —— 走 option。
+			data-bn="option"
 			className="flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition hover:bg-bn-hover-muted"
 			title={`跳转到 ${row.code}`}
 		>

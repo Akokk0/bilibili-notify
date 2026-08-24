@@ -49,24 +49,6 @@ const UNHOOKED: Record<string, { count: number; why: string }> = {
 		count: 1,
 		why: "AddRowButton 列表末尾的虚线添加行(虚线=空位,同 AddButton 那条;随 T 系列升库从 forms.tsx 搬来)",
 	},
-	"apps/web/src/components/provider-picker.tsx": {
-		count: 1,
-		why: "服务商候选卡(同 MenuItem:选中靠品牌色行内样式,皮肤实底会抹平选中/未选中)",
-	},
-	"apps/web/src/pages/backup/dialog-bits.tsx": {
-		count: 1,
-		why: "备份模式候选卡(同 MenuItem,选中靠自身描边/淡底 token)",
-	},
-	"apps/web/src/pages/Targets.tsx": {
-		count: 3,
-		why: "适配器候选行 + QQ 候选行 + 频道候选 chip(都是「从候选里挑一个」,同 MenuItem)",
-	},
-	"apps/web/src/pages/Subs.tsx": {
-		count: 1,
-		why: "搜索结果候选行(「从候选里挑一个」,同 MenuItem)。此前按钮内嵌头像的 data-bn=avatar 让本守卫误计为已挂,头像收编进 UpProfileSummary 后才暴露 —— 它一直没挂过自己的挂点",
-	},
-	"apps/web/src/components/draft-island.tsx": { count: 1, why: "岛内草稿列表的行" },
-	"apps/web/src/components/ai-chat/composer.tsx": { count: 1, why: "命令面板的候选行" },
 	"apps/web/src/components/ai-chat/index.tsx": {
 		count: 1,
 		why: "浮钮已是玻璃件,走 glass 挂点(两颗收编进 FloatGlassButton 后只剩一处 <button>)",
@@ -75,9 +57,15 @@ const UNHOOKED: Record<string, { count: number; why: string }> = {
 		count: 2,
 		why: "玻璃展开条走 glass 挂点 + 一个无样式包裹",
 	},
-	"apps/web/src/components/ai-chat/sidebar.tsx": { count: 3, why: "会话列表的行,不是按钮" },
+	"apps/web/src/components/ai-chat/sidebar.tsx": {
+		count: 3,
+		why: "两颗入口钮(「开启新对话」「新建皮肤工坊」,走聊天区自己的 bn-chat-accent 语汇)+ 会话行的可点区 —— **会话行挂了 option,挂在外层那个 div 上**:底色与选中态都在那一层,挂到里面这个 button 上等于让皮肤去改一片没有样式的地方",
+	},
 	"apps/web/src/pages/Stats.tsx": { count: 1, why: "一个无样式包裹" },
-	"apps/web/src/pages/cards/FontPicker.tsx": { count: 1, why: "字体行的主体" },
+	"apps/web/src/pages/cards/FontPicker.tsx": {
+		count: 1,
+		why: "字体行的可点区 —— **行本身挂了 option**,挂在外层那个 div 上(描边与底色都在那一层,同 sidebar 会话行)",
+	},
 	"apps/web/src/pages/cards/GalleryPicker.tsx": {
 		count: 1,
 		why: "盖在图片上的透明选取层",

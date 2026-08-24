@@ -190,6 +190,10 @@ export function Composer({
 								aria-selected={k === index}
 								onClick={() => pick(s)}
 								onMouseEnter={() => setIndex(k)}
+								// 候选行。聊天区没有自己的挂点,所以皮肤给 option 写的规则也会
+								// 落到这儿 —— 那是想要的(候选行就该长得一样);真要把聊天区单独
+								// 区隔开,是日后加 chat 挂点的事。
+								data-bn={k === index ? "option option-active" : "option"}
 								className={`block w-full rounded-bn-sm px-[11px] py-2 text-left transition-colors ${
 									k === index ? "bn-chat-accent-soft" : "bg-transparent"
 								}`}

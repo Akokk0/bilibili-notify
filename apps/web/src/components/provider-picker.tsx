@@ -33,7 +33,10 @@ export function ProviderPicker({ value, onChange, only }: ProviderPickerProps) {
 						title={p.baseUrlHint}
 						// 刻意不挂皮肤挂点(同 MenuItem 的理由):候选卡的选中语义靠品牌色
 						// 行内样式,皮肤按钮实底一落上来选中/未选中就分不开了;词表里也
-						// 没有「候选项」这一档。
+						// 候选卡走 option。**选中态只买到一半**:那一档的底与环是行内样式
+						// (品牌色),皮肤改得到圆角与未选中态,改不动选中那颗的底 ——
+						// 同 Targets 的适配器行,`option-active` 的 NOTES 里预告了。
+						data-bn={active ? "option option-active" : "option"}
 						className={`flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 transition ${
 							active
 								? "border-transparent shadow-sm ring-2"

@@ -87,6 +87,9 @@ export function ChatSidebar(props: ChatSidebarProps) {
 								// × 会把侧栏变成一列垃圾桶。
 								<div
 									key={c.id}
+									// 挂点挂在**看得见样式的那一层** —— 底色与选中态都在这个 div 上,
+									// 里面那个 button 只是可点区域,挂上去皮肤改的是一片没有样式的地方。
+									data-bn={c.id === props.activeId ? "option option-active" : "option"}
 									className={`group/row flex items-center rounded-bn-sm transition-colors ${
 										c.id === props.activeId ? "bn-chat-accent-soft" : "hover:bg-bn-code-bg"
 									}`}

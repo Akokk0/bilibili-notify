@@ -50,6 +50,8 @@ function Row({
 }) {
 	return (
 		<div
+			// 同 sidebar 会话行:描边与底色都在这一层,里面那个 button 只是可点区域。
+			data-bn={active ? "option option-active" : "option"}
 			className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition ${
 				active
 					? "border-bn-pink bg-bn-pink/8"

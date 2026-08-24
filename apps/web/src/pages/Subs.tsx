@@ -352,6 +352,9 @@ function SearchResultList({
 							type="button"
 							onClick={() => !disabled && onPick(r)}
 							disabled={disabled}
+							// 候选行。**不挂 option-active** —— 这一列没有「选中的那一个」,
+							// 灰掉的那些是「已经订阅过、挑不了」,不是选中态。
+							data-bn="option"
 							className={`flex items-center gap-3 rounded-lg border p-2.5 text-left transition ${
 								subscribed
 									? "cursor-not-allowed border-bn-border bg-bn-surface-muted opacity-60"

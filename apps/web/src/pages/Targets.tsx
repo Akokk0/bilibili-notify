@@ -766,8 +766,11 @@ function TargetEditorModal({
 											// preserve user-typed identity if any
 											onChange({ ...next, id: value.id, enabled: value.enabled });
 										}}
-										// 刻意不挂皮肤挂点(同 MenuItem):候选行的选中态靠 tint 行内
-										// 染色,皮肤按钮实底会把它盖成一排按钮。
+										// 候选行走 option。**选中态只买到一半**:那一档的底色与边色是
+										// 行内样式(平台 tint 染色),行内压过一切 author 样式,而清洗层
+										// 会摘掉 !important —— 皮肤改得到圆角、阴影、未选中态,改不动
+										// 选中那一行的底。`option-active` 的 NOTES 里预告了这件事。
+										data-bn={active ? "option option-active" : "option"}
 										className="flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition"
 										style={
 											active
@@ -1041,12 +1044,13 @@ function QQSessionPicker({
 				</div>
 			) : (
 				<div className="flex flex-col gap-1">
-					{/* 候选行不挂皮肤挂点(同 MenuItem):从列表里挑一个,不是执行动作。 */}
+					{/* 候选行走 option —— 从列表里挑一个,不是执行动作,所以不吃按钮的皮。 */}
 					{list.map((e) => (
 						<button
 							key={e.openid}
 							type="button"
 							onClick={() => onPick(e.openid)}
+							data-bn="option"
 							className="flex items-center gap-2 rounded-sm border border-bn-border bg-bn-surface px-2 py-1 text-left transition hover:border-bn-pink"
 						>
 							<span className="truncate text-bn-xs font-semibold text-bn-text-primary">
@@ -1106,12 +1110,13 @@ function QQGuildPicker({
 								{g.channels.length === 0 ? (
 									<span className="text-bn-2xs text-bn-text-tertiary">(无文字子频道)</span>
 								) : (
-									// 候选 chip 不挂皮肤挂点(同 MenuItem):挑频道,不是执行动作。
+									// 候选 chip 走 option:挑频道,不是执行动作。
 									g.channels.map((ch) => (
 										<button
 											key={ch.channelId}
 											type="button"
 											onClick={() => onPick(g.guildId, ch.channelId)}
+											data-bn="option"
 											className="rounded-sm border border-bn-border bg-bn-surface px-2 py-0.5 text-bn-xs text-bn-text-primary transition hover:border-bn-pink"
 										>
 											{ch.name}

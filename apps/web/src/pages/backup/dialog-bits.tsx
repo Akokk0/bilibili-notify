@@ -14,8 +14,9 @@ export function ChoiceCard(props: {
 		<button
 			type="button"
 			onClick={props.onClick}
-			// 刻意不挂皮肤挂点(同 MenuItem):备份模式候选卡的选中态靠自身描边/淡底
-			// token,皮肤按钮实底会把选中/未选中画成一个样。
+			// 候选卡走 option —— 当初豁免的理由是「同 MenuItem,词表里没有这一档」,
+			// 那一档现在有了;选中态是自身的描边/淡底 token,不是行内样式,皮肤盖得动。
+			data-bn={props.active ? "option option-active" : "option"}
 			className={`rounded-lg border px-3 py-2.5 text-left transition ${
 				props.active
 					? "border-bn-pink/60 bg-bn-pink/10"
