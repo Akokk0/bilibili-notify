@@ -121,4 +121,52 @@ describe("SectionNav", () => {
 		);
 		expect(screen.getByText("尚未配置任何适配器")).toBeTruthy();
 	});
+	/**
+	 * 选中项内部的颜色分工 —— 这两条是一对,单看任何一条都能被作弊过关。
+	 *
+	 * 皮肤只够得到挂着 `data-bn` 的那一层(清洗层不放行 `[data-bn~="x"] span` 这种
+	 * 后代选择器)。所以子元素上每一处写死的前景色,都是皮肤**改不动**的死色:主人
+	 * 把选中项画成实心粉块时,那些子元素照旧按「底是页面色」的假设上色,于是粉底上
+	 * 落一层浅灰,糊成一片。
+	 *
+	 * 这个坑分两次踩到:先是图标与标题(2026-08-24 主人要「选中项变成粉色按钮」),
+	 * 修的时候**漏了副标题**,同一天主人又拿着「QQ官方 · 2 个目标」的截图回来。
+	 * 所以这里不点名某个子元素,而是扫**整棵子树** —— 往里新加一个带色的 span 会当场红。
+	 */
+	function railItems(): { active: HTMLElement; idle: HTMLElement } {
+		const rail = document.querySelector('[data-section-nav="rail"]') as HTMLElement;
+		const all = [...rail.querySelectorAll<HTMLElement>('[data-bn~="nav-item"]')];
+		const active = all.find((el) => (el.getAttribute("data-bn") ?? "").includes("nav-item-active"));
+		const idle = all.find((el) => !(el.getAttribute("data-bn") ?? "").includes("nav-item-active"));
+		if (!active || !idle) throw new Error("竖栏里没有同时找到选中与未选中项");
+		return { active, idle };
+	}
+
+	/** 子树里所有写死的前景色类。挂点元素**自己**那一层不算 —— 色本来就该写在它上面。 */
+	function hardCodedFg(root: HTMLElement): string[] {
+		return [...root.querySelectorAll("*")]
+			.flatMap((el) => (el.getAttribute("class") ?? "").split(/\s+/))
+			.filter((c) => /^text-bn-(text-|pink$|inactive$)/.test(c));
+	}
+
+	it("选中项的子元素一个都不写死前景色 —— 全部继承挂点那一层", () => {
+		render(<SectionNav heading="日志" items={items} activeId="a" onPick={() => {}} />);
+		const { active } = railItems();
+
+		// 色写在挂点元素上是**对的**,皮肤正是靠改这一层来带动整项。
+		expect(active.getAttribute("class")).toContain("text-bn-pink");
+		expect(hardCodedFg(active)).toEqual([]);
+	});
+
+	it("未选中项照旧分三档 —— 别把写死色一删了之,那样未选中项会糊成一坨", () => {
+		render(<SectionNav heading="日志" items={items} activeId="a" onPick={() => {}} />);
+		const { idle } = railItems();
+
+		// 未选中态没有实心底,三档层次(图标 secondary / 标题 primary / 副标题 tertiary)
+		// 是它唯一的结构感。上一条测试单独存在时,把三处色全删掉也能过 —— 这条挡的是那个。
+		const fg = hardCodedFg(idle);
+		expect(fg).toContain("text-bn-text-secondary");
+		expect(fg).toContain("text-bn-text-primary");
+		expect(fg).toContain("text-bn-text-tertiary");
+	});
 });

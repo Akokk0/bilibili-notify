@@ -523,11 +523,16 @@ export function GlassHeader() {
 						>
 							{t.label}
 							{t.countKey ? (
+								// 选中态**不自带颜色**,底与字都跟着这一格自己的文字色走。此前写死
+								// `text-bn-pink`,等于假设「选中格的背景仍是页面底色」—— 皮肤把
+								// tab-active 画成实心粉块之后这个假设就破了:粉纱铺在粉块上还是粉,
+								// 粉字落上去正好隐形(2026-08-24 主人真机指出「未选中看得见数字,
+								// 选中就没了」)。跟随之后可读性搭在「选中格的字本来就得看得清」
+								// 这条既有不变量上,皮肤把 tab-active 改成什么色都不会掉队。
+								// 未选中态反过来要自带:那时父色是 tertiary 浅灰,跟着走会糊成一团。
 								<span
 									className={`rounded-lg px-1.5 py-px text-bn-2xs font-bold ${
-										navActive
-											? "bg-bn-pink/15 text-bn-pink"
-											: "bg-bn-code-bg text-bn-text-secondary"
+										navActive ? "bg-current/15" : "bg-bn-code-bg text-bn-text-secondary"
 									}`}
 								>
 									{counts[t.countKey]}

@@ -25,7 +25,13 @@ export interface SectionNavItem {
 	 * 十六进制与 `var(--color-bn-*)` 都收 —— 透明度走 `color-mix()` 现调。
 	 */
 	iconTint?: string;
-	/** 标题旁内联角标(Rules 覆盖点 / Targets「(停用)」)。 */
+	/**
+	 * 标题旁内联角标(Rules 覆盖点 / Targets「(停用)」)。
+	 *
+	 * **别在里头写死前景色** —— 它渲染在选中项内部,而那一项的底由皮肤说了算
+	 * (见 RAIL_ITEM_ACTIVE 上那段)。这块由调用方渲染,竖栏里那道「子元素不写死
+	 * 前景色」的守卫扫不到它,只能靠这行说。
+	 */
 	badge?: ReactNode;
 }
 
@@ -266,7 +272,16 @@ export function SectionNav({
 												{item.badge}
 											</span>
 											{item.desc ? (
-												<span className="mt-0.5 block wrap-break-word text-bn-2xs leading-snug text-bn-text-tertiary">
+												<span
+													// 选中态继承挂点那一层,同 IconBox 与标题 —— 这一行是上一轮
+													// 收编时漏掉的第三处(2026-08-24 主人真机指出:选中的适配器
+													// 卡片上「QQ官方 · 2 个目标」糊成一片)。tertiary 那一档是
+													// 照着「底是页面色」定的,皮肤把选中项画成实心块之后它落在
+													// 块上只剩个位数对比。层次改由字号(2xs vs sm)与字重扛。
+													className={`mt-0.5 block wrap-break-word text-bn-2xs leading-snug ${
+														active ? "" : "text-bn-text-tertiary"
+													}`}
+												>
 													{item.desc}
 												</span>
 											) : null}

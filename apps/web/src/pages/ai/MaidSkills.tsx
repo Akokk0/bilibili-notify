@@ -174,7 +174,17 @@ export function MaidSkills() {
 						id: s.name,
 						label: s.name,
 						icon: <Icon.sparkle size={14} />,
-						badge: s.builtin ? <Pill subtle>内置</Pill> : undefined,
+						// 选中那一格的底由皮肤说了算(见 SectionNav 的 RAIL_ITEM_ACTIVE)。主人
+						// 把它画成实心粉块之后,徽章默认那身粉纱 + 粉字正好糊在上面,只剩皮肤
+						// 给 badge 画的那道影子(2026-08-25 真机指出)。所以选中态改喂
+						// currentColor —— 底与字都跟着这一格的文字色走,而那个色皮肤是改得动的。
+						// 未选中态照旧是粉:那时底是页面色,粉看得清清楚楚,没必要动。
+						// (Pill 的色本就归调用方管,这不是绕过它的契约,是在用它。)
+						badge: s.builtin ? (
+							<Pill subtle color={s.name === activeId ? "currentColor" : undefined}>
+								内置
+							</Pill>
+						) : undefined,
 					})),
 					...(creating ? [{ id: NEW_ID, label: "新技能", icon: <Icon.plus size={14} /> }] : []),
 				]}

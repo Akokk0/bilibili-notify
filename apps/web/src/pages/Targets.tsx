@@ -1314,8 +1314,12 @@ function AdapterRail({
 					desc: `${platformLabel(a.platform)} · ${a.platform === "webhook" ? "单向投递" : `${count} 个目标`}`,
 					icon: <PlatformIcon platform={a.platform} size={12} />,
 					iconTint: platformTint(a.platform),
+					// **不写死前景色** —— 它落在左栏选中项内部,而那一项的底由皮肤说了算
+					// (见 SectionNav 的 RAIL_ITEM_ACTIVE)。tertiary 这一档假设底是页面色,
+					// 皮肤把选中项画成实心块之后它就糊在上面了。弱化改由字号 + 字重扛,
+					// 和同一张卡上的副标题同一个办法。
 					badge: !a.enabled ? (
-						<span className="shrink-0 text-bn-2xs text-bn-text-tertiary">(停用)</span>
+						<span className="shrink-0 text-bn-2xs font-normal">(停用)</span>
 					) : undefined,
 				};
 			})}
