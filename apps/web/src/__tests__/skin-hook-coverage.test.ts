@@ -190,3 +190,39 @@ describe("主按钮的挂点写全", () => {
 		expect(bad.join("\n")).toBe("");
 	});
 });
+
+/**
+ * 左栏那颗指示点必须分选中态。
+ *
+ * `RailDot` 未选中态是粉的 —— 粉正是它「一眼看得见」的全部本钱。可它落在选中项上
+ * 时,底是皮肤说了算的实心块;主人把那块画成粉之后粉点就没了,而它偏偏要说的是
+ * 「女仆用的就是这份」(AI 页两栏都这样)。所以选中态得让位,改跟随文字色。
+ *
+ * 组件那头已经有测试钉住两个分支各长什么样,但**调用点漏传 `active` 是静默的**:
+ * 默认值是 `false`,于是它安静地一路画粉点 —— 构建绿、测试绿、默认装下一切正常,
+ * 只有装了实心块皮肤的真机才露馅。跟这份文件里其余几条是同一类漏洞,所以放一起。
+ */
+describe("RailDot 的调用点", () => {
+	const railDotTags = () => {
+		const out: string[] = [];
+		for (const root of SCAN_ROOTS) {
+			for (const file of listTsx(root)) {
+				const src = blankComments(readFileSync(file, "utf8"));
+				// 一个文件里可能有好几处(AI 页就是两处),逐个开标签查。
+				for (const m of src.matchAll(/<RailDot\b[^>]*>/g)) {
+					out.push(`${relative(REPO, file).split(sep).join("/")}: ${m[0].trim()}`);
+				}
+			}
+		}
+		return out;
+	};
+
+	it("每一处都传了 active —— 漏传不会红,只会在真机上又消失一次", () => {
+		expect(railDotTags().filter((t) => !/\bactive[=\s}]/.test(t))).toEqual([]);
+	});
+
+	it("确实扫到了东西 —— 别让这条退化成「一个都没找着所以全过」", () => {
+		// 组件自己的定义不算(它在 packages/ui 里是 `export function RailDot`,不是标签)。
+		expect(railDotTags().length).toBeGreaterThanOrEqual(3);
+	});
+});

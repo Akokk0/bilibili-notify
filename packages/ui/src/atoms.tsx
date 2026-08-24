@@ -1022,9 +1022,24 @@ export function platformTint(platform: string): string {
 	return PLATFORM_META[platform]?.color ?? "var(--color-bn-inactive)";
 }
 
-export function PlatformIcon({ platform, size = 16 }: { platform: string; size?: number }) {
+export function PlatformIcon({
+	platform,
+	size = 16,
+	tone,
+}: {
+	platform: string;
+	size?: number;
+	/**
+	 * 盖掉标识色。留空走 {@link platformTint} —— 平常就该是标识色。
+	 *
+	 * 有这个口子是因为标识色是**中等亮度**的品牌色,摆在皮肤画的实心强调块上会撞
+	 * (实测 QQ官方 #14b8a6 对主人那块粉只有 1.24:1)。喂 `currentColor` 让它跟着
+	 * 上下文的文字色走,是那种场合唯一稳的办法。别拿它来画别的语义色。
+	 */
+	tone?: string;
+}) {
 	const meta = PLATFORM_META[platform];
-	const color = platformTint(platform);
+	const color = tone ?? platformTint(platform);
 	const I = meta?.icon ? Icon[meta.icon] : null;
 	if (I) return <I size={size} style={{ color }} />;
 	const label = meta?.label ?? platform;

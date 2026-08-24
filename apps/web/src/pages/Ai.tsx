@@ -652,9 +652,17 @@ export default function Ai() {
 								// 靠这颗指示器说 —— 否则两个概念在同一栏里没法区分。
 								badge:
 									item.id === draft.activeProfile ? (
-										<RailDot title="女仆平时用的就是这份" />
+										<RailDot title="女仆平时用的就是这份" active={item.id === editing} />
 									) : undefined,
-								icon: <ProviderLogo id={item.provider} size={16} />,
+								// 同 Targets 左栏:选中那格的品牌色会跟皮肤的实心块撞,喂
+								// currentColor 跟随。服务商名就在标签上,认得出是哪家。
+								icon: (
+									<ProviderLogo
+										id={item.provider}
+										size={16}
+										tone={item.id === editing ? "currentColor" : undefined}
+									/>
+								),
 								iconTint: PROVIDER_BRANDS[item.provider].color,
 							};
 						})}
@@ -999,7 +1007,7 @@ export default function Ai() {
 								// 两栏各说各的;共用之后观感只有一处定义。
 								badge:
 									globalPersonaRailId(draft) === item.id ? (
-										<RailDot title="女仆平时用的就是这份" />
+										<RailDot title="女仆平时用的就是这份" active={item.id === activePersonaId} />
 									) : undefined,
 								icon: <Glyph size={14} />,
 							};

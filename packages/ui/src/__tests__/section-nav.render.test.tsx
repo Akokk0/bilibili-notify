@@ -13,7 +13,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { SectionNav, type SectionNavItem } from "../section-nav";
+import { RailDot, SectionNav, type SectionNavItem } from "../section-nav";
 
 const items: SectionNavItem[] = [
 	{ id: "a", label: "运行日志", desc: "实时输出与归档检索", icon: <span>i1</span> },
@@ -168,5 +168,79 @@ describe("SectionNav", () => {
 		expect(fg).toContain("text-bn-text-secondary");
 		expect(fg).toContain("text-bn-text-primary");
 		expect(fg).toContain("text-bn-text-tertiary");
+	});
+});
+
+/**
+ * 标识色与那颗指示点 —— 落在选中项上时都得让位。
+ *
+ * 与「子元素不写死前景色」是同一件事的两个变体,只是这两处的色不是随手写的,而是
+ * **有含义的**:平台/品牌的标识色、以及「这份在用」那颗粉点。所以不能一刀切跟随,
+ * 得分选中态。
+ *
+ * 撞的是亮度:标识色一律是中等亮度,而皮肤画的选中块正好也落在那一带 —— 实测
+ * QQ官方 `#14b8a6` 对主人那块粉只有 1.24:1(2026-08-25 真机截图)。
+ */
+describe("RailDot", () => {
+	it("选中那格跟随文字色,别处维持粉", () => {
+		const { container } = render(
+			<>
+				<RailDot title="在用" />
+				<RailDot title="在用" active />
+			</>,
+		);
+		const [idle, active] = [...container.querySelectorAll("[data-rail-dot]")];
+
+		expect(idle.getAttribute("class")).toContain("bg-bn-pink");
+		expect(active.getAttribute("class")).toContain("bg-current");
+		// 跟随那颗**不能**还留着粉 —— 两个底色类同时在,后写的赢,等于看写法运气。
+		expect(active.getAttribute("class")).not.toContain("bg-bn-pink");
+	});
+});
+
+describe("带标识色的图标胶囊", () => {
+	const tinted: SectionNavItem[] = [
+		{
+			id: "a",
+			label: "恶魔兔",
+			desc: "QQ官方 · 2 个目标",
+			icon: <span>q</span>,
+			iconTint: "#14b8a6",
+		},
+		{
+			id: "b",
+			label: "别的",
+			desc: "OneBot · 1 个目标",
+			icon: <span>o</span>,
+			iconTint: "#3b82f6",
+		},
+	];
+
+	/** 竖栏里某一格的图标胶囊(带 tint 的那种才有行内底色)。 */
+	function boxStyle(label: string): string {
+		const rail = document.querySelector('[data-section-nav="rail"]') as HTMLElement;
+		const cell = [...rail.querySelectorAll<HTMLElement>('[data-bn~="nav-item"]')].find((el) =>
+			(el.textContent ?? "").includes(label),
+		);
+		if (!cell) throw new Error(`竖栏里没有「${label}」这一格`);
+		const box = cell.querySelector<HTMLElement>("span[style]");
+		if (!box) throw new Error(`「${label}」这一格没有带行内底色的图标胶囊`);
+		return box.getAttribute("style") ?? "";
+	}
+
+	it("选中那格的底改用 currentColor 调,别处照旧用标识色", () => {
+		render(<SectionNav heading="适配器" items={tinted} activeId="a" onPick={() => {}} />);
+
+		expect(boxStyle("恶魔兔")).toMatch(/currentcolor/i);
+		// 没选中的那些正是「一眼认出是哪家」的所在,标识色一个都不能动。
+		// (jsdom 会把行内样式里的 hex 规范化成 rgb(),所以按 rgb 认。)
+		expect(boxStyle("别的")).toMatch(/rgb\(59,\s*130,\s*246\)/);
+	});
+
+	it("换一格选中,让位的跟着换 —— 绑的是选中态", () => {
+		render(<SectionNav heading="适配器" items={tinted} activeId="b" onPick={() => {}} />);
+
+		expect(boxStyle("别的")).toMatch(/currentcolor/i);
+		expect(boxStyle("恶魔兔")).toMatch(/rgb\(20,\s*184,\s*166\)/);
 	});
 });

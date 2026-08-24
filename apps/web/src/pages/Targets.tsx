@@ -1312,7 +1312,15 @@ function AdapterRail({
 					id: a.id,
 					label: a.name || "（未命名）",
 					desc: `${platformLabel(a.platform)} · ${a.platform === "webhook" ? "单向投递" : `${count} 个目标`}`,
-					icon: <PlatformIcon platform={a.platform} size={12} />,
+					// 选中那格喂 currentColor —— 标识色是中等亮度,摆在皮肤画的实心块上会撞
+					// (QQ官方 #14b8a6 对主人那块粉只有 1.24:1)。平台名在副标题里写着,不丢。
+					icon: (
+						<PlatformIcon
+							platform={a.platform}
+							size={12}
+							tone={a.id === selectedId ? "currentColor" : undefined}
+						/>
+					),
 					iconTint: platformTint(a.platform),
 					// **不写死前景色** —— 它落在左栏选中项内部,而那一项的底由皮肤说了算
 					// (见 SectionNav 的 RAIL_ITEM_ACTIVE)。tertiary 这一档假设底是页面色,

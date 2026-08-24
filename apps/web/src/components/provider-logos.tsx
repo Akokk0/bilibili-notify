@@ -104,7 +104,22 @@ export const PROVIDER_BRANDS: Record<AIProviderId, ProviderBrand> = {
 };
 
 /** 单个服务商的方形标识。`size` 是外框边长。 */
-export function ProviderLogo({ id, size = 26 }: { id: AIProviderId; size?: number }) {
+export function ProviderLogo({
+	id,
+	size = 26,
+	tone,
+}: {
+	id: AIProviderId;
+	size?: number;
+	/**
+	 * 盖掉品牌主色。留空走品牌色 —— 平常就该是品牌色。
+	 *
+	 * 同 `PlatformIcon` 的 `tone`:品牌色是中等亮度,摆在皮肤画的实心强调块上会撞,
+	 * 而这些标记是单色的(描边吃 `currentColor`),整枚一起糊掉。左栏选中项喂
+	 * `currentColor` 让它跟着文字色走。
+	 */
+	tone?: string;
+}) {
 	const brand = PROVIDER_BRANDS[id];
 	return (
 		<svg
@@ -113,7 +128,7 @@ export function ProviderLogo({ id, size = 26 }: { id: AIProviderId; size?: numbe
 			viewBox="0 0 24 24"
 			role="presentation"
 			aria-hidden="true"
-			style={{ color: brand.color }}
+			style={{ color: tone ?? brand.color }}
 		>
 			{brand.glyph}
 		</svg>

@@ -90,7 +90,9 @@ function SectionList({
 				label: s.label,
 				desc: s.desc,
 				icon: s.icon,
-				badge: customizedIds?.has(s.id) ? <RailDot title="该 UP 主已设置该项覆盖" /> : undefined,
+				badge: customizedIds?.has(s.id) ? (
+					<RailDot title="该 UP 主已设置该项覆盖" active={s.id === current} />
+				) : undefined,
 			}))}
 		/>
 	);

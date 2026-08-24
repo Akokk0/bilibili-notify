@@ -18,11 +18,20 @@ export interface SectionNavItem {
 	label: string;
 	/** 仅在竖栏(xl+)显示的副标题;横向 chip 省略以保持条矮。 */
 	desc?: string;
-	/** 已渲染的图标 glyph(调用方控制大小/字重)。 */
+	/**
+	 * 已渲染的图标 glyph(调用方控制大小/字重)。
+	 *
+	 * **图形自带标识色的,选中态要让位** —— 标识色一律是中等亮度,摆在皮肤画的实心
+	 * 强调块上会撞(实测 QQ官方 `#14b8a6` 对主人那块粉只有 1.24:1)。`PlatformIcon`
+	 * 与 `ProviderLogo` 都收 `tone`,选中那格喂 `currentColor` 即可;这里够不到调用方
+	 * 渲染好的图形,只能靠这行说。底那半由 `iconTint` 自己处理,不用管。
+	 */
 	icon?: ReactNode;
 	/**
 	 * 图标底色 tint;给则把图标包进一个 tinted 圆角盒(Targets 平台色)。
 	 * 十六进制与 `var(--color-bn-*)` 都收 —— 透明度走 `color-mix()` 现调。
+	 *
+	 * 选中态自动改用 `currentColor` 调纱(见 `IconBox`),调用方不必分情况传。
 	 */
 	iconTint?: string;
 	/**
@@ -44,14 +53,19 @@ export interface SectionNavItem {
  *
  * 纯色块对读屏器等于不存在,所以 `title` 同时喂给 `aria-label`。
  */
-export function RailDot({ title }: { title: string }) {
+export function RailDot({ title, active = false }: { title: string; active?: boolean }) {
 	return (
 		<span
 			data-rail-dot
 			role="img"
 			aria-label={title}
 			title={title}
-			className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-bn-pink"
+			// 选中那一格上改跟随文字色 —— 粉点落在皮肤画的实心粉块上就没了,而它要说的
+			// 「这份在用」偏偏最常落在选中项上(AI 页两栏都是)。未选中态维持粉:那时底是
+			// 页面色,粉是它「一眼看见」的全部本钱,一起改等于白丢。
+			className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
+				active ? "bg-current" : "bg-bn-pink"
+			}`}
 		/>
 	);
 }
@@ -121,7 +135,14 @@ function IconBox({ icon, tint, active }: { icon: ReactNode; tint?: string; activ
 		return (
 			<span
 				className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-bn-xs"
-				style={{ background: `color-mix(in srgb, ${tint} 12%, transparent)` }}
+				// 选中态改用 currentColor 调纱。tint 是平台/品牌的**标识色**,而标识色都是
+				// 中等亮度,摆在皮肤画的实心强调块上会撞(实测 QQ官方 #14b8a6 对主人那块粉
+				// 只有 1.24:1),胶囊底与图标一起糊。图标那半由调用方喂 `tone` 跟随,这里管
+				// 底这半。身份不会丢:标签与副标题里写着平台名(「QQ官方 · 2 个目标」),而且
+				// 一次只有一项选中,带着标识色的其余各项就在旁边当对照。
+				style={{
+					background: `color-mix(in srgb, ${active ? "currentColor" : tint} 12%, transparent)`,
+				}}
 			>
 				{icon}
 			</span>
