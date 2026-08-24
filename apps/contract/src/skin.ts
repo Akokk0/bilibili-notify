@@ -254,8 +254,9 @@ export type SkinCssHook = keyof typeof SKIN_CSS_HOOK_MAP;
  */
 export const SKIN_CSS_HOOK_NOTES: Record<SkinCssHook, string> = {
 	page: "整页根(壁纸之上、内容之下;氛围层挂它的伪元素)",
-	glass: "所有轻玻璃卡片(小到一行数据卡,大到整块面板)",
-	"glass-strong": "强玻璃面(弹层、浮条、抽屉)",
+	glass:
+		"所有轻玻璃卡片(小到一行数据卡,大到整块面板)。**内环别用 `inset box-shadow`** —— inset 影画在**子元素之下**,卡里只要有一条带底色的表头或行,内环当场断掉一截(2026-08-24 真机:推送历史那张表的表头把内环盖了)。要一圈**压在内容之上**的环,用 `outline` + 负 `outline-offset`:outline 在绘制顺序里最后画,谁也盖不掉它,而且跟着圆角走。外圈用 border 也安全(子元素在内边距盒里,够不到边框)",
+	"glass-strong": "强玻璃面(弹层、浮条、抽屉);内环同 glass 那条 —— 走 outline,别走 inset 影",
 	btn: "所有按钮(矮元素,胶囊圆角安全)",
 	"btn-primary": "主按钮(粉色实底那种)",
 	input: "输入框(单行输入、多行文本域、下拉选择框都挂它)",
