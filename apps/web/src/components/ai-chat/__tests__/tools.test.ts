@@ -63,4 +63,24 @@ describe("工具名覆盖", () => {
 		const missing = defined.filter((n) => toolLabel(n, {}) === n);
 		expect(missing).toEqual([]);
 	});
+
+	it("注入工具也都配了中文名 —— 上面那条扫不到它们", async () => {
+		/**
+		 * `create_skin` / `load_skill` 这类**不在** TOOL_DEFINITIONS 里:写能力只有
+		 * 带权限门的那一端配拥有,所以它们由服务端在装配处注入(ExtraTool)。于是
+		 * 上面那条守卫压根扫不到 —— 而界面这头照样要配一句中文。
+		 *
+		 * 名字本身是 contract 里的 `AI_TOOL_*` 常量(两端共用同一个常量,所以名字
+		 * 不会漂);漏的是**中文名**,而漏了只有主人在界面上看得到一串英文标识符。
+		 * 按前缀取全,加第三把注入工具时这条自动跟着管。
+		 */
+		const contract = await import("@bilibili-notify/contract");
+		const injected = Object.entries(contract)
+			.filter(([key]) => key.startsWith("AI_TOOL_"))
+			.map(([, value]) => value as string);
+		expect(injected.length).toBeGreaterThan(1); // 前缀取空时别假绿
+
+		const missing = injected.filter((n) => toolLabel(n, {}) === n);
+		expect(missing).toEqual([]);
+	});
 });
