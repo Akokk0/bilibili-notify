@@ -190,9 +190,13 @@ describe("SkinSection", () => {
 		expect(editButtons).toHaveLength(1);
 		fireEvent.click(editButtons[0]);
 		await waitFor(() => expect(screen.getByText("调整皮肤")).toBeTruthy());
-		// 编辑器已接管 preview 通道
-		expect(useSkinStore.getState().editing).toBe(true);
-		expect(useSkinStore.getState().preview?.id).toBe("s1");
+		// 编辑器已接管 preview 通道。**必须等**:editing 与 preview 都是编辑器挂载后
+		// 的 effect 写的,抽屉标题在渲染提交时就有了,effect 还差一拍 —— 同步断言在
+		// 慢跑器上会踩进这道缝(v0.7.0 发版 gate 四跑一红,红的就是这里)。
+		await waitFor(() => {
+			expect(useSkinStore.getState().editing).toBe(true);
+			expect(useSkinStore.getState().preview?.id).toBe("s1");
+		});
 	});
 
 	it("双模皮肤占两槽时:两个 Picker 都选中它,皮肤行标「使用中」", async () => {
