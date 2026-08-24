@@ -668,18 +668,16 @@ export interface ToggleProps {
 
 export function Toggle({ value, onChange, size = "md", disabled, ariaLabel }: ToggleProps) {
 	const sz = size === "sm" ? { w: 28, h: 16, dot: 12 } : { w: 36, h: 20, dot: 16 };
-	const trackStyle: CSSProperties = {
-		width: sz.w,
-		height: sz.h,
-		// 走 token 而不是字面值 —— `--color-bn-pink` 正是皮肤 `colors.accent` 的落点。
-		// 写死 #FB7299 的后果是全站每一颗开关的「开」都还是 B 站粉,皮肤换了主强调色
-		// 也搬不动。inline style 里放 var() 完全合法,照样跟着换肤走。
-		//
-		// 关闭态同理走 `textDisabled`(默认装 #d1d5db,与从前写死的 #d8d8d8 几乎同色)
-		// —— 语义正好是「这一档是关着的」,而每套皮肤都配了它。**不能挂 `btn` 挂点**:
-		// 皮肤给按钮写的实底会盖掉轨道背景,开关的开/关当场就看不出来了。
-		background: value ? "var(--color-bn-pink)" : "var(--color-bn-text-disabled)",
-	};
+	// **只留运行时几何量**。宽高是每档不同的尺寸,留在行内还有一层好处:行内压过
+	// 一切 author 样式,皮肤写 width/height 掰不坏这颗开关。
+	const trackStyle: CSSProperties = { width: sz.w, height: sz.h };
+	// 底色走 token 而不是字面值 —— `--color-bn-pink` 正是皮肤 `colors.accent` 的落点。
+	// 写死 #FB7299 的后果是全站每一颗开关的「开」都还是 B 站粉,皮肤换了主强调色也
+	// 搬不动。关闭态同理走 `textDisabled`(默认装 #d1d5db,与从前写死的 #d8d8d8 几乎
+	// 同色)—— 语义正好是「这一档是关着的」,而每套皮肤都配了它。
+	//
+	// 走 class 而不是行内:行内没得覆盖,`switch-on` 那一档就只剩描边加影可写。
+	const trackTone = value ? "bg-bn-pink" : "bg-bn-text-disabled";
 	const dotStyle: CSSProperties = {
 		width: sz.dot,
 		height: sz.dot,
@@ -697,15 +695,20 @@ export function Toggle({ value, onChange, size = "md", disabled, ariaLabel }: To
 			disabled={disabled}
 			aria-label={ariaLabel}
 			aria-pressed={ariaLabel ? value : undefined}
+			// **不挂 `btn`**:皮肤给按钮写的实底会盖掉轨道背景,开关的开/关当场看不
+			// 出来。开关有自己的词,而且「开」单分一档 —— 皮肤要重画轨道得两档分别写。
+			data-bn={value ? "switch switch-on" : "switch"}
 			// 禁用态除了淡下去,指针也得跟着变 —— 只淡不换指针的话,鼠标一悬停
 			// 仍是「可点」的手型,点下去却毫无反应,像坏了而不像被禁用。
 			// 圆角走 class 上的 pill 轴,**不能写进 style** —— inline 压过一切 author
 			// 样式,皮肤把 radius.pill 调到 0 求一身硬直角也掰不直这一颗。
-			className="relative shrink-0 cursor-pointer rounded-bn-pill border-none transition disabled:cursor-not-allowed disabled:opacity-50"
+			className={`relative shrink-0 cursor-pointer rounded-bn-pill border-none transition disabled:cursor-not-allowed disabled:opacity-50 ${trackTone}`}
 			style={trackStyle}
 		>
 			<span
-				// 滑块跟着轨道走:只掰直轨道的话,方轨道里滚着个圆球。
+				// 滑块跟着轨道走:只掰直轨道的话,方轨道里滚着个圆球 —— 所以它也得有
+				// 挂点,不然皮肤只够得到轨道那一半。
+				data-bn="switch-dot"
 				className="absolute rounded-bn-pill bg-bn-surface shadow-[0_1px_3px_rgba(0,0,0,0.2)]"
 				style={dotStyle}
 			/>
@@ -786,6 +789,9 @@ export interface CheckRowProps {
 export function CheckRow({ checked, onChange, children }: CheckRowProps) {
 	return (
 		<label
+			// 多选列表的一行 = 候选行。是 `<label>` 而不是 `<button>`(覆盖守卫扫不到
+			// 它),但形态与下拉菜单行、搜索结果同族,共用 option 不新造词。
+			data-bn={checked ? "option option-active" : "option"}
 			className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 py-2 text-bn-base transition ${
 				checked
 					? "border-bn-pink/60 bg-bn-pink/10 font-semibold text-bn-text-primary"

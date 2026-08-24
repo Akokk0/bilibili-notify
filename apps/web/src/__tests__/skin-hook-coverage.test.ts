@@ -34,8 +34,8 @@ const SCAN_ROOTS = [join(REPO, "apps/web/src"), join(REPO, "packages/ui/src")];
  */
 const UNHOOKED: Record<string, { count: number; why: string }> = {
 	"packages/ui/src/atoms.tsx": {
-		count: 3,
-		why: "Toggle 轨道(皮肤实底会盖掉轨道底,开/关看不出来)+ AddButton/AddCard(虚线=空位是语义本体,皮肤实底会把空位画成真按钮 —— 2026-08-23 主人真机指出后定案)。**MenuItem 已经不在这儿了**:它挂上了 `option`(候选行),当初豁免的理由是「词表里没有它这一档」,那一档现在有了",
+		count: 2,
+		why: "AddButton/AddCard(虚线=空位是语义本体,皮肤实底会把空位画成真按钮 —— 2026-08-23 主人真机指出后定案)。**MenuItem 与 Toggle 都已经不在这儿了**:各自挂上了 `option`(候选行)与 `switch`/`switch-on`(开关轨道),两条豁免理由说的都是「挂 btn 会毁掉它」,而它们现在有自己的词",
 	},
 	"apps/web/src/components/drag-handle.tsx": {
 		count: 1,
@@ -77,7 +77,7 @@ const UNHOOKED: Record<string, { count: number; why: string }> = {
 	"apps/web/src/pages/rules/PerUpEditor.tsx": { count: 1, why: "纯文字链接(带下划线的那种)" },
 	"apps/web/src/pages/up/UpCard.tsx": {
 		count: 1,
-		why: "多选勾选方块:二元开关,同 Toggle 那条",
+		why: "多选勾选方块 —— 它是**指示物**而不是控件外壳(同 Toggle 那颗滑块、CheckRow 那个勾选方块的分工)。也不该套 `switch`:那一档在词表里写明了是「滑动开关的轨道」,皮肤会按一条长胶囊的形状去写它,落到一个 22px 方块上必然走样",
 	},
 	"apps/web/src/pages/up/UpDialog.tsx": { count: 1, why: "纯文字链接" },
 };

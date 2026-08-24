@@ -8,7 +8,18 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { Avatar, Btn, EmptyNote, ErrorNote, Input, MenuItem, Pill, WarnNote } from "../atoms";
+import {
+	Avatar,
+	Btn,
+	CheckRow,
+	EmptyNote,
+	ErrorNote,
+	Input,
+	MenuItem,
+	Pill,
+	Toggle,
+	WarnNote,
+} from "../atoms";
 import { ModalShell } from "../dialog";
 import { SectionNav } from "../section-nav";
 import { TabBarShell, TabButton } from "../tab-bar";
@@ -273,5 +284,94 @@ describe("候选行挂 option", () => {
 	it("不挂 btn —— 挂了皮肤的按钮实底会把整屏菜单画成一摞按钮", () => {
 		render(<MenuItem onClick={() => {}}>某一行</MenuItem>);
 		expect(hooksOf(screen.getByText("某一行"))).not.toContain("btn");
+	});
+});
+
+/**
+ * 开关 —— 站里 51 处的 `Toggle`。它是这份词表里**最后一块整片零挂点的地方**,
+ * 豁免理由从一开始就写着「皮肤实底会盖掉轨道底,开/关看不出来」。
+ *
+ * 那条理由针对的是**挂 `btn`**:皮肤给按钮刷一层实底,开着的粉轨道和关着的灰
+ * 轨道当场变成同一个颜色 —— 一屏设置里再也读不出哪些是开的。给它自己的词、并且
+ * **把「开」单独分一档**(`switch-on`),这个死法就不成立了:皮肤要重画轨道,
+ * 得在两档里分别写,写成一样是它自己选的,不再是挂点强加的。
+ *
+ * 三个挂点各有各的活:
+ * - `switch` —— 轨道本体。**宽高留在行内**(每档尺寸不同),行内压过一切 author
+ *   样式,于是皮肤**掰不坏**这颗开关的尺寸,这是刻意的。
+ * - `switch-on` —— 开着的时候额外挂,底色分档写在这儿。
+ * - `switch-dot` —— 那颗滑块。不给它挂点的话,皮肤把轨道掰成直角,里面还滚着个
+ *   圆球(组件注释里早写过「滑块跟着轨道走」,但皮肤够不到它)。
+ */
+describe("开关挂 switch 族", () => {
+	function track(): HTMLElement {
+		return screen.getByRole("button");
+	}
+
+	it("轨道挂 switch;开着的时候额外挂 switch-on", () => {
+		const { rerender } = render(<Toggle value={false} onChange={() => {}} />);
+		expect(hooksOf(track())).toEqual(["switch"]);
+
+		rerender(<Toggle value onChange={() => {}} />);
+		expect(hooksOf(track())).toEqual(["switch", "switch-on"]);
+	});
+
+	it("滑块挂 switch-dot —— 不然皮肤掰直了轨道,里面还滚着个圆球", () => {
+		const { container } = render(<Toggle value onChange={() => {}} />);
+		const dot = container.querySelector('[data-bn~="switch-dot"]');
+		expect(dot).toBeTruthy();
+		// 挂在滑块上,不是挂在轨道上 —— 两者都在,但滑块是轨道的孩子。
+		expect(dot?.parentElement).toBe(track());
+	});
+
+	it("不挂 btn —— 挂了皮肤的按钮实底会盖掉轨道底,开/关当场看不出来", () => {
+		render(<Toggle value onChange={() => {}} />);
+		expect(hooksOf(track())).not.toContain("btn");
+	});
+
+	it("开/关的底色走 class 而不是行内 —— 行内的话 switch-on 这一档等于摆设", () => {
+		// 这是整组挂点成立的前提:底色写在 `style` 里,皮肤连覆盖的机会都没有,
+		// `switch-on` 就只剩描边加影可写。走 class 之后仍是 token(`bg-bn-pink` /
+		// `bg-bn-text-disabled` 各自解析到 `--color-bn-*`),`colors.accent` 照旧搬得动它。
+		const { rerender } = render(<Toggle value onChange={() => {}} />);
+		expect(track().style.background).toBe("");
+		expect(track().className).toContain("bg-bn-pink");
+
+		rerender(<Toggle value={false} onChange={() => {}} />);
+		expect(track().className).toContain("bg-bn-text-disabled");
+	});
+
+	it("宽高**仍留在行内** —— 皮肤写 width/height 掰不坏这颗开关", () => {
+		render(<Toggle value onChange={() => {}} size="sm" />);
+		// 行内压过一切 author 样式。尺寸是每档不同的运行时几何量,本来就该在这儿。
+		expect(track().style.width).toBe("28px");
+		expect(track().style.height).toBe("16px");
+	});
+});
+
+/**
+ * CheckRow —— 多选列表的选项行。它是 `<label>`(覆盖守卫只扫 `<button>` / `<a>`,
+ * 看不见它),但形态上就是**候选行**:一列里挑若干个,选中的那几行换底换边。
+ * 所以走 `option` / `option-active`,不新造词。
+ *
+ * 里面那颗勾选方块不挂 —— 它是「选中了没有」的指示物,不是可点控件,同 Toggle
+ * 那颗滑块的分工。
+ */
+describe("CheckRow 挂 option 族", () => {
+	it("选项行挂 option;勾上的那行额外挂 option-active", () => {
+		const { rerender } = render(
+			<CheckRow checked={false} onChange={() => {}}>
+				某一项
+			</CheckRow>,
+		);
+		const row = () => screen.getByText("某一项").closest("[data-bn]");
+		expect(hooksOf(row())).toEqual(["option"]);
+
+		rerender(
+			<CheckRow checked onChange={() => {}}>
+				某一项
+			</CheckRow>,
+		);
+		expect(hooksOf(row())).toEqual(["option", "option-active"]);
 	});
 });

@@ -71,7 +71,8 @@ describe("theme-aware ui atoms", () => {
  * 开关是**全站铺得最开**的一件,而它有两处够不到皮肤:
  *
  * ① 关闭态的轨道写死 `#d8d8d8` —— 同一个函数里,开启态的注释已经写明「走 token
- *    而不是字面值」,关闭态却自己破了例;
+ *    而不是字面值」,关闭态却自己破了例;(两态后来又从 inline 挪到了 `bg-bn-*`
+ *    两个类上,好让皮肤的 `switch-on` 档真的盖得动 —— 走 token 这件事没变。)
  * ② 圆角写在 **inline style** 上。inline 压过一切 author 样式,皮肤把 radius.pill
  *    调到 0 也掰不直它 —— 与 TabButton 那次(选中态渐变写在 inline 上)同一个模式,
  *    这已经是第三回。
@@ -80,10 +81,18 @@ describe("theme-aware ui atoms", () => {
  */
 describe("Toggle 够得到皮肤", () => {
 	it("轨道两态都走 token,不写死颜色", () => {
+		// 2026-08-24:底色从 inline 的 `var(--color-bn-*)` 换成了 `bg-bn-*` 两个类
+		// —— **要钉的不变量没变**(两态都跟着色板走,不写死 hex),只是量法跟着换。
+		// 换的理由在挂点那一侧:底色留在 inline 的话,`switch-on` 那一档皮肤盖不动,
+		// 只剩描边加影可写。类名照旧解析到 `--color-bn-pink` / `--color-bn-text-disabled`。
 		const { rerender } = render(<Toggle value={false} onChange={() => {}} ariaLabel="开关" />);
-		expect(screen.getByLabelText("开关").style.background).toContain("var(");
+		const track = () => screen.getByLabelText("开关");
+		expect(track().style.background).toBe("");
+		expect(track().className).toContain("bg-bn-text-disabled");
 		rerender(<Toggle value={true} onChange={() => {}} ariaLabel="开关" />);
-		expect(screen.getByLabelText("开关").style.background).toContain("var(");
+		expect(track().className).toContain("bg-bn-pink");
+		// 写死的 hex 才是这条测试要拦的东西 —— 两态都不许出现。
+		expect(track().className).not.toMatch(/#[0-9a-fA-F]{3,8}/);
 	});
 
 	it("圆角走 pill 轴的 class,不落在 inline style 上", () => {
