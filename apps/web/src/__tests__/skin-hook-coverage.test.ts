@@ -268,3 +268,43 @@ describe("数据展示不吃 --font-mono", () => {
 		expect(logs).toContain("font-mono");
 	});
 });
+
+/**
+ * UID 按**数据**处理,不按标识符。
+ *
+ * 它长得像标识符(可复制、可比对),站里一度也这么待它 —— 三处写着等宽字体,第四处
+ * (`scope-tabs`)却是正文字体,本来就没统一过。但它归根到底是一串数字,而等宽**字体**
+ * 那一档够不到皮肤(见上面那条),于是装了自带字体的皮肤只换掉周围的字,UID 还是系统
+ * 等宽体。2026-08-25 主人拍板:统一当数据,跟数字一样走 `tabular-nums`。
+ *
+ * 只认**单行**写法 —— 站里四处都是 `UID {x}` 连着 className 写在一行。拆成多行的
+ * 话这条扫不到,那是它的射程,不是它默许。
+ */
+describe("UID 走 tabular-nums", () => {
+	it("没有哪处 UID 还写着等宽字体", () => {
+		const offenders: string[] = [];
+		for (const root of SCAN_ROOTS) {
+			for (const file of listTsx(root)) {
+				blankComments(readFileSync(file, "utf8"))
+					.split("\n")
+					.forEach((line, i) => {
+						// 兜底名字(`?? \`UID ${uid}\``)不带 className,不会误伤。
+						if (/\bUID\s+\{/.test(line) && /\bfont-mono\b/.test(line)) {
+							offenders.push(`${relative(REPO, file).split(sep).join("/")}:${i + 1}`);
+						}
+					});
+			}
+		}
+		expect(offenders).toEqual([]);
+	});
+
+	it("确实扫到了 UID 展示位 —— 别让这条空过", () => {
+		let seen = 0;
+		for (const root of SCAN_ROOTS) {
+			for (const file of listTsx(root)) {
+				seen += [...blankComments(readFileSync(file, "utf8")).matchAll(/\bUID\s+\{/g)].length;
+			}
+		}
+		expect(seen).toBeGreaterThanOrEqual(4);
+	});
+});

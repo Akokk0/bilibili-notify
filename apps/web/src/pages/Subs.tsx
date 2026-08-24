@@ -285,7 +285,7 @@ function UpProfileSummary({
 					>
 						{profile.name}
 					</span>
-					<span className="font-mono text-bn-2xs text-bn-text-tertiary">UID {profile.uid}</span>
+					<span className="text-bn-2xs tabular-nums text-bn-text-tertiary">UID {profile.uid}</span>
 					{subscribed ? (
 						<Pill size="sm" subtle color="var(--color-bn-text-tertiary)">
 							已订阅

@@ -446,7 +446,7 @@ export function UpDialog({
 							className="mt-0.5 text-bn-xs font-semibold"
 							style={{ color, textShadow: "0 1px 4px rgba(255,255,255,0.4)" }}
 						>
-							<span className="font-mono">UID {draft.uid}</span>
+							<span className="tabular-nums">UID {draft.uid}</span>
 							{draft.cachedProfile?.fans != null ? (
 								<>
 									<span className="mx-1 opacity-70">·</span>
@@ -889,7 +889,7 @@ function TargetRoutingCard({
 					</div>
 				</div>
 				{isCustom ? (
-					<span className="font-mono text-bn-2xs text-bn-text-tertiary">
+					<span className="text-bn-2xs tabular-nums text-bn-text-tertiary">
 						{enabledCount}/{FEATURE_KEYS.length}
 					</span>
 				) : null}

@@ -51,7 +51,7 @@ function ToastCard({ item }: { item: ToastItem }) {
 			style={item.ok ? undefined : { borderColor: "var(--color-bn-danger-border)" }}
 		>
 			<div className="mt-0.5 text-bn-xs text-bn-text-secondary">
-				<span className="font-mono">UID {item.uid}</span>
+				<span className="tabular-nums">UID {item.uid}</span>
 			</div>
 			{item.text ? (
 				<div className="mt-1 line-clamp-2 text-bn-xs leading-snug text-bn-text-primary">

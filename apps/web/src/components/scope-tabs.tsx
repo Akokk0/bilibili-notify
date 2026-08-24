@@ -182,7 +182,9 @@ export function ScopeTabs({
 												<div className="truncate text-bn-sm font-bold text-bn-text-primary">
 													{displayName(sub)}
 												</div>
-												<div className="text-bn-2xs text-bn-text-tertiary">UID {sub.uid}</div>
+												<div className="text-bn-2xs text-bn-text-tertiary tabular-nums">
+													UID {sub.uid}
+												</div>
 											</div>
 											{sub.state.liveStatus === "live" ? (
 												<Pill color="var(--color-bn-pink)" subtle size="sm">
