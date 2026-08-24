@@ -10,7 +10,7 @@
  */
 
 import type { MaidSkillDTO, MaidSkillWriteRequest } from "@bilibili-notify/contract";
-import { MAID_SKILL_LIMITS, MAID_SKILL_NAME_RE } from "@bilibili-notify/contract";
+import { complainAboutSkill, MAID_SKILL_LIMITS } from "@bilibili-notify/contract";
 import {
 	Btn,
 	CheckRow,
@@ -57,18 +57,9 @@ function toDraft(s: MaidSkillDTO): MaidSkillWriteRequest {
 
 /** 存之前自己先照一遍尺子,免得为一个一眼可见的问题跑一趟服务端。 */
 function localComplaint(d: MaidSkillWriteRequest): string | null {
-	if (!MAID_SKILL_NAME_RE.test(d.name) || d.name.length > MAID_SKILL_LIMITS.nameChars) {
-		return `名字只收小写字母 / 数字 / 单个连字符(如 weekly-report),最长 ${MAID_SKILL_LIMITS.nameChars} 字符`;
-	}
-	if (d.description.trim() === "") return "得写一句 description —— 女仆靠它决定要不要用这条";
-	if (d.description.length > MAID_SKILL_LIMITS.descChars) {
-		return `description 超长(上限 ${MAID_SKILL_LIMITS.descChars} 字)`;
-	}
-	if (d.body.trim() === "") return "正文是空的 —— 一条什么都不说的技能等于没有";
-	if (d.body.length > MAID_SKILL_LIMITS.bodyChars) {
-		return `正文超长(上限 ${MAID_SKILL_LIMITS.bodyChars} 字)`;
-	}
-	return null;
+	// 尺子与判法都在 contract —— 服务端那道真闸照的是同一份,不会出现
+	// 「网页说没问题、存进去被拒」。
+	return complainAboutSkill(d);
 }
 
 /**

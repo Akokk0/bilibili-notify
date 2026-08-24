@@ -10,25 +10,8 @@
  * 静默残缺的 skill,表现是女仆莫名其妙地少干一半活,而主人无从查起。
  */
 
-import { MAID_SKILL_LIMITS, MAID_SKILL_NAME_RE } from "@bilibili-notify/contract";
+import { complainAboutSkill, isValidSkillName } from "@bilibili-notify/contract";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-
-/**
- * 名字与长度的尺子全部来自 contract(主人 2026-08-20 拍板走 Claude Code 的
- * kebab-case ASCII 标准)。**这里不另存一份** —— 网页端拿同一把尺子提前提示,
- * 两处各写各的,迟早出现「网页说没问题、存进去被拒」这种主人无从下手的状态。
- *
- * 名字之所以卡这么死:它**同时是磁盘目录名与斜杠命令**,白名单里一个 `.` `/`
- * `\` 都没有,`..` 在构造上就拼不出来。皮肤库那次审计的教训摆在这儿 ——
- * `SkinStore.remove` 少了这道闸,被 `DELETE /%2e%2e%2fconversations` 删掉了
- * 整个会话目录。只收小写还有第二重理由:macOS 的文件系统大小写不敏感、且会把
- * 文件名归一化成 NFD,这两件事只在纯 ASCII 小写这一档上没有意外。
- */
-const {
-	nameChars: MAX_NAME_CHARS,
-	descChars: MAX_DESC_CHARS,
-	bodyChars: MAX_BODY_CHARS,
-} = MAID_SKILL_LIMITS;
 
 /** frontmatter 整块的字节上限 —— 手放的文件可能是任意东西,别让 YAML 解析器啃一整个视频。 */
 const MAX_FRONTMATTER_CHARS = 4_000;
@@ -54,12 +37,9 @@ export interface ParsedSkill {
 
 export type ParseSkillResult = { ok: true; skill: ParsedSkill } | { ok: false; reason: string };
 
-/** 名字能不能用。见 {@link MAID_SKILL_NAME_RE} —— 这是一道安全闸,不只是口味。 */
-export function isValidSkillName(name: unknown): boolean {
-	if (typeof name !== "string") return false;
-	if (name.length === 0 || name.length > MAX_NAME_CHARS) return false;
-	return MAID_SKILL_NAME_RE.test(name);
-}
+// 名字闸与五条收/拒规则都住在 contract(见那边 complainAboutSkill 的注释)。
+// 这里原样再导出,免得动这个模块现有的调用点。
+export { isValidSkillName };
 
 /**
  * `allowed-tools` 归一。收两种写法 —— 逗号串(Claude Code 的写法)与 YAML 列表,
@@ -121,29 +101,14 @@ export function parseSkillFile(text: string): ParseSkillResult {
 	}
 	const rec = fm as Record<string, unknown>;
 
-	const name = rec.name;
-	if (!isValidSkillName(name)) {
-		return {
-			ok: false,
-			reason: `name 不合法:只收小写字母 / 数字 / 单个连字符(如 weekly-report),最长 ${MAX_NAME_CHARS} 字符`,
-		};
-	}
-
 	const description = typeof rec.description === "string" ? rec.description.trim() : "";
-	if (description === "")
-		return { ok: false, reason: "description 不能为空 —— 模型靠它决定要不要用这条技能" };
-	if (description.length > MAX_DESC_CHARS) {
-		return { ok: false, reason: `description 超长(上限 ${MAX_DESC_CHARS} 字)` };
-	}
-
 	const body = (lineBreak === -1 ? "" : afterDelim.slice(lineBreak + 1)).trim();
-	if (body === "") return { ok: false, reason: "正文是空的 —— 一条什么都不说的技能等于没有" };
-	if (body.length > MAX_BODY_CHARS) {
-		return { ok: false, reason: `正文超长(上限 ${MAX_BODY_CHARS} 字)` };
-	}
+	// 名字 / description / 正文这五条与网页端的预检**是同一份**(contract)。
+	const complaint = complainAboutSkill({ name: rec.name, description, body });
+	if (complaint) return { ok: false, reason: complaint };
 
 	const skill: ParsedSkill = {
-		name: name as string,
+		name: rec.name as string,
 		description,
 		disableModelInvocation: rec["disable-model-invocation"] === true,
 		body,

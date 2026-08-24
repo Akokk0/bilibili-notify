@@ -16,6 +16,7 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { complainAboutSkill } from "@bilibili-notify/contract";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { BUILTIN_SKILLS } from "../../maid-skills/builtin.js";
 import { MaidSkillStore } from "../../maid-skills/store.js";
@@ -113,9 +114,13 @@ describe("POST /", () => {
 	});
 
 	it("名字不合法 → 400,并把理由原样交给主人", async () => {
-		const res = await post({ ...sample, name: "我的技能" });
+		const bad = { ...sample, name: "我的技能" };
+		const res = await post(bad);
 		expect(res.status).toBe(400);
-		expect(((await res.json()) as any).err).toContain("name");
+		// **原样**:比对的是共用规则集那句本身,不是某几个字。此前钉的是「含 name」,
+		// 那把措辞焊死在了英文上 —— 规则收进 contract、两端统一说中文之后它就红了,
+		// 而红的是断言的写法,不是这条路径的行为。
+		expect(((await res.json()) as any).err).toBe(complainAboutSkill(bad));
 	});
 
 	it("与内置同名 → 400,并说清是被内置占了", async () => {
