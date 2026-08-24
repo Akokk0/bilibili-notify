@@ -81,7 +81,7 @@ function GroupChip({
 			className={`${base} ${cls}`}
 		>
 			<span className="max-w-35 truncate">{label}</span>
-			<span className="font-mono text-bn-2xs opacity-70">{count}</span>
+			<span className="tabular-nums text-bn-2xs opacity-70">{count}</span>
 		</button>
 	);
 }

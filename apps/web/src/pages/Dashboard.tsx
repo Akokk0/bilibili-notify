@@ -232,7 +232,7 @@ function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
 						{label}
 					</span>
 				))}
-				<span className="ml-auto font-mono text-bn-xs text-bn-text-secondary">
+				<span className="ml-auto tabular-nums text-bn-xs text-bn-text-secondary">
 					近 7 天共 {total} 次
 				</span>
 			</div>
@@ -320,7 +320,7 @@ function TimelinePanel({
 							.join(" / ");
 						return (
 							<div key={h.id} className="mb-2.5 flex items-center gap-3">
-								<div className="w-11 text-right font-mono text-bn-xs text-bn-text-secondary">
+								<div className="w-11 text-right tabular-nums text-bn-xs text-bn-text-secondary">
 									{relativeTimeFromNow(h.ts)}
 								</div>
 								<div className="relative z-bn-raised">
@@ -390,10 +390,10 @@ function FansDeltaCol({ label, value }: { label: string; value: number | null })
 				: "var(--color-bn-danger)";
 	return (
 		<div className="w-16 text-right">
-			<div className="font-mono text-bn-base font-bold" style={{ color }}>
+			<div className="tabular-nums text-bn-base font-bold" style={{ color }}>
 				{text}
 			</div>
-			<div className="font-mono text-bn-2xs text-bn-text-tertiary">{label}</div>
+			<div className="tabular-nums text-bn-2xs text-bn-text-tertiary">{label}</div>
 		</div>
 	);
 }
@@ -456,7 +456,7 @@ function FansPanel({ subs }: { subs: Subscription[] }) {
 								<Avatar name={name} color={color} size={32} url={sub?.cachedProfile?.avatar} />
 								<div className="min-w-0 flex-1">
 									<div className="truncate font-bold text-bn-text-primary">{name}</div>
-									<div className="font-mono text-bn-xs text-bn-text-tertiary">
+									<div className="tabular-nums text-bn-xs text-bn-text-tertiary">
 										{formatFans(e.current)} 粉丝
 									</div>
 								</div>

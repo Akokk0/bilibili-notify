@@ -82,14 +82,14 @@ export function ChartEmpty({ hint }: { hint: string }) {
 export function DeltaTag({ v, size = 12 }: { v: number | null; size?: number }) {
 	if (v === null) {
 		return (
-			<span className="font-mono text-bn-text-secondary" style={{ fontSize: size }}>
+			<span className="tabular-nums text-bn-text-secondary" style={{ fontSize: size }}>
 				—
 			</span>
 		);
 	}
 	const up = v >= 0;
 	return (
-		<span className="font-mono font-bold" style={{ fontSize: size, color: up ? POS : NEG }}>
+		<span className="tabular-nums font-bold" style={{ fontSize: size, color: up ? POS : NEG }}>
 			{up ? "▲" : "▼"} {formatSignedWan(v)}
 		</span>
 	);
@@ -223,7 +223,7 @@ export function TrendChart({
 						textAnchor="end"
 						fontSize="9.5"
 						fill={AXIS_TEXT}
-						className="font-mono"
+						className="tabular-nums"
 					>
 						{fmt(Math.round(tv))}
 					</text>
@@ -359,7 +359,7 @@ export function NetBars({
 						textAnchor="end"
 						fontSize="9.5"
 						fill={AXIS_TEXT}
-						className="font-mono"
+						className="tabular-nums"
 					>
 						{formatSignedWan(Math.round(tv))}
 					</text>
@@ -495,7 +495,7 @@ export function RadarChart({
 							fontSize="9.5"
 							fill={missing ? GRID_ZERO : color}
 							fontWeight={missing ? "400" : "700"}
-							className="font-mono"
+							className="tabular-nums"
 						>
 							{a.display}
 						</text>
@@ -566,7 +566,7 @@ export function Heatmap({
 			{/* 底部时间刻度 —— 没有它就看不出热力图横轴跨了多久。 */}
 			<div className="mt-2.5 flex shrink-0">
 				<div className="w-20 shrink-0" />
-				<div className="flex flex-1 justify-between font-mono text-bn-micro text-bn-text-secondary">
+				<div className="flex flex-1 justify-between tabular-nums text-bn-micro text-bn-text-secondary">
 					{heatAxisLabels(days.length).map((label, i) => (
 						// biome-ignore lint/suspicious/noArrayIndexKey: 固定 4 个刻度,位置即身份
 						<span key={i}>{label}</span>

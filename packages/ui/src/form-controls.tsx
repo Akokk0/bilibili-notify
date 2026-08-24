@@ -308,7 +308,7 @@ export function Picker<T extends string | number | boolean>({
 /** 行号徽标。宽度固定,好让两个编辑器的行首在同一条竖线上对齐。 */
 function RowIndex({ n }: { n: number }) {
 	return (
-		<span className="grid h-7.5 w-5.5 place-items-center font-mono text-bn-xs text-bn-text-secondary">
+		<span className="grid h-7.5 w-5.5 place-items-center tabular-nums text-bn-xs text-bn-text-secondary">
 			{n}
 		</span>
 	);

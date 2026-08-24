@@ -100,7 +100,7 @@ export function SoloRoastCard({
 							由女仆依据近{days}日数据评分 · 0–100
 						</div>
 						<div className="mb-2 flex items-baseline gap-1.5">
-							<span className="font-mono text-4xl font-bold leading-none" style={{ color }}>
+							<span className="tabular-nums text-4xl font-bold leading-none" style={{ color }}>
 								{result.score}
 							</span>
 							<span className="text-xs text-bn-text-secondary">/ 100</span>

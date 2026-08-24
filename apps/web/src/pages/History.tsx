@@ -219,7 +219,9 @@ function HistoryRow({
 			}`}
 			style={{ gridTemplateColumns: HISTORY_GRID }}
 		>
-			<span className="font-mono text-bn-xs text-bn-text-tertiary">{relativeTime(entry.ts)}</span>
+			<span className="tabular-nums text-bn-xs text-bn-text-tertiary">
+				{relativeTime(entry.ts)}
+			</span>
 			<Avatar name={upName} color={upColor} size={24} url={upAvatar} />
 			<Pill color={tone} subtle size="sm">
 				{PUSH_KIND_META[entry.source].label}

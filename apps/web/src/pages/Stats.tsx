@@ -291,7 +291,7 @@ function CompareTable({
 										</div>
 									</div>
 								</td>
-								<td className="px-2.5 py-2 text-right font-mono font-bold text-bn-text-primary">
+								<td className="px-2.5 py-2 text-right tabular-nums font-bold text-bn-text-primary">
 									{num(r.fans)}
 								</td>
 								<td className="px-2.5 py-2 text-center">
@@ -307,7 +307,7 @@ function CompareTable({
 									) : (
 										<td
 											key={c.id}
-											className={`px-2.5 py-2 text-right font-mono font-bold${
+											className={`px-2.5 py-2 text-right tabular-nums font-bold${
 												c.color ? "" : " text-bn-text-tertiary"
 											}`}
 											style={c.color ? { color: c.color } : undefined}
@@ -382,7 +382,7 @@ function ContentMix({
 				/>
 				<div className="flex flex-col gap-1">
 					<div className="text-bn-xs text-bn-text-secondary">日均活动</div>
-					<div className="font-mono text-2xl font-bold leading-none" style={{ color: PURPLE }}>
+					<div className="tabular-nums text-2xl font-bold leading-none" style={{ color: PURPLE }}>
 						{coveredDays > 0 ? (coveredTotal / coveredDays).toFixed(1) : "—"}
 					</div>
 					<div className="text-bn-2xs text-bn-text-secondary">
@@ -401,8 +401,8 @@ function ContentMix({
 								style={{ width: `${(v / total) * 100}%`, background: c }}
 							/>
 						</div>
-						<b className="w-6 text-right font-mono text-bn-text-primary">{v}</b>
-						<span className="w-9 text-right font-mono text-bn-text-secondary">
+						<b className="w-6 text-right tabular-nums text-bn-text-primary">{v}</b>
+						<span className="w-9 text-right tabular-nums text-bn-text-secondary">
 							{Math.round((v / total) * 100)}%
 						</span>
 					</div>
@@ -810,7 +810,7 @@ export default function Stats() {
 										{label}
 									</div>
 									<div className="flex items-baseline gap-1">
-										<span className="font-mono text-lg font-bold" style={{ color: PINK }}>
+										<span className="tabular-nums text-lg font-bold" style={{ color: PINK }}>
 											{v}
 										</span>
 										{unit ? (
@@ -853,7 +853,7 @@ export default function Stats() {
 														}}
 													/>
 												</div>
-												<span className="w-9 text-right font-mono font-bold text-bn-text-tertiary">
+												<span className="w-9 text-right tabular-nums font-bold text-bn-text-tertiary">
 													{hours(r.liveHours ?? 0)}h
 												</span>
 											</div>

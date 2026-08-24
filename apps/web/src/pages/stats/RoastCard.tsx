@@ -142,7 +142,7 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 												style={{ width: `${s.score}%`, background: colorOf(s.uid) }}
 											/>
 										</div>
-										<span className="w-7 text-right font-mono font-bold text-bn-text-tertiary">
+										<span className="w-7 text-right tabular-nums font-bold text-bn-text-tertiary">
 											{s.score}
 										</span>
 									</div>

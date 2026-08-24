@@ -117,7 +117,12 @@ export function GlassStatCard({ label, value, suffix, color, pulse, footer }: Gl
 			</div>
 			<div className="flex items-baseline gap-1">
 				<span
-					className="font-mono text-3xl font-bold leading-none tracking-tight"
+					// `tabular-nums` 而不是 `font-mono`:要的一直是**数字等宽**(几张卡并排,
+					// 位数一变宽度就跳),而不是等宽**字体**。写成 font-mono 的代价是这些数字
+					// 吃 `--font-mono` —— 那一档不在皮肤词表里,于是装了自带字体的皮肤只换掉
+					// 周围的字,数字还是系统等宽体,一张卡上两种字体(2026-08-25 主人真机指出)。
+					// 换成字形特性之后字体走 `--font-cjk`(皮肤唯一的字体入口),对齐照旧。
+					className="text-3xl font-bold leading-none tracking-tight tabular-nums"
 					style={{ color }}
 				>
 					{value}

@@ -226,3 +226,45 @@ describe("RailDot 的调用点", () => {
 		expect(railDotTags().length).toBeGreaterThanOrEqual(3);
 	});
 });
+
+/**
+ * 数据展示的数字不许写 `font-mono`。
+ *
+ * 皮肤的字体只有一个入口 —— `--font-cjk`(见 `services/skin.ts` 拼字体栈那段)。
+ * `--font-mono` 不在词表里,也不该在:那一档服务的是**代码与标识符**(日志控制台、
+ * API key 输入框、openid、endpoint),等宽在那里是功能,换成主人上传的像素字体反而
+ * 会散架。
+ *
+ * 可数据可视化那些数字要的从来不是等宽**字体**,而是**数字等宽** —— 几张 KPI 卡
+ * 并排,位数一变宽度就跳。`font-variant-numeric: tabular-nums` 正是干这个的,而且
+ * 字体照走 `--font-cjk`。写成 `font-mono` 的代价真机上很显眼:装了自带字体的皮肤
+ * 只换掉周围的字,数字还是系统等宽体,一张卡上两种字体(2026-08-25 主人指出,统计页
+ * 五张卡、UP 主对比表、概览四张卡全中)。
+ *
+ * 所以这几个文件按「里头的等宽需求全是数字」整份划过来。别处不在此列 —— 见下面
+ * 那条反面对照。
+ */
+describe("数据展示不吃 --font-mono", () => {
+	const DATA_FILES = [
+		"apps/web/src/pages/Stats.tsx",
+		"apps/web/src/pages/Dashboard.tsx",
+		"apps/web/src/pages/stats/charts.tsx",
+		"apps/web/src/pages/stats/RoastCard.tsx",
+		"apps/web/src/pages/stats/SoloRoastCard.tsx",
+		"packages/ui/src/glass.tsx",
+	];
+
+	it("统计与概览那几份里没有 font-mono —— 数字对齐走 tabular-nums", () => {
+		const offenders = DATA_FILES.filter((rel) =>
+			blankComments(readFileSync(join(REPO, rel), "utf8")).includes("font-mono"),
+		);
+		expect(offenders).toEqual([]);
+	});
+
+	it("别处照旧用得上 —— 这条不是「全站禁等宽字体」", () => {
+		// 日志控制台是**代码**,等宽在那里是功能;真被一刀切掉的话这条会红,
+		// 而那正是把上面那条读成「见 font-mono 就删」的后果。
+		const logs = readFileSync(join(REPO, "apps/web/src/pages/Logs.tsx"), "utf8");
+		expect(logs).toContain("font-mono");
+	});
+});
