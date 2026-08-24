@@ -134,6 +134,38 @@ function IconBox({ icon, tint, active }: { icon: ReactNode; tint?: string; activ
 	);
 }
 
+/**
+ * 横条两端的渐隐 + 滚动钮。左右两块此前是两段 14 行的**镜像** —— 差别只有方向词
+ * (left/right、to-r/to-l、内边距对调),改一边忘另一边不会红,只会一头好看一头不。
+ *
+ * 圆角跟着外壳走:外壳是 `rounded-bn-sm`,这层贴在它 1px 描边**里侧**,所以减 1px。
+ * 收编前写死 `[11px]` —— 那是圆角轴(26681d8「每一处圆角都上轴」)之前留下的值,
+ * 那次漏了它,于是皮肤把 radius.card 调到 0 求一身硬直角,唯独这两个角还圆着,
+ * 而且 11px 比外壳的 9.52px 还大,角上会露出一条没被渐隐盖住的缝。
+ */
+function ScrollEdge({ dir, onClick }: { dir: "left" | "right"; onClick: () => void }) {
+	const isLeft = dir === "left";
+	return (
+		<div
+			className={`absolute inset-y-0 z-bn-raised flex items-center from-bn-surface via-bn-surface/85 to-transparent ${
+				isLeft
+					? "left-0 rounded-l-[calc(var(--radius-bn-sm)-1px)] bg-linear-to-r pr-6 pl-1"
+					: "right-0 rounded-r-[calc(var(--radius-bn-sm)-1px)] bg-linear-to-l pr-1 pl-6"
+			}`}
+		>
+			<IconButton
+				icon={<Chevron dir={dir} />}
+				label={isLeft ? "向左滚动" : "向右滚动"}
+				size="lg"
+				tone="accent"
+				shape="pill"
+				surface="filled"
+				onClick={onClick}
+			/>
+		</div>
+	);
+}
+
 export function SectionNav({
 	heading,
 	items,
@@ -254,19 +286,7 @@ export function SectionNav({
 				className="sticky z-bn-local rounded-bn-sm border border-bn-border-subtle bg-bn-surface/70 backdrop-blur-sm xl:hidden"
 			>
 				<div className="relative flex items-center">
-					{edges.left ? (
-						<div className="absolute inset-y-0 left-0 z-bn-raised flex items-center rounded-l-[11px] bg-linear-to-r from-bn-surface via-bn-surface/85 to-transparent pr-6 pl-1">
-							<IconButton
-								icon={<Chevron dir="left" />}
-								label="向左滚动"
-								size="lg"
-								tone="accent"
-								shape="pill"
-								surface="filled"
-								onClick={() => scrollByDir(-1)}
-							/>
-						</div>
-					) : null}
+					{edges.left ? <ScrollEdge dir="left" onClick={() => scrollByDir(-1)} /> : null}
 
 					<div
 						ref={scrollRef}
@@ -300,19 +320,7 @@ export function SectionNav({
 						) : null}
 					</div>
 
-					{edges.right ? (
-						<div className="absolute inset-y-0 right-0 z-bn-raised flex items-center rounded-r-[11px] bg-linear-to-l from-bn-surface via-bn-surface/85 to-transparent pr-1 pl-6">
-							<IconButton
-								icon={<Chevron dir="right" />}
-								label="向右滚动"
-								size="lg"
-								tone="accent"
-								shape="pill"
-								surface="filled"
-								onClick={() => scrollByDir(1)}
-							/>
-						</div>
-					) : null}
+					{edges.right ? <ScrollEdge dir="right" onClick={() => scrollByDir(1)} /> : null}
 				</div>
 			</div>
 		</div>
