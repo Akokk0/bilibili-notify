@@ -1,7 +1,7 @@
 import { Icon, Input, ToneChip } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LOG_LEVEL_TONE } from "../config/log-levels";
+import { LOG_LEVEL_TONE, LOG_LEVEL_TONE_CONSOLE } from "../config/log-levels";
 import { useLogChannel } from "../hooks/useLogChannel";
 import { api } from "../services/api";
 import {
@@ -28,9 +28,12 @@ const LEVELS: ReadonlyArray<LogLineLevel> = ["debug", "info", "warn", "error"];
  * 顶栏两个开关的状态色 —— 与 `LOG_LEVEL_TONE` 的 warn / info **同值但不同义**
  * (暂停=警示、自动滚动=信息),刻意各写各的:改等级配色时不该连带改开关。
  * 同 LEVEL_TONE 一样是内容语义色,不跟主强调色换肤。
+ *
+ * 跟着 2026-08-24 那次一起加深了:它俩与四档等级挤在**同一排**胶囊里,只深一半的话
+ * 那排会一半重一半淡 —— 「各写各的」说的是语义不该耦合,不是值该长得不一样。
  */
-const PAUSED_TONE = "#f2a053";
-const AUTOSCROLL_TONE = "#00AEEC";
+const PAUSED_TONE = "#b45309";
+const AUTOSCROLL_TONE = "#0369a1";
 
 const RENDER_CAP = 800;
 
@@ -240,7 +243,9 @@ export function formatLocalTime(iso: string): string {
 }
 
 function LogRow({ entry }: { entry: LogLineView }) {
-	const tone = LOG_LEVEL_TONE[entry.level];
+	// 控制台那一档 —— 这一行画在 `--color-bn-console-bg`(#0f1115)上,吃的是
+	// 深底那批更亮的值。用浅底那批会当场糊掉(debug 只剩 3.97:1)。
+	const tone = LOG_LEVEL_TONE_CONSOLE[entry.level];
 	const time = formatLocalTime(entry.ts); // yyyy-MM-dd HH:MM:SS.sss(浏览器本地时区)
 	return (
 		<div className="flex gap-2 whitespace-pre-wrap break-all py-0.5 text-bn-console-text">
