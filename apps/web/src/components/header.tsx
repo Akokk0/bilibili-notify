@@ -391,6 +391,24 @@ export function GlassHeader() {
 
 	// 一级导航的选中态判定(见下方 navActive)。
 	const { pathname } = useLocation();
+	/**
+	 * 刚点下的那一格 —— **不等路由**。
+	 *
+	 * `data-bn` 是静态属性,选中态由 pathname 手算;而路由切换有一段缝(真机量到
+	 * ~58ms)。松手那一刻 `:active` 已经失效、`tab-active` 还没挂上,于是像素风皮肤
+	 * 那种「按下位移 3px」的装会弹起来再按回去 —— 主人看到的是点一下抖一下
+	 * (2026-08-24 真机:「按下,松手又弹起又按下」)。
+	 *
+	 * 皮肤修不了这个:CSS 选择器管不到「刚刚被点过」,那一帧元素身上既没有 `:active`
+	 * 也没有 `tab-active`。
+	 *
+	 * 连**点它时的 pathname** 一起记下 —— 于是「路由追上来了没有」是当场比出来的,
+	 * 不必再用一个 effect 去清它。乐观值是**派生**的,存成一份需要同步的状态就得
+	 * 回答「谁负责清、什么时候清」,而那两个答案都会漂。
+	 */
+	const [pressed, setPressed] = useState<{ to: string; at: string } | null>(null);
+	// `at !== pathname` = 路由已经动了,这条乐观值当场作废。
+	const optimistic = pressed?.at === pathname ? pressed.to : null;
 	// 导航条显哪几项、按什么顺序 —— 纯本地偏好,见 config/nav.ts。
 	const hiddenNav = useNavStore((s) => s.hidden);
 	const navOrder = useNavStore((s) => s.order);
@@ -482,7 +500,7 @@ export function GlassHeader() {
 				{shownNav.map((t) => {
 					// data-bn 是静态属性,NavLink 的 isActive 回调塞不进去 —— 选中态自己算。
 					// `end` 语义 = 精确匹配,NAV_ITEMS 的 to 都是静态顶级路径,直接比对等价。
-					const navActive = pathname === t.to;
+					const navActive = (optimistic ?? pathname) === t.to;
 					return (
 						<NavLink
 							key={t.to}
@@ -490,6 +508,13 @@ export function GlassHeader() {
 							end
 							// tab 家族挂点(曾挂 btn,皮肤按钮实底把整排一级导航画成一排按钮)。
 							data-bn={navActive ? "tab tab-active" : "tab"}
+							onClick={(e) => {
+								// 带修饰键的点击是「在新标签打开」—— 这一页的路由压根不变,
+								// 乐观值留在那一格上就会一直指错,而且没有下一次 pathname
+								// 变化来清它。
+								if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+								setPressed({ to: t.to, at: pathname });
+							}}
 							className={`relative flex items-center gap-1.5 px-4 py-2.5 text-bn-base transition ${
 								navActive
 									? "font-bold text-bn-pink"
