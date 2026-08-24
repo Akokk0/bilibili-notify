@@ -267,6 +267,44 @@ export function missingModeOf(manifest: SkinManifest): "light" | "dark" | null {
 /** 套用范围:整套原样过去,还是只过「不分明暗」的那半。 */
 export type SyncScope = "all" | "layout";
 
+/** 「只套版式」这一档里,一个字段的归属。 */
+type SyncKind =
+	/** 整段过去(源没配就把目标那段也删掉 —— 套用是替换)。 */
+	| "layout"
+	/** 一概不过 —— 分明暗的那半。 */
+	| "themed"
+	/** 段里只过点名的这几个子字段,其余留目标那套自己的。 */
+	| { readonly only: readonly string[] };
+
+/**
+ * 每个 mode 字段各归哪一类。
+ *
+ * `satisfies Record<keyof SkinMode, SyncKind>` 就是这张表存在的**全部理由**:
+ * SkinMode 加一个字段,这里编译期立刻红。从前这份分类是手抄在 syncModeTo 里的三段
+ * 代码,于是 railWidth 落地(76d379f)时 schema、编辑器、注入层都接上了,唯独这里
+ * 漏掉 —— 而漏的症状极静:「只套版式」之后两套模式在那一个数上永远对不上,`all`
+ * 那档(整份克隆)却是对的,更难看出是哪儿在作怪。
+ */
+const SYNC_KIND = {
+	// 分明暗的那半。把浅色的文字色盖到深色上,字就变成深色系,在深底上直接看不见。
+	colors: "themed",
+	page: "themed",
+	shadows: "themed",
+	// CSS 与动效也以颜色为主(暗色霓虹边、光斑颜色是必填的颜色列表),脱了色不成立。
+	css: "themed",
+	effects: "themed",
+	// 天生不分明暗的那半。壁纸整段过去 —— 纱色(overlay)自己跟着模式走。
+	wallpaper: "layout",
+	fonts: "layout",
+	radius: "layout",
+	// 左栏宽度是个纯数字,窄屏那条栏根本不用它。
+	railWidth: "layout",
+	// 玻璃只过模糊两档,底色与描边分明暗。
+	glass: { only: ["blur", "strongBlur"] },
+	// 聊天段同理:只过壁纸,背景色留着。
+	chat: { only: ["wallpaper"] },
+} satisfies Record<keyof SkinMode, SyncKind>;
+
 /**
  * 把一套模式的调整套到另一套上。**单向**,源那套一个字不动。
  *
@@ -297,29 +335,46 @@ export function syncModeTo(
 	}
 
 	const next: SkinMode = { ...dst };
-	// 整段过去的三样。源没有就删,套用是替换。
-	for (const key of ["wallpaper", "radius", "fonts"] as const) {
-		if (src[key] === undefined) delete next[key];
-		else next[key] = clone(src[key]);
+	for (const [key, kind] of Object.entries(SYNC_KIND) as Array<[keyof SkinMode, SyncKind]>) {
+		if (kind === "themed") continue;
+		if (kind === "layout") {
+			copyField(next, src, key);
+			continue;
+		}
+		copySubfields(next, src, dst, key, kind.only);
 	}
-	// 左栏宽度归属同理 —— 一个纯数字,天生不分明暗(窄屏那条栏根本不用它)。
-	// 漏了它,「只要版式」之后两套模式就在这一个数上永远对不上,而 `all` 那档
-	// (整份克隆)是对的,于是更难看出是哪儿在作怪。
-	if (src.railWidth === undefined) delete next.railWidth;
-	else next.railWidth = src.railWidth;
-	// 玻璃只过模糊两档,底色与描边是分明暗的。
-	const glass = { ...dst.glass, blur: src.glass?.blur, strongBlur: src.glass?.strongBlur };
-	if (glass.blur === undefined) delete glass.blur;
-	if (glass.strongBlur === undefined) delete glass.strongBlur;
-	if (Object.keys(glass).length > 0) next.glass = glass;
-	else delete next.glass;
-	// 聊天段同理:只过壁纸,背景色留着。
-	const chat = { ...dst.chat, wallpaper: src.chat?.wallpaper && clone(src.chat.wallpaper) };
-	if (chat.wallpaper === undefined) delete chat.wallpaper;
-	if (Object.keys(chat).length > 0) next.chat = chat;
-	else delete next.chat;
 
 	return { ...manifest, modes: { ...manifest.modes, [to]: next } };
+}
+
+/** 整段过去。泛型固定住 K,`next[key] = src[key]` 的类型才对得上。 */
+function copyField<K extends keyof SkinMode>(next: SkinMode, src: SkinMode, key: K): void {
+	const v = src[key];
+	if (v === undefined) delete next[key];
+	else next[key] = JSON.parse(JSON.stringify(v)) as SkinMode[K];
+}
+
+/**
+ * 段里只过点名的几个子字段。
+ *
+ * 目标那套打底,点名的换成源的;源那边没配就把目标的那个也删掉(替换语义一路到底)。
+ * 换完整段空了就把段也删掉 —— 一个 `{}` 会让「这套配过玻璃」看起来是真的。
+ */
+function copySubfields<K extends keyof SkinMode>(
+	next: SkinMode,
+	src: SkinMode,
+	dst: SkinMode,
+	key: K,
+	fields: readonly string[],
+): void {
+	const merged: Record<string, unknown> = { ...(dst[key] as Record<string, unknown> | undefined) };
+	for (const field of fields) {
+		const v = (src[key] as Record<string, unknown> | undefined)?.[field];
+		if (v === undefined) delete merged[field];
+		else merged[field] = JSON.parse(JSON.stringify(v)) as unknown;
+	}
+	if (Object.keys(merged).length > 0) next[key] = merged as unknown as SkinMode[K];
+	else delete next[key];
 }
 
 /** 把已有那套深拷贝到缺失侧(补套的起点是「和现在一样」,再由用户微调)。 */
