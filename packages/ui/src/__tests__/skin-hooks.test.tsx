@@ -247,6 +247,26 @@ describe("Pill 挂 badge(与顶栏状态胶囊同族)", () => {
 		render(<Pill subtle>已暂停</Pill>);
 		expect(hooksOf(screen.getByText("已暂停"))).toEqual(["badge"]);
 	});
+
+	/**
+	 * 语义色**另外露一份给皮肤读**(`--bn-tint`)。皮肤盖不动徽章的底(那会让徽章
+	 * 说谎),但描边时得引用得到它 —— 够不到的话皮肤只能挑一个固定色,而固定色会把
+	 * 语义色整个罩掉。2026-08-24 真机上正是这样:像素风给 badge 画了一圈写死的紫,
+	 * `outline-offset:-2px` 压在徽章内侧,「直播」和「总结」被框成同一个颜色。
+	 */
+	it("语义色同时露成 --bn-tint —— 皮肤顺着它描边,不必挑个固定色盖上去", () => {
+		render(<Pill color="#fb7299">直播</Pill>);
+		expect(screen.getByText("直播").style.getPropertyValue("--bn-tint")).toBe("#fb7299");
+	});
+
+	it("subtle 档同样露 —— 两档的边都该跟着自己的底走", () => {
+		render(
+			<Pill color="#00aeec" subtle>
+				动态
+			</Pill>,
+		);
+		expect(screen.getByText("动态").style.getPropertyValue("--bn-tint")).toBe("#00aeec");
+	});
 });
 
 /**

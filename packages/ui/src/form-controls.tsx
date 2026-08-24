@@ -11,7 +11,7 @@
  * T 系列是设置表单的控件家族(挂点同为 `input`,底同为 `bg-bn-field`)。
  */
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { Icon } from "./icons";
 
 /** 只读态的观感:压暗 + 禁用光标。与 Toggle 的 disabled 同一套语汇。 */
@@ -279,7 +279,14 @@ export function Picker<T extends string | number | boolean>({
 						className={`rounded-sm px-3 py-1 text-bn-xs font-semibold transition ${
 							active ? "bg-bn-surface-strong text-bn-pink shadow-sm" : "text-bn-text-tertiary"
 						}`}
-						style={active && o.color ? { color: o.color } : undefined}
+						// `--bn-tint` 是**给皮肤读的**(同 ToneChip / Pill):选中那段把自己那档
+						// 的语义色露出来,皮肤描边时引用它就不会把几档罩成同一个色。只在选中
+						// 态给 —— 未选中是中性档。
+						style={
+							active && o.color
+								? ({ color: o.color, "--bn-tint": o.color } as CSSProperties)
+								: undefined
+						}
 					>
 						{o.label}
 					</button>

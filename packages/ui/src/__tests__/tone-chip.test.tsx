@@ -41,6 +41,37 @@ describe("ToneChip", () => {
 	});
 
 	/**
+	 * tone 另外**露一份给皮肤读**(`--bn-tint`)。
+	 *
+	 * 这和上一条不矛盾:那条说的是皮肤**盖不动**这个底,这条给的是皮肤**引用得到**
+	 * 这个色。差别很要命 —— 真机上(2026-08-24 主人指出)像素风皮肤给 chip-active
+	 * 画了一圈写死的紫框,`outline-offset:-2px` 正好压在那 1px 语义色边上,于是
+	 * 四档日志等级全被框成同一个紫,「分辨不出颜色来」。皮肤当时**没有别的写法**:
+	 * 它够不到 tone,只能挑一个固定色。
+	 *
+	 * 有了这个变量,皮肤写 `outline:2px solid var(--bn-tint)` 就是顺着语义色描边,
+	 * 而不是把它盖掉。
+	 */
+	it("tone 同时露成 --bn-tint,好让皮肤顺着语义色描边而不是盖掉它", () => {
+		render(
+			<ToneChip tone="#ef4444" active onClick={() => {}}>
+				error
+			</ToneChip>,
+		);
+		expect(chip().style.getPropertyValue("--bn-tint")).toBe("#ef4444");
+	});
+
+	it("只有选中那颗带 —— 未选中是**中性档**,给它染上语义色等于把这一档取消了", () => {
+		render(
+			<ToneChip tone="#ef4444" onClick={() => {}}>
+				error
+			</ToneChip>,
+		);
+		// 同下面那条:未选中态整个不落 inline。变量也算 inline,而这一档本来就该是灰的。
+		expect(chip().getAttribute("style")).toBe(null);
+	});
+
+	/**
 	 * 选中的底与边**刻意留在 inline** —— 皮肤盖不动是设计,不是遗漏。
 	 *
 	 * 站里同期把服务商卡与适配器行的品牌色底拆成了 `--bn-tint` + @utility,好让
@@ -62,8 +93,13 @@ describe("ToneChip", () => {
 		expect(el.style.background).not.toBe("");
 		expect(el.style.borderColor).not.toBe("");
 		// 也别改走那条 tint 工具类 —— 它落在 @layer utilities,皮肤(无层)压得过。
+		//
+		// **只拦工具类,不拦变量。** 这条起初连 `--bn-tint` 不存在也一起钉了,是把
+		// 两件事混成了一件:变量本身不让任何东西可盖,可盖的是「涂法搬进 @utility」
+		// 那一步(见 apps/web 的 bn-tint-row / bn-tint-ring)。光有变量的效果正相反 ——
+		// 皮肤描边时**引用得到**语义色,于是不必再挑一个固定色去盖它。
 		expect(el.className).not.toContain("bn-tint-");
-		expect(el.style.getPropertyValue("--bn-tint")).toBe("");
+		expect(el.style.background).not.toBe("");
 	});
 
 	/**

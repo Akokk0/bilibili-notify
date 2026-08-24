@@ -86,6 +86,29 @@ describe("声明白名单", () => {
 		expect(warnings).toHaveLength(3);
 	});
 
+	/**
+	 * `var(--bn-tint)` 与 `color-mix()` 必须活着出来。
+	 *
+	 * 词表的 badge / chip-active 两档明写着「描边颜色写 `var(--bn-tint)`」——
+	 * 徽章与胶囊各自把自己那个语义色露在这个变量里,皮肤顺着它描边,才不会把
+	 * 「直播是粉的、动态是蓝的」和四档日志等级罩成同一个色(2026-08-24 真机翻的车)。
+	 *
+	 * 这条测试挡的是**静默失效**:清洗层若丢掉这种写法,皮肤照样存得下、构建照样绿,
+	 * 只有真机上那圈描边会变成默认色 —— 也就是那个车再翻一次。
+	 */
+	it("var() 与 color-mix() 放行 —— 词表教皮肤用它们顺着语义色描边", () => {
+		const { css, warnings } = ok(
+			`[data-bn="badge"] {
+				outline: 2px solid var(--bn-tint, #8E6BFF);
+				outline-offset: -2px;
+				box-shadow: 2px 2px 0 0 color-mix(in srgb, var(--bn-tint, #8E6BFF) 45%, transparent);
+			}`,
+		);
+		expect(css).toContain("var(--bn-tint");
+		expect(css).toContain("color-mix(");
+		expect(warnings).toHaveLength(0);
+	});
+
 	it("image-rendering 放行 —— 像素风皮肤靠它关掉浏览器的平滑插值", () => {
 		const { css, warnings } = ok(
 			`[data-bn="page"] {

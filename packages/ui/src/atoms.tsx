@@ -504,9 +504,14 @@ export function Pill({
 	className,
 }: PillProps) {
 	const sizeCls = size === "sm" ? "text-bn-2xs px-1.5 leading-4" : "text-bn-xs px-2 leading-[18px]";
-	const style: CSSProperties = subtle
-		? { background: `color-mix(in srgb, ${color} 12%, transparent)`, color }
-		: { background: color, color: "var(--color-bn-on-solid)" };
+	// `--bn-tint` 同 ToneChip 那条:皮肤盖不动徽章的语义色,但描边时得引用得到它。
+	// 两档都给 —— 实底那档的边也该跟着底走,而不是罩一圈别的颜色。
+	const style: CSSProperties = {
+		...(subtle
+			? { background: `color-mix(in srgb, ${color} 12%, transparent)`, color }
+			: { background: color, color: "var(--color-bn-on-solid)" }),
+		"--bn-tint": color,
+	} as CSSProperties;
 	return (
 		<span
 			// 与顶栏那个状态胶囊同族,共用 `badge` 挂点 —— 皮肤买到的只是造型:底色与
@@ -583,11 +588,16 @@ export function ToneChip({
 	// 色彩识别,真机上比 12% 淡底更醒目,识别度不降反升。
 	// 未选中态整个是静态的,走 class —— inline 没有 `:hover`,写进去这颗胶囊就
 	// 永远没有悬停反馈。
+	// `--bn-tint` 是**给皮肤读的**,不是给这里用的:皮肤盖不动这个底(见上面那段),
+	// 但描边时得引用得到它 —— 否则只能挑一个固定色,而固定色会把语义色整个盖掉
+	// (2026-08-24 真机:四档日志等级被同一圈紫框抹平)。只在选中态给:未选中是
+	// 中性档,染上语义色等于把这一档取消了。
 	const style: CSSProperties | undefined = active
-		? {
+		? ({
 				background: `color-mix(in srgb, ${tone} 12%, transparent)`,
 				borderColor: tone,
-			}
+				"--bn-tint": tone,
+			} as CSSProperties)
 		: undefined;
 	const toneCls = active
 		? "text-bn-text-primary"
