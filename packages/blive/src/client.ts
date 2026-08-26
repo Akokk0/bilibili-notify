@@ -1,0 +1,156 @@
+/**
+ * 直播信息流 WSS 客户端 —— 哑管道。
+ *
+ * 职责边界:连接 + 认证 + 心跳 + 编解码/解析进 `onEvent` 漏斗,仅此而已。
+ * 连接参数(token / host_list / uid / buvid)全部由调用方注入,这里不发任何
+ * HTTP;不做内部重连 —— 断线重连、退避、放弃全是 RoomSession 的策略。
+ *
+ * close() 之后保证静默:不再发包、不再上报任何事件(包括主动关闭的 close
+ * 回声),上层不需要「有意关闭」记账。
+ */
+
+import WebSocket from "ws";
+import { decodeFrames, encodePacket, WsOp } from "./codec.js";
+import type { LiveEvent } from "./events.js";
+import { parseCommand } from "./parser.js";
+
+/** 客户端消费的 socket 最小面(ws 的子集),测试注入假实现。 */
+export interface SocketLike {
+	binaryType: string;
+	on(event: string, fn: (...args: unknown[]) => void): void;
+	send(data: Uint8Array): void;
+	close(): void;
+}
+
+export interface DanmuHost {
+	host: string;
+	wssPort: number;
+}
+
+export interface LiveConnectOptions {
+	/** 真实长房号(短号由调用方经预检解析)。 */
+	roomId: number;
+	/** 登录账号 uid。 */
+	uid: number;
+	/** getDanmuInfo 返回的连接 token。 */
+	token: string;
+	/** 真实 buvid3(finger/spi 或 cookie 罐),进认证包。 */
+	buvid: string;
+	/** getDanmuInfo 返回的服务器列表,取首项。 */
+	hostList: DanmuHost[];
+	cookieHeader?: string;
+	userAgent?: string;
+	onEvent: (ev: LiveEvent) => void;
+	/** 注入点:测试/定制 socket 工厂。缺省用 ws。 */
+	createSocket?: (url: string, headers: Record<string, string>) => SocketLike;
+	/** 心跳节奏,缺省 30s。 */
+	heartbeatIntervalMs?: number;
+}
+
+export interface LiveClient {
+	readonly closed: boolean;
+	close(): void;
+}
+
+const DEFAULT_HEARTBEAT_MS = 30_000;
+
+const DEFAULT_USER_AGENT =
+	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+function defaultCreateSocket(url: string, headers: Record<string, string>): SocketLike {
+	return new WebSocket(url, { headers }) as unknown as SocketLike;
+}
+
+/** 建立一条直播间信息流连接。 */
+export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
+	const first = opts.hostList[0];
+	if (!first) throw new Error("hostList 为空");
+	const url = `wss://${first.host}${first.wssPort === 443 ? "" : `:${first.wssPort}`}/sub`;
+	const headers: Record<string, string> = {};
+	if (opts.cookieHeader) headers.Cookie = opts.cookieHeader;
+	headers["User-Agent"] = opts.userAgent ?? DEFAULT_USER_AGENT;
+
+	const socket = (opts.createSocket ?? defaultCreateSocket)(url, headers);
+	socket.binaryType = "nodebuffer";
+
+	let closed = false;
+	let heartbeatTimer: NodeJS.Timeout | undefined;
+
+	const emit = (ev: LiveEvent): void => {
+		if (closed) return;
+		opts.onEvent(ev);
+	};
+
+	const sendHeartbeat = (): void => {
+		if (closed) return;
+		socket.send(encodePacket(WsOp.Heartbeat, {}));
+	};
+
+	socket.on("open", () => {
+		if (closed) return;
+		emit({ kind: "open" });
+		socket.send(
+			encodePacket(WsOp.Auth, {
+				uid: opts.uid,
+				roomid: opts.roomId,
+				protover: 3,
+				platform: "web",
+				type: 2,
+				key: opts.token,
+				buvid: opts.buvid,
+			}),
+		);
+	});
+
+	socket.on("message", (data) => {
+		if (closed) return;
+		const bytes = data instanceof Uint8Array ? data : new Uint8Array(data as ArrayBufferLike);
+		for (const packet of decodeFrames(bytes)) {
+			if (packet.op === WsOp.AuthReply) {
+				const code = (packet.body as { code?: number } | null)?.code ?? 0;
+				if (code === 0) {
+					emit({ kind: "auth-ok" });
+					sendHeartbeat();
+					heartbeatTimer = setInterval(
+						sendHeartbeat,
+						opts.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_MS,
+					);
+				} else {
+					emit({ kind: "auth-failed", code });
+				}
+				continue;
+			}
+			if (packet.op === WsOp.HeartbeatReply) {
+				emit({ kind: "heartbeat", popularity: packet.body as number });
+				continue;
+			}
+			if (packet.op === WsOp.Message) {
+				emit(parseCommand(packet.body));
+			}
+		}
+	});
+
+	socket.on("error", (err) => {
+		emit({ kind: "error", error: err instanceof Error ? err : new Error(String(err)) });
+	});
+
+	socket.on("close", (code) => {
+		if (closed) return;
+		if (heartbeatTimer) clearInterval(heartbeatTimer);
+		heartbeatTimer = undefined;
+		emit({ kind: "closed", code: typeof code === "number" ? code : undefined });
+	});
+
+	return {
+		get closed() {
+			return closed;
+		},
+		close() {
+			if (closed) return;
+			closed = true;
+			if (heartbeatTimer) clearInterval(heartbeatTimer);
+			heartbeatTimer = undefined;
+			socket.close();
+		},
+	};
+}
