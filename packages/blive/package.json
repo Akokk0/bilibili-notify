@@ -1,0 +1,44 @@
+{
+	"name": "@bilibili-notify/blive",
+	"private": true,
+	"version": "0.1.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Akokk0/bilibili-notify"
+	},
+	"author": {
+		"name": "Akokko",
+		"email": "admin@akokko.com"
+	},
+	"description": "自实现的 B 站直播信息流 WSS 客户端：协议编解码 + 命令解析 + 哑管道连接（@bilibili-notify/blive）",
+	"type": "module",
+	"files": [
+		"lib"
+	],
+	"license": "MIT",
+	"main": "./lib/index.cjs",
+	"module": "./lib/index.mjs",
+	"types": "./lib/index.d.cts",
+	"exports": {
+		".": {
+			"import": "./lib/index.mjs",
+			"require": "./lib/index.cjs"
+		},
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"dev": "vp pack --watch",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"protobufjs": "^8.0.0",
+		"ws": "^8.18.0"
+	},
+	"devDependencies": {
+		"@types/ws": "^8.5.12"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	}
+}

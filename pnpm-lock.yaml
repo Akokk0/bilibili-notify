@@ -413,6 +413,19 @@ importers:
         specifier: ^1.5.6
         version: 1.5.6
 
+  packages/blive:
+    dependencies:
+      protobufjs:
+        specifier: ^8.0.0
+        version: 8.0.3
+      ws:
+        specifier: ^8.18.0
+        version: 8.20.1
+    devDependencies:
+      '@types/ws':
+        specifier: ^8.5.12
+        version: 8.18.1
+
   packages/dynamic:
     dependencies:
       '@bilibili-notify/ai':
