@@ -79,19 +79,22 @@ function collectPackets(data: Uint8Array, out: DecodedPacket[]): void {
 		const body = data.subarray(offset + HEADER_LENGTH, offset + packetLength);
 		offset += packetLength;
 
-		if (version === WsVersion.Zlib) {
-			collectPackets(inflateSync(body), out);
-			continue;
-		}
-		if (version === WsVersion.Brotli) {
-			collectPackets(brotliDecompressSync(body), out);
-			continue;
-		}
-		if (op === WsOp.HeartbeatReply) {
-			out.push({ op, body: new DataView(body.buffer, body.byteOffset).getUint32(0) });
-			continue;
-		}
+		// 解压失败 / body 缺损 / JSON 坏掉的包一律丢弃 —— codec 保持纯函数不抛,
+		// 坏包交给上层以「没收到」处理(这里抛出去会顺着 ws 回调变 uncaughtException)。
 		try {
+			if (version === WsVersion.Zlib) {
+				collectPackets(inflateSync(body), out);
+				continue;
+			}
+			if (version === WsVersion.Brotli) {
+				collectPackets(brotliDecompressSync(body), out);
+				continue;
+			}
+			if (op === WsOp.HeartbeatReply) {
+				if (body.length < 4) continue;
+				out.push({ op, body: new DataView(body.buffer, body.byteOffset).getUint32(0) });
+				continue;
+			}
 			out.push({ op, body: JSON.parse(textDecoder.decode(body)) });
 		} catch {
 			// 坏包丢弃

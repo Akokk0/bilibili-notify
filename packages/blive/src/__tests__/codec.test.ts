@@ -107,6 +107,30 @@ describe("decodeFrames(真实录制帧)", () => {
 		expect(decodeFrames(outer)).toEqual([{ op: WsOp.Message, body: { cmd: "TEST_ZLIB" } }]);
 	});
 
+	it("心跳回执 body 不足 4 字节 → 丢弃该包,不抛 RangeError", () => {
+		// 恶意/损坏帧:头部合法但 body 为空
+		const bad = new Uint8Array(16);
+		const view = new DataView(bad.buffer);
+		view.setUint32(0, 16);
+		view.setUint16(4, 16);
+		view.setUint16(6, 1);
+		view.setUint32(8, 3);
+
+		expect(decodeFrames(bad)).toEqual([]);
+	});
+
+	it("压缩容器解不开 → 丢弃该包,不抛(交给上层当没收到)", () => {
+		const bad = new Uint8Array(20);
+		const view = new DataView(bad.buffer);
+		view.setUint32(0, 20);
+		view.setUint16(4, 16);
+		view.setUint16(6, 3);
+		view.setUint32(8, 5);
+		// body 是 4 字节垃圾,brotli 解压必然失败
+
+		expect(decodeFrames(bad)).toEqual([]);
+	});
+
 	it("一条 WS 消息可拼多个顶层包,按包长逐个切", () => {
 		const hb = b64(frames.heartbeatReply);
 		const auth = b64(frames.authReply);
