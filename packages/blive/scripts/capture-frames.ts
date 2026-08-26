@@ -65,7 +65,10 @@ if (!cookieData) {
 
 const api = new BilibiliAPI({ serviceCtx, config: {} });
 await api.start();
-await api.loadCookies(cookieData);
+// 只读铁律:绝不传 refreshToken —— loadCookies 会 fire-and-forget 触发 cookie
+// 刷新舞步(RSA 轮换),旧 cookie 被 B 站作废而新 cookie 只在本进程内存里,
+// 脚本一退出登录态就死。2026-08-27 就这样弄丢过一次主人的扫码登录。
+await api.loadCookies({ ...cookieData, refreshToken: undefined as unknown as string });
 
 const myself = await api.getMyselfInfoCached();
 if (myself.code !== 0 || !myself.data) {

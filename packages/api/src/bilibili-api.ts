@@ -127,6 +127,9 @@ export class BilibiliAPI {
 	 */
 	private readonly selfInfoCache: SelfInfoCache = createSelfInfoCache(this);
 
+	/** finger/spi 的 buvid3 进程内缓存(设备指纹,不随账号变)。 */
+	private buvid3Cache = "";
+
 	constructor(opts: BilibiliAPIOptions) {
 		this.serviceCtx = opts.serviceCtx;
 		this.config = opts.config;
@@ -778,6 +781,29 @@ export class BilibiliAPI {
 			`${EP.GET_LIVE_ROOM_INFO}?room_id=${encodeURIComponent(roomId)}`,
 			"getLiveRoomInfo",
 		);
+	}
+
+	/**
+	 * 真 buvid3(设备指纹,与登录态无关)。弹幕连接认证包要用它 —— cookie 罐里那条
+	 * 是 loadCookies 填的占位假值,不能进认证包。成功后进程内缓存;失败返回空串
+	 * 且不缓存(认证包缺 buvid 仍可尝试,下次调用重试)。
+	 */
+	async getBuvid3(): Promise<string> {
+		if (this.buvid3Cache) return this.buvid3Cache;
+		try {
+			const res = await this.getJson<{ code: number; data?: { b_3?: string } }>(
+				EP.GET_FINGER_SPI,
+				"getBuvid3",
+			);
+			const b3 = res?.data?.b_3;
+			if (typeof b3 === "string" && b3) {
+				this.buvid3Cache = b3;
+				return b3;
+			}
+		} catch (e) {
+			this.logger.warn(`[conn] finger/spi 获取 buvid3 失败: ${(e as Error).message}`);
+		}
+		return "";
 	}
 
 	async getMasterInfo(uid: string): Promise<MasterInfoData> {

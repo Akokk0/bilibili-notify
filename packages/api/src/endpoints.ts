@@ -47,3 +47,4 @@ export const GET_USER_UPSTAT = "https://api.bilibili.com/x/space/upstat";
 export const GET_USER_NAVNUM = "https://api.bilibili.com/x/space/navnum";
 export const GET_USER_VIDEOS = "https://api.bilibili.com/x/space/wbi/arc/search";
 export const SEARCH_BY_TYPE = "https://api.bilibili.com/x/web-interface/wbi/search/type";
+export const GET_FINGER_SPI = "https://api.bilibili.com/x/frontend/finger/spi";
