@@ -179,6 +179,11 @@ export class BilibiliAPI {
 		}
 	}
 
+	/** 当前生效的 User-Agent(用户配置优先,缺省回退内置)。弹幕 WSS 建连复用,保持与 HTTP 同指纹。 */
+	getUserAgent(): string {
+		return this.config.userAgent?.trim() ? this.config.userAgent : this.browserIdentity.userAgent;
+	}
+
 	// ---- Initialization ----
 
 	private initClient(): void {

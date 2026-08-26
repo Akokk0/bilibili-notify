@@ -1,4 +1,4 @@
-import { GuardLevel } from "blive-message-listener";
+import { GuardLevel } from "@bilibili-notify/blive";
 
 // ── 颜色数据 ──────────────────────────────────────────────────────────────────
 

@@ -752,9 +752,9 @@ describe("RoomSession.handleLiveEnd — 消息版式", () => {
 // ---------------------------------------------------------------------------
 // onUserAction —— 特别关注用户进房
 //
-// 数据源是 blive 的 onUserAction(action: enter/follow/share/like),不再是
-// INTERACT_WORD_V2 原始帧 + protobuf 解码:后者依赖一份仓库里从未存在的
-// .proto schema,`protobuf.load` 必然抛错降级,该特性实际上从来没生效过。
+// 数据源是 @bilibili-notify/blive 解析出的 user-action 事件({action, user}),
+// 且只由 INTERACT_WORD_V2 一帧独供 —— ENTRY_EFFECT / v1 INTERACT_WORD 在 parser
+// 层就走 raw,不会产出 user-action(舰长进房重复推的旧 bug 由 parser 测试钉住)。
 // ---------------------------------------------------------------------------
 
 function makeSpecialUserSub() {
@@ -768,18 +768,8 @@ function makeSpecialUserSub() {
 	});
 }
 
-/**
- * blive 把 **四个**上游事件全部汇流进同一个 `onUserAction` 回调:
- * `INTERACT_WORD_V2` / `INTERACT_WORD`(v1) / `ENTRY_EFFECT` / `LIKE_INFO_V3_CLICK`。
- * 其中前三个都会产出 `action: "enter"`(ENTRY_EFFECT 是舰长进场特效,parser 里硬编码
- * 成 "enter"),所以只看 `action` 会让一个舰长身份的特别关注用户进一次房被推两次。
- * `type` 是唯一能把它们区分开的字段——测试必须建模它,否则这个 bug 测不出来。
- */
-function enterMsg(uid: number, uname = "特别用户", type = "INTERACT_WORD_V2") {
-	return {
-		type,
-		body: { user: { uid, uname }, action: "enter" as const, timestamp: 1_700_000_000_000 },
-	};
+function enterEvent(uid: number, uname = "特别用户") {
+	return { action: "enter" as const, user: { uid, uname } };
 }
 
 describe("RoomSession.onUserAction", () => {
@@ -790,7 +780,7 @@ describe("RoomSession.onUserAction", () => {
 		);
 		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
 
-		await s.onUserAction(enterMsg(42));
+		await s.onUserAction(enterEvent(42));
 
 		expect(m.hasTargets).toHaveBeenCalledWith(expect.anything(), "specialUserEnter");
 		expect(m.renderSpecialUserEnter).toHaveBeenCalledTimes(1);
@@ -804,43 +794,19 @@ describe("RoomSession.onUserAction", () => {
 		m.hasTargets.mockReturnValue(true);
 		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
 
-		await s.onUserAction(enterMsg(42));
+		await s.onUserAction(enterEvent(42));
 
 		expect(m.safeBroadcast).toHaveBeenCalledTimes(1);
 	});
 
-	it("非进房动作(关注 / 点赞 / 分享)→ 不推送", async () => {
+	it("非进房动作(关注 / 分享 / 未知)→ 不推送", async () => {
 		const { ctx, m } = makeCtx();
 		m.hasTargets.mockReturnValue(true);
 		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
 
-		for (const action of ["follow", "like", "share", "unknown"] as const) {
-			const msg = enterMsg(42);
-			await s.onUserAction({ ...msg, body: { ...msg.body, action } });
+		for (const action of ["follow", "share", "unknown"] as const) {
+			await s.onUserAction({ ...enterEvent(42), action });
 		}
-
-		expect(m.safeBroadcast).not.toHaveBeenCalled();
-	});
-
-	it("舰长进场特效(ENTRY_EFFECT)→ 不推送,避免与 INTERACT_WORD_V2 对同一次进房重复推", async () => {
-		const { ctx, m } = makeCtx();
-		m.hasTargets.mockReturnValue(true);
-		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
-
-		// 同一个舰长进一次房,B 站会同时下发 INTERACT_WORD_V2 与 ENTRY_EFFECT,
-		// 两帧都被 blive 解析成 action: "enter" 塞进 onUserAction。
-		await s.onUserAction(enterMsg(42));
-		await s.onUserAction(enterMsg(42, "", "ENTRY_EFFECT"));
-
-		expect(m.safeBroadcast).toHaveBeenCalledTimes(1);
-	});
-
-	it("旧版进房帧(INTERACT_WORD v1)→ 不推送", async () => {
-		const { ctx, m } = makeCtx();
-		m.hasTargets.mockReturnValue(true);
-		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
-
-		await s.onUserAction(enterMsg(42, "特别用户", "INTERACT_WORD"));
 
 		expect(m.safeBroadcast).not.toHaveBeenCalled();
 	});
@@ -850,7 +816,7 @@ describe("RoomSession.onUserAction", () => {
 		m.hasTargets.mockReturnValue(true);
 		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
 
-		await s.onUserAction(enterMsg(999, "路人"));
+		await s.onUserAction(enterEvent(999, "路人"));
 
 		expect(m.safeBroadcast).not.toHaveBeenCalled();
 	});
@@ -860,7 +826,7 @@ describe("RoomSession.onUserAction", () => {
 		m.hasTargets.mockReturnValue(false);
 		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
 
-		await s.onUserAction(enterMsg(42));
+		await s.onUserAction(enterEvent(42));
 
 		expect(m.renderSpecialUserEnter).not.toHaveBeenCalled();
 		expect(m.safeBroadcast).not.toHaveBeenCalled();

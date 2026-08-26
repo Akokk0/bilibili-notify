@@ -1,6 +1,6 @@
 import type { LiveRoomInfo, MasterInfoData, MySelfInfoData } from "@bilibili-notify/api";
+import { connectLiveRoom, type DanmuHost, type LiveEvent } from "@bilibili-notify/blive";
 import { type MessageKindLayout, planMessageGroups } from "@bilibili-notify/internal";
-import { type MsgHandler, startListen } from "blive-message-listener";
 import { DateTime } from "luxon";
 import { LivePushType, type SubItemView } from "./push-like";
 import { RoomContextBase } from "./room-context";
@@ -21,6 +21,20 @@ export class LiveRoomAccessDeniedError extends Error {
 	constructor(readonly reason: string) {
 		super(`弹幕连接不可用：${reason}，可能是加密/付费/测试房或当前账号无权限访问`);
 		this.name = "LiveRoomAccessDeniedError";
+	}
+}
+
+/**
+ * 预检 getDanmuInfo 被 -352 风控拦截。瞬时风控不是永久拒绝:调用方应走**长尾**
+ * 退避重试预检(分钟级,不放弃房间),而不是消耗 WS 错误那条秒级重连梯子。
+ *
+ * 旧路径(blive 库时代)是「回退直连,让库用自己的指纹再试」;自实现后 HTTP 只有
+ * 我们这一套指纹,没 token 连不上,回退直连已无意义。
+ */
+export class LiveRoomPreflightBlockedError extends Error {
+	constructor(readonly reason: string) {
+		super(`弹幕连接预检被风控拦截：${reason}`);
+		this.name = "LiveRoomPreflightBlockedError";
 	}
 }
 
@@ -64,11 +78,13 @@ export class RoomContext extends RoomContextBase {
 	 * this call — either freshly created OR already present (the latter lets a
 	 * reconnect that races with a backoff-window restore treat the room as
 	 * recovered). 可重试的 setup 失败返回 `false`;B 站明确拒绝弹幕连接时抛
-	 * {@link LiveRoomAccessDeniedError},让调用方停止监测,不要把受限房当瞬时抖动重连。
+	 * {@link LiveRoomAccessDeniedError},让调用方停止监测,不要把受限房当瞬时抖动重连;
+	 * 预检被 -352 风控拦截时抛 {@link LiveRoomPreflightBlockedError},调用方走长尾
+	 * 退避重试预检(每次重试都会重新拿 token,顺带修掉旧库复用过期 token 的暗雷)。
 	 */
 	async startLiveRoomListener(
 		roomId: string,
-		handler: MsgHandler,
+		onEvent: (ev: LiveEvent) => void,
 		shouldAbort?: () => boolean,
 	): Promise<boolean> {
 		// ②6:per-session 取消探针。此方法只认 engine 级 isDisposed(),感知不到
@@ -87,7 +103,6 @@ export class RoomContext extends RoomContextBase {
 			this.logger.warn(`[conn] 直播间 [${roomId}] 连接已存在，跳过创建`);
 			return true;
 		}
-		this.consumeIntentionalClose(roomId);
 
 		let danmuInfo: LiveRoomDanmuInfo;
 		try {
@@ -99,13 +114,18 @@ export class RoomContext extends RoomContextBase {
 		}
 		const fallbackReason = describeLiveRoomDanmuPreflightFallback(danmuInfo);
 		if (fallbackReason) {
-			this.logger.warn(
-				`[conn] 直播间 [${roomId}] 弹幕连接预检被风控拦截：${fallbackReason}，回退到直接建连`,
-			);
+			throw new LiveRoomPreflightBlockedError(fallbackReason);
 		}
 		const deniedReason = describeLiveRoomDanmuAccessDenied(danmuInfo);
 		if (deniedReason) {
 			throw new LiveRoomAccessDeniedError(deniedReason);
+		}
+		// describeLiveRoomDanmuAccessDenied 已保证 token / host_list 非空
+		const token = this.readDanmuToken(danmuInfo);
+		const hostList = this.readDanmuHosts(danmuInfo);
+		if (!token || hostList.length === 0) {
+			this.logger.warn(`[conn] 直播间 [${roomId}] 弹幕连接信息不完整,视为本轮失败`);
+			return false;
 		}
 		if (aborted()) return false;
 
@@ -128,10 +148,21 @@ export class RoomContext extends RoomContextBase {
 			this.emitEngineError(`[${roomId}] 获取个人信息失败 code=${mySelfInfo.code}`);
 			return false;
 		}
+		// 真 buvid3(设备指纹)进认证包;cookie 罐里那条是占位假值。失败返回空串,
+		// 认证包缺 buvid 仍可尝试。
+		const buvid = await this.api.getBuvid3();
 		if (aborted()) return false;
 
-		const listener = startListen(roomIdNum, handler, {
-			ws: { headers: { Cookie: cookiesStr }, uid: mySelfInfo.data.mid },
+		const listener = connectLiveRoom({
+			// sub.roomId 来自主播信息解析,已是真实长房号(短号在这里连预检都过不了)
+			roomId: roomIdNum,
+			uid: mySelfInfo.data.mid,
+			token,
+			buvid,
+			hostList,
+			cookieHeader: cookiesStr,
+			userAgent: this.api.getUserAgent(),
+			onEvent,
 		});
 		if (aborted()) {
 			listener.close();
@@ -141,6 +172,23 @@ export class RoomContext extends RoomContextBase {
 		this.logger.info(`[conn] 直播间 [${roomId}] 连接已建立`);
 		this.logSideEffectState(`listener:created room=${roomId}`);
 		return true;
+	}
+
+	private readDanmuToken(info: LiveRoomDanmuInfo): string {
+		const token = info.data?.token;
+		return typeof token === "string" ? token.trim() : "";
+	}
+
+	private readDanmuHosts(info: LiveRoomDanmuInfo): DanmuHost[] {
+		const raw = Array.isArray(info.data?.host_list) ? info.data.host_list : [];
+		const hosts: DanmuHost[] = [];
+		for (const entry of raw) {
+			const h = entry as { host?: unknown; wss_port?: unknown };
+			if (typeof h.host === "string" && h.host && typeof h.wss_port === "number") {
+				hosts.push({ host: h.host, wssPort: h.wss_port });
+			}
+		}
+		return hosts;
 	}
 
 	/** Fetch live-room info; on failure, notifies admin + tears down this room. */

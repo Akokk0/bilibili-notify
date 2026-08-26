@@ -1,9 +1,13 @@
 import type { LiveRoomInfo } from "@bilibili-notify/api";
+import type { LiveEvent } from "@bilibili-notify/blive";
 import type { CardKind, Disposable } from "@bilibili-notify/internal";
-import type { MsgHandler } from "blive-message-listener";
 import { DateTime } from "luxon";
 import { type CustomCardStyleLike, LivePushType, type SubItemView } from "./push-like";
-import { LiveRoomAccessDeniedError, type RoomContext } from "./room-helpers";
+import {
+	LiveRoomAccessDeniedError,
+	LiveRoomPreflightBlockedError,
+	type RoomContext,
+} from "./room-helpers";
 import { parseStopWords } from "./stop-words";
 import { buildRoomLink } from "./template-renderer";
 import { type LiveData, LiveType, type MasterInfo } from "./types";
@@ -32,6 +36,13 @@ export abstract class RoomSessionBase {
 	protected liveRoomInfo: LiveRoomInfo["data"] | undefined;
 	protected masterInfo: MasterInfo | undefined;
 	protected readonly liveData: LiveData = { likedNum: "0" };
+
+	/**
+	 * 初始房态流程(bootstrapRoomState:拉房间/主播信息、已在播检测、restartPush)
+	 * 是否已完整跑过。预检被风控挡在 bootstrap 门外、事后经长尾重试连上的房间,
+	 * 这里仍是 false —— 重连成功路径据此补跑,而不是误闯「重连核对」分支。
+	 */
+	protected bootstrapped = false;
 
 	protected pushAtTimeTimer: Disposable | null = null;
 	protected lastLiveStart = 0;
@@ -289,11 +300,20 @@ export abstract class RoomSessionBase {
 		// 但无 WS,永不收弹幕 / onLiveEnd。建不起来即同"获取信息失败"一并放弃。
 		let listening = false;
 		try {
-			listening = await this.ctx.startLiveRoomListener(this.sub.roomId, this.buildHandler());
+			listening = await this.ctx.startLiveRoomListener(this.sub.roomId, this.buildEventHandler());
 		} catch (e) {
 			if (e instanceof LiveRoomAccessDeniedError) {
 				this.onMonitoringStopped();
 				this.ctx.stopMonitoring(e.message, this.sub.roomId);
+				return;
+			}
+			// 预检被 -352 风控拦截:瞬时风控不放弃房间,交给子类的长尾退避重试
+			// (每轮重新预检拿新 token)。连上后由重连成功路径补跑 bootstrapRoomState。
+			if (e instanceof LiveRoomPreflightBlockedError) {
+				this.ctx.logger.warn(
+					`[conn] 直播间 [${this.sub.roomId}] ${e.message},进入长尾重试,不放弃监测`,
+				);
+				this.onPreflightBlocked();
 				return;
 			}
 			throw e;
@@ -319,8 +339,12 @@ export abstract class RoomSessionBase {
 		}
 	}
 
-	/** {@link bootstrap} 装好 listener 之后的部分,整段跑在「翻成在播」窗口里。 */
-	private async bootstrapRoomState(): Promise<void> {
+	/**
+	 * {@link bootstrap} 装好 listener 之后的部分,整段跑在「翻成在播」窗口里。
+	 * protected:预检被风控挡下再经长尾重试连上的房间,从没跑过这段 —— 重连成功
+	 * 路径据 `liveRoomInfo === undefined` 识别后补跑(含已在播检测与 restartPush)。
+	 */
+	protected async bootstrapRoomState(): Promise<void> {
 		if (
 			!(await this.useLiveRoomInfo(LiveType.FirstLiveBroadcast)) ||
 			!(await this.useMasterInfo(LiveType.FirstLiveBroadcast)) ||
@@ -334,6 +358,7 @@ export abstract class RoomSessionBase {
 		}
 
 		this.onListenerStarted();
+		this.bootstrapped = true;
 		this.ctx.logger.debug(`[stat] 当前粉丝数：${this.masterInfo.liveOpenFollowerNum}`);
 
 		if (this.liveRoomInfo.live_status === 1) {
@@ -390,8 +415,11 @@ export abstract class RoomSessionBase {
 		}
 	}
 
-	/** Build the platform-specific {@link MsgHandler}; provided by the subclass. */
-	protected abstract buildHandler(): MsgHandler;
+	/** Build the single-callback event funnel for the WS client; provided by the subclass. */
+	protected abstract buildEventHandler(): (ev: LiveEvent) => void;
+
+	/** Hook:bootstrap 期预检被 -352 拦截时进入长尾重试;由子类实现(基类无重连设施)。 */
+	protected onPreflightBlocked(): void {}
 
 	/** Hook for subclass-owned connection-health bookkeeping after listener bootstrap succeeds. */
 	protected onListenerStarted(): void {}

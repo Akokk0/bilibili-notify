@@ -1,5 +1,6 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { GuardLevel } from "@bilibili-notify/blive";
 import type {
 	CardBlock,
 	Disposable,
@@ -7,7 +8,6 @@ import type {
 	Logger,
 	ServiceContext,
 } from "@bilibili-notify/internal";
-import { GuardLevel } from "blive-message-listener";
 import { JSDOM } from "jsdom";
 import { DateTime } from "luxon";
 import type { PuppeteerLike } from "./puppeteer";

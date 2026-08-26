@@ -110,6 +110,17 @@ describe("parseCommand(降级路径)", () => {
 		});
 	});
 
+	it("ENTRY_EFFECT / v1 INTERACT_WORD 不产出 user-action —— 进房事件由 V2 一帧独供", () => {
+		// 舰长进一次房 B 站会同时发 INTERACT_WORD_V2 与 ENTRY_EFFECT;blive 库把
+		// 两帧都解析成 action:"enter",特别关注进房被推两次。这里钉死:只有 V2
+		// 产出 user-action,别的进房形态一律 raw。别把 ENTRY_EFFECT 加回解析器。
+		const entry = { cmd: "ENTRY_EFFECT", data: { uid: 42, copy_writing: "欢迎舰长" } };
+		const v1 = { cmd: "INTERACT_WORD", data: { uid: 42, uname: "舰长", msg_type: 1 } };
+
+		expect(parseCommand(entry).kind).toBe("raw");
+		expect(parseCommand(v1).kind).toBe("raw");
+	});
+
 	it("认识的命令但形状缺损 → raw,不抛", () => {
 		expect(parseCommand({ cmd: "DANMU_MSG" })).toMatchObject({ kind: "raw", cmd: "DANMU_MSG" });
 		expect(

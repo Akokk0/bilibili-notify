@@ -1,7 +1,7 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
+import { GuardLevel, type LiveClient } from "@bilibili-notify/blive";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import type { Logger, MessageKindLayout, ServiceContext } from "@bilibili-notify/internal";
-import { GuardLevel, type MessageListener } from "blive-message-listener";
 import type { LiveContentBuilder } from "./content-builder";
 import type { DanmakuCollector } from "./danmaku-collector";
 import type { LiveSummaryRequester } from "./live-summary-requester";
@@ -169,12 +169,10 @@ export class RoomContextBase {
 
 	config: ListenerManagerConfig;
 
-	readonly listenerRecord: Record<string, MessageListener> = {};
+	readonly listenerRecord: Record<string, LiveClient> = {};
 	readonly livePushTimerManager: Map<string, () => void> = new Map();
 
 	private disposed = false;
-	/** stopMonitoring 主动关闭 listener 时置位;RoomSession.onClose 消费后不做自愈重连。 */
-	private readonly intentionalCloseRooms = new Set<string>();
 	private readonly instanceId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 	constructor(opts: RoomContextOptions) {
@@ -216,12 +214,6 @@ export class RoomContextBase {
 	 */
 	emitViewers(uid: string, viewers: string): void {
 		this._emitViewers?.(uid, viewers);
-	}
-
-	consumeIntentionalClose(roomId: string): boolean {
-		const hit = this.intentionalCloseRooms.has(roomId);
-		this.intentionalCloseRooms.delete(roomId);
-		return hit;
 	}
 
 	/** 受 `config.imageEnabled` 门控的渲染器视图;关闭时返回 null。 */
@@ -273,16 +265,17 @@ export class RoomContextBase {
 	closeListener(roomId: string): void {
 		const listener = this.listenerRecord[roomId];
 		if (!listener) {
-			this.intentionalCloseRooms.delete(roomId);
 			this.logger.debug(`[conn] 直播间 [${roomId}] 连接不存在，跳过关闭`);
 			return;
 		}
 		if (listener.closed) {
-			this.intentionalCloseRooms.delete(roomId);
-			this.logger.debug(`[conn] 直播间 [${roomId}] 连接已被远端断开`);
+			this.logger.debug(`[conn] 直播间 [${roomId}] 连接已主动关闭过`);
 			delete this.listenerRecord[roomId];
 			return;
 		}
+		// close() 之后客户端保证静默(连 close 回声都不会上报),不需要再记
+		// 「有意关闭」的账 —— 旧库会把主动关闭的 onClose 也派发出来,只能靠
+		// intentionalCloseRooms 集合事后对暗号,那套记账已随之退役。
 		listener.close();
 		delete this.listenerRecord[roomId];
 		this.logger.info(`[conn] 直播间 [${roomId}] 连接已关闭`);
@@ -309,7 +302,6 @@ export class RoomContextBase {
 	stopMonitoring(reason: string, roomId?: string): void {
 		if (roomId) {
 			this.logger.error(`[conn] [${roomId}] ${reason}，已停止该房间的监测`);
-			this.intentionalCloseRooms.add(roomId);
 			this.closeListener(roomId);
 			const timer = this.livePushTimerManager.get(roomId);
 			if (timer) {

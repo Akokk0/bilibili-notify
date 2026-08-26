@@ -3,24 +3,24 @@
  *
  * 开播推送依赖 B 站直播 WS 的 onLiveStart。如果底层连接半开/静默失活且不
  * 触发 error，旧逻辑不会重连，表现为“直播不推送，重启后恢复”。watchdog
- * 以 heartbeat(onAttentionChange) / 任意 WS 事件刷新 activity，超过阈值主动
+ * 以 heartbeat / 任意 WS 事件刷新 activity，超过阈值主动
  * 复用重连状态机；它只自愈连接，不改变直播状态、不发业务推送。
  */
 
+import type { LiveEvent } from "@bilibili-notify/blive";
 import type { ServiceContext } from "@bilibili-notify/internal";
-import type { MsgHandler } from "blive-message-listener";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { SubItemView } from "../push-like";
 import { LiveRoomAccessDeniedError, type RoomContext } from "../room-helpers";
 import { LIVE_WS_STALE_MS, RoomSession } from "../room-session";
 
+type EventFunnel = (ev: LiveEvent) => void | Promise<void>;
 type WatchdogTestSession = RoomSession & {
 	onListenerStarted(): void;
-	buildHandler(): MsgHandler;
+	buildEventHandler(): EventFunnel;
 	liveStatus: boolean;
 	pushAtTimeTimer: { dispose(): void } | null;
 };
-type AttentionChangeArg = Parameters<NonNullable<MsgHandler["onAttentionChange"]>>[0];
 
 type IntervalItem = { fn: () => void; disposed: boolean };
 type TimeoutItem = { fn: () => void; ms: number; disposed: boolean };
@@ -59,14 +59,13 @@ function makeMockCtx(): {
 		timeouts: TimeoutItem[];
 		closeListener: ReturnType<typeof vi.fn>;
 		startLiveRoomListener: ReturnType<typeof vi.fn>;
-		consumeIntentionalClose: ReturnType<typeof vi.fn>;
 		getLiveRoomInfo: ReturnType<typeof vi.fn>;
 		getMasterInfo: ReturnType<typeof vi.fn>;
 		emitEngineError: ReturnType<typeof vi.fn>;
 		emitLiveState: ReturnType<typeof vi.fn>;
 		stopMonitoring: ReturnType<typeof vi.fn>;
 		warn: ReturnType<typeof vi.fn>;
-		lastHandler: MsgHandler | undefined;
+		lastHandler: EventFunnel | undefined;
 		intervalDisposeCount: () => number;
 		timeoutDelays: () => number[];
 		runIntervals: () => Promise<void>;
@@ -76,7 +75,7 @@ function makeMockCtx(): {
 	const intervals: IntervalItem[] = [];
 	const timeouts: TimeoutItem[] = [];
 	let intervalDisposes = 0;
-	let lastHandler: MsgHandler | undefined;
+	let lastHandler: EventFunnel | undefined;
 	const warn = vi.fn();
 	const fakeServiceCtx: ServiceContext = {
 		logger: { debug() {}, info() {}, warn, error() {} },
@@ -105,11 +104,10 @@ function makeMockCtx(): {
 		intervals,
 		timeouts,
 		closeListener: vi.fn(),
-		startLiveRoomListener: vi.fn(async (_roomId: string, handler: MsgHandler) => {
+		startLiveRoomListener: vi.fn(async (_roomId: string, handler: EventFunnel) => {
 			lastHandler = handler;
 			return true;
 		}),
-		consumeIntentionalClose: vi.fn(() => false),
 		getLiveRoomInfo: vi.fn(async () => ({
 			uid: 1,
 			live_status: 0,
@@ -157,7 +155,6 @@ function makeMockCtx(): {
 		isDisposed: () => false,
 		closeListener: m.closeListener,
 		startLiveRoomListener: m.startLiveRoomListener,
-		consumeIntentionalClose: m.consumeIntentionalClose,
 		getLiveRoomInfo: m.getLiveRoomInfo,
 		getMasterInfo: m.getMasterInfo,
 		emitEngineError: m.emitEngineError,
@@ -225,14 +222,14 @@ describe("RoomSession live WS watchdog", () => {
 		expect(session.getWsHealthSnapshot().lastActivityReason).toBe("connected");
 	});
 
-	it("onAttentionChange(heartbeat) 刷新 activity,阈值按刷新后重新计算", async () => {
+	it("heartbeat 事件刷新 activity,阈值按刷新后重新计算", async () => {
 		const { ctx, m } = makeMockCtx();
 		const session = new RoomSession(ctx, makeSub()) as unknown as WatchdogTestSession;
-		const handler = session.buildHandler();
+		const handler = session.buildEventHandler();
 		session.onListenerStarted();
 
 		vi.setSystemTime(1_000 + 170_000);
-		handler.onAttentionChange?.({ body: { attention: 1 } } as AttentionChangeArg);
+		handler({ kind: "heartbeat", popularity: 1 });
 		expect(session.getWsHealthSnapshot().lastActivityReason).toBe("heartbeat");
 
 		vi.setSystemTime(1_000 + 170_000 + LIVE_WS_STALE_MS - 1);
@@ -258,28 +255,23 @@ describe("RoomSession live WS watchdog", () => {
 		expect(m.startLiveRoomListener).not.toHaveBeenCalled();
 	});
 
-	it("onClose 触发重连;cancel/intentional close 后 onClose 不触发重连", async () => {
+	it("closed 事件触发重连;cancel 后不再触发", async () => {
+		// 主动关闭的 close 回声由客户端自己吞掉(close() 后保证静默),不会走到
+		// 这个漏斗 —— 旧库时代的 consumeIntentionalClose 对暗号已随之退役。
 		const { ctx, m } = makeMockCtx();
 		const session = new RoomSession(ctx, makeSub()) as unknown as WatchdogTestSession;
-		const handler = session.buildHandler();
+		const handler = session.buildEventHandler();
 
-		handler.onClose?.();
+		handler({ kind: "closed" });
 		expect(m.closeListener).toHaveBeenCalledTimes(1);
 		expect(m.timeoutDelays()).toEqual([1000]);
 		await m.runTimeouts();
 		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(1);
 
 		session.cancel();
-		handler.onClose?.();
+		handler({ kind: "closed" });
 		expect(m.closeListener).toHaveBeenCalledTimes(1);
 		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(1);
-
-		const { ctx: ctx2, m: m2 } = makeMockCtx();
-		m2.consumeIntentionalClose.mockReturnValueOnce(true);
-		const session2 = new RoomSession(ctx2, makeSub()) as unknown as WatchdogTestSession;
-		session2.buildHandler().onClose?.();
-		expect(m2.closeListener).not.toHaveBeenCalled();
-		expect(m2.startLiveRoomListener).not.toHaveBeenCalled();
 	});
 
 	it("watchdog 连续 tick 不并发重连", async () => {
@@ -296,17 +288,17 @@ describe("RoomSession live WS watchdog", () => {
 		expect(m.timeoutDelays()).toEqual([1000]);
 	});
 
-	it("bootstrap 拉房间信息失败时 closeListener 触发 onClose 也不会重连/启动 watchdog", async () => {
+	it("bootstrap 拉房间信息失败时 closeListener 触发 closed 事件也不会重连/启动 watchdog", async () => {
 		const { ctx, m } = makeMockCtx();
 		const session = new RoomSession(ctx, makeSub()) as unknown as WatchdogTestSession;
 		m.getLiveRoomInfo.mockResolvedValueOnce(undefined);
-		m.closeListener.mockImplementation(() => m.lastHandler?.onClose?.());
+		m.closeListener.mockImplementation(() => m.lastHandler?.({ kind: "closed" }));
 
 		await session.bootstrap();
 
 		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(1); // 仅 bootstrap 建 listener
 		expect(m.closeListener).toHaveBeenCalledTimes(1);
-		expect(m.timeoutDelays()).toEqual([]); // onClose 被 cancel 挡住,不排重连
+		expect(m.timeoutDelays()).toEqual([]); // closed 事件被 cancel 挡住,不排重连
 		expect(m.intervals).toHaveLength(0); // info 失败时 watchdog 不启动
 	});
 

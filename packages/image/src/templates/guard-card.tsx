@@ -1,6 +1,7 @@
 /** @jsxImportSource vue */
+
+import type { GuardLevel } from "@bilibili-notify/blive";
 import { DEFAULT_CARD_LAYOUT, DIVIDER_TYPE, type GuardLayout } from "@bilibili-notify/internal";
-import type { GuardLevel } from "blive-message-listener";
 import type { VNode } from "vue";
 import { renderBlocks } from "./block-layout";
 

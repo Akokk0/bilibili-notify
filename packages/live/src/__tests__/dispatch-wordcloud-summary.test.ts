@@ -10,7 +10,7 @@
  * 到对应 FeatureKey,路由独立。本测试锁住 dispatch 时的"两次独立 broadcast"事实。
  */
 
-import type { MsgHandler } from "blive-message-listener";
+import type { LiveEvent } from "@bilibili-notify/blive";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { LivePushType, type SubItemView } from "../push-like";
 import type { RoomContext } from "../room-helpers";
@@ -19,8 +19,8 @@ import { RoomSessionBase } from "../room-session-base";
 // RoomSessionBase 是 abstract;给一个最小子类把 protected dispatchWordCloudAndSummary
 // 暴露给测试。同时给 masterInfo 塞个值,wordcloudGenerator 才会拿到 username。
 class TestSession extends RoomSessionBase {
-	protected buildHandler(): MsgHandler {
-		return {} as MsgHandler;
+	protected buildEventHandler(): (ev: LiveEvent) => void {
+		return () => {};
 	}
 	async runDispatch(custom = ""): Promise<void> {
 		// biome-ignore lint/suspicious/noExplicitAny: protected 字段的测试 setup

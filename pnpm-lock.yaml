@@ -453,6 +453,9 @@ importers:
 
   packages/image:
     dependencies:
+      '@bilibili-notify/blive':
+        specifier: workspace:^
+        version: link:../blive
       '@bilibili-notify/internal':
         specifier: workspace:^
         version: link:../internal
@@ -465,9 +468,6 @@ importers:
       '@vue/server-renderer':
         specifier: ^3.5.32
         version: 3.5.34(vue@3.5.34(typescript@5.9.3))
-      blive-message-listener:
-        specifier: ^0.5.3
-        version: 0.5.4
       jsdom:
         specifier: ^26.1.0
         version: 26.1.0(supports-color@8.1.1)
@@ -499,15 +499,15 @@ importers:
       '@bilibili-notify/api':
         specifier: workspace:^
         version: link:../api
+      '@bilibili-notify/blive':
+        specifier: workspace:^
+        version: link:../blive
       '@bilibili-notify/image':
         specifier: workspace:^
         version: link:../image
       '@bilibili-notify/internal':
         specifier: workspace:^
         version: link:../internal
-      blive-message-listener:
-        specifier: ^0.5.4
-        version: 0.5.4
       jieba-wasm:
         specifier: ^2.4.0
         version: 2.4.0
@@ -3212,9 +3212,6 @@ packages:
   bl@4.1.0:
     resolution: {integrity: sha512-1W07cM9gS6DcLperZfFSj+bWLtaPGSOHWhPiGzXmvVJbRLdG82sH/Kn8EtW1VqWVA54AKf2h5k5BbnIbwF3h6w==}
 
-  blive-message-listener@0.5.4:
-    resolution: {integrity: sha512-wo3tf/EVmhPEfr461OS3fzFHAlKELczhxch0Enng+DXzJqunHyV3GISkbn6FGon0ErwI0KMVofaN2IJ9aaVDCg==}
-
   braces@3.0.3:
     resolution: {integrity: sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA==}
     engines: {node: '>=8'}
@@ -3699,9 +3696,6 @@ packages:
   event-target-shim@5.0.1:
     resolution: {integrity: sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ==}
     engines: {node: '>=6'}
-
-  eventemitter3@5.0.4:
-    resolution: {integrity: sha512-mlsTRyGaPBjPedk6Bvw+aqbsXDtoAyAzm5MO7JgU+yVRyMQ5O8bD4Kcci7BS85f93veegeCPkL8R4GLClnjLFw==}
 
   events-universal@1.0.1:
     resolution: {integrity: sha512-LUd5euvbMLpwOF8m6ivPCbhQeSiYVNb8Vs0fQ8QjXo0JTkEHpz8pxdQf0gStltaPpw0Cca8b39KxvK9cfKRiAw==}
@@ -4848,9 +4842,6 @@ packages:
   package-manager-detector@1.6.0:
     resolution: {integrity: sha512-61A5ThoTiDG/C8s8UMZwSorAGwMJ0ERVGj2OjoW5pAalsNOg15+iQiPzrLJ4jhZ1HJzmC2PIHT2oEiH3R5fzNA==}
 
-  pako@2.1.0:
-    resolution: {integrity: sha512-w+eufiZ1WuJYgPXbV/PO3NCMEc3xqylkKHzp8bxp1uW4qaSNQUkwmLLEc3kKsfz8lpV1F8Ht3U1Cm+9Srog2ug==}
-
   parent-module@1.0.1:
     resolution: {integrity: sha512-GQ2EWRpQV8/o+Aw8YqtfZZPfNRWZYkbidE9k5rpl/hC3vtHHBfGm2Ifi6qWV+coDGkrUKZAxE3Lot5kcsRlh+g==}
     engines: {node: '>=6'}
@@ -5350,9 +5341,6 @@ packages:
 
   through@2.3.8:
     resolution: {integrity: sha512-w89qg7PI8wAdvX60bMDP+bFoD5Dvhm9oLheFp5O4a2QF0cSBGsBX4qZmadPMvVqlLJBBci+WqGGOAPvcDeNSVg==}
-
-  tiny-bilibili-ws@1.0.2:
-    resolution: {integrity: sha512-s3AuofXxOJU3RBRxQhQOI2nqqsu7WJcbGsNI8WyH+5JUYDGl/1tmKpfuk+Ig65u9nHZXuz1v2uUkvByO62oH9Q==}
 
   tinybench@2.9.0:
     resolution: {integrity: sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg==}
@@ -8070,14 +8058,6 @@ snapshots:
       inherits: 2.0.4
       readable-stream: 3.6.2
 
-  blive-message-listener@0.5.4:
-    dependencies:
-      protobufjs: 8.0.3
-      tiny-bilibili-ws: 1.0.2
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
   braces@3.0.3:
     dependencies:
       fill-range: 7.1.1
@@ -8595,8 +8575,6 @@ snapshots:
   esutils@2.0.3: {}
 
   event-target-shim@5.0.1: {}
-
-  eventemitter3@5.0.4: {}
 
   events-universal@1.0.1:
     dependencies:
@@ -10013,8 +9991,6 @@ snapshots:
 
   package-manager-detector@1.6.0: {}
 
-  pako@2.1.0: {}
-
   parent-module@1.0.1:
     dependencies:
       callsites: 3.1.0
@@ -10632,15 +10608,6 @@ snapshots:
       real-require: 0.2.0
 
   through@2.3.8: {}
-
-  tiny-bilibili-ws@1.0.2:
-    dependencies:
-      eventemitter3: 5.0.4
-      pako: 2.1.0
-      ws: 8.20.1
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
 
   tinybench@2.9.0: {}
 

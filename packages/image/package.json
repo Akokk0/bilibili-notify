@@ -32,11 +32,11 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@bilibili-notify/blive": "workspace:^",
 		"@bilibili-notify/internal": "workspace:^",
 		"@unocss/core": "^66.6.8",
 		"@unocss/preset-wind4": "^66.6.8",
 		"@vue/server-renderer": "^3.5.32",
-		"blive-message-listener": "^0.5.3",
 		"jsdom": "^26.1.0",
 		"luxon": "^3.5.0",
 		"vue": "^3.5.32"

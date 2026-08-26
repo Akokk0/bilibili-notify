@@ -34,9 +34,9 @@
 	"dependencies": {
 		"@bilibili-notify/ai": "workspace:^",
 		"@bilibili-notify/api": "workspace:^",
+		"@bilibili-notify/blive": "workspace:^",
 		"@bilibili-notify/image": "workspace:^",
 		"@bilibili-notify/internal": "workspace:^",
-		"blive-message-listener": "^0.5.4",
 		"jieba-wasm": "^2.4.0",
 		"luxon": "^3.5.0"
 	},
