@@ -1,0 +1,115 @@
+{
+	"danmu": {
+		"cmd": "DANMU_MSG",
+		"dm_v2": "",
+		"info": [
+			[
+				0,
+				1,
+				25,
+				16777215,
+				1787762799610,
+				-203199344,
+				0,
+				"cf944b1f",
+				0,
+				0,
+				0,
+				"",
+				0,
+				"{}",
+				"{}",
+				{
+					"extra": "{\"send_from_me\":false,\"master_player_hidden\":false,\"mode\":0,\"color\":16777215,\"dm_type\":0,\"font_size\":25,\"player_mode\":1,\"show_player_type\":0,\"content\":\"太有互动感了\",\"user_hash\":\"3482602271\",\"emoticon_unique\":\"\",\"bulge_display\":0,\"recommend_score\":3,\"dm_score\":0,\"chronos_force_display\":0,\"main_state_dm_color\":\"\",\"objective_state_dm_color\":\"\",\"direction\":0,\"pk_direction\":0,\"quartet_direction\":0,\"anniversary_crowd\":0,\"yeah_space_type\":\"\",\"yeah_space_url\":\"\",\"jump_to_url\":\"\",\"space_type\":\"\",\"space_url\":\"\",\"animation\":{},\"emots\":null,\"is_audited\":false,\"id_str\":\"4fa860f0735ee47d7eff151b4d6a8f187778\",\"icon\":null,\"show_reply\":true,\"reply_mid\":0,\"reply_uname\":\"\",\"reply_uname_color\":\"\",\"reply_is_mystery\":false,\"reply_type_enum\":0,\"hit_combo\":0,\"esports_jump_url\":\"\",\"is_mirror\":false,\"is_collaboration_member\":false,\"card\":{\"card_type\":0,\"oid_str\":\"\",\"oid_str_1\":\"\",\"origin_oid_str\":\"\",\"share_id\":\"\",\"share_origin\":\"\",\"from\":\"\",\"card_content\":null},\"voice\":null,\"background_type\":0}",
+					"mode": 0,
+					"show_player_type": 0,
+					"user": {
+						"anon": null,
+						"base": {
+							"face": "https://i0.hdslb.com/bfs/face/3b78607ab690e26e71c9e9825791317f2bf22146.jpg",
+							"is_mystery": false,
+							"name": "琴七",
+							"name_color": 0,
+							"name_color_str": "",
+							"official_info": {
+								"desc": "",
+								"role": 0,
+								"title": "",
+								"type": -1
+							},
+							"origin_info": {
+								"face": "https://i0.hdslb.com/bfs/face/3b78607ab690e26e71c9e9825791317f2bf22146.jpg",
+								"name": "琴七"
+							},
+							"risk_ctrl_info": null
+						},
+						"bubble_box": null,
+						"dm_config": {
+							"color": 16777215,
+							"length": 40,
+							"mode": 1
+						},
+						"guard": null,
+						"guard_leader": null,
+						"medal": null,
+						"name_color": null,
+						"title": {
+							"old_title_css_id": "ice-dust",
+							"title_css_id": "title-48-1"
+						},
+						"uhead_frame": null,
+						"uid": 6170115,
+						"wealth": null
+					}
+				},
+				{
+					"activity_identity": "",
+					"activity_source": 0,
+					"not_show": 0
+				},
+				0
+			],
+			"太有互动感了",
+			[6170115, "琴七", 0, 0, 0, 10000, 1, ""],
+			[],
+			[24, 0, 5805790, ">50000", 0],
+			["ice-dust", "title-48-1"],
+			0,
+			0,
+			null,
+			{
+				"ct": "AB869513",
+				"ts": 1787762799
+			},
+			0,
+			0,
+			null,
+			null,
+			0,
+			39,
+			[21],
+			null
+		]
+	},
+	"interactV2": {
+		"cmd": "INTERACT_WORD_V2",
+		"data": {
+			"dmscore": 20,
+			"pb": "CPTG4w8SCF/ml6DoqIBJIgIDASgBMLonOO6wvNQGQPyGzZGENEouCMe5GhAgGgnlpKfmr43puYUg1ZC0ASjVkLQBMP+39gQ41ZC0AUABYLonaN3ZAmIAeJGamrqrmdrnGJoBALIBywEI9MbjDxJWCghf5peg6KiASRJKaHR0cHM6Ly9pMS5oZHNsYi5jb20vYmZzL2ZhY2UvMzg0OGJmMjZiMDNjNmZiNmE4ZmIxMTI3Zjk2YTg0ZmFkYjBhMzQ2NC5qcGcaZgoJ5aSn5q+N6bmFECAY1ZC0ASD/t/YEKNWQtAEw1ZC0ATgCSAFQx7kaYN3ZAnoJIzRDN0RGRjk5ggEJIzRDN0RGRjk5igEJIzRDN0RGRjk5kgEHI0ZGRkZGRpoBCSM0QzdERkZFNiICCBQyALoBAMIBAA=="
+		}
+	},
+	"watched": {
+		"cmd": "WATCHED_CHANGE",
+		"data": {
+			"num": 87334,
+			"text_small": "8.7万",
+			"text_large": "8.7万人看过"
+		}
+	},
+	"liked": {
+		"cmd": "LIKE_INFO_V3_UPDATE",
+		"data": {
+			"click_count": 147837
+		}
+	}
+}

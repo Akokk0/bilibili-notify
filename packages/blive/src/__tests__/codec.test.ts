@@ -8,8 +8,12 @@
  *   录自线上弹幕服),规范文档只当索引用 —— 它自己声明可能过时。
  */
 
+import { deflateSync } from "node:zlib";
 import { describe, expect, it } from "vite-plus/test";
-import { encodePacket, WsOp } from "../codec.js";
+import { decodeFrames, encodePacket, WsOp } from "../codec.js";
+import frames from "./fixtures/frames.json" with { type: "json" };
+
+const b64 = (s: string): Uint8Array => new Uint8Array(Buffer.from(s, "base64"));
 
 describe("encodePacket", () => {
 	it("心跳包:op=2 ver=1 seq=1,body 为 {}", () => {
@@ -45,5 +49,74 @@ describe("encodePacket", () => {
 
 		expect(view.getUint32(0)).toBe(16 + bodyBytes.length);
 		expect(packet.byteLength).toBe(16 + bodyBytes.length);
+	});
+});
+
+describe("decodeFrames(真实录制帧)", () => {
+	it("心跳回执:op=3,body 为大端 u32 人气值", () => {
+		// 录制时该帧 body 为 00 00 00 01(人气值 1)
+		expect(decodeFrames(b64(frames.heartbeatReply))).toEqual([
+			{ op: WsOp.HeartbeatReply, body: 1 },
+		]);
+	});
+
+	it("认证回执:op=8,body 为 JSON", () => {
+		expect(decodeFrames(b64(frames.authReply))).toEqual([
+			{ op: WsOp.AuthReply, body: { code: 0 } },
+		]);
+	});
+
+	it("未压缩 MESSAGE(ver=0):body 直接是 JSON", () => {
+		const packets = decodeFrames(b64(frames.plainMessage));
+
+		expect(packets).toHaveLength(1);
+		expect(packets[0]?.op).toBe(WsOp.Message);
+		expect((packets[0]?.body as { cmd: string }).cmd).toBe("NOTICE_MSG");
+	});
+
+	it("brotli MESSAGE(ver=3):解压后展平内层包", () => {
+		// 录制时该帧解压出 2 个内包,均为 INTERACT_WORD_V2
+		const packets = decodeFrames(b64(frames.brotliMessage));
+
+		expect(packets).toHaveLength(2);
+		for (const p of packets) {
+			expect(p.op).toBe(WsOp.Message);
+			expect((p.body as { cmd: string }).cmd).toBe("INTERACT_WORD_V2");
+		}
+	});
+
+	it("zlib MESSAGE(ver=2):规范仍列出的旧压缩版本也认(合成帧)", () => {
+		// 线上已只见 brotli,zlib 帧按规范手工合成:内包 = 一条 ver=0 的 MESSAGE
+		const innerBody = new TextEncoder().encode('{"cmd":"TEST_ZLIB"}');
+		const inner = new Uint8Array(16 + innerBody.length);
+		const iv = new DataView(inner.buffer);
+		iv.setUint32(0, inner.length);
+		iv.setUint16(4, 16);
+		iv.setUint16(6, 0);
+		iv.setUint32(8, 5);
+		inner.set(innerBody, 16);
+		const compressed = deflateSync(inner);
+		const outer = new Uint8Array(16 + compressed.length);
+		const ov = new DataView(outer.buffer);
+		ov.setUint32(0, outer.length);
+		ov.setUint16(4, 16);
+		ov.setUint16(6, 2);
+		ov.setUint32(8, 5);
+		outer.set(compressed, 16);
+
+		expect(decodeFrames(outer)).toEqual([{ op: WsOp.Message, body: { cmd: "TEST_ZLIB" } }]);
+	});
+
+	it("一条 WS 消息可拼多个顶层包,按包长逐个切", () => {
+		const hb = b64(frames.heartbeatReply);
+		const auth = b64(frames.authReply);
+		const joined = new Uint8Array(hb.length + auth.length);
+		joined.set(hb, 0);
+		joined.set(auth, hb.length);
+
+		expect(decodeFrames(joined)).toEqual([
+			{ op: WsOp.HeartbeatReply, body: 1 },
+			{ op: WsOp.AuthReply, body: { code: 0 } },
+		]);
 	});
 });
