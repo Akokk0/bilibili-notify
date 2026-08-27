@@ -11,6 +11,7 @@ import { MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
 import { strFromU8, unzipSync } from "fflate";
 import { parseAssetNames } from "../runtime/asset-labels.js";
 import { ASSET_NAMES_FILE } from "./asset-names.js";
+import { stripDecorationResidue } from "./css-sanitizer.js";
 import {
 	isSkinAssetName,
 	parseSkinManifest,
@@ -172,6 +173,10 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 	} catch {
 		return { ok: false, errors: ["skin.json 不是合法 JSON"] };
 	}
+	// 旧版(≤v0.7.0)导出的包身上还烙着清洗层的旧笔迹 —— **解析前**先摘:否则
+	// parseCssField 对每条装饰规则刷一遍「pointer-events 不在白名单」(正是读盘
+	// 迁移要消灭的刷屏),而白名单内的 z-index:-1 会原样随包落盘再传染下去。
+	stripRawManifestResidue(json);
 	const parsed = parseSkinManifest(json);
 	if (!parsed.ok) return parsed;
 
@@ -195,4 +200,22 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 		}
 	}
 	return { ok: true, manifest: parsed.skin, assets, names, warnings };
+}
+
+/**
+ * 对**未过 schema** 的原始 manifest JSON 就地摘烙印(css / modes.*.css 是字符串
+ * 才动,别的形状留给 parseSkinManifest 正常报错)。与 store 读盘迁移是同一把
+ * 清洁工,只是这头拿到的还不是 SkinManifest。
+ */
+function stripRawManifestResidue(json: unknown): void {
+	if (!json || typeof json !== "object") return;
+	const m = json as { css?: unknown; modes?: unknown };
+	if (typeof m.css === "string") m.css = stripDecorationResidue(m.css);
+	if (!m.modes || typeof m.modes !== "object") return;
+	for (const theme of ["light", "dark"] as const) {
+		const mode = (m.modes as Record<string, unknown>)[theme];
+		if (!mode || typeof mode !== "object") continue;
+		const holder = mode as { css?: unknown };
+		if (typeof holder.css === "string") holder.css = stripDecorationResidue(holder.css);
+	}
 }

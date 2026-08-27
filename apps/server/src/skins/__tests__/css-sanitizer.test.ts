@@ -581,6 +581,14 @@ describe("stripDecorationResidue", () => {
 		expect(out).toContain("inset:0");
 	});
 
+	it("落单的 z-index:-1(同规则无 pointer-events:none)是作者的字,一个字不动", () => {
+		// 烙印当年是两句一起补进同一条规则的,盘上残留必然成对(保存路径过的是
+		// 已洗内存,不会只剩半句)。落单的 z-index:-1 只能是作者升级后自己的声明
+		// —— 摘掉它,编辑器里那行就在下次重启后凭空消失。
+		const css = '[data-bn="page"]::before{content:"";background:red;z-index:-1}';
+		expect(stripDecorationResidue(css)).toBe(css);
+	});
+
 	it("只认烙印的签名 —— 作者写的 z-index:5 一个字不动", () => {
 		const css = '[data-bn="page"]::before{content:"";z-index:5}';
 		expect(stripDecorationResidue(css)).toBe(css);

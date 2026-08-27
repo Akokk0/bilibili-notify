@@ -43,6 +43,28 @@ describe("openSkinPackage", () => {
 		expect(r.assets.get("assets/bg.png")).toEqual(PNG);
 	});
 
+	it("导入旧版导出的包:烙印在解析前摘掉 —— 不刷警告,残留也不随包落盘", () => {
+		// ≤v0.7.0 导出的 zip,css 里烙着清洗层旧笔迹(pointer-events:none;z-index:-1)。
+		// 读盘迁移只盖住 init/getDefault,导入这条路不先摘的话:parseCssField 对每条
+		// 装饰规则刷一遍「pointer-events 不在白名单」(正是迁移要消灭的刷屏),白名单
+		// 内的 z-index:-1 还会原样存进新皮肤。
+		const residue = '[data-bn="page"]::before{content:"";pointer-events:none;z-index:-1}';
+		const zip = makeZip({
+			"skin.json": manifestJson({
+				css: residue,
+				modes: { light: { colors: { accent: "#fb7299" }, css: residue } },
+			}),
+		});
+		const r = openSkinPackage(zip);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.manifest.css ?? "").not.toContain("pointer-events");
+		expect(r.manifest.css ?? "").not.toContain("z-index");
+		expect(r.manifest.modes.light?.css ?? "").not.toContain("pointer-events");
+		expect(r.manifest.modes.light?.css ?? "").not.toContain("z-index");
+		expect(r.warnings.join()).not.toContain("pointer-events");
+	});
+
 	it("纯配色包(只有 skin.json)→ ok", () => {
 		const r = openSkinPackage(makeZip({ "skin.json": manifestJson() }));
 		expect(r.ok).toBe(true);

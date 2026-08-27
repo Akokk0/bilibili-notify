@@ -36,6 +36,21 @@ beforeEach(async () => {
 });
 
 describe("SkinStore", () => {
+	it("skin.json 缺 modes(旧格式/手改)→ init 不抛不丢,皮肤仍进索引", async () => {
+		// 迁移清洁工若对缺 modes 的 manifest 直接解引用会抛 TypeError,被 init 的
+		// catch 当「写入中断的残缺目录」—— 整套皮肤从索引里无声消失(改动前这种
+		// 文件是能进索引的);default.json 同理令「恢复默认值」静默失效。
+		await mkdir(join(dir, "legacy"), { recursive: true });
+		await writeFile(
+			join(dir, "legacy", "skin.json"),
+			JSON.stringify({ schemaVersion: 1, name: "老皮肤" }),
+		);
+		const fresh = new SkinStore({ skinsDir: dir });
+		await fresh.init();
+
+		expect(await fresh.get("legacy")).not.toBeNull();
+	});
+
 	it("save → list 出现条目,manifest 与资产落盘", async () => {
 		const { id } = await store.save({
 			manifest: makeManifest({

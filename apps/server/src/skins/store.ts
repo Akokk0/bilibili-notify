@@ -24,7 +24,9 @@ import { isSkinAssetName } from "./schema.js";
 function stripManifestResidue(m: SkinManifest): SkinManifest {
 	if (m.css) m.css = stripDecorationResidue(m.css);
 	for (const theme of ["light", "dark"] as const) {
-		const mode = m.modes[theme];
+		// 手改过/旧格式的 manifest 可能没有 modes —— 清洁工不抛:抛出去会被 init
+		// 的 catch 当「残缺目录」,整套皮肤从索引里无声消失(改动前它是能进索引的)。
+		const mode = m.modes?.[theme];
 		if (mode?.css) mode.css = stripDecorationResidue(mode.css);
 	}
 	return m;

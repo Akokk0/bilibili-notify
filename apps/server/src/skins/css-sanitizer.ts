@@ -394,9 +394,12 @@ export function sanitizeSkinCss(input: string): SanitizeCssResult {
 }
 
 /**
- * 摘掉清洗层旧版烙进存盘产物的两句硬规矩(`pointer-events:none` / `z-index:-1`,
- * 只认装饰规则里**恰好这两个值**的 —— 这是烙印的签名;作者写得进的别的 z-index
- * 一律不碰)。
+ * 摘掉清洗层旧版烙进存盘产物的两句硬规矩(`pointer-events:none` / `z-index:-1`)。
+ *
+ * 烙印的签名是**成对**:当年两句一起补进同一条装饰规则,而保存路径过的是已洗
+ * 内存,盘上残留不会只剩半句。所以 `z-index:-1` 只在同规则还有 `pointer-events:
+ * none` 时才算笔迹 —— 落单的它是作者升级后自己的声明,摘了就是让主人的字凭空
+ * 消失。`pointer-events` 不在白名单、作者经编辑器写不进来,单独出现也摘。
  *
  * v0.7.0 及之前,这两句由清洗层补进产物再落盘;它们在白名单外(pointer-events),
  * 于是每次再清洗都对着自己上一轮的笔迹刷「已丢弃」警告。硬规矩挪去注入层之后,
@@ -429,6 +432,16 @@ export function stripDecorationResidue(css: string): string {
 			const pseudo =
 				prelude.type === "SelectorList" && everyChild(prelude.children, targetsPseudoElement);
 			if (!pseudo || !node.block) return;
+			let hasBrandPair = false;
+			node.block.children.forEach((decl: CssNode) => {
+				if (decl.type !== "Declaration") return;
+				if (
+					decl.property.toLowerCase() === "pointer-events" &&
+					generate(decl.value).trim().toLowerCase() === "none"
+				) {
+					hasBrandPair = true;
+				}
+			});
 			const drop: ListItem<CssNode>[] = [];
 			node.block.children.forEach((decl: CssNode, item) => {
 				if (decl.type !== "Declaration") return;
@@ -436,7 +449,7 @@ export function stripDecorationResidue(css: string): string {
 				const value = generate(decl.value).trim().toLowerCase();
 				if (
 					(prop === "pointer-events" && value === "none") ||
-					(prop === "z-index" && value === "-1")
+					(prop === "z-index" && value === "-1" && hasBrandPair)
 				) {
 					drop.push(item);
 				}
