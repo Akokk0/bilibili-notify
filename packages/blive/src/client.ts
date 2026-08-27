@@ -39,7 +39,12 @@ export interface LiveConnectOptions {
 	/** getDanmuInfo 返回的服务器列表,取首项。 */
 	hostList: DanmuHost[];
 	cookieHeader?: string;
-	userAgent?: string;
+	/**
+	 * **必传**,调用方从 `api.getUserAgent()` 取 —— WSS 必须与同进程的 HTTP 同
+	 * 指纹(api 侧是每实例生成的自洽 Chrome 身份)。不设兜底:兜底值只会在
+	 * 谁忘传时静默造出第二套指纹。
+	 */
+	userAgent: string;
 	onEvent: (ev: LiveEvent) => void;
 	/** 注入点:测试/定制 socket 工厂。缺省用 ws。 */
 	createSocket?: (url: string, headers: Record<string, string>) => SocketLike;
@@ -54,9 +59,6 @@ export interface LiveClient {
 
 const DEFAULT_HEARTBEAT_MS = 30_000;
 
-const DEFAULT_USER_AGENT =
-	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-
 function defaultCreateSocket(url: string, headers: Record<string, string>): SocketLike {
 	return new WebSocket(url, { headers }) as unknown as SocketLike;
 }
@@ -68,7 +70,7 @@ export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
 	const url = `wss://${first.host}${first.wssPort === 443 ? "" : `:${first.wssPort}`}/sub`;
 	const headers: Record<string, string> = {};
 	if (opts.cookieHeader) headers.Cookie = opts.cookieHeader;
-	headers["User-Agent"] = opts.userAgent ?? DEFAULT_USER_AGENT;
+	headers["User-Agent"] = opts.userAgent;
 
 	const socket = (opts.createSocket ?? defaultCreateSocket)(url, headers);
 	socket.binaryType = "nodebuffer";

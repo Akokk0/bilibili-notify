@@ -78,6 +78,7 @@ const client = connectLiveRoom({
 	buvid,
 	hostList: hostListRaw.map((h) => ({ host: h.host, wssPort: h.wss_port })),
 	cookieHeader: api.getCookiesHeader(),
+	userAgent: api.getUserAgent(),
 	onEvent: (ev) => {
 		counts.set(ev.kind, (counts.get(ev.kind) ?? 0) + 1);
 		if (ev.kind === "danmu" && (counts.get("danmu") ?? 0) <= 3) {

@@ -124,8 +124,8 @@ logger.info(`连接 ${url},录 ${minutes} 分钟 → ${outFile}`);
 const ws = new WebSocket(url, {
 	headers: {
 		Cookie: cookieHeader,
-		"User-Agent":
-			"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+		// 与同进程 HTTP 同指纹(api 的生成身份),不再自带一份写死的 UA
+		"User-Agent": api.getUserAgent(),
 	},
 });
 ws.binaryType = "nodebuffer";
