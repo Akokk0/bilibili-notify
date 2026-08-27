@@ -24,7 +24,7 @@ export type LiveEvent =
 	| { kind: "auth-ok" }
 	| { kind: "auth-failed"; code: number }
 	| { kind: "heartbeat"; popularity: number }
-	| { kind: "closed"; code?: number }
+	| { kind: "closed"; code?: number; reason?: string }
 	| { kind: "error"; error: Error }
 	// ── 业务消息(parser 产出)────────────────────────────────
 	| { kind: "danmu"; content: string; user: LiveUser }

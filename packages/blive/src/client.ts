@@ -50,6 +50,12 @@ export interface LiveConnectOptions {
 	createSocket?: (url: string, headers: Record<string, string>) => SocketLike;
 	/** 心跳节奏,缺省 30s。 */
 	heartbeatIntervalMs?: number;
+	/**
+	 * 从建连到 auth-ok 的整段限时,缺省 15s。TCP 半开/认证无回执时 ws 层可能
+	 * 永远没有事件 —— 超时 emit error 并关 socket,让上游重连梯子立即接手,
+	 * 而不是等分钟级的活动 watchdog。
+	 */
+	connectTimeoutMs?: number;
 }
 
 export interface LiveClient {
@@ -58,6 +64,7 @@ export interface LiveClient {
 }
 
 const DEFAULT_HEARTBEAT_MS = 30_000;
+const DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
 
 function defaultCreateSocket(url: string, headers: Record<string, string>): SocketLike {
 	return new WebSocket(url, { headers }) as unknown as SocketLike;
@@ -82,6 +89,22 @@ export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
 	const emit = (ev: LiveEvent): void => {
 		if (closed) return;
 		opts.onEvent(ev);
+	};
+
+	// 建连→auth-ok 整段限时。解除时机:auth-ok / 连接已终结(close 事件或主动
+	// close())—— 终结后再报超时就是对着尸体补刀。
+	const timeoutMs = opts.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS;
+	let connectTimer: NodeJS.Timeout | undefined = setTimeout(() => {
+		connectTimer = undefined;
+		emit({
+			kind: "error",
+			error: new Error(`连接/认证超时(${Math.round(timeoutMs / 1000)}s 内未收到认证回执)`),
+		});
+		socket.close();
+	}, timeoutMs);
+	const clearConnectTimer = (): void => {
+		if (connectTimer) clearTimeout(connectTimer);
+		connectTimer = undefined;
 	};
 
 	const sendHeartbeat = (): void => {
@@ -118,6 +141,7 @@ export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
 				authReplyHandled = true;
 				const code = (packet.body as { code?: unknown } | null)?.code;
 				if (code === 0) {
+					clearConnectTimer();
 					emit({ kind: "auth-ok" });
 					sendHeartbeat();
 					heartbeatTimer = setInterval(
@@ -145,11 +169,18 @@ export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
 		emit({ kind: "error", error: err instanceof Error ? err : new Error(String(err)) });
 	});
 
-	socket.on("close", (code) => {
+	socket.on("close", (code, reasonRaw) => {
 		if (closed) return;
+		clearConnectTimer();
 		if (heartbeatTimer) clearInterval(heartbeatTimer);
 		heartbeatTimer = undefined;
-		emit({ kind: "closed", code: typeof code === "number" ? code : undefined });
+		// ws 的 close 回调第二参是 Buffer;排障时服务器给的关闭理由值得透传。
+		const reason = reasonRaw == null ? "" : String(reasonRaw);
+		emit({
+			kind: "closed",
+			code: typeof code === "number" ? code : undefined,
+			...(reason ? { reason } : {}),
+		});
 	});
 
 	return {
@@ -159,6 +190,7 @@ export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
 		close() {
 			if (closed) return;
 			closed = true;
+			clearConnectTimer();
 			if (heartbeatTimer) clearInterval(heartbeatTimer);
 			heartbeatTimer = undefined;
 			socket.close();

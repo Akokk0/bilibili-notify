@@ -216,6 +216,60 @@ describe("connectLiveRoom", () => {
 		for (const ev of events) expect(ev.kind).toBe("user-action");
 	});
 
+	it("连接挂起(始终不 open)→ 默认 15s 超时:error 事件 + 主动关 socket", () => {
+		// TCP 半开/对端不响应时 ws 层可能永远没有事件 —— 没有这道闸,上游要等
+		// watchdog 3 分钟才发现;有了它,重连梯子在 15s 后立即接手。
+		connect();
+		vi.advanceTimersByTime(14_999);
+		expect(events).toEqual([]);
+		vi.advanceTimersByTime(1);
+
+		expect(events).toHaveLength(1);
+		expect(events[0]).toMatchObject({ kind: "error" });
+		expect(socket.closeCalls).toBe(1);
+	});
+
+	it("open 了但认证无回执 → 同一段限时覆盖到 auth-ok 为止", () => {
+		connect();
+		socket.emit("open");
+		vi.advanceTimersByTime(15_000);
+
+		expect(events.filter((ev) => ev.kind === "error")).toHaveLength(1);
+		expect(socket.closeCalls).toBe(1);
+	});
+
+	it("auth-ok 之后超时闸解除,不再误报", () => {
+		connect();
+		socket.emit("open");
+		socket.emit("message", b64(frames.authReply));
+		vi.advanceTimersByTime(120_000);
+
+		expect(events.filter((ev) => ev.kind === "error")).toHaveLength(0);
+		expect(socket.closeCalls).toBe(0);
+	});
+
+	it("connectTimeoutMs 可配", () => {
+		connect({ connectTimeoutMs: 3000 });
+		vi.advanceTimersByTime(3000);
+
+		expect(events.filter((ev) => ev.kind === "error")).toHaveLength(1);
+	});
+
+	it("服务器先关了连接 → 超时闸随之解除,不在 closed 之后再补一个 error", () => {
+		connect();
+		socket.emit("close", 1006);
+		vi.advanceTimersByTime(60_000);
+
+		expect(events).toEqual([{ kind: "closed", code: 1006 }]);
+	});
+
+	it("closed 事件透传服务器给的关闭理由", () => {
+		connect();
+		socket.emit("close", 1008, Buffer.from("policy violation"));
+
+		expect(events).toEqual([{ kind: "closed", code: 1008, reason: "policy violation" }]);
+	});
+
 	it("socket 错误 → error 事件;非主动关闭 → closed 事件", () => {
 		connect();
 		socket.emit("error", new Error("boom"));
