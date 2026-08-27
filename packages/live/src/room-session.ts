@@ -63,6 +63,7 @@ type LiveWsActivityReason =
 	| "live-end"
 	| "interact"
 	| "raw"
+	| "other"
 	| "close";
 
 export class RoomSession extends RoomSessionBase {
@@ -84,6 +85,8 @@ export class RoomSession extends RoomSessionBase {
 	private lastLiveWsActivityReason: LiveWsActivityReason = "connected";
 	private watchdogTimer?: Disposable;
 	private watchdogReconnectCount = 0;
+	/** 漂移观测:degraded raw 的 per-cmd 累计,只增不清(见 noteDegradedRaw)。 */
+	private readonly degradedRawCounts = new Map<string, number>();
 
 	/** 外层主动停止 listener 时调用,阻止 onError/onClose/watchdog 触发重连。 */
 	cancel(): void {
@@ -239,9 +242,32 @@ export class RoomSession extends RoomSessionBase {
 				case "raw":
 					// 未解析命令也是活的流量 —— watchdog 只关心连接死没死
 					this.markLiveWsActivity("raw");
+					// degraded = 已知命令解析失败(B 站可能改了字段形状),是协议
+					// 漂移信号,要报出来;plain raw 是刻意不解析的命令,属正常流量
+					if (ev.degraded) this.noteDegradedRaw(ev.cmd);
+					return;
+				default:
+					// 已解析但业务不消费的 kind(gift / room-change / 抽奖组等,
+					// 2026-08 定案「只打协议层地基」)—— 与 raw 同理,只标活跃度
+					this.markLiveWsActivity("other");
 					return;
 			}
 		};
+	}
+
+	/**
+	 * 漂移报警限流:同 cmd 首条立即 warn,之后每满 100 条再报一次累计 ——
+	 * 漂移一旦发生是每帧都漂,逐帧 warn 会刷爆日志。计数随 session 生命周期,
+	 * 不随重连清零(漂移不会因为重连而消失)。
+	 */
+	private noteDegradedRaw(cmd: string): void {
+		const count = (this.degradedRawCounts.get(cmd) ?? 0) + 1;
+		this.degradedRawCounts.set(cmd, count);
+		if (count === 1 || count % 100 === 0) {
+			this.ctx.logger.warn(
+				`[proto] 直播间 [${this.sub.roomId}] 已知命令 ${cmd} 解析降级(累计 ${count} 次)—— B 站可能调整了字段形状,请检查更新`,
+			);
+		}
 	}
 
 	// ── Event handlers ────────────────────────────────────────────────────────
