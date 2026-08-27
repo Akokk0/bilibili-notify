@@ -25,6 +25,7 @@ import {
 	type UserActionType,
 } from "./events.js";
 import { decodeInteractWordV2 } from "./interact-word-v2-proto.js";
+import { decodeSendGiftV2 } from "./send-gift-v2-proto.js";
 
 /** 解析一条 MESSAGE 命令 payload。任何输入都返回事件,未知/缺损 → raw。 */
 export function parseCommand(payload: unknown): LiveEvent {
@@ -44,6 +45,8 @@ export function parseCommand(payload: unknown): LiveEvent {
 				return parseGuardBuy(record) ?? raw;
 			case "SEND_GIFT":
 				return parseGift(record) ?? raw;
+			case "SEND_GIFT_V2":
+				return parseGiftV2(record) ?? raw;
 			case "WATCHED_CHANGE":
 				return parseWatched(record) ?? raw;
 			case "LIKE_INFO_V3_UPDATE":
@@ -346,6 +349,66 @@ function parseGift(record: Record<string, unknown> | null): LiveEvent | undefine
 			badge: badgeFromMedal(data?.medal_info),
 			guardLevel: guardLevelOf(data?.guard_level),
 		}),
+		giftId,
+		giftName,
+		coinType,
+		price,
+		num: count,
+		...(combo ? { combo } : {}),
+	};
+}
+
+/**
+ * SEND_GIFT_V2(protobuf)→ 与 SEND_GIFT 同一个 `gift` kind。
+ * gift_list 实测恒为单元素;多元素时取首个(协议允许,尚无真帧佐证语义)。
+ */
+function parseGiftV2(record: Record<string, unknown> | null): LiveEvent | undefined {
+	const pb = (record?.data as { pb?: unknown } | undefined)?.pb;
+	if (typeof pb !== "string") return undefined;
+	const decoded = decodeSendGiftV2(pb);
+	const item = decoded.gift_list?.[0];
+	const uid = decoded.uid;
+	const uname = decoded.uname;
+	const giftId = item?.gift_id;
+	const giftName = item?.gift_name;
+	const coinType = item?.coin_type;
+	const price = item?.price;
+	const count = item?.num;
+	if (
+		typeof uid !== "number" ||
+		typeof uname !== "string" ||
+		typeof giftId !== "number" ||
+		typeof giftName !== "string" ||
+		(coinType !== "gold" && coinType !== "silver") ||
+		typeof price !== "number" ||
+		typeof count !== "number"
+	) {
+		return undefined;
+	}
+	// protobuf 缺省值语义:medal_level=0 即无牌,badgeFromMedal 自会拒收
+	const medal = decoded.medal_info;
+	const badge = badgeFromMedal(
+		medal
+			? {
+					medal_level: medal.medal_level,
+					medal_name: medal.medal_name,
+					is_lighted: medal.is_lighted,
+					target_id: medal.target_id,
+					anchor_roomid: medal.anchor_roomid,
+				}
+			: undefined,
+	);
+	const batchId = item?.batch_combo_id;
+	const combo = batchId
+		? {
+				batchId,
+				comboNum: item?.super_batch_gift_num ?? 0,
+				totalCoin: item?.combo_total_coin ?? 0,
+			}
+		: undefined;
+	return {
+		kind: "gift",
+		user: makeUser(uid, uname, { badge, guardLevel: guardLevelOf(decoded.guard_level) }),
 		giftId,
 		giftName,
 		coinType,

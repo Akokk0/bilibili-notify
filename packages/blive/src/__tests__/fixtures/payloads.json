@@ -111,5 +111,149 @@
 		"data": {
 			"click_count": 147837
 		}
+	},
+	"giftV2": {
+		"cmd": "SEND_GIFT_V2",
+		"danmu": {
+			"area": 1
+		},
+		"data": {
+			"dmscore": 42,
+			"pb": "CLWYsusFEgzlk47lsI/lkZxBd3UaSmh0dHBzOi8vaTEuaGRzbGIuY29tL2Jmcy9mYWNlLzE2Njg0M2M0YTMxNDhmNzI2NWJhNjQ5YjZhYjM2NDNkNzFlYWYyMDMuanBnQgBSywUIxIkCEgnkurrmsJTnpagYASABKGQwZDhkQgRnb2xkShM0ODEwMzk5MjUwMDcwNTMxNTg0UJnVwNQGWAFiPmJhdGNoOmdpZnQ6Y29tYm9faWQ6MTU2NzM5NDg2OTozOTI4MzY0MzQ6MzM5ODg6MTc4NzgzMjk4NS4xNTU0aApwZHgFhQEAAIA/iAEBkgEG5oqV5ZaCwAHe9u4a6gEmCh7lk5Tlk6nlk5Tlk6nnjovogIXojaPogIDotZvkuosQ0uqouwGKApUCCNLqqLsBEowCCh7lk5Tlk6nlk5Tlk6nnjovogIXojaPogIDotZvkuosSSmh0dHBzOi8vaTAuaGRzbGIuY29tL2Jmcy9mYWNlLzdlNmZmYjdiYTVmZTRiNGQ1Y2EyM2I0OWY3ZDA3ZTIxYjRhNDJmYWIuanBnMmwKHuWTlOWTqeWTlOWTqeeOi+iAheiNo+iAgOi1m+S6ixJKaHR0cHM6Ly9pMC5oZHNsYi5jb20vYmZzL2ZhY2UvN2U2ZmZiN2JhNWZlNGI0ZDVjYTIzYjQ5ZjdkMDdlMjFiNGE0MmZhYi5qcGc6MAgDEirlk5Tlk6nlk5Tlk6nnjovogIXojaPogIDotZvkuovlrpjmlrnotKblj7cgAZICAJoC5QEKSmh0dHBzOi8vczEuaGRzbGIuY29tL2Jmcy9saXZlLzdkNzg2NDZlZTRlY2M5MDBjZWJiZTQ2Y2I5NjNmNDIxMDc5NTQ4ZjAucG5nEktodHRwczovL2kwLmhkc2xiLmNvbS9iZnMvbGl2ZS80ZDUyMTVkYTQ3ZDI1YjNkYjc4N2QyYmE1NDQ5MDE2ZWUxNDJkYzgwLndlYnAqSmh0dHBzOi8vaTAuaGRzbGIuY29tL2Jmcy9saXZlLzcwZDkyYWYwYTgzN2FlNjZlMjVmMjM0OTNhNTZlMTY5MGY3NmViYmEuZ2lmqgIAWAFqAggVet8BCLWYsusFEtYBCgzlk47lsI/lkZxBd3USSmh0dHBzOi8vaTEuaGRzbGIuY29tL2Jmcy9mYWNlLzE2Njg0M2M0YTMxNDhmNzI2NWJhNjQ5YjZhYjM2NDNkNzFlYWYyMDMuanBnMloKDOWTjuWwj+WRnEF3dRJKaHR0cHM6Ly9pMS5oZHNsYi5jb20vYmZzL2ZhY2UvMTY2ODQzYzRhMzE0OGY3MjY1YmE2NDliNmFiMzY0M2Q3MWVhZjIwMy5qcGc6HggHEhpiaWxpYmlsaeebtOaSremrmOiDveS4u+aSrQ=="
+		}
+	},
+	"giftV2Medal": {
+		"cmd": "SEND_GIFT_V2",
+		"danmu": {
+			"area": 1
+		},
+		"data": {
+			"dmscore": 70,
+			"pb": "CPS4+cwHEg/ml7bku6Pmtanpk63lm6IaSmh0dHBzOi8vaTEuaGRzbGIuY29tL2Jmcy9mYWNlLzU2NGZkYTc4NjMzYzM5OTk0OTNhNTIyNmU1YzZmMzkyNDU3ODQxNTIuanBnQiMI0uqouwEoAjIDS1BMOI6t8gJAjq3yAkiOrfICUI6t8gJYAVLsBQi88wESD+eyieS4neWboueBr+eJjBgBIAEoZDBkOGRCBGdvbGRKEzQ4MTAzOTk1NjcyNDc5ODEwNTZQ5NXA1AZYAWI+YmF0Y2g6Z2lmdDpjb21ib19pZDoyMDQwNDIxNDkyOjM5MjgzNjQzNDozMTE2NDoxNzg3ODMzMDYwLjc3NjZoCnBkeAWFAQAAgD+IAQGSAQbmipXlloLAAd/27hrqASYKHuWTlOWTqeWTlOWTqeeOi+iAheiNo+iAgOi1m+S6ixDS6qi7AYoClQII0uqouwESjAIKHuWTlOWTqeWTlOWTqeeOi+iAheiNo+iAgOi1m+S6ixJKaHR0cHM6Ly9pMC5oZHNsYi5jb20vYmZzL2ZhY2UvN2U2ZmZiN2JhNWZlNGI0ZDVjYTIzYjQ5ZjdkMDdlMjFiNGE0MmZhYi5qcGcybAoe5ZOU5ZOp5ZOU5ZOp546L6ICF6I2j6ICA6LWb5LqLEkpodHRwczovL2kwLmhkc2xiLmNvbS9iZnMvZmFjZS83ZTZmZmI3YmE1ZmU0YjRkNWNhMjNiNDlmN2QwN2UyMWI0YTQyZmFiLmpwZzowCAMSKuWTlOWTqeWTlOWTqeeOi+iAheiNo+iAgOi1m+S6i+WumOaWuei0puWPtyABkgIHCIzg1wIQAZoC5QEKSmh0dHBzOi8vczEuaGRzbGIuY29tL2Jmcy9saXZlL2UwNTFkZmQ0NTU3Njc4ZjhlZGNhYzQ5OTNlZDAwYTA5MzVjYmQ5Y2MucG5nEktodHRwczovL2kwLmhkc2xiLmNvbS9iZnMvbGl2ZS8zMmI3OTkxMjBlMTYxNGZhNjI3NWI2ZDE1ZGE3YTUyYjIxZGQwMTlkLndlYnAqSmh0dHBzOi8vaTAuaGRzbGIuY29tL2Jmcy9saXZlLzgxNmY4YjdhYTIxMzI4ODhmY2U5MjhjZGZiMTdiOWNmMjFjYzA4MjMuZ2lmqgIUCAESBwj1t/ACEAISBwiM4NcCEAFYAWoCCAd6sgII9Lj5zAcSyQEKD+aXtuS7o+a1qemTreWbohJKaHR0cHM6Ly9pMS5oZHNsYi5jb20vYmZzL2ZhY2UvNTY0ZmRhNzg2MzNjMzk5OTQ5M2E1MjI2ZTVjNmYzOTI0NTc4NDE1Mi5qcGcyXQoP5pe25Luj5rWp6ZOt5ZuiEkpodHRwczovL2kxLmhkc2xiLmNvbS9iZnMvZmFjZS81NjRmZGE3ODYzM2MzOTk5NDkzYTUyMjZlNWM2ZjM5MjQ1Nzg0MTUyLmpwZzoLIP///////////wEaXgoDS1BMEAIYjq3yAiCOrfICKI6t8gIwjq3yAkgBUNLqqLsBYAV6CSM1NzYyQTc5OYIBCSM1NzYyQTc5OYoBCSM1NzYyQTc5OZIBByNGRkZGRkaaAQkjNTc2MkE3RTY="
+		}
+	},
+	"anchorLotStartReal": {
+		"cmd": "ANCHOR_LOT_START",
+		"data": {
+			"asset_icon": "https://i0.hdslb.com/bfs/live/cde7d1a68c0d10c6aa283c4c24b968578fa45d75.png",
+			"asset_icon_webp": "https://i0.hdslb.com/bfs/live/19b8a1b80f71af777ec615b329549224941b7b6c.webp",
+			"award_content": "",
+			"award_image": "",
+			"award_name": "50Q币（中奖登记Q号）",
+			"award_num": 1,
+			"award_per_capita": 0,
+			"award_price_text": "",
+			"award_type": 0,
+			"break_up_time": 0,
+			"cur_gift_num": 0,
+			"current_time": 1787834204,
+			"danmu": "恭喜上海EDG.M！",
+			"danmu_new": [
+				{
+					"danmu": "恭喜上海EDG.M！",
+					"danmu_view": "",
+					"reject": false
+				}
+			],
+			"danmu_type": 0,
+			"edit_panel_h5url": "https://live.bilibili.com/p/html/live-lottery/lottery-blink.html?is_live_half_webview=1&hybrid_half_ui=1,3,100p,500,2c3185,0,30,0;2,2,375,100p,2c3185,0,30,0;3,3,100p,500,2c3185,0,30,0",
+			"entry_standard_attr": {
+				"animation_biz_info": "{\"background\":\"https://i0.hdslb.com/bfs/live/2d6ca6103f45d151c29c313d40c04a38c3514160.png\"}",
+				"animation_type": 1,
+				"entry_id": "anchor_lottery"
+			},
+			"gift_id": 0,
+			"gift_name": "",
+			"gift_num": 0,
+			"gift_price": 0,
+			"goaway_time": 180,
+			"goods_id": -99998,
+			"icon_name": "天选福袋",
+			"id": 15933107,
+			"is_broadcast": 1,
+			"join_total": 0,
+			"join_type": 0,
+			"join_type_text": "",
+			"lot_status": 0,
+			"max_time": 60,
+			"promise_delivery_time": "2026-09-25",
+			"require_text": "关注主播",
+			"require_type": 1,
+			"require_value": 0,
+			"room_id": 21144080,
+			"send_gift_ensure": 0,
+			"show_panel": 1,
+			"sponsor_title": "",
+			"start_dont_popup": 0,
+			"status": 1,
+			"time": 59,
+			"url": "https://live.bilibili.com/p/html/live-lottery/lottery-user.html?is_live_half_webview=1&hybrid_biz=live-lottery-anchor&hybrid_half_ui=1,3,100p,100p,0,0,30,0,0,1;2,2,375,100p,0,0,30,0,0,1;3,3,100p,100p,0,0,30,0,0,1;4,5,100p,100p,0,0,30,0,0,1;5,5,100p,100p,0,0,30,0,0,1;6,5,100p,100p,0,0,30,0,0,1;7,5,100p,100p,0,0,30,0,0,1;8,5,100p,100p,0,0,30,0,0,1",
+			"web_url": "https://live.bilibili.com/p/html/live-lottery/lottery-user.html"
+		},
+		"msg_id": "208205934588143104:1:1000",
+		"p_is_ack": true,
+		"send_time": 1787834206170
+	},
+	"anchorLotAwardReal": {
+		"cmd": "ANCHOR_LOT_AWARD",
+		"data": {
+			"asset_icon": "https://i0.hdslb.com/bfs/live/cde7d1a68c0d10c6aa283c4c24b968578fa45d75.png",
+			"award_dont_popup": 1,
+			"award_image": "",
+			"award_name": "50Q币（中奖登记Q号）",
+			"award_num": 1,
+			"award_per_capita": 0,
+			"award_type": 0,
+			"award_users": [
+				{
+					"color": 0,
+					"face": "https://i1.hdslb.com/bfs/face/60d03a132bea67299263604a6e4b0b51dd3383a7.jpg",
+					"is_mystery": false,
+					"level": 0,
+					"num": 0,
+					"uid": 521919502,
+					"uinfo": {
+						"anon": null,
+						"base": {
+							"face": "https://i1.hdslb.com/bfs/face/60d03a132bea67299263604a6e4b0b51dd3383a7.jpg",
+							"is_mystery": false,
+							"name": "AiHGFCA",
+							"name_color": 0,
+							"name_color_str": "",
+							"official_info": {
+								"desc": "",
+								"role": 0,
+								"title": "",
+								"type": -1
+							},
+							"origin_info": {
+								"face": "https://i1.hdslb.com/bfs/face/60d03a132bea67299263604a6e4b0b51dd3383a7.jpg",
+								"name": "AiHGFCA"
+							},
+							"risk_ctrl_info": null
+						},
+						"guard": null,
+						"guard_leader": null,
+						"medal": null,
+						"title": null,
+						"uhead_frame": null,
+						"uid": 521919502,
+						"wealth": null
+					},
+					"uname": "AiHGFCA"
+				}
+			],
+			"current_time": 1787834264,
+			"edit_panel_h5url": "https://live.bilibili.com/p/html/live-lottery/lottery-blink.html?is_live_half_webview=1&hybrid_half_ui=1,3,100p,500,2c3185,0,30,0;2,2,375,100p,2c3185,0,30,0;3,3,100p,500,2c3185,0,30,0",
+			"id": 15933107,
+			"lot_status": 2,
+			"promise_delivery_time": "2026-09-25",
+			"sponsor_title": "",
+			"url": "https://live.bilibili.com/p/html/live-lottery/lottery-user.html?is_live_half_webview=1&hybrid_biz=live-lottery-anchor&hybrid_half_ui=1,3,100p,100p,0,0,30,0,0,1;2,2,375,100p,0,0,30,0,0,1;3,3,100p,100p,0,0,30,0,0,1;4,5,100p,100p,0,0,30,0,0,1;5,5,100p,100p,0,0,30,0,0,1;6,5,100p,100p,0,0,30,0,0,1;7,5,100p,100p,0,0,30,0,0,1;8,5,100p,100p,0,0,30,0,0,1",
+			"web_url": "https://live.bilibili.com/p/html/live-lottery/lottery-user.html"
+		},
+		"msg_id": "208206056176816129:1:1000",
+		"p_is_ack": true,
+		"send_time": 1787834264148
 	}
 }

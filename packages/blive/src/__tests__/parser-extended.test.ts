@@ -15,6 +15,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { GuardLevel } from "../events.js";
 import { parseCommand } from "../parser.js";
+import payloads from "./fixtures/payloads.json" with { type: "json" };
 import ref from "./fixtures/payloads-ref.json" with { type: "json" };
 
 describe("parseCommand: gift(SEND_GIFT)", () => {
@@ -51,6 +52,41 @@ describe("parseCommand: gift(SEND_GIFT)", () => {
 			name: "__MOCK_BADGE_NAME__",
 			active: false,
 			anchorUid: 77777777772,
+		});
+	});
+});
+
+describe("parseCommand: gift(SEND_GIFT_V2,自录真帧)", () => {
+	// 2026-08 实测:大房间的礼物帧已全部换成 SEND_GIFT_V2(protobuf in data.pb),
+	// 同场 30 分钟录制里旧 SEND_GIFT 一条都没有 —— 旧库在这类房间会漏掉全部礼物。
+	// 期望值由 protobuf wire 走查器独立解出(不经本包 schema),字段号对照
+	// sjh8130/bili_danmaku 的 SEND_GIFT_V2.proto。
+
+	it("V2 礼物帧 → gift(与 SEND_GIFT 同一 kind)", () => {
+		expect(parseCommand(payloads.giftV2)).toEqual({
+			kind: "gift",
+			user: { uid: 1567394869, uname: "哎小呜Awu" },
+			giftId: 33988,
+			giftName: "人气票",
+			coinType: "gold",
+			price: 100,
+			num: 1,
+			combo: {
+				batchId: "batch:gift:combo_id:1567394869:392836434:33988:1787832985.1554",
+				comboNum: 1,
+				totalCoin: 100,
+			},
+		});
+	});
+
+	it("V2 礼物帧带粉丝牌", () => {
+		const ev = parseCommand(payloads.giftV2Medal);
+		if (ev.kind !== "gift") throw new Error(`expected gift, got ${ev.kind}`);
+		expect(ev.giftName).toBe("粉丝团灯牌");
+		expect(ev.user).toEqual({
+			uid: 2040421492,
+			uname: "时代浩铭团",
+			badge: { level: 2, name: "KPL", active: true, anchorUid: 392836434 },
 		});
 	});
 });
@@ -106,6 +142,26 @@ describe("parseCommand: 抽奖组", () => {
 			virtualAward: true,
 			requireDanmu: "__MOCK_MESSAGE_CONTENT__",
 			requireText: "关注主播",
+		});
+	});
+
+	it("天选开始/开奖(自录真帧):实物奖 + 无口令要求", () => {
+		// 赛事房真帧:award_type=0(实物)、danmu 是宣传语而非参与口令 ——
+		// 但 require_text 才是参与要求;两帧 id 相同(同一场天选)。
+		expect(parseCommand(payloads.anchorLotStartReal)).toEqual({
+			kind: "anchor-lottery-start",
+			id: 15933107,
+			durationSec: 60,
+			awardName: "50Q币（中奖登记Q号）",
+			awardNum: 1,
+			virtualAward: false,
+			requireDanmu: "恭喜上海EDG.M！",
+			requireText: "关注主播",
+		});
+		expect(parseCommand(payloads.anchorLotAwardReal)).toMatchObject({
+			kind: "anchor-lottery-end",
+			id: 15933107,
+			awardName: "50Q币（中奖登记Q号）",
 		});
 	});
 

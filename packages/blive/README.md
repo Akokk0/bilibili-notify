@@ -44,7 +44,7 @@ client.close();
 | `danmu` | DANMU_MSG(含后缀变体) | `content` `user` `danmuType?` `timestamp?` `isLottery?` `emoticon?` |
 | `superchat` | SUPER_CHAT_MESSAGE | `content` `price`(RMB) `id?` `durationSec?` `user` |
 | `guard-buy` | GUARD_BUY | `guardLevel` `giftName` `giftId?` `price?` `num?` `startTime?` `endTime?` |
-| `gift` | SEND_GIFT | `giftId` `giftName` `coinType`(gold/silver) `price` `num` `combo?` |
+| `gift` | SEND_GIFT / **SEND_GIFT_V2**(protobuf) | `giftId` `giftName` `coinType`(gold/silver) `price` `num` `combo?`;2026-08 实测大房间已全走 V2 |
 | `watched` | WATCHED_CHANGE | `num` `textSmall` |
 | `liked` | LIKE_INFO_V3_UPDATE | `count`(真实字段是 `click_count`) |
 | `live-start` / `live-end` | LIVE / PREPARING | — |
