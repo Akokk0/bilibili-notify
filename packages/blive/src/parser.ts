@@ -345,7 +345,7 @@ function parseGuardBuy(record: Record<string, unknown> | null): LiveEvent | unde
 
 /**
  * USER_TOAST_MSG(v1,扁平 JSON)→ guard-toast。
- * **独立 kind,绝不并入 guard-buy**(新购两帧同发 = 上舰重复推)。
+ * **独立 kind,绝不并入 guard-buy**(实测三帧同秒齐发,并流 = 一次上舰三连推)。
  */
 function parseGuardToast(record: Record<string, unknown> | null): LiveEvent | undefined {
 	const data = record?.data as

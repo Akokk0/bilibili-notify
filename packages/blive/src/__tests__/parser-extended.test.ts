@@ -389,4 +389,41 @@ describe("parseCommand: guard-toast(USER_TOAST_MSG / _V2,独立 kind,不碰 guar
 		const payload = { cmd: "USER_TOAST_MSG_V2", data: { sender_uinfo: { uid: 1 } } };
 		expect(parseCommand(payload)).toMatchObject({ kind: "raw", degraded: true });
 	});
+
+	describe("2026-08-28 蹲守真帧(房 6154037):续费三帧同秒齐发", () => {
+		// 60 分钟蹲到 5 单上舰,全部 op_type=2(续费),**每单都同发**
+		// GUARD_BUY + USER_TOAST_MSG + USER_TOAST_MSG_V2 三帧 ——「续费只走
+		// toast、GUARD_BUY 不发」的参考资料推断被现网证伪。三帧必须各归各的
+		// kind,去重责任在业务侧;并流 = 一次上舰三连推。
+		// 另一发现:GUARD_BUY 报原价,toast 报实付折扣价(提督 1998000 vs 1598000)。
+
+		it("GUARD_BUY 帧 → guard-buy(原价)", () => {
+			expect(parseCommand(payloads.guardBuyRenewReal)).toEqual({
+				kind: "guard-buy",
+				guardLevel: GuardLevel.Admiral,
+				giftName: "提督",
+				giftId: 10002,
+				price: 1998000,
+				num: 1,
+				startTime: 1787843141,
+				endTime: 1787843141,
+				user: { uid: 237158, uname: "想不起名字的哈曼" },
+			});
+		});
+
+		it("同一单的 v1 / V2 toast → guard-toast,op_type=2,实付价", () => {
+			const expected = {
+				kind: "guard-toast",
+				opType: 2,
+				guardLevel: GuardLevel.Admiral,
+				roleName: "提督",
+				num: 1,
+				unit: "月",
+				price: 1598000,
+				user: { uid: 237158, uname: "想不起名字的哈曼" },
+			};
+			expect(parseCommand(payloads.userToastRenewReal)).toMatchObject(expected);
+			expect(parseCommand(payloads.userToastV2RenewReal)).toMatchObject(expected);
+		});
+	});
 });

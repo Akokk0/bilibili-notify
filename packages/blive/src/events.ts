@@ -83,9 +83,10 @@ export type LiveEvent =
 	  }
 	/**
 	 * 大航海 toast(USER_TOAST_MSG / _V2)。**独立 kind,绝不并入 guard-buy**:
-	 * 新购时 B 站可能同发 GUARD_BUY 与 toast 两帧,并流 = 上舰重复推(与
-	 * entry-effect≠user-action 同一条铁律);续费/自动续费实测只走 toast,
-	 * 这正是本 kind 存在的意义 —— 业务想推续费,消费这里而不是放宽 guard-buy。
+	 * 2026-08-28 蹲守实测,续费(opType=2)时 GUARD_BUY + v1 + V2 **三帧同秒
+	 * 齐发**,并流 = 一次上舰三连推(与 entry-effect≠user-action 同一条铁律)。
+	 * 本 kind 的价值是语义增量:opType 区分开通/续费(文案不可靠,只信
+	 * opType)、price 是实付折扣价(guard-buy 报原价)、toastMsg 带陪伴天数。
 	 */
 	| {
 			kind: "guard-toast";

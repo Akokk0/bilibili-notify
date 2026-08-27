@@ -255,5 +255,110 @@
 		"msg_id": "208206056176816129:1:1000",
 		"p_is_ack": true,
 		"send_time": 1787834264148
+	},
+	"guardBuyRenewReal": {
+		"cmd": "GUARD_BUY",
+		"data": {
+			"uid": 237158,
+			"username": "想不起名字的哈曼",
+			"guard_level": 2,
+			"num": 1,
+			"price": 1998000,
+			"gift_id": 10002,
+			"gift_name": "提督",
+			"start_time": 1787843141,
+			"end_time": 1787843141
+		}
+	},
+	"userToastRenewReal": {
+		"cmd": "USER_TOAST_MSG",
+		"data": {
+			"anchor_show": true,
+			"color": "#E17AFF",
+			"dmscore": 540,
+			"effect_id": 398,
+			"end_time": 1787843141,
+			"face_effect_id": 43,
+			"gift_id": 10002,
+			"group_name": "",
+			"group_op_type": 0,
+			"group_role_name": "",
+			"guard_level": 2,
+			"is_group": 0,
+			"is_show": 0,
+			"num": 1,
+			"op_type": 2,
+			"payflow_id": "2608272305415302171582167",
+			"price": 1598000,
+			"role_name": "提督",
+			"room_effect_id": 591,
+			"room_gift_effect_id": 0,
+			"room_group_effect_id": 398,
+			"ship_effect_id": 591,
+			"source": 0,
+			"start_time": 1787843141,
+			"svga_block": 0,
+			"target_guard_count": 1397,
+			"toast_msg": "<%想不起名字的哈曼%> 在主播Asaki大人的直播间续费了提督，今天是TA陪伴主播的第150天",
+			"uid": 237158,
+			"unit": "月",
+			"user_show": true,
+			"username": "想不起名字的哈曼"
+		}
+	},
+	"userToastV2RenewReal": {
+		"cmd": "USER_TOAST_MSG_V2",
+		"data": {
+			"sender_uinfo": {
+				"uid": 237158,
+				"base": {
+					"name": "想不起名字的哈曼",
+					"face": ""
+				}
+			},
+			"receiver_uinfo": {
+				"uid": 194484313,
+				"base": {
+					"name": "Asaki大人",
+					"face": "https://i1.hdslb.com/bfs/face/84a861facfa041b46f7a30897e9ed3f2e05e0519.jpg"
+				}
+			},
+			"guard_info": {
+				"guard_level": 2,
+				"role_name": "提督",
+				"room_guard_count": 1397,
+				"op_type": 2,
+				"start_time": 1787843141,
+				"end_time": 1787843141
+			},
+			"group_guard_info": null,
+			"pay_info": {
+				"payflow_id": "2608272305415302171582167",
+				"price": 1598000,
+				"num": 1,
+				"unit": "月"
+			},
+			"gift_info": {
+				"gift_id": 10002
+			},
+			"effect_info": {
+				"effect_id": 398,
+				"room_effect_id": 591,
+				"face_effect_id": 43,
+				"room_gift_effect_id": 0,
+				"room_group_effect_id": 398,
+				"ship_effect_id": 591
+			},
+			"toast_msg": "<%想不起名字的哈曼%> 在主播Asaki大人的直播间续费了提督，今天是TA陪伴主播的第150天",
+			"option": {
+				"anchor_show": true,
+				"user_show": true,
+				"is_group": 0,
+				"is_show": 0,
+				"source": 0,
+				"svga_block": 0,
+				"color": "#E17AFF"
+			}
+		}
 	}
 }

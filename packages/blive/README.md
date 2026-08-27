@@ -44,7 +44,7 @@ client.close();
 | `danmu` | DANMU_MSG(含后缀变体) | `content` `user` `danmuType?` `timestamp?` `isLottery?` `emoticon?` |
 | `superchat` | SUPER_CHAT_MESSAGE | `content` `price`(RMB) `id?` `durationSec?` `user` |
 | `guard-buy` | GUARD_BUY | `guardLevel` `giftName` `giftId?` `price?` `num?` `startTime?` `endTime?` |
-| `guard-toast` | USER_TOAST_MSG / **USER_TOAST_MSG_V2**(均 JSON,V2 结构重排) | `opType`(1开通/2续费/3自动续费) `guardLevel` `roleName?` `num?` `unit?` `price?` `toastMsg?`;续费只走这帧 |
+| `guard-toast` | USER_TOAST_MSG / **USER_TOAST_MSG_V2**(均 JSON,V2 结构重排) | `opType`(1开通/2续费/3自动续费) `guardLevel` `roleName?` `num?` `unit?` `price?`(实付折扣价,GUARD_BUY 是原价) `toastMsg?` |
 | `gift` | SEND_GIFT / **SEND_GIFT_V2**(protobuf) | `giftId` `giftName` `coinType`(gold/silver) `price` `num` `combo?`;2026-08 实测大房间已全走 V2 |
 | `watched` | WATCHED_CHANGE | `num` `textSmall` |
 | `liked` | LIKE_INFO_V3_UPDATE | `count`(真实字段是 `click_count`) |
@@ -67,7 +67,7 @@ client.close();
 
 舰长进一次房,B 站会同时发 INTERACT_WORD_V2 **和** ENTRY_EFFECT;旧库把两帧都解成 `enter`,业务侧特别关注进房被推两次。所以 `entry-effect` / `like-click` 是**独立 kind**,永远不并入 `user-action` —— parser 测试钉死,改之前先想清楚这段历史。
 
-同构铁律:`guard-toast` **绝不并入 `guard-buy`** —— 新购时 GUARD_BUY 与 USER_TOAST_MSG 两帧可能同发,并流 = 上舰重复推。续费/自动续费(`opType` 2/3)只走 toast 帧,业务想推续费就消费 `guard-toast`,而不是放宽 `guard-buy`。
+同构铁律:`guard-toast` **绝不并入 `guard-buy`** —— 2026-08-28 蹲守实测(房 6154037,60 分钟 5 单,全是 opType=2 续费):**每单都是 GUARD_BUY + USER_TOAST_MSG + USER_TOAST_MSG_V2 三帧同秒齐发**,并流 = 一次上舰三连推。所以续费**不会**漏推(GUARD_BUY 照发,「续费只走 toast」的参考资料推断已被证伪);guard-toast 的价值是语义增量:opType 区分开通/续费、`price` 是实付折扣价(GUARD_BUY 报原价)、toastMsg 带陪伴天数。注意 opType 与文案不对齐(实测 opType=2 的文案有「续费了」也有「开通了」),判断只信 opType。opType=1(全新首购)与 3(自动续费)的帧组合尚无自录佐证。
 
 ### 协议漂移观测:raw 的 `degraded` 标志
 
