@@ -87,7 +87,7 @@ describe("parseCommand(合成 payload)", () => {
 
 		expect(parseCommand(payload)).toEqual({
 			kind: "guard-buy",
-			guardLevel: GuardLevel.Jianzhang,
+			guardLevel: GuardLevel.Captain,
 			giftName: "舰长",
 			user: { uid: 7777, uname: "舰长大人" },
 		});

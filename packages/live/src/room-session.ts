@@ -564,9 +564,9 @@ export class RoomSession extends RoomSessionBase {
 		if (effectiveGuardBuy.enable) {
 			const customGuardImg: Record<GuardLevel, string | undefined> = {
 				[GuardLevel.None]: undefined,
-				[GuardLevel.Jianzhang]: effectiveGuardBuy.captainImgUrl,
-				[GuardLevel.Tidu]: effectiveGuardBuy.supervisorImgUrl,
-				[GuardLevel.Zongdu]: effectiveGuardBuy.governorImgUrl,
+				[GuardLevel.Captain]: effectiveGuardBuy.captainImgUrl,
+				[GuardLevel.Admiral]: effectiveGuardBuy.supervisorImgUrl,
+				[GuardLevel.Governor]: effectiveGuardBuy.governorImgUrl,
 			};
 			const text = this.ctx.templateRenderer.renderGuardBuy({
 				guardBuyConfig: effectiveGuardBuy,

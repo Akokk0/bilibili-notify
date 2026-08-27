@@ -15,8 +15,8 @@
  * handleLiveEnd/armPeriodicTimer 用 `(s as any).x = vi.fn()` 就地打桩。
  */
 
+import { GuardLevel } from "@bilibili-notify/blive";
 import type { ServiceContext } from "@bilibili-notify/internal";
-import { GuardLevel } from "blive-message-listener";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { SubItemView } from "../push-like";
 import { LivePushType } from "../push-like";
@@ -323,7 +323,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 
 describe("RoomSession.onGuardBuy", () => {
 	const guardBody = {
-		guard_level: GuardLevel.Jianzhang,
+		guard_level: GuardLevel.Captain,
 		gift_name: "舰长",
 		user: { uname: "船员", uid: 7 },
 	};
@@ -337,7 +337,7 @@ describe("RoomSession.onGuardBuy", () => {
 	});
 
 	it("guard_level 高于阈值(等级不够)→ 不推", async () => {
-		// sub.minGuardLevel=1(总督);Jianzhang(3) > 1 → return
+		// sub.minGuardLevel=1(总督);Captain(3) > 1 → return
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "liveGuardBuy");
 		const s = new RoomSession(ctx, makeSub({ liveGuardBuy: true, minGuardLevel: 1 })) as AnySession;

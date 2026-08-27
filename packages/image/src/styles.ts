@@ -4,9 +4,9 @@ import { GuardLevel } from "@bilibili-notify/blive";
 
 export const BG_COLORS: Record<GuardLevel, [string, string]> = {
 	[GuardLevel.None]: ["#4ebcec", "#F9CCDF"],
-	[GuardLevel.Jianzhang]: ["#4ebcec", "#b494e5"],
-	[GuardLevel.Tidu]: ["#d8a0e6", "#b494e5"],
-	[GuardLevel.Zongdu]: ["#f2a053", "#ef5f5f"],
+	[GuardLevel.Captain]: ["#4ebcec", "#b494e5"],
+	[GuardLevel.Admiral]: ["#d8a0e6", "#b494e5"],
+	[GuardLevel.Governor]: ["#f2a053", "#ef5f5f"],
 };
 
 export const SC_LEVELS = {

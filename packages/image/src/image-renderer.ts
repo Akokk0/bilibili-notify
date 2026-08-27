@@ -57,11 +57,11 @@ export type RoastSoloData = Omit<RoastSoloCardProps, RoastStyleKeys>;
 
 const GUARD_LEVEL_IMG: Record<GuardLevel, string> = {
 	[GuardLevel.None]: "",
-	[GuardLevel.Jianzhang]:
+	[GuardLevel.Captain]:
 		"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/captain-Bjw5Byb5.png",
-	[GuardLevel.Tidu]:
+	[GuardLevel.Admiral]:
 		"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/supervisor-u43ElIjU.png",
-	[GuardLevel.Zongdu]:
+	[GuardLevel.Governor]:
 		"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/governor-DpDXKEdA.png",
 };
 

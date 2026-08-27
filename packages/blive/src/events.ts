@@ -6,9 +6,9 @@
 /** 大航海等级。数值与 B 站原始 guard_level 一致。 */
 export enum GuardLevel {
 	None = 0,
-	Zongdu = 1,
-	Tidu = 2,
-	Jianzhang = 3,
+	Governor = 1,
+	Admiral = 2,
+	Captain = 3,
 }
 
 export interface LiveUser {
