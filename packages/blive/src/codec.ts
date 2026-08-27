@@ -74,10 +74,14 @@ function collectPackets(data: Uint8Array, out: DecodedPacket[]): void {
 		const view = new DataView(data.buffer, data.byteOffset + offset);
 		const packetLength = view.getUint32(0);
 		if (packetLength < HEADER_LENGTH || offset + packetLength > data.length) return;
+		const headerLength = view.getUint16(4);
 		const version = view.getUint16(6);
 		const op = view.getUint32(8);
-		const body = data.subarray(offset + HEADER_LENGTH, offset + packetLength);
+		const packetStart = offset;
 		offset += packetLength;
+		// 头长字段允许扩展头(>16);写死 16 会把扩展余量混进 body。非法头长丢包。
+		if (headerLength < HEADER_LENGTH || headerLength > packetLength) continue;
+		const body = data.subarray(packetStart + headerLength, packetStart + packetLength);
 
 		// 解压失败 / body 缺损 / JSON 坏掉的包一律丢弃 —— codec 保持纯函数不抛,
 		// 坏包交给上层以「没收到」处理(这里抛出去会顺着 ws 回调变 uncaughtException)。

@@ -74,6 +74,7 @@ export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
 	socket.binaryType = "nodebuffer";
 
 	let closed = false;
+	let authReplyHandled = false;
 	let heartbeatTimer: NodeJS.Timeout | undefined;
 
 	const emit = (ev: LiveEvent): void => {
@@ -97,7 +98,9 @@ export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
 				platform: "web",
 				type: 2,
 				key: opts.token,
-				buvid: opts.buvid,
+				// 空串时省略该键(JSON.stringify 丢 undefined)—— 真机验证过的
+				// 降级包形;空串 buvid 可能被服务器当无效指纹而非缺失。
+				buvid: opts.buvid || undefined,
 			}),
 		);
 	});
@@ -107,7 +110,11 @@ export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
 		const bytes = data instanceof Uint8Array ? data : new Uint8Array(data as ArrayBufferLike);
 		for (const packet of decodeFrames(bytes)) {
 			if (packet.op === WsOp.AuthReply) {
-				const code = (packet.body as { code?: number } | null)?.code ?? 0;
+				// 一条连接只认首个认证回执:重复回执会叠心跳定时器(旧句柄被
+				// 覆盖后无人清理,close() 只清最新的)。
+				if (authReplyHandled) continue;
+				authReplyHandled = true;
+				const code = (packet.body as { code?: unknown } | null)?.code;
 				if (code === 0) {
 					emit({ kind: "auth-ok" });
 					sendHeartbeat();
@@ -116,7 +123,9 @@ export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
 						opts.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_MS,
 					);
 				} else {
-					emit({ kind: "auth-failed", code });
+					// 协议成功形态恒为 {"code":0};缺 code 字段按失败处理(-1 哨兵),
+					// 当成功会把认证失败伪装成 auth-ok,上层要等 watchdog 才自愈。
+					emit({ kind: "auth-failed", code: typeof code === "number" ? code : -1 });
 				}
 				continue;
 			}

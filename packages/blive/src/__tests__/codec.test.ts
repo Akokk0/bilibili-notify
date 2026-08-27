@@ -131,6 +131,37 @@ describe("decodeFrames(真实录制帧)", () => {
 		expect(decodeFrames(bad)).toEqual([]);
 	});
 
+	it("头长字段大于 16(扩展头)→ body 从头长处起切,不混入头部余量", () => {
+		// 协议头里 u16 头长字段存在的意义就是允许扩展;写死 16 会把扩展头的
+		// 余量混进 body,JSON.parse 失败后整包被当坏包丢弃。
+		const body = new TextEncoder().encode('{"cmd":"EXT_HEADER"}');
+		const packet = new Uint8Array(20 + body.length);
+		const view = new DataView(packet.buffer);
+		view.setUint32(0, packet.length);
+		view.setUint16(4, 20); // 扩展头:16 字节标准头 + 4 字节扩展
+		view.setUint16(6, 0);
+		view.setUint32(8, 5);
+		packet.set([0xde, 0xad, 0xbe, 0xef], 16); // 扩展头余量
+		packet.set(body, 20);
+
+		expect(decodeFrames(packet)).toEqual([{ op: WsOp.Message, body: { cmd: "EXT_HEADER" } }]);
+	});
+
+	it("头长字段非法(小于 16 或超过包长)→ 丢弃该包,不抛", () => {
+		const make = (headerLen: number): Uint8Array => {
+			const p = new Uint8Array(20);
+			const v = new DataView(p.buffer);
+			v.setUint32(0, 20);
+			v.setUint16(4, headerLen);
+			v.setUint16(6, 0);
+			v.setUint32(8, 5);
+			return p;
+		};
+
+		expect(decodeFrames(make(8))).toEqual([]);
+		expect(decodeFrames(make(24))).toEqual([]);
+	});
+
 	it("一条 WS 消息可拼多个顶层包,按包长逐个切", () => {
 		const hb = b64(frames.heartbeatReply);
 		const auth = b64(frames.authReply);

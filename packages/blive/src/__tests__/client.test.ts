@@ -150,6 +150,56 @@ describe("connectLiveRoom", () => {
 		expect(socket.sent).toHaveLength(1);
 	});
 
+	it("认证回执缺 code 字段 → 按认证失败处理(code=-1),不起心跳", () => {
+		// 协议成功形态恒为 {"code":0};缺字段当成功会把认证失败伪装成 auth-ok,
+		// 上层要等 3 分钟 watchdog 才自愈 —— 保守默认按失败走重连梯子。
+		connect();
+		socket.emit("open");
+		const body = new TextEncoder().encode("{}");
+		const reply = new Uint8Array(16 + body.length);
+		const view = new DataView(reply.buffer);
+		view.setUint32(0, reply.length);
+		view.setUint16(4, 16);
+		view.setUint16(6, 1);
+		view.setUint32(8, 8);
+		reply.set(body, 16);
+		socket.emit("message", reply);
+
+		expect(events).toContainEqual({ kind: "auth-failed", code: -1 });
+		expect(events).not.toContainEqual({ kind: "auth-ok" });
+		vi.advanceTimersByTime(60_000);
+		expect(socket.sent).toHaveLength(1);
+	});
+
+	it("重复认证回执 → 只处理首个,不重复 auth-ok、不叠心跳定时器", () => {
+		connect();
+		socket.emit("open");
+		socket.emit("message", b64(frames.authReply));
+		socket.emit("message", b64(frames.authReply));
+
+		expect(events.filter((ev) => ev.kind === "auth-ok")).toHaveLength(1);
+		// 认证包 + 首心跳(仅一次)
+		expect(socket.sent).toHaveLength(2);
+		vi.advanceTimersByTime(30_000);
+		// 单个定时器:每 30s 恰好多 1 个心跳,叠了定时器会多 2 个
+		expect(socket.sent).toHaveLength(3);
+	});
+
+	it("buvid 为空串时认证包省略该键(与真机验证过的包形一致)", () => {
+		connect({ buvid: "" });
+		socket.emit("open");
+
+		const auth = decodeSent(socket.sent[0] as Uint8Array);
+		expect(auth.body).toEqual({
+			uid: 42,
+			roomid: 5050,
+			protover: 3,
+			platform: "web",
+			type: 2,
+			key: "tok",
+		});
+	});
+
 	it("心跳回执 → heartbeat 事件带人气值", () => {
 		connect();
 		socket.emit("message", b64(frames.heartbeatReply));
