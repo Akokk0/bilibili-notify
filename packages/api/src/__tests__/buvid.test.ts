@@ -40,6 +40,16 @@ describe("getBuvid3", () => {
 		expect(calls).toHaveLength(1);
 	});
 
+	it("并发调用在途合流:N 个房间同时 bootstrap 只打一次 finger/spi", async () => {
+		// 启动时 ListenerManager 对每个订阅 fire-and-forget,缓存落位前的并发
+		// 调用若各自联网,等于把 N 条相同请求同时打在风控敏感面上。
+		const { api, calls } = makeApi();
+		const results = await Promise.all([api.getBuvid3(), api.getBuvid3(), api.getBuvid3()]);
+
+		expect(results).toEqual(["real-buvid3-value", "real-buvid3-value", "real-buvid3-value"]);
+		expect(calls).toHaveLength(1);
+	});
+
 	it("接口失败时返回空串,不抛 —— 认证包缺 buvid 仍可尝试", async () => {
 		const { api, calls } = makeApi();
 		(api as unknown as { client: { get(url: string): Promise<unknown> } }).client = {

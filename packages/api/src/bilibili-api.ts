@@ -129,6 +129,7 @@ export class BilibiliAPI {
 
 	/** finger/spi 的 buvid3 进程内缓存(设备指纹,不随账号变)。 */
 	private buvid3Cache = "";
+	private buvid3Inflight: Promise<string> | undefined;
 
 	constructor(opts: BilibiliAPIOptions) {
 		this.serviceCtx = opts.serviceCtx;
@@ -171,17 +172,21 @@ export class BilibiliAPI {
 	 * `undefined` / 空串 → 回退到内置默认 Firefox UA。
 	 */
 	setUserAgent(userAgent: string | undefined): void {
-		const ua = userAgent?.trim() ? userAgent : this.browserIdentity.userAgent;
 		this.config = { ...this.config, userAgent };
+		const ua = this.getUserAgent();
 		if (this.client) {
 			this.client.setHeader("User-Agent", ua);
 			this.logger.info(`[init] User-Agent 已更新: ${ua}`);
 		}
 	}
 
-	/** 当前生效的 User-Agent(用户配置优先,缺省回退内置)。弹幕 WSS 建连复用,保持与 HTTP 同指纹。 */
+	/**
+	 * 当前生效的 User-Agent(用户配置 trim 后优先,空/纯空白回退内置)。
+	 * HTTP 默认头与弹幕 WSS 建连都从这里取 —— 判定必须单点收口,分叉会让
+	 * 一个进程发两套指纹。
+	 */
 	getUserAgent(): string {
-		return this.config.userAgent?.trim() ? this.config.userAgent : this.browserIdentity.userAgent;
+		return this.config.userAgent?.trim() || this.browserIdentity.userAgent;
 	}
 
 	// ---- Initialization ----
@@ -197,8 +202,9 @@ export class BilibiliAPI {
 				// axios 时代由其默认值隐式外发,换 fetch 后需显式钉死(风控指纹对齐)。
 				Accept: "application/json, text/plain, */*",
 				// UA/sec-ch-ua 来自同一份生成身份,版本互相咬合(旧默认是 Firefox UA
-				// 配 Chrome sec-ch-ua 的拼接怪);用户配置的 userAgent 仍优先。
-				"User-Agent": this.config.userAgent || this.browserIdentity.userAgent,
+				// 配 Chrome sec-ch-ua 的拼接怪);用户配置的 userAgent 仍优先,
+				// 判定统一走 getUserAgent(与 WSS 同指纹)。
+				"User-Agent": this.getUserAgent(),
 				Origin: "https://www.bilibili.com",
 				Referer: "https://www.bilibili.com/",
 				priority: "u=1, i",
@@ -795,6 +801,17 @@ export class BilibiliAPI {
 	 */
 	async getBuvid3(): Promise<string> {
 		if (this.buvid3Cache) return this.buvid3Cache;
+		// 在途合流(同 createSelfInfoCache 模式):启动时 N 个房间并发 bootstrap,
+		// 缓存落位前各自联网等于把 N 条相同请求同时打在风控敏感面上。
+		if (!this.buvid3Inflight) {
+			this.buvid3Inflight = this.fetchBuvid3().finally(() => {
+				this.buvid3Inflight = undefined;
+			});
+		}
+		return this.buvid3Inflight;
+	}
+
+	private async fetchBuvid3(): Promise<string> {
 		try {
 			const res = await this.getJson<{ code: number; data?: { b_3?: string } }>(
 				EP.GET_FINGER_SPI,
