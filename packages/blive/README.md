@@ -86,3 +86,5 @@ client.close();
 - `src/__tests__/fixtures/frames.json` / `payloads.json`:自录真帧(capture 脚本,只读登录态)。
 - `src/__tests__/fixtures/payloads-ref.json`:取自 blive-message-listener 0.5.4 `mock/`(MIT,© ddiu8081)的真实匿名化 payload,覆盖自录蹲不到的稀罕事件。
 - `scripts/capture-frames.ts` 录帧、`scripts/smoke-live.ts` 真机 60s 冒烟、`scripts/probe-login.ts` 登录态探针;跑法 `node --experimental-transform-types`。**只读铁律:任何脚本 loadCookies 绝不传 refreshToken**(会触发 cookie 轮换,短命进程不落盘 = 弄丢登录态)。
+- 录帧蹲守:`BLIVE_WATCH_CMDS=USER_TOAST_MSG,USER_TOAST_MSG_V2,GUARD_BUY` 逗号分隔 —— 录到匹配命令立刻终端播报完整 payload,长录蹲稀罕帧(上舰续费之类)不用盯文件;播报是旁路,不影响录制。
+- `scripts/pb-walk.ts` protobuf wire 走查器:不依赖任何 schema 直接按 wire format 走查字段号/类型/值,手裁 proto(SEND_GIFT_V2 / INTERACT_WORD_V2)怀疑漂移时拿真帧对账用。
