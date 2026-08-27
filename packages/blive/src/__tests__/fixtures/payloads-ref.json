@@ -810,5 +810,116 @@
 			"start_time": 1661604507,
 			"end_time": 1661604507
 		}
+	},
+	"userToastNew": {
+		"cmd": "USER_TOAST_MSG",
+		"data": {
+			"anchor_show": true,
+			"color": "#00D1F1",
+			"dmscore": 90,
+			"effect_id": 397,
+			"end_time": 1674568760,
+			"face_effect_id": 44,
+			"gift_id": 10003,
+			"guard_level": 3,
+			"is_show": 0,
+			"num": 1,
+			"op_type": 1,
+			"payflow_id": "2301242158351662179727302",
+			"price": 198000,
+			"role_name": "舰长",
+			"room_effect_id": 590,
+			"start_time": 1674568760,
+			"svga_block": 0,
+			"target_guard_count": 2072,
+			"toast_msg": "<%__MOCK_UNAME__%> 开通了舰长，今天是TA陪伴主播的第1天",
+			"uid": 77777777771,
+			"unit": "月",
+			"user_show": true,
+			"username": "__MOCK_UNAME__"
+		}
+	},
+	"userToastRenew": {
+		"cmd": "USER_TOAST_MSG",
+		"data": {
+			"anchor_show": true,
+			"color": "#00D1F1",
+			"dmscore": 90,
+			"effect_id": 397,
+			"end_time": 1674568760,
+			"face_effect_id": 44,
+			"gift_id": 10003,
+			"guard_level": 3,
+			"is_show": 0,
+			"num": 1,
+			"op_type": 3,
+			"payflow_id": "2301242159108192199408068",
+			"price": 138000,
+			"role_name": "舰长",
+			"room_effect_id": 590,
+			"start_time": 1674568760,
+			"svga_block": 0,
+			"target_guard_count": 2073,
+			"toast_msg": "<%__MOCK_UNAME__%> 开通了舰长，今天是TA陪伴主播的第91天",
+			"uid": 77777777771,
+			"unit": "月",
+			"user_show": true,
+			"username": "__MOCK_UNAME__"
+		}
+	},
+	"userToastV2": {
+		"cmd": "USER_TOAST_MSG_V2",
+		"data": {
+			"dmscore": 24,
+			"effect_info": {
+				"effect_id": 397,
+				"face_effect_id": 44,
+				"room_effect_id": 590,
+				"room_gift_effect_id": 0,
+				"room_group_effect_id": 1337
+			},
+			"gift_info": {
+				"gift_id": 10003
+			},
+			"group_guard_info": null,
+			"guard_info": {
+				"end_time": 1722503296,
+				"guard_level": 3,
+				"op_type": 1,
+				"role_name": "舰长",
+				"room_guard_count": 309,
+				"start_time": 1722503296
+			},
+			"option": {
+				"anchor_show": true,
+				"color": "#00D1F1",
+				"is_group": 0,
+				"is_show": 0,
+				"source": 0,
+				"svga_block": 0,
+				"user_show": true
+			},
+			"pay_info": {
+				"num": 1,
+				"payflow_id": "__MOCK_PAYFLOW_ID__",
+				"price": 138000,
+				"unit": "月"
+			},
+			"receiver_uinfo": {
+				"base": {
+					"face": "",
+					"name": "__MOCK_ANCHOR_UNAME__"
+				},
+				"uid": 77777777772
+			},
+			"sender_uinfo": {
+				"base": {
+					"face": "",
+					"name": "__MOCK_UNAME__"
+				},
+				"uid": 77777777771
+			},
+			"toast_msg": "<%__MOCK_UNAME__%> 在主播__MOCK_ANCHOR_UNAME__的直播间开通了舰长，今天是TA陪伴主播的第1天"
+		}
 	}
 }

@@ -44,6 +44,7 @@ client.close();
 | `danmu` | DANMU_MSG(含后缀变体) | `content` `user` `danmuType?` `timestamp?` `isLottery?` `emoticon?` |
 | `superchat` | SUPER_CHAT_MESSAGE | `content` `price`(RMB) `id?` `durationSec?` `user` |
 | `guard-buy` | GUARD_BUY | `guardLevel` `giftName` `giftId?` `price?` `num?` `startTime?` `endTime?` |
+| `guard-toast` | USER_TOAST_MSG / **USER_TOAST_MSG_V2**(均 JSON,V2 结构重排) | `opType`(1开通/2续费/3自动续费) `guardLevel` `roleName?` `num?` `unit?` `price?` `toastMsg?`;续费只走这帧 |
 | `gift` | SEND_GIFT / **SEND_GIFT_V2**(protobuf) | `giftId` `giftName` `coinType`(gold/silver) `price` `num` `combo?`;2026-08 实测大房间已全走 V2 |
 | `watched` | WATCHED_CHANGE | `num` `textSmall` |
 | `liked` | LIKE_INFO_V3_UPDATE | `count`(真实字段是 `click_count`) |
@@ -65,6 +66,12 @@ client.close();
 ### 铁律:user-action 由 INTERACT_WORD_V2 一帧独供
 
 舰长进一次房,B 站会同时发 INTERACT_WORD_V2 **和** ENTRY_EFFECT;旧库把两帧都解成 `enter`,业务侧特别关注进房被推两次。所以 `entry-effect` / `like-click` 是**独立 kind**,永远不并入 `user-action` —— parser 测试钉死,改之前先想清楚这段历史。
+
+同构铁律:`guard-toast` **绝不并入 `guard-buy`** —— 新购时 GUARD_BUY 与 USER_TOAST_MSG 两帧可能同发,并流 = 上舰重复推。续费/自动续费(`opType` 2/3)只走 toast 帧,业务想推续费就消费 `guard-toast`,而不是放宽 `guard-buy`。
+
+### 协议漂移观测:raw 的 `degraded` 标志
+
+已知命令(`PARSED_COMMANDS` 集合)解析失败时,降级的 raw 会带 `degraded: true` —— 这是「B 站可能改了字段形状」的漂移信号,上游(RoomSession)对它做限流 warn。不带 degraded 的 raw 只是刻意不解析的命令,属正常流量。背景:SEND_GIFT → SEND_GIFT_V2 迁移时旧库在大房间漏掉全部礼物且无报警,这个标志就是那次的教训。
 
 ### 刻意不解析(要用走 `raw`)
 

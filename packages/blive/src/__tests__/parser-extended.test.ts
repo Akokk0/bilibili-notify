@@ -336,3 +336,57 @@ describe("字段深化:superchat / guard-buy", () => {
 		});
 	});
 });
+
+describe("parseCommand: guard-toast(USER_TOAST_MSG / _V2,独立 kind,不碰 guard-buy)", () => {
+	// 铁律(与 entry-effect 同构):新购时 B 站可能同发 GUARD_BUY 与
+	// USER_TOAST_MSG 两帧 —— 并进 guard-buy 就是舰长重复推的翻版。
+	// 续费(op_type 2/3)据实测只走 toast,这正是补这个 kind 的动机。
+
+	it("v1 新购:全字段", () => {
+		expect(parseCommand(ref.userToastNew)).toEqual({
+			kind: "guard-toast",
+			opType: 1,
+			guardLevel: GuardLevel.Captain,
+			roleName: "舰长",
+			num: 1,
+			unit: "月",
+			price: 198000,
+			startTime: 1674568760,
+			endTime: 1674568760,
+			toastMsg: "<%__MOCK_UNAME__%> 开通了舰长，今天是TA陪伴主播的第1天",
+			user: { uid: 77777777771, uname: "__MOCK_UNAME__" },
+		});
+	});
+
+	it("v1 自动续费:opType=3,续费价 —— kind 仍是 guard-toast 绝不是 guard-buy", () => {
+		const ev = parseCommand(ref.userToastRenew);
+		expect(ev).toMatchObject({
+			kind: "guard-toast",
+			opType: 3,
+			guardLevel: GuardLevel.Captain,
+			price: 138000,
+		});
+	});
+
+	it("V2 嵌套结构:sender_uinfo / guard_info / pay_info 抽取", () => {
+		expect(parseCommand(ref.userToastV2)).toEqual({
+			kind: "guard-toast",
+			opType: 1,
+			guardLevel: GuardLevel.Captain,
+			roleName: "舰长",
+			num: 1,
+			unit: "月",
+			price: 138000,
+			startTime: 1722503296,
+			endTime: 1722503296,
+			toastMsg:
+				"<%__MOCK_UNAME__%> 在主播__MOCK_ANCHOR_UNAME__的直播间开通了舰长，今天是TA陪伴主播的第1天",
+			user: { uid: 77777777771, uname: "__MOCK_UNAME__" },
+		});
+	});
+
+	it("V2 形状缺损(缺 guard_info)→ degraded raw", () => {
+		const payload = { cmd: "USER_TOAST_MSG_V2", data: { sender_uinfo: { uid: 1 } } };
+		expect(parseCommand(payload)).toMatchObject({ kind: "raw", degraded: true });
+	});
+});

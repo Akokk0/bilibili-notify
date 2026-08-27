@@ -37,6 +37,8 @@ export const PARSED_COMMANDS: ReadonlySet<string> = new Set([
 	"DANMU_MSG",
 	"SUPER_CHAT_MESSAGE",
 	"GUARD_BUY",
+	"USER_TOAST_MSG",
+	"USER_TOAST_MSG_V2",
 	"SEND_GIFT",
 	"SEND_GIFT_V2",
 	"WATCHED_CHANGE",
@@ -81,6 +83,10 @@ export function parseCommand(payload: unknown): LiveEvent {
 				return parseSuperChat(record) ?? degraded;
 			case "GUARD_BUY":
 				return parseGuardBuy(record) ?? degraded;
+			case "USER_TOAST_MSG":
+				return parseGuardToast(record) ?? degraded;
+			case "USER_TOAST_MSG_V2":
+				return parseGuardToastV2(record) ?? degraded;
 			case "SEND_GIFT":
 				return parseGift(record) ?? degraded;
 			case "SEND_GIFT_V2":
@@ -334,6 +340,125 @@ function parseGuardBuy(record: Record<string, unknown> | null): LiveEvent | unde
 		...(count !== undefined ? { num: count } : {}),
 		...(startTime !== undefined ? { startTime } : {}),
 		...(endTime !== undefined ? { endTime } : {}),
+	};
+}
+
+/**
+ * USER_TOAST_MSG(v1,扁平 JSON)→ guard-toast。
+ * **独立 kind,绝不并入 guard-buy**(新购两帧同发 = 上舰重复推)。
+ */
+function parseGuardToast(record: Record<string, unknown> | null): LiveEvent | undefined {
+	const data = record?.data as
+		| {
+				uid?: unknown;
+				username?: unknown;
+				guard_level?: unknown;
+				op_type?: unknown;
+				role_name?: unknown;
+				num?: unknown;
+				unit?: unknown;
+				price?: unknown;
+				start_time?: unknown;
+				end_time?: unknown;
+				toast_msg?: unknown;
+		  }
+		| undefined;
+	const uid = data?.uid;
+	const uname = data?.username;
+	const guardLevel = guardLevelOf(data?.guard_level);
+	const opType = num(data?.op_type);
+	if (
+		typeof uid !== "number" ||
+		typeof uname !== "string" ||
+		guardLevel === undefined ||
+		opType === undefined
+	) {
+		return undefined;
+	}
+	return buildGuardToast(opType, guardLevel, { uid, uname }, data ?? {});
+}
+
+/**
+ * USER_TOAST_MSG_V2 → guard-toast。同语义,JSON 结构重排:
+ * sender_uinfo.{uid,base.name} / guard_info.{op_type,guard_level,…} / pay_info。
+ */
+function parseGuardToastV2(record: Record<string, unknown> | null): LiveEvent | undefined {
+	const data = record?.data as
+		| {
+				sender_uinfo?: { uid?: unknown; base?: { name?: unknown } };
+				guard_info?: {
+					guard_level?: unknown;
+					op_type?: unknown;
+					role_name?: unknown;
+					start_time?: unknown;
+					end_time?: unknown;
+				};
+				pay_info?: { num?: unknown; unit?: unknown; price?: unknown };
+				toast_msg?: unknown;
+		  }
+		| undefined;
+	const uid = data?.sender_uinfo?.uid;
+	const uname = data?.sender_uinfo?.base?.name;
+	const guardLevel = guardLevelOf(data?.guard_info?.guard_level);
+	const opType = num(data?.guard_info?.op_type);
+	if (
+		typeof uid !== "number" ||
+		typeof uname !== "string" ||
+		guardLevel === undefined ||
+		opType === undefined
+	) {
+		return undefined;
+	}
+	return buildGuardToast(
+		opType,
+		guardLevel,
+		{ uid, uname },
+		{
+			role_name: data?.guard_info?.role_name,
+			num: data?.pay_info?.num,
+			unit: data?.pay_info?.unit,
+			price: data?.pay_info?.price,
+			start_time: data?.guard_info?.start_time,
+			end_time: data?.guard_info?.end_time,
+			toast_msg: data?.toast_msg,
+		},
+	);
+}
+
+/** v1 / V2 抽平后的公共装配:可选字段仅在有意义时携带。 */
+function buildGuardToast(
+	opType: number,
+	guardLevel: GuardLevel,
+	user: LiveUser,
+	fields: {
+		role_name?: unknown;
+		num?: unknown;
+		unit?: unknown;
+		price?: unknown;
+		start_time?: unknown;
+		end_time?: unknown;
+		toast_msg?: unknown;
+	},
+): LiveEvent {
+	const roleName = str(fields.role_name);
+	const count = num(fields.num);
+	const unit = str(fields.unit);
+	const price = num(fields.price);
+	const startTime = num(fields.start_time);
+	const endTime = num(fields.end_time);
+	const toastMsg = str(fields.toast_msg);
+	return {
+		kind: "guard-toast",
+		opType,
+		guardLevel,
+		user,
+		...(roleName !== undefined ? { roleName } : {}),
+		...(count !== undefined ? { num: count } : {}),
+		...(unit !== undefined ? { unit } : {}),
+		...(price !== undefined ? { price } : {}),
+		...(startTime !== undefined ? { startTime } : {}),
+		...(endTime !== undefined ? { endTime } : {}),
+		...(toastMsg !== undefined ? { toastMsg } : {}),
 	};
 }
 

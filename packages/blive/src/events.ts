@@ -81,6 +81,31 @@ export type LiveEvent =
 			startTime?: number;
 			endTime?: number;
 	  }
+	/**
+	 * 大航海 toast(USER_TOAST_MSG / _V2)。**独立 kind,绝不并入 guard-buy**:
+	 * 新购时 B 站可能同发 GUARD_BUY 与 toast 两帧,并流 = 上舰重复推(与
+	 * entry-effect≠user-action 同一条铁律);续费/自动续费实测只走 toast,
+	 * 这正是本 kind 存在的意义 —— 业务想推续费,消费这里而不是放宽 guard-buy。
+	 */
+	| {
+			kind: "guard-toast";
+			/** B 站 op_type 原义:1=开通 2=续费 3=自动续费;新值原样透传。 */
+			opType: number;
+			guardLevel: GuardLevel;
+			user: LiveUser;
+			/** 头衔名,如「舰长」。 */
+			roleName?: string;
+			num?: number;
+			/** num 的单位:「月」/「年」。 */
+			unit?: string;
+			/** 价格,金瓜子(/1000 为 RMB);续费价可低于新购价。 */
+			price?: number;
+			/** 等级生效/过期时间,秒级时间戳。 */
+			startTime?: number;
+			endTime?: number;
+			/** 全文案,如「<%xx%> 开通了舰长,今天是TA陪伴主播的第1天」。 */
+			toastMsg?: string;
+	  }
 	| {
 			kind: "gift";
 			user: LiveUser;
