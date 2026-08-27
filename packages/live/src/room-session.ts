@@ -256,6 +256,14 @@ export class RoomSession extends RoomSessionBase {
 		this.reconnecting = true;
 		try {
 			await this.reconnectLoop(reason, detail);
+		} catch (e) {
+			// 总兜底:reconnect 的 promise 被 watchdog / auth-failed / closed /
+			// preflight 四个入口以 void 丢弃 —— 这里再抛就是 unhandledRejection
+			// (Node 默认崩进程)。已知失败模式都在 loop 内消化,这层只接漏网的
+			// (如补跑推卡时渲染/推送 reject)。
+			const msg = `直播间 [${this.sub.roomId}] 重连流程内部异常:${(e as Error).message}`;
+			this.ctx.logger.error(`[conn] ${msg}`);
+			this.ctx.emitEngineError(msg);
 		} finally {
 			this.reconnecting = false;
 		}
@@ -290,6 +298,9 @@ export class RoomSession extends RoomSessionBase {
 				const idx = Math.min(preflightBlockedAttempts, PREFLIGHT_BLOCKED_BACKOFF_MS.length - 1);
 				delay = PREFLIGHT_BLOCKED_BACKOFF_MS[idx] as number;
 				preflightBlockedAttempts++;
+				// 预检被拦说明服务在响应(是风控不是连接故障)—— 复位秒级计数,
+				// 否则风控波中拦截与普通失败交替时,5 个普通轮凑齐就 break 放弃。
+				this.reconnectAttempts = 0;
 				this.ctx.logger.warn(
 					`[conn] 直播间 [${this.sub.roomId}] ${reasonText},${Math.round(delay / 1000)}s 后重试预检(长尾第 ${preflightBlockedAttempts} 次,不放弃)`,
 				);
@@ -349,13 +360,27 @@ export class RoomSession extends RoomSessionBase {
 				// 「翻成在播」窗口包裹)。与 weTurnedLiveOff 天然互斥:没 bootstrap
 				// 过的房间 liveStatus 恒为 false,不可能是我们翻下去的。
 				if (!this.bootstrapped) {
+					if (this.bootstrapInFlight) {
+						// bootstrap 窗口内断线:首跑还在途,新 listener 已就位,房态
+						// 由首跑收尾 —— 不并发第二份(双开会重复推「正在直播」卡、
+						// 交错 transition 窗口)。
+						return;
+					}
 					this.beginLiveTransition();
+					let stateReady = false;
 					try {
-						await this.bootstrapRoomState();
+						stateReady = await this.bootstrapRoomState();
 					} finally {
 						this.finishLiveTransition();
 					}
-					return;
+					if (stateReady) return;
+					// 熬过风控刚连上,初始信息拉取又失败 —— 多半泡在同一场风控余波里。
+					// 回长尾继续等,不 cancel:一次瞬时 HTTP 失败不该毙掉「永不放弃」的房间。
+					this.ctx.logger.warn(
+						`[conn] 直播间 [${this.sub.roomId}] 重连后初始房态拉取失败,回长尾退避重试`,
+					);
+					preflightBlocked = true;
+					continue;
 				}
 				// 上面 `reason === "error"` 的分支把状态翻成了下播并停了周期复推。
 				// 那是保守处置(连接断了,我们确实不知道房间还在不在播),但**必须

@@ -43,6 +43,12 @@ export abstract class RoomSessionBase {
 	 * 这里仍是 false —— 重连成功路径据此补跑,而不是误闯「重连核对」分支。
 	 */
 	protected bootstrapped = false;
+	/**
+	 * bootstrapRoomState 在途标志。`bootstrapped` 只在跑**完**才落位,单看它会把
+	 * 「尚未跑完」当「从没跑过」—— bootstrap 窗口内断线的重连会并发再跑一份
+	 * (「正在直播」卡推两张、transition 窗口交错)。重连补跑前必须先看这个。
+	 */
+	protected bootstrapInFlight = false;
 
 	protected pushAtTimeTimer: Disposable | null = null;
 	protected lastLiveStart = 0;
@@ -331,30 +337,47 @@ export abstract class RoomSessionBase {
 		// 刷房间/主播信息、算已播时长、渲染并推送「正在直播」卡片,可达数秒。这是全仓
 		// 最长的一段「翻成在播」窗口,期间到达的 END 同样必须记账。
 		this.beginLiveTransition();
+		let stateReady = false;
 		try {
-			await this.bootstrapRoomState();
+			stateReady = await this.bootstrapRoomState();
 		} finally {
 			// 兜底:上面每条提前 return 的路径也要把窗口关掉,不能让标志漏到下一次事件。
 			this.finishLiveTransition();
+		}
+		// 首跑的信息拉取失败按原语义放弃房间;重连补跑路径(room-session)对同一个
+		// false 走长尾重试 —— 放弃与否是调用方的策略,不在 bootstrapRoomState 里定。
+		if (!stateReady) {
+			await this.ctx.push.sendPrivateMsg("获取直播间信息失败，启动直播间弹幕检测失败");
+			this.onMonitoringStopped();
+			this.ctx.closeListener(this.sub.roomId);
 		}
 	}
 
 	/**
 	 * {@link bootstrap} 装好 listener 之后的部分,整段跑在「翻成在播」窗口里。
 	 * protected:预检被风控挡下再经长尾重试连上的房间,从没跑过这段 —— 重连成功
-	 * 路径据 `liveRoomInfo === undefined` 识别后补跑(含已在播检测与 restartPush)。
+	 * 路径据 `bootstrapped` 标志识别后补跑(含已在播检测与 restartPush)。
+	 *
+	 * 返回 `false` = 初始信息拉取失败,**不带任何放弃副作用** —— 首跑(bootstrap)
+	 * 据此停止监测,重连补跑据此回长尾重试,策略归调用方。
 	 */
-	protected async bootstrapRoomState(): Promise<void> {
+	protected async bootstrapRoomState(): Promise<boolean> {
+		this.bootstrapInFlight = true;
+		try {
+			return await this.bootstrapRoomStateInner();
+		} finally {
+			this.bootstrapInFlight = false;
+		}
+	}
+
+	private async bootstrapRoomStateInner(): Promise<boolean> {
 		if (
 			!(await this.useLiveRoomInfo(LiveType.FirstLiveBroadcast)) ||
 			!(await this.useMasterInfo(LiveType.FirstLiveBroadcast)) ||
 			!this.liveRoomInfo ||
 			!this.masterInfo
 		) {
-			await this.ctx.push.sendPrivateMsg("获取直播间信息失败，启动直播间弹幕检测失败");
-			this.onMonitoringStopped();
-			this.ctx.closeListener(this.sub.roomId);
-			return;
+			return false;
 		}
 
 		this.onListenerStarted();
@@ -406,13 +429,14 @@ export abstract class RoomSessionBase {
 				this.ctx.logger.info(
 					`[live] 直播间 [${this.sub.roomId}] 启动期间已收到下播事件，不按在播处理`,
 				);
-				return;
+				return true;
 			}
 			// P2:与 onLiveStart 同序(先 setLiveStatus 再 arm)。此前 bootstrap
 			// 反着写,当前无害但语义不一致 —— 统一为「先翻状态再 arm 周期复推」。
 			this.setLiveStatus(true);
 			this.armPeriodicTimer();
 		}
+		return true;
 	}
 
 	/** Build the single-callback event funnel for the WS client; provided by the subclass. */

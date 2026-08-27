@@ -1,4 +1,9 @@
-import type { LiveRoomInfo, MasterInfoData, MySelfInfoData } from "@bilibili-notify/api";
+import {
+	type LiveRoomInfo,
+	type MasterInfoData,
+	type MySelfInfoData,
+	RiskControlError,
+} from "@bilibili-notify/api";
 import { connectLiveRoom, type DanmuHost, type LiveEvent } from "@bilibili-notify/blive";
 import { type MessageKindLayout, planMessageGroups } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
@@ -72,6 +77,13 @@ export function describeLiveRoomDanmuAccessDenied(info: LiveRoomDanmuInfo): stri
  */
 export class RoomContext extends RoomContextBase {
 	/**
+	 * Per-room 建连轮次计数,用于 host_list 轮转:首个 host 从用户网络不可达时,
+	 * 重连换下一个 host 而不是永远钉死首项烧光梯子。**特意不在 closeListener 清**
+	 * —— 重连循环每轮顶部都会 close,清了就等于永远连同一个 host。
+	 */
+	private readonly hostRotation = new Map<string, number>();
+
+	/**
 	 * Bring up the WebSocket listener for `roomId`.
 	 *
 	 * L4: returns `true` iff there is an active listener for the room *after*
@@ -108,6 +120,12 @@ export class RoomContext extends RoomContextBase {
 		try {
 			danmuInfo = await this.api.getLiveRoomInfoStreamKey(roomId);
 		} catch (e) {
+			// 持续 -352 经 wbiGet 以 RiskControlError **异常**到达(它绝不把 -352 body
+			// 返回给调用方)—— 必须映射成预检拦截交给长尾退避;吞成 return false 会让
+			// 「-352 永不放弃」整条不可达,房间被当普通失败在秒级梯子内放弃。
+			if (e instanceof RiskControlError) {
+				throw new LiveRoomPreflightBlockedError(e.message);
+			}
 			const message = e instanceof Error ? e.message : String(e);
 			this.logger.warn(`[conn] 获取弹幕连接信息异常，房间 [${roomId}]：${message}`);
 			return false;
@@ -153,13 +171,19 @@ export class RoomContext extends RoomContextBase {
 		const buvid = await this.api.getBuvid3();
 		if (aborted()) return false;
 
+		// host_list 轮转:client 是哑管道恒取首项,这里按建连轮次旋转列表次序。
+		const attempt = this.hostRotation.get(roomId) ?? 0;
+		this.hostRotation.set(roomId, attempt + 1);
+		const offset = attempt % hostList.length;
+		const rotatedHosts = [...hostList.slice(offset), ...hostList.slice(0, offset)];
+
 		const listener = connectLiveRoom({
 			// sub.roomId 来自主播信息解析,已是真实长房号(短号在这里连预检都过不了)
 			roomId: roomIdNum,
 			uid: mySelfInfo.data.mid,
 			token,
 			buvid,
-			hostList,
+			hostList: rotatedHosts,
 			cookieHeader: cookiesStr,
 			userAgent: this.api.getUserAgent(),
 			onEvent,

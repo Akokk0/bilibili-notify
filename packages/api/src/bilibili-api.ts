@@ -69,7 +69,7 @@ export function classifyRefreshCode(code: number): RefreshOutcome {
  * `this.retry` 的 `shouldRetry` 识别并 **fail-fast** —— 持续风控再快速重试 3 轮只会
  * 放大打在被限流账号上的请求量。区别于瞬时网络错误(仍应退避重试)。
  */
-class RiskControlError extends Error {
+export class RiskControlError extends Error {
 	constructor(message: string) {
 		super(message);
 		this.name = "RiskControlError";
