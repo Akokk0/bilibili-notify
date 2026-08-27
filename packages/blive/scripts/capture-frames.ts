@@ -7,6 +7,10 @@
  * 用法(仓库根目录):
  *   node --experimental-strip-types packages/blive/scripts/capture-frames.ts <roomId> [分钟=3] [输出.jsonl]
  *
+ * 蹲守模式:BLIVE_WATCH_CMDS=USER_TOAST_MSG,USER_TOAST_MSG_V2,GUARD_BUY(逗号
+ * 分隔)—— 录到匹配命令时立刻在终端播报完整 payload,长录蹲稀罕帧(如上舰
+ * 续费)不用盯文件。播报只是旁路,录制本身不受影响。
+ *
  * 依赖已构建的 lib(@bilibili-notify/storage / api):动过那些包先 vp run build。
  */
 
@@ -16,7 +20,7 @@ import { fileURLToPath } from "node:url";
 import { BilibiliAPI } from "@bilibili-notify/api";
 import { StorageManager } from "@bilibili-notify/storage";
 import WebSocket from "ws";
-import { encodePacket, WsOp } from "../src/codec.ts";
+import { decodeFrames, encodePacket, WsOp } from "../src/codec.ts";
 
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const dataDir = process.env.BN_DATA_DIR ?? join(repoRoot, "apps", "server", "data");
@@ -135,6 +139,16 @@ let frames = 0;
 let bytes = 0;
 const opsSeen = new Map<number, number>();
 
+// 蹲守目标命令(BLIVE_WATCH_CMDS,逗号分隔);空 = 不解码、纯录制
+const watchCmds = new Set(
+	(process.env.BLIVE_WATCH_CMDS ?? "")
+		.split(",")
+		.map((s) => s.trim())
+		.filter(Boolean),
+);
+let watchHits = 0;
+if (watchCmds.size > 0) logger.info(`蹲守命令: ${[...watchCmds].join(", ")}`);
+
 ws.on("open", () => {
 	logger.info("已连接,发认证包");
 	ws.send(
@@ -161,6 +175,18 @@ ws.on("message", (data: Buffer) => {
 		outFile,
 		`${JSON.stringify({ t: Date.now() - t0, op, b64: data.toString("base64") })}\n`,
 	);
+	// 蹲守播报(decodeFrames 坏包内部丢弃不抛,旁路安全)
+	if (watchCmds.size > 0) {
+		for (const p of decodeFrames(data)) {
+			if (p.op !== WsOp.Message) continue;
+			const cmd = (p.body as { cmd?: unknown } | null)?.cmd;
+			if (typeof cmd === "string" && watchCmds.has(cmd)) {
+				watchHits++;
+				const at = Math.round((Date.now() - t0) / 1000);
+				logger.info(`🎯 蹲到 ${cmd}(第 ${watchHits} 条,t+${at}s):${JSON.stringify(p.body)}`);
+			}
+		}
+	}
 });
 
 ws.on("error", (e) => logger.error(`ws error: ${e.message}`));
@@ -170,7 +196,8 @@ setTimeout(
 	() => {
 		ws.close();
 		const ops = [...opsSeen.entries()].map(([op, n]) => `op${op}×${n}`).join(" ");
-		logger.info(`收工:${frames} 帧 / ${bytes} 字节 / ${ops}`);
+		const watchNote = watchCmds.size > 0 ? ` / 蹲到 ${watchHits} 条目标命令` : "";
+		logger.info(`收工:${frames} 帧 / ${bytes} 字节 / ${ops}${watchNote}`);
 		process.exit(0);
 	},
 	minutes * 60 * 1000,
