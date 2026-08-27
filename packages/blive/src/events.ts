@@ -161,4 +161,9 @@ export type LiveEvent =
 	//    混流正是舰长进房重复推旧 bug 的病根)─────────────────────
 	| { kind: "entry-effect"; user: LiveUser }
 	| { kind: "like-click"; user: LiveUser }
-	| { kind: "raw"; cmd: string; payload: unknown };
+	/**
+	 * 未解析命令原样透传。`degraded: true` = 这本是已知命令,但形状/protobuf
+	 * 解析失败降级而来 —— 是「B 站可能改了字段」的协议漂移信号,上游应观测;
+	 * 不带 degraded 的 raw 只是刻意不解析的命令,属正常流量。
+	 */
+	| { kind: "raw"; cmd: string; payload: unknown; degraded?: true };

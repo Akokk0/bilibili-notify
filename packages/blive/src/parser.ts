@@ -27,68 +27,106 @@ import {
 import { decodeInteractWordV2 } from "./interact-word-v2-proto.js";
 import { decodeSendGiftV2 } from "./send-gift-v2-proto.js";
 
+/**
+ * 已知命令集合(即下方 switch 的处理面;DANMU_MSG 的后缀变体不单列)。
+ * 集合里的命令解析失败会降级成 `degraded: true` 的 raw —— 协议漂移信号;
+ * 集合外的命令降级为 plain raw,属正常流量。与 switch 的同步由
+ * parser-degraded.test.ts 的全表扫描测试钉住。
+ */
+export const PARSED_COMMANDS: ReadonlySet<string> = new Set([
+	"DANMU_MSG",
+	"SUPER_CHAT_MESSAGE",
+	"GUARD_BUY",
+	"SEND_GIFT",
+	"SEND_GIFT_V2",
+	"WATCHED_CHANGE",
+	"LIKE_INFO_V3_UPDATE",
+	"LIVE",
+	"PREPARING",
+	"INTERACT_WORD_V2",
+	"ROOM_CHANGE",
+	"ONLINE_RANK_COUNT",
+	"POPULARITY_RED_POCKET_START",
+	"POPULARITY_RED_POCKET_WINNER_LIST",
+	"ANCHOR_LOT_START",
+	"ANCHOR_LOT_AWARD",
+	"WARNING",
+	"CUT_OFF",
+	"ROOM_SILENT_ON",
+	"ROOM_SILENT_OFF",
+	"room_admin_entrance",
+	"ROOM_ADMIN_REVOKE",
+	"ENTRY_EFFECT",
+	"LIKE_INFO_V3_CLICK",
+]);
+
+const isParsedCommand = (cmd: string): boolean =>
+	cmd.startsWith("DANMU_MSG:") || PARSED_COMMANDS.has(cmd);
+
 /** 解析一条 MESSAGE 命令 payload。任何输入都返回事件,未知/缺损 → raw。 */
 export function parseCommand(payload: unknown): LiveEvent {
 	const record = payload as Record<string, unknown> | null;
 	const cmd = typeof record?.cmd === "string" ? record.cmd : "unknown";
 	const raw: LiveEvent = { kind: "raw", cmd, payload };
+	// 已知命令解析不出来 = 协议可能漂移,标记给上游观测
+	const degraded: LiveEvent = { kind: "raw", cmd, payload, degraded: true };
 
 	try {
 		// DANMU_MSG 有带后缀的变体(如 DANMU_MSG:4:0:2:2:2:0)
 		if (cmd === "DANMU_MSG" || cmd.startsWith("DANMU_MSG:")) {
-			return parseDanmu(record) ?? raw;
+			return parseDanmu(record) ?? degraded;
 		}
 		switch (cmd) {
 			case "SUPER_CHAT_MESSAGE":
-				return parseSuperChat(record) ?? raw;
+				return parseSuperChat(record) ?? degraded;
 			case "GUARD_BUY":
-				return parseGuardBuy(record) ?? raw;
+				return parseGuardBuy(record) ?? degraded;
 			case "SEND_GIFT":
-				return parseGift(record) ?? raw;
+				return parseGift(record) ?? degraded;
 			case "SEND_GIFT_V2":
-				return parseGiftV2(record) ?? raw;
+				return parseGiftV2(record) ?? degraded;
 			case "WATCHED_CHANGE":
-				return parseWatched(record) ?? raw;
+				return parseWatched(record) ?? degraded;
 			case "LIKE_INFO_V3_UPDATE":
-				return parseLiked(record) ?? raw;
+				return parseLiked(record) ?? degraded;
 			case "LIVE":
 				return { kind: "live-start" };
 			case "PREPARING":
 				return { kind: "live-end" };
 			case "INTERACT_WORD_V2":
-				return parseUserAction(record) ?? raw;
+				return parseUserAction(record) ?? degraded;
 			case "ROOM_CHANGE":
-				return parseRoomChange(record) ?? raw;
+				return parseRoomChange(record) ?? degraded;
 			case "ONLINE_RANK_COUNT":
-				return parseRankCount(record) ?? raw;
+				return parseRankCount(record) ?? degraded;
 			case "POPULARITY_RED_POCKET_START":
-				return parseRedPocketStart(record) ?? raw;
+				return parseRedPocketStart(record) ?? degraded;
 			case "POPULARITY_RED_POCKET_WINNER_LIST":
-				return parseRedPocketEnd(record) ?? raw;
+				return parseRedPocketEnd(record) ?? degraded;
 			case "ANCHOR_LOT_START":
-				return parseAnchorLotteryStart(record) ?? raw;
+				return parseAnchorLotteryStart(record) ?? degraded;
 			case "ANCHOR_LOT_AWARD":
-				return parseAnchorLotteryEnd(record) ?? raw;
+				return parseAnchorLotteryEnd(record) ?? degraded;
 			case "WARNING":
-				return parseRoomWarn(record, "warning") ?? raw;
+				return parseRoomWarn(record, "warning") ?? degraded;
 			case "CUT_OFF":
-				return parseRoomWarn(record, "cut") ?? raw;
+				return parseRoomWarn(record, "cut") ?? degraded;
 			case "ROOM_SILENT_ON":
 			case "ROOM_SILENT_OFF":
-				return parseRoomSilent(record, cmd === "ROOM_SILENT_OFF") ?? raw;
+				return parseRoomSilent(record, cmd === "ROOM_SILENT_OFF") ?? degraded;
 			case "room_admin_entrance":
-				return parseRoomAdmin(record, "set") ?? raw;
+				return parseRoomAdmin(record, "set") ?? degraded;
 			case "ROOM_ADMIN_REVOKE":
-				return parseRoomAdmin(record, "revoke") ?? raw;
+				return parseRoomAdmin(record, "revoke") ?? degraded;
 			case "ENTRY_EFFECT":
-				return parseEntryEffect(record) ?? raw;
+				return parseEntryEffect(record) ?? degraded;
 			case "LIKE_INFO_V3_CLICK":
-				return parseLikeClick(record) ?? raw;
+				return parseLikeClick(record) ?? degraded;
 			default:
 				return raw;
 		}
 	} catch {
-		return raw;
+		return isParsedCommand(cmd) ? degraded : raw;
 	}
 }
 
