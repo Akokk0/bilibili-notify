@@ -11,9 +11,27 @@ export enum GuardLevel {
 	Captain = 3,
 }
 
+/** 粉丝勋章(牌子)。各帧携带的字段不齐,缺的省略。 */
+export interface FanBadge {
+	level: number;
+	name: string;
+	/** 点亮状态(灰牌为 false)。 */
+	active?: boolean;
+	/** 牌子归属的主播 uid / 房号。 */
+	anchorUid?: number;
+	anchorRoomId?: number;
+}
+
+/**
+ * 事件里的用户。基础字段恒有;`badge` / `guardLevel` / `isRoomAdmin` 仅在
+ * 对应帧携带且有意义时出现(guardLevel 为 0、admin 为假时一律省略)。
+ */
 export interface LiveUser {
 	uid: number;
 	uname: string;
+	badge?: FanBadge;
+	guardLevel?: GuardLevel;
+	isRoomAdmin?: boolean;
 }
 
 export type UserActionType = "enter" | "follow" | "share" | "unknown";
@@ -27,12 +45,120 @@ export type LiveEvent =
 	| { kind: "closed"; code?: number; reason?: string }
 	| { kind: "error"; error: Error }
 	// ── 业务消息(parser 产出)────────────────────────────────
-	| { kind: "danmu"; content: string; user: LiveUser }
-	| { kind: "superchat"; content: string; price: number; user: LiveUser }
-	| { kind: "guard-buy"; guardLevel: GuardLevel; giftName: string; user: LiveUser }
+	| {
+			kind: "danmu";
+			content: string;
+			user: LiveUser;
+			/** 1/2/3 普通;4 底部;5 顶部。 */
+			danmuType?: number;
+			/** 发送时间,毫秒时间戳。 */
+			timestamp?: number;
+			/** 天选/抽奖口令弹幕。 */
+			isLottery?: boolean;
+			/** 表情弹幕(整条是一张表情图)。 */
+			emoticon?: { id: string; url: string; width: number; height: number };
+	  }
+	| {
+			kind: "superchat";
+			content: string;
+			/** 价格,RMB。 */
+			price: number;
+			user: LiveUser;
+			id?: number;
+			/** 展示持续时长,秒。 */
+			durationSec?: number;
+	  }
+	| {
+			kind: "guard-buy";
+			guardLevel: GuardLevel;
+			giftName: string;
+			user: LiveUser;
+			giftId?: number;
+			/** 价格,金瓜子(/1000 为 RMB)。 */
+			price?: number;
+			num?: number;
+			/** 等级生效/过期时间,秒级时间戳。 */
+			startTime?: number;
+			endTime?: number;
+	  }
+	| {
+			kind: "gift";
+			user: LiveUser;
+			giftId: number;
+			giftName: string;
+			/** gold 金瓜子(price/1000 为 RMB);silver 银瓜子(免费礼物)。 */
+			coinType: "gold" | "silver";
+			/** 单价,瓜子。 */
+			price: number;
+			num: number;
+			/** 连击(batch_combo_id 存在时)。 */
+			combo?: { batchId: string; comboNum: number; totalCoin: number };
+	  }
 	| { kind: "watched"; num: number; textSmall: string }
 	| { kind: "liked"; count: number }
 	| { kind: "live-start" }
 	| { kind: "live-end" }
 	| { kind: "user-action"; action: UserActionType; user: LiveUser }
+	// ── 房间态 ────────────────────────────────────────────────
+	| {
+			kind: "room-change";
+			title: string;
+			areaName?: string;
+			parentAreaName?: string;
+			areaId?: number;
+			parentAreaId?: number;
+	  }
+	| { kind: "rank-count"; count: number }
+	// ── 抽奖组 ────────────────────────────────────────────────
+	| {
+			kind: "red-pocket-start";
+			id: number;
+			user: LiveUser;
+			/** 参与口令弹幕。 */
+			danmu: string;
+			durationSec: number;
+			/** 奖品总价值,金瓜子(/1000 为 RMB)。 */
+			totalPrice: number;
+			awards: { giftId: number; giftName: string; num: number }[];
+	  }
+	| {
+			kind: "red-pocket-end";
+			id: number;
+			totalNum: number;
+			winners: { uid: number; uname: string; awardName?: string }[];
+	  }
+	| {
+			kind: "anchor-lottery-start";
+			id: number;
+			durationSec: number;
+			awardName: string;
+			awardNum: number;
+			/** 虚拟礼物奖品(false = 实物)。 */
+			virtualAward: boolean;
+			/** 参与口令弹幕;无需弹幕时省略。 */
+			requireDanmu?: string;
+			/** 参与要求的人话描述(如「关注主播」);无要求时省略。 */
+			requireText?: string;
+	  }
+	| {
+			kind: "anchor-lottery-end";
+			id: number;
+			awardName: string;
+			winners: { uid: number; uname: string; num: number }[];
+	  }
+	// ── 管理组 ────────────────────────────────────────────────
+	| { kind: "room-warn"; warnType: "warning" | "cut"; msg: string }
+	| {
+			kind: "room-silent";
+			/** 按用户等级 / 勋章等级 / 全员 / 解除。 */
+			silentType: "level" | "medal" | "member" | "off";
+			level: number;
+			/** 结束时间,秒级时间戳;-1 为无限。 */
+			second: number;
+	  }
+	| { kind: "room-admin"; adminType: "set" | "revoke"; uid: number }
+	// ── 进场特效 / 点赞点击(独立 kind,**绝不**并入 user-action ——
+	//    混流正是舰长进房重复推旧 bug 的病根)─────────────────────
+	| { kind: "entry-effect"; user: LiveUser }
+	| { kind: "like-click"; user: LiveUser }
 	| { kind: "raw"; cmd: string; payload: unknown };

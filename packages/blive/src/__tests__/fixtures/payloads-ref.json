@@ -1,0 +1,929 @@
+{
+	"giftNoBadge": {
+		"cmd": "SEND_GIFT",
+		"data": {
+			"action": "投喂",
+			"batch_combo_id": "",
+			"batch_combo_send": null,
+			"beatId": "",
+			"biz_source": "Live",
+			"blind_gift": null,
+			"broadcast_id": 0,
+			"coin_type": "silver",
+			"combo_resources_id": 1,
+			"combo_send": null,
+			"combo_stay_time": 3,
+			"combo_total_coin": 0,
+			"crit_prob": 0,
+			"demarcation": 1,
+			"discount_price": 0,
+			"dmscore": 4,
+			"draw": 0,
+			"effect": 0,
+			"effect_block": 1,
+			"face": "http://__MOCK_FACE__.jpg",
+			"face_effect_id": 0,
+			"face_effect_type": 0,
+			"float_sc_resource_id": 0,
+			"giftId": 1,
+			"giftName": "辣条",
+			"giftType": 5,
+			"gold": 0,
+			"guard_level": 0,
+			"is_first": true,
+			"is_special_batch": 0,
+			"magnification": 1,
+			"medal_info": {
+				"anchor_roomid": 0,
+				"anchor_uname": "",
+				"guard_level": 0,
+				"icon_id": 0,
+				"is_lighted": 0,
+				"medal_color": 0,
+				"medal_color_border": 0,
+				"medal_color_end": 0,
+				"medal_color_start": 0,
+				"medal_level": 0,
+				"medal_name": "",
+				"special": "",
+				"target_id": 0
+			},
+			"name_color": "",
+			"num": 1,
+			"original_gift_name": "",
+			"price": 100,
+			"rcost": 68104708,
+			"remain": 0,
+			"rnd": "1664028708120000001",
+			"send_master": null,
+			"silver": 0,
+			"super": 0,
+			"super_batch_gift_num": 0,
+			"super_gift_num": 0,
+			"svga_block": 0,
+			"switch": true,
+			"tag_image": "",
+			"tid": "1664028708120000001",
+			"timestamp": 1664028708,
+			"top_list": null,
+			"total_coin": 100,
+			"uid": 77777777771,
+			"uname": "__MOCK_UNAME__"
+		}
+	},
+	"giftGoldBadge": {
+		"cmd": "SEND_GIFT",
+		"data": {
+			"action": "投喂",
+			"batch_combo_id": "batch:gift:combo_id:77777777771:77777777775:31251:1664028962.9340",
+			"batch_combo_send": {
+				"action": "投喂",
+				"batch_combo_id": "batch:gift:combo_id:77777777771:77777777775:31251:1664028962.9340",
+				"batch_combo_num": 1,
+				"blind_gift": null,
+				"gift_id": 31251,
+				"gift_name": "干杯",
+				"gift_num": 1,
+				"send_master": null,
+				"uid": 77777777771,
+				"uname": "__MOCK_UNAME__"
+			},
+			"beatId": "",
+			"biz_source": "Live",
+			"blind_gift": null,
+			"broadcast_id": 0,
+			"coin_type": "gold",
+			"combo_resources_id": 1,
+			"combo_send": {
+				"action": "投喂",
+				"combo_id": "gift:combo_id:77777777771:77777777775:31251:1664028962.9308",
+				"combo_num": 1,
+				"gift_id": 31251,
+				"gift_name": "干杯",
+				"gift_num": 1,
+				"send_master": null,
+				"uid": 77777777771,
+				"uname": "__MOCK_UNAME__"
+			},
+			"combo_stay_time": 3,
+			"combo_total_coin": 6600,
+			"crit_prob": 0,
+			"demarcation": 2,
+			"discount_price": 6600,
+			"dmscore": 16,
+			"draw": 0,
+			"effect": 0,
+			"effect_block": 0,
+			"face": "http://__MOCK_FACE__.jpg",
+			"face_effect_id": 0,
+			"face_effect_type": 0,
+			"float_sc_resource_id": 0,
+			"giftId": 31251,
+			"giftName": "干杯",
+			"giftType": 0,
+			"gold": 0,
+			"guard_level": 0,
+			"is_first": true,
+			"is_special_batch": 0,
+			"magnification": 1,
+			"medal_info": {
+				"anchor_roomid": 0,
+				"anchor_uname": "",
+				"guard_level": 0,
+				"icon_id": 0,
+				"is_lighted": 0,
+				"medal_color": 6067854,
+				"medal_color_border": 12632256,
+				"medal_color_end": 12632256,
+				"medal_color_start": 12632256,
+				"medal_level": 3,
+				"medal_name": "__MOCK_BADGE_NAME__",
+				"special": "",
+				"target_id": 77777777772
+			},
+			"name_color": "",
+			"num": 1,
+			"original_gift_name": "",
+			"price": 6600,
+			"rcost": 68105492,
+			"remain": 0,
+			"rnd": "1664028962121000004",
+			"send_master": null,
+			"silver": 0,
+			"super": 0,
+			"super_batch_gift_num": 1,
+			"super_gift_num": 1,
+			"svga_block": 0,
+			"switch": true,
+			"tag_image": "",
+			"tid": "1664028962121000004",
+			"timestamp": 1664028962,
+			"top_list": null,
+			"total_coin": 6600,
+			"uid": 77777777771,
+			"uname": "__MOCK_UNAME__"
+		}
+	},
+	"roomChange": {
+		"cmd": "ROOM_CHANGE",
+		"data": {
+			"title": "直播间标题",
+			"area_id": 375,
+			"parent_area_id": 11,
+			"area_name": " 科技",
+			"parent_area_name": "知识",
+			"live_key": "0",
+			"sub_session_key": ""
+		}
+	},
+	"rankCount": {
+		"cmd": "ONLINE_RANK_COUNT",
+		"data": {
+			"count": 1822
+		}
+	},
+	"redPocketStart": {
+		"cmd": "POPULARITY_RED_POCKET_START",
+		"data": {
+			"lot_id": 8646402,
+			"sender_uid": 77777777771,
+			"sender_name": "__MOCK_UNAME__",
+			"sender_face": "http://__MOCK_FACE__.jpg",
+			"join_requirement": 1,
+			"danmu": "老板大气！点点红包抽礼物",
+			"current_time": 1674450362,
+			"start_time": 1674450361,
+			"end_time": 1674450541,
+			"last_time": 180,
+			"remove_time": 1674450556,
+			"replace_time": 1674450551,
+			"lot_status": 1,
+			"h5_url": "https://live.bilibili.com/p/html/live-app-red-envelope/popularity.html?is_live_half_webview=1&hybrid_half_ui=1,5,100p,100p,000000,0,50,0,0,1;2,5,100p,100p,000000,0,50,0,0,1;3,5,100p,100p,000000,0,50,0,0,1;4,5,100p,100p,000000,0,50,0,0,1;5,5,100p,100p,000000,0,50,0,0,1;6,5,100p,100p,000000,0,50,0,0,1;7,5,100p,100p,000000,0,50,0,0,1;8,5,100p,100p,000000,0,50,0,0,1&hybrid_rotate_d=1&hybrid_biz=popularityRedPacket&lotteryId=8646402",
+			"user_status": 2,
+			"awards": [
+				{
+					"gift_id": 31212,
+					"gift_name": "打call",
+					"gift_pic": "https://s1.hdslb.com/bfs/live/461be640f60788c1d159ec8d6c5d5cf1ef3d1830.png",
+					"num": 2
+				},
+				{
+					"gift_id": 31214,
+					"gift_name": "牛哇",
+					"gift_pic": "https://s1.hdslb.com/bfs/live/91ac8e35dd93a7196325f1e2052356e71d135afb.png",
+					"num": 3
+				},
+				{
+					"gift_id": 31216,
+					"gift_name": "i了i了",
+					"gift_pic": "https://s1.hdslb.com/bfs/live/1157a445487b39c0b7368d91b22290c60fa665b2.png",
+					"num": 3
+				}
+			],
+			"lot_config_id": 3,
+			"total_price": 1600,
+			"wait_num": 0
+		}
+	},
+	"redPocketEnd": {
+		"cmd": "POPULARITY_RED_POCKET_WINNER_LIST",
+		"data": {
+			"lot_id": 8646402,
+			"total_num": 8,
+			"winner_info": [
+				[
+					77777777771,
+					"__MOCK_UNAME__",
+					4674419,
+					31212
+				],
+				[
+					77777777771,
+					"__MOCK_UNAME__",
+					4664664,
+					31212
+				],
+				[
+					77777777771,
+					"__MOCK_UNAME__",
+					4664665,
+					31214
+				],
+				[
+					77777777771,
+					"__MOCK_UNAME__",
+					4696284,
+					31214
+				],
+				[
+					77777777771,
+					"__MOCK_UNAME__",
+					4651012,
+					31214
+				],
+				[
+					77777777771,
+					"__MOCK_UNAME__",
+					4651580,
+					31216
+				],
+				[
+					77777777771,
+					"__MOCK_UNAME__",
+					4664666,
+					31216
+				],
+				[
+					77777777771,
+					"__MOCK_UNAME__",
+					4674420,
+					31216
+				]
+			],
+			"awards": {
+				"31212": {
+					"award_type": 1,
+					"award_name": "打call",
+					"award_pic": "https://s1.hdslb.com/bfs/live/461be640f60788c1d159ec8d6c5d5cf1ef3d1830.png",
+					"award_big_pic": "https://i0.hdslb.com/bfs/live/9e6521c57f24c7149c054d265818d4b82059f2ef.png",
+					"award_price": 500
+				},
+				"31214": {
+					"award_type": 1,
+					"award_name": "牛哇",
+					"award_pic": "https://s1.hdslb.com/bfs/live/91ac8e35dd93a7196325f1e2052356e71d135afb.png",
+					"award_big_pic": "https://i0.hdslb.com/bfs/live/3b74c117b4f265edcea261bc5608a58d3a7c300a.png",
+					"award_price": 100
+				},
+				"31216": {
+					"award_type": 1,
+					"award_name": "i了i了",
+					"award_pic": "https://s1.hdslb.com/bfs/live/1157a445487b39c0b7368d91b22290c60fa665b2.png",
+					"award_big_pic": "https://i0.hdslb.com/bfs/live/cfb9c3d9bdd2c25c95b7d859ebaa590ca9362adb.png",
+					"award_price": 100
+				}
+			},
+			"version": 1
+		}
+	},
+	"anchorLotStart": {
+		"cmd": "ANCHOR_LOT_START",
+		"data": {
+			"asset_icon": "https://i0.hdslb.com/bfs/live/627ee2d9e71c682810e7dc4400d5ae2713442c02.png",
+			"asset_icon_webp": "https://i0.hdslb.com/bfs/live/b47453a0d42f30673b6d030159a96d07905d677a.webp",
+			"award_image": "",
+			"award_name": "情书",
+			"award_num": 1,
+			"award_price_text": "价值52电池",
+			"award_type": 1,
+			"cur_gift_num": 0,
+			"current_time": 1674450380,
+			"danmu": "__MOCK_MESSAGE_CONTENT__",
+			"danmu_new": [
+				{
+					"danmu": "__MOCK_MESSAGE_CONTENT__",
+					"danmu_view": "",
+					"reject": false
+				}
+			],
+			"danmu_type": 0,
+			"gift_id": 0,
+			"gift_name": "",
+			"gift_num": 0,
+			"gift_price": 0,
+			"goaway_time": 180,
+			"goods_id": -99998,
+			"id": 3783024,
+			"is_broadcast": 1,
+			"join_type": 0,
+			"lot_status": 0,
+			"max_time": 900,
+			"require_text": "关注主播",
+			"require_type": 1,
+			"require_value": 0,
+			"room_id": 77777777774,
+			"send_gift_ensure": 0,
+			"show_panel": 1,
+			"start_dont_popup": 0,
+			"status": 1,
+			"time": 899,
+			"url": "https://live.bilibili.com/p/html/live-lottery/anchor-join.html?is_live_half_webview=1&hybrid_biz=live-lottery-anchor&hybrid_half_ui=1,5,100p,100p,000000,0,30,0,0,1;2,5,100p,100p,000000,0,30,0,0,1;3,5,100p,100p,000000,0,30,0,0,1;4,5,100p,100p,000000,0,30,0,0,1;5,5,100p,100p,000000,0,30,0,0,1;6,5,100p,100p,000000,0,30,0,0,1;7,5,100p,100p,000000,0,30,0,0,1;8,5,100p,100p,000000,0,30,0,0,1",
+			"web_url": "https://live.bilibili.com/p/html/live-lottery/anchor-join.html"
+		}
+	},
+	"anchorLotAward": {
+		"cmd": "ANCHOR_LOT_AWARD",
+		"data": {
+			"award_dont_popup": 1,
+			"award_image": "",
+			"award_name": "情书",
+			"award_num": 1,
+			"award_price_text": "价值52电池",
+			"award_type": 1,
+			"award_users": [
+				{
+					"uid": 77777777771,
+					"uname": "__MOCK_UNAME__",
+					"face": "http://__MOCK_FACE__.jpg",
+					"level": 25,
+					"color": 5805790,
+					"bag_id": 4690129,
+					"gift_id": 31250,
+					"num": 1
+				}
+			],
+			"id": 3782966,
+			"lot_status": 2,
+			"ruid": 238971054,
+			"url": "https://live.bilibili.com/p/html/live-lottery/anchor-join.html?is_live_half_webview=1&hybrid_biz=live-lottery-anchor&hybrid_half_ui=1,5,100p,100p,000000,0,30,0,0,1;2,5,100p,100p,000000,0,30,0,0,1;3,5,100p,100p,000000,0,30,0,0,1;4,5,100p,100p,000000,0,30,0,0,1;5,5,100p,100p,000000,0,30,0,0,1;6,5,100p,100p,000000,0,30,0,0,1;7,5,100p,100p,000000,0,30,0,0,1;8,5,100p,100p,000000,0,30,0,0,1",
+			"web_url": "https://live.bilibili.com/p/html/live-lottery/anchor-join.html"
+		}
+	},
+	"warning": {
+		"cmd": "WARNING",
+		"msg": "图片内容不适宜，请立即调整",
+		"roomid": 77777777774
+	},
+	"cutOff": {
+		"cmd": "CUT_OFF",
+		"msg": "违反直播言论规范，请立即调整",
+		"roomid": 77777777774
+	},
+	"silentOnLevel": {
+		"data": {
+			"type": "level",
+			"level": 1,
+			"second": 1673943135
+		},
+		"cmd": "ROOM_SILENT_ON"
+	},
+	"silentOff": {
+		"data": {
+			"type": "",
+			"level": 0,
+			"second": 0
+		},
+		"cmd": "ROOM_SILENT_OFF"
+	},
+	"adminSet": {
+		"cmd": "room_admin_entrance",
+		"dmscore": 45,
+		"level": 1,
+		"msg": "系统提示：你已被主播设为房管",
+		"uid": 77777777771
+	},
+	"adminRevoke": {
+		"cmd": "ROOM_ADMIN_REVOKE",
+		"msg": "撤销房管",
+		"uid": 77777777771
+	},
+	"entryEffectNone": {
+		"cmd": "ENTRY_EFFECT",
+		"data": {
+			"id": 253,
+			"uid": 77777777771,
+			"target_id": 77777777775,
+			"mock_effect": 0,
+			"face": "http://__MOCK_FACE__.jpg",
+			"privilege_type": 0,
+			"copy_writing": "欢迎<%__MOCK_UNAME__%>进入直播间",
+			"copy_color": "#ffffff",
+			"highlight_color": "#FFF14B",
+			"priority": 1,
+			"basemap_url": "https://i0.hdslb.com/bfs/live/mlive/e6b09100caef61b8518f3c0a23f04636e2a8abaa.png",
+			"show_avatar": 1,
+			"effective_time": 3,
+			"web_basemap_url": "https://i0.hdslb.com/bfs/live/mlive/e6b09100caef61b8518f3c0a23f04636e2a8abaa.png",
+			"web_effective_time": 3,
+			"web_effect_close": 1,
+			"web_close_time": 900,
+			"business": 4,
+			"copy_writing_v2": "欢迎<%__MOCK_UNAME__%>进入直播间",
+			"icon_list": [],
+			"max_delay_time": 7,
+			"trigger_time": 1664031341210628900,
+			"identities": 1,
+			"effect_silent_time": 0,
+			"effective_time_new": 0,
+			"web_dynamic_url_webp": "",
+			"web_dynamic_url_apng": "",
+			"mobile_dynamic_url_webp": ""
+		}
+	},
+	"entryEffectJianzhang": {
+		"cmd": "ENTRY_EFFECT",
+		"data": {
+			"id": 4,
+			"uid": 77777777771,
+			"target_id": 77777777775,
+			"mock_effect": 0,
+			"face": "http://__MOCK_FACE__.jpg",
+			"privilege_type": 3,
+			"copy_writing": "欢迎舰长 <%__MOCK_UNAME__%> 进入直播间",
+			"copy_color": "#ffffff",
+			"highlight_color": "#E6FF00",
+			"priority": 1,
+			"basemap_url": "https://i0.hdslb.com/bfs/live/mlive/11a6e8eb061c3e715d0a6a2ac0ddea2faa15c15e.png",
+			"show_avatar": 1,
+			"effective_time": 2,
+			"web_basemap_url": "https://i0.hdslb.com/bfs/live/mlive/11a6e8eb061c3e715d0a6a2ac0ddea2faa15c15e.png",
+			"web_effective_time": 2,
+			"web_effect_close": 0,
+			"web_close_time": 0,
+			"business": 1,
+			"copy_writing_v2": "欢迎舰长 <%__MOCK_UNAME__%> 进入直播间",
+			"icon_list": [],
+			"max_delay_time": 7,
+			"trigger_time": 1664028287891896000,
+			"identities": 6,
+			"effect_silent_time": 0,
+			"effective_time_new": 0,
+			"web_dynamic_url_webp": "",
+			"web_dynamic_url_apng": "",
+			"mobile_dynamic_url_webp": ""
+		}
+	},
+	"likeClick": {
+		"cmd": "LIKE_INFO_V3_CLICK",
+		"data": {
+			"show_area": 0,
+			"msg_type": 6,
+			"like_icon": "https://i0.hdslb.com/bfs/live/23678e3d90402bea6a65251b3e728044c21b1f0f.png",
+			"uid": 77777777771,
+			"like_text": "为主播点赞了",
+			"uname": "__MOCK_UNAME__",
+			"uname_color": "",
+			"identities": [
+				3,
+				1
+			],
+			"fans_medal": {
+				"target_id": 77777777772,
+				"medal_level": 5,
+				"medal_name": "__MOCK_BADGE_NAME__",
+				"medal_color": 6126494,
+				"medal_color_start": 6126494,
+				"medal_color_end": 6126494,
+				"medal_color_border": 6126494,
+				"is_lighted": 1,
+				"guard_level": 0,
+				"special": "",
+				"icon_id": 0,
+				"anchor_roomid": 0,
+				"score": 2500
+			},
+			"contribution_info": {
+				"grade": 0
+			},
+			"dmscore": 20
+		}
+	},
+	"danmuGuardBadge": {
+		"cmd": "DANMU_MSG",
+		"info": [
+			[
+				0,
+				1,
+				25,
+				14893055,
+				1662305224469,
+				-1454170633,
+				0,
+				"cc85b3b6",
+				0,
+				0,
+				5,
+				"#1453BAFF,#4C2263A2,#3353BAFF",
+				1,
+				{
+					"bulge_display": 0,
+					"emoticon_unique": "official_147",
+					"height": 60,
+					"in_player_area": 1,
+					"is_dynamic": 0,
+					"url": "http://i0.hdslb.com/bfs/live/bbd9045570d0c022a984c637e406cb0e1f208aa9.png",
+					"width": 150
+				},
+				"{}",
+				{
+					"mode": 0,
+					"show_player_type": 0,
+					"extra": "{\"send_from_me\":false,\"mode\":0,\"color\":14893055,\"dm_type\":1,\"font_size\":25,\"player_mode\":1,\"show_player_type\":0,\"content\":\"赞\",\"user_hash\":\"3431314358\",\"emoticon_unique\":\"official_147\",\"bulge_display\":0,\"recommend_score\":10,\"main_state_dm_color\":\"\",\"objective_state_dm_color\":\"\",\"direction\":0,\"pk_direction\":0,\"quartet_direction\":0,\"anniversary_crowd\":0,\"yeah_space_type\":\"\",\"yeah_space_url\":\"\",\"jump_to_url\":\"\",\"space_type\":\"\",\"space_url\":\"\"}"
+				},
+				{
+					"activity_identity": "",
+					"activity_source": 0,
+					"not_show": 0
+				}
+			],
+			"赞",
+			[
+				77777777771,
+				"__MOCK_UNAME__",
+				0,
+				0,
+				0,
+				10000,
+				1,
+				"#00D1F1"
+			],
+			[
+				21,
+				"__MOCK_BADGE_NAME__",
+				"__MOCK_BADGE_ANCHOR_UNAME__",
+				77777777773,
+				1725515,
+				"",
+				0,
+				6809855,
+				1725515,
+				5414290,
+				3,
+				1,
+				77777777772
+			],
+			[
+				1,
+				0,
+				9868950,
+				">50000",
+				0
+			],
+			[
+				"",
+				""
+			],
+			0,
+			3,
+			null,
+			{
+				"ts": 1662305224,
+				"ct": "C05AAD36"
+			},
+			0,
+			0,
+			null,
+			null,
+			0,
+			105
+		]
+	},
+	"danmuLottery": {
+		"cmd": "DANMU_MSG",
+		"info": [
+			[
+				0,
+				1,
+				25,
+				65532,
+				1664108400169,
+				0,
+				0,
+				"4475bb4a",
+				0,
+				2,
+				0,
+				"",
+				0,
+				"{}",
+				"{}",
+				{
+					"mode": 0,
+					"show_player_type": 0,
+					"extra": "{\"send_from_me\":false,\"mode\":0,\"color\":65532,\"dm_type\":0,\"font_size\":25,\"player_mode\":1,\"show_player_type\":0,\"content\":\"__MOCK_MESSAGE_CONTENT__\",\"user_hash\":\"1148566346\",\"emoticon_unique\":\"\",\"bulge_display\":0,\"recommend_score\":9,\"main_state_dm_color\":\"\",\"objective_state_dm_color\":\"\",\"direction\":0,\"pk_direction\":0,\"quartet_direction\":0,\"anniversary_crowd\":0,\"yeah_space_type\":\"\",\"yeah_space_url\":\"\",\"jump_to_url\":\"\",\"space_type\":\"\",\"space_url\":\"\"}"
+				},
+				{
+					"activity_identity": "3233432",
+					"activity_source": 1,
+					"not_show": 1
+				}
+			],
+			"__MOCK_MESSAGE_CONTENT__",
+			[
+				77777777771,
+				"__MOCK_UNAME__",
+				0,
+				0,
+				0,
+				10000,
+				1,
+				""
+			],
+			[
+				22,
+				"__MOCK_BADGE_NAME__",
+				"__MOCK_BADGE_ANCHOR_UNAME__",
+				77777777773,
+				1725515,
+				"",
+				0,
+				6809855,
+				1725515,
+				5414290,
+				3,
+				1,
+				77777777772
+			],
+			[
+				27,
+				0,
+				5805790,
+				">50000",
+				0
+			],
+			[
+				"",
+				""
+			],
+			0,
+			0,
+			null,
+			{
+				"ts": 1664108400,
+				"ct": "B1432FC3"
+			},
+			0,
+			0,
+			null,
+			null,
+			0,
+			70
+		]
+	},
+	"danmuEmoticon": {
+		"cmd": "DANMU_MSG",
+		"info": [
+			[
+				0,
+				1,
+				25,
+				16777215,
+				1664107099792,
+				-123935767,
+				0,
+				"dd9630cf",
+				0,
+				0,
+				0,
+				"",
+				1,
+				{
+					"bulge_display": 0,
+					"emoticon_unique": "official_147",
+					"height": 60,
+					"in_player_area": 1,
+					"is_dynamic": 0,
+					"url": "http://i0.hdslb.com/bfs/live/bbd9045570d0c022a984c637e406cb0e1f208aa9.png",
+					"width": 150
+				},
+				"{}",
+				{
+					"mode": 0,
+					"show_player_type": 0,
+					"extra": "{\"send_from_me\":false,\"mode\":0,\"color\":16777215,\"dm_type\":1,\"font_size\":25,\"player_mode\":1,\"show_player_type\":0,\"content\":\"赞\",\"user_hash\":\"3717607631\",\"emoticon_unique\":\"official_147\",\"bulge_display\":0,\"recommend_score\":8,\"main_state_dm_color\":\"\",\"objective_state_dm_color\":\"\",\"direction\":0,\"pk_direction\":0,\"quartet_direction\":0,\"anniversary_crowd\":0,\"yeah_space_type\":\"\",\"yeah_space_url\":\"\",\"jump_to_url\":\"\",\"space_type\":\"\",\"space_url\":\"\"}"
+				},
+				{
+					"activity_identity": "",
+					"activity_source": 0,
+					"not_show": 0
+				}
+			],
+			"赞",
+			[
+				77777777771,
+				"__MOCK_UNAME__",
+				0,
+				0,
+				0,
+				5000,
+				1,
+				""
+			],
+			[],
+			[
+				0,
+				0,
+				9868950,
+				">50000",
+				0
+			],
+			[
+				"",
+				""
+			],
+			0,
+			0,
+			null,
+			{
+				"ts": 1664107099,
+				"ct": "A4707D38"
+			},
+			0,
+			0,
+			null,
+			null,
+			0,
+			7
+		]
+	},
+	"danmuRoomAdmin": {
+		"cmd": "DANMU_MSG",
+		"info": [
+			[
+				0,
+				4,
+				25,
+				9920249,
+				1662398325906,
+				724666906,
+				0,
+				"125b3efa",
+				0,
+				0,
+				5,
+				"#1453BAFF,#4C2263A2,#3353BAFF",
+				0,
+				"{}",
+				"{}",
+				{
+					"mode": 0,
+					"show_player_type": 0,
+					"extra": "{\"send_from_me\":false,\"mode\":0,\"color\":9920249,\"dm_type\":0,\"font_size\":25,\"player_mode\":4,\"show_player_type\":0,\"content\":\"__MOCK_MESSAGE_CONTENT__\",\"user_hash\":\"307969786\",\"emoticon_unique\":\"\",\"bulge_display\":0,\"recommend_score\":0,\"main_state_dm_color\":\"\",\"objective_state_dm_color\":\"\",\"direction\":0,\"pk_direction\":0,\"quartet_direction\":0,\"anniversary_crowd\":0,\"yeah_space_type\":\"\",\"yeah_space_url\":\"\",\"jump_to_url\":\"\",\"space_type\":\"\",\"space_url\":\"\"}"
+				},
+				{
+					"activity_identity": "",
+					"activity_source": 0,
+					"not_show": 0
+				}
+			],
+			"__MOCK_MESSAGE_CONTENT__",
+			[
+				77777777771,
+				"__MOCK_UNAME__",
+				1,
+				0,
+				0,
+				10000,
+				1,
+				"#00D1F1"
+			],
+			[
+				26,
+				"__MOCK_BADGE_NAME__",
+				"__MOCK_BADGE_ANCHOR_UNAME__",
+				77777777773,
+				398668,
+				"",
+				0,
+				6809855,
+				398668,
+				6850801,
+				3,
+				1,
+				77777777772
+			],
+			[
+				27,
+				0,
+				5805790,
+				">50000",
+				0
+			],
+			[
+				"",
+				""
+			],
+			0,
+			3,
+			null,
+			{
+				"ts": 1662398325,
+				"ct": "1E68FDD2"
+			},
+			0,
+			0,
+			null,
+			null,
+			0,
+			105
+		]
+	},
+	"superchat": {
+		"cmd": "SUPER_CHAT_MESSAGE",
+		"data": {
+			"background_bottom_color": "#2A60B2",
+			"background_color": "#EDF5FF",
+			"background_color_end": "#405D85",
+			"background_color_start": "#3171D2",
+			"background_icon": "",
+			"background_image": "https://i0.hdslb.com/bfs/live/a712efa5c6ebc67bafbe8352d3e74b820a00c13e.png",
+			"background_price_color": "#7497CD",
+			"color_point": 0.7,
+			"dmscore": 72,
+			"end_time": 1661528683,
+			"gift": {
+				"gift_id": 12000,
+				"gift_name": "醒目留言",
+				"num": 1
+			},
+			"id": 4898587,
+			"is_ranked": 1,
+			"is_send_audit": 0,
+			"medal_info": {
+				"anchor_roomid": 77777777773,
+				"anchor_uname": "__MOCK_BADGE_ANCHOR_UNAME__",
+				"guard_level": 0,
+				"icon_id": 0,
+				"is_lighted": 1,
+				"medal_color": "#be6686",
+				"medal_color_border": 12478086,
+				"medal_color_end": 12478086,
+				"medal_color_start": 12478086,
+				"medal_level": 16,
+				"medal_name": "__MOCK_BADGE_NAME__",
+				"special": "",
+				"target_id": 77777777772
+			},
+			"message": "__MOCK_MESSAGE_CONTENT__",
+			"message_font_color": "#A3F6FF",
+			"message_trans": "",
+			"price": 30,
+			"rate": 1000,
+			"start_time": 1661528623,
+			"time": 60,
+			"token": "A1EC2662",
+			"trans_mark": 0,
+			"ts": 1661528623,
+			"uid": 77777777771,
+			"user_info": {
+				"face": "http://__MOCK_FACE__.jpg",
+				"face_frame": "",
+				"guard_level": 0,
+				"is_main_vip": 1,
+				"is_svip": 0,
+				"is_vip": 0,
+				"level_color": "#61c05a",
+				"manager": 0,
+				"name_color": "#666666",
+				"title": "title-111-1",
+				"uname": "__MOCK_UNAME__",
+				"user_level": 20
+			}
+		},
+		"roomid": 77777777774
+	},
+	"guardBuy": {
+		"cmd": "GUARD_BUY",
+		"data": {
+			"uid": 77777777771,
+			"username": "__MOCK_UNAME__",
+			"guard_level": 3,
+			"num": 1,
+			"price": 198000,
+			"gift_id": 10003,
+			"gift_name": "舰长",
+			"start_time": 1661604507,
+			"end_time": 1661604507
+		}
+	}
+}

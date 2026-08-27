@@ -15,7 +15,9 @@ import payloads from "./fixtures/payloads.json" with { type: "json" };
 
 describe("parseCommand(真实录制 payload)", () => {
 	it("DANMU_MSG → danmu:正文 + 发送者", () => {
-		expect(parseCommand(payloads.danmu)).toEqual({
+		// 字段深化(danmuType/timestamp 等)在 parser-extended.test.ts 里钉;
+		// 这里只钉真实录制帧的基础字段映射。
+		expect(parseCommand(payloads.danmu)).toMatchObject({
 			kind: "danmu",
 			content: "太有互动感了",
 			user: { uid: 6170115, uname: "琴七" },
@@ -63,7 +65,7 @@ describe("parseCommand(合成 payload)", () => {
 			},
 		};
 
-		expect(parseCommand(payload)).toEqual({
+		expect(parseCommand(payload)).toMatchObject({
 			kind: "superchat",
 			content: "加油",
 			price: 30,
@@ -85,7 +87,7 @@ describe("parseCommand(合成 payload)", () => {
 			},
 		};
 
-		expect(parseCommand(payload)).toEqual({
+		expect(parseCommand(payload)).toMatchObject({
 			kind: "guard-buy",
 			guardLevel: GuardLevel.Captain,
 			giftName: "舰长",
@@ -101,11 +103,11 @@ describe("parseCommand(合成 payload)", () => {
 
 describe("parseCommand(降级路径)", () => {
 	it("不认识的命令 → raw 透传", () => {
-		const payload = { cmd: "ONLINE_RANK_COUNT", data: { count: 99 } };
+		const payload = { cmd: "STOP_LIVE_ROOM_LIST", data: { room_id_list: [1] } };
 
 		expect(parseCommand(payload)).toEqual({
 			kind: "raw",
-			cmd: "ONLINE_RANK_COUNT",
+			cmd: "STOP_LIVE_ROOM_LIST",
 			payload,
 		});
 	});
