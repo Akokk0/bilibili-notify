@@ -22,7 +22,8 @@ export interface ScreenshotClip {
 }
 
 export interface SetContentOptions {
-	waitUntil?: "load" | "domcontentloaded" | "networkidle0" | "networkidle2";
+	// puppeteer-core 25 起 setContent 不再支持 networkidle0/2,契约同步收窄。
+	waitUntil?: "load" | "domcontentloaded";
 	timeout?: number;
 }
 

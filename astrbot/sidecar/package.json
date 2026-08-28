@@ -30,7 +30,7 @@
 		"@bilibili-notify/push": "workspace:*",
 		"@bilibili-notify/storage": "workspace:*",
 		"@bilibili-notify/subscription": "workspace:*",
-		"puppeteer-core": "^24.16.0"
+		"puppeteer-core": "^25.9.0"
 	},
 	"devDependencies": {
 		"tsx": "^4.23.12"
