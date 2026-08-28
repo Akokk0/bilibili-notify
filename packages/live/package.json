@@ -38,10 +38,10 @@
 		"@bilibili-notify/image": "workspace:^",
 		"@bilibili-notify/internal": "workspace:^",
 		"jieba-wasm": "^2.4.0",
-		"luxon": "^3.5.0"
+		"luxon": "catalog:"
 	},
 	"devDependencies": {
-		"@types/luxon": "^3.7.5"
+		"@types/luxon": "catalog:"
 	},
 	"engines": {
 		"node": ">=20.0.0"

@@ -39,6 +39,44 @@ packages:
 overrides:
   "@bilibili-notify/web>vite": "npm:@voidzero-dev/vite-plus-core@0.3.0"
   "@bilibili-notify/astrbot-page>vite": "npm:@voidzero-dev/vite-plus-core@0.3.0"
+  "@bilibili-notify/desktop>vite": "npm:@voidzero-dev/vite-plus-core@0.3.0"
+
+# Shared dependency versions. Every package except koishi/ declares these as
+# `"<dep>": "catalog:"`; the version lives only here, so a bump is one edit and
+# per-package drift (the historical @types/ws ^8.5 / ^8.18 split, desktop's
+# vite alias stuck on 0.2.8) cannot recur.
+#
+# Two deliberate exclusions:
+# - koishi/package.json keeps literal versions: it is the one package published
+#   to npm, via `npm publish` (scripts/publish.mjs), and npm does not resolve
+#   the catalog: protocol — a catalog: literal in the published manifest would
+#   break installs. When bumping a catalog entry, mirror it there if koishi
+#   declares the same dep.
+# - vite stays out: the React frontends pin it through the overrides above as
+#   part of the vite-plus lockstep (see that comment); a second source of truth
+#   in the catalog would reintroduce the drift the overrides exist to prevent.
+catalog:
+  "@tailwindcss/vite": ^4.3.3
+  "@testing-library/dom": ^10.4.1
+  "@testing-library/react": ^16.3.2
+  "@types/luxon": ^3.7.5
+  "@types/qrcode": ^1.5.6
+  "@types/react": ^19.2.18
+  "@types/react-dom": ^19.2.5
+  "@types/ws": ^8.18.1
+  "@vitejs/plugin-react": ^6.1.0
+  cron: ^4.4.0
+  fflate: ^0.8.3
+  jsdom: ^30.0.1
+  luxon: ^3.5.0
+  puppeteer-core: ^25.9.0
+  qrcode: ^1.5.4
+  react: ^19.2.8
+  react-dom: ^19.2.8
+  tailwindcss: ^4.3.3
+  tsx: ^4.23.12
+  ws: ^8.21.3
+  zod: ^4.4.3
 
 # Match the previous yarn classic-style flat hoist, so koishi's plugin loader
 # (which expects deps to live in a single hoisted node_modules tree) keeps

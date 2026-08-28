@@ -58,6 +58,11 @@ describe("assemble-server-bundle", () => {
 		expect(await readFile(join(distDir, "bn.config.example.yaml"), "utf8")).toContain("server");
 		const pkg = JSON.parse(await readFile(join(distDir, "package.json"), "utf8"));
 		expect(pkg.name).toBe("@bilibili-notify/server");
+		// 自包含产物的 manifest 不携带依赖声明:deps 已内联进 bundle,照抄源
+		// manifest 会把 workspace 的 catalog: 占位一起带走(npm 不可解析)。
+		expect(pkg.dependencies).toBeUndefined();
+		expect(pkg.devDependencies).toBeUndefined();
+		expect(JSON.stringify(pkg)).not.toContain("catalog:");
 	});
 
 	it("装到 monorepo 外也能起:boot + /api/health 200 + 模块版本非 0.0.0", async () => {

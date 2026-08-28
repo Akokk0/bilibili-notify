@@ -45,6 +45,16 @@
 			}
 		}
 	},
+	"overrides": [
+		{
+			"includes": ["apps/web/**", "apps/desktop/src/**", "astrbot/page/**", "packages/ui/**"],
+			"linter": {
+				"domains": {
+					"react": "recommended"
+				}
+			}
+		}
+	],
 	"assist": {
 		"enabled": true,
 		"actions": {

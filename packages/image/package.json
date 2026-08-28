@@ -37,13 +37,13 @@
 		"@unocss/core": "^66.8.1",
 		"@unocss/preset-wind4": "^66.8.1",
 		"@vue/server-renderer": "^3.5.42",
-		"jsdom": "^30.0.1",
-		"luxon": "^3.5.0",
+		"jsdom": "catalog:",
+		"luxon": "catalog:",
 		"vue": "^3.5.42"
 	},
 	"devDependencies": {
 		"@types/jsdom": "^30.0.0",
-		"@types/luxon": "^3.7.5"
+		"@types/luxon": "catalog:"
 	},
 	"engines": {
 		"node": ">=20.0.0"

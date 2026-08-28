@@ -33,10 +33,10 @@
 	},
 	"dependencies": {
 		"protobufjs": "^8.8.0",
-		"ws": "^8.21.3"
+		"ws": "catalog:"
 	},
 	"devDependencies": {
-		"@types/ws": "^8.5.12"
+		"@types/ws": "catalog:"
 	},
 	"engines": {
 		"node": ">=20.0.0"

@@ -1,4 +1,4 @@
-import { copyFile, cp } from "node:fs/promises";
+import { copyFile, cp, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,4 +38,11 @@ await copyFile(
 	resolve(repoRoot, "apps/server/bn.config.example.yaml"),
 	resolve(distDir, "bn.config.example.yaml"),
 );
-await copyFile(resolve(repoRoot, "apps/server/package.json"), resolve(distDir, "package.json"));
+// manifest 只保元数据:deps 已内联进 bundle,照抄源 manifest 会把 workspace 的
+// catalog: 占位一起带走(npm 不可解析,对自包含产物也是误导)。
+const serverPkg = JSON.parse(await readFile(resolve(repoRoot, "apps/server/package.json"), "utf8"));
+const { name, version, type, engines } = serverPkg;
+await writeFile(
+	resolve(distDir, "package.json"),
+	`${JSON.stringify({ name, version, type, engines, private: true }, null, "\t")}\n`,
+);

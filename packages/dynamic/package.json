@@ -36,11 +36,11 @@
 		"@bilibili-notify/api": "workspace:^",
 		"@bilibili-notify/image": "workspace:^",
 		"@bilibili-notify/internal": "workspace:^",
-		"cron": "^4.4.0",
-		"luxon": "^3.5.0"
+		"cron": "catalog:",
+		"luxon": "catalog:"
 	},
 	"devDependencies": {
-		"@types/luxon": "^3.7.5"
+		"@types/luxon": "catalog:"
 	},
 	"engines": {
 		"node": ">=20.0.0"
