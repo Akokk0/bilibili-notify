@@ -33,6 +33,8 @@ export default defineConfig({
 							/^pino(\/|$)/,
 							/^pino-pretty(\/|$)/,
 							/^puppeteer-core(\/|$)/,
+							// 纯 JS、无 __dirname 资产读取,内联安全(扫码建 bot 的二维码生成)。
+							/^qrcode(\/|$)/,
 							/^ws(\/|$)/,
 							/^yaml(\/|$)/,
 							/^zod(\/|$)/,
