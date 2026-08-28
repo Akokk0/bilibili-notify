@@ -17,16 +17,16 @@ importers:
         version: 2.5.10
       '@commitlint/cli':
         specifier: ^21.2.2
-        version: 21.2.2(@types/node@22.19.18)(conventional-commits-parser@7.1.2)(typescript@5.9.3)
+        version: 21.2.2(@types/node@24.13.3)(conventional-commits-parser@7.1.2)(typescript@5.9.3)
       '@commitlint/config-conventional':
         specifier: ^21.2.2
         version: 21.2.2
       '@types/node':
-        specifier: ^22.15.21
-        version: 22.19.18
+        specifier: ^24.13.3
+        version: 24.13.3
       '@voidzero-dev/vite-plus-core':
         specifier: 0.2.8
-        version: 0.2.8(@types/node@22.19.18)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0)
+        version: 0.2.8(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0)
       knip:
         specifier: ^6.32.3
         version: 6.32.3
@@ -38,10 +38,10 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 0.2.8
-        version: 0.2.8(@types/node@22.19.18)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@8.1.1))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.2.8(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@8.1.1))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0)
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@22.19.18)(@vitest/browser-preview@4.1.10)(jsdom@26.1.0(supports-color@8.1.1))(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))
+        version: 4.1.10(@types/node@24.13.3)(@vitest/browser-preview@4.1.10)(jsdom@26.1.0(supports-color@8.1.1))(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))
 
   apps/contract:
     devDependencies:
@@ -2765,6 +2765,9 @@ packages:
 
   '@types/node@22.19.18':
     resolution: {integrity: sha512-9v00a+dn2yWVsYDEunWC4g/TcRKVq3r8N5FuZp7u0SGrPvdN9c2yXI9bBuf5Fl0hNCb+QTIePTn5pJs2pwBOQQ==}
+
+  '@types/node@24.13.3':
+    resolution: {integrity: sha512-Dh8vAsV36ig5wa9OX4pXvMc9D3Veibfw2wix0CUwYODLD8nkj9UsLjASr49nPg+2eKzxhBV+v7L8pXvT4e639Q==}
 
   '@types/qrcode@1.5.6':
     resolution: {integrity: sha512-te7NQcV2BOvdj2b1hCAHzAoMNuj65kNBMz0KBaxM6c3VGBOhU0dURQKOtH8CFNI/dsKkwlv32p26qYQTWoB5bw==}
@@ -5712,6 +5715,9 @@ packages:
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
+  undici-types@7.18.2:
+    resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
+
   undici@6.25.0:
     resolution: {integrity: sha512-ZgpWDC5gmNiuY9CnLVXEH8rl50xhRCuLNA97fAUnKi8RRuV4E6KG31pDTsLVUKnohJE0I3XDrTeEydAXRw47xg==}
     engines: {node: '>=18.17'}
@@ -6238,12 +6244,12 @@ snapshots:
 
   '@blazediff/core@1.9.1': {}
 
-  '@commitlint/cli@21.2.2(@types/node@22.19.18)(conventional-commits-parser@7.1.2)(typescript@5.9.3)':
+  '@commitlint/cli@21.2.2(@types/node@24.13.3)(conventional-commits-parser@7.1.2)(typescript@5.9.3)':
     dependencies:
       '@commitlint/config-conventional': 21.2.2
       '@commitlint/format': 21.2.2
       '@commitlint/lint': 21.2.2
-      '@commitlint/load': 21.2.2(@types/node@22.19.18)(typescript@5.9.3)
+      '@commitlint/load': 21.2.2(@types/node@24.13.3)(typescript@5.9.3)
       '@commitlint/read': 21.2.1(conventional-commits-parser@7.1.2)
       '@commitlint/types': 21.2.0
       tinyexec: 1.3.0
@@ -6288,14 +6294,14 @@ snapshots:
       '@commitlint/rules': 21.2.2
       '@commitlint/types': 21.2.0
 
-  '@commitlint/load@21.2.2(@types/node@22.19.18)(typescript@5.9.3)':
+  '@commitlint/load@21.2.2(@types/node@24.13.3)(typescript@5.9.3)':
     dependencies:
       '@commitlint/config-validator': 21.2.0
       '@commitlint/execute-rule': 21.0.1
       '@commitlint/resolve-extends': 21.2.2
       '@commitlint/types': 21.2.0
       cosmiconfig: 9.0.2(typescript@5.9.3)
-      cosmiconfig-typescript-loader: 6.3.0(@types/node@22.19.18)(cosmiconfig@9.0.2(typescript@5.9.3))(typescript@5.9.3)
+      cosmiconfig-typescript-loader: 6.3.0(@types/node@24.13.3)(cosmiconfig@9.0.2(typescript@5.9.3))(typescript@5.9.3)
       es-toolkit: 1.51.0
       is-plain-obj: 4.1.0
       picocolors: 1.1.1
@@ -6366,7 +6372,7 @@ snapshots:
       '@cordisjs/core': 3.18.1
       cosmokit: 1.8.1
       dotenv: 16.6.1
-      js-yaml: 4.1.1
+      js-yaml: 4.3.1
 
   '@cordisjs/logger@0.3.3(@cordisjs/core@3.18.1)':
     dependencies:
@@ -7338,7 +7344,7 @@ snapshots:
       detect-libc: 2.1.2
       is-glob: 4.0.3
       node-addon-api: 7.1.1
-      picomatch: 4.0.4
+      picomatch: 4.0.7
     optionalDependencies:
       '@parcel/watcher-android-arm64': 2.5.6
       '@parcel/watcher-darwin-arm64': 2.5.6
@@ -7805,6 +7811,10 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/node@24.13.3':
+    dependencies:
+      undici-types: 7.18.2
+
   '@types/qrcode@1.5.6':
     dependencies:
       '@types/node': 22.19.18
@@ -8030,28 +8040,28 @@ snapshots:
       vite: 5.4.21(@types/node@22.19.18)(lightningcss@1.33.0)(sass@1.99.0)
       vue: 3.5.34(typescript@5.9.3)
 
-  '@vitest/browser-preview@4.1.10(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(vitest@4.1.10)':
+  '@vitest/browser-preview@4.1.10(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(vitest@4.1.10)':
     dependencies:
       '@testing-library/dom': 10.4.1
       '@testing-library/user-event': 14.6.1(@testing-library/dom@10.4.1)
-      '@vitest/browser': 4.1.10(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(vitest@4.1.10)
-      vitest: 4.1.10(@types/node@22.19.18)(@vitest/browser-preview@4.1.10)(jsdom@26.1.0(supports-color@8.1.1))(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))
+      '@vitest/browser': 4.1.10(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(vitest@4.1.10)
+      vitest: 4.1.10(@types/node@24.13.3)(@vitest/browser-preview@4.1.10)(jsdom@26.1.0(supports-color@8.1.1))(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))
     transitivePeerDependencies:
       - bufferutil
       - msw
       - utf-8-validate
       - vite
 
-  '@vitest/browser@4.1.10(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(vitest@4.1.10)':
+  '@vitest/browser@4.1.10(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(vitest@4.1.10)':
     dependencies:
       '@blazediff/core': 1.9.1
-      '@vitest/mocker': 4.1.10(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))
+      '@vitest/mocker': 4.1.10(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))
       '@vitest/utils': 4.1.10
       magic-string: 0.30.21
       pngjs: 7.0.0
       sirv: 3.0.2
       tinyrainbow: 3.1.0
-      vitest: 4.1.10(@types/node@22.19.18)(@vitest/browser-preview@4.1.10)(jsdom@26.1.0(supports-color@8.1.1))(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))
+      vitest: 4.1.10(@types/node@24.13.3)(@vitest/browser-preview@4.1.10)(jsdom@26.1.0(supports-color@8.1.1))(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))
       ws: 8.21.3
     transitivePeerDependencies:
       - bufferutil
@@ -8068,13 +8078,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.10(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))':
+  '@vitest/mocker@4.1.10(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))':
     dependencies:
       '@vitest/spy': 4.1.10
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0)
+      vite: 6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0)
 
   '@vitest/pretty-format@4.1.10':
     dependencies:
@@ -8110,6 +8120,32 @@ snapshots:
       yuku-parser: 0.5.48
     optionalDependencies:
       '@types/node': 22.19.18
+      '@voidzero-dev/vite-plus-darwin-arm64': 0.2.8
+      '@voidzero-dev/vite-plus-darwin-x64': 0.2.8
+      '@voidzero-dev/vite-plus-linux-arm64-gnu': 0.2.8
+      '@voidzero-dev/vite-plus-linux-arm64-musl': 0.2.8
+      '@voidzero-dev/vite-plus-linux-x64-gnu': 0.2.8
+      '@voidzero-dev/vite-plus-linux-x64-musl': 0.2.8
+      '@voidzero-dev/vite-plus-win32-arm64-msvc': 0.2.8
+      '@voidzero-dev/vite-plus-win32-x64-msvc': 0.2.8
+      esbuild: 0.28.2
+      fsevents: 2.3.3
+      jiti: 2.7.0
+      sass: 1.99.0
+      tsx: 4.23.12
+      typescript: 5.9.3
+      yaml: 2.9.0
+
+  '@voidzero-dev/vite-plus-core@0.2.8(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0)':
+    dependencies:
+      '@oxc-project/runtime': 0.142.0
+      '@oxc-project/types': 0.142.0
+      lightningcss: 1.33.0
+      postcss: 8.5.15
+      yuku-codegen: 0.5.48
+      yuku-parser: 0.5.48
+    optionalDependencies:
+      '@types/node': 24.13.3
       '@voidzero-dev/vite-plus-darwin-arm64': 0.2.8
       '@voidzero-dev/vite-plus-darwin-x64': 0.2.8
       '@voidzero-dev/vite-plus-linux-arm64-gnu': 0.2.8
@@ -8678,9 +8714,9 @@ snapshots:
       kleur: 4.1.5
       reggol: 1.7.1
 
-  cosmiconfig-typescript-loader@6.3.0(@types/node@22.19.18)(cosmiconfig@9.0.2(typescript@5.9.3))(typescript@5.9.3):
+  cosmiconfig-typescript-loader@6.3.0(@types/node@24.13.3)(cosmiconfig@9.0.2(typescript@5.9.3))(typescript@5.9.3):
     dependencies:
-      '@types/node': 22.19.18
+      '@types/node': 24.13.3
       cosmiconfig: 9.0.2(typescript@5.9.3)
       jiti: 2.6.1
       typescript: 5.9.3
@@ -10350,7 +10386,7 @@ snapshots:
       '@oxc-resolver/binding-win32-arm64-msvc': 11.24.2
       '@oxc-resolver/binding-win32-x64-msvc': 11.24.2
 
-  oxfmt@0.61.0(vite-plus@0.2.8(@types/node@22.19.18)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@8.1.1))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0)):
+  oxfmt@0.61.0(vite-plus@0.2.8(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@8.1.1))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0)):
     dependencies:
       tinypool: 2.1.0
     optionalDependencies:
@@ -10373,7 +10409,7 @@ snapshots:
       '@oxfmt/binding-win32-arm64-msvc': 0.61.0
       '@oxfmt/binding-win32-ia32-msvc': 0.61.0
       '@oxfmt/binding-win32-x64-msvc': 0.61.0
-      vite-plus: 0.2.8(@types/node@22.19.18)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@8.1.1))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0)
+      vite-plus: 0.2.8(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@8.1.1))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0)
 
   oxlint-tsgolint@7.0.2001:
     optionalDependencies:
@@ -10384,7 +10420,7 @@ snapshots:
       '@oxlint-tsgolint/win32-arm64': 7.0.2001
       '@oxlint-tsgolint/win32-x64': 7.0.2001
 
-  oxlint@1.76.0(oxlint-tsgolint@7.0.2001)(vite-plus@0.2.8(@types/node@22.19.18)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@8.1.1))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0)):
+  oxlint@1.76.0(oxlint-tsgolint@7.0.2001)(vite-plus@0.2.8(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@8.1.1))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0)):
     optionalDependencies:
       '@oxlint/binding-android-arm-eabi': 1.76.0
       '@oxlint/binding-android-arm64': 1.76.0
@@ -10406,7 +10442,7 @@ snapshots:
       '@oxlint/binding-win32-ia32-msvc': 1.76.0
       '@oxlint/binding-win32-x64-msvc': 1.76.0
       oxlint-tsgolint: 7.0.2001
-      vite-plus: 0.2.8(@types/node@22.19.18)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@8.1.1))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0)
+      vite-plus: 0.2.8(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@8.1.1))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0)
 
   p-limit@2.3.0:
     dependencies:
@@ -11186,6 +11222,8 @@ snapshots:
 
   undici-types@6.21.0: {}
 
+  undici-types@7.18.2: {}
+
   undici@6.25.0: {}
 
   unified@11.0.5:
@@ -11268,24 +11306,24 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite-plus@0.2.8(@types/node@22.19.18)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@8.1.1))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0):
+  vite-plus@0.2.8(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@8.1.1))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0):
     dependencies:
       '@oxc-project/types': 0.142.0
       '@oxlint/plugins': 1.73.0
-      '@vitest/browser': 4.1.10(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(vitest@4.1.10)
-      '@vitest/browser-preview': 4.1.10(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(vitest@4.1.10)
+      '@vitest/browser': 4.1.10(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(vitest@4.1.10)
+      '@vitest/browser-preview': 4.1.10(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(vitest@4.1.10)
       '@vitest/expect': 4.1.10
-      '@vitest/mocker': 4.1.10(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))
+      '@vitest/mocker': 4.1.10(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))
       '@vitest/pretty-format': 4.1.10
       '@vitest/runner': 4.1.10
       '@vitest/snapshot': 4.1.10
       '@vitest/spy': 4.1.10
       '@vitest/utils': 4.1.10
-      '@voidzero-dev/vite-plus-core': 0.2.8(@types/node@22.19.18)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0)
-      oxfmt: 0.61.0(vite-plus@0.2.8(@types/node@22.19.18)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@8.1.1))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0))
-      oxlint: 1.76.0(oxlint-tsgolint@7.0.2001)(vite-plus@0.2.8(@types/node@22.19.18)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@8.1.1))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0))
+      '@voidzero-dev/vite-plus-core': 0.2.8(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0)
+      oxfmt: 0.61.0(vite-plus@0.2.8(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@8.1.1))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0))
+      oxlint: 1.76.0(oxlint-tsgolint@7.0.2001)(vite-plus@0.2.8(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@8.1.1))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0))
       oxlint-tsgolint: 7.0.2001
-      vitest: 4.1.10(@types/node@22.19.18)(@vitest/browser-preview@4.1.10)(jsdom@26.1.0(supports-color@8.1.1))(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))
+      vitest: 4.1.10(@types/node@24.13.3)(@vitest/browser-preview@4.1.10)(jsdom@26.1.0(supports-color@8.1.1))(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))
     optionalDependencies:
       '@voidzero-dev/vite-plus-darwin-arm64': 0.2.8
       '@voidzero-dev/vite-plus-darwin-x64': 0.2.8
@@ -11337,16 +11375,16 @@ snapshots:
       lightningcss: 1.33.0
       sass: 1.99.0
 
-  vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0):
+  vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0):
     dependencies:
       esbuild: 0.25.12
-      fdir: 6.5.0(picomatch@4.0.4)
-      picomatch: 4.0.4
+      fdir: 6.5.0(picomatch@4.0.7)
+      picomatch: 4.0.7
       postcss: 8.5.26
       rollup: 4.60.4
-      tinyglobby: 0.2.16
+      tinyglobby: 0.2.17
     optionalDependencies:
-      '@types/node': 22.19.18
+      '@types/node': 24.13.3
       fsevents: 2.3.3
       jiti: 2.7.0
       lightningcss: 1.33.0
@@ -11354,10 +11392,10 @@ snapshots:
       tsx: 4.23.12
       yaml: 2.9.0
 
-  vitest@4.1.10(@types/node@22.19.18)(@vitest/browser-preview@4.1.10)(jsdom@26.1.0(supports-color@8.1.1))(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0)):
+  vitest@4.1.10(@types/node@24.13.3)(@vitest/browser-preview@4.1.10)(jsdom@26.1.0(supports-color@8.1.1))(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.10
-      '@vitest/mocker': 4.1.10(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))
+      '@vitest/mocker': 4.1.10(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))
       '@vitest/pretty-format': 4.1.10
       '@vitest/runner': 4.1.10
       '@vitest/snapshot': 4.1.10
@@ -11374,11 +11412,11 @@ snapshots:
       tinyexec: 1.1.2
       tinyglobby: 0.2.16
       tinyrainbow: 3.1.0
-      vite: 6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0)
+      vite: 6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
-      '@types/node': 22.19.18
-      '@vitest/browser-preview': 4.1.10(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(vitest@4.1.10)
+      '@types/node': 24.13.3
+      '@vitest/browser-preview': 4.1.10(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(vitest@4.1.10)
       jsdom: 26.1.0(supports-color@8.1.1)
     transitivePeerDependencies:
       - msw
