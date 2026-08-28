@@ -43,6 +43,7 @@ import { useAuthStore } from "../store/auth";
 import { BiliLoginStatus } from "../types/auth";
 import type { PushTarget, Subscription } from "../types/domain";
 import type { GlobalConfig, ModuleLogLevels } from "../types/globals";
+import { DeltaTag, Sparkline } from "./stats/charts";
 import { colorFromUid, displayName } from "./up/helpers";
 
 interface HealthSnapshot {
@@ -700,6 +701,11 @@ export default function Dashboard() {
 	const today = daily.at(-1);
 	const todayPushes = today?.total ?? 0;
 	const todayFailed = today?.failures ?? 0;
+	// KPI 卡 footer 素材(与统计页同构:首张有素材的卡吃 footer,同行其余卡由
+	// grid 等高拉齐):较昨日增减 + 近 7 日走势。窗口不足两天时徽章显「—」。
+	const yesterday = daily.at(-2);
+	const pushDelta = today && yesterday ? today.total - yesterday.total : null;
+	const pushSeries = daily.map((d) => d.total);
 
 	const aiTip = loggedIn ? (
 		live.length > 0 ? (
@@ -725,8 +731,8 @@ export default function Dashboard() {
 
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
-			{/* KPI grid */}
-			<div className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
+			{/* KPI grid(构图对齐统计页:gap-3、带 footer 的卡定行高,其余同行等高)*/}
+			<div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
 				<GlassStatCard
 					label="正在直播"
 					value={live.length}
@@ -745,6 +751,20 @@ export default function Dashboard() {
 					value={todayPushes}
 					suffix="次"
 					color="var(--color-bn-purple)"
+					footer={
+						<>
+							<DeltaTag v={pushDelta} size={11.5} />
+							<span className="text-bn-2xs text-bn-text-secondary">较昨日</span>
+							<span className="ml-auto">
+								<Sparkline
+									data={pushSeries}
+									color="var(--color-bn-purple)"
+									width={64}
+									height={20}
+								/>
+							</span>
+						</>
+					}
 				/>
 				<GlassStatCard
 					label="今日失败"
