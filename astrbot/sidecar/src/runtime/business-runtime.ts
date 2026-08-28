@@ -460,7 +460,7 @@ class DefaultBusinessRuntime implements BusinessRuntimeHandle {
 			message?: string;
 			data?: { result?: unknown[]; numResults?: number } | null;
 		};
-		if (!res || res.code !== 0) {
+		if (res?.code !== 0) {
 			throw new SidecarUpstreamError(502, "upstream_failed", res?.message ?? "搜索失败", res?.code);
 		}
 		const raw = Array.isArray(res.data?.result) ? res.data.result : [];

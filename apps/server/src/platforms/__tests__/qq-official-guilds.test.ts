@@ -41,7 +41,8 @@ describe("fetchQQGuildChannels — REST 枚举频道(token → /guilds → /chan
 		]);
 		// 鉴权头带到了 REST 调用
 		const guildsCall = fetchMock.mock.calls.find((c) => String(c[0]).endsWith("/users/@me/guilds"));
-		const headers = (guildsCall?.[1] as { headers: Record<string, string> }).headers;
+		if (!guildsCall) throw new Error("expected a guilds fetch call");
+		const headers = (guildsCall[1] as { headers: Record<string, string> }).headers;
 		expect(headers.authorization).toBe("QQBot TKN");
 		expect(headers["x-union-appid"]).toBe("APPID");
 	});

@@ -100,7 +100,9 @@ describe("parseSkinManifest / colors 值校验(注入面)", () => {
 		expect(r.ok).toBe(true);
 		if (!r.ok) return;
 		expect(r.skin.modes.light?.colors?.accent).toBe("#fb7299");
-		expect((r.skin.modes.light?.colors as Record<string, unknown>).futureKey).toBeUndefined();
+		expect(
+			(r.skin.modes.light?.colors as Record<string, unknown> | undefined)?.futureKey,
+		).toBeUndefined();
 		expect(r.warnings.join()).toContain("futureKey");
 	});
 

@@ -26,8 +26,9 @@ describe("fetchAppAccessToken", () => {
 		const r = await fetchAppAccessToken("app1", "secret1");
 		expect(r).toEqual({ token: "TKN", expiresInSec: 7200 });
 		const call = fetchMock.mock.calls[0];
-		expect(call?.[0]).toBe("https://bots.qq.com/app/getAppAccessToken");
-		expect(JSON.parse((call?.[1] as RequestInit).body as string)).toEqual({
+		if (!call) throw new Error("expected a fetch call");
+		expect(call[0]).toBe("https://bots.qq.com/app/getAppAccessToken");
+		expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual({
 			appId: "app1",
 			clientSecret: "secret1",
 		});

@@ -75,7 +75,7 @@ export function createQQRoute(deps: RouteDeps): Hono {
 	app.get("/guilds/:adapterId", async (c) => {
 		const id = c.req.param("adapterId");
 		const adapter = deps.store.getAdapters().find((a) => a.id === id);
-		if (!adapter || adapter.platform !== "qq-official") {
+		if (adapter?.platform !== "qq-official") {
 			return c.json({ error: "not_found", message: "qq-official adapter not found", id }, 404);
 		}
 		try {

@@ -37,13 +37,13 @@
 		"knip": "knip --files"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.4.10",
-		"@commitlint/cli": "^20.5.0",
-		"@commitlint/config-conventional": "^20.5.0",
+		"@biomejs/biome": "^2.5.10",
+		"@commitlint/cli": "^21.2.2",
+		"@commitlint/config-conventional": "^21.2.2",
 		"@types/node": "^22.15.21",
 		"@voidzero-dev/vite-plus-core": "0.2.8",
-		"knip": "^6.14.1",
-		"lefthook": "^1.11.12",
+		"knip": "^6.32.3",
+		"lefthook": "^2.1.10",
 		"typescript": "^5.8.3",
 		"vite-plus": "0.2.8",
 		"vitest": "4.1.10"

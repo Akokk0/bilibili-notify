@@ -130,7 +130,7 @@ export function createKoishiSink(opts: KoishiSinkOptions): NotificationSink {
 		}
 
 		const adapter = resolveAdapter(target.adapterId);
-		if (!adapter || adapter.platform !== "koishi-bot") {
+		if (adapter?.platform !== "koishi-bot") {
 			return {
 				ok: false,
 				latencyMs: 0,
@@ -205,7 +205,7 @@ export function createKoishiSink(opts: KoishiSinkOptions): NotificationSink {
 			const target = resolveTarget(targetId);
 			if (!target?.enabled || target.platform !== "koishi-bot") return false;
 			const adapter = resolveAdapter(target.adapterId);
-			if (!adapter || adapter.platform !== "koishi-bot" || !adapter.enabled) return false;
+			if (adapter?.platform !== "koishi-bot" || !adapter.enabled) return false;
 			const cfg = adapter.config as KoishiBotAdapterConfig;
 			const bot = resolveBot(cfg, labelFor(target));
 			return bot?.status === Universal.Status.ONLINE;

@@ -102,7 +102,8 @@ afterEach(async () => {
 
 function lastBody(): Record<string, unknown> {
 	const call = fetchMock.mock.calls.at(-1);
-	return JSON.parse((call?.[1] as { body: string }).body);
+	if (!call) throw new Error("expected at least one fetch call");
+	return JSON.parse((call[1] as { body: string }).body);
 }
 function lastInit(): RequestInit {
 	return fetchMock.mock.calls.at(-1)?.[1] as RequestInit;

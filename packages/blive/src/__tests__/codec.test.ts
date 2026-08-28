@@ -71,7 +71,7 @@ describe("decodeFrames(真实录制帧)", () => {
 
 		expect(packets).toHaveLength(1);
 		expect(packets[0]?.op).toBe(WsOp.Message);
-		expect((packets[0]?.body as { cmd: string }).cmd).toBe("NOTICE_MSG");
+		expect((packets[0]?.body as { cmd: string } | undefined)?.cmd).toBe("NOTICE_MSG");
 	});
 
 	it("brotli MESSAGE(ver=3):解压后展平内层包", () => {

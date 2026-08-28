@@ -53,7 +53,7 @@ function makeSub(uid: string, id = `sub-${uid}`): Subscription {
 
 function lastOps(bus: ReturnType<typeof makeFakeBus>): SubscriptionOp[] | undefined {
 	const last = bus.events.at(-1);
-	if (!last || last[0] !== "subscription-changed") return undefined;
+	if (last?.[0] !== "subscription-changed") return undefined;
 	return last[1][0] as SubscriptionOp[];
 }
 

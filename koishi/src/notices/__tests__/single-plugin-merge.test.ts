@@ -25,15 +25,12 @@ describe("单插件合并 notifier", () => {
 
 	// 五个旧子插件在 npm 上都还在,用户手里很可能装着 —— 漏掉任何一个,那个插件就会被
 	// 留在原地(而它已经无法工作)。曾经真的漏过 `-image`,所以这里逐个点名。
-	it.each([
-		"-dynamic",
-		"-live",
-		"-ai",
-		"-image",
-		"-advanced-subscription",
-	])("点名要卸载的旧子插件 %s", (plugin) => {
-		expect(SINGLE_PLUGIN_LINES.join(" ")).toContain(plugin);
-	});
+	it.each(["-dynamic", "-live", "-ai", "-image", "-advanced-subscription"])(
+		"点名要卸载的旧子插件 %s",
+		(plugin) => {
+			expect(SINGLE_PLUGIN_LINES.join(" ")).toContain(plugin);
+		},
+	);
 
 	it("明确要求卸载,并说清「留着也没用」", () => {
 		const text = SINGLE_PLUGIN_LINES.join(" ");

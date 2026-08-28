@@ -64,7 +64,7 @@ export function handlePushEnvelope(
 	// 会顺带刷上。
 	if (env.event === "live-viewers-changed") {
 		const tuple = env.data as [string, string] | undefined;
-		if (!tuple || tuple.length !== 2) return;
+		if (tuple?.length !== 2) return;
 		const [uid, viewers] = tuple;
 		qc.setQueryData<LiveListenerSnapshot[]>(["live", "listening"], (old) => {
 			if (!old) return old;

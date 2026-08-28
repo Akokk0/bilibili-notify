@@ -923,7 +923,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		const call = b.push.broadcastDynamic.mock.calls[1];
-		expect((call?.[1]?.[0] as { images: unknown[] }).images).toEqual([
+		expect((call?.[1]?.[0] as { images: unknown[] } | undefined)?.images).toEqual([
 			{ url: "http://a/1.jpg", width: 800, height: 600 },
 		]);
 	});
@@ -944,7 +944,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		const call = b.push.broadcastDynamic.mock.calls[1];
-		expect((call?.[1]?.[0] as { forward: boolean }).forward).toBe(false);
+		expect((call?.[1]?.[0] as { forward: boolean } | undefined)?.forward).toBe(false);
 	});
 
 	it("imageGroupForward=true + 多张图 → image-group segment 的 forward 为 true", async () => {
@@ -963,7 +963,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		const call = b.push.broadcastDynamic.mock.calls[1];
-		expect((call?.[1]?.[0] as { forward: boolean }).forward).toBe(true);
+		expect((call?.[1]?.[0] as { forward: boolean } | undefined)?.forward).toBe(true);
 	});
 
 	it("imageGroupForward=true 但只有 1 张图 → forward 强制 false(单图合并转发无意义)", async () => {
@@ -982,7 +982,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		const call = b.push.broadcastDynamic.mock.calls[1];
-		expect((call?.[1]?.[0] as { forward: boolean }).forward).toBe(false);
+		expect((call?.[1]?.[0] as { forward: boolean } | undefined)?.forward).toBe(false);
 	});
 
 	it("per-UP imageGroupEnable=false 覆盖全局 true → 不推图集", async () => {
@@ -1060,7 +1060,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(b.engine, "1", 0, { uid: "1", uname: "UP", imageGroupForward: true });
 		await detect(b.engine);
 		const call = b.push.broadcastDynamic.mock.calls[1];
-		expect((call?.[1]?.[0] as { forward: boolean }).forward).toBe(true);
+		expect((call?.[1]?.[0] as { forward: boolean } | undefined)?.forward).toBe(true);
 	});
 });
 

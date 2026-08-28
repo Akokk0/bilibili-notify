@@ -134,7 +134,7 @@ export function createSubsRoute(deps: RouteDeps): Hono {
 				message?: string;
 				data?: { result?: unknown[]; numResults?: number };
 			};
-			if (!res || res.code !== 0) {
+			if (res?.code !== 0) {
 				const message = res?.message ?? "搜索失败";
 				return c.json({ error: "upstream_failed", code: res?.code, message }, 502);
 			}
