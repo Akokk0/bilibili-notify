@@ -24,6 +24,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { Field, Picker, TInput, TNum, TSelect } from "../components/forms";
+import { QQQrBindButton } from "../components/qq-qr-bind";
 import { ApiError, api } from "../services/api";
 import {
 	KNOWN_PLATFORMS,
@@ -556,6 +557,14 @@ function AdapterConnectionFields({
 		const setCfg = (next: QQOfficialAdapterConfig) => onChange({ ...adapter, config: next });
 		return (
 			<>
+				<div className="flex flex-wrap items-center gap-3 border-b border-dashed border-bn-border-subtle py-2.5">
+					<QQQrBindButton
+						onCredentials={({ appId, appSecret }) => setCfg({ ...cfg, appId, appSecret })}
+					/>
+					<span className="text-bn-xs text-bn-text-secondary">
+						没有机器人?扫码在腾讯页面一键创建,凭据自动回填下方两栏
+					</span>
+				</div>
 				<Field
 					label="AppID"
 					code="config.appId"
