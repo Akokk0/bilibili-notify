@@ -34,12 +34,12 @@ const cronMock = vi.hoisted(() => {
 	const instances: Array<{
 		cronTime: string;
 		onTick: () => void;
-		running: boolean;
+		isActive: boolean;
 		startCount: number;
 		stopCount: number;
 	}> = [];
 	class FakeCronJob {
-		running = false;
+		isActive = false;
 		startCount = 0;
 		stopCount = 0;
 		constructor(
@@ -54,11 +54,11 @@ const cronMock = vi.hoisted(() => {
 			instances.push(this);
 		}
 		start(): void {
-			this.running = true;
+			this.isActive = true;
 			this.startCount++;
 		}
 		stop(): void {
-			this.running = false;
+			this.isActive = false;
 			this.stopCount++;
 		}
 	}
@@ -570,10 +570,10 @@ describe("DynamicEngine — 登录失效时不再报第二遍", () => {
 	it("收到 auth-lost 立刻停 cron —— 别等下一轮再去白撞一次 -101", () => {
 		const b = makeEngine(oneSub);
 		b.engine.start();
-		expect(cronMock.instances[0]?.running).toBe(true);
+		expect(cronMock.instances[0]?.isActive).toBe(true);
 
 		b.trigger("auth-lost");
-		expect(cronMock.instances[0]?.running).toBe(false);
+		expect(cronMock.instances[0]?.isActive).toBe(false);
 	});
 
 	it("auth-lost 之后才落地的那一轮撞上 -101,不再报 engine-error", async () => {
@@ -640,7 +640,7 @@ describe("DynamicEngine — 登录失效时不再报第二遍", () => {
 
 		b.trigger("auth-restored");
 
-		expect(cronMock.instances.at(-1)?.running).toBe(true);
+		expect(cronMock.instances.at(-1)?.isActive).toBe(true);
 	});
 });
 
@@ -1351,7 +1351,7 @@ describe("DynamicEngine — reconcileJob 尊重风控退避", () => {
 		await detect(b.engine);
 
 		// 退避窗口内 adapter 收到订阅变更 → applyOps → reconcileJob。subManager 仍非空,
-		// dynamicJob 又是 undefined —— 若只看 dynamicJob?.running 会立即 startJob,提前去戳
+		// dynamicJob 又是 undefined —— 若只看 dynamicJob?.isActive 会立即 startJob,提前去戳
 		// 仍在风控的端点,击穿退避。修复后应识别 detectorRestartTimer 待执行而跳过。
 		b.engine.applyOps([
 			{ type: "add", sub: { uid: "2", uname: "UP2", dynamic: true } as SubItemView },
@@ -1367,11 +1367,11 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		const b = makeEngine({ subs });
 		b.engine.start();
 		expect(cronMock.instances).toHaveLength(1);
-		expect(cronMock.instances[0]?.running).toBe(true);
+		expect(cronMock.instances[0]?.isActive).toBe(true);
 		expect(b.engine.isActive).toBe(true);
 
 		b.engine.stop();
-		expect(cronMock.instances[0]?.running).toBe(false);
+		expect(cronMock.instances[0]?.isActive).toBe(false);
 		expect(b.engine.isActive).toBe(false);
 	});
 
@@ -1404,7 +1404,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		snap = { "1": { uid: "1", uname: "UP", dynamic: true } };
 		trigger("auth-restored");
 		expect(cronMock.instances).toHaveLength(1);
-		expect(cronMock.instances[0]?.running).toBe(true);
+		expect(cronMock.instances[0]?.isActive).toBe(true);
 	});
 
 	it("updateConfig 改 dynamicCron(运行中)→ 旧 job 停,新 job 用新 cronTime", () => {
@@ -1422,7 +1422,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		expect(cronMock.instances[0]?.stopCount).toBe(1);
 		expect(cronMock.instances).toHaveLength(2);
 		expect(cronMock.instances[1]?.cronTime).toBe("*/5 * * * *");
-		expect(cronMock.instances[1]?.running).toBe(true);
+		expect(cronMock.instances[1]?.isActive).toBe(true);
 	});
 
 	it("updateConfig 同 cron → 不重建 job", () => {
@@ -1442,15 +1442,15 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		const sub: SubItemView = { uid: "1", uname: "UP", dynamic: true };
 		const b = makeEngine({ subs: { "1": sub } });
 		b.engine.start(); // 快照里 sub.dynamic=true → 已有 running job
-		expect(cronMock.instances[0]?.running).toBe(true);
+		expect(cronMock.instances[0]?.isActive).toBe(true);
 
 		b.engine.applyOps([{ type: "delete", uid: "1" }]);
-		expect(cronMock.instances[0]?.running).toBe(false);
+		expect(cronMock.instances[0]?.isActive).toBe(false);
 
 		b.engine.applyOps([{ type: "add", sub }]);
 		// 重新有订阅 → reconcile 重启(可能复用或新建 instance,断言最终处于 running)
 		const last = cronMock.instances[cronMock.instances.length - 1];
-		expect(last?.running).toBe(true);
+		expect(last?.isActive).toBe(true);
 	});
 
 	it("回归:dynamicCron 无法解析(new CronJob 同步抛错)不炸穿 start(),记录 error 且不建 job(此前独立端会在启动期整进程崩溃,见 sidecar.stderr.log 的 CronError)", () => {

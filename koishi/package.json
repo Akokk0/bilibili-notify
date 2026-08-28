@@ -109,10 +109,7 @@
 		"abort-controller": "3.0.0",
 		"agentkeepalive": "4.6.0",
 		"charenc": "0.0.2",
-		"cron": [
-			"3.5.0",
-			"4.4.0"
-		],
+		"cron": "4.4.0",
 		"crypt": "0.0.2",
 		"csstype": "3.2.3",
 		"dijkstrajs": "1.0.3",
@@ -123,10 +120,7 @@
 		"is-buffer": "1.1.6",
 		"jieba-wasm": "2.4.0",
 		"long": "5.3.2",
-		"luxon": [
-			"3.5.0",
-			"3.7.2"
-		],
+		"luxon": "3.7.2",
 		"magic-string": "1.2.1",
 		"md5": "2.3.0",
 		"ms": "2.1.3",

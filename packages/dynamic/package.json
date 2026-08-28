@@ -36,7 +36,7 @@
 		"@bilibili-notify/api": "workspace:^",
 		"@bilibili-notify/image": "workspace:^",
 		"@bilibili-notify/internal": "workspace:^",
-		"cron": "^3.1.7",
+		"cron": "^4.4.0",
 		"luxon": "^3.5.0"
 	},
 	"devDependencies": {

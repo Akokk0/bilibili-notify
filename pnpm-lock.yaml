@@ -128,8 +128,8 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.5)
       cron:
-        specifier: ^3.1.7
-        version: 3.5.0
+        specifier: ^4.4.0
+        version: 4.4.0
       css-tree:
         specifier: ^3.2.1
         version: 3.2.1
@@ -447,8 +447,8 @@ importers:
         specifier: workspace:^
         version: link:../internal
       cron:
-        specifier: ^3.1.7
-        version: 3.5.0
+        specifier: ^4.4.0
+        version: 4.4.0
       luxon:
         specifier: ^3.5.0
         version: 3.7.2
@@ -2739,12 +2739,6 @@ packages:
   '@types/lodash@4.17.24':
     resolution: {integrity: sha512-gIW7lQLZbue7lRSWEFql49QJJWThrTFFeIMJdp3eH4tKoxm1OvEPg02rm4wCCSHS0cL3/Fizimb35b7k8atwsQ==}
 
-  '@types/luxon@3.4.2':
-    resolution: {integrity: sha512-TifLZlFudklWlMBfhubvgqTXRzLDI5pCbGa4P8a3wPyUQSW+1xQ5eDsreP9DWHX3tjq1ke96uYG/nwundroWcA==}
-
-  '@types/luxon@3.7.1':
-    resolution: {integrity: sha512-H3iskjFIAn5SlJU7OuxUmTEpebK6TKB8rxZShDslBMZJ5u9S//KM1sbdAisiSrqwLQncVjnpi2OK2J51h+4lsg==}
-
   '@types/luxon@3.7.5':
     resolution: {integrity: sha512-jJ41Q4z6ZVO260MNDdHfW7+7a5iMiX8Mr6ZJHcmgrvhZha6dz5704o/lF2kKl6URjH6ivEL97w9xS/MgpJEphg==}
 
@@ -3651,9 +3645,6 @@ packages:
   cosmokit@1.8.1:
     resolution: {integrity: sha512-PDBv4l90xZKrUsZ0vtoycgZpO/j4iFsqJXrAxsyBDsnQRI7ZMJXIjgDJsKNjd5L8jnVnnlrDCdhkFbTncgCVjQ==}
 
-  cron@3.5.0:
-    resolution: {integrity: sha512-0eYZqCnapmxYcV06uktql93wNWdlTmmBFP2iYz+JPVcQqlyFYcn1lFuIk4R54pkOmE7mcldTAPZv6X5XA4Q46A==}
-
   cron@4.4.0:
     resolution: {integrity: sha512-fkdfq+b+AHI4cKdhZlppHveI/mgz2qpiYxcm+t5E5TsxX7QrLS1VE0+7GENEk9z0EeGPcpSciGv6ez24duWhwQ==}
     engines: {node: '>=18.x'}
@@ -4339,10 +4330,6 @@ packages:
     resolution: {integrity: sha512-wpxZs9NoxZaJESJGIZTyDEaYpl0FKSA+FB9aJiyemKhMwkxQg63h4T1KJgUGHpTqPDNRcmmYLugrRjJlBtWvRA==}
     hasBin: true
 
-  js-yaml@4.1.1:
-    resolution: {integrity: sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA==}
-    hasBin: true
-
   js-yaml@4.3.1:
     resolution: {integrity: sha512-CY6crGq313MX8GkwvB7tzgp99vjQxY1++5y10/BKN/GUfHqWaOGQMNZkBvqSzsZKWk/ijwHlWzzkLulsGHhjWQ==}
     hasBin: true
@@ -4650,10 +4637,6 @@ packages:
 
   lru-cache@7.18.3:
     resolution: {integrity: sha512-jumlc0BIUrS3qJGgIkWZsyfAM7NCWiBcCDhnd+3NNM5KbBmLTgHVfWBcg6W+rLUsIpzpERPsvwUP7CckAQSOoA==}
-    engines: {node: '>=12'}
-
-  luxon@3.5.0:
-    resolution: {integrity: sha512-rh+Zjr6DNfUYR3bPwJEnuwDdqMbxZW7LOQfUN4B54+Cl+0o5zaU9RJ6bcidfDtC1cWCZXQ+nvX8bf6bAji37QQ==}
     engines: {node: '>=12'}
 
   luxon@3.7.2:
@@ -6950,7 +6933,7 @@ snapshots:
     dependencies:
       '@koishijs/core': 4.18.11
       dotenv: 16.6.1
-      js-yaml: 4.1.1
+      js-yaml: 4.3.1
       ns-require: 1.1.4
 
   '@koishijs/plugin-console@5.30.11(@koishijs/client@5.30.11(@types/node@22.19.18)(lightningcss@1.33.0)(postcss@8.5.26)(rollup@4.60.4)(supports-color@8.1.1)(typescript@5.9.3))(koishi@4.18.11(@cordisjs/plugin-http@0.6.3(cordis@3.18.1))(cordis@3.18.1)(supports-color@8.1.1))':
@@ -7783,10 +7766,6 @@ snapshots:
       '@types/lodash': 4.17.24
 
   '@types/lodash@4.17.24': {}
-
-  '@types/luxon@3.4.2': {}
-
-  '@types/luxon@3.7.1': {}
 
   '@types/luxon@3.7.5': {}
 
@@ -8732,14 +8711,9 @@ snapshots:
 
   cosmokit@1.8.1: {}
 
-  cron@3.5.0:
-    dependencies:
-      '@types/luxon': 3.4.2
-      luxon: 3.5.0
-
   cron@4.4.0:
     dependencies:
-      '@types/luxon': 3.7.1
+      '@types/luxon': 3.7.5
       luxon: 3.7.2
 
   cross-spawn@7.0.6:
@@ -9489,10 +9463,6 @@ snapshots:
     dependencies:
       argparse: 2.0.1
 
-  js-yaml@4.1.1:
-    dependencies:
-      argparse: 2.0.1
-
   js-yaml@4.3.1:
     dependencies:
       argparse: 2.0.1
@@ -9807,8 +9777,6 @@ snapshots:
   lru-cache@10.4.3: {}
 
   lru-cache@7.18.3: {}
-
-  luxon@3.5.0: {}
 
   luxon@3.7.2: {}
 

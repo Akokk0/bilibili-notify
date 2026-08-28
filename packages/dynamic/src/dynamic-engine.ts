@@ -473,7 +473,7 @@ export class DynamicEngine {
 	}
 
 	get isActive(): boolean {
-		return this.dynamicJob?.running ?? false;
+		return this.dynamicJob?.isActive ?? false;
 	}
 
 	/** 用最新订阅快照重启动态检测；保留已有 UID 的时间戳避免重推旧动态。 */
@@ -696,12 +696,12 @@ export class DynamicEngine {
 
 	private reconcileJob(): void {
 		if (this.dynamicSubManager.size === 0) {
-			if (this.dynamicJob?.running) {
+			if (this.dynamicJob?.isActive) {
 				this.dynamicJob.stop();
 				this.dynamicJob = undefined;
 				this.logger.info("[detector] 订阅清空，动态检测任务已停止");
 			}
-		} else if (!this.dynamicJob?.running && !this.detectorRestartTimer && !this.authLost) {
+		} else if (!this.dynamicJob?.isActive && !this.detectorRestartTimer && !this.authLost) {
 			// 两个「此刻别启动」的理由,少一个都会让 applyOps 把 cron 提前拉起来:
 			//
 			// · detectorRestartTimer 非空 = 正处于 -352/瞬时错误的退避窗口。提前 startJob
