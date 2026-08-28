@@ -32,8 +32,8 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"protobufjs": "^8.0.0",
-		"ws": "^8.18.0"
+		"protobufjs": "^8.8.0",
+		"ws": "^8.21.3"
 	},
 	"devDependencies": {
 		"@types/ws": "^8.5.12"

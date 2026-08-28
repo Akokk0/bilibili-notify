@@ -85,15 +85,27 @@
 	"inlinedDependencies": {
 		"@jridgewell/sourcemap-codec": "1.5.5",
 		"@koishijs/plugin-help": "2.4.6",
-		"@unocss/core": "66.6.8",
-		"@unocss/extractor-arbitrary-variants": "66.6.8",
-		"@unocss/preset-wind4": "66.6.8",
-		"@unocss/rule-utils": "66.6.8",
-		"@vue/reactivity": "3.5.34",
-		"@vue/runtime-core": "3.5.34",
-		"@vue/runtime-dom": "3.5.34",
-		"@vue/server-renderer": "3.5.34",
-		"@vue/shared": "3.5.34",
+		"@unocss/core": "66.8.1",
+		"@unocss/extractor-arbitrary-variants": "66.8.1",
+		"@unocss/preset-wind4": "66.8.1",
+		"@unocss/rule-utils": "66.8.1",
+		"@vue/reactivity": [
+			"3.5.34",
+			"3.5.42"
+		],
+		"@vue/runtime-core": [
+			"3.5.34",
+			"3.5.42"
+		],
+		"@vue/runtime-dom": [
+			"3.5.34",
+			"3.5.42"
+		],
+		"@vue/server-renderer": "3.5.42",
+		"@vue/shared": [
+			"3.5.34",
+			"3.5.42"
+		],
 		"abort-controller": "3.0.0",
 		"agentkeepalive": "4.6.0",
 		"charenc": "0.0.2",
@@ -110,25 +122,29 @@
 		"humanize-ms": "1.2.1",
 		"is-buffer": "1.1.6",
 		"jieba-wasm": "2.4.0",
+		"long": "5.3.2",
 		"luxon": [
 			"3.5.0",
 			"3.7.2"
 		],
-		"magic-string": "0.30.21",
+		"magic-string": "1.2.1",
 		"md5": "2.3.0",
 		"ms": "2.1.3",
 		"node-domexception": "1.0.0",
 		"node-fetch": "2.7.0",
 		"openai": "4.104.0",
 		"pngjs": "5.0.0",
-		"protobufjs": "8.0.3",
+		"protobufjs": "8.8.0",
 		"qrcode": "1.5.4",
 		"tr46": "0.0.3",
-		"vue": "3.5.34",
+		"vue": [
+			"3.5.34",
+			"3.5.42"
+		],
 		"web-streams-polyfill": "4.0.0-beta.3",
 		"webidl-conversions": "3.0.1",
 		"whatwg-url": "5.0.0",
-		"ws": "8.20.1",
+		"ws": "8.21.3",
 		"zod": "4.4.3"
 	}
 }

@@ -33,7 +33,7 @@
 		"puppeteer-core": "^24.16.0"
 	},
 	"devDependencies": {
-		"tsx": "^4.21.0"
+		"tsx": "^4.23.12"
 	},
 	"engines": {
 		"node": ">=24.0.0"

@@ -41,7 +41,7 @@
 		"luxon": "^3.5.0"
 	},
 	"devDependencies": {
-		"@types/luxon": "^3.4.2"
+		"@types/luxon": "^3.7.5"
 	},
 	"engines": {
 		"node": ">=20.0.0"
