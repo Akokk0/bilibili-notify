@@ -321,6 +321,8 @@ function AdapterEditorModal({
 	error,
 }: AdapterEditorProps) {
 	const valid = value.name.trim().length > 0;
+	// 保存钮灰着时说清楚为什么 —— 扫码回填流程尤其容易只剩名称没填。
+	const invalidHint = valid ? undefined : "请先填写显示名称";
 	const tint = platformTint(value.platform);
 	return (
 		<ModalShell
@@ -378,11 +380,14 @@ function AdapterEditorModal({
 
 			{error ? <ErrorNote className="mt-3">{error}</ErrorNote> : null}
 
-			<div className="mt-4 flex justify-end gap-2">
+			<div className="mt-4 flex items-center justify-end gap-2">
+				{invalidHint ? (
+					<span className="mr-auto text-bn-xs text-bn-text-tertiary">{invalidHint}</span>
+				) : null}
 				<Btn variant="outline" onClick={onCancel} disabled={saving}>
 					取消
 				</Btn>
-				<Btn variant="primary" onClick={onSave} disabled={saving || !valid}>
+				<Btn variant="primary" onClick={onSave} disabled={saving || !valid} title={invalidHint}>
 					{saving ? "保存中…" : "保存"}
 				</Btn>
 			</div>
@@ -561,8 +566,14 @@ function AdapterConnectionFields({
 					<QQQrBindButton
 						// 回填 = 「用扫出来的这个 lite bot」,顺手把域/沙箱归到它的正确档:
 						// lite bot 无原生 markdown 特权,留在私域档会让图集推送必败。
+						// 显示名称为空时补默认名 —— 扫码流程跳过了表单上半截,名称空着
+						// 会让保存钮一直灰着(唯一前端必填),用户看不出为什么存不了。
 						onCredentials={({ appId, appSecret }) =>
-							setCfg({ ...cfg, appId, appSecret, botType: "public", sandbox: false })
+							onChange({
+								...adapter,
+								name: adapter.name.trim() ? adapter.name : `QQ 机器人 ${appId}`,
+								config: { ...cfg, appId, appSecret, botType: "public", sandbox: false },
+							})
 						}
 					/>
 					<span className="text-bn-xs text-bn-text-secondary">
