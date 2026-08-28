@@ -89,23 +89,11 @@
 		"@unocss/extractor-arbitrary-variants": "66.8.1",
 		"@unocss/preset-wind4": "66.8.1",
 		"@unocss/rule-utils": "66.8.1",
-		"@vue/reactivity": [
-			"3.5.34",
-			"3.5.42"
-		],
-		"@vue/runtime-core": [
-			"3.5.34",
-			"3.5.42"
-		],
-		"@vue/runtime-dom": [
-			"3.5.34",
-			"3.5.42"
-		],
+		"@vue/reactivity": "3.5.42",
+		"@vue/runtime-core": "3.5.42",
+		"@vue/runtime-dom": "3.5.42",
 		"@vue/server-renderer": "3.5.42",
-		"@vue/shared": [
-			"3.5.34",
-			"3.5.42"
-		],
+		"@vue/shared": "3.5.42",
 		"abort-controller": "3.0.0",
 		"agentkeepalive": "4.6.0",
 		"charenc": "0.0.2",
@@ -131,10 +119,7 @@
 		"protobufjs": "8.8.0",
 		"qrcode": "1.5.4",
 		"tr46": "0.0.3",
-		"vue": [
-			"3.5.34",
-			"3.5.42"
-		],
+		"vue": "3.5.42",
 		"web-streams-polyfill": "4.0.0-beta.3",
 		"webidl-conversions": "3.0.1",
 		"whatwg-url": "5.0.0",
