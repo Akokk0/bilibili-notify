@@ -17,14 +17,19 @@ packages:
 # that root declaration only breaks on a clean install, so it is easy to "verify"
 # as safe and still take CI down.
 #
-# Bumping vite-plus? Three things move in lockstep, and missing any one of them
+# Bumping vite-plus? Four things move in lockstep, and missing any one of them
 # silently leaves half the toolchain on the old version:
 #   1. root `vite-plus` + `@voidzero-dev/vite-plus-core` devDeps
-#   2. the two overrides below (else the React frontends keep the old core)
+#   2. the three overrides below (else the React frontends keep the old core)
 #   3. root `vitest` — vite-plus pins vitest EXACTLY (0.2.4 -> 4.1.10). Drift here
 #      installs a second vitest copy; @vitest/spy then has two identities and
 #      mocks stop matching, which surfaces as absurd test failures, not as a
 #      version error.
+#   4. apps/Dockerfile `VP_BUILDER_IMAGE` ARG — the Docker builder builds on the
+#      official toolchain image and must run the same vp as everywhere else.
+# Also: upgrade the global vp CLI FIRST (`vp upgrade`), then edit these
+# declarations — installing a newer vite-plus package with an older CLI has
+# corrupted the lockfile before (biome's entry took on vite-plus's resolution).
 #
 # There used to be a fourth: a `minimumReleaseAgeExclude` list, carried forward
 # and version-bumped at each upgrade. It is gone because it was doing nothing.

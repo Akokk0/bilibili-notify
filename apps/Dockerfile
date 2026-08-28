@@ -24,6 +24,12 @@
 
 ARG NODE_VERSION=24
 
+# builder 工具链镜像 —— 版本与 root devDependency 的 vite-plus 同步升级(联动
+# 清单见 pnpm-workspace.yaml 顶部大注释)。官方只发 ghcr.io(amd64+arm64);CI 在
+# GHA 上拉 ghcr 走 GitHub 内网、很快。国内本地构建嫌慢时用 --build-arg 整体换成
+# 任意镜像加速源,风格同下方 BN_BASE_IMAGE。
+ARG VP_BUILDER_IMAGE=ghcr.io/voidzero-dev/vite-plus:0.3.0
+
 # runtime 底座:预装 chromium + CJK/emoji 字体 + tini 的自建 base(见
 # apps/base.Dockerfile)。这 ~300MB 冻结在 base 里,digest 只随 base 显式重建
 # (base-image.yml,不可变 tag b1/b2/…)而变 —— 用户拉一次、之后每次升级只下
@@ -33,37 +39,30 @@ ARG BN_BASE_IMAGE=docker.io/akokk0/bilibili-notify-base:b1
 
 # ---- builder ----------------------------------------------------------------
 
-FROM node:${NODE_VERSION}-bookworm-slim AS builder
-
-# git for any package that fetches via git-https; python3/make/g++ for native
-# deps that fall back to building from source.
-#
-# Toolchain note — the repo standardises on vp (vite-plus); CI bootstraps it
-# via voidzero-dev/setup-vp. This Docker builder is a DELIBERATE, documented
-# exception: it uses corepack-provisioned pnpm (from package.json#packageManager,
-# currently pnpm@11.3.0), NOT vp. Why: corepack ships free in the node base
-# image (zero extra layer, offline), vp has no Docker-side bootstrap action
-# like setup-vp, and corepack vs vp resolve the SAME pinned pnpm so build
-# artifacts are byte-identical. Mirrors the corepack carve-out in
-# .github/workflows/publish.yml. Do NOT "fix" this to vp without first
-# re-evaluating the bootstrap cost.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        git python3 make g++ ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && corepack enable
-
-WORKDIR /repo
+# Toolchain note — the repo standardises on vp (vite-plus), and since the
+# official toolchain image (ghcr.io/voidzero-dev/vite-plus) exists this builder
+# uses it too: the historical corepack carve-out (vp had no Docker-side
+# bootstrap) is gone. The image ships the vp CLI + git + build-essential on
+# debian-slim, runs as the non-root `vp` user with WORKDIR /app, and vp
+# provisions Node.js per `.node-version` (24.15.0 — MORE deterministic than the
+# rolling node:${NODE_VERSION} tag this stage used to build on) and the exact
+# pnpm pinned in package.json#packageManager.
+FROM ${VP_BUILDER_IMAGE} AS builder
 
 # Copy the entire monorepo. The .dockerignore in the repo root drops
 # node_modules / lib / dist / .git so the build context stays small.
-COPY . .
+# --chown: the image runs as the non-root `vp` user; a root-owned tree would
+# make the install step unable to write node_modules.
+COPY --chown=vp:vp . .
 
 # Single pnpm workspace covers packages/*, koishi/*, apps/*. Install once.
+# `vp pm` forwards to the pinned pnpm verbatim; `vp pm ci` = clean
+# frozen-lockfile install for CI environments.
 #
 # `.dockerignore` 排除 .git,而 root prepare 脚本调 `lefthook install`,
 # 该命令要求在 git 工作区里跑 → 这里临时 init 一个空仓让它写完 hooks
 # 即可(builder 用完即弃,不会带进 runtime)。
-RUN git init -q . && pnpm install --frozen-lockfile
+RUN git init -q . && vp pm ci
 
 # 只构建镜像真正消费的三块(旧版 `pnpm -r` 全 workspace 扫一遍,koishi/* 的产物
 # 从未进过 runtime 镜像,纯浪费 CI 时间):
@@ -74,13 +73,13 @@ RUN git init -q . && pnpm install --frozen-lockfile
 #   3. apps/server build:bundle + 装配 —— 自包含单文件 bundle(全部依赖内联),
 #      assemble-server-bundle.mjs 把运行时按路径读取的资产(jieba wasm / jsdom
 #      xhr worker / 词云 static)+ bn.config.example.yaml + package.json 搬进 dist/。
-# --stream:GHA buildx 默认 batched 输出,多包 build 静默累积时卡死一个包就整体
-# 看不出在哪,--stream 让各包输出实时刷出。
-# script 里的 `vp` 从根 devDependency(vite-plus)的 node_modules/.bin 解析,
-# builder 无需全局 vp。
-RUN pnpm -r --filter './packages/*' --filter '@bilibili-notify/contract' --stream run build
-RUN pnpm --filter '@bilibili-notify/web' run build
-RUN pnpm --filter '@bilibili-notify/server' run build:bundle \
+# 旧 pnpm 版命令带 --stream(GHA buildx 的 batched 输出下看清卡在哪个包);
+# vp run 本身就是实时流式 + 拓扑序输出,诉求内置满足,无需对应 flag。
+# 注意 vp pm 只覆盖精选的 pnpm 子命令(没有 run),跑 script 必须走 vp run。
+# node 走 vp 的 shim(按 .node-version 供给)。
+RUN vp run -F './packages/*' -F '@bilibili-notify/contract' build
+RUN vp run -F '@bilibili-notify/web' build
+RUN vp run -F '@bilibili-notify/server' build:bundle \
     && node scripts/assemble-server-bundle.mjs
 
 # ---- runtime-slim -----------------------------------------------------------
@@ -116,8 +115,8 @@ ENV NODE_ENV=production \
     BN_WEB_DIST=/app/web-dist
 
 WORKDIR /app
-COPY --from=builder /repo/apps/server/dist ./
-COPY --from=builder /repo/apps/web/dist ./web-dist
+COPY --from=builder /app/apps/server/dist ./
+COPY --from=builder /app/apps/web/dist ./web-dist
 
 VOLUME ["/data", "/config"]
 
@@ -157,9 +156,9 @@ ENV NODE_ENV=production \
 # WORKDIR=/app:resolveAppVersion 读 process.cwd()/package.json(见
 # src/routes/health.ts),装配好的 package.json 就在 bundle 旁边。
 WORKDIR /app
-COPY --from=builder /repo/apps/server/dist ./
+COPY --from=builder /app/apps/server/dist ./
 # web dashboard 静态资源独立成层(BN_WEB_DIST=/app/web-dist,绝对路径)。
-COPY --from=builder /repo/apps/web/dist ./web-dist
+COPY --from=builder /app/apps/web/dist ./web-dist
 
 # Persistent volumes — /data 是 state(订阅 / 历史 / 日志 / 凭据 等),/config 是
 # bootstrap yaml(B 模型 first-boot seed 在这写)。两个 root 级 mount point 平级。
