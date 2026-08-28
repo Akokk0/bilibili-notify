@@ -40,6 +40,8 @@ describe("QQQrBindButton", () => {
 			expect(img.src).toBe(START_OK.qr);
 		});
 		expect(screen.getByText(/OpenClaw/)).toBeTruthy();
+		// lite bot 的使用面预告:别让用户建完 bot 去配群 target 撞静默失败。
+		expect(screen.getByText(/暂不能拉进群/)).toBeTruthy();
 		expect(postMock).toHaveBeenCalledWith("/api/qq/bind/start", expect.anything());
 	});
 
@@ -86,7 +88,7 @@ describe("QQQrBindButton", () => {
 		render(<QQQrBindButton onCredentials={() => {}} />);
 		fireEvent.click(screen.getByRole("button", { name: /扫码一键创建/ }));
 		await waitFor(() => expect(screen.getByText(/未返回完整机器人凭据/)).toBeTruthy());
-		expect(screen.getByText(/手动填写/)).toBeTruthy();
+		expect(screen.getAllByText(/手动填写/).length).toBeGreaterThan(0);
 		const polls = postMock.mock.calls.filter(([p]) => p === "/api/qq/bind/poll").length;
 		await new Promise((r) => setTimeout(r, 20));
 		expect(postMock.mock.calls.filter(([p]) => p === "/api/qq/bind/poll").length).toBe(polls);

@@ -559,7 +559,11 @@ function AdapterConnectionFields({
 			<>
 				<div className="flex flex-wrap items-center gap-3 border-b border-dashed border-bn-border-subtle py-2.5">
 					<QQQrBindButton
-						onCredentials={({ appId, appSecret }) => setCfg({ ...cfg, appId, appSecret })}
+						// 回填 = 「用扫出来的这个 lite bot」,顺手把域/沙箱归到它的正确档:
+						// lite bot 无原生 markdown 特权,留在私域档会让图集推送必败。
+						onCredentials={({ appId, appSecret }) =>
+							setCfg({ ...cfg, appId, appSecret, botType: "public", sandbox: false })
+						}
 					/>
 					<span className="text-bn-xs text-bn-text-secondary">
 						没有机器人?扫码在腾讯页面一键创建,凭据自动回填下方两栏

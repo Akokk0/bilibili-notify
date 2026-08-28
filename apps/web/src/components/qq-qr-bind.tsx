@@ -137,6 +137,10 @@ export function QQQrBindButton({
 							开的官方绑定通道(实验性)。通道失效时,请到 q.qq.com 开发设置里手动填写 AppID 与
 							AppSecret。
 						</div>
+						<div className="text-bn-xs text-bn-text-tertiary">
+							注意:此通道创建的机器人<b>仅创建者私聊可用,暂不能拉进群</b>
+							(以腾讯当前政策为准)。群推送请手动填写正式注册的机器人凭据。
+						</div>
 					</div>
 				</ModalShell>
 			) : null}
