@@ -35,7 +35,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"jsdom": "^26.1.0"
+		"jsdom": "^30.0.1"
 	},
 	"devDependencies": {
 		"@bilibili-notify/ai": "workspace:^",
@@ -66,7 +66,7 @@
 		}
 	},
 	"engines": {
-		"node": ">=20.0.0"
+		"node": "^22.22.2 || ^24.15.0 || >=26.0.0"
 	},
 	"koishi": {
 		"service": {

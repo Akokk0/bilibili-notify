@@ -24,11 +24,15 @@ const repoRoot = resolve(scriptDir, "..");
 const distDir = resolve(repoRoot, "apps/server/dist");
 const require = createRequire(import.meta.url);
 const jsdomXhrSyncWorker = require.resolve("jsdom/lib/jsdom/living/xhr/xhr-sync-worker.js");
+// jsdom 30 起模块加载即 readFileSync 默认样式表;bundle 后 __dirname 相对路径逃出
+// 产物目录,靠 patches/jsdom.patch 的 fallback 读 bundle 旁的这份拷贝。
+const jsdomDefaultStylesheet = require.resolve("jsdom/lib/jsdom/browser/default-stylesheet.css");
 const jiebaWasm = resolve(dirname(require.resolve("jieba-wasm/node")), "jieba_rs_wasm_bg.wasm");
 const imageStaticDir = resolve(repoRoot, "packages/image/src/static");
 
 await cp(imageStaticDir, resolve(distDir, "static"), { recursive: true });
 await copyFile(jsdomXhrSyncWorker, resolve(distDir, "xhr-sync-worker.js"));
+await copyFile(jsdomDefaultStylesheet, resolve(distDir, "default-stylesheet.css"));
 await copyFile(jiebaWasm, resolve(distDir, "jieba_rs_wasm_bg.wasm"));
 await copyFile(
 	resolve(repoRoot, "apps/server/bn.config.example.yaml"),

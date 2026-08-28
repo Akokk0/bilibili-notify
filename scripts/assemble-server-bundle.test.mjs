@@ -46,6 +46,8 @@ describe("assemble-server-bundle", () => {
 
 	it("运行时资产齐全:wasm / xhr worker / 词云 static / 配置样例 / package.json", async () => {
 		expect(await readFile(join(distDir, "xhr-sync-worker.js"), "utf8")).toContain("XMLHttpRequest");
+		// jsdom 30 模块加载即读默认样式表,patch 的 fallback 指向 bundle 旁这份拷贝。
+		expect(await readFile(join(distDir, "default-stylesheet.css"), "utf8")).toContain("display");
 		expect((await readFile(join(distDir, "jieba_rs_wasm_bg.wasm"))).byteLength).toBeGreaterThan(0);
 		// 词云模板运行时 readFileSync(resolve(__dirname, "static/*.js"));bundle 内联
 		// @bilibili-notify/image 后 __dirname 指向 dist/,static 必须随 bundle 搬运。

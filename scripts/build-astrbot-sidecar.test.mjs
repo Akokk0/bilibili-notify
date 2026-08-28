@@ -50,6 +50,8 @@ describe("build-astrbot-sidecar", () => {
 		expect(await readFile(join(targetDir, "xhr-sync-worker.js"), "utf8")).toContain(
 			"XMLHttpRequest",
 		);
+		// jsdom 30 模块加载即读默认样式表,patch 的 fallback 指向 bundle 旁这份拷贝。
+		expect(await readFile(join(targetDir, "default-stylesheet.css"), "utf8")).toContain("display");
 		expect((await readFile(join(targetDir, "jieba_rs_wasm_bg.wasm"))).byteLength).toBeGreaterThan(
 			0,
 		);

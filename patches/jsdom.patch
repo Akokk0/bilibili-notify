@@ -1,0 +1,48 @@
+diff --git a/lib/jsdom/living/css/helpers/computed-style.js b/lib/jsdom/living/css/helpers/computed-style.js
+index 6ee5cd43d1720fc86a96027f4578a754d6e9359a..86db42ba2821eb93593ec6a3ea4839601c464320 100644
+--- a/lib/jsdom/living/css/helpers/computed-style.js
++++ b/lib/jsdom/living/css/helpers/computed-style.js
+@@ -14,10 +14,22 @@ const { isGlobalKeyword } = require("./css-values.js");
+ const { absoluteFontSize } = require("./font-sizes.js");
+ const { systemColors } = require("./system-colors.js");
+ 
+-const defaultStyleSheet = fs.readFileSync(
+-  path.resolve(__dirname, "../../../browser/default-stylesheet.css"),
+-  { encoding: "utf-8" }
+-);
++// bilibili-notify patch: when jsdom is inlined into a self-contained bundle,
++// __dirname points at the bundle output dir and the ../../../browser/ path
++// escapes it. Fall back to a copy shipped next to the bundle (see
++// scripts/assemble-server-bundle.mjs / build-astrbot-sidecar.mjs).
++let defaultStyleSheet;
++try {
++  defaultStyleSheet = fs.readFileSync(
++    path.resolve(__dirname, "../../../browser/default-stylesheet.css"),
++    { encoding: "utf-8" }
++  );
++} catch {
++  defaultStyleSheet = fs.readFileSync(
++    path.resolve(__dirname, "default-stylesheet.css"),
++    { encoding: "utf-8" }
++  );
++}
+ let parsedDefaultStyleSheet;
+ 
+ function getComputedStyleDeclaration(elementImpl) {
+diff --git a/lib/jsdom/living/css/helpers/patched-csstree.js b/lib/jsdom/living/css/helpers/patched-csstree.js
+index b76a5ae79a365caa9a105f1a17f5be104be2c930..653edb29cd009c615e1043fe1833df47b612deb4 100644
+--- a/lib/jsdom/living/css/helpers/patched-csstree.js
++++ b/lib/jsdom/living/css/helpers/patched-csstree.js
+@@ -1,7 +1,11 @@
+ "use strict";
+ 
+ const { next: syntaxes } = require("@csstools/css-syntax-patches-for-csstree");
+-const csstree = require("css-tree");
++// bilibili-notify patch: the default "css-tree" entry resolves to cjs/, which
++// does require("../data/patch.json") at runtime and breaks when jsdom is
++// inlined into a self-contained bundle. The esm dist single file embeds the
++// data; every Node this jsdom supports (>=22.22) can require() ESM natively.
++const csstree = require("css-tree/dist/csstree.esm");
+ 
+ // fork() only returns the core parse/generate/walk API, dropping standalone utilities like string, url,
+ // ident, tokenTypes, etc. Re-export the ones we need.

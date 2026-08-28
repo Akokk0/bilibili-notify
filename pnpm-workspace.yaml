@@ -58,3 +58,7 @@ allowBuilds:
   lefthook: true # repo's git hooks installer (root prepare script)
   protobufjs: true # generates .js from .proto at install time
   vue-demi: true # writes vue 2/3 shim at install time
+
+patchedDependencies:
+  css-tree: patches/css-tree.patch
+  jsdom: patches/jsdom.patch

@@ -1,0 +1,47 @@
+diff --git a/lib/data-patch.js b/lib/data-patch.js
+index cd49cbec3e7de20dea750e95e007dbdb1488ac96..2013b2ae2dff5ea444cb99febbbf135f7d0f725e 100644
+--- a/lib/data-patch.js
++++ b/lib/data-patch.js
+@@ -1,6 +1,6 @@
+-import { createRequire } from 'module';
+-
+-const require = createRequire(import.meta.url);
+-const patch = require('../data/patch.json');
++// bilibili-notify patch: static JSON import instead of createRequire so the
++// file survives being inlined into a self-contained bundle (createRequire
++// resolves relative to the bundle output at runtime and breaks there).
++import patch from '../data/patch.json' with { type: 'json' };
+ 
+ export default patch;
+diff --git a/lib/data.js b/lib/data.js
+index 162fa2068f45413e415e22ad1fe56f4c372623ad..c8c8b2f4363945e7f8a9bba20d25f7b8e61e7b90 100755
+--- a/lib/data.js
++++ b/lib/data.js
+@@ -1,10 +1,8 @@
+-import { createRequire } from 'module';
++// bilibili-notify patch: static JSON imports instead of createRequire (see data-patch.js).
+ import patch from './data-patch.js';
+-
+-const require = createRequire(import.meta.url);
+-const mdnAtrules = require('mdn-data/css/at-rules.json');
+-const mdnProperties = require('mdn-data/css/properties.json');
+-const mdnSyntaxes = require('mdn-data/css/syntaxes.json');
++import mdnAtrules from 'mdn-data/css/at-rules.json' with { type: 'json' };
++import mdnProperties from 'mdn-data/css/properties.json' with { type: 'json' };
++import mdnSyntaxes from 'mdn-data/css/syntaxes.json' with { type: 'json' };
+ 
+ const hasOwn = Object.hasOwn || ((object, property) => Object.prototype.hasOwnProperty.call(object, property));
+ const extendSyntax = /^\s*\|\s*/;
+diff --git a/lib/version.js b/lib/version.js
+index dde3a83f43883ecbad6ca0a23afb58c12235148a..fb16d5d7bd5e5f5e569f2dc189dd6101f19908e7 100644
+--- a/lib/version.js
++++ b/lib/version.js
+@@ -1,5 +1,4 @@
+-import { createRequire } from 'module';
++// bilibili-notify patch: static JSON import instead of createRequire (see data-patch.js).
++import pkg from '../package.json' with { type: 'json' };
+ 
+-const require = createRequire(import.meta.url);
+-
+-export const { version } = require('../package.json');
++export const { version } = pkg;
