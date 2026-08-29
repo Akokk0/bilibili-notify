@@ -1,7 +1,7 @@
 import { EmptyNote, Icon, LoadingBlock, SectionNav } from "@bilibili-notify/ui";
 import { lazy, type ReactNode, Suspense, useEffect, useState } from "react";
-import type { Components } from "react-markdown";
 import { useNavigate, useParams } from "react-router-dom";
+import { DOC_MARKDOWN_COMPONENTS } from "../components/doc-markdown";
 import { externalLinkClick } from "../utils/externalLink";
 import { GuidePanel } from "./guide/guide-panel";
 
@@ -46,55 +46,6 @@ async function loadChangelogMarkdown(): Promise<string> {
 	changelogCache = mod.default;
 	return changelogCache;
 }
-
-const MARKDOWN_COMPONENTS: Components = {
-	h1: ({ children }) => (
-		<h1 className="mt-0 mb-4 border-b border-bn-border-subtle pb-3 text-bn-hero font-extrabold tracking-tight text-bn-text-primary">
-			{children}
-		</h1>
-	),
-	h2: ({ children }) => (
-		<h2 className="mt-7 mb-3 text-bn-xl font-extrabold tracking-tight text-bn-text-primary">
-			{children}
-		</h2>
-	),
-	h3: ({ children }) => (
-		<h3 className="mt-5 mb-2 text-bn-md font-bold uppercase tracking-wide text-bn-pink">
-			{children}
-		</h3>
-	),
-	p: ({ children }) => (
-		<p className="my-2 text-bn-base leading-7 text-bn-text-secondary">{children}</p>
-	),
-	ul: ({ children }) => (
-		<ul className="my-2 space-y-1.5 pl-5 text-bn-base text-bn-text-secondary">{children}</ul>
-	),
-	li: ({ children }) => <li className="list-disc leading-7 marker:text-bn-pink/70">{children}</li>,
-	code: ({ node: _node, className, children, ...props }) => (
-		<code
-			className={`rounded-md bg-bn-code-bg px-1.5 py-0.5 font-mono text-bn-sm text-bn-text-primary ${className ?? ""}`}
-			{...props}
-		>
-			{children}
-		</code>
-	),
-	pre: ({ children }) => (
-		<pre className="my-3 overflow-x-auto rounded-bn-sm border border-bn-border-subtle bg-bn-console-bg p-3 text-bn-sm leading-relaxed text-bn-console-text">
-			{children}
-		</pre>
-	),
-	a: ({ children, href }) => (
-		<a
-			href={href}
-			target="_blank"
-			rel="noreferrer"
-			onClick={externalLinkClick(href)}
-			className="font-semibold text-bn-pink underline-offset-2 hover:underline"
-		>
-			{children}
-		</a>
-	),
-};
 
 type AboutSectionId = "sponsor" | "guide" | "changelog" | "about";
 
@@ -396,7 +347,7 @@ function ChangelogPanel() {
 					<LoadingBlock label="正在读取更新日志" variant="inset" />
 				) : (
 					<Suspense fallback={<LoadingBlock label="正在读取更新日志" variant="inset" />}>
-						<ReactMarkdown components={MARKDOWN_COMPONENTS}>{markdown}</ReactMarkdown>
+						<ReactMarkdown components={DOC_MARKDOWN_COMPONENTS}>{markdown}</ReactMarkdown>
 					</Suspense>
 				)}
 			</div>
