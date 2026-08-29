@@ -1,13 +1,10 @@
 import { GlassPanel, Icon, IconButton, Pill, StatusDot } from "@bilibili-notify/ui";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { HEALTH_QUERY_KEY, HEALTH_QUERY_OPTIONS } from "../../hooks/useBackendReachable";
 import { api } from "../../services/api";
-import { useAuthStore } from "../../store/auth";
-import { BiliLoginStatus } from "../../types/auth";
-import type { PushAdapter, PushTarget, Subscription } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
-import { deriveOnboarding, type OnboardingStepKey, type OnboardingTailKey } from "./derive";
+import type { OnboardingStepKey, OnboardingTailKey } from "./derive";
+import { useOnboardingState } from "./use-onboarding-view";
 
 /**
  * 新手进度卡(2026-08-29 grilling 定案)。三态:
@@ -15,17 +12,9 @@ import { deriveOnboarding, type OnboardingStepKey, type OnboardingTailKey } from
  * - 全绿且未收起 → 紧凑完成横幅 + 收起钮;
  * - 收起(`globals.onboardingDismissed`,存 server)→ 不渲染,进度在 /guide 仍可见。
  *
- * 判据纯逻辑在 ./derive.ts;这里只做数据装配与渲染。所有 query 都复用站内
- * 既有 queryKey(subscriptions/targets/adapters/globals/health),与对应页面
- * 共享缓存 —— 进度卡不发独立轮询,health 的行为选项走 HEALTH_QUERY_OPTIONS
- * 单一权威(三处 observer 选项不一致会让可达性探测抖动,见 useBackendReachable)。
+ * 判据纯逻辑在 ./derive.ts,数据装配在 ./use-onboarding-view.ts(与 /guide
+ * 页共用);这里只管渲染与收起交互。
  */
-
-interface HealthSnapshot {
-	status: string;
-	uptime: number;
-	modules?: { dynamic: boolean; live: boolean; image: boolean; ai: boolean };
-}
 
 const STEP_META: Record<
 	OnboardingStepKey,
@@ -72,45 +61,16 @@ const TAIL_META: Record<
 };
 
 export function OnboardingCard() {
-	const snapshot = useAuthStore((s) => s.snapshot);
 	const qc = useQueryClient();
-	const globalsQ = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
-	});
-	const subsQ = useQuery({
-		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subs"),
-	});
-	const adaptersQ = useQuery({
-		queryKey: ["adapters"],
-		queryFn: () => api.get<PushAdapter[]>("/api/adapters"),
-	});
-	const targetsQ = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
-	const healthQ = useQuery({
-		queryKey: HEALTH_QUERY_KEY,
-		queryFn: () => api.get<HealthSnapshot>("/api/health"),
-		...HEALTH_QUERY_OPTIONS,
-	});
+	const { view, dismissed, ready } = useOnboardingState();
 	const dismiss = useMutation({
 		mutationFn: () => api.patch<GlobalConfig>("/api/globals", { onboardingDismissed: true }),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
 	});
 
 	// 数据没齐先不出卡:半份数据画出来的进度是错的,闪一下再跳很难看。
-	if (!globalsQ.data || !subsQ.data || !adaptersQ.data || !targetsQ.data) return null;
-	if (globalsQ.data.onboardingDismissed) return null;
-
-	const view = deriveOnboarding({
-		biliLoggedIn: snapshot?.status === BiliLoginStatus.LOGGED_IN,
-		subsCount: subsQ.data.length,
-		adapters: adaptersQ.data,
-		targets: targetsQ.data,
-		modules: healthQ.data?.modules,
-	});
+	if (!ready || !view) return null;
+	if (dismissed) return null;
 
 	if (view.allDone) {
 		return (
