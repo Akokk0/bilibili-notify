@@ -2,8 +2,9 @@
 
 /**
  * 新手导览(四轮定稿:**永久常驻,无关闭态**)的行为:
- * 标签 ⇄ 小卡两态切换,毕业老用户也常驻标签;「跳过/彻底关闭」概念已退役
- * (server dismissed 字段一并删除)。有锚点的子步在目标路由上时渲染聚光灯
+ * 标签 ⇄ 小卡两态切换,毕业老用户也常驻标签;**没有关闭态**(旧 server dismissed
+ * 字段已删),但有「跳过指引」—— 它只记一笔 `onboarding.skipped` 让导览不再自动
+ * 展开,标签照旧在(见下方同名 describe)。有锚点的子步在目标路由上时渲染聚光灯
  * 挖洞层 —— 亮灯即引导锁(洞外拦截层吃掉点击);折叠时聚光灯与锁一并收起。
  * 流转单向:说明步抵达即翻过,没有「上一步」。判据跟随逻辑在 tour.test.ts。
  */
@@ -26,6 +27,8 @@ interface Scenario {
 	adapters?: unknown[];
 	targets?: unknown[];
 	route?: string;
+	/** globals 里那笔 `onboarding.skipped` —— 缺省 = 老配置补出来的「没跳过」。 */
+	skipped?: boolean;
 }
 
 async function mount(s: Scenario) {
@@ -41,6 +44,7 @@ async function mount(s: Scenario) {
 		if (path === "/api/targets") return s.targets ?? [];
 		if (path === "/api/health")
 			return { status: "ok", uptime: 1, modules: { image: false, ai: false } };
+		if (path === "/api/globals") return { onboarding: { skipped: s.skipped === true } };
 		return null;
 	});
 	const { TourCompanion } = await import("../tour-companion");
@@ -95,11 +99,65 @@ describe("TourCompanion 常驻小卡", () => {
 		expect(card?.className).toContain("z-bn-tour-panel");
 	});
 
-	it("没有任何「彻底关闭」控件 —— 跳过指引已退役,只有收起", async () => {
-		await mount({ route: "/system" });
-		await screen.findByText("扫码登录 B 站");
-		expect(screen.queryByRole("button", { name: "跳过指引" })).toBeNull();
-		expect(screen.getByRole("button", { name: "收起" })).toBeTruthy();
+	/**
+	 * 「跳过指引」(2026-08-30 主人定案,针对存量用户被引导锁困住的问题)。
+	 *
+	 * 判据认「按过测试」才算配好适配器,而绝大多数老用户从没点过那个按钮 ——
+	 * 升级后他们一律被判成「没配完」,导览自动展开、引导锁把面板锁到只剩聚光灯
+	 * 那一处。跳过是他们唯一的出口,所以它必须:落在**配置**(换浏览器/换机器
+	 * 不该再被锁一次)、且**不是关闭**(左缘标签照常常驻,随时点回来)。
+	 */
+	describe("跳过指引", () => {
+		it("配置里已跳过 → 开面板直接是标签态,不自动展开(存量用户不再被锁)", async () => {
+			await mount({ route: "/system", skipped: true });
+			await waitFor(() =>
+				expect(
+					document.querySelector('aside[aria-label="新手导览"]')?.getAttribute("data-shown"),
+				).toBe("false"),
+			);
+			// 收起 ≠ 关闭:标签仍在,进度照常挂在上面
+			expect(screen.getByRole("button", { name: "展开新手导览" })).toBeTruthy();
+			expect(screen.queryByTestId("tour-spotlight")).toBeNull();
+		});
+
+		it("点「跳过指引」→ 标记落进配置并收起;标签不跟着消失", async () => {
+			await mount({ route: "/system" });
+			await screen.findByText("扫码登录 B 站");
+			fireEvent.click(screen.getByRole("button", { name: "跳过指引" }));
+			await waitFor(() =>
+				expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboarding: { skipped: true } }),
+			);
+			const card = document.querySelector('aside[aria-label="新手导览"]');
+			expect(card?.getAttribute("data-shown")).toBe("false");
+			expect(screen.getByRole("button", { name: "展开新手导览" })).toBeTruthy();
+		});
+
+		it("走完五步毕业 → 自动记下标记,下次开面板不再拿 🎉 卡糊人一脸", async () => {
+			await mount({
+				subs: [{ id: "s1" }],
+				adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+				targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
+				route: "/system",
+			});
+			await screen.findByText("扫码登录 B 站");
+			expect(apiPatch).not.toHaveBeenCalled();
+			act(() => {
+				useAuthStore.setState({ snapshot: { status: BiliLoginStatus.LOGGED_IN, msg: "" } });
+			});
+			await waitFor(() =>
+				expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboarding: { skipped: true } }),
+			);
+		});
+
+		it("已跳过的实例不重复写标记 —— 每次开面板都 PATCH 一次是纯噪音", async () => {
+			await mount({ route: "/system", skipped: true });
+			await waitFor(() =>
+				expect(
+					document.querySelector('aside[aria-label="新手导览"]')?.getAttribute("data-shown"),
+				).toBe("false"),
+			);
+			expect(apiPatch).not.toHaveBeenCalled();
+		});
 	});
 
 	it("聚光灯:在目标路由且锚点元素存在时渲染挖洞层", async () => {
@@ -401,6 +459,10 @@ describe("TourCompanion 常驻小卡", () => {
 		fireEvent.click(screen.getByRole("button", { name: "收起" }));
 		const tab = screen.getByRole("button", { name: "展开新手导览" });
 		expect(tab.textContent).toContain("5/5");
-		expect(apiPatch).not.toHaveBeenCalled();
+		// 已经全绿的实例(含这个特性上线前就配完的老用户)照样补上标记 —— 它的作用
+		// 只是「别再自动展开」,标签仍然常驻,进度也还挂在上面
+		await waitFor(() =>
+			expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboarding: { skipped: true } }),
+		);
 	});
 });

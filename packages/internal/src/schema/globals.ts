@@ -146,6 +146,22 @@ export const GlobalDefaultsSchema = z.object({
 });
 export type GlobalDefaults = z.infer<typeof GlobalDefaultsSchema>;
 
+/**
+ * 新手指引的持久标记。**不是**已退役的 `dismissed`(那个管「彻底关闭、连标签都不
+ * 留」,已随「永久常驻无关闭态」定案删掉);这一笔只回答「打开面板要不要自动展开」。
+ *
+ * 落在配置而非 localStorage:「这台实例已经配完了」是实例级事实,换台机器、换个
+ * 浏览器开面板不该再被引导一遍。
+ */
+export const OnboardingConfigSchema = z.object({
+	/** 主人点过「跳过指引」或已走完五步 = 开面板时收成左缘标签,不再自动展开。 */
+	skipped: z.boolean().default(false),
+});
+export type OnboardingConfig = z.infer<typeof OnboardingConfigSchema>;
+
+/** 全新安装 = 没跳过:新用户一开面板就该被指引接住。 */
+export const DEFAULT_ONBOARDING: OnboardingConfig = { skipped: false };
+
 export const GlobalConfigSchema = z.object({
 	app: AppConfigSchema,
 	master: MasterConfigSchema,
@@ -180,6 +196,14 @@ export const GlobalConfigSchema = z.object({
 	 * 放顶层同 `roastSchedule`:它不是「per-UP overrides 缺字段时的回退」。
 	 */
 	commands: CommandConfigSchema.default(DEFAULT_COMMAND_CONFIG),
+	/**
+	 * 新手指引的持久状态。独立端专有(koishi / AstrBot 没有面板)。
+	 *
+	 * 放顶层同 `commands`:它不是「per-UP overrides 缺字段时的回退」。
+	 * `.default(...)` 是老配置兜底 —— 独立端启动时 `parse` 会补上,理由见
+	 * `./onboarding-skipped.test.ts`。
+	 */
+	onboarding: OnboardingConfigSchema.default(DEFAULT_ONBOARDING),
 	bootstrap: BootstrapConfigSchema.optional(),
 });
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;

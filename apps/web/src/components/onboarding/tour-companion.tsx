@@ -1,7 +1,10 @@
 import { Btn, Icon, StatusDot } from "@bilibili-notify/ui";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { api } from "../../services/api";
+import type { GlobalConfig } from "../../types/globals";
 import { Fireworks, StepDoneBadge } from "./celebration";
 import type { OnboardingStepKey, OnboardingView } from "./derive";
 import { Spotlight } from "./spotlight";
@@ -17,9 +20,13 @@ import { useOnboardingState } from "./use-onboarding-view";
 /**
  * 新手导览(2026-08-29 四轮定稿:**永久常驻,无关闭态**)。
  *
- * - 两态之间切换:左缘小标签(默认给毕业老用户的形态,活进度徽标)⇄ 展开
- *   小卡;「跳过/彻底关闭」概念整个退役 —— 老用户也常驻标签,server 的
- *   dismissed 字段与 /guide 的「重新开启」一并删除;
+ * - 两态之间切换:左缘小标签(活进度徽标)⇄ 展开小卡。**没有关闭态** —— 标签
+ *   永久常驻(旧的 dismissed 字段与 /guide 的「重新开启」已一并删除);
+ * - 展不展开由 `onboarding.skipped` 决定(2026-08-30 补):没这笔标记就自动展开
+ *   (新装的用户一开面板即被接住),有标记就收成标签。写标记的两条路 —— 小卡上
+ *   的「跳过指引」与走完五步毕业。它落在**配置**而非 localStorage:换浏览器/换
+ *   机器不该被重新引导一遍。存量用户全靠这个按钮脱身:判据认「按过测试」才算配
+ *   好适配器,没点过的老用户升级后一律被判成没配完,会连人带面板被引导锁锁住;
  * - 主步切换全自动(reconcileTourPos):判据**前进与回退都跟**(回退=前置被
  *   破坏,如退出登录,导览带用户回去补);配合 useOnboardingState 的 3s 轮询
  *   兜底(毕业即停),「做完自动进下一步」不依赖任何单条更新链路恰好有推送;
@@ -40,11 +47,16 @@ import { useOnboardingState } from "./use-onboarding-view";
 /** 折叠成左缘小标签的状态 —— per-browser 轻量偏好,localStorage 读写都要兜隐私模式。 */
 const COLLAPSED_LS_KEY = "bn-tour-collapsed";
 
-function readCollapsed(): boolean {
+/**
+ * `null` = 这台浏览器还没人动过两态开关 —— 交给实例那笔 `onboarding.skipped` 决定。
+ * 存过就以存的为准:「我在这台机器上想不想看见它」比实例标记更贴身。
+ */
+function readCollapsed(): boolean | null {
 	try {
-		return localStorage.getItem(COLLAPSED_LS_KEY) === "1";
+		const v = localStorage.getItem(COLLAPSED_LS_KEY);
+		return v === null ? null : v === "1";
 	} catch {
-		return false;
+		return null;
 	}
 }
 
@@ -87,7 +99,11 @@ export function TourCompanion() {
 	const cardRef = useRef<HTMLElement>(null);
 	// 折叠成左缘小标签(类似女仆 AI 胶囊):导览继续进行、进度照常刷新,只是
 	// 不占屏幕。这是唯一的收纳形态 —— 没有「彻底关闭」。
-	const [collapsed, setCollapsed] = useState(readCollapsed);
+	//
+	// 两个来源合成:本机存过的偏好优先,没存过则跟随实例那笔 `onboarding.skipped`
+	// (见下方 skipped)。所以「跳过」在别的浏览器打开也照样生效,而「我在这台机器
+	// 上把它展开了」不会被实例标记按回去。
+	const [collapsedPref, setCollapsedPref] = useState<boolean | null>(readCollapsed);
 	const toggleCollapsed = (v: boolean) => {
 		// iOS zoom 式 morph:翻转状态**之前**把「对方的矩形 pose」写进 CSS 变量,
 		// 标签与卡沿同一条几何轨迹互变(styles.css 按 data-shown 消费这两个变量)。
@@ -110,11 +126,29 @@ export function TourCompanion() {
 			);
 		}
 		persistCollapsed(v);
-		setCollapsed(v);
+		setCollapsedPref(v);
 	};
 	// poll 的启停条件(未毕业)在 hook 内部判,这里只声明意图。
 	const { view, ready } = useOnboardingState({ poll: true });
-	const visible = ready && view !== null;
+
+	// 「这台实例已经不用再被自动展开了」的持久标记。落配置不落 localStorage:
+	// 换浏览器/换机器开面板不该再被引导一遍(判据本身也是实例级的)。
+	const globalsQ = useQuery({
+		queryKey: ["globals"],
+		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+	});
+	const skipped = globalsQ.data?.onboarding?.skipped === true;
+	const collapsed = collapsedPref ?? skipped;
+	// 标记没到手之前**什么都不渲染**:先画展开态再收回去会闪一下,而这一闪正好
+	// 落在「老用户被锁」那个最敏感的场景上。请求失败(isPending 落地为 error)也
+	// 放行 —— 那时 globals 整个面板都废了,不该顺带把导览也吞掉。
+	const visible = ready && view !== null && !globalsQ.isPending;
+
+	const qc = useQueryClient();
+	const { mutate: markSkipped } = useMutation({
+		mutationFn: () => api.patch("/api/globals", { onboarding: { skipped: true } }),
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
+	});
 
 	const pos = useMemo(
 		() => (view ? reconcileTourPos(manualPos, view.activeKey) : null),
@@ -172,6 +206,16 @@ export function TourCompanion() {
 		}
 		if (view.allDone && !prev.allDone) setFireworks(true);
 	}, [view, collapsed]);
+
+	// 毕业即记标记:否则走完五步的人此后每次开面板都被那张 🎉 卡糊一脸 —— 它已经
+	// 没有信息量了。ref 挡住重入:mutate 到 invalidate 落回来之间 skipped 还是 false,
+	// 不挡就会连发。
+	const markedRef = useRef(false);
+	useEffect(() => {
+		if (!view?.allDone || skipped || markedRef.current) return;
+		markedRef.current = true;
+		markSkipped();
+	}, [view?.allDone, skipped, markSkipped]);
 
 	if (!visible || !pos || !view) return null;
 
@@ -297,6 +341,20 @@ export function TourCompanion() {
 								</Btn>
 							) : null}
 							<span className="flex-1" />
+							{/* 「跳过指引」= 记下实例标记 + 收起,不是关闭(标签照常常驻)。存量
+							    用户唯一的出口:判据认「按过测试」才算配好适配器,没点过那个按钮
+							    的老用户升级后一律被判成没配完,引导锁会把面板锁到只剩聚光灯 */}
+							<button
+								type="button"
+								data-bn="btn"
+								onClick={() => {
+									markSkipped();
+									toggleCollapsed(true);
+								}}
+								className="whitespace-nowrap text-bn-2xs text-bn-text-tertiary transition-colors hover:text-bn-text-primary"
+							>
+								跳过指引
+							</button>
 							<button
 								type="button"
 								data-bn="btn"
