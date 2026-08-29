@@ -179,7 +179,7 @@ describe("TourCompanion 常驻小卡", () => {
 
 	it("adapter 主步:登录后直接进入(订阅在最后),子步手动翻页", async () => {
 		await mount({ loggedIn: true, route: "/targets" });
-		expect(await screen.findByText("先选一条 QQ 接入路线")).toBeTruthy();
+		expect(await screen.findByText("先选一条接入路线")).toBeTruthy();
 		// 复杂讲解不塞小卡 —— 选型细节收进教程页,小卡只给跳转按钮
 		expect(screen.getByRole("button", { name: "选型指引" })).toBeTruthy();
 		fireEvent.click(screen.getByRole("button", { name: "下一步" }));

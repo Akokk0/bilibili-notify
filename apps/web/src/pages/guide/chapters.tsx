@@ -46,7 +46,7 @@ export function ChapterOverview() {
 				rows={[
 					[
 						<b key="k">要不要群推送</b>,
-						"扫码一键建的 bot 只能给你自己私聊发;要进群得在开放平台正式注册并过审",
+						"按 bot 等级分层:扫码一键建的轻量 bot=自己私聊+自己当群主的群;过审 bot、企业主体逐级放宽(以官方政策为准)",
 						"✅ 群聊 / 私聊都行,拉群自由",
 					],
 					[
@@ -67,8 +67,8 @@ export function ChapterOverview() {
 				]}
 			/>
 			<GdP>
-				一句话建议:<b>只想推给自己</b> → 走 qq-official 的「扫码一键创建」,五分钟搞定;
-				<b>要推到群里 / 想要图片卡片</b> → 走 onebot + NapCat。两条路的手把手教程都在
+				一句话建议:<b>轻量自用</b> → 走 qq-official 的「扫码一键创建」,五分钟搞定;
+				<b>重度群推 / 想要图片卡片</b> → 走 onebot + NapCat。两条路的手把手教程都在
 				<Link to="/about/guide/push" className="text-bn-pink hover:underline">
 					推送通道
 				</Link>

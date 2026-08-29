@@ -41,7 +41,7 @@ describe("QQQrBindButton", () => {
 		});
 		expect(screen.getByText(/OpenClaw/)).toBeTruthy();
 		// lite bot 的使用面预告:别让用户建完 bot 去配群 target 撞静默失败。
-		expect(screen.getByText(/暂不能拉进群/)).toBeTruthy();
+		expect(screen.getByText(/创建者当群主的群/)).toBeTruthy();
 		expect(postMock).toHaveBeenCalledWith("/api/qq/bind/start", expect.anything());
 	});
 

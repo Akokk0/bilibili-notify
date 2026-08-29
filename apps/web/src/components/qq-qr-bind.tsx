@@ -138,8 +138,8 @@ export function QQQrBindButton({
 							AppSecret。
 						</div>
 						<div className="text-bn-xs text-bn-text-tertiary">
-							注意:此通道创建的机器人<b>仅创建者私聊可用,暂不能拉进群</b>
-							(以腾讯当前政策为准)。群推送请手动填写正式注册的机器人凭据。
+							注意:此通道创建的机器人能力有限,目前<b>限创建者私聊与创建者当群主的群</b>
+							(以腾讯当前政策为准)。要更宽的能力请手动填写正式注册的机器人凭据。
 						</div>
 					</div>
 				</ModalShell>

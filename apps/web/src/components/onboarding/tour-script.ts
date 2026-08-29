@@ -64,8 +64,8 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			route: "/targets",
 			// 纯说明步也给空间锚定:高亮适配器区 =「接下来在这里动手」
 			anchor: "adapter-add",
-			title: "先选一条 QQ 接入路线",
-			body: "只推给自己 → 选「QQ 官方机器人」,零部署;要推到群里 / 想要图片卡片 → 选「OneBot」。想清楚了点「下一步」。",
+			title: "先选一条接入路线",
+			body: "BN 有三类适配器:「QQ 官方机器人」「OneBot(NapCat 等协议端)」「Webhook(钉钉 / 飞书等)」,能力与部署成本各不同 —— 具体区别看「选型指引」。想清楚了点「下一步」。",
 			link: { to: "/about/guide", label: "选型指引" },
 		},
 		{
