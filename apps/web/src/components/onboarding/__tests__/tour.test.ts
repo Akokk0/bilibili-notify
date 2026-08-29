@@ -85,6 +85,22 @@ describe("TOUR_SCRIPT 脚本完整性", () => {
 			}
 		}
 	});
+
+	it("锚点链不能只有弹窗内挂点 —— 弹窗没开时灯必须有页面级目标可指(subs 步栽过)", () => {
+		// 住在 ModalShell 里的挂点:弹窗没开时不存在,开了聚光灯又整体让位 ——
+		// 一条链全是它们,灯就永远不亮。新增弹窗内挂点记得进词表。
+		const MODAL_ONLY = new Set(["bili-login-qr", "adapter-form", "target-form", "subs-search"]);
+		for (const steps of Object.values(TOUR_SCRIPT)) {
+			for (const sub of steps) {
+				const chain = Array.isArray(sub.anchor) ? sub.anchor : sub.anchor ? [sub.anchor] : [];
+				if (chain.length === 0) continue;
+				expect(
+					chain.some((a) => !MODAL_ONLY.has(a)),
+					`「${sub.title}」的锚点链全在弹窗里,弹窗没开时灯永不亮`,
+				).toBe(true);
+			}
+		}
+	});
 });
 
 describe("锚点与页面挂点不脱节", () => {

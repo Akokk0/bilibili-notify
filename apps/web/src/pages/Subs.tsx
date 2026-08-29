@@ -679,14 +679,18 @@ export default function Subs() {
 						</Btn>
 					</div>
 				) : null}
-				<Btn
-					variant="primary"
-					size="sm"
-					icon={<Icon.plus size={12} />}
-					onClick={() => setShowNewDialog(true)}
-				>
-					添加
-				</Btn>
+				{/* data-tour:导览「订阅第一个 UP」的页面级灯位 —— 搜索框(subs-search)住在
+				    弹窗里,弹窗没开时导览得有个恒在的目标可指;开了弹窗聚光灯自动让位 */}
+				<span data-tour="subs-add" className="inline-flex">
+					<Btn
+						variant="primary"
+						size="sm"
+						icon={<Icon.plus size={12} />}
+						onClick={() => setShowNewDialog(true)}
+					>
+						添加
+					</Btn>
+				</span>
 			</div>
 
 			{groupNames.length > 0 || groupCounts.ungrouped > 0 ? (

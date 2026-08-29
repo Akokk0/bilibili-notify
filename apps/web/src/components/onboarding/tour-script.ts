@@ -16,6 +16,7 @@ export type TourAnchor =
 	| "bili-login"
 	| "bili-login-qr"
 	| "subs-search"
+	| "subs-add"
 	| "adapter-add"
 	| "adapter-form"
 	| "adapter-test"
@@ -29,6 +30,7 @@ export const TOUR_ANCHORS: readonly TourAnchor[] = [
 	"bili-login",
 	"bili-login-qr",
 	"subs-search",
+	"subs-add",
 	"adapter-add",
 	"adapter-form",
 	"adapter-test",
@@ -126,9 +128,11 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 	subs: [
 		{
 			route: "/subs",
-			anchor: "subs-search",
+			// 搜索框住在「添加 UP 主」弹窗里(弹窗没开时挂点不存在,开了又整体让位),
+			// 页面级灯位是右上恒在的「添加」按钮 —— 弹窗一开链解析进 modal,灯自动让位
+			anchor: ["subs-search", "subs-add"],
 			title: "订阅第一个 UP",
-			body: "在高亮的搜索框输入 UP 主名字或 UID,在结果里点「订阅」,并勾上刚建好的推送目标。订阅成功即大功告成,TA 的动态与开播会自动推送到 QQ。",
+			body: "点高亮的「添加」,搜索 UP 主名字或 UID,在结果里点「订阅」,并勾上刚建好的推送目标。订阅成功即大功告成,TA 的动态与开播会自动推送到 QQ。",
 		},
 	],
 };

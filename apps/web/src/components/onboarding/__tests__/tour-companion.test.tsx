@@ -264,7 +264,10 @@ describe("TourCompanion 常驻小卡", () => {
 		expect(screen.queryByRole("button", { name: "上一步" })).toBeNull();
 	});
 
-	it("通道全通后收尾步是订阅", async () => {
+	it("通道全通后收尾步是订阅:灯指页面级「添加」按钮(搜索框在弹窗里,弹窗没开指不了)", async () => {
+		const addBtn = document.createElement("div");
+		addBtn.setAttribute("data-tour", "subs-add");
+		document.body.appendChild(addBtn);
 		await mount({
 			loggedIn: true,
 			adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
@@ -272,6 +275,11 @@ describe("TourCompanion 常驻小卡", () => {
 			route: "/subs",
 		});
 		expect(await screen.findByText("订阅第一个 UP")).toBeTruthy();
+		await waitFor(() =>
+			expect(screen.getByTestId("tour-spotlight").getAttribute("data-target")).toBe(
+				'[data-tour="subs-add"]',
+			),
+		);
 	});
 
 	it("「收起」折叠成左缘标签:卡摘出可达性树与聚光灯,进度还活在标签上", async () => {
