@@ -107,7 +107,7 @@ services:
 docker compose up -d
 ```
 
-浏览器打开 `http://<host>:8787`,登录后扫码绑定 B 站账号。**不要手动创建 `config/bn.config.yaml`** —— 容器首次启动会自己生成完整配置。
+浏览器打开 `http://<host>:8787` 登录面板。首页顶部的**新手进度卡**会带你走完剩下的配置(绑定 B 站账号 → 订阅 UP → 接上 QQ / webhook 推送),每步配好会自动变绿,全绿即毕业;手把手图文教程(含 QQ 机器人两条接入路线的选型与踩坑)在面板内的**「新手指引」**页。**不要手动创建 `config/bn.config.yaml`** —— 容器首次启动会自己生成完整配置。
 
 更新镜像用 `docker compose pull && docker compose up -d`(`restart` 不换镜像)。带 browserless / NapCat 边车的完整模板见 [`apps/docker-compose.example.yaml`](./apps/docker-compose.example.yaml),完整部署 / 配置见 **[apps/README.md](./apps/README.md)**。
 
