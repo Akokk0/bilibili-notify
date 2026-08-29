@@ -30,6 +30,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 	{ to: "/ai", label: "智能女仆" },
 	{ to: ALWAYS_VISIBLE_PATH, label: "系统" },
 	{ to: "/logs", label: "日志" },
+	{ to: "/guide", label: "新手指引" },
 	{ to: "/about", label: "关于" },
 ];
 

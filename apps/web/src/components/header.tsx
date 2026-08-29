@@ -499,8 +499,10 @@ export function GlassHeader() {
 			<nav data-bn="nav" className="relative flex gap-0 px-5 pt-3">
 				{shownNav.map((t) => {
 					// data-bn 是静态属性,NavLink 的 isActive 回调塞不进去 —— 选中态自己算。
-					// `end` 语义 = 精确匹配,NAV_ITEMS 的 to 都是静态顶级路径,直接比对等价。
-					const navActive = (optimistic ?? pathname) === t.to;
+					// 除精确匹配外把子路径也算给父项(/guide/push 亮「新手指引」);
+					// "/" 排除在前缀判定外,不然它永远全亮。
+					const current = optimistic ?? pathname;
+					const navActive = current === t.to || (t.to !== "/" && current.startsWith(`${t.to}/`));
 					return (
 						<NavLink
 							key={t.to}
