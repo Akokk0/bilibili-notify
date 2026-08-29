@@ -6,8 +6,8 @@
  * - POST /bind/poll:轮询;completed/expired 即消费掉任务(再问 404),上游故障
  *   保留任务可重试;任务 10 分钟 TTL。
  */
-import { createCipheriv, randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { encryptLikeTencent } from "../../platforms/__tests__/tencent-bind-crypto.js";
 import { createQQRoute } from "../qq.js";
 import type { RouteDeps } from "../types.js";
 
@@ -33,15 +33,6 @@ function makeDeps(): RouteDeps {
 			serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
 		},
 	} as unknown as RouteDeps;
-}
-
-/** 按腾讯回传格式加密(nonce+ct+tag,base64)。 */
-function encryptLikeTencent(plaintext: string, keyB64: string): string {
-	const key = Buffer.from(keyB64, "base64");
-	const nonce = randomBytes(12);
-	const cipher = createCipheriv("aes-256-gcm", key, nonce);
-	const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-	return Buffer.concat([nonce, ct, cipher.getAuthTag()]).toString("base64");
 }
 
 /** 抓 create_bind_task 预递的密钥,给完成态响应加密用。 */

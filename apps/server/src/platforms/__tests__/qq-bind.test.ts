@@ -5,19 +5,10 @@
  * H5 建 bot → poll_bind_result 轮询;完成态回 bot_appid(明文)+ bot_encrypt_secret
  * (AES-256-GCM,payload = 12B nonce + 密文 + 16B tag,base64)。
  */
-import { createCipheriv, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createBindTask, decryptBindSecret, generateBindKey, pollBindTask } from "../qq-bind.js";
-
-/** 按腾讯回传格式加密:nonce(12) + ciphertext + tag(16),整体 base64。 */
-function encryptLikeTencent(plaintext: string, keyB64: string): string {
-	const key = Buffer.from(keyB64, "base64");
-	const nonce = randomBytes(12);
-	const cipher = createCipheriv("aes-256-gcm", key, nonce);
-	const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-	const tag = cipher.getAuthTag();
-	return Buffer.concat([nonce, ct, tag]).toString("base64");
-}
+import { encryptLikeTencent } from "./tencent-bind-crypto.js";
 
 describe("generateBindKey", () => {
 	it("产出 base64 的 32 字节密钥,两次不同", () => {
