@@ -16,6 +16,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { HeroStrip } from "../components/hero-strip";
+import { OnboardingCard } from "../components/onboarding/onboarding-card";
 import { LOG_LEVEL_TONE, logLevelTint } from "../config/log-levels";
 import { familyTone, PUSH_KIND_META, PUSH_TONE } from "../config/push-kinds";
 import {
@@ -731,6 +732,8 @@ export default function Dashboard() {
 
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
+			{/* 新手进度卡:未毕业时置顶;全绿收紧成横幅;用户收起后彻底让位(存 server)。*/}
+			<OnboardingCard />
 			{/* KPI grid(构图对齐统计页:gap-3、带 footer 的卡定行高,其余同行等高)*/}
 			<div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
 				<GlassStatCard
