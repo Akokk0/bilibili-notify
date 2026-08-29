@@ -1671,18 +1671,18 @@ export default function Targets() {
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
 			<div className="grid gap-4 xl:grid-bn-rail">
-				{/* 这个 div 就是 grid 第一栏,SectionNav 在里面照常撑高。导览挂点(adapter-add)
-				    在 AdapterRail 内部的「+ 新建」按钮本体上 —— 曾框整栏:洞大到点空态占位
+				{/* AdapterRail 直接坐在 grid 上,中间不许夹盒子 —— SectionNav 的根在 xl 以下是
+				    `display:contents`,包一层 div 就把它的包含块缩成矮格子,sticky 失去吸附
+				    行程(见 packages/ui/src/section-nav.tsx 的同段注释)。导览挂点(adapter-add)
+				    在内部「+ 新建」按钮本体上,不需要外层盒子 —— 曾框整栏:洞大到点空态占位
 				    也算「点过了」,灯白白退散(真机踩过)。 */}
-				<div>
-					<AdapterRail
-						adapters={adapters}
-						selectedId={selectedAdapterId}
-						onPick={setSelectedAdapterId}
-						onAddClick={startNewAdapter}
-						targetCountByAdapter={targetCountByAdapter}
-					/>
-				</div>
+				<AdapterRail
+					adapters={adapters}
+					selectedId={selectedAdapterId}
+					onPick={setSelectedAdapterId}
+					onAddClick={startNewAdapter}
+					targetCountByAdapter={targetCountByAdapter}
+				/>
 
 				<div className="space-y-4">
 					{isLoading ? (
