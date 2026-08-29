@@ -81,16 +81,17 @@
 /* 新手导览的聚光灯挖洞层(TourCompanion 的 Spotlight 按目标控件矩形定位)。
    巨型 box-shadow 把洞外压暗、洞口粉描边;`position: fixed` 与 z 由组件的
    utility 类出(本文件的层守卫不许无层类写 position),这里只管观感。
-   矩形跟随有 transition,滚动/布局变化时洞口平滑滑过去。 */
+   组件用 rAF 每帧喂新矩形,这里的短 transition 只做柔化 —— 时长压在 0.15s:
+   入场动画/滚动中的目标每帧都在动,过渡太长洞口会明显拖后。 */
 .bn-tour-spotlight {
 	border: 2px solid var(--color-bn-pink);
 	border-radius: var(--radius-lg);
 	box-shadow: 0 0 0 100vmax color-mix(in srgb, #000 45%, transparent);
 	transition:
-		top 0.25s ease,
-		left 0.25s ease,
-		width 0.25s ease,
-		height 0.25s ease;
+		top 0.15s ease-out,
+		left 0.15s ease-out,
+		width 0.15s ease-out,
+		height 0.15s ease-out;
 }
 
 /* 导览标签 ⇄ 小卡的 morph 动画(iOS zoom 式:标签展开成卡、卡缩回标签,像

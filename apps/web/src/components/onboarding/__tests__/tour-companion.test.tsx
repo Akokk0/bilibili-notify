@@ -92,6 +92,17 @@ describe("TourCompanion 常驻小卡", () => {
 		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
 	});
 
+	it("聚光灯交互即退散:在锚点上按下后暗幕整层消失(别盖住点击弹出的二维码)", async () => {
+		const anchorEl = document.createElement("div");
+		anchorEl.setAttribute("data-tour", "bili-login");
+		document.body.appendChild(anchorEl);
+		await mount({ route: "/system" });
+		await screen.findByText("扫码登录 B 站");
+		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
+		fireEvent.pointerDown(anchorEl);
+		await waitFor(() => expect(screen.queryByTestId("tour-spotlight")).toBeNull());
+	});
+
 	it("不在目标路由:无聚光灯,给「带我去」", async () => {
 		const anchorEl = document.createElement("div");
 		anchorEl.setAttribute("data-tour", "bili-login");

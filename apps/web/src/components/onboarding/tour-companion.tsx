@@ -59,41 +59,53 @@ function rectsDiffer(a: DOMRect | null, b: DOMRect | null): boolean {
 }
 
 /**
- * 聚光灯挖洞层:跟随目标控件矩形(滚动/缩放/布局变化都要追,轮询 + 事件双保险),
- * 巨型 box-shadow 把洞外压暗。`fixed` 由 utility 出 —— styles.css 的层守卫
- * 不许无层类写 position。
+ * 聚光灯挖洞层:rAF 每帧跟随目标控件矩形,巨型 box-shadow 把洞外压暗。
+ * `fixed` 由 utility 出 —— styles.css 的层守卫不许无层类写 position。
+ *
+ * - **每帧追而不是低频轮询**:目标页面带 bn-anim-page-in 入场位移动画,
+ *   跨页「带我去」后的头几百 ms 里矩形一直在动 —— 低频轮询会先框错位置
+ *   再慢悠悠飘过去;每帧追踪让洞口全程贴着入场动画/smooth 滚动走
+ *   (稳态下 rect 不变即不 setState,零渲染开销)。
+ * - **交互即退散**:用户在锚点上按下的那一刻,聚光灯使命已完成,整层退场 ——
+ *   否则点击后就地弹出的内容(登录二维码这类行内元素,z 在暗幕之下)会被
+ *   黑幕盖住。子步推进换锚点时自动重现。
  */
 function Spotlight({ anchor }: { anchor: TourAnchor }) {
 	const [rect, setRect] = useState<DOMRect | null>(null);
+	const [dismissed, setDismissed] = useState(false);
 	const scrolledRef = useRef(false);
 
 	useEffect(() => {
+		setDismissed(false);
 		scrolledRef.current = false;
-		const update = () => {
+		let raf = 0;
+		const tick = () => {
 			const el = document.querySelector(`[data-tour="${anchor}"]`);
 			if (!el) {
 				setRect((prev) => (prev === null ? prev : null));
-				return;
+			} else {
+				if (!scrolledRef.current) {
+					scrolledRef.current = true;
+					el.scrollIntoView({ block: "center", behavior: "smooth" });
+				}
+				const next = el.getBoundingClientRect();
+				setRect((prev) => (rectsDiffer(prev, next) ? next : prev));
 			}
-			if (!scrolledRef.current) {
-				scrolledRef.current = true;
-				el.scrollIntoView({ block: "center", behavior: "smooth" });
-			}
-			const next = el.getBoundingClientRect();
-			setRect((prev) => (rectsDiffer(prev, next) ? next : prev));
+			raf = requestAnimationFrame(tick);
 		};
-		update();
-		const timer = setInterval(update, 400);
-		window.addEventListener("scroll", update, true);
-		window.addEventListener("resize", update);
+		raf = requestAnimationFrame(tick);
+		const onPointerDown = (e: Event) => {
+			const el = document.querySelector(`[data-tour="${anchor}"]`);
+			if (el && e.target instanceof Node && el.contains(e.target)) setDismissed(true);
+		};
+		document.addEventListener("pointerdown", onPointerDown, true);
 		return () => {
-			clearInterval(timer);
-			window.removeEventListener("scroll", update, true);
-			window.removeEventListener("resize", update);
+			cancelAnimationFrame(raf);
+			document.removeEventListener("pointerdown", onPointerDown, true);
 		};
 	}, [anchor]);
 
-	if (!rect) return null;
+	if (dismissed || !rect) return null;
 	const pad = 6;
 	return createPortal(
 		<div
