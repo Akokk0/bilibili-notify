@@ -57,6 +57,14 @@ export type QQBindPollResult =
 	/** 扫码侧完成但凭据缺失/解不开 —— 业务态错误,与上游故障(抛错)区分。 */
 	| { status: "error"; message: string };
 
+/**
+ * 单次请求的上限。node 的 fetch 没有默认超时,腾讯接了 TCP 却不回(区域性网络
+ * 干扰下常见)就会把 `POST /api/qq/bind/poll` 永远挂住:任务不清、handler 不返回,
+ * 而浏览器每 2 秒还在发下一轮,一路叠到用户关掉弹窗。宁可这一轮报错 —— 轮询本来
+ * 就允许瞬时故障,下一轮会接着问。
+ */
+const LITE_TIMEOUT_MS = 10_000;
+
 /** POST 腾讯 lite 接口;retcode 非 0 或 HTTP 非 2xx 一律抛错(上游故障)。 */
 async function postLite(
 	host: string,
@@ -67,6 +75,7 @@ async function postLite(
 		method: "POST",
 		headers: { "Content-Type": "application/json", Accept: "application/json" },
 		body: JSON.stringify(payload),
+		signal: AbortSignal.timeout(LITE_TIMEOUT_MS),
 	});
 	if (!resp.ok) throw new Error(`QQ 绑定接口 HTTP ${resp.status}`);
 	const data = (await resp.json()) as Record<string, unknown>;

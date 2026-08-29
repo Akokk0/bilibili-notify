@@ -17,8 +17,27 @@ type Phase = "closed" | "starting" | "waiting" | "expired" | "error";
 interface BindSession {
 	taskId: string;
 	qr: string;
-	/** 轮询间隔,秒(server 给,当前恒 2)。 */
+	/** 轮询间隔,秒(server 给,当前恒 2)。实际用的是夹过的 {@link pollDelayMs}。 */
 	interval: number;
+}
+
+/** 缺失 / 不是数的时候按 server 当前的口径来。 */
+const POLL_FALLBACK_SEC = 2;
+const POLL_MIN_SEC = 1;
+const POLL_MAX_SEC = 60;
+
+/**
+ * 把 server 给的秒数夹成能用的毫秒。
+ *
+ * **不夹会出事**:`0` 或字段缺失(`undefined * 1000 = NaN`,setTimeout 当 0 处理)
+ * 都会让浏览器以网络极限速度重发 `POST /api/qq/bind/poll`,而每一发服务端都转成
+ * 一次对腾讯的请求,一路持续到任务 10 分钟 TTL 到期。上限那头则是防呆:上游多写
+ * 一个零,弹窗看起来就跟死了一样。
+ */
+export function pollDelayMs(interval: unknown): number {
+	const sec = Number(interval);
+	if (!Number.isFinite(sec)) return POLL_FALLBACK_SEC * 1000;
+	return Math.min(Math.max(sec, POLL_MIN_SEC), POLL_MAX_SEC) * 1000;
 }
 
 type PollResult =
@@ -75,7 +94,7 @@ export function QQQrBindButton({
 					setPhase("error");
 					return;
 				}
-				timer = setTimeout(tick, session.interval * 1000);
+				timer = setTimeout(tick, pollDelayMs(session.interval));
 			} catch (e) {
 				if (!alive) return;
 				if (e instanceof ApiError && e.status === 404) {
@@ -84,10 +103,10 @@ export function QQQrBindButton({
 					return;
 				}
 				// 瞬时故障(网络抖动 / 上游 502,server 保留了任务)→ 下一轮接着问。
-				timer = setTimeout(tick, session.interval * 1000);
+				timer = setTimeout(tick, pollDelayMs(session.interval));
 			}
 		};
-		timer = setTimeout(tick, session.interval * 1000);
+		timer = setTimeout(tick, pollDelayMs(session.interval));
 		return () => {
 			alive = false;
 			clearTimeout(timer);

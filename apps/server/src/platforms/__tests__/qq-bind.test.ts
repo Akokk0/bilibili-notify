@@ -169,3 +169,17 @@ describe("pollBindTask", () => {
 		await expect(pollBindTask("T1", key)).rejects.toThrow("内部错误");
 	});
 });
+
+describe("上游超时", () => {
+	/**
+	 * node 的 fetch 没有默认超时。腾讯那边接了 TCP 却不回(区域性网络干扰下很常见)
+	 * 时,`POST /api/qq/bind/poll` 就永远不返回:任务不清、handler 挂着,而浏览器
+	 * 每 2 秒还在发下一轮,一路叠到用户关掉弹窗为止。
+	 */
+	it("每次请求都带 AbortSignal —— 上游挂起不能把 handler 钉死", async () => {
+		fetchMock.mockResolvedValue(res(200, { retcode: 0, data: { task_id: "T9" } }));
+		await createBindTask();
+		const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(init.signal).toBeInstanceOf(AbortSignal);
+	});
+});

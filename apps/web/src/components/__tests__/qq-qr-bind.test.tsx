@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { QQQrBindButton } from "../qq-qr-bind";
+import { pollDelayMs, QQQrBindButton } from "../qq-qr-bind";
 
 const { postMock } = vi.hoisted(() => ({ postMock: vi.fn() }));
 
@@ -14,8 +14,13 @@ vi.mock("../../services/api", () => ({
 	},
 }));
 
-/** interval 0 → 组件用 0ms 轮询,waitFor 就能等到结果,不用摆弄假时钟。 */
-const START_OK = { taskId: "T1", qr: "data:image/png;base64,QR", interval: 0 };
+/**
+ * server 当前恒回 2 秒。测试里用最小合法值 1 秒(0 会被护栏抬回下限,见
+ * pollDelayMs),所以下面等结果的 waitFor 一律要给足于一轮的时间。
+ */
+const START_OK = { taskId: "T1", qr: "data:image/png;base64,QR", interval: 1 };
+/** 一轮轮询是 1 秒,默认 1000ms 的 waitFor 卡在边界上,统一放宽。 */
+const POLLED = { timeout: 4000 };
 
 describe("QQQrBindButton", () => {
 	beforeEach(() => postMock.mockReset());
@@ -53,8 +58,9 @@ describe("QQQrBindButton", () => {
 		});
 		render(<QQQrBindButton onCredentials={got} />);
 		fireEvent.click(screen.getByRole("button", { name: /扫码一键创建/ }));
-		await waitFor(() =>
-			expect(got).toHaveBeenCalledWith({ appId: "102000001", appSecret: "S3cret" }),
+		await waitFor(
+			() => expect(got).toHaveBeenCalledWith({ appId: "102000001", appSecret: "S3cret" }),
+			POLLED,
 		);
 		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 		expect(got).toHaveBeenCalledTimes(1);
@@ -67,7 +73,7 @@ describe("QQQrBindButton", () => {
 		});
 		render(<QQQrBindButton onCredentials={() => {}} />);
 		fireEvent.click(screen.getByRole("button", { name: /扫码一键创建/ }));
-		await waitFor(() => expect(screen.getByText(/二维码已过期/)).toBeTruthy());
+		await waitFor(() => expect(screen.getByText(/二维码已过期/)).toBeTruthy(), POLLED);
 
 		postMock.mockClear();
 		postMock.mockImplementation(async (path: string) => {
@@ -87,7 +93,7 @@ describe("QQQrBindButton", () => {
 		});
 		render(<QQQrBindButton onCredentials={() => {}} />);
 		fireEvent.click(screen.getByRole("button", { name: /扫码一键创建/ }));
-		await waitFor(() => expect(screen.getByText(/未返回完整机器人凭据/)).toBeTruthy());
+		await waitFor(() => expect(screen.getByText(/未返回完整机器人凭据/)).toBeTruthy(), POLLED);
 		expect(screen.getAllByText(/手动填写/).length).toBeGreaterThan(0);
 		const polls = postMock.mock.calls.filter(([p]) => p === "/api/qq/bind/poll").length;
 		await new Promise((r) => setTimeout(r, 20));
@@ -100,5 +106,28 @@ describe("QQQrBindButton", () => {
 		fireEvent.click(screen.getByRole("button", { name: /扫码一键创建/ }));
 		await waitFor(() => expect(screen.getByText(/创建绑定任务失败/)).toBeTruthy());
 		expect(screen.getByRole("button", { name: /重新生成/ })).toBeTruthy();
+	});
+});
+
+/**
+ * 轮询间隔直接吃 server 回来的数字,不夹会出事:`interval: 0`(server 的测试里
+ * 就用着这个值)或字段缺失(`undefined * 1000 = NaN`,setTimeout 当 0 处理)都会
+ * 让浏览器以网络极限速度重发 `POST /api/qq/bind/poll`,而每一发服务端都会转成
+ * 一次对腾讯的请求,一直持续到任务 10 分钟 TTL 到期。
+ */
+describe("pollDelayMs", () => {
+	it("正常值原样换算成毫秒", () => {
+		expect(pollDelayMs(2)).toBe(2000);
+	});
+
+	it("0 / 负数 / NaN / 缺失一律抬到下限,绝不退化成紧循环", () => {
+		expect(pollDelayMs(0)).toBe(1000);
+		expect(pollDelayMs(-5)).toBe(1000);
+		expect(pollDelayMs(undefined)).toBe(2000);
+		expect(pollDelayMs(Number.NaN)).toBe(2000);
+	});
+
+	it("离谱的大值也夹住 —— 上游写错一个零不该让弹窗看起来死掉", () => {
+		expect(pollDelayMs(86_400)).toBe(60_000);
 	});
 });
