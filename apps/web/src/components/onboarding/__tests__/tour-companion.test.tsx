@@ -59,6 +59,7 @@ beforeEach(() => {
 	apiGet.mockReset();
 	apiPatch.mockReset();
 	apiPatch.mockResolvedValue({});
+	localStorage.clear();
 	// jsdom 没有 scrollIntoView;聚光灯首次锁定目标时会调它
 	Element.prototype.scrollIntoView = vi.fn();
 });
@@ -115,6 +116,29 @@ describe("TourCompanion 常驻小卡", () => {
 		expect(await screen.findByText("先选一条 QQ 接入路线")).toBeTruthy();
 		fireEvent.click(screen.getByRole("button", { name: "下一步" }));
 		expect(await screen.findByText("新建推送适配器")).toBeTruthy();
+	});
+
+	it("「收起」折叠成左缘标签:卡与聚光灯消失,进度还活在标签上", async () => {
+		const anchorEl = document.createElement("div");
+		anchorEl.setAttribute("data-tour", "bili-login");
+		document.body.appendChild(anchorEl);
+		await mount({ route: "/system" });
+		await screen.findByText("扫码登录 B 站");
+		fireEvent.click(screen.getByRole("button", { name: "收起" }));
+		expect(screen.queryByText("扫码登录 B 站")).toBeNull();
+		expect(screen.queryByTestId("tour-spotlight")).toBeNull();
+		const tab = screen.getByRole("button", { name: "展开新手导览" });
+		expect(tab.textContent).toContain("0/5");
+		expect(localStorage.getItem("bn-tour-collapsed")).toBe("1");
+	});
+
+	it("点左缘标签重新展开", async () => {
+		localStorage.setItem("bn-tour-collapsed", "1");
+		await mount({ route: "/" });
+		const tab = await screen.findByRole("button", { name: "展开新手导览" });
+		fireEvent.click(tab);
+		expect(await screen.findByText("扫码登录 B 站")).toBeTruthy();
+		expect(localStorage.getItem("bn-tour-collapsed")).toBe("0");
 	});
 
 	it("全绿:祝贺态列未开启尾巴,点「完成」PATCH 收窗", async () => {

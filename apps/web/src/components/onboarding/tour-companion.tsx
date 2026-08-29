@@ -1,4 +1,4 @@
-import { Btn, StatusDot } from "@bilibili-notify/ui";
+import { Btn, Icon, StatusDot } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -24,6 +24,25 @@ import { useOnboardingState } from "./use-onboarding-view";
  * - 位置:fixed 左下角 —— 右下推送 toast、右上告警、底部居中灵动岛,左下是
  *   唯一空位。小卡 z 走 island 档,暗幕走 scrim 档(在小卡之下)。
  */
+
+/** 折叠成左缘小标签的状态 —— per-browser 轻量偏好,localStorage 读写都要兜隐私模式。 */
+const COLLAPSED_LS_KEY = "bn-tour-collapsed";
+
+function readCollapsed(): boolean {
+	try {
+		return localStorage.getItem(COLLAPSED_LS_KEY) === "1";
+	} catch {
+		return false;
+	}
+}
+
+function persistCollapsed(v: boolean) {
+	try {
+		localStorage.setItem(COLLAPSED_LS_KEY, v ? "1" : "0");
+	} catch {
+		// 存不住就只活在本次会话
+	}
+}
 
 const STEP_ORDER: OnboardingStepKey[] = ["login", "subs", "adapter", "target", "graduate"];
 const STEP_SHORT: Record<OnboardingStepKey, string> = {
@@ -97,6 +116,13 @@ export function TourCompanion() {
 	const navigate = useNavigate();
 	const qc = useQueryClient();
 	const [manualPos, setManualPos] = useState<TourPos | null>(null);
+	// 折叠成左缘小标签(类似女仆 AI 胶囊):导览继续进行、进度照常刷新,只是
+	// 不占屏幕;与「跳过指引」(server dismissed,彻底关闭)是两回事。
+	const [collapsed, setCollapsed] = useState(readCollapsed);
+	const toggleCollapsed = (v: boolean) => {
+		persistCollapsed(v);
+		setCollapsed(v);
+	};
 	// poll 的启停条件(未收起且未毕业)在 hook 内部判,这里只声明意图。
 	const { view, dismissed, ready } = useOnboardingState({ poll: true });
 	const visible = ready && view !== null && !dismissed;
@@ -119,6 +145,27 @@ export function TourCompanion() {
 	const stepIndex = pos.stepKey === "done" ? STEP_ORDER.length : STEP_ORDER.indexOf(pos.stepKey);
 	const subCount = pos.stepKey === "done" ? 0 : TOUR_SCRIPT[pos.stepKey].length;
 	const pendingTails = view.tails.filter((t) => !t.done);
+
+	// 折叠态:只剩左缘小标签(图标+竖排「指引」+活进度),聚光灯一并收起。
+	if (collapsed) {
+		return createPortal(
+			<button
+				type="button"
+				data-bn="btn"
+				aria-label="展开新手导览"
+				onClick={() => toggleCollapsed(false)}
+				className="bn-glass-strong shadow-bn-elev fixed left-0 top-2/3 z-bn-island flex flex-col items-center gap-1 rounded-r-bn-card px-1.5 py-2.5 text-bn-text-secondary transition-colors hover:text-bn-pink"
+			>
+				<Icon.sparkle size={15} />
+				<span className="text-bn-2xs font-medium leading-tight">指</span>
+				<span className="-mt-1 text-bn-2xs font-medium leading-tight">引</span>
+				<span className="text-bn-2xs text-bn-text-tertiary">
+					{view.doneCount}/{view.steps.length}
+				</span>
+			</button>,
+			document.body,
+		);
+	}
 
 	return createPortal(
 		<>
@@ -201,6 +248,14 @@ export function TourCompanion() {
 								</Btn>
 							) : null}
 							<span className="flex-1" />
+							<button
+								type="button"
+								data-bn="btn"
+								onClick={() => toggleCollapsed(true)}
+								className="text-bn-2xs text-bn-text-tertiary transition-colors hover:text-bn-text-primary"
+							>
+								收起
+							</button>
 							<button
 								type="button"
 								data-bn="btn"
