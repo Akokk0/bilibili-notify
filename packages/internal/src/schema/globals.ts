@@ -174,6 +174,13 @@ export const GlobalConfigSchema = z.object({
 	 */
 	mutedUntil: z.number().int().min(0).default(0),
 	/**
+	 * dashboard 首页新手进度卡被用户收起。放顶层的理由同 `mutedUntil`(不是
+	 * per-UP 的东西);存 server 而非 localStorage 是 grilling 定案 —— 跨设备
+	 * 一致,重装(数据目录清空)才重弹。默认 false:老用户不被弹脸靠的是
+	 * 「全绿自动收起」的机器判据,不是靠默认藏卡。
+	 */
+	onboardingDismissed: z.boolean().default(false),
+	/**
 	 * 私聊指令的可配置项(前缀 / 别名 / 总开关)。独立端专有 —— koishi 与 AstrBot
 	 * 各有框架自带的命令系统。
 	 *
