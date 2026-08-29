@@ -40,7 +40,13 @@ export function GuidePanel({ chapter }: { chapter?: string | undefined }) {
 				{/* 章节切换走库件 Picker(段选钮组);URL 仍是真源 —— 选中态由路由推回来 */}
 				<Picker
 					value={current.key}
-					onChange={(key) => navigate(key === "overview" ? "/about/guide" : `/about/guide/${key}`)}
+					onChange={(key) =>
+						// replace 同 About 的 section 切换:翻章节不是「去了别的地方」,
+						// push 会让读完三章的人按三次返回才退得出去。
+						navigate(key === "overview" ? "/about/guide" : `/about/guide/${key}`, {
+							replace: true,
+						})
+					}
 					options={CHAPTERS.map((c) => ({ value: c.key, label: c.title }))}
 				/>
 				{ready && view ? (

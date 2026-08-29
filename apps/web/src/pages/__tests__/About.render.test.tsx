@@ -8,7 +8,7 @@
  */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import About from "../About";
 
@@ -93,5 +93,23 @@ describe("About page", () => {
 		expect([a.className.includes("rounded-bn-pill"), a.className.includes("rounded-full")]).toEqual(
 			[true, false],
 		);
+	});
+
+	/**
+	 * 换 section / 换章节是**看同一页的不同面**,不是「去了别的地方」。用 push
+	 * 的话逛四个 section 再翻三个章节就压了七条历史,想退回进来前那一页要连按
+	 * 七次;点当前这个 section 还会再压一条重复的。URL 仍是选中态的真源,只是
+	 * 换成 replace 落。
+	 */
+	it("换 section 走 replace —— 逛几圈不该把返回键堵死", async () => {
+		const router = createMemoryRouter(
+			[{ path: "/about/:section?/:chapter?", element: <About /> }],
+			{ initialEntries: ["/about"] },
+		);
+		render(<RouterProvider router={router} />);
+		fireEvent.click(screen.getAllByText("关于本项目")[0]);
+		expect(await screen.findByText(/项目主页|开源/)).toBeTruthy();
+		expect(router.state.historyAction).toBe("REPLACE");
+		expect(router.state.location.pathname).toBe("/about/about");
 	});
 });

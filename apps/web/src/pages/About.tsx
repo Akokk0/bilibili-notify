@@ -77,7 +77,11 @@ export default function About() {
 				<SectionNav
 					heading="关于"
 					activeId={section}
-					onPick={(id) => navigate(id === "sponsor" ? "/about" : `/about/${id}`)}
+					onPick={(id) =>
+						// replace:换 section 是看同一页的另一面,不是去了别的地方。push 的话逛
+						// 几圈就把返回键堵死(点当前这个还会压一条重复的);URL 照旧是真源。
+						navigate(id === "sponsor" ? "/about" : `/about/${id}`, { replace: true })
+					}
 					items={ABOUT_SECTIONS.map((s) => {
 						const SectionIcon = Icon[s.icon];
 						return { id: s.id, label: s.label, desc: s.desc, icon: <SectionIcon size={14} /> };
