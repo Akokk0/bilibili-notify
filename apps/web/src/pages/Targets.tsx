@@ -1662,13 +1662,17 @@ export default function Targets() {
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
 			<div className="grid gap-4 xl:grid-bn-rail">
-				<AdapterRail
-					adapters={adapters}
-					selectedId={selectedAdapterId}
-					onPick={setSelectedAdapterId}
-					onAddClick={startNewAdapter}
-					targetCountByAdapter={targetCountByAdapter}
-				/>
+				{/* data-tour:「带我做」导览的高亮挂点(TourCompanion)。包一层 div 不破坏
+				    grid 两栏 —— 这个 div 就是第一栏,SectionNav 在里面照常撑高。 */}
+				<div data-tour="adapter-add">
+					<AdapterRail
+						adapters={adapters}
+						selectedId={selectedAdapterId}
+						onPick={setSelectedAdapterId}
+						onAddClick={startNewAdapter}
+						targetCountByAdapter={targetCountByAdapter}
+					/>
+				</div>
 
 				<div className="space-y-4">
 					{isLoading ? (
@@ -1790,13 +1794,15 @@ export default function Targets() {
 										</div>
 									</div>
 									{selectedAdapter.platform === "webhook" ? null : (
-										<Btn
-											size="sm"
-											variant="outline"
-											onClick={() => startNewTarget(selectedAdapter)}
-										>
-											+ 新建推送目标
-										</Btn>
+										<span data-tour="target-add" className="inline-flex">
+											<Btn
+												size="sm"
+												variant="outline"
+												onClick={() => startNewTarget(selectedAdapter)}
+											>
+												+ 新建推送目标
+											</Btn>
+										</span>
 									)}
 								</div>
 								{selectedAdapter.platform === "webhook" ? (

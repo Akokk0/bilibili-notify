@@ -78,6 +78,33 @@
 	border-radius: var(--radius-lg);
 }
 
+/* 「带我做」导览的控件持续高亮(TourCompanion 挂/摘 class)。与上面的一次性
+   闪烁分开:导览要「一直指着」。走 outline 而不是 box-shadow —— 目标控件可能
+   自带阴影,动画覆盖 box-shadow 会把基础影杀掉(流光动画踩过的同一颗雷),
+   outline 不参与那条链,零冲突。reduced-motion 退化为静态描边。 */
+@keyframes bn-tour-pulse {
+	0%,
+	100% {
+		outline-color: var(--color-bn-pink);
+	}
+	50% {
+		outline-color: color-mix(in srgb, var(--color-bn-pink) 35%, transparent);
+	}
+}
+
+.bn-tour-highlight {
+	outline: 2px solid var(--color-bn-pink);
+	outline-offset: 3px;
+	border-radius: var(--radius-lg);
+	animation: bn-tour-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.bn-tour-highlight {
+		animation: none;
+	}
+}
+
 /* 灵动岛 dirty 态外圈流光线(grill-me 二轮校准:单色流动 + 砍 pulse)。
    2px bn-pink 细描边沿 pill 边贴边,单色 → 透明 45° 弧,2.4s/圈;panel 展开
    减速到 4s/圈。reduced-motion 完全隐藏。

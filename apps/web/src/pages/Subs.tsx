@@ -199,7 +199,8 @@ function NewSubDialog({
 			title="添加 UP 主"
 			description="输入纯数字走 UID 精确查询; 输入名字走搜索,选定后进入配置表单"
 		>
-			<div className="flex gap-2">
+			{/* data-tour:「带我做」导览的高亮挂点(TourCompanion) */}
+			<div className="flex gap-2" data-tour="subs-search">
 				<Input
 					full
 					value={input}

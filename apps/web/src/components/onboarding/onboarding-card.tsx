@@ -1,7 +1,8 @@
-import { GlassPanel, Icon, IconButton, Pill, StatusDot } from "@bilibili-notify/ui";
+import { Btn, GlassPanel, Icon, IconButton, Pill, StatusDot } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../../services/api";
+import { useTourStore } from "../../store/tour";
 import type { GlobalConfig } from "../../types/globals";
 import type { OnboardingStepKey, OnboardingTailKey } from "./derive";
 import { useOnboardingState } from "./use-onboarding-view";
@@ -62,6 +63,8 @@ const TAIL_META: Record<
 
 export function OnboardingCard() {
 	const qc = useQueryClient();
+	const startTour = useTourStore((s) => s.start);
+	const tourActive = useTourStore((s) => s.active);
 	const { view, dismissed, ready } = useOnboardingState();
 	const dismiss = useMutation({
 		mutationFn: () => api.patch<GlobalConfig>("/api/globals", { onboardingDismissed: true }),
@@ -103,9 +106,16 @@ export function OnboardingCard() {
 			title="新手指引"
 			subtitle="五步打通从 B 站到第一条推送"
 			right={
-				<Pill subtle>
-					{view.doneCount}/{view.steps.length}
-				</Pill>
+				<span className="flex items-center gap-2">
+					<Pill subtle>
+						{view.doneCount}/{view.steps.length}
+					</Pill>
+					{tourActive ? null : (
+						<Btn size="sm" variant="primary" onClick={startTour}>
+							带我做
+						</Btn>
+					)}
+				</span>
 			}
 		>
 			<ol className="flex flex-col gap-1.5">

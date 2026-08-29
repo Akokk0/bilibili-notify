@@ -5,6 +5,7 @@ import { AiChatDock, CHAT_PATH } from "./components/ai-chat";
 import { AlertShell } from "./components/alert-shell";
 import { DraftIsland } from "./components/draft-island";
 import { GlassHeader } from "./components/header";
+import { TourCompanion } from "./components/onboarding/tour-companion";
 import { ShellError, ShellLoading } from "./components/shell-states";
 import { SkinPreviewBar } from "./components/skin-preview-bar";
 import { ToastShell } from "./components/toast-shell";
@@ -114,6 +115,8 @@ function AuthedApp() {
 			<SkinPreviewBar />
 			<ToastShell />
 			<AlertShell />
+			{/* 「带我做」导览伴随窗:左下角(右下 toast/右上告警/底部灵动岛都有主了) */}
+			<TourCompanion />
 		</div>
 	);
 }

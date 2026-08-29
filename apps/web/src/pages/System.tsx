@@ -425,13 +425,16 @@ export default function System() {
 				{actionError ? <ErrorNote className="mt-2.5">操作失败：{actionError}</ErrorNote> : null}
 
 				<div className="mt-3.5 flex flex-wrap gap-2 border-t border-bn-border-subtle pt-3">
-					<Btn
-						variant="primary"
-						disabled={startQr.isPending || isQrPhase || loggedIn}
-						onClick={() => startQr.mutate()}
-					>
-						{startQr.isPending ? "处理中…" : "发起扫码登录"}
-					</Btn>
+					{/* data-tour:「带我做」导览的高亮挂点(TourCompanion) */}
+					<span data-tour="bili-login" className="inline-flex">
+						<Btn
+							variant="primary"
+							disabled={startQr.isPending || isQrPhase || loggedIn}
+							onClick={() => startQr.mutate()}
+						>
+							{startQr.isPending ? "处理中…" : "发起扫码登录"}
+						</Btn>
+					</span>
 					<Btn
 						variant="outline"
 						disabled={refresh.isPending || !loggedIn}
