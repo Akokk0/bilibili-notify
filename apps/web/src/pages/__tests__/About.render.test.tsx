@@ -1,13 +1,26 @@
 // @vitest-environment jsdom
 
 /**
- * About(关于 / 支持项目)页渲染测试。三个 section:支持项目(默认)/ 更新日志 / 关于本项目,
- * 经 SectionNav 切换。SectionNav 双形态(竖栏 + 横向条)→ 标签各出现两次,用 getAllBy*。
+ * About(关于 / 支持项目)页渲染测试。四个 section:支持项目(默认)/ 新手指引 /
+ * 更新日志 / 关于本项目,经 SectionNav 切换(URL 驱动,点击 navigate)。
+ * SectionNav 双形态(竖栏 + 横向条)→ 标签各出现两次,用 getAllBy*。
+ * 新手指引 section 的内容测试在 pages/guide/__tests__/guide.test.tsx。
  */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import About from "../About";
+
+function renderAbout(path = "/about") {
+	return render(
+		<MemoryRouter initialEntries={[path]}>
+			<Routes>
+				<Route path="/about/:section?/:chapter?" element={<About />} />
+			</Routes>
+		</MemoryRouter>,
+	);
+}
 
 afterEach(() => {
 	cleanup();
@@ -16,7 +29,7 @@ afterEach(() => {
 
 describe("About page", () => {
 	it("defaults to the sponsor section with an afdian entry and empty sponsor list", () => {
-		render(<About />);
+		renderAbout();
 		expect(screen.getByText("前往爱发电支持")).toBeTruthy();
 		const link = screen.getByRole("link", { name: /前往爱发电/ });
 		expect(link.getAttribute("href")).toContain("afdian");
@@ -24,7 +37,7 @@ describe("About page", () => {
 	});
 
 	it("shows project info after switching to the about section", async () => {
-		render(<About />);
+		renderAbout();
 		fireEvent.click(screen.getAllByRole("button", { name: /关于本项目/ })[0]);
 		expect(await screen.findByText("Akokk0/bilibili-notify")).toBeTruthy();
 		expect(screen.getByText("801338523")).toBeTruthy();
@@ -32,7 +45,7 @@ describe("About page", () => {
 	});
 
 	it("renders the changelog panel only after switching to it", async () => {
-		render(<About />);
+		renderAbout();
 		expect(screen.queryByText("apps/CHANGELOG.md")).toBeNull();
 		fireEvent.click(screen.getAllByRole("button", { name: /更新日志/ })[0]);
 		expect(await screen.findByText("apps/CHANGELOG.md")).toBeTruthy();
@@ -41,7 +54,7 @@ describe("About page", () => {
 	// 回归:入场动画(bn-anim-page-in,动画期间持有 transform)不挂在 grid 上,否则会改写
 	// 内部 sticky 竖栏的包含块,使窄视口单列布局坍缩。该约束随「更新日志」从 Logs 一并迁来。
 	it("keeps the entrance-animation transform off the grid/sticky layer", () => {
-		const { container } = render(<About />);
+		const { container } = renderAbout();
 		const fade = container.querySelector(".bn-anim-page-in");
 		expect(fade).toBeTruthy();
 		expect(fade?.classList.contains("grid")).toBe(false);
@@ -63,7 +76,7 @@ describe("About page", () => {
 				}),
 			})),
 		);
-		render(<About />);
+		renderAbout();
 		expect(await screen.findByText("Alice")).toBeTruthy();
 		expect(screen.getByText("Bob")).toBeTruthy();
 		// 有头像 → 渲染 <img alt=昵称>;无头像 → 不渲染 img
@@ -71,7 +84,7 @@ describe("About page", () => {
 		expect(screen.queryByAltText("Bob")).toBeNull();
 	});
 	it("赞助链接是颗按钮 —— 挂 btn,圆角走 pill token", () => {
-		render(<About />);
+		renderAbout();
 		const a = screen.getByRole("link", { name: /前往爱发电支持/ });
 		// 两个挂点都得有。只挂 `btn` 的话,皮肤惯写的 `[data-bn="btn"]` 精确匹配会把
 		// 这颗刷成中性底,而 text-white 是写死的类 —— 真机上就这么白底白字过一次。

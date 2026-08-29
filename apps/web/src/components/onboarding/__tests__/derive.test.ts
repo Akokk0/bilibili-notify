@@ -1,16 +1,18 @@
 /**
- * 新手进度卡的判据核心(2026-08-29 grilling 定案:5 步全机器判据、按结果态建模)。
+ * 新手导览的判据核心(2026-08-29 grilling 定案:5 步全机器判据、按结果态建模)。
  *
- * 步骤链:①B站登录 ②订阅数>0 ③适配器存在且 test 通过 ④启用的推送目标存在
- * ⑤target 测试推送成功(毕业)。可选尾巴(image/ai)不计毕业。
+ * 步骤链(五轮定稿顺序:先打通推送通道,订阅放最后 —— 订阅表单要勾推送目标,
+ * 先订阅的话通道没就绪还得回头重编辑):①B站登录 ②适配器存在且 test 通过
+ * ③启用的推送目标存在 ④target 测试推送成功 ⑤订阅数>0。可选尾巴(image/ai)
+ * 不计毕业。
  *
  * 钉住的边界:
  * - adapter 步要求 **enabled 且 testStatus.ok** —— 只建不测不算(定案原文
  *   「adapter 存在且 test 通过」);disabled 的 adapter 测过也不算,它不会参与推送。
- * - target 步要求 enabled;毕业步只看「任一 target 测试成功过」不看 enabled ——
- *   测通后禁用目标,毕业不回退(毕业=证明过整条链路通,不是当前时刻的可推送性),
+ * - target 步要求 enabled;test 步只看「任一 target 测试成功过」不看 enabled ——
+ *   测通后禁用目标,test 不回退(test=证明过整条链路通,不是当前时刻的可推送性),
  *   但 target 步会退回未完成,active 指回它。
- * - `active` 是第一个未完成步,全绿则无 —— 进度卡靠它高亮「现在该做哪步」。
+ * - `active` 是第一个未完成步,全绿则无 —— 导览靠它高亮「现在该做哪步」。
  */
 
 import { describe, expect, it } from "vite-plus/test";
@@ -41,9 +43,9 @@ describe("deriveOnboarding 步骤判据", () => {
 		expect(v.doneCount).toBe(0);
 	});
 
-	it("登录+订阅后 active 推进到 adapter", () => {
-		const v = deriveOnboarding(inputs({ biliLoggedIn: true, subsCount: 2 }));
-		expect(stepMap(v)).toMatchObject({ login: true, subs: true, adapter: false });
+	it("登录后 active 直接推进到 adapter —— 订阅在最后,不挡通道配置", () => {
+		const v = deriveOnboarding(inputs({ biliLoggedIn: true }));
+		expect(stepMap(v)).toMatchObject({ login: true, adapter: false, subs: false });
 		expect(v.activeKey).toBe("adapter");
 	});
 
@@ -51,7 +53,6 @@ describe("deriveOnboarding 步骤判据", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
-				subsCount: 1,
 				adapters: [{ enabled: true, testStatus: undefined }],
 			}),
 		);
@@ -65,20 +66,32 @@ describe("deriveOnboarding 步骤判据", () => {
 		expect(stepMap(v).adapter).toBe(false);
 	});
 
-	it("adapter 测过 + 启用目标存在 → 前四步完成,active=graduate", () => {
+	it("adapter 测过 + 启用目标存在 → active=test", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
-				subsCount: 1,
 				adapters: [{ enabled: true, testStatus: { ok: true } }],
 				targets: [{ enabled: true, testStatus: undefined }],
 			}),
 		);
-		expect(v.doneCount).toBe(4);
-		expect(v.activeKey).toBe("graduate");
+		expect(v.doneCount).toBe(3);
+		expect(v.activeKey).toBe("test");
 	});
 
-	it("target 测试成功 → 全绿毕业,无 active", () => {
+	it("测试推送成功但还没订阅 → 通道全通,active=subs 收尾", () => {
+		const v = deriveOnboarding(
+			inputs({
+				biliLoggedIn: true,
+				adapters: [{ enabled: true, testStatus: { ok: true } }],
+				targets: [{ enabled: true, testStatus: { ok: true } }],
+			}),
+		);
+		expect(v.doneCount).toBe(4);
+		expect(v.activeKey).toBe("subs");
+		expect(v.allDone).toBe(false);
+	});
+
+	it("订阅补上 → 全绿毕业,无 active", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
@@ -91,7 +104,7 @@ describe("deriveOnboarding 步骤判据", () => {
 		expect(v.activeKey).toBeNull();
 	});
 
-	it("测通后禁用目标:毕业不回退,但 target 步退回未完成并成为 active", () => {
+	it("测通后禁用目标:test 不回退,但 target 步退回未完成并成为 active", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
@@ -101,15 +114,15 @@ describe("deriveOnboarding 步骤判据", () => {
 			}),
 		);
 		const m = stepMap(v);
-		expect(m.graduate).toBe(true);
+		expect(m.test).toBe(true);
 		expect(m.target).toBe(false);
 		expect(v.activeKey).toBe("target");
 		expect(v.allDone).toBe(false);
 	});
 
-	it("test 失败(ok:false)不算毕业", () => {
+	it("测试失败(ok:false)→ test 步未完成", () => {
 		const v = deriveOnboarding(inputs({ targets: [{ enabled: true, testStatus: { ok: false } }] }));
-		expect(stepMap(v).graduate).toBe(false);
+		expect(stepMap(v).test).toBe(false);
 	});
 });
 

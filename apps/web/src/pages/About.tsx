@@ -1,13 +1,19 @@
 import { EmptyNote, Icon, LoadingBlock, SectionNav } from "@bilibili-notify/ui";
 import { lazy, type ReactNode, Suspense, useEffect, useState } from "react";
 import type { Components } from "react-markdown";
+import { useNavigate, useParams } from "react-router-dom";
 import { externalLinkClick } from "../utils/externalLink";
+import { GuidePanel } from "./guide/guide-panel";
 
 /**
- * `/about` — 关于 / 支持项目。聚合面向用户的项目元信息(非操作内容):
+ * `/about/:section?/:chapter?` — 关于 / 支持项目。聚合面向用户的项目元信息(非操作内容):
  * - 支持项目(爱发电入口 + 赞助者名单)—— 默认 section,温和引导现有用户赞助
+ * - 新手指引(长图文教程,五轮定稿从独立路由并进来;chapter 深链给导览尾巴用)
  * - 更新日志(独立端 CHANGELOG.md,从原 `/logs` 页迁来)
  * - 关于本项目(仓库 · 交流群 · 协议)
+ *
+ * section 由 URL 驱动(SectionNav 点击 navigate),`/about/guide/render` 这类
+ * 深链直达教程章节;认不出的 section 回退默认,不白屏。
  *
  * 与 Logs 同构。入场动画走 bn-anim-page-in(纯位移、无 filling),不会留下
  * 残留 transform 去改写 SectionNav 竖栏的包含块。
@@ -90,7 +96,7 @@ const MARKDOWN_COMPONENTS: Components = {
 	),
 };
 
-type AboutSectionId = "sponsor" | "changelog" | "about";
+type AboutSectionId = "sponsor" | "guide" | "changelog" | "about";
 
 const ABOUT_SECTIONS: ReadonlyArray<{
 	id: AboutSectionId;
@@ -99,12 +105,20 @@ const ABOUT_SECTIONS: ReadonlyArray<{
 	icon: keyof typeof Icon;
 }> = [
 	{ id: "sponsor", label: "支持项目", desc: "爱发电赞助与鸣谢", icon: "heart" },
+	{ id: "guide", label: "新手指引", desc: "从零配好推送链路", icon: "list" },
 	{ id: "changelog", label: "更新日志", desc: "独立端版本变更记录", icon: "sparkle" },
 	{ id: "about", label: "关于本项目", desc: "仓库 · 交流群 · 协议", icon: "star" },
 ];
 
+function isSectionId(v: string | undefined): v is AboutSectionId {
+	return ABOUT_SECTIONS.some((s) => s.id === v);
+}
+
 export default function About() {
-	const [section, setSection] = useState<AboutSectionId>("sponsor");
+	const params = useParams<{ section?: string; chapter?: string }>();
+	const navigate = useNavigate();
+	// 认不出的 section(URL 手改/过时收藏)回退默认,与未知教程章节回退总览同理。
+	const section: AboutSectionId = isSectionId(params.section) ? params.section : "sponsor";
 
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
@@ -112,7 +126,7 @@ export default function About() {
 				<SectionNav
 					heading="关于"
 					activeId={section}
-					onPick={(id) => setSection(id as AboutSectionId)}
+					onPick={(id) => navigate(id === "sponsor" ? "/about" : `/about/${id}`)}
 					items={ABOUT_SECTIONS.map((s) => {
 						const SectionIcon = Icon[s.icon];
 						return { id: s.id, label: s.label, desc: s.desc, icon: <SectionIcon size={14} /> };
@@ -121,6 +135,8 @@ export default function About() {
 				<div className="min-w-0">
 					{section === "sponsor" ? (
 						<SponsorPanel />
+					) : section === "guide" ? (
+						<GuidePanel chapter={params.chapter} />
 					) : section === "changelog" ? (
 						<ChangelogPanel />
 					) : (

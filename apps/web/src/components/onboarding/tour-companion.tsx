@@ -40,13 +40,13 @@ function persistCollapsed(v: boolean) {
 	}
 }
 
-const STEP_ORDER: OnboardingStepKey[] = ["login", "subs", "adapter", "target", "graduate"];
+const STEP_ORDER: OnboardingStepKey[] = ["login", "adapter", "target", "test", "subs"];
 const STEP_SHORT: Record<OnboardingStepKey, string> = {
 	login: "登录",
-	subs: "订阅",
 	adapter: "适配器",
 	target: "目标",
-	graduate: "测试",
+	test: "测试",
+	subs: "订阅",
 };
 
 function rectsDiffer(a: DOMRect | null, b: DOMRect | null): boolean {
@@ -144,7 +144,7 @@ export function TourCompanion() {
 				data-bn="btn"
 				aria-label="展开新手导览"
 				onClick={() => toggleCollapsed(false)}
-				className="bn-glass-strong shadow-bn-elev fixed left-0 top-2/3 z-bn-island flex flex-col items-center gap-1 rounded-r-bn-card px-1.5 py-2.5 text-bn-text-secondary transition-colors hover:text-bn-pink"
+				className="bn-glass-strong shadow-bn-elev fixed left-0 top-3/4 z-bn-island flex flex-col items-center gap-1 rounded-r-bn-card px-1.5 py-2.5 text-bn-text-secondary transition-colors hover:text-bn-pink"
 			>
 				<Icon.sparkle size={15} />
 				<span className="text-bn-2xs font-medium leading-tight">指</span>
@@ -195,7 +195,7 @@ export function TourCompanion() {
 								{pendingTails.map((t) => (
 									<Link
 										key={t.key}
-										to={t.key === "image" ? "/guide/render" : "/guide/ai"}
+										to={t.key === "image" ? "/about/guide/render" : "/about/guide/ai"}
 										className="ml-1 text-bn-pink hover:underline"
 									>
 										{t.key === "image" ? "图片渲染(强烈推荐)" : "AI 能力"}

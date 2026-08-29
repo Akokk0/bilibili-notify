@@ -5,6 +5,7 @@ import type { OnboardingStepKey } from "./derive";
  *
  * 主步切换由机器判据驱动(reconcileTourPos 跟随 activeKey),主步内的子步
  * 才是手动翻页 —— 所以「扫码成功自动进下一步」不需要任何额外探测代码。
+ * 主步顺序:登录 → 适配器 → 目标 → 测试 → 订阅(理由见 derive.ts)。
  *
  * `anchor` 指向页面控件上的 `data-tour` 挂点(高亮描边 + 滚入视口);
  * 控件级原则:聚光灯只指到按钮/区块,字段明细写在 `body` 文字里 ——
@@ -39,19 +40,11 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			body: "点高亮的「发起扫码登录」,用手机 B 站 App 扫码并确认。登录成功后这里会自动进入下一步。",
 		},
 	],
-	subs: [
-		{
-			route: "/subs",
-			anchor: "subs-search",
-			title: "订阅第一个 UP",
-			body: "在高亮的搜索框输入 UP 主名字或 UID,在结果里点「订阅」。订阅成功后自动进入下一步。",
-		},
-	],
 	adapter: [
 		{
 			route: "/targets",
 			title: "先选一条 QQ 接入路线",
-			body: "只想推给自己 → 选「QQ 官方机器人」,表单里可扫码一键创建,零部署;要推到群里 / 想要图片卡片 → 选「OneBot」,需要先部署 NapCat(教程见新手指引·推送通道章)。想清楚了点「下一步」。",
+			body: "只想推给自己 → 选「QQ 官方机器人」,表单里可扫码一键创建,零部署;要推到群里 / 想要图片卡片 → 选「OneBot」,需要先部署 NapCat(教程见 关于 · 新手指引)。想清楚了点「下一步」。",
 		},
 		{
 			route: "/targets",
@@ -73,11 +66,19 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			body: "点高亮的「+ 新建」,选刚才的适配器,指定发到哪:OneBot 直接填群号或 QQ 号;QQ 官方要先在 QQ 里给机器人发一句话,然后在表单里选出现的会话。保存后自动进入下一步。",
 		},
 	],
-	graduate: [
+	test: [
 		{
 			route: "/targets",
-			title: "发送测试推送,毕业!",
-			body: "在目标行点「测试」—— QQ 里收到测试消息就大功告成,之后订阅 UP 的动态与开播会自动推送到这里。",
+			title: "发送测试推送",
+			body: "在目标行点「测试」—— QQ 里收到测试消息,推送通道就全线打通了。只差最后一步:订阅要关注的 UP。",
+		},
+	],
+	subs: [
+		{
+			route: "/subs",
+			anchor: "subs-search",
+			title: "订阅第一个 UP",
+			body: "在高亮的搜索框输入 UP 主名字或 UID,在结果里点「订阅」,并勾上刚建好的推送目标。订阅成功即大功告成,TA 的动态与开播会自动推送到 QQ。",
 		},
 	],
 };

@@ -101,11 +101,21 @@ describe("TourCompanion 常驻小卡", () => {
 		expect(screen.queryByTestId("tour-spotlight")).toBeNull();
 	});
 
-	it("adapter 主步:子步手动翻页", async () => {
-		await mount({ loggedIn: true, subs: [{ id: "s1" }], route: "/targets" });
+	it("adapter 主步:登录后直接进入(订阅在最后),子步手动翻页", async () => {
+		await mount({ loggedIn: true, route: "/targets" });
 		expect(await screen.findByText("先选一条 QQ 接入路线")).toBeTruthy();
 		fireEvent.click(screen.getByRole("button", { name: "下一步" }));
 		expect(await screen.findByText("新建推送适配器")).toBeTruthy();
+	});
+
+	it("通道全通后收尾步是订阅", async () => {
+		await mount({
+			loggedIn: true,
+			adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+			targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
+			route: "/subs",
+		});
+		expect(await screen.findByText("订阅第一个 UP")).toBeTruthy();
 	});
 
 	it("「收起」折叠成左缘标签:卡与聚光灯消失,进度还活在标签上", async () => {
@@ -139,7 +149,9 @@ describe("TourCompanion 常驻小卡", () => {
 			targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
 		});
 		expect(await screen.findByText(/全部配置完成/)).toBeTruthy();
-		expect(screen.getByText(/图片渲染/)).toBeTruthy();
+		// 尾巴链接指向关于页里的教程章节(五轮定稿:/guide 独立路由已撤)
+		const tail = screen.getByRole("link", { name: /图片渲染/ });
+		expect(tail.getAttribute("href")).toBe("/about/guide/render");
 		fireEvent.click(screen.getByRole("button", { name: "收起" }));
 		const tab = screen.getByRole("button", { name: "展开新手导览" });
 		expect(tab.textContent).toContain("5/5");

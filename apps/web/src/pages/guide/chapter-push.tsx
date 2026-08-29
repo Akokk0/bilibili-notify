@@ -13,7 +13,7 @@ export function ChapterPush() {
 		<div>
 			<GdP>
 				这一章覆盖进度卡的第三、四、五步:接好推送通道 → 指定目标 → 测试毕业。 还没想好走哪条路?先看
-				<Link to="/guide" className="text-bn-pink hover:underline">
+				<Link to="/about/guide" className="text-bn-pink hover:underline">
 					总览的选型表
 				</Link>
 				:只推给自己选 A,要群推 / 图片卡片选 B。

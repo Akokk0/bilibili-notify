@@ -2,8 +2,9 @@
  * 导览(带我做)的判据跟随逻辑与脚本完整性。
  *
  * 形态定案(2026-08-29 二轮,主人拍板):控件级粒度 + 左下角伴随悬浮窗 +
- * 判据驱动为主 —— 主步(login/subs/adapter/target/graduate)的切换由机器判据
- * 驱动(activeKey 变了自动跳到新主步的第一个子步),主步内的子步才是手动翻页。
+ * 判据驱动为主 —— 主步(login/adapter/target/test/subs,五轮定稿顺序:先打通
+ * 推送通道再订阅)的切换由机器判据驱动(activeKey 变了自动跳到新主步的第一个
+ * 子步),主步内的子步才是手动翻页。
  *
  * 钉住:
  * - activeKey 变化(前进或回退)→ 位置跟随并重置子步;没变 → 保持手动子步位置;
@@ -19,15 +20,15 @@ describe("reconcileTourPos 判据跟随", () => {
 		expect(reconcileTourPos(null, "login")).toEqual({ stepKey: "login", subIndex: 0 });
 	});
 
-	it("判据前进(login 完成 → activeKey=subs)→ 自动切到 subs 第一子步", () => {
-		expect(reconcileTourPos({ stepKey: "login", subIndex: 0 }, "subs")).toEqual({
-			stepKey: "subs",
+	it("判据前进(login 完成 → activeKey=adapter)→ 自动切到 adapter 第一子步", () => {
+		expect(reconcileTourPos({ stepKey: "login", subIndex: 0 }, "adapter")).toEqual({
+			stepKey: "adapter",
 			subIndex: 0,
 		});
 	});
 
 	it("判据回退(target 被禁用 → activeKey 退回 target)同样跟随", () => {
-		expect(reconcileTourPos({ stepKey: "graduate", subIndex: 0 }, "target")).toEqual({
+		expect(reconcileTourPos({ stepKey: "subs", subIndex: 0 }, "target")).toEqual({
 			stepKey: "target",
 			subIndex: 0,
 		});
@@ -49,7 +50,7 @@ describe("reconcileTourPos 判据跟随", () => {
 	});
 
 	it("全绿(activeKey=null)→ done 祝贺态", () => {
-		expect(reconcileTourPos({ stepKey: "graduate", subIndex: 0 }, null)).toEqual({
+		expect(reconcileTourPos({ stepKey: "subs", subIndex: 0 }, null)).toEqual({
 			stepKey: "done",
 			subIndex: 0,
 		});
@@ -58,7 +59,7 @@ describe("reconcileTourPos 判据跟随", () => {
 
 describe("TOUR_SCRIPT 脚本完整性", () => {
 	it("五个主步都有至少一个子步", () => {
-		for (const key of ["login", "subs", "adapter", "target", "graduate"] as const) {
+		for (const key of ["login", "adapter", "target", "test", "subs"] as const) {
 			expect(TOUR_SCRIPT[key].length).toBeGreaterThan(0);
 		}
 	});

@@ -20,7 +20,6 @@ import Ai from "./pages/Ai";
 import Cards from "./pages/Cards";
 import Chat from "./pages/Chat";
 import Dashboard from "./pages/Dashboard";
-import { Guide } from "./pages/guide/Guide";
 import History from "./pages/History";
 import Logs from "./pages/Logs";
 import Rules from "./pages/Rules";
@@ -92,7 +91,6 @@ function AuthedApp() {
 				<main className="flex-1 px-7 pb-24 pt-6">
 					<Routes>
 						<Route path="/" element={<Dashboard />} />
-						<Route path="/guide/:chapter?" element={<Guide />} />
 						<Route path="/subs" element={<Subs />} />
 						<Route path="/targets" element={<Targets />} />
 						<Route path="/history" element={<History />} />
@@ -106,7 +104,8 @@ function AuthedApp() {
 						<Route path={CHAT_PATH} element={<Chat />} />
 						<Route path="/system" element={<System />} />
 						<Route path="/logs" element={<Logs />} />
-						<Route path="/about" element={<About />} />
+						{/* 新手指引并进关于页(五轮定稿):/about/guide/:chapter? 深链直达教程章节 */}
+						<Route path="/about/:section?/:chapter?" element={<About />} />
 					</Routes>
 				</main>
 			)}

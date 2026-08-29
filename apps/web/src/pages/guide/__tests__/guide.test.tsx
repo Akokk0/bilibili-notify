@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
 
 /**
- * /guide 新手指引页(2026-08-29 grilling 定案:独立路由承载长图文教程)。
+ * 新手指引面板(五轮定稿:独立路由撤销,教程并进关于页的 guide section,
+ * `/about/guide/:chapter?` 深链直达)。
  *
  * 钉住的结构性约定:
- * - 路由 `/guide/:chapter?`,未知章节回退总览 —— 进度卡里的链接坏了也不该白屏;
+ * - 深链 `/about/guide/<章节>` 直达对应章节,未知章节回退总览不白屏 ——
+ *   导览尾巴与文内互链都靠这条;
  * - 总览开头是选型表(定案:两条 QQ 路都写全,开头帮选型);
  * - push 章双路都在(NapCat/onebot 与 qq-official 扫码),内容完整内嵌不依赖外链;
- * - 顶部常驻进度(与首页进度卡同一份判据),收起首页卡后这里仍看得到进度。
+ * - 面板常驻进度(与左缘导览同一份判据)。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -32,13 +34,13 @@ async function mount(path: string) {
 			return { status: "ok", uptime: 1, modules: { image: false, ai: false } };
 		return null;
 	});
-	const { Guide } = await import("../Guide");
+	const { default: About } = await import("../../About");
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
 			<MemoryRouter initialEntries={[path]}>
 				<Routes>
-					<Route path="/guide/:chapter?" element={<Guide />} />
+					<Route path="/about/:section?/:chapter?" element={<About />} />
 				</Routes>
 			</MemoryRouter>
 		</QueryClientProvider>,
@@ -55,33 +57,32 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-describe("Guide 路由与章节", () => {
-	it("/guide 渲染总览:开头是 QQ 通道选型表", async () => {
-		await mount("/guide");
-		expect(await screen.findByText("新手指引")).toBeTruthy();
+describe("关于页 · 新手指引 section", () => {
+	it("/about/guide 渲染总览:开头是 QQ 通道选型表", async () => {
+		await mount("/about/guide");
 		// 选型表的判据维度(grilling 定案四维)至少出现「群推送」这一最硬分流
-		expect(screen.getByText(/群推送/)).toBeTruthy();
+		expect(await screen.findByText(/群推送/)).toBeTruthy();
 	});
 
-	it("/guide/push 双路都在:NapCat 教程与官方扫码一键建都出现", async () => {
-		await mount("/guide/push");
+	it("/about/guide/push 双路都在:NapCat 教程与官方扫码一键建都出现", async () => {
+		await mount("/about/guide/push");
 		expect((await screen.findAllByText(/NapCat/)).length).toBeGreaterThan(0);
 		expect(screen.getAllByText(/扫码一键创建/).length).toBeGreaterThan(0);
 	});
 
-	it("/guide/login 渲染 B 站登录章", async () => {
-		await mount("/guide/login");
+	it("/about/guide/login 渲染 B 站登录章", async () => {
+		await mount("/about/guide/login");
 		// 用登录章独有的正文锚点,不依赖标题元素的 heading 角色
 		expect(await screen.findByText(/自动轮换刷新 cookie/)).toBeTruthy();
 	});
 
 	it("未知章节回退总览,不白屏", async () => {
-		await mount("/guide/nonsense");
+		await mount("/about/guide/nonsense");
 		expect(await screen.findByText(/群推送/)).toBeTruthy();
 	});
 
-	it("顶部常驻进度:已登录+有订阅 → 2/5", async () => {
-		await mount("/guide");
+	it("面板常驻进度:已登录+有订阅 → 2/5", async () => {
+		await mount("/about/guide");
 		expect(await screen.findByText("2/5")).toBeTruthy();
 	});
 });
