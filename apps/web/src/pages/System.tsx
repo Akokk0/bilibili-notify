@@ -6,6 +6,7 @@ import {
 	GlassBox,
 	Icon,
 	LoadingBlock,
+	ModalShell,
 	StatusDot,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -276,6 +277,12 @@ export default function System() {
 	const status: BiliLoginStatusValue = snapshot?.status ?? BiliLoginStatus.LOADING_LOGIN_INFO;
 	const msg = snapshot?.msg ?? "";
 	const isQrPhase = status === BiliLoginStatus.LOGIN_QR || status === BiliLoginStatus.LOGGING_QR;
+	// 二维码走弹窗展示(不撑开页面布局);手动关掉后按钮变「继续扫码」可再打开,
+	// 扫码阶段结束(成功/失效)时重置。
+	const [qrDismissed, setQrDismissed] = useState(false);
+	useEffect(() => {
+		if (!isQrPhase) setQrDismissed(false);
+	}, [isQrPhase]);
 	const loggedIn = status === BiliLoginStatus.LOGGED_IN;
 	// 与 header AccountChip 同一数据源:snapshot.data.card = { mid, name, face }。
 	const card = loggedIn
@@ -411,8 +418,6 @@ export default function System() {
 							) : null}
 						</div>
 					</div>
-				) : isQrPhase ? (
-					<QrCard data={snapshot?.data} msg={msg} />
 				) : (
 					<div className="text-bn-sm text-bn-text-secondary">
 						{status === BiliLoginStatus.NOT_LOGIN
@@ -433,10 +438,13 @@ export default function System() {
 					<span data-tour="bili-login" className="inline-flex">
 						<Btn
 							variant="primary"
-							disabled={startQr.isPending || isQrPhase || loggedIn}
-							onClick={() => startQr.mutate()}
+							disabled={startQr.isPending || loggedIn}
+							onClick={() => {
+								if (isQrPhase) setQrDismissed(false);
+								else startQr.mutate();
+							}}
 						>
-							{startQr.isPending ? "处理中…" : "发起扫码登录"}
+							{startQr.isPending ? "处理中…" : isQrPhase ? "继续扫码" : "发起扫码登录"}
 						</Btn>
 					</span>
 					<Btn
@@ -458,6 +466,13 @@ export default function System() {
 					</Btn>
 				</div>
 			</GlassBox>
+
+			{/* 二维码弹窗:不撑开页面布局;导览聚光灯经 bili-login-qr 锚点转移到这里 */}
+			{isQrPhase && !qrDismissed ? (
+				<ModalShell onCancel={() => setQrDismissed(true)} width={360} title="扫码登录 B 站">
+					<QrCard data={snapshot?.data} msg={msg} />
+				</ModalShell>
+			) : null}
 
 			{draft ? (
 				<SystemSettingsSection

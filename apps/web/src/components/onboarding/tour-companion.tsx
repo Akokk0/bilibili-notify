@@ -66,16 +66,20 @@ function rectsDiffer(a: DOMRect | null, b: DOMRect | null): boolean {
  *   跨页「带我去」后的头几百 ms 里矩形一直在动 —— 低频轮询会先框错位置
  *   再慢悠悠飘过去;每帧追踪让洞口全程贴着入场动画/smooth 滚动走
  *   (稳态下 rect 不变即不 setState,零渲染开销)。
- * - **锚点优先级链**:anchors 靠前优先,每帧取链上第一个存在于页面的锚点 ——
- *   交互后就地弹出的内容(登录二维码)挂更高优先级,出现即把聚光灯接过去,
- *   洞口沿 transition 滑到新目标上。
- * - **按下即退散该锚点**:用户在当前目标上按下,它的指路使命就完成了,不再聚
- *   回来(否则暗幕会盖住点击弹出的行内内容);链上更高优先级目标出现时聚光灯
- *   照常回归 —— 这正是「点登录按钮 → 灯灭 → 二维码出现 → 灯聚二维码」的链路。
- *   子步推进换锚点链时整体重置。
+ * - **锚点优先级链**:anchors 靠前优先,每帧取链上第一个存在于页面的锚点。
+ *   交互后弹出的弹窗内容(登录二维码/新建表单)挂更高优先级 —— 但**目标在
+ *   modal 内时聚光灯整个让位**(modal 自带遮罩就是聚焦,再套框纯多余,真机
+ *   否掉过「框整卡」方案);弹窗关掉的那一帧回落页面级锚点,聚光灯自动回来。
+ * - **按下即退散该锚点**:用户在页面级目标上按下,它的指路使命就完成了,不再
+ *   聚回来;弹窗内的点击一律不影响退散状态。子步推进换锚点链时整体重置。
  */
 function Spotlight({ anchors }: { anchors: readonly TourAnchor[] }) {
-	const [view, setView] = useState<{ anchor: TourAnchor; rect: DOMRect } | null>(null);
+	const [view, setView] = useState<{
+		anchor: TourAnchor;
+		rect: DOMRect;
+		/** 目标在弹窗里 —— 聚光灯整个让位:modal 自带遮罩就是聚焦,再套框纯多余 */
+		inModal: boolean;
+	} | null>(null);
 	const [dismissedAnchor, setDismissedAnchor] = useState<TourAnchor | null>(null);
 	const lastScrolledRef = useRef<TourAnchor | null>(null);
 	// 调用方每次 render 造新数组,effect 以内容键为准、链在 effect 内重建
@@ -98,24 +102,34 @@ function Spotlight({ anchors }: { anchors: readonly TourAnchor[] }) {
 			if (!found) {
 				setView((prev) => (prev === null ? prev : null));
 			} else {
-				if (lastScrolledRef.current !== found.anchor) {
+				// 目标在弹窗里 → 不渲染(让位),但仍持续解析:弹窗关掉的那一帧回落到
+				// 页面级锚点,聚光灯自动回来。
+				const inModal = found.el.closest('[data-bn="modal"]') !== null;
+				if (!inModal && lastScrolledRef.current !== found.anchor) {
 					lastScrolledRef.current = found.anchor;
 					found.el.scrollIntoView({ block: "center", behavior: "smooth" });
 				}
 				const rect = found.el.getBoundingClientRect();
 				setView((prev) =>
-					prev && prev.anchor === found.anchor && !rectsDiffer(prev.rect, rect)
+					prev &&
+					prev.anchor === found.anchor &&
+					prev.inModal === inModal &&
+					!rectsDiffer(prev.rect, rect)
 						? prev
-						: { anchor: found.anchor, rect },
+						: { anchor: found.anchor, rect, inModal },
 				);
 			}
 			raf = requestAnimationFrame(tick);
 		};
 		raf = requestAnimationFrame(tick);
 		const onPointerDown = (e: Event) => {
+			if (!(e.target instanceof Element)) return;
+			// 弹窗内的交互不退散:洞框的是整张 modal 卡,暗幕不挡任何操作,而填表
+			// 要点很多下 —— 第一下就把灯熄了,后面全程反而没了指引。
+			if (e.target.closest('[data-bn="modal"]')) return;
 			for (const anchor of chain) {
 				const el = document.querySelector(`[data-tour="${anchor}"]`);
-				if (el && e.target instanceof Node && el.contains(e.target)) {
+				if (el?.contains(e.target)) {
 					setDismissedAnchor(anchor);
 					return;
 				}
@@ -128,7 +142,7 @@ function Spotlight({ anchors }: { anchors: readonly TourAnchor[] }) {
 		};
 	}, [anchorsKey]);
 
-	if (!view || view.anchor === dismissedAnchor) return null;
+	if (!view || view.inModal || view.anchor === dismissedAnchor) return null;
 	const { rect } = view;
 	const pad = 6;
 	return createPortal(
@@ -233,7 +247,7 @@ export function TourCompanion() {
 				inert={expanded}
 				data-shown={collapsed ? "true" : "false"}
 				onClick={() => toggleCollapsed(false)}
-				className="bn-tour-tab bn-glass-strong shadow-bn-elev fixed left-0 top-3/4 z-bn-island flex flex-col items-center gap-1 rounded-r-bn-card px-1.5 py-2.5 text-bn-text-secondary hover:text-bn-pink"
+				className="bn-tour-tab bn-glass-strong shadow-bn-elev fixed left-0 top-3/4 z-bn-tour-panel flex flex-col items-center gap-1 rounded-r-bn-card px-1.5 py-2.5 text-bn-text-secondary hover:text-bn-pink"
 			>
 				<Icon.sparkle size={15} />
 				<span className="text-bn-2xs font-medium leading-tight">指</span>
@@ -248,7 +262,7 @@ export function TourCompanion() {
 				aria-hidden={collapsed}
 				inert={collapsed}
 				data-shown={expanded ? "true" : "false"}
-				className="bn-tour-card bn-glass-strong shadow-bn-elev fixed bottom-4 left-4 z-bn-island w-[300px] rounded-bn-card p-3.5 max-sm:right-4 max-sm:w-auto"
+				className="bn-tour-card bn-glass-strong shadow-bn-elev fixed bottom-4 left-4 z-bn-tour-panel w-[300px] rounded-bn-card p-3.5 max-sm:right-4 max-sm:w-auto"
 			>
 				<div className="mb-2 flex items-center gap-1.5">
 					{STEP_ORDER.map((key, i) => {

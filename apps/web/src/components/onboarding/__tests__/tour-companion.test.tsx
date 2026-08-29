@@ -66,6 +66,7 @@ afterEach(() => {
 	cleanup();
 	useAuthStore.getState().clear();
 	for (const el of document.querySelectorAll("[data-tour]")) el.remove();
+	for (const el of document.querySelectorAll('[data-bn="modal"]')) el.remove();
 	vi.restoreAllMocks();
 });
 
@@ -74,6 +75,9 @@ describe("TourCompanion 常驻小卡", () => {
 		await mount({ route: "/" });
 		expect(await screen.findByText("扫码登录 B 站")).toBeTruthy();
 		expect(screen.getByRole("button", { name: "带我去" })).toBeTruthy();
+		// 小卡是步骤指令来源,z 走 tour-panel 档 —— 弹窗遮罩/聚光灯暗幕都压不到它
+		const card = document.querySelector('aside[aria-label="新手导览"]');
+		expect(card?.className).toContain("z-bn-tour-panel");
 	});
 
 	it("没有任何「彻底关闭」控件 —— 跳过指引已退役,只有收起", async () => {
@@ -103,7 +107,44 @@ describe("TourCompanion 常驻小卡", () => {
 		await waitFor(() => expect(screen.queryByTestId("tour-spotlight")).toBeNull());
 	});
 
-	it("聚光灯链上转移:按钮退散后二维码锚点出现 → 聚光灯回归聚新目标", async () => {
+	it("聚光灯目标在弹窗内 → 整个让位(modal 自带遮罩就是聚焦,套框被真机否掉)", async () => {
+		const modal = document.createElement("div");
+		modal.setAttribute("data-bn", "modal");
+		const anchorEl = document.createElement("div");
+		anchorEl.setAttribute("data-tour", "bili-login");
+		modal.appendChild(anchorEl);
+		document.body.appendChild(modal);
+		await mount({ route: "/system" });
+		await screen.findByText("扫码登录 B 站");
+		// 给 rAF 解析留几拍 —— 让位是持续判定,不是初始态碰巧没渲染
+		await new Promise((r) => setTimeout(r, 80));
+		expect(screen.queryByTestId("tour-spotlight")).toBeNull();
+		// 弹窗关掉(锚点随之消失)→ 无回落目标,仍无聚光灯;页面锚点补挂后回落
+		modal.remove();
+		const pageEl = document.createElement("div");
+		pageEl.setAttribute("data-tour", "bili-login");
+		document.body.appendChild(pageEl);
+		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
+	});
+
+	it("弹窗内的点击不影响页面锚点的退散状态", async () => {
+		const pageEl = document.createElement("div");
+		pageEl.setAttribute("data-tour", "bili-login");
+		document.body.appendChild(pageEl);
+		const modal = document.createElement("div");
+		modal.setAttribute("data-bn", "modal");
+		const inModalEl = document.createElement("div");
+		modal.appendChild(inModalEl);
+		document.body.appendChild(modal);
+		await mount({ route: "/system" });
+		await screen.findByText("扫码登录 B 站");
+		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
+		fireEvent.pointerDown(inModalEl);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(screen.getByTestId("tour-spotlight")).toBeTruthy();
+	});
+
+	it("链上让位与回归:按钮退散后二维码弹窗出现(让位),关掉后不再聚已退散的按钮", async () => {
 		const btn = document.createElement("div");
 		btn.setAttribute("data-tour", "bili-login");
 		document.body.appendChild(btn);
@@ -112,11 +153,19 @@ describe("TourCompanion 常驻小卡", () => {
 		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
 		fireEvent.pointerDown(btn);
 		await waitFor(() => expect(screen.queryByTestId("tour-spotlight")).toBeNull());
-		// 点击「发起扫码登录」后二维码渲染出来(挂着链上更高优先级的锚点)
+		// 二维码弹窗出现:链解析到 qr(在 modal 内)→ 继续让位
+		const modal = document.createElement("div");
+		modal.setAttribute("data-bn", "modal");
 		const qr = document.createElement("div");
 		qr.setAttribute("data-tour", "bili-login-qr");
-		document.body.appendChild(qr);
-		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
+		modal.appendChild(qr);
+		document.body.appendChild(modal);
+		await new Promise((r) => setTimeout(r, 80));
+		expect(screen.queryByTestId("tour-spotlight")).toBeNull();
+		// 关掉弹窗 → 回落按钮,但按钮已退散过,不再聚
+		modal.remove();
+		await new Promise((r) => setTimeout(r, 80));
+		expect(screen.queryByTestId("tour-spotlight")).toBeNull();
 	});
 
 	it("不在目标路由:无聚光灯,给「带我去」", async () => {

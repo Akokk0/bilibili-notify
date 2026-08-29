@@ -170,6 +170,7 @@
 	--z-bn-island: 100; /* 草稿岛 */
 	--z-bn-notify: 200; /* toast 那一摞与组件告警条 */
 	--z-bn-modal: 300; /* 弹窗与抽屉 */
+	--z-bn-tour-panel: 330; /* 导览小卡与左缘标签 —— 步骤文案是指令来源,任何暗幕/弹窗都不许压它 */
 	--z-bn-preview: 500; /* 皮肤预览条 —— 试穿时它必须始终看得见 */
 }
 
@@ -205,6 +206,9 @@
 }
 @utility z-bn-modal {
 	z-index: var(--z-bn-modal);
+}
+@utility z-bn-tour-panel {
+	z-index: var(--z-bn-tour-panel);
 }
 @utility z-bn-preview {
 	z-index: var(--z-bn-preview);

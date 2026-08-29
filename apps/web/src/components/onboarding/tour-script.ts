@@ -17,7 +17,9 @@ export type TourAnchor =
 	| "bili-login-qr"
 	| "subs-search"
 	| "adapter-add"
+	| "adapter-form"
 	| "target-add"
+	| "target-form"
 	| "target-list";
 
 /** 锚点词表 —— 页面挂点与脚本引用的交集,测试钉住两边不脱节。 */
@@ -26,7 +28,9 @@ export const TOUR_ANCHORS: readonly TourAnchor[] = [
 	"bili-login-qr",
 	"subs-search",
 	"adapter-add",
+	"adapter-form",
 	"target-add",
+	"target-form",
 	"target-list",
 ];
 
@@ -49,7 +53,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 	login: [
 		{
 			route: "/system",
-			// 二维码一出现聚光灯就从按钮转移过去 —— 链上 qr 优先
+			// 二维码弹窗一出现,链解析到 qr(在 modal 内)→ 聚光灯让位给弹窗;关掉回落按钮
 			anchor: ["bili-login-qr", "bili-login"],
 			title: "扫码登录 B 站",
 			body: "点高亮的「发起扫码登录」,用手机 B 站 App 扫码并确认。登录成功后这里会自动进入下一步。",
@@ -58,13 +62,16 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 	adapter: [
 		{
 			route: "/targets",
+			// 纯说明步也给空间锚定:高亮适配器区 =「接下来在这里动手」
+			anchor: "adapter-add",
 			title: "先选一条 QQ 接入路线",
 			body: "只推给自己 → 选「QQ 官方机器人」,零部署;要推到群里 / 想要图片卡片 → 选「OneBot」。想清楚了点「下一步」。",
 			link: { to: "/about/guide", label: "选型指引" },
 		},
 		{
 			route: "/targets",
-			anchor: "adapter-add",
+			// 表单弹窗打开时链解析到 form(在 modal 内)→ 聚光灯让位;关掉回落「+ 新建」区
+			anchor: ["adapter-form", "adapter-add"],
 			title: "新建推送适配器",
 			body: "点高亮的「+ 新建」,选好平台:QQ 官方填 appId / appSecret(或点表单里的「扫码一键创建」自动回填);OneBot 选连接方式(推荐反向 WS,填一个监听端口)。填完点「保存」。",
 		},
@@ -78,7 +85,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 	target: [
 		{
 			route: "/targets",
-			anchor: "target-add",
+			anchor: ["target-form", "target-add"],
 			title: "添加推送目标",
 			body: "点高亮的「+ 新建」,选刚才的适配器,指定发到哪:OneBot 直接填群号或 QQ 号;QQ 官方要先在 QQ 里给机器人发一句话,然后在表单里选出现的会话。保存后自动进入下一步。",
 		},

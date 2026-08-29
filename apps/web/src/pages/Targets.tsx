@@ -330,7 +330,8 @@ function AdapterEditorModal({
 			width={500}
 			title={mode === "add" ? "新建适配器" : "配置适配器"}
 		>
-			<div className="space-y-2.5">
+			{/* data-tour:弹窗打开后导览聚光灯从「+ 新建」转移到这张表单上 */}
+			<div data-tour="adapter-form" className="space-y-2.5">
 				<SectionBox title="基本" subtitle="适配器代表一个连接实例,可被多个目标共享" accent={tint}>
 					<Field label="平台" code="adapter.platform" required>
 						<div className="flex flex-wrap gap-1.5">
@@ -766,7 +767,8 @@ function TargetEditorModal({
 			width={500}
 			title={mode === "add" ? "新建推送目标" : "配置推送目标"}
 		>
-			<div className="space-y-2.5">
+			{/* data-tour:弹窗打开后导览聚光灯从「+ 新建」转移到这张表单上 */}
+			<div data-tour="target-form" className="space-y-2.5">
 				<SectionBox
 					title="选择适配器"
 					subtitle="目标的平台跟随适配器,连接参数(baseUrl/accessToken)在适配器层维护"
