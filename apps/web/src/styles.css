@@ -93,6 +93,82 @@
 		height 0.25s ease;
 }
 
+/* 导览标签 ⇄ 小卡的 morph 动画(iOS zoom 式:标签展开成卡、卡缩回标签,像
+   上滑回 Home 时 app 缩回图标位)。两个元素**常驻 DOM**,`data-shown` 驱动 ——
+   条件渲染做不出退场帧;可打断全靠 CSS transition 天生从当前渲染值继续
+   (中途再点,直接从半路反向,不跳变)。隐藏侧由组件挂 inert + aria-hidden,
+   这里的 visibility 只负责「动画演完再真正藏起」(退场态带 transition-delay)。
+
+   morph 机制:组件在每次切换前把**对方的布局矩形 pose**(translate+双轴 scale,
+   origin 统一 top left)写进 --bn-tour-to-tab / --bn-tour-to-card,隐藏态的
+   transform 消费它 —— 于是收起=卡沿轨迹缩进标签矩形、标签从卡矩形收回原位,
+   展开完全镜像。同方向的两元素**同曲线同时长**(轨迹重合才读作同一块玻璃),
+   nonuniform scale 的中途扭曲靠交叉淡切遮住(iOS 同款手法):缩小方向淡出压
+   后半程、浮现压中段;展开方向带轻过冲(打开 app 的那点弹),收起标准曲线干脆
+   收进去。position/z 仍由组件的 utility 类出(层守卫),这里只管观感与动效。 */
+/* 交叉淡切时序(真机逐帧校过):**大面(卡)主导可见性**,任意时刻至少一面
+   接近全可见,否则 morph 中段出现「两面都半透明」的空洞,读作两个不相关的
+   动效 —— 展开时卡无 delay 立即快速实体化(标签同步隐去,几何一起飞);
+   收起时卡撑到最后一截才淡,标签提前在卡的缩影**里**浮现出来,正是 iOS
+   缩回 Home 时图标浮现在缩小中的 app 里的那个样子。 */
+.bn-tour-card {
+	transform-origin: top left;
+	transition:
+		transform 360ms cubic-bezier(0.3, 1.15, 0.45, 1),
+		opacity 120ms ease-out,
+		visibility 0s;
+}
+.bn-tour-card[data-shown="false"] {
+	visibility: hidden;
+	pointer-events: none;
+	opacity: 0;
+	transform: var(--bn-tour-to-tab, none);
+	transition:
+		transform 320ms cubic-bezier(0.4, 0, 0.22, 1),
+		opacity 120ms ease-in 200ms,
+		visibility 0s 320ms;
+}
+.bn-tour-tab {
+	/* color 也得在这儿列上 —— 本类无层恒压 utilities,元素上再挂
+	   transition-colors 也轮不到它生效。 */
+	transform-origin: top left;
+	transition:
+		transform 320ms cubic-bezier(0.4, 0, 0.22, 1),
+		opacity 100ms ease-out 100ms,
+		color 150ms ease,
+		visibility 0s;
+}
+.bn-tour-tab[data-shown="false"] {
+	visibility: hidden;
+	pointer-events: none;
+	opacity: 0;
+	transform: var(--bn-tour-to-card, none);
+	transition:
+		transform 360ms cubic-bezier(0.3, 1.15, 0.45, 1),
+		opacity 140ms ease-in,
+		visibility 0s 360ms;
+}
+@media (prefers-reduced-motion: reduce) {
+	/* 减动效 = 短 cross-fade,零位移零缩放。带属性选择器是特异性需要:
+	   media query 本身不加特异性,光写 .bn-tour-card 压不过上面
+	   [data-shown="false"] 里的 morph transform。 */
+	.bn-tour-card,
+	.bn-tour-tab,
+	.bn-tour-card[data-shown="false"],
+	.bn-tour-tab[data-shown="false"] {
+		transition:
+			opacity 180ms ease,
+			visibility 0s;
+		transform: none;
+	}
+	.bn-tour-card[data-shown="false"],
+	.bn-tour-tab[data-shown="false"] {
+		transition:
+			opacity 150ms ease,
+			visibility 0s 150ms;
+	}
+}
+
 /* 灵动岛 dirty 态外圈流光线(grill-me 二轮校准:单色流动 + 砍 pulse)。
    2px bn-pink 细描边沿 pill 边贴边,单色 → 透明 45° 弧,2.4s/圈;panel 展开
    减速到 4s/圈。reduced-motion 完全隐藏。

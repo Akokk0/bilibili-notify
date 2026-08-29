@@ -19,6 +19,10 @@ import { useOnboardingState } from "./use-onboarding-view";
  *   挖洞 —— 四周暗幕聚焦、洞内粉描边,`pointer-events: none` 不锁任何操作;
  * - 位置:fixed 左缘/左下角 —— 右下推送 toast、右上告警、底部居中灵动岛,
  *   左边是唯一空位。小卡 z 走 island 档,暗幕走 scrim 档(在小卡之下)。
+ * - **两态 morph 动画**(styles.css 的 .bn-tour-tab/.bn-tour-card):iOS zoom 式
+ *   「标签展开成卡、卡缩回标签」—— 标签与卡常驻 DOM,切换瞬间把对方的布局
+ *   矩形 pose 写进 CSS 变量,两元素沿同一条几何轨迹互变+中段交叉淡切,读作
+ *   同一块玻璃在变形;CSS transition 天生可打断(中途再点从当前姿态直接反向)。
  */
 
 /** 折叠成左缘小标签的状态 —— per-browser 轻量偏好,localStorage 读写都要兜隐私模式。 */
@@ -107,14 +111,51 @@ function Spotlight({ anchor }: { anchor: TourAnchor }) {
 	);
 }
 
+/** 元素的**布局**矩形(不含 transform)。隐藏侧正停在 morph pose 上,
+ *  getBoundingClientRect 会测到形变后的假矩形;而「临时清 transform 再测」
+ *  更糟 —— rect 调用强制同步重排,把隐藏侧的当前渲染值硬拉到清零后的位置
+ *  (正好是动画终点),随后的 transition 零距离,整个 morph 瞬移(真机踩过)。
+ *  offset 系是纯布局量,天生不含 transform、零副作用;两元素同挂 body 下
+ *  offsetParent 一致,即便 body 被皮肤 transform 化,差值与比值也不受影响。 */
+function measureLayoutRect(el: HTMLElement): {
+	left: number;
+	top: number;
+	width: number;
+	height: number;
+} {
+	return { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight };
+}
+
 export function TourCompanion() {
 	const location = useLocation();
 	const navigate = useNavigate();
 	const [manualPos, setManualPos] = useState<TourPos | null>(null);
+	const tabRef = useRef<HTMLButtonElement>(null);
+	const cardRef = useRef<HTMLElement>(null);
 	// 折叠成左缘小标签(类似女仆 AI 胶囊):导览继续进行、进度照常刷新,只是
 	// 不占屏幕。这是唯一的收纳形态 —— 没有「彻底关闭」。
 	const [collapsed, setCollapsed] = useState(readCollapsed);
 	const toggleCollapsed = (v: boolean) => {
+		// iOS zoom 式 morph:翻转状态**之前**把「对方的矩形 pose」写进 CSS 变量,
+		// 标签与卡沿同一条几何轨迹互变(styles.css 按 data-shown 消费这两个变量)。
+		// 每次点击现测现写 —— resize/内容高度变化都不会留下过时轨迹;切换永远由
+		// 这里触发,所以变量总在动画开始前就位,不需要 fallback。
+		const tab = tabRef.current;
+		const card = cardRef.current;
+		if (tab && card) {
+			const t = measureLayoutRect(tab);
+			const c = measureLayoutRect(card);
+			// jsdom 的 rect 全 0,除零守护顺便兜住极端布局
+			const sx = (a: number, b: number) => (b > 0 ? a / b : 1);
+			card.style.setProperty(
+				"--bn-tour-to-tab",
+				`translate(${t.left - c.left}px, ${t.top - c.top}px) scale(${sx(t.width, c.width)}, ${sx(t.height, c.height)})`,
+			);
+			tab.style.setProperty(
+				"--bn-tour-to-card",
+				`translate(${c.left - t.left}px, ${c.top - t.top}px) scale(${sx(c.width, t.width)}, ${sx(c.height, t.height)})`,
+			);
+		}
 		persistCollapsed(v);
 		setCollapsed(v);
 	};
@@ -135,16 +176,24 @@ export function TourCompanion() {
 	const stepIndex = pos.stepKey === "done" ? STEP_ORDER.length : STEP_ORDER.indexOf(pos.stepKey);
 	const subCount = pos.stepKey === "done" ? 0 : TOUR_SCRIPT[pos.stepKey].length;
 	const pendingTails = view.tails.filter((t) => !t.done);
+	const expanded = !collapsed;
 
-	// 折叠态:只剩左缘小标签(图标+竖排「指引」+活进度),聚光灯一并收起。
-	if (collapsed) {
-		return createPortal(
+	// 标签与卡**都常驻 DOM**:条件渲染做不出退场帧,两态交接动画(styles.css 的
+	// .bn-tour-tab / .bn-tour-card,data-shown 驱动)需要退场那侧活到演完。隐藏侧
+	// inert + aria-hidden 摘出可达性树与焦点链,视觉上由 CSS 的 visibility 延迟藏。
+	return createPortal(
+		<>
+			{expanded && sub?.anchor && onRoute ? <Spotlight anchor={sub.anchor} /> : null}
 			<button
+				ref={tabRef}
 				type="button"
 				data-bn="btn"
 				aria-label="展开新手导览"
+				aria-hidden={expanded}
+				inert={expanded}
+				data-shown={collapsed ? "true" : "false"}
 				onClick={() => toggleCollapsed(false)}
-				className="bn-glass-strong shadow-bn-elev fixed left-0 top-3/4 z-bn-island flex flex-col items-center gap-1 rounded-r-bn-card px-1.5 py-2.5 text-bn-text-secondary transition-colors hover:text-bn-pink"
+				className="bn-tour-tab bn-glass-strong shadow-bn-elev fixed left-0 top-3/4 z-bn-island flex flex-col items-center gap-1 rounded-r-bn-card px-1.5 py-2.5 text-bn-text-secondary hover:text-bn-pink"
 			>
 				<Icon.sparkle size={15} />
 				<span className="text-bn-2xs font-medium leading-tight">指</span>
@@ -152,17 +201,14 @@ export function TourCompanion() {
 				<span className="text-bn-2xs text-bn-text-tertiary">
 					{view.doneCount}/{view.steps.length}
 				</span>
-			</button>,
-			document.body,
-		);
-	}
-
-	return createPortal(
-		<>
-			{sub?.anchor && onRoute ? <Spotlight anchor={sub.anchor} /> : null}
+			</button>
 			<aside
+				ref={cardRef}
 				aria-label="新手导览"
-				className="bn-glass-strong shadow-bn-elev fixed bottom-4 left-4 z-bn-island w-[300px] rounded-bn-card p-3.5 max-sm:right-4 max-sm:w-auto"
+				aria-hidden={collapsed}
+				inert={collapsed}
+				data-shown={expanded ? "true" : "false"}
+				className="bn-tour-card bn-glass-strong shadow-bn-elev fixed bottom-4 left-4 z-bn-island w-[300px] rounded-bn-card p-3.5 max-sm:right-4 max-sm:w-auto"
 			>
 				<div className="mb-2 flex items-center gap-1.5">
 					{STEP_ORDER.map((key, i) => {

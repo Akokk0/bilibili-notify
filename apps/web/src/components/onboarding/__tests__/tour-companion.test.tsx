@@ -118,18 +118,45 @@ describe("TourCompanion 常驻小卡", () => {
 		expect(await screen.findByText("订阅第一个 UP")).toBeTruthy();
 	});
 
-	it("「收起」折叠成左缘标签:卡与聚光灯消失,进度还活在标签上", async () => {
+	it("「收起」折叠成左缘标签:卡摘出可达性树与聚光灯,进度还活在标签上", async () => {
 		const anchorEl = document.createElement("div");
 		anchorEl.setAttribute("data-tour", "bili-login");
 		document.body.appendChild(anchorEl);
 		await mount({ route: "/system" });
 		await screen.findByText("扫码登录 B 站");
 		fireEvent.click(screen.getByRole("button", { name: "收起" }));
-		expect(screen.queryByText("扫码登录 B 站")).toBeNull();
+		// 卡仍在 DOM(退场动画要演完 —— styles.css 按 data-shown 做两态交接),
+		// 但 inert + aria-hidden 把它摘出焦点链与读屏,byRole 于是查不到。
+		const card = document.querySelector('aside[aria-label="新手导览"]');
+		expect(card?.getAttribute("data-shown")).toBe("false");
+		expect(card?.getAttribute("aria-hidden")).toBe("true");
+		expect(card?.hasAttribute("inert")).toBe(true);
+		expect(screen.queryByRole("button", { name: "收起" })).toBeNull();
 		expect(screen.queryByTestId("tour-spotlight")).toBeNull();
 		const tab = screen.getByRole("button", { name: "展开新手导览" });
 		expect(tab.textContent).toContain("0/5");
 		expect(localStorage.getItem("bn-tour-collapsed")).toBe("1");
+	});
+
+	it("morph 轨迹:切换前把对方矩形 pose 写进 CSS 变量(iOS zoom 式互变)", async () => {
+		await mount({ route: "/system" });
+		await screen.findByText("扫码登录 B 站");
+		fireEvent.click(screen.getByRole("button", { name: "收起" }));
+		// styles.css 的隐藏态 transform 消费这两个变量 —— 缺了它们 morph 退化成原地淡入
+		const card = document.querySelector('aside[aria-label="新手导览"]') as HTMLElement;
+		const tab = document.querySelector('button[aria-label="展开新手导览"]') as HTMLElement;
+		expect(card.style.getPropertyValue("--bn-tour-to-tab")).toContain("translate(");
+		expect(card.style.getPropertyValue("--bn-tour-to-tab")).toContain("scale(");
+		expect(tab.style.getPropertyValue("--bn-tour-to-card")).toContain("translate(");
+	});
+
+	it("展开态下标签也常驻 DOM(动画交接的前提),同样被 inert 摘出交互", async () => {
+		await mount({ route: "/" });
+		await screen.findByText("扫码登录 B 站");
+		const tab = document.querySelector('button[aria-label="展开新手导览"]');
+		expect(tab?.getAttribute("data-shown")).toBe("false");
+		expect(tab?.hasAttribute("inert")).toBe(true);
+		expect(screen.queryByRole("button", { name: "展开新手导览" })).toBeNull();
 	});
 
 	it("点左缘标签重新展开", async () => {
