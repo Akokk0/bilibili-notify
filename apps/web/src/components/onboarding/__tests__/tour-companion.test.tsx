@@ -14,6 +14,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useAuthStore } from "../../../store/auth";
+import { useNavStore } from "../../../store/nav";
 import { BiliLoginStatus } from "../../../types/auth";
 
 const apiGet = vi.hoisted(() => vi.fn(async (_path: string) => null as unknown));
@@ -63,6 +64,7 @@ beforeEach(() => {
 	apiPatch.mockReset();
 	apiPatch.mockResolvedValue({});
 	localStorage.clear();
+	useNavStore.setState({ hidden: [], order: [] });
 	// jsdom 没有 scrollIntoView;聚光灯首次锁定目标时会调它
 	Element.prototype.scrollIntoView = vi.fn();
 	// jsdom 不做布局,getClientRects 恒空 —— 聚光灯用它滤掉 display:none 的实例,
@@ -273,6 +275,29 @@ describe("TourCompanion 常驻小卡", () => {
 		);
 		// 页签是此刻唯一被指的操作 —— 引导锁照常铺
 		expect(screen.getByTestId("tour-blocker")).toBeTruthy();
+	});
+
+	/**
+	 * 页签是可以被主人藏起来的(`config/nav.ts` 只钉死了「系统」)。藏掉之后跨页
+	 * 那一步的聚光灯选择器解析不到任何元素 —— 灯不亮、锁也不铺,而小卡还在说
+	 * 「点亮起的页签前往」,指着一个根本不存在的东西。「带我去」按钮已在四轮定稿
+	 * 里退役,于是导览彻底走不下去。这是那个死胡同的降级出口。
+	 */
+	it("目标页签被藏 → 小卡给回「带我去」,不再指一个不存在的页签", async () => {
+		useNavStore.setState({ hidden: ["/targets"] });
+		await mount({ loggedIn: true, route: "/" });
+		await screen.findByText(/先选一条接入路线|接入路线/);
+		expect(screen.queryByText(/点亮起的页签前往/)).toBeNull();
+		const go = screen.getByRole("button", { name: "带我去" });
+		expect(go).toBeTruthy();
+	});
+
+	it("页签没被藏时「带我去」照旧不出现 —— 降级出口只在真死胡同里露面", async () => {
+		mountNavAnchor("/targets");
+		await mount({ loggedIn: true, route: "/" });
+		await screen.findByText(/先选一条接入路线|接入路线/);
+		expect(screen.queryByRole("button", { name: "带我去" })).toBeNull();
+		expect(screen.getByText(/点亮起的页签前往/)).toBeTruthy();
 	});
 
 	it("教程阅读区(/about)只亮灯指路、不锁 —— 点「选型指引」进来要能读", async () => {

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../services/api";
+import { useNavStore } from "../../store/nav";
 import type { GlobalConfig } from "../../types/globals";
 import { Fireworks, StepDoneBadge } from "./celebration";
 import type { OnboardingStepKey, OnboardingView } from "./derive";
@@ -36,6 +37,8 @@ import { useOnboardingState } from "./use-onboarding-view";
  *   自己点页签过去)。四周暗幕聚焦、洞内粉描边,洞外的点击被拦截层吃掉(处于
  *   引导就只做被指的操作);/about 教程阅读区亮灯不锁;逃生口 = 小卡「收起」
  *   (z 在暗幕之上,永远可点);
+ *   唯一的例外是**目标页签被主人藏掉**(nav 偏好只钉死「系统」):此时没有页签
+ *   可指,灯与锁都不铺,「带我去」作为降级出口回到小卡上 —— 否则导览死在这儿;
  * - 位置:fixed 左缘/左下角 —— 右下推送 toast、右上告警、底部居中灵动岛,
  *   左边是唯一空位。小卡 z 走 island 档,暗幕走 scrim 档(在小卡之下)。
  * - **两态 morph 动画**(styles.css 的 .bn-tour-tab/.bn-tour-card):iOS zoom 式
@@ -162,10 +165,17 @@ export function TourCompanion() {
 	// 聚光目标统一成 selector 优先级链:在目标路由上取子步的控件挂点;不在时改聚
 	// 顶栏对应导航页签(「带我去」按钮退役 —— 用户跟着灯自己点页签过去)。
 	const anchorChain = sub?.anchor ? (Array.isArray(sub.anchor) ? sub.anchor : [sub.anchor]) : null;
+	// 页签是可以被主人藏起来的(config/nav.ts 只钉死「系统」)。藏掉之后跨页那一步
+	// 没有页签可指:灯不亮、锁也不铺,小卡却还在说「点亮起的页签前往」—— 指着一个
+	// 不存在的东西,而「带我去」已退役,导览就此死在这儿。降级出口把按钮放回来。
+	const hiddenNav = useNavStore((s) => s.hidden);
+	const navTabHidden = sub != null && !onRoute && hiddenNav.includes(sub.route);
 	const spotlightSelectors = sub
 		? onRoute
 			? (anchorChain?.map((a) => `[data-tour="${a}"]`) ?? null)
-			: [`[data-tour-nav="${sub.route}"]`]
+			: navTabHidden
+				? null
+				: [`[data-tour-nav="${sub.route}"]`]
 		: null;
 	// 教程阅读区亮灯不锁:点「选型指引」进来是要读内容的,锁住连章节都切不了;
 	// 灯仍指着导航页签,读完跟着走。
@@ -320,10 +330,17 @@ export function TourCompanion() {
 						</p>
 						{/* 「带我去」退役:不在目标路由时聚光灯指着顶栏页签,用户自己点过去。
 						    提示独立成行 —— 塞进按钮行会把整行挤爆(真机踩过:收起折成竖排) */}
-						{onRoute ? null : (
+						{onRoute || navTabHidden ? null : (
 							<p className="-mt-1.5 mb-2 text-bn-2xs text-bn-text-tertiary">点亮起的页签前往 →</p>
 						)}
 						<div className="flex flex-wrap items-center gap-2">
+							{/* 降级出口:目标页签被藏起来了,没有灯可跟 —— 只有这时才把退役的
+							    「带我去」放回来,正常情况下仍旧是「跟着灯自己点页签过去」 */}
+							{navTabHidden ? (
+								<Btn size="sm" onClick={() => navigate(sub.route)}>
+									带我去
+								</Btn>
+							) : null}
 							{/* 没有「上一步」—— 流转单向(定案:做完一步不回头,只顺序前进);
 							    说明步(advanceOnRoute)也没有「下一步」,它的流转方式就是抵达 */}
 							{subCount > 1 && pos.subIndex < subCount - 1 && !sub.advanceOnRoute ? (
