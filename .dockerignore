@@ -20,8 +20,11 @@
 *.swp
 
 # Markdown / design assets / logs not needed at build time.
+# 例外:被 web 端 `?raw` 静态导入的 md 是构建产物的一部分,漏进上下文 = Vite 解析
+# 失败,而且只在打镜像时炸(CI 的 build/typecheck 不走 Docker,拦不住)。
 **/*.md
 !apps/CHANGELOG.md
+!apps/web/src/pages/guide/content/*.md
 .bn-design
 
 # Local-only state and secrets from previous runs.
