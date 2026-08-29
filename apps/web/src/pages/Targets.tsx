@@ -262,21 +262,28 @@ function TargetCard({
 					{target.enabled ? null : <span className="ml-1.5 text-bn-text-tertiary">(已停用)</span>}
 				</span>
 				<div className="flex shrink-0 gap-1">
-					<Btn
-						size="sm"
-						variant="ghost"
-						onClick={onTest}
-						disabled={testing === "pending" || !target.enabled || adapterMissing}
-						title="向该目标真实发送一条测试消息"
+					{/* data-tour:导览「发送测试推送」的控件级灯位 —— 只挂在**还没测通**的行上,
+					    聚光灯(querySelector 取文档序第一个)于是指向第一个待测目标 */}
+					<span
+						data-tour={target.testStatus?.ok === true ? undefined : "target-test"}
+						className="inline-flex"
 					>
-						{testing === "pending"
-							? "发送中…"
-							: testing === "ok"
-								? "已送达"
-								: testing === "fail"
-									? "失败"
-									: "测试"}
-					</Btn>
+						<Btn
+							size="sm"
+							variant="ghost"
+							onClick={onTest}
+							disabled={testing === "pending" || !target.enabled || adapterMissing}
+							title="向该目标真实发送一条测试消息"
+						>
+							{testing === "pending"
+								? "发送中…"
+								: testing === "ok"
+									? "已送达"
+									: testing === "fail"
+										? "失败"
+										: "测试"}
+						</Btn>
+					</span>
 					{readOnly ? null : (
 						<>
 							<Btn size="sm" variant="ghost" onClick={onEdit}>
@@ -1739,26 +1746,29 @@ export default function Targets() {
 										) : null}
 									</div>
 									<div className="flex shrink-0 gap-1">
-										<Btn
-											size="sm"
-											variant="ghost"
-											onClick={() => testAdapter(selectedAdapter)}
-											disabled={testing[selectedAdapter.id] === "pending"}
-										>
-											{testing[selectedAdapter.id] === "pending"
-												? selectedAdapter.platform === "webhook"
-													? "发送中…"
-													: "测试中…"
-												: testing[selectedAdapter.id] === "ok"
+										{/* data-tour:导览「测试适配器连通」一步的控件级灯位。包 span 不破坏布局 */}
+										<span data-tour="adapter-test" className="inline-flex">
+											<Btn
+												size="sm"
+												variant="ghost"
+												onClick={() => testAdapter(selectedAdapter)}
+												disabled={testing[selectedAdapter.id] === "pending"}
+											>
+												{testing[selectedAdapter.id] === "pending"
 													? selectedAdapter.platform === "webhook"
-														? "已送达"
-														: "已连通"
-													: testing[selectedAdapter.id] === "fail"
-														? "失败"
-														: selectedAdapter.platform === "webhook"
-															? "发送测试"
-															: "测试"}
-										</Btn>
+														? "发送中…"
+														: "测试中…"
+													: testing[selectedAdapter.id] === "ok"
+														? selectedAdapter.platform === "webhook"
+															? "已送达"
+															: "已连通"
+														: testing[selectedAdapter.id] === "fail"
+															? "失败"
+															: selectedAdapter.platform === "webhook"
+																? "发送测试"
+																: "测试"}
+											</Btn>
+										</span>
 										<Btn
 											size="sm"
 											variant="ghost"

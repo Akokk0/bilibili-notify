@@ -285,16 +285,20 @@ export function TourCompanion() {
 	// 灯仍指着导航页签,读完跟着走。
 	const inReadingZone = location.pathname.startsWith("/about");
 
-	// 抵达即流转:说明步(advanceOnRoute)在用户到达目标路由的那一刻使命完成 ——
-	// 不论走「带我去」还是自己切导航,都直接进入动手子步,聚光灯与文案永远同步
-	// (真机踩过:灯已指到「+ 新建」,小卡还在讲选型)。
-	const arrivedOnInfoStep = sub?.advanceOnRoute === true && onRoute;
+	// 子步自动流转(单向),两个信号:
+	// - 抵达(advanceOnRoute):说明步在用户到达目标路由的那一刻使命完成,直接进入
+	//   动手子步,聚光灯与文案永远同步(真机踩过:灯已指「+ 新建」,小卡还讲选型);
+	// - 达成(doneWhen):探测数据证明子步目标已完成(如适配器已落库),立刻翻页把灯
+	//   移到下一个动作上(真机踩过:保存适配器后灯断档,要自己想起来去点测试)。
+	const subAdvanceReady =
+		(sub?.advanceOnRoute === true && onRoute) ||
+		(sub?.doneWhen != null && view != null && sub.doneWhen(view));
 	useEffect(() => {
-		if (!arrivedOnInfoStep || !pos || pos.stepKey === "done") return;
+		if (!subAdvanceReady || !pos || pos.stepKey === "done") return;
 		if (pos.subIndex < TOUR_SCRIPT[pos.stepKey].length - 1) {
 			setManualPos({ stepKey: pos.stepKey, subIndex: pos.subIndex + 1 });
 		}
-	}, [arrivedOnInfoStep, pos]);
+	}, [subAdvanceReady, pos]);
 
 	if (!visible || !pos || !view) return null;
 

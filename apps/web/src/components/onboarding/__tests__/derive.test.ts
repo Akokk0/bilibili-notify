@@ -57,6 +57,12 @@ describe("deriveOnboarding 步骤判据", () => {
 			}),
 		);
 		expect(stepMap(v).adapter).toBe(false);
+		// 但 hasAdapter 已亮 —— 导览靠它把子步从「新建」翻到「测试连通」,灯不断档
+		expect(v.hasAdapter).toBe(true);
+	});
+
+	it("hasAdapter:没建过任何适配器时为 false", () => {
+		expect(deriveOnboarding(inputs({})).hasAdapter).toBe(false);
 	});
 
 	it("disabled 的 adapter 测过也不算 —— 它不参与推送", () => {

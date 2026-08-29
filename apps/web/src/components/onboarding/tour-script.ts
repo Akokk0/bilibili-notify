@@ -1,4 +1,4 @@
-import type { OnboardingStepKey } from "./derive";
+import type { OnboardingStepKey, OnboardingView } from "./derive";
 
 /**
  * 「带我做」导览脚本(2026-08-29 二轮定案:控件级粒度 + 判据驱动)。
@@ -18,8 +18,10 @@ export type TourAnchor =
 	| "subs-search"
 	| "adapter-add"
 	| "adapter-form"
+	| "adapter-test"
 	| "target-add"
 	| "target-form"
+	| "target-test"
 	| "target-list";
 
 /** 锚点词表 —— 页面挂点与脚本引用的交集,测试钉住两边不脱节。 */
@@ -29,8 +31,10 @@ export const TOUR_ANCHORS: readonly TourAnchor[] = [
 	"subs-search",
 	"adapter-add",
 	"adapter-form",
+	"adapter-test",
 	"target-add",
 	"target-form",
+	"target-test",
 	"target-list",
 ];
 
@@ -50,6 +54,13 @@ export interface TourSubStep {
 	 * 这类子步不给「下一步」按钮(流转方式就是抵达),也不该配 anchor。
 	 */
 	advanceOnRoute?: boolean;
+	/**
+	 * 此子步的目标已达成的判据 —— 成立即自动流转到下一子步(与 advanceOnRoute
+	 * 同为单向自动流转,只是信号来自探测数据而非路由)。给「主步内的中间动作」用:
+	 * 主步判据只认最终结果(如适配器**测通**),而「建好适配器」这一步做完时导览
+	 * 必须立刻把灯移到「测试」上,不能等用户自己想起来。
+	 */
+	doneWhen?: (view: OnboardingView) => boolean;
 	title: string;
 	body: string;
 	/** 深入阅读的站内跳转按钮 —— 复杂讲解(选型表/部署教程)不塞小卡,指去教程页。 */
@@ -80,6 +91,8 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			route: "/targets",
 			// 表单弹窗打开时链解析到 form(在 modal 内)→ 聚光灯让位;关掉回落「+ 新建」区
 			anchor: ["adapter-form", "adapter-add"],
+			// 保存落库的那一刻翻页 —— 灯立刻移到「测试」按钮,不等用户自己想起来
+			doneWhen: (v) => v.hasAdapter,
 			title: "新建推送适配器",
 			body: "点高亮的「+ 新建」,选好平台:QQ 官方填 appId / appSecret(或点表单里的「扫码一键创建」自动回填);OneBot 选连接方式(推荐反向 WS,填一个监听端口)。填完点「保存」。",
 			// 上一子步在抵达时自动翻过 —— 一直待在本页的用户全程见不到它,选型入口在这也挂一份
@@ -87,7 +100,8 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 		},
 		{
 			route: "/targets",
-			anchor: "adapter-add",
+			// 控件级:灯指适配器详情区的「测试」按钮本体;挂点没渲染时回落适配器区
+			anchor: ["adapter-test", "adapter-add"],
 			title: "测试适配器连通",
 			body: "在刚建好的适配器行上点「测试」—— 通过后状态点变绿,并自动进入下一步。失败的话按错误提示排查(OneBot 先确认 NapCat 已连上)。",
 		},
@@ -103,7 +117,8 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 	test: [
 		{
 			route: "/targets",
-			anchor: "target-list",
+			// 控件级:灯指第一个未测通目标行的「测试」按钮;挂点没渲染时回落目标区
+			anchor: ["target-test", "target-list"],
 			title: "发送测试推送",
 			body: "在目标行点「测试」—— QQ 里收到测试消息,推送通道就全线打通了。只差最后一步:订阅要关注的 UP。",
 		},

@@ -112,7 +112,9 @@ describe("锚点与页面挂点不脱节", () => {
 			.join("\n");
 		for (const anchor of TOUR_ANCHORS) {
 			// 挂点被重构删掉时这条会红 —— 导览会静默失去高亮,只有这里拦得住。
-			expect(sources, `data-tour="${anchor}" 不在任何页面上`).toContain(`data-tour="${anchor}"`);
+			// 匹配带引号的词面而非完整 `data-tour="…"`:条件挂点(如 target-test 只挂
+			// 在未测通的行上)的词面在三元表达式里。
+			expect(sources, `"${anchor}" 挂点不在任何页面上`).toContain(`"${anchor}"`);
 		}
 	});
 });

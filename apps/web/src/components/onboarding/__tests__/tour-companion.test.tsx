@@ -242,6 +242,20 @@ describe("TourCompanion 常驻小卡", () => {
 		expect(screen.getByRole("button", { name: "选型指引" })).toBeTruthy();
 	});
 
+	it("适配器已落库(未测通)→ 子步判据对齐:直接站在「测试适配器连通」,灯指测试按钮", async () => {
+		const testBtn = document.createElement("div");
+		testBtn.setAttribute("data-tour", "adapter-test");
+		document.body.appendChild(testBtn);
+		// 保存适配器后的下一拍轮询就是这个状态 —— 灯不许断档(真机踩过)
+		await mount({ loggedIn: true, adapters: [{ id: "a1", enabled: true }], route: "/targets" });
+		expect(await screen.findByText("测试适配器连通")).toBeTruthy();
+		await waitFor(() =>
+			expect(screen.getByTestId("tour-spotlight").getAttribute("data-target")).toBe(
+				'[data-tour="adapter-test"]',
+			),
+		);
+	});
+
 	it("子步只向前翻页:永远没有「上一步」(单向流转定案)", async () => {
 		await mount({ loggedIn: true, route: "/targets" });
 		await screen.findByText("新建推送适配器");

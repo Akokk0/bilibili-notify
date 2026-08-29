@@ -29,6 +29,12 @@ export interface OnboardingView {
 	tails: { key: OnboardingTailKey; done: boolean }[];
 	/** 第一个未完成步;全绿为 null。导览靠它高亮「现在该做哪步」。 */
 	activeKey: OnboardingStepKey | null;
+	/**
+	 * 建过适配器(不问测没测通)。adapter 主步的**子步**判据:保存适配器的那一刻
+	 * 导览要从「新建」翻到「测试连通」并把灯移到测试按钮上 —— 主步 done(测通)
+	 * 太晚,灯会在建完到测通之间断档(真机踩过)。
+	 */
+	hasAdapter: boolean;
 	doneCount: number;
 	allDone: boolean;
 }
@@ -55,6 +61,7 @@ export function deriveOnboarding(inputs: OnboardingInputs): OnboardingView {
 			{ key: "ai", done: inputs.modules?.ai === true },
 		],
 		activeKey: steps.find((s) => !s.done)?.key ?? null,
+		hasAdapter: inputs.adapters.length > 0,
 		doneCount,
 		allDone: doneCount === steps.length,
 	};
