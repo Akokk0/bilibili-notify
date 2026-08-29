@@ -92,6 +92,11 @@ function rectsDiffer(a: readonly DOMRect[], b: readonly DOMRect[]): boolean {
 
 const SPOT_PAD = 6;
 
+/** 连着这么多帧测下来纹丝不动,就认为这一段静止了,可以降频。 */
+const STABLE_FRAMES_TO_IDLE = 30;
+/** 静止期的巡查间隔(ms)。仍要巡 —— 有些位移不发任何事件(比如脚本改样式)。 */
+const IDLE_MEASURE_MS = 100;
+
 /**
  * 聚光灯挖洞层:rAF 每帧跟随目标矩形。lock 时洞外铺拦截块吃掉指针操作
  * (**引导锁**:亮灯期间只有洞内目标可点,小卡/弹窗 z 在暗幕之上不受拦;
@@ -141,34 +146,63 @@ export function Spotlight({ selectors, lock }: { selectors: readonly string[]; l
 			}
 			return null;
 		};
-		const tick = () => {
+		// 一次完整测量。返回「这次和上次不一样吗」—— 用来决定还要不要逐帧盯着。
+		let last: { selector: string; rects: DOMRect[]; inModal: boolean } | null = null;
+		const measure = (): boolean => {
 			const found = resolve();
 			if (!found) {
-				setView((prev) => (prev === null ? prev : null));
-			} else {
-				const pageEls = found.els.filter((el) => el.closest('[data-bn="modal"]') === null);
-				const inModal = pageEls.length === 0;
-				if (inModal) {
-					// 让位期间清掉退散:点目标 → 弹窗 → 取消回来,灯要重新指路
-					setDismissedSelector((prev) => (prev === null ? prev : null));
-				} else if (lastScrolledRef.current !== found.selector) {
-					lastScrolledRef.current = found.selector;
-					pageEls[0].scrollIntoView({ block: "center", behavior: "smooth" });
-				}
-				const rects = pageEls.map((el) => el.getBoundingClientRect());
-				setView((prev) =>
-					prev &&
-					prev.selector === found.selector &&
-					prev.inModal === inModal &&
-					!rectsDiffer(prev.rects, rects)
-						? prev
-						: { selector: found.selector, rects, inModal },
-				);
+				const changed = last !== null;
+				last = null;
+				if (changed) setView(null);
+				return changed;
+			}
+			const pageEls = found.els.filter((el) => el.closest('[data-bn="modal"]') === null);
+			const inModal = pageEls.length === 0;
+			if (inModal) {
+				// 让位期间清掉退散:点目标 → 弹窗 → 取消回来,灯要重新指路
+				setDismissedSelector((prev) => (prev === null ? prev : null));
+			} else if (lastScrolledRef.current !== found.selector) {
+				lastScrolledRef.current = found.selector;
+				pageEls[0].scrollIntoView({ block: "center", behavior: "smooth" });
+			}
+			const rects = pageEls.map((el) => el.getBoundingClientRect());
+			const changed =
+				last === null ||
+				last.selector !== found.selector ||
+				last.inModal !== inModal ||
+				rectsDiffer(last.rects, rects);
+			if (changed) {
+				last = { selector: found.selector, rects, inModal };
+				setView(last);
+			}
+			return changed;
+		};
+
+		// 测量要查全文档 + 逐元素 getBoundingClientRect(强制同步重排)。动的时候
+		// 必须逐帧跟(洞要贴着做 morph/滚动的目标),但导览常常整段时间就那么停着 ——
+		// 停着还每帧重排,图表页、日志长列表都白白陪跑。所以静下来就降到低频巡查,
+		// 任何可能让目标位移的信号立刻打回逐帧。
+		let stableFrames = 0;
+		let lastMeasuredAt = 0;
+		const wake = () => {
+			stableFrames = 0;
+		};
+		const tick = (now: number) => {
+			const idle = stableFrames >= STABLE_FRAMES_TO_IDLE;
+			if (!idle || now - lastMeasuredAt >= IDLE_MEASURE_MS) {
+				lastMeasuredAt = now;
+				stableFrames = measure() ? 0 : stableFrames + 1;
 			}
 			raf = requestAnimationFrame(tick);
 		};
 		raf = requestAnimationFrame(tick);
+		// 捕获阶段:目标可能坐在某个内部滚动容器里,scroll 不冒泡。
+		window.addEventListener("scroll", wake, true);
+		window.addEventListener("resize", wake);
+		document.addEventListener("transitionend", wake, true);
+		document.addEventListener("animationend", wake, true);
 		const onPointerDown = (e: Event) => {
+			wake();
 			if (!(e.target instanceof Element)) return;
 			// 弹窗内的交互不退散:填表要点很多下 —— 第一下就把灯熄了,
 			// 后面全程反而没了指引。
@@ -187,6 +221,10 @@ export function Spotlight({ selectors, lock }: { selectors: readonly string[]; l
 		return () => {
 			cancelAnimationFrame(raf);
 			document.removeEventListener("pointerdown", onPointerDown, true);
+			window.removeEventListener("scroll", wake, true);
+			window.removeEventListener("resize", wake);
+			document.removeEventListener("transitionend", wake, true);
+			document.removeEventListener("animationend", wake, true);
 		};
 	}, [selectorsKey]);
 

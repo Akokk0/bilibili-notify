@@ -163,6 +163,32 @@ describe("TourCompanion 常驻小卡", () => {
 	});
 
 	/**
+	 * 聚光灯静止后会降频(每帧全文档查询 + getBoundingClientRect 是强制同步重排,
+	 * 导览常常整段停着,停着还逐帧重排等于让图表页/长列表白白陪跑)。降频只准影响
+	 * **多久测一次**,不准让洞跟丢 —— 有些位移不发任何事件(脚本直接改样式),低频
+	 * 巡查是那种情况唯一的兜底。
+	 */
+	it("降频之后洞照样跟着目标走 —— 没有任何事件也要跟上", async () => {
+		const anchorEl = document.createElement("div");
+		anchorEl.setAttribute("data-tour", "bili-login");
+		anchorEl.getBoundingClientRect = () => new DOMRect(10, 10, 40, 20);
+		document.body.appendChild(anchorEl);
+		await mount({ route: "/system" });
+		await screen.findByText("扫码登录 B 站");
+		await waitFor(() =>
+			expect(screen.getByTestId("tour-spot-frame").getAttribute("x")).toBe(String(10 - 6)),
+		);
+		// 静止够久 → 进低频(要熬过 STABLE_FRAMES_TO_IDLE 帧,别缩这个等待:等不够
+		// 就还在逐帧路径上,这条测试会变成空跑的假绿)
+		await new Promise((r) => setTimeout(r, 800));
+		anchorEl.getBoundingClientRect = () => new DOMRect(200, 120, 40, 20);
+		await waitFor(
+			() => expect(screen.getByTestId("tour-spot-frame").getAttribute("x")).toBe(String(200 - 6)),
+			{ timeout: 3000 },
+		);
+	});
+
+	/**
 	 * `animationend` 会冒泡。徽章里那颗玻璃胶囊是皮肤的常见挂钩(styles.css 自带
 	 * bn-anim-aura 之类会落在玻璃面上),子元素的动画一结束就冒到 portal 根上,
 	 * 把整块徽章提前卸掉 —— 2.2 秒的提示变成一闪而过。
