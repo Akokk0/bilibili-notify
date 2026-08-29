@@ -78,22 +78,34 @@
 	border-radius: var(--radius-lg);
 }
 
-/* 新手导览的聚光灯挖洞层(TourCompanion 的 Spotlight 按目标控件矩形定位)。
-   巨型 box-shadow 把洞外压暗、洞口粉描边;`position: fixed` 与 z 由组件的
-   utility 类出(本文件的层守卫不许无层类写 position),这里只管观感。
-   组件用 rAF 每帧喂新矩形,这里的短 transition 只做柔化 —— 时长压在 0.15s:
-   入场动画/滚动中的目标每帧都在动,过渡太长洞口会明显拖后。 */
+/* 新手导览的聚光灯(onboarding/spotlight.tsx):一整张 SVG —— 全屏暗幕 rect 配
+   mask 挖洞,每洞再描一圈粉框。box-shadow 单洞方案摊不开「同名挂点多实例一起亮」
+   (暗幕会叠加、互相盖洞)。`position: fixed` 与 z 由组件的 utility 类出(本文件
+   的层守卫不许无层类写 position),这里只管观感。
+   组件用 rAF 每帧喂新矩形,rect 几何(SVG2 起是 CSS 属性)的短 transition 只做
+   柔化 —— 时长压在 0.15s:入场动画/滚动中的目标每帧都在动,过渡太长洞口拖后。 */
 .bn-tour-spotlight {
-	border: 2px solid var(--color-bn-pink);
-	border-radius: var(--radius-lg);
-	box-shadow: 0 0 0 100vmax color-mix(in srgb, #000 45%, transparent);
 	/* 挂载淡入 —— 暗幕突现很生硬(收起再展开、退散后回归都走重新挂载) */
 	animation: bn-tour-spot-in 0.25s ease-out;
+}
+.bn-tour-spotlight rect {
 	transition:
-		top 0.15s ease-out,
-		left 0.15s ease-out,
+		x 0.15s ease-out,
+		y 0.15s ease-out,
 		width 0.15s ease-out,
 		height 0.15s ease-out;
+}
+.bn-tour-shade {
+	fill: color-mix(in srgb, #000 45%, transparent);
+}
+/* 洞与描边框的圆角跟皮肤圆角轴 —— rx 是 SVG2 几何属性,CSS 可写 */
+.bn-tour-hole,
+.bn-tour-frame {
+	rx: var(--radius-lg);
+}
+.bn-tour-frame {
+	stroke: var(--color-bn-pink);
+	stroke-width: 2;
 }
 @keyframes bn-tour-spot-in {
 	from {

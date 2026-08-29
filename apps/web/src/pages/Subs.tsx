@@ -14,6 +14,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { TourSpot } from "../components/onboarding/spotlight";
 import { ApiError, api } from "../services/api";
 import { makeEmptySubscription, type PushTarget, type Subscription } from "../types/domain";
 import { copyToClipboard } from "../utils/clipboard";
@@ -679,9 +680,9 @@ export default function Subs() {
 						</Btn>
 					</div>
 				) : null}
-				{/* data-tour:导览「订阅第一个 UP」的页面级灯位 —— 搜索框(subs-search)住在
-				    弹窗里,弹窗没开时导览得有个恒在的目标可指;开了弹窗聚光灯自动让位 */}
-				<span data-tour="subs-add" className="inline-flex">
+				{/* 导览「订阅第一个 UP」的页面级灯位 —— 搜索框(subs-search)住在弹窗里,
+				    弹窗没开时导览得有个恒在的目标可指;开了弹窗聚光灯自动让位 */}
+				<TourSpot anchor="subs-add">
 					<Btn
 						variant="primary"
 						size="sm"
@@ -690,7 +691,7 @@ export default function Subs() {
 					>
 						添加
 					</Btn>
-				</span>
+				</TourSpot>
 			</div>
 
 			{groupNames.length > 0 || groupCounts.ungrouped > 0 ? (

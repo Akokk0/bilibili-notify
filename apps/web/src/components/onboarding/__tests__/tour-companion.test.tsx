@@ -61,6 +61,9 @@ beforeEach(() => {
 	localStorage.clear();
 	// jsdom 没有 scrollIntoView;聚光灯首次锁定目标时会调它
 	Element.prototype.scrollIntoView = vi.fn();
+	// jsdom 不做布局,getClientRects 恒空 —— 聚光灯用它滤掉 display:none 的实例,
+	// 这里默认给所有元素一个盒,单个测试可在具体元素上覆盖为空来模拟隐藏。
+	Element.prototype.getClientRects = () => [new DOMRect(0, 0, 24, 24)] as unknown as DOMRectList;
 });
 
 afterEach(() => {
@@ -116,8 +119,9 @@ describe("TourCompanion 常驻小卡", () => {
 		await screen.findByText("扫码登录 B 站");
 		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
 		// 洞外指针操作被吃掉 —— 引导模式下只允许做被指的那一步;洞内无遮挡
+		// (块数 = 视口减洞集的矩形分割结果,几何相关,只钉「确实铺了」)
 		const blocker = screen.getByTestId("tour-blocker");
-		expect(blocker.querySelectorAll(".pointer-events-auto").length).toBe(4);
+		expect(blocker.querySelectorAll(".pointer-events-auto").length).toBeGreaterThan(0);
 		fireEvent.pointerDown(anchorEl);
 		await waitFor(() => expect(screen.queryByTestId("tour-blocker")).toBeNull());
 	});
@@ -170,7 +174,7 @@ describe("TourCompanion 常驻小卡", () => {
 		expect(screen.getByTestId("tour-spotlight")).toBeTruthy();
 	});
 
-	it("链上让位与回归:按钮退散后二维码弹窗出现(让位),关掉后不再聚已退散的按钮", async () => {
+	it("退散过弹窗即复原:点按钮(退散)→ 弹窗让位 → 取消关掉 → 灯重新聚回按钮", async () => {
 		const btn = document.createElement("div");
 		btn.setAttribute("data-tour", "bili-login");
 		document.body.appendChild(btn);
@@ -179,7 +183,7 @@ describe("TourCompanion 常驻小卡", () => {
 		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
 		fireEvent.pointerDown(btn);
 		await waitFor(() => expect(screen.queryByTestId("tour-spotlight")).toBeNull());
-		// 二维码弹窗出现:链解析到 qr(在 modal 内)→ 继续让位
+		// 二维码弹窗出现:链解析到 qr(在 modal 内)→ 让位,同时清掉退散
 		const modal = document.createElement("div");
 		modal.setAttribute("data-bn", "modal");
 		const qr = document.createElement("div");
@@ -188,10 +192,13 @@ describe("TourCompanion 常驻小卡", () => {
 		document.body.appendChild(modal);
 		await new Promise((r) => setTimeout(r, 80));
 		expect(screen.queryByTestId("tour-spotlight")).toBeNull();
-		// 关掉弹窗 → 回落按钮,但按钮已退散过,不再聚
+		// 用户取消弹窗 → 回落按钮,灯要重新指路(真机踩过:取消后灯永远不回来)
 		modal.remove();
-		await new Promise((r) => setTimeout(r, 80));
-		expect(screen.queryByTestId("tour-spotlight")).toBeNull();
+		await waitFor(() =>
+			expect(screen.getByTestId("tour-spotlight").getAttribute("data-target")).toBe(
+				'[data-tour="bili-login"]',
+			),
+		);
 	});
 
 	it("不在目标路由:聚光灯改照顶栏对应页签(页内锚点在也不聚它)", async () => {
@@ -256,20 +263,31 @@ describe("TourCompanion 常驻小卡", () => {
 		);
 	});
 
-	it("空态主 CTA 优先于常驻小按钮:两个新建入口同在时灯指 CTA(链上排前)", async () => {
+	it("同名挂点多实例(左栏按钮+空态 CTA)是等价入口 —— 灯一起亮,一洞不落", async () => {
 		const railBtn = document.createElement("div");
 		railBtn.setAttribute("data-tour", "adapter-add");
 		document.body.appendChild(railBtn);
 		const cta = document.createElement("div");
-		cta.setAttribute("data-tour", "adapter-add-cta");
+		cta.setAttribute("data-tour", "adapter-add");
 		document.body.appendChild(cta);
 		await mount({ loggedIn: true, route: "/targets" });
 		await screen.findByText("新建推送适配器");
-		await waitFor(() =>
-			expect(screen.getByTestId("tour-spotlight").getAttribute("data-target")).toBe(
-				'[data-tour="adapter-add-cta"]',
-			),
-		);
+		await waitFor(() => expect(screen.getAllByTestId("tour-spot-frame").length).toBe(2));
+	});
+
+	it("display:none 的同名实例不开洞 —— 响应式双形态的隐藏份曾在视口原点画出一枚粉弧", async () => {
+		const visible = document.createElement("div");
+		visible.setAttribute("data-tour", "adapter-add");
+		document.body.appendChild(visible);
+		const hiddenEl = document.createElement("div");
+		hiddenEl.setAttribute("data-tour", "adapter-add");
+		// 实例级覆盖模拟 display:none(无盒)
+		(hiddenEl as unknown as { getClientRects: () => DOMRectList }).getClientRects = () =>
+			[] as unknown as DOMRectList;
+		document.body.appendChild(hiddenEl);
+		await mount({ loggedIn: true, route: "/targets" });
+		await screen.findByText("新建推送适配器");
+		await waitFor(() => expect(screen.getAllByTestId("tour-spot-frame").length).toBe(1));
 	});
 
 	it("子步只向前翻页:永远没有「上一步」(单向流转定案)", async () => {

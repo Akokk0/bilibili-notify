@@ -24,6 +24,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { Field, Picker, TInput, TNum, TSelect } from "../components/forms";
+import { TourSpot } from "../components/onboarding/spotlight";
 import { QQQrBindButton } from "../components/qq-qr-bind";
 import { ApiError, api } from "../services/api";
 import {
@@ -262,12 +263,9 @@ function TargetCard({
 					{target.enabled ? null : <span className="ml-1.5 text-bn-text-tertiary">(已停用)</span>}
 				</span>
 				<div className="flex shrink-0 gap-1">
-					{/* data-tour:导览「发送测试推送」的控件级灯位 —— 只挂在**还没测通**的行上,
-					    聚光灯(querySelector 取文档序第一个)于是指向第一个待测目标 */}
-					<span
-						data-tour={target.testStatus?.ok === true ? undefined : "target-test"}
-						className="inline-flex"
-					>
+					{/* 导览「发送测试推送」的控件级灯位 —— 只挂在**还没测通**的行上,
+					    待测的每一行一起亮(同名实例=等价入口) */}
+					<TourSpot anchor={target.testStatus?.ok === true ? undefined : "target-test"}>
 						<Btn
 							size="sm"
 							variant="ghost"
@@ -283,7 +281,7 @@ function TargetCard({
 										? "失败"
 										: "测试"}
 						</Btn>
-					</span>
+					</TourSpot>
 					{readOnly ? null : (
 						<>
 							<Btn size="sm" variant="ghost" onClick={onEdit}>
@@ -1697,12 +1695,12 @@ export default function Targets() {
 							<div className="mb-4 text-bn-xs text-bn-text-tertiary">
 								先新建一个适配器(QQ 官方机器人 / OneBot / Webhook),再为它配置推送目标。
 							</div>
-							{/* data-tour:空态的主 CTA,导览灯位优先于左栏小按钮(链上排前) */}
-							<span data-tour="adapter-add-cta" className="inline-flex">
+							{/* 与左栏「+ 新建」同名挂点 —— 同名实例是等价入口,聚光灯一起亮 */}
+							<TourSpot anchor="adapter-add">
 								<Btn variant="primary" size="sm" onClick={startNewAdapter}>
 									+ 新建适配器
 								</Btn>
-							</span>
+							</TourSpot>
 						</div>
 					) : (
 						<>
@@ -1752,8 +1750,8 @@ export default function Targets() {
 										) : null}
 									</div>
 									<div className="flex shrink-0 gap-1">
-										{/* data-tour:导览「测试适配器连通」一步的控件级灯位。包 span 不破坏布局 */}
-										<span data-tour="adapter-test" className="inline-flex">
+										{/* 导览「测试适配器连通」一步的控件级灯位 */}
+										<TourSpot anchor="adapter-test">
 											<Btn
 												size="sm"
 												variant="ghost"
@@ -1774,7 +1772,7 @@ export default function Targets() {
 																? "发送测试"
 																: "测试"}
 											</Btn>
-										</span>
+										</TourSpot>
 										<Btn
 											size="sm"
 											variant="ghost"
@@ -1812,7 +1810,7 @@ export default function Targets() {
 										</div>
 									</div>
 									{selectedAdapter.platform === "webhook" ? null : (
-										<span data-tour="target-add" className="inline-flex">
+										<TourSpot anchor="target-add">
 											<Btn
 												size="sm"
 												variant="outline"
@@ -1820,7 +1818,7 @@ export default function Targets() {
 											>
 												+ 新建推送目标
 											</Btn>
-										</span>
+										</TourSpot>
 									)}
 								</div>
 								{selectedAdapter.platform === "webhook" ? (
@@ -1846,9 +1844,9 @@ export default function Targets() {
 									</div>
 								) : selectedTargets.length === 0 ? (
 									<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-										{/* data-tour:空态主 CTA,导览灯位优先于右上小按钮(链上排前) */}
+										{/* 与右上「+ 新建推送目标」同名挂点 —— 等价入口,聚光灯一起亮 */}
 										<AddCard
-											data-tour="target-add-cta"
+											data-tour="target-add"
 											label="新建推送目标"
 											hint="绑定到当前适配器"
 											className="min-h-22 bg-bn-surface"

@@ -21,6 +21,7 @@ import {
 	TNum,
 	TSelect,
 } from "../components/forms";
+import { TourSpot } from "../components/onboarding/spotlight";
 import { PUSH_TONE } from "../config/push-kinds";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
@@ -434,8 +435,8 @@ export default function System() {
 				{actionError ? <ErrorNote className="mt-2.5">操作失败：{actionError}</ErrorNote> : null}
 
 				<div className="mt-3.5 flex flex-wrap gap-2 border-t border-bn-border-subtle pt-3">
-					{/* data-tour:「带我做」导览的高亮挂点(TourCompanion) */}
-					<span data-tour="bili-login" className="inline-flex">
+					{/* 「带我做」导览的高亮挂点 */}
+					<TourSpot anchor="bili-login">
 						<Btn
 							variant="primary"
 							disabled={startQr.isPending || loggedIn}
@@ -446,7 +447,7 @@ export default function System() {
 						>
 							{startQr.isPending ? "处理中…" : isQrPhase ? "继续扫码" : "发起扫码登录"}
 						</Btn>
-					</span>
+					</TourSpot>
 					<Btn
 						variant="outline"
 						disabled={refresh.isPending || !loggedIn}
