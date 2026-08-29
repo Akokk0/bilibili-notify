@@ -12,7 +12,7 @@ export function ChapterPush() {
 	return (
 		<div>
 			<GdP>
-				这一章覆盖进度卡的第三、四、五步:接好推送通道 → 指定目标 → 测试毕业。 还没想好走哪条路?先看
+				这一章覆盖导览的第二、三、四步:接好推送适配器 → 指定目标 → 测试打通。 还没想好走哪条路?先看
 				<Link to="/about/guide" className="text-bn-pink hover:underline">
 					总览的选型表
 				</Link>
@@ -42,7 +42,7 @@ export function ChapterPush() {
 				<li>
 					创建成功后 appId / appSecret 自动回填进表单,<b>点「保存」</b>落盘(不保存不生效)。
 				</li>
-				<li>保存后在适配器上点「测试」,通过则进度卡第三步变绿。</li>
+				<li>保存后在适配器上点「测试」,通过则导览「适配器」一步变绿。</li>
 			</GdSteps>
 			<WarnNote className="mb-2">
 				轻量 bot 的边界:仅创建者 C2C 私聊可用、不能拉群、无审核环节;每个 QQ 号最多创建 5
@@ -81,7 +81,7 @@ export function ChapterPush() {
 					这两个 openid <b>不是群号 / QQ 号,没法手填</b> —— 先在 QQ 里给机器人发一句话 (群里 @
 					它,或私聊它),BN 收到入站事件后会在目标表单里给出可选的会话。
 				</li>
-				<li>在目标上点「测试」,QQ 里收到消息即毕业。</li>
+				<li>在目标上点「测试」,QQ 里收到消息即通道打通。</li>
 			</GdSteps>
 			<GdP>
 				其他已知行为:网关每约 30 分钟主动要求重连一次,日志里的 RECONNECT
@@ -170,7 +170,7 @@ export function ChapterPush() {
 					添加推送目标:群聊填群号(<GdK>groupId</GdK>),私聊填 QQ 号(<GdK>userId</GdK>) ——
 					协议端路线可以直接手填。
 				</li>
-				<li>在目标上点「测试」,QQ 里收到消息即毕业。</li>
+				<li>在目标上点「测试」,QQ 里收到消息即通道打通。</li>
 			</GdSteps>
 			<GdP>
 				已知行为:<b>带图消息发送慢是正常的</b> —— 协议端要先把图上传到 QQ 图床,实测经常超过 15 秒,BN
@@ -186,14 +186,17 @@ export function ChapterPush() {
 				同样点「测试」验证。
 			</GdP>
 
-			<GdH2>毕业检查</GdH2>
+			<GdH2>通道验收</GdH2>
 			<GdP>
 				回到
 				<Link to="/targets" className="text-bn-pink hover:underline">
 					推送目标
 				</Link>
-				页,在目标行点「测试」—— QQ(或 webhook 端)收到测试消息,首页进度卡即全绿毕业 🎉 之后订阅 UP
-				的动态与开播就会自动推送到这里。
+				页,在目标行点「测试」—— QQ(或 webhook 端)收到测试消息,通道就全线打通了。最后一步:去
+				<Link to="/about/guide/subs" className="text-bn-pink hover:underline">
+					订阅
+				</Link>
+				想关注的 UP(记得勾上刚建好的推送目标),订阅上即毕业 🎉
 			</GdP>
 		</div>
 	);
