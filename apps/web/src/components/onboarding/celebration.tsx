@@ -18,7 +18,12 @@ export function StepDoneBadge({ text, onDone }: { text: string; onDone: () => vo
 			data-testid="tour-done-badge"
 			aria-hidden
 			className="bn-tour-done pointer-events-none fixed left-1/2 top-1/2 z-bn-tour-panel"
-			onAnimationEnd={onDone}
+			// animationend 会冒泡:里面那颗玻璃胶囊是皮肤最爱挂动画的面(bn-anim-aura
+			// 之类),它一演完就会冒上来把整块徽章提前卸掉,2.2 秒变一闪而过。
+			onAnimationEnd={(e) => {
+				if (e.currentTarget !== e.target) return;
+				onDone();
+			}}
 		>
 			<span className="bn-glass-strong shadow-bn-elev flex items-center gap-2.5 whitespace-nowrap rounded-bn-pill px-6 py-3 text-bn-lg font-bold text-bn-text-primary">
 				<span className="grid h-7 w-7 place-items-center rounded-full bg-bn-success-text text-bn-base text-bn-on-solid">
@@ -64,12 +69,21 @@ export function Fireworks({ onDone }: { onDone: () => void }) {
 		const endTimer = setTimeout(() => onDoneRef.current(), FIREWORK_DURATION_MS);
 		if (!canvas || !ctx) return () => clearTimeout(endTimer);
 
-		const dpr = window.devicePixelRatio || 1;
-		const w = window.innerWidth;
-		const h = window.innerHeight;
-		canvas.width = w * dpr;
-		canvas.height = h * dpr;
-		ctx.scale(dpr, dpr);
+		// 视口尺寸每帧现取:只在挂载时量一次的话,演出中途转屏/改窗口就会让 canvas
+		// 的位图停在旧尺寸被 CSS 拉伸(炸点偏移、clearRect 清不干净留下拖影)。
+		let w = window.innerWidth;
+		let h = window.innerHeight;
+		const fitCanvas = () => {
+			const dpr = window.devicePixelRatio || 1;
+			w = window.innerWidth;
+			h = window.innerHeight;
+			canvas.width = w * dpr;
+			canvas.height = h * dpr;
+			// 尺寸一改 canvas 的变换矩阵就复位了,scale 每次都要重新落。
+			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+		};
+		fitCanvas();
+		window.addEventListener("resize", fitCanvas);
 
 		const themePink = getComputedStyle(document.documentElement)
 			.getPropertyValue("--color-bn-pink")
@@ -126,6 +140,7 @@ export function Fireworks({ onDone }: { onDone: () => void }) {
 			clearTimeout(endTimer);
 			for (const t of burstTimers) clearTimeout(t);
 			cancelAnimationFrame(raf);
+			window.removeEventListener("resize", fitCanvas);
 		};
 	}, []);
 

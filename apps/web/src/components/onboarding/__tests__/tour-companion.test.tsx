@@ -162,6 +162,40 @@ describe("TourCompanion 常驻小卡", () => {
 		});
 	});
 
+	/**
+	 * `animationend` 会冒泡。徽章里那颗玻璃胶囊是皮肤的常见挂钩(styles.css 自带
+	 * bn-anim-aura 之类会落在玻璃面上),子元素的动画一结束就冒到 portal 根上,
+	 * 把整块徽章提前卸掉 —— 2.2 秒的提示变成一闪而过。
+	 *
+	 * 事件名用带前缀的那个:React 靠 `style.animation` 在不在来挑事件名,jsdom 的
+	 * CSSStyleDeclaration 没有它,于是 React 实际监听的是 `webkitAnimationEnd`,
+	 * `fireEvent.animationEnd` 派发的标准名压根进不了处理器(空跑的假测试)。
+	 */
+	it("完成徽章只认自己那段动画结束 —— 子元素冒泡上来的不算", async () => {
+		const anchorEl = document.createElement("div");
+		anchorEl.setAttribute("data-tour", "bili-login");
+		document.body.appendChild(anchorEl);
+		await mount({
+			subs: [{ id: "s1" }],
+			adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+			targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
+			route: "/system",
+		});
+		await screen.findByText("扫码登录 B 站");
+		act(() => {
+			useAuthStore.setState({ snapshot: { status: BiliLoginStatus.LOGGED_IN, msg: "" } });
+		});
+		const badge = await screen.findByTestId("tour-done-badge");
+		const endAnimation = (el: Element) =>
+			act(() => {
+				el.dispatchEvent(new Event("webkitAnimationEnd", { bubbles: true }));
+			});
+		endAnimation(badge.firstElementChild as HTMLElement);
+		expect(screen.queryByTestId("tour-done-badge")).toBeTruthy();
+		endAnimation(badge);
+		await waitFor(() => expect(screen.queryByTestId("tour-done-badge")).toBeNull());
+	});
+
 	it("聚光灯:在目标路由且锚点元素存在时渲染挖洞层", async () => {
 		const anchorEl = document.createElement("div");
 		anchorEl.setAttribute("data-tour", "bili-login");
