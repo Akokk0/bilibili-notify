@@ -1,10 +1,7 @@
-import { Btn, GlassPanel, Pill, StatusDot } from "@bilibili-notify/ui";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { GlassPanel, Pill, StatusDot } from "@bilibili-notify/ui";
 import type { ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useOnboardingState } from "../../components/onboarding/use-onboarding-view";
-import { api } from "../../services/api";
-import type { GlobalConfig } from "../../types/globals";
 import { ChapterPush } from "./chapter-push";
 import { ChapterAi, ChapterLogin, ChapterOverview, ChapterRender, ChapterSubs } from "./chapters";
 
@@ -29,12 +26,7 @@ const CHAPTERS: { key: string; title: string; body: ReactNode }[] = [
 export function Guide() {
 	const { chapter } = useParams<{ chapter: string }>();
 	const current = CHAPTERS.find((c) => c.key === (chapter ?? "overview")) ?? CHAPTERS[0];
-	const { view, ready, dismissed } = useOnboardingState();
-	const qc = useQueryClient();
-	const reopen = useMutation({
-		mutationFn: () => api.patch<GlobalConfig>("/api/globals", { onboardingDismissed: false }),
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
-	});
+	const { view, ready } = useOnboardingState();
 
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
@@ -49,12 +41,6 @@ export function Guide() {
 							{view.doneCount}/{view.steps.length}
 						</Pill>
 					</span>
-				) : null}
-				{/* 收起过导览的唯一回头路:拨回 server 侧开关,左下角小卡随即回来。 */}
-				{ready && dismissed && view?.allDone !== true ? (
-					<Btn size="sm" variant="outline" onClick={() => reopen.mutate()}>
-						重新开启指引
-					</Btn>
 				) : null}
 			</div>
 			<div className="grid gap-4 xl:grid-bn-rail">

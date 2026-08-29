@@ -1,28 +1,24 @@
 import { Btn, Icon, StatusDot } from "@bilibili-notify/ui";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { api } from "../../services/api";
-import type { GlobalConfig } from "../../types/globals";
 import type { OnboardingStepKey } from "./derive";
 import { reconcileTourPos, TOUR_SCRIPT, type TourAnchor, type TourPos } from "./tour-script";
 import { useOnboardingState } from "./use-onboarding-view";
 
 /**
- * 新手导览左下角小卡(2026-08-29 三轮定案:唯一载体,不再有首页大卡)。
+ * 新手导览(2026-08-29 四轮定稿:**永久常驻,无关闭态**)。
  *
- * - **未毕业且未收起就常驻** —— 新用户进面板第一眼就被接住,无需任何入口按钮;
+ * - 两态之间切换:左缘小标签(默认给毕业老用户的形态,活进度徽标)⇄ 展开
+ *   小卡;「跳过/彻底关闭」概念整个退役 —— 老用户也常驻标签,server 的
+ *   dismissed 字段与 /guide 的「重新开启」一并删除;
  * - 主步切换全自动:判据(activeKey)前进/回退都跟(reconcileTourPos),配合
- *   useOnboardingState 的 3s 轮询兜底,「做完自动进下一步」不依赖任何单条
- *   更新链路恰好有推送;主步内子步(选型说明/分解动作)手动翻页;
- * - **聚光灯**:有锚点的子步在目标路由上时,Spotlight 按控件矩形挖洞 ——
- *   四周暗幕聚焦、洞内粉描边,`pointer-events: none` 不锁任何操作
- *   (主人拍板「表单也不用丢」,暗幕只管视觉不管交互);
- * - 「跳过指引」与毕业「完成」都 PATCH `globals.onboardingDismissed`(存
- *   server,跨设备一致);/guide 页有「重新开启」把它拨回来;
- * - 位置:fixed 左下角 —— 右下推送 toast、右上告警、底部居中灵动岛,左下是
- *   唯一空位。小卡 z 走 island 档,暗幕走 scrim 档(在小卡之下)。
+ *   useOnboardingState 的 3s 轮询兜底(毕业即停),「做完自动进下一步」不依赖
+ *   任何单条更新链路恰好有推送;主步内子步(选型说明/分解动作)手动翻页;
+ * - **聚光灯**:展开态下有锚点的子步在目标路由上时,Spotlight 按控件矩形
+ *   挖洞 —— 四周暗幕聚焦、洞内粉描边,`pointer-events: none` 不锁任何操作;
+ * - 位置:fixed 左缘/左下角 —— 右下推送 toast、右上告警、底部居中灵动岛,
+ *   左边是唯一空位。小卡 z 走 island 档,暗幕走 scrim 档(在小卡之下)。
  */
 
 /** 折叠成左缘小标签的状态 —— per-browser 轻量偏好,localStorage 读写都要兜隐私模式。 */
@@ -114,23 +110,17 @@ function Spotlight({ anchor }: { anchor: TourAnchor }) {
 export function TourCompanion() {
 	const location = useLocation();
 	const navigate = useNavigate();
-	const qc = useQueryClient();
 	const [manualPos, setManualPos] = useState<TourPos | null>(null);
 	// 折叠成左缘小标签(类似女仆 AI 胶囊):导览继续进行、进度照常刷新,只是
-	// 不占屏幕;与「跳过指引」(server dismissed,彻底关闭)是两回事。
+	// 不占屏幕。这是唯一的收纳形态 —— 没有「彻底关闭」。
 	const [collapsed, setCollapsed] = useState(readCollapsed);
 	const toggleCollapsed = (v: boolean) => {
 		persistCollapsed(v);
 		setCollapsed(v);
 	};
-	// poll 的启停条件(未收起且未毕业)在 hook 内部判,这里只声明意图。
-	const { view, dismissed, ready } = useOnboardingState({ poll: true });
-	const visible = ready && view !== null && !dismissed;
-
-	const dismiss = useMutation({
-		mutationFn: () => api.patch<GlobalConfig>("/api/globals", { onboardingDismissed: true }),
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
-	});
+	// poll 的启停条件(未毕业)在 hook 内部判,这里只声明意图。
+	const { view, ready } = useOnboardingState({ poll: true });
+	const visible = ready && view !== null;
 
 	const pos = useMemo(
 		() => (view ? reconcileTourPos(manualPos, view.activeKey) : null),
@@ -213,8 +203,8 @@ export function TourCompanion() {
 								))}
 							</p>
 						) : null}
-						<Btn size="sm" onClick={() => dismiss.mutate()}>
-							完成
+						<Btn size="sm" onClick={() => toggleCollapsed(true)}>
+							收起
 						</Btn>
 					</>
 				) : sub ? (
@@ -255,14 +245,6 @@ export function TourCompanion() {
 								className="text-bn-2xs text-bn-text-tertiary transition-colors hover:text-bn-text-primary"
 							>
 								收起
-							</button>
-							<button
-								type="button"
-								data-bn="btn"
-								onClick={() => dismiss.mutate()}
-								className="text-bn-2xs text-bn-text-tertiary transition-colors hover:text-bn-text-primary"
-							>
-								跳过指引
 							</button>
 						</div>
 					</>

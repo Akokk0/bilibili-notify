@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
 /**
- * 新手导览小卡(三轮定案:左下角常驻唯一载体)的行为:
- * 未毕业且未收起 → 常驻;收起(server 的 onboardingDismissed)→ 不渲染;
- * 「跳过指引」与毕业「完成」都 PATCH onboardingDismissed;有锚点的子步在
- * 目标路由上时渲染聚光灯挖洞层。判据跟随逻辑在 tour.test.ts。
+ * 新手导览(四轮定稿:**永久常驻,无关闭态**)的行为:
+ * 标签 ⇄ 小卡两态切换,毕业老用户也常驻标签;「跳过/彻底关闭」概念已退役
+ * (server dismissed 字段一并删除)。有锚点的子步在目标路由上时渲染聚光灯
+ * 挖洞层;折叠时聚光灯一并收起。判据跟随逻辑在 tour.test.ts。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -24,7 +24,6 @@ interface Scenario {
 	subs?: unknown[];
 	adapters?: unknown[];
 	targets?: unknown[];
-	dismissed?: boolean;
 	route?: string;
 }
 
@@ -39,7 +38,6 @@ async function mount(s: Scenario) {
 		if (path === "/api/subs") return s.subs ?? [];
 		if (path === "/api/adapters") return s.adapters ?? [];
 		if (path === "/api/targets") return s.targets ?? [];
-		if (path === "/api/globals") return { onboardingDismissed: s.dismissed === true };
 		if (path === "/api/health")
 			return { status: "ok", uptime: 1, modules: { image: false, ai: false } };
 		return null;
@@ -78,19 +76,11 @@ describe("TourCompanion 常驻小卡", () => {
 		expect(screen.getByRole("button", { name: "带我去" })).toBeTruthy();
 	});
 
-	it("收起过(server 状态):不渲染", async () => {
-		await mount({ dismissed: true, route: "/" });
-		await new Promise((r) => setTimeout(r, 20));
-		expect(screen.queryByLabelText("新手导览")).toBeNull();
-	});
-
-	it("「跳过指引」PATCH onboardingDismissed 到 server", async () => {
+	it("没有任何「彻底关闭」控件 —— 跳过指引已退役,只有收起", async () => {
 		await mount({ route: "/system" });
 		await screen.findByText("扫码登录 B 站");
-		fireEvent.click(screen.getByRole("button", { name: "跳过指引" }));
-		await waitFor(() =>
-			expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboardingDismissed: true }),
-		);
+		expect(screen.queryByRole("button", { name: "跳过指引" })).toBeNull();
+		expect(screen.getByRole("button", { name: "收起" })).toBeTruthy();
 	});
 
 	it("聚光灯:在目标路由且锚点元素存在时渲染挖洞层", async () => {
@@ -141,7 +131,7 @@ describe("TourCompanion 常驻小卡", () => {
 		expect(localStorage.getItem("bn-tour-collapsed")).toBe("0");
 	});
 
-	it("全绿:祝贺态列未开启尾巴,点「完成」PATCH 收窗", async () => {
+	it("全绿(毕业老用户):照样常驻 —— 祝贺态列未开启尾巴,点「收起」变标签", async () => {
 		await mount({
 			loggedIn: true,
 			subs: [{ id: "s1" }],
@@ -150,9 +140,9 @@ describe("TourCompanion 常驻小卡", () => {
 		});
 		expect(await screen.findByText(/全部配置完成/)).toBeTruthy();
 		expect(screen.getByText(/图片渲染/)).toBeTruthy();
-		fireEvent.click(screen.getByRole("button", { name: "完成" }));
-		await waitFor(() =>
-			expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboardingDismissed: true }),
-		);
+		fireEvent.click(screen.getByRole("button", { name: "收起" }));
+		const tab = screen.getByRole("button", { name: "展开新手导览" });
+		expect(tab.textContent).toContain("5/5");
+		expect(apiPatch).not.toHaveBeenCalled();
 	});
 });

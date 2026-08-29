@@ -28,7 +28,6 @@ async function mount(path: string) {
 		if (p === "/api/subs") return [{ id: "s1" }];
 		if (p === "/api/adapters") return [];
 		if (p === "/api/targets") return [];
-		if (p === "/api/globals") return { onboardingDismissed: false };
 		if (p === "/api/health")
 			return { status: "ok", uptime: 1, modules: { image: false, ai: false } };
 		return null;
