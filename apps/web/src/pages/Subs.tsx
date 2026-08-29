@@ -769,7 +769,9 @@ export default function Subs() {
 				    最小高度**必须与 UpCard 引同一个常量**:grid 同行的高度取最高那张卡,
 				    这个值从前只写在这儿,于是它一被筛掉,整排 UP 卡就矮一截(真机 220→199)。 */}
 				{!q.trim() && filterId === "all" && !groupFilter ? (
+					// data-tour 与右上「添加」同名 —— 同名实例是等价入口,导览聚光灯一起亮
 					<AddCard
+						data-tour="subs-add"
 						label="添加 UP 主"
 						hint="UID / 名称搜索"
 						className={`${UP_CARD_MIN_H} focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink`}
