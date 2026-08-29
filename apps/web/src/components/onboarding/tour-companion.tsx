@@ -3,13 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { OnboardingStepKey } from "./derive";
-import {
-	reconcileTourPos,
-	TOUR_SCRIPT,
-	TOUR_STEP_ORDER,
-	type TourAnchor,
-	type TourPos,
-} from "./tour-script";
+import { reconcileTourPos, TOUR_SCRIPT, TOUR_STEP_ORDER, type TourPos } from "./tour-script";
 import { useOnboardingState } from "./use-onboarding-view";
 
 /**
@@ -22,9 +16,11 @@ import { useOnboardingState } from "./use-onboarding-view";
  *   不回跳;配合 useOnboardingState 的 3s 轮询兜底(毕业即停),「做完自动进
  *   下一步」不依赖任何单条更新链路恰好有推送;主步内子步(选型说明/分解动作)
  *   靠「下一步」或抵达目标路由(advanceOnRoute)流转,同样没有回头路;
- * - **聚光灯即引导锁**:展开态下有锚点的子步在目标路由上时,Spotlight 按控件
- *   矩形挖洞 —— 四周暗幕聚焦、洞内粉描边,洞外的点击被拦截层吃掉(处于引导
- *   就只做被指的操作);逃生口 = 小卡「收起」(z 在暗幕之上,永远可点);
+ * - **聚光灯即引导锁**:展开态下 Spotlight 按目标矩形挖洞 —— 在目标路由上聚
+ *   子步的控件挂点;不在时聚顶栏对应导航页签(「带我去」按钮退役,用户跟着灯
+ *   自己点页签过去)。四周暗幕聚焦、洞内粉描边,洞外的点击被拦截层吃掉(处于
+ *   引导就只做被指的操作);/about 教程阅读区亮灯不锁;逃生口 = 小卡「收起」
+ *   (z 在暗幕之上,永远可点);
  * - 位置:fixed 左缘/左下角 —— 右下推送 toast、右上告警、底部居中灵动岛,
  *   左边是唯一空位。小卡 z 走 island 档,暗幕走 scrim 档(在小卡之下)。
  * - **两态 morph 动画**(styles.css 的 .bn-tour-tab/.bn-tour-card):iOS zoom 式
@@ -66,43 +62,47 @@ function rectsDiffer(a: DOMRect | null, b: DOMRect | null): boolean {
 }
 
 /**
- * 聚光灯挖洞层:rAF 每帧跟随目标控件矩形,巨型 box-shadow 把洞外压暗;
+ * 聚光灯挖洞层:rAF 每帧跟随目标矩形,巨型 box-shadow 把洞外压暗;lock 时
  * 洞外同时铺四块拦截层吃掉指针操作(**引导锁**:亮灯期间只有洞内目标可点,
- * 小卡/弹窗 z 在暗幕之上不受拦)。`fixed` 由 utility 出 —— styles.css 的
- * 层守卫不许无层类写 position。
+ * 小卡/弹窗 z 在暗幕之上不受拦;/about 教程阅读区亮灯不锁,不然读不了)。
+ * 目标用 CSS selector 描述 —— 页内控件(`[data-tour=…]`)与顶栏导航页签
+ * (`[data-tour-nav=…]`,「带我去」按钮退役后 off-route 的指路方式)共用同一套
+ * 解析/退散/让位机制。`fixed` 由 utility 出 —— styles.css 的层守卫不许
+ * 无层类写 position。
  *
  * - **每帧追而不是低频轮询**:目标页面带 bn-anim-page-in 入场位移动画,
  *   跨页「带我去」后的头几百 ms 里矩形一直在动 —— 低频轮询会先框错位置
  *   再慢悠悠飘过去;每帧追踪让洞口全程贴着入场动画/smooth 滚动走
  *   (稳态下 rect 不变即不 setState,零渲染开销)。
- * - **锚点优先级链**:anchors 靠前优先,每帧取链上第一个存在于页面的锚点。
+ * - **selector 优先级链**:靠前优先,每帧取链上第一个存在于页面的目标。
  *   交互后弹出的弹窗内容(登录二维码/新建表单)挂更高优先级 —— 但**目标在
  *   modal 内时聚光灯整个让位**(modal 自带遮罩就是聚焦,再套框纯多余,真机
  *   否掉过「框整卡」方案);弹窗关掉的那一帧回落页面级锚点,聚光灯自动回来。
- * - **按下即退散该锚点**:用户在页面级目标上按下,它的指路使命就完成了,不再
- *   聚回来;弹窗内的点击一律不影响退散状态。子步推进换锚点链时整体重置。
+ * - **按下即退散该目标**:用户在页面级目标上按下,它的指路使命就完成了,不再
+ *   聚回来;弹窗内的点击一律不影响退散状态。子步推进换链时整体重置。
  */
-function Spotlight({ anchors }: { anchors: readonly TourAnchor[] }) {
+function Spotlight({ selectors, lock }: { selectors: readonly string[]; lock: boolean }) {
 	const [view, setView] = useState<{
-		anchor: TourAnchor;
+		selector: string;
 		rect: DOMRect;
 		/** 目标在弹窗里 —— 聚光灯整个让位:modal 自带遮罩就是聚焦,再套框纯多余 */
 		inModal: boolean;
 	} | null>(null);
-	const [dismissedAnchor, setDismissedAnchor] = useState<TourAnchor | null>(null);
-	const lastScrolledRef = useRef<TourAnchor | null>(null);
+	const [dismissedSelector, setDismissedSelector] = useState<string | null>(null);
+	const lastScrolledRef = useRef<string | null>(null);
 	// 调用方每次 render 造新数组,effect 以内容键为准、链在 effect 内重建
-	const anchorsKey = anchors.join("|");
+	// (selector 里不会出现 `|`:挂点词表与站内路由都没有它)
+	const selectorsKey = selectors.join("|");
 
 	useEffect(() => {
-		const chain = anchorsKey.split("|") as TourAnchor[];
-		setDismissedAnchor(null);
+		const chain = selectorsKey.split("|");
+		setDismissedSelector(null);
 		lastScrolledRef.current = null;
 		let raf = 0;
-		const resolve = (): { anchor: TourAnchor; el: Element } | null => {
-			for (const anchor of chain) {
-				const el = document.querySelector(`[data-tour="${anchor}"]`);
-				if (el) return { anchor, el };
+		const resolve = (): { selector: string; el: Element } | null => {
+			for (const selector of chain) {
+				const el = document.querySelector(selector);
+				if (el) return { selector, el };
 			}
 			return null;
 		};
@@ -114,18 +114,18 @@ function Spotlight({ anchors }: { anchors: readonly TourAnchor[] }) {
 				// 目标在弹窗里 → 不渲染(让位),但仍持续解析:弹窗关掉的那一帧回落到
 				// 页面级锚点,聚光灯自动回来。
 				const inModal = found.el.closest('[data-bn="modal"]') !== null;
-				if (!inModal && lastScrolledRef.current !== found.anchor) {
-					lastScrolledRef.current = found.anchor;
+				if (!inModal && lastScrolledRef.current !== found.selector) {
+					lastScrolledRef.current = found.selector;
 					found.el.scrollIntoView({ block: "center", behavior: "smooth" });
 				}
 				const rect = found.el.getBoundingClientRect();
 				setView((prev) =>
 					prev &&
-					prev.anchor === found.anchor &&
+					prev.selector === found.selector &&
 					prev.inModal === inModal &&
 					!rectsDiffer(prev.rect, rect)
 						? prev
-						: { anchor: found.anchor, rect, inModal },
+						: { selector: found.selector, rect, inModal },
 				);
 			}
 			raf = requestAnimationFrame(tick);
@@ -136,10 +136,10 @@ function Spotlight({ anchors }: { anchors: readonly TourAnchor[] }) {
 			// 弹窗内的交互不退散:填表要点很多下 —— 第一下就把灯熄了,
 			// 后面全程反而没了指引。
 			if (e.target.closest('[data-bn="modal"]')) return;
-			for (const anchor of chain) {
-				const el = document.querySelector(`[data-tour="${anchor}"]`);
+			for (const selector of chain) {
+				const el = document.querySelector(selector);
 				if (el?.contains(e.target)) {
-					setDismissedAnchor(anchor);
+					setDismissedSelector(selector);
 					return;
 				}
 			}
@@ -149,9 +149,9 @@ function Spotlight({ anchors }: { anchors: readonly TourAnchor[] }) {
 			cancelAnimationFrame(raf);
 			document.removeEventListener("pointerdown", onPointerDown, true);
 		};
-	}, [anchorsKey]);
+	}, [selectorsKey]);
 
-	if (!view || view.inModal || view.anchor === dismissedAnchor) return null;
+	if (!view || view.inModal || view.selector === dismissedSelector) return null;
 	const { rect } = view;
 	const pad = 6;
 	const hole = {
@@ -165,31 +165,39 @@ function Spotlight({ anchors }: { anchors: readonly TourAnchor[] }) {
 			{/* 引导锁:暗幕即禁区 —— 洞外四块拦截层吃掉指针操作,只留洞内目标可点
 			    (处于引导就只做被指的那一步)。小卡/标签(z-bn-tour-panel)与弹窗
 			    (z-bn-modal)都在暗幕之上不受拦,逃生口 = 小卡「收起」;滚动不拦,
-			    rAF 每帧追着目标,洞口与拦截块一起跟。 */}
-			<div
-				data-testid="tour-blocker"
-				aria-hidden
-				className="pointer-events-none fixed inset-0 z-bn-scrim"
-			>
+			    rAF 每帧追着目标,洞口与拦截块一起跟。lock=false(教程阅读区)时
+			    只亮灯指路、不锁。 */}
+			{lock ? (
 				<div
-					className="pointer-events-auto absolute inset-x-0 top-0"
-					style={{ height: Math.max(0, hole.top) }}
-				/>
-				<div
-					className="pointer-events-auto absolute inset-x-0 bottom-0"
-					style={{ top: Math.max(0, hole.top + hole.height) }}
-				/>
-				<div
-					className="pointer-events-auto absolute left-0"
-					style={{ top: hole.top, height: hole.height, width: Math.max(0, hole.left) }}
-				/>
-				<div
-					className="pointer-events-auto absolute right-0"
-					style={{ top: hole.top, height: hole.height, left: Math.max(0, hole.left + hole.width) }}
-				/>
-			</div>
+					data-testid="tour-blocker"
+					aria-hidden
+					className="pointer-events-none fixed inset-0 z-bn-scrim"
+				>
+					<div
+						className="pointer-events-auto absolute inset-x-0 top-0"
+						style={{ height: Math.max(0, hole.top) }}
+					/>
+					<div
+						className="pointer-events-auto absolute inset-x-0 bottom-0"
+						style={{ top: Math.max(0, hole.top + hole.height) }}
+					/>
+					<div
+						className="pointer-events-auto absolute left-0"
+						style={{ top: hole.top, height: hole.height, width: Math.max(0, hole.left) }}
+					/>
+					<div
+						className="pointer-events-auto absolute right-0"
+						style={{
+							top: hole.top,
+							height: hole.height,
+							left: Math.max(0, hole.left + hole.width),
+						}}
+					/>
+				</div>
+			) : null}
 			<div
 				data-testid="tour-spotlight"
+				data-target={view.selector}
 				aria-hidden
 				className="bn-tour-spotlight pointer-events-none fixed z-bn-scrim"
 				style={{
@@ -265,8 +273,17 @@ export function TourCompanion() {
 	const onRoute = sub ? location.pathname === sub.route : false;
 	// 提出来给闭包用 —— JSX 条件里的 narrowing 进不了 onClick 闭包
 	const subLink = sub?.link ?? null;
-	// 锚点统一成优先级链(单值包成单元素链),给 Spotlight 消费
+	// 聚光目标统一成 selector 优先级链:在目标路由上取子步的控件挂点;不在时改聚
+	// 顶栏对应导航页签(「带我去」按钮退役 —— 用户跟着灯自己点页签过去)。
 	const anchorChain = sub?.anchor ? (Array.isArray(sub.anchor) ? sub.anchor : [sub.anchor]) : null;
+	const spotlightSelectors = sub
+		? onRoute
+			? (anchorChain?.map((a) => `[data-tour="${a}"]`) ?? null)
+			: [`[data-tour-nav="${sub.route}"]`]
+		: null;
+	// 教程阅读区亮灯不锁:点「选型指引」进来是要读内容的,锁住连章节都切不了;
+	// 灯仍指着导航页签,读完跟着走。
+	const inReadingZone = location.pathname.startsWith("/about");
 
 	// 抵达即流转:说明步(advanceOnRoute)在用户到达目标路由的那一刻使命完成 ——
 	// 不论走「带我去」还是自己切导航,都直接进入动手子步,聚光灯与文案永远同步
@@ -292,7 +309,9 @@ export function TourCompanion() {
 	// inert + aria-hidden 摘出可达性树与焦点链,视觉上由 CSS 的 visibility 延迟藏。
 	return createPortal(
 		<>
-			{expanded && anchorChain && onRoute ? <Spotlight anchors={anchorChain} /> : null}
+			{expanded && spotlightSelectors ? (
+				<Spotlight selectors={spotlightSelectors} lock={!inReadingZone} />
+			) : null}
 			<button
 				ref={tabRef}
 				type="button"
@@ -369,10 +388,9 @@ export function TourCompanion() {
 							{sub.body}
 						</p>
 						<div className="flex items-center gap-2">
+							{/* 「带我去」退役:不在目标路由时聚光灯指着顶栏页签,用户自己点过去 */}
 							{onRoute ? null : (
-								<Btn size="sm" onClick={() => navigate(sub.route)}>
-									带我去
-								</Btn>
+								<span className="text-bn-2xs text-bn-text-tertiary">点亮起的页签前往 →</span>
 							)}
 							{/* 没有「上一步」—— 流转单向(定案:做完一步不回头,只顺序前进);
 							    说明步(advanceOnRoute)也没有「下一步」,它的流转方式就是抵达 */}

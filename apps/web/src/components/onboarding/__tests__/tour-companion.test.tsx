@@ -67,15 +67,26 @@ afterEach(() => {
 	cleanup();
 	useAuthStore.getState().clear();
 	for (const el of document.querySelectorAll("[data-tour]")) el.remove();
+	for (const el of document.querySelectorAll("[data-tour-nav]")) el.remove();
 	for (const el of document.querySelectorAll('[data-bn="modal"]')) el.remove();
 	vi.restoreAllMocks();
 });
+
+/** 模拟顶栏导航页签挂点(真身在 header.tsx 的 NavLink 上)。 */
+function mountNavAnchor(to: string): HTMLElement {
+	const el = document.createElement("a");
+	el.setAttribute("data-tour-nav", to);
+	document.body.appendChild(el);
+	return el;
+}
 
 describe("TourCompanion 常驻小卡", () => {
 	it("新用户(未收起未毕业):常驻显示当前步,无需任何入口", async () => {
 		await mount({ route: "/" });
 		expect(await screen.findByText("扫码登录 B 站")).toBeTruthy();
-		expect(screen.getByRole("button", { name: "带我去" })).toBeTruthy();
+		// 「带我去」已退役 —— 跨页由聚光灯照导航页签指路,小卡只留一句提示
+		expect(screen.queryByRole("button", { name: "带我去" })).toBeNull();
+		expect(screen.getByText(/点亮起的页签前往/)).toBeTruthy();
 		// 小卡是步骤指令来源,z 走 tour-panel 档 —— 弹窗遮罩/聚光灯暗幕都压不到它
 		const card = document.querySelector('aside[aria-label="新手导览"]');
 		expect(card?.className).toContain("z-bn-tour-panel");
@@ -183,23 +194,44 @@ describe("TourCompanion 常驻小卡", () => {
 		expect(screen.queryByTestId("tour-spotlight")).toBeNull();
 	});
 
-	it("不在目标路由:无聚光灯,给「带我去」", async () => {
+	it("不在目标路由:聚光灯改照顶栏对应页签(页内锚点在也不聚它)", async () => {
 		const anchorEl = document.createElement("div");
 		anchorEl.setAttribute("data-tour", "bili-login");
 		document.body.appendChild(anchorEl);
+		mountNavAnchor("/system");
 		await mount({ route: "/" });
 		await screen.findByText("扫码登录 B 站");
-		expect(screen.queryByTestId("tour-spotlight")).toBeNull();
+		await waitFor(() =>
+			expect(screen.getByTestId("tour-spotlight").getAttribute("data-target")).toBe(
+				'[data-tour-nav="/system"]',
+			),
+		);
+		// 页签是此刻唯一被指的操作 —— 引导锁照常铺
+		expect(screen.getByTestId("tour-blocker")).toBeTruthy();
 	});
 
-	it("adapter 主步 · 出发前(在系统页):选型说明步只给「带我去」,没有下一步", async () => {
+	it("教程阅读区(/about)只亮灯指路、不锁 —— 点「选型指引」进来要能读", async () => {
+		mountNavAnchor("/system");
+		await mount({ route: "/about/guide" });
+		await screen.findByText("扫码登录 B 站");
+		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
+		expect(screen.queryByTestId("tour-blocker")).toBeNull();
+	});
+
+	it("adapter 主步 · 出发前(在系统页):说明步聚光目标页签,没有下一步", async () => {
+		mountNavAnchor("/targets");
 		await mount({ loggedIn: true, route: "/system" });
 		expect(await screen.findByText("先选一条接入路线")).toBeTruthy();
-		expect(screen.getByRole("button", { name: "带我去" })).toBeTruthy();
 		// 复杂讲解不塞小卡 —— 选型细节收进教程页,小卡只给跳转按钮
 		expect(screen.getByRole("button", { name: "选型指引" })).toBeTruthy();
-		// 说明步的流转方式就是抵达目标页,不给「下一步」按钮
+		// 说明步的流转方式就是点亮起的页签抵达,不给「下一步」按钮
+		expect(screen.getByText(/点亮起的页签前往/)).toBeTruthy();
 		expect(screen.queryByRole("button", { name: "下一步" })).toBeNull();
+		await waitFor(() =>
+			expect(screen.getByTestId("tour-spotlight").getAttribute("data-target")).toBe(
+				'[data-tour-nav="/targets"]',
+			),
+		);
 	});
 
 	it("adapter 主步 · 抵达即流转:身在 /targets 时说明步直接翻过,灯与文案同步进动手子步", async () => {

@@ -88,6 +88,21 @@ describe("TOUR_SCRIPT 脚本完整性", () => {
 });
 
 describe("锚点与页面挂点不脱节", () => {
+	it("每个子步 route 都有顶栏页签可聚(off-route 指路的前提;「带我去」已退役)", async () => {
+		const { NAV_ITEMS } = await import("../../../config/nav");
+		const navTos = new Set(NAV_ITEMS.map((i) => i.to));
+		for (const steps of Object.values(TOUR_SCRIPT)) {
+			for (const sub of steps) {
+				expect(navTos.has(sub.route), `${sub.route} 不在导航表,聚光灯无页签可指`).toBe(true);
+			}
+		}
+		// header 的 NavLink 真挂了指路挂点 —— 被重构删掉时这里拦住
+		const { readFileSync } = await import("node:fs");
+		const { resolve } = await import("node:path");
+		const headerSrc = readFileSync(resolve(__dirname, "../../header.tsx"), "utf8");
+		expect(headerSrc).toContain("data-tour-nav={t.to}");
+	});
+
 	it("词表里每个锚点都真实挂在某个页面源码上", async () => {
 		const { readFileSync } = await import("node:fs");
 		const { resolve } = await import("node:path");

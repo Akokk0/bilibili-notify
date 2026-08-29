@@ -35,7 +35,7 @@ export const TOUR_ANCHORS: readonly TourAnchor[] = [
 ];
 
 export interface TourSubStep {
-	/** 该子步发生在哪个路由;伴随窗在别的页面时给「带我去」按钮。 */
+	/** 该子步发生在哪个路由;在别的页面时聚光灯照到顶栏对应页签上指路。 */
 	route: string;
 	/**
 	 * 高亮的控件挂点;纯说明步(选型/字段清单)不指控件。
@@ -45,7 +45,7 @@ export interface TourSubStep {
 	anchor?: TourAnchor | readonly TourAnchor[];
 	/**
 	 * 抵达 `route` 即视为此子步完成,自动流转到下一子步 —— 给「出发前想清楚」类
-	 * 说明步用:不论用户点「带我去」还是自己切导航,一到目标页就进入动手子步,
+	 * 说明步用:用户跟着聚光灯点亮起的导航页签,一到目标页就进入动手子步,
 	 * 不会出现「聚光灯已指到控件、小卡文案还在讲选型」的错位(真机踩过)。
 	 * 这类子步不给「下一步」按钮(流转方式就是抵达),也不该配 anchor。
 	 */
@@ -73,7 +73,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			// 抵达 /targets 即流转 —— 灯与文案永远同步
 			advanceOnRoute: true,
 			title: "先选一条接入路线",
-			body: "BN 有三类适配器:「QQ 官方机器人」「OneBot(NapCat 等协议端)」「Webhook(钉钉 / 飞书等)」,能力与部署成本各不同 —— 具体区别看「选型指引」。想清楚了点「带我去」。",
+			body: "BN 有三类适配器:「QQ 官方机器人」「OneBot(NapCat 等协议端)」「Webhook(钉钉 / 飞书等)」,能力与部署成本各不同 —— 具体区别看「选型指引」,想清楚了再动身。",
 			link: { to: "/about/guide", label: "选型指引" },
 		},
 		{

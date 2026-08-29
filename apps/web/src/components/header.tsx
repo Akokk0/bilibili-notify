@@ -510,6 +510,9 @@ export function GlassHeader() {
 							end
 							// tab 家族挂点(曾挂 btn,皮肤按钮实底把整排一级导航画成一排按钮)。
 							data-bn={navActive ? "tab tab-active" : "tab"}
+							// 新手导览的指路挂点:子步不在目标路由时,聚光灯照到对应页签上
+							// 让用户自己点过去(tour-companion 的 Spotlight 按此选择器解析)。
+							data-tour-nav={t.to}
 							onClick={(e) => {
 								// 带修饰键的点击是「在新标签打开」—— 这一页的路由压根不变,
 								// 乐观值留在那一格上就会一直指错,而且没有下一次 pathname
