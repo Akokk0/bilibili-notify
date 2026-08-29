@@ -9,7 +9,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useAuthStore } from "../../../store/auth";
@@ -314,6 +314,27 @@ describe("TourCompanion 常驻小卡", () => {
 				'[data-tour="subs-add"]',
 			),
 		);
+	});
+
+	it("主步判据变绿的那一拍:操作位置弹完成徽章;全绿再加放毕业烟花", async () => {
+		const anchorEl = document.createElement("div");
+		anchorEl.setAttribute("data-tour", "bili-login");
+		document.body.appendChild(anchorEl);
+		// 除登录外全绿 —— 登录一完成即毕业,徽章与烟花一次验俩
+		await mount({
+			subs: [{ id: "s1" }],
+			adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+			targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
+			route: "/system",
+		});
+		await screen.findByText("扫码登录 B 站");
+		expect(screen.queryByTestId("tour-done-badge")).toBeNull();
+		act(() => {
+			useAuthStore.setState({ snapshot: { status: BiliLoginStatus.LOGGED_IN, msg: "" } });
+		});
+		expect(await screen.findByText("B 站登录完成!")).toBeTruthy();
+		await waitFor(() => expect(screen.getByTestId("tour-fireworks")).toBeTruthy());
+		// 已完成的步在下一次挂载(如刷新)不再庆祝 —— 首拍只记录
 	});
 
 	it("「收起」折叠成左缘标签:卡摘出可达性树与聚光灯,进度还活在标签上", async () => {

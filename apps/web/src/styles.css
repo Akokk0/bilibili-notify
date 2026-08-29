@@ -113,6 +113,39 @@
 	}
 }
 
+/* 主步完成徽章(onboarding/celebration.tsx):屏幕中央弹出 → 停留 → 飘散,
+   一段 keyframes 演完组件 onAnimationEnd 自卸。 */
+.bn-tour-done {
+	animation: bn-tour-done 2.2s ease-out both;
+}
+@keyframes bn-tour-done {
+	0% {
+		opacity: 0;
+		transform: translate(-50%, -50%) scale(0.82);
+	}
+	12%,
+	82% {
+		opacity: 1;
+		transform: translate(-50%, -50%) scale(1);
+	}
+	100% {
+		opacity: 0;
+		transform: translate(-50%, -50%) translateY(-14px) scale(0.96);
+	}
+}
+
+/* 导览小卡换步的轻过渡 —— 内容区按步位 key 重挂,新内容浅浮入,
+   免得判据自动流转时文案无声硬切(真机反馈:突兀)。 */
+.bn-tour-step-in {
+	animation: bn-tour-step-in 0.25s ease-out;
+}
+@keyframes bn-tour-step-in {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+}
+
 /* 导览标签 ⇄ 小卡的 morph 动画(iOS zoom 式:标签展开成卡、卡缩回标签,像
    上滑回 Home 时 app 缩回图标位)。两个元素**常驻 DOM**,`data-shown` 驱动 ——
    条件渲染做不出退场帧;可打断全靠 CSS transition 天生从当前渲染值继续

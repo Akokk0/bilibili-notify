@@ -148,6 +148,16 @@ export const TOUR_STEP_ORDER: readonly OnboardingStepKey[] = [
 	"subs",
 ];
 
+/** 主步完成时在操作位置弹出的完成徽章文案 —— 判据变绿的那一拍就地反馈,
+ *  不然小卡文案无声切到下一步,用户不知道刚才那步已经成了(真机反馈:突兀)。 */
+export const STEP_DONE_MESSAGES: Record<OnboardingStepKey, string> = {
+	login: "B 站登录完成!",
+	adapter: "适配器连通了!",
+	target: "推送目标建好了!",
+	test: "测试消息已送达,通道全线打通!",
+	subs: "订阅成功,大功告成!",
+};
+
 export interface TourPos {
 	stepKey: OnboardingStepKey | "done";
 	subIndex: number;

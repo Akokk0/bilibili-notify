@@ -2,9 +2,16 @@ import { Btn, Icon, StatusDot } from "@bilibili-notify/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import type { OnboardingStepKey } from "./derive";
+import { Fireworks, StepDoneBadge } from "./celebration";
+import type { OnboardingStepKey, OnboardingView } from "./derive";
 import { Spotlight } from "./spotlight";
-import { reconcileTourPos, TOUR_SCRIPT, TOUR_STEP_ORDER, type TourPos } from "./tour-script";
+import {
+	reconcileTourPos,
+	STEP_DONE_MESSAGES,
+	TOUR_SCRIPT,
+	TOUR_STEP_ORDER,
+	type TourPos,
+} from "./tour-script";
 import { useOnboardingState } from "./use-onboarding-view";
 
 /**
@@ -145,6 +152,27 @@ export function TourCompanion() {
 		}
 	}, [subAdvanceReady, pos]);
 
+	// 完成庆祝:主步判据 false→true 的那一拍,屏幕中央弹完成徽章(主人定案:
+	// 挂操作位置太不起眼)—— 小卡文案无声切到下一步太突兀(真机反馈);五步
+	// 全绿的毕业时刻加放一场全屏烟花。
+	// 首拍(prev 为空)只记录不庆祝:刷新页面时已完成的步不算「刚完成」。
+	const prevViewRef = useRef<OnboardingView | null>(null);
+	const [celebration, setCelebration] = useState<{ seq: number; text: string } | null>(null);
+	const [fireworks, setFireworks] = useState(false);
+	useEffect(() => {
+		const prev = prevViewRef.current;
+		prevViewRef.current = view;
+		if (!view || !prev || collapsed) return;
+		const newlyDone = view.steps.filter(
+			(s) => s.done && prev.steps.find((p) => p.key === s.key)?.done === false,
+		);
+		if (newlyDone.length > 0) {
+			const key = newlyDone[newlyDone.length - 1].key;
+			setCelebration({ seq: Date.now(), text: STEP_DONE_MESSAGES[key] });
+		}
+		if (view.allDone && !prev.allDone) setFireworks(true);
+	}, [view, collapsed]);
+
 	if (!visible || !pos || !view) return null;
 
 	const stepIndex =
@@ -161,6 +189,14 @@ export function TourCompanion() {
 			{expanded && spotlightSelectors ? (
 				<Spotlight selectors={spotlightSelectors} lock={!inReadingZone} />
 			) : null}
+			{celebration ? (
+				<StepDoneBadge
+					key={celebration.seq}
+					text={celebration.text}
+					onDone={() => setCelebration(null)}
+				/>
+			) : null}
+			{fireworks ? <Fireworks onDone={() => setFireworks(false)} /> : null}
 			<button
 				ref={tabRef}
 				type="button"
@@ -206,8 +242,10 @@ export function TourCompanion() {
 						);
 					})}
 				</div>
+				{/* 内容区按步位 key 重挂,换步时浅浮入(bn-tour-step-in)—— 判据自动流转的
+				    文案硬切太突兀(真机反馈);完成徽章在操作位负责「上一步成了」的那半 */}
 				{pos.stepKey === "done" ? (
-					<>
+					<div key="done" className="bn-tour-step-in">
 						<div className="text-bn-base font-semibold text-bn-text-primary">🎉 全部配置完成!</div>
 						<p className="mt-1 mb-2 text-bn-xs leading-relaxed text-bn-text-secondary">
 							五步链路已打通,订阅 UP 的动态与开播会自动推送。
@@ -229,9 +267,9 @@ export function TourCompanion() {
 						<Btn size="sm" onClick={() => toggleCollapsed(true)}>
 							收起
 						</Btn>
-					</>
+					</div>
 				) : sub ? (
-					<>
+					<div key={`${pos.stepKey}:${pos.subIndex}`} className="bn-tour-step-in">
 						<div className="text-bn-base font-semibold text-bn-text-primary">{sub.title}</div>
 						<p className="mt-1 mb-2.5 text-bn-xs leading-relaxed text-bn-text-secondary">
 							{sub.body}
@@ -268,7 +306,7 @@ export function TourCompanion() {
 								收起
 							</button>
 						</div>
-					</>
+					</div>
 				) : null}
 			</aside>
 		</>,
