@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 const cronMock = vi.hoisted(() => {
 	const instances: Array<{ cronTime: string; onTick: () => void }> = [];
 	class FakeCronJob {
-		running = false;
+		isActive = false;
 		constructor(
 			public cronTime: string,
 			public onTick: () => void,
@@ -21,10 +21,10 @@ const cronMock = vi.hoisted(() => {
 			instances.push(this);
 		}
 		start(): void {
-			this.running = true;
+			this.isActive = true;
 		}
 		stop(): void {
-			this.running = false;
+			this.isActive = false;
 		}
 	}
 	return { instances, FakeCronJob };

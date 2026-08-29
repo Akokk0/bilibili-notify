@@ -22,7 +22,7 @@ type Any = any;
 const cronMock = vi.hoisted(() => {
 	const instances: Array<{ cronTime: string; onTick: () => void; stopped: boolean }> = [];
 	class FakeCronJob {
-		running = false;
+		isActive = false;
 		stopped = false;
 		constructor(
 			public cronTime: string,
@@ -34,10 +34,10 @@ const cronMock = vi.hoisted(() => {
 			instances.push(this);
 		}
 		start() {
-			this.running = true;
+			this.isActive = true;
 		}
 		stop() {
-			this.running = false;
+			this.isActive = false;
 			this.stopped = true;
 		}
 	}
