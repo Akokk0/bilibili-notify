@@ -1780,8 +1780,8 @@ export default function Targets() {
 								</div>
 							</div>
 
-							{/* Targets bound to this adapter */}
-							<div className="bn-glass rounded-bn-card p-4 shadow-bn-card">
+							{/* Targets bound to this adapter。data-tour:导览「发送测试推送」一步聚这整卡 */}
+							<div data-tour="target-list" className="bn-glass rounded-bn-card p-4 shadow-bn-card">
 								<div className="mb-3 flex items-baseline justify-between">
 									<div>
 										<div className="text-bn-md font-bold text-bn-text-primary">

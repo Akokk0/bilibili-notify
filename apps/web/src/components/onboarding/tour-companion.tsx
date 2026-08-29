@@ -66,46 +66,70 @@ function rectsDiffer(a: DOMRect | null, b: DOMRect | null): boolean {
  *   跨页「带我去」后的头几百 ms 里矩形一直在动 —— 低频轮询会先框错位置
  *   再慢悠悠飘过去;每帧追踪让洞口全程贴着入场动画/smooth 滚动走
  *   (稳态下 rect 不变即不 setState,零渲染开销)。
- * - **交互即退散**:用户在锚点上按下的那一刻,聚光灯使命已完成,整层退场 ——
- *   否则点击后就地弹出的内容(登录二维码这类行内元素,z 在暗幕之下)会被
- *   黑幕盖住。子步推进换锚点时自动重现。
+ * - **锚点优先级链**:anchors 靠前优先,每帧取链上第一个存在于页面的锚点 ——
+ *   交互后就地弹出的内容(登录二维码)挂更高优先级,出现即把聚光灯接过去,
+ *   洞口沿 transition 滑到新目标上。
+ * - **按下即退散该锚点**:用户在当前目标上按下,它的指路使命就完成了,不再聚
+ *   回来(否则暗幕会盖住点击弹出的行内内容);链上更高优先级目标出现时聚光灯
+ *   照常回归 —— 这正是「点登录按钮 → 灯灭 → 二维码出现 → 灯聚二维码」的链路。
+ *   子步推进换锚点链时整体重置。
  */
-function Spotlight({ anchor }: { anchor: TourAnchor }) {
-	const [rect, setRect] = useState<DOMRect | null>(null);
-	const [dismissed, setDismissed] = useState(false);
-	const scrolledRef = useRef(false);
+function Spotlight({ anchors }: { anchors: readonly TourAnchor[] }) {
+	const [view, setView] = useState<{ anchor: TourAnchor; rect: DOMRect } | null>(null);
+	const [dismissedAnchor, setDismissedAnchor] = useState<TourAnchor | null>(null);
+	const lastScrolledRef = useRef<TourAnchor | null>(null);
+	// 调用方每次 render 造新数组,effect 以内容键为准、链在 effect 内重建
+	const anchorsKey = anchors.join("|");
 
 	useEffect(() => {
-		setDismissed(false);
-		scrolledRef.current = false;
+		const chain = anchorsKey.split("|") as TourAnchor[];
+		setDismissedAnchor(null);
+		lastScrolledRef.current = null;
 		let raf = 0;
+		const resolve = (): { anchor: TourAnchor; el: Element } | null => {
+			for (const anchor of chain) {
+				const el = document.querySelector(`[data-tour="${anchor}"]`);
+				if (el) return { anchor, el };
+			}
+			return null;
+		};
 		const tick = () => {
-			const el = document.querySelector(`[data-tour="${anchor}"]`);
-			if (!el) {
-				setRect((prev) => (prev === null ? prev : null));
+			const found = resolve();
+			if (!found) {
+				setView((prev) => (prev === null ? prev : null));
 			} else {
-				if (!scrolledRef.current) {
-					scrolledRef.current = true;
-					el.scrollIntoView({ block: "center", behavior: "smooth" });
+				if (lastScrolledRef.current !== found.anchor) {
+					lastScrolledRef.current = found.anchor;
+					found.el.scrollIntoView({ block: "center", behavior: "smooth" });
 				}
-				const next = el.getBoundingClientRect();
-				setRect((prev) => (rectsDiffer(prev, next) ? next : prev));
+				const rect = found.el.getBoundingClientRect();
+				setView((prev) =>
+					prev && prev.anchor === found.anchor && !rectsDiffer(prev.rect, rect)
+						? prev
+						: { anchor: found.anchor, rect },
+				);
 			}
 			raf = requestAnimationFrame(tick);
 		};
 		raf = requestAnimationFrame(tick);
 		const onPointerDown = (e: Event) => {
-			const el = document.querySelector(`[data-tour="${anchor}"]`);
-			if (el && e.target instanceof Node && el.contains(e.target)) setDismissed(true);
+			for (const anchor of chain) {
+				const el = document.querySelector(`[data-tour="${anchor}"]`);
+				if (el && e.target instanceof Node && el.contains(e.target)) {
+					setDismissedAnchor(anchor);
+					return;
+				}
+			}
 		};
 		document.addEventListener("pointerdown", onPointerDown, true);
 		return () => {
 			cancelAnimationFrame(raf);
 			document.removeEventListener("pointerdown", onPointerDown, true);
 		};
-	}, [anchor]);
+	}, [anchorsKey]);
 
-	if (dismissed || !rect) return null;
+	if (!view || view.anchor === dismissedAnchor) return null;
+	const { rect } = view;
 	const pad = 6;
 	return createPortal(
 		<div
@@ -184,6 +208,8 @@ export function TourCompanion() {
 	const onRoute = sub ? location.pathname === sub.route : false;
 	// 提出来给闭包用 —— JSX 条件里的 narrowing 进不了 onClick 闭包
 	const subLink = sub?.link ?? null;
+	// 锚点统一成优先级链(单值包成单元素链),给 Spotlight 消费
+	const anchorChain = sub?.anchor ? (Array.isArray(sub.anchor) ? sub.anchor : [sub.anchor]) : null;
 
 	if (!visible || !pos || !view) return null;
 
@@ -197,7 +223,7 @@ export function TourCompanion() {
 	// inert + aria-hidden 摘出可达性树与焦点链,视觉上由 CSS 的 visibility 延迟藏。
 	return createPortal(
 		<>
-			{expanded && sub?.anchor && onRoute ? <Spotlight anchor={sub.anchor} /> : null}
+			{expanded && anchorChain && onRoute ? <Spotlight anchors={anchorChain} /> : null}
 			<button
 				ref={tabRef}
 				type="button"

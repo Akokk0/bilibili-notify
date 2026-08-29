@@ -92,7 +92,7 @@ describe("TourCompanion 常驻小卡", () => {
 		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
 	});
 
-	it("聚光灯交互即退散:在锚点上按下后暗幕整层消失(别盖住点击弹出的二维码)", async () => {
+	it("聚光灯交互即退散:在锚点上按下后暗幕消失(别盖住点击弹出的内容)", async () => {
 		const anchorEl = document.createElement("div");
 		anchorEl.setAttribute("data-tour", "bili-login");
 		document.body.appendChild(anchorEl);
@@ -101,6 +101,22 @@ describe("TourCompanion 常驻小卡", () => {
 		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
 		fireEvent.pointerDown(anchorEl);
 		await waitFor(() => expect(screen.queryByTestId("tour-spotlight")).toBeNull());
+	});
+
+	it("聚光灯链上转移:按钮退散后二维码锚点出现 → 聚光灯回归聚新目标", async () => {
+		const btn = document.createElement("div");
+		btn.setAttribute("data-tour", "bili-login");
+		document.body.appendChild(btn);
+		await mount({ route: "/system" });
+		await screen.findByText("扫码登录 B 站");
+		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
+		fireEvent.pointerDown(btn);
+		await waitFor(() => expect(screen.queryByTestId("tour-spotlight")).toBeNull());
+		// 点击「发起扫码登录」后二维码渲染出来(挂着链上更高优先级的锚点)
+		const qr = document.createElement("div");
+		qr.setAttribute("data-tour", "bili-login-qr");
+		document.body.appendChild(qr);
+		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
 	});
 
 	it("不在目标路由:无聚光灯,给「带我去」", async () => {

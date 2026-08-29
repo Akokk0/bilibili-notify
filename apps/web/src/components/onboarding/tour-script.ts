@@ -12,21 +12,33 @@ import type { OnboardingStepKey } from "./derive";
  * 表单改版时只需要核对文案,不用同步一堆字段锚点。
  */
 
-export type TourAnchor = "bili-login" | "subs-search" | "adapter-add" | "target-add";
+export type TourAnchor =
+	| "bili-login"
+	| "bili-login-qr"
+	| "subs-search"
+	| "adapter-add"
+	| "target-add"
+	| "target-list";
 
 /** 锚点词表 —— 页面挂点与脚本引用的交集,测试钉住两边不脱节。 */
 export const TOUR_ANCHORS: readonly TourAnchor[] = [
 	"bili-login",
+	"bili-login-qr",
 	"subs-search",
 	"adapter-add",
 	"target-add",
+	"target-list",
 ];
 
 export interface TourSubStep {
 	/** 该子步发生在哪个路由;伴随窗在别的页面时给「带我去」按钮。 */
 	route: string;
-	/** 高亮的控件挂点;纯说明步(选型/字段清单)不指控件。 */
-	anchor?: TourAnchor;
+	/**
+	 * 高亮的控件挂点;纯说明步(选型/字段清单)不指控件。
+	 * 数组 = **优先级链**(靠前优先):聚光灯每帧取链上第一个存在于页面的锚点,
+	 * 交互后就地弹出的内容(如登录二维码)挂更高优先级,聚光灯自动转移过去。
+	 */
+	anchor?: TourAnchor | readonly TourAnchor[];
 	title: string;
 	body: string;
 	/** 深入阅读的站内跳转按钮 —— 复杂讲解(选型表/部署教程)不塞小卡,指去教程页。 */
@@ -37,7 +49,8 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 	login: [
 		{
 			route: "/system",
-			anchor: "bili-login",
+			// 二维码一出现聚光灯就从按钮转移过去 —— 链上 qr 优先
+			anchor: ["bili-login-qr", "bili-login"],
 			title: "扫码登录 B 站",
 			body: "点高亮的「发起扫码登录」,用手机 B 站 App 扫码并确认。登录成功后这里会自动进入下一步。",
 		},
@@ -57,6 +70,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 		},
 		{
 			route: "/targets",
+			anchor: "adapter-add",
 			title: "测试适配器连通",
 			body: "在刚建好的适配器行上点「测试」—— 通过后状态点变绿,并自动进入下一步。失败的话按错误提示排查(OneBot 先确认 NapCat 已连上)。",
 		},
@@ -72,6 +86,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 	test: [
 		{
 			route: "/targets",
+			anchor: "target-list",
 			title: "发送测试推送",
 			body: "在目标行点「测试」—— QQ 里收到测试消息,推送通道就全线打通了。只差最后一步:订阅要关注的 UP。",
 		},

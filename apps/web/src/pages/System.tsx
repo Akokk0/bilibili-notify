@@ -60,7 +60,11 @@ const STATUS_ACCENT: Record<BiliLoginStatusValue, string> = {
 function QrCard({ data, msg }: { data: unknown; msg: string }) {
 	const src = typeof data === "string" && data.length > 0 ? data : null;
 	return (
-		<div className="flex flex-col items-center gap-3 rounded-lg border border-bn-border bg-bn-surface/55 p-6">
+		// data-tour:「带我做」导览的聚光灯锚点 —— 二维码一出现聚光灯就从登录按钮转移过来
+		<div
+			data-tour="bili-login-qr"
+			className="flex flex-col items-center gap-3 rounded-lg border border-bn-border bg-bn-surface/55 p-6"
+		>
 			{src ? (
 				<img
 					alt="登录二维码"

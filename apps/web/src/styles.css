@@ -87,11 +87,18 @@
 	border: 2px solid var(--color-bn-pink);
 	border-radius: var(--radius-lg);
 	box-shadow: 0 0 0 100vmax color-mix(in srgb, #000 45%, transparent);
+	/* 挂载淡入 —— 暗幕突现很生硬(收起再展开、退散后回归都走重新挂载) */
+	animation: bn-tour-spot-in 0.25s ease-out;
 	transition:
 		top 0.15s ease-out,
 		left 0.15s ease-out,
 		width 0.15s ease-out,
 		height 0.15s ease-out;
+}
+@keyframes bn-tour-spot-in {
+	from {
+		opacity: 0;
+	}
 }
 
 /* 导览标签 ⇄ 小卡的 morph 动画(iOS zoom 式:标签展开成卡、卡缩回标签,像
