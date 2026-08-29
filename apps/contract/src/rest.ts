@@ -467,6 +467,32 @@ export interface QQDiscoveredEntry {
 	lastSeenMs: number;
 }
 
+/** `POST /api/qq/bind/start` 响应 —— 扫码一键建 bot(借道腾讯 lite 通道)。 */
+export interface QQBindStartResponse {
+	/** 轮询用的任务号(腾讯侧生成)。 */
+	taskId: string;
+	/** 二维码图片,data: URI。 */
+	qr: string;
+	/** 建议轮询间隔,秒。消费方**必须**夹一道再用,见 web 的 pollDelayMs。 */
+	interval: number;
+}
+
+/**
+ * `POST /api/qq/bind/poll` 响应。
+ *
+ * web 端按它做**穷尽** switch(default 里 `never` 兜底):这里将来多一条 status,
+ * 前端会直接编译不过,而不是静静地当 pending 接着轮询。
+ *
+ * server 那边的 `QQBindTask` 刻意不在这份契约里 —— 它带着解 AppSecret 的
+ * `bindKey`,只活在 server 内存,不出响应也不落盘。
+ */
+export type QQBindPollResult =
+	| { status: "pending" }
+	| { status: "expired" }
+	| { status: "created"; appId: string; appSecret: string }
+	/** 扫码侧完成但凭据缺失/解不开 —— 业务态错误,与上游故障(抛错)区分。 */
+	| { status: "error"; message: string };
+
 // ---- /api/backup ------------------------------------------------------------
 
 /** What an import did — or, under `dryRun`, what it *would* do. */

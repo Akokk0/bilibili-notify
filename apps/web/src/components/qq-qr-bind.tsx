@@ -1,3 +1,4 @@
+import type { QQBindPollResult, QQBindStartResponse } from "@bilibili-notify/contract";
 import { Btn, ErrorNote, LoadingBlock, ModalShell, Pill } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, api } from "../services/api";
@@ -13,13 +14,6 @@ import { ApiError, api } from "../services/api";
  */
 
 type Phase = "closed" | "starting" | "waiting" | "expired" | "error";
-
-interface BindSession {
-	taskId: string;
-	qr: string;
-	/** 轮询间隔,秒(server 给,当前恒 2)。实际用的是夹过的 {@link pollDelayMs}。 */
-	interval: number;
-}
 
 /** 缺失 / 不是数的时候按 server 当前的口径来。 */
 const POLL_FALLBACK_SEC = 2;
@@ -40,19 +34,13 @@ export function pollDelayMs(interval: unknown): number {
 	return Math.min(Math.max(sec, POLL_MIN_SEC), POLL_MAX_SEC) * 1000;
 }
 
-type PollResult =
-	| { status: "pending" }
-	| { status: "expired" }
-	| { status: "created"; appId: string; appSecret: string }
-	| { status: "error"; message: string };
-
 export function QQQrBindButton({
 	onCredentials,
 }: {
 	onCredentials: (creds: { appId: string; appSecret: string }) => void;
 }) {
 	const [phase, setPhase] = useState<Phase>("closed");
-	const [session, setSession] = useState<BindSession | null>(null);
+	const [session, setSession] = useState<QQBindStartResponse | null>(null);
 	const [err, setErr] = useState<string | null>(null);
 	// 回调走 ref:轮询 effect 不因父组件每次渲染换回调而重启。
 	const onCredentialsRef = useRef(onCredentials);
@@ -63,7 +51,7 @@ export function QQQrBindButton({
 		setErr(null);
 		setSession(null);
 		try {
-			const s = await api.post<BindSession>("/api/qq/bind/start", {});
+			const s = await api.post<QQBindStartResponse>("/api/qq/bind/start", {});
 			setSession(s);
 			setPhase("waiting");
 		} catch (e) {
@@ -78,21 +66,31 @@ export function QQQrBindButton({
 		let timer: ReturnType<typeof setTimeout>;
 		const tick = async () => {
 			try {
-				const r = await api.post<PollResult>("/api/qq/bind/poll", { taskId: session.taskId });
+				const r = await api.post<QQBindPollResult>("/api/qq/bind/poll", { taskId: session.taskId });
 				if (!alive) return;
-				if (r.status === "created") {
-					onCredentialsRef.current({ appId: r.appId, appSecret: r.appSecret });
-					setPhase("closed");
-					return;
-				}
-				if (r.status === "expired") {
-					setPhase("expired");
-					return;
-				}
-				if (r.status === "error") {
-					setErr(r.message);
-					setPhase("error");
-					return;
+				// 穷尽 switch 而不是 if 链:两端现在共用 QQBindPollResult,server 哪天多一个
+				// status(比如 rate_limited),default 里的 never 会让**前端编译不过** ——
+				// if 链的话它会静静地落到「继续轮询」上,一个类型错误都没有。
+				switch (r.status) {
+					case "created":
+						onCredentialsRef.current({ appId: r.appId, appSecret: r.appSecret });
+						setPhase("closed");
+						return;
+					case "expired":
+						setPhase("expired");
+						return;
+					case "error":
+						setErr(r.message);
+						setPhase("error");
+						return;
+					case "pending":
+						break;
+					default: {
+						const unhandled: never = r;
+						setErr(`未知的绑定状态:${JSON.stringify(unhandled)}`);
+						setPhase("error");
+						return;
+					}
 				}
 				timer = setTimeout(tick, pollDelayMs(session.interval));
 			} catch (e) {

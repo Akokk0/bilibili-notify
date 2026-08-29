@@ -13,7 +13,11 @@
  * 解不开。通道预期消费者是 OpenClaw,腾讯可能哪天收紧 —— 手填 appid/secret
  * 永远是降级路径,host 留注入口以便不发版换道。
  */
+
 import { createDecipheriv, randomBytes } from "node:crypto";
+import type { QQBindPollResult } from "@bilibili-notify/contract";
+
+export type { QQBindPollResult };
 
 /** 生成一把 base64 编码的 AES-256(32 字节)绑定密钥。 */
 export function generateBindKey(): string {
@@ -42,6 +46,11 @@ export function decryptBindSecret(encryptedB64: string, keyB64: string): string 
 
 const DEFAULT_BIND_HOST = "q.qq.com";
 
+/**
+ * 建任务的产物。**server 进程内的东西**,不是 wire 类型 —— `bindKey` 是解
+ * AppSecret 的钥匙,不出响应也不落盘,所以它刻意留在这儿,没跟 QQBindPollResult
+ * 一起搬去 `@bilibili-notify/internal` 的 wire。
+ */
 export interface QQBindTask {
 	taskId: string;
 	/** 预递给腾讯的 base64 AES-256 密钥,轮询解密要用,只该活在 server 内存。 */
@@ -49,13 +58,6 @@ export interface QQBindTask {
 	/** 二维码内容 —— 腾讯 openclaw H5 的 URL,扫码后在腾讯页面里完成建 bot。 */
 	qrUrl: string;
 }
-
-export type QQBindPollResult =
-	| { status: "pending" }
-	| { status: "expired" }
-	| { status: "created"; appId: string; appSecret: string }
-	/** 扫码侧完成但凭据缺失/解不开 —— 业务态错误,与上游故障(抛错)区分。 */
-	| { status: "error"; message: string };
 
 /**
  * 单次请求的上限。node 的 fetch 没有默认超时,腾讯接了 TCP 却不回(区域性网络

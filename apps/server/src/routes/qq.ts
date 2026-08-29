@@ -1,3 +1,4 @@
+import type { QQBindStartResponse } from "@bilibili-notify/contract";
 import type { QQOfficialAdapterConfig } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import QRCode from "qrcode";
@@ -42,7 +43,13 @@ export function createQQRoute(deps: RouteDeps): Hono {
 			const task = await createBindTask(bindHost());
 			bindTasks.set(task.taskId, { bindKey: task.bindKey, createdAt: Date.now() });
 			const qr = await QRCode.toDataURL(task.qrUrl, { margin: 1, width: 320 });
-			return c.json({ taskId: task.taskId, qr, interval: BIND_POLL_INTERVAL_SEC });
+			// 标注成 wire 类型:这个形状 web 端照着解,少一个字段要在这里就编译不过
+			const body: QQBindStartResponse = {
+				taskId: task.taskId,
+				qr,
+				interval: BIND_POLL_INTERVAL_SEC,
+			};
+			return c.json(body);
 		} catch (err) {
 			log.warn(`POST /api/qq/bind/start failed: ${String(err)}`);
 			return c.json({ error: "bind_start_failed", message: (err as Error).message }, 502);
