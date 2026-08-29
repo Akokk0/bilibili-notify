@@ -43,6 +43,13 @@ export interface TourSubStep {
 	 * 交互后就地弹出的内容(如登录二维码)挂更高优先级,聚光灯自动转移过去。
 	 */
 	anchor?: TourAnchor | readonly TourAnchor[];
+	/**
+	 * 抵达 `route` 即视为此子步完成,自动流转到下一子步 —— 给「出发前想清楚」类
+	 * 说明步用:不论用户点「带我去」还是自己切导航,一到目标页就进入动手子步,
+	 * 不会出现「聚光灯已指到控件、小卡文案还在讲选型」的错位(真机踩过)。
+	 * 这类子步不给「下一步」按钮(流转方式就是抵达),也不该配 anchor。
+	 */
+	advanceOnRoute?: boolean;
 	title: string;
 	body: string;
 	/** 深入阅读的站内跳转按钮 —— 复杂讲解(选型表/部署教程)不塞小卡,指去教程页。 */
@@ -62,10 +69,11 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 	adapter: [
 		{
 			route: "/targets",
-			// 纯说明步也给空间锚定:高亮适配器区 =「接下来在这里动手」
-			anchor: "adapter-add",
+			// 出发前的选型思考步:不配 anchor(在目标页的动手指引归下一子步),
+			// 抵达 /targets 即流转 —— 灯与文案永远同步
+			advanceOnRoute: true,
 			title: "先选一条接入路线",
-			body: "BN 有三类适配器:「QQ 官方机器人」「OneBot(NapCat 等协议端)」「Webhook(钉钉 / 飞书等)」,能力与部署成本各不同 —— 具体区别看「选型指引」。想清楚了点「下一步」。",
+			body: "BN 有三类适配器:「QQ 官方机器人」「OneBot(NapCat 等协议端)」「Webhook(钉钉 / 飞书等)」,能力与部署成本各不同 —— 具体区别看「选型指引」。想清楚了点「带我去」。",
 			link: { to: "/about/guide", label: "选型指引" },
 		},
 		{
@@ -74,6 +82,8 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			anchor: ["adapter-form", "adapter-add"],
 			title: "新建推送适配器",
 			body: "点高亮的「+ 新建」,选好平台:QQ 官方填 appId / appSecret(或点表单里的「扫码一键创建」自动回填);OneBot 选连接方式(推荐反向 WS,填一个监听端口)。填完点「保存」。",
+			// 上一子步在抵达时自动翻过 —— 一直待在本页的用户全程见不到它,选型入口在这也挂一份
+			link: { to: "/about/guide", label: "选型指引" },
 		},
 		{
 			route: "/targets",
@@ -108,22 +118,41 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 	],
 };
 
+/** 主步顺序 —— 导览小卡的步点条与单向流转判序共用。 */
+export const TOUR_STEP_ORDER: readonly OnboardingStepKey[] = [
+	"login",
+	"adapter",
+	"target",
+	"test",
+	"subs",
+];
+
 export interface TourPos {
 	stepKey: OnboardingStepKey | "done";
 	subIndex: number;
 }
 
 /**
- * 判据跟随:activeKey(第一个未完成主步)变了就跳到新主步的第一个子步 ——
- * 前进与回退都跟随;没变则保持手动子步位置(越界收回,防脚本改短)。
- * 全绿(activeKey=null)进入 done 祝贺态。
+ * 判据跟随,**只进不退**(2026-08-29 定案:做完一步不能返回,只能顺序流转):
+ * activeKey(第一个未完成主步)前进了就跳到新主步的第一个子步;判据被破坏
+ * (如删掉已测通的适配器)导致 activeKey 回退时,导览停在原步位不往回跳,
+ * 等条件补齐再继续。没变则保持手动子步位置(越界收回,防脚本改短)。
+ * 全绿(activeKey=null)进入 done 祝贺态,之后同样不倒退。
  */
 export function reconcileTourPos(
 	pos: TourPos | null,
 	activeKey: OnboardingStepKey | null,
 ): TourPos {
+	if (pos?.stepKey === "done") return pos;
 	if (activeKey === null) return { stepKey: "done", subIndex: 0 };
-	if (!pos || pos.stepKey !== activeKey) return { stepKey: activeKey, subIndex: 0 };
+	if (!pos) return { stepKey: activeKey, subIndex: 0 };
+	if (pos.stepKey !== activeKey) {
+		if (TOUR_STEP_ORDER.indexOf(activeKey) < TOUR_STEP_ORDER.indexOf(pos.stepKey)) {
+			const maxKeep = TOUR_SCRIPT[pos.stepKey].length - 1;
+			return { stepKey: pos.stepKey, subIndex: Math.min(pos.subIndex, maxKeep) };
+		}
+		return { stepKey: activeKey, subIndex: 0 };
+	}
 	const max = TOUR_SCRIPT[activeKey].length - 1;
 	return { stepKey: activeKey, subIndex: Math.min(pos.subIndex, max) };
 }

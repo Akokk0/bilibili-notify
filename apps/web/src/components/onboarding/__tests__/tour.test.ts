@@ -7,9 +7,11 @@
  * 子步),主步内的子步才是手动翻页。
  *
  * 钉住:
- * - activeKey 变化(前进或回退)→ 位置跟随并重置子步;没变 → 保持手动子步位置;
- * - 全绿(activeKey=null)→ 进入 done 祝贺态;
- * - 脚本完整性:五个主步都有子步、每个子步 route 都是站内路由、锚点在词表内。
+ * - **只进不退**(2026-08-29 定案:做完一步不能返回,只能顺序流转):判据前进
+ *   → 跟随并重置子步;判据回退(条件被破坏)→ 停在原步位;毕业(done)不倒退;
+ * - activeKey 没变 → 保持手动子步位置;
+ * - 脚本完整性:五个主步都有子步、每个子步 route 都是站内路由、锚点在词表内、
+ *   说明步(advanceOnRoute)不配锚点(它在目标页面上一帧都不停留)。
  */
 
 import { describe, expect, it } from "vite-plus/test";
@@ -27,9 +29,16 @@ describe("reconcileTourPos 判据跟随", () => {
 		});
 	});
 
-	it("判据回退(target 被禁用 → activeKey 退回 target)同样跟随", () => {
+	it("判据回退(条件被破坏 → activeKey 退回 target)→ 停在原步位不回跳(单向)", () => {
 		expect(reconcileTourPos({ stepKey: "subs", subIndex: 0 }, "target")).toEqual({
-			stepKey: "target",
+			stepKey: "subs",
+			subIndex: 0,
+		});
+	});
+
+	it("毕业后判据被破坏(activeKey 又非空)→ done 不倒退", () => {
+		expect(reconcileTourPos({ stepKey: "done", subIndex: 0 }, "adapter")).toEqual({
+			stepKey: "done",
 			subIndex: 0,
 		});
 	});
@@ -71,6 +80,8 @@ describe("TOUR_SCRIPT 脚本完整性", () => {
 				const chain = Array.isArray(sub.anchor) ? sub.anchor : sub.anchor ? [sub.anchor] : [];
 				for (const anchor of chain) expect(TOUR_ANCHORS).toContain(anchor);
 				if (sub.link) expect(sub.link.to.startsWith("/")).toBe(true);
+				// 说明步抵达即流转,在目标页一帧都不停 —— 配 anchor 只会闪一下灯,纯 bug
+				if (sub.advanceOnRoute) expect(sub.anchor).toBeUndefined();
 			}
 		}
 	});

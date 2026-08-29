@@ -4,7 +4,8 @@
  * 新手导览(四轮定稿:**永久常驻,无关闭态**)的行为:
  * 标签 ⇄ 小卡两态切换,毕业老用户也常驻标签;「跳过/彻底关闭」概念已退役
  * (server dismissed 字段一并删除)。有锚点的子步在目标路由上时渲染聚光灯
- * 挖洞层;折叠时聚光灯一并收起。判据跟随逻辑在 tour.test.ts。
+ * 挖洞层 —— 亮灯即引导锁(洞外拦截层吃掉点击);折叠时聚光灯与锁一并收起。
+ * 流转单向:说明步抵达即翻过,没有「上一步」。判据跟随逻辑在 tour.test.ts。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -96,6 +97,20 @@ describe("TourCompanion 常驻小卡", () => {
 		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
 	});
 
+	it("聚光灯即引导锁:亮灯时铺四块洞外拦截层,退散后一并撤掉", async () => {
+		const anchorEl = document.createElement("div");
+		anchorEl.setAttribute("data-tour", "bili-login");
+		document.body.appendChild(anchorEl);
+		await mount({ route: "/system" });
+		await screen.findByText("扫码登录 B 站");
+		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
+		// 洞外指针操作被吃掉 —— 引导模式下只允许做被指的那一步;洞内无遮挡
+		const blocker = screen.getByTestId("tour-blocker");
+		expect(blocker.querySelectorAll(".pointer-events-auto").length).toBe(4);
+		fireEvent.pointerDown(anchorEl);
+		await waitFor(() => expect(screen.queryByTestId("tour-blocker")).toBeNull());
+	});
+
 	it("聚光灯交互即退散:在锚点上按下后暗幕消失(别盖住点击弹出的内容)", async () => {
 		const anchorEl = document.createElement("div");
 		anchorEl.setAttribute("data-tour", "bili-login");
@@ -177,13 +192,30 @@ describe("TourCompanion 常驻小卡", () => {
 		expect(screen.queryByTestId("tour-spotlight")).toBeNull();
 	});
 
-	it("adapter 主步:登录后直接进入(订阅在最后),子步手动翻页", async () => {
-		await mount({ loggedIn: true, route: "/targets" });
+	it("adapter 主步 · 出发前(在系统页):选型说明步只给「带我去」,没有下一步", async () => {
+		await mount({ loggedIn: true, route: "/system" });
 		expect(await screen.findByText("先选一条接入路线")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "带我去" })).toBeTruthy();
 		// 复杂讲解不塞小卡 —— 选型细节收进教程页,小卡只给跳转按钮
 		expect(screen.getByRole("button", { name: "选型指引" })).toBeTruthy();
-		fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+		// 说明步的流转方式就是抵达目标页,不给「下一步」按钮
+		expect(screen.queryByRole("button", { name: "下一步" })).toBeNull();
+	});
+
+	it("adapter 主步 · 抵达即流转:身在 /targets 时说明步直接翻过,灯与文案同步进动手子步", async () => {
+		await mount({ loggedIn: true, route: "/targets" });
 		expect(await screen.findByText("新建推送适配器")).toBeTruthy();
+		expect(screen.queryByText("先选一条接入路线")).toBeNull();
+		// 说明步被翻过也不丢选型入口 —— 动手子步上同样挂着「选型指引」
+		expect(screen.getByRole("button", { name: "选型指引" })).toBeTruthy();
+	});
+
+	it("子步只向前翻页:永远没有「上一步」(单向流转定案)", async () => {
+		await mount({ loggedIn: true, route: "/targets" });
+		await screen.findByText("新建推送适配器");
+		fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+		expect(await screen.findByText("测试适配器连通")).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "上一步" })).toBeNull();
 	});
 
 	it("通道全通后收尾步是订阅", async () => {

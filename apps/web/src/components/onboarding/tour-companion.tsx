@@ -3,7 +3,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { OnboardingStepKey } from "./derive";
-import { reconcileTourPos, TOUR_SCRIPT, type TourAnchor, type TourPos } from "./tour-script";
+import {
+	reconcileTourPos,
+	TOUR_SCRIPT,
+	TOUR_STEP_ORDER,
+	type TourAnchor,
+	type TourPos,
+} from "./tour-script";
 import { useOnboardingState } from "./use-onboarding-view";
 
 /**
@@ -12,11 +18,13 @@ import { useOnboardingState } from "./use-onboarding-view";
  * - 两态之间切换:左缘小标签(默认给毕业老用户的形态,活进度徽标)⇄ 展开
  *   小卡;「跳过/彻底关闭」概念整个退役 —— 老用户也常驻标签,server 的
  *   dismissed 字段与 /guide 的「重新开启」一并删除;
- * - 主步切换全自动:判据(activeKey)前进/回退都跟(reconcileTourPos),配合
- *   useOnboardingState 的 3s 轮询兜底(毕业即停),「做完自动进下一步」不依赖
- *   任何单条更新链路恰好有推送;主步内子步(选型说明/分解动作)手动翻页;
- * - **聚光灯**:展开态下有锚点的子步在目标路由上时,Spotlight 按控件矩形
- *   挖洞 —— 四周暗幕聚焦、洞内粉描边,`pointer-events: none` 不锁任何操作;
+ * - 主步切换全自动、**只进不退**(reconcileTourPos):判据前进就跟,被破坏
+ *   不回跳;配合 useOnboardingState 的 3s 轮询兜底(毕业即停),「做完自动进
+ *   下一步」不依赖任何单条更新链路恰好有推送;主步内子步(选型说明/分解动作)
+ *   靠「下一步」或抵达目标路由(advanceOnRoute)流转,同样没有回头路;
+ * - **聚光灯即引导锁**:展开态下有锚点的子步在目标路由上时,Spotlight 按控件
+ *   矩形挖洞 —— 四周暗幕聚焦、洞内粉描边,洞外的点击被拦截层吃掉(处于引导
+ *   就只做被指的操作);逃生口 = 小卡「收起」(z 在暗幕之上,永远可点);
  * - 位置:fixed 左缘/左下角 —— 右下推送 toast、右上告警、底部居中灵动岛,
  *   左边是唯一空位。小卡 z 走 island 档,暗幕走 scrim 档(在小卡之下)。
  * - **两态 morph 动画**(styles.css 的 .bn-tour-tab/.bn-tour-card):iOS zoom 式
@@ -44,7 +52,6 @@ function persistCollapsed(v: boolean) {
 	}
 }
 
-const STEP_ORDER: OnboardingStepKey[] = ["login", "adapter", "target", "test", "subs"];
 const STEP_SHORT: Record<OnboardingStepKey, string> = {
 	login: "登录",
 	adapter: "适配器",
@@ -59,8 +66,10 @@ function rectsDiffer(a: DOMRect | null, b: DOMRect | null): boolean {
 }
 
 /**
- * 聚光灯挖洞层:rAF 每帧跟随目标控件矩形,巨型 box-shadow 把洞外压暗。
- * `fixed` 由 utility 出 —— styles.css 的层守卫不许无层类写 position。
+ * 聚光灯挖洞层:rAF 每帧跟随目标控件矩形,巨型 box-shadow 把洞外压暗;
+ * 洞外同时铺四块拦截层吃掉指针操作(**引导锁**:亮灯期间只有洞内目标可点,
+ * 小卡/弹窗 z 在暗幕之上不受拦)。`fixed` 由 utility 出 —— styles.css 的
+ * 层守卫不许无层类写 position。
  *
  * - **每帧追而不是低频轮询**:目标页面带 bn-anim-page-in 入场位移动画,
  *   跨页「带我去」后的头几百 ms 里矩形一直在动 —— 低频轮询会先框错位置
@@ -124,8 +133,8 @@ function Spotlight({ anchors }: { anchors: readonly TourAnchor[] }) {
 		raf = requestAnimationFrame(tick);
 		const onPointerDown = (e: Event) => {
 			if (!(e.target instanceof Element)) return;
-			// 弹窗内的交互不退散:洞框的是整张 modal 卡,暗幕不挡任何操作,而填表
-			// 要点很多下 —— 第一下就把灯熄了,后面全程反而没了指引。
+			// 弹窗内的交互不退散:填表要点很多下 —— 第一下就把灯熄了,
+			// 后面全程反而没了指引。
 			if (e.target.closest('[data-bn="modal"]')) return;
 			for (const anchor of chain) {
 				const el = document.querySelector(`[data-tour="${anchor}"]`);
@@ -145,18 +154,52 @@ function Spotlight({ anchors }: { anchors: readonly TourAnchor[] }) {
 	if (!view || view.inModal || view.anchor === dismissedAnchor) return null;
 	const { rect } = view;
 	const pad = 6;
+	const hole = {
+		top: rect.top - pad,
+		left: rect.left - pad,
+		width: rect.width + pad * 2,
+		height: rect.height + pad * 2,
+	};
 	return createPortal(
-		<div
-			data-testid="tour-spotlight"
-			aria-hidden
-			className="bn-tour-spotlight pointer-events-none fixed z-bn-scrim"
-			style={{
-				top: rect.top - pad,
-				left: rect.left - pad,
-				width: rect.width + pad * 2,
-				height: rect.height + pad * 2,
-			}}
-		/>,
+		<>
+			{/* 引导锁:暗幕即禁区 —— 洞外四块拦截层吃掉指针操作,只留洞内目标可点
+			    (处于引导就只做被指的那一步)。小卡/标签(z-bn-tour-panel)与弹窗
+			    (z-bn-modal)都在暗幕之上不受拦,逃生口 = 小卡「收起」;滚动不拦,
+			    rAF 每帧追着目标,洞口与拦截块一起跟。 */}
+			<div
+				data-testid="tour-blocker"
+				aria-hidden
+				className="pointer-events-none fixed inset-0 z-bn-scrim"
+			>
+				<div
+					className="pointer-events-auto absolute inset-x-0 top-0"
+					style={{ height: Math.max(0, hole.top) }}
+				/>
+				<div
+					className="pointer-events-auto absolute inset-x-0 bottom-0"
+					style={{ top: Math.max(0, hole.top + hole.height) }}
+				/>
+				<div
+					className="pointer-events-auto absolute left-0"
+					style={{ top: hole.top, height: hole.height, width: Math.max(0, hole.left) }}
+				/>
+				<div
+					className="pointer-events-auto absolute right-0"
+					style={{ top: hole.top, height: hole.height, left: Math.max(0, hole.left + hole.width) }}
+				/>
+			</div>
+			<div
+				data-testid="tour-spotlight"
+				aria-hidden
+				className="bn-tour-spotlight pointer-events-none fixed z-bn-scrim"
+				style={{
+					top: hole.top,
+					left: hole.left,
+					width: hole.width,
+					height: hole.height,
+				}}
+			/>
+		</>,
 		document.body,
 	);
 }
@@ -225,9 +268,21 @@ export function TourCompanion() {
 	// 锚点统一成优先级链(单值包成单元素链),给 Spotlight 消费
 	const anchorChain = sub?.anchor ? (Array.isArray(sub.anchor) ? sub.anchor : [sub.anchor]) : null;
 
+	// 抵达即流转:说明步(advanceOnRoute)在用户到达目标路由的那一刻使命完成 ——
+	// 不论走「带我去」还是自己切导航,都直接进入动手子步,聚光灯与文案永远同步
+	// (真机踩过:灯已指到「+ 新建」,小卡还在讲选型)。
+	const arrivedOnInfoStep = sub?.advanceOnRoute === true && onRoute;
+	useEffect(() => {
+		if (!arrivedOnInfoStep || !pos || pos.stepKey === "done") return;
+		if (pos.subIndex < TOUR_SCRIPT[pos.stepKey].length - 1) {
+			setManualPos({ stepKey: pos.stepKey, subIndex: pos.subIndex + 1 });
+		}
+	}, [arrivedOnInfoStep, pos]);
+
 	if (!visible || !pos || !view) return null;
 
-	const stepIndex = pos.stepKey === "done" ? STEP_ORDER.length : STEP_ORDER.indexOf(pos.stepKey);
+	const stepIndex =
+		pos.stepKey === "done" ? TOUR_STEP_ORDER.length : TOUR_STEP_ORDER.indexOf(pos.stepKey);
 	const subCount = pos.stepKey === "done" ? 0 : TOUR_SCRIPT[pos.stepKey].length;
 	const pendingTails = view.tails.filter((t) => !t.done);
 	const expanded = !collapsed;
@@ -265,7 +320,7 @@ export function TourCompanion() {
 				className="bn-tour-card bn-glass-strong shadow-bn-elev fixed bottom-4 left-4 z-bn-tour-panel w-[300px] rounded-bn-card p-3.5 max-sm:right-4 max-sm:w-auto"
 			>
 				<div className="mb-2 flex items-center gap-1.5">
-					{STEP_ORDER.map((key, i) => {
+					{TOUR_STEP_ORDER.map((key, i) => {
 						const done = view.steps.find((s) => s.key === key)?.done === true;
 						return (
 							<span key={key} className="flex items-center gap-1">
@@ -319,16 +374,9 @@ export function TourCompanion() {
 									带我去
 								</Btn>
 							)}
-							{subCount > 1 && pos.subIndex > 0 ? (
-								<Btn
-									size="sm"
-									variant="ghost"
-									onClick={() => setManualPos({ ...pos, subIndex: pos.subIndex - 1 })}
-								>
-									上一步
-								</Btn>
-							) : null}
-							{subCount > 1 && pos.subIndex < subCount - 1 ? (
+							{/* 没有「上一步」—— 流转单向(定案:做完一步不回头,只顺序前进);
+							    说明步(advanceOnRoute)也没有「下一步」,它的流转方式就是抵达 */}
+							{subCount > 1 && pos.subIndex < subCount - 1 && !sub.advanceOnRoute ? (
 								<Btn
 									size="sm"
 									variant="outline"
