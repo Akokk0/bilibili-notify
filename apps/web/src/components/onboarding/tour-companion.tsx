@@ -13,10 +13,10 @@ import { useOnboardingState } from "./use-onboarding-view";
  * - 两态之间切换:左缘小标签(默认给毕业老用户的形态,活进度徽标)⇄ 展开
  *   小卡;「跳过/彻底关闭」概念整个退役 —— 老用户也常驻标签,server 的
  *   dismissed 字段与 /guide 的「重新开启」一并删除;
- * - 主步切换全自动、**只进不退**(reconcileTourPos):判据前进就跟,被破坏
- *   不回跳;配合 useOnboardingState 的 3s 轮询兜底(毕业即停),「做完自动进
- *   下一步」不依赖任何单条更新链路恰好有推送;主步内子步(选型说明/分解动作)
- *   靠「下一步」或抵达目标路由(advanceOnRoute)流转,同样没有回头路;
+ * - 主步切换全自动(reconcileTourPos):判据**前进与回退都跟**(回退=前置被
+ *   破坏,如退出登录,导览带用户回去补);配合 useOnboardingState 的 3s 轮询
+ *   兜底(毕业即停),「做完自动进下一步」不依赖任何单条更新链路恰好有推送;
+ *   「不回头」只在交互层:子步靠「下一步」/抵达/达成流转,没有「上一步」;
  * - **聚光灯即引导锁**:展开态下 Spotlight 按目标矩形挖洞 —— 在目标路由上聚
  *   子步的控件挂点;不在时聚顶栏对应导航页签(「带我去」按钮退役,用户跟着灯
  *   自己点页签过去)。四周暗幕聚焦、洞内粉描边,洞外的点击被拦截层吃掉(处于
@@ -185,7 +185,7 @@ export function TourCompanion() {
 				aria-hidden={collapsed}
 				inert={collapsed}
 				data-shown={expanded ? "true" : "false"}
-				className="bn-tour-card bn-glass-strong shadow-bn-elev fixed bottom-4 left-4 z-bn-tour-panel w-[300px] rounded-bn-card p-3.5 max-sm:right-4 max-sm:w-auto"
+				className="bn-tour-card bn-glass-strong shadow-bn-elev fixed bottom-4 left-4 z-bn-tour-panel w-80 rounded-bn-card p-3.5 max-sm:right-4 max-sm:w-auto"
 			>
 				<div className="mb-2 flex items-center gap-1.5">
 					{TOUR_STEP_ORDER.map((key, i) => {
@@ -236,11 +236,12 @@ export function TourCompanion() {
 						<p className="mt-1 mb-2.5 text-bn-xs leading-relaxed text-bn-text-secondary">
 							{sub.body}
 						</p>
-						<div className="flex items-center gap-2">
-							{/* 「带我去」退役:不在目标路由时聚光灯指着顶栏页签,用户自己点过去 */}
-							{onRoute ? null : (
-								<span className="text-bn-2xs text-bn-text-tertiary">点亮起的页签前往 →</span>
-							)}
+						{/* 「带我去」退役:不在目标路由时聚光灯指着顶栏页签,用户自己点过去。
+						    提示独立成行 —— 塞进按钮行会把整行挤爆(真机踩过:收起折成竖排) */}
+						{onRoute ? null : (
+							<p className="-mt-1.5 mb-2 text-bn-2xs text-bn-text-tertiary">点亮起的页签前往 →</p>
+						)}
+						<div className="flex flex-wrap items-center gap-2">
 							{/* 没有「上一步」—— 流转单向(定案:做完一步不回头,只顺序前进);
 							    说明步(advanceOnRoute)也没有「下一步」,它的流转方式就是抵达 */}
 							{subCount > 1 && pos.subIndex < subCount - 1 && !sub.advanceOnRoute ? (
@@ -262,7 +263,7 @@ export function TourCompanion() {
 								type="button"
 								data-bn="btn"
 								onClick={() => toggleCollapsed(true)}
-								className="text-bn-2xs text-bn-text-tertiary transition-colors hover:text-bn-text-primary"
+								className="whitespace-nowrap text-bn-2xs text-bn-text-tertiary transition-colors hover:text-bn-text-primary"
 							>
 								收起
 							</button>

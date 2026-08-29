@@ -154,26 +154,20 @@ export interface TourPos {
 }
 
 /**
- * 判据跟随,**只进不退**(2026-08-29 定案:做完一步不能返回,只能顺序流转):
- * activeKey(第一个未完成主步)前进了就跳到新主步的第一个子步;判据被破坏
- * (如删掉已测通的适配器)导致 activeKey 回退时,导览停在原步位不往回跳,
- * 等条件补齐再继续。没变则保持手动子步位置(越界收回,防脚本改短)。
- * 全绿(activeKey=null)进入 done 祝贺态,之后同样不倒退。
+ * 判据跟随:activeKey(第一个未完成主步)变了就跳到该主步的第一个子步 ——
+ * **前进与回退都跟**。回退=前置被破坏(退出登录、删掉已测通的适配器),导览
+ * 必须带用户回去补,否则卡在一个做不了的后续步上(真机踩过:退出登录后停在
+ * 适配器步,登录被略过)。「顺序流转、不回头」只约束**交互层** —— 没有
+ * 「上一步」按钮,用户不能手动倒退;判据说话永远算数。
+ * 没变则保持手动子步位置(越界收回,防脚本改短);全绿(activeKey=null)进入
+ * done 祝贺态。
  */
 export function reconcileTourPos(
 	pos: TourPos | null,
 	activeKey: OnboardingStepKey | null,
 ): TourPos {
-	if (pos?.stepKey === "done") return pos;
 	if (activeKey === null) return { stepKey: "done", subIndex: 0 };
-	if (!pos) return { stepKey: activeKey, subIndex: 0 };
-	if (pos.stepKey !== activeKey) {
-		if (TOUR_STEP_ORDER.indexOf(activeKey) < TOUR_STEP_ORDER.indexOf(pos.stepKey)) {
-			const maxKeep = TOUR_SCRIPT[pos.stepKey].length - 1;
-			return { stepKey: pos.stepKey, subIndex: Math.min(pos.subIndex, maxKeep) };
-		}
-		return { stepKey: activeKey, subIndex: 0 };
-	}
+	if (!pos || pos.stepKey !== activeKey) return { stepKey: activeKey, subIndex: 0 };
 	const max = TOUR_SCRIPT[activeKey].length - 1;
 	return { stepKey: activeKey, subIndex: Math.min(pos.subIndex, max) };
 }

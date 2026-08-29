@@ -7,8 +7,9 @@
  * 子步),主步内的子步才是手动翻页。
  *
  * 钉住:
- * - **只进不退**(2026-08-29 定案:做完一步不能返回,只能顺序流转):判据前进
- *   → 跟随并重置子步;判据回退(条件被破坏)→ 停在原步位;毕业(done)不倒退;
+ * - 判据**前进与回退都跟随**:回退=前置被破坏(退出登录/删适配器),导览带
+ *   用户回去补 —— 曾做成「只进不退」,真机退出登录后卡在适配器步、登录被
+ *   略过(2026-08-29 主人纠正)。「不回头」只约束交互层:没有「上一步」按钮;
  * - activeKey 没变 → 保持手动子步位置;
  * - 脚本完整性:五个主步都有子步、每个子步 route 都是站内路由、锚点在词表内、
  *   说明步(advanceOnRoute)不配锚点(它在目标页面上一帧都不停留)。
@@ -29,16 +30,9 @@ describe("reconcileTourPos 判据跟随", () => {
 		});
 	});
 
-	it("判据回退(条件被破坏 → activeKey 退回 target)→ 停在原步位不回跳(单向)", () => {
-		expect(reconcileTourPos({ stepKey: "subs", subIndex: 0 }, "target")).toEqual({
-			stepKey: "subs",
-			subIndex: 0,
-		});
-	});
-
-	it("毕业后判据被破坏(activeKey 又非空)→ done 不倒退", () => {
-		expect(reconcileTourPos({ stepKey: "done", subIndex: 0 }, "adapter")).toEqual({
-			stepKey: "done",
+	it("判据回退(前置被破坏,如退出登录)→ 跟随回去补,不卡在做不了的后续步", () => {
+		expect(reconcileTourPos({ stepKey: "adapter", subIndex: 1 }, "login")).toEqual({
+			stepKey: "login",
 			subIndex: 0,
 		});
 	});
