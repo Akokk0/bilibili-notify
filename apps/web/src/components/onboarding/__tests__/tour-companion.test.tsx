@@ -1,17 +1,17 @@
 // @vitest-environment jsdom
 
 /**
- * 「带我做」伴随窗的行为(判据跟随逻辑在 tour.test.ts,这里钉组件):
- * 未激活不渲染;激活后显示当前主步的子步;跨路由给「带我去」;子步手动翻页;
- * 「跳过指引」关掉并持久化;全绿进入祝贺态。
+ * 新手导览小卡(三轮定案:左下角常驻唯一载体)的行为:
+ * 未毕业且未收起 → 常驻;收起(server 的 onboardingDismissed)→ 不渲染;
+ * 「跳过指引」与毕业「完成」都 PATCH onboardingDismissed;有锚点的子步在
+ * 目标路由上时渲染聚光灯挖洞层。判据跟随逻辑在 tour.test.ts。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useAuthStore } from "../../../store/auth";
-import { useTourStore } from "../../../store/tour";
 import { BiliLoginStatus } from "../../../types/auth";
 
 const apiGet = vi.hoisted(() => vi.fn(async (_path: string) => null as unknown));
@@ -24,6 +24,7 @@ interface Scenario {
 	subs?: unknown[];
 	adapters?: unknown[];
 	targets?: unknown[];
+	dismissed?: boolean;
 	route?: string;
 }
 
@@ -38,7 +39,7 @@ async function mount(s: Scenario) {
 		if (path === "/api/subs") return s.subs ?? [];
 		if (path === "/api/adapters") return s.adapters ?? [];
 		if (path === "/api/targets") return s.targets ?? [];
-		if (path === "/api/globals") return { onboardingDismissed: false };
+		if (path === "/api/globals") return { onboardingDismissed: s.dismissed === true };
 		if (path === "/api/health")
 			return { status: "ok", uptime: 1, modules: { image: false, ai: false } };
 		return null;
@@ -56,58 +57,67 @@ async function mount(s: Scenario) {
 
 beforeEach(() => {
 	apiGet.mockReset();
-	localStorage.clear();
-	useTourStore.setState({ active: false });
+	apiPatch.mockReset();
+	apiPatch.mockResolvedValue({});
+	// jsdom 没有 scrollIntoView;聚光灯首次锁定目标时会调它
+	Element.prototype.scrollIntoView = vi.fn();
 });
 
 afterEach(() => {
 	cleanup();
 	useAuthStore.getState().clear();
+	for (const el of document.querySelectorAll("[data-tour]")) el.remove();
 	vi.restoreAllMocks();
 });
 
-describe("TourCompanion", () => {
-	it("未激活:不渲染", async () => {
-		await mount({});
-		await new Promise((r) => setTimeout(r, 20));
-		expect(screen.queryByLabelText("新手导览")).toBeNull();
-	});
-
-	it("激活 + 未登录:显示登录子步;不在 /system 时给「带我去」", async () => {
-		useTourStore.setState({ active: true });
+describe("TourCompanion 常驻小卡", () => {
+	it("新用户(未收起未毕业):常驻显示当前步,无需任何入口", async () => {
 		await mount({ route: "/" });
 		expect(await screen.findByText("扫码登录 B 站")).toBeTruthy();
 		expect(screen.getByRole("button", { name: "带我去" })).toBeTruthy();
 	});
 
-	it("已在目标路由:不显示「带我去」", async () => {
-		useTourStore.setState({ active: true });
-		await mount({ route: "/system" });
-		await screen.findByText("扫码登录 B 站");
-		expect(screen.queryByRole("button", { name: "带我去" })).toBeNull();
+	it("收起过(server 状态):不渲染", async () => {
+		await mount({ dismissed: true, route: "/" });
+		await new Promise((r) => setTimeout(r, 20));
+		expect(screen.queryByLabelText("新手导览")).toBeNull();
 	});
 
-	it("adapter 主步:子步可手动翻页(选型说明 → 新建适配器)", async () => {
-		useTourStore.setState({ active: true });
+	it("「跳过指引」PATCH onboardingDismissed 到 server", async () => {
+		await mount({ route: "/system" });
+		await screen.findByText("扫码登录 B 站");
+		fireEvent.click(screen.getByRole("button", { name: "跳过指引" }));
+		await waitFor(() =>
+			expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboardingDismissed: true }),
+		);
+	});
+
+	it("聚光灯:在目标路由且锚点元素存在时渲染挖洞层", async () => {
+		const anchorEl = document.createElement("div");
+		anchorEl.setAttribute("data-tour", "bili-login");
+		document.body.appendChild(anchorEl);
+		await mount({ route: "/system" });
+		await screen.findByText("扫码登录 B 站");
+		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
+	});
+
+	it("不在目标路由:无聚光灯,给「带我去」", async () => {
+		const anchorEl = document.createElement("div");
+		anchorEl.setAttribute("data-tour", "bili-login");
+		document.body.appendChild(anchorEl);
+		await mount({ route: "/" });
+		await screen.findByText("扫码登录 B 站");
+		expect(screen.queryByTestId("tour-spotlight")).toBeNull();
+	});
+
+	it("adapter 主步:子步手动翻页", async () => {
 		await mount({ loggedIn: true, subs: [{ id: "s1" }], route: "/targets" });
 		expect(await screen.findByText("先选一条 QQ 接入路线")).toBeTruthy();
 		fireEvent.click(screen.getByRole("button", { name: "下一步" }));
 		expect(await screen.findByText("新建推送适配器")).toBeTruthy();
-		fireEvent.click(screen.getByRole("button", { name: "上一步" }));
-		expect(await screen.findByText("先选一条 QQ 接入路线")).toBeTruthy();
 	});
 
-	it("「跳过指引」关掉导览并持久化", async () => {
-		useTourStore.setState({ active: true });
-		await mount({ route: "/system" });
-		await screen.findByText("扫码登录 B 站");
-		fireEvent.click(screen.getByRole("button", { name: "跳过指引" }));
-		expect(useTourStore.getState().active).toBe(false);
-		expect(localStorage.getItem("bn-tour-active")).toBe("0");
-	});
-
-	it("全绿:祝贺态,点「完成」收窗", async () => {
-		useTourStore.setState({ active: true });
+	it("全绿:祝贺态列未开启尾巴,点「完成」PATCH 收窗", async () => {
 		await mount({
 			loggedIn: true,
 			subs: [{ id: "s1" }],
@@ -115,7 +125,10 @@ describe("TourCompanion", () => {
 			targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
 		});
 		expect(await screen.findByText(/全部配置完成/)).toBeTruthy();
+		expect(screen.getByText(/图片渲染/)).toBeTruthy();
 		fireEvent.click(screen.getByRole("button", { name: "完成" }));
-		expect(useTourStore.getState().active).toBe(false);
+		await waitFor(() =>
+			expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboardingDismissed: true }),
+		);
 	});
 });

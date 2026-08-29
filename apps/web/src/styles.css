@@ -78,31 +78,19 @@
 	border-radius: var(--radius-lg);
 }
 
-/* 「带我做」导览的控件持续高亮(TourCompanion 挂/摘 class)。与上面的一次性
-   闪烁分开:导览要「一直指着」。走 outline 而不是 box-shadow —— 目标控件可能
-   自带阴影,动画覆盖 box-shadow 会把基础影杀掉(流光动画踩过的同一颗雷),
-   outline 不参与那条链,零冲突。reduced-motion 退化为静态描边。 */
-@keyframes bn-tour-pulse {
-	0%,
-	100% {
-		outline-color: var(--color-bn-pink);
-	}
-	50% {
-		outline-color: color-mix(in srgb, var(--color-bn-pink) 35%, transparent);
-	}
-}
-
-.bn-tour-highlight {
-	outline: 2px solid var(--color-bn-pink);
-	outline-offset: 3px;
+/* 新手导览的聚光灯挖洞层(TourCompanion 的 Spotlight 按目标控件矩形定位)。
+   巨型 box-shadow 把洞外压暗、洞口粉描边;`position: fixed` 与 z 由组件的
+   utility 类出(本文件的层守卫不许无层类写 position),这里只管观感。
+   矩形跟随有 transition,滚动/布局变化时洞口平滑滑过去。 */
+.bn-tour-spotlight {
+	border: 2px solid var(--color-bn-pink);
 	border-radius: var(--radius-lg);
-	animation: bn-tour-pulse 1.6s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.bn-tour-highlight {
-		animation: none;
-	}
+	box-shadow: 0 0 0 100vmax color-mix(in srgb, #000 45%, transparent);
+	transition:
+		top 0.25s ease,
+		left 0.25s ease,
+		width 0.25s ease,
+		height 0.25s ease;
 }
 
 /* 灵动岛 dirty 态外圈流光线(grill-me 二轮校准:单色流动 + 砍 pulse)。
