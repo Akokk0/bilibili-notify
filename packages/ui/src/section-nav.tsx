@@ -1,4 +1,11 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import {
+	type ButtonHTMLAttributes,
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import { AddButton, IconButton } from "./atoms";
 
 /**
@@ -78,6 +85,10 @@ export interface SectionNavProps {
 	/** 可选「新建」动作。竖栏渲染 heading 行按钮,横向渲染尾部 dashed chip。 */
 	onAdd?: () => void;
 	addLabel?: string;
+	/** 透传给「新建」按钮的原生属性(data-*、aria-* 等,如导览的挂点标记)。 */
+	addButtonProps?: ButtonHTMLAttributes<HTMLButtonElement> & {
+		[key: `data-${string}`]: string | undefined;
+	};
 	/** items 为空时竖栏显示的占位(Targets 空态)。 */
 	emptyState?: ReactNode;
 }
@@ -200,6 +211,7 @@ export function SectionNav({
 	onPick,
 	onAdd,
 	addLabel = "+ 新建",
+	addButtonProps,
 	emptyState,
 }: SectionNavProps) {
 	// 横向条(窄视口)左右滚动:隐藏滚动条,改用两端箭头按钮,仅在该方向可滚时出现。
@@ -257,7 +269,11 @@ export function SectionNav({
 					<span className="text-bn-xs font-bold uppercase tracking-wider text-bn-text-primary">
 						{heading}
 					</span>
-					{onAdd ? <AddButton onClick={onAdd}>{addLabel}</AddButton> : null}
+					{onAdd ? (
+						<AddButton {...addButtonProps} onClick={onAdd}>
+							{addLabel}
+						</AddButton>
+					) : null}
 				</div>
 				{/* nav 挂点只裹 tab 列表本身 —— 上面那行 heading 留在外面,否则皮肤给 nav
 				    画的底色/描边会把小标题一起罩进去,看着像标题掉进了 tab 卡里。
@@ -350,7 +366,7 @@ export function SectionNav({
 							);
 						})}
 						{onAdd ? (
-							<AddButton className="shrink-0" onClick={onAdd}>
+							<AddButton {...addButtonProps} className="shrink-0" onClick={onAdd}>
 								{addLabel}
 							</AddButton>
 						) : null}

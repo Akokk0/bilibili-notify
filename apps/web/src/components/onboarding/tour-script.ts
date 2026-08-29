@@ -18,9 +18,11 @@ export type TourAnchor =
 	| "subs-search"
 	| "subs-add"
 	| "adapter-add"
+	| "adapter-add-cta"
 	| "adapter-form"
 	| "adapter-test"
 	| "target-add"
+	| "target-add-cta"
 	| "target-form"
 	| "target-test"
 	| "target-list";
@@ -32,9 +34,11 @@ export const TOUR_ANCHORS: readonly TourAnchor[] = [
 	"subs-search",
 	"subs-add",
 	"adapter-add",
+	"adapter-add-cta",
 	"adapter-form",
 	"adapter-test",
 	"target-add",
+	"target-add-cta",
 	"target-form",
 	"target-test",
 	"target-list",
@@ -91,8 +95,9 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 		},
 		{
 			route: "/targets",
-			// 表单弹窗打开时链解析到 form(在 modal 内)→ 聚光灯让位;关掉回落「+ 新建」区
-			anchor: ["adapter-form", "adapter-add"],
+			// 表单弹窗打开时链解析到 form(在 modal 内)→ 聚光灯让位;空态时灯指右侧主 CTA
+			// (更醒目、点击面大),建过适配器后空态消失,回落左栏「+ 新建」按钮
+			anchor: ["adapter-form", "adapter-add-cta", "adapter-add"],
 			// 保存落库的那一刻翻页 —— 灯立刻移到「测试」按钮,不等用户自己想起来
 			doneWhen: (v) => v.hasAdapter,
 			title: "新建推送适配器",
@@ -111,7 +116,8 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 	target: [
 		{
 			route: "/targets",
-			anchor: ["target-form", "target-add"],
+			// 同 adapter:弹窗内让位;空态灯指网格里的主 CTA 卡,有目标后回落右上按钮
+			anchor: ["target-form", "target-add-cta", "target-add"],
 			title: "添加推送目标",
 			body: "点高亮的「+ 新建」,选刚才的适配器,指定发到哪:OneBot 直接填群号或 QQ 号;QQ 官方要先在 QQ 里给机器人发一句话,然后在表单里选出现的会话。保存后自动进入下一步。",
 		},

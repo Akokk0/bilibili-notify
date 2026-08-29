@@ -1334,6 +1334,8 @@ function AdapterRail({
 			onPick={onPick}
 			onAdd={onAddClick}
 			addLabel="+ 新建"
+			// data-tour:导览「新建推送适配器」的常驻灯位(控件级 —— 只框按钮本体)
+			addButtonProps={{ "data-tour": "adapter-add" }}
 			emptyState={
 				<EmptyNote size="sm" className="bg-bn-surface/55">
 					尚未配置任何适配器
@@ -1671,9 +1673,10 @@ export default function Targets() {
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
 			<div className="grid gap-4 xl:grid-bn-rail">
-				{/* data-tour:「带我做」导览的高亮挂点(TourCompanion)。包一层 div 不破坏
-				    grid 两栏 —— 这个 div 就是第一栏,SectionNav 在里面照常撑高。 */}
-				<div data-tour="adapter-add">
+				{/* 这个 div 就是 grid 第一栏,SectionNav 在里面照常撑高。导览挂点(adapter-add)
+				    在 AdapterRail 内部的「+ 新建」按钮本体上 —— 曾框整栏:洞大到点空态占位
+				    也算「点过了」,灯白白退散(真机踩过)。 */}
+				<div>
 					<AdapterRail
 						adapters={adapters}
 						selectedId={selectedAdapterId}
@@ -1692,11 +1695,14 @@ export default function Targets() {
 						<div className="bn-glass rounded-bn-card p-8 text-center shadow-bn-card">
 							<div className="mb-1 text-bn-md font-bold text-bn-text-primary">还没有适配器</div>
 							<div className="mb-4 text-bn-xs text-bn-text-tertiary">
-								先在左侧新建一个适配器(OneBot HTTP / Webhook),再为它配置推送目标。
+								先新建一个适配器(QQ 官方机器人 / OneBot / Webhook),再为它配置推送目标。
 							</div>
-							<Btn variant="primary" size="sm" onClick={startNewAdapter}>
-								+ 新建适配器
-							</Btn>
+							{/* data-tour:空态的主 CTA,导览灯位优先于左栏小按钮(链上排前) */}
+							<span data-tour="adapter-add-cta" className="inline-flex">
+								<Btn variant="primary" size="sm" onClick={startNewAdapter}>
+									+ 新建适配器
+								</Btn>
+							</span>
 						</div>
 					) : (
 						<>
@@ -1840,7 +1846,9 @@ export default function Targets() {
 									</div>
 								) : selectedTargets.length === 0 ? (
 									<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+										{/* data-tour:空态主 CTA,导览灯位优先于右上小按钮(链上排前) */}
 										<AddCard
+											data-tour="target-add-cta"
 											label="新建推送目标"
 											hint="绑定到当前适配器"
 											className="min-h-22 bg-bn-surface"

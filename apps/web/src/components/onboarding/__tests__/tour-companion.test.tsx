@@ -256,6 +256,22 @@ describe("TourCompanion 常驻小卡", () => {
 		);
 	});
 
+	it("空态主 CTA 优先于常驻小按钮:两个新建入口同在时灯指 CTA(链上排前)", async () => {
+		const railBtn = document.createElement("div");
+		railBtn.setAttribute("data-tour", "adapter-add");
+		document.body.appendChild(railBtn);
+		const cta = document.createElement("div");
+		cta.setAttribute("data-tour", "adapter-add-cta");
+		document.body.appendChild(cta);
+		await mount({ loggedIn: true, route: "/targets" });
+		await screen.findByText("新建推送适配器");
+		await waitFor(() =>
+			expect(screen.getByTestId("tour-spotlight").getAttribute("data-target")).toBe(
+				'[data-tour="adapter-add-cta"]',
+			),
+		);
+	});
+
 	it("子步只向前翻页:永远没有「上一步」(单向流转定案)", async () => {
 		await mount({ loggedIn: true, route: "/targets" });
 		await screen.findByText("新建推送适配器");

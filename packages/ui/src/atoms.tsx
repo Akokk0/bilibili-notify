@@ -6,7 +6,13 @@
  * Source-of-truth: shared.jsx — when a design tweak lands there, mirror here.
  */
 
-import type { CSSProperties, MouseEventHandler, ReactNode, SVGProps } from "react";
+import type {
+	ButtonHTMLAttributes,
+	CSSProperties,
+	MouseEventHandler,
+	ReactNode,
+	SVGProps,
+} from "react";
 import { Icon, type IconName } from "./icons";
 
 // ── Avatar ──────────────────────────────────────────────────────────────────
@@ -339,16 +345,15 @@ export function IconButton({
 const ADD_LANGUAGE =
 	"border border-dashed border-bn-border text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink disabled:cursor-not-allowed disabled:opacity-60";
 
-export interface AddButtonProps {
-	children: ReactNode;
-	onClick?: MouseEventHandler<HTMLButtonElement>;
+/** 其余原生 button 属性(data-*、aria-*、title…)原样透传 —— 导览挂点等外部标记的入口。
+ *  data-* 要显式索引:TS 只对内置元素特判它,对自定义组件不放行。 */
+export interface AddButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 	/** 占满一整行(列表末尾那种)。默认是行内短钮。 */
 	block?: boolean;
-	disabled?: boolean;
-	className?: string;
+	[key: `data-${string}`]: string | undefined;
 }
 
-export function AddButton({ children, onClick, block, disabled, className }: AddButtonProps) {
+export function AddButton({ children, block, className, ...rest }: AddButtonProps) {
 	// 行内走药丸(跟同排的 Pill / ToneChip 一个形状),占整行的走卡片圆角 ——
 	// 一条横贯整行的药丸不像按钮,像进度条。
 	const shape = block
@@ -356,9 +361,8 @@ export function AddButton({ children, onClick, block, disabled, className }: Add
 		: "inline-flex items-center rounded-bn-pill px-2.5 py-1 text-bn-xs";
 	return (
 		<button
+			{...rest}
 			type="button"
-			onClick={onClick}
-			disabled={disabled}
 			className={`gap-1.5 font-semibold ${shape} ${ADD_LANGUAGE} ${className ?? ""}`}
 		>
 			{children}
@@ -366,13 +370,13 @@ export function AddButton({ children, onClick, block, disabled, className }: Add
 	);
 }
 
-export interface AddCardProps {
+/** 其余原生 button 属性(data-*、aria-*、title…)原样透传 —— 导览挂点等外部标记的入口。 */
+export interface AddCardProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+	[key: `data-${string}`]: string | undefined;
 	/** 卡片中间那行标题(「添加 UP 主」)。 */
 	label: string;
 	/** 标题下的一行小字(「UID / 名称搜索」)。 */
 	hint: string;
-	onClick?: MouseEventHandler<HTMLButtonElement>;
-	disabled?: boolean;
 	/** 只收**不冲突**的追加项:底色、最小高度、焦点环。覆盖本体是覆盖不住的。 */
 	className?: string;
 }
@@ -381,12 +385,11 @@ export interface AddCardProps {
  * 网格里的「再加一格」卡片。`h-full` 是要紧的:栅格同行取最高那张卡,不撑满的话
  * 这一格会比同排的矮一截。
  */
-export function AddCard({ label, hint, onClick, disabled, className }: AddCardProps) {
+export function AddCard({ label, hint, className, ...rest }: AddCardProps) {
 	return (
 		<button
+			{...rest}
 			type="button"
-			onClick={onClick}
-			disabled={disabled}
 			className={`flex h-full flex-col items-center justify-center rounded-xl px-4 py-5 text-center hover:bg-bn-pink/5 ${ADD_LANGUAGE} ${className ?? ""}`}
 		>
 			<span className="text-bn-xl leading-none text-bn-text-tertiary">＋</span>
