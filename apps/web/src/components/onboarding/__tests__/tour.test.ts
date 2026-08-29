@@ -64,11 +64,12 @@ describe("TOUR_SCRIPT 脚本完整性", () => {
 		}
 	});
 
-	it("每个子步的 route 是站内绝对路径,锚点(如有)在词表内", () => {
+	it("每个子步的 route 是站内绝对路径,锚点(如有)在词表内,link(如有)也指站内", () => {
 		for (const steps of Object.values(TOUR_SCRIPT)) {
 			for (const sub of steps) {
 				expect(sub.route.startsWith("/")).toBe(true);
 				if (sub.anchor) expect(TOUR_ANCHORS).toContain(sub.anchor);
+				if (sub.link) expect(sub.link.to.startsWith("/")).toBe(true);
 			}
 		}
 	});

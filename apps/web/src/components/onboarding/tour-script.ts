@@ -29,6 +29,8 @@ export interface TourSubStep {
 	anchor?: TourAnchor;
 	title: string;
 	body: string;
+	/** 深入阅读的站内跳转按钮 —— 复杂讲解(选型表/部署教程)不塞小卡,指去教程页。 */
+	link?: { to: string; label: string };
 }
 
 export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
@@ -44,7 +46,8 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 		{
 			route: "/targets",
 			title: "先选一条 QQ 接入路线",
-			body: "只想推给自己 → 选「QQ 官方机器人」,表单里可扫码一键创建,零部署;要推到群里 / 想要图片卡片 → 选「OneBot」,需要先部署 NapCat(教程见 关于 · 新手指引)。想清楚了点「下一步」。",
+			body: "只推给自己 → 选「QQ 官方机器人」,零部署;要推到群里 / 想要图片卡片 → 选「OneBot」。想清楚了点「下一步」。",
+			link: { to: "/about/guide", label: "选型指引" },
 		},
 		{
 			route: "/targets",

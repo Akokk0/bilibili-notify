@@ -182,6 +182,8 @@ export function TourCompanion() {
 
 	const sub = pos && pos.stepKey !== "done" ? TOUR_SCRIPT[pos.stepKey][pos.subIndex] : null;
 	const onRoute = sub ? location.pathname === sub.route : false;
+	// 提出来给闭包用 —— JSX 条件里的 narrowing 进不了 onClick 闭包
+	const subLink = sub?.link ?? null;
 
 	if (!visible || !pos || !view) return null;
 
@@ -293,6 +295,11 @@ export function TourCompanion() {
 									onClick={() => setManualPos({ ...pos, subIndex: pos.subIndex + 1 })}
 								>
 									下一步
+								</Btn>
+							) : null}
+							{subLink ? (
+								<Btn size="sm" variant="ghost" onClick={() => navigate(subLink.to)}>
+									{subLink.label}
 								</Btn>
 							) : null}
 							<span className="flex-1" />
