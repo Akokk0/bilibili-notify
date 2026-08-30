@@ -3,7 +3,6 @@ import { lazy, type ReactNode, Suspense, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { DOC_MARKDOWN_COMPONENTS } from "../components/doc-markdown";
 import { externalLinkClick } from "../utils/externalLink";
-import { GuidePanel } from "./guide/guide-panel";
 
 /**
  * `/about/:section?/:chapter?` — 关于 / 支持项目。聚合面向用户的项目元信息(非操作内容):
@@ -35,6 +34,16 @@ interface SponsorsFile {
 }
 
 const ReactMarkdown = lazy(() => import("react-markdown"));
+
+/**
+ * 指引面板走懒加载 —— 它是 react-markdown / remark-gfm(约 153KB)与六份
+ * `content/*.md?raw` 的唯一入口。静态引它等于把这一坨塞进初始包,连带把上面
+ * 那句 `lazy(() => import("react-markdown"))` 变成摆设(库已在主包里,没东西
+ * 可懒)。守卫见 components/ai-chat/__tests__/markdown-chunk.test.ts。
+ */
+const GuidePanel = lazy(() =>
+	import("./guide/guide-panel").then((m) => ({ default: m.GuidePanel })),
+);
 
 // 模块级缓存:首次加载后复用。切回「更新日志」时 ChangelogPanel 直接以缓存初始化 markdown,
 // 不再经历 null →「加载中」矮占位 → 内容的一帧高度跳变(切换抖动的成因之一)。
@@ -91,7 +100,9 @@ export default function About() {
 					{section === "sponsor" ? (
 						<SponsorPanel />
 					) : section === "guide" ? (
-						<GuidePanel chapter={params.chapter} />
+						<Suspense fallback={<LoadingBlock label="正在打开新手指引" variant="inset" />}>
+							<GuidePanel chapter={params.chapter} />
+						</Suspense>
 					) : section === "changelog" ? (
 						<ChangelogPanel />
 					) : (
