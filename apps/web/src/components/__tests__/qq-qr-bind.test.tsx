@@ -33,7 +33,7 @@ describe("QQQrBindButton", () => {
 		expect(screen.queryByRole("dialog")).toBeNull();
 	});
 
-	it("点击 → 调 /bind/start,弹层展示二维码与 OpenClaw 提示", async () => {
+	it("点击 → 调 /bind/start,弹层展示二维码与能力注意(OpenClaw 说明已砍)", async () => {
 		postMock.mockImplementation(async (path: string) => {
 			if (path === "/api/qq/bind/start") return START_OK;
 			return { status: "pending" };
@@ -44,7 +44,8 @@ describe("QQQrBindButton", () => {
 			const img = screen.getByAltText("QQ 机器人绑定二维码") as HTMLImageElement;
 			expect(img.src).toBe(START_OK.qr);
 		});
-		expect(screen.getByText(/OpenClaw/)).toBeTruthy();
+		// OpenClaw/通道失效那段说明已砍(话太多),只留能力注意
+		expect(screen.queryByText(/OpenClaw/)).toBeNull();
 		// lite bot 的使用面预告:别让用户建完 bot 去配群 target 撞静默失败。
 		expect(screen.getByText(/创建者当群主的群/)).toBeTruthy();
 		expect(postMock).toHaveBeenCalledWith("/api/qq/bind/start", expect.anything());

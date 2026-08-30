@@ -151,11 +151,7 @@ export function QQQrBindButton({
 								重新生成
 							</Btn>
 						) : null}
-						<div className="text-bn-xs text-bn-text-tertiary">
-							扫码后页面显示 OpenClaw / 小龙虾属正常 —— 借道的是腾讯给 OpenClaw
-							开的官方绑定通道(实验性)。通道失效时,请到 q.qq.com 开发设置里手动填写 AppID 与
-							AppSecret。
-						</div>
+						{/* 只留能力注意这一段(2026-08-30 主人拍板砍掉 OpenClaw/通道失效说明,嫌话多) */}
 						<div className="text-bn-xs text-bn-text-tertiary">
 							注意:此通道创建的机器人能力有限,目前<b>限创建者私聊与创建者当群主的群</b>
 							(以腾讯当前政策为准)。要更宽的能力请手动填写正式注册的机器人凭据。
