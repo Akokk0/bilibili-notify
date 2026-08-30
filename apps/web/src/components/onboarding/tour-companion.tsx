@@ -265,6 +265,24 @@ export function TourCompanion() {
 		}
 	}, [subAdvanceReady, pos]);
 
+	// 子步层的判据回退(2026-08-30 真机反馈):主步 activeKey 的前进回退早有
+	// (reconcileTourPos),但子步曾只进不退 —— 删掉适配器后 activeKey 仍是
+	// adapter,手动位停在「测试连通」;聚光灯靠链回落指对了「+ 新建」,小卡文案
+	// 却还在讲测试。只盯**从真变假的转变沿**:当前位之前有带 doneWhen 的子步判据
+	// 被破坏 → 退回那一子步。「为假就退」不行 —— 会把手动「下一步」的提前翻页
+	// (单向流转定案里允许的预读)当场按回去。纯说明步无 doneWhen,不做回退目标。
+	const prevSubViewRef = useRef<OnboardingView | null>(null);
+	useEffect(() => {
+		const prev = prevSubViewRef.current;
+		prevSubViewRef.current = view;
+		if (!pos || pos.stepKey === "done" || view == null || prev == null) return;
+		const subs = TOUR_SCRIPT[pos.stepKey];
+		const firstBroken = subs.findIndex(
+			(s, i) => i < pos.subIndex && s.doneWhen != null && !s.doneWhen(view) && s.doneWhen(prev),
+		);
+		if (firstBroken !== -1) setManualPos({ stepKey: pos.stepKey, subIndex: firstBroken });
+	}, [view, pos]);
+
 	// 完成庆祝:主步判据 false→true 的那一拍,屏幕中央弹完成徽章(主人定案:
 	// 挂操作位置太不起眼)—— 小卡文案无声切到下一步太突兀(真机反馈);五步
 	// 全绿的毕业时刻加放一场全屏烟花。

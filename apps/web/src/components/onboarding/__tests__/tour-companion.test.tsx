@@ -327,9 +327,33 @@ describe("TourCompanion 常驻小卡", () => {
 	});
 
 	/**
+	 * 子步层的判据回退(2026-08-30 真机反馈)。主步 activeKey 的前进回退早有
+	 * (reconcileTourPos),但子步曾只进不退:删掉适配器后 activeKey 仍是 adapter,
+	 * 手动位停在「测试连通」—— 聚光灯靠链回落指对了「+ 新建」,小卡文案却还在讲
+	 * 测试。规则:只盯**从真变假的转变沿** —— 当前位之前有带 doneWhen 的子步判据
+	 * 被破坏 → 退回那一子步。「为假就退」会把手动「下一步」的提前预读当场按回去
+	 * (下一条「子步只向前翻页」测试钉着那半);纯说明步无 doneWhen,不做回退目标。
+	 */
+	it("子步判据回退:删掉适配器 → 小卡从「测试连通」退回「新建」", async () => {
+		const s: Scenario = {
+			loggedIn: true,
+			adapters: [{ id: "a1", enabled: true }],
+			route: "/targets",
+		};
+		const { qc } = await mount(s);
+		// hasAdapter=true → 「新建」子步的 doneWhen 已满足,自动翻到「测试连通」
+		await screen.findByText("测试适配器连通");
+		s.adapters = [];
+		await act(async () => {
+			await qc.invalidateQueries({ queryKey: ["adapters"] });
+		});
+		await screen.findByText("新建推送适配器");
+	});
+
+	/**
 	 * 测试失败兜底(2026-08-30 真机反馈)。成功会推进子步、换链重置聚光灯;失败
 	 * 既不开弹窗也不换链 —— 按下退散的灯永远回不来,报错只在页面 toast 闪 2 秒,
-	 * 导览死在原地还不讲原因。三件套:卡上讲原因、锁放开让人去改配置、灯重亮。
+	 * 导览死在原地还不讲原因。三件套:卡上讲原因、锁不放开但该做的都在洞内、灯重亮。
 	 */
 	describe("测试失败兜底", () => {
 		const failScenario = (at: string): Scenario => ({
