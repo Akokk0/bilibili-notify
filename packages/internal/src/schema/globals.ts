@@ -147,20 +147,25 @@ export const GlobalDefaultsSchema = z.object({
 export type GlobalDefaults = z.infer<typeof GlobalDefaultsSchema>;
 
 /**
- * 新手指引的持久标记。**不是**已退役的 `dismissed`(那个管「彻底关闭、连标签都不
- * 留」,已随「永久常驻无关闭态」定案删掉);这一笔只回答「打开面板要不要自动展开」。
+ * 新手指引的三态持久标记(2026-08-30 主人定案改版)。
  *
- * 落在配置而非 localStorage:「这台实例已经配完了」是实例级事实,换台机器、换个
- * 浏览器开面板不该再被引导一遍。
+ * - **缺失 = 还没问过**:打开面板时屏幕中间弹询问框(新用户开始指引 / 老用户跳过),
+ *   升级上来的存量实例与全新安装都落在这档 —— 所以 `skipped` **刻意不带 default**,
+ *   补成 false 等于永远不问、对老用户直接开导览(上一版正是这么被主人打回的);
+ * - `false` = 要指引:导览(左缘标签 ⇄ 小卡)出现;
+ * - `true` = 不要:整个导览不渲染。写入的三条路 —— 询问框选「老用户」、小卡上的
+ *   「跳过指引」、走完五步毕业;系统页的「重新开启」写回 false。
+ *
+ * 落在配置而非 localStorage:「这台实例问过了没」是实例级事实,换台机器、换个
+ * 浏览器开面板不该再被问一遍。
  */
 export const OnboardingConfigSchema = z.object({
-	/** 主人点过「跳过指引」或已走完五步 = 开面板时收成左缘标签,不再自动展开。 */
-	skipped: z.boolean().default(false),
+	skipped: z.boolean().optional(),
 });
 export type OnboardingConfig = z.infer<typeof OnboardingConfigSchema>;
 
-/** 全新安装 = 没跳过:新用户一开面板就该被指引接住。 */
-export const DEFAULT_ONBOARDING: OnboardingConfig = { skipped: false };
+/** 全新安装 = 还没问过:第一次开面板弹询问框,由用户自己选。 */
+export const DEFAULT_ONBOARDING: OnboardingConfig = {};
 
 export const GlobalConfigSchema = z.object({
 	app: AppConfigSchema,
