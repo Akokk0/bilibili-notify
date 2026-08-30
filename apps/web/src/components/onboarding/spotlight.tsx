@@ -117,9 +117,10 @@ const STABLE_FRAMES_TO_IDLE = 30;
 const IDLE_MEASURE_MS = 100;
 
 /**
- * 聚光灯挖洞层:rAF 每帧跟随目标矩形。lock 时洞外铺拦截块吃掉指针操作
- * (**引导锁**:亮灯期间只有洞内目标可点,小卡/弹窗 z 在暗幕之上不受拦;
- * /about 教程阅读区亮灯不锁)。目标用 CSS selector 描述 —— 页内控件
+ * 聚光灯挖洞层:rAF 每帧跟随目标矩形。洞外铺拦截块吃掉指针操作(**引导锁**:
+ * 亮灯期间只有洞内目标可点,小卡/弹窗 z 在暗幕之上不受拦)。亮灯即锁 ——
+ * 不想锁的场景(/about 教程阅读区)由调用方整个不渲染这一层,不是这里开口子。
+ * 目标用 CSS selector 描述 —— 页内控件
  * (`[data-tour=…]`)与顶栏导航页签(`[data-tour-nav=…]`)共用同一套机制。
  * `fixed` 由 utility 出 —— styles.css 的层守卫不许无层类写 position。
  *
@@ -135,7 +136,7 @@ const IDLE_MEASURE_MS = 100;
  *   退散一并清除 —— 用户取消弹窗回来,灯要重新指路(真机踩过:取消后灯
  *   永远不回来)。子步推进换链时整体重置。
  */
-export function Spotlight({ selectors, lock }: { selectors: readonly string[]; lock: boolean }) {
+export function Spotlight({ selectors }: { selectors: readonly string[] }) {
 	const [view, setView] = useState<{
 		selector: string;
 		rects: DOMRect[];
@@ -273,18 +274,15 @@ export function Spotlight({ selectors, lock }: { selectors: readonly string[]; l
 			height: r.height + SPOT_PAD * 2,
 		})),
 	);
-	const blocks = lock
-		? subtractRects(
-				{ top: 0, left: 0, width: window.innerWidth, height: window.innerHeight },
-				holes,
-			)
-		: [];
+	const blocks = subtractRects(
+		{ top: 0, left: 0, width: window.innerWidth, height: window.innerHeight },
+		holes,
+	);
 	return createPortal(
 		<>
 			{/* 引导锁:暗幕即禁区 —— 洞外的补集矩形铺拦截块吃掉指针操作,只留洞内
 			    目标可点。小卡/标签(z-bn-tour-panel)与弹窗(z-bn-modal)都在暗幕之上
-			    不受拦,逃生口 = 小卡「收起」;滚动不拦,rAF 每帧追着目标一起跟。
-			    lock=false(教程阅读区)时只亮灯指路、不锁。 */}
+			    不受拦,逃生口 = 小卡「收起」;滚动不拦,rAF 每帧追着目标一起跟。 */}
 			{blocks.length > 0 ? (
 				<div
 					data-testid="tour-blocker"

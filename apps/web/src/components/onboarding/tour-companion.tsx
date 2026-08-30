@@ -32,7 +32,8 @@ import { useOnboardingState } from "./use-onboarding-view";
  * - **聚光灯即引导锁**:展开态下 Spotlight 按目标矩形挖洞 —— 在目标路由上聚
  *   子步的控件挂点;不在时聚顶栏对应导航页签(「带我去」按钮退役,用户跟着灯
  *   自己点页签过去)。四周暗幕聚焦、洞内粉描边,洞外的点击被拦截层吃掉(处于
- *   引导就只做被指的操作);/about 教程阅读区亮灯不锁;逃生口 = 小卡「收起」
+ *   引导就只做被指的操作);/about 教程阅读区聚光灯整个不渲染(读内容不受压,
+ *   回去的路 = 小卡「回去继续」按钮);逃生口 = 小卡「收起」
  *   (z 在暗幕之上,永远可点);
  *   唯一的例外是**目标页签被主人藏掉**(nav 偏好只钉死「系统」):此时没有页签
  *   可指,灯与锁都不铺,「带我去」作为降级出口回到小卡上 —— 否则导览死在这儿;
@@ -234,9 +235,13 @@ export function TourCompanion() {
 	// 不存在的东西,而「带我去」已退役,导览就此死在这儿。降级出口把按钮放回来。
 	const hiddenNav = useNavStore((s) => s.hidden);
 	const navTabHidden = sub != null && !onRoute && hiddenNav.includes(sub.route);
-	// navTabHidden 自带 `!onRoute`,两条「没有目标可指」的情形并成一道前置守卫
+	// 教程阅读区(/about)聚光灯**整个不渲染**(三易其稿的主人定案):点「选型指引」
+	// 进来是要读内容的 —— 暗幕压得没法读,只留描边呼吸框也还是打扰;回去的路
+	// 改走小卡上的「回去继续」按钮。
+	const inReadingZone = location.pathname.startsWith("/about");
+	// navTabHidden 自带 `!onRoute`,「没有目标可指」与「阅读区」并成一道前置守卫
 	const spotlightSelectors =
-		!sub || navTabHidden
+		!sub || navTabHidden || inReadingZone
 			? null
 			: onRoute
 				? // 数组元素 = 同亮组:组内锚点拼成一个逗号 selector,一起开洞
@@ -246,9 +251,6 @@ export function TourCompanion() {
 							: `[data-tour="${entry}"]`,
 					) ?? null)
 				: [`[data-tour-nav="${sub.route}"]`];
-	// 教程阅读区亮灯不锁:点「选型指引」进来是要读内容的,锁住连章节都切不了;
-	// 灯仍指着导航页签,读完跟着走。
-	const inReadingZone = location.pathname.startsWith("/about");
 
 	// 子步自动流转(单向),两个信号:
 	// - 抵达(advanceOnRoute):说明步在用户到达目标路由的那一刻使命完成,直接进入
@@ -382,7 +384,7 @@ export function TourCompanion() {
 	return createPortal(
 		<>
 			{expanded && spotlightSelectors ? (
-				<Spotlight key={failSeq} selectors={spotlightSelectors} lock={!inReadingZone} />
+				<Spotlight key={failSeq} selectors={spotlightSelectors} />
 			) : null}
 			{celebration ? (
 				<StepDoneBadge
@@ -474,13 +476,13 @@ export function TourCompanion() {
 						) : null}
 						{/* 「带我去」退役:不在目标路由时聚光灯指着顶栏页签,用户自己点过去。
 						    提示独立成行 —— 塞进按钮行会把整行挤爆(真机踩过:收起折成竖排) */}
-						{onRoute || navTabHidden ? null : (
+						{onRoute || navTabHidden || inReadingZone ? null : (
 							<p className="-mt-1.5 mb-2 text-bn-2xs text-bn-text-tertiary">点亮起的页签前往 →</p>
 						)}
 						<div className="flex flex-wrap items-center gap-2">
 							{/* 降级出口:目标页签被藏起来了,没有灯可跟 —— 只有这时才把退役的
 							    「带我去」放回来,正常情况下仍旧是「跟着灯自己点页签过去」 */}
-							{navTabHidden ? (
+							{navTabHidden && !inReadingZone ? (
 								<Btn size="sm" onClick={() => navigate(sub.route)}>
 									带我去
 								</Btn>
@@ -496,7 +498,13 @@ export function TourCompanion() {
 									下一步
 								</Btn>
 							) : null}
-							{subLink ? (
+							{/* 阅读区里没有灯,回去的路就是这颗按钮;「选型指引」此刻让位 ——
+							    人已经在教程里,再指过来没意义 */}
+							{inReadingZone ? (
+								<Btn size="sm" onClick={() => navigate(sub.route)}>
+									回去继续
+								</Btn>
+							) : subLink ? (
 								<Btn size="sm" variant="ghost" onClick={() => navigate(subLink.to)}>
 									{subLink.label}
 								</Btn>

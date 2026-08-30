@@ -549,12 +549,28 @@ describe("TourCompanion 常驻小卡", () => {
 		expect(screen.getByText(/点亮起的页签前往/)).toBeTruthy();
 	});
 
-	it("教程阅读区(/about)只亮灯指路、不锁 —— 点「选型指引」进来要能读", async () => {
+	/**
+	 * 教程阅读区(/about)三易其稿(2026-08-30 主人定案):亮灯带锁 → 亮灯不锁
+	 * (暗幕压得没法读)→ 只留描边呼吸框(还是打扰)→ **聚光灯整个不渲染**,
+	 * 回去的路挪到小卡上:「选型指引」在阅读区让位给「回去继续」(跳回该步路由)。
+	 */
+	it("教程阅读区(/about):聚光灯整个不渲染,「回去继续」跳回原步", async () => {
 		mountNavAnchor("/system");
 		await mount({ route: "/about/guide" });
 		await screen.findByText("扫码登录 B 站");
-		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
-		expect(screen.queryByTestId("tour-blocker")).toBeNull();
+		// 给 rAF 解析留几拍 —— 不渲染是持续判定,不是初始态碰巧没画
+		await new Promise((r) => setTimeout(r, 80));
+		expect(screen.queryByTestId("tour-spotlight")).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: "回去继续" }));
+		// 跳回 /system(login 步的路由)→ 不在阅读区了,按钮退场
+		await waitFor(() => expect(screen.queryByRole("button", { name: "回去继续" })).toBeNull());
+	});
+
+	it("阅读区里「选型指引」让位给「回去继续」—— 人已经在教程里,再指过来没意义", async () => {
+		await mount({ loggedIn: true, route: "/about/guide" });
+		await screen.findByText("先选一条接入路线");
+		expect(screen.queryByRole("button", { name: "选型指引" })).toBeNull();
+		expect(screen.getByRole("button", { name: "回去继续" })).toBeTruthy();
 	});
 
 	it("adapter 主步 · 出发前(在系统页):说明步聚光目标页签,没有下一步", async () => {
