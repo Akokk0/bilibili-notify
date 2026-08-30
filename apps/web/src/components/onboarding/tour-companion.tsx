@@ -7,7 +7,7 @@ import { api } from "../../services/api";
 import { useNavStore } from "../../store/nav";
 import type { GlobalConfig } from "../../types/globals";
 import { Fireworks, StepDoneBadge } from "./celebration";
-import type { OnboardingStepKey, OnboardingView } from "./derive";
+import type { OnboardingStepKey, OnboardingTailKey, OnboardingView } from "./derive";
 import { Spotlight } from "./spotlight";
 import { reconcileTourPos, STEP_DONE_MESSAGES, TOUR_SCRIPT, type TourPos } from "./tour-script";
 import { useOnboardingState } from "./use-onboarding-view";
@@ -65,6 +65,13 @@ function persistCollapsed(v: boolean) {
 	}
 }
 
+/** 毕业卡上的「锦上添花」链接。两条分支(去哪 / 叫什么)曾各写一个三元,
+ *  加第三个尾巴会同时落进两处的 else 里 —— 一张表就没有漏的余地。 */
+const TAIL_LINKS: Record<OnboardingTailKey, { to: string; label: string }> = {
+	image: { to: "/about/guide/render", label: "图片渲染(强烈推荐)" },
+	ai: { to: "/about/guide/ai", label: "AI 能力" },
+};
+
 const STEP_SHORT: Record<OnboardingStepKey, string> = {
 	login: "登录",
 	adapter: "适配器",
@@ -86,6 +93,21 @@ function measureLayoutRect(el: HTMLElement): {
 	height: number;
 } {
 	return { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight };
+}
+
+/** 小卡右下角那排三级小字钮(「跳过指引」/「收起」)—— 比库件 Btn.sm 还轻一档,
+ *  刻意不用 Btn:那是 26px 高的控件,塞进这行会把整行挤到折行(真机踩过)。 */
+function TextBtn({ label, onClick }: { label: string; onClick: () => void }) {
+	return (
+		<button
+			type="button"
+			data-bn="btn"
+			onClick={onClick}
+			className="whitespace-nowrap text-bn-2xs text-bn-text-tertiary transition-colors hover:text-bn-text-primary"
+		>
+			{label}
+		</button>
+	);
 }
 
 export function TourCompanion() {
@@ -125,9 +147,6 @@ export function TourCompanion() {
 		persistCollapsed(v);
 		setCollapsedPref(v);
 	};
-	// poll 的启停条件(未毕业)在 hook 内部判,这里只声明意图。
-	const { view, ready } = useOnboardingState({ poll: true });
-
 	// 「这台实例已经不用再被自动展开了」的持久标记。落配置不落 localStorage:
 	// 换浏览器/换机器开面板不该再被引导一遍(判据本身也是实例级的)。
 	const globalsQ = useQuery({
@@ -136,10 +155,15 @@ export function TourCompanion() {
 	});
 	const skipped = globalsQ.data?.onboarding?.skipped === true;
 	const collapsed = collapsedPref ?? skipped;
+	// 收起态不轮询 —— 判据只在小卡摊开、用户正跟着做的时候才需要跟手。跳过指引
+	// 的人第一时间落进这档,不然那 4 条 query 会以 20 次/分钟一路跑到标签页关掉。
+	// 毕业即停那道在 hook 内部判。
+	const { view } = useOnboardingState({ poll: !collapsed });
+
 	// 标记没到手之前**什么都不渲染**:先画展开态再收回去会闪一下,而这一闪正好
 	// 落在「老用户被锁」那个最敏感的场景上。请求失败(isPending 落地为 error)也
 	// 放行 —— 那时 globals 整个面板都废了,不该顺带把导览也吞掉。
-	const visible = ready && view !== null && !globalsQ.isPending;
+	const visible = view !== null && !globalsQ.isPending;
 
 	const qc = useQueryClient();
 	const { mutate: markSkipped } = useMutation({
@@ -164,13 +188,13 @@ export function TourCompanion() {
 	// 不存在的东西,而「带我去」已退役,导览就此死在这儿。降级出口把按钮放回来。
 	const hiddenNav = useNavStore((s) => s.hidden);
 	const navTabHidden = sub != null && !onRoute && hiddenNav.includes(sub.route);
-	const spotlightSelectors = sub
-		? onRoute
-			? (anchorChain?.map((a) => `[data-tour="${a}"]`) ?? null)
-			: navTabHidden
-				? null
-				: [`[data-tour-nav="${sub.route}"]`]
-		: null;
+	// navTabHidden 自带 `!onRoute`,两条「没有目标可指」的情形并成一道前置守卫
+	const spotlightSelectors =
+		!sub || navTabHidden
+			? null
+			: onRoute
+				? (anchorChain?.map((a) => `[data-tour="${a}"]`) ?? null)
+				: [`[data-tour-nav="${sub.route}"]`];
 	// 教程阅读区亮灯不锁:点「选型指引」进来是要读内容的,锁住连章节都切不了;
 	// 灯仍指着导航页签,读完跟着走。
 	const inReadingZone = location.pathname.startsWith("/about");
@@ -201,13 +225,9 @@ export function TourCompanion() {
 		const prev = prevViewRef.current;
 		prevViewRef.current = view;
 		if (!view || !prev || collapsed) return;
-		const newlyDone = view.steps.filter(
-			(s) => s.done && prev.steps.find((p) => p.key === s.key)?.done === false,
-		);
-		if (newlyDone.length > 0) {
-			const key = newlyDone[newlyDone.length - 1].key;
-			setCelebration({ seq: Date.now(), text: STEP_DONE_MESSAGES[key] });
-		}
+		// 两份 steps 都出自 deriveOnboarding,同序等长 —— 按下标对位即可
+		const justDone = view.steps.findLast((s, i) => s.done && prev.steps[i]?.done === false);
+		if (justDone) setCelebration({ seq: Date.now(), text: STEP_DONE_MESSAGES[justDone.key] });
 		if (view.allDone && !prev.allDone) setFireworks(true);
 	}, [view, collapsed]);
 
@@ -303,10 +323,10 @@ export function TourCompanion() {
 								{pendingTails.map((t) => (
 									<Link
 										key={t.key}
-										to={t.key === "image" ? "/about/guide/render" : "/about/guide/ai"}
+										to={TAIL_LINKS[t.key].to}
 										className="ml-1 text-bn-pink hover:underline"
 									>
-										{t.key === "image" ? "图片渲染(强烈推荐)" : "AI 能力"}
+										{TAIL_LINKS[t.key].label}
 									</Link>
 								))}
 							</p>
@@ -354,25 +374,14 @@ export function TourCompanion() {
 							{/* 「跳过指引」= 记下实例标记 + 收起,不是关闭(标签照常常驻)。存量
 							    用户唯一的出口:判据认「按过测试」才算配好适配器,没点过那个按钮
 							    的老用户升级后一律被判成没配完,引导锁会把面板锁到只剩聚光灯 */}
-							<button
-								type="button"
-								data-bn="btn"
+							<TextBtn
+								label="跳过指引"
 								onClick={() => {
 									markSkipped();
 									toggleCollapsed(true);
 								}}
-								className="whitespace-nowrap text-bn-2xs text-bn-text-tertiary transition-colors hover:text-bn-text-primary"
-							>
-								跳过指引
-							</button>
-							<button
-								type="button"
-								data-bn="btn"
-								onClick={() => toggleCollapsed(true)}
-								className="whitespace-nowrap text-bn-2xs text-bn-text-tertiary transition-colors hover:text-bn-text-primary"
-							>
-								收起
-							</button>
+							/>
+							<TextBtn label="收起" onClick={() => toggleCollapsed(true)} />
 						</div>
 					</div>
 				) : null}

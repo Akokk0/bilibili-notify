@@ -31,8 +31,9 @@ const CHAPTERS: { key: string; title: string; source: string }[] = [
 
 export function GuidePanel({ chapter }: { chapter?: string | undefined }) {
 	const navigate = useNavigate();
-	const current = CHAPTERS.find((c) => c.key === (chapter ?? "overview")) ?? CHAPTERS[0];
-	const { view, ready } = useOnboardingState();
+	// 认不出(含没给)一律回落 CHAPTERS[0] —— 它就是总览,不需要第二条回退路径
+	const current = CHAPTERS.find((c) => c.key === chapter) ?? CHAPTERS[0];
+	const { view } = useOnboardingState();
 
 	return (
 		<div className="flex flex-col gap-4">
@@ -49,7 +50,7 @@ export function GuidePanel({ chapter }: { chapter?: string | undefined }) {
 					}
 					options={CHAPTERS.map((c) => ({ value: c.key, label: c.title }))}
 				/>
-				{ready && view ? (
+				{view ? (
 					<span className="flex items-center gap-1.5">
 						{view.steps.map((s) => (
 							<StatusDot key={s.key} kind={s.done ? "ok" : "pending"} size="sm" />

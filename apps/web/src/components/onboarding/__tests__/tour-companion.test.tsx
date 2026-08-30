@@ -550,4 +550,36 @@ describe("TourCompanion 常驻小卡", () => {
 			expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboarding: { skipped: true } }),
 		);
 	});
+	describe("判据轮询的启停", () => {
+		/** `/api/subs` 被问了几次 —— 轮询每轮会 invalidate 它。 */
+		const subsCalls = () => apiGet.mock.calls.filter(([p]) => p === "/api/subs").length;
+
+		it("小卡展开着 → 每 3s 复查一轮判据(页面外动作没有前端事件,只能靠问)", async () => {
+			vi.useFakeTimers();
+			try {
+				await mount({ route: "/system" });
+				await vi.advanceTimersByTimeAsync(0);
+				const before = subsCalls();
+				await vi.advanceTimersByTimeAsync(3_500);
+				expect(subsCalls()).toBeGreaterThan(before);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("收起成标签 → 不再轮询(跳过指引的人第一时间落进这档)", async () => {
+			vi.useFakeTimers();
+			try {
+				await mount({ route: "/system", skipped: true });
+				await vi.advanceTimersByTimeAsync(0);
+				const before = subsCalls();
+				await vi.advanceTimersByTimeAsync(10_000);
+				// 这是全站唯一一处长期定时请求,不关就是 4 条 query × 20 次/分钟
+				// 一路跑到标签页关掉
+				expect(subsCalls()).toBe(before);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+	});
 });
