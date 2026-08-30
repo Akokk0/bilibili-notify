@@ -28,7 +28,7 @@ describe("QQQrBindButton", () => {
 
 	it("初始只有入口按钮 + 实验性徽章,不见弹窗", () => {
 		render(<QQQrBindButton onCredentials={() => {}} />);
-		expect(screen.getByRole("button", { name: /扫码一键创建/ })).toBeTruthy();
+		expect(screen.getByRole("button", { name: /扫码连接/ })).toBeTruthy();
 		expect(screen.getByText("实验性")).toBeTruthy();
 		expect(screen.queryByRole("dialog")).toBeNull();
 	});
@@ -39,7 +39,7 @@ describe("QQQrBindButton", () => {
 			return { status: "pending" };
 		});
 		render(<QQQrBindButton onCredentials={() => {}} />);
-		fireEvent.click(screen.getByRole("button", { name: /扫码一键创建/ }));
+		fireEvent.click(screen.getByRole("button", { name: /扫码连接/ }));
 		await waitFor(() => {
 			const img = screen.getByAltText("QQ 机器人绑定二维码") as HTMLImageElement;
 			expect(img.src).toBe(START_OK.qr);
@@ -58,7 +58,7 @@ describe("QQQrBindButton", () => {
 			return { status: "created", appId: "102000001", appSecret: "S3cret" };
 		});
 		render(<QQQrBindButton onCredentials={got} />);
-		fireEvent.click(screen.getByRole("button", { name: /扫码一键创建/ }));
+		fireEvent.click(screen.getByRole("button", { name: /扫码连接/ }));
 		await waitFor(
 			() => expect(got).toHaveBeenCalledWith({ appId: "102000001", appSecret: "S3cret" }),
 			POLLED,
@@ -73,7 +73,7 @@ describe("QQQrBindButton", () => {
 			return { status: "expired" };
 		});
 		render(<QQQrBindButton onCredentials={() => {}} />);
-		fireEvent.click(screen.getByRole("button", { name: /扫码一键创建/ }));
+		fireEvent.click(screen.getByRole("button", { name: /扫码连接/ }));
 		await waitFor(() => expect(screen.getByText(/二维码已过期/)).toBeTruthy(), POLLED);
 
 		postMock.mockClear();
@@ -93,7 +93,7 @@ describe("QQQrBindButton", () => {
 			return { status: "error", message: "扫码成功但腾讯未返回完整机器人凭据" };
 		});
 		render(<QQQrBindButton onCredentials={() => {}} />);
-		fireEvent.click(screen.getByRole("button", { name: /扫码一键创建/ }));
+		fireEvent.click(screen.getByRole("button", { name: /扫码连接/ }));
 		await waitFor(() => expect(screen.getByText(/未返回完整机器人凭据/)).toBeTruthy(), POLLED);
 		expect(screen.getAllByText(/手动填写/).length).toBeGreaterThan(0);
 		const polls = postMock.mock.calls.filter(([p]) => p === "/api/qq/bind/poll").length;
@@ -104,7 +104,7 @@ describe("QQQrBindButton", () => {
 	it("start 失败 → 报错并可重试", async () => {
 		postMock.mockRejectedValueOnce(new Error("bind_start_failed"));
 		render(<QQQrBindButton onCredentials={() => {}} />);
-		fireEvent.click(screen.getByRole("button", { name: /扫码一键创建/ }));
+		fireEvent.click(screen.getByRole("button", { name: /扫码连接/ }));
 		await waitFor(() => expect(screen.getByText(/创建绑定任务失败/)).toBeTruthy());
 		expect(screen.getByRole("button", { name: /重新生成/ })).toBeTruthy();
 	});

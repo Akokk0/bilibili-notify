@@ -67,7 +67,7 @@ describe("关于页 · 新手指引 section", () => {
 	it("/about/guide/push 双路都在:NapCat 教程与官方扫码一键建都出现", async () => {
 		await mount("/about/guide/push");
 		expect((await screen.findAllByText(/NapCat/)).length).toBeGreaterThan(0);
-		expect(screen.getAllByText(/扫码一键创建/).length).toBeGreaterThan(0);
+		expect(screen.getAllByText(/扫码连接/).length).toBeGreaterThan(0);
 	});
 
 	it("/about/guide/login 渲染 B 站登录章", async () => {

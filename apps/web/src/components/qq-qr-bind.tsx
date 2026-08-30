@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, api } from "../services/api";
 
 /**
- * QQ 官方机器人「扫码一键创建」—— 适配器表单里 appId/appSecret 的旁路入口。
+ * QQ 官方机器人「扫码连接 / 创建」—— 适配器表单里 appId/appSecret 的旁路入口。
+ * 不只能新建:腾讯 H5 里也能重选之前通道建的 bot 重发 secret,凭据直接回填。
  *
  * 借道腾讯给 OpenClaw 开的 lite 绑定通道(server 代理,见 server 端
  * `platforms/qq-bind.ts`):扫码进的是腾讯 H5,建 bot 全程在腾讯页面里发生;
@@ -117,7 +118,7 @@ export function QQQrBindButton({
 	return (
 		<div className="flex items-center gap-2">
 			<Btn variant="outline" size="sm" onClick={() => void start()}>
-				扫码一键创建
+				扫码连接 / 创建
 			</Btn>
 			<Pill subtle size="sm">
 				实验性
@@ -126,8 +127,8 @@ export function QQQrBindButton({
 				<ModalShell
 					width={400}
 					onCancel={() => setPhase("closed")}
-					title="扫码一键创建机器人"
-					description="手机 QQ 扫码,在腾讯页面里完成创建(每个 QQ 号最多 5 个)"
+					title="扫码连接 / 创建机器人"
+					description="手机 QQ 扫码,在腾讯页面里重选已建的机器人回填凭据,或新建一个(每个 QQ 号最多 5 个)"
 				>
 					<div className="flex flex-col items-center gap-3">
 						{phase === "starting" ? (
