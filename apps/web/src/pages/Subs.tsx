@@ -736,7 +736,7 @@ export default function Subs() {
 			{subsQuery.data &&
 			filtered.length === 0 &&
 			(q.trim() || filterId !== "all" || groupFilter) ? (
-				<EmptyNote className="bg-bn-surface/60">
+				<EmptyNote>
 					<div className="mb-1 text-sm font-bold text-bn-text-primary">没有匹配的订阅</div>
 					<div>试试换个关键词或筛选条件</div>
 				</EmptyNote>

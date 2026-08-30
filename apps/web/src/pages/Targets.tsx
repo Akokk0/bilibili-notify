@@ -1338,11 +1338,8 @@ function AdapterRail({
 			addLabel="+ 新建"
 			// data-tour:导览「新建推送适配器」的常驻灯位(控件级 —— 只框按钮本体)
 			addButtonProps={{ "data-tour": "adapter-add" }}
-			emptyState={
-				<EmptyNote size="sm" className="bg-bn-surface/55">
-					尚未配置任何适配器
-				</EmptyNote>
-			}
+			// 不带底色 —— 虚线家族统一成 Subs「添加 UP 主」那样只有虚线框(2026-08-30 主人定案)
+			emptyState={<EmptyNote size="sm">尚未配置任何适配器</EmptyNote>}
 			items={adapters.map((a) => {
 				const count = targetCountByAdapter.get(a.id) ?? 0;
 				return {
@@ -1853,7 +1850,7 @@ export default function Targets() {
 											data-tour="target-add"
 											label="新建推送目标"
 											hint="绑定到当前适配器"
-											className="min-h-22 bg-bn-surface"
+											className="min-h-22"
 											onClick={() => startNewTarget(selectedAdapter)}
 										/>
 									</div>
@@ -1877,7 +1874,7 @@ export default function Targets() {
 										<AddCard
 											label="新建推送目标"
 											hint="绑定到当前适配器"
-											className="min-h-22 bg-bn-surface"
+											className="min-h-22"
 											onClick={() => startNewTarget(selectedAdapter)}
 										/>
 									</div>
