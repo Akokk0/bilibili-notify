@@ -64,6 +64,8 @@ export function QQQrBindButton({
 		if (phase !== "waiting" || !session) return;
 		let alive = true;
 		let timer: ReturnType<typeof setTimeout>;
+		// session 换了 effect 就重跑,所以一轮问询期间间隔是定死的 —— 算一次就够
+		const delay = pollDelayMs(session.interval);
 		const tick = async () => {
 			try {
 				const r = await api.post<QQBindPollResult>("/api/qq/bind/poll", { taskId: session.taskId });
@@ -92,7 +94,7 @@ export function QQQrBindButton({
 						return;
 					}
 				}
-				timer = setTimeout(tick, pollDelayMs(session.interval));
+				timer = setTimeout(tick, delay);
 			} catch (e) {
 				if (!alive) return;
 				if (e instanceof ApiError && e.status === 404) {
@@ -101,10 +103,10 @@ export function QQQrBindButton({
 					return;
 				}
 				// 瞬时故障(网络抖动 / 上游 502,server 保留了任务)→ 下一轮接着问。
-				timer = setTimeout(tick, pollDelayMs(session.interval));
+				timer = setTimeout(tick, delay);
 			}
 		};
-		timer = setTimeout(tick, pollDelayMs(session.interval));
+		timer = setTimeout(tick, delay);
 		return () => {
 			alive = false;
 			clearTimeout(timer);

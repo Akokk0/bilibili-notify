@@ -1,4 +1,4 @@
-import { Btn, Input } from "@bilibili-notify/ui";
+import { Btn, Input, MODAL_HOOK } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
 import { submitLogin } from "../services/session";
 import { useSessionStore } from "../store/session";
@@ -91,7 +91,7 @@ export function LoginDialog({ variant }: { variant: "cold" | "overlay" }) {
 				//
 				// 登录页也吃皮肤(SkinRoot 在 main.tsx,包着 AuthGate),但不必为此留一块不挂当
 				// 逃生舱:真的逃生口是 `?skin=off`(services/skin.ts 的 skinKillSwitchActive)。
-				data-bn="modal"
+				data-bn={MODAL_HOOK}
 				className="bn-glass-strong w-full max-w-sm rounded-bn-card px-7 py-8 shadow-bn-elev"
 			>
 				<div className="mb-1 flex items-center gap-2">

@@ -16,6 +16,16 @@ import { type ReactNode, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Btn } from "./atoms";
 
+/**
+ * 弹窗本体的皮肤挂点值,以及按它取元素的 selector。
+ *
+ * 它不只是皮肤钩子 —— 站里有别的东西靠「这块在不在弹窗里」做行为判断(导览的
+ * 聚光灯:目标全在弹窗里就整个让位,弹窗内的按下不算退散)。那些判断原先是把
+ * 字符串手抄过去的,改个挂点名不会有任何编译错误,只会让行为在真机上悄悄变样。
+ */
+export const MODAL_HOOK = "modal";
+export const MODAL_SELECTOR = `[data-bn="${MODAL_HOOK}"]`;
+
 export interface ModalShellProps {
 	children: ReactNode;
 	onCancel: () => void;
@@ -63,7 +73,7 @@ export function ModalShell({
 			<div
 				role="dialog"
 				aria-modal="true"
-				data-bn="modal"
+				data-bn={MODAL_HOOK}
 				// 这个元素就是 `modal` 挂点本身。曾经有个 `bodyStyle` prop 往这儿灌
 				// inline style,唯一的调用方(UpDialog)传的还全是编译期常量 —— 而
 				// inline 压过一切 author 样式,等于皮肤给弹窗写的 max-height / overflow

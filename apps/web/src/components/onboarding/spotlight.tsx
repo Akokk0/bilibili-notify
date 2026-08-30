@@ -1,3 +1,4 @@
+import { MODAL_SELECTOR } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -141,7 +142,7 @@ export function Spotlight({ selectors, lock }: { selectors: readonly string[]; l
 				if (changed) setView(null);
 				return changed;
 			}
-			const pageEls = found.els.filter((el) => el.closest('[data-bn="modal"]') === null);
+			const pageEls = found.els.filter((el) => el.closest(MODAL_SELECTOR) === null);
 			const inModal = pageEls.length === 0;
 			if (inModal) {
 				// 让位期间清掉退散:点目标 → 弹窗 → 取消回来,灯要重新指路
@@ -206,7 +207,7 @@ export function Spotlight({ selectors, lock }: { selectors: readonly string[]; l
 			if (!(e.target instanceof Element)) return;
 			// 弹窗内的交互不退散:填表要点很多下 —— 第一下就把灯熄了,
 			// 后面全程反而没了指引。
-			if (e.target.closest('[data-bn="modal"]')) return;
+			if (e.target.closest(MODAL_SELECTOR)) return;
 			for (const selector of chain) {
 				const els = document.querySelectorAll(selector);
 				for (const el of els) {

@@ -17,8 +17,6 @@
 import { createDecipheriv, randomBytes } from "node:crypto";
 import type { QQBindPollResult } from "@bilibili-notify/contract";
 
-export type { QQBindPollResult };
-
 /** 生成一把 base64 编码的 AES-256(32 字节)绑定密钥。 */
 export function generateBindKey(): string {
 	return randomBytes(32).toString("base64");
