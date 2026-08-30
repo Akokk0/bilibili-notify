@@ -12,21 +12,10 @@ import type { OnboardingStepKey, OnboardingView } from "./derive";
  * 表单改版时只需要核对文案,不用同步一堆字段锚点。
  */
 
-export type TourAnchor =
-	| "bili-login"
-	| "bili-login-qr"
-	| "subs-search"
-	| "subs-add"
-	| "adapter-add"
-	| "adapter-form"
-	| "adapter-test"
-	| "target-add"
-	| "target-form"
-	| "target-test"
-	| "target-list";
-
-/** 锚点词表 —— 页面挂点与脚本引用的交集,测试钉住两边不脱节。 */
-export const TOUR_ANCHORS: readonly TourAnchor[] = [
+/** 锚点词表 —— 页面挂点与脚本引用的交集,测试钉住两边不脱节。
+ *  类型由它派生(站里通行写法,见 config/nav 的 NAV_ITEMS、contract 的 CHANNELS):
+ *  词表与联合类型分两处手写的话,漏一处不会红,只会让守卫少覆盖一个锚点。 */
+export const TOUR_ANCHORS = [
 	"bili-login",
 	"bili-login-qr",
 	"subs-search",
@@ -38,7 +27,23 @@ export const TOUR_ANCHORS: readonly TourAnchor[] = [
 	"target-form",
 	"target-test",
 	"target-list",
-];
+] as const;
+
+export type TourAnchor = (typeof TOUR_ANCHORS)[number];
+
+/**
+ * 只住在 `ModalShell` 里的挂点 —— 弹窗没开时它们不存在,开了聚光灯又整体让位。
+ * 一条锚点链**全是**它们,灯就永远不亮(subs 步栽过),测试拿这份钉住。
+ *
+ * 放在词表旁边而不是测试里:加锚点的人在这儿,不在测试文件里 —— 漏标一个
+ * 不会红,只会让那条不变式悄悄放行一条永远不亮的链。
+ */
+export const MODAL_ONLY_ANCHORS: ReadonlySet<TourAnchor> = new Set<TourAnchor>([
+	"bili-login-qr",
+	"adapter-form",
+	"target-form",
+	"subs-search",
+]);
 
 export interface TourSubStep {
 	/** 该子步发生在哪个路由;在别的页面时聚光灯照到顶栏对应页签上指路。 */
@@ -138,15 +143,6 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 		},
 	],
 };
-
-/** 主步顺序 —— 导览小卡的步点条与单向流转判序共用。 */
-export const TOUR_STEP_ORDER: readonly OnboardingStepKey[] = [
-	"login",
-	"adapter",
-	"target",
-	"test",
-	"subs",
-];
 
 /** 主步完成时在操作位置弹出的完成徽章文案 —— 判据变绿的那一拍就地反馈,
  *  不然小卡文案无声切到下一步,用户不知道刚才那步已经成了(真机反馈:突兀)。 */

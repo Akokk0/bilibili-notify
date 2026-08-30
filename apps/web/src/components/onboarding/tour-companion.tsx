@@ -9,13 +9,7 @@ import type { GlobalConfig } from "../../types/globals";
 import { Fireworks, StepDoneBadge } from "./celebration";
 import type { OnboardingStepKey, OnboardingView } from "./derive";
 import { Spotlight } from "./spotlight";
-import {
-	reconcileTourPos,
-	STEP_DONE_MESSAGES,
-	TOUR_SCRIPT,
-	TOUR_STEP_ORDER,
-	type TourPos,
-} from "./tour-script";
+import { reconcileTourPos, STEP_DONE_MESSAGES, TOUR_SCRIPT, type TourPos } from "./tour-script";
 import { useOnboardingState } from "./use-onboarding-view";
 
 /**
@@ -229,8 +223,10 @@ export function TourCompanion() {
 
 	if (!visible || !pos || !view) return null;
 
+	// 步序只有一份 —— derive.ts 排好的 view.steps。曾另立 TOUR_STEP_ORDER,
+	// 改一处漏一处不会红,步点条会静静地少一颗或谁都不高亮。
 	const stepIndex =
-		pos.stepKey === "done" ? TOUR_STEP_ORDER.length : TOUR_STEP_ORDER.indexOf(pos.stepKey);
+		pos.stepKey === "done" ? view.steps.length : view.steps.findIndex((s) => s.key === pos.stepKey);
 	const subCount = pos.stepKey === "done" ? 0 : TOUR_SCRIPT[pos.stepKey].length;
 	const pendingTails = view.tails.filter((t) => !t.done);
 	const expanded = !collapsed;
@@ -278,23 +274,20 @@ export function TourCompanion() {
 				className="bn-tour-card bn-glass-strong shadow-bn-elev fixed bottom-4 left-4 z-bn-tour-panel w-80 rounded-bn-card p-3.5 max-sm:right-4 max-sm:w-auto"
 			>
 				<div className="mb-2 flex items-center gap-1.5">
-					{TOUR_STEP_ORDER.map((key, i) => {
-						const done = view.steps.find((s) => s.key === key)?.done === true;
-						return (
-							<span key={key} className="flex items-center gap-1">
-								<StatusDot kind={done ? "ok" : i === stepIndex ? "live" : "pending"} size="sm" />
-								<span
-									className={
-										i === stepIndex
-											? "text-bn-2xs font-medium text-bn-text-primary"
-											: "text-bn-2xs text-bn-text-tertiary"
-									}
-								>
-									{STEP_SHORT[key]}
-								</span>
+					{view.steps.map((s, i) => (
+						<span key={s.key} className="flex items-center gap-1">
+							<StatusDot kind={s.done ? "ok" : i === stepIndex ? "live" : "pending"} size="sm" />
+							<span
+								className={
+									i === stepIndex
+										? "text-bn-2xs font-medium text-bn-text-primary"
+										: "text-bn-2xs text-bn-text-tertiary"
+								}
+							>
+								{STEP_SHORT[s.key]}
 							</span>
-						);
-					})}
+						</span>
+					))}
 				</div>
 				{/* 内容区按步位 key 重挂,换步时浅浮入(bn-tour-step-in)—— 判据自动流转的
 				    文案硬切太突兀(真机反馈);完成徽章在操作位负责「上一步成了」的那半 */}

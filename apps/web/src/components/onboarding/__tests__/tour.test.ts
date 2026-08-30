@@ -16,7 +16,8 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { reconcileTourPos, TOUR_ANCHORS, TOUR_SCRIPT } from "../tour-script";
+import { listSources } from "../../../__tests__/walk";
+import { MODAL_ONLY_ANCHORS, reconcileTourPos, TOUR_ANCHORS, TOUR_SCRIPT } from "../tour-script";
 
 describe("reconcileTourPos 判据跟随", () => {
 	it("初始(无位置)→ 落在当前 activeKey 的第一个子步", () => {
@@ -81,15 +82,14 @@ describe("TOUR_SCRIPT 脚本完整性", () => {
 	});
 
 	it("锚点链不能只有弹窗内挂点 —— 弹窗没开时灯必须有页面级目标可指(subs 步栽过)", () => {
-		// 住在 ModalShell 里的挂点:弹窗没开时不存在,开了聚光灯又整体让位 ——
-		// 一条链全是它们,灯就永远不亮。新增弹窗内挂点记得进词表。
-		const MODAL_ONLY = new Set(["bili-login-qr", "adapter-form", "target-form", "subs-search"]);
+		// 「哪些挂点只住在弹窗里」这条事实住在词表旁边(MODAL_ONLY_ANCHORS),
+		// 不在这里抄一份 —— 抄的那份漏标一个不会红,只会悄悄放行一条永不亮的链。
 		for (const steps of Object.values(TOUR_SCRIPT)) {
 			for (const sub of steps) {
 				const chain = Array.isArray(sub.anchor) ? sub.anchor : sub.anchor ? [sub.anchor] : [];
 				if (chain.length === 0) continue;
 				expect(
-					chain.some((a) => !MODAL_ONLY.has(a)),
+					chain.some((a) => !MODAL_ONLY_ANCHORS.has(a)),
 					`「${sub.title}」的锚点链全在弹窗里,弹窗没开时灯永不亮`,
 				).toBe(true);
 			}
@@ -116,10 +116,15 @@ describe("锚点与页面挂点不脱节", () => {
 	it("词表里每个锚点都真实挂在某个页面源码上", async () => {
 		const { readFileSync } = await import("node:fs");
 		const { resolve } = await import("node:path");
-		const pagesDir = resolve(__dirname, "../../../pages");
-		const sources = ["System.tsx", "Subs.tsx", "Targets.tsx"]
-			.map((f) => readFileSync(resolve(pagesDir, f), "utf8"))
-			.join("\n");
+		// 扫全站而不是列三个文件名:挂点搬去别的页面/拆进组件时,列表式的守卫会
+		// 红在「文件名对不上」而不是「挂点没了」,人就学会改列表而不是信它。
+		// 排除导览自己那一箱 —— 词表与脚本本身就写着这些词面,算进来条条都白给。
+		const srcDir = resolve(__dirname, "../../..");
+		const files = listSources(srcDir, { skipTestDirs: true, skipTestFiles: true }).filter(
+			(f) => !f.includes("/components/onboarding/"),
+		);
+		expect(files.length).toBeGreaterThan(50); // 目录没扫到时别假绿
+		const sources = files.map((f) => readFileSync(f, "utf8")).join("\n");
 		for (const anchor of TOUR_ANCHORS) {
 			// 挂点被重构删掉时这条会红 —— 导览会静默失去高亮,只有这里拦得住。
 			// 匹配带引号的词面而非完整 `data-tour="…"`:条件挂点(如 target-test 只挂
