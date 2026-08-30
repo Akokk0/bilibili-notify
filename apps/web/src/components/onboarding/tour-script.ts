@@ -23,9 +23,11 @@ export const TOUR_ANCHORS = [
 	"adapter-add",
 	"adapter-form",
 	"adapter-test",
+	"adapter-config",
 	"target-add",
 	"target-form",
 	"target-test",
+	"target-config",
 	"target-list",
 ] as const;
 
@@ -54,6 +56,18 @@ export interface TourSubStep {
 	 * 交互后就地弹出的内容(如登录二维码)挂更高优先级,聚光灯自动转移过去。
 	 */
 	anchor?: TourAnchor | readonly TourAnchor[];
+	/**
+	 * 测试失败悬着(view.failNote 非空)时改用的锚点链 —— 灯移到「配置」:
+	 * 不改配置,重测永远失败(2026-08-30 主人拍板)。
+	 *
+	 * 数组元素 = **同亮组**:组内多个锚点拼成一个 selector 一起开洞。「配置」与
+	 * 「测试」结成一组 —— 引导锁**不放开**(放开过一版,主人打回),但外部原因
+	 * (NapCat 掉线之类)修好后不用进配置,重测那颗也得在洞内可点。
+	 * 链头必须挂**弹窗内的表单锚点**:「过弹窗即复原」靠链解析进 modal 才触发,
+	 * 不带的话点「配置」退散 → 弹窗开着链还停在页面按钮上 → 取消回来灯已失踪
+	 * (真机踩过)。
+	 */
+	anchorOnFail?: readonly (TourAnchor | readonly TourAnchor[])[];
 	/**
 	 * 抵达 `route` 即视为此子步完成,自动流转到下一子步 —— 给「出发前想清楚」类
 	 * 说明步用:用户跟着聚光灯点亮起的导航页签,一到目标页就进入动手子步,
@@ -110,6 +124,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			route: "/targets",
 			// 控件级:灯指适配器详情区的「测试」按钮本体;挂点没渲染时回落适配器区
 			anchor: ["adapter-test", "adapter-add"],
+			anchorOnFail: ["adapter-form", ["adapter-config", "adapter-test"], "adapter-add"],
 			title: "测试适配器连通",
 			body: "在刚建好的适配器行上点「测试」—— 通过后状态点变绿,并自动进入下一步。失败的话按错误提示排查(OneBot 先确认 NapCat 已连上)。",
 		},
@@ -128,6 +143,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			route: "/targets",
 			// 控件级:灯指第一个未测通目标行的「测试」按钮;挂点没渲染时回落目标区
 			anchor: ["target-test", "target-list"],
+			anchorOnFail: ["target-form", ["target-config", "target-test"], "target-list"],
 			title: "发送测试推送",
 			body: "在目标行点「测试」—— QQ 里收到测试消息,推送通道就全线打通了。只差最后一步:订阅要关注的 UP。",
 		},

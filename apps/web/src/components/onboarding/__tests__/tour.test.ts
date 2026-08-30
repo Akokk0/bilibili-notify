@@ -74,10 +74,34 @@ describe("TOUR_SCRIPT 脚本完整性", () => {
 				expect(sub.route.startsWith("/")).toBe(true);
 				const chain = Array.isArray(sub.anchor) ? sub.anchor : sub.anchor ? [sub.anchor] : [];
 				for (const anchor of chain) expect(TOUR_ANCHORS).toContain(anchor);
+				for (const anchor of (sub.anchorOnFail ?? []).flat()) {
+					expect(TOUR_ANCHORS).toContain(anchor);
+				}
 				if (sub.link) expect(sub.link.to.startsWith("/")).toBe(true);
 				// 说明步抵达即流转,在目标页一帧都不停 —— 配 anchor 只会闪一下灯,纯 bug
 				if (sub.advanceOnRoute) expect(sub.anchor).toBeUndefined();
 			}
+		}
+	});
+
+	it("失败链:表单锚点在链头(过弹窗即复原靠它),「配置」与「测试」同亮成组(锁着也两个动作都可点)", () => {
+		const cases = [
+			{
+				sub: TOUR_SCRIPT.adapter.at(-1),
+				form: "adapter-form",
+				cfg: "adapter-config",
+				test: "adapter-test",
+			},
+			{ sub: TOUR_SCRIPT.test[0], form: "target-form", cfg: "target-config", test: "target-test" },
+		] as const;
+		for (const { sub, form, cfg, test } of cases) {
+			const chain = sub?.anchorOnFail ?? [];
+			expect(chain[0], "链头必须是弹窗内的表单锚点,否则点「配置」再取消灯就失踪").toBe(form);
+			const group = chain.find((e) => Array.isArray(e) && e.includes(cfg));
+			expect(
+				group,
+				"「配置」必须和「测试」结成同亮组 —— 引导锁不放开,两个动作都得在洞内",
+			).toContain(test);
 		}
 	});
 
@@ -86,12 +110,17 @@ describe("TOUR_SCRIPT 脚本完整性", () => {
 		// 不在这里抄一份 —— 抄的那份漏标一个不会红,只会悄悄放行一条永不亮的链。
 		for (const steps of Object.values(TOUR_SCRIPT)) {
 			for (const sub of steps) {
-				const chain = Array.isArray(sub.anchor) ? sub.anchor : sub.anchor ? [sub.anchor] : [];
-				if (chain.length === 0) continue;
-				expect(
-					chain.some((a) => !MODAL_ONLY_ANCHORS.has(a)),
-					`「${sub.title}」的锚点链全在弹窗里,弹窗没开时灯永不亮`,
-				).toBe(true);
+				const chains = [
+					Array.isArray(sub.anchor) ? sub.anchor : sub.anchor ? [sub.anchor] : [],
+					(sub.anchorOnFail ?? []).flat(),
+				];
+				for (const chain of chains) {
+					if (chain.length === 0) continue;
+					expect(
+						chain.some((a) => !MODAL_ONLY_ANCHORS.has(a)),
+						`「${sub.title}」的锚点链全在弹窗里,弹窗没开时灯永不亮`,
+					).toBe(true);
+				}
 			}
 		}
 	});

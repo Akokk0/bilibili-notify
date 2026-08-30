@@ -1,4 +1,4 @@
-import { Btn, Icon, ModalShell, StatusDot } from "@bilibili-notify/ui";
+import { Btn, ErrorNote, Icon, ModalShell, StatusDot } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -201,9 +201,34 @@ export function TourCompanion() {
 	const onRoute = sub ? location.pathname === sub.route : false;
 	// 提出来给闭包用 —— JSX 条件里的 narrowing 进不了 onClick 闭包
 	const subLink = sub?.link ?? null;
+
+	// 测试失败兜底(2026-08-30 真机反馈):失败不换链、不开弹窗,聚光灯「按下即
+	// 退散」永远不复原。at(lastCheckedAt)每次尝试必变 —— 变一次就给 Spotlight
+	// 换一次 key,整层重挂 = 退散清零 + 重新滚到目标。引导锁**不放开**(放开过
+	// 一版,主人打回):该做的动作(配置/重测)由失败链的同亮组全放进洞内。
+	// 只认当前步自己的失败(pos 换步动画期间不拿别步的旧账换链)。
+	const failNote = view?.failNote != null && pos?.stepKey === view.activeKey ? view.failNote : null;
+	const [failSeq, setFailSeq] = useState(0);
+	const prevFailAtRef = useRef<string | undefined>(undefined);
+	const failAt = failNote?.at;
+	useEffect(() => {
+		if (failAt !== undefined && failAt !== prevFailAtRef.current) {
+			prevFailAtRef.current = failAt;
+			setFailSeq((s) => s + 1);
+		}
+	}, [failAt]);
+
 	// 聚光目标统一成 selector 优先级链:在目标路由上取子步的控件挂点;不在时改聚
 	// 顶栏对应导航页签(「带我去」按钮退役 —— 用户跟着灯自己点页签过去)。
-	const anchorChain = sub?.anchor ? (Array.isArray(sub.anchor) ? sub.anchor : [sub.anchor]) : null;
+	// 失败悬着时换失败链 —— 灯移到「配置」(与「测试」同亮),不改配置重测永远失败。
+	const anchorChain =
+		failNote && sub?.anchorOnFail
+			? sub.anchorOnFail
+			: sub?.anchor
+				? Array.isArray(sub.anchor)
+					? sub.anchor
+					: [sub.anchor]
+				: null;
 	// 页签是可以被主人藏起来的(config/nav.ts 只钉死「系统」)。藏掉之后跨页那一步
 	// 没有页签可指:灯不亮、锁也不铺,小卡却还在说「点亮起的页签前往」—— 指着一个
 	// 不存在的东西,而「带我去」已退役,导览就此死在这儿。降级出口把按钮放回来。
@@ -214,7 +239,12 @@ export function TourCompanion() {
 		!sub || navTabHidden
 			? null
 			: onRoute
-				? (anchorChain?.map((a) => `[data-tour="${a}"]`) ?? null)
+				? // 数组元素 = 同亮组:组内锚点拼成一个逗号 selector,一起开洞
+					(anchorChain?.map((entry) =>
+						Array.isArray(entry)
+							? entry.map((a) => `[data-tour="${a}"]`).join(",")
+							: `[data-tour="${entry}"]`,
+					) ?? null)
 				: [`[data-tour-nav="${sub.route}"]`];
 	// 教程阅读区亮灯不锁:点「选型指引」进来是要读内容的,锁住连章节都切不了;
 	// 灯仍指着导航页签,读完跟着走。
@@ -334,7 +364,7 @@ export function TourCompanion() {
 	return createPortal(
 		<>
 			{expanded && spotlightSelectors ? (
-				<Spotlight selectors={spotlightSelectors} lock={!inReadingZone} />
+				<Spotlight key={failSeq} selectors={spotlightSelectors} lock={!inReadingZone} />
 			) : null}
 			{celebration ? (
 				<StepDoneBadge
@@ -418,6 +448,12 @@ export function TourCompanion() {
 						<p className="mt-1 mb-2.5 text-bn-xs leading-relaxed text-bn-text-secondary">
 							{sub.body}
 						</p>
+						{/* failNote 已只认当前步自己的失败(见上方守卫) */}
+						{failNote ? (
+							<ErrorNote size="sm" className="-mt-1 mb-2">
+								测试没通过:{failNote.text} —— 照原因排查,改完配置再点一次「测试」。
+							</ErrorNote>
+						) : null}
 						{/* 「带我去」退役:不在目标路由时聚光灯指着顶栏页签,用户自己点过去。
 						    提示独立成行 —— 塞进按钮行会把整行挤爆(真机踩过:收起折成竖排) */}
 						{onRoute || navTabHidden ? null : (

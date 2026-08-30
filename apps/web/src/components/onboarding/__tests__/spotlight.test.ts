@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { type SpotRect, subtractRects } from "../spotlight";
+import { mergeIntersecting, type SpotRect, subtractRects } from "../spotlight";
 
 const VIEW: SpotRect = { top: 0, left: 0, width: 100, height: 100 };
 
@@ -64,5 +64,35 @@ describe("subtractRects 拦截块分割", () => {
 	it("无洞:整个视口一块拦死(理论态,渲染层无洞时根本不亮灯)", () => {
 		const blocks = subtractRects(VIEW, []);
 		expect(area(blocks)).toBe(100 * 100);
+	});
+});
+
+/**
+ * 相交洞合并 —— 同亮组里紧挨着的两颗按钮(如失败链的「配置」+「测试」),
+ * 各开一个带内边距的洞会叠出「8」字形双描边(真机踩过);相交的洞合并成
+ * 外接矩形,整组一颗胶囊。相离的洞(多行等价入口)保持各自独立。
+ */
+describe("mergeIntersecting 相交洞合并", () => {
+	it("紧挨的两洞(padding 后相交)→ 合并成一个外接矩形", () => {
+		const merged = mergeIntersecting([
+			{ top: 10, left: 10, width: 30, height: 20 },
+			{ top: 10, left: 35, width: 30, height: 20 },
+		]);
+		expect(merged).toEqual([{ top: 10, left: 10, width: 55, height: 20 }]);
+	});
+
+	it("相离的洞保持独立 —— 多行等价入口不该被一张大洞盖住中间地带", () => {
+		const a = { top: 10, left: 10, width: 10, height: 10 };
+		const b = { top: 70, left: 70, width: 10, height: 10 };
+		expect(mergeIntersecting([a, b])).toEqual([a, b]);
+	});
+
+	it("连锁合并:A∩B、B∩C 但 A 与 C 相离 → 三个并成一个", () => {
+		const merged = mergeIntersecting([
+			{ top: 0, left: 0, width: 10, height: 10 },
+			{ top: 0, left: 8, width: 10, height: 10 },
+			{ top: 0, left: 16, width: 10, height: 10 },
+		]);
+		expect(merged).toEqual([{ top: 0, left: 0, width: 26, height: 10 }]);
 	});
 });

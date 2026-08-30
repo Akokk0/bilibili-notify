@@ -52,13 +52,15 @@ async function mount(s: Scenario) {
 	});
 	const { TourCompanion } = await import("../tour-companion");
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
+	const utils = render(
 		<QueryClientProvider client={qc}>
 			<MemoryRouter initialEntries={[s.route ?? "/"]}>
 				<TourCompanion />
 			</MemoryRouter>
 		</QueryClientProvider>,
 	);
+	// qc 带出去:测试中途改 Scenario 后手动 invalidate,不用干等 3s 判据轮询
+	return { ...utils, qc };
 }
 
 beforeEach(() => {
@@ -324,6 +326,102 @@ describe("TourCompanion 常驻小卡", () => {
 		await waitFor(() => expect(screen.queryByTestId("tour-spotlight")).toBeNull());
 	});
 
+	/**
+	 * 测试失败兜底(2026-08-30 真机反馈)。成功会推进子步、换链重置聚光灯;失败
+	 * 既不开弹窗也不换链 —— 按下退散的灯永远回不来,报错只在页面 toast 闪 2 秒,
+	 * 导览死在原地还不讲原因。三件套:卡上讲原因、锁放开让人去改配置、灯重亮。
+	 */
+	describe("测试失败兜底", () => {
+		const failScenario = (at: string): Scenario => ({
+			loggedIn: true,
+			adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+			targets: [
+				{ id: "t1", enabled: true, testStatus: { ok: false, err: "发送超时", lastCheckedAt: at } },
+			],
+			route: "/targets",
+		});
+
+		it("test 步失败 → 小卡显示失败原因与重试指点", async () => {
+			await mount(failScenario("t1"));
+			await screen.findByText("发送测试推送");
+			const note = await screen.findByRole("alert");
+			expect(note.textContent).toContain("发送超时");
+			expect(note.textContent).toContain("测试");
+		});
+
+		it("失败悬着时「配置」与「测试」同亮 —— 改配置或(外部原因修好后)直接重测都在洞内", async () => {
+			const cfg = document.createElement("div");
+			cfg.setAttribute("data-tour", "target-config");
+			cfg.getBoundingClientRect = () => new DOMRect(300, 40, 50, 20);
+			document.body.appendChild(cfg);
+			const test = document.createElement("div");
+			test.setAttribute("data-tour", "target-test");
+			test.getBoundingClientRect = () => new DOMRect(100, 40, 50, 20);
+			document.body.appendChild(test);
+			await mount(failScenario("t1"));
+			await waitFor(() => {
+				const xs = screen.getAllByTestId("tour-spot-frame").map((f) => f.getAttribute("x"));
+				expect(xs.toSorted()).toEqual([String(100 - 6), String(300 - 6)].toSorted());
+			});
+		});
+
+		it("失败悬着时引导锁照锁 —— 该做的两个动作都在洞内,洞外照旧拦住", async () => {
+			const cfg = document.createElement("div");
+			cfg.setAttribute("data-tour", "target-config");
+			document.body.appendChild(cfg);
+			const test = document.createElement("div");
+			test.setAttribute("data-tour", "target-test");
+			document.body.appendChild(test);
+			await mount(failScenario("t1"));
+			await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
+			expect(screen.getByTestId("tour-blocker")).toBeTruthy();
+		});
+
+		it("点「配置」进弹窗再取消 → 灯回来(过弹窗即复原,失败链也得带表单锚点)", async () => {
+			const cfg = document.createElement("div");
+			cfg.setAttribute("data-tour", "target-config");
+			document.body.appendChild(cfg);
+			await mount(failScenario("t1"));
+			await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
+			// 点「配置」:按下即退散
+			fireEvent.pointerDown(cfg);
+			await waitFor(() => expect(screen.queryByTestId("tour-spotlight")).toBeNull());
+			// 配置弹窗开了(表单挂点在弹窗里)—— 链解析进 modal,退散该被清零
+			const modal = document.createElement("div");
+			modal.setAttribute("data-bn", "modal");
+			const form = document.createElement("div");
+			form.setAttribute("data-tour", "target-form");
+			modal.appendChild(form);
+			document.body.appendChild(modal);
+			await new Promise((r) => setTimeout(r, 80));
+			// 点「取消」关弹窗 → 灯要落回页面上的「配置」,不能就此失踪
+			modal.remove();
+			await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
+		});
+
+		it("按下退散后再次失败(同因不同时间戳)→ 灯重新点亮", async () => {
+			const anchorEl = document.createElement("div");
+			anchorEl.setAttribute("data-tour", "target-test");
+			document.body.appendChild(anchorEl);
+			const s = failScenario("t1");
+			const { qc } = await mount(s);
+			await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
+			fireEvent.pointerDown(anchorEl);
+			await waitFor(() => expect(screen.queryByTestId("tour-spotlight")).toBeNull());
+			s.targets = [
+				{
+					id: "t1",
+					enabled: true,
+					testStatus: { ok: false, err: "发送超时", lastCheckedAt: "t2" },
+				},
+			];
+			await act(async () => {
+				await qc.invalidateQueries({ queryKey: ["targets"] });
+			});
+			await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
+		});
+	});
+
 	it("聚光灯目标在弹窗内 → 整个让位(modal 自带遮罩就是聚焦,套框被真机否掉)", async () => {
 		const modal = document.createElement("div");
 		modal.setAttribute("data-bn", "modal");
@@ -474,11 +572,15 @@ describe("TourCompanion 常驻小卡", () => {
 	});
 
 	it("同名挂点多实例(左栏按钮+空态 CTA)是等价入口 —— 灯一起亮,一洞不落", async () => {
+		// 两处入口给真实的、相离的矩形 —— jsdom 默认 0×0 会让两洞完全重合,
+		// 被「相交洞合并」(mergeIntersecting)并成一个,测的就不再是多实例了
 		const railBtn = document.createElement("div");
 		railBtn.setAttribute("data-tour", "adapter-add");
+		railBtn.getBoundingClientRect = () => new DOMRect(20, 100, 80, 24);
 		document.body.appendChild(railBtn);
 		const cta = document.createElement("div");
 		cta.setAttribute("data-tour", "adapter-add");
+		cta.getBoundingClientRect = () => new DOMRect(400, 300, 120, 60);
 		document.body.appendChild(cta);
 		await mount({ loggedIn: true, route: "/targets" });
 		await screen.findByText("新建推送适配器");

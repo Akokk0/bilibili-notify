@@ -282,7 +282,13 @@ function TargetCard({
 					</Btn>
 					{readOnly ? null : (
 						<>
-							<Btn size="sm" variant="ghost" onClick={onEdit}>
+							{/* 导览失败链的灯位:测试失败的行才亮 —— 不改配置,重测永远失败 */}
+							<Btn
+								data-tour={target.testStatus?.ok === false ? "target-config" : undefined}
+								size="sm"
+								variant="ghost"
+								onClick={onEdit}
+							>
 								配置
 							</Btn>
 							<Btn
@@ -1769,6 +1775,10 @@ export default function Targets() {
 															: "测试"}
 										</Btn>
 										<Btn
+											// 导览失败链的灯位:测试失败时才亮(同 target-config)
+											data-tour={
+												selectedAdapter.testStatus?.ok === false ? "adapter-config" : undefined
+											}
 											size="sm"
 											variant="ghost"
 											onClick={() => startEditAdapter(selectedAdapter)}

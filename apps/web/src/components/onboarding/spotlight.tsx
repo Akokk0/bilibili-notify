@@ -64,6 +64,40 @@ export function subtractRects(bounds: SpotRect, holes: readonly SpotRect[]): Spo
 	return out;
 }
 
+/**
+ * 相交的洞合并成外接矩形。同亮组里紧挨着的两颗按钮(失败链的「配置」+「测试」),
+ * 各开一个带 SPOT_PAD 的洞会叠出「8」字形双描边(真机踩过);合并后整组一颗
+ * 胶囊。相离的洞(多行等价入口)保持独立。合并可能引发连锁(A∩B 的并集碰到 C),
+ * 所以每合一次从头重扫 —— 洞数是个位数,平方扫描绰绰有余。
+ */
+export function mergeIntersecting(rects: readonly SpotRect[]): SpotRect[] {
+	const out = [...rects];
+	for (let i = 0; i < out.length; i++) {
+		for (let j = i + 1; j < out.length; j++) {
+			const a = out[i];
+			const b = out[j];
+			const intersects =
+				a.left <= b.left + b.width &&
+				b.left <= a.left + a.width &&
+				a.top <= b.top + b.height &&
+				b.top <= a.top + a.height;
+			if (!intersects) continue;
+			const left = Math.min(a.left, b.left);
+			const top = Math.min(a.top, b.top);
+			out[i] = {
+				left,
+				top,
+				width: Math.max(a.left + a.width, b.left + b.width) - left,
+				height: Math.max(a.top + a.height, b.top + b.height) - top,
+			};
+			out.splice(j, 1);
+			i = -1; // 从头重扫(外层 i++ 后回到 0)
+			break;
+		}
+	}
+	return out;
+}
+
 function rectsDiffer(a: readonly DOMRect[], b: readonly DOMRect[]): boolean {
 	if (a.length !== b.length) return true;
 	return a.some(
@@ -231,12 +265,14 @@ export function Spotlight({ selectors, lock }: { selectors: readonly string[]; l
 	}, [selectorsKey]);
 
 	if (!view || view.inModal || view.selector === dismissedSelector) return null;
-	const holes: SpotRect[] = view.rects.map((r) => ({
-		top: r.top - SPOT_PAD,
-		left: r.left - SPOT_PAD,
-		width: r.width + SPOT_PAD * 2,
-		height: r.height + SPOT_PAD * 2,
-	}));
+	const holes: SpotRect[] = mergeIntersecting(
+		view.rects.map((r) => ({
+			top: r.top - SPOT_PAD,
+			left: r.left - SPOT_PAD,
+			width: r.width + SPOT_PAD * 2,
+			height: r.height + SPOT_PAD * 2,
+		})),
+	);
 	const blocks = lock
 		? subtractRects(
 				{ top: 0, left: 0, width: window.innerWidth, height: window.innerHeight },

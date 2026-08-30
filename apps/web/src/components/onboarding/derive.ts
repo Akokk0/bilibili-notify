@@ -15,11 +15,17 @@
 export type OnboardingStepKey = "login" | "adapter" | "target" | "test" | "subs";
 export type OnboardingTailKey = "image" | "ai";
 
+interface TestStatusLike {
+	ok: boolean;
+	err?: string | undefined;
+	lastCheckedAt?: string | undefined;
+}
+
 export interface OnboardingInputs {
 	biliLoggedIn: boolean;
 	subsCount: number;
-	adapters: readonly { enabled: boolean; testStatus?: { ok: boolean } | undefined }[];
-	targets: readonly { enabled: boolean; testStatus?: { ok: boolean } | undefined }[];
+	adapters: readonly { enabled: boolean; testStatus?: TestStatusLike | undefined }[];
+	targets: readonly { enabled: boolean; testStatus?: TestStatusLike | undefined }[];
 	/** `/api/health` 的 modules 快照;还没回来时 undefined → 尾巴按未完成显示。 */
 	modules: { image: boolean; ai: boolean } | undefined;
 }
@@ -37,6 +43,20 @@ export interface OnboardingView {
 	hasAdapter: boolean;
 	doneCount: number;
 	allDone: boolean;
+	/**
+	 * 当前步的最近一次测试失败(仅 adapter / test 两个带「测试」的步)。成功会推进
+	 * 子步、换链重置聚光灯;失败既不开弹窗也不换链 —— 「按下即退散」的灯永远回不
+	 * 来,报错只在页面 toast 闪 2 秒。text 上小卡讲原因;at(lastCheckedAt)每次
+	 * 尝试必变,供同因连败也能触发灯重亮。不属于当前步的旧失败保持沉默。
+	 */
+	failNote: { text: string; at: string } | null;
+}
+
+function failNoteFrom(
+	rows: readonly { testStatus?: TestStatusLike | undefined }[],
+): OnboardingView["failNote"] {
+	const st = rows.find((r) => r.testStatus?.ok === false)?.testStatus;
+	return st ? { text: st.err || "测试未通过", at: st.lastCheckedAt ?? "" } : null;
 }
 
 export function deriveOnboarding(inputs: OnboardingInputs): OnboardingView {
@@ -54,13 +74,20 @@ export function deriveOnboarding(inputs: OnboardingInputs): OnboardingView {
 		{ key: "subs", done: inputs.subsCount > 0 },
 	];
 	const doneCount = steps.filter((s) => s.done).length;
+	const activeKey = steps.find((s) => !s.done)?.key ?? null;
 	return {
 		steps,
+		failNote:
+			activeKey === "adapter"
+				? failNoteFrom(inputs.adapters.filter((a) => a.enabled))
+				: activeKey === "test"
+					? failNoteFrom(inputs.targets)
+					: null,
 		tails: [
 			{ key: "image", done: inputs.modules?.image === true },
 			{ key: "ai", done: inputs.modules?.ai === true },
 		],
-		activeKey: steps.find((s) => !s.done)?.key ?? null,
+		activeKey,
 		hasAdapter: inputs.adapters.length > 0,
 		doneCount,
 		allDone: doneCount === steps.length,

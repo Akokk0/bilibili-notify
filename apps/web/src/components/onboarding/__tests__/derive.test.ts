@@ -158,3 +158,62 @@ describe("deriveOnboarding 可选尾巴", () => {
 		expect(v.allDone).toBe(true);
 	});
 });
+
+/**
+ * failNote —— 当前步的最近一次测试失败(2026-08-30 真机反馈补的兜底)。
+ *
+ * 失败不换链、不开弹窗:聚光灯「按下即退散」永远不复原,报错只在页面 toast
+ * 闪 2 秒 —— 导览侧对失败完全无感。failNote 把 err 带上小卡、at(lastCheckedAt)
+ * 供每次尝试都触发灯重亮(同一原因连败两次,err 文本不变,at 一定变)。
+ */
+describe("deriveOnboarding failNote", () => {
+	it("adapter 步失败 → 带出启用适配器的 err 与 lastCheckedAt", () => {
+		const v = deriveOnboarding(
+			inputs({
+				biliLoggedIn: true,
+				adapters: [
+					{ enabled: true, testStatus: { ok: false, err: "连接被拒绝", lastCheckedAt: "t1" } },
+				],
+			}),
+		);
+		expect(v.activeKey).toBe("adapter");
+		expect(v.failNote).toEqual({ text: "连接被拒绝", at: "t1" });
+	});
+
+	it("err 缺失回落「测试未通过」;disabled 适配器的失败不算", () => {
+		const v = deriveOnboarding(
+			inputs({
+				biliLoggedIn: true,
+				adapters: [
+					{ enabled: false, testStatus: { ok: false, err: "旧账", lastCheckedAt: "t0" } },
+					{ enabled: true, testStatus: { ok: false, lastCheckedAt: "t1" } },
+				],
+			}),
+		);
+		expect(v.failNote).toEqual({ text: "测试未通过", at: "t1" });
+	});
+
+	it("test 步失败 → 从 targets 带出", () => {
+		const v = deriveOnboarding(
+			inputs({
+				biliLoggedIn: true,
+				adapters: [{ enabled: true, testStatus: { ok: true } }],
+				targets: [
+					{ enabled: true, testStatus: { ok: false, err: "发送超时", lastCheckedAt: "t2" } },
+				],
+			}),
+		);
+		expect(v.activeKey).toBe("test");
+		expect(v.failNote).toEqual({ text: "发送超时", at: "t2" });
+	});
+
+	it("失败不属于当前步就沉默 —— login 未完成时不翻适配器的旧账", () => {
+		const v = deriveOnboarding(
+			inputs({
+				adapters: [{ enabled: true, testStatus: { ok: false, err: "x", lastCheckedAt: "t" } }],
+			}),
+		);
+		expect(v.activeKey).toBe("login");
+		expect(v.failNote).toBeNull();
+	});
+});
