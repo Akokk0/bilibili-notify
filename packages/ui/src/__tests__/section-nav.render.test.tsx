@@ -101,9 +101,17 @@ describe("SectionNav", () => {
 			/>,
 		);
 		const addButtons = screen.getAllByRole("button", { name: /新建/ });
-		expect(addButtons.length).toBeGreaterThanOrEqual(2); // 竖栏 heading 按钮 + 横向尾部 chip
+		expect(addButtons.length).toBeGreaterThanOrEqual(2); // 竖栏 heading 按钮 + 横向尾部小钮
 		fireEvent.click(addButtons[0]);
 		expect(onAdd).toHaveBeenCalledTimes(1);
+		// 它是**真按钮的粉色主档**(btn btn-primary),不是虚线空位(add-slot)——
+		// 虚线曾让 heading 行的「+ 新建」和下方空态框撞语义(2026-08-30 主人指出后
+		// 改成按钮,档位也是主人拍的:主动作就该是主按钮)。
+		for (const el of addButtons) {
+			const hooks = (el.getAttribute("data-bn") ?? "").split(/\s+/);
+			expect(hooks).toContain("btn");
+			expect(hooks).toContain("btn-primary");
+		}
 
 		rerender(<SectionNav heading="适配器" items={items} activeId="a" onPick={() => {}} />);
 		expect(screen.queryByRole("button", { name: /新建/ })).toBeNull();

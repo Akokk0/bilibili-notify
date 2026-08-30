@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { AddButton, type AddButtonProps, IconButton } from "./atoms";
+import { Btn, type BtnProps, IconButton } from "./atoms";
 
 /**
  * SectionNav —— Rules / Targets / Logs 三页共用的「分区/Tab 导航」。
@@ -75,12 +75,15 @@ export interface SectionNavProps {
 	items: SectionNavItem[];
 	activeId: string | null;
 	onPick: (id: string) => void;
-	/** 可选「新建」动作。竖栏渲染 heading 行按钮,横向渲染尾部 dashed chip。 */
+	/** 可选「新建」动作。竖栏渲染 heading 行按钮,横向渲染尾部小钮。
+	 *  长相是**真按钮**(粉色主档 sm)而不是虚线空位 —— 它是 heading 行的动作,
+	 *  不是列表里的一格空位;虚线曾让它和下方空态框撞语义(2026-08-30 主人指出,
+	 *  档位也是主人拍的:主动作就该是主按钮)。 */
 	onAdd?: () => void;
 	addLabel?: string;
 	/** 透传给「新建」按钮的原生属性(data-*、aria-* 等,如导览的挂点标记)。
-	 *  直接借 AddButton 自己的 props —— 另写一份会和它接受的东西漂开。 */
-	addButtonProps?: Omit<AddButtonProps, "children" | "block" | "onClick" | "className">;
+	 *  直接借 Btn 自己的 props —— 另写一份会和它接受的东西漂开;档位归这里定,不外放。 */
+	addButtonProps?: Omit<BtnProps, "children" | "onClick" | "variant" | "size" | "full">;
 	/** items 为空时竖栏显示的占位(Targets 空态)。 */
 	emptyState?: ReactNode;
 }
@@ -262,9 +265,9 @@ export function SectionNav({
 						{heading}
 					</span>
 					{onAdd ? (
-						<AddButton {...addButtonProps} onClick={onAdd}>
+						<Btn size="sm" {...addButtonProps} onClick={onAdd}>
 							{addLabel}
-						</AddButton>
+						</Btn>
 					) : null}
 				</div>
 				{/* nav 挂点只裹 tab 列表本身 —— 上面那行 heading 留在外面,否则皮肤给 nav
@@ -358,9 +361,10 @@ export function SectionNav({
 							);
 						})}
 						{onAdd ? (
-							<AddButton {...addButtonProps} className="shrink-0" onClick={onAdd}>
+							// Btn 自带 whitespace-nowrap,min-content 不会被横条挤破,shrink-0 不再需要。
+							<Btn size="sm" {...addButtonProps} onClick={onAdd}>
 								{addLabel}
-							</AddButton>
+							</Btn>
 						) : null}
 					</div>
 
