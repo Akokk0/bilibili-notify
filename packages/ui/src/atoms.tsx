@@ -350,9 +350,16 @@ export function IconButton({
  * 挂点词表里也没有「空位」这一档;虚线语汇对所有皮肤保持原样,像 avatar 永远是圆的一样。
  */
 
-/** 两者共用的虚线语汇。改这里等于同时改两个组件 —— 它们本来就该一起动。 */
+/**
+ * 两者共用的虚线语汇。改这里等于同时改两个组件 —— 它们本来就该一起动。
+ *
+ * 边色 `bn-inactive/50` 比家族外通用的 `bn-border` 深一档:默认亮色的 #e5e7eb
+ * 落在带粉调的卡底上几乎隐形(2026-08-30 主人真机指出「添加 UP 主」看不清)。
+ * 加浓只限这一家族 —— EmptyNote 与共享 token 不动,皮肤对 note 挂点只写线型
+ * 不写颜色,动共享语汇会穿透到所有皮肤。
+ */
 const ADD_LANGUAGE =
-	"border border-dashed border-bn-border text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink disabled:cursor-not-allowed disabled:opacity-60";
+	"border border-dashed border-bn-inactive/50 text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink disabled:cursor-not-allowed disabled:opacity-60";
 
 /** 其余原生 button 属性(data-*、aria-*、title…)原样透传 —— 导览挂点等外部标记的入口。 */
 export interface AddButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, DataAttrs {

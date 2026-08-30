@@ -19,13 +19,20 @@ afterEach(cleanup);
 
 const btn = () => screen.getByRole("button");
 
-/** 两个组件共用的语汇:虚线中性边 + 指上去变粉,且**不挂皮肤挂点**。 */
+/**
+ * 两个组件共用的语汇:虚线中性边 + 指上去变粉,且**不挂皮肤挂点**。
+ *
+ * 边色是 `bn-inactive/50` 而非家族外通用的 `bn-border` —— 默认亮色下 #e5e7eb
+ * 压在带粉调的卡底上几乎隐形(2026-08-30 主人真机指出)。只加浓这一家族,
+ * EmptyNote 与共享 token 原样不动:皮肤对 note 挂点只写线型不写颜色,动了
+ * 共享语汇会穿透到所有皮肤。
+ */
 function expectAddLanguage(el: HTMLElement) {
 	const cls = el.className.split(/\s+/);
 	for (const c of [
 		"border",
 		"border-dashed",
-		"border-bn-border",
+		"border-bn-inactive/50",
 		"hover:border-bn-pink",
 		"transition",
 	]) {
