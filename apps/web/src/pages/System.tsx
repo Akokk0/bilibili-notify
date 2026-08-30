@@ -79,7 +79,8 @@ function QrCard({ data, msg }: { data: unknown; msg: string }) {
 				</div>
 			)}
 			<div className="text-bn-sm text-bn-text-secondary">使用 Bilibili 手机客户端扫码登录</div>
-			{msg ? <div className="text-bn-xs text-bn-text-tertiary">{msg}</div> : null}
+			{/* 常驻一行:msg 从无到有(尚未扫码→已扫码…)不许把弹窗撑高 */}
+			<div className="text-bn-xs text-bn-text-tertiary">{msg || " "}</div>
 		</div>
 	);
 }
@@ -419,7 +420,9 @@ export default function System() {
 							) : null}
 						</div>
 					</div>
-				) : (
+				) : isQrPhase ? null : (
+					// 扫码阶段整块不渲染:状态与进度都在弹窗里(badge 也还挂着),这里再写
+					// 一遍纯属重复,还把卡片撑开一截。
 					<div className="text-bn-sm text-bn-text-secondary">
 						{status === BiliLoginStatus.NOT_LOGIN
 							? "尚未登录 B 站账号,点下方「发起扫码登录」开始。"
@@ -427,7 +430,9 @@ export default function System() {
 					</div>
 				)}
 
-				{extraMsg ? <div className="mt-2 text-bn-xs text-bn-warning">{extraMsg}</div> : null}
+				{extraMsg && !isQrPhase ? (
+					<div className="mt-2 text-bn-xs text-bn-warning">{extraMsg}</div>
+				) : null}
 
 				{status === BiliLoginStatus.LOGIN_FAILED ? (
 					<ErrorNote className="mt-2.5">{msg || "登录失败，可重试。"}</ErrorNote>
