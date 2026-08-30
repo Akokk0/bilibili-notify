@@ -329,14 +329,16 @@ function RemoveRowButton({ onClick }: { onClick: () => void }) {
 	);
 }
 
-/** 列表末尾那条虚线添加钮。文案各编辑器自己给。虚线=空位是它的语义,
- *  不挂 `data-bn="btn"` —— 皮肤的按钮实底会把空位画成一颗真按钮(同 {@link AddButton})。 */
+/** 列表末尾那条虚线添加钮。文案各编辑器自己给。虚线=空位是它的语义,挂的是
+ *  专词 `add-slot` 而非 `btn` —— 皮肤的按钮实底会把空位画成一颗真按钮(同
+ *  {@link AddButton});边色与那一家同档 bn-inactive/50,免得一页里深浅打架。 */
 function AddRowButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
 	return (
 		<button
 			type="button"
 			onClick={onClick}
-			className="h-7.5 rounded-md border border-dashed border-bn-border bg-bn-field/60 text-bn-sm text-bn-text-secondary hover:bg-bn-surface"
+			data-bn="add-slot"
+			className="h-7.5 rounded-md border border-dashed border-bn-inactive/50 bg-bn-field/60 text-bn-sm text-bn-text-secondary hover:bg-bn-surface"
 		>
 			{children}
 		</button>

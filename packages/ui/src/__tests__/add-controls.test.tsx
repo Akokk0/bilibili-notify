@@ -38,9 +38,9 @@ function expectAddLanguage(el: HTMLElement) {
 	]) {
 		expect([c, cls.includes(c)]).toEqual([c, true]);
 	}
-	// 虚线=「空位」是这对组件的语义本体,对所有皮肤保持原样 —— 挂了 btn 挂点,
-	// 皮肤的按钮实底会把空位画成真按钮(2026-08-23 主人真机指出后定案,别挂回去)。
-	expect(el.getAttribute("data-bn")).toBeNull();
+	// 挂 `add-slot` 专词(2026-08-30 主人开口开的口子):皮肤能点名调虚线与淡底了。
+	// btn 仍然禁挂 —— 皮肤的按钮实底会把空位画成真按钮(2026-08-23 定案未动)。
+	expect((el.getAttribute("data-bn") ?? "").split(/\s+/).filter(Boolean)).toEqual(["add-slot"]);
 }
 
 describe("AddButton", () => {

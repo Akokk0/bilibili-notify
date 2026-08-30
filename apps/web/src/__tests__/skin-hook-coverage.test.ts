@@ -37,21 +37,17 @@ const SCAN_ROOTS = [join(REPO, "apps/web/src"), join(REPO, "packages/ui/src")];
  *    两套皮肤规则同时画。
  */
 const UNHOOKED: Record<string, { count: number; why: string }> = {
-	"packages/ui/src/atoms.tsx": {
-		count: 2,
-		why: "AddButton/AddCard(虚线=空位是语义本体,皮肤实底会把空位画成真按钮 —— 2026-08-23 主人真机指出后定案)。**MenuItem 与 Toggle 都已经不在这儿了**:各自挂上了 `option`(候选行)与 `switch`/`switch-on`(开关轨道),两条豁免理由说的都是「挂 btn 会毁掉它」,而它们现在有自己的词",
-	},
+	// **atoms.tsx 与 form-controls.tsx 已经不在这儿了**:AddButton/AddCard 与
+	// AddRowButton 的「虚线=空位」族挂上了自己的词 `add-slot`(2026-08-30 主人开
+	// 口)。豁免理由本来是「挂 btn 皮肤实底会画成真按钮」—— 有专词后死法不成立,
+	// btn 照旧禁挂(add-controls.test.tsx 钉着「只有 add-slot 一个词」)。
 	"apps/web/src/components/drag-handle.tsx": {
 		count: 1,
 		why: "裸 ⠿ 字形,挂上会被皮肤画成一个方块",
 	},
 	"apps/web/src/components/scope-tabs.tsx": {
-		count: 3,
-		why: "无外观的触发器 + 弹层底部的「取消」条(它是一条分隔线下的收尾,不是按钮)+ 「添加 UP」虚线 chip(虚线=空位,同 AddButton 那条)",
-	},
-	"packages/ui/src/form-controls.tsx": {
-		count: 1,
-		why: "AddRowButton 列表末尾的虚线添加行(虚线=空位,同 AddButton 那条;随 T 系列升库从 forms.tsx 搬来)",
+		count: 2,
+		why: "无外观的触发器 + 弹层底部的「取消」条(它是一条分隔线下的收尾,不是按钮);「添加 UP」虚线 chip 已挂 add-slot 出列",
 	},
 	"apps/web/src/components/ai-chat/index.tsx": {
 		count: 1,

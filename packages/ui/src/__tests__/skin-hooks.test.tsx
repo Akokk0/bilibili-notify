@@ -9,6 +9,9 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import {
+	AddButton,
+	AddCard,
+	AddFileButton,
 	Avatar,
 	Btn,
 	CheckRow,
@@ -21,6 +24,7 @@ import {
 	WarnNote,
 } from "../atoms";
 import { ModalShell } from "../dialog";
+import { ArrayEditor } from "../form-controls";
 import { SectionNav } from "../section-nav";
 import { TabBarShell, TabButton } from "../tab-bar";
 
@@ -259,6 +263,41 @@ describe("提示盒挂点", () => {
 		expect(hooksOf(box)).toEqual(["note", "note-danger"]);
 		// 挂在报警的那个盒子上,不是套在图标或文字外面的某一层
 		expect(box?.getAttribute("role")).toBe("alert");
+	});
+});
+
+/**
+ * add-slot —— 「这里还能再加一个」的虚线空位家族(2026-08-30 主人开口造的词)。
+ *
+ * 这一族此前整片零挂点:理由是「挂 btn 皮肤实底会把空位画成真按钮」。有了自己的
+ * 词之后那个死法不成立 —— btn 规则够不到它,想调虚线/淡底的皮肤点名 add-slot。
+ * btn 禁挂定案**未动**,所以断言用 toEqual 钉死「只有 add-slot 一个词」。
+ */
+describe("add-slot(虚线空位家族)", () => {
+	it("AddButton / AddCard 挂 add-slot(且不挂 btn)", () => {
+		render(
+			<>
+				<AddButton onClick={() => {}}>＋ 添加推送目标</AddButton>
+				<AddCard label="添加 UP 主" hint="UID / 名称搜索" onClick={() => {}} />
+			</>,
+		);
+		for (const el of screen.getAllByRole("button")) {
+			expect(hooksOf(el)).toEqual(["add-slot"]);
+		}
+	});
+
+	it("AddFileButton 的 label 壳也挂 —— 它是同一句话的 file-input 形态", () => {
+		render(
+			<AddFileButton accept="image/*" onFile={() => {}}>
+				挑个文件
+			</AddFileButton>,
+		);
+		expect(hooksOf(screen.getByText("挑个文件").closest("label"))).toEqual(["add-slot"]);
+	});
+
+	it("表单的「+ 添加一行」也挂 —— 库内的空位说法只有一份", () => {
+		render(<ArrayEditor value={[]} onChange={() => {}} />);
+		expect(hooksOf(screen.getByText(/添加一行/))).toEqual(["add-slot"]);
 	});
 });
 

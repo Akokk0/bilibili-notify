@@ -347,7 +347,8 @@ export function IconButton({
  * **刻意不挂 `data-bn="btn"`**(同 MenuItem 的理由):虚线边**就是**这对组件的
  * 语义 —— 「这里是个空位」。皮肤给按钮写的实底描边 + 底色一落上来,空位就长成了
  * 一颗按钮,和真按钮再分不出来(2026-08-23 主人真机指出「新建推送目标」整个变实框)。
- * 挂点词表里也没有「空位」这一档;虚线语汇对所有皮肤保持原样,像 avatar 永远是圆的一样。
+ * 挂的是自己的词 **`add-slot`**(2026-08-30 主人开口造的):btn 规则够不到它,
+ * 想调虚线 / 淡底的皮肤点名这个词 —— 「专词代替零挂点」,同 option / switch 的路。
  */
 
 /**
@@ -377,6 +378,7 @@ export function AddButton({ children, block, className, ...rest }: AddButtonProp
 		<button
 			{...rest}
 			type="button"
+			data-bn="add-slot"
 			className={`gap-1.5 font-semibold ${shape} ${ADD_LANGUAGE} ${className ?? ""}`}
 		>
 			{children}
@@ -403,6 +405,7 @@ export function AddCard({ label, hint, className, ...rest }: AddCardProps) {
 		<button
 			{...rest}
 			type="button"
+			data-bn="add-slot"
 			className={`flex h-full flex-col items-center justify-center rounded-xl px-4 py-5 text-center hover:bg-bn-pink/5 ${ADD_LANGUAGE} ${className ?? ""}`}
 		>
 			<span className="text-bn-xl leading-none text-bn-text-tertiary">＋</span>
@@ -437,7 +440,7 @@ export function AddFileButton({
 	children,
 }: AddFileButtonProps) {
 	return (
-		<label className={`cursor-pointer ${ADD_LANGUAGE} ${className ?? ""}`}>
+		<label data-bn="add-slot" className={`cursor-pointer ${ADD_LANGUAGE} ${className ?? ""}`}>
 			{uploading ? uploadingLabel : children}
 			<input
 				type="file"
@@ -1013,7 +1016,9 @@ export function EmptyNote({ children, size = "md", className }: EmptyNoteProps) 
 	return (
 		<div
 			data-bn="note note-empty"
-			className={`border border-dashed border-bn-border text-center text-bn-text-secondary ${EMPTY_NOTE_SIZE[size]} ${className ?? ""}`}
+			// 边色与 add-slot 家族同档 bn-inactive/50 —— 通用的 bn-border 在默认亮色下
+			// 几乎隐形,两种虚线框摆在一页深浅还不一致(2026-08-30 主人真机指出)。
+			className={`border border-dashed border-bn-inactive/50 text-center text-bn-text-secondary ${EMPTY_NOTE_SIZE[size]} ${className ?? ""}`}
 		>
 			{children}
 		</div>

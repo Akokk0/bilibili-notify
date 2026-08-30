@@ -135,17 +135,18 @@ export function ScopeTabs({
 				);
 			})}
 
-			{/* 添加 UP 按钮 + 下拉。虚线=空位语汇,不挂 `data-bn="btn"` ——
+			{/* 添加 UP 按钮 + 下拉。虚线=空位语汇,挂专词 `add-slot` 而非 `btn` ——
 			    皮肤的按钮实底会把「还能再加一个」画成真按钮(同 ui 库 AddButton 的理由)。 */}
 			<div className="relative" ref={dropdownRef}>
 				<button
 					type="button"
 					onClick={() => setAdding((v) => !v)}
 					title="从订阅列表添加 UP 主的个性化配置"
+					data-bn="add-slot"
 					className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-bn-sm font-semibold transition ${
 						adding
 							? "border-bn-pink/40 bg-bn-pink/6 text-bn-pink"
-							: "border-dashed border-bn-border text-bn-text-tertiary hover:text-bn-text-primary"
+							: "border-dashed border-bn-inactive/50 text-bn-text-tertiary hover:text-bn-text-primary"
 					}`}
 				>
 					<Icon.plus size={13} />
