@@ -72,6 +72,13 @@ export function Avatar({ name, color, size = 44, ring = false, status, url }: Av
 	);
 }
 
+/**
+ * 原生 `data-*` 的索引签名 —— TS 只对内置元素特判 data-*,对自定义组件不放行,
+ * 所以想让 `<Btn data-tour="…">` 编译得过就得显式写一条。三个组件同一条需求,
+ * 抄三份的话下次改一处就漂一处。
+ */
+export type DataAttrs = { [key: `data-${string}`]: string | undefined };
+
 // ── Btn ─────────────────────────────────────────────────────────────────────
 
 type BtnVariant =
@@ -84,16 +91,21 @@ type BtnVariant =
 	| "blue";
 type BtnSize = "sm" | "md" | "lg";
 
-export interface BtnProps {
+/**
+ * 其余原生 button 属性(`data-*`、`aria-*`、`title`…)原样透传 —— 导览挂点等
+ * 外部标记的入口,同 {@link AddButtonProps}。**`className` 刻意不收**:这档
+ * 按钮的观感归库管,想要别的形状去挑别的档,不要从外面糊。
+ */
+export interface BtnProps
+	extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className" | "type">,
+		DataAttrs {
 	children?: ReactNode;
-	onClick?: MouseEventHandler<HTMLButtonElement>;
 	variant?: BtnVariant;
 	size?: BtnSize;
 	icon?: ReactNode;
 	full?: boolean;
-	disabled?: boolean;
+	/** 原生 `type` 收窄:库里的按钮不该出现 `reset`。 */
 	type?: "button" | "submit";
-	title?: string;
 	/** 下拉/弹层触发器的无障碍标注:透传到底层 <button>。 */
 	ariaHasPopup?: boolean;
 	ariaExpanded?: boolean;
@@ -155,23 +167,20 @@ const SIZE_CLS: Record<BtnSize, string> = {
 
 export function Btn({
 	children,
-	onClick,
 	variant = "primary",
 	size = "md",
 	icon,
 	full = false,
-	disabled = false,
 	type = "button",
-	title,
 	ariaHasPopup,
 	ariaExpanded,
+	...rest
 }: BtnProps) {
 	return (
 		<button
+			// rest 铺在最前面:后面那几个(尤其 data-bn)是库的地盘,不许从外面顶掉
+			{...rest}
 			type={type}
-			onClick={onClick}
-			disabled={disabled}
-			title={title}
 			aria-haspopup={ariaHasPopup}
 			aria-expanded={ariaExpanded}
 			// 危险档**再加挂** `btn-danger`。加挂而不是顶掉 `btn-primary`:不认识这个
@@ -345,12 +354,10 @@ export function IconButton({
 const ADD_LANGUAGE =
 	"border border-dashed border-bn-border text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink disabled:cursor-not-allowed disabled:opacity-60";
 
-/** 其余原生 button 属性(data-*、aria-*、title…)原样透传 —— 导览挂点等外部标记的入口。
- *  data-* 要显式索引:TS 只对内置元素特判它,对自定义组件不放行。 */
-export interface AddButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+/** 其余原生 button 属性(data-*、aria-*、title…)原样透传 —— 导览挂点等外部标记的入口。 */
+export interface AddButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, DataAttrs {
 	/** 占满一整行(列表末尾那种)。默认是行内短钮。 */
 	block?: boolean;
-	[key: `data-${string}`]: string | undefined;
 }
 
 export function AddButton({ children, block, className, ...rest }: AddButtonProps) {
@@ -371,8 +378,7 @@ export function AddButton({ children, block, className, ...rest }: AddButtonProp
 }
 
 /** 其余原生 button 属性(data-*、aria-*、title…)原样透传 —— 导览挂点等外部标记的入口。 */
-export interface AddCardProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-	[key: `data-${string}`]: string | undefined;
+export interface AddCardProps extends ButtonHTMLAttributes<HTMLButtonElement>, DataAttrs {
 	/** 卡片中间那行标题(「添加 UP 主」)。 */
 	label: string;
 	/** 标题下的一行小字(「UID / 名称搜索」)。 */

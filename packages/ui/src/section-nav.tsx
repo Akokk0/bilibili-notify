@@ -1,12 +1,5 @@
-import {
-	type ButtonHTMLAttributes,
-	type ReactNode,
-	useCallback,
-	useEffect,
-	useRef,
-	useState,
-} from "react";
-import { AddButton, IconButton } from "./atoms";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { AddButton, type AddButtonProps, IconButton } from "./atoms";
 
 /**
  * SectionNav —— Rules / Targets / Logs 三页共用的「分区/Tab 导航」。
@@ -85,10 +78,9 @@ export interface SectionNavProps {
 	/** 可选「新建」动作。竖栏渲染 heading 行按钮,横向渲染尾部 dashed chip。 */
 	onAdd?: () => void;
 	addLabel?: string;
-	/** 透传给「新建」按钮的原生属性(data-*、aria-* 等,如导览的挂点标记)。 */
-	addButtonProps?: ButtonHTMLAttributes<HTMLButtonElement> & {
-		[key: `data-${string}`]: string | undefined;
-	};
+	/** 透传给「新建」按钮的原生属性(data-*、aria-* 等,如导览的挂点标记)。
+	 *  直接借 AddButton 自己的 props —— 另写一份会和它接受的东西漂开。 */
+	addButtonProps?: Omit<AddButtonProps, "children" | "block" | "onClick" | "className">;
 	/** items 为空时竖栏显示的占位(Targets 空态)。 */
 	emptyState?: ReactNode;
 }

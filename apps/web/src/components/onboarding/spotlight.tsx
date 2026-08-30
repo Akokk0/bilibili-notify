@@ -1,10 +1,12 @@
-import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { TourAnchor } from "./tour-script";
 
 /**
- * 新手导览的聚光灯 —— 挖洞暗幕(视觉)+ 引导锁(拦截)+ 挂点包裹件。
+ * 新手导览的聚光灯 —— 挖洞暗幕(视觉)+ 引导锁(拦截)。
+ *
+ * 挂点是控件自己身上的 `data-tour="…"`(库件 Btn / AddButton / AddCard 都透传
+ * 原生属性)—— 曾经另有一个 TourSpot 包裹件专给 Btn 用,于是同一件事有三种写法,
+ * 而且量到的是那层 span 的矩形、不是按钮的。
  *
  * 视觉走一整张 SVG:全屏暗幕 rect 配 mask 挖洞,每洞再描一圈粉框 ——
  * 单洞时代的「巨型 box-shadow」摊不开多洞(暗幕会叠加、互相盖洞),而**同名
@@ -15,24 +17,6 @@ import type { TourAnchor } from "./tour-script";
  * 引导锁的拦截块不可见、无动画需求,用矩形补集分割(视口减去洞集)铺
  * `pointer-events: auto` 的块 —— 视觉与拦截各走各的最合适形态。
  */
-
-/** 挂点包裹件:把导览灯位标在一个控件上(包一层 span 不破坏布局)。
- *  `anchor` 传 undefined 渲染成纯 span —— 条件挂点(如只标未测通的行)用。 */
-export function TourSpot({
-	anchor,
-	className,
-	children,
-}: {
-	anchor: TourAnchor | undefined;
-	className?: string;
-	children: ReactNode;
-}) {
-	return (
-		<span data-tour={anchor} className={className ?? "inline-flex"}>
-			{children}
-		</span>
-	);
-}
 
 export interface SpotRect {
 	top: number;
