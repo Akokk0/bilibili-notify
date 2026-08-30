@@ -10,6 +10,7 @@
 // 不走 pages/up/helpers —— 组件层反向 import 页面层是圈套;色板直取 internal 正身。
 import { colorFromUid } from "@bilibili-notify/internal/constants";
 import {
+	ADD_LANGUAGE,
 	Avatar,
 	EmptyNote,
 	Icon,
@@ -135,18 +136,18 @@ export function ScopeTabs({
 				);
 			})}
 
-			{/* 添加 UP 按钮 + 下拉。虚线=空位语汇,挂专词 `add-slot` 而非 `btn` ——
-			    皮肤的按钮实底会把「还能再加一个」画成真按钮(同 ui 库 AddButton 的理由)。 */}
+			{/* 添加 UP 按钮 + 下拉。虚线=空位语汇,挂专词 `add-slot` 而非 `btn`(皮肤的
+			    按钮实底会把「还能再加一个」画成真按钮);闲置观感整句吃 ADD_LANGUAGE ——
+			    此前 hover 只加深文字,与家族的「粉描边+粉纱」不是一路(2026-08-30 主人
+			    点名统一);展开态是它自己的事,家族语汇不管。 */}
 			<div className="relative" ref={dropdownRef}>
 				<button
 					type="button"
 					onClick={() => setAdding((v) => !v)}
 					title="从订阅列表添加 UP 主的个性化配置"
 					data-bn="add-slot"
-					className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-bn-sm font-semibold transition ${
-						adding
-							? "border-bn-pink/40 bg-bn-pink/6 text-bn-pink"
-							: "border-dashed border-bn-inactive/50 text-bn-text-tertiary hover:text-bn-text-primary"
+					className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-bn-sm font-semibold ${
+						adding ? "border border-bn-pink/40 bg-bn-pink/6 text-bn-pink transition" : ADD_LANGUAGE
 					}`}
 				>
 					<Icon.plus size={13} />

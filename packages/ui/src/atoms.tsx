@@ -352,15 +352,20 @@ export function IconButton({
  */
 
 /**
- * 两者共用的虚线语汇。改这里等于同时改两个组件 —— 它们本来就该一起动。
+ * 虚线空位家族共用的语汇。改这里等于同时改整族 —— 它们本来就该一起动。
  *
  * 边色 `bn-inactive/50` 比家族外通用的 `bn-border` 深一档:默认亮色的 #e5e7eb
  * 落在带粉调的卡底上几乎隐形(2026-08-30 主人真机指出「添加 UP 主」看不清)。
  * 加浓只限这一家族 —— EmptyNote 与共享 token 不动,皮肤对 note 挂点只写线型
  * 不写颜色,动共享语汇会穿透到所有皮肤。
+ *
+ * hover 三件套(粉描边 + 粉字 + 粉纱底)同样整族统一 —— 粉纱曾只有 AddCard
+ * 自己有,「+ 添加一行」hover 变白底、「添加 UP」chip 只加深文字,主人对着
+ * 四张截图点名统一(同日)。**导出**是给库外的家族成员用的(scope-tabs 的
+ * 「添加 UP」chip),站内的空位话术只许有这一份。
  */
-const ADD_LANGUAGE =
-	"border border-dashed border-bn-inactive/50 text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink disabled:cursor-not-allowed disabled:opacity-60";
+export const ADD_LANGUAGE =
+	"border border-dashed border-bn-inactive/50 text-bn-text-secondary transition hover:border-bn-pink hover:bg-bn-pink/5 hover:text-bn-pink disabled:cursor-not-allowed disabled:opacity-60";
 
 /** 其余原生 button 属性(data-*、aria-*、title…)原样透传 —— 导览挂点等外部标记的入口。 */
 export interface AddButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, DataAttrs {
@@ -406,7 +411,7 @@ export function AddCard({ label, hint, className, ...rest }: AddCardProps) {
 			{...rest}
 			type="button"
 			data-bn="add-slot"
-			className={`flex h-full flex-col items-center justify-center rounded-xl px-4 py-5 text-center hover:bg-bn-pink/5 ${ADD_LANGUAGE} ${className ?? ""}`}
+			className={`flex h-full flex-col items-center justify-center rounded-xl px-4 py-5 text-center ${ADD_LANGUAGE} ${className ?? ""}`}
 		>
 			<span className="text-bn-xl leading-none text-bn-text-tertiary">＋</span>
 			<span className="mt-1 text-bn-sm font-semibold text-bn-text-primary">{label}</span>

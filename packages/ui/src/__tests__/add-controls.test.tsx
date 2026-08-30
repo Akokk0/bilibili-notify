@@ -13,6 +13,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { ArrayEditor } from "../form-controls";
 import { AddButton, AddCard } from "../index";
 
 afterEach(cleanup);
@@ -29,11 +30,16 @@ const btn = () => screen.getByRole("button");
  */
 function expectAddLanguage(el: HTMLElement) {
 	const cls = el.className.split(/\s+/);
+	// hover 三件套(粉描边 + 粉字 + 粉纱底)是整族统一的说法 —— 此前粉纱只有
+	// AddCard 自己有,「+ 添加一行」hover 变白底、「添加 UP」chip 只加深文字,
+	// 2026-08-30 主人对着四张截图点名统一。
 	for (const c of [
 		"border",
 		"border-dashed",
 		"border-bn-inactive/50",
 		"hover:border-bn-pink",
+		"hover:text-bn-pink",
+		"hover:bg-bn-pink/5",
 		"transition",
 	]) {
 		expect([c, cls.includes(c)]).toEqual([c, true]);
@@ -119,5 +125,15 @@ describe("AddCard", () => {
 		render(<AddCard label="x" hint="y" disabled onClick={onClick} />);
 		fireEvent.click(btn());
 		expect(onClick).not.toHaveBeenCalled();
+	});
+});
+
+describe("家族其余成员共用同一句话", () => {
+	it("表单「+ 添加一行」也说 ADD_LANGUAGE —— 不再自带白底、hover 不再变白", () => {
+		render(<ArrayEditor value={[]} onChange={() => {}} />);
+		const row = screen.getByText(/添加一行/);
+		expectAddLanguage(row);
+		expect(row.className).not.toContain("bg-bn-field");
+		expect(row.className).not.toContain("hover:bg-bn-surface");
 	});
 });
