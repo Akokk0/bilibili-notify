@@ -47,9 +47,13 @@ describe("Toast", () => {
 		const [ok, err, neutral] = Array.from(
 			container.querySelectorAll('[role="status"]'),
 		) as HTMLElement[];
-		// 三者底色同一档,只有描边不同。
+		// 三者底色同一档(与庆祝胶囊同一块 glass-strong 玻璃),只有描边不同。
+		// 边由 `.bn-glass-strong` 的 border 出,再叠 border-bn-border 会被玻璃类
+		// 的 shorthand 压掉还留下误导(同 PopoverShell 玻璃档)。
 		for (const el of [ok, err, neutral]) {
-			expect(el.className).toContain("bg-bn-surface-strong");
+			expect(el.className).toContain("bn-glass-strong");
+			expect(el.className).not.toContain("bg-bn-surface-strong");
+			expect(el.className).not.toContain("border-bn-border");
 		}
 		expect(ok.style.borderColor).toBe("var(--color-bn-success-border)");
 		expect(err.style.borderColor).toBe("var(--color-bn-danger-border)");

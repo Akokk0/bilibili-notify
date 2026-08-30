@@ -15,7 +15,10 @@ import type { CSSProperties, ReactNode } from "react";
  * 够不着它。
  *
  * **语义走描边,不走实心底。** 同 `ToneChip` 的道理:底恒定,tone 只换 borderColor。
- * 实心语义底一来逼出白字,二来在换肤后与页面其余部分格格不入。
+ * 实心语义底一来逼出白字,二来在换肤后与页面其余部分格格不入。底材质直接吃
+ * `.bn-glass-strong`(与导览庆祝胶囊同一块玻璃 —— 默认态两者材质一致,不是只在
+ * 换肤后才被拉到同一档);描边由玻璃类的 border 出,tone 只盖 borderColor,
+ * 所以不再叠 `border-bn-border`(同 `PopoverShell` 玻璃档的取舍)。
  *
  * **钉在底部居中,不在右下角。** 右下角是推送 toast 那一摞的位置(`toast-shell` 的
  * `fixed bottom-4 right-4`)。收编前 Targets 那个也钉在 `bottom-4 right-4`,推送
@@ -58,7 +61,7 @@ export function Toast({ children, tone = "neutral" }: ToastProps) {
 			aria-live="polite"
 			data-bn="glass-strong"
 			style={style}
-			className="fixed bottom-5 left-1/2 z-bn-toast-base -translate-x-1/2 rounded-md border border-bn-border bg-bn-surface-strong px-3 py-1.5 text-bn-sm font-medium text-bn-text-primary shadow-bn-elev"
+			className="bn-glass-strong fixed bottom-5 left-1/2 z-bn-toast-base -translate-x-1/2 rounded-md px-3 py-1.5 text-bn-sm font-medium text-bn-text-primary shadow-bn-elev"
 		>
 			{children}
 		</div>
