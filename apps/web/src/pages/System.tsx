@@ -21,6 +21,7 @@ import {
 	TNum,
 	TSelect,
 } from "../components/forms";
+import { OnboardingReopenSection } from "../components/onboarding/reopen-section";
 import { PUSH_TONE } from "../config/push-kinds";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
@@ -493,6 +494,8 @@ export default function System() {
 			<SkinSection />
 
 			<BackupSection />
+
+			<OnboardingReopenSection />
 
 			<details className="rounded-sm border border-bn-border bg-bn-surface-muted p-3 text-xs text-bn-text-secondary">
 				<summary className="cursor-pointer font-medium text-bn-text-primary">原始登录快照</summary>

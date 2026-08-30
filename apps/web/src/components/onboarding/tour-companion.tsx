@@ -1,10 +1,11 @@
-import { Btn, Icon, StatusDot } from "@bilibili-notify/ui";
+import { Btn, Icon, ModalShell, StatusDot } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../services/api";
 import { useNavStore } from "../../store/nav";
+import { useOnboardingReopen } from "../../store/onboarding";
 import type { GlobalConfig } from "../../types/globals";
 import { Fireworks, StepDoneBadge } from "./celebration";
 import type { OnboardingStepKey, OnboardingTailKey, OnboardingView } from "./derive";
@@ -13,15 +14,17 @@ import { reconcileTourPos, STEP_DONE_MESSAGES, TOUR_SCRIPT, type TourPos } from 
 import { useOnboardingState } from "./use-onboarding-view";
 
 /**
- * 新手导览(2026-08-29 四轮定稿:**永久常驻,无关闭态**)。
+ * 新手导览(2026-08-30 主人定案:三态 `onboarding.skipped`)。
  *
- * - 两态之间切换:左缘小标签(活进度徽标)⇄ 展开小卡。**没有关闭态** —— 标签
- *   永久常驻(旧的 dismissed 字段与 /guide 的「重新开启」已一并删除);
- * - 展不展开由 `onboarding.skipped` 决定(2026-08-30 补):没这笔标记就自动展开
- *   (新装的用户一开面板即被接住),有标记就收成标签。写标记的两条路 —— 小卡上
- *   的「跳过指引」与走完五步毕业。它落在**配置**而非 localStorage:换浏览器/换
- *   机器不该被重新引导一遍。存量用户全靠这个按钮脱身:判据认「按过测试」才算配
- *   好适配器,没点过的老用户升级后一律被判成没配完,会连人带面板被引导锁锁住;
+ * - **缺失 = 还没问过**:打开面板先在屏幕中间弹询问框 —— 「我是新用户,开始
+ *   指引」/「我是老用户,跳过」。存量实例升级上来与全新安装都落在这档:判据认
+ *   「按过测试」才算配好适配器,老用户升级后一律被判成没配完,不问一句就开导览
+ *   等于拿引导锁糊人一脸(上一版正是这么被打回的);
+ * - `false` = 要指引:左缘小标签(活进度徽标)⇄ 展开小卡,判据驱动照旧;
+ * - `true` = 不要:**整个导览不渲染**(标签也没有)。写入的三条路 —— 询问框选
+ *   「老用户」、小卡上的「跳过指引」、走完五步毕业(🎉 卡演完点收起才谢幕);
+ *   系统页的「重新开启」写回 false 并经 useOnboardingReopen 信号把卡展开。
+ *   它落在**配置**而非 localStorage:换浏览器/换机器不该被重新问一遍;
  * - 主步切换全自动(reconcileTourPos):判据**前进与回退都跟**(回退=前置被
  *   破坏,如退出登录,导览带用户回去补);配合 useOnboardingState 的 3s 轮询
  *   兜底(毕业即停),「做完自动进下一步」不依赖任何单条更新链路恰好有推送;
@@ -153,23 +156,41 @@ export function TourCompanion() {
 		queryKey: ["globals"],
 		queryFn: () => api.get<GlobalConfig>("/api/globals"),
 	});
-	const skipped = globalsQ.data?.onboarding?.skipped === true;
-	const collapsed = collapsedPref ?? skipped;
-	// 收起态不轮询 —— 判据只在小卡摊开、用户正跟着做的时候才需要跟手。跳过指引
-	// 的人第一时间落进这档,不然那 4 条 query 会以 20 次/分钟一路跑到标签页关掉。
-	// 毕业即停那道在 hook 内部判。
-	const { view } = useOnboardingState({ poll: !collapsed });
+	// 三态:undefined = 还没问过(弹询问框);false = 要指引;true = 整个导览不渲染
+	const choice = globalsQ.data?.onboarding?.skipped;
+	const collapsed = collapsedPref ?? false;
+	// 询问框的两页与本会话关闭态(Esc/点外面 = 这次不回答,刷新后再问)
+	const [askPhase, setAskPhase] = useState<"ask" | "noted">("ask");
+	const [askDismissed, setAskDismissed] = useState(false);
+	// 毕业活口:标记自动写下后,🎉 卡还得站到用户点「收起」为止,别被 invalidate
+	// 回流的 choice=true 当场掐没
+	const [justGraduated, setJustGraduated] = useState(false);
+	// 只有导览真开着(要指引 + 卡摊开)才轮询判据 —— 这是全站唯一的长期定时请求
+	const { view } = useOnboardingState({ poll: choice === false && !collapsed });
 
-	// 标记没到手之前**什么都不渲染**:先画展开态再收回去会闪一下,而这一闪正好
-	// 落在「老用户被锁」那个最敏感的场景上。请求失败(isPending 落地为 error)也
-	// 放行 —— 那时 globals 整个面板都废了,不该顺带把导览也吞掉。
+	// 标记没到手之前**什么都不渲染**:先画出来再收回去会闪一下,而这一闪正好落在
+	// 「老用户被问」那个最敏感的场景上。请求失败(isPending 落地为 error)也放行 ——
+	// 那时 globals 整个面板都废了,不该顺带把导览也吞掉。
 	const visible = view !== null && !globalsQ.isPending;
 
 	const qc = useQueryClient();
-	const { mutate: markSkipped } = useMutation({
-		mutationFn: () => api.patch("/api/globals", { onboarding: { skipped: true } }),
+	const { mutate: markChoice } = useMutation({
+		mutationFn: (skipped: boolean) => api.patch("/api/globals", { onboarding: { skipped } }),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
 	});
+
+	// 系统页「重新开启」:配置那半走 PATCH+invalidate 既有通道,这里接的是「把这台
+	// 浏览器上收着的卡展开」那半拍 —— 不展开的话按钮点了毫无动静。
+	const reopenSeq = useOnboardingReopen((st) => st.seq);
+	const prevReopenRef = useRef(reopenSeq);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 只在 seq 变化时执行一次
+	useEffect(() => {
+		if (reopenSeq === prevReopenRef.current) return;
+		prevReopenRef.current = reopenSeq;
+		setAskDismissed(false);
+		setAskPhase("ask");
+		toggleCollapsed(false);
+	}, [reopenSeq]);
 
 	const pos = useMemo(
 		() => (view ? reconcileTourPos(manualPos, view.activeKey) : null),
@@ -231,17 +252,73 @@ export function TourCompanion() {
 		if (view.allDone && !prev.allDone) setFireworks(true);
 	}, [view, collapsed]);
 
-	// 毕业即记标记:否则走完五步的人此后每次开面板都被那张 🎉 卡糊一脸 —— 它已经
-	// 没有信息量了。ref 挡住重入:mutate 到 invalidate 落回来之间 skipped 还是 false,
-	// 不挡就会连发。
+	// 毕业即记标记(= 关掉导览):否则走完五步的人下次开面板还会见到 🎉 卡 ——
+	// 它已经没有信息量了。只在 choice===false(明确在引导中)时写:还没回答询问框
+	// 的人毕不毕业都轮不到我们替他选。ref 挡重入,justGraduated 给 🎉 卡留活口。
 	const markedRef = useRef(false);
 	useEffect(() => {
-		if (!view?.allDone || skipped || markedRef.current) return;
+		if (choice !== false || !view?.allDone || markedRef.current) return;
 		markedRef.current = true;
-		markSkipped();
-	}, [view?.allDone, skipped, markSkipped]);
+		setJustGraduated(true);
+		markChoice(true);
+	}, [view?.allDone, choice, markChoice]);
 
 	if (!visible || !pos || !view) return null;
+
+	// ── 三态分闸(数据都齐了才走到这) ─────────────────────────────────────────
+	// 询问框:没问过(undefined)必弹;选「老用户」后的教育页(noted)在 choice
+	// 已回流成 true 时也要站住,直到点「知道了」。Esc/点外面 = 这次不回答,本会话
+	// 不再骚扰,刷新后再问。
+	const askOpen =
+		!askDismissed &&
+		(choice === undefined ? askPhase === "ask" : choice === true && askPhase === "noted");
+	if (askOpen) {
+		return createPortal(
+			<ModalShell
+				width={400}
+				onCancel={() => setAskDismissed(true)}
+				title="需要新手指引吗?"
+				description="五步带你配好 B 站登录与推送通道"
+			>
+				{askPhase === "ask" ? (
+					<div className="flex flex-col gap-2">
+						<Btn
+							full
+							onClick={() => {
+								markChoice(false);
+								toggleCollapsed(false);
+							}}
+						>
+							我是新用户,开始指引
+						</Btn>
+						<Btn
+							full
+							variant="outline"
+							onClick={() => {
+								setAskPhase("noted");
+								markChoice(true);
+							}}
+						>
+							我是老用户,跳过
+						</Btn>
+					</div>
+				) : (
+					<div className="flex flex-col gap-3">
+						<p className="text-bn-sm leading-relaxed text-bn-text-secondary">
+							好的,不再打扰。以后需要指引时,到「系统」页的「新手指引」一节点「重新开启」即可。
+						</p>
+						<Btn full variant="outline" onClick={() => setAskDismissed(true)}>
+							知道了
+						</Btn>
+					</div>
+				)}
+			</ModalShell>,
+			document.body,
+		);
+	}
+	// 不要(true)或这次没回答 → 整个导览不渲染;唯一例外是本会话刚毕业,
+	// 🎉 卡演完点「收起」再谢幕
+	if (choice !== false && !justGraduated) return null;
 
 	// 步序只有一份 —— derive.ts 排好的 view.steps。曾另立 TOUR_STEP_ORDER,
 	// 改一处漏一处不会红,步点条会静静地少一颗或谁都不高亮。
@@ -331,7 +408,7 @@ export function TourCompanion() {
 								))}
 							</p>
 						) : null}
-						<Btn size="sm" onClick={() => toggleCollapsed(true)}>
+						<Btn size="sm" onClick={() => setJustGraduated(false)}>
 							收起
 						</Btn>
 					</div>
@@ -371,16 +448,9 @@ export function TourCompanion() {
 								</Btn>
 							) : null}
 							<span className="flex-1" />
-							{/* 「跳过指引」= 记下实例标记 + 收起,不是关闭(标签照常常驻)。存量
-							    用户唯一的出口:判据认「按过测试」才算配好适配器,没点过那个按钮
-							    的老用户升级后一律被判成没配完,引导锁会把面板锁到只剩聚光灯 */}
-							<TextBtn
-								label="跳过指引"
-								onClick={() => {
-									markSkipped();
-									toggleCollapsed(true);
-								}}
-							/>
+							{/* 「跳过指引」= 写回 true,整个导览就此消失(三态语义);
+							    系统页「新手指引」一节可随时重开 */}
+							<TextBtn label="跳过指引" onClick={() => markChoice(true)} />
 							<TextBtn label="收起" onClick={() => toggleCollapsed(true)} />
 						</div>
 					</div>

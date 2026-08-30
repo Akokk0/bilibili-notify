@@ -28,8 +28,9 @@ interface Scenario {
 	adapters?: unknown[];
 	targets?: unknown[];
 	route?: string;
-	/** globals 里那笔 `onboarding.skipped` —— 缺省 = 老配置补出来的「没跳过」。 */
-	skipped?: boolean;
+	/** globals 里那笔 `onboarding.skipped` —— `null` = 配置缺失(还没问过,该弹
+	 *  询问框);不传 = false(已选「要指引」,绝大多数旧测试的语境)。 */
+	skipped?: boolean | null;
 }
 
 async function mount(s: Scenario) {
@@ -45,7 +46,8 @@ async function mount(s: Scenario) {
 		if (path === "/api/targets") return s.targets ?? [];
 		if (path === "/api/health")
 			return { status: "ok", uptime: 1, modules: { image: false, ai: false } };
-		if (path === "/api/globals") return { onboarding: { skipped: s.skipped === true } };
+		if (path === "/api/globals")
+			return { onboarding: s.skipped === null ? {} : { skipped: s.skipped === true } };
 		return null;
 	});
 	const { TourCompanion } = await import("../tour-companion");
@@ -102,45 +104,98 @@ describe("TourCompanion 常驻小卡", () => {
 	});
 
 	/**
-	 * 「跳过指引」(2026-08-30 主人定案,针对存量用户被引导锁困住的问题)。
+	 * 三态 `onboarding.skipped`(2026-08-30 主人定案改版)。
 	 *
-	 * 判据认「按过测试」才算配好适配器,而绝大多数老用户从没点过那个按钮 ——
-	 * 升级后他们一律被判成「没配完」,导览自动展开、引导锁把面板锁到只剩聚光灯
-	 * 那一处。跳过是他们唯一的出口,所以它必须:落在**配置**(换浏览器/换机器
-	 * 不该再被锁一次)、且**不是关闭**(左缘标签照常常驻,随时点回来)。
+	 * 缺失 = 还没问过 → 屏幕中间弹询问框(新用户开始指引 / 老用户跳过);
+	 * false = 要指引 → 导览照常;true = 不要 → **整个导览不渲染**(标签也没有,
+	 * 对「永久常驻」的修订),系统页可重开。判据认「按过测试」才算配好适配器,
+	 * 存量老用户升级后会被判成没配完 —— 询问框就是他们的出口,选一次记一世。
 	 */
-	describe("跳过指引", () => {
-		it("配置里已跳过 → 开面板直接是标签态,不自动展开(存量用户不再被锁)", async () => {
-			await mount({ route: "/system", skipped: true });
-			await waitFor(() =>
-				expect(
-					document.querySelector('aside[aria-label="新手导览"]')?.getAttribute("data-shown"),
-				).toBe("false"),
-			);
-			// 收起 ≠ 关闭:标签仍在,进度照常挂在上面
-			expect(screen.getByRole("button", { name: "展开新手导览" })).toBeTruthy();
+	describe("三态询问框", () => {
+		it("配置缺失 → 弹询问框,导览的标签与卡都不出现", async () => {
+			await mount({ route: "/system", skipped: null });
+			expect(await screen.findByText(/需要新手指引吗/)).toBeTruthy();
+			expect(screen.queryByRole("button", { name: "展开新手导览" })).toBeNull();
+			expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull();
 			expect(screen.queryByTestId("tour-spotlight")).toBeNull();
 		});
 
-		it("点「跳过指引」→ 标记落进配置并收起;标签不跟着消失", async () => {
-			await mount({ route: "/system" });
+		it("选「我是新用户」→ 记下 false,询问框关,导览展开", async () => {
+			const s: Scenario = { route: "/system", skipped: null };
+			apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
+				s.skipped = (body as { onboarding: { skipped: boolean } }).onboarding.skipped;
+				return {};
+			});
+			await mount(s);
+			fireEvent.click(await screen.findByRole("button", { name: /我是新用户/ }));
+			await waitFor(() =>
+				expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboarding: { skipped: false } }),
+			);
+			await screen.findByText("扫码登录 B 站");
+			expect(screen.queryByText(/需要新手指引吗/)).toBeNull();
+		});
+
+		it("选「我是老用户」→ 记下 true,提示系统页可重开,确认后什么都不渲染", async () => {
+			const s: Scenario = { route: "/system", skipped: null };
+			apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
+				s.skipped = (body as { onboarding: { skipped: boolean } }).onboarding.skipped;
+				return {};
+			});
+			await mount(s);
+			fireEvent.click(await screen.findByRole("button", { name: /我是老用户/ }));
+			await waitFor(() =>
+				expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboarding: { skipped: true } }),
+			);
+			// 教育提示:以后去系统页重开
+			expect(await screen.findByText(/系统/)).toBeTruthy();
+			fireEvent.click(screen.getByRole("button", { name: "知道了" }));
+			await waitFor(() =>
+				expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull(),
+			);
+			expect(screen.queryByRole("button", { name: "展开新手导览" })).toBeNull();
+		});
+
+		it("已选跳过(true)→ 整个导览不渲染,也不再弹询问框", async () => {
+			await mount({ route: "/system", skipped: true });
+			// 让数据链路完全落定后再断言「什么都没有」
+			await waitFor(() => expect(apiGet).toHaveBeenCalledWith("/api/globals"));
+			await new Promise((r) => setTimeout(r, 50));
+			expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull();
+			expect(screen.queryByRole("button", { name: "展开新手导览" })).toBeNull();
+			expect(screen.queryByText(/需要新手指引吗/)).toBeNull();
+			expect(apiPatch).not.toHaveBeenCalled();
+		});
+
+		it("点「跳过指引」→ 记下 true,导览整个消失", async () => {
+			const s: Scenario = { route: "/system" };
+			apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
+				s.skipped = (body as { onboarding: { skipped: boolean } }).onboarding.skipped;
+				return {};
+			});
+			await mount(s);
 			await screen.findByText("扫码登录 B 站");
 			fireEvent.click(screen.getByRole("button", { name: "跳过指引" }));
 			await waitFor(() =>
 				expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboarding: { skipped: true } }),
 			);
-			const card = document.querySelector('aside[aria-label="新手导览"]');
-			expect(card?.getAttribute("data-shown")).toBe("false");
-			expect(screen.getByRole("button", { name: "展开新手导览" })).toBeTruthy();
+			await waitFor(() =>
+				expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull(),
+			);
+			expect(screen.queryByRole("button", { name: "展开新手导览" })).toBeNull();
 		});
 
-		it("走完五步毕业 → 自动记下标记,下次开面板不再拿 🎉 卡糊人一脸", async () => {
-			await mount({
+		it("走完五步毕业 → 自动记下 true,🎉 卡演完点「收起」才消失", async () => {
+			const s: Scenario = {
 				subs: [{ id: "s1" }],
 				adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
 				targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
 				route: "/system",
+			};
+			apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
+				s.skipped = (body as { onboarding: { skipped: boolean } }).onboarding.skipped;
+				return {};
 			});
+			await mount(s);
 			await screen.findByText("扫码登录 B 站");
 			expect(apiPatch).not.toHaveBeenCalled();
 			act(() => {
@@ -149,16 +204,28 @@ describe("TourCompanion 常驻小卡", () => {
 			await waitFor(() =>
 				expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboarding: { skipped: true } }),
 			);
+			// 标记已写、数据已回流,🎉 卡还得站着 —— 别把毕业庆祝掐没
+			expect(await screen.findByText(/全部配置完成/)).toBeTruthy();
+			fireEvent.click(screen.getByRole("button", { name: "收起" }));
+			await waitFor(() =>
+				expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull(),
+			);
 		});
 
-		it("已跳过的实例不重复写标记 —— 每次开面板都 PATCH 一次是纯噪音", async () => {
-			await mount({ route: "/system", skipped: true });
+		it("系统页「重新开启」信号 → 收着的导览重新展开", async () => {
+			localStorage.setItem("bn-tour-collapsed", "1");
+			await mount({ route: "/system" });
+			const tab = await screen.findByRole("button", { name: "展开新手导览" });
+			expect(tab.getAttribute("data-shown")).toBe("true");
+			const { useOnboardingReopen } = await import("../../../store/onboarding");
+			act(() => {
+				useOnboardingReopen.getState().reopen();
+			});
 			await waitFor(() =>
 				expect(
 					document.querySelector('aside[aria-label="新手导览"]')?.getAttribute("data-shown"),
-				).toBe("false"),
+				).toBe("true"),
 			);
-			expect(apiPatch).not.toHaveBeenCalled();
 		});
 	});
 
@@ -530,25 +597,29 @@ describe("TourCompanion 常驻小卡", () => {
 		expect(localStorage.getItem("bn-tour-collapsed")).toBe("0");
 	});
 
-	it("全绿(毕业老用户):照样常驻 —— 祝贺态列未开启尾巴,点「收起」变标签", async () => {
-		await mount({
+	it("引导中全绿:🎉 卡列未开启尾巴,自动写 true,点「收起」谢幕", async () => {
+		const s: Scenario = {
 			loggedIn: true,
 			subs: [{ id: "s1" }],
 			adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
 			targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
+		};
+		apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
+			s.skipped = (body as { onboarding: { skipped: boolean } }).onboarding.skipped;
+			return {};
 		});
+		await mount(s);
 		expect(await screen.findByText(/全部配置完成/)).toBeTruthy();
 		// 尾巴链接指向关于页里的教程章节(五轮定稿:/guide 独立路由已撤)
 		const tail = screen.getByRole("link", { name: /图片渲染/ });
 		expect(tail.getAttribute("href")).toBe("/about/guide/render");
-		fireEvent.click(screen.getByRole("button", { name: "收起" }));
-		const tab = screen.getByRole("button", { name: "展开新手导览" });
-		expect(tab.textContent).toContain("5/5");
-		// 已经全绿的实例(含这个特性上线前就配完的老用户)照样补上标记 —— 它的作用
-		// 只是「别再自动展开」,标签仍然常驻,进度也还挂在上面
+		// 毕业自动关导览(三态语义:true = 整个不渲染),🎉 卡靠活口站到收起为止
 		await waitFor(() =>
 			expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboarding: { skipped: true } }),
 		);
+		fireEvent.click(screen.getByRole("button", { name: "收起" }));
+		await waitFor(() => expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull());
+		expect(screen.queryByRole("button", { name: "展开新手导览" })).toBeNull();
 	});
 	describe("判据轮询的启停", () => {
 		/** `/api/subs` 被问了几次 —— 轮询每轮会 invalidate 它。 */
@@ -567,7 +638,7 @@ describe("TourCompanion 常驻小卡", () => {
 			}
 		});
 
-		it("收起成标签 → 不再轮询(跳过指引的人第一时间落进这档)", async () => {
+		it("导览已关闭(skipped=true)→ 不轮询", async () => {
 			vi.useFakeTimers();
 			try {
 				await mount({ route: "/system", skipped: true });
