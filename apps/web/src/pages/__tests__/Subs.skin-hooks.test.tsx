@@ -61,7 +61,12 @@ function chipByText(text: string): Element {
 
 beforeEach(() => {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-		if (path.startsWith("/api/subs")) return Promise.resolve([makeSub("111", "UP甲")]);
+		if (path.startsWith("/api/subs"))
+			// UP甲无分组(出「未分组」)、UP乙有分组(出一颗普通分组胶囊当对照)。
+			return Promise.resolve([
+				makeSub("111", "UP甲"),
+				{ ...makeSub("222", "UP乙"), groups: ["杂谈"] },
+			]);
 		return Promise.resolve([]);
 	});
 });
@@ -93,5 +98,35 @@ describe("Subs 筛选胶囊 × 皮肤挂点", () => {
 		const cls = chipByText("未分组").className;
 		expect(cls).toContain("rounded-bn-pill");
 		expect(cls).not.toContain("rounded-full");
+	});
+
+	it("分组胶囊的底不透明 —— 半透明纱靠白页垫底,壁纸皮肤下整颗洗没", async () => {
+		// bg-bn-pink/10、bg-bn-surface/60 这类纱在默认装上看着刚好,是因为下面垫着
+		// 白页面;壁纸皮肤把页面换掉,纱后面就是花底,选中态与未分组当场隐形
+		// (2026-08-30 主人真机指出「正常状态反而看不太清」)。这一排直接坐在页面
+		// 背景上,底必须自己不透明,粉调用 color-mix 落在 surface 上出。
+		renderSubs();
+		await waitFor(() => expect(screen.getByText("未分组")).toBeTruthy());
+		// 「全部」在顶排筛选与分组排各有一颗,分组排的靠 rounded-bn-pill 认。
+		const groupChips = screen
+			.getAllByText(/^(全部|未分组)$/)
+			.map((n) => n.closest("button"))
+			.filter((b): b is HTMLButtonElement => b?.className.includes("rounded-bn-pill") ?? false);
+		expect(groupChips.length).toBeGreaterThanOrEqual(2); // 全部(选中) + 未分组
+		for (const b of groupChips) {
+			expect(b.className, b.textContent ?? "").not.toMatch(/bg-bn-[a-z-]+\/\d+/);
+		}
+	});
+
+	it("未分组与普通分组胶囊只差线型 —— 虚线 vs 实线,底/字/hover 完全一致", async () => {
+		// 主人定案(2026-08-30):未分组 hover 也要粉描边,不是只加深文字;它与普通
+		// 分组钮的唯一区别就是默认态一个虚线一个实线。用类集合的差集钉死「只差
+		// border-dashed 一个类」,任何一侧多写/漏写样式都会在这儿露头。
+		renderSubs();
+		await waitFor(() => expect(screen.getByText("未分组")).toBeTruthy());
+		const normal = new Set(chipByText("杂谈").className.split(/\s+/));
+		const mutedCls = new Set(chipByText("未分组").className.split(/\s+/));
+		expect([...mutedCls].filter((c) => !normal.has(c))).toEqual(["border-dashed"]);
+		expect([...normal].filter((c) => !mutedCls.has(c))).toEqual([]);
 	});
 });

@@ -64,13 +64,16 @@ function GroupChip({
 }) {
 	// 圆角走皮肤的 pill 轴,别写死 rounded-full —— 像素风皮肤把 radius.pill 调到 0
 	// 求一身硬直角,写死的话唯独这排胶囊还是圆的。
+	// 底一律**不透明**:这排直接坐在页面背景上,bg-bn-pink/10 那类纱靠白页垫底才
+	// 好看,壁纸皮肤把页面换掉后选中态与未分组当场隐形(2026-08-30 主人真机指出
+	// 「正常状态反而看不太清」)。粉调用 color-mix 落在 surface 上出,默认装等值。
 	const base =
 		"inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-bn-xs font-semibold transition";
+	// 未分组(muted)= 普通档 + 虚线,**只差线型这一个类**(2026-08-30 主人定案:
+	// hover 同样要粉描边,不是只加深文字)。测试用类差集钉着这条,别再各配各的。
 	const cls = active
-		? "border border-bn-pink bg-bn-pink/10 text-bn-pink"
-		: muted
-			? "border border-dashed border-bn-border bg-bn-surface/60 text-bn-text-tertiary hover:text-bn-text-primary"
-			: "border border-bn-border bg-bn-surface text-bn-text-secondary hover:border-bn-pink/60 hover:text-bn-text-primary";
+		? "border border-bn-pink bg-[color-mix(in_srgb,var(--color-bn-pink)_10%,var(--color-bn-surface))] text-bn-pink"
+		: `border ${muted ? "border-dashed " : ""}border-bn-border bg-bn-surface text-bn-text-secondary hover:border-bn-pink/60 hover:text-bn-text-primary`;
 	return (
 		// 页面里手写的控件不在 packages/ui 那份 skin-hooks 测试的射程内,漏挂了皮肤
 		// 就静默够不到它 —— 这一类在本仓库已犯过两回。分组筛选改的是值,挂 chip。
