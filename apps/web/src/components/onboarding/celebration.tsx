@@ -73,14 +73,26 @@ export function Fireworks({ onDone }: { onDone: () => void }) {
 		// 的位图停在旧尺寸被 CSS 拉伸(炸点偏移、clearRect 清不干净留下拖影)。
 		let w = window.innerWidth;
 		let h = window.innerHeight;
+		// 已经落到位图上的尺寸。拿它比而不是比 canvas.width:后者出厂是 300×150,
+		// 万一视口正好是这个数,首帧就被当成「没变」跳过,矩阵与线宽一次都没落。
+		let fittedW = -1;
+		let fittedH = -1;
 		const fitCanvas = () => {
 			const dpr = window.devicePixelRatio || 1;
 			w = window.innerWidth;
 			h = window.innerHeight;
-			canvas.width = w * dpr;
-			canvas.height = h * dpr;
+			const px = w * dpr;
+			const py = h * dpr;
+			// 尺寸没变就别碰 —— 给 canvas.width 赋值会重新分配整块位图并清空它
+			// (2560×1440@2x ≈ 59MB),而拖动窗口时 resize 一秒能来几十发。
+			if (px === fittedW && py === fittedH) return;
+			fittedW = px;
+			fittedH = py;
+			canvas.width = px;
+			canvas.height = py;
 			// 尺寸一改 canvas 的变换矩阵就复位了,scale 每次都要重新落。
 			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+			ctx.lineWidth = 2; // 同样被复位,粒子循环里不再逐颗设
 		};
 		fitCanvas();
 		window.addEventListener("resize", fitCanvas);
@@ -113,6 +125,10 @@ export function Fireworks({ onDone }: { onDone: () => void }) {
 		let raf = 0;
 		const frame = () => {
 			ctx.clearRect(0, 0, w, h);
+			// 一发烟花的粒子同色且连续入队,所以照数组顺序走下来颜色是成段的 ——
+			// 记住上一次设的值,strokeStyle 的赋值(每次都要解析一遍颜色字符串)
+			// 就从每帧两百来次降到每帧几次。
+			let stroke = "";
 			for (const p of particles) {
 				if (p.life <= 0) continue;
 				const px = p.x;
@@ -124,8 +140,10 @@ export function Fireworks({ onDone }: { onDone: () => void }) {
 				p.vy *= 0.985;
 				p.life -= 0.012;
 				ctx.globalAlpha = Math.max(0, p.life);
-				ctx.strokeStyle = p.color;
-				ctx.lineWidth = 2;
+				if (p.color !== stroke) {
+					stroke = p.color;
+					ctx.strokeStyle = stroke;
+				}
 				ctx.beginPath();
 				ctx.moveTo(px, py);
 				ctx.lineTo(p.x, p.y);

@@ -118,6 +118,7 @@ export function Spotlight({ selectors, lock }: { selectors: readonly string[]; l
 		setDismissedSelector(null);
 		lastScrolledRef.current = null;
 		let raf = 0;
+		let idle: ReturnType<typeof setTimeout> | undefined;
 		const resolve = (): { selector: string; els: Element[] } | null => {
 			for (const selector of chain) {
 				// display:none 的实例没有盒,得滤掉 —— 响应式双形态组件(如 SectionNav
@@ -166,20 +167,35 @@ export function Spotlight({ selectors, lock }: { selectors: readonly string[]; l
 		// 必须逐帧跟(洞要贴着做 morph/滚动的目标),但导览常常整段时间就那么停着 ——
 		// 停着还每帧重排,图表页、日志长列表都白白陪跑。所以静下来就降到低频巡查,
 		// 任何可能让目标位移的信号立刻打回逐帧。
+		//
+		// 静下来是**真的把 rAF 停掉**、改挂一个 setTimeout,不是继续每帧醒来空转:
+		// 一个长期挂着的 rAF 会一直把浏览器的帧循环顶着跑(整段导览、每个页面),
+		// 而低频巡查根本不需要跟显示器同步。
 		let stableFrames = 0;
-		let lastMeasuredAt = 0;
-		const wake = () => {
-			stableFrames = 0;
+		const sweep = () => {
+			// 巡查只为抓「没有任何事件的脚本改样式」;一动就打回逐帧
+			if (measure()) track();
+			else idle = setTimeout(sweep, IDLE_MEASURE_MS);
 		};
-		const tick = (now: number) => {
-			const idle = stableFrames >= STABLE_FRAMES_TO_IDLE;
-			if (!idle || now - lastMeasuredAt >= IDLE_MEASURE_MS) {
-				lastMeasuredAt = now;
-				stableFrames = measure() ? 0 : stableFrames + 1;
+		const frame = () => {
+			stableFrames = measure() ? 0 : stableFrames + 1;
+			if (stableFrames >= STABLE_FRAMES_TO_IDLE) {
+				raf = 0;
+				idle = setTimeout(sweep, IDLE_MEASURE_MS);
+				return;
 			}
-			raf = requestAnimationFrame(tick);
+			raf = requestAnimationFrame(frame);
 		};
-		raf = requestAnimationFrame(tick);
+		function track() {
+			stableFrames = 0;
+			if (idle !== undefined) {
+				clearTimeout(idle);
+				idle = undefined;
+			}
+			if (raf === 0) raf = requestAnimationFrame(frame);
+		}
+		const wake = track;
+		track();
 		// 捕获阶段:目标可能坐在某个内部滚动容器里,scroll 不冒泡。
 		window.addEventListener("scroll", wake, true);
 		window.addEventListener("resize", wake);
@@ -204,6 +220,7 @@ export function Spotlight({ selectors, lock }: { selectors: readonly string[]; l
 		document.addEventListener("pointerdown", onPointerDown, true);
 		return () => {
 			cancelAnimationFrame(raf);
+			clearTimeout(idle);
 			document.removeEventListener("pointerdown", onPointerDown, true);
 			window.removeEventListener("scroll", wake, true);
 			window.removeEventListener("resize", wake);
@@ -237,9 +254,10 @@ export function Spotlight({ selectors, lock }: { selectors: readonly string[]; l
 					aria-hidden
 					className="pointer-events-none fixed inset-0 z-bn-scrim"
 				>
-					{blocks.map((b) => (
+					{blocks.map((b, i) => (
 						<div
-							key={`${b.top}:${b.left}`}
+							// biome-ignore lint/suspicious/noArrayIndexKey: subtractRects 按 y 扫描带定序,下标就是稳定身份;用几何做 key 会让目标一动就整批拆了重建
+							key={i}
 							className="pointer-events-auto absolute"
 							style={{ top: b.top, left: b.left, width: b.width, height: b.height }}
 						/>
