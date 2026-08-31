@@ -14,6 +14,7 @@ import {
 	Avatar,
 	EmptyNote,
 	Icon,
+	IconButton,
 	MenuItem,
 	Pill,
 	PopoverShell,
@@ -117,22 +118,19 @@ export function ScopeTabs({
 								</Pill>
 							) : null}
 						</button>
-						<button
-							type="button"
+						{/* 曾是站里最后一颗手写的图标钮(收编 23 处后的漏网):active 时静态粉字
+						    是收编前的旧作派,IconButton 的既定哲学是「平时安静、粉只在指上去时
+						    出现」(tone 只管 hover 语义)—— 迁移时一并归正。 */}
+						<IconButton
+							icon={<Icon.close size={11} />}
+							label={`移除 ${displayName(sub)} 的个性化配置`}
+							size="xs"
+							tone={active ? "accent" : "neutral"}
 							onClick={(e) => {
 								e.stopPropagation();
 								onRemoveSub(sub.id);
 							}}
-							title={`移除 ${displayName(sub)} 的个性化配置`}
-							data-bn="btn"
-							className={`grid h-4.5 w-4.5 place-items-center rounded-sm ${
-								active
-									? "text-bn-pink/80 hover:bg-bn-pink/10"
-									: "text-bn-text-tertiary/70 hover:bg-bn-hover-muted"
-							}`}
-						>
-							<Icon.close size={11} />
-						</button>
+						/>
 					</div>
 				);
 			})}
