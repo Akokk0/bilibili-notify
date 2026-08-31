@@ -929,6 +929,26 @@ describe("TourCompanion 常驻小卡", () => {
 	describe("判据轮询的启停", () => {
 		/** `/api/subs` 被问了几次 —— 轮询每轮会 invalidate 它。 */
 		const subsCalls = () => apiGet.mock.calls.filter(([p]) => p === "/api/subs").length;
+		const healthCalls = () => apiGet.mock.calls.filter(([p]) => p === "/api/health").length;
+
+		/**
+		 * health 带的 `modules` 快照喂着毕业卡上的「锦上添花」两条尾巴(图片渲染 / AI)。
+		 * 它曾不在失效名单里 —— 靠 HEALTH_QUERY_OPTIONS 自带的 5s refetchInterval 兜着,
+		 * 那边一改选项这里就静静地退回不刷新(2026-08-31 审查)。3.5s 内 5s 那条还没到,
+		 * 所以这条计数只可能来自轮询自己。
+		 */
+		it("轮询把 health 也带上 —— 尾巴的开关状态只从它来", async () => {
+			vi.useFakeTimers();
+			try {
+				await mount({ route: "/system" });
+				await vi.advanceTimersByTimeAsync(0);
+				const before = healthCalls();
+				await vi.advanceTimersByTimeAsync(3_500);
+				expect(healthCalls()).toBeGreaterThan(before);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
 
 		it("小卡展开着 → 每 3s 复查一轮判据(页面外动作没有前端事件,只能靠问)", async () => {
 			vi.useFakeTimers();

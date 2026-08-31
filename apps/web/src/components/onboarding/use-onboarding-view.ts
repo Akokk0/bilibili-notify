@@ -17,17 +17,33 @@ interface HealthSnapshot {
 const POLL_MS = 3_000;
 
 /**
+ * 每轮要失效的 queryKey。**health 也在里面** —— 它带的 `modules` 快照喂着
+ * 「锦上添花」两条尾巴(图片渲染 / AI),漏掉它,毕业卡上的尾巴在导览开着的
+ * 全程都不会变绿。它自己确实带 `refetchInterval`,但那是 HEALTH_QUERY_OPTIONS
+ * 的事:那边哪天改了选项,这边就静静地退回不刷新(2026-08-31 审查)。
+ * key 用权威常量而不是照抄字面量,同理。
+ */
+const POLLED_KEYS: readonly (readonly unknown[])[] = [
+	["auth-status"],
+	["subscriptions"],
+	["adapters"],
+	["targets"],
+	HEALTH_QUERY_KEY,
+];
+
+/**
  * 新手进度的数据装配 —— 左缘导览小卡与 /guide 页共用这一份。全部复用站内
  * 既有 queryKey(与对应页面共享缓存);health 行为选项走 HEALTH_QUERY_OPTIONS
  * 单一权威(三处 observer 选项不一致会让可达性探测抖动,见 useBackendReachable)。
  *
  * `poll`(导览小卡传「小卡正展开着」)= **导览进行中**,每 3s invalidate 全部
- * 判据 query + auth-status(useAuthHydrate 的 effect 把新快照写回 authStore)——
+ * 判据 query(见 POLLED_KEYS)+ auth-status(useAuthHydrate 的 effect 把新快照
+ * 写回 authStore)——
  * 「做完自动进下一步」不能指望每条更新链路都恰好有 invalidate / WS 推送:扫码
  * 登录走 WS、页面 mutation 走 invalidate、而「在 QQ 里给 bot 发消息捞 openid」
  * 这类页面外动作根本没有前端事件,轮询是唯一兜得住全部环节的底。
  *
- * 停的条件有三道,一道都不能少 —— 这里是全站唯一一处**长期**定时请求,4 条
+ * 停的条件有三道,一道都不能少 —— 这里是全站唯一一处**长期**定时请求,5 条
  * query × 20 次/分钟会一直跑到标签页关掉:毕业即停(hook 内部判)、小卡收起
  * 即停(调用方传 false;跳过指引的人第一时间落进这档)、标签页切到后台即停。
  *
@@ -92,9 +108,7 @@ export function useOnboardingState(opts?: { poll?: boolean; active?: boolean }):
 			// 后台标签页不问:判据只在用户看得见的时候才需要跟手,而这个定时器
 			// 一开就是整个标签页寿命 —— 挂着一天的后台页不该一直敲服务端。
 			if (document.hidden) return;
-			for (const key of ["auth-status", "subscriptions", "adapters", "targets"]) {
-				void qc.invalidateQueries({ queryKey: [key] });
-			}
+			for (const queryKey of POLLED_KEYS) void qc.invalidateQueries({ queryKey });
 		}, POLL_MS);
 		return () => clearInterval(timer);
 	}, [pollActive, qc]);
