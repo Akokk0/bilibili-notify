@@ -447,10 +447,12 @@ export function AddFileButton({
 	return (
 		<label data-bn="add-slot" className={`cursor-pointer ${ADD_LANGUAGE} ${className ?? ""}`}>
 			{uploading ? uploadingLabel : children}
+			{/* sr-only 而非 hidden:hidden 会把 input 连同焦点一起拿掉,键盘用户就点不到
+			    这颗钮了;sr-only 只藏视觉,tab 仍然够得着。 */}
 			<input
 				type="file"
 				accept={accept}
-				className="hidden"
+				className="sr-only"
 				disabled={uploading}
 				onChange={(e) => onFile(e.target.files?.[0] ?? undefined)}
 			/>

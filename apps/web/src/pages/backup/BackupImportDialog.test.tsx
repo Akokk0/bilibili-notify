@@ -59,6 +59,15 @@ describe("BackupImportDialog", () => {
 		expect(onImport.mock.calls[0]?.[0].pin).toBeUndefined();
 	});
 
+	it("选文件框说的是虚线空位家族的话 —— 不再是统一前的手写方言", () => {
+		render(<BackupImportDialog onCancel={vi.fn()} onImport={vi.fn()} />);
+		const picker = screen.getByLabelText(/选择备份文件/).closest("label");
+		// 内容语汇(虚线加浓边、hover 粉三件套)由 ui 库 add-controls 测试统一钉住,
+		// 这里只钉「它确实是家族成员」:挂 add-slot、不再自带实底。
+		expect(picker?.getAttribute("data-bn")).toBe("add-slot");
+		expect(picker?.className).not.toContain("bg-bn-surface");
+	});
+
 	it("rejects a non-backup file and keeps import disabled", async () => {
 		const onImport = vi.fn();
 		render(<BackupImportDialog onCancel={vi.fn()} onImport={onImport} />);

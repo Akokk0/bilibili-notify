@@ -1,5 +1,5 @@
-import { Btn, ErrorNote, ModalShell } from "@bilibili-notify/ui";
-import { type ChangeEvent, useState } from "react";
+import { AddFileButton, Btn, ErrorNote, ModalShell } from "@bilibili-notify/ui";
+import { useState } from "react";
 import { type ClientBackup, isValidPin, looksLikeBackup, readFileAsText } from "./backup-file";
 import { ChoiceCard, PinField } from "./dialog-bits";
 
@@ -17,8 +17,7 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 	const [mode, setMode] = useState<Mode>("overwrite");
 	const [pin, setPin] = useState("");
 
-	async function onFile(e: ChangeEvent<HTMLInputElement>): Promise<void> {
-		const file = e.target.files?.[0];
+	async function onFile(file: File | undefined): Promise<void> {
 		if (!file) return;
 		setError(null);
 		try {
@@ -49,16 +48,15 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 
 	return (
 		<ModalShell onCancel={onCancel} width={400} bodyClassName="p-5" title="导入 / 恢复备份">
-			<label className="mb-3 flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-bn-border bg-bn-surface px-3 py-4 text-bn-base text-bn-text-secondary transition hover:border-bn-pink/50 hover:text-bn-text-primary">
-				<span>选择备份文件（.bnbackup / .json）…</span>
-				<input
-					aria-label="选择备份文件"
-					type="file"
-					accept=".json,.bnbackup,application/json"
-					onChange={onFile}
-					className="sr-only"
-				/>
-			</label>
+			{/* 「这里还能塞一个文件」的虚线空位 —— 收编前是手写 label,说的还是家族统一
+			    前的老方言(bn-border 淡边 + 实底 + hover 不变粉)。 */}
+			<AddFileButton
+				accept=".json,.bnbackup,application/json"
+				onFile={onFile}
+				className="mb-3 flex items-center justify-center rounded-lg px-3 py-4 text-bn-base"
+			>
+				选择备份文件（.bnbackup / .json）…
+			</AddFileButton>
 
 			{error ? <ErrorNote className="mb-3">{error}</ErrorNote> : null}
 
