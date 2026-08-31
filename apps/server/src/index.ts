@@ -38,6 +38,7 @@ import { startFansPoller } from "./runtime/fans-poller.js";
 import { createLoginCommand } from "./runtime/login-command.js";
 import { resolveProbeInterval, startMemoryProbe } from "./runtime/memory-probe.js";
 import { createMuteCommand } from "./runtime/mute-command.js";
+import { resolveExpectedParent, startParentWatch } from "./runtime/parent-watch.js";
 import { createPuppeteerAdapter, type StandalonePuppeteer } from "./runtime/puppeteer.js";
 import { createReportCommand } from "./runtime/report-command.js";
 import { createRoastCommandHandler } from "./runtime/roast-command.js";
@@ -267,6 +268,24 @@ export async function startStandaloneServer(
 				},
 			],
 		});
+
+		// 孤儿自检:只有桌面版 launcher 会传 BN_PARENT_PID,Docker / 直接跑都不受影响。
+		// launcher 被强杀时不会带走我们,不自己盯着就会变成占着数据目录的孤儿。
+		const expectedParent = resolveExpectedParent(process.env.BN_PARENT_PID);
+		if (expectedParent !== null) {
+			startParentWatch({
+				expectedParent,
+				onOrphaned: () => {
+					log.warn("launcher 进程已消失,sidecar 主动退出,避免变成孤儿占住数据目录");
+					// 走 SIGTERM 而不是直接 exit —— 复用已装好的优雅关停路径,
+					// 别在这里另起一条收尾逻辑。
+					process.kill(process.pid, "SIGTERM");
+				},
+				schedule: (fn, ms) => {
+					runtime.serviceCtx.setInterval(fn, ms);
+				},
+			});
+		}
 
 		// Daily retention pass for history jsonl files.
 		startHistoryRetention({

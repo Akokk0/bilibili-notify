@@ -680,13 +680,7 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
             .arg("--chrome-path")
             .arg(child_process_path(&chrome_path));
     }
-    sanitize_bn_env(&mut command);
-    command
-        .env("BN_CONFIG_DISABLED", "1")
-        .env("BN_ALLOW_NO_AUTH", "1")
-        .env("BN_DESKTOP_TOKEN", &desktop_token)
-        .env("BN_DESKTOP_ALLOWED_ORIGIN", &url)
-        .env("NODE_ENV", "production");
+    apply_sidecar_env(&mut command, &desktop_token, &url, std::process::id());
     configure_sidecar_command(&mut command);
 
     let pid = {
@@ -1012,6 +1006,23 @@ fn resolve_resources(app: &AppHandle) -> Result<ResourcePaths, String> {
         "找不到桌面资源，请先运行 vp run -F @bilibili-notify/desktop prepare-resources。"
             .to_string(),
     )
+}
+
+/// sidecar 的环境变量。抽成函数是为了能被测到 —— 尤其是 `BN_PARENT_PID`:
+/// 它是个守卫的**唯一开关**,少了这一行 sidecar 侧的孤儿自检会静默失效,
+/// 而且不会有任何东西报错。
+fn apply_sidecar_env(command: &mut Command, desktop_token: &str, url: &str, parent_pid: u32) {
+    sanitize_bn_env(command);
+    command
+        .env("BN_CONFIG_DISABLED", "1")
+        .env("BN_ALLOW_NO_AUTH", "1")
+        .env("BN_DESKTOP_TOKEN", desktop_token)
+        .env("BN_DESKTOP_ALLOWED_ORIGIN", url)
+        // 让 sidecar 认得自己的爹。launcher 被强杀时不会带走它 —— 它会被 launchd
+        // 收养继续跑,占着数据目录,后续启动全撞车(2026-08-31 实地踩过)。拿到这个
+        // pid 后 sidecar 自己会盯着 ppid,发现被收养就主动退出。
+        .env("BN_PARENT_PID", parent_pid.to_string())
+        .env("NODE_ENV", "production");
 }
 
 fn sanitize_bn_env(command: &mut Command) {
@@ -1472,6 +1483,30 @@ mod tests {
             .map(|(key, value)| ((*key).to_string(), OsString::from(value)))
             .collect();
         move |key| vars.get(key).cloned()
+    }
+
+    #[test]
+    fn sidecar_env_carries_parent_pid_so_the_orphan_watch_can_arm() {
+        let mut command = Command::new("node");
+        apply_sidecar_env(&mut command, "token", "http://127.0.0.1:1234", 4321);
+        let envs: HashMap<String, Option<OsString>> = command
+            .get_envs()
+            .map(|(k, v)| {
+                (
+                    k.to_string_lossy().into_owned(),
+                    v.map(|v| v.to_os_string()),
+                )
+            })
+            .collect();
+        assert_eq!(
+            envs.get("BN_PARENT_PID").cloned().flatten(),
+            Some(OsString::from("4321")),
+            "少了 BN_PARENT_PID,sidecar 的孤儿自检会静默关掉"
+        );
+        assert_eq!(
+            envs.get("BN_DESKTOP_TOKEN").cloned().flatten(),
+            Some(OsString::from("token"))
+        );
     }
 
     #[test]
