@@ -285,10 +285,26 @@ export function Spotlight({ selectors }: { selectors: readonly string[] }) {
 			height: r.height + SPOT_PAD * 2,
 		})),
 	);
-	const blocks = subtractRects(
-		{ top: 0, left: 0, width: view.viewport.width, height: view.viewport.height },
-		holes,
+	const bounds: SpotRect = {
+		top: 0,
+		left: 0,
+		width: view.viewport.width,
+		height: view.viewport.height,
+	};
+	// **视口里一个洞都看不见 → 灯与锁一起不铺**。滚动是刻意不拦的,而首次滚入
+	// 视口按 selector 只做一次 —— 用户自己往下翻页时洞会跟着目标滑出视口,被
+	// subtractRects 夹没,整个视口就成了一整块拦截层,而没有任何东西会把目标滚
+	// 回来:除了小卡「收起」,页面上每一次点击都被吃掉(2026-08-31 审查)。
+	// 不跟用户抢滚动条 —— 他滚回去时 rAF 照样在测,灯自己就回来了。
+	const onScreen = holes.some(
+		(h) =>
+			h.left < bounds.width &&
+			h.left + h.width > 0 &&
+			h.top < bounds.height &&
+			h.top + h.height > 0,
 	);
+	if (!onScreen) return null;
+	const blocks = subtractRects(bounds, holes);
 	return createPortal(
 		<>
 			{/* 引导锁:暗幕即禁区 —— 洞外的补集矩形铺拦截块吃掉指针操作,只留洞内

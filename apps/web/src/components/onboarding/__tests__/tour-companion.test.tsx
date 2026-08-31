@@ -413,6 +413,32 @@ describe("TourCompanion 常驻小卡", () => {
 		}
 	});
 
+	/**
+	 * 滚动是**刻意不拦**的(拦截块只吃指针操作),而首次滚入视口按 selector 只做一次
+	 * (lastScrolledRef)。于是用户自己往下翻页时,洞跟着目标滑出视口 → subtractRects
+	 * 把它夹没 → 整个视口成了一整块拦截层,而没有任何东西会把目标滚回来。除了小卡
+	 * 「收起」,页面上每一次点击都被吃掉(2026-08-31 审查)。
+	 *
+	 * 不变式:**视口里一个洞都看不见时,灯与锁一起不铺**。用户滚回去灯自己就回来
+	 * (rAF 一直在测),不用跟他抢滚动条。
+	 */
+	it("目标滚出视口 → 灯与引导锁一起收起,别把人锁在一块没有出口的暗幕里", async () => {
+		const anchorEl = document.createElement("div");
+		anchorEl.setAttribute("data-tour", "bili-login");
+		anchorEl.getBoundingClientRect = () => new DOMRect(100, 60, 80, 40);
+		document.body.appendChild(anchorEl);
+		await mount({ route: "/system" });
+		await screen.findByText("扫码登录 B 站");
+		await waitFor(() => expect(screen.getByTestId("tour-blocker")).toBeTruthy());
+		// 用户往下翻了一大截,目标整个跑到视口上方
+		anchorEl.getBoundingClientRect = () => new DOMRect(100, -500, 80, 40);
+		await waitFor(() => expect(screen.queryByTestId("tour-blocker")).toBeNull());
+		expect(screen.queryByTestId("tour-spotlight")).toBeNull();
+		// 滚回去灯自己回来
+		anchorEl.getBoundingClientRect = () => new DOMRect(100, 60, 80, 40);
+		await waitFor(() => expect(screen.getByTestId("tour-blocker")).toBeTruthy());
+	});
+
 	it("聚光灯交互即退散:在锚点上按下后暗幕消失(别盖住点击弹出的内容)", async () => {
 		const anchorEl = document.createElement("div");
 		anchorEl.setAttribute("data-tour", "bili-login");
