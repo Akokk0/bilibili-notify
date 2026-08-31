@@ -13,10 +13,15 @@
  * 实测主 chunk 1137KB → 970KB。所以现在改成**从入口爬静态可达图**:守的是
  * 「主包里有没有它」这件事本身,而不是某个目录的写法 —— 新文件放哪儿都躲不过。
  *
+ * 「哪儿都躲不过」一度只是句口号:爬图只跟相对说明符,裸包名一律止步,于是
+ * **经工作区包进来的那条路整条看不见** —— `packages/ui` 是源码直出(exports 直指
+ * `src/index.ts`),往它里面加一句 `import` 就能静态可达地把库塞进主包而三条断言
+ * 全绿(2026-08-31 审查)。现在 `@bilibili-notify/*` 会跟进各自的 `src` 接着爬。
+ *
  * 扫源码而不查产物:产物断言要求先跑一遍 build,而 `vp test` 不该有那个前提。
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
@@ -25,6 +30,8 @@ import { listSources } from "./walk";
 
 const SRC = resolve(dirname(fileURLToPath(new URL("./placeholder", import.meta.url))), "..");
 const ENTRY = join(SRC, "main.tsx");
+/** 仓库根 —— `apps/web/src` 往上三层。工作区包的落点从这儿数。 */
+const REPO = resolve(SRC, "..", "..", "..");
 
 /** 重依赖的裸包名 —— 静态可达即失败。 */
 const HEAVY = /^(?:react-markdown|remark-[\w-]+)$/;
@@ -56,10 +63,12 @@ function staticDeps(file: string): string[] {
 	return out;
 }
 
-/** 相对说明符 → 磁盘路径。解析不出来返回 null(调用方会把它记进 unresolved)。 */
-function resolveRelative(fromFile: string, spec: string): string | null {
-	// 站里两种写法并存:无后缀的 `./x`,与 NodeNext 式的 `./x.js`(源文件是 .ts)
-	const base = resolve(dirname(fromFile), spec.replace(/\?.*$/, "").replace(/\.js$/, ""));
+/**
+ * 去后缀的路径 → 磁盘上那个文件。存在性用 `existsSync + statSync`:
+ * 曾经拿 `readFileSync` 当探针 —— 每条 import 边最多读五次文件,读不中的每次
+ * 分配一个异常、读中的把整个文件缓冲读出来又丢掉(随后 staticDeps 再读一遍)。
+ */
+function resolveFile(base: string): string | null {
 	for (const cand of [
 		base,
 		`${base}.ts`,
@@ -67,13 +76,48 @@ function resolveRelative(fromFile: string, spec: string): string | null {
 		join(base, "index.ts"),
 		join(base, "index.tsx"),
 	]) {
-		try {
-			if (readFileSync(cand)) return cand;
-		} catch {
-			// 试下一个候选
-		}
+		if (existsSync(cand) && statSync(cand).isFile()) return cand;
 	}
 	return null;
+}
+
+/** 相对说明符 → 磁盘路径。解析不出来返回 null(调用方会把它记进 unresolved)。 */
+function resolveRelative(fromFile: string, spec: string): string | null {
+	// 站里两种写法并存:无后缀的 `./x`,与 NodeNext 式的 `./x.js`(源文件是 .ts)
+	return resolveFile(resolve(dirname(fromFile), spec.replace(/\?.*$/, "").replace(/\.js$/, "")));
+}
+
+/** 工作区包名 → 包根目录。`packages/*` 与 `apps/*` 两处都要扫 —— 按目录猜会漏
+ *  (`@bilibili-notify/contract` 就住在 `apps/`,不在 `packages/`)。 */
+const WORKSPACE_ROOTS: ReadonlyMap<string, string> = (() => {
+	const map = new Map<string, string>();
+	for (const group of ["packages", "apps"]) {
+		for (const name of readdirSync(join(REPO, group))) {
+			const manifest = join(REPO, group, name, "package.json");
+			if (!existsSync(manifest)) continue;
+			const pkgName: unknown = JSON.parse(readFileSync(manifest, "utf8")).name;
+			if (typeof pkgName === "string") map.set(pkgName, join(REPO, group, name));
+		}
+	}
+	return map;
+})();
+
+/**
+ * `@bilibili-notify/*` 工作区包 → 磁盘上的**源码**入口。
+ *
+ * 只走相对说明符的话,这道守卫看不见经工作区包进来的重依赖:`packages/ui` 是
+ * **源码直出**(exports 直指 `src/index.ts`,无构建步),往它里面加一句
+ * `import ReactMarkdown from "react-markdown"` 就能从 main.tsx 静态可达地把
+ * 153KB 塞进主包,而三条断言全绿(2026-08-31 审查)。其余包经 `vp pack` 出
+ * `lib/*.mjs`,但产物是 src 构建出来的、bare import 照样会被打进 web 的包 ——
+ * 所以一律映回 `src` 再爬(断言产物要求先 build,`vp test` 不该有那个前提)。
+ */
+function resolveWorkspace(spec: string): string | null {
+	const m = /^(@[^/]+\/[^/]+)(?:\/(.+))?$/.exec(spec);
+	if (!m) return null;
+	const root = WORKSPACE_ROOTS.get(m[1] as string);
+	if (root === undefined) return null;
+	return resolveFile(join(root, "src", m[2] ?? "index"));
 }
 
 /** 从入口出发的静态可达集。返回访问过的文件、撞上的重依赖、解析不出的说明符。 */
@@ -87,13 +131,24 @@ function crawl(): { visited: Set<string>; heavy: string[]; unresolved: string[] 
 		if (visited.has(file)) continue;
 		visited.add(file);
 		for (const spec of staticDeps(file)) {
-			if (!spec.startsWith(".")) {
-				if (HEAVY.test(spec)) heavy.push(`${relative(SRC, file)} → ${spec}`);
-				continue; // 其余裸包不进 node_modules 爬
-			}
+			// 样式/原文/图片先滤掉:工作区包也会导出 `…/theme.css` 这类子路径,
+			// 让它走到下面的源码解析会把一个 CSS 文件当模块爬。
 			if (NON_JS.test(spec)) continue;
+			if (!spec.startsWith(".")) {
+				if (HEAVY.test(spec)) {
+					heavy.push(`${relative(REPO, file)} → ${spec}`);
+					continue;
+				}
+				// 工作区包接着爬(见 resolveWorkspace);其余裸包不进 node_modules
+				const ws = resolveWorkspace(spec);
+				if (ws !== null) queue.push(ws);
+				else if (WORKSPACE_ROOTS.has(spec.split("/").slice(0, 2).join("/"))) {
+					unresolved.push(`${relative(REPO, file)} → ${spec}`);
+				}
+				continue;
+			}
 			const target = resolveRelative(file, spec);
-			if (target === null) unresolved.push(`${relative(SRC, file)} → ${spec}`);
+			if (target === null) unresolved.push(`${relative(REPO, file)} → ${spec}`);
 			else queue.push(target);
 		}
 	}
@@ -107,6 +162,9 @@ describe("markdown 重依赖不许进初始包", () => {
 		expect(unresolved, "静态说明符没解析出来,守卫射程有洞").toEqual([]);
 		expect(visited.size).toBeGreaterThan(80);
 		expect(visited.has(join(SRC, "pages", "About.tsx"))).toBe(true);
+		// 工作区包那条路真的爬进去了 —— 少了这句,resolveWorkspace 哪天悄悄返回
+		// null(改名、换 exports)守卫就退回只认相对路径,而三条断言照样全绿
+		expect(visited.has(join(REPO, "packages", "ui", "src", "index.ts"))).toBe(true);
 		expect(heavy, '库要放在懒加载边界后面:lazy(() => import("…")),别从入口静态引到').toEqual([]);
 	});
 
