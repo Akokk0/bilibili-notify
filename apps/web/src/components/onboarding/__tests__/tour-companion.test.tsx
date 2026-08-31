@@ -369,6 +369,60 @@ describe("TourCompanion 常驻小卡", () => {
 		await waitFor(() => expect(screen.queryByTestId("tour-done-badge")).toBeNull());
 	});
 
+	/**
+	 * 兄弟件 Fireworks 早就认 `prefers-reduced-motion`,而这枚徽章的 2.2 秒
+	 * 缩放+上飘 keyframes 一直无条件跑(styles.css 那几段 reduced-motion 只盖了
+	 * 小卡/标签、流光和玻璃抬升)—— 每完成一步就在减动效用户脸上弹一次。
+	 * 两件的口径故意不同:烟花纯装饰可整场跳过,徽章带着「刚才那步成了」这条
+	 * 信息,只去掉演出(2026-08-31 审查)。
+	 */
+	describe("完成徽章的减动效档", () => {
+		async function graduate() {
+			const anchorEl = document.createElement("div");
+			anchorEl.setAttribute("data-tour", "bili-login");
+			document.body.appendChild(anchorEl);
+			await mount({
+				subs: [{ id: "s1" }],
+				adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+				targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
+				route: "/system",
+			});
+			await screen.findByText("扫码登录 B 站");
+			act(() => {
+				useAuthStore.setState({ snapshot: { status: BiliLoginStatus.LOGGED_IN, msg: "" } });
+			});
+			return screen.findByTestId("tour-done-badge");
+		}
+
+		it("开了减动效 → 挂静态档,不跑那段缩放上飘,并靠计时自卸", async () => {
+			// jsdom 这套没实现 matchMedia(所以实现里写的是 `window.matchMedia?.(…)`),
+			// spyOn 无从下手 —— 直接装一个进去,用完拆掉
+			Object.defineProperty(window, "matchMedia", {
+				configurable: true,
+				value: (q: string) => ({ matches: q.includes("reduce"), media: q }),
+			});
+			try {
+				const badge = await graduate();
+				expect(badge.classList.contains("bn-tour-done-static")).toBe(true);
+				expect(badge.classList.contains("bn-tour-done")).toBe(false);
+				// 静态档没有动画,animationend 一次都不会来 —— 卸载只能靠计时
+				await waitFor(() => expect(screen.queryByTestId("tour-done-badge")).toBeNull(), {
+					timeout: 3000,
+				});
+			} finally {
+				Reflect.deleteProperty(window, "matchMedia");
+			}
+		});
+
+		it("常规档也有兜底自卸 —— 动画事件一次没来也不会永远挂在页面上", async () => {
+			const badge = await graduate();
+			expect(badge.classList.contains("bn-tour-done")).toBe(true);
+			await waitFor(() => expect(screen.queryByTestId("tour-done-badge")).toBeNull(), {
+				timeout: 4000,
+			});
+		});
+	});
+
 	it("聚光灯:在目标路由且锚点元素存在时渲染挖洞层", async () => {
 		const anchorEl = document.createElement("div");
 		anchorEl.setAttribute("data-tour", "bili-login");

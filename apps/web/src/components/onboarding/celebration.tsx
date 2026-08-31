@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 /**
@@ -6,18 +6,50 @@ import { createPortal } from "react-dom";
  *
  * - StepDoneBadge:屏幕中央弹出「✓ 完成」大胶囊(主人定案:挂操作位置太不
  *   起眼,居中放大才看得见),动画演完自卸 —— 不然小卡文案无声切到下一步,
- *   用户不知道刚才那步已经成了;
+ *   用户不知道刚才那步已经成了;**减动效档换静态样式**(见下方);
  * - Fireworks:五步全绿的毕业时刻,全屏 canvas 烟花放一场(prefers-reduced-motion
  *   时整场跳过)。指针事件全穿透,谁也不挡。
+ *
+ * 两件的减动效口径**故意不同**:烟花是纯装饰,整场跳过没有损失;徽章带着
+ * 「刚才那步成了」这条信息,不能跳 —— 只把演出去掉,让它静静站一会儿。
  */
 
-/** 完成徽章:屏幕中央弹出,一段 keyframes 演完(onAnimationEnd)自卸。 */
+/** 徽章那段 keyframes 的时长(styles.css 的 .bn-tour-done),兜底自卸按它算。 */
+const DONE_BADGE_MS = 2_200;
+/** 减动效档不演动画,站这么久就走。 */
+const DONE_BADGE_REDUCED_MS = 1_600;
+
+/**
+ * 完成徽章:屏幕中央弹出,一段 keyframes 演完(onAnimationEnd)自卸。
+ *
+ * 减动效档改挂静态样式 —— 兄弟件 Fireworks 早就认 `prefers-reduced-motion`,
+ * 而这枚徽章的 2.2 秒缩放+上飘 keyframes 一直是无条件跑的(styles.css 里那几段
+ * reduced-motion 只盖了小卡/标签、流光和玻璃抬升),每完成一步就在减动效用户
+ * 脸上弹一次(2026-08-31 审查)。
+ */
 export function StepDoneBadge({ text, onDone }: { text: string; onDone: () => void }) {
+	const onDoneRef = useRef(onDone);
+	onDoneRef.current = onDone;
+	// 挂载那刻定死:中途改系统设置会让「挂哪个 class」和「靠什么自卸」对不上,
+	// 而对不上的那一半就是永远卸不掉。
+	const [reduced] = useState(
+		() => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true,
+	);
+	useEffect(() => {
+		// 兜底自卸。唯一的卸载路径是 onAnimationEnd 的话,哪天有人给 .bn-tour-done
+		// 补一句 `animation: none`(比如顺手加一条 reduced-motion 规则),事件就永远
+		// 不来,徽章会一直挂在页面上直到刷新。计时器让这条路封死。
+		const timer = setTimeout(
+			() => onDoneRef.current(),
+			reduced ? DONE_BADGE_REDUCED_MS : DONE_BADGE_MS + 400,
+		);
+		return () => clearTimeout(timer);
+	}, [reduced]);
 	return createPortal(
 		<div
 			data-testid="tour-done-badge"
 			aria-hidden
-			className="bn-tour-done pointer-events-none fixed left-1/2 top-1/2 z-bn-tour-panel"
+			className={`${reduced ? "bn-tour-done-static" : "bn-tour-done"} pointer-events-none fixed left-1/2 top-1/2 z-bn-tour-panel`}
 			// animationend 会冒泡:里面那颗玻璃胶囊是皮肤最爱挂动画的面(bn-anim-aura
 			// 之类),它一演完就会冒上来把整块徽章提前卸掉,2.2 秒变一闪而过。
 			onAnimationEnd={(e) => {

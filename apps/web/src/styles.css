@@ -133,6 +133,12 @@
 		transform: translate(-50%, -50%) translateY(-14px) scale(0.96);
 	}
 }
+/* 减动效档的同一枚徽章:不演出场/飘散,只居中站一会儿(自卸改由组件计时)。
+   刻意不写成 `.bn-tour-done { animation: none }` —— 那样事件永远不来,而组件
+   等的正是 animationend,徽章就再也卸不掉了。挂点由组件按 matchMedia 二选一。 */
+.bn-tour-done-static {
+	transform: translate(-50%, -50%);
+}
 
 /* 导览小卡换步的轻过渡 —— 内容区按步位 key 重挂,新内容浅浮入,
    免得判据自动流转时文案无声硬切(真机反馈:突兀)。 */
