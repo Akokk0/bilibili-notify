@@ -31,27 +31,39 @@ const POLL_MS = 3_000;
  * query × 20 次/分钟会一直跑到标签页关掉:毕业即停(hook 内部判)、小卡收起
  * 即停(调用方传 false;跳过指引的人第一时间落进这档)、标签页切到后台即停。
  *
+ * `active`(不传 = 一直要)= **这份判据现在有人看**。导览小卡是在 App 里无条件
+ * 挂载的,而它对已经关掉导览的人整棵树 render null —— 四条 query 却开在任何
+ * choice 判断之前,每开一个页面都白发一遍(在 /logs、/cards 上连订阅全表都拉)。
+ * 调用方拿它把开关交出去(2026-08-31 审查)。
+ *
  * `view=null` = 基础数据还没齐:半份数据画出来的进度是错的,调用方先别渲染。
  */
-export function useOnboardingState(opts?: { poll?: boolean }): { view: OnboardingView | null } {
+export function useOnboardingState(opts?: { poll?: boolean; active?: boolean }): {
+	view: OnboardingView | null;
+} {
 	const qc = useQueryClient();
 	const snapshot = useAuthStore((s) => s.snapshot);
+	const enabled = opts?.active ?? true;
 	const subsQ = useQuery({
 		queryKey: ["subscriptions"],
 		queryFn: () => api.get<Subscription[]>("/api/subs"),
+		enabled,
 	});
 	const adaptersQ = useQuery({
 		queryKey: ["adapters"],
 		queryFn: () => api.get<PushAdapter[]>("/api/adapters"),
+		enabled,
 	});
 	const targetsQ = useQuery({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
+		enabled,
 	});
 	const healthQ = useQuery({
 		queryKey: HEALTH_QUERY_KEY,
 		queryFn: () => api.get<HealthSnapshot>("/api/health"),
 		...HEALTH_QUERY_OPTIONS,
+		enabled,
 	});
 
 	// 记住结果:react-query 的结构共享让空转 refetch 不换引用,所以这个 memo

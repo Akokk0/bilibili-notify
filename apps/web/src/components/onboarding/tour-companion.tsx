@@ -174,8 +174,14 @@ export function TourCompanion() {
 	// 「本会话已经替这台实例写过毕业标记」的重入闸(见下方毕业 effect)。声明提到
 	// 这儿是因为**重新开启要把它抬起来** —— 详见 reopen effect 里那段。
 	const markedRef = useRef(false);
-	// 只有导览真开着(要指引 + 卡摊开)才轮询判据 —— 这是全站唯一的长期定时请求
-	const { view } = useOnboardingState({ poll: choice === false && !collapsed });
+	// 只有导览真开着(要指引 + 卡摊开)才轮询判据 —— 这是全站唯一的长期定时请求。
+	// active 是更外面那道闸:答案还没到手、或者答案是「不要」时,这棵树整个 render
+	// null,判据一条都不必问(否则每开一个页面都白发四条,/logs、/cards 上连订阅
+	// 全表都拉一遍)。
+	const { view } = useOnboardingState({
+		poll: choice === false && !collapsed,
+		active: choiceKnown && choice !== true,
+	});
 
 	// 标记没到手之前**什么都不渲染**:先画出来再收回去会闪一下,而这一闪正好落在
 	// 「老用户被问」那个最敏感的场景上。请求失败(isPending 落地为 error)也放行 ——

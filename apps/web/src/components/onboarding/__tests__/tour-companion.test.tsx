@@ -173,6 +173,20 @@ describe("TourCompanion 常驻小卡", () => {
 		});
 
 		/**
+		 * TourCompanion 是在 App 里无条件挂载的,判据 query 却开在任何 choice 判断之前 ——
+		 * 已经关掉导览的人整棵树 render null,四条请求却照发,而且是**每开一个页面**都发
+		 * 一遍(在 /logs、/cards 上连订阅全表都白拉)(2026-08-31 审查)。
+		 */
+		it("已选跳过(true)→ 判据 query 一条都不发(整棵树都不渲染,问了纯浪费)", async () => {
+			await mount({ route: "/system", skipped: true });
+			await waitFor(() => expect(apiGet).toHaveBeenCalledWith("/api/globals"));
+			await new Promise((r) => setTimeout(r, 50));
+			for (const path of ["/api/subs", "/api/adapters", "/api/targets", "/api/health"]) {
+				expect(apiGet, `${path} 不该被问`).not.toHaveBeenCalledWith(path);
+			}
+		});
+
+		/**
 		 * 三态是**配置读出来的**,不是「data 有没有值」读出来的。`/api/globals` 失败时
 		 * data 同样是 undefined,而 undefined 在三态里就是「还没问过」—— 一次 502
 		 * 就能把已经选过「我是老用户,跳过」的人重新问一遍,而且他按哪个键都会当场
