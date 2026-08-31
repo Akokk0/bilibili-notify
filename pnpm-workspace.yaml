@@ -83,11 +83,39 @@ catalog:
   ws: ^8.21.3
   zod: ^4.4.3
 
-# Match the previous yarn classic-style flat hoist, so koishi's plugin loader
-# (which expects deps to live in a single hoisted node_modules tree) keeps
-# working as before. pnpm 11 reads nodeLinker from pnpm-workspace.yaml; the
-# old .npmrc (`node-linker=hoisted`) is no longer the source of truth at the
-# workspace level.
+# LOAD-BEARING — not a style preference, do not "modernize" it to pnpm's
+# default. Koishi's plugin loader only works against a yarn-classic-style flat
+# node_modules. Under pnpm's default (isolated) layout — top level holds only
+# direct deps, everything else sits behind symlinks into .pnpm/ — koishi does
+# not recognize the plugins AT ALL. That is measured, not a worry: it is the
+# whole reason this repo went hoisted and cannot leave it. The earlier phrasing
+# here ("keeps working as before") read like a compatibility preference and has
+# already talked one reader into proposing the switch.
+#
+# And it is NOT "only our dev" — switching the linker changes what we publish.
+# Measured 2026-08-31 by actually flipping to isolated, wiping every
+# node_modules, reinstalling and rebuilding:
+#   - vue goes double-version. inlinedDependencies keeps the same 42 keys but
+#     vue / @vue/{reactivity,runtime-core,runtime-dom,shared} become
+#     "3.5.32,3.5.42" and @vue/server-renderer drops to 3.5.32 — hoisting is
+#     what collapses @koishijs/client's vue onto one copy. lib/index.cjs grows
+#     2589089 -> 2624751 bytes carrying both. Two vue instances share no
+#     reactivity state; that is a console-UI bug shipped to users.
+#   - scripts/build-astrbot-sidecar.mjs dies on
+#     `require.resolve("jsdom/lib/jsdom/browser/default-stylesheet.css")` —
+#     a phantom dependency the root manifest never declared.
+# Do NOT count on the build failing to protect the package: it failed at the
+# astrbot step, *after* koishi's lib/ and dist/ were already written, already
+# carrying two vues. The bundle's outward contract does stay stable either way
+# (27 external requires, deps still just jsdom, peerDeps unchanged), which is
+# exactly why the damage is silent.
+#
+# Restoring hoisted reproduces all 12 published artifacts byte-for-byte
+# (sha256), so this is cheap to re-verify if anyone doubts it.
+#
+# pnpm 11 reads nodeLinker from pnpm-workspace.yaml; the old .npmrc
+# (`node-linker=hoisted`) is no longer the source of truth at the workspace
+# level.
 nodeLinker: hoisted
 
 # pnpm 11 makes postinstall opt-in by default to mitigate supply-chain
