@@ -159,6 +159,11 @@ export function TourCompanion() {
 	});
 	// 三态:undefined = 还没问过(弹询问框);false = 要指引;true = 整个导览不渲染
 	const choice = globalsQ.data?.onboarding?.skipped;
+	// 三态是**配置**读出来的,不是「data 有没有值」读出来的:请求失败时 data 同样
+	// 是 undefined,而 undefined 在三态里就是「还没问过」—— 一次 502 / 代理抖动
+	// 就能把已经选过「我是老用户,跳过」的人重新问一遍,而且他按哪个键都会当场
+	// 覆写自己的配置(2026-08-31 审查)。**拿不到答案 ≠ 还没问过**,那就一个字都别问。
+	const choiceKnown = globalsQ.data !== undefined;
 	const collapsed = collapsedPref ?? false;
 	// 询问框的两页与本会话关闭态(Esc/点外面 = 这次不回答,刷新后再问)
 	const [askPhase, setAskPhase] = useState<"ask" | "noted">("ask");
@@ -171,7 +176,8 @@ export function TourCompanion() {
 
 	// 标记没到手之前**什么都不渲染**:先画出来再收回去会闪一下,而这一闪正好落在
 	// 「老用户被问」那个最敏感的场景上。请求失败(isPending 落地为 error)也放行 ——
-	// 那时 globals 整个面板都废了,不该顺带把导览也吞掉。
+	// 那时 globals 整个面板都废了,不该顺带把导览也吞掉;失败态下 choice 读不出来,
+	// 由 choiceKnown 挡住询问框,底下的 `choice !== false` 再把导览本体收干净。
 	const visible = view !== null && !globalsQ.isPending;
 
 	const qc = useQueryClient();
@@ -320,6 +326,7 @@ export function TourCompanion() {
 	// 已回流成 true 时也要站住,直到点「知道了」。Esc/点外面 = 这次不回答,本会话
 	// 不再骚扰,刷新后再问。
 	const askOpen =
+		choiceKnown &&
 		!askDismissed &&
 		(choice === undefined ? askPhase === "ask" : choice === true && askPhase === "noted");
 	if (askOpen) {

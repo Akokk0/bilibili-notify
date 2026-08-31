@@ -31,6 +31,8 @@ interface Scenario {
 	/** globals 里那笔 `onboarding.skipped` —— `null` = 配置缺失(还没问过,该弹
 	 *  询问框);不传 = false(已选「要指引」,绝大多数旧测试的语境)。 */
 	skipped?: boolean | null;
+	/** `/api/globals` 直接失败 —— 代理抖动 / 502 / auth 竞态。 */
+	globalsError?: boolean;
 }
 
 async function mount(s: Scenario) {
@@ -46,8 +48,10 @@ async function mount(s: Scenario) {
 		if (path === "/api/targets") return s.targets ?? [];
 		if (path === "/api/health")
 			return { status: "ok", uptime: 1, modules: { image: false, ai: false } };
-		if (path === "/api/globals")
+		if (path === "/api/globals") {
+			if (s.globalsError) throw new Error("globals 挂了");
 			return { onboarding: s.skipped === null ? {} : { skipped: s.skipped === true } };
+		}
 		return null;
 	});
 	const { TourCompanion } = await import("../tour-companion");
@@ -165,6 +169,22 @@ describe("TourCompanion 常驻小卡", () => {
 			expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull();
 			expect(screen.queryByRole("button", { name: "展开新手导览" })).toBeNull();
 			expect(screen.queryByText(/需要新手指引吗/)).toBeNull();
+			expect(apiPatch).not.toHaveBeenCalled();
+		});
+
+		/**
+		 * 三态是**配置读出来的**,不是「data 有没有值」读出来的。`/api/globals` 失败时
+		 * data 同样是 undefined,而 undefined 在三态里就是「还没问过」—— 一次 502
+		 * 就能把已经选过「我是老用户,跳过」的人重新问一遍,而且他按哪个键都会当场
+		 * 覆写自己的配置(2026-08-31 审查)。失败 = 不知道,那就一个字都别说。
+		 */
+		it("globals 请求失败 → 不弹询问框(拿不到答案 ≠ 还没问过)", async () => {
+			await mount({ route: "/system", globalsError: true });
+			await waitFor(() => expect(apiGet).toHaveBeenCalledWith("/api/globals"));
+			await new Promise((r) => setTimeout(r, 50));
+			expect(screen.queryByText(/需要新手指引吗/)).toBeNull();
+			expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull();
+			// 最要命的那半:问了就会写。一个字都没问,自然一笔都没写。
 			expect(apiPatch).not.toHaveBeenCalled();
 		});
 
