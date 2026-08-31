@@ -4,6 +4,21 @@ packages:
   - "apps/*"
   - "astrbot/*"
 
+# The pnpm version lives in package.json#packageManager (vp reads it and fetches
+# that pnpm on demand); nothing here pins it. Two things to know when bumping it:
+#   1. Since pnpm 12, `pnpm-lock.yaml` is TWO YAML documents. The first one is
+#      pnpm describing ITSELF — `packageManagerDependencies` plus a `@pnpm/exe.*`
+#      entry per platform, with integrity hashes. So a pnpm bump now shows up as
+#      a lockfile diff; that is expected, not drift. It is a record only, nothing
+#      gets materialized: there is still no `pnpm` in node_modules or on PATH.
+#   2. pnpm 12 errors on unknown keys here (ERR_PNPM_UNRECOGNIZED_WORKSPACE_
+#      SETTINGS) instead of silently ignoring them, so a typo'd setting fails the
+#      install rather than quietly doing nothing. Every key in this file is valid
+#      as of 12.1.0.
+# Note pnpm 12 is published under the `next-12` dist-tag; `latest` is still on
+# the 11 line, so `vp info pnpm` will look like 12 does not exist. Ask for it by
+# exact version.
+
 # Vite+ replaces vite via npm overrides rather than coexisting, and we scope the
 # override to each React frontend sub-tree — `@bilibili-notify/web>vite` /
 # `@bilibili-notify/astrbot-page>vite` match "vite" anywhere reachable from those
@@ -33,7 +48,7 @@ packages:
 #
 # There used to be a fourth: a `minimumReleaseAgeExclude` list, carried forward
 # and version-bumped at each upgrade. It is gone because it was doing nothing.
-# pnpm 11's release-age floor defaults to 1440 min = 1 DAY, so any release we
+# pnpm's release-age floor defaults to 1440 min = 1 DAY, so any release we
 # adopt a day or more after publication clears it unaided (verified: install is
 # clean with no exclusions at all). The list only ever mattered for same-day
 # adoption, which is how it got added in the first place. If you ever must take a
@@ -113,12 +128,12 @@ catalog:
 # Restoring hoisted reproduces all 12 published artifacts byte-for-byte
 # (sha256), so this is cheap to re-verify if anyone doubts it.
 #
-# pnpm 11 reads nodeLinker from pnpm-workspace.yaml; the old .npmrc
+# pnpm 11+ reads nodeLinker from pnpm-workspace.yaml; the old .npmrc
 # (`node-linker=hoisted`) is no longer the source of truth at the workspace
 # level.
 nodeLinker: hoisted
 
-# pnpm 11 makes postinstall opt-in by default to mitigate supply-chain
+# pnpm 11+ makes postinstall opt-in by default to mitigate supply-chain
 # risk. Each entry below is a transitive dep that ships a build script.
 # All five are widely-used, well-known packages whose postinstalls are
 # benign (native binary builds + git-hook installer). Re-evaluate when
