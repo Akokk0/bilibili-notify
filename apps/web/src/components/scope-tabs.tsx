@@ -17,6 +17,7 @@ import {
 	MenuItem,
 	Pill,
 	PopoverShell,
+	SELECTED_LANGUAGE,
 	TabBarShell,
 	TabButton,
 	useDismiss,
@@ -139,7 +140,7 @@ export function ScopeTabs({
 			{/* 添加 UP 按钮 + 下拉。虚线=空位语汇,挂专词 `add-slot` 而非 `btn`(皮肤的
 			    按钮实底会把「还能再加一个」画成真按钮);闲置观感整句吃 ADD_LANGUAGE ——
 			    此前 hover 只加深文字,与家族的「粉描边+粉纱」不是一路(2026-08-30 主人
-			    点名统一);展开态是它自己的事,家族语汇不管。 */}
+			    点名统一);展开态说全站统一的选中语汇 —— 曾是自配的 pink/40 + /6 纱。 */}
 			<div className="relative" ref={dropdownRef}>
 				<button
 					type="button"
@@ -147,7 +148,7 @@ export function ScopeTabs({
 					title="从订阅列表添加 UP 主的个性化配置"
 					data-bn="add-slot"
 					className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-bn-sm font-semibold ${
-						adding ? "border border-bn-pink/40 bg-bn-pink/6 text-bn-pink transition" : ADD_LANGUAGE
+						adding ? `${SELECTED_LANGUAGE} transition` : ADD_LANGUAGE
 					}`}
 				>
 					<Icon.plus size={13} />

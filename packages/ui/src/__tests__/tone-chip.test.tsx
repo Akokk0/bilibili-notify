@@ -33,7 +33,10 @@ describe("ToneChip", () => {
 			</ToneChip>,
 		);
 		const el = chip();
-		expect(el.style.background).toBe("color-mix(in srgb, rgb(242, 160, 83) 12%, transparent)");
+		// 底混 surface 不混 transparent:透明纱靠底下垫白才好看,壁纸皮肤换掉
+		// 页面后选中底当场隐形(Subs 分组胶囊 2026-08-30 踩过的雷,整站统一)。
+		// (hex 不再被 jsdom 规范化成 rgb() —— 混入 var() 后整个值当自定义串存。)
+		expect(el.style.background).toBe("color-mix(in srgb, #f2a053 12%, var(--color-bn-surface))");
 		expect(el.style.borderColor).toBe("rgb(242, 160, 83)");
 		// 字色不落 inline,走 token 类 —— 皮肤能搬,且两套主题各自跟随。
 		expect(el.style.color).toBe("");
@@ -127,7 +130,9 @@ describe("ToneChip", () => {
 			</ToneChip>,
 		);
 		const s = chip().style;
-		expect(s.background).toBe("color-mix(in srgb, var(--color-bn-pink) 12%, transparent)");
+		expect(s.background).toBe(
+			"color-mix(in srgb, var(--color-bn-pink) 12%, var(--color-bn-surface))",
+		);
 		expect(s.borderColor).toBe("var(--color-bn-pink)");
 	});
 

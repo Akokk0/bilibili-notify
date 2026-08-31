@@ -367,6 +367,24 @@ export function IconButton({
 export const ADD_LANGUAGE =
 	"border border-dashed border-bn-inactive/50 text-bn-text-secondary transition hover:border-bn-pink hover:bg-bn-pink/5 hover:text-bn-pink disabled:cursor-not-allowed disabled:opacity-60";
 
+/**
+ * 「这一项当前被选中 / 激活」的语汇:全浓粉描边 + 粉字 + **不透明**粉调底。
+ *
+ * 统一前站内五处各配各的:描边透明度 100 / 60 / 40 三档、纱 6 / 8 / 10 / 12%
+ * 四档 —— 而它们说的都是同一件事。定案配方来自 Subs 分组胶囊(2026-08-30 主人
+ * 真机三轮拍板「选中是粉色描边加变粉」)。
+ *
+ * 底**必须不透明**:`bg-bn-pink/10` 那类纱靠白页垫底才好看,壁纸皮肤把页面换掉
+ * 后选中态当场隐形(Subs 胶囊踩过的雷)。粉调用 color-mix 落在 surface 上出,
+ * 默认装与旧纱等值。同理,**不是**选中语义、只想要这块不透明粉底的(状态条 /
+ * 装饰徽章),单独吃 {@link SELECTED_TINT_BG}。
+ *
+ * 圆角 / padding / 字号由摆放处给 —— 胶囊、选项行、方式卡形状天生不同,不算漂移。
+ */
+export const SELECTED_TINT_BG =
+	"bg-[color-mix(in_srgb,var(--color-bn-pink)_10%,var(--color-bn-surface))]";
+export const SELECTED_LANGUAGE = `border border-bn-pink ${SELECTED_TINT_BG} text-bn-pink`;
+
 /** 其余原生 button 属性(data-*、aria-*、title…)原样透传 —— 导览挂点等外部标记的入口。 */
 export interface AddButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, DataAttrs {
 	/** 占满一整行(列表末尾那种)。默认是行内短钮。 */
@@ -638,9 +656,11 @@ export function ToneChip({
 	// 但描边时得引用得到它 —— 否则只能挑一个固定色,而固定色会把语义色整个盖掉
 	// (2026-08-24 真机:四档日志等级被同一圈紫框抹平)。只在选中态给:未选中是
 	// 中性档,染上语义色等于把这一档取消了。
+	// 底落在 surface 上出而不是 transparent —— 同 SELECTED_TINT_BG 的道理:混
+	// transparent 的纱靠底下垫白才好看,壁纸皮肤换掉页面后选中底当场隐形。
 	const style: CSSProperties | undefined = active
 		? ({
-				background: `color-mix(in srgb, ${tone} 12%, transparent)`,
+				background: `color-mix(in srgb, ${tone} 12%, var(--color-bn-surface))`,
 				borderColor: tone,
 				"--bn-tint": tone,
 			} as CSSProperties)

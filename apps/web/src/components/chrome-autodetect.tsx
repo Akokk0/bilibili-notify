@@ -1,3 +1,4 @@
+import { SELECTED_TINT_BG } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { api } from "../services/api";
 
@@ -19,8 +20,11 @@ type DetectState = "idle" | "detecting" | "enabling" | "connecting" | "enabled";
  * 各写一遍,绿的那两颗逐字相同。挂 `data-bn="btn"` 让皮肤搬得动 —— 页面里手写
  * 的按钮不会自己带上挂点。
  */
+// 粉底走 SELECTED_TINT_BG 的不透明出法 —— 旧 bg-bn-pink/10 的纱靠底下垫白才好看,
+// 皮肤换底后会隐形;绿的那档 bg-bn-success-soft 本来就是实底,粉档补齐同款待遇。
+// 描边保持 /40 淡档:这是动作钮不是选中项,全浓粉边会长得像已选中。
 const PILL_TONE = {
-	pink: "border-bn-pink/40 bg-bn-pink/10 text-bn-pink",
+	pink: `border-bn-pink/40 ${SELECTED_TINT_BG} text-bn-pink`,
 	success: "border-bn-success/50 bg-bn-success-soft text-bn-success-text",
 } as const;
 

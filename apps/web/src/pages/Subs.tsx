@@ -9,6 +9,8 @@ import {
 	LoadingBlock,
 	ModalShell,
 	Pill,
+	SELECTED_LANGUAGE,
+	SELECTED_TINT_BG,
 	TOAST_DURATION_MS,
 	Toast,
 } from "@bilibili-notify/ui";
@@ -71,8 +73,9 @@ function GroupChip({
 		"inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-bn-xs font-semibold transition";
 	// 未分组(muted)= 普通档 + 虚线,**只差线型这一个类**(2026-08-30 主人定案:
 	// hover 同样要粉描边,不是只加深文字)。测试用类差集钉着这条,别再各配各的。
+	// 选中配方从这里定案后升进了 ui 库 —— 全站选中态说的都是这一句。
 	const cls = active
-		? "border border-bn-pink bg-[color-mix(in_srgb,var(--color-bn-pink)_10%,var(--color-bn-surface))] text-bn-pink"
+		? SELECTED_LANGUAGE
 		: `border ${muted ? "border-dashed " : ""}border-bn-border bg-bn-surface text-bn-text-secondary hover:border-bn-pink/60 hover:text-bn-text-primary`;
 	return (
 		// 页面里手写的控件不在 packages/ui 那份 skin-hooks 测试的射程内,漏挂了皮肤
@@ -665,7 +668,11 @@ export default function Subs() {
 				</div>
 				<div className="flex-1" />
 				{selection.size > 0 ? (
-					<div className="flex items-center gap-2 rounded-md bg-bn-pink/12 px-2.5 py-1 text-xs font-semibold text-bn-pink">
+					// 状态条不是「选中的某一项」,不吃整句选中语汇 —— 只吃那块不透明粉底
+					// (旧 bg-bn-pink/12 的纱在壁纸皮肤下会隐形,同分组胶囊踩过的雷)。
+					<div
+						className={`flex items-center gap-2 rounded-md ${SELECTED_TINT_BG} px-2.5 py-1 text-xs font-semibold text-bn-pink`}
+					>
 						已选 {selection.size} 项
 						<Btn size="sm" variant="ghost" onClick={() => void bulkSetEnabled(true)}>
 							批量启用

@@ -1,4 +1,4 @@
-import { EmptyNote, Icon, LoadingBlock, SectionNav } from "@bilibili-notify/ui";
+import { EmptyNote, Icon, LoadingBlock, SELECTED_TINT_BG, SectionNav } from "@bilibili-notify/ui";
 import { lazy, type ReactNode, Suspense, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { DOC_MARKDOWN_COMPONENTS } from "../components/doc-markdown";
@@ -120,8 +120,10 @@ export default function About() {
  */
 function PinkPill({ className, children }: { className?: string; children: ReactNode }) {
 	return (
+		// 装饰徽章不是选中态,描边留 /25 轻档;粉底吃 SELECTED_TINT_BG 的不透明出法
+		// (旧 bg-bn-pink/8 是纱,皮肤换底后会隐形)。
 		<span
-			className={`inline-flex items-center gap-1.5 rounded-bn-pill border border-bn-pink/25 bg-bn-pink/8 font-semibold text-bn-pink ${className ?? ""}`}
+			className={`inline-flex items-center gap-1.5 rounded-bn-pill border border-bn-pink/25 ${SELECTED_TINT_BG} font-semibold text-bn-pink ${className ?? ""}`}
 		>
 			{children}
 		</span>

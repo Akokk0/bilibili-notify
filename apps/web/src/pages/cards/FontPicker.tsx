@@ -14,7 +14,15 @@
  */
 
 import { MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
-import { AddFileButton, Btn, ErrorNote, Icon, IconButton, WarnNote } from "@bilibili-notify/ui";
+import {
+	AddFileButton,
+	Btn,
+	ErrorNote,
+	Icon,
+	IconButton,
+	SELECTED_LANGUAGE,
+	WarnNote,
+} from "@bilibili-notify/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { TInput } from "../../components/forms";
@@ -52,10 +60,12 @@ function Row({
 		<div
 			// 同 sidebar 会话行:描边与底色都在这一层,里面那个 button 只是可点区域。
 			data-bn={active ? "option option-active" : "option"}
-			className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition ${
+			// 选中态整句吃 SELECTED_LANGUAGE(border 宽度随句子走,所以闲置分支自带)——
+			// 此前是自配的 bg-bn-pink/8 纱,配方与 Subs 分组胶囊那句定案各漂各的。
+			className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition ${
 				active
-					? "border-bn-pink bg-bn-pink/8"
-					: "border-bn-border-subtle hover:border-bn-border hover:bg-bn-surface/60"
+					? SELECTED_LANGUAGE
+					: "border border-bn-border-subtle hover:border-bn-border hover:bg-bn-surface/60"
 			}`}
 		>
 			<button

@@ -1,3 +1,5 @@
+import { SELECTED_LANGUAGE } from "@bilibili-notify/ui";
+
 /**
  * 导出 / 导入两个备份对话框共用的小件。曾各自手搓一份(KindCard / ModeCard
  * 逐字符相同、PIN 输入框两份),合并到这里;只有 backup 在用,先不上升为全站原子。
@@ -17,13 +19,19 @@ export function ChoiceCard(props: {
 			// 候选卡走 option —— 当初豁免的理由是「同 MenuItem,词表里没有这一档」,
 			// 那一档现在有了;选中态是自身的描边/淡底 token,不是行内样式,皮肤盖得动。
 			data-bn={props.active ? "option option-active" : "option"}
-			className={`rounded-lg border px-3 py-2.5 text-left transition ${
+			// 选中态整句吃 SELECTED_LANGUAGE(标题跟着变粉)—— 此前是自配的
+			// border-bn-pink/60 + bg-bn-pink/10 纱,与全站选中配方各漂各的。
+			className={`rounded-lg px-3 py-2.5 text-left transition ${
 				props.active
-					? "border-bn-pink/60 bg-bn-pink/10"
-					: "border-bn-border bg-bn-surface hover:border-bn-pink/40"
+					? SELECTED_LANGUAGE
+					: "border border-bn-border bg-bn-surface hover:border-bn-pink/40"
 			}`}
 		>
-			<div className="text-bn-base font-bold text-bn-text-primary">{props.title}</div>
+			<div
+				className={`text-bn-base font-bold ${props.active ? "text-bn-pink" : "text-bn-text-primary"}`}
+			>
+				{props.title}
+			</div>
 			<div className="text-bn-xs text-bn-text-tertiary">{props.sub}</div>
 		</button>
 	);
