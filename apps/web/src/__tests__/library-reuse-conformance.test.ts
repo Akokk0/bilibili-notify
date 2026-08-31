@@ -198,13 +198,12 @@ describe("红字提示盒只有 ErrorNote 那一份", () => {
 		return cls.includes("border-bn-danger-border") && cls.includes("bg-bn-danger-soft");
 	}
 
+	// UpDialog「已失效的引用」与 FontPicker「字体不在库里」两条豁免已清:它们要的
+	// 正是「红容器装任意 children」,那个口子后来以 HintNote(danger 档)的身份进了
+	// 库 —— 虚线旁注收自由子元素,两处已改吃它。
 	const KEPT: Record<string, string> = {
 		"apps/web/src/components/alert-shell.tsx":
 			"组件告警条不是内联提示盒:portal 到 body、fixed 在右上角、带 aria-live=assertive 与「全部清除」钮。它是 Toast 那一族的东西(只是语义为红),塞进 ErrorNote 要给库件加 fixed 定位与关闭钮两个它不该有的能力。",
-		"apps/web/src/pages/up/UpDialog.tsx":
-			"「已失效的引用」那块是个**红色容器**,里面装着一行说明加一排可点的移除 chip。ErrorNote 是纯文字盒,装不下可交互子元素;硬塞的话得给库件开一个「任意 children + 不管排版」的口子,那等于没有组件。",
-		"apps/web/src/pages/cards/FontPicker.tsx":
-			"「选中的字体已不在库里」那行同上 —— 红底容器里并排放着说明文字与「清除」钮。它下方的 err / warn 两条提示已经收编成 ErrorNote / WarnNote 的 sm 档了,留下的只有这个带按钮的容器。",
 	};
 
 	it("没有哪个页面自己拼红边 + 红底 + 红字", () => {
