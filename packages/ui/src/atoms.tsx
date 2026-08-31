@@ -183,8 +183,12 @@ export function Btn({
 			// rest 铺在最前面:后面那几个(尤其 data-bn)是库的地盘,不许从外面顶掉
 			{...rest}
 			type={type}
-			aria-haspopup={ariaHasPopup}
-			aria-expanded={ariaExpanded}
+			// 别名 prop 与原生名**合流**再落。直接写 `aria-expanded={ariaExpanded}` 的话,
+			// 调用方按 JSDoc 写的原生 `aria-expanded` 会在 {...rest} 之后被 undefined
+			// 顶掉 —— React 对 undefined 干脆不出属性,下拉的展开态读屏整个拿不到,
+			// 而且编译期毫无征兆(2026-08-31 审查)。别名仍是权威:两边都给以它为准。
+			aria-haspopup={ariaHasPopup ?? rest["aria-haspopup"]}
+			aria-expanded={ariaExpanded ?? rest["aria-expanded"]}
 			// 危险档**再加挂** `btn-danger`。加挂而不是顶掉 `btn-primary`:不认识这个
 			// 词的皮肤照旧看到主按钮实底(可见),认识的才把红补回来。顶掉的话实心红钮
 			// 会落回下面那句说的隐形组合。

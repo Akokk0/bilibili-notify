@@ -46,3 +46,36 @@ describe("data-* 透传", () => {
 		expect(btn().hasAttribute("data-tour")).toBe(false);
 	});
 });
+
+/**
+ * `Btn` 的 JSDoc 白纸黑字写着 `aria-*` 原样透传,但 `ariaHasPopup` / `ariaExpanded`
+ * 两个别名 prop 是**写在 `{...rest}` 之后**的 —— 调用方按文档传原生名时会被
+ * undefined 顶掉,而 React 对 undefined 干脆不出属性:下拉的展开态读屏整个拿不到,
+ * 编译期还毫无征兆(2026-08-31 审查)。
+ */
+describe("原生 aria-* 透传", () => {
+	it("原生 aria-expanded / aria-haspopup 不被同名别名 prop 顶掉", () => {
+		render(
+			<Btn aria-haspopup="menu" aria-expanded>
+				切换
+			</Btn>,
+		);
+		expect(btn().getAttribute("aria-expanded")).toBe("true");
+		expect(btn().getAttribute("aria-haspopup")).toBe("menu");
+	});
+
+	it("别名 prop 仍是权威 —— 两边都给时以 ariaExpanded 为准", () => {
+		render(
+			<Btn ariaExpanded={false} aria-expanded>
+				切换
+			</Btn>,
+		);
+		expect(btn().getAttribute("aria-expanded")).toBe("false");
+	});
+
+	it("两边都不给就不挂属性", () => {
+		render(<Btn>切换</Btn>);
+		expect(btn().hasAttribute("aria-expanded")).toBe(false);
+		expect(btn().hasAttribute("aria-haspopup")).toBe(false);
+	});
+});
