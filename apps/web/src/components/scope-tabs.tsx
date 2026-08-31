@@ -19,6 +19,8 @@ import {
 	Pill,
 	PopoverShell,
 	SELECTED_LANGUAGE,
+	TAB_ACTIVE_LANGUAGE,
+	TAB_IDLE_LANGUAGE,
 	TabBarShell,
 	TabButton,
 	useDismiss,
@@ -85,13 +87,12 @@ export function ScopeTabs({
 						key={sub.id}
 						// 挂点与同条 tab 条上的 TabButton 同口径(tab 家族,曾是 btn)——此前
 						// 「全局 / 全部 UP」有挂点、紧挨着的 per-UP tab 一个都没有,皮肤改样式
-						// 时一条 tab 里第一颗变了、后面几颗没变,并排摆着。观感上两者仍有差
-						// (实底 vs 描边),那是另一条账。
+						// 时一条 tab 里第一颗变了、后面几颗没变,并排摆着。观感也整句吃
+						// TAB_*_LANGUAGE —— 曾自配「白卡 + 粉描边」,与「全局」的实心块在同
+						// 一条 tab 上摆着两种选中态(左右内距不对称留着:右侧装移除钮)。
 						data-bn={active ? "tab tab-active" : "tab"}
-						className={`flex items-center gap-1.5 rounded-lg border py-1.5 pl-3 pr-1.5 text-bn-sm font-bold transition ${
-							active
-								? "border-bn-pink/25 bg-bn-surface text-bn-pink shadow-bn-card"
-								: "border-transparent text-bn-text-tertiary hover:text-bn-text-primary"
+						className={`flex items-center gap-1.5 rounded-lg py-1.5 pl-3 pr-1.5 text-bn-sm font-bold transition ${
+							active ? TAB_ACTIVE_LANGUAGE : TAB_IDLE_LANGUAGE
 						}`}
 					>
 						<button
@@ -109,8 +110,10 @@ export function ScopeTabs({
 								{displayName(sub)}
 							</span>
 							{count > 0 ? (
+								// 选中态换 on-solid:实心粉底上的粉徽章读不出来;白纱 + 白字与
+								// 旁边标签同等可读(同 TabButton 小码那段对比度账的结论)。
 								<Pill
-									color={active ? "var(--color-bn-pink)" : "var(--color-bn-inactive)"}
+									color={active ? "var(--color-bn-on-solid)" : "var(--color-bn-inactive)"}
 									subtle
 									size="sm"
 								>
@@ -118,14 +121,16 @@ export function ScopeTabs({
 								</Pill>
 							) : null}
 						</button>
-						{/* 曾是站里最后一颗手写的图标钮(收编 23 处后的漏网):active 时静态粉字
-						    是收编前的旧作派,IconButton 的既定哲学是「平时安静、粉只在指上去时
-						    出现」(tone 只管 hover 语义)—— 迁移时一并归正。 */}
+						{/* 曾是站里最后一颗手写的图标钮(收编 23 处后的漏网)。选中 tab 是实心
+						    粉块 —— 常规 tone 的 tertiary 灰字压上去读不出来,走 scrim 档(压在
+						    强底/图片上的那一档,连静态字色一起换 on-solid);闲置 tab 回常规
+						    neutral:平时安静、hover 才出反馈,IconButton 的既定哲学。 */}
 						<IconButton
 							icon={<Icon.close size={11} />}
 							label={`移除 ${displayName(sub)} 的个性化配置`}
 							size="xs"
-							tone={active ? "accent" : "neutral"}
+							tone="neutral"
+							surface={active ? "scrim" : undefined}
 							onClick={(e) => {
 								e.stopPropagation();
 								onRemoveSub(sub.id);

@@ -82,7 +82,7 @@
 | 组件 | 干什么 / 长什么样 |
 | --- | --- |
 | `SectionNav` / `RailDot` | 页面分区导航,双形态:xl+ 左侧竖栏,窄视口顶部横向 chip 条(sticky) |
-| `TabBarShell` / `TabButton` | 页面级 tab 条的外壳与单钮(选中=粉渐变实心);要逐项自定义内容时用这对原语 |
+| `TabBarShell` / `TabButton` | 页面级 tab 条的外壳与单钮(选中=粉实心块);要逐项自定义内容时用这对原语。两态语汇 `TAB_ACTIVE_LANGUAGE` / `TAB_IDLE_LANGUAGE` **已导出** —— 做不成 TabButton 的复合 tab(ScopeTabs 的 per-UP tab:主钮+移除钮)也说这两句,别手抄 |
 | `TabBar` | 一条普通的 N 项 tab(内部就是上面两件拼的),带右侧 hint 槽 |
 
 ### 其他

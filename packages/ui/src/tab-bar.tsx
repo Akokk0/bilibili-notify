@@ -23,6 +23,15 @@ export function TabBarShell({ children }: { children: ReactNode }) {
 	);
 }
 
+/**
+ * tab 的两态语汇。**导出**是给库外的 tab 家族成员用的(ScopeTabs 的 per-UP tab
+ * 结构上是「主钮 + 移除钮」的复合体,做不成 TabButton,但观感必须同一句话)——
+ * 此前它自配「白卡 + 粉描边」,与紧挨着的「全局」实心块并排摆着两种选中态
+ * (2026-08-30 审计点名的「另一条账」,今日还清)。
+ */
+export const TAB_ACTIVE_LANGUAGE = "bg-bn-pink text-bn-on-solid shadow-bn-accent";
+export const TAB_IDLE_LANGUAGE = "text-bn-text-tertiary hover:text-bn-text-primary";
+
 export interface TabButtonProps {
 	active: boolean;
 	onClick: () => void;
@@ -51,9 +60,7 @@ export function TabButton({ active, onClick, icon, children, code, title, role }
 			// 连 hook 都没有,选中态的粉还写在 inline style 上,皮肤连覆盖的机会都没有。
 			data-bn={active ? "tab tab-active" : "tab"}
 			className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-bn-sm font-bold transition ${
-				active
-					? "bg-bn-pink text-bn-on-solid shadow-bn-accent"
-					: "text-bn-text-tertiary hover:text-bn-text-primary"
+				active ? TAB_ACTIVE_LANGUAGE : TAB_IDLE_LANGUAGE
 			}`}
 		>
 			{icon}
