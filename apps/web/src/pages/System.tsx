@@ -502,7 +502,7 @@ export default function System() {
 
 			<OnboardingReopenSection />
 
-			<details className="rounded-sm border border-bn-border bg-bn-surface-muted p-3 text-xs text-bn-text-secondary">
+			<details className="rounded-sm border border-bn-border bg-bn-surface-muted p-3 text-bn-sm text-bn-text-secondary">
 				<summary className="cursor-pointer font-medium text-bn-text-primary">原始登录快照</summary>
 				<pre className="mt-2 overflow-auto leading-relaxed">
 					{JSON.stringify(snapshot ?? { hint: "等待 /api/auth/status" }, null, 2)}

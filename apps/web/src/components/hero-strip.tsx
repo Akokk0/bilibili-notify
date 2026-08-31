@@ -52,7 +52,7 @@ export function HeroStrip({
 								{title}
 							</div>
 							{subtitle != null ? (
-								<div className="mt-1 text-xs text-bn-text-tertiary">{subtitle}</div>
+								<div className="mt-1 text-bn-sm text-bn-text-tertiary">{subtitle}</div>
 							) : null}
 						</>
 					) : (

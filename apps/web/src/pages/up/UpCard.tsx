@@ -133,7 +133,7 @@ export function UpCard({
 				</div>
 				<div className="mb-1 flex items-center justify-between">
 					<span
-						className="max-w-40 truncate text-sm font-bold text-bn-text-primary"
+						className="max-w-40 truncate text-bn-base font-bold text-bn-text-primary"
 						title={displayName(sub)}
 					>
 						{displayName(sub)}

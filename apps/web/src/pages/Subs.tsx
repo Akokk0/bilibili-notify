@@ -219,7 +219,7 @@ function NewSubDialog({
 				</Btn>
 			</div>
 			{duplicate ? (
-				<div className="mt-3 rounded-sm border border-bn-warning-border bg-bn-warning-soft p-2 text-xs text-bn-warning-text">
+				<div className="mt-3 rounded-sm border border-bn-warning-border bg-bn-warning-soft p-2 text-bn-sm text-bn-warning-text">
 					该 UID 已经在订阅列表中,无需重复添加
 				</div>
 			) : null}
@@ -648,7 +648,7 @@ export default function Subs() {
 								key={f.id}
 								onClick={() => setFilterId(f.id)}
 								data-bn={active ? "chip chip-active" : "chip"}
-								className={`flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-xs font-semibold transition ${
+								className={`flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-bn-sm font-semibold transition ${
 									active
 										? "bg-bn-surface text-bn-pink shadow-sm"
 										: "text-bn-text-tertiary hover:text-bn-text-primary"
@@ -671,7 +671,7 @@ export default function Subs() {
 					// 状态条不是「选中的某一项」,不吃整句选中语汇 —— 只吃那块不透明粉底
 					// (旧 bg-bn-pink/12 的纱在壁纸皮肤下会隐形,同分组胶囊踩过的雷)。
 					<div
-						className={`flex items-center gap-2 rounded-md ${SELECTED_TINT_BG} px-2.5 py-1 text-xs font-semibold text-bn-pink`}
+						className={`flex items-center gap-2 rounded-md ${SELECTED_TINT_BG} px-2.5 py-1 text-bn-sm font-semibold text-bn-pink`}
 					>
 						已选 {selection.size} 项
 						<Btn size="sm" variant="ghost" onClick={() => void bulkSetEnabled(true)}>
@@ -747,7 +747,7 @@ export default function Subs() {
 			filtered.length === 0 &&
 			(q.trim() || filterId !== "all" || groupFilter) ? (
 				<EmptyNote>
-					<div className="mb-1 text-sm font-bold text-bn-text-primary">没有匹配的订阅</div>
+					<div className="mb-1 text-bn-base font-bold text-bn-text-primary">没有匹配的订阅</div>
 					<div>试试换个关键词或筛选条件</div>
 				</EmptyNote>
 			) : null}

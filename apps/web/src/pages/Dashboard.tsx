@@ -174,7 +174,7 @@ function LiveNowPanel({ live, subs }: { live: LiveListenerSnapshot[]; subs: Subs
 											</Pill>
 										) : null}
 									</div>
-									<div className="truncate text-xs text-bn-text-tertiary">
+									<div className="truncate text-bn-sm text-bn-text-tertiary">
 										{r.title ?? "（未拉取到房间标题）"}
 									</div>
 								</div>

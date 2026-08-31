@@ -87,7 +87,7 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 											size={24}
 											url={avatarOf(who.uid)}
 										/>
-										<span className="truncate text-sm font-bold text-bn-text-primary">
+										<span className="truncate text-bn-base font-bold text-bn-text-primary">
 											{nameOf(who.uid)}
 										</span>
 									</div>
@@ -100,7 +100,10 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 						{result.roast.length ? (
 							<div className="flex flex-col gap-1.5">
 								{result.roast.map((r) => (
-									<div key={`${r.uid}-${r.comment}`} className="flex gap-2 text-xs leading-relaxed">
+									<div
+										key={`${r.uid}-${r.comment}`}
+										className="flex gap-2 text-bn-sm leading-relaxed"
+									>
 										<span
 											className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
 											style={{ background: colorOf(r.uid) }}
@@ -124,7 +127,7 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 					</div>
 
 					<div className="rounded-bn-card border border-bn-border-subtle p-3.5">
-						<div className="text-xs font-bold text-bn-text-primary">综合勤奋度评分</div>
+						<div className="text-bn-sm font-bold text-bn-text-primary">综合勤奋度评分</div>
 						<div className="mb-3 text-bn-2xs text-bn-text-secondary">
 							由女仆依据本期数据评分 · 0–100
 						</div>

@@ -442,7 +442,7 @@ export function UpDialog({
 						className="pb-2 text-bn-on-solid"
 						style={{ textShadow: "0 1px 4px rgba(0,0,0,0.45)" }}
 					>
-						<div className="text-base font-bold">{displayName(draft)}</div>
+						<div className="text-bn-md font-bold">{displayName(draft)}</div>
 						<div
 							className="mt-0.5 text-bn-xs font-semibold"
 							style={{ color, textShadow: "0 1px 4px rgba(255,255,255,0.4)" }}

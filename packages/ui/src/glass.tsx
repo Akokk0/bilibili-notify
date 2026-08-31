@@ -61,9 +61,11 @@ export function GlassPanel({
 						</div>
 					) : null}
 					<div className="min-w-0 flex-1">
-						{title ? <div className="text-sm font-bold text-bn-text-primary">{title}</div> : null}
+						{title ? (
+							<div className="text-bn-base font-bold text-bn-text-primary">{title}</div>
+						) : null}
 						{subtitle ? (
-							<div className="mt-0.5 text-xs text-bn-text-secondary">{subtitle}</div>
+							<div className="mt-0.5 text-bn-sm text-bn-text-secondary">{subtitle}</div>
 						) : null}
 					</div>
 					{right}
@@ -111,7 +113,7 @@ export function GlassStatCard({ label, value, suffix, color, pulse, footer }: Gl
 			className="bn-glass relative overflow-hidden rounded-bn-card px-4 py-3.5 shadow-bn-card"
 			style={bg}
 		>
-			<div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-bn-text-tertiary">
+			<div className="mb-1.5 flex items-center gap-1.5 text-bn-sm font-semibold text-bn-text-tertiary">
 				{pulse ? <PulseDot color={color} /> : null}
 				{label}
 			</div>
@@ -122,12 +124,12 @@ export function GlassStatCard({ label, value, suffix, color, pulse, footer }: Gl
 					// 吃 `--font-mono` —— 那一档不在皮肤词表里,于是装了自带字体的皮肤只换掉
 					// 周围的字,数字还是系统等宽体,一张卡上两种字体(2026-08-25 主人真机指出)。
 					// 换成字形特性之后字体走 `--font-cjk`(皮肤唯一的字体入口),对齐照旧。
-					className="text-3xl font-bold leading-none tracking-tight tabular-nums"
+					className="text-bn-hero font-bold leading-none tracking-tight tabular-nums"
 					style={{ color }}
 				>
 					{value}
 				</span>
-				{suffix ? <span className="text-xs text-bn-text-secondary">{suffix}</span> : null}
+				{suffix ? <span className="text-bn-sm text-bn-text-secondary">{suffix}</span> : null}
 			</div>
 			{footer ? <div className="mt-2 flex items-center gap-1.5">{footer}</div> : null}
 		</div>

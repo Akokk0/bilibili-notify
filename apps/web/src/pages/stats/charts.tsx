@@ -73,7 +73,7 @@ export function ResponsiveChart({
 /** 空数据占位 —— 与「有数据但全是 0」严格区分,文案要说清是没记录。 */
 export function ChartEmpty({ hint }: { hint: string }) {
 	return (
-		<div className="flex h-full min-h-24 items-center justify-center px-4 text-center text-xs text-bn-text-secondary">
+		<div className="flex h-full min-h-24 items-center justify-center px-4 text-center text-bn-sm text-bn-text-secondary">
 			{hint}
 		</div>
 	);
@@ -548,7 +548,7 @@ export function Heatmap({
 				>
 					<div className="flex w-20 shrink-0 items-center gap-1.5">
 						<span className="h-2 w-2 shrink-0 rounded-full" style={{ background: r.color }} />
-						<span className="truncate text-xs font-semibold text-bn-text-primary">{r.name}</span>
+						<span className="truncate text-bn-sm font-semibold text-bn-text-primary">{r.name}</span>
 					</div>
 					<div className="flex flex-1" style={{ gap }}>
 						{r.cells.map((v, i) => (

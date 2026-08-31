@@ -35,7 +35,7 @@ export function ShellError({ message, onRetry }: { message: string; onRetry: () 
 				<div className="mb-1 text-bn-base font-bold text-bn-danger-text">
 					无法连接到 Bilibili Notify 后端
 				</div>
-				<div className="text-xs leading-relaxed text-bn-danger-text">
+				<div className="text-bn-sm leading-relaxed text-bn-danger-text">
 					错误：
 					<code className="rounded-sm bg-bn-code-bg px-1.5 py-0.5">{message}</code>
 					<br />

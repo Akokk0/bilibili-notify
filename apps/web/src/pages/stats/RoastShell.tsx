@@ -62,7 +62,7 @@ export function RoastShell({
 				   `h-full` + `justify-center`:栅格把这张卡拉到与定时周报等高,不撑满
 				   的话邀请文案会吊在顶上、下面空一大片。 */
 				<div className="flex h-full flex-col items-center justify-center gap-3 px-1 py-4 text-center">
-					<div className="max-w-md text-xs leading-relaxed text-bn-text-tertiary">
+					<div className="max-w-md text-bn-sm leading-relaxed text-bn-text-tertiary">
 						{err ? <span className="text-bn-danger-text">生成失败:{err}</span> : idle}
 					</div>
 					<Btn variant="primary" onClick={onRun}>

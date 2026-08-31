@@ -128,7 +128,7 @@ export function CommandsSettings({
 				{registry.isLoading ? (
 					<LoadingBlock variant="inset" label="加载指令表中" />
 				) : registry.error ? (
-					<div className="text-xs text-bn-danger-text">
+					<div className="text-bn-sm text-bn-danger-text">
 						拉取指令表失败：{String((registry.error as Error).message)}
 					</div>
 				) : (

@@ -189,7 +189,7 @@ export function PerUpEditor({ sub, defaults, section }: PerUpEditorProps) {
 					ring
 				/>
 				<div className="min-w-0 flex-1">
-					<div className="text-base font-bold text-bn-text-primary">{displayName(sub)}</div>
+					<div className="text-bn-md font-bold text-bn-text-primary">{displayName(sub)}</div>
 					<div className="text-bn-sm text-bn-text-secondary">
 						UID {sub.uid} · 关闭一个分组 = 恢复继承全局默认
 					</div>

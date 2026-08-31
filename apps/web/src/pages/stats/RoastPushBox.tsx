@@ -68,7 +68,7 @@ export function RoastPushBox({
 			<div className="mb-1.5 text-bn-2xs font-bold tracking-wide" style={{ color: AI_PURPLE }}>
 				{label}
 			</div>
-			<div className="text-xs leading-relaxed text-bn-text-tertiary">{text}</div>
+			<div className="text-bn-sm leading-relaxed text-bn-text-tertiary">{text}</div>
 
 			<div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-bn-border-subtle pt-2.5">
 				{targets.length === 0 ? (

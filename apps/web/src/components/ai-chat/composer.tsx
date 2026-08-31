@@ -206,7 +206,9 @@ export function Composer({
 										{s.builtin ? "内置" : "自定义"}
 									</span>
 								</div>
-								<div className="mt-0.5 truncate text-xs text-bn-text-tertiary">{s.description}</div>
+								<div className="mt-0.5 truncate text-bn-sm text-bn-text-tertiary">
+									{s.description}
+								</div>
 							</button>
 						))}
 					</div>

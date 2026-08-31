@@ -140,7 +140,7 @@ export function BackupSection() {
 
 			{error ? <ErrorNote className="mt-3">{error}</ErrorNote> : null}
 			{notice ? (
-				<div className="mt-3 rounded-sm border border-bn-border bg-bn-surface/60 p-2.5 text-xs text-bn-text-secondary">
+				<div className="mt-3 rounded-sm border border-bn-border bg-bn-surface/60 p-2.5 text-bn-sm text-bn-text-secondary">
 					{notice}
 				</div>
 			) : null}

@@ -159,10 +159,12 @@ const VARIANTS: Record<BtnVariant, { cls: string; solid?: true; danger?: true }>
 	},
 };
 
+// 字号走 bn 阶(sm 12 / md 13 / lg 15):裸 Tailwind 字号档皮肤的字号变量够不到
+// (font-scale-conformance 守卫拦着);lg 原是裸 14px,bn 阶没有 14,取 bn-md 保住三档单调。
 const SIZE_CLS: Record<BtnSize, string> = {
-	sm: "h-[26px] px-2.5 text-xs",
+	sm: "h-[26px] px-2.5 text-bn-sm",
 	md: "h-[30px] px-3.5 text-bn-base",
-	lg: "h-9 px-4 text-sm",
+	lg: "h-9 px-4 text-bn-md",
 };
 
 export function Btn({
@@ -828,7 +830,7 @@ export function Input({
 	full = false,
 	type = "text",
 }: InputProps) {
-	const sz = size === "sm" ? "h-7 text-xs" : "h-8 text-bn-base";
+	const sz = size === "sm" ? "h-7 text-bn-sm" : "h-8 text-bn-base";
 	return (
 		<div
 			data-bn="input"

@@ -42,7 +42,7 @@ export function GlassBox({
 			<div className="relative flex items-center gap-3 border-b border-bn-border-subtle px-[18px] pb-3 pt-3.5">
 				{icon ? (
 					<div
-						className="grid h-8 w-8 place-items-center rounded-bn-sm text-sm font-bold text-bn-on-solid"
+						className="grid h-8 w-8 place-items-center rounded-bn-sm text-bn-base font-bold text-bn-on-solid"
 						style={iconChip}
 					>
 						{icon}

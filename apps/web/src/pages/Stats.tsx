@@ -153,8 +153,10 @@ function UpPicker({
 				{/* 「全部 UP 主」不配头像 —— 汇总视图没有「一个人」可代表,
 				    原来那颗粉蓝渐变圆只是个占位,反而像某位 UP 的头像。 */}
 				{cur ? <Avatar name={cur.name} color={cur.color} size={22} url={cur.avatar} /> : null}
-				<span className="text-xs font-bold text-bn-text-primary">{cur?.name ?? "全部 UP 主"}</span>
-				<span className="ml-auto text-xs text-bn-text-secondary">{open ? "▴" : "▾"}</span>
+				<span className="text-bn-sm font-bold text-bn-text-primary">
+					{cur?.name ?? "全部 UP 主"}
+				</span>
+				<span className="ml-auto text-bn-sm text-bn-text-secondary">{open ? "▴" : "▾"}</span>
 			</button>
 			{open ? (
 				<PopoverShell layer="overlay" className="max-h-80 min-w-56 overflow-y-auto">
@@ -164,8 +166,8 @@ function UpPicker({
 							setOpen(false);
 						}}
 					>
-						<span className="text-xs font-bold text-bn-text-primary">全部 UP 主</span>
-						<span className="ml-auto text-xs text-bn-text-secondary">汇总</span>
+						<span className="text-bn-sm font-bold text-bn-text-primary">全部 UP 主</span>
+						<span className="ml-auto text-bn-sm text-bn-text-secondary">汇总</span>
 					</MenuItem>
 					{rows.map((r) => {
 						const m = meta.get(r.uid);
@@ -185,7 +187,7 @@ function UpPicker({
 									status={r.live ? "living" : undefined}
 								/>
 								<span className="min-w-0 flex-1">
-									<span className="block truncate text-xs font-bold text-bn-text-primary">
+									<span className="block truncate text-bn-sm font-bold text-bn-text-primary">
 										{m?.name ?? `UID ${r.uid}`}
 									</span>
 									<span className="block text-bn-2xs text-bn-text-secondary">
@@ -235,7 +237,7 @@ function CompareTable({
 
 	return (
 		<div className="overflow-x-auto">
-			<table className="w-full border-collapse text-xs">
+			<table className="w-full border-collapse text-bn-sm">
 				<thead>
 					<tr className="border-b border-bn-border">
 						<th className="px-2.5 py-2 text-left text-bn-xs font-bold text-bn-text-secondary">
@@ -281,7 +283,7 @@ function CompareTable({
 											status={r.live ? "living" : undefined}
 										/>
 										<div className="min-w-0">
-											<div className="truncate text-xs font-bold text-bn-text-primary">
+											<div className="truncate text-bn-sm font-bold text-bn-text-primary">
 												{m?.name ?? `UID ${r.uid}`}
 											</div>
 											<div className="text-bn-2xs text-bn-text-secondary">
@@ -375,14 +377,14 @@ function ContentMix({
 					color={PURPLE}
 					label={
 						<div className="text-center">
-							<div className="text-xl font-bold text-bn-text-primary">{total}</div>
+							<div className="text-bn-xl font-bold text-bn-text-primary">{total}</div>
 							<div className="text-bn-micro text-bn-text-secondary">总活动</div>
 						</div>
 					}
 				/>
 				<div className="flex flex-col gap-1">
 					<div className="text-bn-xs text-bn-text-secondary">日均活动</div>
-					<div className="tabular-nums text-2xl font-bold leading-none" style={{ color: PURPLE }}>
+					<div className="tabular-nums text-bn-xl font-bold leading-none" style={{ color: PURPLE }}>
 						{coveredDays > 0 ? (coveredTotal / coveredDays).toFixed(1) : "—"}
 					</div>
 					<div className="text-bn-2xs text-bn-text-secondary">
@@ -392,7 +394,7 @@ function ContentMix({
 			</div>
 			<div className="flex flex-col gap-2.5">
 				{parts.map(([label, v, c]) => (
-					<div key={label} className="flex items-center gap-2 text-xs">
+					<div key={label} className="flex items-center gap-2 text-bn-sm">
 						<span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: c }} />
 						<span className="w-8 shrink-0 text-bn-text-tertiary">{label}</span>
 						<div className="h-1.5 flex-1 overflow-hidden rounded-full bg-bn-code-bg">
@@ -497,10 +499,10 @@ export default function Stats() {
 						/>
 					) : null}
 					<div>
-						<div className="text-lg font-bold tracking-tight text-bn-text-primary">
+						<div className="text-bn-lg font-bold tracking-tight text-bn-text-primary">
 							{focused ? (focusedMeta?.name ?? `UID ${focused.uid}`) : "数据统计 · 粉丝与动态分析"}
 						</div>
-						<div className="mt-1 text-xs text-bn-text-secondary">
+						<div className="mt-1 text-bn-sm text-bn-text-secondary">
 							{focused ? (
 								// 名字已经在上面的标题里了,这行改说 UID —— 昵称会改,UID 不会,
 								// 主人对着后台核对时要的是这个。
@@ -525,7 +527,7 @@ export default function Stats() {
 								type="button"
 								onClick={() => setDays(r.days)}
 								data-bn={days === r.days ? "chip chip-active" : "chip"}
-								className="rounded-md px-3 py-1.5 text-xs font-semibold"
+								className="rounded-md px-3 py-1.5 text-bn-sm font-semibold"
 								style={{
 									background: days === r.days ? "var(--color-bn-surface-muted)" : "transparent",
 									color: days === r.days ? PINK : "var(--color-bn-text-tertiary)",
@@ -810,7 +812,7 @@ export default function Stats() {
 										{label}
 									</div>
 									<div className="flex items-baseline gap-1">
-										<span className="tabular-nums text-lg font-bold" style={{ color: PINK }}>
+										<span className="tabular-nums text-bn-lg font-bold" style={{ color: PINK }}>
 											{v}
 										</span>
 										{unit ? (
@@ -840,7 +842,7 @@ export default function Stats() {
 										const mx = Math.max(...rows.map((x) => x.liveHours ?? 0));
 										const m = meta.get(r.uid);
 										return (
-											<div key={r.uid} className="flex items-center gap-2 text-xs">
+											<div key={r.uid} className="flex items-center gap-2 text-bn-sm">
 												<span className="w-16 truncate font-semibold text-bn-text-primary">
 													{m?.name ?? r.uid}
 												</span>
