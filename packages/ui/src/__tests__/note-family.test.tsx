@@ -14,7 +14,7 @@
 
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { EmptyNote, ErrorNote, WarnNote } from "../atoms";
+import { EmptyNote, ErrorNote, HintNote, WarnNote } from "../atoms";
 
 afterEach(cleanup);
 
@@ -97,5 +97,61 @@ describe("提示盒三兄弟共用一套尺寸阶梯", () => {
 		const pad = (el: Element) =>
 			(el as HTMLElement).className.split(/\s+/).filter((t) => /^p[xy]?-/.test(t));
 		expect(pad(err as Element)).not.toEqual(pad(empty as Element));
+	});
+});
+
+/**
+ * 第四位成员 HintNote —— 「顺带说一句」的低调旁注:虚线 + 软底 + 小字。
+ * 收编前三处各配各的圆角(Cards `rounded-sm` / FontPicker `rounded-lg` /
+ * UpDialog `rounded-md`),同一句「旁注」三种控件长相。
+ */
+describe("HintNote 旁注盒", () => {
+	const note = (container: HTMLElement) => container.firstElementChild as HTMLElement;
+
+	it("形状走家族 sm 档 —— 与红盒 sm 的圆角字号一致,且是虚线", () => {
+		const { container } = render(
+			<>
+				<HintNote>旁注</HintNote>
+				<ErrorNote size="sm">红</ErrorNote>
+			</>,
+		);
+		const [hint, err] = Array.from(container.children);
+		expect(shapeOf(hint ?? null)).toEqual(shapeOf(err ?? null));
+		expect((hint as HTMLElement).className).toContain("border-dashed");
+	});
+
+	it("三档 tone 只换颜色;底一律实色 soft token,不是 /60 那种纱", () => {
+		const { container } = render(
+			<>
+				<HintNote>中性</HintNote>
+				<HintNote tone="success">报喜</HintNote>
+				<HintNote tone="danger">警示</HintNote>
+			</>,
+		);
+		const [neutral, success, danger] = Array.from(container.children) as HTMLElement[];
+		expect(neutral?.className).toContain("bg-bn-surface-muted");
+		expect(success?.className).toContain("bg-bn-success-soft");
+		expect(danger?.className).toContain("bg-bn-danger-soft");
+		// 纱在壁纸皮肤下会隐形(Cards 收编前的 bg-bn-success-soft/60 正是这种写法)。
+		for (const el of [neutral, success, danger]) {
+			expect(el?.className).not.toMatch(/bg-bn-[a-z-]+\/\d+/);
+		}
+	});
+
+	it("danger 档与红盒同挂 note-danger,其余只挂造型档 note", () => {
+		const { container } = render(
+			<>
+				<HintNote>中性</HintNote>
+				<HintNote tone="danger">警示</HintNote>
+			</>,
+		);
+		const [neutral, danger] = Array.from(container.children);
+		expect(neutral?.getAttribute("data-bn")).toBe("note");
+		expect(danger?.getAttribute("data-bn")).toBe("note note-danger");
+	});
+
+	it("className 追加布局(flex 行)接在本体之后 —— FontPicker 那种「文字 + 按钮」行", () => {
+		const { container } = render(<HintNote className="flex items-center gap-2">行</HintNote>);
+		expect(note(container).className.endsWith("flex items-center gap-2")).toBe(true);
 	});
 });

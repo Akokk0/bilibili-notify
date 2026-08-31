@@ -19,6 +19,7 @@ import {
 	Btn,
 	ConfirmDialog,
 	GlassBox,
+	HintNote,
 	Icon,
 	type IconName,
 	LoadingBlock,
@@ -579,30 +580,17 @@ function PerUpDataSection({
 
 /**
  * 「这条预览用的是真实数据」的绿色说明条。四个 kind 分支各自写了一遍,连
- * `realDataLabel` 缺省时的那句兜底也抄了两份 —— 抄的东西一漂,同一个弹窗里
- * 两条说明就会一条圆一条方。
+ * `realDataLabel` 缺省时的那句兜底也抄了两份;局部收编后又与 FontPicker /
+ * UpDialog 的旁注各配各的圆角 —— 观感统一升进了库的 {@link HintNote},这里
+ * 只剩「这条旁注是报喜档」这层领域语义。
  */
 function RealDataNote({ children }: { children: React.ReactNode }) {
-	return (
-		<div className="rounded-sm border border-dashed border-bn-success-border bg-bn-success-soft/60 p-2.5 text-bn-xs text-bn-success-text">
-			{/* 描边色不能省。Tailwind v4 的 `border` 只出宽度与线型,颜色留给 CSS 的初始值
-			    —— 也就是 `currentColor`。省掉的话这圈虚线会跟着字色走,与全站
-			    `border-bn-*` 那套完全脱钩,而且皮肤改字色时边框跟着一起变。 */}
-			{children}
-		</div>
-	);
+	return <HintNote tone="success">{children}</HintNote>;
 }
 
-/**
- * 「这一档的某些样式不归你管」的中性说明条 —— SC 与上舰各一条,收编前是逐字符
- * 相同的两份。同 {@link RealDataNote} 的道理,只是它不报喜也不报忧,走中性描边。
- */
+/** 「这一档的某些样式不归你管」的中性说明条 —— SC 与上舰各一条。 */
 function KindHintNote({ children }: { children: React.ReactNode }) {
-	return (
-		<div className="rounded-sm border border-dashed border-bn-border bg-bn-surface-muted p-2.5 text-bn-xs text-bn-text-tertiary">
-			{children}
-		</div>
-	);
+	return <HintNote>{children}</HintNote>;
 }
 
 /** per-UP 作用域没给 `realDataLabel` 时的兜底说明。 */

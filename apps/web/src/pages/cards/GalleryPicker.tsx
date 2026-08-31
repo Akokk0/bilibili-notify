@@ -177,7 +177,9 @@ export function GalleryPicker({
 						key={id}
 						data-testid="gallery-ghost"
 						title="引用的图片文件已被删除,点 × 从选择中移除"
-						className="relative grid aspect-[16/10] w-24 shrink-0 place-items-center overflow-hidden rounded-lg border border-dashed border-bn-danger-text/50 bg-bn-surface-muted"
+						// 边走 danger-border token —— 此前写的 border-bn-danger-text/50 是拿**字色**
+						// 当边色,全站独一份,皮肤改字色时这圈虚线会跟着漂。
+						className="relative grid aspect-[16/10] w-24 shrink-0 place-items-center overflow-hidden rounded-lg border border-dashed border-bn-danger-border bg-bn-surface-muted"
 					>
 						<OrderBadge tone="danger">{value.indexOf(id) + 1}</OrderBadge>
 						<span className="text-bn-2xs text-bn-danger-text">已失效</span>

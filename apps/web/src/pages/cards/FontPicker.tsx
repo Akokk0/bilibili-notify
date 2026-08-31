@@ -18,6 +18,7 @@ import {
 	AddFileButton,
 	Btn,
 	ErrorNote,
+	HintNote,
 	Icon,
 	IconButton,
 	SELECTED_LANGUAGE,
@@ -192,14 +193,13 @@ export function FontPicker({
 			{/* 选着一款已经不在字体库里的 —— 显式摆出来。悄悄回落成默认的话,主人只会
 			    觉得「我选的字体自己变回去了」,而界面上没有任何线索。 */}
 			{sel.kind === "missing" ? (
-				<div className="flex items-center gap-2 rounded-lg border border-dashed border-bn-danger-border bg-bn-danger-soft px-2.5 py-1.5">
-					<span className="flex-1 text-bn-xs text-bn-danger-text">
-						选中的字体文件已不在字体库里,当前实际用的是兜底字体
-					</span>
+				// 虚线警示旁注 —— 「引用落了空」档,与 UpDialog 的失效引用盒同一句话。
+				<HintNote tone="danger" className="flex items-center gap-2">
+					<span className="flex-1">选中的字体文件已不在字体库里,当前实际用的是兜底字体</span>
 					<Btn variant="danger-outline" size="sm" onClick={() => onChange(pickDefaultFont(value))}>
 						清除
 					</Btn>
-				</div>
+				</HintNote>
 			) : null}
 
 			<div className="flex items-center gap-2">

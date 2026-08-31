@@ -4,6 +4,7 @@ import {
 	Btn,
 	ConfirmDialog,
 	EmptyNote,
+	HintNote,
 	Icon,
 	IconButton,
 	ModalShell,
@@ -601,10 +602,9 @@ export function UpDialog({
 				{staleIds.length > 0 ? (
 					<section>
 						<SectionHeader label="已失效的引用" />
-						<div className="rounded-md border border-dashed border-bn-danger-border bg-bn-danger-soft px-3 py-2">
-							<div className="mb-1.5 text-bn-xs text-bn-danger-text">
-								下列推送目标已被删除,但路由中仍有引用 · 点击移除
-							</div>
+						{/* 虚线警示旁注 —— 「引用落了空」,不是「操作失败」,所以不是 ErrorNote。 */}
+						<HintNote tone="danger">
+							<div className="mb-1.5">下列推送目标已被删除,但路由中仍有引用 · 点击移除</div>
 							<div className="flex flex-wrap gap-1.5">
 								{staleIds.map((id) => (
 									<button
@@ -618,7 +618,7 @@ export function UpDialog({
 									</button>
 								))}
 							</div>
-						</div>
+						</HintNote>
 					</section>
 				) : null}
 			</div>

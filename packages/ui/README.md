@@ -39,13 +39,14 @@
 | `ErrorNote` | 「XX 失败:…」红字提示盒的唯一写法。恒 `role="alert"`(21 个调用点无一例外都是「出错了才渲染」)。可选 `icon` 左槽;`size` 三档**是三种位置**不是口味:`sm` 密集卡片内(UpCard 整卡只有 10~11px)、`md` 默认给表单面板、`lg` 给消息流里的横幅(AI 聊天正文 13px)。外边距走 `className`。自带 `data-bn="note note-danger"` |
 | `WarnNote` | 「做完了但有几处没照办」黄字提示盒的唯一写法;`size` 两档与 `ErrorNote` 对齐(有了它「红/黄双色同形」的一对才写得出来);**行高与外边距走 `className`**。自带 `data-bn="note note-warn"` |
 | `EmptyNote` | 「这里还什么都没有」中性虚线框的唯一写法;`md`(默认)给整块面板的空态、`sm` 给表单小节里内嵌的一行。**只此两档** —— 收编前站内九份手写在四种圆角三种字号之间漂。自带 `data-bn="note note-empty"`(**虚线是它的语义**,皮肤那头的 NOTES 也这么嘱咐) |
+| `HintNote` | 「顺带说一句」低调旁注盒:虚线 + 软底 + 小字,不打断主流程(实线红盒是「出事了」,虚线是「旁白 / 引用落了空」)。三档 `tone`:`neutral` 中性说明 / `success` 报喜旁注(预览用的是真实数据)/ `danger` 警示旁注(引用的字体 / 推送目标已失效)。形状钉死家族 `sm` 档不设尺寸;底走**实色** soft token(`/60` 纱在壁纸皮肤下隐形);布局(flex 行)与外边距走 `className`。danger 档自带 `data-bn="note note-danger"`(对皮肤与红盒同档),其余只挂 `note` |
 | `Spinner` | 品牌色圆环加载指示(淡粉底环 + 粉顶弧) |
 | `PlatformIcon` / `platformLabel` / `platformTint` | 推送平台图标、显示名与**标识色**(onebot / qq-official / webhook)。三者同一张表 —— 色也导出,是因为不导出就只能在页面里照抄一份(Targets 就抄过,连兜底的灰都一字不差);认不出的平台退 `--color-bn-inactive` |
 | `StatsBar` | 迷你堆叠柱状图(live/dyn/sc/guard 四段,由高到低堆)。**`colors` 必填,库里不留默认值** —— 那四段是推送家族色,唯一出处 `push-kinds.ts` 在业务侧,平台中立的库取不到;给默认值等于把此前那份写死的副本原样留下 |
 | `Section` / `Row` | 抽屉与面板里的「小节标题 + 行列表」骨架 |
 | `NoticeStack` / `NoticeCard` | 角落通知栈(portal + fixed 角落 + aria-live)与富通知卡(图标片 + 标题/时间行 + 正文 + 关闭钮,挂 `glass-strong`)。推送 toast(右下 polite)与组件告警(右上 assertive)共用;**颜色语义全留调用方** —— 逐 kind 染色走 `tileStyle`、静态语义配色走 `tileClassName`/`titleClassName`/`style`。`time` 收**预格式化**字符串(toast 到分、告警到秒,精度是语义)。一句话瞬时提示别用它,那是 `Toast` 的活 |
 
-**提示盒三兄弟(`ErrorNote` / `WarnNote` / `EmptyNote`)共用一套尺寸阶梯** —— `sm` = `rounded-md` 11.5px、`md` = `rounded-lg` 12.5px、`lg` = `rounded-xl` 13px。它们说的是同一类话,只该差颜色不该差形状;此前三个各写各的,同一个弹窗里「保存失败」与「有几处没照办」长成两种控件。阶梯**只管圆角与字号**,内边距各归各的(空态盒撑满面板留白、红盒挤在字段之间,那是位置不是漂移)。`packages/ui/src/__tests__/note-family.test.tsx` 钉着这条。
+**提示盒一家(`ErrorNote` / `WarnNote` / `EmptyNote` / `HintNote`)共用一套尺寸阶梯** —— `sm` = `rounded-md` 11.5px、`md` = `rounded-lg` 12.5px、`lg` = `rounded-xl` 13px。它们说的是同一类话,只该差颜色不该差形状;此前三个各写各的,同一个弹窗里「保存失败」与「有几处没照办」长成两种控件。阶梯**只管圆角与字号**,内边距各归各的(空态盒撑满面板留白、红盒挤在字段之间,那是位置不是漂移)。`packages/ui/src/__tests__/note-family.test.tsx` 钉着这条。
 
 ### 表单受控件(form-controls)
 

@@ -1052,6 +1052,48 @@ export function EmptyNote({ children, size = "md", className }: EmptyNoteProps) 
 	);
 }
 
+/**
+ * 低调旁注盒 —— 「顺带说一句」那一档:虚线框 + 软底 + 小字,不打断主流程。
+ * 提示盒家族第四位,与 {@link ErrorNote}(红实线,失败报警)分工明确:实线是
+ * 「出事了」,虚线是「旁白 / 引用落了空」。
+ *
+ * 收编前站内三处各写各的:Cards 的真实数据说明 `rounded-sm`、FontPicker 的失效
+ * 字体条 `rounded-lg`、UpDialog 的失效引用盒 `rounded-md` —— 同一句「旁注」三种
+ * 圆角。形状统一走家族的 `NOTE_SIZE.sm` 档(旁注天生是小字,不设尺寸档)。
+ *
+ * 三档 tone:`neutral` 中性说明(某些样式不归你管)、`success` 报喜旁注(预览用的
+ * 是真实数据)、`danger` 警示旁注(引用的字体 / 推送目标已失效)。danger 档与红盒
+ * 同挂 `note-danger` —— 对皮肤它们是同一档「红色的提示」;success / neutral 只挂
+ * 造型档 `note`(词表没有 note-success,加词是产品决定,别顺手塞进重构里)。
+ *
+ * 底走实色 soft token 不走 `/60` 纱 —— 纱靠底下垫白才好看,壁纸皮肤下会隐形
+ * (同 SELECTED_TINT_BG 的道理)。描边色不能省:Tailwind v4 的 `border` 只出宽度
+ * 与线型,颜色缺省是 `currentColor`,省掉的话虚线跟着字色走、皮肤改字色时边框
+ * 一起变(Cards 收编前那份注释立的规矩)。
+ */
+export interface HintNoteProps {
+	children: ReactNode;
+	tone?: "neutral" | "success" | "danger";
+	className?: string;
+}
+
+const HINT_NOTE_TONE = {
+	neutral: "border-bn-border bg-bn-surface-muted text-bn-text-tertiary",
+	success: "border-bn-success-border bg-bn-success-soft text-bn-success-text",
+	danger: "border-bn-danger-border bg-bn-danger-soft text-bn-danger-text",
+} as const;
+
+export function HintNote({ children, tone = "neutral", className }: HintNoteProps) {
+	return (
+		<div
+			data-bn={tone === "danger" ? "note note-danger" : "note"}
+			className={`border border-dashed p-2.5 ${NOTE_SIZE.sm} ${HINT_NOTE_TONE[tone]} ${className ?? ""}`}
+		>
+			{children}
+		</div>
+	);
+}
+
 // ── PlatformIcon ────────────────────────────────────────────────────────────
 
 const PLATFORM_META: Record<string, { color: string; label: string; icon?: IconName }> = {
