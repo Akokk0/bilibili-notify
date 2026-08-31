@@ -113,9 +113,9 @@ const MAX_TOOL_ROUNDS = 8;
  * 加导出等于给下一个写 `vi.mock("../tools")` 的人埋一颗「No export is defined」。
  */
 function narrowTools(
-	tools: OpenAI.ChatCompletionTool[],
+	tools: OpenAI.ChatCompletionFunctionTool[],
 	allowed?: readonly string[],
-): OpenAI.ChatCompletionTool[] {
+): OpenAI.ChatCompletionFunctionTool[] {
 	if (!allowed) return tools;
 	const keep = new Set(allowed);
 	return tools.filter((t) => keep.has(t.function.name));
@@ -173,7 +173,7 @@ export type AIScene = "dynamic" | "liveSummary";
 
 /** callAPI 的工具选项 —— chat 与 responses 两条风味共用的形状。 */
 interface CallToolOptions {
-	tools: OpenAI.ChatCompletionTool[];
+	tools: OpenAI.ChatCompletionFunctionTool[];
 	/**
 	 * 名字不是 `web_search` 的工具调用走这里执行。可缺席:只挂了 web_search
 	 * 的调用方(引擎的 comment 路)没有别的工具可执行,走到这个口只可能是模型
@@ -730,7 +730,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 * 于是永远不会去调 `describe_image`。
 	 */
 	private chatVision(imageUrls: string[] | undefined): {
-		tools: OpenAI.ChatCompletionTool[];
+		tools: OpenAI.ChatCompletionFunctionTool[];
 		ctx?: VisionToolContext;
 		note: string;
 	} {
@@ -1652,6 +1652,20 @@ export class CommentaryGenerator implements CommentaryProvider {
 
 			for (let i = 0; i < message.tool_calls.length; i++) {
 				const toolCall = message.tool_calls[i];
+				// SDK v5 起 `tool_calls` 是联合类型(function | custom)。我们从不声明
+				// custom 工具,真收到就是兼容网关跑偏了 —— 执行不了,但**必须**照样回
+				// 一条 tool 消息:每个 tool_call 都欠一条应答,少一条下一轮就会被网关
+				// 判成「tool_call 没有应答」而整个请求报错。直接读 `.function` 的老写法
+				// 在这一帧上是 `undefined.name`,会把整轮对话带走。
+				if (toolCall.type !== "function") {
+					this.logger.warn(`[tool] 网关回了不支持的工具类型 ${toolCall.type},跳过`);
+					apiMessages.push({
+						role: "tool",
+						tool_call_id: toolCall.id,
+						content: "工具调用失败:不支持的工具类型",
+					});
+					continue;
+				}
 				// 痕迹 id 用「第几轮-第几个」自己编,**不用** `toolCall.id`:那是网关
 				// 给的,流式下常常整个缺席(streamOnce 里的 slot 初值就是空串),几个
 				// 工具会共用一个空 id,end 事件于是全配到同一条痕迹上。

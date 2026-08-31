@@ -419,6 +419,39 @@ describe("CommentaryGenerator.chat — 会话历史", () => {
 		// 解析失败时 executeTool 不会被调用(在 JSON.parse 阶段就 catch)
 		expect(toolsMock.executeTool).not.toHaveBeenCalled();
 	});
+
+	/**
+	 * openai SDK v5 起 `tool_calls` 是**联合类型**(function | custom)。我们从不声明
+	 * custom 工具,所以这一帧只可能来自协议跑偏的兼容网关 —— 但它一旦来了,不许把
+	 * 整轮对话带走,更不许静默跳过:每个 tool_call 都欠一条 tool 消息,少一条下一轮
+	 * 就会被网关判成 tool_call 没有应答而整个请求报错。
+	 */
+	it("网关回了 custom 类型的 tool_call → 不执行、不抛,但仍补上应答让下一轮成立", async () => {
+		const { gen } = makeGen();
+		const customCall = {
+			choices: [
+				{
+					message: {
+						role: "assistant",
+						content: null,
+						tool_calls: [{ id: "c9", type: "custom", custom: { name: "weird", input: "x" } }],
+					},
+				},
+			],
+		};
+		oai.create.mockResolvedValueOnce(customCall).mockResolvedValueOnce(msgResp("收尾"));
+
+		const result = await gen.chat("x", "s1");
+
+		expect(result).toBe("收尾");
+		expect(toolsMock.executeTool).not.toHaveBeenCalled();
+		// 第二轮必须带着那条 id 对得上的 tool 应答,否则网关会拒掉整个请求。
+		const reply = createParams(1).messages.find(
+			(m) => (m as { tool_call_id?: string }).tool_call_id === "c9",
+		);
+		expect(reply).toBeDefined();
+		expect(reply?.role).toBe("tool");
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -1625,6 +1658,24 @@ describe("CommentaryGenerator — 限流时按网关点名的时间回来", () =
 	it("网关给了 Retry-After → 等它说的那么久,重来一次", async () => {
 		const { gen } = makeGen();
 		oai.create.mockRejectedValueOnce(limited("0")).mockResolvedValueOnce(msgResp("点评"));
+		expect(await gen.comment("x")).toBe("点评");
+		expect(oai.create).toHaveBeenCalledTimes(2);
+	});
+
+	/**
+	 * openai SDK v5 起 `APIError.headers` 是 **Web `Headers` 实例**,不再是普通对象
+	 * —— 也就是说升到 7 之后,真机上恒定走 `retryAfterMs` 里探 `.get` 的那一支,
+	 * 上面几条用字面量 headers 的用例反倒钉的是**再也不会发生**的形状。
+	 * 这条补的就是那个缺口:两种形状都得读得出来,否则限流重试会静默失效
+	 * (读不到就当网关没说,直接放弃重来,而且没有任何报错)。
+	 */
+	it("SDK v5 起 headers 是 Headers 实例 → 照样读得出 Retry-After", async () => {
+		const { gen } = makeGen();
+		const withHeaders = Object.assign(new Error("429 Too Many Requests"), {
+			status: 429,
+			headers: new Headers({ "retry-after": "0" }),
+		});
+		oai.create.mockRejectedValueOnce(withHeaders).mockResolvedValueOnce(msgResp("点评"));
 		expect(await gen.comment("x")).toBe("点评");
 		expect(oai.create).toHaveBeenCalledTimes(2);
 	});

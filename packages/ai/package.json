@@ -33,9 +33,9 @@
 	"dependencies": {
 		"@bilibili-notify/api": "workspace:^",
 		"@bilibili-notify/internal": "workspace:^",
-		"openai": "^4.98.0"
+		"openai": "^7.8.0"
 	},
 	"engines": {
-		"node": ">=20.0.0"
+		"node": ">=22.0.0"
 	}
 }

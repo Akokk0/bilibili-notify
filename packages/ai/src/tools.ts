@@ -22,7 +22,7 @@ export interface SubItemView {
 
 export type Subscriptions = Record<string, SubItemView>;
 
-export const TOOL_DEFINITIONS: OpenAI.ChatCompletionTool[] = [
+export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 	{
 		type: "function",
 		function: {
@@ -160,7 +160,7 @@ export interface ExtraToolResult {
 }
 
 export interface ExtraTool {
-	definition: OpenAI.ChatCompletionTool;
+	definition: OpenAI.ChatCompletionFunctionTool;
 	/**
 	 * `onProgress` 是**给慢工具的活口**:工具轮不产生正文,一趟几分钟的活儿在界面上
 	 * 跟卡死长得一模一样。报的是「已经吐了多少字符」这种粗粒度进度 —— 别把工具的
@@ -179,7 +179,7 @@ export interface ExtraTool {
  * 它只服务多轮追问(群里发图后接着问「左下角那个是什么」)。单轮的点评 / 总结走
  * 预处理管线,不靠模型自己想起来调工具 —— 详见 `vision.ts` 的模块注释。
  */
-export const DESCRIBE_IMAGE_TOOL: OpenAI.ChatCompletionTool = {
+export const DESCRIBE_IMAGE_TOOL: OpenAI.ChatCompletionFunctionTool = {
 	type: "function",
 	function: {
 		name: "describe_image",

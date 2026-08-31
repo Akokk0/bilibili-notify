@@ -159,7 +159,7 @@ export const WEB_SEARCH_TOOL_NAME = "web_search";
  * 确实开了搜索、且执行器真的在(key 已填)时才挂上,同 `DESCRIBE_IMAGE_TOOL` 的
  * 条件挂载纪律。挂了却执行不了,模型会白调一轮再拿到「不可用」。
  */
-export const WEB_SEARCH_TOOL: OpenAI.ChatCompletionTool = {
+export const WEB_SEARCH_TOOL: OpenAI.ChatCompletionFunctionTool = {
 	type: "function",
 	function: {
 		name: WEB_SEARCH_TOOL_NAME,

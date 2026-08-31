@@ -88,7 +88,7 @@ export function toResponsesInput(
  * 漏进序列化。
  */
 export function toResponsesTools(
-	tools: readonly OpenAI.ChatCompletionTool[],
+	tools: readonly OpenAI.ChatCompletionFunctionTool[],
 ): Record<string, unknown>[] {
 	return tools.map((t) => ({
 		type: "function",
