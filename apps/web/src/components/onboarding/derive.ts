@@ -44,7 +44,8 @@ export interface OnboardingView {
 	doneCount: number;
 	allDone: boolean;
 	/**
-	 * 当前步的最近一次测试失败(仅 adapter / test 两个带「测试」的步)。成功会推进
+	 * 当前步的最近一次测试失败(仅 adapter / test 两个带「测试」的步,且只翻**启用
+	 * 中**那些的账)。成功会推进
 	 * 子步、换链重置聚光灯;失败既不开弹窗也不换链 —— 「按下即退散」的灯永远回不
 	 * 来,报错只在页面 toast 闪 2 秒。text 上小卡讲原因;at(lastCheckedAt)每次
 	 * 尝试必变,供同因连败也能触发灯重亮。不属于当前步的旧失败保持沉默。
@@ -77,11 +78,15 @@ export function deriveOnboarding(inputs: OnboardingInputs): OnboardingView {
 	const activeKey = steps.find((s) => !s.done)?.key ?? null;
 	return {
 		steps,
+		// 两边都只翻**启用中**那些的账。test 步的 done 判据刻意不看 enabled(测通过
+		// 就算数,事后禁用不该把它收回去),但失败是另一回事:用户此刻要测的是还
+		// 启用着的目标,被禁用目标上周留下的旧账既不是他的问题也不是他改得动的东西,
+		// 拿它当当前失败讲纯属误导(2026-08-31 审查)。
 		failNote:
 			activeKey === "adapter"
 				? failNoteFrom(inputs.adapters.filter((a) => a.enabled))
 				: activeKey === "test"
-					? failNoteFrom(inputs.targets)
+					? failNoteFrom(inputs.targets.filter((t) => t.enabled))
 					: null,
 		tails: [
 			{ key: "image", done: inputs.modules?.image === true },

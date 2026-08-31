@@ -207,6 +207,27 @@ describe("deriveOnboarding failNote", () => {
 		expect(v.failNote).toEqual({ text: "发送超时", at: "t2" });
 	});
 
+	/**
+	 * 与上面那条 adapter 的镜像。test 步的 **done** 判据刻意不看 enabled(测通过
+	 * 就算数,事后禁用不该把它收回去)—— 但**失败**是另一回事:用户此刻要测的是
+	 * 那些还启用着的目标,被禁用目标上周留下的旧账既不是他的问题,也不是他改得动
+	 * 的东西。不过滤的话小卡会拿旧账当当前失败讲(2026-08-31 审查)。
+	 */
+	it("test 步:disabled 目标的旧失败不算 —— 讲的必须是用户此刻要测的那条", () => {
+		const v = deriveOnboarding(
+			inputs({
+				biliLoggedIn: true,
+				adapters: [{ enabled: true, testStatus: { ok: true } }],
+				targets: [
+					{ enabled: false, testStatus: { ok: false, err: "上周的旧账", lastCheckedAt: "t0" } },
+					{ enabled: true },
+				],
+			}),
+		);
+		expect(v.activeKey).toBe("test");
+		expect(v.failNote).toBeNull();
+	});
+
 	it("失败不属于当前步就沉默 —— login 未完成时不翻适配器的旧账", () => {
 		const v = deriveOnboarding(
 			inputs({
