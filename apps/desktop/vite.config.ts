@@ -5,6 +5,10 @@ import { defineConfig, type PluginOption } from "vite";
 // 启动页(launcher)的 vite 工程。Tauri 侧接线在 src-tauri/tauri.conf.json:
 // dev 用 devUrl 指到这里的 dev server(beforeDevCommand 拉起),build 产物落
 // ../dist 由 frontendDist 消费。端口 strictPort —— devUrl 是写死的,漂了就白等。
+// before* 两条命令写的是 `../../node_modules/.bin/vp` 而不是裸 `vp`,别嫌啰嗦改回去:
+// tauri 解析它们时会逐级向上收集 node_modules/.bin,而本仓嵌在另一个项目里,外层那份
+// 旧 vp 会排在前面被选中(实测打出 VITE+ v0.2.1)。scripts/tauri-before-command.test.mjs
+// 钉住这件事,那里写了完整的踩坑经过。
 // plugins 那句 `as PluginOption[]` 去不得。hoisted 布局下顶层 vite 槽被 koishi 的
 // vite 5 占着,两个插件各自嵌套一份 Vite+ core 副本 —— 内容字节相同、路径不同,TS 就
 // 当成两个身份,只能走结构比对并撑爆递归上限(TS2321 Excessive stack depth)。断言给了

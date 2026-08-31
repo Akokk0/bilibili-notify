@@ -4,9 +4,9 @@
 	"version": "0.0.0-dev",
 	"identifier": "moe.akokko.bilibili-notify",
 	"build": {
-		"beforeDevCommand": "vp run front:dev",
+		"beforeDevCommand": "../../node_modules/.bin/vp run front:dev",
 		"devUrl": "http://localhost:1421",
-		"beforeBuildCommand": "vp run front:build",
+		"beforeBuildCommand": "../../node_modules/.bin/vp run front:build",
 		"frontendDist": "../dist"
 	},
 	"app": {
