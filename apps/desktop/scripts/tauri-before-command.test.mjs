@@ -36,11 +36,31 @@ describe("tauri before* 命令", () => {
 			expect(command).not.toMatch(/^\s*vpx?r?\s/);
 		});
 
-		it(`${key} 指到的是本仓的 vp,而且那个文件真的在`, () => {
-			// tauri 实测以 apps/desktop 为 cwd 跑 before* 命令,相对路径按它解析。
+		/**
+		 * 这条是 2026-08-31 v0.8.0 发版当场用一次 Windows 构建失败换来的。
+		 *
+		 * 上一版把第一个词写成了 `../../node_modules/.bin/vp`,macOS 上好好的
+		 * —— 但 tauri 在 Windows 上是拿 `cmd /C` 跑 before* 命令的,cmd **不能把
+		 * 正斜杠相对路径当命令名执行**,原地回一句
+		 * `'..' is not recognized as an internal or external command`;
+		 * 何况 `.bin/vp` 是 shell 脚本,Windows 上要走的是同目录的 `vp.cmd`。
+		 *
+		 * 所以第一个词必须是**能在 PATH 上找到的裸命令名**(`node`),真正的路径
+		 * 降级成它的参数 —— 参数位置上 Node 两个平台都认正斜杠。
+		 * 本地在 macOS 上验这个文件是验不出来的,只有这条断言拦得住。
+		 */
+		it(`${key} 的第一个词是 PATH 上的裸命令 —— Windows 的 cmd 执行不了相对路径`, () => {
 			const bin = command.split(/\s+/)[0];
-			expect(bin).toBe("../../node_modules/.bin/vp");
-			expect(existsSync(resolve(desktopRoot, bin))).toBe(true);
+			expect(bin).not.toMatch(/[/\\]/);
+		});
+
+		it(`${key} 经 node 跑本仓那份 vp,而且那个文件真的在`, () => {
+			// tauri 实测以 apps/desktop 为 cwd 跑 before* 命令,相对路径按它解析。
+			const [bin, script] = command.split(/\s+/);
+			expect(bin).toBe("node");
+			// .bin/ 里的是 shim(Windows 上是 vp.cmd),这里要的是真身那个 JS。
+			expect(script).toBe("../../node_modules/vite-plus/bin/vp");
+			expect(existsSync(resolve(desktopRoot, script))).toBe(true);
 		});
 	}
 });
