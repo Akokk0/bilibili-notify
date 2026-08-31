@@ -766,6 +766,31 @@ describe("TourCompanion 常驻小卡", () => {
 		await waitFor(() => expect(screen.getAllByTestId("tour-spot-frame").length).toBe(1));
 	});
 
+	/**
+	 * 选中的适配器是 webhook 时,`target-add` **一处都不渲染** —— 右上「+ 新建推送
+	 * 目标」被 platform 判断掐掉,空态 AddCard 走的是另一条分支。链只有
+	 * `["target-form", "target-add"]` 的话解析不到任何元素:灯不亮、锁不铺,小卡却
+	 * 还在说「点高亮的『+ 新建』」;而人已经在 /targets 上,连「点亮起的页签前往」
+	 * 那条降级提示都被抑制,导览彻底死在这儿(2026-08-31 审查)。
+	 */
+	it("target 步:「+ 新建」这个挂点整个不存在(webhook)时,灯回落到目标区,不留死胡同", async () => {
+		const list = document.createElement("div");
+		list.setAttribute("data-tour", "target-list");
+		document.body.appendChild(list);
+		await mount({
+			loggedIn: true,
+			adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+			targets: [{ id: "t1", enabled: false }],
+			route: "/targets",
+		});
+		await screen.findByText("添加推送目标");
+		await waitFor(() =>
+			expect(screen.getByTestId("tour-spotlight").getAttribute("data-target")).toBe(
+				'[data-tour="target-list"]',
+			),
+		);
+	});
+
 	it("子步只向前翻页:永远没有「上一步」(单向流转定案)", async () => {
 		await mount({ loggedIn: true, route: "/targets" });
 		await screen.findByText("新建推送适配器");

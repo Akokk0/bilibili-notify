@@ -132,8 +132,13 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 	target: [
 		{
 			route: "/targets",
-			// 同 adapter:弹窗内让位;target-add 挂右上按钮与空态 AddCard 两处,一起亮
-			anchor: ["target-form", "target-add"],
+			// 同 adapter:弹窗内让位;target-add 挂右上按钮与空态 AddCard 两处,一起亮。
+			// 末尾必须留 target-list 兜底:**选中的适配器是 webhook 时 target-add 一处
+			// 都不渲染**(右上按钮被 platform 判断掐掉,空态 AddCard 走的是另一条分支),
+			// 链解析不到任何元素 → 灯不亮、锁不铺,而小卡还在说「点高亮的『+ 新建』」,
+			// 指着一个不存在的东西;又因为人已经在目标路由上,「点亮起的页签前往」那条
+			// 降级提示也被抑制,导览就此死在这儿(2026-08-31 审查)。test 步早有这条兜底。
+			anchor: ["target-form", "target-add", "target-list"],
 			title: "添加推送目标",
 			body: "点高亮的「+ 新建」,选刚才的适配器,指定发到哪:OneBot 直接填群号或 QQ 号;QQ 官方要先在 QQ 里给机器人发一句话,然后在表单里选出现的会话。保存后自动进入下一步。",
 		},
