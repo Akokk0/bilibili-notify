@@ -97,7 +97,11 @@ describe("QQQrBindButton", () => {
 		await waitFor(() => expect(screen.getByText(/未返回完整机器人凭据/)).toBeTruthy(), POLLED);
 		expect(screen.getAllByText(/手动填写/).length).toBeGreaterThan(0);
 		const polls = postMock.mock.calls.filter(([p]) => p === "/api/qq/bind/poll").length;
-		await new Promise((r) => setTimeout(r, 20));
+		// 等**足一整轮**再数。这里曾写死 20ms:`interval` 从 0 改成 1 的那次,
+		// 一轮变成 1000ms,于是就算 error 分支忘了 return,20ms 内也不可能有下一发 ——
+		// 断言从此永远成立(2026-08-31 审查)。间隔从 pollDelayMs 现算,以后再怎么
+		// 调 interval 都不会重新变成空跑。
+		await new Promise((r) => setTimeout(r, pollDelayMs(START_OK.interval) + 300));
 		expect(postMock.mock.calls.filter(([p]) => p === "/api/qq/bind/poll").length).toBe(polls);
 	});
 
