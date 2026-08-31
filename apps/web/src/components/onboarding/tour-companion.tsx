@@ -171,6 +171,9 @@ export function TourCompanion() {
 	// 毕业活口:标记自动写下后,🎉 卡还得站到用户点「收起」为止,别被 invalidate
 	// 回流的 choice=true 当场掐没
 	const [justGraduated, setJustGraduated] = useState(false);
+	// 「本会话已经替这台实例写过毕业标记」的重入闸(见下方毕业 effect)。声明提到
+	// 这儿是因为**重新开启要把它抬起来** —— 详见 reopen effect 里那段。
+	const markedRef = useRef(false);
 	// 只有导览真开着(要指引 + 卡摊开)才轮询判据 —— 这是全站唯一的长期定时请求
 	const { view } = useOnboardingState({ poll: choice === false && !collapsed });
 
@@ -196,6 +199,11 @@ export function TourCompanion() {
 		prevReopenRef.current = reopenSeq;
 		setAskDismissed(false);
 		setAskPhase("ask");
+		// 毕业闸抬起来:本会话毕业过的人再点「重新开启」时,判据仍然全绿 → 又渲染
+		// 🎉 卡,而闸挡着不会重走自动写标记那一拍。于是卡上唯一那颗「收起」只剩
+		// setJustGraduated(false) —— choice===false 时这个值根本不参与渲染判断,
+		// 按钮成了摆设,贺卡关不掉(2026-08-31 审查)。抬闸即可回到正常那条路。
+		markedRef.current = false;
 		toggleCollapsed(false);
 	}, [reopenSeq]);
 
@@ -310,8 +318,8 @@ export function TourCompanion() {
 
 	// 毕业即记标记(= 关掉导览):否则走完五步的人下次开面板还会见到 🎉 卡 ——
 	// 它已经没有信息量了。只在 choice===false(明确在引导中)时写:还没回答询问框
-	// 的人毕不毕业都轮不到我们替他选。ref 挡重入,justGraduated 给 🎉 卡留活口。
-	const markedRef = useRef(false);
+	// 的人毕不毕业都轮不到我们替他选。ref 挡重入(重新开启时抬闸,见上方),
+	// justGraduated 给 🎉 卡留活口。
 	useEffect(() => {
 		if (choice !== false || !view?.allDone || markedRef.current) return;
 		markedRef.current = true;

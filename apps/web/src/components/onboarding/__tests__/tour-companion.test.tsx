@@ -234,6 +234,50 @@ describe("TourCompanion 常驻小卡", () => {
 			);
 		});
 
+		/**
+		 * 毕业写标记那一拍有个 ref 闸(markedRef)挡重入 —— 它一旦落下就再没抬起来过。
+		 * 于是「已经毕业的人在系统页点重新开启」这条路上:choice 回到 false、判据仍然
+		 * 全绿 → 渲染 🎉 卡,但自动写标记被闸挡住,而卡上唯一那颗「收起」只会
+		 * `setJustGraduated(false)` —— choice===false 时这个值根本不参与渲染判断。
+		 * 结果是一张关不掉的贺卡,除非去点「跳过指引」或刷新(2026-08-31 审查)。
+		 */
+		it("同一会话里毕业过、再重新开启指引:🎉 卡的「收起」照样谢幕,不是一颗死钮", async () => {
+			const s: Scenario = {
+				subs: [{ id: "s1" }],
+				adapters: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+				targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
+				route: "/system",
+			};
+			apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
+				s.skipped = (body as { onboarding: { skipped: boolean } }).onboarding.skipped;
+				return {};
+			});
+			const { qc } = await mount(s);
+			await screen.findByText("扫码登录 B 站");
+			// ① 本会话内走完最后一步 → 自动写标记(ref 闸在这一拍落下),🎉 卡谢幕
+			act(() => {
+				useAuthStore.setState({ snapshot: { status: BiliLoginStatus.LOGGED_IN, msg: "" } });
+			});
+			await screen.findByText(/全部配置完成/);
+			fireEvent.click(screen.getByRole("button", { name: "收起" }));
+			await waitFor(() =>
+				expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull(),
+			);
+			// ② 系统页「重新开启」= 写回 false + 发信号(两半各走各的通道)
+			s.skipped = false;
+			const { useOnboardingReopen } = await import("../../../store/onboarding");
+			await act(async () => {
+				useOnboardingReopen.getState().reopen();
+				await qc.invalidateQueries({ queryKey: ["globals"] });
+			});
+			expect(await screen.findByText(/全部配置完成/)).toBeTruthy();
+			// ③ 落下的闸不许把这颗按钮变成摆设
+			fireEvent.click(screen.getByRole("button", { name: "收起" }));
+			await waitFor(() =>
+				expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull(),
+			);
+		});
+
 		it("系统页「重新开启」信号 → 收着的导览重新展开", async () => {
 			localStorage.setItem("bn-tour-collapsed", "1");
 			await mount({ route: "/system" });
