@@ -15,6 +15,7 @@
 			"!.claude",
 			"!data",
 			"!apps/**/data",
+			"!apps/**/data.test-*",
 			"!apps/desktop/src-tauri/gen",
 			"!apps/desktop/src-tauri/resources",
 			"!apps/desktop/src-tauri/target",
