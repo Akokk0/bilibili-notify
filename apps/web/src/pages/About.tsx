@@ -39,7 +39,8 @@ const ReactMarkdown = lazy(() => import("react-markdown"));
  * 指引面板走懒加载 —— 它是 react-markdown / remark-gfm(约 153KB)与六份
  * `content/*.md?raw` 的唯一入口。静态引它等于把这一坨塞进初始包,连带把上面
  * 那句 `lazy(() => import("react-markdown"))` 变成摆设(库已在主包里,没东西
- * 可懒)。守卫见 components/ai-chat/__tests__/markdown-chunk.test.ts。
+ * 可懒)。守卫见 __tests__/markdown-chunk.test.ts —— 它从 main.tsx 爬静态可达图,
+ * 旧的那道(只扫 components/ai-chat/ 一个目录)正是漏掉本页这条路才被换掉的。
  */
 const GuidePanel = lazy(() =>
 	import("./guide/guide-panel").then((m) => ({ default: m.GuidePanel })),

@@ -49,8 +49,11 @@ import { useOnboardingState } from "./use-onboarding-view";
 const COLLAPSED_LS_KEY = "bn-tour-collapsed";
 
 /**
- * `null` = 这台浏览器还没人动过两态开关 —— 交给实例那笔 `onboarding.skipped` 决定。
- * 存过就以存的为准:「我在这台机器上想不想看见它」比实例标记更贴身。
+ * `null` = 这台浏览器还没人动过两态开关 → 按展开算。
+ *
+ * 这里**不回落到实例那笔 `onboarding.skipped`**:三态改版之后「不要指引」已经由
+ * `skipped=true` 整个不渲染接管了,轮不到收纳态代劳。collapsed 只回答一件更小的
+ * 事 ——「此刻在这台机器上,卡是摊开的还是收成标签」,所以它天生是 per-browser 的。
  */
 function readCollapsed(): boolean | null {
 	try {
@@ -121,11 +124,8 @@ export function TourCompanion() {
 	const tabRef = useRef<HTMLButtonElement>(null);
 	const cardRef = useRef<HTMLElement>(null);
 	// 折叠成左缘小标签(类似女仆 AI 胶囊):导览继续进行、进度照常刷新,只是
-	// 不占屏幕。这是唯一的收纳形态 —— 没有「彻底关闭」。
-	//
-	// 两个来源合成:本机存过的偏好优先,没存过则跟随实例那笔 `onboarding.skipped`
-	// (见下方 skipped)。所以「跳过」在别的浏览器打开也照样生效,而「我在这台机器
-	// 上把它展开了」不会被实例标记按回去。
+	// 不占屏幕。**纯 per-browser**,没存过就按展开算(见 readCollapsed)——
+	// 「要不要指引」是实例级的三态标记管的事,这里只管「此刻这台机器上摊开没有」。
 	const [collapsedPref, setCollapsedPref] = useState<boolean | null>(readCollapsed);
 	const toggleCollapsed = (v: boolean) => {
 		// iOS zoom 式 morph:翻转状态**之前**把「对方的矩形 pose」写进 CSS 变量,
