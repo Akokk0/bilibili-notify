@@ -335,6 +335,40 @@ describe("TourCompanion 常驻小卡", () => {
 		await waitFor(() => expect(screen.queryByTestId("tour-blocker")).toBeNull());
 	});
 
+	/**
+	 * 拦截块是「视口减洞集」的补集,视口尺寸必须**跟着测**。曾经只在渲染时读
+	 * `window.innerWidth/innerHeight`,而重渲染只由锚点 rect 的变化驱动 ——
+	 * 锚在顶栏页签(矩形与窗口尺寸无关)时把窗口拖大,rect 纹丝不动 → 不重渲染 →
+	 * 挡板还是旧尺寸。新露出来的那条边被暗幕(width=100%)涂黑了、却点得动:
+	 * 看着锁着,其实是开的(2026-08-31 审查)。
+	 */
+	it("窗口变大 → 引导锁跟着铺满新视口(锚点纹丝不动也要重算)", async () => {
+		const original = window.innerWidth;
+		try {
+			const anchorEl = document.createElement("div");
+			anchorEl.setAttribute("data-tour", "bili-login");
+			anchorEl.getBoundingClientRect = () => new DOMRect(100, 60, 80, 40);
+			document.body.appendChild(anchorEl);
+			await mount({ route: "/system" });
+			await screen.findByText("扫码登录 B 站");
+			const rightEdge = () => {
+				const blocks = [...screen.getByTestId("tour-blocker").children] as HTMLElement[];
+				return Math.max(
+					...blocks.map((b) => Number.parseFloat(b.style.left) + Number.parseFloat(b.style.width)),
+				);
+			};
+			await waitFor(() => expect(rightEdge()).toBe(original));
+			const wider = original + 400;
+			act(() => {
+				Object.defineProperty(window, "innerWidth", { value: wider, configurable: true });
+				window.dispatchEvent(new Event("resize"));
+			});
+			await waitFor(() => expect(rightEdge()).toBe(wider));
+		} finally {
+			Object.defineProperty(window, "innerWidth", { value: original, configurable: true });
+		}
+	});
+
 	it("聚光灯交互即退散:在锚点上按下后暗幕消失(别盖住点击弹出的内容)", async () => {
 		const anchorEl = document.createElement("div");
 		anchorEl.setAttribute("data-tour", "bili-login");

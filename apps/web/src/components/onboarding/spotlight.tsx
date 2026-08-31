@@ -142,6 +142,14 @@ export function Spotlight({ selectors }: { selectors: readonly string[] }) {
 		rects: DOMRect[];
 		/** 目标全在弹窗里 —— 聚光灯整个让位 */
 		inModal: boolean;
+		/**
+		 * 拦截块的补集要按视口算,所以视口尺寸得**跟着测**、进比较、进 state。
+		 * 只在渲染时读 `window.innerWidth/innerHeight` 的话:重渲染由锚点 rect
+		 * 的变化驱动,而锚在顶栏页签(矩形与窗口尺寸无关)时把窗口拖大,rect 纹丝
+		 * 不动 → 不重渲染 → 挡板还是旧尺寸。新露出来那条边被暗幕(width=100%)
+		 * 涂黑了却点得动:看着锁着,其实是开的(2026-08-31 审查)。
+		 */
+		viewport: { width: number; height: number };
 	} | null>(null);
 	const [dismissedSelector, setDismissedSelector] = useState<string | null>(null);
 	const lastScrolledRef = useRef<string | null>(null);
@@ -168,7 +176,7 @@ export function Spotlight({ selectors }: { selectors: readonly string[] }) {
 			return null;
 		};
 		// 一次完整测量。返回「这次和上次不一样吗」—— 用来决定还要不要逐帧盯着。
-		let last: { selector: string; rects: DOMRect[]; inModal: boolean } | null = null;
+		let last: NonNullable<typeof view> | null = null;
 		const measure = (): boolean => {
 			const found = resolve();
 			if (!found) {
@@ -187,13 +195,16 @@ export function Spotlight({ selectors }: { selectors: readonly string[] }) {
 				pageEls[0].scrollIntoView({ block: "center", behavior: "smooth" });
 			}
 			const rects = pageEls.map((el) => el.getBoundingClientRect());
+			const viewport = { width: window.innerWidth, height: window.innerHeight };
 			const changed =
 				last === null ||
 				last.selector !== found.selector ||
 				last.inModal !== inModal ||
+				last.viewport.width !== viewport.width ||
+				last.viewport.height !== viewport.height ||
 				rectsDiffer(last.rects, rects);
 			if (changed) {
-				last = { selector: found.selector, rects, inModal };
+				last = { selector: found.selector, rects, inModal, viewport };
 				setView(last);
 			}
 			return changed;
@@ -275,7 +286,7 @@ export function Spotlight({ selectors }: { selectors: readonly string[] }) {
 		})),
 	);
 	const blocks = subtractRects(
-		{ top: 0, left: 0, width: window.innerWidth, height: window.innerHeight },
+		{ top: 0, left: 0, width: view.viewport.width, height: view.viewport.height },
 		holes,
 	);
 	return createPortal(
