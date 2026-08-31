@@ -23,7 +23,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
-import { Field, Picker, TInput, TNum, TSelect } from "../components/forms";
+import { FIELD_ROW_CHROME, Field, Picker, TInput, TNum, TSelect } from "../components/forms";
 import { QQQrBindButton } from "../components/qq-qr-bind";
 import { ApiError, api } from "../services/api";
 import {
@@ -572,7 +572,9 @@ function AdapterConnectionFields({
 		const setCfg = (next: QQOfficialAdapterConfig) => onChange({ ...adapter, config: next });
 		return (
 			<>
-				<div className="flex flex-wrap items-center gap-3 border-b border-dashed border-bn-border-subtle py-2.5">
+				{/* 行框吃 Field 的 FIELD_ROW_CHROME —— 扫码行要与底下的字段行排同一栏,
+				    此前逐字符手抄,行距一漂两种行就对不齐。 */}
+				<div className={`flex flex-wrap items-center gap-3 ${FIELD_ROW_CHROME}`}>
 					<QQQrBindButton
 						// 回填 = 「用扫出来的这个 lite bot」,顺手把域/沙箱归到它的正确档:
 						// lite bot 无原生 markdown 特权,留在私域档会让图集推送必败。

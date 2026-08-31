@@ -59,6 +59,13 @@ export interface FieldProps {
 	children: ReactNode;
 }
 
+/**
+ * Field 行的「行框」—— 虚线分隔 + 行距,末行免割。导出给**要与 Field 列表排在
+ * 同一栏里的非 Field 行**用(Targets 的 QQ 扫码行):此前那边逐字符手抄,行距
+ * 一漂,扫码行和底下的字段行就对不齐了。
+ */
+export const FIELD_ROW_CHROME = "border-b border-dashed border-bn-border-subtle py-2.5";
+
 export function Field({ code, label, hint, required, full, children }: FieldProps) {
 	const entry: FieldLabel | null = getFieldLabel(code);
 	const effectiveLabel: ReactNode = label ?? entry?.label ?? code;
@@ -68,7 +75,7 @@ export function Field({ code, label, hint, required, full, children }: FieldProp
 	return (
 		<div
 			data-code={code}
-			className={`border-b border-dashed border-bn-border-subtle py-2.5 ${
+			className={`${FIELD_ROW_CHROME} ${
 				full ? "flex flex-col gap-1.5" : "flex flex-row gap-3.5"
 			} last:border-b-0`}
 		>
