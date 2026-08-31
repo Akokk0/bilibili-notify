@@ -56,6 +56,20 @@ packages:
 # `vite-plus@<v>` and every `@voidzero-dev/vite-plus-<platform>@<v>` binary, since
 # those are published in the same minute. Otherwise: just wait 24h, which is the
 # entire point of the policy.
+# Known and accepted: these scoped overrides leave MORE THAN ONE physical copy
+# of the aliased core on disk. Top-level `node_modules/vite` is taken by
+# @koishijs/client's vite 5, so @vitejs/plugin-react and @tailwindcss/vite (both
+# hoisted to the top level) each carry their own nested copy of the alias. The
+# copies are byte-identical — same package, same version — they just sit at
+# different paths, which is enough for TypeScript to treat them as separate
+# identities: `Plugin` no longer matches `PluginOption` by symbol, the compare
+# goes structural, and it blows the recursion limit (TS2321 "Excessive stack
+# depth"). That is why no package typechecks its own vite.config.ts, and why the
+# invariant the overrides actually care about — every frontend resolving `vite`
+# to vite-plus-core — is pinned by scripts/vite-alias.test.mjs instead.
+# Giving the top slot to the alias (a root `vite: npm:...` devDep) does collapse
+# the copies, but it also takes vitest's separately-nested vite away, which the
+# note above deliberately fences off. Not worth it for a type-only symptom.
 overrides:
   "@bilibili-notify/web>vite": "npm:@voidzero-dev/vite-plus-core@0.3.0"
   "@bilibili-notify/astrbot-page>vite": "npm:@voidzero-dev/vite-plus-core@0.3.0"
