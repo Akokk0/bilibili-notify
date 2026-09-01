@@ -11,59 +11,61 @@ import { dropLegacyWebDistDir, resolveWebDistDir } from "../web-dist.js";
  */
 describe("resolveWebDistDir", () => {
 	it("没配过 → 跟着当前载荷走,而不是镜像里那份", () => {
-		const dir = resolveWebDistDir({
+		const resolved = resolveWebDistDir({
 			configured: undefined,
 			envValue: undefined,
 			bundleUrl: "file:///data/versions/0.9.0/index.mjs",
 		});
 
-		expect(dir).toBe("/data/versions/0.9.0/web-dist");
+		expect(resolved).toEqual({ dir: "/data/versions/0.9.0/web-dist", source: "payload" });
 	});
 
 	it("用户自己填了别的路径 → 完全照听,不替他做主", () => {
-		const dir = resolveWebDistDir({
+		const resolved = resolveWebDistDir({
 			configured: "/srv/my-dashboard",
 			envValue: undefined,
 			bundleUrl: "file:///data/versions/0.9.0/index.mjs",
 		});
 
-		expect(dir).toBe("/srv/my-dashboard");
+		// source 是给诊断用的:explicit 时才有资格说「你钉死了目录,升级不会带着它走」,
+		// 也才知道**不能**把目录空着赖到载荷头上(那是用户自己指的路)。
+		expect(resolved).toEqual({ dir: "/srv/my-dashboard", source: "explicit" });
 	});
 
 	it("yaml 里那个机器种的 /app/web-dist 表示「跟着载荷」,不是字面路径", () => {
 		// 这个值从来不是用户的决定 —— 是首启动时 BN_WEB_DIST 被 seed 进去的,
 		// 界面上根本没有这个字段。正常路径下它会被一次性迁移删掉;这里是兜底:
 		// /config 只读挂载时迁移写不进去,那条路上也不能让用户坏掉。
-		const dir = resolveWebDistDir({
+		const resolved = resolveWebDistDir({
 			configured: "/app/web-dist",
 			envValue: undefined,
 			bundleUrl: "file:///data/versions/0.9.0/index.mjs",
 		});
 
-		expect(dir).toBe("/data/versions/0.9.0/web-dist");
+		expect(resolved).toEqual({ dir: "/data/versions/0.9.0/web-dist", source: "payload" });
 	});
 
 	it("环境变量里的哨兵值同样处理 —— 规则只有一条", () => {
 		// 有人可能从旧文档抄了 BN_WEB_DIST=/app/web-dist 进 compose。只管 yaml 不管
 		// env 的话,这批人升完照样坏,而且症状一模一样、更难查。
-		const dir = resolveWebDistDir({
+		const resolved = resolveWebDistDir({
 			configured: undefined,
 			envValue: "/app/web-dist",
 			bundleUrl: "file:///data/versions/0.9.0/index.mjs",
 		});
 
-		expect(dir).toBe("/data/versions/0.9.0/web-dist");
+		expect(resolved).toEqual({ dir: "/data/versions/0.9.0/web-dist", source: "payload" });
 	});
 
 	it("跑镜像自带那份时,行为和今天一模一样", () => {
 		// 这条是回归护栏:上面那些改动**不能**动到现有部署的行为。
-		const dir = resolveWebDistDir({
+		const resolved = resolveWebDistDir({
 			configured: "/app/web-dist",
 			envValue: undefined,
 			bundleUrl: "file:///app/index.mjs",
 		});
 
-		expect(dir).toBe("/app/web-dist");
+		expect(resolved).toEqual({ dir: "/app/web-dist", source: "payload" });
 	});
 });
 

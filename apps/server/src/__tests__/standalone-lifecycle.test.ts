@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { type StandaloneServerHandle, startStandaloneServer } from "../index.js";
 
@@ -48,6 +49,17 @@ describe("standalone server lifecycle", () => {
 	beforeEach(async () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-standalone-"));
 	});
+
+	/**
+	 * 摆一份「当前跑的载荷」:`<dir>/index.mjs` 与它同级的 `web-dist/`。
+	 * 真实部署里这就是 `/app/` 或升级后的 `/data/versions/<ver>/`。
+	 */
+	async function seedPayloadWebDist(title: string): Promise<{ bundleUrl: string; dir: string }> {
+		const dir = await mkdtemp(join(dataDir, "payload-"));
+		await mkdir(join(dir, "web-dist"), { recursive: true });
+		await writeFile(join(dir, "web-dist", "index.html"), `<!doctype html><title>${title}</title>`);
+		return { bundleUrl: pathToFileURL(join(dir, "index.mjs")).href, dir };
+	}
 
 	afterEach(async () => {
 		await handle?.close("test cleanup").catch(() => {});
@@ -145,15 +157,10 @@ describe("standalone server lifecycle", () => {
 		expect((await health.json()) as Record<string, unknown>).toMatchObject({ status: "ok" });
 	});
 
-	it("已有 bootstrap yaml 和 BN_WEB_DIST 都缺失时回退到默认 web-dist 目录", async () => {
+	it("已有 bootstrap yaml 和 BN_WEB_DIST 都缺失时回退到载荷旁边那份 web-dist", async () => {
 		const port = await findFreePort();
 		const configPath = join(dataDir, "bn.config.yaml");
-		const defaultWebDistDir = join(dataDir, "default-web-dist");
-		await mkdir(defaultWebDistDir, { recursive: true });
-		await writeFile(
-			join(defaultWebDistDir, "index.html"),
-			"<!doctype html><title>bn default dashboard</title>",
-		);
+		const payload = await seedPayloadWebDist("bn payload dashboard");
 		await writeFile(
 			configPath,
 			`server:\n  host: 127.0.0.1\n  port: ${port}\ndataDir: ${JSON.stringify(dataDir)}\nlogLevel: silent\n`,
@@ -162,14 +169,67 @@ describe("standalone server lifecycle", () => {
 		handle = await startStandaloneServer({
 			argv: [],
 			env: { BN_CONFIG: configPath },
-			defaultWebDistDir,
+			bundleUrl: payload.bundleUrl,
 			shutdownTimeoutMs: 1_000,
 		});
 
 		const root = await fetch(`${handle.url}/`, { headers: { connection: "close" } });
 		expect(root.status).toBe(200);
 		expect(root.headers.get("content-type")).toContain("text/html");
-		expect(await root.text()).toContain("bn default dashboard");
+		expect(await root.text()).toContain("bn payload dashboard");
+	});
+
+	/**
+	 * 在线升级之后,`/app/web-dist` 里躺的是**镜像自带的那份旧前端**,而新服务端
+	 * 在 `/data/versions/<新版>/` 下跑。yaml 里那句 `webDistDir: /app/web-dist`
+	 * 不是用户填的(界面上没这个字段),是首启动 seed 进去的 —— 照字面听它,升级后
+	 * 就是「新服务端配旧前端」,而且**不报错**,直到某个改过的接口对不上才炸。
+	 * AstrBot 的 core/dashboard 错配就是这个形态。
+	 */
+	it("yaml 里留着首启动 seed 的 /app/web-dist 时,dashboard 仍跟着当前载荷走", async () => {
+		const port = await findFreePort();
+		const configPath = join(dataDir, "bn.config.yaml");
+		const payload = await seedPayloadWebDist("bn payload dashboard");
+		await writeFile(
+			configPath,
+			`server:\n  host: 127.0.0.1\n  port: ${port}\ndataDir: ${JSON.stringify(dataDir)}\nlogLevel: silent\nwebDistDir: /app/web-dist\n`,
+		);
+
+		handle = await startStandaloneServer({
+			argv: [],
+			env: { BN_CONFIG: configPath },
+			bundleUrl: payload.bundleUrl,
+			shutdownTimeoutMs: 1_000,
+		});
+
+		const root = await fetch(`${handle.url}/`, { headers: { connection: "close" } });
+		expect(root.status).toBe(200);
+		expect(await root.text()).toContain("bn payload dashboard");
+	});
+
+	it("用户自己在 yaml 里指定了别的目录 → 照听,不替他跟着载荷走", async () => {
+		const port = await findFreePort();
+		const configPath = join(dataDir, "bn.config.yaml");
+		// 载荷旁边那份也在,用来证明「照听」不是碰巧撞上了兜底。
+		const payload = await seedPayloadWebDist("bn payload dashboard");
+		const ownDir = join(dataDir, "my-dashboard");
+		await mkdir(ownDir, { recursive: true });
+		await writeFile(join(ownDir, "index.html"), "<!doctype html><title>bn own dashboard</title>");
+		await writeFile(
+			configPath,
+			`server:\n  host: 127.0.0.1\n  port: ${port}\ndataDir: ${JSON.stringify(dataDir)}\nlogLevel: silent\nwebDistDir: ${JSON.stringify(ownDir)}\n`,
+		);
+
+		handle = await startStandaloneServer({
+			argv: [],
+			env: { BN_CONFIG: configPath },
+			bundleUrl: payload.bundleUrl,
+			shutdownTimeoutMs: 1_000,
+		});
+
+		const root = await fetch(`${handle.url}/`, { headers: { connection: "close" } });
+		expect(root.status).toBe(200);
+		expect(await root.text()).toContain("bn own dashboard");
 	});
 
 	it("installProcessHandlers:SIGTERM 触发 graceful close 后 exit(0),显式 close 会移除 handler", async () => {

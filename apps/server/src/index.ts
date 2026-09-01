@@ -14,6 +14,7 @@ import { createWsTicketStore } from "./auth/ws-ticket.js";
 import { createBackupService } from "./backup/service.js";
 import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
 import { type ChromeSource, persistChromeSource } from "./config/persist.js";
+import { type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
@@ -50,7 +51,6 @@ import { createWsServer } from "./ws/server.js";
 import type { LogEntry } from "./ws/types.js";
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
-const DEFAULT_WEB_DIST_DIR = "/app/web-dist";
 
 export interface StandaloneServerHandle {
 	readonly host: string;
@@ -64,7 +64,11 @@ export interface StartStandaloneServerOptions {
 	env?: NodeJS.ProcessEnv;
 	installProcessHandlers?: boolean;
 	shutdownTimeoutMs?: number;
-	defaultWebDistDir?: string;
+	/**
+	 * 当前这份载荷的入口 URL,dashboard 静态资源按它就近解析
+	 * (见 `config/web-dist.ts`)。只有测试需要传 —— 真实运行永远是本模块自己。
+	 */
+	bundleUrl?: string;
 }
 
 export async function startStandaloneServer(
@@ -505,20 +509,21 @@ export async function startStandaloneServer(
 		const webDist = await resolveEffectiveWebDistDir({
 			configured: bootstrap.webDistDir,
 			envValue: normalizeOptionalEnv(env.BN_WEB_DIST),
-			defaultDir: options.defaultWebDistDir ?? DEFAULT_WEB_DIST_DIR,
+			bundleUrl: options.bundleUrl ?? import.meta.url,
 		});
 		const effectiveWebDistDir = webDist.dir;
-		if (webDist.source === "env") {
+		// 两条告警都只对 B 模型(容器)说 —— 桌面壳是拿 `--web-dist` 指着自己安装目录
+		// 里那份资源起 sidecar 的,那是设计,不是配错,不该每次启动都被念一遍。
+		const isBootstrapFileModel = Boolean(normalizeOptionalEnv(env.BN_CONFIG));
+		if (webDist.source === "explicit" && isBootstrapFileModel) {
+			// 钉死一个绝对路径 = 前端不再跟着载荷走。在线升级之后这里仍指着旧那份,
+			// 症状是「升完了界面没变 / 某个新功能点了没反应」,而且服务端一声不吭。
 			log.warn(
-				`bootstrap config missing webDistDir, using BN_WEB_DIST=${webDist.dir}. 请把 webDistDir: ${webDist.dir} 写入 /config/bn.config.yaml,或删除旧配置让容器重新生成。`,
+				`webDistDir is pinned to ${webDist.dir}; dashboard assets will NOT follow in-app updates. 想让它跟着升级走,就把 webDistDir(或 BN_WEB_DIST)删掉。`,
 			);
-		} else if (webDist.source === "default") {
+		} else if (webDist.source === "disabled" && isBootstrapFileModel) {
 			log.warn(
-				`bootstrap config missing webDistDir and BN_WEB_DIST is empty; found ${webDist.defaultDir}/index.html, using ${webDist.defaultDir}. 请把 webDistDir: ${webDist.defaultDir} 写入 /config/bn.config.yaml,或删除旧配置让容器重新生成。`,
-			);
-		} else if (webDist.source === "disabled" && normalizeOptionalEnv(env.BN_CONFIG)) {
-			log.warn(
-				`dashboard static assets disabled: bootstrap config missing webDistDir, BN_WEB_DIST is empty, and ${webDist.defaultDir}/index.html was not found. Dashboard GET / will return 404; 请把 webDistDir 写入 /config/bn.config.yaml,或删除旧配置让容器重新生成。`,
+				`dashboard static assets disabled: ${webDist.payloadDir}/index.html was not found. Dashboard GET / will return 404;载荷似乎不完整,建议重拉镜像或重装。`,
 			);
 		}
 		if (effectiveWebDistDir) {
@@ -639,23 +644,30 @@ export async function startStandaloneServer(
 	}
 }
 
-type WebDistDirSource = "config" | "env" | "default" | "disabled";
+type WebDistDirSource = "explicit" | "payload" | "disabled";
 
-async function resolveEffectiveWebDistDir(options: {
-	configured: string | undefined;
-	envValue: string | undefined;
-	defaultDir: string;
-}): Promise<{ dir?: string; source: WebDistDirSource; defaultDir: string }> {
-	if (options.configured) {
-		return { dir: options.configured, source: "config", defaultDir: options.defaultDir };
-	}
-	if (options.envValue) {
-		return { dir: options.envValue, source: "env", defaultDir: options.defaultDir };
-	}
-	if (await hasReadableIndexHtml(options.defaultDir)) {
-		return { dir: options.defaultDir, source: "default", defaultDir: options.defaultDir };
-	}
-	return { source: "disabled", defaultDir: options.defaultDir };
+/**
+ * {@link resolveWebDistDir} 之上再加一道存在性探测。
+ *
+ * 分两种来源区别对待:**用户点名的目录照单全收**(空着也是他的决定,我们不替他改主意);
+ * **跟着载荷算出来的那个只是推断**,里面没有 `index.html` 就说明这份载荷根本没带前端 ——
+ * 与其挂一个空壳目录让所有请求撞进 404,不如干脆不挂,日志里说清楚。
+ */
+async function resolveEffectiveWebDistDir(
+	input: ResolveWebDistDirInput,
+): Promise<{ dir?: string; source: WebDistDirSource; payloadDir: string }> {
+	const { dir, source } = resolveWebDistDir(input);
+	const payloadDir =
+		source === "payload"
+			? dir
+			: resolveWebDistDir({
+					configured: undefined,
+					envValue: undefined,
+					bundleUrl: input.bundleUrl,
+				}).dir;
+	if (source === "explicit") return { dir, source, payloadDir };
+	if (await hasReadableIndexHtml(dir)) return { dir, source: "payload", payloadDir };
+	return { source: "disabled", payloadDir };
 }
 
 async function hasReadableIndexHtml(dir: string): Promise<boolean> {

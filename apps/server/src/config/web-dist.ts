@@ -24,6 +24,18 @@ export interface ResolveWebDistDirInput {
 	bundleUrl: string;
 }
 
+export interface ResolvedWebDistDir {
+	dir: string;
+	/**
+	 * 这个目录是**用户点名的**还是**跟着载荷算出来的**。
+	 *
+	 * 决定了诊断怎么说:点名的目录要提醒「钉死了就不会跟着在线升级走」;算出来的那个
+	 * 若连 `index.html` 都没有,说的是「这份载荷不完整」—— 反过来把用户自己指的空目录
+	 * 赖到载荷头上,只会把人带沟里。
+	 */
+	source: "explicit" | "payload";
+}
+
 /**
  * dashboard 静态资源目录。
  *
@@ -41,9 +53,10 @@ export function resolveWebDistDir({
 	configured,
 	envValue,
 	bundleUrl,
-}: ResolveWebDistDirInput): string {
+}: ResolveWebDistDirInput): ResolvedWebDistDir {
 	const explicit = pickExplicit(configured) ?? pickExplicit(envValue);
-	return explicit ?? join(dirname(fileURLToPath(bundleUrl)), "web-dist");
+	if (explicit) return { dir: explicit, source: "explicit" };
+	return { dir: join(dirname(fileURLToPath(bundleUrl)), "web-dist"), source: "payload" };
 }
 
 function pickExplicit(value: string | undefined): string | undefined {
