@@ -167,6 +167,34 @@ export type OnboardingConfig = z.infer<typeof OnboardingConfigSchema>;
 /** 全新安装 = 还没问过:第一次开面板弹询问框,由用户自己选。 */
 export const DEFAULT_ONBOARDING: OnboardingConfig = {};
 
+/**
+ * 应用内自主升级的用户可调项。独立端专有(koishi / AstrBot 由各自宿主管更新)。
+ *
+ * 三条默认值都是产品定案,别顺手改:
+ *
+ * - **`channel` 默认正式版**。预发布按定义就是没验够的版本;自主升级已经把「发了个
+ *   坏版本」的爆炸半径放大到全体,默认把人放进预发布渠道等于再乘一次。
+ * - **`autoDownload` 默认开,但从不自动应用**。下载是无副作用的 —— 装进一个新的
+ *   版本目录,不碰正在跑的那份;应用要重启服务,那一刻推送会断、直播监听会掉,
+ *   必须是用户按下去的。
+ * - **`mirrors` 默认空**。硬编码一个第三方加速站当默认值,等于让每一个安装都去和
+ *   它说话,它哪天挂了或者易主,我们只能靠发新版本来收回这个默认值。签名保证了
+ *   代理站最多只能拒绝服务(改一个字节就验不过),但「默认和谁说话」仍然该是用户
+ *   的决定。列表**顺序即优先级**,直连永远排在用户填的这些之后。
+ */
+export const UpdateSettingsSchema = z.object({
+	channel: z.enum(["stable", "prerelease"]).default("stable"),
+	autoDownload: z.boolean().default(true),
+	mirrors: z.array(z.string()).default([]),
+});
+export type UpdateSettings = z.infer<typeof UpdateSettingsSchema>;
+
+export const DEFAULT_UPDATE_SETTINGS: UpdateSettings = {
+	channel: "stable",
+	autoDownload: true,
+	mirrors: [],
+};
+
 export const GlobalConfigSchema = z.object({
 	app: AppConfigSchema,
 	master: MasterConfigSchema,
@@ -209,6 +237,12 @@ export const GlobalConfigSchema = z.object({
 	 * `./onboarding-skipped.test.ts`。
 	 */
 	onboarding: OnboardingConfigSchema.default(DEFAULT_ONBOARDING),
+	/**
+	 * 自主升级的用户可调项。放顶层同 `commands` —— 它不是「per-UP overrides 缺字段
+	 * 时的回退」。`.default(...)` 是老配置兜底:独立端启动时 `parse` 会补上,
+	 * 少了它,存量实例升上来第一件事就是开不了机。
+	 */
+	update: UpdateSettingsSchema.default(DEFAULT_UPDATE_SETTINGS),
 	bootstrap: BootstrapConfigSchema.optional(),
 });
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
