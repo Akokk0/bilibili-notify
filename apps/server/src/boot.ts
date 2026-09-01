@@ -22,6 +22,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isEntrypoint } from "./runtime/entrypoint.js";
 import { markBootSucceeded, selectVersionForBoot } from "./update/select-version-for-boot.js";
+import { resolveVersionsRoot } from "./update/versions-root.js";
 
 /** 载荷必须长成这样才起得来。少了这个导出就当它坏了 —— 见文件头那条契约。 */
 interface PayloadModule {
@@ -141,7 +142,13 @@ if (isEntrypoint(import.meta.url)) {
 	void bootSelectedPayload({
 		imageVersion: readImageVersion(here),
 		imagePath: here,
-		versionsRoot: join(process.env.BN_DATA_DIR || "/data", "versions"),
+		// 桌面壳用 `--data-dir` 传用户数据目录,容器把它写在 yaml 里 —— 只看
+		// BN_DATA_DIR 的话这两条路都会去错目录找版本,而且两边都不报错。
+		versionsRoot: resolveVersionsRoot({
+			argv: process.argv.slice(2),
+			env: process.env,
+			cwd: process.cwd(),
+		}),
 		maxBootFailures: 3,
 		loadPayload: importPayload,
 		log: (msg) => process.stderr.write(`${msg}\n`),
