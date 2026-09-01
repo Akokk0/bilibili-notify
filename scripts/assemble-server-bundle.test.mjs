@@ -56,6 +56,8 @@ describe("assemble-server-bundle", () => {
 		);
 		expect(await readFile(join(distDir, "static", "render.js"), "utf8")).toContain("词云渲染函数");
 		expect(await readFile(join(distDir, "bn.config.example.yaml"), "utf8")).toContain("server");
+		// 镜像的 CMD 指着它。少了这个文件,整个镜像连启动都做不到。
+		expect(await readFile(join(distDir, "boot.mjs"), "utf8")).toContain("startStandaloneServer");
 		const pkg = JSON.parse(await readFile(join(distDir, "package.json"), "utf8"));
 		expect(pkg.name).toBe("@bilibili-notify/server");
 		// 自包含产物的 manifest 不携带依赖声明:deps 已内联进 bundle,照抄源
@@ -85,7 +87,10 @@ describe("assemble-server-bundle", () => {
 		// cwd **故意**不是 appDir:载荷自己的版本号得按模块位置解析,不能靠进程恰好
 		// 待在哪(server/src/routes/health.ts)。在线升级后 cwd 仍是容器的 /app,而新
 		// 载荷跑在 /data/versions/<新版>/ 下 —— 两者一旦分家,照 cwd 读就永远报旧版本。
-		const child = spawn(process.execPath, [join(appDir, "index.mjs")], {
+		// 起的是 **boot.mjs** —— 镜像的 CMD 就是它。它先决定跑哪一份载荷,再在同一个
+		// 进程里把那份加载起来;没有更新的载荷时就是镜像自带这份。直接起 index.mjs
+		// 的话,选版那一整段在发版前根本没人跑过。
+		const child = spawn(process.execPath, [join(appDir, "boot.mjs")], {
 			cwd: tempRoot,
 			stdio: ["ignore", "pipe", "pipe"],
 			env: {

@@ -25,6 +25,7 @@ import {
 	type QQInboundPrivateMessage,
 } from "./platforms/qq-official.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
+import { resolveAppVersion } from "./routes/health.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
 import {
 	type CommandSpec,
@@ -47,6 +48,12 @@ import { createRoastDraftStore } from "./runtime/roast-draft-store.js";
 import { createRoastScheduler } from "./runtime/roast-scheduler.js";
 import { createStatusCommand } from "./runtime/status-command.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
+import { createUpdateService } from "./update/service.js";
+import {
+	RELEASES_PAGE_URL,
+	TRUSTED_UPDATE_KEYS,
+	UPDATE_MANIFEST_URLS,
+} from "./update/trusted-keys.js";
 import { createWsServer } from "./ws/server.js";
 import type { LogEntry } from "./ws/types.js";
 
@@ -586,6 +593,28 @@ export async function startStandaloneServer(
 			},
 			// 面板上的「试一次」—— 调的就是 cron 到点调的那两个函数,不是模拟。
 			runRoastNow: (uid) => (uid ? roastScheduler.runSoloOnce(uid) : roastScheduler.runBoardOnce()),
+			update: {
+				service: createUpdateService({
+					currentVersion: resolveAppVersion(),
+					// boot.mjs 在加载这份载荷之前摆进来的(见 src/boot.ts)。直接跑
+					// index.mjs 时(dev / 老镜像)拿不到 —— 那就当自己就是地板,
+					// 「没得退」,而不是瞎猜一个版本号。
+					imageVersion: normalizeOptionalEnv(env.BN_IMAGE_VERSION) ?? resolveAppVersion(),
+					versionsRoot: join(bootstrap.dataDir, "versions"),
+					nodeMajor: Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10),
+					trustedKeys: TRUSTED_UPDATE_KEYS,
+					manifestUrls: UPDATE_MANIFEST_URLS,
+					releasesPageUrl: RELEASES_PAGE_URL,
+					// 每次现读:用户在面板上改完渠道 / 加速前缀,下一次检查就该按新的来。
+					readSettings: () => runtime.configStore.getGlobals().update,
+				}),
+				// 应用 = 优雅停机 + 退 0,由进程管理器把新版本拉起来。**退出码必须是 0**:
+				// 非 0 会被编排系统当成崩溃,退避重启甚至进 CrashLoopBackOff。
+				applyUpdate: async () => {
+					await close("update apply");
+					process.exit(0);
+				},
+			},
 		});
 		await new Promise<void>((resolveServe) => {
 			server = serve(

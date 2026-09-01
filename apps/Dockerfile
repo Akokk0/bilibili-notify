@@ -124,7 +124,7 @@ VOLUME ["/data", "/config"]
 EXPOSE 8787
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["node", "index.mjs"]
+CMD ["node", "boot.mjs"]
 
 # ---- runtime ----------------------------------------------------------------
 
@@ -171,4 +171,4 @@ EXPOSE 8787
 # tini ensures Node sees SIGTERM / SIGINT and shuts down cleanly (graceful path
 # in src/index.ts disposes engines, ws, puppeteer, http server in order).
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["node", "index.mjs"]
+CMD ["node", "boot.mjs"]
