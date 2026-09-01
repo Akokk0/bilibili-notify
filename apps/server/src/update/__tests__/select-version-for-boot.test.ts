@@ -2,7 +2,12 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { markBootSucceeded, selectVersionForBoot } from "../select-version-for-boot.js";
+import {
+	clearPinnedVersion,
+	markBootSucceeded,
+	pinVersion,
+	selectVersionForBoot,
+} from "../select-version-for-boot.js";
 
 /**
  * 进程启动最早期决定「跑哪一份」。
@@ -138,5 +143,128 @@ describe("selectVersionForBoot", () => {
 
 		expect(selection.version).toBe("0.10.0");
 		expect(selection.isImageVersion).toBe(true);
+	});
+});
+
+/**
+ * 回退 = **钉住**一个版本。
+ *
+ * 定案是「只保留当前 + 上一版,只退一步,不给版本列表」,所以这里不是一个通用的
+ * 版本选择器,而是一颗一次性的钉子:钉上之后选版不再按「取最新」走,直到我们
+ * 自己拔掉它。
+ */
+describe("selectVersionForBoot —— 回退用的钉子", () => {
+	it("钉住旧版之后就跑旧版,哪怕装着更新的载荷", () => {
+		const root = tempRoot();
+		const versionsRoot = versionsWith(root, "0.9.0", "0.10.0");
+		pinVersion({ versionsRoot, version: "0.9.0" });
+
+		const selection = selectVersionForBoot({
+			imageVersion: "0.8.0",
+			imagePath: "/app",
+			versionsRoot,
+			maxBootFailures: 3,
+		});
+
+		// 不钉的话这里会选 0.10.0 —— 而 0.10.0 正是用户刚刚退出来的那一版。
+		expect(selection.version).toBe("0.9.0");
+		expect(selection.isImageVersion).toBe(false);
+	});
+
+	it("钉住镜像自带那版 → 跑镜像那份", () => {
+		const root = tempRoot();
+		const versionsRoot = versionsWith(root, "0.9.0");
+		// 最常见的一次回退:只升过一次,上一版就是镜像自带的。
+		pinVersion({ versionsRoot, version: "0.8.0" });
+
+		const selection = selectVersionForBoot({
+			imageVersion: "0.8.0",
+			imagePath: "/app",
+			versionsRoot,
+			maxBootFailures: 3,
+		});
+
+		expect(selection).toEqual({ version: "0.8.0", path: "/app", isImageVersion: true });
+	});
+
+	it("钉住的版本起不来 → 自愈压过钉子,不能钉死在一个开不了机的版本上", () => {
+		const root = tempRoot();
+		const versionsRoot = versionsWith(root, "0.9.0", "0.10.0");
+		pinVersion({ versionsRoot, version: "0.9.0" });
+
+		// 用户退回 0.9.0,结果 0.9.0 在他这台机器上也起不来。钉子要是压过自愈,
+		// 他就再也进不去面板、也就再也拔不掉这颗钉子 —— 变成一个只能删 /data 才能
+		// 脱身的死局。
+		for (let i = 0; i < 3; i++)
+			selectVersionForBoot({
+				imageVersion: "0.8.0",
+				imagePath: "/app",
+				versionsRoot,
+				maxBootFailures: 3,
+			});
+
+		const selection = selectVersionForBoot({
+			imageVersion: "0.8.0",
+			imagePath: "/app",
+			versionsRoot,
+			maxBootFailures: 3,
+		});
+		expect(selection.version).not.toBe("0.9.0");
+	});
+
+	it("钉住的版本目录没了 → 当没钉过,别把进程卡在一个不存在的路径上", () => {
+		const root = tempRoot();
+		const versionsRoot = versionsWith(root, "0.10.0");
+		pinVersion({ versionsRoot, version: "0.9.0" });
+
+		const selection = selectVersionForBoot({
+			imageVersion: "0.8.0",
+			imagePath: "/app",
+			versionsRoot,
+			maxBootFailures: 3,
+		});
+
+		expect(selection.version).toBe("0.10.0");
+	});
+
+	it("用户拉了更新的镜像 → 钉子作废,不然又是『我明明拉了新镜像』那个坑", () => {
+		const root = tempRoot();
+		const versionsRoot = versionsWith(root, "0.9.0");
+		pinVersion({ versionsRoot, version: "0.9.0" });
+
+		// 拉新镜像是一次明确的用户动作,它压过之前那次回退的意思。否则用户会
+		// 拉着 0.11.0 的镜像、看着 0.9.0 的界面,而且没有任何线索。
+		const selection = selectVersionForBoot({
+			imageVersion: "0.11.0",
+			imagePath: "/app",
+			versionsRoot,
+			maxBootFailures: 3,
+		});
+
+		expect(selection).toEqual({ version: "0.11.0", path: "/app", isImageVersion: true });
+	});
+
+	it("拔掉钉子就回到取最新", () => {
+		const root = tempRoot();
+		const versionsRoot = versionsWith(root, "0.9.0", "0.10.0");
+		pinVersion({ versionsRoot, version: "0.9.0" });
+
+		clearPinnedVersion({ versionsRoot });
+
+		expect(
+			selectVersionForBoot({
+				imageVersion: "0.8.0",
+				imagePath: "/app",
+				versionsRoot,
+				maxBootFailures: 3,
+			}).version,
+		).toBe("0.10.0");
+	});
+
+	it("钉子写不进去也不能拦着启动", () => {
+		// 与 boot-state 其余部分同一条纪律:这份状态是启发,坏了不该让进程起不来。
+		expect(() =>
+			pinVersion({ versionsRoot: "/definitely/not/writable/bn", version: "0.9.0" }),
+		).not.toThrow();
 	});
 });

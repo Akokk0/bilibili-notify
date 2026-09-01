@@ -22,6 +22,15 @@ export interface SelectVersionForBootInput {
 interface BootState {
 	attempts: Record<string, number>;
 	failed: string[];
+	/**
+	 * 回退用的钉子:钉上之后不再按「取最新」选版。
+	 *
+	 * 定案是「只保留当前 + 上一版,只退一步,不给版本列表」—— 所以它是一颗一次性的
+	 * 钉子,不是通用的版本选择器。两件事压得过它:①这个版本被自愈判死(否则退到一个
+	 * 起不来的版本 = 再也进不去面板 = 再也拔不掉钉子);②用户拉了更新的镜像(那是
+	 * 一次明确的用户动作,压过之前那次回退的意思)。
+	 */
+	pinned?: string;
 }
 
 const STATE_FILE = "boot-state.json";
@@ -34,6 +43,7 @@ function readState(versionsRoot: string): BootState {
 		return {
 			attempts: raw?.attempts ?? {},
 			failed: Array.isArray(raw?.failed) ? raw.failed : [],
+			pinned: typeof raw?.pinned === "string" ? raw.pinned : undefined,
 		};
 	} catch {
 		// 文件不在、读不动、或者被写坏了 —— 一律当作「还没有任何记录」。这份状态
@@ -95,6 +105,17 @@ export function selectVersionForBoot({
 }: SelectVersionForBootInput): BootSelection {
 	const state = readState(versionsRoot);
 
+	const pinned = usablePin(state, versionsRoot, imageVersion);
+	if (pinned !== null) {
+		if (pinned === imageVersion)
+			return { version: imageVersion, path: imagePath, isImageVersion: true };
+		return recordAttempt(state, versionsRoot, pinned, maxBootFailures, {
+			version: pinned,
+			path: join(versionsRoot, pinned),
+			isImageVersion: false,
+		});
+	}
+
 	let best: string | null = null;
 	for (const candidate of installedVersions(versionsRoot)) {
 		if (state.failed.includes(candidate)) continue;
@@ -104,19 +125,65 @@ export function selectVersionForBoot({
 
 	if (best === null) return { version: imageVersion, path: imagePath, isImageVersion: true };
 
-	// **选中就记一次尝试**,由 `markBootSucceeded` 来销账。反过来(起来了才记)的话,
-	// 崩溃循环永远累加不到上限 —— 而崩溃循环正是这套机制唯一要救的场景。
-	const attempts = (state.attempts[best] ?? 0) + 1;
-	if (attempts >= maxBootFailures) {
-		writeState(versionsRoot, {
-			attempts: { ...state.attempts, [best]: attempts },
-			failed: [...state.failed, best],
-		});
-	} else {
-		writeState(versionsRoot, { ...state, attempts: { ...state.attempts, [best]: attempts } });
-	}
+	return recordAttempt(state, versionsRoot, best, maxBootFailures, {
+		version: best,
+		path: join(versionsRoot, best),
+		isImageVersion: false,
+	});
+}
 
-	return { version: best, path: join(versionsRoot, best), isImageVersion: false };
+/**
+ * 钉子还算不算数。
+ *
+ * 三种情况下当没钉过:被判死(自愈压过钉子)、目录没了(手动清过 / 保留策略清掉了)、
+ * 镜像已经比它新(用户拉了新镜像)。钉的就是镜像版本本身时不看目录 —— 镜像那份
+ * 永远在。
+ */
+function usablePin(state: BootState, versionsRoot: string, imageVersion: string): string | null {
+	const { pinned } = state;
+	if (!pinned) return null;
+	if (state.failed.includes(pinned)) return null;
+	if (compareVersions(imageVersion, pinned) > 0) return null;
+	if (pinned === imageVersion) return pinned;
+	return installedVersions(versionsRoot).includes(pinned) ? pinned : null;
+}
+
+/**
+ * **选中就记一次尝试**,由 `markBootSucceeded` 来销账。反过来(起来了才记)的话,
+ * 崩溃循环永远累加不到上限 —— 而崩溃循环正是这套机制唯一要救的场景。
+ */
+function recordAttempt(
+	state: BootState,
+	versionsRoot: string,
+	version: string,
+	maxBootFailures: number,
+	selection: BootSelection,
+): BootSelection {
+	const attempts = (state.attempts[version] ?? 0) + 1;
+	const next: BootState = { ...state, attempts: { ...state.attempts, [version]: attempts } };
+	if (attempts >= maxBootFailures) next.failed = [...state.failed, version];
+	writeState(versionsRoot, next);
+	return selection;
+}
+
+export interface PinVersionInput {
+	versionsRoot: string;
+	version: string;
+}
+
+/**
+ * 钉住一个版本(回退)。写不进去也不抛 —— 与 boot-state 其余部分同一条纪律:
+ * 这份状态是启发,坏了不该让进程起不来。代价是这次回退没生效,而那是用户看得见、
+ * 能重试的事。
+ */
+export function pinVersion({ versionsRoot, version }: PinVersionInput): void {
+	writeState(versionsRoot, { ...readState(versionsRoot), pinned: version });
+}
+
+/** 拔钉子 —— 装上新版本之后必须做,否则用户会永远停在他退回去的那一版。 */
+export function clearPinnedVersion({ versionsRoot }: { versionsRoot: string }): void {
+	const { pinned: _dropped, ...rest } = readState(versionsRoot);
+	writeState(versionsRoot, rest);
 }
 
 export interface MarkBootSucceededInput {
