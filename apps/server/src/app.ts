@@ -34,10 +34,12 @@ import { createStatsRoute } from "./routes/stats.js";
 import { createSubsRoute } from "./routes/subs.js";
 import { createTargetsRoute } from "./routes/targets.js";
 import type { RouteDeps } from "./routes/types.js";
+import { createUpdateRoute } from "./routes/update.js";
 import type { AppRuntime } from "./runtime/bootstrap.js";
 import type { StandalonePuppeteer } from "./runtime/puppeteer.js";
 import type { RoastRunOutcome } from "./runtime/roast-scheduler.js";
 import { SkinStore } from "./skins/store.js";
+import type { UpdateService } from "./update/service.js";
 
 interface BasicAuthCredentials {
 	username: string;
@@ -143,6 +145,15 @@ export interface CreateAppOptions {
 	 * 白拿的,不必再手写一份指令清单(手写的那份必然与实现脱节)。
 	 */
 	commands?: RouteDeps["commands"];
+	/**
+	 * 自主升级。由 index.ts 构建(它才知道版本目录在哪、怎么优雅地关掉自己)并注入,
+	 * 省略 → 整条 `/api/update` 不挂载,面板拿到 404 就当功能不存在。
+	 */
+	update?: {
+		service: UpdateService;
+		/** 优雅停机 + 退出,让进程管理器把新版本拉起来。 */
+		applyUpdate: () => Promise<void>;
+	};
 }
 
 /**
@@ -312,6 +323,12 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 	// auth internals and the route only mounts when a service is provided.
 	if (options.backupService) {
 		app.route("/api/backup", createBackupRoute({ service: options.backupService }));
+	}
+
+	// 自主升级。同 backup:在 index.ts 组装(需要版本目录与停机钩子)后注入,
+	// app.ts 不必知道进程怎么关。
+	if (options.update) {
+		app.route("/api/update", createUpdateRoute(options.update));
 	}
 
 	// Static dashboard. Mounted last so /api/* always wins routing. The cookie

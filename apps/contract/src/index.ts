@@ -8,4 +8,5 @@
 export * from "./maid-skill";
 export * from "./rest";
 export * from "./skin";
+export * from "./update";
 export * from "./ws";
