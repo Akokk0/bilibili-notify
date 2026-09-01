@@ -26,7 +26,7 @@
  *   - BN_DASHBOARD_USER/PASS 必须成对才写 basicAuth
  */
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -572,6 +572,92 @@ describe("loadBootstrapConfig — legacy:三层优先级 file < ENV < CLI", () =
 	});
 });
 
+/**
+ * `webDistDir: /app/web-dist` 这行是**我们自己**在首启动时 seed 进用户 yaml 的
+ * (界面上没有这个字段,没人会去填它)。dashboard 静态资源要跟着载荷走之后,
+ * 这行就成了钉死旧前端的钉子 —— 得把自己写进去的那句话收回来。
+ *
+ * 收回的方式是一次性迁移,而不是留着当哨兵:yaml 上写的每一行都该真的算数,
+ * 留一行「写着却不按字面生效」的配置,谁看到都会以为它在起作用。
+ */
+describe("loadBootstrapConfig — B 模型:一次性迁移掉 seed 进去的 webDistDir", () => {
+	it("读到那行就从文件里删掉,用户自己的注释一个字不动", async () => {
+		const cfgPath = join(cwd, "bn.config.yaml");
+		await writeFile(
+			cfgPath,
+			[
+				"dataDir: /data",
+				"# 我自己加的注释,别给我洗掉",
+				"logLevel: debug",
+				"webDistDir: /app/web-dist",
+				"",
+			].join("\n"),
+			"utf8",
+		);
+
+		const c = loadBootstrapConfig({ argv: [], env: { BN_CONFIG: cfgPath }, cwd, log: () => {} });
+
+		expect(c.webDistDir).toBeUndefined();
+		const after = await readFile(cfgPath, "utf8");
+		expect(after).not.toContain("webDistDir");
+		expect(after).toContain("# 我自己加的注释,别给我洗掉");
+		expect(after).toContain("logLevel: debug");
+	});
+
+	it("用户填的是别的路径 → 文件和配置都一个字不动", async () => {
+		const cfgPath = join(cwd, "bn.config.yaml");
+		const original = ["dataDir: /data", "webDistDir: /srv/my-dashboard", ""].join("\n");
+		await writeFile(cfgPath, original, "utf8");
+
+		const c = loadBootstrapConfig({ argv: [], env: { BN_CONFIG: cfgPath }, cwd, log: () => {} });
+
+		expect(c.webDistDir).toBe("/srv/my-dashboard");
+		expect(await readFile(cfgPath, "utf8")).toBe(original);
+	});
+
+	it("/config 只读写不回去时照常启动 —— 迁移失败绝不能拦着开机", async () => {
+		const roDir = join(cwd, "readonly-config");
+		await mkdir(roDir, { recursive: true });
+		const cfgPath = join(roDir, "bn.config.yaml");
+		await writeFile(
+			cfgPath,
+			["dataDir: /data", "webDistDir: /app/web-dist", ""].join("\n"),
+			"utf8",
+		);
+		await chmod(roDir, 0o555);
+		const logged: string[] = [];
+
+		try {
+			const c = loadBootstrapConfig({
+				argv: [],
+				env: { BN_CONFIG: cfgPath },
+				cwd,
+				log: (m) => logged.push(m),
+			});
+
+			// 值还留着 —— 交给 resolveWebDistDir 的哨兵兜底(它把这个值理解成「跟着载荷」)。
+			expect(c.webDistDir).toBe("/app/web-dist");
+			expect(logged.some((m) => m.includes("webDistDir"))).toBe(true);
+		} finally {
+			await chmod(roDir, 0o755);
+		}
+	});
+
+	it("first boot 不再把 BN_WEB_DIST 种进 yaml", async () => {
+		const cfgPath = join(cwd, "bn.config.yaml");
+
+		const c = loadBootstrapConfig({
+			argv: [],
+			env: { BN_CONFIG: cfgPath, BN_WEB_DIST: "/app/web-dist" },
+			cwd,
+			log: () => {},
+		});
+
+		expect(c.webDistDir).toBeUndefined();
+		expect(await readFile(cfgPath, "utf8")).not.toContain("webDistDir");
+	});
+});
+
 describe("loadBootstrapConfig — legacy:ENV 层", () => {
 	it("BN_* 映射到嵌套路径", () => {
 		const c = loadBootstrapConfig({
@@ -590,7 +676,9 @@ describe("loadBootstrapConfig — legacy:ENV 层", () => {
 		expect(c.dataDir).toBe("d");
 		expect(c.logLevel).toBe("warn");
 		expect(c.chromePath).toBe("/env/chrome");
-		expect(c.webDistDir).toBe("/env/web");
+		// BN_WEB_DIST 故意不进这一层:它一旦落进 config,first boot 就会把它写死进
+		// 用户 yaml。index.ts 直接读这个环境变量,所以逃生口还在,只是不再落盘。
+		expect(c.webDistDir).toBeUndefined();
 	});
 
 	it("BN_DASHBOARD_USER/PASS 必须成对才写 basicAuth", () => {

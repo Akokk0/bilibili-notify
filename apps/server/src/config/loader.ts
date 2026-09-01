@@ -4,6 +4,7 @@ import { dirname, resolve as resolvePath } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { shouldRefuseBareAuth } from "../auth/bare-auth-policy.js";
 import { type BootstrapConfig, BootstrapConfigSchema } from "./schema.js";
+import { dropLegacyWebDistDir } from "./web-dist.js";
 
 /**
  * Legacy 12-factor 模型扫描的 bootstrap 配置文件候选(按优先级)。readLegacyFile
@@ -132,9 +133,45 @@ function loadBModel(
 	}
 
 	// 文件存在:读取 + parse,跳过 env,仅 CLI 叠加
+	dropSeededWebDistDir(yamlPath, log);
 	const fileObj = readYamlOrJson(yamlPath);
 	const merged = deepMerge(fileObj, fromCli);
 	return parseOrRethrow(merged, yamlPath, "read");
+}
+
+/**
+ * 一次性迁移:把首启动时我们自己 seed 进去的 `webDistDir: /app/web-dist` 收回来。
+ *
+ * dashboard 静态资源现在跟着当前跑的那份载荷走(见 `web-dist.ts`),留着这行就是
+ * 一颗把前端钉在旧版本上的钉子。只删**我们写进去的那句话** —— 用户填的任何别的
+ * 路径一律不碰。
+ *
+ * **失败绝不能拦着开机。** `/config` 挂成只读、文件系统满、权限不对 —— 这些都不是
+ * 用户此刻想处理的事,而 `resolveWebDistDir` 对这个值本来就有兜底(它把 `/app/web-dist`
+ * 理解成「跟着载荷」而不是字面路径),所以迁移不成也只是少收拾了一行,行为不变。
+ *
+ * .json 配置跳过:`dropLegacyWebDistDir` 走的是 yaml 文档级编辑。JSON 用户是少数,
+ * 让哨兵兜底就够了,不值得为它再养一套改写逻辑。
+ */
+function dropSeededWebDistDir(yamlPath: string, log: (msg: string) => void): void {
+	if (yamlPath.toLowerCase().endsWith(".json")) return;
+	try {
+		const original = readFileSync(yamlPath, "utf8");
+		const { text, changed } = dropLegacyWebDistDir(original);
+		if (!changed) return;
+		// 沿用用户文件自己的权限:这文件可能含 cookieEncryptionKey / dashboard 密码,
+		// 收拾一行配置不该顺手把他设好的 mode 改掉。
+		const mode = statSync(yamlPath).mode & 0o777;
+		const tmp = `${yamlPath}.${process.pid}.${Date.now()}.tmp`;
+		writeFileSync(tmp, text, { mode, encoding: "utf8" });
+		renameSync(tmp, yamlPath);
+		log(`[bootstrap] 已移除 ${yamlPath} 里首启动种入的 webDistDir —— dashboard 现在跟着载荷走`);
+	} catch (err) {
+		log(
+			`[bootstrap] 移除 ${yamlPath} 里的 webDistDir 失败(${err instanceof Error ? err.message : String(err)});` +
+				"不影响启动 —— 该值会被当作「跟着载荷」处理。想彻底清掉就手动删掉那一行。",
+		);
+	}
 }
 
 function parseOrRethrow(
@@ -304,7 +341,9 @@ function readEnv(env: NodeJS.ProcessEnv): Record<string, unknown> {
 	if (env.BN_CHROME_PATH) out.chromePath = env.BN_CHROME_PATH;
 	if (env.BN_CHROME_ENDPOINT) out.chromeEndpoint = env.BN_CHROME_ENDPOINT;
 	if (env.BN_CHROME_IDLE_SECONDS) out.chromeIdleSeconds = env.BN_CHROME_IDLE_SECONDS;
-	if (env.BN_WEB_DIST) out.webDistDir = env.BN_WEB_DIST;
+	// BN_WEB_DIST 故意**不**映射到 webDistDir。它一旦进了这一层,first boot 就会把
+	// 「dashboard 在哪」写死进用户 yaml,在线升级后前端还指着旧那份(见 web-dist.ts)。
+	// index.ts 直接读这个环境变量当显式覆盖,逃生口还在,只是不再落盘。
 	if (env.BN_LOG_LEVEL) out.logLevel = env.BN_LOG_LEVEL;
 	if (env.BN_DASHBOARD_USER && env.BN_DASHBOARD_PASS) {
 		setPath(out, ["auth", "basicAuth", "username"], env.BN_DASHBOARD_USER);
