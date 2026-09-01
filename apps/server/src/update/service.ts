@@ -5,6 +5,7 @@ import { decideUpdate } from "./decide-update.js";
 import { fetchSignedManifest } from "./fetch-signed-manifest.js";
 import { fetchThroughMirrors } from "./fetch-through-mirrors.js";
 import { installPayload } from "./install-payload.js";
+import { pruneOldVersions } from "./prune-versions.js";
 import { clearPinnedVersion, pinVersion } from "./select-version-for-boot.js";
 import type { Manifest } from "./signed-manifest.js";
 import { compareVersions } from "./version-order.js";
@@ -153,6 +154,11 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		// 装上新版本 = 用户明确要往前走,之前那次回退的钉子必须拔掉。留着的话他点了
 		// 「立即更新」、重启、版本号纹丝不动,而界面上一切正常 —— 最难查的一类症状。
 		clearPinnedVersion({ versionsRoot });
+
+		// 只留「正在跑的」和「刚装的」这两份。回退只退一步,再老的版本没人够得着,
+		// 留着就只是在小机器上白占 25MB 一份。**当前那份必须留** —— 它是我们此刻
+		// 正在执行的代码,也是待会儿要退回去的地方。
+		pruneOldVersions({ versionsRoot, keep: [currentVersion, manifest.version] });
 
 		state = {
 			phase: "ready",

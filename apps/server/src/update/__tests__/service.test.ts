@@ -260,6 +260,32 @@ describe("createUpdateService —— 检查更新", () => {
 	});
 });
 
+describe("createUpdateService —— 装完顺手打扫", () => {
+	it("清掉够不着的旧版,但**绝不动正在跑的那份**", async () => {
+		const key = makeKey();
+		const zip = makePayloadZip("0.11.0");
+		stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.11.0", zip)),
+			payload: zip,
+		});
+		const { service, versionsRoot } = makeService({
+			trustedKeys: [key.spkiBase64],
+			currentVersion: "0.10.0",
+			imageVersion: "0.8.0",
+		});
+		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
+		mkdirSync(join(versionsRoot, "0.10.0"), { recursive: true });
+
+		await service.check();
+
+		// 正在跑的 0.10.0 是我们此刻正在执行的代码,也是待会儿要退回去的地方。
+		expect(existsSync(join(versionsRoot, "0.10.0"))).toBe(true);
+		expect(existsSync(join(versionsRoot, "0.11.0"))).toBe(true);
+		// 回退只退一步,0.9.0 从此没人够得着 —— 留着只是在小机器上白占 25MB。
+		expect(existsSync(join(versionsRoot, "0.9.0"))).toBe(false);
+	});
+});
+
 describe("createUpdateService —— 三种『升不上去』要分得清清楚楚", () => {
 	it("连不上 → unreachable,并给一个用户自己能去下的页面", async () => {
 		stubNetwork({ failUrls: /.*/ });
