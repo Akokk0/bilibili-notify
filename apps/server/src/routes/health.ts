@@ -1,5 +1,6 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 // 各核心包版本走**静态 JSON import**(而非 createRequire 运行时解析):bundler 构建期
 // 把 version 内联进产物,单文件 bundle 旁没有 node_modules 也能显示真实版本;dev(tsx)/
 // 测试(vitest)/外置 lib 构建下,import attributes 由 node / vite 原生支持,行为一致。
@@ -66,11 +67,38 @@ export const MODULE_VERSIONS: ModuleVersions = {
 };
 
 /**
+ * 从某个模块的位置往上找最近的 `package.json`。
+ *
+ * bundle 形态一步就到(产物是平的,`package.json` 与 `index.mjs` 同级);源码 / dev
+ * 形态要从 `src/routes/` 往上爬两层才够到 `apps/server/package.json`。`maxDepth`
+ * 是刹车:找不到就认输回 `null`,绝不一路爬到 `/` 去捡别人的 `package.json` ——
+ * 报一个别的包的版本号比报 "dev" 更能骗人。
+ */
+export function findNearestPackageJson(fromUrl: string, maxDepth = 6): string | null {
+	let dir = dirname(fileURLToPath(fromUrl));
+	for (let i = 0; i <= maxDepth; i++) {
+		const candidate = join(dir, "package.json");
+		if (existsSync(candidate)) return candidate;
+		const parent = dirname(dir);
+		if (parent === dir) return null;
+		dir = parent;
+	}
+	return null;
+}
+
+/**
  * 独立端自身版本,取自构建时的 apps/server/package.json#version。源码中该值
  * 保持开发占位;发布 workflow 会按 v<VERSION> tag 临时同步后再构建,因此镜像 /
  * Desktop 运行时读到的版本与发布 tag 一致。读不到则回退 "dev"。
+ *
+ * 默认按**本模块自己的位置**找,不是 `process.cwd()`:在线升级后新载荷跑在
+ * `/data/versions/<新版>/`,而 cwd 仍是容器的 `/app`(镜像自带那份)。照 cwd 读
+ * 就会一直报旧版本号 —— 用户升完看仪表盘纹丝不动,只会以为升级压根没成。
  */
-export function resolveAppVersion(pkgPath: string = join(process.cwd(), "package.json")): string {
+export function resolveAppVersion(
+	pkgPath: string | null = findNearestPackageJson(import.meta.url),
+): string {
+	if (!pkgPath) return "dev";
 	try {
 		const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string };
 		return pkg.version || "dev";

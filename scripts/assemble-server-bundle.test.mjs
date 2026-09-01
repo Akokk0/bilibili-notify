@@ -82,8 +82,11 @@ describe("assemble-server-bundle", () => {
 			"<!doctype html><title>bn sibling dashboard</title>",
 		);
 		const port = 18900 + (process.pid % 500);
+		// cwd **故意**不是 appDir:载荷自己的版本号得按模块位置解析,不能靠进程恰好
+		// 待在哪(server/src/routes/health.ts)。在线升级后 cwd 仍是容器的 /app,而新
+		// 载荷跑在 /data/versions/<新版>/ 下 —— 两者一旦分家,照 cwd 读就永远报旧版本。
 		const child = spawn(process.execPath, [join(appDir, "index.mjs")], {
-			cwd: appDir,
+			cwd: tempRoot,
 			stdio: ["ignore", "pipe", "pipe"],
 			env: {
 				...process.env,
@@ -104,6 +107,8 @@ describe("assemble-server-bundle", () => {
 			// 不允许 createRequire 落空导致的 0.0.0 降级(health.ts 机制切换的动机)。
 			expect(body.moduleVersions.api).not.toBe("0.0.0");
 			expect(body.moduleVersions.live).not.toBe("0.0.0");
+			const { version } = JSON.parse(await readFile(join(appDir, "package.json"), "utf8"));
+			expect(body.version).toBe(version);
 			const root = await fetch(`http://127.0.0.1:${port}/`, {
 				headers: { connection: "close" },
 			});

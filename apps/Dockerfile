@@ -153,8 +153,8 @@ ENV NODE_ENV=production \
 # 已把 wasm / worker / static 资产与 package.json 装配进 dist/),镜像里**没有
 # node_modules**。旧版整搬 hoisted workspace store(804MB,含构建工具与别端依赖),
 # bundle 后 app 载荷 ~15MB —— 用户每次升级只重拉这一小层。
-# WORKDIR=/app:resolveAppVersion 读 process.cwd()/package.json(见
-# src/routes/health.ts),装配好的 package.json 就在 bundle 旁边。
+# 装配好的 package.json 与 bundle 平级:resolveAppVersion 从 index.mjs 往上找最近的
+# 那一份(见 src/routes/health.ts),报的是**载荷自己**的版本,与 cwd 无关。
 WORKDIR /app
 COPY --from=builder /app/apps/server/dist ./
 # web dashboard 静态资源独立成层,且必须是 index.mjs 的**同级**目录 —— 服务端按

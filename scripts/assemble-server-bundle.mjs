@@ -17,8 +17,9 @@ import { fileURLToPath } from "node:url";
 // - static/*:词云模板,image 包运行时 readFileSync(resolve(__dirname, "static/*.js"))。
 //   用 monorepo 源路径(始终存在、与 lib/static 内容一致),原因同 sidecar 脚本。
 // - bn.config.example.yaml:first-boot 配置样例,镜像内与 bundle 平级。
-// - package.json:resolveAppVersion 读 process.cwd()/package.json 展示独立端版本
-//   (发布 workflow 按 tag 临时同步 version 后再构建)。
+// - package.json:resolveAppVersion 从 index.mjs 往上找最近的这一份展示独立端版本
+//   (发布 workflow 按 tag 临时同步 version 后再构建)。必须与 bundle 平级 —— 它读的
+//   是**载荷自己**的版本,不是进程 cwd 的。
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const distDir = resolve(repoRoot, "apps/server/dist");
