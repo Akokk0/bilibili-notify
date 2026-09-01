@@ -22,6 +22,7 @@ import {
 	TSelect,
 } from "../components/forms";
 import { OnboardingReopenSection } from "../components/onboarding/reopen-section";
+import { UpdateSection } from "../components/update/update-section";
 import { PUSH_TONE } from "../config/push-kinds";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
@@ -499,6 +500,8 @@ export default function System() {
 			<SkinSection />
 
 			<BackupSection />
+
+			<UpdateSection />
 
 			<OnboardingReopenSection />
 
