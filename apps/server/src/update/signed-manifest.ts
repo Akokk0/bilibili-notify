@@ -1,0 +1,75 @@
+import { createPublicKey, verify as cryptoVerify } from "node:crypto";
+import { z } from "zod";
+
+/**
+ * 升级清单的**唯一**信任入口。
+ *
+ * 解析与验签在这里合成一扇门:调用方要么拿到一个已验签的 {@link Manifest},
+ * 要么什么都拿不到。故意不提供「先解析、后验签」的两段式 API —— 那会让
+ * 「已解析但未验证」的中间态出现在调用方手里,而那正是「忘了验签」这类 bug
+ * 的温床;签名机制一旦被绕过一次,整套自主升级就等于没有。
+ *
+ * 签名覆盖的是**清单文件的原始字节**,不是重新序列化的 JSON —— 键序、空白、
+ * 换行的任何差异都会让验签失败,这是故意的。
+ */
+/**
+ * 未知字段会被**丢弃而不是拒绝** —— 老客户端拿到带新字段的清单必须照样能读,
+ * 否则我们一加字段,存量安装就集体失去升级能力。
+ */
+const ManifestSchema = z.object({
+	version: z.string(),
+});
+
+export type Manifest = z.infer<typeof ManifestSchema>;
+
+export type LoadManifestResult =
+	| { ok: true; manifest: Manifest }
+	/** 信任列表里没有一把公钥能验过这串字节 —— 被改过,或不是我们签的。 */
+	| { ok: false; reason: "bad-signature" }
+	/** 签名验过了,但内容读不出一个合法清单 —— 通常意味着我们自己签错了东西。 */
+	| { ok: false; reason: "malformed" };
+
+/**
+ * @param bytes 清单文件的原始字节。
+ * @param signatureBase64 Ed25519 签名(base64)。
+ * @param trustedKeysBase64 内置信任列表:Ed25519 公钥的 SPKI DER(base64)。
+ *   **多于一把**是设计使然 —— 主用私钥泄露时,备用私钥是唯一的退路。
+ */
+export function loadSignedManifest(
+	bytes: Uint8Array,
+	signatureBase64: string,
+	trustedKeysBase64: readonly string[],
+): LoadManifestResult {
+	const signature = Buffer.from(signatureBase64, "base64");
+
+	const verified = trustedKeysBase64.some((keyBase64) =>
+		cryptoVerify(
+			null,
+			bytes,
+			createPublicKey({
+				key: Buffer.from(keyBase64, "base64"),
+				format: "der",
+				type: "spki",
+			}),
+			signature,
+		),
+	);
+	if (!verified) return { ok: false, reason: "bad-signature" };
+
+	// 清单是从网上下来的,而分发链上站着我们不控制的代理站。任何让它把进程带走
+	// 的路径,都等于白送对方一个拒绝服务的开关。
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(Buffer.from(bytes).toString("utf8"));
+	} catch {
+		return { ok: false, reason: "malformed" };
+	}
+
+	// 验签只证明「这是我们签的、没被改过」,不证明内容是对的。我们自己签错一次
+	// 东西,下游就会拿着一份 version 缺失的清单去比版本 —— NapCat 更新完显示
+	// 0.0.0 就是这一类。
+	const shaped = ManifestSchema.safeParse(parsed);
+	if (!shaped.success) return { ok: false, reason: "malformed" };
+
+	return { ok: true, manifest: shaped.data };
+}
