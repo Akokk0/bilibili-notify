@@ -111,6 +111,8 @@ async function prepare() {
 
 async function assertBuiltArtifacts() {
 	await mustExist(join(root, "apps", "server", "lib", "index.mjs"), "server build output");
+	// 外壳起的是 boot.mjs(它先选版再加载载荷),不是 index.mjs 本身。
+	await mustExist(join(root, "apps", "server", "lib", "boot.mjs"), "server boot entry");
 	await mustExist(join(root, "apps", "web", "dist", "index.html"), "web build output");
 	await mustExist(join(root, "node_modules"), "workspace node_modules (run vp install first)");
 }
@@ -151,7 +153,10 @@ async function copyRuntimeTree() {
 		join(serverRoot, "package.json"),
 	);
 	await copyFileOrDir(join(root, "apps", "server", "lib"), join(serverRoot, "lib"));
-	await copyFileOrDir(join(root, "apps", "web", "dist"), join(appRoot, "apps", "web", "dist"));
+	// dashboard 资源摆成 `lib/index.mjs` 的**同级目录** —— 服务端就是按入口就近找它的
+	// (apps/server/src/config/web-dist.ts)。这样应用内更新换掉载荷时前端跟着一起换;
+	// 摆在别处再用 --web-dist 指过去的话,就成了钉死旧前端的钉子。
+	await copyFileOrDir(join(root, "apps", "web", "dist"), join(serverRoot, "lib", "web-dist"));
 
 	const workspacePackages = await stageWorkspaceRuntimePackages(nodeModulesRoot);
 	const thirdPartyPackages = await stageThirdPartyRuntimePackages(
@@ -516,6 +521,9 @@ async function verifyPackagedServerImport() {
 	const script = `
 		import { statSync } from 'node:fs';
 		await import('./lib/index.mjs');
+		// 外壳真正起的是它;少了这一句,boot 那条路要到用户双击图标才第一次被跑到。
+		await import('./lib/boot.mjs');
+		statSync('./lib/web-dist/index.html');
 		await Promise.all(${JSON.stringify(runtimeImportSeeds)}.map((specifier) => import(specifier)));
 		for (const file of ${JSON.stringify(requiredRuntimeFiles)}) statSync(file);
 		console.log('ok');

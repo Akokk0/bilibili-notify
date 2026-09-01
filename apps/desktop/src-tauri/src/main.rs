@@ -670,8 +670,6 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
         .arg(port.to_string())
         .arg("--data-dir")
         .arg(&sidecar_data_dir)
-        .arg("--web-dist")
-        .arg(&resources.web_dist)
         .current_dir(&resources.server_dir)
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
@@ -990,8 +988,13 @@ fn resolve_resources(app: &AppHandle) -> Result<ResourcePaths, String> {
                 .join("bin")
                 .join(if cfg!(windows) { "node.exe" } else { "node" });
         let server_dir = root.join("app").join("apps").join("server");
-        let server_entry = server_dir.join("lib").join("index.mjs");
-        let web_dist = root.join("app").join("apps").join("web").join("dist");
+        // 起的是 boot.mjs 而不是 index.mjs:它先决定跑哪一份载荷(安装包自带的,
+        // 还是用户数据目录里那份更新过的),再在同一个进程里把它加载起来。
+        let server_entry = server_dir.join("lib").join("boot.mjs");
+        // dashboard 资源是 lib/index.mjs 的同级目录,服务端按入口就近找它 ——
+        // 所以这里只做存在性检查,**不再用 --web-dist 指过去**(指过去就等于钉死
+        // 安装包自带那份前端,应用内更新换了后端却换不掉界面)。
+        let web_dist = server_dir.join("lib").join("web-dist");
         if node.is_file() && server_entry.is_file() && web_dist.join("index.html").is_file() {
             return Ok(ResourcePaths {
                 root: child_process_path(&root),

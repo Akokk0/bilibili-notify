@@ -10,10 +10,10 @@ const bundle = process.env.BN_SERVER_BUNDLE === "1";
 
 export default defineConfig({
 	pack: {
-		// bundle 模式多一个 `boot` 入口 —— 镜像里跑的是它,不是 index.mjs。
+		// 两种模式都出一个 `boot` 入口 —— 容器跑 dist/boot.mjs,桌面壳跑 lib/boot.mjs。
 		// 它只牵 node 内建 + 选版那一小块,好在加载服务端**之前**决定跑哪份载荷
-		// (见 src/boot.ts 顶上那段)。lib 模式不需要:dev / desktop 直接跑 index。
-		entry: bundle ? ["src/index.ts", "src/boot.ts"] : ["src/index.ts"],
+		// (见 src/boot.ts 顶上那段)。两端共用同一个启动器,才谈得上「一套代码路径」。
+		entry: ["src/index.ts", "src/boot.ts"],
 		format: ["esm"],
 		dts: false,
 		clean: true,

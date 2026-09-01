@@ -125,16 +125,25 @@ async function importPayload(entryPath: string): Promise<unknown> {
  * 入口存在的全部意义就是「在加载服务端之前只牵最少的东西」。
  */
 function readImageVersion(here: string): string {
-	try {
-		const pkg = JSON.parse(readFileSync(join(here, "package.json"), "utf8")) as {
-			version?: string;
-		};
-		return pkg.version || "0.0.0";
-	} catch {
-		// 读不到就当自己是最老的:任何装着的载荷都会被选中。总比反过来
-		// (当自己最新,永远不升)强 —— 后者是静默失效,用户完全没线索。
-		return "0.0.0";
+	// 往上找几层:bundle 形态下 package.json 与 boot.mjs 同级(容器),
+	// 外置 lib 形态下它在 `lib/` 的上一层(桌面壳)。找不到就往上一级再试。
+	let dir = here;
+	for (let i = 0; i < 3; i++) {
+		try {
+			const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as {
+				version?: string;
+			};
+			if (pkg.version) return pkg.version;
+		} catch {
+			// 这一层没有,继续往上。
+		}
+		const parent = dirname(dir);
+		if (parent === dir) break;
+		dir = parent;
 	}
+	// 读不到就当自己是最老的:任何装着的载荷都会被选中。总比反过来(当自己最新、
+	// 永远不升)强 —— 后者是静默失效,用户完全没线索。
+	return "0.0.0";
 }
 
 if (isEntrypoint(import.meta.url)) {
