@@ -111,9 +111,10 @@ ENV NODE_ENV=production \
     BN_CONFIG=/config/bn.config.yaml \
     BN_HOST=0.0.0.0 \
     BN_PORT=8787 \
-    BN_DATA_DIR=/data \
-    BN_WEB_DIST=/app/web-dist
+    BN_DATA_DIR=/data
 
+# WORKDIR=/app + web-dist 是 index.mjs 的同级目录:dashboard 静态资源按载荷入口
+# 就近解析(src/config/web-dist.ts),不再靠 BN_WEB_DIST 指路。
 WORKDIR /app
 COPY --from=builder /app/apps/server/dist ./
 COPY --from=builder /app/apps/web/dist ./web-dist
@@ -146,8 +147,7 @@ ENV NODE_ENV=production \
     BN_HOST=0.0.0.0 \
     BN_PORT=8787 \
     BN_DATA_DIR=/data \
-    BN_CHROME_PATH=/usr/bin/chromium \
-    BN_WEB_DIST=/app/web-dist
+    BN_CHROME_PATH=/usr/bin/chromium
 
 # server 是自包含单文件 bundle(全部 JS 依赖内联,scripts/assemble-server-bundle.mjs
 # 已把 wasm / worker / static 资产与 package.json 装配进 dist/),镜像里**没有
@@ -157,7 +157,9 @@ ENV NODE_ENV=production \
 # src/routes/health.ts),装配好的 package.json 就在 bundle 旁边。
 WORKDIR /app
 COPY --from=builder /app/apps/server/dist ./
-# web dashboard 静态资源独立成层(BN_WEB_DIST=/app/web-dist,绝对路径)。
+# web dashboard 静态资源独立成层,且必须是 index.mjs 的**同级**目录 —— 服务端按
+# 载荷入口就近解析它(src/config/web-dist.ts),这样在线升级时前后端一起换,不会
+# 出现「新服务端配旧前端」。
 COPY --from=builder /app/apps/web/dist ./web-dist
 
 # Persistent volumes — /data 是 state(订阅 / 历史 / 日志 / 凭据 等),/config 是

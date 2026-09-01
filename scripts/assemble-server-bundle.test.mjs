@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { cp, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -65,13 +65,22 @@ describe("assemble-server-bundle", () => {
 		expect(JSON.stringify(pkg)).not.toContain("catalog:");
 	});
 
-	it("装到 monorepo 外也能起:boot + /api/health 200 + 模块版本非 0.0.0", async () => {
+	it("装到 monorepo 外也能起:boot + /api/health 200 + 模块版本非 0.0.0 + dashboard 就近解析", async () => {
 		// 故意不 realpath:macOS tmpdir 是 /var → /private/var 的 symlink,正好在真实
 		// boot 里回归验证 isEntrypoint 的 realpath 对齐(runtime/entrypoint.ts)——
 		// 修复前 argv[1](symlink)与 import.meta.url(realpath)不等,静默退出 0。
 		const tempRoot = await mkdtemp(join(tmpdir(), "bn-server-bundle-"));
 		const appDir = join(tempRoot, "app");
 		await cp(distDir, appDir, { recursive: true });
+		// dashboard 静态资源按**载荷入口**就近解析(server/src/config/web-dist.ts),
+		// 镜像里 web-dist/ 就是 index.mjs 的同级目录 —— 这条只有在打成 bundle 之后才
+		// 验得出:源码形态下 import.meta.url 指的是 src/index.ts,单测又一律注入
+		// bundleUrl,两边都碰不到真实默认值。这里不设 BN_WEB_DIST,让它自己找。
+		await mkdir(join(appDir, "web-dist"), { recursive: true });
+		await writeFile(
+			join(appDir, "web-dist", "index.html"),
+			"<!doctype html><title>bn sibling dashboard</title>",
+		);
 		const port = 18900 + (process.pid % 500);
 		const child = spawn(process.execPath, [join(appDir, "index.mjs")], {
 			cwd: appDir,
@@ -83,7 +92,6 @@ describe("assemble-server-bundle", () => {
 				BN_HOST: "127.0.0.1",
 				BN_PORT: String(port),
 				BN_CHROME_PATH: join(tempRoot, "no-chrome"),
-				BN_WEB_DIST: join(tempRoot, "no-web-dist"),
 			},
 		});
 		const output = [];
@@ -96,6 +104,11 @@ describe("assemble-server-bundle", () => {
 			// 不允许 createRequire 落空导致的 0.0.0 降级(health.ts 机制切换的动机)。
 			expect(body.moduleVersions.api).not.toBe("0.0.0");
 			expect(body.moduleVersions.live).not.toBe("0.0.0");
+			const root = await fetch(`http://127.0.0.1:${port}/`, {
+				headers: { connection: "close" },
+			});
+			expect(root.status).toBe(200);
+			expect(await root.text()).toContain("bn sibling dashboard");
 		} finally {
 			child.kill("SIGTERM");
 			await waitForExit(child);

@@ -35,9 +35,10 @@ dataDir: ./data
 # 0 = 常驻不关。默认 300。
 # chromeIdleSeconds: 300
 
-# Dashboard 静态资源目录。Docker 镜像固定为 /app/web-dist;
-# 手写 Docker 配置时必须保留,否则 http://<host>:8787/ 会返回 404。
-webDistDir: /app/web-dist
+# Dashboard 静态资源目录。**不用填** —— 默认就是服务端入口旁边那个 web-dist/,
+# 前后端因此永远是同一次发布的两半,在线升级时一起换。
+# 只有把控制台单独部署到别处时才需要写,写死之后它就不会再跟着升级走了。
+# webDistDir: /srv/my-dashboard
 
 logLevel: info   # fatal | error | warn | info | debug | trace | silent
 
