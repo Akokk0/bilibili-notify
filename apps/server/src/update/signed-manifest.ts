@@ -18,6 +18,24 @@ import { z } from "zod";
  */
 const ManifestSchema = z.object({
 	version: z.string(),
+	/**
+	 * 事后撤回的版本号。发出去的版本收不回来,这是唯一能拦住**还没升的人**的手段
+	 * —— 已经中招的那批靠客户端启动失败自愈,不靠这里。
+	 *
+	 * 可选:老清单没有这个字段,照样要读得出来。
+	 */
+	revoked: z.array(z.string()).optional(),
+	/**
+	 * 这一版**对镜像/安装包的最低要求**。载荷可以比镜像新,但 Node、chromium、
+	 * 字体、tini 全都来自镜像 —— 要求不满足时只能让用户去重拉镜像,在线升不动。
+	 *
+	 * 可选:绝大多数版本不抬门槛,不写就是「谁都能装」。
+	 */
+	requires: z
+		.object({
+			nodeMajor: z.number().int().optional(),
+		})
+		.optional(),
 });
 
 export type Manifest = z.infer<typeof ManifestSchema>;
