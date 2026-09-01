@@ -1,5 +1,22 @@
 import { describe, expect, it } from "vite-plus/test";
 import { decideUpdate } from "../decide-update.js";
+import type { Manifest } from "../signed-manifest.js";
+
+/**
+ * 决策只看 version / revoked / requires 三样,载荷描述与它无关 —— 但清单是**整体**
+ * 必填的,所以这里补齐剩下那半边,免得每条用例都抄一遍。
+ */
+function manifest(fields: Partial<Manifest> & Pick<Manifest, "version">): Manifest {
+	return {
+		payload: {
+			url: "https://github.com/o/r/releases/download/v0.0.0/p.zip",
+			sha256: "a".repeat(64),
+			size: 1024,
+		},
+		releaseUrl: "https://github.com/o/r/releases/tag/v0.0.0",
+		...fields,
+	};
+}
 
 /**
  * 升级决策。纯函数,不碰网络、不碰磁盘 —— 「要不要升、升到哪」的全部判断都收在
@@ -11,7 +28,7 @@ describe("decideUpdate", () => {
 		// 0.9.x 再也升不动,而且门禁全绿、直到发第十个小版本才爆。
 		const decision = decideUpdate({
 			currentVersion: "0.9.0",
-			manifest: { version: "0.10.0" },
+			manifest: manifest({ version: "0.10.0" }),
 			runtime: { nodeMajor: 24 },
 		});
 
@@ -23,7 +40,7 @@ describe("decideUpdate", () => {
 		// 是唯一能在事后拦住**还没升的人**的手段(已经中招的靠客户端自愈,不靠这里)。
 		const decision = decideUpdate({
 			currentVersion: "0.8.0",
-			manifest: { version: "0.9.0", revoked: ["0.9.0"] },
+			manifest: manifest({ version: "0.9.0", revoked: ["0.9.0"] }),
 			runtime: { nodeMajor: 24 },
 		});
 
@@ -36,7 +53,7 @@ describe("decideUpdate", () => {
 		// 告诉用户「这一版得重新拉镜像」,而不是崩了让他猜。
 		const decision = decideUpdate({
 			currentVersion: "0.8.0",
-			manifest: { version: "0.9.0", requires: { nodeMajor: 26 } },
+			manifest: manifest({ version: "0.9.0", requires: { nodeMajor: 26 } }),
 			runtime: { nodeMajor: 24 },
 		});
 
@@ -46,7 +63,7 @@ describe("decideUpdate", () => {
 	it("预发布版本默认不推 —— 通道提供,但默认关着", () => {
 		const decision = decideUpdate({
 			currentVersion: "0.8.0",
-			manifest: { version: "0.9.0-alpha.1" },
+			manifest: manifest({ version: "0.9.0-alpha.1" }),
 			runtime: { nodeMajor: 24 },
 		});
 
@@ -58,7 +75,7 @@ describe("decideUpdate", () => {
 		// 推回 alpha —— 一次静默降级,而且降完撞上的是已被前向迁移改写过的磁盘数据。
 		const decision = decideUpdate({
 			currentVersion: "0.9.0",
-			manifest: { version: "0.9.0-alpha.1" },
+			manifest: manifest({ version: "0.9.0-alpha.1" }),
 			runtime: { nodeMajor: 24 },
 			allowPrerelease: true,
 		});
@@ -69,7 +86,7 @@ describe("decideUpdate", () => {
 	it("开了预发布通道就照常推 alpha", () => {
 		const decision = decideUpdate({
 			currentVersion: "0.8.0",
-			manifest: { version: "0.9.0-alpha.1" },
+			manifest: manifest({ version: "0.9.0-alpha.1" }),
 			runtime: { nodeMajor: 24 },
 			allowPrerelease: true,
 		});
@@ -83,7 +100,7 @@ describe("decideUpdate", () => {
 		// 预发布版才爆。
 		const decision = decideUpdate({
 			currentVersion: "0.9.0-alpha.9",
-			manifest: { version: "0.9.0-alpha.10" },
+			manifest: manifest({ version: "0.9.0-alpha.10" }),
 			runtime: { nodeMajor: 24 },
 			allowPrerelease: true,
 		});

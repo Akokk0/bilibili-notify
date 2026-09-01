@@ -38,7 +38,10 @@ describe("fetchSignedManifest", () => {
 		// 键序反着、缩进乱七八糟。任何「把 manifest 展开成对象、验签时再重新序列化」
 		// 的实现都会在这里算出不同的字节而验不过 —— 而 JSON 的重新序列化根本不唯一
 		// (键序/空白/数字写法/unicode 转义),那条路会带来一种查都没法查的验签失败。
-		const inner = '{\n  "revoked" : [],\n\t"version":   "0.9.0"\n}';
+		const inner =
+			'{\n  "revoked" : [],\n\t"version":   "0.9.0",\n "releaseUrl":"https://github.com/o/r/releases/tag/v0.9.0",\n\t\t"payload"  : {"size":1,"sha256":"' +
+			"a".repeat(64) +
+			'","url":"https://github.com/o/r/p.zip"}\n}';
 		serveOnce(JSON.stringify({ manifest: inner, signature: signText(key.privateKey, inner) }));
 
 		const result = await fetchSignedManifest({
