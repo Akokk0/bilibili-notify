@@ -62,6 +62,7 @@ apps/       Hono 服务端 + React Dashboard
 - `events.md` —— BiliEvents 契约、MessageBus 语义、WS channel 契约
 - `build-release.md` —— 工具链、分支模型、Docker 镜像与 tag 方案
 - `commands.md` —— 独立端私聊指令:入站链路、指令表、参数模型、可配置项
+- `self-update.md` —— 应用内自主升级:载荷布局、`boot.mjs` 选版、双密钥与渠道入口、撤回与自愈
 
 ## Agent skills
 

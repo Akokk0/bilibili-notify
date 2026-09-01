@@ -1,0 +1,174 @@
+name: bilibili-notify — update payload
+
+# 应用内更新的发版侧:打一个自包含载荷 zip、签一份清单,挂到 v<VERSION> release,
+# 再把清单覆盖到滚动的 `update-channel` release 上当作渠道入口。
+#
+# 与 Docker / Desktop 两条路**互不阻塞**(同 build-release.md 里那条约定):三者由
+# 同一个 v* tag 触发,各跑各的。桌面构建挂了不该连带用户升不了级。
+#
+# 需要的 repo secret:
+#   BN_UPDATE_SIGNING_KEY  Ed25519 私钥(PKCS#8 PEM,或它的 base64)。**没配就跳过签名**
+#                          并打一条 warning —— 与其让每次发版都红着,不如把这件事
+#                          显式地摆在 run summary 上。生成方法见 docs/agents/self-update.md。
+#   RELEASE_PAT            创建 / 更新 release 用
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build + sign only, skip uploading to the release"
+        type: boolean
+        default: true
+      version:
+        description: "Standalone version for dry-run builds, e.g. 0.9.0"
+        type: string
+        required: true
+
+# 串行化:两次 push 同时跑会让 update-channel 上的清单和 release 资产失同步。
+# cancel-in-progress: false —— 已经上传的资产是副作用,半途打断更糟。
+concurrency:
+  group: update-payload-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+
+jobs:
+  # 门禁定义在 gate.yml(唯一一份,四条路径共用)。它先绿,才谈得上把一个载荷
+  # 签名发出去 —— 签名只保证「这是我们发的」,不保证「这是好的」。
+  gate:
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
+    uses: ./.github/workflows/gate.yml
+
+  publish:
+    name: Build + sign update payload
+    needs: [gate]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Assert standalone tag format
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: bash .github/scripts/assert-ref-matches-standalone-version.sh
+
+      - name: Assert release commit is on dev
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: bash .github/scripts/assert-release-ref-on-dev.sh
+
+      - name: Setup Vite+ (vp) + Node
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: .node-version
+          cache: true
+
+      - name: Install deps
+        run: vp install
+
+      - name: Read standalone version
+        id: ver
+        run: bash .github/scripts/read-standalone-version.sh
+
+      # 版本号只在构建前临时写进各处元数据,不回写仓库(同 Docker / Desktop 两条路)。
+      # 载荷里那份 package.json 的 version 就是从这来的 —— 也就是客户端升级后
+      # `/api/health` 报出来的版本。
+      - name: Sync standalone version metadata
+        env:
+          VERSION: ${{ steps.ver.outputs.value }}
+        run: bash .github/scripts/sync-standalone-version.sh
+
+      - name: Fetch afdian sponsors
+        env:
+          AFDIAN_USER_ID: ${{ secrets.AFDIAN_USER_ID }}
+          AFDIAN_TOKEN: ${{ secrets.AFDIAN_TOKEN }}
+        run: node scripts/fetch-sponsors.mjs
+
+      - name: Build self-contained payload artifacts
+        env:
+          BN_STANDALONE_VERSION: ${{ steps.ver.outputs.value }}
+        run: vp run build:update-payload
+
+      - name: Pack payload zip
+        id: payload
+        env:
+          VERSION: ${{ steps.ver.outputs.value }}
+        run: |
+          set -euo pipefail
+          out="dist/bilibili-notify-payload-${VERSION}.zip"
+          node scripts/build-update-payload.mjs --out "$out" > /tmp/payload.json
+          echo "path=$out" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(node -p "require('/tmp/payload.json').sha256")" >> "$GITHUB_OUTPUT"
+          echo "size=$(node -p "require('/tmp/payload.json').size")" >> "$GITHUB_OUTPUT"
+
+      # 私钥没配就整条跳过,并把 warning 摆到 run summary 上。让发版红着的代价更大:
+      # Docker / Desktop 都发出去了,唯独这条红,看着像发版失败。
+      - name: Sign manifest
+        id: sign
+        env:
+          BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_UPDATE_SIGNING_KEY }}
+          VERSION: ${{ steps.ver.outputs.value }}
+          REPO: ${{ github.repository }}
+          SHA256: ${{ steps.payload.outputs.sha256 }}
+          SIZE: ${{ steps.payload.outputs.size }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BN_UPDATE_SIGNING_KEY}" ]; then
+            echo "::warning::未配置 BN_UPDATE_SIGNING_KEY,跳过清单签名 —— 本次发版不会有应用内更新。生成方法见 docs/agents/self-update.md"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          node scripts/sign-update-manifest.mjs \
+            --version "$VERSION" \
+            --payload-url "https://github.com/${REPO}/releases/download/v${VERSION}/bilibili-notify-payload-${VERSION}.zip" \
+            --sha256 "$SHA256" \
+            --size "$SIZE" \
+            --release-url "https://github.com/${REPO}/releases/tag/v${VERSION}" \
+            --out dist/manifest
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload payload + manifest to the version release
+        if: env.DRY_RUN == 'false' && steps.sign.outputs.signed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          VERSION: ${{ steps.ver.outputs.value }}
+        run: |
+          set -euo pipefail
+          # release 由 desktop-release 那条路创建。它可能还没跑完 —— 等一会儿再放弃,
+          # 但**不阻塞**:两条路解耦是设计,这里只是给它一点时间。
+          for _ in $(seq 1 30); do
+            if gh release view "v${VERSION}" >/dev/null 2>&1; then break; fi
+            sleep 20
+          done
+          gh release upload "v${VERSION}" \
+            "${{ steps.payload.outputs.path }}" dist/manifest.sig.json --clobber
+
+      # 正式版同时刷 stable 与 alpha —— 预发布渠道的用户也该拿到更新的正式版,
+      # 否则他们会被卡在某个旧 alpha 上再也升不动。预发布只刷 alpha。
+      - name: Publish stable channel manifest
+        if: env.DRY_RUN == 'false' && steps.sign.outputs.signed == 'true' && steps.ver.outputs.prerelease == 'false'
+        env:
+          CHANNEL: stable
+          FILE: dist/manifest.sig.json
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          REPO: ${{ github.repository }}
+        run: bash .github/scripts/publish-update-channel.sh
+
+      - name: Publish alpha channel manifest
+        if: env.DRY_RUN == 'false' && steps.sign.outputs.signed == 'true'
+        env:
+          CHANNEL: alpha
+          FILE: dist/manifest.sig.json
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          REPO: ${{ github.repository }}
+        run: bash .github/scripts/publish-update-channel.sh

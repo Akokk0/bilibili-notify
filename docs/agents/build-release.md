@@ -20,6 +20,7 @@
 | `publish.yml`(koishi npm) | `detect` → `gate` → `publish` |
 | `image-release.yml`(Docker) | `gate` → `build`(matrix) → `merge` |
 | `desktop-release.yml`(Desktop) | `gate` → `build`(matrix) → `release` |
+| `update-payload.yml`(应用内更新) | `gate` → `publish` |
 
 **CI 不跑 astrbot 的 Python 门禁**(2026-07-11 拍板去掉)。三条发布路径的产物里都没有一行 Python;astrbot 走 `astrbot-release.yml` 那条独立的 squash-push 路线,不经过 `gate`。
 
@@ -96,6 +97,7 @@ koishi 插件是**自包含单文件产物**:九个 `@bilibili-notify/*` 内部�
 
 - `.github/workflows/image-release.yml` —— Docker Hub `docker.io/akokk0/bilibili-notify` 与 GHCR `ghcr.io/akokk0/bilibili-notify`。
 - `.github/workflows/desktop-release.yml` —— macOS / Windows Desktop 产物与 GitHub Release assets。
+- `.github/workflows/update-payload.yml` —— 应用内更新的载荷 zip 与签名清单,挂到同一个 release,并覆盖滚动 tag `update-channel` 上的渠道清单。**没配 `BN_UPDATE_SIGNING_KEY` 时整条跳过并打 warning**,不让发版红着。详见 [self-update.md](./self-update.md)。
 
 两个 workflow 都先校验 tag commit 可从 `origin/dev` 到达,再从 tag 读取版本并运行 `sync-standalone-version.sh`;Docker 与 Desktop 依赖同一个版本 tag,但彼此不再互相等待。某个 workflow 失败时只重跑对应 workflow。
 
@@ -106,6 +108,7 @@ koishi 插件是**自包含单文件产物**:九个 `@bilibili-notify/*` 内部�
 - `version-tag`: `version=<VERSION>`, `dry_run=true` —— 校验 tag 格式与现有 tag 兼容性。
 - `image-release`: `version=<VERSION>`, `dry_run=true` —— 构建但不 push Docker digest / manifest。
 - `desktop-release`: `version=<VERSION>`, `dry_run=true` —— 构建并校验 Desktop artifacts,不创建 GitHub Release。
+- `update-payload`: `version=<VERSION>`, `dry_run=true` —— 打载荷并签名,不上传任何资产。
 
 Desktop dry-run 的 CI smoke 覆盖 artifact 内容、GUI subsystem、packaged Node sidecar、`/api/health` 与 dashboard HTML。它**不是**完整 GUI E2E —— 托盘图标、无控制台窗口、NSIS 安装启动、退出后无残留 sidecar 这些只有 Windows 实机能看。**别每次发版都拿这个去提示用户**(他知道),要提也只在真动了 Desktop 壳 / 托盘 / sidecar 生命周期时提一次。
 
