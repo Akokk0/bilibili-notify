@@ -12,7 +12,12 @@ import { fetchSignedManifest } from "./fetch-signed-manifest.js";
 import { fetchThroughMirrors } from "./fetch-through-mirrors.js";
 import { installPayload } from "./install-payload.js";
 import { pruneOldVersions } from "./prune-versions.js";
-import { clearPinnedVersion, pinVersion, readPinnedVersion } from "./select-version-for-boot.js";
+import {
+	clearPinnedVersion,
+	pinVersion,
+	readFailedVersions,
+	readPinnedVersion,
+} from "./select-version-for-boot.js";
 import type { Manifest } from "./signed-manifest.js";
 import { compareVersions } from "./version-order.js";
 
@@ -117,11 +122,17 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 	/**
 	 * 退一步会退到哪:装着的版本里比当前旧的那个最高的;都没有就退回镜像自带那版。
 	 * 已经在镜像那版上就是没得退 —— 与其给一个按了没反应的按钮,不如让它是灰的。
+	 *
+	 * 挑的规矩必须和选版那边对钉子的判定(`usablePin`)**一致**:比镜像旧的、被自愈判死的
+	 * 都不能当目标,否则面板说「已回退,重启生效」,重启后选版把钉子当没钉过,版本纹丝不动。
 	 */
 	function rollbackTarget(): string | null {
+		const failed = readFailedVersions({ versionsRoot });
 		let best: string | null = null;
 		for (const candidate of installedVersions(versionsRoot)) {
 			if (compareVersions(candidate, currentVersion) >= 0) continue;
+			if (compareVersions(candidate, imageVersion) < 0) continue;
+			if (failed.includes(candidate)) continue;
 			if (best === null || compareVersions(candidate, best) > 0) best = candidate;
 		}
 		if (best !== null) return best;

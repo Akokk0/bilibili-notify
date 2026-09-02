@@ -1,5 +1,13 @@
 import { createHash, sign as cryptoSign, generateKeyPairSync, type KeyObject } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { UpdateSettings } from "@bilibili-notify/internal";
@@ -562,6 +570,41 @@ describe("createUpdateService —— 回退", () => {
 			phase: "rolled-back",
 			target: "0.8.0",
 		});
+	});
+
+	it("用户拉了更新的镜像 → 退不到比镜像还旧的载荷,退到镜像那版", async () => {
+		// 选版那边对钉子有一条:比镜像旧的钉子作废(用户拉新镜像是明确动作)。回退目标
+		// 要是不按同一套规矩挑,面板会说「已回退到 1.1.0,重启生效」,重启后版本纹丝不动、
+		// 一行日志都没有 —— 最难查的那类症状。
+		const { service, versionsRoot } = makeService({
+			currentVersion: "1.3.0",
+			imageVersion: "1.2.0",
+			trustedKeys: [makeKey().spkiBase64],
+		});
+		mkdirSync(join(versionsRoot, "1.1.0"), { recursive: true });
+		mkdirSync(join(versionsRoot, "1.3.0"), { recursive: true });
+
+		expect(service.getStatus().rollbackTarget).toBe("1.2.0");
+		expect((await service.rollback()).state).toMatchObject({
+			phase: "rolled-back",
+			target: "1.2.0",
+		});
+	});
+
+	it("上一版已被自愈判死 → 跳过它,别把人退进一个开不了机的版本", async () => {
+		const { service, versionsRoot } = makeService({
+			currentVersion: "0.10.0",
+			imageVersion: "0.8.0",
+			trustedKeys: [makeKey().spkiBase64],
+		});
+		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
+		mkdirSync(join(versionsRoot, "0.10.0"), { recursive: true });
+		writeFileSync(
+			join(versionsRoot, "boot-state.json"),
+			JSON.stringify({ attempts: {}, failed: ["0.9.0"] }),
+		);
+
+		expect(service.getStatus().rollbackTarget).toBe("0.8.0");
 	});
 
 	it("已经在镜像那版上 → 没得退,别给用户一个按了没反应的按钮", async () => {

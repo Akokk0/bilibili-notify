@@ -185,6 +185,11 @@ export function readPinnedVersion({
 	return usablePin(readState(versionsRoot), versionsRoot, imageVersion);
 }
 
+/** 自愈判死的版本。给回退目标的挑选用 —— 退进一个开不了机的版本等于把人锁在外面。 */
+export function readFailedVersions({ versionsRoot }: { versionsRoot: string }): readonly string[] {
+	return readState(versionsRoot).failed;
+}
+
 export interface PinVersionInput {
 	versionsRoot: string;
 	version: string;
