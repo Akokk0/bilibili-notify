@@ -41,7 +41,8 @@ export type FieldSection =
 	| "transport"
 	| "session"
 	| "logging"
-	| "commands";
+	| "commands"
+	| "linkParsing";
 
 export interface FieldLabel {
 	/** UI 显示标签(中文)。 */
@@ -146,6 +147,17 @@ export const FIELD_LABELS = {
 		label: "指令前缀",
 		hint: "可以留空;留空后认不出的话一律当没看见(否则会对你每句聊天都回一句)",
 		section: "commands",
+	},
+	// ── 链接解析 ──────────────────────────────────────────────────────────
+	"linkParsing.enabled": {
+		label: "链接解析",
+		hint: "群里有人贴 B 站视频链接就回一张视频卡片。机器人在的所有群都算,谁贴都算 —— 只在 OneBot 上有效,QQ 官方机器人收不到群里的裸链接",
+		section: "linkParsing",
+	},
+	"linkParsing.cooldownSeconds": {
+		label: "冷却时间",
+		hint: "同一个群里同一个视频多久内只出一次图;0 = 不节流",
+		section: "linkParsing",
 	},
 	"commands.aliases": {
 		label: "指令别名",

@@ -1,4 +1,3 @@
-import { buildPatch } from "@bilibili-notify/internal/patch";
 import {
 	Avatar,
 	Btn,
@@ -21,6 +20,7 @@ import {
 	TNum,
 	TSelect,
 } from "../components/forms";
+import { LinkParsingSettings } from "../components/link-parsing-settings";
 import { OnboardingReopenSection } from "../components/onboarding/reopen-section";
 import { UpdateSection } from "../components/update/update-section";
 import { PUSH_TONE } from "../config/push-kinds";
@@ -33,6 +33,7 @@ import type { PushTarget } from "../types/domain";
 import type { AppConfig, GlobalConfig, GlobalConfigPatch, LogLevel } from "../types/globals";
 import { BackupSection } from "./backup/BackupSection";
 import { SkinSection } from "./skins/SkinSection";
+import { buildSystemPatch } from "./system-save-patch";
 
 const STATUS_LABELS: Record<BiliLoginStatusValue, string> = {
 	[BiliLoginStatus.NOT_LOGIN]: "未登录",
@@ -319,23 +320,11 @@ export default function System() {
 
 	const save = useMutation({
 		mutationFn: async (next: GlobalConfig) => {
-			// Only send the scopes this tab actually edits. Posting the whole
-			// draft would make the backend enable-check see `defaults.cardStyle`
-			// and `defaults.ai` in the patch body and run the puppeteer +
-			// chat.completions probes on every save — slow and pointless when
-			// the user never touched those fields here.
-			//
-			// 清空的可选字段(master.targetId / app.userAgent / 各模块 logLevels)由
-			// buildPatch 与基线一比自动变成显式 `null`。从前是逐个手写 `?? null`,
-			// 每加一个可选字段就得有人记得补一次 —— 漏掉的那个就是下一个「清不掉」。
+			// 改了哪块发哪块(挑块的规则与理由在 system-save-patch.ts)。草稿是从这份基线长出来
+			// 的,没有基线就不会有草稿;真走到这里是状态坏了,宁可报错也别静默发一份空补丁。
 			const base = globalsQuery.data;
-			await api.patch<GlobalConfig>(
-				"/api/globals",
-				buildPatch(
-					{ app: next.app, master: next.master, commands: next.commands },
-					{ app: base?.app, master: base?.master, commands: base?.commands },
-				),
-			);
+			if (!base) throw new Error("配置基线尚未加载,无法保存");
+			await api.patch<GlobalConfig>("/api/globals", buildSystemPatch(next, base));
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
 	});
@@ -494,6 +483,8 @@ export default function System() {
 			) : null}
 
 			{draft ? <CommandsSettings draft={draft} onPatch={patchDraft} /> : null}
+
+			{draft ? <LinkParsingSettings draft={draft} onPatch={patchDraft} /> : null}
 
 			<BrowserSourceSettings />
 
