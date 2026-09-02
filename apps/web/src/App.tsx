@@ -15,6 +15,7 @@ import { useAuthHydrate } from "./hooks/useAuthHydrate";
 import { HEALTH_QUERY_KEY, HEALTH_QUERY_OPTIONS } from "./hooks/useBackendReachable";
 import { usePushEventsChannel } from "./hooks/usePushEventsChannel";
 import { useStateChannel } from "./hooks/useStateChannel";
+import { useUpdateCheckOnOpen } from "./hooks/useUpdateCheckOnOpen";
 import About from "./pages/About";
 import Ai from "./pages/Ai";
 import Cards from "./pages/Cards";
@@ -54,6 +55,8 @@ function AuthedApp() {
 	useStateChannel();
 	usePushEventsChannel();
 	useAlertChannel();
+	// 打开面板就查一次更新(不定时)。放在这里同样是被登录门挡着的:没会话不查。
+	useUpdateCheckOnOpen();
 
 	// Detect when the backend is genuinely unreachable so the shell can show
 	// the design's error state instead of letting individual pages render

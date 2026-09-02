@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SECTION_ACCENT } from "../../config/section-accents";
 import { api } from "../../services/api";
 import type { GlobalConfig } from "../../types/globals";
+import { phaseLabel, UPDATE_QUERY_KEY, useUpdateStatus } from "./status";
 
 /**
  * 系统页「应用内更新」一节。
@@ -32,29 +33,6 @@ const CHANNEL_OPTIONS = [
 	{ value: "stable", label: "正式版" },
 	{ value: "prerelease", label: "预发布" },
 ];
-
-function phaseLabel(status: UpdateStatusDTO): string {
-	switch (status.state.phase) {
-		case "disabled":
-			return "本构建未启用";
-		case "idle":
-			return "还没查过";
-		case "up-to-date":
-			return "已是最新";
-		case "available":
-			return `有新版 ${status.state.target}`;
-		case "downloading":
-			return `正在下载 ${status.state.target}`;
-		case "ready":
-			return `${status.state.target} 已就绪`;
-		case "needs-image-pull":
-			return `${status.state.target} 需要新镜像`;
-		case "rolled-back":
-			return `已排队回退到 ${status.state.target}`;
-		case "error":
-			return "这次没成";
-	}
-}
 
 /** 报错文案。措辞按归因分三档,别混成一句「更新失败」。 */
 function errorCopy(reason: string): { text: string; danger: boolean } {
@@ -99,10 +77,7 @@ function errorCopy(reason: string): { text: string; danger: boolean } {
 
 export function UpdateSection() {
 	const qc = useQueryClient();
-	const statusQuery = useQuery({
-		queryKey: ["update"],
-		queryFn: () => api.get<UpdateStatusDTO>("/api/update"),
-	});
+	const statusQuery = useUpdateStatus();
 	const globalsQuery = useQuery({
 		queryKey: ["globals"],
 		queryFn: () => api.get<GlobalConfig>("/api/globals"),
@@ -111,7 +86,7 @@ export function UpdateSection() {
 	const act = useMutation({
 		mutationFn: (path: "check" | "download" | "rollback") =>
 			api.post<UpdateStatusDTO>(`/api/update/${path}`, {}),
-		onSuccess: (next) => qc.setQueryData(["update"], next),
+		onSuccess: (next) => qc.setQueryData(UPDATE_QUERY_KEY, next),
 	});
 	const apply = useMutation({
 		mutationFn: () => api.post("/api/update/apply", {}),
