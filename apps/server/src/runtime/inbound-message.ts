@@ -12,6 +12,15 @@ export interface InboundPrivateMessage {
 	text: string;
 }
 
+/** OneBot v11 群消息文本事件里我们用得到的那几个字段。 */
+export interface InboundGroupMessage {
+	groupId: string;
+	userId: string;
+	/** 收到这条消息的 bot 自己的号;老客户端可能不带。 */
+	selfId?: string;
+	text: string;
+}
+
 /**
  * 从一帧 OneBot 事件里挑出私聊文本。不是私聊消息就返回 null。
  *
@@ -25,27 +34,54 @@ export function extractPrivateMessage(
 	if (frame.message_type !== "private") return null;
 	const userId = frame.user_id;
 	if (typeof userId !== "number" && typeof userId !== "string") return null;
+	const text = extractText(frame);
+	if (!text.trim()) return null;
+	return { userId: String(userId), text };
+}
 
-	// 段数组优先:真实客户端两个字段**都发**,raw_message 是裹着 CQ 码的字符串
-	// ("[CQ:reply,id=…]y")。让它抢跑的话,「主人回 y 时顺手带上 reply 段也该
-	// 认得出」的容错永远轮不到 —— 引用回复的 y/n 与指令全认不出。raw_message
-	// 只作老客户端(没有段数组)的回落,且要先还原 CQ 转义。
-	let text = "";
+/**
+ * 从一帧 OneBot 事件里挑出群消息文本。不是群消息就返回 null。
+ *
+ * 与私聊那条只差「认哪种 message_type、多带一个 group_id」;文本抽取共用一份 ——
+ * 段数组优先、raw_message 回落的那套容错两边都要。
+ */
+export function extractGroupMessage(frame: Record<string, unknown>): InboundGroupMessage | null {
+	if (frame.post_type !== "message") return null;
+	if (frame.message_type !== "group") return null;
+	const groupId = frame.group_id;
+	const userId = frame.user_id;
+	if (typeof groupId !== "number" && typeof groupId !== "string") return null;
+	if (typeof userId !== "number" && typeof userId !== "string") return null;
+	const text = extractText(frame);
+	if (!text.trim()) return null;
+	const selfId = frame.self_id;
+	return {
+		groupId: String(groupId),
+		userId: String(userId),
+		selfId: typeof selfId === "number" || typeof selfId === "string" ? String(selfId) : undefined,
+		text,
+	};
+}
+
+/**
+ * 段数组优先:真实客户端两个字段**都发**,raw_message 是裹着 CQ 码的字符串
+ * ("[CQ:reply,id=…]y")。让它抢跑的话,「主人回 y 时顺手带上 reply 段也该
+ * 认得出」的容错永远轮不到 —— 引用回复的 y/n 与指令全认不出。raw_message
+ * 只作老客户端(没有段数组)的回落,且要先还原 CQ 转义。
+ */
+function extractText(frame: Record<string, unknown>): string {
 	if (Array.isArray(frame.message)) {
-		text = frame.message
+		return frame.message
 			.filter(
 				(seg): seg is { type: string; data: { text?: string } } =>
 					typeof seg === "object" && seg !== null && (seg as { type?: string }).type === "text",
 			)
 			.map((seg) => seg.data?.text ?? "")
 			.join("");
-	} else if (typeof frame.message === "string") {
-		text = frame.message;
-	} else if (typeof frame.raw_message === "string") {
-		text = unescapeCq(frame.raw_message);
 	}
-	if (!text.trim()) return null;
-	return { userId: String(userId), text };
+	if (typeof frame.message === "string") return frame.message;
+	if (typeof frame.raw_message === "string") return unescapeCq(frame.raw_message);
+	return "";
 }
 
 /** OneBot 的 CQ 码转义还原([ ] , & 在 raw_message 里以 HTML 实体出现)。 */

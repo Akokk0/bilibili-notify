@@ -477,8 +477,9 @@ function buildCommonAdditional(common: any) {
  * 关联视频卡 —— 图文/文字动态正文下方挂的那条投稿。
  *
  * 与 DYNAMIC_TYPE_AV 的主视频卡(buildVideoContent)是两套数据:那边 `stat.play` /
- * `stat.danmaku` 是数字、要配图标,这边 `desc_second` 已经是接口拼好的成品文案
- * (「2654观看 102弹幕」),官方页面也是当纯文本灰字渲染的,别再套图标重排。
+ * `stat.danmaku` 是两个各自配图标的计数(接口给的是「6.5万」这种成品字符串;链接解析
+ * 拼出来的动态也照这个样子给),这边 `desc_second` 已经是接口拼好的一整句(「2654观看
+ * 102弹幕」),官方页面也是当纯文本灰字渲染的,别再套图标重排。
  */
 // biome-ignore lint/suspicious/noExplicitAny: Bilibili API 返回的关联视频数据类型不固定
 function buildUgcAdditional(ugc: any) {
@@ -523,7 +524,7 @@ function buildVideoContent(archive: {
 	duration_text: string;
 	title: string;
 	desc: string;
-	stat: { play: number; danmaku: number };
+	stat: { play: number | string; danmaku: number | string };
 }) {
 	return (
 		<div

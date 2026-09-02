@@ -1,0 +1,293 @@
+/**
+ * 链接解析处理器 —— 群里有人贴 B 站视频链接,机器人回一张视频卡片。
+ *
+ * 缝在 `handle(frame, {adapterId})`:喂一帧 OneBot 事件,看它对外做了什么
+ * (取了哪个视频、喂给渲染器的动态长什么样、往哪个群发了什么),不看内部。
+ * 四个协作者全是假的:配置(现读)、B 站接口、渲染器、发送。
+ */
+
+import type { VideoInfo, VideoRef } from "@bilibili-notify/api";
+import type { CardColorOptions, Dynamic } from "@bilibili-notify/image";
+import type {
+	CardBlock,
+	DeliveryResult,
+	LinkParsingConfig,
+	NotificationPayload,
+} from "@bilibili-notify/internal";
+import { describe, expect, it, vi } from "vite-plus/test";
+import { createLinkParser } from "../link-parser.js";
+
+const ADAPTER = "11111111-1111-4111-8111-111111111111";
+const GROUP = 123456;
+const BOT = 10000;
+const SOMEONE = 20002;
+
+const VIDEO: VideoInfo = {
+	bvid: "BV1zMtU6uEEb",
+	aid: 114514,
+	title: "示例标题",
+	pic: "http://i0.hdslb.com/bfs/archive/cover.jpg",
+	desc: "示例简介",
+	duration: 754,
+	pubdate: 1756800000,
+	tname: "日常",
+	owner: { mid: 12345, name: "示例UP", face: "http://i0.hdslb.com/bfs/face/face.jpg" },
+	stat: { view: 65000, danmaku: 120, reply: 30, favorite: 400, coin: 200, share: 15, like: 3000 },
+};
+
+/** 第一次调用的第一个参数;没被调过就让测试在这里死,别在后面报一串 undefined。 */
+function firstArg<A extends unknown[]>(calls: A[]): A[0] {
+	const call = calls[0];
+	if (!call) throw new Error("expected at least one call");
+	return call[0];
+}
+
+function groupFrame(text: string, over: Record<string, unknown> = {}) {
+	return {
+		post_type: "message",
+		message_type: "group",
+		group_id: GROUP,
+		user_id: SOMEONE,
+		self_id: BOT,
+		message: [{ type: "text", data: { text } }],
+		raw_message: text,
+		...over,
+	};
+}
+
+function makeParser(over: Partial<LinkParsingConfig> = {}) {
+	const config: LinkParsingConfig = { enabled: true, cooldownSeconds: 60, ...over };
+	const getVideoInfo = vi.fn(async (_ref: VideoRef) => VIDEO);
+	const resolveShortLink = vi.fn(async (_url: string): Promise<string | null> => null);
+	const generateDynamicCard = vi.fn(
+		async (_data: Dynamic, _colors?: CardColorOptions, _layout?: CardBlock[]) =>
+			Buffer.from("png-bytes"),
+	);
+	const sent: { dest: { adapterId: string; groupId: string }; payload: NotificationPayload }[] = [];
+	const send = vi.fn(
+		async (
+			dest: { adapterId: string; groupId: string },
+			payload: NotificationPayload,
+		): Promise<DeliveryResult> => {
+			sent.push({ dest, payload });
+			return { ok: true, latencyMs: 1 };
+		},
+	);
+	let now = 1_000_000;
+	const logger = { info() {}, warn() {}, error() {}, debug() {} };
+	const parser = createLinkParser({
+		logger,
+		config: () => config,
+		api: { getVideoInfo, resolveShortLink },
+		renderer: () => ({ generateDynamicCard }),
+		send,
+		now: () => now,
+	});
+	return {
+		parser,
+		config,
+		getVideoInfo,
+		resolveShortLink,
+		generateDynamicCard,
+		send,
+		sent,
+		advance(ms: number) {
+			now += ms;
+		},
+	};
+}
+
+describe("createLinkParser", () => {
+	it("群里一条 BV 链接:取那个视频,渲染成「投稿了视频」形态的动态卡,发回来源群", async () => {
+		const h = makeParser();
+		await h.parser.handle(groupFrame("看这个 https://www.bilibili.com/video/BV1zMtU6uEEb/ 好看"), {
+			adapterId: ADAPTER,
+		});
+
+		expect(h.getVideoInfo).toHaveBeenCalledWith({ bvid: "BV1zMtU6uEEb" });
+
+		expect(h.generateDynamicCard).toHaveBeenCalledTimes(1);
+		const dyn = firstArg(h.generateDynamicCard.mock.calls);
+		expect(dyn.type).toBe("DYNAMIC_TYPE_AV");
+		expect(dyn.modules.module_author).toMatchObject({
+			name: "示例UP",
+			face: "http://i0.hdslb.com/bfs/face/face.jpg",
+			mid: 12345,
+			pub_ts: 1756800000,
+		});
+		expect(dyn.modules.module_dynamic.major?.archive).toEqual({
+			badge: { text: "投稿视频" },
+			cover: "http://i0.hdslb.com/bfs/archive/cover.jpg",
+			duration_text: "12:34",
+			title: "示例标题",
+			desc: "示例简介",
+			stat: { play: "6.5万", danmaku: "120" },
+			bvid: "BV1zMtU6uEEb",
+			jump_url: "//www.bilibili.com/video/BV1zMtU6uEEb",
+		});
+		expect(dyn.modules.module_stat).toEqual({
+			comment: { count: 30 },
+			forward: { count: 15 },
+			like: { count: 3000 },
+		});
+
+		expect(h.sent).toEqual([
+			{
+				dest: { adapterId: ADAPTER, groupId: String(GROUP) },
+				payload: {
+					kind: "image",
+					image: { buffer: Buffer.from("png-bytes"), mime: "image/jpeg" },
+				},
+			},
+		]);
+		expect(h.sent[0]?.payload).toEqual({
+			kind: "image",
+			image: { buffer: Buffer.from("png-bytes"), mime: "image/jpeg" },
+		});
+	});
+
+	describe("什么都不做的几种情况", () => {
+		const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
+
+		it("功能关着:不打接口、不发", async () => {
+			const h = makeParser({ enabled: false });
+			await h.parser.handle(groupFrame(LINK), { adapterId: ADAPTER });
+			expect(h.getVideoInfo).not.toHaveBeenCalled();
+			expect(h.sent).toHaveLength(0);
+		});
+
+		it("私聊里贴链接不算(这版只做群)", async () => {
+			const h = makeParser();
+			await h.parser.handle(groupFrame(LINK, { message_type: "private", group_id: undefined }), {
+				adapterId: ADAPTER,
+			});
+			expect(h.getVideoInfo).not.toHaveBeenCalled();
+			expect(h.sent).toHaveLength(0);
+		});
+
+		it("机器人自己发的消息不解析", async () => {
+			const h = makeParser();
+			await h.parser.handle(groupFrame(LINK, { user_id: BOT }), { adapterId: ADAPTER });
+			expect(h.getVideoInfo).not.toHaveBeenCalled();
+		});
+
+		it("正文里没有链接就不打接口", async () => {
+			const h = makeParser();
+			await h.parser.handle(groupFrame("今天天气不错"), { adapterId: ADAPTER });
+			expect(h.getVideoInfo).not.toHaveBeenCalled();
+		});
+
+		it("没有 Chrome(渲染器为空)连接口都不打", async () => {
+			const h = makeParser();
+			const parser = createLinkParser({
+				logger: { info() {}, warn() {}, error() {}, debug() {} },
+				config: () => h.config,
+				api: { getVideoInfo: h.getVideoInfo, resolveShortLink: h.resolveShortLink },
+				renderer: () => null,
+				send: h.send,
+			});
+			await parser.handle(groupFrame(LINK), { adapterId: ADAPTER });
+			expect(h.getVideoInfo).not.toHaveBeenCalled();
+			expect(h.sent).toHaveLength(0);
+		});
+	});
+
+	describe("冷却", () => {
+		const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
+
+		it("同一个群同一个视频 60 秒内只出一次图,过了冷却再出;别的群不受影响", async () => {
+			const h = makeParser();
+			await h.parser.handle(groupFrame(LINK), { adapterId: ADAPTER });
+			await h.parser.handle(groupFrame(LINK), { adapterId: ADAPTER });
+			expect(h.sent).toHaveLength(1);
+
+			await h.parser.handle(groupFrame(LINK, { group_id: 999 }), { adapterId: ADAPTER });
+			expect(h.sent).toHaveLength(2);
+			expect(h.sent[1]?.dest.groupId).toBe("999");
+
+			h.advance(61_000);
+			await h.parser.handle(groupFrame(LINK), { adapterId: ADAPTER });
+			expect(h.sent).toHaveLength(3);
+		});
+
+		it("冷却设 0 = 不节流", async () => {
+			const h = makeParser({ cooldownSeconds: 0 });
+			await h.parser.handle(groupFrame(LINK), { adapterId: ADAPTER });
+			await h.parser.handle(groupFrame(LINK), { adapterId: ADAPTER });
+			expect(h.sent).toHaveLength(2);
+		});
+
+		it("链接坏了也吃冷却:同一条坏链接反复贴,接口只被打一次", async () => {
+			const h = makeParser();
+			h.getVideoInfo.mockRejectedValue(new Error("获取视频信息失败(-404): 啥都木有"));
+			await h.parser.handle(groupFrame(LINK), { adapterId: ADAPTER });
+			await h.parser.handle(groupFrame(LINK), { adapterId: ADAPTER });
+			expect(h.getVideoInfo).toHaveBeenCalledTimes(1);
+			expect(h.sent).toHaveLength(0);
+		});
+	});
+
+	describe("失败不回话、不抛", () => {
+		const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
+
+		it("接口失败:不发任何东西,handle 正常返回", async () => {
+			const h = makeParser();
+			h.getVideoInfo.mockRejectedValue(new Error("boom"));
+			await expect(
+				h.parser.handle(groupFrame(LINK), { adapterId: ADAPTER }),
+			).resolves.toBeUndefined();
+			expect(h.generateDynamicCard).not.toHaveBeenCalled();
+			expect(h.sent).toHaveLength(0);
+		});
+
+		it("渲染失败:不发任何东西", async () => {
+			const h = makeParser();
+			h.generateDynamicCard.mockRejectedValue(new Error("截图超时(20s)"));
+			await h.parser.handle(groupFrame(LINK), { adapterId: ADAPTER });
+			expect(h.sent).toHaveLength(0);
+		});
+
+		it("发送返回失败:不抛", async () => {
+			const h = makeParser();
+			h.send.mockResolvedValue({ ok: false, latencyMs: 3, err: "group: groupId missing" });
+			await expect(
+				h.parser.handle(groupFrame(LINK), { adapterId: ADAPTER }),
+			).resolves.toBeUndefined();
+		});
+	});
+
+	describe("短链与多链接", () => {
+		it("b23.tv 短链先解成落地地址再取视频", async () => {
+			const h = makeParser();
+			h.resolveShortLink.mockResolvedValue(
+				"https://www.bilibili.com/video/BV1zMtU6uEEb?share_source=copy_web",
+			);
+			await h.parser.handle(groupFrame("分享 https://b23.tv/abc123"), { adapterId: ADAPTER });
+			expect(h.resolveShortLink).toHaveBeenCalledWith("https://b23.tv/abc123");
+			expect(h.getVideoInfo).toHaveBeenCalledWith({ bvid: "BV1zMtU6uEEb" });
+			expect(h.sent).toHaveLength(1);
+		});
+
+		it("短链解不出来(不是视频 / 落到别处)就当没看见", async () => {
+			const h = makeParser();
+			h.resolveShortLink.mockResolvedValue(null);
+			await h.parser.handle(groupFrame("https://b23.tv/notvideo"), { adapterId: ADAPTER });
+			expect(h.getVideoInfo).not.toHaveBeenCalled();
+			expect(h.sent).toHaveLength(0);
+		});
+
+		it("一条消息里最多解析三个链接", async () => {
+			const h = makeParser({ cooldownSeconds: 0 });
+			const text = ["BV1aaaaaaaaa", "BV1bbbbbbbbb", "BV1ccccccccc", "BV1dddddddddd".slice(0, 12)]
+				.map((id) => `https://www.bilibili.com/video/${id}`)
+				.join(" ");
+			await h.parser.handle(groupFrame(text), { adapterId: ADAPTER });
+			expect(h.getVideoInfo).toHaveBeenCalledTimes(3);
+			expect(h.getVideoInfo.mock.calls.map(([ref]) => ref)).toEqual([
+				{ bvid: "BV1aaaaaaaaa" },
+				{ bvid: "BV1bbbbbbbbb" },
+				{ bvid: "BV1ccccccccc" },
+			]);
+		});
+	});
+});

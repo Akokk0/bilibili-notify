@@ -57,7 +57,8 @@ export type Dynamic = {
 					duration_text: string;
 					title: string;
 					desc: string;
-					stat: { play: number; danmaku: number };
+					/** 接口给的是格式化后的字符串("6.5万");模板原样渲染,不做算术。 */
+					stat: { play: number | string; danmaku: number | string };
 					bvid: string;
 					jump_url: string;
 				};
