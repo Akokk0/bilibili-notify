@@ -350,6 +350,44 @@ describe("createUpdateService —— 面板一打开就查一次,所以查得起
 		expect(payloadFetches(fetchMock)).toBe(1);
 	});
 
+	it("装好了等重启,再查一次网络断了 → 还是 ready,「立即重启」不能因为一次抖动就没了", async () => {
+		// 需要加速站的用户正是 GitHub 时通时不通的那批。载荷好端端躺在盘上,一次
+		// 失败的检查把 ready 盖成 error,/apply 就回 409 —— 得等下一次成功的检查才能恢复。
+		const key = makeKey();
+		const zip = makePayloadZip("0.9.0");
+		stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.9.0", zip)),
+			payload: zip,
+		});
+		const { service } = makeService({ trustedKeys: [key.spkiBase64] });
+		await service.check();
+
+		stubNetwork({ failUrls: /.*/ });
+		const again = await service.check();
+
+		expect(again.state).toMatchObject({ phase: "ready", target: "0.9.0" });
+	});
+
+	it("装好了等重启,再查一次清单说已是最新 → 还是 ready:重启照样会跑盘上那份,界面不能说谎", async () => {
+		// 选版只看盘上谁最新,不看内存态。清单退回去了(发版侧撤了那条、或用户换了渠道),
+		// 盘上那份新版本还在、重启还是会跑它 —— 这时说「已是最新」就是在骗人。
+		const key = makeKey();
+		const zip = makePayloadZip("0.9.0");
+		stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.9.0", zip)),
+			payload: zip,
+		});
+		const { service } = makeService({ trustedKeys: [key.spkiBase64] });
+		await service.check();
+
+		stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.8.0", makePayloadZip("0.8.0"))),
+		});
+		const again = await service.check();
+
+		expect(again.state).toMatchObject({ phase: "ready", target: "0.9.0" });
+	});
+
 	it("检查还在跑的时候又来一次 → 共用同一趟,不并发下两份", async () => {
 		// 打开面板那次自动检查还在下载,用户走到系统页又按了「检查更新」—— 两趟
 		// 并发各下一份、各解一次压,最后谁写盘谁赢。让第二趟搭第一趟的车。

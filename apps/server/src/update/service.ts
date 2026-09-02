@@ -244,6 +244,15 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		return next;
 	}
 
+	/**
+	 * 这个进程装好的那份还躺在盘上等重启。这时 `ready` 是**盘上的事实**(重启就会跑它,
+	 * 选版只看盘上谁最新),不是这次检查的结论 —— 一次失败的检查、或清单退回去了,都不能
+	 * 把它盖掉:盖成 error 会让「立即重启」凭空消失,盖成 up-to-date 则是在说谎。
+	 */
+	function readyOnDisk(): boolean {
+		return state.phase === "ready" && onDisk !== null;
+	}
+
 	async function runCheck(): Promise<UpdateStatus> {
 		const settings = readSettings();
 		const mirrors = mirrorChain(settings);
@@ -255,6 +264,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 			maxBytes: maxManifestBytes,
 		});
 		if (!fetched.ok) {
+			if (readyOnDisk()) return status();
 			// 清单都没拿到,给不出「那一版」的发布页,只能给发布列表 —— 但必须给得出:
 			// 「下不动就通知 + 给个链接」是设计里的兜底出口。
 			return fail(fetched.reason, releasesPageUrl);
@@ -270,6 +280,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 
 		if (decision.kind === "up-to-date") {
 			pending = null;
+			if (readyOnDisk()) return status();
 			state = { phase: "up-to-date", checkedAt: now() };
 			return status();
 		}
@@ -277,6 +288,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 			// 载荷能比镜像新,但 Node / chromium / 字体全来自镜像。下下来也跑不起来,
 			// 所以连下都不下,直接告诉用户这一版得重拉镜像。
 			pending = null;
+			if (readyOnDisk()) return status();
 			state = {
 				phase: "needs-image-pull",
 				target: decision.target,
