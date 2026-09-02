@@ -83,6 +83,11 @@ export interface DropLegacyWebDistDirResult {
  * 用户自己填的其他值一律不碰 —— 我们收回的只是**我们自己写进去的那句话**。
  */
 export function dropLegacyWebDistDir(yamlText: string): DropLegacyWebDistDirResult {
+	// 这是一次性迁移:第一次启动之后每一次开机都只会走到这一句。廉价地先看一眼字符串,
+	// 稳态就不必再付一次**文档级** yaml 解析(`parseDocument` 连注释和排版一起建树,
+	// 比 `parse` 重得多)。
+	if (!yamlText.includes(LEGACY_IMAGE_WEB_DIST)) return { text: yamlText, changed: false };
+
 	const doc = parseDocument(yamlText);
 	if (doc.get("webDistDir") !== LEGACY_IMAGE_WEB_DIST) return { text: yamlText, changed: false };
 

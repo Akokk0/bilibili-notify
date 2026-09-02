@@ -1,7 +1,7 @@
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import type { NotificationPayload } from "@bilibili-notify/internal";
 import { type ServerType, serve } from "@hono/node-server";
@@ -54,6 +54,7 @@ import {
 	TRUSTED_UPDATE_KEYS,
 	UPDATE_MANIFEST_URLS,
 } from "./update/trusted-keys.js";
+import { versionsRootIn } from "./update/versions-root.js";
 import { createWsServer } from "./ws/server.js";
 import type { LogEntry } from "./ws/types.js";
 
@@ -554,6 +555,10 @@ export async function startStandaloneServer(
 				})
 			: undefined;
 
+		// 当前跑的这份载荷的版本 —— 每次调用都要向上找一遍 package.json 再解析,
+		// 而一次启动里它不会变。
+		const payloadVersion = resolveAppVersion();
+
 		// 运行时 chromePath 写回目标:仅 B 模型(显式 BN_CONFIG)有单一可写文件;
 		// legacy/disabled 返回 null → 热启用仍生效但不持久化(改配置走 env / 手编辑)。
 		const configPath = resolveConfigPath({ env });
@@ -595,14 +600,14 @@ export async function startStandaloneServer(
 			runRoastNow: (uid) => (uid ? roastScheduler.runSoloOnce(uid) : roastScheduler.runBoardOnce()),
 			update: {
 				service: createUpdateService({
-					currentVersion: resolveAppVersion(),
+					currentVersion: payloadVersion,
 					// boot.mjs 在加载这份载荷之前摆进来的(见 src/boot.ts)。直接跑
 					// index.mjs 时(dev / 老镜像)拿不到 —— 那就当自己就是地板,
 					// 「没得退」,而不是瞎猜一个版本号。
-					imageVersion: normalizeOptionalEnv(env.BN_IMAGE_VERSION) ?? resolveAppVersion(),
-					// resolve 而不是 join:dataDir 可以是相对路径(默认就是 `./data`),而 boot.mjs
-					// 那侧(update/versions-root.ts)算的是绝对路径 —— 两边必须指向同一个目录。
-					versionsRoot: resolve(bootstrap.dataDir, "versions"),
+					imageVersion: normalizeOptionalEnv(env.BN_IMAGE_VERSION) ?? payloadVersion,
+					// 和 boot.mjs 那侧(update/versions-root.ts)算的是同一个目录 —— 这段路径
+					// 只写一处,写岔了两边都不报错,症状是「升完了重启还是旧版本」。
+					versionsRoot: versionsRootIn(bootstrap.dataDir),
 					nodeMajor: Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10),
 					trustedKeys: TRUSTED_UPDATE_KEYS,
 					manifestUrls: UPDATE_MANIFEST_URLS,
@@ -684,8 +689,6 @@ export async function startStandaloneServer(
 	}
 }
 
-type WebDistDirSource = "explicit" | "payload" | "disabled";
-
 /**
  * {@link resolveWebDistDir} 之上再加一道存在性探测。
  *
@@ -693,21 +696,15 @@ type WebDistDirSource = "explicit" | "payload" | "disabled";
  * **跟着载荷算出来的那个只是推断**,里面没有 `index.html` 就说明这份载荷根本没带前端 ——
  * 与其挂一个空壳目录让所有请求撞进 404,不如干脆不挂,日志里说清楚。
  */
-async function resolveEffectiveWebDistDir(
-	input: ResolveWebDistDirInput,
-): Promise<{ dir?: string; source: WebDistDirSource; payloadDir: string }> {
+async function resolveEffectiveWebDistDir(input: ResolveWebDistDirInput): Promise<
+	| { dir: string; source: "explicit" | "payload" }
+	// 只有这一档要说出「我们本来打算挂哪个目录」——而走到这里时它就是上面算出来的那个:
+	// 用户点名的目录已经在上一行 return 了。
+	| { dir?: undefined; source: "disabled"; payloadDir: string }
+> {
 	const { dir, source } = resolveWebDistDir(input);
-	const payloadDir =
-		source === "payload"
-			? dir
-			: resolveWebDistDir({
-					configured: undefined,
-					envValue: undefined,
-					bundleUrl: input.bundleUrl,
-				}).dir;
-	if (source === "explicit") return { dir, source, payloadDir };
-	if (await hasReadableIndexHtml(dir)) return { dir, source: "payload", payloadDir };
-	return { source: "disabled", payloadDir };
+	if (source === "explicit" || (await hasReadableIndexHtml(dir))) return { dir, source };
+	return { source: "disabled", payloadDir: dir };
 }
 
 async function hasReadableIndexHtml(dir: string): Promise<boolean> {
