@@ -313,7 +313,7 @@ describe("createUpdateService —— 面板一打开就查一次,所以查得起
 			return new Response(world.payload, { status: 200 });
 		});
 		vi.stubGlobal("fetch", fetchMock);
-		const { service } = makeService({ trustedKeys: [key.spkiBase64] });
+		const { service, versionsRoot } = makeService({ trustedKeys: [key.spkiBase64] });
 
 		await service.check();
 		// 同版本号、不同内容(发版侧重传了资产)。
@@ -328,6 +328,9 @@ describe("createUpdateService —— 面板一打开就查一次,所以查得起
 
 		expect(again.state).toMatchObject({ phase: "ready", target: "0.9.0" });
 		expect(payloadFetches(fetchMock)).toBe(2);
+		// 「重下」不只是多打一次网络 —— 盘上得真的是新那份。以前这条只数 fetch 次数,
+		// 落盘那层看到目录在就跳过,7MB 白下、盘上还是旧的,这条照样绿。
+		expect(readFileSync(join(versionsRoot, "0.9.0", "index.mjs"), "utf8")).toContain("rebuilt");
 	});
 
 	it("关着自动下载、手动下完之后再查一次 → 还是 ready,重启按钮不能因为开了次面板就没了", async () => {

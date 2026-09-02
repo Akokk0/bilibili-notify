@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { strToU8, zipSync } from "fflate";
@@ -51,6 +59,58 @@ describe("installPayload", () => {
 
 		expect(result.ok, result.ok ? "" : `reason=${result.reason}`).toBe(true);
 		expect(existsSync(join(absolute, "0.9.0", "index.mjs"))).toBe(true);
+	});
+
+	it("同一版本已经装过、包也是同一份 → alreadyInstalled,盘上一个字节不动", () => {
+		const versionsRoot = tempRoot();
+		const zip = makeZip({ "index.mjs": "// A" });
+		const input = { zip, expectedSha256: sha256(zip), version: "0.9.0", versionsRoot };
+
+		expect(installPayload(input)).toMatchObject({ ok: true, alreadyInstalled: false });
+		expect(installPayload(input)).toMatchObject({ ok: true, alreadyInstalled: true });
+		expect(readFileSync(join(versionsRoot, "0.9.0", "index.mjs"), "utf8")).toBe("// A");
+	});
+
+	it("同一版本号、但清单里的包换了(发版侧重传了资产)→ 换成新的,旧目录不留", () => {
+		// 只凭「目录存在」就当装好了的话,service 那套「版本 + sha256」双判据被彻底架空:
+		// 下了 7MB 全丢掉、盘上还是旧那份、内存里却记着新 sha —— 面板说 0.9.0 已就绪,
+		// 重启跑的是旧的。目录里记一份包的 sha,对不上就换。
+		const versionsRoot = tempRoot();
+		const zipA = makeZip({ "index.mjs": "// A" });
+		expect(
+			installPayload({ zip: zipA, expectedSha256: sha256(zipA), version: "0.9.0", versionsRoot }),
+		).toMatchObject({ ok: true });
+
+		const zipB = makeZip({ "index.mjs": "// B", "extra.txt": "new" });
+		const result = installPayload({
+			zip: zipB,
+			expectedSha256: sha256(zipB),
+			version: "0.9.0",
+			versionsRoot,
+		});
+
+		expect(result).toMatchObject({ ok: true, alreadyInstalled: false });
+		expect(readFileSync(join(versionsRoot, "0.9.0", "index.mjs"), "utf8")).toBe("// B");
+		expect(existsSync(join(versionsRoot, "0.9.0", "extra.txt"))).toBe(true);
+		// 换掉的旧目录不能留在 versions/ 下占 25MB。
+		expect(readdirSync(versionsRoot).filter((n) => n.startsWith(".old-"))).toEqual([]);
+	});
+
+	it("目录在、但没有 sha 记录(更早的版本装的)→ 当作不一致,换成新的", () => {
+		const versionsRoot = tempRoot();
+		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
+		writeFileSync(join(versionsRoot, "0.9.0", "index.mjs"), "// legacy");
+		const zip = makeZip({ "index.mjs": "// fresh" });
+
+		const result = installPayload({
+			zip,
+			expectedSha256: sha256(zip),
+			version: "0.9.0",
+			versionsRoot,
+		});
+
+		expect(result).toMatchObject({ ok: true, alreadyInstalled: false });
+		expect(readFileSync(join(versionsRoot, "0.9.0", "index.mjs"), "utf8")).toBe("// fresh");
 	});
 
 	it("sha256 对不上 → 拒绝,而且 versions/ 下一个字节都不多", () => {
@@ -121,8 +181,9 @@ describe("installPayload", () => {
 	it("这个版本已经装过 → 不碰磁盘,报『已存在』让上层去切指针", () => {
 		// 两条真实路径会走到这里:① 装完了但没来得及切指针就挂了;② 用户回退到上一版
 		// 之后又想升回来(而我们保留当前+上一版,那个目录根本没删)。
-		// 两种情况下那个目录都是**完整**的 —— 它只可能通过原子 rename 出现 ——
-		// 所以正确的动作是什么都不做,而不是重下 25MB 再装一遍。
+		// 两种情况下那个目录都是**完整**的 —— 它只可能通过原子 rename 出现 —— 而且是
+		// **同一份包**(目录里记的 sha256 对得上),所以正确的动作是什么都不做,而不是
+		// 重下 25MB 再装一遍。包换了(同版本号重传)是另一回事,见上面那条。
 		const versionsRoot = tempRoot();
 		const first = makeZip({ "index.mjs": "第一次装的" });
 		installPayload({
@@ -132,10 +193,9 @@ describe("installPayload", () => {
 			versionsRoot,
 		});
 
-		const second = makeZip({ "index.mjs": "不该覆盖掉上面那份" });
 		const result = installPayload({
-			zip: second,
-			expectedSha256: sha256(second),
+			zip: first,
+			expectedSha256: sha256(first),
 			version: "0.9.0",
 			versionsRoot,
 		});

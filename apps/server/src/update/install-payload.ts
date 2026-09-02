@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { unzipSync } from "fflate";
 
@@ -26,6 +26,9 @@ export type InstallPayloadResult =
 	| { ok: false; reason: "unsafe-entry" }
 	/** 包解不开,或者写到一半失败了。现场已经清干净。 */
 	| { ok: false; reason: "extract-failed" };
+
+/** 版本目录里记「这是哪份包」的文件名。 */
+const SHA_MARKER = ".payload-sha256";
 
 /**
  * 条目名会不会写到 `root` 外面。`../` 和绝对路径都由这一句拦下 —— `resolve`
@@ -54,12 +57,13 @@ export function installPayload({
 }: InstallPayloadInput): InstallPayloadResult {
 	const target = join(versionsRoot, version);
 
-	// 已经装过就什么都不做。版本目录只可能通过原子 rename 出现,所以它存在就说明
-	// 内容是完整的 —— 重下重装一遍纯属浪费。而且目录**替换不了**:POSIX 的 rename
-	// 目标是非空目录时直接 ENOTEMPTY,真要覆盖只能「挪走旧的→改名新的→删旧的」,
-	// 中间必然有一个两者都不在目标名字上的窗口。为一个不该发生的场景开那个窗口
-	// 不划算。「已存在但其实是坏的」交给启动失败自愈去清,不在这一层解决。
-	if (existsSync(target)) return { ok: true, path: target, alreadyInstalled: true };
+	// 同一份包已经装过就什么都不做。「同一份」看目录里记的 sha256,不只看目录在不在:
+	// 发版侧重传过资产的话,同版本号下面是另一个包 —— 只认目录存在的话,7MB 白下、盘上
+	// 还是旧那份、上层却记着新 sha,面板说已就绪,重启跑的是旧的。
+	// 版本目录只可能通过原子 rename 出现,所以它存在就说明内容是完整的。
+	if (existsSync(target) && readInstalledSha256(target) === expectedSha256) {
+		return { ok: true, path: target, alreadyInstalled: true };
+	}
 
 	// 校验在**落盘之前**。反过来的话,失败那一刻磁盘上已经躺着半个树了。
 	const actual = createHash("sha256").update(zip).digest("hex");
@@ -89,7 +93,9 @@ export function installPayload({
 			mkdirSync(dirname(dest), { recursive: true });
 			writeFileSync(dest, bytes);
 		}
-		renameSync(staging, target);
+		// 记下这份包的 sha256,跟着目录一起原子出现 —— 下次同版本号再来,凭它判断是不是同一份。
+		writeFileSync(join(staging, SHA_MARKER), expectedSha256);
+		swapIn(staging, target, version, versionsRoot);
 	} catch {
 		// 包是从网上下来的,畸形结构(同名的文件与目录、磁盘满、权限)都只能是
 		// 「装不上」,不能是「进程没了」。staging 由下面的 finally 收走。
@@ -100,4 +106,39 @@ export function installPayload({
 	}
 
 	return { ok: true, path: target, alreadyInstalled: false };
+}
+
+/** 目录里记的「这是哪份包」。没有(更早的版本装的)或读不出来 → 当作不是同一份。 */
+function readInstalledSha256(dir: string): string | null {
+	try {
+		return readFileSync(join(dir, SHA_MARKER), "utf8").trim();
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * 让 staging 以目标名字出现。目标不存在时就是一次原子 rename;目标已存在(同版本号换包)
+ * 时 POSIX 的 rename 会报 ENOTEMPTY,只能「挪走旧的 → 改名新的 → 删旧的」—— 中间有一个
+ * 两者都不在目标名字上的窗口。窗口里进程死了的话,启动选版看不到这一版,会退到下一个候选
+ * (可活),而挪走的 `.old-*` 由 prune 扫掉。第二步失败就把旧的挪回来,尽量别留空。
+ */
+function swapIn(staging: string, target: string, version: string, versionsRoot: string): void {
+	if (!existsSync(target)) {
+		renameSync(staging, target);
+		return;
+	}
+	const old = join(versionsRoot, `.old-${version}-${randomUUID()}`);
+	renameSync(target, old);
+	try {
+		renameSync(staging, target);
+	} catch (err) {
+		try {
+			renameSync(old, target);
+		} catch {
+			// 挪回去也失败:目标名字空着,由启动选版退到下一个候选。
+		}
+		throw err;
+	}
+	rmSync(old, { recursive: true, force: true });
 }
