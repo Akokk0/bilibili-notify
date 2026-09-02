@@ -811,13 +811,16 @@ fn spawn_child_monitor(app: AppHandle, pid: u32) {
             continue;
         };
         let paths = current_paths(&app).ok();
-        let disposition = {
+        // 持锁只做「改状态」,拿到的是一个二选一的结论 —— 拉起来还是摊开崩溃页。
+        // 曾经这里回的是三态 `SidecarExit`,于是锁外还得再 match 一遍,而 `Quitting`
+        // 那条 arm 在锁里就 return 了、永远到不了:三个分支在两处各写一遍,加一档状态
+        // 得记着改两处。
+        let restart = {
             let state = app.state::<LauncherState>();
             let mut inner = state.inner.lock().expect("launcher state poisoned");
             inner.service = None;
             let exit_code = status.as_ref().ok().and_then(|(code, _)| *code);
-            let disposition = sidecar_exit_disposition(inner.quitting, exit_code);
-            match disposition {
+            match sidecar_exit_disposition(inner.quitting, exit_code) {
                 SidecarExit::Quitting => return,
                 SidecarExit::Restart => {
                     // 不在这里置 Starting:start_service_async 看到 Starting 会当成
@@ -826,6 +829,7 @@ fn spawn_child_monitor(app: AppHandle, pid: u32) {
                     inner.message =
                         "后端已按要求退出（应用更新 / 回退），正在重新拉起。".to_string();
                     inner.detail = None;
+                    true
                 }
                 SidecarExit::Crashed => {
                     inner.status = LauncherStatus::Crashed;
@@ -834,27 +838,23 @@ fn spawn_child_monitor(app: AppHandle, pid: u32) {
                         Ok((_, status)) => format!("sidecar exit status: {status}"),
                         Err(err) => format!("sidecar wait failed: {err}"),
                     });
+                    false
                 }
             }
-            disposition
         };
-        match disposition {
-            SidecarExit::Quitting => return,
-            SidecarExit::Restart => {
-                if let Some(paths) = paths {
-                    append_launcher_log(
-                        &paths.launcher_log_dir,
-                        "sidecar exited with code 0: restarting to apply the update / rollback",
-                    );
-                }
-                start_service_async(app.clone());
+        if restart {
+            if let Some(paths) = paths {
+                append_launcher_log(
+                    &paths.launcher_log_dir,
+                    "sidecar exited with code 0: restarting to apply the update / rollback",
+                );
             }
-            SidecarExit::Crashed => {
-                if let Some(paths) = paths {
-                    append_launcher_log(&paths.launcher_log_dir, "sidecar exited unexpectedly");
-                }
-                show_status_page(&app);
+            start_service_async(app.clone());
+        } else {
+            if let Some(paths) = paths {
+                append_launcher_log(&paths.launcher_log_dir, "sidecar exited unexpectedly");
             }
+            show_status_page(&app);
         }
         return;
     });
