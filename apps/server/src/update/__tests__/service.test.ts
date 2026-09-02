@@ -543,7 +543,7 @@ describe("createUpdateService —— 回退", () => {
 		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
 		mkdirSync(join(versionsRoot, "0.10.0"), { recursive: true });
 
-		const status = service.rollback();
+		const status = await service.rollback();
 
 		expect(status.rollbackTarget).toBe("0.9.0");
 		expect(status.state).toMatchObject({ phase: "rolled-back", target: "0.9.0" });
@@ -558,14 +558,17 @@ describe("createUpdateService —— 回退", () => {
 		});
 		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
 
-		expect(service.rollback().state).toMatchObject({ phase: "rolled-back", target: "0.8.0" });
+		expect((await service.rollback()).state).toMatchObject({
+			phase: "rolled-back",
+			target: "0.8.0",
+		});
 	});
 
 	it("已经在镜像那版上 → 没得退,别给用户一个按了没反应的按钮", async () => {
 		const { service } = makeService({ currentVersion: "0.8.0", imageVersion: "0.8.0" });
 
 		expect(service.getStatus().rollbackTarget).toBeNull();
-		expect(service.rollback().state).toMatchObject({
+		expect((await service.rollback()).state).toMatchObject({
 			phase: "error",
 			reason: "nothing-to-roll-back",
 		});
@@ -612,7 +615,7 @@ describe("createUpdateService —— 回退", () => {
 			imageVersion: "0.8.0",
 		});
 		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
-		service.rollback();
+		await service.rollback();
 
 		await service.check();
 
@@ -620,6 +623,55 @@ describe("createUpdateService —— 回退", () => {
 		// 而且界面上一切正常 —— 最难查的一类症状。
 		const bootState = JSON.parse(readFileSync(join(versionsRoot, "boot-state.json"), "utf8"));
 		expect(bootState.pinned).toBeUndefined();
+	});
+});
+
+describe("createUpdateService —— 回退撞上进行中的下载", () => {
+	it("下载途中按回退 → 回退排在下载后面落钉子,而不是被下载完成时的拔钉子抹掉", async () => {
+		// rollback 若不走串行闸:它同步落钉、报 rolled-back,几秒后下载完成的那一趟
+		// clearPinnedVersion 把钉子拔掉、把状态盖成 ready —— 用户的回退无声无息地没了。
+		// 面板「打开就查一次」加上默认开着的自动下载,让这个窗口每次开面板都在。
+		const key = makeKey();
+		const zip = makePayloadZip("0.10.0");
+		let releasePayload: () => void = () => {};
+		const payloadGate = new Promise<void>((resolve) => {
+			releasePayload = resolve;
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: unknown) => {
+				const url = String(input);
+				if (url.endsWith(".json")) {
+					return new Response(envelope(key.privateKey, manifestFor("0.10.0", zip)), {
+						status: 200,
+					});
+				}
+				await payloadGate; // 卡在下载上,直到测试放行
+				return new Response(zip, { status: 200 });
+			}),
+		);
+		const { service, versionsRoot } = makeService({
+			trustedKeys: [key.spkiBase64],
+			currentVersion: "0.9.0",
+			imageVersion: "0.8.0",
+		});
+		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
+
+		const checking = service.check();
+		await new Promise((r) => setTimeout(r, 0)); // 让它走到下载那一步
+		expect(service.getStatus().state.phase).toBe("downloading");
+
+		const rolling = service.rollback();
+		releasePayload();
+		await checking;
+		const rolled = await rolling;
+
+		expect(rolled.state).toMatchObject({ phase: "rolled-back" });
+		const bootState = JSON.parse(readFileSync(join(versionsRoot, "boot-state.json"), "utf8"));
+		expect(bootState.pinned).toBe(
+			rolled.state.phase === "rolled-back" ? rolled.state.target : undefined,
+		);
+		expect(service.getStatus().state.phase).toBe("rolled-back");
 	});
 });
 

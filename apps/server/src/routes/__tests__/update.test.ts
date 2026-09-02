@@ -22,7 +22,7 @@ function fakeService(overrides: Partial<UpdateService> = {}): UpdateService {
 		getStatus: () => status,
 		check: async () => status,
 		download: async () => status,
-		rollback: () => status,
+		rollback: async () => status,
 		probeMirrors: async () => [],
 		...overrides,
 	};
@@ -58,7 +58,7 @@ describe("update 路由", () => {
 
 	it("POST /download 与 POST /rollback 同样只转发", async () => {
 		const download = vi.fn(async () => fakeService().getStatus());
-		const rollback = vi.fn(() => fakeService().getStatus());
+		const rollback = vi.fn(async () => fakeService().getStatus());
 		const app = createUpdateRoute({
 			service: fakeService({ download, rollback }),
 			applyUpdate: async () => {},

@@ -61,7 +61,8 @@ export interface UpdateService {
 	check(): Promise<UpdateStatus>;
 	/** 手动下载 —— 关掉自动下载时,用户按下按钮走这条。 */
 	download(): Promise<UpdateStatus>;
-	rollback(): UpdateStatus;
+	/** 也走串行闸:下载途中按回退,钉子要落在下载**之后**,否则会被下载完成时的拔钉子抹掉。 */
+	rollback(): Promise<UpdateStatus>;
 	/**
 	 * 「测一遍」:对每个候选前缀(空串 = 直连)各拉一次当前渠道的清单 + 验签,
 	 * 回毫秒数与看到的版本,或者归因后的失败。**不碰状态** —— 它不是检查更新。
@@ -219,6 +220,19 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		return inflight;
 	}
 
+	/**
+	 * 排在正在跑的那趟**后面**跑,而不是搭它的车 —— 回退这种「结果和前一趟不同」的操作
+	 * 用这个:搭车拿到的会是前一趟(比如一次下载)的结果,自己根本没跑。
+	 */
+	function queued(run: () => Promise<UpdateStatus>): Promise<UpdateStatus> {
+		const prior: Promise<unknown> = inflight ?? Promise.resolve();
+		const next: Promise<UpdateStatus> = prior.then(run, run).finally(() => {
+			if (inflight === next) inflight = null;
+		});
+		inflight = next;
+		return next;
+	}
+
 	async function runCheck(): Promise<UpdateStatus> {
 		const settings = readSettings();
 		const mirrors = mirrorChain(settings);
@@ -326,12 +340,16 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 			);
 		},
 
-		rollback(): UpdateStatus {
-			const target = rollbackTarget();
-			if (target === null) return fail("nothing-to-roll-back");
-			pinVersion({ versionsRoot, version: target });
-			state = { phase: "rolled-back", target };
-			return status();
+		rollback(): Promise<UpdateStatus> {
+			// 走串行闸:正在下载时,钉子必须落在 installFrom 的 clearPinnedVersion **之后**,
+			// 不然用户看到「已回退」,几秒后下载落地又把钉子拔了、状态盖成 ready。
+			return queued(async () => {
+				const target = rollbackTarget();
+				if (target === null) return fail("nothing-to-roll-back");
+				pinVersion({ versionsRoot, version: target });
+				state = { phase: "rolled-back", target };
+				return status();
+			});
 		},
 	};
 }

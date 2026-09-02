@@ -34,7 +34,7 @@ export function createUpdateRoute({ service, applyUpdate }: CreateUpdateRouteInp
 	app.get("/", (c) => c.json(service.getStatus()));
 	app.post("/check", async (c) => c.json(await service.check()));
 	app.post("/download", async (c) => c.json(await service.download()));
-	app.post("/rollback", (c) => c.json(service.rollback()));
+	app.post("/rollback", async (c) => c.json(await service.rollback()));
 
 	app.post("/mirrors/probe", async (c) => {
 		const parsed = ProbeBody.safeParse(await c.req.json().catch(() => null));
