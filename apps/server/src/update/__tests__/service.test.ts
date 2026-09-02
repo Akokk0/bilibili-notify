@@ -110,6 +110,8 @@ function manifestFor(version: string, zip: Uint8Array, extra: Record<string, unk
 			size: zip.byteLength,
 		},
 		releaseUrl: `https://github.com/o/r/releases/tag/v${version}`,
+		// 签发时间。默认一个固定值:同一用例里多份清单默认是「同一时刻签的」,谁也不比谁旧。
+		issuedAt: 1_000,
 		...extra,
 	};
 }
@@ -486,7 +488,8 @@ describe("createUpdateService —— 三种『升不上去』要分得清清楚�
 		const status = await service.check();
 
 		expect(status.state).toMatchObject({ phase: "error", reason: "checksum-mismatch" });
-		expect(readdirSync(versionsRoot).filter((n) => !n.startsWith("boot-state"))).toEqual([]);
+		// 只看目录:boot-state / manifest-freshness 这类记账文件不算「半个版本」。
+		expect(readdirSync(versionsRoot).filter((n) => !n.endsWith(".json"))).toEqual([]);
 	});
 
 	it("清单拿到了但包下不动 → download-failed,并给那一版的发布页", async () => {
@@ -707,6 +710,78 @@ describe("createUpdateService —— 回退", () => {
 		// 而且界面上一切正常 —— 最难查的一类症状。
 		const bootState = JSON.parse(readFileSync(join(versionsRoot, "boot-state.json"), "utf8"));
 		expect(bootState.pinned).toBeUndefined();
+	});
+});
+
+describe("createUpdateService —— 清单新鲜度", () => {
+	it("加速站缓存了旧清单 → 直连兜底,拿到的是新的那份", async () => {
+		const key = makeKey();
+		const newZip = makePayloadZip("0.9.2");
+		const oldZip = makePayloadZip("0.9.1");
+		const fresh = envelope(key.privateKey, manifestFor("0.9.2", newZip, { issuedAt: 200 }));
+		const cached = envelope(key.privateKey, manifestFor("0.9.1", oldZip, { issuedAt: 100 }));
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: unknown) => {
+				const url = String(input);
+				if (url.endsWith(".json")) {
+					return new Response(url.startsWith("https://cache.example") ? cached : fresh, {
+						status: 200,
+					});
+				}
+				return new Response(url.includes("0.9.2") ? newZip : oldZip, { status: 200 });
+			}),
+		);
+		const { service, versionsRoot } = makeService({
+			trustedKeys: [key.spkiBase64],
+			settings: { autoDownload: false },
+		});
+		// 之前见过 200 那份(比如上次直连查到的)。
+		await service.check();
+		const later = makeService({
+			root: join(versionsRoot, ".."),
+			trustedKeys: [key.spkiBase64],
+			settings: { autoDownload: false, mirrors: ["https://cache.example"] },
+		});
+
+		const status = await later.service.check();
+
+		expect(status.state).toMatchObject({ phase: "available", target: "0.9.2" });
+	});
+
+	it("回放一份签名有效的旧清单 → stale-manifest,不会把人推回已撤回的版本", async () => {
+		// 不可信中间人拿不出未签名的代码,但**拿得出我们签过的旧清单**。没有新鲜度的话:
+		// 0.9.1 被判坏并撤回、0.9.2 是修复版,一个被接管的加速站一直回放 0.9.1 那份清单 →
+		// 客户端判 newer → 默认自动下载 → 装上一个厂商已经召回的构建,面板全程绿。
+		const key = makeKey();
+		const fixZip = makePayloadZip("0.9.2");
+		const badZip = makePayloadZip("0.9.1");
+		const world = {
+			body: envelope(key.privateKey, manifestFor("0.9.2", fixZip, { issuedAt: 200 })),
+		};
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: unknown) => {
+				const url = String(input);
+				if (url.endsWith(".json")) return new Response(world.body, { status: 200 });
+				return new Response(url.includes("0.9.2") ? fixZip : badZip, { status: 200 });
+			}),
+		);
+		const { service, versionsRoot } = makeService({
+			trustedKeys: [key.spkiBase64],
+			settings: { autoDownload: false },
+		});
+		await service.check();
+
+		// 重放:签名依然有效的旧清单。而且换一个进程(新的 service 实例)也得记得。
+		world.body = envelope(key.privateKey, manifestFor("0.9.1", badZip, { issuedAt: 100 }));
+		const replayed = await service.check();
+		const nextBoot = makeService({ root: join(versionsRoot, ".."), trustedKeys: [key.spkiBase64] });
+		const afterRestart = await nextBoot.service.check();
+
+		expect(replayed.state).toMatchObject({ phase: "error", reason: "stale-manifest" });
+		expect(afterRestart.state).toMatchObject({ phase: "error", reason: "stale-manifest" });
+		expect(existsSync(join(versionsRoot, "0.9.1"))).toBe(false);
 	});
 });
 

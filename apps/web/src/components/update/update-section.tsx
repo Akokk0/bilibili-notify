@@ -55,6 +55,11 @@ function errorCopy(reason: string): { text: string; danger: boolean } {
 				text: "连不上更新服务器。可以在下面填一个加速前缀,或者按链接自己去下载。",
 				danger: false,
 			};
+		case "stale-manifest":
+			return {
+				text: "拿到的更新清单比之前见过的旧,没有收。多半是加速站缓存了旧文件 —— 换个站、或改回直连再试。",
+				danger: false,
+			};
 		case "checksum-mismatch":
 			return {
 				text: "下下来的包对不上校验和,已丢弃、盘上没留东西。多半是中途被截断了,重试一次。",

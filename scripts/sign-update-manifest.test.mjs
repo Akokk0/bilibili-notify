@@ -28,6 +28,7 @@ const FULL = {
 		size: 26_214_400,
 	},
 	releaseUrl: "https://github.com/o/r/releases/tag/v0.9.0",
+	issuedAt: 1_756_800_000,
 };
 
 describe("signManifest", () => {
@@ -138,6 +139,18 @@ describe("buildManifest", () => {
 		expect(result.manifest.revoked).toEqual(["0.8.9", "0.8.8"]);
 		expect(result.manifest.requires).toEqual({ nodeMajor: 22 });
 		expect(result.manifest.notes).toBe("修了个大的");
+	});
+
+	it("签发时间:不传就是现在(整数秒),传了就用传的 —— 客户端靠它拒绝被回放的旧清单", () => {
+		const { issuedAt: _dropped, ...withoutIssuedAt } = FULL;
+		const before = Math.floor(Date.now() / 1000);
+		const stamped = buildManifest(withoutIssuedAt);
+		expect(Number.isInteger(stamped.issuedAt)).toBe(true);
+		expect(stamped.issuedAt).toBeGreaterThanOrEqual(before);
+
+		expect(buildManifest({ ...FULL, issuedAt: 42 }).issuedAt).toBe(42);
+		expect(() => buildManifest({ ...FULL, issuedAt: 0 })).toThrow();
+		expect(() => buildManifest({ ...FULL, issuedAt: 1.5 })).toThrow();
 	});
 
 	it("客户端会拒的东西,这里就该拒 —— 别等发出去才发现", () => {

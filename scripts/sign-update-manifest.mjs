@@ -43,6 +43,7 @@ function assertManifestShape(m) {
 		throw new Error(`manifest 不合规:${msg}`);
 	};
 	if (typeof m.version !== "string" || m.version === "") fail("version 必须是非空字符串");
+	if (!Number.isInteger(m.issuedAt) || m.issuedAt <= 0) fail("issuedAt 必须是正整数(epoch 秒)");
 	if (!m.payload || typeof m.payload !== "object") fail("缺 payload");
 	const { url, sha256, size } = m.payload;
 	if (typeof url !== "string" || !url.startsWith("https://"))
@@ -64,10 +65,18 @@ function assertManifestShape(m) {
 
 /**
  * @param {{ version: string, payload: { url: string, sha256: string, size: number },
- *           releaseUrl: string, notes?: string, revoked?: string[],
+ *           releaseUrl: string, issuedAt?: number, notes?: string, revoked?: string[],
  *           requires?: { nodeMajor?: number } }} input
  */
-export function buildManifest({ version, payload, releaseUrl, notes, revoked, requires }) {
+export function buildManifest({
+	version,
+	payload,
+	releaseUrl,
+	issuedAt,
+	notes,
+	revoked,
+	requires,
+}) {
 	// 可选字段**没传就不写进去**。写 `"notes": null` 会让客户端的 zod 直接判 malformed
 	// (`.optional()` 收 undefined 不收 null),而那份清单是签得过的 —— 用户看到
 	// 「清单损坏」,谁也想不到是这里多写了一个 null。
@@ -75,6 +84,9 @@ export function buildManifest({ version, payload, releaseUrl, notes, revoked, re
 		version,
 		payload: { url: payload.url, sha256: payload.sha256, size: payload.size },
 		releaseUrl,
+		// 签发时间(epoch 秒)。客户端记住见过的最大值、比它旧的不收 —— 没有它,加速站
+		// 可以永远回放一份签过的旧清单,把用户钉在已撤回的版本上。
+		issuedAt: issuedAt ?? Math.floor(Date.now() / 1000),
 	};
 	if (notes !== undefined) manifest.notes = notes;
 	if (revoked !== undefined) manifest.revoked = revoked;
@@ -138,6 +150,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 			size: Number(requireArg("size")),
 		},
 		releaseUrl: requireArg("release-url"),
+		issuedAt: readArg("issued-at") ? Number(readArg("issued-at")) : undefined,
 		notes: readArg("notes"),
 		revoked: revokedArg
 			? revokedArg

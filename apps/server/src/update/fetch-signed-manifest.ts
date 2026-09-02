@@ -22,11 +22,17 @@ export interface FetchSignedManifestInput {
 	trustedKeys: readonly string[];
 	timeoutMs: number;
 	maxBytes: number;
+	/**
+	 * 之前见过的最大 `issuedAt`。比它旧的清单不收 —— 签名有效不等于是当前那份,
+	 * 加速站可以回放一份旧的。不传就不查(第一次、或者调用方不关心)。
+	 */
+	minIssuedAt?: number;
 }
 
 export type FetchSignedManifestResult =
 	| { ok: true; manifest: Manifest }
-	| { ok: false; reason: "unreachable" | "malformed" | "untrusted" };
+	/** `stale`:签名没问题,但比之前见过的旧 —— 多半是代理站缓存,也可能是回放。 */
+	| { ok: false; reason: "unreachable" | "malformed" | "untrusted" | "stale" };
 
 /**
  * 一份字节是不是我们签过的清单。**在候选循环里跑**:代理站回 200 + 垃圾页时,这里
@@ -35,7 +41,8 @@ export type FetchSignedManifestResult =
 function acceptEnvelope(
 	bytes: Uint8Array,
 	trustedKeys: readonly string[],
-): Acceptance<Manifest, "malformed" | "untrusted"> {
+	minIssuedAt: number | undefined,
+): Acceptance<Manifest, "malformed" | "untrusted" | "stale"> {
 	let envelope: unknown;
 	try {
 		envelope = JSON.parse(Buffer.from(bytes).toString("utf8"));
@@ -56,6 +63,11 @@ function acceptEnvelope(
 		// 的话,代理站抽风会被报成安全事件,而真篡改会被当成小毛病。
 		return { ok: false, reason: loaded.reason === "malformed" ? "malformed" : "untrusted" };
 	}
+	// 新鲜度也在候选循环里判:代理站缓存了旧清单是常态,换下一个候选就好;直连给的
+	// 都比见过的旧,那才是要报出去的事。
+	if (minIssuedAt !== undefined && loaded.manifest.issuedAt < minIssuedAt) {
+		return { ok: false, reason: "stale" };
+	}
 	return { ok: true, value: loaded.manifest };
 }
 
@@ -65,13 +77,14 @@ export async function fetchSignedManifest({
 	trustedKeys,
 	timeoutMs,
 	maxBytes,
+	minIssuedAt,
 }: FetchSignedManifestInput): Promise<FetchSignedManifestResult> {
 	const fetched = await fetchThroughMirrors({
 		url,
 		mirrors,
 		timeoutMs,
 		maxBytes,
-		accept: (bytes) => acceptEnvelope(bytes, trustedKeys),
+		accept: (bytes) => acceptEnvelope(bytes, trustedKeys, minIssuedAt),
 	});
 	if (fetched.ok) return { ok: true, manifest: fetched.value };
 	// 归因来自最后一个候选(直连):它连字节都没拿到 → unreachable;它拿到了但验不过

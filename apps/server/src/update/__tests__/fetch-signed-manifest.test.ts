@@ -39,7 +39,7 @@ describe("fetchSignedManifest", () => {
 		// 的实现都会在这里算出不同的字节而验不过 —— 而 JSON 的重新序列化根本不唯一
 		// (键序/空白/数字写法/unicode 转义),那条路会带来一种查都没法查的验签失败。
 		const inner =
-			'{\n  "revoked" : [],\n\t"version":   "0.9.0",\n "releaseUrl":"https://github.com/o/r/releases/tag/v0.9.0",\n\t\t"payload"  : {"size":1,"sha256":"' +
+			'{\n  "revoked" : [],\n\t"version":   "0.9.0",\n "issuedAt": 100,\n "releaseUrl":"https://github.com/o/r/releases/tag/v0.9.0",\n\t\t"payload"  : {"size":1,"sha256":"' +
 			"a".repeat(64) +
 			'","url":"https://github.com/o/r/p.zip"}\n}';
 		serveOnce(JSON.stringify({ manifest: inner, signature: signText(key.privateKey, inner) }));
@@ -99,6 +99,7 @@ describe("fetchSignedManifest", () => {
 		const key = makeKey();
 		const inner = JSON.stringify({
 			version: "0.9.0",
+			issuedAt: 100,
 			revoked: [],
 			releaseUrl: "https://github.com/o/r/releases/tag/v0.9.0",
 			payload: { size: 1, sha256: "a".repeat(64), url: "https://github.com/o/r/p.zip" },
@@ -128,6 +129,59 @@ describe("fetchSignedManifest", () => {
 		expect(result.manifest.version).toBe("0.9.0");
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 		expect(fetchMock.mock.calls[1]?.[0]).toBe(RELEASE_URL);
+	});
+
+	it("比见过的旧的清单 → 换下一个候选;直连给的也旧 → stale,不当成新鲜的收下", async () => {
+		// 签名只证明「这串字节我们签过」,不证明它是**当前**那一份。加速站是设计上的中间人,
+		// 它可以永远回放一份历史上签过的旧清单 —— 比如那个后来被撤回的版本。所以拿到的
+		// 清单不能比之前见过的旧;而「旧」在代理站身上多半只是缓存,先换下一个候选。
+		const key = makeKey();
+		const manifest = (issuedAt: number) =>
+			JSON.stringify({
+				version: "0.9.1",
+				issuedAt,
+				releaseUrl: "https://github.com/o/r/releases/tag/v0.9.1",
+				payload: { size: 1, sha256: "a".repeat(64), url: "https://github.com/o/r/p.zip" },
+			});
+		const serve = (inner: string) =>
+			new Response(
+				JSON.stringify({ manifest: inner, signature: signText(key.privateKey, inner) }),
+				{
+					status: 200,
+				},
+			);
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(serve(manifest(50)))
+			.mockResolvedValueOnce(serve(manifest(200)));
+		vi.stubGlobal("fetch", fetchMock);
+
+		const fresh = await fetchSignedManifest({
+			url: RELEASE_URL,
+			mirrors: ["https://stale-cache.example/", ""],
+			trustedKeys: [key.spkiBase64],
+			timeoutMs: 1000,
+			maxBytes: 64 * 1024,
+			minIssuedAt: 100,
+		});
+		if (!fresh.ok) throw new Error(`expected ok, got reason=${fresh.reason}`);
+		expect(fresh.manifest.issuedAt).toBe(200);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockImplementation(async () => serve(manifest(50))),
+		);
+		const stale = await fetchSignedManifest({
+			url: RELEASE_URL,
+			mirrors: [""],
+			trustedKeys: [key.spkiBase64],
+			timeoutMs: 1000,
+			maxBytes: 64 * 1024,
+			minIssuedAt: 100,
+		});
+		expect(stale.ok).toBe(false);
+		expect(stale.ok === false && stale.reason).toBe("stale");
 	});
 
 	it("内层被人改过 → untrusted", async () => {

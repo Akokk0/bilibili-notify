@@ -14,6 +14,7 @@ function manifest(fields: Partial<Manifest> & Pick<Manifest, "version">): Manife
 			size: 1024,
 		},
 		releaseUrl: "https://github.com/o/r/releases/tag/v0.0.0",
+		issuedAt: 1,
 		...fields,
 	};
 }

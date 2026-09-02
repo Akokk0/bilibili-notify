@@ -17,6 +17,11 @@ export type UpdateErrorReason =
 	| "untrusted"
 	/** 签名没问题,但内容不是一份合法清单 —— 是**我们自己**发错了东西。 */
 	| "malformed"
+	/**
+	 * 签名没问题,但比之前见过的清单**旧**。多半是加速站缓存了旧文件(换个站或直连);
+	 * 也可能是有人在回放一份被撤回版本的清单 —— 两种都不该收。
+	 */
+	| "stale-manifest"
 	/** 清单拿到了,包没下下来。 */
 	| "download-failed"
 	/** 包下下来了,但不是清单说的那一坨字节。 */
@@ -90,7 +95,13 @@ export interface MirrorProbeRequest {
  */
 export type MirrorProbeResult =
 	| { prefix: string; ok: true; ms: number; version: string }
-	| { prefix: string; ok: false; ms: number; reason: "unreachable" | "untrusted" | "malformed" };
+	| {
+			prefix: string;
+			ok: false;
+			ms: number;
+			/** `stale`:这个站给的清单比之前见过的旧 —— 它缓存了旧文件。 */
+			reason: "unreachable" | "untrusted" | "malformed" | "stale";
+	  };
 
 export interface MirrorProbeResponse {
 	results: MirrorProbeResult[];

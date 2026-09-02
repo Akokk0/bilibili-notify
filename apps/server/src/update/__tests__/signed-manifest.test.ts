@@ -31,6 +31,7 @@ function makeManifest(overrides: Record<string, unknown> = {}): Record<string, u
 			size: 26_214_400,
 		},
 		releaseUrl: "https://github.com/o/r/releases/tag/v0.9.0",
+		issuedAt: 1_756_800_000,
 		...overrides,
 	};
 }
@@ -156,6 +157,11 @@ describe("loadSignedManifest", () => {
 				payload: { url: "https://x/p.zip", sha256: "a".repeat(64), size: 0 },
 			}),
 			makeManifest({ releaseUrl: undefined }), // 兜底出口没了
+			// 没有签发时间就没有新鲜度:加速站可以永远回放一份签名依然有效的旧清单,
+			// 把用户钉在已撤回的版本上。发版脚本一定写这个字段,少了就是发错了东西。
+			makeManifest({ issuedAt: undefined }),
+			makeManifest({ issuedAt: 0 }),
+			makeManifest({ issuedAt: 1.5 }),
 		];
 
 		for (const shape of bad) {

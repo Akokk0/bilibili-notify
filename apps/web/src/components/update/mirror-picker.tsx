@@ -32,6 +32,7 @@ const FAILURE_LABEL: Record<Extract<MirrorProbeResult, { ok: false }>["reason"],
 	// 唯一该让人警觉的一种 —— 别和「连不上」混成一句。
 	untrusted: "签名验不过",
 	malformed: "清单不成形",
+	stale: "缓存了旧清单",
 };
 
 const isHttpsPrefix = (p: string): boolean => /^https:\/\/[^/\s]+/.test(p);

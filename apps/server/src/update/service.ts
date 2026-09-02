@@ -11,6 +11,7 @@ import { decideUpdate } from "./decide-update.js";
 import { fetchSignedManifest } from "./fetch-signed-manifest.js";
 import { fetchThroughMirrors } from "./fetch-through-mirrors.js";
 import { installPayload } from "./install-payload.js";
+import { readSeenIssuedAt, rememberIssuedAt } from "./manifest-freshness.js";
 import { pruneOldVersions } from "./prune-versions.js";
 import {
 	clearPinnedVersion,
@@ -253,24 +254,32 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		return state.phase === "ready" && onDisk !== null;
 	}
 
+	function channelOf(settings: UpdateSettings): "stable" | "prerelease" {
+		return settings.channel === "prerelease" ? "prerelease" : "stable";
+	}
+
 	async function runCheck(): Promise<UpdateStatus> {
 		const settings = readSettings();
 		const mirrors = mirrorChain(settings);
+		const channel = channelOf(settings);
 		const fetched = await fetchSignedManifest({
-			url: manifestUrls[settings.channel === "prerelease" ? "prerelease" : "stable"],
+			url: manifestUrls[channel],
 			mirrors,
 			trustedKeys,
 			timeoutMs,
 			maxBytes: maxManifestBytes,
+			// 比之前见过的旧的清单不收:签名有效不等于是当前那份,加速站可以回放旧的。
+			minIssuedAt: readSeenIssuedAt(versionsRoot, channel),
 		});
 		if (!fetched.ok) {
 			if (readyOnDisk()) return status();
 			// 清单都没拿到,给不出「那一版」的发布页,只能给发布列表 —— 但必须给得出:
 			// 「下不动就通知 + 给个链接」是设计里的兜底出口。
-			return fail(fetched.reason, releasesPageUrl);
+			return fail(fetched.reason === "stale" ? "stale-manifest" : fetched.reason, releasesPageUrl);
 		}
 
 		const manifest = fetched.manifest;
+		rememberIssuedAt(versionsRoot, channel, manifest.issuedAt);
 		const decision = decideUpdate({
 			currentVersion,
 			manifest,
@@ -343,7 +352,9 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 			// 没钥匙什么都验不过,测了也只会得到一排「签名验不过」—— 那是误导。
 			if (!enabled) return [];
 			const settings = readSettings();
-			const url = manifestUrls[settings.channel === "prerelease" ? "prerelease" : "stable"];
+			const channel = channelOf(settings);
+			const url = manifestUrls[channel];
+			const minIssuedAt = readSeenIssuedAt(versionsRoot, channel);
 			// 并行:候选站之间互不影响,串行的话一个卡满超时的站会拖住整张表。
 			return Promise.all(
 				prefixes.map(async (prefix): Promise<MirrorProbeResult> => {
@@ -354,6 +365,8 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 						trustedKeys,
 						timeoutMs,
 						maxBytes: maxManifestBytes,
+						// 缓存了旧清单的站直接标出来 —— 比让用户自己对版本号有用。
+						minIssuedAt,
 					});
 					const ms = Math.max(0, now() - started);
 					return fetched.ok
