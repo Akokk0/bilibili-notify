@@ -22,7 +22,10 @@
  *
  * 生成方法见 `docs/agents/self-update.md`。
  */
-export const TRUSTED_UPDATE_KEYS: readonly string[] = [];
+export const TRUSTED_UPDATE_KEYS: readonly string[] = [
+	"MCowBQYDK2VwAyEAPITkE+PPJE0myRjjEt6Unh5tdA7+71CdJEt70n/OGUI=", // A
+	"MCowBQYDK2VwAyEABa9v9dRM83yO7eHCOD+A4RPQoNb8ITRokEiTfO/OKho=", // B
+];
 
 const RELEASE_DOWNLOAD_BASE = "https://github.com/Akokk0/bilibili-notify/releases";
 
