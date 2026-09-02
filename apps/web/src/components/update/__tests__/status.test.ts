@@ -1,6 +1,6 @@
 import type { UpdateStatusDTO } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
-import { newerVersionOf, phaseLabel } from "../status";
+import { newerVersionOf, phaseLabel, updateRefetchInterval } from "../status";
 
 function status(state: UpdateStatusDTO["state"]): UpdateStatusDTO {
 	return { currentVersion: "0.8.0", rollbackTarget: null, pinnedVersion: null, state };
@@ -39,5 +39,22 @@ describe("phaseLabel", () => {
 			phaseLabel(status({ phase: "ready", target: "0.9.0", releaseUrl: "https://x" })),
 		).toContain("0.9.0");
 		expect(phaseLabel(status({ phase: "idle" }))).toBe("还没查过");
+	});
+});
+
+describe("updateRefetchInterval", () => {
+	it("正在下载时轮询,别的阶段不轮询,没数据也不轮询", () => {
+		// 后台自动下载期间进系统页会卡在「正在下载」:没有轮询、窗口聚焦也不刷新、
+		// 也没有 WS 频道推这件事 —— 不按检查更新它就永远不动。
+		expect(
+			updateRefetchInterval(
+				status({ phase: "downloading", target: "0.9.0", releaseUrl: "https://x" }),
+			),
+		).toBe(2_000);
+		expect(
+			updateRefetchInterval(status({ phase: "ready", target: "0.9.0", releaseUrl: "https://x" })),
+		).toBe(false);
+		expect(updateRefetchInterval(status({ phase: "idle" }))).toBe(false);
+		expect(updateRefetchInterval(undefined)).toBe(false);
 	});
 });

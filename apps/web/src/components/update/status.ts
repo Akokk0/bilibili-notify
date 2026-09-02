@@ -15,10 +15,20 @@ export const UPDATE_QUERY_KEY = ["update"] as const;
 export const UPDATE_SECTION_HASH = "#update";
 export const UPDATE_SECTION_PATH = `/system${UPDATE_SECTION_HASH}`;
 
+/**
+ * 只在「正在下载」时轮询。别的阶段状态只会因为用户自己按了什么而变(那些路径都会写缓存),
+ * 下载是唯一在后台自己往前走的 —— 打开面板那次自动检查开着自动下载时,用户走到系统页
+ * 看见「正在下载」,没人刷新的话它就永远停在那儿,两个按钮都不出现。
+ */
+export function updateRefetchInterval(status: UpdateStatusDTO | undefined): number | false {
+	return status?.state.phase === "downloading" ? 2_000 : false;
+}
+
 export function useUpdateStatus() {
 	return useQuery({
 		queryKey: UPDATE_QUERY_KEY,
 		queryFn: () => api.get<UpdateStatusDTO>("/api/update"),
+		refetchInterval: (query) => updateRefetchInterval(query.state.data),
 	});
 }
 
