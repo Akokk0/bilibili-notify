@@ -98,6 +98,29 @@ base64 < ~/secrets/bn-update-A.pem | gh secret set BN_UPDATE_SIGNING_KEY
 没配 `BN_UPDATE_SIGNING_KEY` 时**整条跳过并打 warning**,不让发版红着 —— 但那次发版
 的用户也就没有应用内更新。
 
+## 面板上怎么提示
+
+**打开面板就查一次,不定时、不轮询。** `useUpdateCheckOnOpen` 挂在登录门之后(和其他
+channel hook 一起),每次页面加载 `POST /api/update/check` 一次。查到比现在新的一版:
+
+- 右下角出一张**通知卡**(借推送 toast 那条队列,同壳同栈;区别是带「去更新」按钮、
+  **不自动消失**)
+- 概览的「系统状态」卡在核心 / 面板版本号旁边追一句(文案与系统页那节同源
+  `phaseLabel`),头部出「去更新」
+- 两处按钮都落到 `/system#update`,系统页那一节看见这个 hash 就把自己滚进视口
+
+没新版就什么都不说。两种情况**不自动查**:功能关着(没内置公钥);以及**排队了回退** ——
+自动检查在开着自动下载时会装新版、顺手拔钉子,等于用户开一次面板就把自己按的回退撤销了。
+用户手动按「检查更新」不受这条限制,那是明确要往前走(既有测试
+`退回去之后又装了新版 → 钉子必须拔掉` 就是这个决定)。
+
+服务端配合两条:同一份包(版本 + sha256)这个进程装过了就不再下、也不把 `ready` 打回
+`available`;并发的 check / download 共用一趟。没有这两条,「打开就查」会让每次开面板都
+重下一遍 7MB,或者两趟各解一次压。
+
+「有没有新版」「这一阶段怎么说」只在 `apps/web/src/components/update/status.ts` 判一处 ——
+概览说「有新版」而系统页说「已是最新」就是两处各判一遍的下场。
+
 ## 撤回一个坏版本
 
 两道闸,缺一不可:
@@ -127,7 +150,8 @@ base64 < ~/secrets/bn-update-A.pem | gh secret set BN_UPDATE_SIGNING_KEY
 | `apps/server/src/boot.ts` | 选版 + 同进程加载载荷,回落镜像 |
 | `apps/server/src/update/` | 验签 / 决策 / 落盘 / 镜像站 / 选版自愈 / 清理 / 编排 |
 | `apps/server/src/routes/update.ts` | `GET /api/update` 与 check/download/apply/rollback |
-| `apps/web/src/components/update/` | 系统页那一节 |
+| `apps/web/src/components/update/` | 系统页那一节;`status.ts` 是三处消费点共用的判断与查询键 |
+| `apps/web/src/hooks/useUpdateCheckOnOpen.ts` | 打开面板查一次 + 发通知卡 |
 | `scripts/build-update-payload.mjs` | 打载荷 zip |
 | `scripts/gen-update-keys.mjs` | 生成两把 Ed25519 密钥,并打印该往哪儿贴 |
 | `scripts/sign-update-manifest.mjs` | 生成 + 签署清单 |
