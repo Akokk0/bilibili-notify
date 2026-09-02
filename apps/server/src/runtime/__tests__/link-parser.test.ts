@@ -15,7 +15,7 @@ import type {
 	NotificationPayload,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { createLinkParser } from "../link-parser.js";
+import { createLinkParser, type LinkReplyDestination } from "../link-parser.js";
 
 const ADAPTER = "11111111-1111-4111-8111-111111111111";
 const GROUP = 123456;
@@ -63,12 +63,9 @@ function makeParser(over: Partial<LinkParsingConfig> = {}) {
 		async (_data: Dynamic, _colors?: CardColorOptions, _layout?: CardBlock[]) =>
 			Buffer.from("png-bytes"),
 	);
-	const sent: { dest: { adapterId: string; groupId: string }; payload: NotificationPayload }[] = [];
+	const sent: { dest: LinkReplyDestination; payload: NotificationPayload }[] = [];
 	const send = vi.fn(
-		async (
-			dest: { adapterId: string; groupId: string },
-			payload: NotificationPayload,
-		): Promise<DeliveryResult> => {
+		async (dest: LinkReplyDestination, payload: NotificationPayload): Promise<DeliveryResult> => {
 			sent.push({ dest, payload });
 			return { ok: true, latencyMs: 1 };
 		},
@@ -133,7 +130,7 @@ describe("createLinkParser", () => {
 
 		expect(h.sent).toEqual([
 			{
-				dest: { adapterId: ADAPTER, groupId: String(GROUP) },
+				dest: { platform: "onebot", adapterId: ADAPTER, groupId: String(GROUP) },
 				payload: {
 					kind: "image",
 					image: { buffer: Buffer.from("png-bytes"), mime: "image/jpeg" },
@@ -253,6 +250,40 @@ describe("createLinkParser", () => {
 			await expect(
 				h.parser.handle(groupFrame(LINK), { adapterId: ADAPTER }),
 			).resolves.toBeUndefined();
+		});
+	});
+
+	describe("官机(qq-official)入口", () => {
+		it("已解析好的群消息:同一套流程,回复目的地标明平台与群 openid", async () => {
+			const h = makeParser();
+			await h.parser.handleMessage({
+				platform: "qq-official",
+				adapterId: ADAPTER,
+				groupId: "G_OPENID",
+				userId: "M_OPENID",
+				text: " https://www.bilibili.com/video/BV1zMtU6uEEb/",
+			});
+			expect(h.getVideoInfo).toHaveBeenCalledWith({ bvid: "BV1zMtU6uEEb" });
+			expect(h.sent).toHaveLength(1);
+			expect(h.sent[0]?.dest).toEqual({
+				platform: "qq-official",
+				adapterId: ADAPTER,
+				groupId: "G_OPENID",
+			});
+		});
+
+		it("冷却按平台 + adapter + 群 + 视频算:官机群与 OneBot 群互不影响", async () => {
+			const h = makeParser();
+			const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
+			await h.parser.handle(groupFrame(LINK), { adapterId: ADAPTER });
+			await h.parser.handleMessage({
+				platform: "qq-official",
+				adapterId: "22222222-2222-4222-8222-222222222222",
+				groupId: "G_OPENID",
+				userId: "M",
+				text: LINK,
+			});
+			expect(h.sent).toHaveLength(2);
 		});
 	});
 

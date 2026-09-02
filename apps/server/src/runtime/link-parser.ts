@@ -6,6 +6,9 @@
  * 要求解析,失败了还回一句只是噪音,而且等于把「机器人在这个群里」广播出去。
  *
  * 回到来源群不走推送目标表:用收到这一帧的那个 adapter 直接发,群不必配成推送目标。
+ *
+ * 两个平台两个入口:OneBot 的原始帧走 {@link LinkParser.handle},官机网关已经解析好的群消息
+ * 走 {@link LinkParser.handleMessage} —— 同一套闸门与流程,只有「怎么拿到文本」不同。
  */
 
 import type { VideoInfo, VideoRef } from "@bilibili-notify/api";
@@ -27,9 +30,24 @@ const MAX_LINKS_PER_MESSAGE = 3;
 /** 冷却表膨胀到这个数就顺手清一次过期项。 */
 const COOLDOWN_PRUNE_AT = 500;
 
+export type LinkSourcePlatform = "onebot" | "qq-official";
+
+/** 回复往哪儿发:平台决定用哪个适配器,`groupId` 在 OneBot 是群号、在官机是群 openid。 */
 export interface LinkReplyDestination {
+	platform: LinkSourcePlatform;
 	adapterId: string;
 	groupId: string;
+}
+
+/** 已经解析好的一条群消息 —— 平台差异到此为止。 */
+export interface InboundLinkMessage {
+	platform: LinkSourcePlatform;
+	adapterId: string;
+	groupId: string;
+	userId: string;
+	/** 收到这条消息的 bot 自己的号(OneBot 有);与 userId 相同就是自己发的,不解析。 */
+	selfId?: string;
+	text: string;
 }
 
 export interface LinkParserOptions {
@@ -54,8 +72,10 @@ export interface LinkParserOptions {
 }
 
 export interface LinkParser {
-	/** 喂一帧平台事件。不是群消息、功能关着、没有链接,都静默返回;**永不抛**。 */
+	/** 喂一帧 OneBot 事件。不是群消息就静默返回,是则交给 {@link handleMessage}。 */
 	handle(frame: Record<string, unknown>, meta: { adapterId: string }): Promise<void>;
+	/** 喂一条**已经解析好**的群消息。功能关着、没有链接、自己发的,都静默返回;**永不抛**。 */
+	handleMessage(msg: InboundLinkMessage): Promise<void>;
 }
 
 export function createLinkParser(opts: LinkParserOptions): LinkParser {
@@ -87,7 +107,7 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 	async function replyWithCard(dest: LinkReplyDestination, ref: VideoRef, cooldownMs: number) {
 		const renderer = opts.renderer();
 		if (!renderer) return;
-		const key = `${dest.adapterId}:${dest.groupId}:${"bvid" in ref ? ref.bvid : `av${ref.aid}`}`;
+		const key = `${dest.platform}:${dest.adapterId}:${dest.groupId}:${"bvid" in ref ? ref.bvid : `av${ref.aid}`}`;
 		// 冷却从**开始处理**起算,不是发出去才算:一条坏链接被反复贴,不该每次都去打接口。
 		if (inCooldown(key, cooldownMs)) return;
 		const info = await opts.api.getVideoInfo(ref);
@@ -103,33 +123,42 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 		);
 	}
 
+	async function handleMessage(msg: InboundLinkMessage): Promise<void> {
+		try {
+			const config = opts.config();
+			if (!config.enabled) return;
+			// 自己发的消息不解析 —— 机器人自己发的东西里若有链接,那是它自己贴的。
+			if (msg.selfId !== undefined && msg.userId === msg.selfId) return;
+			const refs = extractVideoLinks(msg.text).slice(0, MAX_LINKS_PER_MESSAGE);
+			if (refs.length === 0) return;
+			const dest: LinkReplyDestination = {
+				platform: msg.platform,
+				adapterId: msg.adapterId,
+				groupId: msg.groupId,
+			};
+			const cooldownMs = config.cooldownSeconds * 1000;
+			for (const linkRef of refs) {
+				try {
+					const ref = await toVideoRef(linkRef);
+					if (!ref) continue;
+					await replyWithCard(dest, ref, cooldownMs);
+				} catch (e) {
+					// 单个链接失败不回话、不影响同一条消息里的下一个。
+					opts.logger.warn(`[link] 解析失败 group=${msg.groupId}: ${String(e)}`);
+				}
+			}
+		} catch (e) {
+			// 这是在入站回调里被调的,抛出去就是一个 unhandledRejection。
+			opts.logger.error(`[link] 处理入站消息失败: ${String(e)}`);
+		}
+	}
+
 	return {
 		async handle(frame, meta) {
-			try {
-				const config = opts.config();
-				if (!config.enabled) return;
-				const msg = extractGroupMessage(frame);
-				if (!msg) return;
-				// 自己发的消息不解析 —— 机器人自己发的东西里若有链接,那是它自己贴的。
-				if (msg.selfId !== undefined && msg.userId === msg.selfId) return;
-				const refs = extractVideoLinks(msg.text).slice(0, MAX_LINKS_PER_MESSAGE);
-				if (refs.length === 0) return;
-				const dest = { adapterId: meta.adapterId, groupId: msg.groupId };
-				const cooldownMs = config.cooldownSeconds * 1000;
-				for (const linkRef of refs) {
-					try {
-						const ref = await toVideoRef(linkRef);
-						if (!ref) continue;
-						await replyWithCard(dest, ref, cooldownMs);
-					} catch (e) {
-						// 单个链接失败不回话、不影响同一条消息里的下一个。
-						opts.logger.warn(`[link] 解析失败 group=${msg.groupId}: ${String(e)}`);
-					}
-				}
-			} catch (e) {
-				// 这是在入站回调里被调的,抛出去就是一个 unhandledRejection。
-				opts.logger.error(`[link] 处理入站帧失败: ${String(e)}`);
-			}
+			const msg = extractGroupMessage(frame);
+			if (!msg) return;
+			await handleMessage({ platform: "onebot", adapterId: meta.adapterId, ...msg });
 		},
+		handleMessage,
 	};
 }

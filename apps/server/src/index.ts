@@ -22,6 +22,7 @@ import { createOnebotAdapter } from "./platforms/onebot.js";
 import {
 	createQQOfficialAdapter,
 	createQQSessionRegistry,
+	type QQInboundGroupMessage,
 	type QQInboundPrivateMessage,
 } from "./platforms/qq-official.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
@@ -240,6 +241,9 @@ export async function startStandaloneServer(
 			| ((frame: Record<string, unknown>, meta: { adapterId: string }) => void)
 			| undefined;
 		let onInboundQQ: ((msg: QQInboundPrivateMessage) => void) | undefined;
+		let onInboundQQGroup:
+			| ((msg: QQInboundGroupMessage, meta: { adapterId: string }) => void)
+			| undefined;
 		const adapters = [
 			createOnebotAdapter({
 				logger: log,
@@ -251,6 +255,7 @@ export async function startStandaloneServer(
 				serviceCtx: runtime.serviceCtx,
 				registry: qqSessionRegistry,
 				onInbound: (msg) => onInboundQQ?.(msg),
+				onInboundGroup: (msg, meta) => onInboundQQGroup?.(msg, meta),
 			}),
 			createWebhookAdapter({ logger: log }),
 		];
@@ -481,30 +486,32 @@ export async function startStandaloneServer(
 			confirmation: roastCommands.confirmation,
 		});
 
-		// 群里贴视频链接 → 回一张卡。回到来源群不走推送目标表:用收到这一帧的那个
-		// onebot adapter 直接发,群不必配成推送目标(主人定的:机器人在的所有群都算)。
-		const onebotPlatform = adapters.find((a) => a.platforms.includes("onebot"));
+		// 群里贴视频链接 → 回一张卡。回到来源群不走推送目标表:用收到这条消息的那个
+		// adapter 直接发,群不必配成推送目标(主人定的:机器人在的所有群都算)。
+		// OneBot 的 groupId 是群号,官机的是群 openid —— 临时目标按平台各造各的。
 		const linkParser = createLinkParser({
 			logger: log,
 			config: () => runtime.configStore.getGlobals().linkParsing,
 			api: engines.api,
 			renderer: () => engines?.imageRenderer ?? null,
-			send: async ({ adapterId, groupId }, payload) => {
+			send: async ({ platform, adapterId, groupId }, payload) => {
 				const adapter = runtime.configStore.getAdapters().find((a) => a.id === adapterId);
-				if (!adapter || !onebotPlatform) {
+				const platformAdapter = adapters.find((a) => a.platforms.includes(platform));
+				if (!adapter || !platformAdapter) {
 					return { ok: false, latencyMs: 0, err: `adapter not found: adapterId=${adapterId}` };
 				}
-				return onebotPlatform.send(
+				const common = {
+					id: `link-reply:${groupId}`,
+					name: "链接解析回复",
+					adapterId,
+					scope: "group" as const,
+					enabled: true,
+				};
+				return platformAdapter.send(
 					adapter,
-					{
-						id: `link-reply:${groupId}`,
-						name: "链接解析回复",
-						adapterId,
-						scope: "group",
-						enabled: true,
-						platform: "onebot",
-						session: { groupId },
-					},
+					platform === "onebot"
+						? { ...common, platform: "onebot", session: { groupId } }
+						: { ...common, platform: "qq-official", session: { groupOpenid: groupId } },
 					payload,
 				);
 			},
@@ -514,6 +521,15 @@ export async function startStandaloneServer(
 			void commandDispatcher.handle(frame);
 			void linkParser.handle(frame, meta);
 		};
+		// 官机网关那边已经解析成群消息了;发言者是群成员域的 openid,只当身份用、不比对主人。
+		onInboundQQGroup = (msg, meta) =>
+			void linkParser.handleMessage({
+				platform: "qq-official",
+				adapterId: meta.adapterId,
+				groupId: msg.groupOpenid,
+				userId: msg.memberOpenid ?? "",
+				text: msg.text,
+			});
 		// QQ 那边网关已经解析好了,直接喂平台中立入口。userOpenid 就是身份本身。
 		onInboundQQ = (msg) =>
 			void commandDispatcher.handleMessage({ userId: msg.userOpenid, text: msg.text });
