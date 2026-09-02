@@ -1,4 +1,4 @@
-import type { LogLevel } from "@bilibili-notify/contract";
+import type { LogLevel, UpdateStatusDTO } from "@bilibili-notify/contract";
 import {
 	Avatar,
 	Btn,
@@ -16,6 +16,12 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { HeroStrip } from "../components/hero-strip";
+import {
+	newerVersionOf,
+	phaseLabel,
+	UPDATE_SECTION_PATH,
+	useUpdateStatus,
+} from "../components/update/status";
 import { LOG_LEVEL_TONE, logLevelTint } from "../config/log-levels";
 import { familyTone, PUSH_KIND_META, PUSH_TONE } from "../config/push-kinds";
 import {
@@ -545,7 +551,7 @@ function PluginMatrix({ cells }: { cells: PluginCell[] }) {
 	);
 }
 
-function SystemHealthCard({
+export function SystemHealthCard({
 	health,
 	reachable,
 	logLevel,
@@ -557,9 +563,12 @@ function SystemHealthCard({
 	liveEnabled,
 	imageEnabled,
 	aiEnabled,
+	update,
 }: {
 	health: HealthSnapshot | undefined;
 	reachable: boolean;
+	/** 应用内更新的状态;有比现在新的一版就在版本号旁边说一句、给个直达按钮。 */
+	update?: UpdateStatusDTO;
 	logLevel: string | undefined;
 	logLevels: ModuleLogLevels | undefined;
 	loggedIn: boolean;
@@ -617,21 +626,39 @@ function SystemHealthCard({
 		buildCell("ai", "AI · ai", aiEnabled, aiEnabled ? "运行中" : "未启用"),
 	];
 
+	// 失联时那份更新状态只是快照,按了「去更新」也去不了哪 —— 不催。
+	const newer = reachable && update ? newerVersionOf(update) : null;
+
 	return (
 		<GlassBox
 			title="系统状态 · 各模块"
 			subtitle={
-				<span className="inline-flex items-center gap-1.5">
+				<span className="inline-flex flex-wrap items-center gap-1.5">
 					<span>核心</span>
 					<VersionBadge>{health?.version ?? "—"}</VersionBadge>
 					<span className="opacity-40">·</span>
 					<span>面板</span>
 					<VersionBadge>{__WEB_VERSION__}</VersionBadge>
+					{newer && update ? (
+						<>
+							<span className="opacity-40">·</span>
+							<span className="font-semibold text-bn-pink">{phaseLabel(update)}</span>
+						</>
+					) : null}
 				</span>
 			}
 			accent={reachable ? "var(--color-bn-success)" : "var(--color-bn-danger)"}
 			icon={<Icon.check size={14} />}
 			badge={!reachable ? "失联" : health?.status === "ok" ? "健康" : "—"}
+			right={
+				newer ? (
+					<Link to={UPDATE_SECTION_PATH}>
+						<Btn size="sm" variant="primary">
+							去更新
+						</Btn>
+					</Link>
+				) : undefined
+			}
 			dense
 		>
 			{!reachable ? (
@@ -655,6 +682,7 @@ export default function Dashboard() {
 		queryFn: () => api.get<HealthSnapshot>("/api/health"),
 		...HEALTH_QUERY_OPTIONS,
 	});
+	const updateQuery = useUpdateStatus();
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
 		queryFn: () => api.get<Subscription[]>("/api/subs"),
@@ -803,6 +831,7 @@ export default function Dashboard() {
 				liveEnabled={health.data?.modules?.live ?? false}
 				imageEnabled={health.data?.modules?.image ?? false}
 				aiEnabled={health.data?.modules?.ai ?? false}
+				update={updateQuery.data}
 			/>
 		</div>
 	);
