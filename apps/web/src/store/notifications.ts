@@ -68,10 +68,18 @@ export const AUTO_DISMISS_MS = 5_000;
 /**
  * Deduplicate by id in case the same envelope arrives twice (e.g. WS reconnect
  * resubscribes before the server has filtered), then cap the queue.
+ *
+ * 满了先挤**最老的推送**,通知卡最后才轮到:推送是流水,少一条无所谓;「有新版」一年
+ * 才几回,而它偏偏在面板一打开时入队 —— 那正是 SC / 舰长刷屏几秒烧掉五条推送的时候,
+ * 按入队顺序从头丢的话第一个没的就是它。
  */
 function enqueue(items: ToastItem[], next: ToastItem): ToastItem[] {
-	const without = items.filter((t) => t.id !== next.id);
-	return [...without, next].slice(-MAX_VISIBLE);
+	const queue = [...items.filter((t) => t.id !== next.id), next];
+	while (queue.length > MAX_VISIBLE) {
+		const oldestPush = queue.findIndex((t) => t.kind === "push");
+		queue.splice(oldestPush === -1 ? 0 : oldestPush, 1);
+	}
+	return queue;
 }
 
 export const useToastStore = create<ToastState>((set) => ({

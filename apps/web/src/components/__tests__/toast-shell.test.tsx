@@ -102,3 +102,30 @@ describe("ToastShell —— 通知卡", () => {
 		expect(screen.getAllByText("有新版 0.9.0")).toHaveLength(1);
 	});
 });
+
+describe("通知卡与推送 toast 抢队列", () => {
+	it("推送刷屏把队列灌满 → 挤掉的是最老的推送,通知卡留着", () => {
+		// 队列上限 5,从头部丢。通知卡先入队(面板一打开就查更新),SC / 舰长一开播几秒
+		// 就能烧掉五条推送 —— 第一个被丢的就是它。「有新版」一年才几回,错过了得等下次
+		// 开面板;推送是流水,少一条无所谓。
+		const store = useToastStore.getState();
+		store.notify(NOTICE);
+		for (let i = 0; i < 6; i++) {
+			store.push({
+				id: `push-${i}`,
+				ts: new Date(0).toISOString(),
+				source: "dynamic",
+				uid: "1",
+				subscriptionId: "s",
+				targetIds: [],
+				ok: true,
+				text: `推送 ${i}`,
+			});
+		}
+
+		const items = useToastStore.getState().items;
+		expect(items).toHaveLength(5);
+		expect(items.some((t) => t.id === NOTICE.id)).toBe(true);
+		expect(items.some((t) => t.id === "push-0")).toBe(false);
+	});
+});
