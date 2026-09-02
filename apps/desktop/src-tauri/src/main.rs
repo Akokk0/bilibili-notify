@@ -765,6 +765,30 @@ fn strip_windows_verbatim_path(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum SidecarExit {
+    /// 外壳自己在退出,子进程跟着走,不用管。
+    Quitting,
+    /// 服务端**自己要求**重启:应用更新 / 回退时它优雅停机并退 0,等着被拉起来。
+    Restart,
+    /// 其余一律是崩溃。
+    Crashed,
+}
+
+/// 容器里有 `restart:` 策略把退出的服务端拉起来;桌面版没有进程管理器,外壳就得当那个
+/// 策略 —— 否则用户在面板里按「立即重启并应用」,看到的是一张「后端服务已退出」的崩溃页。
+/// 退出码 0 是服务端约定的「我是故意退的」(见 apps/server/src/index.ts 的 applyUpdate),
+/// 被信号杀掉(Unix 上 code 是 None)或非 0 才是崩溃。
+fn sidecar_exit_disposition(quitting: bool, exit_code: Option<i32>) -> SidecarExit {
+    if quitting {
+        return SidecarExit::Quitting;
+    }
+    match exit_code {
+        Some(0) => SidecarExit::Restart,
+        _ => SidecarExit::Crashed,
+    }
+}
+
 fn spawn_child_monitor(app: AppHandle, pid: u32) {
     thread::spawn(move || loop {
         thread::sleep(Duration::from_secs(1));
@@ -778,7 +802,7 @@ fn spawn_child_monitor(app: AppHandle, pid: u32) {
                 return;
             }
             match service.child.try_wait() {
-                Ok(Some(status)) => Some(Ok(status.to_string())),
+                Ok(Some(status)) => Some(Ok((status.code(), status.to_string()))),
                 Ok(None) => None,
                 Err(err) => Some(Err(err.to_string())),
             }
@@ -787,25 +811,51 @@ fn spawn_child_monitor(app: AppHandle, pid: u32) {
             continue;
         };
         let paths = current_paths(&app).ok();
-        {
+        let disposition = {
             let state = app.state::<LauncherState>();
             let mut inner = state.inner.lock().expect("launcher state poisoned");
-            let quitting = inner.quitting;
             inner.service = None;
-            if quitting {
-                return;
+            let exit_code = status.as_ref().ok().and_then(|(code, _)| *code);
+            let disposition = sidecar_exit_disposition(inner.quitting, exit_code);
+            match disposition {
+                SidecarExit::Quitting => return,
+                SidecarExit::Restart => {
+                    // 不在这里置 Starting:start_service_async 看到 Starting 会当成
+                    // 「已经在启动」直接返回。
+                    inner.status = LauncherStatus::Stopped;
+                    inner.message =
+                        "后端已按要求退出（应用更新 / 回退），正在重新拉起。".to_string();
+                    inner.detail = None;
+                }
+                SidecarExit::Crashed => {
+                    inner.status = LauncherStatus::Crashed;
+                    inner.message = "后端服务已退出，请重试启动或查看日志。".to_string();
+                    inner.detail = Some(match &status {
+                        Ok((_, status)) => format!("sidecar exit status: {status}"),
+                        Err(err) => format!("sidecar wait failed: {err}"),
+                    });
+                }
             }
-            inner.status = LauncherStatus::Crashed;
-            inner.message = "后端服务已退出，请重试启动或查看日志。".to_string();
-            inner.detail = Some(match status {
-                Ok(status) => format!("sidecar exit status: {status}"),
-                Err(err) => format!("sidecar wait failed: {err}"),
-            });
+            disposition
+        };
+        match disposition {
+            SidecarExit::Quitting => return,
+            SidecarExit::Restart => {
+                if let Some(paths) = paths {
+                    append_launcher_log(
+                        &paths.launcher_log_dir,
+                        "sidecar exited with code 0: restarting to apply the update / rollback",
+                    );
+                }
+                start_service_async(app.clone());
+            }
+            SidecarExit::Crashed => {
+                if let Some(paths) = paths {
+                    append_launcher_log(&paths.launcher_log_dir, "sidecar exited unexpectedly");
+                }
+                show_status_page(&app);
+            }
         }
-        if let Some(paths) = paths {
-            append_launcher_log(&paths.launcher_log_dir, "sidecar exited unexpectedly");
-        }
-        show_status_page(&app);
         return;
     });
 }
@@ -1479,6 +1529,37 @@ fn append_launcher_log(log_dir: &Path, msg: &str) {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    // 这几条是「桌面版按『立即重启并应用』得到崩溃页」那个缺陷的守卫:服务端优雅退 0 是在
+    // 请求重启,外壳得把它拉起来;只有非 0 / 被信号杀才是崩溃。
+    #[test]
+    fn clean_exit_asks_for_a_restart() {
+        assert_eq!(
+            sidecar_exit_disposition(false, Some(0)),
+            SidecarExit::Restart
+        );
+    }
+
+    #[test]
+    fn non_zero_or_signal_is_a_crash() {
+        assert_eq!(
+            sidecar_exit_disposition(false, Some(1)),
+            SidecarExit::Crashed
+        );
+        assert_eq!(sidecar_exit_disposition(false, None), SidecarExit::Crashed);
+    }
+
+    #[test]
+    fn nothing_is_restarted_while_quitting() {
+        assert_eq!(
+            sidecar_exit_disposition(true, Some(0)),
+            SidecarExit::Quitting
+        );
+        assert_eq!(
+            sidecar_exit_disposition(true, Some(1)),
+            SidecarExit::Quitting
+        );
+    }
 
     fn test_env(vars: &[(&str, &str)]) -> impl Fn(&str) -> Option<OsString> {
         let vars: HashMap<String, OsString> = vars

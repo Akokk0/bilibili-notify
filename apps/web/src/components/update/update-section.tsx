@@ -197,8 +197,9 @@ export function UpdateSection() {
 
 					{canApply ? (
 						<HintNote tone="neutral">
-							应用会<strong>重启服务</strong>:那一刻推送会断几秒、直播监听会重连。容器部署 请确认{" "}
-							<code>restart</code> 策略是开着的 —— 没有它的话,进程退出后不会有人把 它拉起来。
+							应用会<strong>重启服务</strong>:那一刻推送会断几秒、直播监听会重连。容器部署请确认{" "}
+							<code>restart</code> 策略是开着的 ——
+							没有它的话,进程退出后不会有人把它拉起来;桌面版由外壳自动拉起,界面会跟着刷新。
 						</HintNote>
 					) : null}
 
