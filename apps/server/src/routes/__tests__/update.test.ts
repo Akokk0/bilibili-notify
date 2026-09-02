@@ -211,6 +211,10 @@ describe("update 路由 —— 测一遍加速站", () => {
 			"{}",
 			JSON.stringify({ prefixes: "https://x/" }),
 			JSON.stringify({ prefixes: ["http://plain.example/"] }),
+			// 判定与面板共用(契约的 `isMirrorPrefix`):只以 https:// 开头是不够的,
+			// 后面得真有个主机名 —— 否则会出现「测得通、存不进去」,落盘那道门更严。
+			JSON.stringify({ prefixes: ["https://"] }),
+			JSON.stringify({ prefixes: ["https:///nohost/"] }),
 			JSON.stringify({ prefixes: Array.from({ length: 40 }, (_, i) => `https://m${i}.example/`) }),
 		]) {
 			const res = await app.request("/mirrors/probe", {

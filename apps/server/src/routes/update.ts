@@ -7,16 +7,18 @@
  * 重启了一遍服务。
  */
 
+import { canApplyUpdate, isMirrorPrefix } from "@bilibili-notify/contract";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { UpdateService } from "../update/service.js";
 
 /**
- * 「测一遍」的请求体。只收空串(直连)或 `https://` 前缀 —— 这是要去真连的地址,
+ * 「测一遍」的请求体。只收空串(直连)或合法的 `https://` 前缀 —— 这是要去真连的地址,
+ * 判定与面板共用同一条(契约里的 `isMirrorPrefix`),否则会出现「测得通、存不进去」。
  * 数量也封顶:内置六个 + 直连 + 一条自定义,二十已经很宽了。
  */
 const ProbeBody = z.object({
-	prefixes: z.array(z.string().refine((p) => p === "" || p.startsWith("https://"))).max(20),
+	prefixes: z.array(z.string().refine((p) => p === "" || isMirrorPrefix(p))).max(20),
 });
 
 export interface CreateUpdateRouteInput {
@@ -43,11 +45,8 @@ export function createUpdateRoute({ service, applyUpdate }: CreateUpdateRouteInp
 	});
 
 	app.post("/apply", (c) => {
-		const { state } = service.getStatus();
-		// 只有这两档重启才有意义:装好了等着跑,或者钉子已落等着退回去。
-		// 别的状态下重启只会让用户看到「版本没变」,而这正是最让人怀疑功能坏掉的结果
-		// —— 何况重启本身有代价:推送会断、直播监听会掉。
-		if (state.phase !== "ready" && state.phase !== "rolled-back") {
+		// 判定在契约里,面板决定按钮出不出用的是同一个函数 —— 见 `canApplyUpdate`。
+		if (!canApplyUpdate(service.getStatus().state)) {
 			return c.json({ err: "没有可应用的版本" }, 409);
 		}
 

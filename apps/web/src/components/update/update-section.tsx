@@ -1,4 +1,8 @@
-import type { UpdateStatusDTO } from "@bilibili-notify/contract";
+import {
+	canApplyUpdate,
+	type UpdateErrorReason,
+	type UpdateStatusDTO,
+} from "@bilibili-notify/contract";
 import type { UpdateSettings } from "@bilibili-notify/internal";
 import {
 	Btn,
@@ -36,51 +40,29 @@ const CHANNEL_OPTIONS = [
 	{ value: "prerelease", label: "预发布" },
 ];
 
-/** 报错文案。措辞按归因分三档,别混成一句「更新失败」。 */
-function errorCopy(reason: string): { text: string; danger: boolean } {
-	switch (reason) {
-		case "untrusted":
-			// 唯一该弹红字的一条:分发链上可能真的有人动过手脚。
-			return {
-				text: "更新包的签名验不过 —— 拿到的东西不是我们签发的。已停下,什么都没装。如果你填了加速前缀,先把它去掉再试一次;还是这样就先别更新。",
-				danger: true,
-			};
-		case "malformed":
-			return {
-				text: "更新清单读不出来 —— 这是我们发版时出的岔子,不是你的问题。过阵子再试。",
-				danger: false,
-			};
-		case "unreachable":
-			return {
-				text: "连不上更新服务器。可以在下面填一个加速前缀,或者按链接自己去下载。",
-				danger: false,
-			};
-		case "stale-manifest":
-			return {
-				text: "拿到的更新清单比之前见过的旧,没有收。多半是加速站缓存了旧文件 —— 换个站、或改回直连再试。",
-				danger: false,
-			};
-		case "checksum-mismatch":
-			return {
-				text: "下下来的包对不上校验和,已丢弃、盘上没留东西。多半是中途被截断了,重试一次。",
-				danger: false,
-			};
-		case "download-failed":
-			return {
-				text: "清单拿到了,包没下下来。可以换个加速前缀,或者按链接自己去下载。",
-				danger: false,
-			};
-		case "install-failed":
-			return {
-				text: "包是好的,写进数据目录时失败了 —— 先看看磁盘还有没有空间、目录是不是只读。",
-				danger: false,
-			};
-		case "nothing-to-roll-back":
-			return { text: "已经是最早的那一版了,没有可退的上一版。", danger: false };
-		default:
-			return { text: "这次没成。", danger: false };
-	}
-}
+/**
+ * 报错文案。措辞按归因分档,别混成一句「更新失败」。
+ *
+ * 写成 `Record<UpdateErrorReason, …>` 而不是带兜底的 switch:契约里加一档新归因时,
+ * 这里要么被编译器点名、要么就悄悄以「这次没成」发出去 —— 而后者正是这一节存在的
+ * 理由的反面(同页的 `phaseLabel` 与加速站那张 `FAILURE_LABEL` 也都是这个写法)。
+ */
+const ERROR_COPY: Record<UpdateErrorReason, string> = {
+	// 唯一该弹红字的一条(见下面的 DANGEROUS_REASON):分发链上可能真的有人动过手脚。
+	untrusted:
+		"更新包的签名验不过 —— 拿到的东西不是我们签发的。已停下,什么都没装。如果你填了加速前缀,先把它去掉再试一次;还是这样就先别更新。",
+	malformed: "更新清单读不出来 —— 这是我们发版时出的岔子,不是你的问题。过阵子再试。",
+	unreachable: "连不上更新服务器。可以在下面填一个加速前缀,或者按链接自己去下载。",
+	"stale-manifest":
+		"拿到的更新清单比之前见过的旧,没有收。多半是加速站缓存了旧文件 —— 换个站、或改回直连再试。",
+	"checksum-mismatch": "下下来的包对不上校验和,已丢弃、盘上没留东西。多半是中途被截断了,重试一次。",
+	"download-failed": "清单拿到了,包没下下来。可以换个加速前缀,或者按链接自己去下载。",
+	"install-failed": "包是好的,写进数据目录时失败了 —— 先看看磁盘还有没有空间、目录是不是只读。",
+	"nothing-to-roll-back": "已经是最早的那一版了,没有可退的上一版。",
+};
+
+/** 唯一弹红字的一条。其余一律中性旁注 —— 把代理站抽风渲染成安全警告只会训练用户忽略它。 */
+const DANGEROUS_REASON: UpdateErrorReason = "untrusted";
 
 export function UpdateSection() {
 	const qc = useQueryClient();
@@ -133,15 +115,13 @@ export function UpdateSection() {
 
 	const { state } = status;
 	const busy = act.isPending || apply.isPending;
-	const canApply = state.phase === "ready" || state.phase === "rolled-back";
+	// 和服务端 `POST /api/update/apply` 那道门用的是同一个判定,见契约。
+	const canApply = canApplyUpdate(state);
+	// 带 releaseUrl 的那几档(有新版 / 正在下 / 已就绪 / 要重拉镜像)都指到那一版的发布页;
+	// 出错时指到 helpUrl(拿不到清单就是发布列表)。往联合里再加一档带 releaseUrl 的
+	// 状态不用回来改这里。
 	const helpUrl =
-		state.phase === "error"
-			? state.helpUrl
-			: state.phase === "available" || state.phase === "ready" || state.phase === "downloading"
-				? state.releaseUrl
-				: state.phase === "needs-image-pull"
-					? state.releaseUrl
-					: undefined;
+		state.phase === "error" ? state.helpUrl : "releaseUrl" in state ? state.releaseUrl : undefined;
 
 	return (
 		<div ref={anchorRef} className="scroll-mt-4">
@@ -193,16 +173,11 @@ export function UpdateSection() {
 						</HintNote>
 					) : null}
 
-					{state.phase === "error"
-						? (() => {
-								const copy = errorCopy(state.reason);
-								return copy.danger ? (
-									<ErrorNote>{copy.text}</ErrorNote>
-								) : (
-									<HintNote tone="neutral">{copy.text}</HintNote>
-								);
-							})()
-						: null}
+					{state.phase !== "error" ? null : state.reason === DANGEROUS_REASON ? (
+						<ErrorNote>{ERROR_COPY[state.reason]}</ErrorNote>
+					) : (
+						<HintNote tone="neutral">{ERROR_COPY[state.reason]}</HintNote>
+					)}
 
 					{canApply ? (
 						<HintNote tone="neutral">

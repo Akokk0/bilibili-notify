@@ -1,5 +1,6 @@
 import {
 	BUILTIN_UPDATE_MIRRORS,
+	isMirrorPrefix,
 	type MirrorProbeResponse,
 	type MirrorProbeResult,
 } from "@bilibili-notify/contract";
@@ -35,7 +36,6 @@ const FAILURE_LABEL: Record<Extract<MirrorProbeResult, { ok: false }>["reason"],
 	stale: "缓存了旧清单",
 };
 
-const isHttpsPrefix = (p: string): boolean => /^https:\/\/[^/\s]+/.test(p);
 const isBuiltin = (p: string): boolean => BUILTIN_UPDATE_MIRRORS.includes(p);
 
 function hostOf(prefix: string): string {
@@ -58,7 +58,7 @@ export function MirrorPicker({ active, onSelect, disabled = false }: MirrorPicke
 	});
 
 	const customPrefix = custom.trim();
-	const customValid = isHttpsPrefix(customPrefix);
+	const customValid = isMirrorPrefix(customPrefix);
 	const prefixes = ["", ...BUILTIN_UPDATE_MIRRORS, ...(customValid ? [customPrefix] : [])];
 
 	return (

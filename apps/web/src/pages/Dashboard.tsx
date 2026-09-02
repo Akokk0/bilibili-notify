@@ -627,7 +627,9 @@ export function SystemHealthCard({
 	];
 
 	// 失联时那份更新状态只是快照,按了「去更新」也去不了哪 —— 不催。
-	const newer = reachable && update ? newerVersionOf(update) : null;
+	// 直接算成要显示的那句话:`newer` 非 null 蕴含 `update` 在,但 TS narrow 不出来,
+	// 留着中间量就得在每个用处再守一次 `update`。
+	const updateLabel = reachable && update && newerVersionOf(update) ? phaseLabel(update) : null;
 
 	return (
 		<GlassBox
@@ -639,10 +641,10 @@ export function SystemHealthCard({
 					<span className="opacity-40">·</span>
 					<span>面板</span>
 					<VersionBadge>{__WEB_VERSION__}</VersionBadge>
-					{newer && update ? (
+					{updateLabel ? (
 						<>
 							<span className="opacity-40">·</span>
-							<span className="font-semibold text-bn-pink">{phaseLabel(update)}</span>
+							<span className="font-semibold text-bn-pink">{updateLabel}</span>
 						</>
 					) : null}
 				</span>
@@ -651,7 +653,7 @@ export function SystemHealthCard({
 			icon={<Icon.check size={14} />}
 			badge={!reachable ? "失联" : health?.status === "ok" ? "健康" : "—"}
 			right={
-				newer ? (
+				updateLabel ? (
 					<Link to={UPDATE_SECTION_PATH}>
 						<Btn size="sm" variant="primary">
 							去更新

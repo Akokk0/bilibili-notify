@@ -49,6 +49,20 @@ export type UpdateState =
 	/** `helpUrl` 是「下不动就给个链接让用户自己去下」那条兜底出口。 */
 	| { phase: "error"; reason: UpdateErrorReason; helpUrl?: string; checkedAt: number };
 
+/**
+ * 这一档按「立即重启并应用」有没有意义。
+ *
+ * 只有两档有:装好了等着跑,或者钉子已落等着退回去。别的状态下重启只会让用户看到
+ * 「版本没变」—— 而重启本身有代价(推送会断、直播监听会掉)。
+ *
+ * 住在契约里是因为**服务端与面板必须同时点头**:服务端据它回 409,面板据它决定按钮
+ * 出不出。各写一份字面量的话,漏改一边的症状是按钮点下去报错、或者一个本该能应用的
+ * 状态上按钮凭空消失,而两种都不会有任何东西报警。
+ */
+export function canApplyUpdate(state: UpdateState): boolean {
+	return state.phase === "ready" || state.phase === "rolled-back";
+}
+
 export interface UpdateStatusDTO {
 	/** 当前正在跑的那份载荷的版本。 */
 	currentVersion: string;
@@ -83,6 +97,17 @@ export const BUILTIN_UPDATE_MIRRORS: readonly string[] = [
 	"https://gh.llkk.cc/",
 	"https://git.yylx.win/",
 ];
+
+/**
+ * 一条加速前缀长得合不合法。空串(直连)不走这里,由调用方各自判。
+ *
+ * 服务端拿它守 `POST /api/update/mirrors/probe`(这是一个让服务端去连任意主机的入口),
+ * 面板拿它决定自定义那一格能不能选。两边判得不一样的话,用户会遇到「测得通、存不进去」
+ * —— 而落盘那道门(internal 的 `UpdateSettingsSchema`)才是最终说了算的那个。
+ */
+export function isMirrorPrefix(value: string): boolean {
+	return /^https:\/\/[^\s/]+/.test(value);
+}
 
 /** `POST /api/update/mirrors/probe` 的请求体。`prefixes` 里的空串 = 直连。 */
 export interface MirrorProbeRequest {
