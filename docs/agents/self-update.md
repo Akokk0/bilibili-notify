@@ -143,12 +143,30 @@ channel hook 一起),每次页面加载 `POST /api/update/check` 一次。查到
 
 ## 撤回一个坏版本
 
-两道闸,缺一不可:
+三道闸,各管一批人:
 
-- **服务端撤回**:在下一份清单的 `revoked` 里列上坏版本号。这只拦得住**还没升的人**。
-- **客户端自愈**:已经中招的那批靠 `boot.mjs` —— 连续起不来到上限就把那一版判死,
+- **服务端撤回**:重签一份渠道清单,`version` 写用户**该在**的版本(修复版,或退回上一个
+  好版本 —— 可以比坏版本号小),`revoked` 列上坏版本号。客户端对 `revoked` 的处理:
+  还没升的人不会去装它;**已经装好等重启**的人,那份目录会被删掉、`ready` 撤掉;
+  **正在跑着坏版本**的人,清单那版哪怕更旧也当更新目标装上,坏版本被判死(进
+  `boot-state.json` 的 `failed`),重启后开机选版不再选它。
+- **客户端自愈**:起不来的那批靠 `boot.mjs` —— 连续起不来到上限就把那一版判死,
   自动退回上一版。这条路**压过用户手动钉的版本**,否则退到一个也起不来的版本就是
   死局(进不去面板 = 拔不掉钉子)。
+- **新鲜度**:重签会让 `issuedAt` 变新,客户端从此不再收更旧的那份 —— 代理站缓存或
+  回放旧清单都推不回去。
+
+**流水线里没有撤回按钮**(2026-09-02):撤回 = 拿离线私钥手跑一遍。清单里的 `payload`
+要指向用户该在的那版的 zip(去那一版 release 页抄 sha256 / size):
+
+```bash
+node scripts/sign-update-manifest.mjs --version 0.9.0 --revoked 0.9.1 \
+  --payload-url https://github.com/Akokk0/bilibili-notify/releases/download/v0.9.0/bilibili-notify-payload-0.9.0.zip \
+  --sha256 <那份 zip 的 sha256> --size <字节数> \
+  --release-url https://github.com/Akokk0/bilibili-notify/releases/tag/v0.9.0 --out dist/manifest
+CHANNEL=stable FILE=dist/manifest.sig.json GH_TOKEN=… REPO=Akokk0/bilibili-notify \
+  bash .github/scripts/publish-update-channel.sh   # 预发布渠道再来一遍 CHANNEL=alpha
+```
 
 ## 几条不许动的约定
 

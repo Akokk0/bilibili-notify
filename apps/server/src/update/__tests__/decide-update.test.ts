@@ -109,3 +109,29 @@ describe("decideUpdate", () => {
 		expect(decision).toEqual({ kind: "update", target: "0.9.0-alpha.10" });
 	});
 });
+
+describe("decideUpdate —— 撤回名单对**当前**版本说话", () => {
+	it("正在跑的版本被撤回、清单给的是更旧的修复版 → 照样当更新目标(这是降级,也是撤回的本意)", () => {
+		// 文档写的用法是「在下一份清单的 revoked 里列上坏版本号」。发出去的坏版本收不回来,
+		// 但已经装上、还能正常启动的那批用户只有这一条路能被带走 —— 而修复版未必比坏版本
+		// 的版本号大(常见做法是把渠道退回上一个好版本)。只比大小的话,他们看到的永远是
+		// 「已是最新」。
+		const decision = decideUpdate({
+			currentVersion: "0.9.1",
+			manifest: manifest({ version: "0.9.0", revoked: ["0.9.1"] }),
+			runtime: { nodeMajor: 24 },
+		});
+
+		expect(decision).toEqual({ kind: "update", target: "0.9.0" });
+	});
+
+	it("当前版本被撤回,但清单那版也在撤回名单里 → 没有可去的地方,up-to-date", () => {
+		const decision = decideUpdate({
+			currentVersion: "0.9.1",
+			manifest: manifest({ version: "0.9.0", revoked: ["0.9.1", "0.9.0"] }),
+			runtime: { nodeMajor: 24 },
+		});
+
+		expect(decision).toEqual({ kind: "up-to-date" });
+	});
+});

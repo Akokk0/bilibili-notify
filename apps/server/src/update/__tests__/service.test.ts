@@ -785,6 +785,66 @@ describe("createUpdateService —— 清单新鲜度", () => {
 	});
 });
 
+describe("createUpdateService —— 撤回", () => {
+	it("清单撤回了盘上已装好、还没重启的那版 → 目录删掉,ready 撤掉,重启不会跑它", async () => {
+		// 选版只看盘上谁最新。装好 0.9.1 等重启、这时它被撤回 —— 不删目录的话,用户随手
+		// 一重启就装上了厂商已经召回的构建,而面板还在说「已就绪,重启就换」。
+		const key = makeKey();
+		const badZip = makePayloadZip("0.9.1");
+		const world = {
+			body: envelope(key.privateKey, manifestFor("0.9.1", badZip, { issuedAt: 100 })),
+		};
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: unknown) => {
+				const url = String(input);
+				if (url.endsWith(".json")) return new Response(world.body, { status: 200 });
+				return new Response(badZip, { status: 200 });
+			}),
+		);
+		const { service, versionsRoot } = makeService({ trustedKeys: [key.spkiBase64] });
+		expect((await service.check()).state).toMatchObject({ phase: "ready", target: "0.9.1" });
+		expect(existsSync(join(versionsRoot, "0.9.1"))).toBe(true);
+
+		// 发版侧把渠道清单重签为「0.9.1 撤回,当前渠道版本仍是 0.8.0(镜像那版)」。
+		world.body = envelope(
+			key.privateKey,
+			manifestFor("0.8.0", makePayloadZip("0.8.0"), { issuedAt: 200, revoked: ["0.9.1"] }),
+		);
+		const status = await service.check();
+
+		expect(status.state).toMatchObject({ phase: "up-to-date" });
+		expect(existsSync(join(versionsRoot, "0.9.1"))).toBe(false);
+	});
+
+	it("正在跑的版本被撤回、清单给的是更旧的修复版 → 装上它,并把坏版本判死让开机不再选它", async () => {
+		const key = makeKey();
+		const fixZip = makePayloadZip("0.9.0");
+		stubNetwork({
+			manifestBody: envelope(
+				key.privateKey,
+				manifestFor("0.9.0", fixZip, { issuedAt: 300, revoked: ["0.9.1"] }),
+			),
+			payload: fixZip,
+		});
+		const { service, versionsRoot } = makeService({
+			trustedKeys: [key.spkiBase64],
+			currentVersion: "0.9.1",
+			imageVersion: "0.8.0",
+		});
+		mkdirSync(join(versionsRoot, "0.9.1"), { recursive: true });
+
+		const status = await service.check();
+
+		expect(status.state).toMatchObject({ phase: "ready", target: "0.9.0" });
+		expect(existsSync(join(versionsRoot, "0.9.0"))).toBe(true);
+		// 正在跑的那份删不得(Windows 上文件还开着),但开机选版不能再选它:选版取最新,
+		// 不判死的话重启后还是 0.9.1。
+		const bootState = JSON.parse(readFileSync(join(versionsRoot, "boot-state.json"), "utf8"));
+		expect(bootState.failed).toContain("0.9.1");
+	});
+});
+
 describe("createUpdateService —— 回退撞上进行中的下载", () => {
 	it("下载途中按回退 → 回退排在下载后面落钉子,而不是被下载完成时的拔钉子抹掉", async () => {
 		// rollback 若不走串行闸:它同步落钉、报 rolled-back,几秒后下载完成的那一趟

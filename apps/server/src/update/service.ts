@@ -15,6 +15,7 @@ import { readSeenIssuedAt, rememberIssuedAt } from "./manifest-freshness.js";
 import { pruneOldVersions } from "./prune-versions.js";
 import {
 	clearPinnedVersion,
+	markVersionFailed,
 	pinVersion,
 	readFailedVersions,
 	readPinnedVersion,
@@ -254,6 +255,30 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		return state.phase === "ready" && onDisk !== null;
 	}
 
+	/**
+	 * 清单说这些版本被撤回了 —— 服务端撤回闸只拦得住还没升的人,这里管**已经在盘上**的:
+	 *
+	 * - 装好了还没重启的那份:删目录、撤掉 ready。选版只看盘上谁最新,不删的话用户随手
+	 *   一重启就装上了厂商已经召回的构建。
+	 * - 正在跑的那份:删不得(Windows 上文件还开着),判死 —— 开机选版从此不选它,
+	 *   而清单那版(哪怕更旧)会被当成更新目标装上,见 decideUpdate。
+	 */
+	function quarantineRevoked(revoked: readonly string[]): void {
+		if (revoked.length === 0) return;
+		const installed = installedVersions(versionsRoot);
+		for (const version of revoked) {
+			if (version === currentVersion) {
+				markVersionFailed({ versionsRoot, version });
+				continue;
+			}
+			if (!installed.includes(version)) continue;
+			pruneOldVersions({ versionsRoot, keep: installed.filter((v) => v !== version) });
+			if (onDisk?.version === version) onDisk = null;
+			if (pending?.version === version) pending = null;
+			if ("target" in state && state.target === version) state = { phase: "idle" };
+		}
+	}
+
 	function channelOf(settings: UpdateSettings): "stable" | "prerelease" {
 		return settings.channel === "prerelease" ? "prerelease" : "stable";
 	}
@@ -280,6 +305,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 
 		const manifest = fetched.manifest;
 		rememberIssuedAt(versionsRoot, channel, manifest.issuedAt);
+		quarantineRevoked(manifest.revoked ?? []);
 		const decision = decideUpdate({
 			currentVersion,
 			manifest,

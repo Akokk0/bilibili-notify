@@ -27,10 +27,15 @@ export function decideUpdate({
 	runtime,
 	allowPrerelease = false,
 }: DecideUpdateInput): UpdateDecision {
+	const revoked = manifest.revoked ?? [];
 	const isNewer = compareVersions(manifest.version, currentVersion) > 0;
-	const isRevoked = (manifest.revoked ?? []).includes(manifest.version);
+	// 正在跑的版本被撤回时,清单那版**哪怕更旧**也是目标:发出去的坏版本收不回来,已经
+	// 装上、还能正常启动的那批用户只有这一条路能被带走,而修复版未必比坏版本号大
+	// (常见做法是把渠道退回上一个好版本)。
+	const currentRevoked = revoked.includes(currentVersion);
+	const isRevoked = revoked.includes(manifest.version);
 	const isGatedPrerelease = isPrerelease(manifest.version) && !allowPrerelease;
-	if (!isNewer || isRevoked || isGatedPrerelease) return { kind: "up-to-date" };
+	if (!(isNewer || currentRevoked) || isRevoked || isGatedPrerelease) return { kind: "up-to-date" };
 
 	const requiredNode = manifest.requires?.nodeMajor;
 	if (requiredNode !== undefined && runtime.nodeMajor < requiredNode) {

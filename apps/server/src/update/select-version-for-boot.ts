@@ -185,6 +185,22 @@ export function readPinnedVersion({
 	return usablePin(readState(versionsRoot), versionsRoot, imageVersion);
 }
 
+/**
+ * 把一个版本判死 —— 给撤回用:正在跑的那份删不得(Windows 上文件还开着),但开机选版
+ * 取的是最新,不判死的话重启后还是它。和自愈判死走同一个名单,选版那边不用多认一种。
+ */
+export function markVersionFailed({
+	versionsRoot,
+	version,
+}: {
+	versionsRoot: string;
+	version: string;
+}): void {
+	const state = readState(versionsRoot);
+	if (state.failed.includes(version)) return;
+	writeState(versionsRoot, { ...state, failed: [...state.failed, version] });
+}
+
 /** 自愈判死的版本。给回退目标的挑选用 —— 退进一个开不了机的版本等于把人锁在外面。 */
 export function readFailedVersions({ versionsRoot }: { versionsRoot: string }): readonly string[] {
 	return readState(versionsRoot).failed;
