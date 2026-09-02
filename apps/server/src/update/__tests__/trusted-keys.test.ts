@@ -16,13 +16,30 @@ describe("自主升级的信任根", () => {
 	});
 
 	it("每一把都得是能解出来的 Ed25519 SPKI —— 填错一个字符就是全体升不上去", async () => {
-		const { createPublicKey } = await import("node:crypto");
+		const { createPrivateKey, createPublicKey } = await import("node:crypto");
 		for (const key of TRUSTED_UPDATE_KEYS) {
-			const parsed = createPublicKey({
-				key: Buffer.from(key, "base64"),
-				format: "der",
-				type: "spki",
-			});
+			const der = Buffer.from(key, "base64");
+
+			// **贴成私钥是这里最容易犯、也最危险的错**:生成脚本会打印两串 base64,
+			// 一串是公钥(贴进这个文件),另一串是 `base64 < A.pem`(进 CI secret),
+			// 长得像、位置相邻。贴错的话私钥就进了一个要发给所有用户的源文件。
+			//
+			// 光靠下面的 SPKI 解析也能红,但它只会说一句 `Failed to read asymmetric key`
+			// —— 那句话不会让任何人想到「我贴的是私钥」。所以先单独认一次。
+			let looksPrivate = false;
+			try {
+				createPrivateKey({ key: der, format: "der", type: "pkcs8" });
+				looksPrivate = true;
+			} catch {
+				// 不是私钥,正常往下走。
+			}
+			expect(
+				looksPrivate,
+				"TRUSTED_UPDATE_KEYS 里有一项是**私钥**(PKCS#8)。这个文件会发给所有用户 —— " +
+					"这里要的是公钥(SPKI,以 MCowBQYDK2VwAyEA 开头)。私钥只进 CI secret。",
+			).toBe(false);
+
+			const parsed = createPublicKey({ key: der, format: "der", type: "spki" });
 			expect(parsed.asymmetricKeyType).toBe("ed25519");
 		}
 	});
