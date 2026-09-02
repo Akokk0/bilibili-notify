@@ -1,6 +1,6 @@
 # 指令系统参考(独立端)
 
-主人在 IM 私聊里敲的那套指令:入站链路、指令表、参数模型、可配置项。CLAUDE.md 的渐进式披露目标之一。
+主人在 IM 私聊里敲的那套指令:入站链路、指令表、参数模型、可配置项;末尾另有**链接解析**(群里贴视频链接自动出卡片 —— 挂在同一条入站帧上,但**不是指令**)。CLAUDE.md 的渐进式披露目标之一。
 
 **只覆盖独立端。** koishi 端的 `bili.*` 与 AstrBot 的 `bn` 各有框架自带的命令系统,不动、也不强行统一 —— 那两端的用户已经形成肌肉记忆。
 
@@ -18,7 +18,7 @@
 
 | 文件 | 角色 |
 |---|---|
-| `inbound-message.ts` | `extractPrivateMessage` —— 平台事件帧 → `InboundPrivateMessage{userId,text}`,平台差异到此为止 |
+| `inbound-message.ts` | `extractPrivateMessage` / `extractGroupMessage` —— 平台事件帧 → `InboundPrivateMessage{userId,text}` / `InboundGroupMessage{groupId,userId,selfId?,text}`,平台差异到此为止 |
 | `command-dispatcher.ts` | 鉴权、四道门、路由、触发词查重(`effectiveAliases` / `command()` 注册助手) |
 | `command-params.ts` | 签名解析 `parseSignature` + 入参解析 `parseArgs` + 从签名推 handler 入参类型的 `Values<S>` |
 | `command-help.ts` | `renderUsage` / `renderHelp` —— 纯函数,私聊帮助与面板卡片共用 |
@@ -28,6 +28,7 @@
 | `roast-command.ts` | 审批 y/n,以 `ConfirmationWindow` 的身份挂进分发器 |
 | `routes/commands.ts` | `GET /api/commands` —— 把注册表列给面板 |
 | `routes/command-alias-guard.ts` | `checkCommandAliases` —— 保存配置时的别名查重,挂在 `routes/globals.ts` 的 PATCH 上 |
+| `link-parser.ts` / `video-card.ts` | 链接解析(见文末):群消息里的视频链接 → 取视频 → 拼成动态喂动态卡渲染器 → 发回来源群 |
 
 `help` 那条不单独成文件,直接在 `index.ts` 里注册 —— 它要列出**包括自己在内**的全部指令,得拿到那张表本身。
 
@@ -244,5 +245,26 @@ interface ConfirmationWindow {
 
 - **不做 flag/option**(`-c`):现有指令用不上,真需要时再长。
 - **不做子命令树**:koishi 端有 `bili.xxx` 是因为它要和别的插件共享命名空间;独立端这条私聊只有我们一家,平铺就够。
-- **不开群内指令**:现有指令没有一条适合群里用。一旦有指令在群里可用,群里就必然产生回音,试探面从「知道我 QQ 号的人」扩大到「同群所有人」。因此 `CommandSpec` 上**没有**权限级字段 —— 全部指令一律主人专属,由鉴权门一处判定;加一个当前恒为 `master` 的字段只会让人误以为它真的在管权限。
+- **不开群内指令**:现有指令没有一条适合群里用。一旦有指令在群里可用,群里就必然产生回音,试探面从「知道我 QQ 号的人」扩大到「同群所有人」。因此 `CommandSpec` 上**没有**权限级字段 —— 全部指令一律主人专属,由鉴权门一处判定;加一个当前恒为 `master` 的字段只会让人误以为它真的在管权限。**链接解析是唯一在群里响应的东西**,但它不走分发器、不是指令,自己那套闸门见文末。
 - **不做备份指令**:手机上收到备份也恢复不了,而它会把 B 站 cookie / 面板密码 / API keys 送进第三方服务器,是风险最高、离开电脑时又最用不上的一条。
+
+## 链接解析(不是指令)
+
+群里有人贴 B 站视频链接(`bilibili.com/video/BV…` / `/video/av…` / `b23.tv` 短链),机器人回一张视频卡片。
+与指令分发器**并列**挂在 OneBot 入站帧上(`index.ts` 里 `onInboundFrame` 同时喂两者),但它没有前缀、
+不认主人、群里谁贴都算 —— 正因为谁都能触发,它自己带一套闸门,和指令那三条约束是同一个道理:
+
+- **默认关**(`globals.linkParsing.enabled`),系统页「链接解析」卡是唯一开关。开着就意味着同群任何人都能让机器人出图,这得是主人自己按的。
+- **只做群、只做 OneBot(ws / ws-reverse)**。私聊里贴链接不理;qq-official 群里不 @ 机器人的消息协议上就不下发,这版不做;http 形态的 OneBot 没有入站。
+- **机器人在的所有群都算**(2026-09-02 主人定的),不要求群配成推送目标。回到来源群不查目标表:OneBot adapter 交帧时附上自己的 `adapterId`(`onInbound(frame, {adapterId})`),接线层拿它找到配置里的 adapter,造一个临时的 group target 直接 `send`。
+- **冷却**:同一个群同一个视频 `cooldownSeconds`(默认 60,0 = 不节流)内只出一次。从**开始处理**起算,不是发出去才算 —— 一条坏链接被反复贴,不该每次都去打接口。
+- **失败一律沉默**:接口失败 / 视频不存在 / 渲染失败 / 没有 Chrome,都只记日志、不回话。群里没人要求解析,失败了还回一句只是噪音,而且等于把「机器人在这个群」广播出去。
+- **一条消息最多三个链接**;机器人自己发的消息不解析;`b23.tv` 只跟一跳 `Location`、只认落在 `bilibili.com` 的目标(短链是别人贴的,跟到哪儿就是让谁指挥我们)。
+
+**卡片不新做**:`video-card.ts` 把 `getVideoInfo` 的结果拼成一条 `DYNAMIC_TYPE_AV` 形态的动态,喂给现有的
+`generateDynamicCard` —— 动态卡的版式编辑器、每类型样式、皮肤全部现成。播放 / 弹幕数按接口的样子给
+**格式化好的字符串**(`"6.5万"`),`packages/image` 的 `archive.stat` 类型已放宽成 `number | string`。
+
+三处纯函数各自有测试钉着:`extractVideoLinks`(`packages/internal`,域名用负向后顾钉边界,`notbilibili.com` 不算)、
+`BilibiliAPI.getVideoInfo` / `resolveShortLink`(`packages/api`)、`createLinkParser`(`apps/server/src/runtime/__tests__/link-parser.test.ts`,
+四个协作者全假,三处闸门做过变异验证会红)。
