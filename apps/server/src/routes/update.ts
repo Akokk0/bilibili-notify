@@ -8,7 +8,16 @@
  */
 
 import { Hono } from "hono";
+import { z } from "zod";
 import type { UpdateService } from "../update/service.js";
+
+/**
+ * 「测一遍」的请求体。只收空串(直连)或 `https://` 前缀 —— 这是要去真连的地址,
+ * 数量也封顶:内置六个 + 直连 + 一条自定义,二十已经很宽了。
+ */
+const ProbeBody = z.object({
+	prefixes: z.array(z.string().refine((p) => p === "" || p.startsWith("https://"))).max(20),
+});
 
 export interface CreateUpdateRouteInput {
 	service: UpdateService;
@@ -26,6 +35,12 @@ export function createUpdateRoute({ service, applyUpdate }: CreateUpdateRouteInp
 	app.post("/check", async (c) => c.json(await service.check()));
 	app.post("/download", async (c) => c.json(await service.download()));
 	app.post("/rollback", (c) => c.json(service.rollback()));
+
+	app.post("/mirrors/probe", async (c) => {
+		const parsed = ProbeBody.safeParse(await c.req.json().catch(() => null));
+		if (!parsed.success) return c.json({ err: "prefixes 不成形" }, 400);
+		return c.json({ results: await service.probeMirrors(parsed.data.prefixes) });
+	});
 
 	app.post("/apply", (c) => {
 		const { state } = service.getStatus();

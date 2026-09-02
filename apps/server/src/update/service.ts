@@ -1,5 +1,10 @@
 import { readdirSync } from "node:fs";
-import type { UpdateErrorReason, UpdateState, UpdateStatusDTO } from "@bilibili-notify/contract";
+import type {
+	MirrorProbeResult,
+	UpdateErrorReason,
+	UpdateState,
+	UpdateStatusDTO,
+} from "@bilibili-notify/contract";
 import type { UpdateSettings } from "@bilibili-notify/internal";
 import { decideUpdate } from "./decide-update.js";
 import { fetchSignedManifest } from "./fetch-signed-manifest.js";
@@ -56,6 +61,11 @@ export interface UpdateService {
 	/** 手动下载 —— 关掉自动下载时,用户按下按钮走这条。 */
 	download(): Promise<UpdateStatus>;
 	rollback(): UpdateStatus;
+	/**
+	 * 「测一遍」:对每个候选前缀(空串 = 直连)各拉一次当前渠道的清单 + 验签,
+	 * 回毫秒数与看到的版本,或者归因后的失败。**不碰状态** —— 它不是检查更新。
+	 */
+	probeMirrors(prefixes: readonly string[]): Promise<MirrorProbeResult[]>;
 }
 
 const VERSION_DIR_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
@@ -272,6 +282,30 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 				if (pending === null) return runCheck();
 				return installFrom(pending, mirrorChain(readSettings()));
 			});
+		},
+
+		async probeMirrors(prefixes) {
+			// 没钥匙什么都验不过,测了也只会得到一排「签名验不过」—— 那是误导。
+			if (!enabled) return [];
+			const settings = readSettings();
+			const url = manifestUrls[settings.channel === "prerelease" ? "prerelease" : "stable"];
+			// 并行:候选站之间互不影响,串行的话一个卡满超时的站会拖住整张表。
+			return Promise.all(
+				prefixes.map(async (prefix): Promise<MirrorProbeResult> => {
+					const started = now();
+					const fetched = await fetchSignedManifest({
+						url,
+						mirrors: [prefix],
+						trustedKeys,
+						timeoutMs,
+						maxBytes: maxManifestBytes,
+					});
+					const ms = Math.max(0, now() - started);
+					return fetched.ok
+						? { prefix, ok: true, ms, version: fetched.manifest.version }
+						: { prefix, ok: false, ms, reason: fetched.reason };
+				}),
+			);
 		},
 
 		rollback(): UpdateStatus {

@@ -22,6 +22,7 @@ function fakeService(overrides: Partial<UpdateService> = {}): UpdateService {
 		check: async () => status,
 		download: async () => status,
 		rollback: () => status,
+		probeMirrors: async () => [],
 		...overrides,
 	};
 }
@@ -141,5 +142,55 @@ describe("update 路由", () => {
 
 		expect((await app.request("/apply", { method: "POST" })).status).toBe(409);
 		expect(applyUpdate).not.toHaveBeenCalled();
+	});
+});
+
+describe("update 路由 —— 测一遍加速站", () => {
+	it("POST /mirrors/probe 把 prefixes 原样交给 service,结果原样交回", async () => {
+		const probeMirrors = vi.fn(async (prefixes: readonly string[]) =>
+			prefixes.map((prefix) => ({ prefix, ok: true as const, ms: 12, version: "0.9.0" })),
+		);
+		const app = createUpdateRoute({
+			service: fakeService({ probeMirrors }),
+			applyUpdate: async () => {},
+		});
+
+		const res = await app.request("/mirrors/probe", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ prefixes: ["", "https://ghfast.top/"] }),
+		});
+
+		expect(res.status).toBe(200);
+		expect(probeMirrors).toHaveBeenCalledWith(["", "https://ghfast.top/"]);
+		expect(await res.json()).toEqual({
+			results: [
+				{ prefix: "", ok: true, ms: 12, version: "0.9.0" },
+				{ prefix: "https://ghfast.top/", ok: true, ms: 12, version: "0.9.0" },
+			],
+		});
+	});
+
+	it("prefixes 不成形 → 400,不去碰 service —— 只收空串或 https:// 前缀,数量有上限", async () => {
+		const probeMirrors = vi.fn(async () => []);
+		const app = createUpdateRoute({
+			service: fakeService({ probeMirrors }),
+			applyUpdate: async () => {},
+		});
+
+		for (const body of [
+			"{}",
+			JSON.stringify({ prefixes: "https://x/" }),
+			JSON.stringify({ prefixes: ["http://plain.example/"] }),
+			JSON.stringify({ prefixes: Array.from({ length: 40 }, (_, i) => `https://m${i}.example/`) }),
+		]) {
+			const res = await app.request("/mirrors/probe", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body,
+			});
+			expect(res.status, body).toBe(400);
+		}
+		expect(probeMirrors).not.toHaveBeenCalled();
 	});
 });

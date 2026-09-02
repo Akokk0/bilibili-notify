@@ -51,3 +51,38 @@ export interface UpdateStatusDTO {
 	rollbackTarget: string | null;
 	state: UpdateState;
 }
+
+/**
+ * 内置的下载加速站候选(前缀形式,拼在 GitHub Release 地址前面)。
+ *
+ * **只是候选,不是默认。** 默认直连;用户在面板里「测一遍」、选一个用。这份名单决定的是
+ * 「面板上给谁看」,不是「默认和谁说话」—— 后者见 internal 的 `UpdateSettingsSchema`
+ * 那条记录在案的决定。哪个站死了,面板里一测就露馅,不必靠发版来收回。
+ *
+ * 名单是 2026-09-02 凭经验列的,没有逐个实测(主人拍板:不测,直接写)。
+ */
+export const BUILTIN_UPDATE_MIRRORS: readonly string[] = [
+	"https://ghfast.top/",
+	"https://gh-proxy.com/",
+	"https://ghproxy.net/",
+	"https://hub.gitmirror.com/",
+	"https://gh.llkk.cc/",
+	"https://git.yylx.win/",
+];
+
+/** `POST /api/update/mirrors/probe` 的请求体。`prefixes` 里的空串 = 直连。 */
+export interface MirrorProbeRequest {
+	prefixes: string[];
+}
+
+/**
+ * 一个候选站测出来的结果:通就给毫秒数和**通过它拿到的清单版本**(某个站缓存了旧
+ * 清单一眼看得出);不通就按老规矩归因 —— 连不上、签名验不过、清单不成形,三件事。
+ */
+export type MirrorProbeResult =
+	| { prefix: string; ok: true; ms: number; version: string }
+	| { prefix: string; ok: false; ms: number; reason: "unreachable" | "untrusted" | "malformed" };
+
+export interface MirrorProbeResponse {
+	results: MirrorProbeResult[];
+}

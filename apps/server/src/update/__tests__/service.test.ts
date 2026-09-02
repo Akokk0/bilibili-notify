@@ -537,3 +537,83 @@ describe("createUpdateService —— 回退", () => {
 		expect(bootState.pinned).toBeUndefined();
 	});
 });
+
+describe("createUpdateService —— 测一遍加速站", () => {
+	it("每个候选各自归因:直连通、一个站不通、一个站改了内容 —— 互不影响", async () => {
+		const key = makeKey();
+		const other = makeKey();
+		const zip = makePayloadZip("0.9.0");
+		const good = envelope(key.privateKey, manifestFor("0.9.0", zip));
+		const tampered = envelope(key.privateKey, manifestFor("0.9.0", zip), {
+			signWith: other.privateKey,
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: unknown) => {
+				const url = String(input);
+				if (url.startsWith("https://dead.example/")) throw new Error("boom");
+				if (url.startsWith("https://evil.example/")) return new Response(tampered, { status: 200 });
+				return new Response(good, { status: 200 });
+			}),
+		);
+		const { service } = makeService({ trustedKeys: [key.spkiBase64] });
+
+		const results = await service.probeMirrors([
+			"",
+			"https://dead.example/",
+			"https://evil.example/",
+			"https://fine.example/",
+		]);
+
+		expect(results.map((r) => r.prefix)).toEqual([
+			"",
+			"https://dead.example/",
+			"https://evil.example/",
+			"https://fine.example/",
+		]);
+		expect(results[0]).toMatchObject({ ok: true, version: "0.9.0" });
+		expect(results[1]).toMatchObject({ ok: false, reason: "unreachable" });
+		// 改了内容的站要说「签名验不过」,不能和「连不上」混成一句。
+		expect(results[2]).toMatchObject({ ok: false, reason: "untrusted" });
+		expect(results[3]).toMatchObject({ ok: true, version: "0.9.0" });
+		for (const r of results) expect(r.ms).toBeGreaterThanOrEqual(0);
+	});
+
+	it("按当前渠道的清单去测 —— 预发布用户测的是 alpha 那份", async () => {
+		const key = makeKey();
+		const zip = makePayloadZip("0.9.0-alpha.1");
+		const fetchMock = stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.9.0-alpha.1", zip)),
+		});
+		const { service } = makeService({
+			trustedKeys: [key.spkiBase64],
+			settings: { channel: "prerelease" },
+		});
+
+		await service.probeMirrors([""]);
+
+		expect(String(fetchMock.mock.calls[0]?.[0])).toBe(MANIFEST_URLS.prerelease);
+	});
+
+	it("没内置公钥 → 空列表,别去打扰网络", async () => {
+		const fetchMock = stubNetwork({});
+		const { service } = makeService({ trustedKeys: [] });
+
+		expect(await service.probeMirrors(["", "https://a.example/"])).toEqual([]);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("测一遍不碰状态 —— 它不是检查更新", async () => {
+		const key = makeKey();
+		const zip = makePayloadZip("0.9.0");
+		stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.9.0", zip)),
+			payload: zip,
+		});
+		const { service } = makeService({ trustedKeys: [key.spkiBase64] });
+
+		await service.probeMirrors([""]);
+
+		expect(service.getStatus().state).toEqual({ phase: "idle" });
+	});
+});
