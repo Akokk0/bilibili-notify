@@ -7,10 +7,14 @@ import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { readDesktopLayoutFile } from "../../../scripts/desktop-layout.mjs";
 
 const execFileAsync = promisify(execFile);
 const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const desktopRoot = join(root, "apps", "desktop");
+// 产物布局的**唯一声明**。外壳与两个发版闸读的是同一份 —— 这里自己写字面量,
+// 就等于给「摆的地方和找的地方不一样」留口子,而那种错只有打 tag 那天才露面。
+const layout = readDesktopLayoutFile(root);
 const resourcesRoot = join(desktopRoot, "src-tauri", "resources");
 const nodeVersion = "24.15.0";
 const nodeMajor = nodeVersion.split(".")[0];
@@ -111,8 +115,8 @@ async function prepare() {
 
 async function assertBuiltArtifacts() {
 	await mustExist(join(root, "apps", "server", "lib", "index.mjs"), "server build output");
-	// 外壳起的是 boot.mjs(它先选版再加载载荷),不是 index.mjs 本身。
-	await mustExist(join(root, "apps", "server", "lib", "boot.mjs"), "server boot entry");
+	// 外壳起的是这个入口(它先选版再加载载荷),不是 index.mjs 本身。名字来自那份声明。
+	await mustExist(join(root, "apps", "server", "lib", layout.entry), "server boot entry");
 	await mustExist(join(root, "apps", "web", "dist", "index.html"), "web build output");
 	await mustExist(join(root, "node_modules"), "workspace node_modules (run vp install first)");
 }
@@ -152,11 +156,17 @@ async function copyRuntimeTree() {
 		join(root, "apps", "server", "package.json"),
 		join(serverRoot, "package.json"),
 	);
-	await copyFileOrDir(join(root, "apps", "server", "lib"), join(serverRoot, "lib"));
-	// dashboard 资源摆成 `lib/index.mjs` 的**同级目录** —— 服务端就是按入口就近找它的
+	await copyFileOrDir(join(root, "apps", "server", "lib"), join(serverRoot, layout.libDir));
+	// dashboard 资源摆成入口的**同级目录** —— 服务端就是按入口就近找它的
 	// (apps/server/src/config/web-dist.ts)。这样应用内更新换掉载荷时前端跟着一起换;
 	// 摆在别处再用 --web-dist 指过去的话,就成了钉死旧前端的钉子。
-	await copyFileOrDir(join(root, "apps", "web", "dist"), join(serverRoot, "lib", "web-dist"));
+	//
+	// 目录名从 apps/desktop/layout.json 来 —— 外壳和两个发版闸读的是同一份声明,
+	// 这里自己写一个字面量就等于给「摆的地方和找的地方不一样」留了个口子。
+	await copyFileOrDir(
+		join(root, "apps", "web", "dist"),
+		join(serverRoot, layout.libDir, layout.webDistDir),
+	);
 
 	const workspacePackages = await stageWorkspaceRuntimePackages(nodeModulesRoot);
 	const thirdPartyPackages = await stageThirdPartyRuntimePackages(
@@ -517,13 +527,13 @@ async function verifyPackagedServerImport() {
 		"bin",
 		process.platform === "win32" ? "node.exe" : "node",
 	);
-	const serverDir = join(resourcesRoot, "app", "apps", "server");
+	const serverDir = join(resourcesRoot, ...layout.serverDir.split("/"));
 	const script = `
 		import { statSync } from 'node:fs';
-		await import('./lib/index.mjs');
+		await import('./${layout.libDir}/index.mjs');
 		// 外壳真正起的是它;少了这一句,boot 那条路要到用户双击图标才第一次被跑到。
-		await import('./lib/boot.mjs');
-		statSync('./lib/web-dist/index.html');
+		await import('./${layout.libDir}/${layout.entry}');
+		statSync('./${layout.libDir}/${layout.webDistDir}/index.html');
 		await Promise.all(${JSON.stringify(runtimeImportSeeds)}.map((specifier) => import(specifier)));
 		for (const file of ${JSON.stringify(requiredRuntimeFiles)}) statSync(file);
 		console.log('ok');

@@ -1,0 +1,18 @@
+{
+	"$comment": "桌面产物的布局声明。生产端、两个发版闸、以及外壳(main.rs)都照它来 —— 别在别处再写一份。规矩与校验见 scripts/desktop-layout.mjs。",
+	"serverDir": "app/apps/server",
+	"libDir": "lib",
+	"entry": "boot.mjs",
+	"webDistDir": "web-dist",
+	"passesWebDistFlag": false,
+	"requiredUnderResources": [
+		"app/apps/server/lib/boot.mjs",
+		"app/apps/server/lib/index.mjs",
+		"app/apps/server/lib/web-dist/index.html",
+		"BUILD_INFO.json"
+	],
+	"nodeBinary": {
+		"macos": "node/bin/node",
+		"windows": "node/bin/node.exe"
+	}
+}

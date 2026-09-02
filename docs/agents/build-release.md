@@ -115,6 +115,19 @@ koishi 插件是**自包含单文件产物**:九个 `@bilibili-notify/*` 内部�
 - `desktop-release`: `version=<VERSION>`, `dry_run=true` —— 构建并校验 Desktop artifacts,不创建 GitHub Release。
 - `update-payload`: `version=<VERSION>`, `dry_run=true` —— 打载荷并签名,不上传任何资产。
 
+### 桌面产物的布局只声明一次
+
+`apps/desktop/layout.json` —— 起哪个入口、dashboard 摆哪、闸要查哪些文件,**只写在这里**。
+
+有四个消费者:生产端 `apps/desktop/scripts/prepare-resources.mjs`(摆文件)、两个发版闸
+`.github/scripts/assert-{macos,windows}-desktop-artifact.*`(查文件)、以及外壳
+`apps/desktop/src-tauri/src/main.rs`(决定起什么)。前三个**运行时读同一份 JSON**;
+外壳是 Rust,读不到(为一份三行的声明引 build.rs 不值当),所以那边留字面量,由
+`scripts/desktop-release-gates.test.mjs` 核对它和声明说的是同一套。
+
+那份守卫还盯着另一件事:**谁都不许把路径抄回自己家里**。抄回去的那份可以静静地落后 ——
+macOS 那条闸只查文件存在,落后了照样绿,而用户拿到的是一个起不来的包(2026-09-02 真栽过)。
+
 Desktop dry-run 的 CI smoke 覆盖 artifact 内容、GUI subsystem、packaged Node sidecar、`/api/health` 与 dashboard HTML。它**不是**完整 GUI E2E —— 托盘图标、无控制台窗口、NSIS 安装启动、退出后无残留 sidecar 这些只有 Windows 实机能看。**别每次发版都拿这个去提示用户**(他知道),要提也只在真动了 Desktop 壳 / 托盘 / sidecar 生命周期时提一次。
 
 ### Docker tag 方案

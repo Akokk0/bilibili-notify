@@ -118,21 +118,19 @@ function Stop-SidecarSmokeProcess {
 $tmp = Join-Path $env:RUNNER_TEMP ("desktop-artifact-check-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force $tmp | Out-Null
 Expand-Archive -LiteralPath desktop-artifacts/bilibili-notify-windows-x64.zip -DestinationPath $tmp -Force
+# 布局**只声明一次**,在 apps/desktop/layout.json —— 生产端、外壳、两个闸都读它。
+# 这里不再手抄路径:抄的那份一旦落后于外壳,要到打 tag 那天这条闸才红。
+$layout = Get-Content -LiteralPath "apps/desktop/layout.json" -Raw | ConvertFrom-Json
 $resourcesDir = Join-Path $tmp "resources"
 $desktopExe = Join-Path $tmp "bilibili-notify-desktop.exe"
-$nodePath = Join-Path $resourcesDir "node/bin/node.exe"
-$serverDir = Join-Path $resourcesDir "app/apps/server"
-# 外壳起的是 boot.mjs(先选版再加载载荷),不是 index.mjs 本身。这里必须与 main.rs 一致,
-# 由 scripts/desktop-release-gates.test.mjs 守着。
-$serverEntry = Join-Path $serverDir "lib/boot.mjs"
+$nodePath = Join-Path $resourcesDir $layout.nodeBinary.windows
+$serverDir = Join-Path $resourcesDir $layout.serverDir
+# 冒烟起的必须就是外壳起的那个入口(boot.mjs —— 先选版再加载载荷,不是 index.mjs 本身)。
+$serverEntry = Join-Path $serverDir (Join-Path $layout.libDir $layout.entry)
 $required = @(
     "bilibili-notify-desktop.exe",
-    "resources/node/bin/node.exe",
-    "resources/app/apps/server/lib/boot.mjs",
-    "resources/app/apps/server/lib/index.mjs",
-    "resources/app/apps/server/lib/web-dist/index.html",
-    "resources/BUILD_INFO.json"
-)
+    "resources/$($layout.nodeBinary.windows)"
+) + @($layout.requiredUnderResources | ForEach-Object { "resources/$_" })
 foreach ($rel in $required) {
     if (-not (Test-Path (Join-Path $tmp $rel))) {
         Write-Error "Windows portable artifact missing $rel"
