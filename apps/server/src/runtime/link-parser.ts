@@ -22,7 +22,7 @@ import {
 	type NotificationPayload,
 	type VideoLinkRef,
 } from "@bilibili-notify/internal";
-import { extractGroupMessage } from "./inbound-message.js";
+import { extractGroupMessage, type InboundGroupMessage } from "./inbound-message.js";
 import { videoToDynamic } from "./video-card.js";
 
 /** 一条消息里最多解析几个链接 —— 再多就是刷屏了,也没人真需要。 */
@@ -84,9 +84,12 @@ export interface LinkParser {
 	handleMessage(msg: InboundLinkMessage): Promise<void>;
 }
 
+/** `renderer()` 交出来的那个东西 —— 取一次传下去,一次处理里不重复现取。 */
+type Renderer = NonNullable<ReturnType<LinkParserOptions["renderer"]>>;
+
 export function createLinkParser(opts: LinkParserOptions): LinkParser {
 	const now = opts.now ?? (() => Date.now());
-	/** `adapterId:groupId:视频` → 上次开始处理的时刻。 */
+	/** `平台:adapterId:群:视频` → 上次开始处理的时刻。 */
 	const lastSeen = new Map<string, number>();
 
 	function inCooldown(key: string, cooldownMs: number): boolean {
@@ -100,6 +103,11 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 		return false;
 	}
 
+	/** 冷却键里的「视频」段:直链按视频号;短链先按短链本身,解出视频号后再按视频号补一道。 */
+	const refKey = (ref: VideoLinkRef): string =>
+		ref.kind === "bvid" ? ref.bvid : ref.kind === "aid" ? `av${ref.aid}` : ref.url;
+	const videoKey = (ref: VideoRef): string => ("bvid" in ref ? ref.bvid : `av${ref.aid}`);
+
 	async function toVideoRef(ref: VideoLinkRef): Promise<VideoRef | null> {
 		if (ref.kind === "bvid") return { bvid: ref.bvid };
 		if (ref.kind === "aid") return { aid: ref.aid };
@@ -110,12 +118,7 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 		return resolved.kind === "bvid" ? { bvid: resolved.bvid } : { aid: resolved.aid };
 	}
 
-	async function replyWithCard(dest: LinkReplyDestination, ref: VideoRef, cooldownMs: number) {
-		const renderer = opts.renderer();
-		if (!renderer) return;
-		const key = `${dest.platform}:${dest.adapterId}:${dest.groupId}:${"bvid" in ref ? ref.bvid : `av${ref.aid}`}`;
-		// 冷却从**开始处理**起算,不是发出去才算:一条坏链接被反复贴,不该每次都去打接口。
-		if (inCooldown(key, cooldownMs)) return;
+	async function replyWithCard(renderer: Renderer, dest: LinkReplyDestination, ref: VideoRef) {
 		const info = await opts.api.getVideoInfo(ref);
 		const buffer = await renderer.generateDynamicCard(
 			videoToDynamic(info),
@@ -135,23 +138,36 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 
 	async function handleMessage(msg: InboundLinkMessage): Promise<void> {
 		try {
-			const config = opts.config();
-			if (!config.enabled) return;
+			// 闸门按代价从低到高排:群里每一句话都进这儿(官机开着「全部消息」时尤其如此),
+			// 先用一个正则把没链接的放走,再读配置(整份深拷贝)、再看有没有渲染器;网络与
+			// 冷却留到每个链接自己那一轮。
 			// 自己发的消息不解析 —— 机器人自己发的东西里若有链接,那是它自己贴的。
 			if (msg.selfId !== undefined && msg.userId === msg.selfId) return;
 			const refs = extractVideoLinks(msg.text).slice(0, MAX_LINKS_PER_MESSAGE);
 			if (refs.length === 0) return;
+			const config = opts.config();
+			if (!config.enabled) return;
+			const renderer = opts.renderer();
+			if (!renderer) return;
 			const dest: LinkReplyDestination = {
 				platform: msg.platform,
 				adapterId: msg.adapterId,
 				groupId: msg.groupId,
 			};
+			const scope = `${msg.platform}:${msg.adapterId}:${msg.groupId}`;
 			const cooldownMs = config.cooldownSeconds * 1000;
 			for (const linkRef of refs) {
 				try {
+					// 冷却从**开始处理**起算,不是发出去才算:一条坏链接被反复贴,不该每次都去打
+					// 接口 —— 短链的那一跳也是接口,所以短链先按它自己吃一道,解出视频号后再按
+					// 视频号吃一道(短链与直链指着同一个视频时只出一张)。
+					if (inCooldown(`${scope}:${refKey(linkRef)}`, cooldownMs)) continue;
 					const ref = await toVideoRef(linkRef);
 					if (!ref) continue;
-					await replyWithCard(dest, ref, cooldownMs);
+					if (linkRef.kind === "short" && inCooldown(`${scope}:${videoKey(ref)}`, cooldownMs)) {
+						continue;
+					}
+					await replyWithCard(renderer, dest, ref);
 				} catch (e) {
 					// 单个链接失败不回话、不影响同一条消息里的下一个。
 					opts.logger.warn(`[link] 解析失败 group=${msg.groupId}: ${String(e)}`);
@@ -165,7 +181,15 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 
 	return {
 		async handle(frame, meta) {
-			const msg = extractGroupMessage(frame);
+			// 帧再怪也不能让这个被 void 掉的 promise 变成 rejection —— 独立端装了 unhandledRejection
+			// 处理器,那会变成一次进程退出。所以连拆帧这一步也裹起来,不只裹 handleMessage。
+			let msg: InboundGroupMessage | null;
+			try {
+				msg = extractGroupMessage(frame);
+			} catch (e) {
+				opts.logger.error(`[link] 拆入站帧失败: ${String(e)}`);
+				return;
+			}
 			if (!msg) return;
 			await handleMessage({ platform: "onebot", adapterId: meta.adapterId, ...msg });
 		},

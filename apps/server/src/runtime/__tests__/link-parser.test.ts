@@ -78,9 +78,10 @@ function makeParser(over: Partial<LinkParsingConfig> = {}) {
 	);
 	let now = 1_000_000;
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
+	const readConfig = vi.fn(() => config);
 	const parser = createLinkParser({
 		logger,
-		config: () => config,
+		config: readConfig,
 		api: { getVideoInfo, resolveShortLink },
 		renderer: () => ({ generateDynamicCard }),
 		layout: () => LAYOUT,
@@ -90,6 +91,7 @@ function makeParser(over: Partial<LinkParsingConfig> = {}) {
 	return {
 		parser,
 		config,
+		readConfig,
 		getVideoInfo,
 		resolveShortLink,
 		generateDynamicCard,
@@ -177,10 +179,40 @@ describe("createLinkParser", () => {
 			expect(h.getVideoInfo).not.toHaveBeenCalled();
 		});
 
-		it("正文里没有链接就不打接口", async () => {
+		it("正文里没有链接就不打接口 —— 连配置都不读:群里每句话都进这儿,读配置要整份深拷贝", async () => {
 			const h = makeParser();
 			await h.parser.handle(groupFrame("今天天气不错"), { adapterId: ADAPTER });
 			expect(h.getVideoInfo).not.toHaveBeenCalled();
+			expect(h.readConfig).not.toHaveBeenCalled();
+		});
+
+		it("没有 Chrome:短链也不跟那一跳 —— 连接口都不打的承诺对短链同样成立", async () => {
+			const h = makeParser();
+			const parser = createLinkParser({
+				logger: { info() {}, warn() {}, error() {}, debug() {} },
+				config: () => h.config,
+				api: { getVideoInfo: h.getVideoInfo, resolveShortLink: h.resolveShortLink },
+				renderer: () => null,
+				layout: () => undefined,
+				send: h.send,
+			});
+			await parser.handle(groupFrame("https://b23.tv/abc123"), { adapterId: ADAPTER });
+			expect(h.resolveShortLink).not.toHaveBeenCalled();
+		});
+
+		it("帧本身坏掉(段里的 data 一碰就炸)也不抛 —— 这是被 void 掉的回调,抛出去就是进程退出", async () => {
+			const h = makeParser();
+			const frame = groupFrame("x", {
+				message: [
+					{
+						type: "text",
+						get data(): { text: string } {
+							throw new Error("坏段");
+						},
+					},
+				],
+			});
+			await expect(h.parser.handle(frame, { adapterId: ADAPTER })).resolves.toBeUndefined();
 		});
 
 		it("没有 Chrome(渲染器为空)连接口都不打", async () => {
@@ -315,6 +347,24 @@ describe("createLinkParser", () => {
 			await h.parser.handle(groupFrame("https://b23.tv/notvideo"), { adapterId: ADAPTER });
 			expect(h.getVideoInfo).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
+		});
+
+		it("短链本身也吃冷却:同一条短链反复贴,那一跳只跟一次 —— 哪怕它解不出视频", async () => {
+			const h = makeParser();
+			h.resolveShortLink.mockResolvedValue(null);
+			await h.parser.handle(groupFrame("https://b23.tv/notvideo"), { adapterId: ADAPTER });
+			await h.parser.handle(groupFrame("https://b23.tv/notvideo"), { adapterId: ADAPTER });
+			expect(h.resolveShortLink).toHaveBeenCalledTimes(1);
+		});
+
+		it("短链解出来的视频与直链共用冷却:先贴短链再贴直链,只出一张", async () => {
+			const h = makeParser();
+			h.resolveShortLink.mockResolvedValue("https://www.bilibili.com/video/BV1zMtU6uEEb");
+			await h.parser.handle(groupFrame("https://b23.tv/abc123"), { adapterId: ADAPTER });
+			await h.parser.handle(groupFrame("https://www.bilibili.com/video/BV1zMtU6uEEb"), {
+				adapterId: ADAPTER,
+			});
+			expect(h.sent).toHaveLength(1);
 		});
 
 		it("一条消息里最多解析三个链接", async () => {

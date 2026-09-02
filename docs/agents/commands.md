@@ -257,7 +257,8 @@ interface ConfirmationWindow {
 - **默认关**(`globals.linkParsing.enabled`),系统页「链接解析」卡是唯一开关。开着就意味着同群任何人都能让机器人出图,这得是主人自己按的。
 - **只做群**,OneBot(ws / ws-reverse)与 qq-official 都收。私聊里贴链接不理;http 形态的 OneBot 没有入站。官机那头:群主在群设置里给机器人的消息范围有三档(全部消息 / @ 及其前 10 条 / 仅 @),「全部消息」以 `GROUP_MESSAGE_CREATE` 下发、@ 的走 `GROUP_AT_MESSAGE_CREATE`,两种事件网关都交出来(`onInboundGroup`,与 C2C 私聊分开);我们这边收到什么解析什么,不做「要不要 @」的设置 —— 那是 QQ 那边的开关。官机现已无主动消息限制(2026-09-02 主人告知),回复直接走现成的「上传图片 → 发群消息」路径,不用被动回复的 `msg_id`。
 - **机器人在的所有群都算**(2026-09-02 主人定的),不要求群配成推送目标。回到来源群不查目标表:adapter 交消息时附上自己的 `adapterId`(OneBot `onInbound(frame, {adapterId})`、官机 `onInboundGroup(msg, {adapterId})`),接线层拿它找到配置里的 adapter,按平台造一个临时的 group target(OneBot 用群号 `session.groupId`、官机用 `session.groupOpenid`)直接 `send`。两个入口汇合在 `createLinkParser.handleMessage`,OneBot 的 `handle(frame)` 只是它的薄壳。
-- **冷却**:同一个群同一个视频 `cooldownSeconds`(默认 60,0 = 不节流)内只出一次。从**开始处理**起算,不是发出去才算 —— 一条坏链接被反复贴,不该每次都去打接口。
+- **冷却**:同一个群同一个视频 `cooldownSeconds`(默认 60,0 = 不节流)内只出一次。从**开始处理**起算,不是发出去才算 —— 一条坏链接被反复贴,不该每次都去打接口。短链的那一跳也是接口,所以短链先按它自己吃一道冷却(解不出视频也吃),解出视频号后再按视频号吃一道(短链与直链指着同一个视频只出一张)。
+- **闸门按代价排**:先正则挑链接(没链接的连配置都不读 —— 官机开着「全部消息」时群里每句话都进这儿,而读配置是整份深拷贝),再读配置、再看有没有渲染器,网络与冷却留到每个链接自己那一轮;`handle(frame)` 连拆帧那步都裹在 try 里 —— 它是被 `void` 掉的回调,rejection 会被独立端的 unhandledRejection 处理器变成进程退出。
 - **失败一律沉默**:接口失败 / 视频不存在 / 渲染失败 / 没有 Chrome,都只记日志、不回话。群里没人要求解析,失败了还回一句只是噪音,而且等于把「机器人在这个群」广播出去。
 - **一条消息最多三个链接**;机器人自己发的消息不解析;`b23.tv` 只跟一跳 `Location`、只认落在 `bilibili.com` 的目标(短链是别人贴的,跟到哪儿就是让谁指挥我们)。
 - **分享卡也认**(OneBot):用 B 站 App「分享到 QQ」发进群的是一张 json / xml 卡,正文一个字都没有、链接藏在卡的字段里(`meta.detail_1.qqdocurl` / `meta.news.jumpUrl`)。`extractGroupMessage` 把卡里的链接接在正文后面(json 先 parse 再逐字符串找,不然 `https:\/\/` 这种转义写法对着原文找不到);私聊那条不做这个,指令入口只认文字。测试在 `inbound-message.test.ts`。
