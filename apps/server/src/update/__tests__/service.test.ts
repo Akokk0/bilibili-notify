@@ -116,6 +116,10 @@ function manifestFor(version: string, zip: Uint8Array, extra: Record<string, unk
 	};
 }
 
+function payloadFetches(fetchMock: ReturnType<typeof vi.fn>): number {
+	return fetchMock.mock.calls.filter(([u]) => String(u).endsWith("payload.zip")).length;
+}
+
 const SETTINGS: UpdateSettings = { channel: "stable", autoDownload: true, mirrors: [] };
 
 function makeService(
@@ -280,10 +284,6 @@ describe("createUpdateService —— 检查更新", () => {
 });
 
 describe("createUpdateService —— 面板一打开就查一次,所以查得起", () => {
-	function payloadFetches(fetchMock: ReturnType<typeof vi.fn>): number {
-		return fetchMock.mock.calls.filter(([u]) => String(u).endsWith("payload.zip")).length;
-	}
-
 	it("同一份新版已经装好 → 再查一次不再下第二遍", async () => {
 		// 面板每次打开都会触发一次检查。装好了还没重启的这段时间里,每开一次面板
 		// 就重下 7MB 是说不过去的 —— 尤其对走加速前缀的用户。
@@ -710,6 +710,114 @@ describe("createUpdateService —— 回退", () => {
 		// 而且界面上一切正常 —— 最难查的一类症状。
 		const bootState = JSON.parse(readFileSync(join(versionsRoot, "boot-state.json"), "utf8"));
 		expect(bootState.pinned).toBeUndefined();
+	});
+});
+
+describe("createUpdateService —— 「下载」按钮到底下不下", () => {
+	it("关着自动下载、检查还在飞时按下载 → 排在检查后面真的下,不是拿检查的结果糊弄", async () => {
+		// 面板打开 → 自动检查走一条慢链路(六个候选 × 超时)→ 用户在系统页按「下载这一版」。
+		// 搭车的话拿到的是那次检查的结果(available),一个字节没下,按钮像是死了。
+		const key = makeKey();
+		const zip = makePayloadZip("0.9.0");
+		let releaseManifest: () => void = () => {};
+		const gate = new Promise<void>((resolve) => {
+			releaseManifest = resolve;
+		});
+		const fetchMock = vi.fn(async (input: unknown) => {
+			const url = String(input);
+			if (url.endsWith(".json")) {
+				await gate;
+				return new Response(envelope(key.privateKey, manifestFor("0.9.0", zip)), { status: 200 });
+			}
+			return new Response(zip, { status: 200 });
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		const { service } = makeService({
+			trustedKeys: [key.spkiBase64],
+			settings: { autoDownload: false },
+		});
+
+		const checking = service.check();
+		const downloading = service.download();
+		releaseManifest();
+		const checked = await checking;
+		const downloaded = await downloading;
+
+		expect(checked.state).toMatchObject({ phase: "available" });
+		expect(downloaded.state).toMatchObject({ phase: "ready", target: "0.9.0" });
+		expect(payloadFetches(fetchMock)).toBe(1);
+	});
+
+	it("已经 ready 了再按一次下载 → 不重下", async () => {
+		const key = makeKey();
+		const zip = makePayloadZip("0.9.0");
+		const fetchMock = stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.9.0", zip)),
+			payload: zip,
+		});
+		const { service } = makeService({ trustedKeys: [key.spkiBase64] });
+		await service.check();
+
+		const again = await service.download();
+
+		expect(again.state).toMatchObject({ phase: "ready" });
+		expect(payloadFetches(fetchMock)).toBe(1);
+	});
+
+	it("检查失败之后按下载 → 重新查,不装上一次查到的那份(它可能已经被撤回)", async () => {
+		const key = makeKey();
+		const zip = makePayloadZip("0.9.0");
+		stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.9.0", zip)),
+			payload: zip,
+		});
+		const { service } = makeService({
+			trustedKeys: [key.spkiBase64],
+			settings: { autoDownload: false },
+		});
+		expect((await service.check()).state).toMatchObject({ phase: "available" });
+
+		const fetchMock = stubNetwork({ failUrls: /.*/ });
+		expect((await service.check()).state).toMatchObject({ phase: "error" });
+		const downloaded = await service.download();
+
+		expect(downloaded.state).toMatchObject({ phase: "error", reason: "unreachable" });
+		expect(payloadFetches(fetchMock)).toBe(0);
+	});
+
+	it("换了渠道再按下载 → 按新渠道重新查,不把上个渠道那份装上去", async () => {
+		const key = makeKey();
+		const alphaZip = makePayloadZip("0.10.0-alpha.1");
+		const fetchMock = vi.fn(async (input: unknown) => {
+			const url = String(input);
+			if (url.endsWith("alpha.json")) {
+				return new Response(envelope(key.privateKey, manifestFor("0.10.0-alpha.1", alphaZip)), {
+					status: 200,
+				});
+			}
+			if (url.endsWith("stable.json")) {
+				return new Response(
+					envelope(key.privateKey, manifestFor("0.8.0", makePayloadZip("0.8.0"))),
+					{
+						status: 200,
+					},
+				);
+			}
+			return new Response(alphaZip, { status: 200 });
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		const settings: Partial<UpdateSettings> = { channel: "prerelease", autoDownload: false };
+		const { service } = makeService({ trustedKeys: [key.spkiBase64], settings });
+		expect((await service.check()).state).toMatchObject({
+			phase: "available",
+			target: "0.10.0-alpha.1",
+		});
+
+		settings.channel = "stable";
+		const downloaded = await service.download();
+
+		expect(downloaded.state).toMatchObject({ phase: "up-to-date" });
+		expect(payloadFetches(fetchMock)).toBe(0);
 	});
 });
 

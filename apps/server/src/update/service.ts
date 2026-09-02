@@ -107,8 +107,11 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 
 	const enabled = trustedKeys.length > 0;
 	let state: UpdateState = enabled ? { phase: "idle" } : { phase: "disabled" };
-	/** 最近一次验过签的清单 —— 手动下载要用它,免得再跑一趟网络。 */
-	let pending: Manifest | null = null;
+	/**
+	 * 最近一次验过签的清单 —— 手动下载要用它,免得再跑一趟网络。带上它是在哪个渠道
+	 * 查到的:用户换了渠道之后按下载,不能把上个渠道那份装上去。
+	 */
+	let pending: { manifest: Manifest; channel: "stable" | "prerelease" } | null = null;
 	/**
 	 * 这个进程里已经装到盘上的那份(版本 + 包的 sha256)。面板每次打开都会查一次,
 	 * 装好了还没重启的这段时间里,同一份包不该每开一次面板就重下一遍 —— 但只认
@@ -255,6 +258,14 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		return state.phase === "ready" && onDisk !== null;
 	}
 
+	function alreadyOnDisk(manifest: Manifest): boolean {
+		return (
+			state.phase === "ready" &&
+			onDisk?.version === manifest.version &&
+			onDisk.sha256 === manifest.payload.sha256
+		);
+	}
+
 	/**
 	 * 清单说这些版本被撤回了 —— 服务端撤回闸只拦得住还没升的人,这里管**已经在盘上**的:
 	 *
@@ -274,7 +285,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 			if (!installed.includes(version)) continue;
 			pruneOldVersions({ versionsRoot, keep: installed.filter((v) => v !== version) });
 			if (onDisk?.version === version) onDisk = null;
-			if (pending?.version === version) pending = null;
+			if (pending?.manifest.version === version) pending = null;
 			if ("target" in state && state.target === version) state = { phase: "idle" };
 		}
 	}
@@ -298,6 +309,9 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		});
 		if (!fetched.ok) {
 			if (readyOnDisk()) return status();
+			// 上一次查到的那份不能留着:它可能已经被撤回了,而这次没查到 —— 用户按「下载」
+			// 时得重新查,不能把一份来历不明的旧清单装上去。
+			pending = null;
 			// 清单都没拿到,给不出「那一版」的发布页,只能给发布列表 —— 但必须给得出:
 			// 「下不动就通知 + 给个链接」是设计里的兜底出口。
 			return fail(fetched.reason === "stale" ? "stale-manifest" : fetched.reason, releasesPageUrl);
@@ -333,16 +347,10 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 			return status();
 		}
 
-		pending = manifest;
+		pending = { manifest, channel };
 		// 这份包这个进程已经装过了,盘上就是它 —— 别再下一遍,也别把 ready 打回
 		// available(那会让「立即重启」按钮凭空消失)。不管自动下载开没开。
-		if (
-			state.phase === "ready" &&
-			onDisk?.version === manifest.version &&
-			onDisk.sha256 === manifest.payload.sha256
-		) {
-			return status();
-		}
+		if (alreadyOnDisk(manifest)) return status();
 		if (!settings.autoDownload) {
 			state = {
 				phase: "available",
@@ -367,10 +375,16 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 
 		async download(): Promise<UpdateStatus> {
 			if (!enabled) return status();
-			return serialized(async () => {
-				// 没先 check 过就按下载 —— 让它自己去查一次,而不是回一个「先点检查」。
-				if (pending === null) return runCheck();
-				return installFrom(pending, mirrorChain(readSettings()));
+			// 排在正在跑的检查**后面**,而不是搭它的车:搭车拿到的是那次检查的结果,一个字节
+			// 都没下,按钮像是死了。
+			return queued(async () => {
+				const settings = readSettings();
+				// 没先 check 过、或者上次查的是另一个渠道 —— 让它自己去查一次,而不是回一个
+				// 「先点检查」,更不能把上个渠道那份装上去。
+				if (pending === null || pending.channel !== channelOf(settings)) return runCheck();
+				// 已经装好的就别再下一遍 —— 「下载」按了两次不该变成两次 7MB。
+				if (alreadyOnDisk(pending.manifest)) return status();
+				return installFrom(pending.manifest, mirrorChain(settings));
 			});
 		},
 
