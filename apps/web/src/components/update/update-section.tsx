@@ -1,7 +1,6 @@
 import type { UpdateStatusDTO } from "@bilibili-notify/contract";
 import type { UpdateSettings } from "@bilibili-notify/internal";
 import {
-	ArrayEditor,
 	Btn,
 	ErrorNote,
 	GlassBox,
@@ -17,6 +16,7 @@ import { useLocation } from "react-router-dom";
 import { SECTION_ACCENT } from "../../config/section-accents";
 import { api } from "../../services/api";
 import type { GlobalConfig } from "../../types/globals";
+import { MirrorPicker } from "./mirror-picker";
 import { phaseLabel, UPDATE_QUERY_KEY, UPDATE_SECTION_HASH, useUpdateStatus } from "./status";
 
 /**
@@ -257,18 +257,11 @@ export function UpdateSection() {
 							</span>
 						</div>
 
-						<div className="flex flex-col gap-1.5">
-							<span className="text-bn-sm text-bn-text-secondary">下载加速前缀</span>
-							<span className="text-bn-xs text-bn-text-tertiary">
-								连不上 GitHub 时填一个代理站前缀,按顺序试,直连永远排在最后。更新包有签名,
-								代理站改不了内容 —— 最多只能让这次下载失败。
-							</span>
-							<ArrayEditor
-								value={settings.mirrors}
-								placeholder="https://ghproxy.example"
-								onChange={(mirrors) => saveSettings.mutate({ mirrors })}
-							/>
-						</div>
+						<MirrorPicker
+							active={settings.mirrors[0] ?? ""}
+							disabled={state.phase === "disabled"}
+							onSelect={(prefix) => saveSettings.mutate({ mirrors: prefix ? [prefix] : [] })}
+						/>
 					</div>
 				</div>
 			</GlassBox>
