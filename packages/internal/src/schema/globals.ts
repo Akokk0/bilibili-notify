@@ -185,7 +185,15 @@ export const DEFAULT_ONBOARDING: OnboardingConfig = {};
 export const UpdateSettingsSchema = z.object({
 	channel: z.enum(["stable", "prerelease"]).default("stable"),
 	autoDownload: z.boolean().default(true),
-	mirrors: z.array(z.string()).default([]),
+	/**
+	 * 只收 `https://` 前缀、封顶 10 条 —— 这是要去真连的地址,和 `POST /api/update/mirrors/probe`
+	 * 那道门一样严:不封顶的话一次检查的总耗时没有上限(N × 超时),期间检查一直挂着;不限
+	 * scheme 的话这里就成了一个让服务端去连任意主机的入口。面板只会写进合法的。
+	 */
+	mirrors: z
+		.array(z.string().regex(/^https:\/\/[^\s/]+/, "加速前缀必须是 https:// 开头的地址"))
+		.max(10)
+		.default([]),
 });
 export type UpdateSettings = z.infer<typeof UpdateSettingsSchema>;
 

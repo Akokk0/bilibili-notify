@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { GlobalConfigSchema, makeDefaultGlobalConfig } from "./globals";
+import { GlobalConfigSchema, makeDefaultGlobalConfig, UpdateSettingsSchema } from "./globals";
 
 describe("update 设置", () => {
 	it("老 globals.json 没有 update 段 → 解析成功并补上默认值", () => {
@@ -61,5 +61,20 @@ describe("update 设置", () => {
 		g.update = { channel: "nightly", autoDownload: true, mirrors: [] };
 
 		expect(GlobalConfigSchema.safeParse(g).success).toBe(false);
+	});
+
+	it("加速前缀只收 https://,而且封顶 —— 这是服务端要去真连的地址", () => {
+		// 与 probe 路由同一道门。不限的话:① 一次检查 N × 超时,期间 /check 一直挂着;
+		// ② 已登录用户可以让服务端去连任意 http 主机。
+		expect(() => UpdateSettingsSchema.parse({ mirrors: ["http://evil.example/"] })).toThrow();
+		expect(() => UpdateSettingsSchema.parse({ mirrors: ["ghproxy.example"] })).toThrow();
+		expect(() =>
+			UpdateSettingsSchema.parse({
+				mirrors: Array.from({ length: 11 }, (_, i) => `https://m${i}.example/`),
+			}),
+		).toThrow();
+		expect(UpdateSettingsSchema.parse({ mirrors: ["https://ghfast.top/"] }).mirrors).toEqual([
+			"https://ghfast.top/",
+		]);
 	});
 });
