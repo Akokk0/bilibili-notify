@@ -255,8 +255,8 @@ interface ConfirmationWindow {
 不认主人、群里谁贴都算 —— 正因为谁都能触发,它自己带一套闸门,和指令那三条约束是同一个道理:
 
 - **默认关**(`globals.linkParsing.enabled`),系统页「链接解析」卡是唯一开关。开着就意味着同群任何人都能让机器人出图,这得是主人自己按的。
-- **只做群、只做 OneBot(ws / ws-reverse)**。私聊里贴链接不理;qq-official 群里不 @ 机器人的消息协议上就不下发,这版不做;http 形态的 OneBot 没有入站。
-- **机器人在的所有群都算**(2026-09-02 主人定的),不要求群配成推送目标。回到来源群不查目标表:OneBot adapter 交帧时附上自己的 `adapterId`(`onInbound(frame, {adapterId})`),接线层拿它找到配置里的 adapter,造一个临时的 group target 直接 `send`。
+- **只做群**,OneBot(ws / ws-reverse)与 qq-official 都收。私聊里贴链接不理;http 形态的 OneBot 没有入站。官机那头:群主在群设置里给机器人的消息范围有三档(全部消息 / @ 及其前 10 条 / 仅 @),「全部消息」以 `GROUP_MESSAGE_CREATE` 下发、@ 的走 `GROUP_AT_MESSAGE_CREATE`,两种事件网关都交出来(`onInboundGroup`,与 C2C 私聊分开);我们这边收到什么解析什么,不做「要不要 @」的设置 —— 那是 QQ 那边的开关。官机现已无主动消息限制(2026-09-02 主人告知),回复直接走现成的「上传图片 → 发群消息」路径,不用被动回复的 `msg_id`。
+- **机器人在的所有群都算**(2026-09-02 主人定的),不要求群配成推送目标。回到来源群不查目标表:adapter 交消息时附上自己的 `adapterId`(OneBot `onInbound(frame, {adapterId})`、官机 `onInboundGroup(msg, {adapterId})`),接线层拿它找到配置里的 adapter,按平台造一个临时的 group target(OneBot 用群号 `session.groupId`、官机用 `session.groupOpenid`)直接 `send`。两个入口汇合在 `createLinkParser.handleMessage`,OneBot 的 `handle(frame)` 只是它的薄壳。
 - **冷却**:同一个群同一个视频 `cooldownSeconds`(默认 60,0 = 不节流)内只出一次。从**开始处理**起算,不是发出去才算 —— 一条坏链接被反复贴,不该每次都去打接口。
 - **失败一律沉默**:接口失败 / 视频不存在 / 渲染失败 / 没有 Chrome,都只记日志、不回话。群里没人要求解析,失败了还回一句只是噪音,而且等于把「机器人在这个群」广播出去。
 - **一条消息最多三个链接**;机器人自己发的消息不解析;`b23.tv` 只跟一跳 `Location`、只认落在 `bilibili.com` 的目标(短链是别人贴的,跟到哪儿就是让谁指挥我们)。
@@ -267,4 +267,4 @@ interface ConfirmationWindow {
 
 三处纯函数各自有测试钉着:`extractVideoLinks`(`packages/internal`,域名用负向后顾钉边界,`notbilibili.com` 不算)、
 `BilibiliAPI.getVideoInfo` / `resolveShortLink`(`packages/api`)、`createLinkParser`(`apps/server/src/runtime/__tests__/link-parser.test.ts`,
-四个协作者全假,三处闸门做过变异验证会红)。
+四个协作者全假,三处闸门做过变异验证会红)、官机网关的群消息出口(`qq-official-conn.test.ts`,两种事件都进、C2C 不进、抛错不断连)。

@@ -151,7 +151,7 @@ export const FIELD_LABELS = {
 	// ── 链接解析 ──────────────────────────────────────────────────────────
 	"linkParsing.enabled": {
 		label: "链接解析",
-		hint: "群里有人贴 B 站视频链接就回一张视频卡片。机器人在的所有群都算,谁贴都算 —— 只在 OneBot 上有效,QQ 官方机器人收不到群里的裸链接",
+		hint: "群里有人贴 B 站视频链接就回一张视频卡片。机器人在的所有群都算,谁贴都算。OneBot 直接可用;QQ 官方机器人要群主在群设置里把消息范围放到「获取群内全部消息」,留在「仅 @ 机器人」档的话得 @ 它再贴链接",
 		section: "linkParsing",
 	},
 	"linkParsing.cooldownSeconds": {
