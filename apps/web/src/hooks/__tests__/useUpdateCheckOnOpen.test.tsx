@@ -9,7 +9,7 @@
 
 import type { UpdateStatusDTO } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { UPDATE_QUERY_KEY } from "../../components/update/status";
@@ -27,17 +27,27 @@ function dto(state: UpdateStatusDTO["state"]): UpdateStatusDTO {
 	return { currentVersion: "0.8.0", rollbackTarget: null, pinnedVersion: null, state };
 }
 
+function Harness() {
+	useUpdateCheckOnOpen();
+	return null;
+}
+
+/**
+ * 用 `render` 挂一个真组件,而不是 `renderHook`:实测 vitest + jsdom 下 `renderHook` 包在
+ * StrictMode 里 effect 只跑**一次**,`render` 才会跑两次。前者会让「网络只能打一次」那条
+ * 断言变成空跑 —— 把实现里的 fired 守卫删掉照样绿。
+ */
 function mount(before: UpdateStatusDTO, after: UpdateStatusDTO) {
 	vi.mocked(api.get).mockResolvedValue(before);
 	vi.mocked(api.post).mockResolvedValue(after);
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	renderHook(() => useUpdateCheckOnOpen(), {
-		wrapper: ({ children }) => (
-			<StrictMode>
-				<QueryClientProvider client={qc}>{children}</QueryClientProvider>
-			</StrictMode>
-		),
-	});
+	render(
+		<StrictMode>
+			<QueryClientProvider client={qc}>
+				<Harness />
+			</QueryClientProvider>
+		</StrictMode>,
+	);
 	return qc;
 }
 
@@ -64,7 +74,9 @@ describe("useUpdateCheckOnOpen", () => {
 
 		await waitFor(() => expect(useToastStore.getState().items).toHaveLength(1));
 
-		// StrictMode 会把 effect 跑两遍 —— 网络只能打一次。
+		// StrictMode 会把 effect 跑两遍 —— 网络只能打一次。(挂载方式见上面 mount 的说明,
+		// 这条断言只有在 effect 真的跑了两遍时才有意义。)
+		expect(api.get).toHaveBeenCalledTimes(1);
 		expect(api.post).toHaveBeenCalledTimes(1);
 		expect(api.post).toHaveBeenCalledWith("/api/update/check", {});
 		expect(qc.getQueryData(UPDATE_QUERY_KEY)).toEqual(after);
@@ -127,11 +139,11 @@ describe("useUpdateCheckOnOpen", () => {
 		vi.mocked(api.get).mockRejectedValue(new Error("ECONNREFUSED"));
 		const qc = new QueryClient();
 		expect(() =>
-			renderHook(() => useUpdateCheckOnOpen(), {
-				wrapper: ({ children }) => (
-					<QueryClientProvider client={qc}>{children}</QueryClientProvider>
-				),
-			}),
+			render(
+				<QueryClientProvider client={qc}>
+					<Harness />
+				</QueryClientProvider>,
+			),
 		).not.toThrow();
 		await flush();
 		expect(useToastStore.getState().items).toHaveLength(0);
