@@ -1,11 +1,16 @@
-import { Icon, NoticeCard, NoticeStack } from "@bilibili-notify/ui";
+import { Btn, Icon, NoticeCard, NoticeStack } from "@bilibili-notify/ui";
 import { useEffect } from "react";
+import { Link } from "react-router-dom";
 import { PUSH_KIND_META } from "../config/push-kinds";
 import { AUTO_DISMISS_MS, type ToastItem, useToastStore } from "../store/notifications";
 
 /**
  * 推送 toast 层(右下角)。卡与栈的壳子在 ui 的 NoticeCard / NoticeStack;
  * 这里只管从 {@link useToastStore} 取数、逐 kind 染色与 {@link AUTO_DISMISS_MS} 计时。
+ *
+ * 同一条队列也装「通知卡」(目前只有应用内更新的「有新版」):同壳同栈,区别只有
+ * 两点 —— 它带一个跳转按钮,而且**不自己消失**。推送 toast 是流水,五秒走人没关系;
+ * 「有新版」一年也就几回,错过了就得等下次打开面板。
  *
  * Mounted once at App root.
  */
@@ -23,10 +28,40 @@ export function ToastShell(): React.ReactElement | null {
 
 function ToastCard({ item }: { item: ToastItem }) {
 	const dismiss = useToastStore((s) => s.dismiss);
+	const sticky = item.kind === "notice";
 	useEffect(() => {
+		if (sticky) return;
 		const t = setTimeout(() => dismiss(item.id), AUTO_DISMISS_MS);
 		return () => clearTimeout(t);
-	}, [item.id, dismiss]);
+	}, [item.id, dismiss, sticky]);
+
+	if (item.kind === "notice") {
+		return (
+			<NoticeCard
+				icon={<Icon.sparkle size={16} />}
+				tileStyle={{
+					background: "color-mix(in srgb, var(--color-bn-pink) 12%, transparent)",
+					color: "var(--color-bn-pink)",
+				}}
+				title={item.title}
+				onClose={() => dismiss(item.id)}
+			>
+				{item.body ? (
+					<div className="mt-1 text-bn-xs leading-snug text-bn-text-secondary">{item.body}</div>
+				) : null}
+				{item.action ? (
+					<div className="mt-2">
+						{/* 同概览「查看全部」:Link 包 Btn,按钮观感归库、跳转归路由。 */}
+						<Link to={item.action.to}>
+							<Btn size="sm" variant="primary" onClick={() => dismiss(item.id)}>
+								{item.action.label}
+							</Btn>
+						</Link>
+					</div>
+				) : null}
+			</NoticeCard>
+		);
+	}
 
 	const meta = PUSH_KIND_META[item.source];
 	const IconCmp = Icon[meta.icon];

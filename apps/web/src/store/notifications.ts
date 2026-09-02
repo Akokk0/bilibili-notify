@@ -32,14 +32,32 @@ export interface PushEventView {
 	uavatarSnapshot?: string;
 }
 
-export interface ToastItem extends PushEventView {
-	/** ms timestamp when this toast arrived in-app; used for stable ordering. */
+/**
+ * 不是推送事件的那种通知(目前只有「有新版本」)。借同一条队列、同一个壳:
+ * 少一套右下角的东西。带 `action` 就在卡上出一个按钮,点了跳过去。
+ */
+export interface NoticeView {
+	/** 同 id 只留一张 —— 打开面板那次自动检查和手动检查会撞出同一条。 */
+	id: string;
+	title: string;
+	body?: string;
+	/** 站内路由(可带 hash)。 */
+	action?: { label: string; to: string };
+}
+
+/** ms timestamp when this toast arrived in-app; used for stable ordering. */
+interface Received {
 	receivedAt: number;
 }
+
+export type ToastItem =
+	| (PushEventView & Received & { kind: "push" })
+	| (NoticeView & Received & { kind: "notice" });
 
 interface ToastState {
 	items: ToastItem[];
 	push(view: PushEventView): void;
+	notify(notice: NoticeView): void;
 	dismiss(id: string): void;
 	clear(): void;
 }
@@ -47,17 +65,24 @@ interface ToastState {
 const MAX_VISIBLE = 5;
 export const AUTO_DISMISS_MS = 5_000;
 
+/**
+ * Deduplicate by id in case the same envelope arrives twice (e.g. WS reconnect
+ * resubscribes before the server has filtered), then cap the queue.
+ */
+function enqueue(items: ToastItem[], next: ToastItem): ToastItem[] {
+	const without = items.filter((t) => t.id !== next.id);
+	return [...without, next].slice(-MAX_VISIBLE);
+}
+
 export const useToastStore = create<ToastState>((set) => ({
 	items: [],
 	push(view) {
-		set((s) => {
-			const next: ToastItem = { ...view, receivedAt: Date.now() };
-			// Deduplicate by entry id in case the same envelope arrives twice
-			// (e.g. WS reconnect resubscribes before the server has filtered).
-			const without = s.items.filter((t) => t.id !== view.id);
-			const merged = [...without, next];
-			return { items: merged.slice(-MAX_VISIBLE) };
-		});
+		set((s) => ({ items: enqueue(s.items, { ...view, kind: "push", receivedAt: Date.now() }) }));
+	},
+	notify(notice) {
+		set((s) => ({
+			items: enqueue(s.items, { ...notice, kind: "notice", receivedAt: Date.now() }),
+		}));
 	},
 	dismiss(id) {
 		set((s) => ({ items: s.items.filter((t) => t.id !== id) }));
