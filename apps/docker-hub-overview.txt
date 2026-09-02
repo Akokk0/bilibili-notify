@@ -75,7 +75,7 @@ docker pull ghcr.io/akokk0/bilibili-notify:latest
 - **首次启动** —— `BN_*` 环境变量 + 默认值生成 `bn.config.yaml`。
 - **之后** —— yaml 是唯一真相,环境变量被忽略。改配置 = 编辑 `./config/bn.config.yaml` 后 `docker compose restart`。
 - **重置** —— 删除 `./config/bn.config.yaml` 重新启动。
-- **不要手写配置文件** —— 只挂载 `./config:/config`,让容器生成完整 yaml;如必须手写,保留 `webDistDir: /app/web-dist`。
+- **不要手写配置文件** —— 只挂载 `./config:/config`,让容器生成完整 yaml。
 
 ### 环境变量(仅首次启动 seed 进 yaml)
 
@@ -86,11 +86,11 @@ docker pull ghcr.io/akokk0/bilibili-notify:latest
 | `BN_LOG_LEVEL` | `info` | 日志级别 |
 | `TZ` | `Asia/Shanghai` | 容器时区(影响日志 / 历史按日切文件) |
 
-`BN_CONFIG` / `BN_HOST` / `BN_PORT` / `BN_DATA_DIR` / `BN_CHROME_PATH` / `BN_WEB_DIST` 由镜像固定注入,无需也不要在 compose 中重写。
+`BN_CONFIG` / `BN_HOST` / `BN_PORT` / `BN_DATA_DIR` / `BN_CHROME_PATH` 由镜像固定注入,无需也不要在 compose 中重写。
 
 ### 故障排查
 
-- `curl localhost:8787` 返回 404:检查 `./config/bn.config.yaml` 是否缺少 `webDistDir: /app/web-dist`;正常启动日志会出现 `serving dashboard static assets from /app/web-dist`。如果配置和 `BN_WEB_DIST` 都缺失,服务会再检查镜像默认 `/app/web-dist/index.html`;仍没有时日志会说明 Dashboard 静态资源已禁用。
+- `curl localhost:8787` 返回 404:控制台静态资源默认取服务端入口旁边那份(`/app/web-dist`),正常启动日志会出现 `serving dashboard static assets from /app/web-dist`。日志里出现 `dashboard static assets disabled` = 镜像里那份资源没了,重拉镜像;出现 `webDistDir is pinned to …` = 你自己在 yaml 或 `BN_WEB_DIST` 里指了别处,删掉即可恢复默认(钉死它的话应用内更新换不掉界面)。
 - 手写过 `bn.config.yaml`:建议备份后删除该文件,让容器重新生成;不要删除 `./data`。
 
 ## 登录与安全
