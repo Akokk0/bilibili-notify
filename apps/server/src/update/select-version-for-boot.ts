@@ -1,5 +1,6 @@
-import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { readJsonFile, writeJsonAtomic } from "./durable-json.js";
+import { installedVersions } from "./version-dirs.js";
 import { compareVersions } from "./version-order.js";
 
 export interface SelectVersionForBootInput {
@@ -36,34 +37,17 @@ interface BootState {
 const STATE_FILE = "boot-state.json";
 
 function readState(versionsRoot: string): BootState {
-	try {
-		const raw = JSON.parse(readFileSync(join(versionsRoot, STATE_FILE), "utf8")) as
-			| Partial<BootState>
-			| undefined;
-		return {
-			attempts: raw?.attempts ?? {},
-			failed: Array.isArray(raw?.failed) ? raw.failed : [],
-			pinned: typeof raw?.pinned === "string" ? raw.pinned : undefined,
-		};
-	} catch {
-		// 文件不在、读不动、或者被写坏了 —— 一律当作「还没有任何记录」。这份状态
-		// 只是启发,坏掉了不该让进程起不来。
-		return { attempts: {}, failed: [] };
-	}
+	// 文件不在、读不动、被写坏了都会走到这条默认值上 —— 一律当作「还没有任何记录」。
+	const raw = readJsonFile(versionsRoot, STATE_FILE) as Partial<BootState> | undefined;
+	return {
+		attempts: raw?.attempts ?? {},
+		failed: Array.isArray(raw?.failed) ? raw.failed : [],
+		pinned: typeof raw?.pinned === "string" ? raw.pinned : undefined,
+	};
 }
 
 function writeState(versionsRoot: string, state: BootState): void {
-	try {
-		mkdirSync(versionsRoot, { recursive: true });
-		// tmp + rename:就地写的话一次断电就是半个 JSON,readState 把它当成「没有任何记录」——
-		// 回退的钉子没了,自愈判死的黑名单也没了,崩溃循环从零再来一遍。
-		const tmp = join(versionsRoot, `.${STATE_FILE}.${process.pid}.tmp`);
-		writeFileSync(tmp, JSON.stringify(state));
-		renameSync(tmp, join(versionsRoot, STATE_FILE));
-	} catch {
-		// 写不进去(只读挂载、磁盘满)也不能拦着启动。代价是自愈失灵,但那也好过
-		// 因为记不上账就干脆不启动。
-	}
+	writeJsonAtomic(versionsRoot, STATE_FILE, state);
 }
 
 export interface BootSelection {
@@ -71,27 +55,6 @@ export interface BootSelection {
 	path: string;
 	/** 选中的是镜像自带那份(没有可用载荷,或载荷都比它旧/被判死)。 */
 	isImageVersion: boolean;
-}
-
-/**
- * 只有长得像版本号的目录才算候选。
- *
- * `/data` 是用户挂出来的,他们真的会往里丢东西 —— 一个叫 `2026-09-01` 的手动备份
- * 按数字段会被读成主版本 **2026**,压过一切真版本,然后我们就从一个根本不是载荷
- * 的目录里启动。安装中途留下的 `.staging-*` 也一并被这条挡住。
- */
-const VERSION_DIR_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
-
-function installedVersions(versionsRoot: string): string[] {
-	try {
-		return readdirSync(versionsRoot, { withFileTypes: true })
-			.filter((entry) => entry.isDirectory())
-			.map((entry) => entry.name)
-			.filter((name) => VERSION_DIR_RE.test(name));
-	} catch {
-		// 目录还不存在(从没升过级)——一个候选都没有,不是错误。
-		return [];
-	}
 }
 
 /**
@@ -108,8 +71,9 @@ export function selectVersionForBoot({
 	maxBootFailures,
 }: SelectVersionForBootInput): BootSelection {
 	const state = readState(versionsRoot);
+	const installed = installedVersions(versionsRoot);
 
-	const pinned = usablePin(state, versionsRoot, imageVersion);
+	const pinned = usablePin(state, installed, imageVersion);
 	if (pinned !== null) {
 		if (pinned === imageVersion)
 			return { version: imageVersion, path: imagePath, isImageVersion: true };
@@ -121,7 +85,7 @@ export function selectVersionForBoot({
 	}
 
 	let best: string | null = null;
-	for (const candidate of installedVersions(versionsRoot)) {
+	for (const candidate of installed) {
 		if (state.failed.includes(candidate)) continue;
 		if (compareVersions(candidate, imageVersion) <= 0) continue;
 		if (best === null || compareVersions(candidate, best) > 0) best = candidate;
@@ -143,13 +107,17 @@ export function selectVersionForBoot({
  * 镜像已经比它新(用户拉了新镜像)。钉的就是镜像版本本身时不看目录 —— 镜像那份
  * 永远在。
  */
-function usablePin(state: BootState, versionsRoot: string, imageVersion: string): string | null {
+function usablePin(
+	state: BootState,
+	installed: readonly string[],
+	imageVersion: string,
+): string | null {
 	const { pinned } = state;
 	if (!pinned) return null;
 	if (state.failed.includes(pinned)) return null;
 	if (compareVersions(imageVersion, pinned) > 0) return null;
 	if (pinned === imageVersion) return pinned;
-	return installedVersions(versionsRoot).includes(pinned) ? pinned : null;
+	return installed.includes(pinned) ? pinned : null;
 }
 
 /**
@@ -170,23 +138,38 @@ function recordAttempt(
 	return selection;
 }
 
-export interface ReadPinnedVersionInput {
+export interface ReadBootViewInput {
 	versionsRoot: string;
 	imageVersion: string;
 }
 
+/** 下次开机时选版看到的那幅图景。 */
+export interface BootView {
+	/**
+	 * 盘上现在钉着谁 —— 按**选版那一套**判定(被判死 / 目录没了 / 镜像更新了都算没钉),
+	 * 这样面板看到的和下次开机真会发生的是同一件事。
+	 *
+	 * 回退是靠重启生效的,重启之后内存里那个「rolled-back」早没了,面板只认内存态的话,
+	 * 开一次面板就把用户按的回退撤销了。
+	 */
+	pinned: string | null;
+	/** 判死的版本(自愈累计失败,或被清单撤回)。退进一个开不了机的版本等于把人锁在外面。 */
+	failed: readonly string[];
+	/** 盘上装着的版本。 */
+	installed: readonly string[];
+}
+
 /**
- * 盘上现在钉着谁 —— 按**选版那一套**判定(被判死 / 目录没了 / 镜像更新了都算没钉),
- * 这样面板看到的和下次开机真会发生的是同一件事。
+ * 一次读盘,回答更新服务要问的三件事。
  *
- * 给更新服务用:回退是靠重启生效的,重启之后内存里那个「rolled-back」早没了,
- * 面板只认内存态的话,开一次面板就把用户按的回退撤销了。
+ * 合成一个是因为它们**必须来自同一次快照**:钉子是否算数取决于判死名单和目录在不在,
+ * 分三次读的话面板会看到一幅拼接出来的、任何一刻都不曾真实存在过的图景 ——
+ * 而这幅图景正是用来预测「下次开机会发生什么」的。顺带也省掉两次同步 IO。
  */
-export function readPinnedVersion({
-	versionsRoot,
-	imageVersion,
-}: ReadPinnedVersionInput): string | null {
-	return usablePin(readState(versionsRoot), versionsRoot, imageVersion);
+export function readBootView({ versionsRoot, imageVersion }: ReadBootViewInput): BootView {
+	const state = readState(versionsRoot);
+	const installed = installedVersions(versionsRoot);
+	return { pinned: usablePin(state, installed, imageVersion), failed: state.failed, installed };
 }
 
 /**
@@ -203,11 +186,6 @@ export function markVersionFailed({
 	const state = readState(versionsRoot);
 	if (state.failed.includes(version)) return;
 	writeState(versionsRoot, { ...state, failed: [...state.failed, version] });
-}
-
-/** 自愈判死的版本。给回退目标的挑选用 —— 退进一个开不了机的版本等于把人锁在外面。 */
-export function readFailedVersions({ versionsRoot }: { versionsRoot: string }): readonly string[] {
-	return readState(versionsRoot).failed;
 }
 
 export interface PinVersionInput {

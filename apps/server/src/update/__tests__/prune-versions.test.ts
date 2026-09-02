@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { pruneOldVersions } from "../prune-versions.js";
+import { pruneOldVersions, removeVersionDir } from "../prune-versions.js";
 
 /**
  * 版本目录的保留策略:**只留当前 + 上一版**。
@@ -98,5 +98,30 @@ describe("pruneOldVersions", () => {
 		expect(existsSync(join(versionsRoot, "0.9.0"))).toBe(true);
 		expect(existsSync(join(versionsRoot, "2026-09-01-backup"))).toBe(true);
 		expect(existsSync(join(versionsRoot, ".git"))).toBe(true);
+	});
+});
+
+describe("removeVersionDir", () => {
+	// 撤回一个版本以前是反着调保留策略实现的(「除它以外全留」),于是撤回的行为会跟着
+	// 保留策略一起变 —— 哪天策略改成留三份,撤回就悄悄开始留下被召回的构建。
+	it("只删点名的那一个,别的版本目录一律不碰", () => {
+		const root = versionsWith("0.8.0", "0.9.0", "0.10.0");
+
+		expect(removeVersionDir(root, "0.9.0")).toBe(true);
+
+		expect(existsSync(join(root, "0.9.0"))).toBe(false);
+		expect(existsSync(join(root, "0.8.0"))).toBe(true);
+		expect(existsSync(join(root, "0.10.0"))).toBe(true);
+	});
+
+	it("不长得像版本号的一律不删 —— 这个名字来自清单,不该能指到别处", () => {
+		const root = versionsWith("0.9.0");
+		mkdirSync(join(root, "notes"), { recursive: true });
+
+		expect(removeVersionDir(root, "notes")).toBe(false);
+		expect(removeVersionDir(root, "..")).toBe(false);
+
+		expect(existsSync(join(root, "notes"))).toBe(true);
+		expect(existsSync(root)).toBe(true);
 	});
 });

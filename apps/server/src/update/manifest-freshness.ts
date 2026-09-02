@@ -1,5 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { readJsonFile, writeJsonAtomic } from "./durable-json.js";
 
 /**
  * 每个渠道见过的最大清单签发时间,落在 `<versionsRoot>/manifest-freshness.json`。
@@ -22,18 +21,14 @@ export type FreshnessChannel = "stable" | "prerelease";
 type Seen = Partial<Record<FreshnessChannel, number>>;
 
 function read(versionsRoot: string): Seen {
-	try {
-		const raw = JSON.parse(readFileSync(join(versionsRoot, FILE), "utf8")) as unknown;
-		if (typeof raw !== "object" || raw === null) return {};
-		const seen: Seen = {};
-		for (const channel of ["stable", "prerelease"] as const) {
-			const value = (raw as Record<string, unknown>)[channel];
-			if (typeof value === "number" && Number.isInteger(value) && value > 0) seen[channel] = value;
-		}
-		return seen;
-	} catch {
-		return {};
+	const raw = readJsonFile(versionsRoot, FILE);
+	if (typeof raw !== "object" || raw === null) return {};
+	const seen: Seen = {};
+	for (const channel of ["stable", "prerelease"] as const) {
+		const value = (raw as Record<string, unknown>)[channel];
+		if (typeof value === "number" && Number.isInteger(value) && value > 0) seen[channel] = value;
 	}
+	return seen;
 }
 
 export function readSeenIssuedAt(
@@ -52,12 +47,6 @@ export function rememberIssuedAt(
 	const seen = read(versionsRoot);
 	const current = seen[channel];
 	if (current !== undefined && current >= issuedAt) return;
-	try {
-		mkdirSync(versionsRoot, { recursive: true });
-		const tmp = join(versionsRoot, `.${FILE}.${process.pid}.tmp`);
-		writeFileSync(tmp, JSON.stringify({ ...seen, [channel]: issuedAt }));
-		renameSync(tmp, join(versionsRoot, FILE));
-	} catch {
-		// 写不进去(只读挂载、磁盘满)不拦着检查更新;代价是下次少一层防回放。
-	}
+	// 写不进去(只读挂载、磁盘满)不拦着检查更新;代价是下次少一层防回放。
+	writeJsonAtomic(versionsRoot, FILE, { ...seen, [channel]: issuedAt });
 }

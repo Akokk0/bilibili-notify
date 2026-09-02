@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { readdirSync } from "node:fs";
 import type {
 	MirrorProbeResult,
 	UpdateErrorReason,
@@ -12,15 +11,16 @@ import { fetchSignedManifest } from "./fetch-signed-manifest.js";
 import { fetchThroughMirrors } from "./fetch-through-mirrors.js";
 import { installPayload } from "./install-payload.js";
 import { readSeenIssuedAt, rememberIssuedAt } from "./manifest-freshness.js";
-import { pruneOldVersions } from "./prune-versions.js";
+import { pruneOldVersions, removeVersionDir } from "./prune-versions.js";
 import {
+	type BootView,
 	clearPinnedVersion,
 	markVersionFailed,
 	pinVersion,
-	readFailedVersions,
-	readPinnedVersion,
+	readBootView,
 } from "./select-version-for-boot.js";
 import type { Manifest } from "./signed-manifest.js";
+import { installedVersions } from "./version-dirs.js";
 import { compareVersions } from "./version-order.js";
 
 /**
@@ -58,9 +58,6 @@ export interface CreateUpdateServiceInput {
 	releasesPageUrl: string;
 	/** 每次读都取最新 —— 用户在面板上改完设置,下一次检查就该按新的来。 */
 	readSettings: () => UpdateSettings;
-	timeoutMs?: number;
-	maxManifestBytes?: number;
-	now?: () => number;
 }
 
 export interface UpdateService {
@@ -77,19 +74,6 @@ export interface UpdateService {
 	probeMirrors(prefixes: readonly string[]): Promise<MirrorProbeResult[]>;
 }
 
-const VERSION_DIR_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
-
-function installedVersions(versionsRoot: string): string[] {
-	try {
-		return readdirSync(versionsRoot, { withFileTypes: true })
-			.filter((entry) => entry.isDirectory())
-			.map((entry) => entry.name)
-			.filter((name) => VERSION_DIR_RE.test(name));
-	} catch {
-		return [];
-	}
-}
-
 export function createUpdateService(input: CreateUpdateServiceInput): UpdateService {
 	const {
 		currentVersion,
@@ -100,9 +84,6 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		manifestUrls,
 		releasesPageUrl,
 		readSettings,
-		timeoutMs = DEFAULT_TIMEOUT_MS,
-		maxManifestBytes = DEFAULT_MAX_MANIFEST_BYTES,
-		now = Date.now,
 	} = input;
 
 	const enabled = trustedKeys.length > 0;
@@ -128,34 +109,39 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 	 * 退一步会退到哪:装着的版本里比当前旧的那个最高的;都没有就退回镜像自带那版。
 	 * 已经在镜像那版上就是没得退 —— 与其给一个按了没反应的按钮,不如让它是灰的。
 	 *
-	 * 挑的规矩必须和选版那边对钉子的判定(`usablePin`)**一致**:比镜像旧的、被自愈判死的
+	 * 挑的规矩必须和选版那边对钉子的判定(`usablePin`)**一致**:比镜像旧的、被判死的
 	 * 都不能当目标,否则面板说「已回退,重启生效」,重启后选版把钉子当没钉过,版本纹丝不动。
+	 * 所以判死名单与已装列表都取自**选版那边给出的同一幅快照**(`readBootView`)。
 	 */
-	function rollbackTarget(): string | null {
-		const failed = readFailedVersions({ versionsRoot });
+	function rollbackTarget({ failed, installed }: BootView): string | null {
 		let best: string | null = null;
-		for (const candidate of installedVersions(versionsRoot)) {
+		for (const candidate of installed) {
 			if (compareVersions(candidate, currentVersion) >= 0) continue;
 			if (compareVersions(candidate, imageVersion) < 0) continue;
 			if (failed.includes(candidate)) continue;
 			if (best === null || compareVersions(candidate, best) > 0) best = candidate;
 		}
 		if (best !== null) return best;
+		// 镜像那份不在 `installed` 里(它不住在 versionsRoot),但同样要过判死这一关 ——
+		// 撤回的就是它时,退回去等于把用户送回一个厂商已经召回的构建。
+		if (failed.includes(imageVersion)) return null;
 		return compareVersions(imageVersion, currentVersion) < 0 ? imageVersion : null;
 	}
 
 	function status(): UpdateStatus {
+		// 每次现读:钉子是靠重启生效的,内存态活不过那一下,盘上的才是真相。一次读出
+		// 整幅快照,回退目标和钉子说的才是同一个盘面。
+		const view = readBootView({ versionsRoot, imageVersion });
 		return {
 			currentVersion,
-			rollbackTarget: rollbackTarget(),
-			// 每次现读:钉子是靠重启生效的,内存态活不过那一下,盘上的才是真相。
-			pinnedVersion: readPinnedVersion({ versionsRoot, imageVersion }),
+			rollbackTarget: rollbackTarget(view),
+			pinnedVersion: view.pinned,
 			state,
 		};
 	}
 
 	function fail(reason: UpdateErrorReason, helpUrl?: string): UpdateStatus {
-		state = { phase: "error", reason, helpUrl, checkedAt: now() };
+		state = { phase: "error", reason, helpUrl, checkedAt: Date.now() };
 		return status();
 	}
 
@@ -178,7 +164,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 			// 清单说了它多大,多一个字节都不收 —— 内容对不对由 sha256 说了算,
 			// 但「愿意往内存里读多少」不能交给对方决定。
 			maxBytes: manifest.payload.size,
-			timeoutMs,
+			timeoutMs: DEFAULT_TIMEOUT_MS,
 			// sha256 在候选循环里验:代理站给了一坨不对的字节就换下一个,而不是把它
 			// 报成「包被掉包」—— 那个归因只配给直连(最后一个候选)。
 			accept: (bytes) =>
@@ -283,30 +269,35 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 				continue;
 			}
 			if (!installed.includes(version)) continue;
-			pruneOldVersions({ versionsRoot, keep: installed.filter((v) => v !== version) });
+			removeVersionDir(versionsRoot, version);
 			if (onDisk?.version === version) onDisk = null;
 			if (pending?.manifest.version === version) pending = null;
 			if ("target" in state && state.target === version) state = { phase: "idle" };
 		}
 	}
 
-	function channelOf(settings: UpdateSettings): "stable" | "prerelease" {
-		return settings.channel === "prerelease" ? "prerelease" : "stable";
+	/**
+	 * 取一份当前渠道的签过名的清单。检查更新与「测一遍」都从这里出去 —— 两边对
+	 * 超时、体积上限、防回放下限的要求本来就该一模一样,分开写两份的下一步就是
+	 * 「面板上测着好好的,一检查就说清单太旧」。
+	 */
+	function fetchManifest(channel: "stable" | "prerelease", mirrors: readonly string[]) {
+		return fetchSignedManifest({
+			url: manifestUrls[channel],
+			mirrors,
+			trustedKeys,
+			timeoutMs: DEFAULT_TIMEOUT_MS,
+			maxBytes: DEFAULT_MAX_MANIFEST_BYTES,
+			// 比之前见过的旧的清单不收:签名有效不等于是当前那份,加速站可以回放旧的。
+			minIssuedAt: readSeenIssuedAt(versionsRoot, channel),
+		});
 	}
 
 	async function runCheck(): Promise<UpdateStatus> {
 		const settings = readSettings();
 		const mirrors = mirrorChain(settings);
-		const channel = channelOf(settings);
-		const fetched = await fetchSignedManifest({
-			url: manifestUrls[channel],
-			mirrors,
-			trustedKeys,
-			timeoutMs,
-			maxBytes: maxManifestBytes,
-			// 比之前见过的旧的清单不收:签名有效不等于是当前那份,加速站可以回放旧的。
-			minIssuedAt: readSeenIssuedAt(versionsRoot, channel),
-		});
+		const { channel } = settings;
+		const fetched = await fetchManifest(channel, mirrors);
 		if (!fetched.ok) {
 			if (readyOnDisk()) return status();
 			// 上一次查到的那份不能留着:它可能已经被撤回了,而这次没查到 —— 用户按「下载」
@@ -330,7 +321,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		if (decision.kind === "up-to-date") {
 			pending = null;
 			if (readyOnDisk()) return status();
-			state = { phase: "up-to-date", checkedAt: now() };
+			state = { phase: "up-to-date", checkedAt: Date.now() };
 			return status();
 		}
 		if (decision.kind === "needs-image-pull") {
@@ -342,7 +333,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 				phase: "needs-image-pull",
 				target: decision.target,
 				releaseUrl: manifest.releaseUrl,
-				checkedAt: now(),
+				checkedAt: Date.now(),
 			};
 			return status();
 		}
@@ -357,7 +348,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 				target: manifest.version,
 				releaseUrl: manifest.releaseUrl,
 				notes: manifest.notes,
-				checkedAt: now(),
+				checkedAt: Date.now(),
 			};
 			return status();
 		}
@@ -381,7 +372,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 				const settings = readSettings();
 				// 没先 check 过、或者上次查的是另一个渠道 —— 让它自己去查一次,而不是回一个
 				// 「先点检查」,更不能把上个渠道那份装上去。
-				if (pending === null || pending.channel !== channelOf(settings)) return runCheck();
+				if (pending === null || pending.channel !== settings.channel) return runCheck();
 				// 已经装好的就别再下一遍 —— 「下载」按了两次不该变成两次 7MB。
 				if (alreadyOnDisk(pending.manifest)) return status();
 				return installFrom(pending.manifest, mirrorChain(settings));
@@ -391,24 +382,14 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		async probeMirrors(prefixes) {
 			// 没钥匙什么都验不过,测了也只会得到一排「签名验不过」—— 那是误导。
 			if (!enabled) return [];
-			const settings = readSettings();
-			const channel = channelOf(settings);
-			const url = manifestUrls[channel];
-			const minIssuedAt = readSeenIssuedAt(versionsRoot, channel);
+			const { channel } = readSettings();
 			// 并行:候选站之间互不影响,串行的话一个卡满超时的站会拖住整张表。
 			return Promise.all(
 				prefixes.map(async (prefix): Promise<MirrorProbeResult> => {
-					const started = now();
-					const fetched = await fetchSignedManifest({
-						url,
-						mirrors: [prefix],
-						trustedKeys,
-						timeoutMs,
-						maxBytes: maxManifestBytes,
-						// 缓存了旧清单的站直接标出来 —— 比让用户自己对版本号有用。
-						minIssuedAt,
-					});
-					const ms = Math.max(0, now() - started);
+					const started = Date.now();
+					// 只给一个候选:测的就是「这一站行不行」,垫底直连会让每一行都变成绿的。
+					const fetched = await fetchManifest(channel, [prefix]);
+					const ms = Math.max(0, Date.now() - started);
 					return fetched.ok
 						? { prefix, ok: true, ms, version: fetched.manifest.version }
 						: { prefix, ok: false, ms, reason: fetched.reason };
@@ -420,7 +401,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 			// 走串行闸:正在下载时,钉子必须落在 installFrom 的 clearPinnedVersion **之后**,
 			// 不然用户看到「已回退」,几秒后下载落地又把钉子拔了、状态盖成 ready。
 			return queued(async () => {
-				const target = rollbackTarget();
+				const target = rollbackTarget(readBootView({ versionsRoot, imageVersion }));
 				if (target === null) return fail("nothing-to-roll-back");
 				pinVersion({ versionsRoot, version: target });
 				state = { phase: "rolled-back", target };

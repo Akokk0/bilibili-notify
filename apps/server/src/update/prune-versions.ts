@@ -1,5 +1,6 @@
 import { readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { LEFTOVER_DIR_RE, VERSION_DIR_RE } from "./version-dirs.js";
 
 /**
  * 版本目录的保留策略:**只留当前 + 上一版**。
@@ -19,10 +20,6 @@ import { join } from "node:path";
  * 残留只在这里扫,而这里只在一次安装**完成之后**、且整个更新流程是串行的时候被调用 ——
  * 所以扫到的 `.staging-*` 一定不是正在解压的那个。
  */
-
-const VERSION_DIR_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
-/** 安装流程自己的临时目录:`install-payload.ts` 的 `.staging-<版本>-<uuid>` 与 `.old-<版本>-<uuid>`。 */
-export const LEFTOVER_DIR_RE = /^\.(?:staging|old)-/;
 
 export interface PruneOldVersionsInput {
 	versionsRoot: string;
@@ -54,4 +51,23 @@ export function pruneOldVersions({ versionsRoot, keep }: PruneOldVersionsInput):
 		}
 	}
 	return removed;
+}
+
+/**
+ * 删掉**指定的那一个**版本目录 —— 给撤回用。
+ *
+ * 刻意不复用 `pruneOldVersions`:那是一条**保留策略**(留当前 + 新装的),拿它删一个
+ * 目录得反着传「除它以外全留」,于是撤回一个版本的行为会跟着保留策略一起变 —— 哪天
+ * 策略改成留三份,撤回就悄悄开始留下被召回的构建。名字是圆的还是方的,得由调用方说了算。
+ *
+ * 同样吞掉失败:撤回的主张由选版那边的判死兜底,删不掉只是多占一份磁盘。
+ */
+export function removeVersionDir(versionsRoot: string, version: string): boolean {
+	if (!VERSION_DIR_RE.test(version)) return false;
+	try {
+		rmSync(join(versionsRoot, version), { recursive: true, force: true });
+		return true;
+	} catch {
+		return false;
+	}
 }
