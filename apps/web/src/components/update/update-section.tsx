@@ -167,6 +167,10 @@ export function UpdateSection() {
 						) : null}
 					</div>
 
+					{"notes" in state && state.notes ? (
+						<p className="whitespace-pre-wrap text-bn-sm text-bn-text-secondary">{state.notes}</p>
+					) : null}
+
 					{state.phase === "disabled" ? (
 						<HintNote tone="neutral">
 							这个构建里没有内置更新签名的公钥,所以应用内更新是关着的 —— 不是出错。自己

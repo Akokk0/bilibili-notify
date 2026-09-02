@@ -61,6 +61,19 @@ afterEach(() => {
 });
 
 describe("UpdateSection —— 报错的归因", () => {
+	it("清单带了更新说明 → 显示出来(发版侧写的那句话不该一路带到服务端就没了)", async () => {
+		serve({
+			phase: "available",
+			target: "0.9.0",
+			releaseUrl: "https://x",
+			notes: "修了直播断流误报。",
+			checkedAt: 1,
+		});
+		renderSection();
+
+		await screen.findByText("修了直播断流误报。");
+	});
+
 	it("盘上有钉子 → 说明一句,免得用户纳闷为什么打开面板不再自动查", async () => {
 		serve({ phase: "idle" }, { pinnedVersion: "0.8.0" });
 		renderSection();
