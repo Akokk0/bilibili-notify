@@ -62,7 +62,6 @@ function Start-SidecarSmokeProcess {
         [string]$NodePath,
         [string]$ServerDir,
         [string]$ServerEntry,
-        [string]$WebDist,
         [string]$DataDir,
         [int]$Port,
         [string]$StdoutPath,
@@ -71,7 +70,9 @@ function Start-SidecarSmokeProcess {
 
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = $NodePath
-    foreach ($arg in @($ServerEntry, "--host", "127.0.0.1", "--port", $Port.ToString(), "--data-dir", $DataDir, "--web-dist", $WebDist)) {
+    # 与外壳(apps/desktop/src-tauri/src/main.rs)传的参数一致:不传 --web-dist,
+    # dashboard 由服务端按入口就近找(lib/web-dist)。传了就是在测一条用户跑不到的路径。
+    foreach ($arg in @($ServerEntry, "--host", "127.0.0.1", "--port", $Port.ToString(), "--data-dir", $DataDir)) {
         [void]$psi.ArgumentList.Add($arg)
     }
     $psi.WorkingDirectory = $ServerDir
@@ -121,12 +122,15 @@ $resourcesDir = Join-Path $tmp "resources"
 $desktopExe = Join-Path $tmp "bilibili-notify-desktop.exe"
 $nodePath = Join-Path $resourcesDir "node/bin/node.exe"
 $serverDir = Join-Path $resourcesDir "app/apps/server"
-$serverEntry = Join-Path $serverDir "lib/index.mjs"
-$webDist = Join-Path $resourcesDir "app/apps/web/dist"
+# 外壳起的是 boot.mjs(先选版再加载载荷),不是 index.mjs 本身。这里必须与 main.rs 一致,
+# 由 scripts/desktop-release-gates.test.mjs 守着。
+$serverEntry = Join-Path $serverDir "lib/boot.mjs"
 $required = @(
     "bilibili-notify-desktop.exe",
     "resources/node/bin/node.exe",
+    "resources/app/apps/server/lib/boot.mjs",
     "resources/app/apps/server/lib/index.mjs",
+    "resources/app/apps/server/lib/web-dist/index.html",
     "resources/BUILD_INFO.json"
 )
 foreach ($rel in $required) {
@@ -152,7 +156,7 @@ New-Item -ItemType Directory -Force $smokeDataDir | Out-Null
 $port = Get-FreeTcpPort
 $sidecar = $null
 try {
-    $sidecar = Start-SidecarSmokeProcess -NodePath $nodePath -ServerDir $serverDir -ServerEntry $serverEntry -WebDist $webDist -DataDir $smokeDataDir -Port $port -StdoutPath $stdoutPath -StderrPath $stderrPath
+    $sidecar = Start-SidecarSmokeProcess -NodePath $nodePath -ServerDir $serverDir -ServerEntry $serverEntry -DataDir $smokeDataDir -Port $port -StdoutPath $stdoutPath -StderrPath $stderrPath
     $ready = $false
     for ($i = 0; $i -lt 30; $i += 1) {
         if ($sidecar.HasExited) {

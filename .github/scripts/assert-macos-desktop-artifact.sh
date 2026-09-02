@@ -17,7 +17,9 @@ trap cleanup EXIT
 assert_resources_dir() {
 	local resources_dir="$1"
 	local label="$2"
-	for rel in node/bin/node app/apps/server/lib/index.mjs BUILD_INFO.json; do
+	# 与外壳(apps/desktop/src-tauri/src/main.rs)要求的布局一致:起 boot.mjs,dashboard 在
+	# lib/web-dist。由 scripts/desktop-release-gates.test.mjs 守着。
+	for rel in node/bin/node app/apps/server/lib/boot.mjs app/apps/server/lib/index.mjs app/apps/server/lib/web-dist/index.html BUILD_INFO.json; do
 		if [ ! -e "$resources_dir/$rel" ]; then
 			echo "::error::$label missing resources/$rel"
 			exit 1
