@@ -48,3 +48,5 @@ export const GET_USER_NAVNUM = "https://api.bilibili.com/x/space/navnum";
 export const GET_USER_VIDEOS = "https://api.bilibili.com/x/space/wbi/arc/search";
 export const SEARCH_BY_TYPE = "https://api.bilibili.com/x/web-interface/wbi/search/type";
 export const GET_FINGER_SPI = "https://api.bilibili.com/x/frontend/finger/spi";
+/** 单个视频的信息(标题 / 封面 / UP / 播放弹幕等),按 bvid 或 aid 取。链接解析用。 */
+export const GET_VIDEO_INFO = "https://api.bilibili.com/x/web-interface/view";

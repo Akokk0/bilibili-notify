@@ -244,3 +244,32 @@ export interface ValidateCaptchaData {
 		success_type: number;
 	} | null;
 }
+
+/** 按 BV 号或 av 号定位一个视频。 */
+export type VideoRef = { bvid: string } | { aid: string };
+
+/** `x/web-interface/view` 裁剪后的单视频信息 —— 链接解析的卡片就吃这个。 */
+export interface VideoInfo {
+	bvid: string;
+	aid: number;
+	title: string;
+	/** 封面。 */
+	pic: string;
+	desc: string;
+	/** 时长,秒。 */
+	duration: number;
+	/** 发布时刻,epoch 秒。 */
+	pubdate: number;
+	/** 分区名。 */
+	tname: string;
+	owner: { mid: number; name: string; face: string };
+	stat: {
+		view: number;
+		danmaku: number;
+		reply: number;
+		favorite: number;
+		coin: number;
+		share: number;
+		like: number;
+	};
+}

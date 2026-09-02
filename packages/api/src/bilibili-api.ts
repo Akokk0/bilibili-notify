@@ -24,8 +24,19 @@ import type {
 	UserCardsBatchData,
 	V_VoucherCaptchaData,
 	ValidateCaptchaData,
+	VideoInfo,
+	VideoRef,
 } from "./types";
 import { buildTicketParams, encWbi, type WbiKeys } from "./wbi";
+
+/** `x/web-interface/view` 的 data 里我们用得到的那几个字段(其余照单全收但不透传)。 */
+type RawVideoInfo = Pick<
+	VideoInfo,
+	"bvid" | "aid" | "title" | "pic" | "desc" | "duration" | "pubdate" | "tname"
+> & {
+	owner: VideoInfo["owner"];
+	stat: VideoInfo["stat"];
+};
 
 interface CookiesRefreshedPayload {
 	cookiesJson: string;
@@ -880,6 +891,66 @@ export class BilibiliAPI {
 			"getUserVideos",
 			BilibiliAPI.retryUnlessRiskControl,
 		);
+	}
+
+	/**
+	 * 单个视频的信息。接口 code 非 0(-404 不存在 / 62002 不可见 / 62012 仅自己可见…)
+	 * 直接抛,带上对方的 message —— 调用方(链接解析)对任何失败都保持沉默,只记日志。
+	 */
+	async getVideoInfo(ref: VideoRef): Promise<VideoInfo> {
+		const query =
+			"bvid" in ref ? `bvid=${encodeURIComponent(ref.bvid)}` : `aid=${encodeURIComponent(ref.aid)}`;
+		const result = await this.getJson<{ code: number; message?: string; data?: RawVideoInfo }>(
+			`${EP.GET_VIDEO_INFO}?${query}`,
+			"getVideoInfo",
+		);
+		if (result.code !== 0 || !result.data) {
+			throw new Error(`获取视频信息失败(${result.code}): ${result.message ?? "unknown"}`);
+		}
+		const d = result.data;
+		return {
+			bvid: d.bvid,
+			aid: d.aid,
+			title: d.title,
+			pic: d.pic,
+			desc: d.desc,
+			duration: d.duration,
+			pubdate: d.pubdate,
+			tname: d.tname,
+			owner: { mid: d.owner.mid, name: d.owner.name, face: d.owner.face },
+			stat: {
+				view: d.stat.view,
+				danmaku: d.stat.danmaku,
+				reply: d.stat.reply,
+				favorite: d.stat.favorite,
+				coin: d.stat.coin,
+				share: d.stat.share,
+				like: d.stat.like,
+			},
+		};
+	}
+
+	/**
+	 * 把 b23.tv 短链解成落地地址。只认 b23.tv 输入、只认落在 bilibili.com 的目标 ——
+	 * 短链是别人贴的,跟到哪儿就是让谁指挥我们。拿不到重定向、落到别处,一律 null。
+	 */
+	async resolveShortLink(url: string): Promise<string | null> {
+		let parsed: URL;
+		try {
+			parsed = new URL(url);
+		} catch {
+			return null;
+		}
+		if (parsed.hostname !== "b23.tv") return null;
+		const location = await this.client.redirectLocation(parsed.toString());
+		if (!location) return null;
+		try {
+			const host = new URL(location).hostname;
+			if (host !== "bilibili.com" && !host.endsWith(".bilibili.com")) return null;
+		} catch {
+			return null;
+		}
+		return location;
 	}
 
 	async searchByType(

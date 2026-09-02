@@ -66,6 +66,28 @@ export class BiliHttpClient {
 		return this.request("GET", url, undefined, undefined, opts);
 	}
 
+	/**
+	 * 只看**第一跳**的 Location,不跟过去:短链(b23.tv)解析要的是落地地址本身,
+	 * 落地页是整张 HTML,跟过去白拿几十 KB。不是重定向就返回 null。
+	 * 相对 Location 按当前地址补成绝对地址。
+	 */
+	async redirectLocation(url: string): Promise<string | null> {
+		const target = new URL(url);
+		const headers: Record<string, string> = { ...this.defaultHeaders };
+		const cookie = this.jar.cookieHeaderFor(target);
+		if (cookie) headers.Cookie = cookie;
+		const res = await fetch(target, {
+			method: "GET",
+			headers,
+			redirect: "manual",
+			signal: AbortSignal.timeout(this.timeoutMs),
+		});
+		await res.body?.cancel();
+		const location = res.headers.get("location");
+		if (!isRedirect(res.status) || !location) return null;
+		return new URL(location, target).toString();
+	}
+
 	/** x-www-form-urlencoded POST(bilibili 写接口一律该编码)。 */
 	async postForm(
 		url: string,
