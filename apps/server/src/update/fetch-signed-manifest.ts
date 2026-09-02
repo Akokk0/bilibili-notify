@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { fetchThroughMirrors } from "./fetch-through-mirrors.js";
+import { type Acceptance, fetchThroughMirrors } from "./fetch-through-mirrors.js";
 import { loadSignedManifest, type Manifest } from "./signed-manifest.js";
 
 /**
@@ -28,19 +28,17 @@ export type FetchSignedManifestResult =
 	| { ok: true; manifest: Manifest }
 	| { ok: false; reason: "unreachable" | "malformed" | "untrusted" };
 
-export async function fetchSignedManifest({
-	url,
-	mirrors,
-	trustedKeys,
-	timeoutMs,
-	maxBytes,
-}: FetchSignedManifestInput): Promise<FetchSignedManifestResult> {
-	const fetched = await fetchThroughMirrors({ url, mirrors, timeoutMs, maxBytes });
-	if (!fetched.ok) return { ok: false, reason: "unreachable" };
-
+/**
+ * 一份字节是不是我们签过的清单。**在候选循环里跑**:代理站回 200 + 垃圾页时,这里
+ * 不过就换下一个候选,而不是让整条更新死在这一个站上。
+ */
+function acceptEnvelope(
+	bytes: Uint8Array,
+	trustedKeys: readonly string[],
+): Acceptance<Manifest, "malformed" | "untrusted"> {
 	let envelope: unknown;
 	try {
-		envelope = JSON.parse(Buffer.from(fetched.bytes).toString("utf8"));
+		envelope = JSON.parse(Buffer.from(bytes).toString("utf8"));
 	} catch {
 		return { ok: false, reason: "malformed" };
 	}
@@ -58,6 +56,28 @@ export async function fetchSignedManifest({
 		// 的话,代理站抽风会被报成安全事件,而真篡改会被当成小毛病。
 		return { ok: false, reason: loaded.reason === "malformed" ? "malformed" : "untrusted" };
 	}
+	return { ok: true, value: loaded.manifest };
+}
 
-	return { ok: true, manifest: loaded.manifest };
+export async function fetchSignedManifest({
+	url,
+	mirrors,
+	trustedKeys,
+	timeoutMs,
+	maxBytes,
+}: FetchSignedManifestInput): Promise<FetchSignedManifestResult> {
+	const fetched = await fetchThroughMirrors({
+		url,
+		mirrors,
+		timeoutMs,
+		maxBytes,
+		accept: (bytes) => acceptEnvelope(bytes, trustedKeys),
+	});
+	if (fetched.ok) return { ok: true, manifest: fetched.value };
+	// 归因来自最后一个候选(直连):它连字节都没拿到 → unreachable;它拿到了但验不过
+	// → 那才是真的 malformed / untrusted。前面代理站说了什么胡话都不会漏到这儿。
+	return {
+		ok: false,
+		reason: fetched.reason === "all-mirrors-failed" ? "unreachable" : fetched.reason,
+	};
 }

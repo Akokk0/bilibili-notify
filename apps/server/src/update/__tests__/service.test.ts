@@ -57,12 +57,20 @@ interface StubWorld {
 	payload?: Uint8Array;
 	/** 命中就抛(模拟代理站卡死 / 连不上)。 */
 	failUrls?: RegExp;
+	/** 命中就回 200 + 一张 HTML(模拟代理站限流页 / 门户页 —— 国内代理站最常见的死法)。 */
+	garbageUrls?: RegExp;
 }
 
-function stubNetwork({ manifestBody, payload, failUrls }: StubWorld): ReturnType<typeof vi.fn> {
+function stubNetwork({
+	manifestBody,
+	payload,
+	failUrls,
+	garbageUrls,
+}: StubWorld): ReturnType<typeof vi.fn> {
 	const fetchMock = vi.fn(async (input: unknown) => {
 		const url = String(input);
 		if (failUrls?.test(url)) throw new Error(`boom ${url}`);
+		if (garbageUrls?.test(url)) return new Response("<html>请求过快</html>", { status: 200 });
 		if (url.endsWith(".json")) {
 			if (manifestBody === undefined) return new Response("nope", { status: 404 });
 			return new Response(manifestBody, { status: 200 });
@@ -472,6 +480,54 @@ describe("createUpdateService —— 加速前缀", () => {
 		const urls = fetchMock.mock.calls.map((c) => String(c[0]));
 		expect(urls[0]).toBe(`https://fast.example/${MANIFEST_URLS.stable}`);
 		expect(urls[1]).toBe(MANIFEST_URLS.stable);
+	});
+
+	it("加速站对清单回 200 垃圾页 → 直连兜底,不报成 malformed", async () => {
+		// 「非 2xx 才换站」拦不住这种:限流页 / 门户页就是 200。它穿过去之后验签失败,
+		// 整条更新就停在「清单不成形」上 —— 而直连从没被试过。一个抽风的代理站不该
+		// 有这么大的杀伤力,更不该被报成「我们发错了东西」。
+		const key = makeKey();
+		const zip = makePayloadZip("0.9.0");
+		stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.9.0", zip)),
+			payload: zip,
+			garbageUrls: /^https:\/\/flaky\.example/,
+		});
+		const { service } = makeService({
+			trustedKeys: [key.spkiBase64],
+			settings: { mirrors: ["https://flaky.example"], autoDownload: false },
+		});
+
+		const status = await service.check();
+
+		expect(status.state).toMatchObject({ phase: "available", target: "0.9.0" });
+	});
+
+	it("加速站对包回 200 垃圾 → 直连兜底,不报成 checksum-mismatch", async () => {
+		// 同一件事发生在载荷上更糟:checksum-mismatch 在契约里写的是「包下下来了,但不是
+		// 清单说的那一坨字节」—— 正是要弹红字的安全事件。代理站抽风不配这个待遇。
+		const key = makeKey();
+		const zip = makePayloadZip("0.9.0");
+		const fetchMock = stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.9.0", zip)),
+			payload: zip,
+			garbageUrls: /^https:\/\/flaky\.example.*payload\.zip$/,
+		});
+		const { service } = makeService({
+			trustedKeys: [key.spkiBase64],
+			settings: { mirrors: ["https://flaky.example"] },
+		});
+
+		const status = await service.check();
+
+		expect(status.state).toMatchObject({ phase: "ready", target: "0.9.0" });
+		const payloadUrls = fetchMock.mock.calls
+			.map((c) => String(c[0]))
+			.filter((u) => u.endsWith("payload.zip"));
+		expect(payloadUrls).toEqual([
+			"https://flaky.example/https://github.com/o/r/releases/download/v0.9.0/payload.zip",
+			"https://github.com/o/r/releases/download/v0.9.0/payload.zip",
+		]);
 	});
 });
 

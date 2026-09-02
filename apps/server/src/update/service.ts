@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readdirSync } from "node:fs";
 import type {
 	MirrorProbeResult,
@@ -155,12 +156,23 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 			// 但「愿意往内存里读多少」不能交给对方决定。
 			maxBytes: manifest.payload.size,
 			timeoutMs,
+			// sha256 在候选循环里验:代理站给了一坨不对的字节就换下一个,而不是把它
+			// 报成「包被掉包」—— 那个归因只配给直连(最后一个候选)。
+			accept: (bytes) =>
+				createHash("sha256").update(bytes).digest("hex") === manifest.payload.sha256
+					? { ok: true, value: bytes }
+					: { ok: false, reason: "checksum-mismatch" as const },
 		});
 		// 清单在手,所以这里能精确指到**那一版**的发布页,比只给发布列表有用得多。
-		if (!fetched.ok) return fail("download-failed", manifest.releaseUrl);
+		if (!fetched.ok) {
+			return fail(
+				fetched.reason === "checksum-mismatch" ? "checksum-mismatch" : "download-failed",
+				manifest.releaseUrl,
+			);
+		}
 
 		const installed = installPayload({
-			zip: fetched.bytes,
+			zip: fetched.value,
 			expectedSha256: manifest.payload.sha256,
 			version: manifest.version,
 			versionsRoot,

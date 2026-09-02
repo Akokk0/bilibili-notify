@@ -93,6 +93,43 @@ describe("fetchSignedManifest", () => {
 		expect(result.ok === false && result.reason).toBe("unreachable");
 	});
 
+	it("加速站回 200 垃圾页、直连是好清单 → 拿到清单,不报 malformed", async () => {
+		// 验签失败必须回落到下一个候选:代理站「200 + 限流页」正好穿过「非 2xx 才换站」
+		// 那道门,而直连(末尾)从没被试过 —— 一个抽风的代理站就把整条更新锁死。
+		const key = makeKey();
+		const inner = JSON.stringify({
+			version: "0.9.0",
+			revoked: [],
+			releaseUrl: "https://github.com/o/r/releases/tag/v0.9.0",
+			payload: { size: 1, sha256: "a".repeat(64), url: "https://github.com/o/r/p.zip" },
+		});
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(new Response("<html>请求过快</html>", { status: 200 }))
+			.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({ manifest: inner, signature: signText(key.privateKey, inner) }),
+					{
+						status: 200,
+					},
+				),
+			);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const result = await fetchSignedManifest({
+			url: RELEASE_URL,
+			mirrors: ["https://mirror-garbage.example/", ""],
+			trustedKeys: [key.spkiBase64],
+			timeoutMs: 1000,
+			maxBytes: 64 * 1024,
+		});
+
+		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
+		expect(result.manifest.version).toBe("0.9.0");
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(fetchMock.mock.calls[1]?.[0]).toBe(RELEASE_URL);
+	});
+
 	it("内层被人改过 → untrusted", async () => {
 		const key = makeKey();
 		const signed = '{"version":"0.9.0"}';

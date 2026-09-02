@@ -18,6 +18,11 @@ function okResponse(body: string): Response {
 	return new Response(body, { status: 200 });
 }
 
+/** 照单全收 —— 只测传输层那几条时用。 */
+const takeAll = (bytes: Uint8Array) => ({ ok: true as const, value: bytes });
+
+const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
+
 describe("fetchThroughMirrors", () => {
 	it("候选返回非 2xx 也算失败 → 换下一个,而不是把错误页当内容收下", async () => {
 		// 代理站挂掉时**多半不是抛错,而是返回一个 502/404 页面**。只 catch 异常的
@@ -34,10 +39,11 @@ describe("fetchThroughMirrors", () => {
 			mirrors: ["https://mirror-down.example", "https://mirror-ok.example"],
 			maxBytes: 1024,
 			timeoutMs: 1000,
+			accept: takeAll,
 		});
 
 		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
-		expect(new TextDecoder().decode(result.bytes)).toBe("真正的清单");
+		expect(new TextDecoder().decode(result.value)).toBe("真正的清单");
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
@@ -66,10 +72,11 @@ describe("fetchThroughMirrors", () => {
 			mirrors: ["https://mirror-flood.example", "https://mirror-ok.example"],
 			maxBytes: MAX,
 			timeoutMs: 1000,
+			accept: takeAll,
 		});
 
 		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
-		expect(new TextDecoder().decode(result.bytes)).toBe("小小的清单");
+		expect(new TextDecoder().decode(result.value)).toBe("小小的清单");
 		// 上限 / 每块大小 = 拉到第 4 块就该收手。给一点余量,但**远小于**那 10000 块
 		// —— 缓冲式的假防护会把它们全拉完,这条断言就是用来分辨这两者的。
 		expect(chunksPulled).toBeLessThanOrEqual(MAX / CHUNK + 4);
@@ -98,10 +105,11 @@ describe("fetchThroughMirrors", () => {
 			mirrors: ["https://mirror-hangs.example", "https://mirror-ok.example"],
 			maxBytes: 1024,
 			timeoutMs: TIMEOUT_MS,
+			accept: takeAll,
 		});
 
 		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
-		expect(new TextDecoder().decode(result.bytes)).toBe("终于拿到了");
+		expect(new TextDecoder().decode(result.value)).toBe("终于拿到了");
 	});
 
 	it("第一个候选就成功 → 后面的一个都不碰", async () => {
@@ -113,6 +121,7 @@ describe("fetchThroughMirrors", () => {
 			mirrors: ["https://first.example", "https://second.example"],
 			maxBytes: 1024,
 			timeoutMs: 1000,
+			accept: takeAll,
 		});
 
 		expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -132,10 +141,76 @@ describe("fetchThroughMirrors", () => {
 			mirrors: ["", "https://ghproxy.example/"],
 			maxBytes: 1024,
 			timeoutMs: 1000,
+			accept: takeAll,
 		});
 
 		expect(fetchMock.mock.calls[0]?.[0]).toBe(RELEASE_URL);
 		expect(fetchMock.mock.calls[1]?.[0]).toBe(`https://ghproxy.example/${RELEASE_URL}`);
+	});
+
+	it("候选回 200 但内容验收不过 → 换下一个,直连排在末尾也照样轮得到", async () => {
+		// 国内代理站最常见的死法不是 502,而是 **200 + 一张限流 / 门户 HTML**。只在
+		// 非 2xx 时换站的实现会把那张页当内容收下,验签一失败整条更新就死了 ——
+		// 而直连(永远在列表末尾)从没被试过。验收必须在候选循环**里面**。
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(okResponse("<html>请求过快,请稍后再试</html>"))
+			.mockResolvedValueOnce(okResponse("真正的清单"));
+		vi.stubGlobal("fetch", fetchMock);
+
+		const result = await fetchThroughMirrors({
+			url: RELEASE_URL,
+			mirrors: ["https://mirror-garbage.example", ""],
+			maxBytes: 1024,
+			timeoutMs: 1000,
+			accept: (bytes) =>
+				decode(bytes) === "真正的清单"
+					? { ok: true, value: decode(bytes) }
+					: { ok: false, reason: "malformed" as const },
+		});
+
+		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
+		expect(result.value).toBe("真正的清单");
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(fetchMock.mock.calls[1]?.[0]).toBe(RELEASE_URL);
+	});
+
+	it("全部候选都拿到了字节但都验收不过 → 归因用**最后一个**候选的验收理由", async () => {
+		// 直连永远是最后一个:它说「签名不对」才是真信号;前面代理站说什么都可能是抽风。
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockImplementation(async () => okResponse("垃圾")),
+		);
+
+		const result = await fetchThroughMirrors({
+			url: RELEASE_URL,
+			mirrors: ["https://a.example", ""],
+			maxBytes: 1024,
+			timeoutMs: 1000,
+			accept: () => ({ ok: false, reason: "untrusted" as const }),
+		});
+
+		expect(result.ok).toBe(false);
+		expect(result.ok === false && result.reason).toBe("untrusted");
+	});
+
+	it("前面的候选验收不过、最后一个候选网络失败 → all-mirrors-failed,不把代理站的垃圾页报成安全事件", async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(okResponse("垃圾"))
+			.mockRejectedValueOnce(new Error("直连不通"));
+		vi.stubGlobal("fetch", fetchMock);
+
+		const result = await fetchThroughMirrors({
+			url: RELEASE_URL,
+			mirrors: ["https://a.example", ""],
+			maxBytes: 1024,
+			timeoutMs: 1000,
+			accept: () => ({ ok: false, reason: "untrusted" as const }),
+		});
+
+		expect(result.ok).toBe(false);
+		expect(result.ok === false && result.reason).toBe("all-mirrors-failed");
 	});
 
 	it("所有候选都失败 → 返回失败结果,不抛", async () => {
@@ -149,6 +224,7 @@ describe("fetchThroughMirrors", () => {
 			mirrors: ["https://a.example", "https://b.example"],
 			maxBytes: 1024,
 			timeoutMs: 1000,
+			accept: takeAll,
 		});
 
 		expect(result.ok).toBe(false);
