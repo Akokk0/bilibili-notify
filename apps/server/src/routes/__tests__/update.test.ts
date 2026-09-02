@@ -82,6 +82,30 @@ describe("update 路由", () => {
 		expect(applyUpdate).not.toHaveBeenCalled();
 	});
 
+	it("applyUpdate 抛了 → 不变成 unhandled rejection(那会让进程以非 0 退出)", async () => {
+		// 优雅停机 rethrow,而这一步之前 unhandledRejection 的 handler 已经被摘掉了 ——
+		// 没人接的话 Node 走默认:退出码 1,编排系统当成崩溃。vitest 对未处理的 rejection
+		// 会直接判失败,所以这条用例不需要额外断言。
+		const applyUpdate = vi.fn(async () => {
+			throw new Error("dispose exploded");
+		});
+		const app = createUpdateRoute({
+			service: fakeService({
+				getStatus: () => ({
+					currentVersion: "0.9.0",
+					pinnedVersion: null,
+					rollbackTarget: null,
+					state: { phase: "ready", target: "0.9.0", releaseUrl: "https://x/t" },
+				}),
+			}),
+			applyUpdate,
+		});
+
+		expect((await app.request("/apply", { method: "POST" })).status).toBe(200);
+		await new Promise((r) => setTimeout(r, 5));
+		expect(applyUpdate).toHaveBeenCalledOnce();
+	});
+
 	it("回退钉好之后 POST /apply 放行 —— 回退也要靠重启才生效", async () => {
 		const applyUpdate = vi.fn(async () => {});
 		const app = createUpdateRoute({

@@ -613,8 +613,17 @@ export async function startStandaloneServer(
 				// 应用 = 优雅停机 + 退 0,由进程管理器把新版本拉起来。**退出码必须是 0**:
 				// 非 0 会被编排系统当成崩溃,退避重启甚至进 CrashLoopBackOff。
 				applyUpdate: async () => {
-					await close("update apply");
-					process.exit(0);
+					try {
+						await close("update apply");
+					} catch (err) {
+						// close() 是 rethrow 的。停机里某一处 dispose 抛了也得退 0:这时进程
+						// 反正要没了,非 0 只会让编排系统当成崩溃去退避重启。
+						log.error(
+							`update apply: graceful close failed, exiting anyway: ${err instanceof Error ? err.message : String(err)}`,
+						);
+					} finally {
+						process.exit(0);
+					}
 				},
 			},
 		});

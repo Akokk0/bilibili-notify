@@ -58,8 +58,13 @@ export function createUpdateRoute({ service, applyUpdate }: CreateUpdateRouteInp
 		// ② `applyUpdate` 那头做的是**优雅停机**,它会等在途请求收尾 —— 宏任务只是
 		//    让开一步,真正保证这条响应写得出去的是那一步。
 		//
-		// 不 await:等它就等于等自己被杀。
-		setTimeout(() => void applyUpdate(), 0);
+		// 不 await:等它就等于等自己被杀。但要接住 rejection —— 优雅停机里任一处 dispose
+		// 抛了,这个没人管的 promise 会让进程以非 0 退出,正是上面注释要避免的那种结果。
+		setTimeout(() => {
+			applyUpdate().catch(() => {
+				// index.ts 那头自己会记日志并照样退 0;这里只负责不让它变成 unhandled rejection。
+			});
+		}, 0);
 		return c.json({ restarting: true });
 	});
 
