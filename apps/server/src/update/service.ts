@@ -90,6 +90,17 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 	let state: UpdateState = enabled ? { phase: "idle" } : { phase: "disabled" };
 	/** 最近一次验过签的清单 —— 手动下载要用它,免得再跑一趟网络。 */
 	let pending: Manifest | null = null;
+	/**
+	 * 这个进程里已经装到盘上的那份(版本 + 包的 sha256)。面板每次打开都会查一次,
+	 * 装好了还没重启的这段时间里,同一份包不该每开一次面板就重下一遍 —— 但只认
+	 * 版本号不够:发版侧重传过资产的话,同版本号下面是另一个包。
+	 */
+	let onDisk: { version: string; sha256: string } | null = null;
+	/**
+	 * 正在跑的那趟检查 / 下载。打开面板那次自动检查还在下载,用户走到系统页又按
+	 * 「检查更新」—— 不共用的话两趟各下一份、各解一次压,最后谁写盘谁赢。
+	 */
+	let inflight: Promise<UpdateStatus> | null = null;
 
 	/**
 	 * 退一步会退到哪:装着的版本里比当前旧的那个最高的;都没有就退回镜像自带那版。
@@ -160,6 +171,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		// 正在执行的代码,也是待会儿要退回去的地方。
 		pruneOldVersions({ versionsRoot, keep: [currentVersion, manifest.version] });
 
+		onDisk = { version: manifest.version, sha256: manifest.payload.sha256 };
 		state = {
 			phase: "ready",
 			target: manifest.version,
@@ -169,73 +181,97 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		return status();
 	}
 
+	/** 同一时刻只让一趟在跑;后来的搭前一趟的车,拿到的是同一个结果。 */
+	function serialized(run: () => Promise<UpdateStatus>): Promise<UpdateStatus> {
+		if (inflight === null) {
+			inflight = run().finally(() => {
+				inflight = null;
+			});
+		}
+		return inflight;
+	}
+
+	async function runCheck(): Promise<UpdateStatus> {
+		const settings = readSettings();
+		const mirrors = mirrorChain(settings);
+		const fetched = await fetchSignedManifest({
+			url: manifestUrls[settings.channel === "prerelease" ? "prerelease" : "stable"],
+			mirrors,
+			trustedKeys,
+			timeoutMs,
+			maxBytes: maxManifestBytes,
+		});
+		if (!fetched.ok) {
+			// 清单都没拿到,给不出「那一版」的发布页,只能给发布列表 —— 但必须给得出:
+			// 「下不动就通知 + 给个链接」是设计里的兜底出口。
+			return fail(fetched.reason, releasesPageUrl);
+		}
+
+		const manifest = fetched.manifest;
+		const decision = decideUpdate({
+			currentVersion,
+			manifest,
+			runtime: { nodeMajor },
+			allowPrerelease: settings.channel === "prerelease",
+		});
+
+		if (decision.kind === "up-to-date") {
+			pending = null;
+			state = { phase: "up-to-date", checkedAt: now() };
+			return status();
+		}
+		if (decision.kind === "needs-image-pull") {
+			// 载荷能比镜像新,但 Node / chromium / 字体全来自镜像。下下来也跑不起来,
+			// 所以连下都不下,直接告诉用户这一版得重拉镜像。
+			pending = null;
+			state = {
+				phase: "needs-image-pull",
+				target: decision.target,
+				releaseUrl: manifest.releaseUrl,
+				checkedAt: now(),
+			};
+			return status();
+		}
+
+		pending = manifest;
+		// 这份包这个进程已经装过了,盘上就是它 —— 别再下一遍,也别把 ready 打回
+		// available(那会让「立即重启」按钮凭空消失)。不管自动下载开没开。
+		if (
+			state.phase === "ready" &&
+			onDisk?.version === manifest.version &&
+			onDisk.sha256 === manifest.payload.sha256
+		) {
+			return status();
+		}
+		if (!settings.autoDownload) {
+			state = {
+				phase: "available",
+				target: manifest.version,
+				releaseUrl: manifest.releaseUrl,
+				notes: manifest.notes,
+				checkedAt: now(),
+			};
+			return status();
+		}
+		return installFrom(manifest, mirrors);
+	}
+
 	return {
 		getStatus: status,
 
 		async check(): Promise<UpdateStatus> {
 			// 没钥匙就别去打扰网络 —— 拿回来也验不了。
 			if (!enabled) return status();
-
-			const settings = readSettings();
-			const mirrors = mirrorChain(settings);
-			const fetched = await fetchSignedManifest({
-				url: manifestUrls[settings.channel === "prerelease" ? "prerelease" : "stable"],
-				mirrors,
-				trustedKeys,
-				timeoutMs,
-				maxBytes: maxManifestBytes,
-			});
-			if (!fetched.ok) {
-				// 清单都没拿到,给不出「那一版」的发布页,只能给发布列表 —— 但必须给得出:
-				// 「下不动就通知 + 给个链接」是设计里的兜底出口。
-				return fail(fetched.reason, releasesPageUrl);
-			}
-
-			const manifest = fetched.manifest;
-			const decision = decideUpdate({
-				currentVersion,
-				manifest,
-				runtime: { nodeMajor },
-				allowPrerelease: settings.channel === "prerelease",
-			});
-
-			if (decision.kind === "up-to-date") {
-				pending = null;
-				state = { phase: "up-to-date", checkedAt: now() };
-				return status();
-			}
-			if (decision.kind === "needs-image-pull") {
-				// 载荷能比镜像新,但 Node / chromium / 字体全来自镜像。下下来也跑不起来,
-				// 所以连下都不下,直接告诉用户这一版得重拉镜像。
-				pending = null;
-				state = {
-					phase: "needs-image-pull",
-					target: decision.target,
-					releaseUrl: manifest.releaseUrl,
-					checkedAt: now(),
-				};
-				return status();
-			}
-
-			pending = manifest;
-			if (!settings.autoDownload) {
-				state = {
-					phase: "available",
-					target: manifest.version,
-					releaseUrl: manifest.releaseUrl,
-					notes: manifest.notes,
-					checkedAt: now(),
-				};
-				return status();
-			}
-			return installFrom(manifest, mirrors);
+			return serialized(runCheck);
 		},
 
 		async download(): Promise<UpdateStatus> {
 			if (!enabled) return status();
-			// 没先 check 过就按下载 —— 让它自己去查一次,而不是回一个「先点检查」。
-			if (pending === null) return this.check();
-			return installFrom(pending, mirrorChain(readSettings()));
+			return serialized(async () => {
+				// 没先 check 过就按下载 —— 让它自己去查一次,而不是回一个「先点检查」。
+				if (pending === null) return runCheck();
+				return installFrom(pending, mirrorChain(readSettings()));
+			});
 		},
 
 		rollback(): UpdateStatus {

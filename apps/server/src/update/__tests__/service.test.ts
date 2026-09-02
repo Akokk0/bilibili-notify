@@ -260,6 +260,98 @@ describe("createUpdateService —— 检查更新", () => {
 	});
 });
 
+describe("createUpdateService —— 面板一打开就查一次,所以查得起", () => {
+	function payloadFetches(fetchMock: ReturnType<typeof vi.fn>): number {
+		return fetchMock.mock.calls.filter(([u]) => String(u).endsWith("payload.zip")).length;
+	}
+
+	it("同一份新版已经装好 → 再查一次不再下第二遍", async () => {
+		// 面板每次打开都会触发一次检查。装好了还没重启的这段时间里,每开一次面板
+		// 就重下 7MB 是说不过去的 —— 尤其对走加速前缀的用户。
+		const key = makeKey();
+		const zip = makePayloadZip("0.9.0");
+		const fetchMock = stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.9.0", zip)),
+			payload: zip,
+		});
+		const { service } = makeService({ trustedKeys: [key.spkiBase64] });
+
+		await service.check();
+		const again = await service.check();
+
+		expect(again.state).toMatchObject({ phase: "ready", target: "0.9.0" });
+		expect(payloadFetches(fetchMock)).toBe(1);
+	});
+
+	it("同一个版本号但清单里的包换了 → 还是要重下,别只认版本号", async () => {
+		const key = makeKey();
+		const zipA = makePayloadZip("0.9.0");
+		const world: { body: string; payload: Uint8Array } = {
+			body: envelope(key.privateKey, manifestFor("0.9.0", zipA)),
+			payload: zipA,
+		};
+		const fetchMock = vi.fn(async (input: unknown) => {
+			const url = String(input);
+			if (url.endsWith(".json")) return new Response(world.body, { status: 200 });
+			return new Response(world.payload, { status: 200 });
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		const { service } = makeService({ trustedKeys: [key.spkiBase64] });
+
+		await service.check();
+		// 同版本号、不同内容(发版侧重传了资产)。
+		const zipB = zipSync({
+			"index.mjs": new TextEncoder().encode("// bn 0.9.0 rebuilt\n"),
+			"package.json": new TextEncoder().encode(JSON.stringify({ version: "0.9.0" })),
+			"web-dist/index.html": new TextEncoder().encode("<!doctype html>"),
+		});
+		world.body = envelope(key.privateKey, manifestFor("0.9.0", zipB));
+		world.payload = zipB;
+		const again = await service.check();
+
+		expect(again.state).toMatchObject({ phase: "ready", target: "0.9.0" });
+		expect(payloadFetches(fetchMock)).toBe(2);
+	});
+
+	it("关着自动下载、手动下完之后再查一次 → 还是 ready,重启按钮不能因为开了次面板就没了", async () => {
+		const key = makeKey();
+		const zip = makePayloadZip("0.9.0");
+		const fetchMock = stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.9.0", zip)),
+			payload: zip,
+		});
+		const { service } = makeService({
+			trustedKeys: [key.spkiBase64],
+			settings: { autoDownload: false },
+		});
+
+		await service.check();
+		await service.download();
+		const again = await service.check();
+
+		expect(again.state).toMatchObject({ phase: "ready", target: "0.9.0" });
+		expect(payloadFetches(fetchMock)).toBe(1);
+	});
+
+	it("检查还在跑的时候又来一次 → 共用同一趟,不并发下两份", async () => {
+		// 打开面板那次自动检查还在下载,用户走到系统页又按了「检查更新」—— 两趟
+		// 并发各下一份、各解一次压,最后谁写盘谁赢。让第二趟搭第一趟的车。
+		const key = makeKey();
+		const zip = makePayloadZip("0.9.0");
+		const fetchMock = stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.9.0", zip)),
+			payload: zip,
+		});
+		const { service } = makeService({ trustedKeys: [key.spkiBase64] });
+
+		const [a, b] = await Promise.all([service.check(), service.check()]);
+
+		expect(a.state).toMatchObject({ phase: "ready", target: "0.9.0" });
+		expect(b).toEqual(a);
+		expect(payloadFetches(fetchMock)).toBe(1);
+	});
+});
+
 describe("createUpdateService —— 装完顺手打扫", () => {
 	it("清掉够不着的旧版,但**绝不动正在跑的那份**", async () => {
 		const key = makeKey();
