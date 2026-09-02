@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 import {
 	clearPinnedVersion,
 	markBootSucceeded,
+	markVersionRevoked,
 	pinVersion,
+	readBootView,
 	selectVersionForBoot,
 } from "../select-version-for-boot.js";
 
@@ -289,5 +291,51 @@ describe("selectVersionForBoot —— 回退用的钉子", () => {
 		expect(() =>
 			pinVersion({ versionsRoot: "/definitely/not/writable/bn", version: "0.9.0" }),
 		).not.toThrow();
+	});
+});
+
+describe("撤回判死与自愈判死", () => {
+	/**
+	 * 两者曾经共用 `failed` 一个名单,而它们的语义是**相反**的:
+	 *
+	 * - 自愈判死说的是「这一版起不来」——所以它一旦起来了,就该被放出来,
+	 *   `markBootSucceeded` 正是干这个的。
+	 * - 撤回判死说的是「厂商召回了这一版」——它起不起得来根本不相干,起来了也照样是召回的。
+	 *
+	 * 共用名单的下场:被撤回的正好是镜像自带那版时(最常见的情形),重启后镜像照常起来、
+	 * 销账把它从名单里放了出去,于是一个已召回的构建又变回可钉、可退。
+	 */
+	it("撤回的版本起来了也还是撤回的 —— 销账只放自愈判死的那些", () => {
+		const root = tempRoot();
+		const versionsRoot = versionsWith(root, "0.9.0");
+
+		markVersionRevoked({ versionsRoot, version: "0.9.0" });
+		markBootSucceeded({ versionsRoot, version: "0.9.0" });
+
+		expect(readBootView({ versionsRoot, imageVersion: "0.8.0" }).unbootable).toContain("0.9.0");
+	});
+
+	it("选版不选被撤回的版本,哪怕它最新", () => {
+		const root = tempRoot();
+		const versionsRoot = versionsWith(root, "0.8.5", "0.9.0");
+		markVersionRevoked({ versionsRoot, version: "0.9.0" });
+
+		const selection = selectVersionForBoot({
+			imageVersion: "0.8.0",
+			imagePath: join(root, "app"),
+			versionsRoot,
+			maxBootFailures: 3,
+		});
+
+		expect(selection.version).toBe("0.8.5");
+	});
+
+	it("撤回的版本压得过回退的钉子 —— 否则退回去就再也开不了面板", () => {
+		const root = tempRoot();
+		const versionsRoot = versionsWith(root, "0.9.0");
+		pinVersion({ versionsRoot, version: "0.9.0" });
+		markVersionRevoked({ versionsRoot, version: "0.9.0" });
+
+		expect(readBootView({ versionsRoot, imageVersion: "0.8.0" }).pinned).toBeNull();
 	});
 });

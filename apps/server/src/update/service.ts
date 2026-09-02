@@ -15,7 +15,7 @@ import { pruneOldVersions, removeVersionDir } from "./prune-versions.js";
 import {
 	type BootView,
 	clearPinnedVersion,
-	markVersionFailed,
+	markVersionRevoked,
 	pinVersion,
 	readBootView,
 } from "./select-version-for-boot.js";
@@ -109,22 +109,22 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 	 * 退一步会退到哪:装着的版本里比当前旧的那个最高的;都没有就退回镜像自带那版。
 	 * 已经在镜像那版上就是没得退 —— 与其给一个按了没反应的按钮,不如让它是灰的。
 	 *
-	 * 挑的规矩必须和选版那边对钉子的判定(`usablePin`)**一致**:比镜像旧的、被判死的
+	 * 挑的规矩必须和选版那边对钉子的判定(`usablePin`)**一致**:比镜像旧的、被判死或被撤回的
 	 * 都不能当目标,否则面板说「已回退,重启生效」,重启后选版把钉子当没钉过,版本纹丝不动。
 	 * 所以判死名单与已装列表都取自**选版那边给出的同一幅快照**(`readBootView`)。
 	 */
-	function rollbackTarget({ failed, installed }: BootView): string | null {
+	function rollbackTarget({ unbootable, installed }: BootView): string | null {
 		let best: string | null = null;
 		for (const candidate of installed) {
 			if (compareVersions(candidate, currentVersion) >= 0) continue;
 			if (compareVersions(candidate, imageVersion) < 0) continue;
-			if (failed.includes(candidate)) continue;
+			if (unbootable.includes(candidate)) continue;
 			if (best === null || compareVersions(candidate, best) > 0) best = candidate;
 		}
 		if (best !== null) return best;
 		// 镜像那份不在 `installed` 里(它不住在 versionsRoot),但同样要过判死这一关 ——
 		// 撤回的就是它时,退回去等于把用户送回一个厂商已经召回的构建。
-		if (failed.includes(imageVersion)) return null;
+		if (unbootable.includes(imageVersion)) return null;
 		return compareVersions(imageVersion, currentVersion) < 0 ? imageVersion : null;
 	}
 
@@ -257,15 +257,18 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 	 *
 	 * - 装好了还没重启的那份:删目录、撤掉 ready。选版只看盘上谁最新,不删的话用户随手
 	 *   一重启就装上了厂商已经召回的构建。
-	 * - 正在跑的那份:删不得(Windows 上文件还开着),判死 —— 开机选版从此不选它,
-	 *   而清单那版(哪怕更旧)会被当成更新目标装上,见 decideUpdate。
+	 * - 正在跑的那份:删不得(Windows 上文件还开着),记进**撤回**名单 —— 开机选版从此
+	 *   不选它,而清单那版(哪怕更旧)会被当成更新目标装上,见 decideUpdate。
+	 *
+	 * 撤回记的是 `revoked` 而不是自愈那份 `failed`:后者会被「这一版起来了」清掉,
+	 * 而被撤回的正好是镜像自带那版时,重启后它必然起来 —— 于是召回被自己撤销。
 	 */
 	function quarantineRevoked(revoked: readonly string[]): void {
 		if (revoked.length === 0) return;
 		const installed = installedVersions(versionsRoot);
 		for (const version of revoked) {
 			if (version === currentVersion) {
-				markVersionFailed({ versionsRoot, version });
+				markVersionRevoked({ versionsRoot, version });
 				continue;
 			}
 			if (!installed.includes(version)) continue;

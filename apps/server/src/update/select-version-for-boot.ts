@@ -18,11 +18,28 @@ export interface SelectVersionForBootInput {
  * 自愈用的一点点持久状态。放在 `versionsRoot` 下,跟着版本目录一起活。
  *
  * `attempts` 记「选中了但还没确认起来」的次数;`markBootSucceeded` 把它清掉。
- * 达到上限就进 `failed`,从此不再当候选。
+ * 达到上限就进 `failed`,从此不再当候选。厂商撤回另记一份 `revoked` —— 理由见该字段。
  */
 interface BootState {
 	attempts: Record<string, number>;
+	/**
+	 * **自愈**判死的版本:连着起不来这么多次,从此不当候选。
+	 *
+	 * 这份名单的语义是「这一版起不来」,所以 `markBootSucceeded` 会把起来了的那个
+	 * 放出去 —— 判死是在**选中的那一刻**记的,阈值那一次它已经在名单里了,而它其实活了。
+	 */
 	failed: string[];
+	/**
+	 * **厂商撤回**的版本 —— 与 `failed` 分开是**刻意的**,两者语义相反。
+	 *
+	 * 撤回说的是「这一版被召回了」,它起不起得来根本不相干。共用一个名单的话,
+	 * `markBootSucceeded` 那句「起来了就放出去」会把召回撤销掉:被撤回的正好是镜像
+	 * 自带那版时(最常见),重启后镜像照常起来、销账把它放了出去,于是一个已召回的
+	 * 构建又变回可钉、可退。
+	 *
+	 * 字段缺失 = 空数组,所以老的 `boot-state.json` 直接能读,不需要迁移。
+	 */
+	revoked: string[];
 	/**
 	 * 回退用的钉子:钉上之后不再按「取最新」选版。
 	 *
@@ -42,8 +59,19 @@ function readState(versionsRoot: string): BootState {
 	return {
 		attempts: raw?.attempts ?? {},
 		failed: Array.isArray(raw?.failed) ? raw.failed : [],
+		revoked: Array.isArray(raw?.revoked) ? raw.revoked : [],
 		pinned: typeof raw?.pinned === "string" ? raw.pinned : undefined,
 	};
+}
+
+/**
+ * 这一版能不能被选中 —— 两份名单合起来的那一问。
+ *
+ * 选版、钉子、回退目标都只该问这一句:分头去查 `failed` 或 `revoked` 的话,
+ * 漏掉一份的症状是「撤回了还是选中了它」或者「退回去之后开不了机」。
+ */
+function unbootable(state: BootState): string[] {
+	return [...state.failed, ...state.revoked];
 }
 
 function writeState(versionsRoot: string, state: BootState): void {
@@ -86,7 +114,7 @@ export function selectVersionForBoot({
 
 	let best: string | null = null;
 	for (const candidate of installed) {
-		if (state.failed.includes(candidate)) continue;
+		if (unbootable(state).includes(candidate)) continue;
 		if (compareVersions(candidate, imageVersion) <= 0) continue;
 		if (best === null || compareVersions(candidate, best) > 0) best = candidate;
 	}
@@ -114,7 +142,7 @@ function usablePin(
 ): string | null {
 	const { pinned } = state;
 	if (!pinned) return null;
-	if (state.failed.includes(pinned)) return null;
+	if (unbootable(state).includes(pinned)) return null;
 	if (compareVersions(imageVersion, pinned) > 0) return null;
 	if (pinned === imageVersion) return pinned;
 	return installed.includes(pinned) ? pinned : null;
@@ -153,8 +181,13 @@ export interface BootView {
 	 * 开一次面板就把用户按的回退撤销了。
 	 */
 	pinned: string | null;
-	/** 判死的版本(自愈累计失败,或被清单撤回)。退进一个开不了机的版本等于把人锁在外面。 */
-	failed: readonly string[];
+	/**
+	 * 不该被选中的版本 —— 自愈判死的加上厂商撤回的,合成一份。
+	 *
+	 * 回退目标要照着它筛:退进一个开不了机的版本等于把人锁在外面,退进一个已召回的
+	 * 版本等于把召回撤销掉。两件事都由这一份名单挡。
+	 */
+	unbootable: readonly string[];
 	/** 盘上装着的版本。 */
 	installed: readonly string[];
 }
@@ -169,14 +202,23 @@ export interface BootView {
 export function readBootView({ versionsRoot, imageVersion }: ReadBootViewInput): BootView {
 	const state = readState(versionsRoot);
 	const installed = installedVersions(versionsRoot);
-	return { pinned: usablePin(state, installed, imageVersion), failed: state.failed, installed };
+	return {
+		pinned: usablePin(state, installed, imageVersion),
+		unbootable: unbootable(state),
+		installed,
+	};
 }
 
 /**
- * 把一个版本判死 —— 给撤回用:正在跑的那份删不得(Windows 上文件还开着),但开机选版
- * 取的是最新,不判死的话重启后还是它。和自愈判死走同一个名单,选版那边不用多认一种。
+ * 把一个版本记成**被厂商撤回**。
+ *
+ * 给撤回用:正在跑的那份删不得(Windows 上文件还开着),但开机选版取的是最新,
+ * 不记一笔的话重启后还是它。
+ *
+ * 走 `revoked` 而**不是**自愈那份 `failed` —— 后者会被 `markBootSucceeded` 清掉,
+ * 而「起来了」并不能说明一个被召回的版本不再是召回的。详见 `BootState.revoked`。
  */
-export function markVersionFailed({
+export function markVersionRevoked({
 	versionsRoot,
 	version,
 }: {
@@ -184,8 +226,8 @@ export function markVersionFailed({
 	version: string;
 }): void {
 	const state = readState(versionsRoot);
-	if (state.failed.includes(version)) return;
-	writeState(versionsRoot, { ...state, failed: [...state.failed, version] });
+	if (state.revoked.includes(version)) return;
+	writeState(versionsRoot, { ...state, revoked: [...state.revoked, version] });
 }
 
 export interface PinVersionInput {

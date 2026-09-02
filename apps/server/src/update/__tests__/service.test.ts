@@ -947,9 +947,13 @@ describe("createUpdateService —— 撤回", () => {
 		expect(status.state).toMatchObject({ phase: "ready", target: "0.9.0" });
 		expect(existsSync(join(versionsRoot, "0.9.0"))).toBe(true);
 		// 正在跑的那份删不得(Windows 上文件还开着),但开机选版不能再选它:选版取最新,
-		// 不判死的话重启后还是 0.9.1。
+		// 不记一笔的话重启后还是 0.9.1。
+		//
+		// 记进 `revoked` 而**不是**自愈那份 `failed`:后者会被「这一版起来了」清掉,
+		// 于是重启一次就把召回撤销了。两份名单为什么必须分开,见 select-version-for-boot.ts。
 		const bootState = JSON.parse(readFileSync(join(versionsRoot, "boot-state.json"), "utf8"));
-		expect(bootState.failed).toContain("0.9.1");
+		expect(bootState.revoked).toContain("0.9.1");
+		expect(bootState.failed ?? []).not.toContain("0.9.1");
 	});
 });
 
