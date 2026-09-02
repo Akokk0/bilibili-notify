@@ -44,23 +44,28 @@ koishi / AstrBot **不在范围内** —— 那两端由各自宿主管更新。
 ### 生成
 
 ```bash
-# 各生成一把(A、B 各跑一次,分别存好)
-openssl genpkey -algorithm ed25519 -out bn-update-A.pem
-openssl genpkey -algorithm ed25519 -out bn-update-B.pem
-
-# 取公钥的 SPKI DER(base64)—— 这一串填进代码
-openssl pkey -in bn-update-A.pem -pubout -outform DER | base64
-openssl pkey -in bn-update-B.pem -pubout -outform DER | base64
+# 建议生成到**仓库外面** —— .gitignore 没有 *.pem 规则,私钥躺在工作树里,
+# 一次 `git add -A` 就会被提交上去。
+node scripts/gen-update-keys.mjs --out ~/secrets/bn-update
 ```
 
-把两串公钥填进 `apps/server/src/update/trusted-keys.ts` 的 `TRUSTED_UPDATE_KEYS`。
-**空列表 = 功能关着**(客户端会明说「本构建未启用」,不会报成验签失败),fork 出去自己
-构建的人默认就落在这一档。
+它产出 `bn-update-A.pem` / `bn-update-B.pem`(mode 0600,已存在则**拒绝覆盖** ——
+覆盖私钥不可逆),并直接打印该往哪儿贴的三步。
+
+> **别用 `openssl genpkey -algorithm ed25519`。** macOS 自带的 `openssl` 其实是
+> LibreSSL(实测 3.3.6),它**不认 ed25519**,只回一句 `Algorithm ed25519 not found`
+> 就完事 —— 而且**退出码是 0**,于是 `-out` 指定的文件根本没被创建,下一条命令才报
+> 「文件不存在」,把人指向完全错误的方向。真装了 OpenSSL 3.x 的话那两条命令没问题,
+> 但上面这个脚本和签名工具用的是同一套 Node crypto,格式一定对得上。
+
+把打印出来的两串公钥填进 `apps/server/src/update/trusted-keys.ts` 的
+`TRUSTED_UPDATE_KEYS`。**空列表 = 功能关着**(客户端会明说「本构建未启用」,不会报成
+验签失败),fork 出去自己构建的人默认就落在这一档。
 
 私钥 A 进 repo secret(PEM 换行在 secret 里容易丢,所以脚本也收 base64 包过一层的):
 
 ```bash
-base64 < bn-update-A.pem | gh secret set BN_UPDATE_SIGNING_KEY
+base64 < ~/secrets/bn-update-A.pem | gh secret set BN_UPDATE_SIGNING_KEY
 ```
 
 两把私钥离线各存一份(密码管理器 / 冷存储)。**丢了 A 还能用 B 顶上;两把都丢,
@@ -124,5 +129,6 @@ base64 < bn-update-A.pem | gh secret set BN_UPDATE_SIGNING_KEY
 | `apps/server/src/routes/update.ts` | `GET /api/update` 与 check/download/apply/rollback |
 | `apps/web/src/components/update/` | 系统页那一节 |
 | `scripts/build-update-payload.mjs` | 打载荷 zip |
+| `scripts/gen-update-keys.mjs` | 生成两把 Ed25519 密钥,并打印该往哪儿贴 |
 | `scripts/sign-update-manifest.mjs` | 生成 + 签署清单 |
 | `.github/workflows/update-payload.yml` | 发版侧 |
