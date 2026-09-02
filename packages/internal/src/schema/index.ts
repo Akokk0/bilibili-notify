@@ -3,6 +3,7 @@ export * from "./commands";
 export * from "./common";
 export * from "./globals";
 export * from "./history";
+export * from "./link-parsing";
 export * from "./message-layout";
 export * from "./resolve";
 export * from "./roast-schedule";

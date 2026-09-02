@@ -22,6 +22,7 @@ import {
 	ScheduleConfigSchema,
 	TemplateBundleSchema,
 } from "./common";
+import { DEFAULT_LINK_PARSING, LinkParsingConfigSchema } from "./link-parsing";
 import { DEFAULT_MESSAGE_LAYOUT, MessageLayoutSchema } from "./message-layout";
 import { DEFAULT_ROAST_SCHEDULE, RoastScheduleSchema } from "./roast-schedule";
 
@@ -237,6 +238,11 @@ export const GlobalConfigSchema = z.object({
 	 * 放顶层同 `roastSchedule`:它不是「per-UP overrides 缺字段时的回退」。
 	 */
 	commands: CommandConfigSchema.default(DEFAULT_COMMAND_CONFIG),
+	/**
+	 * 链接解析(群里贴视频链接自动出卡片)。独立端专有,放顶层同 `commands`。
+	 * `.default(...)` 是老配置兜底:少了它,存量实例升上来第一件事就是开不了机。
+	 */
+	linkParsing: LinkParsingConfigSchema.default(DEFAULT_LINK_PARSING),
 	/**
 	 * 新手指引的持久状态。独立端专有(koishi / AstrBot 没有面板)。
 	 *
