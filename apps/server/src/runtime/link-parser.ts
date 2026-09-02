@@ -27,8 +27,44 @@ import { videoToDynamic } from "./video-card.js";
 
 /** 一条消息里最多解析几个链接 —— 再多就是刷屏了,也没人真需要。 */
 const MAX_LINKS_PER_MESSAGE = 3;
-/** 冷却表膨胀到这个数就顺手清一次过期项。 */
-const COOLDOWN_PRUNE_AT = 500;
+
+/**
+ * 链接解析的硬上限。不进面板:冷却(面板上那条)只防「同一个视频反复贴」,这几条防的是
+ * 换着视频刷 —— 谁都能触发的功能,资源面得有个不靠主人调的底。
+ */
+export interface LinkLimits {
+	/** 单个群每分钟最多出几张链接卡。 */
+	groupPerMinute: number;
+	/**
+	 * 全局同时在处理(取信息 / 渲染 / 发送)的链接卡上限。渲染队列是串行的,链接卡排太多
+	 * 会把真正的推送卡(开播 / 动态)挤到后面几分钟才发;超了直接放弃,不排队。
+	 */
+	maxInflight: number;
+	/** 冷却表 / 群额度表各自的容量,满了丢最久没碰的 —— 忘一条顶多多出一张卡,表不会越涨越慢。 */
+	tableCap: number;
+}
+export const LINK_LIMITS: LinkLimits = { groupPerMinute: 6, maxInflight: 3, tableCap: 2000 };
+const BUDGET_WINDOW_MS = 60_000;
+
+/**
+ * 有容量上限的「最近碰过」表。Map 按插入序遍历,每次 set 先 delete 再 set,最久没碰的永远
+ * 在最前 —— 满了就丢它。容量是上限不是触发点:满了照样能装,只是装一个丢一个。
+ */
+class RecencyTable<V> {
+	private readonly map = new Map<string, V>();
+	constructor(private readonly cap: number) {}
+	get(key: string): V | undefined {
+		return this.map.get(key);
+	}
+	set(key: string, value: V): void {
+		this.map.delete(key);
+		this.map.set(key, value);
+		if (this.map.size > this.cap) {
+			const oldest = this.map.keys().next().value;
+			if (oldest !== undefined) this.map.delete(oldest);
+		}
+	}
+}
 
 export type LinkSourcePlatform = "onebot" | "qq-official";
 
@@ -75,6 +111,8 @@ export interface LinkParserOptions {
 	/** 往来源群发 —— 由接线层用收到这一帧的那个 adapter 实现。 */
 	send: (dest: LinkReplyDestination, payload: NotificationPayload) => Promise<DeliveryResult>;
 	now?: () => number;
+	/** 硬上限,缺省 {@link LINK_LIMITS};测试用小数字把边界拉到眼前。 */
+	limits?: Partial<LinkLimits>;
 }
 
 export interface LinkParser {
@@ -89,19 +127,31 @@ type Renderer = NonNullable<ReturnType<LinkParserOptions["renderer"]>>;
 
 export function createLinkParser(opts: LinkParserOptions): LinkParser {
 	const now = opts.now ?? (() => Date.now());
-	/** `平台:adapterId:群:视频` → 上次开始处理的时刻。 */
-	const lastSeen = new Map<string, number>();
+	const limits: LinkLimits = { ...LINK_LIMITS, ...opts.limits };
+	/** `平台:adapterId:群:视频` → 上次开始处理的时刻。冷却关着(0)时不碰它。 */
+	const lastSeen = new RecencyTable<number>(limits.tableCap);
+	/** `平台:adapterId:群` → 最近一分钟里开始处理的时刻。 */
+	const groupStarts = new RecencyTable<number[]>(limits.tableCap);
+	/** 全局正在处理(取信息 / 渲染 / 发送)的链接数。 */
+	let inflight = 0;
 
-	function inCooldown(key: string, cooldownMs: number): boolean {
-		const t = now();
+	const coolingDown = (key: string, cooldownMs: number): boolean => {
+		if (cooldownMs <= 0) return false;
 		const prev = lastSeen.get(key);
-		if (prev !== undefined && cooldownMs > 0 && t - prev < cooldownMs) return true;
-		if (lastSeen.size >= COOLDOWN_PRUNE_AT) {
-			for (const [k, v] of lastSeen) if (t - v >= cooldownMs) lastSeen.delete(k);
-		}
-		lastSeen.set(key, t);
-		return false;
-	}
+		return prev !== undefined && now() - prev < cooldownMs;
+	};
+	const markCooldown = (key: string, cooldownMs: number): void => {
+		if (cooldownMs > 0) lastSeen.set(key, now());
+	};
+	const groupExhausted = (scope: string): boolean => {
+		const t = now();
+		const recent = (groupStarts.get(scope) ?? []).filter((ts) => t - ts < BUDGET_WINDOW_MS);
+		groupStarts.set(scope, recent);
+		return recent.length >= limits.groupPerMinute;
+	};
+	const recordGroupStart = (scope: string): void => {
+		groupStarts.set(scope, [...(groupStarts.get(scope) ?? []), now()]);
+	};
 
 	/** 冷却键里的「视频」段:直链按视频号;短链先按短链本身,解出视频号后再按视频号补一道。 */
 	const refKey = (ref: VideoLinkRef): string =>
@@ -158,16 +208,40 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 			const cooldownMs = config.cooldownSeconds * 1000;
 			for (const linkRef of refs) {
 				try {
+					// 三道闸先看不动手,都过了才一起记账:在冷却里的链接不该吃群额度,因为忙而放弃的
+					// 链接也不该被记成「处理过」—— 那样它再贴一次就要等整个冷却。
+					const rawKey = `${scope}:${refKey(linkRef)}`;
+					if (coolingDown(rawKey, cooldownMs)) continue;
+					if (inflight >= limits.maxInflight) {
+						opts.logger.debug(
+							`[link] 同时在处理的链接卡已满(${limits.maxInflight}),放弃 group=${msg.groupId}`,
+						);
+						break;
+					}
+					if (groupExhausted(scope)) {
+						opts.logger.debug(
+							`[link] 群一分钟额度已用完(${limits.groupPerMinute}),放弃 group=${msg.groupId}`,
+						);
+						break;
+					}
 					// 冷却从**开始处理**起算,不是发出去才算:一条坏链接被反复贴,不该每次都去打
 					// 接口 —— 短链的那一跳也是接口,所以短链先按它自己吃一道,解出视频号后再按
 					// 视频号吃一道(短链与直链指着同一个视频时只出一张)。
-					if (inCooldown(`${scope}:${refKey(linkRef)}`, cooldownMs)) continue;
-					const ref = await toVideoRef(linkRef);
-					if (!ref) continue;
-					if (linkRef.kind === "short" && inCooldown(`${scope}:${videoKey(ref)}`, cooldownMs)) {
-						continue;
+					markCooldown(rawKey, cooldownMs);
+					recordGroupStart(scope);
+					inflight++;
+					try {
+						const ref = await toVideoRef(linkRef);
+						if (!ref) continue;
+						if (linkRef.kind === "short") {
+							const vKey = `${scope}:${videoKey(ref)}`;
+							if (coolingDown(vKey, cooldownMs)) continue;
+							markCooldown(vKey, cooldownMs);
+						}
+						await replyWithCard(renderer, dest, ref);
+					} finally {
+						inflight--;
 					}
-					await replyWithCard(renderer, dest, ref);
 				} catch (e) {
 					// 单个链接失败不回话、不影响同一条消息里的下一个。
 					opts.logger.warn(`[link] 解析失败 group=${msg.groupId}: ${String(e)}`);

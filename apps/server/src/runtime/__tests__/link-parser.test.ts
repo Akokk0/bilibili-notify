@@ -15,7 +15,12 @@ import type {
 	NotificationPayload,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { createLinkParser, type LinkReplyDestination } from "../link-parser.js";
+import {
+	createLinkParser,
+	LINK_LIMITS,
+	type LinkLimits,
+	type LinkReplyDestination,
+} from "../link-parser.js";
 
 const ADAPTER = "11111111-1111-4111-8111-111111111111";
 const GROUP = 123456;
@@ -61,7 +66,7 @@ const LAYOUT: CardBlock[] = [
 	{ id: "header", type: "header", visible: true, marginTop: 12 },
 ];
 
-function makeParser(over: Partial<LinkParsingConfig> = {}) {
+function makeParser(over: Partial<LinkParsingConfig> = {}, limits?: Partial<LinkLimits>) {
 	const config: LinkParsingConfig = { enabled: true, cooldownSeconds: 60, ...over };
 	const getVideoInfo = vi.fn(async (_ref: VideoRef) => VIDEO);
 	const resolveShortLink = vi.fn(async (_url: string): Promise<string | null> => null);
@@ -87,6 +92,7 @@ function makeParser(over: Partial<LinkParsingConfig> = {}) {
 		layout: () => LAYOUT,
 		send,
 		now: () => now,
+		...(limits ? { limits } : {}),
 	});
 	return {
 		parser,
@@ -263,6 +269,71 @@ describe("createLinkParser", () => {
 			await h.parser.handle(groupFrame(LINK), { adapterId: ADAPTER });
 			expect(h.getVideoInfo).toHaveBeenCalledTimes(1);
 			expect(h.sent).toHaveLength(0);
+		});
+	});
+
+	describe("限流 —— 冷却只防同一个视频反复贴,这几条防换着视频刷", () => {
+		const link = (id: string) => `https://www.bilibili.com/video/${id}`;
+		/** 互不相同的 BV 号,数量随要。 */
+		const ids = (n: number) =>
+			Array.from({ length: n }, (_, i) => `BV1${String(i).padStart(9, "x")}`);
+
+		it("同一个群一分钟内换着视频刷,最多出 groupPerMinute 张;别的群不受影响;过一分钟再放行", async () => {
+			const h = makeParser({ cooldownSeconds: 0 });
+			for (const id of ids(LINK_LIMITS.groupPerMinute + 2)) {
+				await h.parser.handle(groupFrame(link(id)), { adapterId: ADAPTER });
+			}
+			expect(h.sent).toHaveLength(LINK_LIMITS.groupPerMinute);
+
+			await h.parser.handle(groupFrame(link("BV1zzzzzzzzz"), { group_id: 999 }), {
+				adapterId: ADAPTER,
+			});
+			expect(h.sent).toHaveLength(LINK_LIMITS.groupPerMinute + 1);
+
+			h.advance(61_000);
+			await h.parser.handle(groupFrame(link("BV1yyyyyyyyy")), { adapterId: ADAPTER });
+			expect(h.sent).toHaveLength(LINK_LIMITS.groupPerMinute + 2);
+		});
+
+		it("全局同时在处理的链接卡有上限:渲染卡着时,再来的链接不排队 —— 渲染队列是串行的,推送卡排在后面", async () => {
+			const h = makeParser({ cooldownSeconds: 0 });
+			const release: (() => void)[] = [];
+			h.generateDynamicCard.mockImplementation(
+				() =>
+					new Promise<Buffer<ArrayBuffer>>((resolve) =>
+						release.push(() => resolve(Buffer.from("x"))),
+					),
+			);
+			const runs = ids(LINK_LIMITS.maxInflight + 1).map((id) =>
+				h.parser.handle(groupFrame(link(id)), { adapterId: ADAPTER }),
+			);
+			for (let i = 0; i < 50 && release.length < LINK_LIMITS.maxInflight; i++) {
+				await new Promise((r) => setTimeout(r, 1));
+			}
+			// 第 maxInflight+1 条连接口都没打 —— 不是排队,是直接放弃。
+			expect(h.getVideoInfo).toHaveBeenCalledTimes(LINK_LIMITS.maxInflight);
+			for (const r of release) r();
+			await Promise.all(runs);
+			expect(h.sent).toHaveLength(LINK_LIMITS.maxInflight);
+
+			// 卡着的放行之后,新来的照常。
+			h.generateDynamicCard.mockResolvedValue(Buffer.from("png-bytes"));
+			await h.parser.handle(groupFrame(link("BV1yyyyyyyyy")), { adapterId: ADAPTER });
+			expect(h.sent).toHaveLength(LINK_LIMITS.maxInflight + 1);
+		});
+
+		it("冷却表有容量上限:满了先忘最久没碰的 —— 表不会越涨越慢", async () => {
+			const h = makeParser({}, { tableCap: 2 });
+			const [a, b, c] = ids(3) as [string, string, string];
+			for (const id of [a, b, c]) {
+				await h.parser.handle(groupFrame(link(id)), { adapterId: ADAPTER });
+			}
+			expect(h.sent).toHaveLength(3);
+			// a 最久没碰,已被挤掉:再贴照样出图;c 还在表里:不出。
+			await h.parser.handle(groupFrame(link(a)), { adapterId: ADAPTER });
+			expect(h.sent).toHaveLength(4);
+			await h.parser.handle(groupFrame(link(c)), { adapterId: ADAPTER });
+			expect(h.sent).toHaveLength(4);
 		});
 	});
 

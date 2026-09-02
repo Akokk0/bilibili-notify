@@ -156,7 +156,7 @@ export const FIELD_LABELS = {
 	},
 	"linkParsing.cooldownSeconds": {
 		label: "冷却时间",
-		hint: "同一个群里同一个视频多久内只出一次图;0 = 不节流",
+		hint: "同一个群里同一个视频多久内只出一次图;0 = 不节流。另有不可调的底线:每个群每分钟最多 6 张、全局同时最多处理 3 张,防换着视频刷",
 		section: "linkParsing",
 	},
 	"commands.aliases": {
