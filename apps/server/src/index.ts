@@ -1,7 +1,7 @@
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import type { NotificationPayload } from "@bilibili-notify/internal";
 import { type ServerType, serve } from "@hono/node-server";
@@ -600,7 +600,9 @@ export async function startStandaloneServer(
 					// index.mjs 时(dev / 老镜像)拿不到 —— 那就当自己就是地板,
 					// 「没得退」,而不是瞎猜一个版本号。
 					imageVersion: normalizeOptionalEnv(env.BN_IMAGE_VERSION) ?? resolveAppVersion(),
-					versionsRoot: join(bootstrap.dataDir, "versions"),
+					// resolve 而不是 join:dataDir 可以是相对路径(默认就是 `./data`),而 boot.mjs
+					// 那侧(update/versions-root.ts)算的是绝对路径 —— 两边必须指向同一个目录。
+					versionsRoot: resolve(bootstrap.dataDir, "versions"),
 					nodeMajor: Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10),
 					trustedKeys: TRUSTED_UPDATE_KEYS,
 					manifestUrls: UPDATE_MANIFEST_URLS,

@@ -32,8 +32,11 @@ export type InstallPayloadResult =
  * 是纯词法的,不碰磁盘。
  */
 function escapesRoot(root: string, entryName: string): boolean {
-	const resolved = resolve(root, entryName);
-	return resolved !== root && !resolved.startsWith(root + sep);
+	// 根先算成绝对路径:`resolve(root, entry)` 出来的一定是绝对路径,拿它跟一个相对的
+	// 根比前缀,每个条目都会被判成越界 —— 配置里 dataDir 默认就是 `./data`。
+	const base = resolve(root);
+	const resolved = resolve(base, entryName);
+	return resolved !== base && !resolved.startsWith(base + sep);
 }
 
 /**

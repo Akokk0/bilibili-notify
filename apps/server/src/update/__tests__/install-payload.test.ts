@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { installPayload } from "../install-payload.js";
@@ -34,6 +34,25 @@ function sha256(bytes: Uint8Array): string {
 }
 
 describe("installPayload", () => {
+	it("versionsRoot 是相对路径也装得上 —— 越界判定得先把根算成绝对路径", () => {
+		// 配置里 dataDir 默认是 `./data`,用户手写 yaml 也常写相对路径。越界判定拿
+		// 绝对路径去跟相对根比前缀,会把**每一个**条目都判成越界 —— 好包永远装不上,
+		// 而且报出来的 unsafe-entry 像是供应链告警。
+		const absolute = tempRoot();
+		const versionsRoot = relative(process.cwd(), absolute);
+		const zip = makeZip({ "index.mjs": "console.log('payload')" });
+
+		const result = installPayload({
+			zip,
+			expectedSha256: sha256(zip),
+			version: "0.9.0",
+			versionsRoot,
+		});
+
+		expect(result.ok, result.ok ? "" : `reason=${result.reason}`).toBe(true);
+		expect(existsSync(join(absolute, "0.9.0", "index.mjs"))).toBe(true);
+	});
+
 	it("sha256 对不上 → 拒绝,而且 versions/ 下一个字节都不多", () => {
 		const versionsRoot = tempRoot();
 
