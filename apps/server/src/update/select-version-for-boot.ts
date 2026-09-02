@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { compareVersions } from "./version-order.js";
 
@@ -55,7 +55,11 @@ function readState(versionsRoot: string): BootState {
 function writeState(versionsRoot: string, state: BootState): void {
 	try {
 		mkdirSync(versionsRoot, { recursive: true });
-		writeFileSync(join(versionsRoot, STATE_FILE), JSON.stringify(state));
+		// tmp + rename:就地写的话一次断电就是半个 JSON,readState 把它当成「没有任何记录」——
+		// 回退的钉子没了,自愈判死的黑名单也没了,崩溃循环从零再来一遍。
+		const tmp = join(versionsRoot, `.${STATE_FILE}.${process.pid}.tmp`);
+		writeFileSync(tmp, JSON.stringify(state));
+		renameSync(tmp, join(versionsRoot, STATE_FILE));
 	} catch {
 		// 写不进去(只读挂载、磁盘满)也不能拦着启动。代价是自愈失灵,但那也好过
 		// 因为记不上账就干脆不启动。
