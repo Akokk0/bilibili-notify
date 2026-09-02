@@ -121,6 +121,18 @@ channel hook 一起),每次页面加载 `POST /api/update/check` 一次。查到
 「有没有新版」「这一阶段怎么说」只在 `apps/web/src/components/update/status.ts` 判一处 ——
 概览说「有新版」而系统页说「已是最新」就是两处各判一遍的下场。
 
+## 加速站怎么选
+
+照 OpenClash 的骨架砍到够用:系统页那节里一张表,**直连打头、内置六个候选、末尾一行自定义**,
+列是 地址 | 延迟 | 通过它拿到的清单版本 | 选用。「测一遍」打 `POST /api/update/mirrors/probe`,
+服务端对每个前缀并行拉一次当前渠道的清单 + 验签(浏览器直接打代理站会被 CORS 挡,而且真正
+下载的是服务端那台机器);结果按老规矩归因:无法访问 / **签名验不过** / 清单不成形。
+
+**默认直连、只能选一个。** 选中的前缀是 `update.mirrors` 里唯一那项,直连永远垫底 —— 设置
+结构没改,「不硬编码第三方当默认」那条决定也没动:内置名单只决定面板上给谁看,
+不决定默认和谁说话。名单在 `apps/contract/src/update.ts` 的 `BUILTIN_UPDATE_MIRRORS`
+(2026-09-02 凭经验列的,没逐个实测;死站在面板里一测就露馅)。
+
 ## 撤回一个坏版本
 
 两道闸,缺一不可:
@@ -149,7 +161,7 @@ channel hook 一起),每次页面加载 `POST /api/update/check` 一次。查到
 |---|---|
 | `apps/server/src/boot.ts` | 选版 + 同进程加载载荷,回落镜像 |
 | `apps/server/src/update/` | 验签 / 决策 / 落盘 / 镜像站 / 选版自愈 / 清理 / 编排 |
-| `apps/server/src/routes/update.ts` | `GET /api/update` 与 check/download/apply/rollback |
+| `apps/server/src/routes/update.ts` | `GET /api/update` 与 check/download/apply/rollback/mirrors/probe |
 | `apps/web/src/components/update/` | 系统页那一节;`status.ts` 是三处消费点共用的判断与查询键 |
 | `apps/web/src/hooks/useUpdateCheckOnOpen.ts` | 打开面板查一次 + 发通知卡 |
 | `scripts/build-update-payload.mjs` | 打载荷 zip |
