@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { newerVersionOf, phaseLabel } from "../status";
 
 function status(state: UpdateStatusDTO["state"]): UpdateStatusDTO {
-	return { currentVersion: "0.8.0", rollbackTarget: null, state };
+	return { currentVersion: "0.8.0", rollbackTarget: null, pinnedVersion: null, state };
 }
 
 describe("newerVersionOf —— 「有一版比现在新」这件事只在一处判", () => {

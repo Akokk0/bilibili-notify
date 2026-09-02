@@ -15,6 +15,7 @@ function fakeService(overrides: Partial<UpdateService> = {}): UpdateService {
 	const status: UpdateStatusDTO = {
 		currentVersion: "0.8.0",
 		rollbackTarget: null,
+		pinnedVersion: null,
 		state: { phase: "idle" },
 	};
 	return {
@@ -41,6 +42,7 @@ describe("update 路由", () => {
 		const check = vi.fn(async () => ({
 			currentVersion: "0.8.0",
 			rollbackTarget: null,
+			pinnedVersion: null,
 			state: { phase: "ready" as const, target: "0.9.0", releaseUrl: "https://x/t" },
 		}));
 		const app = createUpdateRoute({
@@ -86,6 +88,7 @@ describe("update 路由", () => {
 			service: fakeService({
 				getStatus: () => ({
 					currentVersion: "0.9.0",
+					pinnedVersion: null,
 					rollbackTarget: "0.8.0",
 					state: { phase: "rolled-back", target: "0.8.0" },
 				}),
@@ -106,6 +109,7 @@ describe("update 路由", () => {
 				getStatus: () => ({
 					currentVersion: "0.8.0",
 					rollbackTarget: null,
+					pinnedVersion: null,
 					state: { phase: "ready", target: "0.9.0", releaseUrl: "https://x/t" },
 				}),
 			}),
@@ -134,6 +138,7 @@ describe("update 路由", () => {
 				getStatus: () => ({
 					currentVersion: "0.8.0",
 					rollbackTarget: null,
+					pinnedVersion: null,
 					state: { phase: "disabled" },
 				}),
 			}),

@@ -49,6 +49,15 @@ export interface UpdateStatusDTO {
 	currentVersion: string;
 	/** 退一步会退到哪。`null` = 已经在最底下那版,回退按钮该是灰的。 */
 	rollbackTarget: string | null;
+	/**
+	 * 盘上钉着的版本(回退落下的钉子),`null` = 没钉。
+	 *
+	 * 和 `state` 里的 `rolled-back` 不是一回事:那个是**内存态**,只活到重启;而回退
+	 * 恰恰靠重启生效 —— 重启之后 `state` 是 `idle`,钉子却还在盘上。面板「打开就查一次」
+	 * 看的是这一项:钉着就不自动查,否则自动检查会装新版、顺手拔钉子,用户按的回退
+	 * 活不过一次开面板。手动「检查更新」不受它限制,那是明确要往前走。
+	 */
+	pinnedVersion: string | null;
 	state: UpdateState;
 }
 

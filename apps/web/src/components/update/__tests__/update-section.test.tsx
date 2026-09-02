@@ -29,6 +29,7 @@ function serve(state: UpdateStatusDTO["state"], over: Partial<UpdateStatusDTO> =
 	const status: UpdateStatusDTO = {
 		currentVersion: "0.8.0",
 		rollbackTarget: null,
+		pinnedVersion: null,
 		state,
 		...over,
 	};
@@ -60,6 +61,14 @@ afterEach(() => {
 });
 
 describe("UpdateSection —— 报错的归因", () => {
+	it("盘上有钉子 → 说明一句,免得用户纳闷为什么打开面板不再自动查", async () => {
+		serve({ phase: "idle" }, { pinnedVersion: "0.8.0" });
+		renderSection();
+
+		// 版本号包在 <strong> 里,是两个文本节点 —— 对整段文本断言。
+		await waitFor(() => expect(document.body.textContent).toMatch(/钉在 0\.8\.0/));
+	});
+
 	it("验签失败才是红字 —— 那是唯一可能真有人动了手脚的一条", async () => {
 		serve({ phase: "error", reason: "untrusted", checkedAt: 1 });
 		renderSection();
@@ -194,6 +203,7 @@ describe("UpdateSection —— 设置", () => {
 		vi.mocked(api.post).mockResolvedValue({
 			currentVersion: "0.8.0",
 			rollbackTarget: null,
+			pinnedVersion: null,
 			state: { phase: "ready", target: "0.9.0", releaseUrl: "https://x/t" },
 		});
 		renderSection();

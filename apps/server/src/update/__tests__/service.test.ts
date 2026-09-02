@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { UpdateSettings } from "@bilibili-notify/internal";
 import { zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { pinVersion } from "../select-version-for-boot.js";
 import { createUpdateService } from "../service.js";
 
 /**
@@ -568,6 +569,34 @@ describe("createUpdateService —— 回退", () => {
 			phase: "error",
 			reason: "nothing-to-roll-back",
 		});
+	});
+
+	it("重启之后钉子还在盘上 → 状态里报出来,面板才知道这会儿别自动查", async () => {
+		// 回退是靠重启生效的。重启之后这是个全新的进程,内存里那个 rolled-back 早没了 ——
+		// 面板要是只认内存态,开一次面板就自动查、自动下、顺手拔钉子,用户按的回退
+		// 活不过一次开面板。钉子在盘上,状态就得把它报出来。
+		const { service, versionsRoot } = makeService({
+			currentVersion: "0.9.0",
+			imageVersion: "0.8.0",
+			trustedKeys: [makeKey().spkiBase64],
+		});
+		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
+		mkdirSync(join(versionsRoot, "0.10.0"), { recursive: true });
+		pinVersion({ versionsRoot, version: "0.9.0" });
+
+		expect(service.getStatus()).toMatchObject({ state: { phase: "idle" }, pinnedVersion: "0.9.0" });
+	});
+
+	it("钉的那版目录已经没了 → 报没钉(和选版那边同一套判定,别让一颗死钉子永远压着自动检查)", async () => {
+		const { service, versionsRoot } = makeService({
+			currentVersion: "0.9.0",
+			imageVersion: "0.8.0",
+			trustedKeys: [makeKey().spkiBase64],
+		});
+		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
+		pinVersion({ versionsRoot, version: "0.8.5" });
+
+		expect(service.getStatus().pinnedVersion).toBeNull();
 	});
 
 	it("退回去之后又装了新版 → 钉子必须拔掉,否则永远停在退回去那一版", async () => {

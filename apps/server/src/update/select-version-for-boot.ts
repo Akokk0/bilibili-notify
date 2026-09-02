@@ -166,6 +166,25 @@ function recordAttempt(
 	return selection;
 }
 
+export interface ReadPinnedVersionInput {
+	versionsRoot: string;
+	imageVersion: string;
+}
+
+/**
+ * 盘上现在钉着谁 —— 按**选版那一套**判定(被判死 / 目录没了 / 镜像更新了都算没钉),
+ * 这样面板看到的和下次开机真会发生的是同一件事。
+ *
+ * 给更新服务用:回退是靠重启生效的,重启之后内存里那个「rolled-back」早没了,
+ * 面板只认内存态的话,开一次面板就把用户按的回退撤销了。
+ */
+export function readPinnedVersion({
+	versionsRoot,
+	imageVersion,
+}: ReadPinnedVersionInput): string | null {
+	return usablePin(readState(versionsRoot), versionsRoot, imageVersion);
+}
+
 export interface PinVersionInput {
 	versionsRoot: string;
 	version: string;

@@ -28,7 +28,11 @@ export async function checkUpdateOnOpen(
 ): Promise<void> {
 	const before = await api.get<UpdateStatusDTO>("/api/update");
 	qc.setQueryData(UPDATE_QUERY_KEY, before);
+	// 钉子看**盘上的**(pinnedVersion),不只看内存态(rolled-back):回退靠重启生效,
+	// 重启之后 phase 已经是 idle,钉子却还在 —— 这时自动查会装新版、顺手拔钉子,
+	// 用户按的回退活不过一次开面板。
 	if (before.state.phase === "disabled" || before.state.phase === "rolled-back") return;
+	if (before.pinnedVersion !== null) return;
 
 	const after = await api.post<UpdateStatusDTO>("/api/update/check", {});
 	qc.setQueryData(UPDATE_QUERY_KEY, after);

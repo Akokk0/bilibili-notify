@@ -24,7 +24,7 @@ vi.mock("../../services/api", () => ({
 import { api } from "../../services/api";
 
 function dto(state: UpdateStatusDTO["state"]): UpdateStatusDTO {
-	return { currentVersion: "0.8.0", rollbackTarget: null, state };
+	return { currentVersion: "0.8.0", rollbackTarget: null, pinnedVersion: null, state };
 }
 
 function mount(before: UpdateStatusDTO, after: UpdateStatusDTO) {
@@ -74,6 +74,21 @@ describe("useUpdateCheckOnOpen", () => {
 			title: "有新版 0.9.0",
 			action: { label: "去更新", to: "/system#update" },
 		});
+	});
+
+	it("重启之后钉子还在盘上(内存态早已是 idle)→ 不自动查", async () => {
+		// 回退靠重启生效,重启之后 phase 是 idle、钉子在盘上。只认 rolled-back 那个
+		// 内存态的守卫,守的正是最不需要守的那个窗口:重启之前。
+		mount(
+			{ ...dto({ phase: "idle" }), pinnedVersion: "0.8.0" },
+			dto({ phase: "up-to-date", checkedAt: 1 }),
+		);
+
+		await flush();
+		await flush();
+
+		expect(api.get).toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
 	});
 
 	it("已是最新 → 查了,但不打扰", async () => {

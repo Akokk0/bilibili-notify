@@ -169,6 +169,14 @@ export function UpdateSection() {
 						</HintNote>
 					) : null}
 
+					{status.pinnedVersion !== null && state.phase !== "rolled-back" ? (
+						<HintNote tone="neutral">
+							现在钉在 <strong>{status.pinnedVersion}</strong>
+							(之前按过回退),打开面板不会再自动查更新。 按「检查更新」就是明确要往前走 ——
+							装上新版会拔掉这颗钉子。
+						</HintNote>
+					) : null}
+
 					{state.phase === "needs-image-pull" ? (
 						<HintNote tone="neutral">
 							这一版要求更新的运行环境(Node / 浏览器都来自镜像),没法在线换 —— 请重新

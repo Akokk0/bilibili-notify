@@ -12,7 +12,7 @@ import { fetchSignedManifest } from "./fetch-signed-manifest.js";
 import { fetchThroughMirrors } from "./fetch-through-mirrors.js";
 import { installPayload } from "./install-payload.js";
 import { pruneOldVersions } from "./prune-versions.js";
-import { clearPinnedVersion, pinVersion } from "./select-version-for-boot.js";
+import { clearPinnedVersion, pinVersion, readPinnedVersion } from "./select-version-for-boot.js";
 import type { Manifest } from "./signed-manifest.js";
 import { compareVersions } from "./version-order.js";
 
@@ -128,7 +128,13 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 	}
 
 	function status(): UpdateStatus {
-		return { currentVersion, rollbackTarget: rollbackTarget(), state };
+		return {
+			currentVersion,
+			rollbackTarget: rollbackTarget(),
+			// 每次现读:钉子是靠重启生效的,内存态活不过那一下,盘上的才是真相。
+			pinnedVersion: readPinnedVersion({ versionsRoot, imageVersion }),
+			state,
+		};
 	}
 
 	function fail(reason: UpdateErrorReason, helpUrl?: string): UpdateStatus {

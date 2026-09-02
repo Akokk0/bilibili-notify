@@ -19,7 +19,7 @@ function LocationProbe() {
 }
 
 function dto(state: UpdateStatusDTO["state"]): UpdateStatusDTO {
-	return { currentVersion: "0.8.0", rollbackTarget: null, state };
+	return { currentVersion: "0.8.0", rollbackTarget: null, pinnedVersion: null, state };
 }
 
 function renderCard(over: { update?: UpdateStatusDTO; reachable?: boolean } = {}) {
