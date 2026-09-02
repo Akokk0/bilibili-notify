@@ -197,6 +197,8 @@ async function startFakeBotServer(opts?: {
 
 interface FakeBot {
 	received: Array<Record<string, unknown>>;
+	/** 模拟 bot 主动推一帧事件(无 echo)。 */
+	send(text: string): void;
 }
 
 /** 假 bot 客户端(给反向 WS 测试,连进 adapter 开的端口)。默认收 action 回 echo 成功。 */
@@ -213,7 +215,7 @@ async function connectFakeBot(url: string, headers?: Record<string, string>): Pr
 		ws.send(JSON.stringify({ status: "ok", retcode: 0, echo: frame.echo }));
 	});
 	cleanups.push(() => ws.terminate());
-	return { received };
+	return { received, send: (text) => ws.send(text) };
 }
 
 /** 反向 WS 监听器异步绑定,bot 客户端可能早于绑定 → 重试直到连上。 */
@@ -1825,5 +1827,48 @@ describe("webhook — isAvailable / probe", () => {
 		const r = await ad.probe(whAdapter());
 		expect(r.ok).toBeNull();
 		expect(r.err).toMatch(/does not support/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 入站帧的来源 —— 链接解析要「回到消息来的那个群」,靠的是收到帧的那个 adapter。
+// 帧本身只有 self_id(bot 的号),对不上配置里的 adapter id;所以 adapter 交帧时
+// 得把自己的 id 一并带上,不然上层无从知道该用哪条连接回话。
+// ---------------------------------------------------------------------------
+
+describe("onebot 入站帧带来源 adapterId", () => {
+	it("正向 WS:事件帧原样交给 onInbound,并附上 {adapterId}", async () => {
+		const bot = await startFakeBotServer();
+		const onInbound = vi.fn();
+		const ad = createOnebotAdapter({ ...obOpts(), onInbound });
+		const adapter = obWsAdapter(bot.port);
+		ad.reconcile?.([adapter]);
+		await waitFor(() => bot.connections.length > 0);
+		const frame = {
+			post_type: "message",
+			message_type: "group",
+			group_id: 123,
+			user_id: 456,
+			self_id: 10000,
+			message: [{ type: "text", data: { text: "hi" } }],
+			raw_message: "hi",
+		};
+		bot.connections[0]?.send(JSON.stringify(frame));
+		await waitFor(() => onInbound.mock.calls.length > 0);
+		expect(onInbound).toHaveBeenCalledWith(frame, { adapterId: "a1" });
+		ad.dispose?.();
+	});
+
+	it("反向 WS:同样附上 {adapterId}", async () => {
+		const onInbound = vi.fn();
+		const ad = createOnebotAdapter({ ...obOpts(), onInbound });
+		const port = await freePort();
+		ad.reconcile?.([obRevAdapter(port)]);
+		const bot = await connectWithRetry(`ws://127.0.0.1:${port}`);
+		const frame = { post_type: "meta_event", meta_event_type: "heartbeat", self_id: 10000 };
+		bot.send(JSON.stringify(frame));
+		await waitFor(() => onInbound.mock.calls.length > 0);
+		expect(onInbound).toHaveBeenCalledWith(frame, { adapterId: "a1" });
+		ad.dispose?.();
 	});
 });

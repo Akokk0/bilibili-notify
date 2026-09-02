@@ -41,10 +41,11 @@ export interface OnebotPlatformAdapterOptions {
 	/**
 	 * 入站 OneBot 事件帧的出口。不传 = 这个 adapter 保持纯 push-only。
 	 *
-	 * 帧原样交出,adapter 不解析业务语义。目前唯一的消费者是锐评审批
-	 * (主人私聊回 y/n),见 `runtime/roast-command.ts`。
+	 * 帧原样交出,adapter 不解析业务语义;消费者是指令分发(主人私聊)与链接解析
+	 * (群消息)。附上收到这一帧的 adapter id:帧里只有 self_id(bot 的号),对不上
+	 * 配置里的 adapter,而「回到消息来的那个群」得知道该用哪条连接。
 	 */
-	onInbound?: (frame: Record<string, unknown>) => void;
+	onInbound?: (frame: Record<string, unknown>, meta: { adapterId: string }) => void;
 	/** Fallback timeout (ms) when adapter.config.timeoutMs is missing. Defaults to 15s. */
 	timeoutMs?: number;
 	/**
@@ -534,9 +535,15 @@ class ForwardConn {
 		private readonly headers: Record<string, string>,
 		private readonly serviceCtx: ServiceContext,
 		private readonly log: Logger,
-		private readonly onInbound?: (frame: Record<string, unknown>) => void,
+		private readonly onInbound?: OnebotPlatformAdapterOptions["onInbound"],
 	) {
 		this.connect();
+	}
+
+	/** 通道只知道帧;来源 adapter 由这一层补上。 */
+	private inboundSink(): ((frame: Record<string, unknown>) => void) | undefined {
+		const sink = this.onInbound;
+		return sink ? (frame) => sink(frame, { adapterId: this.adapterId }) : undefined;
 	}
 
 	private connect(): void {
@@ -554,7 +561,12 @@ class ForwardConn {
 		ws.on("open", () => {
 			this.attempt = 0;
 			this.lastError = null;
-			this.channel = new WsChannel(ws, `fwd:${this.adapterId}`, this.serviceCtx, this.onInbound);
+			this.channel = new WsChannel(
+				ws,
+				`fwd:${this.adapterId}`,
+				this.serviceCtx,
+				this.inboundSink(),
+			);
 			this.log.info(`[onebot] 正向 WS 已连接 adapter=${this.adapterId} url=${this.url}`);
 		});
 		ws.on("error", (err: Error) => {
@@ -609,9 +621,15 @@ class ReverseListener {
 		private readonly accessToken: string | undefined,
 		private readonly serviceCtx: ServiceContext,
 		private readonly log: Logger,
-		private readonly onInbound?: (frame: Record<string, unknown>) => void,
+		private readonly onInbound?: OnebotPlatformAdapterOptions["onInbound"],
 	) {
 		this.start();
+	}
+
+	/** 同 ForwardConn:通道只知道帧,来源 adapter 由这一层补上。 */
+	private inboundSink(): ((frame: Record<string, unknown>) => void) | undefined {
+		const sink = this.onInbound;
+		return sink ? (frame) => sink(frame, { adapterId: this.adapterId }) : undefined;
 	}
 
 	private start(): void {
@@ -643,7 +661,7 @@ class ReverseListener {
 			ws.close(1008, "unauthorized");
 			return;
 		}
-		const channel = new WsChannel(ws, `rev:${this.adapterId}`, this.serviceCtx, this.onInbound);
+		const channel = new WsChannel(ws, `rev:${this.adapterId}`, this.serviceCtx, this.inboundSink());
 		const entry = { ws, channel };
 		this.bots.add(entry);
 		this.log.info(`[onebot] 反向 WS bot 已连入 adapter=${this.adapterId}(在线 ${this.bots.size})`);

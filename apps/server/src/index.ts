@@ -37,6 +37,7 @@ import { renderHelp } from "./runtime/command-help.js";
 import { createEngines } from "./runtime/engines.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
 import { startFansPoller } from "./runtime/fans-poller.js";
+import { createLinkParser } from "./runtime/link-parser.js";
 import { createLoginCommand } from "./runtime/login-command.js";
 import { resolveProbeInterval, startMemoryProbe } from "./runtime/memory-probe.js";
 import { createMuteCommand } from "./runtime/mute-command.js";
@@ -235,13 +236,15 @@ export async function startStandaloneServer(
 		// 两个而不是一个:onebot 送的是**一整帧 OneBot 事件**(要在指令层解析),
 		// qq-official 的网关那边已经解析成 `{userOpenid, text}` 了。帧格式不同,
 		// 但汇合点是同一个(handle / handleMessage 共用同一套鉴权与指令语义)。
-		let onInboundFrame: ((frame: Record<string, unknown>) => void) | undefined;
+		let onInboundFrame:
+			| ((frame: Record<string, unknown>, meta: { adapterId: string }) => void)
+			| undefined;
 		let onInboundQQ: ((msg: QQInboundPrivateMessage) => void) | undefined;
 		const adapters = [
 			createOnebotAdapter({
 				logger: log,
 				serviceCtx: runtime.serviceCtx,
-				onInbound: (frame) => onInboundFrame?.(frame),
+				onInbound: (frame, meta) => onInboundFrame?.(frame, meta),
 			}),
 			createQQOfficialAdapter({
 				logger: log,
@@ -478,7 +481,39 @@ export async function startStandaloneServer(
 			confirmation: roastCommands.confirmation,
 		});
 
-		onInboundFrame = (frame) => void commandDispatcher.handle(frame);
+		// 群里贴视频链接 → 回一张卡。回到来源群不走推送目标表:用收到这一帧的那个
+		// onebot adapter 直接发,群不必配成推送目标(主人定的:机器人在的所有群都算)。
+		const onebotPlatform = adapters.find((a) => a.platforms.includes("onebot"));
+		const linkParser = createLinkParser({
+			logger: log,
+			config: () => runtime.configStore.getGlobals().linkParsing,
+			api: engines.api,
+			renderer: () => engines?.imageRenderer ?? null,
+			send: async ({ adapterId, groupId }, payload) => {
+				const adapter = runtime.configStore.getAdapters().find((a) => a.id === adapterId);
+				if (!adapter || !onebotPlatform) {
+					return { ok: false, latencyMs: 0, err: `adapter not found: adapterId=${adapterId}` };
+				}
+				return onebotPlatform.send(
+					adapter,
+					{
+						id: `link-reply:${groupId}`,
+						name: "链接解析回复",
+						adapterId,
+						scope: "group",
+						enabled: true,
+						platform: "onebot",
+						session: { groupId },
+					},
+					payload,
+				);
+			},
+		});
+
+		onInboundFrame = (frame, meta) => {
+			void commandDispatcher.handle(frame);
+			void linkParser.handle(frame, meta);
+		};
 		// QQ 那边网关已经解析好了,直接喂平台中立入口。userOpenid 就是身份本身。
 		onInboundQQ = (msg) =>
 			void commandDispatcher.handleMessage({ userId: msg.userOpenid, text: msg.text });
