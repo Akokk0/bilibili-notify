@@ -17,16 +17,9 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readArg } from "./cli-args.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-
-function readArg(name, fallback) {
-	const i = process.argv.indexOf(`--${name}`);
-	if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
-	const inline = process.argv.find((a) => a.startsWith(`--${name}=`));
-	if (inline) return inline.slice(name.length + 3);
-	return fallback;
-}
 
 /** `~` 是 shell 展开的;直接当参数传进来时得自己认。 */
 function expandHome(p) {

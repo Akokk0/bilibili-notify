@@ -19,6 +19,7 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { zipSync } from "fflate";
+import { readArg } from "./cli-args.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -74,14 +75,6 @@ export async function buildUpdatePayload({ serverDist, webDist, outFile }) {
 		entries: Object.keys(files).sort(),
 		outFile,
 	};
-}
-
-function readArg(name, fallback) {
-	const i = process.argv.indexOf(`--${name}`);
-	if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
-	const inline = process.argv.find((a) => a.startsWith(`--${name}=`));
-	if (inline) return inline.slice(name.length + 3);
-	return fallback;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

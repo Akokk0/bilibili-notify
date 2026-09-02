@@ -22,6 +22,7 @@ import { createPrivateKey, sign as cryptoSign } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readArg, requireArg } from "./cli-args.mjs";
 
 /**
  * 发版侧的形状检查。
@@ -123,20 +124,6 @@ export function signManifest(manifest, privateKeyPem) {
 	const signature = cryptoSign(null, Buffer.from(manifestJson, "utf8"), key).toString("base64");
 	const envelope = { manifest: manifestJson, signature };
 	return { manifestJson, envelopeJson: JSON.stringify(envelope, null, 2), envelope };
-}
-
-function readArg(name, fallback) {
-	const i = process.argv.indexOf(`--${name}`);
-	if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
-	const inline = process.argv.find((a) => a.startsWith(`--${name}=`));
-	if (inline) return inline.slice(name.length + 3);
-	return fallback;
-}
-
-function requireArg(name) {
-	const value = readArg(name);
-	if (!value) throw new Error(`缺参数 --${name}`);
-	return value;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
