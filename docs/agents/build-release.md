@@ -21,6 +21,7 @@
 | `image-release.yml`(Docker) | `gate` → `build`(matrix) → `merge` |
 | `desktop-release.yml`(Desktop) | `gate` → `build`(matrix) → `release` |
 | `update-payload.yml`(应用内更新) | `gate` → `publish` |
+| `revoke-update.yml`(撤回坏版本) | **不过门禁** —— 它一行代码都不发,只把渠道清单指回一个**已经发布过**的载荷(那次发版已经过过门禁)。给一件几十秒的急事加十几分钟没有意义,而且门禁红了也不说明这次撤回有问题。 |
 
 **CI 不跑 astrbot 的 Python 门禁**(2026-07-11 拍板去掉)。三条发布路径的产物里都没有一行 Python;astrbot 走 `astrbot-release.yml` 那条独立的 squash-push 路线,不经过 `gate`。
 
@@ -100,6 +101,10 @@ koishi 插件是**自包含单文件产物**:九个 `@bilibili-notify/*` 内部�
 - `.github/workflows/update-payload.yml` —— 应用内更新的载荷 zip 与签名清单,挂到同一个 release,并覆盖滚动 tag `update-channel` 上的渠道清单。**没配 `BN_UPDATE_SIGNING_KEY` 时整条跳过并打 warning**,不让发版红着。详见 [self-update.md](./self-update.md)。
 
 两个 workflow 都先校验 tag commit 可从 `origin/dev` 到达,再从 tag 读取版本并运行 `sync-standalone-version.sh`;Docker 与 Desktop 依赖同一个版本 tag,但彼此不再互相等待。某个 workflow 失败时只重跑对应 workflow。
+
+不由 tag 触发、只手动跑的还有一条:
+
+- `.github/workflows/revoke-update.yml` —— **撤回一个已经发出去的坏版本**。重签渠道清单把它列进 `revoked`,并把用户指向该在的那一版。与 `update-payload` 共用一个 concurrency 组(两者都在改 `update-channel` 上那两份清单)。默认 dry-run,不跑门禁。用法见 [self-update.md](./self-update.md)。
 
 ### 发布前验证
 

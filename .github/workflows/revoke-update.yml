@@ -1,0 +1,149 @@
+name: bilibili-notify — revoke update
+
+# 撤回一个坏版本 —— 重签一份渠道清单,把坏版本列进 `revoked`,并把 `version` 指向
+# 用户**该在**的那一版(修复版,或退回上一个好版本 —— 可以比坏版本号小)。
+#
+# 客户端拿到之后:还没升的不会去装坏版本;已经装好等重启的,那份目录被删掉、ready 撤掉;
+# 正在跑着坏版本的,清单那版哪怕更旧也当更新目标装上,坏版本进 boot-state 的 `revoked`,
+# 重启后开机选版不再选它。三条路见 docs/agents/self-update.md。
+#
+# **手动触发,默认 dry-run** —— 这是出事那天才跑的东西,先看一眼解析出来的参数对不对,
+# 再把 dry_run 关掉真发。
+#
+# **不跑 gate**:这里一行代码都不发,只是把一份清单指回一个**已经发布过**的载荷。
+# 跑一遍全量门禁只会给一件本该几十秒完成的急事再加十几分钟,而且它红了也不说明这次
+# 撤回有问题。载荷本身的门禁在它当初发版那次已经跑过了。
+#
+# 需要的 repo secret:BN_UPDATE_SIGNING_KEY(签名私钥 A)、RELEASE_PAT(写 release)。
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "用户该在的版本(裸 semver,如 0.9.0)—— 清单会指向它的载荷"
+        type: string
+        required: true
+      revoked:
+        description: "要撤回的坏版本,逗号分隔(如 0.9.1 或 0.9.1,0.9.2)"
+        type: string
+        required: true
+      channel:
+        description: "刷哪条渠道"
+        type: choice
+        options: [both, stable, alpha]
+        default: both
+      dry_run:
+        description: "只解析 + 签名,不上传"
+        type: boolean
+        default: true
+
+# 与 update-payload **同一个组**:两者都在改 update-channel 上那两份清单,并发跑的话
+# 后完成的那个 --clobber 会把另一个刚发的清单顶掉 —— 而撤回被顶掉是最不能接受的一种。
+concurrency:
+  group: update-payload
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  revoke:
+    name: Re-sign the channel manifest with a revocation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # 不装依赖:这条路上跑的两个脚本(revocation / sign-update-manifest)只用
+      # node 内建。急事少一步是一步。
+      - name: Setup Vite+ (vp) + Node
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: .node-version
+
+      # 参数的规矩全在脚本里(scripts/revocation.test.mjs 钉着):目标版本自己不能在
+      # 撤回名单里、版本号得成形、渠道只认三种。sha256 / size 从**真的那份已发布的包**
+      # 上算 —— 手抄那一步就是这么被去掉的。
+      - name: Resolve revocation
+        id: plan
+        env:
+          REPO: ${{ github.repository }}
+          # 经 env 而不是把 ${{ inputs.* }} 直接插进 shell —— 那是 Actions 的脚本注入面:
+          # 输入里的引号和反引号会当场变成命令。dispatch 要写权限,但没必要留这个口子。
+          TARGET: ${{ inputs.target }}
+          REVOKED: ${{ inputs.revoked }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -euo pipefail
+          node scripts/revocation.mjs \
+            --repo "$REPO" \
+            --target "$TARGET" \
+            --revoked "$REVOKED" \
+            --channel "$CHANNEL" > /tmp/revoke.json
+          cat /tmp/revoke.json
+          for k in version revoked channels payloadUrl releaseUrl sha256 size; do
+            echo "$k=$(node -p "require('/tmp/revoke.json').$k")" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Sign the revocation manifest
+        env:
+          BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_UPDATE_SIGNING_KEY }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          PAYLOAD_URL: ${{ steps.plan.outputs.payloadUrl }}
+          SHA256: ${{ steps.plan.outputs.sha256 }}
+          SIZE: ${{ steps.plan.outputs.size }}
+          RELEASE_URL: ${{ steps.plan.outputs.releaseUrl }}
+          REVOKED: ${{ steps.plan.outputs.revoked }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BN_UPDATE_SIGNING_KEY}" ]; then
+            echo "::error::未配置 BN_UPDATE_SIGNING_KEY —— 撤回必须签名,没有私钥就只能离线手跑(见 docs/agents/self-update.md)"
+            exit 1
+          fi
+          node scripts/sign-update-manifest.mjs \
+            --version "$VERSION" \
+            --payload-url "$PAYLOAD_URL" \
+            --sha256 "$SHA256" \
+            --size "$SIZE" \
+            --release-url "$RELEASE_URL" \
+            --revoked "$REVOKED" \
+            --out dist/manifest
+
+      - name: Validate release token
+        if: inputs.dry_run == false
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: bash .github/scripts/validate-release-token.sh
+
+      # 逐条渠道刷。`issuedAt` 在上一步自动盖成现在,所以客户端的新鲜度记忆会接受这份、
+      # 并从此拒收被撤回那版的旧清单 —— 加速站缓存或回放都推不回去。
+      - name: Publish channel manifests
+        if: inputs.dry_run == false
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          REPO: ${{ github.repository }}
+          CHANNELS: ${{ steps.plan.outputs.channels }}
+        run: |
+          set -euo pipefail
+          for channel in $CHANNELS; do
+            CHANNEL="$channel" FILE=dist/manifest.sig.json \
+              bash .github/scripts/publish-update-channel.sh
+          done
+
+      - name: Summary
+        env:
+          REVOKED: ${{ steps.plan.outputs.revoked }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          CHANNELS: ${{ steps.plan.outputs.channels }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          {
+            echo "### 撤回"
+            echo ""
+            echo "- 撤回:\`$REVOKED\`"
+            echo "- 用户会被送到:\`$VERSION\`"
+            echo "- 渠道:\`$CHANNELS\`"
+            echo "- dry-run:\`$DRY_RUN\`"
+          } >> "$GITHUB_STEP_SUMMARY"
