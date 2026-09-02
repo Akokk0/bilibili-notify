@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
 #
-# 给 v<VERSION> tag 创建桌面端 GitHub Release。已有 release 跳过,后续 upload step
-# 仍可用 --clobber 补/覆盖 artifacts。Docker 镜像由 image-release workflow 推送,
-# release notes 这里只列本 workflow 已经产出的桌面产物。
+# 给 v<VERSION> tag 创建独立端的 GitHub Release。
+#
+# **desktop-release 与 update-payload 两条 workflow 都调它,谁先到谁建**,另一个看到
+# 已存在就跳过,各自再用 `gh release upload --clobber` 把自己的产物补上去。两条路
+# 互不等待 —— 以前 update-payload 干等 desktop 建 release,桌面构建一挂(或者慢过
+# 十分钟)载荷和渠道清单就一起发不出去,用户永远「已是最新」。
+#
+# 两条 workflow 可能同时走到 `gh release create`:一个成功、另一个报「已存在」。
+# 所以 create 失败后再 view 一次,存在就算成功 —— 幂等是这个脚本的全部意义。
+#
+# Docker 镜像由 image-release workflow 推送;release notes 这里只列独立端的产物。
 #
 # 必需 env:
 #   VERSION     release version without leading 'v'
@@ -50,6 +58,10 @@ trap 'rm -f "$notes_file"' EXIT
 	echo
 	echo "- macOS arm64: 下载 DMG 或 .app.zip"
 	echo "- Windows x64: 下载 setup.exe 或 portable zip"
+	echo
+	echo "## 应用内更新"
+	echo
+	echo "- \`bilibili-notify-payload-${VERSION}.zip\` + \`manifest.sig.json\`:已装独立端的用户在面板里「检查更新」即可,不必手动下载"
 	if [ -n "$prev_tag" ]; then
 		echo
 		echo "## 完整改动"
@@ -65,4 +77,14 @@ else
 	flags+=(--latest)
 fi
 
-gh release create "$tag" "${flags[@]}"
+if gh release create "$tag" "${flags[@]}"; then
+	exit 0
+fi
+
+# 另一条 workflow 抢先建了 —— 那就是我们要的状态。真失败的话 view 也过不了。
+if gh release view "$tag" >/dev/null 2>&1; then
+	echo "release $tag was created concurrently, continue"
+	exit 0
+fi
+echo "::error::gh release create $tag failed and the release does not exist"
+exit 1

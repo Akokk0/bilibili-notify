@@ -200,7 +200,7 @@ jobs:
           PRERELEASE: ${{ steps.ver.outputs.prerelease }}
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           REPO: ${{ github.repository }}
-        run: bash .github/scripts/create-desktop-github-release.sh
+        run: bash .github/scripts/create-standalone-github-release.sh
 
       - name: Upload release assets
         env:

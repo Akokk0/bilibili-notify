@@ -93,7 +93,9 @@ base64 < ~/secrets/bn-update-A.pem | gh secret set BN_UPDATE_SIGNING_KEY
 1. `vp run build:update-payload` —— 构建 web + server 自包含 bundle + 装配资产
 2. `node scripts/build-update-payload.mjs` —— 打 zip,交出 sha256 / size
 3. `node scripts/sign-update-manifest.mjs` —— 生成并签署清单信封
-4. 上传到 `v<VERSION>` release,并覆盖 `update-channel` 上对应渠道的清单
+4. 上传到 `v<VERSION>` release(不存在就**自己建** —— 与 desktop-release 共用同一个幂等脚本
+   `create-standalone-github-release.sh`,谁先到谁建,**不等对方**),再覆盖 `update-channel`
+   上对应渠道的清单
 
 没配 `BN_UPDATE_SIGNING_KEY` 时**整条跳过并打 warning**,不让发版红着 —— 但那次发版
 的用户也就没有应用内更新。

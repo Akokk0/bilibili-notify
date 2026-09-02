@@ -4,7 +4,10 @@ name: bilibili-notify — update payload
 # 再把清单覆盖到滚动的 `update-channel` release 上当作渠道入口。
 #
 # 与 Docker / Desktop 两条路**互不阻塞**(同 build-release.md 里那条约定):三者由
-# 同一个 v* tag 触发,各跑各的。桌面构建挂了不该连带用户升不了级。
+# 同一个 v* tag 触发,各跑各的。桌面构建挂了不该连带用户升不了级 —— 所以 v<VERSION>
+# release 这里**自己建**(与 desktop-release 共用同一个幂等脚本,谁先到谁建),不等
+# 别人。以前这里干等 desktop 建 release,桌面矩阵一慢或一挂,载荷和渠道清单就一起
+# 发不出去,而 Docker / Desktop 都绿着,没人会发现。
 #
 # 需要的 repo secret:
 #   BN_UPDATE_SIGNING_KEY  Ed25519 私钥(PKCS#8 PEM,或它的 base64)。**没配就跳过签名**
@@ -137,6 +140,23 @@ jobs:
             --out dist/manifest
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
+      - name: Validate release token
+        if: env.DRY_RUN == 'false' && steps.sign.outputs.signed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: bash .github/scripts/validate-release-token.sh
+
+      # 与 desktop-release 共用同一个幂等脚本:已存在就跳过,并发建了也算成功。
+      - name: Create GitHub release (if missing)
+        if: env.DRY_RUN == 'false' && steps.sign.outputs.signed == 'true'
+        env:
+          VERSION: ${{ steps.ver.outputs.value }}
+          PRERELEASE: ${{ steps.ver.outputs.prerelease }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          REPO: ${{ github.repository }}
+        run: bash .github/scripts/create-standalone-github-release.sh
+
+      # 载荷先于渠道清单上传(下面两步):清单一旦发布就有客户端来拉,它指的包必须已经在。
       - name: Upload payload + manifest to the version release
         if: env.DRY_RUN == 'false' && steps.sign.outputs.signed == 'true'
         env:
@@ -144,12 +164,6 @@ jobs:
           VERSION: ${{ steps.ver.outputs.value }}
         run: |
           set -euo pipefail
-          # release 由 desktop-release 那条路创建。它可能还没跑完 —— 等一会儿再放弃,
-          # 但**不阻塞**:两条路解耦是设计,这里只是给它一点时间。
-          for _ in $(seq 1 30); do
-            if gh release view "v${VERSION}" >/dev/null 2>&1; then break; fi
-            sleep 20
-          done
           gh release upload "v${VERSION}" \
             "${{ steps.payload.outputs.path }}" dist/manifest.sig.json --clobber
 
