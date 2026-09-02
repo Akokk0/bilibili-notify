@@ -31,9 +31,11 @@ on:
         required: true
 
 # 串行化:两次 push 同时跑会让 update-channel 上的清单和 release 资产失同步。
+# group **不带 ref** —— 每个 tag 的 ref 都不一样,带上就等于每次都是新组,两个 tag
+# 并行跑时后完成的那个 --clobber 会把 alpha.json 钉回旧版(正式版与预发布都写 alpha)。
 # cancel-in-progress: false —— 已经上传的资产是副作用,半途打断更糟。
 concurrency:
-  group: update-payload-${{ github.ref }}
+  group: update-payload
   cancel-in-progress: false
 
 permissions:
