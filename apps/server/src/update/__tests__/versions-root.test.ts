@@ -89,6 +89,21 @@ describe("resolveDataDir 与 loadBootstrapConfig 必须算出同一个 dataDir",
 		expect(dir).toBe(join(cwd, "from-cli"));
 	});
 
+	it("什么都没配 → 两边的默认值也得是同一个目录", () => {
+		// 这是两份实现唯一真会分歧的一档,而这组守卫以前从没用它跑过:boot 侧回落 /data,
+		// loader 侧回落 ./data(相对 cwd)。Docker / 桌面今天都显式给了 dataDir 所以没露馅,
+		// 但谁在 compose 里删掉 BN_DATA_DIR,就是「装到 A 目录、boot 去 B 目录找」。
+		const cwd = tempCwd();
+		expectAgreement({ argv: [], env: {}, cwd });
+	});
+
+	it("B 模型:yaml 里没写 dataDir → 两边回落到同一个目录", () => {
+		const cwd = tempCwd();
+		const cfg = join(cwd, "bn.config.yaml");
+		writeFileSync(cfg, "logLevel: silent\n", "utf8");
+		expectAgreement({ argv: [], env: { BN_CONFIG: cfg }, cwd });
+	});
+
 	it("BN_CONFIG_DISABLED(桌面壳 / sidecar)→ 只看 CLI 与 env", () => {
 		// 桌面版就走这条:外壳用 `--data-dir` 把用户数据目录传进来。boot 要是只认
 		// BN_DATA_DIR,它会去 /data 找版本目录 —— 那在桌面上根本不存在。
@@ -109,9 +124,10 @@ describe("resolveVersionsRoot", () => {
 		);
 	});
 
-	it("什么都没给 → 容器里那个默认位置", () => {
-		expect(resolveVersionsRoot({ argv: [], env: {}, cwd: "/" })).toBe(
-			join(DEFAULT_DATA_DIR, "versions"),
+	it("什么都没给 → 相对 cwd 的 ./data(和 loader 同一个默认,不再各写各的)", () => {
+		const cwd = tempCwd();
+		expect(resolveVersionsRoot({ argv: [], env: {}, cwd })).toBe(
+			resolve(cwd, DEFAULT_DATA_DIR, "versions"),
 		);
 	});
 

@@ -16,7 +16,12 @@ import { parse as parseYaml } from "yaml";
  * 版本」:服务端装到 A 目录,boot 去 B 目录找,两边都不报错。
  */
 
-export const DEFAULT_DATA_DIR = "/data";
+/**
+ * 和 `config/schema.ts` 的 `dataDir` 默认值**必须相同**(相对 cwd):这是两份实现唯一真会
+ * 分歧的一档 —— 以前这边写 `/data`、那边写 `./data`,谁在 compose 里删掉 BN_DATA_DIR 就会
+ * 「装到 A 目录、boot 去 B 目录找」。镜像与桌面壳都显式给 dataDir,这条只在没配时起作用。
+ */
+export const DEFAULT_DATA_DIR = "./data";
 
 export interface ResolveVersionsRootInput {
 	argv: readonly string[];
@@ -57,7 +62,7 @@ export function resolveDataDir({ argv, env, cwd }: ResolveVersionsRootInput): st
 		if (fromFile) return resolve(cwd, fromFile);
 	}
 	if (env.BN_DATA_DIR) return resolve(cwd, env.BN_DATA_DIR);
-	return DEFAULT_DATA_DIR;
+	return resolve(cwd, DEFAULT_DATA_DIR);
 }
 
 export function resolveVersionsRoot(input: ResolveVersionsRootInput): string {
