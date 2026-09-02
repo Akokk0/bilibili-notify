@@ -84,6 +84,15 @@ describe("createQQSessionRegistry — per-adapter 发现 ring buffer", () => {
 		expect(list[1]?.openid).toBe("G2");
 	});
 
+	it("后到的事件没带名字,不把先前记住的名字冲掉 —— 群事件本来就不带群名,那个 hint 是唯一能认的东西", () => {
+		const reg = createQQSessionRegistry();
+		reg.record("a1", { scope: "group", openid: "G1", displayHint: "阿绫" }, 1000);
+		reg.record("a1", { scope: "group", openid: "G1" }, 2000);
+		expect(reg.list("a1")).toEqual([
+			{ scope: "group", openid: "G1", displayHint: "阿绫", lastSeenMs: 2000 },
+		]);
+	});
+
 	it("最近优先:后 record 的在前", () => {
 		const reg = createQQSessionRegistry();
 		reg.record("a1", { scope: "group", openid: "G1" }, 1000);

@@ -352,8 +352,11 @@ export function createQQSessionRegistry(opts?: { maxPerAdapter?: number }): QQSe
 	return {
 		record(adapterId, session, atMs) {
 			const prev = byAdapter.get(adapterId) ?? [];
+			// 后到的事件没带 displayHint(GROUP_ADD_ROBOT 不带用户名)时留着先前记住的那个:
+			// 群事件本来就不带群名,那个 hint 是面板上唯一能认的东西。带了就以新的为准。
+			const known = prev.find((e) => keyOf(e) === keyOf(session));
 			const next = prev.filter((e) => keyOf(e) !== keyOf(session));
-			next.unshift({ ...session, lastSeenMs: atMs });
+			next.unshift({ ...known, ...session, lastSeenMs: atMs });
 			if (next.length > max) next.length = max;
 			byAdapter.set(adapterId, next);
 		},
