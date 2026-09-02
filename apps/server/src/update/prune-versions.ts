@@ -9,14 +9,20 @@ import { join } from "node:path";
  *
  * 两条纪律:
  *
- * - **只碰长得像版本号的目录**。`/data` 是用户挂出来的,他真的会往里丢东西 ——
- *   手动备份、笔记、装到一半留下的 `.staging-*`。清理越是「顺手」,越容易把别人的
- *   数据顺手清掉,而这种错没有撤销键。
+ * - **只碰长得像版本号的目录,以及我们自己留下的残留**(`.staging-*` 解到一半被杀,
+ *   `.old-*` 换版本时挪走的旧目录)。`/data` 是用户挂出来的,他真的会往里丢东西 ——
+ *   手动备份、笔记。清理越是「顺手」,越容易把别人的数据顺手清掉,而这种错没有撤销键;
+ *   但残留是**我们的**命名空间,一份 25MB,断一次电就永远躺在那儿,没人替我们扫。
  * - **失败一律吞掉**。清理是省磁盘的,不是升级成功的条件。为它抛异常等于把「装好
  *   了但没打扫干净」报成「升级失败」,用户会去重试一件已经成功了的事。
+ *
+ * 残留只在这里扫,而这里只在一次安装**完成之后**、且整个更新流程是串行的时候被调用 ——
+ * 所以扫到的 `.staging-*` 一定不是正在解压的那个。
  */
 
 const VERSION_DIR_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+/** 安装流程自己的临时目录:`install-payload.ts` 的 `.staging-<版本>-<uuid>` 与 `.old-<版本>-<uuid>`。 */
+export const LEFTOVER_DIR_RE = /^\.(?:staging|old)-/;
 
 export interface PruneOldVersionsInput {
 	versionsRoot: string;
@@ -33,7 +39,7 @@ export function pruneOldVersions({ versionsRoot, keep }: PruneOldVersionsInput):
 		entries = readdirSync(versionsRoot, { withFileTypes: true })
 			.filter((entry) => entry.isDirectory())
 			.map((entry) => entry.name)
-			.filter((name) => VERSION_DIR_RE.test(name));
+			.filter((name) => VERSION_DIR_RE.test(name) || LEFTOVER_DIR_RE.test(name));
 	} catch {
 		return removed;
 	}

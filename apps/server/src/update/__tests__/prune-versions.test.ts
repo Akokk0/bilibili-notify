@@ -40,19 +40,20 @@ describe("pruneOldVersions", () => {
 	});
 
 	it("不像版本号的目录一个都不碰 —— /data 是用户挂出来的,他真的会往里丢东西", () => {
-		// 一个叫 `2026-09-01` 的手动备份、一份 `my-notes`、装到一半留下的 `.staging-*`,
-		// 都不是我们的东西。清理策略越是「顺手」,越容易把别人的数据顺手清掉。
+		// 一个叫 `2026-09-01` 的手动备份、一份 `my-notes`、一个 `.git`,都不是我们的东西。
+		// 清理策略越是「顺手」,越容易把别人的数据顺手清掉。(我们自己的 `.staging-*` /
+		// `.old-*` 残留是另一回事,见下面那条。)
 		const root = versionsWith("0.9.0");
 		mkdirSync(join(root, "2026-09-01"), { recursive: true });
 		mkdirSync(join(root, "my-notes"), { recursive: true });
-		mkdirSync(join(root, ".staging-0.9.0-abc"), { recursive: true });
+		mkdirSync(join(root, ".git"), { recursive: true });
 		writeFileSync(join(root, "boot-state.json"), "{}");
 
 		pruneOldVersions({ versionsRoot: root, keep: ["0.9.0"] });
 
 		expect(existsSync(join(root, "2026-09-01"))).toBe(true);
 		expect(existsSync(join(root, "my-notes"))).toBe(true);
-		expect(existsSync(join(root, ".staging-0.9.0-abc"))).toBe(true);
+		expect(existsSync(join(root, ".git"))).toBe(true);
 		expect(existsSync(join(root, "boot-state.json"))).toBe(true);
 	});
 
@@ -77,5 +78,25 @@ describe("pruneOldVersions", () => {
 		const root = versionsWith("0.9.0");
 
 		expect(pruneOldVersions({ versionsRoot: root, keep: [] })).toEqual(["0.9.0"]);
+	});
+	it("我们自己的残留(.staging-* / .old-*)会被扫掉;用户放的别的东西一个不碰", () => {
+		// 解压到一半被 SIGKILL / 断电,`.staging-*` 就永远留在 /data/versions 里,一份 25MB;
+		// 换版本时挪走的 `.old-*` 也一样。它们是我们自己的命名空间,不是用户的文件 ——
+		// 「只碰版本号形状的目录」那条纪律是为了保护用户的东西,不是保护我们的垃圾。
+		const versionsRoot = versionsWith(
+			"0.9.0",
+			".staging-0.10.0-deadbeef",
+			".old-0.9.0-cafebabe",
+			"2026-09-01-backup",
+			".git",
+		);
+
+		pruneOldVersions({ versionsRoot, keep: ["0.9.0"] });
+
+		expect(existsSync(join(versionsRoot, ".staging-0.10.0-deadbeef"))).toBe(false);
+		expect(existsSync(join(versionsRoot, ".old-0.9.0-cafebabe"))).toBe(false);
+		expect(existsSync(join(versionsRoot, "0.9.0"))).toBe(true);
+		expect(existsSync(join(versionsRoot, "2026-09-01-backup"))).toBe(true);
+		expect(existsSync(join(versionsRoot, ".git"))).toBe(true);
 	});
 });
