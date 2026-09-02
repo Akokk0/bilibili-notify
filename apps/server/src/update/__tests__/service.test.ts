@@ -1085,3 +1085,85 @@ describe("createUpdateService —— 测一遍加速站", () => {
 		expect(service.getStatus().state).toEqual({ phase: "idle" });
 	});
 });
+
+describe("createUpdateService —— 盘上那份 ready 谁也盖不掉", () => {
+	/**
+	 * 装好了还没重启的那份是**盘上的事实**:重启就会跑它。此后无论检查更新得出什么
+	 * 结论 —— 连不上、已是最新、下一版下载失败 —— 都不能把它盖掉,盖掉的下场是
+	 * 「立即重启并应用」凭空消失,而那份载荷明明还躺在盘上、按一下就能用。
+	 */
+	const key = makeKey();
+
+	async function installReady(root: string) {
+		const zip = makePayloadZip("0.9.0");
+		stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.9.0", zip, { issuedAt: 100 })),
+			payload: zip,
+		});
+		const { service, versionsRoot } = makeService({
+			root,
+			trustedKeys: [key.spkiBase64],
+			currentVersion: "0.8.0",
+		});
+		expect((await service.check()).state).toMatchObject({ phase: "ready", target: "0.9.0" });
+		return { service, versionsRoot };
+	}
+
+	it("更新的那一版下载失败 → 仍然报 0.9.0 已就绪,而不是 error", async () => {
+		const { service } = await installReady(tempRoot());
+
+		// 第二次检查:清单给出 0.9.1,但它的包每个候选站都下不下来。
+		const next = makePayloadZip("0.9.1");
+		stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.9.1", next, { issuedAt: 200 })),
+			failUrls: /payload\.zip$/,
+		});
+
+		const status = await service.check();
+
+		expect(status.state).toMatchObject({ phase: "ready", target: "0.9.0" });
+	});
+
+	it("关掉自动下载、查到更新的一版 → 也不该把已就绪那份打回 available", async () => {
+		// 手动下载装好 0.9.0 之后,下一次检查看到 0.9.1。自动下载是关的,所以这一趟
+		// 只会得出「有新版」——但盘上那份仍然是按一下就能用的,按钮不能因此消失。
+		const zip = makePayloadZip("0.9.0");
+		stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.9.0", zip, { issuedAt: 100 })),
+			payload: zip,
+		});
+		const { service } = makeService({
+			trustedKeys: [key.spkiBase64],
+			currentVersion: "0.8.0",
+			settings: { autoDownload: false },
+		});
+		await service.check();
+		expect((await service.download()).state).toMatchObject({ phase: "ready", target: "0.9.0" });
+
+		const next = makePayloadZip("0.9.1");
+		stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("0.9.1", next, { issuedAt: 200 })),
+			payload: next,
+		});
+		await service.check();
+
+		// 「立即重启并应用」必须还在 —— 它是这条链路上唯一一个用户按了就有结果的按钮。
+		expect(service.getStatus().state).toMatchObject({ phase: "ready", target: "0.9.0" });
+	});
+
+	it("盘上钉着别的版本时,不能说这份 ready —— 重启跑的不是它", async () => {
+		const { service, versionsRoot } = await installReady(tempRoot());
+
+		// 装完之后用户按了回退:钉子指向更旧的一版,重启会跑钉着的那个。
+		pinVersion({ versionsRoot, version: "0.8.0" });
+		stubNetwork({
+			manifestBody: envelope(
+				key.privateKey,
+				manifestFor("0.9.0", makePayloadZip("0.9.0"), { issuedAt: 300 }),
+			),
+		});
+		await service.check();
+
+		expect(service.getStatus().state.phase).not.toBe("ready");
+	});
+});

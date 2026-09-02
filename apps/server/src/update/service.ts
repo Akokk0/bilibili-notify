@@ -94,11 +94,20 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 	 */
 	let pending: { manifest: Manifest; channel: "stable" | "prerelease" } | null = null;
 	/**
-	 * 这个进程里已经装到盘上的那份(版本 + 包的 sha256)。面板每次打开都会查一次,
-	 * 装好了还没重启的这段时间里,同一份包不该每开一次面板就重下一遍 —— 但只认
-	 * 版本号不够:发版侧重传过资产的话,同版本号下面是另一个包。
+	 * 这个进程里已经装到盘上、等着重启的那份。
+	 *
+	 * 它是 `ready` 这一档的**唯一来源** —— 「装好了」是盘上的事实,不是某次检查的结论,
+	 * 所以不存进 `state`:存进去就会被下一次检查的结论盖掉(见 `reportedState`)。
+	 *
+	 * 记 sha256 是因为只认版本号不够:发版侧重传过资产的话,同版本号下面是另一个包。
+	 * 记 releaseUrl / notes 是因为报 `ready` 时要把它们交出去。
 	 */
-	let onDisk: { version: string; sha256: string } | null = null;
+	let onDisk: {
+		version: string;
+		sha256: string;
+		releaseUrl: string;
+		notes?: string;
+	} | null = null;
 	/**
 	 * 正在跑的那趟检查 / 下载。打开面板那次自动检查还在下载,用户走到系统页又按
 	 * 「检查更新」—— 不共用的话两趟各下一份、各解一次压,最后谁写盘谁赢。
@@ -128,15 +137,59 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		return compareVersions(imageVersion, currentVersion) < 0 ? imageVersion : null;
 	}
 
+	/**
+	 * 这一档是不是**某次检查的结论**。
+	 *
+	 * 结论会被下一次检查覆盖,而「装好了等着重启」是盘上的事实 —— 事实压过结论。
+	 * 写成穷尽的 switch 而不是一串 `if`:往 `UpdateState` 里加一档时,编译器会逼着
+	 * 回来回答「它算不算结论」,而不是让它随便落进某一边。
+	 *
+	 * 这条规矩以前是散在 `runCheck` 三个出口上的 `if (readyOnDisk()) return`,第四个
+	 * 出口(下载失败)漏了 —— 于是「盘上 0.9.0 已就绪、0.9.1 下载失败」会把
+	 * 「立即重启并应用」按钮弄没,而那份载荷明明还在盘上。
+	 */
+	function isCheckConclusion(phase: UpdateState["phase"]): boolean {
+		switch (phase) {
+			case "idle":
+			case "up-to-date":
+			case "available":
+			case "needs-image-pull":
+			case "error":
+				return true;
+			// 正在发生的事、用户按下去的事、以及功能压根关着 —— 这些不是结论。
+			case "downloading":
+			case "ready":
+			case "rolled-back":
+			case "disabled":
+				return false;
+		}
+	}
+
+	/**
+	 * 报给面板的那一档。盘上装好了就报 `ready`,除非:
+	 *
+	 * - 内存里那档不是「某次检查的结论」(正在下载 / 已排队回退 / 功能关着);
+	 * - 盘上钉着别的版本 —— 那重启跑的根本不是这份载荷,说它 ready 就是骗人。
+	 */
+	function reportedState(view: BootView): UpdateState {
+		if (onDisk === null || view.pinned !== null || !isCheckConclusion(state.phase)) return state;
+		return {
+			phase: "ready",
+			target: onDisk.version,
+			releaseUrl: onDisk.releaseUrl,
+			notes: onDisk.notes,
+		};
+	}
+
 	function status(): UpdateStatus {
 		// 每次现读:钉子是靠重启生效的,内存态活不过那一下,盘上的才是真相。一次读出
-		// 整幅快照,回退目标和钉子说的才是同一个盘面。
+		// 整幅快照,回退目标、钉子、和「算不算 ready」说的才是同一个盘面。
 		const view = readBootView({ versionsRoot, imageVersion });
 		return {
 			currentVersion,
 			rollbackTarget: rollbackTarget(view),
 			pinnedVersion: view.pinned,
-			state,
+			state: reportedState(view),
 		};
 	}
 
@@ -202,13 +255,16 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		// 正在执行的代码,也是待会儿要退回去的地方。
 		pruneOldVersions({ versionsRoot, keep: [currentVersion, manifest.version] });
 
-		onDisk = { version: manifest.version, sha256: manifest.payload.sha256 };
-		state = {
-			phase: "ready",
-			target: manifest.version,
+		// 只记盘上的事实,不动 `state` —— `ready` 由 `reportedState` 从这里推出来。
+		onDisk = {
+			version: manifest.version,
+			sha256: manifest.payload.sha256,
 			releaseUrl: manifest.releaseUrl,
 			notes: manifest.notes,
 		};
+		// 这一趟的结论已经用完了(它是「有新版、去下」)。留着 downloading 的话,
+		// 它不是结论、压得过盘上的事实,面板会永远停在「正在下载」。
+		state = { phase: "idle" };
 		return status();
 	}
 
@@ -235,21 +291,9 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		return next;
 	}
 
-	/**
-	 * 这个进程装好的那份还躺在盘上等重启。这时 `ready` 是**盘上的事实**(重启就会跑它,
-	 * 选版只看盘上谁最新),不是这次检查的结论 —— 一次失败的检查、或清单退回去了,都不能
-	 * 把它盖掉:盖成 error 会让「立即重启」凭空消失,盖成 up-to-date 则是在说谎。
-	 */
-	function readyOnDisk(): boolean {
-		return state.phase === "ready" && onDisk !== null;
-	}
-
+	/** 盘上就是这一份包(版本 + sha256 都对得上)—— 别再下一遍。 */
 	function alreadyOnDisk(manifest: Manifest): boolean {
-		return (
-			state.phase === "ready" &&
-			onDisk?.version === manifest.version &&
-			onDisk.sha256 === manifest.payload.sha256
-		);
+		return onDisk?.version === manifest.version && onDisk.sha256 === manifest.payload.sha256;
 	}
 
 	/**
@@ -302,7 +346,6 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		const { channel } = settings;
 		const fetched = await fetchManifest(channel, mirrors);
 		if (!fetched.ok) {
-			if (readyOnDisk()) return status();
 			// 上一次查到的那份不能留着:它可能已经被撤回了,而这次没查到 —— 用户按「下载」
 			// 时得重新查,不能把一份来历不明的旧清单装上去。
 			pending = null;
@@ -323,7 +366,6 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 
 		if (decision.kind === "up-to-date") {
 			pending = null;
-			if (readyOnDisk()) return status();
 			state = { phase: "up-to-date", checkedAt: Date.now() };
 			return status();
 		}
@@ -331,7 +373,6 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 			// 载荷能比镜像新,但 Node / chromium / 字体全来自镜像。下下来也跑不起来,
 			// 所以连下都不下,直接告诉用户这一版得重拉镜像。
 			pending = null;
-			if (readyOnDisk()) return status();
 			state = {
 				phase: "needs-image-pull",
 				target: decision.target,
