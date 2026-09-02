@@ -6,14 +6,7 @@
  */
 
 import type { VideoInfo } from "@bilibili-notify/api";
-import type { Dynamic } from "@bilibili-notify/image";
-
-/** 与渲染器 `numberToStr` 同一套规矩:万 / 亿,一位小数。 */
-export function formatCount(n: number): string {
-	if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(1)}亿`;
-	if (n >= 10_000) return `${(n / 10_000).toFixed(1)}万`;
-	return String(n);
-}
+import { type Dynamic, numberToStr } from "@bilibili-notify/image";
 
 /** 秒 → `m:ss` / `h:mm:ss`,与 B 站封面角标一致。 */
 export function formatDuration(seconds: number): string {
@@ -58,7 +51,8 @@ export function videoToDynamic(info: VideoInfo): Dynamic {
 						duration_text: formatDuration(info.duration),
 						title: info.title,
 						desc: info.desc,
-						stat: { play: formatCount(info.stat.view), danmaku: formatCount(info.stat.danmaku) },
+						// 与卡片上别的计数同一份写法(渲染器自己也用它)。
+						stat: { play: numberToStr(info.stat.view), danmaku: numberToStr(info.stat.danmaku) },
 						bvid: info.bvid,
 						jump_url: `//www.bilibili.com/video/${info.bvid}`,
 					},

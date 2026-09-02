@@ -10,6 +10,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { DateTime } from "luxon";
+import { numberToStr } from "./format";
 import type { PuppeteerLike } from "./puppeteer";
 import { renderCard, USER_FONT_FAMILY } from "./render";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
@@ -269,10 +270,9 @@ export class ImageRenderer {
 
 	// ── 公共工具方法 ─────────────────────────────────────────────────────────────
 
+	/** 同 {@link numberToStr};留着方法形态是因为 koishi 的 render service 按公共 API 代理它。 */
 	numberToStr(num: number): string {
-		if (num >= 100_000_000) return `${(num / 100_000_000).toFixed(1)}亿`;
-		if (num >= 10_000) return `${(num / 10_000).toFixed(1)}万`;
-		return num.toString();
+		return numberToStr(num);
 	}
 
 	unixTimestampToString(timestamp: number): string {
