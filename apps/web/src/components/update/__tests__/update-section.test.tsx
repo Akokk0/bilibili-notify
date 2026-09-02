@@ -12,6 +12,7 @@ import type { UpdateStatusDTO } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { UpdateSection } from "../update-section";
 
@@ -37,12 +38,14 @@ function serve(state: UpdateStatusDTO["state"], over: Partial<UpdateStatusDTO> =
 	return status;
 }
 
-function renderSection() {
+function renderSection(at = "/system") {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
-		<QueryClientProvider client={qc}>
-			<UpdateSection />
-		</QueryClientProvider>,
+		<MemoryRouter initialEntries={[at]}>
+			<QueryClientProvider client={qc}>
+				<UpdateSection />
+			</QueryClientProvider>
+		</MemoryRouter>,
 	);
 }
 
@@ -212,5 +215,28 @@ describe("UpdateSection —— 头部与其他 section 同款", () => {
 		const own = version.closest("[data-bn='badge']");
 		expect(own).not.toBeNull();
 		expect(own?.parentElement?.closest("[data-bn='badge']")).toBeNull();
+	});
+});
+
+describe("UpdateSection —— 从别处「去更新」跳过来", () => {
+	// jsdom 没有 scrollIntoView;这里只关心「有没有滚」。
+	const scrollIntoView = vi.fn();
+	beforeEach(() => {
+		scrollIntoView.mockClear();
+		Element.prototype.scrollIntoView = scrollIntoView;
+	});
+
+	it("带着 #update 进来 → 这一节滚进视口", async () => {
+		serve({ phase: "idle" });
+		renderSection("/system#update");
+		await screen.findByText("还没查过");
+		expect(scrollIntoView).toHaveBeenCalled();
+	});
+
+	it("正常打开系统页 → 不乱滚", async () => {
+		serve({ phase: "idle" });
+		renderSection("/system");
+		await screen.findByText("还没查过");
+		expect(scrollIntoView).not.toHaveBeenCalled();
 	});
 });
