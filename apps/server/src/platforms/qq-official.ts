@@ -225,6 +225,10 @@ export interface QQDiscoveredSession {
  * 从入站事件捞群/C2C 的不透明 openid —— 群/C2C 寻址的唯一来源(QQ 无「列我加入的群」接口,
  * 用户没法手填群号)。群:GROUP_AT_MESSAGE_CREATE / GROUP_ADD_ROBOT → group_openid;
  * C2C:C2C_MESSAGE_CREATE → author.user_openid、FRIEND_ADD → openid。非相关事件返回 null。
+ *
+ * 不认 GROUP_MESSAGE_CREATE(不 @ 的普通群聊):它在「获取群内全部消息」档下是群里每一句话,
+ * 都进发现表的话面板那份「最近优先」的列表会随人说话不停重排。入群与被 @ 两条路已经足够
+ * 让一个群露面 —— 面板提示也是这么写的(「从机器人被 @ 的群消息事件捞」)。
  */
 export function extractQQDiscoveredSession(
 	eventType: string,
@@ -281,6 +285,44 @@ export function extractQQPrivateMessage(
 	if (typeof content !== "string" || !content.trim()) return null;
 	const msgId = typeof data.id === "string" && data.id ? data.id : undefined;
 	return { userOpenid, text: content, ...(msgId ? { msgId } : {}) };
+}
+
+/** 一条群消息 —— 链接解析(群里贴视频链接自动出卡片)从这儿进来。 */
+export interface QQInboundGroupMessage {
+	/** 群的不透明 openid。与 PushTarget 里存的 `session.groupOpenid` 同一命名空间。 */
+	groupOpenid: string;
+	/** 发言者在群成员域的 openid;与 C2C 用户 openid **不是**一个命名空间,别拿去比对主人。 */
+	memberOpenid?: string;
+	text: string;
+}
+
+/**
+ * 从群事件取正文。认两种:`GROUP_AT_MESSAGE_CREATE`(@ 了机器人)与 `GROUP_MESSAGE_CREATE`
+ * (群主把消息范围放到「获取群内全部消息」后,不 @ 的消息走这个)。三档范围是 QQ 那边的
+ * 设置,这里收到什么交什么。@ 消息的正文里可能带 `<@!id>` 与前导空格,原样交出。
+ *
+ * 与 {@link extractQQPrivateMessage} 分开:那条是主人专属的指令入口,这条是谁都能触发的
+ * 群消息,合起来写迟早有人把群那条也当私聊认。
+ *
+ * 不带消息 id:官机的主动群消息已经没有条数限制(2026-09-02 主人告知),回复走主动路径,
+ * 被动回复的 `msg_id` 用不上 —— 留一个没人接的字段只会让人以为被动路径存在。
+ */
+export function extractQQGroupMessage(
+	eventType: string,
+	data: Record<string, unknown>,
+): QQInboundGroupMessage | null {
+	if (eventType !== "GROUP_AT_MESSAGE_CREATE" && eventType !== "GROUP_MESSAGE_CREATE") return null;
+	const groupOpenid = data.group_openid;
+	if (typeof groupOpenid !== "string" || !groupOpenid) return null;
+	const content = data.content;
+	if (typeof content !== "string" || !content.trim()) return null;
+	const author = data.author as { member_openid?: string } | undefined;
+	const memberOpenid = author?.member_openid;
+	return {
+		groupOpenid,
+		...(typeof memberOpenid === "string" && memberOpenid ? { memberOpenid } : {}),
+		text: content,
+	};
 }
 
 /** 单 adapter 发现列表上限 —— 内存 ring buffer,超出丢最旧(纯便利选择器,不持久化)。 */
@@ -355,6 +397,8 @@ export interface QQGatewayConnOptions {
 	 * 由回调那边决定认不认发送者,这里只负责搬运。
 	 */
 	onInbound?(msg: QQInboundPrivateMessage): void;
+	/** 可选:群消息正文出口(链接解析)。不接就不解析群消息。 */
+	onInboundGroup?(msg: QQInboundGroupMessage): void;
 	serviceCtx: ServiceContext;
 	logger: Logger;
 	/** 订阅 intents,默认 {@link QQ_PUSH_INTENTS}。 */
@@ -484,6 +528,16 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 				} catch (err) {
 					logger.warn(
 						`[qq] adapter=${adapterId} 处理入站私聊失败: ${err instanceof Error ? err.message : String(err)}`,
+					);
+				}
+			}
+			const group = opts.onInboundGroup ? extractQQGroupMessage(t, d) : null;
+			if (group) {
+				try {
+					opts.onInboundGroup?.(group);
+				} catch (err) {
+					logger.warn(
+						`[qq] adapter=${adapterId} 处理入站群消息失败: ${err instanceof Error ? err.message : String(err)}`,
 					);
 				}
 			}
@@ -946,6 +1000,11 @@ export interface QQOfficialAdapterOptions {
 	 * 与 onebot adapter 的同名选项是同一个角色。
 	 */
 	onInbound?: (msg: QQInboundPrivateMessage) => void;
+	/**
+	 * 群消息正文的出口(链接解析)。附上收到这条消息的 adapter id —— 回到来源群要知道
+	 * 该用哪个 adapter 的凭据发。不接 = 不解析群消息。
+	 */
+	onInboundGroup?: (msg: QQInboundGroupMessage, meta: { adapterId: string }) => void;
 }
 
 interface QQLive {
@@ -1010,6 +1069,12 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			getToken: () => tm.getToken(),
 			onDiscovered: (s) => registry.record(adapter.id, s, Date.now()),
 			...(opts.onInbound ? { onInbound: opts.onInbound } : {}),
+			...(opts.onInboundGroup
+				? {
+						onInboundGroup: (m: QQInboundGroupMessage) =>
+							opts.onInboundGroup?.(m, { adapterId: adapter.id }),
+					}
+				: {}),
 			serviceCtx,
 			logger,
 			shouldLogReconnects: () => logReconnectsBox.value,
