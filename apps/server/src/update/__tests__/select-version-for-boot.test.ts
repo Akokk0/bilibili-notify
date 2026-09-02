@@ -111,6 +111,29 @@ describe("selectVersionForBoot", () => {
 		expect(selectVersionForBoot(input).version).toBe("0.9.0");
 	});
 
+	it("阈值那一次起来了 → 不能留在黑名单里,下次照样选它", () => {
+		// 判死是在**选中的那一刻**记的(选中就记一次尝试,由 markBootSucceeded 销账),
+		// 所以第三次选中时它已经进了 failed —— 而那一次它其实起来了。销账只清 attempts
+		// 不清 failed 的话,一个好版本就从第四次开机起被永久打入冷宫、静默降级到镜像版,
+		// 面板上却还说它「已就绪」。两次没确认的启动(宿主重启、OOM、启动中被 down)
+		// 加上一次正常启动,就是这个形状。
+		const root = tempRoot();
+		const versionsRoot = versionsWith(root, "0.8.0", "0.9.0");
+		const input = {
+			imageVersion: "0.7.0",
+			imagePath: join(root, "app"),
+			versionsRoot,
+			maxBootFailures: 3,
+		};
+
+		selectVersionForBoot(input); // 1,没确认
+		selectVersionForBoot(input); // 2,没确认
+		expect(selectVersionForBoot(input).version).toBe("0.9.0"); // 3,阈值 —— 但这次起来了
+		markBootSucceeded({ versionsRoot, version: "0.9.0" });
+
+		expect(selectVersionForBoot(input).version).toBe("0.9.0");
+	});
+
 	it("一次都没升过 → 跑镜像自带那份", () => {
 		const root = tempRoot();
 

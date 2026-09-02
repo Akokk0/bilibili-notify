@@ -192,16 +192,26 @@ export interface MarkBootSucceededInput {
 }
 
 /**
- * 这个版本真的起来了 —— 把它的失败计数销掉。
+ * 这个版本真的起来了 —— 把它的失败计数销掉,**也从黑名单里放出来**。
  *
  * 由应用在确认自己活过来之后调用(比如 HTTP 开始 listen)。少了这一步,偶发的
  * 一次起不来(宿主重启、被 OOM 杀、用户手动 kill)会一路累加,最后把一个好版本
  * 判死并悄悄降级 —— 那比不做自愈还糟。
+ *
+ * 黑名单也要清:判死是在**选中的那一刻**记的,所以阈值那一次它已经在 `failed` 里了
+ * —— 而它这次起来了。起来了就不是死的,只清计数不清黑名单的话,它从下一次开机起
+ * 就被永久打入冷宫。
  */
 export function markBootSucceeded({ versionsRoot, version }: MarkBootSucceededInput): void {
 	const state = readState(versionsRoot);
-	if (state.attempts[version] === undefined) return;
+	const wasCounted = state.attempts[version] !== undefined;
+	const wasFailed = state.failed.includes(version);
+	if (!wasCounted && !wasFailed) return;
 
 	const { [version]: _cleared, ...rest } = state.attempts;
-	writeState(versionsRoot, { ...state, attempts: rest });
+	writeState(versionsRoot, {
+		...state,
+		attempts: rest,
+		failed: state.failed.filter((v) => v !== version),
+	});
 }
