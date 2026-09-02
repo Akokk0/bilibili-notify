@@ -494,6 +494,7 @@ export async function startStandaloneServer(
 			config: () => runtime.configStore.getGlobals().linkParsing,
 			api: engines.api,
 			renderer: () => engines?.imageRenderer ?? null,
+			layout: () => runtime.configStore.getGlobals().defaults.cardLayout.dynamic,
 			send: async ({ platform, adapterId, groupId }, payload) => {
 				const adapter = runtime.configStore.getAdapters().find((a) => a.id === adapterId);
 				const platformAdapter = adapters.find((a) => a.platforms.includes(platform));

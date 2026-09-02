@@ -66,6 +66,12 @@ export interface LinkParserOptions {
 			layout?: CardBlock[],
 		): Promise<Buffer>;
 	} | null;
+	/**
+	 * 全局默认的动态卡版式(`defaults.cardLayout.dynamic`),**现读**。推送的动态卡吃的是
+	 * 它(per-UP 覆盖 ?? 全局),链接解析没有 UP 可言,就吃全局这份 —— 不传的话渲染器退回
+	 * 出厂版式,主人在编辑器里排的顺序在这张卡上就丢了。
+	 */
+	layout: () => CardBlock[] | undefined;
 	/** 往来源群发 —— 由接线层用收到这一帧的那个 adapter 实现。 */
 	send: (dest: LinkReplyDestination, payload: NotificationPayload) => Promise<DeliveryResult>;
 	now?: () => number;
@@ -111,7 +117,11 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 		// 冷却从**开始处理**起算,不是发出去才算:一条坏链接被反复贴,不该每次都去打接口。
 		if (inCooldown(key, cooldownMs)) return;
 		const info = await opts.api.getVideoInfo(ref);
-		const buffer = await renderer.generateDynamicCard(videoToDynamic(info));
+		const buffer = await renderer.generateDynamicCard(
+			videoToDynamic(info),
+			undefined,
+			opts.layout(),
+		);
 		const result = await opts.send(dest, { kind: "image", image: { buffer, mime: "image/jpeg" } });
 		if (!result.ok) {
 			opts.logger.warn(`[link] 视频卡片发送失败 group=${dest.groupId} ${info.bvid}: ${result.err}`);

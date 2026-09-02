@@ -55,6 +55,12 @@ function groupFrame(text: string, over: Record<string, unknown> = {}) {
 	};
 }
 
+/** 主人在版式编辑器里改过的动态卡版式 —— 推送的动态卡吃它,链接解析出的卡也得吃它。 */
+const LAYOUT: CardBlock[] = [
+	{ id: "content", type: "content", visible: true },
+	{ id: "header", type: "header", visible: true, marginTop: 12 },
+];
+
 function makeParser(over: Partial<LinkParsingConfig> = {}) {
 	const config: LinkParsingConfig = { enabled: true, cooldownSeconds: 60, ...over };
 	const getVideoInfo = vi.fn(async (_ref: VideoRef) => VIDEO);
@@ -77,6 +83,7 @@ function makeParser(over: Partial<LinkParsingConfig> = {}) {
 		config: () => config,
 		api: { getVideoInfo, resolveShortLink },
 		renderer: () => ({ generateDynamicCard }),
+		layout: () => LAYOUT,
 		send,
 		now: () => now,
 	});
@@ -127,6 +134,8 @@ describe("createLinkParser", () => {
 			forward: { count: 15 },
 			like: { count: 3000 },
 		});
+		// 版式与推送的动态卡同一份:不传的话渲染器会退回出厂版式,主人在编辑器里排的顺序就丢了。
+		expect(h.generateDynamicCard.mock.calls[0]?.[2]).toBe(LAYOUT);
 
 		expect(h.sent).toEqual([
 			{
@@ -181,6 +190,7 @@ describe("createLinkParser", () => {
 				config: () => h.config,
 				api: { getVideoInfo: h.getVideoInfo, resolveShortLink: h.resolveShortLink },
 				renderer: () => null,
+				layout: () => undefined,
 				send: h.send,
 			});
 			await parser.handle(groupFrame(LINK), { adapterId: ADAPTER });
