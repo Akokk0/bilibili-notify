@@ -260,6 +260,7 @@ interface ConfirmationWindow {
 - **冷却**:同一个群同一个视频 `cooldownSeconds`(默认 60,0 = 不节流)内只出一次。从**开始处理**起算,不是发出去才算 —— 一条坏链接被反复贴,不该每次都去打接口。
 - **失败一律沉默**:接口失败 / 视频不存在 / 渲染失败 / 没有 Chrome,都只记日志、不回话。群里没人要求解析,失败了还回一句只是噪音,而且等于把「机器人在这个群」广播出去。
 - **一条消息最多三个链接**;机器人自己发的消息不解析;`b23.tv` 只跟一跳 `Location`、只认落在 `bilibili.com` 的目标(短链是别人贴的,跟到哪儿就是让谁指挥我们)。
+- **分享卡也认**(OneBot):用 B 站 App「分享到 QQ」发进群的是一张 json / xml 卡,正文一个字都没有、链接藏在卡的字段里(`meta.detail_1.qqdocurl` / `meta.news.jumpUrl`)。`extractGroupMessage` 把卡里的链接接在正文后面(json 先 parse 再逐字符串找,不然 `https:\/\/` 这种转义写法对着原文找不到);私聊那条不做这个,指令入口只认文字。测试在 `inbound-message.test.ts`。
 
 **卡片不新做**:`video-card.ts` 把 `getVideoInfo` 的结果拼成一条 `DYNAMIC_TYPE_AV` 形态的动态,喂给现有的
 `generateDynamicCard` —— 动态卡的版式编辑器、每类型样式、皮肤全部现成。播放 / 弹幕数按接口的样子给
