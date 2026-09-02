@@ -9,7 +9,6 @@ import {
 	Icon,
 	LoadingBlock,
 	Picker,
-	Pill,
 	Toggle,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -155,7 +154,7 @@ export function UpdateSection() {
 			subtitle="在这里直接换版本,不用重新拉镜像或下载安装包"
 			accent={SECTION_ACCENT.system}
 			icon={<Icon.sparkle size={14} />}
-			badge={<Pill>{status.currentVersion}</Pill>}
+			badge={status.currentVersion}
 		>
 			<div className="flex flex-col gap-4">
 				<div className="flex flex-wrap items-center gap-2">

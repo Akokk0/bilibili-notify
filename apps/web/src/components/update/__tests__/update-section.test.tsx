@@ -201,3 +201,16 @@ describe("UpdateSection —— 设置", () => {
 		expect(await screen.findByText("0.9.0 已就绪")).toBeTruthy();
 	});
 });
+
+describe("UpdateSection —— 头部与其他 section 同款", () => {
+	it("版本号只套 GlassBox 自带的那一层淡色胶囊,不再自己包一层实心 Pill", async () => {
+		// 皮肤 / 备份两节的 badge 传的是纯字符串,由 GlassBox 统一套成淡色小胶囊。
+		// 这里曾多包了一层默认粉色实心的 Pill,变成胶囊套胶囊,和邻居长得不一样。
+		serve({ phase: "idle" });
+		renderSection();
+		const version = await screen.findByText("0.8.0");
+		const own = version.closest("[data-bn='badge']");
+		expect(own).not.toBeNull();
+		expect(own?.parentElement?.closest("[data-bn='badge']")).toBeNull();
+	});
+});
