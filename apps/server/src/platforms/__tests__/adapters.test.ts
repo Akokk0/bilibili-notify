@@ -1836,11 +1836,12 @@ describe("webhook — isAvailable / probe", () => {
 // 得把自己的 id 一并带上,不然上层无从知道该用哪条连接回话。
 // ---------------------------------------------------------------------------
 
-describe("onebot 入站帧带来源 adapterId", () => {
-	it("正向 WS:事件帧原样交给 onInbound,并附上 {adapterId}", async () => {
+describe("onebot 入站消息在 adapter 里归一化,并带来源 adapterId", () => {
+	it("正向 WS:群消息帧 → onInboundGroup(平台中立形状 + {adapterId})", async () => {
 		const bot = await startFakeBotServer();
-		const onInbound = vi.fn();
-		const ad = createOnebotAdapter({ ...obOpts(), onInbound });
+		const onInboundGroup = vi.fn();
+		const onInboundPrivate = vi.fn();
+		const ad = createOnebotAdapter({ ...obOpts(), onInboundGroup, onInboundPrivate });
 		const adapter = obWsAdapter(bot.port);
 		ad.reconcile?.([adapter]);
 		await waitFor(() => bot.connections.length > 0);
@@ -1854,21 +1855,48 @@ describe("onebot 入站帧带来源 adapterId", () => {
 			raw_message: "hi",
 		};
 		bot.connections[0]?.send(JSON.stringify(frame));
-		await waitFor(() => onInbound.mock.calls.length > 0);
-		expect(onInbound).toHaveBeenCalledWith(frame, { adapterId: "a1" });
+		await waitFor(() => onInboundGroup.mock.calls.length > 0);
+		expect(onInboundGroup).toHaveBeenCalledWith(
+			{ groupId: "123", userId: "456", selfId: "10000", text: "hi", cardLinks: [] },
+			{ adapterId: "a1" },
+		);
+		expect(onInboundPrivate).not.toHaveBeenCalled();
 		ad.dispose?.();
 	});
 
-	it("反向 WS:同样附上 {adapterId}", async () => {
-		const onInbound = vi.fn();
-		const ad = createOnebotAdapter({ ...obOpts(), onInbound });
+	it("反向 WS:私聊帧 → onInboundPrivate;心跳谁都不进;消费者抛错不断连", async () => {
+		const onInboundPrivate = vi.fn((_msg: unknown, _meta: unknown) => {
+			throw new Error("指令处理炸了");
+		});
+		const ad = createOnebotAdapter({ ...obOpts(), onInboundPrivate });
 		const port = await freePort();
 		ad.reconcile?.([obRevAdapter(port)]);
 		const bot = await connectWithRetry(`ws://127.0.0.1:${port}`);
-		const frame = { post_type: "meta_event", meta_event_type: "heartbeat", self_id: 10000 };
-		bot.send(JSON.stringify(frame));
-		await waitFor(() => onInbound.mock.calls.length > 0);
-		expect(onInbound).toHaveBeenCalledWith(frame, { adapterId: "a1" });
+		bot.send(JSON.stringify({ post_type: "meta_event", meta_event_type: "heartbeat", self_id: 1 }));
+		bot.send(
+			JSON.stringify({
+				post_type: "message",
+				message_type: "private",
+				user_id: 456,
+				raw_message: "y",
+			}),
+		);
+		await waitFor(() => onInboundPrivate.mock.calls.length > 0);
+		expect(onInboundPrivate).toHaveBeenCalledWith(
+			{ userId: "456", text: "y" },
+			{ adapterId: "a1" },
+		);
+		// 还活着的直接证据:上一条让消费者抛了,再来一条照样送到。
+		bot.send(
+			JSON.stringify({
+				post_type: "message",
+				message_type: "private",
+				user_id: 456,
+				raw_message: "n",
+			}),
+		);
+		await waitFor(() => onInboundPrivate.mock.calls.length > 1);
+		expect(onInboundPrivate.mock.calls[1]?.[0]).toEqual({ userId: "456", text: "n" });
 		ad.dispose?.();
 	});
 });

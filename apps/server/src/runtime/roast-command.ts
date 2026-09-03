@@ -14,8 +14,8 @@
  */
 
 import type { Logger } from "@bilibili-notify/internal";
+import type { InboundPrivateMessage } from "../platforms/types.js";
 import type { ConfirmationWindow } from "./command-dispatcher.js";
-import { extractPrivateMessage, type InboundPrivateMessage } from "./inbound-message.js";
 import type { RoastDraft, RoastDraftStore } from "./roast-draft-store.js";
 
 export type RoastCommand =
@@ -39,9 +39,6 @@ export function parseRoastCommand(raw: string): RoastCommand {
 }
 
 export type { InboundPrivateMessage };
-// 入站私聊解析已挪到 `inbound-message.ts` —— 指令分发器也要用,不该让通用设施
-// 反过来依赖某一条具体指令。这里继续 re-export,既有调用点不用动。
-export { extractPrivateMessage };
 
 export interface RoastCommandHandlerOptions {
 	drafts: RoastDraftStore;

@@ -18,7 +18,7 @@
 
 | 文件 | 角色 |
 |---|---|
-| `inbound-message.ts` | `extractPrivateMessage` / `extractGroupMessage` —— 平台事件帧 → `InboundPrivateMessage{userId,text}` / `InboundGroupMessage{groupId,userId,selfId?,text}`,平台差异到此为止 |
+| `platforms/types.ts` / `platforms/onebot-inbound.ts` | 入站消息的平台中立形状 `InboundPrivateMessage{userId,text}` / `InboundGroupMessage{groupId,userId,selfId?,text,cardLinks}` 住在 `types.ts`;**归一化在 adapter 里做**:OneBot 帧由 `onebot-inbound.ts` 的 `extractPrivateMessage` / `extractGroupMessage` 解析(`routeInboundFrame` 一帧至多进一路),官机由 `qq-official.ts` 的 `extractQQPrivateMessage` / `extractQQGroupMessage` 解析;两个 adapter 交出同一个形状,消费者不碰原始帧 |
 | `command-dispatcher.ts` | 鉴权、四道门、路由、触发词查重(`effectiveAliases` / `command()` 注册助手) |
 | `command-params.ts` | 签名解析 `parseSignature` + 入参解析 `parseArgs` + 从签名推 handler 入参类型的 `Values<S>` |
 | `command-help.ts` | `renderUsage` / `renderHelp` —— 纯函数,私聊帮助与面板卡片共用 |
@@ -36,7 +36,7 @@
 
 ```
 平台事件帧
-    ↓  extractPrivateMessage        (平台差异到此为止)
+    ↓  adapter 归一化(OneBot: onebot-inbound.ts;官机: qq-official.ts)—— 平台差异到此为止
 InboundPrivateMessage {userId, text}
     ↓
 ┌─────────────────────────────────────────────────┐
@@ -71,7 +71,7 @@ InboundPrivateMessage {userId, text}
 - **总开关排在确认流之后** —— 「关掉 = 整条链路只剩确认流」。一起关掉的话,主人关一下指令,手里那份等审批的周报就再也批不掉了。
 - **前缀闸排在路由之前** —— 不带前缀的一律当聊天,连「没有这条指令」都不说。
 
-两个入口共用同一份鉴权与路由:`handle(frame)` 给 OneBot 那种原始帧,`handleMessage(msg)` 给网关已经解析好的 qq-official。各写一份的话迟早有一边把「不是主人也放行」写漏。
+只有一个入口 `handleMessage(msg)`:两个 adapter 都在自己那层把帧归一化成同一个形状再交过来。曾经 OneBot 走 `handle(frame)` 在指令层解析、官机走 `handleMessage`,两条路各写一份鉴权迟早有一边把「不是主人也放行」写漏 —— 现在鉴权与路由只有一处。
 
 ## 指令表
 
@@ -251,18 +251,18 @@ interface ConfirmationWindow {
 ## 链接解析(不是指令)
 
 群里有人贴 B 站视频链接(`bilibili.com/video/BV…` / `/video/av…` / `b23.tv` 短链),机器人回一张视频卡片。
-与指令分发器**并列**挂在 OneBot 入站帧上(`index.ts` 里 `onInboundFrame` 同时喂两者),但它没有前缀、
+与指令分发器各接 adapter 的一路出口(私聊 → 指令分发,群 → 链接解析;`index.ts` 里 `onInboundPrivate` / `onInboundGroup`),但它没有前缀、
 不认主人、群里谁贴都算 —— 正因为谁都能触发,它自己带一套闸门,和指令那三条约束是同一个道理:
 
 - **默认关**(`globals.linkParsing.enabled`),系统页「链接解析」卡是唯一开关。开着就意味着同群任何人都能让机器人出图,这得是主人自己按的。
 - **只做群**,OneBot(ws / ws-reverse)与 qq-official 都收。私聊里贴链接不理;http 形态的 OneBot 没有入站。官机那头:群主在群设置里给机器人的消息范围有三档(全部消息 / @ 及其前 10 条 / 仅 @),「全部消息」以 `GROUP_MESSAGE_CREATE` 下发、@ 的走 `GROUP_AT_MESSAGE_CREATE`,两种事件网关都交出来(`onInboundGroup`,与 C2C 私聊分开);我们这边收到什么解析什么,不做「要不要 @」的设置 —— 那是 QQ 那边的开关。官机现已无主动消息限制(2026-09-02 主人告知),回复直接走现成的「上传图片 → 发群消息」路径,不用被动回复的 `msg_id`。
-- **机器人在的所有群都算**(2026-09-02 主人定的),不要求群配成推送目标。回到来源群不查目标表:adapter 交消息时附上自己的 `adapterId`(OneBot `onInbound(frame, {adapterId})`、官机 `onInboundGroup(msg, {adapterId})`),接线层拿它找到配置里的 adapter,按平台造一个临时的 group target(OneBot 用群号 `session.groupId`、官机用 `session.groupOpenid`)直接 `send`。两个入口汇合在 `createLinkParser.handleMessage`,OneBot 的 `handle(frame)` 只是它的薄壳。
+- **机器人在的所有群都算**(2026-09-02 主人定的),不要求群配成推送目标。回到来源群不查目标表:adapter 交消息时附上自己的 `adapterId`(两端都是 `onInboundGroup(msg, {adapterId})`),接线层补上平台名、拿 id 找到配置里的 adapter,按平台造一个临时的 group target(OneBot 用群号 `session.groupId`、官机用 `session.groupOpenid`)直接 `send`。唯一入口是 `createLinkParser.handleMessage`。
 - **冷却**:同一个群同一个视频 `cooldownSeconds`(默认 60,0 = 不节流)内只出一次。从**开始处理**起算,不是发出去才算 —— 一条坏链接被反复贴,不该每次都去打接口。短链的那一跳也是接口,所以短链先按它自己吃一道冷却(解不出视频也吃),解出视频号后再按视频号吃一道(短链与直链指着同一个视频只出一张)。
-- **闸门按代价排**:先正则挑链接(没链接的连配置都不读 —— 官机开着「全部消息」时群里每句话都进这儿,而读配置是整份深拷贝),再读配置、再看有没有渲染器,网络与冷却留到每个链接自己那一轮;`handle(frame)` 连拆帧那步都裹在 try 里 —— 它是被 `void` 掉的回调,rejection 会被独立端的 unhandledRejection 处理器变成进程退出。
-- **硬上限不进面板**(`LINK_LIMITS`,`link-parser.ts`):冷却只防「同一个视频反复贴」,防不住换着视频刷 —— 单个群每分钟最多 6 张;全局同时在处理(取信息 / 渲染 / 发送)的链接卡最多 3 张,超了直接放弃不排队(渲染队列是串行的,链接卡排太多会把真正的开播 / 动态卡挤到后面几分钟);冷却表与群额度表各有容量上限(2000),满了丢最久没碰的,不会越涨越慢。三道闸先看不动手,都过了才一起记账:在冷却里的链接不吃群额度,因忙放弃的链接也不记成「处理过」。
+- **闸门按代价排**:先正则挑链接(没链接的连配置都不读 —— 官机开着「全部消息」时群里每句话都进这儿,而读配置是整份深拷贝),再读配置、再看有没有渲染器,网络与冷却留到每个链接自己那一轮;`handleMessage` 整个裹在 try 里、永不抛 —— 它是被 `void` 掉的回调,rejection 会被独立端的 unhandledRejection 处理器变成进程退出;拆帧那步的异常由 adapter 的通道兜(它还担着推送,不能因一帧怪东西断连)。开关与呈现从 `engines.linkParsing()` / `engines.linkCardPresentation()` 拿,是随 config-changed 刷新的快照,不再按条深拷贝 globals。
+- **硬上限不进面板**(`LINK_LIMITS`,`link-parser.ts`):冷却只防「同一个视频反复贴」,防不住换着视频刷 —— 单个群每分钟最多 6 张;全局同时在处理(取信息 / 渲染 / 发送)的链接卡最多 3 张,超了直接放弃不排队(这管的是积压量;给开播 / 动态卡让路由渲染队列的**低优先级车道**做 —— 链接卡以 `priority: "low"` 渲染,渲染器那级与浏览器闸那级都是「正常车道排空之前不动」);冷却表与群额度表各有容量上限(2000),满了丢最久没碰的,不会越涨越慢。三道闸先看不动手,都过了才一起记账:在冷却里的链接不吃群额度,因忙放弃的链接也不记成「处理过」。
 - **失败一律沉默**:接口失败 / 视频不存在 / 渲染失败 / 没有 Chrome,都只记日志、不回话。群里没人要求解析,失败了还回一句只是噪音,而且等于把「机器人在这个群」广播出去。
 - **一条消息最多三个链接**;机器人自己发的消息不解析;`b23.tv` 只跟一跳 `Location`、只认落在 `bilibili.com` 的目标(短链是别人贴的,跟到哪儿就是让谁指挥我们)。
-- **分享卡也认**(OneBot):用 B 站 App「分享到 QQ」发进群的是一张 json / xml 卡,正文一个字都没有、链接藏在卡的字段里(`meta.detail_1.qqdocurl` / `meta.news.jumpUrl`)。`extractGroupMessage` 把卡里的链接接在正文后面(json 先 parse 再逐字符串找,不然 `https:\/\/` 这种转义写法对着原文找不到);私聊那条不做这个,指令入口只认文字。测试在 `inbound-message.test.ts`。
+- **分享卡也认**(OneBot):用 B 站 App「分享到 QQ」发进群的是一张 json / xml 卡,正文一个字都没有、链接藏在卡的字段里(`meta.detail_1.qqdocurl` / `meta.news.jumpUrl`)。`extractGroupMessage` 把卡里的链接单放一格 `cardLinks`(正文还是用户敲的那句话;json 先 parse 再逐字符串找,不然 `https:\/\/` 这种转义写法对着原文找不到;原文里连 `bilibili.com` / `b23.tv` 都没有的卡不解析),链接解析把正文与 `cardLinks` 拼起来找;私聊那条不做这个,指令入口只认文字。测试在 `platforms/__tests__/onebot-inbound.test.ts`。
 
 **卡片不新做**:`video-card.ts` 把 `getVideoInfo` 的结果拼成一条 `DYNAMIC_TYPE_AV` 形态的动态,喂给现有的
 `generateDynamicCard` —— 动态卡的版式编辑器、每类型样式、皮肤全部现成。播放 / 弹幕数按接口的样子给

@@ -1,25 +1,39 @@
 /**
- * 入站私聊消息 —— 各平台事件帧到「谁说了什么」的收口。
+ * OneBot v11 事件帧 → 入站消息。平台差异到此为止:交出去的是 `platforms/types.ts` 里
+ * 那两个平台中立的形状,与官机网关交出来的一模一样。
  *
- * 从 `roast-command` 提出来的:审批曾经是唯一的入站消费者,所以这段解析住在那儿。
- * 现在指令分发器也要用,再让通用设施去 import 某一条具体指令就反了 —— 谁都能用的
- * 东西放这里,`roast-command` 继续 re-export 以免改动既有调用点。
+ * 曾经住在 `runtime/inbound-message.ts`,由指令分发与链接解析各自对同一帧解析一遍;
+ * 现在 adapter 解析一次、按私聊 / 群分两路交出去 —— 第三个消费者不必再记 OneBot 的
+ * 转义规则,官机那边也早就是这么做的。
  */
 
-/** OneBot v11 私聊文本事件里我们用得到的那几个字段。 */
-export interface InboundPrivateMessage {
-	userId: string;
-	text: string;
+import type { InboundGroupMessage, InboundMeta, InboundPrivateMessage } from "./types.js";
+
+export interface OnebotInboundSinks {
+	onInboundPrivate?: (msg: InboundPrivateMessage, meta: InboundMeta) => void;
+	onInboundGroup?: (msg: InboundGroupMessage, meta: InboundMeta) => void;
 }
 
-/** OneBot v11 群消息文本事件里我们用得到的那几个字段。 */
-export interface InboundGroupMessage {
-	groupId: string;
-	userId: string;
-	/** 收到这条消息的 bot 自己的号;老客户端可能不带。 */
-	selfId?: string;
-	/** 正文,后面接着分享卡(json / xml 段)里的链接 —— 见 {@link extractGroupMessage}。 */
-	text: string;
+/**
+ * 一帧 → 至多一路。没接的那路连解析都不做(官机开着「全部消息」时群里每句话都进这儿)。
+ * 解析抛错由通道那层兜(它还担着推送,不能因为一帧怪东西断连)。
+ */
+export function routeInboundFrame(
+	frame: Record<string, unknown>,
+	meta: InboundMeta,
+	sinks: OnebotInboundSinks,
+): void {
+	if (sinks.onInboundPrivate) {
+		const msg = extractPrivateMessage(frame);
+		if (msg) {
+			sinks.onInboundPrivate(msg, meta);
+			return;
+		}
+	}
+	if (sinks.onInboundGroup) {
+		const msg = extractGroupMessage(frame);
+		if (msg) sinks.onInboundGroup(msg, meta);
+	}
 }
 
 /**
@@ -49,14 +63,15 @@ function toId(v: unknown): string | undefined {
 }
 
 /**
- * 从一帧 OneBot 事件里挑出群消息文本。不是群消息就返回 null。
+ * 从一帧 OneBot 事件里挑出群消息。不是群消息就返回 null。
  *
  * 与私聊那条只差「认哪种 message_type、多带一个 group_id」;文本抽取共用一份 ——
  * 段数组优先、raw_message 回落的那套容错两边都要。
  *
- * 多做一件事:**分享卡里的链接也接到正文后面**。用 B 站 App 的「分享到 QQ」把视频发进群,
- * 交过来的是一张卡(json / xml 段),正文一个字都没有,链接藏在卡的字段里 —— 只取 text 段
- * 的话,这条最常见的分享方式一个字都看不见。私聊那条不做这个:指令入口只认文字。
+ * 多做一件事:**分享卡里的链接也交出去**(`cardLinks`,与正文分开)。用 B 站 App 的
+ * 「分享到 QQ」把视频发进群,交过来的是一张卡(json / xml 段),正文一个字都没有,链接
+ * 藏在卡的字段里 —— 只取 text 段的话,这条最常见的分享方式一个字都看不见。私聊那条
+ * 不做这个:指令入口只认文字。正文与卡片链接都空才当没这条消息。
  */
 export function extractGroupMessage(frame: Record<string, unknown>): InboundGroupMessage | null {
 	if (frame.post_type !== "message") return null;
@@ -64,9 +79,10 @@ export function extractGroupMessage(frame: Record<string, unknown>): InboundGrou
 	const groupId = toId(frame.group_id);
 	const userId = toId(frame.user_id);
 	if (!groupId || !userId) return null;
-	const text = [extractText(frame), ...extractCardLinks(frame)].join(" ").trim();
-	if (!text) return null;
-	return { groupId, userId, selfId: toId(frame.self_id), text };
+	const text = extractText(frame).trim();
+	const cardLinks = extractCardLinks(frame);
+	if (!text && cardLinks.length === 0) return null;
+	return { groupId, userId, selfId: toId(frame.self_id), text, cardLinks };
 }
 
 /**

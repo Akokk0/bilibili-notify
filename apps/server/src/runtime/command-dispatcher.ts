@@ -18,9 +18,9 @@
  */
 
 import type { CommandConfig, Logger } from "@bilibili-notify/internal";
+import type { InboundPrivateMessage } from "../platforms/types.js";
 import { type ParamSpec, parseArgs, parseSignature, type Values } from "./command-params.js";
 import { suggestCommand } from "./command-suggest.js";
-import { extractPrivateMessage, type InboundPrivateMessage } from "./inbound-message.js";
 
 /**
  * 一条注册进来的指令。业务实现各归各的服务,这里只管认出来、校验、交出去。
@@ -115,14 +115,10 @@ export interface CommandDispatcherOptions {
 }
 
 export interface CommandDispatcher {
-	/** 喂一帧平台事件。不是私聊、不是主人的指令,都静默返回。 */
-	handle(frame: Record<string, unknown>): Promise<void>;
 	/**
-	 * 喂一条**已经解析好**的私聊消息。给帧格式不是 OneBot 的平台用
-	 * (qq-official 的网关送来的是 `{userOpenid, text}`)。
-	 *
-	 * 鉴权与路由全在这里,`handle` 只是「解析帧 → 调它」—— 两条路各写一份鉴权的话,
-	 * 迟早有一边把「不是主人也放行」写漏。
+	 * 喂一条 adapter 归一化好的私聊消息(OneBot 与官机交出来的是同一个形状)。不是主人、
+	 * 不是指令,都静默返回。鉴权与路由全在这里 —— 唯一入口,不会有哪条路把「不是主人
+	 * 也放行」写漏。
 	 */
 	handleMessage(msg: InboundPrivateMessage): Promise<void>;
 	/**
@@ -290,12 +286,6 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 	}
 
 	return {
-		async handle(frame) {
-			const msg = extractPrivateMessage(frame);
-			// 不是私聊(群消息 / 心跳 / 通知)就到此为止 —— 群里有人打个「/状态」不该触发。
-			if (!msg) return;
-			await handleMessage(msg);
-		},
 		handleMessage,
 		reconcile() {
 			try {

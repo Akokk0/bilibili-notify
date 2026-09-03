@@ -10,6 +10,7 @@
  */
 
 import { describe, expect, it, vi } from "vite-plus/test";
+import { extractPrivateMessage } from "../../platforms/onebot-inbound.js";
 import { createCommandDispatcher } from "../command-dispatcher.js";
 
 /** 测试替身收口 —— 只填被读到的字段。 */
@@ -252,32 +253,20 @@ describe("健壮性", () => {
 		expect(boom).toHaveBeenCalledOnce();
 	});
 
-	it("群消息一律不认 —— 群里有人打个「/状态」不该触发", async () => {
-		const run = vi.fn(async () => {});
-		const { dispatcher, reply } = makeDispatcher([{ name: "状态", run }]);
-
-		await dispatcher.handle({
-			post_type: "message",
-			message_type: "group",
-			group_id: 123,
-			user_id: MASTER,
-			raw_message: "/状态",
-		});
-
-		expect(run).not.toHaveBeenCalled();
-		expect(reply).not.toHaveBeenCalled();
-	});
-
-	it("OneBot 私聊帧走得通 —— handle 只是 handleMessage 的解析前置", async () => {
+	// 群消息进不来这儿:adapter 那层只把私聊交给指令分发(见 onebot-inbound.test 的
+	// routeInboundFrame)。这里只剩「私聊帧归一化之后走得通」这一条链。
+	it("OneBot 私聊帧经 adapter 归一化后走得通", async () => {
 		const run = vi.fn(async () => {});
 		const { dispatcher } = makeDispatcher([{ name: "状态", run }]);
 
-		await dispatcher.handle({
+		const msg = extractPrivateMessage({
 			post_type: "message",
 			message_type: "private",
 			user_id: MASTER,
 			raw_message: "/状态",
 		});
+		if (!msg) throw new Error("私聊帧没解析出来");
+		await dispatcher.handleMessage(msg);
 
 		expect(run).toHaveBeenCalledOnce();
 	});

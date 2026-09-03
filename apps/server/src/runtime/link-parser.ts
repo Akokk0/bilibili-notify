@@ -26,7 +26,7 @@ import {
 	type VideoLinkRef,
 	videoLinkKey,
 } from "@bilibili-notify/internal";
-import { extractGroupMessage, type InboundGroupMessage } from "./inbound-message.js";
+import type { InboundGroupMessage } from "../platforms/types.js";
 import { videoToDynamic } from "./video-card.js";
 
 /** 一条消息里最多解析几个链接 —— 再多就是刷屏了,也没人真需要。 */
@@ -67,15 +67,10 @@ export interface LinkReplyDestination {
 	groupId: string;
 }
 
-/** 已经解析好的一条群消息 —— 平台差异到此为止。 */
-export interface InboundLinkMessage {
+/** adapter 归一化好的一条群消息,再带上它从哪个平台、哪条连接来。 */
+export interface InboundLinkMessage extends InboundGroupMessage {
 	platform: LinkSourcePlatform;
 	adapterId: string;
-	groupId: string;
-	userId: string;
-	/** 收到这条消息的 bot 自己的号(OneBot 有);与 userId 相同就是自己发的,不解析。 */
-	selfId?: string;
-	text: string;
 }
 
 /** 一张链接卡的呈现;缺省项交给渲染器的全局配置兜底。 */
@@ -115,9 +110,7 @@ export interface LinkParserOptions {
 }
 
 export interface LinkParser {
-	/** 喂一帧 OneBot 事件。不是群消息就静默返回,是则交给 {@link handleMessage}。 */
-	handle(frame: Record<string, unknown>, meta: { adapterId: string }): Promise<void>;
-	/** 喂一条**已经解析好**的群消息。功能关着、没有链接、自己发的,都静默返回;**永不抛**。 */
+	/** 喂一条 adapter 归一化好的群消息。功能关着、没有链接、自己发的,都静默返回;**永不抛**。 */
 	handleMessage(msg: InboundLinkMessage): Promise<void>;
 }
 
@@ -193,7 +186,11 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 			// 冷却留到每个链接自己那一轮。
 			// 自己发的消息不解析 —— 机器人自己发的东西里若有链接,那是它自己贴的。
 			if (msg.selfId !== undefined && msg.userId === msg.selfId) return;
-			const refs = extractVideoLinks(msg.text).slice(0, MAX_LINKS_PER_MESSAGE);
+			// 正文里的与分享卡里的一起找;卡片链接排在正文之后,与消息里的先后一致。
+			const refs = extractVideoLinks([msg.text, ...msg.cardLinks].join(" ")).slice(
+				0,
+				MAX_LINKS_PER_MESSAGE,
+			);
 			if (refs.length === 0) return;
 			const config = opts.config();
 			if (!config.enabled) return;
@@ -253,20 +250,5 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 		}
 	}
 
-	return {
-		async handle(frame, meta) {
-			// 帧再怪也不能让这个被 void 掉的 promise 变成 rejection —— 独立端装了 unhandledRejection
-			// 处理器,那会变成一次进程退出。所以连拆帧这一步也裹起来,不只裹 handleMessage。
-			let msg: InboundGroupMessage | null;
-			try {
-				msg = extractGroupMessage(frame);
-			} catch (e) {
-				opts.logger.error(`[link] 拆入站帧失败: ${String(e)}`);
-				return;
-			}
-			if (!msg) return;
-			await handleMessage({ platform: "onebot", adapterId: meta.adapterId, ...msg });
-		},
-		handleMessage,
-	};
+	return { handleMessage };
 }

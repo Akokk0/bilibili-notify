@@ -134,14 +134,14 @@ describe("createQQSessionRegistry — per-adapter 发现 ring buffer", () => {
  * 放宽任何一条,后果都是把一份没人审过的锐评发进群里。
  */
 describe("extractQQPrivateMessage — 从 C2C 事件取私聊正文", () => {
-	it("C2C_MESSAGE_CREATE → 取 user_openid + 正文 + msg_id", () => {
+	it("C2C_MESSAGE_CREATE → user_openid 当 userId + 正文;形状与 OneBot 那边一样,消息 id 不带", () => {
 		expect(
 			extractQQPrivateMessage("C2C_MESSAGE_CREATE", {
 				author: { id: "x", user_openid: "U1" },
 				content: "y a3",
 				id: "ROBOT1.0_abc",
 			}),
-		).toEqual({ userOpenid: "U1", text: "y a3", msgId: "ROBOT1.0_abc" });
+		).toEqual({ userId: "U1", text: "y a3" });
 	});
 
 	it("群消息不算 —— 群里有人打个 y 不该把待审的周报发出去", () => {
@@ -169,12 +169,12 @@ describe("extractQQPrivateMessage — 从 C2C 事件取私聊正文", () => {
 		expect(extractQQPrivateMessage("C2C_MESSAGE_CREATE", { author })).toBeNull();
 	});
 
-	it("msg_id 缺了也认 —— 正文才是要紧的", () => {
+	it("事件里没有 id 字段也认 —— 正文才是要紧的", () => {
 		expect(
 			extractQQPrivateMessage("C2C_MESSAGE_CREATE", {
 				author: { user_openid: "U1" },
 				content: "n",
 			}),
-		).toEqual({ userOpenid: "U1", text: "n" });
+		).toEqual({ userId: "U1", text: "n" });
 	});
 });

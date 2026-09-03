@@ -12,7 +12,13 @@ import type {
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import { type RawData, WebSocket } from "ws";
-import type { PlatformAdapter, ProbeResult } from "./types.js";
+import type {
+	InboundGroupMessage,
+	InboundMeta,
+	InboundPrivateMessage,
+	PlatformAdapter,
+	ProbeResult,
+} from "./types.js";
 
 /** QQ 开放平台换取 App Access Token 的端点(与沙箱/正式无关,固定走 bots.qq.com)。 */
 const QQ_TOKEN_ENDPOINT = "https://bots.qq.com/app/getAppAccessToken";
@@ -255,14 +261,6 @@ export function extractQQDiscoveredSession(
 }
 
 /** 一条 C2C 私聊消息 —— 审批指令(主人回的 y/n)就是从这儿进来的。 */
-export interface QQInboundPrivateMessage {
-	/** 发送者的 C2C 用户 openid。与 PushTarget 里存的 `session.userOpenid` 同一命名空间。 */
-	userOpenid: string;
-	text: string;
-	/** 这条消息的 id。QQ 的被动回复要带它,留着备用;缺了不影响认指令。 */
-	msgId?: string;
-}
-
 /**
  * 从 C2C 事件取私聊正文。**只认 C2C_MESSAGE_CREATE**。
  *
@@ -272,28 +270,21 @@ export interface QQInboundPrivateMessage {
  *
  * `member_openid` 同样绝不回退,理由见 {@link extractQQDiscoveredSession}:那是群成员
  * 域的身份,与 C2C 用户 openid 是两个命名空间,拿它去比对主人身份会认错人。
+ *
+ * 交出去的 `userId` 就是 C2C 用户 openid,与 PushTarget 里存的 `session.userOpenid`
+ * 同一命名空间 —— 形状与 OneBot 那边一样,消费者不分平台。
  */
 export function extractQQPrivateMessage(
 	eventType: string,
 	data: Record<string, unknown>,
-): QQInboundPrivateMessage | null {
+): InboundPrivateMessage | null {
 	if (eventType !== "C2C_MESSAGE_CREATE") return null;
 	const author = data.author as { user_openid?: string } | undefined;
 	const userOpenid = author?.user_openid;
 	if (typeof userOpenid !== "string" || !userOpenid) return null;
 	const content = data.content;
 	if (typeof content !== "string" || !content.trim()) return null;
-	const msgId = typeof data.id === "string" && data.id ? data.id : undefined;
-	return { userOpenid, text: content, ...(msgId ? { msgId } : {}) };
-}
-
-/** 一条群消息 —— 链接解析(群里贴视频链接自动出卡片)从这儿进来。 */
-export interface QQInboundGroupMessage {
-	/** 群的不透明 openid。与 PushTarget 里存的 `session.groupOpenid` 同一命名空间。 */
-	groupOpenid: string;
-	/** 发言者在群成员域的 openid;与 C2C 用户 openid **不是**一个命名空间,别拿去比对主人。 */
-	memberOpenid?: string;
-	text: string;
+	return { userId: userOpenid, text: content };
 }
 
 /**
@@ -310,7 +301,7 @@ export interface QQInboundGroupMessage {
 export function extractQQGroupMessage(
 	eventType: string,
 	data: Record<string, unknown>,
-): QQInboundGroupMessage | null {
+): InboundGroupMessage | null {
 	if (eventType !== "GROUP_AT_MESSAGE_CREATE" && eventType !== "GROUP_MESSAGE_CREATE") return null;
 	const groupOpenid = data.group_openid;
 	if (typeof groupOpenid !== "string" || !groupOpenid) return null;
@@ -318,10 +309,13 @@ export function extractQQGroupMessage(
 	if (typeof content !== "string" || !content.trim()) return null;
 	const author = data.author as { member_openid?: string } | undefined;
 	const memberOpenid = author?.member_openid;
+	// groupId = 群 openid(与 PushTarget 的 `session.groupOpenid` 同一命名空间);userId =
+	// 发言者在群成员域的 openid,只当身份用。官机的群消息没有分享卡这一说。
 	return {
-		groupOpenid,
-		...(typeof memberOpenid === "string" && memberOpenid ? { memberOpenid } : {}),
+		groupId: groupOpenid,
+		userId: typeof memberOpenid === "string" ? memberOpenid : "",
 		text: content,
+		cardLinks: [],
 	};
 }
 
@@ -399,9 +393,9 @@ export interface QQGatewayConnOptions {
 	 * 可选:没接就当没有入站,这条连接退回纯 push-only(与接这个功能之前一样)。
 	 * 由回调那边决定认不认发送者,这里只负责搬运。
 	 */
-	onInbound?(msg: QQInboundPrivateMessage): void;
-	/** 可选:群消息正文出口(链接解析)。不接就不解析群消息。 */
-	onInboundGroup?(msg: QQInboundGroupMessage): void;
+	onInboundPrivate?(msg: InboundPrivateMessage): void;
+	/** 可选:群消息出口(链接解析)。不接就不解析群消息。 */
+	onInboundGroup?(msg: InboundGroupMessage): void;
 	serviceCtx: ServiceContext;
 	logger: Logger;
 	/** 订阅 intents,默认 {@link QQ_PUSH_INTENTS}。 */
@@ -541,7 +535,7 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 			const discovered = extractQQDiscoveredSession(t, d);
 			if (discovered) opts.onDiscovered(discovered);
 			// 私聊正文另走一路(只有 C2C 认),群消息再一路。
-			deliver(opts.onInbound, () => extractQQPrivateMessage(t, d), "私聊");
+			deliver(opts.onInboundPrivate, () => extractQQPrivateMessage(t, d), "私聊");
 			deliver(opts.onInboundGroup, () => extractQQGroupMessage(t, d), "群消息");
 		}
 	}
@@ -998,15 +992,12 @@ export interface QQOfficialAdapterOptions {
 	/** 共享发现表 —— 网关捞到的 openid 落这,路由 qq-sessions 读它。 */
 	registry: QQSessionRegistry;
 	/**
-	 * 收到主人的 C2C 私聊时回调 —— 审批指令(y/n)靠它。可选,不接就是纯 push-only。
-	 * 与 onebot adapter 的同名选项是同一个角色。
+	 * 入站消息的两路出口(私聊 → 指令分发,群 → 链接解析),与 onebot adapter 的同名选项是
+	 * 同一个角色、同一个形状。附上收到这条消息的 adapter id —— 回到来源群要知道该用哪个
+	 * adapter 的凭据发。不接 = 那一路不解析。
 	 */
-	onInbound?: (msg: QQInboundPrivateMessage) => void;
-	/**
-	 * 群消息正文的出口(链接解析)。附上收到这条消息的 adapter id —— 回到来源群要知道
-	 * 该用哪个 adapter 的凭据发。不接 = 不解析群消息。
-	 */
-	onInboundGroup?: (msg: QQInboundGroupMessage, meta: { adapterId: string }) => void;
+	onInboundPrivate?: (msg: InboundPrivateMessage, meta: InboundMeta) => void;
+	onInboundGroup?: (msg: InboundGroupMessage, meta: InboundMeta) => void;
 }
 
 interface QQLive {
@@ -1070,10 +1061,15 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			},
 			getToken: () => tm.getToken(),
 			onDiscovered: (s) => registry.record(adapter.id, s, Date.now()),
-			...(opts.onInbound ? { onInbound: opts.onInbound } : {}),
+			...(opts.onInboundPrivate
+				? {
+						onInboundPrivate: (m: InboundPrivateMessage) =>
+							opts.onInboundPrivate?.(m, { adapterId: adapter.id }),
+					}
+				: {}),
 			...(opts.onInboundGroup
 				? {
-						onInboundGroup: (m: QQInboundGroupMessage) =>
+						onInboundGroup: (m: InboundGroupMessage) =>
 							opts.onInboundGroup?.(m, { adapterId: adapter.id }),
 					}
 				: {}),

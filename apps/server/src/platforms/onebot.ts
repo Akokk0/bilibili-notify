@@ -16,6 +16,7 @@ import {
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 } from "@bilibili-notify/internal/constants";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
+import { type OnebotInboundSinks, routeInboundFrame } from "./onebot-inbound.js";
 import type { PlatformAdapter, ProbeResult } from "./types.js";
 
 /**
@@ -39,13 +40,13 @@ export interface OnebotPlatformAdapterOptions {
 	logger: Logger;
 	serviceCtx: ServiceContext;
 	/**
-	 * 入站 OneBot 事件帧的出口。不传 = 这个 adapter 保持纯 push-only。
-	 *
-	 * 帧原样交出,adapter 不解析业务语义;消费者是指令分发(主人私聊)与链接解析
-	 * (群消息)。附上收到这一帧的 adapter id:帧里只有 self_id(bot 的号),对不上
-	 * 配置里的 adapter,而「回到消息来的那个群」得知道该用哪条连接。
+	 * 入站消息的两路出口(私聊 → 指令分发,群 → 链接解析)。都不传 = 这个 adapter 保持
+	 * 纯 push-only。帧在这里就归一化成平台中立的形状(见 `onebot-inbound.ts`),与官机
+	 * 网关交出来的一模一样;附上收到这一帧的 adapter id —— 帧里只有 self_id(bot 的号),
+	 * 对不上配置里的 adapter,而「回到消息来的那个群」得知道该用哪条连接。
 	 */
-	onInbound?: (frame: Record<string, unknown>, meta: { adapterId: string }) => void;
+	onInboundPrivate?: OnebotInboundSinks["onInboundPrivate"];
+	onInboundGroup?: OnebotInboundSinks["onInboundGroup"];
 	/** Fallback timeout (ms) when adapter.config.timeoutMs is missing. Defaults to 15s. */
 	timeoutMs?: number;
 	/**
@@ -520,15 +521,16 @@ class WsChannel {
 }
 
 /**
- * 通道只知道帧;来源 adapter 由这一层补上。两种连法(正向 / 反向)都要补,而 `meta`
- * 是适配器与链接解析之间的契约 —— 往里加字段时只想得起改一处的话,另一种连法就悄悄
- * 少了那个字段。
+ * 通道只知道帧;归一化与来源 adapter 由这一层补上。两种连法(正向 / 反向)都要补,
+ * 而交出去的形状是适配器与消费者之间的契约 —— 各写一份的话,往里加字段时另一种连法
+ * 就悄悄少了那个字段。
  */
-function withAdapterId(
-	sink: OnebotPlatformAdapterOptions["onInbound"],
+function inboundSink(
+	sinks: OnebotInboundSinks,
 	adapterId: string,
 ): ((frame: Record<string, unknown>) => void) | undefined {
-	return sink ? (frame) => sink(frame, { adapterId }) : undefined;
+	if (!sinks.onInboundPrivate && !sinks.onInboundGroup) return undefined;
+	return (frame) => routeInboundFrame(frame, { adapterId }, sinks);
 }
 
 /** 正向 WS:独立端作客户端主动连 bot,断线指数退避重连。 */
@@ -547,7 +549,7 @@ class ForwardConn {
 		private readonly headers: Record<string, string>,
 		private readonly serviceCtx: ServiceContext,
 		private readonly log: Logger,
-		private readonly onInbound?: OnebotPlatformAdapterOptions["onInbound"],
+		private readonly sinks: OnebotInboundSinks,
 	) {
 		this.connect();
 	}
@@ -571,7 +573,7 @@ class ForwardConn {
 				ws,
 				`fwd:${this.adapterId}`,
 				this.serviceCtx,
-				withAdapterId(this.onInbound, this.adapterId),
+				inboundSink(this.sinks, this.adapterId),
 			);
 			this.log.info(`[onebot] 正向 WS 已连接 adapter=${this.adapterId} url=${this.url}`);
 		});
@@ -627,7 +629,7 @@ class ReverseListener {
 		private readonly accessToken: string | undefined,
 		private readonly serviceCtx: ServiceContext,
 		private readonly log: Logger,
-		private readonly onInbound?: OnebotPlatformAdapterOptions["onInbound"],
+		private readonly sinks: OnebotInboundSinks,
 	) {
 		this.start();
 	}
@@ -665,7 +667,7 @@ class ReverseListener {
 			ws,
 			`rev:${this.adapterId}`,
 			this.serviceCtx,
-			withAdapterId(this.onInbound, this.adapterId),
+			inboundSink(this.sinks, this.adapterId),
 		);
 		const entry = { ws, channel };
 		this.bots.add(entry);
@@ -948,7 +950,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				existing?.close();
 				forwardConns.set(
 					id,
-					new ForwardConn(id, fp, cfg.url, forwardHeaders(cfg), serviceCtx, log, opts.onInbound),
+					new ForwardConn(id, fp, cfg.url, forwardHeaders(cfg), serviceCtx, log, opts),
 				);
 			}
 
@@ -971,7 +973,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				// error 事件落到 bindError,经 probe 暴露给 dashboard。
 				reverseListeners.set(
 					id,
-					new ReverseListener(id, cfg.port, cfg.accessToken, serviceCtx, log, opts.onInbound),
+					new ReverseListener(id, cfg.port, cfg.accessToken, serviceCtx, log, opts),
 				);
 			}
 		},

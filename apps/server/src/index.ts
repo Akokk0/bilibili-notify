@@ -19,12 +19,8 @@ import { startHistoryRetention } from "./history/retention.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
 import { createOnebotAdapter } from "./platforms/onebot.js";
-import {
-	createQQOfficialAdapter,
-	createQQSessionRegistry,
-	type QQInboundGroupMessage,
-	type QQInboundPrivateMessage,
-} from "./platforms/qq-official.js";
+import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq-official.js";
+import type { InboundGroupMessage, InboundMeta, InboundPrivateMessage } from "./platforms/types.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
 import { APP_VERSION } from "./routes/health.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
@@ -38,7 +34,7 @@ import { renderHelp } from "./runtime/command-help.js";
 import { createEngines } from "./runtime/engines.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
 import { startFansPoller } from "./runtime/fans-poller.js";
-import { createLinkParser } from "./runtime/link-parser.js";
+import { createLinkParser, type LinkSourcePlatform } from "./runtime/link-parser.js";
 import { createLoginCommand } from "./runtime/login-command.js";
 import { resolveProbeInterval, startMemoryProbe } from "./runtime/memory-probe.js";
 import { createMuteCommand } from "./runtime/mute-command.js";
@@ -234,28 +230,24 @@ export async function startStandaloneServer(
 		// 入站的转发口。指令处理器要等 engines / 调度器建好才有,所以这里先留两个
 		// 可后填的引用 —— adapter 建得比它们早。
 		//
-		// 两个而不是一个:onebot 送的是**一整帧 OneBot 事件**(要在指令层解析),
-		// qq-official 的网关那边已经解析成 `{userOpenid, text}` 了。帧格式不同,
-		// 但汇合点是同一个(handle / handleMessage 共用同一套鉴权与指令语义)。
-		let onInboundFrame:
-			| ((frame: Record<string, unknown>, meta: { adapterId: string }) => void)
-			| undefined;
-		let onInboundQQ: ((msg: QQInboundPrivateMessage) => void) | undefined;
-		let onInboundQQGroup:
-			| ((msg: QQInboundGroupMessage, meta: { adapterId: string }) => void)
+		// 两个 adapter 都在自己那层把帧归一化成平台中立的形状,汇合点是同一个。
+		let onInboundPrivate: ((msg: InboundPrivateMessage, meta: InboundMeta) => void) | undefined;
+		let onInboundGroup:
+			| ((platform: LinkSourcePlatform, msg: InboundGroupMessage, meta: InboundMeta) => void)
 			| undefined;
 		const adapters = [
 			createOnebotAdapter({
 				logger: log,
 				serviceCtx: runtime.serviceCtx,
-				onInbound: (frame, meta) => onInboundFrame?.(frame, meta),
+				onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
+				onInboundGroup: (msg, meta) => onInboundGroup?.("onebot", msg, meta),
 			}),
 			createQQOfficialAdapter({
 				logger: log,
 				serviceCtx: runtime.serviceCtx,
 				registry: qqSessionRegistry,
-				onInbound: (msg) => onInboundQQ?.(msg),
-				onInboundGroup: (msg, meta) => onInboundQQGroup?.(msg, meta),
+				onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
+				onInboundGroup: (msg, meta) => onInboundGroup?.("qq-official", msg, meta),
 			}),
 			createWebhookAdapter({ logger: log }),
 		];
@@ -521,22 +513,11 @@ export async function startStandaloneServer(
 			},
 		});
 
-		onInboundFrame = (frame, meta) => {
-			void commandDispatcher.handle(frame);
-			void linkParser.handle(frame, meta);
-		};
-		// 官机网关那边已经解析成群消息了;发言者是群成员域的 openid,只当身份用、不比对主人。
-		onInboundQQGroup = (msg, meta) =>
-			void linkParser.handleMessage({
-				platform: "qq-official",
-				adapterId: meta.adapterId,
-				groupId: msg.groupOpenid,
-				userId: msg.memberOpenid ?? "",
-				text: msg.text,
-			});
-		// QQ 那边网关已经解析好了,直接喂平台中立入口。userOpenid 就是身份本身。
-		onInboundQQ = (msg) =>
-			void commandDispatcher.handleMessage({ userId: msg.userOpenid, text: msg.text });
+		// 两个 adapter 交出来的是同一个形状:私聊进指令分发,群进链接解析。哪个平台来的
+		// 只有链接解析关心(回到来源群要按平台造目标),所以在这儿补上。
+		onInboundPrivate = (msg) => void commandDispatcher.handleMessage(msg);
+		onInboundGroup = (platform, msg, meta) =>
+			void linkParser.handleMessage({ platform, adapterId: meta.adapterId, ...msg });
 
 		roastScheduler.start();
 		runtime.bus.on("config-changed", (scope) => {
