@@ -161,4 +161,11 @@ allowBuilds:
 
 patchedDependencies:
   css-tree: patches/css-tree.patch
-  jsdom: patches/jsdom.patch
+  # Keyed by exact version on purpose: the patch touches jsdom 30 internals
+  # (default-stylesheet fallback + patched-csstree) and only matters where jsdom
+  # is inlined into a self-contained bundle (server / astrbot). koishi keeps its
+  # own external jsdom on the 26 line (see koishi/package.json) — the last line
+  # whose dependency chain is pure CJS; 27+ pulls @exodus/bytes (ESM-only) via
+  # require(), which needs Node >= 20.19 / 22.12 and Koishi Desktop ships Node
+  # 20.12.2. A bare `jsdom` key would try to apply this patch to 26 and fail.
+  jsdom@30.0.1: patches/jsdom.patch
