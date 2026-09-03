@@ -44,7 +44,7 @@ assert_resources_dir() {
 		-name 'master.key' -o -name '.env*' -o -name '*.pem' -o -name '*.key' -o -name '*.enc' -o \
 		-path '*/app/apps/server/data' -o -path '*/app/apps/server/data/*' -o \
 		-path '*/app/apps/server/logs' -o -path '*/app/apps/server/logs/*' -o \
-		-path '*/app/node_modules/.pnpm' -o -path '*/app/node_modules/.pnpm/*' \
+		-path '*/app/node_modules' -o -path '*/app/node_modules/*' \
 	\) -print -quit)
 	if [ -n "$forbidden" ]; then
 		echo "::error::$label contains forbidden runtime file: $forbidden"

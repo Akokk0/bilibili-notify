@@ -2,6 +2,7 @@ import { copyFile, cp, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { missingServerBundleFilesIn } from "./server-bundle-assets.mjs";
 
 // 把独立端 server 单文件 bundle(apps/server/dist,由 `build:bundle` 产出)补齐为
 // 可独立运行的目录:bundle 内联了全部 JS 依赖,但**运行时按路径读取**的资产不进
@@ -20,6 +21,9 @@ import { fileURLToPath } from "node:url";
 // - package.json:resolveAppVersion 从 index.mjs 往上找最近的这一份展示独立端版本
 //   (发布 workflow 按 tag 临时同步 version 后再构建)。必须与 bundle 平级 —— 它读的
 //   是**载荷自己**的版本,不是进程 cwd 的。
+//
+// 装配完按 scripts/server-bundle-assets.mjs 的清单自检:那份清单是升级载荷与桌面
+// 资源两处把关共用的,这里少搬一个,下游才拦得住。
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const distDir = resolve(repoRoot, "apps/server/dist");
@@ -47,3 +51,8 @@ await writeFile(
 	resolve(distDir, "package.json"),
 	`${JSON.stringify({ name, version, type, engines, private: true }, null, "\t")}\n`,
 );
+
+const missing = await missingServerBundleFilesIn(distDir);
+if (missing.length > 0) {
+	throw new Error(`server bundle 装配不完整,缺 ${missing.join(", ")}:${distDir}`);
+}

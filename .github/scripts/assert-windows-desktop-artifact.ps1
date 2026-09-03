@@ -32,14 +32,14 @@ function Assert-NoForbiddenRuntimeFiles {
         $_.FullName -like "*\resources\app\apps\server\data\*" -or
         $_.FullName -like "*\resources\app\apps\server\logs" -or
         $_.FullName -like "*\resources\app\apps\server\logs\*" -or
-        $_.FullName -like "*\resources\app\node_modules\.pnpm" -or
-        $_.FullName -like "*\resources\app\node_modules\.pnpm\*" -or
+        $_.FullName -like "*\resources\app\node_modules" -or
+        $_.FullName -like "*\resources\app\node_modules\*" -or
         $_.FullName -like "*\app\apps\server\data" -or
         $_.FullName -like "*\app\apps\server\data\*" -or
         $_.FullName -like "*\app\apps\server\logs" -or
         $_.FullName -like "*\app\apps\server\logs\*" -or
-        $_.FullName -like "*\app\node_modules\.pnpm" -or
-        $_.FullName -like "*\app\node_modules\.pnpm\*"
+        $_.FullName -like "*\app\node_modules" -or
+        $_.FullName -like "*\app\node_modules\*"
     } | Select-Object -First 1
     if ($forbidden) {
         Write-Error "$Label contains forbidden runtime file: $($forbidden.FullName)"

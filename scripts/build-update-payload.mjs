@@ -20,6 +20,7 @@ import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { zipSync } from "fflate";
 import { readArg } from "./cli-args.mjs";
+import { missingServerBundleFilesIn } from "./server-bundle-assets.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -48,9 +49,14 @@ async function collectFiles(dir) {
  */
 export async function buildUpdatePayload({ serverDist, webDist, outFile }) {
 	// 这两条是「装上去起不起得来」的分界线,宁可在发版机上当场炸,也不要打出一个
-	// 签好名、传上去、用户装完才发现是空壳的包 —— 那时候只能再发一版。
-	if (!existsSync(join(serverDist, "index.mjs")))
-		throw new Error(`server dist 里没有 index.mjs:${serverDist} —— 先跑 build:bundle + assemble`);
+	// 签好名、传上去、用户装完才发现是空壳的包 —— 那时候只能再发一版。server 侧按
+	// scripts/server-bundle-assets.mjs 的清单整份把关:少的不只是入口,词云 static /
+	// wasm 这类按路径读盘的资产漏了同样是坏包,只是要等用户点到才炸。
+	const missing = await missingServerBundleFilesIn(serverDist);
+	if (missing.length > 0)
+		throw new Error(
+			`server dist 不完整,缺 ${missing.join(", ")}:${serverDist} —— 先跑 build:bundle + assemble`,
+		);
 	if (!existsSync(join(webDist, "index.html")))
 		throw new Error(`web dist 里没有 index.html:${webDist} —— 先构建 apps/web`);
 

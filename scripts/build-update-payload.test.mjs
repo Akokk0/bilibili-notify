@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { installPayload } from "../apps/server/src/update/install-payload.js";
 import { buildUpdatePayload } from "./build-update-payload.mjs";
+import { SERVER_BUNDLE_FILES } from "./server-bundle-assets.mjs";
 
 /**
  * 升级载荷的**发版侧**。
@@ -25,13 +26,20 @@ describe("buildUpdatePayload", () => {
 		await rm(root, { recursive: true, force: true });
 	});
 
-	/** 摆一份最小但**合法**的构建产物:server dist + web dist。每次调用各用一套目录。 */
+	/**
+	 * 摆一份最小但**合法**的构建产物:server dist(清单 SERVER_BUNDLE_FILES 里的每一个
+	 * 文件都在)+ web dist。每次调用各用一套目录。
+	 */
 	async function seedDists(overrides = {}) {
 		const at = join(root, `seed-${seedSeq++}`);
 		const serverDist = join(at, "server-dist");
 		const webDist = join(at, "web-dist-src");
 		await mkdir(join(serverDist, "static"), { recursive: true });
 		await mkdir(join(webDist, "assets"), { recursive: true });
+		for (const file of SERVER_BUNDLE_FILES) {
+			if (file === "index.mjs" || file === "package.json" || file === "static/render.js") continue;
+			await writeFile(join(serverDist, ...file.split("/")), `// ${file}\n`);
+		}
 		if (overrides.serverEntry !== false)
 			await writeFile(join(serverDist, "index.mjs"), "console.log('bn');\n");
 		await writeFile(join(serverDist, "package.json"), JSON.stringify({ version: "0.9.0" }));
@@ -90,6 +98,13 @@ describe("buildUpdatePayload", () => {
 		await expect(
 			buildUpdatePayload({ serverDist: noServer.serverDist, webDist: noServer.webDist, outFile }),
 		).rejects.toThrow(/index\.mjs/);
+
+		// 不只是入口:按路径读盘的资产漏一个也是坏包,只是要等用户点到词云 / 分词才炸。
+		const noWasm = await seedDists();
+		await rm(join(noWasm.serverDist, "jieba_rs_wasm_bg.wasm"));
+		await expect(
+			buildUpdatePayload({ serverDist: noWasm.serverDist, webDist: noWasm.webDist, outFile }),
+		).rejects.toThrow(/jieba_rs_wasm_bg\.wasm/);
 
 		const noWeb = await seedDists({ webEntry: false });
 		await expect(

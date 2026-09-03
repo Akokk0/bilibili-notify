@@ -115,6 +115,23 @@ koishi 插件是**自包含单文件产物**:九个 `@bilibili-notify/*` 内部�
 - `desktop-release`: `version=<VERSION>`, `dry_run=true` —— 构建并校验 Desktop artifacts,不创建 GitHub Release。
 - `update-payload`: `version=<VERSION>`, `dry_run=true` —— 打载荷并签名,不上传任何资产。
 
+### 桌面版装的是同一份自包含载荷
+
+桌面安装包里的服务端**就是** Docker 镜像与应用内升级载荷用的那份 `apps/server/dist`
+(`build:bundle` + `scripts/assemble-server-bundle.mjs`),摆在 `app/apps/server/lib/` 下,
+dashboard 是它的同级 `web-dist/`。资源目录里**没有 node_modules**:以前生产端沿 node_modules
+逐个搬运行时依赖再裁掉测试与文档,三百行只为拼出一棵能跑的依赖树,而应用内更新一装上,
+桌面壳跑的就已经是 bundle 载荷了 —— 安装包自带那份没理由不同源。三种发行形态吃同一份产物,
+`vp run build:desktop` 也就等于 `build:update-payload` + `tauri:build`。
+
+bundle 必须带齐的文件(入口、选版器、词云 static、jieba wasm、jsdom 的 worker 与默认样式表、
+配置样例、package.json)**只声明一次**:`scripts/server-bundle-assets.mjs`。装配脚本自检、
+升级载荷把关、桌面资源准备三处都读它 —— 这些文件全是运行时按路径读盘的,少一个不会在构建期
+报错,只会在用户点到那个功能时炸。
+
+发版 workflow 里**版本同步在构建之前**:装配时写进 `dist/package.json` 的版本就是外壳起来后
+`/api/health` 报的那个,顺序反了安装包会永远自报 `0.0.0-dev`。
+
 ### 桌面产物的布局只声明一次
 
 `apps/desktop/layout.json` —— 起哪个入口、dashboard 摆哪、闸要查哪些文件,**只写在这里**。

@@ -108,16 +108,19 @@ jobs:
           AFDIAN_TOKEN: ${{ secrets.AFDIAN_TOKEN }}
         run: node scripts/fetch-sponsors.mjs
 
-      - name: Build apps runtime
-        env:
-          BN_STANDALONE_VERSION: ${{ steps.ver.outputs.value }}
-        run: vp run build:apps
-
+      # 版本先同步再构建:桌面版装的是与 Docker / 应用内更新同一份自包含载荷,装配时
+      # 写进 dist/package.json 的版本就是外壳起来后 /api/health 报的那个 —— 顺序反了,
+      # 安装包会永远自报 0.0.0-dev。
       - name: Sync standalone version metadata
         shell: bash
         env:
           VERSION: ${{ steps.ver.outputs.value }}
         run: bash .github/scripts/sync-standalone-version.sh
+
+      - name: Build self-contained payload (server bundle + dashboard)
+        env:
+          BN_STANDALONE_VERSION: ${{ steps.ver.outputs.value }}
+        run: vp run build:update-payload
 
       - name: Verify macOS arm64 runner
         if: matrix.id == 'mac-arm64'
