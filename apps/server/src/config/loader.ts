@@ -162,9 +162,7 @@ function dropSeededWebDistDir(yamlPath: string, log: (msg: string) => void): voi
 		// 沿用用户文件自己的权限:这文件可能含 cookieEncryptionKey / dashboard 密码,
 		// 收拾一行配置不该顺手把他设好的 mode 改掉。
 		const mode = statSync(yamlPath).mode & 0o777;
-		const tmp = `${yamlPath}.${process.pid}.${Date.now()}.tmp`;
-		writeFileSync(tmp, text, { mode, encoding: "utf8" });
-		renameSync(tmp, yamlPath);
+		writeFileAtomic(yamlPath, text, mode);
 		log(`[bootstrap] 已移除 ${yamlPath} 里首启动种入的 webDistDir —— dashboard 现在跟着载荷走`);
 	} catch (err) {
 		log(
@@ -198,6 +196,19 @@ const SEED_HEADER = `# bilibili-notify bootstrap config (auto-generated on first
 #
 `;
 
+/**
+ * 原子写一份配置文件:同目录 tmp + rename。这文件可能含 cookieEncryptionKey /
+ * dashboard 密码,所以 mode 由调用方给(种文件是 0o600,改用户自己的文件时沿用他的)。
+ *
+ * 就地写的话一次断电就是半份配置,而这里写的两份 —— 首启动的种文件、迁移后的用户
+ * 文件 —— 坏掉都会让下一次启动读不出配置。
+ */
+function writeFileAtomic(path: string, body: string, mode: number): void {
+	const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+	writeFileSync(tmp, body, { mode, encoding: "utf8" });
+	renameSync(tmp, path);
+}
+
 function writeSeedFile(path: string, config: BootstrapConfig, log: (msg: string) => void): void {
 	mkdirSync(dirname(path), { recursive: true });
 	// 扩展名 dispatch:.json 路径用 JSON.stringify,否则 yaml(yaml 加 SEED_HEADER 注释,
@@ -207,11 +218,9 @@ function writeSeedFile(path: string, config: BootstrapConfig, log: (msg: string)
 	const body = isJson
 		? JSON.stringify(config, null, 2)
 		: `${SEED_HEADER}${stringifyYaml(config, { indent: 2 })}`;
-	const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
 	// mode 0o600:seed 文件可能含 cookieEncryptionKey / dashboard password 等 secret,
-	// 只对 owner 可读。tmpfile + rename 仍保持原子语义。
-	writeFileSync(tmp, body, { mode: 0o600, encoding: "utf8" });
-	renameSync(tmp, path);
+	// 只对 owner 可读。
+	writeFileAtomic(path, body, 0o600);
 	log(`[bootstrap] first boot — seeded bootstrap config from ENV to ${path}`);
 }
 

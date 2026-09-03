@@ -107,7 +107,11 @@ export function resolveAppVersion(
 	}
 }
 
-const APP_VERSION = resolveAppVersion();
+/**
+ * 这一进程跑的载荷版本,启动时算一次。`resolveAppVersion` 每次调用都要向上找一遍
+ * package.json 再解析,而它在一次启动里不会变 —— 别的模块也用这个常量,别再算一遍。
+ */
+export const APP_VERSION = resolveAppVersion();
 const startedAtMs = Date.now();
 
 /**

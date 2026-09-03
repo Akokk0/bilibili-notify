@@ -26,7 +26,7 @@ import {
 	type QQInboundPrivateMessage,
 } from "./platforms/qq-official.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
-import { resolveAppVersion } from "./routes/health.js";
+import { APP_VERSION } from "./routes/health.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
 import {
 	type CommandSpec,
@@ -607,9 +607,8 @@ export async function startStandaloneServer(
 				})
 			: undefined;
 
-		// 当前跑的这份载荷的版本 —— 每次调用都要向上找一遍 package.json 再解析,
-		// 而一次启动里它不会变。
-		const payloadVersion = resolveAppVersion();
+		// 当前跑的这份载荷的版本 —— 启动时算过一次的那个常量,别再向上找一遍 package.json。
+		const payloadVersion = APP_VERSION;
 
 		// 运行时 chromePath 写回目标:仅 B 模型(显式 BN_CONFIG)有单一可写文件;
 		// legacy/disabled 返回 null → 热启用仍生效但不持久化(改配置走 env / 手编辑)。

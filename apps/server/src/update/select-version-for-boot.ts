@@ -105,27 +105,20 @@ export function selectVersionForBoot({
 	if (pinned !== null) {
 		if (pinned === imageVersion)
 			return { version: imageVersion, path: imagePath, isImageVersion: true };
-		return recordAttempt(state, versionsRoot, pinned, maxBootFailures, {
-			version: pinned,
-			path: join(versionsRoot, pinned),
-			isImageVersion: false,
-		});
+		return recordAttempt(state, versionsRoot, pinned, maxBootFailures);
 	}
 
+	const blocked = unbootable(state);
 	let best: string | null = null;
 	for (const candidate of installed) {
-		if (unbootable(state).includes(candidate)) continue;
+		if (blocked.includes(candidate)) continue;
 		if (compareVersions(candidate, imageVersion) <= 0) continue;
 		if (best === null || compareVersions(candidate, best) > 0) best = candidate;
 	}
 
 	if (best === null) return { version: imageVersion, path: imagePath, isImageVersion: true };
 
-	return recordAttempt(state, versionsRoot, best, maxBootFailures, {
-		version: best,
-		path: join(versionsRoot, best),
-		isImageVersion: false,
-	});
+	return recordAttempt(state, versionsRoot, best, maxBootFailures);
 }
 
 /**
@@ -157,13 +150,13 @@ function recordAttempt(
 	versionsRoot: string,
 	version: string,
 	maxBootFailures: number,
-	selection: BootSelection,
 ): BootSelection {
 	const attempts = (state.attempts[version] ?? 0) + 1;
 	const next: BootState = { ...state, attempts: { ...state.attempts, [version]: attempts } };
 	if (attempts >= maxBootFailures) next.failed = [...state.failed, version];
 	writeState(versionsRoot, next);
-	return selection;
+	// 版本目录的路径只在这一处拼 —— 这个文件存在的理由就是这条公式只有一份。
+	return { version, path: join(versionsRoot, version), isImageVersion: false };
 }
 
 export interface ReadBootViewInput {

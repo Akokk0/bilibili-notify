@@ -328,15 +328,20 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 	 * 超时、体积上限、防回放下限的要求本来就该一模一样,分开写两份的下一步就是
 	 * 「面板上测着好好的,一检查就说清单太旧」。
 	 */
-	function fetchManifest(channel: "stable" | "prerelease", mirrors: readonly string[]) {
+	function fetchManifest(
+		channel: "stable" | "prerelease",
+		mirrors: readonly string[],
+		// 比之前见过的旧的清单不收:签名有效不等于是当前那份,加速站可以回放旧的。
+		// 「测一遍」要并发探好几个站,那个下限在一次请求里不会变 —— 由调用方读一次传进来。
+		minIssuedAt = readSeenIssuedAt(versionsRoot, channel),
+	) {
 		return fetchSignedManifest({
 			url: manifestUrls[channel],
 			mirrors,
 			trustedKeys,
 			timeoutMs: DEFAULT_TIMEOUT_MS,
 			maxBytes: DEFAULT_MAX_MANIFEST_BYTES,
-			// 比之前见过的旧的清单不收:签名有效不等于是当前那份,加速站可以回放旧的。
-			minIssuedAt: readSeenIssuedAt(versionsRoot, channel),
+			minIssuedAt,
 		});
 	}
 
@@ -427,12 +432,15 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 			// 没钥匙什么都验不过,测了也只会得到一排「签名验不过」—— 那是误导。
 			if (!enabled) return [];
 			const { channel } = readSettings();
+			// 防回放的下限在这一趟里不会变,读一次传给每个候选 —— 否则同一份小 JSON
+			// 会在一次请求里被同步读上八遍(六个内置站 + 直连 + 自定义)。
+			const minIssuedAt = readSeenIssuedAt(versionsRoot, channel);
 			// 并行:候选站之间互不影响,串行的话一个卡满超时的站会拖住整张表。
 			return Promise.all(
 				prefixes.map(async (prefix): Promise<MirrorProbeResult> => {
 					const started = Date.now();
 					// 只给一个候选:测的就是「这一站行不行」,垫底直连会让每一行都变成绿的。
-					const fetched = await fetchManifest(channel, [prefix]);
+					const fetched = await fetchManifest(channel, [prefix], minIssuedAt);
 					const ms = Math.max(0, Date.now() - started);
 					return fetched.ok
 						? { prefix, ok: true, ms, version: fetched.manifest.version }
