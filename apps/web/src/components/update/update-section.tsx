@@ -20,6 +20,7 @@ import { useLocation } from "react-router-dom";
 import { SECTION_ACCENT } from "../../config/section-accents";
 import { api } from "../../services/api";
 import type { GlobalConfig } from "../../types/globals";
+import { externalLinkClick } from "../../utils/externalLink";
 import { MirrorPicker } from "./mirror-picker";
 import { phaseLabel, UPDATE_QUERY_KEY, UPDATE_SECTION_HASH, useUpdateStatus } from "./status";
 
@@ -141,6 +142,7 @@ export function UpdateSection() {
 								href={helpUrl}
 								target="_blank"
 								rel="noreferrer"
+								onClick={externalLinkClick(helpUrl)}
 							>
 								打开发布页
 							</a>

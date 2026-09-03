@@ -26,8 +26,12 @@ export async function checkUpdateOnOpen(
 	qc: QueryClient,
 	notify: (notice: NoticeView) => void,
 ): Promise<void> {
-	const before = await api.get<UpdateStatusDTO>("/api/update");
-	qc.setQueryData(UPDATE_QUERY_KEY, before);
+	// 走 fetchQuery 而不是裸 api.get:概览页挂着同一个 key 的 useQuery,两边同时开
+	// 只会各打一次请求 —— react-query 只能对它自己发起的那些去重。顺带把缓存填好。
+	const before = await qc.fetchQuery({
+		queryKey: UPDATE_QUERY_KEY,
+		queryFn: () => api.get<UpdateStatusDTO>("/api/update"),
+	});
 	// 钉子看**盘上的**(pinnedVersion),不只看内存态(rolled-back):回退靠重启生效,
 	// 重启之后 phase 已经是 idle,钉子却还在 —— 这时自动查会装新版、顺手拔钉子,
 	// 用户按的回退活不过一次开面板。
