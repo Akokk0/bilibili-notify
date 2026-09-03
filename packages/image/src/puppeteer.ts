@@ -1,7 +1,6 @@
 /**
  * Platform-neutral Puppeteer abstraction. The image-engine consumes only this
- * surface; concrete adapters wrap either the koishi puppeteer service plugin
- * (koishi shell) or the npm `puppeteer` package directly (standalone runtime).
+ * surface; the standalone runtime wraps the npm `puppeteer-core` package.
  *
  * The signatures intentionally mirror the subset of the real Puppeteer API the
  * renderer actually invokes — see `image-renderer.ts`.
@@ -69,7 +68,7 @@ export interface PageLike {
 export type RenderPriority = SerialPriority;
 
 export interface PageOptions {
-	/** 缺省 `normal`。没有多级队列的实现(koishi / astrbot)可以直接无视它。 */
+	/** 缺省 `normal`。 */
 	priority?: RenderPriority;
 }
 

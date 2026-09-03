@@ -51,6 +51,9 @@ function makeRenderer(
 			showFans: true,
 			...config,
 		},
+		// 宿主必注入的两个解析回调;缺省解析成空串(= 资产不存在),用例按需覆盖。
+		resolveAsset: async () => "",
+		resolveFontFace: async () => "",
 		...extra,
 	};
 	return new ImageRenderer(opts);
@@ -542,7 +545,13 @@ describe("ImageRenderer.updateConfig", () => {
 			onDispose: () => {},
 		};
 		const puppeteer = { page: async () => ({}) as never } as unknown as PuppeteerLike;
-		const r = new ImageRenderer({ serviceCtx: ctx, puppeteer, config });
+		const r = new ImageRenderer({
+			serviceCtx: ctx,
+			puppeteer,
+			config,
+			resolveAsset: async () => "",
+			resolveFontFace: async () => "",
+		});
 		return { r, info };
 	}
 

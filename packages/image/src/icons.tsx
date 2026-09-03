@@ -272,7 +272,7 @@ export const SVG_DURATION = (
  * 文字站,实心块在这个字号下会糊成一坨小色团。
  *
  * 卡片里一个 emoji 都不许出现 —— emoji 由渲染机器的字体决定长相,同一张卡在开发
- * 机、Docker 镜像、koishi 宿主上会各画各的(缺字体时甚至是豆腐块),而且彩色emoji
+ * 机、Docker 镜像、桌面版上会各画各的(缺字体时甚至是豆腐块),而且彩色emoji
  * 混在扁平卡里格格不入。尺寸写死是刻意的:每个图标只在一处用,就近调最省事。
  */
 export const SVG_CHART_BARS = (

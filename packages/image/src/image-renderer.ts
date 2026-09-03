@@ -92,11 +92,9 @@ function fmtOptional(v: number | boolean | undefined): string {
 }
 
 /**
- * Runtime configuration for {@link ImageRenderer}. Mirrors the platform-neutral
- * subset of the original koishi `BilibiliNotifyImageConfig` schema; the koishi
- * shell maps its schema fields onto this struct, and the standalone runtime
- * fills it from its own config store. The `logLevel` field is intentionally
- * dropped — the adapter is responsible for setting the logger level externally.
+ * Runtime configuration for {@link ImageRenderer}. The standalone runtime fills it
+ * from its own config store. The `logLevel` field is intentionally dropped — the
+ * host is responsible for setting the logger level externally.
  */
 export interface ImageRendererConfig {
 	/** 卡片渐变背景起始颜色（十六进制）。 */
@@ -130,20 +128,20 @@ export interface ImageRendererOptions {
 	puppeteer: PuppeteerLike;
 	config: ImageRendererConfig;
 	/**
-	 * 把卡片背景图资产 id 解析成可渲染的 data URL(服务端注入,读 `<dataDir>/assets/card-bg`)。
-	 * 未注入 = 背景图特性不可用(返回 "")。已是 data:/http URL 的值直接透传、不经此回调。
+	 * 把卡片背景图资产 id 解析成可渲染的 data URL(宿主注入,读 `<dataDir>/assets/card-bg`)。
+	 * 解析不出来返回空串。已是 data:/http URL 的值直接透传、不经此回调。
 	 */
-	resolveAsset?: (id: string) => Promise<string>;
+	resolveAsset: (id: string) => Promise<string>;
 	/**
-	 * 把字体资产 id 解析成**一整条 `@font-face` 规则**(服务端注入,读
-	 * `<dataDir>/assets/font` 后用 {@link buildFontFace} 拼好)。解析不出来返回空串。
-	 * 未注入 = 自带字体特性不可用,回落家族名(koishi / AstrBot 就是这一档)。
+	 * 把字体资产 id 解析成**一整条 `@font-face` 规则**(宿主注入,读
+	 * `<dataDir>/assets/font` 后用 {@link buildFontFace} 拼好)。解析不出来返回空串,
+	 * 渲染器回落家族名。
 	 *
 	 * 契约是整条规则而不是 data URL,为的是**省一整份内存**:一款中文字库 base64 之后
 	 * 二三十兆,渲染器若再自己拼一遍,同一串东西在堆里就有两份 —— 而镜像里 V8 的
 	 * old-space 上限只有 512MB。宿主那边本来就按资产 id 缓存着解析结果,顺手拼好即可。
 	 */
-	resolveFontFace?: (id: string) => Promise<string>;
+	resolveFontFace: (id: string) => Promise<string>;
 	/**
 	 * 热更日志降级到 debug。**预览渲染器**(dashboard 每来一次预览请求就
 	 * updateConfig 一遍)必须开:主人在 Cards 页拖一格滑块就是一条 INFO「配置已
@@ -158,8 +156,8 @@ export class ImageRenderer {
 	private readonly serviceCtx: ServiceContext;
 	private readonly puppeteer: PuppeteerLike;
 	private config: ImageRendererConfig;
-	private readonly resolveAsset?: (id: string) => Promise<string>;
-	private readonly resolveFontFace?: (id: string) => Promise<string>;
+	private readonly resolveAsset: (id: string) => Promise<string>;
+	private readonly resolveFontFace: (id: string) => Promise<string>;
 	private readonly quietConfigUpdates: boolean;
 
 	/**
@@ -275,11 +273,6 @@ export class ImageRenderer {
 
 	// ── 公共工具方法 ─────────────────────────────────────────────────────────────
 
-	/** 同 {@link numberToStr};留着方法形态是因为 koishi 的 render service 按公共 API 代理它。 */
-	numberToStr(num: number): string {
-		return numberToStr(num);
-	}
-
 	unixTimestampToString(timestamp: number): string {
 		const d = new Date(timestamp * 1000);
 		const pad = (n: number) => `0${n}`.slice(-2);
@@ -288,12 +281,12 @@ export class ImageRenderer {
 
 	/**
 	 * 解析卡片背景图字段为可渲染 URL:空 → "";已是 data:/http URL → 透传(预览路由已解析);
-	 * 否则当资产 id,经注入的 resolveAsset 读盘解析成 data URL。无 resolver → ""(特性不可用)。
+	 * 否则当资产 id,经注入的 resolveAsset 读盘解析成 data URL(解析不出来即 "")。
 	 */
 	private async resolveBg(v?: string): Promise<string> {
 		if (!v) return "";
 		if (v.startsWith("data:") || v.startsWith("http")) return v;
-		return this.resolveAsset ? await this.resolveAsset(v) : "";
+		return await this.resolveAsset(v);
 	}
 
 	/**
@@ -304,7 +297,7 @@ export class ImageRenderer {
 	 * 界面上改得动、保存得下、行为不变。
 	 *
 	 * 自带的字体文件优先:宿主把它解析成一条现成的 `@font-face`,家族名换成内部那个。
-	 * 解析不出来(宿主没注入 resolver、或资产被删了)就静静回落家族名 —— 出图不该因为
+	 * 解析不出来(资产被删了、卷丢了)就静静回落家族名 —— 出图不该因为
 	 * 少一个文件而崩,也不该塞一条空 src 的规则进 CSS。
 	 */
 	private async resolveFont(
@@ -312,7 +305,7 @@ export class ImageRenderer {
 	): Promise<{ font: string; fontFace?: string }> {
 		const font = colorOptions.font ?? this.config.font;
 		const assetId = colorOptions.fontAsset ?? this.config.fontAsset;
-		if (!assetId || !this.resolveFontFace) return { font };
+		if (!assetId) return { font };
 
 		if (this.fontCache?.id !== assetId) {
 			const fontFace = await this.resolveFontFace(assetId);
@@ -382,7 +375,7 @@ export class ImageRenderer {
 		const glassOpacity = colorOptions.glassOpacity ?? this.config.glassOpacity;
 		const glassClear = colorOptions.glassClear ?? this.config.glassClear;
 		// 背景图与直播封面(独立端专属)两次独立解析(各自 resolveAsset → 读盘),互不依赖 ——
-		// 并发发起,省掉一次串行 I/O 往返。封面无 resolver(koishi)解析为 "" → 模板回退
+		// 并发发起,省掉一次串行 I/O 往返。封面解析为 "" 时模板回退
 		// API 封面/关键帧,特性自动无感。
 		const [backgroundImage, coverOverride] = await Promise.all([
 			this.resolveBg(colorOptions.backgroundImage ?? this.config.backgroundImage),
@@ -416,18 +409,18 @@ export class ImageRenderer {
 				liveStatus: cardBadgeStatus,
 				cover,
 				coverOverride: coverOverride || undefined,
-				onlineNum: this.numberToStr(+(data.online ?? 0)),
+				onlineNum: numberToStr(+(data.online ?? 0)),
 				likedNum:
 					typeof liveData.likedNum === "number"
-						? this.numberToStr(liveData.likedNum)
+						? numberToStr(liveData.likedNum)
 						: (liveData.likedNum ?? ""),
 				watchedNum:
 					typeof liveData.watchedNum === "number"
-						? this.numberToStr(liveData.watchedNum)
+						? numberToStr(liveData.watchedNum)
 						: (liveData.watchedNum ?? ""),
 				fansNum:
 					typeof liveData.fansNum === "number"
-						? this.numberToStr(liveData.fansNum)
+						? numberToStr(liveData.fansNum)
 						: (liveData.fansNum ?? ""),
 				fansChanged: (() => {
 					if (typeof liveData.fansChanged !== "number") return liveData.fansChanged ?? "";
@@ -591,7 +584,7 @@ export class ImageRenderer {
 
 		const node = await buildDynamicNode(data, false, {
 			time: (ts) => this.unixTimestampToString(ts),
-			num: (n) => this.numberToStr(n),
+			num: (n) => numberToStr(n),
 		});
 
 		const html = await renderCard(

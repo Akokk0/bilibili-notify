@@ -48,7 +48,9 @@ function makeRenderer(
 			showFans: true,
 			...config,
 		},
-		...(resolveFontFace ? { resolveFontFace } : {}),
+		resolveAsset: async () => "",
+		// 宿主必注入;测试缺省解析成空串(资产不存在)。
+		resolveFontFace: resolveFontFace ?? (async () => ""),
 	});
 }
 
@@ -108,11 +110,6 @@ describe("自带字体文件那条路", () => {
 	it("资产悬空(解析成空)→ 静静回落家族名,不发一条空 src 的 @font-face", async () => {
 		// 主人把字体删了、卷丢了都会走到这儿。出图不该崩,也不该塞一条无效规则进 CSS。
 		const r = makeRenderer({ font: "兜底那款", fontAsset: "gone.woff2" }, async () => "");
-		expect(await resolveFont(r)).toEqual({ font: "兜底那款" });
-	});
-
-	it("没注入 resolver(koishi 那种宿主)→ 回落家族名,不是崩", async () => {
-		const r = makeRenderer({ font: "兜底那款", fontAsset: "abc.woff2" });
 		expect(await resolveFont(r)).toEqual({ font: "兜底那款" });
 	});
 });
