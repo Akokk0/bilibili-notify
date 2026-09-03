@@ -7,6 +7,8 @@
  * renderer actually invokes — see `image-renderer.ts`.
  */
 
+import type { SerialPriority } from "@bilibili-notify/internal";
+
 export interface BoundingBox {
 	x: number;
 	y: number;
@@ -59,7 +61,19 @@ export interface PageLike {
 	close(): Promise<void>;
 }
 
+/**
+ * 一次渲染的优先级。`low` = 队列里还有正常优先级的在等就不动 —— 群里谁都能触发的
+ * 链接卡走它,推送卡(开播 / 动态)永远不被它挤到后面。与 internal 的 `SerialPriority`
+ * 同一组值:渲染器自己那级队列和独立端的浏览器闸都按它排。
+ */
+export type RenderPriority = SerialPriority;
+
+export interface PageOptions {
+	/** 缺省 `normal`。没有多级队列的实现(koishi / astrbot)可以直接无视它。 */
+	priority?: RenderPriority;
+}
+
 /** Puppeteer service facade. `page()` returns a fresh, disposable page each call. */
 export interface PuppeteerLike {
-	page(): Promise<PageLike>;
+	page(options?: PageOptions): Promise<PageLike>;
 }

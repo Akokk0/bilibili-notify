@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { createSerialGate } from "../serial-gate.js";
+import { createSerialGate } from "./serial-gate";
 
 describe("createSerialGate", () => {
 	it("第二个 acquire 必须等第一个 release 后才放行(互斥)", async () => {
@@ -103,6 +103,82 @@ describe("createSerialGate — 排队深度", () => {
 		const second = gate.acquire();
 		r1();
 		(await second)();
+		expect(gate.waiting()).toBe(0);
+	});
+});
+
+/**
+ * 两条车道 —— 链接卡是「谁都能触发」的低价值渲染,不该排在开播 / 动态卡前面。
+ *
+ * 规矩只有一条:**有正常优先级在等,低优先级就不动。** 正常车道内部仍是 FIFO,
+ * 低优先级车道内部也是 FIFO;低优先级可能一直等(饿着),这是刻意的 —— 它的
+ * 调用方自己有上限并且会放弃,推送卡没有。
+ */
+describe("createSerialGate — 低优先级车道", () => {
+	it("低优先级在等时来了正常请求,正常的先进", async () => {
+		const gate = createSerialGate();
+		const order: string[] = [];
+		const r1 = await gate.acquire();
+
+		const low = gate.acquire({ priority: "low" }).then((r) => {
+			order.push("low");
+			return r;
+		});
+		const normal = gate.acquire().then((r) => {
+			order.push("normal");
+			return r;
+		});
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(order).toEqual([]);
+
+		r1();
+		(await normal)();
+		(await low)();
+		expect(order).toEqual(["normal", "low"]);
+	});
+
+	it("正常车道排空之前低优先级一直等,哪怕它先到", async () => {
+		const gate = createSerialGate();
+		const order: string[] = [];
+		const r1 = await gate.acquire();
+		const low = gate.acquire({ priority: "low" }).then((r) => {
+			order.push("low");
+			return r;
+		});
+		const a = gate.acquire().then((r) => {
+			order.push("a");
+			return r;
+		});
+		const b = gate.acquire().then((r) => {
+			order.push("b");
+			return r;
+		});
+		r1();
+		(await a)();
+		// a 放行的那一刻,b 还在正常车道里等 —— 低优先级不能插进去。
+		(await b)();
+		(await low)();
+		expect(order).toEqual(["a", "b", "low"]);
+	});
+
+	it("闲着时低优先级立刻进,不用等谁", async () => {
+		const gate = createSerialGate();
+		const release = await gate.acquire({ priority: "low" });
+		expect(typeof release).toBe("function");
+		release();
+	});
+
+	it("两条车道都算进排队深度", async () => {
+		const gate = createSerialGate();
+		const r1 = await gate.acquire();
+		const low = gate.acquire({ priority: "low" });
+		const normal = gate.acquire();
+		await Promise.resolve();
+		expect(gate.waiting()).toBe(2);
+		r1();
+		(await normal)();
+		(await low)();
 		expect(gate.waiting()).toBe(0);
 	});
 });

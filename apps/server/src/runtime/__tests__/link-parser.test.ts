@@ -7,7 +7,7 @@
  */
 
 import type { VideoInfo, VideoRef } from "@bilibili-notify/api";
-import type { CardColorOptions, Dynamic } from "@bilibili-notify/image";
+import type { CardColorOptions, Dynamic, RenderPriority } from "@bilibili-notify/image";
 import type {
 	CardBlock,
 	DeliveryResult,
@@ -67,8 +67,12 @@ function makeParser(over: Partial<LinkParsingConfig> = {}, limits?: Partial<Link
 	const getVideoInfo = vi.fn(async (_ref: VideoRef) => VIDEO);
 	const resolveShortLink = vi.fn(async (_url: string): Promise<string | null> => null);
 	const generateDynamicCard = vi.fn(
-		async (_data: Dynamic, _colors?: CardColorOptions, _layout?: CardBlock[]) =>
-			Buffer.from("png-bytes"),
+		async (
+			_data: Dynamic,
+			_colors?: CardColorOptions,
+			_layout?: CardBlock[],
+			_options?: { priority?: RenderPriority },
+		) => Buffer.from("png-bytes"),
 	);
 	const sent: { dest: LinkReplyDestination; payload: NotificationPayload }[] = [];
 	const send = vi.fn(
@@ -140,6 +144,9 @@ describe("createLinkParser", () => {
 		});
 		// 版式与推送的动态卡同一份:不传的话渲染器会退回出厂版式,主人在编辑器里排的顺序就丢了。
 		expect(h.generateDynamicCard.mock.calls[0]?.[2]).toBe(LAYOUT);
+		// 低优先级:群里谁都能触发的卡,不能排在开播 / 动态卡前面 —— 让路这件事由渲染
+		// 队列按车道做,不靠这里数自己发了几张。
+		expect(h.generateDynamicCard.mock.calls[0]?.[3]).toEqual({ priority: "low" });
 
 		expect(h.sent).toEqual([
 			{

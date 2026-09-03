@@ -15,14 +15,14 @@ import type {
 	BoundingBox,
 	ElementHandleLike,
 	PageLike,
+	PageOptions,
 	PuppeteerLike,
 	ScreenshotOptions,
 	SetContentOptions,
 	WaitForFunctionOptions,
 } from "@bilibili-notify/image";
-import type { Logger } from "@bilibili-notify/internal";
+import { createSerialGate, type Logger } from "@bilibili-notify/internal";
 import puppeteer from "puppeteer-core";
-import { createSerialGate } from "./serial-gate.js";
 
 export interface ResolveChromePathOptions {
 	/** 路径存在性判定,默认 `fs.existsSync`;注入以便单测。 */
@@ -167,7 +167,7 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Standalon
 	let activePages = 0;
 	let idleTimer: NodeJS.Timeout | null = null;
 	// 串行闸:所有渲染(预览 screenshotHtml + 推送 ImageRenderer)经同一浏览器,冷启动
-	// 窗口期并发截图会触发 CDP 竞态把卡片平铺成 2×2(见 serial-gate.ts)。串起来即根除。
+	// 窗口期并发截图会触发 CDP 竞态把卡片平铺成 2×2(见 internal 的 serial-gate)。串起来即根除。
 	const renderGate = createSerialGate();
 
 	function cancelIdleTimer(): void {
@@ -271,9 +271,10 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Standalon
 
 	return {
 		renderQueueDepth: () => renderGate.waiting(),
-		async page(): Promise<PageLike> {
-			// 进闸:等上一个渲染(页面 close)后才继续,保证全程并发度为 1。
-			const release = await renderGate.acquire();
+		async page(options?: PageOptions): Promise<PageLike> {
+			// 进闸:等上一个渲染(页面 close)后才继续,保证全程并发度为 1。低优先级
+			// (链接卡)在正常车道排空之前不放行。
+			const release = await renderGate.acquire({ priority: options?.priority });
 			cancelIdleTimer();
 			try {
 				const b = await ensure();

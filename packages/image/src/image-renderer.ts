@@ -1,17 +1,18 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { GuardLevel } from "@bilibili-notify/blive";
-import type {
-	CardBlock,
-	Disposable,
-	GuardLayout,
-	Logger,
-	ServiceContext,
+import {
+	type CardBlock,
+	createSerialGate,
+	type Disposable,
+	type GuardLayout,
+	type Logger,
+	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { DateTime } from "luxon";
 import { numberToStr } from "./format";
-import type { PuppeteerLike } from "./puppeteer";
+import type { PuppeteerLike, RenderPriority } from "./puppeteer";
 import { renderCard, USER_FONT_FAMILY } from "./render";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
 import { DynamicCard } from "./templates/dynamic-card";
@@ -198,8 +199,12 @@ export class ImageRenderer {
 	/** IM2:单张远端图字节上限,防超大图全量入内存 + base64 膨胀驻留 cache → OOM。 */
 	private readonly MAX_REMOTE_IMG_BYTES = 8 * 1024 * 1024;
 
-	// 串行渲染队列，避免 puppeteer 并发问题
-	private renderQueue: Promise<void> = Promise.resolve();
+	/**
+	 * 串行渲染队列,避免 puppeteer 并发问题。带两条车道:链接卡这类低优先级的渲染在
+	 * 正常车道排空之前不动 —— 优先级得在这一级就生效,只在浏览器闸那级让路的话,
+	 * 低优先级的渲染在这里就已经排到推送卡前面了。
+	 */
+	private readonly renderGate = createSerialGate();
 
 	constructor(opts: ImageRendererOptions) {
 		this.serviceCtx = opts.serviceCtx;
@@ -569,6 +574,8 @@ export class ImageRenderer {
 		colorOptions: CardColorOptions = {},
 		/** dynamic 版式描述符;缺省 = 默认版式(复刻现状)。 */
 		layout?: CardBlock[],
+		/** 渲染优先级;链接解析出的卡传 `low`,推送卡不传。 */
+		options?: { priority?: RenderPriority },
 	): Promise<Buffer> {
 		const t0 = Date.now();
 		const { cardColorStart = this.config.cardColorStart, cardColorEnd = this.config.cardColorEnd } =
@@ -601,7 +608,7 @@ export class ImageRenderer {
 			{ title: "动态通知", ...(await this.resolveFont(colorOptions)), htmlWidth: 600 },
 		);
 
-		return withRetry(() => this.renderHtml(html))
+		return withRetry(() => this.renderHtml(html, undefined, options?.priority))
 			.then((buf) => {
 				this.logger.debug(
 					`[dynamic] 动态卡片渲染完成：${moduleAuthor.name}（${Date.now() - t0}ms）`,
@@ -993,10 +1000,14 @@ export class ImageRenderer {
 		return dom.serialize();
 	}
 
-	private async doRender(html: string, waitForCondition?: string): Promise<Buffer> {
+	private async doRender(
+		html: string,
+		waitForCondition?: string,
+		priority: RenderPriority = "normal",
+	): Promise<Buffer> {
 		// 先 inline 远程图片（耗时操作），再获取 page，避免 page 在空闲期间被回收
 		const inlinedHtml = await this.inlineRemoteImages(html);
-		const page = await this.puppeteer.page();
+		const page = await this.puppeteer.page({ priority });
 		try {
 			await page.setContent(inlinedHtml, { waitUntil: "load", timeout: 15_000 });
 			if (waitForCondition) {
@@ -1034,18 +1045,17 @@ export class ImageRenderer {
 		}
 	}
 
-	/** 将渲染任务加入串行队列 */
-	private renderHtml(html: string, waitForCondition?: string): Promise<Buffer> {
-		return new Promise<Buffer>((resolve, reject) => {
-			this.renderQueue = this.renderQueue
-				.catch(() => {}) // 隔离前一任务的错误，防止阻断后续任务
-				.then(async () => {
-					try {
-						resolve(await this.doRender(html, waitForCondition));
-					} catch (err) {
-						reject(err);
-					}
-				});
-		});
+	/** 将渲染任务加入串行队列;一个任务抛错不影响后面的(release 在 finally 里)。 */
+	private async renderHtml(
+		html: string,
+		waitForCondition?: string,
+		priority: RenderPriority = "normal",
+	): Promise<Buffer> {
+		const release = await this.renderGate.acquire({ priority });
+		try {
+			return await this.doRender(html, waitForCondition, priority);
+		} finally {
+			release();
+		}
 	}
 }

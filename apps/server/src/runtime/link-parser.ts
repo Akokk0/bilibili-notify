@@ -12,7 +12,7 @@
  */
 
 import type { VideoInfo, VideoRef } from "@bilibili-notify/api";
-import type { CardColorOptions, Dynamic } from "@bilibili-notify/image";
+import type { CardColorOptions, Dynamic, RenderPriority } from "@bilibili-notify/image";
 import {
 	type CardBlock,
 	type DeliveryResult,
@@ -92,6 +92,7 @@ export interface LinkParserOptions {
 			data: Dynamic,
 			colors?: CardColorOptions,
 			layout?: CardBlock[],
+			options?: { priority?: RenderPriority },
 		): Promise<Buffer>;
 	} | null;
 	/**
@@ -162,10 +163,13 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 
 	async function replyWithCard(renderer: Renderer, dest: LinkReplyDestination, ref: VideoRef) {
 		const info = await opts.api.getVideoInfo(ref);
+		// 低优先级:谁都能触发的卡,不能排在开播 / 动态卡前面。让路由渲染队列按车道做
+		// (渲染器那级与浏览器闸那级都认),不靠这里数自己发了几张。
 		const buffer = await renderer.generateDynamicCard(
 			videoToDynamic(info),
 			undefined,
 			opts.layout(),
+			{ priority: "low" },
 		);
 		const result = await opts.send(dest, { kind: "image", image: { buffer, mime: "image/jpeg" } });
 		if (!result.ok) {
