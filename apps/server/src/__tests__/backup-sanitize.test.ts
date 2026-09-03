@@ -113,24 +113,6 @@ describe("脱敏后的 adapter 仍能通过 PushAdapterSchema", () => {
 			} as PushAdapter,
 		],
 		[
-			"koishi-bot",
-			{
-				...base,
-				id: "00000000-0000-4000-8000-000000000003",
-				platform: "koishi-bot",
-				config: { botPlatform: "onebot" },
-			} as PushAdapter,
-		],
-		[
-			"astrbot",
-			{
-				...base,
-				id: "00000000-0000-4000-8000-000000000004",
-				platform: "astrbot",
-				config: {},
-			} as PushAdapter,
-		],
-		[
 			"qq-official",
 			{
 				...base,

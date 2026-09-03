@@ -974,18 +974,16 @@ function SpecialUserBox({
 /* -------- AI -------------------------------------------------------------- */
 
 /**
- * 覆盖开着时写回磁盘的那个对象 —— 只留「挑了哪份人格」,外加与人格无关的那两项。
+ * 覆盖开着时写回磁盘的那个对象 —— 只留「挑了哪份人格」,外加与人格无关的 temperature。
  *
  * 刻意**逐字段挑**而不是 `{ ...prev, preset }`:老配置里可能还留着当年那档
- * 「完全自定义」写下的 persona 与两段 prompt(见 schema/resolve.ts 的说明)。
- * 它们已经不参与解析了,原样带上就等于把一份死配置重新写回盘上,下一个人打开
- * 文件照样看得见,还以为它在起作用。
+ * 「完全自定义」写下的 persona 与两段 prompt(它们已不在 schema 里,见
+ * schema/subscriptions.ts 的说明)。原样带上就等于把一份死配置重新写回盘上,下一个人
+ * 打开文件照样看得见,还以为它在起作用;逐字段挑之后 buildPatch 会对它们发显式 null。
  */
 function pickAiOverride(prev: AIOverride | undefined, presetId: string): AIOverride {
 	const next: AIOverride = { preset: presetId };
 	if (prev?.temperature !== undefined) next.temperature = prev.temperature;
-	// AstrBot 端的人格 id,与挑哪份 preset 是两回事,照旧留着。
-	if (prev?.personaId !== undefined) next.personaId = prev.personaId;
 	return next;
 }
 

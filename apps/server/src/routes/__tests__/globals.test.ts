@@ -195,7 +195,9 @@ describe("checkApprovalEnable", () => {
 	it("还没接入站的平台 → 拦下，但理由是「还没接」而不是「通道收不到」", () => {
 		const g = withApproval(false);
 		g.master.targetId = "m1";
-		const r = checkApprovalEnable(g, patchOn, [{ id: "m1", platform: "koishi-bot" }] as Targets);
+		const r = checkApprovalEnable(g, patchOn, [
+			{ id: "m1", platform: "someday-bridge" },
+		] as Targets);
 		expect(r.ok).toBe(false);
 		// 这些平台协议上都收得到,差的是我们没接。说成平台的毛病,主人会去查自己
 		// 的配置(qq-official 就是这么被主人当场抓到的)。

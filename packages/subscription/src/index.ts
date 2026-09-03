@@ -118,24 +118,3 @@ export function createSubscriptionStore(bus: MessageBus): SubscriptionStore {
 
 // Re-export types callers need from this package
 export type { Subscription, SubscriptionOp };
-
-/**
- * Legacy flat config item shape used by the koishi basic sub configuration UI.
- * Preserved here so koishi/src/config/subscriptions.ts can reference it without touching push.
- */
-export interface FlatSubConfigItem {
-	name: string;
-	uid: string;
-	platform: string;
-	/** Comma-separated channel IDs */
-	target: string;
-	dynamic: boolean;
-	dynamicAtAll: boolean;
-	live: boolean;
-	liveAtAll: boolean;
-	liveEnd: boolean;
-	liveGuardBuy: boolean;
-	superchat: boolean;
-	wordcloud: boolean;
-	liveSummary: boolean;
-}

@@ -288,7 +288,7 @@ export const DEFAULT_CARD_STYLE = {
 	backgroundImages: [] as string[],
 } as const;
 
-/** 工厂：创建一份完整的默认 GlobalConfig（不含 bootstrap，供 Koishi 端用）。 */
+/** 工厂:创建一份完整的默认 GlobalConfig(不含 bootstrap)—— server 的出厂值与测试夹具共用。 */
 export function makeDefaultGlobalConfig(): GlobalConfig {
 	return GlobalConfigSchema.parse({
 		app: {},

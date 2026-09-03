@@ -2,19 +2,16 @@ import { z } from "zod";
 import { ONEBOT_FORWARD_MIN_TIMEOUT_MS, ONEBOT_IMAGE_MIN_TIMEOUT_MS } from "../constants.js";
 
 /**
- * Push 目标平台。Adapter 矩阵按 platform 分发：
- * - `onebot`：独立端 OneBot v11 HTTP adapter
- * - `webhook`：任意 HTTP POST JSON
- * - `koishi-bot`：仅 koishi 薄壳侧实现，通过 `ctx.bots[botPlatform]` 调 koishi bot
- *   `sendMessage`；独立端不注册该 platform adapter
- * - `astrbot`：仅 AstrBot 插件侧实现，通过 Python 壳按 `unified_msg_origin` 投递
- * - `qq-official`：独立端 QQ 官方机器人(q.qq.com)WS 网关 adapter,频道/群/C2C
+ * Push 目标平台。Adapter 矩阵按 platform 分发(server 侧 `apps/server/src/platforms/`
+ * 一平台一实现)—— 这条 union 就是将来薄插件把 Koishi / AstrBot 桥接进来时的接入点:
+ * 加一个 platform 字面量 + 一套 adapter/session schema + 一个 server adapter。
+ * - `onebot`:OneBot v11 HTTP adapter
+ * - `webhook`:任意 HTTP POST JSON
+ * - `qq-official`:QQ 官方机器人(q.qq.com)WS 网关 adapter,频道/群/C2C
  */
 export const PushTargetPlatformSchema = z.union([
 	z.literal("onebot"),
 	z.literal("webhook"),
-	z.literal("koishi-bot"),
-	z.literal("astrbot"),
 	z.literal("qq-official"),
 ]);
 export type PushTargetPlatform = z.infer<typeof PushTargetPlatformSchema>;
@@ -115,18 +112,6 @@ export const WebhookAdapterConfigSchema = z.object({
 });
 export type WebhookAdapterConfig = z.infer<typeof WebhookAdapterConfigSchema>;
 
-export const KoishiBotAdapterConfigSchema = z.object({
-	/** koishi 内部 bot.platform，例如 'onebot' / 'discord' / 'telegram'。 */
-	botPlatform: z.string().min(1),
-	/** 同 platform 多 bot 时挑 bot。 */
-	selfId: z.string().optional(),
-});
-export type KoishiBotAdapterConfig = z.infer<typeof KoishiBotAdapterConfigSchema>;
-
-// AstrBot 由宿主 Python 壳完成实际投递；连接级配置固定为空对象。
-export const AstrBotAdapterConfigSchema = z.object({}).strict();
-export type AstrBotAdapterConfig = z.infer<typeof AstrBotAdapterConfigSchema>;
-
 /**
  * QQ 官方机器人公域/私域类型。私域可发原生 markdown,公域只能发模板 markdown ——
  * 决定 adapter 的 markdown 能力门控(私域默认开、公域默认关)。
@@ -193,19 +178,6 @@ const WebhookAdapterSchema = z.object({
 	config: WebhookAdapterConfigSchema,
 });
 
-const KoishiBotAdapterSchema = z.object({
-	...PushAdapterCommonShape,
-	platform: z.literal("koishi-bot"),
-	config: KoishiBotAdapterConfigSchema,
-});
-
-export const AstrBotAdapterSchema = z.object({
-	...PushAdapterCommonShape,
-	platform: z.literal("astrbot"),
-	config: AstrBotAdapterConfigSchema,
-});
-export type AstrBotAdapter = z.infer<typeof AstrBotAdapterSchema>;
-
 const QQOfficialAdapterSchema = z.object({
 	...PushAdapterCommonShape,
 	platform: z.literal("qq-official"),
@@ -215,8 +187,6 @@ const QQOfficialAdapterSchema = z.object({
 export const PushAdapterSchema = z.discriminatedUnion("platform", [
 	OnebotAdapterSchema,
 	WebhookAdapterSchema,
-	KoishiBotAdapterSchema,
-	AstrBotAdapterSchema,
 	QQOfficialAdapterSchema,
 ]);
 export type PushAdapter = z.infer<typeof PushAdapterSchema>;
@@ -238,31 +208,6 @@ export type OnebotSession = z.infer<typeof OnebotSessionSchema>;
 
 export const WebhookSessionSchema = z.object({}).strict();
 export type WebhookSession = z.infer<typeof WebhookSessionSchema>;
-
-export const KoishiBotSessionSchema = z
-	.object({
-		channelId: z.string().optional(),
-		guildId: z.string().optional(),
-		userId: z.string().optional(),
-	})
-	.strict();
-export type KoishiBotSession = z.infer<typeof KoishiBotSessionSchema>;
-
-export const AstrBotSessionSchema = z
-	.object({
-		/** AstrBot 会话稳定定位符，来自 `event.unified_msg_origin`。 */
-		unified_msg_origin: z.string().min(1),
-		/** 展示用宿主平台摘要，例如 aiocqhttp / telegram。 */
-		platform: z.string().optional(),
-		/** 展示用消息类型摘要，例如 group / private / channel。 */
-		messageType: z.string().optional(),
-		/** 展示用会话 ID 摘要；投递仍以 unified_msg_origin 为准。 */
-		sessionId: z.string().optional(),
-		/** 展示用会话名摘要。 */
-		sessionName: z.string().optional(),
-	})
-	.strict();
-export type AstrBotSession = z.infer<typeof AstrBotSessionSchema>;
 
 /**
  * QQ 官方机器人会话。按 target.scope 用不同字段(发送时运行期校验,缺失即拒)。
@@ -308,19 +253,6 @@ const WebhookPushTargetSchema = z.object({
 	session: WebhookSessionSchema,
 });
 
-const KoishiBotPushTargetSchema = z.object({
-	...PushTargetCommonShape,
-	platform: z.literal("koishi-bot"),
-	session: KoishiBotSessionSchema,
-});
-
-export const AstrBotPushTargetSchema = z.object({
-	...PushTargetCommonShape,
-	platform: z.literal("astrbot"),
-	session: AstrBotSessionSchema,
-});
-export type AstrBotPushTarget = z.infer<typeof AstrBotPushTargetSchema>;
-
 const QQOfficialPushTargetSchema = z.object({
 	...PushTargetCommonShape,
 	platform: z.literal("qq-official"),
@@ -331,8 +263,6 @@ export const PushTargetSchema = z
 	.discriminatedUnion("platform", [
 		OnebotPushTargetSchema,
 		WebhookPushTargetSchema,
-		KoishiBotPushTargetSchema,
-		AstrBotPushTargetSchema,
 		QQOfficialPushTargetSchema,
 	])
 	.superRefine((target, ctx) => {

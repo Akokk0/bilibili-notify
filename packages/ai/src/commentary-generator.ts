@@ -318,11 +318,6 @@ export interface CommentaryCallOverride {
 	enableThinking?: boolean;
 	thinkingLevel?: ThinkingLevel;
 	/**
-	 * per-UP 指定的 AstrBot 人格 id。仅 AstrBot bridge 消费(覆盖全局 --ai-persona-id);
-	 * 自带 OpenAI 的 CommentaryGenerator 忽略此字段。
-	 */
-	personaId?: string;
-	/**
 	 * 这一次调用允不允许联网搜索(挂 `web_search` 工具)。引擎路径(点评 / 总结 /
 	 * 锐评)按 `ai.search.engines.*` 的 per-engine 开关传;开了但执行器不在
 	 * (没填 key / 没接 source)时静默不挂,不报错 —— 推送链路不因搜索没配置而断。

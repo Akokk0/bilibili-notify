@@ -58,8 +58,6 @@ export interface ResolvedAI {
 	persona: AIPersona;
 	dynamicPrompt: string;
 	liveSummaryPrompt: string;
-	/** per-UP AstrBot 人格 id 直通(AstrBot 端消费;其它端忽略)。 */
-	personaId?: string;
 }
 
 /** 浅合并：override 中存在的字段覆盖 base，undefined / 缺失则保留 base。 */
@@ -92,20 +90,15 @@ function resolveAI(globals: AISettings, override: AIOverride | undefined): Resol
 		liveSummaryPrompt: active.liveSummaryPrompt,
 	};
 
-	// personaId 是 per-UP 直通,与 preset 无关 —— 即便 preset=inherit 也要带出去。
-	const personaId = override?.personaId;
-
-	if (!override) return { ...base, personaId };
+	if (!override) return base;
 
 	/*
 	 * per-UP 只做一件事:**从 `globals.presets` 里挑一份**。挑不着就是全局那份。
 	 *
-	 * `override` 上的 `persona` / `dynamicPrompt` / `liveSummaryPrompt` **一概不读**
-	 * —— 设置页曾经给过一档「完全自定义」能就地写死一套人设,那一档撤掉了(人格一律
-	 * 在「智能女仆」页里写),但盘上还留着当年写下的字段。继续读它们就成了界面上
-	 * 看不见、实际仍在生效的鬼配置。字段本身留在 schema 里没删 —— **koishi 端在用**:
-	 * 那一侧压根不暴露 preset 选择,`enable` 即「我自己填」,恒写 `preset:"custom"`
-	 * 外加整份 persona,并且走自己的 `buildAiOverride` 读回去,不经过这里。
+	 * 设置页曾经给过一档「完全自定义」能就地写死一套人设(`persona` / `dynamicPrompt` /
+	 * `liveSummaryPrompt`),那一档撤掉了(人格一律在「智能女仆」页里写),那三个字段也已
+	 * 从 schema 里删掉 —— 盘上残留的值在解析时就被丢弃,不会成为界面上看不见、实际仍在
+	 * 生效的鬼配置。
 	 *
 	 * 于是三种取值在这里殊途同归、都落到全局:老的 `'inherit'`(当年那档「继承全局」)、
 	 * 老的 `'custom'`、以及指向一份已被删掉的人格。三者的实际行为本来就都是「继承
@@ -119,7 +112,7 @@ function resolveAI(globals: AISettings, override: AIOverride | undefined): Resol
 	// temperature 不在撤掉之列 —— 它本来就是独立一格,与挑哪份人格无关。
 	const temperature = override.temperature ?? base.temperature;
 
-	return { ...base, persona, dynamicPrompt, liveSummaryPrompt, temperature, personaId };
+	return { ...base, persona, dynamicPrompt, liveSummaryPrompt, temperature };
 }
 
 /**

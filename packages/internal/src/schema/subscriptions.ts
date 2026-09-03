@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { CardLayoutSchema } from "./card-layout";
 import {
-	AIPersonaSchema,
 	CardStyleByKindSchema,
 	CardStylePartialSchema,
 	ContentFiltersPartialSchema,
@@ -66,42 +65,25 @@ export const SpecialUserSchema = z.object({
 export type SpecialUser = z.infer<typeof SpecialUserSchema>;
 
 /**
- * AI 覆盖 —— **两端语义不同的一个结构**,改之前先读完这段。
+ * AI 覆盖 —— per-UP 只做一件事:**从 `GlobalConfig.defaults.ai.presets` 里挑一份**。
  *
- * ## 独立端 / AstrBot(走 `resolveAI`)
+ * `preset` 是**指针**:指向 presets 里的一份。指不着就完整继承全局 —— 老值 `'inherit'`
+ * (当年那档「继承全局」)、`'custom'`(当年那档「完全自定义」)、以及指向一份已被删掉
+ * 的人格,三者在 `resolveAI` 里殊途同归。
  *
- * `preset` 是**指针**:指向 `GlobalConfig.defaults.ai.presets` 里的一份。指不着就
- * 完整继承全局 —— 老值 `'inherit'`(当年那档「继承全局」)、`'custom'`(当年那档
- * 「完全自定义」)、以及指向一份已被删掉的人格,三者在那儿殊途同归。
- *
- * 这一侧**不读** `persona` / `dynamicPrompt` / `liveSummaryPrompt`。人格一律在
- * 「智能女仆」页里写,per-UP 只负责挑一份;设置页那档「完全自定义」已经撤掉,
- * 盘上的残留继续生效就成了界面上看不见、实际仍在起作用的鬼配置。设置页在开启
- * 覆盖时会顺手把它们显式清成 `null`。
- *
- * ## koishi 端(走 `koishi/src/live/sub-view.ts#buildAiOverride`,**不经过** `resolveAI`)
- *
- * 那一侧压根不暴露 preset 选择,`customAi.enable` 即「我自己填」——
- * `koishi/src/subscriptions/advanced.ts` 恒写 `preset: "custom"` 外加一整份
- * persona,再由 `buildAiOverride` 原样读回去。所以这三个字段**必须留在 schema 里**,
- * 删掉等于把 koishi 那半边的 per-UP 人格整个打死。
+ * 当年「完全自定义」写在这里的 `persona` / `dynamicPrompt` / `liveSummaryPrompt` 已经
+ * 不在 schema 里(它们后来只为 koishi 插件那一侧留着):人格一律在「智能女仆」页里写,
+ * per-UP 只负责挑一份。盘上残留的旧字段在解析时被丢弃,设置页保存时也会显式清掉
+ * (见 apps/web PerUpEditor 的 `pickAiOverride`)。
  *
  * ## 为什么 preset 是裸 string
  *
- * 单 schema:persona/prompts 无论 preset 取何值都允许。写成 z.union 会让 TS 在
- * 「具名 id vs 那两个历史常量」之间 narrowing 失败。
+ * 单 schema:preset 取何值都允许。写成 z.union 会让 TS 在「具名 id vs 那两个历史常量」
+ * 之间 narrowing 失败。
  */
 export const AIOverrideSchema = z.object({
 	preset: z.string(),
-	persona: AIPersonaSchema.optional(),
-	dynamicPrompt: z.string().optional(),
-	liveSummaryPrompt: z.string().optional(),
 	temperature: z.number().min(0).max(2).optional(),
-	/**
-	 * per-UP 指定的 AstrBot 人格 id(留空继承全局 --ai-persona-id)。与 preset 无关,
-	 * 仅 AstrBot 端消费(让某个 UP 的总结用不同 AstrBot 人格);koishi/独立端忽略。
-	 */
-	personaId: z.string().optional(),
 });
 export type AIOverride = z.infer<typeof AIOverrideSchema>;
 

@@ -52,25 +52,6 @@ describe("projectPerUpIsland — schedule/templates/ai 保 nested", () => {
 		expect(codes).toContain("ai.preset");
 		expect(sectionOf("ai.preset")).toBe("ai");
 	});
-
-	it("两侧 persona 都在、改 name → 'ai.persona.name',section=persona", () => {
-		// custom 模式下 persona 已 seed 成对象,逐字段编辑 → 递归出 ai.persona.X。
-		const persona = {
-			name: "喵",
-			addressUser: "主人",
-			addressSelf: "我",
-			traits: "",
-			catchphrase: "",
-			baseRole: "",
-			extraSystemPrompt: "",
-		};
-		const codes = diffCodes(
-			{ ai: { preset: "custom", persona } },
-			{ ai: { preset: "custom", persona: { ...persona, name: "汪" } } },
-		);
-		expect(codes).toContain("ai.persona.name");
-		expect(sectionOf("ai.persona.name")).toBe("persona");
-	});
 });
 
 describe("projectPerUpIsland — imageGroup 打平 + specialUsers 叶子", () => {

@@ -66,13 +66,12 @@ export type {
 } from "@bilibili-notify/internal";
 
 /**
- * Dashboard 只编辑独立端可用平台;宿主专用隐藏平台(Koishi / AstrBot)由对应
- * 宿主壳消费,不进入 apps/web 的平台工厂和普通选择器。
+ * 推送平台类型直接用 internal 的 canonical 定义:独立端是唯一宿主,dashboard 能编辑
+ * 全部平台。将来薄插件桥接进来的平台加进 internal 的 union,就会自动出现在这里。
  */
-type HostOnlyPlatform = "koishi-bot" | "astrbot";
-export type PushAdapter = Exclude<CanonPushAdapter, { platform: HostOnlyPlatform }>;
-export type PushTarget = Exclude<CanonPushTarget, { platform: HostOnlyPlatform }>;
-export type PushTargetPlatform = Exclude<CanonPushTargetPlatform, HostOnlyPlatform>;
+export type PushAdapter = CanonPushAdapter;
+export type PushTarget = CanonPushTarget;
+export type PushTargetPlatform = CanonPushTargetPlatform;
 
 // ---- UI 文案 -----------------------------------------------------------
 
