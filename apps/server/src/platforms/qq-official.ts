@@ -499,6 +499,24 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 		heartbeatTimer = serviceCtx.setInterval(() => heartbeat(), heartbeatInterval);
 	}
 
+	/**
+	 * 一路入站消息:没接就连解析都不做,解出来了才交出去。**catch 不能省** —— 这条
+	 * 连接同时担着推送,下游处理里抛个错不该把整条长连带走。每加一路入站都要重述
+	 * 一遍这条规矩,所以只写这一处。
+	 */
+	function deliver<T>(sink: ((msg: T) => void) | undefined, parse: () => T | null, what: string) {
+		if (!sink) return;
+		const msg = parse();
+		if (!msg) return;
+		try {
+			sink(msg);
+		} catch (err) {
+			logger.warn(
+				`[qq] adapter=${adapterId} 处理入站${what}失败: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
+	}
+
 	function onDispatch(frame: QQFrame): void {
 		if (typeof frame.s === "number") lastSeq = frame.s;
 		const t = frame.t;
@@ -522,28 +540,9 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 		if (typeof t === "string") {
 			const discovered = extractQQDiscoveredSession(t, d);
 			if (discovered) opts.onDiscovered(discovered);
-			// 私聊正文另走一路(只有 C2C 认)。**catch 不能省**:这条连接同时担着
-			// 推送,指令处理里抛个错不该把整条长连带走。
-			const inbound = opts.onInbound ? extractQQPrivateMessage(t, d) : null;
-			if (inbound) {
-				try {
-					opts.onInbound?.(inbound);
-				} catch (err) {
-					logger.warn(
-						`[qq] adapter=${adapterId} 处理入站私聊失败: ${err instanceof Error ? err.message : String(err)}`,
-					);
-				}
-			}
-			const group = opts.onInboundGroup ? extractQQGroupMessage(t, d) : null;
-			if (group) {
-				try {
-					opts.onInboundGroup?.(group);
-				} catch (err) {
-					logger.warn(
-						`[qq] adapter=${adapterId} 处理入站群消息失败: ${err instanceof Error ? err.message : String(err)}`,
-					);
-				}
-			}
+			// 私聊正文另走一路(只有 C2C 认),群消息再一路。
+			deliver(opts.onInbound, () => extractQQPrivateMessage(t, d), "私聊");
+			deliver(opts.onInboundGroup, () => extractQQGroupMessage(t, d), "群消息");
 		}
 	}
 

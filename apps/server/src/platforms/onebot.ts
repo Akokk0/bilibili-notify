@@ -519,6 +519,18 @@ class WsChannel {
 	}
 }
 
+/**
+ * 通道只知道帧;来源 adapter 由这一层补上。两种连法(正向 / 反向)都要补,而 `meta`
+ * 是适配器与链接解析之间的契约 —— 往里加字段时只想得起改一处的话,另一种连法就悄悄
+ * 少了那个字段。
+ */
+function withAdapterId(
+	sink: OnebotPlatformAdapterOptions["onInbound"],
+	adapterId: string,
+): ((frame: Record<string, unknown>) => void) | undefined {
+	return sink ? (frame) => sink(frame, { adapterId }) : undefined;
+}
+
 /** 正向 WS:独立端作客户端主动连 bot,断线指数退避重连。 */
 class ForwardConn {
 	private ws: WebSocket | null = null;
@@ -540,12 +552,6 @@ class ForwardConn {
 		this.connect();
 	}
 
-	/** 通道只知道帧;来源 adapter 由这一层补上。 */
-	private inboundSink(): ((frame: Record<string, unknown>) => void) | undefined {
-		const sink = this.onInbound;
-		return sink ? (frame) => sink(frame, { adapterId: this.adapterId }) : undefined;
-	}
-
 	private connect(): void {
 		if (this.closed) return;
 		this.reconnectTimer = null;
@@ -565,7 +571,7 @@ class ForwardConn {
 				ws,
 				`fwd:${this.adapterId}`,
 				this.serviceCtx,
-				this.inboundSink(),
+				withAdapterId(this.onInbound, this.adapterId),
 			);
 			this.log.info(`[onebot] 正向 WS 已连接 adapter=${this.adapterId} url=${this.url}`);
 		});
@@ -626,12 +632,6 @@ class ReverseListener {
 		this.start();
 	}
 
-	/** 同 ForwardConn:通道只知道帧,来源 adapter 由这一层补上。 */
-	private inboundSink(): ((frame: Record<string, unknown>) => void) | undefined {
-		const sink = this.onInbound;
-		return sink ? (frame) => sink(frame, { adapterId: this.adapterId }) : undefined;
-	}
-
 	private start(): void {
 		let wss: WebSocketServer;
 		try {
@@ -661,7 +661,12 @@ class ReverseListener {
 			ws.close(1008, "unauthorized");
 			return;
 		}
-		const channel = new WsChannel(ws, `rev:${this.adapterId}`, this.serviceCtx, this.inboundSink());
+		const channel = new WsChannel(
+			ws,
+			`rev:${this.adapterId}`,
+			this.serviceCtx,
+			withAdapterId(this.onInbound, this.adapterId),
+		);
 		const entry = { ws, channel };
 		this.bots.add(entry);
 		this.log.info(`[onebot] 反向 WS bot 已连入 adapter=${this.adapterId}(在线 ${this.bots.size})`);

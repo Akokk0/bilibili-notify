@@ -33,11 +33,19 @@ export function extractPrivateMessage(
 ): InboundPrivateMessage | null {
 	if (frame.post_type !== "message") return null;
 	if (frame.message_type !== "private") return null;
-	const userId = frame.user_id;
-	if (typeof userId !== "number" && typeof userId !== "string") return null;
+	const userId = toId(frame.user_id);
+	if (!userId) return null;
 	const text = extractText(frame);
 	if (!text.trim()) return null;
-	return { userId: String(userId), text };
+	return { userId, text };
+}
+
+/**
+ * OneBot 的各种 id 在不同实现里有的是数字有的是字符串,一律收成字符串。三处 id
+ * (`user_id` / `group_id` / `self_id`)对「什么算 id」必须是同一个答案。
+ */
+function toId(v: unknown): string | undefined {
+	return typeof v === "number" || typeof v === "string" ? String(v) : undefined;
 }
 
 /**
@@ -53,19 +61,12 @@ export function extractPrivateMessage(
 export function extractGroupMessage(frame: Record<string, unknown>): InboundGroupMessage | null {
 	if (frame.post_type !== "message") return null;
 	if (frame.message_type !== "group") return null;
-	const groupId = frame.group_id;
-	const userId = frame.user_id;
-	if (typeof groupId !== "number" && typeof groupId !== "string") return null;
-	if (typeof userId !== "number" && typeof userId !== "string") return null;
+	const groupId = toId(frame.group_id);
+	const userId = toId(frame.user_id);
+	if (!groupId || !userId) return null;
 	const text = [extractText(frame), ...extractCardLinks(frame)].join(" ").trim();
 	if (!text) return null;
-	const selfId = frame.self_id;
-	return {
-		groupId: String(groupId),
-		userId: String(userId),
-		selfId: typeof selfId === "number" || typeof selfId === "string" ? String(selfId) : undefined,
-		text,
-	};
+	return { groupId, userId, selfId: toId(frame.self_id), text };
 }
 
 /**
@@ -91,6 +92,15 @@ function extractText(frame: Record<string, unknown>): string {
 }
 
 const URL_RE = /https?:\/\/[^\s"'<>\\]+/g;
+
+/**
+ * 解析一张卡之前先扫一眼原文有没有这两个域名 —— 下游两条视频链接正则都硬要求它们,
+ * 没有就绝不可能解出东西。省掉的是每条群消息上的一次 `JSON.parse` + 整棵树的字符串
+ * 收集(1KB 的小程序卡实测 4.2µs,而这道预筛 0.15µs)。转义写法照样带着字面量:
+ * json 只转义斜杠、xml 只转义 `&amp;`。
+ */
+const CARD_HOST_HINT = /bilibili\.com|b23\.tv/i;
+
 /** 分享卡的 payload 顶多几 KB;再大的不是卡,不往里翻。 */
 const MAX_CARD_CHARS = 64 * 1024;
 const MAX_CARD_DEPTH = 8;
@@ -110,6 +120,7 @@ function extractCardLinks(frame: Record<string, unknown>): string[] {
 		if (type !== "json" && type !== "xml") continue;
 		const raw = data?.data;
 		if (typeof raw !== "string" || raw.length > MAX_CARD_CHARS) continue;
+		if (!CARD_HOST_HINT.test(raw)) continue;
 		for (const s of cardStrings(type, raw)) {
 			for (const m of s.matchAll(URL_RE)) links.push(m[0]);
 		}
