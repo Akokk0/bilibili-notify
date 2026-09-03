@@ -20,8 +20,8 @@ import { fileURLToPath } from "node:url";
  * apps/web 和 astrbot/page 一起覆盖了。
  */
 
-/** 三个吃 Vite+ 的前端。新增前端要同步加进来,并在 pnpm-workspace.yaml 补一条 override。 */
-export const VITE_PLUS_FRONTENDS = ["apps/web", "apps/desktop", "astrbot/page"];
+/** 吃 Vite+ 的前端。新增前端要同步加进来,并在 pnpm-workspace.yaml 补一条 override。 */
+export const VITE_PLUS_FRONTENDS = ["apps/web", "apps/desktop"];
 
 /** override 把裸 `vite` 指向的真实包名。 */
 export const VITE_PLUS_CORE = "@voidzero-dev/vite-plus-core";

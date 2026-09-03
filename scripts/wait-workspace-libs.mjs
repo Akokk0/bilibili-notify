@@ -10,8 +10,7 @@
  *
  * 行为:
  *   - 扫 <root>/packages/* 与 <root>/apps/*,凡 package.json 的 exports["."]
- *     解析到 ./lib/ 下的 ESM 入口即纳入等待集(web/desktop 无 lib 出口,自动跳过;
- *     koishi/ 目录不扫 —— 独立端 dev 不消费它)。
+ *     解析到 ./lib/ 下的 ESM 入口即纳入等待集(web/desktop 无 lib 出口,自动跳过)。
  *   - 轮询直到每个入口文件存在且 mtime 已静置 STABLE_MS(躲开删除→重写的抖动)。
  *   - 超时(TIMEOUT_MS)不阻死:打警告放行,让 tsx 报出真实的解析错误。
  */

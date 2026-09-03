@@ -5,8 +5,7 @@
 # All node_modules — populated by yarn/pnpm in the builder stage.
 **/node_modules
 
-# Local pnpm store + yarn caches.
-.yarn
+# Local pnpm store.
 .pnpm-store
 
 # Repo metadata + editor noise.

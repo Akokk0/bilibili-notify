@@ -1,19 +1,12 @@
 name: Gate
 
 # **发版门禁**的唯一定义:Biome → build → typecheck → test。
-# ci.yml / publish.yml / image-release.yml / desktop-release.yml 全部复用它。
+# ci.yml / image-release.yml / desktop-release.yml 全部复用它。
 #
-# 抽出来是因为门禁是「这份代码能不能发出去」的判据 —— 四份各自维护的副本迟早会飘,
+# 抽出来是因为门禁是「这份代码能不能发出去」的判据 —— 三份各自维护的副本迟早会飘,
 # 而飘的方式一定是某条发布路径悄悄少了一项检查,且没人发现(发布 workflow 全绿)。
-# 加一条新检查时只改这里一处,四条路径同时生效。
+# 加一条新检查时只改这里一处,三条路径同时生效。
 #
-# **不含 astrbot 的 Python 门禁**(ruff + pytest)—— 而且 CI 里也不再跑了(2026-07-11 去掉)。
-# 这三条发布路径的产物 —— koishi npm 包、Docker 镜像、Desktop 安装包 —— 里都没有一行
-# Python;astrbot 走的是 `astrbot-release.yml` 那条独立的 squash-push 路线,不经过本文件。
-#
-# astrbot 的 Python 检查改为**只在发版时手动跑**:`release-astrbot` skill 的步骤里有
-# `vp run check:astrbot-python`(ruff check + format --check + pytest)那一步。
-# 代价是**日常 push 不再拦 Python 的错**,要到发 astrbot 那一刻才暴露。
 on:
   workflow_call:
 
@@ -38,11 +31,10 @@ jobs:
         run: vp exec biome ci .
 
       # `vpr <script>` 是 vp 的 shim 简写,等价 `vp run <script>`,从 root
-      # package.json scripts 入口走。build 内部 `pnpm -r run build + koishi
-      # console client`;vp 把内嵌 pnpm 注入子进程 PATH 让 legacy script body
-      # 继续 work。这是双端 build(packages + koishi shells + apps/server vp
-      # pack + apps/web Vite)。typecheck 与 test 同模式。
-      - name: Build (double-end)
+      # package.json scripts 入口走。build 内部是 `pnpm -r run build`;vp 把内嵌
+      # pnpm 注入子进程 PATH 让 legacy script body 继续 work(packages/* vp pack +
+      # apps/server vp pack + apps/web Vite)。typecheck 与 test 同模式。
+      - name: Build
         run: vpr build
 
       - name: Typecheck

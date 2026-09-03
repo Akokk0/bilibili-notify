@@ -8,7 +8,6 @@
 			"!**/lib",
 			"!**/dist",
 			"!**/*.svg",
-			"**/*.vue",
 			"!**/src/static",
 			"!**/.interface",
 			"!.bn-design",
@@ -18,11 +17,7 @@
 			"!apps/**/data.test-*",
 			"!apps/desktop/src-tauri/gen",
 			"!apps/desktop/src-tauri/resources",
-			"!apps/desktop/src-tauri/target",
-			"!astrbot/core/sidecar/app",
-			"!astrbot/core/pages",
-			"!astrbot/core/sidecar/state",
-			"!astrbot/core/sidecar/logs"
+			"!apps/desktop/src-tauri/target"
 		]
 	},
 	"formatter": {
@@ -48,7 +43,7 @@
 	},
 	"overrides": [
 		{
-			"includes": ["apps/web/**", "apps/desktop/src/**", "astrbot/page/**", "packages/ui/**"],
+			"includes": ["apps/web/**", "apps/desktop/src/**", "packages/ui/**"],
 			"linter": {
 				"domains": {
 					"react": "recommended"

@@ -55,7 +55,7 @@ FROM ${VP_BUILDER_IMAGE} AS builder
 # make the install step unable to write node_modules.
 COPY --chown=vp:vp . .
 
-# Single pnpm workspace covers packages/*, koishi/*, apps/*. Install once.
+# Single pnpm workspace covers packages/* and apps/*. Install once.
 # `vp pm` forwards to the pinned pnpm verbatim; `vp pm ci` = clean
 # frozen-lockfile install for CI environments.
 #
@@ -64,8 +64,8 @@ COPY --chown=vp:vp . .
 # 即可(builder 用完即弃,不会带进 runtime)。
 RUN git init -q . && vp pm ci
 
-# 只构建镜像真正消费的三块(旧版 `pnpm -r` 全 workspace 扫一遍,koishi/* 的产物
-# 从未进过 runtime 镜像,纯浪费 CI 时间):
+# 只构建镜像真正消费的三块(不走 `pnpm -r` 全 workspace 扫一遍 —— desktop 的
+# 前端产物从不进 runtime 镜像,纯浪费 CI 时间):
 #   1. packages/* + apps/contract —— server/web 的内联输入(vp pack 经各包 exports
 #      解析 lib/)。contract 是独立端专属的 wire 契约包,放在 apps/ 而非 packages/,
 #      故必须显式点名 —— 漏了它 web / server 的构建会 TS2307 解析不到 @bilibili-notify/contract。

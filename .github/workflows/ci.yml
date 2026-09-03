@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  # 门禁本体(Biome + build + typecheck + test)在 gate.yml —— 四条发布路径共用同一份
+  # 门禁本体(Biome + build + typecheck + test)在 gate.yml —— 三条发布路径共用同一份
   # 定义,见那里的注释。
   gate:
     uses: ./.github/workflows/gate.yml

@@ -50,33 +50,27 @@ describe("ASSET_DIR — 自带静态资源的所在", () => {
  * 谁把这个包打进 bundle,谁就得把 `static/` 一起搬过去。
  *
  * `ASSET_DIR` 指的是「本模块所在的那个目录」。被内联进别人的 bundle 之后,那就变成
- * **别人的**产物目录 —— pack 给 `packages/image/lib/` 拷的那一份完全帮不上忙。三个
- * 下游打包目标各自得管自己:
+ * **别人的**产物目录 —— pack 给 `packages/image/lib/` 拷的那一份完全帮不上忙。下游
+ * 打包目标得自己管:
  *
- *   - koishi 插件         → `koishi/lib/static/`
  *   - 独立端 server bundle → `dist/static/`
- *   - AstrBot sidecar     → `app/static/`
  *
- * koishi 这一处就漏过:它的构建只拷了 jieba 的 wasm,`static/` 没管,于是词云在
- * koishi 端必 ENOENT —— 而且构建全绿,打出来的 npm 包也全绿,只有用户点一次词云
+ * 当年的 koishi 插件 bundle 就漏过:它的构建只拷了 jieba 的 wasm,`static/` 没管,
+ * 于是词云在那一端必 ENOENT —— 而且构建全绿,打出来的包也全绿,只有用户点一次词云
  * 才看得到。这条测试就是为了不再漏第二次。
  *
  * 只查「配置里声明了没有」而不去查产物:`vp test` 不该依赖先跑一遍 build。产物层面
- * 的验证靠手动跑一次真实词云(三种形态都跑过)。
+ * 的验证靠手动跑一次真实词云。
  */
 describe("凡是内联 image 的打包目标,都必须随包带 static/", () => {
 	const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
-	const TARGETS = [
-		{ label: "koishi 插件 bundle", file: "koishi/vite.config.ts" },
-		{ label: "独立端 server bundle", file: "scripts/assemble-server-bundle.mjs" },
-		{ label: "AstrBot sidecar", file: "scripts/build-astrbot-sidecar.mjs" },
-	];
+	const TARGETS = [{ label: "独立端 server bundle", file: "scripts/assemble-server-bundle.mjs" }];
 
 	it.each(TARGETS)("$label 的构建里搬了 static", async ({ file }) => {
 		const text = await readFile(join(REPO_ROOT, file), "utf8");
-		// 三处都用 monorepo 源路径(始终存在、与 lib/static 同内容)。理由见
-		// build-astrbot-sidecar.mjs:对 workspace 包做 require.resolve 是 CJS 解析,
-		// CI 全新环境里没有残留的 lib/index.cjs,会直接 Cannot find module。
+		// 用 monorepo 源路径(始终存在、与 lib/static 同内容):对 workspace 包做
+		// require.resolve 是 CJS 解析,CI 全新环境里没有残留的 lib 产物,会直接
+		// Cannot find module。
 		const code = text
 			.split("\n")
 			.filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
@@ -90,8 +84,6 @@ describe("凡是内联 image 的打包目标,都必须随包带 static/", () => 
  * `__dirname`,dev 服务器加载它的那一刻就会以同样的方式炸,而产物照旧全绿。
  * 守卫落在 image 包只是因为这里是踩坑现场。
  *
- * `koishi/` 不在范围内:那边只出 CJS 产物,`__dirname` 原生就有,而且 dev 服务器
- * 从不从 koishi 源码加载东西。
  */
 describe("packages 源码里不许出现裸 __dirname", () => {
 	const PACKAGES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../..");

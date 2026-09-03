@@ -1,14 +1,9 @@
 lib
-!astrbot/page/src/lib/
-!astrbot/page/src/lib/**
 dist
 external
 
 node_modules
 npm-debug.log
-yarn-debug.log
-yarn-error.log
-.yarn/install-state.gz
 tsconfig.tsbuildinfo
 
 .eslintcache
@@ -47,16 +42,4 @@ apps/desktop/src-tauri/gen/
 apps/desktop/src-tauri/resources/
 apps/desktop/.tauri/
 
-# AstrBot 本地运行时数据(cmd_config / t2i_templates 等)与插件镜像运行态,不入库
-astrbot/core/sidecar/app/
-astrbot/core/sidecar/state/
-astrbot/core/sidecar/logs/
-astrbot/core/.venv/
-astrbot/core/__pycache__/
-# 构建产物,与上面的 sidecar/app 是一对:两者都在 release-astrbot-core 的
-# REQUIRED_ARTIFACTS 里、插件运行时都必需,发布走**工作目录**(CI 先 `vp run
-# build:astrbot` 重建,staging 仓 `git add -f` 无视 ignore),没人读 git 里的那份。
-# 它曾被误提交入库,于是每次工具链/UI 变动都在 git status 里抖一次 —— 而发布链路
-# 从头到尾不看它。
-astrbot/core/pages/dashboard/
 /data/

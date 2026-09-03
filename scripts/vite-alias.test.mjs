@@ -20,7 +20,7 @@ const ok = (pkg, version = "0.3.0") => ({ pkg, resolved: { name: VITE_PLUS_CORE,
 
 describe("auditViteAlias", () => {
 	it("全都解析到 core 且版本一致 → 没问题", () => {
-		expect(auditViteAlias([ok("apps/web"), ok("apps/desktop"), ok("astrbot/page")])).toEqual([]);
+		expect(auditViteAlias([ok("apps/web"), ok("apps/desktop")])).toEqual([]);
 	});
 
 	// 这条是这个文件存在的理由:漏一条 override 就是这个样子,而构建和测试都照样绿。
@@ -57,21 +57,12 @@ describe("auditViteAlias", () => {
 });
 
 describe("真实仓库", () => {
-	it("三个前端的裸 vite 都解析到 Vite+ core,版本一致", () => {
+	it("每个前端的裸 vite 都解析到 Vite+ core,版本一致", () => {
 		const root = repoRoot();
 		const entries = VITE_PLUS_FRONTENDS.map((pkg) => ({
 			pkg,
 			resolved: resolveViteFrom(join(root, pkg)),
 		}));
 		expect(auditViteAlias(entries)).toEqual([]);
-	});
-
-	// 另一半:override 之所以带作用域,就是为了别碰 koishi 控制台 UI 的 vite 5。
-	// 哪天有人把它们改成 README 那种全局写法,这条会先红。
-	it("koishi 侧仍是真 vite 5 —— 作用域没有漏出去", () => {
-		const resolved = resolveViteFrom(join(repoRoot(), "koishi"));
-		expect(resolved).not.toBeNull();
-		expect(resolved.name).toBe("vite");
-		expect(resolved.version).toMatch(/^5\./);
 	});
 });

@@ -1,8 +1,6 @@
 packages:
   - "packages/*"
-  - "koishi"
   - "apps/*"
-  - "astrbot/*"
 
 # The pnpm version lives in package.json#packageManager (vp reads it and fetches
 # that pnpm on demand); nothing here pins it. Two things to know when bumping it:
@@ -72,23 +70,17 @@ packages:
 # note above deliberately fences off. Not worth it for a type-only symptom.
 overrides:
   "@bilibili-notify/web>vite": "npm:@voidzero-dev/vite-plus-core@0.3.0"
-  "@bilibili-notify/astrbot-page>vite": "npm:@voidzero-dev/vite-plus-core@0.3.0"
   "@bilibili-notify/desktop>vite": "npm:@voidzero-dev/vite-plus-core@0.3.0"
 
-# Shared dependency versions. Every package except koishi/ declares these as
-# `"<dep>": "catalog:"`; the version lives only here, so a bump is one edit and
-# per-package drift (the historical @types/ws ^8.5 / ^8.18 split, desktop's
-# vite alias stuck on 0.2.8) cannot recur.
+# Shared dependency versions. Every package declares these as `"<dep>": "catalog:"`;
+# the version lives only here, so a bump is one edit and per-package drift (the
+# historical @types/ws ^8.5 / ^8.18 split, desktop's vite alias stuck on 0.2.8)
+# cannot recur.
 #
-# Two deliberate exclusions:
-# - koishi/package.json keeps literal versions: it is the one package published
-#   to npm, via `npm publish` (scripts/publish.mjs), and npm does not resolve
-#   the catalog: protocol — a catalog: literal in the published manifest would
-#   break installs. When bumping a catalog entry, mirror it there if koishi
-#   declares the same dep.
-# - vite stays out: the React frontends pin it through the overrides above as
-#   part of the vite-plus lockstep (see that comment); a second source of truth
-#   in the catalog would reintroduce the drift the overrides exist to prevent.
+# One deliberate exclusion: vite stays out. The React frontends pin it through the
+# overrides above as part of the vite-plus lockstep (see that comment); a second
+# source of truth in the catalog would reintroduce the drift the overrides exist
+# to prevent.
 catalog:
   "@tailwindcss/vite": ^4.3.3
   "@testing-library/dom": ^10.4.1
@@ -149,7 +141,7 @@ nodeLinker: hoisted
 
 # pnpm 11+ makes postinstall opt-in by default to mitigate supply-chain
 # risk. Each entry below is a transitive dep that ships a build script.
-# All five are widely-used, well-known packages whose postinstalls are
+# All four are widely-used, well-known packages whose postinstalls are
 # benign (native binary builds + git-hook installer). Re-evaluate when
 # bumping versions; CI fails install if a *new* unapproved entry appears.
 allowBuilds:
@@ -157,7 +149,6 @@ allowBuilds:
   esbuild: true # downloads matching native binary
   lefthook: true # repo's git hooks installer (root prepare script)
   protobufjs: true # generates .js from .proto at install time
-  vue-demi: true # writes vue 2/3 shim at install time
 
 patchedDependencies:
   css-tree: patches/css-tree.patch
