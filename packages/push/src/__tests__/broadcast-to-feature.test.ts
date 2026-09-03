@@ -27,6 +27,7 @@ import {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { BilibiliPush } from "../bilibili-push";
+import { pushBase } from "./helpers";
 
 const silentLogger: Logger = {
 	debug() {},
@@ -94,6 +95,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	it("uid 无订阅 → 不调 sink", async () => {
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
+			...pushBase(),
 			sink,
 			store: makeStore([]),
 			logger: silentLogger,
@@ -107,7 +109,12 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 	it("routing 空数组 → 不调 sink", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		const { sink, calls } = makeSink();
-		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store: makeStore([sub]),
+			logger: silentLogger,
+		});
 		push.start();
 		await push.broadcastToFeature("u1", "live", { kind: "text", text: "x" });
 		expect(calls).toHaveLength(0);
@@ -118,7 +125,12 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		sub.routing.live = ["t1", "t2"];
 		sub.atAllDefaults.live = false; // 排除 @全体 路径的额外 send 调用,只验证路由
 		const { sink, calls } = makeSink();
-		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store: makeStore([sub]),
+			logger: silentLogger,
+		});
 		push.start();
 		await push.broadcastToFeature("u1", "live", { kind: "text", text: "开播了" });
 		expect(calls.map((c) => c.targetId)).toEqual(["t1", "t2"]);
@@ -131,6 +143,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		defaults.features.live = false;
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
+			...pushBase(),
 			sink,
 			store: makeStore([sub]),
 			logger: silentLogger,
@@ -148,6 +161,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		defaults.schedule.quietHours = [{ start: 0, end: 0 }]; // 整天免扰
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
+			...pushBase(),
 			sink,
 			store: makeStore([sub]),
 			logger: silentLogger,
@@ -163,7 +177,12 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		sub.routing.dynamic = ["t1"];
 		sub.atAllDefaults.dynamic = true;
 		const { sink, calls } = makeSink();
-		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store: makeStore([sub]),
+			logger: silentLogger,
+		});
 		push.start();
 		await push.broadcastToFeature("u1", "dynamic", { kind: "text", text: "动态" });
 		expect(calls).toHaveLength(2);
@@ -182,7 +201,12 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		sub.atAllDefaults.live = true;
 		sub.atAll.live = { t1: false }; // 显式关 t1 的 @全体,t2 走 default=true
 		const { sink, calls } = makeSink();
-		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store: makeStore([sub]),
+			logger: silentLogger,
+		});
 		push.start();
 		await push.broadcastToFeature("u1", "live", { kind: "text", text: "开播" });
 		// t1 一条原 payload;t2 先收 @全体 only,再收原 payload。共 3 条。
@@ -204,7 +228,12 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		sub.atAllDefaults.live = true;
 		sub.atAll.live = { t1: true }; // 即便 per-target 显式 true 也得被抑制
 		const { sink, calls } = makeSink();
-		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store: makeStore([sub]),
+			logger: silentLogger,
+		});
 		push.start();
 		await push.broadcastToFeature(
 			"u1",
@@ -235,7 +264,12 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		// 显式 true
 		{
 			const { sink, calls } = makeSink();
-			const push = new BilibiliPush({ sink, store: makeStore([mk()]), logger: silentLogger });
+			const push = new BilibiliPush({
+				...pushBase(),
+				sink,
+				store: makeStore([mk()]),
+				logger: silentLogger,
+			});
 			push.start();
 			await push.broadcastToFeature(
 				"u1",
@@ -248,7 +282,12 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		// opts 不传(向后兼容:dynamic 等既有调用点不受影响)
 		{
 			const { sink, calls } = makeSink();
-			const push = new BilibiliPush({ sink, store: makeStore([mk()]), logger: silentLogger });
+			const push = new BilibiliPush({
+				...pushBase(),
+				sink,
+				store: makeStore([mk()]),
+				logger: silentLogger,
+			});
 			push.start();
 			await push.broadcastToFeature("u1", "live", { kind: "text", text: "开播" });
 			assertAtAllThenPayload(calls);
@@ -260,7 +299,12 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		sub.routing.live = ["t1"];
 		sub.atAllDefaults.live = true;
 		const { sink, calls } = makeSink();
-		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store: makeStore([sub]),
+			logger: silentLogger,
+		});
 		push.start();
 		const payload: NotificationPayload = {
 			kind: "composite",
@@ -287,7 +331,12 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		sub.routing.dynamic = ["t1"];
 		sub.atAllDefaults.dynamic = true;
 		const { sink, calls } = makeSink();
-		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store: makeStore([sub]),
+			logger: silentLogger,
+		});
 		push.start();
 		await push.broadcastToFeature("u1", "dynamic", {
 			kind: "composite",
@@ -310,7 +359,12 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		sub.routing.live = ["t1"];
 		sub.atAllDefaults.live = true;
 		const { sink, calls } = makeSink();
-		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store: makeStore([sub]),
+			logger: silentLogger,
+		});
 		push.start();
 		await push.broadcastToFeature("u1", "live", {
 			kind: "image",
@@ -343,7 +397,12 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		sub.routing.dynamic = ["t1"];
 		sub.atAllDefaults.dynamic = true;
 		const { sink, calls } = makeSink();
-		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store: makeStore([sub]),
+			logger: silentLogger,
+		});
 		push.start();
 		await push.broadcastToFeature("u1", "dynamic", {
 			kind: "forward-images",
@@ -365,7 +424,12 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		sub.routing.superchat = ["t1"];
 		sub.atAllDefaults.dynamic = true; // 无效字段,不应影响 superchat
 		const { sink, calls } = makeSink();
-		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store: makeStore([sub]),
+			logger: silentLogger,
+		});
 		push.start();
 		await push.broadcastToFeature("u1", "superchat", { kind: "text", text: "SC" });
 		expect(calls[0].payload.kind).toBe("text"); // 没 at-all 头
@@ -400,7 +464,12 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 					enabled: true,
 				}) as unknown as PushTarget,
 		};
-		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store: makeStore([sub]),
+			logger: silentLogger,
+		});
 		push.start();
 		// 旧版会在此处永久挂起;现在应在卡片发出后立即返回。
 		const out = await push.broadcastToFeature("u1", "live", { kind: "text", text: "开播" });
@@ -419,6 +488,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		const onSend = vi.fn();
 		const { sink } = makeSink();
 		const push = new BilibiliPush({
+			...pushBase(),
 			sink,
 			store: makeStore([sub]),
 			logger: silentLogger,

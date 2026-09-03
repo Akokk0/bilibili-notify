@@ -27,6 +27,7 @@ import { makeEmptySubscription } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { BilibiliPush } from "../bilibili-push";
+import { pushBase } from "./helpers";
 
 const silentLogger: Logger = {
 	debug: () => {},
@@ -87,7 +88,13 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 
-		const push = new BilibiliPush({ sink, store, logger: silentLogger, serviceCtx: ctx });
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store,
+			logger: silentLogger,
+			serviceCtx: ctx,
+		});
 		push.start();
 
 		const resultPromise = push.sendToTarget(
@@ -137,7 +144,13 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 
-		const push = new BilibiliPush({ sink, store, logger: silentLogger, serviceCtx: ctx });
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store,
+			logger: silentLogger,
+			serviceCtx: ctx,
+		});
 		push.start();
 
 		const resultPromise = push.sendToTarget(

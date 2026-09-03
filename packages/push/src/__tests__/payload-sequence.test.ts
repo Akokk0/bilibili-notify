@@ -24,6 +24,7 @@ import {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
 import { BilibiliPush, type PushSendInfo } from "../bilibili-push";
+import { pushBase } from "./helpers";
 
 const silentLogger: Logger = {
 	debug() {},
@@ -114,6 +115,7 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 	it("payload 数组 → 每个 target 顺序收到全部消息", async () => {
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
+			...pushBase(),
 			sink,
 			store: makeStore([subWithTargets([T1, T2])]),
 			logger: silentLogger,
@@ -132,6 +134,7 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 	it("某 target 首条失败 → 该 target 后续条中止,其他 target 不受影响", async () => {
 		const { sink, calls } = makeSink((id, nth) => id === T1 && nth === 1);
 		const push = new BilibiliPush({
+			...pushBase(),
 			sink,
 			store: makeStore([subWithTargets([T1, T2])]),
 			logger: silentLogger,
@@ -151,6 +154,7 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 		const { sink } = makeSink((id, nth) => id === T1 && nth === 2);
 		const seen: Array<[string, string, boolean]> = [];
 		const push = new BilibiliPush({
+			...pushBase(),
 			sink,
 			store: makeStore([subWithTargets([T1])]),
 			logger: silentLogger,
@@ -170,6 +174,7 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 	it("空数组 → 不调 sink", async () => {
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
+			...pushBase(),
 			sink,
 			store: makeStore([subWithTargets([T1])]),
 			logger: silentLogger,
@@ -184,6 +189,7 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 	it("单 payload(非数组)→ 行为与旧签名一致", async () => {
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
+			...pushBase(),
 			sink,
 			store: makeStore([subWithTargets([T1, T2])]),
 			logger: silentLogger,
@@ -201,6 +207,7 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 	it("@全体 target:独立 at-all 消息先发,再顺序发序列", async () => {
 		const { sink, calls } = makeSink();
 		const push = new BilibiliPush({
+			...pushBase(),
 			sink,
 			store: makeStore([subWithTargets([T1], true)]),
 			logger: silentLogger,

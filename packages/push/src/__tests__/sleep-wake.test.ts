@@ -19,6 +19,7 @@ import type {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { BilibiliPush } from "../bilibili-push";
+import { pushBase } from "./helpers";
 
 const silentLogger: Logger = {
 	debug: () => {},
@@ -77,6 +78,7 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		};
 
 		const push = new BilibiliPush({
+			...pushBase(),
 			sink: makeUnreachableSink(),
 			store: emptyStore,
 			logger: silentLogger,
@@ -139,6 +141,7 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		};
 
 		const push = new BilibiliPush({
+			...pushBase(),
 			sink,
 			store: emptyStore,
 			logger: silentLogger,
@@ -183,6 +186,7 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		};
 		const onSend = vi.fn();
 		push = new BilibiliPush({
+			...pushBase(),
 			sink,
 			store: permissiveStore("u1", ["a", "b"]),
 			logger: silentLogger,
@@ -208,6 +212,7 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 
 	it("不传 serviceCtx(退化路径)也能被 stop() 唤醒", async () => {
 		const push = new BilibiliPush({
+			...pushBase(),
 			sink: makeUnreachableSink(),
 			store: emptyStore,
 			logger: silentLogger,

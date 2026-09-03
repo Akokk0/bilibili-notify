@@ -24,6 +24,7 @@ import {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
 import { BilibiliPush } from "../bilibili-push";
+import { pushBase } from "./helpers";
 
 const silentLogger: Logger = {
 	debug() {},
@@ -70,6 +71,7 @@ function setup(muted: () => boolean) {
 	sub.atAllDefaults.dynamic = false;
 	const { sink, calls } = makeSink();
 	const push = new BilibiliPush({
+		...pushBase(),
 		sink,
 		store: makeStore([sub]),
 		logger: silentLogger,
@@ -132,7 +134,12 @@ describe("全局静音闸", () => {
 		sub.routing.live = ["t1"];
 		sub.atAllDefaults.live = false;
 		const { sink, calls } = makeSink();
-		const push = new BilibiliPush({ sink, store: makeStore([sub]), logger: silentLogger });
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store: makeStore([sub]),
+			logger: silentLogger,
+		});
 		push.start();
 		await push.broadcastToFeature("u1", "live", TEXT);
 		expect(calls).toEqual(["t1"]);

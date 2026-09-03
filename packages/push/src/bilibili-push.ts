@@ -55,22 +55,16 @@ export interface BilibiliPushOptions {
 	/** Logger instance. */
 	logger: Logger;
 	/**
-	 * 可选 ServiceContext。传入后,retry backoff 的 sleep 走 `serviceCtx.setTimeout`,
-	 * plugin/runtime dispose 时可被立即 clear,不会留 32s 空跑 timer。stop() 也会
-	 * 唤醒所有 sleeping retry 循环立即收敛。
-	 *
-	 * 不传则退化为裸 setTimeout + stop() 唤醒(过渡期兼容,仍能 dispose-safe)。
+	 * 宿主的 ServiceContext:retry backoff 的 sleep 走 `serviceCtx.setTimeout`,runtime dispose
+	 * 时可被立即 clear,不会留 32s 空跑 timer。stop() 也会唤醒所有 sleeping retry 循环立即收敛。
 	 */
-	serviceCtx?: ServiceContext;
+	serviceCtx: ServiceContext;
 	/**
 	 * Latest `GlobalDefaults` provider — used to resolve `EffectiveSubscription`
 	 * per push so `features.X` and `schedule.quietHours` gates work against the
 	 * current globals state (not a stale snapshot).
-	 *
-	 * 可选:若不传,broadcastToFeature 退化为「仅 routing 决定是否发」的旧行为,
-	 * 用于过渡期的 Koishi adapter 还没接 globals 的场景。
 	 */
-	defaults?: () => GlobalDefaults;
+	defaults: () => GlobalDefaults;
 	/**
 	 * Optional hook fired after every successful or failed send. Receives the
 	 * resolved `target` plus the originating `uid` / `feature` — fields the
@@ -85,16 +79,14 @@ export interface BilibiliPushOptions {
 	 *
 	 * 发给主人的私聊(`sendToMaster` / `sendPrivateMsg`)**不受它管** —— 指令回复走的
 	 * 就是那条路,连同挡掉的话主人只会看到指令毫无反应。
-	 *
-	 * 不传 = 没有静音这回事(koishi 端没有指令系统)。
 	 */
-	muted?: () => boolean;
+	muted: () => boolean;
 }
 
 /**
  * Platform-neutral push router.
  *
- * Replaces the old koishi-coupled BilibiliPush. Routing comes from
+ * The standalone runtime's push router. Routing comes from
  * store.findByUid(uid)?.routing[feature] → targetId[] → sink.send(targetId, payload).
  * The old pushArrMap, broadcastToTargets, sendPrivateMsg/sendErrorMsg are gone.
  */
@@ -109,10 +101,10 @@ export class BilibiliPush {
 	 */
 	private masterReachable?: boolean;
 	private readonly logger: Logger;
-	private readonly defaults?: () => GlobalDefaults;
-	private readonly muted?: () => boolean;
+	private readonly defaults: () => GlobalDefaults;
+	private readonly muted: () => boolean;
 	private readonly onSend?: (info: PushSendInfo) => void;
-	private readonly serviceCtx?: ServiceContext;
+	private readonly serviceCtx: ServiceContext;
 	private disposed = false;
 	/**
 	 * Per-lifecycle generation token。每次 `start()` 自增;in-flight retry 循环
@@ -122,8 +114,8 @@ export class BilibiliPush {
 	 */
 	private generation = 0;
 	/**
-	 * 正在 sleep 等重试的 wake 函数集合 — `stop()` 时全部触发立即返回,避免裸 setTimeout
-	 * 路径下 retry 循环卡到 32s 才退出。
+	 * 正在 sleep 等重试的 wake 函数集合 — `stop()` 时全部触发立即返回,避免
+	 * retry 循环卡到 32s 才退出。
 	 */
 	private readonly sleepWakers = new Set<() => void>();
 
@@ -185,18 +177,6 @@ export class BilibiliPush {
 		if (this.master) this.refreshMasterReachability();
 	}
 
-	/**
-	 * 外部触发的 master 可达性复检。koishi 端在 bot 上线(`login-updated` / `login-added`)
-	 * 时调用——`refreshMasterReachability` 只在 `start()`(常早于 bot 连上)和 `sendToMaster()`
-	 * 被调,没有它,启动期那条「master 目标不可达」会一直挂着没有下文(bot 后来上线
-	 * 也无人复检)。这里让边沿状态机在 bot 真正连上后打出「已恢复可达」并复位边沿。
-	 * 无 master / 已 dispose 时 no-op。
-	 */
-	recheckMasterReachability(): void {
-		if (this.disposed || !this.master) return;
-		this.refreshMasterReachability();
-	}
-
 	stop(): void {
 		this.disposed = true;
 		// 唤醒所有 sleeping retry 循环;snapshot 一份避免迭代中 Set 被 wake 删除。
@@ -227,14 +207,14 @@ export class BilibiliPush {
 		opts?: { allowAtAll?: boolean },
 	): Promise<DeliveryResult[]> {
 		if (this.disposed) return [];
-		// 消息版式分条:一次推送可以是多条 payload 的序列。单 payload(koishi 旧调用)
+		// 消息版式分条:一次推送可以是多条 payload 的序列。单 payload 归一成单元素序列,
 		// 归一成单元素序列,后续路径统一按序列处理,行为与旧签名逐字一致。
 		const payloads = Array.isArray(payload) ? payload : [payload];
 		if (payloads.length === 0) return [];
 
 		// 全局静音闸,排在所有查询之前 —— 静音期间一次订阅查找都不必做。
 		// 只挡订阅推送;发给主人的私聊不走这里,理由见 `muted` 的注释。
-		if (this.muted?.()) {
+		if (this.muted()) {
 			this.logger.debug(`[push] uid=${uid} feature=${feature} 处于全局静音，跳过`);
 			return [];
 		}
@@ -245,20 +225,17 @@ export class BilibiliPush {
 			return [];
 		}
 
-		// 「features 总开关」与「quietHours 免扰时段」两道 runtime gate。两者都需要把 sub
-		// 折叠成 EffectiveSubscription 才能读 —— 仅在 defaults provider 有传时启用,过渡期
-		// 没传则退化到「routing-only」的旧行为(顺带保持 BilibiliPush 单元测试的简单构造)。
-		const defaults = this.defaults?.();
-		if (defaults) {
-			const eff = resolve(sub, defaults);
-			if (!eff.features[feature]) {
-				this.logger.debug(`[push] uid=${uid} feature=${feature} 总开关 OFF，跳过`);
-				return [];
-			}
-			if (inQuietHours(eff.schedule.quietHours, new Date())) {
-				this.logger.debug(`[push] uid=${uid} feature=${feature} 落在免扰时段，跳过`);
-				return [];
-			}
+		// 「features 总开关」与「quietHours 免扰时段」两道 runtime gate:把 sub 折叠成
+		// EffectiveSubscription 后按当前 globals 判定。
+		const defaults = this.defaults();
+		const eff = resolve(sub, defaults);
+		if (!eff.features[feature]) {
+			this.logger.debug(`[push] uid=${uid} feature=${feature} 总开关 OFF，跳过`);
+			return [];
+		}
+		if (inQuietHours(eff.schedule.quietHours, new Date())) {
+			this.logger.debug(`[push] uid=${uid} feature=${feature} 落在免扰时段，跳过`);
+			return [];
 		}
 
 		const targetIds = sub.routing[feature] ?? [];
@@ -512,17 +489,7 @@ export class BilibiliPush {
 				resolveSleep();
 			};
 			this.sleepWakers.add(wake);
-			if (this.serviceCtx) {
-				release = this.serviceCtx.setTimeout(wake, ms);
-			} else {
-				// 退化路径:裸 setTimeout + stop() 主动 wake。timer 自身会再走一遍 wake
-				// 但 sleepWakers.delete 是幂等的,resolve 也是。
-				const id = setTimeout(wake, ms);
-				// P2:退化裸 setTimeout 必须 unref —— 否则一个 in-flight 重试
-				// sleep 会顶住事件循环、阻塞进程优雅退出。
-				id.unref?.();
-				release = { dispose: () => clearTimeout(id) };
-			}
+			release = this.serviceCtx.setTimeout(wake, ms);
 		});
 	}
 }
