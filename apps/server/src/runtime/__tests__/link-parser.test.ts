@@ -14,13 +14,9 @@ import type {
 	LinkParsingConfig,
 	NotificationPayload,
 } from "@bilibili-notify/internal";
+import { LINK_LIMITS, type LinkLimits } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import {
-	createLinkParser,
-	LINK_LIMITS,
-	type LinkLimits,
-	type LinkReplyDestination,
-} from "../link-parser.js";
+import { createLinkParser, type LinkReplyDestination } from "../link-parser.js";
 
 const ADAPTER = "11111111-1111-4111-8111-111111111111";
 const GROUP = 123456;

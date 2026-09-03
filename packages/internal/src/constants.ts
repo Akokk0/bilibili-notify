@@ -686,3 +686,24 @@ export function inboundGapReason(platform: string): string {
 		? "webhook 只是一个出站 HTTP 请求、没有回程，主人没法在上面回话"
 		: `女仆还没在 ${platform} 上接入站消息，主人回的 y 送不到女仆手里`;
 }
+
+/**
+ * 链接解析的硬上限。**不进面板**:面板上那条冷却只防「同一个视频反复贴」,这几条防的是
+ * 换着视频刷 —— 谁都能触发的功能,资源面得有个不靠主人调的底。
+ *
+ * 放在这里而不是服务端里:面板的说明文字要把这两个数字念给主人听(web 只能从这个零依赖
+ * 子入口拿运行时值),各写一份的话调了上限、说明还在念旧数字,而且什么都不会红。
+ */
+export interface LinkLimits {
+	/** 单个群每分钟最多出几张链接卡。 */
+	groupPerMinute: number;
+	/**
+	 * 全局同时在处理(取信息 / 渲染 / 发送)的链接卡上限。渲染队列是串行的,链接卡排太多
+	 * 会把真正的推送卡(开播 / 动态)挤到后面几分钟才发;超了直接放弃,不排队。
+	 */
+	maxInflight: number;
+	/** 冷却表 / 群额度表各自的容量,满了丢最久没碰的 —— 忘一条顶多多出一张卡,表不会越涨越慢。 */
+	tableCap: number;
+}
+
+export const LINK_LIMITS: LinkLimits = { groupPerMinute: 6, maxInflight: 3, tableCap: 2000 };

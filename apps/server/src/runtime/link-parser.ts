@@ -17,10 +17,14 @@ import {
 	type CardBlock,
 	type DeliveryResult,
 	extractVideoLinks,
+	type INBOUND_CAPABLE_PLATFORMS,
+	LINK_LIMITS,
+	type LinkLimits,
 	type LinkParsingConfig,
 	type Logger,
 	type NotificationPayload,
 	type VideoLinkRef,
+	videoLinkKey,
 } from "@bilibili-notify/internal";
 import { extractGroupMessage, type InboundGroupMessage } from "./inbound-message.js";
 import { videoToDynamic } from "./video-card.js";
@@ -28,22 +32,6 @@ import { videoToDynamic } from "./video-card.js";
 /** 一条消息里最多解析几个链接 —— 再多就是刷屏了,也没人真需要。 */
 const MAX_LINKS_PER_MESSAGE = 3;
 
-/**
- * 链接解析的硬上限。不进面板:冷却(面板上那条)只防「同一个视频反复贴」,这几条防的是
- * 换着视频刷 —— 谁都能触发的功能,资源面得有个不靠主人调的底。
- */
-export interface LinkLimits {
-	/** 单个群每分钟最多出几张链接卡。 */
-	groupPerMinute: number;
-	/**
-	 * 全局同时在处理(取信息 / 渲染 / 发送)的链接卡上限。渲染队列是串行的,链接卡排太多
-	 * 会把真正的推送卡(开播 / 动态)挤到后面几分钟才发;超了直接放弃,不排队。
-	 */
-	maxInflight: number;
-	/** 冷却表 / 群额度表各自的容量,满了丢最久没碰的 —— 忘一条顶多多出一张卡,表不会越涨越慢。 */
-	tableCap: number;
-}
-export const LINK_LIMITS: LinkLimits = { groupPerMinute: 6, maxInflight: 3, tableCap: 2000 };
 const BUDGET_WINDOW_MS = 60_000;
 
 /**
@@ -66,7 +54,11 @@ class RecencyTable<V> {
 	}
 }
 
-export type LinkSourcePlatform = "onebot" | "qq-official";
+/**
+ * 链接从哪个平台来 —— 就是「我们真的收得到入站消息」的那批平台,别另立一份名单:
+ * 加第三个平台时只改一处的话,它能审批却解析不了群链接,而且哪儿都不报错。
+ */
+export type LinkSourcePlatform = (typeof INBOUND_CAPABLE_PLATFORMS)[number];
 
 /** 回复往哪儿发:平台决定用哪个适配器,`groupId` 在 OneBot 是群号、在官机是群 openid。 */
 export interface LinkReplyDestination {
@@ -154,18 +146,18 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 	};
 
 	/** 冷却键里的「视频」段:直链按视频号;短链先按短链本身,解出视频号后再按视频号补一道。 */
-	const refKey = (ref: VideoLinkRef): string =>
-		ref.kind === "bvid" ? ref.bvid : ref.kind === "aid" ? `av${ref.aid}` : ref.url;
 	const videoKey = (ref: VideoRef): string => ("bvid" in ref ? ref.bvid : `av${ref.aid}`);
 
+	/** 已经带着视频号的那两种直接成形;短链还没解,给不出。 */
+	const directRef = (ref: VideoLinkRef): VideoRef | null =>
+		ref.kind === "bvid" ? { bvid: ref.bvid } : ref.kind === "aid" ? { aid: ref.aid } : null;
+
 	async function toVideoRef(ref: VideoLinkRef): Promise<VideoRef | null> {
-		if (ref.kind === "bvid") return { bvid: ref.bvid };
-		if (ref.kind === "aid") return { aid: ref.aid };
+		if (ref.kind !== "short") return directRef(ref);
 		const target = await opts.api.resolveShortLink(ref.url);
 		if (!target) return null;
 		const [resolved] = extractVideoLinks(target);
-		if (!resolved || resolved.kind === "short") return null;
-		return resolved.kind === "bvid" ? { bvid: resolved.bvid } : { aid: resolved.aid };
+		return resolved ? directRef(resolved) : null;
 	}
 
 	async function replyWithCard(renderer: Renderer, dest: LinkReplyDestination, ref: VideoRef) {
@@ -210,7 +202,7 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 				try {
 					// 三道闸先看不动手,都过了才一起记账:在冷却里的链接不该吃群额度,因为忙而放弃的
 					// 链接也不该被记成「处理过」—— 那样它再贴一次就要等整个冷却。
-					const rawKey = `${scope}:${refKey(linkRef)}`;
+					const rawKey = `${scope}:${videoLinkKey(linkRef)}`;
 					if (coolingDown(rawKey, cooldownMs)) continue;
 					if (inflight >= limits.maxInflight) {
 						opts.logger.debug(

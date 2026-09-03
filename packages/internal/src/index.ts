@@ -17,6 +17,8 @@ export {
 	EMPTY_AI_PROVIDER_PROFILE,
 	INBOUND_CAPABLE_PLATFORMS,
 	inboundGapReason,
+	LINK_LIMITS,
+	type LinkLimits,
 	platformCanReceiveReply,
 	providerMeta,
 	resolveActivePersona,
