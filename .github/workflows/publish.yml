@@ -2,8 +2,9 @@ name: Publish
 
 on:
   push:
-    # dev 只做独立端了;koishi 4 上的维护版本(5.2.1 起)从 koishi-maintenance 发。
-    branches: [dev, koishi-maintenance]
+    # dev 只做独立端了(koishi/ 已从 dev 移除);koishi 4 上的维护版本(5.2.1 起)从
+    # koishi-astrbot-maintenance 发 —— 这条分支同时是 koishi 与 AstrBot 两端的维护线。
+    branches: [koishi-astrbot-maintenance]
     # 粗筛:version 只可能写在这个文件里。但**文件变了 ≠ 要发版** —— `vp pack`
     # (exports: true)会自动回写它的 `inlinedDependencies` / `exports`,每次构建都可能
     # 刷新。真正的判定在 detect job,只认 version 字段本身。

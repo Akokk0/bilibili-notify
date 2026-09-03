@@ -1,14 +1,15 @@
 name: bilibili-notify — astrbot release
 
 # AstrBot 插件发布到独立仓 Akokk0/astrbot_plugin_bilibili_notify。
-# 触发:dev 上 astrbot/core/metadata.yaml 的 version 变化 → 自动发布;或手动 dispatch 预演。
+# 触发:koishi-astrbot-maintenance 上 astrbot/core/metadata.yaml 的 version 变化 → 自动发布;
+# 或手动 dispatch 预演。dev 已不含 astrbot/,维护版本只从这条分支发。
 # 版本事实源 = metadata.yaml#version。需要 repo secret RELEASE_PAT —— 对独立仓有 contents:write
 # (fine-grained PAT 需把该仓加进 repository access)。
 # 发布脚本 scripts/release-astrbot-core.mjs 经 ASTRBOT_RELEASE_REMOTE 注入带 token 的 remote,无需改脚本。
 
 on:
   push:
-    branches: [dev]
+    branches: [koishi-astrbot-maintenance]
     paths: ["astrbot/core/metadata.yaml"]
   workflow_dispatch:
     inputs:
