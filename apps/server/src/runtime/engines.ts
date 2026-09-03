@@ -962,12 +962,14 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		probeAdapter: (adapterId: string) => sink.probeAdapter(adapterId),
 		linkParsing: () => linkCard.config,
 		linkCardPresentation: () => ({
-			// 游标键单独一把:链接卡不属于任何 UP,与推送卡各轮各的。
+			// 链接卡就是「全局那张动态卡」:全局配色、全局图廊,轮换位置也记在全局这把上
+			// (主人定的:它跟着全局走,不另起名字)。推送卡那边每位 UP 各记各的位置,
+			// 哪怕用的是全局图廊 —— 那是推送侧的既有做法,与这里无关。
 			colors: resolveDynamicColorOptions({
 				style: linkCard.style,
 				defaultBackgroundImages: linkCard.defaultBackgroundImages,
 				pick: pickExistingCardBg,
-				scopeKey: "link:dynamic",
+				scopeKey: "global:dynamic",
 			}),
 			layout: linkCard.layout,
 		}),

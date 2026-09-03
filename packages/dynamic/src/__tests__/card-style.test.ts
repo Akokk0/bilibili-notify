@@ -23,7 +23,7 @@ describe("resolveDynamicColorOptions", () => {
 					style: { enable: true, backgroundImages: ["a", "b"] },
 					defaultBackgroundImages: undefined,
 					pick,
-					scopeKey: "link:dynamic",
+					scopeKey: "global:dynamic",
 				})?.backgroundImage,
 		);
 		expect(picks).toEqual(["a", "b", "a"]);
