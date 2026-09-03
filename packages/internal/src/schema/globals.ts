@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BUILTIN_AI_PRESETS, DEFAULT_TEMPLATES } from "../constants";
+import { BUILTIN_AI_PRESETS, DEFAULT_TEMPLATES, MIRROR_PREFIX_RE } from "../constants";
 import { allTemplateFingerprints } from "../template-defaults";
 
 // 模板默认值住在零依赖的 `constants.ts` —— 前端要拿它跟盘上的值比对(「默认文案有
@@ -189,10 +189,11 @@ export const UpdateSettingsSchema = z.object({
 	/**
 	 * 只收 `https://` 前缀、封顶 10 条 —— 这是要去真连的地址,和 `POST /api/update/mirrors/probe`
 	 * 那道门一样严:不封顶的话一次检查的总耗时没有上限(N × 超时),期间检查一直挂着;不限
-	 * scheme 的话这里就成了一个让服务端去连任意主机的入口。面板只会写进合法的。
+	 * scheme 的话这里就成了一个让服务端去连任意主机的入口。面板只会写进合法的 —— 判定用的
+	 * 是与面板、路由同一条正则(`MIRROR_PREFIX_RE`),三处不会各判各的。
 	 */
 	mirrors: z
-		.array(z.string().regex(/^https:\/\/[^\s/]+/, "加速前缀必须是 https:// 开头的地址"))
+		.array(z.string().regex(MIRROR_PREFIX_RE, "加速前缀必须是 https:// 开头的地址"))
 		.max(10)
 		.default([]),
 });

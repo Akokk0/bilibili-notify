@@ -102,12 +102,12 @@ export const BUILTIN_UPDATE_MIRRORS: readonly string[] = [
  * 一条加速前缀长得合不合法。空串(直连)不走这里,由调用方各自判。
  *
  * 服务端拿它守 `POST /api/update/mirrors/probe`(这是一个让服务端去连任意主机的入口),
- * 面板拿它决定自定义那一格能不能选。两边判得不一样的话,用户会遇到「测得通、存不进去」
- * —— 而落盘那道门(internal 的 `UpdateSettingsSchema`)才是最终说了算的那个。
+ * 面板拿它决定自定义那一格能不能选,而落盘那道门(internal 的 `UpdateSettingsSchema`)
+ * 才是最终说了算的那个。三处判得不一样的话,用户会遇到「测得通、存不进去」—— 所以
+ * 本体只有一份,住在 internal 零依赖的 constants 里(schema 也用同一条正则),这里只是
+ * 转出去。
  */
-export function isMirrorPrefix(value: string): boolean {
-	return /^https:\/\/[^\s/]+/.test(value);
-}
+export { isMirrorPrefix } from "@bilibili-notify/internal/constants";
 
 /** `POST /api/update/mirrors/probe` 的请求体。`prefixes` 里的空串 = 直连。 */
 export interface MirrorProbeRequest {
