@@ -18,10 +18,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { SECTION_ACCENT } from "../../config/section-accents";
+import { HEALTH_QUERY_KEY } from "../../hooks/useBackendReachable";
 import { api } from "../../services/api";
 import type { GlobalConfig } from "../../types/globals";
 import { externalLinkClick } from "../../utils/externalLink";
 import { MirrorPicker } from "./mirror-picker";
+import {
+	type RestartIntent,
+	type RestartMark,
+	type RestartProbe,
+	type RestartWait,
+	useRestartStore,
+} from "./restart";
 import { phaseLabel, UPDATE_QUERY_KEY, UPDATE_SECTION_HASH, useUpdateStatus } from "./status";
 
 /**
@@ -65,8 +73,25 @@ const ERROR_COPY: Record<UpdateErrorReason, string> = {
 /** 唯一弹红字的一条。其余一律中性旁注 —— 把代理站抽风渲染成安全警告只会训练用户忽略它。 */
 const DANGEROUS_REASON: UpdateErrorReason = "untrusted";
 
-export function UpdateSection() {
+/**
+ * 每秒探一次,最多等 90 秒。优雅停机最多 10 秒,加上容器把进程拉起来、载荷启动到
+ * 开始 listen,几十秒都算正常;一分半还没回来,多半就不是慢了。
+ */
+const DEFAULT_RESTART_WAIT: RestartWait = { intervalMs: 1_000, timeoutMs: 90_000 };
+
+export interface UpdateSectionProps {
+	/** 只给测试压短等待;正常挂载不传。 */
+	restartWait?: RestartWait;
+}
+
+export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSectionProps = {}) {
 	const qc = useQueryClient();
+	// 按下重启之后的进度住在模块级 store 里(理由见 restart.ts):用户中途离开系统页,
+	// 等待照样进行、换成了照样刷新;回来看到的还是同一份进度。
+	const restart = useRestartStore((s) => s.view);
+	const beginRestart = useRestartStore((s) => s.begin);
+	const retryRestart = useRestartStore((s) => s.retry);
+	const dismissRestart = useRestartStore((s) => s.dismiss);
 	const statusQuery = useUpdateStatus();
 	const globalsQuery = useQuery({
 		queryKey: ["globals"],
@@ -76,10 +101,20 @@ export function UpdateSection() {
 	const act = useMutation({
 		mutationFn: (path: "check" | "download" | "rollback") =>
 			api.post<UpdateStatusDTO>(`/api/update/${path}`, {}),
+		// 上一次重启留下的旁注(回落了 / 没回来)到此为止 —— 用户已经在做别的事了。
+		onMutate: () => dismissRestart(),
 		onSuccess: (next) => qc.setQueryData(UPDATE_QUERY_KEY, next),
 	});
 	const apply = useMutation({
-		mutationFn: () => api.post("/api/update/apply", {}),
+		mutationFn: async (mark: RestartMark): Promise<RestartIntent> => {
+			// 先记下要换掉的这个进程。重启指令发出去之后,只有 startedAt 和它不同的回答
+			// 才算新进程 —— 旧进程优雅停机时还能连上好几秒。
+			const before = await api.get<RestartProbe>("/api/health");
+			await api.post("/api/update/apply", {});
+			return { ...mark, before: before.startedAt };
+		},
+		onMutate: () => dismissRestart(),
+		onSuccess: (intent) => beginRestart(intent, restartWait),
 	});
 	const saveSettings = useMutation({
 		mutationFn: (update: Partial<UpdateSettings>) => api.patch("/api/globals", { update }),
@@ -88,6 +123,13 @@ export function UpdateSection() {
 
 	const status = statusQuery.data;
 	const settings = globalsQuery.data?.update;
+
+	// 回落了:版本号与状态都得按现在真正跑着的那份来,别再显示「已就绪」。
+	useEffect(() => {
+		if (restart?.kind !== "fell-back") return;
+		void qc.invalidateQueries({ queryKey: UPDATE_QUERY_KEY });
+		void qc.invalidateQueries({ queryKey: HEALTH_QUERY_KEY });
+	}, [restart, qc]);
 
 	// 概览的「去更新」和右下角的通知卡都带着 #update 跳过来:滚到这一节。数据到齐后
 	// 再滚一次 —— 上面几节是异步撑开的,第一次滚的位置多半已经被顶下去了。
@@ -115,9 +157,16 @@ export function UpdateSection() {
 	}
 
 	const { state } = status;
-	const busy = act.isPending || apply.isPending;
+	const restarting = restart?.kind === "waiting";
+	const busy = act.isPending || apply.isPending || restarting;
 	// 和服务端 `POST /api/update/apply` 那道门用的是同一个判定,见契约。
 	const canApply = canApplyUpdate(state);
+	// 按下去要换到哪、是升是退。能应用的两档都带 target;万一契约再加一档没带的,
+	// 就按「换回现在这版」等 —— 探到的版本一定对得上,顶多白刷新一次。
+	const applyIntent: RestartMark = {
+		target: "target" in state ? state.target : status.currentVersion,
+		mode: state.phase === "rolled-back" ? "rollback" : "update",
+	};
 	// 带 releaseUrl 的那几档(有新版 / 正在下 / 已就绪 / 要重拉镜像)都指到那一版的发布页;
 	// 出错时指到 helpUrl(拿不到清单就是发布列表)。往联合里再加一档带 releaseUrl 的
 	// 状态不用回来改这里。
@@ -181,12 +230,44 @@ export function UpdateSection() {
 						<HintNote tone="neutral">{ERROR_COPY[state.reason]}</HintNote>
 					)}
 
-					{canApply ? (
+					{canApply && !restarting ? (
 						<HintNote tone="neutral">
 							应用会<strong>重启服务</strong>:那一刻推送会断几秒、直播监听会重连。容器部署请确认{" "}
 							<code>restart</code> 策略是开着的 ——
 							没有它的话,进程退出后不会有人把它拉起来;桌面版由外壳自动拉起,界面会跟着刷新。
 						</HintNote>
+					) : null}
+
+					{restart?.kind === "waiting" ? (
+						<LoadingBlock
+							variant="inset"
+							label={`正在重启,换到 ${restart.intent.target}`}
+							hint="服务回来后这一页会自动刷新。推送这几秒会断,直播监听会自己重连。"
+						/>
+					) : null}
+
+					{restart?.kind === "fell-back" ? (
+						<HintNote tone="neutral">
+							重启完了,但跑起来的是 <strong>{restart.version}</strong>,不是 {restart.intent.target}{" "}
+							—— 多半是那一版起不来,启动器自动回落了。日志里 <code>[boot]</code> 开头那行写着原因。
+						</HintNote>
+					) : null}
+
+					{restart?.kind === "timed-out" ? (
+						<HintNote tone="neutral" className="flex flex-wrap items-center gap-2">
+							<span>
+								重启后等了 {Math.round(restartWait.timeoutMs / 1000)} 秒还没等到服务回来。容器没开{" "}
+								<code>restart</code> 策略的话,进程退出后没人把它拉起来,得手动启动一次;
+								桌面版看启动器日志。
+							</span>
+							<Btn variant="outline" size="sm" onClick={() => retryRestart(restartWait)}>
+								再等等
+							</Btn>
+						</HintNote>
+					) : null}
+
+					{apply.isError ? (
+						<HintNote tone="neutral">没能发出重启指令:{apply.error.message}</HintNote>
 					) : null}
 
 					<div className="flex flex-wrap gap-2">
@@ -209,7 +290,12 @@ export function UpdateSection() {
 							</Btn>
 						) : null}
 						{canApply ? (
-							<Btn variant="primary" size="sm" disabled={busy} onClick={() => apply.mutate()}>
+							<Btn
+								variant="primary"
+								size="sm"
+								disabled={busy}
+								onClick={() => apply.mutate(applyIntent)}
+							>
 								立即重启并应用
 							</Btn>
 						) : null}

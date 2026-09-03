@@ -1,6 +1,7 @@
 import type { UpdateStatusDTO } from "@bilibili-notify/contract";
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
+import { restartNotice, takeRestartMark } from "../components/update/restart";
 import {
 	newerVersionOf,
 	phaseLabel,
@@ -32,6 +33,12 @@ export async function checkUpdateOnOpen(
 		queryKey: UPDATE_QUERY_KEY,
 		queryFn: () => api.get<UpdateStatusDTO>("/api/update"),
 	});
+	// 「立即重启并应用」那条路的最后一步:换成了就整页刷新,刷新前留了记号。先把它取走
+	// (取一次就没了),对得上现在跑的版本才说 —— 这一步放在下面几个「不查」的出口之前,
+	// 回退之后钉子还在盘上、不会自动查,但「已退回」这句照样得说。
+	const mark = takeRestartMark();
+	if (mark !== null && mark.target === before.currentVersion) notify(restartNotice(mark));
+
 	// 钉子看**盘上的**(pinnedVersion),不只看内存态(rolled-back):回退靠重启生效,
 	// 重启之后 phase 已经是 idle,钉子却还在 —— 这时自动查会装新版、顺手拔钉子,
 	// 用户按的回退活不过一次开面板。

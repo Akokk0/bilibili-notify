@@ -14,7 +14,8 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { UpdateSection } from "../update-section";
+import { browser, type RestartProbe, useRestartStore } from "../restart";
+import { UpdateSection, type UpdateSectionProps } from "../update-section";
 
 vi.mock("../../../services/api", () => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
@@ -25,6 +26,31 @@ import { api } from "../../../services/api";
 
 const SETTINGS = { channel: "stable", autoDownload: true, mirrors: [] };
 
+type HealthStep = RestartProbe | "offline";
+
+/**
+ * `/api/health` 的剧本:按顺序回放,走完最后一步就一直重复它。重启那段流程靠它
+ * 演「旧进程还在 → 断了 → 新进程起来了」。
+ */
+function healthScript(...steps: HealthStep[]) {
+	let i = 0;
+	return {
+		calls: () => i,
+		set(...next: HealthStep[]) {
+			steps = next;
+			i = 0;
+		},
+		async next(): Promise<RestartProbe> {
+			const step = steps[Math.min(i, steps.length - 1)];
+			i += 1;
+			if (step === "offline") throw new Error("连接中断");
+			return step;
+		},
+	};
+}
+
+let health = healthScript("offline");
+
 function serve(state: UpdateStatusDTO["state"], over: Partial<UpdateStatusDTO> = {}) {
 	const status: UpdateStatusDTO = {
 		currentVersion: "0.8.0",
@@ -33,18 +59,20 @@ function serve(state: UpdateStatusDTO["state"], over: Partial<UpdateStatusDTO> =
 		state,
 		...over,
 	};
-	vi.mocked(api.get).mockImplementation(async (path: string) =>
-		path === "/api/update" ? status : { update: SETTINGS },
-	);
+	vi.mocked(api.get).mockImplementation(async (path: string) => {
+		if (path === "/api/update") return status;
+		if (path === "/api/health") return health.next();
+		return { update: SETTINGS };
+	});
 	return status;
 }
 
-function renderSection(at = "/system") {
+function renderSection(at = "/system", props: UpdateSectionProps = {}) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<MemoryRouter initialEntries={[at]}>
 			<QueryClientProvider client={qc}>
-				<UpdateSection />
+				<UpdateSection {...props} />
 			</QueryClientProvider>
 		</MemoryRouter>,
 	);
@@ -53,6 +81,7 @@ function renderSection(at = "/system") {
 beforeEach(() => {
 	vi.mocked(api.post).mockResolvedValue({});
 	vi.mocked(api.patch).mockResolvedValue({});
+	health = healthScript("offline");
 });
 
 afterEach(() => {
@@ -261,5 +290,123 @@ describe("UpdateSection —— 从别处「去更新」跳过来", () => {
 		renderSection("/system");
 		await screen.findByText("还没查过");
 		expect(scrollIntoView).not.toHaveBeenCalled();
+	});
+});
+
+describe("UpdateSection —— 按下重启之后", () => {
+	const OLD: RestartProbe = { version: "0.8.0", startedAt: "2026-09-03T00:00:00.000Z" };
+	const NEW: RestartProbe = { version: "0.9.0", startedAt: "2026-09-03T00:01:00.000Z" };
+	const READY = { phase: "ready", target: "0.9.0", releaseUrl: "https://x" } as const;
+	// 测试把等待压到最短:探一次就睡 0ms,几十毫秒就算超时。
+	const QUICK = { restartWait: { intervalMs: 0, timeoutMs: 40 } };
+
+	let reload: ReturnType<typeof vi.spyOn>;
+	beforeEach(() => {
+		reload = vi.spyOn(browser, "reload").mockImplementation(() => {});
+		sessionStorage.clear();
+		// 进度住在模块级 store 里,用例之间得手动归零。
+		useRestartStore.getState().dismiss();
+	});
+	afterEach(() => {
+		reload.mockRestore();
+	});
+
+	const button = (name: RegExp | string) =>
+		screen.getByRole("button", { name }) as HTMLButtonElement;
+
+	it("换成了 → 等到新进程再整页刷新,并留下记号;旧进程排空期间的回答不算", async () => {
+		serve(READY);
+		// 按下之前读一次(旧进程)→ 断了 → 旧进程还在排空 → 新进程起来了
+		health.set(OLD, "offline", OLD, NEW);
+		renderSection("/system", QUICK);
+
+		await userEvent.click(await screen.findByRole("button", { name: /立即重启/ }));
+
+		await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+		expect(api.post).toHaveBeenCalledWith("/api/update/apply", {});
+		expect(health.calls()).toBe(4);
+		expect(JSON.parse(sessionStorage.getItem("bn.update.restarted") ?? "null")).toEqual({
+			target: "0.9.0",
+			mode: "update",
+		});
+		// 刷新之前这一节一直是「正在重启」,动作按钮全灰 —— 别让人再按一次。
+		expect(screen.getByText(/正在重启/)).toBeTruthy();
+		expect(button(/立即重启/).disabled).toBe(true);
+		expect(button("检查更新").disabled).toBe(true);
+	});
+
+	it("回退也走同一条路,记号写的是 rollback", async () => {
+		serve({ phase: "rolled-back", target: "0.7.0" }, { rollbackTarget: "0.7.0" });
+		health.set(OLD, "offline", { version: "0.7.0", startedAt: NEW.startedAt });
+		renderSection("/system", QUICK);
+
+		await userEvent.click(await screen.findByRole("button", { name: /立即重启/ }));
+
+		await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+		expect(JSON.parse(sessionStorage.getItem("bn.update.restarted") ?? "null")).toEqual({
+			target: "0.7.0",
+			mode: "rollback",
+		});
+	});
+
+	it("起来了但版本没变 → 明说是回落了,不刷新,并把状态重新拉一次", async () => {
+		serve(READY);
+		health.set(OLD, "offline", { version: "0.8.0", startedAt: NEW.startedAt });
+		renderSection("/system", QUICK);
+
+		await userEvent.click(await screen.findByRole("button", { name: /立即重启/ }));
+
+		const note = await screen.findByText(/跑起来的是/);
+		expect(note.textContent).toContain("0.8.0");
+		expect(note.textContent).toContain("0.9.0");
+		expect(reload).not.toHaveBeenCalled();
+		await waitFor(() =>
+			expect(vi.mocked(api.get).mock.calls.filter(([p]) => p === "/api/update").length).toBe(2),
+		);
+		expect(sessionStorage.getItem("bn.update.restarted")).toBeNull();
+	});
+
+	it("一直没回来 → 说明多半是没有 restart 策略,给「再等等」;再等到了照样刷新", async () => {
+		serve(READY);
+		health.set(OLD, "offline");
+		renderSection("/system", QUICK);
+
+		await userEvent.click(await screen.findByRole("button", { name: /立即重启/ }));
+
+		const note = await screen.findByText(/还没等到服务回来/);
+		expect(note.textContent).toContain("restart");
+		expect(reload).not.toHaveBeenCalled();
+
+		health.set(NEW);
+		await userEvent.click(screen.getByRole("button", { name: "再等等" }));
+		await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+	});
+
+	it("等的时候离开系统页 → 等待照样进行,换成了照样刷新(离开那一页不等于没按过)", async () => {
+		serve(READY);
+		health.set(OLD, "offline", NEW);
+		const view = renderSection("/system", QUICK);
+
+		await userEvent.click(await screen.findByRole("button", { name: /立即重启/ }));
+		await screen.findByText(/正在重启/);
+		view.unmount();
+
+		await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+	});
+
+	it("重启指令本身没发出去 → 把原因摆出来,不进入等待", async () => {
+		serve(READY);
+		health.set(OLD);
+		vi.mocked(api.post).mockRejectedValue(
+			new Error("连接中断，POST /api/update/apply 没有拿到服务器响应"),
+		);
+		renderSection("/system", QUICK);
+
+		await userEvent.click(await screen.findByRole("button", { name: /立即重启/ }));
+
+		const note = await screen.findByText(/没能发出重启指令/);
+		expect(note.textContent).toContain("连接中断");
+		expect(screen.queryByText(/正在重启/)).toBeNull();
+		expect(reload).not.toHaveBeenCalled();
 	});
 });

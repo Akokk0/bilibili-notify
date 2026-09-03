@@ -12,6 +12,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { leaveRestartMark } from "../../components/update/restart";
 import { UPDATE_QUERY_KEY } from "../../components/update/status";
 import { useToastStore } from "../../store/notifications";
 import { useUpdateCheckOnOpen } from "../useUpdateCheckOnOpen";
@@ -147,5 +148,51 @@ describe("useUpdateCheckOnOpen", () => {
 		).not.toThrow();
 		await flush();
 		expect(useToastStore.getState().items).toHaveLength(0);
+	});
+});
+
+describe("useUpdateCheckOnOpen —— 刷新回来先报重启的结果", () => {
+	afterEach(() => {
+		sessionStorage.clear();
+	});
+
+	function current(version: string): UpdateStatusDTO {
+		return {
+			currentVersion: version,
+			rollbackTarget: null,
+			pinnedVersion: null,
+			state: { phase: "up-to-date", checkedAt: 1 },
+		};
+	}
+
+	it("记号对得上现在跑的版本 → 弹「已更新到」,记号用掉;照常再查一次更新", async () => {
+		leaveRestartMark({ target: "0.9.0", mode: "update" });
+		mount(current("0.9.0"), current("0.9.0"));
+
+		await waitFor(() => expect(useToastStore.getState().items).toHaveLength(1));
+		expect(useToastStore.getState().items[0]).toMatchObject({
+			kind: "notice",
+			title: "已更新到 0.9.0",
+		});
+		expect(sessionStorage.getItem("bn.update.restarted")).toBeNull();
+		await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/update/check", {}));
+	});
+
+	it("回退的记号说的是「已退回」", async () => {
+		leaveRestartMark({ target: "0.7.0", mode: "rollback" });
+		mount(current("0.7.0"), current("0.7.0"));
+
+		await waitFor(() => expect(useToastStore.getState().items).toHaveLength(1));
+		expect(useToastStore.getState().items[0]).toMatchObject({ title: "已退回 0.7.0" });
+	});
+
+	it("记号和现在跑的版本对不上 → 不说,记号也丢掉(那不是这次重启的结果)", async () => {
+		leaveRestartMark({ target: "0.9.0", mode: "update" });
+		mount(current("0.8.0"), current("0.8.0"));
+
+		await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+		await flush();
+		expect(useToastStore.getState().items).toHaveLength(0);
+		expect(sessionStorage.getItem("bn.update.restarted")).toBeNull();
 	});
 });
