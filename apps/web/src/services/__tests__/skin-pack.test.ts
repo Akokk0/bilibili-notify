@@ -6,7 +6,7 @@
 
 import { SKIN_CSS_HOOK_MAP } from "@bilibili-notify/contract";
 import { strFromU8, unzipSync } from "fflate";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { buildSkinPrompt, makeSkinZip } from "../skin-pack";
 
 describe("buildSkinPrompt", () => {

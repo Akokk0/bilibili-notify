@@ -24,6 +24,7 @@ vp run build:update-payload   # server 单文件 bundle + 装配 + web dist(Dock
 ```
 
 - **`-F` filter 必须在 script 名之前**:`vp run -F <pkg> <script>`。写成 `vp run <script> -F <pkg>` 会把 `-F` 转发给 script(如 tsc)而出错。
+- **测试文件一律 `import ... from "vite-plus/test"`,不从 `vitest`**:vitest 是 vite-plus 自带的,仓库里没有任何包声明它。`from "vitest"` 在嵌套于别的工程里的 checkout 可能被外层 node_modules 兜底而本地全绿,CI 干净安装必报 TS2307(2026-09-03 栽过)。
 - Git hooks(Lefthook)在 `vp install` 时装好:pre-commit 跑 Biome,commit-msg 强制 conventional-commits。
 
 ## 顶层布局

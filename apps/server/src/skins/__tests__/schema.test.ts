@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { parseSkinManifest } from "../schema";
 
 /** 最小合法 manifest:骨架三件套 schemaVersion + name + 至少一个 mode。 */

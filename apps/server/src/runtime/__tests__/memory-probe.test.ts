@@ -1,5 +1,5 @@
 import type { ServiceContext } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { resolveProbeInterval, startMemoryProbe } from "../memory-probe.js";
 
 /**
