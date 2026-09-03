@@ -6,7 +6,7 @@
 
 ## 步骤
 
-1. **写 CHANGELOG** — 按 [changelog.md](changelog.md) 写 `apps/CHANGELOG.md` 的新版本段。基线 = 最新的 `v*` tag(`git tag -l 'v*' --sort=-creatordate | head -1`)。⚠️ 这一步含**按端归属判断**:`packages/*` 是两端共享的,改了共享包**不代表独立端受影响**,反过来也一样 —— 别把 koishi 专属的变更写进独立端的 CHANGELOG。**提交并 push 到 dev**(tag 要指向含 CHANGELOG 的那个 commit)。完成:本批改动都归了端,独立端该得的都在里面。
+1. **写 CHANGELOG** — 按 [changelog.md](changelog.md) 写 `apps/CHANGELOG.md` 的新版本段。基线 = 最新的 `v*` tag(`git tag -l 'v*' --sort=-creatordate | head -1`)。正式版跟在 alpha 之后、以及本轮新功能的修补要不要写,都按 changelog.md 里的规矩来。⚠️ 这一步含**按端归属判断**:`packages/*` 是两端共享的,改了共享包**不代表独立端受影响**,反过来也一样 —— 别把 koishi 专属的变更写进独立端的 CHANGELOG。**提交并 push 到 dev**(tag 要指向含 CHANGELOG 的那个 commit)。完成:本批改动都归了端,独立端该得的都在里面。
 2. **定版本** — 版本号**由用户拍板**,不要自己决定。prerelease(如 `0.2.0-alpha.1`)→ Docker `:alpha`;纯 semver(如 `0.2.0`)→ `:latest`。完成:用户给了版本号。
 3. **确认门** — 版本号 + Docker 渠道 tag + CHANGELOG 摘要给用户拍板。完成:用户明确同意。
 4. **打 tag(不可逆)** — 在 `dev` HEAD(即含 CHANGELOG 那个 commit)创建并推送 annotated tag `v<VERSION>`。可本地打,或用 `version-tag` workflow dry_run=false。完成:tag 已 push 且可从 `origin/dev` 到达。
