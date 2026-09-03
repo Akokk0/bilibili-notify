@@ -22,7 +22,7 @@ import { createPrivateKey, sign as cryptoSign } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readArg, requireArg } from "./cli-args.mjs";
+import { readArg, readListArg, requireArg } from "./cli-args.mjs";
 
 /**
  * 发版侧的形状检查。
@@ -123,12 +123,13 @@ export function signManifest(manifest, privateKeyPem) {
 	const manifestJson = JSON.stringify(manifest, null, 2);
 	const signature = cryptoSign(null, Buffer.from(manifestJson, "utf8"), key).toString("base64");
 	const envelope = { manifest: manifestJson, signature };
-	return { manifestJson, envelopeJson: JSON.stringify(envelope, null, 2), envelope };
+	return { manifestJson, envelopeJson: JSON.stringify(envelope, null, 2) };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-	const revokedArg = readArg("revoked", "");
+	const revoked = readListArg("revoked");
 	const nodeMajorArg = readArg("requires-node-major", "");
+	const issuedAtArg = readArg("issued-at", "");
 	const manifest = buildManifest({
 		version: requireArg("version"),
 		payload: {
@@ -137,14 +138,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 			size: Number(requireArg("size")),
 		},
 		releaseUrl: requireArg("release-url"),
-		issuedAt: readArg("issued-at") ? Number(readArg("issued-at")) : undefined,
+		issuedAt: issuedAtArg ? Number(issuedAtArg) : undefined,
 		notes: readArg("notes"),
-		revoked: revokedArg
-			? revokedArg
-					.split(",")
-					.map((v) => v.trim())
-					.filter(Boolean)
-			: undefined,
+		revoked: revoked.length > 0 ? revoked : undefined,
 		requires: nodeMajorArg ? { nodeMajor: Number(nodeMajorArg) } : undefined,
 	});
 

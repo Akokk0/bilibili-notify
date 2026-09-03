@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readArg, requireArg } from "./cli-args.mjs";
+import { parseList, readArg, requireArg } from "./cli-args.mjs";
+import { payloadUrl, releaseUrl } from "./release-urls.mjs";
 
 /**
  * 撤回一个坏版本的两件事:**定规矩**和**取数**。
@@ -44,10 +45,7 @@ export function planRevocation({ repo, target, revoked, channel }) {
 		return { ok: false, error: `目标版本号不成形(要裸 semver,不带 v):'${target}'` };
 	}
 
-	const list = revoked
-		.split(",")
-		.map((v) => v.trim())
-		.filter((v) => v !== "");
+	const list = parseList(revoked);
 	if (list.length === 0) {
 		return { ok: false, error: "没有要撤回的版本 —— 那不是撤回,是重发一遍清单" };
 	}
@@ -66,8 +64,8 @@ export function planRevocation({ repo, target, revoked, channel }) {
 		version: target,
 		revoked: list,
 		channels,
-		payloadUrl: `https://github.com/${repo}/releases/download/v${target}/bilibili-notify-payload-${target}.zip`,
-		releaseUrl: `https://github.com/${repo}/releases/tag/v${target}`,
+		payloadUrl: payloadUrl(repo, target),
+		releaseUrl: releaseUrl(repo, target),
 	};
 }
 

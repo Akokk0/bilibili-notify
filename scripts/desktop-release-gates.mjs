@@ -43,11 +43,14 @@ export function readShellLayout(mainRs) {
 	};
 }
 
-/** ps1 与 sh 的行注释都是 `#`。只看代码 —— 注释里解释「为什么不传 --web-dist」不该算传了。 */
-function stripLineComments(script) {
+/**
+ * 只看代码 —— 注释里解释「为什么不传 --web-dist」不该算传了。ps1 与 sh 的行注释是
+ * `#`,生产端那份 JS 是 `//`。
+ */
+function stripLineComments(script, marker = "#") {
 	return script
 		.split("\n")
-		.filter((line) => !line.trimStart().startsWith("#"))
+		.filter((line) => !line.trimStart().startsWith(marker))
 		.join("\n");
 }
 
@@ -103,10 +106,7 @@ function auditShell(mainRs, layout) {
  * 它和闸脚本的区别只在怎么读:shell 里是路径字面量,JS 里是一个 import。
  */
 function auditProducer(raw, layout) {
-	const script = raw
-		.split("\n")
-		.filter((line) => !line.trimStart().startsWith("//"))
-		.join("\n");
+	const script = stripLineComments(raw, "//");
 	const problems = [];
 	if (!script.includes("desktop-layout.mjs")) {
 		problems.push(`producer: 没有读那份布局声明 —— 摆文件的和找文件的必须同源`);

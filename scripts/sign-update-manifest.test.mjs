@@ -35,7 +35,8 @@ describe("signManifest", () => {
 	it("签出来的信封,客户端验得过、读得出", () => {
 		const key = makeKey();
 
-		const { envelope } = signManifest(buildManifest(FULL), key.privateKeyPem);
+		const { envelopeJson } = signManifest(buildManifest(FULL), key.privateKeyPem);
+		const envelope = JSON.parse(envelopeJson);
 
 		const result = loadSignedManifest(Buffer.from(envelope.manifest, "utf8"), envelope.signature, [
 			key.spkiBase64,
@@ -71,7 +72,8 @@ describe("signManifest", () => {
 
 	it("清单内容被改一个字,验签就不过", () => {
 		const key = makeKey();
-		const { envelope } = signManifest(buildManifest(FULL), key.privateKeyPem);
+		const { envelopeJson } = signManifest(buildManifest(FULL), key.privateKeyPem);
+		const envelope = JSON.parse(envelopeJson);
 
 		const tampered = envelope.manifest.replace('"0.9.0"', '"9.9.9"');
 		expect(tampered).not.toBe(envelope.manifest);
@@ -97,10 +99,11 @@ describe("signManifest", () => {
 	it("base64 包过一层的私钥也认 —— CI secret 里 PEM 的换行最容易丢", () => {
 		const key = makeKey();
 
-		const { envelope } = signManifest(
+		const { envelopeJson } = signManifest(
 			buildManifest(FULL),
 			Buffer.from(key.privateKeyPem, "utf8").toString("base64"),
 		);
+		const envelope = JSON.parse(envelopeJson);
 
 		const result = loadSignedManifest(Buffer.from(envelope.manifest, "utf8"), envelope.signature, [
 			key.spkiBase64,
@@ -122,7 +125,7 @@ describe("buildManifest", () => {
 
 	it("撤回名单与运行时门槛传了就带上,且客户端认得出", () => {
 		const key = makeKey();
-		const { envelope } = signManifest(
+		const { envelopeJson } = signManifest(
 			buildManifest({
 				...FULL,
 				revoked: ["0.8.9", "0.8.8"],
@@ -131,6 +134,7 @@ describe("buildManifest", () => {
 			}),
 			key.privateKeyPem,
 		);
+		const envelope = JSON.parse(envelopeJson);
 
 		const result = loadSignedManifest(Buffer.from(envelope.manifest, "utf8"), envelope.signature, [
 			key.spkiBase64,

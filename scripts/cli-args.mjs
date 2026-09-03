@@ -22,3 +22,21 @@ export function requireArg(name, argv = process.argv) {
 	if (!value) throw new Error(`缺参数 --${name}`);
 	return value;
 }
+
+/**
+ * 逗号分隔的多值列表(`a, b ,c`)。空项丢掉 —— workflow 里这类参数是条件拼上去的,
+ * `""` 和不给必须是同一件事。撤回脚本拿的是 workflow input 而不是 argv,所以切成
+ * 纯函数 + 取参数两层。
+ */
+/** @param {string | undefined} raw @returns {string[]} */
+export function parseList(raw) {
+	return (raw ?? "")
+		.split(",")
+		.map((v) => v.trim())
+		.filter(Boolean);
+}
+
+/** @param {string} name @param {readonly string[]} [argv] @returns {string[]} */
+export function readListArg(name, argv = process.argv) {
+	return parseList(readArg(name, "", argv));
+}
