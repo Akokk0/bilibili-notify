@@ -6,10 +6,14 @@ import type {
 	ForwardImage,
 	Logger,
 	MessageBus,
-	MessageKindLayout,
 	ServiceContext,
 } from "@bilibili-notify/internal";
-import { interpolate, planMessageGroups, withLock } from "@bilibili-notify/internal";
+import {
+	DEFAULT_MESSAGE_LAYOUT,
+	interpolate,
+	planMessageGroups,
+	withLock,
+} from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
 import { resolveDynamicColorOptions } from "./card-style";
@@ -131,11 +135,9 @@ function getDynamicPostTime(author: Dynamic["modules"]["module_author"]): number
 }
 
 /**
- * Runtime configuration for {@link DynamicEngine}. Mirrors the platform-neutral
- * subset of `BilibiliNotifyDynamicConfig`; the koishi shell maps its schema
- * fields onto this struct, the standalone runtime fills it from its own config
- * store. The `logLevel` field is intentionally dropped — adapter sets logger
- * level externally via {@link ServiceContext}.
+ * Runtime configuration for {@link DynamicEngine}. The standalone runtime fills it
+ * from its config store. The `logLevel` field is intentionally dropped — the host
+ * sets logger level externally via {@link ServiceContext}.
  */
 export interface DynamicEngineConfig {
 	/** 轮询动态的 cron 表达式。 */
@@ -183,13 +185,6 @@ export interface DynamicEngineConfig {
 	 */
 	aiWebSearch?: boolean;
 	/**
-	 * 引擎级消息版式(动态切片)。per-UP `SubItemView.messageLayout` 缺失时兜底 ——
-	 * koishi 端用 `defaultMessageKindLayout("dynamic", { link: 开关 })` 填充(无版式
-	 * 编辑 UI,仅开关链接);独立端 per-UP 恒有值,不落到这里。两级都缺 = 旧路径
-	 * (链接内嵌模板 {url})。
-	 */
-	messageLayout?: MessageKindLayout;
-	/**
 	 * 全局默认卡片背景图廊(`defaults.cardStyle.backgroundImages`)。该 UP 无 per-UP
 	 * 背景覆盖时,`pickDynamicColorOptions` 拿它做「每次推送轮换」的兜底列表 ——
 	 * 否则这些 UP 会一直渲染渲染器内部缓存的静态首图,图廊配再多张也不轮换。
@@ -213,10 +208,10 @@ export interface DynamicEngineOptions {
 	 */
 	getSubs: () => SubscriptionsView | null;
 	/**
-	 * 可选注入：背景图轮换选择器。某 UP 的动态卡配 >1 张背景图时「每次推送轮换」;
-	 * 缺省(如 koishi)则不轮换,沿用首图。
+	 * 背景图轮换选择器。某 UP 的动态卡配 >1 张背景图时「每次推送轮换」;宿主注入
+	 * (独立端 fs 持久化游标)。返回 undefined = 本次不换,沿用首图。
 	 */
-	pickCardBackground?: PickCardBackground;
+	pickCardBackground: PickCardBackground;
 }
 
 /** 从动态数据中提取图片 URL，用于多模态 AI 点评（最多 4 张） */
@@ -281,9 +276,8 @@ function extractDynamicText(item: Dynamic): string {
 /**
  * 平台中立的动态轮询/过滤/渲染核心。
  *
- * - 不依赖 koishi runtime；adapter 提供 ServiceContext / MessageBus / PushLike。
- * - image / ai 通过 **构造期注入**（不在 detect 循环内做服务查找），缺失时降级。
- * - 时间线、过滤、API 错误处理逻辑与原 koishi 版 BilibiliNotifyDynamic 一致。
+ * - 不依赖任何宿主框架;宿主(独立端 runtime)提供 ServiceContext / MessageBus / PushLike。
+ * - image / ai 通过 **构造期注入**(不在 detect 循环内做服务查找),缺失时降级。
  */
 export class DynamicEngine {
 	private readonly serviceCtx: ServiceContext;
@@ -294,7 +288,7 @@ export class DynamicEngine {
 	private ai?: CommentaryClient;
 	private readonly logger: Logger;
 	private readonly getSubs: () => SubscriptionsView | null;
-	private readonly pickCardBackground: PickCardBackground | undefined;
+	private readonly pickCardBackground: PickCardBackground;
 
 	private config: DynamicEngineConfig;
 	private dynamicJob?: CronJob;
@@ -376,8 +370,8 @@ export class DynamicEngine {
 		}
 
 		// `subscription-changed` 是无负载事件（参见 internal/platform.ts BiliEvents）。
-		// adapter 收到 koishi 端的 ops 后，应当先调用 engine.applyOps(ops) 再 emit
-		// MessageBus 事件用于其他下游；engine 自身只需在 auth-restored 时重建快照。
+		// 宿主应当先调用 engine.applyOps(ops) 再 emit MessageBus 事件用于其他下游;
+		// engine 自身只需在 auth-restored 时重建快照。
 		this.busHandles.push(
 			this.bus.on("auth-restored", () => {
 				this.authLost = false;
@@ -429,7 +423,7 @@ export class DynamicEngine {
 	}
 
 	/**
-	 * 替换运行时配置(adapter 在 koishi config / dashboard 编辑后调用)。
+	 * 替换运行时配置(宿主在 dashboard 编辑后调用)。
 	 * `dynamicCron` 变化时会自动停掉旧 CronJob 并按新表达式重新 schedule —— 否则
 	 * 配置已经写进 this.config,但 node-cron 句柄还在跑旧节奏,纯粹的字段更新
 	 * 是看不见的 bug。
@@ -462,12 +456,8 @@ export class DynamicEngine {
 	}
 
 	/**
-	 * 热替换 ImageRenderer 实例。与 setAi 对称:adapter 在 image 服务上下线时
-	 * 调用,引擎随后的卡片渲染会立即用新实例 (或回退到纯文字) ,无需重启 server。
-	 *
-	 * 主要给 koishi adapter 用 —— sibling service (-image) 启停时通过 ctx.inject
-	 * 后置注入。独立端 imageRenderer 是 engine 同进程一次性 wire,不会动态消失,
-	 * 不需要调用本方法 (cardStyle 热更走 imageRenderer.updateConfig)。
+	 * 热替换 ImageRenderer 实例。与 setAi 对称:宿主在渲染器上下线(空闲关浏览器 /
+	 * 卡片渲染开关)时调用,引擎随后的卡片渲染会立即用新实例(或回退到纯文字),无需重启。
 	 */
 	setImage(image: ImageRenderer | undefined): void {
 		this.image = image;
@@ -847,12 +837,12 @@ export class DynamicEngine {
 
 				// Render card
 				const sub = this.dynamicSubManager.get(uid);
-				// 消息版式:per-UP 折叠值优先,缺失时兜底引擎 config 级(koishi 的默认版式
-				// + 链接开关);两级都缺 = 旧路径。块隐藏的部件直接跳过其生产成本:
+				// 消息版式来自 per-UP 折叠值(宿主恒填);sub 在本轮处理中途被退订时用默认版式
+				// 兜底,发送前还有 stillSubscribed 重校。块隐藏的部件直接跳过其生产成本:
 				// card 不渲染图片、text 不调 AI。
-				const layout = sub?.messageLayout ?? this.config.messageLayout;
+				const layout = sub?.messageLayout ?? DEFAULT_MESSAGE_LAYOUT.dynamic;
 				const wantPart = (t: string): boolean =>
-					!layout || layout.blocks.some((b) => b.visible && b.type === t);
+					layout.blocks.some((b) => b.visible && b.type === t);
 				let buffer: Buffer | undefined;
 				try {
 					if (this.image && this.config.imageEnabled !== false && wantPart("card")) {
@@ -968,17 +958,7 @@ export class DynamicEngine {
 					: (sub?.customDynamicTemplate ??
 						this.config.dynamicTemplate ??
 						DEFAULT_DYNAMIC_TEXT.dynamic);
-				if (!layout) {
-					// 旧路径(koishi 端现状):链接经模板 {url} 内嵌在文本里,卡片+文本合并一条。
-					const text = aiComment ?? renderDynamicText(tmpl, name, url);
-					const segments: PushSegment[] = buffer
-						? [
-								{ type: "image", buffer, mime: "image/jpeg" },
-								...(text ? ([{ type: "text", text }] as PushSegment[]) : []),
-							]
-						: [{ type: "text", text }];
-					await this.push.broadcastDynamic(uid, segments, "dynamic");
-				} else {
+				{
 					// 版式路径:文本以 url='' 渲染(renderDynamicText 会把 {url} 连同前导
 					// 分隔符剥掉,旧自定义模板残留 {url} 也不会双链接),链接独立成部件,
 					// 顺序 / 显隐 / 分条全由版式决定;同条内相邻文本类部件以 separator 连接。
@@ -1014,13 +994,8 @@ export class DynamicEngine {
 						this.logger.debug(`[push] UID=${uid} 消息版式所有部件隐藏/缺失,本条不推送`);
 					} else if (messages.length === 1) {
 						await this.push.broadcastDynamic(uid, messages[0] as PushSegment[], "dynamic");
-					} else if (this.push.broadcastDynamicSequence) {
-						await this.push.broadcastDynamicSequence(uid, messages, "dynamic");
 					} else {
-						// 防御兜底(现实不可达:填 messageLayout 的 adapter 必实现 sequence)。
-						// 合并回一条而非逐条 broadcast —— 逐条会让 @全体 每条重复一次。
-						this.logger.warn("[push] adapter 未实现 broadcastDynamicSequence,分条已合并为单条");
-						await this.push.broadcastDynamic(uid, messages.flat(), "dynamic");
+						await this.push.broadcastDynamicSequence(uid, messages, "dynamic");
 					}
 				}
 

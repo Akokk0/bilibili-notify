@@ -53,7 +53,7 @@ describe("resolveDynamicColorOptions", () => {
 			resolveDynamicColorOptions({
 				style: { enable: false },
 				defaultBackgroundImages: ["x", "y"],
-				pick: undefined,
+				pick: () => undefined,
 				scopeKey: "k",
 			}),
 		).toBeUndefined();

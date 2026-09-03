@@ -1,12 +1,11 @@
 /**
  * 平台中立的推送出口接口与最小订阅视图。
  *
- * push 包当前仍依赖 koishi（stage 1.4 尚未完成），故 dynamic-engine 不直接 import
- * 该包；adapter 在装配 DynamicEngine 时实现 PushLike，并桥接到具体 push 实现
- * （koishi adapter 包 BilibiliPush，独立端 adapter 包自身的 channel 路由）。
+ * dynamic-engine 不直接 import `@bilibili-notify/push`;宿主(独立端 runtime)在装配
+ * DynamicEngine 时实现 PushLike,并桥接到 BilibiliPush 的 channel 路由。
  *
- * 这里的接口仅声明 dynamic-engine 实际调用到的方法；任何字段/方法的扩展应该先在
- * 业务代码中显现需求，再回填到此接口，避免接口与实现脱节。
+ * 这里的接口仅声明 dynamic-engine 实际调用到的方法;任何字段/方法的扩展应该先在
+ * 业务代码中显现需求,再回填到此接口,避免接口与实现脱节。
  */
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
@@ -68,14 +67,11 @@ export interface PushLike {
 	broadcastDynamic(uid: string, segments: PushSegment[], kind: PushKind): Promise<void>;
 
 	/**
-	 * 消息版式分条:一次推送拆成多条消息的序列广播。语义要求(独立端由
-	 * BilibiliPush 的 payload 序列实现):同一 target 内按序发送;某条失败即中止
-	 * 该 target 的后续条;@全体(若启用)只跟随序列首条之前发一次。
-	 *
-	 * 可选:koishi adapter 不实现(koishi 端不填 messageLayout,引擎永远不会对它
-	 * 产出多条消息);引擎在缺失该方法时把多条消息合并回单条 broadcastDynamic 兜底。
+	 * 消息版式分条:一次推送拆成多条消息的序列广播。语义要求(由 BilibiliPush 的
+	 * payload 序列实现):同一 target 内按序发送;某条失败即中止该 target 的后续条;
+	 * @全体(若启用)只跟随序列首条之前发一次。
 	 */
-	broadcastDynamicSequence?(uid: string, messages: PushSegment[][], kind: PushKind): Promise<void>;
+	broadcastDynamicSequence(uid: string, messages: PushSegment[][], kind: PushKind): Promise<void>;
 
 	/** 私信发送给配置的管理员账号（master）。adapter 端校验启用状态与 bot 在线性。 */
 	sendPrivateMsg(content: string): Promise<void>;
@@ -85,11 +81,10 @@ export interface PushLike {
 }
 
 /**
- * 平台中立的订阅条目最小视图。dynamic-engine 仅访问 `uid` 与 `customCardStyle`
- * 相关字段；adapter 提供完整 SubItem 实例时会被结构性兼容（额外字段不影响）。
+ * 平台中立的订阅条目最小视图。宿主折叠 `Subscription.overrides` 后填入。
  *
- * `filter` / `aiOverride` 为 per-UP 覆盖（可选）：adapter 折叠 `Subscription.overrides`
- * 后填入；缺失时 engine 回退到 `DynamicEngineConfig.filter` / 全局 CommentaryGenerator 配置。
+ * `filter` / `aiOverride` 为 per-UP 覆盖(可选);缺失时 engine 回退到
+ * `DynamicEngineConfig.filter` / 全局 CommentaryGenerator 配置。
  */
 export interface SubItemView {
 	uid: string;
@@ -148,12 +143,11 @@ export interface SubItemView {
 	 */
 	dynamicLayout?: CardBlock[];
 	/**
-	 * Per-UP 解析后的**消息版式**动态切片(块顺序 / 显隐 / 分条符 + 分隔符)。
-	 * adapter 折叠 `eff.messageLayout.dynamic` 后填入;undefined = 旧路径(链接内嵌
-	 * 模板 `{url}`、卡片+文本合并一条,koishi 端现状)。提供该字段时引擎按版式装配
-	 * 消息:文本模板以 url='' 渲染({url} 被剥离),链接独立成部件。
+	 * Per-UP 解析后的**消息版式**动态切片(块顺序 / 显隐 / 分条符 + 分隔符)。宿主折叠
+	 * `eff.messageLayout.dynamic` 后填入。引擎按版式装配消息:文本模板以 url='' 渲染
+	 * ({url} 被剥离),链接独立成部件。
 	 */
-	messageLayout?: MessageKindLayout;
+	messageLayout: MessageKindLayout;
 }
 
 export type SubscriptionsView = Record<string, SubItemView>;
@@ -161,14 +155,13 @@ export type SubManagerView = Map<string, SubItemView>;
 
 /**
  * 背景图轮换选择器:给定 scopeKey(`uid:dynamic`)与完整图列表,返回本次该用的背景(并在
- * 实现内推进游标)。adapter 注入(独立端 fs 持久化游标;koishi 不注入即不轮换)。
+ * 实现内推进游标)。宿主注入(独立端 fs 持久化游标);返回 undefined = 不轮换。
  */
 export type PickCardBackground = (scopeKey: string, images: string[]) => string | undefined;
 
 /**
- * Adapter 提供给 engine 的「最新订阅快照」访问器与增量操作描述。
- * Koishi adapter 在收到 `bilibili-notify/subscription-changed` 时调用 engine.applyOps；
- * 独立端在 SubscriptionStore 写入后同样转译为 SubscriptionOpView 列表。
+ * 宿主提供给 engine 的增量操作描述:独立端在 SubscriptionStore 写入后转译为
+ * SubscriptionOpView 列表,交给 engine.applyOps。
  */
 export type SubscriptionOpView =
 	| { type: "add"; sub: SubItemView }

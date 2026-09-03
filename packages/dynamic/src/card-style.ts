@@ -17,7 +17,7 @@ export type DynamicCardStyle = SubItemView["customCardStyle"];
 export function resolveDynamicColorOptions(input: {
 	style: DynamicCardStyle;
 	defaultBackgroundImages: string[] | undefined;
-	pick: PickCardBackground | undefined;
+	pick: PickCardBackground;
 	scopeKey: string;
 }): DynamicCardStyle | undefined {
 	const { style, defaultBackgroundImages, pick, scopeKey } = input;
@@ -25,7 +25,7 @@ export function resolveDynamicColorOptions(input: {
 		style?.backgroundImages && style.backgroundImages.length > 0
 			? style.backgroundImages
 			: defaultBackgroundImages;
-	if (images && images.length > 1 && pick) {
+	if (images && images.length > 1) {
 		const picked = pick(scopeKey, images);
 		if (picked !== undefined) return { ...style, enable: true, backgroundImage: picked };
 	}
