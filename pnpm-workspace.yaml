@@ -17,32 +17,29 @@ packages:
 # the 11 line, so `vp info pnpm` will look like 12 does not exist. Ask for it by
 # exact version.
 
-# Vite+ replaces vite via npm overrides rather than coexisting, and we scope the
-# override to each React frontend sub-tree — `@bilibili-notify/web>vite` /
-# `@bilibili-notify/astrbot-page>vite` match "vite" anywhere reachable from those
-# dep graphs (so @vitejs/plugin-react, @tailwindcss/vite etc. all fall under it),
-# but leave @koishijs/client → vite ^5.4.10 alone. Without the dependent prefix,
-# the override would also rewrite the koishi console UI's vite 5 to vite 8 (vp's
-# bundled vite), which is a 3-major-version jump with breaking config/plugin API.
+# Vite+ replaces vite via npm overrides rather than coexisting. The override is
+# scoped to each React frontend sub-tree — `@bilibili-notify/web>vite` matches
+# "vite" anywhere reachable from that dep graph (so @vitejs/plugin-react,
+# @tailwindcss/vite etc. all fall under it) — instead of the README's global
+# `vite:` form, so that nothing outside the frontends (vitest inside vite-plus,
+# vp pack) gets its vite silently swapped by a side effect. scripts/vite-alias.test.mjs
+# pins the invariant the overrides exist for: every frontend resolves bare `vite`
+# to the Vite+ core, on one version. A missing override is silent otherwise —
+# real vite also builds and tests fine, and only misbehaves at runtime.
 #
-# vitest is deliberately NOT overridden: it needs a real vite ^6/^7/^8, and root
-# declares `vitest` directly so pnpm nests it one. See vite.config.ts — dropping
-# that root declaration only breaks on a clean install, so it is easy to "verify"
-# as safe and still take CI down.
-#
-# Bumping vite-plus? Four things move in lockstep, and missing any one of them
+# Bumping vite-plus? Three things move in lockstep, and missing any one of them
 # silently leaves half the toolchain on the old version:
 #   1. root `vite-plus` + `@voidzero-dev/vite-plus-core` devDeps
-#   2. the three overrides below (else the React frontends keep the old core)
-#   3. root `vitest` — vite-plus pins vitest EXACTLY (0.2.4 -> 4.1.10). Drift here
-#      installs a second vitest copy; @vitest/spy then has two identities and
-#      mocks stop matching, which surfaces as absurd test failures, not as a
-#      version error.
-#   4. apps/Dockerfile `VP_BUILDER_IMAGE` ARG — the Docker builder builds on the
+#   2. the overrides below (else the React frontends keep the old core)
+#   3. apps/Dockerfile `VP_BUILDER_IMAGE` ARG — the Docker builder builds on the
 #      official toolchain image and must run the same vp as everywhere else.
 # Also: upgrade the global vp CLI FIRST (`vp upgrade`), then edit these
 # declarations — installing a newer vite-plus package with an older CLI has
 # corrupted the lockfile before (biome's entry took on vite-plus's resolution).
+# vitest is not declared at the root: vite-plus pins it exactly and brings its
+# own copy; a root declaration on a different version would install a second
+# vitest, and @vitest/spy would then have two identities (mocks stop matching,
+# which surfaces as absurd test failures, not as a version error).
 #
 # There used to be a fourth: a `minimumReleaseAgeExclude` list, carried forward
 # and version-bumped at each upgrade. It is gone because it was doing nothing.
@@ -54,20 +51,6 @@ packages:
 # `vite-plus@<v>` and every `@voidzero-dev/vite-plus-<platform>@<v>` binary, since
 # those are published in the same minute. Otherwise: just wait 24h, which is the
 # entire point of the policy.
-# Known and accepted: these scoped overrides leave MORE THAN ONE physical copy
-# of the aliased core on disk. Top-level `node_modules/vite` is taken by
-# @koishijs/client's vite 5, so @vitejs/plugin-react and @tailwindcss/vite (both
-# hoisted to the top level) each carry their own nested copy of the alias. The
-# copies are byte-identical — same package, same version — they just sit at
-# different paths, which is enough for TypeScript to treat them as separate
-# identities: `Plugin` no longer matches `PluginOption` by symbol, the compare
-# goes structural, and it blows the recursion limit (TS2321 "Excessive stack
-# depth"). That is why no package typechecks its own vite.config.ts, and why the
-# invariant the overrides actually care about — every frontend resolving `vite`
-# to vite-plus-core — is pinned by scripts/vite-alias.test.mjs instead.
-# Giving the top slot to the alias (a root `vite: npm:...` devDep) does collapse
-# the copies, but it also takes vitest's separately-nested vite away, which the
-# note above deliberately fences off. Not worth it for a type-only symptom.
 overrides:
   "@bilibili-notify/web>vite": "npm:@voidzero-dev/vite-plus-core@0.3.0"
   "@bilibili-notify/desktop>vite": "npm:@voidzero-dev/vite-plus-core@0.3.0"
@@ -103,41 +86,6 @@ catalog:
   tsx: ^4.23.12
   ws: ^8.21.3
   zod: ^4.4.3
-
-# LOAD-BEARING — not a style preference, do not "modernize" it to pnpm's
-# default. Koishi's plugin loader only works against a yarn-classic-style flat
-# node_modules. Under pnpm's default (isolated) layout — top level holds only
-# direct deps, everything else sits behind symlinks into .pnpm/ — koishi does
-# not recognize the plugins AT ALL. That is measured, not a worry: it is the
-# whole reason this repo went hoisted and cannot leave it. The earlier phrasing
-# here ("keeps working as before") read like a compatibility preference and has
-# already talked one reader into proposing the switch.
-#
-# And it is NOT "only our dev" — switching the linker changes what we publish.
-# Measured 2026-08-31 by actually flipping to isolated, wiping every
-# node_modules, reinstalling and rebuilding:
-#   - vue goes double-version. inlinedDependencies keeps the same 42 keys but
-#     vue / @vue/{reactivity,runtime-core,runtime-dom,shared} become
-#     "3.5.32,3.5.42" and @vue/server-renderer drops to 3.5.32 — hoisting is
-#     what collapses @koishijs/client's vue onto one copy. lib/index.cjs grows
-#     2589089 -> 2624751 bytes carrying both. Two vue instances share no
-#     reactivity state; that is a console-UI bug shipped to users.
-#   - scripts/build-astrbot-sidecar.mjs dies on
-#     `require.resolve("jsdom/lib/jsdom/browser/default-stylesheet.css")` —
-#     a phantom dependency the root manifest never declared.
-# Do NOT count on the build failing to protect the package: it failed at the
-# astrbot step, *after* koishi's lib/ and dist/ were already written, already
-# carrying two vues. The bundle's outward contract does stay stable either way
-# (27 external requires, deps still just jsdom, peerDeps unchanged), which is
-# exactly why the damage is silent.
-#
-# Restoring hoisted reproduces all 12 published artifacts byte-for-byte
-# (sha256), so this is cheap to re-verify if anyone doubts it.
-#
-# pnpm 11+ reads nodeLinker from pnpm-workspace.yaml; the old .npmrc
-# (`node-linker=hoisted`) is no longer the source of truth at the workspace
-# level.
-nodeLinker: hoisted
 
 # pnpm 11+ makes postinstall opt-in by default to mitigate supply-chain
 # risk. Each entry below is a transitive dep that ships a build script.

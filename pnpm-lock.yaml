@@ -198,6 +198,9 @@ importers:
       '@voidzero-dev/vite-plus-core':
         specifier: 0.3.0
         version: 0.3.0(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0)
+      fflate:
+        specifier: 'catalog:'
+        version: 0.8.3
       knip:
         specifier: ^6.32.3
         version: 6.32.3
@@ -210,9 +213,6 @@ importers:
       vite-plus:
         specifier: 0.3.0
         version: 0.3.0(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.0.1(patch_hash=a7f3fba77a245eb86369dfed9cea8b36f521f7474f70a01d8fe5349e923a77bf)(@noble/hashes@1.8.0))(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0)
-      vitest:
-        specifier: 4.1.11
-        version: 4.1.11(@types/node@24.13.3)(@vitest/browser-preview@4.1.11)(jsdom@30.0.1(patch_hash=a7f3fba77a245eb86369dfed9cea8b36f521f7474f70a01d8fe5349e923a77bf)(@noble/hashes@1.8.0))(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.99.0)(tsx@4.23.12)(yaml@2.9.0))
 
   apps/contract:
     dependencies:
@@ -535,6 +535,9 @@ importers:
       '@types/luxon':
         specifier: 'catalog:'
         version: 3.7.5
+      '@vue/runtime-dom':
+        specifier: ^3.5.42
+        version: 3.5.42
 
   packages/internal:
     dependencies:

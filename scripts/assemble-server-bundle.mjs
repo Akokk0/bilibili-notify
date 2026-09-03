@@ -27,12 +27,22 @@ import { missingServerBundleFilesIn } from "./server-bundle-assets.mjs";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const distDir = resolve(repoRoot, "apps/server/dist");
-const require = createRequire(import.meta.url);
-const jsdomXhrSyncWorker = require.resolve("jsdom/lib/jsdom/living/xhr/xhr-sync-worker.js");
+// 从**声明了这些依赖的包**出发解析,而不是从仓库根:pnpm 默认(isolated)布局下根
+// node_modules 只有根自己声明的东西,jsdom / jieba-wasm 都不在,从根解析就是幻影依赖。
+const requireFromImage = createRequire(resolve(repoRoot, "packages/image/package.json"));
+const requireFromLive = createRequire(resolve(repoRoot, "packages/live/package.json"));
+const jsdomXhrSyncWorker = requireFromImage.resolve(
+	"jsdom/lib/jsdom/living/xhr/xhr-sync-worker.js",
+);
 // jsdom 30 起模块加载即 readFileSync 默认样式表;bundle 后 __dirname 相对路径逃出
 // 产物目录,靠 patches/jsdom.patch 的 fallback 读 bundle 旁的这份拷贝。
-const jsdomDefaultStylesheet = require.resolve("jsdom/lib/jsdom/browser/default-stylesheet.css");
-const jiebaWasm = resolve(dirname(require.resolve("jieba-wasm/node")), "jieba_rs_wasm_bg.wasm");
+const jsdomDefaultStylesheet = requireFromImage.resolve(
+	"jsdom/lib/jsdom/browser/default-stylesheet.css",
+);
+const jiebaWasm = resolve(
+	dirname(requireFromLive.resolve("jieba-wasm/node")),
+	"jieba_rs_wasm_bg.wasm",
+);
 const imageStaticDir = resolve(repoRoot, "packages/image/src/static");
 
 await cp(imageStaticDir, resolve(distDir, "static"), { recursive: true });
