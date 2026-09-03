@@ -2,7 +2,8 @@ name: Publish
 
 on:
   push:
-    branches: [dev]
+    # dev 只做独立端了;koishi 4 上的维护版本(5.2.1 起)从 koishi-maintenance 发。
+    branches: [dev, koishi-maintenance]
     # 粗筛:version 只可能写在这个文件里。但**文件变了 ≠ 要发版** —— `vp pack`
     # (exports: true)会自动回写它的 `inlinedDependencies` / `exports`,每次构建都可能
     # 刷新。真正的判定在 detect job,只认 version 字段本身。

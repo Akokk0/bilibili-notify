@@ -55,6 +55,7 @@ export const name = "bilibili-notify";
 
 export const usage = /* html */ `
 <h1>Bilibili-Notify</h1>
+<p><strong>⚠️ 本插件在 Koishi 4 上暂停更新,5.2.1 是最后一版;等 Koishi 升到 v5 再跟进更新。</strong>近期会推出一个薄的 Koishi 适配插件,把 bilibili-notify 独立端(Docker / 桌面版)桥接进 Koishi,之后的新功能都在独立端上做。5.2.1 可以继续用。</p>
 <p>使用问题请加群咨询 801338523</p>
 
 ---

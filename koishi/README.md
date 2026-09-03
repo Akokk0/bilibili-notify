@@ -2,6 +2,9 @@
 
 [![npm](https://img.shields.io/npm/v/koishi-plugin-bilibili-notify?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-bilibili-notify)
 
+> [!WARNING]
+> **本插件在 Koishi 4 上暂停更新,5.2.1 是最后一版;等 Koishi 升到 v5 再跟进更新。** 近期会推出一个薄的 Koishi 适配插件,把 bilibili-notify [独立端](https://github.com/Akokk0/bilibili-notify)(Docker / 桌面版)桥接进 Koishi,之后的新功能都在独立端上做。5.2.1 本身可以继续用,只是在 Koishi 4 上不会再有新功能与修复。
+
 基于 [Koishi](https://github.com/koishijs/koishi) 框架的 B 站推送插件核心包。
 
 ---
