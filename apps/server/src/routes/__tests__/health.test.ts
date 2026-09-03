@@ -1,11 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import serverPkg from "../../../package.json" with { type: "json" };
-import { findNearestPackageJson, MODULE_VERSIONS, resolveAppVersion } from "../health.js";
+import { MODULE_VERSIONS, resolveAppVersion } from "../health.js";
 
 const serverPkgVersion = serverPkg.version;
 
@@ -67,40 +66,6 @@ describe("resolveAppVersion", () => {
 		} finally {
 			cwdSpy.mockRestore();
 		}
-	});
-});
-
-describe("findNearestPackageJson", () => {
-	let dir: string;
-
-	beforeEach(() => {
-		dir = mkdtempSync(join(tmpdir(), "bn-nearest-"));
-	});
-	afterEach(() => {
-		rmSync(dir, { recursive: true, force: true });
-	});
-
-	it("bundle 形态:package.json 就在入口旁边", () => {
-		writeFileSync(join(dir, "package.json"), JSON.stringify({ version: "1.0.0" }));
-
-		expect(findNearestPackageJson(pathToFileURL(join(dir, "index.mjs")).href)).toBe(
-			join(dir, "package.json"),
-		);
-	});
-
-	it("源码形态:从深处一层层往上,取最近的那个", () => {
-		mkdirSync(join(dir, "src", "routes"), { recursive: true });
-		writeFileSync(join(dir, "package.json"), JSON.stringify({ version: "1.0.0" }));
-
-		expect(
-			findNearestPackageJson(pathToFileURL(join(dir, "src", "routes", "health.ts")).href),
-		).toBe(join(dir, "package.json"));
-	});
-
-	it("一路到根都没有 → null,不会摸到别人的 package.json", () => {
-		mkdirSync(join(dir, "a", "b"), { recursive: true });
-
-		expect(findNearestPackageJson(pathToFileURL(join(dir, "a", "b", "x.mjs")).href, 2)).toBeNull();
 	});
 });
 

@@ -21,6 +21,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isEntrypoint } from "./runtime/entrypoint.js";
+import { findNearestPackageJson } from "./runtime/nearest-package-json.js";
 import { markBootSucceeded, selectVersionForBoot } from "./update/select-version-for-boot.js";
 import { resolveVersionsRoot } from "./update/versions-root.js";
 
@@ -122,24 +123,20 @@ async function importPayload(entryPath: string): Promise<unknown> {
  *
  * **刻意不复用 `routes/health.ts` 的 `resolveAppVersion`** —— 那个模块牵着 hono 和
  * 八份核心包的 package.json,import 进来就等于把 boot 这个入口的模块图撑大,而这个
- * 入口存在的全部意义就是「在加载服务端之前只牵最少的东西」。
+ * 入口存在的全部意义就是「在加载服务端之前只牵最少的东西」。往上找的那一步与它共用
+ * 一个只牵 node 内建的小模块(`runtime/nearest-package-json.ts`),别再各抄一份。
  */
 function readImageVersion(here: string): string {
-	// 往上找几层:bundle 形态下 package.json 与 boot.mjs 同级(容器),
-	// 外置 lib 形态下它在 `lib/` 的上一层(桌面壳)。找不到就往上一级再试。
-	let dir = here;
-	for (let i = 0; i < 3; i++) {
-		try {
-			const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as {
-				version?: string;
-			};
-			if (pkg.version) return pkg.version;
-		} catch {
-			// 这一层没有,继续往上。
-		}
-		const parent = dirname(dir);
-		if (parent === dir) break;
-		dir = parent;
+	// bundle 形态下 package.json 与 boot.mjs 同级(容器),外置 lib 形态下它在 `lib/`
+	// 的上一层(桌面壳);再多一层是余量。
+	const pkgPath = findNearestPackageJson(here, 2);
+	try {
+		const pkg = pkgPath
+			? (JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string })
+			: undefined;
+		if (pkg?.version) return pkg.version;
+	} catch {
+		// 读不动 / 不是 JSON:按下面的兜底走。
 	}
 	// 读不到就当自己是最老的:任何装着的载荷都会被选中。总比反过来(当自己最新、
 	// 永远不升)强 —— 后者是静默失效,用户完全没线索。
