@@ -61,6 +61,8 @@ const LAYOUT: CardBlock[] = [
 	{ id: "content", type: "content", visible: true },
 	{ id: "header", type: "header", visible: true, marginTop: 12 },
 ];
+/** 卡片页里给「动态」这一类调的配色(含图廊轮到的那张背景)—— 同样两种卡都得吃。 */
+const COLORS: CardColorOptions = { cardColorStart: "#111111", backgroundImage: "bg-7" };
 
 function makeParser(over: Partial<LinkParsingConfig> = {}, limits?: Partial<LinkLimits>) {
 	const config: LinkParsingConfig = { enabled: true, cooldownSeconds: 60, ...over };
@@ -89,7 +91,7 @@ function makeParser(over: Partial<LinkParsingConfig> = {}, limits?: Partial<Link
 		config: readConfig,
 		api: { getVideoInfo, resolveShortLink },
 		renderer: () => ({ generateDynamicCard }),
-		layout: () => LAYOUT,
+		presentation: () => ({ colors: COLORS, layout: LAYOUT }),
 		send,
 		now: () => now,
 		...(limits ? { limits } : {}),
@@ -142,7 +144,9 @@ describe("createLinkParser", () => {
 			forward: { count: 15 },
 			like: { count: 3000 },
 		});
-		// 版式与推送的动态卡同一份:不传的话渲染器会退回出厂版式,主人在编辑器里排的顺序就丢了。
+		// 呈现与推送的动态卡同一份:配色不传的话主人在卡片页给「动态」调的样式只有推送卡认,
+		// 版式不传的话渲染器退回出厂版式、主人在编辑器里排的顺序就丢了。
+		expect(h.generateDynamicCard.mock.calls[0]?.[1]).toBe(COLORS);
 		expect(h.generateDynamicCard.mock.calls[0]?.[2]).toBe(LAYOUT);
 		// 低优先级:群里谁都能触发的卡,不能排在开播 / 动态卡前面 —— 让路这件事由渲染
 		// 队列按车道做,不靠这里数自己发了几张。
@@ -202,7 +206,7 @@ describe("createLinkParser", () => {
 				config: () => h.config,
 				api: { getVideoInfo: h.getVideoInfo, resolveShortLink: h.resolveShortLink },
 				renderer: () => null,
-				layout: () => undefined,
+				presentation: () => ({}),
 				send: h.send,
 			});
 			await parser.handle(groupFrame("https://b23.tv/abc123"), { adapterId: ADAPTER });
@@ -231,7 +235,7 @@ describe("createLinkParser", () => {
 				config: () => h.config,
 				api: { getVideoInfo: h.getVideoInfo, resolveShortLink: h.resolveShortLink },
 				renderer: () => null,
-				layout: () => undefined,
+				presentation: () => ({}),
 				send: h.send,
 			});
 			await parser.handle(groupFrame(LINK), { adapterId: ADAPTER });

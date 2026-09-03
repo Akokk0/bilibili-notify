@@ -12,6 +12,7 @@ import type {
 import { interpolate, planMessageGroups, withLock } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
+import { resolveDynamicColorOptions } from "./card-style";
 import { DynamicFilterReason, filterDynamic } from "./dynamic-filter";
 import type {
 	PickCardBackground,
@@ -522,28 +523,19 @@ export class DynamicEngine {
 	}
 
 	/**
-	 * 解析动态卡 colorOptions。背景图「每次推送轮换」:优先该 UP 自带的
-	 * `backgroundImages`;没有覆盖(样式自带列表为空)→ 落回引擎级
-	 * `defaultBackgroundImages`(全局默认图廊)—— 否则无覆盖的 UP 会一直渲染
-	 * 渲染器内部缓存的静态首图,图廊配再多张也不轮换(回归 bug)。列表 >1 张且
-	 * 注入了选择器 → 选下一张覆盖 backgroundImage(游标键 `uid:dynamic`)并强制
-	 * enable:true,其余字段留空,靠调用点逐字段回退渲染器全局配置;否则原样
-	 * 返回(enable=false → undefined,走渲染器全局兜底)。每次渲染调一次 =
-	 * 每推送轮换一张。
+	 * 解析动态卡 colorOptions(规则见 {@link resolveDynamicColorOptions}):该 UP 自带
+	 * 图廊 ?? 引擎级默认图廊,游标键 `uid:dynamic`。每次渲染调一次 = 每推送轮换一张。
 	 */
 	private pickDynamicColorOptions(
 		uid: string,
 		style: SubItemView["customCardStyle"],
 	): SubItemView["customCardStyle"] | undefined {
-		const images =
-			style?.backgroundImages && style.backgroundImages.length > 0
-				? style.backgroundImages
-				: this.config.defaultBackgroundImages;
-		if (images && images.length > 1 && this.pickCardBackground) {
-			const picked = this.pickCardBackground(`${uid}:dynamic`, images);
-			if (picked !== undefined) return { ...style, enable: true, backgroundImage: picked };
-		}
-		return style?.enable ? style : undefined;
+		return resolveDynamicColorOptions({
+			style,
+			defaultBackgroundImages: this.config.defaultBackgroundImages,
+			pick: this.pickCardBackground,
+			scopeKey: `${uid}:dynamic`,
+		});
 	}
 
 	/** 建「已观测」锚点(缺则以此刻为起点)。每一个订阅都要有,与推送开关无关。 */

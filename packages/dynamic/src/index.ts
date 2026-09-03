@@ -1,3 +1,4 @@
+export { type DynamicCardStyle, resolveDynamicColorOptions } from "./card-style";
 export {
 	DynamicEngine,
 	type DynamicEngineConfig,

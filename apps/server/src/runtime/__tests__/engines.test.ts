@@ -58,24 +58,28 @@ vi.mock("@bilibili-notify/push", () => ({
 	},
 }));
 
-vi.mock("@bilibili-notify/dynamic", () => ({
-	// 纯函数镜像(真实实现见 packages/dynamic/src/push-like.ts):dynamic-images 抑制 @全体。
-	atAllOptsForDynamicKind: (kind: string) =>
-		kind === "dynamic-images" ? { allowAtAll: false } : undefined,
-	DynamicEngine: class {
-		opts: any;
-		start = vi.fn();
-		stop = vi.fn();
-		updateConfig = vi.fn();
-		setAi = vi.fn();
-		setImage = vi.fn();
-		applyOps = vi.fn();
-		constructor(opts: any) {
-			this.opts = opts;
-			H.dynamic.push(this);
-		}
-	},
-}));
+vi.mock("@bilibili-notify/dynamic", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@bilibili-notify/dynamic")>();
+	return {
+		// 纯函数走真实实现(@全体抑制、动态卡配色解析):它们是没有副作用的规则,在这儿
+		// 镜像一份只会跟真实现漂移。只有引擎本体是替身。
+		atAllOptsForDynamicKind: actual.atAllOptsForDynamicKind,
+		resolveDynamicColorOptions: actual.resolveDynamicColorOptions,
+		DynamicEngine: class {
+			opts: any;
+			start = vi.fn();
+			stop = vi.fn();
+			updateConfig = vi.fn();
+			setAi = vi.fn();
+			setImage = vi.fn();
+			applyOps = vi.fn();
+			constructor(opts: any) {
+				this.opts = opts;
+				H.dynamic.push(this);
+			}
+		},
+	};
+});
 
 vi.mock("@bilibili-notify/live", () => ({
 	LiveEngine: class {
@@ -139,6 +143,7 @@ const {
 	liveTypeToFeature,
 	liveTypeAllowsAtAll,
 	buildDynamicSubViewSingle,
+	resolveDynamicCardStyle,
 	buildLiveSubViewSingle,
 } = await import("../engines.js");
 
@@ -1108,5 +1113,74 @@ describe("createEngines — 消息版式", () => {
 		expect(H.dynamic[0].applyOps).toHaveBeenCalledTimes(1);
 		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(dynOps[0]).toMatchObject({ type: "update", uid: "1" });
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 链接卡与推送动态卡问同一处
+//
+// 主人在卡片页给「动态」这一类调样式,推送卡认、链接卡不认 —— 版式那半边已经修过一回
+// (只传版式不传配色),这里把另一半钉住:两种卡的样式解析必须是同一个函数,链接卡
+// 的整份呈现(样式 + 图廊轮换 + 版式)从引擎拿,并且随 config-changed 刷新。
+// ---------------------------------------------------------------------------
+
+describe("resolveDynamicCardStyle — 推送卡与链接卡同一把尺", () => {
+	it("全局没给「动态」单独调过 → enable:false(走渲染器全局兜底,保持热更)", () => {
+		const g = makeDefaultGlobalConfig();
+		expect(resolveDynamicCardStyle(g.defaults, null)).toEqual({ enable: false });
+	});
+
+	it("全局给「动态」调了配色 → 全局作用域(null)也解析出完整样式", () => {
+		const g = makeDefaultGlobalConfig();
+		g.defaults.cardStyleByKind = { dynamic: { cardColorStart: "#abcdef" } } as any;
+		const style = resolveDynamicCardStyle(g.defaults, null);
+		expect(style).toMatchObject({ enable: true, cardColorStart: "#abcdef" });
+		// 与 per-UP 视图走的是同一个函数:没有 UP 覆盖的订阅算出来的必须一模一样。
+		const sub = makeEmptySubscription({ id: "s1", uid: "1" });
+		const subRt = { get: () => undefined } as any;
+		expect(buildDynamicSubViewSingle(sub, subRt, g).customCardStyle).toEqual(style);
+	});
+
+	it("只有 UP 自己的基准覆盖、没有 per-kind → 折算那份基准", () => {
+		const g = makeDefaultGlobalConfig();
+		const sub = makeEmptySubscription({ id: "s1", uid: "1" });
+		sub.overrides.cardStyle = { cardColorEnd: "#000001" } as any;
+		expect(resolveDynamicCardStyle(g.defaults, sub.overrides)).toMatchObject({
+			enable: true,
+			cardColorEnd: "#000001",
+		});
+	});
+});
+
+describe("createEngines — 链接卡的呈现与开关", () => {
+	it("开关与版式随 config-changed 刷新,不用每条消息整份深拷贝 globals", () => {
+		const c = setup();
+		active = c;
+		expect(c.runtime.linkParsing()).toEqual({ enabled: false, cooldownSeconds: 60 });
+		expect(c.runtime.linkCardPresentation().layout).toEqual(
+			c.configStore.getGlobals().defaults.cardLayout.dynamic,
+		);
+
+		const layout = [{ id: "content", type: "content", visible: true }];
+		patchGlobals(c, (g) => {
+			g.linkParsing = { enabled: true, cooldownSeconds: 5 };
+			g.defaults.cardLayout.dynamic = layout as any;
+		});
+		c.bus.emit("config-changed", "globals");
+
+		expect(c.runtime.linkParsing()).toEqual({ enabled: true, cooldownSeconds: 5 });
+		expect(c.runtime.linkCardPresentation().layout).toEqual(layout);
+	});
+
+	it("配色 = 全局「动态」样式;没调过就 undefined(渲染器全局兜底)", () => {
+		const c = setup();
+		active = c;
+		expect(c.runtime.linkCardPresentation().colors).toBeUndefined();
+
+		patchGlobals(c, (g) => {
+			g.defaults.cardStyleByKind = { dynamic: { cardColorStart: "#abcdef" } } as any;
+		});
+		c.bus.emit("config-changed", "globals");
+		expect(c.runtime.linkCardPresentation().colors).toMatchObject({ cardColorStart: "#abcdef" });
 	});
 });

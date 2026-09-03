@@ -32,15 +32,18 @@ import {
 	type SubscriptionOpView as DynamicSubOp,
 	type SubscriptionsView as DynamicSubsView,
 	type PushSegment,
+	resolveDynamicColorOptions,
 } from "@bilibili-notify/dynamic";
-import { ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
+import { type CardColorOptions, ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
+	CardBlock,
 	CardKind,
 	Disposable,
 	FeatureKey,
 	GlobalConfig,
 	GlobalDefaults,
 	HistorySource,
+	LinkParsingConfig,
 	NotificationPayload,
 	PayloadSegment,
 	PushTarget,
@@ -110,6 +113,13 @@ export interface EnginesRuntime extends Disposable {
 	readonly imageRenderer: ImageRenderer | null;
 	/** Currently-broadcasting rooms; powers /api/live/listening. */
 	listLiveRooms(): LiveListenerSnapshot[];
+	/** 链接解析的开关与冷却 —— 随 config-changed 刷新的快照;群里每句话都会问它。 */
+	linkParsing(): LinkParsingConfig;
+	/**
+	 * 链接卡的呈现 = 推送的动态卡在没有 per-UP 覆盖时的呈现:全局「动态」样式(含图廊
+	 * 轮换,**每调一次推进一次游标**)+ 全局版式。每张卡调一次,别攥着。
+	 */
+	linkCardPresentation(): { colors: CardColorOptions | undefined; layout: CardBlock[] | undefined };
 	/** Out-of-band reachability probe for `/api/adapters/:id/test`. */
 	probeAdapter(adapterId: string): Promise<ProbeResult>;
 	/** Per-module readiness snapshot exposed via `/api/health`. */
@@ -675,6 +685,17 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 健康检查定时器(无谓扇出 + 日志噪音)。
 	let prevGlobals = initialGlobals;
 
+	// 链接卡(群里贴链接自动出的那张)的呈现与开关。呈现与推送的动态卡问同一处:全局
+	// 「动态」样式 + 全局默认图廊轮换 + 全局版式。做成随 config-changed 刷新的快照 ——
+	// 群里每句带链接的话都要读开关,而 `globals()` 是整份深拷贝,不该按条付这个钱。
+	const linkCardViewOf = (g: GlobalConfig) => ({
+		config: g.linkParsing,
+		layout: g.defaults.cardLayout.dynamic,
+		style: resolveDynamicCardStyle(g.defaults, null),
+		defaultBackgroundImages: g.defaults.cardStyle.backgroundImages,
+	});
+	let linkCard = linkCardViewOf(initialGlobals);
+
 	handles.push(
 		opts.bus.on("config-changed", (scope) => {
 			if (scope === "adapters") {
@@ -698,6 +719,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				const g = globals();
 				const prev = prevGlobals;
 				prevGlobals = g;
+				linkCard = linkCardViewOf(g);
 				// 只热更本次真正改了的 section,避免编辑一个模块扇出到其它模块。
 				//
 				// `eq` 用 JSON.stringify 比较,**键序敏感** —— 它依赖「globals 永远是 zod
@@ -938,6 +960,17 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		},
 		listLiveRooms: () => listLiveRooms(live),
 		probeAdapter: (adapterId: string) => sink.probeAdapter(adapterId),
+		linkParsing: () => linkCard.config,
+		linkCardPresentation: () => ({
+			// 游标键单独一把:链接卡不属于任何 UP,与推送卡各轮各的。
+			colors: resolveDynamicColorOptions({
+				style: linkCard.style,
+				defaultBackgroundImages: linkCard.defaultBackgroundImages,
+				pick: pickExistingCardBg,
+				scopeKey: "link:dynamic",
+			}),
+			layout: linkCard.layout,
+		}),
 		getModuleStatus: (): ModuleStatus => {
 			const g = globals();
 			// "live ready" = at least one enabled subscription has any live-related
@@ -1287,22 +1320,34 @@ export function buildDynamicSubsView(
  * 全局值合进 eff 伪装成 per-UP,而 dynamicSubManager 快照不刷 → 全局改了 dynamic 端
  * 永远沿用旧值。
  */
+/**
+ * 动态卡的生效样式:有 dynamic per-kind 覆盖(全局或 UP)→ 用完整解析样式;否则维持
+ * 原行为(per-UP 基准折算 ? styled : enable:false → 引擎走渲染器全局兜底,保持热更)。
+ * `overrides` 传 null = 全局作用域。
+ *
+ * 推送的动态卡(per-UP 视图)与群里贴链接出的那张卡都从这里拿 —— 各算一份的话,主人在
+ * 卡片页给「动态」这一类调的样式只有推送卡认,版式那半边就曾经这样漏过一回。
+ */
+export function resolveDynamicCardStyle(
+	defaults: GlobalDefaults,
+	overrides: SubscriptionOverrides | null,
+): NonNullable<DynamicSubsView[string]["customCardStyle"]> {
+	const hasDynamicKind =
+		defaults.cardStyleByKind?.dynamic !== undefined ||
+		overrides?.cardStyleByKind?.dynamic !== undefined;
+	if (hasDynamicKind) {
+		return cardStyleToColorOptions(resolveCardStyleForKind(defaults, overrides, "dynamic"));
+	}
+	return overrides?.cardStyle ? cardStyleToColorOptions(overrides.cardStyle) : { enable: false };
+}
+
 export function buildDynamicSubViewSingle(
 	sub: Subscription,
 	subRuntimeStore: SubRuntimeStore,
 	globals: GlobalConfig,
 ): DynamicSubsView[string] {
 	const eff = resolve(sub, globals.defaults);
-	// dynamic 卡的生效样式:有 dynamic per-kind 覆盖(全局或 UP)→ 用完整解析样式;否则维持
-	// 原行为(per-UP base 折算 ? styled : enable:false → 引擎走 this.config 全局兜底,保持热更)。
-	const hasDynamicKind =
-		globals.defaults.cardStyleByKind?.dynamic !== undefined ||
-		sub.overrides.cardStyleByKind?.dynamic !== undefined;
-	const dynamicCardStyle: DynamicSubsView[string]["customCardStyle"] = hasDynamicKind
-		? cardStyleToColorOptions(resolveCardStyleForKind(globals.defaults, sub.overrides, "dynamic"))
-		: sub.overrides.cardStyle
-			? cardStyleToColorOptions(sub.overrides.cardStyle)
-			: { enable: false };
+	const dynamicCardStyle = resolveDynamicCardStyle(globals.defaults, sub.overrides);
 	return {
 		uid: sub.uid,
 		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? sub.uid,

@@ -78,6 +78,12 @@ export interface InboundLinkMessage {
 	text: string;
 }
 
+/** 一张链接卡的呈现;缺省项交给渲染器的全局配置兜底。 */
+export interface LinkCardPresentation {
+	colors?: CardColorOptions;
+	layout?: CardBlock[];
+}
+
 export interface LinkParserOptions {
 	logger: Logger;
 	/** 面板上那份配置。**现读**,不快照 —— 主人关掉立刻生效。 */
@@ -96,11 +102,11 @@ export interface LinkParserOptions {
 		): Promise<Buffer>;
 	} | null;
 	/**
-	 * 全局默认的动态卡版式(`defaults.cardLayout.dynamic`),**现读**。推送的动态卡吃的是
-	 * 它(per-UP 覆盖 ?? 全局),链接解析没有 UP 可言,就吃全局这份 —— 不传的话渲染器退回
-	 * 出厂版式,主人在编辑器里排的顺序在这张卡上就丢了。
+	 * 这张卡怎么画:配色(含图廊轮到的那张背景)+ 版式。**每张卡取一次**,由引擎按推送
+	 * 动态卡在没有 per-UP 覆盖时的同一条规则算出来 —— 链接解析没有 UP 可言,吃的就是
+	 * 全局那份。各算一份的话,主人在卡片页给「动态」调的样式只有推送卡认。
 	 */
-	layout: () => CardBlock[] | undefined;
+	presentation: () => LinkCardPresentation;
 	/** 往来源群发 —— 由接线层用收到这一帧的那个 adapter 实现。 */
 	send: (dest: LinkReplyDestination, payload: NotificationPayload) => Promise<DeliveryResult>;
 	now?: () => number;
@@ -165,12 +171,10 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 		const info = await opts.api.getVideoInfo(ref);
 		// 低优先级:谁都能触发的卡,不能排在开播 / 动态卡前面。让路由渲染队列按车道做
 		// (渲染器那级与浏览器闸那级都认),不靠这里数自己发了几张。
-		const buffer = await renderer.generateDynamicCard(
-			videoToDynamic(info),
-			undefined,
-			opts.layout(),
-			{ priority: "low" },
-		);
+		const { colors, layout } = opts.presentation();
+		const buffer = await renderer.generateDynamicCard(videoToDynamic(info), colors, layout, {
+			priority: "low",
+		});
 		const result = await opts.send(dest, { kind: "image", image: { buffer, mime: "image/jpeg" } });
 		if (!result.ok) {
 			opts.logger.warn(`[link] 视频卡片发送失败 group=${dest.groupId} ${info.bvid}: ${result.err}`);

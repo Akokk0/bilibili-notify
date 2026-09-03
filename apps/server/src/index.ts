@@ -489,12 +489,15 @@ export async function startStandaloneServer(
 		// 群里贴视频链接 → 回一张卡。回到来源群不走推送目标表:用收到这条消息的那个
 		// adapter 直接发,群不必配成推送目标(主人定的:机器人在的所有群都算)。
 		// OneBot 的 groupId 是群号,官机的是群 openid —— 临时目标按平台各造各的。
+		// `engines` 是个会被热重载赋值的 let,闭包里 TS 收不窄;这一刻它一定在(上面刚建的)。
+		const runtimeEngines = engines;
 		const linkParser = createLinkParser({
 			logger: log,
-			config: () => runtime.configStore.getGlobals().linkParsing,
-			api: engines.api,
-			renderer: () => engines?.imageRenderer ?? null,
-			layout: () => runtime.configStore.getGlobals().defaults.cardLayout.dynamic,
+			// 开关与呈现都从引擎拿:随 config-changed 刷新的快照,呈现规则与推送的动态卡同源。
+			config: () => runtimeEngines.linkParsing(),
+			api: runtimeEngines.api,
+			renderer: () => runtimeEngines.imageRenderer,
+			presentation: () => runtimeEngines.linkCardPresentation(),
 			send: async ({ platform, adapterId, groupId }, payload) => {
 				const adapter = runtime.configStore.getAdapters().find((a) => a.id === adapterId);
 				const platformAdapter = adapters.find((a) => a.platforms.includes(platform));
