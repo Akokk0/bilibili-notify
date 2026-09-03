@@ -29,15 +29,6 @@ import type {
 } from "./types";
 import { buildTicketParams, encWbi, type WbiKeys } from "./wbi";
 
-/** `x/web-interface/view` 的 data 里我们用得到的那几个字段(其余照单全收但不透传)。 */
-type RawVideoInfo = Pick<
-	VideoInfo,
-	"bvid" | "aid" | "title" | "pic" | "desc" | "duration" | "pubdate" | "tname"
-> & {
-	owner: VideoInfo["owner"];
-	stat: VideoInfo["stat"];
-};
-
 interface CookiesRefreshedPayload {
 	cookiesJson: string;
 	refreshToken: string;
@@ -900,7 +891,9 @@ export class BilibiliAPI {
 	async getVideoInfo(ref: VideoRef): Promise<VideoInfo> {
 		const query =
 			"bvid" in ref ? `bvid=${encodeURIComponent(ref.bvid)}` : `aid=${encodeURIComponent(ref.aid)}`;
-		const result = await this.getJson<{ code: number; message?: string; data?: RawVideoInfo }>(
+		// wire 上的 data 字段远不止这些;`VideoInfo` 就是「我们用得到的那几个」的那份声明,
+		// 下面逐字段抄一遍 —— 照单全收但不透传。
+		const result = await this.getJson<{ code: number; message?: string; data?: VideoInfo }>(
 			`${EP.GET_VIDEO_INFO}?${query}`,
 			"getVideoInfo",
 		);
