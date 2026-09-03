@@ -147,8 +147,8 @@ export class ListenerManager {
 				return undefined;
 			}
 			const resolved = String(n);
-			// ③ 通知 adapter 把解析出的房号写盘,下次启动/reload 直接读盘复用。
-			this.ctx.onRoomIdResolved?.(uid, resolved);
+			// 通知宿主把解析出的房号写盘,下次启动/reload 直接读盘复用。
+			this.ctx.onRoomIdResolved(uid, resolved);
 			return resolved;
 		} catch (e) {
 			this.ctx.logger.warn(`${logPrefix} UID=${uid} 解析直播间号失败：${(e as Error).message}`);

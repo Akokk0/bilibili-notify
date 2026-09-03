@@ -10,6 +10,7 @@
  */
 
 import type { ServiceContext } from "@bilibili-notify/internal";
+import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { SubItemView } from "../push-like";
 import {
@@ -42,6 +43,8 @@ function makeSub(): SubItemView {
 		minGuardLevel: 3,
 		pushTime: 0,
 		restartPush: false,
+		// 宿主恒填版式。
+		messageLayout: defaultMessageKindLayout("live"),
 	};
 }
 

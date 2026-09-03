@@ -101,6 +101,10 @@ const buildEngineWith = (initialImage: ImageRenderer | null, logger: Logger): Li
 			aiEnabled: true,
 		},
 		emitEngineError: vi.fn(),
+		emitLiveState: vi.fn(),
+		emitViewers: vi.fn(),
+		pickCardBackground: () => undefined,
+		onRoomIdResolved: vi.fn(),
 	});
 };
 

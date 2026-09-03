@@ -152,7 +152,7 @@ export abstract class RoomSessionBase {
 	 * 否则这些 UP 会一直渲染渲染器内部缓存的静态首图,图廊配再多张也不轮换(回归 bug)。
 	 * 列表 >1 张时经注入的 `pickBackground`(按 `uid:kind` 独立游标)选下一张并强制
 	 * `enable:true`,其余字段留空,靠调用点 `?? this.config.X` 逐字段回退渲染器全局配置。
-	 * 未注入选择器(koishi)/ 列表 ≤1 张 → 原样返回(用首图或渲染器静态兜底)。
+	 * 选择器返回 undefined / 列表 ≤1 张 → 原样返回(用首图或渲染器静态兜底)。
 	 * 每次调用即一次推送,故在此推进游标恰好 = 每推送一次轮换一张。
 	 */
 	protected resolvedCardStyle(kind: CardKind): CustomCardStyleLike {
@@ -392,15 +392,13 @@ export abstract class RoomSessionBase {
 			const roomLink = buildRoomLink(this.liveRoomInfo);
 			// 消息版式(per-UP ?? 引擎 config 级,两级都缺 = 旧路径)覆盖开播 / 直播中 / 下播,
 			// 与 onLiveStart 同款接线。
-			const messageLayout = this.sub.messageLayout ?? this.ctx.config.messageLayout;
+			const messageLayout = this.sub.messageLayout;
 			const liveMsg = this.ctx.templateRenderer.renderLiveOngoing({
 				sub: this.sub,
 				globalCustom: this.ctx.config.customLiveMsg,
 				master: this.masterInfo,
 				diffTime,
 				watched,
-				roomLink,
-				omitLink: messageLayout !== undefined,
 			});
 
 			// restartPush 已由 adapter 折算好(per-UP ?? 全局)。
@@ -541,15 +539,13 @@ export abstract class RoomSessionBase {
 		this.liveData.watchedNum = watched;
 		const diffTime = await this.ctx.getTimeDifference(this.liveTime);
 		const roomLink = buildRoomLink(this.liveRoomInfo);
-		const messageLayout = this.sub.messageLayout ?? this.ctx.config.messageLayout;
+		const messageLayout = this.sub.messageLayout;
 		const liveMsg = this.ctx.templateRenderer.renderLiveOngoing({
 			sub: this.sub,
 			globalCustom: this.ctx.config.customLiveMsg,
 			master: this.masterInfo,
 			diffTime,
 			watched,
-			roomLink,
-			omitLink: messageLayout !== undefined,
 		});
 
 		// 抓成局部变量再入闸:非空收窄进不了闭包,卡片也本就该反映发起时刻的状态。
@@ -705,7 +701,7 @@ export abstract class RoomSessionBase {
 		const diffTime = precomputedDiffTime ?? (await this.ctx.getTimeDifference(this.liveTime));
 		this.liveData.fansChanged = this.masterInfo.liveFollowerChange;
 		const roomLink = buildRoomLink(this.liveRoomInfo);
-		const messageLayout = this.sub.messageLayout ?? this.ctx.config.messageLayout;
+		const messageLayout = this.sub.messageLayout;
 
 		const liveEndMsg = this.ctx.templateRenderer.renderLiveEnd({
 			sub: this.sub,
@@ -713,8 +709,6 @@ export abstract class RoomSessionBase {
 			master: this.masterInfo,
 			diffTime,
 			followerChange: this.masterInfo.liveFollowerChange,
-			roomLink,
-			omitLink: messageLayout !== undefined,
 		});
 
 		// 抓成局部变量再入闸:非空收窄进不了闭包,卡片也本就该反映发起时刻的状态。

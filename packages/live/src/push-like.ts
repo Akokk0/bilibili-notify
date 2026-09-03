@@ -1,13 +1,13 @@
 /**
- * Platform-neutral subset of the koishi `BilibiliPush` surface used by live-engine.
+ * Platform-neutral push surface used by live-engine.
  *
- * live-engine intentionally does NOT depend on `@bilibili-notify/push` (which
- * still pulls in koishi). Adapters (the Koishi shell or the standalone runtime)
- * provide a `PushLike` instance whose methods cover only what this engine needs.
+ * live-engine intentionally does NOT depend on `@bilibili-notify/push`; the host
+ * (standalone runtime) provides a `PushLike` instance whose methods cover only
+ * what this engine needs.
  *
  * The accompanying `SubItemView` and feature key types mirror the platform-neutral
  * subset of `@bilibili-notify/push`'s `SubItem` shape consumed by listener /
- * collector / template helpers — same approach as `ai-engine/src/tools.ts`.
+ * collector / template helpers.
  */
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
@@ -105,7 +105,7 @@ export interface CustomCardStyleLike {
 
 /**
  * 背景图轮换选择器:给定 scopeKey 与该 kind 的完整图列表,返回本次该用的背景(并在实现内
- * 推进游标)。adapter 注入(独立端有 fs 持久化游标;koishi 不注入即不轮换)。
+ * 推进游标)。宿主注入(独立端有 fs 持久化游标);返回 undefined = 不轮换。
  */
 export type PickCardBackground = (scopeKey: string, images: string[]) => string | undefined;
 
@@ -147,8 +147,7 @@ export type SubItemTargetLike = Partial<Record<LivePushFeature, unknown[]>>;
 /**
  * Platform-neutral view of a single subscription, structurally compatible with
  * `@bilibili-notify/push`'s `SubItem`. The live engine only reads this shape; the
- * adapter is responsible for providing instances (the Koishi shell hands its
- * `SubItem`s through unchanged, since their fields match by name).
+ * host builds the instances (folding per-UP overrides onto the globals).
  */
 export interface SubItemView {
 	uid: string;
@@ -167,7 +166,7 @@ export interface SubItemView {
 	 * 按卡片类型的样式覆盖(per-kind)。adapter 已用 `resolveCardStyleForKind` 把
 	 * 「全局基准 → 全局类型 → UP 基准 → UP 类型」折算成每 kind 的**完整** colorOptions
 	 * (enable:true);各 generate* 调用点优先取本 kind 的条目,缺失则回退基准
-	 * {@link customCardStyle}。koishi 端不设此字段 → 全部回退基准,零影响。
+	 * {@link customCardStyle}。缺省时全部回退基准。
 	 */
 	customCardStyleByKind?: Partial<Record<CardKind, CustomCardStyleLike>>;
 	customLiveMsg: CustomLiveMsgLike;
@@ -207,20 +206,17 @@ export interface SubItemView {
 	 */
 	cardLayout?: CardLayout;
 	/**
-	 * 该 UP 解析后的**消息版式**直播切片(块顺序 / 显隐 / 分条符 + 分隔符)。adapter 折叠
-	 * `eff.messageLayout.live` 后填入;undefined = 旧路径(链接内嵌各自模板 {link}、卡片+
-	 * 文本合并一条,koishi 端现状)。覆盖开播 / 直播中 / 下播三类推送;SC / 上舰不受影响
+	 * 该 UP 解析后的**消息版式**直播切片(块顺序 / 显隐 / 分条符 + 分隔符)。宿主折叠
+	 * `eff.messageLayout.live` 后填入。覆盖开播 / 直播中 / 下播三类推送;SC / 上舰不受影响
 	 * (走各自独立渲染,不经 sendLiveNotifyCard)。
 	 */
-	messageLayout?: MessageKindLayout;
+	messageLayout: MessageKindLayout;
 }
 
 export type SubscriptionsView = Record<string, SubItemView>;
 
 /**
- * Scoped change object — mirrors `koishi-plugin-bilibili-notify`'s
- * `SubChange` so the koishi adapter can forward incremental subscription
- * updates without translation.
+ * Scoped change object — the host forwards incremental subscription updates as these.
  */
 export type LiveScopedChange = { scope: "live" } & Partial<
 	Pick<
@@ -268,18 +264,16 @@ export type LiveSubscriptionOp =
  * Push-out interface required by live-engine. Mirrors the methods on
  * `@bilibili-notify/push`'s `BilibiliPush` we actually call.
  *
- * `content` is intentionally `unknown` — the koishi adapter passes koishi's
- * `h(...)` element fragments while the standalone adapter will pass its own
- * `NotificationPayload`. The engine only forwards the value through.
+ * `content` is intentionally `unknown` — the host passes its own
+ * `NotificationPayload`; the engine only forwards the value through.
  */
 export interface PushLike {
 	broadcastToTargets(uid: string, content: unknown, type: LivePushType): Promise<void>;
 	/**
 	 * 消息版式分条:一次推送拆成多条消息的序列广播(语义同 dynamic 端 PushLike 的
 	 * broadcastDynamicSequence:同 target 顺序发、某条失败中止该 target 后续条、
-	 * @全体只跟首条)。可选 —— koishi adapter 不实现(koishi 端不填 messageLayout,
-	 * 引擎不会对它产出多条);缺失时引擎把多条合并回单条 broadcastToTargets 兜底。
+	 * @全体只跟首条)。
 	 */
-	broadcastSequenceToTargets?(uid: string, contents: unknown[], type: LivePushType): Promise<void>;
+	broadcastSequenceToTargets(uid: string, contents: unknown[], type: LivePushType): Promise<void>;
 	sendPrivateMsg(content: string): Promise<void>;
 }

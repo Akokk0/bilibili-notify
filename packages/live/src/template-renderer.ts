@@ -3,7 +3,7 @@ import type { MasterInfo } from "./types";
 
 /**
  * Plain string-substitution based template renderer for live-related notification
- * text. Mirrors the per-occurrence templates supported in the koishi schema:
+ * text. Mirrors the per-occurrence templates of the live push:
  *
  * - `customLiveStart` / `customLive` / `customLiveEnd`
  * - `customGuardBuy.guardBuyMsg`
@@ -11,7 +11,7 @@ import type { MasterInfo } from "./types";
  * - `customSpecialUsersEnterTheRoom.msgTemplate`
  *
  * 占位符统一 `{name}` / `{time}` / `{watched}` 语法(与 `@bilibili-notify/internal`
- * 的 `interpolate` 同源)。`applyTemplate` 同时接受 koishi 旧存档里的 legacy
+ * 的 `interpolate` 同源)。`applyTemplate` 同时接受旧存档里的 legacy
  * `-name` / `-time` 写法 —— 老用户已保存的 `-key` 模板继续生效,新默认与文档
  * 一律走 `{key}`,二者不冲突(单遍正则,longest-first)。
  */
@@ -100,12 +100,6 @@ export class LiveTemplateRenderer {
 		master: MasterInfo;
 		diffTime: string;
 		followerNum: string;
-		roomLink: string;
-		/**
-		 * 消息版式路径:链接独立成部件,模板里的 `{link}`(与 legacy `-link`)连同前导
-		 * 空白 / 字面 `\n` 一起剥离,避免行尾孤行或双链接。旧路径不传,现状不变。
-		 */
-		omitLink?: boolean;
 	}): string {
 		let tmpl = resolveCustomLive(
 			params.sub.customLiveMsg,
@@ -113,14 +107,13 @@ export class LiveTemplateRenderer {
 			"customLiveStart",
 			DEFAULT_LIVE_TEMPLATES.liveStart,
 		);
-		if (params.omitLink) {
-			tmpl = tmpl.replace(/(?:\s|\\n)*(?:\{link\}|-link)/g, "");
-		}
+		// 链接独立成版式部件:模板里的 `{link}`(与 legacy `-link`)连同前导空白 / 字面 `\n` 剥离。
+		tmpl = tmpl.replace(/(?:\s|\\n)*(?:\{link\}|-link)/g, "");
 		return applyTemplate(tmpl, {
 			name: params.master.username,
 			time: params.diffTime,
 			follower: params.followerNum,
-			link: params.omitLink ? "" : params.roomLink,
+			link: "",
 		});
 	}
 
@@ -131,9 +124,6 @@ export class LiveTemplateRenderer {
 		master: MasterInfo;
 		diffTime: string;
 		watched: string;
-		roomLink: string;
-		/** 消息版式路径:同 {@link LiveTemplateRenderer.renderLiveStart} 的 omitLink。 */
-		omitLink?: boolean;
 	}): string {
 		let tmpl = resolveCustomLive(
 			params.sub.customLiveMsg,
@@ -141,14 +131,13 @@ export class LiveTemplateRenderer {
 			"customLive",
 			DEFAULT_LIVE_TEMPLATES.liveOngoing,
 		);
-		if (params.omitLink) {
-			tmpl = tmpl.replace(/(?:\s|\\n)*(?:\{link\}|-link)/g, "");
-		}
+		// 链接独立成版式部件:模板里的 `{link}`(与 legacy `-link`)连同前导空白 / 字面 `\n` 剥离。
+		tmpl = tmpl.replace(/(?:\s|\\n)*(?:\{link\}|-link)/g, "");
 		return applyTemplate(tmpl, {
 			name: params.master.username,
 			time: params.diffTime,
 			watched: params.watched,
-			link: params.omitLink ? "" : params.roomLink,
+			link: "",
 		});
 	}
 
@@ -159,9 +148,6 @@ export class LiveTemplateRenderer {
 		master: MasterInfo;
 		diffTime: string;
 		followerChange: number;
-		roomLink: string;
-		/** 消息版式路径:同 {@link LiveTemplateRenderer.renderLiveStart} 的 omitLink。 */
-		omitLink?: boolean;
 	}): string {
 		let tmpl = resolveCustomLive(
 			params.sub.customLiveMsg,
@@ -169,14 +155,13 @@ export class LiveTemplateRenderer {
 			"customLiveEnd",
 			DEFAULT_LIVE_TEMPLATES.liveEnd,
 		);
-		if (params.omitLink) {
-			tmpl = tmpl.replace(/(?:\s|\\n)*(?:\{link\}|-link)/g, "");
-		}
+		// 链接独立成版式部件:模板里的 `{link}`(与 legacy `-link`)连同前导空白 / 字面 `\n` 剥离。
+		tmpl = tmpl.replace(/(?:\s|\\n)*(?:\{link\}|-link)/g, "");
 		return applyTemplate(tmpl, {
 			name: params.master.username,
 			time: params.diffTime,
 			follower_change: formatFollowerChange(params.followerChange),
-			link: params.omitLink ? "" : params.roomLink,
+			link: "",
 		});
 	}
 

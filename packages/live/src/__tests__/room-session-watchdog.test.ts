@@ -9,6 +9,7 @@
 
 import type { LiveEvent } from "@bilibili-notify/blive";
 import type { ServiceContext } from "@bilibili-notify/internal";
+import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { SubItemView } from "../push-like";
 import { LiveRoomAccessDeniedError, type RoomContext } from "../room-helpers";
@@ -48,8 +49,10 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 		minGuardLevel: 3,
 		pushTime: 1,
 		restartPush: false,
+		// 宿主恒填版式;用例按需覆盖。
+		messageLayout: defaultMessageKindLayout("live"),
 		...over,
-	};
+	} as SubItemView;
 }
 
 function makeMockCtx(): {

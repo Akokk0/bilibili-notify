@@ -278,10 +278,9 @@ export class RoomContext extends RoomContextBase {
 	 * an image via {@link ImageRenderer.generateLiveCard} when available; falls
 	 * back to plain text on failure.
 	 *
-	 * 消息版式(`messageLayout`)覆盖开播 / 直播中 / 下播三类(调用方按各自 liveType
-	 * 传参,未传即走旧路径不受影响):卡片 / 文本(各自模板,调用方已按 omitLink 剥掉
-	 * {link})/ 链接(roomLink)按块序装配,分条符切多条经 `broadcastSequenceToTargets`。
-	 * SC / 上舰不经此方法,始终维持现状。
+	 * 消息版式(`messageLayout`)覆盖开播 / 直播中 / 下播三类(调用方按各自 liveType 传参):
+	 * 卡片 / 文本(各自模板,调用方已剥掉 {link})/ 链接(roomLink)按块序装配,分条符切多条经
+	 * `broadcastSequenceToTargets`。SC / 上舰不经此方法。
 	 */
 	async sendLiveNotifyCard(params: {
 		liveType: LiveType;
@@ -292,14 +291,14 @@ export class RoomContext extends RoomContextBase {
 		cardLayout?: SubItemView["cardLayout"];
 		uid: string;
 		notifyMsg: string;
-		messageLayout?: MessageKindLayout;
+		messageLayout: MessageKindLayout;
 		roomLink?: string;
 	}): Promise<void> {
 		const { liveType, liveData, liveRoomInfo, master, cardStyle, cardLayout, uid, notifyMsg } =
 			params;
 		const layout = params.messageLayout;
 		// 版式里 card 块隐藏 → 连图片渲染都跳过(白渲染更亏)。
-		const wantCard = !layout || layout.blocks.some((b) => b.visible && b.type === "card");
+		const wantCard = layout.blocks.some((b) => b.visible && b.type === "card");
 
 		let buffer: Buffer | undefined;
 		if (this.imageRenderer?.generateLiveCard && wantCard) {
@@ -326,37 +325,19 @@ export class RoomContext extends RoomContextBase {
 					? LivePushType.LiveEnd
 					: LivePushType.Live;
 
-		if (layout) {
-			await this.broadcastWithMessageLayout({
-				layout,
-				buffer,
-				notifyMsg,
-				uid,
-				pushType,
-				roomLink: params.roomLink ?? "",
-			});
-			return;
-		}
-
-		if (!buffer) {
-			this.logger.debug(`[push] [${master.username}] 无图片，降级为文字推送`);
-			const fallbackMsg = this.contentBuilder.message([
-				this.contentBuilder.text(notifyMsg || `直播通知 - ${master.username}`),
-			]);
-			await this.push.broadcastToTargets(uid, fallbackMsg, pushType);
-			return;
-		}
-		const msg = this.contentBuilder.message([
-			this.contentBuilder.image(buffer, "image/jpeg"),
-			this.contentBuilder.text(notifyMsg || ""),
-		]);
-		await this.push.broadcastToTargets(uid, msg, pushType);
+		await this.broadcastWithMessageLayout({
+			layout,
+			buffer,
+			notifyMsg,
+			uid,
+			pushType,
+			roomLink: params.roomLink ?? "",
+		});
 	}
 
 	/**
 	 * 版式路径的装配与投递:按块序分组(分条符切组),同条内相邻文本类部件以
-	 * separator 连接;多条走 `broadcastSequenceToTargets`,adapter 未实现时合并
-	 * 回一条兜底(逐条 broadcast 会让 @全体 每条重复)。
+	 * separator 连接;多条走 `broadcastSequenceToTargets`。
 	 */
 	private async broadcastWithMessageLayout(args: {
 		layout: MessageKindLayout;
@@ -403,12 +384,7 @@ export class RoomContext extends RoomContextBase {
 			await this.push.broadcastToTargets(uid, buildContent(groups[0] ?? []), pushType);
 			return;
 		}
-		if (this.push.broadcastSequenceToTargets) {
-			await this.push.broadcastSequenceToTargets(uid, groups.map(buildContent), pushType);
-			return;
-		}
-		this.logger.warn("[push] adapter 未实现 broadcastSequenceToTargets,分条已合并为单条");
-		await this.push.broadcastToTargets(uid, buildContent(groups.flat()), pushType);
+		await this.push.broadcastSequenceToTargets(uid, groups.map(buildContent), pushType);
 	}
 
 	/** Format `dateString` (yyyy-MM-dd HH:mm:ss UTC+8) as elapsed-time text. */

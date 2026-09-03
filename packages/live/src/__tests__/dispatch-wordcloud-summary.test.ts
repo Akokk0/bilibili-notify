@@ -11,6 +11,7 @@
  */
 
 import type { LiveEvent } from "@bilibili-notify/blive";
+import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { LivePushType, type SubItemView } from "../push-like";
 import type { RoomContext } from "../room-helpers";
@@ -60,6 +61,8 @@ function makeSub(): SubItemView {
 		minGuardLevel: 3,
 		pushTime: 0,
 		restartPush: false,
+		// 宿主恒填版式。
+		messageLayout: defaultMessageKindLayout("live"),
 	};
 }
 

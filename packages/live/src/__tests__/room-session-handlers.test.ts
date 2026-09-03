@@ -17,6 +17,7 @@
 
 import { GuardLevel } from "@bilibili-notify/blive";
 import type { ServiceContext } from "@bilibili-notify/internal";
+import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { SubItemView } from "../push-like";
 import { LivePushType } from "../push-like";
@@ -50,6 +51,8 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 		minGuardLevel: 3,
 		pushTime: 0,
 		restartPush: false,
+		// 宿主恒填版式;用例按需覆盖。
+		messageLayout: defaultMessageKindLayout("live"),
 		...over,
 	} as SubItemView;
 }
@@ -518,7 +521,7 @@ describe("RoomSession.onLiveStart", () => {
 		expect(s.armPeriodicTimer).not.toHaveBeenCalled();
 	});
 
-	it("sub 带 messageLayout → renderLiveStart 走 omitLink,sendLiveNotifyCard 收到版式与房间链接", async () => {
+	it("sub 带 messageLayout → sendLiveNotifyCard 收到版式与房间链接", async () => {
 		const { ctx, m } = makeCtx();
 		const layout = {
 			blocks: [{ id: "card", type: "card", visible: true }],
@@ -541,67 +544,10 @@ describe("RoomSession.onLiveStart", () => {
 		});
 		s.armPeriodicTimer = vi.fn();
 		await s.onLiveStart();
-		expect(m.renderLiveStart.mock.calls[0]?.[0]?.omitLink).toBe(true);
 		const params = m.sendLiveNotifyCard.mock.calls[0]?.[0];
 		expect(params?.messageLayout).toEqual(layout);
 		expect(params?.roomLink).toBe("https://live.bilibili.com/12345");
 	});
-
-	it("sub 无版式但 ctx.config 有(koishi 默认版式+链接开关)→ 同走版式路径", async () => {
-		const { ctx, m } = makeCtx();
-		const cfgLayout = {
-			blocks: [
-				{ id: "card", type: "card", visible: true },
-				{ id: "text", type: "text", visible: true },
-				{ id: "link", type: "link", visible: false },
-			],
-			separator: "\n",
-		};
-		(ctx as unknown as { config: Record<string, unknown> }).config.messageLayout = cfgLayout;
-		const s = new RoomSession(ctx, makeSub()) as AnySession;
-		s.useLiveRoomInfo = vi.fn(async () => {
-			s.liveRoomInfo = {
-				live_time: "2026-01-01 00:00:00",
-				short_id: 0,
-				room_id: 12345,
-				title: "标题",
-				user_cover: "",
-			};
-			return true;
-		});
-		s.useMasterInfo = vi.fn(async () => {
-			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 100 };
-			return true;
-		});
-		s.armPeriodicTimer = vi.fn();
-		await s.onLiveStart();
-		expect(m.renderLiveStart.mock.calls[0]?.[0]?.omitLink).toBe(true);
-		expect(m.sendLiveNotifyCard.mock.calls[0]?.[0]?.messageLayout).toEqual(cfgLayout);
-	});
-
-	it("sub 无 messageLayout → renderLiveStart 不 omitLink(旧文案不变)", async () => {
-		const { ctx, m } = makeCtx();
-		const s = new RoomSession(ctx, makeSub()) as AnySession;
-		s.useLiveRoomInfo = vi.fn(async () => {
-			s.liveRoomInfo = {
-				live_time: "2026-01-01 00:00:00",
-				short_id: 0,
-				room_id: 12345,
-				title: "标题",
-				user_cover: "",
-			};
-			return true;
-		});
-		s.useMasterInfo = vi.fn(async () => {
-			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 100 };
-			return true;
-		});
-		s.armPeriodicTimer = vi.fn();
-		await s.onLiveStart();
-		expect(m.renderLiveStart.mock.calls[0]?.[0]?.omitLink).toBeFalsy();
-		expect(m.sendLiveNotifyCard.mock.calls[0]?.[0]?.messageLayout).toBeUndefined();
-	});
-
 	it("拉直播间信息失败(useLiveRoomInfo=false)→ stopMonitoring,不推卡", async () => {
 		const { ctx, m } = makeCtx();
 		const s = new RoomSession(ctx, makeSub()) as AnySession;
@@ -642,8 +588,7 @@ describe("RoomSession.onLiveEnd", () => {
 // 回归:消息版式此前误实现成「仅作用于开播」,直播中 / 下播的默认模板又同批移除
 // 了 {link} 变量,两者叠加导致这两类推送的房间链接彻底丢失且无替代机制。现在
 // messageLayout 覆盖开播 / 直播中 / 下播三类,以下钉住 tickPushAtTime / handleLiveEnd
-// 与 onLiveStart 同款接线(sub.messageLayout ?? ctx.config.messageLayout,omitLink,
-// roomLink 透传)。
+// 与 onLiveStart 同款接线(sub.messageLayout,roomLink 透传)。
 // ---------------------------------------------------------------------------
 
 describe("RoomSession.tickPushAtTime — 消息版式", () => {
@@ -665,36 +610,15 @@ describe("RoomSession.tickPushAtTime — 消息版式", () => {
 		});
 	}
 
-	it("sub 带 messageLayout → renderLiveOngoing 走 omitLink,sendLiveNotifyCard 收到版式与房间链接", async () => {
+	it("sub 带 messageLayout → renderLiveOngoing 后 sendLiveNotifyCard 收到版式与房间链接", async () => {
 		const { ctx, m } = makeCtx();
 		const layout = { blocks: [{ id: "card", type: "card", visible: true }], separator: "\n" };
 		const s = new RoomSession(ctx, makeSub({ messageLayout: layout })) as AnySession;
 		primeLiveRoom(s);
 		await s.tickPushAtTime();
-		expect(m.renderLiveOngoing.mock.calls[0]?.[0]?.omitLink).toBe(true);
 		const params = m.sendLiveNotifyCard.mock.calls[0]?.[0];
 		expect(params?.messageLayout).toEqual(layout);
 		expect(params?.roomLink).toBe("https://live.bilibili.com/12345");
-	});
-
-	it("sub 无版式但 ctx.config 有(koishi 默认版式)→ 同走版式路径", async () => {
-		const { ctx, m } = makeCtx();
-		const cfgLayout = { blocks: [{ id: "text", type: "text", visible: true }], separator: "\n" };
-		(ctx as unknown as { config: Record<string, unknown> }).config.messageLayout = cfgLayout;
-		const s = new RoomSession(ctx, makeSub()) as AnySession;
-		primeLiveRoom(s);
-		await s.tickPushAtTime();
-		expect(m.renderLiveOngoing.mock.calls[0]?.[0]?.omitLink).toBe(true);
-		expect(m.sendLiveNotifyCard.mock.calls[0]?.[0]?.messageLayout).toEqual(cfgLayout);
-	});
-
-	it("sub 无 messageLayout → renderLiveOngoing 不 omitLink(旧文案不变,链接仍内嵌)", async () => {
-		const { ctx, m } = makeCtx();
-		const s = new RoomSession(ctx, makeSub()) as AnySession;
-		primeLiveRoom(s);
-		await s.tickPushAtTime();
-		expect(m.renderLiveOngoing.mock.calls[0]?.[0]?.omitLink).toBeFalsy();
-		expect(m.sendLiveNotifyCard.mock.calls[0]?.[0]?.messageLayout).toBeUndefined();
 	});
 });
 
@@ -725,27 +649,16 @@ describe("RoomSession.handleLiveEnd — 消息版式", () => {
 		s.dispatchWordCloudAndSummary = vi.fn(async () => {});
 	}
 
-	it("sub 带 messageLayout → renderLiveEnd 走 omitLink,sendLiveNotifyCard 收到版式与房间链接", async () => {
+	it("sub 带 messageLayout → renderLiveEnd 后 sendLiveNotifyCard 收到版式与房间链接", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockReturnValue(true);
 		const layout = { blocks: [{ id: "text", type: "text", visible: true }], separator: "\n" };
 		const s = new RoomSession(ctx, makeSub({ messageLayout: layout })) as AnySession;
 		primeStopBroadcast(s);
 		await s.handleLiveEnd("ws");
-		expect(m.renderLiveEnd.mock.calls[0]?.[0]?.omitLink).toBe(true);
 		const params = m.sendLiveNotifyCard.mock.calls[0]?.[0];
 		expect(params?.messageLayout).toEqual(layout);
 		expect(params?.roomLink).toBe("https://live.bilibili.com/12345");
-	});
-
-	it("sub 无 messageLayout → renderLiveEnd 不 omitLink(旧文案不变,链接仍内嵌)", async () => {
-		const { ctx, m } = makeCtx();
-		m.isSubscribed.mockReturnValue(true);
-		const s = new RoomSession(ctx, makeSub()) as AnySession;
-		primeStopBroadcast(s);
-		await s.handleLiveEnd("ws");
-		expect(m.renderLiveEnd.mock.calls[0]?.[0]?.omitLink).toBeFalsy();
-		expect(m.sendLiveNotifyCard.mock.calls[0]?.[0]?.messageLayout).toBeUndefined();
 	});
 });
 
@@ -870,7 +783,11 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			serviceCtx: fakeServiceCtx,
 			// 其余依赖在 sendLiveNotifyCard 路径上不触达,给最小 stub。
 			api: {} as never,
-			push: { broadcastToTargets, sendPrivateMsg: vi.fn(async () => {}) },
+			push: {
+				broadcastToTargets,
+				broadcastSequenceToTargets: vi.fn(async () => {}),
+				sendPrivateMsg: vi.fn(async () => {}),
+			},
 			contentBuilder: {
 				text: (t: string) => ({ kind: "text", text: t }) as never,
 				image: () => ({ kind: "image" }) as never,
@@ -881,7 +798,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			wordcloudGenerator: {} as never,
 			liveSummaryRequester: {} as never,
 			danmakuCollector: {} as never,
-			// imageRenderer=null → 走文字降级分支(buffer undefined),依旧调
+			// imageRenderer=null → 没有 card 部件(buffer undefined),版式路径只剩文本,依旧调
 			// push.broadcastToTargets(uid, msg, pushType),pushType 即被测的映射结果。
 			getImageRenderer: () => null,
 			config: {
@@ -890,6 +807,10 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 				liveSummaryDefault: "",
 			},
 			emitEngineError: vi.fn(),
+			emitLiveState: vi.fn(),
+			emitViewers: vi.fn(),
+			pickCardBackground: () => undefined,
+			onRoomIdResolved: vi.fn(),
 		});
 		return { ctx, broadcastToTargets };
 	}
@@ -921,6 +842,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			cardStyle: { enable: false },
 			uid: "u1",
 			notifyMsg: "msg",
+			messageLayout: defaultMessageKindLayout("live"),
 		});
 		expect(broadcastToTargets).toHaveBeenCalledTimes(1);
 		return broadcastToTargets.mock.calls[0]?.[2] as LivePushType;

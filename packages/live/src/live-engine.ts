@@ -1,6 +1,6 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ImageRenderer } from "@bilibili-notify/image";
-import type { Logger, MessageKindLayout, ServiceContext } from "@bilibili-notify/internal";
+import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import type { LiveContentBuilder } from "./content-builder";
 import { DanmakuCollector } from "./danmaku-collector";
 import { ListenerManager, type ListenerManagerConfig } from "./listener-manager";
@@ -18,15 +18,12 @@ import { LiveTemplateRenderer } from "./template-renderer";
 import { WordcloudGenerator } from "./wordcloud-generator";
 
 /**
- * Top-level platform-neutral configuration for {@link LiveEngine}.
+ * Top-level platform-neutral configuration for {@link LiveEngine}. The host
+ * (standalone runtime) fills it from its config store.
  *
- * Mirrors the runtime-relevant subset of `BilibiliNotifyLiveConfig` (the koishi
- * Schema). Adapters translate their native config into this struct.
- *
- * The engine intentionally drops `logLevel` (the adapter sets it on the
- * provided logger before construction) and folds `liveSummary` (originally a
- * `string[]` joined by `\n`) into a single `liveSummaryDefault` string per the
- * plan's §七 "customLiveSummary string vs string[]" cleanup.
+ * The engine intentionally drops `logLevel` (the host sets it on the provided
+ * logger before construction) and folds `liveSummary` (originally a `string[]`
+ * joined by `\n`) into a single `liveSummaryDefault` string.
  */
 export interface LiveEngineConfig {
 	/**
@@ -60,12 +57,6 @@ export interface LiveEngineConfig {
 	 */
 	aiWebSearch?: boolean;
 	/**
-	 * 引擎级消息版式(开播切片)。per-UP `SubItemView.messageLayout` 缺失时兜底 ——
-	 * koishi 端用 `defaultMessageKindLayout("live", { link: 开关 })` 填充;独立端
-	 * per-UP 恒有值。两级都缺 = 旧路径(链接内嵌开播模板 {link})。
-	 */
-	messageLayout?: MessageKindLayout;
-	/**
 	 * 全局默认卡片背景图廊。live/sc/guard 无 per-UP / per-kind 覆盖时的轮换兜底
 	 * 列表(见 `ListenerManagerConfig.defaultBackgroundImages`)。
 	 */
@@ -84,42 +75,33 @@ export interface LiveEngineOptions {
 	/** Optional — if absent, live summaries fall back to the configured template. */
 	commentary?: CommentaryClient | null;
 	config: LiveEngineConfig;
-	/**
-	 * Called by the engine to surface an `engine-error` to the host. Adapters
-	 * forward this to their MessageBus / koishi `ctx.emit('bilibili-notify/engine-error')`.
-	 */
+	/** Called by the engine to surface an `engine-error`; the host forwards it to its MessageBus. */
 	emitEngineError: (message: string) => void;
+	/** Per-UID live-state transitions; the host forwards to `bus.emit("live-state-changed", …)`. */
+	emitLiveState: (uid: string, status: "live" | "idle", startedAt?: string) => void;
 	/**
-	 * Optional — adapter pipe for per-UID live-state transitions. Adapter forwards
-	 * to `bus.emit("live-state-changed", uid, status)`. When absent the engine
-	 * runs without state broadcasts (koishi shell may opt out if it has nothing
-	 * subscribing).
+	 * Per-UID watched-count updates; the host forwards to `bus.emit("live-viewers-changed", …)`.
+	 * Throttled per-UID to 2s at the room-session boundary.
 	 */
-	emitLiveState?: (uid: string, status: "live" | "idle", startedAt?: string) => void;
+	emitViewers: (uid: string, viewers: string) => void;
 	/**
-	 * Optional — adapter pipe for per-UID watched-count updates. Adapter forwards
-	 * to `bus.emit("live-viewers-changed", uid, viewers)`. Throttled per-UID to
-	 * 2s at the room-session boundary.
+	 * Background-rotation picker: a card kind with >1 configured backgrounds cycles
+	 * one-per-push; returning undefined keeps the first background. Threaded straight
+	 * through to every RoomContext.
 	 */
-	emitViewers?: (uid: string, viewers: string) => void;
+	pickCardBackground: PickCardBackground;
 	/**
-	 * Optional — background-rotation picker. When present, a card kind with >1
-	 * configured backgrounds cycles one-per-push; absent (e.g. koishi) keeps the
-	 * first background. Threaded straight through to every RoomContext.
+	 * uid→roomId 解析成功回调。宿主据此把房号写盘,下次启动/reload 直接读盘复用,
+	 * 省掉逐 UP 的 `getUserInfo` 房号解析请求。透传到每个 RoomContext。
 	 */
-	pickCardBackground?: PickCardBackground;
-	/**
-	 * Optional — uid→roomId 解析成功回调(③)。独立端据此把房号写盘,下次启动/reload
-	 * 直接读盘复用,省掉逐 UP 的 `getUserInfo` 房号解析请求。透传到每个 RoomContext。
-	 */
-	onRoomIdResolved?: (uid: string, roomId: string) => void;
+	onRoomIdResolved: (uid: string, roomId: string) => void;
 }
 
 /**
  * Platform-neutral live-monitoring engine. Wires the five helpers
  * (listener-manager / danmaku-collector / wordcloud-generator /
  * template-renderer / live-summary-requester) together and exposes the public
- * surface previously offered by the koishi `BilibiliNotifyLive` service.
+ * surface the host runtime drives.
  *
  * Lifecycle:
  *
@@ -128,7 +110,7 @@ export interface LiveEngineOptions {
  *   adapter forwards `bilibili-notify/subscription-changed` events here.
  * - {@link rebuildFromSubs}: full rebootstrap (used after `auth-restored`).
  * - {@link teardown}: tear down all listeners + records (used on `auth-lost`).
- * - {@link stop}: dispose; called by the adapter on plugin disposal.
+ * - {@link stop}: dispose; called by the host on shutdown.
  */
 export class LiveEngine {
 	private readonly logger: Logger;
@@ -198,8 +180,8 @@ export class LiveEngine {
 	/**
 	 * Tear down all listeners + per-room state, leaving the engine instance reusable.
 	 *
-	 * **只在 `auth-lost` 时调用**(独立端 `engines.ts`、koishi 端 `live/service.ts`
-	 * 各一处),所以日志直接写明原因。此前它打的是 info「关闭所有直播间监听」——
+	 * **只在 `auth-lost` 时调用**(独立端 `engines.ts` 一处),所以日志直接写明原因。
+	 * 此前它打的是 info「关闭所有直播间监听」——
 	 * 级别上跟正常停服没区别,措辞上既不说为什么关也不说怎么恢复,而同一时刻动态
 	 * 那边打的是一条 warn。两条讲的是同一件事,读起来却像两回事。
 	 */
@@ -302,12 +284,8 @@ export class LiveEngine {
 	}
 
 	/**
-	 * 热替换 ImageRenderer 实例。adapter 在 image 服务上下线时调用。子组件 (词云 /
+	 * 热替换 ImageRenderer 实例。宿主在渲染器上下线时调用。子组件 (词云 /
 	 * room-context / 卡片渲染) 都通过共享 provider 现取,这里只需更新单一 state。
-	 *
-	 * 主要给 koishi adapter 用 —— sibling service (-image) 启停时通过 ctx.inject
-	 * 后置注入。独立端 imageRenderer 是 engine 同进程一次性 wire,不会动态消失,
-	 * 不需要调用本方法 (cardStyle 热更走 imageRenderer.updateConfig)。
 	 */
 	setImageRenderer(imageRenderer: ImageRenderer | null): void {
 		this.currentImageRenderer = imageRenderer;
@@ -318,22 +296,12 @@ export class LiveEngine {
 		this.listener.disposeAll();
 	}
 
-	/** Diagnostic accessor, used by the koishi shell for `[conn] state` logging. */
-	get listenerCount(): number {
-		return this.listener.getListenerCount();
-	}
-
 	/**
 	 * Per-room live-state snapshot for every active monitor. Routes / dashboards
 	 * filter on `isLive` to show "正在直播" panels.
 	 */
 	listLiveSnapshots(): ReturnType<ListenerManager["listLiveSnapshots"]> {
 		return this.listener.listLiveSnapshots();
-	}
-
-	/** Read-only view of the engine config (for the koishi shell to pass through). */
-	getConfig(): LiveEngineConfig {
-		return this.config;
 	}
 }
 
@@ -343,7 +311,6 @@ function toListenerConfig(c: LiveEngineConfig): ListenerManagerConfig {
 		customLiveMsg: c.customLiveMsg,
 		liveSummaryDefault: c.liveSummaryDefault,
 		imageEnabled: c.imageEnabled,
-		messageLayout: c.messageLayout,
 		defaultBackgroundImages: c.defaultBackgroundImages,
 		defaultLiveCoverImages: c.defaultLiveCoverImages,
 	};

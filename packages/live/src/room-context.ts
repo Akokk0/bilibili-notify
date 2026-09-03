@@ -1,7 +1,7 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { GuardLevel, type LiveClient } from "@bilibili-notify/blive";
 import type { ImageRenderer } from "@bilibili-notify/image";
-import type { Logger, MessageKindLayout, ServiceContext } from "@bilibili-notify/internal";
+import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import type { LiveContentBuilder } from "./content-builder";
 import type { DanmakuCollector } from "./danmaku-collector";
 import type { LiveSummaryRequester } from "./live-summary-requester";
@@ -55,11 +55,6 @@ export interface ListenerManagerConfig {
 	 */
 	imageEnabled?: boolean;
 	/**
-	 * 引擎级消息版式(开播切片)。per-UP `SubItemView.messageLayout` 缺失时的兜底,
-	 * room-session 在 onLiveStart 时读取(koishi 的默认版式 + 链接开关)。
-	 */
-	messageLayout?: MessageKindLayout;
-	/**
 	 * 全局默认卡片背景图廊(`defaults.cardStyle.backgroundImages`)。live/sc/guard
 	 * 均无 per-UP / per-kind 覆盖时,`resolvedCardStyle` 拿它做「每次推送轮换」的
 	 * 兜底列表 —— 否则这些 UP 会一直渲染同一张图(渲染器自身只认单图静态配置)。
@@ -97,32 +92,25 @@ export interface RoomContextOptions {
 	emitEngineError: (message: string) => void;
 	/**
 	 * 推送 per-UID 直播状态变化(`onLiveStart` / `onLiveEnd` / `bootstrap 已开播` /
-	 * `stopMonitoring 时挂掉的活房间`)。Adapter 实现:
-	 *   - standalone: `(uid, status) => bus.emit("live-state-changed", uid, status)`
-	 *   - koishi:     `(uid, status) => ctx.emit("bilibili-notify/live-state-changed", uid, status)`
-	 * 可选;缺省时不推送 —— 仅在 dashboard 走 WS 实时刷新"正在直播"面板时有意义。
+	 * `stopMonitoring 时挂掉的活房间`)。宿主实现:`(uid, status) => bus.emit("live-state-changed", uid, status)`。
 	 */
-	emitLiveState?: (uid: string, status: "live" | "idle", startedAt?: string) => void;
+	emitLiveState: (uid: string, status: "live" | "idle", startedAt?: string) => void;
 	/**
-	 * 推送 per-UID 累计观看人数变化(B 站 `WATCHED_CHANGE` 帧节流后转发)。Adapter
-	 * 实现与 emitLiveState 同型:
-	 *   - standalone: `(uid, viewers) => bus.emit("live-viewers-changed", uid, viewers)`
-	 *   - koishi:     `(uid, viewers) => ctx.emit("bilibili-notify/live-viewers-changed", uid, viewers)`
-	 * 可选;缺省时不推送。room-session 在调用前做 per-UID 2s throttle,所以这里收到
-	 * 的频率已经稀疏(每个直播间最多每 2s 一次)。
+	 * 推送 per-UID 累计观看人数变化(B 站 `WATCHED_CHANGE` 帧节流后转发)。宿主实现:
+	 * `(uid, viewers) => bus.emit("live-viewers-changed", uid, viewers)`。room-session 在调用前
+	 * 做 per-UID 2s throttle,所以这里收到的频率已经稀疏(每个直播间最多每 2s 一次)。
 	 */
-	emitViewers?: (uid: string, viewers: string) => void;
+	emitViewers: (uid: string, viewers: string) => void;
 	/**
-	 * 背景图轮换选择器(可选)。adapter 注入则多图卡片「每次推送轮换」;缺省(如 koishi)→
-	 * 推送点回退单图。standalone 注入由 `createCardBgRotator` 支撑(fs 持久化游标)。
+	 * 背景图轮换选择器。多图卡片「每次推送轮换」;返回 undefined → 推送点回退单图。
+	 * 独立端由 `createCardBgRotator` 支撑(fs 持久化游标)。
 	 */
-	pickCardBackground?: PickCardBackground;
+	pickCardBackground: PickCardBackground;
 	/**
-	 * uid → roomId 解析成功后的回调(③)。adapter(独立端)据此把房号写盘,下次启动/
-	 * reload 直接读盘复用,省掉每次逐 UP 的 `getUserInfo` 房号解析请求。可选;koishi
-	 * 不注入 → 行为不变(每次仍解析)。
+	 * uid → roomId 解析成功后的回调。宿主据此把房号写盘,下次启动/reload 直接读盘复用,
+	 * 省掉每次逐 UP 的 `getUserInfo` 房号解析请求。
 	 */
-	onRoomIdResolved?: (uid: string, roomId: string) => void;
+	onRoomIdResolved: (uid: string, roomId: string) => void;
 }
 
 /**
@@ -159,13 +147,15 @@ export class RoomContextBase {
 	 */
 	private readonly _getImageRenderer: () => ImageRenderer | null;
 	readonly emitEngineError: (message: string) => void;
-	private readonly _emitLiveState:
-		| ((uid: string, status: "live" | "idle", startedAt?: string) => void)
-		| undefined;
-	private readonly _emitViewers: ((uid: string, viewers: string) => void) | undefined;
-	private readonly _pickCardBackground: PickCardBackground | undefined;
-	/** ③ uid → roomId 解析成功回调(独立端写盘复用;koishi 缺省)。 */
-	readonly onRoomIdResolved: ((uid: string, roomId: string) => void) | undefined;
+	private readonly _emitLiveState: (
+		uid: string,
+		status: "live" | "idle",
+		startedAt?: string,
+	) => void;
+	private readonly _emitViewers: (uid: string, viewers: string) => void;
+	private readonly _pickCardBackground: PickCardBackground;
+	/** uid → roomId 解析成功回调:宿主据此把房号写盘复用。 */
+	readonly onRoomIdResolved: (uid: string, roomId: string) => void;
 
 	config: ListenerManagerConfig;
 
@@ -195,25 +185,21 @@ export class RoomContextBase {
 	}
 
 	/**
-	 * 背景图轮换:多图时返回本次该用的背景并推进游标;adapter 未注入(koishi)或列表 ≤1 张
-	 * → 返回 undefined,调用方回退单图。安全调用方,业务点无需判空。
+	 * 背景图轮换:多图时返回本次该用的背景并推进游标;选择器返回 undefined 或列表 ≤1 张
+	 * → 调用方回退单图。
 	 */
 	pickBackground(scopeKey: string, images: string[]): string | undefined {
-		return this._pickCardBackground?.(scopeKey, images);
+		return this._pickCardBackground(scopeKey, images);
 	}
 
-	/**
-	 * 安全调用方:adapter 未注入时静默 no-op,业务代码无需在调用点判空。
-	 */
+	/** 分发 per-UID 直播状态变化给宿主。 */
 	emitLiveState(uid: string, status: "live" | "idle", startedAt?: string): void {
-		this._emitLiveState?.(uid, status, startedAt);
+		this._emitLiveState(uid, status, startedAt);
 	}
 
-	/**
-	 * 同型 no-op 安全调用方。room-session 已做 per-UID 节流,这里只是分发。
-	 */
+	/** 分发 per-UID 观看人数变化给宿主。room-session 已做 per-UID 节流,这里只是分发。 */
 	emitViewers(uid: string, viewers: string): void {
-		this._emitViewers?.(uid, viewers);
+		this._emitViewers(uid, viewers);
 	}
 
 	/** 受 `config.imageEnabled` 门控的渲染器视图;关闭时返回 null。 */
