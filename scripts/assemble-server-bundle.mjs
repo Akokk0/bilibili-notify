@@ -6,7 +6,7 @@ import { missingServerBundleFilesIn } from "./server-bundle-assets.mjs";
 
 // 把独立端 server 单文件 bundle(apps/server/dist,由 `build:bundle` 产出)补齐为
 // 可独立运行的目录:bundle 内联了全部 JS 依赖,但**运行时按路径读取**的资产不进
-// bundle,必须搬到产物旁边(与 build-astrbot-sidecar.mjs 同源的三件 + server 特有
+// bundle,必须搬到产物旁边(三件运行时资产 + server 特有
 // 两件)。本脚本只做纯复制、不 spawn 任何构建命令 —— Docker builder 里没有全局 vp,
 // 构建由调用方负责(本地 `vp run -F @bilibili-notify/server build:bundle`,Docker 里
 // `pnpm --filter @bilibili-notify/server run build:bundle`,vp 从根 devDependency 的

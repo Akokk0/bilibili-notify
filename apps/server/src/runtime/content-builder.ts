@@ -12,8 +12,8 @@ import type { LiveContentBuilder } from "@bilibili-notify/live";
  *   - `{ kind: "atAll" }`
  *   - `{ kind: "message"; segments: SegmentValue[] }`
  *
- * The koishi side wraps koishi's `h(...)` factory; we don't have koishi here,
- * so we keep the data structure flat and decode it on the way out to the sink.
+ * No framework message factory here: we keep the data structure flat and decode
+ * it on the way out to the sink.
  */
 export type SegmentValue =
 	| { kind: "text"; text: string }

@@ -7,7 +7,6 @@ import type { StatsStore } from "./store.js";
  * 之所以整个采集都长在 apps/server 而非 packages/live、packages/dynamic 里:
  * 需要的三条事件(`dynamic-detected` / `live-state-changed` /
  * `live-viewers-changed`)本来就已经在总线上了,业务包不必为统计再开一个出口。
- * 这样 koishi 端完全不受影响 —— 它不启 recorder,就没有 stats 目录。
  *
  * **本层不做语义归类**:动态事件原样透传,「哪些算投稿」留给 aggregate 层。
  */

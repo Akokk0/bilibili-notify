@@ -22,8 +22,8 @@ function sameSubscription(a: Subscription, b: Subscription): boolean {
 
 /**
  * In-memory subscription collection with diff + emit.
- * Persistence is the caller's concern: koishi seeds from koishi config,
- * standalone seeds from ConfigStore. Both call replaceAll() on load.
+ * Persistence is the caller's concern: the standalone runtime seeds from ConfigStore
+ * and calls replaceAll() on load.
  */
 export interface SubscriptionStore {
 	/** Return a snapshot of all subscriptions (shallow copy). */

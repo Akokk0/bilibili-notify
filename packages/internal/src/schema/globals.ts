@@ -26,7 +26,7 @@ import { DEFAULT_LINK_PARSING, LinkParsingConfigSchema } from "./link-parsing";
 import { DEFAULT_MESSAGE_LAYOUT, MessageLayoutSchema } from "./message-layout";
 import { DEFAULT_ROAST_SCHEDULE, RoastScheduleSchema } from "./roast-schedule";
 
-/** 启动时注入、运行时只读的引导配置。Koishi 端为 undefined（Koishi 接管 lifecycle）。 */
+/** 启动时注入、运行时只读的引导配置。 */
 export const BootstrapConfigSchema = z.object({
 	server: z.object({
 		host: z.string().default("0.0.0.0"),
@@ -48,9 +48,7 @@ export type LogLevel = z.infer<typeof LogLevelSchema>;
 
 /**
  * Per-module log-level overrides. Each key is a Subscription-engine module
- * name; a missing key falls back to `app.logLevel`. Independent of plugin
- * concept — Koishi端解释为 plugin 级,standalone 端为 engine module 级,
- * 接口 / 字段名共用。
+ * name; a missing key falls back to `app.logLevel`.
  */
 export const ModuleLogLevelsSchema = z
 	.object({
@@ -64,7 +62,7 @@ export const ModuleLogLevelsSchema = z
 export type ModuleLogLevels = z.infer<typeof ModuleLogLevelsSchema>;
 
 /**
- * Koishi/standalone 共享的 dynamic 轮询 cron 默认值。对齐 `AppConfigSchema.dynamicCron`。
+ * dynamic 轮询 cron 默认值。对齐 `AppConfigSchema.dynamicCron`。
  *
  * **六字段**(秒 分 时 日 月 周),秒位是 `30` —— 每 2 分钟的第 30 秒拉,而不是整分。
  * 整分是全网默认节拍:一堆客户端(以及本项目此前的所有实例)都卡在 `:00` 同时打
@@ -72,14 +70,14 @@ export type ModuleLogLevels = z.infer<typeof ModuleLogLevelsSchema>;
  * 自己从那个尖峰里挪出来,降低撞上限流(-509)的面。
  *
  * 秒字段是 `cron` 包的可选首字段(3.x 起支持,已实测),标准五字段表达式仍然合法 ——
- * 用户在 dashboard/koishi 配置里填五字段照常工作,这里只是默认值换了形态。
+ * 用户在 dashboard 里填五字段照常工作,这里只是默认值换了形态。
  */
 export const DEFAULT_DYNAMIC_CRON = "30 */2 * * * *";
 
 /**
  * 粉丝数轮询 cron 默认值(独立端 FansPoller)。粉丝曲线要不了动态那样的 2min
  * 精度,独立成一档更慢的节奏 —— 每 UP 一个请求,拉长间隔直接降低风控面。
- * 对齐 `AppConfigSchema.fansCron`;koishi 端携带但不消费(standalone-only)。
+ * 对齐 `AppConfigSchema.fansCron`。
  */
 export const DEFAULT_FANS_CRON = "*/10 * * * *";
 
@@ -98,7 +96,7 @@ export const AppConfigSchema = z.object({
 	/**
 	 * 日志归档保留天数。`startLogRetention` 每轮按此删除更旧的 day 文件。
 	 * 与 `historyRetentionDays` 同模式但默认更短(日志量远高于推送历史、
-	 * 长期价值低)。Koishi 端携带但不消费(standalone-only,同 historyRetentionDays)。
+	 * 长期价值低)。
 	 */
 	logRetentionDays: z.number().int().min(1).max(365).default(7),
 });
@@ -169,7 +167,7 @@ export type OnboardingConfig = z.infer<typeof OnboardingConfigSchema>;
 export const DEFAULT_ONBOARDING: OnboardingConfig = {};
 
 /**
- * 应用内自主升级的用户可调项。独立端专有(koishi / AstrBot 由各自宿主管更新)。
+ * 应用内自主升级的用户可调项。
  *
  * 三条默认值都是产品定案,别顺手改:
  *
@@ -233,8 +231,7 @@ export const GlobalConfigSchema = z.object({
 	 */
 	mutedUntil: z.number().int().min(0).default(0),
 	/**
-	 * 私聊指令的可配置项(前缀 / 别名 / 总开关)。独立端专有 —— koishi 与 AstrBot
-	 * 各有框架自带的命令系统。
+	 * 私聊指令的可配置项(前缀 / 别名 / 总开关)。
 	 *
 	 * 放顶层同 `roastSchedule`:它不是「per-UP overrides 缺字段时的回退」。
 	 */
@@ -245,7 +242,7 @@ export const GlobalConfigSchema = z.object({
 	 */
 	linkParsing: LinkParsingConfigSchema.default(DEFAULT_LINK_PARSING),
 	/**
-	 * 新手指引的持久状态。独立端专有(koishi / AstrBot 没有面板)。
+	 * 新手指引的持久状态。
 	 *
 	 * 放顶层同 `commands`:它不是「per-UP overrides 缺字段时的回退」。
 	 * `.default(...)` 是老配置兜底 —— 独立端启动时 `parse` 会补上,理由见

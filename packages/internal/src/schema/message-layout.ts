@@ -64,8 +64,7 @@ export const DEFAULT_MESSAGE_LAYOUT: MessageLayout = {
 
 /**
  * 取某推送类型的默认版式深拷贝,`opts.link` 控制链接部件显隐(缺省 true)。
- * 供不提供版式编辑 UI 的端(koishi 插件 config 的「附带链接」开关)按开关值
- * 生成引擎 config 级版式。
+ * 测试与默认值生成用。
  */
 export function defaultMessageKindLayout(
 	kind: "dynamic" | "live",

@@ -2,7 +2,7 @@
  * per-UP `overrides` 的 PATCH 线格式构造 —— 现在只是给 `buildPatch` 套一层域类型。
  *
  * 递归 diff 的实现与那段「为什么必须显式 null」的来龙去脉都在
- * `@bilibili-notify/internal/patch`(零依赖子路径,apps/web 与 astrbot/page 共用
+ * `@bilibili-notify/internal/patch`(零依赖子路径,浏览器端直接消费)
  * 同一份 —— 从前两端各写各的,修好一边永远漏另一边)。
  */
 

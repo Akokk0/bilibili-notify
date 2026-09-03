@@ -4,7 +4,6 @@ import type { BilibiliPush } from "@bilibili-notify/push";
 /**
  * 60s 节流窗口。同一 sourceKey 上次告警之后 60s 内的后续告警吞掉，避免连串错误
  * (cron 每 2 分钟一轮、风控/网络抖动连续触发) 时刷屏 OneBot 私信。
- * 与 koishi 端 `MasterNotifier.NOTIFY_DEBOUNCE_MS` 同值便于心智对称。
  */
 const NOTIFY_DEBOUNCE_MS = 60_000;
 

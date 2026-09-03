@@ -7,7 +7,7 @@ export interface Disposable {
 	dispose(): void;
 }
 
-/** 业务核心从 adapter 获取的 logger 抽象。Koishi 端包 ctx.logger，独立端包 pino。 */
+/** 业务核心从宿主获取的 logger 抽象(独立端包 pino)。 */
 export interface Logger {
 	info(msg: string, ...args: unknown[]): void;
 	warn(msg: string, ...args: unknown[]): void;
@@ -16,7 +16,7 @@ export interface Logger {
 }
 
 /**
- * Service runtime 上下文。替代业务代码中直接吃 koishi `Context` 的写法。
+ * Service runtime 上下文 —— 业务代码不直接吃任何宿主框架的 Context。
  * - logger：日志门面
  * - setInterval / setTimeout：返回 Disposable，dispose 后停止
  * - onDispose：注册关闭钩子（adapter 在生命周期结束时调用）
@@ -41,8 +41,7 @@ export type SubscriptionOp =
 	| { type: "update"; sub: Subscription };
 
 /**
- * 业务核心唯一事件源。所有 Koishi `bilibili-notify/*` 事件 + 独立端 WS channel 都源自这里。
- * Koishi adapter 将这些事件桥接到 ctx.emit('bilibili-notify/<event>')；独立端 adapter 直接 mitt-like 实现。
+ * 业务核心唯一事件源。独立端 WS channel 都源自这里;宿主 adapter 以 mitt-like 实现。
  */
 export interface BiliEvents {
 	"auth-lost": () => void;
@@ -171,7 +170,7 @@ export type PayloadSegment =
 /**
  * 图集单图 —— url + 可选原始像素尺寸。尺寸来自 B站图集元数据(opus.pics / draw.items
  * 的 width/height),仅 QQ 官方原生 markdown 多图(`![文字 #宽px #高px](url)`)需要它来
- * 正常渲染;OneBot / koishi / webhook 等只用 `url`,尺寸缺失不影响。
+ * 正常渲染;OneBot / webhook 等只用 `url`,尺寸缺失不影响。
  */
 export interface ForwardImage {
 	url: string;
@@ -180,8 +179,7 @@ export interface ForwardImage {
 }
 
 /**
- * 平台中立的消息载荷。Adapter 翻译为各平台原生格式：
- * - Koishi: kind:text → bot.sendMessage(text)；image → h.image(buffer, mime)；composite → h('message', segments)
+ * 平台中立的消息载荷。Adapter 翻译为各平台原生格式:
  * - OneBot: text/image → message segment 数组；composite → 段拼接
  * - Webhook: 序列化为 JSON
  */
@@ -192,10 +190,10 @@ export type NotificationPayload =
 	/**
 	 * 图集 payload(典型来源:动态图集 / 多张大图)。`forward` 决定 adapter 用哪种
 	 * 平台原生形式投递:
-	 *   - `true` —— 走 OneBot `send_group_forward_msg` / koishi `h("message", {forward:true})`,
+	 *   - `true` —— 走 OneBot `send_group_forward_msg`,
 	 *     渲染成「聊天记录」卡片。视觉好但走长消息通道(NapCat 的 `SsoSendLongMsg`
 	 *     trpc 在某些部署上不稳),失败时所有图都丢。
-	 *   - `false` —— 走 OneBot `send_group_msg` 多 image segment / koishi `h("message", ...)`
+	 *   - `false` —— 走 OneBot `send_group_msg` 多 image segment。
 	 *     普通多图。稳但 N+ 张大图会一排刷屏。
 	 * 默认值由上游 dynamic engine config(`imageGroupForward`)决定。
 	 */

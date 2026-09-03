@@ -7,7 +7,7 @@ import type { SubRuntimeStore } from "./sub-runtime-store.js";
  * 启动时(以及 auth-restored 后)确保每个订阅的 UP 都已关注。
  *
  * **为什么非做不可**:动态是从 `feed/all`(**关注流**)拉的,只会返回你已关注的人的动态。
- * 订阅一个 UP 却不关注他 = 订阅了个寂寞。koishi 端一直在 subscription-loader 里 follow,
+ * 订阅一个 UP 却不关注他 = 订阅了个寂寞。当年 koishi 插件一直在 subscription-loader 里 follow,
  * 独立端**从来没做过** —— 所以存量订阅全是收不到动态的,光修「新增订阅时关注」救不回来。
  *
  * **为什么先查后补**:`relation/modify` 是**写**接口,风控比读严得多。订阅一多还对每个
@@ -16,7 +16,7 @@ import type { SubRuntimeStore } from "./sub-runtime-store.js";
  *
  * **降级**:批量查询只是优化,**不是正确性依赖**。它失败、或返回结构不是预期的样子
  * (接口改版 / 契约记错),一律降级为对每个订阅直接 `follow()` —— 幂等,22014=已关注,
- * 正是 koishi 跑了很久的那条已知可用路径。功能永远不会因为这个优化而瘫痪。
+ * 正是当年 koishi 插件跑了很久的那条已知可用路径。功能永远不会因为这个优化而瘫痪。
  */
 
 export interface FollowSyncDeps {

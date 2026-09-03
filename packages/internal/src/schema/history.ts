@@ -51,8 +51,7 @@ export const HistoryEntrySchema = z.object({
 	payload: HistoryPayloadSchema,
 	/**
 	 * 写入时从该订阅的 cachedProfile 快照下来的 UP 主名称 / 头像。cachedProfile
-	 * 已从 Subscription 外置,独立端由 apps/server SubRuntimeStore 持有(koishi
-	 * 端无此缓存,uname 退化为 UID)。
+	 * 已从 Subscription 外置,由 apps/server SubRuntimeStore 持有。
 	 *
 	 * History 是 immutable 历史事实,但 UI 渲染依赖 cachedProfile 查询当前
 	 * 名称 — 一旦用户后续删除该订阅,Dashboard 上的旧 history 条目只剩 "UID xxx" +

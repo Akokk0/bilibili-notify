@@ -153,7 +153,7 @@ export function buildSystemPrompt(params: {
 	 * 这次要带上人格吗?dashboard 的聊天里主人开局能选「无人格」那一档。
 	 *
 	 * **缺省是 true**,方向与上面两个相反但同理:三端共享这个包,漏传的调用方
-	 * (推送、koishi 群聊、点评、总结)必须一字不变地拿到原来的行为。
+	 * (推送、点评、总结)必须一字不变地拿到原来的行为。
 	 *
 	 * 关掉的只有**性格**:职责说明、Markdown 约定、工具铁律一条都不动 —— 少了
 	 * 工具铁律,模型连「查订阅得调工具」都会忘(见 persona-prompt-tools.test.ts

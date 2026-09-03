@@ -195,7 +195,7 @@ interface CallToolOptions {
 	webSearch?: WebSearchExecutor;
 }
 
-/** 平台中立的人格配置（与 koishi 端 PersonaConfig 字段保持一致，但不依赖 koishi Schema）。 */
+/** 平台中立的人格配置。 */
 export interface PersonaConfig {
 	/** 基础人格预设 */
 	preset: PersonaKey;
@@ -217,8 +217,7 @@ export interface PersonaConfig {
 
 /**
  * CommentaryGenerator 的运行时配置。
- * 与 koishi 端 BilibiliNotifyAIConfig 字段对应，但不包含 logLevel
- * （由 adapter 在外部配置 logger）。
+ * 不包含 logLevel(由宿主在外部配置 logger)。
  */
 export interface CommentaryGeneratorConfig {
 	apiKey: string;
@@ -276,7 +275,7 @@ export interface CommentaryGeneratorConfig {
 	 * 开启多模态图片理解:把图**直接下挂给主模型**（需主模型自己支持视觉能力）。
 	 *
 	 * 配了 {@link vision} 之后这个开关就不再起作用 —— 副模型全权接管。留着它
-	 * 纯粹是为了向后兼容:koishi 上已经有人把它开着在用,他们的主模型本来就
+	 * 纯粹是为了向后兼容:老用户已经把它开着在用,他们的主模型本来就
 	 * 支持视觉,不该因为这次改动被迫去填一遍副模型配置。
 	 */
 	enableVision: boolean;
@@ -465,7 +464,7 @@ export interface ChatStatelessOptions {
 
 /**
  * 平台中立的 AI 点评 / 多轮对话核心。
- * 不依赖 koishi runtime；adapter 负责配置 logger、提供 BilibiliAPI 与可选的订阅管理钩子。
+ * 不依赖任何宿主框架;宿主负责配置 logger、提供 BilibiliAPI 与可选的订阅管理钩子。
  */
 export class CommentaryGenerator implements CommentaryProvider {
 	private readonly logger: Logger;
@@ -524,7 +523,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		return this.webSearchAccessor?.() ?? null;
 	}
 
-	/** 替换运行时配置（adapter 在 koishi config / dashboard 编辑后调用）。 */
+	/** 替换运行时配置(宿主在 dashboard 编辑后调用)。 */
 	updateConfig(config: CommentaryGeneratorConfig): void {
 		this.config = config;
 		const { preset, name, traits } = config.persona;
@@ -584,7 +583,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		override?: CommentaryCallOverride,
 		/**
 		 * 调用方会渲染 Markdown 吗?只有 dashboard 的聊天会,所以只有那一条路传它。
-		 * 缺省(推送、koishi 群聊、点评、总结)一律保持「只用纯文本」那条叮嘱。
+		 * 缺省(推送、点评、总结)一律保持「只用纯文本」那条叮嘱。
 		 */
 		opts?: {
 			allowMarkdown?: boolean;
@@ -815,7 +814,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		sessionId: string,
 		imageUrls?: string[],
 		opts?: {
-			/** 这一次允不允许联网搜索。koishi 侧按 `webSearchChat` 配置传,静态策略也走按次口径。 */
+			/** 这一次允不允许联网搜索。静态策略也走按次口径。 */
 			webSearch?: boolean;
 		},
 	): Promise<string> {
@@ -923,8 +922,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 * 无状态多轮:整段历史由调用方交出来,引擎用完即弃。
 	 *
 	 * 与 {@link chat} 的分工是「历史存在谁那里」。`chat()` 的历史躺在进程内存的
-	 * session map 里,适合 koishi 那种「聊天窗口本身就是易失的」场景;独立端
-	 * dashboard 的会话却落在磁盘上,重开浏览器记录还在 —— 这时再走 session map,
+	 * session map 里,适合「聊天窗口本身就是易失的」场景;独立端 dashboard 的会话
+	 * 却落在磁盘上,重开浏览器记录还在 —— 这时再走 session map,
 	 * 就会出现界面上明明摆着上文、女仆却完全不记得的裂缝。
 	 *
 	 * 因此这里**不读也不写** session map,`enableConversation` 对它没有意义;
@@ -966,7 +965,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// 的消息数组递进去,那些记账消息就会漏回调用方,跟着存进磁盘。
 		const trimmed = messages.slice(-this.config.maxHistory * 2);
 		// 这一路的收件人是 dashboard 的聊天界面,它渲染 Markdown。**只有这里**这么传 ——
-		// 推送、koishi 群聊、点评、总结都落在缺省那一侧,继续拿到「只用纯文本」。
+		// 推送、点评、总结都落在缺省那一侧,继续拿到「只用纯文本」。
 		// 专职模式(opts.systemPrompt)则整段顶掉人格,连 Markdown 那句约定也由它自带。
 		const baseSystem =
 			opts?.systemPrompt ??

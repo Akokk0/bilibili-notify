@@ -1,7 +1,7 @@
 /**
- * 回归守护 — P0-2 fix(koishi/targets): use deterministicUuid for synthesized adapter+target ids
+ * 回归守护 — use deterministicUuid for synthesized adapter+target ids
  *
- * deterministicUuid 是 reload 跨次稳定 id 的种子函数。线上 koishi 的 target-synthesis、
+ * deterministicUuid 是 reload 跨次稳定 id 的种子函数。当年 koishi 插件的 target-synthesis、
  * subscriptions/advanced 都依赖它把 (platform, channelId, ...) 映射到稳定 UUID。
  * 任何人"优化"算法,所有已经持久化的 history 引用就静默漂移成孤儿。
  *

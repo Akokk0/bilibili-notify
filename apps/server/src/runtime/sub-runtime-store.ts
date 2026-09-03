@@ -20,7 +20,6 @@ import type { CachedProfile, FansBaseline, Logger } from "@bilibili-notify/inter
  * Topology: single JSON file `<dataDir>/state/sub-runtime.json` keyed by
  * `Subscription.id`, atomic tmpfile+rename writes, all mutations serialized
  * through one private FIFO promise chain (mirrors `ConfigStore.runScoped`).
- * koishi is unaffected — it never populated cachedProfile and never used state.
  *
  * Record shape (sibling keys, NOT baseline-inside-profile): keeping
  * `fansBaseline` a sibling of `cachedProfile` lets `/api/subs` join the

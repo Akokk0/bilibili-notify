@@ -1,7 +1,7 @@
 # 应用内自主升级
 
 独立端(Docker + Desktop)可以在应用内换版本,不必重拉镜像或重下安装包。
-koishi / AstrBot **不在范围内** —— 那两端由各自宿主管更新。
+(Koishi / AstrBot 插件不在范围内 —— 两端已暂停,维护线见 `build-release.md`。)
 
 ## 一句话机制
 

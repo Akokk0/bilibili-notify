@@ -66,8 +66,8 @@ export function createWebSearchExecutor(cfg: WebSearchExecutorConfig): WebSearch
 
 /**
  * `ai.search` 配置段 → 执行器。**「未配置」的唯一判据是当前后端那格 key 为空**,
- * 此时返回 null,生成器那侧的表现是静默不挂工具。server 与 koishi 共用这一个
- * 映射 —— 判据写两遍迟早分叉。
+ * 此时返回 null,生成器那侧的表现是静默不挂工具。所有调用方共用这一个映射 ——
+ * 判据写两遍迟早分叉。
  */
 export function webSearchExecutorFromSettings(search: {
 	backend: WebSearchBackendId;

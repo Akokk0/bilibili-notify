@@ -1,6 +1,6 @@
 # @bilibili-notify/blive
 
-自实现的 B 站直播信息流 WSS 客户端 —— 替代 `blive-message-listener` / `tiny-bilibili-ws`。private 包,不发 npm,仓内经 `workspace:*` 消费(koishi 端随 bundle 内联)。
+自实现的 B 站直播信息流 WSS 客户端 —— 替代 `blive-message-listener` / `tiny-bilibili-ws`。private 包,不发 npm,仓内经 `workspace:*` 消费(内联进 server 单文件 bundle)。
 
 ## 设计边界:哑管道
 

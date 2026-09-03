@@ -20,4 +20,4 @@
 
 ## 不可逆点
 
-推送 `v<VERSION>` tag 即触发发布 workflow,Docker 镜像与 GitHub Release 一旦 push 不能撤回、只能发新版本 tag 覆盖。(门禁只挡「代码是红的」,挡不住「发错版本」。)独立端发版与 koishi npm 发版互不牵动 —— 后者由 `koishi/package.json` 的 `version` 变动 + push dev 触发。
+推送 `v<VERSION>` tag 即触发发布 workflow,Docker 镜像与 GitHub Release 一旦 push 不能撤回、只能发新版本 tag 覆盖。(门禁只挡「代码是红的」,挡不住「发错版本」。)

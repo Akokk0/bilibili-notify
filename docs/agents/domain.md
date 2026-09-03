@@ -12,7 +12,7 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 
 ## File structure
 
-This is a **single-context repo**. Domain language is shared across `packages/` (platform-neutral business core), `koishi/` (Koishi thin shells), and `apps/` (standalone Hono + React); the same Bilibili API / push / subscription / dynamic / live concepts apply across all three deployment forms.
+This is a **single-context repo**. Domain language is shared across `packages/` (platform-neutral business core) and `apps/` (standalone Hono + React); the same Bilibili API / push / subscription / dynamic / live concepts apply across both.
 
 ```
 /
@@ -21,7 +21,6 @@ This is a **single-context repo**. Domain language is shared across `packages/` 
 │   ├── 0001-…
 │   └── 0002-…
 ├── packages/           ← @bilibili-notify/* business core
-├── koishi/             ← koishi-plugin-bilibili-notify* thin shells
 └── apps/               ← standalone server + web dashboard
 ```
 

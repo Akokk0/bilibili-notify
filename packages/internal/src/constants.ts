@@ -1,8 +1,8 @@
 /**
  * 纯常量模块 —— 必须保持**零 import、零副作用**:它经 `@bilibili-notify/internal/constants`
- * 子路径直供浏览器端(apps/web / astrbot/page)运行时消费,不能把 zod 或任何 schema
+ * 子路径直供浏览器端(apps/web)运行时消费,不能把 zod 或任何 schema
  * 模块拽进前端 bundle。schema/common.ts 反向引用这里(`z.enum(FEATURE_KEYS)`)并从根
- * 入口重导出,后端消费者(koishi / sidecar / server)照旧从根入口拿 —— 两条路径同一份值。
+ * 入口重导出,后端消费者(server)照旧从根入口拿 —— 两条路径同一份值。
  */
 
 /** 全部可订阅的特性键。新增或删除会扩散到 FeatureFlags、SubscriptionRouting、Subscription.overrides。 */
@@ -575,7 +575,7 @@ export const BUILTIN_AI_PRESETS = [
  * 模板默认值（占位，可由 UI 编辑）。
  *
  * 占位符统一 `{key}` 语法,由 `LiveTemplateRenderer.applyTemplate` / `interpolate`
- * 替换(`applyTemplate` 同时兼容 koishi 旧存档的 legacy `-key`)。变量集严格对齐
+ * 替换(`applyTemplate` 同时兼容旧存档的 legacy `-key`)。变量集严格对齐
  * 渲染器实际提供的字段:
  * - 直播:`{name}` `{time}` `{follower}` `{follower_change}` `{watched}`
  * - 上舰:`{uname}` `{mname}` `{guard}`
@@ -584,7 +584,7 @@ export const BUILTIN_AI_PRESETS = [
  * - 动态:`{name}`
  *
  * 链接不再是模板变量:动态 / 视频 / 开播的链接是消息版式的独立「链接」部件
- * (显隐 / 位置由版式或 koishi 端的开关决定)。旧存档模板里残留的 `{url}` /
+ * (显隐 / 位置由版式决定)。旧存档模板里残留的 `{url}` /
  * `{link}` 在版式路径渲染时连同前导分隔符一起剥离,不会双链接。
  *
  * liveStart/liveOngoing/liveEnd 与 packages/live 的 `DEFAULT_LIVE_TEMPLATES`

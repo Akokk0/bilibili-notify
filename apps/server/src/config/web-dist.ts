@@ -42,7 +42,7 @@ export interface ResolvedWebDistDir {
  * 规矩:**属于载荷的东西相对 `index.mjs` 解析,属于用户的东西用固定绝对路径。**
  * web-dist 和服务端代码是同一次发布的两半,必须跟着当前跑的那份载荷走 —— 否则
  * 在线升级之后会变成「新服务端配旧前端」,而且不报错,直到某个改过的接口对不上
- * 才炸(AstrBot 的 core/dashboard 错配就是这个形态)。
+ * 才炸(当年 AstrBot 插件的 core/dashboard 错配就是这个形态)。
  *
  * 反过来 `/data`、`/config` 必须固定 —— 用户数据绝不能跟着代码版本走。
  *

@@ -15,7 +15,7 @@ import type { BilibiliAPI } from "./bilibili-api.js";
  * - `22001` —— 不能关注自己。也当成功:主人订阅自己是合法用例,动态照样收得到
  *              (自己的动态本来就在自己的 feed 流里)。
  *
- * 这套判定是 koishi 端 `subscription-loader.ts` 跑了很久验证过的,提到共享包里,
+ * 这套判定是当年 koishi 插件的 subscription-loader 跑了很久验证过的,提到共享包里,
  * 免得两端各写一份、各错一份。
  */
 export const FOLLOW_SUCCESS_CODES: ReadonlySet<number> = new Set([0, 22014, 22001]);

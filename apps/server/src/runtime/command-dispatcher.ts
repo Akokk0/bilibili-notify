@@ -35,7 +35,7 @@ export interface CommandSpec<S extends string = string> {
 	 * 别名,和主名等价。内置的中文名走这里,主人在面板上加的也并进来。
 	 *
 	 * 匹配时剥掉的是**实际命中的那个触发词**的长度,不是主名的 —— 拿主名长度去剥
-	 * 别名,参数就整体错位了(koishi 专门修过这个回归)。
+	 * 别名,参数就整体错位了(上游 koishi 框架专门修过这个回归)。
 	 */
 	aliases?: readonly string[];
 	/** 参数签名,如 `<duration:duration|时长>`。不含指令名。省略 = 不收参数。 */
@@ -215,7 +215,7 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 				// 字符小写化会改变长度(İ → i̇),那样下面剥长度就会错位。
 				if (body.slice(0, trigger.length).toLowerCase() !== trigger.toLowerCase()) continue;
 				// **剥掉的是命中的那个触发词的长度**,不是主名的 —— 用主名长度去剥别名,
-				// 参数会整体错位(koishi 修过这个回归)。
+				// 参数会整体错位(上游 koishi 框架修过这个回归)。
 				const rest = body.slice(trigger.length);
 				// 触发词后面必须是边界:到头,或者空白 + 参数。不做前缀模糊匹配 ——
 				// 「静」不该命中「静音」,否则主人随口一个字就触发了动作。

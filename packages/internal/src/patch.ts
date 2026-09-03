@@ -2,7 +2,7 @@
  * 配置 PATCH 线格式构造 —— **所有前端保存路径都必须经这里**。
  *
  * 纯函数模块,必须保持**零 import、零副作用**:它经
- * `@bilibili-notify/internal/patch` 子路径直供浏览器端(apps/web / astrbot/page)
+ * `@bilibili-notify/internal/patch` 子路径直供浏览器端(apps/web)
  * 运行时消费,不能把 zod 或任何 schema 模块拽进前端 bundle(同 `constants.ts`)。
  *
  * ## 为什么必须有这个东西

@@ -41,7 +41,7 @@ export const SubscriptionRoutingSchema = SubscriptionRoutingObjectSchema.transfo
  *
  * **不再内嵌于 Subscription**（高频 fans/lastRefreshedAt 写入会污染配置写路径）。
  * 独立端持久化到 apps/server 的 SubRuntimeStore（`<dataDir>/state/sub-runtime.json`）；
- * koishi 端不产生它。schema/type 仍导出，供 SubRuntimeStore + `/api/subs` join 复用。
+ * schema/type 仍导出,供 SubRuntimeStore + `/api/subs` join 复用。
  */
 export const CachedProfileSchema = z.object({
 	name: z.string(),

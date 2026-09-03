@@ -156,7 +156,7 @@ export type PushAdapterTestStatus = z.infer<typeof PushAdapterTestStatusSchema>;
 /**
  * Push adapter — 平台级的"连接实例"。
  *
- * 类比 Koishi bot 实例：一份 baseUrl/accessToken 一次配置，被多个 PushTarget
+ * 类比一个 bot 实例:一份 baseUrl/accessToken 一次配置,被多个 PushTarget
  * (实际的群/私聊/dashboard 会话) 复用。
  */
 const PushAdapterCommonShape = {

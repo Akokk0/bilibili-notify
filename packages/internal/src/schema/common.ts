@@ -530,8 +530,8 @@ const CardStyleObjectSchema = z.object({
 	 */
 	font: z.string().default("PingFang SC, sans-serif"),
 	/**
-	 * 主人上传的字体文件资产 id(**独立端专属**,与卡片背景图同一套「落盘 + id 引用 +
-	 * 渲染期解析成 data URL」形态;koishi / AstrBot 没有图廊那套,只认上面的 `font`)。
+	 * 主人上传的字体文件资产 id(与卡片背景图同一套「落盘 + id 引用 +
+	 * 渲染期解析成 data URL」形态)。
 	 *
 	 * 设了就**优先于 `font`**:渲染期由服务端读盘拼成 `@font-face` 内联给模版。指向一个
 	 * 已被删掉的资产时静静回落 `font` —— 与背景图同一条纪律,不让一次删除把出图弄崩。

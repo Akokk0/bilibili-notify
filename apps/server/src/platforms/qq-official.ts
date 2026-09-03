@@ -76,7 +76,7 @@ export const QQ_OPCODE = {
  */
 export const QQ_PUSH_INTENTS = ((1 << 0) | (1 << 25) | (1 << 27) | (1 << 30)) >>> 0;
 
-/** 正式 / 沙箱 REST API base host。沙箱在 api 前插 `sandbox.`(对齐 koishi)。 */
+/** 正式 / 沙箱 REST API base host。沙箱在 api 前插 `sandbox.`(对齐上游 koishi 框架的 qq adapter)。 */
 export function qqApiBase(sandbox: boolean): string {
 	return sandbox ? "https://sandbox.api.sgroup.qq.com" : "https://api.sgroup.qq.com";
 }
@@ -149,7 +149,7 @@ export function qqShouldResetSessionOnClose(code: number): boolean {
 	return code > 4000 && code !== 4008 && code !== 4009;
 }
 
-/** token 提前刷新缓冲(秒);对齐 koishi(快到期前 40s 换新 token)。 */
+/** token 提前刷新缓冲(秒);对齐上游 koishi 框架的 qq adapter(快到期前 40s 换新 token)。 */
 const QQ_TOKEN_REFRESH_BUFFER_SEC = 40;
 
 export interface QQTokenManager {

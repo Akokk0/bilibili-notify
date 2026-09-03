@@ -14,7 +14,7 @@
  *   就是「主人换了人格,女仆开口还是原来那位」。
  *
  * 字段名映射:schema 用面向用户的 `baseRole` / `extraSystemPrompt`,引擎的
- * `PersonaConfig` 沿用 `customBase` / `extraPrompt` 历史命名(与 koishi 端一致),
+ * `PersonaConfig` 沿用 `customBase` / `extraPrompt` 历史命名,
  * 在这里做一次性翻译,引擎层不感知差异。`preset` 恒 `"custom"` —— 人格已在上游
  * 折叠成具体内容,引擎不必再走一次 preset 查表。
  */

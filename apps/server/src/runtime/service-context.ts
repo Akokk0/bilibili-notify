@@ -25,14 +25,13 @@ export interface NodeServiceContextOptions {
 }
 
 /**
- * Standalone-end ServiceContext. Mirrors the koishi-runtime adapter shape:
+ * Standalone-end ServiceContext:
  *  - logger: pino (real production logger, not console)
  *  - setInterval / setTimeout: returns Disposable that clears the underlying timer
  *  - onDispose: queues a teardown hook; flushed by `dispose()` (and the bootstrap loop on SIGINT)
  *
- * The `dispose()` method on the returned object is the standalone-side equivalent of
- * koishi's "the plugin scope was torn down" — it clears every still-pending timer and
- * runs every queued onDispose hook in LIFO order.
+ * The `dispose()` method on the returned object is the shutdown hook: it clears every
+ * still-pending timer and runs every queued onDispose hook in LIFO order.
  *
  * The `setLogHook(fn)` method swaps in a log forwarder after construction. Used by the
  * WS layer to feed `logger.<level>(...)` calls onto the `log` channel without the

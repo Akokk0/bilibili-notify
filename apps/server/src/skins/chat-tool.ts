@@ -2,7 +2,7 @@
  * 聊天里的 `create_skin` —— 女仆手上唯一一个**会写东西**的工具。
  *
  * 它只挂在 dashboard 的聊天上(见 `packages/ai` 的 ExtraTool 文档):那条路坐在
- * cookie session 后面,说话的只有主人本人。koishi 群聊那两条路拿不到它。
+ * cookie session 后面,说话的只有主人本人。群聊那条路拿不到它。
  *
  * 工具本身不认识皮肤规格 —— 它把一句话交给 `runSkinAiCreate` 嵌套跑一次专职的
  * 皮肤设计师调用,拿回清洗过的 manifest 再落盘。所以聊天的 system 里一个字的

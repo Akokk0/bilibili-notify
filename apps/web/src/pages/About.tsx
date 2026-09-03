@@ -275,8 +275,8 @@ function AboutPanel() {
 		<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
 			<PanelHead icon={<Icon.star size={16} />} title="关于本项目" />
 			<p className="text-bn-base leading-7 text-bn-text-secondary">
-				Bilibili Notify —— 监听 B 站 UP 主动态 / 直播,渲染成卡片图片推送到 QQ 群等渠道。
-				一套业务核心、两种形态:Koishi 插件 与 独立 Web Dashboard。MIT 开源。
+				Bilibili Notify —— 监听 B 站 UP 主动态 / 直播,渲染成卡片图片推送到 QQ 群等渠道。 自带 Web
+				控制台,Docker 镜像或桌面应用皆可部署。MIT 开源。
 			</p>
 			<div className="mt-4 space-y-2">
 				{links.map((l) => (

@@ -1,9 +1,8 @@
 /**
- * Standalone-side engine wiring. Mirrors what koishi/dynamic + koishi/live do
- * for the koishi shell, but driven by the file-backed ConfigStore + MultiplexSink
- * instead of koishi's Service / Context plumbing.
+ * Standalone-side engine wiring: the engines from packages/dynamic + packages/live,
+ * driven by the file-backed ConfigStore + MultiplexSink.
  *
- * Construction order (same constraints as the koishi side):
+ * Construction order:
  *
  *   1. Bind SubscriptionStore to ConfigStore
  *   2. Build MultiplexNotificationSink (subscribers: HistoryStore via onDelivery)
@@ -385,7 +384,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// ---------- 背景图轮换游标(每次推送轮换 + fs 持久化)----------
 	// 游标按 `uid:kind` 独立,落盘 `<dataDir>/card-bg-cursors.json`,重启续接不归零。
 	// pick 在推送点(room-session / DynamicEngine)同步推进;脏标记驱动定时 flush,避免每
-	// 推送写盘。注入给两端引擎;koishi 不注入即不轮换。
+	// 推送写盘。注入给两个引擎。
 	const cursorFile = join(opts.configStore.bootstrap.dataDir, "card-bg-cursors.json");
 	const loadCursors = (): Record<string, number> => {
 		try {
@@ -487,7 +486,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	/**
 	 * 确保所有订阅的 UP 都已在 B 站被关注 —— 动态走 `feed/all`(关注流),没关注就一条
-	 * 都收不到。独立端此前**从不** follow(只有 koishi 端做),所以存量订阅全是收不到
+	 * 都收不到。独立端此前**从不** follow(只有当年的 koishi 插件做),所以存量订阅全是收不到
 	 * 动态的哑订阅。见 `follow-sync.ts`。
 	 *
 	 * best-effort:失败不阻断引擎启动,状态会落进 SubRuntimeStore 让前端显示「未关注」,
@@ -1070,7 +1069,7 @@ function pushSegmentsToPayload(segments: PushSegment[]): NotificationPayload {
 	}
 	if (segments.length === 1 && segments[0]?.type === "image-group") {
 		// segment.forward 由 dynamic engine config 的 imageGroupForward 决定:
-		//   true  → adapter 走 send_group_forward_msg / koishi forward 容器
+		//   true  → adapter 走 send_group_forward_msg 合并转发
 		//   false → adapter 走多 image segment 合并到一条普通 send_group_msg
 		return {
 			kind: "forward-images",
@@ -1131,8 +1130,8 @@ export function liveTypeToFeature(type: number): FeatureKey {
  * 一条 LivePushType 是否允许 @全体成员。仅 `StartBroadcasting`(=3,开播)允许;
  * 周期「正在直播」复推(`Live`=0)及其它都翻译成 `feature === "live"`,光看
  * feature 区分不出开播 vs 复推 —— push 层据本结果决定是否进 atAll 分支,否则
- * 每条直播推送都 @全体(已修 bug)。必须与 `koishi/live/src/live-type-map.ts`
- * 的同名函数保持一致(裸数字 3 = LivePushType.StartBroadcasting)。
+ * 每条直播推送都 @全体(已修 bug)。裸数字 3 = LivePushType.StartBroadcasting,与
+ * packages/live 的 LivePushType 保持一致。
  */
 export function liveTypeAllowsAtAll(type: number): boolean {
 	return type === 3;
@@ -1366,8 +1365,7 @@ export function buildDynamicSubViewSingle(
 		customVideoTemplate: sub.overrides.templates?.dynamicVideo,
 		// per-UP 解析后的动态卡版式切片(eff = 整份覆盖 ?? 全局)。全局默认版式即复刻现状。
 		dynamicLayout: eff.cardLayout.dynamic,
-		// per-UP 解析后的消息版式动态切片。独立端恒有值(默认 = 复刻现状:卡片+文本+
-		// 链接合并一条);koishi 端不填该字段,引擎走旧路径。
+		// per-UP 解析后的消息版式动态切片,恒有值(默认 = 复刻现状:卡片+文本+链接合并一条)。
 		messageLayout: eff.messageLayout.dynamic,
 	};
 }
@@ -1465,8 +1463,7 @@ export function buildLiveSubViewSingle(
 		// per-UP 解析后的卡片版式(eff = per-UP 整份覆盖 ?? 全局)。room-session 渲染
 		// live/sc/guard 时取对应切片透传给 generate*;全局默认版式即复刻现状。
 		cardLayout: eff.cardLayout,
-		// per-UP 解析后的消息版式直播切片(覆盖开播 / 直播中 / 下播)。独立端恒有值;
-		// koishi 端不填,room-session 走旧路径。
+		// per-UP 解析后的消息版式直播切片(覆盖开播 / 直播中 / 下播),恒有值。
 		messageLayout: eff.messageLayout.live,
 		customSpecialDanmakuUsers:
 			danmakuUsers.length > 0

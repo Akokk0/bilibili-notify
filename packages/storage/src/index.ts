@@ -27,8 +27,7 @@ export interface StorageManagerOptions {
 	/**
 	 * Override default file locations; missing fields fall back to
 	 * `<dataDir>/bilibili-notify/{master.key,cookies.json,kdf.salt}`. The
-	 * standalone end passes `<dataDir>/secrets/...` per plan §4.1; the koishi
-	 * shell omits this to keep the historical layout.
+	 * standalone end passes `<dataDir>/secrets/...`.
 	 */
 	paths?: { keyPath?: string; cookiePath?: string; saltPath?: string };
 	/**
@@ -36,7 +35,7 @@ export interface StorageManagerOptions {
 	 * `bootstrap.cookieEncryptionKey` ← `BN_COOKIE_KEY`). When present, the AES
 	 * key is scrypt-derived from it and never written to disk → real at-rest
 	 * protection. When absent, falls back to a co-located random key file
-	 * (legacy behaviour; the only mode the koishi shell uses).
+	 * (legacy behaviour).
 	 */
 	encryptionKey?: string;
 	/**

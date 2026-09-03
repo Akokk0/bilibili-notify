@@ -121,6 +121,6 @@ export type MaidSkillWriteRequest = Omit<MaidSkillDTO, "builtin">;
  * 两处共用这一个标识。各写一份字面量的话,改名会**静默**让胶囊不再出现。
  *
  * 与 `create_skin` 同一条注入路(dashboard 聊天的 ExtraTool),**绝不进
- * `TOOL_DEFINITIONS`** —— 那张表是三端共享的,而 koishi 的 `bili.chat` 没有权限门。
+ * `TOOL_DEFINITIONS`** —— 那张表是群聊路径也共享的,而群里没有权限门。
  */
 export const AI_TOOL_LOAD_SKILL = "load_skill";
