@@ -4,7 +4,7 @@
 
 ## 工具链
 
-- **tsdown** —— 每个包构建成 ESM(`.mjs`)+ CJS(`.cjs`)+ 声明文件
+- **vp pack** —— 每个包只构建成 ESM(`.mjs`)+ 声明文件(`.d.mts`);消费方全是 ESM,CJS 产物随 koishi 插件一起退场
 - **Biome** —— linter + formatter(tab 缩进,100 列);Vue 文件在 lint 范围内
 - **Lefthook** —— `vp install` 时经 prepare 钩子自动装。pre-commit 对暂存的 `*.ts/.js/.mjs/.json` 跑 `biome check --staged --write`;commit-msg 跑 commitlint(强制 conventional-commits)
 - **Vitest** —— 单测(`vp test`)

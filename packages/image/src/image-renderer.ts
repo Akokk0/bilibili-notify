@@ -42,8 +42,8 @@ import type { CardColorOptions, Dynamic, LiveData } from "./types";
  * 打包后 pack 的 copy 规则把它搬到 `lib/static/`,而那时本文件已被并进
  * `lib/index.*` —— 都是「同级的 static」。
  *
- * 三种消费形态都验过:`lib/index.mjs`(独立端)、`lib/index.cjs` 与 koishi 的
- * CJS bundle(打包器会把 `import.meta.url` 改写成 CJS 能跑的形式)。
+ * 两种消费形态都验过:`lib/index.mjs`(独立端裸跑 / dev)与内联进 server 单文件 bundle
+ * (打包器把本模块并进 dist/index.mjs,`static/` 由装配脚本搬到 dist/ 旁)。
  */
 export const ASSET_DIR = dirname(fileURLToPath(import.meta.url));
 

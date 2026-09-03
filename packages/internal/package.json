@@ -15,25 +15,12 @@
 		"lib"
 	],
 	"license": "MIT",
-	"main": "./lib/index.cjs",
-	"types": "./lib/index.d.cts",
+	"types": "./lib/index.d.mts",
 	"exports": {
-		".": {
-			"import": "./lib/index.mjs",
-			"require": "./lib/index.cjs"
-		},
-		"./constants": {
-			"import": "./lib/constants.mjs",
-			"require": "./lib/constants.cjs"
-		},
-		"./patch": {
-			"import": "./lib/patch.mjs",
-			"require": "./lib/patch.cjs"
-		},
-		"./template-defaults": {
-			"import": "./lib/template-defaults.mjs",
-			"require": "./lib/template-defaults.cjs"
-		},
+		".": "./lib/index.mjs",
+		"./constants": "./lib/constants.mjs",
+		"./patch": "./lib/patch.mjs",
+		"./template-defaults": "./lib/template-defaults.mjs",
 		"./package.json": "./package.json"
 	},
 	"scripts": {
@@ -46,6 +33,5 @@
 	},
 	"engines": {
 		"node": ">=20.0.0"
-	},
-	"module": "./lib/index.mjs"
+	}
 }
