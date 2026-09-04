@@ -26,7 +26,7 @@ describe("newerVersionOf —— 「有一版比现在新」这件事只在一处
 	it("没查过 / 最新 / 关着 / 出错:没有", () => {
 		expect(newerVersionOf(status({ phase: "idle" }))).toBeNull();
 		expect(newerVersionOf(status({ phase: "up-to-date", checkedAt: 1 }))).toBeNull();
-		expect(newerVersionOf(status({ phase: "disabled" }))).toBeNull();
+		expect(newerVersionOf(status({ phase: "disabled", reason: "no-keys" }))).toBeNull();
 		expect(
 			newerVersionOf(status({ phase: "error", reason: "unreachable", checkedAt: 1 })),
 		).toBeNull();
@@ -39,6 +39,13 @@ describe("phaseLabel", () => {
 			phaseLabel(status({ phase: "ready", target: "0.9.0", releaseUrl: "https://x" })),
 		).toContain("0.9.0");
 		expect(phaseLabel(status({ phase: "idle" }))).toBe("还没查过");
+	});
+
+	it("功能关着的两种理由说法不同:没公钥是「未启用」,开发版是「不检查更新」", () => {
+		expect(phaseLabel(status({ phase: "disabled", reason: "no-keys" }))).toBe("本构建未启用");
+		expect(phaseLabel(status({ phase: "disabled", reason: "dev-build" }))).toBe(
+			"开发版,不检查更新",
+		);
 	});
 });
 

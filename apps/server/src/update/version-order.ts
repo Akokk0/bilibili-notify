@@ -7,6 +7,15 @@ export function isPrerelease(version: string): boolean {
 	return version.includes("-");
 }
 
+/**
+ * 开发版:源码里独立端的版本一直是 `0.0.0-dev`(发版 workflow 才按 tag 临时同步),
+ * 读不到 package.json 时 `resolveAppVersion` 兜底给 `dev`。两者都不是发出去的版本,
+ * 按数字比它们比谁都小 —— 拿去查更新只会永远「有新版」。
+ */
+export function isDevBuild(version: string): boolean {
+	return version === "dev" || version.startsWith("0.0.0-dev");
+}
+
 /** `0.9.0-alpha.1` → `["0.9.0", "alpha.1"]`;没有预发布段时后者为空串。 */
 function splitVersion(version: string): [core: string, prerelease: string] {
 	const dash = version.indexOf("-");

@@ -32,8 +32,13 @@ export type UpdateErrorReason =
 	| "nothing-to-roll-back";
 
 export type UpdateState =
-	/** 这个构建没内置任何信任公钥 —— 功能是**关的**,不是「验签失败」。 */
-	| { phase: "disabled" }
+	/**
+	 * 功能是**关的**,不是「验签失败」。两种理由:`no-keys` = 这个构建没内置任何信任公钥
+	 * (自己 fork 出去构建的);`dev-build` = 正在跑的是源码里的占位版本(`0.0.0-dev`,
+	 * 或读不到 package.json 时的兜底 `dev`),它比任何发出去的版本都小,不挡的话开发时
+	 * 每次开面板都被提示「有新版」。
+	 */
+	| { phase: "disabled"; reason: "no-keys" | "dev-build" }
 	/** 还没查过。 */
 	| { phase: "idle" }
 	| { phase: "up-to-date"; checkedAt: number }

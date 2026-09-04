@@ -194,7 +194,7 @@ describe("update 路由", () => {
 					currentVersion: "0.8.0",
 					rollbackTarget: null,
 					pinnedVersion: null,
-					state: { phase: "disabled" },
+					state: { phase: "disabled", reason: "no-keys" },
 				}),
 			}),
 			applyUpdate,

@@ -21,7 +21,7 @@ import {
 } from "./select-version-for-boot.js";
 import type { Manifest } from "./signed-manifest.js";
 import { installedVersions } from "./version-dirs.js";
-import { compareVersions } from "./version-order.js";
+import { compareVersions, isDevBuild } from "./version-order.js";
 
 /**
  * 把已经各自钉好的几块串成用户看得见的那条流程:取清单 → 决策 → 下载 → 落盘 → 钉版本。
@@ -86,8 +86,14 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		readSettings,
 	} = input;
 
-	const enabled = trustedKeys.length > 0;
-	let state: UpdateState = enabled ? { phase: "idle" } : { phase: "disabled" };
+	// 两种情况整个功能关着、连网络都不碰:没内置公钥(拿回清单也验不了),以及正在跑开发版
+	// (`0.0.0-dev` 比谁都小,查了只会永远「有新版」,开着自动下载还真会装上去)。
+	const disabledReason: "no-keys" | "dev-build" | null =
+		trustedKeys.length === 0 ? "no-keys" : isDevBuild(currentVersion) ? "dev-build" : null;
+	const enabled = disabledReason === null;
+	let state: UpdateState = enabled
+		? { phase: "idle" }
+		: { phase: "disabled", reason: disabledReason };
 	/**
 	 * 最近一次验过签的清单 —— 手动下载要用它,免得再跑一趟网络。带上它是在哪个渠道
 	 * 查到的:用户换了渠道之后按下载,不能把上个渠道那份装上去。

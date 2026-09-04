@@ -53,7 +53,7 @@ export function newerVersionOf(status: UpdateStatusDTO): string | null {
 export function phaseLabel(status: UpdateStatusDTO): string {
 	switch (status.state.phase) {
 		case "disabled":
-			return "本构建未启用";
+			return status.state.reason === "dev-build" ? "开发版,不检查更新" : "本构建未启用";
 		case "idle":
 			return "还没查过";
 		case "up-to-date":

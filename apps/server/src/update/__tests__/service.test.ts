@@ -160,8 +160,34 @@ describe("createUpdateService —— 没有内置公钥时", () => {
 
 		const status = await service.check();
 
-		expect(status.state.phase).toBe("disabled");
+		expect(status.state).toEqual({ phase: "disabled", reason: "no-keys" });
 		// 也别去打扰网络 —— 没有钥匙,拿回来也验不了。
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+});
+
+describe("createUpdateService —— 开发版", () => {
+	// 源码里独立端的版本一直是 `0.0.0-dev`(发版 workflow 才按 tag 临时同步),它比任何发出去
+	// 的版本都小 —— 不挡的话开发时每次开面板都被提示「有新版」,开着自动下载还真会装。
+	it("占位版本 0.0.0-dev 不参与更新:报 disabled(dev-build),检查也不碰网络", async () => {
+		const key = makeKey();
+		const fetchMock = stubNetwork({});
+		const { service } = makeService({
+			trustedKeys: [key.spkiBase64],
+			currentVersion: "0.0.0-dev",
+		});
+
+		expect(service.getStatus().state).toEqual({ phase: "disabled", reason: "dev-build" });
+		await service.check();
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("读不到 package.json 时的兜底版本 `dev` 同样算开发版", async () => {
+		const key = makeKey();
+		const fetchMock = stubNetwork({});
+		const { service } = makeService({ trustedKeys: [key.spkiBase64], currentVersion: "dev" });
+
+		expect((await service.check()).state).toEqual({ phase: "disabled", reason: "dev-build" });
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 });

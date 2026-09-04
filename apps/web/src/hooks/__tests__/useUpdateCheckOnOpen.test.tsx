@@ -115,7 +115,10 @@ describe("useUpdateCheckOnOpen", () => {
 	});
 
 	it("功能关着 → 连查都不查", async () => {
-		mount(dto({ phase: "disabled" }), dto({ phase: "disabled" }));
+		mount(
+			dto({ phase: "disabled", reason: "no-keys" }),
+			dto({ phase: "disabled", reason: "no-keys" }),
+		);
 
 		await waitFor(() => expect(api.get).toHaveBeenCalled());
 		await flush();

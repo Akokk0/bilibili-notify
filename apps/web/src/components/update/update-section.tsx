@@ -193,8 +193,9 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 
 					{state.phase === "disabled" ? (
 						<HintNote tone="neutral">
-							这个构建里没有内置更新签名的公钥,所以应用内更新是关着的 —— 不是出错。自己
-							构建的版本会落在这一档,按原来的方式升级即可。
+							{state.reason === "dev-build"
+								? "正在跑的是开发版(源码里的占位版本号),它比任何发布过的版本都小,所以应用内更新不检查也不提示 —— 不是出错。"
+								: "这个构建里没有内置更新签名的公钥,所以应用内更新是关着的 —— 不是出错。自己构建的版本会落在这一档,按原来的方式升级即可。"}
 						</HintNote>
 					) : null}
 

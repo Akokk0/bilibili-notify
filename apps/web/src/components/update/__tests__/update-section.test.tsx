@@ -190,10 +190,20 @@ describe("UpdateSection —— 按钮该在什么时候出现", () => {
 	});
 
 	it("功能没启用 → 说明这是关着的、不是出错,检查按钮也别留", async () => {
-		serve({ phase: "disabled" });
+		serve({ phase: "disabled", reason: "no-keys" });
 		renderSection();
 
 		expect(await screen.findByText(/没有内置更新签名的公钥/)).toBeTruthy();
+		expect(screen.getByRole("button", { name: "检查更新" })).toHaveProperty("disabled", true);
+	});
+
+	it("开发版 → 明说开发版不参与应用内更新,检查按钮同样灰", async () => {
+		serve({ phase: "disabled", reason: "dev-build" }, { currentVersion: "0.0.0-dev" });
+		renderSection();
+
+		expect(await screen.findByText(/正在跑的是开发版/)).toBeTruthy();
+		expect(screen.getByText("开发版,不检查更新")).toBeTruthy();
+		expect(screen.queryByText(/没有内置更新签名的公钥/)).toBeNull();
 		expect(screen.getByRole("button", { name: "检查更新" })).toHaveProperty("disabled", true);
 	});
 
