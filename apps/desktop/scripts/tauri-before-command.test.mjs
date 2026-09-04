@@ -7,10 +7,10 @@ import { describe, expect, it } from "vite-plus/test";
  * tauri.conf.json 的 before* 命令必须写死本仓那份 vp,不能写裸 `vp`。
  *
  * 裸名字会被 tauri 自己劫持:它解析 `beforeDevCommand` 时按目录逐级向上收集
- * `node_modules/.bin`,而本仓是**嵌在另一个项目里的**
- * (`bilibili-notify-dev/external/bilibili-notify`),外层那份 yarn 装的
- * vite-plus 0.2.1 排在本仓前面就被选中 —— 2026-08-31 实测祖先链:
- *   node <外层>/node_modules/.bin/vp run front:dev
+ * `node_modules/.bin`,祖先目录里任何一份别的 vp 都会排在本仓前面被选中。
+ * 2026-08-31 本仓还嵌在另一个工程的子目录里时实测过一回:外层那份 yarn 装的
+ * vite-plus 0.2.1 中选,祖先链是
+ *   node <外层工程>/node_modules/.bin/vp run front:dev
  *
  * 症状是 `dev:desktop` 打出 `VITE+ v0.2.1`。**极难查**:脚本内 `which -a vp` 和
  * `vp --version` 都老老实实报 0.3.0(本仓 .bin 排第一),看着完全无辜 —— 中招的是
@@ -18,6 +18,9 @@ import { describe, expect, it } from "vite-plus/test";
  * (本仓根就摆着 0.3.0,任何经过仓库根的查找都会先撞到它),我在这上面误诊过两轮。
  * 影响面:0.2.1 只当任务运行器,真正编译的仍是本仓 0.3.0 的 core,所以**门禁全绿、
  * 产物也正常**,只有横幅和 `vp run` 那层的行为是旧的 —— 没有任何别的东西会报警。
+ *
+ * 仓库 2026-09-03 起平级摆放,祖先目录里没有别的 node_modules 了;但这条守卫不撤 ——
+ * 谁的机器上把仓库 clone 进别的工程里,同样的劫持就会原样重演。
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -31,7 +34,7 @@ describe("tauri before* 命令", () => {
 	];
 
 	for (const [key, command] of entries) {
-		it(`${key} 不用裸 vp(会被外层项目的旧 vp 劫持)`, () => {
+		it(`${key} 不用裸 vp(tauri 会沿祖先目录自己挑一份,不一定是本仓的)`, () => {
 			expect(command).toBeTypeOf("string");
 			expect(command).not.toMatch(/^\s*vpx?r?\s/);
 		});
