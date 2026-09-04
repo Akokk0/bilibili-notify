@@ -484,7 +484,9 @@ export default function System() {
 
 			{draft ? <CommandsSettings draft={draft} onPatch={patchDraft} /> : null}
 
-			{draft ? <LinkParsingSettings draft={draft} onPatch={patchDraft} /> : null}
+			{draft ? (
+				<LinkParsingSettings draft={draft} onPatch={patchDraft} targets={targetsQuery.data ?? []} />
+			) : null}
 
 			<BrowserSourceSettings />
 

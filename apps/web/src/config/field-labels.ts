@@ -152,12 +152,22 @@ export const FIELD_LABELS = {
 	// ── 链接解析 ──────────────────────────────────────────────────────────
 	"linkParsing.enabled": {
 		label: "链接解析",
-		hint: "群里有人贴 B 站视频链接就回一张视频卡片。机器人在的所有群都算,谁贴都算。OneBot 直接可用;QQ 官方机器人要群主在群设置里把消息范围放到「获取群内全部消息」,留在「仅 @ 机器人」档的话得 @ 它再贴链接",
+		hint: "群里有人贴 B 站视频链接就回一张视频卡片,谁贴都算;在哪些群响应由下面的「生效范围」定。OneBot 直接可用;QQ 官方机器人要群主在群设置里把消息范围放到「获取群内全部消息」,留在「仅 @ 机器人」档的话得 @ 它再贴链接",
 		section: "linkParsing",
 	},
 	"linkParsing.cooldownSeconds": {
 		label: "冷却时间",
 		hint: `同一个群里同一个视频多久内只出一次图;0 = 不节流。另有不可调的底线:每个群每分钟最多 ${LINK_LIMITS.groupPerMinute} 张、全局同时最多处理 ${LINK_LIMITS.maxInflight} 张,防换着视频刷`,
+		section: "linkParsing",
+	},
+	"linkParsing.scope": {
+		label: "生效范围",
+		hint: "「所有群」= 机器人在的所有群,不要求群配成推送目标;「仅以下群」= 只在勾选的推送目标群里响应",
+		section: "linkParsing",
+	},
+	"linkParsing.targets": {
+		label: "白名单群",
+		hint: "从推送目标里勾。只列群类目标;已停用的目标勾着也不生效,恢复启用后自动生效;目标删掉了这里就不再显示",
 		section: "linkParsing",
 	},
 	"commands.aliases": {
