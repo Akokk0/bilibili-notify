@@ -28,6 +28,8 @@ const execFileAsync = promisify(execFile);
 const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const desktopRoot = join(root, "apps", "desktop");
 const layout = readDesktopLayoutFile(root);
+// 载荷树的顶层目录(`app/`),由 serverDir 推出来 —— 别在下面再写字面量。
+const appDir = layout.serverDir.split("/")[0];
 const resourcesRoot = join(desktopRoot, "src-tauri", "resources");
 const serverDist = join(root, "apps", "server", "dist");
 const webDist = join(root, "apps", "web", "dist");
@@ -54,8 +56,10 @@ async function prepare() {
 	const payload = await copyPayload();
 	const nodeRuntime = await prepareNodeRuntime();
 	await assertSlimRuntimeLayout(payload);
-	await assertNoDesktopForbiddenFiles(resourcesRoot);
+	// 先真的 import 一遍,再扫敏感文件:载荷加载时若写出什么(首启配置、data/、缓存),
+	// 得落在扫描之前 —— 否则它就跟着签进安装包。
 	await verifyPackagedServerImport();
+	await assertNoDesktopForbiddenFiles(resourcesRoot);
 	// BUILD_INFO 统计的是它自己之外的那棵树,一次算完就写,不用来回稳定。
 	const treeStats = await collectTreeStats(resourcesRoot);
 	await assertResourceBudget(treeStats);
@@ -103,7 +107,7 @@ async function assertBuiltArtifacts() {
  * 更新换掉载荷时前端跟着一起换;摆在别处再用 --web-dist 指过去的话,就成了钉死旧前端的钉子。
  */
 async function copyPayload() {
-	const appRoot = join(resourcesRoot, "app");
+	const appRoot = join(resourcesRoot, appDir);
 	const serverRoot = join(resourcesRoot, ...layout.serverDir.split("/"));
 	const libRoot = join(serverRoot, layout.libDir);
 	await copyTree(serverDist, libRoot);
@@ -344,9 +348,9 @@ async function assertNoDesktopForbiddenFiles(dir) {
 		if (base.startsWith(".env") || /\.(pem|key|enc)$/i.test(base)) {
 			forbidden.push(rel);
 		}
-		if (rel.startsWith("app/apps/server/data/")) forbidden.push(rel);
-		if (rel.startsWith("app/apps/server/logs/")) forbidden.push(rel);
-		if (rel.startsWith("app/node_modules/")) forbidden.push(rel);
+		if (rel.startsWith(`${layout.serverDir}/data/`)) forbidden.push(rel);
+		if (rel.startsWith(`${layout.serverDir}/logs/`)) forbidden.push(rel);
+		if (rel.startsWith(`${appDir}/node_modules/`)) forbidden.push(rel);
 		if (await mayContainSensitiveText(path)) {
 			const raw = await readFile(path, "utf8").catch(() => "");
 			if (containsMaterialSecret(raw)) {
