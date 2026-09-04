@@ -38,6 +38,24 @@ export function parseDesktopLayout(text) {
 			throw new Error(`${LAYOUT_FILE}: requiredUnderResources 少了 ${rel}`);
 		}
 	}
+	// 禁止出现的目录(运行时数据、日志、node_modules)也只声明一次,生产端与两个闸都按它扫。
+	// 声明得指向载荷树之内 —— 指到外面去,闸扫的是一个永远不存在的地方,一道再也红不了的闸;
+	// 把 bundle 所在的 lib/ 列进去则会拦下每一个正确的包。
+	const appDir = layout.serverDir.split("/")[0];
+	const forbidden = layout.forbiddenUnderResources;
+	if (!Array.isArray(forbidden) || forbidden.length === 0) {
+		throw new Error(`${LAYOUT_FILE}: 缺少 forbiddenUnderResources`);
+	}
+	for (const rel of forbidden) {
+		if (typeof rel !== "string" || !rel.startsWith(`${appDir}/`)) {
+			throw new Error(`${LAYOUT_FILE}: forbiddenUnderResources 的 ${rel} 不在 ${appDir}/ 之下`);
+		}
+		if (rel === libPath || libPath.startsWith(`${rel}/`)) {
+			throw new Error(
+				`${LAYOUT_FILE}: forbiddenUnderResources 的 ${rel} 盖住了 bundle 所在的 ${libPath}`,
+			);
+		}
+	}
 	return layout;
 }
 

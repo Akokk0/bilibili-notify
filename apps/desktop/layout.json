@@ -11,6 +11,7 @@
 		"app/apps/server/lib/web-dist/index.html",
 		"BUILD_INFO.json"
 	],
+	"forbiddenUnderResources": ["app/apps/server/data", "app/apps/server/logs", "app/node_modules"],
 	"nodeBinary": {
 		"macos": "node/bin/node",
 		"windows": "node/bin/node.exe"

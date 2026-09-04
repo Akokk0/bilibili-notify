@@ -75,6 +75,29 @@ function auditGateScript(label, raw, layout) {
 	if (!layout.passesWebDistFlag && script.includes("--web-dist")) {
 		problems.push(`${label}: 外壳已不再传 --web-dist,冒烟也不能传(否则测的是用户跑不到的路径)`);
 	}
+	problems.push(...auditForbiddenList(label, script, layout));
+	return problems;
+}
+
+/**
+ * 禁止出现的目录(data / logs / node_modules)同样只声明一次:闸和生产端都得读
+ * `forbiddenUnderResources`,而不是各自抄一份 —— 抄的那份在声明改了之后照样扫旧地方,
+ * 而且只在打 tag 那天跑。posix 与反斜杠两种写法都算抄。
+ */
+function auditForbiddenList(label, script, layout) {
+	const problems = [];
+	if (!script.includes("forbiddenUnderResources")) {
+		problems.push(
+			`${label}: 没有读 ${LAYOUT_FILE} 的 forbiddenUnderResources —— 禁止目录只能有一份声明`,
+		);
+	}
+	for (const rel of layout.forbiddenUnderResources) {
+		if (script.includes(rel) || script.includes(rel.replaceAll("/", "\\"))) {
+			problems.push(
+				`${label}: 又把 ${rel} 写死了,应该从 ${LAYOUT_FILE} 的 forbiddenUnderResources 读`,
+			);
+		}
+	}
 	return problems;
 }
 
@@ -116,6 +139,7 @@ function auditProducer(raw, layout) {
 			problems.push(`producer: 又把 "${literal}" 写死了,应该从 ${LAYOUT_FILE} 读`);
 		}
 	}
+	problems.push(...auditForbiddenList("producer", script, layout));
 	return problems;
 }
 

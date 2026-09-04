@@ -21,25 +21,18 @@ function Assert-WindowsGuiSubsystem {
 function Assert-NoForbiddenRuntimeFiles {
     param(
         [string]$Root,
-        [string]$Label
+        [string]$Label,
+        # 禁止出现的目录来自 apps/desktop/layout.json(posix 分隔),生产端扫的就是同一份。
+        [string[]]$ForbiddenRel
     )
 
+    $forbiddenTails = @($ForbiddenRel | ForEach-Object { "\" + ($_ -replace "/", "\") })
     $forbidden = Get-ChildItem $Root -Recurse -Force | Where-Object {
+        $full = $_.FullName
         $_.Name -in @("bn.config.yaml", "bn.config.yml", "bn.config.json", "master.key") -or
         $_.Name -like ".env*" -or
         $_.Extension -in @(".pem", ".key", ".enc") -or
-        $_.FullName -like "*\resources\app\apps\server\data" -or
-        $_.FullName -like "*\resources\app\apps\server\data\*" -or
-        $_.FullName -like "*\resources\app\apps\server\logs" -or
-        $_.FullName -like "*\resources\app\apps\server\logs\*" -or
-        $_.FullName -like "*\resources\app\node_modules" -or
-        $_.FullName -like "*\resources\app\node_modules\*" -or
-        $_.FullName -like "*\app\apps\server\data" -or
-        $_.FullName -like "*\app\apps\server\data\*" -or
-        $_.FullName -like "*\app\apps\server\logs" -or
-        $_.FullName -like "*\app\apps\server\logs\*" -or
-        $_.FullName -like "*\app\node_modules" -or
-        $_.FullName -like "*\app\node_modules\*"
+        @($forbiddenTails | Where-Object { $full -like "*$_" -or $full -like "*$_\*" }).Count -gt 0
     } | Select-Object -First 1
     if ($forbidden) {
         Write-Error "$Label contains forbidden runtime file: $($forbidden.FullName)"
@@ -188,4 +181,4 @@ finally {
     Stop-SidecarSmokeProcess $sidecar
 }
 
-Assert-NoForbiddenRuntimeFiles -Root $resourcesDir -Label "Windows portable artifact"
+Assert-NoForbiddenRuntimeFiles -Root $resourcesDir -Label "Windows portable artifact" -ForbiddenRel $layout.forbiddenUnderResources

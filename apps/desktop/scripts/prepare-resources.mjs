@@ -342,9 +342,10 @@ async function assertNoDesktopForbiddenFiles(dir) {
 		if (base.startsWith(".env") || /\.(pem|key|enc)$/i.test(base)) {
 			forbidden.push(rel);
 		}
-		if (rel.startsWith(`${layout.serverDir}/data/`)) forbidden.push(rel);
-		if (rel.startsWith(`${layout.serverDir}/logs/`)) forbidden.push(rel);
-		if (rel.startsWith(`${appDir}/node_modules/`)) forbidden.push(rel);
+		// 禁止出现的目录来自那份声明,两个发版闸扫的也是同一份。
+		if (layout.forbiddenUnderResources.some((p) => rel === p || rel.startsWith(`${p}/`))) {
+			forbidden.push(rel);
+		}
 		if (await mayContainSensitiveText(path)) {
 			const raw = await readFile(path, "utf8").catch(() => "");
 			if (containsMaterialSecret(raw)) {
