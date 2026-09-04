@@ -162,7 +162,7 @@ describe("清单里的名字是不可信输入", () => {
 
 	it("整条路径只留最后一截 —— 主人要看的是文件名,不是他的桌面路径", async () => {
 		const fresh = await mkdtemp(join(tmpdir(), "font-path-"));
-		await saveFontAsset(fresh, WOFF2, "C:\\Users\\akokko\\Desktop\\wenkai.ttf");
+		await saveFontAsset(fresh, WOFF2, "C:\\Users\\akokko\\Desktop\\wenkai.ttf"); // local-path-ok
 		const [listed] = await listFontAssets(fresh);
 		expect(listed?.name).toBe("wenkai.ttf");
 		await rm(fresh, { recursive: true, force: true });

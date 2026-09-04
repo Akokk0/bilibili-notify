@@ -1601,16 +1601,15 @@ mod tests {
 
     #[test]
     fn windows_open_command_uses_explorer_without_cmd_shell() {
-        let command = windows_explorer_open_command(OsStr::new(
-            r"C:\Users\akokko\AppData\Local\bilibili-notify",
-        ));
+        let target = r"C:\Users\akokko\AppData\Local\bilibili-notify"; // local-path-ok
+        let command = windows_explorer_open_command(OsStr::new(target));
         let args = command
             .get_args()
             .map(|arg| arg.to_string_lossy().to_string())
             .collect::<Vec<_>>();
 
         assert_eq!(command.get_program(), OsStr::new("explorer.exe"));
-        assert_eq!(args, vec![r"C:\Users\akokko\AppData\Local\bilibili-notify"]);
+        assert_eq!(args, vec![target]);
     }
 
     #[test]
@@ -1634,9 +1633,9 @@ mod tests {
     fn windows_verbatim_path_strips_drive_prefix_for_child_processes() {
         assert_eq!(
             strip_windows_verbatim_path(Path::new(
-                r"\\?\C:\Users\akokko\bilibili-notify\resources\app",
+                r"\\?\C:\Users\akokko\bilibili-notify\resources\app", // local-path-ok
             )),
-            PathBuf::from(r"C:\Users\akokko\bilibili-notify\resources\app")
+            PathBuf::from(r"C:\Users\akokko\bilibili-notify\resources\app") // local-path-ok
         );
     }
 
@@ -1652,22 +1651,22 @@ mod tests {
     fn windows_local_app_data_root_uses_localappdata_without_home() {
         let root = windows_local_app_data_root_from(test_env(&[(
             "LOCALAPPDATA",
-            r"C:\Users\akokko\AppData\Local",
+            r"C:\Users\akokko\AppData\Local", // local-path-ok
         )]))
         .expect("root");
 
-        assert_eq!(root, PathBuf::from(r"C:\Users\akokko\AppData\Local"));
+        assert_eq!(root, PathBuf::from(r"C:\Users\akokko\AppData\Local")); // local-path-ok
     }
 
     #[test]
     fn windows_local_app_data_root_falls_back_to_userprofile() {
         let root =
-            windows_local_app_data_root_from(test_env(&[("USERPROFILE", r"C:\Users\akokko")]))
+            windows_local_app_data_root_from(test_env(&[("USERPROFILE", r"C:\Users\akokko")])) // local-path-ok
                 .expect("root");
 
         assert_eq!(
             root,
-            PathBuf::from(r"C:\Users\akokko")
+            PathBuf::from(r"C:\Users\akokko") // local-path-ok
                 .join("AppData")
                 .join("Local")
         );
@@ -1683,7 +1682,7 @@ mod tests {
 
         assert_eq!(
             root,
-            PathBuf::from(r"C:\Users\akokko")
+            PathBuf::from(r"C:\Users\akokko") // local-path-ok
                 .join("AppData")
                 .join("Local")
         );

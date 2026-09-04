@@ -4,6 +4,9 @@ pre-commit:
       glob: "*.{ts,tsx,js,jsx,mjs,css}"
       run: vpx biome check --staged --write --no-errors-on-unmatched {staged_files}
       stage_fixed: true
+    # 本机绝对路径(/Users/<名>/ 等)不许进仓库;刻意为之的行写 local-path-ok 放行。
+    local-paths:
+      run: node scripts/check-local-paths.mjs {staged_files}
 
 commit-msg:
   commands:

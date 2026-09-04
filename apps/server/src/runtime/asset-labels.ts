@@ -30,8 +30,8 @@ const UNSAFE_LABEL_CHARS = /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g;
  * 上传/包里带来的文件名 → 能安全显示的标签;剥完什么都不剩返回 null。
  *
  * 只取最后一截路径:有些浏览器(以及手工压的包)给的是整条路径。这里不是安全需要
- * —— 这个值永远不会被当路径用 —— 而是「显示 `C:\Users\akokko\Desktop\bg.png` 没有
- * 意义,主人要看的是 `bg.png`」。
+ * —— 这个值永远不会被当路径用 —— 而是「把整条本机路径显示出来没有意义,主人要看的
+ * 是 `bg.png`」。例子见 __tests__/asset-labels.test.ts。
  */
 export function sanitizeAssetLabel(raw: unknown): string | null {
 	if (typeof raw !== "string") return null;

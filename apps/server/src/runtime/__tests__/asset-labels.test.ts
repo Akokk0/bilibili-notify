@@ -29,8 +29,8 @@ describe("sanitizeAssetLabel", () => {
 	});
 
 	it("只留文件名那一截 —— 有些浏览器给的是整条路径", () => {
-		expect(sanitizeAssetLabel("C:\\Users\\akokko\\Desktop\\bg.png")).toBe("bg.png");
-		expect(sanitizeAssetLabel("/home/me/fonts/wenkai.woff2")).toBe("wenkai.woff2");
+		expect(sanitizeAssetLabel("C:\\Users\\akokko\\Desktop\\bg.png")).toBe("bg.png"); // local-path-ok
+		expect(sanitizeAssetLabel("/home/me/fonts/wenkai.woff2")).toBe("wenkai.woff2"); // local-path-ok
 	});
 
 	it("超长截断 —— 下拉框里没人读得完一百多个字", () => {
