@@ -4,6 +4,8 @@ lib/
 .env
 .env.*
 data/
+# 运行数据目录的测试期快照(如 server/data.test-20260830),和 data/ 一样不入库
+data.test-*/
 *.log
 
 # Local bootstrap config — operator-specific paths (chromePath, dataDir).
