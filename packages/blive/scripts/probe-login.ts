@@ -1,10 +1,11 @@
 /** 只读探针:不带 refreshToken 加载(绝不触发刷新舞步),问一次身份。 */
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { BilibiliAPI } from "@bilibili-notify/api";
 import { StorageManager } from "@bilibili-notify/storage";
 
-const repoRoot = "/Users/akokko/NodeProject/bilibili-notify-dev/external/bilibili-notify";
-const dataDir = join(repoRoot, "apps", "server", "data");
+const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
+const dataDir = process.env.BN_DATA_DIR ?? join(repoRoot, "apps", "server", "data");
 const logger = { info: console.log, warn: console.warn, error: console.error, debug: () => {} };
 const serviceCtx = {
 	logger,

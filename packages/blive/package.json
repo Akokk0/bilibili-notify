@@ -31,6 +31,8 @@
 		"ws": "catalog:"
 	},
 	"devDependencies": {
+		"@bilibili-notify/api": "workspace:*",
+		"@bilibili-notify/storage": "workspace:*",
 		"@types/ws": "catalog:"
 	},
 	"engines": {
