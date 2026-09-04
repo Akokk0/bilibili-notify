@@ -3,9 +3,10 @@ import {
 	inboundGapReason,
 	platformCanReceiveReply,
 } from "@bilibili-notify/internal/constants";
-import { EmptyNote, GlassPanel, Icon, PlatformIcon, Toggle, ToneChip } from "@bilibili-notify/ui";
+import { GlassPanel, Icon, Toggle } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Field, Picker, TInput } from "../../components/forms";
+import { TargetChipPicker } from "../../components/target-chip-picker";
 import { AI_PURPLE } from "../../config/colors";
 import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";
@@ -130,8 +131,10 @@ export function RoastScheduleFields({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
-	// 停用的目标推不出去,列出来只会让人选中之后收一条「目标不可达」。
-	const targets = (targetsQuery.data ?? []).filter((t) => t.enabled);
+	// 停用的目标**照列照勾**并标「已停用」—— 与链接解析白名单同一个选择器、同一条规矩
+	// (主人定的:停用是暂停不是消失)。发送时调度器会跳过它、记进「跳过」,不算失败;
+	// 以前这里把它过滤掉,用户看不出它还勾在配置里,恢复启用那天它就悄悄收到周报了。
+	const targets = targetsQuery.data ?? [];
 	const { canApprove, hint: approvalHint } = useApprovalReachability();
 
 	const patch = (over: Partial<RoastScheduleValue>) => onChange({ ...value, ...over });
@@ -175,24 +178,15 @@ export function RoastScheduleFields({
 			<Field
 				code="roastSchedule.targets"
 				label="发送到"
-				hint="可以选多个群；一个群发失败不影响其他群"
+				hint="可以选多个群；一个群发失败不影响其他群；已停用的目标勾着也不发，恢复启用后自动生效"
 			>
-				<div className="flex flex-wrap gap-2">
-					{targets.length === 0 && (
-						<EmptyNote size="sm" className="w-full">
-							还没有可用的推送目标
-						</EmptyNote>
-					)}
-					{targets.map((t) => {
-						const on = value.targets.includes(t.id);
-						return (
-							<ToneChip key={t.id} tone={AI_PURPLE} active={on} onClick={() => toggleTarget(t.id)}>
-								<PlatformIcon platform={t.platform} size={13} />
-								{t.name}
-							</ToneChip>
-						);
-					})}
-				</div>
+				<TargetChipPicker
+					targets={targets}
+					selected={value.targets}
+					onToggle={toggleTarget}
+					tone={AI_PURPLE}
+					empty="还没有可用的推送目标"
+				/>
 			</Field>
 
 			<div className="mt-3 flex flex-col gap-2">
