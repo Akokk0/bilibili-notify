@@ -27,6 +27,7 @@ import {
 	videoLinkKey,
 } from "@bilibili-notify/internal";
 import type { InboundGroupMessage } from "../platforms/types.js";
+import { linkScopeKey } from "./link-scope.js";
 import { videoToDynamic } from "./video-card.js";
 
 /** 一条消息里最多解析几个链接 —— 再多就是刷屏了,也没人真需要。 */
@@ -83,6 +84,12 @@ export interface LinkParserOptions {
 	logger: Logger;
 	/** 面板上那份配置。**现读**,不快照 —— 主人关掉立刻生效。 */
 	config: () => LinkParsingConfig;
+	/**
+	 * 生效范围:`null` = 所有群;否则只有集合里的群算,键见 {@link linkScopeKey}。
+	 * 白名单怎么解析成这个集合(引用目标、停用、悬空)全在 `link-scope.ts`,这里只查表。
+	 * 与 `config` 一样每条消息现读 —— 主人勾掉一个群立刻生效。
+	 */
+	allowedGroups: () => ReadonlySet<string> | null;
 	api: {
 		getVideoInfo(ref: VideoRef): Promise<VideoInfo>;
 		resolveShortLink(url: string): Promise<string | null>;
@@ -194,6 +201,11 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 			if (refs.length === 0) return;
 			const config = opts.config();
 			if (!config.enabled) return;
+			// 范围在渲染器之前、记账之前:不在白名单里的群什么都不该留下 —— 冷却也不记,
+			// 主人随后把群勾上,刚才那条链接再贴一次就该出卡。
+			const scope = linkScopeKey(msg.platform, msg.adapterId, msg.groupId);
+			const allowed = opts.allowedGroups();
+			if (allowed && !allowed.has(scope)) return;
 			const renderer = opts.renderer();
 			if (!renderer) return;
 			const dest: LinkReplyDestination = {
@@ -201,7 +213,6 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 				adapterId: msg.adapterId,
 				groupId: msg.groupId,
 			};
-			const scope = `${msg.platform}:${msg.adapterId}:${msg.groupId}`;
 			const cooldownMs = config.cooldownSeconds * 1000;
 			for (const linkRef of refs) {
 				try {

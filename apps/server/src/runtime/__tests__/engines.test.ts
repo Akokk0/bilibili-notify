@@ -20,7 +20,12 @@
 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { GlobalConfig, Subscription } from "@bilibili-notify/internal";
+import type {
+	GlobalConfig,
+	PushAdapter,
+	PushTarget,
+	Subscription,
+} from "@bilibili-notify/internal";
 import {
 	DEFAULT_CARD_LAYOUT,
 	DEFAULT_MESSAGE_LAYOUT,
@@ -201,18 +206,26 @@ function makeServiceCtx() {
 
 function makeConfigStore(initial: GlobalConfig) {
 	let g = initial;
+	let targets: PushTarget[] = [];
+	let adapters: PushAdapter[] = [];
 	return {
 		// 背景轮换游标 fs 路径取自此。指向 OS 临时目录下一个**不存在**的子目录(跨平台:
 		// Windows/macOS/Linux 都解析为各自 tmp 根):load 读不到走 catch 返回 {};测试不触发
 		// 轮换故游标不脏、dispose 不写盘(即便写,目标在 tmp 下也无害)。不含任何真实路径/密钥。
 		bootstrap: { dataDir: join(tmpdir(), "bn-engines-test-no-such-dir") },
 		getGlobals: () => g,
-		getTargets: () => [],
-		getAdapters: () => [],
+		getTargets: () => targets,
+		getAdapters: () => adapters,
 		patchTarget: vi.fn(async () => {}),
 		patchAdapter: vi.fn(async () => {}),
 		_set: (next: GlobalConfig) => {
 			g = next;
+		},
+		_setTargets: (next: PushTarget[]) => {
+			targets = next;
+		},
+		_setAdapters: (next: PushAdapter[]) => {
+			adapters = next;
 		},
 	};
 }
@@ -1180,6 +1193,54 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 			targets: [],
 		});
 		expect(c.runtime.linkCardPresentation().layout).toEqual(layout);
+	});
+
+	// 白名单引用的是目标:目标或适配器停用、删掉都会改变「哪些群算数」,所以允许集要跟着
+	// globals / targets / adapters 三种变更刷新,不能只盯 globals。
+	it("允许集随 globals、targets、adapters 三种 config-changed 刷新", () => {
+		const ADAPTER = "11111111-1111-4111-8111-111111111111";
+		const TARGET = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+		const c = setup();
+		active = c;
+		c.configStore._setAdapters([
+			{ id: ADAPTER, name: "bot", enabled: true, platform: "onebot", config: {} } as any,
+		]);
+		c.configStore._setTargets([
+			{
+				id: TARGET,
+				name: "群",
+				adapterId: ADAPTER,
+				scope: "group",
+				enabled: true,
+				platform: "onebot",
+				session: { groupId: "123" },
+			} as PushTarget,
+		]);
+		expect(c.runtime.linkAllowedGroups()).toBeNull();
+
+		patchGlobals(c, (g) => {
+			g.linkParsing = {
+				enabled: true,
+				cooldownSeconds: 60,
+				scope: "selected",
+				targets: [{ targetId: TARGET }],
+			};
+		});
+		c.bus.emit("config-changed", "globals");
+		expect([...(c.runtime.linkAllowedGroups() ?? [])]).toEqual([`onebot:${ADAPTER}:123`]);
+
+		// 目标停用 → 群从允许集里消失;只发 targets 的变更,不发 globals。
+		c.configStore._setTargets([{ ...c.configStore.getTargets()[0], enabled: false } as PushTarget]);
+		c.bus.emit("config-changed", "targets");
+		expect(c.runtime.linkAllowedGroups()?.size).toBe(0);
+
+		// 目标恢复、但适配器停用 → 同样不算;只发 adapters 的变更。
+		c.configStore._setTargets([{ ...c.configStore.getTargets()[0], enabled: true } as PushTarget]);
+		c.bus.emit("config-changed", "targets");
+		expect(c.runtime.linkAllowedGroups()?.size).toBe(1);
+		c.configStore._setAdapters([{ ...c.configStore.getAdapters()[0], enabled: false } as any]);
+		c.bus.emit("config-changed", "adapters");
+		expect(c.runtime.linkAllowedGroups()?.size).toBe(0);
 	});
 
 	it("配色 = 全局「动态」样式;没调过就 undefined(渲染器全局兜底)", () => {

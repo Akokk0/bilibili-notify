@@ -487,6 +487,7 @@ export async function startStandaloneServer(
 			logger: log,
 			// 开关与呈现都从引擎拿:随 config-changed 刷新的快照,呈现规则与推送的动态卡同源。
 			config: () => runtimeEngines.linkParsing(),
+			allowedGroups: () => runtimeEngines.linkAllowedGroups(),
 			api: runtimeEngines.api,
 			renderer: () => runtimeEngines.imageRenderer,
 			presentation: () => runtimeEngines.linkCardPresentation(),

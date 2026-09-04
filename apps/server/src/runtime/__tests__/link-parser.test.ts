@@ -73,7 +73,11 @@ const LAYOUT: CardBlock[] = [
 /** 卡片页里给「动态」这一类调的配色(含图廊轮到的那张背景)—— 同样两种卡都得吃。 */
 const COLORS: CardColorOptions = { cardColorStart: "#111111", backgroundImage: "bg-7" };
 
-function makeParser(over: Partial<LinkParsingConfig> = {}, limits?: Partial<LinkLimits>) {
+function makeParser(
+	over: Partial<LinkParsingConfig> = {},
+	limits?: Partial<LinkLimits>,
+	extra: { allowedGroups?: () => ReadonlySet<string> | null } = {},
+) {
 	const config: LinkParsingConfig = {
 		enabled: true,
 		cooldownSeconds: 60,
@@ -101,20 +105,23 @@ function makeParser(over: Partial<LinkParsingConfig> = {}, limits?: Partial<Link
 	let now = 1_000_000;
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
 	const readConfig = vi.fn(() => config);
+	const renderer = vi.fn(() => ({ generateDynamicCard }));
 	const parser = createLinkParser({
 		logger,
 		config: readConfig,
 		api: { getVideoInfo, resolveShortLink },
-		renderer: () => ({ generateDynamicCard }),
+		renderer,
 		presentation: () => ({ colors: COLORS, layout: LAYOUT }),
 		send,
 		now: () => now,
+		allowedGroups: extra.allowedGroups ?? (() => null),
 		...(limits ? { limits } : {}),
 	});
 	return {
 		parser,
 		config,
 		readConfig,
+		renderer,
 		getVideoInfo,
 		resolveShortLink,
 		generateDynamicCard,
@@ -219,6 +226,7 @@ describe("createLinkParser", () => {
 				renderer: () => null,
 				presentation: () => ({}),
 				send: h.send,
+				allowedGroups: () => null,
 			});
 			await feed(parser, groupFrame("https://b23.tv/abc123"));
 			expect(h.resolveShortLink).not.toHaveBeenCalled();
@@ -233,6 +241,7 @@ describe("createLinkParser", () => {
 				renderer: () => null,
 				presentation: () => ({}),
 				send: h.send,
+				allowedGroups: () => null,
 			});
 			await feed(parser, groupFrame(LINK));
 			expect(h.getVideoInfo).not.toHaveBeenCalled();
@@ -447,6 +456,72 @@ describe("createLinkParser", () => {
 				{ bvid: "BV1bbbbbbbbb" },
 				{ bvid: "BV1ccccccccc" },
 			]);
+		});
+	});
+
+	// 白名单本身(哪些目标算、停用算不算)由 link-scope 解析成允许集,这里只看解析器拿着
+	// 那个集合做没做对:命中才出卡,未命中什么都不碰。
+	describe("生效范围(白名单)", () => {
+		const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
+		const THIS_GROUP = `onebot:${ADAPTER}:${GROUP}`;
+
+		it("允许集里有这个群 → 照常出卡", async () => {
+			const h = makeParser({ scope: "selected" }, undefined, {
+				allowedGroups: () => new Set([THIS_GROUP]),
+			});
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent).toHaveLength(1);
+		});
+
+		it("允许集里没有这个群 → 不打接口、不碰渲染器、不发", async () => {
+			const h = makeParser({ scope: "selected" }, undefined, {
+				allowedGroups: () => new Set([`onebot:${ADAPTER}:999999`]),
+			});
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.getVideoInfo).not.toHaveBeenCalled();
+			expect(h.renderer).not.toHaveBeenCalled();
+			expect(h.sent).toHaveLength(0);
+		});
+
+		it("被范围拦下的链接不记冷却:主人随后把群勾上,同一条链接立刻能出卡", async () => {
+			let allowed: ReadonlySet<string> = new Set<string>();
+			const h = makeParser({ scope: "selected" }, undefined, { allowedGroups: () => allowed });
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent).toHaveLength(0);
+
+			allowed = new Set([THIS_GROUP]);
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent).toHaveLength(1);
+		});
+
+		it("允许集为 null = 不限:所有群照旧", async () => {
+			const h = makeParser({ scope: "all" }, undefined, { allowedGroups: () => null });
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent).toHaveLength(1);
+		});
+
+		it("官机群按 平台:adapter:群 openid 查允许集", async () => {
+			const h = makeParser({ scope: "selected" }, undefined, {
+				allowedGroups: () => new Set([`qq-official:${ADAPTER}:G_OPENID`]),
+			});
+			await h.parser.handleMessage({
+				platform: "qq-official",
+				adapterId: ADAPTER,
+				groupId: "G_OPENID",
+				userId: "M_OPENID",
+				text: LINK,
+				cardLinks: [],
+			});
+			expect(h.sent).toHaveLength(1);
+			await h.parser.handleMessage({
+				platform: "qq-official",
+				adapterId: ADAPTER,
+				groupId: "G_OTHER",
+				userId: "M_OPENID",
+				text: LINK,
+				cardLinks: [],
+			});
+			expect(h.sent).toHaveLength(1);
 		});
 	});
 });
