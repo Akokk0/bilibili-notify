@@ -516,77 +516,36 @@ describe("ConfigStore", () => {
 		await rm(dir2, { recursive: true, force: true });
 	});
 
-	it("load() 静默丢弃存量 web-dashboard adapter 与 target(平台已移除)", async () => {
-		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-drop-webdash-"));
-		const state2 = join(dir2, "state");
-		await mkdir(state2, { recursive: true });
-		const webhook = makeWebhookAdapter();
-		const webDash = {
-			id: randomUUID(),
-			name: "Dashboard 通知中心",
-			platform: "web-dashboard",
-			enabled: true,
-			config: {},
-		};
-		const webDashTarget = {
-			id: randomUUID(),
-			name: "dash",
-			adapterId: webDash.id,
-			platform: "web-dashboard",
-			scope: "channel",
-			enabled: true,
-			session: {},
-		};
-		await writeFile(join(state2, "adapters.json"), JSON.stringify([webhook, webDash]), "utf8");
-		await writeFile(join(state2, "targets.json"), JSON.stringify([webDashTarget]), "utf8");
-
-		const store2 = createConfigStore({
-			bootstrap: makeBootstrap(dir2),
-			bus: makeFakeBus(),
-			serviceCtx: makeFakeServiceCtx(),
-		});
-		await store2.load(); // 不应抛错
-		const adapters = store2.getAdapters();
-		expect(adapters).toHaveLength(1);
-		expect(adapters[0]?.platform).toBe("webhook");
-		// web-dashboard target 被丢弃;只剩 webhook 自动托管 target
-		expect(store2.getTargets().every((t) => t.platform === "webhook")).toBe(true);
-		await rm(dir2, { recursive: true, force: true });
-	});
-
-	// 2261cd59 把 koishi-bot / astrbot 从 schema 里删掉了。main 上的 schema 是收这两个平台的
-	// (dashboard 不给建,但直调 API / 旧备份都能留下条目)。loader 对「已不认识的平台」一律
+	// 已撤下的平台(web-dashboard 早先、koishi-bot / astrbot 随宿主一起)留下的存量条目:
+	// 当年的 schema 是收它们的(dashboard 不给建,但直调 API / 旧备份都能留下)。loader 一律
 	// 静默丢弃 —— safeParse 一失败就是启动期 throw,没有面板可以进去改,boot 三振回落也救不回来。
-	it("load() 静默丢弃已移除平台(koishi-bot / astrbot)的存量 adapter 与 target", async () => {
+	it.each([
+		{ platform: "web-dashboard", config: {}, session: {} },
+		{ platform: "koishi-bot", config: { botPlatform: "onebot" }, session: { channelId: "1" } },
+		{ platform: "astrbot", config: {}, session: {} },
+	])("load() 静默丢弃已撤下平台 $platform 的存量 adapter 与 target", async (stale) => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-drop-removed-"));
 		const state2 = join(dir2, "state");
 		await mkdir(state2, { recursive: true });
 		const webhook = makeWebhookAdapter();
-		const koishi = {
+		const adapter = {
 			id: randomUUID(),
-			name: "Koishi",
-			platform: "koishi-bot",
+			name: stale.platform,
+			platform: stale.platform,
 			enabled: true,
-			config: { botPlatform: "onebot" },
+			config: stale.config,
 		};
-		const astr = {
+		const target = {
 			id: randomUUID(),
-			name: "AstrBot",
-			platform: "astrbot",
-			enabled: true,
-			config: {},
-		};
-		const koishiTarget = {
-			id: randomUUID(),
-			name: "k",
-			adapterId: koishi.id,
-			platform: "koishi-bot",
+			name: "stale",
+			adapterId: adapter.id,
+			platform: stale.platform,
 			scope: "group",
 			enabled: true,
-			session: { channelId: "1" },
+			session: stale.session,
 		};
-		await writeFile(join(state2, "adapters.json"), JSON.stringify([koishi, webhook, astr]), "utf8");
-		await writeFile(join(state2, "targets.json"), JSON.stringify([koishiTarget]), "utf8");
+		await writeFile(join(state2, "adapters.json"), JSON.stringify([adapter, webhook]), "utf8");
+		await writeFile(join(state2, "targets.json"), JSON.stringify([target]), "utf8");
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
@@ -595,6 +554,7 @@ describe("ConfigStore", () => {
 		});
 		await store2.load(); // 不应抛错
 		expect(store2.getAdapters().map((a) => a.platform)).toEqual(["webhook"]);
+		// 撤下平台的 target 被丢弃;只剩 webhook 自动托管 target
 		expect(store2.getTargets().every((t) => t.platform === "webhook")).toBe(true);
 		await rm(dir2, { recursive: true, force: true });
 	});

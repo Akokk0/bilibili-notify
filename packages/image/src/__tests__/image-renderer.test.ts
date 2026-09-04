@@ -538,21 +538,13 @@ describe("ImageRenderer.updateConfig", () => {
 
 	function makeWithSpyLogger(config: ImageRendererConfig) {
 		const info = vi.fn();
-		const ctx: ServiceContext = {
+		const serviceCtx: ServiceContext = {
 			logger: { debug() {}, info, warn() {}, error() {} },
 			setInterval: () => ({ dispose() {} }),
 			setTimeout: () => ({ dispose() {} }),
 			onDispose: () => {},
 		};
-		const puppeteer = { page: async () => ({}) as never } as unknown as PuppeteerLike;
-		const r = new ImageRenderer({
-			serviceCtx: ctx,
-			puppeteer,
-			config,
-			resolveAsset: async () => "",
-			resolveFontFace: async () => "",
-		});
-		return { r, info };
+		return { r: makeRenderer(config, { serviceCtx }), info };
 	}
 
 	it("配置实际变化 → 记录一次", () => {
