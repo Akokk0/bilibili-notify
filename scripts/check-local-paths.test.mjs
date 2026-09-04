@@ -1,5 +1,9 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { ALLOW_MARKER, findLocalPaths, formatReport, readStaged } from "./check-local-paths.mjs";
+import { ALLOW_MARKER, findLocalPaths, formatReport, readStagedAll } from "./check-local-paths.mjs";
 
 /**
  * pre-commit 守卫:本机绝对路径(macOS / Linux / Windows 的家目录)不许进仓库。
@@ -70,52 +74,81 @@ describe("findLocalPaths", () => {
 });
 
 /**
- * 读暂存区那一步的失败模式必须是「报错」而不是「放行」:守卫读不到就跳过,等于没有守卫。
- * 只有「不在暂存区」(已删除)才是合法的跳过。
+ * 读暂存区那一步:一次 `git cat-file --batch` 读全部;不在暂存区(已删除)与二进制跳过,
+ * git 本身失败要抛 —— 守卫读不到就放行,等于没有守卫。`run` 注入一段合成的 batch 输出。
  */
-describe("readStaged", () => {
-	const gitError = (stderr, code) =>
-		Object.assign(new Error("git show failed"), { stderr: Buffer.from(stderr), code });
+describe("readStagedAll", () => {
+	const blob = (body) =>
+		Buffer.concat([Buffer.from(`0123abcd blob ${body.length}\n`), body, Buffer.from("\n")]);
+	const missing = (spec) => Buffer.from(`${spec} missing\n`);
 
-	it("读到文本 → 原样返回", () => {
-		expect(readStaged("a.ts", () => Buffer.from("const x = 1;\n"))).toBe("const x = 1;\n");
+	it("按 size 切内容,换行在内容里也不会切错;顺序与传入路径一一对应", () => {
+		const run = () => Buffer.concat([blob(Buffer.from("a\n\nb\n")), blob(Buffer.from("c"))]);
+		expect(readStagedAll(["x.ts", "y.ts"], run)).toEqual([
+			{ path: "x.ts", content: "a\n\nb\n" },
+			{ path: "y.ts", content: "c" },
+		]);
 	});
 
-	it("二进制(含 NUL)→ null,跳过", () => {
-		expect(readStaged("a.png", () => Buffer.from([0x89, 0x50, 0x00, 0x47]))).toBeNull();
+	it("二进制(含 NUL)与不在暂存区(已删除)的跳过,后面的文件照常读", () => {
+		const run = (specs) => {
+			expect(specs).toEqual([":a.png", ":gone.ts", ":z.ts"]);
+			return Buffer.concat([
+				blob(Buffer.from([0x89, 0x50, 0x00])),
+				missing(":gone.ts"),
+				blob(Buffer.from("ok")),
+			]);
+		};
+		expect(readStagedAll(["a.png", "gone.ts", "z.ts"], run)).toEqual([
+			{ path: "z.ts", content: "ok" },
+		]);
 	});
 
-	it("不在暂存区(已删除)→ null,跳过", () => {
-		const deleted = gitError("fatal: path 'a.ts' exists on disk, but not in the index\n", 128);
+	it("没有文件 → 不跑 git", () => {
 		expect(
-			readStaged("a.ts", () => {
-				throw deleted;
+			readStagedAll([], () => {
+				throw new Error("不该被调用");
 			}),
-		).toBeNull();
-		const gone = gitError(
-			"fatal: path 'b.ts' does not exist (neither on disk nor in the index)\n",
-			128,
+		).toEqual([]);
+	});
+
+	it("git 失败或输出截断 → 抛,不放行", () => {
+		const boom = new Error("git cat-file failed");
+		expect(() =>
+			readStagedAll(["a.ts"], () => {
+				throw boom;
+			}),
+		).toThrow(boom);
+		expect(() => readStagedAll(["a.ts"], () => Buffer.from("0123abcd blob 5\nab"))).toThrow(
+			/截断|看不懂/,
 		);
-		expect(
-			readStaged("b.ts", () => {
-				throw gone;
-			}),
-		).toBeNull();
 	});
+});
 
-	it("其它读取失败(缓冲溢出、索引损坏)→ 抛,不放行", () => {
-		const overflow = gitError("", "ENOBUFS");
-		expect(() =>
-			readStaged("big.bin", () => {
-				throw overflow;
-			}),
-		).toThrow(overflow);
-		const corrupt = gitError("fatal: bad object in index\n", 128);
-		expect(() =>
-			readStaged("a.ts", () => {
-				throw corrupt;
-			}),
-		).toThrow(corrupt);
+/**
+ * 对真实仓库跑一发:pre-commit 只在本地 hook 里跑,`--no-verify`、没装 hooks 的贡献者、网页上
+ * 直接改文件都绕得过它;挂在测试里,`vp test` 一步就带上,三条发布路径共用的门禁自然覆盖。
+ */
+describe("真实仓库", () => {
+	it("已跟踪的文本文件里没有本机绝对路径", () => {
+		const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+		const paths = execFileSync("git", ["ls-files", "-z"], { cwd: repoRoot, maxBuffer: Infinity })
+			.toString("utf8")
+			.split("\0")
+			.filter(Boolean);
+		const files = [];
+		for (const path of paths) {
+			let buf;
+			try {
+				buf = readFileSync(resolve(repoRoot, path));
+			} catch {
+				continue; // 工作树里刚删掉、还没提交的
+			}
+			if (buf.includes(0)) continue;
+			files.push({ path, content: buf.toString("utf8") });
+		}
+		expect(files.length).toBeGreaterThan(100);
+		expect(formatReport(findLocalPaths(files))).toBe("");
 	});
 });
 

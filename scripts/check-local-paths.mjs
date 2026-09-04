@@ -5,8 +5,8 @@
  * 它静默去读旧目录的登录态,一周多才被巡查照出来。凭据之外,这类路径也没有任何理由
  * 进入公开仓库。
  *
- * lefthook 的 pre-commit 把暂存文件名喂进来;内容从暂存区(`git show :path`)读,
- * 不读工作树 —— 提交进历史的是暂存的那份。判定在 findLocalPaths,纯函数,可单测。
+ * lefthook 的 pre-commit 把暂存文件名喂进来;内容从暂存区读,不读工作树 —— 提交进
+ * 历史的是暂存的那份。判定在 findLocalPaths,纯函数,可单测。
  */
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
@@ -48,40 +48,48 @@ export function formatReport(problems) {
 	].join("\n");
 }
 
-function gitShow(path) {
-	// maxBuffer 不设上限:默认 1 MiB,超过就 ENOBUFS —— 大文件不能因此从扫描集里掉出去。
-	return execFileSync("git", ["show", `:${path}`], {
-		stdio: ["ignore", "pipe", "pipe"],
+/**
+ * 一次 `git cat-file --batch` 读完全部暂存内容:N 个文件一个进程,而不是 N 次 `git show`
+ * (单次 ≈ 9 ms,百来个文件的提交就是秒级)。maxBuffer 不设上限 —— 大文件不能因此掉出扫描集。
+ * git 自己报错(索引损坏等)时进程非零退出,execFileSync 直接抛:守卫读不到就放行等于没有守卫。
+ */
+function gitCatFileBatch(specs) {
+	return execFileSync("git", ["cat-file", "--batch"], {
+		input: `${specs.join("\n")}\n`,
+		stdio: ["pipe", "pipe", "inherit"],
 		maxBuffer: Infinity,
 	});
 }
 
-/** `git show :path` 对「不在暂存区」的两种说法;别的失败都不是这一类。 */
-const NOT_IN_INDEX = /not in the index|does not exist/;
-
 /**
- * 暂存区里那份内容。不在暂存区(已删除)或是二进制 → null,跳过;其它读取失败一律抛 ——
- * 守卫读不到就放行,等于没有守卫。`run` 可注入,单测不真跑 git。
+ * 暂存区里每个文件的内容,按 `--batch` 的输出格式切:`<oid> blob <size>\n<内容>\n`,
+ * 不在暂存区(已删除)的是 `<spec> missing\n`。二进制(含 NUL)与不在暂存区的跳过。
+ * `run` 可注入,单测不真跑 git。
  */
-export function readStaged(path, run = gitShow) {
-	let buf;
-	try {
-		buf = run(path);
-	} catch (err) {
-		if (NOT_IN_INDEX.test(err?.stderr?.toString() ?? "")) return null;
-		throw err;
+export function readStagedAll(paths, run = gitCatFileBatch) {
+	if (paths.length === 0) return [];
+	const out = run(paths.map((path) => `:${path}`));
+	const files = [];
+	let offset = 0;
+	for (const path of paths) {
+		const nl = out.indexOf(0x0a, offset);
+		if (nl === -1) throw new Error(`git cat-file 的输出在 ${path} 处截断`);
+		const header = out.subarray(offset, nl).toString("utf8");
+		offset = nl + 1;
+		if (header.endsWith(" missing")) continue;
+		const size = Number(header.slice(header.lastIndexOf(" ") + 1));
+		if (!Number.isInteger(size)) throw new Error(`git cat-file 的头看不懂:${header}`);
+		if (out.length < offset + size) throw new Error(`git cat-file 的输出在 ${path} 处截断`);
+		const body = out.subarray(offset, offset + size);
+		offset += size + 1; // 内容后面跟一个换行
+		if (body.includes(0)) continue;
+		files.push({ path, content: body.toString("utf8") });
 	}
-	if (buf.includes(0)) return null;
-	return buf.toString("utf8");
+	return files;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-	const files = [];
-	for (const path of process.argv.slice(2)) {
-		const content = readStaged(path);
-		if (content !== null) files.push({ path, content });
-	}
-	const report = formatReport(findLocalPaths(files));
+	const report = formatReport(findLocalPaths(readStagedAll(process.argv.slice(2))));
 	if (report) {
 		console.error(report);
 		process.exit(1);
