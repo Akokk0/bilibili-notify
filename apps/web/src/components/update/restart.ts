@@ -158,8 +158,8 @@ interface RestartStore {
 	dismiss(): void;
 }
 
-/** 单次探测的死线。一条挂着不回的连接不该拖住整个等待 —— 按下之前那次探测也一样。 */
-export const PROBE_TIMEOUT_MS = 3_000;
+/** 单次探测的死线。一条挂着不回的连接不该拖住整个等待。 */
+const PROBE_TIMEOUT_MS = 3_000;
 
 /**
  * 等待活在模块里,不挂在系统页那一节的 state 上:重启要十几二十秒,用户这期间点去

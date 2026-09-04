@@ -1,5 +1,6 @@
 import {
 	canApplyUpdate,
+	type UpdateApplyResponse,
 	type UpdateErrorReason,
 	type UpdateStatusDTO,
 } from "@bilibili-notify/contract";
@@ -23,14 +24,7 @@ import { api } from "../../services/api";
 import type { GlobalConfig } from "../../types/globals";
 import { externalLinkClick } from "../../utils/externalLink";
 import { MirrorPicker } from "./mirror-picker";
-import {
-	PROBE_TIMEOUT_MS,
-	type RestartIntent,
-	type RestartMark,
-	type RestartProbe,
-	type RestartWait,
-	useRestartStore,
-} from "./restart";
+import { type RestartWait, useRestartStore } from "./restart";
 import { phaseLabel, UPDATE_QUERY_KEY, UPDATE_SECTION_HASH, useUpdateStatus } from "./status";
 
 /**
@@ -109,15 +103,13 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 		onSuccess: (next) => qc.setQueryData(UPDATE_QUERY_KEY, next),
 	});
 	const apply = useMutation({
-		mutationFn: async (mark: RestartMark): Promise<RestartIntent> => {
-			// 先记下要换掉的这个进程。重启指令发出去之后,只有 startedAt 和它不同的回答
-			// 才算新进程 —— 旧进程优雅停机时还能连上好几秒。
-			const before = await api.get<RestartProbe>("/api/health", { timeoutMs: PROBE_TIMEOUT_MS });
-			await api.post("/api/update/apply", {});
-			return { ...mark, before: before.startedAt };
-		},
+		// 回话里带着要换掉的是哪个进程(startedAt)、换到哪(target / mode):服务端握着状态,
+		// 面板不必先探一次再猜。之后只有 startedAt 和它不同的回答才算新进程 —— 旧进程
+		// 优雅停机时还能连上好几秒。
+		mutationFn: () => api.post<UpdateApplyResponse>("/api/update/apply", {}),
 		onMutate: () => dismissRestart(),
-		onSuccess: (intent) => beginRestart(intent, restartWait),
+		onSuccess: ({ startedAt, target, mode }) =>
+			beginRestart({ before: startedAt, target, mode }, restartWait),
 	});
 	const saveSettings = useMutation({
 		mutationFn: (update: Partial<UpdateSettings>) => api.patch("/api/globals", { update }),
@@ -164,12 +156,6 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 	const busy = act.isPending || apply.isPending || restarting;
 	// 和服务端 `POST /api/update/apply` 那道门用的是同一个判定,见契约。
 	const canApply = canApplyUpdate(state);
-	// 按下去要换到哪、是升是退。能应用的两档都带 target;万一契约再加一档没带的,
-	// 就按「换回现在这版」等 —— 探到的版本一定对得上,顶多白刷新一次。
-	const applyIntent: RestartMark = {
-		target: "target" in state ? state.target : status.currentVersion,
-		mode: state.phase === "rolled-back" ? "rollback" : "update",
-	};
 	// 带 releaseUrl 的那几档(有新版 / 正在下 / 已就绪 / 要重拉镜像)都指到那一版的发布页;
 	// 出错时指到 helpUrl(拿不到清单就是发布列表)。往联合里再加一档带 releaseUrl 的
 	// 状态不用回来改这里。
@@ -293,12 +279,7 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 							</Btn>
 						) : null}
 						{canApply ? (
-							<Btn
-								variant="primary"
-								size="sm"
-								disabled={busy}
-								onClick={() => apply.mutate(applyIntent)}
-							>
+							<Btn variant="primary" size="sm" disabled={busy} onClick={() => apply.mutate()}>
 								立即重启并应用
 							</Btn>
 						) : null}

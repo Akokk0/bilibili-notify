@@ -95,6 +95,11 @@ export function resolveAppVersion(
  */
 export const APP_VERSION = resolveAppVersion();
 const startedAtMs = Date.now();
+/**
+ * 这个进程的启动时刻(ISO)。`/api/health` 报它,`POST /api/update/apply` 也报它 ——
+ * 面板靠「startedAt 变了」认新进程,两处必须是同一个值。
+ */
+export const STARTED_AT = new Date(startedAtMs).toISOString();
 
 /**
  * Mounts:
@@ -114,7 +119,7 @@ export function createHealthRoute(deps: RouteDeps): Hono {
 			version: APP_VERSION,
 			moduleVersions: MODULE_VERSIONS,
 			uptime: Math.floor((Date.now() - startedAtMs) / 1000),
-			startedAt: new Date(startedAtMs).toISOString(),
+			startedAt: STARTED_AT,
 			login: null,
 			push: null,
 			dynamicCron: null,
@@ -133,7 +138,7 @@ export function createHealthRoute(deps: RouteDeps): Hono {
 			version: APP_VERSION,
 			moduleVersions: MODULE_VERSIONS,
 			uptime: Math.floor((Date.now() - startedAtMs) / 1000),
-			startedAt: new Date(startedAtMs).toISOString(),
+			startedAt: STARTED_AT,
 			login: null,
 			push: null,
 			dynamicCron: globals.app.dynamicCron,

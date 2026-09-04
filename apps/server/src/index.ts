@@ -22,7 +22,7 @@ import { createOnebotAdapter } from "./platforms/onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq-official.js";
 import type { InboundGroupMessage, InboundMeta, InboundPrivateMessage } from "./platforms/types.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
-import { APP_VERSION } from "./routes/health.js";
+import { APP_VERSION, STARTED_AT } from "./routes/health.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
 import {
 	type CommandSpec,
@@ -650,6 +650,8 @@ export async function startStandaloneServer(
 					// 每次现读:用户在面板上改完渠道 / 加速前缀,下一次检查就该按新的来。
 					readSettings: () => runtime.configStore.getGlobals().update,
 				}),
+				// 与 /api/health 报的是同一个值:面板靠「startedAt 变了」认新进程。
+				startedAt: STARTED_AT,
 				// 应用 = 优雅停机 + 退 0,由进程管理器把新版本拉起来。**退出码必须是 0**:
 				// 非 0 会被编排系统当成崩溃,退避重启甚至进 CrashLoopBackOff。
 				applyUpdate: async () => {

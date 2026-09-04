@@ -7,7 +7,11 @@
  * 重启了一遍服务。
  */
 
-import { canApplyUpdate, isMirrorPrefix } from "@bilibili-notify/contract";
+import {
+	canApplyUpdate,
+	isMirrorPrefix,
+	type UpdateApplyResponse,
+} from "@bilibili-notify/contract";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { UpdateService } from "../update/service.js";
@@ -23,6 +27,8 @@ const ProbeBody = z.object({
 
 export interface CreateUpdateRouteInput {
 	service: UpdateService;
+	/** 这个进程的启动时刻(ISO),与 `/api/health` 报的同一个值 —— 面板靠它变了认新进程。 */
+	startedAt: string;
 	/**
 	 * 优雅停机 + 退出,交给进程管理器把新版本拉起来(容器是 `restart:` 策略,
 	 * 桌面版是 Tauri 外壳)。由 index.ts 注入 —— 路由不该知道怎么关一个进程。
@@ -30,7 +36,11 @@ export interface CreateUpdateRouteInput {
 	applyUpdate: () => Promise<void>;
 }
 
-export function createUpdateRoute({ service, applyUpdate }: CreateUpdateRouteInput): Hono {
+export function createUpdateRoute({
+	service,
+	startedAt,
+	applyUpdate,
+}: CreateUpdateRouteInput): Hono {
 	const app = new Hono();
 
 	app.get("/", (c) => c.json(service.getStatus()));
@@ -46,9 +56,17 @@ export function createUpdateRoute({ service, applyUpdate }: CreateUpdateRouteInp
 
 	app.post("/apply", (c) => {
 		// 判定在契约里,面板决定按钮出不出用的是同一个函数 —— 见 `canApplyUpdate`。
-		if (!canApplyUpdate(service.getStatus().state)) {
+		const { state } = service.getStatus();
+		if (!canApplyUpdate(state)) {
 			return c.json({ err: "没有可应用的版本" }, 409);
 		}
+		// 回话里带上要换掉的是哪个进程、换到哪:这些都在这一头,面板不必先探一次再猜。
+		const body: UpdateApplyResponse = {
+			restarting: true,
+			startedAt,
+			target: state.target,
+			mode: state.phase === "rolled-back" ? "rollback" : "update",
+		};
 
 		// 先回话,再关。两层保险,缺一不可:
 		//
@@ -64,7 +82,7 @@ export function createUpdateRoute({ service, applyUpdate }: CreateUpdateRouteInp
 				// index.ts 那头自己会记日志并照样退 0;这里只负责不让它变成 unhandled rejection。
 			});
 		}, 0);
-		return c.json({ restarting: true });
+		return c.json(body);
 	});
 
 	return app;

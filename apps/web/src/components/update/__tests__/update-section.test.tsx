@@ -14,7 +14,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { browser, PROBE_TIMEOUT_MS, useRestartStore } from "../restart";
+import { browser, useRestartStore } from "../restart";
 import { UpdateSection, type UpdateSectionProps } from "../update-section";
 import { healthScript, NEW, OLD } from "./health-script";
 
@@ -41,6 +41,16 @@ function serve(state: UpdateStatusDTO["state"], over: Partial<UpdateStatusDTO> =
 		if (path === "/api/update") return status;
 		if (path === "/api/health") return health.next();
 		return { update: SETTINGS };
+	});
+	// `POST /apply` 的回话:服务端说要换掉的是哪个进程(startedAt)、换到哪(target / mode)。
+	vi.mocked(api.post).mockImplementation(async (path: string) => {
+		if (path !== "/api/update/apply") return {};
+		return {
+			restarting: true,
+			startedAt: OLD.startedAt,
+			target: "target" in status.state ? status.state.target : status.currentVersion,
+			mode: status.state.phase === "rolled-back" ? "rollback" : "update",
+		};
 	});
 	return status;
 }
@@ -292,15 +302,16 @@ describe("UpdateSection —— 按下重启之后", () => {
 
 	it("换成了 → 等到新进程再整页刷新,并留下记号;旧进程排空期间的回答不算", async () => {
 		serve(READY);
-		// 按下之前读一次(旧进程)→ 断了 → 旧进程还在排空 → 新进程起来了
-		health.set(OLD, "offline", OLD, NEW);
+		// 断了 → 旧进程还在排空(startedAt 没变)→ 新进程起来了。要换掉的是哪个进程由
+		// /apply 的回话说,按下之前不再单独探一次。
+		health.set("offline", OLD, NEW);
 		renderSection("/system", QUICK);
 
 		await userEvent.click(await screen.findByRole("button", { name: /立即重启/ }));
 
 		await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
 		expect(api.post).toHaveBeenCalledWith("/api/update/apply", {});
-		expect(health.calls()).toBe(4);
+		expect(vi.mocked(api.get).mock.calls.filter(([p]) => p === "/api/health")).toHaveLength(3);
 		expect(JSON.parse(sessionStorage.getItem("bn.update.restarted") ?? "null")).toEqual({
 			target: "0.9.0",
 			mode: "update",
@@ -311,11 +322,10 @@ describe("UpdateSection —— 按下重启之后", () => {
 		expect(button("检查更新").disabled).toBe(true);
 	});
 
-	// 按下之前那次探针也得带死线:服务端吊着不回时,否则 mutation 永远 pending、按钮灰着
-	// 零反馈 —— 正是 1aee5390 要修的「按了没反应」换了个地方。
-	it("每一次 /api/health 探针都带死线,按下之前那次也不例外", async () => {
+	// 探针得带死线:一条挂着不回的连接不该拖住整个等待(1aee5390 那次「按了没反应」的教训)。
+	it("等待期间每一次 /api/health 探针都带死线", async () => {
 		serve(READY);
-		health.set(OLD, NEW);
+		health.set("offline", NEW);
 		renderSection("/system", QUICK);
 
 		await userEvent.click(await screen.findByRole("button", { name: /立即重启/ }));
@@ -323,12 +333,14 @@ describe("UpdateSection —— 按下重启之后", () => {
 		await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
 		const probes = vi.mocked(api.get).mock.calls.filter(([path]) => path === "/api/health");
 		expect(probes.length).toBeGreaterThanOrEqual(2);
-		for (const [, opts] of probes) expect(opts).toMatchObject({ timeoutMs: PROBE_TIMEOUT_MS });
+		for (const [, opts] of probes) {
+			expect((opts as { timeoutMs?: number } | undefined)?.timeoutMs).toBeGreaterThan(0);
+		}
 	});
 
 	it("回退也走同一条路,记号写的是 rollback", async () => {
 		serve({ phase: "rolled-back", target: "0.7.0" }, { rollbackTarget: "0.7.0" });
-		health.set(OLD, "offline", { version: "0.7.0", startedAt: NEW.startedAt });
+		health.set("offline", { version: "0.7.0", startedAt: NEW.startedAt });
 		renderSection("/system", QUICK);
 
 		await userEvent.click(await screen.findByRole("button", { name: /立即重启/ }));
@@ -342,7 +354,7 @@ describe("UpdateSection —— 按下重启之后", () => {
 
 	it("起来了但版本没变 → 明说是回落了,不刷新,并把状态重新拉一次", async () => {
 		serve(READY);
-		health.set(OLD, "offline", { version: "0.8.0", startedAt: NEW.startedAt });
+		health.set("offline", { version: "0.8.0", startedAt: NEW.startedAt });
 		renderSection("/system", QUICK);
 
 		await userEvent.click(await screen.findByRole("button", { name: /立即重启/ }));
@@ -359,7 +371,7 @@ describe("UpdateSection —— 按下重启之后", () => {
 
 	it("一直没回来 → 说明多半是没有 restart 策略,给「再等等」;再等到了照样刷新", async () => {
 		serve(READY);
-		health.set(OLD, "offline");
+		health.set("offline");
 		renderSection("/system", QUICK);
 
 		await userEvent.click(await screen.findByRole("button", { name: /立即重启/ }));
@@ -375,7 +387,7 @@ describe("UpdateSection —— 按下重启之后", () => {
 
 	it("等的时候离开系统页 → 等待照样进行,换成了照样刷新(离开那一页不等于没按过)", async () => {
 		serve(READY);
-		health.set(OLD, "offline", NEW);
+		health.set("offline", NEW);
 		const view = renderSection("/system", QUICK);
 
 		await userEvent.click(await screen.findByRole("button", { name: /立即重启/ }));
@@ -387,7 +399,6 @@ describe("UpdateSection —— 按下重启之后", () => {
 
 	it("重启指令本身没发出去 → 把原因摆出来,不进入等待", async () => {
 		serve(READY);
-		health.set(OLD);
 		vi.mocked(api.post).mockRejectedValue(
 			new Error("连接中断，POST /api/update/apply 没有拿到服务器响应"),
 		);

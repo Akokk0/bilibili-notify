@@ -152,6 +152,7 @@ export interface CreateAppOptions {
 	update?: {
 		service: UpdateService;
 		/** 优雅停机 + 退出,让进程管理器把新版本拉起来。 */
+		startedAt: string;
 		applyUpdate: () => Promise<void>;
 	};
 }

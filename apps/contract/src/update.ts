@@ -59,8 +59,26 @@ export type UpdateState =
  * 出不出。各写一份字面量的话,漏改一边的症状是按钮点下去报错、或者一个本该能应用的
  * 状态上按钮凭空消失,而两种都不会有任何东西报警。
  */
-export function canApplyUpdate(state: UpdateState): boolean {
+export function canApplyUpdate(state: UpdateState): state is ApplicableUpdateState {
 	return state.phase === "ready" || state.phase === "rolled-back";
+}
+
+/** 能应用的两档 —— 都带着 `target`,重启后该跑的就是它。 */
+export type ApplicableUpdateState = Extract<UpdateState, { phase: "ready" | "rolled-back" }>;
+
+/**
+ * `POST /api/update/apply` 的回话:话说完就关自己。面板据它等新进程 —— 之后只认
+ * `startedAt` 和这里不同的 `/api/health` 回答;`target` / `mode` 由服务端说,它正握着
+ * 状态,面板不必先探一次、再从状态里猜。
+ */
+export interface UpdateApplyResponse {
+	restarting: true;
+	/** 被换掉的这个进程的启动时刻(ISO),与 `/api/health` 的 `startedAt` 同源。 */
+	startedAt: string;
+	/** 重启后应当跑起来的版本。 */
+	target: string;
+	/** 升上去还是退回去 —— 刷新后那句「已更新到 / 已退回」据此说。 */
+	mode: "update" | "rollback";
 }
 
 export interface UpdateStatusDTO {

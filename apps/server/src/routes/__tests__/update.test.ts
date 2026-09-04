@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type { UpdateService } from "../../update/service.js";
 import { createUpdateRoute } from "../update.js";
 
+/** 这个进程的启动时刻:面板等新进程时只认和它不同的 /api/health 回答。 */
+const STARTED = "2026-09-04T00:00:00.000Z";
+
 /**
  * 升级 API 的 wire 层。判断全在 `update/service.ts`,这里只做四件事:把状态交出去、
  * 转发三个动作、以及**应用更新时先回话再关自己**。
@@ -30,7 +33,11 @@ function fakeService(overrides: Partial<UpdateService> = {}): UpdateService {
 
 describe("update 路由", () => {
 	it("GET / 交出当前状态", async () => {
-		const app = createUpdateRoute({ service: fakeService(), applyUpdate: async () => {} });
+		const app = createUpdateRoute({
+			startedAt: STARTED,
+			service: fakeService(),
+			applyUpdate: async () => {},
+		});
 
 		const res = await app.request("/");
 
@@ -46,6 +53,7 @@ describe("update 路由", () => {
 			state: { phase: "ready" as const, target: "0.9.0", releaseUrl: "https://x/t" },
 		}));
 		const app = createUpdateRoute({
+			startedAt: STARTED,
 			service: fakeService({ check }),
 			applyUpdate: async () => {},
 		});
@@ -60,6 +68,7 @@ describe("update 路由", () => {
 		const download = vi.fn(async () => fakeService().getStatus());
 		const rollback = vi.fn(async () => fakeService().getStatus());
 		const app = createUpdateRoute({
+			startedAt: STARTED,
 			service: fakeService({ download, rollback }),
 			applyUpdate: async () => {},
 		});
@@ -74,7 +83,11 @@ describe("update 路由", () => {
 		// 「重启完发现版本没变」是最让人怀疑功能坏掉的一种结果,而重启本身有代价:
 		// 推送会断、直播监听会掉。没东西可应用就别动。
 		const applyUpdate = vi.fn(async () => {});
-		const app = createUpdateRoute({ service: fakeService(), applyUpdate });
+		const app = createUpdateRoute({
+			startedAt: STARTED,
+			service: fakeService(),
+			applyUpdate,
+		});
 
 		const res = await app.request("/apply", { method: "POST" });
 
@@ -90,6 +103,7 @@ describe("update 路由", () => {
 			throw new Error("dispose exploded");
 		});
 		const app = createUpdateRoute({
+			startedAt: STARTED,
 			service: fakeService({
 				getStatus: () => ({
 					currentVersion: "0.9.0",
@@ -109,6 +123,7 @@ describe("update 路由", () => {
 	it("回退钉好之后 POST /apply 放行 —— 回退也要靠重启才生效", async () => {
 		const applyUpdate = vi.fn(async () => {});
 		const app = createUpdateRoute({
+			startedAt: STARTED,
 			service: fakeService({
 				getStatus: () => ({
 					currentVersion: "0.9.0",
@@ -120,7 +135,15 @@ describe("update 路由", () => {
 			applyUpdate,
 		});
 
-		expect((await app.request("/apply", { method: "POST" })).status).toBe(200);
+		const res = await app.request("/apply", { method: "POST" });
+		expect(res.status).toBe(200);
+		// 回退:换到的是钉着的那一版,刷新后那句要说「已退回」。
+		expect(await res.json()).toEqual({
+			restarting: true,
+			startedAt: STARTED,
+			target: "0.8.0",
+			mode: "rollback",
+		});
 	});
 
 	it("先把话说完再关自己 —— 否则浏览器只看得到一个网络错误", async () => {
@@ -129,6 +152,7 @@ describe("update 路由", () => {
 			order.push("shutdown");
 		});
 		const app = createUpdateRoute({
+			startedAt: STARTED,
 			service: fakeService({
 				getStatus: () => ({
 					currentVersion: "0.8.0",
@@ -145,7 +169,13 @@ describe("update 路由", () => {
 		await vi.waitFor(() => expect(applyUpdate).toHaveBeenCalled());
 
 		expect(res.status).toBe(200);
-		expect(await res.json()).toMatchObject({ restarting: true });
+		// 回话里带着要换掉的进程和要换到哪:服务端握着状态,面板不必先探一次再猜。
+		expect(await res.json()).toEqual({
+			restarting: true,
+			startedAt: STARTED,
+			target: "0.9.0",
+			mode: "update",
+		});
 		// 响应必须先出去。反过来的话用户点完「立即更新」看到的是一条报错,
 		// 然后他会去点第二次、第三次 —— 而每一次都真的重启了一遍服务。
 		//
@@ -158,6 +188,7 @@ describe("update 路由", () => {
 	it("功能没启用时 /apply 也拒 —— 不给一条能白白重启服务的路", async () => {
 		const applyUpdate = vi.fn(async () => {});
 		const app = createUpdateRoute({
+			startedAt: STARTED,
 			service: fakeService({
 				getStatus: () => ({
 					currentVersion: "0.8.0",
@@ -180,6 +211,7 @@ describe("update 路由 —— 测一遍加速站", () => {
 			prefixes.map((prefix) => ({ prefix, ok: true as const, ms: 12, version: "0.9.0" })),
 		);
 		const app = createUpdateRoute({
+			startedAt: STARTED,
 			service: fakeService({ probeMirrors }),
 			applyUpdate: async () => {},
 		});
@@ -203,6 +235,7 @@ describe("update 路由 —— 测一遍加速站", () => {
 	it("prefixes 不成形 → 400,不去碰 service —— 只收空串或 https:// 前缀,数量有上限", async () => {
 		const probeMirrors = vi.fn(async () => []);
 		const app = createUpdateRoute({
+			startedAt: STARTED,
 			service: fakeService({ probeMirrors }),
 			applyUpdate: async () => {},
 		});
