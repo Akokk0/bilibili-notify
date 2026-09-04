@@ -14,7 +14,6 @@
 
 import {
 	type DeliveryResult,
-	type Logger,
 	makeEmptySubscription,
 	type NotificationPayload,
 	type NotificationSink,
@@ -24,14 +23,7 @@ import {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
 import { BilibiliPush } from "../bilibili-push";
-import { pushBase } from "./helpers";
-
-const silentLogger: Logger = {
-	debug() {},
-	info() {},
-	warn() {},
-	error() {},
-};
+import { pushBase, silentLogger } from "./helpers";
 
 function makeSink(): { sink: NotificationSink; calls: string[] } {
 	const calls: string[] = [];

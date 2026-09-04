@@ -5,7 +5,8 @@ import {
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 
-const silentLogger: Logger = { debug() {}, info() {}, warn() {}, error() {} };
+/** 全部 noop 的 logger,各用例共用这一份。 */
+export const silentLogger: Logger = { debug() {}, info() {}, warn() {}, error() {} };
 
 /** 全部 feature 开、无免扰时段 —— 只让 routing 说话的 defaults。 */
 function loopbackDefaults(): GlobalDefaults {

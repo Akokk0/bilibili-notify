@@ -13,7 +13,6 @@
 import {
 	type DeliveryResult,
 	type GlobalDefaults,
-	type Logger,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
 	type NotificationPayload,
@@ -24,14 +23,7 @@ import {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
 import { BilibiliPush, type PushSendInfo } from "../bilibili-push";
-import { pushBase } from "./helpers";
-
-const silentLogger: Logger = {
-	debug() {},
-	info() {},
-	warn() {},
-	error() {},
-};
+import { pushBase, silentLogger } from "./helpers";
 
 interface SendCall {
 	targetId: string;

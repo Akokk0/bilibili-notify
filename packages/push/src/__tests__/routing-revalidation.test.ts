@@ -17,7 +17,6 @@
 
 import type {
 	DeliveryResult,
-	Logger,
 	NotificationSink,
 	PushTarget,
 	ServiceContext,
@@ -27,14 +26,7 @@ import { makeEmptySubscription } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { BilibiliPush } from "../bilibili-push";
-import { pushBase } from "./helpers";
-
-const silentLogger: Logger = {
-	debug: () => {},
-	info: () => {},
-	warn: () => {},
-	error: () => {},
-};
+import { pushBase, silentLogger } from "./helpers";
 
 /** 受控 serviceCtx:setTimeout 只登记,不自动触发,由测试手动 fire。 */
 function makeControlledServiceCtx(): { ctx: ServiceContext; pending: Array<() => void> } {

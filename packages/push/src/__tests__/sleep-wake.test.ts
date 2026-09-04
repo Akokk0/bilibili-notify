@@ -11,7 +11,6 @@
 
 import type {
 	DeliveryResult,
-	Logger,
 	NotificationSink,
 	PushTarget,
 	ServiceContext,
@@ -19,14 +18,7 @@ import type {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { BilibiliPush } from "../bilibili-push";
-import { pushBase } from "./helpers";
-
-const silentLogger: Logger = {
-	debug: () => {},
-	info: () => {},
-	warn: () => {},
-	error: () => {},
-};
+import { pushBase, silentLogger } from "./helpers";
 
 function makeUnreachableSink(): NotificationSink {
 	return {
@@ -210,13 +202,13 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		expect(results).toEqual([]);
 	});
 
-	it("不传 serviceCtx(退化路径)也能被 stop() 唤醒", async () => {
+	// 上一条用的是永不 fire 的假时钟;这条用 pushBase() 的真时钟,验 stop() 抢在 backoff 到期前唤醒。
+	it("真时钟 serviceCtx 下 stop() 也能立即唤醒 backoff 中的重试", async () => {
 		const push = new BilibiliPush({
 			...pushBase(),
 			sink: makeUnreachableSink(),
 			store: emptyStore,
 			logger: silentLogger,
-			// 故意不传 serviceCtx,走 sleep 内裸 setTimeout 路径
 		});
 		push.start();
 
