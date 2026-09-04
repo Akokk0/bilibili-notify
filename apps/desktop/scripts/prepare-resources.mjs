@@ -31,6 +31,10 @@ const layout = readDesktopLayoutFile(root);
 // 载荷树的顶层目录(`app/`),由 serverDir 推出来 —— 别在下面再写字面量。
 const appDir = layout.serverDir.split("/")[0];
 const resourcesRoot = join(desktopRoot, "src-tauri", "resources");
+// 摆载荷的三层,都从那份声明推:app/ → 服务端目录 → bundle 所在的 lib/。
+const appRoot = join(resourcesRoot, appDir);
+const serverRoot = join(resourcesRoot, ...layout.serverDir.split("/"));
+const libRoot = join(serverRoot, layout.libDir);
 const serverDist = join(root, "apps", "server", "dist");
 const webDist = join(root, "apps", "web", "dist");
 const nodeVersion = "24.15.0";
@@ -55,7 +59,7 @@ async function prepare() {
 
 	const payload = await copyPayload();
 	const nodeRuntime = await prepareNodeRuntime();
-	await assertSlimRuntimeLayout(payload);
+	await assertSlimRuntimeLayout();
 	// 先真的 import 一遍,再扫敏感文件:载荷加载时若写出什么(首启配置、data/、缓存),
 	// 得落在扫描之前 —— 否则它就跟着签进安装包。
 	await verifyPackagedServerImport();
@@ -86,13 +90,9 @@ async function prepare() {
 }
 
 async function assertBuiltArtifacts() {
-	// 桌面壳起的是选版入口(名字来自那份声明),不是 index.mjs 本身。
-	await mustExist(
-		join(serverDist, layout.entry),
-		"server bundle boot entry (run vp run build:update-payload)",
-	);
 	await mustExist(join(webDist, "index.html"), "web build output");
-	// 装配是否完整由三处共用的清单说了算 —— 这里少一个 wasm,用户点词云那一刻才炸。
+	// 装配是否完整由三处共用的清单说了算(选版入口 boot.mjs 也在里面)—— 这里少一个 wasm,
+	// 用户点词云那一刻才炸。
 	const missing = await missingServerBundleFilesIn(serverDist);
 	if (missing.length > 0) {
 		throw new Error(
@@ -107,16 +107,10 @@ async function assertBuiltArtifacts() {
  * 更新换掉载荷时前端跟着一起换;摆在别处再用 --web-dist 指过去的话,就成了钉死旧前端的钉子。
  */
 async function copyPayload() {
-	const appRoot = join(resourcesRoot, appDir);
-	const serverRoot = join(resourcesRoot, ...layout.serverDir.split("/"));
-	const libRoot = join(serverRoot, layout.libDir);
 	await copyTree(serverDist, libRoot);
 	await copyTree(webDist, join(libRoot, layout.webDistDir));
 	const manifest = JSON.parse(await readFile(join(libRoot, "package.json"), "utf8"));
-	const sha256 = createHash("sha256")
-		.update(await readFile(join(libRoot, "index.mjs")))
-		.digest("hex");
-	return { appRoot, serverRoot, libRoot, version: manifest.version, sha256 };
+	return { version: manifest.version, sha256: await sha256File(join(libRoot, "index.mjs")) };
 }
 
 async function prepareNodeRuntime() {
@@ -261,7 +255,6 @@ async function verifyPackagedServerImport() {
 		"bin",
 		process.platform === "win32" ? "node.exe" : "node",
 	);
-	const serverDir = join(resourcesRoot, ...layout.serverDir.split("/"));
 	const script = `
 		import { statSync } from 'node:fs';
 		await import('./${layout.libDir}/index.mjs');
@@ -270,31 +263,32 @@ async function verifyPackagedServerImport() {
 		statSync('./${layout.libDir}/${layout.webDistDir}/index.html');
 		console.log('ok');
 	`;
-	await execFileAsync(nodePath, ["-e", script], { cwd: serverDir, timeout: 30_000 });
+	await execFileAsync(nodePath, ["-e", script], { cwd: serverRoot, timeout: 30_000 });
 }
 
 /**
  * 资源目录只许长成「bundle + dashboard + Node」。node_modules、workspace 源码、sourcemap
  * 出现在这里都说明有人把旧的搬运方式带回来了。
  */
-async function assertSlimRuntimeLayout(payload) {
+async function assertSlimRuntimeLayout() {
 	const forbidden = [
-		join(payload.appRoot, "package.json"),
-		join(payload.appRoot, "packages"),
-		join(payload.appRoot, "pnpm-workspace.yaml"),
-		join(payload.appRoot, "node_modules"),
-		join(payload.serverRoot, "node_modules"),
-		join(payload.serverRoot, "src"),
+		join(appRoot, "package.json"),
+		join(appRoot, "packages"),
+		join(appRoot, "pnpm-workspace.yaml"),
+		join(appRoot, "node_modules"),
+		join(serverRoot, "node_modules"),
+		join(serverRoot, "src"),
 	];
 	for (const path of forbidden) {
 		if (await exists(path)) throw new Error(`Desktop slim runtime must not contain ${path}`);
 	}
-	const missing = await missingServerBundleFilesIn(payload.libRoot);
+	// 拷贝出来的这份才是装进安装包的:清单再核一遍,搬丢一块在这里红。
+	const missing = await missingServerBundleFilesIn(libRoot);
 	if (missing.length > 0) {
 		throw new Error(`Desktop runtime is missing bundle files: ${missing.join(", ")}`);
 	}
 	const sourcemaps = [];
-	await walk(payload.libRoot, async (path) => {
+	await walk(libRoot, async (path) => {
 		if (path.endsWith(".map")) sourcemaps.push(relative(resourcesRoot, path));
 	});
 	if (sourcemaps.length > 0) {
