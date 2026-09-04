@@ -208,7 +208,7 @@ export class BilibiliPush {
 	): Promise<DeliveryResult[]> {
 		if (this.disposed) return [];
 		// 消息版式分条:一次推送可以是多条 payload 的序列。单 payload 归一成单元素序列,
-		// 归一成单元素序列,后续路径统一按序列处理,行为与旧签名逐字一致。
+		// 后续路径统一按序列处理,行为与旧签名逐字一致。
 		const payloads = Array.isArray(payload) ? payload : [payload];
 		if (payloads.length === 0) return [];
 

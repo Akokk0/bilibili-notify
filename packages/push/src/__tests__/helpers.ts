@@ -37,10 +37,14 @@ function realTimerCtx(): ServiceContext {
 /**
  * 宿主必注入的三样(serviceCtx / defaults / muted)的单测基座。用例把它 spread 在前,
  * 需要的再覆盖(假时钟、特定 defaults、静音)。
+ *
+ * defaults 一次算好、每次都交同一个对象:每次推送都要调它,别每次重跑一遍整棵 zod parse;
+ * 用例拿 `defaults()` 改一改来验闸门(关 feature / 设 quietHours)时,改动也得留得住。
  */
 export function pushBase(): Pick<
 	import("../bilibili-push").BilibiliPushOptions,
 	"serviceCtx" | "defaults" | "muted"
 > {
-	return { serviceCtx: realTimerCtx(), defaults: loopbackDefaults, muted: () => false };
+	const defaults = loopbackDefaults();
+	return { serviceCtx: realTimerCtx(), defaults: () => defaults, muted: () => false };
 }
