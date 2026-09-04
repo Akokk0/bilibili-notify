@@ -14,11 +14,11 @@
 
 import type { SubscriptionDTO } from "@bilibili-notify/contract";
 import type {
-	PushAdapter as CanonPushAdapter,
-	PushTarget as CanonPushTarget,
-	PushTargetPlatform as CanonPushTargetPlatform,
 	OnebotAdapterConfig,
 	OnebotTransport,
+	PushAdapter,
+	PushTarget,
+	PushTargetPlatform,
 	WebhookProvider,
 } from "@bilibili-notify/internal";
 import {
@@ -53,6 +53,10 @@ export type {
 	OnebotAdapterConfig,
 	OnebotSession,
 	OnebotTransport,
+	// 推送平台类型直接用 internal 的定义:将来薄插件桥接进来的平台加进那条 union 就自动出现在这里。
+	PushAdapter,
+	PushTarget,
+	PushTargetPlatform,
 	PushTargetScope,
 	QQOfficialAdapterConfig,
 	QQOfficialBotType,
@@ -64,14 +68,6 @@ export type {
 	TemplateBundlePartial as TemplateOverride,
 	WebhookProvider,
 } from "@bilibili-notify/internal";
-
-/**
- * 推送平台类型直接用 internal 的 canonical 定义:独立端是唯一宿主,dashboard 能编辑
- * 全部平台。将来薄插件桥接进来的平台加进 internal 的 union,就会自动出现在这里。
- */
-export type PushAdapter = CanonPushAdapter;
-export type PushTarget = CanonPushTarget;
-export type PushTargetPlatform = CanonPushTargetPlatform;
 
 // ---- UI 文案 -----------------------------------------------------------
 

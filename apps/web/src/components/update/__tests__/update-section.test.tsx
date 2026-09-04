@@ -14,8 +14,9 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { browser, PROBE_TIMEOUT_MS, type RestartProbe, useRestartStore } from "../restart";
+import { browser, PROBE_TIMEOUT_MS, useRestartStore } from "../restart";
 import { UpdateSection, type UpdateSectionProps } from "../update-section";
+import { healthScript, NEW, OLD } from "./health-script";
 
 vi.mock("../../../services/api", () => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
@@ -25,29 +26,6 @@ vi.mock("../../../services/api", () => ({
 import { api } from "../../../services/api";
 
 const SETTINGS = { channel: "stable", autoDownload: true, mirrors: [] };
-
-type HealthStep = RestartProbe | "offline";
-
-/**
- * `/api/health` 的剧本:按顺序回放,走完最后一步就一直重复它。重启那段流程靠它
- * 演「旧进程还在 → 断了 → 新进程起来了」。
- */
-function healthScript(...steps: HealthStep[]) {
-	let i = 0;
-	return {
-		calls: () => i,
-		set(...next: HealthStep[]) {
-			steps = next;
-			i = 0;
-		},
-		async next(): Promise<RestartProbe> {
-			const step = steps[Math.min(i, steps.length - 1)];
-			i += 1;
-			if (step === "offline") throw new Error("连接中断");
-			return step;
-		},
-	};
-}
 
 let health = healthScript("offline");
 
@@ -294,8 +272,6 @@ describe("UpdateSection —— 从别处「去更新」跳过来", () => {
 });
 
 describe("UpdateSection —— 按下重启之后", () => {
-	const OLD: RestartProbe = { version: "0.8.0", startedAt: "2026-09-03T00:00:00.000Z" };
-	const NEW: RestartProbe = { version: "0.9.0", startedAt: "2026-09-03T00:01:00.000Z" };
 	const READY = { phase: "ready", target: "0.9.0", releaseUrl: "https://x" } as const;
 	// 测试把等待压到最短:探一次就睡 0ms,几十毫秒就算超时。
 	const QUICK = { restartWait: { intervalMs: 0, timeoutMs: 40 } };

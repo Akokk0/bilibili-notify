@@ -89,10 +89,12 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 	const qc = useQueryClient();
 	// 按下重启之后的进度住在模块级 store 里(理由见 restart.ts):用户中途离开系统页,
 	// 等待照样进行、换成了照样刷新;回来看到的还是同一份进度。
-	const restart = useRestartStore((s) => s.view);
-	const beginRestart = useRestartStore((s) => s.begin);
-	const retryRestart = useRestartStore((s) => s.retry);
-	const dismissRestart = useRestartStore((s) => s.dismiss);
+	const {
+		view: restart,
+		begin: beginRestart,
+		retry: retryRestart,
+		dismiss: dismissRestart,
+	} = useRestartStore();
 	const statusQuery = useUpdateStatus();
 	const globalsQuery = useQuery({
 		queryKey: ["globals"],
@@ -261,7 +263,7 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 								<code>restart</code> 策略的话,进程退出后没人把它拉起来,得手动启动一次;
 								桌面版看启动器日志。
 							</span>
-							<Btn variant="outline" size="sm" onClick={() => retryRestart(restartWait)}>
+							<Btn variant="outline" size="sm" onClick={retryRestart}>
 								再等等
 							</Btn>
 						</HintNote>

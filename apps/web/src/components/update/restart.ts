@@ -152,8 +152,8 @@ interface RestartStore {
 	view: RestartView | null;
 	/** 重启指令已经发出去:开始等新进程。 */
 	begin(intent: RestartIntent, wait: RestartWait): void;
-	/** 「再等等」—— 只在等超时之后有意义。 */
-	retry(wait: RestartWait): void;
+	/** 「再等等」—— 只在等超时之后有意义,沿用 begin 那次的等待参数。 */
+	retry(): void;
 	/** 用户去做别的了(检查 / 下载 / 回退):上一次重启留下的旁注到此为止。 */
 	dismiss(): void;
 }
@@ -169,10 +169,13 @@ export const PROBE_TIMEOUT_MS = 3_000;
 export const useRestartStore = create<RestartStore>((set, get) => {
 	// 每开始一轮等待就换一代;旧那一代的结果一律不认(dismiss 之后才回来的探测尤其)。
 	let generation = 0;
+	// begin 那次的等待参数,「再等等」沿用 —— 这是 store 该记的,不让 UI 层再传一遍。
+	let lastWait: RestartWait | null = null;
 
 	const wait = (intent: RestartIntent, options: RestartWait): void => {
 		generation += 1;
 		const mine = generation;
+		lastWait = options;
 		set({ view: { kind: "waiting", intent } });
 		void awaitRestartedServer({
 			before: intent.before,
@@ -199,9 +202,9 @@ export const useRestartStore = create<RestartStore>((set, get) => {
 	return {
 		view: null,
 		begin: wait,
-		retry(options) {
+		retry() {
 			const { view } = get();
-			if (view?.kind === "timed-out") wait(view.intent, options);
+			if (view?.kind === "timed-out" && lastWait) wait(view.intent, lastWait);
 		},
 		dismiss() {
 			generation += 1;
