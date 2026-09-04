@@ -279,7 +279,7 @@ export class RoomContext extends RoomContextBase {
 	 * back to plain text on failure.
 	 *
 	 * 消息版式(`messageLayout`)覆盖开播 / 直播中 / 下播三类(调用方按各自 liveType 传参):
-	 * 卡片 / 文本(各自模板,调用方已剥掉 {link})/ 链接(roomLink)按块序装配,分条符切多条经
+	 * 卡片 / 文本(各自模板,模板里没有链接变量)/ 链接(roomLink)按块序装配,分条符切多条经
 	 * `broadcastSequenceToTargets`。SC / 上舰不经此方法。
 	 */
 	async sendLiveNotifyCard(params: {

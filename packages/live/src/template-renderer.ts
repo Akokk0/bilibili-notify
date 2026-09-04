@@ -83,8 +83,8 @@ export function buildRoomLink(info: { short_id: number; room_id: number }): stri
  * Resolve the effective template string for a sub at a given occurrence,
  * preferring per-sub override → global config → built-in default.
  *
- * 链接独立成版式部件:模板里的 `{link}`(与 legacy `-link`)连同前导空白 / 字面 `\n`
- * 在这里一并剥掉,三个 render* 拿到的模板里已经没有链接占位符。
+ * 链接独立成版式部件,模板里没有链接变量(2026-09 起不再替旧模板剥 `{link}` / `-link`:
+ * 写了就原样出现,请从模板里删掉)。
  */
 function resolveCustomLive(
 	subCustom: CustomLiveMsgLike,
@@ -92,8 +92,7 @@ function resolveCustomLive(
 	field: "customLiveStart" | "customLive" | "customLiveEnd",
 	fallback: string,
 ): string {
-	const tmpl = subCustom[field] ?? globalCustom?.[field] ?? fallback;
-	return tmpl.replace(/(?:\s|\\n)*(?:\{link\}|-link)/g, "");
+	return subCustom[field] ?? globalCustom?.[field] ?? fallback;
 }
 
 export class LiveTemplateRenderer {

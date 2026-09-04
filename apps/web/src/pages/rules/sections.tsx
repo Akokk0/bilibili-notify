@@ -484,7 +484,7 @@ const LIVE_MSG_VARS: VarSpec[] = [
 	{ code: "{watched}", desc: "累计观看人数(直播中)" },
 ];
 
-/** 动态模板已进消息版式:链接是独立部件,{url} 不再出现在变量表(旧模板残留会被剥离)。 */
+/** 动态模板已进消息版式:链接是独立部件,不是模板变量。 */
 const DYNAMIC_MSG_VARS: VarSpec[] = [{ code: "{name}", desc: "UP 主名字" }];
 
 const GUARD_VARS: VarSpec[] = [

@@ -584,8 +584,7 @@ export const BUILTIN_AI_PRESETS = [
  * - 动态:`{name}`
  *
  * 链接不再是模板变量:动态 / 视频 / 开播的链接是消息版式的独立「链接」部件
- * (显隐 / 位置由版式决定)。旧存档模板里残留的 `{url}` /
- * `{link}` 在版式路径渲染时连同前导分隔符一起剥离,不会双链接。
+ * (显隐 / 位置由版式决定),模板里没有链接变量。
  *
  * liveStart/liveOngoing/liveEnd 与 packages/live 的 `DEFAULT_LIVE_TEMPLATES`
  * 保持字面量一致 —— 这样「自定义关闭时实际推送的内建默认」== 「自定义打开时

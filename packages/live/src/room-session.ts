@@ -764,7 +764,7 @@ export class RoomSession extends RoomSessionBase {
 				: this.masterInfo.liveOpenFollowerNum.toString();
 		this.liveData.fansNum = this.masterInfo.liveOpenFollowerNum;
 		const roomLink = buildRoomLink(this.liveRoomInfo);
-		// 消息版式来自 per-UP 折叠值(宿主恒填)。链接独立成部件,开播模板剥掉 {link},
+		// 消息版式来自 per-UP 折叠值(宿主恒填)。链接独立成部件,
 		// 由 sendLiveNotifyCard 按块序装配。
 		const liveStartMsg = this.ctx.templateRenderer.renderLiveStart({
 			sub: this.sub,

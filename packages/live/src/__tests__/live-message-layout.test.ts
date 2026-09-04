@@ -2,7 +2,7 @@
  * 单元测试 — 直播推送(开播 / 直播中 / 下播)的消息版式(messageLayout)路径。
  *
  * 版式覆盖 `LiveType.StartBroadcasting` / `LiveBroadcast` / `StopBroadcast` 三类:
- * 卡片 / 文本(各自模板,{link} 剥离) / 链接(房间链接)三部件按块序装配,分条符切
+ * 卡片 / 文本(各自模板) / 链接(房间链接)三部件按块序装配,分条符切
  * 多条经 `broadcastSequenceToTargets`。SC / 上舰不经 `sendLiveNotifyCard`,不受影响。
  *
  * 策略:`RoomContext.prototype.sendLiveNotifyCard.call(fakeCtx, params)` 白盒直调
@@ -209,11 +209,11 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 	});
 });
 
-describe("LiveTemplateRenderer.renderLiveStart — 链接剥离", () => {
+describe("LiveTemplateRenderer.renderLiveStart — 模板不带链接", () => {
 	const master = { username: "主播", userface: "", roomId: "123" } as never;
 	const sub = { customLiveMsg: { enable: false } } as SubItemView;
 
-	it("{link} 连同前导空白剥离,不留孤行(链接由版式部件提供)", () => {
+	it("默认模板不带链接,链接由版式部件提供", () => {
 		const r = new LiveTemplateRenderer();
 		const out = r.renderLiveStart({
 			sub,
@@ -224,35 +224,25 @@ describe("LiveTemplateRenderer.renderLiveStart — 链接剥离", () => {
 		expect(out).toBe("主播 开播啦，当前粉丝数：100");
 	});
 
-	it("默认模板不含 {link},输出里没有链接", () => {
-		const r = new LiveTemplateRenderer();
-		const out = r.renderLiveStart({
-			sub,
-			master,
-			diffTime: "",
-			followerNum: "100",
-		});
-		expect(out).toBe("主播 开播啦，当前粉丝数：100");
-	});
-	it("兼容用户模板里的字面 \\n 与 legacy -link 写法", () => {
+	it("模板里的字面 \\n 展开为换行", () => {
 		const r = new LiveTemplateRenderer();
 		const out = r.renderLiveStart({
 			sub: {
-				customLiveMsg: { enable: true, customLiveStart: "{name}开播\\n-link" },
+				customLiveMsg: { enable: true, customLiveStart: "{name}开播\\n粉丝 {follower}" },
 			} as SubItemView,
 			master,
 			diffTime: "",
 			followerNum: "100",
 		});
-		expect(out).toBe("主播开播");
+		expect(out).toBe("主播开播\n粉丝 100");
 	});
 });
 
-describe("LiveTemplateRenderer.renderLiveOngoing / renderLiveEnd — 链接剥离", () => {
+describe("LiveTemplateRenderer.renderLiveOngoing / renderLiveEnd — 模板不带链接", () => {
 	const master = { username: "主播", userface: "", roomId: "123" } as never;
 	const sub = { customLiveMsg: { enable: false } } as SubItemView;
 
-	it("renderLiveOngoing:{link} 剥离,不留孤行", () => {
+	it("renderLiveOngoing:默认模板不带链接", () => {
 		const r = new LiveTemplateRenderer();
 		const out = r.renderLiveOngoing({
 			sub,
@@ -262,7 +252,7 @@ describe("LiveTemplateRenderer.renderLiveOngoing / renderLiveEnd — 链接剥�
 		});
 		expect(out).toBe("主播 正在直播，已播 1小时，累计观看：100");
 	});
-	it("renderLiveEnd:{link} 剥离,不留孤行", () => {
+	it("renderLiveEnd:默认模板不带链接", () => {
 		const r = new LiveTemplateRenderer();
 		const out = r.renderLiveEnd({
 			sub,

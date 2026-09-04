@@ -150,7 +150,7 @@ function makeItem(opts: {
 	drawPicsWithDims?: Array<{ url: string; width: number; height: number }>;
 	/** 真 DYNAMIC_TYPE_DRAW 形态:图在 major.draw.items[].src(非 opus.pics)。 */
 	drawItems?: string[];
-	/** 视频动态(DYNAMIC_TYPE_AV)的 major.archive.jump_url;引擎按此算 {url}/BV。 */
+	/** 视频动态(DYNAMIC_TYPE_AV)的 major.archive.jump_url;引擎按此算链接部件 / BV。 */
 	videoJumpUrl?: string;
 }): Dynamic {
 	const text = opts.text ?? "";
@@ -1097,8 +1097,8 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 		expect(textOf(segsOf(b))).toBe(`阿绫发布了一条动态\nhttps://t.bilibili.com/id-1`);
 	});
 
-	it("版式隐藏 link 部件 → 无链接;模板里残留的 {url} 也偷渡不进来", async () => {
-		const b = makeEngine({ config: { dynamicTemplate: "{name}发布了一条动态：{url}" } });
+	it("版式隐藏 link 部件 → 无链接", async () => {
+		const b = makeEngine({ config: { dynamicTemplate: "{name}发布了一条动态" } });
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
 		const noLink = defaultMessageKindLayout("dynamic");
 		for (const blk of noLink.blocks) if (blk.type === "link") blk.visible = false;
@@ -1107,9 +1107,9 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 		expect(textOf(segsOf(b))).toBe("阿绫发布了一条动态");
 	});
 
-	it("视频转 BV 但 jump_url 无 BV → url 空,renderDynamicText 去掉尾随分隔符", async () => {
+	it("视频转 BV 但 jump_url 无 BV → url 空,link 部件缺席", async () => {
 		const b = makeEngine({
-			config: { dynamicVideoUrlToBV: true, videoTemplate: "{name}发布了新视频：{url}" },
+			config: { dynamicVideoUrlToBV: true, videoTemplate: "{name}发布了新视频" },
 		});
 		b.getAllDynamic.mockResolvedValue(
 			resp([
@@ -1146,16 +1146,8 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 		expect(textOf(imgSegs)).toBe(textOf(segsOf(noImg)));
 	});
 
-	it("旧模板写 {url} → 连同前导分隔符剥掉,链接只经 link 部件出现一次", async () => {
-		const b = makeEngine({ config: { dynamicTemplate: "{name}发布了一条动态：{url}" } });
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(textOf(segsOf(b))).toBe(`阿绫发布了一条动态\nhttps://t.bilibili.com/id-1`);
-	});
-
-	it("视频动态(DYNAMIC_TYPE_AV)走 videoTemplate + jump_url 链接(旧模板写 {url})", async () => {
-		const b = makeEngine({ config: { videoTemplate: "{name}发布了新视频：{url}" } });
+	it("视频动态(DYNAMIC_TYPE_AV)走 videoTemplate + jump_url 链接", async () => {
+		const b = makeEngine({ config: { videoTemplate: "{name}发布了新视频" } });
 		b.getAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
@@ -1178,7 +1170,7 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 		seed(b.engine, "1", 0, {
 			uid: "1",
 			uname: "UP",
-			customDynamicTemplate: "🔔 {name} 有新动态 {url}",
+			customDynamicTemplate: "🔔 {name} 有新动态",
 		});
 		await detect(b.engine);
 		expect(textOf(segsOf(b))).toBe(`🔔 阿绫 有新动态\nhttps://t.bilibili.com/id-1`);
@@ -1770,8 +1762,8 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
 		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Seg[];
 		expect(segments.map((s) => s.type)).toEqual(["image", "text"]);
-		// 默认模板 "{name}发布了一条动态：{url}" 以 url='' 渲染 → "UP发布了一条动态",
-		// 链接作为独立部件在同条内以分隔符(\n)连接。
+		// 默认模板 "{name}发布了一条动态" → "UP发布了一条动态",链接作为独立部件在同条内以
+		// 分隔符(\n)连接。
 		expect(segments[1]?.text).toBe(`UP发布了一条动态\n${URL1}`);
 	});
 
@@ -1826,18 +1818,6 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Seg[];
 		expect(segments.map((s) => s.type)).toEqual(["image", "text"]);
 		expect(segments[1]?.text).toBe(URL1);
-	});
-
-	it("旧自定义模板仍写 {url} → 版式路径按 url='' 渲染,不出现双链接", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generateDynamicCard.mockResolvedValue(Buffer.from("png"));
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
-		seedLayout(b, layoutOf([{ type: "card" }, { type: "text" }, { type: "link" }]), {
-			customDynamicTemplate: "看看{name}：{url}",
-		});
-		await detect(b.engine);
-		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Seg[];
-		expect(segments[1]?.text).toBe(`看看UP\n${URL1}`);
 	});
 
 	it("全部块隐藏 → 本条不推送,但锚点照常推进(下轮不重推)", async () => {

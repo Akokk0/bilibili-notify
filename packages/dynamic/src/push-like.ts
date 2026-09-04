@@ -145,7 +145,7 @@ export interface SubItemView {
 	/**
 	 * Per-UP 解析后的**消息版式**动态切片(块顺序 / 显隐 / 分条符 + 分隔符)。宿主折叠
 	 * `eff.messageLayout.dynamic` 后填入。引擎按版式装配消息:文本模板以 url='' 渲染
-	 * ({url} 被剥离),链接独立成部件。
+	 * (模板里没有链接变量),链接独立成部件。
 	 */
 	messageLayout: MessageKindLayout;
 }

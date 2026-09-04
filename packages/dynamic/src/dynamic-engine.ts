@@ -52,7 +52,7 @@ const DETECTOR_RESTART_BACKOFF_MS = 5 * 60_000;
  * videoTemplate 时使用(真实 adapter 都会从 globals.defaults.templates 填充)。
  * 与 `@bilibili-notify/internal` 的 `DEFAULT_TEMPLATES.dynamic/.dynamicVideo`
  * 保持一致。变量仅 `{name}`(UP 名);链接是消息版式的独立部件,不再进模板
- * (旧存档残留的 `{url}` 由 renderDynamicText 在版式路径按 url='' 剥离)。
+ * 链接不是模板变量,由消息版式的 link 部件提供。
  */
 const DEFAULT_DYNAMIC_TEXT = {
 	dynamic: "{name}发布了一条动态",
@@ -60,13 +60,11 @@ const DEFAULT_DYNAMIC_TEXT = {
 } as const;
 
 /**
- * 渲染动态推送文本:`{name}` / `{url}` 插值 + `\n` 展开。`url` 为空(未启用 URL)
- * 时连同 `{url}` 的前导分隔符一起去掉,避免行尾残留孤立的「：」。两个推送分支
- * (有图 / 无图)都走此函数 → 文字内容一致。
+ * 渲染动态推送文本:`{name}` 插值 + `\n` 展开。链接是版式的独立部件,模板里没有链接变量
+ * (2026-09 起不再替旧模板剥 `{url}`:写了就原样出现,请从模板里删掉)。
  */
-function renderDynamicText(template: string, name: string, url: string): string {
-	const tmpl = url ? template : template.replace(/\s*[：:]?\s*\{url\}/g, "");
-	return interpolate(tmpl, { name, url }).replaceAll("\\n", "\n");
+function renderDynamicText(template: string, name: string): string {
+	return interpolate(template, { name }).replaceAll("\\n", "\n");
 }
 
 function parseUid(raw: unknown): string | undefined {
@@ -145,14 +143,13 @@ export interface DynamicEngineConfig {
 	/** 视频动态时是否将 URL 替换为 BV 号。 */
 	dynamicVideoUrlToBV: boolean;
 	/**
-	 * 非视频动态的推送文本模板。变量 `{name}`(UP 名) / `{url}`(动态链接)。
-	 * 要不要带链接由模板里有没有 `{url}` 决定(per-UP / 全局模板可编辑);`{url}` 在
-	 * url 为空(如视频转 BV 无匹配)时,引擎会顺带去掉相邻分隔符。缺省时回退到内建文案。
-	 * Adapter 通常用 `globals.defaults.templates.dynamic` 填充。
+	 * 非视频动态的推送文本模板,变量只有 `{name}`(UP 名)。链接不是模板变量:它是消息版式的
+	 * 独立部件,要不要带、放在哪由版式决定。缺省时回退到内建文案。Adapter 通常用
+	 * `globals.defaults.templates.dynamic` 填充。
 	 */
 	dynamicTemplate?: string;
 	/**
-	 * 视频投稿的推送文本模板。变量 `{name}` / `{url}`(视频链接或 BV)。
+	 * 视频投稿的推送文本模板,变量同上(链接部件给的是视频链接,或按 dynamicVideoUrlToBV 换成 BV)。
 	 * 缺省时回退到内建文案。Adapter 通常用 `globals.defaults.templates.dynamicVideo` 填充。
 	 */
 	videoTemplate?: string;
@@ -898,8 +895,7 @@ export class DynamicEngine {
 				}
 
 				// Build bare URL(链接部件的内容,不含任何前缀文案)。链接恒计算 —— 显隐 / 位置
-				// 由版式的 link 部件决定;旧自定义模板残留的 {url} 由 renderDynamicText 连同
-				// 前导分隔符剥掉。
+				// 由版式的 link 部件决定。
 				const isVideo = item.type === "DYNAMIC_TYPE_AV";
 				let url: string;
 				if (isVideo) {
@@ -958,10 +954,8 @@ export class DynamicEngine {
 					: (sub?.customDynamicTemplate ??
 						this.config.dynamicTemplate ??
 						DEFAULT_DYNAMIC_TEXT.dynamic);
-				// 文本以 url='' 渲染(renderDynamicText 会把 {url} 连同前导分隔符剥掉,旧自定义
-				// 模板残留 {url} 也不会双链接),链接独立成部件,顺序 / 显隐 / 分条全由版式决定;
-				// 同条内相邻文本类部件以 separator 连接。
-				const text = wantPart("text") ? (aiComment ?? renderDynamicText(tmpl, name, "")) : "";
+				// 链接独立成部件,顺序 / 显隐 / 分条全由版式决定;同条内相邻文本类部件以 separator 连接。
+				const text = wantPart("text") ? (aiComment ?? renderDynamicText(tmpl, name)) : "";
 				const present = new Set<string>();
 				if (buffer) present.add("card");
 				if (text) present.add("text");
