@@ -766,7 +766,6 @@ export class RoomSession extends RoomSessionBase {
 		const roomLink = buildRoomLink(this.liveRoomInfo);
 		// 消息版式来自 per-UP 折叠值(宿主恒填)。链接独立成部件,开播模板剥掉 {link},
 		// 由 sendLiveNotifyCard 按块序装配。
-		const messageLayout = this.sub.messageLayout;
 		const liveStartMsg = this.ctx.templateRenderer.renderLiveStart({
 			sub: this.sub,
 			globalCustom: this.ctx.config.customLiveMsg,
@@ -790,7 +789,7 @@ export class RoomSession extends RoomSessionBase {
 				cardLayout: this.sub.cardLayout,
 				uid: this.sub.uid,
 				notifyMsg: liveStartMsg,
-				messageLayout,
+				messageLayout: this.sub.messageLayout,
 				roomLink,
 			}),
 		);

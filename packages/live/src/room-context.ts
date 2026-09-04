@@ -147,13 +147,15 @@ export class RoomContextBase {
 	 */
 	private readonly _getImageRenderer: () => ImageRenderer | null;
 	readonly emitEngineError: (message: string) => void;
-	private readonly _emitLiveState: (
-		uid: string,
-		status: "live" | "idle",
-		startedAt?: string,
-	) => void;
-	private readonly _emitViewers: (uid: string, viewers: string) => void;
-	private readonly _pickCardBackground: PickCardBackground;
+	/** 分发 per-UID 直播状态变化给宿主。 */
+	readonly emitLiveState: (uid: string, status: "live" | "idle", startedAt?: string) => void;
+	/** 分发 per-UID 观看人数变化给宿主。room-session 已做 per-UID 节流,这里只是分发。 */
+	readonly emitViewers: (uid: string, viewers: string) => void;
+	/**
+	 * 背景图轮换:多图时返回本次该用的背景并推进游标;选择器返回 undefined 或列表 ≤1 张
+	 * → 调用方回退单图。
+	 */
+	readonly pickBackground: PickCardBackground;
 	/** uid → roomId 解析成功回调:宿主据此把房号写盘复用。 */
 	readonly onRoomIdResolved: (uid: string, roomId: string) => void;
 
@@ -178,28 +180,10 @@ export class RoomContextBase {
 		this._getImageRenderer = opts.getImageRenderer;
 		this.config = opts.config;
 		this.emitEngineError = opts.emitEngineError;
-		this._emitLiveState = opts.emitLiveState;
-		this._emitViewers = opts.emitViewers;
-		this._pickCardBackground = opts.pickCardBackground;
+		this.emitLiveState = opts.emitLiveState;
+		this.emitViewers = opts.emitViewers;
+		this.pickBackground = opts.pickCardBackground;
 		this.onRoomIdResolved = opts.onRoomIdResolved;
-	}
-
-	/**
-	 * 背景图轮换:多图时返回本次该用的背景并推进游标;选择器返回 undefined 或列表 ≤1 张
-	 * → 调用方回退单图。
-	 */
-	pickBackground(scopeKey: string, images: string[]): string | undefined {
-		return this._pickCardBackground(scopeKey, images);
-	}
-
-	/** 分发 per-UID 直播状态变化给宿主。 */
-	emitLiveState(uid: string, status: "live" | "idle", startedAt?: string): void {
-		this._emitLiveState(uid, status, startedAt);
-	}
-
-	/** 分发 per-UID 观看人数变化给宿主。room-session 已做 per-UID 节流,这里只是分发。 */
-	emitViewers(uid: string, viewers: string): void {
-		this._emitViewers(uid, viewers);
 	}
 
 	/** 受 `config.imageEnabled` 门控的渲染器视图;关闭时返回 null。 */

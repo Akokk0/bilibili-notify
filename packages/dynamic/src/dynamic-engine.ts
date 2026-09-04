@@ -897,9 +897,9 @@ export class DynamicEngine {
 					this.imageFailureNotified = false;
 				}
 
-				// Build bare URL (模板的 {url} 变量,不含任何前缀文案)。链接恒计算 ——
-				// 要不要展示由模板里有没有 {url} 决定。视频转 BV 无匹配等 url 为空的情形,
-				// renderDynamicText 会去掉模板里 {url} 的尾随分隔符。
+				// Build bare URL(链接部件的内容,不含任何前缀文案)。链接恒计算 —— 显隐 / 位置
+				// 由版式的 link 部件决定;旧自定义模板残留的 {url} 由 renderDynamicText 连同
+				// 前导分隔符剥掉。
 				const isVideo = item.type === "DYNAMIC_TYPE_AV";
 				let url: string;
 				if (isVideo) {
@@ -958,45 +958,43 @@ export class DynamicEngine {
 					: (sub?.customDynamicTemplate ??
 						this.config.dynamicTemplate ??
 						DEFAULT_DYNAMIC_TEXT.dynamic);
-				{
-					// 版式路径:文本以 url='' 渲染(renderDynamicText 会把 {url} 连同前导
-					// 分隔符剥掉,旧自定义模板残留 {url} 也不会双链接),链接独立成部件,
-					// 顺序 / 显隐 / 分条全由版式决定;同条内相邻文本类部件以 separator 连接。
-					const text = wantPart("text") ? (aiComment ?? renderDynamicText(tmpl, name, "")) : "";
-					const present = new Set<string>();
-					if (buffer) present.add("card");
-					if (text) present.add("text");
-					if (url) present.add("link");
-					const groups = planMessageGroups(layout.blocks, present);
-					const messages: PushSegment[][] = groups.map((group) => {
-						const segs: PushSegment[] = [];
-						let texts: string[] = [];
-						const flushText = (): void => {
-							if (texts.length > 0) {
-								segs.push({ type: "text", text: texts.join(layout.separator) });
-								texts = [];
-							}
-						};
-						for (const part of group) {
-							if (part === "card" && buffer) {
-								flushText();
-								segs.push({ type: "image", buffer, mime: "image/jpeg" });
-							} else if (part === "text") {
-								texts.push(text);
-							} else if (part === "link") {
-								texts.push(url);
-							}
+				// 文本以 url='' 渲染(renderDynamicText 会把 {url} 连同前导分隔符剥掉,旧自定义
+				// 模板残留 {url} 也不会双链接),链接独立成部件,顺序 / 显隐 / 分条全由版式决定;
+				// 同条内相邻文本类部件以 separator 连接。
+				const text = wantPart("text") ? (aiComment ?? renderDynamicText(tmpl, name, "")) : "";
+				const present = new Set<string>();
+				if (buffer) present.add("card");
+				if (text) present.add("text");
+				if (url) present.add("link");
+				const groups = planMessageGroups(layout.blocks, present);
+				const messages: PushSegment[][] = groups.map((group) => {
+					const segs: PushSegment[] = [];
+					let texts: string[] = [];
+					const flushText = (): void => {
+						if (texts.length > 0) {
+							segs.push({ type: "text", text: texts.join(layout.separator) });
+							texts = [];
 						}
-						flushText();
-						return segs;
-					});
-					if (messages.length === 0) {
-						this.logger.debug(`[push] UID=${uid} 消息版式所有部件隐藏/缺失,本条不推送`);
-					} else if (messages.length === 1) {
-						await this.push.broadcastDynamic(uid, messages[0] as PushSegment[], "dynamic");
-					} else {
-						await this.push.broadcastDynamicSequence(uid, messages, "dynamic");
+					};
+					for (const part of group) {
+						if (part === "card" && buffer) {
+							flushText();
+							segs.push({ type: "image", buffer, mime: "image/jpeg" });
+						} else if (part === "text") {
+							texts.push(text);
+						} else if (part === "link") {
+							texts.push(url);
+						}
 					}
+					flushText();
+					return segs;
+				});
+				if (messages.length === 0) {
+					this.logger.debug(`[push] UID=${uid} 消息版式所有部件隐藏/缺失,本条不推送`);
+				} else if (messages.length === 1) {
+					await this.push.broadcastDynamic(uid, messages[0] as PushSegment[], "dynamic");
+				} else {
+					await this.push.broadcastDynamicSequence(uid, messages, "dynamic");
 				}
 
 				// Push extra images from draw dynamics. DYNAMIC_TYPE_DRAW 的原图在

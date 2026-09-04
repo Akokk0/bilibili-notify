@@ -82,6 +82,9 @@ export function buildRoomLink(info: { short_id: number; room_id: number }): stri
 /**
  * Resolve the effective template string for a sub at a given occurrence,
  * preferring per-sub override → global config → built-in default.
+ *
+ * 链接独立成版式部件:模板里的 `{link}`(与 legacy `-link`)连同前导空白 / 字面 `\n`
+ * 在这里一并剥掉,三个 render* 拿到的模板里已经没有链接占位符。
  */
 function resolveCustomLive(
 	subCustom: CustomLiveMsgLike,
@@ -89,7 +92,8 @@ function resolveCustomLive(
 	field: "customLiveStart" | "customLive" | "customLiveEnd",
 	fallback: string,
 ): string {
-	return subCustom[field] ?? globalCustom?.[field] ?? fallback;
+	const tmpl = subCustom[field] ?? globalCustom?.[field] ?? fallback;
+	return tmpl.replace(/(?:\s|\\n)*(?:\{link\}|-link)/g, "");
 }
 
 export class LiveTemplateRenderer {
@@ -101,19 +105,16 @@ export class LiveTemplateRenderer {
 		diffTime: string;
 		followerNum: string;
 	}): string {
-		let tmpl = resolveCustomLive(
+		const tmpl = resolveCustomLive(
 			params.sub.customLiveMsg,
 			params.globalCustom,
 			"customLiveStart",
 			DEFAULT_LIVE_TEMPLATES.liveStart,
 		);
-		// 链接独立成版式部件:模板里的 `{link}`(与 legacy `-link`)连同前导空白 / 字面 `\n` 剥离。
-		tmpl = tmpl.replace(/(?:\s|\\n)*(?:\{link\}|-link)/g, "");
 		return applyTemplate(tmpl, {
 			name: params.master.username,
 			time: params.diffTime,
 			follower: params.followerNum,
-			link: "",
 		});
 	}
 
@@ -125,19 +126,16 @@ export class LiveTemplateRenderer {
 		diffTime: string;
 		watched: string;
 	}): string {
-		let tmpl = resolveCustomLive(
+		const tmpl = resolveCustomLive(
 			params.sub.customLiveMsg,
 			params.globalCustom,
 			"customLive",
 			DEFAULT_LIVE_TEMPLATES.liveOngoing,
 		);
-		// 链接独立成版式部件:模板里的 `{link}`(与 legacy `-link`)连同前导空白 / 字面 `\n` 剥离。
-		tmpl = tmpl.replace(/(?:\s|\\n)*(?:\{link\}|-link)/g, "");
 		return applyTemplate(tmpl, {
 			name: params.master.username,
 			time: params.diffTime,
 			watched: params.watched,
-			link: "",
 		});
 	}
 
@@ -149,19 +147,16 @@ export class LiveTemplateRenderer {
 		diffTime: string;
 		followerChange: number;
 	}): string {
-		let tmpl = resolveCustomLive(
+		const tmpl = resolveCustomLive(
 			params.sub.customLiveMsg,
 			params.globalCustom,
 			"customLiveEnd",
 			DEFAULT_LIVE_TEMPLATES.liveEnd,
 		);
-		// 链接独立成版式部件:模板里的 `{link}`(与 legacy `-link`)连同前导空白 / 字面 `\n` 剥离。
-		tmpl = tmpl.replace(/(?:\s|\\n)*(?:\{link\}|-link)/g, "");
 		return applyTemplate(tmpl, {
 			name: params.master.username,
 			time: params.diffTime,
 			follower_change: formatFollowerChange(params.followerChange),
-			link: "",
 		});
 	}
 
