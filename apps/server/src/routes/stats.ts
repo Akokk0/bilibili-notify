@@ -385,6 +385,11 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 		// 渲染与投递的本体在 `../stats/roast-deliver.ts` —— 定时推送走同一份,
 		// 免得「渲染挂了降级成文字」这类行为将来只剩一条路上还留着。
 		const out = await deliverRoast(deps, { kind, result, days, targetIds: [target.id] });
+		// 停用的目标投递层会跳过(与周报同一条判定)。单目标手动推送遇到它得明说,不能是一句
+		// 含糊的「推送失败」—— 那会让人去查网络。
+		if (out.skipped.length > 0) {
+			return c.json<StatsRoastPushResponse>({ ok: false, err: "推送目标已停用" }, 409);
+		}
 		if (out.sent.length === 0) {
 			return c.json<StatsRoastPushResponse>(
 				{ ok: false, err: out.failed[0]?.err ?? "推送失败" },

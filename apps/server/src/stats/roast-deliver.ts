@@ -8,6 +8,7 @@
 
 import type { RoastCardUp } from "@bilibili-notify/image";
 import { colorFromUid, type NotificationPayload } from "@bilibili-notify/internal";
+import { isTargetPaused } from "../config/target-pause.js";
 import type { RouteDeps } from "../routes/types.js";
 
 export type RoastDeliverDeps = Pick<RouteDeps, "runtime" | "store">;
@@ -35,6 +36,12 @@ export interface DeliverOutcome {
 	mode: "image" | "text";
 	/** 成功送达的 targetId。 */
 	sent: string[];
+	/**
+	 * 因为停用而没发的 targetId(目标自己停用,或它的适配器停用)。**不算失败**:停用是
+	 * 主人自己按的,不该换来一条失败通知;以前把它扔给管线,要退避重试到上限才报「持续
+	 * 不可达」。判定与链接解析白名单同一份(`config/target-pause.ts`)。
+	 */
+	skipped: string[];
 	/** 没送出去的,带原因。管线自己已经退避重试过了,到这里就是彻底失败。 */
 	failed: Array<{ targetId: string; err: string }>;
 	/** 发出去的正文 —— 抄送主人时复用同一份,不另拼一遍。 */
@@ -153,9 +160,17 @@ export async function deliverRoast(
 	const engines = deps.runtime.engines;
 	const { mode, payload, text } = await buildRoastPayload(deps, opts);
 
+	const targetsById = new Map(deps.store.getTargets().map((t) => [t.id, t]));
+	const adapters = deps.store.getAdapters();
 	const sent: string[] = [];
+	const skipped: string[] = [];
 	const failed: DeliverOutcome["failed"] = [];
 	for (const targetId of opts.targetIds) {
+		const target = targetsById.get(targetId);
+		if (target && isTargetPaused(target, adapters)) {
+			skipped.push(targetId);
+			continue;
+		}
 		if (!engines) {
 			failed.push({ targetId, err: "服务尚未就绪" });
 			continue;
@@ -168,7 +183,7 @@ export async function deliverRoast(
 			failed.push({ targetId, err: err instanceof Error ? err.message : String(err) });
 		}
 	}
-	return { mode, sent, failed, text };
+	return { mode, sent, skipped, failed, text };
 }
 
 function boardCardData(r: BoardLike, days: number, upMeta: (uid: string) => RoastCardUp) {

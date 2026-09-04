@@ -41,8 +41,10 @@ interface StubOpts {
 	renderThrows?: boolean;
 	/** 让投递失败。 */
 	sendFails?: boolean;
-	targets?: Array<{ id: string }>;
+	targets?: Array<{ id: string; enabled?: boolean; adapterId?: string }>;
 }
+
+const ADAPTER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 function makeDeps(opts: StubOpts = {}) {
 	const sendToTarget = vi.fn(async () => ({
@@ -76,7 +78,15 @@ function makeDeps(opts: StubOpts = {}) {
 					cardStyle: { enabled: opts.cardStyleEnabled ?? true },
 				},
 			}),
-			getTargets: () => opts.targets ?? [{ id: "11111111-1111-4111-8111-111111111111" }],
+			// 投递前会看目标与适配器是不是停用了(停用 = 跳过),所以夹具里的目标得像真的一样
+			// 带着 enabled 与 adapterId,不然全被当成停用、一条都发不出去。
+			getTargets: () =>
+				(opts.targets ?? [{ id: "11111111-1111-4111-8111-111111111111" }]).map((t) => ({
+					enabled: true,
+					adapterId: ADAPTER,
+					...t,
+				})),
+			getAdapters: () => [{ id: ADAPTER, enabled: true }],
 		},
 		runtime: {
 			engines: {
@@ -242,5 +252,17 @@ describe("POST /roast/push — 诚实失败", () => {
 		const body = (await res.json()) as any;
 		expect(body.ok).toBe(false);
 		expect(body.err).toContain("目标不可达");
+	});
+});
+
+describe("POST /roast/push — 停用的目标", () => {
+	// 「停用」在周报与链接解析里是同一个意思:目标暂停,勾着也不发。手动推送选中一个停用的
+	// 目标,得明说是停用,不能是一句含糊的「推送失败」—— 那会让人去查网络。
+	it("目标已停用 → 409 + 明说已停用,不碰推送管线", async () => {
+		const { deps, sendToTarget } = makeDeps({ targets: [{ id: TARGET, enabled: false }] });
+		const res = await push(createStatsRoute(deps), boardBody());
+		expect(res.status).toBe(409);
+		expect(((await res.json()) as any).err).toBe("推送目标已停用");
+		expect(sendToTarget).not.toHaveBeenCalled();
 	});
 });
