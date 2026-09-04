@@ -14,7 +14,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { browser, type RestartProbe, useRestartStore } from "../restart";
+import { browser, PROBE_TIMEOUT_MS, type RestartProbe, useRestartStore } from "../restart";
 import { UpdateSection, type UpdateSectionProps } from "../update-section";
 
 vi.mock("../../../services/api", () => ({
@@ -333,6 +333,21 @@ describe("UpdateSection —— 按下重启之后", () => {
 		expect(screen.getByText(/正在重启/)).toBeTruthy();
 		expect(button(/立即重启/).disabled).toBe(true);
 		expect(button("检查更新").disabled).toBe(true);
+	});
+
+	// 按下之前那次探针也得带死线:服务端吊着不回时,否则 mutation 永远 pending、按钮灰着
+	// 零反馈 —— 正是 1aee5390 要修的「按了没反应」换了个地方。
+	it("每一次 /api/health 探针都带死线,按下之前那次也不例外", async () => {
+		serve(READY);
+		health.set(OLD, NEW);
+		renderSection("/system", QUICK);
+
+		await userEvent.click(await screen.findByRole("button", { name: /立即重启/ }));
+
+		await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+		const probes = vi.mocked(api.get).mock.calls.filter(([path]) => path === "/api/health");
+		expect(probes.length).toBeGreaterThanOrEqual(2);
+		for (const [, opts] of probes) expect(opts).toMatchObject({ timeoutMs: PROBE_TIMEOUT_MS });
 	});
 
 	it("回退也走同一条路,记号写的是 rollback", async () => {

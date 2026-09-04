@@ -24,6 +24,7 @@ import type { GlobalConfig } from "../../types/globals";
 import { externalLinkClick } from "../../utils/externalLink";
 import { MirrorPicker } from "./mirror-picker";
 import {
+	PROBE_TIMEOUT_MS,
 	type RestartIntent,
 	type RestartMark,
 	type RestartProbe,
@@ -109,7 +110,7 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 		mutationFn: async (mark: RestartMark): Promise<RestartIntent> => {
 			// 先记下要换掉的这个进程。重启指令发出去之后,只有 startedAt 和它不同的回答
 			// 才算新进程 —— 旧进程优雅停机时还能连上好几秒。
-			const before = await api.get<RestartProbe>("/api/health");
+			const before = await api.get<RestartProbe>("/api/health", { timeoutMs: PROBE_TIMEOUT_MS });
 			await api.post("/api/update/apply", {});
 			return { ...mark, before: before.startedAt };
 		},
