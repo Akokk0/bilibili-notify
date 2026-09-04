@@ -92,7 +92,7 @@
 dashboard 是它的同级 `web-dist/`。资源目录里**没有 node_modules**:以前生产端沿 node_modules
 逐个搬运行时依赖再裁掉测试与文档,三百行只为拼出一棵能跑的依赖树,而应用内更新一装上,
 桌面壳跑的就已经是 bundle 载荷了 —— 安装包自带那份没理由不同源。三种发行形态吃同一份产物,
-`vp run build:desktop` 也就等于 `build:update-payload` + `tauri:build`。
+`vp run build:desktop` 也就等于 `build:update-payload` + `tauri:build`。`build:update-payload` 里 web 与 server bundle 互不依赖,由一条 `pnpm --filter web --filter server run build:bundle` 并发跑 —— pnpm 一条命令只认一个 script 名,所以 web 有一条 `build:bundle` 别名指向自己的 `build`。
 
 bundle 必须带齐的文件(入口、选版器、词云 static、jieba wasm、jsdom 的 worker 与默认样式表、
 配置样例、package.json)**只声明一次**:`scripts/server-bundle-assets.mjs`。装配脚本自检、

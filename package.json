@@ -9,7 +9,7 @@
 		"dev": "pnpm -r --filter './packages/*' --filter '@bilibili-notify/contract' run build && pnpm -r --filter './packages/*' --filter '@bilibili-notify/contract' --filter '@bilibili-notify/server' --filter '@bilibili-notify/web' --parallel --stream run dev",
 		"dev:packages": "pnpm -r --filter './packages/*' --filter '@bilibili-notify/contract' --parallel --stream run dev",
 		"dev:apps": "node scripts/dev-apps.mjs",
-		"build:update-payload": "pnpm -r --filter './packages/*' --filter '@bilibili-notify/contract' run build && pnpm --filter @bilibili-notify/web run build && pnpm --filter @bilibili-notify/server run build:bundle && node scripts/assemble-server-bundle.mjs",
+		"build:update-payload": "pnpm -r --filter './packages/*' --filter '@bilibili-notify/contract' run build && pnpm --filter @bilibili-notify/web --filter @bilibili-notify/server run build:bundle && node scripts/assemble-server-bundle.mjs",
 		"dev:desktop": "pnpm run build:update-payload && pnpm --filter @bilibili-notify/desktop run dev",
 		"build:desktop": "pnpm run build:update-payload && pnpm --filter @bilibili-notify/desktop run tauri:build",
 		"check:desktop": "pnpm --filter @bilibili-notify/desktop run check:rust",

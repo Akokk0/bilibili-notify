@@ -6,6 +6,7 @@
 	"scripts": {
 		"dev": "vp dev",
 		"build": "tsc -b && vp build",
+		"build:bundle": "pnpm run build",
 		"preview": "vp preview",
 		"typecheck": "tsc --noEmit"
 	},
