@@ -33,17 +33,11 @@ describe("DEFAULT_MESSAGE_LAYOUT", () => {
 });
 
 describe("defaultMessageKindLayout", () => {
-	it("返回默认版式的深拷贝;link 可见性由 opts.link 决定(缺省 true)", () => {
-		const on = defaultMessageKindLayout("dynamic");
-		expect(on.blocks.map((b) => [b.type, b.visible])).toEqual([
-			["card", true],
-			["text", true],
-			["link", true],
-		]);
-		const off = defaultMessageKindLayout("live", { link: false });
-		expect(off.blocks.find((b) => b.type === "link")?.visible).toBe(false);
+	it("返回默认版式的深拷贝", () => {
+		const copy = defaultMessageKindLayout("live");
+		expect(copy).toEqual(DEFAULT_MESSAGE_LAYOUT.live);
 		// 深拷贝:改返回值不得污染 DEFAULT_MESSAGE_LAYOUT
-		for (const b of off.blocks) b.visible = false;
+		for (const b of copy.blocks) b.visible = false;
 		expect(DEFAULT_MESSAGE_LAYOUT.live.blocks[0]?.visible).toBe(true);
 	});
 });

@@ -62,21 +62,9 @@ export const DEFAULT_MESSAGE_LAYOUT: MessageLayout = {
 	live: { blocks: [part("card"), part("text"), part("link")], separator: "\n" },
 };
 
-/**
- * 取某推送类型的默认版式深拷贝,`opts.link` 控制链接部件显隐(缺省 true)。
- * 测试与默认值生成用。
- */
-export function defaultMessageKindLayout(
-	kind: "dynamic" | "live",
-	opts?: { link?: boolean },
-): MessageKindLayout {
-	const base = structuredClone(DEFAULT_MESSAGE_LAYOUT[kind]);
-	if (opts?.link === false) {
-		for (const b of base.blocks) {
-			if (b.type === "link") b.visible = false;
-		}
-	}
-	return base;
+/** 测试夹具:某推送类型默认版式的深拷贝,改它不会污染 DEFAULT_MESSAGE_LAYOUT。 */
+export function defaultMessageKindLayout(kind: "dynamic" | "live"): MessageKindLayout {
+	return structuredClone(DEFAULT_MESSAGE_LAYOUT[kind]);
 }
 
 /**

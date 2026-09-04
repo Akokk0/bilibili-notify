@@ -1100,11 +1100,9 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 	it("版式隐藏 link 部件 → 无链接;模板里残留的 {url} 也偷渡不进来", async () => {
 		const b = makeEngine({ config: { dynamicTemplate: "{name}发布了一条动态：{url}" } });
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
-		seed(b.engine, "1", 0, {
-			uid: "1",
-			uname: "UP",
-			messageLayout: defaultMessageKindLayout("dynamic", { link: false }),
-		});
+		const noLink = defaultMessageKindLayout("dynamic");
+		for (const blk of noLink.blocks) if (blk.type === "link") blk.visible = false;
+		seed(b.engine, "1", 0, { uid: "1", uname: "UP", messageLayout: noLink });
 		await detect(b.engine);
 		expect(textOf(segsOf(b))).toBe("阿绫发布了一条动态");
 	});
