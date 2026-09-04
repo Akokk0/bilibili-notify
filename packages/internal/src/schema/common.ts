@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FEATURE_KEYS } from "../constants";
+import { DEFAULT_TEMPLATES, FEATURE_KEYS } from "../constants";
 import { checkUserRegex } from "../util/regex-safety";
 
 export type { FeatureKey } from "../constants";
@@ -138,14 +138,14 @@ export const TemplateBundleSchema = z.object({
 	liveEnd: z.string(),
 	liveSummary: z.string(),
 	/**
-	 * 动态推送文本模板(非视频动态)。变量:`{name}` UP 名、`{url}` 动态链接。
-	 * `.default(...)` 让缺 dynamic 字段的老 globals.json(本字段加入前写入的)
-	 * 仍能通过 schema 校验 —— 与下方 imageGroup 同源的老配置兜底策略。默认值须与
-	 * `DEFAULT_TEMPLATES.dynamic` 保持一致。
+	 * 动态推送文本模板(非视频动态)。变量:`{name}` UP 名;链接是消息版式的独立部件,
+	 * 不是模板变量。`.default(...)` 让缺 dynamic 字段的老 globals.json
+	 * (本字段加入前写入的)仍能通过 schema 校验 —— 与下方 imageGroup 同源的老配置兜底策略;
+	 * 默认值直接取 `DEFAULT_TEMPLATES`,不另抄一份(抄的那份 2026-08 漂过一次)。
 	 */
-	dynamic: z.string().default("{name}发布了一条动态：{url}"),
-	/** 视频投稿推送文本模板。变量:`{name}` UP 名、`{url}` 视频链接 / BV。默认值须与 `DEFAULT_TEMPLATES.dynamicVideo` 一致。 */
-	dynamicVideo: z.string().default("{name}发布了新视频：{url}"),
+	dynamic: z.string().default(DEFAULT_TEMPLATES.dynamic),
+	/** 视频投稿推送文本模板。变量:`{name}` UP 名;链接同上。 */
+	dynamicVideo: z.string().default(DEFAULT_TEMPLATES.dynamicVideo),
 	/**
 	 * 弹幕词云的额外停用词,英文逗号分隔,**追加**到内置中文停用词表后再分词。
 	 * `.default("")` 让缺该字段的老 globals.json 仍能通过 schema 校验(与 dynamic /
