@@ -141,11 +141,11 @@ image-release run 在相同 build job 里顺带构建(同 buildx 实例复用 bu
 
 ### Dockerfile
 
-`apps/Dockerfile` 多阶段:builder 跑 `pnpm install` + 按需构建(`packages/*` → `apps/web` → `apps/server` 的 `build:bundle` + `scripts/assemble-server-bundle.mjs`);runtime `FROM` 自建 chromium base,只 COPY server 的**自包含单文件 bundle**(~15MB,含 wasm / worker / 词云 static / package.json)+ web dist。镜像里**没有 node_modules**。
+`apps/Dockerfile` 多阶段:builder 跑 `vp pm ci` + 按需构建(`packages/*` → `apps/web` → `apps/server` 的 `build:bundle` + `scripts/assemble-server-bundle.mjs`);runtime `FROM` 自建 chromium base,只 COPY server 的**自包含 bundle**(`apps/server/dist`,~15MB:入口 + 若干 hash 分块 + wasm / worker / 词云 static / package.json)+ web dist。镜像里**没有 node_modules**。
 
 **chromium base 镜像**(`apps/base.Dockerfile` → `akokk0/bilibili-notify-base`):node-slim + chromium + CJK/emoji 字体 + tini,~300MB 冻结在 base、digest 只随显式重建而变 —— 用户拉一次、之后每次升级只下 app 小层。重建走 `base-image.yml`(workflow_dispatch,不可变递增 tag `b1`/`b2`/… + `:latest`,双 arch 经 QEMU),刷新后 bump `apps/Dockerfile` 的 `ARG BN_BASE_IMAGE`。**时序**:新 base tag 必须先推上 registry,image-release(含 dry-run)才构建得动。
 
-builder 故意用 **corepack 提供的 pnpm,不是 vp** —— 这是对「全仓 vp」工具链的有意例外,与 `publish.yml` 的 corepack 处理一致(corepack 在 node 基础镜像里免费自带、vp 没有 Docker 侧的 bootstrap action;两者解析到同一个 pinned pnpm,产物逐字节一致)。package.json script 里的 `vp` 由 pnpm run 从根 devDependency(vite-plus)的 `node_modules/.bin` 解析,builder 无需全局 vp。
+builder 基于官方工具链镜像 `ghcr.io/voidzero-dev/vite-plus`(`ARG VP_BUILDER_IMAGE`,版本与根 `vite-plus` 同步升):镜像自带 vp CLI,按 `.node-version` 供给 Node、按 `package.json#packageManager` 供给 pnpm,`vp pm ci` 即 frozen-lockfile 干净安装,`vp run` 跑 script —— 与本地完全同一套工具链。早年「builder 用 corepack 的 pnpm、不用 vp」的例外已随这个镜像出现而取消。`.dockerignore` 排除了 `.git`,而根 `prepare` 脚本要跑 `lefthook install`,所以 builder 先 `git init` 一个空仓再装(用完即弃,不进 runtime)。
 
 **构建上下文必须是仓库根,不是 `apps/`** —— `apps/server` 经 `workspace:*` 依赖 `packages/*`,单独的 `apps/` 解析不到。手动构建:
 
