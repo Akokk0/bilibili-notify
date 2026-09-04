@@ -76,6 +76,7 @@ catalog:
   "@types/ws": ^8.18.1
   "@vitejs/plugin-react": ^6.1.0
   cron: ^4.4.0
+  cross-env: ^10.1.0
   fflate: ^0.8.3
   jsdom: ^30.0.1
   luxon: ^3.5.0
