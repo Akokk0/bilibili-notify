@@ -2,7 +2,7 @@ import { copyFile, cp, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { missingServerBundleFilesIn } from "./server-bundle-assets.mjs";
+import { missingServerBundleFilesIn, writeServerBundleManifest } from "./server-bundle-assets.mjs";
 
 // 把独立端 server 自包含 bundle(apps/server/dist,由 `build:bundle` 产出;入口 + hash 分块)补齐为
 // 可独立运行的目录:bundle 内联了全部 JS 依赖,但**运行时按路径读取**的资产不进
@@ -23,7 +23,8 @@ import { missingServerBundleFilesIn } from "./server-bundle-assets.mjs";
 //   是**载荷自己**的版本,不是进程 cwd 的。
 //
 // 装配完按 scripts/server-bundle-assets.mjs 的清单自检:那份清单是升级载荷与桌面
-// 资源两处把关共用的,这里少搬一个,下游才拦得住。
+// 资源两处把关共用的,这里少搬一个,下游才拦得住。最后把 dist 里的一切(含带 hash 的
+// 分块)记进 bundle-manifest.json —— 下游搬丢一块,靠它红。
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const distDir = resolve(repoRoot, "apps/server/dist");
@@ -62,6 +63,7 @@ await writeFile(
 	`${JSON.stringify({ name, version, type, engines, private: true }, null, "\t")}\n`,
 );
 
+await writeServerBundleManifest(distDir);
 const missing = await missingServerBundleFilesIn(distDir);
 if (missing.length > 0) {
 	throw new Error(`server bundle 装配不完整,缺 ${missing.join(", ")}:${distDir}`);

@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { installPayload } from "../apps/server/src/update/install-payload.js";
 import { buildUpdatePayload } from "./build-update-payload.mjs";
-import { SERVER_BUNDLE_FILES } from "./server-bundle-assets.mjs";
+import {
+	BUNDLE_MANIFEST_FILE,
+	SERVER_BUNDLE_FILES,
+	writeServerBundleManifest,
+} from "./server-bundle-assets.mjs";
 
 /**
  * 升级载荷的**发版侧**。
@@ -38,6 +42,7 @@ describe("buildUpdatePayload", () => {
 		await mkdir(join(webDist, "assets"), { recursive: true });
 		for (const file of SERVER_BUNDLE_FILES) {
 			if (file === "index.mjs" || file === "package.json" || file === "static/render.js") continue;
+			if (file === BUNDLE_MANIFEST_FILE) continue; // 最后由装配那一步写,见下
 			await writeFile(join(serverDist, ...file.split("/")), `// ${file}\n`);
 		}
 		if (overrides.serverEntry !== false)
@@ -47,6 +52,8 @@ describe("buildUpdatePayload", () => {
 		if (overrides.webEntry !== false)
 			await writeFile(join(webDist, "index.html"), "<!doctype html><title>bn</title>");
 		await writeFile(join(webDist, "assets", "app.js"), "export {};\n");
+		// 装配收尾写的那份全量清单:发版侧按它核对 dist 有没有搬丢。
+		await writeServerBundleManifest(serverDist);
 		return { serverDist, webDist };
 	}
 
