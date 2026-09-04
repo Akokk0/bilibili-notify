@@ -16,14 +16,9 @@
 
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { BilibiliAPI } from "@bilibili-notify/api";
-import { StorageManager } from "@bilibili-notify/storage";
 import WebSocket from "ws";
 import { decodeFrames, encodePacket, WsOp } from "../src/codec.ts";
-
-const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
-const dataDir = process.env.BN_DATA_DIR ?? join(repoRoot, "apps", "server", "data");
+import { makeServiceCtx, openReadonlyApi } from "./_env.ts";
 
 const roomIdInput = process.argv[2];
 if (!roomIdInput) {
@@ -38,41 +33,8 @@ const logger = {
 	error: (m: string) => console.error(`[error] ${m}`),
 	debug: () => {},
 };
-const serviceCtx = {
-	logger,
-	setInterval(fn: () => void, ms: number) {
-		const h = setInterval(fn, ms);
-		return { dispose: () => clearInterval(h) };
-	},
-	setTimeout(fn: () => void, ms: number) {
-		const h = setTimeout(fn, ms);
-		return { dispose: () => clearTimeout(h) };
-	},
-	onDispose() {},
-};
-
-const storage = new StorageManager({
-	serviceCtx,
-	dataDir,
-	paths: {
-		keyPath: join(dataDir, "secrets", "master.key"),
-		cookiePath: join(dataDir, "secrets", "cookies.json"),
-		saltPath: join(dataDir, "secrets", "kdf.salt"),
-	},
-});
-await storage.init();
-const cookieData = await storage.cookieStore.load();
-if (!cookieData) {
-	console.error(`没有登录态: ${dataDir}/secrets/cookies.json 为空,先在 dashboard 扫码登录`);
-	process.exit(1);
-}
-
-const api = new BilibiliAPI({ serviceCtx, config: {} });
-await api.start();
-// 只读铁律:绝不传 refreshToken —— loadCookies 会 fire-and-forget 触发 cookie
-// 刷新舞步(RSA 轮换),旧 cookie 被 B 站作废而新 cookie 只在本进程内存里,
-// 脚本一退出登录态就死。2026-08-27 就这样弄丢过一次主人的扫码登录。
-await api.loadCookies({ ...cookieData, refreshToken: undefined as unknown as string });
+const serviceCtx = makeServiceCtx(logger);
+const api = await openReadonlyApi(serviceCtx);
 
 const myself = await api.getMyselfInfoCached();
 if (myself.code !== 0 || !myself.data) {

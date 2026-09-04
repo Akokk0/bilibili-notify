@@ -32,6 +32,7 @@
 	},
 	"devDependencies": {
 		"@bilibili-notify/api": "workspace:*",
+		"@bilibili-notify/internal": "workspace:*",
 		"@bilibili-notify/storage": "workspace:*",
 		"@types/ws": "catalog:"
 	},

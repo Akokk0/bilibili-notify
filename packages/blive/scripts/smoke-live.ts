@@ -4,46 +4,11 @@
  *
  * 用法:node --experimental-transform-types packages/blive/scripts/smoke-live.ts
  */
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { BilibiliAPI } from "@bilibili-notify/api";
-import { StorageManager } from "@bilibili-notify/storage";
 import { connectLiveRoom } from "../lib/index.mjs";
+import { makeServiceCtx, openReadonlyApi } from "./_env.ts";
 
-const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
-const dataDir = process.env.BN_DATA_DIR ?? join(repoRoot, "apps", "server", "data");
-const logger = { info: console.log, warn: console.warn, error: console.error, debug: () => {} };
-const serviceCtx = {
-	logger,
-	setInterval(fn: () => void, ms: number) {
-		const h = setInterval(fn, ms);
-		return { dispose: () => clearInterval(h) };
-	},
-	setTimeout(fn: () => void, ms: number) {
-		const h = setTimeout(fn, ms);
-		return { dispose: () => clearTimeout(h) };
-	},
-	onDispose() {},
-};
-const storage = new StorageManager({
-	serviceCtx,
-	dataDir,
-	paths: {
-		keyPath: join(dataDir, "secrets", "master.key"),
-		cookiePath: join(dataDir, "secrets", "cookies.json"),
-		saltPath: join(dataDir, "secrets", "kdf.salt"),
-	},
-});
-await storage.init();
-const cookieData = await storage.cookieStore.load();
-if (!cookieData) {
-	console.error("没有登录态,先在 dashboard 扫码登录");
-	process.exit(1);
-}
-const api = new BilibiliAPI({ serviceCtx, config: {} });
-await api.start();
-// 只读铁律:绝不传 refreshToken(会触发 cookie 轮换,脚本不落盘则登录态丢失)
-await api.loadCookies({ ...cookieData, refreshToken: undefined as unknown as string });
+const serviceCtx = makeServiceCtx();
+const api = await openReadonlyApi(serviceCtx);
 const myself = await api.getMyselfInfoCached();
 if (myself.code !== 0 || !myself.data) {
 	console.error(`登录态失效 code=${myself.code}`);

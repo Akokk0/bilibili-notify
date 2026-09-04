@@ -482,6 +482,9 @@ importers:
       '@bilibili-notify/api':
         specifier: workspace:*
         version: link:../api
+      '@bilibili-notify/internal':
+        specifier: workspace:*
+        version: link:../internal
       '@bilibili-notify/storage':
         specifier: workspace:*
         version: link:../storage
