@@ -116,7 +116,7 @@ export function RoastRunNowBox({
  * 开着审批的人会以为群里已经收到了。部分失败也必须说 —— 只报成功那几个,
  * 等于告诉主人一切正常。
  */
-function OutcomeLine({
+export function OutcomeLine({
 	outcome,
 	targetName,
 }: {
@@ -139,17 +139,24 @@ function OutcomeLine({
 		);
 	}
 	const mode = outcome.mode === "image" ? "卡片图" : "文字";
+	// 停用而跳过的单独说,不混进失败:停用是主人自己按的,不是「没发出去」;但也不能从
+	// 总数里悄悄少一个,那会让人去查网络。
+	const skipped =
+		outcome.skipped.length > 0
+			? `；跳过 ${outcome.skipped.length} 个已停用：${outcome.skipped.map(targetName).join("、")}`
+			: "";
 	if (outcome.failed.length > 0) {
 		return (
 			<div className="mt-2 text-bn-xs text-bn-warning-text">
 				{outcome.sent} 个目标成功、{outcome.failed.length} 个失败（{mode}）：
 				{outcome.failed.map((f) => `${targetName(f.targetId)} ${f.err}`).join("；")}
+				{skipped}
 			</div>
 		);
 	}
 	return (
 		<div className="mt-2 text-bn-xs text-bn-success-text">
-			✓ 已发送到 {outcome.sent} 个目标（{mode}）
+			✓ 已发送到 {outcome.sent} 个目标（{mode}）{skipped}
 		</div>
 	);
 }
