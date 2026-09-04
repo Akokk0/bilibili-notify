@@ -10,12 +10,17 @@ import { GlobalConfigSchema, makeDefaultGlobalConfig } from "./globals";
 import { DEFAULT_LINK_PARSING, LinkParsingConfigSchema } from "./link-parsing";
 
 describe("linkParsing 配置段", () => {
-	it("老 globals.json 没有 linkParsing → 解析成功并补成默认:关、冷却 60 秒", () => {
+	it("老 globals.json 没有 linkParsing → 解析成功并补成默认:关、冷却 60 秒、所有群", () => {
 		const g = makeDefaultGlobalConfig() as unknown as Record<string, unknown>;
 		delete g.linkParsing;
 		const parsed = GlobalConfigSchema.safeParse(g);
 		expect(parsed.success).toBe(true);
-		expect(parsed.data?.linkParsing).toEqual({ enabled: false, cooldownSeconds: 60 });
+		expect(parsed.data?.linkParsing).toEqual({
+			enabled: false,
+			cooldownSeconds: 60,
+			scope: "all",
+			targets: [],
+		});
 	});
 
 	it("全新安装默认关", () => {
@@ -27,7 +32,42 @@ describe("linkParsing 配置段", () => {
 		expect(LinkParsingConfigSchema.parse({ enabled: true })).toEqual({
 			enabled: true,
 			cooldownSeconds: 60,
+			scope: "all",
+			targets: [],
 		});
+	});
+
+	// 白名单进来之前发出去的版本只有 enabled / cooldownSeconds。升上来的实例范围必须落在
+	// 「所有群」—— 行为一字不变,主人开过的功能不能因为升级悄悄缩到零个群。
+	it("上一版存的 linkParsing(没有 scope / targets)→ 范围补成所有群、列表为空", () => {
+		expect(LinkParsingConfigSchema.parse({ enabled: true, cooldownSeconds: 30 })).toEqual({
+			enabled: true,
+			cooldownSeconds: 30,
+			scope: "all",
+			targets: [],
+		});
+	});
+
+	it("白名单条目是 { targetId } 对象,同一个目标写两遍只留一份", () => {
+		const id = "11111111-1111-4111-8111-111111111111";
+		expect(
+			LinkParsingConfigSchema.parse({
+				scope: "selected",
+				targets: [{ targetId: id }, { targetId: id }],
+			}),
+		).toEqual({
+			enabled: false,
+			cooldownSeconds: 60,
+			scope: "selected",
+			targets: [{ targetId: id }],
+		});
+	});
+
+	it("targetId 不是 uuid、scope 不在两档之内 → 拒", () => {
+		expect(
+			LinkParsingConfigSchema.safeParse({ targets: [{ targetId: "group-123" }] }).success,
+		).toBe(false);
+		expect(LinkParsingConfigSchema.safeParse({ scope: "blacklist" }).success).toBe(false);
 	});
 
 	it("冷却秒数是 0–3600 的整数,越界与小数都拒", () => {

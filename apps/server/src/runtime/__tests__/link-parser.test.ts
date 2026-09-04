@@ -74,7 +74,13 @@ const LAYOUT: CardBlock[] = [
 const COLORS: CardColorOptions = { cardColorStart: "#111111", backgroundImage: "bg-7" };
 
 function makeParser(over: Partial<LinkParsingConfig> = {}, limits?: Partial<LinkLimits>) {
-	const config: LinkParsingConfig = { enabled: true, cooldownSeconds: 60, ...over };
+	const config: LinkParsingConfig = {
+		enabled: true,
+		cooldownSeconds: 60,
+		scope: "all",
+		targets: [],
+		...over,
+	};
 	const getVideoInfo = vi.fn(async (_ref: VideoRef) => VIDEO);
 	const resolveShortLink = vi.fn(async (_url: string): Promise<string | null> => null);
 	const generateDynamicCard = vi.fn(

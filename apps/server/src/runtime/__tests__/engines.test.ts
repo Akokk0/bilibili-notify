@@ -1156,19 +1156,29 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 	it("开关与版式随 config-changed 刷新,不用每条消息整份深拷贝 globals", () => {
 		const c = setup();
 		active = c;
-		expect(c.runtime.linkParsing()).toEqual({ enabled: false, cooldownSeconds: 60 });
+		expect(c.runtime.linkParsing()).toEqual({
+			enabled: false,
+			cooldownSeconds: 60,
+			scope: "all",
+			targets: [],
+		});
 		expect(c.runtime.linkCardPresentation().layout).toEqual(
 			c.configStore.getGlobals().defaults.cardLayout.dynamic,
 		);
 
 		const layout = [{ id: "content", type: "content", visible: true }];
 		patchGlobals(c, (g) => {
-			g.linkParsing = { enabled: true, cooldownSeconds: 5 };
+			g.linkParsing = { enabled: true, cooldownSeconds: 5, scope: "all", targets: [] };
 			g.defaults.cardLayout.dynamic = layout as any;
 		});
 		c.bus.emit("config-changed", "globals");
 
-		expect(c.runtime.linkParsing()).toEqual({ enabled: true, cooldownSeconds: 5 });
+		expect(c.runtime.linkParsing()).toEqual({
+			enabled: true,
+			cooldownSeconds: 5,
+			scope: "all",
+			targets: [],
+		});
 		expect(c.runtime.linkCardPresentation().layout).toEqual(layout);
 	});
 
