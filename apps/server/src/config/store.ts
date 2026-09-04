@@ -16,6 +16,7 @@ import {
 	type PushAdapter,
 	PushAdapterSchema,
 	type PushTarget,
+	PushTargetPlatformSchema,
 	PushTargetSchema,
 	type ServiceContext,
 	type Subscription,
@@ -337,6 +338,11 @@ function migrateLegacyTargets(raw: unknown[]): {
 	}
 
 	return { adapters, targets };
+}
+
+/** 平台字面量还在 union 里才算认识;不认识的就是被撤下的平台留下的存量,丢弃比启动期 throw 强。 */
+function isKnownPlatform(raw: unknown): boolean {
+	return PushTargetPlatformSchema.safeParse((raw as { platform?: unknown })?.platform).success;
 }
 
 function deriveAdapterName(targetName: string, addr: string): string {
@@ -818,8 +824,9 @@ class NodeConfigStore implements ConfigStore {
 			}
 			const adapters: PushAdapter[] = [];
 			for (const [idx, raw] of adaptersRaw.entries()) {
-				// 已移除的 web-dashboard 平台:静默丢弃存量条目,不参与严格校验(否则 safeParse 失败会 throw)。
-				if ((raw as { platform?: unknown })?.platform === "web-dashboard") continue;
+				// 已撤下的平台(web-dashboard、koishi-bot、astrbot,或将来的某个)留下的存量条目:
+				// 静默丢弃,不进严格校验 —— safeParse 失败会 throw,而这里是启动路径,没有面板能进去改。
+				if (!isKnownPlatform(raw)) continue;
 				const r = PushAdapterSchema.safeParse(raw);
 				if (!r.success) {
 					throw new ConfigValidationError(
@@ -846,8 +853,8 @@ class NodeConfigStore implements ConfigStore {
 			}
 			const targets: PushTarget[] = [];
 			for (const [idx, raw] of value.entries()) {
-				// 已移除的 web-dashboard 平台:静默丢弃存量目标(与 adapter 同理)。
-				if ((raw as { platform?: unknown })?.platform === "web-dashboard") continue;
+				// 已撤下平台的存量目标同理丢弃。
+				if (!isKnownPlatform(raw)) continue;
 				const r = PushTargetSchema.safeParse(raw);
 				if (!r.success) {
 					throw new ConfigValidationError(

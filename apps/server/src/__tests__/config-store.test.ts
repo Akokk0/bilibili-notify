@@ -554,6 +554,51 @@ describe("ConfigStore", () => {
 		await rm(dir2, { recursive: true, force: true });
 	});
 
+	// 2261cd59 把 koishi-bot / astrbot 从 schema 里删掉了。main 上的 schema 是收这两个平台的
+	// (dashboard 不给建,但直调 API / 旧备份都能留下条目)。loader 对「已不认识的平台」一律
+	// 静默丢弃 —— safeParse 一失败就是启动期 throw,没有面板可以进去改,boot 三振回落也救不回来。
+	it("load() 静默丢弃已移除平台(koishi-bot / astrbot)的存量 adapter 与 target", async () => {
+		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-drop-removed-"));
+		const state2 = join(dir2, "state");
+		await mkdir(state2, { recursive: true });
+		const webhook = makeWebhookAdapter();
+		const koishi = {
+			id: randomUUID(),
+			name: "Koishi",
+			platform: "koishi-bot",
+			enabled: true,
+			config: { botPlatform: "onebot" },
+		};
+		const astr = {
+			id: randomUUID(),
+			name: "AstrBot",
+			platform: "astrbot",
+			enabled: true,
+			config: {},
+		};
+		const koishiTarget = {
+			id: randomUUID(),
+			name: "k",
+			adapterId: koishi.id,
+			platform: "koishi-bot",
+			scope: "group",
+			enabled: true,
+			session: { channelId: "1" },
+		};
+		await writeFile(join(state2, "adapters.json"), JSON.stringify([koishi, webhook, astr]), "utf8");
+		await writeFile(join(state2, "targets.json"), JSON.stringify([koishiTarget]), "utf8");
+
+		const store2 = createConfigStore({
+			bootstrap: makeBootstrap(dir2),
+			bus: makeFakeBus(),
+			serviceCtx: makeFakeServiceCtx(),
+		});
+		await store2.load(); // 不应抛错
+		expect(store2.getAdapters().map((a) => a.platform)).toEqual(["webhook"]);
+		expect(store2.getTargets().every((t) => t.platform === "webhook")).toBe(true);
+		await rm(dir2, { recursive: true, force: true });
+	});
+
 	it("load() 标记既有 webhook target 且保留 id", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-config-managed-existing-"));
 		const state2 = join(dir2, "state");
