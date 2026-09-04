@@ -12,6 +12,7 @@
 
 import type { Logger, NotificationPayload, RoastSchedule } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
+import { isTargetPaused } from "../config/target-pause.js";
 import {
 	type BoardLike,
 	buildRoastPayload,
@@ -65,6 +66,8 @@ export type RoastRunOutcome =
 			kind: "sent";
 			mode: "text" | "image";
 			sent: number;
+			/** 因停用而跳过的目标 —— 不算失败,面板上单独说一句。 */
+			skipped: string[];
 			failed: Array<{ targetId: string; err: string }>;
 	  };
 
@@ -143,10 +146,16 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 	): Promise<RoastRunOutcome> {
 		if (stopped) return { kind: "gen-failed", why: "调度器已停止" };
 
-		// 一个目标都没配 —— 先拦住,别白调一次模型再把结果扔掉。
+		// 一个目标都没配、或配的全都停用了 —— 先拦住,别白调一次模型再把结果扔掉。
+		// 两句话分开说:「没配」和「都停用了」对主人是两件事,后者他明明配过。
 		if (cfg.targets.length === 0) {
 			logger.warn(`[roast-sched] ${label}:没有配置推送目标,跳过`);
 			if (cfg.notifyOnError) await tell(`${label}没有发出去：还没有配置推送目标。`);
+			return { kind: "no-targets" };
+		}
+		if (allTargetsPaused(cfg.targets)) {
+			logger.warn(`[roast-sched] ${label}:配置的推送目标都已停用,跳过`);
+			if (cfg.notifyOnError) await tell(`${label}没有发出去：配置的推送目标都已停用。`);
 			return { kind: "no-targets" };
 		}
 
@@ -214,9 +223,11 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 			targetIds: cfg.targets,
 		});
 
+		// 跳过的(停用)只进日志,不进通知:停用是主人自己按的,不是「没发出去」。
+		const skippedNote = out.skipped.length > 0 ? `,跳过 ${out.skipped.length} 个已停用` : "";
 		if (out.failed.length > 0) {
 			const detail = out.failed.map((f) => `${f.targetId}：${f.err}`).join("\n");
-			logger.warn(`[roast-sched] ${label} 部分目标推送失败:\n${detail}`);
+			logger.warn(`[roast-sched] ${label} 部分目标推送失败${skippedNote}:\n${detail}`);
 			// 管线自己已经退避重试过了,到这儿就是终局 —— 说清哪些没成即可。
 			if (cfg.notifyOnError) {
 				await tell(
@@ -224,10 +235,31 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 				);
 			}
 		} else {
-			logger.info(`[roast-sched] ${label} 已发送到 ${out.sent.length} 个目标(${out.mode})`);
+			logger.info(
+				`[roast-sched] ${label} 已发送到 ${out.sent.length} 个目标(${out.mode})${skippedNote}`,
+			);
 		}
 
-		return { kind: "sent", mode: out.mode, sent: out.sent.length, failed: out.failed };
+		return {
+			kind: "sent",
+			mode: out.mode,
+			sent: out.sent.length,
+			skipped: out.skipped,
+			failed: out.failed,
+		};
+	}
+
+	/**
+	 * 配置的目标是不是**全都**停用了。悬空的 id(目标已删)不算停用 —— 它会走到投递层按
+	 * 老样子报失败,这里只管「主人把勾着的群都关了」这一种情况。
+	 */
+	function allTargetsPaused(ids: readonly string[]): boolean {
+		const byId = new Map(deps.store.getTargets().map((t) => [t.id, t]));
+		const adapters = deps.store.getAdapters();
+		return ids.every((id) => {
+			const target = byId.get(id);
+			return target !== undefined && isTargetPaused(target, adapters);
+		});
 	}
 
 	/** 审批通过后把这份草稿发出去。指令链路调它。 */

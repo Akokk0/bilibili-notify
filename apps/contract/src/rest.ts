@@ -244,6 +244,8 @@ export type StatsRoastRunOutcome =
 			kind: "sent";
 			mode: "text" | "image";
 			sent: number;
+			/** 因停用而跳过的目标 id —— 不算失败,面板单独说一句「跳过 N 个已停用」。 */
+			skipped: string[];
 			failed: Array<{ targetId: string; err: string }>;
 	  };
 

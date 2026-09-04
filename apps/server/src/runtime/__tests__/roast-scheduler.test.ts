@@ -90,6 +90,9 @@ function memDrafts() {
 let globals: GlobalConfig;
 let tellMaster: ReturnType<typeof vi.fn>;
 let tellMasterPayload: ReturnType<typeof vi.fn>;
+/** 目标表。跑之前会看目标是不是停用了,所以夹具里的目标得带 enabled 与 adapterId。 */
+let targetsTable: Array<{ id: string; enabled: boolean; adapterId: string }>;
+const ADAPTER = "a1";
 
 function makeScheduler(over: { subs?: Array<Record<string, unknown>> } = {}) {
 	const drafts = memDrafts();
@@ -104,7 +107,8 @@ function makeScheduler(over: { subs?: Array<Record<string, unknown>> } = {}) {
 		store: {
 			getGlobals: () => globals,
 			getSubscriptions: () => over.subs ?? [],
-			getTargets: () => [{ id: "t1" }, { id: "t2" }],
+			getTargets: () => targetsTable,
+			getAdapters: () => [{ id: ADAPTER, enabled: true }],
 		},
 	} as Any;
 	const sched = createRoastScheduler({
@@ -122,9 +126,19 @@ beforeEach(() => {
 	dataDir = mkdtempSync(join(tmpdir(), "roast-sched-"));
 	cronMock.instances.length = 0;
 	globals = makeDefaultGlobalConfig();
+	targetsTable = [
+		{ id: "t1", enabled: true, adapterId: ADAPTER },
+		{ id: "t2", enabled: true, adapterId: ADAPTER },
+	];
 	generateBoardRoast.mockReset().mockResolvedValue({ ok: true, result: BOARD_RESULT });
 	generateSoloRoast.mockReset().mockResolvedValue({ ok: true, result: BOARD_RESULT });
-	deliverRoast.mockReset().mockResolvedValue({ mode: "text", sent: ["t1"], failed: [], text: "x" });
+	deliverRoast.mockReset().mockResolvedValue({
+		mode: "text",
+		sent: ["t1"],
+		skipped: [],
+		failed: [],
+		text: "x",
+	});
 	buildRoastPayload.mockReset().mockResolvedValue({
 		mode: "text",
 		text: "本周榜单正文",
@@ -272,6 +286,7 @@ describe("调度器 — 到点之后", () => {
 		deliverRoast.mockResolvedValue({
 			mode: "image",
 			sent: ["t1"],
+			skipped: [],
 			failed: [{ targetId: "t2", err: "机器人不在群里" }],
 			text: "x",
 		});
@@ -336,20 +351,59 @@ describe("调度器 — 一轮的结论", () => {
 	}
 
 	it("直发成功 → sent,带上投递形态与成功条数", async () => {
-		deliverRoast.mockResolvedValue({ mode: "image", sent: ["t1", "t2"], failed: [], text: "x" });
+		deliverRoast.mockResolvedValue({
+			mode: "image",
+			sent: ["t1", "t2"],
+			skipped: [],
+			failed: [],
+			text: "x",
+		});
 		const { sched } = armed();
 		expect(await sched.runBoardOnce()).toEqual({
 			kind: "sent",
 			mode: "image",
 			sent: 2,
+			skipped: [],
 			failed: [],
 		});
+	});
+
+	// 「停用」= 暂停,勾着也不发(与链接解析白名单同一条判定)。
+	it("部分目标停用 → 还是 sent,把跳过的目标原样带出来,不算失败", async () => {
+		deliverRoast.mockResolvedValue({
+			mode: "text",
+			sent: ["t1"],
+			skipped: ["t2"],
+			failed: [],
+			text: "x",
+		});
+		const { sched } = armed();
+		expect(await sched.runBoardOnce()).toEqual({
+			kind: "sent",
+			mode: "text",
+			sent: 1,
+			skipped: ["t2"],
+			failed: [],
+		});
+		// 跳过不是失败:开着「没发出去时通知我」也不该因为一个停用目标收到通知。
+		expect(tellMaster).not.toHaveBeenCalled();
+	});
+
+	it("勾的目标全部停用 → no-targets,连模型都不调", async () => {
+		targetsTable = targetsTable.map((t) => ({ ...t, enabled: false }));
+		const { sched } = armed({ notifyOnError: true });
+		expect(await sched.runBoardOnce()).toEqual({ kind: "no-targets" });
+		expect(generateBoardRoast).not.toHaveBeenCalled();
+		expect(deliverRoast).not.toHaveBeenCalled();
+		// 通知里得说清是「都停用了」,不是「没配」—— 主人明明配过。
+		expect(String(tellMaster.mock.calls[0]?.[0])).toContain("停用");
 	});
 
 	it("部分失败 → 还是 sent,但把失败的目标原样带出来", async () => {
 		deliverRoast.mockResolvedValue({
 			mode: "text",
 			sent: ["t1"],
+			skipped: [],
 			failed: [{ targetId: "t2", err: "机器人不在群里" }],
 			text: "x",
 		});
