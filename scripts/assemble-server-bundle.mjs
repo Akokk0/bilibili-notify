@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { missingServerBundleFilesIn } from "./server-bundle-assets.mjs";
 
-// 把独立端 server 单文件 bundle(apps/server/dist,由 `build:bundle` 产出)补齐为
+// 把独立端 server 自包含 bundle(apps/server/dist,由 `build:bundle` 产出;入口 + hash 分块)补齐为
 // 可独立运行的目录:bundle 内联了全部 JS 依赖,但**运行时按路径读取**的资产不进
 // bundle,必须搬到产物旁边(三件运行时资产 + server 特有
 // 两件)。本脚本只做纯复制、不 spawn 任何构建命令 —— Docker builder 里没有全局 vp,

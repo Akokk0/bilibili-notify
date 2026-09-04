@@ -1,6 +1,6 @@
 import { defineConfig } from "vite-plus";
 
-// BN_SERVER_BUNDLE=1 → 自包含单文件 bundle,输出 dist/:全部直接依赖内联(vp pack
+// BN_SERVER_BUNDLE=1 → 自包含 bundle(入口 + hash 分块),输出 dist/:全部直接依赖内联(vp pack
 // 默认只内联间接依赖、外置直接依赖),装外旁边没有 node_modules 也能跑。Docker 镜像、
 // 桌面安装包、应用内升级载荷装的都是这一份(scripts/server-bundle-assets.mjs 是它
 // 必须带齐的文件清单)。
