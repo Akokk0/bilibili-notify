@@ -12,11 +12,12 @@ import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// 用户名那一段:不含分隔符、引号、空白,也不含中文标点(注释里「/home/a、/Users/b」这种列举)。
+// 用户名那一段:不含分隔符、引号、空白,也不含中文标点(注释里「/Users/、/home/ 两种」这种列举)。
 const SEG = `[^/\\\\\\s"'\`、,，。]+`;
-// macOS / Linux 要求用户名后面还有一层(`/home/settings` 这种路由串不算);Windows 有盘符打头,
-// 本身就够独一无二,裸的 `C:\\Users\\<名>` 也拦。
-const HOME_PATH = new RegExp(`/Users/${SEG}/|/home/${SEG}/|[A-Za-z]:\\\\Users\\\\${SEG}`); // local-path-ok
+// 裸的家目录(用户名后面没有下一层)也拦:root 只写到用户名、后半段再 join() 拼上,正是那条
+// 探针泄漏被重构一次之后的形状。`/users/:id` 这类路由串是小写、`/home` 后面没有用户名,天然不撞。
+// Windows 路径大小写不敏感,盘符与 users 都按不敏感匹配。
+const HOME_PATH = new RegExp(`/Users/${SEG}|/home/${SEG}|[A-Za-z]:\\\\[Uu]sers\\\\${SEG}`); // local-path-ok
 
 /**
  * 行内(或紧挨着的上一行)写上它就放行 —— 给清洗函数的测试夹具这类刻意含家目录路径的行用。
@@ -47,15 +48,31 @@ export function formatReport(problems) {
 	].join("\n");
 }
 
-/** 暂存区里那份内容;不在暂存区(已删除等)或是二进制 → null,跳过。 */
-function readStaged(path) {
+function gitShow(path) {
+	// maxBuffer 不设上限:默认 1 MiB,超过就 ENOBUFS —— 大文件不能因此从扫描集里掉出去。
+	return execFileSync("git", ["show", `:${path}`], {
+		stdio: ["ignore", "pipe", "pipe"],
+		maxBuffer: Infinity,
+	});
+}
+
+/** `git show :path` 对「不在暂存区」的两种说法;别的失败都不是这一类。 */
+const NOT_IN_INDEX = /not in the index|does not exist/;
+
+/**
+ * 暂存区里那份内容。不在暂存区(已删除)或是二进制 → null,跳过;其它读取失败一律抛 ——
+ * 守卫读不到就放行,等于没有守卫。`run` 可注入,单测不真跑 git。
+ */
+export function readStaged(path, run = gitShow) {
+	let buf;
 	try {
-		const buf = execFileSync("git", ["show", `:${path}`], { stdio: ["ignore", "pipe", "ignore"] });
-		if (buf.includes(0)) return null;
-		return buf.toString("utf8");
-	} catch {
-		return null;
+		buf = run(path);
+	} catch (err) {
+		if (NOT_IN_INDEX.test(err?.stderr?.toString() ?? "")) return null;
+		throw err;
 	}
+	if (buf.includes(0)) return null;
+	return buf.toString("utf8");
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
