@@ -18,6 +18,9 @@ import {
 	FEATURE_KEYS,
 	FEATURE_LABELS,
 	type FeatureKey,
+	LIVE_END_EXTRA_KEYS,
+	LIVE_END_EXTRA_LABELS,
+	type LiveEndExtraKey,
 	type PushTarget,
 	type Subscription,
 } from "../../types/domain";
@@ -41,11 +44,9 @@ const FEATURE_GROUPS: ReadonlyArray<{
 		label: "直播",
 		keys: [
 			{ key: "live", sub: "开播提醒" },
-			{ key: "liveEnd", sub: "下播提醒" },
+			{ key: "liveEnd", sub: "下播卡片;词云 / AI 总结跟着它走" },
 			{ key: "liveGuardBuy", sub: "舰长 / 提督 / 总督" },
 			{ key: "superchat", sub: "Super Chat 提醒" },
-			{ key: "wordcloud", sub: "弹幕词云" },
-			{ key: "liveSummary", sub: "直播结束后 AI 总结" },
 		],
 	},
 	{
@@ -105,6 +106,24 @@ function stableStr(value: unknown): string {
 
 function effFeature(sub: Subscription, k: FeatureKey): boolean {
 	return sub.overrides.features?.[k] ?? DEFAULT_FEATURE_FLAGS[k];
+}
+
+/** 下播附加项的生效值:per-UP 覆盖 ?? 全局默认。 */
+function effExtra(sub: Subscription, k: LiveEndExtraKey): boolean {
+	return sub.overrides.features?.liveEndExtras?.[k] ?? DEFAULT_FEATURE_FLAGS.liveEndExtras[k];
+}
+
+type FeaturesOverride = NonNullable<Subscription["overrides"]["features"]>;
+
+/**
+ * 把 features 覆盖收拾干净:附加项小对象空了就去掉,整个对象空了就是 undefined ——
+ * 与默认值相同的开关不落 override,schema 里不留壳。
+ */
+function compactFeatures(f: FeaturesOverride): FeaturesOverride | undefined {
+	const { liveEndExtras, ...flags } = f;
+	const extras = liveEndExtras && Object.keys(liveEndExtras).length > 0 ? liveEndExtras : undefined;
+	const out: FeaturesOverride = extras ? { ...flags, liveEndExtras: extras } : flags;
+	return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**
@@ -236,11 +255,30 @@ export function UpDialog({
 	function setFeatureEnabled(k: FeatureKey, on: boolean): void {
 		setDraft((d) => {
 			if (!d) return d;
-			const overrideObj = { ...(d.overrides.features ?? {}) } as Record<string, boolean>;
-			if (on === DEFAULT_FEATURE_FLAGS[k]) delete overrideObj[k];
-			else overrideObj[k] = on;
-			const features = Object.keys(overrideObj).length > 0 ? overrideObj : undefined;
-			return { ...d, overrides: { ...d.overrides, features } };
+			const { [k]: _drop, ...rest } = d.overrides.features ?? {};
+			const next: FeaturesOverride = on === DEFAULT_FEATURE_FLAGS[k] ? rest : { ...rest, [k]: on };
+			return { ...d, overrides: { ...d.overrides, features: compactFeatures(next) } };
+		});
+	}
+
+	/**
+	 * 下播的附加项(词云 / AI 总结):只写 `overrides.features.liveEndExtras.<k>` 那一个键,
+	 * 与全局默认相同就不落。它们没有自己的路由,跟着下播的开关与目标走。
+	 */
+	function setExtraEnabled(k: LiveEndExtraKey, on: boolean): void {
+		setDraft((d) => {
+			if (!d) return d;
+			const cur = d.overrides.features ?? {};
+			const { [k]: _drop, ...extras } = cur.liveEndExtras ?? {};
+			const nextExtras =
+				on === DEFAULT_FEATURE_FLAGS.liveEndExtras[k] ? extras : { ...extras, [k]: on };
+			return {
+				...d,
+				overrides: {
+					...d.overrides,
+					features: compactFeatures({ ...cur, liveEndExtras: nextExtras }),
+				},
+			};
 		});
 	}
 
@@ -522,6 +560,13 @@ export function UpDialog({
 														onChange={(on) => setAtAllDefault(atAllScope, on)}
 													/>
 												) : null}
+												{key === "liveEnd" ? (
+													<LiveEndExtrasToggles
+														parentOn={parentOn}
+														value={(k) => effExtra(draft, k)}
+														onChange={setExtraEnabled}
+													/>
+												) : null}
 											</div>
 										);
 									})}
@@ -742,6 +787,44 @@ function FeatureToggleRow({
 					<div className="mt-0.5 truncate text-bn-2xs text-bn-text-secondary">{sub}</div>
 				) : null}
 			</div>
+		</div>
+	);
+}
+
+// ── 下播附加项 sub-toggles ───────────────────────────────────────────────────
+
+/**
+ * 下播下面的两个附加项(词云 / AI 总结),形制同 @全体 那一行:父项(下播)关着就
+ * 整行灰掉、显示为关、点了不写。
+ */
+function LiveEndExtrasToggles({
+	parentOn,
+	value,
+	onChange,
+}: {
+	parentOn: boolean;
+	value: (k: LiveEndExtraKey) => boolean;
+	onChange: (k: LiveEndExtraKey, on: boolean) => void;
+}) {
+	return (
+		<div className="mt-0.5 ml-9 flex flex-col gap-1 text-bn-xs">
+			{LIVE_END_EXTRA_KEYS.map((k) => (
+				<div
+					key={k}
+					className={`flex items-center gap-1.5 ${parentOn ? "text-bn-text-secondary" : "text-bn-text-disabled"}`}
+					title={parentOn ? "下播时作为附加消息一起推" : "需先开启下播才能推附加项"}
+				>
+					<Toggle
+						value={parentOn && value(k)}
+						onChange={(on) => parentOn && onChange(k, on)}
+						size="sm"
+						disabled={!parentOn}
+						ariaLabel={LIVE_END_EXTRA_LABELS[k]}
+					/>
+					<span>+ </span>
+					<span>{LIVE_END_EXTRA_LABELS[k]}</span>
+				</div>
+			))}
 		</div>
 	);
 }

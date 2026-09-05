@@ -23,7 +23,7 @@ import {
 	useUpdateStatus,
 } from "../components/update/status";
 import { LOG_LEVEL_TONE, logLevelTint } from "../config/log-levels";
-import { familyTone, PUSH_KIND_META, PUSH_TONE } from "../config/push-kinds";
+import { familyTone, PUSH_KIND_META, PUSH_STATUS_META, PUSH_TONE } from "../config/push-kinds";
 import {
 	HEALTH_QUERY_KEY,
 	HEALTH_QUERY_OPTIONS,
@@ -49,6 +49,7 @@ import { useAuthStore } from "../store/auth";
 import { BiliLoginStatus } from "../types/auth";
 import type { PushTarget, Subscription } from "../types/domain";
 import type { GlobalConfig, ModuleLogLevels } from "../types/globals";
+import { headlineOf, messageCountOf } from "../utils/push-row";
 import { DeltaTag, Sparkline } from "./stats/charts";
 import { colorFromUid, displayName } from "./up/helpers";
 
@@ -88,14 +89,7 @@ function relativeTimeFromNow(iso: string): string {
 // 跟后端 `LIVE_ROOM_MASTER_KEYS` 同集合 —— 只要任意一项的 routing 数组非空,
 // LiveEngine 就会为该订阅开 B 站 WS 监听;反之 sub 即使 enabled 也不会出现
 // 在「正在直播」面板里(needsLiveMonitor 返回 false)。
-const LIVE_ROUTING_KEYS = [
-	"live",
-	"liveEnd",
-	"liveGuardBuy",
-	"superchat",
-	"wordcloud",
-	"liveSummary",
-] as const;
+const LIVE_ROUTING_KEYS = ["live", "liveEnd", "liveGuardBuy", "superchat"] as const;
 
 function hasAnyLiveTarget(sub: Subscription): boolean {
 	return LIVE_ROUTING_KEYS.some((k) => (sub.routing[k]?.length ?? 0) > 0);
@@ -321,10 +315,15 @@ function TimelinePanel({
 						const name = h.unameSnapshot ?? (sub ? displayName(sub) : `UID ${h.uid}`);
 						const avatar = h.uavatarSnapshot ?? sub?.cachedProfile?.avatar;
 						const color = colorFromUid(h.uid);
-						const tone = familyTone(h.source);
-						const targetNames = h.targetIds
-							.map((id) => targetById.get(id)?.name ?? id.slice(0, 6))
-							.join(" / ");
+						const tone = familyTone(h.kind);
+						const status = PUSH_STATUS_META[h.status];
+						const marked = h.status !== "delivered";
+						const targetName =
+							h.targetId === null
+								? "—"
+								: (targetById.get(h.targetId)?.name ?? h.targetId.slice(0, 6));
+						const headline = headlineOf(h);
+						const count = messageCountOf(h);
 						return (
 							<div key={h.id} className="mb-2.5 flex items-center gap-3">
 								<div className="w-11 text-right tabular-nums text-bn-xs text-bn-text-secondary">
@@ -338,28 +337,27 @@ function TimelinePanel({
 								</div>
 								<div
 									className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg border border-bn-list-row-border bg-bn-list-row px-3 py-2 text-bn-sm"
-									// 失败标记用 inset 阴影而非 border-left:不占 box 宽度,内容不被挤右、与其它行对齐,
-									// 且被 rounded-lg 圆角裁成左侧细红条,比硬边框精致。
-									style={!h.ok ? { boxShadow: "inset 3px 0 0 var(--color-bn-danger)" } : undefined}
+									// 状态标记用 inset 阴影而非 border-left:不占 box 宽度,内容不被挤右、与其它行对齐,
+									// 且被 rounded-lg 圆角裁成左侧细色条,比硬边框精致。失败红、部分失败 / 无目标警示色。
+									style={marked ? { boxShadow: `inset 3px 0 0 ${status.tone}` } : undefined}
 								>
 									<Avatar name={name} color={color} size={24} url={avatar} />
 									<Pill color={tone} subtle size="sm">
-										{PUSH_KIND_META[h.source].label}
+										{PUSH_KIND_META[h.kind].label}
 									</Pill>
 									<div className="min-w-0 flex-1 truncate text-bn-text-tertiary">
 										<span className="font-bold text-bn-text-primary">{name}</span>
-										{h.text ? ` · ${h.text}` : ""}
+										{headline ? ` · ${headline}` : ""}
 									</div>
-									<span className="text-bn-xs text-bn-text-secondary">→ {targetNames}</span>
-									{h.ok ? (
-										<Pill color="var(--color-bn-success)" subtle size="sm">
-											已送达
+									{count > 1 ? (
+										<Pill color={tone} subtle size="sm">
+											{count} 条
 										</Pill>
-									) : (
-										<Pill color="var(--color-bn-danger)" subtle size="sm">
-											失败
-										</Pill>
-									)}
+									) : null}
+									<span className="text-bn-xs text-bn-text-secondary">→ {targetName}</span>
+									<Pill color={status.tone} subtle size="sm">
+										{status.label}
+									</Pill>
 								</div>
 							</div>
 						);

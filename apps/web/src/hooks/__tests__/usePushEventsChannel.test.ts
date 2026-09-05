@@ -8,8 +8,10 @@
  *                            tuple shape 不对 → silent-drop
  *   - fans-refreshed       → setQueryData(["fans"]) 整体覆盖;data 非数组 → drop
  *   - history-recorded     → push toast + setQueryData(historyQueryKey(100)) prepend + dedup id + cap
+ *   - history-updated      → 同 id 换缓存里那一行 + toast 同 id 换字(不在就不弹);
+ *                            成败翻面时日桶的失败数 ±1,缓存里没有旧行则不动
  *
- * `handlePushEnvelope(env, qc, push)` 完全参数化,无任何外部 React state。
+ * `handlePushEnvelope(env, qc, toast)` 完全参数化,无任何外部 React state。
  */
 
 import { QueryClient } from "@tanstack/react-query";
@@ -39,38 +41,52 @@ function harness() {
 	const invalidate = vi.fn(qc.invalidateQueries.bind(qc));
 	qc.invalidateQueries = invalidate;
 	const push = vi.fn<(view: PushEventView) => void>();
-	return { qc, push, invalidate };
+	const replace = vi.fn<(view: PushEventView) => void>();
+	return { qc, push, replace, toast: { push, replace }, invalidate };
 }
 type Harness = ReturnType<typeof harness>;
 
-function pushView(id: string): PushEventView {
+function pushView(id: string, over: Partial<PushEventView> = {}): PushEventView {
 	return {
 		id,
+		pushId: id,
 		ts: "2026-05-16T10:00:00.000Z",
-		source: "dynamic",
+		kind: "dynamic",
+		status: "delivered",
 		uid: "u1",
 		subscriptionId: "sub1",
-		targetIds: ["t1"],
-		ok: true,
-		text: "x",
+		targetId: "t1",
+		messages: [{ text: "x", role: "main", ok: true }],
+		...over,
 	};
 }
 
-describe("handlePushEnvelope — push-events 4 子事件分发", () => {
+const zeroCounts = (): DailyHistoryCountView["counts"] => ({
+	dynamic: 0,
+	live: 0,
+	"live-ongoing": 0,
+	"live-end": 0,
+	sc: 0,
+	guard: 0,
+	"special-danmaku": 0,
+	"special-enter": 0,
+});
+
+describe("handlePushEnvelope — push-events 子事件分发", () => {
 	let h: Harness;
 	beforeEach(() => {
 		h = harness();
 	});
 
 	it("非 push-events 频道:不 push,不动 qc", () => {
-		handlePushEnvelope(env({ type: "state", event: "hydrate" }), h.qc, h.push);
+		handlePushEnvelope(env({ type: "state", event: "hydrate" }), h.qc, h.toast);
 		expect(h.push).not.toHaveBeenCalled();
 		expect(h.invalidate).not.toHaveBeenCalled();
 	});
 
 	describe("live-state-changed", () => {
 		it("invalidate ['live','listening']", () => {
-			handlePushEnvelope(env({ type: "push-events", event: "live-state-changed" }), h.qc, h.push);
+			handlePushEnvelope(env({ type: "push-events", event: "live-state-changed" }), h.qc, h.toast);
 			expect(h.invalidate).toHaveBeenCalledTimes(1);
 			expect(h.invalidate.mock.calls[0][0]).toEqual({ queryKey: ["live", "listening"] });
 			expect(h.push).not.toHaveBeenCalled();
@@ -87,7 +103,7 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 			handlePushEnvelope(
 				env({ type: "push-events", event: "live-viewers-changed", data: ["u1", "1.2万"] }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			const next = h.qc.getQueryData<LiveListenerSnapshot[]>(["live", "listening"]);
 			expect(next?.find((r) => r.uid === "u1")?.viewers).toBe("1.2万");
@@ -102,7 +118,7 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 			handlePushEnvelope(
 				env({ type: "push-events", event: "live-viewers-changed", data: ["uX", "999"] }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			const next = h.qc.getQueryData<LiveListenerSnapshot[]>(["live", "listening"]);
 			expect(next).toBe(initial);
@@ -112,7 +128,7 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 			handlePushEnvelope(
 				env({ type: "push-events", event: "live-viewers-changed", data: ["u1", "999"] }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			expect(h.qc.getQueryData(["live", "listening"])).toBeUndefined();
 		});
@@ -125,12 +141,12 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 			handlePushEnvelope(
 				env({ type: "push-events", event: "live-viewers-changed", data: ["u1"] }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			handlePushEnvelope(
 				env({ type: "push-events", event: "live-viewers-changed", data: null }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			expect(h.qc.getQueryData(["live", "listening"])).toBe(initial);
 		});
@@ -144,7 +160,7 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 			handlePushEnvelope(
 				env({ type: "push-events", event: "fans-refreshed", data: entries }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			expect(h.qc.getQueryData<FansResponse>(["fans"])).toEqual({ entries });
 		});
@@ -154,7 +170,7 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 			handlePushEnvelope(
 				env({ type: "push-events", event: "fans-refreshed", data: { not: "array" } }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			expect(h.qc.getQueryData<FansResponse>(["fans"])).toEqual({ entries: [] });
 		});
@@ -166,7 +182,7 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 			handlePushEnvelope(
 				env({ type: "push-events", event: "fans-refreshed", data: [] }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			expect(h.qc.getQueryData<FansResponse>(["fans"])).toEqual({ entries: [] });
 		});
@@ -178,7 +194,7 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 			handlePushEnvelope(
 				env({ type: "push-events", event: "history-recorded", data: view }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			expect(h.push).toHaveBeenCalledWith(view);
 			// HI1:Dashboard(100)与 History 页(200)两份 limit-scoped 缓存都被
@@ -191,12 +207,12 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 			handlePushEnvelope(
 				env({ type: "push-events", event: "history-recorded", data: undefined }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			handlePushEnvelope(
 				env({ type: "push-events", event: "history-recorded", data: { ts: "t" } }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			expect(h.push).not.toHaveBeenCalled();
 			expect(h.qc.getQueryData(historyQueryKey(100))).toBeUndefined();
@@ -204,22 +220,22 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 
 		it("重复 id:dedup(保留最新一份在顶部)", () => {
 			const v1 = pushView("h1");
-			const v1Repeat = { ...pushView("h1"), text: "updated" };
+			const v1Repeat = pushView("h1", { messages: [{ text: "updated", role: "main", ok: true }] });
 			const v2 = pushView("h2");
 			handlePushEnvelope(
 				env({ type: "push-events", event: "history-recorded", data: v1 }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			handlePushEnvelope(
 				env({ type: "push-events", event: "history-recorded", data: v2 }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			handlePushEnvelope(
 				env({ type: "push-events", event: "history-recorded", data: v1Repeat }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			const cache = h.qc.getQueryData<HistoryResponse>(historyQueryKey(100));
 			expect(cache?.entries).toHaveLength(2);
@@ -237,7 +253,7 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 			handlePushEnvelope(
 				env({ type: "push-events", event: "history-recorded", data: incoming }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			const cache = h.qc.getQueryData<HistoryResponse>(historyQueryKey(100));
 			expect(cache?.entries).toHaveLength(HISTORY_CACHE_CAP);
@@ -247,20 +263,150 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 		});
 	});
 
-	describe("history-recorded → 按日聚合缓存(趋势图/今日 KPI)", () => {
-		const zeroCounts = (): DailyHistoryCountView["counts"] => ({
-			dynamic: 0,
-			live: 0,
-			sc: 0,
-			guard: 0,
-			"special-danmaku": 0,
-			"special-enter": 0,
-			"live-summary": 0,
+	describe("history-updated → 同 id 换行、换字,不重弹", () => {
+		it("缓存里有这一行 → 原地换成新的一行,位置不动;toast 走 replace 不走 push", () => {
+			const v1 = pushView("h1");
+			const v2 = pushView("h2");
+			h.qc.setQueryData<HistoryResponse>(historyQueryKey(100), { entries: [v2, v1] });
+			const updated = pushView("h1", {
+				status: "partial",
+				messages: [
+					{ text: "x", role: "main", ok: true },
+					{ text: "词云", role: "extra", ok: false },
+				],
+			});
+			handlePushEnvelope(
+				env({ type: "push-events", event: "history-updated", data: updated }),
+				h.qc,
+				h.toast,
+			);
+			expect(h.qc.getQueryData<HistoryResponse>(historyQueryKey(100))?.entries).toEqual([
+				v2,
+				updated,
+			]);
+			expect(h.replace).toHaveBeenCalledWith(updated);
+			expect(h.push).not.toHaveBeenCalled();
 		});
+
+		it("缓存里没这一行(比自己老) → 不塞进去;日桶不动", () => {
+			h.qc.setQueryData<HistoryResponse>(historyQueryKey(100), { entries: [pushView("h2")] });
+			const daily: HistoryDailyResponse = {
+				days: [{ d: localDayKey(new Date()), counts: zeroCounts(), total: 1, failures: 0 }],
+			};
+			h.qc.setQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY, daily);
+			handlePushEnvelope(
+				env({ type: "push-events", event: "history-updated", data: pushView("h1") }),
+				h.qc,
+				h.toast,
+			);
+			expect(h.qc.getQueryData<HistoryResponse>(historyQueryKey(100))?.entries).toHaveLength(1);
+			expect(h.qc.getQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY)).toBe(daily);
+			expect(h.invalidate).not.toHaveBeenCalled();
+		});
+
+		// 卡片先落地(已送达 → 日桶 failures+0),随后 @全体 失败把整行翻成部分失败。
+		// 服务端的按日聚合数的是整行的最终状态,前端只在建行时 +1 就会一直少一条,
+		// Dashboard 的「今日失败」在页面开着的时候永远是错的。
+		it("已送达翻成部分失败 → 今日失败 +1,行数与分类计数不动", () => {
+			const v1 = pushView("h1", { status: "delivered" });
+			const today = localDayKey(new Date(v1.ts));
+			h.qc.setQueryData<HistoryResponse>(historyQueryKey(100), { entries: [v1] });
+			h.qc.setQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY, {
+				days: [{ d: today, counts: { ...zeroCounts(), dynamic: 4 }, total: 4, failures: 1 }],
+			});
+			handlePushEnvelope(
+				env({
+					type: "push-events",
+					event: "history-updated",
+					data: pushView("h1", { status: "partial" }),
+				}),
+				h.qc,
+				h.toast,
+			);
+			expect(
+				h.qc.getQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY)?.days[0],
+			).toMatchObject({ total: 4, failures: 2, counts: { dynamic: 4 } });
+		});
+
+		it("翻回已送达 → 今日失败 -1;成败没翻面则日桶一动不动", () => {
+			const today = localDayKey(new Date(pushView("h1").ts));
+			const daily: HistoryDailyResponse = {
+				days: [{ d: today, counts: zeroCounts(), total: 4, failures: 2 }],
+			};
+			h.qc.setQueryData<HistoryResponse>(historyQueryKey(100), {
+				entries: [pushView("h1", { status: "failed" })],
+			});
+			h.qc.setQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY, daily);
+			handlePushEnvelope(
+				env({
+					type: "push-events",
+					event: "history-updated",
+					data: pushView("h1", { status: "delivered" }),
+				}),
+				h.qc,
+				h.toast,
+			);
+			expect(
+				h.qc.getQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY)?.days[0],
+			).toMatchObject({ failures: 1 });
+
+			// 已经是「部分失败」的行再追加一条失败的附加项:还是失败,别再 +1。
+			h.qc.setQueryData<HistoryResponse>(historyQueryKey(100), {
+				entries: [pushView("h1", { status: "partial" })],
+			});
+			const before = h.qc.getQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY);
+			handlePushEnvelope(
+				env({
+					type: "push-events",
+					event: "history-updated",
+					data: pushView("h1", { status: "partial" }),
+				}),
+				h.qc,
+				h.toast,
+			);
+			expect(h.qc.getQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY)).toBe(before);
+		});
+	});
+
+	describe("history-recorded → 按日聚合缓存(趋势图/今日 KPI)", () => {
 		const dayOf = (view: PushEventView) => localDayKey(new Date(view.ts));
 
-		it("entry 所属本地日在缓存窗口里:source/total/failures 就地 +1,零 HTTP", () => {
-			const view = { ...pushView("h1"), ok: false };
+		it("无目标行:进列表、弹卡,但日桶不 +1(没推到任何地方)", () => {
+			const view = pushView("h1", { status: "no-targets", targetId: null });
+			const today = dayOf(view);
+			h.qc.setQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY, {
+				days: [{ d: today, counts: zeroCounts(), total: 3, failures: 1 }],
+			});
+			handlePushEnvelope(
+				env({ type: "push-events", event: "history-recorded", data: view }),
+				h.qc,
+				h.toast,
+			);
+			expect(h.push).toHaveBeenCalledWith(view);
+			expect(h.qc.getQueryData<HistoryResponse>(historyQueryKey(100))?.entries).toEqual([view]);
+			expect(
+				h.qc.getQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY)?.days[0],
+			).toMatchObject({ total: 3, failures: 1 });
+		});
+
+		it("部分失败也算一次失败", () => {
+			const view = pushView("h1", { status: "partial", kind: "live-end" });
+			const today = dayOf(view);
+			h.qc.setQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY, {
+				days: [{ d: today, counts: zeroCounts(), total: 0, failures: 0 }],
+			});
+			handlePushEnvelope(
+				env({ type: "push-events", event: "history-recorded", data: view }),
+				h.qc,
+				h.toast,
+			);
+			const day = h.qc.getQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY)?.days[0];
+			expect(day).toMatchObject({ total: 1, failures: 1 });
+			expect(day?.counts["live-end"]).toBe(1);
+		});
+
+		it("entry 所属本地日在缓存窗口里:kind/total/failures 就地 +1,零 HTTP", () => {
+			const view = pushView("h1", { status: "failed" });
 			const today = dayOf(view);
 			h.qc.setQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY, {
 				days: [
@@ -271,7 +417,7 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 			handlePushEnvelope(
 				env({ type: "push-events", event: "history-recorded", data: view }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			const cache = h.qc.getQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY);
 			expect(cache?.days[1]).toMatchObject({ total: 4, failures: 2 });
@@ -288,7 +434,7 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 			handlePushEnvelope(
 				env({ type: "push-events", event: "history-recorded", data: pushView("h1") }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			expect(h.qc.getQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY)).toBe(stale);
 			expect(h.invalidate).toHaveBeenCalledTimes(1);
@@ -299,7 +445,7 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 			handlePushEnvelope(
 				env({ type: "push-events", event: "history-recorded", data: pushView("h1") }),
 				h.qc,
-				h.push,
+				h.toast,
 			);
 			expect(h.qc.getQueryData(HISTORY_DAILY_QUERY_KEY)).toBeUndefined();
 			expect(h.invalidate).not.toHaveBeenCalled();
@@ -307,7 +453,7 @@ describe("handlePushEnvelope — push-events 4 子事件分发", () => {
 	});
 
 	it("不识别的 event:不 push,不动 qc", () => {
-		handlePushEnvelope(env({ type: "push-events", event: "subscribed" }), h.qc, h.push);
+		handlePushEnvelope(env({ type: "push-events", event: "subscribed" }), h.qc, h.toast);
 		expect(h.push).not.toHaveBeenCalled();
 		expect(h.invalidate).not.toHaveBeenCalled();
 	});

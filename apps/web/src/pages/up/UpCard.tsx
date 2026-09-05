@@ -6,9 +6,9 @@ import { FEATURE_LABELS, type Subscription } from "../../types/domain";
 import { colorFromUid, displayName, relativeTime, subscribedFeatures } from "./helpers";
 
 /**
- * 订阅功能开关的胶囊色。键空间是 FeatureKey(与推送事件的 HistorySource 不同 ——
- * 多了 liveEnd / wordcloud),但用的是同一套家族色,所以借 PUSH_TONE 而不是再抄
- * 一份十六进制。四档衍生能力(词云/总结/特别弹幕/特别进房)统一走 derived。
+ * 订阅功能开关的胶囊色。键空间是 FeatureKey(与推送类型 PushKind 不完全对齐 ——
+ * 开播与周期复推共用 live),但用的是同一套家族色,所以借 PUSH_TONE 而不是再抄
+ * 一份十六进制。两档衍生能力(特别弹幕/特别进房)统一走 derived。
  */
 const FEATURE_TONE: Record<string, string> = {
 	dynamic: PUSH_TONE.dynamic,
@@ -16,8 +16,6 @@ const FEATURE_TONE: Record<string, string> = {
 	liveEnd: PUSH_TONE.live,
 	liveGuardBuy: PUSH_TONE.guard,
 	superchat: PUSH_TONE.sc,
-	wordcloud: PUSH_TONE.derived,
-	liveSummary: PUSH_TONE.derived,
 	specialDanmaku: PUSH_TONE.derived,
 	specialUserEnter: PUSH_TONE.derived,
 };

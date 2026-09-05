@@ -5,18 +5,12 @@ import { platformSupportsAtAll, routingAlignedToFeatures, subscribedFeatures } f
 /**
  * 回归:订阅卡片的特性标签必须反映「订阅项主开关」(overrides.features,缺省继承
  * DEFAULT_FEATURE_FLAGS),而非 routing。此前 UpCard 据 routing 判定 —— follow 模式
- * 加推送目标会把目标灌进全部 9 个特性的 routing,导致卡片恒显全部标签。
+ * 加推送目标会把目标灌进全部 7 个特性的 routing,导致卡片恒显全部标签。
  */
 describe("subscribedFeatures", () => {
 	it("无 overrides:返回 DEFAULT_FEATURE_FLAGS 中默认开启的特性", () => {
 		const sub = makeEmptySubscription("100");
-		expect(subscribedFeatures(sub)).toEqual([
-			"dynamic",
-			"live",
-			"liveEnd",
-			"wordcloud",
-			"liveSummary",
-		]);
+		expect(subscribedFeatures(sub)).toEqual(["dynamic", "live", "liveEnd"]);
 	});
 
 	it("overrides 关掉某默认开启的特性 → 不出现", () => {
@@ -33,12 +27,10 @@ describe("subscribedFeatures", () => {
 
 	it("routing 灌满全部目标也不影响结果 —— 只看主开关,不看 routing", () => {
 		const sub = makeEmptySubscription("100");
-		// 模拟 follow 模式加推送目标:全部 9 个特性的 routing 都塞了同一个目标。
+		// 模拟 follow 模式加推送目标:全部 7 个特性的 routing 都塞了同一个目标。
 		for (const k of Object.keys(sub.routing) as FeatureKey[]) sub.routing[k] = ["t-1"];
 		// 主开关只留 dynamic(其余默认开启的全关掉)。
-		sub.overrides = {
-			features: { live: false, liveEnd: false, wordcloud: false, liveSummary: false },
-		};
+		sub.overrides = { features: { live: false, liveEnd: false } };
 		expect(subscribedFeatures(sub)).toEqual(["dynamic"]);
 	});
 });
@@ -61,10 +53,10 @@ describe("platformSupportsAtAll", () => {
 
 /**
  * 切到「自定义」推送模式时,target 的 routing 应对齐订阅项生效特性 —— 而非维持
- * follow 模式灌进的全 9 项(否则自定义矩阵默认全开)。
+ * follow 模式灌进的全 7 项(否则自定义矩阵默认全开)。
  */
 describe("routingAlignedToFeatures", () => {
-	const DEFAULT_ON: FeatureKey[] = ["dynamic", "live", "liveEnd", "wordcloud", "liveSummary"];
+	const DEFAULT_ON: FeatureKey[] = ["dynamic", "live", "liveEnd"];
 	const DEFAULT_OFF: FeatureKey[] = [
 		"liveGuardBuy",
 		"superchat",
@@ -72,7 +64,7 @@ describe("routingAlignedToFeatures", () => {
 		"specialUserEnter",
 	];
 
-	it("follow 模式灌满全 9 项 → 对齐后只留生效特性", () => {
+	it("follow 模式灌满全 7 项 → 对齐后只留生效特性", () => {
 		const sub = makeEmptySubscription("100");
 		for (const k of FEATURE_KEYS) sub.routing[k] = ["t-1"];
 		const routing = routingAlignedToFeatures(sub, "t-1");

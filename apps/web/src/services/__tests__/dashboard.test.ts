@@ -18,22 +18,24 @@ describe("foldDailyBuckets", () => {
 		counts: {
 			dynamic: 0,
 			live: 0,
+			"live-ongoing": 0,
+			"live-end": 0,
 			sc: 0,
 			guard: 0,
 			"special-danmaku": 0,
 			"special-enter": 0,
-			"live-summary": 0,
 			...counts,
 		},
 		total: Object.values(counts).reduce((a, b) => a + (b ?? 0), 0),
 		failures: 0,
 	});
 
-	it("按 4 源族折叠(live 族含 summary/special),标签取 MM/DD", () => {
+	it("按 4 家族折叠(live 族含 直播中 / 下播 / special),标签取 MM/DD", () => {
 		const out = foldDailyBuckets([
 			day("2026-07-01", {
 				live: 1,
-				"live-summary": 2,
+				"live-ongoing": 1,
+				"live-end": 2,
 				"special-enter": 1,
 				"special-danmaku": 1,
 				dynamic: 3,
@@ -43,7 +45,7 @@ describe("foldDailyBuckets", () => {
 			day("2026-07-02", {}),
 		]);
 		expect(out).toEqual([
-			{ d: "07/01", live: 5, dyn: 3, sc: 1, guard: 2 },
+			{ d: "07/01", live: 6, dyn: 3, sc: 1, guard: 2 },
 			{ d: "07/02", live: 0, dyn: 0, sc: 0, guard: 0 },
 		]);
 	});

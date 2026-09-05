@@ -8,8 +8,23 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { AUTO_DISMISS_MS, useToastStore } from "../../store/notifications";
+import { AUTO_DISMISS_MS, type PushEventView, useToastStore } from "../../store/notifications";
 import { ToastShell } from "../toast-shell";
+
+function pushView(id: string, over: Partial<PushEventView> = {}): PushEventView {
+	return {
+		id,
+		pushId: id,
+		ts: "2026-09-02T10:00:00.000Z",
+		kind: "dynamic",
+		status: "delivered",
+		uid: "u1",
+		subscriptionId: "s1",
+		targetId: "t1",
+		messages: [{ text: "一条动态", role: "main", ok: true }],
+		...over,
+	};
+}
 
 function LocationProbe() {
 	const loc = useLocation();
@@ -72,18 +87,7 @@ describe("ToastShell —— 通知卡", () => {
 	it("推送 toast 照旧五秒自动收起 —— 通知卡的例外别漏到这边来", () => {
 		vi.useFakeTimers();
 		renderShell();
-		act(() =>
-			useToastStore.getState().push({
-				id: "h1",
-				ts: "2026-09-02T10:00:00.000Z",
-				source: "dynamic",
-				uid: "u1",
-				subscriptionId: "s1",
-				targetIds: ["t1"],
-				ok: true,
-				text: "一条动态",
-			}),
-		);
+		act(() => useToastStore.getState().push(pushView("h1")));
 		expect(screen.getByText("一条动态")).toBeTruthy();
 
 		act(() => {
@@ -111,21 +115,77 @@ describe("通知卡与推送 toast 抢队列", () => {
 		const store = useToastStore.getState();
 		store.notify(NOTICE);
 		for (let i = 0; i < 6; i++) {
-			store.push({
-				id: `push-${i}`,
-				ts: new Date(0).toISOString(),
-				source: "dynamic",
-				uid: "1",
-				subscriptionId: "s",
-				targetIds: [],
-				ok: true,
-				text: `推送 ${i}`,
-			});
+			store.push(
+				pushView(`push-${i}`, { messages: [{ text: `推送 ${i}`, role: "main", ok: true }] }),
+			);
 		}
 
 		const items = useToastStore.getState().items;
 		expect(items).toHaveLength(5);
 		expect(items.some((t) => t.id === NOTICE.id)).toBe(true);
 		expect(items.some((t) => t.id === "push-0")).toBe(false);
+	});
+});
+
+describe("推送 toast —— 一次推送多条消息", () => {
+	it("首条本体当文案,多条时挂「N 条」胶囊;@全体 抢先落地也不当文案", () => {
+		renderShell();
+		act(() =>
+			useToastStore.getState().push(
+				pushView("h1", {
+					kind: "live-end",
+					messages: [
+						{ text: "@全体", role: "extra", ok: true },
+						{ text: "下播了", role: "main", ok: true },
+						{ text: "[弹幕词云]", role: "extra", ok: true },
+					],
+				}),
+			),
+		);
+		expect(screen.getByText("下播了")).toBeTruthy();
+		expect(screen.queryByText("@全体")).toBeNull();
+		expect(screen.getByText("3 条")).toBeTruthy();
+		expect(screen.getByText("下播")).toBeTruthy();
+	});
+
+	it("部分失败标警示色「部分失败」,失败标红「推送失败」", () => {
+		renderShell();
+		act(() => {
+			useToastStore.getState().push(pushView("h1", { status: "partial" }));
+			useToastStore.getState().push(pushView("h2", { status: "failed" }));
+		});
+		expect(screen.getByText("部分失败")).toBeTruthy();
+		expect(screen.getByText("推送失败")).toBeTruthy();
+	});
+
+	it("replace:卡还在就原地换字、不重排;卡已经关了就不再弹", () => {
+		renderShell();
+		act(() => {
+			useToastStore.getState().push(
+				pushView("h1", {
+					kind: "live-end",
+					messages: [{ text: "下播了", role: "main", ok: true }],
+				}),
+			);
+			useToastStore.getState().push(pushView("h2"));
+		});
+		act(() =>
+			useToastStore.getState().replace(
+				pushView("h1", {
+					kind: "live-end",
+					status: "partial",
+					messages: [
+						{ text: "下播了", role: "main", ok: true },
+						{ text: "总结", role: "extra", ok: false },
+					],
+				}),
+			),
+		);
+		expect(screen.getByText("2 条")).toBeTruthy();
+		expect(useToastStore.getState().items.map((t) => t.id)).toEqual(["h1", "h2"]);
+
+		act(() => useToastStore.getState().dismiss("h1"));
+		act(() => useToastStore.getState().replace(pushView("h1", { status: "delivered" })));
+		expect(useToastStore.getState().items.map((t) => t.id)).toEqual(["h2"]);
 	});
 });

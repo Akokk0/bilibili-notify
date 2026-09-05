@@ -26,12 +26,14 @@ import {
 	DEFAULT_ROAST_SCHEDULE,
 	FEATURE_KEYS,
 	type FeatureKey,
+	LIVE_END_EXTRA_KEYS,
+	type LiveEndExtraKey,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 } from "@bilibili-notify/internal/constants";
 
-export type { FeatureKey };
-export { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS };
+export type { FeatureKey, LiveEndExtraKey };
+export { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS, LIVE_END_EXTRA_KEYS };
 
 /**
  * Dashboard 消费的订阅一直是 wire DTO 形状(internal Subscription + 服务端
@@ -77,10 +79,14 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
 	liveEnd: "下播",
 	liveGuardBuy: "上舰",
 	superchat: "SC",
-	wordcloud: "词云",
-	liveSummary: "直播总结",
 	specialDanmaku: "特别弹幕",
 	specialUserEnter: "特别用户进房",
+};
+
+/** 下播的两个附加项(像开播的 @全体,挂在下播下面)。 */
+export const LIVE_END_EXTRA_LABELS: Record<LiveEndExtraKey, string> = {
+	wordcloud: "弹幕词云",
+	liveSummary: "AI 总结",
 };
 
 export const WEBHOOK_PROVIDERS: ReadonlyArray<{ value: WebhookProvider; label: string }> = [

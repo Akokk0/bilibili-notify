@@ -16,7 +16,7 @@
  * 所以这里写字面量,而 `Pill` / `GlassStatCard` 的 `color` 两种都收。
  */
 
-import type { HistorySource } from "@bilibili-notify/contract";
+import type { PushKind, PushStatus } from "@bilibili-notify/contract";
 import type { IconName } from "@bilibili-notify/ui";
 
 /** 四个主家族的色,外加 UpCard 给「衍生能力」用的那一档。 */
@@ -43,7 +43,7 @@ export interface PushKindMeta {
 	icon: IconName;
 }
 
-export const PUSH_KIND_META: Record<HistorySource, PushKindMeta> = {
+export const PUSH_KIND_META: Record<PushKind, PushKindMeta> = {
 	dynamic: {
 		tone: PUSH_TONE.dynamic,
 		family: "dynamic",
@@ -51,7 +51,21 @@ export const PUSH_KIND_META: Record<HistorySource, PushKindMeta> = {
 		eventLabel: "动态",
 		icon: "dyn",
 	},
-	live: { tone: PUSH_TONE.live, family: "live", label: "直播", eventLabel: "开播", icon: "live" },
+	live: { tone: PUSH_TONE.live, family: "live", label: "开播", eventLabel: "开播", icon: "live" },
+	"live-ongoing": {
+		tone: PUSH_TONE.live,
+		family: "live",
+		label: "直播中",
+		eventLabel: "正在直播",
+		icon: "live",
+	},
+	"live-end": {
+		tone: "#F472B6",
+		family: "live",
+		label: "下播",
+		eventLabel: "下播",
+		icon: "sparkle",
+	},
 	sc: { tone: PUSH_TONE.sc, family: "sc", label: "SC", eventLabel: "SC", icon: "sc" },
 	guard: {
 		tone: PUSH_TONE.guard,
@@ -74,21 +88,25 @@ export const PUSH_KIND_META: Record<HistorySource, PushKindMeta> = {
 		eventLabel: "特别进房",
 		icon: "user",
 	},
-	"live-summary": {
-		tone: "#F472B6",
-		family: "live",
-		label: "总结",
-		eventLabel: "直播总结",
-		icon: "sparkle",
-	},
+};
+
+/**
+ * 一行历史的四态怎么标。失败是红的;部分失败(本体到了、附加没到)与无目标(没推到任何
+ * 地方)是警示色 —— 两者都不是「坏了」,是「有件事你该看一眼」。
+ */
+export const PUSH_STATUS_META: Record<PushStatus, { label: string; tone: string }> = {
+	delivered: { label: "已送达", tone: "var(--color-bn-success)" },
+	partial: { label: "部分失败", tone: "var(--color-bn-warning)" },
+	failed: { label: "失败", tone: "var(--color-bn-danger)" },
+	"no-targets": { label: "无目标", tone: "var(--color-bn-warning)" },
 };
 
 /**
  * 家族归色 —— 时间轴、History 列表、趋势图用这个。
  *
- * 七种 kind 折成四色:直播家族(开播 / 总结 / 进房 / 弹幕)全归粉。成片的列表里
- * 七种颜色会花掉,归族之后一眼能看出「这段时间主要在直播」。
+ * 八种 kind 折成四色:直播家族(开播 / 直播中 / 下播 / 进房 / 弹幕)全归粉。成片的列表里
+ * 八种颜色会花掉,归族之后一眼能看出「这段时间主要在直播」。
  */
-export function familyTone(source: HistorySource): string {
-	return PUSH_TONE[PUSH_KIND_META[source].family];
+export function familyTone(kind: PushKind): string {
+	return PUSH_TONE[PUSH_KIND_META[kind].family];
 }

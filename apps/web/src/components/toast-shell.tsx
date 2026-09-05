@@ -1,8 +1,9 @@
-import { Btn, Icon, NoticeCard, NoticeStack } from "@bilibili-notify/ui";
+import { Btn, Icon, NoticeCard, NoticeStack, Pill } from "@bilibili-notify/ui";
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
-import { PUSH_KIND_META } from "../config/push-kinds";
+import { PUSH_KIND_META, PUSH_STATUS_META } from "../config/push-kinds";
 import { AUTO_DISMISS_MS, type ToastItem, useToastStore } from "../store/notifications";
+import { headlineOf, messageCountOf } from "../utils/push-row";
 
 /**
  * 推送 toast 层(右下角)。卡与栈的壳子在 ui 的 NoticeCard / NoticeStack;
@@ -65,8 +66,15 @@ function ToastCard({ item }: { item: ToastItem }) {
 		);
 	}
 
-	const meta = PUSH_KIND_META[item.source];
+	const view = item.view;
+	const meta = PUSH_KIND_META[view.kind];
+	const status = PUSH_STATUS_META[view.status];
 	const IconCmp = Icon[meta.icon];
+	const headline = headlineOf(view);
+	const count = messageCountOf(view);
+	// 失败是红的;部分失败 / 无目标是警示色 —— 卡边与标题旁的小字同一口径。
+	const marked = view.status !== "delivered";
+	const edge = view.status === "failed" ? "var(--color-bn-danger-border)" : status.tone;
 	return (
 		<NoticeCard
 			icon={<IconCmp size={16} />}
@@ -78,21 +86,28 @@ function ToastCard({ item }: { item: ToastItem }) {
 			title={
 				<>
 					{meta.eventLabel}
-					{item.ok ? null : (
-						<span className="ml-1.5 text-bn-2xs font-semibold text-bn-danger">推送失败</span>
-					)}
+					{marked ? (
+						<span className="ml-1.5 text-bn-2xs font-semibold" style={{ color: status.tone }}>
+							{view.status === "failed" ? "推送失败" : status.label}
+						</span>
+					) : null}
 				</>
 			}
-			time={formatHm(item.ts)}
+			time={formatHm(view.ts)}
 			onClose={() => dismiss(item.id)}
-			style={item.ok ? undefined : { borderColor: "var(--color-bn-danger-border)" }}
+			style={marked ? { borderColor: edge } : undefined}
 		>
-			<div className="mt-0.5 text-bn-xs text-bn-text-secondary">
-				<span className="tabular-nums">UID {item.uid}</span>
+			<div className="mt-0.5 flex items-center gap-1.5 text-bn-xs text-bn-text-secondary">
+				<span className="tabular-nums">UID {view.uid}</span>
+				{count > 1 ? (
+					<Pill color={meta.tone} subtle size="sm">
+						{count} 条
+					</Pill>
+				) : null}
 			</div>
-			{item.text ? (
+			{headline ? (
 				<div className="mt-1 line-clamp-2 text-bn-xs leading-snug text-bn-text-primary">
-					{item.text}
+					{headline}
 				</div>
 			) : null}
 		</NoticeCard>

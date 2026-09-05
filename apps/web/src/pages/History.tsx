@@ -1,26 +1,27 @@
 import { Avatar, ErrorNote, Icon, Input, LoadingBlock, Picker, Pill } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { PUSH_KIND_META, PUSH_TONE } from "../config/push-kinds";
+import { PUSH_KIND_META, PUSH_STATUS_META, PUSH_TONE } from "../config/push-kinds";
 import { api } from "../services/api";
 import {
 	type HistoryEntryView,
+	type HistoryMessageView,
 	type HistoryResponse,
-	type HistorySource,
 	historyQueryKey,
+	type PushKind,
 } from "../services/dashboard";
 import type { PushTarget, Subscription } from "../types/domain";
 import type { GlobalConfig } from "../types/globals";
+import { hasDetails, headlineOf, messageCountOf } from "../utils/push-row";
 import { colorFromUid, displayName, relativeTime } from "./up/helpers";
 
 /**
  * `/history` — 1:1 port of `.bn-design/variation-a-tabs.jsx#HistoryTab`,
  * backed by the live `/api/history` route + jsonl-by-day store.
  *
- * Source families collapse onto four primary pill filters (live / 动态 /
- * SC / 舰长). The seven HistorySource buckets fan into the four families
- * the same way `services/dashboard.ts#FAMILY` does, so per-family counts
- * line up with the Dashboard trend chart.
+ * 一行 = 一次推送 × 一个目标:首条本体当文案,多条挂「N 条」胶囊,行可展开逐条看
+ * (文案 / 图缩略 / 结果);状态四态。八种推送类型折进四个家族筛选(直播 / 动态 /
+ * SC / 舰长),与 `services/dashboard.ts#FAMILY` 同一张表,和概览趋势图对得上。
  *
  * The "重发" column from the design source is intentionally not ported:
  * /api/push/test sends a dummy text payload, so a button labelled
@@ -31,9 +32,10 @@ import { colorFromUid, displayName, relativeTime } from "./up/helpers";
 
 type FilterId = "all" | "live" | "dynamic" | "sc" | "guard";
 
-const FAMILY: Record<HistorySource, Exclude<FilterId, "all">> = {
+const FAMILY: Record<PushKind, Exclude<FilterId, "all">> = {
 	live: "live",
-	"live-summary": "live",
+	"live-ongoing": "live",
+	"live-end": "live",
 	"special-enter": "live",
 	"special-danmaku": "live",
 	dynamic: "dynamic",
@@ -91,20 +93,17 @@ export default function History() {
 	const filtered = useMemo(() => {
 		const ql = q.trim().toLowerCase();
 		return entries.filter((e) => {
-			if (filterId !== "all" && FAMILY[e.source] !== filterId) return false;
+			if (filterId !== "all" && FAMILY[e.kind] !== filterId) return false;
 			if (!ql) return true;
 			const sub = subByUid.get(e.uid);
 			const upName = sub ? displayName(sub).toLowerCase() : "";
-			const targets = e.targetIds
-				.map((id) => targetById.get(id)?.name ?? "")
-				.join(" ")
+			const target = (e.targetId ? (targetById.get(e.targetId)?.name ?? "") : "").toLowerCase();
+			// 搜整行的每一条文案,不只搜标题那句 —— 总结正文就藏在后面几条里。
+			const texts = e.messages
+				.map((m) => m.text ?? "")
+				.join("\n")
 				.toLowerCase();
-			return (
-				e.uid.includes(ql) ||
-				upName.includes(ql) ||
-				(e.text ?? "").toLowerCase().includes(ql) ||
-				targets.includes(ql)
-			);
+			return e.uid.includes(ql) || upName.includes(ql) || texts.includes(ql) || target.includes(ql);
 		});
 	}, [entries, filterId, q, subByUid, targetById]);
 
@@ -177,7 +176,7 @@ function HistoryTable({
 						key={e.id}
 						entry={e}
 						sub={subByUid.get(e.uid)}
-						targets={e.targetIds.map((id) => targetById.get(id)).filter(Boolean) as PushTarget[]}
+						target={e.targetId ? targetById.get(e.targetId) : undefined}
 						isLast={i === entries.length - 1}
 					/>
 				))
@@ -188,67 +187,143 @@ function HistoryTable({
 
 const HISTORY_GRID = "100px 28px 64px 1fr 200px 100px";
 
+/** 目标列:无目标行写「—」;目标事后被删写「已删除目标」。 */
+function targetLabelOf(entry: HistoryEntryView, target: PushTarget | undefined): string {
+	if (entry.targetId === null) return "—";
+	return target?.name ?? "已删除目标";
+}
+
 function HistoryRow({
 	entry,
 	sub,
-	targets,
+	target,
 	isLast,
 }: {
 	entry: HistoryEntryView;
 	sub: Subscription | undefined;
-	targets: PushTarget[];
+	target: PushTarget | undefined;
 	isLast: boolean;
 }) {
-	const family = FAMILY[entry.source];
+	const [open, setOpen] = useState(false);
+	const family = FAMILY[entry.kind];
 	const tone = PUSH_TONE[family];
+	const status = PUSH_STATUS_META[entry.status];
 	// 优先 entry 写入期的 snapshot,订阅事后被删也能稳定显示。
 	const upName = entry.unameSnapshot ?? (sub ? displayName(sub) : entry.uid || "未知");
 	const upAvatar = entry.uavatarSnapshot ?? sub?.cachedProfile?.avatar;
 	const upColor = colorFromUid(entry.uid || entry.id);
-	const targetLabel =
-		targets.length === 0
-			? entry.targetIds.length === 0
-				? "—"
-				: `${entry.targetIds.length} 个已删除目标`
-			: targets.map((t) => t.name).join(", ");
+	const headline = headlineOf(entry);
+	const count = messageCountOf(entry);
+	const expandable = hasDetails(entry);
+	const targetLabel = targetLabelOf(entry, target);
 
 	return (
-		<div
-			className={`grid items-center gap-2.5 px-4 py-3 text-bn-sm ${
-				isLast ? "" : "border-b border-bn-border-subtle"
-			}`}
-			style={{ gridTemplateColumns: HISTORY_GRID }}
-		>
-			<span className="tabular-nums text-bn-xs text-bn-text-tertiary">
-				{relativeTime(entry.ts)}
-			</span>
-			<Avatar name={upName} color={upColor} size={24} url={upAvatar} />
-			<Pill color={tone} subtle size="sm">
-				{PUSH_KIND_META[entry.source].label}
-			</Pill>
-			<div className="min-w-0 truncate" title={entry.text}>
-				<span className="font-bold text-bn-text-primary">{upName}</span>
-				{entry.text ? (
-					<span className="ml-1.5 text-bn-text-secondary">{entry.text}</span>
-				) : (
-					<span className="ml-1.5 text-bn-text-tertiary">（无内容）</span>
-				)}
-			</div>
-			<span
-				className="truncate text-bn-xs text-bn-text-secondary"
-				title={targets.map((t) => t.name).join(", ")}
+		<div className={isLast ? "" : "border-b border-bn-border-subtle"}>
+			<div
+				className="grid items-center gap-2.5 px-4 py-3 text-bn-sm"
+				style={{ gridTemplateColumns: HISTORY_GRID }}
 			>
-				→ {targetLabel}
-			</span>
-			{entry.ok ? (
-				<Pill color="var(--color-bn-success)" subtle size="sm">
-					已送达
+				<span className="tabular-nums text-bn-xs text-bn-text-tertiary">
+					{relativeTime(entry.ts)}
+				</span>
+				<Avatar name={upName} color={upColor} size={24} url={upAvatar} />
+				<Pill color={tone} subtle size="sm">
+					{PUSH_KIND_META[entry.kind].label}
 				</Pill>
-			) : (
-				<Pill color="var(--color-bn-danger)" subtle size="sm">
-					失败
+				<div className="flex min-w-0 items-center gap-2">
+					<div className="min-w-0 flex-1 truncate" title={headline}>
+						<span className="font-bold text-bn-text-primary">{upName}</span>
+						{headline ? (
+							<span className="ml-1.5 text-bn-text-secondary">{headline}</span>
+						) : (
+							<span className="ml-1.5 text-bn-text-tertiary">（无内容）</span>
+						)}
+					</div>
+					{expandable ? (
+						// 展开钮借 Pill 的形制:多条时写条数,单条(带图 / 带错)写「详情」。
+						// 不用 ToneChip:那是「一排里选一个」的胶囊,这里是 aria-expanded 的展开钮;
+						// 挂点沿用 chip 那套词,皮肤描边时认得出它是一颗小胶囊。
+						<button
+							type="button"
+							aria-expanded={open}
+							data-bn={open ? "chip chip-active" : "chip"}
+							onClick={() => setOpen((v) => !v)}
+							className="shrink-0 rounded-md text-bn-2xs leading-4 transition hover:opacity-80"
+							title={open ? "收起" : "展开逐条查看"}
+						>
+							<Pill color={tone} subtle size="sm">
+								<span>{count > 1 ? `${count} 条` : "详情"}</span>
+								<span aria-hidden="true">{open ? " ▴" : " ▾"}</span>
+							</Pill>
+						</button>
+					) : null}
+				</div>
+				<span className="truncate text-bn-xs text-bn-text-secondary" title={targetLabel}>
+					→ {targetLabel}
+				</span>
+				<Pill color={status.tone} subtle size="sm">
+					{status.label}
 				</Pill>
-			)}
+			</div>
+			{open ? <MessageList entry={entry} /> : null}
 		</div>
+	);
+}
+
+/** 展开后的逐条明细:序号 / 本体还是附加项 / 文案 / 图缩略 / 这条的结果。 */
+function MessageList({ entry }: { entry: HistoryEntryView }) {
+	return (
+		<ol className="space-y-1.5 border-t border-bn-border-subtle bg-bn-surface-muted/50 px-4 py-2.5 pl-38">
+			{entry.messages.map((m, i) => (
+				<MessageItem
+					// biome-ignore lint/suspicious/noArrayIndexKey: 行内消息按序追加、从不重排删除,序号就是它的身份
+					key={`${entry.id}-${i}`}
+					index={i}
+					message={m}
+					noTargets={entry.targetId === null}
+				/>
+			))}
+		</ol>
+	);
+}
+
+function MessageItem({
+	index,
+	message,
+	noTargets,
+}: {
+	index: number;
+	message: HistoryMessageView;
+	noTargets: boolean;
+}) {
+	const result = noTargets
+		? { label: "未发送", tone: "var(--color-bn-inactive)" }
+		: message.ok === undefined
+			? { label: "未发送", tone: "var(--color-bn-inactive)" }
+			: message.ok
+				? { label: "已送达", tone: "var(--color-bn-success)" }
+				: { label: "失败", tone: "var(--color-bn-danger)" };
+	return (
+		<li className="flex items-start gap-2.5 text-bn-xs">
+			<span className="w-4 shrink-0 tabular-nums text-bn-text-tertiary">{index + 1}</span>
+			<span className="w-10 shrink-0 text-bn-text-tertiary">
+				{message.role === "main" ? "本体" : "附加"}
+			</span>
+			{message.imageRef ? (
+				<img
+					src={`/api/history/img/${message.imageRef}`}
+					alt={message.text ?? "图片"}
+					className="h-12 w-12 shrink-0 rounded-md object-cover"
+					loading="lazy"
+				/>
+			) : null}
+			<span className="min-w-0 flex-1 break-words text-bn-text-secondary">
+				{message.text ?? <span className="text-bn-text-tertiary">（无内容）</span>}
+				{message.err ? <span className="ml-1.5 text-bn-danger">{message.err}</span> : null}
+			</span>
+			<Pill color={result.tone} subtle size="sm">
+				{result.label}
+			</Pill>
+		</li>
 	);
 }

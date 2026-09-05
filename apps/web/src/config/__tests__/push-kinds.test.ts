@@ -11,23 +11,24 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { familyTone, PUSH_KIND_META, PUSH_TONE } from "../push-kinds";
+import { familyTone, PUSH_KIND_META, PUSH_STATUS_META, PUSH_TONE } from "../push-kinds";
 
-/** 与 packages/internal 的 HistorySourceSchema 同步;少一个就是有 kind 没上色。 */
+/** 与 packages/internal 的 PushKindSchema 同步;少一个就是有 kind 没上色。 */
 const SOURCES = [
 	"dynamic",
 	"live",
+	"live-ongoing",
+	"live-end",
 	"sc",
 	"guard",
 	"special-danmaku",
 	"special-enter",
-	"live-summary",
 ] as const;
 
 const SRC_DIR = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
 describe("PUSH_KIND_META", () => {
-	it("七种 kind 一个不少、一个不多", () => {
+	it("八种 kind 一个不少、一个不多", () => {
 		expect(Object.keys(PUSH_KIND_META).sort()).toEqual([...SOURCES].sort());
 	});
 
@@ -36,8 +37,14 @@ describe("PUSH_KIND_META", () => {
 		expect(new Set(family).size).toBe(family.length);
 	});
 
-	it("familyTone:直播家族四种全归粉,其余各归各的", () => {
-		for (const s of ["live", "live-summary", "special-enter", "special-danmaku"] as const) {
+	it("familyTone:直播家族五种全归粉,其余各归各的", () => {
+		for (const s of [
+			"live",
+			"live-ongoing",
+			"live-end",
+			"special-enter",
+			"special-danmaku",
+		] as const) {
 			expect(`${s} → ${familyTone(s)}`).toBe(`${s} → ${PUSH_TONE.live}`);
 		}
 		expect(familyTone("dynamic")).toBe(PUSH_TONE.dynamic);
@@ -50,6 +57,20 @@ describe("PUSH_KIND_META", () => {
 		for (const s of ["live", "dynamic", "sc", "guard"] as const) {
 			expect(`${s}: ${PUSH_KIND_META[s].tone}`).toBe(`${s}: ${familyTone(s)}`);
 		}
+	});
+
+	it("四态各有标签与色:失败红,部分失败与无目标警示色,已送达绿", () => {
+		expect(Object.keys(PUSH_STATUS_META).sort()).toEqual(
+			["delivered", "partial", "failed", "no-targets"].sort(),
+		);
+		expect(PUSH_STATUS_META.delivered.label).toBe("已送达");
+		expect(PUSH_STATUS_META.partial.label).toBe("部分失败");
+		expect(PUSH_STATUS_META.failed.label).toBe("失败");
+		expect(PUSH_STATUS_META["no-targets"].label).toBe("无目标");
+		expect(PUSH_STATUS_META.failed.tone).toBe("var(--color-bn-danger)");
+		expect(PUSH_STATUS_META.partial.tone).toBe(PUSH_STATUS_META["no-targets"].tone);
+		expect(PUSH_STATUS_META.partial.tone).not.toBe(PUSH_STATUS_META.failed.tone);
+		expect(PUSH_STATUS_META.delivered.tone).toBe("var(--color-bn-success)");
 	});
 
 	it("每种 kind 两套标签都非空 —— 事件口径与分类口径都有人用", () => {

@@ -6,7 +6,7 @@
  * 只剩 UI 侧的 query key 常量与分桶工具。
  */
 
-import type { DailyHistoryCount, HistorySource } from "@bilibili-notify/contract";
+import type { DailyHistoryCount, PushKind } from "@bilibili-notify/contract";
 
 export type {
 	DailyHistoryCount as DailyHistoryCountView,
@@ -14,14 +14,16 @@ export type {
 	FansResponse,
 	HistoryDailyResponse,
 	HistoryEntryView,
+	HistoryMessageView,
 	HistoryResponse,
-	HistorySource,
 	LiveListenerSnapshot,
 	// `/api/logs` 归档行与 WS `log` 帧共用的行视图。
 	LogArchiveEntry as LogLineView,
 	// wire 4 值日志级别(含 warn)比 3 值配置枚举宽,别名维持旧命名。
 	LogLevel as LogLineLevel,
 	LogsResponse,
+	PushKind,
+	PushStatus,
 } from "@bilibili-notify/contract";
 
 /**
@@ -41,7 +43,7 @@ export const historyQueryKey = (limit: number) => ["history", { limit }] as cons
 const LOGS_LIVE_KEY = "live";
 export const logsQueryKey = (day?: string) => ["logs", { day: day ?? LOGS_LIVE_KEY }] as const;
 
-/** Bucket history entries by ISO date (YYYY-MM-DD) and by 4 source families. */
+/** Bucket history entries by ISO date (YYYY-MM-DD) and by 4 kind families. */
 export interface DailyBucket {
 	d: string;
 	live: number;
@@ -50,9 +52,10 @@ export interface DailyBucket {
 	guard: number;
 }
 
-const FAMILY: Record<HistorySource, keyof Omit<DailyBucket, "d">> = {
+const FAMILY: Record<PushKind, keyof Omit<DailyBucket, "d">> = {
 	live: "live",
-	"live-summary": "live",
+	"live-ongoing": "live",
+	"live-end": "live",
 	"special-enter": "live",
 	"special-danmaku": "live",
 	dynamic: "dyn",
@@ -79,8 +82,8 @@ export function foldDailyBuckets(days: DailyHistoryCount[]): DailyBucket[] {
 			sc: 0,
 			guard: 0,
 		};
-		for (const [source, n] of Object.entries(day.counts) as [HistorySource, number][]) {
-			bucket[FAMILY[source]] += n;
+		for (const [kind, n] of Object.entries(day.counts) as [PushKind, number][]) {
+			bucket[FAMILY[kind]] += n;
 		}
 		return bucket;
 	});

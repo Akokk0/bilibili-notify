@@ -1,3 +1,4 @@
+import type { HistoryEntryView } from "@bilibili-notify/contract";
 import { create } from "zustand";
 
 /**
@@ -7,30 +8,11 @@ import { create } from "zustand";
  * a burst of pushes doesn't bury the user's screen.
  */
 
-export type PushEventSource =
-	| "dynamic"
-	| "live"
-	| "sc"
-	| "guard"
-	| "special-danmaku"
-	| "special-enter"
-	| "live-summary";
-
-export interface PushEventView {
-	id: string;
-	ts: string;
-	source: PushEventSource;
-	uid: string;
-	subscriptionId: string;
-	targetIds: string[];
-	ok: boolean;
-	text?: string;
-	imageRef?: string;
-	/** 写入时 snapshot 的 UP 主名称 / 头像;后端永远会带,只是老 entry(本字段加入前
-	 * 写入的)缺失。前端 toast / timeline 优先用 snapshot,fallback 走 sub 查询。 */
-	unameSnapshot?: string;
-	uavatarSnapshot?: string;
-}
+/**
+ * 推送 toast 的载荷就是历史那一行(与 `/api/history` 同一形状):一次推送 × 一个目标,
+ * 里面是消息列表与四态。`history-updated` 到来时同 id 换掉整份 view,卡上换字不重弹。
+ */
+export type PushEventView = HistoryEntryView;
 
 /**
  * 不是推送事件的那种通知(目前只有「有新版本」)。借同一条队列、同一个壳:
@@ -50,13 +32,16 @@ interface Received {
 	receivedAt: number;
 }
 
+/** 推送卡不把 view 摊平进来:它自己带一个 `kind`(推送类型),会撞上这里的判别字段。 */
 export type ToastItem =
-	| (PushEventView & Received & { kind: "push" })
+	| (Received & { kind: "push"; id: string; view: PushEventView })
 	| (NoticeView & Received & { kind: "notice" });
 
 interface ToastState {
 	items: ToastItem[];
 	push(view: PushEventView): void;
+	/** 同 id 的推送卡还在就原地换成新 view(位置与计时不动);已经关了就不再弹。 */
+	replace(view: PushEventView): void;
 	notify(notice: NoticeView): void;
 	dismiss(id: string): void;
 	clear(): void;
@@ -85,7 +70,14 @@ function enqueue(items: ToastItem[], next: ToastItem): ToastItem[] {
 export const useToastStore = create<ToastState>((set) => ({
 	items: [],
 	push(view) {
-		set((s) => ({ items: enqueue(s.items, { ...view, kind: "push", receivedAt: Date.now() }) }));
+		set((s) => ({
+			items: enqueue(s.items, { kind: "push", id: view.id, view, receivedAt: Date.now() }),
+		}));
+	},
+	replace(view) {
+		set((s) => ({
+			items: s.items.map((t) => (t.kind === "push" && t.id === view.id ? { ...t, view } : t)),
+		}));
 	},
 	notify(notice) {
 		set((s) => ({
