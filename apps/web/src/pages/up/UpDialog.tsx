@@ -810,6 +810,47 @@ function FeatureToggleRow({
  * 下播下面的两个附加项(词云 / AI 总结),形制同 @全体 那一行:父项(下播)关着就
  * 整行灰掉、显示为关、点了不写。
  */
+/**
+ * 父订阅项下面那一行小开关:「+ 词云」「+ @全体」。父关着时整行变灰、开关禁用 ——
+ * 附加项从来不能脱离本体单独发。三态覆写那一档(AtAllPerTargetToggle)不吃这个:
+ * 它多一个「跟随默认」态、一颗重置钮和平台不支持的提示,揉进来只会让参数比正文长。
+ */
+function SubToggleRow({
+	parentOn,
+	value,
+	onChange,
+	label,
+	hint,
+	offHint,
+	ariaLabel,
+}: {
+	parentOn: boolean;
+	value: boolean;
+	onChange: (on: boolean) => void;
+	label: string;
+	/** 父开着时的 tooltip。 */
+	hint: string;
+	/** 父关着时的 tooltip —— 说清楚「先开哪个」。 */
+	offHint: string;
+	ariaLabel?: string;
+}) {
+	return (
+		<div
+			className={`flex items-center gap-1.5 ${parentOn ? "text-bn-text-secondary" : "text-bn-text-disabled"}`}
+			title={parentOn ? hint : offHint}
+		>
+			<Toggle
+				value={parentOn && value}
+				onChange={(on) => parentOn && onChange(on)}
+				size="sm"
+				disabled={!parentOn}
+				{...(ariaLabel ? { ariaLabel } : {})}
+			/>
+			<span>+ {label}</span>
+		</div>
+	);
+}
+
 function LiveEndExtrasToggles({
 	parentOn,
 	value,
@@ -822,21 +863,16 @@ function LiveEndExtrasToggles({
 	return (
 		<div className="mt-0.5 ml-9 flex flex-col gap-1 text-bn-xs">
 			{LIVE_END_EXTRA_KEYS.map((k) => (
-				<div
+				<SubToggleRow
 					key={k}
-					className={`flex items-center gap-1.5 ${parentOn ? "text-bn-text-secondary" : "text-bn-text-disabled"}`}
-					title={parentOn ? "下播时作为附加消息一起推" : "需先开启下播才能推附加项"}
-				>
-					<Toggle
-						value={parentOn && value(k)}
-						onChange={(on) => parentOn && onChange(k, on)}
-						size="sm"
-						disabled={!parentOn}
-						ariaLabel={LIVE_END_EXTRA_LABELS[k]}
-					/>
-					<span>+ </span>
-					<span>{LIVE_END_EXTRA_LABELS[k]}</span>
-				</div>
+					parentOn={parentOn}
+					value={value(k)}
+					onChange={(on) => onChange(k, on)}
+					label={LIVE_END_EXTRA_LABELS[k]}
+					ariaLabel={LIVE_END_EXTRA_LABELS[k]}
+					hint="下播时作为附加消息一起推"
+					offHint="需先开启下播才能推附加项"
+				/>
 			))}
 		</div>
 	);
@@ -864,17 +900,15 @@ function AtAllInlineToggle({
 			? "开播推送时附加 @全体(SC / 上舰 / 词云 / 总结 不 @)"
 			: "动态推送时附加 @全体";
 	return (
-		<div
-			className={`mt-0.5 ml-9 flex items-center gap-1.5 text-bn-xs ${parentOn ? "text-bn-text-secondary" : "text-bn-text-disabled"}`}
-			title={parentOn ? hint : "需先开启父订阅项才能 @全体"}
-		>
-			<Toggle
-				value={parentOn && value}
-				onChange={(on) => parentOn && onChange(on)}
-				size="sm"
-				disabled={!parentOn}
+		<div className="mt-0.5 ml-9 text-bn-xs">
+			<SubToggleRow
+				parentOn={parentOn}
+				value={value}
+				onChange={onChange}
+				label="@全体"
+				hint={hint}
+				offHint="需先开启父订阅项才能 @全体"
 			/>
-			<span>+ @全体</span>
 		</div>
 	);
 }

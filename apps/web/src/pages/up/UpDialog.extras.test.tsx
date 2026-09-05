@@ -6,7 +6,7 @@
  * (`overrides.features.liveEndExtras.wordcloud`),与默认值相同就不落 override。
  */
 
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
@@ -29,10 +29,9 @@ function renderDialog(sub: Subscription) {
 	return { onSave };
 }
 
+/** 子开关按 aria-label 取 —— 按文案找再摸 parentElement 会被行内排版的改动带倒。 */
 function extraToggle(label: string): HTMLButtonElement {
-	const text = screen.getByText(label);
-	const wrapper = text.parentElement as HTMLElement;
-	return within(wrapper).getByRole("button") as HTMLButtonElement;
+	return screen.getByRole("button", { name: label }) as HTMLButtonElement;
 }
 
 describe("UpDialog · 下播的附加项", () => {

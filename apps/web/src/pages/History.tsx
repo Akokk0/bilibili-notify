@@ -1,4 +1,13 @@
-import { Avatar, ErrorNote, Icon, Input, LoadingBlock, Picker, Pill } from "@bilibili-notify/ui";
+import {
+	Avatar,
+	DisclosurePill,
+	ErrorNote,
+	Icon,
+	Input,
+	LoadingBlock,
+	Picker,
+	Pill,
+} from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
@@ -246,22 +255,17 @@ function HistoryRow({
 						)}
 					</div>
 					{expandable ? (
-						// 展开钮借 Pill 的形制:多条时写条数,单条(带图 / 带错)写「详情」。
-						// 不用 ToneChip:那是「一排里选一个」的胶囊,这里是 aria-expanded 的展开钮;
-						// 挂点沿用 chip 那套词,皮肤描边时认得出它是一颗小胶囊。
-						<button
-							type="button"
-							aria-expanded={open}
-							data-bn={open ? "chip chip-active" : "chip"}
-							onClick={() => setOpen((v) => !v)}
-							className="shrink-0 rounded-md text-bn-2xs leading-4 transition hover:opacity-80"
+						// 多条时写条数,单条(带图 / 带错)写「详情」。
+						<DisclosurePill
+							open={open}
+							onToggle={() => setOpen((v) => !v)}
+							color={tone}
 							title={open ? "收起" : "展开逐条查看"}
+							className="shrink-0 text-bn-2xs leading-4"
 						>
-							<Pill color={tone} subtle size="sm">
-								<span>{count > 1 ? `${count} 条` : "详情"}</span>
-								<span aria-hidden="true">{open ? " ▴" : " ▾"}</span>
-							</Pill>
-						</button>
+							<span>{count > 1 ? `${count} 条` : "详情"}</span>
+							<span aria-hidden="true">{open ? " ▴" : " ▾"}</span>
+						</DisclosurePill>
 					) : null}
 				</div>
 				<span className="truncate text-bn-xs text-bn-text-secondary" title={targetLabel}>

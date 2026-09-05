@@ -596,6 +596,52 @@ export function Pill({
 	);
 }
 
+// ── DisclosurePill ──────────────────────────────────────────────────────────
+
+export interface DisclosurePillProps {
+	/** 当前是不是展开着 —— 同时喂 `aria-expanded` 与选中态挂点。 */
+	open: boolean;
+	onToggle: () => void;
+	children: ReactNode;
+	/** 胶囊的语义色,同 {@link Pill} 的 `color`。 */
+	color?: string;
+	/** tooltip;不给就不挂。 */
+	title?: string;
+	/** 只收定位这类不冲突的工具类(`shrink-0`),别拿它掰本体样式。 */
+	className?: string;
+}
+
+/**
+ * 「点它展开 / 收起下面那块」的胶囊钮 —— 历史行的「N 条 ▾」、逐群例外表的「展开」。
+ *
+ * 借 {@link Pill} 的形制,但它是**开合**不是选项:所以有 `aria-expanded`,而不用
+ * {@link ToneChip}(那是「一排里选一个」)。挂点沿用 `chip` 那套词,皮肤描边时认得出
+ * 它是一颗小胶囊;展开时挂 `chip-active`,和选中的胶囊一个长相。
+ */
+export function DisclosurePill({
+	open,
+	onToggle,
+	children,
+	color,
+	title,
+	className,
+}: DisclosurePillProps) {
+	return (
+		<button
+			type="button"
+			aria-expanded={open}
+			data-bn={open ? "chip chip-active" : "chip"}
+			onClick={onToggle}
+			className={`rounded-md transition hover:opacity-80 ${className ?? ""}`}
+			{...(title ? { title } : {})}
+		>
+			<Pill color={color} subtle size="sm">
+				{children}
+			</Pill>
+		</button>
+	);
+}
+
 // ── ToneChip ────────────────────────────────────────────────────────────────
 
 export interface ToneChipProps {

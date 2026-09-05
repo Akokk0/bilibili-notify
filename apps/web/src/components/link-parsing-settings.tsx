@@ -19,6 +19,7 @@ import {
 	type LinkReplyForm,
 } from "@bilibili-notify/internal/constants";
 import {
+	DisclosurePill,
 	EmptyNote,
 	GlassBox,
 	HintNote,
@@ -165,18 +166,13 @@ export function LinkParsingSettings({
 							<span>
 								{candidates.length} 个群 · {overrides} 个例外
 							</span>
-							{/* 展开钮借 Pill 的形制(与历史页的展开行同一套):aria-expanded 说明它是开合,不是选项。 */}
-							<button
-								type="button"
-								aria-expanded={groupsOpen}
-								data-bn={groupsOpen ? "chip chip-active" : "chip"}
-								onClick={() => setGroupsOpen((v) => !v)}
-								className="rounded-md transition hover:opacity-80"
+							<DisclosurePill
+								open={groupsOpen}
+								onToggle={() => setGroupsOpen((v) => !v)}
+								color={SECTION_ACCENT.system}
 							>
-								<Pill color={SECTION_ACCENT.system} subtle size="sm">
-									{groupsOpen ? "收起" : "展开"}
-								</Pill>
-							</button>
+								{groupsOpen ? "收起" : "展开"}
+							</DisclosurePill>
 						</div>
 						{groupsOpen
 							? candidates.map((t) => (
