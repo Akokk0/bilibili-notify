@@ -23,6 +23,7 @@ import {
 	HistoryPatchSchema,
 	PushKindSchema,
 } from "@bilibili-notify/internal";
+import { RecencyTable } from "../util/recency-table.js";
 
 /**
  * 推送历史:jsonl-by-day 持久化 + bus 广播。
@@ -121,8 +122,8 @@ export interface CreateHistoryStoreOptions {
 export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStore {
 	const root = join(opts.dataDir, "history");
 	const imgRoot = join(root, "img");
-	/** 还可能被追加的行,键 = `${pushId}|${targetId}`。 */
-	const open = new Map<string, HistoryEntry>();
+	/** 还可能被追加的行,键 = `${pushId}|${targetId}`;满了丢最久没碰的。 */
+	const open = new RecencyTable<HistoryEntry>(OPEN_ROWS_CAP);
 	/** 写串行化:同一次推送的两段(卡片、紧随其后的 @全体)不会同时建两行。 */
 	let tail: Promise<unknown> = Promise.resolve();
 
@@ -224,15 +225,6 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		return parsed.data;
 	}
 
-	function remember(key: string, entry: HistoryEntry): void {
-		open.delete(key);
-		open.set(key, entry);
-		if (open.size > OPEN_ROWS_CAP) {
-			const oldest = open.keys().next().value;
-			if (oldest !== undefined) open.delete(oldest);
-		}
-	}
-
 	async function recordSerialized(input: HistoryRecordInput): Promise<HistoryEntry> {
 		await ensureDirs();
 		const key = `${input.pushId}|${input.target ?? "-"}`;
@@ -255,7 +247,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				uavatarSnapshot: input.uavatarSnapshot,
 			});
 			await writeFile(dayFile(ts), `${JSON.stringify(entry)}\n`, { flag: "a", encoding: "utf8" });
-			remember(key, entry);
+			open.set(key, entry);
 			opts.bus.emit("history-recorded", entry);
 			return entry;
 		}
@@ -277,7 +269,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			flag: "a",
 			encoding: "utf8",
 		});
-		remember(key, merged);
+		open.set(key, merged);
 		opts.bus.emit("history-updated", merged);
 		return merged;
 	}
@@ -424,7 +416,11 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	 */
 	async function readTailEntries(path: string, limit: number): Promise<HistoryEntry[]> {
 		if (limit <= 0) return [];
+		// 窗口只往后追加,丢掉的行用 head 下标跨过去 —— `shift()` 是 O(n),几万行的日文件
+		// 上,省下来的那点解析开销会原样还回去。head 跑远了才整块裁一次(摊下来仍是每行
+		// O(1)),免得整份文件的行都被这个数组攥着不放。
 		const window: string[] = [];
+		let head = 0;
 		let rowsInWindow = 0;
 		let rowsSeen = 0;
 		try {
@@ -437,15 +433,20 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				rowsInWindow += 1;
 				rowsSeen += 1;
 				while (rowsInWindow > limit) {
-					const dropped = window.shift();
+					const dropped = window[head];
+					head += 1;
 					if (dropped !== undefined && !isPatchLine(dropped)) rowsInWindow -= 1;
+				}
+				if (head > limit) {
+					window.splice(0, head);
+					head = 0;
 				}
 			}
 		} catch {
 			// missing file is fine
 			return [];
 		}
-		const entries = parseLines(window);
+		const entries = parseLines(window.slice(head));
 		// **窗口按行取,结果按条算 —— 中间差的那几条不能靠更早的日文件来填。**
 		// 尾窗里混进读不回来的行(崩在写一半的最后一行、旧 schema 的行)时,这一份
 		// 就少给几条;调用方看见没凑够 limit,转头去前一天的文件里补 —— 夹在中间

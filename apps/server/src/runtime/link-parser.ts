@@ -29,6 +29,7 @@ import {
 	videoLinkKey,
 } from "@bilibili-notify/internal";
 import type { InboundGroupMessage } from "../platforms/types.js";
+import { RecencyTable } from "../util/recency-table.js";
 import { linkScopeKey } from "./link-scope.js";
 import { videoToDynamic } from "./video-card.js";
 
@@ -36,26 +37,6 @@ import { videoToDynamic } from "./video-card.js";
 const MAX_LINKS_PER_MESSAGE = 3;
 
 const BUDGET_WINDOW_MS = 60_000;
-
-/**
- * 有容量上限的「最近碰过」表。Map 按插入序遍历,每次 set 先 delete 再 set,最久没碰的永远
- * 在最前 —— 满了就丢它。容量是上限不是触发点:满了照样能装,只是装一个丢一个。
- */
-class RecencyTable<V> {
-	private readonly map = new Map<string, V>();
-	constructor(private readonly cap: number) {}
-	get(key: string): V | undefined {
-		return this.map.get(key);
-	}
-	set(key: string, value: V): void {
-		this.map.delete(key);
-		this.map.set(key, value);
-		if (this.map.size > this.cap) {
-			const oldest = this.map.keys().next().value;
-			if (oldest !== undefined) this.map.delete(oldest);
-		}
-	}
-}
 
 /**
  * 链接从哪个平台来 —— 就是「我们真的收得到入站消息」的那批平台,别另立一份名单:
