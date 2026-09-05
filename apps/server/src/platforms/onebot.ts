@@ -72,6 +72,9 @@ export interface OnebotPlatformAdapterOptions {
 	imageMinTimeoutMs?: number;
 }
 
+/** 同一条适配器的能力最多这么久重探一次 —— 探不出来时别让每个调用方各赔一次超时。 */
+const CAPABILITY_REPROBE_MS = 60_000;
+
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_RETRY_INTERVAL_MS = 1_000;
 const RECONNECT_BASE_MS = 1_000;
@@ -842,10 +845,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				if (!verdict.ok) return null;
 				return parseLoginInfo(res.data);
 			}
-			const channel =
-				cfg.transport === "ws"
-					? (forwardConns.get(adapter.id)?.getChannel() ?? null)
-					: (reverseListeners.get(adapter.id)?.getChannel() ?? null);
+			const channel = channelOf(adapter.id, cfg);
 			if (!channel) return null;
 			const res = await channel.call("get_login_info", {}, cfg.timeoutMs ?? fallbackTimeoutMs);
 			const verdict = interpretResponse(res);
@@ -892,6 +892,8 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	const knownAdapters = new Map<string, PushAdapter>();
 	/** 每个 adapter 上次 reconcile 时的配置指纹:没变就不丢它的能力缓存。 */
 	const capabilityFingerprints = new Map<string, string>();
+	/** 上次探能力的时刻 —— 探不出来的适配器不该被反复问,见 {@link CAPABILITY_REPROBE_MS}。 */
+	const lastCapabilityProbeAt = new Map<string, number>();
 	const NOT_PROBED: MiniAppCardSupport = { state: "unknown" };
 
 	function channelOf(adapterId: string, cfg: OnebotWsConfig | OnebotWsReverseConfig) {
@@ -939,7 +941,18 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		return { state: "unknown", reason: r.wording ?? r.message ?? r.msg ?? `retcode=${r.retcode}` };
 	}
 
+	/**
+	 * 探不出来的适配器(连不上 / 回自己的错误码)会一直停在「未探测」,而问一次要赔满一个
+	 * 超时。节流住在这里而不是各个调用方那边:缓存与失效规则都在这个文件,再让链接解析、
+	 * 健康探测各维护一张时间戳表,「什么时候该重探」就会摊成三份。
+	 */
 	async function probeMiniAppCard(adapter: PushAdapter): Promise<MiniAppCardSupport> {
+		const cachedBefore = miniAppCardSupport.get(adapter.id);
+		const last = lastCapabilityProbeAt.get(adapter.id) ?? Number.NEGATIVE_INFINITY;
+		if (cachedBefore !== undefined && Date.now() - last < CAPABILITY_REPROBE_MS) {
+			return cachedBefore;
+		}
+		lastCapabilityProbeAt.set(adapter.id, Date.now());
 		let result: MiniAppCardSupport;
 		try {
 			result = interpretArkProbe(await callOnce(adapter, "get_mini_app_ark", {}));
@@ -1162,6 +1175,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				knownAdapters.delete(id);
 				miniAppCardSupport.delete(id);
 				capabilityFingerprints.delete(id);
+				lastCapabilityProbeAt.delete(id);
 			}
 			for (const a of onebots) {
 				const fp = JSON.stringify(a.config);

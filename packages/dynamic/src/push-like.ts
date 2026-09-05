@@ -66,8 +66,7 @@ export function broadcastOptsForDynamicKind(
 	kind: PushKind,
 	pushId: string | undefined,
 ): { pushId?: string; allowAtAll?: false; role?: "extra" } | undefined {
-	const id = pushId === undefined ? {} : { pushId };
-	if (kind === "dynamic-images") return { ...id, allowAtAll: false, role: "extra" };
+	if (kind === "dynamic-images") return { pushId, allowAtAll: false, role: "extra" };
 	return pushId === undefined ? undefined : { pushId };
 }
 

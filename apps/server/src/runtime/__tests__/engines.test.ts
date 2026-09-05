@@ -1281,7 +1281,7 @@ describe("createEngines — 适配器的平台能力", () => {
 	const onebot = { id: ADAPTER, name: "bot", enabled: true, platform: "onebot", config: {} } as any;
 
 	/** 探一次就变「支持」的假平台实现;探之前是「未探测」。 */
-	function fakePlatform(answer: "supported" | "unknown" = "supported") {
+	function fakePlatform(answer: "supported" | "unknown" = "supported", probeOk = true) {
 		let state: "unknown" | "supported" = "unknown";
 		const probeCapabilities = vi.fn(async () => {
 			state = answer === "supported" ? "supported" : "unknown";
@@ -1294,7 +1294,7 @@ describe("createEngines — 适配器的平台能力", () => {
 			platforms: ["onebot"],
 			isAvailable: () => true,
 			send: async () => ({ ok: true, latencyMs: 1 }),
-			probe: vi.fn(async () => ({ ok: true, latencyMs: 1 })),
+			probe: vi.fn(async () => ({ ok: probeOk, latencyMs: 1 })),
 			capabilities: () => caps(),
 			probeCapabilities,
 		};
@@ -1325,6 +1325,15 @@ describe("createEngines — 适配器的平台能力", () => {
 		await c.runtime.probeAdapter(ADAPTER);
 		expect(probeCapabilities).toHaveBeenCalledTimes(2);
 		expect(c.runtime.adapterCapabilities(ADAPTER)).toEqual({ miniAppCard: { state: "unknown" } });
+	});
+
+	it("连都连不上的适配器不补探能力 —— 那一趟只会白等满一个超时", async () => {
+		const { pa, probeCapabilities } = fakePlatform("unknown", false);
+		const c = setup({ adapters: [onebot], platformAdapters: [pa] });
+		active = c;
+		await tick();
+		expect(pa.probe).toHaveBeenCalled();
+		expect(probeCapabilities).not.toHaveBeenCalled();
 	});
 
 	it("没有能力概念的平台(配置里没这条适配器也一样)→ undefined", () => {

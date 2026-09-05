@@ -21,9 +21,8 @@ const target = {
 } as unknown as PushSendInfo["target"] & object;
 
 const lookups = {
-	subscriptionIdOf: (uid: string) => (uid === "u1" ? SUB_ID : undefined),
-	profileOf: (uid: string) =>
-		uid === "u1" ? { name: "某UP", avatar: "http://a/x.jpg" } : undefined,
+	subscriptionOf: (uid: string) =>
+		uid === "u1" ? { id: SUB_ID, profile: { name: "某UP", avatar: "http://a/x.jpg" } } : undefined,
 };
 
 describe("historyRecordFromSend", () => {

@@ -99,6 +99,7 @@ beforeEach(() => {
 	vi.stubGlobal("fetch", fetchMock);
 });
 afterEach(() => {
+	vi.useRealTimers();
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
 });
@@ -164,7 +165,8 @@ describe("onebot — 小程序卡能力探测", () => {
 		expect(caps?.miniAppCard).toMatchObject({ state: "unsupported" });
 	});
 
-	it("连不上、或回了别的错 → 仍是未探测,原因带出来;下次还会再探", async () => {
+	it("连不上、或回了别的错 → 仍是未探测,原因带出来;过了节流窗口还会再探", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
 		fetchMock.mockRejectedValueOnce(new Error("ECONNREFUSED"));
 		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const caps = await ad.probeCapabilities?.(obAdapter());
@@ -173,6 +175,12 @@ describe("onebot — 小程序卡能力探测", () => {
 			reason: expect.stringMatching(/ECONNREFUSED/),
 		});
 
+		// 探不出来的适配器每问一次赔一个超时:窗口内再问只拿上次那个答案,不再打接口。
+		const throttled = await ad.probeCapabilities?.(obAdapter());
+		expect(throttled?.miniAppCard).toMatchObject({ state: "unknown" });
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+
+		vi.setSystemTime(Date.now() + 61_000);
 		fetchMock.mockResolvedValueOnce(failFrame(200, "packet backend 未就绪"));
 		const again = await ad.probeCapabilities?.(obAdapter());
 		expect(again?.miniAppCard).toMatchObject({

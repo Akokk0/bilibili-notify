@@ -52,7 +52,12 @@ import type {
 	SubscriptionOp,
 	SubscriptionOverrides,
 } from "@bilibili-notify/internal";
-import { resolve, resolveAIProfile, resolveCardStyleForKind } from "@bilibili-notify/internal";
+import {
+	featureToPushKind,
+	resolve,
+	resolveAIProfile,
+	resolveCardStyleForKind,
+} from "@bilibili-notify/internal";
 import {
 	LiveEngine,
 	type LiveEngineConfig,
@@ -136,6 +141,8 @@ export interface EnginesRuntime extends Disposable {
 	probeAdapter(adapterId: string): Promise<ProbeResult>;
 	/** 适配器的平台能力快照(能不能签小程序卡);没有能力概念的平台是 undefined。 */
 	adapterCapabilities(adapterId: string): AdapterCapabilities | undefined;
+	/** 主动探一次平台能力(还没探出来时)。与上一条同源,都走 sink 的适配器寻址。 */
+	probeAdapterCapabilities(adapterId: string): Promise<AdapterCapabilities | undefined>;
 	/** Per-module readiness snapshot exposed via `/api/health`. */
 	getModuleStatus(): ModuleStatus;
 	/**
@@ -283,10 +290,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		onSend: (info) => {
 			// 一次推送 × 一个目标 = 历史一行;无目标那次也记(面板上才看得见)。
 			const input = historyRecordFromSend(info, {
-				subscriptionIdOf: (uid) => opts.subscriptionStore.findByUid(uid)?.id,
-				profileOf: (uid) => {
+				subscriptionOf: (uid) => {
 					const sub = opts.subscriptionStore.findByUid(uid);
-					return sub ? opts.subRuntimeStore.get(sub.id)?.cachedProfile : undefined;
+					if (!sub) return undefined;
+					return { id: sub.id, profile: opts.subRuntimeStore.get(sub.id)?.cachedProfile };
 				},
 			});
 			if (!input) return;
@@ -664,6 +671,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	 */
 	async function probeAdapterAndCapabilities(adapterId: string): Promise<ProbeResult> {
 		const result = await sink.probeAdapter(adapterId);
+		// 连都连不上的适配器,能力必然也探不出来 —— 再问一次只是白等满一整个超时,
+		// 而这条路是每五分钟一轮、逐个 await 的,离线适配器会把整轮时间翻倍。
+		if (result.ok === false) return result;
 		if (sink.adapterCapabilities(adapterId)?.miniAppCard.state === "unknown") {
 			await sink.probeAdapterCapabilities(adapterId);
 		}
@@ -1000,6 +1010,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		listLiveRooms: () => listLiveRooms(live),
 		probeAdapter: (adapterId: string) => probeAdapterAndCapabilities(adapterId),
 		adapterCapabilities: (adapterId: string) => sink.adapterCapabilities(adapterId),
+		probeAdapterCapabilities: (adapterId: string) => sink.probeAdapterCapabilities(adapterId),
 		linkParsing: () => linkCard.config,
 		linkPolicyFor: (key: string) => linkPolicies.policyFor(key),
 		linkCardPresentation: () => ({
@@ -1140,29 +1151,11 @@ export function liveTypeToFeature(type: number): FeatureKey {
 
 /**
  * LivePushType → 推送类型(管历史怎么记)。与上面那张表只差一处:周期「正在直播」
- * 单列一类 —— 它跟开播共用开关与目标,历史上却是两种推送。
+ * 单列一类 —— 它跟开播共用开关与目标(所以 feature 是 live),历史上却是两种推送。
+ * 其余每一档都由「特性 → 推送类型」定死,别在这儿再抄一张会飘的表。
  */
 export function liveTypeToPushKind(type: number): PushKind {
-	switch (type) {
-		case 0:
-			return "live-ongoing";
-		case 3:
-			return "live";
-		case 4:
-			return "guard";
-		case 5:
-		case 9:
-		case 10:
-			return "live-end";
-		case 6:
-			return "sc";
-		case 7:
-			return "special-danmaku";
-		case 8:
-			return "special-enter";
-		default:
-			return "live";
-	}
+	return type === 0 ? "live-ongoing" : featureToPushKind(liveTypeToFeature(type));
 }
 
 /**

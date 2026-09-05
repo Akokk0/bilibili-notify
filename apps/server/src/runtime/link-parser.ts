@@ -37,9 +37,6 @@ const MAX_LINKS_PER_MESSAGE = 3;
 
 const BUDGET_WINDOW_MS = 60_000;
 
-/** 同一条连接的能力最多这么久重探一次 —— 探不出来时别每条消息都赔一次超时。 */
-const CAPABILITY_REPROBE_MS = 60_000;
-
 /**
  * 有容量上限的「最近碰过」表。Map 按插入序遍历,每次 set 先 delete 再 set,最久没碰的永远
  * 在最前 —— 满了就丢它。容量是上限不是触发点:满了照样能装,只是装一个丢一个。
@@ -140,8 +137,6 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 	const lastSeen = new RecencyTable<number>(limits.tableCap);
 	/** `平台:adapterId:群` → 最近一分钟里开始处理的时刻。 */
 	const groupStarts = new RecencyTable<number[]>(limits.tableCap);
-	/** `平台:adapterId` → 上次探能力的时刻。 */
-	const lastProbeAt = new RecencyTable<number>(limits.tableCap);
 	/** 全局正在处理(取信息 / 渲染 / 发送)的链接数。 */
 	let inflight = 0;
 
@@ -197,19 +192,13 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 	 * 这个目的地现在能不能发小程序卡。还没探出来就先探一次(空参数探接口,零副作用);
 	 * 探完仍未知按不能算 —— 不拿一张注定发不出去的卡去试,那一趟是真向腾讯要卡。
 	 *
-	 * 探不出来的适配器(连不上 / 回自己的错误码)会一直停在「未探测」,不能每条消息都
-	 * 为它赔一次超时:同一条连接 {@link CAPABILITY_REPROBE_MS} 内只探一次。健康探测每
-	 * 五分钟也会补探未知的,这里只兜住「服务刚起来、还没轮到健康探测」那一小段。
+	 * 「探不出来的适配器别被反复问」的节流在适配器那一层(缓存与失效规则都在那儿),
+	 * 这里放心问就是。
 	 */
 	async function canSendMiniAppCard(dest: LinkReplyDestination): Promise<boolean> {
 		let caps = opts.capabilities(dest);
 		if (caps?.miniAppCard.state === "unknown" && opts.probeCapabilities) {
-			const key = `${dest.platform}:${dest.adapterId}`;
-			const last = lastProbeAt.get(key);
-			if (last === undefined || now() - last >= CAPABILITY_REPROBE_MS) {
-				lastProbeAt.set(key, now());
-				caps = await opts.probeCapabilities(dest);
-			}
+			caps = await opts.probeCapabilities(dest);
 		}
 		return caps?.miniAppCard.state === "supported";
 	}
@@ -275,17 +264,15 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 			const scope = linkScopeKey(msg.platform, msg.adapterId, msg.groupId);
 			const policy = opts.policyFor(scope);
 			if (!policy.parse) return;
-			// 图片卡要渲染器,没有 Chrome 时整个功能静默不动、也不记账;小程序卡不用它 ——
-			// 那一档得先问过适配器(见下)。
-			if (policy.form === "image" && !opts.renderer()) return;
 			const dest: LinkReplyDestination = {
 				platform: msg.platform,
 				adapterId: msg.adapterId,
 				groupId: msg.groupId,
 			};
 			// 这条消息里的链接真能发出什么:小程序卡要形式选了且这个适配器签得了,签不了就
-			// 回落图片卡 —— 而图片卡又没渲染器的话,一张也发不出来。问在记账之前:什么都发
-			// 不出去的链接不该白吃冷却与群额度,不然适配器一恢复,同一条链接还得等冷却过去。
+			// 回落图片卡 —— 而图片卡又没渲染器(没装 Chrome)的话,一张也发不出来,整条静默
+			// 走人。问在记账之前:什么都发不出去的链接不该白吃冷却与群额度,不然适配器一恢复,
+			// 同一条链接还得等冷却过去。形式是图片卡时短路,不会为它去问适配器。
 			const useMiniApp = policy.form === "miniapp" && (await canSendMiniAppCard(dest));
 			if (!useMiniApp && !opts.renderer()) return;
 			const cooldownMs = config.cooldownSeconds * 1000;

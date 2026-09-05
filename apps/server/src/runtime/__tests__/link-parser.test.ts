@@ -661,20 +661,5 @@ describe("createLinkParser", () => {
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent.map((s) => s.payload.kind)).toEqual(["miniapp-card"]);
 		});
-
-		it("探不出来的适配器一分钟内只探一次 —— 每条消息赔一次超时太贵", async () => {
-			const h = makeParser({}, undefined, {
-				policyFor: miniapp,
-				capabilities: () => caps("unknown"),
-				probeCapabilities: async () => caps("unknown"),
-			});
-			await feed(h.parser, groupFrame(LINK));
-			await feed(h.parser, groupFrame("另一个 https://www.bilibili.com/video/BV1xx411c7mD"));
-			expect(h.probeCapabilities).toHaveBeenCalledTimes(1);
-
-			h.advance(60_000);
-			await feed(h.parser, groupFrame("再一个 https://www.bilibili.com/video/BV1yy411c7mE"));
-			expect(h.probeCapabilities).toHaveBeenCalledTimes(2);
-		});
 	});
 });
