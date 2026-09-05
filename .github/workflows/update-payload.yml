@@ -95,6 +95,7 @@ jobs:
         run: |
           set -euo pipefail
           summary=$(node scripts/changelog-section.mjs --version "$VERSION" --part summary)
+          echo "summary: $summary"
           echo "value=$summary" >> "$GITHUB_OUTPUT"
 
       # 版本号只在构建前临时写进各处元数据,不回写仓库(同 Docker / Desktop 两条路)。
@@ -154,6 +155,8 @@ jobs:
             --release-url "https://github.com/${REPO}/releases/tag/v${VERSION}" \
             --notes "$NOTES" \
             --out dist/manifest
+          # 清单本来就是公开发布的东西,打进日志让 dry-run 也能核对 notes 进没进去。
+          cat dist/manifest.json
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
       - name: Validate release token
