@@ -6,7 +6,9 @@
  *
  * 同一件事只该有一种长相:ToneChip 平铺、平台图标 + 目标名,点一下切换。**停用的目标
  * 照列照勾**,只在胶囊里标一句「已停用」—— 停用是暂停不是消失(主人定的:选择器里
- * 一律照列);藏掉的话用户看不出它还被选着,恢复启用那天它就悄悄生效了。
+ * 一律照列);藏掉的话用户看不出它还被选着,恢复启用那天它就悄悄生效了。「停用」与
+ * 服务端跳过它时是同一条判定(internal 的 `isTargetPaused`),所以要收适配器表 ——
+ * 只看目标自己的开关的话,适配器停用的目标在这儿显示为启用,发的时候却被跳过。
  *
  * 纯展示件:取数、过滤(哪些平台 / 哪种 scope 能选)、颜色都由调用方定。缠着 api /
  * react-query 的取数留在调用方,所以它住 web 不进 `packages/ui`。
@@ -14,16 +16,19 @@
 
 import { EmptyNote, Pill, PlatformIcon, ToneChip } from "@bilibili-notify/ui";
 import type { ReactNode } from "react";
-import type { PushTarget } from "../types/domain";
+import { isTargetPaused, type PushAdapter, type PushTarget } from "../types/domain";
 
 export function TargetChipPicker({
 	targets,
+	adapters,
 	selected,
 	onToggle,
 	tone,
 	empty,
 }: {
 	targets: readonly PushTarget[];
+	/** 适配器表 —— 「已停用」要跟运行时同一句话:适配器停用的目标也不发。 */
+	adapters: readonly PushAdapter[];
 	/** 已选的目标 id。 */
 	selected: readonly string[];
 	onToggle: (targetId: string) => void;
@@ -46,11 +51,11 @@ export function TargetChipPicker({
 				<ToneChip key={t.id} tone={tone} active={chosen.has(t.id)} onClick={() => onToggle(t.id)}>
 					<PlatformIcon platform={t.platform} size={13} />
 					{t.name}
-					{t.enabled ? null : (
+					{isTargetPaused(t, adapters) ? (
 						<Pill size="sm" subtle color="var(--color-bn-inactive)">
 							已停用
 						</Pill>
-					)}
+					) : null}
 				</ToneChip>
 			))}
 		</div>

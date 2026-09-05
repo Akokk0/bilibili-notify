@@ -3,7 +3,7 @@ import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
 import { join } from "node:path";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
-import type { NotificationPayload } from "@bilibili-notify/internal";
+import { groupSessionFor, type NotificationPayload } from "@bilibili-notify/internal";
 import { type ServerType, serve } from "@hono/node-server";
 import type { Hono } from "hono";
 import { createApp } from "./app.js";
@@ -517,8 +517,12 @@ export async function startStandaloneServer(
 				return platformAdapter.send(
 					adapter,
 					platform === "onebot"
-						? { ...common, platform: "onebot", session: { groupId } }
-						: { ...common, platform: "qq-official", session: { groupOpenid: groupId } },
+						? { ...common, platform: "onebot", session: groupSessionFor("onebot", groupId) }
+						: {
+								...common,
+								platform: "qq-official",
+								session: groupSessionFor("qq-official", groupId),
+							},
 					payload,
 				);
 			},

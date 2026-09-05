@@ -22,10 +22,13 @@ import type {
 	WebhookProvider,
 } from "@bilibili-notify/internal";
 import {
+	countsAsDelivery,
+	countsAsFailure,
 	DEFAULT_FEATURE_FLAGS,
 	DEFAULT_ROAST_SCHEDULE,
 	FEATURE_KEYS,
 	type FeatureKey,
+	isTargetPaused,
 	LIVE_END_EXTRA_KEYS,
 	type LiveEndExtraKey,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
@@ -33,7 +36,14 @@ import {
 } from "@bilibili-notify/internal/constants";
 
 export type { FeatureKey, LiveEndExtraKey };
-export { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS, LIVE_END_EXTRA_KEYS };
+export {
+	countsAsDelivery,
+	countsAsFailure,
+	DEFAULT_FEATURE_FLAGS,
+	FEATURE_KEYS,
+	isTargetPaused,
+	LIVE_END_EXTRA_KEYS,
+};
 
 /**
  * Dashboard 消费的订阅一直是 wire DTO 形状(internal Subscription + 服务端

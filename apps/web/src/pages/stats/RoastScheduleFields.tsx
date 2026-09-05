@@ -9,7 +9,7 @@ import { Field, Picker, TInput } from "../../components/forms";
 import { TargetChipPicker } from "../../components/target-chip-picker";
 import { AI_PURPLE } from "../../config/colors";
 import { api } from "../../services/api";
-import type { PushTarget } from "../../types/domain";
+import type { PushAdapter, PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 
 import { RoastRunNowBox } from "./RoastRunNowBox";
@@ -131,10 +131,17 @@ export function RoastScheduleFields({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
-	// 停用的目标**照列照勾**并标「已停用」—— 与链接解析白名单同一个选择器、同一条规矩
-	// (主人定的:停用是暂停不是消失)。发送时调度器会跳过它、记进「跳过」,不算失败;
-	// 以前这里把它过滤掉,用户看不出它还勾在配置里,恢复启用那天它就悄悄收到周报了。
+	// 「已停用」要跟调度器跳过它时同一条判定,所以连适配器表一起取:目标自己开着、
+	// 它挂的适配器停了,一样不发。
+	const adaptersQuery = useQuery({
+		queryKey: ["adapters"],
+		queryFn: () => api.get<PushAdapter[]>("/api/adapters"),
+	});
+	// 停用的目标**照列照勾**并标「已停用」—— 与链接解析的逐群表同一条规矩(主人定的:
+	// 停用是暂停不是消失)。发送时调度器会跳过它、记进「跳过」,不算失败;以前这里把它
+	// 过滤掉,用户看不出它还勾在配置里,恢复启用那天它就悄悄收到周报了。
 	const targets = targetsQuery.data ?? [];
+	const adapters = adaptersQuery.data ?? [];
 	const { canApprove, hint: approvalHint } = useApprovalReachability();
 
 	const patch = (over: Partial<RoastScheduleValue>) => onChange({ ...value, ...over });
@@ -182,6 +189,7 @@ export function RoastScheduleFields({
 			>
 				<TargetChipPicker
 					targets={targets}
+					adapters={adapters}
 					selected={value.targets}
 					onToggle={toggleTarget}
 					tone={AI_PURPLE}

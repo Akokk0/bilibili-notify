@@ -35,7 +35,7 @@ import {
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { SECTION_ACCENT } from "../config/section-accents";
-import type { PushAdapter, PushTarget } from "../types/domain";
+import { isTargetPaused, type PushAdapter, type PushTarget } from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch } from "../types/globals";
 import { Field } from "./forms";
 
@@ -186,6 +186,7 @@ export function LinkParsingSettings({
 										cfg={cfg}
 										onPatch={onPatch}
 										support={capabilities[t.adapterId]?.miniAppCard}
+										paused={isTargetPaused(t, adapters)}
 									/>
 								))
 							: null}
@@ -276,12 +277,15 @@ function GroupRow({
 	cfg,
 	onPatch,
 	support,
+	paused,
 }: {
 	target: PushTarget;
 	cfg: LinkParsing;
 	onPatch: (delta: GlobalConfigPatch) => void;
 	/** 这群所在适配器能不能签小程序卡;没有能力概念的平台(官机)是 undefined。 */
 	support: MiniAppCardSupport | undefined;
+	/** 目标自己停用、或它挂的适配器停用 —— 运行时都不解析,面板得说同一句话。 */
+	paused: boolean;
 }) {
 	const o = cfg.groups[target.id];
 	// 草稿里被 patch 成 null 的字段(刚点过「跟默认」)与没写一样,都是跟默认。
@@ -299,11 +303,11 @@ function GroupRow({
 			<div className="flex min-w-40 items-center gap-1.5 text-bn-sm text-bn-text-primary">
 				<PlatformIcon platform={target.platform} size={13} />
 				<span className="font-semibold">{target.name}</span>
-				{target.enabled ? null : (
+				{paused ? (
 					<Pill size="sm" subtle color="var(--color-bn-inactive)">
 						已停用
 					</Pill>
-				)}
+				) : null}
 			</div>
 			<Cell label="解析">
 				<Picker<boolean | typeof INHERIT>

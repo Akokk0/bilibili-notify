@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { FeatureKey } from "../constants";
+import { type FeatureKey, PUSH_STATUSES } from "../constants";
 
 /**
  * 推送类型 —— 配置里能单独开关的每一类算一种,共 8 种。开播与周期「正在直播」共用一把
@@ -47,7 +47,7 @@ export function featureToPushKind(feature: FeatureKey): PushKind {
  * - failed:本体没到
  * - no-targets:这类推送没有任何可用目标(没配,或配的全停用),消息照记、没发出去
  */
-export const PushStatusSchema = z.enum(["delivered", "partial", "failed", "no-targets"]);
+export const PushStatusSchema = z.enum(PUSH_STATUSES);
 export type PushStatus = z.infer<typeof PushStatusSchema>;
 
 export const HistoryPayloadSchema = z.object({

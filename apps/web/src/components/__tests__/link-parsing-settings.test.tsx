@@ -238,8 +238,15 @@ describe("LinkParsingSettings", () => {
 			expect(onPatch).toHaveBeenCalledWith({ linkParsing: { groups: { [T_A]: { form: null } } } });
 		});
 
-		it("停用的目标照列,标「已停用」", () => {
+		it("停用的目标照列,标「已停用」;适配器停用的也算(运行时一样不解析)", () => {
 			renderCard(draftWith(), vi.fn(), [target(T_A, "群 A", { enabled: false })]);
+			openGroups();
+			expect(row("群 A").getByText("已停用")).toBeTruthy();
+			cleanup();
+
+			renderCard(draftWith(), vi.fn(), [target(T_A, "群 A")], {
+				adapters: [{ ...ADAPTERS[0], enabled: false } as PushAdapter, ...ADAPTERS.slice(1)],
+			});
 			openGroups();
 			expect(row("群 A").getByText("已停用")).toBeTruthy();
 		});

@@ -15,6 +15,7 @@ import {
 import type { WsEnvelope } from "../services/ws";
 import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
 import { type PushEventView, useToastStore } from "../store/notifications";
+import { countsAsDelivery, countsAsFailure } from "../types/domain";
 
 /**
  * Subscribes to the WS `push-events` channel and forks each `history-recorded`
@@ -137,19 +138,15 @@ export function handlePushEnvelope(env: WsEnvelope, qc: QueryClient, toast: Push
 	}
 
 	// 按日聚合缓存(本周推送趋势 + 今日 KPI):今天的桶就地 +1,零额外 HTTP。
-	// 「今日推送」数的是推到了多少个地方:无目标行没推到任何地方,不进计数(与服务端同口径)。
-	if (data.status === "no-targets") return;
+	// 「今日推送」数的是推到了多少个地方:无目标行没推到任何地方,不进计数(口径与服务端
+	// 的按日聚合同吃 internal 的那一份)。
+	if (!countsAsDelivery(data.status)) return;
 	patchDailyBucket(qc, data.ts, (day) => ({
 		...day,
 		counts: { ...day.counts, [data.kind]: (day.counts[data.kind] ?? 0) + 1 },
 		total: day.total + 1,
-		failures: day.failures + (isFailure(data.status) ? 1 : 0),
+		failures: day.failures + (countsAsFailure(data.status) ? 1 : 0),
 	}));
-}
-
-/** 进「今日失败」那一格的两态 —— 与服务端 aggregateDaily 同口径。 */
-function isFailure(status: PushEventView["status"]): boolean {
-	return status === "failed" || status === "partial";
 }
 
 /**
@@ -180,9 +177,9 @@ function patchDailyBucket(
 /** 追加消息把一行的成败翻了面 → 今日失败数跟着 ±1。行数不变,别动 total 与分类计数。 */
 function patchDailyFailureFlip(qc: QueryClient, prev: PushEventView, next: PushEventView): void {
 	// 无目标行压根不在日桶里(两头都不数),而且 target 一旦为空就不会再变。
-	if (prev.status === "no-targets" || next.status === "no-targets") return;
-	const before = isFailure(prev.status);
-	const after = isFailure(next.status);
+	if (!countsAsDelivery(prev.status) || !countsAsDelivery(next.status)) return;
+	const before = countsAsFailure(prev.status);
+	const after = countsAsFailure(next.status);
 	if (before === after) return;
 	patchDailyBucket(qc, next.ts, (day) => ({
 		...day,

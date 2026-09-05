@@ -6,19 +6,20 @@
  * ({@link linkScopeKey}),解析器拿到消息只做一次 `policyFor`。
  *
  * 谁怎么算,规则全在这儿:只认群类目标;停用的目标或停用 / 不存在的适配器一律不解析
- * (与周报发送时的「跳过」同一条判定,见 `config/target-pause.ts`;默认行开着、例外显式
+ * (与周报发送时的「跳过」同一条判定,见 internal 的 `isTargetPaused`;默认行开着、例外显式
  * 开着都压不过它);例外引用的目标已经删掉就当没写;不是推送目标的群没有 id,跟默认行;
  * 同一个群配成了两个目标时先出现的那个说了算。
  */
 
 import {
+	groupAddressOf,
+	isTargetPaused,
 	type LinkParsingConfig,
 	type LinkParsingPolicy,
 	linkParsingFor,
 	type PushAdapter,
 	type PushTarget,
 } from "@bilibili-notify/internal";
-import { isTargetPaused } from "../config/target-pause.js";
 
 /** 一个群在链接解析里的身份:平台、来自哪条连接、群地址(OneBot 群号 / 官机群 openid)。 */
 export function linkScopeKey(platform: string, adapterId: string, groupId: string): string {
@@ -53,16 +54,4 @@ export function resolveLinkParsingPolicies({
 	}
 	const stranger: LinkParsingPolicy = linkParsingFor(config, undefined);
 	return { policyFor: (key) => byKey.get(key) ?? stranger };
-}
-
-/** 群目标的地址 —— 与入站帧里 `groupId` 同一个值。没有入站的平台(webhook)没有地址。 */
-function groupAddressOf(target: PushTarget): string | undefined {
-	switch (target.platform) {
-		case "onebot":
-			return target.session.groupId;
-		case "qq-official":
-			return target.session.groupOpenid;
-		default:
-			return undefined;
-	}
 }

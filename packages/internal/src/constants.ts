@@ -719,6 +719,39 @@ export function platformSupportsAtAll(platform: (typeof PUSH_TARGET_PLATFORMS)[n
 }
 
 /**
+ * 「这个推送目标现在算不算暂停」。目标自己的开关关了,或它挂在一个已停用的适配器下面
+ * (投递层对这两种情况一律回不可达),都算。
+ *
+ * 住在这里而不是服务端:面板上的「已停用」标记与运行时的「跳过」必须是同一句话 ——
+ * 前端只看 `target.enabled` 的话,适配器停用的目标在选择器里显示为启用,发的时候却被
+ * 跳过。入参按形状收,免得为了两个类型把 schema 拖进这个零依赖模块。
+ */
+export function isTargetPaused(
+	target: { enabled: boolean; adapterId: string },
+	adapters: readonly { id: string; enabled: boolean }[],
+): boolean {
+	if (!target.enabled) return true;
+	return !adapters.find((a) => a.id === target.adapterId)?.enabled;
+}
+
+/**
+ * 一行历史的四态。词表在这儿(schema 用它 enum),两个谓词也在这儿 —— 服务端的按日
+ * 聚合与面板上的乐观补丁吃的是同一份口径,各写一遍的话,加第五态时只会改一边:KPI
+ * 两头对不上,而门禁一点都不红。
+ */
+export const PUSH_STATUSES = ["delivered", "partial", "failed", "no-targets"] as const;
+
+/** 算不算「推到了某个地方」—— 进不进「今日推送」与趋势图。无目标行没推到任何地方。 */
+export function countsAsDelivery(status: (typeof PUSH_STATUSES)[number]): boolean {
+	return status !== "no-targets";
+}
+
+/** 算不算「今日失败」。部分失败(本体到了、附加没到)也算 —— 有件事该看一眼。 */
+export function countsAsFailure(status: (typeof PUSH_STATUSES)[number]): boolean {
+	return status === "failed" || status === "partial";
+}
+
+/**
  * 链接解析回什么:图片卡,或 QQ 小程序卡(B 站 App「分享到 QQ」那种,点开进小程序播放)。
  * 小程序卡要目标所在的 OneBot 实现能向腾讯签 ark(`get_mini_app_ark`,今天已知只有 NapCat),
  * 签不了的一律回落图片卡。只有这两档,没有「两个都发」。

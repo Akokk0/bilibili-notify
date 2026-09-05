@@ -7,8 +7,8 @@ import type {
 	PushAdapter,
 	PushTarget,
 } from "@bilibili-notify/internal";
+import { isTargetPaused } from "@bilibili-notify/internal";
 import type { ConfigStore } from "../config/store.js";
-import { isTargetPaused } from "../config/target-pause.js";
 import type { PlatformAdapter, ProbeResult } from "../platforms/types.js";
 
 /**

@@ -276,3 +276,35 @@ export const PushTargetSchema = z
 		}
 	});
 export type PushTarget = z.infer<typeof PushTargetSchema>;
+
+/**
+ * 群目标的「群地址」—— 与入站帧里的 `groupId` 是同一个值(OneBot 是群号,官机是群
+ * openid)。没有入站的平台(webhook)没有地址。
+ *
+ * 和 {@link groupSessionFor} 是一对反函数,都住在 session 形状声明的地方:各处自己
+ * 按平台写一个 switch 的话,以后接进来的新平台会在一处落进 default、另一处被列出来,
+ * 群配了却永远匹配不上,还不报错。
+ */
+export function groupAddressOf(target: PushTarget): string | undefined {
+	switch (target.platform) {
+		case "onebot":
+			return target.session.groupId;
+		case "qq-official":
+			return target.session.groupOpenid;
+		default:
+			return undefined;
+	}
+}
+
+/** 群地址 → 该平台的 session。给「回到来源群」造临时目标用(见 groupAddressOf)。 */
+export function groupSessionFor(
+	platform: "onebot",
+	groupId: string,
+): z.infer<typeof OnebotSessionSchema>;
+export function groupSessionFor(
+	platform: "qq-official",
+	groupId: string,
+): z.infer<typeof QQOfficialSessionSchema>;
+export function groupSessionFor(platform: "onebot" | "qq-official", groupId: string) {
+	return platform === "onebot" ? { groupId } : { groupOpenid: groupId };
+}

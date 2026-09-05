@@ -7,8 +7,7 @@
  */
 
 import type { RoastCardUp } from "@bilibili-notify/image";
-import { colorFromUid, type NotificationPayload } from "@bilibili-notify/internal";
-import { isTargetPaused } from "../config/target-pause.js";
+import { colorFromUid, isTargetPaused, type NotificationPayload } from "@bilibili-notify/internal";
 import type { RouteDeps } from "../routes/types.js";
 
 export type RoastDeliverDeps = Pick<RouteDeps, "runtime" | "store">;
@@ -39,7 +38,7 @@ export interface DeliverOutcome {
 	/**
 	 * 因为停用而没发的 targetId(目标自己停用,或它的适配器停用)。**不算失败**:停用是
 	 * 主人自己按的,不该换来一条失败通知;以前把它扔给管线,要退避重试到上限才报「持续
-	 * 不可达」。判定与链接解析白名单同一份(`config/target-pause.ts`)。
+	 * 不可达」。判定与链接解析同一份(internal 的 `isTargetPaused`)。
 	 */
 	skipped: string[];
 	/** 没送出去的,带原因。管线自己已经退避重试过了,到这里就是彻底失败。 */

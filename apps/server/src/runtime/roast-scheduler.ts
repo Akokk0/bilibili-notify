@@ -10,9 +10,13 @@
  * 周报 / 月报 / 季报这类组合。
  */
 
-import type { Logger, NotificationPayload, RoastSchedule } from "@bilibili-notify/internal";
+import {
+	isTargetPaused,
+	type Logger,
+	type NotificationPayload,
+	type RoastSchedule,
+} from "@bilibili-notify/internal";
 import { CronJob } from "cron";
-import { isTargetPaused } from "../config/target-pause.js";
 import {
 	type BoardLike,
 	buildRoastPayload,

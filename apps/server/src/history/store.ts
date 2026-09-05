@@ -16,7 +16,13 @@ import type {
 	PushKind,
 	PushStatus,
 } from "@bilibili-notify/internal";
-import { HistoryEntrySchema, HistoryPatchSchema, PushKindSchema } from "@bilibili-notify/internal";
+import {
+	countsAsDelivery,
+	countsAsFailure,
+	HistoryEntrySchema,
+	HistoryPatchSchema,
+	PushKindSchema,
+} from "@bilibili-notify/internal";
 
 /**
  * 推送历史:jsonl-by-day 持久化 + bus 广播。
@@ -364,11 +370,12 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				if (!Number.isFinite(ms)) continue;
 				const bucket = byDay.get(localKey(ms));
 				if (!bucket) continue;
-				// 「今日推送」数的是推到了多少个地方 —— 无目标行没推到任何地方,不进计数。
-				if (entry.status === "no-targets") continue;
+				// 「今日推送」数的是推到了多少个地方,「今日失败」把部分失败也算进去 ——
+				// 两条口径与面板上的乐观补丁同吃 internal 的那一份。
+				if (!countsAsDelivery(entry.status)) continue;
 				bucket.counts[entry.kind] += 1;
 				bucket.total += 1;
-				if (entry.status === "failed" || entry.status === "partial") bucket.failures += 1;
+				if (countsAsFailure(entry.status)) bucket.failures += 1;
 			}
 		}
 		return out;
