@@ -85,6 +85,18 @@ jobs:
         id: ver
         run: bash .github/scripts/read-standalone-version.sh
 
+      # 通知卡上念的那句概述,从 apps/CHANGELOG.md 该版本段的第一段抽(规矩见
+      # .claude/skills/release/changelog.md)。放在构建之前:找不到该段 / 概述为空 / 超长
+      # 都在这里就红,不用等十分钟的构建跑完;签一份空 notes 出去才是没人会发现的那种错。
+      - name: Read release summary from CHANGELOG
+        id: notes
+        env:
+          VERSION: ${{ steps.ver.outputs.value }}
+        run: |
+          set -euo pipefail
+          summary=$(node scripts/changelog-section.mjs --version "$VERSION" --part summary)
+          echo "value=$summary" >> "$GITHUB_OUTPUT"
+
       # 版本号只在构建前临时写进各处元数据,不回写仓库(同 Docker / Desktop 两条路)。
       # 载荷里那份 package.json 的 version 就是从这来的 —— 也就是客户端升级后
       # `/api/health` 报出来的版本。
@@ -126,6 +138,7 @@ jobs:
           REPO: ${{ github.repository }}
           SHA256: ${{ steps.payload.outputs.sha256 }}
           SIZE: ${{ steps.payload.outputs.size }}
+          NOTES: ${{ steps.notes.outputs.value }}
         run: |
           set -euo pipefail
           if [ -z "${BN_UPDATE_SIGNING_KEY}" ]; then
@@ -139,6 +152,7 @@ jobs:
             --sha256 "$SHA256" \
             --size "$SIZE" \
             --release-url "https://github.com/${REPO}/releases/tag/v${VERSION}" \
+            --notes "$NOTES" \
             --out dist/manifest
           echo "signed=true" >> "$GITHUB_OUTPUT"
 

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
@@ -149,5 +149,17 @@ describe("CLI:workflow 用的入口", () => {
 		expect(r.status).toBe(1);
 		expect(r.stderr).toContain("::error::");
 		expect(r.stdout).toBe("");
+	});
+});
+
+// 发版链两端隔着一次发版才各跑一次:这里核对 workflow 真的把概述喂进了签名脚本 ——
+// 抽概述那步被删、或 `--notes` 被漏掉,清单会带着空 notes 静默过关,只有下一版的
+// 通知卡上少了那句话才有人发现。
+describe("update-payload.yml 把概述喂进清单", () => {
+	const wf = readFileSync(join(repoRoot, ".github/workflows/update-payload.yml"), "utf8");
+
+	it("从 CHANGELOG 抽概述,再传给 sign-update-manifest 的 --notes", () => {
+		expect(wf).toContain('node scripts/changelog-section.mjs --version "$VERSION" --part summary');
+		expect(wf).toMatch(/sign-update-manifest\.mjs[\s\S]*--notes "\$NOTES"/);
 	});
 });
