@@ -14,6 +14,7 @@
 import type { VideoInfo, VideoRef } from "@bilibili-notify/api";
 import type { CardColorOptions, Dynamic, RenderPriority } from "@bilibili-notify/image";
 import {
+	type AdapterCapabilities,
 	type CardBlock,
 	type DeliveryResult,
 	extractVideoLinks,
@@ -35,6 +36,9 @@ import { videoToDynamic } from "./video-card.js";
 const MAX_LINKS_PER_MESSAGE = 3;
 
 const BUDGET_WINDOW_MS = 60_000;
+
+/** 同一条连接的能力最多这么久重探一次 —— 探不出来时别每条消息都赔一次超时。 */
+const CAPABILITY_REPROBE_MS = 60_000;
 
 /**
  * 有容量上限的「最近碰过」表。Map 按插入序遍历,每次 set 先 delete 再 set,最久没碰的永远
@@ -112,6 +116,13 @@ export interface LinkParserOptions {
 	presentation: () => LinkCardPresentation;
 	/** 往来源群发 —— 由接线层用收到这一帧的那个 adapter 实现。 */
 	send: (dest: LinkReplyDestination, payload: NotificationPayload) => Promise<DeliveryResult>;
+	/**
+	 * 目的地所在适配器的平台能力(探测结果的缓存);没有能力概念的平台(官机)回 undefined =
+	 * 什么都发不了。形式选了小程序卡时据它决定发小程序卡还是回落图片卡。
+	 */
+	capabilities: (dest: LinkReplyDestination) => AdapterCapabilities | undefined;
+	/** 还没探出来时主动探一次(零副作用);不实现就当探不了。 */
+	probeCapabilities?: (dest: LinkReplyDestination) => Promise<AdapterCapabilities | undefined>;
 	now?: () => number;
 	/** 硬上限,缺省 {@link LINK_LIMITS};测试用小数字把边界拉到眼前。 */
 	limits?: Partial<LinkLimits>;
@@ -122,9 +133,6 @@ export interface LinkParser {
 	handleMessage(msg: InboundLinkMessage): Promise<void>;
 }
 
-/** `renderer()` 交出来的那个东西 —— 取一次传下去,一次处理里不重复现取。 */
-type Renderer = NonNullable<ReturnType<LinkParserOptions["renderer"]>>;
-
 export function createLinkParser(opts: LinkParserOptions): LinkParser {
 	const now = opts.now ?? (() => Date.now());
 	const limits: LinkLimits = { ...LINK_LIMITS, ...opts.limits };
@@ -132,6 +140,8 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 	const lastSeen = new RecencyTable<number>(limits.tableCap);
 	/** `平台:adapterId:群` → 最近一分钟里开始处理的时刻。 */
 	const groupStarts = new RecencyTable<number[]>(limits.tableCap);
+	/** `平台:adapterId` → 上次探能力的时刻。 */
+	const lastProbeAt = new RecencyTable<number>(limits.tableCap);
 	/** 全局正在处理(取信息 / 渲染 / 发送)的链接数。 */
 	let inflight = 0;
 
@@ -168,8 +178,66 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 		return resolved ? directRef(resolved) : null;
 	}
 
-	async function replyWithCard(renderer: Renderer, dest: LinkReplyDestination, ref: VideoRef) {
+	/**
+	 * 小程序卡的四个字段就是视频信息里的四样。简介太长腾讯那边显示不下,截前 80 字;空的
+	 * 用 UP 名顶上 —— 卡上那行小字空着很难看。
+	 */
+	function miniAppCardOf(info: VideoInfo): NotificationPayload {
+		const desc = info.desc.trim().slice(0, 80);
+		return {
+			kind: "miniapp-card",
+			title: info.title,
+			desc: desc || info.owner.name,
+			picUrl: info.pic,
+			jumpUrl: `https://www.bilibili.com/video/${info.bvid}`,
+		};
+	}
+
+	/**
+	 * 这个目的地现在能不能发小程序卡。还没探出来就先探一次(空参数探接口,零副作用);
+	 * 探完仍未知按不能算 —— 不拿一张注定发不出去的卡去试,那一趟是真向腾讯要卡。
+	 *
+	 * 探不出来的适配器(连不上 / 回自己的错误码)会一直停在「未探测」,不能每条消息都
+	 * 为它赔一次超时:同一条连接 {@link CAPABILITY_REPROBE_MS} 内只探一次。健康探测每
+	 * 五分钟也会补探未知的,这里只兜住「服务刚起来、还没轮到健康探测」那一小段。
+	 */
+	async function canSendMiniAppCard(dest: LinkReplyDestination): Promise<boolean> {
+		let caps = opts.capabilities(dest);
+		if (caps?.miniAppCard.state === "unknown" && opts.probeCapabilities) {
+			const key = `${dest.platform}:${dest.adapterId}`;
+			const last = lastProbeAt.get(key);
+			if (last === undefined || now() - last >= CAPABILITY_REPROBE_MS) {
+				lastProbeAt.set(key, now());
+				caps = await opts.probeCapabilities(dest);
+			}
+		}
+		return caps?.miniAppCard.state === "supported";
+	}
+
+	/**
+	 * 发什么:小程序卡(形式 × 能力由调用方算好)发失败就回落图片卡,群里不会空着。
+	 * 缓存翻不翻由适配器自己定(只有再收到 1404 才翻),这里不猜。
+	 */
+	async function reply(dest: LinkReplyDestination, ref: VideoRef, useMiniApp: boolean) {
 		const info = await opts.api.getVideoInfo(ref);
+		if (useMiniApp) {
+			const result = await opts.send(dest, miniAppCardOf(info));
+			if (result.ok) {
+				opts.logger.info(
+					`[link] 已回复小程序卡 group=${dest.groupId} ${info.bvid}(${result.latencyMs}ms)`,
+				);
+				return;
+			}
+			opts.logger.warn(
+				`[link] 小程序卡发送失败 group=${dest.groupId} ${info.bvid}: ${result.err},回落图片卡`,
+			);
+		}
+		await replyWithImageCard(dest, info);
+	}
+
+	async function replyWithImageCard(dest: LinkReplyDestination, info: VideoInfo) {
+		const renderer = opts.renderer();
+		if (!renderer) return;
 		// 低优先级:谁都能触发的卡,不能排在开播 / 动态卡前面。让路由渲染队列按车道做
 		// (渲染器那级与浏览器闸那级都认),不靠这里数自己发了几张。
 		const { colors, layout } = opts.presentation();
@@ -207,13 +275,19 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 			const scope = linkScopeKey(msg.platform, msg.adapterId, msg.groupId);
 			const policy = opts.policyFor(scope);
 			if (!policy.parse) return;
-			const renderer = opts.renderer();
-			if (!renderer) return;
+			// 图片卡要渲染器,没有 Chrome 时整个功能静默不动、也不记账;小程序卡不用它 ——
+			// 那一档得先问过适配器(见下)。
+			if (policy.form === "image" && !opts.renderer()) return;
 			const dest: LinkReplyDestination = {
 				platform: msg.platform,
 				adapterId: msg.adapterId,
 				groupId: msg.groupId,
 			};
+			// 这条消息里的链接真能发出什么:小程序卡要形式选了且这个适配器签得了,签不了就
+			// 回落图片卡 —— 而图片卡又没渲染器的话,一张也发不出来。问在记账之前:什么都发
+			// 不出去的链接不该白吃冷却与群额度,不然适配器一恢复,同一条链接还得等冷却过去。
+			const useMiniApp = policy.form === "miniapp" && (await canSendMiniAppCard(dest));
+			if (!useMiniApp && !opts.renderer()) return;
 			const cooldownMs = config.cooldownSeconds * 1000;
 			for (const linkRef of refs) {
 				try {
@@ -247,7 +321,7 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 							if (coolingDown(vKey, cooldownMs)) continue;
 							markCooldown(vKey, cooldownMs);
 						}
-						await replyWithCard(renderer, dest, ref);
+						await reply(dest, ref, useMiniApp);
 					} finally {
 						inflight--;
 					}

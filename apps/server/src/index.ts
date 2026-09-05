@@ -483,6 +483,12 @@ export async function startStandaloneServer(
 		// OneBot 的 groupId 是群号,官机的是群 openid —— 临时目标按平台各造各的。
 		// `engines` 是个会被热重载赋值的 let,闭包里 TS 收不窄;这一刻它一定在(上面刚建的)。
 		const runtimeEngines = engines;
+		// 回到来源群用的是收到那一帧的适配器:配置里那条 + 它所属平台的实现,两者都在才发得出。
+		const replyRoute = (platform: LinkSourcePlatform, adapterId: string) => {
+			const adapter = runtime.configStore.getAdapters().find((a) => a.id === adapterId);
+			const platformAdapter = adapters.find((a) => a.platforms.includes(platform));
+			return adapter && platformAdapter ? { adapter, platformAdapter } : null;
+		};
 		const linkParser = createLinkParser({
 			logger: log,
 			// 开关与呈现都从引擎拿:随 config-changed 刷新的快照,呈现规则与推送的动态卡同源。
@@ -491,12 +497,20 @@ export async function startStandaloneServer(
 			api: runtimeEngines.api,
 			renderer: () => runtimeEngines.imageRenderer,
 			presentation: () => runtimeEngines.linkCardPresentation(),
+			capabilities: ({ platform, adapterId }) => {
+				const route = replyRoute(platform, adapterId);
+				return route?.platformAdapter.capabilities?.(route.adapter);
+			},
+			probeCapabilities: async ({ platform, adapterId }) => {
+				const route = replyRoute(platform, adapterId);
+				return route?.platformAdapter.probeCapabilities?.(route.adapter);
+			},
 			send: async ({ platform, adapterId, groupId }, payload) => {
-				const adapter = runtime.configStore.getAdapters().find((a) => a.id === adapterId);
-				const platformAdapter = adapters.find((a) => a.platforms.includes(platform));
-				if (!adapter || !platformAdapter) {
+				const route = replyRoute(platform, adapterId);
+				if (!route) {
 					return { ok: false, latencyMs: 0, err: `adapter not found: adapterId=${adapterId}` };
 				}
+				const { adapter, platformAdapter } = route;
 				const common = {
 					id: `link-reply:${groupId}`,
 					name: "链接解析回复",

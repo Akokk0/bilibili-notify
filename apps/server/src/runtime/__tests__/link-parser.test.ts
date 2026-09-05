@@ -10,6 +10,7 @@
 import type { VideoInfo, VideoRef } from "@bilibili-notify/api";
 import type { CardColorOptions, Dynamic, RenderPriority } from "@bilibili-notify/image";
 import type {
+	AdapterCapabilities,
 	CardBlock,
 	DeliveryResult,
 	LinkParsingConfig,
@@ -77,7 +78,13 @@ const COLORS: CardColorOptions = { cardColorStart: "#111111", backgroundImage: "
 function makeParser(
 	over: Partial<LinkParsingConfig> = {},
 	limits?: Partial<LinkLimits>,
-	extra: { policyFor?: (key: string) => LinkParsingPolicy } = {},
+	extra: {
+		policyFor?: (key: string) => LinkParsingPolicy;
+		capabilities?: (dest: LinkReplyDestination) => AdapterCapabilities | undefined;
+		probeCapabilities?: (dest: LinkReplyDestination) => Promise<AdapterCapabilities | undefined>;
+		/** 每条 payload 的投递结果;缺省全部成功。 */
+		sendResult?: (payload: NotificationPayload) => DeliveryResult;
+	} = {},
 ) {
 	const config: LinkParsingConfig = {
 		enabled: true,
@@ -100,13 +107,18 @@ function makeParser(
 	const send = vi.fn(
 		async (dest: LinkReplyDestination, payload: NotificationPayload): Promise<DeliveryResult> => {
 			sent.push({ dest, payload });
-			return { ok: true, latencyMs: 1 };
+			return extra.sendResult?.(payload) ?? { ok: true, latencyMs: 1 };
 		},
+	);
+	const probeCapabilities = vi.fn(
+		extra.probeCapabilities ?? (async (_dest: LinkReplyDestination) => undefined),
 	);
 	let now = 1_000_000;
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
 	const readConfig = vi.fn(() => config);
-	const renderer = vi.fn(() => ({ generateDynamicCard }));
+	const renderer = vi.fn((): { generateDynamicCard: typeof generateDynamicCard } | null => ({
+		generateDynamicCard,
+	}));
 	const parser = createLinkParser({
 		logger,
 		config: readConfig,
@@ -116,6 +128,8 @@ function makeParser(
 		send,
 		now: () => now,
 		policyFor: extra.policyFor ?? (() => ({ parse: true, form: "image" })),
+		capabilities: extra.capabilities ?? (() => undefined),
+		probeCapabilities,
 		...(limits ? { limits } : {}),
 	});
 	return {
@@ -128,6 +142,7 @@ function makeParser(
 		generateDynamicCard,
 		send,
 		sent,
+		probeCapabilities,
 		advance(ms: number) {
 			now += ms;
 		},
@@ -228,6 +243,7 @@ describe("createLinkParser", () => {
 				presentation: () => ({}),
 				send: h.send,
 				policyFor: () => ({ parse: true, form: "image" }),
+				capabilities: () => undefined,
 			});
 			await feed(parser, groupFrame("https://b23.tv/abc123"));
 			expect(h.resolveShortLink).not.toHaveBeenCalled();
@@ -243,6 +259,7 @@ describe("createLinkParser", () => {
 				presentation: () => ({}),
 				send: h.send,
 				policyFor: () => ({ parse: true, form: "image" }),
+				capabilities: () => undefined,
 			});
 			await feed(parser, groupFrame(LINK));
 			expect(h.getVideoInfo).not.toHaveBeenCalled();
@@ -514,6 +531,150 @@ describe("createLinkParser", () => {
 				cardLinks: [],
 			});
 			expect(h.sent).toHaveLength(1);
+		});
+	});
+	// 形式(图片卡 / 小程序卡)× 适配器能力 → 发什么、失败怎么回落。能力本身怎么探在
+	// onebot 适配器那边守,这里只看解析器拿着答案做没做对。
+	describe("回复形式(图片卡 / 小程序卡)", () => {
+		const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
+		const miniapp = () => ({ parse: true, form: "miniapp" as const });
+		const caps = (state: "supported" | "unsupported" | "unknown"): AdapterCapabilities => ({
+			miniAppCard:
+				state === "supported"
+					? { state, checkedAt: 1 }
+					: state === "unsupported"
+						? { state, reason: "没有接口", checkedAt: 1 }
+						: { state },
+		});
+		const MINIAPP_CARD: NotificationPayload = {
+			kind: "miniapp-card",
+			title: "示例标题",
+			desc: "示例简介",
+			picUrl: "http://i0.hdslb.com/bfs/archive/cover.jpg",
+			jumpUrl: "https://www.bilibili.com/video/BV1zMtU6uEEb",
+		};
+
+		it("形式=小程序卡、适配器支持 → 发小程序卡,字段来自视频信息;不碰渲染器", async () => {
+			const h = makeParser({}, undefined, {
+				policyFor: miniapp,
+				capabilities: () => caps("supported"),
+			});
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent.map((s) => s.payload)).toEqual([MINIAPP_CARD]);
+			expect(h.generateDynamicCard).not.toHaveBeenCalled();
+			expect(h.probeCapabilities).not.toHaveBeenCalled();
+		});
+
+		it("适配器不支持 → 回落图片卡,和形式=图片卡一样", async () => {
+			const h = makeParser({}, undefined, {
+				policyFor: miniapp,
+				capabilities: () => caps("unsupported"),
+			});
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent.map((s) => s.payload.kind)).toEqual(["image"]);
+			expect(h.generateDynamicCard).toHaveBeenCalledTimes(1);
+		});
+
+		it("还没探出来 → 先探一次再决定:探出支持就发小程序卡", async () => {
+			const h = makeParser({}, undefined, {
+				policyFor: miniapp,
+				capabilities: () => caps("unknown"),
+				probeCapabilities: async () => caps("supported"),
+			});
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.probeCapabilities).toHaveBeenCalledTimes(1);
+			expect(h.probeCapabilities).toHaveBeenCalledWith({
+				platform: "onebot",
+				adapterId: ADAPTER,
+				groupId: String(GROUP),
+			});
+			expect(h.sent.map((s) => s.payload.kind)).toEqual(["miniapp-card"]);
+		});
+
+		it("探完仍未知 → 图片卡,不拿一张注定发不出去的卡去试", async () => {
+			const h = makeParser({}, undefined, {
+				policyFor: miniapp,
+				capabilities: () => caps("unknown"),
+				probeCapabilities: async () => caps("unknown"),
+			});
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent.map((s) => s.payload.kind)).toEqual(["image"]);
+		});
+
+		it("小程序卡发送失败 → 同一条链接回落图片卡,群里不会空着", async () => {
+			const h = makeParser({}, undefined, {
+				policyFor: miniapp,
+				capabilities: () => caps("supported"),
+				sendResult: (p) =>
+					p.kind === "miniapp-card"
+						? { ok: false, latencyMs: 1, err: "签小程序卡失败: packet 后端未就绪" }
+						: { ok: true, latencyMs: 1 },
+			});
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent.map((s) => s.payload.kind)).toEqual(["miniapp-card", "image"]);
+		});
+
+		it("平台没有能力概念(官机)→ 形式选了小程序卡也回图片卡", async () => {
+			const h = makeParser({}, undefined, { policyFor: miniapp, capabilities: () => undefined });
+			await h.parser.handleMessage({
+				platform: "qq-official",
+				adapterId: ADAPTER,
+				groupId: "G_OPENID",
+				userId: "M_OPENID",
+				text: LINK,
+				cardLinks: [],
+			});
+			expect(h.sent.map((s) => s.payload.kind)).toEqual(["image"]);
+		});
+
+		it("没有渲染器:支持小程序卡照发;要回落图片卡时才无事可做", async () => {
+			const ok = makeParser({}, undefined, {
+				policyFor: miniapp,
+				capabilities: () => caps("supported"),
+			});
+			ok.renderer.mockReturnValue(null);
+			await feed(ok.parser, groupFrame(LINK));
+			expect(ok.sent.map((s) => s.payload.kind)).toEqual(["miniapp-card"]);
+
+			const none = makeParser({}, undefined, {
+				policyFor: miniapp,
+				capabilities: () => caps("unsupported"),
+			});
+			none.renderer.mockReturnValue(null);
+			await feed(none.parser, groupFrame(LINK));
+			expect(none.sent).toHaveLength(0);
+		});
+
+		it("一张也发不出来时不吃冷却:适配器一恢复,同一条链接立刻出卡", async () => {
+			// 形式=小程序卡、适配器签不了、又没有渲染器 —— 回落无门。这一趟要是把冷却记上,
+			// 主人把 Chrome 装好 / 适配器连上之后,还得干等一整个冷却才看得到卡。
+			let state: "unsupported" | "supported" = "unsupported";
+			const h = makeParser({}, undefined, {
+				policyFor: miniapp,
+				capabilities: () => caps(state),
+			});
+			h.renderer.mockReturnValue(null);
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent).toHaveLength(0);
+
+			state = "supported";
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent.map((s) => s.payload.kind)).toEqual(["miniapp-card"]);
+		});
+
+		it("探不出来的适配器一分钟内只探一次 —— 每条消息赔一次超时太贵", async () => {
+			const h = makeParser({}, undefined, {
+				policyFor: miniapp,
+				capabilities: () => caps("unknown"),
+				probeCapabilities: async () => caps("unknown"),
+			});
+			await feed(h.parser, groupFrame(LINK));
+			await feed(h.parser, groupFrame("另一个 https://www.bilibili.com/video/BV1xx411c7mD"));
+			expect(h.probeCapabilities).toHaveBeenCalledTimes(1);
+
+			h.advance(60_000);
+			await feed(h.parser, groupFrame("再一个 https://www.bilibili.com/video/BV1yy411c7mE"));
+			expect(h.probeCapabilities).toHaveBeenCalledTimes(2);
 		});
 	});
 });
