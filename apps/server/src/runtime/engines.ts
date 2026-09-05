@@ -24,7 +24,7 @@ import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-no
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { LiveListenerSnapshot } from "@bilibili-notify/contract";
 import {
-	atAllOptsForDynamicKind,
+	broadcastOptsForDynamicKind,
 	DynamicEngine,
 	type DynamicEngineConfig,
 	type PushLike as DynamicPushLike,
@@ -41,10 +41,10 @@ import type {
 	FeatureKey,
 	GlobalConfig,
 	GlobalDefaults,
-	HistorySource,
 	LinkParsingConfig,
 	NotificationPayload,
 	PayloadSegment,
+	PushKind,
 	PushTarget,
 	Subscription,
 	SubscriptionOp,
@@ -59,7 +59,7 @@ import {
 	type SubscriptionsView as LiveSubsView,
 	type SubItemView as LiveSubView,
 } from "@bilibili-notify/live";
-import { BilibiliPush } from "@bilibili-notify/push";
+import { BilibiliPush, type BroadcastOptions } from "@bilibili-notify/push";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { attachReadOnlyTools } from "../ai/read-only-tools.js";
 import type { ConfigStore } from "../config/store.js";
@@ -74,6 +74,7 @@ import { syncFollows } from "./follow-sync.js";
 import { resolveLinkParsingScope } from "./link-scope.js";
 import { MasterNotifier } from "./master-notifier.js";
 import { createMuteState, type MuteState } from "./mute-state.js";
+import { historyRecordFromSend } from "./push-history.js";
 import type { NodeServiceContext } from "./service-context.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
@@ -274,30 +275,18 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		defaults: () => globals().defaults,
 		muted: () => muteState.isMuted(),
 		onSend: (info) => {
-			// 私聊不走 history(语义上是给主人的运行状态通知,不是订阅推送)。
-			if (info.private) return;
-			const sub = opts.subscriptionStore.findByUid(info.uid);
-			const rt = sub ? opts.subRuntimeStore.get(sub.id) : undefined;
+			// 一次推送 × 一个目标 = 历史一行;无目标那次也记(面板上才看得见)。
+			const input = historyRecordFromSend(info, {
+				subscriptionIdOf: (uid) => opts.subscriptionStore.findByUid(uid)?.id,
+				profileOf: (uid) => {
+					const sub = opts.subscriptionStore.findByUid(uid);
+					return sub ? opts.subRuntimeStore.get(sub.id)?.cachedProfile : undefined;
+				},
+			});
+			if (!input) return;
 			void opts.historyStore
-				.append({
-					source: featureToHistorySource(info.feature),
-					uid: info.uid,
-					subscriptionId: sub?.id ?? info.target.id,
-					targets: [
-						{
-							targetId: info.target.id,
-							ok: info.result.ok,
-							latencyMs: info.result.latencyMs,
-							err: info.result.err,
-						},
-					],
-					payload: info.payload,
-					// Snapshot UP 主当时的名字 / 头像。订阅以后被删除,Dashboard 的
-					// timeline / history 仍能正确显示「当时是谁」,不退化成 UID 占位。
-					unameSnapshot: rt?.cachedProfile?.name,
-					uavatarSnapshot: rt?.cachedProfile?.avatar,
-				})
-				.catch((e) => log.warn(`[history] append failed: ${String(e)}`));
+				.record(input)
+				.catch((e) => log.warn(`[history] record failed: ${String(e)}`));
 		},
 	});
 	push.start();
@@ -423,17 +412,27 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	// ---------- DynamicEngine ----------
 	const dynamicPushLike: DynamicPushLike = {
-		async broadcastDynamic(uid, segments, kind) {
+		async broadcastDynamic(uid, segments, kind, o) {
 			const payload = pushSegmentsToPayload(segments);
-			// kind="dynamic-images"(图集附图)是主卡片之后的附属推送,显式抑制 @全体 ——
-			// 否则一条 DRAW 动态会在主卡片和图集各 @ 一次(用户报告的「重复艾特全体」)。
-			await push.broadcastToFeature(uid, "dynamic", payload, atAllOptsForDynamicKind(kind));
+			// kind="dynamic-images"(图集附图)是主卡片之后的附加项:同一个 pushId 追加到历史
+			// 同一行,并显式抑制 @全体 —— 否则一条 DRAW 动态会在主卡片和图集各 @ 一次。
+			await push.broadcastToFeature(
+				uid,
+				"dynamic",
+				payload,
+				broadcastOptsForDynamicKind(kind, o?.pushId),
+			);
 		},
-		async broadcastDynamicSequence(uid, messages, kind) {
+		async broadcastDynamicSequence(uid, messages, kind, o) {
 			// 消息版式分条:多条 payload 交给 BilibiliPush 的序列语义(同 target 顺序发、
 			// 某条失败中止该 target 后续条、@全体只跟首条之前)。
 			const payloads = messages.map(pushSegmentsToPayload);
-			await push.broadcastToFeature(uid, "dynamic", payloads, atAllOptsForDynamicKind(kind));
+			await push.broadcastToFeature(
+				uid,
+				"dynamic",
+				payloads,
+				broadcastOptsForDynamicKind(kind, o?.pushId),
+			);
 		},
 		sendPrivateMsg: (text) => push.sendPrivateMsg(text),
 		sendErrorMsg: (text) => push.sendErrorMsg(text),
@@ -515,23 +514,24 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	// ---------- LiveEngine ----------
 	const livePushLike: LivePushLike = {
-		async broadcastToTargets(uid, content, type) {
-			const feature = liveTypeToFeature(type as number);
-			const segments = segmentToPayload(content);
-			const payload = collapseSegments(segments);
-			// 仅开播(StartBroadcasting)可 @全体;周期「正在直播」等也翻译成 feature
-			// "live",必须显式抑制,否则每条直播推送都 @全体。
-			await push.broadcastToFeature(uid, feature, payload, {
-				allowAtAll: liveTypeAllowsAtAll(type as number),
-			});
+		async broadcastToTargets(uid, content, type, o) {
+			const payload = collapseSegments(segmentToPayload(content));
+			await push.broadcastToFeature(
+				uid,
+				liveTypeToFeature(type as number),
+				payload,
+				liveBroadcastOpts(type as number, o),
+			);
 		},
-		async broadcastSequenceToTargets(uid, contents, type) {
+		async broadcastSequenceToTargets(uid, contents, type, o) {
 			// 消息版式分条(目前仅开播):语义同 dynamic 端 broadcastDynamicSequence。
-			const feature = liveTypeToFeature(type as number);
 			const payloads = contents.map((c) => collapseSegments(segmentToPayload(c)));
-			await push.broadcastToFeature(uid, feature, payloads, {
-				allowAtAll: liveTypeAllowsAtAll(type as number),
-			});
+			await push.broadcastToFeature(
+				uid,
+				liveTypeToFeature(type as number),
+				payloads,
+				liveBroadcastOpts(type as number, o),
+			);
 		},
 		sendPrivateMsg: (text) => push.sendPrivateMsg(text),
 	};
@@ -1008,8 +1008,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					"liveEnd",
 					"liveGuardBuy",
 					"superchat",
-					"wordcloud",
-					"liveSummary",
 					"specialDanmaku",
 					"specialUserEnter",
 				];
@@ -1048,36 +1046,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 // ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------
-
-/**
- * BilibiliPush 的 FeatureKey(或 master notify 走的 "private")映射到 history
- * schema 的 7 个分类 source 值。dynamic-engine / live-engine 在 push 时只携带
- * 一个 feature 字段,这里集中翻译,避免每个调用点散列。
- */
-function featureToHistorySource(feature: string): HistorySource {
-	switch (feature) {
-		case "dynamic":
-		case "dynamicAtAll":
-			return "dynamic";
-		case "live":
-		case "liveAtAll":
-		case "liveEnd":
-			return "live";
-		case "liveGuardBuy":
-			return "guard";
-		case "superchat":
-			return "sc";
-		case "wordcloud":
-		case "liveSummary":
-			return "live-summary";
-		case "specialDanmaku":
-			return "special-danmaku";
-		case "specialUserEnter":
-			return "special-enter";
-		default:
-			return "dynamic";
-	}
-}
 
 function pushSegmentsToPayload(segments: PushSegment[]): NotificationPayload {
 	if (segments.length === 1 && segments[0]?.type === "text") {
@@ -1124,6 +1092,10 @@ function collapseSegments(segments: PayloadSegment[]): NotificationPayload {
 	return { kind: "composite", segments };
 }
 
+/**
+ * LivePushType → 特性键(管开关与路由)。词云(5)/ 总结(10)是下播的附加项,跟着
+ * 下播那把键走;开播(3)与周期「正在直播」(0)共用 live。
+ */
 export function liveTypeToFeature(type: number): FeatureKey {
 	switch (type) {
 		case 0:
@@ -1132,20 +1104,62 @@ export function liveTypeToFeature(type: number): FeatureKey {
 		case 4:
 			return "liveGuardBuy";
 		case 5:
-			return "wordcloud";
+		case 9:
+		case 10:
+			return "liveEnd";
 		case 6:
 			return "superchat";
 		case 7:
 			return "specialDanmaku";
 		case 8:
 			return "specialUserEnter";
-		case 9:
-			return "liveEnd";
-		case 10:
-			return "liveSummary";
 		default:
 			return "live";
 	}
+}
+
+/**
+ * LivePushType → 推送类型(管历史怎么记)。与上面那张表只差一处:周期「正在直播」
+ * 单列一类 —— 它跟开播共用开关与目标,历史上却是两种推送。
+ */
+export function liveTypeToPushKind(type: number): PushKind {
+	switch (type) {
+		case 0:
+			return "live-ongoing";
+		case 3:
+			return "live";
+		case 4:
+			return "guard";
+		case 5:
+		case 9:
+		case 10:
+			return "live-end";
+		case 6:
+			return "sc";
+		case 7:
+			return "special-danmaku";
+		case 8:
+			return "special-enter";
+		default:
+			return "live";
+	}
+}
+
+/**
+ * 直播端一次广播交给推送层的选项:引擎给的 pushId / role 原样带上,再补两样引擎不知道
+ * 的 —— 只有开播允许 @全体(周期复推等也翻译成 feature "live",不显式抑制就每条都 @),
+ * 以及历史里记成哪一类。
+ */
+export function liveBroadcastOpts(
+	type: number,
+	o: { pushId?: string; role?: "main" | "extra" } | undefined,
+): BroadcastOptions {
+	return {
+		pushId: o?.pushId,
+		role: o?.role,
+		allowAtAll: liveTypeAllowsAtAll(type),
+		kind: liveTypeToPushKind(type),
+	};
 }
 
 /**
@@ -1428,8 +1442,8 @@ export function buildLiveSubViewSingle(
 		liveEnd: feat("liveEnd"),
 		liveGuardBuy: feat("liveGuardBuy"),
 		superchat: feat("superchat"),
-		wordcloud: feat("wordcloud"),
-		liveSummary: feat("liveSummary"),
+		// 下播的两个附加项(词云 / 总结)跟着下播的开关与目标走。
+		liveEndExtras: eff.features.liveEndExtras,
 		target: eff.routing,
 		// customCardStyle / aiOverride 只在真有 per-UP override 时生成(对齐 dynamic
 		// 端 buildDynamicSubsView 同名字段)。无 override → enable:false / undefined →
@@ -1586,8 +1600,7 @@ function subscriptionOpsToLive(
 						liveEnd: view.liveEnd,
 						liveGuardBuy: view.liveGuardBuy,
 						superchat: view.superchat,
-						wordcloud: view.wordcloud,
-						liveSummary: view.liveSummary,
+						liveEndExtras: view.liveEndExtras,
 						minScPrice: view.minScPrice,
 						minGuardLevel: view.minGuardLevel,
 						pushTime: view.pushTime,

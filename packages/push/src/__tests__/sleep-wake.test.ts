@@ -192,7 +192,7 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		const results = await push.sendBatch(
 			["a", "b"],
 			{ kind: "text", text: "x" },
-			{ uid: "u1", feature: "live", pushId: "p1", role: "main" },
+			{ uid: "u1", feature: "live", kind: "live", pushId: "p1", role: "main" },
 		);
 
 		// 仅 "a" 触达 sink;generation 1→2 后 "b" 被放弃,不跨生命周期拆发。

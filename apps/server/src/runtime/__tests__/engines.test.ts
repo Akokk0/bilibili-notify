@@ -68,7 +68,7 @@ vi.mock("@bilibili-notify/dynamic", async (importOriginal) => {
 	return {
 		// 纯函数走真实实现(@全体抑制、动态卡配色解析):它们是没有副作用的规则,在这儿
 		// 镜像一份只会跟真实现漂移。只有引擎本体是替身。
-		atAllOptsForDynamicKind: actual.atAllOptsForDynamicKind,
+		broadcastOptsForDynamicKind: actual.broadcastOptsForDynamicKind,
 		resolveDynamicColorOptions: actual.resolveDynamicColorOptions,
 		DynamicEngine: class {
 			opts: any;
@@ -161,12 +161,12 @@ describe("apps/server adapter live-type map (cross-end mirror)", () => {
 		expect(liveTypeToFeature(0)).toBe("live");
 		expect(liveTypeToFeature(3)).toBe("live");
 		expect(liveTypeToFeature(4)).toBe("liveGuardBuy");
-		expect(liveTypeToFeature(5)).toBe("wordcloud");
+		expect(liveTypeToFeature(5)).toBe("liveEnd");
 		expect(liveTypeToFeature(6)).toBe("superchat");
 		expect(liveTypeToFeature(7)).toBe("specialDanmaku");
 		expect(liveTypeToFeature(8)).toBe("specialUserEnter");
 		expect(liveTypeToFeature(9)).toBe("liveEnd");
-		expect(liveTypeToFeature(10)).toBe("liveSummary");
+		expect(liveTypeToFeature(10)).toBe("liveEnd");
 		expect(liveTypeToFeature(999)).toBe("live");
 	});
 
@@ -253,7 +253,7 @@ function setup(opts?: { globals?: GlobalConfig; puppeteer?: boolean; subs?: Subs
 		api: api as any,
 		loginFlow: loginFlow as any,
 		configStore: configStore as unknown as ConfigStore,
-		historyStore: { append: vi.fn(async () => {}) } as any,
+		historyStore: { record: vi.fn(async () => {}) } as any,
 		subscriptionStore: {
 			list: () => subs,
 			findByUid: (uid: string) => subs.find((s) => s.uid === uid),
@@ -1099,7 +1099,7 @@ describe("createEngines — 消息版式", () => {
 		expect(payloads).toHaveLength(2);
 		expect(payloads[0].kind).toBe("image");
 		expect(payloads[1]).toEqual({ kind: "text", text: "开播文案" });
-		expect(opts).toEqual({ allowAtAll: true });
+		expect(opts).toMatchObject({ allowAtAll: true, kind: "live" });
 	});
 
 	it("回归镜像:只改全局 messageLayout → live.applyOps 与 dynamic.applyOps 都收到刷新", () => {

@@ -7,6 +7,7 @@ import type {
 	PushTarget,
 } from "@bilibili-notify/internal";
 import type { ConfigStore } from "../config/store.js";
+import { isTargetPaused } from "../config/target-pause.js";
 import type { PlatformAdapter, ProbeResult } from "../platforms/types.js";
 
 /**
@@ -62,6 +63,12 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 	return {
 		resolve(targetId: string): PushTarget | undefined {
 			return findTarget(targetId);
+		},
+
+		isEnabled(targetId: string): boolean {
+			const target = findTarget(targetId);
+			if (!target) return false;
+			return !isTargetPaused(target, opts.store.getAdapters());
 		},
 
 		isAvailable(targetId: string): boolean {

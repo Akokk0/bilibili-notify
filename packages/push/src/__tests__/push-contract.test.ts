@@ -182,6 +182,21 @@ describe("推送契约:一次广播 × 每个目标回调一次", () => {
 	});
 });
 
+describe("推送契约:推送类型跟着广播走", () => {
+	it("opts.kind 透传到回调;没传就按 feature 推(dynamic → dynamic)", async () => {
+		const { push, seen } = setup(subWith([T1]));
+		await push.broadcastToFeature("u1", "dynamic", M1);
+		await push.broadcastToFeature("u1", "dynamic", M2, { kind: "live-ongoing" });
+		expect(seen.map((s) => s.kind)).toEqual(["dynamic", "live-ongoing"]);
+	});
+
+	it("无目标那次回调也带 kind", async () => {
+		const { push, seen } = setup(subWith([]));
+		await push.broadcastToFeature("u1", "dynamic", M1, { kind: "dynamic" });
+		expect(seen[0]).toMatchObject({ target: null, kind: "dynamic" });
+	});
+});
+
 describe("推送契约:无可用目标", () => {
 	it("没配目标 → target:null 回调一次,消息照带(没有结果),不调 sink,返回空", async () => {
 		const { push, seen, calls } = setup(subWith([]));

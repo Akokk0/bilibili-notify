@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { FeatureKey } from "../constants";
 
 /**
  * 推送类型 —— 配置里能单独开关的每一类算一种,共 8 种。开播与周期「正在直播」共用一把
@@ -15,6 +16,29 @@ export const PushKindSchema = z.enum([
 	"special-enter",
 ]);
 export type PushKind = z.infer<typeof PushKindSchema>;
+
+/**
+ * 特性键 → 推送类型的缺省翻译。只有 `live` 那把键分不出「开播」与周期「正在直播」,
+ * 调用方知道是哪种时显式传,不传就按开播记。
+ */
+export function featureToPushKind(feature: FeatureKey): PushKind {
+	switch (feature) {
+		case "dynamic":
+			return "dynamic";
+		case "live":
+			return "live";
+		case "liveEnd":
+			return "live-end";
+		case "liveGuardBuy":
+			return "guard";
+		case "superchat":
+			return "sc";
+		case "specialDanmaku":
+			return "special-danmaku";
+		case "specialUserEnter":
+			return "special-enter";
+	}
+}
 
 /**
  * 一行历史的四态:

@@ -8,10 +8,11 @@ import type {
 	NotificationPayload,
 	NotificationSink,
 	PayloadSegment,
+	PushKind,
 	PushTarget,
 	ServiceContext,
 } from "@bilibili-notify/internal";
-import { inQuietHours, resolve } from "@bilibili-notify/internal";
+import { featureToPushKind, inQuietHours, resolve } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 
 /**
@@ -51,6 +52,8 @@ interface PushSendBase {
 	pushId: string;
 	uid: string;
 	feature: FeatureKey;
+	/** 历史里记成哪一类推送(8 类之一)。 */
+	kind: PushKind;
 }
 
 /**
@@ -72,6 +75,7 @@ export type PushSendInfo =
 export interface SendContext {
 	uid: string;
 	feature: FeatureKey;
+	kind: PushKind;
 	pushId: string;
 	role: PushMessageRole;
 }
@@ -83,6 +87,11 @@ export interface BroadcastOptions {
 	allowAtAll?: boolean;
 	/** 这一段消息是本体还是附加项;缺省本体。@全体 不由它管,恒为附加项。 */
 	role?: PushMessageRole;
+	/**
+	 * 历史里记成哪一类推送。缺省按 feature 翻译;只有 `live` 那把键分不出开播与周期
+	 * 「正在直播」,调用方知道是哪种时显式传。
+	 */
+	kind?: PushKind;
 }
 
 /** Options for constructing a BilibiliPush instance. */
@@ -279,6 +288,7 @@ export class BilibiliPush {
 		const ctx: SendContext = {
 			uid,
 			feature,
+			kind: opts?.kind ?? featureToPushKind(feature),
 			pushId: opts?.pushId ?? randomUUID(),
 			role: opts?.role ?? "main",
 		};
@@ -430,7 +440,14 @@ export class BilibiliPush {
 		if (!this.onSend) return;
 		const target = this.sink.resolve(targetId);
 		if (!target) return;
-		this.onSend({ pushId: ctx.pushId, uid: ctx.uid, feature: ctx.feature, target, messages });
+		this.onSend({
+			pushId: ctx.pushId,
+			uid: ctx.uid,
+			feature: ctx.feature,
+			kind: ctx.kind,
+			target,
+			messages,
+		});
 	}
 
 	/**

@@ -301,3 +301,44 @@ describe("createMultiplexSink — probeAdapter", () => {
 		expect(r).toEqual({ ok: null, latencyMs: 0 });
 	});
 });
+
+describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 分开)", () => {
+	function sinkWith(adapters: PushAdapter[], targets: PushTarget[]) {
+		return createMultiplexSink({
+			store: makeStore(adapters, targets),
+			adapters: [makePlatformAdapter(["webhook"], { isAvailable: vi.fn(() => false) })],
+			logger: makeLogger(),
+		});
+	}
+
+	it("目标启用、适配器启用 → true,哪怕此刻不可达", () => {
+		const sink = sinkWith(
+			[makeAdapter({ id: "a1", platform: "webhook" })],
+			[makeTarget({ id: "t1", adapterId: "a1" })],
+		);
+		expect(sink.isEnabled("t1")).toBe(true);
+		expect(sink.isAvailable("t1")).toBe(false);
+	});
+
+	it("目标停用 → false", () => {
+		const sink = sinkWith(
+			[makeAdapter({ id: "a1", platform: "webhook" })],
+			[makeTarget({ id: "t1", adapterId: "a1", enabled: false })],
+		);
+		expect(sink.isEnabled("t1")).toBe(false);
+	});
+
+	it("所属适配器停用 → false", () => {
+		const sink = sinkWith(
+			[makeAdapter({ id: "a1", platform: "webhook", enabled: false })],
+			[makeTarget({ id: "t1", adapterId: "a1" })],
+		);
+		expect(sink.isEnabled("t1")).toBe(false);
+	});
+
+	it("目标不存在 / 适配器不存在 → false", () => {
+		const sink = sinkWith([], [makeTarget({ id: "t1", adapterId: "gone" })]);
+		expect(sink.isEnabled("t1")).toBe(false);
+		expect(sink.isEnabled("nope")).toBe(false);
+	});
+});
