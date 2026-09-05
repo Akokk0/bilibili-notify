@@ -1,3 +1,4 @@
+import type { AdapterCapabilitiesMap } from "@bilibili-notify/contract";
 import {
 	Avatar,
 	Btn,
@@ -29,7 +30,7 @@ import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
 import { useAuthStore } from "../store/auth";
 import { BiliLoginStatus, type BiliLoginStatusValue } from "../types/auth";
-import type { PushTarget } from "../types/domain";
+import type { PushAdapter, PushTarget } from "../types/domain";
 import type { AppConfig, GlobalConfig, GlobalConfigPatch, LogLevel } from "../types/globals";
 import { BackupSection } from "./backup/BackupSection";
 import { SkinSection } from "./skins/SkinSection";
@@ -307,6 +308,16 @@ export default function System() {
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
+	const adaptersQuery = useQuery({
+		queryKey: ["adapters"],
+		queryFn: () => api.get<PushAdapter[]>("/api/adapters"),
+	});
+	// 能力是连上时探的,面板开着的时候半分钟刷一次,bot 后连上也能看到它变绿。
+	const capabilitiesQuery = useQuery({
+		queryKey: ["adapter-capabilities"],
+		queryFn: () => api.get<AdapterCapabilitiesMap>("/api/adapters/capabilities"),
+		refetchInterval: 30_000,
+	});
 
 	const [draft, setDraft] = useState<GlobalConfig | null>(null);
 
@@ -485,7 +496,13 @@ export default function System() {
 			{draft ? <CommandsSettings draft={draft} onPatch={patchDraft} /> : null}
 
 			{draft ? (
-				<LinkParsingSettings draft={draft} onPatch={patchDraft} targets={targetsQuery.data ?? []} />
+				<LinkParsingSettings
+					draft={draft}
+					onPatch={patchDraft}
+					targets={targetsQuery.data ?? []}
+					adapters={adaptersQuery.data ?? []}
+					capabilities={capabilitiesQuery.data ?? {}}
+				/>
 			) : null}
 
 			<BrowserSourceSettings />

@@ -7,10 +7,11 @@
  * 显式值;「跟默认」发的是删除哨兵(null),不是把默认值抄一份进例外。
  */
 
+import type { AdapterCapabilitiesMap } from "@bilibili-notify/contract";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { PushTarget } from "../../types/domain";
+import type { PushAdapter, PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 import { LinkParsingSettings } from "../link-parsing-settings";
 
@@ -52,16 +53,50 @@ const TARGETS: PushTarget[] = [
 	target(T_WEBHOOK, "钩子", { platform: "webhook", session: {} } as never),
 ];
 
-function renderCard(draft: GlobalConfig, onPatch = vi.fn(), targets: PushTarget[] = TARGETS) {
+const A_OB = "11111111-1111-4111-8111-111111111111";
+const A_OB2 = "22222222-2222-4222-8222-222222222222";
+const A_QQ = "33333333-3333-4333-8333-333333333333";
+
+function adapter(id: string, name: string, platform: PushAdapter["platform"]): PushAdapter {
+	return { id, name, platform, enabled: true, config: {} } as unknown as PushAdapter;
+}
+
+const ADAPTERS: PushAdapter[] = [
+	adapter(A_OB, "NapCat 主号", "onebot"),
+	adapter(A_OB2, "Lagrange 备用", "onebot"),
+	adapter(A_QQ, "官机", "qq-official"),
+];
+
+const CAPS: AdapterCapabilitiesMap = {
+	[A_OB]: { miniAppCard: { state: "supported", checkedAt: 1 } },
+	[A_OB2]: {
+		miniAppCard: { state: "unsupported", reason: "这个实现没有 get_mini_app_ark", checkedAt: 1 },
+	},
+};
+
+function renderCard(
+	draft: GlobalConfig,
+	onPatch = vi.fn(),
+	targets: PushTarget[] = TARGETS,
+	extra: { adapters?: PushAdapter[]; capabilities?: AdapterCapabilitiesMap } = {},
+) {
 	render(
 		<MemoryRouter>
-			<LinkParsingSettings draft={draft} onPatch={onPatch} targets={targets} />
+			<LinkParsingSettings
+				draft={draft}
+				onPatch={onPatch}
+				targets={targets}
+				adapters={extra.adapters ?? ADAPTERS}
+				capabilities={extra.capabilities ?? CAPS}
+			/>
 		</MemoryRouter>,
 	);
 	return onPatch;
 }
 
 const row = (name: string) => within(screen.getByRole("group", { name }));
+/** 逐群表默认收起,要看行先展开。 */
+const openGroups = () => fireEvent.click(screen.getByRole("button", { name: "展开" }));
 
 afterEach(cleanup);
 
@@ -85,6 +120,8 @@ describe("LinkParsingSettings", () => {
 					draft={draftWith({ enabled: false })}
 					onPatch={() => {}}
 					targets={TARGETS}
+					adapters={ADAPTERS}
+					capabilities={CAPS}
 				/>
 			</MemoryRouter>,
 		);
@@ -95,6 +132,8 @@ describe("LinkParsingSettings", () => {
 					draft={draftWith({ enabled: true, cooldownSeconds: 90 })}
 					onPatch={() => {}}
 					targets={TARGETS}
+					adapters={ADAPTERS}
+					capabilities={CAPS}
 				/>
 			</MemoryRouter>,
 		);
@@ -108,6 +147,8 @@ describe("LinkParsingSettings", () => {
 					})}
 					onPatch={() => {}}
 					targets={TARGETS}
+					adapters={ADAPTERS}
+					capabilities={CAPS}
 				/>
 			</MemoryRouter>,
 		);
@@ -131,11 +172,23 @@ describe("LinkParsingSettings", () => {
 	describe("按群例外", () => {
 		it("两格都调回「跟默认」→ 这一格不再算例外(草稿里那个空对象不算)", () => {
 			renderCard(draftWith({ groups: { [T_A]: {}, [T_B]: { form: "miniapp" } } }));
+			expect(screen.getByText("2 个群 · 1 个例外")).toBeTruthy();
 			expect(screen.getByText("冷却 60 秒 · 1 个例外")).toBeTruthy();
+		});
+
+		it("默认收起,只有一行摘要;点「展开」才列群,再点「收起」", () => {
+			renderCard(draftWith({ groups: { [T_A]: { form: "miniapp" } } }));
+			expect(screen.getByText("2 个群 · 1 个例外")).toBeTruthy();
+			expect(screen.queryByRole("group", { name: "群 A" })).toBeNull();
+			openGroups();
+			expect(screen.getByRole("group", { name: "群 A" })).toBeTruthy();
+			fireEvent.click(screen.getByRole("button", { name: "收起" }));
+			expect(screen.queryByRole("group", { name: "群 A" })).toBeNull();
 		});
 
 		it("只列群类且收得到入站消息的目标:私聊与 webhook 不出现,官机群算", () => {
 			renderCard(draftWith());
+			openGroups();
 			expect(screen.getByRole("group", { name: "群 A" })).toBeTruthy();
 			expect(screen.getByRole("group", { name: "官机群 B" })).toBeTruthy();
 			expect(screen.queryByRole("group", { name: "主人私聊" })).toBeNull();
@@ -144,6 +197,7 @@ describe("LinkParsingSettings", () => {
 
 		it("没写例外的群两格都按在「跟默认」上,并把继承来的值写在旁边", () => {
 			renderCard(draftWith({ defaults: { parse: false, form: "miniapp" } }));
+			openGroups();
 			const a = row("群 A");
 			expect(a.getByRole("button", { name: "跟默认 · 关" }).getAttribute("aria-pressed")).toBe(
 				"true",
@@ -155,6 +209,7 @@ describe("LinkParsingSettings", () => {
 
 		it("解析格点「关」→ 草稿只收到这个群的 parse=false", () => {
 			const onPatch = renderCard(draftWith());
+			openGroups();
 			fireEvent.click(row("群 A").getByRole("button", { name: "关" }));
 			expect(onPatch).toHaveBeenCalledWith({
 				linkParsing: { groups: { [T_A]: { parse: false } } },
@@ -163,6 +218,7 @@ describe("LinkParsingSettings", () => {
 
 		it("形式格点「小程序卡」→ 草稿只收到这个群的 form=miniapp", () => {
 			const onPatch = renderCard(draftWith());
+			openGroups();
 			fireEvent.click(row("群 A").getByRole("button", { name: "小程序卡" }));
 			expect(onPatch).toHaveBeenCalledWith({
 				linkParsing: { groups: { [T_A]: { form: "miniapp" } } },
@@ -173,6 +229,7 @@ describe("LinkParsingSettings", () => {
 			const onPatch = renderCard(
 				draftWith({ groups: { [T_A]: { parse: false, form: "miniapp" } } }),
 			);
+			openGroups();
 			const a = row("群 A");
 			expect(a.getByRole("button", { name: "关" }).getAttribute("aria-pressed")).toBe("true");
 			fireEvent.click(a.getByRole("button", { name: "跟默认 · 开" }));
@@ -183,11 +240,13 @@ describe("LinkParsingSettings", () => {
 
 		it("停用的目标照列,标「已停用」", () => {
 			renderCard(draftWith(), vi.fn(), [target(T_A, "群 A", { enabled: false })]);
+			openGroups();
 			expect(row("群 A").getByText("已停用")).toBeTruthy();
 		});
 
 		it("官机群的形式格旁边说明它发不了小程序卡、会回落图片卡", () => {
 			renderCard(draftWith());
+			openGroups();
 			expect(row("官机群 B").getByText(/不支持小程序卡/)).toBeTruthy();
 			expect(row("群 A").queryByText(/不支持小程序卡/)).toBeNull();
 		});
@@ -196,6 +255,43 @@ describe("LinkParsingSettings", () => {
 			renderCard(draftWith(), vi.fn(), [TARGETS[2] as PushTarget]);
 			expect(screen.getByText(/还没有群类推送目标/)).toBeTruthy();
 			expect(screen.getByRole("link", { name: /推送目标/ }).getAttribute("href")).toBe("/targets");
+		});
+	});
+	describe("适配器支持情况", () => {
+		it("只列 OneBot 适配器,三态各有说法:支持 / 不支持带原因 / 未探测", () => {
+			renderCard(draftWith(), vi.fn(), TARGETS, {
+				capabilities: { ...CAPS, [A_OB2]: CAPS[A_OB2] as never },
+			});
+			const panel = within(screen.getByRole("region", { name: "适配器支持情况" }));
+			expect(panel.getByText("NapCat 主号")).toBeTruthy();
+			expect(panel.getByText("支持小程序卡")).toBeTruthy();
+			expect(panel.getByText("Lagrange 备用")).toBeTruthy();
+			expect(panel.getByText("不支持,回落图片卡")).toBeTruthy();
+			expect(panel.getByText(/没有 get_mini_app_ark/)).toBeTruthy();
+			expect(panel.queryByText("官机")).toBeNull();
+		});
+
+		it("表里没有的 OneBot 适配器(引擎还没探)显示「未探测」", () => {
+			renderCard(draftWith(), vi.fn(), TARGETS, { capabilities: {} });
+			const panel = within(screen.getByRole("region", { name: "适配器支持情况" }));
+			expect(panel.getAllByText("未探测")).toHaveLength(2);
+		});
+
+		it("官机与 webhook 用一句话说明不支持;没有 OneBot 适配器时只剩这句", () => {
+			renderCard(draftWith(), vi.fn(), TARGETS, { adapters: [ADAPTERS[2] as PushAdapter] });
+			const panel = within(screen.getByRole("region", { name: "适配器支持情况" }));
+			expect(panel.getByText(/QQ 官方机器人与 webhook 不支持小程序卡/)).toBeTruthy();
+			expect(panel.getByText(/还没有 OneBot 适配器/)).toBeTruthy();
+		});
+
+		it("群所在的适配器不支持 → 那一行形式格旁提示会回落图片卡;支持的不提示", () => {
+			renderCard(draftWith(), vi.fn(), [
+				target(T_A, "群 A", { adapterId: A_OB2 } as never),
+				target(T_B, "群 B", { adapterId: A_OB } as never),
+			]);
+			openGroups();
+			expect(row("群 A").getByText(/会回落图片卡/)).toBeTruthy();
+			expect(row("群 B").queryByText(/回落图片卡/)).toBeNull();
 		});
 	});
 });
