@@ -16,6 +16,7 @@ import { HEALTH_QUERY_KEY, HEALTH_QUERY_OPTIONS } from "./hooks/useBackendReacha
 import { usePushEventsChannel } from "./hooks/usePushEventsChannel";
 import { useStateChannel } from "./hooks/useStateChannel";
 import { useUpdateCheckOnOpen } from "./hooks/useUpdateCheckOnOpen";
+import { useUpdateTransitionNotice } from "./hooks/useUpdateTransitionNotice";
 import About from "./pages/About";
 import Ai from "./pages/Ai";
 import Cards from "./pages/Cards";
@@ -57,6 +58,8 @@ function AuthedApp() {
 	useAlertChannel();
 	// 打开面板就查一次更新(不定时)。放在这里同样是被登录门挡着的:没会话不查。
 	useUpdateCheckOnOpen();
+	// 后台下载收尾时把那张「正在下载」换成「已就绪 / 下载失败」。挂在壳层,人在哪一页都订阅着。
+	useUpdateTransitionNotice();
 
 	// Detect when the backend is genuinely unreachable so the shell can show
 	// the design's error state instead of letting individual pages render
