@@ -342,3 +342,46 @@ describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 
 		expect(sink.isEnabled("nope")).toBe(false);
 	});
 });
+
+/**
+ * 平台能力(能不能签小程序卡)从 platform adapter 透出来:适配器缺、平台实现缺、平台没有
+ * 能力概念(没实现 capabilities)都是 undefined —— 调用方按「什么都不支持」处理。
+ */
+describe("createMultiplexSink — adapterCapabilities / probeAdapterCapabilities", () => {
+	const CAPS = { miniAppCard: { state: "supported" as const, checkedAt: 1 } };
+
+	it("委派给平台实现的 capabilities / probeCapabilities,把 PushAdapter 递过去", async () => {
+		const capabilities = vi.fn(() => CAPS);
+		const probeCapabilities = vi.fn(async () => CAPS);
+		const pa = makePlatformAdapter(["onebot"], { capabilities, probeCapabilities });
+		const adapter = makeAdapter({ id: "a1", platform: "onebot" });
+		const sink = createMultiplexSink({
+			store: makeStore([adapter], []),
+			adapters: [pa],
+			logger: makeLogger(),
+		});
+		expect(sink.adapterCapabilities("a1")).toEqual(CAPS);
+		expect(capabilities).toHaveBeenCalledWith(adapter);
+		expect(await sink.probeAdapterCapabilities("a1")).toEqual(CAPS);
+		expect(probeCapabilities).toHaveBeenCalledWith(adapter);
+	});
+
+	it("适配器缺 / 平台实现缺 / 平台没有能力概念 → undefined", async () => {
+		const pa = makePlatformAdapter(["webhook"]);
+		const sink = createMultiplexSink({
+			store: makeStore(
+				[
+					makeAdapter({ id: "w1", platform: "webhook" }),
+					makeAdapter({ id: "t1", platform: "telegram" }),
+				],
+				[],
+			),
+			adapters: [pa],
+			logger: makeLogger(),
+		});
+		expect(sink.adapterCapabilities("nope")).toBeUndefined();
+		expect(sink.adapterCapabilities("t1")).toBeUndefined();
+		expect(sink.adapterCapabilities("w1")).toBeUndefined();
+		expect(await sink.probeAdapterCapabilities("w1")).toBeUndefined();
+	});
+});

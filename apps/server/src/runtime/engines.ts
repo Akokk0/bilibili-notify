@@ -35,6 +35,7 @@ import {
 } from "@bilibili-notify/dynamic";
 import { type CardColorOptions, ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
+	AdapterCapabilities,
 	CardBlock,
 	CardKind,
 	Disposable,
@@ -128,8 +129,13 @@ export interface EnginesRuntime extends Disposable {
 	 * 轮换,**每调一次推进一次游标**)+ 全局版式。每张卡调一次,别攥着。
 	 */
 	linkCardPresentation(): { colors: CardColorOptions | undefined; layout: CardBlock[] | undefined };
-	/** Out-of-band reachability probe for `/api/adapters/:id/test`. */
+	/**
+	 * Out-of-band reachability probe for `/api/adapters/:id/test`. 顺路把还没探出来的平台
+	 * 能力再探一次(与定时健康探测同一条路)。
+	 */
 	probeAdapter(adapterId: string): Promise<ProbeResult>;
+	/** 适配器的平台能力快照(能不能签小程序卡);没有能力概念的平台是 undefined。 */
+	adapterCapabilities(adapterId: string): AdapterCapabilities | undefined;
 	/** Per-module readiness snapshot exposed via `/api/health`. */
 	getModuleStatus(): ModuleStatus;
 	/**
@@ -651,6 +657,19 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// reflects reality without the user having to click "测试" on every adapter.
 	const ADAPTER_PROBE_INTERVAL_MS = 5 * 60 * 1000;
 	let probeInFlight = false;
+	/**
+	 * 健康探测 + 顺路补探能力:连上那一刻没探到(反向 ws 的 bot 是后来才连入的)、或探的
+	 * 时候没连上,能力会停在「未探测」;开机、每五分钟、主人点「测试」都从这儿再给一次机会。
+	 * 只补「未探测」的,已经有答案的不重探 —— 那是 reconcile 的事。
+	 */
+	async function probeAdapterAndCapabilities(adapterId: string): Promise<ProbeResult> {
+		const result = await sink.probeAdapter(adapterId);
+		if (sink.adapterCapabilities(adapterId)?.miniAppCard.state === "unknown") {
+			await sink.probeAdapterCapabilities(adapterId);
+		}
+		return result;
+	}
+
 	async function probeAllAdapters(): Promise<void> {
 		if (probeInFlight) return;
 		probeInFlight = true;
@@ -658,7 +677,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			for (const adapter of opts.configStore.getAdapters()) {
 				if (!adapter.enabled) continue;
 				try {
-					const result = await sink.probeAdapter(adapter.id);
+					const result = await probeAdapterAndCapabilities(adapter.id);
 					if (result.ok === null) continue; // platform doesn't support probe (e.g. webhook)
 					await opts.configStore.patchAdapter(adapter.id, {
 						testStatus: {
@@ -979,7 +998,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			return imageRenderer;
 		},
 		listLiveRooms: () => listLiveRooms(live),
-		probeAdapter: (adapterId: string) => sink.probeAdapter(adapterId),
+		probeAdapter: (adapterId: string) => probeAdapterAndCapabilities(adapterId),
+		adapterCapabilities: (adapterId: string) => sink.adapterCapabilities(adapterId),
 		linkParsing: () => linkCard.config,
 		linkPolicyFor: (key: string) => linkPolicies.policyFor(key),
 		linkCardPresentation: () => ({

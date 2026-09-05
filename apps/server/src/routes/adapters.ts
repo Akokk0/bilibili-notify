@@ -1,3 +1,4 @@
+import type { AdapterCapabilities } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
@@ -16,6 +17,23 @@ export function createAdaptersRoute(deps: RouteDeps): Hono {
 	const log = deps.runtime.serviceCtx.logger;
 
 	app.get("/", (c) => c.json(deps.store.getAdapters()));
+
+	/**
+	 * 各适配器的平台能力快照(今天只有「能不能签小程序卡」),按 adapter id 索引。只列有
+	 * 能力概念的平台;官机 / webhook 不在里面,面板据此写「这个平台不支持」。引擎还没起来
+	 * 时是空表 —— 面板显示成「未探测」,不算错。
+	 */
+	app.get("/capabilities", (c) => {
+		const engines = deps.runtime.engines;
+		const out: Record<string, AdapterCapabilities> = {};
+		if (engines) {
+			for (const adapter of deps.store.getAdapters()) {
+				const caps = engines.adapterCapabilities(adapter.id);
+				if (caps) out[adapter.id] = caps;
+			}
+		}
+		return c.json(out);
+	});
 
 	app.post("/", async (c) => {
 		let body: unknown;

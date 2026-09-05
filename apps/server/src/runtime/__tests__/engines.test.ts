@@ -34,6 +34,7 @@ import {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
+import type { PlatformAdapter } from "../../platforms/types.js";
 import { standaloneContentBuilder } from "../content-builder.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { NodeServiceContext } from "../service-context.js";
@@ -239,9 +240,18 @@ interface Ctx {
 	loginFlow: { setHealthCheckMs: ReturnType<typeof vi.fn> };
 }
 
-function setup(opts?: { globals?: GlobalConfig; puppeteer?: boolean; subs?: Subscription[] }): Ctx {
+function setup(opts?: {
+	globals?: GlobalConfig;
+	puppeteer?: boolean;
+	subs?: Subscription[];
+	/** 配置表里的适配器(开机健康探测会挨个探它们)。 */
+	adapters?: PushAdapter[];
+	/** 平台实现(探测 / 能力都问它)。 */
+	platformAdapters?: PlatformAdapter[];
+}): Ctx {
 	const serviceCtx = makeServiceCtx();
 	const configStore = makeConfigStore(opts?.globals ?? makeDefaultGlobalConfig());
+	if (opts?.adapters) configStore._setAdapters(opts.adapters);
 	const api = { setUserAgent: vi.fn() };
 	const loginFlow = { setHealthCheckMs: vi.fn() };
 	const bus = createNodeMessageBus();
@@ -266,7 +276,7 @@ function setup(opts?: { globals?: GlobalConfig; puppeteer?: boolean; subs?: Subs
 			load: vi.fn(async () => {}),
 		} as any,
 		bus,
-		adapters: [],
+		adapters: opts?.platformAdapters ?? [],
 		puppeteer: opts?.puppeteer ? ({} as any) : null,
 	});
 	return { runtime, bus, serviceCtx, configStore, api, loginFlow };
@@ -1263,5 +1273,63 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		});
 		c.bus.emit("config-changed", "globals");
 		expect(c.runtime.linkCardPresentation().colors).toMatchObject({ cardColorStart: "#abcdef" });
+	});
+});
+
+describe("createEngines — 适配器的平台能力", () => {
+	const ADAPTER = "11111111-1111-4111-8111-111111111111";
+	const onebot = { id: ADAPTER, name: "bot", enabled: true, platform: "onebot", config: {} } as any;
+
+	/** 探一次就变「支持」的假平台实现;探之前是「未探测」。 */
+	function fakePlatform(answer: "supported" | "unknown" = "supported") {
+		let state: "unknown" | "supported" = "unknown";
+		const probeCapabilities = vi.fn(async () => {
+			state = answer === "supported" ? "supported" : "unknown";
+			return caps();
+		});
+		const caps = () => ({
+			miniAppCard: state === "supported" ? { state, checkedAt: 1 } : { state },
+		});
+		const pa: PlatformAdapter = {
+			platforms: ["onebot"],
+			isAvailable: () => true,
+			send: async () => ({ ok: true, latencyMs: 1 }),
+			probe: vi.fn(async () => ({ ok: true, latencyMs: 1 })),
+			capabilities: () => caps(),
+			probeCapabilities,
+		};
+		return { pa, probeCapabilities };
+	}
+	const tick = () => new Promise<void>((r) => setTimeout(r, 0));
+
+	it("开机健康探测顺路把「未探测」的能力探一次;之后从 adapterCapabilities 读得到", async () => {
+		const { pa, probeCapabilities } = fakePlatform();
+		const c = setup({ adapters: [onebot], platformAdapters: [pa] });
+		active = c;
+		await tick();
+		expect(probeCapabilities).toHaveBeenCalledTimes(1);
+		expect(c.runtime.adapterCapabilities(ADAPTER)).toEqual({
+			miniAppCard: { state: "supported", checkedAt: 1 },
+		});
+		// 已经有答案的不重探:主人点「测试」只做健康探测。
+		await c.runtime.probeAdapter(ADAPTER);
+		expect(probeCapabilities).toHaveBeenCalledTimes(1);
+	});
+
+	it("探完仍「未探测」→ 主人点「测试」会再给一次机会", async () => {
+		const { pa, probeCapabilities } = fakePlatform("unknown");
+		const c = setup({ adapters: [onebot], platformAdapters: [pa] });
+		active = c;
+		await tick();
+		expect(probeCapabilities).toHaveBeenCalledTimes(1);
+		await c.runtime.probeAdapter(ADAPTER);
+		expect(probeCapabilities).toHaveBeenCalledTimes(2);
+		expect(c.runtime.adapterCapabilities(ADAPTER)).toEqual({ miniAppCard: { state: "unknown" } });
+	});
+
+	it("没有能力概念的平台(配置里没这条适配器也一样)→ undefined", () => {
+		const c = setup();
+		active = c;
+		expect(c.runtime.adapterCapabilities("nope")).toBeUndefined();
 	});
 });

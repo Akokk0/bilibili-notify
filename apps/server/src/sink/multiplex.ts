@@ -1,4 +1,5 @@
 import type {
+	AdapterCapabilities,
 	DeliveryResult,
 	Logger,
 	NotificationPayload,
@@ -17,6 +18,13 @@ import type { PlatformAdapter, ProbeResult } from "../platforms/types.js";
  */
 export interface MultiplexSink extends NotificationSink {
 	probeAdapter(adapterId: string): Promise<ProbeResult>;
+	/**
+	 * 适配器的平台能力快照(能不能签小程序卡);适配器缺、平台实现缺、平台没有能力概念都是
+	 * undefined —— 调用方按「什么都不支持」处理。
+	 */
+	adapterCapabilities(adapterId: string): AdapterCapabilities | undefined;
+	/** 主动探一次能力;同上的三种缺失回 undefined。 */
+	probeAdapterCapabilities(adapterId: string): Promise<AdapterCapabilities | undefined>;
 }
 
 /**
@@ -60,6 +68,14 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 		return opts.store.getAdapters().find((a) => a.id === target.adapterId);
 	}
 
+	/** 配置里的那条适配器 + 它所属平台的实现;缺一个就没法问它任何事。 */
+	function routeOf(adapterId: string) {
+		const adapter = opts.store.getAdapters().find((a) => a.id === adapterId);
+		if (!adapter) return undefined;
+		const platformAdapter = adapterByPlatform.get(adapter.platform);
+		return platformAdapter ? { adapter, platformAdapter } : undefined;
+	}
+
 	return {
 		resolve(targetId: string): PushTarget | undefined {
 			return findTarget(targetId);
@@ -87,6 +103,16 @@ export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
 
 		sendPrivate(targetId: string, payload: NotificationPayload): Promise<DeliveryResult> {
 			return dispatch(targetId, payload, { private: true });
+		},
+
+		adapterCapabilities(adapterId: string): AdapterCapabilities | undefined {
+			const route = routeOf(adapterId);
+			return route?.platformAdapter.capabilities?.(route.adapter);
+		},
+
+		async probeAdapterCapabilities(adapterId: string): Promise<AdapterCapabilities | undefined> {
+			const route = routeOf(adapterId);
+			return route?.platformAdapter.probeCapabilities?.(route.adapter);
 		},
 
 		async probeAdapter(adapterId: string): Promise<ProbeResult> {

@@ -5,6 +5,7 @@
  */
 
 import type {
+	AdapterCapabilities,
 	CachedProfile,
 	FansRefreshEntry,
 	HistoryMessageRole,
@@ -15,7 +16,16 @@ import type {
 } from "@bilibili-notify/internal";
 import type { LogLevel } from "./ws";
 
-export type { FansRefreshEntry, HistoryMessageRole, PushKind, PushStatus };
+export type { MiniAppCardSupport } from "@bilibili-notify/internal";
+export type { AdapterCapabilities, FansRefreshEntry, HistoryMessageRole, PushKind, PushStatus };
+
+// ---- /api/adapters/capabilities ------------------------------------------
+
+/**
+ * `GET /api/adapters/capabilities`:各适配器的平台能力快照,按 adapter id 索引。只有有能力
+ * 概念的平台(OneBot)在表里;官机 / webhook 不在,面板据此写「这个平台不支持」。
+ */
+export type AdapterCapabilitiesMap = Record<string, AdapterCapabilities>;
 
 // ---- /api/subs ------------------------------------------------------------
 
