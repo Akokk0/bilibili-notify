@@ -58,11 +58,16 @@ export interface BiliEvents {
 	ready: () => void;
 	"config-changed": (scope: ConfigScope) => void;
 	/**
-	 * 一条推送被 HistoryStore 写入后立刻 emit。
+	 * 历史仓建起一行(一次推送 × 一个目标,本体落地那一刻)后立刻 emit。
 	 * 载荷是完整 entry,WS push-events 直接转发给前端做 toast/通知,
 	 * 无需前端再二次 fetch detail。
 	 */
 	"history-recorded": (entry: HistoryEntry) => void;
+	/**
+	 * 同一次推送的后续消息(词云 / 总结 / 图集 / @全体)追加到已有那一行之后 emit。
+	 * 载荷是合并后的整行;前端按 id 换缓存、小卡同 id 换字,不重弹。
+	 */
+	"history-updated": (entry: HistoryEntry) => void;
 	/**
 	 * 直播状态翻转。
 	 *
