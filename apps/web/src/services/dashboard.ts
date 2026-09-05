@@ -7,6 +7,7 @@
  */
 
 import type { DailyHistoryCount, PushKind } from "@bilibili-notify/contract";
+import { PUSH_KIND_META } from "../config/push-kinds";
 
 export type {
 	DailyHistoryCount as DailyHistoryCountView,
@@ -44,6 +45,7 @@ const LOGS_LIVE_KEY = "live";
 export const logsQueryKey = (day?: string) => ["logs", { day: day ?? LOGS_LIVE_KEY }] as const;
 
 /** Bucket history entries by ISO date (YYYY-MM-DD) and by 4 kind families. */
+/** 柱状图的一天:四个家族各一根柱。键是 ui 的 StatsBar 定的(动态那根叫 `dyn`)。 */
 export interface DailyBucket {
 	d: string;
 	live: number;
@@ -52,16 +54,11 @@ export interface DailyBucket {
 	guard: number;
 }
 
-const FAMILY: Record<PushKind, keyof Omit<DailyBucket, "d">> = {
-	live: "live",
-	"live-ongoing": "live",
-	"live-end": "live",
-	"special-enter": "live",
-	"special-danmaku": "live",
-	dynamic: "dyn",
-	sc: "sc",
-	guard: "guard",
-};
+/** 家族 → 柱子键。八种 kind 折成四族那条规则只有 PUSH_KIND_META 一份,这里只改个名。 */
+function barKeyOf(kind: PushKind): keyof Omit<DailyBucket, "d"> {
+	const family = PUSH_KIND_META[kind].family;
+	return family === "dynamic" ? "dyn" : family;
+}
 
 export const HISTORY_DAILY_DAYS = 7;
 /** 单一来源:Dashboard 的 useQuery 与 usePushEventsChannel 的 WS patch 共用此键。 */
@@ -83,7 +80,7 @@ export function foldDailyBuckets(days: DailyHistoryCount[]): DailyBucket[] {
 			guard: 0,
 		};
 		for (const [kind, n] of Object.entries(day.counts) as [PushKind, number][]) {
-			bucket[FAMILY[kind]] += n;
+			bucket[barKeyOf(kind)] += n;
 		}
 		return bucket;
 	});

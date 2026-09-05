@@ -1,14 +1,19 @@
 import { Avatar, ErrorNote, Icon, Input, LoadingBlock, Picker, Pill } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { PUSH_KIND_META, PUSH_STATUS_META, PUSH_TONE } from "../config/push-kinds";
+import {
+	familyTone,
+	PUSH_KIND_META,
+	PUSH_STATUS_META,
+	PUSH_TONE,
+	type PushFamily,
+} from "../config/push-kinds";
 import { api } from "../services/api";
 import {
 	type HistoryEntryView,
 	type HistoryMessageView,
 	type HistoryResponse,
 	historyQueryKey,
-	type PushKind,
 } from "../services/dashboard";
 import type { PushTarget, Subscription } from "../types/domain";
 import type { GlobalConfig } from "../types/globals";
@@ -30,18 +35,8 @@ import { colorFromUid, displayName, relativeTime } from "./up/helpers";
  * that replays a recorded NotificationPayload.
  */
 
-type FilterId = "all" | "live" | "dynamic" | "sc" | "guard";
-
-const FAMILY: Record<PushKind, Exclude<FilterId, "all">> = {
-	live: "live",
-	"live-ongoing": "live",
-	"live-end": "live",
-	"special-enter": "live",
-	"special-danmaku": "live",
-	dynamic: "dynamic",
-	sc: "sc",
-	guard: "guard",
-};
+/** 筛选胶囊 = 四个家族(见 PUSH_KIND_META 的 family)加一个「全部」。 */
+type FilterId = "all" | PushFamily;
 
 const FILTERS: ReadonlyArray<{ id: FilterId; label: string; tone: string }> = [
 	{ id: "all", label: "全部", tone: "var(--color-bn-inactive)" },
@@ -90,22 +85,34 @@ export default function History() {
 
 	const entries = historyQuery.data?.entries ?? [];
 
+	// 每行的检索串只跟这一行有关,先算好:搜的是整行的每一条文案(总结正文就藏在后面
+	// 几条里,可以有几 KB),挂在过滤那个 memo 里的话,每敲一个字都要把两百行重拼一遍。
+	const haystacks = useMemo(() => {
+		const m = new Map<string, string>();
+		for (const e of entries) {
+			const sub = subByUid.get(e.uid);
+			m.set(
+				e.id,
+				[
+					e.uid,
+					sub ? displayName(sub) : "",
+					e.targetId ? (targetById.get(e.targetId)?.name ?? "") : "",
+					...e.messages.map((x) => x.text ?? ""),
+				]
+					.join("\n")
+					.toLowerCase(),
+			);
+		}
+		return m;
+	}, [entries, subByUid, targetById]);
+
 	const filtered = useMemo(() => {
 		const ql = q.trim().toLowerCase();
 		return entries.filter((e) => {
-			if (filterId !== "all" && FAMILY[e.kind] !== filterId) return false;
-			if (!ql) return true;
-			const sub = subByUid.get(e.uid);
-			const upName = sub ? displayName(sub).toLowerCase() : "";
-			const target = (e.targetId ? (targetById.get(e.targetId)?.name ?? "") : "").toLowerCase();
-			// 搜整行的每一条文案,不只搜标题那句 —— 总结正文就藏在后面几条里。
-			const texts = e.messages
-				.map((m) => m.text ?? "")
-				.join("\n")
-				.toLowerCase();
-			return e.uid.includes(ql) || upName.includes(ql) || texts.includes(ql) || target.includes(ql);
+			if (filterId !== "all" && PUSH_KIND_META[e.kind].family !== filterId) return false;
+			return !ql || (haystacks.get(e.id)?.includes(ql) ?? false);
 		});
-	}, [entries, filterId, q, subByUid, targetById]);
+	}, [entries, filterId, q, haystacks]);
 
 	return (
 		<div className="bn-anim-page-in space-y-3.5">
@@ -205,8 +212,7 @@ function HistoryRow({
 	isLast: boolean;
 }) {
 	const [open, setOpen] = useState(false);
-	const family = FAMILY[entry.kind];
-	const tone = PUSH_TONE[family];
+	const tone = familyTone(entry.kind);
 	const status = PUSH_STATUS_META[entry.status];
 	// 优先 entry 写入期的 snapshot,订阅事后被删也能稳定显示。
 	const upName = entry.unameSnapshot ?? (sub ? displayName(sub) : entry.uid || "未知");
@@ -280,29 +286,18 @@ function MessageList({ entry }: { entry: HistoryEntryView }) {
 					key={`${entry.id}-${i}`}
 					index={i}
 					message={m}
-					noTargets={entry.targetId === null}
 				/>
 			))}
 		</ol>
 	);
 }
 
-function MessageItem({
-	index,
-	message,
-	noTargets,
-}: {
-	index: number;
-	message: HistoryMessageView;
-	noTargets: boolean;
-}) {
-	const result = noTargets
-		? { label: "未发送", tone: "var(--color-bn-inactive)" }
-		: message.ok === undefined
+function MessageItem({ index, message }: { index: number; message: HistoryMessageView }) {
+	// 没有结果 = 没发出去(无目标那行的每一条都是这样);有结果就跟整行状态同一份词表。
+	const result =
+		message.ok === undefined
 			? { label: "未发送", tone: "var(--color-bn-inactive)" }
-			: message.ok
-				? { label: "已送达", tone: "var(--color-bn-success)" }
-				: { label: "失败", tone: "var(--color-bn-danger)" };
+			: PUSH_STATUS_META[message.ok ? "delivered" : "failed"];
 	return (
 		<li className="flex items-start gap-2.5 text-bn-xs">
 			<span className="w-4 shrink-0 tabular-nums text-bn-text-tertiary">{index + 1}</span>
