@@ -81,8 +81,12 @@ jobs:
       - name: Install deps
         run: vp install
 
+      # dry-run 没有 tag,版本从 dispatch 输入来(同 desktop-release);tag 触发时输入为空,
+      # 脚本改读 GITHUB_REF_NAME。以前这里没传,dry-run 在这一步就红 —— 第一次跑 dry-run 才发现。
       - name: Read standalone version
         id: ver
+        env:
+          VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
         run: bash .github/scripts/read-standalone-version.sh
 
       # 通知卡上念的那句概述,从 apps/CHANGELOG.md 该版本段的第一段抽(规矩见
