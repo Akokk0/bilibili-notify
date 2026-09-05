@@ -6,11 +6,11 @@
 
 ## 步骤
 
-1. **写 CHANGELOG** — 按 [changelog.md](changelog.md) 写 `apps/CHANGELOG.md` 的新版本段。基线 = 最新的 `v*` tag(`git tag -l 'v*' --sort=-creatordate | head -1`)。正式版跟在 alpha 之后、以及本轮新功能的修补要不要写,都按 changelog.md 里的规矩来。⚠️ 这一步含**按端归属判断**:`packages/*` 是两端共享的,改了共享包**不代表独立端受影响**,反过来也一样 —— 别把 koishi 专属的变更写进独立端的 CHANGELOG。**提交并 push 到 dev**(tag 要指向含 CHANGELOG 的那个 commit)。完成:本批改动都归了端,独立端该得的都在里面。
+1. **写 CHANGELOG** — 按 [changelog.md](changelog.md) 写 `apps/CHANGELOG.md` 的新版本段。基线 = 最新的 `v*` tag(`git tag -l 'v*' --sort=-creatordate | head -1`)。正式版跟在 alpha 之后、以及本轮新功能的修补要不要写,都按 changelog.md 里的规矩来。⚠️ 这一步含**按端归属判断**:`packages/*` 是两端共享的,改了共享包**不代表独立端受影响**,反过来也一样 —— 别把 koishi 专属的变更写进独立端的 CHANGELOG。写完先 `node scripts/changelog-section.mjs --version <VERSION>` 验一次(概述会被签进更新清单、念在通知卡上,找不到 / 为空 / 超 120 字发版时直接红)。**提交并 push 到 dev**(tag 要指向含 CHANGELOG 的那个 commit)。完成:本批改动都归了端,独立端该得的都在里面,概述通过了本地验证。
 2. **定版本** — 版本号**由用户拍板**,不要自己决定。prerelease(如 `0.2.0-alpha.1`)→ Docker `:alpha`;纯 semver(如 `0.2.0`)→ `:latest`。完成:用户给了版本号。
 3. **确认门** — 版本号 + Docker 渠道 tag + CHANGELOG 摘要给用户拍板。完成:用户明确同意。
 4. **打 tag(不可逆)** — 在 `dev` HEAD(即含 CHANGELOG 那个 commit)创建并推送 annotated tag `v<VERSION>`。可本地打,或用 `version-tag` workflow dry_run=false。完成:tag 已 push 且可从 `origin/dev` 到达。
-5. **验证产物** — `image-release` 与 `desktop-release` 两 workflow 各自触发且绿(两条都从 `gate` 起步,门禁红了后面的 job 直接不跑);Docker 镜像渠道 tag(`:alpha`/`:latest` + `:vX.Y.Z` + `:<sha>`)到位、可拉取。完成:两 workflow 绿、镜像可拉。
+5. **验证产物** — `image-release`、`desktop-release`、`update-payload` 三条 workflow 各自触发且绿(都从 `gate` 起步,门禁红了后面的 job 直接不跑);Docker 镜像渠道 tag(`:alpha`/`:latest` + `:vX.Y.Z` + `:<sha>`)到位、可拉取;渠道清单里 `notes` 是 CHANGELOG 概述、GitHub Release 正文开头是 CHANGELOG 整段。完成:三 workflow 绿、镜像可拉、清单与发布页都带着 CHANGELOG。
 
 **顺序要紧**:CHANGELOG 先写、先 push,再打 tag。tag 是发版扳机,它得指向**已经含有 CHANGELOG 的那个 commit** —— 否则发出去的镜像对应不上任何版本说明,而 tag 撤不回来。
 
