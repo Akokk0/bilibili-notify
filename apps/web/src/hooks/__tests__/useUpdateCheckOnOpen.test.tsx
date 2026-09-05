@@ -199,3 +199,70 @@ describe("useUpdateCheckOnOpen —— 刷新回来先报重启的结果", () => 
 		expect(sessionStorage.getItem("bn.update.restarted")).toBeNull();
 	});
 });
+
+describe("useUpdateCheckOnOpen —— 通知卡正文", () => {
+	/**
+	 * 正文两行:第一行是清单里的概述(发版 workflow 从 CHANGELOG 抽的那一句),第二行是
+	 * 这一档的状态句。老清单没概述,就只剩状态句 —— 别留一行空的。
+	 */
+	const NOTES = "链接解析学会了认群。";
+	const cases: { state: UpdateStatusDTO["state"]; title: string; line: string }[] = [
+		{
+			state: {
+				phase: "available",
+				target: "0.9.0",
+				releaseUrl: "https://x",
+				notes: NOTES,
+				checkedAt: 1,
+			},
+			title: "有新版 0.9.0",
+			line: "到系统页下载;什么时候重启换版本由你按。",
+		},
+		{
+			state: { phase: "downloading", target: "0.9.0", releaseUrl: "https://x", notes: NOTES },
+			title: "正在下载 0.9.0",
+			line: "正在后台下载,下好了会再提醒你。",
+		},
+		{
+			state: { phase: "ready", target: "0.9.0", releaseUrl: "https://x", notes: NOTES },
+			title: "0.9.0 已就绪",
+			line: "已经下好了,到系统页按一下重启就换。",
+		},
+		{
+			state: {
+				phase: "needs-image-pull",
+				target: "0.9.0",
+				releaseUrl: "https://x",
+				notes: NOTES,
+				checkedAt: 1,
+			},
+			title: "0.9.0 需要新镜像",
+			line: "这一版要重新拉镜像 / 下安装包,在线换不了。",
+		},
+	];
+
+	it.each(cases)(
+		"$state.phase → 标题带版本号,正文 = 概述一行 + 状态句一行",
+		async ({ state, title, line }) => {
+			mount(dto({ phase: "idle" }), dto(state));
+
+			await waitFor(() => expect(useToastStore.getState().items).toHaveLength(1));
+
+			expect(useToastStore.getState().items[0]).toMatchObject({ title, body: `${NOTES}\n${line}` });
+		},
+	);
+
+	it("清单没带概述 → 只有状态句", async () => {
+		mount(
+			dto({ phase: "idle" }),
+			dto({ phase: "downloading", target: "0.9.0", releaseUrl: "https://x" }),
+		);
+
+		await waitFor(() => expect(useToastStore.getState().items).toHaveLength(1));
+
+		expect(useToastStore.getState().items[0]).toMatchObject({
+			title: "正在下载 0.9.0",
+			body: "正在后台下载,下好了会再提醒你。",
+		});
+	});
+});

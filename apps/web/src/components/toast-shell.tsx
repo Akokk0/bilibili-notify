@@ -47,7 +47,9 @@ function ToastCard({ item }: { item: ToastItem }) {
 				onClose={() => dismiss(item.id)}
 			>
 				{item.body ? (
-					<div className="mt-1 text-bn-xs leading-snug text-bn-text-secondary">{item.body}</div>
+					<div className="mt-1 whitespace-pre-line text-bn-xs leading-snug text-bn-text-secondary">
+						{item.body}
+					</div>
 				) : null}
 				{item.action ? (
 					<div className="mt-2">

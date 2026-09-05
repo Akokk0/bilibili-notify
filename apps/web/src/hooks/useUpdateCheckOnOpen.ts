@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { restartNotice, takeRestartMark } from "../components/update/restart";
 import {
 	newerVersionOf,
+	noticeBody,
 	phaseLabel,
 	UPDATE_QUERY_KEY,
 	UPDATE_SECTION_PATH,
@@ -56,17 +57,6 @@ export async function checkUpdateOnOpen(
 		body: noticeBody(after),
 		action: { label: "去更新", to: UPDATE_SECTION_PATH },
 	});
-}
-
-function noticeBody(status: UpdateStatusDTO): string {
-	switch (status.state.phase) {
-		case "ready":
-			return "已经下好了,到系统页按一下重启就换。";
-		case "needs-image-pull":
-			return "这一版要重新拉镜像 / 下安装包,在线换不了。";
-		default:
-			return "到系统页下载;什么时候重启换版本由你按。";
-	}
 }
 
 export function useUpdateCheckOnOpen(): void {

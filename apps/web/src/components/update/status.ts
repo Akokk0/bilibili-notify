@@ -72,3 +72,31 @@ export function phaseLabel(status: UpdateStatusDTO): string {
 			return "这次没成";
 	}
 }
+
+/**
+ * 右下角通知卡的正文:概述一行(清单里的 `notes`,发版 workflow 从 CHANGELOG 抽的那一句)
+ * + 这一档的状态句一行。老清单没概述就只剩状态句,别留一行空的。只对「有一版比现在新」
+ * 的那四档有意义(见 `newerVersionOf`);别的档不会出卡。
+ */
+export function noticeBody(status: UpdateStatusDTO): string {
+	const s = status.state;
+	return withNotes("notes" in s ? s.notes : undefined, statusLine(status));
+}
+
+/** 概述与状态句各占一行;通知卡正文是 `whitespace-pre-line`,换行才显得出来。 */
+export function withNotes(notes: string | undefined, line: string): string {
+	return notes ? `${notes}\n${line}` : line;
+}
+
+function statusLine(status: UpdateStatusDTO): string {
+	switch (status.state.phase) {
+		case "downloading":
+			return "正在后台下载,下好了会再提醒你。";
+		case "ready":
+			return "已经下好了,到系统页按一下重启就换。";
+		case "needs-image-pull":
+			return "这一版要重新拉镜像 / 下安装包,在线换不了。";
+		default:
+			return "到系统页下载;什么时候重启换版本由你按。";
+	}
+}
