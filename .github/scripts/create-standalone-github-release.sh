@@ -10,13 +10,17 @@
 # 两条 workflow 可能同时走到 `gh release create`:一个成功、另一个报「已存在」。
 # 所以 create 失败后再 view 一次,存在就算成功 —— 幂等是这个脚本的全部意义。
 #
-# Docker 镜像由 image-release workflow 推送;release notes 这里只列独立端的产物。
+# Docker 镜像由 image-release workflow 推送;release 正文 = apps/CHANGELOG.md 该版本段全文
+# (经 scripts/changelog-section.mjs 抽,与更新清单的 notes 同源)+ 独立端产物清单。
+# CHANGELOG 里没有这一版就红:tag 必须指向已含 CHANGELOG 的 commit,这是发版的规矩。
 #
 # 必需 env:
 #   VERSION     release version without leading 'v'
 #   PRERELEASE  "true"|"false" 决定 --prerelease / --latest 标记
 #   GH_TOKEN    secrets.RELEASE_PAT
 #   REPO        github.repository(如 Akokk0/bilibili-notify),用于 compare 链接
+# 可选 env:
+#   CHANGELOG_FILE  默认仓库里的 apps/CHANGELOG.md;测试用它指到夹具
 
 set -euo pipefail
 
@@ -48,12 +52,24 @@ if gh release view "$tag" >/dev/null 2>&1; then
 	exit 0
 fi
 
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+repo_root=$(cd "$script_dir/../.." && pwd)
+changelog_file="${CHANGELOG_FILE:-$repo_root/apps/CHANGELOG.md}"
+if ! section=$(node "$repo_root/scripts/changelog-section.mjs" --version "$VERSION" --part section --file "$changelog_file"); then
+	echo "::error::CHANGELOG 里没有 [$VERSION] 这一段,release 正文没法写 —— 先补 CHANGELOG 再打 tag"
+	exit 1
+fi
+
 git fetch --tags --quiet
 prev_tag=$(git tag --sort=-creatordate --list 'v*' | grep -v "^$tag$" | head -1 || true)
 
 notes_file=$(mktemp)
 trap 'rm -f "$notes_file"' EXIT
 {
+	echo "$section"
+	echo
+	echo "---"
+	echo
 	echo "## 桌面应用"
 	echo
 	echo "- macOS arm64: 下载 DMG 或 .app.zip"

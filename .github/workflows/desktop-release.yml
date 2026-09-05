@@ -175,6 +175,12 @@ jobs:
       - name: Assert release commit is on dev
         run: bash .github/scripts/assert-release-ref-on-dev.sh
 
+      # release 正文经 scripts/changelog-section.mjs 抽 CHANGELOG 段,要 node;不装依赖。
+      - name: Setup Vite+ (vp) + Node
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: .node-version
+
       - name: Validate release token
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
