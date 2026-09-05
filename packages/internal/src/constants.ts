@@ -719,6 +719,15 @@ export function platformSupportsAtAll(platform: (typeof PUSH_TARGET_PLATFORMS)[n
 }
 
 /**
+ * 链接解析回什么:图片卡,或 QQ 小程序卡(B 站 App「分享到 QQ」那种,点开进小程序播放)。
+ * 小程序卡要目标所在的 OneBot 实现能向腾讯签 ark(`get_mini_app_ark`,今天已知只有 NapCat),
+ * 签不了的一律回落图片卡。只有这两档,没有「两个都发」。
+ */
+export const LINK_REPLY_FORMS = ["image", "miniapp"] as const;
+
+export type LinkReplyForm = (typeof LINK_REPLY_FORMS)[number];
+
+/**
  * 链接解析的硬上限。**不进面板**:面板上那条冷却只防「同一个视频反复贴」,这几条防的是
  * 换着视频刷 —— 谁都能触发的功能,资源面得有个不靠主人调的底。
  *
