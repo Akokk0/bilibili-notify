@@ -113,6 +113,19 @@ describe("qqPayloadToParts — NotificationPayload → 有序发送片段", () =
 		]);
 	});
 
+	it("miniapp-card(官机签不了 ark)→ 降级成标题 + 链接,不是空片段", () => {
+		const payload: NotificationPayload = {
+			kind: "miniapp-card",
+			title: "示例标题",
+			desc: "简介",
+			picUrl: "https://i0.hdslb.com/cover.jpg",
+			jumpUrl: "https://www.bilibili.com/video/BV1zMtU6uEEb",
+		};
+		expect(qqPayloadToParts(payload)).toEqual([
+			{ kind: "text", text: "示例标题\nhttps://www.bilibili.com/video/BV1zMtU6uEEb" },
+		]);
+	});
+
 	it("composite 的 image 后续 text/link → 合并为同一条 media content", () => {
 		const buf = Buffer.from("card");
 		const payload: NotificationPayload = {

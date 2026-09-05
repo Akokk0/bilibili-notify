@@ -1,4 +1,5 @@
 import type {
+	AdapterCapabilities,
 	DeliveryResult,
 	NotificationPayload,
 	PushAdapter,
@@ -58,6 +59,13 @@ export interface PlatformAdapter {
 	reconcile?(adapters: readonly PushAdapter[]): void;
 	/** Stateful adapters only — close all connections / listeners / timers on shutdown. Idempotent. */
 	dispose?(): void | Promise<void>;
+	/**
+	 * 平台能力快照(探测结果的缓存,同步读、不打网络)。没有能力概念的平台不实现 ——
+	 * 调用方按「没实现 = 什么都不支持」处理。
+	 */
+	capabilities?(adapter: PushAdapter): AdapterCapabilities;
+	/** 主动探一次能力,结果进缓存。连上时、健康探测时、用之前都可以叫;零副作用。 */
+	probeCapabilities?(adapter: PushAdapter): Promise<AdapterCapabilities>;
 }
 
 /**

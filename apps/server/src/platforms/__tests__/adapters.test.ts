@@ -1067,7 +1067,13 @@ describe("onebot — 正向 WS(ws)", () => {
 		const port = (wss.address() as AddressInfo).port;
 		wss.on("connection", (ws) => {
 			ws.on("message", (raw) => {
-				pending.push({ ws, echo: (JSON.parse(raw.toString()) as { echo: unknown }).echo });
+				const frame = JSON.parse(raw.toString()) as { action?: string; echo: unknown };
+				// 连上时的能力探测帧(get_mini_app_ark)不算这两条:只收 send,别的照常回。
+				if (frame.action !== "send_group_msg") {
+					ws.send(JSON.stringify({ status: "failed", retcode: 1404, echo: frame.echo }));
+					return;
+				}
+				pending.push({ ws, echo: frame.echo });
 				if (pending.length === 2) {
 					// 乱序:后到的先回
 					for (const p of [...pending].reverse()) {

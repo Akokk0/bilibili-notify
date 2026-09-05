@@ -202,7 +202,13 @@ export type NotificationPayload =
 	 *     普通多图。稳但 N+ 张大图会一排刷屏。
 	 * 默认值由上游 dynamic engine config(`imageGroupForward`)决定。
 	 */
-	| { kind: "forward-images"; images: ForwardImage[]; forward: boolean };
+	| { kind: "forward-images"; images: ForwardImage[]; forward: boolean }
+	/**
+	 * QQ 小程序卡(B 站 App「分享到 QQ」那种,点开进小程序播放)。只有能向腾讯签 ark 的
+	 * OneBot 实现发得出(扩展接口 `get_mini_app_ark`,见 server 的 platforms/onebot.ts);
+	 * 别的平台一律回 `ok: false`,由链接解析那头回落图片卡。四个字段就是 bili 模板收的四样。
+	 */
+	| { kind: "miniapp-card"; title: string; desc: string; picUrl: string; jumpUrl: string };
 
 /**
  * 推送出口接口。业务核心持有此接口，按 PushTarget.id 投递。
@@ -226,4 +232,20 @@ export interface DeliveryResult {
 	ok: boolean;
 	latencyMs: number;
 	err?: string;
+}
+
+/**
+ * 一个适配器能不能发 QQ 小程序卡。认接口不认实现名:拿空参数探 OneBot 扩展接口
+ * `get_mini_app_ark`,按 OneBot 11 的 retcode 判 —— 1404「不支持的动作」= 不支持,
+ * 1400「参数错」= 接口在、支持;别的(连不上、别的错)= 还没探出来,带原因。
+ * 面板上就是这三态;发送失败不翻它,只有再收到 1404 才翻成不支持。
+ */
+export type MiniAppCardSupport =
+	| { state: "supported"; checkedAt: number }
+	| { state: "unsupported"; reason: string; checkedAt: number }
+	| { state: "unknown"; reason?: string };
+
+/** 适配器的平台能力快照。今天只有一项;将来薄插件接进来时按需加。 */
+export interface AdapterCapabilities {
+	miniAppCard: MiniAppCardSupport;
 }

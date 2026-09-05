@@ -370,6 +370,8 @@ function notificationPayloadToRobotText(payload: NotificationPayload): string {
 			return payload.images.length > 0
 				? `图片:\n${payload.images.map((img) => img.url).join("\n")}`
 				: "[图片]";
+		case "miniapp-card":
+			return `${payload.title}\n${payload.jumpUrl}`;
 	}
 }
 
@@ -410,5 +412,7 @@ function serializePayload(payload: NotificationPayload): unknown {
 			};
 		case "forward-images":
 			return { kind: "forward-images", images: payload.images, forward: payload.forward };
+		case "miniapp-card":
+			return payload;
 	}
 }

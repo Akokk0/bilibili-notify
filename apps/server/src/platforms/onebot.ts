@@ -1,8 +1,10 @@
 import type { IncomingMessage } from "node:http";
 import type {
+	AdapterCapabilities,
 	DeliveryResult,
 	Disposable,
 	Logger,
+	MiniAppCardSupport,
 	NotificationPayload,
 	OnebotAdapterConfig,
 	OnebotSession,
@@ -153,7 +155,7 @@ type OnebotWsConfig = Extract<OnebotAdapterConfig, { transport: "ws" }>;
 type OnebotWsReverseConfig = Extract<OnebotAdapterConfig, { transport: "ws-reverse" }>;
 
 interface OneBotMessageSegment {
-	type: "text" | "image" | "at";
+	type: "text" | "image" | "at" | "json";
 	data: Record<string, string>;
 }
 
@@ -211,6 +213,9 @@ function buildSegments(payload: NotificationPayload): OneBotMessageSegment[] {
 			// NapCat 长消息 SsoSendLongMsg 通道的潜在超时)。
 			if (payload.forward) return [];
 			return payload.images.map((img) => ({ type: "image", data: { file: img.url } }));
+		case "miniapp-card":
+			// 要先向腾讯签 ark 才有段可发,send() 单独走 sendMiniAppCard;这里没有现成的段。
+			return [];
 	}
 }
 
@@ -270,7 +275,15 @@ function buildSendAction(
 		if (!Number.isFinite(gid)) return { err: `group: groupId 非数字 (${session.groupId})` };
 		return { action: "send_group_forward_msg", params: { group_id: gid, messages: nodes } };
 	}
-	const segments = buildSegments(payload);
+	return buildSendActionFromSegments(target, buildSegments(payload), opts);
+}
+
+/** 普通消息(send_group_msg / send_private_msg)的 action + params;段已经翻好了。 */
+function buildSendActionFromSegments(
+	target: PushTarget,
+	segments: OneBotMessageSegment[],
+	opts: { private?: boolean },
+): { action: string; params: Record<string, unknown> } | { err: string } {
 	if (segments.length === 0) return { err: "empty payload" };
 	const session = target.session as OnebotSession;
 	// `opts.private` 是「强制私聊」覆盖标志,仅 `=== true` 时覆盖 target.scope。
@@ -550,6 +563,8 @@ class ForwardConn {
 		private readonly serviceCtx: ServiceContext,
 		private readonly log: Logger,
 		private readonly sinks: OnebotInboundSinks,
+		/** 通道就绪(连上 / bot 连入)时叫一声 —— 能力探测挂在这里,连上就探。 */
+		private readonly onChannelReady?: () => void,
 	) {
 		this.connect();
 	}
@@ -576,6 +591,7 @@ class ForwardConn {
 				inboundSink(this.sinks, this.adapterId),
 			);
 			this.log.info(`[onebot] 正向 WS 已连接 adapter=${this.adapterId} url=${this.url}`);
+			this.onChannelReady?.();
 		});
 		ws.on("error", (err: Error) => {
 			this.lastError = err.message;
@@ -630,6 +646,8 @@ class ReverseListener {
 		private readonly serviceCtx: ServiceContext,
 		private readonly log: Logger,
 		private readonly sinks: OnebotInboundSinks,
+		/** 同 ForwardConn:bot 连入就探一次能力。 */
+		private readonly onChannelReady?: () => void,
 	) {
 		this.start();
 	}
@@ -684,6 +702,7 @@ class ReverseListener {
 			channel.rejectAll(new Error("bot 连接已断开"));
 			this.bots.delete(entry);
 		});
+		this.onChannelReady?.();
 		ws.on("error", () => {
 			/* close 事件会随后到达,统一在 close 清理 */
 		});
@@ -779,6 +798,9 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		for (const l of reverseListeners.values()) l.close();
 		reverseListeners.clear();
 		botIdentityCache.clear();
+		miniAppCardSupport.clear();
+		knownAdapters.clear();
+		capabilityFingerprints.clear();
 	}
 	// 兜底:即便 engines.dispose 没显式调到,serviceCtx 结束时也关干净。
 	serviceCtx.onDispose(disposeAll);
@@ -860,6 +882,206 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		return p;
 	}
 
+	// ------------------------------------------------------------------
+	// 平台能力:能不能签 QQ 小程序卡
+	// ------------------------------------------------------------------
+
+	/** 探测结果按 adapter 缓存;reconcile 清。没探过 = unknown。 */
+	const miniAppCardSupport = new Map<string, MiniAppCardSupport>();
+	/** 最近一次 reconcile 看到的 adapter 表 —— 通道就绪的回调只拿得到 id,探测要配置。 */
+	const knownAdapters = new Map<string, PushAdapter>();
+	/** 每个 adapter 上次 reconcile 时的配置指纹:没变就不丢它的能力缓存。 */
+	const capabilityFingerprints = new Map<string, string>();
+	const NOT_PROBED: MiniAppCardSupport = { state: "unknown" };
+
+	function channelOf(adapterId: string, cfg: OnebotWsConfig | OnebotWsReverseConfig) {
+		return cfg.transport === "ws"
+			? (forwardConns.get(adapterId)?.getChannel() ?? null)
+			: (reverseListeners.get(adapterId)?.getChannel() ?? null);
+	}
+
+	/**
+	 * 调一次 action、不重试 —— 探测与签卡用;真正的发送仍走各自带重试的路。
+	 * 三种 transport 在这里汇成一条:http 直接 POST,ws / ws-reverse 从 channel 发 echo 帧。
+	 */
+	async function callOnce(
+		adapter: PushAdapter,
+		action: string,
+		params: Record<string, unknown>,
+	): Promise<OneBotResponse> {
+		const cfg = adapter.config as OnebotAdapterConfig;
+		const timeoutMs = cfg.timeoutMs ?? fallbackTimeoutMs;
+		if (cfg.transport === "http") return postOnebotOnce(cfg, `/${action}`, params, timeoutMs);
+		const channel = channelOf(adapter.id, cfg);
+		if (!channel) {
+			throw new Error(cfg.transport === "ws" ? "正向 WS 未连接" : "无 bot 连入(反向 WS)");
+		}
+		return channel.call(action, params, timeoutMs);
+	}
+
+	/** 「这个实现没有 get_mini_app_ark」:OneBot 11 的 1404,或把 action 当路径的实现回 HTTP 404。 */
+	function isActionMissing(r: OneBotResponse): boolean {
+		return r.retcode === 1404 || r.retcode === 404;
+	}
+
+	/**
+	 * 空参数探测的判读。1400「参数错」正说明接口在;真成功(0)也算在 —— 有的实现对空参不挑。
+	 * 别的都是没探出来:连不上、鉴权失败、实现自己的错误码,原因带出去给面板。
+	 */
+	function interpretArkProbe(r: OneBotResponse): MiniAppCardSupport {
+		const checkedAt = Date.now();
+		if (isActionMissing(r)) {
+			return { state: "unsupported", reason: "这个 OneBot 实现没有 get_mini_app_ark", checkedAt };
+		}
+		if (r.retcode === 1400 || (r.status === "ok" && (r.retcode ?? 0) === 0)) {
+			return { state: "supported", checkedAt };
+		}
+		return { state: "unknown", reason: r.wording ?? r.message ?? r.msg ?? `retcode=${r.retcode}` };
+	}
+
+	async function probeMiniAppCard(adapter: PushAdapter): Promise<MiniAppCardSupport> {
+		let result: MiniAppCardSupport;
+		try {
+			result = interpretArkProbe(await callOnce(adapter, "get_mini_app_ark", {}));
+		} catch (e) {
+			result = { state: "unknown", reason: e instanceof Error ? e.message : String(e) };
+		}
+		// 探不出来不推翻已经探实的答案:反向 WS 的 bot 断一次连一次就探一次,那一趟撞上实现
+		// 还没初始化完就超时,面板会莫名其妙地退回「未探测」、发卡前又要白探一趟。降级只认
+		// 一种证据 —— 真发时收到 1404(见 sendMiniAppCard)。
+		const cached = miniAppCardSupport.get(adapter.id);
+		if (result.state === "unknown" && cached !== undefined && cached.state !== "unknown") {
+			log.debug(
+				`[onebot] adapter=${adapter.id} 这次没探出小程序卡能力(${result.reason ?? "?"}),沿用上次的 ${cached.state}`,
+			);
+			return cached;
+		}
+		miniAppCardSupport.set(adapter.id, result);
+		// 与 get_login_info 同一条规矩:探成了不出声。发不了才留一行 —— 主人选了小程序卡却
+		// 收到图片卡时,这是唯一能解释原因的地方;没探出来多半是还没连上,健康探测每五分钟
+		// 会再试,放 debug 免得刷屏。
+		if (result.state === "unsupported") {
+			log.info(`[onebot] adapter=${adapter.id} 发不了小程序卡:${result.reason}`);
+		} else if (result.state === "unknown") {
+			log.debug(`[onebot] adapter=${adapter.id} 小程序卡能力还没探出来:${result.reason ?? "?"}`);
+		}
+		return result;
+	}
+
+	/** 通道就绪(正向连上 / 反向 bot 连入)→ 探一次。拿不到配置(已被 reconcile 移除)就算了。 */
+	function probeOnReady(adapterId: string): void {
+		const adapter = knownAdapters.get(adapterId);
+		if (adapter && !disposed) void probeMiniAppCard(adapter);
+	}
+
+	/**
+	 * 发一张小程序卡:先向腾讯签 ark(bili 模板),再把 ark 当 `json` 段走普通发送。
+	 * 签卡收到 1404 → 翻成不支持、不发;别的失败只报这一条,缓存不动(可能只是暂时的)。
+	 */
+	async function sendMiniAppCard(
+		adapter: PushAdapter,
+		target: PushTarget,
+		card: Extract<NotificationPayload, { kind: "miniapp-card" }>,
+		opts: { private?: boolean },
+	): Promise<DeliveryResult> {
+		const t0 = Date.now();
+		let ark: unknown;
+		try {
+			const r = await callOnce(adapter, "get_mini_app_ark", {
+				type: "bili",
+				title: card.title,
+				desc: card.desc,
+				picUrl: card.picUrl,
+				jumpUrl: card.jumpUrl,
+			});
+			if (isActionMissing(r)) {
+				const reason = "这个 OneBot 实现没有 get_mini_app_ark,发不了小程序卡";
+				miniAppCardSupport.set(adapter.id, { state: "unsupported", reason, checkedAt: Date.now() });
+				return { ok: false, latencyMs: Date.now() - t0, err: reason };
+			}
+			const verdict = interpretResponse(r);
+			if (!verdict.ok) {
+				return { ok: false, latencyMs: Date.now() - t0, err: `签小程序卡失败: ${verdict.err}` };
+			}
+			ark = r.data;
+		} catch (e) {
+			const err = e instanceof Error ? e.message : String(e);
+			return { ok: false, latencyMs: Date.now() - t0, err: `签小程序卡失败: ${err}` };
+		}
+		const data = arkToSegmentData(ark);
+		if (data === null) {
+			return { ok: false, latencyMs: Date.now() - t0, err: "签小程序卡失败: 返回的不是 ark" };
+		}
+		miniAppCardSupport.set(adapter.id, { state: "supported", checkedAt: Date.now() });
+		const built = buildSendActionFromSegments(target, [{ type: "json", data: { data } }], opts);
+		if ("err" in built) return { ok: false, latencyMs: Date.now() - t0, err: built.err };
+		return dispatch(adapter, target, built, t0);
+	}
+
+	/**
+	 * 把 `get_mini_app_ark` 交出来的东西整理成 `json` 段的 `data`(一个 ark 的 JSON 字符串)。
+	 *
+	 * NapCat 的 handler 返回 `{ data: ark }`,OneBot 帧再包一层 `data`,于是响应里是
+	 * `data.data` 才是 ark —— 真机踩到过:把外面那层整个发出去,腾讯认不出、直接吞掉,NapCat
+	 * 等不到上屏回调才报超时,日志里只有一句「NapCat 可能掉线」。别家实现可能不套这一层,
+	 * 也可能交字符串:看到 `app` 字段就是 ark 本体,只有 `data` 就剥一层,怎么看都不像的
+	 * 不发(发出去也是被吞)。
+	 */
+	function arkToSegmentData(raw: unknown): string | null {
+		let value: unknown = raw;
+		if (typeof value === "string") {
+			try {
+				value = JSON.parse(value);
+			} catch {
+				return null;
+			}
+		}
+		for (let depth = 0; depth < 2; depth++) {
+			if (typeof value !== "object" || value === null) return null;
+			const obj = value as Record<string, unknown>;
+			if (typeof obj.app === "string") return JSON.stringify(obj);
+			if (!("data" in obj)) return null;
+			value = obj.data;
+		}
+		return null;
+	}
+
+	/** 一条已经翻好的 action 走 transport 发出去(带各自的重试与超时规则)。 */
+	async function dispatch(
+		adapter: PushAdapter,
+		target: PushTarget,
+		built: { action: string; params: Record<string, unknown> },
+		t0: number,
+	): Promise<DeliveryResult> {
+		const cfg = adapter.config as OnebotAdapterConfig;
+		if (cfg.transport === "http") {
+			try {
+				const result = await postOnebot(cfg, `/${built.action}`, built.params, fallbackTimeoutMs, {
+					nonIdempotent: true,
+					minTimeoutMs: minTimeoutFor(
+						built.action,
+						built.params,
+						minTimeoutLimits(cfg, minTimeoutFallbacks),
+					),
+				});
+				const verdict = interpretResponse(result);
+				if (!verdict.ok) {
+					log.warn(`[onebot] target=${target.id} send failed: ${verdict.err}`);
+					return { ok: false, latencyMs: Date.now() - t0, err: verdict.err };
+				}
+				return { ok: true, latencyMs: Date.now() - t0 };
+			} catch (e) {
+				const err =
+					e instanceof IndeterminateActionError
+						? e.message + INDETERMINATE_NOTE
+						: describeFetchError(e);
+				log.warn(`[onebot] target=${target.id} send threw: ${err} (baseUrl=${cfg.baseUrl})`);
+				return { ok: false, latencyMs: Date.now() - t0, err };
+			}
+		}
+		return sendOverWs(adapter.id, cfg, built.action, built.params, target.id, t0);
+	}
+
 	/** WS / WS-reverse 共用的发送(echo 帧 + 重试)。 */
 	async function sendOverWs(
 		adapterId: string,
@@ -931,6 +1153,27 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			// 每次 reconcile 后第一次 forward 多一次 get_login_info(15s 超时)。
 			botIdentityCache.clear();
 
+			// --- 能力缓存 ---
+			// 只在适配器配置真变了(指向另一个实现)或适配器没了时丢;配置没变就留着。**不能全清**:
+			// 健康探测每五分钟写回 testStatus 也会触发一次 reconcile,而反向 ws 的 bot 早已连着、
+			// 不会再触发「连入」重探 —— 全清的话面板永远停在「未探测」(真机踩到)。
+			for (const id of [...knownAdapters.keys()]) {
+				if (onebots.some((a) => a.id === id)) continue;
+				knownAdapters.delete(id);
+				miniAppCardSupport.delete(id);
+				capabilityFingerprints.delete(id);
+			}
+			for (const a of onebots) {
+				const fp = JSON.stringify(a.config);
+				const changed = capabilityFingerprints.get(a.id) !== fp;
+				capabilityFingerprints.set(a.id, fp);
+				knownAdapters.set(a.id, a);
+				if (changed) miniAppCardSupport.delete(a.id);
+				// ws 的两种在通道就绪时探;http 没有「连上」这一刻,配置变了或还没探出来就在这儿探。
+				const cfg = a.config as OnebotAdapterConfig;
+				if (cfg.transport === "http" && !miniAppCardSupport.has(a.id)) void probeMiniAppCard(a);
+			}
+
 			// --- 正向 ws ---
 			const desiredFwd = new Map<string, OnebotWsConfig>();
 			for (const a of onebots) {
@@ -950,7 +1193,9 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				existing?.close();
 				forwardConns.set(
 					id,
-					new ForwardConn(id, fp, cfg.url, forwardHeaders(cfg), serviceCtx, log, opts),
+					new ForwardConn(id, fp, cfg.url, forwardHeaders(cfg), serviceCtx, log, opts, () =>
+						probeOnReady(id),
+					),
 				);
 			}
 
@@ -973,7 +1218,9 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				// error 事件落到 bindError,经 probe 暴露给 dashboard。
 				reverseListeners.set(
 					id,
-					new ReverseListener(id, cfg.port, cfg.accessToken, serviceCtx, log, opts),
+					new ReverseListener(id, cfg.port, cfg.accessToken, serviceCtx, log, opts, () =>
+						probeOnReady(id),
+					),
 				);
 			}
 		},
@@ -988,7 +1235,6 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			}
 			const cfg = adapter.config as OnebotAdapterConfig;
 			const t0 = Date.now();
-
 			if (cfg.transport === "http") {
 				try {
 					const result = await postOnebotOnce(
@@ -1081,7 +1327,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 					err: `wrong platform: adapter=${adapter.platform} target=${target.platform}`,
 				};
 			}
-			const cfg = adapter.config as OnebotAdapterConfig;
+			if (payload.kind === "miniapp-card") return sendMiniAppCard(adapter, target, payload, opts);
 			// 先用 fallback botInfo 跑一遍 buildSendAction 做 target 校验 ——
 			// session.groupId / userId 缺失等"配错"立即 err 返回,不浪费 get_login_info
 			// 往返(可能 15s 超时)在一条注定发不出去的消息上。非 forward 路径直接复用
@@ -1105,39 +1351,15 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				built = rebuilt;
 			}
 
-			if (cfg.transport === "http") {
-				try {
-					const result = await postOnebot(
-						cfg,
-						`/${built.action}`,
-						built.params,
-						fallbackTimeoutMs,
-						{
-							nonIdempotent: true,
-							minTimeoutMs: minTimeoutFor(
-								built.action,
-								built.params,
-								minTimeoutLimits(cfg, minTimeoutFallbacks),
-							),
-						},
-					);
-					const verdict = interpretResponse(result);
-					if (!verdict.ok) {
-						log.warn(`[onebot] target=${target.id} send failed: ${verdict.err}`);
-						return { ok: false, latencyMs: Date.now() - t0, err: verdict.err };
-					}
-					return { ok: true, latencyMs: Date.now() - t0 };
-				} catch (e) {
-					const err =
-						e instanceof IndeterminateActionError
-							? e.message + INDETERMINATE_NOTE
-							: describeFetchError(e);
-					log.warn(`[onebot] target=${target.id} send threw: ${err} (baseUrl=${cfg.baseUrl})`);
-					return { ok: false, latencyMs: Date.now() - t0, err };
-				}
-			}
+			return dispatch(adapter, target, built, t0);
+		},
 
-			return sendOverWs(adapter.id, cfg, built.action, built.params, target.id, t0);
+		capabilities(adapter: PushAdapter): AdapterCapabilities {
+			return { miniAppCard: miniAppCardSupport.get(adapter.id) ?? NOT_PROBED };
+		},
+
+		async probeCapabilities(adapter: PushAdapter): Promise<AdapterCapabilities> {
+			return { miniAppCard: await probeMiniAppCard(adapter) };
 		},
 	};
 }

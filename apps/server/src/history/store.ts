@@ -161,6 +161,8 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 					kind: "text",
 					text: `[图集 ${payload.images.length} 张${payload.forward ? " · 合并转发" : ""}]`,
 				};
+			case "miniapp-card":
+				return { kind: "text", text: `[小程序卡] ${payload.title}` };
 			case "composite": {
 				const textParts: string[] = [];
 				let imageRef: string | undefined;

@@ -880,8 +880,11 @@ export function qqPayloadToParts(payload: NotificationPayload): QQSendPart[] {
 			}
 			return attachFollowingTextToImages(parts);
 		}
-		default:
-			return [];
+		case "miniapp-card":
+			// 官机发不了 ark / 小程序,能给的只有标题加链接(与 webhook 的降级同形状)。
+			// 推送层本不会把这种 payload 路到官机(它的 capabilities 里没这一项),留着是
+			// 为了别悄悄发出去一条空消息 —— `default: return []` 那样连报错都无从查起。
+			return [{ kind: "text", text: `${payload.title}\n${payload.jumpUrl}` }];
 	}
 }
 
