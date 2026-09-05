@@ -47,8 +47,17 @@ export type UpdateState =
 	| { phase: "downloading"; target: string; releaseUrl: string; notes?: string }
 	/** 已经装进版本目录,**重启就会跑它**。 */
 	| { phase: "ready"; target: string; releaseUrl: string; notes?: string }
-	/** 这一版要更新的镜像才跑得动,在线升不上去 —— Node / chromium 都来自镜像。 */
-	| { phase: "needs-image-pull"; target: string; releaseUrl: string; checkedAt: number }
+	/**
+	 * 这一版要更新的镜像才跑得动,在线升不上去 —— Node / chromium 都来自镜像。`notes` 照带:
+	 * 换不了也得让人知道它是什么,右下角那张卡念的就是它。
+	 */
+	| {
+			phase: "needs-image-pull";
+			target: string;
+			releaseUrl: string;
+			notes?: string;
+			checkedAt: number;
+	  }
 	/** 钉子已落,重启就会回到上一版。 */
 	| { phase: "rolled-back"; target: string }
 	/** `helpUrl` 是「下不动就给个链接让用户自己去下」那条兜底出口。 */

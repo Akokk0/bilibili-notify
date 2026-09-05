@@ -422,6 +422,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 				phase: "needs-image-pull",
 				target: decision.target,
 				releaseUrl: manifest.releaseUrl,
+				notes: manifest.notes,
 				checkedAt: Date.now(),
 			};
 			return status();

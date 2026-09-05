@@ -328,13 +328,13 @@ describe("createUpdateService —— 检查更新", () => {
 		expect(String(fetchMock.mock.calls[0]?.[0])).toBe(MANIFEST_URLS.prerelease);
 	});
 
-	it("新版要更高的 Node → 明说要重拉镜像,并给出那一版的发布页", async () => {
+	it("新版要更高的 Node → 明说要重拉镜像,并给出那一版的发布页与概述", async () => {
 		const key = makeKey();
 		const zip = makePayloadZip("0.9.0");
 		stubNetwork({
 			manifestBody: envelope(
 				key.privateKey,
-				manifestFor("0.9.0", zip, { requires: { nodeMajor: 26 } }),
+				manifestFor("0.9.0", zip, { requires: { nodeMajor: 26 }, notes: "要换镜像的一版。" }),
 			),
 			payload: zip,
 		});
@@ -345,10 +345,12 @@ describe("createUpdateService —— 检查更新", () => {
 
 		const status = await service.check();
 
+		// 概述照带:这一版换不了也得让人知道它是什么,右下角那张卡念的就是它。
 		expect(status.state).toMatchObject({
 			phase: "needs-image-pull",
 			target: "0.9.0",
 			releaseUrl: "https://github.com/o/r/releases/tag/v0.9.0",
+			notes: "要换镜像的一版。",
 		});
 		// 载荷能比镜像新,但 Node 来自镜像 —— 下下来也跑不起来,别下。
 		expect(existsSync(join(versionsRoot, "0.9.0"))).toBe(false);
