@@ -9,12 +9,13 @@
  *   - features=false 总开关短路(配 defaults provider 时)
  *   - quietHours 命中时不发
  *   - atAll 修饰仅作用于 dynamic / live,且按 atAllDefaults + tristate 覆写决定
- *   - onSend 回调每个 target 触发一次,private 字段为 false
+ *   - onSend 回调每个 target 触发一次,target 字段填
  */
 
 import { Buffer } from "node:buffer";
 import {
 	type DeliveryResult,
+	FEATURE_KEYS,
 	type GlobalDefaults,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
@@ -41,6 +42,7 @@ function makeSink(opts?: { available?: boolean }): {
 	const calls: SendCall[] = [];
 	const sink: NotificationSink = {
 		isAvailable: () => available,
+		isEnabled: () => true,
 		send: async (targetId, payload) => {
 			calls.push({ targetId, payload });
 			return { ok: true, latencyMs: 1 } as DeliveryResult;
@@ -76,9 +78,7 @@ function makeStore(subs: Subscription[]): SubscriptionStore {
 function loopbackDefaults(): GlobalDefaults {
 	// 任意 features=true、quietHours=空,使 runtime gate 直接放行
 	const g = makeDefaultGlobalConfig();
-	for (const k of Object.keys(g.defaults.features)) {
-		(g.defaults.features as Record<string, boolean>)[k] = true;
-	}
+	for (const k of FEATURE_KEYS) g.defaults.features[k] = true;
 	g.defaults.schedule.quietHours = [];
 	return g.defaults;
 }
@@ -439,6 +439,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 			p.kind === "composite" && p.segments.length === 1 && p.segments[0]?.type === "at-all";
 		const sink: NotificationSink = {
 			isAvailable: () => true,
+			isEnabled: () => true,
 			// @全体 这条永不 resolve(模拟无权限群的重试卡死);卡片正文立即成功。
 			send: (targetId, payload) => {
 				calls.push({ targetId, payload });
@@ -474,7 +475,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		expect(out[0].ok).toBe(true);
 	});
 
-	it("onSend 每个 target 触发一次,private=false,target 字段填", async () => {
+	it("onSend 每个 target 触发一次,target 字段填", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.dynamic = ["t1", "t2"];
 		const onSend = vi.fn();
@@ -490,7 +491,7 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		await push.broadcastToFeature("u1", "dynamic", { kind: "text", text: "x" });
 		expect(onSend).toHaveBeenCalledTimes(2);
 		const calls = onSend.mock.calls.map((c) => c[0]);
-		expect(calls[0]).toMatchObject({ uid: "u1", feature: "dynamic", private: false });
+		expect(calls[0]).toMatchObject({ uid: "u1", feature: "dynamic" });
 		expect(calls[0].target.id).toBe("t1");
 	});
 });

@@ -5,13 +5,14 @@
  *   - 同一 target 内 payload 顺序 await 保序
  *   - 某条失败 → **该 target** 的后续 payload 不再发(既然失败了后面大概率也失败);
  *     其他 target 不受牵连
- *   - onSend 每条 payload 记一行(含失败那条;被中止的不记)
+ *   - onSend 每个 target 回调一次,消息列表含失败那条、不含被中止的
  *   - @全体仍是独立一条、在序列首条之前 fire-and-forget
  *   - 单 payload(非数组)行为与旧签名完全一致(koishi 兼容)
  */
 
 import {
 	type DeliveryResult,
+	FEATURE_KEYS,
 	type GlobalDefaults,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
@@ -39,6 +40,7 @@ function makeSink(failOn?: (targetId: string, nthCallForTarget: number) => boole
 	const perTarget = new Map<string, number>();
 	const sink: NotificationSink = {
 		isAvailable: () => true,
+		isEnabled: () => true,
 		send: async (targetId, payload) => {
 			const nth = (perTarget.get(targetId) ?? 0) + 1;
 			perTarget.set(targetId, nth);
@@ -78,9 +80,7 @@ function makeStore(subs: Subscription[]): SubscriptionStore {
 
 function loopbackDefaults(): GlobalDefaults {
 	const g = makeDefaultGlobalConfig();
-	for (const k of Object.keys(g.defaults.features)) {
-		(g.defaults.features as Record<string, boolean>)[k] = true;
-	}
+	for (const k of FEATURE_KEYS) g.defaults.features[k] = true;
 	g.defaults.schedule.quietHours = [];
 	return g.defaults;
 }
@@ -142,9 +142,9 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 		]);
 	});
 
-	it("onSend 每条 payload 记一行:含失败那条,不含被中止的", async () => {
+	it("onSend 每个 target 回调一次:消息列表含失败那条,不含被中止的", async () => {
 		const { sink } = makeSink((id, nth) => id === T1 && nth === 2);
-		const seen: Array<[string, string, boolean]> = [];
+		const seen: Array<[string | null, Array<[string, boolean]>]> = [];
 		const push = new BilibiliPush({
 			...pushBase(),
 			sink,
@@ -152,14 +152,20 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 			logger: silentLogger,
 			defaults: loopbackDefaults,
 			onSend: (info: PushSendInfo) => {
-				seen.push([info.target.id, textOf(info.payload), info.result.ok]);
+				if (info.target === null) return;
+				seen.push([info.target.id, info.messages.map((m) => [textOf(m.payload), m.result.ok])]);
 			},
 		});
 		push.start();
 		await push.broadcastToFeature("u1", "dynamic", [M1, M2, M3]);
 		expect(seen).toEqual([
-			[T1, "m1", true],
-			[T1, "m2", false], // 失败条本身要落历史
+			[
+				T1,
+				[
+					["m1", true],
+					["m2", false], // 失败条本身要落历史
+				],
+			],
 		]);
 	});
 

@@ -208,6 +208,11 @@ export interface NotificationSink {
 	sendPrivate(targetId: string, payload: NotificationPayload): Promise<DeliveryResult>;
 	/** 允许 adapter 通过 id 查目标的元数据（platform / scope / 启停状态）。 */
 	resolve(targetId: string): PushTarget | undefined;
+	/**
+	 * 配置层面能不能推:目标存在、目标启用、所属适配器启用。停用的目标不是候选 ——
+	 * 推送层既不发也不等它「恢复可达」。与 {@link isAvailable} 分开:那是运行时的健康。
+	 */
+	isEnabled(targetId: string): boolean;
 	/** 健康检查：目标当前是否可投递（bot 在线 / endpoint 可达）。 */
 	isAvailable(targetId: string): boolean;
 }

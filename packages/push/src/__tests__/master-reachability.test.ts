@@ -38,6 +38,7 @@ function makeSink(box: { up: boolean }): { sink: NotificationSink; sent: string[
 	const sent: string[] = [];
 	const sink: NotificationSink = {
 		isAvailable: () => box.up,
+		isEnabled: () => true,
 		send: async (id) => {
 			sent.push(id);
 			return { ok: true, latencyMs: 1 } as DeliveryResult;

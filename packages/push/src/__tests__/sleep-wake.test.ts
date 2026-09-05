@@ -23,6 +23,7 @@ import { pushBase, silentLogger } from "./helpers";
 function makeUnreachableSink(): NotificationSink {
 	return {
 		isAvailable: () => false, // 永远不可达 → sendToTarget 进入 sleep retry 循环
+		isEnabled: () => true,
 		send: async (): Promise<DeliveryResult> => ({ ok: false, latencyMs: 0, err: "unreachable" }),
 		sendPrivate: async (): Promise<DeliveryResult> => ({
 			ok: false,
@@ -127,6 +128,7 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		);
 		const sink: NotificationSink = {
 			isAvailable: () => available,
+			isEnabled: () => true,
 			send,
 			sendPrivate: async (): Promise<DeliveryResult> => ({ ok: false, latencyMs: 0 }),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
@@ -172,6 +174,7 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		});
 		const sink: NotificationSink = {
 			isAvailable: () => true,
+			isEnabled: () => true,
 			send: (id) => send(id),
 			sendPrivate: async (): Promise<DeliveryResult> => ({ ok: false, latencyMs: 0 }),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
@@ -189,10 +192,7 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		const results = await push.sendBatch(
 			["a", "b"],
 			{ kind: "text", text: "x" },
-			{
-				uid: "u1",
-				feature: "live",
-			},
+			{ uid: "u1", feature: "live", pushId: "p1", role: "main" },
 		);
 
 		// 仅 "a" 触达 sink;generation 1→2 后 "b" 被放弃,不跨生命周期拆发。

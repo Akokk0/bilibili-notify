@@ -75,6 +75,7 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 		const send = vi.fn(async (): Promise<DeliveryResult> => ({ ok: true, latencyMs: 1 }));
 		const sink: NotificationSink = {
 			isAvailable: (id) => (id === "target-a" ? aAvailable : true),
+			isEnabled: () => true,
 			send: () => send(),
 			sendPrivate: async (): Promise<DeliveryResult> => ({ ok: false, latencyMs: 0 }),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
@@ -131,6 +132,7 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 		const send = vi.fn(async (): Promise<DeliveryResult> => ({ ok: true, latencyMs: 1 }));
 		const sink: NotificationSink = {
 			isAvailable: () => available,
+			isEnabled: () => true,
 			send: () => send(),
 			sendPrivate: async (): Promise<DeliveryResult> => ({ ok: false, latencyMs: 0 }),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
