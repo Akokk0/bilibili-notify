@@ -1,4 +1,5 @@
 import type { BiliEvents, ConfigScope, Disposable, MessageBus } from "@bilibili-notify/internal";
+import { toHistoryView } from "../history/view.js";
 import type { LogChannel } from "./log-channel.js";
 import { CHANNELS, type ChannelName, type LogEntry, type ServerEventEnvelope } from "./types.js";
 
@@ -128,32 +129,22 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 	);
 
 	// push-events channel ---------------------------------------------------
-	// Carry the full HistoryEntry view (id, ts, source, uid, ok, text) so the
-	// dashboard's toast can render without a second fetch. Image refs stay as
-	// `imageRef: <filename>` — clients resolve those against /api/history/img.
-	subs.push(
-		deps.bus.on("history-recorded", (entry) => {
-			const view = {
-				id: entry.id,
-				ts: entry.ts,
-				source: entry.source,
-				uid: entry.uid,
-				subscriptionId: entry.subscriptionId,
-				targetIds: entry.targetIds,
-				ok: entry.result.ok,
-				text: entry.payload.text,
-				imageRef: entry.payload.imageRef,
-				unameSnapshot: entry.unameSnapshot,
-				uavatarSnapshot: entry.uavatarSnapshot,
-			};
-			deps.publish({
-				type: "push-events",
-				event: "history-recorded",
-				ts: new Date().toISOString(),
-				data: view,
-			});
-		}),
-	);
+	// 历史那一行的 wire view(与 GET /api/history 同一投影),面板的小卡不用二次 fetch。
+	// `history-recorded` 是建行(本体落地),`history-updated` 是同一行追加了消息 ——
+	// 前端按 id 换缓存、小卡同 id 换字。图片留 `imageRef: <filename>`,客户端对着
+	// /api/history/img 解析。
+	for (const event of ["history-recorded", "history-updated"] as const) {
+		subs.push(
+			deps.bus.on(event, (entry) => {
+				deps.publish({
+					type: "push-events",
+					event,
+					ts: new Date().toISOString(),
+					data: toHistoryView(entry),
+				});
+			}),
+		);
+	}
 	subs.push(
 		deps.bus.on("live-state-changed", (uid, status) =>
 			deps.publish(envelope("push-events", "live-state-changed", [uid, status])),

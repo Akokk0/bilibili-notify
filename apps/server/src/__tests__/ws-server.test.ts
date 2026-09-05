@@ -199,13 +199,16 @@ describe("WS server", () => {
 		bus.emit("auth-lost");
 		bus.emit("history-recorded", {
 			id: "abc-123",
+			pushId: "abc-123",
 			ts: "2026-05-12T00:00:00.000Z",
-			source: "dynamic",
+			kind: "dynamic",
 			uid: "u1",
 			subscriptionId: "sub-1",
-			targetIds: ["t-1"],
-			result: { ok: true, per: [{ targetId: "t-1", ok: true, latencyMs: 1 }] },
-			payload: { kind: "text", text: "hi" },
+			targetId: "t-1",
+			status: "delivered",
+			messages: [
+				{ payload: { kind: "text", text: "hi" }, role: "main", result: { ok: true, latencyMs: 1 } },
+			],
 		});
 
 		const aEvt = await ca.waitFor((m) => m?.type === "auth" && m?.event === "auth-lost");
@@ -214,7 +217,7 @@ describe("WS server", () => {
 			(m) => m?.type === "push-events" && m?.event === "history-recorded",
 		);
 		expect((bEvt.data as { id: string }).id).toBe("abc-123");
-		expect((bEvt.data as { text: string }).text).toBe("hi");
+		expect((bEvt.data as { messages: Array<{ text: string }> }).messages[0]?.text).toBe("hi");
 
 		// Reverse direction: ensure neither leaked.
 		expect(ca.all().some((m) => m.type === "push-events")).toBe(false);

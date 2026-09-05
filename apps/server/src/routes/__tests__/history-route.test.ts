@@ -69,6 +69,56 @@ describe("history route — limit/since 校验 (P2-J)", () => {
 	});
 });
 
+describe("history route — kind 过滤与 view 投影", () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("kind 合法 → 透传给 query;不认识的 kind 当没传", async () => {
+		const app = makeApp();
+		await app.request("/?kind=live-end");
+		expect(query.mock.calls[0]?.[0]).toMatchObject({ kind: "live-end" });
+		await app.request("/?kind=live-summary");
+		expect(query.mock.calls[1]?.[0]).not.toHaveProperty("kind", "live-summary");
+		expect(query.mock.calls[1]?.[0].kind).toBeUndefined();
+	});
+
+	it("entries 投影成 wire view:消息逐条、无目标行 targetId 为 null", async () => {
+		const app = makeApp();
+		query.mockResolvedValueOnce([
+			{
+				id: "h1",
+				pushId: "p1",
+				ts: "2026-05-16T00:00:00.000Z",
+				kind: "dynamic",
+				uid: "u1",
+				subscriptionId: "sub1",
+				targetId: null,
+				status: "no-targets",
+				messages: [{ payload: { kind: "text", text: "卡片" }, role: "main" }],
+				unameSnapshot: "UP",
+			},
+		]);
+		const res = await app.request("/");
+		expect(await res.json()).toEqual({
+			entries: [
+				{
+					id: "h1",
+					pushId: "p1",
+					ts: "2026-05-16T00:00:00.000Z",
+					kind: "dynamic",
+					status: "no-targets",
+					uid: "u1",
+					subscriptionId: "sub1",
+					targetId: null,
+					messages: [{ text: "卡片", role: "main" }],
+					unameSnapshot: "UP",
+				},
+			],
+		});
+	});
+});
+
 describe("history /daily — 按日聚合(本周推送趋势数据源)", () => {
 	beforeEach(() => {
 		vi.restoreAllMocks();

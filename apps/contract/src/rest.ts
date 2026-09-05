@@ -7,13 +7,15 @@
 import type {
 	CachedProfile,
 	FansRefreshEntry,
-	HistorySource,
+	HistoryMessageRole,
+	PushKind,
+	PushStatus,
 	Subscription,
 	SubscriptionState,
 } from "@bilibili-notify/internal";
 import type { LogLevel } from "./ws";
 
-export type { FansRefreshEntry, HistorySource };
+export type { FansRefreshEntry, HistoryMessageRole, PushKind, PushStatus };
 
 // ---- /api/subs ------------------------------------------------------------
 
@@ -35,16 +37,33 @@ export type SubscriptionDTO = Subscription & {
 
 // ---- /api/history ----------------------------------------------------------
 
-export interface HistoryEntryView {
-	id: string;
-	ts: string;
-	source: HistorySource;
-	uid: string;
-	subscriptionId: string;
-	targetIds: string[];
-	ok: boolean;
+/** 一行历史里的一条消息:文案 / 图 / 这条对这个目标的结果。无目标行没有 `ok`。 */
+export interface HistoryMessageView {
 	text?: string;
 	imageRef?: string;
+	role: HistoryMessageRole;
+	ok?: boolean;
+	err?: string;
+}
+
+/**
+ * 推送历史的一行 = 一次推送 × 一个目标。`GET /api/history` 与 WS `push-events` 的
+ * `history-recorded` / `history-updated` 共用这一个形状;后者是同一行追加消息后的整行,
+ * 前端按 `id` 换缓存。
+ */
+export interface HistoryEntryView {
+	id: string;
+	/** 同一次推送落到几个目标就有几行,它们共用这一个。 */
+	pushId: string;
+	ts: string;
+	kind: PushKind;
+	status: PushStatus;
+	uid: string;
+	subscriptionId: string;
+	/** null = 无目标行(这类推送没配目标,或配的全停用)。 */
+	targetId: string | null;
+	/** 首条本体是面板上显示的文案;其余展开看。 */
+	messages: HistoryMessageView[];
 	/** 写入时 snapshot 的 UP 主名称 / 头像;老 entry 无此字段。 */
 	unameSnapshot?: string;
 	uavatarSnapshot?: string;
@@ -58,7 +77,7 @@ export interface HistoryResponse {
 export interface DailyHistoryCount {
 	/** 按 tzOffsetMin 口径的本地日 YYYY-MM-DD。 */
 	d: string;
-	counts: Record<HistorySource, number>;
+	counts: Record<PushKind, number>;
 	total: number;
 	failures: number;
 }

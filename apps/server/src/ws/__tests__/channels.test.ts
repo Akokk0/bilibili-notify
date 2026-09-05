@@ -4,7 +4,7 @@
  * 守护契约:
  *   - envelope() 参数 unwrap:0 参 → data=null;1 参 → 直接 unwrap;N 参 → 保留 tuple
  *   - `cookies-refreshed` **安全脱敏**:绝不转发 cookiesJson/refreshToken,只发 {refreshedAt, ok?}
- *   - `history-recorded` 投影成精简 view(非 raw HistoryEntry)
+ *   - `history-recorded` / `history-updated` 投影成精简 view(非 raw HistoryEntry)
  *   - `config-changed` 按 scope 带快照;secrets scope → snapshot=null
  *   - log channel:LogChannel.push → {type:"log",event:level,ts:entry.ts,data:{msg,args}}
  *   - dispose() 解绑所有 bus 订阅(之后再 emit 不再 publish)
@@ -107,40 +107,84 @@ describe("attachChannelWiring — envelope 参数 unwrap", () => {
 	});
 });
 
-describe("attachChannelWiring — history-recorded 投影", () => {
-	it("投影为精简 view,不外泄 raw entry 结构", () => {
+const ROW = {
+	id: "h1",
+	pushId: "p1",
+	ts: "2026-05-16T00:00:00.000Z",
+	kind: "live-end",
+	uid: "u1",
+	subscriptionId: "sub1",
+	targetId: "t1",
+	status: "partial",
+	messages: [
+		{
+			payload: { kind: "image", text: "[卡片图]", imageRef: "h1-0.png" },
+			role: "main",
+			result: { ok: true, latencyMs: 5 },
+		},
+		{
+			payload: { kind: "text", text: "总结" },
+			role: "extra",
+			result: { ok: false, latencyMs: 9, err: "boom" },
+		},
+	],
+	unameSnapshot: "UP",
+	uavatarSnapshot: "http://a/x.jpg",
+};
+
+const ROW_VIEW = {
+	id: "h1",
+	pushId: "p1",
+	ts: "2026-05-16T00:00:00.000Z",
+	kind: "live-end",
+	status: "partial",
+	uid: "u1",
+	subscriptionId: "sub1",
+	targetId: "t1",
+	messages: [
+		{ text: "[卡片图]", imageRef: "h1-0.png", role: "main", ok: true },
+		{ text: "总结", imageRef: undefined, role: "extra", ok: false, err: "boom" },
+	],
+	unameSnapshot: "UP",
+	uavatarSnapshot: "http://a/x.jpg",
+};
+
+describe("attachChannelWiring — history-recorded / history-updated 投影", () => {
+	it("history-recorded 投影为精简 view:消息逐条带文案 / 图 / 结果,不外泄 payload.kind 与 latency", () => {
 		const h = wire();
-		const entry = {
-			id: "h1",
-			ts: "2026-05-16T00:00:00.000Z",
-			source: "dynamic",
-			uid: "u1",
-			subscriptionId: "sub1",
-			targetIds: ["t1"],
-			result: { ok: true, per: [{ targetId: "t1", ok: true, latencyMs: 5 }] },
-			payload: { kind: "text", text: "hello", imageRef: undefined },
-			unameSnapshot: "UP",
-			uavatarSnapshot: "http://a/x.jpg",
-		};
-		h.bus.emit("history-recorded", entry as never);
+		h.bus.emit("history-recorded", ROW as never);
 		const env = h.last();
 		expect(env.type).toBe("push-events");
 		expect(env.event).toBe("history-recorded");
-		expect(env.data).toEqual({
-			id: "h1",
-			ts: "2026-05-16T00:00:00.000Z",
-			source: "dynamic",
-			uid: "u1",
-			subscriptionId: "sub1",
-			targetIds: ["t1"],
-			ok: true,
-			text: "hello",
-			imageRef: undefined,
-			unameSnapshot: "UP",
-			uavatarSnapshot: "http://a/x.jpg",
+		expect(env.data).toEqual(ROW_VIEW);
+	});
+
+	it("history-updated 走同一投影、事件名不同 —— 前端按 id 换缓存", () => {
+		const h = wire();
+		h.bus.emit("history-updated", ROW as never);
+		expect(h.last()).toMatchObject({
+			type: "push-events",
+			event: "history-updated",
+			data: ROW_VIEW,
 		});
-		// 不应携带内部 result.per 等结构。
-		expect(env.data).not.toHaveProperty("result");
+	});
+
+	it("无目标行:targetId 为 null,消息没有 ok", () => {
+		const h = wire();
+		h.bus.emit("history-recorded", {
+			...ROW,
+			targetId: null,
+			status: "no-targets",
+			messages: [{ payload: { kind: "text", text: "卡片" }, role: "main" }],
+		} as never);
+		expect(h.last().data).toMatchObject({
+			targetId: null,
+			status: "no-targets",
+			messages: [{ text: "卡片", role: "main" }],
+		});
+		expect(
+			(h.last().data as { messages: Array<Record<string, unknown>> }).messages[0],
+		).not.toHaveProperty("ok");
 	});
 });
 

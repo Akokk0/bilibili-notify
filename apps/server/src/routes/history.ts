@@ -1,13 +1,10 @@
 import { createReadStream, statSync } from "node:fs";
 import { join } from "node:path";
-import type {
-	HistoryDailyResponse,
-	HistoryEntryView,
-	HistoryResponse,
-} from "@bilibili-notify/contract";
-import type { HistorySource } from "@bilibili-notify/internal";
+import type { HistoryDailyResponse, HistoryResponse } from "@bilibili-notify/contract";
+import { type PushKind, PushKindSchema } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
+import { toHistoryView } from "../history/view.js";
 import type { RouteDeps } from "./types.js";
 
 /**
@@ -18,7 +15,7 @@ import type { RouteDeps } from "./types.js";
  * Query parameters for the listing endpoint:
  *   - limit:  int        (default 100, capped 500)
  *   - since:  ISO ts     (only entries strictly after this)
- *   - source: history kind ('dynamic' | 'live' | …)
+ *   - kind:   push kind ('dynamic' | 'live' | 'live-end' | …);不认识的当没传
  *   - uid:    bilibili UID
  *
  * Query parameters for the daily endpoint:
@@ -27,15 +24,7 @@ import type { RouteDeps } from "./types.js";
  *               clamped [-840,840] — day boundaries follow the CLIENT's zone
  */
 
-const VALID_SOURCES: ReadonlySet<HistorySource> = new Set([
-	"dynamic",
-	"live",
-	"sc",
-	"guard",
-	"special-danmaku",
-	"special-enter",
-	"live-summary",
-]);
+const VALID_KINDS: ReadonlySet<string> = new Set(PushKindSchema.options);
 
 export function createHistoryRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
@@ -59,31 +48,17 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 				400,
 			);
 		}
-		const sourceParam = c.req.query("source") as HistorySource | undefined;
-		const source = sourceParam && VALID_SOURCES.has(sourceParam) ? sourceParam : undefined;
+		const kindParam = c.req.query("kind");
+		const kind = kindParam && VALID_KINDS.has(kindParam) ? (kindParam as PushKind) : undefined;
 		const uid = c.req.query("uid");
 
 		const entries = await deps.runtime.historyStore.query({
 			limit,
 			since,
-			source,
+			kind,
 			uid,
 		});
-
-		const view: HistoryEntryView[] = entries.map((e) => ({
-			id: e.id,
-			ts: e.ts,
-			source: e.source,
-			uid: e.uid,
-			subscriptionId: e.subscriptionId,
-			targetIds: e.targetIds,
-			ok: e.result.ok,
-			text: e.payload.text,
-			imageRef: e.payload.imageRef,
-			unameSnapshot: e.unameSnapshot,
-			uavatarSnapshot: e.uavatarSnapshot,
-		}));
-		return c.json<HistoryResponse>({ entries: view });
+		return c.json<HistoryResponse>({ entries: entries.map(toHistoryView) });
 	});
 
 	// 按日聚合 —— 本周推送趋势 / 今日 KPI 的数据源。listing 端点的 limit 上限
