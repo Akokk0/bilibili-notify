@@ -90,7 +90,7 @@ src/
                         / ai / skins / maid-skills
   ws/                   server(ws upgrade + 按连接 channel 过滤)+ channels + log-channel
   sink/                 NotificationSink 分发(PushTarget.id → 平台适配器)
-  platforms/            OneBot v11(HTTP / ws / ws-reverse)+ Webhook + QQ 官方机器人 + WebDashboard 适配器;推送平台 union 在 internal/schema/targets.ts
+  platforms/            OneBot v11(HTTP / ws / ws-reverse)+ Webhook + QQ 官方机器人 + WebDashboard 适配器;推送平台词表在 internal/constants.ts(`PUSH_TARGET_PLATFORMS`),schema 在 internal/schema/targets.ts
 ```
 
 ### `apps/web`

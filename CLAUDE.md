@@ -6,7 +6,7 @@ Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考�
 
 单 pnpm workspace monorepo:一套平台中立业务核心(`packages/`)+ 一个产品形态 —— **独立 Hono + React Dashboard**(`apps/`),发 Docker 镜像与 macOS / Windows 桌面应用,支持应用内自主升级。
 
-核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费;registry 上不再有任何包(所以也不需要 changesets)。Koishi 插件与 AstrBot 插件已从 dev 移除、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;后续以「薄的适配插件桥接到跑着的独立端」的形式回归,接入点是 `packages/internal` 的推送平台 union(`schema/targets.ts`)+ `apps/server/src/platforms/` 的 adapter 矩阵 —— 引擎层(`packages/dynamic` / `live` / `push` / `image`)只认独立端这一个宿主,别再给它们留可选钩子。
+核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费;registry 上不再有任何包(所以也不需要 changesets)。Koishi 插件与 AstrBot 插件已从 dev 移除、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;后续以「薄的适配插件桥接到跑着的独立端」的形式回归,接入点是 `packages/internal` 的推送平台词表(`constants.ts` 的 `PUSH_TARGET_PLATFORMS`,schema 在 `schema/targets.ts`)+ `apps/server/src/platforms/` 的 adapter 矩阵 —— 引擎层(`packages/dynamic` / `live` / `push` / `image`)只认独立端这一个宿主,别再给它们留可选钩子。
 
 ## 工具链与命令
 

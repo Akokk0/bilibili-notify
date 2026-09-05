@@ -12,7 +12,12 @@ import type {
 	PushTarget,
 	ServiceContext,
 } from "@bilibili-notify/internal";
-import { featureToPushKind, inQuietHours, resolve } from "@bilibili-notify/internal";
+import {
+	featureToPushKind,
+	inQuietHours,
+	platformSupportsAtAll,
+	resolve,
+} from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 
 /**
@@ -241,6 +246,8 @@ export class BilibiliPush {
 	 * - 订阅级默认 `sub.atAllDefaults.X` 决定 inherit-state 的 target 是否 @
 	 * - per-target tristate Map `sub.atAll.X[targetId]` 显式覆写:`true` 强 ON、`false` 强 OFF
 	 * - Map 里没有该 key → 走默认
+	 * - 目标平台不支持 @全体(`platformSupportsAtAll`,今天只有 QQ 官方机器人)→ 一律不 @,
+	 *   默认与覆写都不看 —— 单发的那条只含 at-all 段,到适配器就成了空消息
 	 *
 	 * `feature === "live"` 仅作用于开播。但 live adapter 把「开播」和周期「正在直播」
 	 * 复推都翻译成 `feature === "live"`(routing/总开关共用 live),仅靠 feature 无法区分。
@@ -325,8 +332,11 @@ export class BilibiliPush {
 		const atAllTargets: string[] = [];
 		const plainTargets: string[] = [];
 		for (const id of targetIds) {
+			// 平台不支持 @全体的目标不进 @全体 分支:抽屉里它的开关本就显示为关。
+			const target = this.sink.resolve(id);
+			const supported = target !== undefined && platformSupportsAtAll(target.platform);
 			const explicit = overrides[id];
-			const shouldAtAll = explicit ?? defaultOn;
+			const shouldAtAll = supported && (explicit ?? defaultOn);
 			(shouldAtAll ? atAllTargets : plainTargets).push(id);
 		}
 		if (atAllTargets.length === 0) {

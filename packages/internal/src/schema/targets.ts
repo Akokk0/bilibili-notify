@@ -1,19 +1,20 @@
 import { z } from "zod";
-import { ONEBOT_FORWARD_MIN_TIMEOUT_MS, ONEBOT_IMAGE_MIN_TIMEOUT_MS } from "../constants.js";
+import {
+	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
+	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
+	PUSH_TARGET_PLATFORMS,
+} from "../constants.js";
 
 /**
  * Push 目标平台。Adapter 矩阵按 platform 分发(server 侧 `apps/server/src/platforms/`
  * 一平台一实现)—— 这条 union 就是将来薄插件把 Koishi / AstrBot 桥接进来时的接入点:
- * 加一个 platform 字面量 + 一套 adapter/session schema + 一个 server adapter。
+ * 往 constants 的 `PUSH_TARGET_PLATFORMS` 加一个平台名 + 一套 adapter/session schema +
+ * 一个 server adapter。词表住零依赖的 constants 是为了前端也拿得到(平台能力判断在那边)。
  * - `onebot`:OneBot v11 HTTP adapter
  * - `webhook`:任意 HTTP POST JSON
  * - `qq-official`:QQ 官方机器人(q.qq.com)WS 网关 adapter,频道/群/C2C
  */
-export const PushTargetPlatformSchema = z.union([
-	z.literal("onebot"),
-	z.literal("webhook"),
-	z.literal("qq-official"),
-]);
+export const PushTargetPlatformSchema = z.enum(PUSH_TARGET_PLATFORMS);
 export type PushTargetPlatform = z.infer<typeof PushTargetPlatformSchema>;
 
 export const PushTargetScopeSchema = z.enum(["group", "private", "channel"]);

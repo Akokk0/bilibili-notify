@@ -875,7 +875,8 @@ export function qqPayloadToParts(payload: NotificationPayload): QQSendPart[] {
 				else if (seg.type === "image") parts.push({ kind: "image-buffer", buffer: seg.buffer });
 				else if (seg.type === "link")
 					parts.push({ kind: "text", text: seg.title ? `${seg.title} ${seg.href}` : seg.href });
-				// at-all:QQ 群 @全体需特殊权限,best-effort 跳过,不阻断推送。
+				// at-all:QQ 群 @全体需特殊权限,一律丢弃。推送层据 platformSupportsAtAll 不给本平台
+				// 单发 @全体,这里只是兜底 —— 混在别的段里时不让它阻断那条消息。
 			}
 			return attachFollowingTextToImages(parts);
 		}

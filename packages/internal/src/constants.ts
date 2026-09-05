@@ -49,6 +49,12 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlagValues = {
 	liveEndExtras: { wordcloud: true, liveSummary: true },
 };
 
+/**
+ * 推送目标平台词表。schema 本体在 schema/targets.ts(`PushTargetPlatformSchema`),那边从
+ * 这里取值 —— 与 FEATURE_KEYS 同一套安排:词表住零依赖模块,前端也拿得到。
+ */
+export const PUSH_TARGET_PLATFORMS = ["onebot", "webhook", "qq-official"] as const;
+
 // ---------------------------------------------------------------------------
 // UP 主强调色
 // ---------------------------------------------------------------------------
@@ -700,6 +706,16 @@ export function inboundGapReason(platform: string): string {
 	return platform === "webhook"
 		? "webhook 只是一个出站 HTTP 请求、没有回程，主人没法在上面回话"
 		: `女仆还没在 ${platform} 上接入站消息，主人回的 y 送不到女仆手里`;
+}
+
+/**
+ * 该平台能不能 @全体成员。QQ 官方机器人在群里 @全体要特殊权限,适配器对 at-all 段一律
+ * 丢弃 —— 推送层据此不给这种目标单发 @全体(否则那条到适配器就成了空消息,每次都记一条
+ * 失败),UP 抽屉里这种目标的 @全体开关也据此禁用并写着「发送时会自动跳过」。两边必须是
+ * 同一份判断,界面上说跳过就得真的跳过。
+ */
+export function platformSupportsAtAll(platform: (typeof PUSH_TARGET_PLATFORMS)[number]): boolean {
+	return platform !== "qq-official";
 }
 
 /**
