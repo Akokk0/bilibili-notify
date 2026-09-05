@@ -42,6 +42,7 @@ import type {
 	GlobalConfig,
 	GlobalDefaults,
 	LinkParsingConfig,
+	LinkParsingPolicy,
 	NotificationPayload,
 	PayloadSegment,
 	PushKind,
@@ -71,7 +72,7 @@ import { makeExistingCardBgPicker, readCardBgDataUrl } from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { segmentToPayload, standaloneContentBuilder } from "./content-builder.js";
 import { syncFollows } from "./follow-sync.js";
-import { resolveLinkParsingScope } from "./link-scope.js";
+import { resolveLinkParsingPolicies } from "./link-scope.js";
 import { MasterNotifier } from "./master-notifier.js";
 import { createMuteState, type MuteState } from "./mute-state.js";
 import { historyRecordFromSend } from "./push-history.js";
@@ -117,12 +118,11 @@ export interface EnginesRuntime extends Disposable {
 	/** 链接解析的开关与冷却 —— 随 config-changed 刷新的快照;群里每句话都会问它。 */
 	linkParsing(): LinkParsingConfig;
 	/**
-	 * 链接解析的生效范围:`null` = 所有群,否则是允许的群的键集(见 `link-scope.ts`)。
-	 * 随 globals / targets / adapters 三种 config-changed 刷新 —— 白名单引用的是目标,
-	 * 目标或适配器停用、删掉都会改变「哪些群算数」,只盯 globals 的话面板上勾着、实际却
-	 * 还在按旧目标表解析。
+	 * 链接解析里某个群的答案:解不解析、回什么(键与表见 `link-scope.ts`)。表随 globals /
+	 * targets / adapters 三种 config-changed 重算 —— 例外引用的是目标,目标或适配器停用、
+	 * 删掉都会改变答案,只盯 globals 的话面板上开着、实际却还在按旧目标表解析。
 	 */
-	linkAllowedGroups(): ReadonlySet<string> | null;
+	linkPolicyFor(key: string): LinkParsingPolicy;
 	/**
 	 * 链接卡的呈现 = 推送的动态卡在没有 per-UP 覆盖时的呈现:全局「动态」样式(含图廊
 	 * 轮换,**每调一次推进一次游标**)+ 全局版式。每张卡调一次,别攥着。
@@ -702,19 +702,19 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		defaultBackgroundImages: g.defaults.cardStyle.backgroundImages,
 	});
 	let linkCard = linkCardViewOf(initialGlobals);
-	// 允许集从白名单 + 目标表 + 适配器表算出来,三者任一变了都重算(见接口上的说明)。
-	const linkAllowedGroupsOf = () =>
-		resolveLinkParsingScope({
+	// 逐群答案从默认行 + 例外 + 目标表 + 适配器表算出来,三者任一变了都重算(见接口上的说明)。
+	const linkPoliciesOf = () =>
+		resolveLinkParsingPolicies({
 			config: linkCard.config,
 			targets: opts.configStore.getTargets(),
 			adapters: opts.configStore.getAdapters(),
 		});
-	let linkAllowed = linkAllowedGroupsOf();
+	let linkPolicies = linkPoliciesOf();
 
 	handles.push(
 		opts.bus.on("config-changed", (scope) => {
 			if (scope === "adapters") {
-				linkAllowed = linkAllowedGroupsOf();
+				linkPolicies = linkPoliciesOf();
 				// 有状态 adapter(OneBot ws / ws-reverse)按新 adapter 集合 reconcile
 				// 连接 / 监听器。reconcile 幂等、不写 config、不调 probe → 不会 emit
 				// config-changed,无成环。
@@ -730,7 +730,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// 单独一行先 push,避免后续 globals-only 路径未执行时漏掉。
 				push.setMaster(masterTarget() ?? null);
 				if (scope === "targets") {
-					linkAllowed = linkAllowedGroupsOf();
+					linkPolicies = linkPoliciesOf();
 					return;
 				}
 			}
@@ -739,7 +739,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				const prev = prevGlobals;
 				prevGlobals = g;
 				linkCard = linkCardViewOf(g);
-				linkAllowed = linkAllowedGroupsOf();
+				linkPolicies = linkPoliciesOf();
 				// 只热更本次真正改了的 section,避免编辑一个模块扇出到其它模块。
 				//
 				// `eq` 用 JSON.stringify 比较,**键序敏感** —— 它依赖「globals 永远是 zod
@@ -981,7 +981,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		listLiveRooms: () => listLiveRooms(live),
 		probeAdapter: (adapterId: string) => sink.probeAdapter(adapterId),
 		linkParsing: () => linkCard.config,
-		linkAllowedGroups: () => linkAllowed,
+		linkPolicyFor: (key: string) => linkPolicies.policyFor(key),
 		linkCardPresentation: () => ({
 			// 链接卡就是「全局那张动态卡」:全局配色、全局图廊,轮换位置也记在全局这把上
 			// (主人定的:它跟着全局走,不另起名字)。推送卡那边每位 UP 各记各的位置,

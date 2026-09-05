@@ -1172,8 +1172,8 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		expect(c.runtime.linkParsing()).toEqual({
 			enabled: false,
 			cooldownSeconds: 60,
-			scope: "all",
-			targets: [],
+			defaults: { parse: true, form: "image" },
+			groups: {},
 		});
 		expect(c.runtime.linkCardPresentation().layout).toEqual(
 			c.configStore.getGlobals().defaults.cardLayout.dynamic,
@@ -1181,7 +1181,12 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 
 		const layout = [{ id: "content", type: "content", visible: true }];
 		patchGlobals(c, (g) => {
-			g.linkParsing = { enabled: true, cooldownSeconds: 5, scope: "all", targets: [] };
+			g.linkParsing = {
+				enabled: true,
+				cooldownSeconds: 5,
+				defaults: { parse: true, form: "image" },
+				groups: {},
+			};
 			g.defaults.cardLayout.dynamic = layout as any;
 		});
 		c.bus.emit("config-changed", "globals");
@@ -1189,15 +1194,15 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		expect(c.runtime.linkParsing()).toEqual({
 			enabled: true,
 			cooldownSeconds: 5,
-			scope: "all",
-			targets: [],
+			defaults: { parse: true, form: "image" },
+			groups: {},
 		});
 		expect(c.runtime.linkCardPresentation().layout).toEqual(layout);
 	});
 
-	// 白名单引用的是目标:目标或适配器停用、删掉都会改变「哪些群算数」,所以允许集要跟着
-	// globals / targets / adapters 三种变更刷新,不能只盯 globals。
-	it("允许集随 globals、targets、adapters 三种 config-changed 刷新", () => {
+	// 例外引用的是目标:目标或适配器停用、删掉都会改变答案,所以逐群表要跟着
+	// globals / targets / adapters 三种变更重算,不能只盯 globals。
+	it("逐群答案随 globals、targets、adapters 三种 config-changed 重算", () => {
 		const ADAPTER = "11111111-1111-4111-8111-111111111111";
 		const TARGET = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 		const c = setup();
@@ -1216,31 +1221,36 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 				session: { groupId: "123" },
 			} as PushTarget,
 		]);
-		expect(c.runtime.linkAllowedGroups()).toBeNull();
+		const KEY = `onebot:${ADAPTER}:123`;
+		const STRANGER = `onebot:${ADAPTER}:999`;
+		// 出厂默认行解析开:目标群与陌生群都解析。
+		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(true);
+		expect(c.runtime.linkPolicyFor(STRANGER).parse).toBe(true);
 
 		patchGlobals(c, (g) => {
 			g.linkParsing = {
 				enabled: true,
 				cooldownSeconds: 60,
-				scope: "selected",
-				targets: [{ targetId: TARGET }],
+				defaults: { parse: false, form: "image" },
+				groups: { [TARGET]: { parse: true } },
 			};
 		});
 		c.bus.emit("config-changed", "globals");
-		expect([...(c.runtime.linkAllowedGroups() ?? [])]).toEqual([`onebot:${ADAPTER}:123`]);
+		expect(c.runtime.linkPolicyFor(KEY)).toEqual({ parse: true, form: "image" });
+		expect(c.runtime.linkPolicyFor(STRANGER).parse).toBe(false);
 
-		// 目标停用 → 群从允许集里消失;只发 targets 的变更,不发 globals。
+		// 目标停用 → 那群不再解析;只发 targets 的变更,不发 globals。
 		c.configStore._setTargets([{ ...c.configStore.getTargets()[0], enabled: false } as PushTarget]);
 		c.bus.emit("config-changed", "targets");
-		expect(c.runtime.linkAllowedGroups()?.size).toBe(0);
+		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(false);
 
 		// 目标恢复、但适配器停用 → 同样不算;只发 adapters 的变更。
 		c.configStore._setTargets([{ ...c.configStore.getTargets()[0], enabled: true } as PushTarget]);
 		c.bus.emit("config-changed", "targets");
-		expect(c.runtime.linkAllowedGroups()?.size).toBe(1);
+		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(true);
 		c.configStore._setAdapters([{ ...c.configStore.getAdapters()[0], enabled: false } as any]);
 		c.bus.emit("config-changed", "adapters");
-		expect(c.runtime.linkAllowedGroups()?.size).toBe(0);
+		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(false);
 	});
 
 	it("配色 = 全局「动态」样式;没调过就 undefined(渲染器全局兜底)", () => {

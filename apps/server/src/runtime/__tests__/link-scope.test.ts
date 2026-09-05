@@ -1,14 +1,14 @@
 /**
- * 链接解析的生效范围 —— 把配置里的白名单(引用推送目标 id)解析成「哪些群算数」。
+ * 链接解析的逐群答案 —— 把「默认行 + 逐群例外」(例外引用推送目标 id)对上入站帧里的群。
  *
- * 缝在 `resolveLinkParsingScope`:配置 + 目标表 + 适配器表进,允许集(或「不限」)出。
- * 它是纯函数,所有决定都在这儿:哪些目标算群、停用算不算、悬空 id 怎么办。解析器
- * (link-parser)只拿结果做一次查表,不再各自判一遍。
+ * 缝在 `resolveLinkParsingPolicies`:配置 + 目标表 + 适配器表进,一张「群键 → 解不解析、
+ * 回什么」的表出。它是纯函数,所有决定都在这儿:哪些目标算群、停用算不算、悬空 id
+ * 怎么办、不是目标的群跟谁。解析器(link-parser)只拿结果做一次查表,不再各自判一遍。
  */
 
 import type { PushAdapter, PushTarget } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { linkScopeKey, resolveLinkParsingScope } from "../link-scope.js";
+import { linkScopeKey, resolveLinkParsingPolicies } from "../link-scope.js";
 
 const ONEBOT_ADAPTER = "11111111-1111-4111-8111-111111111111";
 const QQ_ADAPTER = "22222222-2222-4222-8222-222222222222";
@@ -62,97 +62,126 @@ function qqGroup(id: string, groupOpenid: string, over: Partial<PushTarget> = {}
 
 const ADAPTERS = [adapter(ONEBOT_ADAPTER, "onebot"), adapter(QQ_ADAPTER, "qq-official")];
 
-describe("resolveLinkParsingScope", () => {
-	it("范围是「所有群」→ 不限(null),白名单里写了什么都不看", () => {
-		expect(
-			resolveLinkParsingScope({
-				config: { scope: "all", targets: [{ targetId: T_GROUP }] },
-				targets: [onebotGroup(T_GROUP, "123")],
-				adapters: ADAPTERS,
-			}),
-		).toBeNull();
-	});
+const K_GROUP = linkScopeKey("onebot", ONEBOT_ADAPTER, "123");
+const K_GROUP_2 = linkScopeKey("onebot", ONEBOT_ADAPTER, "456");
+/** 机器人在、但没配成推送目标的群 —— 没有 id,只能跟默认行。 */
+const K_STRANGER = linkScopeKey("onebot", ONEBOT_ADAPTER, "789");
 
-	it("「仅以下群」→ 只有勾了的群目标进允许集,键 = 平台:adapterId:群地址", () => {
-		const allowed = resolveLinkParsingScope({
-			config: { scope: "selected", targets: [{ targetId: T_GROUP }, { targetId: T_QQ_GROUP }] },
-			targets: [
-				onebotGroup(T_GROUP, "123"),
-				onebotGroup(T_GROUP_2, "456"),
-				qqGroup(T_QQ_GROUP, "openid-xyz"),
-			],
+const ALL_ON = { defaults: { parse: true, form: "image" as const }, groups: {} };
+const NONE_ON = { defaults: { parse: false, form: "image" as const }, groups: {} };
+
+describe("resolveLinkParsingPolicies", () => {
+	it("默认行解析开、没有例外 → 是目标的群和不是目标的群都解析,回默认形式", () => {
+		const table = resolveLinkParsingPolicies({
+			config: ALL_ON,
+			targets: [onebotGroup(T_GROUP, "123")],
 			adapters: ADAPTERS,
 		});
-		expect(allowed).toEqual(
-			new Set([
-				linkScopeKey("onebot", ONEBOT_ADAPTER, "123"),
-				linkScopeKey("qq-official", QQ_ADAPTER, "openid-xyz"),
-			]),
-		);
-		// 没勾的那个群不在里面 —— 「在推送目标里」不等于「在白名单里」。
-		expect(allowed?.has(linkScopeKey("onebot", ONEBOT_ADAPTER, "456"))).toBe(false);
+		expect(table.policyFor(K_GROUP)).toEqual({ parse: true, form: "image" });
+		expect(table.policyFor(K_STRANGER)).toEqual({ parse: true, form: "image" });
 	});
 
-	it("官机群的地址是 groupOpenid,与入站帧里的 groupId 同一个值", () => {
-		const allowed = resolveLinkParsingScope({
-			config: { scope: "selected", targets: [{ targetId: T_QQ_GROUP }] },
-			targets: [qqGroup(T_QQ_GROUP, "openid-xyz")],
+	it("默认行解析关 + 群显式开 = 原来的白名单:只有那群解析,没勾的目标群与陌生群都不", () => {
+		const table = resolveLinkParsingPolicies({
+			config: { ...NONE_ON, groups: { [T_GROUP]: { parse: true } } },
+			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "456")],
 			adapters: ADAPTERS,
 		});
-		expect([...(allowed ?? [])]).toEqual([`qq-official:${QQ_ADAPTER}:openid-xyz`]);
+		expect(table.policyFor(K_GROUP).parse).toBe(true);
+		expect(table.policyFor(K_GROUP_2).parse).toBe(false);
+		expect(table.policyFor(K_STRANGER).parse).toBe(false);
 	});
 
-	// 「停用」在链接解析与周报里是同一个意思:目标暂停,勾着也不生效(主人定的,两处要一致)。
-	it("勾了的目标已停用 → 不进允许集", () => {
-		const allowed = resolveLinkParsingScope({
-			config: { scope: "selected", targets: [{ targetId: T_GROUP }] },
+	it("默认行解析开 + 群显式关 → 那一个群不解析,其余照常", () => {
+		const table = resolveLinkParsingPolicies({
+			config: { ...ALL_ON, groups: { [T_GROUP]: { parse: false } } },
+			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "456")],
+			adapters: ADAPTERS,
+		});
+		expect(table.policyFor(K_GROUP).parse).toBe(false);
+		expect(table.policyFor(K_GROUP_2).parse).toBe(true);
+	});
+
+	it("形式逐群覆盖:例外写了小程序卡的群回小程序卡,其余跟默认行;默认行改小程序卡则陌生群也跟", () => {
+		const table = resolveLinkParsingPolicies({
+			config: { ...ALL_ON, groups: { [T_GROUP]: { form: "miniapp" } } },
+			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "456")],
+			adapters: ADAPTERS,
+		});
+		expect(table.policyFor(K_GROUP).form).toBe("miniapp");
+		expect(table.policyFor(K_GROUP_2).form).toBe("image");
+
+		const flipped = resolveLinkParsingPolicies({
+			config: { defaults: { parse: true, form: "miniapp" }, groups: {} },
+			targets: [],
+			adapters: ADAPTERS,
+		});
+		expect(flipped.policyFor(K_STRANGER)).toEqual({ parse: true, form: "miniapp" });
+	});
+
+	// 「停用」在链接解析与周报里是同一个意思:目标暂停就不响应,默认行开着、例外显式开着都
+	// 压不过它(主人定的,两处要一致)。
+	it("目标已停用 → 不解析,哪怕默认行开、例外显式开;形式照算", () => {
+		const table = resolveLinkParsingPolicies({
+			config: { ...ALL_ON, groups: { [T_GROUP]: { parse: true, form: "miniapp" } } },
 			targets: [onebotGroup(T_GROUP, "123", { enabled: false })],
 			adapters: ADAPTERS,
 		});
-		expect(allowed?.size).toBe(0);
+		expect(table.policyFor(K_GROUP)).toEqual({ parse: false, form: "miniapp" });
 	});
 
-	it("目标所属的适配器已停用、或适配器已不存在 → 不进允许集", () => {
-		const disabledAdapter = resolveLinkParsingScope({
-			config: { scope: "selected", targets: [{ targetId: T_GROUP }] },
+	it("目标所属的适配器已停用、或适配器已不存在 → 不解析", () => {
+		const disabledAdapter = resolveLinkParsingPolicies({
+			config: ALL_ON,
 			targets: [onebotGroup(T_GROUP, "123")],
 			adapters: [adapter(ONEBOT_ADAPTER, "onebot", false)],
 		});
-		expect(disabledAdapter?.size).toBe(0);
+		expect(disabledAdapter.policyFor(K_GROUP).parse).toBe(false);
 
-		const missingAdapter = resolveLinkParsingScope({
-			config: { scope: "selected", targets: [{ targetId: T_GROUP }] },
+		const missingAdapter = resolveLinkParsingPolicies({
+			config: ALL_ON,
 			targets: [onebotGroup(T_GROUP, "123")],
 			adapters: [],
 		});
-		expect(missingAdapter?.size).toBe(0);
+		expect(missingAdapter.policyFor(K_GROUP).parse).toBe(false);
 	});
 
-	it("勾了一个私聊目标 → 不进允许集(链接解析只在群里响应)", () => {
-		const allowed = resolveLinkParsingScope({
-			config: { scope: "selected", targets: [{ targetId: T_PRIVATE }] },
+	it("官机群的地址是 groupOpenid,与入站帧里的 groupId 同一个值", () => {
+		const table = resolveLinkParsingPolicies({
+			config: { ...NONE_ON, groups: { [T_QQ_GROUP]: { parse: true } } },
+			targets: [qqGroup(T_QQ_GROUP, "openid-xyz")],
+			adapters: ADAPTERS,
+		});
+		expect(table.policyFor(`qq-official:${QQ_ADAPTER}:openid-xyz`).parse).toBe(true);
+	});
+
+	it("私聊目标不进表(链接解析只在群里响应),例外里写了它也没用", () => {
+		const table = resolveLinkParsingPolicies({
+			config: { ...NONE_ON, groups: { [T_PRIVATE]: { parse: true } } },
 			targets: [onebotPrivate(T_PRIVATE, "10001")],
 			adapters: ADAPTERS,
 		});
-		expect(allowed?.size).toBe(0);
+		expect(table.policyFor(linkScopeKey("onebot", ONEBOT_ADAPTER, "10001")).parse).toBe(false);
 	});
 
-	it("白名单里引用的目标已经删掉 → 静默忽略,其余照常", () => {
-		const allowed = resolveLinkParsingScope({
-			config: { scope: "selected", targets: [{ targetId: T_GONE }, { targetId: T_GROUP }] },
+	it("例外里引用的目标已经删掉 → 静默忽略,其余照常", () => {
+		const table = resolveLinkParsingPolicies({
+			config: { ...NONE_ON, groups: { [T_GONE]: { parse: true }, [T_GROUP]: { parse: true } } },
 			targets: [onebotGroup(T_GROUP, "123")],
 			adapters: ADAPTERS,
 		});
-		expect([...(allowed ?? [])]).toEqual([linkScopeKey("onebot", ONEBOT_ADAPTER, "123")]);
+		expect(table.policyFor(K_GROUP).parse).toBe(true);
 	});
 
-	it("「仅以下群」但一个都没勾 → 空集,不是「不限」", () => {
-		const allowed = resolveLinkParsingScope({
-			config: { scope: "selected", targets: [] },
-			targets: [onebotGroup(T_GROUP, "123")],
+	it("同一个群配成了两个目标 → 先出现的那个说了算,不来回翻", () => {
+		const table = resolveLinkParsingPolicies({
+			config: {
+				...ALL_ON,
+				groups: { [T_GROUP]: { form: "miniapp" }, [T_GROUP_2]: { parse: false } },
+			},
+			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "123")],
 			adapters: ADAPTERS,
 		});
-		expect(allowed).not.toBeNull();
-		expect(allowed?.size).toBe(0);
+		expect(table.policyFor(K_GROUP)).toEqual({ parse: true, form: "miniapp" });
 	});
 });

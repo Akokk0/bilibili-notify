@@ -13,6 +13,7 @@ import type {
 	CardBlock,
 	DeliveryResult,
 	LinkParsingConfig,
+	LinkParsingPolicy,
 	NotificationPayload,
 } from "@bilibili-notify/internal";
 import { LINK_LIMITS, type LinkLimits } from "@bilibili-notify/internal";
@@ -76,13 +77,13 @@ const COLORS: CardColorOptions = { cardColorStart: "#111111", backgroundImage: "
 function makeParser(
 	over: Partial<LinkParsingConfig> = {},
 	limits?: Partial<LinkLimits>,
-	extra: { allowedGroups?: () => ReadonlySet<string> | null } = {},
+	extra: { policyFor?: (key: string) => LinkParsingPolicy } = {},
 ) {
 	const config: LinkParsingConfig = {
 		enabled: true,
 		cooldownSeconds: 60,
-		scope: "all",
-		targets: [],
+		defaults: { parse: true, form: "image" },
+		groups: {},
 		...over,
 	};
 	const getVideoInfo = vi.fn(async (_ref: VideoRef) => VIDEO);
@@ -114,7 +115,7 @@ function makeParser(
 		presentation: () => ({ colors: COLORS, layout: LAYOUT }),
 		send,
 		now: () => now,
-		allowedGroups: extra.allowedGroups ?? (() => null),
+		policyFor: extra.policyFor ?? (() => ({ parse: true, form: "image" })),
 		...(limits ? { limits } : {}),
 	});
 	return {
@@ -226,7 +227,7 @@ describe("createLinkParser", () => {
 				renderer: () => null,
 				presentation: () => ({}),
 				send: h.send,
-				allowedGroups: () => null,
+				policyFor: () => ({ parse: true, form: "image" }),
 			});
 			await feed(parser, groupFrame("https://b23.tv/abc123"));
 			expect(h.resolveShortLink).not.toHaveBeenCalled();
@@ -241,7 +242,7 @@ describe("createLinkParser", () => {
 				renderer: () => null,
 				presentation: () => ({}),
 				send: h.send,
-				allowedGroups: () => null,
+				policyFor: () => ({ parse: true, form: "image" }),
 			});
 			await feed(parser, groupFrame(LINK));
 			expect(h.getVideoInfo).not.toHaveBeenCalled();
@@ -459,50 +460,41 @@ describe("createLinkParser", () => {
 		});
 	});
 
-	// 白名单本身(哪些目标算、停用算不算)由 link-scope 解析成允许集,这里只看解析器拿着
-	// 那个集合做没做对:命中才出卡,未命中什么都不碰。
-	describe("生效范围(白名单)", () => {
+	// 逐群答案本身(哪些目标算、停用算不算、陌生群跟谁)由 link-scope 算成表,这里只看解析器
+	// 拿着答案做没做对:说解析才出卡,说不解析什么都不碰。
+	describe("逐群答案(解不解析)", () => {
 		const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
 		const THIS_GROUP = `onebot:${ADAPTER}:${GROUP}`;
+		const only = (key: string) => (k: string) => ({ parse: k === key, form: "image" as const });
 
-		it("允许集里有这个群 → 照常出卡", async () => {
-			const h = makeParser({ scope: "selected" }, undefined, {
-				allowedGroups: () => new Set([THIS_GROUP]),
-			});
+		it("这个群的答案是解析 → 照常出卡", async () => {
+			const h = makeParser({}, undefined, { policyFor: only(THIS_GROUP) });
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent).toHaveLength(1);
 		});
 
-		it("允许集里没有这个群 → 不打接口、不碰渲染器、不发", async () => {
-			const h = makeParser({ scope: "selected" }, undefined, {
-				allowedGroups: () => new Set([`onebot:${ADAPTER}:999999`]),
-			});
+		it("这个群的答案是不解析 → 不打接口、不碰渲染器、不发", async () => {
+			const h = makeParser({}, undefined, { policyFor: only(`onebot:${ADAPTER}:999999`) });
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.getVideoInfo).not.toHaveBeenCalled();
 			expect(h.renderer).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
 		});
 
-		it("被范围拦下的链接不记冷却:主人随后把群勾上,同一条链接立刻能出卡", async () => {
-			let allowed: ReadonlySet<string> = new Set<string>();
-			const h = makeParser({ scope: "selected" }, undefined, { allowedGroups: () => allowed });
+		it("被拦下的链接不记冷却:主人随后把群打开,同一条链接立刻能出卡", async () => {
+			let parse = false;
+			const h = makeParser({}, undefined, { policyFor: () => ({ parse, form: "image" }) });
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent).toHaveLength(0);
 
-			allowed = new Set([THIS_GROUP]);
+			parse = true;
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent).toHaveLength(1);
 		});
 
-		it("允许集为 null = 不限:所有群照旧", async () => {
-			const h = makeParser({ scope: "all" }, undefined, { allowedGroups: () => null });
-			await feed(h.parser, groupFrame(LINK));
-			expect(h.sent).toHaveLength(1);
-		});
-
-		it("官机群按 平台:adapter:群 openid 查允许集", async () => {
-			const h = makeParser({ scope: "selected" }, undefined, {
-				allowedGroups: () => new Set([`qq-official:${ADAPTER}:G_OPENID`]),
+		it("官机群按 平台:adapter:群 openid 查答案", async () => {
+			const h = makeParser({}, undefined, {
+				policyFor: only(`qq-official:${ADAPTER}:G_OPENID`),
 			});
 			await h.parser.handleMessage({
 				platform: "qq-official",

@@ -21,6 +21,7 @@ import {
 	LINK_LIMITS,
 	type LinkLimits,
 	type LinkParsingConfig,
+	type LinkParsingPolicy,
 	type Logger,
 	type NotificationPayload,
 	type VideoLinkRef,
@@ -85,11 +86,11 @@ export interface LinkParserOptions {
 	/** 面板上那份配置。**现读**,不快照 —— 主人关掉立刻生效。 */
 	config: () => LinkParsingConfig;
 	/**
-	 * 生效范围:`null` = 所有群;否则只有集合里的群算,键见 {@link linkScopeKey}。
-	 * 白名单怎么解析成这个集合(引用目标、停用、悬空)全在 `link-scope.ts`,这里只查表。
-	 * 与 `config` 一样每条消息现读 —— 主人勾掉一个群立刻生效。
+	 * 这个群的答案:解不解析、回什么,键见 {@link linkScopeKey}。默认行与逐群例外怎么对上
+	 * 入站帧里的群(引用目标、停用、悬空、陌生群)全在 `link-scope.ts`,这里只查表。
+	 * 与 `config` 一样每条消息现读 —— 主人改一格立刻生效。
 	 */
-	allowedGroups: () => ReadonlySet<string> | null;
+	policyFor: (key: string) => LinkParsingPolicy;
 	api: {
 		getVideoInfo(ref: VideoRef): Promise<VideoInfo>;
 		resolveShortLink(url: string): Promise<string | null>;
@@ -201,11 +202,11 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 			if (refs.length === 0) return;
 			const config = opts.config();
 			if (!config.enabled) return;
-			// 范围在渲染器之前、记账之前:不在白名单里的群什么都不该留下 —— 冷却也不记,
-			// 主人随后把群勾上,刚才那条链接再贴一次就该出卡。
+			// 逐群答案在渲染器之前、记账之前:不解析的群什么都不该留下 —— 冷却也不记,
+			// 主人随后把群打开,刚才那条链接再贴一次就该出卡。
 			const scope = linkScopeKey(msg.platform, msg.adapterId, msg.groupId);
-			const allowed = opts.allowedGroups();
-			if (allowed && !allowed.has(scope)) return;
+			const policy = opts.policyFor(scope);
+			if (!policy.parse) return;
 			const renderer = opts.renderer();
 			if (!renderer) return;
 			const dest: LinkReplyDestination = {
