@@ -7,6 +7,7 @@ import type {
 	CardStyle,
 	ContentFilters,
 	FeatureFlags,
+	FeatureFlagsPartial,
 	ImageGroupSettings,
 	ScheduleConfig,
 	TemplateBundle,
@@ -69,6 +70,22 @@ function merge<T extends object>(base: T, override: Partial<T> | undefined): T {
 		if (v !== undefined) (out as Record<keyof T, unknown>)[key] = v;
 	}
 	return out;
+}
+
+/**
+ * features 的合并比别的多一层:下播的附加项是个小对象,per-UP 只关词云时不该把总结
+ * 一起盖掉 —— 七把开关浅合并,`liveEndExtras` 再往里合一层。
+ */
+function mergeFeatures(
+	base: FeatureFlags,
+	override: FeatureFlagsPartial | undefined,
+): FeatureFlags {
+	if (!override) return base;
+	const { liveEndExtras, ...flags } = override;
+	return {
+		...merge(base, flags),
+		liveEndExtras: merge(base.liveEndExtras, liveEndExtras),
+	};
 }
 
 function resolveAI(globals: AISettings, override: AIOverride | undefined): ResolvedAI {
@@ -150,7 +167,7 @@ export function resolve(sub: Subscription, defaults: GlobalDefaults): EffectiveS
 		atAll: sub.atAll,
 		specialUsers: sub.specialUsers,
 
-		features: merge(defaults.features, ov.features),
+		features: mergeFeatures(defaults.features, ov.features),
 		filters: merge(defaults.filters, ov.filters),
 		schedule: merge(defaults.schedule, ov.schedule),
 		templates: merge(defaults.templates, ov.templates),

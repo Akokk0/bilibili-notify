@@ -8,6 +8,8 @@ import {
 	FeatureFlagsPartialSchema,
 	type FeatureKey,
 	ImageGroupSettingsPartialSchema,
+	LIVE_END_EXTRA_KEYS,
+	migrateLegacyFeatureFlagsPartial,
 	ScheduleConfigPartialSchema,
 	TemplateBundlePartialSchema,
 } from "./common";
@@ -26,15 +28,53 @@ const SubscriptionRoutingObjectSchema = z.object(
 export type SubscriptionRouting = z.infer<typeof SubscriptionRoutingObjectSchema>;
 
 /**
+ * 老 routing 的形状:词云 / 总结曾各有一份目标列表。迁成「下播目标 = 下播 ∪ 词云 ∪ 总结」
+ * (保序:先下播、再词云、再总结;去重交给下面的 transform),老键不留。
+ * 新形状(没这两把键)原样过。
+ */
+function isLegacyRouting(raw: unknown): raw is Record<string, unknown> {
+	return typeof raw === "object" && raw !== null && LIVE_END_EXTRA_KEYS.some((k) => k in raw);
+}
+
+function migrateLegacyRouting(raw: unknown): unknown {
+	if (!isLegacyRouting(raw)) return raw;
+	const { wordcloud, liveSummary, ...rest } = raw;
+	const lists = [rest.liveEnd, wordcloud, liveSummary].filter(Array.isArray);
+	return { ...rest, liveEnd: lists.flat() };
+}
+
+/**
+ * 整条老订阅的迁移。routing 自己认得出新老(见 {@link migrateLegacyRouting});
+ * `overrides.features` 单看分不出 —— `{ liveEnd: false }` 在新老形状里长得一样,含义却不同:
+ * 老的只关了下播卡(词云 / 总结照收),新的是整个下播都关。所以 routing 是老的就把这份
+ * 覆盖也按老规矩迁(`force`),别让那位 UP 的词云 / 总结跟着没了。
+ */
+function migrateLegacySubscription(raw: unknown): unknown {
+	if (typeof raw !== "object" || raw === null) return raw;
+	const sub = raw as Record<string, unknown>;
+	if (!isLegacyRouting(sub.routing)) return raw;
+	const overrides = sub.overrides;
+	if (typeof overrides !== "object" || overrides === null) return raw;
+	const features = (overrides as Record<string, unknown>).features;
+	if (features === undefined) return raw;
+	return {
+		...sub,
+		overrides: { ...overrides, features: migrateLegacyFeatureFlagsPartial(features, true) },
+	};
+}
+
+/**
  * 解析时按 feature 去重 target UUID。重复 UUID 会让同一 feature 对同一目标
  * 重复推送 + 重复 delivery 记录。用**幂等 transform**而非 refine:既归一化
  * 当前/历史数据,又不会让既有含重复项的持久化配置在 parse 时直接 reject。
  */
-export const SubscriptionRoutingSchema = SubscriptionRoutingObjectSchema.transform((r) => {
-	const out = {} as SubscriptionRouting;
-	for (const k of FEATURE_KEYS) out[k] = [...new Set(r[k])];
-	return out;
-});
+export const SubscriptionRoutingSchema = z
+	.preprocess(migrateLegacyRouting, SubscriptionRoutingObjectSchema)
+	.transform((r) => {
+		const out = {} as SubscriptionRouting;
+		for (const k of FEATURE_KEYS) out[k] = [...new Set(r[k])];
+		return out;
+	});
 
 /**
  * 缓存的 UP 主档案，用于 UI 显示。non-authoritative。
@@ -174,7 +214,7 @@ export type SubscriptionState = z.infer<typeof SubscriptionStateSchema>;
  * SubRuntimeStore（见 CachedProfileSchema / SubscriptionStateSchema 注释）。Zod
  * 默认 strip 未知键——旧 subscriptions.json 内嵌的这两个字段 load 时自动剥离。
  */
-export const SubscriptionSchema = z
+const SubscriptionObjectSchema = z
 	.object({
 		id: z.uuid(),
 		uid: z.string().regex(/^\d+$/, "uid must be a numeric Bilibili UID string"),
@@ -207,7 +247,8 @@ export const SubscriptionSchema = z
 		message: "atAll.live keys must be a subset of routing.live",
 		path: ["atAll", "live"],
 	});
-export type Subscription = z.infer<typeof SubscriptionSchema>;
+export const SubscriptionSchema = z.preprocess(migrateLegacySubscription, SubscriptionObjectSchema);
+export type Subscription = z.infer<typeof SubscriptionObjectSchema>;
 
 /** 工厂：创建一个完全继承全局默认的空 Subscription（routing 全空、overrides 全 undefined）。 */
 export function makeEmptySubscription(opts: { id: string; uid: string }): Subscription {

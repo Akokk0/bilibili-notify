@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { DEFAULT_TEMPLATES, FEATURE_KEYS } from "../constants";
+import { DEFAULT_TEMPLATES, FEATURE_KEYS, LIVE_END_EXTRA_KEYS } from "../constants";
 import { checkUserRegex } from "../util/regex-safety";
 
-export type { FeatureKey } from "../constants";
+export type { FeatureKey, LiveEndExtraKey, LiveEndExtras } from "../constants";
 
 // 值与类型的单一来源在 ../constants(零依赖,供前端经 /constants 子路径运行时消费);
 // 这里重导出维持根入口的既有 API 面,后端消费者无感。
@@ -14,7 +14,7 @@ import {
 	WEB_SEARCH_BACKEND_IDS,
 } from "../constants";
 
-export { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../constants";
+export { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS, LIVE_END_EXTRA_KEYS } from "../constants";
 
 /** blockRegex/whitelistRegex 的单元素校验:保存期即拦非法 / 超长 / 疑似 ReDoS 正则。 */
 const UserRegexString = z.string().superRefine((src, ctx) => {
@@ -25,21 +25,98 @@ const UserRegexString = z.string().superRefine((src, ctx) => {
 /** 全部可订阅的特性键(键列表本体在 ../constants)。 */
 export const FeatureKeySchema = z.enum(FEATURE_KEYS);
 
-/** 每个特性的开关；使用 record 而非 z.record(boolean) 是为了让 inherit-merge 时类型保留键名。 */
-export const FeatureFlagsSchema = z.object({
+/** 下播的两个附加项(词云 / AI 总结)。没有自己的路由,只跟着下播的开关与目标走。 */
+export const LiveEndExtrasSchema = z.object({
+	wordcloud: z.boolean(),
+	liveSummary: z.boolean(),
+});
+
+/**
+ * 老 features 的形状:词云 / 总结曾是两把独立的特性键(各有开关、各有路由),平铺在顶层。
+ * 顶层还带着这两把键就是老数据 —— 新形状把它们收进 `liveEndExtras`,顶层不会再出现。
+ */
+function hasLegacyExtras(raw: object): raw is Record<string, unknown> {
+	return LIVE_END_EXTRA_KEYS.some((k) => k in raw);
+}
+
+function pickExtras(raw: Record<string, unknown>): Record<string, unknown> {
+	const extras: Record<string, unknown> = {};
+	for (const k of LIVE_END_EXTRA_KEYS) if (k in raw) extras[k] = raw[k];
+	return extras;
+}
+
+function stripLegacyExtras(raw: Record<string, unknown>): Record<string, unknown> {
+	const { wordcloud: _w, liveSummary: _s, ...rest } = raw;
+	return rest;
+}
+
+/**
+ * 全局 features 的迁移:下播开关 = 旧下播 ∨ 词云 ∨ 总结,两个子项照旧值。
+ *
+ * 只开了词云 / 总结、没开下播的人,迁完会多收一张下播卡 —— 「宁可多收一张卡,不能少掉
+ * 一条推送」,CHANGELOG 有 ⚠️ 说明。新形状(已有 `liveEndExtras`)一律不动:关掉下播、
+ * 子项留着开,下次加载不会被翻回来。
+ */
+function migrateLegacyFeatureFlags(raw: unknown): unknown {
+	if (typeof raw !== "object" || raw === null || !hasLegacyExtras(raw)) return raw;
+	const legacy = LIVE_END_EXTRA_KEYS.map((k) => raw[k]);
+	return {
+		...stripLegacyExtras(raw),
+		liveEnd: raw.liveEnd === true || legacy.includes(true),
+		liveEndExtras: pickExtras(raw),
+	};
+}
+
+/**
+ * per-UP 覆盖(partial)的迁移。覆盖是稀疏的,拿不到全局值,只能就地判:
+ * - 三者有一个显式 true → `liveEnd: true`(不管全局怎样,这位 UP 以前一定收得到东西)
+ * - 三者都显式 false → `liveEnd: false`(以前什么都收不到,现在也是)
+ * - 其余(有的关、有的没写)→ 不写 liveEnd,继承全局。全局迁完只会更宽,顶多多收一张卡
+ *
+ * 单看一份 partial,只有 `{ liveEnd: false }` 分不出新老;整条订阅能看 routing 的形状,
+ * 认出是老的就传 `force` 让这份覆盖也按老规矩迁(见 subscriptions.ts)。
+ */
+export function migrateLegacyFeatureFlagsPartial(raw: unknown, force = false): unknown {
+	if (typeof raw !== "object" || raw === null) return raw;
+	if (!force && !hasLegacyExtras(raw)) return raw;
+	const r = raw as Record<string, unknown>;
+	const trio = [r.liveEnd, ...LIVE_END_EXTRA_KEYS.map((k) => r[k])];
+	const { liveEnd: _l, ...rest } = stripLegacyExtras(r);
+	const out: Record<string, unknown> = { ...rest, liveEndExtras: pickExtras(r) };
+	if (trio.includes(true)) out.liveEnd = true;
+	else if (trio.every((v) => v === false)) out.liveEnd = false;
+	return out;
+}
+
+const FeatureFlagsObjectSchema = z.object({
 	dynamic: z.boolean(),
 	live: z.boolean(),
 	liveEnd: z.boolean(),
 	liveGuardBuy: z.boolean(),
 	superchat: z.boolean(),
-	wordcloud: z.boolean(),
-	liveSummary: z.boolean(),
 	specialDanmaku: z.boolean(),
 	specialUserEnter: z.boolean(),
+	liveEndExtras: LiveEndExtrasSchema,
 });
-export type FeatureFlags = z.infer<typeof FeatureFlagsSchema>;
 
-export const FeatureFlagsPartialSchema = FeatureFlagsSchema.partial();
+/**
+ * 每个特性的开关 + 下播的两个附加项。使用显式 object 而非 z.record(boolean) 是为了让
+ * inherit-merge 时类型保留键名。老形状(词云 / 总结平铺在顶层)在这里就地迁成新形状。
+ */
+export const FeatureFlagsSchema = z.preprocess(migrateLegacyFeatureFlags, FeatureFlagsObjectSchema);
+export type FeatureFlags = z.infer<typeof FeatureFlagsObjectSchema>;
+
+/**
+ * per-UP 覆盖:七把开关各自可选,附加项是一个**内部也可选**的小对象 —— 只关词云不该顺手
+ * 把总结也盖掉(resolve 对它做嵌套合并)。
+ */
+export const FeatureFlagsPartialSchema = z.preprocess(
+	// 包一层:zod 给 preprocess 传的第二个参数是 ctx,直接传函数会把它当成 `force`。
+	(raw) => migrateLegacyFeatureFlagsPartial(raw),
+	FeatureFlagsObjectSchema.partial().extend({
+		liveEndExtras: LiveEndExtrasSchema.partial().optional(),
+	}),
+);
 export type FeatureFlagsPartial = z.infer<typeof FeatureFlagsPartialSchema>;
 
 /**

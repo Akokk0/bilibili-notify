@@ -5,32 +5,48 @@
  * 入口重导出,后端消费者(server)照旧从根入口拿 —— 两条路径同一份值。
  */
 
-/** 全部可订阅的特性键。新增或删除会扩散到 FeatureFlags、SubscriptionRouting、Subscription.overrides。 */
+/**
+ * 全部可订阅的特性键 —— 每一把都是一类**能单独开关、能配路由**的推送。新增或删除会扩散到
+ * FeatureFlags、SubscriptionRouting、Subscription.overrides。
+ *
+ * 词云与 AI 总结不在这里:它们是下播的两个附加项(见 {@link LIVE_END_EXTRA_KEYS}),
+ * 跟着下播的开关与目标走,自己没有路由。
+ */
 export const FEATURE_KEYS = [
 	"dynamic",
 	"live",
 	"liveEnd",
 	"liveGuardBuy",
 	"superchat",
-	"wordcloud",
-	"liveSummary",
 	"specialDanmaku",
 	"specialUserEnter",
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
+/**
+ * 下播推送的附加项:像开播的 @全体那样挂在下播下面 —— 下播关了它们一起关,下播推到
+ * 哪儿它们就跟到哪儿。卡片本体先发,词云 / 总结算好了作为同一次推送的后续消息追加。
+ */
+export const LIVE_END_EXTRA_KEYS = ["wordcloud", "liveSummary"] as const;
+
+export type LiveEndExtraKey = (typeof LIVE_END_EXTRA_KEYS)[number];
+
+export type LiveEndExtras = Record<LiveEndExtraKey, boolean>;
+
+/** 每个特性的开关 + 下播的两个附加项。schema 本体在 schema/common.ts(`FeatureFlagsSchema`)。 */
+export type FeatureFlagValues = Record<FeatureKey, boolean> & { liveEndExtras: LiveEndExtras };
+
 /** 默认全局值；resolve() 在 per-UP overrides 缺失字段时回退到这里。 */
-export const DEFAULT_FEATURE_FLAGS: Record<FeatureKey, boolean> = {
+export const DEFAULT_FEATURE_FLAGS: FeatureFlagValues = {
 	dynamic: true,
 	live: true,
 	liveEnd: true,
 	liveGuardBuy: false,
 	superchat: false,
-	wordcloud: true,
-	liveSummary: true,
 	specialDanmaku: false,
 	specialUserEnter: false,
+	liveEndExtras: { wordcloud: true, liveSummary: true },
 };
 
 // ---------------------------------------------------------------------------
