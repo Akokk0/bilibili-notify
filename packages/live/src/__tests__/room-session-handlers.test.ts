@@ -73,7 +73,6 @@ interface CtxMocks {
 	emitLiveState: ReturnType<typeof vi.fn>;
 	isSubscribed: ReturnType<typeof vi.fn>;
 	collectsDanmaku: ReturnType<typeof vi.fn>;
-	hasTargets: ReturnType<typeof vi.fn>;
 	safeBroadcast: ReturnType<typeof vi.fn>;
 }
 
@@ -101,7 +100,6 @@ function makeCtx(opts?: { customGuardBuyEnabled?: boolean }): { ctx: RoomContext
 		emitLiveState: vi.fn(),
 		isSubscribed: vi.fn(() => false),
 		collectsDanmaku: vi.fn((sub: SubItemView) => wantsLiveEndExtras(sub)),
-		hasTargets: vi.fn(() => false),
 		safeBroadcast: vi.fn(),
 	};
 	const ctx = {
@@ -134,7 +132,6 @@ function makeCtx(opts?: { customGuardBuyEnabled?: boolean }): { ctx: RoomContext
 		danmakuCollector: { recordDanmaku: m.recordDanmaku, clear: vi.fn(), registerRoom: vi.fn() },
 		isSubscribed: m.isSubscribed,
 		collectsDanmaku: m.collectsDanmaku,
-		hasTargets: m.hasTargets,
 		safeBroadcast: m.safeBroadcast,
 		sendLiveNotifyCard: m.sendLiveNotifyCard,
 		stopMonitoring: m.stopMonitoring,
@@ -690,16 +687,12 @@ function enterEvent(uid: number, uname = "特别用户") {
 }
 
 describe("RoomSession.onUserAction", () => {
-	it("特别关注用户进房 → 用 internal feature key specialUserEnter 检查目标并推送", async () => {
+	it("特别关注用户进房 → 渲染并推送(UserActions)", async () => {
 		const { ctx, m } = makeCtx();
-		m.hasTargets.mockImplementation(
-			(_sub: unknown, feature: string) => feature === "specialUserEnter",
-		);
 		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
 
 		await s.onUserAction(enterEvent(42));
 
-		expect(m.hasTargets).toHaveBeenCalledWith(expect.anything(), "specialUserEnter");
 		expect(m.renderSpecialUserEnter).toHaveBeenCalledTimes(1);
 		expect(m.renderSpecialUserEnter.mock.calls[0]?.[0]?.uname).toBe("特别用户");
 		expect(m.safeBroadcast).toHaveBeenCalledTimes(1);
@@ -708,7 +701,6 @@ describe("RoomSession.onUserAction", () => {
 
 	it("uid 是数字 → 与字符串白名单比对时不因类型不符而漏推", async () => {
 		const { ctx, m } = makeCtx();
-		m.hasTargets.mockReturnValue(true);
 		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
 
 		await s.onUserAction(enterEvent(42));
@@ -718,7 +710,6 @@ describe("RoomSession.onUserAction", () => {
 
 	it("非进房动作(关注 / 分享 / 未知)→ 不推送", async () => {
 		const { ctx, m } = makeCtx();
-		m.hasTargets.mockReturnValue(true);
 		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
 
 		for (const action of ["follow", "share", "unknown"] as const) {
@@ -730,7 +721,6 @@ describe("RoomSession.onUserAction", () => {
 
 	it("非特别关注的用户进房 → 不推送", async () => {
 		const { ctx, m } = makeCtx();
-		m.hasTargets.mockReturnValue(true);
 		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
 
 		await s.onUserAction(enterEvent(999, "路人"));
@@ -738,15 +728,36 @@ describe("RoomSession.onUserAction", () => {
 		expect(m.safeBroadcast).not.toHaveBeenCalled();
 	});
 
-	it("没有 specialUserEnter 推送目标 → 不渲染也不推送", async () => {
+	it("没配 specialUserEnter 的推送目标 → 照样渲染并广播,「无目标」由推送层记账", async () => {
 		const { ctx, m } = makeCtx();
-		m.hasTargets.mockReturnValue(false);
-		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
+		const sub = makeSpecialUserSub();
+		sub.target = {};
+		const s = new RoomSession(ctx, sub) as AnySession;
 
 		await s.onUserAction(enterEvent(42));
 
-		expect(m.renderSpecialUserEnter).not.toHaveBeenCalled();
-		expect(m.safeBroadcast).not.toHaveBeenCalled();
+		expect(m.renderSpecialUserEnter).toHaveBeenCalledTimes(1);
+		expect(m.safeBroadcast).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("RoomSession.onIncomeDanmu — 特别关注用户的弹幕", () => {
+	it("没配 specialDanmaku 的推送目标 → 照样广播(UserDanmakuMsg),不在引擎里按目标挡", () => {
+		const { ctx, m } = makeCtx();
+		const sub = makeSub({
+			customSpecialDanmakuUsers: {
+				enable: true,
+				specialDanmakuUsers: ["42"],
+				msgTemplate: "弹幕模板",
+			},
+			target: {},
+		});
+		const s = new RoomSession(ctx, sub) as AnySession;
+
+		s.onIncomeDanmu({ content: "你好", user: { uname: "特别用户", uid: 42 } });
+
+		expect(m.safeBroadcast).toHaveBeenCalledTimes(1);
+		expect(m.safeBroadcast.mock.calls[0]?.[2]).toBe(LivePushType.UserDanmakuMsg);
 	});
 });
 

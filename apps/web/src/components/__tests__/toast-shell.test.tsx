@@ -28,7 +28,7 @@ function pushView(id: string, over: Partial<PushEventView> = {}): PushEventView 
 
 function LocationProbe() {
 	const loc = useLocation();
-	return <div data-testid="loc">{`${loc.pathname}${loc.hash}`}</div>;
+	return <div data-testid="loc">{`${loc.pathname}${loc.search}${loc.hash}`}</div>;
 }
 
 function renderShell() {
@@ -187,5 +187,29 @@ describe("推送 toast —— 一次推送多条消息", () => {
 		act(() => useToastStore.getState().dismiss("h1"));
 		act(() => useToastStore.getState().replace(pushView("h1", { status: "delivered" })));
 		expect(useToastStore.getState().items.map((t) => t.id)).toEqual(["h2"]);
+	});
+});
+
+describe("推送 toast —— 无目标", () => {
+	it("标警示色「无目标」,带「去配置」钮:点了跳到该 UP 的抽屉(?open=订阅 id),卡随即收起", async () => {
+		renderShell();
+		act(() =>
+			useToastStore
+				.getState()
+				.push(pushView("h1", { status: "no-targets", targetId: null, subscriptionId: "sub-9" })),
+		);
+		expect(screen.getByText("无目标")).toBeTruthy();
+		expect(screen.getByText("一条动态")).toBeTruthy();
+
+		await userEvent.click(screen.getByRole("button", { name: "去配置" }));
+
+		expect(screen.getByTestId("loc").textContent).toBe("/subs?open=sub-9");
+		expect(screen.queryByText("一条动态")).toBeNull();
+	});
+
+	it("有目标的卡不带「去配置」", () => {
+		renderShell();
+		act(() => useToastStore.getState().push(pushView("h1")));
+		expect(screen.queryByRole("button", { name: "去配置" })).toBeNull();
 	});
 });

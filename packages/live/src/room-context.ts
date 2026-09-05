@@ -8,7 +8,6 @@ import type { LiveSummaryRequester } from "./live-summary-requester";
 import {
 	LIVE_ROOM_MASTER_KEYS,
 	type LiveMasterFeature,
-	type LivePushFeature,
 	type PickCardBackground,
 	type PushLike,
 	type SubItemView,
@@ -212,10 +211,6 @@ export class RoomContextBase {
 		this.logger.debug(
 			`[conn] [live:${this.instanceId}] ${stage} listeners=${this.getListenerCount()} timers=${this.livePushTimerManager.size} disposed=${this.disposed}`,
 		);
-	}
-
-	hasTargets(sub: SubItemView, ...types: LivePushFeature[]): boolean {
-		return types.some((t) => (sub.target?.[t]?.length ?? 0) > 0);
 	}
 
 	isSubscribed(sub: SubItemView, type: LiveMasterFeature): boolean {

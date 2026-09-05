@@ -507,9 +507,9 @@ export class RoomSession extends RoomSessionBase {
 		if (this.ctx.collectsDanmaku(this.sub)) {
 			this.ctx.danmakuCollector.recordDanmaku(this.sub.roomId, body.content, body.user.uname);
 		}
+		// 不按目标挡:没配目标的推送由推送层记成「无目标」,面板上才看得见。
 		if (
 			this.sub.customSpecialDanmakuUsers.enable &&
-			this.ctx.hasTargets(this.sub, "specialDanmaku") &&
 			this.sub.customSpecialDanmakuUsers.specialDanmakuUsers?.includes(body.user.uid.toString())
 		) {
 			const text = this.ctx.templateRenderer.renderSpecialDanmaku({
@@ -831,12 +831,8 @@ export class RoomSession extends RoomSessionBase {
 	 * `user.uid` 是 number,而白名单存的是 string,比对前必须转。
 	 */
 	private async onUserAction(ev: { action: UserActionType; user: LiveUser }): Promise<void> {
-		if (
-			!this.sub.customSpecialUsersEnterTheRoom.enable ||
-			!this.ctx.hasTargets(this.sub, "specialUserEnter")
-		) {
-			return;
-		}
+		// 同特别弹幕:不按目标挡,「无目标」由推送层记账。
+		if (!this.sub.customSpecialUsersEnterTheRoom.enable) return;
 		if (ev.action !== "enter") return;
 		const uid = String(ev.user.uid);
 		if (!this.sub.customSpecialUsersEnterTheRoom.specialUsersEnterTheRoom?.includes(uid)) return;

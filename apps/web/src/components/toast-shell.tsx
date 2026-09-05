@@ -110,6 +110,16 @@ function ToastCard({ item }: { item: ToastItem }) {
 					{headline}
 				</div>
 			) : null}
+			{view.status === "no-targets" ? (
+				<div className="mt-2">
+					{/* 这类推送没有任何可用目标:直达该 UP 抽屉的「推送目标」一节。Link 包 Btn,同通知卡。 */}
+					<Link to={`/subs?open=${encodeURIComponent(view.subscriptionId)}`}>
+						<Btn size="sm" variant="primary" onClick={() => dismiss(item.id)}>
+							去配置
+						</Btn>
+					</Link>
+				</div>
+			) : null}
 		</NoticeCard>
 	);
 }
