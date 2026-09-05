@@ -62,10 +62,14 @@ export interface CreateUpdateServiceInput {
 
 export interface UpdateService {
 	getStatus(): UpdateStatus;
+	/**
+	 * 查一次。开着自动下载时只把下载**发起**就回(`downloading`),取包 → 校验 → 落盘在后台跑,
+	 * 面板靠轮询 `getStatus` 看着它变成 `ready` / `error`。下载途中再查只回当前状态。
+	 */
 	check(): Promise<UpdateStatus>;
-	/** 手动下载 —— 关掉自动下载时,用户按下按钮走这条。 */
+	/** 手动下载 —— 关掉自动下载时,用户按下按钮走这条。同样只发起就回。 */
 	download(): Promise<UpdateStatus>;
-	/** 也走串行闸:下载途中按回退,钉子要落在下载**之后**,否则会被下载完成时的拔钉子抹掉。 */
+	/** 也走串行闸,并等后台下载收尾:钉子要落在下载**之后**,否则会被下载完成时的拔钉子抹掉。 */
 	rollback(): Promise<UpdateStatus>;
 	/**
 	 * 「测一遍」:对每个候选前缀(空串 = 直连)各拉一次当前渠道的清单 + 验签,
@@ -115,10 +119,16 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		notes?: string;
 	} | null = null;
 	/**
-	 * 正在跑的那趟检查 / 下载。打开面板那次自动检查还在下载,用户走到系统页又按
-	 * 「检查更新」—— 不共用的话两趟各下一份、各解一次压,最后谁写盘谁赢。
+	 * 正在跑的那趟检查 / 用户按下的动作。两次检查撞上就共用一趟;回退排在前一趟后面。
 	 */
 	let inflight: Promise<UpdateStatus> | null = null;
+	/**
+	 * 后台跑着的那趟下载(取包 → 校验 → 落盘)。`check()` / `download()` 把它发起就回,不等它;
+	 * 只有回退要等它(钉子得落在它拔钉子之后)。「正在不正在下」看 `state.phase`,不看这个
+	 * 变量:状态是 installFrom 收尾时同步改的,这个 promise 的 finally 要晚一个微任务 ——
+	 * 面板刚看到 ready 就按「检查更新」,按变量判会把那次检查当成「还在下」吞掉。
+	 */
+	let downloadJob: Promise<UpdateStatus> | null = null;
 
 	/**
 	 * 退一步会退到哪:装着的版本里比当前旧的那个最高的;都没有就退回镜像自带那版。
@@ -274,6 +284,30 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		return status();
 	}
 
+	/**
+	 * 把下载发起到后台,立刻回「正在下载」。以前这里一路等到装完:打开面板那次自动检查
+	 * 要等几秒到几十秒才回,中途没人知道它在下;手动「检查更新」也跟着转到下完。
+	 *
+	 * 兜底的 catch 只接 `installFrom` 里没归因的意外(落盘之后拔钉子 / 打扫时的文件系统
+	 * 错误之类):后台没人 await 它,不接住就是一条 unhandled rejection 加一个永远停在
+	 * 「正在下载」的面板。
+	 */
+	function startDownload(manifest: Manifest, mirrors: string[]): UpdateStatus {
+		state = {
+			phase: "downloading",
+			target: manifest.version,
+			releaseUrl: manifest.releaseUrl,
+			notes: manifest.notes,
+		};
+		const job: Promise<UpdateStatus> = installFrom(manifest, mirrors)
+			.catch(() => fail("install-failed", manifest.releaseUrl))
+			.finally(() => {
+				if (downloadJob === job) downloadJob = null;
+			});
+		downloadJob = job;
+		return status();
+	}
+
 	/** 同一时刻只让一趟在跑;后来的搭前一趟的车,拿到的是同一个结果。 */
 	function serialized(run: () => Promise<UpdateStatus>): Promise<UpdateStatus> {
 		if (inflight === null) {
@@ -407,7 +441,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 			};
 			return status();
 		}
-		return installFrom(manifest, mirrors);
+		return startDownload(manifest, mirrors);
 	}
 
 	return {
@@ -416,21 +450,28 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		async check(): Promise<UpdateStatus> {
 			// 没钥匙就别去打扰网络 —— 拿回来也验不了。
 			if (!enabled) return status();
+			// 正在下:回「正在下载」就好,清单不再拉、包不再下第二份 —— 打开面板那次自动检查
+			// 还在下,用户走到系统页又按「检查更新」,不这么挡的话两趟各下一份、各解一次压,
+			// 最后谁写盘谁赢。
+			if (state.phase === "downloading") return status();
 			return serialized(runCheck);
 		},
 
 		async download(): Promise<UpdateStatus> {
 			if (!enabled) return status();
+			if (state.phase === "downloading") return status();
 			// 排在正在跑的检查**后面**,而不是搭它的车:搭车拿到的是那次检查的结果,一个字节
 			// 都没下,按钮像是死了。
 			return queued(async () => {
+				// 前面那趟检查自己把下载发起了 —— 别再开第二趟。
+				if (state.phase === "downloading") return status();
 				const settings = readSettings();
 				// 没先 check 过、或者上次查的是另一个渠道 —— 让它自己去查一次,而不是回一个
 				// 「先点检查」,更不能把上个渠道那份装上去。
 				if (pending === null || pending.channel !== settings.channel) return runCheck();
 				// 已经装好的就别再下一遍 —— 「下载」按了两次不该变成两次 7MB。
 				if (alreadyOnDisk(pending.manifest)) return status();
-				return installFrom(pending.manifest, mirrorChain(settings));
+				return startDownload(pending.manifest, mirrorChain(settings));
 			});
 		},
 
@@ -456,9 +497,11 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		},
 
 		rollback(): Promise<UpdateStatus> {
-			// 走串行闸:正在下载时,钉子必须落在 installFrom 的 clearPinnedVersion **之后**,
-			// 不然用户看到「已回退」,几秒后下载落地又把钉子拔了、状态盖成 ready。
+			// 走串行闸,并等后台下载收尾:钉子必须落在 installFrom 的 clearPinnedVersion **之后**,
+			// 不然用户看到「已回退」,几秒后下载落地又把钉子拔了、状态盖成 ready。等的是
+			// 「轮到我时还在跑的那趟」—— 前面那趟检查可能正是在这条排队期间把下载发起的。
 			return queued(async () => {
+				while (downloadJob !== null) await downloadJob;
 				const target = rollbackTarget(readBootView({ versionsRoot, imageVersion }));
 				if (target === null) return fail("nothing-to-roll-back");
 				pinVersion({ versionsRoot, version: target });
