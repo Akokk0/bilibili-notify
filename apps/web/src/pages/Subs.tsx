@@ -16,6 +16,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ApiError, api } from "../services/api";
 import { makeEmptySubscription, type PushTarget, type Subscription } from "../types/domain";
 import { copyToClipboard } from "../utils/clipboard";
@@ -442,6 +443,26 @@ export default function Subs() {
 	const [groupFilter, setGroupFilter] = useState<string | null>(null);
 	const [selection, setSelection] = useState<Set<string>>(new Set());
 	const [drawerSubId, setDrawerSubId] = useState<string | null>(null);
+	/** 抽屉打开时滚到哪一节;只有 `?open=` 直达(无目标小卡的「去配置」)会要求滚到推送目标。 */
+	const [drawerFocus, setDrawerFocus] = useState<"targets" | undefined>(undefined);
+	const [searchParams, setSearchParams] = useSearchParams();
+	const openParam = searchParams.get("open");
+	// `/subs?open=<订阅 id>`:订阅列表到手后打开那位 UP 的抽屉并滚到推送目标;悬空 id 忽略。
+	// 参数用完即清(replace,不留历史),刷新不会再弹一次。
+	useEffect(() => {
+		if (!openParam || !subsQuery.data) return;
+		if (subsQuery.data.some((s) => s.id === openParam)) {
+			setDrawerSubId(openParam);
+			setDrawerFocus("targets");
+		}
+		setSearchParams(
+			(prev) => {
+				prev.delete("open");
+				return prev;
+			},
+			{ replace: true },
+		);
+	}, [openParam, subsQuery.data, setSearchParams]);
 	/** 右键 / 长按打开的快捷菜单:目标订阅 + 触发点坐标。 */
 	const [menuAt, setMenuAt] = useState<{ subId: string; x: number; y: number } | null>(null);
 	/** 待二次确认的删除(单个来自右键 / 抽屉,多个来自批量)。 */
@@ -808,11 +829,18 @@ export default function Subs() {
 				<UpDialog
 					sub={drawerSub}
 					targets={targets}
-					onClose={() => setDrawerSubId(null)}
+					focusSection={drawerFocus}
+					onClose={() => {
+						setDrawerSubId(null);
+						setDrawerFocus(undefined);
+					}}
 					saving={upsert.isPending}
 					onSave={(next: Subscription) => {
 						upsert.mutate(next, {
-							onSuccess: () => setDrawerSubId(null),
+							onSuccess: () => {
+								setDrawerSubId(null);
+								setDrawerFocus(undefined);
+							},
 						});
 					}}
 					onDelete={() => setPendingDelete({ ids: [drawerSub.id] })}

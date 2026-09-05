@@ -13,6 +13,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import Subs from "../Subs";
@@ -41,7 +42,9 @@ function renderSubs() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
-			<Subs />
+			<MemoryRouter initialEntries={["/subs"]}>
+				<Subs />
+			</MemoryRouter>
 		</QueryClientProvider>,
 	);
 }

@@ -11,7 +11,7 @@ import {
 	PlatformIcon,
 	Toggle,
 } from "@bilibili-notify/ui";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TInput } from "../../components/forms";
 import {
 	DEFAULT_FEATURE_FLAGS,
@@ -80,6 +80,11 @@ export interface UpDialogProps {
 	 *           为草稿本身就是「待提交的修改」);"取消" 关闭即丢弃,不调任何 API。
 	 */
 	mode?: "create" | "edit";
+	/**
+	 * 打开时滚到哪一节。`"targets"` = 推送目标 —— 无目标小卡上的「去配置」经 `/subs?open=`
+	 * 跳过来时用;缺省从头开始。
+	 */
+	focusSection?: "targets";
 	onClose: () => void;
 	onSave: (next: Subscription) => void;
 	onDelete: () => void;
@@ -171,6 +176,7 @@ export function UpDialog({
 	onSave,
 	onDelete,
 	saving,
+	focusSection,
 }: UpDialogProps) {
 	const [draft, setDraft] = useState<Subscription | null>(sub);
 	const [customSet, setCustomSet] = useState<Set<string>>(() => inferCustomSet(sub, targets));
@@ -209,6 +215,13 @@ export function UpDialog({
 		() => targets.filter((t) => !attachedIds.has(t.id)),
 		[targets, attachedIds],
 	);
+
+	// 「去配置」跳过来时滚到推送目标一节;别的打开方式从头开始。
+	const targetsSectionRef = useRef<HTMLElement>(null);
+	useEffect(() => {
+		if (focusSection !== "targets") return;
+		targetsSectionRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+	}, [focusSection]);
 
 	if (!draft) return null;
 
@@ -577,7 +590,7 @@ export function UpDialog({
 				</section>
 
 				{/* 推送目标 */}
-				<section>
+				<section ref={targetsSectionRef}>
 					<SectionHeader label="推送目标" />
 					{targets.length === 0 ? (
 						<EmptyNote size="sm">尚未配置任何推送目标 · 请先到「推送目标」页面创建</EmptyNote>
