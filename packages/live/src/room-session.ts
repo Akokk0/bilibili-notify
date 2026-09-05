@@ -504,10 +504,7 @@ export class RoomSession extends RoomSessionBase {
 	}
 
 	private onIncomeDanmu(body: { content: string; user: { uname: string; uid: number } }): void {
-		if (
-			this.ctx.isSubscribed(this.sub, "wordcloud") ||
-			this.ctx.isSubscribed(this.sub, "liveSummary")
-		) {
+		if (this.ctx.collectsDanmaku(this.sub)) {
 			this.ctx.danmakuCollector.recordDanmaku(this.sub.roomId, body.content, body.user.uname);
 		}
 		if (
@@ -535,9 +532,7 @@ export class RoomSession extends RoomSessionBase {
 		user: { uname: string; uid: number };
 		price: number;
 	}): Promise<void> {
-		const collectsDanmaku =
-			this.ctx.isSubscribed(this.sub, "wordcloud") ||
-			this.ctx.isSubscribed(this.sub, "liveSummary");
+		const collectsDanmaku = this.ctx.collectsDanmaku(this.sub);
 		const pushesSC = this.ctx.isSubscribed(this.sub, "superchat");
 		if (!collectsDanmaku && !pushesSC) return;
 		if (collectsDanmaku) {

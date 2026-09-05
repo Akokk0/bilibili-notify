@@ -7,7 +7,7 @@ import {
 import { connectLiveRoom, type DanmuHost, type LiveEvent } from "@bilibili-notify/blive";
 import { type MessageKindLayout, planMessageGroups } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
-import { LivePushType, type SubItemView } from "./push-like";
+import { type LiveBroadcastOptions, LivePushType, type SubItemView } from "./push-like";
 import { RoomContextBase } from "./room-context";
 import { type LiveData, LiveType, type MasterInfo } from "./types";
 
@@ -293,6 +293,8 @@ export class RoomContext extends RoomContextBase {
 		notifyMsg: string;
 		messageLayout: MessageKindLayout;
 		roomLink?: string;
+		/** 见 {@link LiveBroadcastOptions.pushId}:下播卡传它,词云 / 总结才能追加到同一行。 */
+		pushId?: string;
 	}): Promise<void> {
 		const { liveType, liveData, liveRoomInfo, master, cardStyle, cardLayout, uid, notifyMsg } =
 			params;
@@ -332,6 +334,7 @@ export class RoomContext extends RoomContextBase {
 			uid,
 			pushType,
 			roomLink: params.roomLink ?? "",
+			pushId: params.pushId,
 		});
 	}
 
@@ -346,8 +349,10 @@ export class RoomContext extends RoomContextBase {
 		roomLink: string;
 		uid: string;
 		pushType: LivePushType;
+		pushId?: string;
 	}): Promise<void> {
 		const { layout, buffer, notifyMsg, roomLink, uid, pushType } = args;
+		const opts: LiveBroadcastOptions = { pushId: args.pushId };
 		const text = layout.blocks.some((b) => b.visible && b.type === "text") ? notifyMsg : "";
 		const present = new Set<string>();
 		if (buffer) present.add("card");
@@ -381,10 +386,10 @@ export class RoomContext extends RoomContextBase {
 			return;
 		}
 		if (groups.length === 1) {
-			await this.push.broadcastToTargets(uid, buildContent(groups[0] ?? []), pushType);
+			await this.push.broadcastToTargets(uid, buildContent(groups[0] ?? []), pushType, opts);
 			return;
 		}
-		await this.push.broadcastSequenceToTargets(uid, groups.map(buildContent), pushType);
+		await this.push.broadcastSequenceToTargets(uid, groups.map(buildContent), pushType, opts);
 	}
 
 	/** Format `dateString` (yyyy-MM-dd HH:mm:ss UTC+8) as elapsed-time text. */

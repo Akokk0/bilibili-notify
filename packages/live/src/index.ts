@@ -22,6 +22,8 @@ export {
 	type CustomSpecialUsersEnterTheRoomLike,
 	type DynamicScopedChange,
 	LIVE_ROOM_MASTER_KEYS,
+	type LiveBroadcastOptions,
+	type LiveEndExtrasLike,
 	type LiveMasterFeature,
 	type LivePushFeature,
 	LivePushType,
@@ -33,6 +35,7 @@ export {
 	type SubItemView,
 	type SubscriptionsView,
 	type TargetScopedChange,
+	wantsLiveEndExtras,
 } from "./push-like";
 export {
 	type ListenerManagerConfig,

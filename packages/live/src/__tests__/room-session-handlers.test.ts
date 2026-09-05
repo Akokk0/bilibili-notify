@@ -20,7 +20,7 @@ import type { ServiceContext } from "@bilibili-notify/internal";
 import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { SubItemView } from "../push-like";
-import { LivePushType } from "../push-like";
+import { LivePushType, wantsLiveEndExtras } from "../push-like";
 import { RoomContext } from "../room-helpers";
 import { RoomSession } from "../room-session";
 import { LiveType } from "../types";
@@ -38,8 +38,7 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 		liveEnd: true,
 		liveGuardBuy: false,
 		superchat: false,
-		wordcloud: false,
-		liveSummary: false,
+		liveEndExtras: { wordcloud: false, liveSummary: false },
 		target: {},
 		customCardStyle: { enable: false },
 		customLiveMsg: { enable: false },
@@ -73,6 +72,7 @@ interface CtxMocks {
 	getTimeDifference: ReturnType<typeof vi.fn>;
 	emitLiveState: ReturnType<typeof vi.fn>;
 	isSubscribed: ReturnType<typeof vi.fn>;
+	collectsDanmaku: ReturnType<typeof vi.fn>;
 	hasTargets: ReturnType<typeof vi.fn>;
 	safeBroadcast: ReturnType<typeof vi.fn>;
 }
@@ -100,6 +100,7 @@ function makeCtx(opts?: { customGuardBuyEnabled?: boolean }): { ctx: RoomContext
 		getTimeDifference: vi.fn(async () => "1小时"),
 		emitLiveState: vi.fn(),
 		isSubscribed: vi.fn(() => false),
+		collectsDanmaku: vi.fn((sub: SubItemView) => wantsLiveEndExtras(sub)),
 		hasTargets: vi.fn(() => false),
 		safeBroadcast: vi.fn(),
 	};
@@ -132,6 +133,7 @@ function makeCtx(opts?: { customGuardBuyEnabled?: boolean }): { ctx: RoomContext
 		},
 		danmakuCollector: { recordDanmaku: m.recordDanmaku, clear: vi.fn(), registerRoom: vi.fn() },
 		isSubscribed: m.isSubscribed,
+		collectsDanmaku: m.collectsDanmaku,
 		hasTargets: m.hasTargets,
 		safeBroadcast: m.safeBroadcast,
 		sendLiveNotifyCard: m.sendLiveNotifyCard,
@@ -166,10 +168,12 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		expect(m.broadcastToTargets).not.toHaveBeenCalled();
 	});
 
-	it("仅收集弹幕(wordcloud 订阅)不推 SC → recordDanmaku 调用但不广播", async () => {
+	it("仅收集弹幕(下播开着、词云开着)不推 SC → recordDanmaku 调用但不广播", async () => {
 		const { ctx, m } = makeCtx();
-		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "wordcloud");
-		const s = new RoomSession(ctx, makeSub({ wordcloud: true })) as AnySession;
+		const s = new RoomSession(
+			ctx,
+			makeSub({ liveEnd: true, liveEndExtras: { wordcloud: true, liveSummary: false } }),
+		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
 		expect(m.recordDanmaku).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets).not.toHaveBeenCalled();

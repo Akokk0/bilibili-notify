@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { LiveRoomInfo } from "@bilibili-notify/api";
 import type { LiveEvent } from "@bilibili-notify/blive";
 import type { CardKind, Disposable } from "@bilibili-notify/internal";
@@ -711,7 +712,10 @@ export abstract class RoomSessionBase {
 		const liveRoomInfo = this.liveRoomInfo;
 		const master = this.masterInfo;
 		try {
+			// 下播 = 卡片本体,词云 / 总结是它的附加项:下播关着就整个不推;开着先发卡,
+			// 附加项算好后用同一个 pushId 追加 —— 宿主的历史落同一行。
 			if (this.ctx.isSubscribed(this.sub, "liveEnd")) {
+				const pushId = randomUUID();
 				await this.enqueuePush(() =>
 					this.ctx.sendLiveNotifyCard({
 						liveType: LiveType.StopBroadcast,
@@ -724,12 +728,14 @@ export abstract class RoomSessionBase {
 						notifyMsg: liveEndMsg,
 						messageLayout: this.sub.messageLayout,
 						roomLink,
+						pushId,
 					}),
 				);
+				await this.dispatchWordCloudAndSummary(
+					this.sub.customLiveSummary.liveSummary || this.ctx.config.liveSummaryDefault,
+					pushId,
+				);
 			}
-			await this.dispatchWordCloudAndSummary(
-				this.sub.customLiveSummary.liveSummary || this.ctx.config.liveSummaryDefault,
-			);
 		} finally {
 			this.ctx.danmakuCollector.clear(this.sub.roomId);
 			this.ctx.danmakuCollector.registerRoom(this.sub.roomId);
@@ -737,12 +743,15 @@ export abstract class RoomSessionBase {
 	}
 
 	/**
-	 * Run wordcloud + AI live-summary in parallel and dispatch whichever
-	 * succeeded. Skipped entirely when neither feature is subscribed.
+	 * 下播的附加项:词云与 AI 总结并行算,算出来的各自追加到 `pushId` 那次推送里
+	 * (`role: "extra"`)。两个子项都关着就整个跳过 —— 不算词云、不问 AI。
 	 */
-	protected async dispatchWordCloudAndSummary(customLiveSummary: string): Promise<void> {
-		const wantWordcloud = this.ctx.isSubscribed(this.sub, "wordcloud");
-		const wantSummary = this.ctx.isSubscribed(this.sub, "liveSummary");
+	protected async dispatchWordCloudAndSummary(
+		customLiveSummary: string,
+		pushId: string,
+	): Promise<void> {
+		const wantWordcloud = this.sub.liveEndExtras.wordcloud;
+		const wantSummary = this.sub.liveEndExtras.liveSummary;
 		if (!wantWordcloud && !wantSummary) return;
 
 		this.ctx.logger.debug(
@@ -780,14 +789,25 @@ export abstract class RoomSessionBase {
 		if (this.ctx.isDisposed()) return;
 		const wcMsg = img ? this.ctx.contentBuilder.image(img, "image/jpeg") : undefined;
 		const summaryMsg = summary ? this.ctx.contentBuilder.text(summary) : undefined;
+		const asExtra = { pushId, role: "extra" as const };
 		if (wcMsg) {
 			await this.enqueuePush(() =>
-				this.ctx.push.broadcastToTargets(this.sub.uid, wcMsg, LivePushType.WordCloudAndLiveSummary),
+				this.ctx.push.broadcastToTargets(
+					this.sub.uid,
+					wcMsg,
+					LivePushType.WordCloudAndLiveSummary,
+					asExtra,
+				),
 			);
 		}
 		if (summaryMsg) {
 			await this.enqueuePush(() =>
-				this.ctx.push.broadcastToTargets(this.sub.uid, summaryMsg, LivePushType.LiveSummary),
+				this.ctx.push.broadcastToTargets(
+					this.sub.uid,
+					summaryMsg,
+					LivePushType.LiveSummary,
+					asExtra,
+				),
 			);
 		}
 	}

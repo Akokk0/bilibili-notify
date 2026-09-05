@@ -1,13 +1,9 @@
 /**
- * 回归守护 — P0-1 fix(live): route live-summary independently from wordcloud。
+ * 下播的两个附加项(词云 / AI 总结)各自门控、各自一次 broadcast。
  *
- * dispatchWordCloudAndSummary 此前把词云+总结合包成一次 broadcast 用
- * LivePushType.WordCloudAndLiveSummary=5 发出去,两端 adapter 都把 type=5 映射到
- * "wordcloud" 单一 FeatureKey。当用户关词云开总结时,总结被按 wordcloud 路由查
- * target 列表 → target 列表为空 → 推送丢弃。
- *
- * 修复后:wordcloud 走 WordCloudAndLiveSummary=5,总结走 LiveSummary=10,各自映射
- * 到对应 FeatureKey,路由独立。本测试锁住 dispatch 时的"两次独立 broadcast"事实。
+ * 历史:词云+总结曾合包成一次 broadcast(type=5),关词云开总结时总结跟着丢;拆开后
+ * 词云走 WordCloudAndLiveSummary=5、总结走 LiveSummary=10。现在两者都是下播的附加项,
+ * 由 `sub.liveEndExtras` 门控,用同一个 pushId、标 `role: "extra"` 追加。
  */
 
 import type { LiveEvent } from "@bilibili-notify/blive";
@@ -23,7 +19,7 @@ class TestSession extends RoomSessionBase {
 	protected buildEventHandler(): (ev: LiveEvent) => void {
 		return () => {};
 	}
-	async runDispatch(custom = ""): Promise<void> {
+	async runDispatch(custom = "", pushId = "11111111-1111-4111-8111-111111111111"): Promise<void> {
 		// biome-ignore lint/suspicious/noExplicitAny: protected 字段的测试 setup
 		(this as any).masterInfo = {
 			username: "U",
@@ -34,11 +30,11 @@ class TestSession extends RoomSessionBase {
 			liveFollowerChange: 0,
 			medalName: "",
 		};
-		return this.dispatchWordCloudAndSummary(custom);
+		return this.dispatchWordCloudAndSummary(custom, pushId);
 	}
 }
 
-function makeSub(): SubItemView {
+function makeSub(extras = { wordcloud: true, liveSummary: true }): SubItemView {
 	return {
 		uid: "u1",
 		uname: "U1",
@@ -48,8 +44,7 @@ function makeSub(): SubItemView {
 		liveEnd: true,
 		liveGuardBuy: false,
 		superchat: false,
-		wordcloud: true,
-		liveSummary: true,
+		liveEndExtras: extras,
 		target: {},
 		customCardStyle: { enable: false },
 		customLiveMsg: { enable: false },
@@ -74,18 +69,18 @@ interface CtxOpts {
 	sortedWords?: Array<[string, number]>;
 }
 
-function makeCtx(opts: CtxOpts): {
-	ctx: RoomContext;
-	calls: Array<{ uid: string; content: unknown; type: LivePushType }>;
-} {
-	const calls: Array<{ uid: string; content: unknown; type: LivePushType }> = [];
+interface Call {
+	uid: string;
+	content: unknown;
+	type: LivePushType;
+	opts?: unknown;
+}
+
+function makeCtx(opts: CtxOpts): { ctx: RoomContext; calls: Call[]; sub: SubItemView } {
+	const calls: Call[] = [];
+	const sub = makeSub({ wordcloud: opts.wantWordcloud, liveSummary: opts.wantSummary });
 	const stub = {
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-		isSubscribed: vi.fn((_sub: SubItemView, type: string) => {
-			if (type === "wordcloud") return opts.wantWordcloud;
-			if (type === "liveSummary") return opts.wantSummary;
-			return false;
-		}),
 		isDisposed: () => false,
 		danmakuCollector: {
 			// P2(dim7):真实 snapshot().senderRecord 是 Record<string,number>,
@@ -99,57 +94,64 @@ function makeCtx(opts: CtxOpts): {
 			text: (t: string) => ({ kind: "text", text: t }),
 		},
 		push: {
-			broadcastToTargets: async (uid: string, content: unknown, type: LivePushType) => {
-				calls.push({ uid, content, type });
+			broadcastToTargets: async (
+				uid: string,
+				content: unknown,
+				type: LivePushType,
+				o?: unknown,
+			) => {
+				calls.push({ uid, content, type, opts: o });
 			},
 			sendPrivateMsg: async () => {},
 		},
 	};
-	return { ctx: stub as unknown as RoomContext, calls };
+	return { ctx: stub as unknown as RoomContext, calls, sub };
 }
 
-describe("dispatchWordCloudAndSummary — P0-1 路由拆分", () => {
-	it("wordcloud=on summary=on:两次独立 broadcast,各用各的 LivePushType", async () => {
-		const { ctx, calls } = makeCtx({
+describe("dispatchWordCloudAndSummary — 两个附加项各自门控", () => {
+	it("wordcloud=on summary=on:两次独立 broadcast,各用各的 LivePushType,同 pushId、标 extra", async () => {
+		const { ctx, calls, sub } = makeCtx({
 			wantWordcloud: true,
 			wantSummary: true,
 			wcImage: Buffer.from("img"),
 			summaryText: "总结文本",
 		});
-		const session = new TestSession(ctx, makeSub());
-		await session.runDispatch();
+		const session = new TestSession(ctx, sub);
+		await session.runDispatch("", "22222222-2222-4222-8222-222222222222");
 
-		expect(calls).toHaveLength(2);
-		// 词云走 WordCloudAndLiveSummary=5(adapter 映射 wordcloud feature)
-		expect(calls[0].type).toBe(LivePushType.WordCloudAndLiveSummary);
-		// 总结走 LiveSummary=10(adapter 映射 liveSummary feature)
-		expect(calls[1].type).toBe(LivePushType.LiveSummary);
+		expect(calls.map((c) => [c.type, c.opts])).toEqual([
+			[
+				LivePushType.WordCloudAndLiveSummary,
+				{ pushId: "22222222-2222-4222-8222-222222222222", role: "extra" },
+			],
+			[LivePushType.LiveSummary, { pushId: "22222222-2222-4222-8222-222222222222", role: "extra" }],
+		]);
 	});
 
 	it("wordcloud=off summary=on:只发总结,走 LiveSummary(不会被合包到 wordcloud)", async () => {
-		const { ctx, calls } = makeCtx({
+		const { ctx, calls, sub } = makeCtx({
 			wantWordcloud: false,
 			wantSummary: true,
 			summaryText: "只有总结",
 		});
-		const session = new TestSession(ctx, makeSub());
+		const session = new TestSession(ctx, sub);
 		await session.runDispatch();
 
 		expect(calls).toHaveLength(1);
-		expect(calls[0].type).toBe(LivePushType.LiveSummary);
+		expect(calls[0]?.type).toBe(LivePushType.LiveSummary);
 	});
 
 	it("wordcloud=on summary=off:只发词云,走 WordCloudAndLiveSummary", async () => {
-		const { ctx, calls } = makeCtx({
+		const { ctx, calls, sub } = makeCtx({
 			wantWordcloud: true,
 			wantSummary: false,
 			wcImage: Buffer.from("only-wc"),
 		});
-		const session = new TestSession(ctx, makeSub());
+		const session = new TestSession(ctx, sub);
 		await session.runDispatch();
 
 		expect(calls).toHaveLength(1);
-		expect(calls[0].type).toBe(LivePushType.WordCloudAndLiveSummary);
+		expect(calls[0]?.type).toBe(LivePushType.WordCloudAndLiveSummary);
 	});
 });
 

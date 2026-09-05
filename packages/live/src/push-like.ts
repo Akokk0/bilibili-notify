@@ -18,12 +18,13 @@ export enum LivePushType {
 	Live = 0,
 	StartBroadcasting = 3,
 	LiveGuardBuy = 4,
-	/** 历史上承载词云+总结合包推送;现在仅用于词云,总结走 {@link LiveSummary}。 */
+	/** 历史上承载词云+总结合包推送;现在仅用于词云 —— 下播的附加项,宿主映射到下播那一类。 */
 	WordCloudAndLiveSummary = 5,
 	Superchat = 6,
 	UserDanmakuMsg = 7,
 	UserActions = 8,
 	LiveEnd = 9,
+	/** AI 总结 —— 下播的另一个附加项,宿主同样映射到下播那一类。 */
 	LiveSummary = 10,
 }
 
@@ -38,8 +39,6 @@ export type LivePushFeature =
 	| "liveEnd"
 	| "liveGuardBuy"
 	| "superchat"
-	| "wordcloud"
-	| "liveSummary"
 	| "specialDanmaku"
 	| "specialUserEnter";
 
@@ -59,9 +58,21 @@ export const LIVE_ROOM_MASTER_KEYS: readonly LiveMasterFeature[] = [
 	"liveEnd",
 	"liveGuardBuy",
 	"superchat",
-	"wordcloud",
-	"liveSummary",
 ];
+
+/**
+ * 下播的两个附加项(词云 / AI 总结):像开播的 @全体,挂在下播下面,跟着下播的开关与目标走。
+ * 卡片先发,它们算好后作为同一次推送的后续消息追加。
+ */
+export interface LiveEndExtrasLike {
+	wordcloud: boolean;
+	liveSummary: boolean;
+}
+
+/** 这位 UP 要不要采集弹幕:下播开着,且至少一个附加项开着。 */
+export function wantsLiveEndExtras(sub: SubItemView): boolean {
+	return sub.liveEnd && (sub.liveEndExtras.wordcloud || sub.liveEndExtras.liveSummary);
+}
 
 /** Sub-level customisation blocks copied from `@bilibili-notify/push`. */
 export interface CustomCardStyleLike {
@@ -158,8 +169,8 @@ export interface SubItemView {
 	liveEnd: boolean;
 	liveGuardBuy: boolean;
 	superchat: boolean;
-	wordcloud: boolean;
-	liveSummary: boolean;
+	/** 见 {@link LiveEndExtrasLike}。宿主折叠 `eff.features.liveEndExtras` 后填入。 */
+	liveEndExtras: LiveEndExtrasLike;
 	target: SubItemTargetLike;
 	customCardStyle: CustomCardStyleLike;
 	/**
@@ -225,8 +236,7 @@ export type LiveScopedChange = { scope: "live" } & Partial<
 		| "liveEnd"
 		| "liveGuardBuy"
 		| "superchat"
-		| "wordcloud"
-		| "liveSummary"
+		| "liveEndExtras"
 		| "uname"
 		| "roomId"
 		| "customCardStyle"
@@ -267,13 +277,33 @@ export type LiveSubscriptionOp =
  * `content` is intentionally `unknown` — the host passes its own
  * `NotificationPayload`; the engine only forwards the value through.
  */
+/**
+ * 一次广播的身份与角色。`pushId`:同一次推送可以分好几次广播(下播卡先发,词云 / 总结算好了
+ * 再发),传同一个,宿主的历史就落在同一行里追加;不传 = 宿主自己起一个。`role`:这段
+ * 消息是本体还是附加项,缺省本体。
+ */
+export interface LiveBroadcastOptions {
+	pushId?: string;
+	role?: "main" | "extra";
+}
+
 export interface PushLike {
-	broadcastToTargets(uid: string, content: unknown, type: LivePushType): Promise<void>;
+	broadcastToTargets(
+		uid: string,
+		content: unknown,
+		type: LivePushType,
+		opts?: LiveBroadcastOptions,
+	): Promise<void>;
 	/**
 	 * 消息版式分条:一次推送拆成多条消息的序列广播(语义同 dynamic 端 PushLike 的
 	 * broadcastDynamicSequence:同 target 顺序发、某条失败中止该 target 后续条、
 	 * @全体只跟首条)。
 	 */
-	broadcastSequenceToTargets(uid: string, contents: unknown[], type: LivePushType): Promise<void>;
+	broadcastSequenceToTargets(
+		uid: string,
+		contents: unknown[],
+		type: LivePushType,
+		opts?: LiveBroadcastOptions,
+	): Promise<void>;
 	sendPrivateMsg(content: string): Promise<void>;
 }

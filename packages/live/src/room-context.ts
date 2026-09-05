@@ -12,6 +12,7 @@ import {
 	type PickCardBackground,
 	type PushLike,
 	type SubItemView,
+	wantsLiveEndExtras,
 } from "./push-like";
 import type { LiveTemplateRenderer } from "./template-renderer";
 import type { WordcloudGenerator } from "./wordcloud-generator";
@@ -222,6 +223,11 @@ export class RoomContextBase {
 		// routing 空时 broadcast 自然不外发。这样 features.X=true / routing.X=[] 的 UP 仍开
 		// WS、仍 build payload,后续加 routing 时下一次事件立即生效。
 		return sub[type];
+	}
+
+	/** 要不要为这位 UP 攒弹幕(词云 / 总结的原料):下播开着,且至少一个附加项开着。 */
+	collectsDanmaku(sub: SubItemView): boolean {
+		return wantsLiveEndExtras(sub);
 	}
 
 	needsLiveMonitor(sub: SubItemView): boolean {
