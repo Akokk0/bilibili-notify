@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { AIScene, CommentaryCallOverride } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ImageRenderer } from "@bilibili-notify/image";
@@ -983,12 +984,17 @@ export class DynamicEngine {
 					flushText();
 					return segs;
 				});
+				// 这一条动态 = 一次推送:主卡(可能分条)与后面的图集共用一个 pushId,宿主的
+				// 历史落同一行、图集是追加上去的附加项。
+				const pushId = randomUUID();
 				if (messages.length === 0) {
 					this.logger.debug(`[push] UID=${uid} 消息版式所有部件隐藏/缺失,本条不推送`);
 				} else if (messages.length === 1) {
-					await this.push.broadcastDynamic(uid, messages[0] as PushSegment[], "dynamic");
+					await this.push.broadcastDynamic(uid, messages[0] as PushSegment[], "dynamic", {
+						pushId,
+					});
 				} else {
-					await this.push.broadcastDynamicSequence(uid, messages, "dynamic");
+					await this.push.broadcastDynamicSequence(uid, messages, "dynamic", { pushId });
 				}
 
 				// Push extra images from draw dynamics. DYNAMIC_TYPE_DRAW 的原图在
@@ -1035,6 +1041,7 @@ export class DynamicEngine {
 									},
 								],
 								"dynamic-images",
+								{ pushId },
 							);
 						} catch (e) {
 							this.logger.warn(

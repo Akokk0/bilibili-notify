@@ -44,18 +44,31 @@ export type PushKind =
 	| /** 主体动态卡片：可能携带图片 + 文本 */ "dynamic"
 	| /** 动态附图（DYNAMIC_TYPE_DRAW 的多张原图，转发消息形式） */ "dynamic-images";
 
+/** 一次广播的身份:主卡与图集共用同一个 pushId,宿主的历史落同一行。 */
+export interface DynamicBroadcastOptions {
+	pushId?: string;
+}
+
 /**
- * 决定一次 `broadcastDynamic` 是否应抑制 @全体,返回值直接透传给
- * `BilibiliPush.broadcastToFeature` 的 opts。
+ * 一次 `broadcastDynamic` 交给推送层(`BilibiliPush.broadcastToFeature`)的选项。
  *
  * 背景:一条 DYNAMIC_TYPE_DRAW 图文动态(开启图集推送时)会发**两次** —— 主卡片
  * (`kind="dynamic"`)与图集附图(`kind="dynamic-images"`),两者都映射到
- * `feature="dynamic"`。若都进 @全体 分支,接收端会被**重复艾特全体**(主卡片 @ 一次、
- * 图集又 @ 一次)。图集是主卡片的附属物,故 `dynamic-images` 显式抑制 @全体,只让
- * 主卡片那次 @;其余 kind 返回 undefined,维持「按 feature 决定」的旧行为。
+ * `feature="dynamic"`,而且是**同一次推送**:图集是主卡片的附加项(`role: "extra"`,
+ * 历史里追加到同一行),并且显式抑制 @全体 —— 若都进 @全体 分支,接收端会被**重复
+ * 艾特全体**(主卡片 @ 一次、图集又 @ 一次)。主卡片只带 pushId,维持「按 feature
+ * 决定」的 @全体。没有 pushId(屏蔽提示这类独立小推送)就什么都不带,推送层自己起一个。
+ *
+ * 抑制 @全体 是「图集」这个身份带来的,与有没有 pushId 无关 —— 两者绑在一起时,一次不带
+ * pushId 的图集广播会悄悄把 @全体 放回来,正是这个函数存在的理由。
  */
-export function atAllOptsForDynamicKind(kind: PushKind): { allowAtAll: false } | undefined {
-	return kind === "dynamic-images" ? { allowAtAll: false } : undefined;
+export function broadcastOptsForDynamicKind(
+	kind: PushKind,
+	pushId: string | undefined,
+): { pushId?: string; allowAtAll?: false; role?: "extra" } | undefined {
+	const id = pushId === undefined ? {} : { pushId };
+	if (kind === "dynamic-images") return { ...id, allowAtAll: false, role: "extra" };
+	return pushId === undefined ? undefined : { pushId };
 }
 
 export interface PushLike {
@@ -64,14 +77,24 @@ export interface PushLike {
 	 * - kind="dynamic"：主卡片消息，包含 image + text 段。
 	 * - kind="dynamic-images"：DYNAMIC_TYPE_DRAW 的图集，adapter 通常以 forward message 投递。
 	 */
-	broadcastDynamic(uid: string, segments: PushSegment[], kind: PushKind): Promise<void>;
+	broadcastDynamic(
+		uid: string,
+		segments: PushSegment[],
+		kind: PushKind,
+		opts?: DynamicBroadcastOptions,
+	): Promise<void>;
 
 	/**
 	 * 消息版式分条:一次推送拆成多条消息的序列广播。语义要求(由 BilibiliPush 的
 	 * payload 序列实现):同一 target 内按序发送;某条失败即中止该 target 的后续条;
 	 * @全体(若启用)只跟随序列首条之前发一次。
 	 */
-	broadcastDynamicSequence(uid: string, messages: PushSegment[][], kind: PushKind): Promise<void>;
+	broadcastDynamicSequence(
+		uid: string,
+		messages: PushSegment[][],
+		kind: PushKind,
+		opts?: DynamicBroadcastOptions,
+	): Promise<void>;
 
 	/** 私信发送给配置的管理员账号（master）。adapter 端校验启用状态与 bot 在线性。 */
 	sendPrivateMsg(content: string): Promise<void>;

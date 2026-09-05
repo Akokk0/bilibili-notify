@@ -788,7 +788,12 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		expect(priv(b.engine).dynamicTimelineManager.get("2")).toBe(300);
 		// uid1 失败 → 锚点停在 0,下轮重试,绝不静默越过(不丢动态)。
 		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(0);
-		expect(b.push.broadcastDynamic).toHaveBeenCalledWith("2", expect.anything(), expect.anything());
+		expect(b.push.broadcastDynamic).toHaveBeenCalledWith(
+			"2",
+			expect.anything(),
+			expect.anything(),
+			expect.anything(),
+		);
 	});
 
 	it("DY1:锚点单调,绝不回退(已 push 过的更新 pub_ts 不倒退)", async () => {
@@ -876,6 +881,42 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(2);
 		expect(b.push.broadcastDynamic.mock.calls[1]?.[2]).toBe("dynamic-images");
+	});
+
+	it("主卡与图集是同一次推送:两次 broadcast 带同一个 pushId;下一条动态换新的", async () => {
+		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
+		b.getAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({
+					uid: 1,
+					pubTs: 1000,
+					type: "DYNAMIC_TYPE_DRAW",
+					drawPics: ["http://a/1.jpg", "http://a/2.jpg"],
+				}),
+				makeItem({
+					uid: 1,
+					pubTs: 2000,
+					type: "DYNAMIC_TYPE_DRAW",
+					drawPics: ["http://a/3.jpg", "http://a/4.jpg"],
+				}),
+			]),
+		);
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		const calls = b.push.broadcastDynamic.mock.calls as Array<
+			[string, unknown, string, { pushId?: string } | undefined]
+		>;
+		expect(calls.map((c) => c[2])).toEqual([
+			"dynamic",
+			"dynamic-images",
+			"dynamic",
+			"dynamic-images",
+		]);
+		const ids = calls.map((c) => c[3]?.pushId);
+		expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
+		expect(ids[1]).toBe(ids[0]);
+		expect(ids[3]).toBe(ids[2]);
+		expect(ids[2]).not.toBe(ids[0]);
 	});
 
 	it("图组发送失败 → 主卡已发出,锚点仍推进(不因附属图组失败而重发主卡 + 重复 @全体)", async () => {
@@ -1783,13 +1824,15 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
 		expect(b.push.broadcastDynamicSequence).toHaveBeenCalledTimes(1);
-		const [uid, messages, kind] = b.push.broadcastDynamicSequence.mock.calls[0] as [
+		const [uid, messages, kind, opts] = b.push.broadcastDynamicSequence.mock.calls[0] as [
 			string,
 			Seg[][],
 			string,
+			{ pushId?: string } | undefined,
 		];
 		expect(uid).toBe("1");
 		expect(kind).toBe("dynamic");
+		expect(opts?.pushId).toMatch(/^[0-9a-f-]{36}$/);
 		expect(messages).toHaveLength(2);
 		expect(messages[0]?.map((s) => s.type)).toEqual(["image"]);
 		expect(messages[1]?.map((s) => s.type)).toEqual(["text"]);
