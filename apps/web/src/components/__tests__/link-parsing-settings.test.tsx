@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 /**
- * 「链接解析」卡片 —— 总开关 + 冷却秒数 + 生效范围(所有群 / 仅以下群 + 群白名单)。
+ * 「链接解析」卡片 —— 总开关 + 冷却秒数 + 默认行(所有群解不解析、回什么)+ 按群例外表。
  *
  * 缝在组件的 props:草稿与推送目标进、patch 出。不测样式,只测「按了控件草稿收到什么」
- * 和「关着时徽标说关着」—— 后者是主人一眼判断功能状态的地方。
+ * 和「关着时徽标说关着」—— 后者是主人一眼判断功能状态的地方。例外表每格三态:跟默认 /
+ * 显式值;「跟默认」发的是删除哨兵(null),不是把默认值抄一份进例外。
  */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { PushTarget } from "../../types/domain";
@@ -24,8 +25,8 @@ function draftWith(over: Partial<LinkParsing> = {}): GlobalConfig {
 	const linkParsing: LinkParsing = {
 		enabled: true,
 		cooldownSeconds: 60,
-		scope: "all",
-		targets: [],
+		defaults: { parse: true, form: "image" },
+		groups: {},
 		...over,
 	};
 	return { linkParsing } as unknown as GlobalConfig;
@@ -60,6 +61,8 @@ function renderCard(draft: GlobalConfig, onPatch = vi.fn(), targets: PushTarget[
 	return onPatch;
 }
 
+const row = (name: string) => within(screen.getByRole("group", { name }));
+
 afterEach(cleanup);
 
 describe("LinkParsingSettings", () => {
@@ -75,7 +78,7 @@ describe("LinkParsingSettings", () => {
 		expect(onPatch).toHaveBeenCalledWith({ linkParsing: { cooldownSeconds: 120 } });
 	});
 
-	it("关着时徽标写「已关闭」,开着时写冷却时长", () => {
+	it("徽标:关着写「已关闭」;开着写冷却;默认不解析加「仅例外群」;有例外加个数", () => {
 		const { rerender } = render(
 			<MemoryRouter>
 				<LinkParsingSettings
@@ -96,56 +99,103 @@ describe("LinkParsingSettings", () => {
 			</MemoryRouter>,
 		);
 		expect(screen.getByText("冷却 90 秒")).toBeTruthy();
+		rerender(
+			<MemoryRouter>
+				<LinkParsingSettings
+					draft={draftWith({
+						defaults: { parse: false, form: "image" },
+						groups: { [T_A]: { parse: true }, [T_B]: { form: "miniapp" } },
+					})}
+					onPatch={() => {}}
+					targets={TARGETS}
+				/>
+			</MemoryRouter>,
+		);
+		expect(screen.getByText("冷却 60 秒 · 仅例外群 · 2 个例外")).toBeTruthy();
 	});
 
-	describe("生效范围", () => {
-		it("切到「仅以下群」→ 草稿收到 linkParsing.scope", () => {
-			const onPatch = renderCard(draftWith({ scope: "all" }));
-			fireEvent.click(screen.getByRole("button", { name: "仅以下群" }));
-			expect(onPatch).toHaveBeenCalledWith({ linkParsing: { scope: "selected" } });
+	describe("默认行(所有群)", () => {
+		it("解析切到「关」→ 草稿收到 defaults.parse=false", () => {
+			const onPatch = renderCard(draftWith());
+			fireEvent.click(row("默认(所有群)").getByRole("button", { name: "关" }));
+			expect(onPatch).toHaveBeenCalledWith({ linkParsing: { defaults: { parse: false } } });
 		});
 
-		it("「所有群」时不画群列表", () => {
-			renderCard(draftWith({ scope: "all" }));
-			expect(screen.queryByRole("button", { name: /群 A/ })).toBeNull();
+		it("形式切到「小程序卡」→ 草稿收到 defaults.form=miniapp", () => {
+			const onPatch = renderCard(draftWith());
+			fireEvent.click(row("默认(所有群)").getByRole("button", { name: "小程序卡" }));
+			expect(onPatch).toHaveBeenCalledWith({ linkParsing: { defaults: { form: "miniapp" } } });
+		});
+	});
+
+	describe("按群例外", () => {
+		it("两格都调回「跟默认」→ 这一格不再算例外(草稿里那个空对象不算)", () => {
+			renderCard(draftWith({ groups: { [T_A]: {}, [T_B]: { form: "miniapp" } } }));
+			expect(screen.getByText("冷却 60 秒 · 1 个例外")).toBeTruthy();
 		});
 
-		it("「仅以下群」只列群类目标:私聊与 webhook 不出现,官机群算", () => {
-			renderCard(draftWith({ scope: "selected" }));
-			expect(screen.getByRole("button", { name: /群 A/ })).toBeTruthy();
-			expect(screen.getByRole("button", { name: /官机群 B/ })).toBeTruthy();
-			expect(screen.queryByRole("button", { name: /主人私聊/ })).toBeNull();
-			expect(screen.queryByRole("button", { name: /钩子/ })).toBeNull();
+		it("只列群类且收得到入站消息的目标:私聊与 webhook 不出现,官机群算", () => {
+			renderCard(draftWith());
+			expect(screen.getByRole("group", { name: "群 A" })).toBeTruthy();
+			expect(screen.getByRole("group", { name: "官机群 B" })).toBeTruthy();
+			expect(screen.queryByRole("group", { name: "主人私聊" })).toBeNull();
+			expect(screen.queryByRole("group", { name: "钩子" })).toBeNull();
 		});
 
-		it("点一个群 → 草稿收到整份 targets(对象数组,追加这一个)", () => {
-			const onPatch = renderCard(draftWith({ scope: "selected", targets: [{ targetId: T_A }] }));
-			fireEvent.click(screen.getByRole("button", { name: /官机群 B/ }));
+		it("没写例外的群两格都按在「跟默认」上,并把继承来的值写在旁边", () => {
+			renderCard(draftWith({ defaults: { parse: false, form: "miniapp" } }));
+			const a = row("群 A");
+			expect(a.getByRole("button", { name: "跟默认 · 关" }).getAttribute("aria-pressed")).toBe(
+				"true",
+			);
+			expect(
+				a.getByRole("button", { name: "跟默认 · 小程序卡" }).getAttribute("aria-pressed"),
+			).toBe("true");
+		});
+
+		it("解析格点「关」→ 草稿只收到这个群的 parse=false", () => {
+			const onPatch = renderCard(draftWith());
+			fireEvent.click(row("群 A").getByRole("button", { name: "关" }));
 			expect(onPatch).toHaveBeenCalledWith({
-				linkParsing: { targets: [{ targetId: T_A }, { targetId: T_B }] },
+				linkParsing: { groups: { [T_A]: { parse: false } } },
 			});
 		});
 
-		it("再点已勾的群 → 从 targets 里去掉", () => {
-			const onPatch = renderCard(draftWith({ scope: "selected", targets: [{ targetId: T_A }] }));
-			fireEvent.click(screen.getByRole("button", { name: /群 A/ }));
-			expect(onPatch).toHaveBeenCalledWith({ linkParsing: { targets: [] } });
+		it("形式格点「小程序卡」→ 草稿只收到这个群的 form=miniapp", () => {
+			const onPatch = renderCard(draftWith());
+			fireEvent.click(row("群 A").getByRole("button", { name: "小程序卡" }));
+			expect(onPatch).toHaveBeenCalledWith({
+				linkParsing: { groups: { [T_A]: { form: "miniapp" } } },
+			});
 		});
 
-		it("「仅以下群」但一个都没勾 → 明说现在哪个群都不解析", () => {
-			renderCard(draftWith({ scope: "selected", targets: [] }));
-			expect(screen.getByText(/当前不会在任何群解析/)).toBeTruthy();
+		it("有例外的格点「跟默认」→ 发删除哨兵,不是把默认值抄进例外", () => {
+			const onPatch = renderCard(
+				draftWith({ groups: { [T_A]: { parse: false, form: "miniapp" } } }),
+			);
+			const a = row("群 A");
+			expect(a.getByRole("button", { name: "关" }).getAttribute("aria-pressed")).toBe("true");
+			fireEvent.click(a.getByRole("button", { name: "跟默认 · 开" }));
+			expect(onPatch).toHaveBeenCalledWith({ linkParsing: { groups: { [T_A]: { parse: null } } } });
+			fireEvent.click(a.getByRole("button", { name: "跟默认 · 图片卡" }));
+			expect(onPatch).toHaveBeenCalledWith({ linkParsing: { groups: { [T_A]: { form: null } } } });
 		});
 
-		it("「仅以下群」但没有群类推送目标 → 空态 + 去推送目标页的链接", () => {
-			renderCard(draftWith({ scope: "selected" }), vi.fn(), [TARGETS[2] as PushTarget]);
+		it("停用的目标照列,标「已停用」", () => {
+			renderCard(draftWith(), vi.fn(), [target(T_A, "群 A", { enabled: false })]);
+			expect(row("群 A").getByText("已停用")).toBeTruthy();
+		});
+
+		it("官机群的形式格旁边说明它发不了小程序卡、会回落图片卡", () => {
+			renderCard(draftWith());
+			expect(row("官机群 B").getByText(/不支持小程序卡/)).toBeTruthy();
+			expect(row("群 A").queryByText(/不支持小程序卡/)).toBeNull();
+		});
+
+		it("没有群类推送目标 → 空态 + 去推送目标页的链接", () => {
+			renderCard(draftWith(), vi.fn(), [TARGETS[2] as PushTarget]);
 			expect(screen.getByText(/还没有群类推送目标/)).toBeTruthy();
 			expect(screen.getByRole("link", { name: /推送目标/ }).getAttribute("href")).toBe("/targets");
-		});
-
-		it("徽标在「仅以下群」时带上勾了几个群", () => {
-			renderCard(draftWith({ scope: "selected", targets: [{ targetId: T_A }, { targetId: T_B }] }));
-			expect(screen.getByText("冷却 60 秒 · 2 个群")).toBeTruthy();
 		});
 	});
 });

@@ -1,32 +1,51 @@
 /**
- * 系统页的「链接解析」卡片 —— 群里贴 B 站视频链接自动回一张视频卡片。
+ * 系统页的「链接解析」卡片 —— 群里贴 B 站视频链接自动回一张卡。
  *
  * 控件各自直接 patch 草稿(与其他系统设置一样走灵动岛保存)。这功能默认关:开着就
  * 意味着同群任何人都能让机器人出图,所以开关必须是主人自己按下去的。
  *
- * 生效范围两档:「所有群」= 机器人在的所有群,不要求群配成推送目标;「仅以下群」= 从推送
- * 目标里勾。白名单存的是目标 id(`{ targetId }` 对象,给将来按群差异化留位),候选只列群类
- * 目标;停用的照列照勾并标「已停用」(与周报「发送到」同一个选择器、同一条规矩)。
+ * 「在哪些群、回什么」是一张表:**默认行**(所有群解不解析、回图片卡还是小程序卡)+
+ * **按群例外**(从推送目标里列出的群,每格三态:跟默认 / 显式值)。「所有群」不是一种
+ * 模式,它就是默认行;想「只在某几群解析」就把默认解析关掉、给那几群显式开。例外只存
+ * 显式写了的字段 —— 「跟默认」发的是删除哨兵(null),不是把默认值抄一份进例外,否则
+ * 主人改默认行那天这群不跟着动。停用的目标照列照配、标「已停用」(与周报「发送到」同一条
+ * 规矩:停用是暂停不是消失),运行时不解析。
  */
 
-import { INBOUND_CAPABLE_PLATFORMS } from "@bilibili-notify/internal/constants";
-import { GlassBox, HintNote, Icon, Picker, TNum, Toggle } from "@bilibili-notify/ui";
+import {
+	INBOUND_CAPABLE_PLATFORMS,
+	LINK_REPLY_FORMS,
+	type LinkReplyForm,
+} from "@bilibili-notify/internal/constants";
+import {
+	EmptyNote,
+	GlassBox,
+	HintNote,
+	Icon,
+	Picker,
+	Pill,
+	PlatformIcon,
+	TNum,
+	Toggle,
+} from "@bilibili-notify/ui";
 import { Link } from "react-router-dom";
 import { SECTION_ACCENT } from "../config/section-accents";
 import type { PushTarget } from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch } from "../types/globals";
 import { Field } from "./forms";
-import { TargetChipPicker } from "./target-chip-picker";
 
-type LinkParsingScope = GlobalConfig["linkParsing"]["scope"];
+type LinkParsing = GlobalConfig["linkParsing"];
 
-const SCOPE_OPTIONS: Array<{ value: LinkParsingScope; label: string; color: string }> = [
-	{ value: "all", label: "所有群", color: SECTION_ACCENT.system },
-	{ value: "selected", label: "仅以下群", color: SECTION_ACCENT.system },
-];
+export const LINK_REPLY_FORM_LABELS: Record<LinkReplyForm, string> = {
+	image: "图片卡",
+	miniapp: "小程序卡",
+};
 
-/** 能被勾进白名单的目标:群类,且平台收得到入站消息(webhook 只出不进,勾了也没用)。 */
-function isWhitelistCandidate(t: PushTarget): boolean {
+/** 三态格的取值:跟默认,或一个显式值。 */
+const INHERIT = "inherit" as const;
+
+/** 能列进例外表的目标:群类,且平台收得到入站消息(webhook 只出不进,配了也没用)。 */
+function isGroupCandidate(t: PushTarget): boolean {
 	return (
 		t.scope === "group" && (INBOUND_CAPABLE_PLATFORMS as readonly string[]).includes(t.platform)
 	);
@@ -43,26 +62,27 @@ export function LinkParsingSettings({
 	targets: readonly PushTarget[];
 }) {
 	const cfg = draft.linkParsing;
-	const candidates = targets.filter(isWhitelistCandidate);
-	const chosen = cfg.targets.map((t) => t.targetId);
-	// 数组整份发:配置补丁对数组不做逐元素 diff,发一半会把另一半冲掉。
-	const toggleTarget = (targetId: string) => {
-		const next = chosen.includes(targetId)
-			? cfg.targets.filter((t) => t.targetId !== targetId)
-			: [...cfg.targets, { targetId }];
-		onPatch({ linkParsing: { targets: next } });
-	};
+	const candidates = targets.filter(isGroupCandidate);
+	// 两格都调回「跟默认」时草稿里留下的是个空对象(删除哨兵把字段删掉,不删这一格),
+	// 它已经不是例外了 —— 数键会让卡上多出一条根本不存在的例外,直到存盘重拉才消失。
+	const overrides = Object.values(cfg.groups).filter(
+		(g) => g?.parse !== undefined || g?.form !== undefined,
+	).length;
 
 	const badge = !cfg.enabled
 		? "已关闭"
-		: cfg.scope === "selected"
-			? `冷却 ${cfg.cooldownSeconds} 秒 · ${cfg.targets.length} 个群`
-			: `冷却 ${cfg.cooldownSeconds} 秒`;
+		: [
+				`冷却 ${cfg.cooldownSeconds} 秒`,
+				cfg.defaults.parse ? null : "仅例外群",
+				overrides > 0 ? `${overrides} 个例外` : null,
+			]
+				.filter(Boolean)
+				.join(" · ");
 
 	return (
 		<GlassBox
 			title="Core · 链接解析"
-			subtitle="群里贴 B 站视频链接,自动回一张视频卡片 · globals.linkParsing"
+			subtitle="群里贴 B 站视频链接,自动回一张视频卡 · globals.linkParsing"
 			accent={SECTION_ACCENT.system}
 			icon={<Icon.link size={14} />}
 			badge={badge}
@@ -85,36 +105,128 @@ export function LinkParsingSettings({
 				/>
 			</Field>
 
-			<Field code="linkParsing.scope">
-				<Picker
-					value={cfg.scope}
-					onChange={(scope) => onPatch({ linkParsing: { scope } })}
-					options={SCOPE_OPTIONS}
-				/>
+			<Field code="linkParsing.defaults" full>
+				<fieldset
+					aria-label="默认(所有群)"
+					className="m-0 flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-0 p-0"
+				>
+					<Cell label="解析">
+						<Picker
+							value={cfg.defaults.parse}
+							onChange={(parse) => onPatch({ linkParsing: { defaults: { parse } } })}
+							options={[
+								{ value: true, label: "开", color: SECTION_ACCENT.system },
+								{ value: false, label: "关", color: SECTION_ACCENT.system },
+							]}
+						/>
+					</Cell>
+					<Cell label="形式">
+						<Picker
+							value={cfg.defaults.form}
+							onChange={(form) => onPatch({ linkParsing: { defaults: { form } } })}
+							options={LINK_REPLY_FORMS.map((f) => ({
+								value: f,
+								label: LINK_REPLY_FORM_LABELS[f],
+								color: SECTION_ACCENT.system,
+							}))}
+						/>
+					</Cell>
+				</fieldset>
 			</Field>
 
-			{cfg.scope === "selected" ? (
-				<Field code="linkParsing.targets" full>
-					<TargetChipPicker
-						targets={candidates}
-						selected={chosen}
-						onToggle={toggleTarget}
-						tone={SECTION_ACCENT.system}
-						empty={
-							<>
-								还没有群类推送目标,先去
-								<Link to="/targets" className="mx-0.5 font-semibold text-bn-pink">
-									推送目标
-								</Link>
-								页添加一个群
-							</>
-						}
-					/>
-					{candidates.length > 0 && chosen.length === 0 ? (
-						<HintNote className="mt-2">还没选群,当前不会在任何群解析链接</HintNote>
-					) : null}
-				</Field>
-			) : null}
+			<Field code="linkParsing.groups" full>
+				{candidates.length === 0 ? (
+					<EmptyNote size="sm" className="w-full">
+						还没有群类推送目标,先去
+						<Link to="/targets" className="mx-0.5 font-semibold text-bn-pink">
+							推送目标
+						</Link>
+						页添加一个群;不是推送目标的群一律跟默认行
+					</EmptyNote>
+				) : (
+					<div className="flex flex-col">
+						{candidates.map((t) => (
+							<GroupRow key={t.id} target={t} cfg={cfg} onPatch={onPatch} />
+						))}
+					</div>
+				)}
+			</Field>
 		</GlassBox>
+	);
+}
+
+function Cell({ label, children }: { label: string; children: React.ReactNode }) {
+	return (
+		<div className="flex items-center gap-2">
+			<span className="text-bn-xs text-bn-text-secondary">{label}</span>
+			{children}
+		</div>
+	);
+}
+
+/**
+ * 例外表的一行:目标名 + 两个三态格。格里「跟默认」那一档把继承来的值写在旁边 —— 主人
+ * 一眼看到这群现在实际是什么,不用回头看默认行。
+ */
+function GroupRow({
+	target,
+	cfg,
+	onPatch,
+}: {
+	target: PushTarget;
+	cfg: LinkParsing;
+	onPatch: (delta: GlobalConfigPatch) => void;
+}) {
+	const o = cfg.groups[target.id];
+	// 草稿里被 patch 成 null 的字段(刚点过「跟默认」)与没写一样,都是跟默认。
+	const parse = o?.parse ?? undefined;
+	const form = o?.form ?? undefined;
+	const setParse = (v: boolean | typeof INHERIT) =>
+		onPatch({ linkParsing: { groups: { [target.id]: { parse: v === INHERIT ? null : v } } } });
+	const setForm = (v: LinkReplyForm | typeof INHERIT) =>
+		onPatch({ linkParsing: { groups: { [target.id]: { form: v === INHERIT ? null : v } } } });
+	return (
+		<fieldset
+			aria-label={target.name}
+			className="m-0 flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-0 border-bn-border-subtle border-b p-0 py-2 last:border-b-0"
+		>
+			<div className="flex min-w-40 items-center gap-1.5 text-bn-sm text-bn-text-primary">
+				<PlatformIcon platform={target.platform} size={13} />
+				<span className="font-semibold">{target.name}</span>
+				{target.enabled ? null : (
+					<Pill size="sm" subtle color="var(--color-bn-inactive)">
+						已停用
+					</Pill>
+				)}
+			</div>
+			<Cell label="解析">
+				<Picker<boolean | typeof INHERIT>
+					value={parse ?? INHERIT}
+					onChange={setParse}
+					options={[
+						{ value: INHERIT, label: `跟默认 · ${cfg.defaults.parse ? "开" : "关"}` },
+						{ value: true, label: "开", color: SECTION_ACCENT.system },
+						{ value: false, label: "关", color: SECTION_ACCENT.system },
+					]}
+				/>
+			</Cell>
+			<Cell label="形式">
+				<Picker<LinkReplyForm | typeof INHERIT>
+					value={form ?? INHERIT}
+					onChange={setForm}
+					options={[
+						{ value: INHERIT, label: `跟默认 · ${LINK_REPLY_FORM_LABELS[cfg.defaults.form]}` },
+						...LINK_REPLY_FORMS.map((f) => ({
+							value: f,
+							label: LINK_REPLY_FORM_LABELS[f],
+							color: SECTION_ACCENT.system,
+						})),
+					]}
+				/>
+			</Cell>
+			{target.platform === "qq-official" ? (
+				<HintNote className="basis-full">QQ 官方机器人不支持小程序卡,选了也会回落图片卡</HintNote>
+			) : null}
+		</fieldset>
 	);
 }
