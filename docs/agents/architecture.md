@@ -20,7 +20,7 @@ apps/       Hono 服务端 + React Dashboard + Tauri 桌面壳 + wire 契约
 | `packages/internal` | `@bilibili-notify/internal` | Zod schema(Subscription / PushTarget / GlobalConfig / HistoryEntry)+ 平台接口(ServiceContext / MessageBus / NotificationSink / NotificationPayload)+ 工具(withLock / retry / interpolate) |
 | `packages/api` | `@bilibili-notify/api` | `BilibiliAPI`(HTTP + WBI 签名)+ `LoginFlow`(扫码 + cookie 状态机) |
 | `packages/storage` | `@bilibili-notify/storage` | `StorageManager` —— cookie/密钥持久化 + AES 加密 |
-| `packages/push` | `@bilibili-notify/push` | `BilibiliPush` —— 经 `PushLike` 适配器做推送路由,每次投递 emit `history-recorded` |
+| `packages/push` | `@bilibili-notify/push` | `BilibiliPush` —— 经 `PushLike` 适配器做推送路由;只把**启用的**目标当候选,每个目标收完一段序列回调一次 `onSend`(带 `pushId` / `kind` / 逐条结果),一个可用目标都没有时以 `target: null` 回调一次(见 events.md「推送历史的行模型」) |
 | `packages/subscription` | `@bilibili-notify/subscription` | `SubscriptionStore` —— `Subscription[]` 内存 CRUD + `subscription-changed` diff |
 | `packages/dynamic` | `@bilibili-notify/dynamic` | `DynamicEngine` —— 动态轮询 cron + 过滤 + 渲染分发 |
 | `packages/live` | `@bilibili-notify/live` | `LiveEngine`(拆分:ListenerManager / DanmakuCollector / WordcloudGenerator / LiveTemplateRenderer / LiveSummaryRequester) |
@@ -82,7 +82,7 @@ src/
     master-notifier.ts    engine-error 转 master 私聊
     puppeteer.ts          puppeteer-core 适配器(卡片预览)
   fans/store.ts         append-only jsonl 时序
-  history/              HistoryStore(<dataDir>/history/<日期>.jsonl)+ retention
+  history/              HistoryStore(<dataDir>/history/<日期>.jsonl,一行 = 一次推送 × 一个目标,追加写补丁行读时并回)+ retention + view(REST / WS 共用投影)
   logs/                 LogStore + retention + redact(凭据脱敏)+ sink
   skins/                皮肤库(<dataDir>/skins/<id>/skin.json + assets/)+ CSS 白名单 + 聊天里的 create_skin
   maid-skills/          女仆技能(<dataDir>/maid-skills/<name>/SKILL.md)+ 内置表 + 聊天里的 load_skill
