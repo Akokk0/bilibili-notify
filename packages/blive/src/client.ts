@@ -59,6 +59,11 @@ export interface LiveConnectOptions {
 }
 
 export interface LiveClient {
+	/**
+	 * 这条连接是不是已经结束了 —— **哪一侧关的都算**:自己调 `close()`,或者对面 / 网络
+	 * 把它断了(socket 的 `close` 事件)。只认「自己关的」会骗人:调用方拿它当「还通不通」
+	 * 用,而对面断开恰恰是最常见的那种断。
+	 */
 	readonly closed: boolean;
 	close(): void;
 }
@@ -202,6 +207,8 @@ export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
 			code: typeof code === "number" ? code : undefined,
 			...(reason ? { reason } : {}),
 		});
+		// 摆在 emit **之后**:emit 自己会看这个旗子,先立就把上面这条 closed 吞了。
+		closed = true;
 	});
 
 	const client: LiveClient = {
@@ -218,6 +225,12 @@ export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
 		},
 	};
 	// 交出去的是 `emit` 而不是裸 `opts.onEvent`:连接关了之后塞进来的事件同样该被丢掉。
-	connectionObserver?.({ roomId: opts.roomId, onEvent: emit, client });
+	// 包在 try 里:这时 socket 已经建好、handler 也挂上了,观察者抛出去就等于 `client`
+	// 交不出来 —— 没人再能 close 它,连接连同心跳一起变成孤儿。
+	try {
+		connectionObserver?.({ roomId: opts.roomId, onEvent: emit, client });
+	} catch {
+		// 观察者只有 devtools 一个,它出事不该带走一条真连接。
+	}
 	return client;
 }

@@ -240,7 +240,8 @@ export class RoomContextBase {
 			return;
 		}
 		if (listener.closed) {
-			this.logger.debug(`[conn] 直播间 [${roomId}] 连接已主动关闭过`);
+			// 已经结束了(自己关过,或者对面断了)—— 再 close 一次没有意义,记录摘掉就行。
+			this.logger.debug(`[conn] 直播间 [${roomId}] 连接已结束,跳过关闭`);
 			delete this.listenerRecord[roomId];
 			return;
 		}

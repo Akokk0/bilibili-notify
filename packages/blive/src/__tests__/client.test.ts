@@ -269,6 +269,19 @@ describe("connectLiveRoom", () => {
 		expect(events).toEqual([{ kind: "closed", code: 1006 }]);
 	});
 
+	it("对面把连接断了 → closed 旗子也立起来(不只是自己 close() 才算)", () => {
+		// 调用方拿 `closed` 当「这条还通不通」用。只在自己 close() 时才立的话,对面断开
+		// (最常见的那种断)之后它一直是 false —— 一条死连接会被当成活的继续记在册上。
+		const client = connect();
+		expect(client.closed).toBe(false);
+
+		socket.emit("close", 1006);
+
+		expect(client.closed).toBe(true);
+		// 这一条 closed 事件本身照样报得出去,不能被刚立的旗子吞掉。
+		expect(events.at(-1)).toEqual({ kind: "closed", code: 1006 });
+	});
+
 	it("closed 事件透传服务器给的关闭理由", () => {
 		connect();
 		socket.emit("close", 1008, Buffer.from("policy violation"));
