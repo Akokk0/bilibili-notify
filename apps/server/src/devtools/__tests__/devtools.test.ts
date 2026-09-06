@@ -37,6 +37,11 @@ const BARE = {
 	targets: () => [],
 	bus: createNodeMessageBus(),
 	authSystem: { status: () => ({ status: 5, msg: "" }) } as never,
+	puppeteer: () => null,
+	live: () => undefined,
+	mute: () => undefined,
+	fansPoller: () => undefined,
+	loginFlow: () => undefined,
 };
 
 describe("createDevtools", () => {

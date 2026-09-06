@@ -152,6 +152,11 @@ export interface PuppeteerAdapterOptions {
 export interface StandalonePuppeteer extends PuppeteerLike {
 	dispose(): Promise<void>;
 	/**
+	 * 把空闲关闭提前到现在(devtools「Chrome 空闲计时器提前到期」)。有活跃页或压根没
+	 * 浏览器在跑就不动、回 false;关了回 true。下次渲染照常重启。
+	 */
+	closeIdleNow(): Promise<boolean>;
+	/**
 	 * 还在排队等渲染的数量。`/status` 拿它回答「是不是卡住了」——
 	 * 所有渲染都串行经过同一把闸,这个数持续不为 0 就是推送在堆积。
 	 */
@@ -271,6 +276,12 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Standalon
 
 	return {
 		renderQueueDepth: () => renderGate.waiting(),
+		async closeIdleNow(): Promise<boolean> {
+			if (activePages > 0 || !browser) return false;
+			cancelIdleTimer();
+			await closeIdleBrowser();
+			return true;
+		},
 		async page(options?: PageOptions): Promise<PageLike> {
 			// 进闸:等上一个渲染(页面 close)后才继续,保证全程并发度为 1。低优先级
 			// (链接卡)在正常车道排空之前不放行。

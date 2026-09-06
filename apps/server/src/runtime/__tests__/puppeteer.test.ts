@@ -151,6 +151,28 @@ describe("createPuppeteerAdapter idle auto-close", () => {
 		expect(launcher.launch).toHaveBeenCalledTimes(2);
 	});
 
+	it("closeIdleNow:把空闲关闭提前到现在;有活跃页就不动、回 false", async () => {
+		const launcher = makeFakeLauncher();
+		const adapter = createPuppeteerAdapter({
+			chromePath: "/fake/chrome",
+			logger: makeLogger(),
+			launcher,
+			idleTimeoutMs: 5_000,
+		});
+		const page = await adapter.page();
+		// 正在渲染:不能关。
+		expect(await adapter.closeIdleNow()).toBe(false);
+		expect(launcher.browsers[0]?.close).not.toHaveBeenCalled();
+		await page.close();
+		// 空闲了:立刻关,不等 5s;计时器也一并清掉,不会关第二次。
+		expect(await adapter.closeIdleNow()).toBe(true);
+		expect(launcher.browsers[0]?.close).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(launcher.browsers[0]?.close).toHaveBeenCalledTimes(1);
+		// 没有浏览器在跑时也回 false —— 没东西可关。
+		expect(await adapter.closeIdleNow()).toBe(false);
+	});
+
 	it("never auto-closes when idleTimeoutMs is 0", async () => {
 		const launcher = makeFakeLauncher();
 		const adapter = createPuppeteerAdapter({

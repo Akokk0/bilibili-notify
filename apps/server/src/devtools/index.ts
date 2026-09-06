@@ -5,11 +5,13 @@ import type { AuthSystem } from "../auth/index.js";
 import type { HistoryStore } from "../history/store.js";
 import type { PlatformAdapter } from "../platforms/types.js";
 import type { DevCapturesApi } from "../routes/dev.js";
+import type { MuteState } from "../runtime/mute-state.js";
 import type { UpdateService } from "../update/service.js";
 import { isDevBuild } from "../update/version-order.js";
 import { overridableApi } from "./api-overrides.js";
 import { createCapabilityInjector } from "./capability-injection.js";
 import { createCaptureGate } from "./capture.js";
+import { createDevClock } from "./clock.js";
 import { createLiveRooms } from "./live-rooms.js";
 import { createDevRegistry, type DevRegistry } from "./registry.js";
 import { busEventScenarios } from "./scenarios/bus-events.js";
@@ -20,6 +22,7 @@ import { type InboundHandlers, inboundScenarios } from "./scenarios/inbound.js";
 import { liveScenarios, type SubPick } from "./scenarios/live.js";
 import { liveEventScenarios } from "./scenarios/live-events.js";
 import { loginStateScenario } from "./scenarios/login-state.js";
+import { timerScenarios } from "./scenarios/timers.js";
 import { updateStateScenario } from "./scenarios/update.js";
 import { injectableUpdateService } from "./update-injection.js";
 
@@ -55,6 +58,12 @@ export interface CreateDevtoolsInput {
 	bus: MessageBus;
 	/** 登录系统:交回去的是套了 Proxy 的那份(`status()` 可注入),给路由用。 */
 	authSystem: AuthSystem;
+	/** 定时组要碰的几个口,都是后建的,现取。 */
+	puppeteer: () => { closeIdleNow(): Promise<boolean> } | null | undefined;
+	live: () => { repushNow(uid: string): Promise<boolean> } | undefined;
+	mute: () => Pick<MuteState, "muteFor" | "mutedUntil" | "isMuted"> | undefined;
+	fansPoller: () => { pollNow(): Promise<boolean> } | undefined;
+	loginFlow: () => { healthCheckNow(): Promise<boolean> } | undefined;
 }
 
 export interface Devtools {
@@ -67,6 +76,8 @@ export interface Devtools {
 	api: BilibiliAPI;
 	/** 交给路由的那份 —— `status()` 可注入。 */
 	authSystem: AuthSystem;
+	/** 交给推送引擎的免扰时钟(单点覆盖)。 */
+	quietHoursNow: () => Date;
 	captures: DevCapturesApi;
 }
 
@@ -77,6 +88,7 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 	const caps = createCapabilityInjector();
 	const api = overridableApi(input.api);
 	const auth = overridableApi(input.authSystem);
+	const clock = createDevClock();
 	// 直播间连接登记:blive 每建一条连接就报到这里。全进程只有 devtools 这一个观察者。
 	const rooms = createLiveRooms();
 	observeLiveConnections(rooms.observe);
@@ -110,12 +122,23 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			...busEventScenarios({ bus: input.bus }),
 			loginStateScenario({ auth, bus: input.bus }),
 			capabilityScenario({ injector: caps, adapters: input.adapterConfigs }),
+			...timerScenarios({
+				clock,
+				subs: input.subs,
+				mute: input.mute,
+				puppeteer: input.puppeteer,
+				live: input.live,
+				dynamic: input.dynamic,
+				fans: input.fansPoller,
+				loginFlow: input.loginFlow,
+			}),
 		]),
 		updateService: update.service,
 		// 两层叠着:截流闸在里、能力注入在外 —— 顺序无所谓,两者各管各的方法。
 		adapters: input.adapters.map((a) => caps.wrap(gate.wrap(a))),
 		api: api.api,
 		authSystem: auth.api,
+		quietHoursNow: () => clock.now(),
 		captures,
 	};
 }

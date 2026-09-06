@@ -318,6 +318,12 @@ export async function startStandaloneServer(
 			targets: () => runtime.configStore.getTargets(),
 			bus: runtime.bus,
 			authSystem,
+			puppeteer: () => puppeteer,
+			live: () => engines?.live,
+			mute: () => engines?.muteState,
+			fansPoller: () => runtime.fansPoller ?? undefined,
+			// `authSystem` 是个会在关停时清掉的 let;这一刻它一定在(上面刚建的)。
+			loginFlow: () => authSystem?.flow,
 		});
 		if (devtools) log.info("devtools enabled (dev build): /api/dev is mounted");
 		const adapters = devtools?.adapters ?? rawAdapters;
@@ -326,6 +332,7 @@ export async function startStandaloneServer(
 			// 全进程唯一那个字体读取口 —— 预览路由经 RouteDeps.runtime 取的是同一个。
 			loadFontFace: runtime.loadFontFace,
 			api: devtools?.api ?? authSystem.api,
+			quietHoursNow: devtools?.quietHoursNow,
 			loginFlow: authSystem.flow,
 			configStore: runtime.configStore,
 			historyStore: runtime.historyStore,

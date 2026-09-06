@@ -199,6 +199,11 @@ export interface CreateEnginesOptions {
 	 * as the engines' text-only fallback path.
 	 */
 	puppeteer?: PuppeteerLike | null;
+	/**
+	 * 推送免扰按哪一刻判。缺省真时钟;devtools 用它做「当作现在是 xx:xx」的单点覆盖,
+	 * 原样交给 `BilibiliPush.quietHoursNow`。
+	 */
+	quietHoursNow?: () => Date;
 }
 
 export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
@@ -287,6 +292,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		serviceCtx: opts.serviceCtx,
 		defaults: () => globals().defaults,
 		muted: () => muteState.isMuted(),
+		quietHoursNow: opts.quietHoursNow,
 		onSend: (info) => {
 			// 一次推送 × 一个目标 = 历史一行;无目标那次也记(面板上才看得见)。
 			const input = historyRecordFromSend(info, {

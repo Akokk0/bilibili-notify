@@ -58,6 +58,11 @@ export interface FansPollerHandle extends Disposable {
 	 * 的同步查询。Bootstrap 前为空数组;第一轮 tick(启动时立即触发)结束后即填充。
 	 */
 	getLastEntries(): FansRefreshEntry[];
+	/**
+	 * 把轮询提前到现在(devtools「现在就跑」)。走的就是 cron 到点调的那个 tick;上一轮
+	 * 还在跑就跳过、回 false,与 cron 撞上时的规矩一样。回的 promise 在这一轮结束时落定。
+	 */
+	pollNow(): Promise<boolean>;
 }
 
 /**
@@ -102,14 +107,23 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	const lastByUid = new Map<string, FansRefreshEntry>();
 
 	function tick(): void {
-		if (disposed) return;
+		void tickOnce();
+	}
+
+	/** 一轮 tick;回「这次真的跑了没」。在跑 / 已释放都不跑。 */
+	function tickOnce(): Promise<boolean> {
+		if (disposed) return Promise.resolve(false);
 		if (running) {
 			logger.debug("[fans-poller] previous tick still running, skipping");
-			return;
+			return Promise.resolve(false);
 		}
 		running = true;
-		runTick()
-			.catch((err) => logger.warn(`[fans-poller] tick failed: ${String(err)}`))
+		return runTick()
+			.then(() => true)
+			.catch((err) => {
+				logger.warn(`[fans-poller] tick failed: ${String(err)}`);
+				return true;
+			})
 			.finally(() => {
 				running = false;
 			});
@@ -441,5 +455,6 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		getLastEntries(): FansRefreshEntry[] {
 			return Array.from(lastByUid.values());
 		},
+		pollNow: tickOnce,
 	};
 }
