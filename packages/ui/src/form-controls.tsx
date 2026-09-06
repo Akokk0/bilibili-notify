@@ -122,7 +122,7 @@ export function TArea({
 	);
 }
 
-export interface TNumProps {
+export interface TNumProps extends Labelled {
 	value: number;
 	onChange: (next: number) => void;
 	min?: number;
@@ -132,7 +132,16 @@ export interface TNumProps {
 	width?: number;
 }
 
-export function TNum({ value, onChange, min, max, step = 1, suffix, width = 80 }: TNumProps) {
+export function TNum({
+	value,
+	onChange,
+	min,
+	max,
+	step = 1,
+	suffix,
+	width = 80,
+	ariaLabel,
+}: TNumProps) {
 	return (
 		<div className="inline-flex items-center gap-1.5">
 			<input
@@ -142,6 +151,7 @@ export function TNum({ value, onChange, min, max, step = 1, suffix, width = 80 }
 				min={min}
 				max={max}
 				step={step}
+				aria-label={ariaLabel}
 				data-bn={INPUT_HOOK}
 				className={`${INPUT_BASE} text-left font-mono`}
 				style={{ width }}

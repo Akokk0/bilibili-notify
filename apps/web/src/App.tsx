@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 import { AuthGate } from "./components/AuthGate";
 import { AiChatDock, CHAT_PATH } from "./components/ai-chat";
@@ -30,6 +31,15 @@ import Subs from "./pages/Subs";
 import System from "./pages/System";
 import Targets from "./pages/Targets";
 import { api } from "./services/api";
+
+/**
+ * devtools 只在开发期存在:`import.meta.env.DEV` 是编译期常量,生产构建里这一句折成 `null`,
+ * 动态 import 随死枝一起被摇掉 —— dist 里连 devtools 这个 chunk 都没有(`scripts` 里的
+ * 构建自检 grep 得到)。服务端那半另有一道门(载荷版本号),两边各自挡。
+ */
+const DevDock = import.meta.env.DEV
+	? lazy(() => import("./devtools/dock").then((m) => ({ default: m.DevDock })))
+	: null;
 
 interface HealthSnapshot {
 	status: string;
@@ -122,6 +132,11 @@ function AuthedApp() {
 			<AlertShell />
 			{/* 「带我做」导览伴随窗:左下角(右下 toast/右上告警/底部灵动岛都有主了) */}
 			<TourCompanion />
+			{DevDock ? (
+				<Suspense fallback={null}>
+					<DevDock />
+				</Suspense>
+			) : null}
 		</div>
 	);
 }

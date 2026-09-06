@@ -72,23 +72,31 @@ export function DockPill({
 			className="bn-anim-dock-in bn-glass-strong fixed bottom-5 left-5 z-bn-dock flex h-12 items-center gap-0.5 rounded-bn-pill p-1.5 shadow-bn-elev transition-[bottom]"
 			style={style}
 		>
-			<button
-				type="button"
-				// 开合钮,与 DisclosurePill 同一档挂点:它是「展开 / 收起下面那块」,不是主动作按钮。
-				data-bn={open ? "chip chip-active" : "chip"}
-				aria-expanded={open}
-				onClick={onToggle}
-				className={`${PILL_BUTTON} ${open ? "bg-(--bn-glass-bg)" : ""}`}
-			>
-				<span className="grid h-5 w-5 place-items-center text-bn-pink">{icon}</span>
-				{label}
+			<span className="relative flex">
+				<button
+					type="button"
+					// 开合钮,与 DisclosurePill 同一档挂点:它是「展开 / 收起下面那块」,不是主动作按钮。
+					data-bn={open ? "chip chip-active" : "chip"}
+					aria-expanded={open}
+					onClick={onToggle}
+					className={`${PILL_BUTTON} ${open ? "bg-(--bn-glass-bg)" : ""}`}
+				>
+					<span className="grid h-5 w-5 place-items-center text-bn-pink">{icon}</span>
+					{label}
+				</button>
 				{active ? (
-					// 纯色点对读屏器等于不存在,包一层 img 把那句话念出来。
-					<span role="img" aria-label={activeTitle} title={activeTitle} className="ml-0.5 flex">
+					// 角标而不是塞进按钮里:塞进去会把「2 项生效」并进按钮的名字。纯色点对读屏器
+					// 等于不存在,包一层 img 把那句话念出来。
+					<span
+						role="img"
+						aria-label={activeTitle}
+						title={activeTitle}
+						className="absolute top-0 right-0.5 flex"
+					>
 						<StatusDot kind="live" size="sm" />
 					</span>
 				) : null}
-			</button>
+			</span>
 			{actions.length > 0 ? (
 				<>
 					<span aria-hidden="true" className="mx-1 h-5 w-px bg-bn-border" />
