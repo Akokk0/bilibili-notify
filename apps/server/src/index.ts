@@ -713,7 +713,7 @@ export async function startStandaloneServer(
 			},
 			// 面板上的「试一次」—— 调的就是 cron 到点调的那两个函数,不是模拟。
 			runRoastNow: (uid) => (uid ? roastScheduler.runSoloOnce(uid) : roastScheduler.runBoardOnce()),
-			devtools: devtools ? { registry: devtools.registry, captures: devtools.captures } : undefined,
+			devtools: devtools?.route,
 			update: {
 				service: devtools?.updateService ?? updateService,
 				// 与 /api/health 报的是同一个值:面板靠「startedAt 变了」认新进程。

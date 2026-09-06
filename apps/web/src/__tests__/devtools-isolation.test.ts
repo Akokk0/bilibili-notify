@@ -21,7 +21,8 @@ describe("devtools 只活在开发期", () => {
 	 * `await import("./devtools/x")`(不带 DEV 三元的裸动态 import)会实打实产出一个
 	 * devtools chunk —— 两种都不带 `from`,只钉 `from` 的守卫对它们一声不吭。
 	 */
-	const SPECIFIER = /["'][^"']*\bdevtools\/[^"']*["']/;
+	// 说明符不跨行:`[^"']*` 会越过换行,把两行外的一对引号当成一对,注释里提一句 devtools/ 都会误报。
+	const SPECIFIER = /["'][^"'\n]*\bdevtools\/[^"'\n]*["']/;
 
 	it("src/devtools 之外,只有 App.tsx 提到它", () => {
 		const offenders: string[] = [];

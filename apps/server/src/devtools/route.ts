@@ -12,7 +12,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { Hono } from "hono";
 import { z } from "zod";
-import { DevParamError, type DevRegistry, DevScenarioNotFound } from "../devtools/registry.js";
+import { DevParamError, type DevRegistry, DevScenarioNotFound } from "./registry.js";
 
 /** 请求体:`params` 是 key → 字符串或数;没 body 就全按默认值。 */
 const RunBody = z.object({

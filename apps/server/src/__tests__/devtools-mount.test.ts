@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { createApp } from "../app.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createDevRegistry } from "../devtools/registry.js";
+import { createDevRoute } from "../devtools/route.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
 /**
@@ -39,7 +40,7 @@ describe("devtools 挂载", () => {
 		const registry = createDevRegistry([
 			{ id: "a", group: "event", title: "A", params: [], run: () => ({}) },
 		]);
-		const app = createApp(runtime, { devtools: { registry } });
+		const app = createApp(runtime, { devtools: createDevRoute({ registry }) });
 		const res = await app.request("/api/dev");
 		expect(res.status).toBe(200);
 		expect(await res.json()).toMatchObject({ scenarios: [{ id: "a" }], active: [] });

@@ -20,7 +20,6 @@ import { createAuthRoute } from "./routes/auth.js";
 import { createBackupRoute } from "./routes/backup.js";
 import { createCardsRoute } from "./routes/cards.js";
 import { createCommandsRoute } from "./routes/commands.js";
-import { type CreateDevRouteInput, createDevRoute } from "./routes/dev.js";
 import { createFansRoute } from "./routes/fans.js";
 import { createGlobalsRoute } from "./routes/globals.js";
 import { createHealthRoute } from "./routes/health.js";
@@ -164,10 +163,12 @@ export interface CreateAppOptions {
 		applyUpdate: () => Promise<void>;
 	};
 	/**
-	 * devtools(造状态 / 造事件)。**只有开发版载荷才给**(`devtools/index.ts` 那道门),
-	 * 省略 → `/api/dev` 不挂载、404 —— 发出去的构建里不该向外承认有这么个口。
+	 * devtools(造状态 / 造事件)的 `/api/dev` 子应用,由 `devtools/index.ts` 建好交过来。
+	 * 这里**只收一个 Hono**、不 import 任何 devtools 模块:整套 devtools 只从 `src/index.ts`
+	 * 那一处引,构建时把那个入口换成空桩,整棵树就从产物里消失(构建后自检会 grep 一遍)。
+	 * 省略 → 不挂载、404 —— 发出去的构建里不该向外承认有这么个口。
 	 */
-	devtools?: CreateDevRouteInput;
+	devtools?: Hono;
 }
 
 /**
@@ -347,7 +348,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions = {}): 
 
 	// devtools。同样在 index.ts 组装(那里才知道载荷版本)后注入;不给就不挂。
 	if (options.devtools) {
-		app.route("/api/dev", createDevRoute(options.devtools));
+		app.route("/api/dev", options.devtools);
 	}
 
 	// Static dashboard. Mounted last so /api/* always wins routing. The cookie

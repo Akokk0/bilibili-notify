@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { DevParamError, type DevRegistry, DevScenarioNotFound } from "../../devtools/registry.js";
-import { createDevRoute } from "../dev.js";
+import { DevParamError, type DevRegistry, DevScenarioNotFound } from "../registry.js";
+import { createDevRoute } from "../route.js";
 
 /**
  * `/api/dev` 的 wire 层:列、跑、收摊。判断全在注册表,这里只把三种失败翻成状态码 ——

@@ -5,7 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vp dev",
-		"build": "tsc -b && vp build",
+		"build": "tsc -b && vp build && node ../../scripts/check-no-devtools.mjs web dist",
 		"build:bundle": "pnpm run build",
 		"preview": "vp preview",
 		"typecheck": "tsc --noEmit"

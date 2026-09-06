@@ -1,10 +1,10 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { observeLiveConnections } from "@bilibili-notify/blive";
 import type { MessageBus, PushAdapter, PushTarget } from "@bilibili-notify/internal";
+import type { Hono } from "hono";
 import type { AuthSystem } from "../auth/index.js";
 import type { HistoryStore } from "../history/store.js";
 import type { PlatformAdapter } from "../platforms/types.js";
-import type { DevCapturesApi } from "../routes/dev.js";
 import type { MuteState } from "../runtime/mute-state.js";
 import type { UpdateService } from "../update/service.js";
 import { isDevBuild } from "../update/version-order.js";
@@ -14,6 +14,7 @@ import { createCaptureGate } from "./capture.js";
 import { createDevClock } from "./clock.js";
 import { createLiveRooms } from "./live-rooms.js";
 import { createDevRegistry, type DevRegistry } from "./registry.js";
+import { createDevRoute, type DevCapturesApi } from "./route.js";
 import { busEventScenarios } from "./scenarios/bus-events.js";
 import { capabilityScenario } from "./scenarios/capability.js";
 import { pushCaptureScenario } from "./scenarios/capture.js";
@@ -73,6 +74,13 @@ export interface CreateDevtoolsInput {
 
 export interface Devtools {
 	registry: DevRegistry;
+	/**
+	 * `/api/dev` 那棵子应用,建好交给 app.ts 挂。路由在这里建而不是在 app.ts 里 import:
+	 * 整套 devtools 只从 `src/index.ts` 这一处引,构建时把这个入口换成空桩就能把整棵树
+	 * 连根摇掉 —— 多一个引用点就多一条漏进构建产物的路。
+	 */
+	route: Hono;
+	captures: DevCapturesApi;
 	/** 交给 `/api/update` 路由的那份 —— 装饰过的。 */
 	updateService: UpdateService;
 	/** 交给引擎 / 链接回卡的那份 —— 包过截流闸的。 */
@@ -83,7 +91,6 @@ export interface Devtools {
 	authSystem: AuthSystem;
 	/** 交给推送引擎的免扰时钟(单点覆盖)。 */
 	quietHoursNow: () => Date;
-	captures: DevCapturesApi;
 }
 
 export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
@@ -115,33 +122,35 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			return deleted;
 		},
 	};
+	const registry = createDevRegistry([
+		updateStateScenario(update),
+		pushCaptureScenario(gate),
+		...liveScenarios({ subs: input.subs, rooms, api }),
+		...liveEventScenarios({ subs: input.subs, rooms }),
+		...dynamicScenarios({ subs: input.subs, api, dynamic: input.dynamic }),
+		...inboundScenarios({
+			inbound: input.inbound,
+			commands: input.commands,
+			adapters: input.adapterConfigs,
+			targets: input.targets,
+		}),
+		...busEventScenarios({ bus: input.bus }),
+		loginStateScenario({ auth, bus: input.bus }),
+		capabilityScenario({ injector: caps, adapters: input.adapterConfigs }),
+		...timerScenarios({
+			clock,
+			subs: input.subs,
+			mute: input.mute,
+			puppeteer: input.puppeteer,
+			live: input.live,
+			dynamic: input.dynamic,
+			fans: input.fansPoller,
+			loginFlow: input.loginFlow,
+		}),
+	]);
 	return {
-		registry: createDevRegistry([
-			updateStateScenario(update),
-			pushCaptureScenario(gate),
-			...liveScenarios({ subs: input.subs, rooms, api }),
-			...liveEventScenarios({ subs: input.subs, rooms }),
-			...dynamicScenarios({ subs: input.subs, api, dynamic: input.dynamic }),
-			...inboundScenarios({
-				inbound: input.inbound,
-				commands: input.commands,
-				adapters: input.adapterConfigs,
-				targets: input.targets,
-			}),
-			...busEventScenarios({ bus: input.bus }),
-			loginStateScenario({ auth, bus: input.bus }),
-			capabilityScenario({ injector: caps, adapters: input.adapterConfigs }),
-			...timerScenarios({
-				clock,
-				subs: input.subs,
-				mute: input.mute,
-				puppeteer: input.puppeteer,
-				live: input.live,
-				dynamic: input.dynamic,
-				fans: input.fansPoller,
-				loginFlow: input.loginFlow,
-			}),
-		]),
+		registry,
+		route: createDevRoute({ registry, captures }),
 		updateService: update.service,
 		// 两层叠着:截流闸在里、能力注入在外 —— 顺序无所谓,两者各管各的方法。
 		adapters: input.adapters.map((a) => caps.wrap(gate.wrap(a))),
