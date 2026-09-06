@@ -185,6 +185,26 @@ describe("DevDock", () => {
 		);
 	});
 
+	it("导览卡张开时药丸抬到它上面 —— 导览卡层级高得多,不让开就整个被盖住点不到", async () => {
+		// 「新手指引停在第几步」那个场景要求导览开着,而导览卡和药丸都钉在左下角。
+		const card = document.createElement("div");
+		card.className = "bn-tour-card";
+		card.setAttribute("data-shown", "false");
+		card.getBoundingClientRect = () => ({ height: 200 }) as DOMRect;
+		document.body.append(card);
+
+		vi.mocked(api.get).mockResolvedValue(STATUS);
+		renderDock();
+		await screen.findByRole("button", { name: "devtools" });
+		const pill = document.querySelector("[data-dock-pill]") as HTMLElement;
+		expect(pill.style.bottom).toBe("");
+
+		card.setAttribute("data-shown", "true");
+		await waitFor(() => expect(pill.style.bottom).toBe("208px"));
+
+		card.remove();
+	});
+
 	it("跑失败 → 那张卡里红字说原因", async () => {
 		vi.mocked(api.get).mockResolvedValue(STATUS);
 		vi.mocked(api.post).mockRejectedValue(

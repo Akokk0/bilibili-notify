@@ -36,9 +36,9 @@ import { PickSelect } from "./pick-select";
 import {
 	type DevEntry,
 	mergeScenarios,
+	useWebActive,
 	WEB_SCENARIOS,
 	type WebDevScenario,
-	webActive,
 } from "./registry";
 import { useDevStatus, useResetScenario, useRunScenario } from "./use-devtools";
 
@@ -64,6 +64,40 @@ const HEIGHT_KEY = "bn:devtools:height";
 const DEFAULT_VIEWPORT_SHARE = 0.4;
 /** 药丸骑在面板顶边上时,离顶边留这么多。 */
 const GAP_ABOVE_PANEL = 12;
+
+/**
+ * 导览卡也钉在左下角(`fixed bottom-4 left-4 w-80`),而且层级高得多 —— 它是指令来源,
+ * 按规矩谁都不许压它。于是它张开时会把药丸整个盖住、点都点不到,偏偏「新手指引停在第几步」
+ * 这个场景要求导览开着。所以量一下它多高,把药丸顶到它上面去。
+ */
+const TOUR_CARD_SHOWN = '.bn-tour-card[data-shown="true"]';
+const GAP_ABOVE_TOUR = 8;
+
+function useTourClearance(): number {
+	const [clearance, setClearance] = useState(0);
+	useEffect(() => {
+		const measure = () => {
+			const el = document.querySelector<HTMLElement>(TOUR_CARD_SHOWN);
+			setClearance(el ? Math.round(el.getBoundingClientRect().height) + GAP_ABOVE_TOUR : 0);
+		};
+		measure();
+		// 导览卡一直挂在 DOM 上,张开 / 收起只翻 data-shown,所以盯属性就够。
+		const mo = new MutationObserver(measure);
+		mo.observe(document.body, {
+			subtree: true,
+			attributes: true,
+			attributeFilter: ["data-shown"],
+		});
+		const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+		const card = document.querySelector(".bn-tour-card");
+		if (card && ro) ro.observe(card);
+		return () => {
+			mo.disconnect();
+			ro?.disconnect();
+		};
+	}, []);
+	return clearance;
+}
 
 function readHeight(): number {
 	try {
@@ -107,9 +141,11 @@ function Dock({
 	const [height, setHeight] = useState(readHeight);
 	const [group, setGroup] = useState<DevScenarioGroup>("state");
 	const [results, setResults] = useState<Record<string, RunResult>>({});
-	// 前端那半的生效表没有服务端替它记账:每次跑完 / 收完就地重算一遍。
-	const [clientActive, setClientActive] = useState<DevInjection[]>(() => webActive(webScenarios));
-	const refreshClientActive = () => setClientActive(webActive(webScenarios));
+	// 前端那半的生效表没有服务端替它记账,只能从 store 现算。不镜像进 state:那样只有
+	// 「跑完 / 收完」这两个时机会更新,而面板之外的动作(灵动岛按「丢弃」、换页把草稿注销)
+	// 照样会改掉它 —— 药丸就会一直宣称有一条早已不存在的注入。
+	const clientActive = useWebActive(webScenarios);
+	const tourClearance = useTourClearance();
 	const run = useRunScenario(webScenarios);
 	const reset = useResetScenario(webScenarios);
 	const active = useMemo(() => [...serverActive, ...clientActive], [serverActive, clientActive]);
@@ -134,7 +170,6 @@ function Dock({
 			{
 				onSuccess: (out) => {
 					setResults((r) => ({ ...r, [entry.decl.id]: { ok: true, summary: out.summary } }));
-					refreshClientActive();
 				},
 				onError: (err) =>
 					setResults((r) => ({
@@ -176,7 +211,9 @@ function Dock({
 				active={active.length > 0}
 				activeTitle={`${active.length} 项生效`}
 				actions={quick}
-				offsetBottom={open ? height + GAP_ABOVE_PANEL : undefined}
+				offsetBottom={
+					open ? Math.max(height + GAP_ABOVE_PANEL, tourClearance) : tourClearance || undefined
+				}
 			/>
 			{open ? (
 				<DockPanel
@@ -191,8 +228,8 @@ function Dock({
 						<ActiveStrip
 							active={active}
 							busy={reset.isPending}
-							onResetOne={(id) => reset.mutate(id, { onSettled: refreshClientActive })}
-							onResetAll={() => reset.mutate(undefined, { onSettled: refreshClientActive })}
+							onResetOne={(id) => reset.mutate(id)}
+							onResetAll={() => reset.mutate(undefined)}
 						/>
 					}
 				>

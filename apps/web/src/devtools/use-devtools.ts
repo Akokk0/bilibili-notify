@@ -99,8 +99,11 @@ export function useRunScenario(webScenarios: readonly WebDevScenario[]) {
 			}
 			return res.summary === undefined ? {} : { summary: res.summary };
 		},
-		onSettled: () => {
-			void qc.invalidateQueries();
+		// 只有服务端那半要刷:造出来的状态经各页自己的查询才看得见。前端那半不刷 ——
+		// 它们直接改的就是查询缓存本身,再刷一遍等于当场把自己造的东西冲掉(「后端不可达壳」
+		// 就是这么秒恢复的:setState 置错误 → invalidate → 健康探测立刻重来 → 壳一闪就没)。
+		onSettled: (_data, _err, variables) => {
+			if (variables.side === "server") void qc.invalidateQueries();
 		},
 	});
 }
@@ -114,15 +117,17 @@ export function useResetScenario(webScenarios: readonly WebDevScenario[]) {
 			const web = id === undefined ? undefined : findWebScenario(id, webScenarios);
 			if (web) {
 				web.reset?.();
-				return;
+				return "web" as const;
 			}
 			if (id === undefined) for (const s of webScenarios) s.reset?.();
 			const path = id === undefined ? "/api/dev/reset" : `/api/dev/reset/${id}`;
 			const res = await api.post<DevResetResponse>(path, {});
 			applyActive(res.active);
+			return "server" as const;
 		},
-		onSettled: () => {
-			void qc.invalidateQueries();
+		// 同上:只在真打了服务端时刷。收一条前端场景不该顺手把别的查询冲一遍。
+		onSettled: (side) => {
+			if (side === "server") void qc.invalidateQueries();
 		},
 	});
 }

@@ -102,6 +102,7 @@ const draftIsland: WebDevScenario = {
 		if (useDraftStore.getState().current?.pageKey === "devtools")
 			useDraftStore.getState().unregister();
 	},
+	subscribe: (onChange) => useDraftStore.subscribe(onChange),
 };
 
 const STEPS: ReadonlyArray<{ value: OnboardingStepKey | "done"; label: string }> = [
@@ -155,6 +156,7 @@ const onboardingStep: WebDevScenario = {
 	reset() {
 		useOnboardingInputsOverride.getState().set(null);
 	},
+	subscribe: (onChange) => useOnboardingInputsOverride.subscribe(onChange),
 };
 
 export const WEB_SCENARIOS: readonly WebDevScenario[] = [
