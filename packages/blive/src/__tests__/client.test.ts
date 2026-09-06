@@ -7,7 +7,13 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { connectLiveRoom, type LiveConnectOptions, type SocketLike } from "../client.js";
+import {
+	connectLiveRoom,
+	type LiveConnectionInfo,
+	type LiveConnectOptions,
+	observeLiveConnections,
+	type SocketLike,
+} from "../client.js";
 import type { LiveEvent } from "../events.js";
 import frames from "./fixtures/frames.json" with { type: "json" };
 
@@ -305,5 +311,53 @@ describe("connectLiveRoom", () => {
 		client.close();
 
 		expect(socket.closeCalls).toBe(1);
+	});
+});
+
+/**
+ * 连接观察钩子(devtools 用):每建一条连接就报一声,带着这条连接的 `onEvent` —— 拿到它
+ * 就能往房间的事件漏斗里塞事件,走的是与真帧完全相同的那条回调。不装就什么都不发生。
+ */
+describe("observeLiveConnections", () => {
+	afterEach(() => {
+		observeLiveConnections(null);
+	});
+
+	it("每建一条连接报一声,带 roomId / onEvent / client;卸掉后不再报", () => {
+		const seen: LiveConnectionInfo[] = [];
+		observeLiveConnections((info) => seen.push(info));
+		const socket = new FakeSocket();
+		const events: LiveEvent[] = [];
+		const client = connectLiveRoom({
+			roomId: 5050,
+			uid: 42,
+			token: "tok",
+			buvid: "buv",
+			hostList: [{ host: "danmu.example.com", wssPort: 2245 }],
+			userAgent: "UA/1.0",
+			onEvent: (ev) => events.push(ev),
+			createSocket: () => socket,
+		});
+
+		expect(seen).toHaveLength(1);
+		expect(seen[0]?.roomId).toBe(5050);
+		expect(seen[0]?.client).toBe(client);
+		// 塞进去的事件走的就是调用方那条 onEvent。
+		seen[0]?.onEvent({ kind: "live-start" });
+		expect(events).toEqual([{ kind: "live-start" }]);
+
+		observeLiveConnections(null);
+		connectLiveRoom({
+			roomId: 6060,
+			uid: 42,
+			token: "tok",
+			buvid: "buv",
+			hostList: [{ host: "danmu.example.com", wssPort: 2245 }],
+			userAgent: "UA/1.0",
+			onEvent: () => {},
+			createSocket: () => new FakeSocket(),
+		});
+		expect(seen).toHaveLength(1);
+		client.close();
 	});
 });

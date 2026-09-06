@@ -2,7 +2,10 @@ export {
 	connectLiveRoom,
 	type DanmuHost,
 	type LiveClient,
+	type LiveConnectionInfo,
+	type LiveConnectionObserver,
 	type LiveConnectOptions,
+	observeLiveConnections,
 	type SocketLike,
 } from "./client.js";
 export {

@@ -63,6 +63,27 @@ export interface LiveClient {
 	close(): void;
 }
 
+/**
+ * 连接观察钩子 —— **devtools 用**,别的地方别碰。
+ *
+ * 每建一条连接就报一声,带着这条连接的 `onEvent`:拿到它就能往那个房间的事件漏斗里塞
+ * 事件,走的是与真帧完全相同的那条回调,上游引擎一行不动、也分不出真假。全局只有一个
+ * 观察者(devtools 是进程里唯一的宿主),不装就什么都不发生。
+ */
+export interface LiveConnectionInfo {
+	roomId: number;
+	onEvent: (ev: LiveEvent) => void;
+	client: LiveClient;
+}
+
+export type LiveConnectionObserver = (info: LiveConnectionInfo) => void;
+
+let connectionObserver: LiveConnectionObserver | null = null;
+
+export function observeLiveConnections(observer: LiveConnectionObserver | null): void {
+	connectionObserver = observer;
+}
+
 const DEFAULT_HEARTBEAT_MS = 30_000;
 const DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
 
@@ -183,7 +204,7 @@ export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
 		});
 	});
 
-	return {
+	const client: LiveClient = {
 		get closed() {
 			return closed;
 		},
@@ -196,4 +217,7 @@ export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
 			socket.close();
 		},
 	};
+	// 交出去的是 `emit` 而不是裸 `opts.onEvent`:连接关了之后塞进来的事件同样该被丢掉。
+	connectionObserver?.({ roomId: opts.roomId, onEvent: emit, client });
+	return client;
 }
