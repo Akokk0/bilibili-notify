@@ -108,6 +108,11 @@ describe("DevDock", () => {
 		expect(screen.getByText("更新状态")).toBeTruthy();
 
 		await user.selectOptions(screen.getByRole("combobox", { name: "相位" }), "ready");
+		// 跑完会把所有查询作废,`/api/dev` 也会再拉一次 —— 服务端那时报的生效表就是注入后的。
+		vi.mocked(api.get).mockResolvedValue({
+			...STATUS,
+			active: [{ scenarioId: "update.state", label: "更新状态 → ready 0.99.0" }],
+		});
 		await user.click(screen.getByRole("button", { name: "跑一下" }));
 
 		await waitFor(() =>
@@ -130,18 +135,21 @@ describe("DevDock", () => {
 		const user = userEvent.setup();
 
 		await user.click(await screen.findByRole("button", { name: "devtools" }));
+		// 每一步之后 `/api/dev` 都会被重新拉一次,mock 跟着服务端该有的状态走。
+		vi.mocked(api.get).mockResolvedValue(STATUS);
 		await user.click(screen.getByRole("button", { name: "收掉:更新状态 → ready 0.99.0" }));
 		await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/dev/reset/update.state", {}));
 		await waitFor(() => expect(screen.queryByText("更新状态 → ready 0.99.0")).toBeNull());
 
 		// 再造一条(走药丸上的快捷位),生效条回来了;然后全收。
-		vi.mocked(api.post).mockResolvedValue({
-			active: [{ scenarioId: "update.state", label: "更新状态 → idle" }],
-		});
+		const idle = { scenarioId: "update.state", label: "更新状态 → idle" };
+		vi.mocked(api.post).mockResolvedValue({ active: [idle] });
+		vi.mocked(api.get).mockResolvedValue({ ...STATUS, active: [idle] });
 		await user.click(screen.getByRole("button", { name: "更新状态" }));
 		expect(await screen.findByText("更新状态 → idle")).toBeTruthy();
 
 		vi.mocked(api.post).mockResolvedValue({ active: [] });
+		vi.mocked(api.get).mockResolvedValue(STATUS);
 		await user.click(screen.getByRole("button", { name: "全部收摊" }));
 		await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/dev/reset", {}));
 		await waitFor(() => expect(screen.queryByText("更新状态 → idle")).toBeNull());
@@ -172,6 +180,24 @@ describe("DevDock", () => {
 		await user.click(screen.getByRole("button", { name: "跑一下" }));
 
 		expect((await screen.findByRole("alert")).textContent).toContain("相位没有「x」这一档");
+	});
+
+	it("截流组:场景卡之外多一张拦截列表(打 /api/dev/captures)", async () => {
+		vi.mocked(api.get).mockImplementation(async (path: string) =>
+			path === "/api/dev/captures"
+				? { enabled: false, entries: [] }
+				: {
+						...STATUS,
+						scenarios: [{ id: "push.capture", group: "capture", title: "推送截流", params: [] }],
+					},
+		);
+		renderDock();
+		const user = userEvent.setup();
+		await user.click(await screen.findByRole("button", { name: "devtools" }));
+		await user.click(screen.getByRole("button", { name: /^截流/ }));
+		expect(screen.getByText("推送截流")).toBeTruthy();
+		expect(await screen.findByText(/截流关着/)).toBeTruthy();
+		expect(api.get).toHaveBeenCalledWith("/api/dev/captures");
 	});
 
 	it("面板高度记在 localStorage,下次打开还是那么高", async () => {

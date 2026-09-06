@@ -23,12 +23,23 @@ export type DevAvailability =
 	| { status: "absent" }
 	| { status: "ready"; data: DevStatusDTO };
 
+/**
+ * 有注入生效时每几秒看一眼:生效条上的话会变(截流的「拦下 N 条」随真推送涨),而这些
+ * 变化发生在服务端、面板没按任何键。什么都没注入时不打扰。
+ */
+export function devRefetchInterval(data: DevStatusDTO | undefined): number | false {
+	return data && data.active.length > 0 ? 3_000 : false;
+}
+
 export function useDevStatus(): DevAvailability {
 	const q = useQuery({
 		queryKey: DEV_QUERY_KEY,
 		queryFn: () => api.get<DevStatusDTO>("/api/dev"),
 		retry: false,
 		staleTime: Number.POSITIVE_INFINITY,
+		refetchInterval: (query) => devRefetchInterval(query.state.data),
+		// 窗口失焦也照轮:人盯着终端 / 聊天软件看推送有没有出网时,面板正好在后台。
+		refetchIntervalInBackground: true,
 	});
 	if (q.data) return { status: "ready", data: q.data };
 	if (q.error) return { status: "absent" };
@@ -56,9 +67,10 @@ export interface RunOutcome {
 /**
  * 跑一个场景。服务端那半走 `/api/dev/run/:id`;前端那半就地调 `run`。
  *
- * 跑完**把所有查询都作废**:造出来的状态要经各页自己的查询才看得见(更新状态那条链路就是
- * 系统页 / 概览卡 / 通知钩子各自的 `useUpdateStatus`),逐个列 key 的话,新加一个场景就得回来
- * 补一行 —— 而漏补的症状是「跑了没反应」。dev-only 的工具,多刷几个请求不算代价。
+ * 跑完**把所有查询都作废**(连 `/api/dev` 自己也在内,生效表顺便对一次账):造出来的状态要经
+ * 各页自己的查询才看得见(更新状态那条链路就是系统页 / 概览卡 / 通知钩子各自的
+ * `useUpdateStatus`),逐个列 key 的话,新加一个场景就得回来补一行 —— 而漏补的症状是「跑了
+ * 没反应」。dev-only 的工具,多刷几个请求不算代价。
  */
 export function useRunScenario() {
 	const qc = useQueryClient();
@@ -76,7 +88,7 @@ export function useRunScenario() {
 			return res.summary === undefined ? {} : { summary: res.summary };
 		},
 		onSettled: () => {
-			void qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== DEV_QUERY_KEY[0] });
+			void qc.invalidateQueries();
 		},
 	});
 }
@@ -92,7 +104,7 @@ export function useResetScenario() {
 			applyActive(res.active);
 		},
 		onSettled: () => {
-			void qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== DEV_QUERY_KEY[0] });
+			void qc.invalidateQueries();
 		},
 	});
 }

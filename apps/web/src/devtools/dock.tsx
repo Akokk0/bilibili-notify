@@ -30,6 +30,7 @@ import {
 	TSelect,
 } from "@bilibili-notify/ui";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { CaptureView } from "./capture-view";
 import { type DevEntry, mergeScenarios, WEB_SCENARIOS } from "./registry";
 import { useDevStatus, useResetScenario, useRunScenario } from "./use-devtools";
 
@@ -168,6 +169,8 @@ function Dock({ scenarios, active }: { scenarios: DevEntry["decl"][]; active: De
 							))}
 						</div>
 					)}
+					{/* 截流组多一张列表:拦下了什么。场景卡照常由注册表画,列表是这一组独有的对照面。 */}
+					{group === "capture" ? <CaptureView /> : null}
 				</DockPanel>
 			) : null}
 		</>
