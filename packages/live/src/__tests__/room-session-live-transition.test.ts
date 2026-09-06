@@ -393,9 +393,9 @@ describe("退避耗尽彻底放弃监听", () => {
  * 定时器到点调的那个 tick,不是另一条路;没在播就不跑、回 false。
  */
 describe("RoomSession.tickNow", () => {
-	it("在播:立刻跑一次复推 tick(拉房间信息 → 渲染 → 发卡),回 true", async () => {
+	it("在播且复推开着:立刻跑一次复推 tick(拉房间信息 → 渲染 → 发卡),回 true", async () => {
 		const { ctx, mocks } = makeCtx();
-		const session = new RoomSession(ctx, makeSub()) as AnySession;
+		const session = new RoomSession(ctx, makeSub({ pushTime: 1 })) as AnySession;
 		await session.bootstrap();
 		expect(session.isLive).toBe(true);
 		mocks.sendLiveNotifyCard.mockClear();
@@ -405,6 +405,19 @@ describe("RoomSession.tickNow", () => {
 
 		expect(mocks.getLiveRoomInfo).toHaveBeenCalledTimes(1);
 		expect(mocks.sendLiveNotifyCard).toHaveBeenCalledTimes(1);
+	});
+
+	it("这个 UP 关了复推(pushTime=0):不跑,回 false —— 排程那条根本没建定时器", async () => {
+		// 提前到期提前的是**那个定时器**。定时器不存在时它没有可提前的东西;照跑就等于
+		// 给一个明确关掉复推的 UP 发了一张它永远不该收到的卡。
+		const { ctx, mocks } = makeCtx();
+		const session = new RoomSession(ctx, makeSub({ pushTime: 0 })) as AnySession;
+		await session.bootstrap();
+		expect(session.isLive).toBe(true);
+		mocks.sendLiveNotifyCard.mockClear();
+
+		expect(await session.tickNow()).toBe(false);
+		expect(mocks.sendLiveNotifyCard).not.toHaveBeenCalled();
 	});
 
 	it("没在播:不跑,回 false", async () => {

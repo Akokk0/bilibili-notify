@@ -518,7 +518,11 @@ export abstract class RoomSessionBase {
 	 * 下一次到点照旧。
 	 */
 	async tickNow(): Promise<boolean> {
-		if (!this.isLive) return false;
+		// 跟排程那条对齐:`isLive` 不够。这个 UP 关了「正在直播」复推(pushTime=0)时定时器
+		// 压根没建;进入下播宽限期时定时器已撤而 `liveStatus` **刻意**还留着 true。这两种
+		// 情况排程都不会响,提前到期也就不该响 —— 否则宽限期里那一跑会拉到 live_status=0,
+		// 顺手给主人私聊一条「已下播但未收到 WS 下播事件」的假警报。
+		if (!this.isLive || !this.pushAtTimeTimer) return false;
 		await this.tickPushAtTime();
 		return true;
 	}
