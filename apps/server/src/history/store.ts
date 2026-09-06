@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readdir, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { DailyHistoryCount } from "@bilibili-notify/contract";
@@ -483,7 +483,10 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		fromMs: number,
 		toMs: number,
 	): Promise<{ doomed: Set<string>; images: string[] }> {
-		const lines = await readRawLines(path);
+		// 破坏性改写只认全有或全无的读:`readRawLines` 那份把任何错都咽掉、回读到一半的结果
+		// (它服务的是只读路径,「文件不在」才是常态)。拿残缺的一半当全份写回去,窗外的行会
+		// 被无声抹掉,回的 deleted 还小得像没事发生。
+		const lines = await readAllLinesStrict(path);
 		const doomed = new Set<string>();
 		const images: string[] = [];
 		const kept: string[] = [];
@@ -513,7 +516,9 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			}
 			kept.push(line);
 		}
-		// 先写旁边再换名:半路断电只会留下一个多余的临时文件,不会留下半个日文件。
+		// 先写旁边再换名:rename 是原子的,所以**读的人**永远看不到半个日文件,失败也只会
+		// 留下一个多余的 .tmp。注意它挡的是「读到写了一半的内容」,不是断电丢数据 ——
+		// 没有 fsync,掉电仍可能丢掉刚写下的这一份。
 		const tmp = `${path}.tmp`;
 		await writeFile(tmp, kept.length === 0 ? "" : `${kept.join("\n")}\n`, "utf8");
 		await rename(tmp, path);
@@ -571,6 +576,21 @@ function tryParse(line: string): unknown {
 }
 
 /** 整个文件的非空行,原样(不解析)。 */
+/**
+ * 整份读进来切行,**只**容忍「文件不在」。给要改写这份文件的那条路用:读不动就抛,
+ * 让整趟停在动手之前。
+ */
+async function readAllLinesStrict(path: string): Promise<string[]> {
+	let raw: string;
+	try {
+		raw = await readFile(path, "utf8");
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return [];
+		throw err;
+	}
+	return raw.split("\n").filter((line) => line.trim() !== "");
+}
+
 async function readRawLines(path: string): Promise<string[]> {
 	const lines: string[] = [];
 	try {

@@ -10,7 +10,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HistoryEntry, NotificationPayload } from "@bilibili-notify/internal";
@@ -155,6 +155,27 @@ describe("deleteRange", () => {
 		expect(ids).toEqual([keep.id]);
 		expect(ids).not.toContain(d1.id);
 		expect(ids).not.toContain(d2.id);
+	});
+
+	it("日文件读不动 → 整趟失败,绝不当成空文件把它改写掉", async () => {
+		// 破坏性改写是「先读整份、再把留下的写回去」。读要是能半路失败又被咽掉,写回去的
+		// 就是残缺的那半份 —— 剩下的行永久消失,而且回的 deleted 还小得像没事发生。
+		// 所以这条路上的读必须全有或全无:读不动就抛,文件一个字节都不许动。
+		const row = await at("2026-09-06T08:01:00.000Z");
+		const path = join(dataDir, "history", `${row.ts.slice(0, 10)}.jsonl`);
+		if (process.getuid?.() === 0) return; // root 无视权限位,这条测不了
+		await chmod(path, 0o000);
+		try {
+			await expect(
+				store.deleteRange({
+					fromMs: Date.parse("2026-09-06T08:00:00.000Z"),
+					toMs: Date.parse("2026-09-06T08:10:00.000Z"),
+				}),
+			).rejects.toThrow();
+		} finally {
+			await chmod(path, 0o600);
+		}
+		expect(await dayLines(row.ts)).toHaveLength(1);
 	});
 
 	it("窗里没有行 → 0,文件原样", async () => {
