@@ -270,6 +270,21 @@ export async function startStandaloneServer(
 			}),
 			createWebhookAdapter({ logger: log }),
 		];
+		// 每个平台的「谁」长得不一样:onebot 是 user_id,qq-official 是 C2C 的
+		// userOpenid。**绝不能跨平台比对** —— 两个命名空间里的字符串撞上就等于
+		// 认错人。取不到(没配 / 群目标没有 userOpenid / 平台还没接入站)就返回
+		// undefined,于是谁都不认。
+		//
+		// 审批与指令分发共用同一个来源:各写一份迟早有一边判得不一样。
+		const masterUserId = () => {
+			const id = runtime.configStore.getGlobals().master.targetId;
+			if (!id) return undefined;
+			const t = runtime.configStore.getTargets().find((x) => x.id === id);
+			if (t?.platform === "onebot") return t.session.userId;
+			if (t?.platform === "qq-official") return t.session.userOpenid;
+			return undefined;
+		};
+
 		// devtools:门是载荷版本号(开发版才给,alpha 也不给)。给的话往下传的都是装饰过的:
 		// 更新路由拿到的能被注入假状态,adapter 拿到的包着截流闸,api 套着 Proxy —— 真服务 /
 		// 真 adapter / 真 api 一行不动。
@@ -290,7 +305,17 @@ export async function startStandaloneServer(
 					enabled: sub.enabled,
 					roomId: runtime.subRuntimeStore.get(sub.id)?.roomId,
 					specialUsers: sub.specialUsers.map((u) => u.uid),
+					avatar: runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatar,
 				})),
+			// 下面几样都是引擎建好之后才有的,现取 —— devtools 建得比引擎早。
+			dynamic: () => engines?.dynamic,
+			inbound: () => ({ private: onInboundPrivate, group: onInboundGroup }),
+			commands: () => ({
+				prefix: runtime.configStore.getGlobals().commands.prefix,
+				masterUserId: masterUserId(),
+			}),
+			adapterConfigs: () => runtime.configStore.getAdapters(),
+			targets: () => runtime.configStore.getTargets(),
 		});
 		if (devtools) log.info("devtools enabled (dev build): /api/dev is mounted");
 		const adapters = devtools?.adapters ?? rawAdapters;
@@ -411,21 +436,6 @@ export async function startStandaloneServer(
 
 		// 主人在他那条私聊通道上的身份 —— 只有这个 id 敲的指令算数。
 		//
-		// 每个平台的「谁」长得不一样:onebot 是 user_id,qq-official 是 C2C 的
-		// userOpenid。**绝不能跨平台比对** —— 两个命名空间里的字符串撞上就等于
-		// 认错人。取不到(没配 / 群目标没有 userOpenid / 平台还没接入站)就返回
-		// undefined,于是谁都不认。
-		//
-		// 审批与指令分发共用同一个来源:各写一份迟早有一边判得不一样。
-		const masterUserId = () => {
-			const id = runtime.configStore.getGlobals().master.targetId;
-			if (!id) return undefined;
-			const t = runtime.configStore.getTargets().find((x) => x.id === id);
-			if (t?.platform === "onebot") return t.session.userId;
-			if (t?.platform === "qq-official") return t.session.userOpenid;
-			return undefined;
-		};
-
 		const roastCommands = createRoastCommandHandler({
 			drafts: roastDrafts,
 			logger: log,

@@ -23,6 +23,8 @@ export interface SubPick {
 	roomId?: string;
 	/** 特别关注的 uid(进场 / 弹幕推送的白名单)。 */
 	specialUsers?: string[];
+	/** 头像 url(假动态的作者头像 / 封面借它)。 */
+	avatar?: string;
 }
 
 export interface RoomPickerDeps {

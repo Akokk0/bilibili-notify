@@ -1,5 +1,6 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { observeLiveConnections } from "@bilibili-notify/blive";
+import type { PushAdapter, PushTarget } from "@bilibili-notify/internal";
 import type { HistoryStore } from "../history/store.js";
 import type { PlatformAdapter } from "../platforms/types.js";
 import type { DevCapturesApi } from "../routes/dev.js";
@@ -10,6 +11,8 @@ import { createCaptureGate } from "./capture.js";
 import { createLiveRooms } from "./live-rooms.js";
 import { createDevRegistry, type DevRegistry } from "./registry.js";
 import { pushCaptureScenario } from "./scenarios/capture.js";
+import { type DynamicEngineLike, dynamicScenarios } from "./scenarios/dynamic.js";
+import { type InboundHandlers, inboundScenarios } from "./scenarios/inbound.js";
 import { liveScenarios, type SubPick } from "./scenarios/live.js";
 import { liveEventScenarios } from "./scenarios/live-events.js";
 import { updateStateScenario } from "./scenarios/update.js";
@@ -36,6 +39,13 @@ export interface CreateDevtoolsInput {
 	api: BilibiliAPI;
 	/** 场景挑订阅用:每次现读,订阅表会变。 */
 	subs: () => SubPick[];
+	/** 动态引擎(「发动态」之后立刻跑一轮)。引擎后建,现取。 */
+	dynamic: () => DynamicEngineLike | undefined;
+	/** 入站口(私聊指令 / 群链接)。接线层后接,现取。 */
+	inbound: () => InboundHandlers | undefined;
+	commands: () => { prefix: string; masterUserId?: string };
+	adapterConfigs: () => PushAdapter[];
+	targets: () => PushTarget[];
 }
 
 export interface Devtools {
@@ -77,6 +87,13 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			pushCaptureScenario(gate),
 			...liveScenarios({ subs: input.subs, rooms, api }),
 			...liveEventScenarios({ subs: input.subs, rooms }),
+			...dynamicScenarios({ subs: input.subs, api, dynamic: input.dynamic }),
+			...inboundScenarios({
+				inbound: input.inbound,
+				commands: input.commands,
+				adapters: input.adapterConfigs,
+				targets: input.targets,
+			}),
 		]),
 		updateService: update.service,
 		adapters: input.adapters.map((a) => gate.wrap(a)),

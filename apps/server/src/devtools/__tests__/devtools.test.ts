@@ -29,6 +29,11 @@ const BARE = {
 	historyStore: { deleteRange: async () => 0 },
 	api: {} as never,
 	subs: () => [],
+	dynamic: () => undefined,
+	inbound: () => undefined,
+	commands: () => ({ prefix: "/" }),
+	adapterConfigs: () => [],
+	targets: () => [],
 };
 
 describe("createDevtools", () => {
