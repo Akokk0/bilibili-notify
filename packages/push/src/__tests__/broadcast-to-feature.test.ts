@@ -164,6 +164,31 @@ describe("BilibiliPush.broadcastToFeature — routing decision", () => {
 		expect(calls).toHaveLength(0);
 	});
 
+	it("quietHours 按 quietHoursNow 给的那一刻判,不按真时钟 —— devtools「当作现在是 xx:xx」靠它", async () => {
+		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		sub.routing.live = ["t1"];
+		const defaults = loopbackDefaults();
+		defaults.schedule.quietHours = [{ start: 2, end: 4 }]; // 凌晨 2-4 点免扰
+		const { sink, calls } = makeSink();
+		let pretend = new Date(2026, 8, 6, 3, 0, 0); // 03:00,落在免扰里
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store: makeStore([sub]),
+			logger: silentLogger,
+			defaults: () => defaults,
+			quietHoursNow: () => pretend,
+		});
+		push.start();
+		await push.broadcastToFeature("u1", "live", { kind: "text", text: "x" });
+		expect(calls).toHaveLength(0);
+
+		pretend = new Date(2026, 8, 6, 15, 0, 0); // 15:00,不在
+		await push.broadcastToFeature("u1", "live", { kind: "text", text: "y" });
+		// live 默认带 @全体,所以是两条;这里只关心「放行了」。
+		expect(calls.length).toBeGreaterThan(0);
+	});
+
 	it("atAllDefaults.dynamic=true → @全体单独一条 + 原 payload 两条独立消息", async () => {
 		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
 		sub.routing.dynamic = ["t1"];

@@ -132,6 +132,11 @@ export interface BilibiliPushOptions {
 	 * 就是那条路,连同挡掉的话主人只会看到指令毫无反应。
 	 */
 	muted: () => boolean;
+	/**
+	 * 免扰时段按哪一刻判。缺省真时钟;宿主的 devtools 用它做「当作现在是 xx:xx」的单点覆盖 ——
+	 * 只影响这一处判定,不是假时钟,延迟 / 超时 / 历史时间戳都还是真的。
+	 */
+	quietHoursNow?: () => Date;
 }
 
 /**
@@ -154,6 +159,7 @@ export class BilibiliPush {
 	private readonly logger: Logger;
 	private readonly defaults: () => GlobalDefaults;
 	private readonly muted: () => boolean;
+	private readonly quietHoursNow: () => Date;
 	private readonly onSend?: (info: PushSendInfo) => void;
 	private readonly serviceCtx: ServiceContext;
 	private disposed = false;
@@ -177,6 +183,7 @@ export class BilibiliPush {
 		this.logger = opts.logger;
 		this.defaults = opts.defaults;
 		this.muted = opts.muted;
+		this.quietHoursNow = opts.quietHoursNow ?? (() => new Date());
 		this.onSend = opts.onSend;
 		this.serviceCtx = opts.serviceCtx;
 	}
@@ -287,7 +294,7 @@ export class BilibiliPush {
 			this.logger.debug(`[push] uid=${uid} feature=${feature} 总开关 OFF，跳过`);
 			return [];
 		}
-		if (inQuietHours(eff.schedule.quietHours, new Date())) {
+		if (inQuietHours(eff.schedule.quietHours, this.quietHoursNow())) {
 			this.logger.debug(`[push] uid=${uid} feature=${feature} 落在免扰时段，跳过`);
 			return [];
 		}
