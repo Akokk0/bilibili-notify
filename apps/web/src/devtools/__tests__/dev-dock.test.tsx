@@ -274,6 +274,47 @@ describe("DevDock", () => {
 		);
 	});
 
+	it("前端半边的场景:在「前端」组里跑,不打服务端;生效条能看见,✕ 就地收摊", async () => {
+		vi.mocked(api.get).mockResolvedValue(STATUS);
+		let on = false;
+		const reset = vi.fn(() => {
+			on = false;
+		});
+		const web = [
+			{
+				id: "web.fake",
+				group: "web" as const,
+				title: "假的前端场景",
+				params: [],
+				run: () => {
+					on = true;
+					return "跑了";
+				},
+				active: () => (on ? { scenarioId: "web.fake", label: "前端 → 假的" } : null),
+				reset,
+			},
+		];
+		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		render(
+			<QueryClientProvider client={qc}>
+				<DevDock webScenarios={web} />
+			</QueryClientProvider>,
+		);
+		const user = userEvent.setup();
+		await user.click(await screen.findByRole("button", { name: "devtools" }));
+		await user.click(screen.getByRole("button", { name: /^前端/ }));
+		await user.click(screen.getByRole("button", { name: "跑一下" }));
+
+		expect(await screen.findByText("跑了")).toBeTruthy();
+		expect(screen.getByText("前端 → 假的")).toBeTruthy();
+		expect(api.post).not.toHaveBeenCalled();
+
+		await user.click(screen.getByRole("button", { name: "收掉:前端 → 假的" }));
+		expect(reset).toHaveBeenCalledOnce();
+		await waitFor(() => expect(screen.queryByText("前端 → 假的")).toBeNull());
+		expect(api.post).not.toHaveBeenCalled();
+	});
+
 	it("面板高度记在 localStorage,下次打开还是那么高", async () => {
 		window.localStorage.setItem("bn:devtools:height", "333");
 		vi.mocked(api.get).mockResolvedValue(STATUS);

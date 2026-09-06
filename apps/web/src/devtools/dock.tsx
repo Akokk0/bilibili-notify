@@ -33,7 +33,13 @@ import {
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { CaptureView } from "./capture-view";
 import { PickSelect } from "./pick-select";
-import { type DevEntry, mergeScenarios, WEB_SCENARIOS } from "./registry";
+import {
+	type DevEntry,
+	mergeScenarios,
+	WEB_SCENARIOS,
+	type WebDevScenario,
+	webActive,
+} from "./registry";
 import { useDevStatus, useResetScenario, useRunScenario } from "./use-devtools";
 
 const GROUPS: ReadonlyArray<{ id: DevScenarioGroup; label: string; icon: ReactNode }> = [
@@ -69,23 +75,46 @@ function readHeight(): number {
 	return Math.round(window.innerHeight * DEFAULT_VIEWPORT_SHARE);
 }
 
-export function DevDock() {
+export function DevDock({
+	webScenarios = WEB_SCENARIOS,
+}: {
+	/** 前端半边的注册表;测试里换一份假的。 */
+	webScenarios?: readonly WebDevScenario[];
+}) {
 	const status = useDevStatus();
 	if (status.status !== "ready") return null;
-	return <Dock scenarios={status.data.scenarios} active={status.data.active} />;
+	return (
+		<Dock
+			scenarios={status.data.scenarios}
+			serverActive={status.data.active}
+			webScenarios={webScenarios}
+		/>
+	);
 }
 
 type RunResult = { ok: true; summary?: string } | { ok: false; err: string };
 
-function Dock({ scenarios, active }: { scenarios: DevEntry["decl"][]; active: DevInjection[] }) {
+function Dock({
+	scenarios,
+	serverActive,
+	webScenarios,
+}: {
+	scenarios: DevEntry["decl"][];
+	serverActive: DevInjection[];
+	webScenarios: readonly WebDevScenario[];
+}) {
 	const [open, setOpen] = useState(false);
 	const [height, setHeight] = useState(readHeight);
 	const [group, setGroup] = useState<DevScenarioGroup>("state");
 	const [results, setResults] = useState<Record<string, RunResult>>({});
-	const run = useRunScenario();
-	const reset = useResetScenario();
+	// 前端那半的生效表没有服务端替它记账:每次跑完 / 收完就地重算一遍。
+	const [clientActive, setClientActive] = useState<DevInjection[]>(() => webActive(webScenarios));
+	const refreshClientActive = () => setClientActive(webActive(webScenarios));
+	const run = useRunScenario(webScenarios);
+	const reset = useResetScenario(webScenarios);
+	const active = useMemo(() => [...serverActive, ...clientActive], [serverActive, clientActive]);
 
-	const entries = useMemo(() => mergeScenarios(scenarios, WEB_SCENARIOS), [scenarios]);
+	const entries = useMemo(() => mergeScenarios(scenarios, webScenarios), [scenarios, webScenarios]);
 	const close = useCallback(() => setOpen(false), []);
 
 	useEffect(() => {
@@ -103,8 +132,10 @@ function Dock({ scenarios, active }: { scenarios: DevEntry["decl"][]; active: De
 		run.mutate(
 			{ id: entry.decl.id, side: entry.side, params },
 			{
-				onSuccess: (out) =>
-					setResults((r) => ({ ...r, [entry.decl.id]: { ok: true, summary: out.summary } })),
+				onSuccess: (out) => {
+					setResults((r) => ({ ...r, [entry.decl.id]: { ok: true, summary: out.summary } }));
+					refreshClientActive();
+				},
 				onError: (err) =>
 					setResults((r) => ({
 						...r,
@@ -160,8 +191,8 @@ function Dock({ scenarios, active }: { scenarios: DevEntry["decl"][]; active: De
 						<ActiveStrip
 							active={active}
 							busy={reset.isPending}
-							onResetOne={(id) => reset.mutate(id)}
-							onResetAll={() => reset.mutate(undefined)}
+							onResetOne={(id) => reset.mutate(id, { onSettled: refreshClientActive })}
+							onResetAll={() => reset.mutate(undefined, { onSettled: refreshClientActive })}
 						/>
 					}
 				>

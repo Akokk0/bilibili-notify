@@ -6,6 +6,7 @@ import { useAuthStore } from "../../store/auth";
 import { BiliLoginStatus } from "../../types/auth";
 import type { PushAdapter, PushTarget, Subscription } from "../../types/domain";
 import { deriveOnboarding, type OnboardingView } from "./derive";
+import { useOnboardingInputsOverride } from "./inputs-override";
 
 interface HealthSnapshot {
 	status: string;
@@ -87,18 +88,22 @@ export function useOnboardingState(opts?: { poll?: boolean; active?: boolean }):
 	// effect(步位、完成庆祝)就跟着每 render 跑一遍,memo 形同虚设。
 	const biliLoggedIn = snapshot?.status === BiliLoginStatus.LOGGED_IN;
 	const modules = healthQ.data?.modules;
+	// devtools 装的假输入优先:判据函数照跑,只是喂的不是真查询。
+	const override = useOnboardingInputsOverride((s) => s.inputs);
 	const view = useMemo(
 		() =>
-			subsQ.data && adaptersQ.data && targetsQ.data
-				? deriveOnboarding({
-						biliLoggedIn,
-						subsCount: subsQ.data.length,
-						adapters: adaptersQ.data,
-						targets: targetsQ.data,
-						modules,
-					})
-				: null,
-		[biliLoggedIn, subsQ.data, adaptersQ.data, targetsQ.data, modules],
+			override
+				? deriveOnboarding(override)
+				: subsQ.data && adaptersQ.data && targetsQ.data
+					? deriveOnboarding({
+							biliLoggedIn,
+							subsCount: subsQ.data.length,
+							adapters: adaptersQ.data,
+							targets: targetsQ.data,
+							modules,
+						})
+					: null,
+		[override, biliLoggedIn, subsQ.data, adaptersQ.data, targetsQ.data, modules],
 	);
 
 	const pollActive = opts?.poll === true && view !== null && !view.allDone;

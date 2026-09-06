@@ -7,7 +7,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../services/api";
-import { findWebScenario } from "./registry";
+import { findWebScenario, type WebDevScenario } from "./registry";
 
 /**
  * devtools 与服务端那半的往来。
@@ -72,15 +72,15 @@ export interface RunOutcome {
  * `useUpdateStatus`),逐个列 key 的话,新加一个场景就得回来补一行 —— 而漏补的症状是「跑了
  * 没反应」。dev-only 的工具,多刷几个请求不算代价。
  */
-export function useRunScenario() {
+export function useRunScenario(webScenarios: readonly WebDevScenario[]) {
 	const qc = useQueryClient();
 	const applyActive = useApplyActive();
 	return useMutation({
 		mutationFn: async ({ id, side, params }: RunInput): Promise<RunOutcome> => {
 			if (side === "web") {
-				const scenario = findWebScenario(id);
+				const scenario = findWebScenario(id, webScenarios);
 				if (!scenario) throw new Error(`没有这个前端场景:${id}`);
-				const summary = await scenario.run(params);
+				const summary = await scenario.run(params, { qc });
 				return summary === undefined ? {} : { summary };
 			}
 			const res = await api.post<DevRunResponse>(`/api/dev/run/${id}`, { params });
@@ -93,12 +93,18 @@ export function useRunScenario() {
 	});
 }
 
-/** 收摊:给 id 收那一条,不给全收。 */
-export function useResetScenario() {
+/** 收摊:给 id 收那一条,不给全收。前端那半的场景就地收,不打服务端。 */
+export function useResetScenario(webScenarios: readonly WebDevScenario[]) {
 	const qc = useQueryClient();
 	const applyActive = useApplyActive();
 	return useMutation({
 		mutationFn: async (id?: string) => {
+			const web = id === undefined ? undefined : findWebScenario(id, webScenarios);
+			if (web) {
+				web.reset?.();
+				return;
+			}
+			if (id === undefined) for (const s of webScenarios) s.reset?.();
 			const path = id === undefined ? "/api/dev/reset" : `/api/dev/reset/${id}`;
 			const res = await api.post<DevResetResponse>(path, {});
 			applyActive(res.active);
