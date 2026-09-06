@@ -2076,3 +2076,61 @@ describe("联网搜索 override(aiWebSearch)", () => {
 		expect(override?.webSearch).toBeUndefined();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// K. detectNow —— devtools「现在就跑」
+// ---------------------------------------------------------------------------
+
+/**
+ * 与 cron 那一轮共用同一把锁:cron tick 撞上在跑的那轮就跳过(老规矩);`detectNow`
+ * 撞上则**等它跑完再跑一轮** —— 调用方是刚往 feed 里塞了东西才来的,那一轮的 feed 是
+ * 塞之前拉的,跳过等于白塞。
+ */
+describe("K. detectNow", () => {
+	function deferred() {
+		let resolve!: (v: ReturnType<typeof resp>) => void;
+		const promise = new Promise<ReturnType<typeof resp>>((r) => {
+			resolve = r;
+		});
+		return { promise, resolve };
+	}
+
+	it("跑一轮:拉 feed、处理,promise 在这一轮结束时落定", async () => {
+		const b = makeEngine();
+		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, text: "x" })]));
+		seed(b.engine, "1", 0);
+		await b.engine.detectNow();
+		expect(b.getAllDynamic).toHaveBeenCalledTimes(1);
+		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
+	});
+
+	it("cron tick 撞上在跑的一轮就跳过;detectNow 撞上则排在后面再跑一轮", async () => {
+		const b = makeEngine({ subs: { "1": { uid: "1", uname: "UP", dynamic: true } } });
+		const first = deferred();
+		b.getAllDynamic.mockReturnValueOnce(first.promise).mockResolvedValue(resp([]));
+		b.engine.start();
+		const tick = cronMock.instances[0];
+		if (!tick) throw new Error("cron 没建起来");
+
+		tick.onTick();
+		tick.onTick();
+		expect(b.getAllDynamic).toHaveBeenCalledTimes(1);
+
+		const second = b.engine.detectNow();
+		await Promise.resolve();
+		expect(b.getAllDynamic).toHaveBeenCalledTimes(1);
+
+		first.resolve(resp([]));
+		await second;
+		expect(b.getAllDynamic).toHaveBeenCalledTimes(2);
+	});
+
+	it("那一轮抛了:记日志、锁释放,下一次还能跑", async () => {
+		const b = makeEngine();
+		b.getAllDynamic.mockRejectedValueOnce(new TypeError("boom")).mockResolvedValue(resp([]));
+		seed(b.engine, "1", 0);
+		await b.engine.detectNow();
+		await b.engine.detectNow();
+		expect(b.getAllDynamic).toHaveBeenCalledTimes(2);
+	});
+});

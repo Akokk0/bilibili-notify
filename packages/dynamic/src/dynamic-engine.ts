@@ -9,12 +9,7 @@ import type {
 	MessageBus,
 	ServiceContext,
 } from "@bilibili-notify/internal";
-import {
-	DEFAULT_MESSAGE_LAYOUT,
-	interpolate,
-	planMessageGroups,
-	withLock,
-} from "@bilibili-notify/internal";
+import { DEFAULT_MESSAGE_LAYOUT, interpolate, planMessageGroups } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
 import { resolveDynamicColorOptions } from "./card-style";
@@ -633,16 +628,7 @@ export class DynamicEngine {
 	private startJob(): void {
 		let job: CronJob;
 		try {
-			job = new CronJob(
-				this.config.dynamicCron,
-				withLock(
-					() => this.detectDynamics(),
-					(err) =>
-						this.logger.error(
-							`[detector] 动态检测执行异常：${err instanceof Error ? err.message : String(err)}`,
-						),
-				),
-			);
+			job = new CronJob(this.config.dynamicCron, () => void this.runDetectLocked());
 		} catch (err) {
 			this.logger.error(
 				`[detector] dynamicCron="${this.config.dynamicCron}" 无法解析,动态检测未启动：${err instanceof Error ? err.message : String(err)}`,
@@ -693,6 +679,39 @@ export class DynamicEngine {
 			);
 			this.startJob();
 		}
+	}
+
+	/** 正在跑的那一轮;cron tick 撞上就跳过,`detectNow` 撞上就排在后面。 */
+	private detectInFlight: Promise<void> | null = null;
+
+	/**
+	 * 带锁跑一轮。同一时刻只有一轮在跑(此前是 `withLock`,换成握着 promise 是为了让
+	 * `detectNow` 等得到这一轮结束)。异常记日志、锁必释放 —— 锁卡死的症状是 cron tick
+	 * 全部静默丢弃,动态从此不再推。
+	 */
+	private runDetectLocked(): Promise<void> {
+		if (this.detectInFlight) return this.detectInFlight;
+		const round = this.detectDynamics()
+			.catch((err: unknown) => {
+				this.logger.error(
+					`[detector] 动态检测执行异常：${err instanceof Error ? err.message : String(err)}`,
+				);
+			})
+			.finally(() => {
+				this.detectInFlight = null;
+			});
+		this.detectInFlight = round;
+		return round;
+	}
+
+	/**
+	 * 立刻跑一轮(devtools「现在就跑」)。撞上在跑的那轮就**等它跑完再跑一轮**,不是跳过 ——
+	 * 调用方多半是刚往 feed 里塞了东西才来的,而在跑的那轮拉 feed 在塞之前,跳过等于白塞。
+	 * 回的 promise 在属于这次调用的那一轮结束时落定。
+	 */
+	detectNow(): Promise<void> {
+		const current = this.detectInFlight;
+		return current ? current.then(() => this.runDetectLocked()) : this.runDetectLocked();
 	}
 
 	private async detectDynamics(): Promise<void> {
