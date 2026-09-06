@@ -1,20 +1,25 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { observeLiveConnections } from "@bilibili-notify/blive";
-import type { PushAdapter, PushTarget } from "@bilibili-notify/internal";
+import type { MessageBus, PushAdapter, PushTarget } from "@bilibili-notify/internal";
+import type { AuthSystem } from "../auth/index.js";
 import type { HistoryStore } from "../history/store.js";
 import type { PlatformAdapter } from "../platforms/types.js";
 import type { DevCapturesApi } from "../routes/dev.js";
 import type { UpdateService } from "../update/service.js";
 import { isDevBuild } from "../update/version-order.js";
 import { overridableApi } from "./api-overrides.js";
+import { createCapabilityInjector } from "./capability-injection.js";
 import { createCaptureGate } from "./capture.js";
 import { createLiveRooms } from "./live-rooms.js";
 import { createDevRegistry, type DevRegistry } from "./registry.js";
+import { busEventScenarios } from "./scenarios/bus-events.js";
+import { capabilityScenario } from "./scenarios/capability.js";
 import { pushCaptureScenario } from "./scenarios/capture.js";
 import { type DynamicEngineLike, dynamicScenarios } from "./scenarios/dynamic.js";
 import { type InboundHandlers, inboundScenarios } from "./scenarios/inbound.js";
 import { liveScenarios, type SubPick } from "./scenarios/live.js";
 import { liveEventScenarios } from "./scenarios/live-events.js";
+import { loginStateScenario } from "./scenarios/login-state.js";
 import { updateStateScenario } from "./scenarios/update.js";
 import { injectableUpdateService } from "./update-injection.js";
 
@@ -46,6 +51,10 @@ export interface CreateDevtoolsInput {
 	commands: () => { prefix: string; masterUserId?: string };
 	adapterConfigs: () => PushAdapter[];
 	targets: () => PushTarget[];
+	/** 引擎错误 / 登录失效 / 登录状态快照都从这条总线发。 */
+	bus: MessageBus;
+	/** 登录系统:交回去的是套了 Proxy 的那份(`status()` 可注入),给路由用。 */
+	authSystem: AuthSystem;
 }
 
 export interface Devtools {
@@ -56,6 +65,8 @@ export interface Devtools {
 	adapters: PlatformAdapter[];
 	/** 交给引擎的那份 —— 套了 Proxy 的。 */
 	api: BilibiliAPI;
+	/** 交给路由的那份 —— `status()` 可注入。 */
+	authSystem: AuthSystem;
 	captures: DevCapturesApi;
 }
 
@@ -63,7 +74,9 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 	if (!isDevBuild(input.payloadVersion)) return null;
 	const update = injectableUpdateService(input.updateService);
 	const gate = createCaptureGate();
+	const caps = createCapabilityInjector();
 	const api = overridableApi(input.api);
+	const auth = overridableApi(input.authSystem);
 	// 直播间连接登记:blive 每建一条连接就报到这里。全进程只有 devtools 这一个观察者。
 	const rooms = createLiveRooms();
 	observeLiveConnections(rooms.observe);
@@ -94,10 +107,15 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 				adapters: input.adapterConfigs,
 				targets: input.targets,
 			}),
+			...busEventScenarios({ bus: input.bus }),
+			loginStateScenario({ auth, bus: input.bus }),
+			capabilityScenario({ injector: caps, adapters: input.adapterConfigs }),
 		]),
 		updateService: update.service,
-		adapters: input.adapters.map((a) => gate.wrap(a)),
+		// 两层叠着:截流闸在里、能力注入在外 —— 顺序无所谓,两者各管各的方法。
+		adapters: input.adapters.map((a) => caps.wrap(gate.wrap(a))),
 		api: api.api,
+		authSystem: auth.api,
 		captures,
 	};
 }

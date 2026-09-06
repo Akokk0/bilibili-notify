@@ -41,7 +41,6 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 		title: "私聊指令",
 		icon: "feather",
 		desc: "当作一条私聊喂给指令分发器。userId 省略 = 配置里的主人(所以会被当真);给别人的号就能验「不是主人就不理」。回复走真链路。",
-		quick: true,
 		params: [
 			{ key: "text", label: "正文", kind: "text", default: `${deps.commands().prefix}help` },
 			{ key: "userId", label: "发信人(可空 = 主人)", kind: "text", default: "" },
@@ -67,7 +66,6 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 		title: "群里贴链接",
 		icon: "link",
 		desc: "当作群里有人发了一句话喂给链接解析。适配器省略 = 第一个启用的聊天平台;群号省略 = 它名下第一个群目标。默认行 / 逐群例外照真的判 —— 那个群被例外停了解析就不会有回卡,换个群号试。",
-		quick: true,
 		params: [
 			{ key: "adapter", label: "适配器", kind: "adapter" },
 			{ key: "groupId", label: "群号 / 群 openid(可空)", kind: "text", default: "" },

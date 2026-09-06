@@ -62,7 +62,9 @@ describe("inbound.command", () => {
 	it("声明:事件组;text 默认带前缀的 help", () => {
 		const { reg } = setup();
 		const decl = reg.list().find((d) => d.id === "inbound.command");
-		expect(decl).toMatchObject({ group: "event", quick: true });
+		// 不占快捷位:药丸上只给最常按的那几个,指令 / 链接进面板点。
+		expect(decl).toMatchObject({ group: "event" });
+		expect(decl?.quick).toBeUndefined();
 		expect(decl?.params.find((p) => p.key === "text")).toMatchObject({
 			kind: "text",
 			default: "/help",

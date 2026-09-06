@@ -316,6 +316,8 @@ export async function startStandaloneServer(
 			}),
 			adapterConfigs: () => runtime.configStore.getAdapters(),
 			targets: () => runtime.configStore.getTargets(),
+			bus: runtime.bus,
+			authSystem,
 		});
 		if (devtools) log.info("devtools enabled (dev build): /api/dev is mounted");
 		const adapters = devtools?.adapters ?? rawAdapters;
@@ -671,7 +673,8 @@ export async function startStandaloneServer(
 			: undefined;
 
 		const app = createApp(runtime, {
-			authSystem,
+			// devtools 给的话是套了 Proxy 的那份:`status()` 可注入假登录态,别的原样。
+			authSystem: devtools?.authSystem ?? authSystem,
 			backupService,
 			basicAuthCredentials,
 			sessionCodec,

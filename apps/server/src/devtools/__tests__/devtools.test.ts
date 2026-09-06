@@ -1,5 +1,6 @@
 import type { UpdateStatusDTO } from "@bilibili-notify/contract";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import type { UpdateService } from "../../update/service.js";
 import { createDevtools } from "../index.js";
 
@@ -34,6 +35,8 @@ const BARE = {
 	commands: () => ({ prefix: "/" }),
 	adapterConfigs: () => [],
 	targets: () => [],
+	bus: createNodeMessageBus(),
+	authSystem: { status: () => ({ status: 5, msg: "" }) } as never,
 };
 
 describe("createDevtools", () => {
