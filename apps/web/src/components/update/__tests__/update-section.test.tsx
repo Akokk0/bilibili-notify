@@ -271,9 +271,34 @@ describe("UpdateSection —— 头部与其他 section 同款", () => {
 describe("UpdateSection —— 从别处「去更新」跳过来", () => {
 	// jsdom 没有 scrollIntoView;这里只关心「有没有滚」。
 	const scrollIntoView = vi.fn();
+
+	/**
+	 * jsdom 也没有 ResizeObserver。这个替身只记下回调,由用例自己决定「页面高度变了」
+	 * 什么时候发生 —— 断了(disconnect)之后就不该再响,和真家伙一样。
+	 */
+	class FakeRO {
+		static last: FakeRO | undefined;
+		private live = true;
+		constructor(private readonly cb: () => void) {
+			FakeRO.last = this;
+		}
+		observe(): void {}
+		disconnect(): void {
+			this.live = false;
+		}
+		fire(): void {
+			if (this.live) this.cb();
+		}
+	}
+
 	beforeEach(() => {
 		scrollIntoView.mockClear();
 		Element.prototype.scrollIntoView = scrollIntoView;
+		FakeRO.last = undefined;
+		vi.stubGlobal("ResizeObserver", FakeRO);
+	});
+	afterEach(() => {
+		vi.unstubAllGlobals();
 	});
 
 	it("带着 #update 进来 → 这一节滚进视口", async () => {
@@ -287,6 +312,37 @@ describe("UpdateSection —— 从别处「去更新」跳过来", () => {
 		serve({ phase: "idle" });
 		renderSection("/system");
 		await screen.findByText("还没查过");
+		expect(scrollIntoView).not.toHaveBeenCalled();
+	});
+
+	it("落点躲开吸顶的顶栏 —— 锚点的 scroll-margin 绑在顶栏实测高上,不是写死的小值", async () => {
+		// 顶栏 sticky 在 top-0、有七八十像素高,`block: "start"` 会把这一节的标题塞到它
+		// 底下。写死一个小 margin(原先是 scroll-mt-4 = 1rem)挡不住,得跟着 --bn-header-h。
+		serve({ phase: "idle" });
+		const { container } = renderSection("/system#update");
+		await screen.findByText("还没查过");
+		const anchor = container.firstElementChild as HTMLElement;
+		expect(anchor.getAttribute("style")).toContain("--bn-header-h");
+	});
+
+	it("上面几节晚一步撑开、把这一节顶下去 → 跟着重滚一次", async () => {
+		// 这一页排在前面的分区各自异步,滚完才撑开。`scrollIntoView` 只在调用那一刻
+		// 算一次落点、不跟着元素走,少了这次重滚,人就停在这一节上方 —— 主人报的正是它。
+		serve({ phase: "idle" });
+		renderSection("/system#update");
+		await screen.findByText("还没查过");
+		scrollIntoView.mockClear();
+		FakeRO.last?.fire();
+		expect(scrollIntoView).toHaveBeenCalled();
+	});
+
+	it("人自己动手滚了 → 立刻撒手,不再跟着重滚", async () => {
+		serve({ phase: "idle" });
+		renderSection("/system#update");
+		await screen.findByText("还没查过");
+		window.dispatchEvent(new Event("wheel"));
+		scrollIntoView.mockClear();
+		FakeRO.last?.fire();
 		expect(scrollIntoView).not.toHaveBeenCalled();
 	});
 });

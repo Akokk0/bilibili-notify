@@ -104,11 +104,12 @@ const RAIL_ITEM_BASE =
 const RAIL_ITEM_ACTIVE = "border-bn-pink/35 bg-bn-surface/90 text-bn-pink shadow-bn-card";
 const RAIL_ITEM_IDLE = "border-transparent hover:bg-bn-surface/55";
 
-// 吸顶位置 = header 实测高(`--bn-header-h`,由 GlassHeader 用 ResizeObserver 发布) + 1.5rem 间隔。
+// 顶栏底下那条线:既是 Tab 的吸顶位置,也是页内锚点该落到的位置。
+// = header 实测高(`--bn-header-h`,由 GlassHeader 用 ResizeObserver 发布) + 1.5rem 间隔。
 // 该 1.5rem 与页面 `<main>` 的 pt-6 一致,故吸顶位恰好等于 Tab 在文档流中的自然起点 ——
 // sticky 从第一像素滚动即钉住,不再「先随内容往下带一段再钉住」;header 高度变化时自动跟随。
 // fallback 7.5rem 仅用于 header 尚未测量的首帧(estimate),测量落定后被实测值取代。
-const STICKY_TOP = "calc(var(--bn-header-h, 7.5rem) + 1.5rem)";
+export const BELOW_HEADER_TOP = "calc(var(--bn-header-h, 7.5rem) + 1.5rem)";
 
 const CHIP_BASE =
 	"flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-bn-sm font-bold transition";
@@ -253,7 +254,7 @@ export function SectionNav({
 			{/* 竖栏(桌面 xl+) */}
 			<aside
 				data-section-nav="rail"
-				style={{ top: STICKY_TOP }}
+				style={{ top: BELOW_HEADER_TOP }}
 				className="sticky hidden h-fit min-w-0 xl:block"
 			>
 				<div className="mb-2 flex items-center justify-between px-1">
@@ -329,7 +330,7 @@ export function SectionNav({
 			<div
 				data-section-nav="bar"
 				data-bn="nav"
-				style={{ top: STICKY_TOP }}
+				style={{ top: BELOW_HEADER_TOP }}
 				className="sticky z-bn-local rounded-bn-sm border border-bn-border-subtle bg-bn-surface/70 backdrop-blur-sm xl:hidden"
 			>
 				<div className="relative flex items-center">
