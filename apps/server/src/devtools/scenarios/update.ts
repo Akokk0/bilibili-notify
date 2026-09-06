@@ -55,9 +55,13 @@ type Params = {
 	notes: string;
 };
 
+const DEFAULT_TARGET = "0.99.0";
+
 function buildState(p: Params): UpdateState {
 	const now = Date.now();
-	const target = p.target;
+	// 输入框被清空时注册表给的是空串(默认值只在这个键**缺席**时才补)。空版本号会渲染成
+	// 一张没有版本号的卡,「查看发布页」还指到 `.../tag/v`。
+	const target = p.target === "" ? DEFAULT_TARGET : p.target;
 	const releaseUrl = releaseUrlOf(target);
 	switch (p.phase) {
 		case "disabled":
@@ -115,7 +119,7 @@ export function updateStateScenario(injectable: InjectableUpdateService): DevSce
 				],
 				default: "dev-build",
 			},
-			{ key: "target", label: "目标版本", kind: "text", default: "0.99.0" },
+			{ key: "target", label: "目标版本", kind: "text", default: DEFAULT_TARGET },
 			{
 				key: "notes",
 				label: "版本概述",

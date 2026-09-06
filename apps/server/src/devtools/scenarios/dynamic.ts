@@ -144,7 +144,10 @@ function buildFake(input: FakeInput): FeedItem {
 								desc: "devtools 造的一条视频投稿,封面借了头像。",
 								disable_preview: 0,
 								duration_text: "12:34",
-								jump_url: "https://www.bilibili.com/video/BV17x411w7KC",
+								// 接口给的是**省协议**的地址(`//www.bilibili.com/...`),引擎照着拼 `https:` + 它。
+								// 写成绝对地址会拼出 `https:https://…`,一条点不开的链接 —— 而链接正是这个场景
+								// 要看的东西之一。
+								jump_url: "//www.bilibili.com/video/BV17x411w7KC",
 								stat: { play: "6.5万", danmaku: "1234" },
 								title: `${sub.name} 的新视频(devtools)`,
 								type: 1,

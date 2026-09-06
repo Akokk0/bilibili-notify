@@ -43,14 +43,20 @@ const TARGETS = [
 	},
 ] as never[];
 
-function setup(over: { master?: string; inbound?: boolean } = {}) {
+function setup(
+	over: {
+		master?: string;
+		inbound?: boolean;
+		commands?: () => { prefix: string; masterUserId?: string };
+	} = {},
+) {
 	const priv = vi.fn();
 	const group = vi.fn();
 	const masterUserId = "master" in over ? over.master : "10001";
 	const reg = createDevRegistry(
 		inboundScenarios({
 			inbound: () => (over.inbound === false ? undefined : { private: priv, group }),
-			commands: () => ({ prefix: "/", masterUserId }),
+			commands: over.commands ?? (() => ({ prefix: "/", masterUserId })),
 			adapters: () => ADAPTERS,
 			targets: () => TARGETS,
 		}),
@@ -59,16 +65,29 @@ function setup(over: { master?: string; inbound?: boolean } = {}) {
 }
 
 describe("inbound.command", () => {
-	it("声明:事件组;text 默认带前缀的 help", () => {
+	it("声明:事件组;text 默认留空 —— 前缀不烤进声明里", () => {
 		const { reg } = setup();
 		const decl = reg.list().find((d) => d.id === "inbound.command");
 		// 不占快捷位:药丸上只给最常按的那几个,指令 / 链接进面板点。
 		expect(decl).toMatchObject({ group: "event" });
 		expect(decl?.quick).toBeUndefined();
+		// 声明表在 createDevtools 那一刻就定型,而前缀在系统页上随时能改。
 		expect(decl?.params.find((p) => p.key === "text")).toMatchObject({
 			kind: "text",
-			default: "/help",
+			default: "",
 		});
+	});
+
+	it("正文留空 → 用**现在**的前缀拼 help,不是建表那会儿的", async () => {
+		let prefix = "/";
+		const { reg, priv } = setup({ commands: () => ({ prefix, masterUserId: "master" }) });
+
+		await reg.run("inbound.command", {});
+		expect(priv.mock.calls.at(-1)?.[0]).toMatchObject({ text: "/help" });
+
+		prefix = ".";
+		await reg.run("inbound.command", {});
+		expect(priv.mock.calls.at(-1)?.[0]).toMatchObject({ text: ".help" });
 	});
 
 	it("当作主人发一句私聊:userId 省略取配置里的主人", async () => {

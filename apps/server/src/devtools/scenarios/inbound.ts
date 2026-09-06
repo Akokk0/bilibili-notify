@@ -40,9 +40,11 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 		group: "event",
 		title: "私聊指令",
 		icon: "feather",
-		desc: "当作一条私聊喂给指令分发器。userId 省略 = 配置里的主人(所以会被当真);给别人的号就能验「不是主人就不理」。回复走真链路。",
+		desc: "当作一条私聊喂给指令分发器。正文留空 = 当前前缀 + help;userId 省略 = 配置里的主人(所以会被当真),给别人的号就能验「不是主人就不理」。回复走真链路。",
 		params: [
-			{ key: "text", label: "正文", kind: "text", default: `${deps.commands().prefix}help` },
+			// 默认值不能把前缀烤进去:这张声明表在 createDevtools 那一刻就定型了,而前缀是
+			// 系统页上随时能改的。改完面板还举着旧前缀,照它跑一次分发器根本不认。
+			{ key: "text", label: "正文(可空 = 前缀 + help)", kind: "text", default: "" },
 			{ key: "userId", label: "发信人(可空 = 主人)", kind: "text", default: "" },
 		],
 		run(params) {
@@ -51,7 +53,9 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 			const given = typeof params.userId === "string" ? params.userId : "";
 			const userId = given !== "" ? given : deps.commands().masterUserId;
 			if (!userId) throw new DevParamError("没配主人(系统页 · 主人私聊),得给一个发信人");
-			const text = String(params.text ?? "");
+			// 前缀现取 —— 它随时可能被改过。
+			const given2 = typeof params.text === "string" ? params.text : "";
+			const text = given2 !== "" ? given2 : `${deps.commands().prefix}help`;
 			// meta 里的 adapterId 指令分发用不上(它回主人那条配置好的私聊),给第一个启用的聊天平台就行。
 			const adapterId =
 				deps.adapters().find((a) => a.enabled && isChatPlatform(a.platform))?.id ?? "";
