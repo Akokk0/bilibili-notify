@@ -303,6 +303,13 @@ export class LiveEngine {
 	listLiveSnapshots(): ReturnType<ListenerManager["listLiveSnapshots"]> {
 		return this.listener.listLiveSnapshots();
 	}
+
+	/**
+	 * 把这位 UP 的「正在直播」复推提前到现在(宿主 devtools 用)。没监听 / 没在播回 false。
+	 */
+	repushNow(uid: string): Promise<boolean> {
+		return this.listener.tickNowForUid(uid);
+	}
 }
 
 function toListenerConfig(c: LiveEngineConfig): ListenerManagerConfig {

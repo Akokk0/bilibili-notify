@@ -512,6 +512,17 @@ export abstract class RoomSessionBase {
 		this.ctx.logSideEffectState(`timer:deleted room=${this.sub.roomId}`);
 	}
 
+	/**
+	 * 把「正在直播」复推提前到现在(宿主 devtools 的「复推计时器提前到期」)。走的就是
+	 * 定时器到点调的那个 tick,不另开一条路;没在播就不跑、回 false。定时器本身不动 ——
+	 * 下一次到点照旧。
+	 */
+	async tickNow(): Promise<boolean> {
+		if (!this.isLive) return false;
+		await this.tickPushAtTime();
+		return true;
+	}
+
 	/** Periodic "正在直播" tick (callback for `setInterval`). */
 	protected async tickPushAtTime(): Promise<void> {
 		if (!(await this.useLiveRoomInfo(LiveType.LiveBroadcast)) || !this.liveRoomInfo) {

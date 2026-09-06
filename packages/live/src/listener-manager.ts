@@ -77,6 +77,11 @@ export class ListenerManager {
 		this.sessionRecord.get(uid)?.rearmPeriodicTimer();
 	}
 
+	/** 复推提前到现在(见 `RoomSessionBase.tickNow`);没这个 uid 的监听回 false。 */
+	tickNowForUid(uid: string): Promise<boolean> {
+		return this.sessionRecord.get(uid)?.tickNow() ?? Promise.resolve(false);
+	}
+
 	/** Whether any feature on this sub requires the live-room WS connection. */
 	needsLiveMonitor(sub: SubItemView): boolean {
 		return this.ctx.needsLiveMonitor(sub);

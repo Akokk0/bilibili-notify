@@ -387,3 +387,36 @@ describe("退避耗尽彻底放弃监听", () => {
 		expect(mocks.sendLiveNotifyCard).not.toHaveBeenCalled();
 	});
 });
+
+/**
+ * `tickNow`:把「正在直播」复推提前到现在(devtools「复推计时器提前到期」)。走的就是
+ * 定时器到点调的那个 tick,不是另一条路;没在播就不跑、回 false。
+ */
+describe("RoomSession.tickNow", () => {
+	it("在播:立刻跑一次复推 tick(拉房间信息 → 渲染 → 发卡),回 true", async () => {
+		const { ctx, mocks } = makeCtx();
+		const session = new RoomSession(ctx, makeSub()) as AnySession;
+		await session.bootstrap();
+		expect(session.isLive).toBe(true);
+		mocks.sendLiveNotifyCard.mockClear();
+		mocks.getLiveRoomInfo.mockClear();
+
+		expect(await session.tickNow()).toBe(true);
+
+		expect(mocks.getLiveRoomInfo).toHaveBeenCalledTimes(1);
+		expect(mocks.sendLiveNotifyCard).toHaveBeenCalledTimes(1);
+	});
+
+	it("没在播:不跑,回 false", async () => {
+		const { ctx, mocks } = makeCtx({
+			getLiveRoomInfo: async () => ({ ...LIVE_ROOM, live_status: 0 }),
+		});
+		const session = new RoomSession(ctx, makeSub()) as AnySession;
+		await session.bootstrap();
+		expect(session.isLive).toBe(false);
+		mocks.sendLiveNotifyCard.mockClear();
+
+		expect(await session.tickNow()).toBe(false);
+		expect(mocks.sendLiveNotifyCard).not.toHaveBeenCalled();
+	});
+});
