@@ -66,10 +66,10 @@ export function createDevRoute({ registry, captures }: CreateDevRouteInput): Hon
 		});
 	}
 
-	app.post("/reset", (c) => c.json({ active: registry.reset() }));
-	app.post("/reset/:id", (c) => {
+	app.post("/reset", async (c) => c.json({ active: await registry.reset() }));
+	app.post("/reset/:id", async (c) => {
 		try {
-			return c.json({ active: registry.reset(c.req.param("id")) });
+			return c.json({ active: await registry.reset(c.req.param("id")) });
 		} catch (err) {
 			if (err instanceof DevScenarioNotFound) return c.json({ err: err.message }, 404);
 			throw err;

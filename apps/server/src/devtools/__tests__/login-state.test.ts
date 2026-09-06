@@ -83,7 +83,7 @@ describe("auth.login-state", () => {
 		expect(reg.active()).toEqual([
 			{ scenarioId: "auth.login-state", label: "登录状态 → 等待扫码" },
 		]);
-		expect(reg.reset("auth.login-state")).toEqual([]);
+		expect(await reg.reset("auth.login-state")).toEqual([]);
 		expect(status()).toBe(REAL);
 		expect(reports.at(-1)).toBe(REAL);
 	});

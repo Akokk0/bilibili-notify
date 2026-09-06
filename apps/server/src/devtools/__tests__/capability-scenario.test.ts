@@ -101,7 +101,7 @@ describe("adapter.capability", () => {
 	it("收摊回真", async () => {
 		const { reg, ob } = setup();
 		await reg.run("adapter.capability", { adapter: "ad-ob", state: "supported" });
-		expect(reg.reset("adapter.capability")).toEqual([]);
+		expect(await reg.reset("adapter.capability")).toEqual([]);
 		expect(ob.capabilities?.(OB)).toBe(REAL);
 	});
 

@@ -90,9 +90,41 @@ describe("push.mute", () => {
 		expect(mute.muteFor).toHaveBeenCalledWith(600_000);
 		expect(res.active).toEqual([{ scenarioId: "push.mute", label: "静音中 → 到 15:40" }]);
 
-		reg.reset("push.mute");
+		await reg.reset("push.mute");
 		expect(mute.muteFor).toHaveBeenLastCalledWith(0);
 		expect(reg.active()).toEqual([]);
+	});
+
+	it("主人自己 /mute 出来的静音:不认领、不解除 —— 收摊只收 devtools 自己造的", async () => {
+		// 这一条按的是真开关、写的是真配置,所以它必须记账。否则面板会把主人从私聊按出来的
+		// 静音列进「当前生效」,而「全部收摊」是任何一次注入之后都会顺手按的动作 —— 一按
+		// 就把人家的静音无声解掉了。
+		const { reg, mute } = setup();
+		await mute.muteFor(30 * 60_000); // 主人自己按的,不经 devtools
+		mute.muteFor.mockClear();
+
+		expect(reg.active()).toEqual([]);
+		await reg.reset();
+		expect(mute.muteFor).not.toHaveBeenCalled();
+		expect(mute.isMuted()).toBe(true);
+	});
+
+	it("按过之后盘上的静音又被换掉:不再认领,收摊也不碰", async () => {
+		const { reg, mute } = setup();
+		await reg.run("push.mute", { minutes: 10 });
+		await mute.muteFor(60 * 60_000); // 主人接着自己又 /mute 了一次,盖掉了我们那次
+		mute.muteFor.mockClear();
+
+		expect(reg.active()).toEqual([]);
+		await reg.reset("push.mute");
+		expect(mute.muteFor).not.toHaveBeenCalled();
+		expect(mute.isMuted()).toBe(true);
+	});
+
+	it("没按过静音时收摊:一个字节都不写 —— patchGlobals 没有空转短路,写了就落盘 + 广播", async () => {
+		const { reg, mute } = setup();
+		await reg.reset();
+		expect(mute.muteFor).not.toHaveBeenCalled();
 	});
 
 	it("引擎还没起来 → 拒", async () => {

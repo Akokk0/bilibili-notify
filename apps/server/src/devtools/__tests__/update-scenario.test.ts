@@ -108,7 +108,7 @@ describe("update.state 场景", () => {
 	it("收摊后回到真状态", async () => {
 		const { reg, service } = setup();
 		await reg.run("update.state", { phase: "idle" });
-		expect(reg.reset("update.state")).toEqual([]);
+		expect(await reg.reset("update.state")).toEqual([]);
 		expect(service.getStatus()).toEqual(REAL);
 	});
 });

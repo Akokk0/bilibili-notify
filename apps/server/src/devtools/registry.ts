@@ -25,8 +25,11 @@ export interface DevScenarioDef extends DevScenario {
 	run(params: DevParamValues): Promise<DevRunOutcome> | DevRunOutcome;
 	/** 状态类场景:现在生效着的那条注入,没有就 null。事件类不写。 */
 	active?(): DevInjection | null;
-	/** 状态类场景:收摊。 */
-	reset?(): void;
+	/**
+	 * 状态类场景:收摊。可以是异步的 —— 有的收摊要写盘(静音),写失败得能一路冒到路由,
+	 * 而不是变成一个没人接的 promise 把进程带走。
+	 */
+	reset?(): void | Promise<void>;
 }
 
 export interface DevRegistry {
@@ -34,7 +37,7 @@ export interface DevRegistry {
 	run(id: string, params: DevParamValues): Promise<DevRunResponse>;
 	active(): DevInjection[];
 	/** 收摊:给 id 只收那一个,不给全收。回收完之后的生效表。 */
-	reset(id?: string): DevInjection[];
+	reset(id?: string): Promise<DevInjection[]>;
 }
 
 export class DevScenarioNotFound extends Error {
@@ -135,11 +138,16 @@ export function createDevRegistry(defs: readonly DevScenarioDef[]): DevRegistry 
 			return res;
 		},
 		active,
-		reset(id) {
+		async reset(id) {
 			if (id === undefined) {
-				for (const def of byId.values()) def.reset?.();
+				// 一条收摊失败不该让别的收不成 —— 但失败要报出去,所以先全跑再一起看结果。
+				const results = await Promise.allSettled(
+					[...byId.values()].map(async (def) => def.reset?.()),
+				);
+				const failed = results.find((r) => r.status === "rejected");
+				if (failed?.status === "rejected") throw failed.reason;
 			} else {
-				must(id).reset?.();
+				await must(id).reset?.();
 			}
 			return active();
 		},

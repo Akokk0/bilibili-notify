@@ -176,8 +176,8 @@ describe("createDevRegistry", () => {
 		await reg.run("a", {});
 		await reg.run("c", {});
 
-		expect(reg.reset("a")).toEqual([{ scenarioId: "c", label: "c" }]);
-		expect(reg.reset()).toEqual([]);
-		expect(() => reg.reset("zzz")).toThrow(DevScenarioNotFound);
+		expect(await reg.reset("a")).toEqual([{ scenarioId: "c", label: "c" }]);
+		expect(await reg.reset()).toEqual([]);
+		await expect(reg.reset("zzz")).rejects.toBeInstanceOf(DevScenarioNotFound);
 	});
 });

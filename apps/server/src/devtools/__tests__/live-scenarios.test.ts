@@ -112,7 +112,7 @@ describe("live.start / live.end", () => {
 	it("收摊 = 对每个假直播中的房间下播", async () => {
 		const { reg, events, api } = setup();
 		await reg.run("live.start", {});
-		expect(reg.reset("live.start")).toEqual([]);
+		expect(await reg.reset("live.start")).toEqual([]);
 		expect(events.at(-1)).toEqual({ kind: "live-end" });
 		expect((await api.getLiveRoomInfo("5050")).data.live_status).toBe(0);
 	});

@@ -59,27 +59,43 @@ export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
 		},
 	};
 
+	/**
+	 * 这一条按的是**真的** /mute,写的是真配置。所以 devtools 只认自己按下的那一次:记住
+	 * 它写进去的到期时刻,只有盘上还是那个数才敢在「当前生效」里认领、才敢收摊时解除。
+	 * 不这样的话,主人自己从私聊 /mute 出来的静音会被面板当成注入列出来,一按「全部收摊」
+	 * 就给人无声解掉 —— 收摊只收 devtools 自己造的东西,这是这套工具的规矩。
+	 */
+	let mutedByDevtools: number | null = null;
+
 	const mute: DevScenarioDef = {
 		id: "push.mute",
 		group: "timer",
 		title: "静音",
 		icon: "mic",
-		desc: "走真的 /mute:静音 N 分钟(写进配置的 mutedUntil),订阅推送全挡、主人私聊照发。收摊 = 解除。",
+		desc: "走真的 /mute:静音 N 分钟(写进配置的 mutedUntil),订阅推送全挡、主人私聊照发。收摊 = 解除 —— 但只解除从这儿按出来的那次;主人自己 /mute 的不碰。",
 		params: [{ key: "minutes", label: "分钟", kind: "number", default: 10, min: 1, max: 1440 }],
 		async run(params) {
 			const state = need(deps.mute(), "推送引擎");
 			const minutes = typeof params.minutes === "number" ? params.minutes : 10;
 			const until = await state.muteFor(minutes * 60_000);
+			mutedByDevtools = until;
 			return { summary: `已静音到 ${hhmm(until)}。` };
 		},
 		active() {
 			const state = deps.mute();
-			if (!state) return null;
-			if (!state.isMuted()) return null;
+			if (!state?.isMuted()) return null;
+			// 盘上的到期时刻换过了 = 这不再是我们按的那次(主人自己又 /mute 了,或者改了配置)。
+			if (mutedByDevtools === null || state.mutedUntil() !== mutedByDevtools) return null;
 			return { scenarioId: "push.mute", label: `静音中 → 到 ${hhmm(state.mutedUntil())}` };
 		},
-		reset() {
-			void deps.mute()?.muteFor(0);
+		async reset() {
+			const state = deps.mute();
+			const mine = mutedByDevtools;
+			mutedByDevtools = null;
+			// 没按过、或者已经不是我们那次:一个字节都不写。`patchGlobals` 没有空转短路,
+			// 每次都会落盘 + 广播 config-changed。
+			if (!state || mine === null || !state.isMuted() || state.mutedUntil() !== mine) return;
+			await state.muteFor(0);
 		},
 	};
 

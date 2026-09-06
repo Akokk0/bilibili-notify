@@ -12,7 +12,7 @@ function fakeRegistry(overrides: Partial<DevRegistry> = {}): DevRegistry {
 		list: () => [{ id: "a", group: "state", title: "A", params: [] }],
 		run: vi.fn(async () => ({ active: [] })),
 		active: () => [{ scenarioId: "a", label: "假的 A" }],
-		reset: vi.fn(() => []),
+		reset: vi.fn(async () => []),
 		...overrides,
 	};
 }
@@ -80,7 +80,7 @@ describe("dev 路由", () => {
 	});
 
 	it("POST /reset 全收、POST /reset/:id 只收那一个;回收完的生效表交出", async () => {
-		const reset = vi.fn((id?: string) =>
+		const reset = vi.fn(async (id?: string) =>
 			id === undefined ? [] : [{ scenarioId: "b", label: "B" }],
 		);
 		const app = createDevRoute({ registry: fakeRegistry({ reset }) });
