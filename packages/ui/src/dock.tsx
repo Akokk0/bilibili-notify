@@ -171,8 +171,10 @@ export function DockPanel({
 	// 拖顶边:按下时记住起点与起始高,之后每一步都从起点算 —— 累加每步位移会把
 	// 夹紧(clamp)丢掉的那段也累进去,松手时面板比手指高出一截。
 	const drag = useRef<{ startY: number; startHeight: number } | null>(null);
-	const clamp = (h: number) =>
-		Math.min(Math.max(h, minHeight), Math.round(window.innerHeight * MAX_VIEWPORT_SHARE));
+	// 上限**现读**视口:拖动中途转屏 / 改窗口大小都得跟着走,渲染那一刻取一次会锁死在旧值。
+	const viewportMax = () =>
+		typeof window === "undefined" ? minHeight : Math.round(window.innerHeight * MAX_VIEWPORT_SHARE);
+	const clamp = (h: number) => Math.min(Math.max(h, minHeight), viewportMax());
 
 	if (typeof document === "undefined") return null;
 	return createPortal(
@@ -190,6 +192,8 @@ export function DockPanel({
 				aria-label="拖动改高"
 				aria-valuenow={height}
 				aria-valuemin={minHeight}
+				// 少了 max,读屏按 ARIA 的默认上限 100 去念这个像素值,念出来是个没意义的数。
+				aria-valuemax={viewportMax()}
 				tabIndex={0}
 				className="group flex h-4 shrink-0 cursor-row-resize touch-none items-center justify-center"
 				onPointerDown={(e) => {
