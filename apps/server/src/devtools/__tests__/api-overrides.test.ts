@@ -58,4 +58,37 @@ describe("overridableApi", () => {
 		const { api } = overridableApi(new FakeApi());
 		expect(api.getUserAgent).toBe(api.getUserAgent);
 	});
+
+	it("身份在**盖着的时候**也不变:盖之前、盖着、摘掉之后取到的是同一个函数", () => {
+		// 缓存存在的全部理由就是这条不变式。只在没盖的时候成立等于只保了本来就不出事的那一半 ——
+		// 恰恰是装了覆盖的那段时间,引擎里拿方法当 key 的地方会炸。
+		const { api, override, clear } = overridableApi(new FakeApi());
+		const before = api.getUserAgent;
+		override("getUserAgent", () => "UA/fake");
+		expect(api.getUserAgent).toBe(before);
+		expect(api.getUserAgent).toBe(api.getUserAgent);
+		clear("getUserAgent");
+		expect(api.getUserAgent).toBe(before);
+	});
+
+	it("覆盖在**调用时**生效:先把方法引用取走,之后再盖 / 再摘,那个引用照样跟着走", () => {
+		// 引擎多半在构造时就把方法存下来了(`this.api.getLiveRoomInfo` 之类),devtools 是后来才
+		// 盖的。覆盖要是烤在取出来的那一刻,存好的引用永远是真的,场景就白跑了。
+		const { api, override, clear } = overridableApi(new FakeApi());
+		const ref = api.getUserAgent;
+		override("getUserAgent", () => "UA/fake");
+		expect(ref()).toBe("UA/fake");
+		clear("getUserAgent");
+		expect(ref()).toBe("UA/real");
+	});
+
+	it("真对象上的方法被换掉了 → 不再回旧的那份绑定", () => {
+		const raw = new FakeApi();
+		const { api } = overridableApi(raw);
+		const first = api.getUserAgent;
+		expect(first()).toBe("UA/real");
+		(raw as { getUserAgent: () => string }).getUserAgent = () => "UA/swapped";
+		expect(api.getUserAgent()).toBe("UA/swapped");
+		expect(api.getUserAgent).not.toBe(first);
+	});
 });

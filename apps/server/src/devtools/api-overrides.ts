@@ -29,25 +29,34 @@ export interface OverridableApi<T extends object> {
 
 export function overridableApi<T extends object>(real: T): OverridableApi<T> {
 	const overrides = new Map<PropertyKey, AnyFn>();
-	// 绑过的真方法记一份:每次 get 都新 bind 会让 `api.foo !== api.foo`,拿方法当 key 的会炸。
-	const bound = new Map<PropertyKey, AnyFn>();
+	/**
+	 * 每个方法名一份**稳定的**包装:取几次都是同一个函数,盖着 / 没盖 / 摘掉都一样 ——
+	 * 引擎里拿方法当 key、或者构造时就把 `this.api.foo` 存下来的地方,靠的就是这条。
+	 * 盖没盖是包装在**调用时**去查的,不烤在取出来的那一刻;否则先存了引用、后来才盖的
+	 * 场景永远打不到那份引用。
+	 *
+	 * 记住包装对应的是哪份真方法:真对象上的方法被换掉了(测试里 mock、热替换),缓存跟着换,
+	 * 不然会一直回旧的那份绑定。
+	 */
+	const wrappers = new Map<PropertyKey, { fn: AnyFn; wrapper: AnyFn }>();
 
-	function boundReal(prop: PropertyKey, fn: AnyFn): AnyFn {
-		let b = bound.get(prop);
-		if (!b) {
-			b = fn.bind(real);
-			bound.set(prop, b);
-		}
-		return b;
+	function wrapperFor(prop: PropertyKey, fn: AnyFn): AnyFn {
+		const hit = wrappers.get(prop);
+		if (hit && hit.fn === fn) return hit.wrapper;
+		const realFn = fn.bind(real);
+		const wrapper: AnyFn = (...args: unknown[]) => {
+			const fake = overrides.get(prop);
+			return fake ? fake(realFn, ...args) : realFn(...args);
+		};
+		wrappers.set(prop, { fn, wrapper });
+		return wrapper;
 	}
 
 	const api = new Proxy(real, {
 		get(target, prop, receiver) {
 			const value = Reflect.get(target, prop, receiver);
 			if (typeof value !== "function") return value;
-			const realFn = boundReal(prop, value as AnyFn);
-			const fake = overrides.get(prop);
-			return fake ? (...args: unknown[]) => fake(realFn, ...args) : realFn;
+			return wrapperFor(prop, value as AnyFn);
 		},
 	});
 
