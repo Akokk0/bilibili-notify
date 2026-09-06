@@ -15,7 +15,15 @@ import { listSources } from "./walk.js";
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("devtools 只活在开发期", () => {
-	it("src/devtools 之外,只有 App.tsx 引它,而且是动态 import", () => {
+	/**
+	 * 认的是**模块说明符**,不是 `import ... from` 这一种写法。带 `from` 的静态 import 只是
+	 * 三种引法里的一种:`import "./devtools/x"`(纯副作用)会把整棵树拉进主 chunk,
+	 * `await import("./devtools/x")`(不带 DEV 三元的裸动态 import)会实打实产出一个
+	 * devtools chunk —— 两种都不带 `from`,只钉 `from` 的守卫对它们一声不吭。
+	 */
+	const SPECIFIER = /["'][^"']*\bdevtools\/[^"']*["']/;
+
+	it("src/devtools 之外,只有 App.tsx 提到它", () => {
 		const offenders: string[] = [];
 		for (const file of listSources(SRC, {
 			exts: [".ts", ".tsx"],
@@ -23,11 +31,16 @@ describe("devtools 只活在开发期", () => {
 			skipTestFiles: true,
 		})) {
 			const rel = relative(SRC, file);
-			if (rel.startsWith("devtools/")) continue;
-			const text = readFileSync(file, "utf8");
-			if (/from\s+["'][./]*\/devtools\//.test(text)) offenders.push(rel);
+			if (rel.startsWith("devtools/") || rel === "App.tsx") continue;
+			if (SPECIFIER.test(readFileSync(file, "utf8"))) offenders.push(rel);
 		}
 		expect(offenders).toEqual([]);
+	});
+
+	it("App.tsx 里也只有那一处 —— 多一处就可能是没包在死枝里的那种", () => {
+		const app = readFileSync(join(SRC, "App.tsx"), "utf8");
+		const hits = app.match(new RegExp(SPECIFIER.source, "g")) ?? [];
+		expect(hits).toEqual(['"./devtools/dock"']);
 	});
 
 	it("App.tsx 那一处包在 import.meta.env.DEV 的三元里", () => {

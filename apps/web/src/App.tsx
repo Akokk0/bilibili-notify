@@ -34,8 +34,10 @@ import { api } from "./services/api";
 
 /**
  * devtools 只在开发期存在:`import.meta.env.DEV` 是编译期常量,生产构建里这一句折成 `null`,
- * 动态 import 随死枝一起被摇掉 —— dist 里连 devtools 这个 chunk 都没有(`scripts` 里的
- * 构建自检 grep 得到)。服务端那半另有一道门(载荷版本号),两边各自挡。
+ * 动态 import 随死枝一起被摇掉 —— dist 里连 devtools 这个 chunk 都没有(2026-09-06 对着
+ * 构建产物 grep 过,带对照项)。让这句话继续成立的是
+ * `src/__tests__/devtools-isolation.test.ts`:它钉住「除了这一处没人提 devtools」和
+ * 「这一处包在 DEV 三元里」。服务端那半另有自己的门,两边各自挡。
  */
 const DevDock = import.meta.env.DEV
 	? lazy(() => import("./devtools/dock").then((m) => ({ default: m.DevDock })))
