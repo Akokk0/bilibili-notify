@@ -42,15 +42,26 @@ const BARE = {
 	mute: () => undefined,
 	fansPoller: () => undefined,
 	loginFlow: () => undefined,
+	sourceRun: true,
 };
 
 describe("createDevtools", () => {
-	it.each(["0.0.0-dev", "dev"])("开发版 %s → 给", (payloadVersion) => {
+	it.each(["0.0.0-dev", "dev"])("源码上跑的开发版 %s → 给", (payloadVersion) => {
 		expect(createDevtools({ ...BARE, payloadVersion })).not.toBeNull();
 	});
 
 	it.each(["0.10.0", "0.11.0-alpha.1", "1.0.0-rc.1"])("发出去的版本 %s → 不给", (v) => {
 		expect(createDevtools({ ...BARE, payloadVersion: v })).toBeNull();
+	});
+
+	/**
+	 * 版本号这道门是**失败即敞开**的:`0.0.0-dev` 是仓库里的常驻值(只有发版 workflow 才临时
+	 * 同步成真版本号),而版本号读不出来时兜底也正是 `"dev"` —— 于是任何**没走发版流程**的
+	 * 构建产物都会自认开发版,把 `/api/dev` 挂出去。`:test` 镜像就是这么来的:它公开推,
+	 * 构建前不同步版本。所以还要一道构建产物身上不可能成立的门:跑的是不是 TypeScript 源码。
+	 */
+	it.each(["0.0.0-dev", "dev"])("版本号是 %s 但跑的是构建产物 → 不给", (payloadVersion) => {
+		expect(createDevtools({ ...BARE, payloadVersion, sourceRun: false })).toBeNull();
 	});
 
 	it("给的那份:更新服务换成了可注入的装饰器,注册表里有 update.state", async () => {

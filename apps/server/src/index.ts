@@ -292,6 +292,8 @@ export async function startStandaloneServer(
 		const subStore = subBinding.store;
 		const devtools = createDevtools({
 			payloadVersion,
+			// 构建产物的入口恒为 `.mjs`;只有 tsx 直跑源码时才是 `.ts`。见 createDevtools 那道门。
+			sourceRun: import.meta.url.endsWith(".ts"),
 			updateService,
 			adapters: rawAdapters,
 			historyStore: runtime.historyStore,
@@ -682,6 +684,9 @@ export async function startStandaloneServer(
 		const app = createApp(runtime, {
 			// devtools 给的话是套了 Proxy 的那份:`status()` 可注入假登录态,别的原样。
 			authSystem: devtools?.authSystem ?? authSystem,
+			// 显式给一份:`authSystem.api` 是数据属性,取出来的是没装饰过的那个,卡片预览
+			// 就会绕过 devtools 的 api 覆盖(假直播时预览渲染的还是真房间)。
+			api: devtools?.api ?? authSystem.api,
 			backupService,
 			basicAuthCredentials,
 			sessionCodec,

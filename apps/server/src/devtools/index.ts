@@ -38,6 +38,11 @@ import { injectableUpdateService } from "./update-injection.js";
  */
 export interface CreateDevtoolsInput {
 	payloadVersion: string;
+	/**
+	 * 跑的是不是 TypeScript 源码(`import.meta.url` 以 `.ts` 收尾)。构建产物一律是 `.mjs`,
+	 * 这一条没有任何环境变量、任何过期的 package.json 能翻过来。
+	 */
+	sourceRun: boolean;
 	updateService: UpdateService;
 	/** 推送出口。交回去的是包过截流闸的那份。 */
 	adapters: readonly PlatformAdapter[];
@@ -82,7 +87,11 @@ export interface Devtools {
 }
 
 export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
-	if (!isDevBuild(input.payloadVersion)) return null;
+	// 两道门都得成立。版本号那道是**失败即敞开**的:`0.0.0-dev` 是仓库常驻值,读不出版本号时
+	// 兜底也是 `"dev"` —— 任何没走发版流程的构建(公开推的 `:test` 镜像就是一例)都会自认
+	// 开发版。所以再要一道构建产物身上不可能成立的:跑在源码上。
+	// (更新服务共用 `isDevBuild`,但那边的后果是「关掉更新」,敞开反而是安全的一侧。)
+	if (!isDevBuild(input.payloadVersion) || !input.sourceRun) return null;
 	const update = injectableUpdateService(input.updateService);
 	const gate = createCaptureGate();
 	const caps = createCapabilityInjector();
